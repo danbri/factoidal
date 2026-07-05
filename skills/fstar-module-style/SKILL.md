@@ -15,8 +15,11 @@ RDF, RDFS, OWL, RIF, and SPARQL from the F\* alone.
 ## Layout today
 
 All ~92 modules live **flat** in `formal/fstar/*.fst` — no `src/`
-tree, no `.fsti` interface files (zero exist as of 2026-07). Domains
-are expressed by dotted-name prefixes:
+tree. `.fsti` interface files started landing 2026-07-05 for the
+foundational core (`RDF.Vocabulary`, `RDF.Indexed`, `RDF.IRI`,
+`RDF.Term`, `RDF.Triple`, `RDF.Graph` — see "Interface files" below
+and the ".fsti reading-order convention" for how to write one).
+Domains are expressed by dotted-name prefixes:
 
 - `RDF.*` — terms, triples, graphs, datasets, formats, canonicalization
 - `SPARQL11.*` / `SPARQL.*` — algebra, parser, protocol, update,
@@ -85,20 +88,104 @@ runs before/after:
 
 ### Interface files (`.fsti`) — policy
 
-F\*'s `.fsti` mechanism is one way to separate "what" from "how", but
-it is not the only one, and we have not adopted it yet. Considerations
-before introducing them:
+F\*'s `.fsti` mechanism is one way to separate "what" from "how".
+Adopted 2026-07-05 for the foundational core (`RDF.Vocabulary`,
+`RDF.Indexed`, `RDF.IRI`, `RDF.Term`, `RDF.Triple`, `RDF.Graph`).
+Considerations when introducing more:
 
 - `.fsti` shines when you want to **hide** a representation and force
   clients through an abstract signature — a good fit for the storage
   backends (`RDF.CottasStore.*`) where the F\* signature *is* the
-  boundary contract realised by OCaml glue.
+  boundary contract realised by OCaml glue, and for `RDF.IRI` (a real
+  abstraction: nothing outside it inspects the byte-scanning helpers).
 - For the semantic core, plain small modules + explicit lemmas often
   read better than signature/implementation splits, and they keep
-  extraction wiring simple (one `.fst` = one `.ml`).
+  extraction wiring simple (one `.fst` = one `.ml`). Some foundational
+  `.fsti`s (`RDF.Vocabulary`, `RDF.Indexed`, `RDF.Term`, `RDF.Triple`,
+  `RDF.Graph`) go the other way on purpose: every declaration is a
+  *transparent* `let`/`type`, not an abstract `val`, because 50+
+  modules pattern-match directly on the constructors and transparent
+  variants extract cleanest to C via KaRaMeL. Transparency is the
+  point there, not a compromise — see the reading-order convention
+  below for how to keep a transparent `.fsti` skimmable anyway.
 - Whatever is chosen, do it module-by-module with the full suite green
   at each step, and update the three `build-ocaml.sh` lists and the
   `.fst.checked` cache expectations. Don't convert the tree wholesale.
+
+### `.fsti` reading-order convention
+
+Owner critique, 2026-07-05 (verbatim intent): a skimmable foundational
+`.fsti` "still mixes basic concepts and their relationships with impl
+detail guff — e.g. the reader hits a fuel-recursion helper three lines
+into the IRI concept." The fix is a fixed reading order, enforced by
+convention (not by the compiler — F\* has no visibility modifier
+inside one `.fsti` file):
+
+1. **Banner, ≤10 comment lines.** What this module is, how to read it
+   (concepts first, mechanics at the bottom), and a pointer to where
+   the long journal-style history went — the paired `.fst`'s banner,
+   or the design doc. Don't delete that history; relocate it. The
+   companion `.fst` for a transparent `.fsti` is otherwise empty (the
+   interface *is* the definition), so it's a natural, low-traffic home
+   for the archived narrative.
+2. **Concepts, uninterrupted.** One `///` prose block per notion (cite
+   the spec section, e.g. RDF 1.1 Concepts §3.2), then the `type`/`let`
+   that realizes it. No recursion, no `assert_norm` ceremony, no
+   equality function, no lemma — those all belong in the Appendix.
+   Mark the start with a divider comment ("Concepts — read top to
+   bottom, uninterrupted, to the Appendix.").
+3. **Appendix: mechanical definitions**, divided off with its own
+   banner-style comment. Everything that isn't a new concept lives
+   here: multi-line helpers, `assert_norm` constant ceremony,
+   structural-equality functions, reflexivity lemmas.
+4. **F\* ordering forces exceptions — name them, don't hide them.**
+   Transparent `let`s can't forward-reference: `type wf_iri =
+   s:iri{is_iri s}` needs `is_iri` already declared, so a multi-line
+   fuel-recursion helper that only exists to define `is_iri` cannot
+   physically move to the Appendix below its use. Three techniques, in
+   preference order:
+   - **(a) Restate as a one-line concept fact where the dependency is
+     trivial** (e.g. `is_iri` itself is a one-liner — keep it, it reads
+     as part of the IRI concept, not as guff).
+   - **(b) When a dependency is unavoidable but the concept genuinely
+     needs it before something later in Concepts** (e.g. `RDF.Term`'s
+     `rdf_lang_string` constant is needed by `literal_wf`), keep it
+     inline in Concepts with a one-line note explaining why it isn't in
+     the Appendix with its siblings, rather than silently leaving the
+     reader to wonder.
+   - **(c) When the dependency is genuinely mechanical and has no
+     concept content of its own** (e.g. `RDF.Term`'s
+     `string_has_colon_from` fuel recursion, or `RDF.Indexed`'s generic
+     bucket-map plumbing), collect ALL such helpers into one labelled
+     **Preamble** block between the banner and Concepts — "mechanical,
+     skip on first read" — so Concepts still run uninterrupted
+     afterward. This is the technique that generalises best; use it
+     over (b) whenever more than one helper is involved.
+5. **The acceptance test.** On a phone screen, starting at the first
+   concept header, a reader scrolling down sees ONLY concepts — no
+   recursion, no equality functions, no lemmas — until they hit the
+   Appendix (or, if the module needed one, the Preamble) divider.
+   `RDF.Term.fsti` is the worked example: preamble holds the IRI
+   colon-check machinery, concepts run bnode → IRI → literal → term →
+   subject uninterrupted, appendix holds the xsd:\* constants +
+   equality + lemmas.
+6. **Not every `.fsti` needs all three tiers.** A pure data table
+   (`RDF.Vocabulary.fsti`: every entry is `let name : string = "..."`)
+   has no concept/mechanism split to make — trim the banner and leave
+   it flat. A real abstraction boundary (`RDF.IRI.fsti`: three `val`s,
+   no transparent lets) is already the one-screen surface this
+   convention asks for — trim the banner, nothing else to do. Apply
+   the convention where the smell is actually present; don't manufacture
+   dividers a file doesn't need.
+7. **Gate: this is a reordering + comment-move refactor, never a
+   semantic edit.** Verify every touched `.fsti`/`.fst` under z3
+   4.13.3 (no `--lax`) and diff the OCaml extraction — expect
+   byte-identical output (F\*'s extraction order follows the elaborated
+   dependency graph, not raw file position, so relocating declarations
+   inside a `.fsti` typically doesn't perturb `.ml` output at all) or,
+   if content that was already present pre-refactor happens to be
+   unextracted upstream, a clearly-labelled staleness note distinguishing
+   that from your own change.
 
 ## Verification requirements
 

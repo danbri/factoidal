@@ -24,9 +24,34 @@ open RDF.Graph.Executable
 // module's content, unchanged) and `SPARQL11.IRI.Resolve.fst` (its
 // `jir_*`-prefixed helpers and `resolve_iri`/`resolve_query_iri`, whose
 // *observable behavior* is reproduced by the `resolve_iri`/
-// `resolve_query_iri` definitions at the bottom of this file -- see the
-// `.fsti`'s banner for the differential-testing evidence that this is
+// `resolve_query_iri` definitions at the bottom of this file -- see
+// below for the differential-testing evidence that this is
 // behavior-preserving, not merely "close enough").
+//
+// Differential-testing evidence (moved here 2026-07-05 from the
+// .fsti's banner, trimmed per the owner's reading-order critique --
+// skills/fstar-module-style/SKILL.md's ".fsti reading-order
+// convention"): a differential harness (75 cases -- the full RFC 3986
+// section 5.4 battery, the toRdf/0122-0125 dotted-base pins from
+// tests/unit/iri_resolve_unit.ml, and 18 extra probes covering
+// userinfo/port/IPv6 authorities, urn:/mailto:/file: schemes, unicode
+// path segments, and malformed bases) found the two original
+// consolidated algorithms byte-identical on every case; the only
+// observed divergence was the `wf_iri`-typed entry point's defensive
+// `is_iri` fallback-to-base guard for malformed/non-absolute bases,
+// which `resolve_iri` below reproduces on top of the shared
+// `resolve_iri_v2` core rather than duplicating the merge/dot-segment
+// logic a second time (re-verified: the synthesized wrapper matched
+// the original jir_*-based `resolve_iri` on all 75 differential
+// cases, including the 3 where the two originals disagreed). See the
+// design doc's step-1 row for the full investigation writeup.
+//
+// `Parser.IRI.fst` and `SPARQL11.IRI.Resolve.fst` remain as thin
+// re-export shims at their old module paths so all existing
+// dependents (`Parser.Turtle.fst`, `Parser.RDFXML.fst`,
+// `ShEx.Schema.fst`, `SPARQL11.Algebra.fst`, `JSONLD.Context.fst`, plus
+// their hand-written/extracted OCaml counterparts) compile and link
+// unchanged.
 //
 // Design notes (unchanged from the original `Parser.IRI.fst`):
 //  - ASCII-only delimiter scans. RFC 3986 syntax commits on `:`, `/`, `?`,
@@ -475,10 +500,10 @@ let _rfc3986_5_4_examples : unit =
 // ============================================================================
 // wf_iri-typed entry points -- consolidated from the former
 // `SPARQL11.IRI.Resolve.fst` (its `jir_*`-prefixed helpers duplicated
-// the algorithm above; this reuses it instead, per the `.fsti`'s
-// banner and the differential-testing evidence there). Consumed by
-// SPARQL query-IRI resolution (`SPARQL11.Algebra.fst`) and JSON-LD
-// `@base` context processing (`JSONLD.Context.fst`).
+// the algorithm above; this reuses it instead, per the module banner's
+// differential-testing evidence). Consumed by SPARQL query-IRI
+// resolution (`SPARQL11.Algebra.fst`) and JSON-LD `@base` context
+// processing (`JSONLD.Context.fst`).
 // ============================================================================
 
 let string_to_iri (s : string) : option wf_iri =

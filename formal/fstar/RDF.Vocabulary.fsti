@@ -1,56 +1,14 @@
 module RDF.Vocabulary
 
-// This is the tree's FIRST .fsti (see docs/designissues/2026-07-05-
-// foundational-core-refactor.md §2.6/§2.9 and the build-pipeline note
-// in the same doc's step table). Every value below is a *transparent*
-// `let` (not an abstract `val`) on purpose: this module's whole job is
-// to be the single, grep-verifiable source of RDF/RDFS/OWL vocabulary
-// IRI strings, and downstream consumers (RDF.Graph.Executable.fst's
-// re-export shim, OWL.Vocabulary.fst's re-export shim,
-// RDF.Vocabulary.Axioms.fst) need `assert_norm` to unfold the literal
-// string to re-derive a `wf_iri`-refined copy locally — an opaque
-// `val name : string` would make that unfoldable. Transparency here is
-// the point, not a compromise: this module IS the specification data.
-//
-// Deliberately excluded from this module (still assigned to other
-// designs' modules, so a reader doesn't wonder where they went):
-//   - `xsd:string`/`xsd:integer`/`xsd:decimal`/`xsd:double`/`xsd:boolean`
-//     — these are part of the term algebra (`literal`/`wf_literal`
-//     construction), not "vocabulary" in the RDFS/OWL sense; they now
-//     live in `RDF.Term.fsti` (design doc §2.1, step 5, landed
-//     2026-07-05 — previously inline in RDF.Graph.Executable.fst
-//     lines 36-50, then a "future module" note here before step 5
-//     shipped), not here.
-//   - The XSD datatype-hierarchy constants (`xsd_long`,
-//     `xsd_nonNegativeInteger`, `xsd_hierarchy_edges`, RDF.Graph.
-//     Executable.fst lines ~4007-4098) and the `_iri`-suffixed OWL
-//     restriction-vocabulary duplicate block (lines 2216-2283) — both
-//     are interleaved with OWL-RL closure code that hasn't moved out
-//     of RDF.Graph.Executable.fst yet (design doc step 6). Moving
-//     their vocabulary constants here now would require either
-//     duplicating the closure code's own copies or creating a
-//     dependency cycle (RDF.Vocabulary would need `wf_iri`/`is_iri`
-//     from RDF.Graph.Executable, whose closure code would then need to
-//     `open RDF.Vocabulary` back). Deferred to when step 6 relocates
-//     the closure code that consumes them.
-//   - `rdf:first`/`rdf:rest`/`rdf:nil_iri` as separately named at
-//     RDF.Graph.Executable.fst lines 3340-3350 (property-chain/list
-//     decoding inside the OWL-RL closure section) — same reason.
-//   - OWL.QueryRewrite.fst's own `_iri`-suffixed forwarders — out of
-//     this slice's territory (a different agent's migration step).
-//
-// What DID move here (slice 1 of the RDF.Vocabulary consolidation):
-//   - RDF.Graph.Executable.fst's section 16 "RDF/RDFS Vocabulary
-//     Constants" block (lines 806-876).
-//   - OWL.Vocabulary.fst's entire content (class-expression/
-//     restriction/cardinality constants + its own rdf:first/rdf:rest/
-//     rdf:nil copy).
-//   - New: the additional RDF/RDFS terms needed by the
-//     `RDF.Vocabulary.Axioms` companion (rdf:subject/predicate/object/
-//     value/Statement/Alt/Bag/Seq/List, rdfs:seeAlso/isDefinedBy/
-//     comment/label/Container) that previously had no named constant
-//     anywhere in the tree (only inline string literals, e.g.
-//     RDF.Graph.Executable.fst lines 2708-2710).
+// This is the tree's FIRST .fsti (docs/designissues/2026-07-05-
+// foundational-core-refactor.md §2.6/§2.9). Every value below is a
+// *transparent* `let` (not an abstract `val`): this module's whole job
+// is to be the single, grep-verifiable source of RDF/RDFS/OWL
+// vocabulary IRI strings — transparency is the point, not a
+// compromise. No concept/mechanism split needed: every entry has the
+// same shape (`let name : string = "..."`), so the whole file reads
+// as one flat, skimmable table. Full exclusion-list history in
+// RDF.Vocabulary.fst's banner.
 
 (** ------------------------------------------------------------------ *)
 (** RDF core (RDF 1.1 Concepts §3 / RDF 1.1 namespace document)        *)

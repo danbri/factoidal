@@ -1,69 +1,22 @@
 module RDF.Term
 
 // Per docs/designissues/2026-07-05-foundational-core-refactor.md
-// §2.1/§3.3 step 5. This is the tree's THIRD `.fsti` (after
-// RDF.Vocabulary and RDF.Indexed) and the first written for a human
-// reader before a compiler: one RDF concept per block, a one-line
-// prose definition citing RDF 1.1 Concepts (https://www.w3.org/TR/
-// rdf11-concepts/) §3, then the F* type or function that realizes it.
-// If you know RDF but not F*, skim the `///` comments top to bottom
-// and skip the code.
-//
-// Every declaration below is a *transparent* `let`/`type` (not an
-// abstract `val`), same discipline as RDF.Vocabulary.fsti and
-// RDF.Indexed.fsti: 53+ modules pattern-match directly on `T_IRI`/
-// `S_IRI`/etc., and per §1.6 of the design doc, plain transparent
-// variants are also what extracts cleanest to C via KaRaMeL. Hiding
-// these behind a signature would force every call site through
-// accessor functions for no correctness gain (design doc §2.9, Open
-// decision 3) — revisit only if a genuine abstraction need appears.
-//
-// This is a copy-move from RDF.Graph.Executable.fst lines 1-159 (plus
-// the xsd:*/rdf:langString term-algebra constants at lines 36-50,
-// which RDF.Vocabulary.fsti's own banner already earmarks for "the
-// future RDF.Term module" rather than the RDFS/OWL vocabulary table)
-// — no new proof obligations, no behavior change.
-//
-// Deliberately NOT here (still assigned elsewhere, so a reader isn't
-// left wondering where they went):
-//   - `datatype_value_eq` (XSD value-space equality) and the two
-//     lexical-normalization helpers it depends on — `XSD.Datatypes.fst`'s
-//     job per docs/designissues/2026-07-05-xsd-datatypes-module.md
-//     §Migration order item 1.
-//   - `add_triple_if_new`/`add_triple_unchecked` and every other graph
-//     operation (`graph_add`, `graph_remove`, `find_by_subject`, the
-//     `rename_*_bnodes` family, `graph_bnodes`) — those stay in
-//     `RDF.Graph.Executable.fst` for now. This slice moves only the
-//     type tier + its decidable-equality/reflexivity lemmas (design
-//     doc §2.1's literal scope); the remaining accessor/algorithm
-//     functions are a candidate for a later, separately-gated slice,
-//     same "narrower-than-planned, ship what's achievable" call step 3
-//     made for `RDF.Indexed`.
-//   - The `indexed_graph`/bucket-map acceleration structure
-//     (`RDF.Indexed.fst`) and the RDFS/OWL-RL closure rules
-//     (`RDFS.Closure`/`OWL.Closure`, design doc step 6) — both still
-//     consume these types via `RDF.Graph.Executable.fst`'s shim.
+// §2.1/§3.3 step 5; restructured 2026-07-05 per the owner's
+// reading-order critique — see skills/fstar-module-style/SKILL.md's
+// ".fsti reading-order convention". Full history/exclusion-list in
+// RDF.Term.fst's banner.
+// If you know RDF but not F*: skim the `///` comments; concepts run
+// uninterrupted from "Blank nodes" to the "Appendix" divider below.
 
 open FStar.String
 
 (** ------------------------------------------------------------------ *)
-(** Blank nodes — RDF 1.1 Concepts §3.4                                *)
+(** Preamble: IRI well-formedness machinery (mechanical — skip on      *)
+(** first read; concepts start at "Blank nodes" below). This has to    *)
+(** sit here, not in the Appendix, because `wf_iri`'s refinement       *)
+(** needs `is_iri` already declared — F* transparent `let`s can't      *)
+(** forward-reference (fstar-module-style skill, reading-order note).  *)
 (** ------------------------------------------------------------------ *)
-
-/// A blank node is a locally-scoped identifier, disjoint from IRIs and
-/// literals, denoting some resource without naming it globally. We
-/// represent its label as a plain string so it extracts as a simple
-/// value with no allocation overhead.
-type bnode_id = string
-
-(** ------------------------------------------------------------------ *)
-(** IRIs — RDF 1.1 Concepts §3.2                                       *)
-(** ------------------------------------------------------------------ *)
-
-/// An IRI (RFC 3987) identifies a resource. Represented as a plain
-/// string; `wf_iri` below refines it to the subset this tree treats
-/// as syntactically well-formed.
-type iri = string
 
 /// Direct indexed traversal (not an intermediate char list) checking
 /// for a `:` — the one syntactic property this tree's cheap `is_iri`
@@ -88,46 +41,40 @@ let string_contains_colon (s : string) : bool =
 let is_iri (s : string) : bool =
   String.length s > 0 && string_contains_colon s
 
+(** ==================================================================== *)
+(** Concepts — read top to bottom, uninterrupted, to the Appendix.       *)
+(** ==================================================================== *)
+
+(** ------------------------------------------------------------------ *)
+(** Blank nodes — RDF 1.1 Concepts §3.4                                *)
+(** ------------------------------------------------------------------ *)
+
+/// A blank node is a locally-scoped identifier, disjoint from IRIs and
+/// literals, denoting some resource without naming it globally. We
+/// represent its label as a plain string so it extracts as a simple
+/// value with no allocation overhead.
+type bnode_id = string
+
+(** ------------------------------------------------------------------ *)
+(** IRIs — RDF 1.1 Concepts §3.2                                       *)
+(** ------------------------------------------------------------------ *)
+
+/// An IRI (RFC 3987) identifies a resource. Represented as a plain
+/// string; `wf_iri` below refines it to the subset this tree treats
+/// as syntactically well-formed, via the preamble's `is_iri` above.
+type iri = string
+
 /// A well-formed IRI — the type every term constructor and predicate
 /// position actually requires.
 type wf_iri = s:iri{is_iri s}
 
 /// `rdf:langString` — the fixed datatype IRI RDF 1.1 assigns to every
-/// language-tagged literal (RDF 1.1 Concepts §3.3).
+/// language-tagged literal (RDF 1.1 Concepts §3.3). Defined here,
+/// ahead of its xsd:* siblings in the Appendix, because the Literals
+/// concept just below needs it for `literal_wf`.
 let rdf_lang_string : wf_iri =
   assert_norm (is_iri "http://www.w3.org/1999/02/22-rdf-syntax-ns#langString");
   "http://www.w3.org/1999/02/22-rdf-syntax-ns#langString"
-
-/// `xsd:string` — the datatype every plain (un-language-tagged, not
-/// explicitly typed) literal carries per RDF 1.1's abstract syntax.
-/// Part of the term algebra (literal construction), not the RDFS/OWL
-/// vocabulary table — see RDF.Vocabulary.fsti's banner for why these
-/// five XSD constants live here instead of there.
-let xsd_string : wf_iri =
-  assert_norm (is_iri "http://www.w3.org/2001/XMLSchema#string");
-  "http://www.w3.org/2001/XMLSchema#string"
-
-/// `xsd:integer` — used to type unsuffixed integer literals wherever
-/// this tree constructs them directly (SPARQL numeric literals, XSD
-/// value-space code).
-let xsd_integer : wf_iri =
-  assert_norm (is_iri "http://www.w3.org/2001/XMLSchema#integer");
-  "http://www.w3.org/2001/XMLSchema#integer"
-
-/// `xsd:decimal`.
-let xsd_decimal : wf_iri =
-  assert_norm (is_iri "http://www.w3.org/2001/XMLSchema#decimal");
-  "http://www.w3.org/2001/XMLSchema#decimal"
-
-/// `xsd:double`.
-let xsd_double : wf_iri =
-  assert_norm (is_iri "http://www.w3.org/2001/XMLSchema#double");
-  "http://www.w3.org/2001/XMLSchema#double"
-
-/// `xsd:boolean`.
-let xsd_boolean : wf_iri =
-  assert_norm (is_iri "http://www.w3.org/2001/XMLSchema#boolean");
-  "http://www.w3.org/2001/XMLSchema#boolean"
 
 (** ------------------------------------------------------------------ *)
 (** Literals — RDF 1.1 Concepts §3.3                                   *)
@@ -175,6 +122,49 @@ noeq type rdf_term =
 noeq type subject =
   | S_IRI : wf_iri -> subject
   | S_BNode : bnode_id -> subject
+
+(** ==================================================================== *)
+(** Appendix: mechanical definitions. Nothing below this line is a new  *)
+(** RDF concept — xsd:* constant ceremony, structural equality, and     *)
+(** reflexivity lemmas for the types declared above.                    *)
+(** ==================================================================== *)
+
+(** ------------------------------------------------------------------ *)
+(** xsd:* term-algebra constants — the datatypes RDF 1.1's abstract     *)
+(** syntax assigns to plain/numeric/boolean literals. Not RDFS/OWL      *)
+(** vocabulary — see RDF.Vocabulary.fsti's banner for that boundary.    *)
+(** ------------------------------------------------------------------ *)
+
+/// `xsd:string` — the datatype every plain (un-language-tagged, not
+/// explicitly typed) literal carries per RDF 1.1's abstract syntax.
+/// Part of the term algebra (literal construction), not the RDFS/OWL
+/// vocabulary table — see RDF.Vocabulary.fsti's banner for why these
+/// five XSD constants live here instead of there.
+let xsd_string : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2001/XMLSchema#string");
+  "http://www.w3.org/2001/XMLSchema#string"
+
+/// `xsd:integer` — used to type unsuffixed integer literals wherever
+/// this tree constructs them directly (SPARQL numeric literals, XSD
+/// value-space code).
+let xsd_integer : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2001/XMLSchema#integer");
+  "http://www.w3.org/2001/XMLSchema#integer"
+
+/// `xsd:decimal`.
+let xsd_decimal : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2001/XMLSchema#decimal");
+  "http://www.w3.org/2001/XMLSchema#decimal"
+
+/// `xsd:double`.
+let xsd_double : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2001/XMLSchema#double");
+  "http://www.w3.org/2001/XMLSchema#double"
+
+/// `xsd:boolean`.
+let xsd_boolean : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2001/XMLSchema#boolean");
+  "http://www.w3.org/2001/XMLSchema#boolean"
 
 (** ------------------------------------------------------------------ *)
 (** Decidable equality + reflexivity                                   *)
