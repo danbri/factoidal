@@ -8,10 +8,13 @@ pass, 0 fail (of 76)** — joins (index-paired joinless RefObjectMaps
 per spec), error-fixture validations, battery-visible rml_runner.
 **RIF 34 pass, 4 labelled fails, 12 precise skips (of 50)** — DTB
 builtins module, safeness/conformance checker, import-rejection
-table; every entry scored or construct-named. **JSON-LD 437 pass,
-22 fail, 8 skip (of 467)** — 29 flips (CTD negatives, nested lists,
-@import merge, forward refs, misc); all 22 residual fails diagnosed
-with module owners. KaRaMeL pipeline GREEN: krml installed
+table; every entry scored or construct-named. **JSON-LD 460 pass,
+1 fail, 6 skip (of 467)** — commit `a69aa2c`, the goal line: the 1
+fail is the documented Ryu-class float-formatting case, the 6 skips
+are JSON-LD 1.0-only tests. (The interim 437/22/8 from `2d3bddc` —
+29 flips: CTD negatives, nested lists, @import merge, forward refs,
+misc — was superseded the same day; if two same-day entries
+disagree, resolve by commit order, not prose position.) KaRaMeL pipeline GREEN: krml installed
 (~12 min recipe re-validated), 4 modules F-star->C->gcc with a 10/10
 demo (tools/karamel-c-build.sh); SPARQL11.Algebra monomorphization
 overflow confirms the stratification need. Bundle modularity

@@ -198,6 +198,9 @@ session.
   inventory (toolchain-cache, checked-cache), what the hook restores
   automatically, skill-symlink regeneration, and the never-again
   rules from the 90-minutes-of-compiles incident.
+- [`crypto-policy`](skills/crypto-policy/SKILL.md) — never roll our
+  own crypto; HACL\* adoption order for the hash/signature
+  `assume val`s (#63), and the wasm compatibility gate.
 - [`fstar-env`](skills/fstar-env/SKILL.md) — F\* / opam / z3
   setup and repair.
 - [`build-and-test`](skills/build-and-test/SKILL.md) — build,
