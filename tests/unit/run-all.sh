@@ -49,6 +49,9 @@ COMMON_MODULES=(
   RDF_Format
   RDF_Vocabulary
   RDF_Indexed
+  RDF_Term
+  RDF_Triple
+  RDF_Graph
   RDF_Graph_Executable
   RDF_Vocabulary_Axioms
   RDF_List_Helpers

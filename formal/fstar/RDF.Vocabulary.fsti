@@ -15,10 +15,12 @@ module RDF.Vocabulary
 // Deliberately excluded from this module (still assigned to other
 // designs' modules, so a reader doesn't wonder where they went):
 //   - `xsd:string`/`xsd:integer`/`xsd:decimal`/`xsd:double`/`xsd:boolean`
-//     (RDF.Graph.Executable.fst lines 36-50) — these are part of the
-//     term algebra (`literal`/`wf_literal` construction), not
-//     "vocabulary" in the RDFS/OWL sense; they belong to the future
-//     `RDF.Term` module (design doc §2.1), not here.
+//     — these are part of the term algebra (`literal`/`wf_literal`
+//     construction), not "vocabulary" in the RDFS/OWL sense; they now
+//     live in `RDF.Term.fsti` (design doc §2.1, step 5, landed
+//     2026-07-05 — previously inline in RDF.Graph.Executable.fst
+//     lines 36-50, then a "future module" note here before step 5
+//     shipped), not here.
 //   - The XSD datatype-hierarchy constants (`xsd_long`,
 //     `xsd_nonNegativeInteger`, `xsd_hierarchy_edges`, RDF.Graph.
 //     Executable.fst lines ~4007-4098) and the `_iri`-suffixed OWL

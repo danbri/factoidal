@@ -359,6 +359,9 @@ if [[ "$STEP" == "all" || "$STEP" == "extract" ]]; then
     RDF.Format.fst
     RDF.Vocabulary.fst
     RDF.Indexed.fst
+    RDF.Term.fst
+    RDF.Triple.fst
+    RDF.Graph.fst
     RDF.Graph.Executable.fst RDF.Vocabulary.Axioms.fst Parquet.Footer.fst
     RDF.IRI.fst
     RDF.NQuads.Serialize.fst
@@ -687,6 +690,32 @@ if [[ "$STEP" == "all" || "$STEP" == "extract" ]]; then
   fi
   record_phase_timing "extract-loop" "$PHASE_START_EXTRACT" "$EXTRACT_COUNT"
 
+  # Step-5 OCaml compatibility shim (docs/designissues/2026-07-05-
+  # foundational-core-refactor.md §2.1/§2.2/§3.3 step 5). RDF.Term/
+  # RDF.Triple/RDF.Graph now hold the core term/triple/graph types;
+  # RDF.Graph.Executable.fst re-exports them via F* `include` so its
+  # own remaining code and all 53 `open RDF.Graph.Executable`
+  # dependents keep resolving T_IRI/wf_iri/triple/etc. unqualified.
+  # F*'s `include` has no OCaml-extraction artifact of its own (a
+  # module that only `include`s another extracts to an empty `.ml`
+  # beyond `open Prims` -- confirmed empirically before relying on
+  # this), so the *qualified* OCaml references this tree's hand-
+  # written glue makes (`RDF_Graph_Executable.T_IRI`, `.wf_iri`,
+  # `.rdf_graph`, etc., in experimental_ocaml_glue/*.sh and the
+  # bin/<consumer>/*.ml files) would otherwise go unbound. A real
+  # OCaml `include` -- unlike F*'s -- DOES re-export constructors and
+  # record field labels under the includer's namespace, so prepending
+  # one restores exactly that compatibility with zero edits to any
+  # consumer. Idempotent (checked via the marker line) so re-running
+  # extract on an already-patched file is a no-op. Retire this block
+  # at design-doc step 7, once every consumer's qualified reference
+  # is updated to name RDF_Term/RDF_Triple/RDF_Graph directly.
+  RGE_ML="$OUTDIR/RDF_Graph_Executable.ml"
+  if [[ -f "$RGE_ML" ]] && ! grep -q '^include RDF_Term$' "$RGE_ML"; then
+    { printf 'include RDF_Term\ninclude RDF_Triple\ninclude RDF_Graph\n'; cat "$RGE_ML"; } > "$RGE_ML.tmp"
+    mv "$RGE_ML.tmp" "$RGE_ML"
+  fi
+
   # Apply post-extraction patches (assume-val stubs, IRI resolution, validation, etc.)
   PHASE_START_PATCHES=$(date +%s)
   ./ocaml-patches.sh "$OUTDIR"
@@ -710,7 +739,7 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
   # (COTTAS runtime glue calls Parquet_Footer.probe_*). SPARQL11_Store
   # depends on Parser_BallyhooHDT and Parser_BallyhooCOTTAS. See
   # docs/designissues/2026-04-19-cottas-parquet-wiring-plan.md §Phase 1.
-  COMMON_MODULES="Util_Log.ml RDF_Format.ml RDF_Vocabulary.ml RDF_Indexed.ml RDF_Graph_Executable.ml RDF_Vocabulary_Axioms.ml RDF_List_Helpers.ml RDF_Bytes.ml RDF_Store_Loader.ml Parquet_Footer.ml OWL_Vocabulary.ml OWL_DirectMapping_Filter.ml Tableau.ml \
+  COMMON_MODULES="Util_Log.ml RDF_Format.ml RDF_Vocabulary.ml RDF_Indexed.ml RDF_Term.ml RDF_Triple.ml RDF_Graph.ml RDF_Graph_Executable.ml RDF_Vocabulary_Axioms.ml RDF_List_Helpers.ml RDF_Bytes.ml RDF_Store_Loader.ml Parquet_Footer.ml OWL_Vocabulary.ml OWL_DirectMapping_Filter.ml Tableau.ml \
     Parser_FastString.ml RDF_IRI.ml SPARQL11_IRI_Resolve.ml Parser_IRI.ml \
     RDF_NQuads_Serialize.ml \
     Parser_Combinators.ml Parser_TurtleScanner.ml Parser_NTriples.ml Parser_Turtle.ml \
@@ -1237,6 +1266,7 @@ if [[ "$STEP" == "all" || "$STEP" == "js" ]]; then
   FSTAR_MODULES=(
     RDF_Format.ml RDF_Vocabulary.ml
     RDF_Indexed.ml
+    RDF_Term.ml RDF_Triple.ml RDF_Graph.ml
     RDF_Graph_Executable.ml RDF_Vocabulary_Axioms.ml RDF_List_Helpers.ml RDF_Bytes.ml RDF_Store_Loader.ml Parquet_Footer.ml OWL_Vocabulary.ml OWL_DirectMapping_Filter.ml Tableau.ml
     Parser_FastString.ml RDF_IRI.ml SPARQL11_IRI_Resolve.ml Parser_IRI.ml
     RDF_NQuads_Serialize.ml

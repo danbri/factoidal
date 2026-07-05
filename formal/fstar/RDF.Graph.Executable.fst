@@ -18,164 +18,48 @@ open RDF.Vocabulary
 // shaped exactly what could move out. One-directional edge: RDF.Indexed
 // has zero dependency on this file, so this `open` cannot cycle back.
 open RDF.Indexed
-
-(** 1. Concrete Types for Execution **)
-// We choose string for blank nodes so they can be extracted as simple values
-type bnode_id = string
-type iri = string
-
-(** 2. Refined IRIs **)
-(* An IRI must be non-empty and contain a colon.
-   Use direct indexed traversal to avoid allocating an intermediate char list. *)
-let rec string_has_colon_from (s: string) (pos: nat) (fuel: nat)
-  : Tot bool (decreases fuel) =
-  if fuel = 0 then false
-  else
-    let len = String.length s in
-    if pos >= len then false
-    else if FStar.Char.int_of_char (String.index s pos) = 0x3A then true
-    else string_has_colon_from s (pos + 1) (fuel - 1)
-
-let string_contains_colon (s : string) : bool =
-  string_has_colon_from s 0 (String.length s + 1)
-
-let is_iri (s : string) : bool =
-  String.length s > 0 && string_contains_colon s
-
-type wf_iri = s:iri{is_iri s}
-
-(* Well-known IRI constants — concrete string values with normalization hints.
-   F* normalizer verifies is_iri at compile time. *)
-let rdf_lang_string : wf_iri =
-  assert_norm (is_iri "http://www.w3.org/1999/02/22-rdf-syntax-ns#langString");
-  "http://www.w3.org/1999/02/22-rdf-syntax-ns#langString"
-let xsd_string : wf_iri =
-  assert_norm (is_iri "http://www.w3.org/2001/XMLSchema#string");
-  "http://www.w3.org/2001/XMLSchema#string"
-let xsd_integer : wf_iri =
-  assert_norm (is_iri "http://www.w3.org/2001/XMLSchema#integer");
-  "http://www.w3.org/2001/XMLSchema#integer"
-let xsd_decimal : wf_iri =
-  assert_norm (is_iri "http://www.w3.org/2001/XMLSchema#decimal");
-  "http://www.w3.org/2001/XMLSchema#decimal"
-let xsd_double : wf_iri =
-  assert_norm (is_iri "http://www.w3.org/2001/XMLSchema#double");
-  "http://www.w3.org/2001/XMLSchema#double"
-let xsd_boolean : wf_iri =
-  assert_norm (is_iri "http://www.w3.org/2001/XMLSchema#boolean");
-  "http://www.w3.org/2001/XMLSchema#boolean"
-
-(** 3. Literals with Runtime Checks **)
-noeq type literal = {
-  lexical_form : string;
-  datatype     : wf_iri;
-  lang_tag     : option string;
-}
-
-let literal_wf (l:literal) : bool =
-  match l.lang_tag with
-  | None   -> l.datatype <> rdf_lang_string
-  | Some _ -> l.datatype = rdf_lang_string
-
-type wf_literal = l:literal{literal_wf l}
-
-(** 4. Terms and Triples **)
-noeq type rdf_term =
-  | T_IRI     : wf_iri -> rdf_term
-  | T_BNode   : bnode_id -> rdf_term
-  | T_Literal : wf_literal -> rdf_term
-
-noeq type subject =
-  | S_IRI : wf_iri -> subject
-  | S_BNode : bnode_id -> subject
-
-(* Decidable equality for subjects — concrete implementation.
-   Pattern-match on constructors and compare the underlying strings.
-   wf_iri and bnode_id are both string, which is eqtype. *)
-let subject_eq (s1 s2 : subject) : bool =
-  match s1, s2 with
-  | S_IRI i1, S_IRI i2 -> i1 = i2
-  | S_BNode b1, S_BNode b2 -> b1 = b2
-  | _, _ -> false
-
-(* Case-insensitive language tag comparison per RDF 1.1 §3.3.
-   Language tags like @en-US and @en-us denote the same value. *)
-let lang_tag_eq (t1 t2 : string) : bool =
-  String.lowercase t1 = String.lowercase t2
-
-let lang_tag_option_eq (t1 t2 : option string) : bool =
-  match t1, t2 with
-  | None, None -> true
-  | Some s1, Some s2 -> lang_tag_eq s1 s2
-  | _, _ -> false
-
-(* Decidable equality for literals — compare all three fields.
-   Language tags are compared case-insensitively per RDF 1.1. *)
-let literal_eq (l1 l2 : literal) : bool =
-  l1.lexical_form = l2.lexical_form &&
-  l1.datatype = l2.datatype &&
-  lang_tag_option_eq l1.lang_tag l2.lang_tag
-
-(* Decidable equality for RDF terms — concrete implementation. *)
-let rdf_term_eq (t1 t2 : rdf_term) : bool =
-  match t1, t2 with
-  | T_IRI i1, T_IRI i2 -> i1 = i2
-  | T_BNode b1, T_BNode b2 -> b1 = b2
-  | T_Literal l1, T_Literal l2 -> literal_eq l1 l2
-  | _, _ -> false
-
-(* RDF 1.1 value equality for literals.
-   In RDF 1.1, a plain literal "foo" is equivalent to "foo"^^xsd:string.
-   Both have datatype xsd:string and no language tag. This function handles
-   the case where one literal might have an explicit xsd:string datatype
-   annotation and the other might be a "plain" literal (which also has
-   datatype xsd:string per RDF 1.1 abstract syntax). *)
-let literal_value_eq (l1 l2 : literal) : bool =
-  (* Same lexical form is always required *)
-  l1.lexical_form = l2.lexical_form &&
-  (* Language tags compared case-insensitively *)
-  lang_tag_option_eq l1.lang_tag l2.lang_tag &&
-  (* Datatypes must match. Since RDF 1.1 mandates that plain literals
-     have datatype xsd:string, both forms already carry xsd:string
-     as their datatype in a well-formed representation. We compare
-     datatypes directly — if both are xsd:string they match. *)
-  l1.datatype = l2.datatype
-
-noeq type triple = {
-  s : subject;
-  p : wf_iri;
-  o : rdf_term;
-}
-
-let triple_eq (a b : triple) : bool =
-  subject_eq a.s b.s && a.p = b.p && rdf_term_eq a.o b.o
-
-(** 5. Executable Graph (List-based) **)
-// Using a list instead of a Set allows the code to be compiled and run
-type rdf_graph = list triple
-
-let empty_graph : rdf_graph = []
-
-(** 5b. RDF Dataset (§13.2 SPARQL) **)
-(* An RDF dataset comprises one default graph and zero or more named graphs.
-   Each named graph is identified by an IRI. *)
-noeq type named_graph = {
-  ng_name : iri;
-  ng_graph : rdf_graph;
-}
-
-noeq type rdf_dataset = {
-  ds_default : rdf_graph;
-  ds_named : list named_graph;
-}
-
-let empty_dataset : rdf_dataset = { ds_default = empty_graph; ds_named = [] }
-
-(* Look up a named graph by IRI *)
-let rec lookup_named_graph (name : iri) (named : list named_graph) : option rdf_graph =
-  match named with
-  | [] -> None
-  | ng :: rest -> if ng.ng_name = name then Some ng.ng_graph else lookup_named_graph name rest
+// RDF.Term.fst / RDF.Triple.fst / RDF.Graph.fst (2026-07-05, design doc
+// "foundational-core-refactor" §2.1/§2.2/§3.3 step 5) now hold the
+// core term/triple/graph type tier that used to be defined directly
+// below: `bnode_id`, `iri`, `wf_iri`, `is_iri`, `literal`, `wf_literal`,
+// `rdf_term`, `subject`, `triple`, `rdf_graph`, `named_graph`,
+// `rdf_dataset`, their decidable-equality functions, and the four
+// per-type reflexivity lemmas (subject/literal/rdf_term/triple). See
+// RDF.Term.fsti for the human-readable spec (start there if you want
+// "what is a triple/graph/dataset", not this file).
+//
+// `include` (not `open`) is load-bearing, not a stylistic choice: F*'s
+// `open` does not propagate transitively — a module C that does
+// `open RDF.Graph.Executable` would not see RDF.Term's `T_IRI`
+// unqualified through a mere `open` in this file, only through
+// `include`, which re-exports a module's own bindings as part of this
+// module's public interface. `include` is what makes all 53 existing
+// `open RDF.Graph.Executable` dependents (plus this file's own
+// remaining ~5,000 lines of RDFS/OWL-RL closure code) keep resolving
+// `T_IRI`/`wf_iri`/`triple`/`rdf_dataset`/… unqualified with zero
+// source changes — verified with a throwaway three-module compile
+// experiment (A defines a variant + refinement type, B does
+// `include A`, C does `open B` and pattern-matches/type-annotates
+// unqualified) before relying on it for this file.
+//
+// OCaml extraction has no artifact for F*'s `include` (a module that
+// only `include`s another extracts to an empty `.ml` beyond
+// `open Prims` — confirmed empirically), so the *qualified* OCaml
+// references this tree's hand-written glue makes
+// (`RDF_Graph_Executable.T_IRI`, `.wf_iri`, `.rdf_graph`, …, in
+// `experimental_ocaml_glue/*.sh` and the `bin/<consumer>/*.ml` files)
+// would otherwise go unbound after this split. `build-ocaml.sh`'s
+// post-extraction step carries the OCaml-side compatibility shim (a
+// real OCaml `include RDF_Term`/`RDF_Triple`/`RDF_Graph` prepended to
+// the extracted `RDF_Graph_Executable.ml`, which — unlike F*'s
+// `include` — DOES re-export constructors and record field labels
+// under the includer's namespace) so none of those consumers need any
+// edit either. Retire both shims at design-doc step 7, once every
+// consumer's `open`/qualified-reference is updated to name
+// RDF.Term/RDF.Triple/RDF.Graph directly.
+include RDF.Term
+include RDF.Triple
+include RDF.Graph
 
 (* Blank node labels are scoped to the source document / dataset they came from.
    When multiple files are loaded independently and then merged for querying,
@@ -489,27 +373,11 @@ let build_indexed (g : rdf_graph) : Tot indexed_graph =
   }
 
 (** 7. Equality Reflexivity Lemmas **)
-
-// subject_eq is reflexive
-let lemma_subject_eq_refl (s : subject) : Lemma (subject_eq s s = true) =
-  match s with
-  | S_IRI _ -> ()
-  | S_BNode _ -> ()
-
-// literal_eq is reflexive
-let lemma_literal_eq_refl (l : literal) : Lemma (literal_eq l l = true) = ()
-
-// rdf_term_eq is reflexive
-let lemma_rdf_term_eq_refl (t : rdf_term) : Lemma (rdf_term_eq t t = true) =
-  match t with
-  | T_IRI _ -> ()
-  | T_BNode _ -> ()
-  | T_Literal l -> lemma_literal_eq_refl l
-
-// triple_eq is reflexive
-let lemma_triple_eq_refl (t : triple) : Lemma (triple_eq t t = true) =
-  lemma_subject_eq_refl t.s;
-  lemma_rdf_term_eq_refl t.o
+// subject_eq/literal_eq/rdf_term_eq/triple_eq's own reflexivity lemmas
+// (lemma_subject_eq_refl, lemma_literal_eq_refl, lemma_rdf_term_eq_refl,
+// lemma_triple_eq_refl) moved to RDF.Term.fsti/RDF.Triple.fsti with
+// their types (step 5) — available here unqualified via the `include`
+// above. What stays here is graph-level, built on top of those.
 
 // mem_triple finds t at the end of a list
 let rec lemma_mem_triple_append (t : triple) (g : rdf_graph) :
