@@ -1,0 +1,15 @@
+* Warning 241 at RDF.Dataset.Graphs.fst(0,0-0,0):
+  - Unable to load RDF.Dataset.Graphs.fst.checked since checked file
+    RDF.Dataset.Graphs.fst.checked is stale (dependence hash mismatch, use
+    --debug CheckedFiles for more details); will recheck RDF.Dataset.Graphs.fst
+    (suppressing this warning for further modules)
+
+Extracted module RDF.Canonical
+* Warning 247 at RDF.Canonical.fst(0,0-0,0):
+  - Checked file RDF.Canonical.fst.checked was not written.
+  - Reason:
+      checked file RDF.Dataset.Graphs.fst.checked is stale (dependence hash
+      mismatch, use --debug CheckedFiles for more details)
+
+Verified module: RDF.Canonical
+All verification conditions discharged successfully

@@ -1,0 +1,7 @@
+findlib: [WARNING] Interface ratio.cmi occurs in several directories: /root/.opam/fstar/lib/num, /root/.opam/fstar/lib/ocaml
+findlib: [WARNING] Interface big_int.cmi occurs in several directories: /root/.opam/fstar/lib/num, /root/.opam/fstar/lib/ocaml
+findlib: [WARNING] Interface num.cmi occurs in several directories: /root/.opam/fstar/lib/num, /root/.opam/fstar/lib/ocaml
+findlib: [WARNING] Interface nat.cmi occurs in several directories: /root/.opam/fstar/lib/num, /root/.opam/fstar/lib/ocaml
+findlib: [WARNING] Interface arith_status.cmi occurs in several directories: /root/.opam/fstar/lib/num, /root/.opam/fstar/lib/ocaml
+findlib: [WARNING] Interface digestif.cmi occurs in several directories: /root/.opam/fstar/lib/digestif/c, /root/.opam/fstar/lib/digestif
+ocamlfind: [WARNING] Package `threads': Linking problems may arise because of the missing -thread or -vmthread switch

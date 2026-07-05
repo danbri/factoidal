@@ -20,7 +20,7 @@
   [pe-running] WebOnt-miscellaneous-302-Direct
 Closure regime: RL
 OWL 2 test catalog: third_party/testing/owl/profile-QL.rdf
-  parsed 1275 triples in 0.03s
+  parsed 1275 triples in 0.04s
 Totals: 65 test cases
   PositiveEntailmentTest:    20
   NegativeEntailmentTest:    3
@@ -120,7 +120,7 @@ Running 58 ConsistencyTest(s) through is_inconsistent (closure fuel=100)...
   PASS  WebOnt-miscellaneous-303
   PASS  owl2-rl-invalid-rightside-somevaluesfrom
 
-Profile-RL ConsistencyTests: 58 pass, 0 fail (out of 58) in 1.35s
+Profile-RL ConsistencyTests: 58 pass, 0 fail (out of 58) in 1.37s
 
 Running 6 InconsistencyTest(s) through is_inconsistent (closure fuel=100)...
   PASS  DisjointClasses-002

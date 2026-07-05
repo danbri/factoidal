@@ -69,7 +69,7 @@ Running 29 PositiveEntailmentTest(s) through owl_rl_closure_with_reflexivity (fu
   PASS  chain2trans1
   FAIL  somevaluesfrom2bnode
 
-Profile-RL PositiveEntailmentTests: 20 pass, 8 fail (out of 28 RDF/XML tests), 1 skipped (functional-syntax-only) in 12.71s
+Profile-RL PositiveEntailmentTests: 20 pass, 8 fail (out of 28 RDF/XML tests), 1 skipped (functional-syntax-only) in 12.09s
   (bnode pattern matches any term at the position; full isomorphism deferred — see docs/designissues/2026-04-24-owl-runner-phase1.md)
 
 Running 6 NegativeEntailmentTest(s) through owl_rl_closure_with_reflexivity (fuel=100)...
@@ -80,7 +80,7 @@ Running 6 NegativeEntailmentTest(s) through owl_rl_closure_with_reflexivity (fue
   FAIL/unexpected-entailment  WebOnt-equivalentClass-008
   PASS  WebOnt-miscellaneous-302
 
-Profile-RL NegativeEntailmentTests: 4 pass, 2 fail (out of 6) in 0.13s
+Profile-RL NegativeEntailmentTests: 4 pass, 2 fail (out of 6) in 0.14s
 
 Running 72 ConsistencyTest(s) through is_inconsistent (closure fuel=100)...
   PASS  FS2RDF-different-individuals-2-annotation-ar
@@ -156,7 +156,7 @@ Running 72 ConsistencyTest(s) through is_inconsistent (closure fuel=100)...
   PASS  owl2-rl-invalid-rightside-somevaluesfrom
   PASS  somevaluesfrom2bnode
 
-Profile-RL ConsistencyTests: 71 pass, 1 fail (out of 72) in 13.07s
+Profile-RL ConsistencyTests: 71 pass, 1 fail (out of 72) in 12.55s
 
 Running 14 InconsistencyTest(s) through is_inconsistent (closure fuel=100)...
   PASS  DisjointClasses-002
@@ -176,4 +176,4 @@ Running 14 InconsistencyTest(s) through is_inconsistent (closure fuel=100)...
   SKIP/functional-syntax-only  string-integer-clash
       reason: unsupported input syntax — catalog entry provides only test:fsPremiseOntology (OWL 2 functional syntax) with test:normativeSyntax FUNCTIONAL; this runner reads only test:rdfXmlPremiseOntology literals (no functional-syntax parser yet, see docs/designissues/2026-07-03-owl-rl-pe-fails-fix-sketch.md, 2.7)
 
-Profile-RL InconsistencyTests: 7 pass, 5 fail (out of 12), 2 skipped (functional-syntax-only) in 0.24s
+Profile-RL InconsistencyTests: 7 pass, 5 fail (out of 12), 2 skipped (functional-syntax-only) in 0.25s

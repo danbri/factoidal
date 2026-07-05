@@ -1,13 +1,15 @@
 # Current State (Honest Assessment)
 
-Last refreshed: 2026-07-05 (wave-5 battery: SPARQL 631/0, RDF
-1031/0, RDFC-1.0 84 pass 1 fail 1 stub of 86 (SHA-384 landed; the
-fail is the documented vendored-fixture artifact), SHACL core 98/0
-report-isomorphism + sparql 17/5 of 22, OWL RL PE 27 pass 2 fail 1
-skip of 30 + NegativeEntailment 4 pass 2 fail of 6 + Inconsistency
-11 pass 0 fail 3 skip of 14, JSON-LD toRdf 374 pass 82 fail 11 skip
-of 467, RIF 4/0, ShEx stage 1 decoder 433/433 suite schemas,
-backend parity + Jena probes + unit 21/21 + npm 60/61 all green.
+Last refreshed: 2026-07-05 (wave-6 battery: SPARQL 631/0, RDF
+1031/0, RDFC-1.0 84 pass 1 fail 1 stub of 86, **SHACL suite complete:
+core 98/0 report-isomorphism + sparql 22/0 of 22** (custom constraint
+components, ASK+SELECT validators, $shapesGraph/$currentShape), OWL
+RL PE 27/2/1 + NE 4/2 + Inconsistency 11/0/3, JSON-LD toRdf 374/82/11
+of 467, RIF 4/0, ShEx stage 2 node-constraint validation 43 of 44
+reachable manifest entries (regex ? glue bug #276 accounts for the
+1), XSD.Datatypes foundation module landed (slice 1), dump-nq #272
+tail fixed: near-flat ~40k triples/s from 10k to 300k (was 12k/s
+degrading to stack overflow at 300k), unit 21/21 + npm 60/61 green.
 Note: w3c_runner shows 2 RIF entailment fails when run from
 ocaml-output/ — cwd-dependent file resolution, run from repo root.)
 
@@ -126,24 +128,25 @@ in item 4 is where that class of bug goes to die.
    + case-insensitive comparison — fixes the known literal_eq gap
    where @en-US and @en-us compare unequal). JSON-LD phases 3-4 need
    RDF.IRI + RDF.Unicode, so extraction of those two leads.
-5. **[DONE to phase 3, 2026-07-05] SHACL** — `SHACL.Validation.fst`
-   is a full validator: core 98 pass, 0 fail (of 98) under the
-   suite's report-isomorphism comparison; sh:sparql constraints in
-   pure F\* (17 pass, 5 fail of 22 — the 5 are the custom-components
-   extensibility mechanism, not attempted); `factoidal validate
-   --shapes` is the user tool. One `assume val` left
-   (`eval_sparql_target_select`, unreachable, #181 stub patch).
-   Remaining: custom constraint components, $shapesGraph/$currentShape
-   pre-binding, SPARQL-SELECT targets. (`third_party/testing/shex` is
+5. **[SUITE COMPLETE, 2026-07-05 wave 6] SHACL** —
+   `SHACL.Validation.fst` is a full validator: core 98 pass, 0 fail
+   (of 98) under the suite's report-isomorphism comparison; sparql
+   section 22 pass, 0 fail (of 22) including custom constraint
+   components (sh:parameter + ASK/SELECT validators) and
+   $shapesGraph/$currentShape pre-binding — the whole vendored suite
+   passes, 120 of 120. `factoidal validate --shapes` is the user
+   tool. One `assume val` left (`eval_sparql_target_select`,
+   SPARQL-SELECT targets, unreachable in the suite, #181 stub patch). (`third_party/testing/shex` is
    ShEx, a different shapes language — program plan in
    `docs/designissues/2026-07-05-shex-program-plan.md`.)
-6. **RDFC-1.0 as a tool** — the canonicalization algorithm exists in
-   F\* (`RDF.Canonical.fst`) and is suite-tested (62 pass, 23 fail,
-   1 skip of 86), but the CLI never exposes it. Add
-   `factoidal canonicalize FILE` emitting RDFC-1.0 canonical N-Quads
-   (consumer wiring only, no new F\*), and chase the 23 fails.
-   Canonical output doubles as a perf primitive: canonical hashes
-   enable dataset diffing, dedup, and cache keys.
+6. **[DONE, 2026-07-05] RDFC-1.0 as a tool** — `factoidal
+   canonicalize FILE` shipped; suite at 84 pass, 1 fail, 1 stub (of
+   86) with SHA-256 + SHA-384 (the fail is a vendored-fixture
+   artifact, the stub the poison-clique NegEval deferral — both
+   documented out of scope). Canonical hashes feed the graphs API,
+   the npm fn API's content identity, and cache keys. Remaining perf:
+   canonicalize's own 100k+ HFDQ-hashing tail (#272 fixed the
+   serializer side; hashing side still superlinear).
 7. Small, fold into any session: `tests/local`
    scripts that need external corpora get skip-or-fetch treatment
    (parser regressions done 2026-07-03; ukparliament bench corpus is

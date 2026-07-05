@@ -65,4 +65,4 @@ Running 23 ConsistencyTest(s) through is_inconsistent (closure fuel=100)...
   PASS  WebOnt-miscellaneous-302
   PASS  WebOnt-someValuesFrom-002
 
-Profile-RL ConsistencyTests: 23 pass, 0 fail (out of 23) in 2.04s
+Profile-RL ConsistencyTests: 23 pass, 0 fail (out of 23) in 2.02s

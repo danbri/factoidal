@@ -1,0 +1,26 @@
+Warning [deprecated-joo-global-object]: /root/.opam/fstar/lib/zarith_stubs_js/biginteger.js:3: 'joo_global_object' is being deprecated, please use `globalThis` instead
+Warning [integer-overflow]: integer 0x7fffffff (2147483647) truncated to 0xffffffff (-1); the generated code might be incorrect.
+Warning [integer-overflow]: integer 0x55555555 (1431655765) truncated to 0xd5555555 (-715827883); the generated code might be incorrect.
+Warning [integer-overflow]: integer 0xffffffff (4294967295) truncated to 0xffffffff (-1); the generated code might be incorrect.
+Warning [integer-overflow]: integer 0xffffffff (4294967295) truncated to 0xffffffff (-1); the generated code might be incorrect.
+Warning [integer-overflow]: integer 0xffffffff (4294967295) truncated to 0xffffffff (-1); the generated code might be incorrect.
+Warning [integer-overflow]: integer 0xffffffff (4294967295) truncated to 0xffffffff (-1); the generated code might be incorrect.
+Warning [integer-overflow]: integer 0xffffffff (4294967295) truncated to 0xffffffff (-1); the generated code might be incorrect.
+Warning [integer-overflow]: integer 0xffffffff (4294967295) truncated to 0xffffffff (-1); the generated code might be incorrect.
+Warning [integer-overflow]: integer 0x4f544f43 (1330925379) truncated to 0xcf544f43 (-816558269); the generated code might be incorrect.
+Warning [integer-overflow]: integer 0x44544f43 (1146376003) truncated to 0xc4544f43 (-1001107645); the generated code might be incorrect.
+Warning [integer-overflow]: integer 0x50544f43 (1347702595) truncated to 0xd0544f43 (-799781053); the generated code might be incorrect.
+Warning [integer-overflow]: integer 0x4f504f43 (1330663235) truncated to 0xcf504f43 (-816820413); the generated code might be incorrect.
+Warning [missing-primitive]: There are some missing Wasm primitives
+Dummy implementations (raising an exception) will be provided.
+Missing primitives:
+uint32_of_int
+unix_pipeuint64_max_intuint32_orint_of_uint32int128_of_intuint64_of_int
+uint32_subuint32_anduint128_of_intint56_of_intint48_of_intint40_of_int
+unix_waitpidunix_spawnunix_environmentunix_dupuint64_init_custom_ops
+uint56_of_intuint48_of_intuint40_of_intuint32_shift_rightuint32_shift_left
+uint32_muluint32_moduint32_max_intuint32_init_custom_opsuint32_divuint32_add
+uint128_max_intuint128_init_custom_opsint56_min_intint56_max_intint48_min_int
+int48_max_intint40_min_intint40_max_intint128_min_intint128_max_int
+int128_init_custom_opscaml_unix_map_file_bytecode
+caml_parquet_zstd_decompress_hex
