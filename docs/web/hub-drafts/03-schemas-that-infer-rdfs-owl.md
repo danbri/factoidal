@@ -1,0 +1,112 @@
+---
+title: "Schemas that infer: RDFS and OWL 2 RL"
+description: "Types nobody asserted, derived live from an rdfs:subClassOf axiom and an owl:equivalentClass mapping over schema.org data."
+series: docs-hub
+series_order: 3
+vocab: schema.org
+status: draft
+tests: tests/hub/post03_test.mjs
+---
+
+[The previous post](./02-asking-questions-sparql.md) queried exactly
+what was asserted. This post asks a graph what it *implies*. RDFS and
+OWL 2 RL are both entailment regimes: given a set of asserted triples
+plus some schema-level axioms (subclass relationships, equivalences),
+a *closure* computation derives additional triples that were never
+written down. Factoidal's SPARQL evaluator can materialize either
+closure on demand via the `entail` option.
+
+## RDFS: subClassOf
+
+```turtle
+@prefix schema: <https://schema.org/> .
+@prefix rdfs:   <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix ex:     <http://example.org/> .
+
+schema:Person rdfs:subClassOf schema:Thing .
+ex:alice a schema:Person .
+```
+
+One instance (`ex:alice`, a `schema:Person`), one subclass axiom. Ask
+what type `ex:alice` has, twice — with and without RDFS entailment:
+
+```js
+import factoidal from "@danbri/foafos";
+
+const dataset = await factoidal.parse(ttl); // the Turtle above
+const q = `SELECT ?type WHERE { <http://example.org/alice> a ?type }`;
+
+await factoidal.query(dataset, q);
+// => [ Map { 'type' => NamedNode('https://schema.org/Person') } ]
+
+await factoidal.query(dataset, q, { entail: 'RDFS' });
+// => [ ...Person, ...Thing ]  -- schema:Thing appears, though never asserted
+```
+
+Plain SELECT sees exactly what's written: `ex:alice a schema:Person`.
+With `entail: 'RDFS'`, the closure applies `rdfs:subClassOf`
+transitively (`RDF.Graph.Executable.fst`'s `rdfs_closure`, the same
+rule set rdf-mt's 14 RDFS-closure tests exercise) and `schema:Thing`
+appears as a second type — derived, not asserted.
+
+## OWL 2 RL: equivalentClass
+
+RDFS's subclass rule doesn't know about *equivalence* between two
+classes from different vocabularies — that's an OWL construct. Map
+`schema:Person` onto `foaf:Person`:
+
+```turtle
+@prefix schema: <https://schema.org/> .
+@prefix foaf:   <http://xmlns.com/foaf/0.1/> .
+@prefix owl:    <http://www.w3.org/2002/07/owl#> .
+@prefix ex:     <http://example.org/> .
+
+schema:Person owl:equivalentClass foaf:Person .
+ex:alice a schema:Person .
+```
+
+```js
+const dataset2 = await factoidal.parse(ttl2); // the Turtle above
+
+await factoidal.query(dataset2, q, { entail: 'RDFS' });
+// => [ ...Person ]  -- RDFS doesn't know equivalentClass; no change
+
+await factoidal.query(dataset2, q, { entail: 'OWL-RL' });
+// => [ ...schema.org/Person, ...foaf/Person, ...owl#Thing ]
+```
+
+`entail: 'RDFS'` leaves the result unchanged — `owl:equivalentClass`
+isn't an RDFS-vocabulary construct, so the RDFS closure has nothing to
+do with it. `entail: 'OWL-RL'` derives two more types: `foaf:Person`
+(via the equivalence, both directions) and `owl:Thing` (every OWL
+individual belongs to it). Same input graph, same query — the only
+thing that changed is which closure ran first.
+
+This is measured against the real W3C OWL 2 RL test catalog, not
+asserted: positive entailment 28 pass, 2 fail (of 30 — the two fails
+are a documented-impossible comprehension pair, not a silent gap),
+negative entailment 6 pass 0 fail, consistency 76 pass 0 fail,
+inconsistency 14 pass 0 fail.
+
+## Why this matters beyond the toy example
+
+Real-world graphs mix vocabularies constantly — the same "person" idea
+gets asserted as `schema:Person` on one site, `foaf:Person` on
+another, and a Wikidata query might expect neither directly. Whichever
+of those three vocabularies your query is written against, an
+`owl:equivalentClass` bridge plus `entail: 'OWL-RL'` means you don't
+have to rewrite the query for every source's vocabulary choice — the
+closure does the translation once, over the data, before the query
+ever runs.
+
+## What's next
+
+The next posts in this series work back outward from inference to
+concrete syntax and shape validation: the other RDF serializations
+(N-Triples, N-Quads, TriG, RDF/XML), SPARQL Update and the HTTP
+protocol, then SKOS, SHACL, and ShEx. See the
+[series plan](../../designissues/2026-07-05-docs-hub-plan.md) for the
+full map.
+
+Every code sample above is pinned in
+[`tests/hub/post03_test.mjs`](../../../tests/hub/post03_test.mjs).

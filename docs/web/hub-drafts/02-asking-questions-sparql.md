@@ -1,0 +1,133 @@
+---
+title: "Asking questions: SPARQL"
+description: "SELECT, ASK, CONSTRUCT, and property paths over a small Wikidata-shaped dataset, run live against the F*-extracted SPARQL 1.1 evaluator."
+series: docs-hub
+series_order: 2
+vocab: wikidata
+status: draft
+tests: tests/hub/post02_test.mjs
+---
+
+[The previous post](./01-triples-rdf-from-first-principles.md) parsed
+a graph and read it by hand, triple by triple. That's fine for five
+triples; it stops working the moment a graph has five thousand.
+SPARQL is the query language that scales past "read every line" —
+this post runs it live, against the same F\*-extracted evaluator the
+W3C SPARQL 1.1 test suite scores 631 pass, 0 fail (of 631) against.
+
+## A small Wikidata-shaped dataset
+
+The examples below use real Wikidata entity and property IRIs — `wd:`
+for entities, `wdt:` for "direct" (truthy) property statements — so
+the query syntax matches what you'd actually run against
+`query.wikidata.org`. The dataset itself is a small, hand-authored,
+easily-verified excerpt (not a live fetch — no network dependency in a
+docs page or its pinned test):
+
+```turtle
+@prefix wd:   <http://www.wikidata.org/entity/> .
+@prefix wdt:  <http://www.wikidata.org/prop/direct/> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+
+wd:Q42 rdfs:label "Douglas Adams" ;
+  wdt:P31  wd:Q5 ;        # instance of: human
+  wdt:P106 wd:Q36180 .    # occupation: writer
+
+wd:Q5     rdfs:label "human" .
+wd:Q36180 rdfs:label "writer" .
+```
+
+Five triples: one entity (Douglas Adams, `wd:Q42`) with a label, an
+instance-of edge, an occupation edge, and labels for the two things it
+points at.
+
+## SELECT
+
+```js
+import factoidal from "@danbri/foafos";
+
+const dataset = await factoidal.parse(ttl); // the Turtle above
+
+const rows = await factoidal.query(dataset, `
+  PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+  SELECT ?label WHERE {
+    <http://www.wikidata.org/entity/Q42> ?p ?o .
+    OPTIONAL { ?o rdfs:label ?label }
+  }
+`);
+rows.length;
+// => 3  (one row per outgoing edge from Q42: label, instance-of, occupation)
+```
+
+`query()` returns an array of `Map<string, Term>` — one map per
+solution row, keyed by variable name.
+
+## ASK
+
+A yes/no question — does this fact exist:
+
+```js
+await factoidal.query(dataset, `
+  PREFIX wdt: <http://www.wikidata.org/prop/direct/>
+  ASK { <http://www.wikidata.org/entity/Q42> wdt:P106 <http://www.wikidata.org/entity/Q36180> }
+`);
+// => true
+```
+
+## Property paths
+
+`wdt:P31|wdt:P106` is a property path: "either instance-of or
+occupation." Alternation (`|`), sequence (`/`), and transitive closure
+(`+`, `*`) all compose the same way the property-path suite (33 pass,
+0 fail of 33) tests them:
+
+```js
+const types = await factoidal.query(dataset, `
+  PREFIX wd:  <http://www.wikidata.org/entity/>
+  PREFIX wdt: <http://www.wikidata.org/prop/direct/>
+  SELECT ?type WHERE { wd:Q42 (wdt:P31|wdt:P106) ?type }
+`);
+types.map(r => r.get('type').value);
+// => ['http://www.wikidata.org/entity/Q5', 'http://www.wikidata.org/entity/Q36180']
+```
+
+Both the instance-of target (`Q5`, human) and the occupation target
+(`Q36180`, writer) come back from one path expression. On live
+Wikidata, the same pattern extended to `wdt:P31/wdt:P279*` (instance
+of, then subclass-of zero-or-more times) is the standard way to ask
+"is this a member of some broad class" — walking the transitive
+closure of `P279` in one query instead of writing a recursive client.
+This dataset only has the direct `P31` edge, so the `*` part matches
+zero additional hops here; the syntax is identical either way.
+
+## CONSTRUCT
+
+SELECT returns bindings; CONSTRUCT returns a new graph:
+
+```js
+const derived = await factoidal.query(dataset, `
+  PREFIX wdt:  <http://www.wikidata.org/prop/direct/>
+  PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+  CONSTRUCT { ?person <http://example.org/hasOccupationLabel> ?label }
+  WHERE { ?person wdt:P106 ?occ . ?occ rdfs:label ?label }
+`);
+derived.size;
+// => 1
+derived.toNQuads();
+// => '<http://www.wikidata.org/entity/Q42> <http://example.org/hasOccupationLabel> "writer" .\n'
+```
+
+`WHERE` joins the occupation edge to the occupation's label; `CONSTRUCT`
+builds one new triple per match. `derived` is an ordinary `Dataset`,
+the same type `parse()` returns — it can be queried again, unioned
+with another graph, or serialized.
+
+## What's next
+
+[RDFS and OWL 2 RL](./03-schemas-that-infer-rdfs-owl.md) show what
+happens when the graph itself, not the query, is the thing doing the
+implying — types nobody asserted, derived from a subclass axiom or an
+`owl:equivalentClass` mapping.
+
+Every code sample above is pinned in
+[`tests/hub/post02_test.mjs`](../../../tests/hub/post02_test.mjs).
