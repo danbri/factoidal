@@ -226,7 +226,7 @@ Running 206 PositiveEntailmentTest(s) through owl_rl_closure_with_reflexivity (f
   PASS  New-Feature-Keys-001
   PASS  New-Feature-Keys-003
   PASS  New-Feature-ObjectPropertyChain-001
-  FAIL  New-Feature-ObjectPropertyChain-BJP-002
+  PASS  New-Feature-ObjectPropertyChain-BJP-002
   PASS  New-Feature-ObjectPropertyChain-BJP-003
   FAIL  New-Feature-ObjectQCR-001
   PASS  New-Feature-ObjectQCR-002
@@ -415,8 +415,8 @@ Running 206 PositiveEntailmentTest(s) through owl_rl_closure_with_reflexivity (f
   FAIL  rdfbased-sem-restrict-allvalues-cmp-prop
   PASS  rdfbased-sem-restrict-allvalues-inst-obj
   FAIL  rdfbased-sem-restrict-hasvalue-cmp-prop
-  FAIL  rdfbased-sem-restrict-hasvalue-inst-obj
-  FAIL  rdfbased-sem-restrict-hasvalue-inst-subj
+  PASS  rdfbased-sem-restrict-hasvalue-inst-obj
+  PASS  rdfbased-sem-restrict-hasvalue-inst-subj
   PASS  rdfbased-sem-restrict-maxcard-inst-obj-one
   FAIL  rdfbased-sem-restrict-maxqcr-inst-obj-one
   FAIL  rdfbased-sem-restrict-somevalues-cmp-class
@@ -424,7 +424,7 @@ Running 206 PositiveEntailmentTest(s) through owl_rl_closure_with_reflexivity (f
   FAIL  rdfbased-sem-restrict-somevalues-inst-subj
   FAIL  somevaluesfrom2bnode
 
-Profile-RL PositiveEntailmentTests: 89 pass, 115 fail (out of 204 RDF/XML tests), 2 skipped (functional-syntax-only) in 39.18s
+Profile-RL PositiveEntailmentTests: 92 pass, 112 fail (out of 204 RDF/XML tests), 2 skipped (functional-syntax-only) in 37.44s
   (bnode pattern matches any term at the position; full isomorphism deferred — see docs/designissues/2026-04-24-owl-runner-phase1.md)
 
 Running 206 ConsistencyTest(s) through is_inconsistent (closure fuel=100)...
@@ -439,8 +439,7 @@ Running 206 ConsistencyTest(s) through is_inconsistent (closure fuel=100)...
   PASS  New-Feature-Keys-001
   PASS  New-Feature-Keys-003
   PASS  New-Feature-ObjectPropertyChain-001
-  SKIP/functional-syntax-only  New-Feature-ObjectPropertyChain-BJP-002
-      reason: unsupported input syntax — catalog entry provides only test:fsPremiseOntology (OWL 2 Functional Syntax) with test:normativeSyntax FUNCTIONAL, and either no fs premise/conclusion literal is present or it uses Functional-Syntax constructs beyond Parser_OWLFunctional's narrow subset (Prefix/Ontology/Declaration + ~6 axiom forms; see docs/designissues/2026-07-05-owl-functional-syntax-plan.md)
+  PASS  New-Feature-ObjectPropertyChain-BJP-002
   PASS  New-Feature-ObjectPropertyChain-BJP-003
   PASS  New-Feature-ObjectQCR-001
   PASS  New-Feature-ObjectQCR-002
@@ -638,4 +637,4 @@ Running 206 ConsistencyTest(s) through is_inconsistent (closure fuel=100)...
   PASS  rdfbased-sem-restrict-somevalues-inst-subj
   PASS  somevaluesfrom2bnode
 
-Profile-RL ConsistencyTests: 185 pass, 18 fail (out of 203), 3 skipped (functional-syntax-only) in 31.36s
+Profile-RL ConsistencyTests: 186 pass, 18 fail (out of 204), 2 skipped (functional-syntax-only) in 32.20s

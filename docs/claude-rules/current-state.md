@@ -1,6 +1,27 @@
 # Current State (Honest Assessment)
 
-Last refreshed: 2026-07-05 (wave-9 battery: JSON-LD toRdf 399 pass,
+Last refreshed: 2026-07-05 (wave-10 battery: **OWL 2 RL maximally
+complete** — PE 28 pass, 2 fail (the documented-impossible
+comprehension pair), 0 skip; NE 6/0; Consistency 76/0/0;
+Inconsistency 14/0/0 — via three new closure rules
+(transitive-to-chain scaffold, cls-hv1/hv2, dt-range-clash) + the
+Consistency functional-syntax path. JSON-LD toRdf 404/52/11 — the
+@graph-container cluster fell to a spec decision table (plain
+@container:@graph wraps unconditionally; @id/@index maps
+conditionally — one dispatch arm changed, zero regressions across
+the 27 previously-implicated tests). RIF 13 pass, 1 KNOWN-DEFECT
+fail (W3C zip defect), 36 bucketed skips (of 50) — PlainLiteral
+lang-tag decoding + OWL-Direct annotation exclusion
+(OWL.DirectMapping.Filter.fst); rif_runner now has a build stanza
+(manual installs were being silently reverted by chain rebuilds).
+RML stage 2: RML.Sources.fst (JSON iteration + JSONPath subset) +
+RML.Eval.fst (full term-map evaluation, IRI-safe encoding per spec)
+— 60 pass, 6 documented mismatches, 10 stage-5/6 skips (of 76
+rml-core JSON tests, scratch driver; runner is stage 8). Held: RDFC
+86/86, SHACL 120/120, ShEx 1022, SPARQL 631/0, RDF 1031/0, unit
+23/23, npm 60/61.)
+
+Previous (wave-9 battery: JSON-LD toRdf 399 pass,
 57 fail, 11 skip of 467 (alias-@value dispatch, fromMap
 pop-suppression, property-scoped ordering; @graph-container fix
 attempted, found to regress 22 tests, reverted with diagnosis). OWL
