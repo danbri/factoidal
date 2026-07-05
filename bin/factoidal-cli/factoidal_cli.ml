@@ -1248,6 +1248,63 @@ let () =
     ds_named = all_named
   }) in
 
+  (* Issue #103: CONSTRUCT (and DESCRIBE) produce an RDF graph, not
+     solution bindings, so they are handled here rather than falling
+     into the SELECT/ASK dispatch below. Before this fix the code below
+     unconditionally called `eval_select_query` for every non-backend
+     form, and SPARQL11_Algebra.eval_select_query's catch-all is
+     `| QF_Construct _ -> [] | QF_Describe _ -> []` (SPARQL11.Algebra.fst
+     ~line 3829) — so CONSTRUCT silently produced zero triples.
+     SPARQL11_Algebra.eval_construct_query (SPARQL11.Algebra.fst:3940)
+     is the real evaluator (already consumed by w3c_runner.ml and
+     entry_jsoo.ml); wire it in here.
+     There is no backend-dataset CONSTRUCT executor yet — SPARQL11_Store
+     only exposes run_select_query_backend_dataset /
+     run_ask_query_backend_dataset — so --data-cottas CONSTRUCT still
+     runs against an eagerly-materialized in-memory graph, same
+     limitation tracked in issue #103's acceptance criteria for the
+     backend-executor follow-up. To make --data-cottas usable at all
+     for CONSTRUCT in the meantime, COTTAS triples are folded into the
+     eager graph here (mirroring --dump / --dump-nq's cottas_all_triples
+     use above) rather than silently ignored. *)
+  (match query.q_form with
+   | QF_Construct _ ->
+     let cottas_triples = concat_map_preserve_order (fun f ->
+       try cottas_all_triples f
+       with e ->
+         Printf.eprintf "Error loading COTTAS %s: %s\n" f (Printexc.to_string e);
+         exit 1
+     ) cfg.data_cottas_files in
+     let construct_graph = append_preserve_order graph cottas_triples in
+     let construct_dataset = RDF_Graph_Executable.({
+       ds_default = construct_graph;
+       ds_named = all_named
+     }) in
+     let rewritten_query = OWL_QueryRewrite.rewrite_query query in
+     let triples =
+       try
+         SPARQL11_Algebra.eval_construct_query
+           rewritten_query construct_graph construct_dataset
+       with e ->
+         Printf.eprintf "Query evaluation error: %s\n" (Printexc.to_string e);
+         exit 1
+     in
+     (match cfg.output_format with
+      | NTOut | Table -> print_results_ntriples triples
+      | CSV | JSON ->
+        (* CONSTRUCT yields a graph, not tabular rows; CSV/JSON result
+           formats don't apply. Fall back to N-Triples rather than
+           silently emitting nothing. *)
+        print_results_ntriples triples);
+     exit 0
+   | QF_Describe _ ->
+     Printf.eprintf
+       "Error: DESCRIBE is not supported by the factoidal CLI yet \
+        (no F*-extracted eval_describe_query; SPARQL11_Algebra.eval_select_query's \
+        QF_Describe case is a stub returning []). See issue #103.\n";
+     exit 1
+   | QF_Select _ | QF_Ask -> ());
+
   (* Take the SPARQL11_Store backend executor for SELECT/ASK whenever
      entailment is the no-op identity — including the in-memory case.
      build_dataset_backend handles the empty-cottas list (returns the
