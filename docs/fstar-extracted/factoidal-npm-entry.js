@@ -10294,11 +10294,11 @@ b!=="number")switch(b[0]){case
 12:var
 d=m9(b[3]);return fy(vJ(b[1]),d);case
 8:break;case
-3:case
-5:case
-9:case
-10:b=b[2];continue;default:var
-c=aw(b[2]);return fy(aw(b[1]),c)}return 0}}var
+1:case
+2:case
+4:case
+6:var
+c=aw(b[2]);return fy(aw(b[1]),c);default:b=b[2];continue}return 0}}var
 cb="blank node label reused across nested group scope",og="expected variable after AS",c8="unresolved prefix",g8=[1,"expected '(' or built-in call after FILTER"],vZ=[1,"expected IRI or variable for GRAPH"],v0=[1,"expected IRI for SERVICE"],Iv=[3,1],Iw=[3,1],Iy=[1,"BIND variable already in scope"],Ix=[1,og],Iz=[1,cb],IA=[1,cb],IB=[1,cb],IC=[1,cb],ID=[1,cb],IE=[1,cb],IF=[1,cb],IG=[1,cb],IH=[1,cb],II=[1,cb],IJ=[1,cb],IK=[1,cb],IL=[1,cb],IM=[1,cb],IO=[1,L],IP=[1,L],IQ=[1,bt],IR=[1,bt],IS=[1,c8],IT=[1,L],IU=[1,bt],IV=[1,bt],IW=[1,c8],IX=[1,"internal: variable SERVICE endpoint reached parse_service_iri"];function
 HD(a,b,c,d,e,f){a:{var
 g=b,i=c,u=d,m=e,l=f;for(;;){if(p(g,k)){var
@@ -11557,11 +11557,11 @@ b!=="number")switch(b[0]){case
 f=2===b[1][0]?1:0;return f?f:2===b[3][0]?1:0;case
 8:case
 11:break;case
-1:case
-2:case
-4:case
-6:var
-e=fA(b[1]);if(e)return e;b=b[2];continue;default:b=b[2];continue}return 0}var
+3:case
+5:case
+9:case
+10:b=b[2];continue;default:var
+e=fA(b[1]);if(e)return e;b=b[2];continue}return 0}var
 c=b[1];for(;;){if(c){var
 d=c[1],i=2===d[1][0]?1:0,j=i||(2===d[2][0]?1:0),g=j||(2===d[3][0]?1:0);if(!g){c=c[2];continue}var
 h=g}else
