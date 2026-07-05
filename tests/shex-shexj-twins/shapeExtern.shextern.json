@@ -1,0 +1,18 @@
+{
+    "_provenance": "Hand-translated ShExJ twin of third_party/testing/shex/schemas/shapeExtern.shextern (the vendored `sht:shapeExterns` fixture used by all 4 shapeExtern_*/shapeExternRef_* tests — a `.shextern` file is ShExC, not ShExJ, and there is no vendored JSON twin for it anywhere in the submodule; the ShExC content is a single one-line Shape, `<http://a.example/Sext> { <http://a.example/p2> . }`, mechanically translated per tests/shex-shexj-twins/README.md's method). Extra keys such as this one are ignored by ShEx.Schema.fst's field-specific json_get_field lookups.",
+    "@context": "http://www.w3.org/ns/shex.jsonld",
+    "type": "Schema",
+    "shapes": [
+        {
+            "type": "ShapeDecl",
+            "id": "http://a.example/Sext",
+            "shapeExpr": {
+                "type": "Shape",
+                "expression": {
+                    "type": "TripleConstraint",
+                    "predicate": "http://a.example/p2"
+                }
+            }
+        }
+    ]
+}

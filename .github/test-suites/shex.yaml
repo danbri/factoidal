@@ -41,12 +41,37 @@ foundational: false
 # (couldn't even be attempted — missing data/schema file on disk, a
 # decode exception). DEFERRED is an honest scope gap, not a wrong
 # answer — see ShEx.Validation.fst's file-header doc comment for the
-# `option bool` convention this bucketing mirrors. Measured against
-# ShEx_Validation.ml built 2026-07-05 07:4x UTC (whatever revision was
-# current in ocaml-output at rebuild time — see shex_runner.ml's git
-# history / the sibling agent's stage-6 landing for the exact commit):
-# 1026 pass, 11 mismatch, 145 deferred, 0 skipped (out of 1182), up
-# from 1022 pass, 11 mismatch, 123 deferred, 26 skipped.
+# `option bool` convention this bucketing mirrors.
+#
+# Runner-side remainder (commit cc12399's triage; baseline 1115 pass,
+# 42 mismatch, 25 deferred, 0 skipped): the runner now (1) parses each
+# sht:data fixture against the manifest's resolved github-raw base
+# instead of file:// (fixed 25 of the 42 mismatches — a relative
+# sht:focus term and the data file's own relative IRIs were resolving
+# to two different absolute IRIs); (2) resolves top-level ShExJ
+# `"imports"` (recursive, cycle-safe shape-list merge — see
+# bin/shex-runner/shex_runner.ml's "imports" section) — this took 17
+# of the 25 deferred fixtures to PASS but surfaced 1 new MISMATCH,
+# `start2RefS1-IstartS2`: the vendored twin
+# third_party/testing/shex/schemas/start2RefS2.json has predicate
+# `p1` where the canonical `start2RefS2.shex` has `p2` — a pre-
+# existing upstream/submodule data bug, not a runner or decoder bug,
+# left as an honest MISMATCH rather than silently patched around;
+# (3) merges `sht:shapeExterns` `.shextern` fixtures into
+# `SE_ShapeExternal` placeholders (hand-translated ShExJ twin, only
+# one `.shextern` file in the whole corpus — see
+# tests/shex-shexj-twins/README.md) — fixed all 4 shapeExtern_*/
+# shapeExternRef_* fixtures; (4) accepts blank-node `sht:shape`
+# labels, not just IRIs; (5) resolves schema-internal relative IRIs
+# against the schema's own document IRI at decode time
+# (ShEx.Schema.fst's decode_schema/decode_shex_schema now take a
+# `base` parameter, threaded through the whole ShExJ decoder via
+# Parser.IRI.resolve_iri_v2 — with a blank-node-label guard and a
+# stem `kind` gate so LiteralStem/LanguageStem stems and bnode ids are
+# never treated as IRIs). (4)+(5) fixed the remaining 4 deferred
+# (bnode1dot_pass/fail, 1dot-relative_pass-short-shape/relative-shape).
+# Current: 1164 pass, 18 mismatch, 0 deferred, 0 skipped (out of
+# 1182) — up from 1026 pass, 11 mismatch, 145 deferred, 0 skipped.
 
 triggers:
   paths:

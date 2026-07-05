@@ -19,6 +19,20 @@ fetch`, master branch as of 2026-07-05): these 3 schemas are ShExC-only
 upstream too — there is no newer commit that adds their ShExJ twins. The
 gap is real, not a stale pin.
 
+A 4th file, `shapeExtern.shextern.json`, is the same kind of gap but for a
+different fixture family: `sht:trait sht:ExternalShape` fixtures
+(`shapeExtern_pass`, `shapeExtern_fail`, `shapeExternRef_pass`,
+`shapeExternRef_fail`) point `sht:shapeExterns` at
+`third_party/testing/shex/schemas/shapeExtern.shextern` — a `.shextern`
+fixture that is *always* ShExC (the shexTest corpus defines no ShExJ form
+for this extension at all, not just for this one file), one line:
+`<http://a.example/Sext> { <http://a.example/p2> . }`. The runner merges
+this shape's decoded ShapeDecl into the schema in place of any
+`SE_ShapeExternal` placeholder with a matching `sd_id` (see
+`bin/shex-runner/shex_runner.ml`'s "shapeExtern-merge" section) — the same
+role a real ShEx implementation's out-of-band external-shape resolver
+plays.
+
 Per CLAUDE.md rule #2 ("code is extracted, not hand-written") and the
 project's discipline against silently patching vendored test inputs,
 these twins are **not** written into the submodule and are **not**

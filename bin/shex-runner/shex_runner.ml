@@ -135,6 +135,20 @@ let parse_ttl_file (path : string) : rdf_graph option =
   | None -> None
   | Some raw -> Some (Parser_Turtle.parse_turtle_with_base raw (file_uri path))
 
+(* Same as [parse_ttl_file] but resolves relative IRIs in the document
+   against an explicit [base] rather than the on-disk file:// path. Needed
+   for sht:data fixtures: the manifest resolves sht:focus/sht:shape
+   relative references (e.g. `sht:focus <x>`) against its own github-raw
+   @base, so a data file's relative IRIs (also frequently bare `<x>`) must
+   resolve against that *same* github-raw IRI space — specifically the
+   data file's own resolved sht:data IRI — or a relative focus term parsed
+   from the manifest will never structurally equal the "same" term parsed
+   from the data file against a file:// base. *)
+let parse_ttl_file_with_base (path : string) (base : string) : rdf_graph option =
+  match read_file path with
+  | None -> None
+  | Some raw -> Some (Parser_Turtle.parse_turtle_with_base raw base)
+
 (* ------------------------------------------------------------------ *)
 (* Thin RDF-graph accessors over an rdf_term "subject" (verbatim from
    shacl_runner.ml — same shape of problem, same glue). *)
@@ -156,6 +170,23 @@ let obj1_of (g : rdf_graph) (subj_term : rdf_term) (pred : string) : rdf_term op
 
 let iri_str (t : rdf_term) : string option =
   match t with T_IRI i -> Some i | _ -> None
+
+(* Shape labels (`sht:shape`/`ShapeDecl` "id") can be blank-node labels,
+   not just IRIs (sht:BNodeShapeLabel trait — e.g. `sht:shape _:S1`,
+   whose schema declares `"id": "_:S1"`, a bnode label encoded verbatim
+   as a string per ShExJ convention — see ShEx.Schema.fst's
+   decode_shape_decl, which reads "id" as a bare string with no IRI-vs-
+   bnode distinction). ShEx_Validation.validate_focus's shape_id
+   parameter is matched against sd_id by plain string equality, so the
+   manifest's bnode term must be rendered the same "_:<label>" way the
+   schema decoder produced it — iri_str alone (IRI-only) drops these to
+   None, silently falling back to the schema's `start` instead of the
+   requested shape. *)
+let shape_label_str (t : rdf_term) : string option =
+  match t with
+  | T_IRI i -> Some i
+  | T_BNode b -> Some ("_:" ^ b)
+  | _ -> None
 
 let string_of_lit (t : rdf_term option) : string option =
   match t with
@@ -190,6 +221,15 @@ let sht_focus  = sht_ns ^ "focus"
    the F*-extracted Parser_JSON (no hand-rolled JSON parsing here, per
    the same discipline jsonld_runner follows). *)
 let sht_map    = sht_ns ^ "map"
+
+(* `sht:trait sht:ExternalShape` fixtures (shapeExtern_pass/fail,
+   shapeExternRef_pass/fail) declare a shape as `EXTERNAL` in the schema
+   (ShExJ `{"type":"ShapeExternal"}`, decoded to ShEx.Schema.fst's
+   `SE_ShapeExternal` placeholder) and supply its real definition
+   out-of-band via `sht:shapeExterns`, pointing at a sibling `.shextern`
+   fixture — see the runner's shapeExtern-merge section below for how
+   that gets spliced in. *)
+let sht_shapeExterns = sht_ns ^ "shapeExterns"
 
 let subjects_typed (g : rdf_graph) (iri : string) : rdf_term list =
   List.filter_map
@@ -237,6 +277,113 @@ let shexj_twin_fallback_path (repo_root : string) (schema_shex_path : string) : 
   let basename = Filename.remove_extension (Filename.basename schema_shex_path) in
   let fallback = Filename.concat (Filename.concat repo_root "tests/shex-shexj-twins") (basename ^ ".json") in
   if Sys.file_exists fallback then Some fallback else None
+
+(* ------------------------------------------------------------------ *)
+(* Top-level `"imports": [names]` support (ShExJ §Schema). Every
+   vendored import fixture (2RefS1-IS2.json, 3circRefS1-IS2-IS3.json,
+   etc. — grep `"imports"` under third_party/testing/shex/schemas/)
+   names its import targets as bare same-directory basenames with no
+   extension (e.g. `"imports": ["2RefS2"]` sitting next to
+   `2RefS2.json` in the same schemas/ dir as the importing schema —
+   there is no @base concept for a standalone ShExJ document, so
+   "resolve relative to the importing schema's own directory" is the
+   only resolution rule the fixtures exercise). Per the ShExJ spec, an
+   imported schema's own `start`/`startActs` are NOT inherited — only
+   its `shapes` (ShapeDecl list) are merged in, and only the
+   *importing* schema's own start applies. Imports can chain
+   transitively (3circRefS1-IS2-IS3 -> 3circRefS2-IS3 -> 3circRefS3)
+   and can cycle (2RefS1-Icirc <-> 2RefS2-Icirc, both deliberately
+   testing that a validator doesn't loop forever) — `visited` guards
+   against both re-visiting a cycle and (harmlessly) re-merging a
+   diamond-shaped import graph's shapes twice. Plain list traversal +
+   record-field concatenation over an already-decoded AST — no ShEx
+   semantics, so this stays runner-side per CLAUDE.md rule #11 rather
+   than moving into ShEx.Schema.fst. *)
+let rec load_imported_shapes (visited : string list) (schema_dir : string) (import_names : string list)
+  : ShEx_Schema.shex_shape_decl list =
+  List.concat_map
+    (fun name ->
+       let import_path = Filename.concat schema_dir (name ^ ".json") in
+       if List.mem import_path visited || not (Sys.file_exists import_path) then []
+       else
+         match read_file import_path with
+         | None -> []
+         | Some json_text ->
+           (* base = "" (no known document IRI for this import target — none
+              of the vendored import fixtures exercise an imported schema
+              with its own relative IRIs; "" is a safe no-op per
+              decode_schema's doc comment, same as leaving imports
+              unresolved was before base-threading existed). *)
+           (match ShEx_Schema.decode_shex_schema json_text "" with
+            | FStar_Pervasives_Native.None -> []
+            | FStar_Pervasives_Native.Some imported_schema ->
+              let visited' = import_path :: visited in
+              imported_schema.ShEx_Schema.sch_shapes
+              @ load_imported_shapes visited' schema_dir imported_schema.ShEx_Schema.sch_imports))
+    import_names
+
+(* Merges a decoded schema's own transitively-imported shapes into its
+   `sch_shapes`, leaving `sch_start`/`sch_start_acts` untouched (the
+   importing schema's own start wins, per the ShExJ import-merge rule
+   above). A no-op (returns [schema] unchanged) when `sch_imports` is
+   empty, which is the common case. *)
+let resolve_schema_imports (json_path : string) (schema : ShEx_Schema.shex_schema) : ShEx_Schema.shex_schema =
+  match schema.ShEx_Schema.sch_imports with
+  | [] -> schema
+  | imports ->
+    let schema_dir = Filename.dirname json_path in
+    let imported_shapes = load_imported_shapes [json_path] schema_dir imports in
+    { schema with ShEx_Schema.sch_shapes = schema.ShEx_Schema.sch_shapes @ imported_shapes }
+
+(* ------------------------------------------------------------------ *)
+(* shapeExtern-merge: `sht:trait sht:ExternalShape` fixtures (shapeExtern_
+   pass/fail, shapeExternRef_pass/fail) declare a shape `EXTERNAL` in the
+   schema (ShExJ `{"type":"ShapeExternal"}`, decoded to `SE_ShapeExternal`
+   — a placeholder, deliberately no definition) and supply the real
+   definition out-of-band via `sht:shapeExterns`, a sibling `.shextern`
+   fixture. `.shextern` is always ShExC (the shexTest corpus defines no
+   ShExJ encoding for the extension at all — see
+   tests/shex-shexj-twins/README.md's "shape extern" section), so — same
+   discipline as the 3 ShExC-only "extends" schemas — a hand-translated
+   twin lives at tests/shex-shexj-twins/<basename-with-.shextern>.json.
+   Decoding that twin gives an ordinary shex_schema whose `sch_shapes` are
+   the "real" ShapeDecls; merging means replacing each `SE_ShapeExternal`
+   placeholder in the test's own schema with the extern-provided
+   ShapeDecl of the same `sd_id` (there is exactly one, `Sext`, across all
+   4 vendored fixtures, but the merge is written generally). *)
+let shextern_twin_path (repo_root : string) (shextern_local_path : string) : string option =
+  let fallback =
+    Filename.concat (Filename.concat repo_root "tests/shex-shexj-twins")
+      (Filename.basename shextern_local_path ^ ".json")
+  in
+  if Sys.file_exists fallback then Some fallback else None
+
+let load_shape_externs (repo_root : string) (shape_externs_iri : string) : ShEx_Schema.shex_shape_decl list option =
+  match resolved_iri_to_local_path repo_root shape_externs_iri with
+  | None -> None
+  | Some local_path ->
+    (match shextern_twin_path repo_root local_path with
+     | None -> None
+     | Some twin_path ->
+       (match read_file twin_path with
+        | None -> None
+        | Some json_text ->
+          (match ShEx_Schema.decode_shex_schema json_text shape_externs_iri with
+           | FStar_Pervasives_Native.None -> None
+           | FStar_Pervasives_Native.Some extern_schema -> Some extern_schema.ShEx_Schema.sch_shapes)))
+
+let merge_shape_externs (schema : ShEx_Schema.shex_schema) (externs : ShEx_Schema.shex_shape_decl list) : ShEx_Schema.shex_schema =
+  let replaced =
+    List.map
+      (fun sd ->
+         if ShEx_Schema.uu___is_SE_ShapeExternal sd.ShEx_Schema.sd_expr then
+           match List.find_opt (fun ext -> ext.ShEx_Schema.sd_id = sd.ShEx_Schema.sd_id) externs with
+           | Some ext -> ext
+           | None -> sd
+         else sd)
+      schema.ShEx_Schema.sch_shapes
+  in
+  { schema with ShEx_Schema.sch_shapes = replaced }
 
 (* ------------------------------------------------------------------ *)
 (* ShapeMap-form fixture support (sht:trait sht:ShapeMap). The map file
@@ -307,6 +454,7 @@ type test_case = {
   tc_focus : rdf_term option;
   tc_map_iri : string option;    (* ShapeMap-form fixtures: sht:map instead of sht:focus/sht:shape *)
   tc_result_iri : string option; (* ShapeMap-form fixtures: mf:result names a JSON per-entry results file *)
+  tc_shape_externs_iri : string option; (* sht:trait sht:ExternalShape fixtures: sht:shapeExterns names a .shextern fixture supplying real defs for SE_ShapeExternal placeholders *)
 }
 
 let collect_of_type (g : rdf_graph) (expect : bool) (type_iri : string) : test_case list =
@@ -322,11 +470,12 @@ let collect_of_type (g : rdf_graph) (expect : bool) (type_iri : string) : test_c
        { tc_name = name;
          tc_expect = expect;
          tc_schema_iri = (match field sht_schema with Some tm -> iri_str tm | None -> None);
-         tc_shape_iri  = (match field sht_shape  with Some tm -> iri_str tm | None -> None);
+         tc_shape_iri  = (match field sht_shape  with Some tm -> shape_label_str tm | None -> None);
          tc_data_iri   = (match field sht_data   with Some tm -> iri_str tm | None -> None);
          tc_focus      = field sht_focus;
          tc_map_iri    = (match field sht_map with Some tm -> iri_str tm | None -> None);
-         tc_result_iri = (match obj1_of g t mf_result with Some tm -> iri_str tm | None -> None) })
+         tc_result_iri = (match obj1_of g t mf_result with Some tm -> iri_str tm | None -> None);
+         tc_shape_externs_iri = (match field sht_shapeExterns with Some tm -> iri_str tm | None -> None) })
     (subjects_typed g type_iri)
 
 let collect_tests (g : rdf_graph) : test_case list =
@@ -339,8 +488,12 @@ type outcome = Pass | Mismatch of string | Deferred of string | Skip of string
 
 (* Resolves + decodes the ShExJ schema and Turtle data graph shared by
    both the single-focus (`sht:focus`/`sht:shape`) and ShapeMap-form
-   (`sht:map`) fixture shapes. *)
-let load_schema_and_data (repo_root : string) (schema_iri : string) (data_iri : string)
+   (`sht:map`) fixture shapes. `shape_externs_iri` is `sht:shapeExterns`
+   when present (sht:trait sht:ExternalShape fixtures) — see the
+   shapeExtern-merge section above; a load/decode failure for it is
+   reported as Skip rather than silently ignored, so a broken twin can
+   never masquerade as "no shapeExterns fixture". *)
+let load_schema_and_data (repo_root : string) (schema_iri : string) (data_iri : string) (shape_externs_iri : string option)
   : (ShEx_Schema.shex_schema * rdf_graph, outcome) result =
   match resolved_iri_to_local_path repo_root schema_iri with
   | None -> Error (Skip (Printf.sprintf "cannot map sht:schema IRI %s to a local path" schema_iri))
@@ -365,16 +518,33 @@ let load_schema_and_data (repo_root : string) (schema_iri : string) (data_iri : 
               (match read_file json_path with
                | None -> Error (Skip (Printf.sprintf "cannot read %s" json_path))
                | Some json_text ->
-                 (match ShEx_Schema.decode_shex_schema json_text with
+                 (* base = the schema's own resolved absolute IRI (schema_iri, the
+                    manifest's sht:schema value already resolved against the
+                    manifest's github-raw @base) — resolves any relative "id"/
+                    "predicate"/value-set IRI a hand-written validation/*.json
+                    twin keeps bare (sht:relativeIRI trait fixtures; see
+                    ShEx.Schema.fst's decode_schema doc comment). *)
+                 (match ShEx_Schema.decode_shex_schema json_text schema_iri with
                   | FStar_Pervasives_Native.None ->
                     Error (Skip (Printf.sprintf "ShEx_Schema.decode_shex_schema failed on %s" json_path))
-                  | FStar_Pervasives_Native.Some schema ->
-                    (match parse_ttl_file data_path with
-                     | None -> Error (Skip (Printf.sprintf "cannot read %s" data_path))
-                     | Some data_graph -> Ok (schema, data_graph)))))))
+                  | FStar_Pervasives_Native.Some schema0 ->
+                    let schema1 = resolve_schema_imports json_path schema0 in
+                    (match shape_externs_iri with
+                     | None ->
+                       (match parse_ttl_file_with_base data_path data_iri with
+                        | None -> Error (Skip (Printf.sprintf "cannot read %s" data_path))
+                        | Some data_graph -> Ok (schema1, data_graph))
+                     | Some externs_iri ->
+                       (match load_shape_externs repo_root externs_iri with
+                        | None -> Error (Skip (Printf.sprintf "cannot load/decode sht:shapeExterns fixture %s" externs_iri))
+                        | Some externs ->
+                          let schema = merge_shape_externs schema1 externs in
+                          (match parse_ttl_file_with_base data_path data_iri with
+                           | None -> Error (Skip (Printf.sprintf "cannot read %s" data_path))
+                           | Some data_graph -> Ok (schema, data_graph)))))))))
 
 let run_single_focus_test (repo_root : string) (tc : test_case) (schema_iri : string) (data_iri : string) (focus : rdf_term) : outcome =
-  match load_schema_and_data repo_root schema_iri data_iri with
+  match load_schema_and_data repo_root schema_iri data_iri tc.tc_shape_externs_iri with
   | Error o -> o
   | Ok (schema, data_graph) ->
     (try
@@ -401,8 +571,8 @@ let run_single_focus_test (repo_root : string) (tc : test_case) (schema_iri : st
    anywhere in the map makes the whole fixture Mismatch; otherwise any
    None (Stage 4/5 gap) makes it Deferred; only if every entry gets an
    expected-matching Some does the fixture Pass. *)
-let run_shapemap_test (repo_root : string) (schema_iri : string) (data_iri : string) (map_iri : string) (result_iri : string) : outcome =
-  match load_schema_and_data repo_root schema_iri data_iri with
+let run_shapemap_test (repo_root : string) (schema_iri : string) (data_iri : string) (map_iri : string) (result_iri : string) (shape_externs_iri : string option) : outcome =
+  match load_schema_and_data repo_root schema_iri data_iri shape_externs_iri with
   | Error o -> o
   | Ok (schema, data_graph) ->
     (match resolved_iri_to_local_path repo_root map_iri with
@@ -464,7 +634,7 @@ let run_test (repo_root : string) (tc : test_case) : outcome =
      | Some focus -> run_single_focus_test repo_root tc schema_iri data_iri focus
      | None ->
        (match tc.tc_map_iri, tc.tc_result_iri with
-        | Some map_iri, Some result_iri -> run_shapemap_test repo_root schema_iri data_iri map_iri result_iri
+        | Some map_iri, Some result_iri -> run_shapemap_test repo_root schema_iri data_iri map_iri result_iri tc.tc_shape_externs_iri
         | Some _, None -> Skip "sht:map present but no mf:result to check expected per-entry verdicts against"
         | None, _ -> Skip "no sht:focus and no sht:map in mf:action"))
 

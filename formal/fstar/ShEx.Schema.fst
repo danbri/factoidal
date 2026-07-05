@@ -48,6 +48,7 @@ module ShEx.Schema
 open FStar.String
 open FStar.List.Tot
 open Parser.JSON
+open Parser.IRI
 
 // ================================================================
 // Small local integer-lexeme decoder (NOT a JSON parser — Parser.JSON
@@ -275,10 +276,45 @@ let decode_node_kind (s:string) : option shex_node_kind =
   else if s = "literal" then Some ShexNK_Literal
   else None
 
-// A "stem" field's value: a bare string, or {"type":"Wildcard"}.
-let decode_stem (v:json_val) : option shex_stem =
+// Resolves a relative-IRI-shaped string against `base` (RFC 3986 §5.2, via
+// Parser.IRI.resolve_iri_v2 — the same resolver Parser.Turtle uses for
+// `@base`/`BASE`). A no-op for an already-absolute string (an IRI with a
+// scheme resolves to itself regardless of base), so calling this on every
+// id/predicate/datatype/value string below is safe for the corpus's
+// overwhelmingly-common case of already-absolute ShExJ IRIs; it only
+// changes behavior for the handful of `sht:relativeIRI`-trait fixtures
+// (validation/1dot-relative.json) whose ShExJ twin keeps its "id"/
+// "predicate"/value strings bare, per the ShExJ spec's requirement that a
+// schema's relative IRIs resolve against the schema document's own base.
+//
+// A leading "_:" is a blank-node label (ShapeDecl "id"/shapeExpr-ref
+// convention — see bnode1dot.json's `"id": "_:S1"`, decoded verbatim by
+// this same code path since ShExJ has no separate "id kind" tag), NOT an
+// IRI reference — RFC 3986 has no notion of it, and running it through
+// `resolve_iri_v2` would merge it into `base`'s path as if "_:S1" were a
+// relative path segment, corrupting the label so it no longer matches the
+// runner's `sht:shape _:S1` -> "_:S1" string. Guard it unresolved.
+let resolve_against (base:string) (s:string) : string =
+  if FStar.String.length s >= 2 && FStar.String.sub s 0 2 = "_:" then s else resolve_iri_v2 base s
+
+let resolve_against_opt (base:string) (o:option string) : option string =
+  match o with
+  | None -> None
+  | Some s -> Some (resolve_against base s)
+
+// A "stem" field's value: a bare string, or {"type":"Wildcard"}. Only an
+// `IriStem`'s stem is IRI-shaped — `LiteralStem`/`LanguageStem` stems are
+// plain literal-value / language-tag prefixes (e.g. `{"type":
+// "LanguageStem","stem":"fr"}`, a language-subtag prefix, not a path
+// segment), so `kind` gates whether `resolve_against` applies; resolving
+// a LiteralStem/LanguageStem stem against `base` would silently turn a
+// literal 2-letter language prefix like "fr" into an absolute IRI merged
+// into the schema's own path — wrong per the ShExJ grammar, and the
+// regression this fix replaces (caught by the 1val1languageStem*/
+// 1val1literalStem* fixtures going MISMATCH when this guard was absent).
+let decode_stem (base:string) (kind:shex_vsv_kind) (v:json_val) : option shex_stem =
   match v with
-  | JString s -> Some (ShexStemPlain s)
+  | JString s -> Some (ShexStemPlain (match kind with VSVK_Iri -> resolve_against base s | _ -> s))
   | JObject _ ->
     (match json_get_string "type" v with
      | Some "Wildcard" -> Some ShexStemWildcard
@@ -355,68 +391,68 @@ let rec decode_annotation_list (items:list json_val) : Tot (option (list shex_an
 // this group's recursion can consume before reaching every leaf.
 // ================================================================
 
-let rec decode_shape_expr (v:json_val) (fuel:nat) : Tot (option shex_shape_expr) (decreases fuel) =
+let rec decode_shape_expr (base:string) (v:json_val) (fuel:nat) : Tot (option shex_shape_expr) (decreases fuel) =
   if fuel = 0 then None
   else
     match v with
-    | JString s -> Some (SE_Ref s)
+    | JString s -> Some (SE_Ref (resolve_against base s))
     | JObject _ ->
       (match json_get_string "type" v with
        | Some "ShapeAnd" ->
          (match json_get_array "shapeExprs" v with
           | None -> None
           | Some items ->
-            (match decode_shape_expr_list items (fuel - 1) with
+            (match decode_shape_expr_list base items (fuel - 1) with
              | Some ses -> Some (SE_ShapeAnd ses)
              | None -> None))
        | Some "ShapeOr" ->
          (match json_get_array "shapeExprs" v with
           | None -> None
           | Some items ->
-            (match decode_shape_expr_list items (fuel - 1) with
+            (match decode_shape_expr_list base items (fuel - 1) with
              | Some ses -> Some (SE_ShapeOr ses)
              | None -> None))
        | Some "ShapeNot" ->
          (match json_get_field "shapeExpr" v with
           | None -> None
           | Some sub ->
-            (match decode_shape_expr sub (fuel - 1) with
+            (match decode_shape_expr base sub (fuel - 1) with
              | Some se -> Some (SE_ShapeNot se)
              | None -> None))
        | Some "NodeConstraint" ->
-         (match decode_node_constraint v (fuel - 1) with
+         (match decode_node_constraint base v (fuel - 1) with
           | Some nc -> Some (SE_NodeConstraint nc)
           | None -> None)
        | Some "Shape" ->
-         (match decode_shape v (fuel - 1) with
+         (match decode_shape base v (fuel - 1) with
           | Some sh -> Some (SE_Shape sh)
           | None -> None)
        | Some "ShapeExternal" -> Some SE_ShapeExternal
        | _ -> None)
     | _ -> None
 
-and decode_shape_expr_list (items:list json_val) (fuel:nat)
+and decode_shape_expr_list (base:string) (items:list json_val) (fuel:nat)
   : Tot (option (list shex_shape_expr)) (decreases fuel) =
   if fuel = 0 then None
   else
     match items with
     | [] -> Some []
     | hd :: tl ->
-      (match decode_shape_expr hd (fuel - 1) with
+      (match decode_shape_expr base hd (fuel - 1) with
        | None -> None
        | Some se ->
-         (match decode_shape_expr_list tl (fuel - 1) with
+         (match decode_shape_expr_list base tl (fuel - 1) with
           | None -> None
           | Some rest -> Some (se :: rest)))
 
-and decode_shape (v:json_val) (fuel:nat) : Tot (option shex_shape) (decreases fuel) =
+and decode_shape (base:string) (v:json_val) (fuel:nat) : Tot (option shex_shape) (decreases fuel) =
   if fuel = 0 then None
   else
     let expr_ok, expr =
       match json_get_field "expression" v with
       | None -> true, None
       | Some ej ->
-        (match decode_triple_expr ej (fuel - 1) with
+        (match decode_triple_expr base ej (fuel - 1) with
          | Some te -> true, Some te
          | None -> false, None) in
     if not expr_ok then None
@@ -466,49 +502,49 @@ and decode_shape (v:json_val) (fuel:nat) : Tot (option shex_shape) (decreases fu
                 sh_extends     = extends;
               })
 
-and decode_triple_expr (v:json_val) (fuel:nat) : Tot (option shex_triple_expr) (decreases fuel) =
+and decode_triple_expr (base:string) (v:json_val) (fuel:nat) : Tot (option shex_triple_expr) (decreases fuel) =
   if fuel = 0 then None
   else
     match v with
-    | JString s -> Some (TE_Ref s)
+    | JString s -> Some (TE_Ref (resolve_against base s))
     | JObject _ ->
       (match json_get_string "type" v with
        | Some "TripleConstraint" ->
-         (match decode_triple_constraint v (fuel - 1) with
+         (match decode_triple_constraint base v (fuel - 1) with
           | Some tc -> Some (TE_TripleConstraint tc)
           | None -> None)
        | Some "EachOf" ->
-         (match decode_group v (fuel - 1) with
+         (match decode_group base v (fuel - 1) with
           | Some g -> Some (TE_EachOf g)
           | None -> None)
        | Some "OneOf" ->
-         (match decode_group v (fuel - 1) with
+         (match decode_group base v (fuel - 1) with
           | Some g -> Some (TE_OneOf g)
           | None -> None)
        | _ -> None)
     | _ -> None
 
-and decode_triple_expr_list (items:list json_val) (fuel:nat)
+and decode_triple_expr_list (base:string) (items:list json_val) (fuel:nat)
   : Tot (option (list shex_triple_expr)) (decreases fuel) =
   if fuel = 0 then None
   else
     match items with
     | [] -> Some []
     | hd :: tl ->
-      (match decode_triple_expr hd (fuel - 1) with
+      (match decode_triple_expr base hd (fuel - 1) with
        | None -> None
        | Some te ->
-         (match decode_triple_expr_list tl (fuel - 1) with
+         (match decode_triple_expr_list base tl (fuel - 1) with
           | None -> None
           | Some rest -> Some (te :: rest)))
 
-and decode_group (v:json_val) (fuel:nat) : Tot (option shex_group) (decreases fuel) =
+and decode_group (base:string) (v:json_val) (fuel:nat) : Tot (option shex_group) (decreases fuel) =
   if fuel = 0 then None
   else
     match json_get_array "expressions" v with
     | None -> None
     | Some items ->
-      (match decode_triple_expr_list items (fuel - 1) with
+      (match decode_triple_expr_list base items (fuel - 1) with
        | None -> None
        | Some exprs ->
          let semacts_ok, semacts =
@@ -538,7 +574,7 @@ and decode_group (v:json_val) (fuel:nat) : Tot (option shex_group) (decreases fu
                gr_annotations = annots;
              }))
 
-and decode_triple_constraint (v:json_val) (fuel:nat)
+and decode_triple_constraint (base:string) (v:json_val) (fuel:nat)
   : Tot (option shex_triple_constraint) (decreases fuel) =
   if fuel = 0 then None
   else
@@ -549,7 +585,7 @@ and decode_triple_constraint (v:json_val) (fuel:nat)
         match json_get_field "valueExpr" v with
         | None -> true, None
         | Some vej ->
-          (match decode_shape_expr vej (fuel - 1) with
+          (match decode_shape_expr base vej (fuel - 1) with
            | Some se -> true, Some se
            | None -> false, None) in
       if not ve_ok then None
@@ -575,7 +611,7 @@ and decode_triple_constraint (v:json_val) (fuel:nat)
             Some ({
               tc_id          = json_get_string "id" v;
               tc_inverse     = json_get_bool_default "inverse" v false;
-              tc_predicate   = pred;
+              tc_predicate   = resolve_against base pred;
               tc_value_expr  = ve;
               tc_min         = json_get_int_default "min" v 1;
               tc_max         = json_get_int_default "max" v 1;
@@ -583,7 +619,7 @@ and decode_triple_constraint (v:json_val) (fuel:nat)
               tc_annotations = annots;
             })
 
-and decode_node_constraint (v:json_val) (fuel:nat)
+and decode_node_constraint (base:string) (v:json_val) (fuel:nat)
   : Tot (option shex_node_constraint) (decreases fuel) =
   if fuel = 0 then None
   else
@@ -600,14 +636,14 @@ and decode_node_constraint (v:json_val) (fuel:nat)
         match json_get_array "values" v with
         | None -> true, []
         | Some items ->
-          (match decode_value_set_value_list items (fuel - 1) with
+          (match decode_value_set_value_list base items (fuel - 1) with
            | Some vs -> true, vs
            | None -> false, []) in
       if not values_ok then None
       else
         Some ({
           nc_node_kind      = nk;
-          nc_datatype       = json_get_string "datatype" v;
+          nc_datatype       = resolve_against_opt base (json_get_string "datatype" v);
           nc_values         = values;
           nc_length         = json_get_int "length" v;
           nc_minlength      = json_get_int "minlength" v;
@@ -622,12 +658,12 @@ and decode_node_constraint (v:json_val) (fuel:nat)
           nc_fractiondigits = json_get_int "fractiondigits" v;
         })
 
-and decode_value_set_value (v:json_val) (fuel:nat)
+and decode_value_set_value (base:string) (v:json_val) (fuel:nat)
   : Tot (option shex_value_set_value) (decreases fuel) =
   if fuel = 0 then None
   else
     match v with
-    | JString s -> Some (VSV_Value (ShexOV_Iri s))
+    | JString s -> Some (VSV_Value (ShexOV_Iri (resolve_against base s)))
     | JObject _ ->
       (match json_get_string "value" v with
        | Some value ->
@@ -636,46 +672,46 @@ and decode_value_set_value (v:json_val) (fuel:nat)
          (match json_get_string "type" v with
           | Some "IriStem" ->
             (match json_get_field "stem" v with
-             | Some stv -> (match decode_stem stv with Some st -> Some (VSV_IriStem st) | None -> None)
+             | Some stv -> (match decode_stem base VSVK_Iri stv with Some st -> Some (VSV_IriStem st) | None -> None)
              | None -> None)
           | Some "LiteralStem" ->
             (match json_get_field "stem" v with
-             | Some stv -> (match decode_stem stv with Some st -> Some (VSV_LiteralStem st) | None -> None)
+             | Some stv -> (match decode_stem base VSVK_Literal stv with Some st -> Some (VSV_LiteralStem st) | None -> None)
              | None -> None)
           | Some "LanguageStem" ->
             (match json_get_field "stem" v with
-             | Some stv -> (match decode_stem stv with Some st -> Some (VSV_LanguageStem st) | None -> None)
+             | Some stv -> (match decode_stem base VSVK_Language stv with Some st -> Some (VSV_LanguageStem st) | None -> None)
              | None -> None)
           | Some "Language" ->
             (match json_get_string "languageTag" v with
              | Some lt -> Some (VSV_Language lt)
              | None -> None)
           | Some "IriStemRange" ->
-            (match decode_stem_range_parts v VSVK_Iri (fuel - 1) with
+            (match decode_stem_range_parts base v VSVK_Iri (fuel - 1) with
              | Some (st, excl) -> Some (VSV_IriStemRange st excl)
              | None -> None)
           | Some "LiteralStemRange" ->
-            (match decode_stem_range_parts v VSVK_Literal (fuel - 1) with
+            (match decode_stem_range_parts base v VSVK_Literal (fuel - 1) with
              | Some (st, excl) -> Some (VSV_LiteralStemRange st excl)
              | None -> None)
           | Some "LanguageStemRange" ->
-            (match decode_stem_range_parts v VSVK_Language (fuel - 1) with
+            (match decode_stem_range_parts base v VSVK_Language (fuel - 1) with
              | Some (st, excl) -> Some (VSV_LanguageStemRange st excl)
              | None -> None)
           | _ -> None))
     | _ -> None
 
-and decode_value_set_value_list (items:list json_val) (fuel:nat)
+and decode_value_set_value_list (base:string) (items:list json_val) (fuel:nat)
   : Tot (option (list shex_value_set_value)) (decreases fuel) =
   if fuel = 0 then None
   else
     match items with
     | [] -> Some []
     | hd :: tl ->
-      (match decode_value_set_value hd (fuel - 1) with
+      (match decode_value_set_value base hd (fuel - 1) with
        | None -> None
        | Some vv ->
-         (match decode_value_set_value_list tl (fuel - 1) with
+         (match decode_value_set_value_list base tl (fuel - 1) with
           | None -> None
           | Some rest -> Some (vv :: rest)))
 
@@ -685,21 +721,21 @@ and decode_value_set_value_list (items:list json_val) (fuel:nat)
 // IriStem/LiteralStem/LanguageStem, or an object-form Literal) is
 // unambiguous regardless of context, so it still goes through the general
 // `decode_value_set_value`.
-and decode_value_set_value_list_kind (items:list json_val) (kind:shex_vsv_kind) (fuel:nat)
+and decode_value_set_value_list_kind (base:string) (items:list json_val) (kind:shex_vsv_kind) (fuel:nat)
   : Tot (option (list shex_value_set_value)) (decreases fuel) =
   if fuel = 0 then None
   else
     match items with
     | [] -> Some []
     | JString s :: tl ->
-      (match decode_value_set_value_list_kind tl kind (fuel - 1) with
+      (match decode_value_set_value_list_kind base tl kind (fuel - 1) with
        | None -> None
        | Some rest -> Some (decode_bare_vsv_string kind s :: rest))
     | hd :: tl ->
-      (match decode_value_set_value hd (fuel - 1) with
+      (match decode_value_set_value base hd (fuel - 1) with
        | None -> None
        | Some vv ->
-         (match decode_value_set_value_list_kind tl kind (fuel - 1) with
+         (match decode_value_set_value_list_kind base tl kind (fuel - 1) with
           | None -> None
           | Some rest -> Some (vv :: rest)))
 
@@ -708,20 +744,20 @@ and decode_value_set_value_list_kind (items:list json_val) (kind:shex_vsv_kind) 
 // the caller wraps the result in (and, per `kind`, how a bare-string
 // exclusion element is interpreted). "exclusions" is optional (absent means
 // no exclusions, per the ShExJ grammar's "?" on that member).
-and decode_stem_range_parts (v:json_val) (kind:shex_vsv_kind) (fuel:nat)
+and decode_stem_range_parts (base:string) (v:json_val) (kind:shex_vsv_kind) (fuel:nat)
   : Tot (option (shex_stem & list shex_value_set_value)) (decreases fuel) =
   if fuel = 0 then None
   else
     match json_get_field "stem" v with
     | None -> None
     | Some stv ->
-      (match decode_stem stv with
+      (match decode_stem base kind stv with
        | None -> None
        | Some st ->
          (match json_get_array "exclusions" v with
           | None -> Some (st, [])
           | Some items ->
-            (match decode_value_set_value_list_kind items kind (fuel - 1) with
+            (match decode_value_set_value_list_kind base items kind (fuel - 1) with
              | Some excl -> Some (st, excl)
              | None -> None)))
 
@@ -741,45 +777,54 @@ and decode_stem_range_parts (v:json_val) (kind:shex_vsv_kind) (fuel:nat)
 // itself as the shapeExpr (the extra "id"/"abstract" keys are simply ignored
 // by decode_shape_expr's field-specific accessors, which only look up the
 // keys they recognise).
-let decode_shape_decl (v:json_val) : option shex_shape_decl =
+let decode_shape_decl (base:string) (v:json_val) : option shex_shape_decl =
   match json_get_string "id" v with
   | None -> None
   | Some sid ->
     let sej = match json_get_field "shapeExpr" v with
       | Some nested -> nested
       | None -> v in
-    (match decode_shape_expr sej (json_size sej) with
+    (match decode_shape_expr base sej (json_size sej) with
      | Some se ->
        Some ({
-         sd_id          = sid;
+         sd_id          = resolve_against base sid;
          sd_is_abstract = json_get_bool_default "abstract" v false;
          sd_expr        = se;
        })
      | None -> None)
 
-let rec decode_shape_decl_list (items:list json_val)
+let rec decode_shape_decl_list (base:string) (items:list json_val)
   : Tot (option (list shex_shape_decl)) (decreases items) =
   match items with
   | [] -> Some []
   | hd :: tl ->
-    (match decode_shape_decl hd with
+    (match decode_shape_decl base hd with
      | None -> None
      | Some sd ->
-       (match decode_shape_decl_list tl with
+       (match decode_shape_decl_list base tl with
         | None -> None
         | Some rest -> Some (sd :: rest)))
 
 // Decodes a top-level ShExJ Schema json_val (already parsed by
-// Parser.JSON). Returns None on any structural mismatch — an honest parse
-// failure, never a silently-dropped field.
-let decode_schema (v:json_val) : option shex_schema =
+// Parser.JSON). `base` is the schema document's own absolute IRI (or any
+// string RFC-3986-parseable as one) — every relative "id"/"predicate"/
+// "datatype"/value-set IRI-shaped string in the document resolves against
+// it, per the ShExJ spec's document-relative-IRI rule (see
+// `resolve_against`'s doc comment). Passing an empty string / non-IRI
+// `base` is safe: `resolve_iri_v2` falls back to returning the reference
+// unchanged when `base` doesn't parse as an IRI, so callers that have no
+// meaningful base (e.g. a schema with no relative IRIs at all — the
+// corpus's overwhelming majority) can pass "" with no behavior change.
+// Returns None on any structural mismatch — an honest parse failure,
+// never a silently-dropped field.
+let decode_schema (base:string) (v:json_val) : option shex_schema =
   match json_get_string "type" v with
   | Some "Schema" ->
     let start_ok, start =
       match json_get_field "start" v with
       | None -> true, None
       | Some sv ->
-        (match decode_shape_expr sv (json_size sv) with
+        (match decode_shape_expr base sv (json_size sv) with
          | Some se -> true, Some se
          | None -> false, None) in
     if not start_ok then None
@@ -797,7 +842,7 @@ let decode_schema (v:json_val) : option shex_schema =
           match json_get_array "shapes" v with
           | None -> true, []
           | Some items ->
-            (match decode_shape_decl_list items with
+            (match decode_shape_decl_list base items with
              | Some sd -> true, sd
              | None -> false, []) in
         if not shapes_ok then None
@@ -819,8 +864,10 @@ let decode_schema (v:json_val) : option shex_schema =
             })
   | _ -> None
 
-// Convenience: parse raw ShExJ text straight to the AST in one call.
-let decode_shex_schema (input:string) : option shex_schema =
+// Convenience: parse raw ShExJ text straight to the AST in one call,
+// resolving relative IRIs against `base` (see `decode_schema`'s doc
+// comment — pass "" when the caller has no meaningful document IRI).
+let decode_shex_schema (input:string) (base:string) : option shex_schema =
   match parse_json input with
   | None -> None
-  | Some v -> decode_schema v
+  | Some v -> decode_schema base v

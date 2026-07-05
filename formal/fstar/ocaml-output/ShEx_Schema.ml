@@ -553,10 +553,28 @@ let decode_node_kind (s : Prims.string) :
         if s = "literal"
         then FStar_Pervasives_Native.Some ShexNK_Literal
         else FStar_Pervasives_Native.None
-let decode_stem (v : Parser_JSON.json_val) :
-  shex_stem FStar_Pervasives_Native.option=
+let resolve_against (base : Prims.string) (s : Prims.string) : Prims.string=
+  if
+    ((FStar_String.strlen s) >= (Prims.of_int (2))) &&
+      ((FStar_String.sub s Prims.int_zero (Prims.of_int (2))) = "_:")
+  then s
+  else Parser_IRI.resolve_iri_v2 base s
+let resolve_against_opt (base : Prims.string)
+  (o : Prims.string FStar_Pervasives_Native.option) :
+  Prims.string FStar_Pervasives_Native.option=
+  match o with
+  | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+  | FStar_Pervasives_Native.Some s ->
+      FStar_Pervasives_Native.Some (resolve_against base s)
+let decode_stem (base : Prims.string) (kind : shex_vsv_kind)
+  (v : Parser_JSON.json_val) : shex_stem FStar_Pervasives_Native.option=
   match v with
-  | Parser_JSON.JString s -> FStar_Pervasives_Native.Some (ShexStemPlain s)
+  | Parser_JSON.JString s ->
+      FStar_Pervasives_Native.Some
+        (ShexStemPlain
+           ((match kind with
+             | VSVK_Iri -> resolve_against base s
+             | uu___ -> s)))
   | Parser_JSON.JObject uu___ ->
       (match Parser_JSON.json_get_string "type" v with
        | FStar_Pervasives_Native.Some "Wildcard" ->
@@ -628,20 +646,22 @@ let rec decode_annotation_list (items : Parser_JSON.json_val Prims.list) :
             | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
             | FStar_Pervasives_Native.Some rest ->
                 FStar_Pervasives_Native.Some (an :: rest)))
-let rec decode_shape_expr (v : Parser_JSON.json_val) (fuel : Prims.nat) :
-  shex_shape_expr FStar_Pervasives_Native.option=
+let rec decode_shape_expr (base : Prims.string) (v : Parser_JSON.json_val)
+  (fuel : Prims.nat) : shex_shape_expr FStar_Pervasives_Native.option=
   if fuel = Prims.int_zero
   then FStar_Pervasives_Native.None
   else
     (match v with
-     | Parser_JSON.JString s -> FStar_Pervasives_Native.Some (SE_Ref s)
+     | Parser_JSON.JString s ->
+         FStar_Pervasives_Native.Some (SE_Ref (resolve_against base s))
      | Parser_JSON.JObject uu___1 ->
          (match Parser_JSON.json_get_string "type" v with
           | FStar_Pervasives_Native.Some "ShapeAnd" ->
               (match Parser_JSON.json_get_array "shapeExprs" v with
                | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
                | FStar_Pervasives_Native.Some items ->
-                   (match decode_shape_expr_list items (fuel - Prims.int_one)
+                   (match decode_shape_expr_list base items
+                            (fuel - Prims.int_one)
                     with
                     | FStar_Pervasives_Native.Some ses ->
                         FStar_Pervasives_Native.Some (SE_ShapeAnd ses)
@@ -651,7 +671,8 @@ let rec decode_shape_expr (v : Parser_JSON.json_val) (fuel : Prims.nat) :
               (match Parser_JSON.json_get_array "shapeExprs" v with
                | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
                | FStar_Pervasives_Native.Some items ->
-                   (match decode_shape_expr_list items (fuel - Prims.int_one)
+                   (match decode_shape_expr_list base items
+                            (fuel - Prims.int_one)
                     with
                     | FStar_Pervasives_Native.Some ses ->
                         FStar_Pervasives_Native.Some (SE_ShapeOr ses)
@@ -661,18 +682,20 @@ let rec decode_shape_expr (v : Parser_JSON.json_val) (fuel : Prims.nat) :
               (match Parser_JSON.json_get_field "shapeExpr" v with
                | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
                | FStar_Pervasives_Native.Some sub ->
-                   (match decode_shape_expr sub (fuel - Prims.int_one) with
+                   (match decode_shape_expr base sub (fuel - Prims.int_one)
+                    with
                     | FStar_Pervasives_Native.Some se ->
                         FStar_Pervasives_Native.Some (SE_ShapeNot se)
                     | FStar_Pervasives_Native.None ->
                         FStar_Pervasives_Native.None))
           | FStar_Pervasives_Native.Some "NodeConstraint" ->
-              (match decode_node_constraint v (fuel - Prims.int_one) with
+              (match decode_node_constraint base v (fuel - Prims.int_one)
+               with
                | FStar_Pervasives_Native.Some nc ->
                    FStar_Pervasives_Native.Some (SE_NodeConstraint nc)
                | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None)
           | FStar_Pervasives_Native.Some "Shape" ->
-              (match decode_shape v (fuel - Prims.int_one) with
+              (match decode_shape base v (fuel - Prims.int_one) with
                | FStar_Pervasives_Native.Some sh ->
                    FStar_Pervasives_Native.Some (SE_Shape sh)
                | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None)
@@ -680,8 +703,8 @@ let rec decode_shape_expr (v : Parser_JSON.json_val) (fuel : Prims.nat) :
               FStar_Pervasives_Native.Some SE_ShapeExternal
           | uu___2 -> FStar_Pervasives_Native.None)
      | uu___1 -> FStar_Pervasives_Native.None)
-and decode_shape_expr_list (items : Parser_JSON.json_val Prims.list)
-  (fuel : Prims.nat) :
+and decode_shape_expr_list (base : Prims.string)
+  (items : Parser_JSON.json_val Prims.list) (fuel : Prims.nat) :
   shex_shape_expr Prims.list FStar_Pervasives_Native.option=
   if fuel = Prims.int_zero
   then FStar_Pervasives_Native.None
@@ -689,15 +712,16 @@ and decode_shape_expr_list (items : Parser_JSON.json_val Prims.list)
     (match items with
      | [] -> FStar_Pervasives_Native.Some []
      | hd::tl ->
-         (match decode_shape_expr hd (fuel - Prims.int_one) with
+         (match decode_shape_expr base hd (fuel - Prims.int_one) with
           | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
           | FStar_Pervasives_Native.Some se ->
-              (match decode_shape_expr_list tl (fuel - Prims.int_one) with
+              (match decode_shape_expr_list base tl (fuel - Prims.int_one)
+               with
                | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
                | FStar_Pervasives_Native.Some rest ->
                    FStar_Pervasives_Native.Some (se :: rest))))
-and decode_shape (v : Parser_JSON.json_val) (fuel : Prims.nat) :
-  shex_shape FStar_Pervasives_Native.option=
+and decode_shape (base : Prims.string) (v : Parser_JSON.json_val)
+  (fuel : Prims.nat) : shex_shape FStar_Pervasives_Native.option=
   if fuel = Prims.int_zero
   then FStar_Pervasives_Native.None
   else
@@ -705,7 +729,7 @@ and decode_shape (v : Parser_JSON.json_val) (fuel : Prims.nat) :
        match Parser_JSON.json_get_field "expression" v with
        | FStar_Pervasives_Native.None -> (true, FStar_Pervasives_Native.None)
        | FStar_Pervasives_Native.Some ej ->
-           (match decode_triple_expr ej (fuel - Prims.int_one) with
+           (match decode_triple_expr base ej (fuel - Prims.int_one) with
             | FStar_Pervasives_Native.Some te ->
                 (true, (FStar_Pervasives_Native.Some te))
             | FStar_Pervasives_Native.None ->
@@ -782,34 +806,36 @@ and decode_shape (v : Parser_JSON.json_val) (fuel : Prims.nat) :
                                            sh_annotations = annots;
                                            sh_extends = extends
                                          })))))
-and decode_triple_expr (v : Parser_JSON.json_val) (fuel : Prims.nat) :
-  shex_triple_expr FStar_Pervasives_Native.option=
+and decode_triple_expr (base : Prims.string) (v : Parser_JSON.json_val)
+  (fuel : Prims.nat) : shex_triple_expr FStar_Pervasives_Native.option=
   if fuel = Prims.int_zero
   then FStar_Pervasives_Native.None
   else
     (match v with
-     | Parser_JSON.JString s -> FStar_Pervasives_Native.Some (TE_Ref s)
+     | Parser_JSON.JString s ->
+         FStar_Pervasives_Native.Some (TE_Ref (resolve_against base s))
      | Parser_JSON.JObject uu___1 ->
          (match Parser_JSON.json_get_string "type" v with
           | FStar_Pervasives_Native.Some "TripleConstraint" ->
-              (match decode_triple_constraint v (fuel - Prims.int_one) with
+              (match decode_triple_constraint base v (fuel - Prims.int_one)
+               with
                | FStar_Pervasives_Native.Some tc ->
                    FStar_Pervasives_Native.Some (TE_TripleConstraint tc)
                | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None)
           | FStar_Pervasives_Native.Some "EachOf" ->
-              (match decode_group v (fuel - Prims.int_one) with
+              (match decode_group base v (fuel - Prims.int_one) with
                | FStar_Pervasives_Native.Some g ->
                    FStar_Pervasives_Native.Some (TE_EachOf g)
                | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None)
           | FStar_Pervasives_Native.Some "OneOf" ->
-              (match decode_group v (fuel - Prims.int_one) with
+              (match decode_group base v (fuel - Prims.int_one) with
                | FStar_Pervasives_Native.Some g ->
                    FStar_Pervasives_Native.Some (TE_OneOf g)
                | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None)
           | uu___2 -> FStar_Pervasives_Native.None)
      | uu___1 -> FStar_Pervasives_Native.None)
-and decode_triple_expr_list (items : Parser_JSON.json_val Prims.list)
-  (fuel : Prims.nat) :
+and decode_triple_expr_list (base : Prims.string)
+  (items : Parser_JSON.json_val Prims.list) (fuel : Prims.nat) :
   shex_triple_expr Prims.list FStar_Pervasives_Native.option=
   if fuel = Prims.int_zero
   then FStar_Pervasives_Native.None
@@ -817,22 +843,24 @@ and decode_triple_expr_list (items : Parser_JSON.json_val Prims.list)
     (match items with
      | [] -> FStar_Pervasives_Native.Some []
      | hd::tl ->
-         (match decode_triple_expr hd (fuel - Prims.int_one) with
+         (match decode_triple_expr base hd (fuel - Prims.int_one) with
           | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
           | FStar_Pervasives_Native.Some te ->
-              (match decode_triple_expr_list tl (fuel - Prims.int_one) with
+              (match decode_triple_expr_list base tl (fuel - Prims.int_one)
+               with
                | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
                | FStar_Pervasives_Native.Some rest ->
                    FStar_Pervasives_Native.Some (te :: rest))))
-and decode_group (v : Parser_JSON.json_val) (fuel : Prims.nat) :
-  shex_group FStar_Pervasives_Native.option=
+and decode_group (base : Prims.string) (v : Parser_JSON.json_val)
+  (fuel : Prims.nat) : shex_group FStar_Pervasives_Native.option=
   if fuel = Prims.int_zero
   then FStar_Pervasives_Native.None
   else
     (match Parser_JSON.json_get_array "expressions" v with
      | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
      | FStar_Pervasives_Native.Some items ->
-         (match decode_triple_expr_list items (fuel - Prims.int_one) with
+         (match decode_triple_expr_list base items (fuel - Prims.int_one)
+          with
           | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
           | FStar_Pervasives_Native.Some exprs ->
               let uu___1 =
@@ -868,8 +896,8 @@ and decode_group (v : Parser_JSON.json_val) (fuel : Prims.nat) :
                                 gr_semacts = semacts;
                                 gr_annotations = annots
                               }))))
-and decode_triple_constraint (v : Parser_JSON.json_val) (fuel : Prims.nat) :
-  shex_triple_constraint FStar_Pervasives_Native.option=
+and decode_triple_constraint (base : Prims.string) (v : Parser_JSON.json_val)
+  (fuel : Prims.nat) : shex_triple_constraint FStar_Pervasives_Native.option=
   if fuel = Prims.int_zero
   then FStar_Pervasives_Native.None
   else
@@ -881,7 +909,7 @@ and decode_triple_constraint (v : Parser_JSON.json_val) (fuel : Prims.nat) :
            | FStar_Pervasives_Native.None ->
                (true, FStar_Pervasives_Native.None)
            | FStar_Pervasives_Native.Some vej ->
-               (match decode_shape_expr vej (fuel - Prims.int_one) with
+               (match decode_shape_expr base vej (fuel - Prims.int_one) with
                 | FStar_Pervasives_Native.Some se ->
                     (true, (FStar_Pervasives_Native.Some se))
                 | FStar_Pervasives_Native.None ->
@@ -923,7 +951,7 @@ and decode_triple_constraint (v : Parser_JSON.json_val) (fuel : Prims.nat) :
                                     (Parser_JSON.json_get_string "id" v);
                                   tc_inverse =
                                     (json_get_bool_default "inverse" v false);
-                                  tc_predicate = pred;
+                                  tc_predicate = (resolve_against base pred);
                                   tc_value_expr = ve;
                                   tc_min =
                                     (json_get_int_default "min" v
@@ -934,8 +962,8 @@ and decode_triple_constraint (v : Parser_JSON.json_val) (fuel : Prims.nat) :
                                   tc_semacts = semacts;
                                   tc_annotations = annots
                                 }))))
-and decode_node_constraint (v : Parser_JSON.json_val) (fuel : Prims.nat) :
-  shex_node_constraint FStar_Pervasives_Native.option=
+and decode_node_constraint (base : Prims.string) (v : Parser_JSON.json_val)
+  (fuel : Prims.nat) : shex_node_constraint FStar_Pervasives_Native.option=
   if fuel = Prims.int_zero
   then FStar_Pervasives_Native.None
   else
@@ -957,7 +985,7 @@ and decode_node_constraint (v : Parser_JSON.json_val) (fuel : Prims.nat) :
               match Parser_JSON.json_get_array "values" v with
               | FStar_Pervasives_Native.None -> (true, [])
               | FStar_Pervasives_Native.Some items ->
-                  (match decode_value_set_value_list items
+                  (match decode_value_set_value_list base items
                            (fuel - Prims.int_one)
                    with
                    | FStar_Pervasives_Native.Some vs -> (true, vs)
@@ -971,7 +999,8 @@ and decode_node_constraint (v : Parser_JSON.json_val) (fuel : Prims.nat) :
                     {
                       nc_node_kind = nk;
                       nc_datatype =
-                        (Parser_JSON.json_get_string "datatype" v);
+                        (resolve_against_opt base
+                           (Parser_JSON.json_get_string "datatype" v));
                       nc_values = values;
                       nc_length = (json_get_int "length" v);
                       nc_minlength = (json_get_int "minlength" v);
@@ -989,14 +1018,15 @@ and decode_node_constraint (v : Parser_JSON.json_val) (fuel : Prims.nat) :
                       nc_totaldigits = (json_get_int "totaldigits" v);
                       nc_fractiondigits = (json_get_int "fractiondigits" v)
                     }))
-and decode_value_set_value (v : Parser_JSON.json_val) (fuel : Prims.nat) :
-  shex_value_set_value FStar_Pervasives_Native.option=
+and decode_value_set_value (base : Prims.string) (v : Parser_JSON.json_val)
+  (fuel : Prims.nat) : shex_value_set_value FStar_Pervasives_Native.option=
   if fuel = Prims.int_zero
   then FStar_Pervasives_Native.None
   else
     (match v with
      | Parser_JSON.JString s ->
-         FStar_Pervasives_Native.Some (VSV_Value (ShexOV_Iri s))
+         FStar_Pervasives_Native.Some
+           (VSV_Value (ShexOV_Iri (resolve_against base s)))
      | Parser_JSON.JObject uu___1 ->
          (match Parser_JSON.json_get_string "value" v with
           | FStar_Pervasives_Native.Some value ->
@@ -1010,7 +1040,7 @@ and decode_value_set_value (v : Parser_JSON.json_val) (fuel : Prims.nat) :
                | FStar_Pervasives_Native.Some "IriStem" ->
                    (match Parser_JSON.json_get_field "stem" v with
                     | FStar_Pervasives_Native.Some stv ->
-                        (match decode_stem stv with
+                        (match decode_stem base VSVK_Iri stv with
                          | FStar_Pervasives_Native.Some st ->
                              FStar_Pervasives_Native.Some (VSV_IriStem st)
                          | FStar_Pervasives_Native.None ->
@@ -1020,7 +1050,7 @@ and decode_value_set_value (v : Parser_JSON.json_val) (fuel : Prims.nat) :
                | FStar_Pervasives_Native.Some "LiteralStem" ->
                    (match Parser_JSON.json_get_field "stem" v with
                     | FStar_Pervasives_Native.Some stv ->
-                        (match decode_stem stv with
+                        (match decode_stem base VSVK_Literal stv with
                          | FStar_Pervasives_Native.Some st ->
                              FStar_Pervasives_Native.Some
                                (VSV_LiteralStem st)
@@ -1031,7 +1061,7 @@ and decode_value_set_value (v : Parser_JSON.json_val) (fuel : Prims.nat) :
                | FStar_Pervasives_Native.Some "LanguageStem" ->
                    (match Parser_JSON.json_get_field "stem" v with
                     | FStar_Pervasives_Native.Some stv ->
-                        (match decode_stem stv with
+                        (match decode_stem base VSVK_Language stv with
                          | FStar_Pervasives_Native.Some st ->
                              FStar_Pervasives_Native.Some
                                (VSV_LanguageStem st)
@@ -1046,7 +1076,7 @@ and decode_value_set_value (v : Parser_JSON.json_val) (fuel : Prims.nat) :
                     | FStar_Pervasives_Native.None ->
                         FStar_Pervasives_Native.None)
                | FStar_Pervasives_Native.Some "IriStemRange" ->
-                   (match decode_stem_range_parts v VSVK_Iri
+                   (match decode_stem_range_parts base v VSVK_Iri
                             (fuel - Prims.int_one)
                     with
                     | FStar_Pervasives_Native.Some (st, excl) ->
@@ -1055,7 +1085,7 @@ and decode_value_set_value (v : Parser_JSON.json_val) (fuel : Prims.nat) :
                     | FStar_Pervasives_Native.None ->
                         FStar_Pervasives_Native.None)
                | FStar_Pervasives_Native.Some "LiteralStemRange" ->
-                   (match decode_stem_range_parts v VSVK_Literal
+                   (match decode_stem_range_parts base v VSVK_Literal
                             (fuel - Prims.int_one)
                     with
                     | FStar_Pervasives_Native.Some (st, excl) ->
@@ -1064,7 +1094,7 @@ and decode_value_set_value (v : Parser_JSON.json_val) (fuel : Prims.nat) :
                     | FStar_Pervasives_Native.None ->
                         FStar_Pervasives_Native.None)
                | FStar_Pervasives_Native.Some "LanguageStemRange" ->
-                   (match decode_stem_range_parts v VSVK_Language
+                   (match decode_stem_range_parts base v VSVK_Language
                             (fuel - Prims.int_one)
                     with
                     | FStar_Pervasives_Native.Some (st, excl) ->
@@ -1074,8 +1104,8 @@ and decode_value_set_value (v : Parser_JSON.json_val) (fuel : Prims.nat) :
                         FStar_Pervasives_Native.None)
                | uu___2 -> FStar_Pervasives_Native.None))
      | uu___1 -> FStar_Pervasives_Native.None)
-and decode_value_set_value_list (items : Parser_JSON.json_val Prims.list)
-  (fuel : Prims.nat) :
+and decode_value_set_value_list (base : Prims.string)
+  (items : Parser_JSON.json_val Prims.list) (fuel : Prims.nat) :
   shex_value_set_value Prims.list FStar_Pervasives_Native.option=
   if fuel = Prims.int_zero
   then FStar_Pervasives_Native.None
@@ -1083,15 +1113,16 @@ and decode_value_set_value_list (items : Parser_JSON.json_val Prims.list)
     (match items with
      | [] -> FStar_Pervasives_Native.Some []
      | hd::tl ->
-         (match decode_value_set_value hd (fuel - Prims.int_one) with
+         (match decode_value_set_value base hd (fuel - Prims.int_one) with
           | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
           | FStar_Pervasives_Native.Some vv ->
-              (match decode_value_set_value_list tl (fuel - Prims.int_one)
+              (match decode_value_set_value_list base tl
+                       (fuel - Prims.int_one)
                with
                | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
                | FStar_Pervasives_Native.Some rest ->
                    FStar_Pervasives_Native.Some (vv :: rest))))
-and decode_value_set_value_list_kind
+and decode_value_set_value_list_kind (base : Prims.string)
   (items : Parser_JSON.json_val Prims.list) (kind : shex_vsv_kind)
   (fuel : Prims.nat) :
   shex_value_set_value Prims.list FStar_Pervasives_Native.option=
@@ -1101,7 +1132,7 @@ and decode_value_set_value_list_kind
     (match items with
      | [] -> FStar_Pervasives_Native.Some []
      | (Parser_JSON.JString s)::tl ->
-         (match decode_value_set_value_list_kind tl kind
+         (match decode_value_set_value_list_kind base tl kind
                   (fuel - Prims.int_one)
           with
           | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
@@ -1109,17 +1140,17 @@ and decode_value_set_value_list_kind
               FStar_Pervasives_Native.Some ((decode_bare_vsv_string kind s)
                 :: rest))
      | hd::tl ->
-         (match decode_value_set_value hd (fuel - Prims.int_one) with
+         (match decode_value_set_value base hd (fuel - Prims.int_one) with
           | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
           | FStar_Pervasives_Native.Some vv ->
-              (match decode_value_set_value_list_kind tl kind
+              (match decode_value_set_value_list_kind base tl kind
                        (fuel - Prims.int_one)
                with
                | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
                | FStar_Pervasives_Native.Some rest ->
                    FStar_Pervasives_Native.Some (vv :: rest))))
-and decode_stem_range_parts (v : Parser_JSON.json_val) (kind : shex_vsv_kind)
-  (fuel : Prims.nat) :
+and decode_stem_range_parts (base : Prims.string) (v : Parser_JSON.json_val)
+  (kind : shex_vsv_kind) (fuel : Prims.nat) :
   (shex_stem * shex_value_set_value Prims.list)
     FStar_Pervasives_Native.option=
   if fuel = Prims.int_zero
@@ -1128,21 +1159,21 @@ and decode_stem_range_parts (v : Parser_JSON.json_val) (kind : shex_vsv_kind)
     (match Parser_JSON.json_get_field "stem" v with
      | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
      | FStar_Pervasives_Native.Some stv ->
-         (match decode_stem stv with
+         (match decode_stem base kind stv with
           | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
           | FStar_Pervasives_Native.Some st ->
               (match Parser_JSON.json_get_array "exclusions" v with
                | FStar_Pervasives_Native.None ->
                    FStar_Pervasives_Native.Some (st, [])
                | FStar_Pervasives_Native.Some items ->
-                   (match decode_value_set_value_list_kind items kind
+                   (match decode_value_set_value_list_kind base items kind
                             (fuel - Prims.int_one)
                     with
                     | FStar_Pervasives_Native.Some excl ->
                         FStar_Pervasives_Native.Some (st, excl)
                     | FStar_Pervasives_Native.None ->
                         FStar_Pervasives_Native.None))))
-let decode_shape_decl (v : Parser_JSON.json_val) :
+let decode_shape_decl (base : Prims.string) (v : Parser_JSON.json_val) :
   shex_shape_decl FStar_Pervasives_Native.option=
   match Parser_JSON.json_get_string "id" v with
   | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
@@ -1151,28 +1182,29 @@ let decode_shape_decl (v : Parser_JSON.json_val) :
         match Parser_JSON.json_get_field "shapeExpr" v with
         | FStar_Pervasives_Native.Some nested -> nested
         | FStar_Pervasives_Native.None -> v in
-      (match decode_shape_expr sej (Parser_JSON.json_size sej) with
+      (match decode_shape_expr base sej (Parser_JSON.json_size sej) with
        | FStar_Pervasives_Native.Some se ->
            FStar_Pervasives_Native.Some
              {
-               sd_id = sid;
+               sd_id = (resolve_against base sid);
                sd_is_abstract = (json_get_bool_default "abstract" v false);
                sd_expr = se
              }
        | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None)
-let rec decode_shape_decl_list (items : Parser_JSON.json_val Prims.list) :
+let rec decode_shape_decl_list (base : Prims.string)
+  (items : Parser_JSON.json_val Prims.list) :
   shex_shape_decl Prims.list FStar_Pervasives_Native.option=
   match items with
   | [] -> FStar_Pervasives_Native.Some []
   | hd::tl ->
-      (match decode_shape_decl hd with
+      (match decode_shape_decl base hd with
        | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
        | FStar_Pervasives_Native.Some sd ->
-           (match decode_shape_decl_list tl with
+           (match decode_shape_decl_list base tl with
             | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
             | FStar_Pervasives_Native.Some rest ->
                 FStar_Pervasives_Native.Some (sd :: rest)))
-let decode_schema (v : Parser_JSON.json_val) :
+let decode_schema (base : Prims.string) (v : Parser_JSON.json_val) :
   shex_schema FStar_Pervasives_Native.option=
   match Parser_JSON.json_get_string "type" v with
   | FStar_Pervasives_Native.Some "Schema" ->
@@ -1181,7 +1213,7 @@ let decode_schema (v : Parser_JSON.json_val) :
         | FStar_Pervasives_Native.None ->
             (true, FStar_Pervasives_Native.None)
         | FStar_Pervasives_Native.Some sv ->
-            (match decode_shape_expr sv (Parser_JSON.json_size sv) with
+            (match decode_shape_expr base sv (Parser_JSON.json_size sv) with
              | FStar_Pervasives_Native.Some se ->
                  (true, (FStar_Pervasives_Native.Some se))
              | FStar_Pervasives_Native.None ->
@@ -1207,7 +1239,7 @@ let decode_schema (v : Parser_JSON.json_val) :
                        match Parser_JSON.json_get_array "shapes" v with
                        | FStar_Pervasives_Native.None -> (true, [])
                        | FStar_Pervasives_Native.Some items ->
-                           (match decode_shape_decl_list items with
+                           (match decode_shape_decl_list base items with
                             | FStar_Pervasives_Native.Some sd -> (true, sd)
                             | FStar_Pervasives_Native.None -> (false, [])) in
                      match uu___4 with
@@ -1238,8 +1270,8 @@ let decode_schema (v : Parser_JSON.json_val) :
                                       sch_imports = imports
                                     }))))
   | uu___ -> FStar_Pervasives_Native.None
-let decode_shex_schema (input : Prims.string) :
+let decode_shex_schema (input : Prims.string) (base : Prims.string) :
   shex_schema FStar_Pervasives_Native.option=
   match Parser_JSON.parse_json input with
   | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
-  | FStar_Pervasives_Native.Some v -> decode_schema v
+  | FStar_Pervasives_Native.Some v -> decode_schema base v
