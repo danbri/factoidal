@@ -2,6 +2,22 @@ module RDF.Graph.Executable
 
 open FStar.String
 open FStar.List.Tot
+// RDF.Vocabulary.fst (2026-07-05, design doc "foundational-core-
+// refactor" §2.6/§3.3 step 2) is the canonical, grep-verifiable source
+// for the RDF/RDFS/OWL vocabulary IRI *strings* — this module's own
+// section 16 below is a thin re-export shim, not a redefinition. Its
+// constants are plain `string` (not `wf_iri`) specifically so this
+// file (which defines `wf_iri`/`is_iri` itself) can depend on it
+// without a cycle: `open RDF.Vocabulary` here is a one-directional
+// edge, same direction the XSD.Datatypes slice-1 shim used.
+open RDF.Vocabulary
+// RDF.Indexed.fst (2026-07-05, design doc "foundational-core-refactor"
+// §2.3/§3.3 step 3) holds the generic bucket-map plumbing behind the
+// `indexed_graph` acceleration structure — see section 6b below (and
+// RDF.Indexed.fsti's banner) for the cyclic-dependency finding that
+// shaped exactly what could move out. One-directional edge: RDF.Indexed
+// has zero dependency on this file, so this `open` cannot cycle back.
+open RDF.Indexed
 
 (** 1. Concrete Types for Execution **)
 // We choose string for blank nodes so they can be extracted as simple values
@@ -281,22 +297,60 @@ let rec find_by_predicate (pred:wf_iri) (g:rdf_graph) : rdf_graph =
    same signature if profiling demands O(1) lookup; the algorithm and
    correctness story stays in F* either way. The post-extraction patch 97
    that does the analogous thing for the `graph_store` path stays alive
-   until that swap lands. *)
+   until that swap lands.
 
-type bucket_map = list (string * list triple)
+   2026-07-05 (design doc "foundational-core-refactor" §2.3/§3.3 step 3):
+   the generic association-list "bucket map" plumbing below
+   (`bucket_map`/`bucket_lookup`/`bucket_replace`/`bucket_push`/
+   `build_bucket`) now lives in RDF.Indexed.fst, genericised over the
+   stored element type — that subset never inspects `triple` internals,
+   only `key_of`-supplied keys. The RDF-specific glue that instantiates
+   it at `triple` (`indexed_graph` itself, `subject_to_key`,
+   `term_to_key_opt`, the `*_key` builders, `find_objects_indexed`,
+   `find_subjects_indexed`, `add_triple_to_indexes`, `build_indexed`)
+   stays here: it pattern-matches `triple`/`subject`/`rdf_term`, types
+   this file still defines (moving them out is step 5, not this step).
+   Attempting to move the RDF-specific glue too hits a cyclic module
+   dependency — this file's own RDFS/OWL-RL closure rules (below,
+   unmoved until step 6) also consume `indexed_graph`, so this file
+   cannot `open RDF.Indexed` for the type AND have RDF.Indexed `open`
+   this file for `triple` at the same time. See RDF.Indexed.fsti's
+   banner for the full account. `bucket_lookup` below is a thin
+   re-export shim (same discipline as the RDF.Vocabulary shim, step 2)
+   so RDF.Graph.Executable.fst's dependents — concretely
+   SPARQL11.Algebra.fst's five `bucket_lookup` call sites — keep
+   resolving it exactly as before. *)
+
+type bucket_map (a:Type) = RDF.Indexed.bucket_map a
+
+let bucket_lookup (#a:Type) (m : bucket_map a) (k : string)
+  : Tot (list a) =
+  RDF.Indexed.bucket_lookup m k
+
+let bucket_replace (#a:Type) (m : bucket_map a) (k : string) (v : list a)
+  : Tot (bucket_map a) =
+  RDF.Indexed.bucket_replace m k v
+
+let bucket_push (#a:Type) (m : bucket_map a) (k : string) (t : a)
+  : Tot (bucket_map a) =
+  RDF.Indexed.bucket_push m k t
+
+let build_bucket (#a:Type) (key_of : a -> option string) (ts : list a)
+  : Tot (bucket_map a) =
+  RDF.Indexed.build_bucket key_of ts
 
 noeq type indexed_graph = {
   ig_triples : list triple;     (* preserves source-of-truth order semantics *)
-  ig_pred    : bucket_map;       (* keyed by predicate IRI string *)
-  ig_subj    : bucket_map;       (* keyed by subject_to_key *)
-  ig_obj     : bucket_map;       (* keyed by term_to_key_opt; literals omitted *)
+  ig_pred    : bucket_map triple;       (* keyed by predicate IRI string *)
+  ig_subj    : bucket_map triple;       (* keyed by subject_to_key *)
+  ig_obj     : bucket_map triple;       (* keyed by term_to_key_opt; literals omitted *)
   (* Phase 1 compound indexes (#100). Composite keys use ASCII unit
      separator U+001F, which is forbidden in IRIs (RFC 3987) and never
      appears in our blank-node keys. Literals (term_to_key_opt = None)
      are not indexed; same rationale as ig_obj. *)
-  ig_sp      : bucket_map;       (* keyed by sp_key   : subj_key ^ "\x1f" ^ pred_iri *)
-  ig_po      : bucket_map;       (* keyed by po_key   : pred_iri ^ "\x1f" ^ obj_key  *)
-  ig_so      : bucket_map;       (* keyed by so_key   : subj_key ^ "\x1f" ^ obj_key  *)
+  ig_sp      : bucket_map triple;       (* keyed by sp_key   : subj_key ^ "\x1f" ^ pred_iri *)
+  ig_po      : bucket_map triple;       (* keyed by po_key   : pred_iri ^ "\x1f" ^ obj_key  *)
+  ig_so      : bucket_map triple;       (* keyed by so_key   : subj_key ^ "\x1f" ^ obj_key  *)
 }
 
 (* Canonical key for a subject. Total. *)
@@ -334,13 +388,6 @@ let so_key_opt (s : subject) (o : rdf_term) : option string =
   | Some k -> Some (String.concat "" [subject_to_key s; unit_sep; k])
   | None   -> None
 
-(* Look up a key in a bucket map. First match wins; absent => empty list. *)
-let rec bucket_lookup (m : bucket_map) (k : string)
-  : Tot (list triple) (decreases m) =
-  match m with
-  | [] -> []
-  | (k', v) :: rest -> if k = k' then v else bucket_lookup rest k
-
 (* #259 followup / OWL-RL Commit A (2026-05-13).
    Index-backed (s, p, ?) lookup. Bucket: ig_sp.
    Same return contract as find_objects: list of objects, no dedup.
@@ -365,32 +412,6 @@ let find_subjects_indexed (ig : indexed_graph) (pred : wf_iri) (obj : rdf_term)
         (bucket_lookup ig.ig_pred pred)
   in
   List.Tot.map (fun (t : triple) -> t.s) bucket
-
-(* Replace-or-add for a bucket map: keeps a single binding per key.
-   Mirrors OCaml's Hashtbl.replace; avoids the multi-binding shape that
-   forced the earlier `Hashtbl.find_all` workaround in patch 97.
-
-   Tail-recursive accumulator form (issue #119): the prior straight-recursive
-   shape blew JS's ~10K stack at lifesci-scale ingest because each frame
-   wraps the recursive result in a fresh cons. *)
-let rec bucket_replace_acc
-  (acc : bucket_map) (m : bucket_map) (k : string) (v : list triple)
-  : Tot bucket_map (decreases m) =
-  match m with
-  | [] -> List.Tot.rev_acc acc [(k, v)]
-  | (k', v') :: rest ->
-    if k = k' then List.Tot.rev_acc acc ((k, v) :: rest)
-    else bucket_replace_acc ((k', v') :: acc) rest k v
-
-let bucket_replace (m : bucket_map) (k : string) (v : list triple)
-  : Tot bucket_map =
-  bucket_replace_acc [] m k v
-
-(* Push a single triple onto the bucket for k. Cons-to-front: mirrors
-   patch 97's stack-safe shape (one binding per key, value list grows). *)
-let bucket_push (m : bucket_map) (k : string) (t : triple) : bucket_map =
-  let existing = bucket_lookup m k in
-  bucket_replace m k (t :: existing)
 
 (* Single-step index update for one triple. *)
 let add_triple_to_indexes (ig : indexed_graph) (t : triple) : indexed_graph =
@@ -444,48 +465,6 @@ let bucket_key_obj  (t : triple) : option string = term_to_key_opt t.o
 let bucket_key_sp   (t : triple) : option string = Some (sp_key t.s t.p)
 let bucket_key_po   (t : triple) : option string = po_key_opt t.p t.o
 let bucket_key_so   (t : triple) : option string = so_key_opt t.s t.o
-
-(* Comparator for List.Tot.sortWith. Triples without a key for this
-   bucket sort first; they're filtered out by the grouping pass. *)
-let triple_cmp_by_key (key_of : triple -> option string) (t1 t2 : triple) : int =
-  match key_of t1, key_of t2 with
-  | None, None       -> 0
-  | None, Some _     -> -1
-  | Some _, None     -> 1
-  | Some k1, Some k2 -> String.compare k1 k2
-
-(* Walk a key-sorted triple list, collapsing each run of same-key
-   entries into one (key, triples) binding. Tail-rec via reversed
-   accumulator; `bucket_map` lookup doesn't depend on bucket order so
-   we don't bother to reverse at the end. *)
-let rec group_sorted_aux
-    (key_of : triple -> option string)
-    (ts : list triple)
-    (cur_key : option string) (cur_bucket : list triple)
-    (acc : bucket_map)
-  : Tot bucket_map (decreases ts) =
-  match ts with
-  | [] ->
-    (match cur_key with
-     | Some k -> (k, cur_bucket) :: acc
-     | None   -> acc)
-  | t :: rest ->
-    (match key_of t with
-     | None -> group_sorted_aux key_of rest cur_key cur_bucket acc
-     | Some k ->
-       (match cur_key with
-        | Some k0 ->
-          if k = k0 then
-            group_sorted_aux key_of rest cur_key (t :: cur_bucket) acc
-          else
-            group_sorted_aux key_of rest (Some k) [t] ((k0, cur_bucket) :: acc)
-        | None ->
-          group_sorted_aux key_of rest (Some k) [t] acc))
-
-let build_bucket (key_of : triple -> option string) (ts : list triple)
-  : Tot bucket_map =
-  let sorted = List.Tot.sortWith (triple_cmp_by_key key_of) ts in
-  group_sorted_aux key_of sorted None [] []
 
 let empty_indexed : indexed_graph = {
   ig_triples = [];
@@ -800,76 +779,86 @@ let lemma_bind_preserves_existing
   | None -> ()    // trivially True
 
 (** ======================================================================== *)
-(** 16. RDF/RDFS Vocabulary Constants                                        *)
+(** 16. RDF/RDFS Vocabulary Constants — re-export shim                       *)
 (** ======================================================================== *)
+// Canonical string values now live in RDF.Vocabulary.fst (design doc
+// "foundational-core-refactor" §2.6/§3.3 step 2). Every `let` below
+// re-derives the same `wf_iri`-refined value this file used to define
+// literally in place — same string, one extra level of indirection —
+// so every one of this file's 53 dependents (and this file's own
+// downstream closure-rule code, which cannot depend on RDF.Vocabulary
+// without a cycle back through `wf_iri`/`is_iri`, both defined above
+// in section 2) keeps resolving `rdfs_subClassOf` etc. exactly as
+// before. Grep-verifiable: every string literal is byte-identical to
+// RDF.Vocabulary.fsti's.
 
 let rdfs_subClassOf : wf_iri =
-  assert_norm (is_iri "http://www.w3.org/2000/01/rdf-schema#subClassOf");
-  "http://www.w3.org/2000/01/rdf-schema#subClassOf"
+  assert_norm (is_iri RDF.Vocabulary.rdfs_subClassOf);
+  RDF.Vocabulary.rdfs_subClassOf
 
 let rdfs_subPropertyOf : wf_iri =
-  assert_norm (is_iri "http://www.w3.org/2000/01/rdf-schema#subPropertyOf");
-  "http://www.w3.org/2000/01/rdf-schema#subPropertyOf"
+  assert_norm (is_iri RDF.Vocabulary.rdfs_subPropertyOf);
+  RDF.Vocabulary.rdfs_subPropertyOf
 
 let rdfs_domain : wf_iri =
-  assert_norm (is_iri "http://www.w3.org/2000/01/rdf-schema#domain");
-  "http://www.w3.org/2000/01/rdf-schema#domain"
+  assert_norm (is_iri RDF.Vocabulary.rdfs_domain);
+  RDF.Vocabulary.rdfs_domain
 
 let rdfs_range : wf_iri =
-  assert_norm (is_iri "http://www.w3.org/2000/01/rdf-schema#range");
-  "http://www.w3.org/2000/01/rdf-schema#range"
+  assert_norm (is_iri RDF.Vocabulary.rdfs_range);
+  RDF.Vocabulary.rdfs_range
 
 let rdf_type : wf_iri =
-  assert_norm (is_iri "http://www.w3.org/1999/02/22-rdf-syntax-ns#type");
-  "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
+  assert_norm (is_iri RDF.Vocabulary.rdf_type);
+  RDF.Vocabulary.rdf_type
 
 let rdfs_Class : wf_iri =
-  assert_norm (is_iri "http://www.w3.org/2000/01/rdf-schema#Class");
-  "http://www.w3.org/2000/01/rdf-schema#Class"
+  assert_norm (is_iri RDF.Vocabulary.rdfs_Class);
+  RDF.Vocabulary.rdfs_Class
 
 let rdf_Property : wf_iri =
-  assert_norm (is_iri "http://www.w3.org/1999/02/22-rdf-syntax-ns#Property");
-  "http://www.w3.org/1999/02/22-rdf-syntax-ns#Property"
+  assert_norm (is_iri RDF.Vocabulary.rdf_Property);
+  RDF.Vocabulary.rdf_Property
 
 let rdfs_Resource : wf_iri =
-  assert_norm (is_iri "http://www.w3.org/2000/01/rdf-schema#Resource");
-  "http://www.w3.org/2000/01/rdf-schema#Resource"
+  assert_norm (is_iri RDF.Vocabulary.rdfs_Resource);
+  RDF.Vocabulary.rdfs_Resource
 
 let rdfs_Literal : wf_iri =
-  assert_norm (is_iri "http://www.w3.org/2000/01/rdf-schema#Literal");
-  "http://www.w3.org/2000/01/rdf-schema#Literal"
+  assert_norm (is_iri RDF.Vocabulary.rdfs_Literal);
+  RDF.Vocabulary.rdfs_Literal
 
 let rdfs_ContainerMembershipProperty : wf_iri =
-  assert_norm (is_iri "http://www.w3.org/2000/01/rdf-schema#ContainerMembershipProperty");
-  "http://www.w3.org/2000/01/rdf-schema#ContainerMembershipProperty"
+  assert_norm (is_iri RDF.Vocabulary.rdfs_ContainerMembershipProperty);
+  RDF.Vocabulary.rdfs_ContainerMembershipProperty
 
 let rdfs_member : wf_iri =
-  assert_norm (is_iri "http://www.w3.org/2000/01/rdf-schema#member");
-  "http://www.w3.org/2000/01/rdf-schema#member"
+  assert_norm (is_iri RDF.Vocabulary.rdfs_member);
+  RDF.Vocabulary.rdfs_member
 
 let rdfs_Datatype : wf_iri =
-  assert_norm (is_iri "http://www.w3.org/2000/01/rdf-schema#Datatype");
-  "http://www.w3.org/2000/01/rdf-schema#Datatype"
+  assert_norm (is_iri RDF.Vocabulary.rdfs_Datatype);
+  RDF.Vocabulary.rdfs_Datatype
 
 let rdf_1 : wf_iri =
-  assert_norm (is_iri "http://www.w3.org/1999/02/22-rdf-syntax-ns#_1");
-  "http://www.w3.org/1999/02/22-rdf-syntax-ns#_1"
+  assert_norm (is_iri RDF.Vocabulary.rdf_1);
+  RDF.Vocabulary.rdf_1
 
 let rdf_2 : wf_iri =
-  assert_norm (is_iri "http://www.w3.org/1999/02/22-rdf-syntax-ns#_2");
-  "http://www.w3.org/1999/02/22-rdf-syntax-ns#_2"
+  assert_norm (is_iri RDF.Vocabulary.rdf_2);
+  RDF.Vocabulary.rdf_2
 
 let rdf_3 : wf_iri =
-  assert_norm (is_iri "http://www.w3.org/1999/02/22-rdf-syntax-ns#_3");
-  "http://www.w3.org/1999/02/22-rdf-syntax-ns#_3"
+  assert_norm (is_iri RDF.Vocabulary.rdf_3);
+  RDF.Vocabulary.rdf_3
 
 let rdf_4 : wf_iri =
-  assert_norm (is_iri "http://www.w3.org/1999/02/22-rdf-syntax-ns#_4");
-  "http://www.w3.org/1999/02/22-rdf-syntax-ns#_4"
+  assert_norm (is_iri RDF.Vocabulary.rdf_4);
+  RDF.Vocabulary.rdf_4
 
 let rdf_5 : wf_iri =
-  assert_norm (is_iri "http://www.w3.org/1999/02/22-rdf-syntax-ns#_5");
-  "http://www.w3.org/1999/02/22-rdf-syntax-ns#_5"
+  assert_norm (is_iri RDF.Vocabulary.rdf_5);
+  RDF.Vocabulary.rdf_5
 
 (* Container membership property list for closure rules *)
 let container_membership_properties : list wf_iri =
@@ -1184,7 +1173,17 @@ let rdfs_closure_step (g : rdf_graph) : rdf_graph =
   graph_dedup_sort g7
 
 (* Iterate closure until fixed point or max iterations.
-   Uses nat fuel parameter for termination. *)
+   Uses nat fuel parameter for termination.
+   2026-07-05 (design doc "foundational-core-refactor" §3.3 step 3): this
+   proof is borderline in the unmodified tree too (verifies only via F*'s
+   automatic split-on-failure retry, "Warning 349" in a plain run) — moving
+   unrelated code earlier in this file (the RDF.Indexed extraction above)
+   shifts the SMT context enough to tip it into a hard failure under the
+   default budget. `--z3rlimit 30` is the same fix idiom already used
+   throughout this tree (e.g. RDF.List.Helpers.fst, Parser.Turtle.fst) for
+   borderline recursive proofs — a resource-budget bump, not a logic
+   change; no --admit_smt_queries, no --lax. *)
+#push-options "--z3rlimit 30"
 let rec rdfs_closure (g : rdf_graph) (fuel : nat) : Tot rdf_graph (decreases fuel) =
   match fuel with
   | 0 -> g
@@ -1193,6 +1192,7 @@ let rec rdfs_closure (g : rdf_graph) (fuel : nat) : Tot rdf_graph (decreases fue
     if graph_len g' = graph_len g
     then g  (* fixed point reached — no new triples added *)
     else rdfs_closure g' (n - 1)
+#pop-options
 
 (** ======================================================================== *)
 (** 19b. RDFS/OWL Reflexivity Axioms                                         *)

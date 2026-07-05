@@ -47,7 +47,10 @@ mkdir -p "$BUILD_DIR"
 COMMON_MODULES=(
   Util_Log
   RDF_Format
+  RDF_Vocabulary
+  RDF_Indexed
   RDF_Graph_Executable
+  RDF_Vocabulary_Axioms
   RDF_List_Helpers
   RDF_Bytes
   RDF_Store_Loader
@@ -55,6 +58,7 @@ COMMON_MODULES=(
   OWL_Vocabulary
   Tableau
   Parser_FastString
+  RDF_IRI
   RDF_NQuads_Serialize
   Parser_IRI
   Parser_Combinators

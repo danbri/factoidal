@@ -357,7 +357,10 @@ if [[ "$STEP" == "all" || "$STEP" == "extract" ]]; then
   ALL_MODULES=(
     Util.Log.fst
     RDF.Format.fst
-    RDF.Graph.Executable.fst Parquet.Footer.fst
+    RDF.Vocabulary.fst
+    RDF.Indexed.fst
+    RDF.Graph.Executable.fst RDF.Vocabulary.Axioms.fst Parquet.Footer.fst
+    RDF.IRI.fst
     RDF.NQuads.Serialize.fst
     RDF.List.Helpers.fst
     RDF.Bytes.fst
@@ -444,6 +447,41 @@ if [[ "$STEP" == "all" || "$STEP" == "extract" ]]; then
   PRESENT_MODULES=()
   for fst in "${ALL_MODULES[@]}"; do
     [[ -f "$fst" ]] && PRESENT_MODULES+=("$fst")
+  done
+
+  # ---------------------------------------------------------------------
+  # .fsti pre-check (2026-07-05, RDF.Vocabulary — the tree's FIRST .fsti;
+  # see docs/designissues/2026-07-05-foundational-core-refactor.md §2.9).
+  #
+  # The Kahn-layering below parses `fstar.exe --dep full`'s output for
+  # `*.fst.checked:` target lines and follows only `*.fst.checked` tokens
+  # in their prerequisite lists (see the DEPS[] loop just below). When a
+  # module has an adjacent `.fsti`, F* instead makes every dependent's
+  # `.fst.checked` depend on the interface's `.fsti.checked` -- a token
+  # shape the DEPS[] parser does not recognise, so it is silently dropped
+  # from the DAG (confirmed experimentally, 2026-07-05: `--dep full` on an
+  # .fsti-backed module emits `Consumer.fst.checked: Consumer.fst
+  # Vocab.fsti.checked`, never `Vocab.fst.checked`). Left unhandled, a
+  # module that opens RDF.Vocabulary could be scheduled in an earlier
+  # layer than RDF.Vocabulary.fsti itself, and find no checked interface
+  # to load.
+  #
+  # Fix: check every `.fsti` in the tree, synchronously, before the DAG is
+  # even computed -- so `*.fsti.checked` already exists by the time ANY
+  # layer's fstar.exe invocations start, regardless of what the (interface-
+  # blind) layering below decides. This is a deliberately narrow, low-risk
+  # fix (a few lines, run once, cheap -- a pure-constant interface checks
+  # in well under a second) rather than teaching the DEPS[] parser a new
+  # token shape; revisit only if a second `.fsti` lands and this becomes a
+  # recurring cost.
+  shopt -s nullglob
+  FSTI_FILES=(*.fsti)
+  shopt -u nullglob
+  for fsti in "${FSTI_FILES[@]}"; do
+    echo "  [.fsti pre-check] $fsti"
+    fstar.exe --z3version 4.13.3 --cache_checked_modules "$fsti" \
+      > "$OUTDIR/_fstar_${fsti%.fsti}_fsti.log" 2>&1 \
+      || { echo "FATAL: .fsti pre-check failed for $fsti -- see $OUTDIR/_fstar_${fsti%.fsti}_fsti.log" >&2; exit 1; }
   done
 
   # BUILD_JOBS: parallel fstar.exe invocations per layer. Defaults to the
@@ -672,8 +710,8 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
   # (COTTAS runtime glue calls Parquet_Footer.probe_*). SPARQL11_Store
   # depends on Parser_BallyhooHDT and Parser_BallyhooCOTTAS. See
   # docs/designissues/2026-04-19-cottas-parquet-wiring-plan.md §Phase 1.
-  COMMON_MODULES="Util_Log.ml RDF_Format.ml RDF_Graph_Executable.ml RDF_List_Helpers.ml RDF_Bytes.ml RDF_Store_Loader.ml Parquet_Footer.ml OWL_Vocabulary.ml OWL_DirectMapping_Filter.ml Tableau.ml \
-    Parser_FastString.ml SPARQL11_IRI_Resolve.ml Parser_IRI.ml \
+  COMMON_MODULES="Util_Log.ml RDF_Format.ml RDF_Vocabulary.ml RDF_Indexed.ml RDF_Graph_Executable.ml RDF_Vocabulary_Axioms.ml RDF_List_Helpers.ml RDF_Bytes.ml RDF_Store_Loader.ml Parquet_Footer.ml OWL_Vocabulary.ml OWL_DirectMapping_Filter.ml Tableau.ml \
+    Parser_FastString.ml RDF_IRI.ml SPARQL11_IRI_Resolve.ml Parser_IRI.ml \
     RDF_NQuads_Serialize.ml \
     Parser_Combinators.ml Parser_TurtleScanner.ml Parser_NTriples.ml Parser_Turtle.ml \
     Parser_OWLFunctional.ml \
@@ -1197,9 +1235,10 @@ if [[ "$STEP" == "all" || "$STEP" == "js" ]]; then
   # build. Phase 3 (wasm_of_ocaml) with Zstd is a follow-on commit.
   # See docs/designissues/2026-04-19-cottas-parquet-wiring-plan.md.
   FSTAR_MODULES=(
-    RDF_Format.ml
-    RDF_Graph_Executable.ml RDF_List_Helpers.ml RDF_Bytes.ml RDF_Store_Loader.ml Parquet_Footer.ml OWL_Vocabulary.ml OWL_DirectMapping_Filter.ml Tableau.ml
-    Parser_FastString.ml SPARQL11_IRI_Resolve.ml Parser_IRI.ml
+    RDF_Format.ml RDF_Vocabulary.ml
+    RDF_Indexed.ml
+    RDF_Graph_Executable.ml RDF_Vocabulary_Axioms.ml RDF_List_Helpers.ml RDF_Bytes.ml RDF_Store_Loader.ml Parquet_Footer.ml OWL_Vocabulary.ml OWL_DirectMapping_Filter.ml Tableau.ml
+    Parser_FastString.ml RDF_IRI.ml SPARQL11_IRI_Resolve.ml Parser_IRI.ml
     RDF_NQuads_Serialize.ml
     Parser_Combinators.ml Parser_TurtleScanner.ml Parser_NTriples.ml Parser_Turtle.ml
     Parser_OWLFunctional.ml

@@ -202,43 +202,51 @@ let rec find_by_predicate (pred : wf_iri) (g : rdf_graph) : rdf_graph=
   | hd::tl ->
       let rest = find_by_predicate pred tl in
       if hd.p = pred then hd :: rest else rest
-type bucket_map = (Prims.string * triple Prims.list) Prims.list
+type 'a bucket_map = 'a RDF_Indexed.bucket_map
+let bucket_lookup (m : 'a bucket_map) (k : Prims.string) : 'a Prims.list=
+  RDF_Indexed.bucket_lookup m k
+let bucket_replace (m : 'a bucket_map) (k : Prims.string) (v : 'a Prims.list)
+  : 'a bucket_map= RDF_Indexed.bucket_replace m k v
+let bucket_push (m : 'a bucket_map) (k : Prims.string) (t : 'a) :
+  'a bucket_map= RDF_Indexed.bucket_push m k t
+let build_bucket (key_of : 'a -> Prims.string FStar_Pervasives_Native.option)
+  (ts : 'a Prims.list) : 'a bucket_map= RDF_Indexed.build_bucket key_of ts
 type indexed_graph =
   {
   ig_triples: triple Prims.list ;
-  ig_pred: bucket_map ;
-  ig_subj: bucket_map ;
-  ig_obj: bucket_map ;
-  ig_sp: bucket_map ;
-  ig_po: bucket_map ;
-  ig_so: bucket_map }
+  ig_pred: triple bucket_map ;
+  ig_subj: triple bucket_map ;
+  ig_obj: triple bucket_map ;
+  ig_sp: triple bucket_map ;
+  ig_po: triple bucket_map ;
+  ig_so: triple bucket_map }
 let __proj__Mkindexed_graph__item__ig_triples (projectee : indexed_graph) :
   triple Prims.list=
   match projectee with
   | { ig_triples; ig_pred; ig_subj; ig_obj; ig_sp; ig_po; ig_so;_} ->
       ig_triples
 let __proj__Mkindexed_graph__item__ig_pred (projectee : indexed_graph) :
-  bucket_map=
+  triple bucket_map=
   match projectee with
   | { ig_triples; ig_pred; ig_subj; ig_obj; ig_sp; ig_po; ig_so;_} -> ig_pred
 let __proj__Mkindexed_graph__item__ig_subj (projectee : indexed_graph) :
-  bucket_map=
+  triple bucket_map=
   match projectee with
   | { ig_triples; ig_pred; ig_subj; ig_obj; ig_sp; ig_po; ig_so;_} -> ig_subj
 let __proj__Mkindexed_graph__item__ig_obj (projectee : indexed_graph) :
-  bucket_map=
+  triple bucket_map=
   match projectee with
   | { ig_triples; ig_pred; ig_subj; ig_obj; ig_sp; ig_po; ig_so;_} -> ig_obj
 let __proj__Mkindexed_graph__item__ig_sp (projectee : indexed_graph) :
-  bucket_map=
+  triple bucket_map=
   match projectee with
   | { ig_triples; ig_pred; ig_subj; ig_obj; ig_sp; ig_po; ig_so;_} -> ig_sp
 let __proj__Mkindexed_graph__item__ig_po (projectee : indexed_graph) :
-  bucket_map=
+  triple bucket_map=
   match projectee with
   | { ig_triples; ig_pred; ig_subj; ig_obj; ig_sp; ig_po; ig_so;_} -> ig_po
 let __proj__Mkindexed_graph__item__ig_so (projectee : indexed_graph) :
-  bucket_map=
+  triple bucket_map=
   match projectee with
   | { ig_triples; ig_pred; ig_subj; ig_obj; ig_sp; ig_po; ig_so;_} -> ig_so
 let subject_to_key (s : subject) : Prims.string=
@@ -269,11 +277,6 @@ let so_key_opt (s : subject) (o : rdf_term) :
       FStar_Pervasives_Native.Some
         (FStar_String.concat "" [subject_to_key s; unit_sep; k])
   | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
-let rec bucket_lookup (m : bucket_map) (k : Prims.string) :
-  triple Prims.list=
-  match m with
-  | [] -> []
-  | (k', v)::rest -> if k = k' then v else bucket_lookup rest k
 let find_objects_indexed (ig : indexed_graph) (subj : subject)
   (pred : wf_iri) : rdf_term Prims.list=
   let bucket = bucket_lookup ig.ig_sp (sp_key subj pred) in
@@ -287,19 +290,6 @@ let find_subjects_indexed (ig : indexed_graph) (pred : wf_iri)
         FStar_List_Tot_Base.filter (fun t -> rdf_term_eq t.o obj)
           (bucket_lookup ig.ig_pred pred) in
   FStar_List_Tot_Base.map (fun t -> t.s) bucket
-let rec bucket_replace_acc (acc : bucket_map) (m : bucket_map)
-  (k : Prims.string) (v : triple Prims.list) : bucket_map=
-  match m with
-  | [] -> FStar_List_Tot_Base.rev_acc acc [(k, v)]
-  | (k', v')::rest ->
-      if k = k'
-      then FStar_List_Tot_Base.rev_acc acc ((k, v) :: rest)
-      else bucket_replace_acc ((k', v') :: acc) rest k v
-let bucket_replace (m : bucket_map) (k : Prims.string)
-  (v : triple Prims.list) : bucket_map= bucket_replace_acc [] m k v
-let bucket_push (m : bucket_map) (k : Prims.string) (t : triple) :
-  bucket_map=
-  let existing = bucket_lookup m k in bucket_replace m k (t :: existing)
 let add_triple_to_indexes (ig : indexed_graph) (t : triple) : indexed_graph=
   let new_pred = bucket_push ig.ig_pred t.p t in
   let new_subj = bucket_push ig.ig_subj (subject_to_key t.s) t in
@@ -344,50 +334,6 @@ let bucket_key_po (t : triple) : Prims.string FStar_Pervasives_Native.option=
   po_key_opt t.p t.o
 let bucket_key_so (t : triple) : Prims.string FStar_Pervasives_Native.option=
   so_key_opt t.s t.o
-let triple_cmp_by_key
-  (key_of : triple -> Prims.string FStar_Pervasives_Native.option)
-  (t1 : triple) (t2 : triple) : Prims.int=
-  match ((key_of t1), (key_of t2)) with
-  | (FStar_Pervasives_Native.None, FStar_Pervasives_Native.None) ->
-      Prims.int_zero
-  | (FStar_Pervasives_Native.None, FStar_Pervasives_Native.Some uu___) ->
-      (Prims.of_int (-1))
-  | (FStar_Pervasives_Native.Some uu___, FStar_Pervasives_Native.None) ->
-      Prims.int_one
-  | (FStar_Pervasives_Native.Some k1, FStar_Pervasives_Native.Some k2) ->
-      FStar_String.compare k1 k2
-let rec group_sorted_aux
-  (key_of : triple -> Prims.string FStar_Pervasives_Native.option)
-  (ts : triple Prims.list)
-  (cur_key : Prims.string FStar_Pervasives_Native.option)
-  (cur_bucket : triple Prims.list) (acc : bucket_map) : bucket_map=
-  match ts with
-  | [] ->
-      (match cur_key with
-       | FStar_Pervasives_Native.Some k -> (k, cur_bucket) :: acc
-       | FStar_Pervasives_Native.None -> acc)
-  | t::rest ->
-      (match key_of t with
-       | FStar_Pervasives_Native.None ->
-           group_sorted_aux key_of rest cur_key cur_bucket acc
-       | FStar_Pervasives_Native.Some k ->
-           (match cur_key with
-            | FStar_Pervasives_Native.Some k0 ->
-                if k = k0
-                then
-                  group_sorted_aux key_of rest cur_key (t :: cur_bucket) acc
-                else
-                  group_sorted_aux key_of rest
-                    (FStar_Pervasives_Native.Some k) [t] ((k0, cur_bucket) ::
-                    acc)
-            | FStar_Pervasives_Native.None ->
-                group_sorted_aux key_of rest (FStar_Pervasives_Native.Some k)
-                  [t] acc))
-let build_bucket
-  (key_of : triple -> Prims.string FStar_Pervasives_Native.option)
-  (ts : triple Prims.list) : bucket_map=
-  let sorted = FStar_List_Tot_Base.sortWith (triple_cmp_by_key key_of) ts in
-  group_sorted_aux key_of sorted FStar_Pervasives_Native.None [] []
 let empty_indexed : indexed_graph=
   {
     ig_triples = [];
@@ -628,27 +574,24 @@ let rec sparql_concat (args : Prims.string Prims.list) : Prims.string=
   match args with
   | [] -> ""
   | hd::tl -> FStar_String.concat "" [hd; sparql_concat tl]
-let rdfs_subClassOf : wf_iri=
-  "http://www.w3.org/2000/01/rdf-schema#subClassOf"
-let rdfs_subPropertyOf : wf_iri=
-  "http://www.w3.org/2000/01/rdf-schema#subPropertyOf"
-let rdfs_domain : wf_iri= "http://www.w3.org/2000/01/rdf-schema#domain"
-let rdfs_range : wf_iri= "http://www.w3.org/2000/01/rdf-schema#range"
-let rdf_type : wf_iri= "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
-let rdfs_Class : wf_iri= "http://www.w3.org/2000/01/rdf-schema#Class"
-let rdf_Property : wf_iri=
-  "http://www.w3.org/1999/02/22-rdf-syntax-ns#Property"
-let rdfs_Resource : wf_iri= "http://www.w3.org/2000/01/rdf-schema#Resource"
-let rdfs_Literal : wf_iri= "http://www.w3.org/2000/01/rdf-schema#Literal"
+let rdfs_subClassOf : wf_iri= RDF_Vocabulary.rdfs_subClassOf
+let rdfs_subPropertyOf : wf_iri= RDF_Vocabulary.rdfs_subPropertyOf
+let rdfs_domain : wf_iri= RDF_Vocabulary.rdfs_domain
+let rdfs_range : wf_iri= RDF_Vocabulary.rdfs_range
+let rdf_type : wf_iri= RDF_Vocabulary.rdf_type
+let rdfs_Class : wf_iri= RDF_Vocabulary.rdfs_Class
+let rdf_Property : wf_iri= RDF_Vocabulary.rdf_Property
+let rdfs_Resource : wf_iri= RDF_Vocabulary.rdfs_Resource
+let rdfs_Literal : wf_iri= RDF_Vocabulary.rdfs_Literal
 let rdfs_ContainerMembershipProperty : wf_iri=
-  "http://www.w3.org/2000/01/rdf-schema#ContainerMembershipProperty"
-let rdfs_member : wf_iri= "http://www.w3.org/2000/01/rdf-schema#member"
-let rdfs_Datatype : wf_iri= "http://www.w3.org/2000/01/rdf-schema#Datatype"
-let rdf_1 : wf_iri= "http://www.w3.org/1999/02/22-rdf-syntax-ns#_1"
-let rdf_2 : wf_iri= "http://www.w3.org/1999/02/22-rdf-syntax-ns#_2"
-let rdf_3 : wf_iri= "http://www.w3.org/1999/02/22-rdf-syntax-ns#_3"
-let rdf_4 : wf_iri= "http://www.w3.org/1999/02/22-rdf-syntax-ns#_4"
-let rdf_5 : wf_iri= "http://www.w3.org/1999/02/22-rdf-syntax-ns#_5"
+  RDF_Vocabulary.rdfs_ContainerMembershipProperty
+let rdfs_member : wf_iri= RDF_Vocabulary.rdfs_member
+let rdfs_Datatype : wf_iri= RDF_Vocabulary.rdfs_Datatype
+let rdf_1 : wf_iri= RDF_Vocabulary.rdf_1
+let rdf_2 : wf_iri= RDF_Vocabulary.rdf_2
+let rdf_3 : wf_iri= RDF_Vocabulary.rdf_3
+let rdf_4 : wf_iri= RDF_Vocabulary.rdf_4
+let rdf_5 : wf_iri= RDF_Vocabulary.rdf_5
 let container_membership_properties : wf_iri Prims.list=
   [rdf_1; rdf_2; rdf_3; rdf_4; rdf_5]
 let subject_to_term (s : subject) : rdf_term=
