@@ -242,6 +242,21 @@ let rec jexp_value_object_keys_valid (ac:active_context) (fields:list (string & 
      | None -> false)
     && jexp_value_object_keys_valid ac rest
 
+// Bare ASCII space is never legal, unencoded, inside an IRI (RFC 3986
+// §2 splits it into "reserved"/"unreserved"/pct-encoded — a raw 0x20
+// byte is none of those). `is_iri` (RDF.Graph.Executable) only checks
+// for a colon, so a value-object @type IRI that expands with an
+// embedded space (toRdf/e123: "http://example.com/baz z") needs this
+// extra check to be rejected as an "invalid typed value" — a full
+// RFC 3986 validator is out of scope here.
+let rec jexp_string_has_space (s:string) (pos:nat) (fuel:nat) : Tot bool (decreases fuel) =
+  if fuel = 0 then false
+  else
+    let n = fs_byte_length s in
+    if pos >= n then false
+    else if jbyte_at s pos = 0x20 then true
+    else jexp_string_has_space s (pos + 1) (fuel - 1)
+
 let jexp_expand_value_object (ac:active_context) (fields:list (string & json_val))
   : option json_val =
   match jexp_find_aliased_field ac "@value" fields with
@@ -297,7 +312,9 @@ let jexp_expand_value_object (ac:active_context) (fields:list (string & json_val
           | (None, Some t) ->
             (match expand_iri ac t true with
              | None -> None
-             | Some iri -> Some (JObject [("@value", v); ("@type", JString iri)]))
+             | Some iri ->
+               if jexp_string_has_space iri 0 (fs_byte_length iri + 1) then None
+               else Some (JObject [("@value", v); ("@type", JString iri)]))
           | (None, None) -> Some (JObject [("@value", v)])))
 
 // Split a node object's members into its (at most one) @context value and
@@ -501,31 +518,41 @@ let rec jexp_flatten_map_entries (entries:list (string & json_val))
 
 // @language containers: each map key is a language tag, or "@none" for an
 // entry that gets no @language at all. Non-string / null entries are
-// dropped, mirroring the leniency elsewhere in this module.
-let jexp_language_map_item (key:string) (v:json_val) : option json_val =
+// dropped, mirroring the leniency elsewhere in this module. `is_none`:
+// whether THIS key resolves to "@none" — resolved by the caller
+// (jexp_expand_language_map) via the active context, since a raw JSON
+// key may be a TERM ALIASED to the keyword rather than the literal
+// string "@none" (toRdf/m010: "none": "@none" in the context, used as
+// a language-map key). `key` is still used verbatim as the @language
+// TAG in the non-"@none" case (it IS the language tag, e.g. "de").
+let jexp_language_map_item (key:string) (is_none:bool) (v:json_val) : option json_val =
   match v with
   | JString s ->
-    if key = "@none"
+    if is_none
     then Some (JObject [("@value", JString s)])
     else Some (JObject [("@value", JString s); ("@language", JString key)])
   | _ -> None
 
-let rec jexp_language_map_entry_items (key:string) (items:list json_val)
+let rec jexp_language_map_entry_items (key:string) (is_none:bool) (items:list json_val)
   : Tot (list json_val) (decreases items) =
   match items with
   | [] -> []
   | v :: rest ->
-    (match jexp_language_map_item key v with
-     | Some it -> it :: jexp_language_map_entry_items key rest
-     | None -> jexp_language_map_entry_items key rest)
+    (match jexp_language_map_item key is_none v with
+     | Some it -> it :: jexp_language_map_entry_items key is_none rest
+     | None -> jexp_language_map_entry_items key is_none rest)
 
-let rec jexp_expand_language_map (entries:list (string & json_val))
+let rec jexp_expand_language_map (ac:active_context) (entries:list (string & json_val))
   : Tot (list json_val) (decreases entries) =
   match entries with
   | [] -> []
   | (k, v) :: rest ->
-    List.Tot.append (jexp_language_map_entry_items k (jexp_as_array v))
-                     (jexp_expand_language_map rest)
+    // toRdf/m010: a key that is itself an actual keyword ALIASED to
+    // "@none" (its expanded form, via expand_iri) counts as "@none"
+    // even when the raw JSON key text isn't literally "@none".
+    let is_none = (k = "@none") || (match expand_iri ac k true with Some "@none" -> true | _ -> false) in
+    List.Tot.append (jexp_language_map_entry_items k is_none (jexp_as_array v))
+                     (jexp_expand_language_map ac rest)
 
 // @id / @type map post-processing: inject the map key (already IRI-
 // expanded by the caller) into an already-expanded item.
@@ -812,7 +839,14 @@ and expand_one_field (ac:active_context) (ac0:active_context) (key:string) (valu
      | JObject rfields ->
        (match expand_reverse_block_fields ac rfields (fuel - 1) with
         | None -> None
-        | Some entries -> Some (Some [("@reverse", JObject entries)]))
+        | Some (ord_entries, rev_entries) ->
+          // toRdf/e043: a term whose own reverse-ness cancelled the
+          // block's reversal (see expand_reverse_block_fields's banner)
+          // contributes ORDINARY entries here, folded alongside — not
+          // instead of — a (possibly empty) "@reverse" wrapper for
+          // whatever genuinely stays reversed.
+          Some (Some (List.Tot.append ord_entries
+                        (if rev_entries = [] then [] else [("@reverse", JObject rev_entries)]))))
      | _ -> None)
   else if key = "@index" then Some None
   else if key = "@included" then
@@ -925,17 +959,32 @@ and expand_reverse_property (ac:active_context) (term_opt:option term_def) (prop
          then Some (Some [("@reverse", JObject [(prop_iri, JArray items)])])
          else None)
 
-// An inline "@reverse": {...} node-object member: every key inside is an
-// ORDINARY (forward) term/IRI whose meaning is reversed purely by
-// appearing in this block.
+// An inline "@reverse": {...} node-object member: every key inside is
+// normally an ORDINARY (forward) term/IRI whose meaning is reversed
+// purely by appearing in this block — EXCEPT a key whose OWN term
+// definition is ITSELF a "@reverse" property (td_reverse), where the
+// two reversals cancel out (toRdf/e043 "Using reverse properties
+// inside a @reverse-container": "isKnownBy": {"@reverse": "foaf:
+// knows"} used inside an outer "@reverse" block must expand as an
+// ORDINARY foaf:knows property, i.e. "markus knows dave", not a
+// doubly-reversed "dave knows markus"). Returns (ordinary entries,
+// reverse-bucket entries) separately so the caller (expand_one_field's
+// "@reverse" case) can fold the cancelled-out ones back into the
+// node's plain property list instead of nesting them under "@reverse".
 and expand_reverse_block_fields (ac:active_context) (fields:list (string & json_val)) (fuel:nat)
-  : Tot (option (list (string & json_val))) (decreases fuel) =
+  : Tot (option (list (string & json_val) & list (string & json_val))) (decreases fuel) =
   if fuel = 0 then None
   else
     match fields with
-    | [] -> Some []
+    | [] -> Some ([], [])
     | (key, value) :: rest ->
       if jldctx_is_keyword key then None
+      // toRdf/e065 "Keys that are not mapped to an IRI in a
+      // reverse-map are dropped": a key with no term definition and no
+      // colon/@vocab fallback (expand_iri returns None) is silently
+      // SKIPPED, not a parse failure — mirrors the leniency this
+      // module already applies to other unresolvable-key situations.
+      else if None? (expand_iri ac key true) then expand_reverse_block_fields ac rest (fuel - 1)
       else
         (match expand_iri ac key true with
          | None -> None
@@ -953,7 +1002,11 @@ and expand_reverse_block_fields (ac:active_context) (fields:list (string & json_
                 else
                 (match expand_reverse_block_fields ac rest (fuel - 1) with
                  | None -> None
-                 | Some restout -> Some ((prop_iri, JArray items) :: restout))))
+                 | Some (ord_rest, rev_rest) ->
+                   let is_rev_term = (match term_opt with Some td -> td.td_reverse | None -> false) in
+                   if is_rev_term
+                   then Some ((prop_iri, JArray items) :: ord_rest, rev_rest)
+                   else Some (ord_rest, (prop_iri, JArray items) :: rev_rest))))
 
 // The item list for one property's value, honoring the term's container
 // mapping (if any): @index/@language/@id/@type containers apply ONLY
@@ -1003,9 +1056,9 @@ and expand_property_items (ac:active_context) (term_opt:option term_def) (value:
     | CK_Language, JObject entries ->
       // toRdf/er35: a non-string entry value in a language map is an
       // "invalid language map value".
-      if jexp_language_map_valid entries then Some (jexp_expand_language_map entries) else None
+      if jexp_language_map_valid entries then Some (jexp_expand_language_map ac entries) else None
     | CK_Id, JObject entries -> jexp_expand_id_map ac entries (fuel - 1)
-    | CK_Type, JObject entries -> jexp_expand_type_map ac entries (fuel - 1)
+    | CK_Type, JObject entries -> jexp_expand_type_map ac type_map entries (fuel - 1)
     | CK_Graph, _ -> Some (expand_graph_container_items_plain ac (jexp_as_array value) (fuel - 1))
     | CK_GraphIndex, JObject entries ->
       (match idx_prop with
@@ -1158,7 +1211,7 @@ and jexp_expand_id_map (ac:active_context) (entries:list (string & json_val)) (f
 // the value is then expanded via expand_item's from_map=true path (no
 // SECOND pop-back — see expand_node_from_map's banner). Every OTHER
 // item in this module passes from_map=false.
-and jexp_expand_type_map (ac:active_context) (entries:list (string & json_val)) (fuel:nat)
+and jexp_expand_type_map (ac:active_context) (type_map:option string) (entries:list (string & json_val)) (fuel:nat)
   : Tot (option (list json_val)) (decreases fuel) =
   if fuel = 0 then None
   else
@@ -1169,15 +1222,24 @@ and jexp_expand_type_map (ac:active_context) (entries:list (string & json_val)) 
       (match apply_property_scoped_context ac_popped (jldctx_find_term ac.ac_terms k) with
        | None -> None
        | Some ac_for_value ->
-         (match expand_item ac_for_value (Some "@id") None None true v (fuel - 1) with
+         // JSON-LD 1.1 API Create Term Definition's own @container:@type
+         // step: "If type mapping in definition is undefined, set it to
+         // @id" — @id is only the DEFAULT; an EXPLICIT "@type": "@vocab"
+         // on the map's own term (this function's `type_map` parameter,
+         // threaded from expand_property_items) must still be honored
+         // (toRdf/m019: "foo": {"@type": "@vocab", "@container": "@type"}
+         // must vocab-relative-expand "baz", not @id/document-relative
+         // expand it).
+         let map_value_type = (match type_map with Some tm -> tm | None -> "@id") in
+         (match expand_item ac_for_value (Some map_value_type) None None true v (fuel - 1) with
           | None -> None
-          | Some None -> jexp_expand_type_map ac rest (fuel - 1)
+          | Some None -> jexp_expand_type_map ac type_map rest (fuel - 1)
           | Some (Some item) ->
             let item1 =
               (match jexp_map_key_iri ac k true with
                | None -> item
                | Some kiri -> jexp_add_type_to_item kiri item) in
-            (match jexp_expand_type_map ac rest (fuel - 1) with
+            (match jexp_expand_type_map ac type_map rest (fuel - 1) with
              | None -> None
              | Some restout -> Some (item1 :: restout))))
 
@@ -1297,13 +1359,35 @@ and expand_property (ac:active_context) (type_map:option string) (lang_ovr:optio
     match items with
     | [] -> Some []
     | v :: rest ->
-      (match expand_item ac type_map lang_ovr dir_ovr false v (fuel - 1) with
-       | None -> None
-       | Some None -> expand_property ac type_map lang_ovr dir_ovr rest (fuel - 1)
-       | Some (Some one) ->
-         (match expand_property ac type_map lang_ovr dir_ovr rest (fuel - 1) with
+      // An explicit set object ({"@set": [...]}) is TRANSPARENT — its
+      // own contents splice directly into this property's item list,
+      // recursively (a set nested inside a set, or inside a plain
+      // array, collapses away entirely), rather than being expanded as
+      // an ordinary (and therefore ill-shaped, since "@set" is an
+      // actual keyword) node object (toRdf/e004 "optimize @set, keep
+      // empty arrays", e015 "collapse set of sets, keep empty lists",
+      // e016, e023: idprop2/dateprop2 use an explicit {"@set": [...]}
+      // value on a term with no @container:@set mapping at all).
+      let set_contents = (match v with
+        | JObject fields -> (match jexp_find_aliased_field ac "@set" fields with
+                              | Some (_, sv) -> Some sv | None -> None)
+        | _ -> None) in
+      (match set_contents with
+       | Some setval ->
+         (match expand_property ac type_map lang_ovr dir_ovr (jexp_as_array setval) (fuel - 1) with
           | None -> None
-          | Some restout -> Some (one :: restout)))
+          | Some setitems ->
+            (match expand_property ac type_map lang_ovr dir_ovr rest (fuel - 1) with
+             | None -> None
+             | Some restout -> Some (List.Tot.append setitems restout)))
+       | None ->
+         (match expand_item ac type_map lang_ovr dir_ovr false v (fuel - 1) with
+          | None -> None
+          | Some None -> expand_property ac type_map lang_ovr dir_ovr rest (fuel - 1)
+          | Some (Some one) ->
+            (match expand_property ac type_map lang_ovr dir_ovr rest (fuel - 1) with
+             | None -> None
+             | Some restout -> Some (one :: restout))))
 
 // One property value: an explicit value object ({"@value": ...}), a list
 // object ({"@list": [...]}), a nested node object, a node reference, or a
@@ -1331,9 +1415,32 @@ and expand_item (ac:active_context) (type_map:option string) (lang_ovr:option (o
       // "@value"), and that alias is only visible in THIS `ac`, never
       // recoverable after popping. See jexp_find_aliased_field's banner.
       if jexp_has_aliased_field ac "@value" fields then
-        (match jexp_expand_value_object ac fields with
-         | None -> None
-         | Some vo -> Some (Some vo))
+        // toRdf/e004 "list2": {"@value": null} is syntactically a value
+        // object (not a malformed one — the OTHER keys, if any, are
+        // still key-validated below), but a null @value carries no
+        // information: drop it silently, exactly like a bare JSON null
+        // item, rather than surfacing it as a "wrong shape" value
+        // object (which jexp_expand_value_object's later branches were
+        // never written to special-case). EXCEPTION (toRdf/js22
+        // "Transform JSON literal (null)"): under "@type": "@json"
+        // the JSON value null IS the payload — {"@value": null,
+        // "@type": "@json"} is the rdf:JSON literal "null", not an
+        // absent value — so it takes the normal value-object path.
+        (let json_typed =
+           (match jexp_find_aliased_field ac "@type" fields with
+            | Some (_, JString t) -> expand_iri ac t true = Some "@json"
+            | _ -> false) in
+         match jexp_find_aliased_field ac "@value" fields with
+         | Some (_, JNull) ->
+           if json_typed then
+             (match jexp_expand_value_object ac fields with
+              | None -> None
+              | Some vo -> Some (Some vo))
+           else if jexp_value_object_keys_valid ac fields then Some None else None
+         | _ ->
+           (match jexp_expand_value_object ac fields with
+            | None -> None
+            | Some vo -> Some (Some vo)))
       else if jexp_has_aliased_field ac "@list" fields then
         // toRdf/er41: a list object carrying anything besides @list and
         // @index is an "invalid set or list object".
@@ -1387,7 +1494,21 @@ and expand_item (ac:active_context) (type_map:option string) (lang_ovr:option (o
            Some (Some (JObject [("@value", JString s); ("@type", JString dt)])))
     | JBool _ -> Some (Some (jexp_wrap_scalar type_map v))
     | JNumber _ -> Some (Some (jexp_wrap_scalar type_map v))
-    | JArray _ -> None
+    | JArray items ->
+      // JSON-LD 1.1's "Lists of Lists" feature (JSON-LD 1.1 API
+      // Expansion algorithm, list-expansion step: an array item nested
+      // inside a @list-coerced value or an explicit {"@list": [...]}
+      // array is itself expanded exactly like a top-level list-object's
+      // contents and wrapped as a NESTED list object, rather than the
+      // JSON-LD 1.0 "list of lists" error this used to fall through to
+      // (toRdf/li05-li10: "coerced @list containing an array/multiple
+      // lists/mixed list values" — a bare array found while expanding a
+      // @list's own item array recurses through expand_property, same
+      // type_map/lang_ovr/dir_ovr as the enclosing list, producing
+      // {"@list": [<recursively-expanded items>]}).
+      (match expand_property ac type_map lang_ovr dir_ovr items (fuel - 1) with
+       | None -> None
+       | Some out_items -> Some (Some (JObject [("@list", JArray out_items)])))
 
 // The contents of a @graph array (or a top-level array of node objects):
 // each entry is expanded as a node object; a malformed entry is dropped

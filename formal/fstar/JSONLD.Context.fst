@@ -255,6 +255,21 @@ let rec jldctx_all_alpha_from (s:string) (pos:nat) (fuel:nat) : Tot bool (decrea
     else if jldctx_is_alpha_byte (jbyte_at s pos) then jldctx_all_alpha_from s (pos + 1) (fuel - 1)
     else false
 
+// RFC 3986 §3.1 scheme character: ALPHA / DIGIT / "+" / "-" / "."
+// (used to tell a genuine URI scheme prefix apart from a colon that
+// merely sits inside a fragment/path component — see
+// expand_iri_gen's compact-IRI branch).
+let jldctx_is_scheme_char (b:int) : bool =
+  jldctx_is_alpha_byte b || (b >= 0x30 && b <= 0x39) || b = 0x2B || b = 0x2D || b = 0x2E
+
+let rec jldctx_all_scheme_chars_from (s:string) (pos:nat) (fuel:nat) : Tot bool (decreases fuel) =
+  if fuel = 0 then true
+  else
+    let n = fs_byte_length s in
+    if pos >= n then true
+    else if jldctx_is_scheme_char (jbyte_at s pos) then jldctx_all_scheme_chars_from s (pos + 1) (fuel - 1)
+    else false
+
 // "Has the form of a keyword" (JSON-LD 1.1 API §4.1.5 / Create Term
 // Definition): "@" followed by one or more ALPHA bytes only. "@" alone
 // (nothing after the at) and "@foo.bar" (a dot) do NOT have keyword
@@ -395,6 +410,73 @@ let rec jldctx_find_colon (s:string) (pos:nat) (fuel:nat)
     else if jbyte_at s pos = 0x3A then Some pos
     else jldctx_find_colon s (pos + 1) (fuel - 1)
 
+// True when `s` contains a colon at a byte position that is NEITHER the
+// first NOR the last byte of s (part of the JSON-LD 1.1 API Create Term
+// Definition self-consistency gate — see jldctx_term_needs_self_check).
+let jldctx_colon_not_at_edges (s:string) : bool =
+  let n = fs_byte_length s in
+  (match jldctx_find_colon s 0 (n + 1) with
+   | Some c -> c > 0 && c < n - 1
+   | None -> false)
+
+// A term NAME that is itself compact-IRI- or absolute-IRI-shaped (a
+// colon not at the very first/last byte) or contains a slash anywhere
+// triggers a MANDATORY self-consistency check whenever the term also
+// carries an explicit "@id" mapping (JSON-LD 1.1 API Create Term
+// Definition: "If the term contains a colon (:) anywhere but as the
+// first or last character of term, or if it contains a slash (/)
+// anywhere: ... If the result of IRI expanding term ... is not the same
+// as the IRI mapping of definition, an invalid IRI mapping error has
+// been detected"). Checked by process_term_def_obj's (Some iri, None)
+// [@id-present] arm — toRdf/er43 (a term name that IS an absolute IRI,
+// given an unrelated "@id" alias to the keyword @type), toRdf/er48 (a
+// slash-shaped relative-IRI term name, which cannot expand to an IRI at
+// all with no @base/@vocab in scope).
+let jldctx_term_needs_self_check (s:string) : bool =
+  jldctx_colon_not_at_edges s || jldctx_key_has_slash s
+
+// A blank node identifier ("_:xyz") — legal as an @id/@reverse IRI
+// mapping, but NOT as an @type mapping (JSON-LD 1.1 API Create Term
+// Definition: "if the expanded type is neither @id, nor @json, nor
+// @none, nor @vocab, nor an IRI, an invalid type mapping error" — a
+// blank node identifier is none of those — toRdf/er13).
+let jldctx_is_bnode_id (s:string) : bool =
+  fs_byte_length s >= 2 && jbyte_at s 0 = 0x5F && jbyte_at s 1 = 0x3A
+
+// A cyclic IRI mapping (JSON-LD 1.1 API Create Term Definition's
+// `defined` map: "If defined contains the entry term and the associated
+// value is false, a cyclic IRI mapping error has been detected"): an
+// @id/@reverse value that is a compact IRI whose PREFIX is the very
+// term key CURRENTLY being defined, when that key has no term
+// definition yet in `ac` (i.e. its own definition is still in progress
+// — the "defined[term] = false" case; a key that DOES already have an
+// entry in `ac` was fully defined by an EARLIER context application or
+// an earlier field of this same context object, which is not a cycle)
+// — toRdf/er10: {"term": {"@id": "term:term"}} needs "term" as a
+// prefix to expand its own @id value.
+// Mirrors expand_iri_gen's OWN guard order before it would actually
+// perform a compact-IRI prefix lookup on `key` — a colon match that
+// expand_iri_gen would instead shortcut via the "_" blank-node marker,
+// the non-scheme-shaped-prefix fallback, or the "//" authority marker
+// (an already-absolute IRI, e.g. toRdf/e067's "http": "http://example.
+// com/...", where the VALUE happens to start with the same "http"
+// prefix as the TERM being defined — this is an ordinary absolute IRI,
+// not a dependency on the term "http"'s own in-progress definition)
+// is NOT a cyclic reference at all; only a genuine compact-IRI-prefix
+// dependency on `key` itself, still undefined, is.
+let jldctx_self_cyclic (ac:active_context) (key:string) (raw:string) : bool =
+  let n = fs_byte_length raw in
+  (match jldctx_find_colon raw 0 (n + 1) with
+   | Some c ->
+     c > 0 &&
+     (let prefix = fs_byte_sub raw 0 c in
+      prefix <> "_" &&
+      jldctx_all_scheme_chars_from prefix 0 c &&
+      not (jbyte_at raw (c + 1) = 0x2F && jbyte_at raw (c + 2) = 0x2F) &&
+      prefix = key &&
+      None? (jldctx_find_term ac.ac_terms key))
+   | None -> false)
+
 // RFC 3986 reference resolution, reusing SPARQL11.IRI.Resolve.resolve_iri
 // (which takes a wf_iri base). base here is an ordinary string because
 // active_context.ac_base is populated incrementally (see the "@base"
@@ -519,6 +601,18 @@ let expand_iri_gen (ac:active_context) (value:string) (vocab:bool) (in_ctx:bool)
          else
            let prefix = fs_byte_sub value 0 c in
            if prefix = "_" then Some value
+           // RFC 3986 §3.1: a URI scheme is `ALPHA *(ALPHA / DIGIT / "+"
+           // / "-" / ".")` — every byte before the colon must be a
+           // scheme-legal character for that colon to be a scheme (or
+           // compact-IRI prefix) delimiter at all. A value like
+           // "#Test:2" has its colon INSIDE a fragment (introduced by
+           // "#", not a scheme character), so it can never be an
+           // absolute-or-compact IRI — treating it as one leaves it
+           // unresolved against @base/@vocab (toRdf/e109: "IRI expansion
+           // of fragments including ':'"). Falls through to the plain
+           // base/vocab fallback instead.
+           else if not (jldctx_all_scheme_chars_from prefix 0 c) then
+             jldctx_expand_fallback ac value vocab
            else if jbyte_at value (c + 1) = 0x2F && jbyte_at value (c + 2) = 0x2F then Some value
            else
              (match jldctx_find_term ac.ac_terms prefix with
@@ -632,7 +726,12 @@ let rec jldctx_term_obj_fields
          then jldctx_term_obj_fields ac idf revf typef contk langf dirf idxf ctxf protf rest
          else
          (match jldctx_expand_iri_ctx ac s true with
-          | Some e -> jldctx_term_obj_fields ac (Some e) revf typef contk langf dirf idxf ctxf protf rest
+          // JSON-LD 1.1 API Create Term Definition: "if [the resulting
+          // IRI mapping] equals @context, an invalid keyword alias error
+          // has been detected" (toRdf/er19 — aliasing an ordinary term
+          // to the @context keyword itself).
+          | Some e -> if e = "@context" then None
+                      else jldctx_term_obj_fields ac (Some e) revf typef contk langf dirf idxf ctxf protf rest
           | None -> None)
        | _ -> None)
     else if k = "@reverse" then
@@ -649,9 +748,18 @@ let rec jldctx_term_obj_fields
           // JSON-LD 1.1 API Create Term Definition: "If the expanded type
           // is @json or @none, and processing mode is json-ld-1.0, an
           // invalid type mapping error has been detected" (toRdf/tn01 —
-          // "@type: @none is illegal in 1.0").
+          // "@type: @none is illegal in 1.0"). Separately: "Otherwise, if
+          // the expanded type is neither @id, nor @json, nor @none, nor
+          // @vocab, nor an IRI, an invalid type mapping error has been
+          // detected" — a blank node identifier is none of those
+          // (toRdf/er13: "_:not-an-iri" expands unchanged, per
+          // expand_iri_gen's "_" prefix branch, to a syntactically
+          // colon-bearing but type-mapping-illegal blank node id).
           | Some e ->
             if ac.ac_mode10 && (e = "@json" || e = "@none") then None
+            else if e = "@id" || e = "@json" || e = "@none" || e = "@vocab" then
+              jldctx_term_obj_fields ac idf revf (Some e) contk langf dirf idxf ctxf protf rest
+            else if jldctx_is_bnode_id e then None
             else jldctx_term_obj_fields ac idf revf (Some e) contk langf dirf idxf ctxf protf rest
           | None -> None)
        | _ -> None)
@@ -741,6 +849,18 @@ let rec jldctx_term_obj_fields
 let process_term_def_obj (ac:active_context) (key:string) (fields:list (string & json_val))
                           (default_protected:bool) (override_protected:bool)
   : Tot (option active_context) =
+  // Cyclic IRI mapping pre-check (jldctx_self_cyclic's doc comment):
+  // scanned against the RAW (unexpanded) @id/@reverse string values,
+  // before jldctx_term_obj_fields ever calls jldctx_expand_iri_ctx on
+  // them — toRdf/er10.
+  let self_ref =
+    (match List.Tot.find (fun (kv:(string & json_val)) -> fst kv = "@id") fields with
+     | Some (_, JString s) -> jldctx_self_cyclic ac key s
+     | _ -> false) ||
+    (match List.Tot.find (fun (kv:(string & json_val)) -> fst kv = "@reverse") fields with
+     | Some (_, JString s) -> jldctx_self_cyclic ac key s
+     | _ -> false) in
+  if self_ref then None else
   match jldctx_term_obj_fields ac None None None CK_None None None None None None fields with
   | None -> None
   | Some (idf, revf, typef, contk, langf, dirf, idxf, ctxf, protf) ->
@@ -749,6 +869,13 @@ let process_term_def_obj (ac:active_context) (key:string) (fields:list (string &
     // "@graph"+"@index") — anything else is a spec error, not a
     // silently-ignored member.
     if Some? idxf && not (contk = CK_Index || contk = CK_GraphIndex) then None
+    // JSON-LD 1.1 API Create Term Definition, the @container:@type
+    // step: "If the container mapping of definition includes @type:
+    // If type mapping in definition is undefined, set it to @id. If
+    // type mapping in definition is neither @id nor @vocab, an invalid
+    // type mapping error has been detected" (toRdf/m020: "@type":
+    // "literal" on a "@container": "@type" term).
+    else if contk = CK_Type && Some? typef && typef <> Some "@id" && typef <> Some "@vocab" then None
     else
     let protected = (match protf with Some b -> b | None -> default_protected) in
     // Object-form definitions are compact-IRI prefixes only on explicit
@@ -769,6 +896,24 @@ let process_term_def_obj (ac:active_context) (key:string) (fields:list (string &
      | (Some _, Some _) -> None
      | (Some iri, None) ->
        if prefix_flag && jldctx_is_keyword iri then None
+       // JSON-LD 1.1 API Create Term Definition self-consistency check
+       // (jldctx_term_needs_self_check's doc comment): a term name that
+       // is itself compact-IRI-/absolute-IRI-shaped or slash-bearing
+       // must IRI-expand to the SAME mapping its explicit @id just
+       // produced — toRdf/er43, toRdf/er48. 1.1-only: the whole
+       // colon-in-term self-consistency step is new in the JSON-LD 1.1
+       // API's Create Term Definition (er43's manifest twin te026, a
+       // json-ld-1.0-specVersion POSITIVE, redefines the rdf:type IRI
+       // with "@id": "@type" — "uses @type syntax NOW illegal", i.e.
+       // legal under 1.0).
+       // The key is expanded with its OWN entry stripped: the preview
+       // pass (jldctx_preview_prefixes) may have pre-registered this
+       // very term, and full-term substitution through that entry would
+       // make the check vacuously succeed (toRdf/er48: "./something"
+       // must fail to expand as a term name, not resolve through its
+       // own preview registration).
+       else if (not ac.ac_mode10) && jldctx_term_needs_self_check key &&
+               jldctx_expand_iri_ctx ({ ac with ac_terms = jldctx_remove_term ac.ac_terms key }) key true <> Some iri then None
        else
        let td = { td_iri = iri; td_type_mapping = typef; td_container = contk;
                   td_reverse = false; td_language = langf; td_direction = dirf; td_index = idxf;
@@ -777,6 +922,14 @@ let process_term_def_obj (ac:active_context) (key:string) (fields:list (string &
         | Some final_td -> Some ({ ac with ac_terms = (key, final_td) :: ac.ac_terms })
         | None -> None)
      | (None, Some iri) ->
+       // JSON-LD 1.1 API Create Term Definition, @reverse's @container
+       // step: "reverse properties only support set- and index-
+       // containers" — CK_None also covers the bare "@set" marker (see
+       // container_kind's doc comment); any other container_kind sharing
+       // a "@reverse" is an invalid reverse property (toRdf/er17: a
+       // @reverse term declaring "@container": "@list").
+       if not (contk = CK_None || contk = CK_Index) then None
+       else
        let td = { td_iri = iri; td_type_mapping = typef; td_container = contk;
                   td_reverse = true; td_language = langf; td_direction = dirf; td_index = idxf;
                   td_scoped_context = ctxf; td_protected = protected; td_prefix = prefix_flag } in
@@ -784,7 +937,16 @@ let process_term_def_obj (ac:active_context) (key:string) (fields:list (string &
         | Some final_td -> Some ({ ac with ac_terms = (key, final_td) :: ac.ac_terms })
         | None -> None)
      | (None, None) ->
-       (match jldctx_expand_iri_ctx ac key true with
+       // No explicit @id/@reverse: the term's OWN mapping is derived
+       // from its NAME via the colon-prefix / slash / @type / vocab
+       // fallback chain ONLY (JSON-LD 1.1 API Create Term Definition's
+       // tail branches) — NEVER via "full term substitution" (looking
+       // `key` up as an ALREADY-DEFINED term, which expand_iri_gen's
+       // vocab-relative branch also does, for expanding ordinary
+       // VALUES). Strip any EXISTING entry for `key` before expanding
+       // so a redefinition-without-@id never resolves through its own
+       // stale, about-to-be-replaced mapping.
+       (match jldctx_expand_iri_ctx ({ ac with ac_terms = jldctx_remove_term ac.ac_terms key }) key true with
         | None -> None
         | Some iri ->
           let td = { td_iri = iri; td_type_mapping = typef; td_container = contk;
@@ -929,6 +1091,11 @@ let context_process_one_field (ac:active_context) (key:string) (value:json_val)
   // ordinary terms and fall through (e119's "allowed" pair).
   else if jldctx_actual_keyword key then None
   else if jldctx_keyword_lookalike key then Some ac
+  // JSON-LD 1.1 API Create Term Definition: "If term is the empty
+  // string (""), an invalid term definition error has been detected"
+  // (toRdf/er52 — a context defining "": {...} alongside an ordinary
+  // term).
+  else if key = "" then None
   else
     (match value with
      | JNull ->
@@ -941,24 +1108,58 @@ let context_process_one_field (ac:active_context) (key:string) (value:json_val)
         | Some existing ->
           if existing.td_protected && not override_protected then None
           else
+            // JSON-LD 1.1 API Create Term Definition: "value is null"
+            // still goes through "Create a new term definition,
+            // definition, initializing ... protected to protected [the
+            // ambient default_protected input]" — a null term is NOT
+            // unconditionally unprotected (toRdf/pr28: a context-level
+            // "@protected": true default must stick to a "term": null
+            // entry too, so a LATER context's redefinition of that same
+            // term is rejected as a protected-term redefinition).
             let td = { td_iri = "@null"; td_type_mapping = None; td_container = CK_None;
                        td_reverse = false; td_language = None; td_direction = None; td_index = None;
-                       td_scoped_context = None; td_protected = false; td_prefix = false } in
+                       td_scoped_context = None; td_protected = default_protected; td_prefix = false } in
             Some ({ ac with ac_terms = (key, td) :: jldctx_remove_term ac.ac_terms key })
         | None ->
           let td = { td_iri = "@null"; td_type_mapping = None; td_container = CK_None;
                      td_reverse = false; td_language = None; td_direction = None; td_index = None;
-                     td_scoped_context = None; td_protected = false; td_prefix = false } in
+                     td_scoped_context = None; td_protected = default_protected; td_prefix = false } in
           Some ({ ac with ac_terms = (key, td) :: ac.ac_terms }))
      | JString s ->
        // A simple-form definition whose VALUE looks like (but is not) a
        // keyword is ignored entirely — the term stays undefined, so its
        // uses fall back to @vocab or get dropped (toRdf/pr36/pr37).
        if jldctx_keyword_lookalike s then Some ac
+       // Simple string form is spec sugar for {"@id": s} — the same
+       // cyclic-IRI-mapping (jldctx_self_cyclic) and term-self-
+       // consistency (jldctx_term_needs_self_check) checks that apply to
+       // an explicit object-form "@id" apply here too.
+       else if jldctx_self_cyclic ac key s then None
        else
-       (match jldctx_expand_iri_ctx ac s true with
+       // JSON-LD 1.1 API Create Term Definition: the id-expansion
+       // machinery ("if value contains the entry @id and its value does
+       // NOT EQUAL term") is skipped entirely when the string value
+       // equals the term's OWN name — "term": "term" falls straight to
+       // the colon/slash/@type/vocab fallback, the SAME derivation the
+       // (None, None) object-form case uses, and for the SAME reason:
+       // it must not resolve through its own stale existing mapping
+       // (toRdf/e072: a SECOND context's "term": "term" under a NEW
+       // @vocab must re-resolve to vocab+"term", not to the value
+       // "term" already carries from an earlier, about-to-be-replaced
+       // context). Strip any existing `key` entry only in that
+       // self-referencing case — an ordinary alias to a DIFFERENT
+       // already-defined term (s <> key) still resolves through it.
+       let ac_lookup = if s = key then { ac with ac_terms = jldctx_remove_term ac.ac_terms key } else ac in
+       (match jldctx_expand_iri_ctx ac_lookup s true with
         | None -> None
         | Some iri ->
+          // 1.1-only, same gating rationale as the object-form arm
+          // above (toRdf/te026 is a 1.0-mode positive for the shape
+          // this check would otherwise reject); key expanded with its
+          // own entry stripped, same preview-pass rationale as there.
+          if (not ac.ac_mode10) && jldctx_term_needs_self_check key &&
+             jldctx_expand_iri_ctx ({ ac with ac_terms = jldctx_remove_term ac.ac_terms key }) key true <> Some iri then None
+          else
           // Simple string form: prefix-capable iff the expanded IRI ends
           // in a gen-delim byte (td_prefix's doc comment).
           let td = { td_iri = iri; td_type_mapping = None; td_container = CK_None;
@@ -990,18 +1191,21 @@ let context_process_one_field (ac:active_context) (key:string) (value:json_val)
            termfields in
        if rev_kw then Some ac
        else if id_null then
+         // Same protected-default rule as bare "term": null above
+         // (toRdf/pr28's doc comment) — a null IRI mapping still carries
+         // default_protected, not an unconditional false.
          (match jldctx_find_term ac.ac_terms key with
           | Some existing ->
             if existing.td_protected && not override_protected then None
             else
               let td = { td_iri = "@null"; td_type_mapping = None; td_container = CK_None;
                          td_reverse = false; td_language = None; td_direction = None; td_index = None;
-                         td_scoped_context = None; td_protected = false; td_prefix = false } in
+                         td_scoped_context = None; td_protected = default_protected; td_prefix = false } in
               Some ({ ac with ac_terms = (key, td) :: jldctx_remove_term ac.ac_terms key })
           | None ->
             let td = { td_iri = "@null"; td_type_mapping = None; td_container = CK_None;
                        td_reverse = false; td_language = None; td_direction = None; td_index = None;
-                       td_scoped_context = None; td_protected = false; td_prefix = false } in
+                       td_scoped_context = None; td_protected = default_protected; td_prefix = false } in
             Some ({ ac with ac_terms = (key, td) :: ac.ac_terms }))
        else process_term_def_obj ac key termfields default_protected override_protected
      | _ -> None)
@@ -1012,6 +1216,98 @@ let context_process_one_field (ac:active_context) (key:string) (value:json_val)
 // property-/type-scoped context application (JSONLD.Expand); an ordinary
 // node object's own inline "@context" member always passes false.
 // ================================================================
+
+// The six "special" context-object keywords the JSON-LD 1.1 API
+// Context Processing algorithm updates BEFORE any ordinary term
+// definition is processed ("We first update the base IRI, the default
+// base direction, the default language, context propagation, the
+// processing mode, and the vocabulary mapping by processing six
+// specific keywords: @base, @direction, @language, @propagate,
+// @version, and @vocab. These are handled before any other entries in
+// the local context because they affect how the other entries are
+// processed"). Used only by the "@import" merge below
+// (jldctx_merge_import / the @import branch of context_process):
+// ordinary (non-@import) context objects here still process fields in
+// literal JSON order, a narrower simplification that already matches
+// every other fixture in this suite (test authors always write these
+// keywords first in an ordinary context object); @import is the one
+// construct that can introduce a term definition TEXTUALLY BEFORE a
+// keyword that must, per spec, still take effect first (toRdf/so09:
+// the imported context's own "term" needs the CONTAINING context's
+// LATER-written "@vocab" override already in place before "term" is
+// resolved).
+let jldctx_is_special_context_key (k:string) : bool =
+  k = "@base" || k = "@vocab" || k = "@language" || k = "@direction" ||
+  k = "@propagate" || k = "@version"
+
+let rec jldctx_partition_special (fields:list (string & json_val))
+  : Tot (list (string & json_val) & list (string & json_val)) (decreases fields) =
+  match fields with
+  | [] -> ([], [])
+  | (k, v) :: rest ->
+    let (sp, ord) = jldctx_partition_special rest in
+    if jldctx_is_special_context_key k then ((k, v) :: sp, ord) else (sp, (k, v) :: ord)
+
+// "@import" (JSON-LD 1.1 API §4.1: "Set context to the result of
+// merging context into import context, replacing common entries with
+// those from context" — a plain key-level union, with the CONTAINING
+// (local) context's own entry winning on collision): every
+// imported_fields entry whose key is ALSO present in local_fields is
+// dropped (local_fields' own copy is the one that survives), then
+// local_fields is appended — toRdf/so08/so09/so10/so11's "the
+// containing context is merged into the source context".
+let rec jldctx_merge_import (imported_fields local_fields:list (string & json_val))
+  : Tot (list (string & json_val)) (decreases imported_fields) =
+  match imported_fields with
+  | [] -> local_fields
+  | (k, v) :: rest ->
+    if List.Tot.existsb (fun (kv:(string & json_val)) -> fst kv = k) local_fields
+    then jldctx_merge_import rest local_fields
+    else (k, v) :: jldctx_merge_import rest local_fields
+
+// Forward-reference pre-pass (JSON-LD 1.1 API Create Term Definition's
+// `defined` map: "If the prefix is an entry in local context, then its
+// term definition must first be created, through recursion, before
+// continuing" — full support needs recursive dependency resolution
+// with cycle detection, which this module does not implement; this is
+// a narrow approximation covering the overwhelmingly common case). A
+// plain SIMPLE-STRING-FORM term/prefix declaration (e.g. "ex":
+// "http://example.org/") is pre-registered into `ac` BEFORE the main
+// left-to-right field pass, so an EARLIER field in the SAME context
+// object that uses it as a compact-IRI prefix resolves correctly
+// (toRdf/t0034 "context properties reordering": "link": {"@id":
+// "ex:link"} appears before "ex" is defined; toRdf/e007 "date
+// type-coercion": "ex:date": {"@type": "xsd:dateTime"} appears before
+// "xsd" is defined). Only NEW keys (not already in `ac.ac_terms`) are
+// previewed — never shadows an existing (possibly protected) entry
+// during the preview window. The main pass still runs afterward and
+// OVERWRITES each preview entry at its own textual position with the
+// fully-validated definition (respecting @protected, redefinition-
+// compatibility, the cyclic/self-consistency checks above, etc.) — the
+// preview is purely an early-availability shim, never authoritative.
+// Object-form term defs (which can themselves depend on further
+// not-yet-defined terms) are NOT previewed — the general recursive
+// case remains an open gap.
+let rec jldctx_preview_prefixes (ac:active_context) (fields:list (string & json_val))
+  : Tot active_context (decreases fields) =
+  match fields with
+  | [] -> ac
+  | (k, JString s) :: rest ->
+    if jldctx_actual_keyword k || jldctx_keyword_lookalike k || jldctx_keyword_lookalike s
+       || jldctx_is_keyword k || k = "" || Some? (jldctx_find_term ac.ac_terms k)
+    then jldctx_preview_prefixes ac rest
+    else
+      (match jldctx_expand_iri_ctx ac s true with
+       | None -> jldctx_preview_prefixes ac rest
+       | Some iri ->
+         if jldctx_is_keyword iri then jldctx_preview_prefixes ac rest
+         else
+           let td = { td_iri = iri; td_type_mapping = None; td_container = CK_None;
+                      td_reverse = false; td_language = None; td_direction = None; td_index = None;
+                      td_scoped_context = None; td_protected = false;
+                      td_prefix = jldctx_ends_gen_delim iri } in
+           jldctx_preview_prefixes ({ ac with ac_terms = (k, td) :: ac.ac_terms }) rest)
+  | _ :: rest -> jldctx_preview_prefixes ac rest
 
 // fuel: remote-fetch depth budget (jld_remote_context_fuel at every
 // external entry point — see apply_context_with_propagate /
@@ -1047,13 +1343,23 @@ let rec context_process (ac:active_context) (ctx:json_val) (override_protected:b
   | JObject fields ->
     (match jldctx_extract_import fields with
      | (None, _) ->
-       context_process_fields ac fields (jldctx_scan_bool_key fields "@protected" false) override_protected fuel visited
+       let ac_preview = jldctx_preview_prefixes ac fields in
+       context_process_fields ac_preview fields (jldctx_scan_bool_key fields "@protected" false) override_protected fuel visited
      | (Some importref, restfields) ->
-       // "@import" (JSON-LD 1.1 API §4.1 "Import"): load + process the
-       // imported context against `ac` FIRST, then fold this object's
-       // OWN remaining members on top of the result — local members
-       // replacing imported ones is just ordinary left-to-right term
-       // redefinition once the two are processed in that order.
+       // "@import" (JSON-LD 1.1 API §4.1 "Import"): fetch the imported
+       // context, MERGE its fields with this object's own remaining
+       // members (local replacing imported on key collision —
+       // jldctx_merge_import), then process the merged set as ONE
+       // context object — special keywords (@base/@vocab/@language/
+       // @direction/@propagate/@version, wherever they came from) FIRST,
+       // ordinary term definitions SECOND (jldctx_partition_special) —
+       // toRdf/so08/so09/so10/so11's "the containing context is merged
+       // into the source context" (so09: the imported "term" must
+       // resolve against the CONTAINING context's own later "@vocab",
+       // which a naive "process import fully, then fold local fields on
+       // top" two-pass approach gets wrong, since the imported term
+       // would already be resolved against the OLD vocab by the time the
+       // local @vocab override is seen).
        // 1.1-only ("If context has an @import entry: if processing mode
        // is json-ld-1.0, an invalid context entry error has been
        // detected" — toRdf/tso01).
@@ -1076,20 +1382,24 @@ let rec context_process (ac:active_context) (ctx:json_val) (override_protected:b
                // "@import can only reference a single context" negative).
                | Some imported_ctx ->
                  (match imported_ctx with
-                  | JObject _ ->
-                    (match context_process ac imported_ctx override_protected (fuel - 1) (resolved :: visited) with
+                  | JObject imported_fields ->
+                    let merged = jldctx_merge_import imported_fields restfields in
+                    let ac_preview = jldctx_preview_prefixes ac merged in
+                    let (special, ordinary) = jldctx_partition_special merged in
+                    let default_protected = jldctx_scan_bool_key merged "@protected" false in
+                    // fuel - 1 (not fuel) on both calls below: `special`/
+                    // `ordinary` are freshly-built lists (via
+                    // jldctx_merge_import / jldctx_partition_special),
+                    // not direct pattern-matched subterms of `fields`, so
+                    // the termination checker cannot see them as
+                    // structurally smaller; the already-spent fetch's
+                    // fuel decrement covers both calls too (this whole
+                    // branch only runs once per JObject, so it costs
+                    // only 1 extra unit of the generous 32-deep budget).
+                    (match context_process_fields ac_preview special default_protected override_protected (fuel - 1) (resolved :: visited) with
                      | None -> None
-                     | Some ac_imported ->
-                       // fuel - 1 (not fuel): restfields is a FILTERED
-                       // derivative of the original `fields`, not a direct
-                       // pattern-matched subterm, so the termination
-                       // checker cannot see it as structurally smaller;
-                       // the already-spent fetch's fuel decrement covers
-                       // this call too (this whole branch only runs once
-                       // per JObject, so it costs only 1 extra unit of the
-                       // generous 32-deep budget).
-                       context_process_fields ac_imported restfields
-                         (jldctx_scan_bool_key restfields "@protected" false) override_protected (fuel - 1) visited)
+                     | Some ac_special ->
+                       context_process_fields ac_special ordinary default_protected override_protected (fuel - 1) (resolved :: visited))
                   | _ -> None))))
   | _ -> None
 
