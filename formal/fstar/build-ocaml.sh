@@ -358,11 +358,14 @@ if [[ "$STEP" == "all" || "$STEP" == "extract" ]]; then
     Util.Log.fst
     RDF.Format.fst
     RDF.Vocabulary.fst
-    RDF.Indexed.fst
     RDF.Term.fst
     RDF.Triple.fst
+    RDF.Indexed.fst
     RDF.Graph.fst
-    RDF.Graph.Executable.fst RDF.Vocabulary.Axioms.fst Parquet.Footer.fst
+    RDF.Vocabulary.Axioms.fst
+    RDFS.Closure.fst
+    OWL.Closure.fst
+    RDF.Graph.Executable.fst Parquet.Footer.fst
     RDF.IRI.fst
     RDF.NQuads.Serialize.fst
     RDF.List.Helpers.fst
@@ -394,6 +397,7 @@ if [[ "$STEP" == "all" || "$STEP" == "extract" ]]; then
     SPARQL.JSON.Escape.fst
     Parser.JSON.fst JSONLD.Loader.fst JSONLD.Context.fst JSONLD.Expand.fst Parser.JSONLD.fst
     ShEx.Schema.fst ShEx.Validation.fst
+    VC.Credential.fst
     RML.Mapping.fst RML.Sources.fst RML.Eval.fst
     SPARQL.Eval.TimeBudget.fst
     SPARQL.Eval.Limits.fst
@@ -691,28 +695,42 @@ if [[ "$STEP" == "all" || "$STEP" == "extract" ]]; then
   record_phase_timing "extract-loop" "$PHASE_START_EXTRACT" "$EXTRACT_COUNT"
 
   # Step-5 OCaml compatibility shim (docs/designissues/2026-07-05-
-  # foundational-core-refactor.md §2.1/§2.2/§3.3 step 5). RDF.Term/
-  # RDF.Triple/RDF.Graph now hold the core term/triple/graph types;
-  # RDF.Graph.Executable.fst re-exports them via F* `include` so its
-  # own remaining code and all 53 `open RDF.Graph.Executable`
-  # dependents keep resolving T_IRI/wf_iri/triple/etc. unqualified.
+  # foundational-core-refactor.md §2.1/§2.2/§3.3 step 5), extended at
+  # step 6 (§2.3/§2.4/§3.3) for RDF.Indexed/RDFS.Closure/OWL.Closure.
+  # RDF.Term/RDF.Triple/RDF.Graph hold the core term/triple/graph
+  # types; RDF.Indexed holds the indexed_graph acceleration structure
+  # (folded in fully at step 6); RDFS.Closure/OWL.Closure hold the
+  # RDFS/OWL-RL closure rules moved out of RDF.Graph.Executable.fst at
+  # step 6. RDF.Graph.Executable.fst re-exports all six via F* `include`
+  # so its own remaining code and all 53 `open RDF.Graph.Executable`
+  # dependents (plus Tableau.fst/SHACL.Validation.fst/
+  # RDF.Vocabulary.Axioms.fst/OWL.QueryRewrite.fst/
+  # Parser.OWLFunctional.fst's direct closure-function callers) keep
+  # resolving T_IRI/wf_iri/triple/indexed_graph/rdfs_closure/
+  # entailment_closure/owl_rule_*/etc. unqualified.
   # F*'s `include` has no OCaml-extraction artifact of its own (a
   # module that only `include`s another extracts to an empty `.ml`
   # beyond `open Prims` -- confirmed empirically before relying on
   # this), so the *qualified* OCaml references this tree's hand-
   # written glue makes (`RDF_Graph_Executable.T_IRI`, `.wf_iri`,
-  # `.rdf_graph`, etc., in experimental_ocaml_glue/*.sh and the
-  # bin/<consumer>/*.ml files) would otherwise go unbound. A real
-  # OCaml `include` -- unlike F*'s -- DOES re-export constructors and
-  # record field labels under the includer's namespace, so prepending
-  # one restores exactly that compatibility with zero edits to any
-  # consumer. Idempotent (checked via the marker line) so re-running
-  # extract on an already-patched file is a no-op. Retire this block
-  # at design-doc step 7, once every consumer's qualified reference
-  # is updated to name RDF_Term/RDF_Triple/RDF_Graph directly.
+  # `.rdf_graph`, `.indexed_graph`, `.entailment_closure`, etc., in
+  # experimental_ocaml_glue/*.sh, w3c_runner.ml/factoidal_cli.ml/
+  # rif_runner.ml, and the other bin/<consumer>/*.ml files) would
+  # otherwise go unbound. A real OCaml `include` -- unlike F*'s --
+  # DOES re-export constructors and record field labels under the
+  # includer's namespace, so prepending one restores exactly that
+  # compatibility with zero edits to any consumer. Order matches
+  # COMMON_MODULES' compile order (RDF_Term/RDF_Triple/RDF_Graph before
+  # RDF_Indexed before RDFS_Closure/OWL_Closure) so each named module's
+  # .cmi/.cmx already exists when RDF_Graph_Executable.ml compiles.
+  # Idempotent (checked via the marker line) so re-running extract on
+  # an already-patched file is a no-op. Retire this block at design-doc
+  # step 7, once every consumer's qualified reference is updated to
+  # name RDF_Term/RDF_Triple/RDF_Graph/RDF_Indexed/RDFS_Closure/
+  # OWL_Closure directly.
   RGE_ML="$OUTDIR/RDF_Graph_Executable.ml"
   if [[ -f "$RGE_ML" ]] && ! grep -q '^include RDF_Term$' "$RGE_ML"; then
-    { printf 'include RDF_Term\ninclude RDF_Triple\ninclude RDF_Graph\n'; cat "$RGE_ML"; } > "$RGE_ML.tmp"
+    { printf 'include RDF_Term\ninclude RDF_Triple\ninclude RDF_Graph\ninclude RDF_Indexed\ninclude RDFS_Closure\ninclude OWL_Closure\n'; cat "$RGE_ML"; } > "$RGE_ML.tmp"
     mv "$RGE_ML.tmp" "$RGE_ML"
   fi
 
@@ -739,7 +757,7 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
   # (COTTAS runtime glue calls Parquet_Footer.probe_*). SPARQL11_Store
   # depends on Parser_BallyhooHDT and Parser_BallyhooCOTTAS. See
   # docs/designissues/2026-04-19-cottas-parquet-wiring-plan.md §Phase 1.
-  COMMON_MODULES="Util_Log.ml RDF_Format.ml RDF_Vocabulary.ml RDF_Indexed.ml RDF_Term.ml RDF_Triple.ml RDF_Graph.ml RDF_Graph_Executable.ml RDF_Vocabulary_Axioms.ml RDF_List_Helpers.ml RDF_Bytes.ml RDF_Store_Loader.ml Parquet_Footer.ml OWL_Vocabulary.ml OWL_DirectMapping_Filter.ml Tableau.ml \
+  COMMON_MODULES="Util_Log.ml RDF_Format.ml RDF_Vocabulary.ml RDF_Term.ml RDF_Triple.ml RDF_Indexed.ml RDF_Graph.ml RDF_Vocabulary_Axioms.ml RDFS_Closure.ml OWL_Closure.ml RDF_Graph_Executable.ml RDF_List_Helpers.ml RDF_Bytes.ml RDF_Store_Loader.ml Parquet_Footer.ml OWL_Vocabulary.ml OWL_DirectMapping_Filter.ml Tableau.ml \
     Parser_FastString.ml RDF_IRI.ml SPARQL11_IRI_Resolve.ml Parser_IRI.ml \
     RDF_NQuads_Serialize.ml \
     Parser_Combinators.ml Parser_TurtleScanner.ml Parser_NTriples.ml Parser_Turtle.ml \
@@ -787,6 +805,7 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
     RDF_Canonical_Manifest.ml \
     SPARQL11_Algebra.ml XSD_Datatypes.ml RDF_Pretty.ml OWL_QueryRewrite.ml OWL_QueryEval.ml OWL_Tests_Manifest.ml RIF_Core_Syntax.ml Parser_RIFXML.ml RIF_Core_Translation.ml RIF_Core_Builtins.ml RIF_Core_Conformance.ml RIF_Core_Eval.ml RIF_Core_Tests.ml SPARQL11_Parser.ml SHACL_Validation.ml \
     ShEx_Schema.ml ShEx_Validation.ml \
+    VC_Credential.ml \
     RML_Mapping.ml RML_Sources.ml RML_Eval.ml \
     SPARQL11_Store.ml RDF_Store_Combine.ml RDF_Dataset_Merge.ml SPARQL_Protocol.ml SPARQL_HTTP_RunQuery.ml \
     SPARQL_Update_Sandbox.ml \
@@ -863,6 +882,7 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
     "$BINDIR/jsonld_runner"
     "$BINDIR/shacl_runner"
     "$BINDIR/rml_runner"
+    "$BINDIR/vc_runner"
     "$BINDIR/cottas_ondisk_smoketest"
   )
   NATIVE_SOURCES=(
@@ -878,6 +898,7 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
     ../../../bin/rdfc10-runner/rdfc10_runner.ml
     ../../../bin/jsonld-runner/jsonld_runner.ml
     ../../../bin/rml-runner/rml_runner.ml
+    ../../../bin/vc-runner/vc_runner.ml
     ../../../bin/cottas-ondisk-smoketest/cottas_ondisk_smoketest.ml
     ../experimental_ocaml_glue/parquet_zstd_stubs.c
   )
@@ -1025,6 +1046,38 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
       exit 1
     fi
     echo "  Built: bin/${PLATFORM}/jsonld_runner ($(wc -c < "$BINDIR/jsonld_runner") bytes)"
+
+    # vc_runner — Verifiable Credentials Data Model 2.0 structural
+    # fixture runner, Stage 1 of the VC program
+    # (docs/designissues/2026-07-05-vc-program-plan.md). Walks the
+    # vendored w3c/vc-data-model-2.0-test-suite's tests/input/*.json
+    # fixtures (120 files, -ok/-fail filename-suffixed; no manifest —
+    # the upstream mocha suite assumes a live HTTP issue/verify
+    # endpoint this offline runner does not have), calls the
+    # F*-extracted VC_Credential.vc_check_from_string (required-
+    # property + type-membership checks over Parser_JSON, plus a fixed
+    # @context sentinel check — see VC.Credential.fst's header for the
+    # exact rule set and what's deferred to Stage 2), and scores the
+    # result against each filename's own -ok/-fail suffix.
+    VC_RUNNER_RC=0
+    run_with_heartbeat "ocamlopt vc_runner" "_ocamlopt_vc_runner.log" -- \
+      ocamlfind ocamlopt -package fstar.lib,str,zarith,sha,digestif.c,unix -linkpkg -w -8-14-26 \
+      $STATIC_FLAGS \
+      $COMMON_MODULES \
+      $PARQUET_NATIVE_STUBS \
+      ../../../bin/vc-runner/vc_runner.ml \
+      -o "$BINDIR/vc_runner" || VC_RUNNER_RC=$?
+    cat _ocamlopt_vc_runner.log
+    if [[ "$VC_RUNNER_RC" -ne 0 ]]; then
+      echo "  ERROR: vc_runner build failed (ocamlopt rc=$VC_RUNNER_RC)" >&2
+      echo "  See full log above. Build aborted." >&2
+      exit "$VC_RUNNER_RC"
+    fi
+    if [[ ! -x "$BINDIR/vc_runner" ]]; then
+      echo "  ERROR: vc_runner ocamlopt returned 0 but $BINDIR/vc_runner is missing or not executable" >&2
+      exit 1
+    fi
+    echo "  Built: bin/${PLATFORM}/vc_runner ($(wc -c < "$BINDIR/vc_runner") bytes)"
 
     # shacl_runner — SHACL Core W3C data-shapes-test-suite runner
     # (slice 1, issue #181). Walks
@@ -1265,9 +1318,10 @@ if [[ "$STEP" == "all" || "$STEP" == "js" ]]; then
   # See docs/designissues/2026-04-19-cottas-parquet-wiring-plan.md.
   FSTAR_MODULES=(
     RDF_Format.ml RDF_Vocabulary.ml
-    RDF_Indexed.ml
-    RDF_Term.ml RDF_Triple.ml RDF_Graph.ml
-    RDF_Graph_Executable.ml RDF_Vocabulary_Axioms.ml RDF_List_Helpers.ml RDF_Bytes.ml RDF_Store_Loader.ml Parquet_Footer.ml OWL_Vocabulary.ml OWL_DirectMapping_Filter.ml Tableau.ml
+    RDF_Term.ml RDF_Triple.ml
+    RDF_Indexed.ml RDF_Graph.ml
+    RDF_Vocabulary_Axioms.ml RDFS_Closure.ml OWL_Closure.ml
+    RDF_Graph_Executable.ml RDF_List_Helpers.ml RDF_Bytes.ml RDF_Store_Loader.ml Parquet_Footer.ml OWL_Vocabulary.ml OWL_DirectMapping_Filter.ml Tableau.ml
     Parser_FastString.ml RDF_IRI.ml SPARQL11_IRI_Resolve.ml Parser_IRI.ml
     RDF_NQuads_Serialize.ml
     Parser_Combinators.ml Parser_TurtleScanner.ml Parser_NTriples.ml Parser_Turtle.ml
@@ -1316,6 +1370,8 @@ if [[ "$STEP" == "all" || "$STEP" == "js" ]]; then
     RDF_Canonical_Manifest.ml
     SPARQL11_Algebra.ml XSD_Datatypes.ml RDF_Pretty.ml OWL_QueryRewrite.ml OWL_QueryEval.ml OWL_Tests_Manifest.ml RIF_Core_Syntax.ml Parser_RIFXML.ml RIF_Core_Translation.ml RIF_Core_Builtins.ml RIF_Core_Conformance.ml RIF_Core_Eval.ml RIF_Core_Tests.ml SPARQL11_Parser.ml SHACL_Validation.ml
     ShEx_Schema.ml ShEx_Validation.ml
+    RML_Mapping.ml RML_Sources.ml RML_Eval.ml
+    VC_Credential.ml
     SPARQL11_Store.ml
     RDF_Store_Combine.ml
     RDF_Dataset_Merge.ml

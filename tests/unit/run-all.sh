@@ -48,12 +48,14 @@ COMMON_MODULES=(
   Util_Log
   RDF_Format
   RDF_Vocabulary
-  RDF_Indexed
   RDF_Term
   RDF_Triple
+  RDF_Indexed
   RDF_Graph
-  RDF_Graph_Executable
   RDF_Vocabulary_Axioms
+  RDFS_Closure
+  OWL_Closure
+  RDF_Graph_Executable
   RDF_List_Helpers
   RDF_Bytes
   RDF_Store_Loader
@@ -136,6 +138,7 @@ COMMON_MODULES=(
   RIF_Core_Conformance
   SPARQL11_Parser
   SHACL_Validation
+  VC_Credential
   SPARQL11_Store
   RDF_Store_Combine
   SPARQL_Protocol

@@ -2556,7 +2556,17 @@ let rec eval_custom_components
 // `--split_queries always` makes explicit what F* otherwise falls back
 // to implicitly for this VC (Warning 349) — own push-options, not
 // file-wide, per the file's established idiom (see `build_constraints`).
-#push-options "--split_queries always"
+// `--z3rlimit 60` added 2026-07-05 (design doc "foundational-core-
+// refactor" §3.3 step 6): this file opens RDF.Graph.Executable, whose
+// closure code moved out into RDFS.Closure.fst/OWL.Closure.fst at that
+// step — an SMT-context shift from the dependency-digest change (not a
+// logic change here) tipped this borderline VC from the automatic
+// split-on-failure retry into a hard failure under the default budget.
+// Same resource-budget-bump idiom already used elsewhere in this tree
+// (RDFS.Closure.fsti's `rdfs_closure`, RDF.List.Helpers.fst,
+// Parser.Turtle.fst) for exactly this class of proof; no logic change,
+// no --admit_smt_queries, no --lax.
+#push-options "--split_queries always --z3rlimit 60"
 let rec custom_violations_for_occurrence
   (data : rdf_graph) (sg : list shape) (node : rdf_term) (s : shape) (fuel : nat)
   : Tot (list violation & option string) (decreases fuel)

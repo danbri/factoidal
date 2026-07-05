@@ -1,44 +1,27 @@
 module RDF.Indexed
 
 // Per docs/designissues/2026-07-05-foundational-core-refactor.md
-// §2.3/§3.3 step 3. The design doc's §2.3 describes this module as
-// "the indexed_graph/bucket_map machinery ... lines 286-514" moved
-// verbatim out of RDF.Graph.Executable.fst. Executing that literally
-// is impossible without introducing a cyclic module dependency: the
-// RDF-specific pieces of that block (`indexed_graph`'s record fields,
-// `subject_to_key`, `term_to_key_opt`, `find_objects_indexed`,
-// `find_subjects_indexed`, `add_triple_to_indexes`, `build_indexed`)
-// all pattern-match on `triple`/`subject`/`rdf_term` — types that live
-// in RDF.Graph.Executable.fst and are not extracted out until step 5
-// (`RDF.Term`/`RDF.Triple`/`RDF.Graph`). If this module opened
-// RDF.Graph.Executable for those types, and RDF.Graph.Executable kept
-// its ~140 RDFS/OWL-RL closure-rule call sites of `indexed_graph`
-// (step 6 territory, not moving yet) by opening this module back,
-// F*'s acyclic-module-DAG requirement would reject the pair outright.
-//
-// The fix, discovered during this step's execution: only the truly
-// generic association-list "bucket map" plumbing is RDF-independent
-// — it never inspects `triple`/`subject`/`rdf_term` internals, only
-// `key_of`-supplied `string`/`option string` keys and an opaque
-// element type. That subset (`bucket_map`, `bucket_lookup`,
-// `bucket_replace`, `bucket_push`, `build_bucket`) is genericised over
-// a type parameter here, giving RDF.Indexed.fst a real dependency of
-// zero on RDF.Graph.Executable — a one-directional edge in the other
-// direction, safe to `open` from RDF.Graph.Executable.fst without a
-// cycle. The RDF-specific glue that instantiates this at `triple`
-// (`indexed_graph`, `subject_to_key`, `term_to_key_opt`, the `*_key`
-// builders, `find_objects_indexed`/`find_subjects_indexed`,
-// `add_triple_to_indexes`, `build_indexed`/`empty_indexed`) stays in
-// RDF.Graph.Executable.fst — moving it is blocked on step 5 landing
-// first. See the plan doc's step-3 row for the follow-up this leaves.
-//
-// Every value below is a *transparent* `let` (not an abstract `val`),
-// matching the RDF.Vocabulary.fsti precedent (§2.9): this module's
-// whole content lives here; RDF.Indexed.fst is an (almost) empty
-// companion, same shape as RDF.Vocabulary.fst/.fsti.
+// §2.3/§3.3 step 3 (bucket-map plumbing) and step 6 (RDF-specific
+// glue folded in once step 5 dissolved a cyclic-dependency blocker).
+// Full history in RDF.Indexed.fst's banner. Every value below is a
+// *transparent* `let` (not an abstract `val`) — see RDF.Vocabulary
+// .fsti's banner (§2.9) for why.
+// This module is mechanism-heavy by nature (it IS an acceleration
+// structure): the generic bucket-map preamble is mechanical throughout
+// and stays before the `indexed_graph` concept only because F*
+// transparent `let`s can't forward-reference it (fstar-module-style
+// skill's reading-order note).
 
 open FStar.String
 open FStar.List.Tot
+open RDF.Term
+open RDF.Triple
+
+(** ==================================================================== *)
+(** Preamble: generic bucket-map mechanics (skip on first read — the    *)
+(** concept, `indexed_graph`, starts below at the next divider). No     *)
+(** RDF-specific content; a plain association-list multimap.            *)
+(** ==================================================================== *)
 
 /// A generic "bucket map": an association list from string keys to
 /// lists of elements of type `a`. Used as the storage layer for
@@ -127,3 +110,168 @@ let build_bucket (#a:Type) (key_of : a -> option string) (ts : list a)
   : Tot (bucket_map a) =
   let sorted = List.Tot.sortWith (cmp_by_key key_of) ts in
   group_sorted_aux key_of sorted None [] []
+
+(** ==================================================================== *)
+(** Concept: `indexed_graph` — a multi-index acceleration structure     *)
+(** over `list triple` (RDF 1.1 Concepts §3, "a set of triples", plus   *)
+(** per-key bucket indexes for O(log n) lookup instead of O(n) scan).   *)
+(** Folded in at step 6 (see module banner) — was blocked on step 5.    *)
+(** The operations below are the point of this module, so they stay    *)
+(** with the concept rather than in a separate appendix; the key-      *)
+(** encoding one-liners (`subject_to_key`/`sp_key`/etc.) and the        *)
+(** `build_indexed` extractor helpers (`bucket_key_*`) are the only     *)
+(** purely mechanical parts, each 1-3 lines — flagged inline below.     *)
+(** ==================================================================== *)
+
+noeq type indexed_graph = {
+  ig_triples : list triple;     (* preserves source-of-truth order semantics *)
+  ig_pred    : bucket_map triple;       (* keyed by predicate IRI string *)
+  ig_subj    : bucket_map triple;       (* keyed by subject_to_key *)
+  ig_obj     : bucket_map triple;       (* keyed by term_to_key_opt; literals omitted *)
+  (* Phase 1 compound indexes (#100). Composite keys use ASCII unit
+     separator U+001F, which is forbidden in IRIs (RFC 3987) and never
+     appears in our blank-node keys. Literals (term_to_key_opt = None)
+     are not indexed; same rationale as ig_obj. *)
+  ig_sp      : bucket_map triple;       (* keyed by sp_key   : subj_key ^ "\x1f" ^ pred_iri *)
+  ig_po      : bucket_map triple;       (* keyed by po_key   : pred_iri ^ "\x1f" ^ obj_key  *)
+  ig_so      : bucket_map triple;       (* keyed by so_key   : subj_key ^ "\x1f" ^ obj_key  *)
+}
+
+(* Canonical key for a subject. Total. *)
+let subject_to_key (s : subject) : string =
+  match s with
+  | S_IRI i   -> String.concat "" ["I_"; i]
+  | S_BNode b -> String.concat "" ["B_"; b]
+
+(* Canonical key for an rdf_term, or None for literals. We do NOT index
+   on literals because they would require datatype/lang-tag normalisation
+   and rarely appear as a join axis in real BGPs. Object-literal patterns
+   fall through to whichever bound component (predicate or subject) is
+   indexable, or to the full triple list if neither is. *)
+let term_to_key_opt (o : rdf_term) : option string =
+  match o with
+  | T_IRI i     -> Some (String.concat "" ["I_"; i])
+  | T_BNode b   -> Some (String.concat "" ["B_"; b])
+  | T_Literal _ -> None
+
+(* Composite key separator: ASCII Unit Separator (U+001F). Forbidden in
+   IRIs by RFC 3987, never appears in our subject/object keys (which are
+   "I_..."/"B_..."), so concatenation is unambiguous. *)
+let unit_sep : string = "\x1f"
+
+let sp_key (s : subject) (p : wf_iri) : string =
+  String.concat "" [subject_to_key s; unit_sep; p]
+
+let po_key_opt (p : wf_iri) (o : rdf_term) : option string =
+  match term_to_key_opt o with
+  | Some k -> Some (String.concat "" [p; unit_sep; k])
+  | None   -> None
+
+let so_key_opt (s : subject) (o : rdf_term) : option string =
+  match term_to_key_opt o with
+  | Some k -> Some (String.concat "" [subject_to_key s; unit_sep; k])
+  | None   -> None
+
+(* #259 followup / OWL-RL Commit A (2026-05-13).
+   Index-backed (s, p, ?) lookup. Bucket: ig_sp.
+   Same return contract as find_objects: list of objects, no dedup.
+   Replaces O(N) linear scans inside the closure rules' outer fold;
+   per-rule cost drops from O(N^2) to O(log P + |result|). *)
+let find_objects_indexed (ig : indexed_graph) (subj : subject) (pred : wf_iri)
+  : Tot (list rdf_term) =
+  let bucket = bucket_lookup ig.ig_sp (sp_key subj pred) in
+  List.Tot.map (fun (t : triple) -> t.o) bucket
+
+(* Index-backed (?, p, o) lookup. Uses ig_po when o is non-literal
+   (the common case in closure rules); falls back to ig_pred + filter
+   when o is a literal (rare in OWL/RDFS schema axioms). *)
+let find_subjects_indexed (ig : indexed_graph) (pred : wf_iri) (obj : rdf_term)
+  : Tot (list subject) =
+  let bucket =
+    match po_key_opt pred obj with
+    | Some k -> bucket_lookup ig.ig_po k
+    | None ->
+      List.Tot.filter
+        (fun (t : triple) -> rdf_term_eq t.o obj)
+        (bucket_lookup ig.ig_pred pred)
+  in
+  List.Tot.map (fun (t : triple) -> t.s) bucket
+
+(* Single-step index update for one triple. *)
+let add_triple_to_indexes (ig : indexed_graph) (t : triple) : indexed_graph =
+  let new_pred = bucket_push ig.ig_pred t.p t in
+  let new_subj = bucket_push ig.ig_subj (subject_to_key t.s) t in
+  let new_obj  = match term_to_key_opt t.o with
+    | Some k -> bucket_push ig.ig_obj k t
+    | None -> ig.ig_obj in
+  let new_sp   = bucket_push ig.ig_sp (sp_key t.s t.p) t in
+  let new_po   = match po_key_opt t.p t.o with
+    | Some k -> bucket_push ig.ig_po k t
+    | None -> ig.ig_po in
+  let new_so   = match so_key_opt t.s t.o with
+    | Some k -> bucket_push ig.ig_so k t
+    | None -> ig.ig_so in
+  {
+    ig_triples = t :: ig.ig_triples;
+    ig_pred = new_pred;
+    ig_subj = new_subj;
+    ig_obj = new_obj;
+    ig_sp = new_sp;
+    ig_po = new_po;
+    ig_so = new_so;
+  }
+
+(* Build the index from a flat triple list. Linear in the input length;
+   each insert is bucket-replace which is linear in the current bucket-map
+   size. Total cost O(N * K) where K is the number of distinct keys —
+   acceptable for one-shot load. A hashtable swap reduces this to O(N).
+
+   #259 fix (2026-05-11): for any N×K product that gets large enough to
+   matter (the lifesci demo's 27K-triple disease.ttl, K ≈ 5K-20K distinct
+   subjects/sp-pairs/etc., 270M+ list-walks per bucket) the cumulative
+   build cost dominates even `SELECT * LIMIT 1`. Switch to a sort-and-group
+   pass per bucket: `List.Tot.sortWith` is O(N log N), then a single
+   linear walk collapses adjacent same-key entries into one binding.
+   Net: O(N log N) per bucket × 6 buckets = ~6 N log N total.
+   Preserves the "one binding per key" invariant the lookup paths rely on. *)
+let rec build_indexed_aux (g : list triple) (acc : indexed_graph)
+  : Tot indexed_graph (decreases g) =
+  match g with
+  | [] -> acc
+  | t :: rest -> build_indexed_aux rest (add_triple_to_indexes acc t)
+
+(* Mechanical: per-bucket key extractors used only by `build_indexed`
+   below, one line each. Each returns `None` for triples that
+   shouldn't appear in that bucket (e.g. ig_obj omits literal-keyed
+   triples because term_to_key_opt returns None on literals). *)
+let bucket_key_pred (t : triple) : option string = Some t.p
+let bucket_key_subj (t : triple) : option string = Some (subject_to_key t.s)
+let bucket_key_obj  (t : triple) : option string = term_to_key_opt t.o
+let bucket_key_sp   (t : triple) : option string = Some (sp_key t.s t.p)
+let bucket_key_po   (t : triple) : option string = po_key_opt t.p t.o
+let bucket_key_so   (t : triple) : option string = so_key_opt t.s t.o
+
+let empty_indexed : indexed_graph = {
+  ig_triples = [];
+  ig_pred = [];
+  ig_subj = [];
+  ig_obj = [];
+  ig_sp = [];
+  ig_po = [];
+  ig_so = [];
+}
+
+(* Takes a plain `list triple` (not `RDF.Graph.rdf_graph`, which is a
+   transparent alias for exactly this type) — see the module banner for
+   why: this keeps RDF.Indexed's dependency on RDF.Graph at zero. *)
+let build_indexed (g : list triple) : Tot indexed_graph =
+  (* #259 fix: sort-and-group per bucket — see comment on build_indexed_aux. *)
+  {
+    ig_triples = g;
+    ig_pred = build_bucket bucket_key_pred g;
+    ig_subj = build_bucket bucket_key_subj g;
+    ig_obj  = build_bucket bucket_key_obj  g;
+    ig_sp   = build_bucket bucket_key_sp   g;
+    ig_po   = build_bucket bucket_key_po   g;
+    ig_so   = build_bucket bucket_key_so   g;
+  }

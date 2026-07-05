@@ -1,7 +1,10 @@
-* Warning 241 at RDF.Bytes.fst(0,0-0,0):
-  - Unable to load RDF.Bytes.fst.checked since checked file
-    RDF.Bytes.fst.checked does not exist; will recheck RDF.Bytes.fst
-    (suppressing this warning for further modules)
+* Warning 241 at RDF.Triple.fsti(0,0-0,0):
+  - Unable to load RDF.Triple.fsti.checked since checked file
+    RDF.Triple.fsti.checked is stale (digest mismatch for RDF.Triple.fsti); will
+    recheck RDF.Triple.fsti (suppressing this warning for further modules)
+
+* Warning 361 at SPARQL11.Algebra.fst(5748,0-5749,40):
+  - Some #push-options have not been popped. Current depth is 1.
 
 * Warning 328 at SPARQL11.Parser.fst(2199,6-2199,19):
   - Global binding
@@ -154,7 +157,9 @@
 Extracted module SHACL.Validation
 * Warning 247 at SHACL.Validation.fst(0,0-0,0):
   - Checked file SHACL.Validation.fst.checked was not written.
-  - Reason: checked file RDF.Bytes.fst.checked does not exist
+  - Reason:
+      checked file RDF.Graph.Executable.fst.checked is stale (digest mismatch
+      for RDF.Graph.Executable.fst)
 
 Verified module: SHACL.Validation
 All verification conditions discharged successfully

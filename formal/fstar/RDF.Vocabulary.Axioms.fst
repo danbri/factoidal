@@ -30,21 +30,35 @@ module RDF.Vocabulary.Axioms
 //     rdfs:range rdfs:Resource .`, ... (all n) — same exclusion,
 //     same reason.
 //
-// Scope note (2026-07-05 migration step 2, RDF.Vocabulary
-// consolidation): this module is created and verified in this slice,
-// but is NOT YET wired into `rdfs_closure`/`entailment_closure` as a
-// seed graph — those functions still live inside
-// `RDF.Graph.Executable.fst` (design doc step 6, "RDFS.Closure /
-// OWL.Closure extraction", not yet landed), and wiring a new seed into
-// them is a behavior change that belongs in that step's own gate, not
-// this one (this step's gate is "no logic change, pure constant
-// re-homing" — see design doc §3.3 step 2's row). The table below is
-// therefore additive-only: it exists, is verified against the spec
-// text, and is available for the closure-rewiring step to consume
-// once it lands, but the rdf-mt / OWL suite scores in this commit are
-// unaffected by its existence (nothing calls into this module yet).
+// Scope note update (2026-07-05, step 6, design doc §3.3 "the Axioms
+// seed-graph gate"): wiring `finite_axiomatic_triples` into
+// `RDFS.Closure.rdfs_closure_with_reflexivity` as a seed graph was
+// attempted and DISABLED pending review. Measured: every suite stayed
+// byte-exact except OWL 2 profile-RL ConsistencyTests (76 pass 0 fail
+// -> 75 pass 1 fail; `New-Feature-ObjectQCR-002` became
+// FAIL/unexpected-inconsistency). The seeded schema axioms inflate the
+// closure's rdf:type set via rdfs2/rdfs3 enough to trip the
+// sound-but-narrow N=1 qualified-cardinality complementOf scaffolding
+// (issue #236) into a spurious cls-com clash — an unsoundness, not an
+// improvement, so per the gate the seed is off. Full account in
+// RDFS.Closure.fsti's `rdfs_closure_with_reflexivity` comment. This
+// module stays verified and build-wired; the seeding call is the only
+// thing removed. If re-attempting: the RDF-vs-RDFS regime split still
+// applies — the bare `rdfs_closure` ("RDF" regime) must NOT receive the
+// RDFS rows of this table (e.g. `rdfs:domain rdfs:domain rdf:Property`)
+// since RDF Semantics scopes the two axiomatic sets to different
+// entailment regimes.
+//
+// This module now opens RDF.Term/RDF.Triple directly (not
+// RDF.Graph.Executable) specifically so RDFS.Closure.fsti can `open
+// RDF.Vocabulary.Axioms` without a cycle (RDF.Graph.Executable.fst
+// `include`s RDFS.Closure back — see that file's banner). The only
+// symbols this module ever used from RDF.Graph.Executable were
+// `wf_iri`/`is_iri`/`triple`/`S_IRI`/`T_IRI`, all of which live in
+// RDF.Term/RDF.Triple; no behavior change.
 
-open RDF.Graph.Executable
+open RDF.Term
+open RDF.Triple
 open FStar.List.Tot
 module Vocab = RDF.Vocabulary
 
