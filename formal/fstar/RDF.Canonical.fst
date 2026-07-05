@@ -195,21 +195,43 @@ let canon_quad (graph_name : option iri) (t : triple) : string =
 
 type qquad = (option iri * triple)
 
-let rec attach_graph (g : option iri) (ts : list triple)
+// 2026-07-05 rewrite (issue #272, remaining 100k+ tail): the original
+// `attach_graph` / `flatten_named` were non-tail-recursive (each
+// builds its result via `hd :: recurse tl`, which in the OCaml
+// extraction needs one pending stack frame per input element — O(n)
+// stack depth for a 300k-triple default graph) and `flatten_named`
+// additionally used `@` (list append) once per named graph, an O(n^2)
+// shape for a dataset with many similarly-sized named graphs (the
+// exact "list-append in a fold" anti-pattern this rewrite avoids).
+// `attach_graph_rev_onto` / `flatten_named_rev_onto` below build the
+// whole (graph_name, triple) list in one accumulator-style
+// (tail-recursive) pass with no `@`, then `dataset_quads` reverses
+// once at the end. Order is preserved: `attach_graph_rev_onto g ts
+// acc` yields `List.Tot.rev (tag g ts) @ acc`, so folding it over
+// [default; named_1; ...; named_k] in that order and reversing once
+// at the end restores the original default-graph-first, named-graphs-
+// in-order layout.
+let rec attach_graph_rev_onto (g : option iri) (ts : list triple) (acc : list qquad)
   : Tot (list qquad) (decreases ts) =
   match ts with
-  | [] -> []
-  | hd :: tl -> (g, hd) :: attach_graph g tl
+  | [] -> acc
+  | hd :: tl -> attach_graph_rev_onto g tl ((g, hd) :: acc)
 
-let rec flatten_named (named : list named_graph)
+let attach_graph (g : option iri) (ts : list triple) : Tot (list qquad) =
+  List.Tot.rev (attach_graph_rev_onto g ts [])
+
+let rec flatten_named_rev_onto (named : list named_graph) (acc : list qquad)
   : Tot (list qquad) (decreases named) =
   match named with
-  | [] -> []
+  | [] -> acc
   | ng :: rest ->
-    attach_graph (Some ng.ng_name) ng.ng_graph @ flatten_named rest
+    flatten_named_rev_onto rest (attach_graph_rev_onto (Some ng.ng_name) ng.ng_graph acc)
+
+let flatten_named (named : list named_graph) : Tot (list qquad) =
+  List.Tot.rev (flatten_named_rev_onto named [])
 
 let dataset_quads (ds : rdf_dataset) : list qquad =
-  attach_graph None ds.ds_default @ flatten_named ds.ds_named
+  List.Tot.rev (flatten_named_rev_onto ds.ds_named (attach_graph_rev_onto None ds.ds_default []))
 
 (* ------------------------------------------------------------------ *)
 (* Section 3. Blank-node enumeration. *)
@@ -347,27 +369,44 @@ let rec render_all_for_hfdq (target : bnode_id) (qs : list qquad)
   | [] -> []
   | q :: rest -> render_for_hfdq target q :: render_all_for_hfdq target rest
 
-(* Lexicographic comparison over strings — compare codepoint by
-   codepoint, shorter prefix wins on tie. F* doesn't expose `<=`
-   on string, so we do this by hand over `String.index`. *)
+(* Lexicographic comparison over strings — compare byte by byte,
+   shorter prefix wins on tie.
+   2026-07-05 rewrite (issue #272, remaining 100k+ tail): this used
+   to walk `String.length` / `String.index`, which extract to
+   BatUTF8.length / BatUTF8.get — both O(pos) codepoint-scans from
+   the start of the string on every single call (see
+   Parser.FastString's module banner for the profiled cost model).
+   `str_le_from` called `String.index` once per byte position, so a
+   single string comparison cost O(len^2); with `insertion_sort`
+   below calling this comparator O(n log n) times during a sort, the
+   sort's *comparator* cost alone dominated at 100k+ lines even after
+   the O(n^2)-sort / O(n^2)-concat fixes from the 2026-07-04 pass.
+   `fs_byte_at` / `fs_byte_length` (Parser.FastString) are O(1)
+   per call (direct `String.unsafe_get` / cached length), turning
+   each comparison into O(len) total instead of O(len^2). Byte-wise
+   comparison of valid UTF-8 gives the same relative order as
+   codepoint-wise comparison (a standard UTF-8 property — the byte
+   sequences sort identically to the decoded scalar values), so this
+   is a pure performance change; canonical N-Quads line order (and
+   therefore output bytes) is unchanged. *)
 let rec str_le_from (a b : string) (pos : nat) (fuel : nat)
   : Tot bool (decreases fuel) =
   if fuel = 0 then true
   else
-    let la = String.length a in
-    let lb = String.length b in
+    let la = fs_byte_length a in
+    let lb = fs_byte_length b in
     if pos >= la then true        // a exhausted (prefix or equal): a <= b
     else if pos >= lb then false  // b exhausted, a not: a > b
     else
-      let ca = FStar.Char.int_of_char (String.index a pos) in
-      let cb = FStar.Char.int_of_char (String.index b pos) in
+      let ca = fs_byte_at a pos in
+      let cb = fs_byte_at b pos in
       if ca < cb then true
       else if ca > cb then false
       else str_le_from a b (pos + 1) (fuel - 1)
 
 let str_le (a b : string) : bool =
-  let la = String.length a in
-  let lb = String.length b in
+  let la = fs_byte_length a in
+  let lb = fs_byte_length b in
   let m = if la < lb then lb else la in
   str_le_from a b 0 (m + 1)
 
@@ -383,14 +422,100 @@ let str_compare (a b : string) : int =
 // insertion sort (insert_sorted / insertion_sort, O(n^2) always --
 // the dominant quadratic term behind dump-nq / canonicalize going
 // from 0.65s/0.46s at 1k triples to 12.9s/8.6s at 2k, per the
-// benchmark's superlinear reading). FStar.List.Tot.sortWith is a
-// partition-based (quicksort-shape) sort already proven Tot in the
-// stdlib; average case O(n log n), used here instead. Kept under the
-// `insertion_sort` name since every call site below (and none outside
-// this module -- grep-verified) just wants "sorted ascending by
-// str_le", not the algorithm.
+// benchmark's superlinear reading). That pass swapped in
+// FStar.List.Tot.sortWith (a partition-based, quicksort-shape sort).
+//
+// 2026-07-05 rewrite (issue #272, remaining 100k+ tail):
+// `List.Tot.sortWith` always picks the *first* element of the
+// (sub)list as the pivot (see FStar.List.Tot.Base.sortWith — no
+// randomisation, no median-of-three). Synthetic and real N-Quads
+// input is rarely uniformly random: our own bench fixtures
+// (`<http://example.org/sN>`, N ascending) contain long runs that are
+// already in lexicographic order within each decimal-digit-count band
+// (e.g. s10000..s99999 sort exactly in generation order — 90% of a
+// 100k-line fixture). A first-element pivot degrades to its O(n^2)
+// worst case on sorted/reverse-sorted/many-duplicate-prefix runs,
+// and — because each level's `partition`/`append` recursion is not
+// tail-recursive — an unbalanced split also blows the OCaml stack:
+// measured, `factoidal-dump-nq` raised `Stack_overflow` at 300k
+// triples under the default 8 MiB stack (`ulimit -s 8192`), while an
+// unlimited stack made it merely slow (35.3s, ~8.5k triples/s,
+// continuing the throughput decline seen from 10k onward).
+//
+// This replaces it with a top-down merge sort that splits by
+// *position* (`split_at_acc (n/2)`), never by comparator/pivot value,
+// so no input ordering can unbalance it: recursion depth is always
+// O(log n) regardless of how sorted the input already is, and total
+// work is O(n log n) worst case, not just average case. `split_at_acc`
+// and `merge_sorted_acc` are written accumulator-style (tail
+// recursive) so building the halves and merging them back never
+// re-introduces O(n) stack depth either — only the O(log n) split
+// recursion itself uses the call stack.
+//
+// `merge_sort_with_fuel`'s `depth_fuel` parameter is a totality
+// device, not a correctness bound: it is seeded with `n + 1` (comfortably
+// more than the ~log2(n) levels the split recursion actually uses), so
+// the `depth_fuel = 0` branch is unreachable for any real input — same
+// "generous fuel, defensive branch" idiom already used for
+// `build_canonical_mapping_alg`'s poison-clique fallback below.
+//
+// Kept under the `insertion_sort` name since every call site (and
+// none outside this module — grep-verified) just wants "sorted
+// ascending by str_le", not a specific algorithm.
+let rec str_list_length_acc (xs : list string) (acc : nat)
+  : Tot nat (decreases xs) =
+  match xs with
+  | [] -> acc
+  | _ :: tl -> str_list_length_acc tl (acc + 1)
+
+let str_list_length (xs : list string) : nat = str_list_length_acc xs 0
+
+// Tail-recursive split of `xs` into (first n elements, remainder),
+// preserving order in both halves. Avoids the O(n) stack depth a
+// naive `hd :: take (n - 1) tl` recursion would need.
+let rec split_at_acc (n : nat) (xs : list string) (acc : list string)
+  : Tot (list string * list string) (decreases xs) =
+  match xs with
+  | [] -> (List.Tot.rev acc, [])
+  | hd :: tl ->
+    if n = 0 then (List.Tot.rev acc, xs)
+    else split_at_acc (n - 1) tl (hd :: acc)
+
+// Tail-recursive merge of two already-(str_le-)sorted lists. `fuel`
+// is exactly (length xs + length ys) at the call site below, so the
+// `fuel = 0` branch is only reached once both lists are empty (and
+// is a defensive `xs @ ys` no-op in that case, never actually taken
+// with unequal-to-zero remaining elements).
+let rec merge_sorted_acc (xs ys : list string) (fuel : nat) (acc : list string)
+  : Tot (list string) (decreases fuel) =
+  if fuel = 0 then List.Tot.rev acc @ xs @ ys
+  else
+    match xs, ys with
+    | [], [] -> List.Tot.rev acc
+    | [], hd :: tl -> merge_sorted_acc [] tl (fuel - 1) (hd :: acc)
+    | hd :: tl, [] -> merge_sorted_acc tl [] (fuel - 1) (hd :: acc)
+    | hx :: tx, hy :: ty ->
+      if str_le hx hy
+      then merge_sorted_acc tx ys (fuel - 1) (hx :: acc)
+      else merge_sorted_acc xs ty (fuel - 1) (hy :: acc)
+
+let rec merge_sort_with_fuel (xs : list string) (depth_fuel : nat)
+  : Tot (list string) (decreases depth_fuel) =
+  match xs with
+  | [] -> []
+  | [_] -> xs
+  | _ :: _ :: _ ->
+    if depth_fuel = 0 then xs  // unreachable in practice; see banner above
+    else
+      let n = str_list_length xs in
+      let (left, right) = split_at_acc (n / 2) xs [] in
+      let sorted_left = merge_sort_with_fuel left (depth_fuel - 1) in
+      let sorted_right = merge_sort_with_fuel right (depth_fuel - 1) in
+      let fuel = str_list_length sorted_left + str_list_length sorted_right in
+      merge_sorted_acc sorted_left sorted_right fuel []
+
 let insertion_sort (xs : list string) : list string =
-  List.Tot.sortWith str_compare xs
+  merge_sort_with_fuel xs (str_list_length xs + 1)
 
 // 2026-07-04 rewrite (issue #272): the previous definition was
 // `hd ^ concat_strings tl`, a right fold whose every step re-copies
@@ -1451,24 +1576,37 @@ let canonicalize (ds : rdf_dataset) : rdf_dataset =
 (* Render a dataset to canonical N-Quads: emit each quad, sort the
    resulting lines lexicographically, concatenate. The relabelling
    must already have happened (call after `canonicalize`). *)
-let rec render_quads (qs : list qquad)
+// 2026-07-05 rewrite (issue #272, remaining 100k+ tail): non-tail
+// `canon_quad g t :: render_quads rest` needed O(n) stack depth for
+// n qquads (same shape as attach_graph above). Accumulator + one
+// final reverse keeps this a genuine OCaml tail loop.
+let rec render_quads_acc (qs : list qquad) (acc : list string)
   : Tot (list string) (decreases qs) =
   match qs with
-  | [] -> []
-  | (g, t) :: rest -> canon_quad g t :: render_quads rest
+  | [] -> List.Tot.rev acc
+  | (g, t) :: rest -> render_quads_acc rest (canon_quad g t :: acc)
+
+let render_quads (qs : list qquad) : Tot (list string) =
+  render_quads_acc qs []
 
 (* Dedup adjacent duplicates in a sorted list of strings. After
    `insertion_sort`, RDF set semantics requires that identical canonical
    N-Quads lines collapse to a single line (tests 076/077). Walking the
-   sorted list and dropping adjacent equals is sufficient. *)
-let rec dedup_sorted_strings (xs : list string)
+   sorted list and dropping adjacent equals is sufficient.
+   2026-07-05 rewrite (issue #272): same non-tail-recursion fix as
+   render_quads / attach_graph above (`x :: dedup_sorted_strings ...`
+   needed O(n) stack depth); accumulator + final reverse instead. *)
+let rec dedup_sorted_strings_acc (xs : list string) (acc : list string)
   : Tot (list string) (decreases xs) =
   match xs with
-  | [] -> []
-  | [x] -> [x]
+  | [] -> List.Tot.rev acc
+  | [x] -> List.Tot.rev (x :: acc)
   | x :: y :: rest ->
-    if x = y then dedup_sorted_strings (y :: rest)
-    else x :: dedup_sorted_strings (y :: rest)
+    if x = y then dedup_sorted_strings_acc (y :: rest) acc
+    else dedup_sorted_strings_acc (y :: rest) (x :: acc)
+
+let dedup_sorted_strings (xs : list string) : Tot (list string) =
+  dedup_sorted_strings_acc xs []
 
 let canonical_nquads (ds : rdf_dataset) : string =
   let qs = dataset_quads ds in

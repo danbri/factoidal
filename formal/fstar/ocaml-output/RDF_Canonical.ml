@@ -142,24 +142,34 @@ let canon_quad
 type qquad =
   (RDF_Graph_Executable.iri FStar_Pervasives_Native.option *
     RDF_Graph_Executable.triple)
-let rec attach_graph
+let rec attach_graph_rev_onto
+  (g : RDF_Graph_Executable.iri FStar_Pervasives_Native.option)
+  (ts : RDF_Graph_Executable.triple Prims.list) (acc : qquad Prims.list) :
+  qquad Prims.list=
+  match ts with
+  | [] -> acc
+  | hd::tl -> attach_graph_rev_onto g tl ((g, hd) :: acc)
+let attach_graph
   (g : RDF_Graph_Executable.iri FStar_Pervasives_Native.option)
   (ts : RDF_Graph_Executable.triple Prims.list) : qquad Prims.list=
-  match ts with | [] -> [] | hd::tl -> (g, hd) :: (attach_graph g tl)
-let rec flatten_named (named : RDF_Graph_Executable.named_graph Prims.list) :
-  qquad Prims.list=
+  FStar_List_Tot_Base.rev (attach_graph_rev_onto g ts [])
+let rec flatten_named_rev_onto
+  (named : RDF_Graph_Executable.named_graph Prims.list)
+  (acc : qquad Prims.list) : qquad Prims.list=
   match named with
-  | [] -> []
+  | [] -> acc
   | ng::rest ->
-      FStar_List_Tot_Base.op_At
-        (attach_graph
+      flatten_named_rev_onto rest
+        (attach_graph_rev_onto
            (FStar_Pervasives_Native.Some (ng.RDF_Graph_Executable.ng_name))
-           ng.RDF_Graph_Executable.ng_graph) (flatten_named rest)
+           ng.RDF_Graph_Executable.ng_graph acc)
+let flatten_named (named : RDF_Graph_Executable.named_graph Prims.list) :
+  qquad Prims.list= FStar_List_Tot_Base.rev (flatten_named_rev_onto named [])
 let dataset_quads (ds : RDF_Graph_Executable.rdf_dataset) : qquad Prims.list=
-  FStar_List_Tot_Base.op_At
-    (attach_graph FStar_Pervasives_Native.None
-       ds.RDF_Graph_Executable.ds_default)
-    (flatten_named ds.RDF_Graph_Executable.ds_named)
+  FStar_List_Tot_Base.rev
+    (flatten_named_rev_onto ds.RDF_Graph_Executable.ds_named
+       (attach_graph_rev_onto FStar_Pervasives_Native.None
+          ds.RDF_Graph_Executable.ds_default []))
 let bnodes_in_quad (qq : qquad) : RDF_Graph_Executable.bnode_id Prims.list=
   let uu___ = qq in
   match uu___ with
@@ -298,16 +308,16 @@ let rec str_le_from (a : Prims.string) (b : Prims.string) (pos : Prims.nat)
   if fuel = Prims.int_zero
   then true
   else
-    (let la = FStar_String.strlen a in
-     let lb = FStar_String.strlen b in
+    (let la = Parser_FastString.fs_byte_length a in
+     let lb = Parser_FastString.fs_byte_length b in
      if pos >= la
      then true
      else
        if pos >= lb
        then false
        else
-         (let ca = FStar_Char.int_of_char (FStar_String.index a pos) in
-          let cb = FStar_Char.int_of_char (FStar_String.index b pos) in
+         (let ca = Parser_FastString.fs_byte_at a pos in
+          let cb = Parser_FastString.fs_byte_at b pos in
           if ca < cb
           then true
           else
@@ -315,8 +325,8 @@ let rec str_le_from (a : Prims.string) (b : Prims.string) (pos : Prims.nat)
             then false
             else str_le_from a b (pos + Prims.int_one) (fuel - Prims.int_one)))
 let str_le (a : Prims.string) (b : Prims.string) : Prims.bool=
-  let la = FStar_String.strlen a in
-  let lb = FStar_String.strlen b in
+  let la = Parser_FastString.fs_byte_length a in
+  let lb = Parser_FastString.fs_byte_length b in
   let m = if la < lb then lb else la in
   str_le_from a b Prims.int_zero (m + Prims.int_one)
 let str_eq (a : Prims.string) (b : Prims.string) : Prims.bool= a = b
@@ -324,8 +334,62 @@ let str_compare (a : Prims.string) (b : Prims.string) : Prims.int=
   if a = b
   then Prims.int_zero
   else if str_le a b then (Prims.of_int (-1)) else Prims.int_one
+let rec str_list_length_acc (xs : Prims.string Prims.list) (acc : Prims.nat)
+  : Prims.nat=
+  match xs with
+  | [] -> acc
+  | uu___::tl -> str_list_length_acc tl (acc + Prims.int_one)
+let str_list_length (xs : Prims.string Prims.list) : Prims.nat=
+  str_list_length_acc xs Prims.int_zero
+let rec split_at_acc (n : Prims.nat) (xs : Prims.string Prims.list)
+  (acc : Prims.string Prims.list) :
+  (Prims.string Prims.list * Prims.string Prims.list)=
+  match xs with
+  | [] -> ((FStar_List_Tot_Base.rev acc), [])
+  | hd::tl ->
+      if n = Prims.int_zero
+      then ((FStar_List_Tot_Base.rev acc), xs)
+      else split_at_acc (n - Prims.int_one) tl (hd :: acc)
+let rec merge_sorted_acc (xs : Prims.string Prims.list)
+  (ys : Prims.string Prims.list) (fuel : Prims.nat)
+  (acc : Prims.string Prims.list) : Prims.string Prims.list=
+  if fuel = Prims.int_zero
+  then
+    FStar_List_Tot_Base.op_At (FStar_List_Tot_Base.rev acc)
+      (FStar_List_Tot_Base.op_At xs ys)
+  else
+    (match (xs, ys) with
+     | ([], []) -> FStar_List_Tot_Base.rev acc
+     | ([], hd::tl) ->
+         merge_sorted_acc [] tl (fuel - Prims.int_one) (hd :: acc)
+     | (hd::tl, []) ->
+         merge_sorted_acc tl [] (fuel - Prims.int_one) (hd :: acc)
+     | (hx::tx, hy::ty) ->
+         if str_le hx hy
+         then merge_sorted_acc tx ys (fuel - Prims.int_one) (hx :: acc)
+         else merge_sorted_acc xs ty (fuel - Prims.int_one) (hy :: acc))
+let rec merge_sort_with_fuel (xs : Prims.string Prims.list)
+  (depth_fuel : Prims.nat) : Prims.string Prims.list=
+  match xs with
+  | [] -> []
+  | uu___::[] -> xs
+  | uu___::uu___1::uu___2 ->
+      if depth_fuel = Prims.int_zero
+      then xs
+      else
+        (let n = str_list_length xs in
+         let uu___4 = split_at_acc (n / (Prims.of_int (2))) xs [] in
+         match uu___4 with
+         | (left, right) ->
+             let sorted_left =
+               merge_sort_with_fuel left (depth_fuel - Prims.int_one) in
+             let sorted_right =
+               merge_sort_with_fuel right (depth_fuel - Prims.int_one) in
+             let fuel =
+               (str_list_length sorted_left) + (str_list_length sorted_right) in
+             merge_sorted_acc sorted_left sorted_right fuel [])
 let insertion_sort (xs : Prims.string Prims.list) : Prims.string Prims.list=
-  FStar_List_Tot_Base.sortWith str_compare xs
+  merge_sort_with_fuel xs ((str_list_length xs) + Prims.int_one)
 let concat_strings (xs : Prims.string Prims.list) : Prims.string=
   FStar_String.concat "" xs
 let compute_hfdq (alg : hash_algorithm)
@@ -1129,19 +1193,24 @@ let canonicalize_alg (alg : hash_algorithm)
   relabel_dataset mapping ds
 let canonicalize (ds : RDF_Graph_Executable.rdf_dataset) :
   RDF_Graph_Executable.rdf_dataset= canonicalize_alg HA_SHA256 ds
-let rec render_quads (qs : qquad Prims.list) : Prims.string Prims.list=
+let rec render_quads_acc (qs : qquad Prims.list)
+  (acc : Prims.string Prims.list) : Prims.string Prims.list=
   match qs with
-  | [] -> []
-  | (g, t)::rest -> (canon_quad g t) :: (render_quads rest)
-let rec dedup_sorted_strings (xs : Prims.string Prims.list) :
-  Prims.string Prims.list=
+  | [] -> FStar_List_Tot_Base.rev acc
+  | (g, t)::rest -> render_quads_acc rest ((canon_quad g t) :: acc)
+let render_quads (qs : qquad Prims.list) : Prims.string Prims.list=
+  render_quads_acc qs []
+let rec dedup_sorted_strings_acc (xs : Prims.string Prims.list)
+  (acc : Prims.string Prims.list) : Prims.string Prims.list=
   match xs with
-  | [] -> []
-  | x::[] -> [x]
+  | [] -> FStar_List_Tot_Base.rev acc
+  | x::[] -> FStar_List_Tot_Base.rev (x :: acc)
   | x::y::rest ->
       if x = y
-      then dedup_sorted_strings (y :: rest)
-      else x :: (dedup_sorted_strings (y :: rest))
+      then dedup_sorted_strings_acc (y :: rest) acc
+      else dedup_sorted_strings_acc (y :: rest) (x :: acc)
+let dedup_sorted_strings (xs : Prims.string Prims.list) :
+  Prims.string Prims.list= dedup_sorted_strings_acc xs []
 let canonical_nquads (ds : RDF_Graph_Executable.rdf_dataset) : Prims.string=
   let qs = dataset_quads ds in
   let lines = render_quads qs in
