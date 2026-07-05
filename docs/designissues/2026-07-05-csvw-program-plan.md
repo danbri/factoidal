@@ -1,4 +1,13 @@
+---
+templateEngineOverride: md
+---
+
 # CSVW program plan
+
+<!-- The templateEngineOverride above stops Eleventy running Nunjucks
+     on this file: the URI-template examples below contain `{#...}`,
+     which Nunjucks parses as an unterminated comment tag and the
+     whole site build fails. -->
 
 Scoping doc for CSV on the Web (CSVW) support, modeled on the stage
 structure in
@@ -260,17 +269,56 @@ provenance generation, since that is what the suite actually scores.
 
 | Stage | Deliverable | Predicted coverage | Gate |
 |---|---|---|---|
-| 1 | Initialize `third_party/testing/csvw` submodule; `CSVW.Metadata.fst` skeleton (dialect options + `tableSchema.columns[]` decode, no inheritance yet) | Structural parse of a subset of the ~271 metadata documents — measure once built, do not predict | none |
-| 2 | `CSVW.Metadata.fst` complete: inherited-property propagation, `aboutUrl`/`propertyUrl`/`valueUrl` template-string extraction (not resolution yet) | Full metadata-document decode for all non-error-fixture metadata files | Stage 1 |
-| 3 | `CSVW.URITemplate.fst` (Level 1 + fragment subset) | Unit-level, no manifest target alone — feeds Stage 5 | none (independent of Stage 2) |
-| 4 | `XSD.Datatypes.fst` extension: `date`/`time`/`gYear`-family parsing + `format`-facet interpreter | Unit-level; feeds Stage 5's per-cell datatype resolution | none (independent of Stages 2-3) |
-| 5 | CSV tokenizer available (**blocked on RML program's Stage 3, or built here first if this program reaches it sooner — coordinate, do not duplicate**) | Unblocks row iteration | RML Stage 2 (shared dependency) |
-| 6 | `CSVW.Convert.fst` — csv2rdf minimal mode | `manifest-rdf.jsonld`'s subset of the 270 entries reachable without provenance/standard-mode wrapping — likely the bulk of the 76 `ToRdfTest` + a share of the 136 `ToRdfTestWithWarnings` (warnings themselves not yet detected) | Stages 2, 3, 4, 5 |
-| 7 | `CSVW.Convert.fst` — csv2rdf standard mode (provenance/table-group triples) + warning detection | Remaining `ToRdfTestWithWarnings` entries + the 58 `NegativeRdfTest` entries (once error conditions are detected, not just unhandled) | Stage 6 |
-| 8 | `CSVW.Convert.fst` — csv2json (minimal, then full) | Mirrors Stage 6/7's coverage against `manifest-json.jsonld`'s 270 entries — see Open decision 1 on relative priority | Stages 6, 7 (shares most machinery) |
-| 9 | `CSVW.Validate.fst` | `manifest-validation.jsonld`'s 282 entries — the largest manifest, majority-negative | Stage 2 (shares the metadata decoder) |
-| 10 | `bin/csvw-runner/` wiring | Score csv2rdf + csv2json + validation, labelled by manifest and stage reached | Stage 6 (first stage with a nontrivial signal) |
+| 1 | **DONE.** Initialize `third_party/testing/csvw` submodule; `CSVW.Metadata.fst` skeleton (dialect options + `tableSchema.columns[]` decode, no inheritance yet; no fuel threading needed anywhere — columns/tables are flat lists, not a recursive shapeExpr-style grammar) | Structural parse of a subset of the ~271 metadata documents — measure once built, do not predict. **Measured (2026-07-05, scratch driver over `third_party/testing/csvw/tests`, not committed — no runner stage reached yet): 286/293 metadata documents decode to `Some csvw_metadata` with >=1 table (235 single-table, 51 table-group); 293 is the actual file count from a full directory walk matching `*-metadata.json`/`csv-metadata.json` (including `linked-metadata.json`/`user-metadata.json` httpLink/metadata-override variants and subdirectory fixtures beyond the plan's `test118`/`test119` pair — e.g. `test011`-`test037`, `test123` — not just the ~271 the manifest-entry-count estimate implied).** Of the 7 that return `None` or an empty table group: 1 (`test074-metadata.json`, `"tables": []`) decodes structurally to a valid-but-empty `CSVW_TableGroup`, not a decoder failure — the empty-group case is a semantic question (spec conformance of a zero-table group) out of scope for a structural decoder; 3 (`test092`/`test094`/`test096`) are deliberately malformed negative fixtures (invalid JSON syntax; a bare number where a `Table`/`Column` object belongs) that the decoder correctly rejects — expected `None`, not a gap; 1 (`test107-metadata.json`, `"tableSchema": 1`) is a genuine gap: the spec's own comment on this fixture says an invalid-typed `tableSchema` "MUST act as if it was an empty object" (graceful degradation), but this decoder's leniency policy treats a non-object `tableSchema` as a structural-shape failure that fails the whole table — worth a one-line fix (treat non-JObject `tableSchema` as `Some { ts_columns = []; ... }` instead of `None`) whenever Stage 2 revisits table-schema decode, not chased here since it is a single documented fixture, not a design flaw; 2 (`test034`/`test035`, `"tableSchema": "gov.uk/schema/professions.json"`) use the spec's schema-by-reference form (a URL string instead of an inline object) — fetching and inlining an external schema document is explicitly out of scope for this skeleton (no HTTP I/O in Stage 1) and is a candidate for a later stage's scope note, not a bug. | none |
+| 2 | `CSVW.Metadata.fst` complete: inherited-property propagation, `aboutUrl`/`propertyUrl`/`valueUrl` template-string extraction (not resolution yet). **Carried in from Stage 1's measurement**: (a) the `test107` non-object-`tableSchema` case — decode a malformed `tableSchema` as an empty schema per the spec's own "MUST act as if empty object" wording, instead of failing the table; (b) decide whether schema-by-reference (`tableSchema` as a URL string, `test034`/`test035`) is in scope for this stage or deferred again — it needs an I/O seam (fetch + inline) this program hasn't scoped yet, unlike the rest of Stage 2's pure-decode work; (c) decide whether a `CSVW_TableGroup []` (empty `"tables"` array, `test074`) should decode to `None` instead of `Some` once inheritance/validation semantics are in view. | Full metadata-document decode for all non-error-fixture metadata files | Stage 1 |
+| 3 | **DONE.** `CSVW.URITemplate.fst` (Level 1 `{var}` simple string expansion + Level 2 `{#var}` fragment expansion; tokenizer mirrors `RML.Mapping.fst`'s `scan_template_acc`/`parse_template` idiom) | Unit-level, no manifest target alone — feeds Stage 6 (built directly, not gated on Stage 4/5) | none (independent of Stage 2) |
+| 4 | `XSD.Datatypes.fst` extension: `date`/`time`/`gYear`-family parsing + `format`-facet interpreter — **NOT built in this pass.** `CSVW.Conversion.fst` maps a cell's `base` facet name straight to an `xsd:<name>` (or `rdf:HTML`/`rdf:XMLLiteral`/`csvw:JSON`) datatype IRI and uses the CELL'S RAW TEXT verbatim as the lexical form, per the csv2rdf algorithm's own "a datatype's format annotation is irrelevant to the conversion procedure ... the cell value has already been parsed" — but nothing upstream of this module does that parse, so `format`-driven reformatting (custom date patterns, `groupChar`/`decimalChar` numeric parsing, `Y`\|`N`-style booleans) never happens. **Measured impact (2026-07-05): grepping every csv2rdf-manifest FAIL's own metadata for a `"format"` key finds 105 of 251 failing tests carry one** — the single largest identified contributor to the Stage 6/7 fail count below. | Unit-level; feeds Stage 6's per-cell datatype resolution | none (independent of Stages 2-3) |
+| 5 | **DONE.** CSV tokenizer — `RML.Sources.fst`'s `csv_parse_rows`/`csv_iterate` (RFC 4180), reused as-is, not forked, per this plan's own Fit-section directive | Unblocks row iteration | RML Stage 2 (shared dependency) — landed before this plan reached Stage 5, confirming the plan's own "coordinate, don't duplicate" framing |
+| 6 | **DONE, both modes** — `CSVW.Conversion.fst`: csv2rdf minimal mode AND standard mode (`csvw:TableGroup`/`Table`/`Row`/`describes`/`rownum`/`url` wrapper). **Correction to this plan's own Stage 6 framing**: the Fit section's read of `csvt:noProv: true` (270/270 manifest-rdf entries) as "the suite tests minimal-shaped output almost exclusively" was WRONG, caught by reading the checked-in fixtures directly rather than trusting the manifest-option name — `noProv` turns out not to suppress the TableGroup/Table/Row wrapper at all (no fixture, minimal or standard, ever emits PROV-vocabulary triples in the first place); only 7 of 270 manifest-rdf entries carry the actual `csvt:minimal: true` flag that selects bare-triple output. Building minimal-only first would have passed almost nothing — both modes were required from the start, and both are implemented, selected per-test from `csvt:minimal`. | See measured csv2rdf score below | Stages 2 (partial — see gap note), 3, 5 |
+| 7 | `CSVW.Convert.fst` — provenance/table-group triples (**already covered by Stage 6 above, folded in**) + warning detection (**not built** — `ToRdfTestWithWarnings` is scored identically to `ToRdfTest`, since this program has no signal for "processor MUST warn but still produce the same triples") | Folded into Stage 6's measured score; warning detection itself remains a gap | Stage 6 |
+| 8 | `CSVW.Convert.fst` — csv2json (minimal, then full) | Not started this pass | Stages 6, 7 (shares most machinery) |
+| 9 | `CSVW.Validate.fst` | `manifest-validation.jsonld`'s 282 entries — the largest manifest, majority-negative. Not started this pass — `NegativeRdfTest` entries in the csv2rdf manifest (below) already show the gap this stage would close: this program has no metadata/data validation layer, so a malformed document that still decodes structurally (Stage 1's deliberate leniency) proceeds straight to conversion and produces non-empty output where a negative fixture expects none. | Stage 2 (shares the metadata decoder) |
+| 10 | **DONE.** `bin/csvw-runner/csvw_runner.ml` wiring — walks `manifest-rdf.ttl` (the Turtle mirror, parsed with the existing Turtle parser — no JSON-LD manifest reader needed), classifies `ToRdfTest`/`ToRdfTestWithWarnings`/`NegativeRdfTest`, compares via `RDF.Canonical.canonicalize_to_nquads` (same isomorphism-insensitive-to-blank-node-labels comparison `bin/rml-runner`/`bin/jsonld-runner` use). **Measured (2026-07-05, `bin/csvw-runner/csvw_runner`, standalone `ocamlfind` build against extracted modules, not yet wired into `build-ocaml.sh`): 19 pass, 251 fail (out of 270 manifest-rdf.jsonld entries)** — 0/58 `NegativeRdfTest` (no validation layer, see Stage 9), 9/76 `ToRdfTest`, 10/136 `ToRdfTestWithWarnings` pass. Of the 251 fails: at least 105 involve an unimplemented `format` facet (Stage 4 gap), at least 13 involve the unimplemented `separator`/list-valued-cell facet (not decoded by `CSVW.Metadata` at all), the remaining ~135 span negative-test detection (58, entirely Stage 9's gap), the one-level-only aboutUrl/propertyUrl/valueUrl inheritance approximation (`CSVW.Conversion.fst`'s own scope note — the suite's `test038`-`test049`-family inherited-property-propagation combinatorics specifically stress the full table-group→table→schema→column chain this pass doesn't build), and assorted per-fixture edge cases (subdirectory-rooted tests, boolean `Y`\|`N` lexical forms, etc). Stage-1 metadata decode re-measured with no regression: 287/293 documents decode to `Some csvw_metadata` (286 with >=1 table + `test074`'s valid-but-empty table group), matching the Stage 1 baseline exactly. | Stage 6 (first stage with a nontrivial signal) |
 | 11 (indefinite) | `manifest-nonnorm.jsonld`'s 19 non-normative examples | Low priority — not conformance-gating per the manifest's own naming | Stage 10 |
+
+### Two bugs found and fixed during Stage 6/10 (2026-07-05)
+
+Both caught by comparing the runner's actual output against checked-in
+fixtures, not by inspection — the exact discipline this project's
+testing skill asks for:
+
+1. **URI templates were resolving against the document base instead
+   of the table's own URL.** csv2rdf's URI Template Properties
+   (tabular-data-model §5.1.1) resolve a relative `aboutUrl`/
+   `propertyUrl`/`valueUrl` expansion against "the URL of the table",
+   not the outer conversion's base IRI — `CSVW.Conversion.fst`
+   originally resolved all three against `base_iri` directly, which
+   happened to work when a table's URL and the base coincided (no
+   metadata, or metadata whose `url` matched the manifest's own
+   directory) but produced a truncated IRI (missing the table's own
+   path segment) whenever the metadata's `url` differed from the
+   conversion's base — caught by `test011`, whose `aboutUrl:
+   "#gid-{GID}"` produced `file://.../test011/#gid-1` instead of the
+   expected `file://.../test011/tree-ops.csv#gid-1`. Fixed by
+   resolving all three template outputs against
+   `csvw_effective_table_url`'s result instead of `base_iri`.
+2. **Subdirectory-rooted tests (`test032`/`test035`/`test118`/
+   `test119`) used the wrong working directory.** The runner
+   originally derived one global `test_dir` for the whole manifest
+   run; tests whose `mf:action` points into a subdirectory (e.g.
+   `test032/csv-metadata.json`) need their CSV/metadata files read
+   relative to THAT subdirectory, not the shared `tests/` root — the
+   symptom was total conversion failure (zero triples) for every
+   subdirectory-rooted fixture. Fixed by deriving `test_dir` per-test
+   from `Filename.dirname` of the resolved `mf:action` path.
+
+A third finding, `test117` ("file-metadata not referencing file"),
+is a **suite requirement, not a bug**: CSVW's metadata-discovery
+algorithm (tabular-data-model §5.8) requires a same-directory
+`<file>-metadata.json` to be IGNORED if it doesn't actually reference
+the requested tabular file — implemented as `metadata_references_file`
+in the runner, checked before falling back to a discovered (not
+explicitly requested) metadata document.
 
 ## Perf/storage tie-ins
 
