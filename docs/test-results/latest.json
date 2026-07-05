@@ -1,13 +1,13 @@
 {
-  "timestamp": "2026-07-05 02:05 UTC",
-  "commit": "1e4eee66ed37c0be3e5c14e3f3573a079fdb8faa",
+  "timestamp": "2026-07-05 02:10 UTC",
+  "commit": "482d2a179e62b4e81b9dd112beb6c7549236a7ea",
   "branch": "claude/main",
   "totals": {
     "sparql":   {"pass":631,"fail":0,"skip":0,"unsupported":0,"total":631},
     "rdf":      {"pass":1031,"fail":0,"skip":0,"unsupported":0,"total":1031},
     "combined": {"pass":1662,"fail":0,"skip":0,"unsupported":0,"total":1662,"pass_pct_of_runnable":100.0},
     "owl_rl_positive_entailment": {"pass":27,"fail":2,"total":29,"catalog":"third_party/testing/owl/profile-RL.rdf"},
-    "rdfc10": {"pass":82,"fail":3,"skip":1,"total":86,"spec":"https://www.w3.org/TR/rdf-canon/"}
+    "rdfc10": {"pass":84,"fail":1,"skip":1,"total":86,"spec":"https://www.w3.org/TR/rdf-canon/"}
   },
   "suites": {
     "sparql": [
