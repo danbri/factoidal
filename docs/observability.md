@@ -1,7 +1,11 @@
 # Observability: where the wall clock went
 
 Every SPARQL query against `factoidal-http` produces three layers of
-timing/trace data. None of it is opt-in; this is the "no black box" floor.
+timing/trace data. Layers 1 and 3 are operator-only and always on —
+the "no black box" floor. Layer 2 (the `Server-Timing` response
+header) goes back to the requester and is gated by
+`--server-timing=on|off|auto` (default `auto`; see below) since it is
+a timing side channel, not just a debug convenience.
 
 ## 1. stderr line per query (operator's grep target)
 
@@ -19,15 +23,31 @@ grep '\[timing\]' factoidal-http.log | awk -F 'total=' '{print $2}' | sort -gr |
 
 ## 2. `Server-Timing` HTTP header (per-request, machine-readable)
 
-Standards-compatible header on every SPARQL response:
+Standards-compatible header on SPARQL responses, millisecond-rounded
+(issue #266 — no sub-millisecond resolution on this public surface):
 
 ```
-Server-Timing: parse;dur=0.4, eval;dur=137000.2, format;dur=0.5, total;dur=137001.6
+Server-Timing: parse;dur=0, eval;dur=137000, format;dur=0, total;dur=137001
 ```
 
 Renders natively in browser DevTools (Network panel → Timing tab) and in
 `curl -i`. Cross-origin reads are enabled via `Timing-Allow-Origin: *`
 (emitted alongside the existing CORS headers).
+
+Per-stage timing is also a side channel — `eval;dur` can leak query-cost
+information (named-graph cardinality, FILTER success/failure) to a
+requester who shouldn't otherwise observe it — so this header is gated by
+`--server-timing=on|off|auto` (`factoidal-http --help`):
+
+- `auto` (default): off when the deployment looks multi-tenant or
+  tunnel-exposed (`--proxied-auth-rw-graphnames` set, `--cors` anything
+  but off, or `--host` not `127.0.0.1`); on otherwise (loopback,
+  no CORS, no per-user write sandbox — local-dev / single-user mode).
+- `on` / `off`: explicit override, ignores deployment shape.
+
+The stderr line and `/admin/recent.json` above are operator-only
+surfaces and are never gated by this flag — only the response header
+that goes back to the requester is.
 
 ## 3. `/admin/recent.json` (last 50 queries + counters)
 

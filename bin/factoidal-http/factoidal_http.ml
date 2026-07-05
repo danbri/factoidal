@@ -149,6 +149,42 @@ type cors_policy = SPARQL_HTTP_Response.cors_policy =
   | CORS_Any
   | CORS_List of string list
 
+(* --server-timing=on|off|auto (issue #266).
+
+   The Server-Timing header (parse/eval/format/total, ms-rounded) is a
+   diagnostic convenience for the web client's Details pane, but it is
+   also a timing side channel: eval;dur leaks query-cost information
+   that can be used to infer named-graph cardinality or FILTER
+   success/failure against data the requester shouldn't otherwise be
+   able to observe. That's only a real threat when the requester might
+   be untrusted, so the flag defaults to policy-driven auto-detection
+   rather than a single hardcoded default. This is deployment policy
+   for the HTTP consumer binary, not RDF/SPARQL semantics, so per rule
+   #11 it is fine as hand-written OCaml in bin/factoidal-http/ rather
+   than F*.
+
+   ST_On  / ST_Off : explicit override, ignores the deployment shape.
+   ST_Auto         : off when the deployment looks multi-tenant or
+                     tunnel-exposed (--proxied-auth-rw-graphnames is
+                     set, --cors is anything but off, or --host is not
+                     127.0.0.1); on otherwise (bound to loopback, no
+                     CORS, no per-user write sandboxing — i.e.
+                     local-dev / single-user mode, where the side
+                     channel is moot). See [server_timing_enabled]
+                     below for the actual predicate. *)
+type server_timing_mode = ST_On | ST_Off | ST_Auto
+
+let server_timing_mode_of_string = function
+  | "on" -> Some ST_On
+  | "off" -> Some ST_Off
+  | "auto" -> Some ST_Auto
+  | _ -> None
+
+let server_timing_mode_to_string = function
+  | ST_On -> "on"
+  | ST_Off -> "off"
+  | ST_Auto -> "auto"
+
 type config = {
   mutable port : int;
   mutable dataset_file : string option;
@@ -209,6 +245,10 @@ type config = {
      yield boundaries is a follow-up; this change retires the SIGALRM
      architectural violation and relocates the timeout decision to F*. *)
   mutable query_timeout : int;
+  (* --server-timing=on|off|auto (issue #266). See [server_timing_mode]
+     above for the threat model and [server_timing_enabled] for the
+     auto predicate. Default ST_Auto. *)
+  mutable server_timing : server_timing_mode;
 }
 
 let default_dump_dir =
@@ -232,6 +272,7 @@ let default_config () = {
   web_demo = None;
   max_rows = 50_000;
   query_timeout = 30;
+  server_timing = ST_Auto;
 }
 
 let usage () =
@@ -307,6 +348,25 @@ let usage () =
   print_endline "                         block the single-threaded accept loop.";
   print_endline "                         Cooperative budget via SPARQL.Eval.TimeBudget.";
   print_endline "                         0 = disabled (infinite). (default 30)";
+  print_endline "      --server-timing=on|off|auto";
+  print_endline "                         Emit a Server-Timing response header on POST/GET";
+  print_endline "                         /query and /sparql (parse;dur=, eval;dur=,";
+  print_endline "                         format;dur=, total;dur=, millisecond-rounded).";
+  print_endline "                         SECURITY: eval;dur is a timing side channel — it";
+  print_endline "                         can leak query-cost information (named-graph";
+  print_endline "                         cardinality, FILTER success/failure) to a";
+  print_endline "                         requester who shouldn't otherwise observe it.";
+  print_endline "                         on    always emit the header.";
+  print_endline "                         off   never emit the header.";
+  print_endline "                         auto  (default) off when the deployment looks";
+  print_endline "                               multi-tenant or tunnel-exposed:";
+  print_endline "                               --proxied-auth-rw-graphnames is set, OR";
+  print_endline "                               --cors is anything but unset/off, OR";
+  print_endline "                               --host is not 127.0.0.1.";
+  print_endline "                               on otherwise (loopback, no CORS, no";
+  print_endline "                               per-user write sandbox — local-dev /";
+  print_endline "                               single-user mode, where the side channel";
+  print_endline "                               is moot).";
   print_endline "  -v, --verbose          Log every request";
   print_endline "  -h, --help             This help";
   print_endline "";
@@ -434,6 +494,22 @@ let parse_args ?args () =
               "Error: --query-timeout needs a non-negative integer (0 = disabled), got '%s'\n" v;
             exit 1);
          loop rest
+       | ("--server-timing", Some v, _) ->
+         (match server_timing_mode_of_string v with
+          | Some m -> cfg.server_timing <- m
+          | None ->
+            Printf.eprintf
+              "Error: --server-timing needs on|off|auto, got '%s'\n" v;
+            exit 1);
+         loop rest
+       | ("--server-timing", None, v :: rest') ->
+         (match server_timing_mode_of_string v with
+          | Some m -> cfg.server_timing <- m
+          | None ->
+            Printf.eprintf
+              "Error: --server-timing needs on|off|auto, got '%s'\n" v;
+            exit 1);
+         loop rest'
        | _ ->
          Printf.eprintf "Error: unrecognised argument '%s' (try --help)\n" arg;
          exit 1)
@@ -1103,12 +1179,37 @@ let timing_log_line (qt : query_timing) (q_summary : string) : string =
     (Printf.sprintf "%.1f" qt.qt_total_ms)
     (Printf.sprintf "%S" q_summary)
 
+(* Issue #266 security note: even when Server-Timing is on, round to
+   whole milliseconds (no sub-millisecond resolution) so the header
+   doesn't hand a requester more precision than the four documented
+   stage names already concede. The eprintf log line and
+   /admin/recent.json JSON (operator-only surfaces, not exposed to
+   arbitrary browser clients) keep their finer-grained "%.1f" / "%.2f"
+   formatting — only this response-header path is public. *)
 let timing_response_header (qt : query_timing) : string =
   SPARQL_HTTP_Admin.render_timing_response_header
-    (Printf.sprintf "%.1f" qt.qt_parse_ms)
-    (Printf.sprintf "%.1f" qt.qt_eval_ms)
-    (Printf.sprintf "%.1f" qt.qt_format_ms)
-    (Printf.sprintf "%.1f" qt.qt_total_ms)
+    (Printf.sprintf "%.0f" qt.qt_parse_ms)
+    (Printf.sprintf "%.0f" qt.qt_eval_ms)
+    (Printf.sprintf "%.0f" qt.qt_format_ms)
+    (Printf.sprintf "%.0f" qt.qt_total_ms)
+
+(* Effective on/off decision for --server-timing (issue #266). ST_On /
+   ST_Off are unconditional; ST_Auto applies the deployment-shape
+   heuristic from the flag's doc comment above [server_timing_mode]:
+   off wherever an untrusted requester is plausible (per-user write
+   sandboxing configured, CORS enabled for any origin, or the listener
+   is not bound to loopback), on otherwise. *)
+let server_timing_enabled (cfg : config) : bool =
+  match cfg.server_timing with
+  | ST_On -> true
+  | ST_Off -> false
+  | ST_Auto ->
+    let looks_multi_tenant_or_tunnelled =
+      cfg.proxied_auth_rw_graphnames <> None
+      || cfg.cors <> CORS_Off
+      || cfg.host <> "127.0.0.1"
+    in
+    not looks_multi_tenant_or_tunnelled
 
 (* ----- Recent-query ring buffer ------------------------------------------- *)
 
@@ -2325,7 +2426,12 @@ let handle_connection cfg dataset_ref backend_ref cottas_stores_ref ic oc =
           rq_timing = qt;
         };
         bump_counters qt;
-        timing_extras_ref := [timing_response_header qt];
+        (* Issue #266: the ring buffer / eprintf log / admin dashboard
+           above are operator-only surfaces and stay unconditional;
+           only the response header (visible to the requester) is
+           gated by --server-timing. *)
+        timing_extras_ref :=
+          if server_timing_enabled cfg then [timing_response_header qt] else [];
         resp
     in
     write_response ~extra_headers:(!timing_extras_ref @ cors_hdrs) oc
