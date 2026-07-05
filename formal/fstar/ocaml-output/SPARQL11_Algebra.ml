@@ -1905,7 +1905,18 @@ let xpath_to_str_regex (p : string) : string =
   let buf = Buffer.create (len * 2) in
   let i = ref 0 in
   let last_atom = ref "" in
-  let set_atom s = last_atom := s; Buffer.add_string buf s in
+  let last_atom_start = ref 0 in
+  (* NOT annotated  — this .ml file has a top-level
+      (F* extraction convention) that shadows the bare
+      type name to  (zarith bignum) for the
+     rest of the file, so an explicit  annotation here would
+     silently pin this ref to a bignum list instead of Stdlib's
+     native int, conflicting with  (genuinely
+     native int) at every push/pop. Leave it unannotated; the first
+     push below () fixes the
+     concrete native-int type from Buffer.length's real signature. *)
+  let group_starts = ref [] in
+  let set_atom s = last_atom_start := Buffer.length buf; last_atom := s; Buffer.add_string buf s in
   while !i < len do
     let c = p.[!i] in
     if c = '\\' && !i + 1 < len then begin
@@ -1921,11 +1932,47 @@ let xpath_to_str_regex (p : string) : string =
       else if next = 'W' then (set_atom "[^a-zA-Z0-9_]"; i := !i + 2)
       else if next = 's' then (set_atom "[ \t\n\r]"; i := !i + 2)
       else if next = 'S' then (set_atom "[^ \t\n\r]"; i := !i + 2)
+      (* Outside-BMP ShEx characterization (#277 comment / follow-up
+         issue): literal outside-BMP UTF-8 byte sequences embedded
+         directly in a pattern already match correctly (no lead/cont.
+         byte collides with an ASCII regex metachar), so no BMP-range
+         translation belongs here. The XSD/XPath regex SingleCharEsc
+         control escapes 
+ 
+ 	 DO need translating though: OCaml
+         Str has no notion of them (Str.regexp "\t" matches the
+         literal letter 't', not a tab byte), so without this the
+         ShExJ "REGEXP_escapes" fixtures (which combine these with an
+         astral character, hence their OutsideBMP trait tag) fail on
+         the control-char escape, not on the astral byte matching. *)
+      else if next = 'n' then (set_atom "\n"; i := !i + 2)
+      else if next = 'r' then (set_atom "\r"; i := !i + 2)
+      else if next = 't' then (set_atom "\t"; i := !i + 2)
       else (let s = String.sub p !i 2 in set_atom s; i := !i + 2)
     end else if c = '(' then
-      (Buffer.add_string buf "\("; last_atom := ""; i := !i + 1)
-    else if c = ')' then
-      (Buffer.add_string buf "\)"; last_atom := "\)"; i := !i + 1)
+      (group_starts := (Buffer.length buf) :: !group_starts;
+       Buffer.add_string buf "\("; last_atom := ""; i := !i + 1)
+    else if c = ')' then begin
+      Buffer.add_string buf "\)";
+      (* #277: capture the FULL group text (not just the closing
+         delimiter) so {n,m} repetition of a group re-emits the whole
+         group instead of stray close-parens. group_starts is a stack
+         (not last_atom_start) because atoms *inside* the group (e.g.
+         the 'b' in "(ab)") run through set_atom too and would
+         otherwise clobber the group's own start position before we
+         get here — nesting-safe via push on '(' / pop on ')'. *)
+      (match !group_starts with
+       | start :: rest ->
+         group_starts := rest;
+         last_atom_start := start;
+         last_atom := Buffer.sub buf start (Buffer.length buf - start)
+       | [] ->
+         (* Unmatched ')' in a malformed pattern: no group to close
+            over, fall back to the pre-#277 behaviour rather than
+            crash on Buffer.sub with a bogus start. *)
+         last_atom := "\)");
+      i := !i + 1
+    end
     else if c = '|' then
       (Buffer.add_string buf "\|"; last_atom := ""; i := !i + 1)
     else if c = '?' || c = '+' || c = '*' then
@@ -1936,6 +1983,16 @@ let xpath_to_str_regex (p : string) : string =
       while !i < len && p.[!i] <> '}' && p.[!i] <> ',' do
         Buffer.add_char nb p.[!i]; i := !i + 1 done;
       let n = try int_of_string (Buffer.contents nb) with _ -> 1 in
+      (* #277: the quantified atom's first occurrence was already
+         written to buf unconditionally by the main loop (set_atom /
+         the group-close branch) before this {n,m} was even parsed.
+         Roll that copy back and rebuild the whole expansion from n
+         and m directly, so a parsed minimum of 0 makes every copy
+         optional instead of leaving one mandatory copy stuck at the
+         front. Behaviourally identical to the old emission for
+         n >= 1 (same text produced), and now also correct for n = 0
+         and the exact-count {0} case. *)
+      Buffer.truncate buf !last_atom_start;
       if !i < len && p.[!i] = ',' then begin
         i := !i + 1;
         let mb = Buffer.create 8 in
@@ -1944,18 +2001,21 @@ let xpath_to_str_regex (p : string) : string =
         if !i < len then i := !i + 1;
         let ms = Buffer.contents mb in
         if ms = "" then begin
-          for _ = 2 to n do Buffer.add_string buf !last_atom done;
+          (* {n,} unbounded: n mandatory copies + 0-or-more extra *)
+          for _ = 1 to n do Buffer.add_string buf !last_atom done;
           Buffer.add_string buf !last_atom; Buffer.add_char buf '*'
         end else begin
           let m = try int_of_string ms with _ -> n in
-          for _ = 2 to n do Buffer.add_string buf !last_atom done;
+          (* {n,m} bounded: n mandatory + (m - n) individually optional *)
+          for _ = 1 to n do Buffer.add_string buf !last_atom done;
           for _ = n + 1 to m do
             Buffer.add_string buf !last_atom;
             Buffer.add_string buf "?" done
         end
       end else begin
+        (* {n} exact: n mandatory copies, none at all when n = 0 *)
         if !i < len then i := !i + 1;
-        for _ = 2 to n do Buffer.add_string buf !last_atom done
+        for _ = 1 to n do Buffer.add_string buf !last_atom done
       end
     end else if c = '[' then begin
       let start = !i in
