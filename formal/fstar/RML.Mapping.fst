@@ -37,7 +37,8 @@ module RML.Mapping
 //     rml:parentMap [...]) — both appear in the vendored suite
 //     (RMLTC0009a vs RMLTC0030a).
 //   - Term-map forms: rml:constant / rml:reference / rml:template, with
-//     rml:termType (rml:IRI, rml:URI as a synonym, rml:UnsafeIRI,
+//     rml:termType (rml:IRI, rml:URI — a distinct term type, not a
+//     synonym, see RML.Eval's IRI-safe-vs-URI-safe encoding — rml:UnsafeIRI,
 //     rml:BlankNode, rml:Literal), rml:datatype / rml:datatypeMap and
 //     rml:language / rml:languageMap — the Map forms are themselves
 //     full term maps (RMLTC0022b/c/e's datatypeMap uses rml:template /
@@ -141,6 +142,16 @@ let rml_graphMap : wf_iri =
   assert_norm (is_iri "http://w3id.org/rml/graphMap");
   "http://w3id.org/rml/graphMap"
 
+// The well-known "route to the default graph" sentinel (spec section
+// 10 / 12.1's Target graphs column). A subjectMap/predicateObjectMap
+// can carry `rml:graph rml:defaultGraph` explicitly (RMLTC0007g,
+// RMLTC0028b) — this must land in the dataset's *default* graph, not
+// a named graph literally called "http://w3id.org/rml/defaultGraph".
+// RML.Eval's place_into_dataset special-cases this IRI.
+let rml_defaultGraph : wf_iri =
+  assert_norm (is_iri "http://w3id.org/rml/defaultGraph");
+  "http://w3id.org/rml/defaultGraph"
+
 let rml_predicateObjectMap : wf_iri =
   assert_norm (is_iri "http://w3id.org/rml/predicateObjectMap");
   "http://w3id.org/rml/predicateObjectMap"
@@ -205,8 +216,8 @@ let rml_IRI : wf_iri =
   assert_norm (is_iri "http://w3id.org/rml/IRI");
   "http://w3id.org/rml/IRI"
 
-// rml:URI is a legacy synonym for rml:IRI (seen in RMLTC0027a); decoded
-// to the same TT_IRI variant as rml:IRI.
+// rml:URI (seen in RMLTC0027a) is a distinct term type from rml:IRI, not
+// a legacy synonym — see the TT_URI comment above.
 let rml_URI : wf_iri =
   assert_norm (is_iri "http://w3id.org/rml/URI");
   "http://w3id.org/rml/URI"
@@ -297,6 +308,16 @@ let parse_template (s : string) : list template_segment =
 
 type term_type =
   | TT_IRI
+  | TT_URI       // distinct from TT_IRI: rml:URI applies "URI-safe" (RFC3986
+                 // unreserved, ASCII-only) percent-encoding to template
+                 // reference values, vs rml:IRI's "IRI-safe" (RFC3987
+                 // iunreserved, most non-ASCII stays unencoded) — spec
+                 // section 8.3.1. Corrected from Stage 1's "legacy synonym"
+                 // call (see the removed comment at rml_URI below) after
+                 // fetching the spec text directly in Stage 2: the two
+                 // encodings are observably different (RMLTC0027a's
+                 // rml:URI output percent-encodes "Zoë Krüger" to
+                 // "Zo%C3%AB%20Kr%C3%BCger", the RFC3986/ASCII-only form).
   | TT_UnsafeIRI
   | TT_BlankNode
   | TT_Literal
@@ -315,7 +336,8 @@ type source_root =
 let decode_term_type (t : rdf_term) : option term_type =
   match t with
   | T_IRI i ->
-    if i = rml_IRI || i = rml_URI then Some TT_IRI
+    if i = rml_IRI then Some TT_IRI
+    else if i = rml_URI then Some TT_URI
     else if i = rml_UnsafeIRI then Some TT_UnsafeIRI
     else if i = rml_BlankNode then Some TT_BlankNode
     else if i = rml_Literal then Some TT_Literal
