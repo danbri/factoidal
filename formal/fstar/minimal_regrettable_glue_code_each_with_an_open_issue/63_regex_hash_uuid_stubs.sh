@@ -457,4 +457,36 @@ with open('$CANON_FILE', 'w') as f:
     f.write(content)
 "
   echo "  RDF_Canonical hash_sha256 wired to Fstar_pure_hashes.sha256."
+
+  # 2026-07-05: RDFC-1.0 rdfc:hashAlgorithm "SHA384" manifest variant
+  # (test075c/test075m) needs a second hash primitive alongside
+  # hash_sha256 above. Same assume-val shape, same two extraction
+  # forms, same glue patch (issue #63) rather than a new hole per
+  # CLAUDE.md rule #3.
+  echo "  Patching $CANON_FILE (hash_sha384 stub)..."
+  python3 -c "
+import sys
+with open('$CANON_FILE', 'r') as f:
+    content = f.read()
+form_a_old = '''let hash_sha384 (uu___ : Prims.string) : Prims.string=
+  failwith \"Not yet implemented: RDF.Canonical.hash_sha384\"'''
+form_a_new = '''let hash_sha384 (s : Prims.string) : Prims.string=
+  Fstar_pure_hashes.sha384 s'''
+form_b_old = '''let (hash_sha384 : Prims.string -> Prims.string) =
+  fun uu___ -> failwith \"Not yet implemented: RDF.Canonical.hash_sha384\"'''
+form_b_new = '''let (hash_sha384 : Prims.string -> Prims.string) =
+  fun s -> Fstar_pure_hashes.sha384 s'''
+matched = (form_a_old in content) or (form_b_old in content)
+already_patched = ('Fstar_pure_hashes.sha384 s' in content)
+content = content.replace(form_a_old, form_a_new)
+content = content.replace(form_b_old, form_b_new)
+if not matched and not already_patched:
+    sys.stderr.write('  ERROR: RDF_Canonical.ml hash_sha384 stub matched neither form A nor form B.\n')
+    sys.stderr.write('  RDFC-1.0 SHA-384 manifest tests (test075c/075m) will fail (failwith).\n')
+    sys.stderr.write('  Inspect $CANON_FILE and update 63_regex_hash_uuid_stubs.sh.\n')
+    sys.exit(2)
+with open('$CANON_FILE', 'w') as f:
+    f.write(content)
+"
+  echo "  RDF_Canonical hash_sha384 wired to Fstar_pure_hashes.sha384."
 fi

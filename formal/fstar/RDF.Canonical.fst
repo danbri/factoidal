@@ -32,9 +32,29 @@ open RDF.Graph.Executable
 open Parser.FastString
 
 (* ------------------------------------------------------------------ *)
-(* Hash primitive — assumed external; wired to Fstar_pure_hashes.sha256
-   by ocaml-patches.sh (issue #63 patch). *)
+(* Hash primitives — assumed external; wired to Fstar_pure_hashes.sha256
+   / Fstar_pure_hashes.sha384 by ocaml-patches.sh (issue #63 patch). *)
 assume val hash_sha256 : string -> string
+assume val hash_sha384 : string -> string
+
+// RDFC-1.0 §4.4 note 2 / test manifests: `rdfc:hashAlgorithm` selects
+// SHA-256 (the algorithm's default) or SHA-384 for a given test. Every
+// hash call site in this module goes through `apply_hash` so a single
+// dispatch point governs the choice; the manifest-declared literal is
+// mapped to this type by `hash_algorithm_of_string` (used by
+// rdfc10_runner.ml — see RDF.Canonical.Manifest.fst for the
+// `rdfc:hashAlgorithm` predicate IRI).
+type hash_algorithm =
+  | HA_SHA256
+  | HA_SHA384
+
+let apply_hash (alg : hash_algorithm) (s : string) : string =
+  match alg with
+  | HA_SHA256 -> hash_sha256 s
+  | HA_SHA384 -> hash_sha384 s
+
+let hash_algorithm_of_string (s : string) : hash_algorithm =
+  if s = "SHA384" then HA_SHA384 else HA_SHA256
 
 (* ------------------------------------------------------------------ *)
 (* Section 1. Canonical N-Quads serialisation
@@ -383,11 +403,11 @@ let insertion_sort (xs : list string) : list string =
 let concat_strings (xs : list string) : string =
   String.concat "" xs
 
-let compute_hfdq (target : bnode_id) (qs : list qquad) : string =
+let compute_hfdq (alg : hash_algorithm) (target : bnode_id) (qs : list qquad) : string =
   let mentioning = quads_for_bnode target qs in
   let rendered = render_all_for_hfdq target mentioning in
   let sorted = insertion_sort rendered in
-  hash_sha256 (concat_strings sorted)
+  apply_hash alg (concat_strings sorted)
 
 (* ------------------------------------------------------------------ *)
 (* Section 5. Identifier issuer.
@@ -482,11 +502,11 @@ let issue_identifier (st : issuer_state) (b : bnode_id)
 
 type bn_hfdq_pair = (bnode_id * string)  (* (orig, hfdq) *)
 
-let rec compute_all_hfdq (qs : list qquad) (bs : list bnode_id)
+let rec compute_all_hfdq (alg : hash_algorithm) (qs : list qquad) (bs : list bnode_id)
   : Tot (list bn_hfdq_pair) (decreases bs) =
   match bs with
   | [] -> []
-  | b :: rest -> (b, compute_hfdq b qs) :: compute_all_hfdq qs rest
+  | b :: rest -> (b, compute_hfdq alg b qs) :: compute_all_hfdq alg qs rest
 
 let rec lookup_hfdq (b : bnode_id) (xs : list bn_hfdq_pair)
   : Tot string (decreases xs) =
@@ -630,10 +650,10 @@ let related_bnode (target : bnode_id) (q : qquad) : option bnode_id =
 // [+ "<" + predicate + ">" if position <> "g"] + identifier; return
 // hash_algorithm(input). `identifier` is resolved by the caller
 // (already-issued "_:<label>" or the bare HFDQ fallback).
-let hash_related_blank_node (pos : string) (pred : string) (identifier : string)
+let hash_related_blank_node (alg : hash_algorithm) (pos : string) (pred : string) (identifier : string)
   : string =
   let input = pos ^ (if pos <> "g" then "<" ^ pred ^ ">" else "") ^ identifier in
-  hash_sha256 input
+  apply_hash alg input
 
 (* For a single quad mentioning `target`, build the contribution
    "<pos>|<pred>|<related_key>". `key_of` resolves the related-bnode
@@ -962,6 +982,7 @@ let related_components (target : bnode_id) (q : qquad)
 // candidate's temporary label, then bare HFDQ hash — RDFC-1.0 4.8
 // step 3), hash it with position + predicate, and insert.
 let rec insert_related_entries
+    (alg : hash_algorithm)
     (entries : list (string * bnode_id))
     (pred : string)
     (hfdq_table : list bn_hfdq_pair)
@@ -977,11 +998,12 @@ let rec insert_related_entries
       | Some lbl -> "_:" ^ lbl               // branch 1/2
       | None -> lookup_hfdq rb hfdq_table     // branch 3
     in
-    let k = hash_related_blank_node pos pred identifier in
-    insert_related_entries rest pred hfdq_table canon_st local_st
+    let k = hash_related_blank_node alg pos pred identifier in
+    insert_related_entries alg rest pred hfdq_table canon_st local_st
       (bucket_insert k rb acc)
 
 let rec build_buckets_for
+    (alg : hash_algorithm)
     (target : bnode_id)
     (qs : list qquad)
     (hfdq_table : list bn_hfdq_pair)
@@ -995,12 +1017,12 @@ let rec build_buckets_for
   | [] -> acc
   | q :: rest ->
     if not (quad_mentions_bnode target q) then
-      build_buckets_for target rest hfdq_table canon_st local_st acc
+      build_buckets_for alg target rest hfdq_table canon_st local_st acc
     else
       let (_, t) = q in
       let entries = related_components target q in
-      let acc' = insert_related_entries entries t.p hfdq_table canon_st local_st acc in
-      build_buckets_for target rest hfdq_table canon_st local_st acc'
+      let acc' = insert_related_entries alg entries t.p hfdq_table canon_st local_st acc in
+      build_buckets_for alg target rest hfdq_table canon_st local_st acc'
 
 (* Permutation enumeration: list all permutations of a list. We bound
    this at factorial(6) = 720 by truncating longer lists; for tests in
@@ -1090,6 +1112,7 @@ let rec build_path_labels
 // issuer is only ever updated afterwards, by replaying the winning
 // exploration's temporary-issuance list (see `replay_group` below).
 let rec hndq_run
+    (alg : hash_algorithm)
     (fuel : nat)
     (qs : list qquad)
     (hfdq_table : list bn_hfdq_pair)
@@ -1099,10 +1122,11 @@ let rec hndq_run
   : Tot (string * issuer_state) (decreases %[fuel; 4; 0]) =
   if fuel = 0 then ("", local_st)
   else
-    let buckets = build_buckets_for target qs hfdq_table canon_st local_st [] in
-    walk_buckets (fuel - 1) qs hfdq_table canon_st local_st buckets ""
+    let buckets = build_buckets_for alg target qs hfdq_table canon_st local_st [] in
+    walk_buckets alg (fuel - 1) qs hfdq_table canon_st local_st buckets ""
 
 and walk_buckets
+    (alg : hash_algorithm)
     (fuel : nat)
     (qs : list qquad)
     (hfdq_table : list bn_hfdq_pair)
@@ -1112,15 +1136,16 @@ and walk_buckets
     (data : string)
   : Tot (string * issuer_state) (decreases %[fuel; 3; buckets]) =
   match buckets with
-  | [] -> (hash_sha256 data, local_st)
+  | [] -> (apply_hash alg data, local_st)
   | (k, members) :: rest ->
     let data1 = data ^ k in
     let perms = permutations (take_n 6 members) in
-    let (best_hash, best_st) = best_permutation fuel qs hfdq_table canon_st local_st perms in
+    let (best_hash, best_st) = best_permutation alg fuel qs hfdq_table canon_st local_st perms in
     let data2 = data1 ^ best_hash in
-    walk_buckets fuel qs hfdq_table canon_st best_st rest data2
+    walk_buckets alg fuel qs hfdq_table canon_st best_st rest data2
 
 and best_permutation
+    (alg : hash_algorithm)
     (fuel : nat)
     (qs : list qquad)
     (hfdq_table : list bn_hfdq_pair)
@@ -1131,10 +1156,11 @@ and best_permutation
   match perms with
   | [] -> ("", local_st)  // no permutations: empty bucket
   | p :: rest ->
-    let (h, st') = walk_perm fuel qs hfdq_table canon_st local_st p "" in
-    pick_best fuel qs hfdq_table canon_st local_st rest h st'
+    let (h, st') = walk_perm alg fuel qs hfdq_table canon_st local_st p "" in
+    pick_best alg fuel qs hfdq_table canon_st local_st rest h st'
 
 and pick_best
+    (alg : hash_algorithm)
     (fuel : nat)
     (qs : list qquad)
     (hfdq_table : list bn_hfdq_pair)
@@ -1147,13 +1173,14 @@ and pick_best
   match perms with
   | [] -> (best_hash, best_st)
   | p :: rest ->
-    let (h, st') = walk_perm fuel qs hfdq_table canon_st local_st_initial p "" in
+    let (h, st') = walk_perm alg fuel qs hfdq_table canon_st local_st_initial p "" in
     let (best_hash', best_st') =
       if str_le h best_hash && h <> best_hash then (h, st')
       else (best_hash, best_st) in
-    pick_best fuel qs hfdq_table canon_st local_st_initial rest best_hash' best_st'
+    pick_best alg fuel qs hfdq_table canon_st local_st_initial rest best_hash' best_st'
 
 and walk_perm
+    (alg : hash_algorithm)
     (fuel : nat)
     (qs : list qquad)
     (hfdq_table : list bn_hfdq_pair)
@@ -1168,9 +1195,10 @@ and walk_perm
   // each, in order. See `build_path_labels` / `walk_recursion` above
   // and below.
   let (path1, local1, recursion) = build_path_labels canon_st local_st perm path [] in
-  walk_recursion fuel qs hfdq_table canon_st local1 recursion path1
+  walk_recursion alg fuel qs hfdq_table canon_st local1 recursion path1
 
 and walk_recursion
+    (alg : hash_algorithm)
     (fuel : nat)
     (qs : list qquad)
     (hfdq_table : list bn_hfdq_pair)
@@ -1187,8 +1215,8 @@ and walk_recursion
     let (local1, lbl) = issue_identifier local_st b in
     let (sub_hash, local2) =
       if fuel = 0 then ("", local1)
-      else hndq_run (fuel - 1) qs hfdq_table canon_st local1 b in
-    walk_recursion fuel qs hfdq_table canon_st local2 rest (path ^ "_:" ^ lbl ^ "<" ^ sub_hash ^ ">")
+      else hndq_run alg (fuel - 1) qs hfdq_table canon_st local1 b in
+    walk_recursion alg fuel qs hfdq_table canon_st local2 rest (path ^ "_:" ^ lbl ^ "<" ^ sub_hash ^ ">")
 
 (* ------------------------------------------------------------------ *)
 (* Section 6e. Top-level: unique-HFDQ first, then collision groups.
@@ -1233,6 +1261,7 @@ let rec filter_unissued (st : issuer_state) (xs : list bnode_id)
    here). Returns one (hash, temporary-issued-list) pair per
    not-yet-canonically-issued member, in original member order. *)
 let rec explore_members
+    (alg : hash_algorithm)
     (fuel : nat)
     (qs : list qquad)
     (hfdq_table : list bn_hfdq_pair)
@@ -1243,11 +1272,11 @@ let rec explore_members
   | [] -> []
   | m :: rest ->
     (match lookup_issued m canon_st.is_issued with
-     | Some _ -> explore_members fuel qs hfdq_table canon_st rest
+     | Some _ -> explore_members alg fuel qs hfdq_table canon_st rest
      | None ->
        let (local1, _) = issue_identifier empty_temp_issuer m in
-       let (h, local2) = hndq_run fuel qs hfdq_table canon_st local1 m in
-       (h, local2.is_issued) :: explore_members fuel qs hfdq_table canon_st rest)
+       let (h, local2) = hndq_run alg fuel qs hfdq_table canon_st local1 m in
+       (h, local2.is_issued) :: explore_members alg fuel qs hfdq_table canon_st rest)
 
 (* Stable insertion sort of (hash, temp-issued-list) results by hash,
    ascending, preserving original relative order for ties. RDFC-1.0
@@ -1307,13 +1336,14 @@ let rec replay_all
    a canonical id to *every* member of the group — not just a single
    "winner" — matching RDFC-1.0 4.4.3 steps 5.2 + 5.3. *)
 let process_collision_members
+    (alg : hash_algorithm)
     (fuel : nat)
     (qs : list qquad)
     (hfdq_table : list bn_hfdq_pair)
     (st : issuer_state)
     (members : list bnode_id)
   : issuer_state =
-  let results = explore_members fuel qs hfdq_table st members in
+  let results = explore_members alg fuel qs hfdq_table st members in
   let sorted = sort_results_stable results in
   replay_all st sorted
 
@@ -1343,6 +1373,7 @@ let rec assign_singletons
   | (_, _) :: rest -> assign_singletons st rest  // multi-member: pass 2's job
 
 let rec process_collision_groups
+    (alg : hash_algorithm)
     (fuel : nat)
     (qs : list qquad)
     (hfdq_table : list bn_hfdq_pair)
@@ -1351,13 +1382,14 @@ let rec process_collision_groups
   : Tot issuer_state (decreases groups) =
   match groups with
   | [] -> st
-  | (_, [_]) :: rest -> process_collision_groups fuel qs hfdq_table st rest  // pass 1 already did this one
+  | (_, [_]) :: rest -> process_collision_groups alg fuel qs hfdq_table st rest  // pass 1 already did this one
   | (_, members) :: rest ->
     let unissued = filter_unissued st members in
-    let st' = process_collision_members fuel qs hfdq_table st unissued in
-    process_collision_groups fuel qs hfdq_table st' rest
+    let st' = process_collision_members alg fuel qs hfdq_table st unissued in
+    process_collision_groups alg fuel qs hfdq_table st' rest
 
 let walk_groups
+    (alg : hash_algorithm)
     (fuel : nat)
     (qs : list qquad)
     (hfdq_table : list bn_hfdq_pair)
@@ -1365,7 +1397,7 @@ let walk_groups
     (groups : list bucket)
   : issuer_state =
   let st1 = assign_singletons st groups in
-  process_collision_groups fuel qs hfdq_table st1 groups
+  process_collision_groups alg fuel qs hfdq_table st1 groups
 
 (* ------------------------------------------------------------------ *)
 (* Section 8. Public entry points. *)
@@ -1380,13 +1412,21 @@ let walk_groups
    bounded by the bnode count; permutation enumeration is bounded at
    factorial(6) per bucket. Tests beyond that bound (test074c poison
    clique) fall back to the orig-label tiebreak. *)
-let build_canonical_mapping (ds : rdf_dataset) : list (bnode_id * string) =
+// `alg` selects the hash primitive per RDFC-1.0's `rdfc:hashAlgorithm`
+// test-manifest option (default SHA-256; SHA-384 for the small number
+// of manifest entries that request it — see `hash_algorithm_of_string`
+// and RDF.Canonical.Manifest.fst). `build_canonical_mapping` below
+// keeps its original 1-argument signature (defaulting to SHA-256) so
+// every existing caller (factoidal_cli, entry_jsoo, dump-nq,
+// jsonld_runner) is unaffected; rdfc10_runner calls this `_alg` form
+// directly when a test declares a non-default algorithm.
+let build_canonical_mapping_alg (alg : hash_algorithm) (ds : rdf_dataset) : list (bnode_id * string) =
   let qs = dedup_qquads (dataset_quads ds) in
   let bs = dataset_bnodes ds in
-  let hfdq_table = compute_all_hfdq qs bs in
+  let hfdq_table = compute_all_hfdq alg qs bs in
   let groups = group_by_hfdq bs hfdq_table in
   let fuel : nat = List.Tot.length bs + 1 in
-  let final_state = walk_groups fuel qs hfdq_table empty_issuer groups in
+  let final_state = walk_groups alg fuel qs hfdq_table empty_issuer groups in
   // Defensive: any bnode not yet issued (e.g. due to fuel exhaustion
   // on a poison-clique input) gets an ID via lex-fallback. Sort by
   // (hfdq, orig) and assign.
@@ -1397,10 +1437,16 @@ let build_canonical_mapping (ds : rdf_dataset) : list (bnode_id * string) =
   let final_state' = assign_in_order final_state leftover_sorted in
   final_state'.is_issued
 
+let build_canonical_mapping (ds : rdf_dataset) : list (bnode_id * string) =
+  build_canonical_mapping_alg HA_SHA256 ds
+
 (* Canonicalise a dataset: relabel every blank node deterministically. *)
-let canonicalize (ds : rdf_dataset) : rdf_dataset =
-  let mapping = build_canonical_mapping ds in
+let canonicalize_alg (alg : hash_algorithm) (ds : rdf_dataset) : rdf_dataset =
+  let mapping = build_canonical_mapping_alg alg ds in
   relabel_dataset mapping ds
+
+let canonicalize (ds : rdf_dataset) : rdf_dataset =
+  canonicalize_alg HA_SHA256 ds
 
 (* Render a dataset to canonical N-Quads: emit each quad, sort the
    resulting lines lexicographically, concatenate. The relabelling
@@ -1432,8 +1478,11 @@ let canonical_nquads (ds : rdf_dataset) : string =
   concat_strings deduped
 
 (* Convenience: canonicalise then serialise. *)
+let canonicalize_to_nquads_alg (alg : hash_algorithm) (ds : rdf_dataset) : string =
+  canonical_nquads (canonicalize_alg alg ds)
+
 let canonicalize_to_nquads (ds : rdf_dataset) : string =
-  canonical_nquads (canonicalize ds)
+  canonicalize_to_nquads_alg HA_SHA256 ds
 
 // Canonicalize one named graph as a single-graph dataset -- the
 // per-graph sibling of canonicalize_to_nquads (graphs-api design doc

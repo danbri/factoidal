@@ -73,6 +73,7 @@ let mf_name   = mf_ns ^ "name"
 let rdfc_eval_test     = RDF_Canonical_Manifest.rdfc_eval_test
 let rdfc_neg_eval_test = RDF_Canonical_Manifest.rdfc_neg_eval_test
 let rdfc_map_test      = RDF_Canonical_Manifest.rdfc_map_test
+let rdfc_hash_algorithm = RDF_Canonical_Manifest.rdfc_hash_algorithm
 
 (* The manifest is a Turtle file; parser yields a list of triples (the
    default graph). All identifiers come out as IRIs. *)
@@ -106,11 +107,12 @@ type rdfc_test = {
   name       : string option;
   action_iri : string option;   (* mf:action <…/test001-in.nq> *)
   result_iri : string option;   (* mf:result <…/test001-rdfc10.nq> *)
+  hash_algo  : string option;   (* rdfc:hashAlgorithm "SHA384", if present *)
 }
 
 let empty_test iri = {
   iri; kind = TK_Unknown; name = None;
-  action_iri = None; result_iri = None;
+  action_iri = None; result_iri = None; hash_algo = None;
 }
 
 (* Helpers over RDF_Graph_Executable terms. *)
@@ -157,6 +159,11 @@ let build_test_index (graph : triple list) : rdfc_test list =
            match term_iri t.o with
            | Some i ->
              Hashtbl.replace tbl s { r with result_iri = Some i }
+           | None -> ()
+         end else if t.p = rdfc_hash_algorithm then begin
+           match term_lit t.o with
+           | Some lex ->
+             Hashtbl.replace tbl s { r with hash_algo = Some lex }
            | None -> ()
          end)
     graph;
@@ -316,7 +323,9 @@ let run_eval_test (t : rdfc_test) : outcome =
         | Some src, Some expected ->
           (try
              let ds = Parser_NQuads.parse_nquads src in
-             let got = RDF_Canonical.canonicalize_to_nquads ds in
+             let alg_str = match t.hash_algo with Some s -> s | None -> "SHA256" in
+             let alg = RDF_Canonical.hash_algorithm_of_string alg_str in
+             let got = RDF_Canonical.canonicalize_to_nquads_alg alg ds in
              let _ = canonicalize_ds in     (* keep symbol live *)
              let _ = dataset_to_canonical_nquads in (* legacy helper *)
              if got = expected then Pass
@@ -339,7 +348,9 @@ let run_map_test (t : rdfc_test) : outcome =
         | Some src, Some expected ->
           (try
              let ds = Parser_NQuads.parse_nquads src in
-             let mapping = RDF_Canonical.build_canonical_mapping ds in
+             let alg_str = match t.hash_algo with Some s -> s | None -> "SHA256" in
+             let alg = RDF_Canonical.hash_algorithm_of_string alg_str in
+             let mapping = RDF_Canonical.build_canonical_mapping_alg alg ds in
              let got = mapping_to_json mapping in
              if got = expected then Pass
              else Fail_diff (expected, got)

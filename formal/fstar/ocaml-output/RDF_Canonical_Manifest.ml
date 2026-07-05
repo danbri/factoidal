@@ -19,6 +19,8 @@ let rdfc_neg_eval_test : Prims.string=
   "https://w3c.github.io/rdf-canon/tests/vocab#RDFC10NegativeEvalTest"
 let rdfc_map_test : Prims.string=
   "https://w3c.github.io/rdf-canon/tests/vocab#RDFC10MapTest"
+let rdfc_hash_algorithm : Prims.string=
+  "https://w3c.github.io/rdf-canon/tests/vocab#hashAlgorithm"
 let kind_of_iri (iri : Prims.string) : test_kind=
   if iri = rdfc_eval_test
   then TK_Eval

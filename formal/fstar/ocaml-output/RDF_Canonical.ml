@@ -1,6 +1,19 @@
 open Prims
 let hash_sha256 (s : Prims.string) : Prims.string=
   Fstar_pure_hashes.sha256 s
+let hash_sha384 (s : Prims.string) : Prims.string=
+  Fstar_pure_hashes.sha384 s
+type hash_algorithm =
+  | HA_SHA256 
+  | HA_SHA384 
+let uu___is_HA_SHA256 (projectee : hash_algorithm) : Prims.bool=
+  match projectee with | HA_SHA256 -> true | uu___ -> false
+let uu___is_HA_SHA384 (projectee : hash_algorithm) : Prims.bool=
+  match projectee with | HA_SHA384 -> true | uu___ -> false
+let apply_hash (alg : hash_algorithm) (s : Prims.string) : Prims.string=
+  match alg with | HA_SHA256 -> hash_sha256 s | HA_SHA384 -> hash_sha384 s
+let hash_algorithm_of_string (s : Prims.string) : hash_algorithm=
+  if s = "SHA384" then HA_SHA384 else HA_SHA256
 let hex_digit_uc (n : Prims.nat) : FStar_Char.char=
   if n < (Prims.of_int (10))
   then FStar_Char.char_of_int ((Prims.of_int (0x30)) + n)
@@ -315,11 +328,13 @@ let insertion_sort (xs : Prims.string Prims.list) : Prims.string Prims.list=
   FStar_List_Tot_Base.sortWith str_compare xs
 let concat_strings (xs : Prims.string Prims.list) : Prims.string=
   FStar_String.concat "" xs
-let compute_hfdq (target : RDF_Graph_Executable.bnode_id)
-  (qs : qquad Prims.list) : Prims.string=
+let compute_hfdq (alg : hash_algorithm)
+  (target : RDF_Graph_Executable.bnode_id) (qs : qquad Prims.list) :
+  Prims.string=
   let mentioning = quads_for_bnode target qs in
   let rendered = render_all_for_hfdq target mentioning in
-  let sorted = insertion_sort rendered in hash_sha256 (concat_strings sorted)
+  let sorted = insertion_sort rendered in
+  apply_hash alg (concat_strings sorted)
 let digit_char (d : Prims.nat) : Prims.string=
   if d = Prims.int_zero
   then "0"
@@ -400,11 +415,11 @@ let issue_identifier (st : issuer_state) (b : RDF_Graph_Executable.bnode_id)
         } in
       (st', label)
 type bn_hfdq_pair = (RDF_Graph_Executable.bnode_id * Prims.string)
-let rec compute_all_hfdq (qs : qquad Prims.list)
+let rec compute_all_hfdq (alg : hash_algorithm) (qs : qquad Prims.list)
   (bs : RDF_Graph_Executable.bnode_id Prims.list) : bn_hfdq_pair Prims.list=
   match bs with
   | [] -> []
-  | b::rest -> (b, (compute_hfdq b qs)) :: (compute_all_hfdq qs rest)
+  | b::rest -> (b, (compute_hfdq alg b qs)) :: (compute_all_hfdq alg qs rest)
 let rec lookup_hfdq (b : RDF_Graph_Executable.bnode_id)
   (xs : bn_hfdq_pair Prims.list) : Prims.string=
   match xs with
@@ -524,14 +539,14 @@ let related_bnode (target : RDF_Graph_Executable.bnode_id) (q : qquad) :
                    | FStar_Pervasives_Native.None -> o_bn)
                 else FStar_Pervasives_Native.Some gb
             | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None))
-let hash_related_blank_node (pos : Prims.string) (pred : Prims.string)
-  (identifier : Prims.string) : Prims.string=
+let hash_related_blank_node (alg : hash_algorithm) (pos : Prims.string)
+  (pred : Prims.string) (identifier : Prims.string) : Prims.string=
   let input =
     Prims.strcat pos
       (Prims.strcat
          (if pos <> "g" then Prims.strcat "<" (Prims.strcat pred ">") else "")
          identifier) in
-  hash_sha256 input
+  apply_hash alg input
 let nbr_contribution (target : RDF_Graph_Executable.bnode_id) (q : qquad)
   (key_of : RDF_Graph_Executable.bnode_id -> Prims.string) : Prims.string=
   let uu___ = q in
@@ -783,7 +798,7 @@ let related_components (target : RDF_Graph_Executable.bnode_id) (q : qquad) :
             if b <> target then [("g", b)] else []
         | FStar_Pervasives_Native.None -> [] in
       FStar_List_Tot_Base.op_At s_e (FStar_List_Tot_Base.op_At o_e g_e)
-let rec insert_related_entries
+let rec insert_related_entries (alg : hash_algorithm)
   (entries : (Prims.string * RDF_Graph_Executable.bnode_id) Prims.list)
   (pred : Prims.string) (hfdq_table : bn_hfdq_pair Prims.list)
   (canon_st : issuer_state) (local_st : issuer_state)
@@ -795,27 +810,28 @@ let rec insert_related_entries
         match lookup_issued2 rb canon_st local_st with
         | FStar_Pervasives_Native.Some lbl -> Prims.strcat "_:" lbl
         | FStar_Pervasives_Native.None -> lookup_hfdq rb hfdq_table in
-      let k = hash_related_blank_node pos pred identifier in
-      insert_related_entries rest pred hfdq_table canon_st local_st
+      let k = hash_related_blank_node alg pos pred identifier in
+      insert_related_entries alg rest pred hfdq_table canon_st local_st
         (bucket_insert k rb acc)
-let rec build_buckets_for (target : RDF_Graph_Executable.bnode_id)
-  (qs : qquad Prims.list) (hfdq_table : bn_hfdq_pair Prims.list)
-  (canon_st : issuer_state) (local_st : issuer_state)
-  (acc : bucket Prims.list) : bucket Prims.list=
+let rec build_buckets_for (alg : hash_algorithm)
+  (target : RDF_Graph_Executable.bnode_id) (qs : qquad Prims.list)
+  (hfdq_table : bn_hfdq_pair Prims.list) (canon_st : issuer_state)
+  (local_st : issuer_state) (acc : bucket Prims.list) : bucket Prims.list=
   match qs with
   | [] -> acc
   | q::rest ->
       if Prims.op_Negation (quad_mentions_bnode target q)
-      then build_buckets_for target rest hfdq_table canon_st local_st acc
+      then build_buckets_for alg target rest hfdq_table canon_st local_st acc
       else
         (let uu___1 = q in
          match uu___1 with
          | (uu___2, t) ->
              let entries = related_components target q in
              let acc' =
-               insert_related_entries entries t.RDF_Graph_Executable.p
+               insert_related_entries alg entries t.RDF_Graph_Executable.p
                  hfdq_table canon_st local_st acc in
-             build_buckets_for target rest hfdq_table canon_st local_st acc')
+             build_buckets_for alg target rest hfdq_table canon_st local_st
+               acc')
 let rec remove_first (x : RDF_Graph_Executable.bnode_id)
   (xs : RDF_Graph_Executable.bnode_id Prims.list) :
   RDF_Graph_Executable.bnode_id Prims.list=
@@ -867,53 +883,56 @@ let rec build_path_labels (canon_st : issuer_state) (local_st : issuer_state)
                 build_path_labels canon_st local1 rest
                   (Prims.strcat path (Prims.strcat "_:" lbl))
                   (FStar_List_Tot_Base.op_At recursion [b])))
-let rec hndq_run (fuel : Prims.nat) (qs : qquad Prims.list)
-  (hfdq_table : bn_hfdq_pair Prims.list) (canon_st : issuer_state)
-  (local_st : issuer_state) (target : RDF_Graph_Executable.bnode_id) :
-  (Prims.string * issuer_state)=
+let rec hndq_run (alg : hash_algorithm) (fuel : Prims.nat)
+  (qs : qquad Prims.list) (hfdq_table : bn_hfdq_pair Prims.list)
+  (canon_st : issuer_state) (local_st : issuer_state)
+  (target : RDF_Graph_Executable.bnode_id) : (Prims.string * issuer_state)=
   if fuel = Prims.int_zero
   then ("", local_st)
   else
     (let buckets =
-       build_buckets_for target qs hfdq_table canon_st local_st [] in
-     walk_buckets (fuel - Prims.int_one) qs hfdq_table canon_st local_st
+       build_buckets_for alg target qs hfdq_table canon_st local_st [] in
+     walk_buckets alg (fuel - Prims.int_one) qs hfdq_table canon_st local_st
        buckets "")
-and walk_buckets (fuel : Prims.nat) (qs : qquad Prims.list)
-  (hfdq_table : bn_hfdq_pair Prims.list) (canon_st : issuer_state)
-  (local_st : issuer_state) (buckets : bucket Prims.list)
-  (data : Prims.string) : (Prims.string * issuer_state)=
+and walk_buckets (alg : hash_algorithm) (fuel : Prims.nat)
+  (qs : qquad Prims.list) (hfdq_table : bn_hfdq_pair Prims.list)
+  (canon_st : issuer_state) (local_st : issuer_state)
+  (buckets : bucket Prims.list) (data : Prims.string) :
+  (Prims.string * issuer_state)=
   match buckets with
-  | [] -> ((hash_sha256 data), local_st)
+  | [] -> ((apply_hash alg data), local_st)
   | (k, members)::rest ->
       let data1 = Prims.strcat data k in
       let perms = permutations (take_n (Prims.of_int (6)) members) in
-      let uu___ = best_permutation fuel qs hfdq_table canon_st local_st perms in
+      let uu___ =
+        best_permutation alg fuel qs hfdq_table canon_st local_st perms in
       (match uu___ with
        | (best_hash, best_st) ->
            let data2 = Prims.strcat data1 best_hash in
-           walk_buckets fuel qs hfdq_table canon_st best_st rest data2)
-and best_permutation (fuel : Prims.nat) (qs : qquad Prims.list)
-  (hfdq_table : bn_hfdq_pair Prims.list) (canon_st : issuer_state)
-  (local_st : issuer_state)
+           walk_buckets alg fuel qs hfdq_table canon_st best_st rest data2)
+and best_permutation (alg : hash_algorithm) (fuel : Prims.nat)
+  (qs : qquad Prims.list) (hfdq_table : bn_hfdq_pair Prims.list)
+  (canon_st : issuer_state) (local_st : issuer_state)
   (perms : RDF_Graph_Executable.bnode_id Prims.list Prims.list) :
   (Prims.string * issuer_state)=
   match perms with
   | [] -> ("", local_st)
   | p::rest ->
-      let uu___ = walk_perm fuel qs hfdq_table canon_st local_st p "" in
+      let uu___ = walk_perm alg fuel qs hfdq_table canon_st local_st p "" in
       (match uu___ with
        | (h, st') ->
-           pick_best fuel qs hfdq_table canon_st local_st rest h st')
-and pick_best (fuel : Prims.nat) (qs : qquad Prims.list)
-  (hfdq_table : bn_hfdq_pair Prims.list) (canon_st : issuer_state)
-  (local_st_initial : issuer_state)
+           pick_best alg fuel qs hfdq_table canon_st local_st rest h st')
+and pick_best (alg : hash_algorithm) (fuel : Prims.nat)
+  (qs : qquad Prims.list) (hfdq_table : bn_hfdq_pair Prims.list)
+  (canon_st : issuer_state) (local_st_initial : issuer_state)
   (perms : RDF_Graph_Executable.bnode_id Prims.list Prims.list)
   (best_hash : Prims.string) (best_st : issuer_state) :
   (Prims.string * issuer_state)=
   match perms with
   | [] -> (best_hash, best_st)
   | p::rest ->
-      let uu___ = walk_perm fuel qs hfdq_table canon_st local_st_initial p "" in
+      let uu___ =
+        walk_perm alg fuel qs hfdq_table canon_st local_st_initial p "" in
       (match uu___ with
        | (h, st') ->
            let uu___1 =
@@ -922,19 +941,20 @@ and pick_best (fuel : Prims.nat) (qs : qquad Prims.list)
              else (best_hash, best_st) in
            (match uu___1 with
             | (best_hash', best_st') ->
-                pick_best fuel qs hfdq_table canon_st local_st_initial rest
-                  best_hash' best_st'))
-and walk_perm (fuel : Prims.nat) (qs : qquad Prims.list)
-  (hfdq_table : bn_hfdq_pair Prims.list) (canon_st : issuer_state)
-  (local_st : issuer_state) (perm : RDF_Graph_Executable.bnode_id Prims.list)
-  (path : Prims.string) : (Prims.string * issuer_state)=
+                pick_best alg fuel qs hfdq_table canon_st local_st_initial
+                  rest best_hash' best_st'))
+and walk_perm (alg : hash_algorithm) (fuel : Prims.nat)
+  (qs : qquad Prims.list) (hfdq_table : bn_hfdq_pair Prims.list)
+  (canon_st : issuer_state) (local_st : issuer_state)
+  (perm : RDF_Graph_Executable.bnode_id Prims.list) (path : Prims.string) :
+  (Prims.string * issuer_state)=
   let uu___ = build_path_labels canon_st local_st perm path [] in
   match uu___ with
   | (path1, local1, recursion) ->
-      walk_recursion fuel qs hfdq_table canon_st local1 recursion path1
-and walk_recursion (fuel : Prims.nat) (qs : qquad Prims.list)
-  (hfdq_table : bn_hfdq_pair Prims.list) (canon_st : issuer_state)
-  (local_st : issuer_state)
+      walk_recursion alg fuel qs hfdq_table canon_st local1 recursion path1
+and walk_recursion (alg : hash_algorithm) (fuel : Prims.nat)
+  (qs : qquad Prims.list) (hfdq_table : bn_hfdq_pair Prims.list)
+  (canon_st : issuer_state) (local_st : issuer_state)
   (recursion : RDF_Graph_Executable.bnode_id Prims.list)
   (path : Prims.string) : (Prims.string * issuer_state)=
   match recursion with
@@ -947,11 +967,11 @@ and walk_recursion (fuel : Prims.nat) (qs : qquad Prims.list)
              if fuel = Prims.int_zero
              then ("", local1)
              else
-               hndq_run (fuel - Prims.int_one) qs hfdq_table canon_st local1
-                 b in
+               hndq_run alg (fuel - Prims.int_one) qs hfdq_table canon_st
+                 local1 b in
            (match uu___1 with
             | (sub_hash, local2) ->
-                walk_recursion fuel qs hfdq_table canon_st local2 rest
+                walk_recursion alg fuel qs hfdq_table canon_st local2 rest
                   (Prims.strcat path
                      (Prims.strcat "_:"
                         (Prims.strcat lbl
@@ -976,8 +996,9 @@ let rec filter_unissued (st : issuer_state)
       (match lookup_issued b st.is_issued with
        | FStar_Pervasives_Native.Some uu___ -> filter_unissued st rest
        | FStar_Pervasives_Native.None -> b :: (filter_unissued st rest))
-let rec explore_members (fuel : Prims.nat) (qs : qquad Prims.list)
-  (hfdq_table : bn_hfdq_pair Prims.list) (canon_st : issuer_state)
+let rec explore_members (alg : hash_algorithm) (fuel : Prims.nat)
+  (qs : qquad Prims.list) (hfdq_table : bn_hfdq_pair Prims.list)
+  (canon_st : issuer_state)
   (members : RDF_Graph_Executable.bnode_id Prims.list) :
   (Prims.string * (RDF_Graph_Executable.bnode_id * Prims.string) Prims.list)
     Prims.list=
@@ -986,15 +1007,16 @@ let rec explore_members (fuel : Prims.nat) (qs : qquad Prims.list)
   | m::rest ->
       (match lookup_issued m canon_st.is_issued with
        | FStar_Pervasives_Native.Some uu___ ->
-           explore_members fuel qs hfdq_table canon_st rest
+           explore_members alg fuel qs hfdq_table canon_st rest
        | FStar_Pervasives_Native.None ->
            let uu___ = issue_identifier empty_temp_issuer m in
            (match uu___ with
             | (local1, uu___1) ->
-                let uu___2 = hndq_run fuel qs hfdq_table canon_st local1 m in
+                let uu___2 =
+                  hndq_run alg fuel qs hfdq_table canon_st local1 m in
                 (match uu___2 with
                  | (h, local2) -> (h, (local2.is_issued)) ::
-                     (explore_members fuel qs hfdq_table canon_st rest))))
+                     (explore_members alg fuel qs hfdq_table canon_st rest))))
 let rec insert_result_stable
   (x :
     (Prims.string * (RDF_Graph_Executable.bnode_id * Prims.string)
@@ -1052,10 +1074,11 @@ let rec replay_all (canon_st : issuer_state)
   | [] -> canon_st
   | (uu___, temp_issued)::rest ->
       replay_all (replay_one canon_st temp_issued) rest
-let process_collision_members (fuel : Prims.nat) (qs : qquad Prims.list)
-  (hfdq_table : bn_hfdq_pair Prims.list) (st : issuer_state)
-  (members : RDF_Graph_Executable.bnode_id Prims.list) : issuer_state=
-  let results = explore_members fuel qs hfdq_table st members in
+let process_collision_members (alg : hash_algorithm) (fuel : Prims.nat)
+  (qs : qquad Prims.list) (hfdq_table : bn_hfdq_pair Prims.list)
+  (st : issuer_state) (members : RDF_Graph_Executable.bnode_id Prims.list) :
+  issuer_state=
+  let results = explore_members alg fuel qs hfdq_table st members in
   let sorted = sort_results_stable results in replay_all st sorted
 let rec assign_singletons (st : issuer_state) (groups : bucket Prims.list) :
   issuer_state=
@@ -1065,30 +1088,31 @@ let rec assign_singletons (st : issuer_state) (groups : bucket Prims.list) :
       let uu___1 = issue_identifier st b in
       (match uu___1 with | (st', uu___2) -> assign_singletons st' rest)
   | (uu___, uu___1)::rest -> assign_singletons st rest
-let rec process_collision_groups (fuel : Prims.nat) (qs : qquad Prims.list)
-  (hfdq_table : bn_hfdq_pair Prims.list) (st : issuer_state)
-  (groups : bucket Prims.list) : issuer_state=
+let rec process_collision_groups (alg : hash_algorithm) (fuel : Prims.nat)
+  (qs : qquad Prims.list) (hfdq_table : bn_hfdq_pair Prims.list)
+  (st : issuer_state) (groups : bucket Prims.list) : issuer_state=
   match groups with
   | [] -> st
   | (uu___, uu___1::[])::rest ->
-      process_collision_groups fuel qs hfdq_table st rest
+      process_collision_groups alg fuel qs hfdq_table st rest
   | (uu___, members)::rest ->
       let unissued = filter_unissued st members in
-      let st' = process_collision_members fuel qs hfdq_table st unissued in
-      process_collision_groups fuel qs hfdq_table st' rest
-let walk_groups (fuel : Prims.nat) (qs : qquad Prims.list)
-  (hfdq_table : bn_hfdq_pair Prims.list) (st : issuer_state)
-  (groups : bucket Prims.list) : issuer_state=
+      let st' = process_collision_members alg fuel qs hfdq_table st unissued in
+      process_collision_groups alg fuel qs hfdq_table st' rest
+let walk_groups (alg : hash_algorithm) (fuel : Prims.nat)
+  (qs : qquad Prims.list) (hfdq_table : bn_hfdq_pair Prims.list)
+  (st : issuer_state) (groups : bucket Prims.list) : issuer_state=
   let st1 = assign_singletons st groups in
-  process_collision_groups fuel qs hfdq_table st1 groups
-let build_canonical_mapping (ds : RDF_Graph_Executable.rdf_dataset) :
+  process_collision_groups alg fuel qs hfdq_table st1 groups
+let build_canonical_mapping_alg (alg : hash_algorithm)
+  (ds : RDF_Graph_Executable.rdf_dataset) :
   (RDF_Graph_Executable.bnode_id * Prims.string) Prims.list=
   let qs = dedup_qquads (dataset_quads ds) in
   let bs = dataset_bnodes ds in
-  let hfdq_table = compute_all_hfdq qs bs in
+  let hfdq_table = compute_all_hfdq alg qs bs in
   let groups = group_by_hfdq bs hfdq_table in
   let fuel = (FStar_List_Tot_Base.length bs) + Prims.int_one in
-  let final_state = walk_groups fuel qs hfdq_table empty_issuer groups in
+  let final_state = walk_groups alg fuel qs hfdq_table empty_issuer groups in
   let leftover = filter_unissued final_state bs in
   let leftover_pairs =
     FStar_List_Tot_Base.map (fun b -> (b, (lookup_hfdq b hfdq_table)))
@@ -1096,9 +1120,15 @@ let build_canonical_mapping (ds : RDF_Graph_Executable.rdf_dataset) :
   let leftover_sorted = sort_pairs leftover_pairs in
   let final_state' = assign_in_order final_state leftover_sorted in
   final_state'.is_issued
+let build_canonical_mapping (ds : RDF_Graph_Executable.rdf_dataset) :
+  (RDF_Graph_Executable.bnode_id * Prims.string) Prims.list=
+  build_canonical_mapping_alg HA_SHA256 ds
+let canonicalize_alg (alg : hash_algorithm)
+  (ds : RDF_Graph_Executable.rdf_dataset) : RDF_Graph_Executable.rdf_dataset=
+  let mapping = build_canonical_mapping_alg alg ds in
+  relabel_dataset mapping ds
 let canonicalize (ds : RDF_Graph_Executable.rdf_dataset) :
-  RDF_Graph_Executable.rdf_dataset=
-  let mapping = build_canonical_mapping ds in relabel_dataset mapping ds
+  RDF_Graph_Executable.rdf_dataset= canonicalize_alg HA_SHA256 ds
 let rec render_quads (qs : qquad Prims.list) : Prims.string Prims.list=
   match qs with
   | [] -> []
@@ -1117,8 +1147,11 @@ let canonical_nquads (ds : RDF_Graph_Executable.rdf_dataset) : Prims.string=
   let lines = render_quads qs in
   let sorted = insertion_sort lines in
   let deduped = dedup_sorted_strings sorted in concat_strings deduped
+let canonicalize_to_nquads_alg (alg : hash_algorithm)
+  (ds : RDF_Graph_Executable.rdf_dataset) : Prims.string=
+  canonical_nquads (canonicalize_alg alg ds)
 let canonicalize_to_nquads (ds : RDF_Graph_Executable.rdf_dataset) :
-  Prims.string= canonical_nquads (canonicalize ds)
+  Prims.string= canonicalize_to_nquads_alg HA_SHA256 ds
 let canonicalize_named_graph (ds : RDF_Graph_Executable.rdf_dataset)
   (name : RDF_Dataset_Graphs.graph_ref) :
   Prims.string FStar_Pervasives_Native.option=
