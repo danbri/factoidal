@@ -46,8 +46,7 @@ Running 30 PositiveEntailmentTest(s) through owl_rl_closure_with_reflexivity (fu
   PASS  New-Feature-DisjointObjectProperties-002
   PASS  New-Feature-Keys-003
   PASS  New-Feature-ObjectPropertyChain-001
-  SKIP/functional-syntax-only  New-Feature-ObjectPropertyChain-BJP-002
-      reason: unsupported input syntax — catalog entry provides only test:fsPremiseOntology (OWL 2 functional syntax) with test:normativeSyntax FUNCTIONAL; this runner reads only test:rdfXmlPremiseOntology literals (no functional-syntax parser yet, see docs/designissues/2026-07-03-owl-rl-pe-fails-fix-sketch.md, 2.7)
+  FAIL  New-Feature-ObjectPropertyChain-BJP-002
   PASS  New-Feature-ObjectPropertyChain-BJP-003
   PASS  New-Feature-ObjectQCR-002
   PASS  New-Feature-ReflexiveProperty-001
@@ -71,7 +70,7 @@ Running 30 PositiveEntailmentTest(s) through owl_rl_closure_with_reflexivity (fu
   PASS  owl2-rl-rules-fp-differentFrom
   PASS  owl2-rl-rules-ifp-differentFrom
 
-Profile-RL PositiveEntailmentTests: 27 pass, 2 fail (out of 29 RDF/XML tests), 1 skipped (functional-syntax-only) in 0.74s
+Profile-RL PositiveEntailmentTests: 27 pass, 3 fail (out of 30 RDF/XML tests), 0 skipped (functional-syntax-only) in 0.66s
   (bnode pattern matches any term at the position; full isomorphism deferred — see docs/designissues/2026-04-24-owl-runner-phase1.md)
 
 Running 6 NegativeEntailmentTest(s) through owl_rl_closure_with_reflexivity (fuel=100)...
@@ -82,7 +81,7 @@ Running 6 NegativeEntailmentTest(s) through owl_rl_closure_with_reflexivity (fue
   PASS  WebOnt-I5.8-007
   PASS  WebOnt-equivalentClass-008
 
-Profile-RL NegativeEntailmentTests: 6 pass, 0 fail (out of 6) in 0.12s
+Profile-RL NegativeEntailmentTests: 6 pass, 0 fail (out of 6) in 0.11s
 
 Running 76 ConsistencyTest(s) through is_inconsistent (closure fuel=100)...
   PASS  DisjointClasses-001
@@ -117,7 +116,7 @@ Running 76 ConsistencyTest(s) through is_inconsistent (closure fuel=100)...
   PASS  New-Feature-Keys-005
   PASS  New-Feature-ObjectPropertyChain-001
   SKIP/functional-syntax-only  New-Feature-ObjectPropertyChain-BJP-002
-      reason: unsupported input syntax — catalog entry provides only test:fsPremiseOntology (OWL 2 functional syntax) with test:normativeSyntax FUNCTIONAL; this runner reads only test:rdfXmlPremiseOntology literals (no functional-syntax parser yet, see docs/designissues/2026-07-03-owl-rl-pe-fails-fix-sketch.md, 2.7)
+      reason: unsupported input syntax — catalog entry provides only test:fsPremiseOntology (OWL 2 Functional Syntax) with test:normativeSyntax FUNCTIONAL, and either no fs premise/conclusion literal is present or it uses Functional-Syntax constructs beyond Parser_OWLFunctional's narrow subset (Prefix/Ontology/Declaration + ~6 axiom forms; see docs/designissues/2026-07-05-owl-functional-syntax-plan.md)
   PASS  New-Feature-ObjectPropertyChain-BJP-003
   PASS  New-Feature-ObjectPropertyChain-BJP-004
   PASS  New-Feature-ObjectQCR-002
@@ -163,7 +162,7 @@ Running 76 ConsistencyTest(s) through is_inconsistent (closure fuel=100)...
   PASS  owl2-rl-valid-oneof
   PASS  owl2-rl-valid-rightside-allvaluesfrom
 
-Profile-RL ConsistencyTests: 75 pass, 0 fail (out of 75), 1 skipped (functional-syntax-only) in 1.83s
+Profile-RL ConsistencyTests: 75 pass, 0 fail (out of 75), 1 skipped (functional-syntax-only) in 1.84s
 
 Running 14 InconsistencyTest(s) through is_inconsistent (closure fuel=100)...
   PASS  DisjointClasses-002
@@ -173,15 +172,12 @@ Running 14 InconsistencyTest(s) through is_inconsistent (closure fuel=100)...
   PASS  New-Feature-Keys-006
   PASS  New-Feature-NegativeDataPropertyAssertion-001
   PASS  New-Feature-NegativeObjectPropertyAssertion-001
-  SKIP/functional-syntax-only  Plus and Minus Zero are Distinct
-      reason: unsupported input syntax — catalog entry provides only test:fsPremiseOntology (OWL 2 functional syntax) with test:normativeSyntax FUNCTIONAL; this runner reads only test:rdfXmlPremiseOntology literals (no functional-syntax parser yet, see docs/designissues/2026-07-03-owl-rl-pe-fails-fix-sketch.md, 2.7)
+  PASS  Plus and Minus Zero are Distinct
   PASS  WebOnt-Nothing-001
   PASS  WebOnt-description-logic-101
   PASS  WebOnt-description-logic-103
   PASS  WebOnt-description-logic-104
-  SKIP/functional-syntax-only  functionality-clash
-      reason: unsupported input syntax — catalog entry provides only test:fsPremiseOntology (OWL 2 functional syntax) with test:normativeSyntax FUNCTIONAL; this runner reads only test:rdfXmlPremiseOntology literals (no functional-syntax parser yet, see docs/designissues/2026-07-03-owl-rl-pe-fails-fix-sketch.md, 2.7)
-  SKIP/functional-syntax-only  string-integer-clash
-      reason: unsupported input syntax — catalog entry provides only test:fsPremiseOntology (OWL 2 functional syntax) with test:normativeSyntax FUNCTIONAL; this runner reads only test:rdfXmlPremiseOntology literals (no functional-syntax parser yet, see docs/designissues/2026-07-03-owl-rl-pe-fails-fix-sketch.md, 2.7)
+  FAIL/unexpected-consistency  functionality-clash
+  FAIL/unexpected-consistency  string-integer-clash
 
-Profile-RL InconsistencyTests: 11 pass, 0 fail (out of 11), 3 skipped (functional-syntax-only) in 0.25s
+Profile-RL InconsistencyTests: 12 pass, 2 fail (out of 14), 0 skipped (functional-syntax-only) in 0.30s

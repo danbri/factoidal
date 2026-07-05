@@ -1,6 +1,23 @@
 # Current State (Honest Assessment)
 
-Last refreshed: 2026-07-05 (wave-8 battery — three suites now
+Last refreshed: 2026-07-05 (wave-9 battery: JSON-LD toRdf 399 pass,
+57 fail, 11 skip of 467 (alias-@value dispatch, fromMap
+pop-suppression, property-scoped ordering; @graph-container fix
+attempted, found to regress 22 tests, reverted with diagnosis). OWL
+functional-syntax parser landed (Parser.OWLFunctional.fst) — zero
+skips left in PE/Inconsistency, every non-pass now diagnosed: PE
+27/3/0 (2 comprehension impossible + 1 needs chain-to-transitive
+rule), Inconsistency 12/2/0 (both need cls-hv/datatype-range rules),
+NE 6/0, Consistency 75/0/1. RIF measured against the real W3C Core
+corpus (46 tests vendored): 11 pass, 3 fail, 36 skip of 50 total —
+skips bucketed by construct (16 BLD builtins, 6 syntax-safeness, 6
+import-rejection, …), 1 fail is a 2010-era defect in the official
+W3C zip. RML stage 1: five kg-construct suites vendored (224
+tests), RML.Mapping.fst decodes 73 of 76 rml-core mapping docs (3
+are error fixtures). Held: RDFC 86/86, SHACL 120/120, ShEx
+1022/11/123/26, SPARQL 631/0, RDF 1031/0, unit 23/23, npm 60/61.)
+
+Previous (wave-8 battery — three suites now
 complete: **RDFC-1.0 86 pass, 0 fail (of 86)** (Map tests compared
 structurally per the suite README; HNDQ poison budget implements the
 NegEval abort), **SHACL 120 of 120**, **RIF 4 of 4**. OWL 2 RL:
