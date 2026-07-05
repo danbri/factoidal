@@ -440,6 +440,30 @@ leaving an untouched, already-patched `.ml` in place safe: the
 unconditional whole-directory patch re-run at the end of extract is a
 no-op for it.
 
+**BUT the same guards mean EDITING a patch script does nothing to an
+already-patched module.** The guard sees the old patch's marker in
+the stale `.ml`, declares "already applied", and skips — your fixed
+translation never lands, and every downstream binary keeps the old
+behavior. This shipped on 2026-07-05: the #276 regex-quantifier fix
+was edited into `63_regex_hash_uuid_stubs.sh`, the wave build ran
+extract+compile clean, and only the unit-test battery caught that
+`SPARQL11_Algebra.ml` still carried the broken translation (its
+`.fst` was unchanged, so extraction skipped it and the guard
+no-opped). **Rule: after editing any patch script, invalidate the
+manifest entry of every module it patches and delete the stale
+`.ml`** so extract regenerates it fresh and the patch applies to
+virgin output:
+
+```bash
+sed -i '/^SPARQL11\.Algebra\.fst\t/d' ocaml-output/.extract-state/manifest.tsv
+rm -f ocaml-output/SPARQL11_Algebra.ml
+./build-ocaml.sh extract   # regenerates + patches fresh
+```
+
+(`--force-full` also works but reprocesses everything.) And keep a
+unit pin on the patched behavior — the pin is what catches the
+silent no-op.
+
 Experiment transcript (scratch dir, F* 2025.12.15, z3 4.13.3):
 warm no-op invocation on an unaffected module 0.6s; the SAME module
 reverified after a genuine dependency change 3.3s (real SMT work, not

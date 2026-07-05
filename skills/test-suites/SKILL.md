@@ -79,7 +79,7 @@ and drives three runners:
 | `owl_runner` | OWL 2 RL PositiveEntailmentTests + 7 DL catalogs, each with its own timeout budget (60s–900s) | `owl_profile_rl_results.log` |
 | `rdfc10_runner` | RDF Dataset Canonicalization (RDFC-1.0; SHA-256 + SHA-384 per-test via rdfc:hashAlgorithm). Baseline 2026-07-05: 84 pass, 1 fail, 1 stub (of 86) — fail is a vendored-fixture artifact, stub is the poison-clique NegEval deferral | `rdfc10_results.log` |
 | `shacl_runner` | W3C SHACL core suite (98 tests; full report-isomorphism compare by default, `--conforms-only` for the slice-1 floor). Baseline 2026-07-05 (wave 6): core 98 pass, 0 fail; sparql section (pass manifest path) 22 pass, 0 fail (of 22) — suite complete incl. custom constraint components | stdout |
-| `jsonld_runner` | W3C JSON-LD 1.1 toRdf manifest (467 tests; not yet folded into generate-report — run directly). Score 2026-07-05: 374 pass, 82 fail, 11 skip; remaining clusters documented in the wave-4 agent report (type-scoped previous-context, protected-term granularity, processingMode 1.0 negatives) | stdout |
+| `jsonld_runner` | W3C JSON-LD 1.1 toRdf manifest (467 tests; not yet folded into generate-report — run directly). Score 2026-07-05 (wave 7): 379 pass, 77 fail, 11 skip; remaining clusters: container-map fromMap pop-suppression, property-scoped application order, alias-resolved @value dispatch, protected-term granularity, processingMode 1.0 negatives | stdout |
 | `rif_runner` | The 4 vendored W3C RIF Core cases (was permanent SKIP; scope.md updated 2026-07-05). Baseline: 4 pass, 0 fail | stdout |
 
 Outputs: `docs/test-results/index.html` (dashboard),

@@ -1,11 +1,10 @@
     OWL.QueryEval.fst (up to date, skipped -- source unchanged since last extract)
     Parser.TriG.fst (up to date, skipped -- source unchanged since last extract)
-    [SHACL.Validation.fst]
     RDF.Turtle.Serialize.fst (up to date, skipped -- source unchanged since last extract)
+    SHACL.Validation.fst (up to date, skipped -- source unchanged since last extract)
     RIF.Core.Eval.fst (up to date, skipped -- source unchanged since last extract)
     JSONLD.Expand.fst (up to date, skipped -- source unchanged since last extract)
     Parser.Ballyhoo.fst (up to date, skipped -- source unchanged since last extract)
     SPARQL.Plan.Pruning.fst (up to date, skipped -- source unchanged since last extract)
     RDF.CottasStore.fst (up to date, skipped -- source unchanged since last extract)
     SPARQL.Explain.fst (up to date, skipped -- source unchanged since last extract)
-    [SHACL.Validation.fst] Extracted module SHACL.Validation

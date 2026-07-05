@@ -1,0 +1,58 @@
+{
+  "timestamp": "2026-07-05 03:41 UTC",
+  "commit": "dad8bd485cf2acd82810dbc4d68e77af7773977c",
+  "branch": "claude/main",
+  "totals": {
+    "sparql":   {"pass":631,"fail":0,"skip":0,"unsupported":0,"total":631},
+    "rdf":      {"pass":1031,"fail":0,"skip":0,"unsupported":0,"total":1031},
+    "combined": {"pass":1662,"fail":0,"skip":0,"unsupported":0,"total":1662,"pass_pct_of_runnable":100.0},
+    "owl_rl_positive_entailment": {"pass":27,"fail":2,"total":29,"catalog":"third_party/testing/owl/profile-RL.rdf"},
+    "rdfc10": {"pass":84,"fail":1,"skip":1,"total":86,"spec":"https://www.w3.org/TR/rdf-canon/"}
+  },
+  "suites": {
+    "sparql": [
+      {"name":"add","pass":8,"fail":0,"skip":0,"unsupported":0},
+      {"name":"aggregates","pass":47,"fail":0,"skip":0,"unsupported":0},
+      {"name":"basic-update","pass":13,"fail":0,"skip":0,"unsupported":0},
+      {"name":"bind","pass":10,"fail":0,"skip":0,"unsupported":0},
+      {"name":"bindings","pass":11,"fail":0,"skip":0,"unsupported":0},
+      {"name":"cast","pass":6,"fail":0,"skip":0,"unsupported":0},
+      {"name":"clear","pass":4,"fail":0,"skip":0,"unsupported":0},
+      {"name":"construct","pass":7,"fail":0,"skip":0,"unsupported":0},
+      {"name":"copy","pass":6,"fail":0,"skip":0,"unsupported":0},
+      {"name":"csv-tsv-res","pass":6,"fail":0,"skip":0,"unsupported":0},
+      {"name":"delete","pass":19,"fail":0,"skip":0,"unsupported":0},
+      {"name":"delete-data","pass":6,"fail":0,"skip":0,"unsupported":0},
+      {"name":"delete-insert","pass":17,"fail":0,"skip":0,"unsupported":0},
+      {"name":"delete-where","pass":6,"fail":0,"skip":0,"unsupported":0},
+      {"name":"drop","pass":4,"fail":0,"skip":0,"unsupported":0},
+      {"name":"entailment","pass":70,"fail":0,"skip":0,"unsupported":0},
+      {"name":"exists","pass":6,"fail":0,"skip":0,"unsupported":0},
+      {"name":"functions","pass":75,"fail":0,"skip":0,"unsupported":0},
+      {"name":"grouping","pass":6,"fail":0,"skip":0,"unsupported":0},
+      {"name":"http-rdf-update","pass":19,"fail":0,"skip":0,"unsupported":0},
+      {"name":"json-res","pass":4,"fail":0,"skip":0,"unsupported":0},
+      {"name":"move","pass":6,"fail":0,"skip":0,"unsupported":0},
+      {"name":"negation","pass":12,"fail":0,"skip":0,"unsupported":0},
+      {"name":"project-expression","pass":7,"fail":0,"skip":0,"unsupported":0},
+      {"name":"property-path","pass":33,"fail":0,"skip":0,"unsupported":0},
+      {"name":"protocol","pass":34,"fail":0,"skip":0,"unsupported":0},
+      {"name":"service","pass":7,"fail":0,"skip":0,"unsupported":0},
+      {"name":"service-description","pass":3,"fail":0,"skip":0,"unsupported":0},
+      {"name":"subquery","pass":14,"fail":0,"skip":0,"unsupported":0},
+      {"name":"syntax-fed","pass":3,"fail":0,"skip":0,"unsupported":0},
+      {"name":"syntax-query","pass":94,"fail":0,"skip":0,"unsupported":0},
+      {"name":"syntax-update-1","pass":54,"fail":0,"skip":0,"unsupported":0},
+      {"name":"syntax-update-2","pass":1,"fail":0,"skip":0,"unsupported":0},
+      {"name":"update-silent","pass":13,"fail":0,"skip":0,"unsupported":0}
+    ],
+    "rdf": [
+      {"name":"rdf-mt","pass":39,"fail":0,"skip":0,"unsupported":0},
+      {"name":"rdf-n-quads","pass":87,"fail":0,"skip":0,"unsupported":0},
+      {"name":"rdf-n-triples","pass":70,"fail":0,"skip":0,"unsupported":0},
+      {"name":"rdf-trig","pass":356,"fail":0,"skip":0,"unsupported":0},
+      {"name":"rdf-turtle","pass":313,"fail":0,"skip":0,"unsupported":0},
+      {"name":"rdf-xml","pass":166,"fail":0,"skip":0,"unsupported":0}
+    ]
+  }
+}

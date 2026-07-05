@@ -1,6 +1,19 @@
 # Current State (Honest Assessment)
 
-Last refreshed: 2026-07-05 (wave-6 battery: SPARQL 631/0, RDF
+Last refreshed: 2026-07-05 (wave-7 battery: JSON-LD toRdf 379 pass
+77 fail 11 skip of 467 (+5, type-scoped context fixes); ShEx stage 3
+triple-expression matching — 1005 of 1182 validation-manifest entries
+match expected verdicts (31 triaged mismatches, 146 correctly
+deferred); regex ? quantifier glue fixed (#276, 38-case unit pin
+battery, unit suite now 22 files); canonicalize #272 hashing tail
+fixed — 100k bnode-heavy 462.9s to 4.83s (96x), 300k timeout to
+16.2s, byte-identical, rdfc10 84/1/1 exact; SPARQL 631/0 + RDF
+1031/0 + SHACL 120/120 + OWL floors + npm 60/61 all held.
+Process note: patch-script changes REQUIRE invalidating the
+manifest entries of the modules they patch — see fast-verify-extract
+skill.)
+
+Previous (wave-6 battery: SPARQL 631/0, RDF
 1031/0, RDFC-1.0 84 pass 1 fail 1 stub of 86, **SHACL suite complete:
 core 98/0 report-isomorphism + sparql 22/0 of 22** (custom constraint
 components, ASK+SELECT validators, $shapesGraph/$currentShape), OWL
