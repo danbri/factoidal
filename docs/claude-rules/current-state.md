@@ -1,6 +1,24 @@
 # Current State (Honest Assessment)
 
-Last refreshed: 2026-07-05 (wave-7 battery: JSON-LD toRdf 379 pass
+Last refreshed: 2026-07-05 (wave-8 battery — three suites now
+complete: **RDFC-1.0 86 pass, 0 fail (of 86)** (Map tests compared
+structurally per the suite README; HNDQ poison budget implements the
+NegEval abort), **SHACL 120 of 120**, **RIF 4 of 4**. OWL 2 RL:
+NegativeEntailment 6/0 via semantics-flavor dispatch (Direct vs
+RDF-Based mode threading), Consistency 75/0 + 1 functional-syntax
+skip, Inconsistency 11/0 + 3 FS skips, PE 27 + 2 comprehension
+(definitively scoped out in scope.md) + 1 FS skip — every non-pass is
+documented-impossible or awaits the planned functional-syntax parser
+(docs/designissues/2026-07-05-owl-functional-syntax-plan.md). ShEx
+battery-visible via bin/shex-runner: 1022 pass, 11 mismatch, 123
+deferred, 26 skipped (of 1182) — XSD float/digit-facet fixes + regex
+{0,m}/control-escape fixes flipped 20. JSON-LD toRdf 389/67/11
+(protected-terms + processingMode clusters). Regex glue: #276+#277
+fixed, 71-case pin battery, unit suite 23 files. RML program plan:
+docs/designissues/2026-07-05-rml-program-plan.md. SPARQL 631/0, RDF
+1031/0, npm 60/61 all held.)
+
+Previous (wave-7 battery: JSON-LD toRdf 379 pass
 77 fail 11 skip of 467 (+5, type-scoped context fixes); ShEx stage 3
 triple-expression matching — 1005 of 1182 validation-manifest entries
 match expected verdicts (31 triaged mismatches, 146 correctly

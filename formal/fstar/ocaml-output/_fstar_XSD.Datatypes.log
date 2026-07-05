@@ -1,3 +1,18 @@
+* Warning 241 at SPARQL11.IRI.Resolve.fst(0,0-0,0):
+  - Unable to load SPARQL11.IRI.Resolve.fst.checked since checked file
+    SPARQL11.IRI.Resolve.fst.checked is stale (dependence hash mismatch, use
+    --debug CheckedFiles for more details); will recheck
+    SPARQL11.IRI.Resolve.fst (suppressing this warning for further modules)
+
+* Warning 361 at SPARQL11.Algebra.fst(5748,0-5749,40):
+  - Some #push-options have not been popped. Current depth is 1.
+
 Extracted module XSD.Datatypes
+* Warning 247 at XSD.Datatypes.fst(0,0-0,0):
+  - Checked file XSD.Datatypes.fst.checked was not written.
+  - Reason:
+      checked file SPARQL11.IRI.Resolve.fst.checked is stale (dependence hash
+      mismatch, use --debug CheckedFiles for more details)
+
 Verified module: XSD.Datatypes
 All verification conditions discharged successfully

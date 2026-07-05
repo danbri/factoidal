@@ -1,3 +1,22 @@
+* Warning 241 at SPARQL11.IRI.Resolve.fst(0,0-0,0):
+  - Unable to load SPARQL11.IRI.Resolve.fst.checked since checked file
+    SPARQL11.IRI.Resolve.fst.checked is stale (dependence hash mismatch, use
+    --debug CheckedFiles for more details); will recheck
+    SPARQL11.IRI.Resolve.fst (suppressing this warning for further modules)
+
+* Warning 349 at JSONLD.Context.fst(744,2-795,28):
+  - The verification condition succeeded after splitting it to localize
+    potential errors, although the original non-split verification condition
+    failed. If you want to rely on splitting queries for verifying your program
+    please use the '--split_queries always' option rather than relying on it
+    implicitly.
+
 Extracted module JSONLD.Context
+* Warning 247 at JSONLD.Context.fst(0,0-0,0):
+  - Checked file JSONLD.Context.fst.checked was not written.
+  - Reason:
+      checked file SPARQL11.IRI.Resolve.fst.checked is stale (dependence hash
+      mismatch, use --debug CheckedFiles for more details)
+
 Verified module: JSONLD.Context
 All verification conditions discharged successfully

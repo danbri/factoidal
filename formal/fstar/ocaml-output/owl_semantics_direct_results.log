@@ -206,7 +206,7 @@
   [pe-running] somevaluesfrom2bnode
 Closure regime: RL
 OWL 2 test catalog: third_party/testing/owl/semantics-direct.rdf
-  parsed 12070 triples in 0.42s
+  parsed 12070 triples in 0.38s
 Totals: 482 test cases
   PositiveEntailmentTest:    206
   NegativeEntailmentTest:    23
@@ -425,7 +425,7 @@ Running 206 PositiveEntailmentTest(s) through owl_rl_closure_with_reflexivity (f
   FAIL  rdfbased-sem-restrict-somevalues-inst-subj
   FAIL  somevaluesfrom2bnode
 
-Profile-RL PositiveEntailmentTests: 89 pass, 114 fail (out of 203 RDF/XML tests), 3 skipped (functional-syntax-only) in 30.08s
+Profile-RL PositiveEntailmentTests: 89 pass, 114 fail (out of 203 RDF/XML tests), 3 skipped (functional-syntax-only) in 28.91s
   (bnode pattern matches any term at the position; full isomorphism deferred — see docs/designissues/2026-04-24-owl-runner-phase1.md)
 
 Running 23 NegativeEntailmentTest(s) through owl_rl_closure_with_reflexivity (fuel=100)...
@@ -435,7 +435,7 @@ Running 23 NegativeEntailmentTest(s) through owl_rl_closure_with_reflexivity (fu
   PASS  WebOnt-Class-004
   PASS  WebOnt-Class-005
   PASS  WebOnt-I4.6-004
-  FAIL/unexpected-entailment  WebOnt-I4.6-005
+  PASS  WebOnt-I4.6-005
   PASS  WebOnt-I5.5-006
   PASS  WebOnt-I5.5-007
   PASS  WebOnt-I5.8-005
@@ -447,19 +447,22 @@ Running 23 NegativeEntailmentTest(s) through owl_rl_closure_with_reflexivity (fu
   PASS  WebOnt-description-logic-902
   PASS  WebOnt-description-logic-904
   PASS  WebOnt-equivalentClass-005
-  FAIL/unexpected-entailment  WebOnt-equivalentClass-008
+  PASS  WebOnt-equivalentClass-008
   FAIL/unexpected-entailment  WebOnt-imports-002
   PASS  WebOnt-miscellaneous-301
   PASS  WebOnt-miscellaneous-302
   PASS  WebOnt-someValuesFrom-002
 
-Profile-RL NegativeEntailmentTests: 20 pass, 3 fail (out of 23) in 1.74s
+Profile-RL NegativeEntailmentTests: 22 pass, 1 fail (out of 23) in 1.69s
 
 Running 353 ConsistencyTest(s) through is_inconsistent (closure fuel=100)...
-  FAIL/no-premise  Consistent Datatype restrictions with Different Types
-  FAIL/no-premise  Consistent owl:real range with DataOneOf
+  SKIP/functional-syntax-only  Consistent Datatype restrictions with Different Types
+      reason: unsupported input syntax — catalog entry provides only test:fsPremiseOntology (OWL 2 functional syntax) with test:normativeSyntax FUNCTIONAL; this runner reads only test:rdfXmlPremiseOntology literals (no functional-syntax parser yet, see docs/designissues/2026-07-03-owl-rl-pe-fails-fix-sketch.md, 2.7)
+  SKIP/functional-syntax-only  Consistent owl:real range with DataOneOf
+      reason: unsupported input syntax — catalog entry provides only test:fsPremiseOntology (OWL 2 functional syntax) with test:normativeSyntax FUNCTIONAL; this runner reads only test:rdfXmlPremiseOntology literals (no functional-syntax parser yet, see docs/designissues/2026-07-03-owl-rl-pe-fails-fix-sketch.md, 2.7)
   FAIL/parse-premise  Consistent-but-all-unsat
-  FAIL/no-premise  Consistent-dateTime
+  SKIP/functional-syntax-only  Consistent-dateTime
+      reason: unsupported input syntax — catalog entry provides only test:fsPremiseOntology (OWL 2 functional syntax) with test:normativeSyntax FUNCTIONAL; this runner reads only test:rdfXmlPremiseOntology literals (no functional-syntax parser yet, see docs/designissues/2026-07-03-owl-rl-pe-fails-fix-sketch.md, 2.7)
   PASS  Datatype-DataComplementOf-001
   PASS  DisjointClasses-001
   PASS  DisjointClasses-003
@@ -500,7 +503,8 @@ Running 353 ConsistencyTest(s) through is_inconsistent (closure fuel=100)...
   PASS  New-Feature-Keys-005
   PASS  New-Feature-Keys-007
   PASS  New-Feature-ObjectPropertyChain-001
-  FAIL/no-premise  New-Feature-ObjectPropertyChain-BJP-002
+  SKIP/functional-syntax-only  New-Feature-ObjectPropertyChain-BJP-002
+      reason: unsupported input syntax — catalog entry provides only test:fsPremiseOntology (OWL 2 functional syntax) with test:normativeSyntax FUNCTIONAL; this runner reads only test:rdfXmlPremiseOntology literals (no functional-syntax parser yet, see docs/designissues/2026-07-03-owl-rl-pe-fails-fix-sketch.md, 2.7)
   PASS  New-Feature-ObjectPropertyChain-BJP-003
   PASS  New-Feature-ObjectPropertyChain-BJP-004
   PASS  New-Feature-ObjectQCR-001
@@ -510,9 +514,12 @@ Running 353 ConsistencyTest(s) through is_inconsistent (closure fuel=100)...
   PASS  New-Feature-ReflexiveProperty-001
   PASS  New-Feature-SelfRestriction-001
   PASS  New-Feature-SelfRestriction-002
-  FAIL/no-premise  Plus and Minus Zero Integer
-  FAIL/no-premise  Qualified-cardinality-boolean
-  FAIL/no-premise  Qualified-cardinality-restricted-int
+  SKIP/functional-syntax-only  Plus and Minus Zero Integer
+      reason: unsupported input syntax — catalog entry provides only test:fsPremiseOntology (OWL 2 functional syntax) with test:normativeSyntax FUNCTIONAL; this runner reads only test:rdfXmlPremiseOntology literals (no functional-syntax parser yet, see docs/designissues/2026-07-03-owl-rl-pe-fails-fix-sketch.md, 2.7)
+  SKIP/functional-syntax-only  Qualified-cardinality-boolean
+      reason: unsupported input syntax — catalog entry provides only test:fsPremiseOntology (OWL 2 functional syntax) with test:normativeSyntax FUNCTIONAL; this runner reads only test:rdfXmlPremiseOntology literals (no functional-syntax parser yet, see docs/designissues/2026-07-03-owl-rl-pe-fails-fix-sketch.md, 2.7)
+  SKIP/functional-syntax-only  Qualified-cardinality-restricted-int
+      reason: unsupported input syntax — catalog entry provides only test:fsPremiseOntology (OWL 2 functional syntax) with test:normativeSyntax FUNCTIONAL; this runner reads only test:rdfXmlPremiseOntology literals (no functional-syntax parser yet, see docs/designissues/2026-07-03-owl-rl-pe-fails-fix-sketch.md, 2.7)
   PASS  WebOnt-AllDifferent-001
   PASS  WebOnt-AnnotationProperty-002
   PASS  WebOnt-AnnotationProperty-003
@@ -726,8 +733,10 @@ Running 353 ConsistencyTest(s) through is_inconsistent (closure fuel=100)...
   PASS  WebOnt-unionOf-004
   PASS  bnode2somevaluesfrom
   PASS  chain2trans1
-  FAIL/no-premise  consistent-dataproperty-disjointness
-  FAIL/no-premise  consistent-integer-filler
+  SKIP/functional-syntax-only  consistent-dataproperty-disjointness
+      reason: unsupported input syntax — catalog entry provides only test:fsPremiseOntology (OWL 2 functional syntax) with test:normativeSyntax FUNCTIONAL; this runner reads only test:rdfXmlPremiseOntology literals (no functional-syntax parser yet, see docs/designissues/2026-07-03-owl-rl-pe-fails-fix-sketch.md, 2.7)
+  SKIP/functional-syntax-only  consistent-integer-filler
+      reason: unsupported input syntax — catalog entry provides only test:fsPremiseOntology (OWL 2 functional syntax) with test:normativeSyntax FUNCTIONAL; this runner reads only test:rdfXmlPremiseOntology literals (no functional-syntax parser yet, see docs/designissues/2026-07-03-owl-rl-pe-fails-fix-sketch.md, 2.7)
   PASS  owl2-rl-anonymous-individual
   PASS  owl2-rl-invalid-leftside-allvaluesfrom
   PASS  owl2-rl-invalid-leftside-maxcard
@@ -810,7 +819,7 @@ Running 353 ConsistencyTest(s) through is_inconsistent (closure fuel=100)...
   PASS  rdfbased-sem-restrict-somevalues-inst-subj
   PASS  somevaluesfrom2bnode
 
-Profile-RL ConsistencyTests: 322 pass, 31 fail (out of 353) in 37.07s
+Profile-RL ConsistencyTests: 322 pass, 22 fail (out of 344), 9 skipped (functional-syntax-only) in 37.07s
 
 Running 128 InconsistencyTest(s) through is_inconsistent (closure fuel=100)...
   SKIP/functional-syntax-only  Contradicting datatype Restrictions
@@ -956,4 +965,4 @@ Running 128 InconsistencyTest(s) through is_inconsistent (closure fuel=100)...
   SKIP/functional-syntax-only  string-integer-clash
       reason: unsupported input syntax — catalog entry provides only test:fsPremiseOntology (OWL 2 functional syntax) with test:normativeSyntax FUNCTIONAL; this runner reads only test:rdfXmlPremiseOntology literals (no functional-syntax parser yet, see docs/designissues/2026-07-03-owl-rl-pe-fails-fix-sketch.md, 2.7)
 
-Profile-RL InconsistencyTests: 31 pass, 83 fail (out of 114), 14 skipped (functional-syntax-only) in 5.97s
+Profile-RL InconsistencyTests: 31 pass, 83 fail (out of 114), 14 skipped (functional-syntax-only) in 6.17s
