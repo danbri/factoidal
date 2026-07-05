@@ -9,6 +9,8 @@ import type {
   Bindings,
   DataFormat,
   EntailRegime,
+  NamedNode,
+  BlankNode,
 } from './index';
 
 /**
@@ -112,6 +114,62 @@ export function query(
  */
 export function entail(ds: FnDataset, regime: EntailRegime): Promise<FnDataset>;
 
+/** SHACL Core validation result (see validate()). */
+export interface ValidateResult {
+  conforms: boolean;
+  /** SHACL_Validation.validation_report_to_graph's graph as an FnDataset. */
+  report: FnDataset;
+}
+
+/**
+ * SHACL Core validation. Needs the npm-entry engine bundle. Neither
+ * argument is mutated or consumed.
+ * @param ds the data graph
+ * @param shapes the shapes graph
+ */
+export function validate(ds: FnDataset, shapes: FnDataset): Promise<ValidateResult>;
+
+/**
+ * ShEx (Shape Expressions) validation of one focus node against one
+ * shape. Needs the npm-entry engine bundle. `null` means "deferred" --
+ * outside this engine's decidable ShEx fragment, never a guessed
+ * answer.
+ * @param schema ShExJ (JSON Schema form), as text
+ * @param focus an IRI, "_:label", or an RDF/JS NamedNode/BlankNode term
+ * @param shape a shape label (same shapes as focus); omit/null for the
+ *   schema's own `start`
+ */
+export function shex(
+  ds: FnDataset,
+  schema: string,
+  focus: string | NamedNode | BlankNode,
+  shape?: string | NamedNode | BlankNode | null
+): Promise<boolean | null>;
+
+/**
+ * Evaluate an RML mapping graph against one logical source's raw data,
+ * materializing the generated triples as a new FnDataset. Needs the
+ * npm-entry engine bundle. Every triples map in `mapping` reads the
+ * SAME `source` -- joins across two different logical sources are out
+ * of scope for this entry point.
+ * @param mapping the RML mapping graph
+ * @param source raw JSON or CSV text (not RDF)
+ */
+export function fromMapping(
+  mapping: FnDataset,
+  source: string,
+  kind: 'json' | 'csv'
+): Promise<FnDataset>;
+
+/**
+ * RIF Core forward-chaining saturation, materialized as a new
+ * FnDataset (input triples + derived triples, default graph only).
+ * Needs the npm-entry engine bundle.
+ * @param ds the premise graph
+ * @param rules a RIF Core XML rule document
+ */
+export function rif(ds: FnDataset, rules: string): Promise<FnDataset>;
+
 /** RDFC-1.0 canonical N-Quads text. Needs the npm-entry engine bundle. */
 export function canonicalize(ds: FnDataset): Promise<string>;
 
@@ -163,4 +221,10 @@ export function capabilities(): Promise<{
   canonicalize: boolean;
   graphs: boolean;
   canonicalHash: boolean;
+  shacl: boolean;
+  shex: boolean;
+  owlClosure: boolean;
+  rml: boolean;
+  jsonld: boolean;
+  rif: boolean;
 }>;

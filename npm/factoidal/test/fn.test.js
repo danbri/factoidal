@@ -17,7 +17,8 @@ const fn = require('../fn.js');
 const {
   FnDataset, EMPTY, fromDataset, toDataset, builder, fromChunks,
   parse, union, difference,
-  filter, mapQuads, query, entail, canonicalize, hash, equals, graphs,
+  filter, mapQuads, query, entail, validate, shex, fromMapping, rif,
+  canonicalize, hash, equals, graphs,
   cell, derive, capabilities,
 } = fn;
 
@@ -324,6 +325,168 @@ test('interop: entail() materializes an RDFS closure as an FnDataset', async () 
   const closure = await entail(ds, 'RDFS');
   assert.ok(closure instanceof FnDataset);
   assert.ok(closure.size > ds.size, 'closure adds at least the inferred triple');
+});
+
+test('interop: entail() accepts lowercase regime aliases', async () => {
+  const data = `
+    @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+    @prefix ex:   <http://example.org/> .
+    ex:Hotel rdfs:subClassOf ex:Place .
+    ex:motel6 a ex:Hotel .
+  `;
+  const ds = await parse(data);
+  const [lower, canonical] = await Promise.all([
+    entail(ds, 'rdfs'),
+    entail(ds, 'RDFS'),
+  ]);
+  assert.equal(lower.size, canonical.size);
+  assert.ok(await equals(lower, canonical));
+});
+
+test('validate: SHACL Core validation returns conforms + a report FnDataset', async (t) => {
+  const caps = await capabilities();
+  if (!caps.shacl) { t.skip(PENDING); return; }
+
+  const data = await parse(TTL); // ex:alice/ex:bob, both foaf:name'd
+  const shapes = await parse(`
+    @prefix sh:   <http://www.w3.org/ns/shacl#> .
+    @prefix foaf: <http://xmlns.com/foaf/0.1/> .
+    @prefix ex:   <http://example.org/> .
+    ex:PersonShape a sh:NodeShape ;
+      sh:targetClass foaf:Person ;
+      sh:property [ sh:path foaf:name ; sh:minCount 1 ] .
+  `);
+  const dataSizeBefore = data.size;
+  const ok = await validate(data, shapes);
+  assert.equal(ok.conforms, true);
+  assert.ok(ok.report instanceof FnDataset);
+  assert.ok(ok.report.size > 0, 'a conforming report still has a sh:conforms triple');
+
+  const noName = await parse(`
+    @prefix foaf: <http://xmlns.com/foaf/0.1/> .
+    @prefix ex:   <http://example.org/> .
+    ex:carol a foaf:Person .
+  `);
+  const bad = await validate(noName, shapes);
+  assert.equal(bad.conforms, false);
+  assert.ok(bad.report.size > ok.report.size, 'a violation adds a sh:ValidationResult');
+
+  // Neither argument is mutated.
+  assert.equal(data.size, dataSizeBefore);
+});
+
+test('shex: ShEx validation of one focus node against one shape', async (t) => {
+  const caps = await capabilities();
+  if (!caps.shex) { t.skip(PENDING); return; }
+
+  const data = await parse(TTL);
+  const schema = JSON.stringify({
+    type: 'Schema',
+    shapes: [{
+      type: 'ShapeDecl', id: 'http://example.org/PersonShape',
+      shapeExpr: {
+        type: 'Shape',
+        expression: {
+          type: 'TripleConstraint',
+          predicate: 'http://xmlns.com/foaf/0.1/name',
+          valueExpr: { type: 'NodeConstraint', nodeKind: 'literal' },
+        },
+      },
+    }],
+  });
+  const verdict = await shex(
+    data, schema, 'http://example.org/alice', 'http://example.org/PersonShape');
+  assert.equal(verdict, true);
+
+  const noMatch = await shex(
+    data, schema, 'http://example.org/nobody', 'http://example.org/PersonShape');
+  assert.equal(noMatch, false, 'a focus node with no matching triples does not conform');
+});
+
+test('fromMapping: evaluates an RML mapping graph against JSON source data', async (t) => {
+  const caps = await capabilities();
+  if (!caps.rml) { t.skip(PENDING); return; }
+
+  const mapping = await parse(`
+    @prefix rml: <http://w3id.org/rml/> .
+    @prefix foaf: <http://xmlns.com/foaf/0.1/> .
+    @prefix ex:   <http://example.org/> .
+    ex:TM a rml:TriplesMap ;
+      rml:logicalSource [ a rml:LogicalSource ;
+        rml:iterator "$.people[*]" ;
+        rml:referenceFormulation rml:JSONPath ;
+        rml:source [ a rml:RelativePathSource ; rml:root rml:MappingDirectory ; rml:path "x" ] ] ;
+      rml:subjectMap [ rml:template "http://example.org/person/{$.id}" ] ;
+      rml:predicateObjectMap [ rml:predicate foaf:name ; rml:objectMap [ rml:reference "$.name" ] ] .
+  `);
+  const source = JSON.stringify({
+    people: [{ id: '1', name: 'Alice' }, { id: '2', name: 'Bob' }],
+  });
+  const out = await fromMapping(mapping, source, 'json');
+  assert.ok(out instanceof FnDataset);
+  assert.equal(out.size, 2);
+  const nq = out.toNQuads();
+  assert.match(nq, /person\/1> <http:\/\/xmlns\.com\/foaf\/0\.1\/name> "Alice"/);
+  assert.match(nq, /person\/2> <http:\/\/xmlns\.com\/foaf\/0\.1\/name> "Bob"/);
+});
+
+test('rif: RIF Core saturation materializes derived triples as an FnDataset', async (t) => {
+  const caps = await capabilities();
+  if (!caps.rif) { t.skip(PENDING); return; }
+
+  const ds = await parse(
+    '@prefix foaf: <http://xmlns.com/foaf/0.1/> . ' +
+    '@prefix ex: <http://example.org/> . ' +
+    'ex:alice foaf:knows ex:bob .');
+  // "?x foaf:knows ?y -> ?y foaf:knows ?x" (symmetry of foaf:knows, as a
+  // rule) -- RIF-Frame shape ported from the vendored
+  // third_party/testing/rif/tc/RDF_Combination_Blank_Node fixture's
+  // <Frame><object>/<slot> pattern (an Atom/args pair is NOT how this
+  // engine's RIF_Core_Translation matches an RDF triple). The RIF/XSD
+  // namespace entities real vendored fixtures declare via <!DOCTYPE>
+  // (&rif;/&xs;/&rdf;) are inlined literally here rather than declared,
+  // since this is plain string content, not a fixture file on disk;
+  // rifEval() also accepts the real DOCTYPE+entity form unmodified.
+  const rules = `<?xml version="1.0" encoding="UTF-8"?>
+<Document xmlns="http://www.w3.org/2007/rif#">
+  <payload>
+    <Group>
+      <sentence>
+        <Forall>
+          <declare><Var>x</Var></declare>
+          <declare><Var>y</Var></declare>
+          <formula>
+            <Implies>
+              <if>
+                <Frame>
+                  <object><Var>x</Var></object>
+                  <slot ordered="yes">
+                    <Const type="http://www.w3.org/2007/rif#iri">http://xmlns.com/foaf/0.1/knows</Const>
+                    <Var>y</Var>
+                  </slot>
+                </Frame>
+              </if>
+              <then>
+                <Frame>
+                  <object><Var>y</Var></object>
+                  <slot ordered="yes">
+                    <Const type="http://www.w3.org/2007/rif#iri">http://xmlns.com/foaf/0.1/knows</Const>
+                    <Var>x</Var>
+                  </slot>
+                </Frame>
+              </then>
+            </Implies>
+          </formula>
+        </Forall>
+      </sentence>
+    </Group>
+  </payload>
+</Document>`;
+  const saturated = await rif(ds, rules);
+  assert.ok(saturated instanceof FnDataset);
+  assert.ok(saturated.size > ds.size, 'the symmetric rule derives a new triple');
+  assert.match(saturated.toNQuads(),
+    /<http:\/\/example\.org\/bob> <http:\/\/xmlns\.com\/foaf\/0\.1\/knows> <http:\/\/example\.org\/alice>/);
 });
 
 test('interop: graphs() enumerates named graphs as FnDatasets', async () => {

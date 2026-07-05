@@ -16,7 +16,8 @@ const assert = require('node:assert/strict');
 
 const factoidal = require('..');
 const { parse, query, update, serialize, canonicalize, graphs,
-  canonicalHash, capabilities, Dataset, dataFactory: df } = factoidal;
+  canonicalHash, shaclValidate, shexValidate, owlClosure, rmlMap,
+  jsonldToRdf, rifEval, capabilities, Dataset, dataFactory: df } = factoidal;
 
 const PENDING = 'pending npm-entry build';
 
@@ -309,6 +310,207 @@ test('update: without npm-entry bundle rejects with pending message',
         { format: 'ntriples' }),
       (e) => e.message.includes(PENDING));
   });
+
+test('parse: jsonld (expanded/inline-context form) via the npm-entry ABI',
+  async (t) => {
+    const caps = await capabilities();
+    if (!caps.entry) {
+      t.skip(`${PENDING} (parseToDatasetJson's JSON-LD dispatch needs the entry bundle)`);
+      return;
+    }
+    const jsonld = JSON.stringify({
+      '@context': { foaf: 'http://xmlns.com/foaf/0.1/', name: 'foaf:name' },
+      '@id': 'http://example.org/alice',
+      name: 'Alice',
+    });
+    const ds = await parse(jsonld, { format: 'jsonld' });
+    assert.equal(ds.size, 1);
+    const [q] = [...ds];
+    assert.equal(q.subject.value, 'http://example.org/alice');
+    assert.equal(q.predicate.value, 'http://xmlns.com/foaf/0.1/name');
+    assert.equal(q.object.value, 'Alice');
+  });
+
+test('jsonldToRdf: parses JSON-LD with an explicit base option', async (t) => {
+  const caps = await capabilities();
+  if (!caps.jsonld) { t.skip(PENDING); return; }
+
+  const jsonld = JSON.stringify({
+    '@context': { foaf: 'http://xmlns.com/foaf/0.1/', name: 'foaf:name' },
+    '@id': 'alice',
+    name: 'Alice',
+  });
+  const ds = await jsonldToRdf(jsonld, { base: 'http://example.org/' });
+  assert.equal(ds.size, 1);
+  assert.equal([...ds][0].subject.value, 'http://example.org/alice');
+});
+
+test('shaclValidate: SHACL Core validation returns conforms + a report Dataset',
+  async (t) => {
+    const caps = await capabilities();
+    if (!caps.shacl) { t.skip(PENDING); return; }
+
+    const shapes = `
+      @prefix sh:   <http://www.w3.org/ns/shacl#> .
+      @prefix foaf: <http://xmlns.com/foaf/0.1/> .
+      @prefix ex:   <http://example.org/> .
+      ex:PersonShape a sh:NodeShape ;
+        sh:targetClass foaf:Person ;
+        sh:property [ sh:path foaf:name ; sh:minCount 1 ] .
+    `;
+    const ok = await shaclValidate(TTL, shapes);
+    assert.equal(ok.conforms, true);
+    assert.ok(ok.report instanceof Dataset);
+
+    const noName = `
+      @prefix foaf: <http://xmlns.com/foaf/0.1/> .
+      @prefix ex:   <http://example.org/> .
+      ex:dave a foaf:Person .
+    `;
+    const bad = await shaclValidate(noName, shapes);
+    assert.equal(bad.conforms, false);
+  });
+
+test('shexValidate: ShEx validation of one focus node against one shape',
+  async (t) => {
+    const caps = await capabilities();
+    if (!caps.shex) { t.skip(PENDING); return; }
+
+    const schema = JSON.stringify({
+      type: 'Schema',
+      shapes: [{
+        type: 'ShapeDecl', id: 'http://example.org/PersonShape',
+        shapeExpr: {
+          type: 'Shape',
+          expression: {
+            type: 'TripleConstraint',
+            predicate: 'http://xmlns.com/foaf/0.1/name',
+            valueExpr: { type: 'NodeConstraint', nodeKind: 'literal' },
+          },
+        },
+      }],
+    });
+    const verdict = await shexValidate(
+      TTL, schema, 'http://example.org/alice', 'http://example.org/PersonShape');
+    assert.equal(verdict, true);
+
+    // Also accepts RDF/JS terms for focus/shape.
+    const viaTerm = await shexValidate(
+      TTL, schema, df.namedNode('http://example.org/alice'),
+      df.namedNode('http://example.org/PersonShape'));
+    assert.equal(viaTerm, true);
+  });
+
+test('owlClosure: RDFS closure materializes rdfs:subClassOf inference',
+  async (t) => {
+    const caps = await capabilities();
+    if (!caps.owlClosure) { t.skip(PENDING); return; }
+
+    const data = `
+      @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+      @prefix ex:   <http://example.org/> .
+      ex:Hotel rdfs:subClassOf ex:Place .
+      ex:motel6 a ex:Hotel .
+    `;
+    const before = await parse(data);
+    const closure = await owlClosure(data, 'RDFS');
+    assert.ok(closure instanceof Dataset);
+    assert.ok(closure.size > before.size);
+    const rows = [...closure].filter((q) =>
+      q.subject.value === 'http://example.org/motel6' &&
+      q.predicate.value === 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type' &&
+      q.object.value === 'http://example.org/Place');
+    assert.equal(rows.length, 1, 'motel6 a ex:Place is inferred via subClassOf');
+  });
+
+test('rmlMap: evaluates an RML mapping graph against JSON source data',
+  async (t) => {
+    const caps = await capabilities();
+    if (!caps.rml) { t.skip(PENDING); return; }
+
+    const mapping = `
+      @prefix rml: <http://w3id.org/rml/> .
+      @prefix foaf: <http://xmlns.com/foaf/0.1/> .
+      @prefix ex:   <http://example.org/> .
+      ex:TM a rml:TriplesMap ;
+        rml:logicalSource [ a rml:LogicalSource ;
+          rml:iterator "$.people[*]" ;
+          rml:referenceFormulation rml:JSONPath ;
+          rml:source [ a rml:RelativePathSource ; rml:root rml:MappingDirectory ; rml:path "x" ] ] ;
+        rml:subjectMap [ rml:template "http://example.org/person/{$.id}" ] ;
+        rml:predicateObjectMap [ rml:predicate foaf:name ; rml:objectMap [ rml:reference "$.name" ] ] .
+    `;
+    const source = JSON.stringify({
+      people: [{ id: '1', name: 'Alice' }, { id: '2', name: 'Bob' }],
+    });
+    const ds = await rmlMap(mapping, source, 'json');
+    assert.ok(ds instanceof Dataset);
+    assert.equal(ds.size, 2);
+    assert.equal(
+      ds.match(df.namedNode('http://example.org/person/1'),
+        df.namedNode('http://xmlns.com/foaf/0.1/name')).size,
+      1);
+  });
+
+test('rifEval: RIF Core saturation materializes derived triples',
+  async (t) => {
+    const caps = await capabilities();
+    if (!caps.rif) { t.skip(PENDING); return; }
+
+    const data = '@prefix foaf: <http://xmlns.com/foaf/0.1/> . ' +
+      '@prefix ex: <http://example.org/> . ex:alice foaf:knows ex:bob .';
+    // "?x foaf:knows ?y -> ?y foaf:knows ?x", RIF-Frame shape (see
+    // fn.test.js's rif() test for provenance of this pattern).
+    const rules = `<?xml version="1.0" encoding="UTF-8"?>
+<Document xmlns="http://www.w3.org/2007/rif#">
+  <payload>
+    <Group>
+      <sentence>
+        <Forall>
+          <declare><Var>x</Var></declare>
+          <declare><Var>y</Var></declare>
+          <formula>
+            <Implies>
+              <if>
+                <Frame>
+                  <object><Var>x</Var></object>
+                  <slot ordered="yes">
+                    <Const type="http://www.w3.org/2007/rif#iri">http://xmlns.com/foaf/0.1/knows</Const>
+                    <Var>y</Var>
+                  </slot>
+                </Frame>
+              </if>
+              <then>
+                <Frame>
+                  <object><Var>y</Var></object>
+                  <slot ordered="yes">
+                    <Const type="http://www.w3.org/2007/rif#iri">http://xmlns.com/foaf/0.1/knows</Const>
+                    <Var>x</Var>
+                  </slot>
+                </Frame>
+              </then>
+            </Implies>
+          </formula>
+        </Forall>
+      </sentence>
+    </Group>
+  </payload>
+</Document>`;
+    const saturated = await rifEval(data, rules);
+    assert.ok(saturated instanceof Dataset);
+    assert.equal(
+      saturated.match(df.namedNode('http://example.org/bob'),
+        df.namedNode('http://xmlns.com/foaf/0.1/knows'),
+        df.namedNode('http://example.org/alice')).size,
+      1, 'the symmetric rule derives bob foaf:knows alice');
+  });
+
+test('capabilities: shacl/shex/owlClosure/rml/jsonld/rif fields are present', async () => {
+  const caps = await capabilities();
+  for (const key of ['shacl', 'shex', 'owlClosure', 'rml', 'jsonld', 'rif']) {
+    assert.equal(typeof caps[key], 'boolean', `capabilities().${key} is a boolean`);
+  }
+});
 
 test('version matches package.json', () => {
   assert.equal(factoidal.version, require('../package.json').version);

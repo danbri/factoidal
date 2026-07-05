@@ -60,15 +60,80 @@
        -> {"ok":true,"inputNquads":"...","saturatedNquads":"...",
            "inputCount":N,"derivedCount":N,"rounds":N,"fuel":N,
            "engineMs":F} | {"ok":false,"error":"..."}
-       General entry point: rifXml is a RIF Core XML document (parsed
-       by Parser_RIFXML.parse_rif_program), dataNQuads is the premise
-       graph (parsed by Parser_NQuads.parse_nquads, default graph
-       only). Saturated via RIF_Core_Eval.fixpoint, fuel=100. Import
-       directives are not resolved (Parser_RIFXML.parse_rif_program
-       ignores them; RIF_Core_Tests.saturate_with_program has the same
-       limitation) -- rules referencing an <Import>'d graph will not
-       see those triples unless the caller merges them into dataNQuads
-       first.
+       General entry point: rifXml is a RIF Core XML document (any
+       DOCTYPE + &rif;/&xs;/&rdf; entities are stripped/inlined first
+       via rif_xml_preprocess -- real vendored RIF-XML uses this
+       convention universally; a no-op on a document that has none --
+       then parsed by Parser_RIFXML.parse_rif_program), dataNQuads is
+       the premise graph (parsed by Parser_NQuads.parse_nquads, default
+       graph only). Saturated via RIF_Core_Eval.fixpoint, fuel=100.
+       Import directives are not resolved (Parser_RIFXML.
+       parse_rif_program ignores them; RIF_Core_Tests.
+       saturate_with_program has the same limitation) -- rules
+       referencing an <Import>'d graph will not see those triples
+       unless the caller merges them into dataNQuads first.
+     factoidalNpmEntry.jsonldToRdf(jsonldText, optionsJson)
+       -> {"ok":true,"nquads":"..."} | {"ok":false,"error":"..."}
+       Parser_JSONLD.parse_jsonld, with per-document blank-node scoping
+       (same rename_dataset_bnodes pass parseToDatasetJson applies).
+       optionsJson is a JSON object (or "" for defaults) with optional
+       string fields "base", "rdfDirection", "expandContext",
+       "processingMode" -- passed straight through to parse_jsonld's
+       matching parameters. Remote contexts / "@import" are an honest
+       FAIL (no documentLoader registered for this consumer -- see the
+       jsonld_loader_register call below, same choice
+       bin/factoidal-cli/bin/factoidal-http make).
+       NOTE: parseToDatasetJson(text, "jsonld", baseIri) now also works
+       (the format-dispatch gap is fixed below) -- jsonldToRdf exists
+       for the extra options parseToDatasetJson's 3-string-arg ABI has
+       no room for.
+     factoidalNpmEntry.shaclValidate(dataNQuads, shapesNQuads)
+       -> {"ok":true,"conforms":true|false,"reportNquads":"..."}
+        | {"ok":false,"error":"..."}
+       dataNQuads/shapesNQuads are dataset handles (same convention as
+       queryDataset et al) -- only the default graph's triples are
+       used (SHACL operates over a plain rdf_graph). SHACL_Validation.
+       parse_shape_from_graph + .validate (the same call path
+       bin/shacl-runner/shacl_runner.ml drives); reportNquads is
+       SHACL_Validation.validation_report_to_graph serialized as
+       default-graph N-Triples-per-line text.
+     factoidalNpmEntry.shexValidate(dataNQuads, schemaJson, focus, shapeLabel)
+       -> {"ok":true,"verdict":true|false,"deferred":false}
+        | {"ok":true,"verdict":null,"deferred":true}
+        | {"ok":false,"error":"..."}
+       dataNQuads is a dataset handle (default graph only, same cut as
+       shaclValidate). ShEx_Schema.decode_shex_schema (base "") +
+       ShEx_Validation.validate_focus. `focus` is an IRI, or "_:label"
+       for a blank node; `shapeLabel` "" means "validate against the
+       schema's own start". `deferred:true` (verdict null) means
+       validate_focus returned None -- outside this engine's decidable
+       fragment (see ShEx.Validation.fst's file header), never a
+       guessed answer.
+     factoidalNpmEntry.owlClosure(dataNQuads, mode)
+       -> {"ok":true,"nquads":"..."} | {"ok":false,"error":"..."}
+       dataNQuads is a dataset handle; only the default graph is
+       closed over. mode is "RDFS"
+       (RDF_Graph_Executable.rdfs_closure_with_reflexivity) or "OWL-RL"
+       (.owl_rl_closure_with_reflexivity), fuel=100 -- the same
+       closures bin/w3c-runner drives for entailment-regime tests.
+       Result is the closure graph (input + derived triples) as
+       default-graph N-Quads text.
+     factoidalNpmEntry.rmlMap(mappingNQuads, sourceData, sourceKind)
+       -> {"ok":true,"nquads":"..."} | {"ok":false,"error":"..."}
+       mappingNQuads is a dataset handle for the RML mapping GRAPH
+       (default graph only); sourceData is the RML logical source's
+       raw data (JSON or CSV text, per sourceKind), not RDF.
+       RML_Mapping.decode_mapping_document + RML_Eval.
+       eval_triples_map_json / eval_triples_map_csv (sourceKind is
+       "json" or "csv") for every triples map in the document, placed
+       into one dataset via RML_Eval.place_into_dataset and serialized
+       with RDF_Canonical.canonical_nquads. Scope limitation (documented,
+       not silent): every triples map reads the SAME sourceData single-
+       document handle -- RefObjectMap/join triples spanning two
+       DIFFERENT logical sources (RML_Eval.eval_join_triples_map's
+       lookup_parent hook) are not reachable through this one-document
+       entry point; see bin/rml-runner/rml_runner.ml for the full
+       multi-source join driver this does not attempt to replicate.
 
    Rich types (RDF/JS terms, Dataset objects, Maps of bindings) live on
    the JavaScript side (npm/factoidal/rdfjs.js); the js_of_ocaml string
@@ -85,6 +150,14 @@ open SPARQL11_Algebra
 module Js = Js_of_ocaml.Js
 
 let abi_version = "1"
+
+(* Issue #275 (rule #11 ASSUME-IO): explicitly realise the JSON-LD
+   documentLoader seam as an honest "no remote loading" for this entry
+   point -- same choice bin/factoidal-cli, bin/factoidal-http, and
+   bin/factoidal-dump-nq each make explicitly (the ref cell's own
+   default is the same `fun _ -> None`; this line exists for rule-#11
+   auditability, not because behavior would differ without it). *)
+let () = JSONLD_Loader.jsonld_loader_register (fun _ -> FStar_Pervasives_Native.None)
 
 (* ---------------------------------------------------------------------
    JSON envelope helpers. Escaping delegates to the F*-extracted
@@ -162,6 +235,27 @@ let parse_text_to_dataset (text : string) (format_tag : string)
           | None -> Parser_RDFXML.parse_rdfxml text
         in
         { ds_default = triples; ds_named = [] }
+      | RDF_Format.JSONLD ->
+        (* Parser_JSONLD.parse_jsonld returns a whole rdf_dataset
+           (JSON-LD @graph can produce named graphs), unlike the
+           triple-list branches above. Remote contexts / "@import" fail
+           honestly (no loader registered -- see jsonld_loader_register
+           above); this was previously an unhandled match case (a
+           latent Match_failure any caller reaching this branch would
+           have hit -- see jsonldToRdf's ABI doc comment). *)
+        let fs_base =
+          match base with
+          | Some b -> FStar_Pervasives_Native.Some b
+          | None -> FStar_Pervasives_Native.None
+        in
+        (match Parser_JSONLD.parse_jsonld text fs_base
+                 FStar_Pervasives_Native.None FStar_Pervasives_Native.None
+                 FStar_Pervasives_Native.None with
+         | FStar_Pervasives_Native.Some ds -> ds
+         | FStar_Pervasives_Native.None ->
+           failwith ("invalid or unsupported JSON-LD (parse error, or a " ^
+                     "feature needing a remote-context loader this entry " ^
+                     "does not have)"))
     in
     Ok (scope_dataset_bnodes ds)
 
@@ -344,6 +438,48 @@ let serialize_turtle (nq : string) : string =
    fire_rule already, so it is not called directly here.
    --------------------------------------------------------------------- *)
 
+(* Real-world RIF-XML documents (every fixture in
+   third_party/testing/rif/tc/, per the RIF Core spec's own convention)
+   declare a DOCTYPE with internal-subset entities (&rif;/&xs;/&rdf;)
+   that expand to the RIF/XSD/RDF namespace IRIs; Parser_RIFXML.
+   parse_rif_program is a plain XML parser with no DTD/entity-expansion
+   step (by design -- that is XML infrastructure, not RIF Core
+   semantics), so it cannot see through them unless this is done first.
+   Ported verbatim from bin/w3c-runner/w3c_runner.ml's rif_xml_preprocess
+   (the exact same problem, same fix) so callers can hand this ABI a
+   real, unmodified RIF-XML document instead of hand-stripping the
+   DOCTYPE themselves. Consumer-side text preprocessing, not RIF
+   semantics -- rule #11 stays satisfied. *)
+let rif_xml_preprocess (s : string) : string =
+  let drop_doctype s =
+    match Str.search_forward (Str.regexp_string "<!DOCTYPE") s 0 with
+    | exception Not_found -> s
+    | start ->
+      let close_with_subset =
+        try Some (Str.search_forward (Str.regexp_string "]>") s start)
+        with Not_found -> None in
+      let close_idx =
+        match close_with_subset with
+        | Some i -> i + 2
+        | None ->
+          (try (Str.search_forward (Str.regexp_string ">") s start) + 1
+           with Not_found -> String.length s)
+      in
+      let pre = String.sub s 0 start in
+      let post = String.sub s close_idx (String.length s - close_idx) in
+      pre ^ post
+  in
+  let inline_entities s =
+    s
+    |> Str.global_replace (Str.regexp_string "&rif;")
+         "http://www.w3.org/2007/rif#"
+    |> Str.global_replace (Str.regexp_string "&xs;")
+         "http://www.w3.org/2001/XMLSchema#"
+    |> Str.global_replace (Str.regexp_string "&rdf;")
+         "http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+  in
+  s |> drop_doctype |> inline_entities
+
 let rif_graph_to_nquads (g : triple list) : string =
   let buf = Buffer.create 1024 in
   List.iter
@@ -402,9 +538,14 @@ let rif_smoke_json () : string =
 
 (* rifEval(rifXml, dataNQuads) -- general entry point: parse arbitrary
    RIF-XML rules, saturate against an arbitrary N-Quads premise graph
-   (default graph only -- RIF Core has no named-graph notion). *)
+   (default graph only -- RIF Core has no named-graph notion).
+   rif_xml_preprocess strips any DOCTYPE + inlines &rif;/&xs;/&rdf;
+   entities first (a no-op on a document that has none), so this
+   accepts real vendored RIF-XML unmodified, not just a hand-stripped
+   variant. *)
 let rif_eval_json (rif_xml : string) (data_nquads : string) : string =
   guarded (fun () ->
+    let rif_xml = rif_xml_preprocess rif_xml in
     let ds = dataset_of_nquads data_nquads in
     let premise = ds.ds_default in
     match Parser_RIFXML.parse_rif_program rif_xml with
@@ -418,6 +559,168 @@ let rif_eval_json (rif_xml : string) (data_nquads : string) : string =
       let t1 = Sys.time () in
       let rounds = rif_rounds_to_fixpoint premise program 256 in
       rif_result_json premise saturated rounds fuel ((t1 -. t0) *. 1000.0))
+
+(* ---------------------------------------------------------------------
+   JSON-LD (rule #11 consumer -- exports only). Semantics come entirely
+   from Parser_JSONLD.parse_jsonld (+ JSONLD_Context / JSONLD_Expand it
+   calls internally); this wraps it with the same per-document
+   blank-node scoping parseToDatasetJson applies and an options-JSON
+   ABI for the parameters parseToDatasetJson's 3-string-arg shape has
+   no room for. See jsonldToRdf's doc comment (file header) for the
+   optionsJson field names.
+   --------------------------------------------------------------------- *)
+
+let jsonld_to_rdf_json (jsonld_text : string) (options_json : string) : string =
+  guarded (fun () ->
+    let root_opt =
+      if options_json = "" then FStar_Pervasives_Native.None
+      else Parser_JSON.parse_json options_json
+    in
+    let field key =
+      match root_opt with
+      | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+      | FStar_Pervasives_Native.Some root -> Parser_JSON.json_get_string key root
+    in
+    let base = field "base" in
+    let rdf_direction = field "rdfDirection" in
+    let expand_context = field "expandContext" in
+    let processing_mode = field "processingMode" in
+    match Parser_JSONLD.parse_jsonld jsonld_text base rdf_direction
+            expand_context processing_mode with
+    | FStar_Pervasives_Native.None ->
+      err_json ("invalid or unsupported JSON-LD (parse error, or a " ^
+                "feature needing a remote-context loader this entry " ^
+                "does not have)")
+    | FStar_Pervasives_Native.Some ds ->
+      ok_nquads_json (RDF_Canonical.canonical_nquads (scope_dataset_bnodes ds)))
+
+(* ---------------------------------------------------------------------
+   SHACL (rule #11 consumer -- exports only). All shape parsing, target
+   computation, constraint evaluation and report serialization live in
+   formal/fstar/SHACL.Validation.fst -- the same call path
+   bin/shacl-runner/shacl_runner.ml drives (parse_shape_from_graph +
+   validate + validation_report_to_graph).
+   --------------------------------------------------------------------- *)
+
+(* dataNQuads/shapesNQuads are dataset handles (same convention as
+   queryDataset/canonicalizeToNQuads/etc.) -- the default graph's
+   triples only (SHACL operates over a plain rdf_graph; a caller with
+   named-graph data/shapes should pick the graph it means before
+   calling, same documented scope cut fn.js's entail() already makes
+   for RDFS/OWL-RL closure). *)
+let shacl_validate_json (data_nquads : string) (shapes_nquads : string) : string =
+  guarded (fun () ->
+    let data_graph = (dataset_of_nquads data_nquads).ds_default in
+    let shapes_graph = (dataset_of_nquads shapes_nquads).ds_default in
+    let sg = SHACL_Validation.parse_shape_from_graph shapes_graph in
+    let report = SHACL_Validation.validate data_graph shapes_graph sg in
+    let report_graph = SHACL_Validation.validation_report_to_graph report in
+    "{\"ok\":true,\"conforms\":"
+    ^ (if report.SHACL_Validation.conforms then "true" else "false")
+    ^ ",\"reportNquads\":" ^ jstr (construct_triples_to_ntriples report_graph)
+    ^ "}")
+
+(* ---------------------------------------------------------------------
+   ShEx (rule #11 consumer -- exports only). ShExJ decoding lives in
+   formal/fstar/ShEx.Schema.fst; NodeConstraint dispatch and
+   triple-expression matching live in formal/fstar/ShEx.Validation.fst
+   -- the same call path bin/shex-runner/shex_runner.ml drives
+   (decode_shex_schema + validate_focus).
+   --------------------------------------------------------------------- *)
+
+(* A focus/shape-label string is an IRI, or "_:label" for a blank node
+   -- same convention shex_runner.ml's shape_label_str /
+   term_of_node_string helpers use, so a caller round-tripping a
+   shex_runner-style ShapeMap entry gets the identical term. *)
+let term_of_focus_string (s : string) : rdf_term =
+  if String.length s >= 2 && String.sub s 0 2 = "_:"
+  then T_BNode (String.sub s 2 (String.length s - 2))
+  else T_IRI s
+
+(* dataNQuads is a dataset handle (see shaclValidate's comment above for
+   the default-graph-only scope cut this shares). *)
+let shex_validate_json (data_nquads : string) (schema_json : string)
+    (focus : string) (shape_label : string) : string =
+  guarded (fun () ->
+    match ShEx_Schema.decode_shex_schema schema_json "" with
+    | FStar_Pervasives_Native.None ->
+      err_json "ShEx_Schema.decode_shex_schema failed to decode schemaJson"
+    | FStar_Pervasives_Native.Some schema ->
+      let data_graph = (dataset_of_nquads data_nquads).ds_default in
+      let focus_term = term_of_focus_string focus in
+      let shape_id =
+        if shape_label = "" then FStar_Pervasives_Native.None
+        else FStar_Pervasives_Native.Some shape_label
+      in
+      (match ShEx_Validation.validate_focus schema shape_id focus_term data_graph with
+       | FStar_Pervasives_Native.None ->
+         "{\"ok\":true,\"verdict\":null,\"deferred\":true}"
+       | FStar_Pervasives_Native.Some b ->
+         "{\"ok\":true,\"verdict\":" ^ (if b then "true" else "false")
+         ^ ",\"deferred\":false}"))
+
+(* ---------------------------------------------------------------------
+   RDFS / OWL-RL entailment closure (rule #11 consumer -- exports
+   only). Both closures live in formal/fstar/RDF.Graph.Executable.fst;
+   this is the same fuel=100 call bin/w3c-runner/w3c_runner.ml makes
+   for RDFS/OWL-RL entailment-regime tests.
+   --------------------------------------------------------------------- *)
+
+(* dataNQuads is a dataset handle; only the default graph is closed
+   over (see shaclValidate's comment above). *)
+let owl_closure_json (data_nquads : string) (mode : string) : string =
+  guarded (fun () ->
+    let graph = (dataset_of_nquads data_nquads).ds_default in
+    let fuel = Z.of_int 100 in
+    match mode with
+    | "RDFS" | "rdfs" ->
+      ok_nquads_json (construct_triples_to_ntriples
+        (RDF_Graph_Executable.rdfs_closure_with_reflexivity graph fuel))
+    | "OWL-RL" | "owl-rl" | "owl_rl" ->
+      ok_nquads_json (construct_triples_to_ntriples
+        (RDF_Graph_Executable.owl_rl_closure_with_reflexivity graph fuel))
+    | _ ->
+      err_json (Printf.sprintf
+        "owlClosure: unknown mode '%s' (expected 'RDFS' or 'OWL-RL')" mode))
+
+(* ---------------------------------------------------------------------
+   RML (rule #11 consumer -- exports only). Mapping-document decoding
+   lives in formal/fstar/RML.Mapping.fst, logical-source iteration in
+   formal/fstar/RML.Sources.fst, term-map/triples-map evaluation in
+   formal/fstar/RML.Eval.fst -- the eval_triples_map_json/_csv
+   convenience wrappers bin/rml-runner/rml_runner.ml's eval_document
+   also composes, minus that driver's multi-source join-lookup table
+   (see rmlMap's doc comment, file header, for the resulting scope cut).
+   --------------------------------------------------------------------- *)
+
+(* mappingNQuads is a dataset handle for the RML mapping GRAPH (the
+   TriplesMap/LogicalSource/etc. RDF description) -- default graph
+   only, same convention as shaclValidate above. sourceData is the RML
+   logical source's raw data (JSON or CSV text, per sourceKind), not
+   RDF -- passed straight through to RML.Sources' iterators. *)
+let rml_map_json (mapping_nquads : string) (source_data : string)
+    (source_kind : string) : string =
+  guarded (fun () ->
+    match source_kind with
+    | "json" | "csv" ->
+      let mapping_graph = (dataset_of_nquads mapping_nquads).ds_default in
+      let doc = RML_Mapping.decode_mapping_document mapping_graph in
+      let eval_one (tmap : RML_Mapping.triples_map) : RML_Eval.placed_triple list =
+        match source_kind with
+        | "json" ->
+          (match Parser_JSON.parse_json source_data with
+           | FStar_Pervasives_Native.None -> []
+           | FStar_Pervasives_Native.Some root ->
+             RML_Eval.eval_triples_map_json tmap root FStar_Pervasives_Native.None)
+        | _ (* "csv" *) ->
+          RML_Eval.eval_triples_map_csv tmap source_data FStar_Pervasives_Native.None
+      in
+      let all_pts = List.concat_map eval_one doc.RML_Mapping.md_triples_maps in
+      let ds = RML_Eval.place_into_dataset RDF_Graph_Executable.empty_dataset all_pts in
+      ok_nquads_json (RDF_Canonical.canonical_nquads ds)
+    | _ ->
+      err_json (Printf.sprintf
+        "rmlMap: unknown sourceKind '%s' (expected 'json' or 'csv')" source_kind))
 
 (* ---------------------------------------------------------------------
    Js.export — the only js_of_ocaml-specific code. Strings cross the
@@ -442,6 +745,12 @@ let s3 (f : string -> string -> string -> string) =
     (Js.wrap_callback (fun a b c ->
        Js.string (f (Js.to_string a) (Js.to_string b) (Js.to_string c))))
 
+let s4 (f : string -> string -> string -> string -> string) =
+  Js.Unsafe.inject
+    (Js.wrap_callback (fun a b c d ->
+       Js.string (f (Js.to_string a) (Js.to_string b) (Js.to_string c)
+                    (Js.to_string d))))
+
 let () =
   Js.export "factoidalNpmEntry"
     (Js.Unsafe.obj
@@ -454,5 +763,10 @@ let () =
           ("canonicalizeToNQuads", s1 canonicalize_to_nquads);
           ("serializeTurtle", s1 serialize_turtle);
           ("rifSmoke", s0 rif_smoke_json);
-          ("rifEval", s2 rif_eval_json)
+          ("rifEval", s2 rif_eval_json);
+          ("jsonldToRdf", s2 jsonld_to_rdf_json);
+          ("shaclValidate", s2 shacl_validate_json);
+          ("shexValidate", s4 shex_validate_json);
+          ("owlClosure", s2 owl_closure_json);
+          ("rmlMap", s3 rml_map_json)
        |])
