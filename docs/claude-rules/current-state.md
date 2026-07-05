@@ -1,6 +1,19 @@
 # Current State (Honest Assessment)
 
-Last refreshed: 2026-07-05 (wave-10 battery: **OWL 2 RL maximally
+Last refreshed: 2026-07-05 (ShEx-completion wave A: **1115 pass, 42
+mismatch, 25 deferred, 0 skipped (of 1182)** — stage 4 backtracking
+partition search, stage 5 recursion (coinductive visited-stack),
+stage 6 EXTENDS per the inheritance-semantics paper, SemActs with
+the Test extension, ShapeMap-form tests, 23 hand-translated ShExJ
+twins with provenance (tests/shex-shexj-twins/), plus an XSD
+leading-plus datatype fix. Remainder precisely triaged: 25
+mismatches are a runner base-resolution bug, ~13 need
+multi-ancestor/abstract inheritance, 18 deferred need Imports, 4
+ShapeExternal, 2 bnode shape labels, 2 relative-IRI bases — wave B
+in flight. All floors held: SHACL 120/120, RDFC 86/86, JSON-LD
+404/52/11, SPARQL 631/0, RDF 1031/0, unit 23/23, npm 60/61.)
+
+Previous (wave-10 battery: **OWL 2 RL maximally
 complete** — PE 28 pass, 2 fail (the documented-impossible
 comprehension pair), 0 skip; NE 6/0; Consistency 76/0/0;
 Inconsistency 14/0/0 — via three new closure rules
