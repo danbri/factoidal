@@ -13,6 +13,13 @@ A formally verified RDF/SPARQL implementation. The **F\* specifications are the 
 
 Paste Turtle data, write a query, see the results — the engine is F\*-extracted OCaml compiled to JavaScript; nothing runs on a server.
 
+## Learn it from first principles
+
+**[The documentation hub &rarr;]({{ '/web/hub/' | url }})** — a blog-style
+series building up from RDF triples through SPARQL, schemas, shapes, and
+the rest of the implemented standards, with live code cells that run the
+engine right in the page (no server, no CDN).
+
 ## Module dependency graph
 
 The F\* spec is split across 90 modules. The
