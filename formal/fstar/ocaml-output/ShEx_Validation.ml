@@ -503,8 +503,9 @@ let ef_combine (a : extends_flat) (b : extends_flat) : extends_flat=
   }
 let rec flatten_se_for_extends
   (decls : ShEx_Schema.shex_shape_decl Prims.list)
-  (se : ShEx_Schema.shex_shape_expr) (fuel : Prims.nat) :
-  extends_flat FStar_Pervasives_Native.option=
+  (se : ShEx_Schema.shex_shape_expr) (visited : Prims.string Prims.list)
+  (fuel : Prims.nat) :
+  (extends_flat * Prims.string Prims.list) FStar_Pervasives_Native.option=
   if fuel = Prims.int_zero
   then FStar_Pervasives_Native.None
   else
@@ -518,100 +519,117 @@ let rec flatten_se_for_extends
          if Prims.uu___is_Nil sh.ShEx_Schema.sh_extends
          then
            FStar_Pervasives_Native.Some
-             {
-               ef_tes = own_tes;
-               ef_extra = (sh.ShEx_Schema.sh_extra);
-               ef_closed = (sh.ShEx_Schema.sh_closed);
-               ef_checks = []
-             }
+             ({
+                ef_tes = own_tes;
+                ef_extra = (sh.ShEx_Schema.sh_extra);
+                ef_closed = (sh.ShEx_Schema.sh_closed);
+                ef_checks = []
+              }, visited)
          else
-           (match resolve_extends decls sh.ShEx_Schema.sh_extends fuel' with
+           (match resolve_extends decls sh.ShEx_Schema.sh_extends visited
+                    fuel'
+            with
             | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
-            | FStar_Pervasives_Native.Some parent ->
+            | FStar_Pervasives_Native.Some (parent, visited1) ->
                 FStar_Pervasives_Native.Some
-                  (ef_combine
-                     {
-                       ef_tes = own_tes;
-                       ef_extra = (sh.ShEx_Schema.sh_extra);
-                       ef_closed = (sh.ShEx_Schema.sh_closed);
-                       ef_checks = []
-                     } parent))
+                  ((ef_combine
+                      {
+                        ef_tes = own_tes;
+                        ef_extra = (sh.ShEx_Schema.sh_extra);
+                        ef_closed = (sh.ShEx_Schema.sh_closed);
+                        ef_checks = []
+                      } parent), visited1))
      | ShEx_Schema.SE_ShapeAnd ses ->
-         flatten_se_list_for_extends decls ses fuel'
+         flatten_se_list_for_extends decls ses visited fuel'
      | ShEx_Schema.SE_Ref label ->
-         (match lookup_shape_decl decls label with
-          | FStar_Pervasives_Native.Some sd ->
-              flatten_se_for_extends decls sd.ShEx_Schema.sd_expr fuel'
-          | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None)
+         if FStar_List_Tot_Base.mem label visited
+         then FStar_Pervasives_Native.Some (ef_empty, visited)
+         else
+           (match lookup_shape_decl decls label with
+            | FStar_Pervasives_Native.Some sd ->
+                flatten_se_for_extends decls sd.ShEx_Schema.sd_expr (label ::
+                  visited) fuel'
+            | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None)
      | ShEx_Schema.SE_NodeConstraint uu___1 ->
          FStar_Pervasives_Native.Some
-           {
-             ef_tes = (ef_empty.ef_tes);
-             ef_extra = (ef_empty.ef_extra);
-             ef_closed = (ef_empty.ef_closed);
-             ef_checks = [se]
-           }
+           ({
+              ef_tes = (ef_empty.ef_tes);
+              ef_extra = (ef_empty.ef_extra);
+              ef_closed = (ef_empty.ef_closed);
+              ef_checks = [se]
+            }, visited)
      | ShEx_Schema.SE_ShapeOr uu___1 ->
          FStar_Pervasives_Native.Some
-           {
-             ef_tes = (ef_empty.ef_tes);
-             ef_extra = (ef_empty.ef_extra);
-             ef_closed = (ef_empty.ef_closed);
-             ef_checks = [se]
-           }
+           ({
+              ef_tes = (ef_empty.ef_tes);
+              ef_extra = (ef_empty.ef_extra);
+              ef_closed = (ef_empty.ef_closed);
+              ef_checks = [se]
+            }, visited)
      | ShEx_Schema.SE_ShapeNot uu___1 ->
          FStar_Pervasives_Native.Some
-           {
-             ef_tes = (ef_empty.ef_tes);
-             ef_extra = (ef_empty.ef_extra);
-             ef_closed = (ef_empty.ef_closed);
-             ef_checks = [se]
-           }
+           ({
+              ef_tes = (ef_empty.ef_tes);
+              ef_extra = (ef_empty.ef_extra);
+              ef_closed = (ef_empty.ef_closed);
+              ef_checks = [se]
+            }, visited)
      | ShEx_Schema.SE_ShapeExternal ->
          FStar_Pervasives_Native.Some
-           {
-             ef_tes = (ef_empty.ef_tes);
-             ef_extra = (ef_empty.ef_extra);
-             ef_closed = (ef_empty.ef_closed);
-             ef_checks = [se]
-           })
+           ({
+              ef_tes = (ef_empty.ef_tes);
+              ef_extra = (ef_empty.ef_extra);
+              ef_closed = (ef_empty.ef_closed);
+              ef_checks = [se]
+            }, visited))
 and flatten_se_list_for_extends
   (decls : ShEx_Schema.shex_shape_decl Prims.list)
-  (ses : ShEx_Schema.shex_shape_expr Prims.list) (fuel : Prims.nat) :
-  extends_flat FStar_Pervasives_Native.option=
+  (ses : ShEx_Schema.shex_shape_expr Prims.list)
+  (visited : Prims.string Prims.list) (fuel : Prims.nat) :
+  (extends_flat * Prims.string Prims.list) FStar_Pervasives_Native.option=
   if fuel = Prims.int_zero
   then FStar_Pervasives_Native.None
   else
     (let fuel' = fuel - Prims.int_one in
      match ses with
-     | [] -> FStar_Pervasives_Native.Some ef_empty
+     | [] -> FStar_Pervasives_Native.Some (ef_empty, visited)
      | hd::tl ->
-         (match ((flatten_se_for_extends decls hd fuel'),
-                  (flatten_se_list_for_extends decls tl fuel'))
-          with
-          | (FStar_Pervasives_Native.Some a, FStar_Pervasives_Native.Some b)
-              -> FStar_Pervasives_Native.Some (ef_combine a b)
-          | (uu___1, uu___2) -> FStar_Pervasives_Native.None))
+         (match flatten_se_for_extends decls hd visited fuel' with
+          | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+          | FStar_Pervasives_Native.Some (a, visited1) ->
+              (match flatten_se_list_for_extends decls tl visited1 fuel' with
+               | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+               | FStar_Pervasives_Native.Some (b, visited2) ->
+                   FStar_Pervasives_Native.Some ((ef_combine a b), visited2))))
 and resolve_extends (decls : ShEx_Schema.shex_shape_decl Prims.list)
-  (labels : Prims.string Prims.list) (fuel : Prims.nat) :
-  extends_flat FStar_Pervasives_Native.option=
+  (labels : Prims.string Prims.list) (visited : Prims.string Prims.list)
+  (fuel : Prims.nat) :
+  (extends_flat * Prims.string Prims.list) FStar_Pervasives_Native.option=
   if fuel = Prims.int_zero
   then FStar_Pervasives_Native.None
   else
     (let fuel' = fuel - Prims.int_one in
      match labels with
-     | [] -> FStar_Pervasives_Native.Some ef_empty
+     | [] -> FStar_Pervasives_Native.Some (ef_empty, visited)
      | hd::tl ->
-         (match lookup_shape_decl decls hd with
-          | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
-          | FStar_Pervasives_Native.Some sd ->
-              (match ((flatten_se_for_extends decls sd.ShEx_Schema.sd_expr
-                         fuel'), (resolve_extends decls tl fuel'))
-               with
-               | (FStar_Pervasives_Native.Some a,
-                  FStar_Pervasives_Native.Some b) ->
-                   FStar_Pervasives_Native.Some (ef_combine a b)
-               | (uu___1, uu___2) -> FStar_Pervasives_Native.None)))
+         if FStar_List_Tot_Base.mem hd visited
+         then resolve_extends decls tl visited fuel'
+         else
+           (match lookup_shape_decl decls hd with
+            | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+            | FStar_Pervasives_Native.Some sd ->
+                (match flatten_se_for_extends decls sd.ShEx_Schema.sd_expr
+                         (hd :: visited) fuel'
+                 with
+                 | FStar_Pervasives_Native.None ->
+                     FStar_Pervasives_Native.None
+                 | FStar_Pervasives_Native.Some (a, visited1) ->
+                     (match resolve_extends decls tl visited1 fuel' with
+                      | FStar_Pervasives_Native.None ->
+                          FStar_Pervasives_Native.None
+                      | FStar_Pervasives_Native.Some (b, visited2) ->
+                          FStar_Pervasives_Native.Some
+                            ((ef_combine a b), visited2)))))
 let shex_gather_candidates (g : RDF_Graph_Executable.rdf_graph)
   (focus : RDF_Graph_Executable.rdf_term) (inverse : Prims.bool)
   (pred : Prims.string) : RDF_Graph_Executable.rdf_term Prims.list=
@@ -634,6 +652,34 @@ let triples_with_subject (g : RDF_Graph_Executable.rdf_graph)
     (fun tr -> RDF_Graph_Executable.subject_eq tr.RDF_Graph_Executable.s s) g
 type pool_elem = (Prims.bool * Prims.string * RDF_Graph_Executable.rdf_term)
 type pool_t = pool_elem Prims.list
+let pool_elem_eq (a : pool_elem) (b : pool_elem) : Prims.bool=
+  let uu___ = a in
+  match uu___ with
+  | (ai, ap, at) ->
+      let uu___1 = b in
+      (match uu___1 with
+       | (bi, bp, bt) ->
+           ((ai = bi) && (ap = bp)) &&
+             (RDF_Graph_Executable.rdf_term_eq at bt))
+let rec pool_intersect (running : pool_t) (other : pool_t) : pool_t=
+  match running with
+  | [] -> []
+  | hd::tl ->
+      if FStar_List_Tot_Base.existsb (fun e -> pool_elem_eq hd e) other
+      then hd :: (pool_intersect tl other)
+      else pool_intersect tl other
+let rec pool_diff (a : pool_t) (b : pool_t) : pool_t=
+  match a with
+  | [] -> []
+  | hd::tl ->
+      if FStar_List_Tot_Base.existsb (fun e -> pool_elem_eq hd e) b
+      then pool_diff tl b
+      else hd :: (pool_diff tl b)
+let te_is_unbounded_tc (te : ShEx_Schema.shex_triple_expr) : Prims.bool=
+  match te with
+  | ShEx_Schema.TE_TripleConstraint tc ->
+      tc.ShEx_Schema.tc_max = (Prims.of_int (-1))
+  | uu___ -> false
 let pair_mem (x : (Prims.bool * Prims.string))
   (l : (Prims.bool * Prims.string) Prims.list) : Prims.bool=
   FStar_List_Tot_Base.existsb
@@ -762,12 +808,123 @@ let rec matches_shape_expr (decls : ShEx_Schema.shex_shape_decl Prims.list)
          else
            (match lookup_shape_decl decls label with
             | FStar_Pervasives_Native.Some sd ->
-                matches_shape_expr decls idtab ((label, t) :: visited)
-                  sd.ShEx_Schema.sd_expr t g fuel'
+                (match matches_shape_expr decls idtab ((label, t) :: visited)
+                         sd.ShEx_Schema.sd_expr t g fuel'
+                 with
+                 | FStar_Pervasives_Native.Some true ->
+                     if sd.ShEx_Schema.sd_is_abstract
+                     then
+                       exists_nonabstract_descendant_satisfying decls idtab
+                         visited label t g fuel'
+                     else FStar_Pervasives_Native.Some true
+                 | other -> other)
             | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None)
      | ShEx_Schema.SE_Shape sh ->
          matches_shape decls idtab visited sh t g fuel'
      | ShEx_Schema.SE_ShapeExternal -> FStar_Pervasives_Native.None)
+and exists_nonabstract_descendant_satisfying
+  (decls : ShEx_Schema.shex_shape_decl Prims.list)
+  (idtab : (Prims.string * ShEx_Schema.shex_triple_expr) Prims.list)
+  (visited : shex_visited) (label : Prims.string)
+  (t : RDF_Graph_Executable.rdf_term) (g : RDF_Graph_Executable.rdf_graph)
+  (fuel : Prims.nat) : Prims.bool FStar_Pervasives_Native.option=
+  if fuel = Prims.int_zero
+  then FStar_Pervasives_Native.None
+  else
+    (let fuel' = fuel - Prims.int_one in
+     check_descendant_candidates decls idtab visited label decls t g fuel')
+and check_descendant_candidates
+  (decls : ShEx_Schema.shex_shape_decl Prims.list)
+  (idtab : (Prims.string * ShEx_Schema.shex_triple_expr) Prims.list)
+  (visited : shex_visited) (label : Prims.string)
+  (candidates : ShEx_Schema.shex_shape_decl Prims.list)
+  (t : RDF_Graph_Executable.rdf_term) (g : RDF_Graph_Executable.rdf_graph)
+  (fuel : Prims.nat) : Prims.bool FStar_Pervasives_Native.option=
+  if fuel = Prims.int_zero
+  then FStar_Pervasives_Native.None
+  else
+    (let fuel' = fuel - Prims.int_one in
+     match candidates with
+     | [] -> FStar_Pervasives_Native.Some false
+     | cd::tl ->
+         if
+           cd.ShEx_Schema.sd_is_abstract ||
+             (Prims.op_Negation
+                (shape_decl_extends_label decls cd label [] fuel'))
+         then
+           check_descendant_candidates decls idtab visited label tl t g fuel'
+         else
+           (match ((matches_shape_expr decls idtab visited
+                      cd.ShEx_Schema.sd_expr t g fuel'),
+                    (check_descendant_candidates decls idtab visited label tl
+                       t g fuel'))
+            with
+            | (FStar_Pervasives_Native.Some true, uu___2) ->
+                FStar_Pervasives_Native.Some true
+            | (uu___2, FStar_Pervasives_Native.Some true) ->
+                FStar_Pervasives_Native.Some true
+            | (FStar_Pervasives_Native.Some false,
+               FStar_Pervasives_Native.Some false) ->
+                FStar_Pervasives_Native.Some false
+            | (uu___2, uu___3) -> FStar_Pervasives_Native.None))
+and shape_decl_extends_label (decls : ShEx_Schema.shex_shape_decl Prims.list)
+  (cd : ShEx_Schema.shex_shape_decl) (label : Prims.string)
+  (seen : Prims.string Prims.list) (fuel : Prims.nat) : Prims.bool=
+  if fuel = Prims.int_zero
+  then false
+  else
+    se_extends_label decls cd.ShEx_Schema.sd_expr label seen
+      (fuel - Prims.int_one)
+and se_extends_label (decls : ShEx_Schema.shex_shape_decl Prims.list)
+  (se : ShEx_Schema.shex_shape_expr) (label : Prims.string)
+  (seen : Prims.string Prims.list) (fuel : Prims.nat) : Prims.bool=
+  if fuel = Prims.int_zero
+  then false
+  else
+    (let fuel' = fuel - Prims.int_one in
+     match se with
+     | ShEx_Schema.SE_Shape sh ->
+         (FStar_List_Tot_Base.mem label sh.ShEx_Schema.sh_extends) ||
+           (labels_extend_label decls sh.ShEx_Schema.sh_extends label seen
+              fuel')
+     | ShEx_Schema.SE_ShapeAnd ses ->
+         se_list_extends_label decls ses label seen fuel'
+     | uu___1 -> false)
+and se_list_extends_label (decls : ShEx_Schema.shex_shape_decl Prims.list)
+  (ses : ShEx_Schema.shex_shape_expr Prims.list) (label : Prims.string)
+  (seen : Prims.string Prims.list) (fuel : Prims.nat) : Prims.bool=
+  if fuel = Prims.int_zero
+  then false
+  else
+    (let fuel' = fuel - Prims.int_one in
+     match ses with
+     | [] -> false
+     | hd::tl ->
+         (se_extends_label decls hd label seen fuel') ||
+           (se_list_extends_label decls tl label seen fuel'))
+and labels_extend_label (decls : ShEx_Schema.shex_shape_decl Prims.list)
+  (labels : Prims.string Prims.list) (target : Prims.string)
+  (seen : Prims.string Prims.list) (fuel : Prims.nat) : Prims.bool=
+  if fuel = Prims.int_zero
+  then false
+  else
+    (let fuel' = fuel - Prims.int_one in
+     match labels with
+     | [] -> false
+     | hd::tl ->
+         if hd = target
+         then true
+         else
+           if FStar_List_Tot_Base.mem hd seen
+           then labels_extend_label decls tl target seen fuel'
+           else
+             (match lookup_shape_decl decls hd with
+              | FStar_Pervasives_Native.Some sd ->
+                  (se_extends_label decls sd.ShEx_Schema.sd_expr target (hd
+                     :: seen) fuel')
+                    || (labels_extend_label decls tl target seen fuel')
+              | FStar_Pervasives_Native.None ->
+                  labels_extend_label decls tl target seen fuel'))
 and matches_all (decls : ShEx_Schema.shex_shape_decl Prims.list)
   (idtab : (Prims.string * ShEx_Schema.shex_triple_expr) Prims.list)
   (visited : shex_visited) (ses : ShEx_Schema.shex_shape_expr Prims.list)
@@ -831,9 +988,9 @@ and matches_shape (decls : ShEx_Schema.shex_shape_decl Prims.list)
          sh.ShEx_Schema.sh_extra sh.ShEx_Schema.sh_closed [] sh
          sh.ShEx_Schema.sh_semacts t g fuel'
      else
-       (match resolve_extends decls sh.ShEx_Schema.sh_extends fuel' with
+       (match resolve_extends decls sh.ShEx_Schema.sh_extends [] fuel' with
         | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
-        | FStar_Pervasives_Native.Some chain ->
+        | FStar_Pervasives_Native.Some (chain, uu___2) ->
             let all_extra =
               FStar_List_Tot_Base.op_At sh.ShEx_Schema.sh_extra
                 chain.ef_extra in
@@ -855,9 +1012,9 @@ and matches_shape (decls : ShEx_Schema.shex_shape_decl Prims.list)
             let chain_pairs_opt =
               te_mentioned_pairs_list idtab chain.ef_tes fuel' in
             (match (own_pairs_opt, chain_pairs_opt) with
-             | (FStar_Pervasives_Native.None, uu___2) ->
+             | (FStar_Pervasives_Native.None, uu___3) ->
                  FStar_Pervasives_Native.None
-             | (uu___2, FStar_Pervasives_Native.None) ->
+             | (uu___3, FStar_Pervasives_Native.None) ->
                  FStar_Pervasives_Native.None
              | (FStar_Pervasives_Native.Some own_pairs,
                 FStar_Pervasives_Native.Some chain_pairs) ->
@@ -891,17 +1048,17 @@ and matches_shape (decls : ShEx_Schema.shex_shape_decl Prims.list)
                  let combined =
                    match (node_checks_result, closed_result, expr_result)
                    with
-                   | (FStar_Pervasives_Native.Some false, uu___2, uu___3) ->
+                   | (FStar_Pervasives_Native.Some false, uu___3, uu___4) ->
                        FStar_Pervasives_Native.Some false
-                   | (uu___2, FStar_Pervasives_Native.Some false, uu___3) ->
+                   | (uu___3, FStar_Pervasives_Native.Some false, uu___4) ->
                        FStar_Pervasives_Native.Some false
-                   | (uu___2, uu___3, FStar_Pervasives_Native.Some false) ->
+                   | (uu___3, uu___4, FStar_Pervasives_Native.Some false) ->
                        FStar_Pervasives_Native.Some false
                    | (FStar_Pervasives_Native.Some true,
                       FStar_Pervasives_Native.Some true,
                       FStar_Pervasives_Native.Some true) ->
                        FStar_Pervasives_Native.Some true
-                   | (uu___2, uu___3, uu___4) -> FStar_Pervasives_Native.None in
+                   | (uu___3, uu___4, uu___5) -> FStar_Pervasives_Native.None in
                  (match combined with
                   | FStar_Pervasives_Native.Some true ->
                       FStar_Pervasives_Native.Some
@@ -985,23 +1142,26 @@ and eval_own_vs_chain (decls : ShEx_Schema.shex_shape_decl Prims.list)
   then FStar_Pervasives_Native.None
   else
     (let fuel' = fuel - Prims.int_one in
+     let unbounded_tes =
+       FStar_List_Tot_Base.filter te_is_unbounded_tc chain_tes in
      match own_te_opt with
      | FStar_Pervasives_Native.None ->
-         matches_chain_shared decls idtab visited ambiguous chain_tes extra
-           pool g fuel'
+         matches_chain_shared decls idtab visited ambiguous chain_tes
+           unbounded_tes extra pool pool g fuel'
      | FStar_Pervasives_Native.Some own_te ->
          (match search_te decls idtab visited ambiguous own_te pool g fuel'
           with
           | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
           | FStar_Pervasives_Native.Some leftovers ->
               combine_own_vs_chain_results decls idtab visited ambiguous
-                chain_tes extra leftovers g fuel'))
+                chain_tes unbounded_tes extra leftovers g fuel'))
 and combine_own_vs_chain_results
   (decls : ShEx_Schema.shex_shape_decl Prims.list)
   (idtab : (Prims.string * ShEx_Schema.shex_triple_expr) Prims.list)
   (visited : shex_visited)
   (ambiguous : (Prims.bool * Prims.string) Prims.list)
   (chain_tes : ShEx_Schema.shex_triple_expr Prims.list)
+  (unbounded_tes : ShEx_Schema.shex_triple_expr Prims.list)
   (extra : Prims.string Prims.list) (leftovers : pool_t Prims.list)
   (g : RDF_Graph_Executable.rdf_graph) (fuel : Prims.nat) :
   Prims.bool FStar_Pervasives_Native.option=
@@ -1013,9 +1173,9 @@ and combine_own_vs_chain_results
      | [] -> FStar_Pervasives_Native.Some false
      | lo::tl ->
          (match ((matches_chain_shared decls idtab visited ambiguous
-                    chain_tes extra lo g fuel'),
+                    chain_tes unbounded_tes extra lo lo g fuel'),
                   (combine_own_vs_chain_results decls idtab visited ambiguous
-                     chain_tes extra tl g fuel'))
+                     chain_tes unbounded_tes extra tl g fuel'))
           with
           | (FStar_Pervasives_Native.Some true, uu___1) ->
               FStar_Pervasives_Native.Some true
@@ -1029,7 +1189,8 @@ and matches_chain_shared (decls : ShEx_Schema.shex_shape_decl Prims.list)
   (visited : shex_visited)
   (ambiguous : (Prims.bool * Prims.string) Prims.list)
   (chain_tes : ShEx_Schema.shex_triple_expr Prims.list)
-  (extra : Prims.string Prims.list) (pool : pool_t)
+  (unbounded_tes : ShEx_Schema.shex_triple_expr Prims.list)
+  (extra : Prims.string Prims.list) (pool : pool_t) (running : pool_t)
   (g : RDF_Graph_Executable.rdf_graph) (fuel : Prims.nat) :
   Prims.bool FStar_Pervasives_Native.option=
   if fuel = Prims.int_zero
@@ -1037,27 +1198,167 @@ and matches_chain_shared (decls : ShEx_Schema.shex_shape_decl Prims.list)
   else
     (let fuel' = fuel - Prims.int_one in
      match chain_tes with
-     | [] -> FStar_Pervasives_Native.Some true
+     | [] ->
+         FStar_Pervasives_Native.Some
+           (FStar_List_Tot_Base.for_all
+              (fun e ->
+                 let uu___1 = e in
+                 match uu___1 with
+                 | (inv, pred, uu___2) ->
+                     inv || (FStar_List_Tot_Base.mem pred extra)) running)
      | hd::tl ->
          (match search_te decls idtab visited ambiguous hd pool g fuel' with
           | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
-          | FStar_Pervasives_Native.Some leftovers ->
-              let this_ok =
-                FStar_List_Tot_Base.existsb
-                  (fun lo ->
-                     FStar_List_Tot_Base.for_all
-                       (fun e ->
-                          let uu___1 = e in
-                          match uu___1 with
-                          | (inv, pred, uu___2) ->
-                              inv || (FStar_List_Tot_Base.mem pred extra)) lo)
-                  leftovers in
-              (match matches_chain_shared decls idtab visited ambiguous tl
-                       extra pool g fuel'
+          | FStar_Pervasives_Native.Some raw_completions ->
+              (match restrict_unbounded_completions decls idtab visited hd
+                       unbounded_tes pool raw_completions g fuel'
                with
                | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
-               | FStar_Pervasives_Native.Some rest_ok ->
-                   FStar_Pervasives_Native.Some (this_ok && rest_ok))))
+               | FStar_Pervasives_Native.Some completions ->
+                   matches_chain_shared_try decls idtab visited ambiguous tl
+                     unbounded_tes extra pool running completions g fuel')))
+and matches_chain_shared_try (decls : ShEx_Schema.shex_shape_decl Prims.list)
+  (idtab : (Prims.string * ShEx_Schema.shex_triple_expr) Prims.list)
+  (visited : shex_visited)
+  (ambiguous : (Prims.bool * Prims.string) Prims.list)
+  (rest_tes : ShEx_Schema.shex_triple_expr Prims.list)
+  (unbounded_tes : ShEx_Schema.shex_triple_expr Prims.list)
+  (extra : Prims.string Prims.list) (pool : pool_t) (running : pool_t)
+  (completions : pool_t Prims.list) (g : RDF_Graph_Executable.rdf_graph)
+  (fuel : Prims.nat) : Prims.bool FStar_Pervasives_Native.option=
+  if fuel = Prims.int_zero
+  then FStar_Pervasives_Native.None
+  else
+    (let fuel' = fuel - Prims.int_one in
+     match completions with
+     | [] -> FStar_Pervasives_Native.Some false
+     | c::crest ->
+         (match ((matches_chain_shared decls idtab visited ambiguous rest_tes
+                    unbounded_tes extra pool (pool_intersect running c) g
+                    fuel'),
+                  (matches_chain_shared_try decls idtab visited ambiguous
+                     rest_tes unbounded_tes extra pool running crest g fuel'))
+          with
+          | (FStar_Pervasives_Native.Some true, uu___1) ->
+              FStar_Pervasives_Native.Some true
+          | (uu___1, FStar_Pervasives_Native.Some true) ->
+              FStar_Pervasives_Native.Some true
+          | (FStar_Pervasives_Native.Some false, FStar_Pervasives_Native.Some
+             false) -> FStar_Pervasives_Native.Some false
+          | (uu___1, uu___2) -> FStar_Pervasives_Native.None))
+and restrict_unbounded_completions
+  (decls : ShEx_Schema.shex_shape_decl Prims.list)
+  (idtab : (Prims.string * ShEx_Schema.shex_triple_expr) Prims.list)
+  (visited : shex_visited) (hd : ShEx_Schema.shex_triple_expr)
+  (unbounded_tes : ShEx_Schema.shex_triple_expr Prims.list) (pool : pool_t)
+  (raw_completions : pool_t Prims.list) (g : RDF_Graph_Executable.rdf_graph)
+  (fuel : Prims.nat) : pool_t Prims.list FStar_Pervasives_Native.option=
+  if fuel = Prims.int_zero
+  then FStar_Pervasives_Native.None
+  else
+    (let fuel' = fuel - Prims.int_one in
+     if Prims.op_Negation (te_is_unbounded_tc hd)
+     then FStar_Pervasives_Native.Some raw_completions
+     else
+       (match raw_completions with
+        | [] -> FStar_Pervasives_Native.Some []
+        | c::crest ->
+            let claimed = pool_diff pool c in
+            (match restrict_claimed decls idtab visited unbounded_tes claimed
+                     g fuel'
+             with
+             | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+             | FStar_Pervasives_Native.Some given_back ->
+                 (match restrict_unbounded_completions decls idtab visited hd
+                          unbounded_tes pool crest g fuel'
+                  with
+                  | FStar_Pervasives_Native.None ->
+                      FStar_Pervasives_Native.None
+                  | FStar_Pervasives_Native.Some rest ->
+                      FStar_Pervasives_Native.Some
+                        ((FStar_List_Tot_Base.op_At c given_back) :: rest)))))
+and restrict_claimed (decls : ShEx_Schema.shex_shape_decl Prims.list)
+  (idtab : (Prims.string * ShEx_Schema.shex_triple_expr) Prims.list)
+  (visited : shex_visited)
+  (unbounded_tes : ShEx_Schema.shex_triple_expr Prims.list)
+  (claimed : pool_t) (g : RDF_Graph_Executable.rdf_graph) (fuel : Prims.nat)
+  : pool_t FStar_Pervasives_Native.option=
+  if fuel = Prims.int_zero
+  then FStar_Pervasives_Native.None
+  else
+    (let fuel' = fuel - Prims.int_one in
+     match claimed with
+     | [] -> FStar_Pervasives_Native.Some []
+     | e::tl ->
+         (match ((background_safe decls idtab visited unbounded_tes e g fuel'),
+                  (restrict_claimed decls idtab visited unbounded_tes tl g
+                     fuel'))
+          with
+          | (FStar_Pervasives_Native.Some true, FStar_Pervasives_Native.Some
+             rest) -> FStar_Pervasives_Native.Some rest
+          | (FStar_Pervasives_Native.Some false, FStar_Pervasives_Native.Some
+             rest) -> FStar_Pervasives_Native.Some (e :: rest)
+          | (uu___1, uu___2) -> FStar_Pervasives_Native.None))
+and background_safe (decls : ShEx_Schema.shex_shape_decl Prims.list)
+  (idtab : (Prims.string * ShEx_Schema.shex_triple_expr) Prims.list)
+  (visited : shex_visited)
+  (unbounded_tes : ShEx_Schema.shex_triple_expr Prims.list)
+  (item : pool_elem) (g : RDF_Graph_Executable.rdf_graph) (fuel : Prims.nat)
+  : Prims.bool FStar_Pervasives_Native.option=
+  if fuel = Prims.int_zero
+  then FStar_Pervasives_Native.None
+  else
+    (let fuel' = fuel - Prims.int_one in
+     if Prims.uu___is_Nil unbounded_tes
+     then FStar_Pervasives_Native.Some false
+     else background_safe_all decls idtab visited unbounded_tes item g fuel')
+and background_safe_all (decls : ShEx_Schema.shex_shape_decl Prims.list)
+  (idtab : (Prims.string * ShEx_Schema.shex_triple_expr) Prims.list)
+  (visited : shex_visited)
+  (unbounded_tes : ShEx_Schema.shex_triple_expr Prims.list)
+  (item : pool_elem) (g : RDF_Graph_Executable.rdf_graph) (fuel : Prims.nat)
+  : Prims.bool FStar_Pervasives_Native.option=
+  if fuel = Prims.int_zero
+  then FStar_Pervasives_Native.None
+  else
+    (let fuel' = fuel - Prims.int_one in
+     match unbounded_tes with
+     | [] -> FStar_Pervasives_Native.Some true
+     | hd::tl ->
+         (match ((item_good_for_unbounded_te decls idtab visited hd item g
+                    fuel'),
+                  (background_safe_all decls idtab visited tl item g fuel'))
+          with
+          | (FStar_Pervasives_Native.Some a, FStar_Pervasives_Native.Some b)
+              -> FStar_Pervasives_Native.Some (a && b)
+          | (uu___1, uu___2) -> FStar_Pervasives_Native.None))
+and item_good_for_unbounded_te
+  (decls : ShEx_Schema.shex_shape_decl Prims.list)
+  (idtab : (Prims.string * ShEx_Schema.shex_triple_expr) Prims.list)
+  (visited : shex_visited) (te : ShEx_Schema.shex_triple_expr)
+  (item : pool_elem) (g : RDF_Graph_Executable.rdf_graph) (fuel : Prims.nat)
+  : Prims.bool FStar_Pervasives_Native.option=
+  if fuel = Prims.int_zero
+  then FStar_Pervasives_Native.None
+  else
+    (let fuel' = fuel - Prims.int_one in
+     match te with
+     | ShEx_Schema.TE_TripleConstraint tc ->
+         let uu___1 = item in
+         (match uu___1 with
+          | (inv, pred, tm) ->
+              if
+                Prims.op_Negation
+                  ((inv = tc.ShEx_Schema.tc_inverse) &&
+                     (pred = tc.ShEx_Schema.tc_predicate))
+              then FStar_Pervasives_Native.Some true
+              else
+                (match tc.ShEx_Schema.tc_value_expr with
+                 | FStar_Pervasives_Native.None ->
+                     FStar_Pervasives_Native.Some true
+                 | FStar_Pervasives_Native.Some se ->
+                     matches_shape_expr decls idtab visited se tm g fuel'))
+     | uu___1 -> FStar_Pervasives_Native.Some true)
 and eval_expr_list_over_pool (decls : ShEx_Schema.shex_shape_decl Prims.list)
   (idtab : (Prims.string * ShEx_Schema.shex_triple_expr) Prims.list)
   (visited : shex_visited) (tes : ShEx_Schema.shex_triple_expr Prims.list)

@@ -492,7 +492,18 @@ let node_constraint_matches (nc : shex_node_constraint) (t : rdf_term) : bool =
 // sharing one counter across siblings. `validate_focus` sizes fuel off
 // the graph's triple count and schema's shape count with a generous
 // multiplicative margin (not a bare unexplained constant) — see its own
-// comment.
+// comment. This revision's additions (multi-ancestor/diamond EXTENDS —
+// `flatten_se_for_extends`'s label-dedup, `matches_chain_shared`'s
+// running-intersection + unbounded-member restriction — and Definition
+// 4's abstract-descendant witness search, `exists_nonabstract_descendant_
+// satisfying`) stay INSIDE this same one-`fuel`-metric discipline: every
+// new function passes `fuel - 1` (or less) on every recursive call, never
+// its own separate counter, so the termination argument above still
+// covers the whole group uniformly — the descendant-witness search adds
+// an O(shape-count) breadth (it walks every schema declaration once) on
+// top of the existing depth budget, comfortably inside `validate_focus`'s
+// existing shape-count-scaled margin (measured: no fixture in the
+// reachable corpus hits fuel exhaustion because of it).
 //
 // RECURSION SEMANTICS: `SE_Ref` carries a `visited : list (string &
 // rdf_term)` stack of (shape-label, focus-term) pairs currently being
@@ -668,6 +679,27 @@ let rec lookup_te_id (tab : list (string & shex_triple_expr)) (id : string)
 // — it only inspects AST shape, never evaluates against a focus term), so
 // kept as its own small fuel-bounded mutual group (fuel bounds the
 // extends-chain / ShapeAnd-nesting depth it walks).
+//
+// DIAMOND DEDUP (multi-ancestor/diamond fix, this revision): a
+// `visited : list string` label-set is threaded through all three
+// functions (mirrors `shex_visited`'s role for `SE_Ref` recursion, but
+// simpler — schema-structural only, no focus term). Whenever a label is
+// about to be flattened (via `resolve_extends`'s own `hd`, or a bare
+// `SE_Ref label`), it is checked against `visited` first; if already
+// present the label contributes `ef_empty` (already counted via some
+// OTHER path) instead of being re-flattened. Without this, a diamond —
+// e.g. `extends-closed-diamond.shex`'s `BOTTOM EXTENDS @<G0-0> EXTENDS
+// @<G0-1>` where BOTH `G0-0` and `G0-1` themselves `EXTENDS @<G0>` — would
+// walk `G0` twice (once per path) and fold its own triple-expression into
+// the combined list TWICE, silently doubling the count `G0`'s own
+// constraint requires (the `two-G0s`/`two-G0-0s`/`two-BOTTOMS` fixtures
+// are the NEGATIVE mirror of this: they supply a genuine extra matching
+// triple and must still fail — dedup does not change those, only removes
+// the SPURIOUS extra requirement `pass-bottom` would otherwise face).
+// Every recursive descent adds the just-looked-up label to `visited`
+// BEFORE recursing further (also a safety net against a cyclic `extends`
+// declaration, which the corpus never exercises but which would
+// otherwise only be bounded by `fuel`).
 // ================================================================
 
 noeq type extends_flat = {
@@ -685,8 +717,8 @@ let ef_combine (a b : extends_flat) : extends_flat =
     ef_closed = a.ef_closed || b.ef_closed;
     ef_checks = a.ef_checks @ b.ef_checks }
 
-let rec flatten_se_for_extends (decls : list shex_shape_decl) (se : shex_shape_expr) (fuel : nat)
-  : Tot (option extends_flat) (decreases fuel) =
+let rec flatten_se_for_extends (decls : list shex_shape_decl) (se : shex_shape_expr) (visited : list string) (fuel : nat)
+  : Tot (option (extends_flat & list string)) (decreases fuel) =
   if fuel = 0 then None
   else
     let fuel' = fuel - 1 in
@@ -694,46 +726,56 @@ let rec flatten_se_for_extends (decls : list shex_shape_decl) (se : shex_shape_e
     | SE_Shape sh ->
       let own_tes = match sh.sh_expression with Some te -> [te] | None -> [] in
       if Nil? sh.sh_extends then
-        Some ({ ef_tes = own_tes; ef_extra = sh.sh_extra; ef_closed = sh.sh_closed; ef_checks = [] })
+        Some ({ ef_tes = own_tes; ef_extra = sh.sh_extra; ef_closed = sh.sh_closed; ef_checks = [] }, visited)
       else
-        (match resolve_extends decls sh.sh_extends fuel' with
+        (match resolve_extends decls sh.sh_extends visited fuel' with
          | None -> None
-         | Some parent ->
-           Some (ef_combine ({ ef_tes = own_tes; ef_extra = sh.sh_extra; ef_closed = sh.sh_closed; ef_checks = [] }) parent))
-    | SE_ShapeAnd ses -> flatten_se_list_for_extends decls ses fuel'
+         | Some (parent, visited1) ->
+           Some (ef_combine ({ ef_tes = own_tes; ef_extra = sh.sh_extra; ef_closed = sh.sh_closed; ef_checks = [] }) parent, visited1))
+    | SE_ShapeAnd ses -> flatten_se_list_for_extends decls ses visited fuel'
     | SE_Ref label ->
-      (match lookup_shape_decl decls label with
-       | Some sd -> flatten_se_for_extends decls sd.sd_expr fuel'
-       | None -> None)
-    | SE_NodeConstraint _ -> Some ({ ef_empty with ef_checks = [se] })
-    | SE_ShapeOr _ -> Some ({ ef_empty with ef_checks = [se] })
-    | SE_ShapeNot _ -> Some ({ ef_empty with ef_checks = [se] })
-    | SE_ShapeExternal -> Some ({ ef_empty with ef_checks = [se] })
-and flatten_se_list_for_extends (decls : list shex_shape_decl) (ses : list shex_shape_expr) (fuel : nat)
-  : Tot (option extends_flat) (decreases fuel) =
+      if List.Tot.mem label visited then Some (ef_empty, visited)
+      else
+        (match lookup_shape_decl decls label with
+         | Some sd -> flatten_se_for_extends decls sd.sd_expr (label :: visited) fuel'
+         | None -> None)
+    | SE_NodeConstraint _ -> Some ({ ef_empty with ef_checks = [se] }, visited)
+    | SE_ShapeOr _ -> Some ({ ef_empty with ef_checks = [se] }, visited)
+    | SE_ShapeNot _ -> Some ({ ef_empty with ef_checks = [se] }, visited)
+    | SE_ShapeExternal -> Some ({ ef_empty with ef_checks = [se] }, visited)
+and flatten_se_list_for_extends (decls : list shex_shape_decl) (ses : list shex_shape_expr) (visited : list string) (fuel : nat)
+  : Tot (option (extends_flat & list string)) (decreases fuel) =
   if fuel = 0 then None
   else
     let fuel' = fuel - 1 in
     match ses with
-    | [] -> Some ef_empty
+    | [] -> Some (ef_empty, visited)
     | hd :: tl ->
-      (match flatten_se_for_extends decls hd fuel', flatten_se_list_for_extends decls tl fuel' with
-       | Some a, Some b -> Some (ef_combine a b)
-       | _, _ -> None)
-and resolve_extends (decls : list shex_shape_decl) (labels : list string) (fuel : nat)
-  : Tot (option extends_flat) (decreases fuel) =
+      (match flatten_se_for_extends decls hd visited fuel' with
+       | None -> None
+       | Some (a, visited1) ->
+         (match flatten_se_list_for_extends decls tl visited1 fuel' with
+          | None -> None
+          | Some (b, visited2) -> Some (ef_combine a b, visited2)))
+and resolve_extends (decls : list shex_shape_decl) (labels : list string) (visited : list string) (fuel : nat)
+  : Tot (option (extends_flat & list string)) (decreases fuel) =
   if fuel = 0 then None
   else
     let fuel' = fuel - 1 in
     match labels with
-    | [] -> Some ef_empty
+    | [] -> Some (ef_empty, visited)
     | hd :: tl ->
-      (match lookup_shape_decl decls hd with
-       | None -> None
-       | Some sd ->
-         (match flatten_se_for_extends decls sd.sd_expr fuel', resolve_extends decls tl fuel' with
-          | Some a, Some b -> Some (ef_combine a b)
-          | _, _ -> None))
+      if List.Tot.mem hd visited then resolve_extends decls tl visited fuel'
+      else
+        (match lookup_shape_decl decls hd with
+         | None -> None
+         | Some sd ->
+           (match flatten_se_for_extends decls sd.sd_expr (hd :: visited) fuel' with
+            | None -> None
+            | Some (a, visited1) ->
+              (match resolve_extends decls tl visited1 fuel' with
+               | None -> None
+               | Some (b, visited2) -> Some (ef_combine a b, visited2))))
 
 // Gathers the "other endpoint" terms of the focus node's arcs relevant to
 // one TripleConstraint — arcsOut (focus is subject) for a non-inverse
@@ -767,6 +809,54 @@ let triples_with_subject (g : rdf_graph) (s : subject) : list triple =
 
 type pool_elem = bool & string & rdf_term
 type pool_t = list pool_elem
+
+// Structural equality on one pool candidate — needed by the EXTENDS
+// multi-ancestor "shared" joint-coverage check (`matches_chain_shared`'s
+// running-intersection accumulator, below) to test whether a specific
+// candidate a sibling ancestor's search left as leftover is the SAME
+// candidate another sibling's search claimed.
+let pool_elem_eq (a b : pool_elem) : bool =
+  let (ai, ap, at) = a in
+  let (bi, bp, bt) = b in
+  ai = bi && ap = bp && rdf_term_eq at bt
+
+let rec pool_intersect (running other : pool_t) : Tot pool_t (decreases running) =
+  match running with
+  | [] -> []
+  | hd :: tl ->
+    if List.Tot.existsb (fun (e : pool_elem) -> pool_elem_eq hd e) other
+    then hd :: pool_intersect tl other
+    else pool_intersect tl other
+
+// Set difference `a \ b` — used by the EXTENDS multi-ancestor "background
+// safe" restriction (`restrict_unbounded_completions`, below) to recover
+// which candidates an unbounded chain member's completion actually
+// claimed (`pool_diff pool leftover`).
+let rec pool_diff (a b : pool_t) : Tot pool_t (decreases a) =
+  match a with
+  | [] -> []
+  | hd :: tl ->
+    if List.Tot.existsb (fun (e : pool_elem) -> pool_elem_eq hd e) b
+    then pool_diff tl b
+    else hd :: pool_diff tl b
+
+// Is this triple expression a bare, UNBOUNDED (`+`-cardinality, `max = -1`)
+// leaf TripleConstraint? Flags the "background" chain members whose
+// contribution to the multi-ancestor shared-closure check
+// (`matches_chain_shared`) must be restricted to "background-safe"
+// candidates only (see that function's doc comment) — an unbounded
+// TripleConstraint has no upper bound, so absent this restriction it can
+// gratuitously "claim" ANY good-for-it candidate merely to make the
+// closure check pass, even when nothing genuinely requires it to. A
+// bounded (`max <> -1`, e.g. exact `[n,n]`) TripleConstraint, or any
+// non-leaf triple expression (`EachOf`/`OneOf`/`TE_Ref`), is exempt —
+// its own [min,max] accounting already forces genuine, non-gratuitous
+// claims (`ExtendAND3G.shex`'s `E`'s own `p:[2]`, `Extend3G.shex`'s `F`'s
+// own `p:[3]`/`G`'s own `p:[4]`, all exact-bounded, are NEVER restricted).
+let te_is_unbounded_tc (te : shex_triple_expr) : bool =
+  match te with
+  | TE_TripleConstraint tc -> tc.tc_max = (-1)
+  | _ -> false
 
 let pair_mem (x : bool & string) (l : list (bool & string)) : bool =
   List.Tot.existsb (fun (y : bool & string) -> fst x = fst y && snd x = snd y) l
@@ -931,10 +1021,116 @@ let rec matches_shape_expr (decls : list shex_shape_decl) (idtab : list (string 
       if visited_mem label t visited then Some true
       else
         (match lookup_shape_decl decls label with
-         | Some sd -> matches_shape_expr decls idtab ((label, t) :: visited) sd.sd_expr t g fuel'
+         | Some sd ->
+           (match matches_shape_expr decls idtab ((label, t) :: visited) sd.sd_expr t g fuel' with
+            | Some true ->
+              // ABSTRACT (Definition 4, "Shape Expressions with Inheritance",
+              // arxiv 2503.24299): "if z is abstract, there must exist
+              // x in desc(z) \ abstract such that G,n,tau |= Sdef(x)" — a
+              // node satisfying an abstract shape's OWN structural content
+              // is NOT enough; its typing must ALSO be witnessed by some
+              // NON-abstract descendant (a shape that itself `extends`,
+              // directly or transitively, this label). Only gated when
+              // `sd_is_abstract` — every non-abstract `SE_Ref` (the
+              // overwhelming common case) skips this entirely, so this can
+              // only ever turn a would-be Some true into Some false, never
+              // affect a non-abstract reference. `extends-abstract-multi-
+              // empty.shex`'s `IssueShape`'s `ex:reportedBy @<PersonShape>`
+              // is the fixture this closes: `User2` structurally satisfies
+              // ABSTRACT `PersonShape`'s own `(name|(givenName+;familyName));
+              // mbox`, but `_user-extraP.ttl`'s `User2` (extra `ex:p`) is
+              // witnessed by NEITHER of `PersonShape`'s two non-abstract
+              // descendants (`UserShape` — closed, rejects the extra `ex:p`;
+              // `EmployeeShape` — requires `foaf:phone`, absent) — Definition
+              // 4 fails, so the reference correctly rejects even though the
+              // abstract shape's own content alone would have accepted it.
+              if sd.sd_is_abstract
+              then exists_nonabstract_descendant_satisfying decls idtab visited label t g fuel'
+              else Some true
+            | other -> other)
          | None -> None)
     | SE_Shape sh -> matches_shape decls idtab visited sh t g fuel'
     | SE_ShapeExternal -> None
+// Definition 4's witness search: does SOME non-abstract shape declaration
+// that (directly or transitively) `extends` `label` also validate `t`?
+// Iterates the WHOLE schema's decl list as the candidate-descendant pool
+// (`shape_decl_extends_label` below filters to genuine descendants) —
+// short-circuits the same way `matches_any` does (a definite `Some true`
+// witness wins over an unresolved sibling; only `Some false` from EVERY
+// candidate is a definite `Some false`).
+and exists_nonabstract_descendant_satisfying (decls : list shex_shape_decl) (idtab : list (string & shex_triple_expr))
+    (visited : shex_visited) (label : string) (t : rdf_term) (g : rdf_graph) (fuel : nat)
+  : Tot (option bool) (decreases fuel) =
+  if fuel = 0 then None
+  else
+    let fuel' = fuel - 1 in
+    check_descendant_candidates decls idtab visited label decls t g fuel'
+and check_descendant_candidates (decls : list shex_shape_decl) (idtab : list (string & shex_triple_expr))
+    (visited : shex_visited) (label : string) (candidates : list shex_shape_decl) (t : rdf_term) (g : rdf_graph) (fuel : nat)
+  : Tot (option bool) (decreases fuel) =
+  if fuel = 0 then None
+  else
+    let fuel' = fuel - 1 in
+    match candidates with
+    | [] -> Some false
+    | cd :: tl ->
+      if cd.sd_is_abstract || not (shape_decl_extends_label decls cd label [] fuel')
+      then check_descendant_candidates decls idtab visited label tl t g fuel'
+      else
+        (match matches_shape_expr decls idtab visited cd.sd_expr t g fuel',
+               check_descendant_candidates decls idtab visited label tl t g fuel' with
+         | Some true, _ -> Some true
+         | _, Some true -> Some true
+         | Some false, Some false -> Some false
+         | _, _ -> None)
+// Does declaration `cd` (directly or transitively, through `sh_extends`
+// chains and `ShapeAnd`-embedded `extends` sub-shapes alike — the SAME
+// two ShExJ encoding idioms `flatten_se_for_extends` already handles) end
+// up extending `label`? Purely structural (no focus term involved), so
+// — like `flatten_se_for_extends`'s own small mutual group — this needs
+// no `fuel` for termination in principle, but shares the caller's `fuel`
+// parameter anyway to stay inside the one big mutually-recursive group
+// `matches_shape_expr` anchors (simplest way to let it call NOTHING
+// outside that group while still being reachable FROM it).
+and shape_decl_extends_label (decls : list shex_shape_decl) (cd : shex_shape_decl) (label : string)
+    (seen : list string) (fuel : nat)
+  : Tot bool (decreases fuel) =
+  if fuel = 0 then false
+  else se_extends_label decls cd.sd_expr label seen (fuel - 1)
+and se_extends_label (decls : list shex_shape_decl) (se : shex_shape_expr) (label : string)
+    (seen : list string) (fuel : nat)
+  : Tot bool (decreases fuel) =
+  if fuel = 0 then false
+  else
+    let fuel' = fuel - 1 in
+    match se with
+    | SE_Shape sh -> List.Tot.mem label sh.sh_extends || labels_extend_label decls sh.sh_extends label seen fuel'
+    | SE_ShapeAnd ses -> se_list_extends_label decls ses label seen fuel'
+    | _ -> false
+and se_list_extends_label (decls : list shex_shape_decl) (ses : list shex_shape_expr) (label : string)
+    (seen : list string) (fuel : nat)
+  : Tot bool (decreases fuel) =
+  if fuel = 0 then false
+  else
+    let fuel' = fuel - 1 in
+    match ses with
+    | [] -> false
+    | hd :: tl -> se_extends_label decls hd label seen fuel' || se_list_extends_label decls tl label seen fuel'
+and labels_extend_label (decls : list shex_shape_decl) (labels : list string) (target : string)
+    (seen : list string) (fuel : nat)
+  : Tot bool (decreases fuel) =
+  if fuel = 0 then false
+  else
+    let fuel' = fuel - 1 in
+    match labels with
+    | [] -> false
+    | hd :: tl ->
+      if hd = target then true
+      else if List.Tot.mem hd seen then labels_extend_label decls tl target seen fuel'
+      else
+        (match lookup_shape_decl decls hd with
+         | Some sd -> se_extends_label decls sd.sd_expr target (hd :: seen) fuel' || labels_extend_label decls tl target seen fuel'
+         | None -> labels_extend_label decls tl target seen fuel')
 and matches_all (decls : list shex_shape_decl) (idtab : list (string & shex_triple_expr))
     (visited : shex_visited) (ses : list shex_shape_expr) (t : rdf_term) (g : rdf_graph) (fuel : nat)
   : Tot (option bool) (decreases fuel) =
@@ -970,34 +1166,54 @@ and matches_shape (decls : list shex_shape_decl) (idtab : list (string & shex_tr
   else
     let fuel' = fuel - 1 in
     // EXTENDS: per the "Shape Expressions with Inheritance" formalization
-    // (arxiv 2503.24299, Table 3 line 18 — the `M = M' ⊎ ⊎_x M_x` partition
-    // rule, cross-checked against this corpus's TWO distinct ShExJ encoding
-    // idioms), this is a TWO-TIER split, not a flat N-way partition:
+    // (arxiv 2503.24299, Table 3 line 18 — the `M = M' ⊎ ⊎_{x∈anc(X)} M_x`
+    // partition rule; Definition 4 for `abstract`, see `flatten_se_for_extends`'s
+    // doc comment), this is a TWO-TIER split, not a flat N-way partition:
     //   - `sh.sh_expression` (when the SAME Shape object carries both
     //     `extends` and `expression` together — e.g. `ExtendsRepeatedP`'s
     //     `<C> EXT @<B> { :p }`) is `h`, the derived shape's own NEW
     //     triple-consuming content — it gets a GENUINE DISJOINT share,
-    //     exclusive of whatever the ancestor chain consumes.
-    //   - the WHOLE resolved ancestor chain (`resolve_extends`'s `ef_tes`
-    //     — every ancestor's own contribution, however deep) is `restr`-like:
-    //     evaluated SHARED (non-exclusive) against whatever pool is LEFT
-    //     after `h`'s share is removed — every chain member independently
-    //     gets to see that SAME leftover pool, because the formal rule
-    //     checks a restriction against `⋃_{z∈anc(x)} M_z` (the UNION of
-    //     ancestor shares), not a fresh disjoint slice. This is why
-    //     `AND3G`'s A/B/D chain (`@<A> AND {...}`-style — `sh_expression =
-    //     None` at the extends-declaring node, the "AND {...}" restriction
-    //     living in a SEPARATE ShapeAnd sibling) all correctly see the SAME
-    //     single triple simultaneously, while `ExtendsRepeatedP`'s C (its
-    //     OWN `sh_expression` set directly alongside `extends`) correctly
-    //     gets an EXCLUSIVE share disjoint from what A/B's chain consumes.
+    //     exclusive of whatever the ancestor chain consumes (`search_te`
+    //     claims it FIRST, in `eval_own_vs_chain`, before the chain tier
+    //     ever sees the pool).
+    //   - the WHOLE resolved ancestor chain (`resolve_extends`'s `ef_tes` —
+    //     one flattened member per DISTINCT ancestor, diamond-deduped, see
+    //     `flatten_se_for_extends`'s banner) is `restr`-like: every member
+    //     gets to see the SAME leftover pool independently (no
+    //     `search_te`-level threading between them — this is what lets an
+    //     ancestor's own bound and a plain-ShapeAnd sibling restriction
+    //     both be satisfied by the SAME triple, `AND3G`'s A/B/D worked
+    //     example), BUT unlike a naive per-member existence check, the
+    //     shape-level coverage/closedness obligation (a MENTIONED
+    //     predicate's leftover must be `extra`-covered, rule cross-
+    //     referenced in `eval_expr_list_over_pool`'s doc comment) is
+    //     verified JOINTLY across the WHOLE chain via a running
+    //     intersection over one committed completion per member
+    //     (`matches_chain_shared`'s doc comment) — an item is "explained"
+    //     if ANY chain member's chosen completion actually claims it, not
+    //     only if EVERY member happens to. This is what makes BOTH
+    //     directions of a multi-ancestor `extends: [X, Y]` array (e.g.
+    //     `extends-abstract-multi-empty.shex`'s `EmployeeShape EXTENDS
+    //     @<PersonShape> EXTENDS @<RepShape>`, `Extend3G.shex`'s `<G>
+    //     EXTENDS @<E> EXTENDS @<F>`) and a genuine diamond (`extends-
+    //     closed-diamond.shex`'s `BOTTOM` reaching `G0` via both `G0-0` and
+    //     `G0-1`) correctly PARTITION the pool by VALUE-DISJOINTNESS
+    //     (each ancestor's own valueExpr only ever claims candidates
+    //     nobody else wants) while a plain ShapeAnd restriction chain
+    //     (`ExtendsRepeatedP`'s `<B> @<A> AND {...}`, generic no-valueExpr
+    //     TripleConstraints all sharing one predicate) correctly ALLOWS
+    //     the same candidates to jointly satisfy multiple ancestors'
+    //     independent bounds without artificial scarcity — both fall out
+    //     of the SAME algorithm because it never forces an EXCLUSIVE
+    //     claim, it only requires that SOME member could have claimed
+    //     each surviving candidate.
     if Nil? sh.sh_extends then
       let own_te_list = match sh.sh_expression with Some te -> [te] | None -> [] in
       matches_shape_flat decls idtab visited own_te_list sh.sh_extra sh.sh_closed [] sh sh.sh_semacts t g fuel'
     else
-      (match resolve_extends decls sh.sh_extends fuel' with
+      (match resolve_extends decls sh.sh_extends [] fuel' with
        | None -> None
-       | Some chain ->
+       | Some (chain, _) ->
          let all_extra = sh.sh_extra @ chain.ef_extra in
          let all_closed = sh.sh_closed || chain.ef_closed in
          let node_checks_result =
@@ -1075,8 +1291,9 @@ and matches_shape_flat (decls : list shex_shape_decl) (idtab : list (string & sh
      | other -> other)
 // Two-way split between a shape's OWN triple-consuming expression (when
 // present — EXCLUSIVE share, disjoint from the chain) and the resolved
-// ancestor chain (SHARED, non-exclusive amongst its own members — see
-// `matches_shape`'s doc comment).
+// ancestor chain (SHARED amongst its own members — see `matches_shape`'s
+// doc comment and `matches_chain_shared`'s below for how "shared" still
+// gets a correct joint coverage verdict).
 and eval_own_vs_chain (decls : list shex_shape_decl) (idtab : list (string & shex_triple_expr))
     (visited : shex_visited) (ambiguous : list (bool & string)) (own_te_opt : option shex_triple_expr)
     (chain_tes : list shex_triple_expr) (extra : list string) (pool : pool_t) (g : rdf_graph) (fuel : nat)
@@ -1084,15 +1301,16 @@ and eval_own_vs_chain (decls : list shex_shape_decl) (idtab : list (string & she
   if fuel = 0 then None
   else
     let fuel' = fuel - 1 in
+    let unbounded_tes = List.Tot.filter te_is_unbounded_tc chain_tes in
     match own_te_opt with
-    | None -> matches_chain_shared decls idtab visited ambiguous chain_tes extra pool g fuel'
+    | None -> matches_chain_shared decls idtab visited ambiguous chain_tes unbounded_tes extra pool pool g fuel'
     | Some own_te ->
       (match search_te decls idtab visited ambiguous own_te pool g fuel' with
        | None -> None
-       | Some leftovers -> combine_own_vs_chain_results decls idtab visited ambiguous chain_tes extra leftovers g fuel')
+       | Some leftovers -> combine_own_vs_chain_results decls idtab visited ambiguous chain_tes unbounded_tes extra leftovers g fuel')
 and combine_own_vs_chain_results (decls : list shex_shape_decl) (idtab : list (string & shex_triple_expr))
     (visited : shex_visited) (ambiguous : list (bool & string)) (chain_tes : list shex_triple_expr)
-    (extra : list string) (leftovers : list pool_t) (g : rdf_graph) (fuel : nat)
+    (unbounded_tes : list shex_triple_expr) (extra : list string) (leftovers : list pool_t) (g : rdf_graph) (fuel : nat)
   : Tot (option bool) (decreases fuel) =
   if fuel = 0 then None
   else
@@ -1100,37 +1318,219 @@ and combine_own_vs_chain_results (decls : list shex_shape_decl) (idtab : list (s
     match leftovers with
     | [] -> Some false
     | lo :: tl ->
-      (match matches_chain_shared decls idtab visited ambiguous chain_tes extra lo g fuel',
-             combine_own_vs_chain_results decls idtab visited ambiguous chain_tes extra tl g fuel' with
+      (match matches_chain_shared decls idtab visited ambiguous chain_tes unbounded_tes extra lo lo g fuel',
+             combine_own_vs_chain_results decls idtab visited ambiguous chain_tes unbounded_tes extra tl g fuel' with
        | Some true, _ -> Some true
        | _, Some true -> Some true
        | Some false, Some false -> Some false
        | _, _ -> None)
-// Chain members evaluated SHARED: each independently gets the FULL pool
-// handed to the chain tier (no consumption threading between siblings —
-// this is what lets an ancestor's own bound and a further restriction's
-// bound both be satisfied by the SAME triple, per `AND3G`'s worked
-// example in the file banner / `matches_shape`'s doc comment).
+// Chain members evaluated SHARED: each independently searches the SAME
+// `pool` handed to the chain tier (no consumption threading BETWEEN
+// members — `AND3G`'s A/B/D worked example needs an ancestor's own bound
+// and a plain-ShapeAnd sibling restriction to both be satisfiable from the
+// SAME candidate, which per-member exclusive consumption would break).
+//
+// What changed from the earlier (wave-A) version: this used to check,
+// PER MEMBER, "does SOME completion of just this one TE leave a leftover
+// fully covered by `extra`" — correct only when a single ancestor's own
+// requirement happens to explain the WHOLE pool by itself. It is wrong
+// the moment TWO ancestors each explain a DIFFERENT slice of the pool
+// (`extends-abstract-multi-empty.shex`'s `EmployeeShape EXTENDS
+// @<PersonShape> EXTENDS @<RepShape>` — Person's own search never touches
+// the `foaf:phone` triple RepShape claims, so the old per-member check
+// always saw `phone` left over and rejected a fixture the corpus expects
+// to PASS) or a diamond re-derives the SAME ancestor's requirement twice
+// (`extends-closed-diamond.shex`'s `BOTTOM` reaching `G0` via both `G0-0`
+// and `G0-1`, now fixed at the SOURCE by `flatten_se_for_extends`'s
+// diamond dedup, but the per-member check was ALSO independently unable
+// to tell "explained by a sibling" from "genuinely unexplained").
+//
+// The fix: `running` is threaded through the whole member list as a
+// running INTERSECTION of "candidates not yet explained by anyone's
+// committed choice so far". Each member tries EVERY one of its own valid
+// completions (`matches_chain_shared_try`, mirroring
+// `combine_own_vs_chain_results`'s existing pattern of iterating a
+// completion list) — a completion's leftover is intersected into
+// `running` (an item drops out of `running`, i.e. becomes "explained",
+// the moment SOME member's chosen completion does not list it as
+// leftover, i.e. that member actually claimed it). Only after every
+// member has committed to ONE completion does `running` become the FINAL
+// combined leftover the `extra` clause must fully cover — this is what
+// lets `ExtendsRepeatedP`'s `<B> @<A> AND { :p+; :q+ }` reuse the SAME
+// triples redundantly across A's and B's own bounds (each intersection
+// step only shrinks `running`, never forces a member to avoid a
+// candidate another member also wants) while still correctly rejecting
+// `extends-closed-diamond`'s `two-G0s` (an EXTRA `G0`-valued triple has
+// no OTHER member whose valueExpr accepts it, so it survives every
+// intersection regardless of which of `G0`'s own two candidates that
+// TripleConstraint's ambiguity-aware search happens to pick).
+//
+// SECOND fix, this revision (`ExtendAND3G-fail_ExtraP`/`extends-abstract-
+// multi-empty_fail-Ref1ExtraP` regression found by measurement): an
+// UNBOUNDED (`+`, `max=-1`) chain member has no upper limit, so it can
+// gratuitously "choose" to also claim a candidate nothing actually
+// requires it to, purely to make the closure check above pass.
+// `ExtendAND3G.shex`'s `D` (`p:[0,1,2,3,5,6,7,8,9]+`) tolerates value `3`
+// structurally, but `3` must ONLY be excused if some genuinely-bounded
+// sibling explicitly pins it (like `Extend3G.shex`'s `F`'s own `p:[3]`,
+// an EXACT `[1,1]` claim, unaffected by this restriction) — `D` alone
+// gratuitously "absorbing" 3 with no such pin must NOT count, hence
+// `ExtendAND3G-fail_ExtraP` (no sibling pins 3) correctly rejects while
+// `Extend3G-pass` (its `F` DOES pin 3 exactly) correctly passes, even
+// though `D`'s own valueset is identical in both schemas. `search_te`/
+// `matches_chain_shared_try` still compute EVERY structurally-valid
+// completion for an unbounded member (nothing here changes what makes
+// hd's OWN [min,max] bound satisfiable) — `restrict_unbounded_completions`
+// only edits which of THOSE claims are trusted to shrink `running`: a
+// claimed candidate only stays "explained" if it is `background_safe`
+// (good for EVERY OTHER unbounded sibling in the chain too, mirroring
+// `Extend3G.shex`'s own `# D: 0 1 5 6 7 8 9+` comment — the INTERSECTION
+// of the broad ancestors' valuesets is the unconditional background
+// tolerance; anything outside it needs an exact pin). A candidate this
+// restriction "gives back" is added back into the completion's own
+// leftover — `hd`'s [min,max] bound was already checked against the
+// UNRESTRICTED completion by `search_te`, so this can never turn a
+// genuinely-required claim into a rejection, only stop a SUPERFLUOUS one
+// from being credited to `running`. (An earlier version of this fix used
+// `background_safe`'s recursion-base-case `[] -> Some false` for BOTH
+// "no unbounded siblings at all" and "reached the end of a non-empty
+// list" — collapsing the AND-fold to always-false and spuriously
+// rejecting `AND3G-pass`/`ANDAbstract-pass`/`ExtendAND3G-pass`/
+// `Extend3G-pass` too; `background_safe`/`background_safe_all` below
+// split those two cases apart.)
 and matches_chain_shared (decls : list shex_shape_decl) (idtab : list (string & shex_triple_expr))
     (visited : shex_visited) (ambiguous : list (bool & string)) (chain_tes : list shex_triple_expr)
-    (extra : list string) (pool : pool_t) (g : rdf_graph) (fuel : nat)
+    (unbounded_tes : list shex_triple_expr) (extra : list string) (pool : pool_t) (running : pool_t) (g : rdf_graph) (fuel : nat)
   : Tot (option bool) (decreases fuel) =
   if fuel = 0 then None
   else
     let fuel' = fuel - 1 in
     match chain_tes with
-    | [] -> Some true
+    | [] ->
+      Some (List.Tot.for_all (fun (e : pool_elem) -> let (inv, pred, _) = e in inv || List.Tot.mem pred extra) running)
     | hd :: tl ->
       (match search_te decls idtab visited ambiguous hd pool g fuel' with
        | None -> None
-       | Some leftovers ->
-         let this_ok =
-           List.Tot.existsb
-             (fun (lo : pool_t) -> List.Tot.for_all (fun (e : pool_elem) -> let (inv, pred, _) = e in inv || List.Tot.mem pred extra) lo)
-             leftovers in
-         (match matches_chain_shared decls idtab visited ambiguous tl extra pool g fuel' with
+       | Some raw_completions ->
+         (match restrict_unbounded_completions decls idtab visited hd unbounded_tes pool raw_completions g fuel' with
           | None -> None
-          | Some rest_ok -> Some (this_ok && rest_ok)))
+          | Some completions ->
+            matches_chain_shared_try decls idtab visited ambiguous tl unbounded_tes extra pool running completions g fuel'))
+// Tries every completion `hd` (the member just searched by
+// `matches_chain_shared`) offers, intersecting each into `running` before
+// recursing on the REST of the chain — an `existsb`-style search over
+// which one of `hd`'s own valid claims leads to an overall-satisfiable
+// group (mirrors `combine_own_vs_chain_results`'s existing shape).
+and matches_chain_shared_try (decls : list shex_shape_decl) (idtab : list (string & shex_triple_expr))
+    (visited : shex_visited) (ambiguous : list (bool & string)) (rest_tes : list shex_triple_expr)
+    (unbounded_tes : list shex_triple_expr) (extra : list string) (pool : pool_t) (running : pool_t)
+    (completions : list pool_t) (g : rdf_graph) (fuel : nat)
+  : Tot (option bool) (decreases fuel) =
+  if fuel = 0 then None
+  else
+    let fuel' = fuel - 1 in
+    match completions with
+    | [] -> Some false
+    | c :: crest ->
+      (match matches_chain_shared decls idtab visited ambiguous rest_tes unbounded_tes extra pool (pool_intersect running c) g fuel',
+             matches_chain_shared_try decls idtab visited ambiguous rest_tes unbounded_tes extra pool running crest g fuel' with
+       | Some true, _ -> Some true
+       | _, Some true -> Some true
+       | Some false, Some false -> Some false
+       | _, _ -> None)
+// For an UNBOUNDED `hd`, edits every completion in `raw_completions` so a
+// claimed-but-not-`background_safe` candidate is added BACK into that
+// completion's own leftover (see `matches_chain_shared`'s doc comment) —
+// a no-op (`Some raw_completions` unchanged) for a bounded `hd`, whose
+// own [min,max] accounting is already non-gratuitous.
+and restrict_unbounded_completions (decls : list shex_shape_decl) (idtab : list (string & shex_triple_expr))
+    (visited : shex_visited) (hd : shex_triple_expr) (unbounded_tes : list shex_triple_expr)
+    (pool : pool_t) (raw_completions : list pool_t) (g : rdf_graph) (fuel : nat)
+  : Tot (option (list pool_t)) (decreases fuel) =
+  if fuel = 0 then None
+  else
+    let fuel' = fuel - 1 in
+    if not (te_is_unbounded_tc hd) then Some raw_completions
+    else
+      match raw_completions with
+      | [] -> Some []
+      | c :: crest ->
+        let claimed = pool_diff pool c in
+        (match restrict_claimed decls idtab visited unbounded_tes claimed g fuel' with
+         | None -> None
+         | Some given_back ->
+           (match restrict_unbounded_completions decls idtab visited hd unbounded_tes pool crest g fuel' with
+            | None -> None
+            | Some rest -> Some ((c @ given_back) :: rest)))
+// Splits `claimed` (the candidates ONE unbounded member's raw completion
+// took) into those that stay "claimed" (dropped — `background_safe`) and
+// those handed back into leftover (not `background_safe` — no genuinely-
+// bounded sibling pins them, so this member's optional claim on them must
+// not count for closure).
+and restrict_claimed (decls : list shex_shape_decl) (idtab : list (string & shex_triple_expr))
+    (visited : shex_visited) (unbounded_tes : list shex_triple_expr) (claimed : pool_t) (g : rdf_graph) (fuel : nat)
+  : Tot (option pool_t) (decreases fuel) =
+  if fuel = 0 then None
+  else
+    let fuel' = fuel - 1 in
+    match claimed with
+    | [] -> Some []
+    | e :: tl ->
+      (match background_safe decls idtab visited unbounded_tes e g fuel', restrict_claimed decls idtab visited unbounded_tes tl g fuel' with
+       | Some true, Some rest -> Some rest
+       | Some false, Some rest -> Some (e :: rest)
+       | _, _ -> None)
+// `item` is "background safe" — tolerated by EVERY unbounded chain member
+// unconditionally — iff `unbounded_tes` is non-empty AND `item` is a good
+// candidate (or simply not that member's own (inverse,predicate) pair at
+// all) for ALL of them (`background_safe_all`). Mirrors `Extend3G.shex`'s
+// own `# D: 0 1 5 6 7 8 9+` comment: the INTERSECTION of the broad
+// ("+") ancestors' valuesets, computed over their DECLARED goodness (via
+// `matches_shape_expr`), not restricted to the actual pool. `[] -> Some
+// false` here means "there are no unbounded siblings at all, so nothing
+// is unconditionally excused" — a DIFFERENT case from `background_safe_
+// all`'s OWN `[] -> Some true` (that one means "every unbounded sibling,
+// down to the last one in a non-empty starting list, accepted `item`");
+// collapsing these two into one base case was the exact bug an earlier
+// version of this fix shipped (see `matches_chain_shared`'s doc comment).
+and background_safe (decls : list shex_shape_decl) (idtab : list (string & shex_triple_expr))
+    (visited : shex_visited) (unbounded_tes : list shex_triple_expr) (item : pool_elem) (g : rdf_graph) (fuel : nat)
+  : Tot (option bool) (decreases fuel) =
+  if fuel = 0 then None
+  else
+    let fuel' = fuel - 1 in
+    if Nil? unbounded_tes then Some false
+    else background_safe_all decls idtab visited unbounded_tes item g fuel'
+and background_safe_all (decls : list shex_shape_decl) (idtab : list (string & shex_triple_expr))
+    (visited : shex_visited) (unbounded_tes : list shex_triple_expr) (item : pool_elem) (g : rdf_graph) (fuel : nat)
+  : Tot (option bool) (decreases fuel) =
+  if fuel = 0 then None
+  else
+    let fuel' = fuel - 1 in
+    match unbounded_tes with
+    | [] -> Some true
+    | hd :: tl ->
+      (match item_good_for_unbounded_te decls idtab visited hd item g fuel', background_safe_all decls idtab visited tl item g fuel' with
+       | Some a, Some b -> Some (a && b)
+       | _, _ -> None)
+// Is `item` good for ONE unbounded TripleConstraint's own valueExpr? Used
+// only by `background_safe`/`background_safe_all` — never to decide
+// `chosen`/`leftover` counts, that remains exclusively `tc_choose_acc`'s
+// job.
+and item_good_for_unbounded_te (decls : list shex_shape_decl) (idtab : list (string & shex_triple_expr))
+    (visited : shex_visited) (te : shex_triple_expr) (item : pool_elem) (g : rdf_graph) (fuel : nat)
+  : Tot (option bool) (decreases fuel) =
+  if fuel = 0 then None
+  else
+    let fuel' = fuel - 1 in
+    match te with
+    | TE_TripleConstraint tc ->
+      let (inv, pred, tm) = item in
+      if not (inv = tc.tc_inverse && pred = tc.tc_predicate) then Some true
+      else (match tc.tc_value_expr with
+            | None -> Some true
+            | Some se -> matches_shape_expr decls idtab visited se tm g fuel')
+    | _ -> Some true
 // Combined-triple-expression-list evaluator: gathers the pool for every
 // (inverse,predicate) pair mentioned anywhere in `tes` (own expression +
 // EXTENDS-merged ancestors, see `matches_shape`), runs the general search
