@@ -80,6 +80,12 @@ let pow10 = Alg.pow10
 // import paths for "the xsd:* constants."
 let xsd_dateTime = Alg.xsd_dateTime
 
+// xsd:float likewise lives in SPARQL11.Algebra (xsd:double is the one
+// numeric-family constant RDF.Graph.Executable already carries) —
+// re-exported for the same reason as xsd_dateTime above, and needed by
+// this file's ill-formed-literal float/double lexical checks below.
+let xsd_float = Alg.xsd_float
+
 // --- Numeric comparison for min/maxInclusive/Exclusive -----------------
 //
 // MOVED from SHACL.Validation.fst (was section "11g"). Reuses the
@@ -229,16 +235,21 @@ let numeric_cmp_lt (a b : literal) : option bool =
 let is_ascii_digit (c : FStar.Char.char) : bool =
   let n = FStar.Char.int_of_char c in n >= 48 && n <= 57
 
-let is_integer_lexical (lex : string) : bool =
-  match String.list_of_string lex with
+// Chars-based cores, factored out so `is_float_lexical` below (which needs
+// to check a mantissa substring, not a whole standalone lexical form) can
+// reuse the exact same "optional sign then digit body" / "optional sign
+// then digit-or-dot body" rules `is_integer_lexical`/`is_decimal_lexical`
+// already enforce, rather than re-deriving them.
+let is_signed_digits_chars (chars : list FStar.Char.char) : bool =
+  match chars with
   | [] -> false
   | c :: rest ->
     let ci = FStar.Char.int_of_char c in
     let digits = if ci = 43 || ci = 45 then rest else c :: rest in
     Cons? digits && List.Tot.for_all is_ascii_digit digits
 
-let is_decimal_lexical (lex : string) : bool =
-  match String.list_of_string lex with
+let is_decimal_lexical_chars (chars : list FStar.Char.char) : bool =
+  match chars with
   | [] -> false
   | c :: rest ->
     let ci = FStar.Char.int_of_char c in
@@ -247,6 +258,47 @@ let is_decimal_lexical (lex : string) : bool =
     List.Tot.for_all (fun ch -> is_ascii_digit ch || FStar.Char.int_of_char ch = 46) body &&
     List.Tot.length (List.Tot.filter (fun ch -> FStar.Char.int_of_char ch = 46) body) <= 1 &&
     List.Tot.existsb is_ascii_digit body
+
+let is_integer_lexical (lex : string) : bool =
+  is_signed_digits_chars (String.list_of_string lex)
+
+let is_decimal_lexical (lex : string) : bool =
+  is_decimal_lexical_chars (String.list_of_string lex)
+
+// Splits a char list at the FIRST 'e'/'E' (structural recursion — a genuine
+// subterm decrease, unlike `strip_trailing_zeros_fuel`'s reverse-based
+// walk, so no `fuel` parameter is needed here). Returns
+// (chars_before_e, Some chars_after_e) if an 'e'/'E' was found, else
+// (original_chars, None).
+let rec split_at_e (chars : list FStar.Char.char)
+  : Tot (list FStar.Char.char & option (list FStar.Char.char)) (decreases chars) =
+  match chars with
+  | [] -> ([], None)
+  | c :: rest ->
+    let n = FStar.Char.int_of_char c in
+    if n = 101 (* 'e' *) || n = 69 (* 'E' *) then ([], Some rest)
+    else
+      let (before, after) = split_at_e rest in
+      (c :: before, after)
+
+// xsd:float and xsd:double share one lexical grammar (XML Schema Part 2
+// §3.2.4/3.2.5): the three special tokens "NaN"/"INF"/"-INF" (note:
+// "+INF" is NOT a valid lexical form — only unsigned "INF" denotes
+// positive infinity), OR a decimal-lexical mantissa (reusing
+// `is_decimal_lexical_chars` — sign?, digits, at most one '.', at least
+// one digit) optionally followed by an ('e'|'E') exponent (sign?,
+// digit+, reusing `is_signed_digits_chars`). No other junk is permitted
+// anywhere (both helpers reject non-digit/non-dot characters), and a
+// second 'e'/'E' in the exponent tail correctly fails `is_signed_digits_chars`
+// (a bare digit-scan, no dot allowed) rather than silently truncating.
+let is_float_lexical (lex : string) : bool =
+  if lex = "NaN" || lex = "INF" || lex = "-INF" then true
+  else
+    let (mantissa, exp_opt) = split_at_e (String.list_of_string lex) in
+    is_decimal_lexical_chars mantissa &&
+    (match exp_opt with
+     | None -> true
+     | Some e -> is_signed_digits_chars e)
 
 // Integer-family range check: well-formed integer lexical whose value
 // sits inside [lo, hi] (None = unbounded on that side). parse_int_string
@@ -278,4 +330,29 @@ let literal_ill_formed (dt : wf_iri) (lex : string) : bool =
   else if dt = xsd_nonPositiveInteger then not (int_lexical_in_range lex None (Some 0))
   else if dt = xsd_negativeInteger then not (int_lexical_in_range lex None (Some (0 - 1)))
   else if dt = xsd_dateTime then None? (dt_parse_ms lex)
+  else if dt = xsd_float || dt = xsd_double then not (is_float_lexical lex)
   else false
+
+// --- decimal-derived datatype family (for facet applicability) ---------
+//
+// XML Schema Part 2 §4.3.11/4.3.12 define totalDigits/fractionDigits as
+// facets of xsd:decimal specifically ("applicable to decimal and types
+// derived from decimal" — i.e. xsd:integer and everything the integer
+// branch derives). They are NOT applicable to xsd:float/xsd:double
+// (IEEE-754 binary floating point has no digit-count facet in the XSD
+// facet table at all) even though those types also have numeric lexical
+// forms. A caller applying totalDigits/fractionDigits to a non-decimal-
+// derived literal should treat the facet as failing closed (mirrors how
+// `numeric_cmp_le`/`numeric_cmp_lt` above already fail closed when a
+// literal doesn't parse as numeric) rather than silently counting digits
+// in a lexical form the facet was never defined over. This predicate is
+// exactly the set of datatypes `literal_ill_formed` already recognises
+// via `is_integer_lexical`/`is_decimal_lexical`/`int_lexical_in_range`
+// (i.e. every ill-formed-check branch above except boolean, dateTime,
+// float, double).
+let is_decimal_derived_datatype (dt : wf_iri) : bool =
+  dt = xsd_decimal || dt = xsd_integer ||
+  dt = xsd_long || dt = xsd_int || dt = xsd_short || dt = xsd_byte ||
+  dt = xsd_unsignedLong || dt = xsd_unsignedInt || dt = xsd_unsignedShort || dt = xsd_unsignedByte ||
+  dt = xsd_nonNegativeInteger || dt = xsd_positiveInteger ||
+  dt = xsd_nonPositiveInteger || dt = xsd_negativeInteger

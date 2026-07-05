@@ -10,6 +10,7 @@ let parse_double_to_scaled :
   SPARQL11_Algebra.parse_double_to_scaled
 let pow10 : Prims.nat -> Prims.int= SPARQL11_Algebra.pow10
 let xsd_dateTime : RDF_Graph_Executable.wf_iri= SPARQL11_Algebra.xsd_dateTime
+let xsd_float : RDF_Graph_Executable.wf_iri= SPARQL11_Algebra.xsd_float
 let literal_to_scaled (l : RDF_Graph_Executable.literal) :
   (Prims.int * Prims.nat) FStar_Pervasives_Native.option=
   if l.RDF_Graph_Executable.datatype = RDF_Graph_Executable.xsd_double
@@ -233,8 +234,8 @@ let numeric_cmp_lt (a : RDF_Graph_Executable.literal)
 let is_ascii_digit (c : FStar_Char.char) : Prims.bool=
   let n = FStar_Char.int_of_char c in
   (n >= (Prims.of_int (48))) && (n <= (Prims.of_int (57)))
-let is_integer_lexical (lex : Prims.string) : Prims.bool=
-  match FStar_String.list_of_string lex with
+let is_signed_digits_chars (chars : FStar_Char.char Prims.list) : Prims.bool=
+  match chars with
   | [] -> false
   | c::rest ->
       let ci = FStar_Char.int_of_char c in
@@ -244,8 +245,9 @@ let is_integer_lexical (lex : Prims.string) : Prims.bool=
         else c :: rest in
       (Prims.uu___is_Cons digits) &&
         (FStar_List_Tot_Base.for_all is_ascii_digit digits)
-let is_decimal_lexical (lex : Prims.string) : Prims.bool=
-  match FStar_String.list_of_string lex with
+let is_decimal_lexical_chars (chars : FStar_Char.char Prims.list) :
+  Prims.bool=
+  match chars with
   | [] -> false
   | c::rest ->
       let ci = FStar_Char.int_of_char c in
@@ -265,6 +267,33 @@ let is_decimal_lexical (lex : Prims.string) : Prims.bool=
                 body))
             <= Prims.int_one))
         && (FStar_List_Tot_Base.existsb is_ascii_digit body)
+let is_integer_lexical (lex : Prims.string) : Prims.bool=
+  is_signed_digits_chars (FStar_String.list_of_string lex)
+let is_decimal_lexical (lex : Prims.string) : Prims.bool=
+  is_decimal_lexical_chars (FStar_String.list_of_string lex)
+let rec split_at_e (chars : FStar_Char.char Prims.list) :
+  (FStar_Char.char Prims.list * FStar_Char.char Prims.list
+    FStar_Pervasives_Native.option)=
+  match chars with
+  | [] -> ([], FStar_Pervasives_Native.None)
+  | c::rest ->
+      let n = FStar_Char.int_of_char c in
+      if (n = (Prims.of_int (101))) || (n = (Prims.of_int (69)))
+      then ([], (FStar_Pervasives_Native.Some rest))
+      else
+        (let uu___1 = split_at_e rest in
+         match uu___1 with | (before, after) -> ((c :: before), after))
+let is_float_lexical (lex : Prims.string) : Prims.bool=
+  if ((lex = "NaN") || (lex = "INF")) || (lex = "-INF")
+  then true
+  else
+    (let uu___1 = split_at_e (FStar_String.list_of_string lex) in
+     match uu___1 with
+     | (mantissa, exp_opt) ->
+         (is_decimal_lexical_chars mantissa) &&
+           ((match exp_opt with
+             | FStar_Pervasives_Native.None -> true
+             | FStar_Pervasives_Native.Some e -> is_signed_digits_chars e)))
 let int_lexical_in_range (lex : Prims.string)
   (lo : Prims.int FStar_Pervasives_Native.option)
   (hi : Prims.int FStar_Pervasives_Native.option) : Prims.bool=
@@ -391,4 +420,26 @@ let literal_ill_formed (dt : RDF_Graph_Executable.wf_iri)
                                 then
                                   FStar_Pervasives_Native.uu___is_None
                                     (dt_parse_ms lex)
-                                else false
+                                else
+                                  if
+                                    (dt = xsd_float) ||
+                                      (dt = RDF_Graph_Executable.xsd_double)
+                                  then
+                                    Prims.op_Negation (is_float_lexical lex)
+                                  else false
+let is_decimal_derived_datatype (dt : RDF_Graph_Executable.wf_iri) :
+  Prims.bool=
+  (((((((((((((dt = RDF_Graph_Executable.xsd_decimal) ||
+                (dt = RDF_Graph_Executable.xsd_integer))
+               || (dt = RDF_Graph_Executable.xsd_long))
+              || (dt = RDF_Graph_Executable.xsd_int))
+             || (dt = RDF_Graph_Executable.xsd_short))
+            || (dt = RDF_Graph_Executable.xsd_byte))
+           || (dt = RDF_Graph_Executable.xsd_unsignedLong))
+          || (dt = RDF_Graph_Executable.xsd_unsignedInt))
+         || (dt = RDF_Graph_Executable.xsd_unsignedShort))
+        || (dt = RDF_Graph_Executable.xsd_unsignedByte))
+       || (dt = RDF_Graph_Executable.xsd_nonNegativeInteger))
+      || (dt = RDF_Graph_Executable.xsd_positiveInteger))
+     || (dt = RDF_Graph_Executable.xsd_nonPositiveInteger))
+    || (dt = RDF_Graph_Executable.xsd_negativeInteger)

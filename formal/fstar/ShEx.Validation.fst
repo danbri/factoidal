@@ -88,10 +88,16 @@ module ShEx.Validation
 //     zeros after it are stripped before counting (Stage 3 fix — the Stage 2
 //     version counted raw digit characters only, undercounting-safe in the
 //     max-bound direction but wrong for `01.2345 TOTALDIGITS 5`-style
-//     fixtures the Stage 3 measurement run surfaced). NOT implemented:
-//     canonical EXPONENT normalisation for float/double lexical forms (e.g.
-//     scientific notation digit-counting) — still a documented gap, revisit
-//     if a corpus fixture needs it.
+//     fixtures the Stage 3 measurement run surfaced). Applicability is now
+//     (XSD.Datatypes gap-closure fix, 2026-07-05) gated to xsd:decimal and
+//     decimal-derived types ONLY via `digits_lex` above, per XML Schema
+//     Part 2 SS4.3.11/4.3.12 and the corpus's own explicit
+//     "restricted to decimal-derived datatypes" fixture notes — xsd:float/
+//     xsd:double literals fail these two facets closed regardless of digit
+//     count, which also retires the earlier "no canonical EXPONENT
+//     normalisation for float/double" gap this comment used to disclose:
+//     since the facet never applies to float/double at all, no
+//     scientific-notation-aware digit counting is needed for them.
 // ============================================================================
 
 open FStar.String
@@ -384,6 +390,32 @@ let node_constraint_matches (nc : shex_node_constraint) (t : rdf_term) : bool =
   // facet (there is no lexical form to parse as a number for them in any
   // useful sense — the spec's "v is numeric" precondition fails closed).
   let num_lex = match t with T_Literal l -> Some l.lexical_form | _ -> None in
+  // totaldigits/fractiondigits ONLY (not the four inclusive/exclusive
+  // facets above, which the spec's own numeric-value semantics keep
+  // applicable to xsd:float/xsd:double): XML Schema Part 2 SS4.3.11/
+  // 4.3.12 define totalDigits/fractionDigits as facets of xsd:decimal
+  // and its decimal-derived subtypes ONLY — never xsd:float/xsd:double,
+  // confirmed against the corpus's own
+  // "Note: totalDigits/fractionDigits restricted to decimal-derived
+  // datatypes" fixture comments (1literalTotaldigits_fail-float-equal /
+  // -double-equal, 1literalFractiondigits_fail-float-equal / -double-equal).
+  // `digits_lex` is `Some` only when BOTH hold: the literal's datatype is
+  // decimal-derived (`XSD.Datatypes.is_decimal_derived_datatype`) AND its
+  // lexical form is well-formed for that datatype
+  // (`not (literal_ill_formed ...)`, reusing the SAME conservative check
+  // `shex_datatype_ok` already applies for the `datatype` facet — a
+  // malformed decimal/integer literal, e.g. "1.23ab"^^xsd:decimal or
+  // "1.2345"^^xsd:integer (integer's lexical space forbids '.'), has no
+  // well-defined digit count to constrain). Otherwise `None`, which the
+  // existing `Some _, None -> false` fail-closed arms below already
+  // handle correctly — no new fail-closed logic needed, only this gate
+  // on what counts as an applicable input.
+  let digits_lex =
+    match t with
+    | T_Literal l ->
+      if is_decimal_derived_datatype l.datatype && not (literal_ill_formed l.datatype l.lexical_form)
+      then Some l.lexical_form else None
+    | _ -> None in
   let mininclusive_ok =
     match nc.nc_mininclusive, num_lex with
     | None, _ -> true
@@ -405,12 +437,12 @@ let node_constraint_matches (nc : shex_node_constraint) (t : rdf_term) : bool =
     | Some facet, Some nlex -> shex_numeric_lt nlex facet = Some true
     | Some _, None -> false in
   let totaldigits_ok =
-    match nc.nc_totaldigits, num_lex with
+    match nc.nc_totaldigits, digits_lex with
     | None, _ -> true
     | Some n, Some nlex -> total_digit_count nlex <= n
     | Some _, None -> false in
   let fractiondigits_ok =
-    match nc.nc_fractiondigits, num_lex with
+    match nc.nc_fractiondigits, digits_lex with
     | None, _ -> true
     | Some n, Some nlex -> fraction_digit_count nlex <= n
     | Some _, None -> false in
