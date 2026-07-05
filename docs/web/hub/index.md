@@ -9,7 +9,7 @@ A home for longer-form, interactive write-ups about how Factoidal
 works — RDF/SPARQL concepts demonstrated by running the real
 F\*-extracted engine in your browser, not by prose alone.
 
-Three posts are published below, each with live runnable cells. The
+Five posts are published below, each with live runnable cells. The
 rest of the series (see
 [the series plan](../../designissues/2026-07-05-docs-hub-plan/) for
 the full map and vocabulary strategy) is still planned.
@@ -80,10 +80,10 @@ headlessly.
   <li><a href="./01-triples-rdf-from-first-principles/">Triples: RDF from first principles</a> — RDF terms/triples, Turtle parsing (foaf)</li>
   <li><a href="./02-asking-questions-sparql/">Asking questions: SPARQL</a> — SELECT/ASK/CONSTRUCT, property paths (wikidata)</li>
   <li><a href="./03-schemas-that-infer-rdfs-owl/">Schemas that infer: RDFS and OWL 2 RL</a> — RDFS + OWL 2 RL closure (schema.org)</li>
+  <li><a href="./04-concept-schemes-skos/">Concept schemes: SKOS and its integrity conditions</a> — SKOS + the S9/S13/S14/S27/S37/S46 integrity conditions (skos)</li>
+  <li><a href="./05-shapes-that-validate-shacl/">Shapes that validate: SHACL</a> — minCount/datatype/class constraints, validation reports (foaf)</li>
   <li class="placeholder">All the syntaxes: N-Triples, N-Quads, TriG, RDF/XML</li>
   <li class="placeholder">Mutating and serving data: SPARQL Update, Protocol, Graph Store</li>
-  <li class="placeholder">Concept schemes: SKOS and its integrity conditions</li>
-  <li class="placeholder">Shapes that validate: SHACL</li>
   <li class="placeholder">Shapes, the other dialect: ShEx</li>
   <li class="placeholder">JSON-LD: RDF as JSON</li>
   <li class="placeholder">Canonical graphs: RDFC-1.0 and content addressing</li>

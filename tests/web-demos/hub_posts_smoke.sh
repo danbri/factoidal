@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # tests/web-demos/hub_posts_smoke.sh
 #
-# Smoke test for the three published documentation-hub posts
-# (docs/web/hub/01-*.md, 02-*.md, 03-*.md): builds the site offline
+# Smoke test for the five published documentation-hub posts
+# (docs/web/hub/01-*.md through 05-*.md): builds the site offline
 # with the vendored Eleventy (third_party/eleventy/), serves the built
 # _site under its real /factoidal/ pathPrefix, and drives headless
 # Chromium (Playwright) over each post page to confirm:
@@ -20,7 +20,8 @@
 #
 # Sibling to tests/web-demos/hub_smoke.sh, which covers the hub
 # scaffold's own smoke cell on docs/web/hub/index.md; this script
-# covers the three content posts wave B added on top of that scaffold.
+# covers the content posts wave B (and later waves) added on top of
+# that scaffold.
 #
 # Usage:
 #   tests/web-demos/hub_posts_smoke.sh
@@ -95,6 +96,8 @@ POSTS=(
   "web/hub/01-triples-rdf-from-first-principles/"
   "web/hub/02-asking-questions-sparql/"
   "web/hub/03-schemas-that-infer-rdfs-owl/"
+  "web/hub/04-concept-schemes-skos/"
+  "web/hub/05-shapes-that-validate-shacl/"
 )
 for p in "${POSTS[@]}"; do
   [ -f "$SITE_DIR/$p/index.html" ] || { echo "FAIL: $SITE_DIR/$p/index.html was not produced." >&2; exit 1; }

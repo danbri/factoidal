@@ -267,6 +267,32 @@ const fn = {
       return map;
     });
   },
+  /**
+   * SHACL Core validation (mirrors npm/factoidal/index.js's
+   * `shaclValidate(data, shapes, options) -> Promise<{conforms, report}>`).
+   * `data`/`shapes` may each be raw RDF text (parsed with `options.format`,
+   * default "turtle") or an already-parsed FnDataset. Throws the same
+   * "predates the SHACL export" error `Factoidal.shaclValidate` throws
+   * if the loaded npm-entry bundle doesn't expose it -- callers that
+   * want to degrade gracefully should try/catch this call rather than
+   * assume it always resolves.
+   */
+  async shaclValidate(data, shapes, options) {
+    const opts = options || {};
+    if (typeof Factoidal.shaclValidate !== "function") {
+      throw new Error(
+        "shaclValidate: the loaded factoidal-npm-entry bundle predates the SHACL export");
+    }
+    const toNQuads = async (x) => (
+      x && typeof x.toNQuads === "function"
+        ? x.toNQuads()
+        : Factoidal.toRdf(x, { format: opts.format || "turtle" })
+    );
+    const dataNq = await toNQuads(data);
+    const shapesNq = await toNQuads(shapes);
+    const result = await Factoidal.shaclValidate(dataNq, shapesNq);
+    return { conforms: result.conforms, report: new FnDataset(result.reportNquads) };
+  },
 };
 
 // Fixed bindings every cell gets access to, by parameter name — this

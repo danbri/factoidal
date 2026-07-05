@@ -76,6 +76,15 @@ fn.query(dataset: Dataset, sparql: string, options?: {entail?: 'none'|'RDFS'|'OW
    | Promise<boolean>               // ASK
    | Promise<Dataset>                // CONSTRUCT / DESCRIBE
 
+fn.shaclValidate(data: Dataset|string, shapes: Dataset|string, options?: {format?: string})
+  -> Promise<{conforms: boolean, report: Dataset}>
+  // report is SHACL_Validation.validation_report_to_graph's graph: one
+  // sh:ValidationResult per violation (sh:focusNode, sh:resultPath,
+  // sh:resultMessage, sh:sourceConstraintComponent). Throws if the
+  // loaded bundle predates the SHACL export -- see "Capability checks"
+  // below for the try/catch pattern a cell should use instead of
+  // assuming this always resolves.
+
 // Dataset:
 dataset.size                        // number of quads
 [...dataset]                        // iterate {subject, predicate, object} quads
@@ -95,6 +104,31 @@ real `npm/factoidal` module directly), then dropped into an
 ` ```observable-js ` fence with `factoidal.` renamed to `fn.` and any
 `import` statement removed (cell bodies are plain function bodies, not
 ES modules — no `import`/`export` inside a fence).
+
+### Capability checks
+
+Not every `fn` method is guaranteed to work against every loaded
+engine bundle — `fn.shaclValidate` (and the raw `Factoidal.shaclValidate`/
+`shexValidate`/`owlClosure`/etc. it's built on) needs the npm-entry ABI
+bundle, which an older or stale build might not expose. A cell that
+calls one of these should try/catch it and produce an explanatory
+value on failure rather than let the whole cell render as a hard
+`.observable-cell-error`:
+
+```js
+try {
+  const result = await fn.shaclValidate(data, shapes);
+  return { available: true, conforms: result.conforms };
+} catch (err) {
+  return { available: false, note: err.message };
+}
+```
+
+This is the same pattern `npm/factoidal/lib/api.js`'s own `capabilities()`
+probe uses server-side (per-function `typeof` checks); a cell doesn't
+have access to `capabilities()` directly (it's Node-only, `npm/factoidal`'s
+typed API, not exposed on `browser.js`), so try/catch around the call
+itself is the client-side equivalent.
 
 ### Why `fn` is an adapter, not an import
 

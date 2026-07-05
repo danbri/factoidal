@@ -123,12 +123,12 @@ ever runs.
 
 ## What's next
 
-The next posts in this series work back outward from inference to
-concrete syntax and shape validation: the other RDF serializations
-(N-Triples, N-Quads, TriG, RDF/XML), SPARQL Update and the HTTP
-protocol, then SKOS, SHACL, and ShEx. See the
-[series plan](../../designissues/2026-07-05-docs-hub-plan.md) for the
-full map.
+[Concept schemes: SKOS](./04-concept-schemes-skos.md) is next, followed
+by [Shapes that validate: SHACL](./05-shapes-that-validate-shacl.md).
+The other RDF serializations (N-Triples, N-Quads, TriG, RDF/XML),
+SPARQL Update and the HTTP protocol, and ShEx are still planned — see
+the [series plan](../../designissues/2026-07-05-docs-hub-plan.md) for
+the full map.
 
 Every live cell above is pinned in
 [`tests/hub/post03_test.mjs`](../../../tests/hub/post03_test.mjs) —
