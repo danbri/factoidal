@@ -115,6 +115,7 @@ COMMON_MODULES=(
   RDF_Canonical
   RDF_Canonical_Manifest
   SPARQL11_Algebra
+  XSD_Datatypes
   RDF_Pretty
   OWL_QueryRewrite
   OWL_QueryEval
