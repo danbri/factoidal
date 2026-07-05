@@ -380,6 +380,61 @@ type config = {
   mutable entail_regime : string;  (* "" (none), "RDFS", or "OWL-RL" *)
 }
 
+(* Shared SELECT/ASK output formatter — factored out of the query-
+   evaluation tail (was inline, see git history) so the parse-stream
+   query fast path (docs/designissues/2026-07-05-disk-backed-db-perf-
+   review.md) and the materialise-then-evaluate path print through
+   the EXACT same code, byte for byte, rather than two hand-maintained
+   copies that could quietly drift apart. Takes exactly what either
+   path already has in hand: the parsed query (for SELECT's projected
+   var list), an ASK answer if this is an ASK query, and the SELECT
+   result rows (empty for ASK). *)
+let print_query_results (cfg : config) (query : SPARQL11_Algebra.query)
+    (ask_answer : bool option)
+    (results : (string * RDF_Graph_Executable.rdf_term) list list) : unit =
+  let vars = match query.q_form with
+    | QF_Select (Select_Vars items) ->
+      List.filter_map (fun item -> match item with
+        | SI_Var v -> Some v
+        | SI_Expr (_, v) -> Some v
+      ) items
+    | _ ->
+      (* Star projection or non-SELECT — collect all vars from results *)
+      let seen = Hashtbl.create 16 in
+      List.concat_map (fun row ->
+        List.filter_map (fun (v, _) ->
+          if Hashtbl.mem seen v then None
+          else (Hashtbl.add seen v (); Some v)
+        ) row
+      ) results
+  in
+  match cfg.output_format with
+  | Table ->
+    (match ask_answer with
+     | Some b ->
+       let lexical =
+         match SPARQL11_Algebra.er_to_string (SPARQL11_Algebra.ER_Bool b) with
+         | FStar_Pervasives_Native.Some s -> s
+         | FStar_Pervasives_Native.None -> if b then "true" else "false"
+       in
+       Printf.printf "%s\n" lexical
+     | None -> print_results_table vars results)
+  | CSV -> print_results_csv vars results
+  | JSON ->
+    (match ask_answer with
+     | Some b ->
+       Printf.printf "{\n  \"head\": {},\n  \"boolean\": %s\n}\n"
+         (if b then "true" else "false")
+     | None -> print_results_json vars results)
+  | NTOut ->
+    (* For CONSTRUCT-like output, print triples *)
+    List.iter (fun row ->
+      List.iter (fun (v, t) ->
+        Printf.printf "?%s = %s  " v (term_to_turtle t)
+      ) row;
+      Printf.printf "\n"
+    ) results
+
 (* Normalise --entail argument: accept case-insensitive and with/without
    hyphen variants. Maps to the regime tags expected by F*'s
    entailment_closure: "RDFS", "OWL-RL", or "" for none. *)
@@ -1199,6 +1254,95 @@ let () =
     Printf.eprintf "SPARQL parse error: %s\n" (Printexc.to_string e); exit 1
   in
 
+  (* Parse-stream query fast path (docs/designissues/2026-07-05-disk-
+     backed-db-perf-review.md, roadmap "bound in-memory query
+     memory"): `factoidal --data gene.ttl` answering a one-row
+     COUNT-star peaked at 731 MiB RSS -- the same cost as a full point-
+     lookup materialisation -- because load_dataset below always
+     parses every --data file into a complete in-memory term graph
+     before the query is evaluated at all. For the four shapes
+     SPARQL.Plan.Streamable recognizes (COUNT-star/ASK over a single
+     triple pattern, default graph or a `GRAPH ?g` wildcard over named
+     graphs), answer straight off the SAME incremental parse hook the
+     `count` subcommand above uses (Parser_Turtle/NTriples/NQuads'
+     fold_* entry points) and skip load_dataset/build_indexed
+     entirely. Output goes through print_query_results -- the exact
+     same formatter the materialise path below uses -- so JSON/CSV/
+     table output is byte-identical by construction, not by a second
+     hand-written formatter that could drift.
+     Gated off entirely for COTTAS/--named/entailment-closure inputs
+     (those need the full backend machinery regardless); anything
+     SPARQL.Plan.Streamable.streamable_shape doesn't recognize, or any
+     --data file that isn't Turtle/NT/NQuads, falls through unchanged
+     to the existing path below. FACTOIDAL_DISABLE_STREAM_FASTPATH=1
+     forces the fallthrough -- used by
+     tests/local/streamable_fastpath_regressions.sh to diff fast-path
+     output against the materialise path on the same fixtures/queries. *)
+  let fastpath_disabled =
+    match Sys.getenv_opt "FACTOIDAL_DISABLE_STREAM_FASTPATH" with
+    | Some "1" -> true
+    | _ -> false
+  in
+  if not fastpath_disabled
+     && cfg.data_cottas_files = []
+     && cfg.named_graphs = []
+     && cfg.entail_regime = ""
+     && cfg.data_files <> []
+  then begin
+    match SPARQL_Plan_Streamable.streamable_shape query with
+    | None -> ()
+    | Some plan ->
+      let file_formats = List.map (fun f ->
+        match cfg.input_format with
+        | Some fmt -> fmt
+        | None -> detect_format f
+      ) cfg.data_files in
+      let all_streamable_fmt = List.for_all (fun fmt -> match fmt with
+        | Turtle | NT | NQuads -> true
+        | _ -> false
+      ) file_formats in
+      if all_streamable_fmt then begin
+        let open SPARQL_Plan_Streamable in
+        let state = List.fold_left (fun st f ->
+          let fmt = match cfg.input_format with
+            | Some fmt -> fmt
+            | None -> detect_format f in
+          let content = read_file f in
+          match fmt with
+          | Turtle ->
+            let base_iri = match cfg.base_iri with
+              | Some b -> Some b
+              | None -> file_base_iri f in
+            (match base_iri with
+             | Some b ->
+               Parser_Turtle.fold_turtle_triples_with_base
+                 (fun t acc -> stream_step plan t acc) (stream_stop plan) st content b
+             | None ->
+               Parser_Turtle.fold_turtle_triples
+                 (fun t acc -> stream_step plan t acc) (stream_stop plan) st content)
+          | NT ->
+            Parser_NTriples.fold_ntriples
+              (fun t acc -> stream_step plan t acc) (stream_stop plan) st content
+          | NQuads ->
+            Parser_NQuads.fold_nquads
+              (fun t g acc -> if stream_in_domain plan g then stream_step plan t acc else acc)
+              (stream_stop plan) st content
+          | _ ->
+            (* unreachable: all_streamable_fmt already filtered these out *)
+            st
+        ) stream_init cfg.data_files in
+        let ask_answer, results = match plan.sp_goal with
+          | SG_Ask -> (Some (stream_ask_result state), [])
+          | SG_Count alias ->
+            let n = stream_count_result state in
+            let omega = SPARQL11_Store.count_star_solution alias n in
+            (None, SPARQL11_Algebra.slice_solutions plan.sp_offset plan.sp_limit omega)
+        in
+        print_query_results cfg query ask_answer results;
+        exit 0
+      end
+  end;
+
   (* Load data files as datasets, preserving named graph structure *)
   let datasets = List.map (fun f ->
     try load_dataset ~format:cfg.input_format ~base:cfg.base_iri f
@@ -1360,50 +1504,7 @@ let () =
         (ask_answer, results)
       end in
 
-    (* Extract variable names from query or results *)
-    let vars = match query.q_form with
-      | QF_Select (Select_Vars items) ->
-        List.filter_map (fun item -> match item with
-          | SI_Var v -> Some v
-          | SI_Expr (_, v) -> Some v
-        ) items
-      | _ ->
-        (* Star projection or non-SELECT — collect all vars from results *)
-        let seen = Hashtbl.create 16 in
-        List.concat_map (fun row ->
-          List.filter_map (fun (v, _) ->
-            if Hashtbl.mem seen v then None
-            else (Hashtbl.add seen v (); Some v)
-          ) row
-        ) results
-    in
-
-    match cfg.output_format with
-    | Table ->
-      (match ask_answer with
-       | Some b ->
-         let lexical =
-           match SPARQL11_Algebra.er_to_string (SPARQL11_Algebra.ER_Bool b) with
-           | FStar_Pervasives_Native.Some s -> s
-           | FStar_Pervasives_Native.None -> if b then "true" else "false"
-         in
-         Printf.printf "%s\n" lexical
-       | None -> print_results_table vars results)
-    | CSV -> print_results_csv vars results
-    | JSON ->
-      (match ask_answer with
-       | Some b ->
-         Printf.printf "{\n  \"head\": {},\n  \"boolean\": %s\n}\n"
-           (if b then "true" else "false")
-       | None -> print_results_json vars results)
-    | NTOut ->
-      (* For CONSTRUCT-like output, print triples *)
-      List.iter (fun row ->
-        List.iter (fun (v, t) ->
-          Printf.printf "?%s = %s  " v (term_to_turtle t)
-        ) row;
-        Printf.printf "\n"
-      ) results
+    print_query_results cfg query ask_answer results
   with e ->
     Printf.eprintf "Query evaluation error: %s\n" (Printexc.to_string e);
     exit 1)

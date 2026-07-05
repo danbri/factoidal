@@ -737,6 +737,81 @@ let parse_ntriples (input:string) : list triple =
   parse_ntriples_acc input 0 [] (len + 1)
 
 (* ================================================================ *)
+(* Generic streaming fold (CLI parse-stream query fast path, issue   *)
+(* "bound in-memory query memory" / SPARQL.Plan.Streamable.fst).     *)
+(*                                                                    *)
+(* Structurally identical to parse_ntriples_acc above (same line-by- *)
+(* line walk, same comment/blank-line/error-recovery handling),      *)
+(* except each parsed triple is folded into a caller-supplied        *)
+(* accumulator via `step` instead of being consed onto a growing      *)
+(* `list triple`, and the walk can stop early once `stop acc` holds   *)
+(* (used for ASK's first-match-wins). No triple list is ever          *)
+(* retained across lines, for any accumulator type `a` a caller       *)
+(* chooses -- the same memory bound `count_ntriples` already gets,    *)
+(* generalised to shapes that need to inspect terms (e.g. a bound-    *)
+(* predicate COUNT), which a blind line count cannot do.              *)
+(* ================================================================ *)
+let rec fold_ntriples_acc (#a:Type) (step: triple -> a -> a) (stop: a -> bool)
+    (input:string) (pos:nat) (acc:a) (fuel:nat)
+  : Tot a (decreases fuel) =
+  if fuel = 0 then acc
+  else if stop acc then acc
+  else
+    let len = fs_byte_length input in
+    if pos >= len then acc
+    else
+      let pos1 : nat = match pws input pos with
+                       | ParseOk () p -> p
+                       | _ -> pos in
+      if pos1 >= len then acc
+      else
+        let ch = fs_byte_index input pos1 in
+        let code = FStar.Char.int_of_char ch in
+        if code = 0x23 then (* '#' — comment line *)
+          let pos2 = skip_comment input pos1 in
+          let pos3 = skip_eol input pos2 in
+          if pos3 = pos1 then acc  (* no progress — stop *)
+          else fold_ntriples_acc step stop input pos3 acc (fuel - 1)
+        else if code = 0x0A || code = 0x0D then (* empty line *)
+          let pos2 = skip_eol input pos1 in
+          if pos2 = pos1 then acc  (* no progress *)
+          else fold_ntriples_acc step stop input pos2 acc (fuel - 1)
+        else
+          (* Try to parse a triple *)
+          match parse_triple input pos1 with
+          | ParseOk t pos2 ->
+            let acc1 = step t acc in
+            (* After the '.', skip optional whitespace, optional comment, then EOL *)
+            let pos3 = match pws input pos2 with
+                       | ParseOk () p -> p
+                       | _ -> pos2 in
+            let pos4 = skip_comment input pos3 in
+            let pos5 = skip_eol input pos4 in
+            let pos_next = if pos5 > pos1 then pos5
+                          else if pos4 > pos1 then pos4
+                          else pos2 in
+            if stop acc1 then acc1
+            else fold_ntriples_acc step stop input pos_next acc1 (fuel - 1)
+          | ParseFail _ _ ->
+            (* Skip to next line on parse failure *)
+            let rec skip_line (p:nat) (f:nat) : Tot nat (decreases f) =
+              if f = 0 then p
+              else if p >= len then p
+              else
+                let c = fs_byte_index input p in
+                let cc = FStar.Char.int_of_char c in
+                if cc = 0x0A || cc = 0x0D then skip_eol input p
+                else skip_line (p + 1) (f - 1)
+            in
+            let pos2 = skip_line pos1 (len - pos1) in
+            if pos2 = pos1 then acc  (* no progress *)
+            else fold_ntriples_acc step stop input pos2 acc (fuel - 1)
+
+let fold_ntriples (#a:Type) (step: triple -> a -> a) (stop: a -> bool) (init:a) (input:string) : a =
+  let len = fs_byte_length input in
+  fold_ntriples_acc step stop input 0 init (len + 1)
+
+(* ================================================================ *)
 (* Scan-only validators for `--count` mode (issue #121, step 2).    *)
 (*                                                                  *)
 (* These mirror parse_iri / parse_subject / parse_object /          *)

@@ -273,6 +273,86 @@ let parse_nquads (input:string) : rdf_dataset =
   dataset_finalise (parse_nquads_acc input 0 empty_dataset (len + 1))
 
 (* ================================================================ *)
+(* Generic streaming fold (CLI parse-stream query fast path, issue   *)
+(* "bound in-memory query memory" / SPARQL.Plan.Streamable.fst).     *)
+(*                                                                    *)
+(* Structurally identical to parse_nquads_acc above (same line-by-   *)
+(* line walk, same comment/blank-line/error-recovery handling),      *)
+(* except each parsed (triple, graph label) pair is folded into a    *)
+(* caller-supplied accumulator via `step` instead of being added to  *)
+(* an rdf_dataset, and the walk can stop early once `stop acc` holds *)
+(* (ASK's first-match-wins). `step` receives the raw `option iri`    *)
+(* graph label -- unlike the triple-only formats, a caller here MUST *)
+(* consult it to tell a default-graph quad (label None, per N-Quads: *)
+(* "if the graph label is absent, the triple goes into the default   *)
+(* graph") from a named-graph one (label Some g) -- conflating the   *)
+(* two silently over/under-counts (see SPARQL.Plan.Streamable.fst's  *)
+(* module banner). No dataset/list is ever retained across lines.    *)
+(* ================================================================ *)
+#push-options "--z3rlimit 30"
+let rec fold_nquads_acc (#a:Type) (step: triple -> option iri -> a -> a) (stop: a -> bool)
+    (input:string) (pos:nat) (acc:a) (fuel:nat)
+  : Tot a (decreases fuel) =
+  if fuel = 0 then acc
+  else if stop acc then acc
+  else
+    let len = fs_byte_length input in
+    if pos >= len then acc
+    else
+      let pos1 : nat = match pws input pos with
+                       | ParseOk () p -> p
+                       | _ -> pos in
+      if pos1 >= len then acc
+      else
+        let ch = fs_byte_index input pos1 in
+        let code = FStar.Char.int_of_char ch in
+        if code = 0x23 then (* '#' — comment line *)
+          let pos2 = skip_comment input pos1 in
+          let pos3 = skip_eol input pos2 in
+          if pos3 = pos1 then acc  (* no progress — stop *)
+          else fold_nquads_acc step stop input pos3 acc (fuel - 1)
+        else if code = 0x0A || code = 0x0D then (* empty line *)
+          let pos2 = skip_eol input pos1 in
+          if pos2 = pos1 then acc  (* no progress *)
+          else fold_nquads_acc step stop input pos2 acc (fuel - 1)
+        else
+          (* Try to parse a quad *)
+          match parse_nquad input pos1 with
+          | ParseOk (t, graph_opt) pos2 ->
+            let acc1 = step t graph_opt acc in
+            (* After the '.', skip optional whitespace, optional comment, then EOL *)
+            let pos3 = match pws input pos2 with
+                       | ParseOk () p -> p
+                       | _ -> pos2 in
+            let pos4 = skip_comment input pos3 in
+            let pos5 = skip_eol input pos4 in
+            let pos_next = if pos5 > pos1 then pos5
+                          else if pos4 > pos1 then pos4
+                          else pos2 in
+            if stop acc1 then acc1
+            else fold_nquads_acc step stop input pos_next acc1 (fuel - 1)
+          | ParseFail _ _ ->
+            (* Skip to next line on parse failure *)
+            let rec skip_line (p:nat) (f:nat) : Tot nat (decreases f) =
+              if f = 0 then p
+              else if p >= len then p
+              else
+                let c = fs_byte_index input p in
+                let cc = FStar.Char.int_of_char c in
+                if cc = 0x0A || cc = 0x0D then skip_eol input p
+                else skip_line (p + 1) (f - 1)
+            in
+            let pos2 = skip_line pos1 (len - pos1) in
+            if pos2 = pos1 then acc  (* no progress *)
+            else fold_nquads_acc step stop input pos2 acc (fuel - 1)
+#pop-options
+
+let fold_nquads (#a:Type) (step: triple -> option iri -> a -> a) (stop: a -> bool)
+    (init:a) (input:string) : a =
+  let len = fs_byte_length input in
+  fold_nquads_acc step stop input 0 init (len + 1)
+
+(* ================================================================ *)
 (* Scan-only validators for --count mode (issue #121, step 2).      *)
 (* Mirror parse_graph_label / parse_nquad without fs_byte_sub.      *)
 (* ================================================================ *)

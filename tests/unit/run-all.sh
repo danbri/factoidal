@@ -145,6 +145,7 @@ COMMON_MODULES=(
   CSVW_Metadata
   CSVW_URITemplate
   CSVW_Conversion
+  SPARQL_Plan_Streamable
   SPARQL11_Store
   RDF_Store_Combine
   SPARQL_Protocol

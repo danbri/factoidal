@@ -240,7 +240,7 @@ let rec scan_iri_end (input : Prims.string) (pos : Prims.nat)
               Parser_Combinators.ParseFail ("invalid character in IRI", pos)
             else
               scan_iri_end input (pos + Prims.int_one) (fuel - Prims.int_one)))
-let parse_iri_raw : RDF_Graph_Executable.iri Parser_Combinators.parser=
+let parse_iri_raw : RDF_Term.iri Parser_Combinators.parser=
   fun input pos ->
     let len = Parser_FastString.fs_byte_length input in
     if pos >= len
@@ -265,11 +265,11 @@ let parse_iri_raw : RDF_Graph_Executable.iri Parser_Combinators.parser=
          | Parser_Combinators.ParseFail (msg, fpos) ->
              Parser_Combinators.ParseFail (msg, fpos)
        else Parser_Combinators.ParseFail ("expected '<'", pos))
-let parse_iri : RDF_Graph_Executable.wf_iri Parser_Combinators.parser=
+let parse_iri : RDF_Term.wf_iri Parser_Combinators.parser=
   fun input pos ->
     match parse_iri_raw input pos with
     | Parser_Combinators.ParseOk (i, pos') ->
-        if RDF_Graph_Executable.is_iri i
+        if RDF_Term.is_iri i
         then Parser_Combinators.ParseOk (i, pos')
         else Parser_Combinators.ParseFail ("invalid IRI", pos)
     | Parser_Combinators.ParseFail (msg, fpos) ->
@@ -389,7 +389,7 @@ let rec scan_bnode_body_cp (input : Prims.string) (pos : Prims.nat)
                  scan_bnode_body_cp input (pos + advance)
                    (fuel - Prims.int_one)
                else pos)))
-let parse_bnode : RDF_Graph_Executable.bnode_id Parser_Combinators.parser=
+let parse_bnode : RDF_Term.bnode_id Parser_Combinators.parser=
   fun input pos ->
     let len = Parser_FastString.fs_byte_length input in
     if (pos + (Prims.of_int (2))) > len
@@ -790,7 +790,7 @@ let parse_lang_tag : Prims.string Parser_Combinators.parser=
                    Parser_Combinators.ParseFail
                      ("expected language tag after '@'", fpos)))
        else Parser_Combinators.ParseFail ("expected '@'", pos))
-let parse_datatype : RDF_Graph_Executable.wf_iri Parser_Combinators.parser=
+let parse_datatype : RDF_Term.wf_iri Parser_Combinators.parser=
   fun input pos ->
     let len = Parser_FastString.fs_byte_length input in
     if (pos + (Prims.of_int (2))) > len
@@ -803,8 +803,7 @@ let parse_datatype : RDF_Graph_Executable.wf_iri Parser_Combinators.parser=
            ((FStar_Char.int_of_char c1) = (Prims.of_int (0x5E)))
        then parse_iri input (pos + (Prims.of_int (2)))
        else Parser_Combinators.ParseFail ("expected '^^'", pos))
-let parse_literal :
-  RDF_Graph_Executable.wf_literal Parser_Combinators.parser=
+let parse_literal : RDF_Term.wf_literal Parser_Combinators.parser=
   fun input pos ->
     match parse_string_literal input pos with
     | Parser_Combinators.ParseOk (lexical, pos') ->
@@ -813,11 +812,11 @@ let parse_literal :
         then
           let lit =
             {
-              RDF_Graph_Executable.lexical_form = lexical;
-              RDF_Graph_Executable.datatype = RDF_Graph_Executable.xsd_string;
-              RDF_Graph_Executable.lang_tag = FStar_Pervasives_Native.None
+              RDF_Term.lexical_form = lexical;
+              RDF_Term.datatype = RDF_Term.xsd_string;
+              RDF_Term.lang_tag = FStar_Pervasives_Native.None
             } in
-          (if RDF_Graph_Executable.literal_wf lit
+          (if RDF_Term.literal_wf lit
            then Parser_Combinators.ParseOk (lit, pos')
            else Parser_Combinators.ParseFail ("invalid literal", pos))
         else
@@ -829,13 +828,11 @@ let parse_literal :
              | Parser_Combinators.ParseOk (lang, pos'') ->
                  let lit =
                    {
-                     RDF_Graph_Executable.lexical_form = lexical;
-                     RDF_Graph_Executable.datatype =
-                       RDF_Graph_Executable.rdf_lang_string;
-                     RDF_Graph_Executable.lang_tag =
-                       (FStar_Pervasives_Native.Some lang)
+                     RDF_Term.lexical_form = lexical;
+                     RDF_Term.datatype = RDF_Term.rdf_lang_string;
+                     RDF_Term.lang_tag = (FStar_Pervasives_Native.Some lang)
                    } in
-                 (if RDF_Graph_Executable.literal_wf lit
+                 (if RDF_Term.literal_wf lit
                   then Parser_Combinators.ParseOk (lit, pos'')
                   else Parser_Combinators.ParseFail ("invalid literal", pos))
              | Parser_Combinators.ParseFail (msg, fpos) ->
@@ -847,12 +844,11 @@ let parse_literal :
                 | Parser_Combinators.ParseOk (dt, pos'') ->
                     let lit =
                       {
-                        RDF_Graph_Executable.lexical_form = lexical;
-                        RDF_Graph_Executable.datatype = dt;
-                        RDF_Graph_Executable.lang_tag =
-                          FStar_Pervasives_Native.None
+                        RDF_Term.lexical_form = lexical;
+                        RDF_Term.datatype = dt;
+                        RDF_Term.lang_tag = FStar_Pervasives_Native.None
                       } in
-                    if RDF_Graph_Executable.literal_wf lit
+                    if RDF_Term.literal_wf lit
                     then Parser_Combinators.ParseOk (lit, pos'')
                     else
                       Parser_Combinators.ParseFail ("invalid literal", pos)
@@ -861,18 +857,16 @@ let parse_literal :
              else
                (let lit =
                   {
-                    RDF_Graph_Executable.lexical_form = lexical;
-                    RDF_Graph_Executable.datatype =
-                      RDF_Graph_Executable.xsd_string;
-                    RDF_Graph_Executable.lang_tag =
-                      FStar_Pervasives_Native.None
+                    RDF_Term.lexical_form = lexical;
+                    RDF_Term.datatype = RDF_Term.xsd_string;
+                    RDF_Term.lang_tag = FStar_Pervasives_Native.None
                   } in
-                if RDF_Graph_Executable.literal_wf lit
+                if RDF_Term.literal_wf lit
                 then Parser_Combinators.ParseOk (lit, pos')
                 else Parser_Combinators.ParseFail ("invalid literal", pos)))
     | Parser_Combinators.ParseFail (msg, fpos) ->
         Parser_Combinators.ParseFail (msg, fpos)
-let parse_subject : RDF_Graph_Executable.subject Parser_Combinators.parser=
+let parse_subject : RDF_Term.subject Parser_Combinators.parser=
   fun input pos ->
     let len = Parser_FastString.fs_byte_length input in
     if pos >= len
@@ -884,8 +878,7 @@ let parse_subject : RDF_Graph_Executable.subject Parser_Combinators.parser=
        then
          match parse_iri input pos with
          | Parser_Combinators.ParseOk (i, pos') ->
-             Parser_Combinators.ParseOk
-               ((RDF_Graph_Executable.S_IRI i), pos')
+             Parser_Combinators.ParseOk ((RDF_Term.S_IRI i), pos')
          | Parser_Combinators.ParseFail (msg, fpos) ->
              Parser_Combinators.ParseFail (msg, fpos)
        else
@@ -893,14 +886,13 @@ let parse_subject : RDF_Graph_Executable.subject Parser_Combinators.parser=
          then
            (match parse_bnode input pos with
             | Parser_Combinators.ParseOk (b, pos') ->
-                Parser_Combinators.ParseOk
-                  ((RDF_Graph_Executable.S_BNode b), pos')
+                Parser_Combinators.ParseOk ((RDF_Term.S_BNode b), pos')
             | Parser_Combinators.ParseFail (msg, fpos) ->
                 Parser_Combinators.ParseFail (msg, fpos))
          else
            Parser_Combinators.ParseFail
              ("expected '<' or '_:' for subject", pos))
-let parse_object : RDF_Graph_Executable.rdf_term Parser_Combinators.parser=
+let parse_object : RDF_Term.rdf_term Parser_Combinators.parser=
   fun input pos ->
     let len = Parser_FastString.fs_byte_length input in
     if pos >= len
@@ -912,8 +904,7 @@ let parse_object : RDF_Graph_Executable.rdf_term Parser_Combinators.parser=
        then
          match parse_iri input pos with
          | Parser_Combinators.ParseOk (i, pos') ->
-             Parser_Combinators.ParseOk
-               ((RDF_Graph_Executable.T_IRI i), pos')
+             Parser_Combinators.ParseOk ((RDF_Term.T_IRI i), pos')
          | Parser_Combinators.ParseFail (msg, fpos) ->
              Parser_Combinators.ParseFail (msg, fpos)
        else
@@ -921,8 +912,7 @@ let parse_object : RDF_Graph_Executable.rdf_term Parser_Combinators.parser=
          then
            (match parse_bnode input pos with
             | Parser_Combinators.ParseOk (b, pos') ->
-                Parser_Combinators.ParseOk
-                  ((RDF_Graph_Executable.T_BNode b), pos')
+                Parser_Combinators.ParseOk ((RDF_Term.T_BNode b), pos')
             | Parser_Combinators.ParseFail (msg, fpos) ->
                 Parser_Combinators.ParseFail (msg, fpos))
          else
@@ -930,14 +920,13 @@ let parse_object : RDF_Graph_Executable.rdf_term Parser_Combinators.parser=
            then
              (match parse_literal input pos with
               | Parser_Combinators.ParseOk (lit, pos') ->
-                  Parser_Combinators.ParseOk
-                    ((RDF_Graph_Executable.T_Literal lit), pos')
+                  Parser_Combinators.ParseOk ((RDF_Term.T_Literal lit), pos')
               | Parser_Combinators.ParseFail (msg, fpos) ->
                   Parser_Combinators.ParseFail (msg, fpos))
            else
              Parser_Combinators.ParseFail
                ("expected '<', '_:', or '\"' for object", pos))
-let parse_triple : RDF_Graph_Executable.triple Parser_Combinators.parser=
+let parse_triple : RDF_Triple.triple Parser_Combinators.parser=
   fun input pos ->
     match pws input pos with
     | Parser_Combinators.ParseOk ((), pos1) ->
@@ -970,9 +959,9 @@ let parse_triple : RDF_Graph_Executable.triple Parser_Combinators.parser=
                                          then
                                            Parser_Combinators.ParseOk
                                              ({
-                                                RDF_Graph_Executable.s = subj;
-                                                RDF_Graph_Executable.p = pred;
-                                                RDF_Graph_Executable.o = obj
+                                                RDF_Triple.s = subj;
+                                                RDF_Triple.p = pred;
+                                                RDF_Triple.o = obj
                                               }, (pos7 + Prims.int_one))
                                          else
                                            Parser_Combinators.ParseFail
@@ -1034,8 +1023,8 @@ let skip_eol (input : Prims.string) (pos : Prims.nat) : Prims.nat=
         else pos + Prims.int_one)
      else if code = (Prims.of_int (0x0A)) then pos + Prims.int_one else pos)
 let rec parse_ntriples_acc (input : Prims.string) (pos : Prims.nat)
-  (acc : RDF_Graph_Executable.triple Prims.list) (fuel : Prims.nat) :
-  RDF_Graph_Executable.triple Prims.list=
+  (acc : RDF_Triple.triple Prims.list) (fuel : Prims.nat) :
+  RDF_Triple.triple Prims.list=
   if fuel = Prims.int_zero
   then FStar_List_Tot_Base.rev acc
   else
@@ -1106,10 +1095,102 @@ let rec parse_ntriples_acc (input : Prims.string) (pos : Prims.nat)
                     else
                       parse_ntriples_acc input pos2 acc
                         (fuel - Prims.int_one)))))
-let parse_ntriples (input : Prims.string) :
-  RDF_Graph_Executable.triple Prims.list=
+let parse_ntriples (input : Prims.string) : RDF_Triple.triple Prims.list=
   let len = Parser_FastString.fs_byte_length input in
   parse_ntriples_acc input Prims.int_zero [] (len + Prims.int_one)
+let rec fold_ntriples_acc :
+  'a .
+    (RDF_Triple.triple -> 'a -> 'a) ->
+      ('a -> Prims.bool) ->
+        Prims.string -> Prims.nat -> 'a -> Prims.nat -> 'a
+  =
+  fun step stop input pos acc fuel ->
+    if fuel = Prims.int_zero
+    then acc
+    else
+      if stop acc
+      then acc
+      else
+        (let len = Parser_FastString.fs_byte_length input in
+         if pos >= len
+         then acc
+         else
+           (let pos1 =
+              match pws input pos with
+              | Parser_Combinators.ParseOk ((), p) -> p
+              | uu___3 -> pos in
+            if pos1 >= len
+            then acc
+            else
+              (let ch = Parser_FastString.fs_byte_index input pos1 in
+               let code = FStar_Char.int_of_char ch in
+               if code = (Prims.of_int (0x23))
+               then
+                 let pos2 = skip_comment input pos1 in
+                 let pos3 = skip_eol input pos2 in
+                 (if pos3 = pos1
+                  then acc
+                  else
+                    fold_ntriples_acc step stop input pos3 acc
+                      (fuel - Prims.int_one))
+               else
+                 if
+                   (code = (Prims.of_int (0x0A))) ||
+                     (code = (Prims.of_int (0x0D)))
+                 then
+                   (let pos2 = skip_eol input pos1 in
+                    if pos2 = pos1
+                    then acc
+                    else
+                      fold_ntriples_acc step stop input pos2 acc
+                        (fuel - Prims.int_one))
+                 else
+                   (match parse_triple input pos1 with
+                    | Parser_Combinators.ParseOk (t, pos2) ->
+                        let acc1 = step t acc in
+                        let pos3 =
+                          match pws input pos2 with
+                          | Parser_Combinators.ParseOk ((), p) -> p
+                          | uu___6 -> pos2 in
+                        let pos4 = skip_comment input pos3 in
+                        let pos5 = skip_eol input pos4 in
+                        let pos_next =
+                          if pos5 > pos1
+                          then pos5
+                          else if pos4 > pos1 then pos4 else pos2 in
+                        if stop acc1
+                        then acc1
+                        else
+                          fold_ntriples_acc step stop input pos_next acc1
+                            (fuel - Prims.int_one)
+                    | Parser_Combinators.ParseFail (uu___6, uu___7) ->
+                        let rec skip_line p f =
+                          if f = Prims.int_zero
+                          then p
+                          else
+                            if p >= len
+                            then p
+                            else
+                              (let c =
+                                 Parser_FastString.fs_byte_index input p in
+                               let cc = FStar_Char.int_of_char c in
+                               if
+                                 (cc = (Prims.of_int (0x0A))) ||
+                                   (cc = (Prims.of_int (0x0D)))
+                               then skip_eol input p
+                               else
+                                 skip_line (p + Prims.int_one)
+                                   (f - Prims.int_one)) in
+                        let pos2 = skip_line pos1 (len - pos1) in
+                        if pos2 = pos1
+                        then acc
+                        else
+                          fold_ntriples_acc step stop input pos2 acc
+                            (fuel - Prims.int_one)))))
+let fold_ntriples (step : RDF_Triple.triple -> 'a -> 'a)
+  (stop : 'a -> Prims.bool) (init : 'a) (input : Prims.string) : 'a=
+  let len = Parser_FastString.fs_byte_length input in
+  fold_ntriples_acc step stop input Prims.int_zero init (len + Prims.int_one)
 let validate_iri (input : Prims.string) (pos : Prims.nat) :
   Prims.nat Parser_Combinators.parse_result=
   let len = Parser_FastString.fs_byte_length input in
@@ -1407,8 +1488,8 @@ let count_ntriples (input : Prims.string) : Prims.nat=
   count_ntriples_acc input Prims.int_zero Prims.int_zero
     (len + Prims.int_one)
 let rec parse_ntriples_strict_acc (input : Prims.string) (pos : Prims.nat)
-  (acc : RDF_Graph_Executable.triple Prims.list) (fuel : Prims.nat) :
-  RDF_Graph_Executable.triple Prims.list FStar_Pervasives_Native.option=
+  (acc : RDF_Triple.triple Prims.list) (fuel : Prims.nat) :
+  RDF_Triple.triple Prims.list FStar_Pervasives_Native.option=
   if fuel = Prims.int_zero
   then FStar_Pervasives_Native.None
   else
@@ -1467,6 +1548,6 @@ let rec parse_ntriples_strict_acc (input : Prims.string) (pos : Prims.nat)
                 | Parser_Combinators.ParseFail (uu___5, uu___6) ->
                     FStar_Pervasives_Native.None))))
 let parse_ntriples_strict (input : Prims.string) :
-  RDF_Graph_Executable.triple Prims.list FStar_Pervasives_Native.option=
+  RDF_Triple.triple Prims.list FStar_Pervasives_Native.option=
   let len = Parser_FastString.fs_byte_length input in
   parse_ntriples_strict_acc input Prims.int_zero [] (len + Prims.int_one)

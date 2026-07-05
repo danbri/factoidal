@@ -16,8 +16,7 @@ let __proj__Mkturtle_state__item__bnode_counter (projectee : turtle_state) :
   | { prefixes; base_iri; bnode_counter;_} -> bnode_counter
 let empty_turtle_state : turtle_state=
   { prefixes = []; base_iri = ""; bnode_counter = Prims.int_zero }
-let fresh_bnode (st : turtle_state) :
-  (RDF_Graph_Executable.bnode_id * turtle_state)=
+let fresh_bnode (st : turtle_state) : (RDF_Term.bnode_id * turtle_state)=
   let id =
     FStar_String.concat "" ["_anon"; Prims.string_of_int st.bnode_counter] in
   (id,
@@ -886,8 +885,7 @@ let parse_prefixed_name (input : Prims.string) (pos : Prims.nat) :
   | Parser_Combinators.ParseFail (msg, fpos) ->
       Parser_Combinators.ParseFail (msg, fpos)
 let parse_turtle_iri (st : turtle_state) (input : Prims.string)
-  (pos : Prims.nat) :
-  RDF_Graph_Executable.iri Parser_Combinators.parse_result=
+  (pos : Prims.nat) : RDF_Term.iri Parser_Combinators.parse_result=
   let len = Parser_FastString.fs_byte_length input in
   if pos >= len
   then Parser_Combinators.ParseFail ("expected IRI", pos)
@@ -908,7 +906,7 @@ let parse_turtle_iri (st : turtle_state) (input : Prims.string)
               then Parser_Combinators.ParseOk (i, pos')
               else
                 (let resolved = resolve_iri_hint st i false in
-                 if RDF_Graph_Executable.is_iri resolved
+                 if RDF_Term.is_iri resolved
                  then Parser_Combinators.ParseOk (resolved, pos')
                  else
                    Parser_Combinators.ParseFail ("resolved IRI invalid", pos)))
@@ -1065,8 +1063,7 @@ let is_digit_char (c : FStar_Char.char) : Prims.bool=
   let code = FStar_Char.int_of_char c in
   (code >= (Prims.of_int (0x30))) && (code <= (Prims.of_int (0x39)))
 let parse_numeric_literal (input : Prims.string) (pos : Prims.nat) :
-  (Prims.string * RDF_Graph_Executable.wf_iri)
-    Parser_Combinators.parse_result=
+  (Prims.string * RDF_Term.wf_iri) Parser_Combinators.parse_result=
   let len = Parser_FastString.fs_byte_length input in
   if pos >= len
   then Parser_Combinators.ParseFail ("expected numeric literal", pos)
@@ -1161,9 +1158,7 @@ let parse_numeric_literal (input : Prims.string) (pos : Prims.nat) :
                 FStar_String.string_of_list (FStar_List_Tot_Base.rev acc) in
               let lexical = FStar_String.concat "" [sign_str; num_str] in
               let dt =
-                if has_e
-                then RDF_Graph_Executable.xsd_double
-                else RDF_Graph_Executable.xsd_decimal in
+                if has_e then RDF_Term.xsd_double else RDF_Term.xsd_decimal in
               Parser_Combinators.ParseOk ((lexical, dt), pos')
           | Parser_Combinators.ParseFail (msg, fpos) ->
               Parser_Combinators.ParseFail (msg, fpos)
@@ -1184,11 +1179,11 @@ let parse_numeric_literal (input : Prims.string) (pos : Prims.nat) :
                  let lexical = FStar_String.concat "" [sign_str; num_str] in
                  let dt =
                    if has_e
-                   then RDF_Graph_Executable.xsd_double
+                   then RDF_Term.xsd_double
                    else
                      if has_dot
-                     then RDF_Graph_Executable.xsd_decimal
-                     else RDF_Graph_Executable.xsd_integer in
+                     then RDF_Term.xsd_decimal
+                     else RDF_Term.xsd_integer in
                  Parser_Combinators.ParseOk ((lexical, dt), pos'))
           | Parser_Combinators.ParseFail (msg, fpos) ->
               Parser_Combinators.ParseFail (msg, fpos))
@@ -1770,8 +1765,7 @@ let parse_turtle_string (input : Prims.string) (pos : Prims.nat) :
                  parse_single_string_body input (pos + Prims.int_one) [] fuel))
        else Parser_Combinators.ParseFail ("expected string literal", pos))
 let parse_turtle_literal (st : turtle_state) (input : Prims.string)
-  (pos : Prims.nat) :
-  RDF_Graph_Executable.literal Parser_Combinators.parse_result=
+  (pos : Prims.nat) : RDF_Term.literal Parser_Combinators.parse_result=
   match parse_turtle_string input pos with
   | Parser_Combinators.ParseOk (lexical, pos') ->
       let len = Parser_FastString.fs_byte_length input in
@@ -1779,9 +1773,9 @@ let parse_turtle_literal (st : turtle_state) (input : Prims.string)
       then
         Parser_Combinators.ParseOk
           ({
-             RDF_Graph_Executable.lexical_form = lexical;
-             RDF_Graph_Executable.datatype = RDF_Graph_Executable.xsd_string;
-             RDF_Graph_Executable.lang_tag = FStar_Pervasives_Native.None
+             RDF_Term.lexical_form = lexical;
+             RDF_Term.datatype = RDF_Term.xsd_string;
+             RDF_Term.lang_tag = FStar_Pervasives_Native.None
            }, pos')
       else
         (let next = Parser_FastString.fs_byte_index input pos' in
@@ -1792,11 +1786,9 @@ let parse_turtle_literal (st : turtle_state) (input : Prims.string)
            | Parser_Combinators.ParseOk (lang, pos'') ->
                Parser_Combinators.ParseOk
                  ({
-                    RDF_Graph_Executable.lexical_form = lexical;
-                    RDF_Graph_Executable.datatype =
-                      RDF_Graph_Executable.rdf_lang_string;
-                    RDF_Graph_Executable.lang_tag =
-                      (FStar_Pervasives_Native.Some lang)
+                    RDF_Term.lexical_form = lexical;
+                    RDF_Term.datatype = RDF_Term.rdf_lang_string;
+                    RDF_Term.lang_tag = (FStar_Pervasives_Native.Some lang)
                   }, pos'')
            | Parser_Combinators.ParseFail (msg, fpos) ->
                Parser_Combinators.ParseFail (msg, fpos)
@@ -1814,13 +1806,13 @@ let parse_turtle_literal (st : turtle_state) (input : Prims.string)
                            (pos' + (Prims.of_int (2)))
                    with
                    | Parser_Combinators.ParseOk (dt, pos'') ->
-                       (if RDF_Graph_Executable.is_iri dt
+                       (if RDF_Term.is_iri dt
                         then
                           Parser_Combinators.ParseOk
                             ({
-                               RDF_Graph_Executable.lexical_form = lexical;
-                               RDF_Graph_Executable.datatype = dt;
-                               RDF_Graph_Executable.lang_tag =
+                               RDF_Term.lexical_form = lexical;
+                               RDF_Term.datatype = dt;
+                               RDF_Term.lang_tag =
                                  FStar_Pervasives_Native.None
                              }, pos'')
                         else
@@ -1831,29 +1823,23 @@ let parse_turtle_literal (st : turtle_state) (input : Prims.string)
                  else
                    Parser_Combinators.ParseOk
                      ({
-                        RDF_Graph_Executable.lexical_form = lexical;
-                        RDF_Graph_Executable.datatype =
-                          RDF_Graph_Executable.xsd_string;
-                        RDF_Graph_Executable.lang_tag =
-                          FStar_Pervasives_Native.None
+                        RDF_Term.lexical_form = lexical;
+                        RDF_Term.datatype = RDF_Term.xsd_string;
+                        RDF_Term.lang_tag = FStar_Pervasives_Native.None
                       }, pos'))
               else
                 Parser_Combinators.ParseOk
                   ({
-                     RDF_Graph_Executable.lexical_form = lexical;
-                     RDF_Graph_Executable.datatype =
-                       RDF_Graph_Executable.xsd_string;
-                     RDF_Graph_Executable.lang_tag =
-                       FStar_Pervasives_Native.None
+                     RDF_Term.lexical_form = lexical;
+                     RDF_Term.datatype = RDF_Term.xsd_string;
+                     RDF_Term.lang_tag = FStar_Pervasives_Native.None
                    }, pos'))
            else
              Parser_Combinators.ParseOk
                ({
-                  RDF_Graph_Executable.lexical_form = lexical;
-                  RDF_Graph_Executable.datatype =
-                    RDF_Graph_Executable.xsd_string;
-                  RDF_Graph_Executable.lang_tag =
-                    FStar_Pervasives_Native.None
+                  RDF_Term.lexical_form = lexical;
+                  RDF_Term.datatype = RDF_Term.xsd_string;
+                  RDF_Term.lang_tag = FStar_Pervasives_Native.None
                 }, pos'))
   | Parser_Combinators.ParseFail (msg, fpos) ->
       Parser_Combinators.ParseFail (msg, fpos)
@@ -1874,7 +1860,7 @@ let pn_chars_follows (input : Prims.string) (pos : Prims.nat) : Prims.bool=
        (let uu___2 = Parser_FastString.fs_cp_at input pos in
         match uu___2 with | (cp, uu___3) -> is_pn_chars_cp cp))
 let parse_boolean_literal (input : Prims.string) (pos : Prims.nat) :
-  RDF_Graph_Executable.literal Parser_Combinators.parse_result=
+  RDF_Term.literal Parser_Combinators.parse_result=
   match Parser_Combinators.pstring "true" input pos with
   | Parser_Combinators.ParseOk (uu___, pos') ->
       if pn_chars_follows input pos'
@@ -1882,9 +1868,9 @@ let parse_boolean_literal (input : Prims.string) (pos : Prims.nat) :
       else
         Parser_Combinators.ParseOk
           ({
-             RDF_Graph_Executable.lexical_form = "true";
-             RDF_Graph_Executable.datatype = RDF_Graph_Executable.xsd_boolean;
-             RDF_Graph_Executable.lang_tag = FStar_Pervasives_Native.None
+             RDF_Term.lexical_form = "true";
+             RDF_Term.datatype = RDF_Term.xsd_boolean;
+             RDF_Term.lang_tag = FStar_Pervasives_Native.None
            }, pos')
   | Parser_Combinators.ParseFail (uu___, uu___1) ->
       (match Parser_Combinators.pstring "false" input pos with
@@ -1895,18 +1881,16 @@ let parse_boolean_literal (input : Prims.string) (pos : Prims.nat) :
            else
              Parser_Combinators.ParseOk
                ({
-                  RDF_Graph_Executable.lexical_form = "false";
-                  RDF_Graph_Executable.datatype =
-                    RDF_Graph_Executable.xsd_boolean;
-                  RDF_Graph_Executable.lang_tag =
-                    FStar_Pervasives_Native.None
+                  RDF_Term.lexical_form = "false";
+                  RDF_Term.datatype = RDF_Term.xsd_boolean;
+                  RDF_Term.lang_tag = FStar_Pervasives_Native.None
                 }, pos')
        | Parser_Combinators.ParseFail (uu___2, uu___3) ->
            Parser_Combinators.ParseFail ("expected boolean literal", pos))
-let rdf_type_iri : RDF_Graph_Executable.wf_iri=
+let rdf_type_iri : RDF_Term.wf_iri=
   "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
 let parse_a_keyword (input : Prims.string) (pos : Prims.nat) :
-  RDF_Graph_Executable.wf_iri Parser_Combinators.parse_result=
+  RDF_Term.wf_iri Parser_Combinators.parse_result=
   let len = Parser_FastString.fs_byte_length input in
   if pos >= len
   then Parser_Combinators.ParseFail ("expected 'a'", pos)
@@ -1925,38 +1909,38 @@ let parse_a_keyword (input : Prims.string) (pos : Prims.nat) :
            then Parser_Combinators.ParseOk (rdf_type_iri, next_pos)
            else Parser_Combinators.ParseFail ("expected 'a' keyword", pos)))
      else Parser_Combinators.ParseFail ("expected 'a'", pos))
-let rdf_first_iri : RDF_Graph_Executable.wf_iri=
+let rdf_first_iri : RDF_Term.wf_iri=
   "http://www.w3.org/1999/02/22-rdf-syntax-ns#first"
-let rdf_rest_iri : RDF_Graph_Executable.wf_iri=
+let rdf_rest_iri : RDF_Term.wf_iri=
   "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest"
-let rdf_nil_iri : RDF_Graph_Executable.wf_iri=
+let rdf_nil_iri : RDF_Term.wf_iri=
   "http://www.w3.org/1999/02/22-rdf-syntax-ns#nil"
 type object_result =
   {
-  or_term: RDF_Graph_Executable.rdf_term ;
-  or_triples: RDF_Graph_Executable.triple Prims.list ;
+  or_term: RDF_Term.rdf_term ;
+  or_triples: RDF_Triple.triple Prims.list ;
   or_state: turtle_state }
 let __proj__Mkobject_result__item__or_term (projectee : object_result) :
-  RDF_Graph_Executable.rdf_term=
+  RDF_Term.rdf_term=
   match projectee with | { or_term; or_triples; or_state;_} -> or_term
 let __proj__Mkobject_result__item__or_triples (projectee : object_result) :
-  RDF_Graph_Executable.triple Prims.list=
+  RDF_Triple.triple Prims.list=
   match projectee with | { or_term; or_triples; or_state;_} -> or_triples
 let __proj__Mkobject_result__item__or_state (projectee : object_result) :
   turtle_state=
   match projectee with | { or_term; or_triples; or_state;_} -> or_state
 type subject_result =
   {
-  sr_subject: RDF_Graph_Executable.subject ;
-  sr_triples: RDF_Graph_Executable.triple Prims.list ;
+  sr_subject: RDF_Term.subject ;
+  sr_triples: RDF_Triple.triple Prims.list ;
   sr_state: turtle_state ;
   sr_is_bnode_proplist: Prims.bool }
 let __proj__Mksubject_result__item__sr_subject (projectee : subject_result) :
-  RDF_Graph_Executable.subject=
+  RDF_Term.subject=
   match projectee with
   | { sr_subject; sr_triples; sr_state; sr_is_bnode_proplist;_} -> sr_subject
 let __proj__Mksubject_result__item__sr_triples (projectee : subject_result) :
-  RDF_Graph_Executable.triple Prims.list=
+  RDF_Triple.triple Prims.list=
   match projectee with
   | { sr_subject; sr_triples; sr_state; sr_is_bnode_proplist;_} -> sr_triples
 let __proj__Mksubject_result__item__sr_state (projectee : subject_result) :
@@ -1984,11 +1968,11 @@ let rec parse_turtle_object (st : turtle_state) (input : Prims.string)
         then
           match parse_turtle_iri st input pos with
           | Parser_Combinators.ParseOk (i, pos') ->
-              (if RDF_Graph_Executable.is_iri i
+              (if RDF_Term.is_iri i
                then
                  Parser_Combinators.ParseOk
                    ({
-                      or_term = (RDF_Graph_Executable.T_IRI i);
+                      or_term = (RDF_Term.T_IRI i);
                       or_triples = [];
                       or_state = st
                     }, pos')
@@ -2002,7 +1986,7 @@ let rec parse_turtle_object (st : turtle_state) (input : Prims.string)
              | Parser_Combinators.ParseOk (b, pos') ->
                  Parser_Combinators.ParseOk
                    ({
-                      or_term = (RDF_Graph_Executable.T_BNode b);
+                      or_term = (RDF_Term.T_BNode b);
                       or_triples = [];
                       or_state = st
                     }, pos')
@@ -2015,11 +1999,11 @@ let rec parse_turtle_object (st : turtle_state) (input : Prims.string)
             then
               (match parse_turtle_literal st input pos with
                | Parser_Combinators.ParseOk (lit, pos') ->
-                   if RDF_Graph_Executable.literal_wf lit
+                   if RDF_Term.literal_wf lit
                    then
                      Parser_Combinators.ParseOk
                        ({
-                          or_term = (RDF_Graph_Executable.T_Literal lit);
+                          or_term = (RDF_Term.T_Literal lit);
                           or_triples = [];
                           or_state = st
                         }, pos')
@@ -2042,15 +2026,14 @@ let rec parse_turtle_object (st : turtle_state) (input : Prims.string)
                           then
                             Parser_Combinators.ParseOk
                               ({
-                                 or_term =
-                                   (RDF_Graph_Executable.T_BNode bnode_id);
+                                 or_term = (RDF_Term.T_BNode bnode_id);
                                  or_triples = [];
                                  or_state = st1
                                }, (pos2 + Prims.int_one))
                           else
                             (match parse_predicate_object_list st1
-                                     (RDF_Graph_Executable.S_BNode bnode_id)
-                                     input pos2 (fuel - Prims.int_one)
+                                     (RDF_Term.S_BNode bnode_id) input pos2
+                                     (fuel - Prims.int_one)
                              with
                              | Parser_Combinators.ParseOk
                                  ((triples, st2), pos3) ->
@@ -2066,8 +2049,7 @@ let rec parse_turtle_object (st : turtle_state) (input : Prims.string)
                                         Parser_Combinators.ParseOk
                                           ({
                                              or_term =
-                                               (RDF_Graph_Executable.T_BNode
-                                                  bnode_id);
+                                               (RDF_Term.T_BNode bnode_id);
                                              or_triples = triples;
                                              or_state = st2
                                            }, (pos4 + Prims.int_one))
@@ -2086,7 +2068,7 @@ let rec parse_turtle_object (st : turtle_state) (input : Prims.string)
                    | Parser_Combinators.ParseOk (lit, pos') ->
                        Parser_Combinators.ParseOk
                          ({
-                            or_term = (RDF_Graph_Executable.T_Literal lit);
+                            or_term = (RDF_Term.T_Literal lit);
                             or_triples = [];
                             or_state = st
                           }, pos')
@@ -2095,17 +2077,16 @@ let rec parse_turtle_object (st : turtle_state) (input : Prims.string)
                         | Parser_Combinators.ParseOk ((lexical, dt), pos') ->
                             let lit =
                               {
-                                RDF_Graph_Executable.lexical_form = lexical;
-                                RDF_Graph_Executable.datatype = dt;
-                                RDF_Graph_Executable.lang_tag =
+                                RDF_Term.lexical_form = lexical;
+                                RDF_Term.datatype = dt;
+                                RDF_Term.lang_tag =
                                   FStar_Pervasives_Native.None
                               } in
-                            if RDF_Graph_Executable.literal_wf lit
+                            if RDF_Term.literal_wf lit
                             then
                               Parser_Combinators.ParseOk
                                 ({
-                                   or_term =
-                                     (RDF_Graph_Executable.T_Literal lit);
+                                   or_term = (RDF_Term.T_Literal lit);
                                    or_triples = [];
                                    or_state = st
                                  }, pos')
@@ -2119,13 +2100,12 @@ let rec parse_turtle_object (st : turtle_state) (input : Prims.string)
                                  (match resolve_prefixed_name st prefix local
                                   with
                                   | FStar_Pervasives_Native.Some resolved ->
-                                      if RDF_Graph_Executable.is_iri resolved
+                                      if RDF_Term.is_iri resolved
                                       then
                                         Parser_Combinators.ParseOk
                                           ({
                                              or_term =
-                                               (RDF_Graph_Executable.T_IRI
-                                                  resolved);
+                                               (RDF_Term.T_IRI resolved);
                                              or_triples = [];
                                              or_state = st
                                            }, pos')
@@ -2160,7 +2140,7 @@ and parse_collection (st : turtle_state) (input : Prims.string)
            then
              Parser_Combinators.ParseOk
                ({
-                  or_term = (RDF_Graph_Executable.T_IRI rdf_nil_iri);
+                  or_term = (RDF_Term.T_IRI rdf_nil_iri);
                   or_triples = [];
                   or_state = st
                 }, (pos1 + Prims.int_one))
@@ -2171,12 +2151,12 @@ and parse_collection (st : turtle_state) (input : Prims.string)
                   let uu___3 = fresh_bnode first_obj.or_state in
                   (match uu___3 with
                    | (node_id, st2) ->
-                       let node_subj = RDF_Graph_Executable.S_BNode node_id in
+                       let node_subj = RDF_Term.S_BNode node_id in
                        let first_triple =
                          {
-                           RDF_Graph_Executable.s = node_subj;
-                           RDF_Graph_Executable.p = rdf_first_iri;
-                           RDF_Graph_Executable.o = (first_obj.or_term)
+                           RDF_Triple.s = node_subj;
+                           RDF_Triple.p = rdf_first_iri;
+                           RDF_Triple.o = (first_obj.or_term)
                          } in
                        (match parse_collection_rest st2 node_subj input pos2
                                 (fuel - Prims.int_one)
@@ -2185,17 +2165,16 @@ and parse_collection (st : turtle_state) (input : Prims.string)
                             ((rest_triples, rest_term, st3), pos3) ->
                             let rest_triple =
                               {
-                                RDF_Graph_Executable.s = node_subj;
-                                RDF_Graph_Executable.p = rdf_rest_iri;
-                                RDF_Graph_Executable.o = rest_term
+                                RDF_Triple.s = node_subj;
+                                RDF_Triple.p = rdf_rest_iri;
+                                RDF_Triple.o = rest_term
                               } in
                             let all_triples =
                               append_list first_obj.or_triples (first_triple
                                 :: rest_triple :: rest_triples) in
                             Parser_Combinators.ParseOk
                               ({
-                                 or_term =
-                                   (RDF_Graph_Executable.T_BNode node_id);
+                                 or_term = (RDF_Term.T_BNode node_id);
                                  or_triples = all_triples;
                                  or_state = st3
                                }, pos3)
@@ -2203,11 +2182,10 @@ and parse_collection (st : turtle_state) (input : Prims.string)
                             Parser_Combinators.ParseFail (msg, fpos)))
               | Parser_Combinators.ParseFail (msg, fpos) ->
                   Parser_Combinators.ParseFail (msg, fpos)))
-and parse_collection_rest (st : turtle_state)
-  (prev_subj : RDF_Graph_Executable.subject) (input : Prims.string)
-  (pos : Prims.nat) (fuel : Prims.nat) :
-  (RDF_Graph_Executable.triple Prims.list * RDF_Graph_Executable.rdf_term *
-    turtle_state) Parser_Combinators.parse_result=
+and parse_collection_rest (st : turtle_state) (prev_subj : RDF_Term.subject)
+  (input : Prims.string) (pos : Prims.nat) (fuel : Prims.nat) :
+  (RDF_Triple.triple Prims.list * RDF_Term.rdf_term * turtle_state)
+    Parser_Combinators.parse_result=
   if fuel = Prims.int_zero
   then
     Parser_Combinators.ParseFail ("recursion limit in collection rest", pos)
@@ -2224,7 +2202,7 @@ and parse_collection_rest (st : turtle_state)
                = (Prims.of_int (0x29))
            then
              Parser_Combinators.ParseOk
-               (([], (RDF_Graph_Executable.T_IRI rdf_nil_iri), st),
+               (([], (RDF_Term.T_IRI rdf_nil_iri), st),
                  (pos1 + Prims.int_one))
            else
              (match parse_turtle_object st input pos1 (fuel - Prims.int_one)
@@ -2233,12 +2211,12 @@ and parse_collection_rest (st : turtle_state)
                   let uu___3 = fresh_bnode next_obj.or_state in
                   (match uu___3 with
                    | (node_id, st2) ->
-                       let node_subj = RDF_Graph_Executable.S_BNode node_id in
+                       let node_subj = RDF_Term.S_BNode node_id in
                        let first_triple =
                          {
-                           RDF_Graph_Executable.s = node_subj;
-                           RDF_Graph_Executable.p = rdf_first_iri;
-                           RDF_Graph_Executable.o = (next_obj.or_term)
+                           RDF_Triple.s = node_subj;
+                           RDF_Triple.p = rdf_first_iri;
+                           RDF_Triple.o = (next_obj.or_term)
                          } in
                        (match parse_collection_rest st2 node_subj input pos2
                                 (fuel - Prims.int_one)
@@ -2247,26 +2225,24 @@ and parse_collection_rest (st : turtle_state)
                             ((rest_triples, rest_term, st3), pos3) ->
                             let rest_triple =
                               {
-                                RDF_Graph_Executable.s = node_subj;
-                                RDF_Graph_Executable.p = rdf_rest_iri;
-                                RDF_Graph_Executable.o = rest_term
+                                RDF_Triple.s = node_subj;
+                                RDF_Triple.p = rdf_rest_iri;
+                                RDF_Triple.o = rest_term
                               } in
                             let all_triples =
                               append_list next_obj.or_triples (first_triple
                                 :: rest_triple :: rest_triples) in
                             Parser_Combinators.ParseOk
-                              ((all_triples,
-                                 (RDF_Graph_Executable.T_BNode node_id), st3),
+                              ((all_triples, (RDF_Term.T_BNode node_id), st3),
                                 pos3)
                         | Parser_Combinators.ParseFail (msg, fpos) ->
                             Parser_Combinators.ParseFail (msg, fpos)))
               | Parser_Combinators.ParseFail (msg, fpos) ->
                   Parser_Combinators.ParseFail (msg, fpos)))
-and parse_object_list_rev (st : turtle_state)
-  (subj : RDF_Graph_Executable.subject) (pred : RDF_Graph_Executable.wf_iri)
-  (input : Prims.string) (pos : Prims.nat)
-  (acc_rev : RDF_Graph_Executable.triple Prims.list) (fuel : Prims.nat) :
-  (RDF_Graph_Executable.triple Prims.list * turtle_state)
+and parse_object_list_rev (st : turtle_state) (subj : RDF_Term.subject)
+  (pred : RDF_Term.wf_iri) (input : Prims.string) (pos : Prims.nat)
+  (acc_rev : RDF_Triple.triple Prims.list) (fuel : Prims.nat) :
+  (RDF_Triple.triple Prims.list * turtle_state)
     Parser_Combinators.parse_result=
   if fuel = Prims.int_zero
   then Parser_Combinators.ParseFail ("recursion limit in object list", pos)
@@ -2275,9 +2251,9 @@ and parse_object_list_rev (st : turtle_state)
      | Parser_Combinators.ParseOk (obj_res, pos1) ->
          let t =
            {
-             RDF_Graph_Executable.s = subj;
-             RDF_Graph_Executable.p = pred;
-             RDF_Graph_Executable.o = (obj_res.or_term)
+             RDF_Triple.s = subj;
+             RDF_Triple.p = pred;
+             RDF_Triple.o = (obj_res.or_term)
            } in
          let acc_rev1 = t :: (rev_prepend obj_res.or_triples acc_rev) in
          (match turtle_ws input pos1 with
@@ -2298,10 +2274,10 @@ and parse_object_list_rev (st : turtle_state)
                   ((acc_rev1, (obj_res.or_state)), pos2))
      | Parser_Combinators.ParseFail (msg, fpos) ->
          Parser_Combinators.ParseFail (msg, fpos))
-and parse_object_list (st : turtle_state)
-  (subj : RDF_Graph_Executable.subject) (pred : RDF_Graph_Executable.wf_iri)
-  (input : Prims.string) (pos : Prims.nat) (fuel : Prims.nat) :
-  (RDF_Graph_Executable.triple Prims.list * turtle_state)
+and parse_object_list (st : turtle_state) (subj : RDF_Term.subject)
+  (pred : RDF_Term.wf_iri) (input : Prims.string) (pos : Prims.nat)
+  (fuel : Prims.nat) :
+  (RDF_Triple.triple Prims.list * turtle_state)
     Parser_Combinators.parse_result=
   if fuel = Prims.int_zero
   then Parser_Combinators.ParseFail ("recursion limit in object list", pos)
@@ -2316,7 +2292,7 @@ and parse_object_list (st : turtle_state)
          Parser_Combinators.ParseFail (msg, fpos))
 and parse_turtle_predicate (st : turtle_state) (input : Prims.string)
   (pos : Prims.nat) (fuel : Prims.nat) :
-  RDF_Graph_Executable.wf_iri Parser_Combinators.parse_result=
+  RDF_Term.wf_iri Parser_Combinators.parse_result=
   if fuel = Prims.int_zero
   then Parser_Combinators.ParseFail ("recursion limit", pos)
   else
@@ -2326,17 +2302,16 @@ and parse_turtle_predicate (st : turtle_state) (input : Prims.string)
      | Parser_Combinators.ParseFail (uu___1, uu___2) ->
          (match parse_turtle_iri st input pos with
           | Parser_Combinators.ParseOk (i, pos') ->
-              if RDF_Graph_Executable.is_iri i
+              if RDF_Term.is_iri i
               then Parser_Combinators.ParseOk (i, pos')
               else
                 Parser_Combinators.ParseFail ("invalid predicate IRI", pos)
           | Parser_Combinators.ParseFail (msg, fpos) ->
               Parser_Combinators.ParseFail (msg, fpos)))
 and parse_predicate_object_list_rev (st : turtle_state)
-  (subj : RDF_Graph_Executable.subject) (input : Prims.string)
-  (pos : Prims.nat) (acc_rev : RDF_Graph_Executable.triple Prims.list)
-  (fuel : Prims.nat) :
-  (RDF_Graph_Executable.triple Prims.list * turtle_state)
+  (subj : RDF_Term.subject) (input : Prims.string) (pos : Prims.nat)
+  (acc_rev : RDF_Triple.triple Prims.list) (fuel : Prims.nat) :
+  (RDF_Triple.triple Prims.list * turtle_state)
     Parser_Combinators.parse_result=
   if fuel = Prims.int_zero
   then
@@ -2395,10 +2370,9 @@ and parse_predicate_object_list_rev (st : turtle_state)
                    Parser_Combinators.ParseFail (msg, fpos)))
      | Parser_Combinators.ParseFail (msg, fpos) ->
          Parser_Combinators.ParseFail (msg, fpos))
-and parse_predicate_object_list (st : turtle_state)
-  (subj : RDF_Graph_Executable.subject) (input : Prims.string)
-  (pos : Prims.nat) (fuel : Prims.nat) :
-  (RDF_Graph_Executable.triple Prims.list * turtle_state)
+and parse_predicate_object_list (st : turtle_state) (subj : RDF_Term.subject)
+  (input : Prims.string) (pos : Prims.nat) (fuel : Prims.nat) :
+  (RDF_Triple.triple Prims.list * turtle_state)
     Parser_Combinators.parse_result=
   if fuel = Prims.int_zero
   then
@@ -2414,10 +2388,9 @@ and parse_predicate_object_list (st : turtle_state)
      | Parser_Combinators.ParseFail (msg, fpos) ->
          Parser_Combinators.ParseFail (msg, fpos))
 and parse_trailing_semicolons_rev (st : turtle_state)
-  (triples_rev : RDF_Graph_Executable.triple Prims.list)
-  (subj : RDF_Graph_Executable.subject) (input : Prims.string)
-  (pos : Prims.nat) (fuel : Prims.nat) :
-  (RDF_Graph_Executable.triple Prims.list * turtle_state)
+  (triples_rev : RDF_Triple.triple Prims.list) (subj : RDF_Term.subject)
+  (input : Prims.string) (pos : Prims.nat) (fuel : Prims.nat) :
+  (RDF_Triple.triple Prims.list * turtle_state)
     Parser_Combinators.parse_result=
   if fuel = Prims.int_zero
   then Parser_Combinators.ParseOk ((triples_rev, st), pos)
@@ -2471,11 +2444,11 @@ let parse_turtle_subject (st : turtle_state) (input : Prims.string)
         then
           match parse_turtle_iri st input pos with
           | Parser_Combinators.ParseOk (i, pos') ->
-              (if RDF_Graph_Executable.is_iri i
+              (if RDF_Term.is_iri i
                then
                  Parser_Combinators.ParseOk
                    ({
-                      sr_subject = (RDF_Graph_Executable.S_IRI i);
+                      sr_subject = (RDF_Term.S_IRI i);
                       sr_triples = [];
                       sr_state = st;
                       sr_is_bnode_proplist = false
@@ -2490,7 +2463,7 @@ let parse_turtle_subject (st : turtle_state) (input : Prims.string)
              | Parser_Combinators.ParseOk (b, pos') ->
                  Parser_Combinators.ParseOk
                    ({
-                      sr_subject = (RDF_Graph_Executable.S_BNode b);
+                      sr_subject = (RDF_Term.S_BNode b);
                       sr_triples = [];
                       sr_state = st;
                       sr_is_bnode_proplist = false
@@ -2513,16 +2486,15 @@ let parse_turtle_subject (st : turtle_state) (input : Prims.string)
                         then
                           Parser_Combinators.ParseOk
                             ({
-                               sr_subject =
-                                 (RDF_Graph_Executable.S_BNode bnode_id);
+                               sr_subject = (RDF_Term.S_BNode bnode_id);
                                sr_triples = [];
                                sr_state = st1;
                                sr_is_bnode_proplist = false
                              }, (pos2 + Prims.int_one))
                         else
                           (match parse_predicate_object_list st1
-                                   (RDF_Graph_Executable.S_BNode bnode_id)
-                                   input pos2 (fuel - Prims.int_one)
+                                   (RDF_Term.S_BNode bnode_id) input pos2
+                                   (fuel - Prims.int_one)
                            with
                            | Parser_Combinators.ParseOk
                                ((triples, st2), pos3) ->
@@ -2538,8 +2510,7 @@ let parse_turtle_subject (st : turtle_state) (input : Prims.string)
                                       Parser_Combinators.ParseOk
                                         ({
                                            sr_subject =
-                                             (RDF_Graph_Executable.S_BNode
-                                                bnode_id);
+                                             (RDF_Term.S_BNode bnode_id);
                                            sr_triples = triples;
                                            sr_state = st2;
                                            sr_is_bnode_proplist = true
@@ -2557,18 +2528,18 @@ let parse_turtle_subject (st : turtle_state) (input : Prims.string)
                  with
                  | Parser_Combinators.ParseOk (obj_res, pos') ->
                      (match obj_res.or_term with
-                      | RDF_Graph_Executable.T_IRI i ->
+                      | RDF_Term.T_IRI i ->
                           Parser_Combinators.ParseOk
                             ({
-                               sr_subject = (RDF_Graph_Executable.S_IRI i);
+                               sr_subject = (RDF_Term.S_IRI i);
                                sr_triples = (obj_res.or_triples);
                                sr_state = (obj_res.or_state);
                                sr_is_bnode_proplist = false
                              }, pos')
-                      | RDF_Graph_Executable.T_BNode b ->
+                      | RDF_Term.T_BNode b ->
                           Parser_Combinators.ParseOk
                             ({
-                               sr_subject = (RDF_Graph_Executable.S_BNode b);
+                               sr_subject = (RDF_Term.S_BNode b);
                                sr_triples = (obj_res.or_triples);
                                sr_state = (obj_res.or_state);
                                sr_is_bnode_proplist = false
@@ -2584,12 +2555,11 @@ let parse_turtle_subject (st : turtle_state) (input : Prims.string)
                  | Parser_Combinators.ParseOk ((prefix, local), pos') ->
                      (match resolve_prefixed_name st prefix local with
                       | FStar_Pervasives_Native.Some resolved ->
-                          if RDF_Graph_Executable.is_iri resolved
+                          if RDF_Term.is_iri resolved
                           then
                             Parser_Combinators.ParseOk
                               ({
-                                 sr_subject =
-                                   (RDF_Graph_Executable.S_IRI resolved);
+                                 sr_subject = (RDF_Term.S_IRI resolved);
                                  sr_triples = [];
                                  sr_state = st;
                                  sr_is_bnode_proplist = false
@@ -2605,7 +2575,7 @@ let parse_turtle_subject (st : turtle_state) (input : Prims.string)
                      Parser_Combinators.ParseFail ("expected subject", pos))))
 let parse_turtle_statement (st : turtle_state) (input : Prims.string)
   (pos : Prims.nat) (fuel : Prims.nat) :
-  (RDF_Graph_Executable.triple Prims.list * turtle_state)
+  (RDF_Triple.triple Prims.list * turtle_state)
     Parser_Combinators.parse_result=
   if fuel = Prims.int_zero
   then Parser_Combinators.ParseFail ("recursion limit", pos)
@@ -2730,11 +2700,11 @@ let parse_turtle_statement (st : turtle_state) (input : Prims.string)
                           Parser_Combinators.ParseFail (msg, fpos)))))
 type turtle_doc_result =
   {
-  tdr_triples: RDF_Graph_Executable.triple Prims.list ;
+  tdr_triples: RDF_Triple.triple Prims.list ;
   tdr_state: turtle_state ;
   tdr_has_error: Prims.bool }
 let __proj__Mkturtle_doc_result__item__tdr_triples
-  (projectee : turtle_doc_result) : RDF_Graph_Executable.triple Prims.list=
+  (projectee : turtle_doc_result) : RDF_Triple.triple Prims.list=
   match projectee with
   | { tdr_triples; tdr_state; tdr_has_error;_} -> tdr_triples
 let __proj__Mkturtle_doc_result__item__tdr_state
@@ -2746,20 +2716,28 @@ let __proj__Mkturtle_doc_result__item__tdr_has_error
   match projectee with
   | { tdr_triples; tdr_state; tdr_has_error;_} -> tdr_has_error
 let finish_turtle_doc (st : turtle_state)
-  (acc : RDF_Graph_Executable.triple Prims.list) (has_error : Prims.bool) :
+  (acc : RDF_Triple.triple Prims.list) (has_error : Prims.bool) :
   turtle_doc_result=
   {
     tdr_triples = (FStar_List_Tot_Base.rev acc);
     tdr_state = st;
     tdr_has_error = has_error
   }
-let rec count_triples (ts : RDF_Graph_Executable.triple Prims.list) :
-  Prims.nat=
+let rec count_triples (ts : RDF_Triple.triple Prims.list) : Prims.nat=
   match ts with
   | [] -> Prims.int_zero
   | uu___::rest -> Prims.int_one + (count_triples rest)
+let rec fold_step_triples :
+  'a .
+    (RDF_Triple.triple -> 'a -> 'a) ->
+      RDF_Triple.triple Prims.list -> 'a -> 'a
+  =
+  fun step ts acc ->
+    match ts with
+    | [] -> acc
+    | t::rest -> fold_step_triples step rest (step t acc)
 let rec parse_turtle_doc (st : turtle_state) (input : Prims.string)
-  (pos : Prims.nat) (acc : RDF_Graph_Executable.triple Prims.list)
+  (pos : Prims.nat) (acc : RDF_Triple.triple Prims.list)
   (has_error : Prims.bool) (fuel : Prims.nat) : turtle_doc_result=
   if fuel = Prims.int_zero
   then finish_turtle_doc st acc has_error
@@ -2811,15 +2789,57 @@ let rec parse_turtle_count_doc (st : turtle_state) (input : Prims.string)
                 if pos2 = pos1
                 then (acc, true)
                 else parse_turtle_count_doc st input pos2 acc true fuel'))
-let parse_turtle (input : Prims.string) :
-  RDF_Graph_Executable.triple Prims.list=
+let rec fold_turtle_triples_acc :
+  'a .
+    (RDF_Triple.triple -> 'a -> 'a) ->
+      ('a -> Prims.bool) ->
+        turtle_state ->
+          Prims.string ->
+            Prims.nat -> 'a -> Prims.bool -> Prims.nat -> ('a * Prims.bool)
+  =
+  fun step stop st input pos acc has_error fuel ->
+    if fuel = Prims.int_zero
+    then (acc, has_error)
+    else
+      if stop acc
+      then (acc, has_error)
+      else
+        (let fuel' =
+           if fuel >= Prims.int_one
+           then fuel - Prims.int_one
+           else Prims.int_zero in
+         let len = Parser_FastString.fs_byte_length input in
+         match turtle_ws input pos with
+         | Parser_Combinators.ParseOk ((), pos1) ->
+             if pos1 >= len
+             then (acc, has_error)
+             else
+               (match parse_turtle_statement st input pos1 fuel with
+                | Parser_Combinators.ParseOk ((triples, st'), pos2) ->
+                    let acc1 = fold_step_triples step triples acc in
+                    if stop acc1
+                    then (acc1, has_error)
+                    else
+                      if pos2 = pos1
+                      then (acc1, has_error)
+                      else
+                        fold_turtle_triples_acc step stop st' input pos2 acc1
+                          has_error fuel'
+                | Parser_Combinators.ParseFail (uu___3, uu___4) ->
+                    let pos2 = skip_to_eol input pos1 (len - pos1) in
+                    if pos2 = pos1
+                    then (acc, true)
+                    else
+                      fold_turtle_triples_acc step stop st input pos2 acc
+                        true fuel'))
+let parse_turtle (input : Prims.string) : RDF_Triple.triple Prims.list=
   let len = Parser_FastString.fs_byte_length input in
   let fuel = (len + Prims.int_one) * (Prims.of_int (2)) in
   let r =
     parse_turtle_doc empty_turtle_state input Prims.int_zero [] false fuel in
   r.tdr_triples
 let parse_turtle_with_base (input : Prims.string) (base : Prims.string) :
-  RDF_Graph_Executable.triple Prims.list=
+  RDF_Triple.triple Prims.list=
   let len = Parser_FastString.fs_byte_length input in
   let fuel = (len + Prims.int_one) * (Prims.of_int (2)) in
   let st =
@@ -2850,8 +2870,30 @@ let count_turtle_triples_with_base (input : Prims.string)
   let uu___ =
     parse_turtle_count_doc st input Prims.int_zero Prims.int_zero false fuel in
   match uu___ with | (count, uu___1) -> count
+let fold_turtle_triples (step : RDF_Triple.triple -> 'a -> 'a)
+  (stop : 'a -> Prims.bool) (init : 'a) (input : Prims.string) : 'a=
+  let len = Parser_FastString.fs_byte_length input in
+  let fuel = (len + Prims.int_one) * (Prims.of_int (2)) in
+  let uu___ =
+    fold_turtle_triples_acc step stop empty_turtle_state input Prims.int_zero
+      init false fuel in
+  match uu___ with | (acc, uu___1) -> acc
+let fold_turtle_triples_with_base (step : RDF_Triple.triple -> 'a -> 'a)
+  (stop : 'a -> Prims.bool) (init : 'a) (input : Prims.string)
+  (base : Prims.string) : 'a=
+  let len = Parser_FastString.fs_byte_length input in
+  let fuel = (len + Prims.int_one) * (Prims.of_int (2)) in
+  let st =
+    {
+      prefixes = (empty_turtle_state.prefixes);
+      base_iri = base;
+      bnode_counter = (empty_turtle_state.bnode_counter)
+    } in
+  let uu___ =
+    fold_turtle_triples_acc step stop st input Prims.int_zero init false fuel in
+  match uu___ with | (acc, uu___1) -> acc
 let parse_turtle_strict (input : Prims.string) :
-  RDF_Graph_Executable.triple Prims.list FStar_Pervasives_Native.option=
+  RDF_Triple.triple Prims.list FStar_Pervasives_Native.option=
   let len = Parser_FastString.fs_byte_length input in
   let fuel = (len + Prims.int_one) * (Prims.of_int (2)) in
   let r =
@@ -2861,7 +2903,7 @@ let parse_turtle_strict (input : Prims.string) :
   else FStar_Pervasives_Native.Some (r.tdr_triples)
 let parse_turtle_with_base_strict (input : Prims.string)
   (base : Prims.string) :
-  RDF_Graph_Executable.triple Prims.list FStar_Pervasives_Native.option=
+  RDF_Triple.triple Prims.list FStar_Pervasives_Native.option=
   let len = Parser_FastString.fs_byte_length input in
   let fuel = (len + Prims.int_one) * (Prims.of_int (2)) in
   let st =

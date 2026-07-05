@@ -383,9 +383,44 @@ whether a design doc is needed first.
    (confirm #98 decoder is in the shipped `build-ocaml.sh` lists). *First:*
    add a default-encoded regression corpus (RLE on `g`/`p`) to
    `tests/local/`. No new design doc.
+
+   **DONE 2026-07-05 (same day, this fix).** The build-wiring question
+   is settled: NOT a wiring gap — `Parquet.Footer.fst`/`Parquet_Footer.ml`
+   were in the shipped binary all along; the #98 decoder had simply
+   never decoded a real DuckDB/pycottas artifact correctly, and #98's
+   own acceptance run (parliament) predates artifacts with these
+   encodings in the sandbox. Three distinct F\* defects in
+   `Parquet.Footer.fst`, all fixed and verified (z3 4.13.3, no `--lax`):
+   (a) `probe_parquet_column_dictionary_page_offset[_in_row_group]` read
+   Thrift field 14 (`bloom_filter_offset`) instead of field 11
+   (`dictionary_page_offset`) — DuckDB writes a bloom filter by default,
+   so the offset looked valid but pointed at bloom bytes and every
+   dictionary decode failed; (b) the RLE_DICTIONARY data-page decoder
+   treated payload byte 0 as the index bit-width, but every
+   DuckDB/pycottas column is Parquet-schema OPTIONAL (SQL `NOT NULL` is
+   not propagated), so each data page opens with a definition-level
+   section (4-byte LE length + RLE levels) that the DLBA path already
+   skipped and the RLE path did not; (c) the decode dispatcher was
+   "try DLBA, fall back to RLE_DICTIONARY" — the DLBA parser, fed
+   RLE_DICTIONARY bytes, can return a spurious `Some []` instead of
+   `None` (this is the exact mechanism of the g21 silent `COUNT=0`); it
+   now dispatches on the page header's declared encoding and returns a
+   loud `None` for encodings the reader does not implement. Measured
+   after the fix, committed binary: medication `COUNT(*)` = 6,780 (was
+   hard error), gene `COUNT(*)` = 888,949 across 8 row groups with
+   adaptive DLBA/RLE encodings (was hard error), 818-quad all-named-graph
+   store decodes all 818 rows with the correct 2-entry graph dictionary
+   (was silent 0). Regression pin:
+   `tests/unit/parquet_rle_dictionary_multi_row_group.ml` with three
+   committed fixtures under `tests/unit/fixtures/` (multi-row-group
+   adaptive-encoding, truncated loud-failure variant, all-named-graph
+   RLE column).
 2. **Add a default-encoded on-disk corpus + query to the CI gate.** *Win:*
    turns the silent-`COUNT=0` soundness bug (g21, §2.b) into a red test.
-   *Type:* runner/test glue. Pairs with item 1.
+   *Type:* runner/test glue. Pairs with item 1. **Partially covered by
+   item 1's committed unit fixtures (2026-07-05)**; an end-to-end CLI
+   query gate over a default-encoded corpus is still worth adding to
+   `tests/local/`.
 3. **Emit the compact sidecars (.dict/.presence/.offsets) at import
    time, and cluster rows by subject/CS (shapes-canon E1).** *Win:*
    measured — the offset index gives only 6 s→5.2 s today because SPOG
@@ -402,6 +437,36 @@ whether a design doc is needed first.
    eval + store-capability work (`SPARQL11.Store` / `RDF.Store.Capabilities`
    from the recovery plan). Design: recovery plan already covers the
    capability record.
+
+   **First slice landed (2026-07-05, measured).** A parse-stream fast
+   path in the CLI now answers the analytically-streamable query
+   shapes in one pass over the parse stream, never building the graph:
+   `SELECT (COUNT(*) AS ?v) WHERE { tp }` (tp a single triple pattern,
+   any position constant or variable), the `GRAPH ?g { ?s ?p ?o }`
+   named-graph-wildcard COUNT sibling for N-Quads, and
+   `ASK { tp }` (with early parse stop on first match). The shape
+   decision is pure F\* (`SPARQL.Plan.Streamable.streamable_shape`,
+   new module) and the per-triple fold is F\* too (`stream_step`);
+   the CLI wires them into new generic fold entry points on the F\*
+   parsers (`Parser.Turtle.fold_turtle_triples`,
+   `Parser.NTriples.fold_ntriples`, `Parser.NQuads.fold_nquads`) —
+   the same one-pass mechanism behind `factoidal count`. Everything
+   else falls through to the materialise path unchanged.
+   Measured on gene.ttl (888,949 triples, this sandbox, same
+   getrusage wrapper as §2.c): COUNT(\*) went from 28.4 s / 730.5 MiB
+   peak RSS (HEAD `8bf6d82` committed binary) to **6.6 s / 44.1 MiB**
+   — the streaming-count bound from §2.c, a 16.6× RSS and 4.3× wall
+   reduction; `ASK { ?s ?p ?o }` answers in **0.05 s / 41.8 MiB**
+   (early stop). Output is byte-identical to the materialise path
+   (pinned: `tests/local/streamable_fastpath_regressions.sh`, 13
+   pass, 0 fail, fast-vs-slow diffed per query via
+   `FACTOIDAL_DISABLE_STREAM_FASTPATH=1`;
+   `tests/unit/streamable_fastpath_unit.ml`, 26 pass, 0 fail; SPARQL
+   suite 631 pass, 0 fail; RDF suite 1031 pass, 0 fail). The general
+   O(store) wall remains for every non-streamable shape — point
+   lookups still cost 731 MiB — so the store-capability work above is
+   still the real fix; this slice bounds the aggregate/existence
+   class only.
 5. **Retire `cottas_ondisk_runtime.sh` (718 lines) per the #118 first
    slice.** *Win:* removes the largest rule-#11 violation, lets the
    on-disk hot path extract to C/WASM, and concentrates the soundness

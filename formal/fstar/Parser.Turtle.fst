@@ -1811,6 +1811,19 @@ let rec count_triples (ts: list triple) : Tot nat (decreases ts) =
   | [] -> 0
   | _ :: rest -> 1 + count_triples rest
 
+// Generic per-triple fold over one statement's worth of triples.
+// Used by fold_turtle_triples_acc below (CLI parse-stream query fast
+// path, SPARQL.Plan.Streamable.fst) so a statement's small triple list
+// is threaded into the running accumulator and discarded, rather than
+// consed onto a document-wide list the way parse_turtle_doc's `acc`
+// is.
+let rec fold_step_triples (#a: Type) (step: triple -> a -> a)
+    (ts: list triple) (acc: a)
+  : Tot a (decreases ts) =
+  match ts with
+  | [] -> acc
+  | t :: rest -> fold_step_triples step rest (step t acc)
+
 // Parse the full Turtle document: sequence of statements
 // The decreases/fuel proof here is right at the edge of Z3's default
 // query size. Without --split_queries, small shifts in surrounding
@@ -1870,6 +1883,49 @@ let rec parse_turtle_count_doc (st: turtle_state) (input: string) (pos: nat)
           else
             parse_turtle_count_doc st input pos2 acc true fuel'
         end
+
+// Generic streaming fold over a Turtle document, parameterized over
+// the accumulator type and a per-triple step function plus an early-
+// stop predicate. Structurally identical to parse_turtle_count_doc
+// above (same statement-at-a-time walk, same error recovery), except
+// the per-statement triples are threaded through `step` instead of
+// just counted, and the walk can stop early once `stop acc` holds
+// (used for ASK's "first match wins"). This is the CLI parse-stream
+// query fast path's hook into the Turtle parser (SPARQL.Plan.
+// Streamable.fst supplies `step`/`stop`; see that module's banner) —
+// no triple list is ever retained across statements, so memory stays
+// bounded the same way count_turtle_triples's is, for any accumulator
+// type `a` a caller chooses (a running count, a found-flag, etc).
+let rec fold_turtle_triples_acc (#a: Type)
+    (step: triple -> a -> a) (stop: a -> bool)
+    (st: turtle_state) (input: string) (pos: nat)
+    (acc: a) (has_error: bool) (fuel: nat)
+  : Tot (a & bool) (decreases fuel) =
+  if fuel = 0 then (acc, has_error)
+  else if stop acc then (acc, has_error)
+  else
+    let fuel' : nat = if fuel >= 1 then fuel - 1 else 0 in
+    let len = fs_byte_length input in
+    match turtle_ws input pos with
+    | ParseOk () pos1 ->
+      if pos1 >= len then (acc, has_error)
+      else
+        begin match parse_turtle_statement st input pos1 fuel with
+        | ParseOk (triples, st') pos2 ->
+          let acc1 = fold_step_triples step triples acc in
+          if stop acc1 then
+            (acc1, has_error)
+          else if pos2 = pos1 then
+            (acc1, has_error)
+          else
+            fold_turtle_triples_acc step stop st' input pos2 acc1 has_error fuel'
+        | ParseFail _ _ ->
+          let pos2 = skip_to_eol input pos1 (len - pos1) in
+          if pos2 = pos1 then
+            (acc, true)
+          else
+            fold_turtle_triples_acc step stop st input pos2 acc true fuel'
+        end
 #pop-options
 
 (* ================================================================ *)
@@ -1902,6 +1958,27 @@ let count_turtle_triples_with_base (input: string) (base: string) : nat =
   let st = { empty_turtle_state with base_iri = base } in
   let (count, _) = parse_turtle_count_doc st input 0 0 false fuel in
   count
+
+// Generic streaming fold entry points (CLI parse-stream query fast
+// path; see fold_turtle_triples_acc's banner above). `step` folds one
+// triple into the accumulator; `stop` lets the caller end the walk
+// early (e.g. ASK's first-match-wins). Memory-bounded the same way
+// count_turtle_triples is: no triple list is ever retained across
+// statements, regardless of what `a` is.
+let fold_turtle_triples (#a: Type) (step: triple -> a -> a) (stop: a -> bool)
+    (init: a) (input: string) : a =
+  let len = fs_byte_length input in
+  let fuel = (len + 1) `op_Multiply` 2 in
+  let (acc, _) = fold_turtle_triples_acc step stop empty_turtle_state input 0 init false fuel in
+  acc
+
+let fold_turtle_triples_with_base (#a: Type) (step: triple -> a -> a) (stop: a -> bool)
+    (init: a) (input: string) (base: string) : a =
+  let len = fs_byte_length input in
+  let fuel = (len + 1) `op_Multiply` 2 in
+  let st = { empty_turtle_state with base_iri = base } in
+  let (acc, _) = fold_turtle_triples_acc step stop st input 0 init false fuel in
+  acc
 
 // Strict: returns None if any parse errors were encountered
 let parse_turtle_strict (input: string) : option (list triple) =
