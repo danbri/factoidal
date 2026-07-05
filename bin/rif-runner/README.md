@@ -125,44 +125,192 @@ entailment is under test.
 
 `PositiveSyntaxTest`/`NegativeSyntaxTest` (RIF Core dialect
 "safeness" grammar restriction) and `ImportRejectionTest`
-(vocabulary-separation / DL-consistency rejection) are
-unconditionally SKIPPED — `Parser.RIFXML` is a structural RIF-XML →
-AST parser with no dialect-safeness checker and no import-rejection
-consistency checker, and building either is out of scope for this
-slice (new F* modules, not runner glue).
+(vocabulary-separation / DL-consistency rejection) are checked by new
+module `RIF.Core.Conformance.fst` (added 2026-07-05) — see "RIF Core
+conformance checking" below.
+
+## External(...)/Equal builtin evaluation (added 2026-07-05)
+
+`Parser.RIFXML.fst` now parses `External(...)` in both its uses —
+term/function position (`<content><Expr>...</Expr></content>`,
+nested inside an atom's arguments or an `Equal`'s right-hand side,
+e.g. `func:numeric-add`) and formula/predicate position
+(`<content><Atom>...</Atom></content>`, a standalone body conjunct,
+e.g. `pred:numeric-greater-than`) — into two new
+`RIF.Core.Syntax.rif_term`/`rif_body` constructors,
+`RIF_TermExternal`/`RIF_BodyExternal`, plus `Equal(left, right)` into
+`RIF_BodyEqual`. `RIF.Core.Translation.split_body` separates a rule
+body into its ordinary atoms (still BGP-joined via `eval_bgp`, exactly
+as before) and these "extra conditions"; `RIF.Core.Eval.fire_rule`
+evaluates the extras per candidate binding, in the body's original
+left-to-right order, via new module `RIF.Core.Builtins.fst`:
+
+- `EC_External(op, args)`: a builtin PREDICATE filter — keep the
+  binding iff the builtin evaluates to `Some true`.
+- `EC_Equal(lhs, rhs)`: if `lhs` is a variable not yet bound, this is
+  a BIND (`?N = External(func:numeric-add(?N1 1))`, needed by
+  `Factorial_Forward_Chaining`'s builtin-function chaining); otherwise
+  a ground equality filter, using cross-type numeric comparison
+  (reusing `SPARQL11.Algebra.value_compare`) so e.g. `"2"^^xs:integer
+  = numeric-divide(6 3)` compares equal by VALUE against the resulting
+  `xsd:decimal`, not by strict datatype identity.
+
+`RIF.Core.Builtins.fst`'s scope (see its own module comment for the
+full rationale): the numeric function/predicate family
+(`numeric-add`/`subtract`/`multiply`/`divide`/`integer-divide`/
+`integer-mod`, `numeric-equal`/`not-equal`/`less-than`/`less-than-
+or-equal`/`greater-than`/`greater-than-or-equal`), `boolean-equal`/
+`less-than`/`greater-than`, `literal-not-identical`, and
+`is-literal-<T>`/`is-literal-not-<T>` for a fixed datatype list
+(decimal/double/float/integer/long/int/short/byte/negativeInteger/
+nonNegativeInteger/nonPositiveInteger/positiveInteger/unsignedLong/
+unsignedInt/unsignedShort/unsignedByte/hexBinary/base64Binary/anyURI/
+boolean/XMLLiteral), plus XSD/rdf "constructor function" casts
+(`External(xs:boolean(...))`, `External(rdf:XMLLiteral(...))`, ...)
+targeting those same datatypes. Deliberately NOT covered (each stays
+an honest SKIP naming the unimplemented builtin IRI, per
+`find_unsupported_builtin` in `rif_runner.ml`): the full string
+family, the full dateTime/duration family, List builtins,
+`pred:iri-string`/`pred:list-contains`'s alternate BINDING-PATTERN
+execution (they can only be used as ground filters here, not to
+PRODUCE a binding for an unbound argument), and rdf:PlainLiteral's
+builtin family (`Parser.RIFXML` already decodes `rdf:PlainLiteral`
+Consts into plain `xsd:string`/`rdf:langString` at parse time, so a
+PlainLiteral builtin family would need to operate on that decoded
+form — future work).
+
+Two important discoveries from the corpus's own test data (see
+`RIF.Core.Builtins.fst`'s comments at the relevant functions for the
+full reasoning): `is-literal-<T>` checks the argument's LEXICAL FORM
+against T's lexical space, NOT its declared datatype tag —
+`Guards_and_subtypes` requires BOTH `is-literal-decimal("3"^^
+xs:integer)` AND `is-literal-integer("3"^^xs:decimal)` to hold, which
+only a lexical-only check satisfies (a subtype check would only ever
+satisfy one direction). The exception is `anyURI`/`XMLLiteral`, whose
+XSD lexical space is essentially unconstrained (any string) — for
+those two specifically, `Builtins_anyURI`/`Builtins_XMLLiteral`
+require the declared datatype tag to actually match.
+
+## Uniterm arity (0, 1) and internal encoding (added 2026-07-05)
+
+`RIF.Core.Syntax` gained `RIF_Uniterm : rif_term -> list rif_term ->
+rif_atom` for generic positional atoms `p(a1 ... an)` whose arity is
+NOT 2 (arity-2 still routes through the pre-existing `RIF_Triple`,
+unchanged). Arity 0 (`p()`, e.g. the Builtins_\* battery's `ex:ok()`)
+and arity 1 (`p(a)`, e.g. `Positional_Arguments`' `ex:gold(?Customer)`,
+`Chaining_strategy_numeric-add_1`'s `ex:a(?x)`) are given a translation
+in `RIF.Core.Translation.translate_atom`; arity ≥ 3 has none (no
+vendored fixture needs it). Internal-only encoding, never exposed to
+any external RDF-semantics check, shared by both the assertion side
+(`RIF.Core.Eval.instantiate_atom`) and the query side
+(`translate_atom`) so it round-trips correctly:
+
+```
+p()   ==>  (rif_uniterm_nullary_subject, p, rif_uniterm_true_marker)
+p(a)  ==>  (rif_uniterm_nullary_subject, p, a)
+```
+
+The argument goes in OBJECT position (not subject) specifically so a
+rule body like `ex:a(?x)` correctly binds `?x` to its genuine value
+(needed for `Chaining_strategy_numeric-add_1`/`_2`'s builtin-function
+chaining) rather than an opaque marker, and so a literal argument
+(`ex:gold("John Doe")`) needs no special-casing at all (object
+position has no literal restriction). `RIF_Triple`'s arity-2 case
+additionally uses a lenient subject conversion
+(`rif_term_to_uniterm_subject`/`resolve_uniterm_subject`) that maps a
+literal-valued first argument to a deterministic blank node
+(`literal_subject_bnode_label`) rather than rejecting it outright —
+sound for GROUND assert/ASK-query use (`Positional_Arguments`'
+`ex:discount("John Doe" 10)`), but NOT value-preserving if that
+relation is later queried in a rule BODY with a variable in that
+position (`Factorial_Forward_Chaining`'s `ex:factorial(?N1 ?F1)` — see
+the KNOWN-GAP note in the Score section below). `RIF_Frame`/
+`RIF_Member`/`RIF_Sub` keep the original STRICT `rif_term_to_subject`/
+`resolve_subject` (a literal subject there is a genuine RDF-in-RIF
+combination typing error, matching SPARQL CONSTRUCT §16.2's
+silent-drop convention).
+
+## RIF Core conformance checking (added 2026-07-05)
+
+New module `RIF.Core.Conformance.fst` — structural analysis directly
+over `Parser.XML`'s `xml_node` tree (independent of
+`RIF.Core.Syntax`/`Translation`/`Eval`, since it needs to reason about
+constructs, `Or`/`Exists`/`External`/`Equal`, this project does not
+give full entailment semantics to):
+
+- **Safeness + "no free variables"** (`check_document_safe`, W3C RIF
+  Core §6.1): a rule is safe iff every variable in its head, and
+  every variable anywhere in its body, is "bound" — computed as a
+  fixpoint over the body's And/Or/Exists/Equal/External/ordinary-atom
+  structure (`bound_closure`; And unions each conjunct's contribution
+  to a fixpoint, since Equal chains like `?x=?y, ?y=?z` need several
+  passes; Or requires safety in EVERY disjunct given the same incoming
+  context; External looks up a per-builtin BINDING PATTERN table —
+  most RIF-DTB builtins require every argument pre-bound, but
+  `pred:iri-string`/`pred:list-contains` have an alternate pattern
+  that lets them PRODUCE a binding, e.g. `Core_Safeness_3`'s
+  `External(pred:iri-string(?x ?z))` with `?z` bound and `?x` not).
+  Separately, every `<Var>` occurring outside a `<declare>` must be
+  declared by SOME `<Forall>`/`<Exists>` in the document
+  (`no_free_variables` — `No_free_variables`'s `?price` is used but
+  never declared).
+- **Import-rejection** (§5): per-fixture dispatch to the specific
+  RIF-RDF/OWL combination-spec condition each exercises —
+  `has_variable_frame_property` (OWL-Direct requires every Frame
+  slot's property to be a constant, not a variable —
+  `OWL_Combination_Invalid_DL_Formula`), `imported_graph_is_empty`
+  (OWL-Direct + an empty imported graph can't be a valid OWL 2 DL
+  ontology — `OWL_Combination_Invalid_DL_Import`, narrow by design,
+  matching that fixture's own stated criterion),
+  `graph_has_forbidden_rif_datatype` (`rif:iri`/`rdf:PlainLiteral`
+  typed literals are not permitted in an imported RDF graph —
+  `RDF_Combination_Invalid_Constant_1`/`_2`), and
+  `has_incomparable_profile_pair` (Simple/RDF/RDFS form one comparable
+  chain; OWL-Direct is a separate, incomparable branch —
+  `RDF_Combination_Invalid_Profiles_1`). `Multiple_Context_Error`
+  (a non-`rif:local` constant used in more than one syntactic role —
+  Uniterm-predicate vs. Frame-slot-property — across the imports
+  closure) needs cross-document constant-role tracking this project
+  does not implement; it stays an honest SKIP.
 
 ## Score
 
-Measured 2026-07-05 (initial corpus landing: 7 pass, 3 fail, 36 skip
-of 46 for Part 2; updated same day after fixing 2 of the 3 FAILs —
-see below):
+**Baseline (before 2026-07-05's External/safeness/import-rejection/
+arity work): 13 pass, 1 fail, 36 skip (out of 50).** Current, measured
+2026-07-05:
 
 - **Part 1 (original 4 vendored SPARQL-manifest cases): 4 pass, 0 fail (out of 4).**
-- **Part 2 (vendored W3C RIF Core dialect corpus): 9 pass, 1 fail, 36 skip (out of 46).**
-- **Combined: 13 pass, 1 fail, 36 skip (out of 50).**
+- **Part 2 (vendored W3C RIF Core dialect corpus): 30 pass, 4 fail, 12 skip (out of 46).**
+- **Combined: 34 pass, 4 fail, 12 skip (out of 50).**
 
-Skip buckets (by construct/reason):
+Per-bucket before → after (bucket labels/counts from the pre-2026-07-05
+table, preserved below for the historical record):
 
-| Count | Reason |
-|---|---|
-| 16 | `External` (builtin predicate/function calls) |
-| 6 | RIF Core dialect safeness-condition checking not implemented |
-| 6 | import-rejection / vocabulary-separation consistency checking not implemented |
-| 3 | Parser_RIFXML could not parse the premise (Uniterm/Atom arity ≠ 2 — `Local_Constant`, `Local_Predicate`, `Positional_Arguments`, each using a unary Uniterm fact/atom RIF.Core.Syntax has no encoding for) |
-| 2 | `Equal` (equality atom) |
-| 1 | `List` (RIF list terms) |
-| 1 | conclusion.rif not in the vendored corpus (packaging gap in the official Core_v1.22 zip — `RDF_Combination_Constant_Equivalence_Graph_Entailment`) |
-| 1 | `Exists` (existential quantification — `RDF_Combination_Blank_Node`'s **corpus-path** conclusion; note this same test already PASSES via Part 1's hardcoded `rif06` path, which uses a hand-authored `.rq`/`.srx` pair instead of the official `-conclusion.rif`) |
+| Bucket (was) | Count | After |
+|---|---|---|
+| `External` (builtin predicate/function calls) | 16 | **9 PASS** (numeric family, binary/anyURI/boolean/XMLLiteral is-literal-\<T\>, literal-not-identical, `Chaining_strategy_*` builtin chaining, `Guards_and_subtypes` — the last also needed the And-of-facts conclusion parse fix) · 6 SKIP each naming the unimplemented feature (String / Time+dateTime ×2 / PlainLiteral builtin families, `Builtins_List` → List builtins, `IRI_from_RDF_Literal` → Exists + `pred:iri-string` binding-pattern EXECUTION) · 1 KNOWN-GAP FAIL (`Factorial_Forward_Chaining`) |
+| RIF Core dialect safeness-condition checking | 6 | **6 PASS** via `RIF.Core.Conformance.check_document_safe` |
+| import-rejection / vocabulary-separation consistency checking | 6 | **5 PASS** via per-fixture `RIF.Core.Conformance` dispatch · 1 SKIP (`Multiple_Context_Error`, cross-document constant-role tracking not implemented) |
+| Uniterm arity ≠ 2 (`Local_Constant`/`Local_Predicate`/`Positional_Arguments`) | 3 | **1 PASS** (`Positional_Arguments`, via new `RIF_Uniterm` arity 0/1 support) · 2 KNOWN-GAP FAIL (`Local_Constant`/`Local_Predicate` — rif:local constants are not document-scoped) |
+| `Equal` (equality atom) | 2 | SKIP with a precise reason: `OWL_Combination_Vocabulary_Separation_Inconsistency_1`/`_2`'s conclusion `"a" = "b"` between two DISTINCT constants is entailed only because the premise combination is INCONSISTENT (an OWL-Direct individual/data-value vocabulary-separation violation entails everything) — combination-inconsistency detection is not implemented; the ground/chained-arithmetic Equal support landed this pass does not cover it |
+| `List` (RIF list terms) | 1 | unchanged SKIP |
+| conclusion.rif not in the vendored corpus (packaging gap) | 1 | unchanged SKIP |
+| `Exists` (existential quantification) | 1 | unchanged SKIP (already covered via Part 1's hardcoded `rif06` path) |
 
-**What extending the F\* parser would unlock** (not attempted this
-slice, per brief): the 16 `External` skips are almost all
-`Builtins_*`/`Chaining_strategy_*`/`Guards_and_subtypes`/
-`EBusiness_Contract`/`Factorial_Forward_Chaining` — RIF-BLD built-in
-predicate/function calls layered on top of Core, out of this
-project's declared RIF scope (see `docs/claude-rules/scope.md`).
-`Equal`/`Exists`/`List` are genuine RIF Core constructs (equality
-atoms, existential quantification, list terms) that a real Core
-parser extension would need; each appears in only 1-2 tests here.
+Every remaining skip names the specific unimplemented feature (the
+runner's `find_unsupported_builtin` names the exact builtin IRI for the
+builtin-family skips: `Builtins_String` → is-literal-string,
+`Builtins_Time` → is-literal-date, `EBusiness_Contract` →
+is-literal-dateTime, `Builtins_PlainLiteral` → is-literal-PlainLiteral)
+or the specific corpus packaging gap — no blanket "construct detected,
+skipping" lines remain. `IRI_from_RDF_Literal` skips on Exists (its
+premise) and would additionally need `pred:iri-string`'s alternate
+BINDING-PATTERN execution to PRODUCE a value, not just filter — see
+"External(...)/Equal builtin evaluation" above.
+
+See "External(...)/Equal builtin evaluation", "Uniterm arity (0, 1)",
+and "RIF Core conformance checking" above for the architecture behind
+each fix.
 
 Of the original 3 FAILs, 2 are now fixed in F\* and 1 remains (a
 corpus data defect, not fixable without breaking correct RDF
@@ -262,24 +410,12 @@ ocamlfind ocamlopt -package fstar.lib,str,zarith,sha,digestif.c,unix -linkpkg -w
 (`$COMMON_MODULES` is the exact string from `build-ocaml.sh`'s
 `compile` step — not reproduced here to avoid drift.)
 
-**`OWL_DirectMapping_Filter.ml` caveat (as of the Non-Annotation_Entailment
-fix, 2026-07-05):** `rif_runner.ml` now calls
-`OWL_DirectMapping_Filter.exclude_annotation_triples`, but
-`OWL.DirectMapping.Filter.fst` was deliberately **not** added to
-`build-ocaml.sh`'s `ALL_MODULES`/`COMMON_MODULES` lists this wave —
-that script is shared with concurrent work and the new module's only
-consumer today is this runner. Until a follow-up wires it into the
-three lists (per the `fast-verify-extract`/`workflow-gotchas-debugging`
-skills' "new module" rule), build this runner with
-`OWL_DirectMapping_Filter.ml` inserted into `$COMMON_MODULES` by hand
-(right after `OWL_Vocabulary.ml`, since it depends only on
-`RDF_Graph_Executable.ml`), and extract it directly rather than via
-`build-ocaml.sh extract`:
-
-```
-fstar.exe --z3version 4.13.3 --codegen OCaml --odir formal/fstar/ocaml-output \
-  --cache_checked_modules formal/fstar/OWL.DirectMapping.Filter.fst
-```
+`OWL.DirectMapping.Filter.fst` and (2026-07-05) `RIF.Core.Builtins.fst`
+/ `RIF.Core.Conformance.fst` are all wired into `build-ocaml.sh`'s
+`ALL_MODULES`/`COMMON_MODULES`/`FSTAR_MODULES` lists — a plain
+`./build-ocaml.sh extract` (or the targeted single-module loop in the
+`fast-verify-extract` skill) picks them up with no manual list
+surgery needed.
 
 ## Cross-references
 

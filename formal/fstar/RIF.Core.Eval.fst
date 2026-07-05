@@ -37,6 +37,7 @@ open RDF.Graph.Executable
 open SPARQL11.Algebra
 module Syn = RIF.Core.Syntax
 module Tx  = RIF.Core.Translation
+module B   = RIF.Core.Builtins
 
 // ------------------------------------------------------------------
 // 1. Head instantiation.
@@ -54,12 +55,43 @@ module Tx  = RIF.Core.Translation
 // looked up; the result is then narrowed to the appropriate sort.
 // ------------------------------------------------------------------
 
-let resolve_term (mu : solution_mapping) (t : Syn.rif_term)
-  : option rdf_term
+// eval_rif_term / eval_rif_term_list evaluate a rif_term against a
+// binding, recursively resolving nested External(...) function calls
+// (RIF_TermExternal) via RIF.Core.Builtins.eval_function — needed for
+// head atoms like Chaining_strategy_numeric-add_1's
+// `ex:a(External(func:numeric-add(?x 1)))` and Equal-RHS terms like
+// Factorial_Forward_Chaining's `?N = External(func:numeric-add(?N1 1))`.
+// Mutual recursion across rif_term / list rif_term mirrors
+// RIF.Core.Syntax.fst's rif_term_eq / rif_term_list_eq (args is a
+// genuine structural subterm of RIF_TermExternal op args).
+let rec eval_rif_term (mu : solution_mapping) (t : Syn.rif_term)
+  : Tot (option rdf_term) (decreases t)
   =
   match t with
   | Syn.RIF_Const c -> Some c
   | Syn.RIF_Var v   -> sm_lookup v.var_name mu
+  | Syn.RIF_TermExternal op args ->
+    (match eval_rif_term_list mu args with
+     | None -> None
+     | Some vals -> B.eval_function op vals)
+
+and eval_rif_term_list (mu : solution_mapping) (ts : list Syn.rif_term)
+  : Tot (option (list rdf_term)) (decreases ts)
+  =
+  match ts with
+  | [] -> Some []
+  | t :: rest ->
+    (match eval_rif_term mu t with
+     | None -> None
+     | Some v ->
+       (match eval_rif_term_list mu rest with
+        | None -> None
+        | Some vs -> Some (v :: vs)))
+
+let resolve_term (mu : solution_mapping) (t : Syn.rif_term)
+  : option rdf_term
+  =
+  eval_rif_term mu t
 
 let resolve_subject (mu : solution_mapping) (t : Syn.rif_term)
   : option subject
@@ -76,6 +108,23 @@ let resolve_predicate (mu : solution_mapping) (t : Syn.rif_term)
   match resolve_term mu t with
   | Some (T_IRI i) -> Some i
   | _              -> None
+
+// Lenient subject resolution for RIF_Triple/RIF_Uniterm's internal
+// Uniterm-fact encoding — mirrors RIF.Core.Translation.
+// rif_term_to_uniterm_subject on the QUERY side, so a literal
+// argument round-trips to the SAME blank node on both the assertion
+// side (here) and the query side. See that function's comment for
+// the full rationale (RIF Uniterms permit a literal in any argument
+// position; Frame/Member/Sub's `resolve_subject` above stays strict
+// for genuine RDF-in-RIF combination semantics).
+let resolve_uniterm_subject (mu : solution_mapping) (t : Syn.rif_term)
+  : option subject
+  =
+  match resolve_term mu t with
+  | None                  -> None
+  | Some (T_IRI i)        -> Some (S_IRI i)
+  | Some (T_BNode b)      -> Some (S_BNode b)
+  | Some (T_Literal l)    -> Some (S_BNode (Tx.literal_subject_bnode_label l))
 
 // Build a concrete triple from a fully-resolved subject/predicate/
 // object triple, when all three positions are well-typed.
@@ -95,7 +144,7 @@ let instantiate_atom (mu : solution_mapping) (a : Syn.rif_atom)
   match a with
   | Syn.RIF_Triple s p o ->
     mk_triple_opt
-      (resolve_subject mu s)
+      (resolve_uniterm_subject mu s)
       (resolve_predicate mu p)
       (resolve_term mu o)
   | Syn.RIF_Frame o p v ->
@@ -113,6 +162,20 @@ let instantiate_atom (mu : solution_mapping) (a : Syn.rif_atom)
       (resolve_subject mu sub)
       (Some rdfs_subClassOf)
       (resolve_term mu sup_)
+  | Syn.RIF_Uniterm pred args ->
+    // Same internal arity-0/arity-1 encoding RIF.Core.Translation's
+    // translate_atom uses for the ASK/BGP side — round-trip
+    // consistent since both directions share the same marker
+    // constants.
+    (match resolve_predicate mu pred, args with
+     | Some p, [] ->
+       mk_triple_opt (Some (S_IRI Tx.rif_uniterm_nullary_subject)) (Some p)
+         (Some Tx.rif_uniterm_true_marker)
+     | Some p, [a] ->
+       // Argument in OBJECT position (see RIF.Core.Translation.
+       // translate_atom's matching RIF_Uniterm/[a] case for why).
+       mk_triple_opt (Some (S_IRI Tx.rif_uniterm_nullary_subject)) (Some p) (resolve_term mu a)
+     | _, _ -> None)
 
 // ------------------------------------------------------------------
 // 2. Per-binding head firing.
@@ -153,23 +216,113 @@ let rec fire_head_per_bindings
     fire_head_per_bindings head rest g' changed'
 
 // ------------------------------------------------------------------
+// 2b. External(...)/Equal body-condition evaluation.
+//
+// RIF.Core.Translation.split_body separates a rule body into the
+// ordinary atoms (Triple/Frame/Member/Sub/Uniterm — joined via the
+// existing BGP/eval_bgp path below) and the "extra conditions"
+// (External-as-formula predicate calls, and Equal atoms) that cannot
+// become SPARQL triple patterns. Those extras are evaluated per
+// candidate binding AFTER the ordinary-atom BGP join, in the body's
+// original left-to-right order:
+//   - EC_External op args: a builtin PREDICATE filter — keep the
+//     binding iff the builtin evaluates to true (Some true); drop it
+//     on Some false OR on evaluation failure (an argument didn't
+//     resolve — e.g. an unbound variable this project's binding-
+//     pattern EXECUTION does not support, conservatively dropped
+//     rather than guessed).
+//   - EC_Equal lhs rhs: if lhs is a variable NOT YET bound by this
+//     point, this is a BIND — evaluate rhs under the current binding
+//     and extend the binding with lhs := rhs (Factorial_Forward_
+//     Chaining's `?N = External(func:numeric-add(?N1 1))` and
+//     similar chained-computation shapes). If lhs is already bound
+//     (or is itself a constant/nested External), this is a ground
+//     equality filter — both sides are evaluated and compared, using
+//     RIF.Core.Builtins' cross-type numeric comparison when both
+//     sides are numeric (so `"2"^^xs:integer = numeric-divide(6 3)`,
+//     whose RHS naturally produces an xsd:decimal "2.0", compares
+//     equal by VALUE per RIF-DTB, not by strict term/datatype
+//     identity) and falling back to structural identity otherwise.
+// ------------------------------------------------------------------
+
+let rif_equal_values (a b : rdf_term) : bool =
+  match B.numeric_predicate CmpEq a b with
+  | Some r -> r
+  | None   -> rdf_term_eq a b
+
+let apply_extra_condition (mu : solution_mapping) (ec : Tx.rif_extra_condition)
+  : option solution_mapping
+  =
+  match ec with
+  | Tx.EC_External op args ->
+    (match eval_rif_term_list mu args with
+     | None -> None
+     | Some vals ->
+       (match B.eval_predicate op vals with
+        | Some true  -> Some mu
+        | Some false -> None
+        | None       -> None))
+  | Tx.EC_Equal lhs rhs ->
+    (match lhs with
+     | Syn.RIF_Var v ->
+       (match sm_lookup v.var_name mu with
+        | None ->
+          // Unbound: this Equal acts as a BIND.
+          (match eval_rif_term mu rhs with
+           | None    -> None
+           | Some rv -> Some (sm_bind v.var_name rv mu))
+        | Some existing ->
+          // Already bound: plain equality filter.
+          (match eval_rif_term mu rhs with
+           | None    -> None
+           | Some rv -> if rif_equal_values existing rv then Some mu else None))
+     | _ ->
+       (match eval_rif_term mu lhs, eval_rif_term mu rhs with
+        | Some lv, Some rv -> if rif_equal_values lv rv then Some mu else None
+        | _, _ -> None))
+
+let rec apply_extra_conditions
+  (mu : solution_mapping) (ecs : list Tx.rif_extra_condition)
+  : Tot (option solution_mapping) (decreases ecs)
+  =
+  match ecs with
+  | [] -> Some mu
+  | ec :: rest ->
+    (match apply_extra_condition mu ec with
+     | None     -> None
+     | Some mu' -> apply_extra_conditions mu' rest)
+
+let rec filter_bindings_by_extras
+  (ecs : list Tx.rif_extra_condition) (bindings : solution_sequence)
+  : Tot solution_sequence (decreases bindings)
+  =
+  match bindings with
+  | [] -> []
+  | mu :: rest ->
+    (match apply_extra_conditions mu ecs with
+     | Some mu' -> mu' :: filter_bindings_by_extras ecs rest
+     | None     -> filter_bindings_by_extras ecs rest)
+
+// ------------------------------------------------------------------
 // 3. Single rule firing.
 //
-// Translates the rule body to a BGP. If translation fails (the body
-// has a structurally invalid atom — e.g. a literal in subject
-// position), the rule contributes nothing; the graph is returned
-// unchanged. Otherwise the body BGP is evaluated against the graph
-// and each binding fires the head.
+// Splits the body into ordinary atoms (translated to a BGP and
+// joined via eval_bgp, exactly as before) and extra conditions
+// (External/Equal, evaluated per-binding above). If the ordinary-atom
+// part fails to translate (a structurally invalid atom — e.g. a
+// literal in subject position), the rule contributes nothing.
 // ------------------------------------------------------------------
 
 let fire_rule (g : rdf_graph) (r : Syn.rif_rule)
   : Tot (rdf_graph & bool)
   =
-  match Tx.translate_body r.body with
+  let (ordinary_atoms, extras) = Tx.split_body r.body in
+  match Tx.translate_atoms_bgp ordinary_atoms with
   | None         -> (g, false)
   | Some body_bgp ->
-    let bindings : solution_sequence = eval_bgp body_bgp g in
-    fire_head_per_bindings r.head bindings g false
+    let bindings0 : solution_sequence = eval_bgp body_bgp g in
+    let bindings1 = filter_bindings_by_extras extras bindings0 in
+    fire_head_per_bindings r.head bindings1 g false
 
 // ------------------------------------------------------------------
 // 4. One round: fire every rule once against the current graph.
@@ -299,11 +452,13 @@ let lemma_fire_rule_preserves (g : rdf_graph) (r : Syn.rif_rule) (t : triple)
   : Lemma (requires mem_triple t g)
           (ensures  mem_triple t (fst (fire_rule g r)))
   =
-  match Tx.translate_body r.body with
+  let (ordinary_atoms, extras) = Tx.split_body r.body in
+  match Tx.translate_atoms_bgp ordinary_atoms with
   | None -> ()
   | Some body_bgp ->
-    let bindings = eval_bgp body_bgp g in
-    lemma_fire_head_per_bindings_preserves r.head bindings g false t
+    let bindings0 = eval_bgp body_bgp g in
+    let bindings1 = filter_bindings_by_extras extras bindings0 in
+    lemma_fire_head_per_bindings_preserves r.head bindings1 g false t
 
 let rec lemma_one_round_aux_preserves
   (rules : list Syn.rif_rule)

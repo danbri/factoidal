@@ -55,9 +55,20 @@ noeq type rif_var = {
   var_name : string;
 }
 
+// RIF_TermExternal models External(...) used in TERM (function) position,
+// e.g. `External(func:numeric-add(?x 1))` nested as an argument of an
+// ordinary atom's head — RIF-DTB builtin FUNCTIONS, not predicates. `op`
+// is the builtin's IRI (e.g. the rif-builtin-function#... constant); the
+// args are evaluated bottom-up against a solution_mapping by
+// RIF.Core.Eval, which delegates the actual computation to
+// RIF.Core.Builtins. Kept in the same recursive rif_term type (rather
+// than a separate ADT) so ordinary term positions (atom arguments, Equal
+// operands) can hold either a plain constant/variable or a builtin call
+// uniformly.
 noeq type rif_term =
-  | RIF_Var   : rif_var -> rif_term
-  | RIF_Const : rdf_term -> rif_term
+  | RIF_Var          : rif_var -> rif_term
+  | RIF_Const        : rdf_term -> rif_term
+  | RIF_TermExternal : wf_iri -> list rif_term -> rif_term
 
 // ------------------------------------------------------------------
 // 2. Atomic formulas.
@@ -76,11 +87,20 @@ noeq type rif_term =
 // design doc's "SPARQL stack reuse map" table.
 // ------------------------------------------------------------------
 
+// RIF_Uniterm covers the generic positional atom p(a1 ... an) for any
+// arity OTHER than 2 (arity-2 Uniterms already have a direct triple
+// encoding via RIF_Triple, parsed that way by Parser.RIFXML for
+// backward compatibility with every already-passing fixture). Only
+// arity 0 and arity 1 are given a translation (RIF.Core.Translation);
+// see the corpus fixtures Positional_Arguments (arity 1: `ex:gold(?C)`)
+// and the Builtins_* battery (arity 0: `ex:ok()`) for the two shapes
+// this project's vendored W3C RIF Core corpus actually exercises.
 noeq type rif_atom =
-  | RIF_Triple : rif_term -> rif_term -> rif_term -> rif_atom
-  | RIF_Frame  : rif_term -> rif_term -> rif_term -> rif_atom
-  | RIF_Member : rif_term -> rif_term -> rif_atom
-  | RIF_Sub    : rif_term -> rif_term -> rif_atom
+  | RIF_Triple  : rif_term -> rif_term -> rif_term -> rif_atom
+  | RIF_Frame   : rif_term -> rif_term -> rif_term -> rif_atom
+  | RIF_Member  : rif_term -> rif_term -> rif_atom
+  | RIF_Sub     : rif_term -> rif_term -> rif_atom
+  | RIF_Uniterm : rif_term -> list rif_term -> rif_atom
 
 // ------------------------------------------------------------------
 // 3. Rule body.
@@ -92,9 +112,23 @@ noeq type rif_atom =
 // tree of finite lists).
 // ------------------------------------------------------------------
 
+// RIF_BodyExternal models External(...) used in FORMULA (predicate)
+// position, i.e. as a standalone body conjunct — RIF-DTB builtin
+// PREDICATES (e.g. `External(pred:numeric-greater-than(?x 0))`). op is
+// the builtin's IRI; RIF.Core.Eval evaluates the args against the
+// current binding and keeps/drops the binding per the boolean result
+// (a FILTER, not a BGP join).
+//
+// RIF_BodyEqual models `lhs = rhs` as a body conjunct. When lhs is an
+// as-yet-unbound variable, this acts as a BIND (the RIF Core corpus
+// exercises this shape heavily for builtin-function chaining, e.g.
+// Factorial_Forward_Chaining's `?N = External(func:numeric-add(?N1 1))`);
+// when lhs is already bound, it is a plain equality filter.
 noeq type rif_body =
-  | RIF_BodyAtom : rif_atom -> rif_body
-  | RIF_BodyAnd  : list rif_body -> rif_body
+  | RIF_BodyAtom     : rif_atom -> rif_body
+  | RIF_BodyAnd      : list rif_body -> rif_body
+  | RIF_BodyExternal : wf_iri -> list rif_term -> rif_body
+  | RIF_BodyEqual    : rif_term -> rif_term -> rif_body
 
 // ------------------------------------------------------------------
 // 4. Rule.
@@ -158,11 +192,23 @@ let mk_atom_member (o c : rif_term) : rif_atom =
 let mk_atom_sub (sub sup_ : rif_term) : rif_atom =
   RIF_Sub sub sup_
 
+let mk_atom_uniterm (p : rif_term) (args : list rif_term) : rif_atom =
+  RIF_Uniterm p args
+
+let mk_term_external (op : wf_iri) (args : list rif_term) : rif_term =
+  RIF_TermExternal op args
+
 let mk_body_atom (a : rif_atom) : rif_body =
   RIF_BodyAtom a
 
 let mk_body_and (bs : list rif_body) : rif_body =
   RIF_BodyAnd bs
+
+let mk_body_external (op : wf_iri) (args : list rif_term) : rif_body =
+  RIF_BodyExternal op args
+
+let mk_body_equal (lhs rhs : rif_term) : rif_body =
+  RIF_BodyEqual lhs rhs
 
 let mk_rule (head_ : rif_atom) (body_ : rif_body) : rif_rule =
   { rule_name = None; head = head_; body = body_; }
@@ -185,10 +231,23 @@ let program_of_rules (rs : list rif_rule) : rif_program = { rules = rs }
 let rif_var_eq (a b : rif_var) : bool =
   a.var_name = b.var_name
 
-let rif_term_eq (a b : rif_term) : bool =
+// Mutual recursion across rif_term and list rif_term mirrors the
+// translate_body / translate_body_list pattern already established in
+// RIF.Core.Translation.fst — `args` is a genuine structural subterm of
+// `RIF_TermExternal op args`, so F*'s default subterm ordering accepts
+// `decreases a` / `decreases ts` across the two functions unchanged.
+let rec rif_term_eq (a b : rif_term) : Tot bool (decreases a) =
   match a, b with
   | RIF_Var v1,   RIF_Var v2   -> rif_var_eq v1 v2
   | RIF_Const c1, RIF_Const c2 -> rdf_term_eq c1 c2
+  | RIF_TermExternal op1 args1, RIF_TermExternal op2 args2 ->
+    op1 = op2 && rif_term_list_eq args1 args2
+  | _, _ -> false
+
+and rif_term_list_eq (a b : list rif_term) : Tot bool (decreases a) =
+  match a, b with
+  | [], [] -> true
+  | x :: xs, y :: ys -> rif_term_eq x y && rif_term_list_eq xs ys
   | _, _ -> false
 
 let rif_atom_eq (a b : rif_atom) : bool =
@@ -201,15 +260,27 @@ let rif_atom_eq (a b : rif_atom) : bool =
     rif_term_eq o1 o2 && rif_term_eq c1 c2
   | RIF_Sub sub1 sup1,   RIF_Sub sub2 sup2 ->
     rif_term_eq sub1 sub2 && rif_term_eq sup1 sup2
+  | RIF_Uniterm p1 a1,   RIF_Uniterm p2 a2 ->
+    rif_term_eq p1 p2 && rif_term_list_eq a1 a2
   | _, _ -> false
 
 // Reflexivity sanity check on rif_term equality. Verifies via a
 // case split on the constructor; the RIF_Const case calls the
 // matching reflexivity lemma already established in
-// RDF.Graph.Executable (lemma_rdf_term_eq_refl).
-let rif_term_eq_refl (t : rif_term) :
-  Lemma (rif_term_eq t t == true)
+// RDF.Graph.Executable (lemma_rdf_term_eq_refl); the RIF_TermExternal
+// case recurses over its argument list via the companion lemma below
+// (same mutual-recursion shape as rif_term_eq / rif_term_list_eq).
+let rec rif_term_eq_refl (t : rif_term) :
+  Lemma (ensures rif_term_eq t t == true) (decreases t)
   =
   match t with
   | RIF_Var _   -> ()
   | RIF_Const c -> lemma_rdf_term_eq_refl c
+  | RIF_TermExternal _ args -> rif_term_list_eq_refl args
+
+and rif_term_list_eq_refl (ts : list rif_term) :
+  Lemma (ensures rif_term_list_eq ts ts == true) (decreases ts)
+  =
+  match ts with
+  | [] -> ()
+  | x :: xs -> rif_term_eq_refl x; rif_term_list_eq_refl xs

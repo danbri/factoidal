@@ -223,17 +223,114 @@ let parse_var (n : Parser_XML.xml_node) :
       then FStar_Pervasives_Native.None
       else FStar_Pervasives_Native.Some (RIF_Core_Syntax.mk_var raw)
   | uu___ -> FStar_Pervasives_Native.None
+let rec list_collect_some :
+  'a .
+    'a FStar_Pervasives_Native.option Prims.list ->
+      'a Prims.list FStar_Pervasives_Native.option
+  =
+  fun xs ->
+    match xs with
+    | [] -> FStar_Pervasives_Native.Some []
+    | (FStar_Pervasives_Native.None)::uu___ -> FStar_Pervasives_Native.None
+    | (FStar_Pervasives_Native.Some x)::rest ->
+        (match list_collect_some rest with
+         | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+         | FStar_Pervasives_Native.Some ys ->
+             FStar_Pervasives_Native.Some (x :: ys))
+let rec parse_term_fuel (n : Parser_XML.xml_node) (fuel : Prims.nat) :
+  RIF_Core_Syntax.rif_term FStar_Pervasives_Native.option=
+  if fuel = Prims.int_zero
+  then FStar_Pervasives_Native.None
+  else
+    (match n with
+     | Parser_XML.XElement (tag, uu___1, children) ->
+         if tag_is "Const" tag
+         then parse_const n
+         else
+           if tag_is "Var" tag
+           then parse_var n
+           else
+             if tag_is "External" tag
+             then
+               (match first_child_with_local_name "content" children with
+                | FStar_Pervasives_Native.None ->
+                    FStar_Pervasives_Native.None
+                | FStar_Pervasives_Native.Some content_node ->
+                    (match content_node with
+                     | Parser_XML.XElement (uu___4, uu___5, cchildren) ->
+                         (match child_elements_only cchildren with
+                          | inner::[] ->
+                              (match inner with
+                               | Parser_XML.XElement (itag, uu___6, uu___7)
+                                   ->
+                                   if tag_is "Expr" itag
+                                   then
+                                     (match parse_op_and_args_fuel inner
+                                              (fuel - Prims.int_one)
+                                      with
+                                      | FStar_Pervasives_Native.None ->
+                                          FStar_Pervasives_Native.None
+                                      | FStar_Pervasives_Native.Some
+                                          (op, args) ->
+                                          FStar_Pervasives_Native.Some
+                                            (RIF_Core_Syntax.RIF_TermExternal
+                                               (op, args)))
+                                   else FStar_Pervasives_Native.None
+                               | uu___6 -> FStar_Pervasives_Native.None)
+                          | uu___6 -> FStar_Pervasives_Native.None)
+                     | uu___4 -> FStar_Pervasives_Native.None))
+             else FStar_Pervasives_Native.None
+     | uu___1 -> FStar_Pervasives_Native.None)
+and parse_op_and_args_fuel (n : Parser_XML.xml_node) (fuel : Prims.nat) :
+  (RDF_Graph_Executable.wf_iri * RIF_Core_Syntax.rif_term Prims.list)
+    FStar_Pervasives_Native.option=
+  if fuel = Prims.int_zero
+  then FStar_Pervasives_Native.None
+  else
+    (match n with
+     | Parser_XML.XElement (uu___1, uu___2, children) ->
+         let op_n = first_child_with_local_name "op" children in
+         let args_n = first_child_with_local_name "args" children in
+         (match op_n with
+          | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+          | FStar_Pervasives_Native.Some op_node ->
+              (match parse_term_host_fuel op_node (fuel - Prims.int_one) with
+               | FStar_Pervasives_Native.Some (RIF_Core_Syntax.RIF_Const
+                   (RDF_Graph_Executable.T_IRI pi)) ->
+                   let arg_terms =
+                     match args_n with
+                     | FStar_Pervasives_Native.None -> []
+                     | FStar_Pervasives_Native.Some args_node ->
+                         FStar_List_Tot_Base.fold_right
+                           (fun c acc ->
+                              match c with
+                              | Parser_XML.XElement (uu___3, uu___4, uu___5)
+                                  ->
+                                  (parse_term_fuel c (fuel - Prims.int_one))
+                                  :: acc
+                              | uu___3 -> acc)
+                           (Parser_XML.element_children args_node) [] in
+                   (match list_collect_some arg_terms with
+                    | FStar_Pervasives_Native.None ->
+                        FStar_Pervasives_Native.None
+                    | FStar_Pervasives_Native.Some args ->
+                        FStar_Pervasives_Native.Some (pi, args))
+               | uu___3 -> FStar_Pervasives_Native.None))
+     | uu___1 -> FStar_Pervasives_Native.None)
+and parse_term_host_fuel (n : Parser_XML.xml_node) (fuel : Prims.nat) :
+  RIF_Core_Syntax.rif_term FStar_Pervasives_Native.option=
+  if fuel = Prims.int_zero
+  then FStar_Pervasives_Native.None
+  else
+    (match n with
+     | Parser_XML.XElement (uu___1, uu___2, children) ->
+         (match child_elements_only children with
+          | [] -> FStar_Pervasives_Native.None
+          | first::uu___3 -> parse_term_fuel first (fuel - Prims.int_one))
+     | uu___1 -> FStar_Pervasives_Native.None)
 let parse_term (n : Parser_XML.xml_node) :
   RIF_Core_Syntax.rif_term FStar_Pervasives_Native.option=
-  match n with
-  | Parser_XML.XElement (tag, uu___, uu___1) ->
-      if tag_is "Const" tag
-      then parse_const n
-      else
-        if tag_is "Var" tag
-        then parse_var n
-        else FStar_Pervasives_Native.None
-  | uu___ -> FStar_Pervasives_Native.None
+  parse_term_fuel n (Prims.of_int (1000))
 let parse_term_host (n : Parser_XML.xml_node) :
   RIF_Core_Syntax.rif_term FStar_Pervasives_Native.option=
   match n with
@@ -248,27 +345,35 @@ let parse_atom_element (n : Parser_XML.xml_node) :
   | Parser_XML.XElement (uu___, uu___1, children) ->
       let op_n = first_child_with_local_name "op" children in
       let args_n = first_child_with_local_name "args" children in
-      (match (op_n, args_n) with
-       | (FStar_Pervasives_Native.Some op_node, FStar_Pervasives_Native.Some
-          args_node) ->
+      (match op_n with
+       | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+       | FStar_Pervasives_Native.Some op_node ->
            (match parse_term_host op_node with
             | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
             | FStar_Pervasives_Native.Some pred ->
                 let arg_terms =
-                  FStar_List_Tot_Base.fold_right
-                    (fun c acc ->
-                       match c with
-                       | Parser_XML.XElement (uu___2, uu___3, uu___4) ->
-                           (parse_term c) :: acc
-                       | uu___2 -> acc)
-                    (Parser_XML.element_children args_node) [] in
+                  match args_n with
+                  | FStar_Pervasives_Native.None -> []
+                  | FStar_Pervasives_Native.Some args_node ->
+                      FStar_List_Tot_Base.fold_right
+                        (fun c acc ->
+                           match c with
+                           | Parser_XML.XElement (uu___2, uu___3, uu___4) ->
+                               (parse_term c) :: acc
+                           | uu___2 -> acc)
+                        (Parser_XML.element_children args_node) [] in
                 (match arg_terms with
+                 | [] ->
+                     FStar_Pervasives_Native.Some
+                       (RIF_Core_Syntax.RIF_Uniterm (pred, []))
+                 | (FStar_Pervasives_Native.Some a)::[] ->
+                     FStar_Pervasives_Native.Some
+                       (RIF_Core_Syntax.RIF_Uniterm (pred, [a]))
                  | (FStar_Pervasives_Native.Some
                      s)::(FStar_Pervasives_Native.Some o)::[] ->
                      FStar_Pervasives_Native.Some
                        (RIF_Core_Syntax.RIF_Triple (s, pred, o))
-                 | uu___2 -> FStar_Pervasives_Native.None))
-       | (uu___2, uu___3) -> FStar_Pervasives_Native.None)
+                 | uu___2 -> FStar_Pervasives_Native.None)))
   | uu___ -> FStar_Pervasives_Native.None
 let parse_slot_pair (slot : Parser_XML.xml_node)
   (obj : RIF_Core_Syntax.rif_term) :
@@ -285,20 +390,6 @@ let parse_slot_pair (slot : Parser_XML.xml_node)
             | (uu___2, uu___3) -> FStar_Pervasives_Native.None)
        | uu___2 -> FStar_Pervasives_Native.None)
   | uu___ -> FStar_Pervasives_Native.None
-let rec list_collect_some :
-  'a .
-    'a FStar_Pervasives_Native.option Prims.list ->
-      'a Prims.list FStar_Pervasives_Native.option
-  =
-  fun xs ->
-    match xs with
-    | [] -> FStar_Pervasives_Native.Some []
-    | (FStar_Pervasives_Native.None)::uu___ -> FStar_Pervasives_Native.None
-    | (FStar_Pervasives_Native.Some x)::rest ->
-        (match list_collect_some rest with
-         | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
-         | FStar_Pervasives_Native.Some ys ->
-             FStar_Pervasives_Native.Some (x :: ys))
 let parse_frame_element (n : Parser_XML.xml_node) :
   RIF_Core_Syntax.rif_atom Prims.list FStar_Pervasives_Native.option=
   match n with
@@ -405,20 +496,68 @@ let rec parse_body_node (n : Parser_XML.xml_node) (fuel : Prims.nat) :
               | [] -> FStar_Pervasives_Native.None
               | first::uu___3 -> parse_body_node first (fuel - Prims.int_one))
            else
-             if is_atom_tag tag
+             if tag_is "External" tag
              then
-               (match parse_atom_node n with
+               (match first_child_with_local_name "content" children with
                 | FStar_Pervasives_Native.None ->
                     FStar_Pervasives_Native.None
-                | FStar_Pervasives_Native.Some (a::[]) ->
-                    FStar_Pervasives_Native.Some
-                      (RIF_Core_Syntax.RIF_BodyAtom a)
-                | FStar_Pervasives_Native.Some atoms ->
-                    FStar_Pervasives_Native.Some
-                      (RIF_Core_Syntax.RIF_BodyAnd
-                         (FStar_List_Tot_Base.map
-                            (fun a -> RIF_Core_Syntax.RIF_BodyAtom a) atoms)))
-             else FStar_Pervasives_Native.None
+                | FStar_Pervasives_Native.Some content_node ->
+                    (match content_node with
+                     | Parser_XML.XElement (uu___4, uu___5, cchildren) ->
+                         (match child_elements_only cchildren with
+                          | inner::[] ->
+                              (match inner with
+                               | Parser_XML.XElement (itag, uu___6, uu___7)
+                                   ->
+                                   if tag_is "Atom" itag
+                                   then
+                                     (match parse_op_and_args_fuel inner
+                                              (fuel - Prims.int_one)
+                                      with
+                                      | FStar_Pervasives_Native.None ->
+                                          FStar_Pervasives_Native.None
+                                      | FStar_Pervasives_Native.Some
+                                          (op, args) ->
+                                          FStar_Pervasives_Native.Some
+                                            (RIF_Core_Syntax.RIF_BodyExternal
+                                               (op, args)))
+                                   else FStar_Pervasives_Native.None
+                               | uu___6 -> FStar_Pervasives_Native.None)
+                          | uu___6 -> FStar_Pervasives_Native.None)
+                     | uu___4 -> FStar_Pervasives_Native.None))
+             else
+               if tag_is "Equal" tag
+               then
+                 (match ((first_child_with_local_name "left" children),
+                          (first_child_with_local_name "right" children))
+                  with
+                  | (FStar_Pervasives_Native.Some l_node,
+                     FStar_Pervasives_Native.Some r_node) ->
+                      (match ((parse_term_host l_node),
+                               (parse_term_host r_node))
+                       with
+                       | (FStar_Pervasives_Native.Some l,
+                          FStar_Pervasives_Native.Some r) ->
+                           FStar_Pervasives_Native.Some
+                             (RIF_Core_Syntax.RIF_BodyEqual (l, r))
+                       | (uu___5, uu___6) -> FStar_Pervasives_Native.None)
+                  | (uu___5, uu___6) -> FStar_Pervasives_Native.None)
+               else
+                 if is_atom_tag tag
+                 then
+                   (match parse_atom_node n with
+                    | FStar_Pervasives_Native.None ->
+                        FStar_Pervasives_Native.None
+                    | FStar_Pervasives_Native.Some (a::[]) ->
+                        FStar_Pervasives_Native.Some
+                          (RIF_Core_Syntax.RIF_BodyAtom a)
+                    | FStar_Pervasives_Native.Some atoms ->
+                        FStar_Pervasives_Native.Some
+                          (RIF_Core_Syntax.RIF_BodyAnd
+                             (FStar_List_Tot_Base.map
+                                (fun a -> RIF_Core_Syntax.RIF_BodyAtom a)
+                                atoms)))
+                 else FStar_Pervasives_Native.None
      | uu___1 -> FStar_Pervasives_Native.None)
 and parse_body_list (xs : Parser_XML.xml_node Prims.list) (fuel : Prims.nat)
   : RIF_Core_Syntax.rif_body Prims.list FStar_Pervasives_Native.option=
@@ -548,23 +687,46 @@ let rec parse_sentence_content (n : Parser_XML.xml_node) (fuel : Prims.nat) :
                   | first::uu___5 ->
                       parse_sentence_content first (fuel - Prims.int_one))
                else
-                 if is_atom_tag tag
+                 if tag_is "And" tag
                  then
-                   (match parse_atom_node n with
-                    | FStar_Pervasives_Native.None ->
-                        FStar_Pervasives_Native.None
-                    | FStar_Pervasives_Native.Some (a::[]) ->
-                        FStar_Pervasives_Native.Some
-                          [RIF_Core_Syntax.mk_rule a
-                             (RIF_Core_Syntax.RIF_BodyAnd [])]
-                    | FStar_Pervasives_Native.Some atoms ->
-                        FStar_Pervasives_Native.Some
-                          (FStar_List_Tot_Base.map
-                             (fun a ->
-                                RIF_Core_Syntax.mk_rule a
-                                  (RIF_Core_Syntax.RIF_BodyAnd [])) atoms))
-                 else FStar_Pervasives_Native.None
+                   parse_sentence_conjuncts (child_elements_only children)
+                     (fuel - Prims.int_one)
+                 else
+                   if is_atom_tag tag
+                   then
+                     (match parse_atom_node n with
+                      | FStar_Pervasives_Native.None ->
+                          FStar_Pervasives_Native.None
+                      | FStar_Pervasives_Native.Some (a::[]) ->
+                          FStar_Pervasives_Native.Some
+                            [RIF_Core_Syntax.mk_rule a
+                               (RIF_Core_Syntax.RIF_BodyAnd [])]
+                      | FStar_Pervasives_Native.Some atoms ->
+                          FStar_Pervasives_Native.Some
+                            (FStar_List_Tot_Base.map
+                               (fun a ->
+                                  RIF_Core_Syntax.mk_rule a
+                                    (RIF_Core_Syntax.RIF_BodyAnd [])) atoms))
+                   else FStar_Pervasives_Native.None
      | uu___1 -> FStar_Pervasives_Native.None)
+and parse_sentence_conjuncts (xs : Parser_XML.xml_node Prims.list)
+  (fuel : Prims.nat) :
+  RIF_Core_Syntax.rif_rule Prims.list FStar_Pervasives_Native.option=
+  if fuel = Prims.int_zero
+  then FStar_Pervasives_Native.None
+  else
+    (match xs with
+     | [] -> FStar_Pervasives_Native.Some []
+     | hd::rest ->
+         (match parse_sentence_content hd (fuel - Prims.int_one) with
+          | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+          | FStar_Pervasives_Native.Some these ->
+              (match parse_sentence_conjuncts rest (fuel - Prims.int_one)
+               with
+               | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+               | FStar_Pervasives_Native.Some more ->
+                   FStar_Pervasives_Native.Some
+                     (FStar_List_Tot_Base.op_At these more))))
 let rec parse_group_children (xs : Parser_XML.xml_node Prims.list)
   (fuel : Prims.nat) :
   RIF_Core_Syntax.rif_rule Prims.list FStar_Pervasives_Native.option=

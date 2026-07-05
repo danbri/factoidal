@@ -6,6 +6,7 @@ let __proj__Mkrif_var__item__var_name (projectee : rif_var) : Prims.string=
 type rif_term =
   | RIF_Var of rif_var 
   | RIF_Const of RDF_Graph_Executable.rdf_term 
+  | RIF_TermExternal of RDF_Graph_Executable.wf_iri * rif_term Prims.list 
 let uu___is_RIF_Var (projectee : rif_term) : Prims.bool=
   match projectee with | RIF_Var _0 -> true | uu___ -> false
 let __proj__RIF_Var__item___0 (projectee : rif_term) : rif_var=
@@ -14,11 +15,19 @@ let uu___is_RIF_Const (projectee : rif_term) : Prims.bool=
   match projectee with | RIF_Const _0 -> true | uu___ -> false
 let __proj__RIF_Const__item___0 (projectee : rif_term) :
   RDF_Graph_Executable.rdf_term= match projectee with | RIF_Const _0 -> _0
+let uu___is_RIF_TermExternal (projectee : rif_term) : Prims.bool=
+  match projectee with | RIF_TermExternal (_0, _1) -> true | uu___ -> false
+let __proj__RIF_TermExternal__item___0 (projectee : rif_term) :
+  RDF_Graph_Executable.wf_iri=
+  match projectee with | RIF_TermExternal (_0, _1) -> _0
+let __proj__RIF_TermExternal__item___1 (projectee : rif_term) :
+  rif_term Prims.list= match projectee with | RIF_TermExternal (_0, _1) -> _1
 type rif_atom =
   | RIF_Triple of rif_term * rif_term * rif_term 
   | RIF_Frame of rif_term * rif_term * rif_term 
   | RIF_Member of rif_term * rif_term 
   | RIF_Sub of rif_term * rif_term 
+  | RIF_Uniterm of rif_term * rif_term Prims.list 
 let uu___is_RIF_Triple (projectee : rif_atom) : Prims.bool=
   match projectee with | RIF_Triple (_0, _1, _2) -> true | uu___ -> false
 let __proj__RIF_Triple__item___0 (projectee : rif_atom) : rif_term=
@@ -47,9 +56,17 @@ let __proj__RIF_Sub__item___0 (projectee : rif_atom) : rif_term=
   match projectee with | RIF_Sub (_0, _1) -> _0
 let __proj__RIF_Sub__item___1 (projectee : rif_atom) : rif_term=
   match projectee with | RIF_Sub (_0, _1) -> _1
+let uu___is_RIF_Uniterm (projectee : rif_atom) : Prims.bool=
+  match projectee with | RIF_Uniterm (_0, _1) -> true | uu___ -> false
+let __proj__RIF_Uniterm__item___0 (projectee : rif_atom) : rif_term=
+  match projectee with | RIF_Uniterm (_0, _1) -> _0
+let __proj__RIF_Uniterm__item___1 (projectee : rif_atom) :
+  rif_term Prims.list= match projectee with | RIF_Uniterm (_0, _1) -> _1
 type rif_body =
   | RIF_BodyAtom of rif_atom 
   | RIF_BodyAnd of rif_body Prims.list 
+  | RIF_BodyExternal of RDF_Graph_Executable.wf_iri * rif_term Prims.list 
+  | RIF_BodyEqual of rif_term * rif_term 
 let uu___is_RIF_BodyAtom (projectee : rif_body) : Prims.bool=
   match projectee with | RIF_BodyAtom _0 -> true | uu___ -> false
 let __proj__RIF_BodyAtom__item___0 (projectee : rif_body) : rif_atom=
@@ -58,6 +75,19 @@ let uu___is_RIF_BodyAnd (projectee : rif_body) : Prims.bool=
   match projectee with | RIF_BodyAnd _0 -> true | uu___ -> false
 let __proj__RIF_BodyAnd__item___0 (projectee : rif_body) :
   rif_body Prims.list= match projectee with | RIF_BodyAnd _0 -> _0
+let uu___is_RIF_BodyExternal (projectee : rif_body) : Prims.bool=
+  match projectee with | RIF_BodyExternal (_0, _1) -> true | uu___ -> false
+let __proj__RIF_BodyExternal__item___0 (projectee : rif_body) :
+  RDF_Graph_Executable.wf_iri=
+  match projectee with | RIF_BodyExternal (_0, _1) -> _0
+let __proj__RIF_BodyExternal__item___1 (projectee : rif_body) :
+  rif_term Prims.list= match projectee with | RIF_BodyExternal (_0, _1) -> _1
+let uu___is_RIF_BodyEqual (projectee : rif_body) : Prims.bool=
+  match projectee with | RIF_BodyEqual (_0, _1) -> true | uu___ -> false
+let __proj__RIF_BodyEqual__item___0 (projectee : rif_body) : rif_term=
+  match projectee with | RIF_BodyEqual (_0, _1) -> _0
+let __proj__RIF_BodyEqual__item___1 (projectee : rif_body) : rif_term=
+  match projectee with | RIF_BodyEqual (_0, _1) -> _1
 type rif_rule =
   {
   rule_name: Prims.string FStar_Pervasives_Native.option ;
@@ -86,8 +116,16 @@ let mk_atom_member (o : rif_term) (c : rif_term) : rif_atom=
   RIF_Member (o, c)
 let mk_atom_sub (sub : rif_term) (sup_ : rif_term) : rif_atom=
   RIF_Sub (sub, sup_)
+let mk_atom_uniterm (p : rif_term) (args : rif_term Prims.list) : rif_atom=
+  RIF_Uniterm (p, args)
+let mk_term_external (op : RDF_Graph_Executable.wf_iri)
+  (args : rif_term Prims.list) : rif_term= RIF_TermExternal (op, args)
 let mk_body_atom (a : rif_atom) : rif_body= RIF_BodyAtom a
 let mk_body_and (bs : rif_body Prims.list) : rif_body= RIF_BodyAnd bs
+let mk_body_external (op : RDF_Graph_Executable.wf_iri)
+  (args : rif_term Prims.list) : rif_body= RIF_BodyExternal (op, args)
+let mk_body_equal (lhs : rif_term) (rhs : rif_term) : rif_body=
+  RIF_BodyEqual (lhs, rhs)
 let mk_rule (head_ : rif_atom) (body_ : rif_body) : rif_rule=
   { rule_name = FStar_Pervasives_Native.None; head = head_; body = body_ }
 let mk_named_rule (n : Prims.string) (head_ : rif_atom) (body_ : rif_body) :
@@ -98,10 +136,18 @@ let empty_program : rif_program= { rules = [] }
 let program_of_rules (rs : rif_rule Prims.list) : rif_program= { rules = rs }
 let rif_var_eq (a : rif_var) (b : rif_var) : Prims.bool=
   a.var_name = b.var_name
-let rif_term_eq (a : rif_term) (b : rif_term) : Prims.bool=
+let rec rif_term_eq (a : rif_term) (b : rif_term) : Prims.bool=
   match (a, b) with
   | (RIF_Var v1, RIF_Var v2) -> rif_var_eq v1 v2
   | (RIF_Const c1, RIF_Const c2) -> RDF_Graph_Executable.rdf_term_eq c1 c2
+  | (RIF_TermExternal (op1, args1), RIF_TermExternal (op2, args2)) ->
+      (op1 = op2) && (rif_term_list_eq args1 args2)
+  | (uu___, uu___1) -> false
+and rif_term_list_eq (a : rif_term Prims.list) (b : rif_term Prims.list) :
+  Prims.bool=
+  match (a, b) with
+  | ([], []) -> true
+  | (x::xs, y::ys) -> (rif_term_eq x y) && (rif_term_list_eq xs ys)
   | (uu___, uu___1) -> false
 let rif_atom_eq (a : rif_atom) (b : rif_atom) : Prims.bool=
   match (a, b) with
@@ -113,4 +159,6 @@ let rif_atom_eq (a : rif_atom) (b : rif_atom) : Prims.bool=
       (rif_term_eq o1 o2) && (rif_term_eq c1 c2)
   | (RIF_Sub (sub1, sup1), RIF_Sub (sub2, sup2)) ->
       (rif_term_eq sub1 sub2) && (rif_term_eq sup1 sup2)
+  | (RIF_Uniterm (p1, a1), RIF_Uniterm (p2, a2)) ->
+      (rif_term_eq p1 p2) && (rif_term_list_eq a1 a2)
   | (uu___, uu___1) -> false

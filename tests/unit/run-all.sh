@@ -122,9 +122,11 @@ COMMON_MODULES=(
   OWL_Tests_Manifest
   RIF_Core_Syntax
   Parser_RIFXML
+  RIF_Core_Builtins
   RIF_Core_Translation
   RIF_Core_Eval
   RIF_Core_Tests
+  RIF_Core_Conformance
   SPARQL11_Parser
   SHACL_Validation
   SPARQL11_Store

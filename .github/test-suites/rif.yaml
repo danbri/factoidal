@@ -31,43 +31,71 @@ foundational: false
 # (third_party/testing/rif-core-suite/Core_v1.22/Approved/*, 46
 # tests -- see that directory's README.md for source/license/
 # inventory, and bin/rif-runner/README.md for the pipeline and full
-# skip-bucket table). Each test is self-contained
-# (-premise.rif + -conclusion.rif/-nonconclusion.rif, no SPARQL
-# manifest needed): saturate the premise via the same
-# RIF_Core_Eval.fixpoint, translate the conclusion's fact(s) to a
-# BGP via RIF_Core_Translation.translate_atom, ASK it against the
-# saturated graph via the same OWL_QueryEval.eval_ask_query_owl.
-# PositiveSyntaxTest/NegativeSyntaxTest/ImportRejectionTest categories
-# are unconditionally SKIPPED (no dialect-safeness or
-# import-rejection consistency checker -- out of scope this slice).
-# Score: 9 pass, 1 fail, 36 skip (out of 46), measured 2026-07-05
-# (updated from the initial 7/3/36 landing the same day -- see
-# bin/rif-runner/README.md's Score section). Two of the original 3
-# FAILs are now fixed in F*: rdf:PlainLiteral lang-tag decoding
-# (Parser.RIFXML.fst's const_from_type, "text@lang" ->
-# language-tagged literal / "text@" -> plain xsd:string) and
-# OWL-Direct annotation-triple exclusion (new
-# OWL.DirectMapping.Filter.fst, applied in rif_runner.ml's
-# apply_import_closure before the OWL-Direct closure runs). The 1
-# remaining FAIL, RDF_Combination_Constant_Equivalence_4, is a corpus
-# data defect in the official Core_v1.22.zip's import files
-# (malformed xsd:string datatype IRI), not this project's fault --
-# reported as a labelled FAIL with a KNOWN-DEFECT diagnostic line
-# (not moved to SKIP: the pipeline fully processes it, it just
-# doesn't entail under a correct datatype-IRI comparison).
+# skip-bucket table). Each PositiveEntailmentTest/NegativeEntailmentTest
+# is self-contained (-premise.rif + -conclusion.rif/-nonconclusion.rif,
+# no SPARQL manifest needed): saturate the premise via the same
+# RIF_Core_Eval.fixpoint (now also evaluating External(...)/Equal body
+# conditions via new module RIF.Core.Builtins.fst -- a bounded RIF-DTB
+# builtin subset: the numeric function/predicate family,
+# literal-not-identical, is-literal-<T>/is-literal-not-<T> for a fixed
+# datatype list, and XSD/rdf constructor-function casts targeting
+# those datatypes), translate the conclusion's fact(s) to a BGP via
+# RIF_Core_Translation.translate_atom, ASK it against the saturated
+# graph via the same OWL_QueryEval.eval_ask_query_owl.
+# PositiveSyntaxTest/NegativeSyntaxTest (RIF Core dialect safeness +
+# "no free variables") are checked via new module
+# RIF.Core.Conformance.fst's structural analysis over the raw RIF-XML
+# tree; ImportRejectionTest dispatches per fixture to the specific
+# RIF-RDF/OWL combination-spec import-validity condition it exercises
+# (same module, §5) -- one fixture (Multiple_Context_Error,
+# cross-document constant-role tracking) remains an honest SKIP.
 #
-# Combined score: 13 pass, 1 fail, 36 skip (out of 50). The runner
-# exits 1 whenever the combined fail count is nonzero (rif_runner.ml
-# main's `if grand_fail > 0 then exit 1`) -- CI consumers of this
-# suite's exit code should expect nonzero until the corpus-defect FAIL
-# above is somehow addressed upstream (it is not fixable in this
-# project without mismatching the correct RDF datatype-IRI semantics).
+# Score, measured 2026-07-05 (External/safeness/import-rejection
+# buckets landed): 30 pass, 4 fail, 12 skip (out of 46) -- up from the
+# initial-landing 9 pass, 1 fail, 36 skip. Per-bucket before/after
+# (skip-bucket counts from bin/rif-runner/README.md's original table):
+#   - 16 External skips -> 9 now PASS (numeric family + binary/anyURI/
+#     boolean/XMLLiteral is-literal-<T> + literal-not-identical +
+#     Chaining_strategy_* builtin-function chaining +
+#     Guards_and_subtypes via the And-of-facts conclusion parse fix),
+#     6 remain honest skips each naming the unimplemented feature
+#     (String / Time+dateTime x2 / PlainLiteral builtin families,
+#     Builtins_List -> List builtins, IRI_from_RDF_Literal -> Exists +
+#     pred:iri-string binding-pattern execution), 1
+#     (Factorial_Forward_Chaining) is a labelled KNOWN-GAP FAIL
+#     (arity-2 Uniterm body re-binding needs real n-ary reification,
+#     not attempted).
+#   - 6 syntax-safeness skips -> all 6 now PASS via RIF.Core.Conformance.
+#   - 6 import-rejection skips -> 5 now PASS, 1 honest skip
+#     (Multiple_Context_Error).
+#   - 3 Uniterm-arity skips -> 1 now PASS (Positional_Arguments), 2 are
+#     labelled KNOWN-GAP FAILs (Local_Constant/Local_Predicate --
+#     rif:local constants are not document-scoped in this engine).
+#   - 2 Equal skips -> still SKIP but now with a precise reason: the
+#     Vocabulary_Separation_Inconsistency fixtures' "a"="b" conclusion
+#     is entailed only via an INCONSISTENT premise combination
+#     (OWL-Direct individual/data-value vocabulary-separation
+#     violation); combination-inconsistency detection not implemented.
+#   - List/Exists buckets (2 tests) unchanged SKIP.
+# The pre-existing RDF_Combination_Constant_Equivalence_4 KNOWN-DEFECT
+# FAIL (corpus data defect, not an engine gap) is unchanged.
 #
-# See bin/rif-runner/rif_runner.ml's header comment and
+# Combined score: 34 pass, 4 fail, 12 skip (out of 50) -- up from
+# 13 pass, 1 fail, 36 skip. Every remaining skip names the specific
+# unimplemented feature or corpus packaging gap. The runner exits 1
+# whenever the combined fail count is nonzero (rif_runner.ml main's
+# `if grand_fail > 0 then exit 1`) -- CI consumers of this suite's
+# exit code should expect nonzero until the 4 labelled FAILs above are
+# addressed (1 corpus defect, not fixable here; 3 labelled engine
+# KNOWN-GAPs, see bin/rif-runner/README.md's Score section for each).
+#
+# See bin/rif-runner/rif_runner.ml's header comment,
+# formal/fstar/RIF.Core.Builtins.fst's module comment, and
 # docs/claude-rules/scope.md's RIF paragraph for the up-to-date
-# supported-subset statement (RIF Core frames/BGP-shaped rule bodies
-# + the Import/profile shapes the vendored corpus exercises;
-# RIF-BLD/PRD remain out of scope).
+# supported-subset statement (RIF Core frames/BGP-shaped rule bodies +
+# the bounded RIF-DTB builtin subset + safeness/import-rejection
+# conformance checking; RIF-BLD/PRD's full builtin library, List
+# terms, and Exists remain out of scope).
 
 triggers:
   paths:
@@ -76,6 +104,13 @@ triggers:
     - formal/fstar/RIF.Core.Syntax.fst
     - formal/fstar/RIF.Core.Translation.fst
     - formal/fstar/RIF.Core.Eval.fst
+    # RIF-DTB builtin subset (External/Equal body-condition
+    # evaluation) and RIF Core dialect conformance checking
+    # (safeness + free-variables + import-rejection), added
+    # 2026-07-05.
+    - formal/fstar/RIF.Core.Builtins.fst
+    - formal/fstar/RIF.Core.Conformance.fst
+    - formal/fstar/XSD.Datatypes.fst
     # The BGP evaluator RIF_Core_Eval.fire_rule delegates to for rule
     # bodies, and the OWL-Direct/RDFS closure paths this runner
     # reuses for imports (e.g. Modeling_Brain_Anatomy, and Part 2's

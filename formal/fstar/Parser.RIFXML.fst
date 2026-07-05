@@ -366,14 +366,134 @@ let parse_var (n : xml_node) : option Syn.rif_term =
     else Some (Syn.mk_var raw)
   | _ -> None
 
-// Dispatch on element local name to parse a term.
+// Collects a list of `option 'a` into `option (list 'a)`, failing the
+// whole list on the first None. Needed here (moved up from its
+// original home near parse_frame_element below) because
+// parse_op_and_args_fuel — the External(...)-argument-list parser —
+// needs it before parse_frame_element is reached.
+let rec list_collect_some (xs : list (option 'a))
+  : Tot (option (list 'a)) (decreases xs) =
+  match xs with
+  | [] -> Some []
+  | None :: _ -> None
+  | Some x :: rest ->
+    (match list_collect_some rest with
+     | None -> None
+     | Some ys -> Some (x :: ys))
+
+// ------------------------------------------------------------------
+// 3b. External(...) term parsing (RIF-DTB builtin FUNCTION calls used
+// as a TERM, e.g. nested inside a rule head atom's arguments or an
+// Equal operand):
+//
+//   <External>
+//     <content>
+//       <Expr>
+//         <op><Const type="&rif;iri">...builtin IRI...</Const></op>
+//         <args ordered="yes"> term* </args>
+//       </Expr>
+//     </content>
+//   </External>
+//
+// parse_term / parse_op_and_args_fuel are mutually recursive (an
+// External's args can themselves nest another External term) —
+// fuel-bounded, same style as parse_body_node/parse_body_list above,
+// since Parser.XML's XElement-through-first_child_with_local_name
+// indirection is not syntactically decreasing enough for F* to accept
+// unfueled structural recursion.
+//
+// parse_term keeps its original one-argument signature (a large fixed
+// fuel budget, 1000, applied internally) so every existing call site
+// (parse_term_host, parse_atom_element's arg loop, parse_slot_pair,
+// parse_member_element, parse_subclass_element) needs no change.
+// ------------------------------------------------------------------
+
+let rec parse_term_fuel (n : xml_node) (fuel : nat)
+  : Tot (option Syn.rif_term) (decreases fuel) =
+  if fuel = 0 then None
+  else
+    match n with
+    | XElement tag _ children ->
+      if tag_is "Const" tag then parse_const n
+      else if tag_is "Var" tag then parse_var n
+      else if tag_is "External" tag then
+        (match first_child_with_local_name "content" children with
+         | None -> None
+         | Some content_node ->
+           (match content_node with
+            | XElement _ _ cchildren ->
+              (match child_elements_only cchildren with
+               | [inner] ->
+                 (match inner with
+                  | XElement itag _ _ ->
+                    if tag_is "Expr" itag then
+                      (match parse_op_and_args_fuel inner (fuel - 1) with
+                       | None -> None
+                       | Some (op, args) -> Some (Syn.RIF_TermExternal op args))
+                    else None
+                  | _ -> None)
+               | _ -> None)
+            | _ -> None))
+      else None
+    | _ -> None
+
+// Parses `<op><Const type="&rif;iri">IRI</Const></op><args ordered="yes">
+// term*</args>` — shared by External(...)'s <Expr> (term/function-call
+// mode, above) and <Atom> (formula/predicate-call mode, parse_body_node
+// below). The builtin's op MUST resolve to a plain IRI constant (every
+// vendored corpus fixture uses one; RIF-DTB builtin symbols are always
+// IRIs, never variables or rif:local constants).
+and parse_op_and_args_fuel (n : xml_node) (fuel : nat)
+  : Tot (option (wf_iri & list Syn.rif_term)) (decreases fuel) =
+  if fuel = 0 then None
+  else
+    match n with
+    | XElement _ _ children ->
+      let op_n = first_child_with_local_name "op" children in
+      let args_n = first_child_with_local_name "args" children in
+      (match op_n with
+       | None -> None
+       | Some op_node ->
+         (match parse_term_host_fuel op_node (fuel - 1) with
+          | Some (Syn.RIF_Const (T_IRI pi)) ->
+            let arg_terms : list (option Syn.rif_term) =
+              match args_n with
+              | None -> []
+              | Some args_node ->
+                List.Tot.fold_right
+                  (fun (c : xml_node) (acc : list (option Syn.rif_term)) ->
+                     match c with
+                     | XElement _ _ _ -> parse_term_fuel c (fuel - 1) :: acc
+                     | _ -> acc)
+                  (element_children args_node) []
+            in
+            (match list_collect_some arg_terms with
+             | None -> None
+             | Some args -> Some (pi, args))
+          | _ -> None))
+    | _ -> None
+
+// Fueled twin of parse_term_host (below), needed here only because
+// parse_term_host itself is defined after this mutual-recursion group
+// and calls the unfueled parse_term wrapper — this local copy breaks
+// that ordering dependency without changing parse_term_host's public
+// shape.
+and parse_term_host_fuel (n : xml_node) (fuel : nat)
+  : Tot (option Syn.rif_term) (decreases fuel) =
+  if fuel = 0 then None
+  else
+    match n with
+    | XElement _ _ children ->
+      (match child_elements_only children with
+       | [] -> None
+       | first :: _ -> parse_term_fuel first (fuel - 1))
+    | _ -> None
+
+// Dispatch on element local name to parse a term. Public one-argument
+// shape preserved (see comment above); internally applies a fixed
+// generous fuel budget to the mutually-recursive fueled parser.
 let parse_term (n : xml_node) : option Syn.rif_term =
-  match n with
-  | XElement tag _ _ ->
-    if tag_is "Const" tag then parse_const n
-    else if tag_is "Var" tag then parse_var n
-    else None
-  | _ -> None
+  parse_term_fuel n 1000
 
 // Parse a term wrapped in a single-element host (<object>, <op>,
 // <slot>'s key/value, ...). The host element typically contains
@@ -402,33 +522,41 @@ let parse_term_host (n : xml_node) : option Syn.rif_term =
 // </Atom>
 //
 // Per the RIF/RDF combination spec, a binary atom p(s,o) maps to
-// the triple (s, p, o). Higher-arity atoms are out of RIF Core's
-// RDF profile and we surface them as None.
+// the triple (s, p, o) — still handled directly here, unchanged, for
+// every already-passing fixture. Arity 0 (`p()`, no <args> element at
+// all, or an empty one — e.g. the Builtins_* battery's `ex:ok()` head)
+// and arity 1 (`p(a)` — e.g. Positional_Arguments' `ex:gold(?Customer)`)
+// fall back to the generic RIF_Uniterm encoding (RIF.Core.Translation
+// gives it a triple mapping); arity >= 3 has no encoding and stays
+// None (honest — no vendored corpus fixture needs it).
 let parse_atom_element (n : xml_node) : option Syn.rif_atom =
   match n with
   | XElement _ _ children ->
     let op_n = first_child_with_local_name "op" children in
     let args_n = first_child_with_local_name "args" children in
-    (match op_n, args_n with
-     | Some op_node, Some args_node ->
+    (match op_n with
+     | None -> None
+     | Some op_node ->
        (match parse_term_host op_node with
         | None -> None
         | Some pred ->
-          let arg_terms =
-            List.Tot.fold_right
-              (fun (c:xml_node) (acc:list (option Syn.rif_term)) ->
-                 match c with
-                 | XElement _ _ _ -> parse_term c :: acc
-                 | _ -> acc)
-              (element_children args_node)
-              []
+          let arg_terms : list (option Syn.rif_term) =
+            match args_n with
+            | None -> []
+            | Some args_node ->
+              List.Tot.fold_right
+                (fun (c:xml_node) (acc:list (option Syn.rif_term)) ->
+                   match c with
+                   | XElement _ _ _ -> parse_term c :: acc
+                   | _ -> acc)
+                (element_children args_node)
+                []
           in
-          // Require exactly two arguments (subject, object) and
-          // both must have parsed.
           (match arg_terms with
+           | [] -> Some (Syn.RIF_Uniterm pred [])
+           | [Some a] -> Some (Syn.RIF_Uniterm pred [a])
            | [Some s; Some o] -> Some (Syn.RIF_Triple s pred o)
-           | _ -> None))
-     | _, _ -> None)
+           | _ -> None)))
   | _ -> None
 
 // <Frame>
@@ -454,15 +582,8 @@ let parse_slot_pair (slot : xml_node) (obj : Syn.rif_term)
      | _ -> None)
   | _ -> None
 
-let rec list_collect_some (xs : list (option 'a))
-  : Tot (option (list 'a)) (decreases xs) =
-  match xs with
-  | [] -> Some []
-  | None :: _ -> None
-  | Some x :: rest ->
-    (match list_collect_some rest with
-     | None -> None
-     | Some ys -> Some (x :: ys))
+// list_collect_some moved up near parse_term_fuel (section 3b) — see
+// there for why.
 
 let parse_frame_element (n : xml_node) : option (list Syn.rif_atom) =
   match n with
@@ -576,6 +697,38 @@ let rec parse_body_node (n : xml_node) (fuel : nat)
         (match child_elements_only children with
          | [] -> None
          | first :: _ -> parse_body_node first (fuel - 1))
+      else if tag_is "External" tag then
+        // External(...) used in FORMULA/predicate-call position — the
+        // <content> wraps an <Atom> (as opposed to term/function
+        // position, which wraps an <Expr>; see parse_term_fuel above).
+        // A body containing a function-mode External standing alone
+        // as a whole conjunct is not a shape this corpus exercises;
+        // conservatively None rather than guess.
+        (match first_child_with_local_name "content" children with
+         | None -> None
+         | Some content_node ->
+           (match content_node with
+            | XElement _ _ cchildren ->
+              (match child_elements_only cchildren with
+               | [inner] ->
+                 (match inner with
+                  | XElement itag _ _ ->
+                    if tag_is "Atom" itag then
+                      (match parse_op_and_args_fuel inner (fuel - 1) with
+                       | None -> None
+                       | Some (op, args) -> Some (Syn.RIF_BodyExternal op args))
+                    else None
+                  | _ -> None)
+               | _ -> None)
+            | _ -> None))
+      else if tag_is "Equal" tag then
+        (match first_child_with_local_name "left" children,
+               first_child_with_local_name "right" children with
+         | Some l_node, Some r_node ->
+           (match parse_term_host l_node, parse_term_host r_node with
+            | Some l, Some r -> Some (Syn.RIF_BodyEqual l r)
+            | _, _ -> None)
+         | _, _ -> None)
       else if is_atom_tag tag then
         (match parse_atom_node n with
          | None -> None
@@ -744,6 +897,17 @@ let rec parse_sentence_content (n : xml_node) (fuel : nat)
         (match child_elements_only children with
          | [] -> None
          | first :: _ -> parse_sentence_content first (fuel - 1))
+      else if tag_is "And" tag then
+        // Conjunction of FACTS in sentence position — the corpus's
+        // Guards_and_subtypes-conclusion.rif is a bare
+        // `<And><formula><Atom>..</Atom></formula>...</And>` document
+        // root: a conclusion naming several facts that must ALL be
+        // entailed. Each child parses as its own fact rule(s) and the
+        // results concatenate. Rule-BODY And is handled separately by
+        // parse_body_node; this branch only fires for And as a
+        // top-level sentence, which per RIF Core is only meaningful
+        // as a conjunction of facts.
+        parse_sentence_conjuncts (child_elements_only children) (fuel - 1)
       else if is_atom_tag tag then
         // Body-less fact.
         (match parse_atom_node n with
@@ -759,6 +923,20 @@ let rec parse_sentence_content (n : xml_node) (fuel : nat)
       else
         None
     | _ -> None
+
+and parse_sentence_conjuncts (xs : list xml_node) (fuel : nat)
+  : Tot (option (list Syn.rif_rule)) (decreases fuel) =
+  if fuel = 0 then None
+  else
+    match xs with
+    | [] -> Some []
+    | hd :: rest ->
+      (match parse_sentence_content hd (fuel - 1) with
+       | None -> None
+       | Some these ->
+         (match parse_sentence_conjuncts rest (fuel - 1) with
+          | None -> None
+          | Some more -> Some (these @ more)))
 
 // ------------------------------------------------------------------
 // 9. Group parsing.

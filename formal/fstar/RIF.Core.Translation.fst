@@ -62,6 +62,16 @@ let rif_term_to_subject (t : Syn.rif_term)
   | Syn.RIF_Const (T_IRI i)   -> Some (PS_IRI i)
   | Syn.RIF_Const (T_BNode b) -> Some (PS_BNode b)
   | Syn.RIF_Const (T_Literal _) -> None
+  | Syn.RIF_TermExternal _ _ ->
+    // External(...) used as a TERM only ever appears nested inside a
+    // rule HEAD atom's arguments or an Equal operand in this project's
+    // target corpus — never directly as an ordinary BODY atom's
+    // subject fed through translate_atom/eval_bgp (RIF.Core.Eval
+    // evaluates it under the current binding before that point).
+    // Reaching here means an unevaluated builtin call landed where a
+    // BGP pattern subject was expected; fail cleanly rather than
+    // fabricate a term.
+    None
 
 let rif_term_to_pattern (t : Syn.rif_term)
   : pattern_term
@@ -71,12 +81,73 @@ let rif_term_to_pattern (t : Syn.rif_term)
   | Syn.RIF_Const (T_IRI i)   -> PT_IRI i
   | Syn.RIF_Const (T_BNode b) -> PT_BNode b
   | Syn.RIF_Const (T_Literal l) -> PT_Literal l
+  | Syn.RIF_TermExternal _ _ ->
+    // Same rationale as rif_term_to_subject above: an unevaluated
+    // builtin call should never reach ordinary-atom BGP translation
+    // for this project's target corpus. pattern_term has no "failure"
+    // constructor, so fall back to a variable name that can never
+    // collide with a real RIF variable (RIF-XML variable names come
+    // from <Var> element text, which cannot contain '$').
+    PT_Var "$$unevaluated-external$$"
 
 // Pre-defined RIF/RDF combination IRIs. These are aliases for the
 // constants already in RDF.Graph.Executable, re-exported here so the
 // translation reads cleanly.
 let rif_rdf_type : wf_iri      = rdf_type
 let rif_rdfs_subclassof : wf_iri = rdfs_subClassOf
+
+// ------------------------------------------------------------------
+// 1b. Generic Uniterm (arity != 2) internal encoding.
+//
+// A binary positional atom p(s,o) already has a direct triple mapping
+// (RIF_Triple, s-p-o). Arity 0 (`p()`) and arity 1 (`p(a)`) Uniterms
+// have no subject/object pair to draw on, so this project encodes
+// them internally (never exposed to any external RDF-semantics check
+// — purely a bookkeeping device the fixpoint/ASK machinery uses
+// consistently on both the assertion side (RIF.Core.Eval's
+// instantiate_atom) and the query side, so round-tripping is sound):
+//   p(a)  ==>  (a, p, rif_uniterm_true_marker)
+//   p()   ==>  (rif_uniterm_nullary_subject, p, rif_uniterm_true_marker)
+// Arity 2 is NOT routed through here (Parser.RIFXML keeps using
+// RIF_Triple for it, unchanged); arity >= 3 has no encoding here and
+// stays an honest "cannot translate" (None) — no vendored corpus
+// fixture needs it.
+// ------------------------------------------------------------------
+
+let rif_uniterm_true_marker : rdf_term =
+  T_Literal ({ lexical_form = "true"; datatype = xsd_boolean; lang_tag = None })
+
+let rif_uniterm_nullary_subject : wf_iri =
+  assert_norm (is_iri "urn:rif-nullary:subject"); "urn:rif-nullary:subject"
+
+// A RIF positional Uniterm p(a) permits a as ANY term, including a
+// literal (e.g. Positional_Arguments' `ex:gold("John Doe")`,
+// Chaining_strategy_numeric-add_1's conclusion `ex:a(3)`) — unlike
+// RIF_Triple/Frame/Member/Sub, which model genuine RDF-in-RIF
+// combination shapes where a literal subject really is ill-typed
+// (matching SPARQL CONSTRUCT §16.2's silent-drop convention, per
+// RIF.Core.Eval.instantiate_atom's own comment) and must stay a hard
+// rejection. For the Uniterm encoding's own internal bookkeeping
+// only, a literal in the "subject" slot maps to a DETERMINISTIC blank
+// node derived from the literal's own (datatype, lang, lexical form)
+// — assertion side (RIF.Core.Eval) and query side (translate_atom
+// below) both call this SAME function, so a given literal argument
+// always round-trips to the same encoding. Never exposed to any
+// external RDF-semantics check.
+let literal_subject_bnode_label (l : literal) : bnode_id =
+  String.concat "" [
+    "rif-litsubj:"; l.datatype; ":";
+    (match l.lang_tag with Some t -> t | None -> ""); ":";
+    l.lexical_form
+  ]
+
+let rif_term_to_uniterm_subject (t : Syn.rif_term) : option pattern_subject =
+  match t with
+  | Syn.RIF_Var v             -> Some (PS_Var v.var_name)
+  | Syn.RIF_Const (T_IRI i)   -> Some (PS_IRI i)
+  | Syn.RIF_Const (T_BNode b) -> Some (PS_BNode b)
+  | Syn.RIF_Const (T_Literal l) -> Some (PS_BNode (literal_subject_bnode_label l))
+  | Syn.RIF_TermExternal _ _  -> None
 
 // ------------------------------------------------------------------
 // 2. Atom-level translation.
@@ -91,7 +162,16 @@ let rif_rdfs_subclassof : wf_iri = rdfs_subClassOf
 let translate_atom (a : Syn.rif_atom) : option triple_pattern =
   match a with
   | Syn.RIF_Triple s p o ->
-    (match rif_term_to_subject s with
+    // rif_term_to_uniterm_subject (not the strict rif_term_to_subject):
+    // Parser.RIFXML routes EVERY 2-argument positional Atom p(a1 a2)
+    // through RIF_Triple, whether it represents genuine RDF-in-RIF
+    // combination syntax (Frame/Member/Sub cover most of that in
+    // practice) or a plain arity-2 Uniterm fact where either argument
+    // may legitimately be a literal (Positional_Arguments'
+    // `ex:discount("John Doe" 10)`, Factorial_Forward_Chaining's
+    // `ex:factorial(6 720)`) — same literal-as-subject bookkeeping
+    // RIF_Uniterm's arity-1 case below needs, for the same reason.
+    (match rif_term_to_uniterm_subject s with
      | None -> None
      | Some ps ->
        Some ({ tp_s = ps;
@@ -118,6 +198,31 @@ let translate_atom (a : Syn.rif_atom) : option triple_pattern =
        Some ({ tp_s = ps;
                tp_p = PT_IRI rif_rdfs_subclassof;
                tp_o = rif_term_to_pattern sup_; }))
+  | Syn.RIF_Uniterm pred args ->
+    (match pred, args with
+     | Syn.RIF_Const (T_IRI pi), [] ->
+       Some ({ tp_s = PS_IRI rif_uniterm_nullary_subject;
+               tp_p = PT_IRI pi;
+               tp_o = rif_term_to_pattern (Syn.RIF_Const rif_uniterm_true_marker); })
+     | Syn.RIF_Const (T_IRI pi), [a] ->
+       // The argument goes in OBJECT position (using the SAME fixed
+       // subject arity-0 uses), not subject — critical when this atom
+       // is used in a rule BODY with a as a variable that must bind
+       // to its genuine value (Chaining_strategy_numeric-add_1's
+       // `ex:a(?x)`: ?x must bind to the real integer, not an opaque
+       // marker). Object position has no literal restriction, so this
+       // also handles a literal argument (facts like `ex:gold("John
+       // Doe")`) directly with no bnode encoding needed at all.
+       Some ({ tp_s = PS_IRI rif_uniterm_nullary_subject;
+               tp_p = PT_IRI pi;
+               tp_o = rif_term_to_pattern a; })
+     | _, _ ->
+       // Predicate position is not a plain IRI constant (e.g. a
+       // rif:local-scoped constant, which cannot be an RDF triple
+       // predicate) or the arity is unsupported (>= 2, already routed
+       // through RIF_Triple by the parser, or >= 3) — honest failure,
+       // not a silent triple.
+       None)
 
 // ------------------------------------------------------------------
 // 3. Body translation.
@@ -142,6 +247,13 @@ let rec translate_body (b : Syn.rif_body)
      | Some tp -> Some [tp])
   | Syn.RIF_BodyAnd bs ->
     translate_body_list bs
+  | Syn.RIF_BodyExternal _ _ ->
+    // Not translatable to a single triple_pattern (a builtin
+    // predicate call, not an RDF join) — unchanged rejection; callers
+    // that need External/Equal support use split_body (below) instead.
+    None
+  | Syn.RIF_BodyEqual _ _ ->
+    None
 
 and translate_body_list (bs : list Syn.rif_body)
   : Tot (option bgp) (decreases bs)
@@ -155,6 +267,72 @@ and translate_body_list (bs : list Syn.rif_body)
        (match translate_body_list rest with
         | None -> None
         | Some bgp_rest -> Some (List.Tot.append bgp_b bgp_rest)))
+
+// ------------------------------------------------------------------
+// 3b. Body splitting: ordinary atoms vs. External/Equal conditions.
+//
+// RIF_BodyExternal / RIF_BodyEqual conjuncts have no SPARQL
+// triple_pattern encoding (they are builtin predicate calls / value
+// equalities, not RDF joins), so translate_body above still rejects
+// any body that contains them — exactly the existing, unchanged
+// behaviour for every currently-passing fixture. RIF.Core.Eval needs
+// a body-evaluation path that instead SEPARATES the two: the ordinary
+// atoms (Triple/Frame/Member/Sub/Uniterm) still drive a SPARQL BGP
+// join via eval_bgp; the extras are evaluated per-binding afterwards
+// (RIF.Core.Eval.apply_extra_condition), since a builtin predicate's
+// arguments frequently reference variables the ordinary atoms bind
+// (e.g. Factorial_Forward_Chaining's `ex:factorial(?N1 ?F1)` binding
+// ?N1 before `?N = External(func:numeric-add(?N1 1))` computes ?N).
+//
+// split_body / split_body_list flatten the (And-nested) body tree
+// into (ordinary_atoms, extra_conditions), preserving each list's
+// original left-to-right order — RIF.Core.Eval processes extras
+// sequentially in this order, which is sufficient for every target
+// corpus fixture (each is authored so a variable is computed before
+// it is used downstream; this project does not attempt general
+// dependency-order solving for extras, only order-preserving
+// left-to-right evaluation).
+// ------------------------------------------------------------------
+
+noeq type rif_extra_condition =
+  | EC_External : wf_iri -> list Syn.rif_term -> rif_extra_condition
+  | EC_Equal    : Syn.rif_term -> Syn.rif_term -> rif_extra_condition
+
+let rec split_body (b : Syn.rif_body)
+  : Tot (list Syn.rif_atom & list rif_extra_condition) (decreases b)
+  =
+  match b with
+  | Syn.RIF_BodyAtom a -> ([a], [])
+  | Syn.RIF_BodyAnd bs -> split_body_list bs
+  | Syn.RIF_BodyExternal op args -> ([], [EC_External op args])
+  | Syn.RIF_BodyEqual lhs rhs -> ([], [EC_Equal lhs rhs])
+
+and split_body_list (bs : list Syn.rif_body)
+  : Tot (list Syn.rif_atom & list rif_extra_condition) (decreases bs)
+  =
+  match bs with
+  | [] -> ([], [])
+  | b :: rest ->
+    let (a1, e1) = split_body b in
+    let (a2, e2) = split_body_list rest in
+    (List.Tot.append a1 a2, List.Tot.append e1 e2)
+
+// Translates ONLY a flat list of ordinary atoms (the first component
+// split_body/split_body_list produces) to a BGP — same all-or-nothing
+// failure propagation as translate_body_list, just without the And
+// tree-walking (the tree shape was already flattened by split_body).
+let rec translate_atoms_bgp (atoms : list Syn.rif_atom)
+  : Tot (option bgp) (decreases atoms)
+  =
+  match atoms with
+  | [] -> Some []
+  | a :: rest ->
+    (match translate_atom a with
+     | None -> None
+     | Some tp ->
+       (match translate_atoms_bgp rest with
+        | None -> None
+        | Some tps -> Some (tp :: tps)))
 
 // ------------------------------------------------------------------
 // 4. Head translation.
