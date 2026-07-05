@@ -1,0 +1,57 @@
+name: RML (RDF Mapping Language) rml-core
+spec: https://kg-construct.github.io/rml-core/spec/
+runner: bin/linux-x86_64/rml_runner
+runner_args: []
+manifest: third_party/testing/rml-modules/rml-core/test-cases/metadata.csv
+log_path: formal/fstar/ocaml-output/rml_results.log
+result_path: docs/test-results/by-suite/rml.json
+domain: RDF
+foundational: false
+
+# Stage 8 of the RML program
+# (docs/designissues/2026-07-05-rml-program-plan.md). Conformance
+# target: rml-core (primary, 76 test cases — TriplesMap/LogicalSource/
+# SubjectMap/PredicateObjectMap/TermMap, RefObjectMap joins). rml-io's
+# non-relational logical sources (CSV/JSON; XML/XPath deferred, Stage 4
+# not built) are a secondary section the same binary reports
+# (`rml_runner --io`) but do not gate this suite's pass/fail — see the
+# plan's staged table for what's in scope vs deferred (relational/SQL
+# logical sources, RML-CC gather/gatherAs, RML-FNML function dispatch,
+# RML-star quoted triples).
+#
+# Reads each module's metadata.csv (via the F*-extracted RFC 4180
+# tokenizer, RML_Sources.csv_parse_rows — rule #7, no hand-rolled CSV
+# parsing), loads mapping.ttl via the F*-extracted Turtle parser,
+# decodes it with RML_Mapping.decode_mapping_document, resolves
+# logical-source rows (JSON/CSV) and evaluates both non-join triples
+# and RefObjectMap/joinCondition joins (RML_Eval.eval_triples_map /
+# eval_join_triples_map), comparing against each fixture's output.nq
+# via RDF_Canonical.canonicalize_to_nquads. error=true fixtures PASS
+# iff the generated dataset is empty.
+
+triggers:
+  paths:
+    # Mapping-document AST + Turtle-graph decoder.
+    - formal/fstar/RML.Mapping.fst
+    # Logical-source iteration: JSONPath subset, CSV tokenizer.
+    - formal/fstar/RML.Sources.fst
+    # Term-map / triples-map / join (RefObjectMap) evaluation.
+    - formal/fstar/RML.Eval.fst
+    # The mapping document and manifest.ttl are Turtle/N-Triples.
+    - formal/fstar/Parser.Turtle.fst
+    - formal/fstar/Parser.NTriples.fst
+    # JSON logical sources.
+    - formal/fstar/Parser.JSON.fst
+    # N-Quads used to load expected output.nq fixtures.
+    - formal/fstar/Parser.NQuads.fst
+    # Canonicalization used for the isomorphism compare.
+    - formal/fstar/RDF.Canonical.fst
+    # rml:URI's RFC3986 percent-encoding + is_uri_unreserved are reused
+    # from SPARQL11.Algebra (ENCODE_FOR_URI).
+    - formal/fstar/SPARQL11.Algebra.fst
+    # The runner.
+    - bin/rml-runner/**
+    # Vendored kg-construct rml-core / rml-io test-case submodules.
+    - third_party/testing/rml-modules/**
+
+  excludes: []

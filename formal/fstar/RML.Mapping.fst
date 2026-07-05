@@ -114,6 +114,22 @@ let rml_root : wf_iri =
   assert_norm (is_iri "http://w3id.org/rml/root");
   "http://w3id.org/rml/root"
 
+// rml:null (RML-IO spec: "zero or more rml:null describes which data
+// values inside the source should be considered as NULL. The value
+// for this predicate defaults to the default NULL token of the
+// underlying data model" — and, verbatim, "CSV does not have a
+// default NULL character, so no value is considered NULL"). List-
+// valued, and — per the vendored fixtures (RMLSTC0004b/c) — a
+// property of the Source node itself (`rml:source [ a rml:FilePath;
+// ...; rml:null ""; rml:null "NULL"; ]`), not of the enclosing
+// LogicalSource node; decode_logical_source below reads it off
+// src_subj accordingly. Defaults to the empty list when absent (per
+// the spec quote above, not [""] — RMLSTC0004a's no-rml:null fixture
+// emits literal "" for an empty CSV cell, it is NOT treated as null).
+let rml_null : wf_iri =
+  assert_norm (is_iri "http://w3id.org/rml/null");
+  "http://w3id.org/rml/null"
+
 let rml_MappingDirectory : wf_iri =
   assert_norm (is_iri "http://w3id.org/rml/MappingDirectory");
   "http://w3id.org/rml/MappingDirectory"
@@ -408,6 +424,7 @@ noeq type logical_source = {
   ls_reference_formulation : option reference_formulation;
   ls_source_path           : option string;
   ls_source_root           : option source_root;
+  ls_null_values           : list string;
 }
 
 let empty_logical_source : logical_source = {
@@ -415,12 +432,16 @@ let empty_logical_source : logical_source = {
   ls_reference_formulation = None;
   ls_source_path = None;
   ls_source_root = None;
+  ls_null_values = [];
 }
 
 let first_literal (l : list rdf_term) : option string =
   match l with
   | (T_Literal lit) :: _ -> Some lit.lexical_form
   | _ -> None
+
+let literal_strings (l : list rdf_term) : list string =
+  List.Tot.concatMap (fun t -> match t with T_Literal lit -> [lit.lexical_form] | _ -> []) l
 
 let decode_logical_source (g : rdf_graph) (s : subject) : option logical_source =
   match find_objects g s rml_logicalSource with
@@ -434,7 +455,7 @@ let decode_logical_source (g : rdf_graph) (s : subject) : option logical_source 
          (match find_objects g ls_subj rml_referenceFormulation with
           | (t :: _) -> Some (decode_reference_formulation t)
           | [] -> None) in
-       let (path, root) =
+       let (path, root, null_values) =
          (match find_objects g ls_subj rml_source with
           | (src_term :: _) ->
             (match term_to_subject src_term with
@@ -442,11 +463,19 @@ let decode_logical_source (g : rdf_graph) (s : subject) : option logical_source 
                (first_literal (find_objects g src_subj rml_path),
                 (match find_objects g src_subj rml_root with
                  | (t :: _) -> Some (decode_source_root t)
-                 | [] -> None))
-             | None -> (None, None))
-          | [] -> (None, None)) in
+                 | [] -> None),
+                // rml:null is a property of the Source node (rml:FilePath —
+                // RMLSTC0004b/c: `rml:source [ a rml:FilePath; ...;
+                // rml:null ""; rml:null "NULL"; ]`), not of the enclosing
+                // LogicalSource node — corrected from an initial mis-read
+                // that looked for it on ls_subj (measured: decoded to []
+                // for both fixtures, silently dropping the null filter).
+                literal_strings (find_objects g src_subj rml_null))
+             | None -> (None, None, []))
+          | [] -> (None, None, [])) in
        Some ({ ls_iterator = iterator; ls_reference_formulation = refform;
-               ls_source_path = path; ls_source_root = root }))
+               ls_source_path = path; ls_source_root = root;
+               ls_null_values = null_values }))
 
 // ------------------------------------------------------------------
 // 6. Term maps. A term map is one of constant/reference/template,
@@ -653,9 +682,19 @@ noeq type subject_map_t = {
   sm_graphs  : list term_map;
 }
 
+// RMLTC0012d: two rml:subjectMap blocks on the same TriplesMap is a
+// data error (the spec's cardinality for subjectMap is exactly one,
+// per RML-Core's mapping-vocabulary section) — decode to None (same
+// outcome as "no subjectMap at all") rather than silently picking the
+// first one found, so the whole triples map contributes no triples
+// (eval_triples_map's `None -> []` branch already handles that).
 let decode_subject_map (g : rdf_graph) (s : subject) (fuel : nat) : option subject_map_t =
   match find_objects g s rml_subjectMap with
-  | (sm_term :: _) ->
+  | [] ->
+    (match find_objects g s rml_subject with
+     | (t :: _) -> Some ({ sm_term = const_term_map t; sm_classes = []; sm_graphs = [] })
+     | [] -> None)
+  | [sm_term] ->
     (match term_to_subject sm_term with
      | None -> None
      | Some sm_subj ->
@@ -664,10 +703,7 @@ let decode_subject_map (g : rdf_graph) (s : subject) (fuel : nat) : option subje
          List.Tot.concatMap (fun t -> match t with T_IRI i -> [i] | _ -> []) (find_objects g sm_subj rml_class) in
        let graphs = decode_graphs g sm_subj fuel in
        Some ({ sm_term = term; sm_classes = classes; sm_graphs = graphs }))
-  | [] ->
-    (match find_objects g s rml_subject with
-     | (t :: _) -> Some ({ sm_term = const_term_map t; sm_classes = []; sm_graphs = [] })
-     | [] -> None)
+  | _ :: _ :: _ -> None  // duplicate rml:subjectMap: data error
 
 // ------------------------------------------------------------------
 // 10. Triples map + mapping document.
