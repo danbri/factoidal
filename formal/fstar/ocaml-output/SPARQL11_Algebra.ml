@@ -1910,9 +1910,11 @@ let xpath_to_str_regex (p : string) : string =
     let c = p.[!i] in
     if c = '\\' && !i + 1 < len then begin
       let next = p.[!i + 1] in
-      if next = '(' || next = ')' || next = '|' || next = '?' ||
-         next = '{' || next = '}' || next = '+' || next = '*' then
+      if next = '(' || next = ')' || next = '|' || next = '{' || next = '}' then
         (set_atom (String.make 1 next); i := !i + 2)
+      else if next = '?' then (set_atom "\?"; i := !i + 2)
+      else if next = '+' then (set_atom "\+"; i := !i + 2)
+      else if next = '*' then (set_atom "\*"; i := !i + 2)
       else if next = 'd' then (set_atom "[0-9]"; i := !i + 2)
       else if next = 'D' then (set_atom "[^0-9]"; i := !i + 2)
       else if next = 'w' then (set_atom "[a-zA-Z0-9_]"; i := !i + 2)
@@ -1926,8 +1928,8 @@ let xpath_to_str_regex (p : string) : string =
       (Buffer.add_string buf "\)"; last_atom := "\)"; i := !i + 1)
     else if c = '|' then
       (Buffer.add_string buf "\|"; last_atom := ""; i := !i + 1)
-    else if c = '?' then
-      (Buffer.add_string buf "\?"; i := !i + 1)
+    else if c = '?' || c = '+' || c = '*' then
+      (Buffer.add_char buf c; i := !i + 1)
     else if c = '{' then begin
       i := !i + 1;
       let nb = Buffer.create 8 in
@@ -1949,7 +1951,7 @@ let xpath_to_str_regex (p : string) : string =
           for _ = 2 to n do Buffer.add_string buf !last_atom done;
           for _ = n + 1 to m do
             Buffer.add_string buf !last_atom;
-            Buffer.add_string buf "\?" done
+            Buffer.add_string buf "?" done
         end
       end else begin
         if !i < len then i := !i + 1;
