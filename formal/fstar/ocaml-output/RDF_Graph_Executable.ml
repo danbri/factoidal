@@ -1694,6 +1694,47 @@ let owl_rule_minc1_bridge (g : rdf_graph) (ig : indexed_graph) : rdf_graph=
                   add_triple_unchecked acc2 new_t
               | uu___ -> acc2) acc onprops
        else acc) g g
+let owl_rule_cls_hv1 (g : rdf_graph) (ig : indexed_graph) : rdf_graph=
+  FStar_List_Tot_Base.fold_left
+    (fun acc hv_t ->
+       if hv_t.p = owl_hasValue_iri
+       then
+         let r_subj = hv_t.s in
+         let v = hv_t.o in
+         let onprops = find_objects_indexed ig r_subj owl_onProperty_iri in
+         FStar_List_Tot_Base.fold_left
+           (fun acc2 op_term ->
+              match op_term with
+              | T_IRI p ->
+                  let members =
+                    find_subjects_indexed ig rdf_type
+                      (subject_to_term r_subj) in
+                  FStar_List_Tot_Base.fold_left
+                    (fun acc3 x ->
+                       add_triple_unchecked acc3 { s = x; p; o = v }) acc2
+                    members
+              | uu___ -> acc2) acc onprops
+       else acc) g g
+let owl_rule_cls_hv2 (g : rdf_graph) (ig : indexed_graph) : rdf_graph=
+  FStar_List_Tot_Base.fold_left
+    (fun acc hv_t ->
+       if hv_t.p = owl_hasValue_iri
+       then
+         let r_subj = hv_t.s in
+         let v = hv_t.o in
+         let onprops = find_objects_indexed ig r_subj owl_onProperty_iri in
+         FStar_List_Tot_Base.fold_left
+           (fun acc2 op_term ->
+              match op_term with
+              | T_IRI p ->
+                  let holders = find_subjects_indexed ig p v in
+                  FStar_List_Tot_Base.fold_left
+                    (fun acc3 x ->
+                       add_triple_unchecked acc3
+                         { s = x; p = rdf_type; o = (subject_to_term r_subj)
+                         }) acc2 holders
+              | uu___ -> acc2) acc onprops
+       else acc) g g
 let rl_canonical_bnode_prefix : Prims.string= "__rl_"
 let bnode_is_rl_canonical (b : bnode_id) : Prims.bool=
   let plen = FStar_String.strlen rl_canonical_bnode_prefix in
@@ -2342,6 +2383,33 @@ let owl_rule_chain_to_transitive (g : rdf_graph) (ig : indexed_graph) :
               | FStar_Pervasives_Native.None -> acc)
          | (uu___, uu___1) -> acc
        else acc) g g
+let canonical_chainl1_bnode (p : wf_iri) : bnode_id=
+  FStar_String.concat "" ["__rl_chainl1__"; p]
+let canonical_chainl2_bnode (p : wf_iri) : bnode_id=
+  FStar_String.concat "" ["__rl_chainl2__"; p]
+let owl_rule_transitive_to_chain (g : rdf_graph) (ig : indexed_graph) :
+  rdf_graph=
+  FStar_List_Tot_Base.fold_left
+    (fun acc t ->
+       if
+         (t.p = rdf_type) && (rdf_term_eq t.o (T_IRI owl_TransitiveProperty))
+       then
+         match t.s with
+         | S_IRI p_iri ->
+             let l1 = canonical_chainl1_bnode p_iri in
+             let l2 = canonical_chainl2_bnode p_iri in
+             add_triples_if_new acc
+               [{
+                  s = (S_IRI p_iri);
+                  p = owl_propertyChainAxiom;
+                  o = (T_BNode l1)
+                };
+               { s = (S_BNode l1); p = rdf_first; o = (T_IRI p_iri) };
+               { s = (S_BNode l1); p = rdf_rest; o = (T_BNode l2) };
+               { s = (S_BNode l2); p = rdf_first; o = (T_IRI p_iri) };
+               { s = (S_BNode l2); p = rdf_rest; o = (T_IRI rdf_nil_iri) }]
+         | uu___ -> acc
+       else acc) g g
 let owl_rule_named_sameAs_to_equivClass (g : rdf_graph) (ig : indexed_graph)
   : rdf_graph=
   let is_class i =
@@ -2854,13 +2922,16 @@ let owl_rl_closure_step_mode (g : rdf_graph) (mode : Prims.string) :
   let g18 = owl_rule_cls_maxc2 g17 ig in
   let g18a = owl_rule_cls_maxqc_comp g18 ig in
   let g19 = owl_rule_cls_avf1 g18a ig in
-  let g20 = owl_rule_reflexive_property g19 ig in
+  let g19a = owl_rule_cls_hv1 g19 ig in
+  let g19b = owl_rule_cls_hv2 g19a ig in
+  let g20 = owl_rule_reflexive_property g19b ig in
   let g21 = owl_rule_scm_cls_restriction g20 ig in
   let g21a = owl_rule_cls_int1 g21 ig in
   let g22 = owl_rule_property_chain_2 g21a ig in
   let g22a = owl_rule_property_chain_n g22 ig in
   let g23 = owl_rule_chain_to_transitive g22a ig in
-  let g24 = owl_rule_named_sameAs_to_equivClass g23 ig in
+  let g23a = owl_rule_transitive_to_chain g23 ig in
+  let g24 = owl_rule_named_sameAs_to_equivClass g23a ig in
   let g24a = owl_rule_prp_key g24 ig in
   let g25 = owl_rule_xsd_datatype_axioms g24a ig in
   let g25a = owl_rule_dt_range_intersect g25 ig in
@@ -3057,6 +3128,25 @@ let has_disjoint_with (g : rdf_graph) (c1 : rdf_term) (c2 : rdf_term) :
          (((rdf_term_eq (subject_to_term t.s) c1) && (rdf_term_eq t.o c2)) ||
             ((rdf_term_eq (subject_to_term t.s) c2) && (rdf_term_eq t.o c1))))
     g
+let rec xsd_is_subtype_fuel (d1 : wf_iri) (d2 : wf_iri) (fuel : Prims.nat) :
+  Prims.bool=
+  if d1 = d2
+  then true
+  else
+    if fuel = Prims.int_zero
+    then false
+    else
+      FStar_List_Tot_Base.existsb
+        (fun edge ->
+           let uu___2 = edge in
+           match uu___2 with
+           | (sub_i, sup_i) ->
+               (sub_i = d1) &&
+                 (xsd_is_subtype_fuel sup_i d2 (fuel - Prims.int_one)))
+        xsd_hierarchy_edges
+let xsd_is_subtype (d1 : wf_iri) (d2 : wf_iri) : Prims.bool=
+  xsd_is_subtype_fuel d1 d2
+    ((FStar_List_Tot_Base.length xsd_hierarchy_edges) + Prims.int_one)
 let is_inconsistent (g : rdf_graph) : Prims.bool=
   let has_nothing =
     FStar_List_Tot_Base.existsb
@@ -3214,21 +3304,53 @@ let is_inconsistent (g : rdf_graph) : Prims.bool=
                        if has_npa_clash
                        then true
                        else
-                         FStar_List_Tot_Base.existsb
-                           (fun comp ->
-                              (comp.p = owl_complementOf_iri) &&
-                                (FStar_List_Tot_Base.existsb
-                                   (fun t1 ->
-                                      ((t1.p = rdf_type) &&
-                                         (rdf_term_eq t1.o
-                                            (subject_to_term comp.s)))
-                                        &&
-                                        (FStar_List_Tot_Base.existsb
-                                           (fun t2 ->
-                                              ((t2.p = rdf_type) &&
-                                                 (subject_eq t1.s t2.s))
-                                                && (rdf_term_eq t2.o comp.o))
-                                           g)) g)) g)))))))
+                         (let has_cls_com_clash =
+                            FStar_List_Tot_Base.existsb
+                              (fun comp ->
+                                 (comp.p = owl_complementOf_iri) &&
+                                   (FStar_List_Tot_Base.existsb
+                                      (fun t1 ->
+                                         ((t1.p = rdf_type) &&
+                                            (rdf_term_eq t1.o
+                                               (subject_to_term comp.s)))
+                                           &&
+                                           (FStar_List_Tot_Base.existsb
+                                              (fun t2 ->
+                                                 ((t2.p = rdf_type) &&
+                                                    (subject_eq t1.s t2.s))
+                                                   &&
+                                                   (rdf_term_eq t2.o comp.o))
+                                              g)) g)) g in
+                          if has_cls_com_clash
+                          then true
+                          else
+                            FStar_List_Tot_Base.existsb
+                              (fun rng ->
+                                 (rng.p = rdfs_range) &&
+                                   (match ((rng.s), (rng.o)) with
+                                    | (S_IRI p, T_IRI d_range) ->
+                                        (FStar_List_Tot_Base.mem d_range
+                                           xsd_all_datatypes)
+                                          &&
+                                          (FStar_List_Tot_Base.existsb
+                                             (fun t ->
+                                                (t.p = p) &&
+                                                  (match t.o with
+                                                   | T_Literal lit ->
+                                                       ((FStar_List_Tot_Base.mem
+                                                           lit.datatype
+                                                           xsd_all_datatypes)
+                                                          &&
+                                                          (Prims.op_Negation
+                                                             (lit.datatype =
+                                                                d_range)))
+                                                         &&
+                                                         (Prims.op_Negation
+                                                            (xsd_is_subtype
+                                                               lit.datatype
+                                                               d_range))
+                                                   | uu___9 -> false)) g)
+                                    | (uu___9, uu___10) -> false)) g))))))))
 let regime_rdf : Prims.string= "RDF"
 let regime_rdfs : Prims.string= "RDFS"
 let regime_owl_rl : Prims.string= "OWL-RL"

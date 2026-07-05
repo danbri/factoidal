@@ -2586,6 +2586,75 @@ let owl_rule_minc1_bridge (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
     g
     g
 
+// cls-hv1 (OWL 2 RL/RDF Table 6): a `owl:hasValue` restriction `_:r`
+// (or named class used as one) carrying `(_:r owl:onProperty P)` and
+// `(_:r owl:hasValue V)` means every member of the restriction —
+// every `x` with `(x rdf:type _:r)` — satisfies the direct triple
+// `(x P V)`. Needed so rules that only look at direct `(x P V)` edges
+// (prp-fp's functional-property literal clash at is_inconsistent (7),
+// and the dt-range-clash marker below) can see through the
+// owl:Restriction encoding that Parser.OWLFunctional.fst's
+// `ClassAssertion(DataHasValue(...))` translation produces (and that
+// RDF/XML `owl:Restriction` fixtures use directly). No mode gating —
+// both direct and RDF-based semantics agree on this rule (standard
+// OWL 2 RL rule, not one of the mode-sensitive ones documented at
+// owl_rl_closure_step_mode). Targets functionality-clash /
+// string-integer-clash (InconsistencyTest); see
+// docs/designissues/2026-07-03-owl-rl-pe-fails-fix-sketch.md and the
+// 2026-07-05 functional-syntax-plan doc's follow-up note.
+let owl_rule_cls_hv1 (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
+  List.Tot.fold_left
+    (fun (acc : rdf_graph) (hv_t : triple) ->
+      if hv_t.p = owl_hasValue_iri then
+        let r_subj = hv_t.s in
+        let v = hv_t.o in
+        let onprops = find_objects_indexed ig r_subj owl_onProperty_iri in
+        List.Tot.fold_left
+          (fun (acc2 : rdf_graph) (op_term : rdf_term) ->
+            match op_term with
+            | T_IRI p ->
+              let members = find_subjects_indexed ig rdf_type (subject_to_term r_subj) in
+              List.Tot.fold_left
+                (fun (acc3 : rdf_graph) (x : subject) ->
+                  add_triple_unchecked acc3 ({ s = x; p = p; o = v }))
+                acc2
+                members
+            | _ -> acc2)
+          acc
+          onprops
+      else acc)
+    g
+    g
+
+// cls-hv2 (OWL 2 RL/RDF Table 6): converse of cls-hv1 — for the same
+// `(_:r owl:onProperty P)` / `(_:r owl:hasValue V)` restriction, every
+// `x` with the direct edge `(x P V)` is a restriction member: emit
+// `(x rdf:type _:r)`. Same no-mode-gating rationale as cls-hv1.
+let owl_rule_cls_hv2 (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
+  List.Tot.fold_left
+    (fun (acc : rdf_graph) (hv_t : triple) ->
+      if hv_t.p = owl_hasValue_iri then
+        let r_subj = hv_t.s in
+        let v = hv_t.o in
+        let onprops = find_objects_indexed ig r_subj owl_onProperty_iri in
+        List.Tot.fold_left
+          (fun (acc2 : rdf_graph) (op_term : rdf_term) ->
+            match op_term with
+            | T_IRI p ->
+              let holders = find_subjects_indexed ig p v in
+              List.Tot.fold_left
+                (fun (acc3 : rdf_graph) (x : subject) ->
+                  add_triple_unchecked acc3
+                    ({ s = x; p = rdf_type; o = subject_to_term r_subj }))
+                acc2
+                holders
+            | _ -> acc2)
+          acc
+          onprops
+      else acc)
+    g
+    g
+
 // SUBJECT-SIDE GUARD (parent7 close-out, 2026-04-25 Pe3): the
 // `is_schema_metapredicate edge.p` gate already rejects schema-vocab
 // PREDICATES, but a non-meta-predicate edge can still have a SUBJECT
@@ -3512,6 +3581,51 @@ let owl_rule_chain_to_transitive (g : rdf_graph) (ig : indexed_graph) : rdf_grap
     g
     g
 
+// Canonical 2-cell list-bnode pair for the transitive-to-chain
+// scaffold below, one per transitive property P. Deterministic and
+// keyed only on P, so repeat emissions across fixpoint iterations are
+// idempotent. __rl_ prefix keeps these list bnodes out of
+// cls-maxqc1 / svf2 / exactqc1 via edge_subject_is_safe (same
+// convention as canonical_adfl1_bnode / canonical_adfl2_bnode below).
+let canonical_chainl1_bnode (p : wf_iri) : bnode_id =
+  String.concat "" ["__rl_chainl1__"; p]
+let canonical_chainl2_bnode (p : wf_iri) : bnode_id =
+  String.concat "" ["__rl_chainl2__"; p]
+
+// prp-trp-to-chain (sound extension, not in RL Table 7 — the converse
+// of owl_rule_chain_to_transitive above): if P is declared
+// owl:TransitiveProperty, materialise the RDF encoding of
+// SubObjectPropertyOf(ObjectPropertyChain(P P) P) —
+// (P owl:propertyChainAxiom (P P)) via a deterministic 2-cell skolem
+// list. Sound because transitivity of P is *exactly* the semantic
+// content of the self-chain axiom under the RDF-Based Semantics'
+// propertyChainAxiom mapping — every model of "P transitive" is a
+// model of "chain(P,P) subPropertyOf P" and vice versa (the direction
+// owl_rule_chain_to_transitive already implements), so this converse
+// is equally safe. Targets New-Feature-ObjectPropertyChain-BJP-002
+// (functional-syntax PositiveEntailmentTest; see
+// docs/designissues/2026-07-03-owl-rl-pe-fails-fix-sketch.md §2.7 and
+// the 2026-07-05 functional-syntax-plan doc). No mode gating — both
+// semantics agree (same rationale as owl_rule_chain_to_transitive).
+let owl_rule_transitive_to_chain (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
+  List.Tot.fold_left
+    (fun (acc : rdf_graph) (t : triple) ->
+      if t.p = rdf_type && rdf_term_eq t.o (T_IRI owl_TransitiveProperty) then
+        match t.s with
+        | S_IRI p_iri ->
+          let l1 = canonical_chainl1_bnode p_iri in
+          let l2 = canonical_chainl2_bnode p_iri in
+          add_triples_if_new acc [
+            { s = S_IRI p_iri; p = owl_propertyChainAxiom; o = T_BNode l1 };
+            { s = S_BNode l1;  p = rdf_first;              o = T_IRI p_iri };
+            { s = S_BNode l1;  p = rdf_rest;               o = T_BNode l2 };
+            { s = S_BNode l2;  p = rdf_first;              o = T_IRI p_iri };
+            { s = S_BNode l2;  p = rdf_rest;               o = T_IRI rdf_nil_iri } ]
+        | _ -> acc
+      else acc)
+    g
+    g
+
 // Named-sameAs-to-equivalentClass: if (C owl:sameAs D) where C and D
 // are both IRIs and both already typed as owl:Class, emit
 //   (C owl:equivalentClass D) and (D owl:equivalentClass C).
@@ -4422,8 +4536,13 @@ let owl_rl_closure_step_mode (g : rdf_graph) (mode : string) : rdf_graph =
   // Universal-restriction rule (cls-avf1); target simple 6 when the
   // rewriter eventually lands the allValuesFrom-with-named-filler case.
   let g19 = owl_rule_cls_avf1 g18a ig in
+  // cls-hv1 / cls-hv2: owl:hasValue restriction membership <-> direct
+  // triple, both directions. Targets functionality-clash /
+  // string-integer-clash (InconsistencyTest).
+  let g19a = owl_rule_cls_hv1 g19 ig in
+  let g19b = owl_rule_cls_hv2 g19a ig in
   // prp-rfl: reflexive-property propagation.
-  let g20 = owl_rule_reflexive_property g19 ig in
+  let g20 = owl_rule_reflexive_property g19b ig in
   // scm-cls (partial): owl:Restriction subjects are also owl:Class.
   let g21 = owl_rule_scm_cls_restriction g20 ig in
   // cls-int1: owl:intersectionOf membership propagation (x rdf:type
@@ -4440,7 +4559,11 @@ let owl_rl_closure_step_mode (g : rdf_graph) (mode : string) : rdf_graph =
   let g22 = owl_rule_property_chain_2 g21a ig in
   let g22a = owl_rule_property_chain_n g22 ig in
   let g23 = owl_rule_chain_to_transitive g22a ig in
-  let g24 = owl_rule_named_sameAs_to_equivClass g23 ig in
+  // prp-trp-to-chain: converse of scm-trans-from-chain above — a
+  // declared owl:TransitiveProperty gets the propertyChainAxiom(P,P)
+  // scaffold materialised too. Targets BJP-002.
+  let g23a = owl_rule_transitive_to_chain g23 ig in
+  let g24 = owl_rule_named_sameAs_to_equivClass g23a ig in
   // Cluster B: prp-key (HasKey). Emits owl:sameAs between named
   // individuals of class C that agree on every property in C's key list.
   // Runs after the sameAs rules so freshly-emitted sameAs facts are
@@ -4779,6 +4902,33 @@ let has_disjoint_with (g : rdf_graph) (c1 : rdf_term) (c2 : rdf_term) : Tot bool
        (rdf_term_eq (subject_to_term t.s) c2 && rdf_term_eq t.o c1)))
     g
 
+// Subtype-or-equal check over the fixed `xsd_hierarchy_edges` tower
+// (defined above, ~line 3965) — used by dt-range-clash in
+// is_inconsistent below. NOT a reimplementation of XSD lexical-form
+// parsing: this only walks the same finite (subtype, supertype) edge
+// table owl_rule_xsd_datatype_axioms / owl_rule_dt_range_intersect
+// already use to derive rdfs:subClassOf / range-intersection facts.
+// (XSD.Datatypes.fst — which owns literal_ill_formed and the lexical-
+// grammar machinery the task brief points at — itself `open`s this
+// module, so RDF.Graph.Executable.fst cannot open XSD.Datatypes back
+// without a circular dependency; the hierarchy table already local to
+// this file is the reusable "datatype checks" surface available here.)
+// Fuel-bounded by the edge count so F* sees termination; the table is
+// a short acyclic chain (14 edges), so this is exact, not an
+// approximation.
+let rec xsd_is_subtype_fuel (d1 d2 : wf_iri) (fuel : nat) : Tot bool (decreases fuel) =
+  if d1 = d2 then true
+  else if fuel = 0 then false
+  else
+    List.Tot.existsb
+      (fun (edge : (wf_iri * wf_iri)) ->
+        let (sub_i, sup_i) = edge in
+        sub_i = d1 && xsd_is_subtype_fuel sup_i d2 (fuel - 1))
+      xsd_hierarchy_edges
+
+let xsd_is_subtype (d1 d2 : wf_iri) : bool =
+  xsd_is_subtype_fuel d1 d2 (List.Tot.length xsd_hierarchy_edges + 1)
+
 // rdf:type marker is `rdf_type` (defined elsewhere in this module).
 let is_inconsistent (g : rdf_graph) : Tot bool =
   // (1) Some `?x rdf:type owl:Nothing`.
@@ -4994,19 +5144,64 @@ let is_inconsistent (g : rdf_graph) : Tot bool =
                   // [owl:complementOf d] ==> x rdf:type c AND x rdf:type
                   // d AND x rdf:type [owl:complementOf d] => clash.
                   // Targets WebOnt-description-logic-101/103/104.
-                  List.Tot.existsb
-                    (fun (comp : triple) ->
-                      comp.p = owl_complementOf_iri &&
-                      List.Tot.existsb
-                        (fun (t1 : triple) ->
-                          t1.p = rdf_type && rdf_term_eq t1.o (subject_to_term comp.s) &&
-                          List.Tot.existsb
-                            (fun (t2 : triple) ->
-                              t2.p = rdf_type && subject_eq t1.s t2.s &&
-                              rdf_term_eq t2.o comp.o)
-                            g)
-                        g)
-                    g
+                  let has_cls_com_clash =
+                    List.Tot.existsb
+                      (fun (comp : triple) ->
+                        comp.p = owl_complementOf_iri &&
+                        List.Tot.existsb
+                          (fun (t1 : triple) ->
+                            t1.p = rdf_type && rdf_term_eq t1.o (subject_to_term comp.s) &&
+                            List.Tot.existsb
+                              (fun (t2 : triple) ->
+                                t2.p = rdf_type && subject_eq t1.s t2.s &&
+                                rdf_term_eq t2.o comp.o)
+                              g)
+                          g)
+                      g
+                  in
+                  if has_cls_com_clash then true
+                  else
+                    // (10) dt-range-clash (sound extension, not in RL
+                    // Table 8 as a no-consequent rule, but a direct
+                    // corollary of the XSD value-space disjointness
+                    // used by scm-rng2 / dt-rng-intersect above): P has
+                    // a declared `rdfs:range D_range` where D_range is
+                    // a recognised XSD datatype (xsd_all_datatypes),
+                    // and some `(x P v)` asserts a literal `v` whose
+                    // OWN datatype `D_lit` is also a recognised XSD
+                    // datatype but is neither `D_range` nor a
+                    // (transitive) subtype of it in
+                    // `xsd_hierarchy_edges`. XSD primitive datatypes'
+                    // value spaces are either identical, in a subtype
+                    // relation, or fully disjoint — never partially
+                    // overlapping — so `v` is then provably outside
+                    // `D_range`'s value space. Reuses the same
+                    // hierarchy/table this module already threads
+                    // through owl_rule_xsd_datatype_axioms /
+                    // owl_rule_dt_range_intersect (xsd_is_subtype,
+                    // defined just above); no new lexical-grammar code.
+                    // Targets string-integer-clash (InconsistencyTest;
+                    // needs cls-hv1 above to see the direct
+                    // `hasAge "aString"^^xsd:string` triple through the
+                    // DataHasValue restriction encoding first).
+                    List.Tot.existsb
+                      (fun (rng : triple) ->
+                        rng.p = rdfs_range &&
+                        (match rng.s, rng.o with
+                         | S_IRI p, T_IRI d_range ->
+                           List.Tot.mem d_range xsd_all_datatypes &&
+                           List.Tot.existsb
+                             (fun (t : triple) ->
+                               t.p = p &&
+                               (match t.o with
+                                | T_Literal lit ->
+                                  List.Tot.mem lit.datatype xsd_all_datatypes &&
+                                  not (lit.datatype = d_range) &&
+                                  not (xsd_is_subtype lit.datatype d_range)
+                                | _ -> false))
+                             g
+                         | _, _ -> false))
+                      g
 
 // ---- Top-level entailment dispatch ----------------------------------------
 

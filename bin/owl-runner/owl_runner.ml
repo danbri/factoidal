@@ -768,24 +768,52 @@ let run_negative_entailment
    2026-07-05: New-Feature-ObjectPropertyChain-BJP-002 is a
    ConsistencyTest whose ONLY premise serialization is functional
    syntax (test:fsPremiseOntology / test:normativeSyntax=FUNCTIONAL,
-   no test:rdfXmlPremiseOntology) — the identical "unsupported input
-   syntax" gap run_positive_entailment and run_inconsistency_test
-   already carve out as Skip_functional_syntax_only. This path was
-   missing that carve-out, so the same catalog entry scored
-   FAIL/no-premise here while correctly SKIPping in the PE and
-   Inconsistency runs — an inconsistent (and per anti-pattern #3,
-   misleading) harness verdict on one test across three runs. This is
-   the ONLY item behind the "Consistency 75/1" score; adding the
-   matching carve-out is a harness-honesty fix (classification, not
-   semantics), not an RDF/SPARQL rule change. *)
+   no test:rdfXmlPremiseOntology). PE and InconsistencyTest already
+   attempt Parser_OWLFunctional on the fs_premise literal before
+   falling back to Skip_functional_syntax_only; this runner was
+   missing that attempt, so the same catalog entry scored
+   FAIL/no-premise here while PASSing (via the FS-parser path) in the
+   PE run — an inconsistent (and per anti-pattern #3, misleading)
+   harness verdict on one test across three runs. Below,
+   run_consistency_test_functional_syntax completes that wiring: the
+   premise now parses via Parser_OWLFunctional and is scored via
+   is_inconsistent exactly like the rdfXml path, so BJP-002 now scores
+   Pass (not skip) here too, matching the PE/Inconsistency runs. *)
+(* OWL 2 Functional Syntax path for ConsistencyTest (2026-07-05).
+   Same contract as run_inconsistency_test_functional_syntax: `None`
+   means the premise used a construct outside Parser_OWLFunctional's
+   subset (falls back to the honest skip in the caller); `Some outcome`
+   means it parsed in-subset and was scored via is_inconsistent, same
+   as the rdfXml path below. Completes the wave-9 functional-syntax
+   wiring for the ConsistencyTest runner — PE and Inconsistency got
+   this path already; BJP-002's ConsistencyTest sibling was the one
+   remaining FS skip. *)
+let run_consistency_test_functional_syntax (fs_p_lex : string) : outcome option =
+  match (try Parser_OWLFunctional.parse_functional_syntax fs_p_lex with _ -> None) with
+  | None -> None
+  | Some g_p ->
+    let closure = try apply_closure g_p with _ -> g_p in
+    if RDF_Graph_Executable.is_inconsistent closure
+    then Some Fail_unexpected_inconsistency
+    else Some Pass
+
 let run_consistency_test
       (info : test_case_info)
       (imports_lookup : (string, string) Hashtbl.t) : outcome =
   match info.premise with
   | None ->
-    if StrSet.mem test_syntax_functional info.normative_syntax
-    then Skip_functional_syntax_only
-    else Fail_no_premise
+    (match info.fs_premise with
+     | Some fs_p_lex ->
+       (match run_consistency_test_functional_syntax fs_p_lex with
+        | Some outcome -> outcome
+        | None ->
+          if StrSet.mem test_syntax_functional info.normative_syntax
+          then Skip_functional_syntax_only
+          else Fail_no_premise)
+     | None ->
+       if StrSet.mem test_syntax_functional info.normative_syntax
+       then Skip_functional_syntax_only
+       else Fail_no_premise)
   | Some p_lex ->
     let p_src = expand_catalog_entities p_lex in
     let base = info.iri in
