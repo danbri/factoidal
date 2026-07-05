@@ -1,6 +1,6 @@
 Closure regime: RL
 OWL 2 test catalog: third_party/testing/owl/type-inconsistency.rdf
-  parsed 3220 triples in 0.11s
+  parsed 3220 triples in 0.10s
 Totals: 128 test cases
   PositiveEntailmentTest:    0
   NegativeEntailmentTest:    0
@@ -14,29 +14,38 @@ Profile-RL PositiveEntailmentTests: 0 pass, 0 fail (out of 0 RDF/XML tests), 0 s
   (bnode pattern matches any term at the position; full isomorphism deferred — see docs/designissues/2026-04-24-owl-runner-phase1.md)
 
 Running 128 InconsistencyTest(s) through is_inconsistent (closure fuel=100)...
-  FAIL/no-premise  Contradicting datatype Restrictions
-  FAIL/no-premise  Contradicting-dateTime-restrictions
+  SKIP/functional-syntax-only  Contradicting datatype Restrictions
+      reason: unsupported input syntax — catalog entry provides only test:fsPremiseOntology (OWL 2 functional syntax) with test:normativeSyntax FUNCTIONAL; this runner reads only test:rdfXmlPremiseOntology literals (no functional-syntax parser yet, see docs/designissues/2026-07-03-owl-rl-pe-fails-fix-sketch.md, 2.7)
+  SKIP/functional-syntax-only  Contradicting-dateTime-restrictions
+      reason: unsupported input syntax — catalog entry provides only test:fsPremiseOntology (OWL 2 functional syntax) with test:normativeSyntax FUNCTIONAL; this runner reads only test:rdfXmlPremiseOntology literals (no functional-syntax parser yet, see docs/designissues/2026-07-03-owl-rl-pe-fails-fix-sketch.md, 2.7)
   FAIL/unexpected-consistency  Datatype-Float-Discrete-001
-  FAIL/no-premise  Different types in Datatype Restrictions and Complement
+  SKIP/functional-syntax-only  Different types in Datatype Restrictions and Complement
+      reason: unsupported input syntax — catalog entry provides only test:fsPremiseOntology (OWL 2 functional syntax) with test:normativeSyntax FUNCTIONAL; this runner reads only test:rdfXmlPremiseOntology literals (no functional-syntax parser yet, see docs/designissues/2026-07-03-owl-rl-pe-fails-fix-sketch.md, 2.7)
   PASS  DisjointClasses-002
   FAIL/unexpected-consistency  Footnote-not-about-self
-  FAIL/no-premise  Inconsistent Byte Filler
-  FAIL/no-premise  Inconsistent Data Complement with the Restrictions
-  FAIL/no-premise  Inconsistent Disjoint Dataproperties
-  FAIL/no-premise  Inconsistent String Pattern with Disjoint Dataproperties
-  FAIL/no-premise  Minus Infinity is not in owl:real
+  SKIP/functional-syntax-only  Inconsistent Byte Filler
+      reason: unsupported input syntax — catalog entry provides only test:fsPremiseOntology (OWL 2 functional syntax) with test:normativeSyntax FUNCTIONAL; this runner reads only test:rdfXmlPremiseOntology literals (no functional-syntax parser yet, see docs/designissues/2026-07-03-owl-rl-pe-fails-fix-sketch.md, 2.7)
+  SKIP/functional-syntax-only  Inconsistent Data Complement with the Restrictions
+      reason: unsupported input syntax — catalog entry provides only test:fsPremiseOntology (OWL 2 functional syntax) with test:normativeSyntax FUNCTIONAL; this runner reads only test:rdfXmlPremiseOntology literals (no functional-syntax parser yet, see docs/designissues/2026-07-03-owl-rl-pe-fails-fix-sketch.md, 2.7)
+  SKIP/functional-syntax-only  Inconsistent Disjoint Dataproperties
+      reason: unsupported input syntax — catalog entry provides only test:fsPremiseOntology (OWL 2 functional syntax) with test:normativeSyntax FUNCTIONAL; this runner reads only test:rdfXmlPremiseOntology literals (no functional-syntax parser yet, see docs/designissues/2026-07-03-owl-rl-pe-fails-fix-sketch.md, 2.7)
+  SKIP/functional-syntax-only  Inconsistent String Pattern with Disjoint Dataproperties
+      reason: unsupported input syntax — catalog entry provides only test:fsPremiseOntology (OWL 2 functional syntax) with test:normativeSyntax FUNCTIONAL; this runner reads only test:rdfXmlPremiseOntology literals (no functional-syntax parser yet, see docs/designissues/2026-07-03-owl-rl-pe-fails-fix-sketch.md, 2.7)
+  SKIP/functional-syntax-only  Minus Infinity is not in owl:real
+      reason: unsupported input syntax — catalog entry provides only test:fsPremiseOntology (OWL 2 functional syntax) with test:normativeSyntax FUNCTIONAL; this runner reads only test:rdfXmlPremiseOntology literals (no functional-syntax parser yet, see docs/designissues/2026-07-03-owl-rl-pe-fails-fix-sketch.md, 2.7)
   PASS  New-Feature-AsymmetricProperty-001
   FAIL/unexpected-consistency  New-Feature-BottomDataProperty-001
   FAIL/unexpected-consistency  New-Feature-BottomObjectProperty-001
-  FAIL/unexpected-consistency  New-Feature-DisjointDataProperties-001
+  PASS  New-Feature-DisjointDataProperties-001
   PASS  New-Feature-IrreflexiveProperty-001
   PASS  New-Feature-Keys-002
-  FAIL/unexpected-consistency  New-Feature-Keys-006
-  FAIL/unexpected-consistency  New-Feature-NegativeDataPropertyAssertion-001
-  FAIL/unexpected-consistency  New-Feature-NegativeObjectPropertyAssertion-001
+  PASS  New-Feature-Keys-006
+  PASS  New-Feature-NegativeDataPropertyAssertion-001
+  PASS  New-Feature-NegativeObjectPropertyAssertion-001
   FAIL/unexpected-consistency  New-Feature-Rational-002
   FAIL/unexpected-consistency  New-Feature-TopObjectProperty-001
-  FAIL/no-premise  Plus and Minus Zero are Distinct
+  SKIP/functional-syntax-only  Plus and Minus Zero are Distinct
+      reason: unsupported input syntax — catalog entry provides only test:fsPremiseOntology (OWL 2 functional syntax) with test:normativeSyntax FUNCTIONAL; this runner reads only test:rdfXmlPremiseOntology literals (no functional-syntax parser yet, see docs/designissues/2026-07-03-owl-rl-pe-fails-fix-sketch.md, 2.7)
   FAIL/unexpected-consistency  WebOnt-I4.5-002
   FAIL/unexpected-consistency  WebOnt-I5.5-003
   FAIL/unexpected-consistency  WebOnt-I5.5-004
@@ -71,10 +80,10 @@ Running 128 InconsistencyTest(s) through is_inconsistent (closure fuel=100)...
   FAIL/unexpected-consistency  WebOnt-description-logic-033
   FAIL/unexpected-consistency  WebOnt-description-logic-035
   FAIL/unexpected-consistency  WebOnt-description-logic-040
-  FAIL/unexpected-consistency  WebOnt-description-logic-101
+  PASS  WebOnt-description-logic-101
   FAIL/unexpected-consistency  WebOnt-description-logic-102
-  FAIL/unexpected-consistency  WebOnt-description-logic-103
-  FAIL/unexpected-consistency  WebOnt-description-logic-104
+  PASS  WebOnt-description-logic-103
+  PASS  WebOnt-description-logic-104
   FAIL/unexpected-consistency  WebOnt-description-logic-105
   FAIL/unexpected-consistency  WebOnt-description-logic-106
   FAIL/unexpected-consistency  WebOnt-description-logic-107
@@ -113,12 +122,16 @@ Running 128 InconsistencyTest(s) through is_inconsistent (closure fuel=100)...
   FAIL/unexpected-consistency  WebOnt-description-logic-910
   FAIL/unexpected-consistency  WebOnt-disjointWith-010
   FAIL/unexpected-consistency  WebOnt-maxCardinality-001
-  FAIL/unexpected-consistency  WebOnt-miscellaneous-203
-  FAIL/unexpected-consistency  WebOnt-miscellaneous-204
-  FAIL/no-premise  datatype-restriction-min-max-inconsistency
-  FAIL/no-premise  functionality-clash
-  FAIL/no-premise  inconsistent-integer-filler
-  FAIL/no-premise  inconsistent_datatypes
+  PASS  WebOnt-miscellaneous-203
+  PASS  WebOnt-miscellaneous-204
+  SKIP/functional-syntax-only  datatype-restriction-min-max-inconsistency
+      reason: unsupported input syntax — catalog entry provides only test:fsPremiseOntology (OWL 2 functional syntax) with test:normativeSyntax FUNCTIONAL; this runner reads only test:rdfXmlPremiseOntology literals (no functional-syntax parser yet, see docs/designissues/2026-07-03-owl-rl-pe-fails-fix-sketch.md, 2.7)
+  SKIP/functional-syntax-only  functionality-clash
+      reason: unsupported input syntax — catalog entry provides only test:fsPremiseOntology (OWL 2 functional syntax) with test:normativeSyntax FUNCTIONAL; this runner reads only test:rdfXmlPremiseOntology literals (no functional-syntax parser yet, see docs/designissues/2026-07-03-owl-rl-pe-fails-fix-sketch.md, 2.7)
+  SKIP/functional-syntax-only  inconsistent-integer-filler
+      reason: unsupported input syntax — catalog entry provides only test:fsPremiseOntology (OWL 2 functional syntax) with test:normativeSyntax FUNCTIONAL; this runner reads only test:rdfXmlPremiseOntology literals (no functional-syntax parser yet, see docs/designissues/2026-07-03-owl-rl-pe-fails-fix-sketch.md, 2.7)
+  SKIP/functional-syntax-only  inconsistent_datatypes
+      reason: unsupported input syntax — catalog entry provides only test:fsPremiseOntology (OWL 2 functional syntax) with test:normativeSyntax FUNCTIONAL; this runner reads only test:rdfXmlPremiseOntology literals (no functional-syntax parser yet, see docs/designissues/2026-07-03-owl-rl-pe-fails-fix-sketch.md, 2.7)
   FAIL/unexpected-consistency  one=two
   PASS  rdfbased-sem-bool-complement-inst
   PASS  rdfbased-sem-char-asymmetric-inst
@@ -129,18 +142,19 @@ Running 128 InconsistencyTest(s) through is_inconsistent (closure fuel=100)...
   PASS  rdfbased-sem-eqdis-different-sameas
   PASS  rdfbased-sem-eqdis-disclass-eqclass
   PASS  rdfbased-sem-eqdis-disclass-inst
-  FAIL/unexpected-consistency  rdfbased-sem-eqdis-disclass-irrflxv
-  FAIL/unexpected-consistency  rdfbased-sem-eqdis-disprop-eqprop
-  FAIL/unexpected-consistency  rdfbased-sem-eqdis-disprop-inst
+  PASS  rdfbased-sem-eqdis-disclass-irrflxv
+  PASS  rdfbased-sem-eqdis-disprop-eqprop
+  PASS  rdfbased-sem-eqdis-disprop-inst
   FAIL/unexpected-consistency  rdfbased-sem-eqdis-disprop-irrflxv
   FAIL/unexpected-consistency  rdfbased-sem-ndis-alldifferent-fw
   FAIL/unexpected-consistency  rdfbased-sem-ndis-alldifferent-fw-distinctmembers
   PASS  rdfbased-sem-ndis-alldisjointclasses-fw
-  FAIL/unexpected-consistency  rdfbased-sem-ndis-alldisjointproperties-fw
-  FAIL/unexpected-consistency  rdfbased-sem-npa-dat-fw
-  FAIL/unexpected-consistency  rdfbased-sem-npa-ind-fw
+  PASS  rdfbased-sem-ndis-alldisjointproperties-fw
+  PASS  rdfbased-sem-npa-dat-fw
+  PASS  rdfbased-sem-npa-ind-fw
   FAIL/unexpected-consistency  rdfbased-sem-restrict-maxcard-inst-obj-zero
   FAIL/unexpected-consistency  rdfbased-sem-restrict-maxqcr-inst-obj-zero
-  FAIL/no-premise  string-integer-clash
+  SKIP/functional-syntax-only  string-integer-clash
+      reason: unsupported input syntax — catalog entry provides only test:fsPremiseOntology (OWL 2 functional syntax) with test:normativeSyntax FUNCTIONAL; this runner reads only test:rdfXmlPremiseOntology literals (no functional-syntax parser yet, see docs/designissues/2026-07-03-owl-rl-pe-fails-fix-sketch.md, 2.7)
 
-Profile-RL InconsistencyTests: 16 pass, 112 fail (out of 128) in 5.56s
+Profile-RL InconsistencyTests: 31 pass, 83 fail (out of 114), 14 skipped (functional-syntax-only) in 5.85s

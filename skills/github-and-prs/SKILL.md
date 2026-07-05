@@ -242,3 +242,17 @@ other agents' uncommitted in-flight work — it did exactly that on
 recover via reflog). With agents in flight, skip realignment
 entirely; the stop-hook nag is cosmetic, lost agent work is not.
 
+If you must realign with agents in flight, the only safe form is
+`git reset --mixed origin/claude/main` (moves HEAD AND resets the
+index; leaves the working tree alone), optionally followed by a
+targeted `git checkout -- <ci-owned-paths>` for CI-managed outputs.
+NEVER `reset --soft`: it leaves the index at the old tree, so the
+diff between old and new upstream (e.g. a CI dashboard refresh)
+sits silently STAGED as a reversion, and your next `git add X &&
+git commit` sweeps it in. That exact failure shipped a phantom
+dashboard reversion inside an unrelated one-file commit on
+2026-07-05 — caught only because the next cherry-pick conflicted on
+files a new-file commit had no business touching. After any
+worktree cherry-pick, verify with `git show --stat` that the pushed
+commit contains exactly the files you meant.
+

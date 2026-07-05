@@ -71,18 +71,18 @@ Running 30 PositiveEntailmentTest(s) through owl_rl_closure_with_reflexivity (fu
   PASS  owl2-rl-rules-fp-differentFrom
   PASS  owl2-rl-rules-ifp-differentFrom
 
-Profile-RL PositiveEntailmentTests: 27 pass, 2 fail (out of 29 RDF/XML tests), 1 skipped (functional-syntax-only) in 0.72s
+Profile-RL PositiveEntailmentTests: 27 pass, 2 fail (out of 29 RDF/XML tests), 1 skipped (functional-syntax-only) in 0.64s
   (bnode pattern matches any term at the position; full isomorphism deferred — see docs/designissues/2026-04-24-owl-runner-phase1.md)
 
 Running 6 NegativeEntailmentTest(s) through owl_rl_closure_with_reflexivity (fuel=100)...
   PASS  New-Feature-Keys-004
   PASS  New-Feature-ObjectPropertyChain-BJP-004
-  FAIL/unexpected-entailment  WebOnt-I4.6-004
+  PASS  WebOnt-I4.6-004
   FAIL/unexpected-entailment  WebOnt-I4.6-005
   PASS  WebOnt-I5.8-007
   FAIL/unexpected-entailment  WebOnt-equivalentClass-008
 
-Profile-RL NegativeEntailmentTests: 3 pass, 3 fail (out of 6) in 0.12s
+Profile-RL NegativeEntailmentTests: 4 pass, 2 fail (out of 6) in 0.12s
 
 Running 76 ConsistencyTest(s) through is_inconsistent (closure fuel=100)...
   PASS  DisjointClasses-001
@@ -167,17 +167,20 @@ Profile-RL ConsistencyTests: 75 pass, 1 fail (out of 76) in 1.80s
 Running 14 InconsistencyTest(s) through is_inconsistent (closure fuel=100)...
   PASS  DisjointClasses-002
   PASS  New-Feature-AsymmetricProperty-001
-  FAIL/unexpected-consistency  New-Feature-DisjointDataProperties-001
+  PASS  New-Feature-DisjointDataProperties-001
   PASS  New-Feature-IrreflexiveProperty-001
-  FAIL/unexpected-consistency  New-Feature-Keys-006
-  FAIL/unexpected-consistency  New-Feature-NegativeDataPropertyAssertion-001
-  FAIL/unexpected-consistency  New-Feature-NegativeObjectPropertyAssertion-001
-  FAIL/no-premise  Plus and Minus Zero are Distinct
+  PASS  New-Feature-Keys-006
+  PASS  New-Feature-NegativeDataPropertyAssertion-001
+  PASS  New-Feature-NegativeObjectPropertyAssertion-001
+  SKIP/functional-syntax-only  Plus and Minus Zero are Distinct
+      reason: unsupported input syntax — catalog entry provides only test:fsPremiseOntology (OWL 2 functional syntax) with test:normativeSyntax FUNCTIONAL; this runner reads only test:rdfXmlPremiseOntology literals (no functional-syntax parser yet, see docs/designissues/2026-07-03-owl-rl-pe-fails-fix-sketch.md, 2.7)
   PASS  WebOnt-Nothing-001
-  FAIL/unexpected-consistency  WebOnt-description-logic-101
-  FAIL/unexpected-consistency  WebOnt-description-logic-103
-  FAIL/unexpected-consistency  WebOnt-description-logic-104
-  FAIL/no-premise  functionality-clash
-  FAIL/no-premise  string-integer-clash
+  PASS  WebOnt-description-logic-101
+  PASS  WebOnt-description-logic-103
+  PASS  WebOnt-description-logic-104
+  SKIP/functional-syntax-only  functionality-clash
+      reason: unsupported input syntax — catalog entry provides only test:fsPremiseOntology (OWL 2 functional syntax) with test:normativeSyntax FUNCTIONAL; this runner reads only test:rdfXmlPremiseOntology literals (no functional-syntax parser yet, see docs/designissues/2026-07-03-owl-rl-pe-fails-fix-sketch.md, 2.7)
+  SKIP/functional-syntax-only  string-integer-clash
+      reason: unsupported input syntax — catalog entry provides only test:fsPremiseOntology (OWL 2 functional syntax) with test:normativeSyntax FUNCTIONAL; this runner reads only test:rdfXmlPremiseOntology literals (no functional-syntax parser yet, see docs/designissues/2026-07-03-owl-rl-pe-fails-fix-sketch.md, 2.7)
 
-Profile-RL InconsistencyTests: 4 pass, 10 fail (out of 14) in 0.26s
+Profile-RL InconsistencyTests: 11 pass, 0 fail (out of 11), 3 skipped (functional-syntax-only) in 0.25s

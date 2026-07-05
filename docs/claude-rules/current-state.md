@@ -1,10 +1,15 @@
 # Current State (Honest Assessment)
 
-Last refreshed: 2026-07-05 (wave-4 battery: SPARQL 631/0, RDF
-1031/0, RDFC-1.0 82 pass 3 fail 1 stub of 86, SHACL core 98/0
+Last refreshed: 2026-07-05 (wave-5 battery: SPARQL 631/0, RDF
+1031/0, RDFC-1.0 84 pass 1 fail 1 stub of 86 (SHA-384 landed; the
+fail is the documented vendored-fixture artifact), SHACL core 98/0
 report-isomorphism + sparql 17/5 of 22, OWL RL PE 27 pass 2 fail 1
-skip of 30, JSON-LD toRdf 374 pass 82 fail 11 skip of 467, RIF 4/0,
-backend parity + Jena probes + unit 21/21 + npm 60/61 all green).
+skip of 30 + NegativeEntailment 4 pass 2 fail of 6 + Inconsistency
+11 pass 0 fail 3 skip of 14, JSON-LD toRdf 374 pass 82 fail 11 skip
+of 467, RIF 4/0, ShEx stage 1 decoder 433/433 suite schemas,
+backend parity + Jena probes + unit 21/21 + npm 60/61 all green.
+Note: w3c_runner shows 2 RIF entailment fails when run from
+ocaml-output/ — cwd-dependent file resolution, run from repo root.)
 
 Spot-check 2026-07-03 (`bin/linux-x86_64/w3c_runner --all` on a fresh
 clone with submodules initialised): SPARQL 631 pass, 0 fail; RDF 1031

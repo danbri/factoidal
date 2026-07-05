@@ -206,7 +206,7 @@
   [pe-running] somevaluesfrom2bnode
 Closure regime: RL
 OWL 2 test catalog: third_party/testing/owl/type-consistency.rdf
-  parsed 8767 triples in 0.31s
+  parsed 8767 triples in 0.30s
 Totals: 354 test cases
   PositiveEntailmentTest:    206
   NegativeEntailmentTest:    23
@@ -299,7 +299,7 @@ Running 206 PositiveEntailmentTest(s) through owl_rl_closure_with_reflexivity (f
   FAIL  WebOnt-complementOf-001
   FAIL  WebOnt-description-logic-201
   FAIL  WebOnt-description-logic-202
-  FAIL  WebOnt-description-logic-203
+  PASS  WebOnt-description-logic-203
   FAIL  WebOnt-description-logic-204
   FAIL  WebOnt-description-logic-205
   FAIL  WebOnt-description-logic-206
@@ -307,8 +307,8 @@ Running 206 PositiveEntailmentTest(s) through owl_rl_closure_with_reflexivity (f
   FAIL  WebOnt-description-logic-208
   FAIL  WebOnt-description-logic-661
   FAIL  WebOnt-description-logic-662
-  FAIL  WebOnt-description-logic-663
-  FAIL  WebOnt-description-logic-664
+  PASS  WebOnt-description-logic-663
+  PASS  WebOnt-description-logic-664
   FAIL  WebOnt-description-logic-665
   FAIL  WebOnt-description-logic-667
   FAIL  WebOnt-description-logic-901
@@ -358,7 +358,7 @@ Running 206 PositiveEntailmentTest(s) through owl_rl_closure_with_reflexivity (f
   PASS  owl2-rl-rules-ifp-askey
   PASS  owl2-rl-rules-ifp-differentFrom
   FAIL  rdfbased-sem-bool-intersection-inst-comp
-  FAIL  rdfbased-sem-bool-intersection-inst-expr
+  PASS  rdfbased-sem-bool-intersection-inst-expr
   FAIL  rdfbased-sem-bool-intersection-term
   FAIL  rdfbased-sem-bool-union-inst-comp
   FAIL  rdfbased-sem-bool-union-term
@@ -425,7 +425,7 @@ Running 206 PositiveEntailmentTest(s) through owl_rl_closure_with_reflexivity (f
   FAIL  rdfbased-sem-restrict-somevalues-inst-subj
   FAIL  somevaluesfrom2bnode
 
-Profile-RL PositiveEntailmentTests: 85 pass, 118 fail (out of 203 RDF/XML tests), 3 skipped (functional-syntax-only) in 32.42s
+Profile-RL PositiveEntailmentTests: 89 pass, 114 fail (out of 203 RDF/XML tests), 3 skipped (functional-syntax-only) in 32.92s
   (bnode pattern matches any term at the position; full isomorphism deferred — see docs/designissues/2026-04-24-owl-runner-phase1.md)
 
 Running 23 NegativeEntailmentTest(s) through owl_rl_closure_with_reflexivity (fuel=100)...
@@ -434,7 +434,7 @@ Running 23 NegativeEntailmentTest(s) through owl_rl_closure_with_reflexivity (fu
   PASS  New-Feature-ObjectPropertyChain-BJP-004
   PASS  WebOnt-Class-004
   PASS  WebOnt-Class-005
-  FAIL/unexpected-entailment  WebOnt-I4.6-004
+  PASS  WebOnt-I4.6-004
   FAIL/unexpected-entailment  WebOnt-I4.6-005
   PASS  WebOnt-I5.5-006
   PASS  WebOnt-I5.5-007
@@ -453,7 +453,7 @@ Running 23 NegativeEntailmentTest(s) through owl_rl_closure_with_reflexivity (fu
   PASS  WebOnt-miscellaneous-302
   PASS  WebOnt-someValuesFrom-002
 
-Profile-RL NegativeEntailmentTests: 19 pass, 4 fail (out of 23) in 1.05s
+Profile-RL NegativeEntailmentTests: 20 pass, 3 fail (out of 23) in 1.67s
 
 Running 354 ConsistencyTest(s) through is_inconsistent (closure fuel=100)...
   FAIL/no-premise  Consistent Datatype restrictions with Different Types
@@ -708,7 +708,7 @@ Running 354 ConsistencyTest(s) through is_inconsistent (closure fuel=100)...
   PASS  WebOnt-miscellaneous-011
   PASS  WebOnt-miscellaneous-102
   PASS  WebOnt-miscellaneous-103
-  PASS  WebOnt-miscellaneous-202
+  FAIL/unexpected-inconsistency  WebOnt-miscellaneous-202
   PASS  WebOnt-miscellaneous-301
   PASS  WebOnt-miscellaneous-302
   PASS  WebOnt-miscellaneous-302-Direct
@@ -811,4 +811,4 @@ Running 354 ConsistencyTest(s) through is_inconsistent (closure fuel=100)...
   PASS  rdfbased-sem-restrict-somevalues-inst-subj
   PASS  somevaluesfrom2bnode
 
-Profile-RL ConsistencyTests: 324 pass, 30 fail (out of 354) in 29.42s
+Profile-RL ConsistencyTests: 323 pass, 31 fail (out of 354) in 36.57s

@@ -1,5 +1,5 @@
 RDFC-1.0 manifest: /home/user/factoidal/third_party/testing/rdf-canon/tests/manifest.ttl
-  parsed 713 triples in 0.02s
+  parsed 713 triples in 0.01s
 Totals: 86 test entries
   RDFC10EvalTest:         64
   RDFC10MapTest:          21
@@ -87,10 +87,10 @@ Totals: 86 test entries
   PASS  [Eval] test073c      dataset - referencing graph name
   FAIL  [Map] test073m      dataset - referencing graph name (map test)
   STUB  [NegEval] test074c      poison - Clique Graph (negative test)
-  FAIL  [Eval] test075c      blank node - diamond (uses SHA-384)
-  FAIL  [Map] test075m      blank node - diamond (uses SHA-384) (map test)
+  PASS  [Eval] test075c      blank node - diamond (uses SHA-384)
+  PASS  [Map] test075m      blank node - diamond (uses SHA-384) (map test)
   PASS  [Eval] test076c      duplicate ground triple in input
   PASS  [Eval] test077c      duplicate triple with blank node in input
 
-RDFC-1.0 tests: 82 pass, 3 fail, 1 stub (out of 86)
+RDFC-1.0 tests: 84 pass, 1 fail, 1 stub (out of 86)
   (Phase 1: HFDQ + simple issuer (F* RDF.Canonical). HNDQ for collisions and Map / NegEval tests deferred. See docs/designissues/2026-04-25-rdfc10-algo-plan.md.)
