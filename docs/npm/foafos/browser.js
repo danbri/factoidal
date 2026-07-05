@@ -672,6 +672,186 @@ export async function rifEval(rifXml, dataNQuads) {
   return parsed;
 }
 
+/**
+ * SHACL Core validation (bin/npm-entry/entry_jsoo.ml's shaclValidate
+ * export). dataNQuads/shapesNQuads are dataset-handle N-Quads text
+ * (default graph only) -- use toRdf()/canonicalize() above to get
+ * there from Turtle or another format.
+ *
+ * @param {string} dataNQuads
+ * @param {string} shapesNQuads
+ * @returns {Promise<{ok:true,conforms:boolean,reportNquads:string}>}
+ */
+export async function shaclValidate(dataNQuads, shapesNQuads) {
+  if (typeof dataNQuads !== 'string') {
+    throw new TypeError('shaclValidate: dataNQuads must be a string');
+  }
+  if (typeof shapesNQuads !== 'string') {
+    throw new TypeError('shaclValidate: shapesNQuads must be a string');
+  }
+  const abi = await loadNpmEntry();
+  if (typeof abi.shaclValidate !== 'function') {
+    throw new Error(
+      'shaclValidate: the loaded factoidal-npm-entry bundle predates the SHACL export');
+  }
+  const parsed = JSON.parse(abi.shaclValidate(dataNQuads, shapesNQuads));
+  if (!parsed.ok) throw new Error(parsed.error || 'shaclValidate failed');
+  return parsed;
+}
+
+/**
+ * ShEx (Shape Expressions) validation of one focus node against one
+ * shape (bin/npm-entry/entry_jsoo.ml's shexValidate export).
+ * `focus`/`shapeLabel` are an IRI, or "_:label" for a blank node;
+ * `shapeLabel` "" validates against the schema's own `start`.
+ *
+ * @param {string} dataNQuads
+ * @param {string} schemaJson ShExJ (JSON Schema form), as text
+ * @param {string} focus
+ * @param {string} shapeLabel
+ * @returns {Promise<{ok:true,verdict:boolean|null,deferred:boolean}>}
+ *   verdict null (deferred:true) means outside this engine's decidable
+ *   ShEx fragment -- never a guessed answer.
+ */
+export async function shexValidate(dataNQuads, schemaJson, focus, shapeLabel) {
+  if (typeof dataNQuads !== 'string') {
+    throw new TypeError('shexValidate: dataNQuads must be a string');
+  }
+  if (typeof schemaJson !== 'string') {
+    throw new TypeError('shexValidate: schemaJson must be a string');
+  }
+  if (typeof focus !== 'string') {
+    throw new TypeError('shexValidate: focus must be a string');
+  }
+  const abi = await loadNpmEntry();
+  if (typeof abi.shexValidate !== 'function') {
+    throw new Error(
+      'shexValidate: the loaded factoidal-npm-entry bundle predates the ShEx export');
+  }
+  const parsed = JSON.parse(abi.shexValidate(dataNQuads, schemaJson, focus, shapeLabel || ''));
+  if (!parsed.ok) throw new Error(parsed.error || 'shexValidate failed');
+  return parsed;
+}
+
+/**
+ * RDFS or OWL-RL entailment closure (bin/npm-entry/entry_jsoo.ml's
+ * owlClosure export). Default graph only.
+ *
+ * @param {string} dataNQuads
+ * @param {'RDFS'|'OWL-RL'} mode
+ * @returns {Promise<{ok:true,nquads:string}>}
+ */
+export async function owlClosure(dataNQuads, mode) {
+  if (typeof dataNQuads !== 'string') {
+    throw new TypeError('owlClosure: dataNQuads must be a string');
+  }
+  const abi = await loadNpmEntry();
+  if (typeof abi.owlClosure !== 'function') {
+    throw new Error(
+      'owlClosure: the loaded factoidal-npm-entry bundle predates the owlClosure export');
+  }
+  const parsed = JSON.parse(abi.owlClosure(dataNQuads, mode));
+  if (!parsed.ok) throw new Error(parsed.error || 'owlClosure failed');
+  return parsed;
+}
+
+/**
+ * Evaluate an RML mapping graph against one logical source's raw data
+ * (bin/npm-entry/entry_jsoo.ml's rmlMap export). Every triples map in
+ * `mappingNQuads` reads the SAME `sourceData` -- joins across two
+ * different logical sources are out of scope for this entry point.
+ *
+ * @param {string} mappingNQuads dataset-handle N-Quads for the RML mapping graph
+ * @param {string} sourceData raw JSON or CSV text (not RDF)
+ * @param {'json'|'csv'} sourceKind
+ * @returns {Promise<{ok:true,nquads:string}>}
+ */
+export async function rmlMap(mappingNQuads, sourceData, sourceKind) {
+  if (typeof mappingNQuads !== 'string') {
+    throw new TypeError('rmlMap: mappingNQuads must be a string');
+  }
+  if (typeof sourceData !== 'string') {
+    throw new TypeError('rmlMap: sourceData must be a string');
+  }
+  const abi = await loadNpmEntry();
+  if (typeof abi.rmlMap !== 'function') {
+    throw new Error(
+      'rmlMap: the loaded factoidal-npm-entry bundle predates the RML export');
+  }
+  const parsed = JSON.parse(abi.rmlMap(mappingNQuads, sourceData, sourceKind));
+  if (!parsed.ok) throw new Error(parsed.error || 'rmlMap failed');
+  return parsed;
+}
+
+/**
+ * CSVW csv2rdf conversion (bin/npm-entry/entry_jsoo.ml's csvwToRdf
+ * export): raw tabular data + an optional CSVW metadata document to
+ * N-Quads. Every table in a multi-table `tables` group reads the SAME
+ * `csvText`.
+ *
+ * @param {string} csvText raw RFC 4180 tabular data (not RDF)
+ * @param {string} [metadataJson] CSVW metadata document (JSON text);
+ *   '' / omitted infers the schema from the CSV's own header row
+ * @param {{mode?:'standard'|'minimal',base?:string,url?:string}} [options]
+ * @returns {Promise<{ok:true,nquads:string}>}
+ */
+export async function csvwToRdf(csvText, metadataJson, options) {
+  if (typeof csvText !== 'string') {
+    throw new TypeError('csvwToRdf: csvText must be a string');
+  }
+  const meta = metadataJson == null ? '' : metadataJson;
+  if (typeof meta !== 'string') {
+    throw new TypeError('csvwToRdf: metadataJson must be a string');
+  }
+  const abi = await loadNpmEntry();
+  if (typeof abi.csvwToRdf !== 'function') {
+    throw new Error(
+      'csvwToRdf: the loaded factoidal-npm-entry bundle predates the CSVW export');
+  }
+  const opts = options || {};
+  const optionsJson = JSON.stringify({
+    ...(opts.mode ? { mode: String(opts.mode).toLowerCase() } : {}),
+    ...(opts.base ? { base: opts.base } : {}),
+    ...(opts.url ? { url: opts.url } : {}),
+  });
+  const parsed = JSON.parse(abi.csvwToRdf(csvText, meta, optionsJson));
+  if (!parsed.ok) throw new Error(parsed.error || 'csvwToRdf failed');
+  return parsed;
+}
+
+/**
+ * Parse a JSON-LD document with JSON-LD-specific options
+ * (bin/npm-entry/entry_jsoo.ml's jsonldToRdf export) -- plain
+ * `toRdf(text, {format:'jsonld'})` above also works now for the
+ * common case; this exists for rdfDirection/expandContext/
+ * processingMode, which toRdf()'s options have no room for.
+ *
+ * @param {string} jsonldText
+ * @param {{base?:string,rdfDirection?:string,expandContext?:string,
+ *   processingMode?:string}} [options]
+ * @returns {Promise<{ok:true,nquads:string}>}
+ */
+export async function jsonldToRdf(jsonldText, options) {
+  if (typeof jsonldText !== 'string') {
+    throw new TypeError('jsonldToRdf: jsonldText must be a string');
+  }
+  const abi = await loadNpmEntry();
+  if (typeof abi.jsonldToRdf !== 'function') {
+    throw new Error(
+      'jsonldToRdf: the loaded factoidal-npm-entry bundle predates the jsonldToRdf export');
+  }
+  const opts = options || {};
+  const optionsJson = JSON.stringify({
+    ...(opts.base ? { base: opts.base } : {}),
+    ...(opts.rdfDirection ? { rdfDirection: opts.rdfDirection } : {}),
+    ...(opts.expandContext ? { expandContext: opts.expandContext } : {}),
+    ...(opts.processingMode ? { processingMode: opts.processingMode } : {}),
+  });
+  const parsed = JSON.parse(abi.jsonldToRdf(jsonldText, optionsJson));
+  if (!parsed.ok) throw new Error(parsed.error || 'jsonldToRdf failed');
+  return parsed;
+}
+
 // Best-effort version export for the browser. Consumers that care
 // about the exact version should import from the package root (which
 // reads package.json).
@@ -681,4 +861,5 @@ export default {
   query, toRdf, canonicalize, runFactoidalCli, setFactoidalUrl, getFactoidalUrl,
   encodeTextAsBundleBytes, queryDataset, version,
   loadNpmEntry, setFactoidalNpmEntryUrl, rifSmoke, rifEval,
+  shaclValidate, shexValidate, owlClosure, rmlMap, jsonldToRdf,
 };

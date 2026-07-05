@@ -784,6 +784,42 @@ export async function rmlMap(mappingNQuads, sourceData, sourceKind) {
 }
 
 /**
+ * CSVW csv2rdf conversion (bin/npm-entry/entry_jsoo.ml's csvwToRdf
+ * export): raw tabular data + an optional CSVW metadata document to
+ * N-Quads. Every table in a multi-table `tables` group reads the SAME
+ * `csvText`.
+ *
+ * @param {string} csvText raw RFC 4180 tabular data (not RDF)
+ * @param {string} [metadataJson] CSVW metadata document (JSON text);
+ *   '' / omitted infers the schema from the CSV's own header row
+ * @param {{mode?:'standard'|'minimal',base?:string,url?:string}} [options]
+ * @returns {Promise<{ok:true,nquads:string}>}
+ */
+export async function csvwToRdf(csvText, metadataJson, options) {
+  if (typeof csvText !== 'string') {
+    throw new TypeError('csvwToRdf: csvText must be a string');
+  }
+  const meta = metadataJson == null ? '' : metadataJson;
+  if (typeof meta !== 'string') {
+    throw new TypeError('csvwToRdf: metadataJson must be a string');
+  }
+  const abi = await loadNpmEntry();
+  if (typeof abi.csvwToRdf !== 'function') {
+    throw new Error(
+      'csvwToRdf: the loaded factoidal-npm-entry bundle predates the CSVW export');
+  }
+  const opts = options || {};
+  const optionsJson = JSON.stringify({
+    ...(opts.mode ? { mode: String(opts.mode).toLowerCase() } : {}),
+    ...(opts.base ? { base: opts.base } : {}),
+    ...(opts.url ? { url: opts.url } : {}),
+  });
+  const parsed = JSON.parse(abi.csvwToRdf(csvText, meta, optionsJson));
+  if (!parsed.ok) throw new Error(parsed.error || 'csvwToRdf failed');
+  return parsed;
+}
+
+/**
  * Parse a JSON-LD document with JSON-LD-specific options
  * (bin/npm-entry/entry_jsoo.ml's jsonldToRdf export) -- plain
  * `toRdf(text, {format:'jsonld'})` above also works now for the

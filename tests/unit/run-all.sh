@@ -73,7 +73,10 @@ COMMON_MODULES=(
   Parser_NQuads
   Parser_TriG
   Parser_XML
+  Parser_XPath
+  XPath_Eval
   XML_Wellformedness
+  XML_Namespaces
   Parser_RDFXML
   Parser_SRX
   Parser_CSVResults
@@ -139,6 +142,9 @@ COMMON_MODULES=(
   SPARQL11_Parser
   SHACL_Validation
   VC_Credential
+  CSVW_Metadata
+  CSVW_URITemplate
+  CSVW_Conversion
   SPARQL11_Store
   RDF_Store_Combine
   SPARQL_Protocol

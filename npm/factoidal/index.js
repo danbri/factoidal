@@ -13,12 +13,13 @@
 //   shexValidate(data, schema, focus, shape) -> Promise<boolean|null>
 //   owlClosure(data, mode)              -> Promise<Dataset>  ('RDFS'|'OWL-RL')
 //   rmlMap(mapping, sourceData, kind)   -> Promise<Dataset>  (kind: 'json'|'csv')
+//   csvwToRdf(csvText, metadataJson, options) -> Promise<Dataset>  (CSVW csv2rdf)
 //   jsonldToRdf(jsonldText, options)    -> Promise<Dataset>
 //   rifEval(data, rifRulesXml)          -> Promise<Dataset>  (RIF Core saturation)
 //   dataFactory                         -> RDF/JS DataFactory
 //   Dataset                             -> RDF/JS DatasetCore class
 //
-// shaclValidate/shexValidate/owlClosure/rmlMap/jsonldToRdf/rifEval need
+// shaclValidate/shexValidate/owlClosure/rmlMap/csvwToRdf/jsonldToRdf/rifEval need
 // the npm-entry ABI bundle (same gate as update()/canonicalize()); see
 // capabilities() to probe for it.
 //
@@ -155,6 +156,7 @@ module.exports = {
   shexValidate: api.shexValidate,
   owlClosure: api.owlClosure,
   rmlMap: api.rmlMap,
+  csvwToRdf: api.csvwToRdf,
   jsonldToRdf: api.jsonldToRdf,
   rifEval: api.rifEval,
   capabilities: api.capabilities,

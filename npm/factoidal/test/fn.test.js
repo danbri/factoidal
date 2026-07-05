@@ -17,7 +17,7 @@ const fn = require('../fn.js');
 const {
   FnDataset, EMPTY, fromDataset, toDataset, builder, fromChunks,
   parse, union, difference,
-  filter, mapQuads, query, entail, validate, shex, fromMapping, rif,
+  filter, mapQuads, query, entail, validate, shex, fromMapping, fromCsvw, rif,
   canonicalize, hash, equals, graphs,
   cell, derive, capabilities,
 } = fn;
@@ -428,6 +428,32 @@ test('fromMapping: evaluates an RML mapping graph against JSON source data', asy
   const nq = out.toNQuads();
   assert.match(nq, /person\/1> <http:\/\/xmlns\.com\/foaf\/0\.1\/name> "Alice"/);
   assert.match(nq, /person\/2> <http:\/\/xmlns\.com\/foaf\/0\.1\/name> "Bob"/);
+});
+
+test('fromCsvw: converts a vendored W3C CSVW fixture into an FnDataset', async (t) => {
+  const caps = await capabilities();
+  if (!caps.csvw) { t.skip(PENDING); return; }
+
+  // Real vendored fixtures from the W3C CSVW test suite (test027's
+  // metadata + the shared tree-ops.csv table) — same pair as
+  // api.test.js's csvwToRdf test, exercised through the FP wrapper.
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const dir = path.join(__dirname, '..', '..', '..',
+    'third_party', 'testing', 'csvw', 'tests');
+  const csv = fs.readFileSync(path.join(dir, 'tree-ops.csv'), 'utf8');
+  const meta = fs.readFileSync(
+    path.join(dir, 'test027-user-metadata.json'), 'utf8');
+
+  const out = await fromCsvw(csv, meta,
+    { mode: 'minimal', base: 'http://example.org/' });
+  assert.ok(out instanceof FnDataset);
+  assert.equal(out.size, 10); // 2 data rows x 5 columns
+  const nq = out.toNQuads();
+  assert.match(nq,
+    /<http:\/\/example\.org\/tree-ops\.csv#gid-1> <http:\/\/example\.org\/tree-ops\.csv#on_street> "ADDISON AV"/);
+  assert.match(nq,
+    /<http:\/\/example\.org\/tree-ops\.csv#gid-2> <http:\/\/example\.org\/tree-ops\.csv#species> "Liquidambar styraciflua"/);
 });
 
 test('rif: RIF Core saturation materializes derived triples as an FnDataset', async (t) => {

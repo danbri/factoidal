@@ -17,7 +17,8 @@ const assert = require('node:assert/strict');
 const factoidal = require('..');
 const { parse, query, update, serialize, canonicalize, graphs,
   canonicalHash, shaclValidate, shexValidate, owlClosure, rmlMap,
-  jsonldToRdf, rifEval, capabilities, Dataset, dataFactory: df } = factoidal;
+  csvwToRdf, jsonldToRdf, rifEval, capabilities, Dataset,
+  dataFactory: df } = factoidal;
 
 const PENDING = 'pending npm-entry build';
 
@@ -450,6 +451,62 @@ test('rmlMap: evaluates an RML mapping graph against JSON source data',
       ds.match(df.namedNode('http://example.org/person/1'),
         df.namedNode('http://xmlns.com/foaf/0.1/name')).size,
       1);
+  });
+
+test('csvwToRdf: converts a vendored W3C CSVW fixture (minimal mode)',
+  async (t) => {
+    const caps = await capabilities();
+    if (!caps.csvw) { t.skip(PENDING); return; }
+
+    // Real vendored fixtures from the W3C CSVW test suite (test027's
+    // metadata + the shared tree-ops.csv table it describes) — not a
+    // synthetic imitation (iron rule #6).
+    const fs = require('node:fs');
+    const path = require('node:path');
+    const dir = path.join(__dirname, '..', '..', '..',
+      'third_party', 'testing', 'csvw', 'tests');
+    const csv = fs.readFileSync(path.join(dir, 'tree-ops.csv'), 'utf8');
+    const meta = fs.readFileSync(
+      path.join(dir, 'test027-user-metadata.json'), 'utf8');
+
+    const ds = await csvwToRdf(csv, meta,
+      { mode: 'minimal', base: 'http://example.org/' });
+    assert.ok(ds instanceof Dataset);
+    // 2 data rows x 5 columns, bare cell triples only in minimal mode.
+    assert.equal(ds.size, 10);
+    // The schema-level aboutUrl "#gid-{GID}" resolves against the
+    // metadata's own url ("tree-ops.csv"), itself resolved against base.
+    const subj = df.namedNode('http://example.org/tree-ops.csv#gid-1');
+    assert.equal(ds.match(subj).size, 5);
+    const street = ds.match(subj,
+      df.namedNode('http://example.org/tree-ops.csv#on_street'));
+    assert.equal(street.size, 1);
+    assert.equal([...street][0].object.value, 'ADDISON AV');
+  });
+
+test('csvwToRdf: standard mode emits the csvw:TableGroup wrapper; no metadata infers from header',
+  async (t) => {
+    const caps = await capabilities();
+    if (!caps.csvw) { t.skip(PENDING); return; }
+
+    const fs = require('node:fs');
+    const path = require('node:path');
+    const dir = path.join(__dirname, '..', '..', '..',
+      'third_party', 'testing', 'csvw', 'tests');
+    const csv = fs.readFileSync(path.join(dir, 'tree-ops.csv'), 'utf8');
+
+    // '' metadata: schema inferred from the CSV's own header row
+    // (csv2rdf's embedded-metadata case, the suite's test028 shape).
+    const ds = await csvwToRdf(csv, '',
+      { base: 'http://example.org/', url: 'tree-ops.csv' });
+    assert.ok(ds instanceof Dataset);
+    const groupType = [...ds].filter((q) =>
+      q.predicate.value === 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type' &&
+      q.object.value === 'http://www.w3.org/ns/csvw#TableGroup');
+    assert.equal(groupType.length, 1, 'standard mode wraps in a csvw:TableGroup');
+    const rownums = [...ds].filter((q) =>
+      q.predicate.value === 'http://www.w3.org/ns/csvw#rownum');
+    assert.equal(rownums.length, 2, 'one csvw:rownum per data row');
   });
 
 test('rifEval: RIF Core saturation materializes derived triples',

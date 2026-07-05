@@ -109,6 +109,7 @@ module.exports = {
   shexValidate: api.shexValidate,
   owlClosure: api.owlClosure,
   rmlMap: api.rmlMap,
+  csvwToRdf: api.csvwToRdf,
   jsonldToRdf: api.jsonldToRdf,
   rifEval: api.rifEval,
   capabilities: api.capabilities,

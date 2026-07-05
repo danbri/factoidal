@@ -134,6 +134,38 @@
        lookup_parent hook) are not reachable through this one-document
        entry point; see bin/rml-runner/rml_runner.ml for the full
        multi-source join driver this does not attempt to replicate.
+     factoidalNpmEntry.csvwToRdf(csvText, metadataJson, optionsJson)
+       -> {"ok":true,"nquads":"..."} | {"ok":false,"error":"..."}
+       CSVW csv2rdf conversion (w3.org/TR/csv2rdf). csvText is the raw
+       tabular data (RFC 4180, tokenized by the F-star-extracted
+       RML_Sources.csv_parse_rows -- the same shared tokenizer rmlMap's
+       csv path uses); metadataJson is a CSVW metadata document
+       (tabular-metadata JSON), or "" to infer the schema from the
+       CSV's own header row. optionsJson is a JSON object (or "" for
+       defaults) with optional string fields:
+         "mode": "standard" (default -- full csvw:TableGroup/Table/Row
+                 wrapper, the shape 263/270 of the vendored W3C csv2rdf
+                 fixtures expect) or "minimal" (bare cell triples).
+         "base": base IRI for resolving the metadata's `url` and any
+                 aboutUrl/propertyUrl/valueUrl templates
+                 (default "file:///").
+         "url":  the tabular file's own URL, used when metadataJson has
+                 no `url` of its own; cell predicates default to
+                 `<tableUrl>#<colName>` so this shapes every emitted
+                 predicate IRI (default "table.csv", i.e.
+                 file:///table.csv under the default base).
+       Decoding is CSVW_Metadata.csvw_decode_metadata_text; conversion
+       is CSVW_Conversion.csvw_convert_document_standard/_minimal --
+       the same call path bin/csvw-runner/csvw_runner.ml drives.
+       Scope limitation (documented, not silent -- mirrors rmlMap's
+       one-source cut): every table in a multi-table `tables` group
+       reads the SAME csvText; per-table separate CSV sources need the
+       runner's file-per-table driver. Datatype `format` facets,
+       list-valued (`separator`) cells, and full inherited-property
+       propagation are not yet implemented -- see
+       docs/designissues/2026-07-05-csvw-program-plan.md's stage table
+       for measured coverage (19 pass, 251 fail of 270 vendored
+       csv2rdf fixtures at this stage).
 
    Rich types (RDF/JS terms, Dataset objects, Maps of bindings) live on
    the JavaScript side (npm/factoidal/rdfjs.js); the js_of_ocaml string
@@ -723,6 +755,68 @@ let rml_map_json (mapping_nquads : string) (source_data : string)
         "rmlMap: unknown sourceKind '%s' (expected 'json' or 'csv')" source_kind))
 
 (* ---------------------------------------------------------------------
+   CSVW csv2rdf (rule #11 consumer -- exports only). Metadata-document
+   decoding lives in formal/fstar/CSVW.Metadata.fst, URI-template
+   expansion in formal/fstar/CSVW.URITemplate.fst, the conversion
+   algorithm (standard + minimal modes) in
+   formal/fstar/CSVW.Conversion.fst, CSV tokenization in
+   formal/fstar/RML.Sources.fst -- the same call path
+   bin/csvw-runner/csvw_runner.ml drives. See csvwToRdf's doc comment
+   (file header) for the optionsJson fields and the one-source scope
+   cut this shares with rmlMap.
+   --------------------------------------------------------------------- *)
+
+let csvw_to_rdf_json (csv_text : string) (metadata_json : string)
+    (options_json : string) : string =
+  guarded (fun () ->
+    let root_opt =
+      if options_json = "" then FStar_Pervasives_Native.None
+      else Parser_JSON.parse_json options_json
+    in
+    let field key dflt =
+      match root_opt with
+      | FStar_Pervasives_Native.None -> dflt
+      | FStar_Pervasives_Native.Some root ->
+        (match Parser_JSON.json_get_string key root with
+         | FStar_Pervasives_Native.Some s -> s
+         | FStar_Pervasives_Native.None -> dflt)
+    in
+    let mode = field "mode" "standard" in
+    let base_iri = field "base" "file:///" in
+    let fallback_url = field "url" "table.csv" in
+    match mode with
+    | "standard" | "minimal" ->
+      let tables_opt =
+        if metadata_json = "" then
+          FStar_Pervasives_Native.Some [ CSVW_Conversion.csvw_no_metadata_table ]
+        else
+          (match CSVW_Metadata.csvw_decode_metadata_text metadata_json with
+           | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+           | FStar_Pervasives_Native.Some (CSVW_Metadata.CSVW_Table t) ->
+             FStar_Pervasives_Native.Some [ t ]
+           | FStar_Pervasives_Native.Some (CSVW_Metadata.CSVW_TableGroup ts) ->
+             FStar_Pervasives_Native.Some ts)
+      in
+      (match tables_opt with
+       | FStar_Pervasives_Native.None ->
+         err_json "csvwToRdf: metadataJson is not a decodable CSVW metadata document"
+       | FStar_Pervasives_Native.Some tables ->
+         let rows = RML_Sources.csv_parse_rows csv_text in
+         let tables_with_rows =
+           List.map (fun t -> (t, fallback_url, rows)) tables in
+         let triples =
+           if mode = "minimal"
+           then CSVW_Conversion.csvw_convert_document_minimal base_iri tables_with_rows
+           else CSVW_Conversion.csvw_convert_document_standard base_iri tables_with_rows
+         in
+         let ds : RDF_Graph_Executable.rdf_dataset =
+           { RDF_Graph_Executable.ds_default = triples; ds_named = [] } in
+         ok_nquads_json (RDF_Canonical.canonical_nquads (scope_dataset_bnodes ds)))
+    | _ ->
+      err_json (Printf.sprintf
+        "csvwToRdf: unknown mode '%s' (expected 'standard' or 'minimal')" mode))
+
+(* ---------------------------------------------------------------------
    Js.export — the only js_of_ocaml-specific code. Strings cross the
    boundary via Js.to_string / Js.string (UTF-16 JS <-> UTF-8 OCaml).
    --------------------------------------------------------------------- *)
@@ -768,5 +862,6 @@ let () =
           ("shaclValidate", s2 shacl_validate_json);
           ("shexValidate", s4 shex_validate_json);
           ("owlClosure", s2 owl_closure_json);
-          ("rmlMap", s3 rml_map_json)
+          ("rmlMap", s3 rml_map_json);
+          ("csvwToRdf", s3 csvw_to_rdf_json)
        |])

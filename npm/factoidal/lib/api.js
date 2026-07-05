@@ -604,6 +604,49 @@ function buildApi(driver) {
   }
 
   /**
+   * CSVW csv2rdf conversion (w3.org/TR/csv2rdf): convert tabular data
+   * plus an optional CSVW metadata document into a Dataset. Needs the
+   * npm-entry bundle. Scope cut (documented, not silent -- mirrors
+   * rmlMap's one-source cut): every table in a multi-table `tables`
+   * group reads the SAME `csvText`. Datatype `format` facets,
+   * list-valued (`separator`) cells, and full inherited-property
+   * propagation are not yet implemented -- see
+   * docs/designissues/2026-07-05-csvw-program-plan.md for measured
+   * coverage.
+   * @param {string} csvText raw RFC 4180 tabular data (not RDF)
+   * @param {string} [metadataJson] CSVW metadata document (JSON text);
+   *   '' / omitted infers the schema from the CSV's own header row
+   * @param {{mode?: 'standard'|'minimal', base?: string, url?: string}}
+   *   [options] mode defaults to 'standard' (full csvw:TableGroup/
+   *   Table/Row wrapper); base is the resolution base IRI (default
+   *   'file:///'); url is the tabular file's own URL used when the
+   *   metadata carries none (default 'table.csv') -- cell predicates
+   *   default to `<tableUrl>#<colName>`, so url shapes every emitted
+   *   predicate IRI.
+   * @returns {Promise<Dataset>}
+   */
+  async function csvwToRdf(csvText, metadataJson, options) {
+    if (typeof csvText !== 'string') {
+      throw new TypeError('csvwToRdf: csvText must be a string');
+    }
+    const meta = metadataJson == null ? '' : metadataJson;
+    if (typeof meta !== 'string') {
+      throw new TypeError('csvwToRdf: metadataJson must be a string');
+    }
+    const e = await entry();
+    if (!e) throw pendingError('CSVW csv2rdf conversion');
+    requireEntryFn(e, 'csvwToRdf', 'CSVW csv2rdf conversion');
+    const opts = options || {};
+    const optionsJson = JSON.stringify({
+      ...(opts.mode ? { mode: String(opts.mode).toLowerCase() } : {}),
+      ...(opts.base ? { base: opts.base } : {}),
+      ...(opts.url ? { url: opts.url } : {}),
+    });
+    const r = entryResult(e.csvwToRdf(csvText, meta, optionsJson), 'csvwToRdf');
+    return Dataset.fromNQuads(r.nquads, { blankNodePrefix: freshBnodePrefix() });
+  }
+
+  /**
    * Parse a JSON-LD document into a Dataset, with JSON-LD-specific
    * options `parse()` has no room for. Needs the npm-entry bundle
    * (plain `parse(text, {format:'jsonld'})` also works now -- see
@@ -661,7 +704,8 @@ function buildApi(driver) {
    * @returns {Promise<{entry: boolean, construct: boolean,
    *   update: boolean, canonicalize: boolean, graphs: boolean,
    *   canonicalHash: boolean, shacl: boolean, shex: boolean,
-   *   owlClosure: boolean, rml: boolean, jsonld: boolean, rif: boolean}>}
+   *   owlClosure: boolean, rml: boolean, csvw: boolean, jsonld: boolean,
+   *   rif: boolean}>}
    */
   let capsCache = null;
   async function capabilities() {
@@ -684,6 +728,7 @@ function buildApi(driver) {
         shex: typeof e.shexValidate === 'function',
         owlClosure: typeof e.owlClosure === 'function',
         rml: typeof e.rmlMap === 'function',
+        csvw: typeof e.csvwToRdf === 'function',
         jsonld: typeof e.jsonldToRdf === 'function',
         rif: typeof e.rifEval === 'function',
       };
@@ -704,7 +749,7 @@ function buildApi(driver) {
       entry: false, construct: false, update: false, canonicalize: canon,
       graphs: true, canonicalHash: canon,
       shacl: false, shex: false, owlClosure: false, rml: false,
-      jsonld: false, rif: false,
+      csvw: false, jsonld: false, rif: false,
     };
   }
 
@@ -720,6 +765,7 @@ function buildApi(driver) {
     shexValidate,
     owlClosure,
     rmlMap,
+    csvwToRdf,
     jsonldToRdf,
     rifEval,
     capabilities,

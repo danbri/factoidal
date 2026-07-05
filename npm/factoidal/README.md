@@ -208,11 +208,12 @@ the mutable RDF/JS `Dataset` above, so the two styles compose freely.
 `union`/`difference`/`filter`/`mapQuads` give set algebra without
 methods; `query`/`entail`/`canonicalize`/`graphs` mirror the plain
 API's capability gating (`capabilities()`) exactly. `validate`/`shex`/
-`fromMapping`/`rif` wrap the SHACL/ShEx/RML/RIF surface below the same
-way — FnDataset in, FnDataset (or a plain verdict) out:
+`fromMapping`/`fromCsvw`/`rif` wrap the SHACL/ShEx/RML/CSVW/RIF
+surface below the same way — FnDataset in, FnDataset (or a plain
+verdict) out:
 
 ```js
-const { parse, validate, shex, fromMapping, rif } = require('@danbri/foafos/fn');
+const { parse, validate, shex, fromMapping, fromCsvw, rif } = require('@danbri/foafos/fn');
 
 const data = await parse(personTtl);
 const shapes = await parse(shapesTtl);
@@ -221,6 +222,8 @@ const { conforms, report } = await validate(data, shapes); // SHACL
 const ok = await shex(data, shexSchemaJson, 'http://example.org/alice'); // true|false|null
 
 const mapped = await fromMapping(await parse(rmlMappingTtl), csvOrJsonText, 'csv'); // RML
+
+const tabular = await fromCsvw(csvText, csvwMetadataJson, { mode: 'minimal' }); // CSVW csv2rdf
 
 const saturated = await rif(data, rifRulesXml); // RIF Core forward chaining
 ```
@@ -240,10 +243,11 @@ const saturated = await rif(data, rifRulesXml); // RIF Core forward chaining
 | `shexValidate` | `(data, schemaJson, focus, shape?) => boolean \| null` | \*\* ShEx (Shape Expressions) validation of one focus node; `null` = outside this engine's decidable ShEx fragment, never a guessed answer |
 | `owlClosure` | `(data, mode) => Dataset` | \*\* `mode: "RDFS" \| "OWL-RL"`; materializes the entailment closure (input + derived triples), default graph only |
 | `rmlMap` | `(mapping, sourceData, sourceKind) => Dataset` | \*\* evaluates an RML mapping graph against one logical source (`sourceKind: "json" \| "csv"`); every triples map reads the SAME source — cross-source joins are out of scope for this entry point |
+| `csvwToRdf` | `(csvText, metadataJson?, {mode?, base?, url?}) => Dataset` | \*\* CSVW csv2rdf conversion; metadata omitted = schema inferred from the CSV header row; `mode: "standard" \| "minimal"` (default standard); every table in a multi-table group reads the SAME csvText |
 | `jsonldToRdf` | `(jsonldText, {base?, rdfDirection?, expandContext?, processingMode?}) => Dataset` | \*\* JSON-LD parsing with options `parse()` has no room for; plain `parse(text, {format:'jsonld'})` also works for the common case |
 | `rifEval` | `(data, rifRulesXml) => Dataset` | \*\* RIF Core forward-chaining saturation (materializes input + derived triples); accepts real vendored RIF-XML (`<!DOCTYPE>` + `&rif;`/`&xs;`/`&rdf;` entities) unmodified |
 | `queryRaw` | `(input, sparql) => string` | SPARQL-Results-JSON string, for callers that want the wire form |
-| `capabilities` | `() => {construct, update, canonicalize, graphs, canonicalHash, shacl, shex, owlClosure, rml, jsonld, rif, ...}` | runtime feature probe |
+| `capabilities` | `() => {construct, update, canonicalize, graphs, canonicalHash, shacl, shex, owlClosure, rml, csvw, jsonld, rif, ...}` | runtime feature probe |
 | `dataFactory` | RDF/JS DataFactory | |
 | `Dataset` | RDF/JS DatasetCore | returned by `parse`; accepted everywhere |
 
@@ -254,7 +258,7 @@ and `jsonldToRdf()` when the npm-entry bundle is loaded. Remote
 don't register (an honest failure, not a silent wrong answer) —
 tracked against the vendored W3C json-ld-api suite.
 \*\* CONSTRUCT, UPDATE, `canonicalize`, `canonicalHash`,
-`shaclValidate`, `shexValidate`, `owlClosure`, `rmlMap`,
+`shaclValidate`, `shexValidate`, `owlClosure`, `rmlMap`, `csvwToRdf`,
 `jsonldToRdf`, and `rifEval` are probed via `capabilities()`: they
 activate automatically when the dedicated npm-entry engine bundle is
 present, and the package reports their absence honestly against

@@ -403,6 +403,29 @@ async function fromMapping(mapping, source, kind) {
 }
 
 /**
+ * CSVW csv2rdf conversion (w3.org/TR/csv2rdf): convert raw tabular
+ * data plus an optional CSVW metadata document into a new FnDataset.
+ * Needs the npm-entry engine bundle. Unlike fromMapping there is no
+ * FnDataset input -- both arguments are raw text (CSVW's metadata
+ * format is JSON, not RDF). Scope cut (documented, not silent --
+ * mirrors fromMapping's one-source cut): every table in a multi-table
+ * `tables` group reads the SAME `csv` text. Datatype `format` facets,
+ * list-valued (`separator`) cells, and full inherited-property
+ * propagation are not yet implemented -- see engineApi.csvwToRdf's
+ * doc comment and the CSVW program plan for measured coverage.
+ *
+ * @param {string} csv raw RFC 4180 tabular data (not RDF)
+ * @param {string} [metadata] CSVW metadata document (JSON text);
+ *   '' / omitted infers the schema from the CSV's own header row
+ * @param {{mode?: 'standard'|'minimal', base?: string, url?: string}}
+ *   [options] see engineApi.csvwToRdf
+ * @returns {Promise<FnDataset>}
+ */
+async function fromCsvw(csv, metadata, options) {
+  return fromDataset(await engineApi.csvwToRdf(csv, metadata, options));
+}
+
+/**
  * RIF Core forward-chaining saturation, materialized as a new
  * FnDataset (input triples + derived triples, default graph only --
  * RIF Core has no named-graph notion). Needs the npm-entry engine
@@ -593,6 +616,7 @@ module.exports = {
   validate,
   shex,
   fromMapping,
+  fromCsvw,
   rif,
   canonicalize,
   hash,

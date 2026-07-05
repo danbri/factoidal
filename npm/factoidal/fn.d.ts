@@ -162,6 +162,25 @@ export function fromMapping(
 ): Promise<FnDataset>;
 
 /**
+ * CSVW csv2rdf conversion, materialized as a new FnDataset. Needs the
+ * npm-entry engine bundle. Both arguments are raw text (CSVW's
+ * metadata format is JSON, not RDF); '' or omitted metadata infers
+ * the schema from the CSV's own header row. Every table in a
+ * multi-table `tables` group reads the SAME `csv` text.
+ * @param csv raw RFC 4180 tabular data (not RDF)
+ * @param metadata CSVW metadata document (JSON text)
+ */
+export function fromCsvw(
+  csv: string,
+  metadata?: string,
+  options?: {
+    mode?: 'standard' | 'minimal';
+    base?: string;
+    url?: string;
+  }
+): Promise<FnDataset>;
+
+/**
  * RIF Core forward-chaining saturation, materialized as a new
  * FnDataset (input triples + derived triples, default graph only).
  * Needs the npm-entry engine bundle.

@@ -9,8 +9,19 @@
 //   canonicalize(data, {format})        -> Promise<string>   (RDFC-1.0)
 //   graphs(dataset)                     -> Array<[iri, Dataset]>  (named graphs)
 //   canonicalHash(datasetOrGraph)       -> Promise<string>   (RDFC-1.0, one graph)
+//   shaclValidate(data, shapes)         -> Promise<{conforms, report: Dataset}>
+//   shexValidate(data, schema, focus, shape) -> Promise<boolean|null>
+//   owlClosure(data, mode)              -> Promise<Dataset>  ('RDFS'|'OWL-RL')
+//   rmlMap(mapping, sourceData, kind)   -> Promise<Dataset>  (kind: 'json'|'csv')
+//   csvwToRdf(csvText, metadataJson, options) -> Promise<Dataset>  (CSVW csv2rdf)
+//   jsonldToRdf(jsonldText, options)    -> Promise<Dataset>
+//   rifEval(data, rifRulesXml)          -> Promise<Dataset>  (RIF Core saturation)
 //   dataFactory                         -> RDF/JS DataFactory
 //   Dataset                             -> RDF/JS DatasetCore class
+//
+// shaclValidate/shexValidate/owlClosure/rmlMap/csvwToRdf/jsonldToRdf/rifEval need
+// the npm-entry ABI bundle (same gate as update()/canonicalize()); see
+// capabilities() to probe for it.
 //
 // Bindings are Maps of variable name -> RDF/JS Term. See index.d.ts
 // for the full types and README.md for examples.
@@ -141,6 +152,13 @@ module.exports = {
   canonicalize: api.canonicalize,
   graphs: api.graphs,
   canonicalHash: api.canonicalHash,
+  shaclValidate: api.shaclValidate,
+  shexValidate: api.shexValidate,
+  owlClosure: api.owlClosure,
+  rmlMap: api.rmlMap,
+  csvwToRdf: api.csvwToRdf,
+  jsonldToRdf: api.jsonldToRdf,
+  rifEval: api.rifEval,
   capabilities: api.capabilities,
   Dataset: rdfjs.Dataset,
   dataFactory: rdfjs.dataFactory,

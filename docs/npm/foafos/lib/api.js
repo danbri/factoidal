@@ -193,6 +193,40 @@ function buildApi(driver) {
     return { files, flags };
   }
 
+  // Normalize toDocs() output into one concatenated N-Quads "dataset
+  // handle" string via the entry ABI -- the same per-document
+  // parseToDatasetJson-then-concatenate shape query()/update()/
+  // canonicalize() each already inline. Needs the entry bundle (the
+  // caller must have already checked `e` is non-null); factored out
+  // here for the SHACL/ShEx/OWL-closure/RML wrappers below, which all
+  // hand the engine a dataset-handle N-Quads string rather than raw
+  // Turtle (consistent with every other entry ABI call).
+  function docsToEntryNQuads(e, docs, what) {
+    let nq = '';
+    for (const d of docs) {
+      if (d.ext === 'nq') { nq += d.content; continue; }
+      const r = entryResult(
+        e.parseToDatasetJson(d.content, DATA_FORMAT_TAG[d.ext], ''),
+        `${what}(parse)`);
+      nq += r.nquads;
+    }
+    return nq;
+  }
+
+  // A ShEx focus/shape-label argument is either a raw string (an IRI,
+  // or "_:label" for a blank node -- the entry ABI's own convention)
+  // or an RDF/JS term (NamedNode/BlankNode); accepting both lets a
+  // caller pass a term straight out of a query() binding.
+  function shexTermToString(t, who) {
+    if (typeof t === 'string') return t;
+    if (t && typeof t.termType === 'string') {
+      if (t.termType === 'BlankNode') return `_:${t.value}`;
+      if (t.termType === 'NamedNode') return t.value;
+      throw new TypeError(`${who}: expected an IRI or blank node term`);
+    }
+    throw new TypeError(`${who}: expected a string or an RDF/JS term`);
+  }
+
   // Everything below is async so both drivers (sync jsoo, async wasm)
   // and both paths (entry, CLI) share one shape.
 
@@ -443,11 +477,235 @@ function buildApi(driver) {
     return canonicalize(asDefaultGraph.toNQuads(), { format: 'nquads' });
   }
 
+  // Some loaded entry bundles predate one of these exports (e.g. an
+  // older/stale wasm-target build) -- `e` itself is truthy (loadEntry
+  // succeeded), but `e[fnName]` is undefined, which would otherwise
+  // surface as a confusing "e.shaclValidate is not a function". Fail
+  // with the same pendingError() shape callers already expect from a
+  // missing bundle.
+  function requireEntryFn(e, fnName, what) {
+    if (typeof e[fnName] !== 'function') throw pendingError(what);
+  }
+
+  /**
+   * SHACL Core validation. Needs the npm-entry bundle (SHACL_Validation
+   * is only linked into the entry/CLI bundles, not exposed on the
+   * argv-driven CLI surface today).
+   * @param {Dataset|string|Array} data
+   * @param {Dataset|string|Array} shapes
+   * @param {{format?: string}} [options] applies to both data and shapes
+   * @returns {Promise<{conforms: boolean, report: Dataset}>}
+   *   report is SHACL_Validation.validation_report_to_graph's graph
+   *   (sh:conforms + one sh:ValidationResult per violation).
+   */
+  async function shaclValidate(data, shapes, options) {
+    const e = await entry();
+    if (!e) throw pendingError('SHACL validation');
+    requireEntryFn(e, 'shaclValidate', 'SHACL validation');
+    const dataNq = docsToEntryNQuads(e, toDocs(data, options), 'shaclValidate(data)');
+    const shapesNq = docsToEntryNQuads(e, toDocs(shapes, options), 'shaclValidate(shapes)');
+    const r = entryResult(e.shaclValidate(dataNq, shapesNq), 'shaclValidate');
+    return {
+      conforms: r.conforms,
+      report: Dataset.fromNQuads(r.reportNquads, {
+        blankNodePrefix: freshBnodePrefix(),
+      }),
+    };
+  }
+
+  /**
+   * ShEx (Shape Expressions) validation of one focus node against one
+   * shape. Needs the npm-entry bundle.
+   * @param {Dataset|string|Array} data
+   * @param {string} schemaJson ShExJ (JSON Schema form), as text
+   * @param {string|{termType,value}} focus an IRI, "_:label", or an
+   *   RDF/JS NamedNode/BlankNode term
+   * @param {string|{termType,value}|null} [shape] a shape label (same
+   *   shapes as focus); omit/null to validate against the schema's own `start`
+   * @param {{format?: string}} [options]
+   * @returns {Promise<boolean|null>} null means "deferred" -- outside
+   *   this engine's decidable ShEx fragment, never a guessed answer
+   *   (see formal/fstar/ShEx.Validation.fst's file header).
+   */
+  async function shexValidate(data, schemaJson, focus, shape, options) {
+    const e = await entry();
+    if (!e) throw pendingError('ShEx validation');
+    requireEntryFn(e, 'shexValidate', 'ShEx validation');
+    if (typeof schemaJson !== 'string') {
+      throw new TypeError('shexValidate: schemaJson must be a string');
+    }
+    const dataNq = docsToEntryNQuads(e, toDocs(data, options), 'shexValidate(data)');
+    const focusStr = shexTermToString(focus, 'shexValidate(focus)');
+    const shapeStr = shape == null ? '' : shexTermToString(shape, 'shexValidate(shape)');
+    const r = entryResult(
+      e.shexValidate(dataNq, schemaJson, focusStr, shapeStr), 'shexValidate');
+    return r.verdict;
+  }
+
+  const OWL_CLOSURE_MODES = { rdfs: 'RDFS', 'owl-rl': 'OWL-RL', owlrl: 'OWL-RL', owl_rl: 'OWL-RL' };
+
+  function normalizeClosureMode(mode) {
+    const canonical = OWL_CLOSURE_MODES[String(mode || '').toLowerCase()];
+    if (!canonical) {
+      throw new TypeError(
+        `owlClosure: mode must be 'RDFS' or 'OWL-RL' (got '${mode}')`);
+    }
+    return canonical;
+  }
+
+  /**
+   * RDFS or OWL-RL entailment closure, materialized as a new Dataset
+   * (input triples + derived triples). Needs the npm-entry bundle.
+   * Scope cut: only the default graph is closed over (same cut
+   * fn.js's entail() documents for its own CLI-path implementation).
+   * @param {Dataset|string|Array} data
+   * @param {'RDFS'|'OWL-RL'} mode
+   * @param {{format?: string}} [options]
+   * @returns {Promise<Dataset>}
+   */
+  async function owlClosure(data, mode, options) {
+    const e = await entry();
+    if (!e) throw pendingError('OWL/RDFS closure');
+    requireEntryFn(e, 'owlClosure', 'OWL/RDFS closure');
+    const dataNq = docsToEntryNQuads(e, toDocs(data, options), 'owlClosure(data)');
+    const r = entryResult(
+      e.owlClosure(dataNq, normalizeClosureMode(mode)), 'owlClosure');
+    return Dataset.fromNQuads(r.nquads, { blankNodePrefix: freshBnodePrefix() });
+  }
+
+  /**
+   * Evaluate an RML mapping graph against one logical source's raw
+   * data, returning the generated triples as a Dataset. Needs the
+   * npm-entry bundle. Scope cut (documented, not silent): every
+   * triples map in `mapping` reads the SAME `sourceData` -- joins
+   * across two DIFFERENT logical sources are not reachable through
+   * this one-source entry point (see bin/rml-runner/rml_runner.ml for
+   * the full multi-source join driver).
+   * @param {Dataset|string|Array} mapping the RML mapping graph (Turtle by default)
+   * @param {string} sourceData raw JSON or CSV text (not RDF)
+   * @param {'json'|'csv'} sourceKind
+   * @param {{format?: string}} [options] applies to `mapping`
+   * @returns {Promise<Dataset>}
+   */
+  async function rmlMap(mapping, sourceData, sourceKind, options) {
+    const e = await entry();
+    if (!e) throw pendingError('RML mapping evaluation');
+    requireEntryFn(e, 'rmlMap', 'RML mapping evaluation');
+    if (typeof sourceData !== 'string') {
+      throw new TypeError('rmlMap: sourceData must be a string');
+    }
+    const kind = String(sourceKind || '').toLowerCase();
+    if (kind !== 'json' && kind !== 'csv') {
+      throw new TypeError("rmlMap: sourceKind must be 'json' or 'csv'");
+    }
+    const mappingNq = docsToEntryNQuads(e, toDocs(mapping, options), 'rmlMap(mapping)');
+    const r = entryResult(e.rmlMap(mappingNq, sourceData, kind), 'rmlMap');
+    return Dataset.fromNQuads(r.nquads, { blankNodePrefix: freshBnodePrefix() });
+  }
+
+  /**
+   * CSVW csv2rdf conversion (w3.org/TR/csv2rdf): convert tabular data
+   * plus an optional CSVW metadata document into a Dataset. Needs the
+   * npm-entry bundle. Scope cut (documented, not silent -- mirrors
+   * rmlMap's one-source cut): every table in a multi-table `tables`
+   * group reads the SAME `csvText`. Datatype `format` facets,
+   * list-valued (`separator`) cells, and full inherited-property
+   * propagation are not yet implemented -- see
+   * docs/designissues/2026-07-05-csvw-program-plan.md for measured
+   * coverage.
+   * @param {string} csvText raw RFC 4180 tabular data (not RDF)
+   * @param {string} [metadataJson] CSVW metadata document (JSON text);
+   *   '' / omitted infers the schema from the CSV's own header row
+   * @param {{mode?: 'standard'|'minimal', base?: string, url?: string}}
+   *   [options] mode defaults to 'standard' (full csvw:TableGroup/
+   *   Table/Row wrapper); base is the resolution base IRI (default
+   *   'file:///'); url is the tabular file's own URL used when the
+   *   metadata carries none (default 'table.csv') -- cell predicates
+   *   default to `<tableUrl>#<colName>`, so url shapes every emitted
+   *   predicate IRI.
+   * @returns {Promise<Dataset>}
+   */
+  async function csvwToRdf(csvText, metadataJson, options) {
+    if (typeof csvText !== 'string') {
+      throw new TypeError('csvwToRdf: csvText must be a string');
+    }
+    const meta = metadataJson == null ? '' : metadataJson;
+    if (typeof meta !== 'string') {
+      throw new TypeError('csvwToRdf: metadataJson must be a string');
+    }
+    const e = await entry();
+    if (!e) throw pendingError('CSVW csv2rdf conversion');
+    requireEntryFn(e, 'csvwToRdf', 'CSVW csv2rdf conversion');
+    const opts = options || {};
+    const optionsJson = JSON.stringify({
+      ...(opts.mode ? { mode: String(opts.mode).toLowerCase() } : {}),
+      ...(opts.base ? { base: opts.base } : {}),
+      ...(opts.url ? { url: opts.url } : {}),
+    });
+    const r = entryResult(e.csvwToRdf(csvText, meta, optionsJson), 'csvwToRdf');
+    return Dataset.fromNQuads(r.nquads, { blankNodePrefix: freshBnodePrefix() });
+  }
+
+  /**
+   * Parse a JSON-LD document into a Dataset, with JSON-LD-specific
+   * options `parse()` has no room for. Needs the npm-entry bundle
+   * (plain `parse(text, {format:'jsonld'})` also works now -- see
+   * bin/npm-entry/entry_jsoo.ml's parseToDatasetJson JSON-LD fix --
+   * this exists for callers that need rdfDirection/expandContext/
+   * processingMode).
+   * @param {string} jsonldText
+   * @param {{base?: string, rdfDirection?: string, expandContext?: string,
+   *   processingMode?: string}} [options]
+   * @returns {Promise<Dataset>}
+   */
+  async function jsonldToRdf(jsonldText, options) {
+    if (typeof jsonldText !== 'string') {
+      throw new TypeError('jsonldToRdf: jsonldText must be a string');
+    }
+    const e = await entry();
+    if (!e) throw pendingError('jsonldToRdf');
+    requireEntryFn(e, 'jsonldToRdf', 'jsonldToRdf');
+    const opts = options || {};
+    const optionsJson = JSON.stringify({
+      ...(opts.base ? { base: opts.base } : {}),
+      ...(opts.rdfDirection ? { rdfDirection: opts.rdfDirection } : {}),
+      ...(opts.expandContext ? { expandContext: opts.expandContext } : {}),
+      ...(opts.processingMode ? { processingMode: opts.processingMode } : {}),
+    });
+    const r = entryResult(e.jsonldToRdf(jsonldText, optionsJson), 'jsonldToRdf');
+    return Dataset.fromNQuads(r.nquads, { blankNodePrefix: freshBnodePrefix() });
+  }
+
+  /**
+   * RIF Core forward-chaining saturation, materialized as a new
+   * Dataset (input triples + derived triples, default graph only --
+   * RIF Core has no named-graph notion). Needs the npm-entry bundle.
+   * @param {Dataset|string|Array} data the premise graph
+   * @param {string} rifRulesXml a RIF Core XML rule document
+   * @param {{format?: string}} [options] applies to `data`
+   * @returns {Promise<Dataset>}
+   */
+  async function rifEval(data, rifRulesXml, options) {
+    const e = await entry();
+    if (!e) throw pendingError('RIF Core evaluation');
+    requireEntryFn(e, 'rifEval', 'RIF Core evaluation');
+    if (typeof rifRulesXml !== 'string') {
+      throw new TypeError('rifEval: rifRulesXml must be a string');
+    }
+    const dataNq = docsToEntryNQuads(e, toDocs(data, options), 'rifEval(data)');
+    const r = entryResult(e.rifEval(rifRulesXml, dataNq), 'rifEval');
+    return Dataset.fromNQuads(r.saturatedNquads, {
+      blankNodePrefix: freshBnodePrefix(),
+    });
+  }
+
   /**
    * Feature probe, for tests and downstream capability checks.
    * @returns {Promise<{entry: boolean, construct: boolean,
    *   update: boolean, canonicalize: boolean, graphs: boolean,
-   *   canonicalHash: boolean}>}
+   *   canonicalHash: boolean, shacl: boolean, shex: boolean,
+   *   owlClosure: boolean, rml: boolean, csvw: boolean, jsonld: boolean,
+   *   rif: boolean}>}
    */
   let capsCache = null;
   async function capabilities() {
@@ -462,6 +720,17 @@ function buildApi(driver) {
       return {
         entry: true, construct: true, update: true, canonicalize: true,
         graphs: true, canonicalHash: true,
+        // Per-function probes, not a blanket `true` -- an older/stale
+        // loaded bundle (e.g. a wasm-target build that predates one of
+        // these exports) reports its ACTUAL surface rather than
+        // over-promising (see requireEntryFn's doc comment above).
+        shacl: typeof e.shaclValidate === 'function',
+        shex: typeof e.shexValidate === 'function',
+        owlClosure: typeof e.owlClosure === 'function',
+        rml: typeof e.rmlMap === 'function',
+        csvw: typeof e.csvwToRdf === 'function',
+        jsonld: typeof e.jsonldToRdf === 'function',
+        rif: typeof e.rifEval === 'function',
       };
     }
     // Probe --canonicalize support on the CLI bundle with a 1-quad doc.
@@ -479,6 +748,8 @@ function buildApi(driver) {
     return {
       entry: false, construct: false, update: false, canonicalize: canon,
       graphs: true, canonicalHash: canon,
+      shacl: false, shex: false, owlClosure: false, rml: false,
+      csvw: false, jsonld: false, rif: false,
     };
   }
 
@@ -490,6 +761,13 @@ function buildApi(driver) {
     canonicalize,
     graphs,
     canonicalHash,
+    shaclValidate,
+    shexValidate,
+    owlClosure,
+    rmlMap,
+    csvwToRdf,
+    jsonldToRdf,
+    rifEval,
     capabilities,
     Dataset,
     dataFactory,

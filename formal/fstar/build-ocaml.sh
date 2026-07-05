@@ -389,7 +389,7 @@ if [[ "$STEP" == "all" || "$STEP" == "extract" ]]; then
     Parser.OWLFunctional.fst
     RDF.Turtle.Serialize.fst
     Parser.NQuads.fst Parser.TriG.fst
-    Parser.XML.fst XML.Wellformedness.fst Parser.RDFXML.fst Parser.RIFXML.fst
+    Parser.XML.fst XML.Wellformedness.fst XML.Namespaces.fst Parser.XPath.fst XPath.Eval.fst Parser.RDFXML.fst Parser.RIFXML.fst
     RIF.Core.Builtins.fst RIF.Core.Conformance.fst
     RIF.Core.Eval.fst RIF.Core.Tests.fst
     Parser.SRX.fst Parser.CSVResults.fst
@@ -399,6 +399,7 @@ if [[ "$STEP" == "all" || "$STEP" == "extract" ]]; then
     ShEx.Schema.fst ShEx.Validation.fst
     VC.Credential.fst
     RML.Mapping.fst RML.Sources.fst RML.Eval.fst
+    CSVW.Metadata.fst CSVW.URITemplate.fst CSVW.Conversion.fst
     SPARQL.Eval.TimeBudget.fst
     SPARQL.Eval.Limits.fst
     SPARQL.HTTP.Response.fst
@@ -763,7 +764,7 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
     Parser_Combinators.ml Parser_TurtleScanner.ml Parser_NTriples.ml Parser_Turtle.ml \
     Parser_OWLFunctional.ml \
     RDF_Turtle_Serialize.ml \
-    Parser_NQuads.ml Parser_TriG.ml Parser_XML.ml XML_Wellformedness.ml Parser_RDFXML.ml \
+    Parser_NQuads.ml Parser_TriG.ml Parser_XML.ml XML_Wellformedness.ml XML_Namespaces.ml Parser_XPath.ml XPath_Eval.ml Parser_RDFXML.ml \
     Parser_SRX.ml Parser_CSVResults.ml Parser_JSONResults.ml \
     SPARQL_JSON_Escape.ml \
     Parser_JSON.ml JSONLD_Loader.ml JSONLD_Context.ml JSONLD_Expand.ml Parser_JSONLD.ml \
@@ -807,6 +808,7 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
     ShEx_Schema.ml ShEx_Validation.ml \
     VC_Credential.ml \
     RML_Mapping.ml RML_Sources.ml RML_Eval.ml \
+    CSVW_Metadata.ml CSVW_URITemplate.ml CSVW_Conversion.ml \
     SPARQL11_Store.ml RDF_Store_Combine.ml RDF_Dataset_Merge.ml SPARQL_Protocol.ml SPARQL_HTTP_RunQuery.ml \
     SPARQL_Update_Sandbox.ml \
     SPARQL_Update_Analysis.ml \
@@ -1327,7 +1329,7 @@ if [[ "$STEP" == "all" || "$STEP" == "js" ]]; then
     Parser_Combinators.ml Parser_TurtleScanner.ml Parser_NTriples.ml Parser_Turtle.ml
     Parser_OWLFunctional.ml
     RDF_Turtle_Serialize.ml
-    Parser_NQuads.ml Parser_TriG.ml Parser_XML.ml XML_Wellformedness.ml Parser_RDFXML.ml
+    Parser_NQuads.ml Parser_TriG.ml Parser_XML.ml XML_Wellformedness.ml XML_Namespaces.ml Parser_XPath.ml XPath_Eval.ml Parser_RDFXML.ml
     Parser_SRX.ml Parser_CSVResults.ml Parser_JSONResults.ml
     SPARQL_JSON_Escape.ml
     Parser_JSON.ml JSONLD_Loader.ml JSONLD_Context.ml JSONLD_Expand.ml Parser_JSONLD.ml
@@ -1371,6 +1373,7 @@ if [[ "$STEP" == "all" || "$STEP" == "js" ]]; then
     SPARQL11_Algebra.ml XSD_Datatypes.ml RDF_Pretty.ml OWL_QueryRewrite.ml OWL_QueryEval.ml OWL_Tests_Manifest.ml RIF_Core_Syntax.ml Parser_RIFXML.ml RIF_Core_Translation.ml RIF_Core_Builtins.ml RIF_Core_Conformance.ml RIF_Core_Eval.ml RIF_Core_Tests.ml SPARQL11_Parser.ml SHACL_Validation.ml
     ShEx_Schema.ml ShEx_Validation.ml
     RML_Mapping.ml RML_Sources.ml RML_Eval.ml
+    CSVW_Metadata.ml CSVW_URITemplate.ml CSVW_Conversion.ml
     VC_Credential.ml
     SPARQL11_Store.ml
     RDF_Store_Combine.ml

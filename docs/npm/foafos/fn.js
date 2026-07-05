@@ -324,13 +324,120 @@ async function query(ds, sparql, options) {
  * per-graph closure semantics that the underlying query() does not
  * define today.
  */
+// Case-insensitive regime aliases ('rdfs', 'owl-rl', 'owlrl', 'owl_rl')
+// normalized to the engine's exact-case ENTAIL_VALUES spelling ('RDFS',
+// 'OWL-RL'); anything else (including already-correct casing, or a
+// genuinely invalid value) passes through unchanged so engineApi.query's
+// own validation reports the honest error rather than this function
+// guessing at what the caller meant.
+const ENTAIL_REGIME_ALIASES = {
+  none: 'none', rdfs: 'RDFS', 'owl-rl': 'OWL-RL', owlrl: 'OWL-RL', owl_rl: 'OWL-RL',
+};
+
+function normalizeEntailRegime(regime) {
+  const key = String(regime == null ? 'none' : regime).toLowerCase();
+  return ENTAIL_REGIME_ALIASES[key] || regime;
+}
+
 async function entail(ds, regime) {
   assertFnDataset(ds, 'entail');
   const rows = await engineApi.query(
     toDataset(ds), 'SELECT ?s ?p ?o WHERE { ?s ?p ?o }',
-    { entail: regime || 'none' });
+    { entail: normalizeEntailRegime(regime) });
   return makeFnDataset(
     rows.map((row) => dataFactory.quad(row.get('s'), row.get('p'), row.get('o'))));
+}
+
+/**
+ * SHACL Core validation. Needs the npm-entry engine bundle. Neither
+ * argument is mutated or consumed -- both stay valid FnDatasets after
+ * the call, same as every other op in this module.
+ *
+ * @param {FnDataset} ds the data graph
+ * @param {FnDataset} shapes the shapes graph
+ * @returns {Promise<{conforms: boolean, report: FnDataset}>} report is
+ *   SHACL_Validation.validation_report_to_graph's graph (sh:conforms +
+ *   one sh:ValidationResult per violation).
+ */
+async function validate(ds, shapes) {
+  assertFnDataset(ds, 'validate');
+  assertFnDataset(shapes, 'validate');
+  const r = await engineApi.shaclValidate(toDataset(ds), toDataset(shapes));
+  return { conforms: r.conforms, report: fromDataset(r.report) };
+}
+
+/**
+ * ShEx (Shape Expressions) validation of one focus node against one
+ * shape. Needs the npm-entry engine bundle.
+ *
+ * @param {FnDataset} ds the data graph
+ * @param {string} schema ShExJ (JSON Schema form), as text
+ * @param {string|{termType,value}} focus an IRI, "_:label", or an
+ *   RDF/JS NamedNode/BlankNode term
+ * @param {string|{termType,value}|null} [shape] a shape label; omit/
+ *   null to validate against the schema's own `start`
+ * @returns {Promise<boolean|null>} null means "deferred" -- outside
+ *   this engine's decidable ShEx fragment, never a guessed answer.
+ */
+async function shex(ds, schema, focus, shape) {
+  assertFnDataset(ds, 'shex');
+  return engineApi.shexValidate(toDataset(ds), schema, focus, shape);
+}
+
+/**
+ * Evaluate an RML mapping graph against one logical source's raw
+ * data, materializing the generated triples as a new FnDataset. Needs
+ * the npm-entry engine bundle. Scope cut (documented, not silent):
+ * every triples map in `mapping` reads the SAME `source` -- joins
+ * across two different logical sources are not reachable through this
+ * one-source entry point (see engineApi.rmlMap's doc comment).
+ *
+ * @param {FnDataset} mapping the RML mapping graph
+ * @param {string} source raw JSON or CSV text (not RDF)
+ * @param {'json'|'csv'} kind
+ * @returns {Promise<FnDataset>}
+ */
+async function fromMapping(mapping, source, kind) {
+  assertFnDataset(mapping, 'fromMapping');
+  return fromDataset(await engineApi.rmlMap(toDataset(mapping), source, kind));
+}
+
+/**
+ * CSVW csv2rdf conversion (w3.org/TR/csv2rdf): convert raw tabular
+ * data plus an optional CSVW metadata document into a new FnDataset.
+ * Needs the npm-entry engine bundle. Unlike fromMapping there is no
+ * FnDataset input -- both arguments are raw text (CSVW's metadata
+ * format is JSON, not RDF). Scope cut (documented, not silent --
+ * mirrors fromMapping's one-source cut): every table in a multi-table
+ * `tables` group reads the SAME `csv` text. Datatype `format` facets,
+ * list-valued (`separator`) cells, and full inherited-property
+ * propagation are not yet implemented -- see engineApi.csvwToRdf's
+ * doc comment and the CSVW program plan for measured coverage.
+ *
+ * @param {string} csv raw RFC 4180 tabular data (not RDF)
+ * @param {string} [metadata] CSVW metadata document (JSON text);
+ *   '' / omitted infers the schema from the CSV's own header row
+ * @param {{mode?: 'standard'|'minimal', base?: string, url?: string}}
+ *   [options] see engineApi.csvwToRdf
+ * @returns {Promise<FnDataset>}
+ */
+async function fromCsvw(csv, metadata, options) {
+  return fromDataset(await engineApi.csvwToRdf(csv, metadata, options));
+}
+
+/**
+ * RIF Core forward-chaining saturation, materialized as a new
+ * FnDataset (input triples + derived triples, default graph only --
+ * RIF Core has no named-graph notion). Needs the npm-entry engine
+ * bundle.
+ *
+ * @param {FnDataset} ds the premise graph
+ * @param {string} rules a RIF Core XML rule document
+ * @returns {Promise<FnDataset>}
+ */
+async function rif(ds, rules) {
+  assertFnDataset(ds, 'rif');
+  return fromDataset(await engineApi.rifEval(toDataset(ds), rules));
 }
 
 /**
@@ -506,6 +613,11 @@ module.exports = {
   mapQuads,
   query,
   entail,
+  validate,
+  shex,
+  fromMapping,
+  fromCsvw,
+  rif,
   canonicalize,
   hash,
   equals,

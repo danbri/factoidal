@@ -281,6 +281,32 @@ export function rmlMap(
   options?: { format?: DataFormat }
 ): Promise<Dataset>;
 
+export interface CsvwOptions {
+  /** 'standard' (default): full csvw:TableGroup/Table/Row wrapper;
+   *  'minimal': bare cell triples only. */
+  mode?: 'standard' | 'minimal';
+  /** Base IRI for resolving the metadata's `url` and templates
+   *  (default 'file:///'). */
+  base?: string;
+  /** The tabular file's own URL, used when the metadata carries none
+   *  (default 'table.csv'); cell predicates default to
+   *  `<tableUrl>#<colName>`. */
+  url?: string;
+}
+
+/**
+ * CSVW csv2rdf conversion (w3.org/TR/csv2rdf): convert raw tabular
+ * data plus an optional CSVW metadata document (JSON text -- '' or
+ * omitted infers the schema from the CSV's own header row) into a
+ * Dataset. Needs the npm-entry engine bundle. Every table in a
+ * multi-table `tables` group reads the SAME `csvText`.
+ */
+export function csvwToRdf(
+  csvText: string,
+  metadataJson?: string,
+  options?: CsvwOptions
+): Promise<Dataset>;
+
 export interface JsonLdOptions {
   base?: string;
   rdfDirection?: string;
@@ -324,6 +350,7 @@ export function capabilities(): Promise<{
   shex: boolean;
   owlClosure: boolean;
   rml: boolean;
+  csvw: boolean;
   jsonld: boolean;
   rif: boolean;
 }>;
@@ -378,6 +405,7 @@ declare const _default: {
   shexValidate: typeof shexValidate;
   owlClosure: typeof owlClosure;
   rmlMap: typeof rmlMap;
+  csvwToRdf: typeof csvwToRdf;
   jsonldToRdf: typeof jsonldToRdf;
   rifEval: typeof rifEval;
   capabilities: typeof capabilities;
