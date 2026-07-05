@@ -138,61 +138,84 @@ a first C build:
 
 ### 2.3 Pilot plan (this PR + next)
 
-**Pilot results (this PR, 2026-05-07):**
+**Pilot results (updated 2026-07-05; original .krml-only run 2026-05-07):**
 
-`fstar.exe --codegen krml` was run on the candidate allowlist.
-Results:
+The chain now runs end to end for four modules:
+`tools/karamel-c-build.sh` drives F\* → `.krml` → `krml` → `.c`/`.h`
+→ `gcc` → a linked demo binary whose 10 checks (format lookup,
+case-insensitivity, unknown-extension fallback, MIME lookup, JSON
+escaping through the `Parser.FastString` byte stubs) all pass.
 
-| Module | krml result | Notes |
-|---|---|---|
-| `SPARQL.JSON.Escape.fst` | ✅ Clean | char-list manipulation, fuel-bounded |
-| `SPARQL.Update.Analysis.fst` | ✅ Clean | tree-walk over `update_op` ADT |
-| `SPARQL.Query.Analysis.fst` | ✅ Clean | tree-walk over `query` ADT |
-| `SPARQL.HTTP.StaticFiles.fst` | ✅ Clean | extension→MIME mapping |
-| `SPARQL.HTTP.QueriesIndex.fst` | ✅ Clean | pure string assembly |
-| `RDF.Format.fst` | ⚠️ KaRaMeL failure: `todo: translate_pat [MLP_Const]` on `format_of_extension` and `format_of_string` (string-pattern match in match arms) | Refactor to `if/else if` chain |
+| Module | krml (.krml) | krml → C | gcc | Notes |
+|---|---|---|---|---|
+| `RDF.Format.fst` | ✅ Clean | ✅ | ✅ | `if/else if` refactor landed (#200 G3); demo calls `RDF_Format_format_of_extension(".ttl")` → `Some Turtle` from C |
+| `SPARQL.JSON.Escape.fst` | ✅ Clean | ✅ | ✅ | C stubs realise the `Parser.FastString` `assume val`s (same trust boundary as the OCaml realisation) |
+| `SPARQL.HTTP.StaticFiles.fst` | ✅ Clean | ✅ | ✅ | MIME lookup exercised from C |
+| `SPARQL.HTTP.QueriesIndex.fst` | ✅ Clean | ✅ | ✅ | compiles + links; not demo-exercised (needs list construction from C) |
+| `SPARQL.Update.Analysis.fst` | ✅ Clean | ❌ blocked | — | drags in `SPARQL11.Algebra`; krml monomorphizer blows the OCaml stack (default ulimit) or exceeds 20 min at 4.3 GB RSS (unlimited stack) |
+| `SPARQL.Query.Analysis.fst` | ✅ Clean | ❌ blocked | — | same `SPARQL11.Algebra` blocker |
 
-The `.krml` files for the five clean modules are produced under
-`formal/fstar/krml-output/` (gitignored). The next step — running
-`krml` on those files to emit `.c` + `.h` — is blocked on a
-toolchain install:
+Measured (2026-07-05, 4-core sandbox): Group A F\* extraction ~2 min
+(warm `.checked` cache), krml lowering < 5 s, gcc + link < 5 s,
+demo 10 pass, 0 fail (out of 10). Generated `Factoidal_Pilot.c`
+23 KB / `.h` 4.7 KB.
 
-**KaRaMeL install gap:** `opam install karamel` fails on the
-`fstar` switch (4.14.1) because karamel's transitive `wasm = 1.1.1`
-constraint requires `ocaml < 4.13` and the upstream `conf-python-2-7`
-package depends on a system Python 2.7 that's no longer available
-on Ubuntu 24.04. Three paths forward (any one unblocks the C-build
-demo):
+**Commit decision:** the generated `formal/fstar/c-output/*.{c,h}`
+for the pilot bundle are committed (each carries KaRaMeL's
+generated-by header with the exact invocation), mirroring rule #9's
+committed-binaries spirit — a fresh clone can `gcc` and link the
+pilot without an F\*/karamel toolchain. `.krml` intermediates, logs,
+and objects stay gitignored (`formal/fstar/.gitignore`).
 
-1. **Build karamel from source** in a dedicated opam switch with
-   `ocaml < 4.13`. Fragile but works.
-2. **Use a pre-built karamel binary** from an HACL\* / EverCrypt
-   release artifact on GitHub.
-3. **Pin a newer `wasm` version** in karamel's opam file (it's
-   pinned to `1.1.1` for historical reasons; recent `wasm`
-   releases work on 4.14).
+**Analysis-modules blocker (Group B):** both Analysis modules emit
+`.krml` cleanly, but their dependency graph includes all of
+`SPARQL11.Algebra` (which pulls `RDF.Graph.Executable`), and krml's
+monomorphization/inlining passes do not survive that AST: OCaml
+`Stack overflow` at the default stack limit, > 20 min at 4.3 GB RSS
+with `ulimit -s unlimited`. `tools/karamel-c-build.sh --group-b`
+reproduces. Unblocking needs either the planned `SPARQL11.Algebra`
+stratification (split the ADT from the evaluator — see the
+`fstar-module-style` roadmap) or upstream krml work; parked until
+then.
 
-The .krml-emitting half of the pipeline is provably working with
-the existing F\* install. Once any of the above lands a `krml`
-binary on `PATH`, the rest of the pipeline lights up.
+**KaRaMeL install gap (SOLVED 2026-05-10, re-validated 2026-07-05):**
+the opam-repo `karamel` v1.0.0 package is dead on Ubuntu 24.04
+(wants `wasm = 1.1.1` → OCaml < 4.13, plus Python 2.7). Upstream
+master already relaxed all three constraints — clone git master and
+build. Full recipe:
+[`2026-05-10-krml-install-notes.md`](2026-05-10-krml-install-notes.md).
+2026-07-05 re-validation: karamel master commit `11bb8e1ac2f7`,
+deps + `make minimal` in a dedicated `karamel` opam switch
+(OCaml 4.14.1) took ~12 min on a fresh 4-core sandbox; `krml`
+installed to `/usr/local/bin/krml`; checkout kept at
+`/root/karamel` (its `include/` and `krmllib/dist/` headers are
+needed at gcc time — `KRML_HOME` in the build script). The `fstar`
+switch is untouched. One correction to the 2026-05-10 notes' dep
+list: `sedlex` must also be in the `opam install` line.
 
 ### 2.3.1 Sequenced steps
 
-1. **This PR**: adds `formal/fstar/build-ocaml.sh karamel` step
-   that runs `fstar.exe --codegen krml` on the pilot allowlist
-   and stages the `.krml` files; gitignore the output dir.
-   Documents the install gap in this design doc.
-2. **Next PR**: install `krml` (one of the three paths above),
-   plumb its invocation into the build script, produce
-   `formal/fstar/c-output/*.{c,h}` for the pilot modules.
-3. **Demo PR**: `c-demo/json_escape_demo.c` links the krml
-   output and calls `SPARQL_JSON_Escape_json_escape("a\"b")`.
-   Compares byte-for-byte against the OCaml path.
-4. **Refactor PR**: convert `RDF.Format.fst`'s string-match arms
-   to `if/else if` chains; unblock its krml extraction. (Other
-   modules like `SPARQL.HTTP.StaticFiles.fst` already use
-   `if/else if` — that's why they extracted cleanly.)
-5. **Iterate**: add modules one at a time. Tracker in
+1. ✅ **Landed**: `formal/fstar/build-ocaml.sh karamel` step that
+   runs `fstar.exe --codegen krml` on the pilot allowlist and
+   stages the `.krml` files; gitignored the output dir.
+   Documented the install gap in this design doc.
+2. ✅ **Landed 2026-07-05**: `krml` installed (git-master build —
+   see install notes doc); `tools/karamel-c-build.sh` scripts the
+   full chain; `formal/fstar/c-output/Factoidal_Pilot.{c,h}`
+   produced and committed.
+3. ✅ **Landed 2026-07-05** (folded into step 2's script):
+   `formal/fstar/c-output/demo/format_demo.c` links the krml
+   output; calls `RDF_Format_format_of_extension(".ttl")`,
+   `SPARQL_JSON_Escape_json_escape("a\"b\n")`, and the MIME
+   lookup end-to-end; asserts the same answers the OCaml path
+   gives (10 pass, 0 fail, out of 10).
+4. ✅ **Landed** (commit f7b72e0 tree): `RDF.Format.fst` string
+   matches are `if/else if` chains; krml extraction is clean
+   (zero Warning 250).
+5. **Iterate**: add modules one at a time. Next candidates per
+   §2.2: `RDF.NQuads.Serialize.fst`, `Parser.IRI.fst`,
+   `RDF.CottasStore.PageCache.Bounds.fst`. The Analysis pair is
+   parked on the `SPARQL11.Algebra` blocker above. Tracker in
    `docs/designissues/c-extraction-status.md` once it grows
    beyond a handful.
 

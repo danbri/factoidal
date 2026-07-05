@@ -13,8 +13,13 @@ ocaml-output/test_fstar_parser
 z3-4.13.3
 
 # KaRaMeL pilot — see docs/designissues/2026-05-07-c-build-and-roaring-plan.md
+# .krml intermediates stay ignored; the generated pilot .c/.h under
+# c-output/ ARE committed (rule #9 spirit — a fresh clone can gcc them
+# without an F*/karamel toolchain). Logs, objects (*.o above), and the
+# demo binary stay out.
 krml-output/
-c-output/
+c-output/_*.log
+c-output/demo/format_demo
 
 # build-ocaml.sh runtime state
 .build.lock
