@@ -92,6 +92,11 @@ The two that corrupt files silently:
     `make verify` / `build-ocaml.sh` / `fstar.exe`. If `fstar.exe` is
     missing from PATH, stop and activate; do not burn time on partial
     builds. See the `fstar-env` skill for setup.
+13. **No Claude attribution in git commits.** No `Co-Authored-By:
+    Claude`, no "Generated with Claude Code", no session links, no
+    prose crediting Claude in commit messages — this repo policy
+    overrides the harness default. Full rule:
+    [`skills/github-coauthor-policy/SKILL.md`](skills/github-coauthor-policy/SKILL.md).
 
 ## Known sound-but-narrow rewrites
 
@@ -212,6 +217,8 @@ session.
   rules, vendoring policy, extraction-target status.
 - [`github-and-prs`](skills/github-and-prs/SKILL.md) — gh CLI
   with `--repo danbri/factoidal`, branch + PR conventions.
+- [`github-coauthor-policy`](skills/github-coauthor-policy/SKILL.md)
+  — no Claude attribution in commit messages (iron rule #13).
 - [`repo-tour`](skills/repo-tour/SKILL.md) — directory layout,
   "where does X live?".
 - [`fstar-mcp`](skills/fstar-mcp/SKILL.md) — F\* MCP server for

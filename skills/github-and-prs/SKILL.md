@@ -5,6 +5,13 @@ description: Use the GitHub CLI (gh) for the Factoidal repository's PR / issue /
 
 # GitHub CLI for the Factoidal repo
 
+> **Commit-message attribution:** this repo does NOT list Claude's
+> role in commits — no Co-Authored-By, no generated-with, no session
+> links. See
+> [`skills/github-coauthor-policy/SKILL.md`](../github-coauthor-policy/SKILL.md)
+> (iron rule #13). All commit examples elsewhere in this file predate
+> that rule; write commit messages without trailers.
+
 The git remote in this project points at a local proxy
 (`http://local_proxy@127.0.0.1:.../git/danbri/factoidal`) so that pushes
 work in restricted-network environments. As a side effect, `gh` cannot
