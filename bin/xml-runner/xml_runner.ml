@@ -430,6 +430,34 @@ let has_doctype content =
   find_substring_from content "<!DOCTYPE" 0 <> None
 
 (* ------------------------------------------------------------------ *)
+(* Namespaces-in-XML gating (owner directive 2026-07-05, cluster 3).
+
+   Parser.XML.fst deliberately has zero Namespaces-in-XML awareness --
+   that layer lives in the new formal/fstar/XML.Namespaces.fst module
+   instead, dogfooded here and invoked ONLY for the xmlconf collections
+   that are actually testing the Namespaces recommendation
+   (eduni/namespaces/1.0/rmt-ns10.xml, eduni/namespaces/1.1/rmt-ns11.xml).
+   Every other collection (including the rest of eduni/*, which covers
+   plain-XML errata, not namespaces) is scored purely on
+   Parser_XML.parse_xml_document, exactly as before. *)
+
+let is_namespace_collection (leaf_rel : string) : bool =
+  has_prefix_at leaf_rel 0 "eduni/namespaces/"
+
+(* The document's declared XML version, via the real extracted
+   Parser_XML.parse_xml_declaration (not a textual scan) -- defaults
+   to "1.0" if there is no declaration or it fails to parse, per XML
+   1.0 §2.8. Only affects whether XML.Namespaces treats an empty-value
+   prefixed xmlns declaration as a legal 1.1-style unbind. *)
+let declared_xml_version (content : string) : string =
+  match Parser_XML.parse_xml_declaration content Z.zero with
+  | Parser_Combinators.ParseOk (attrs, _) ->
+    (match Parser_XML.find_attr "version" attrs with
+     | Some v -> v
+     | None -> "1.0")
+  | Parser_Combinators.ParseFail (_, _) -> "1.0"
+
+(* ------------------------------------------------------------------ *)
 (* Outcome classification. *)
 
 type outcome =
@@ -463,8 +491,12 @@ let classify (base_dir : string) (t : raw_test) : outcome =
           | None ->
             if doctype then PassVacuous "rejected (vacuous: DOCTYPE present, parser can't parse any DOCTYPE at all)"
             else Pass "rejected"
-          | Some _ ->
-            if t.rt_entities <> "none" then
+          | Some root ->
+            if is_namespace_collection t.rt_leaf
+               && not (XML_Namespaces.is_namespace_wellformed (declared_xml_version content) root)
+            then
+              Pass "rejected (Namespaces in XML violation, via XML.Namespaces)"
+            else if t.rt_entities <> "none" then
               Skip (Printf.sprintf
                       "parser accepted, but test requires external %s entities not read (exempted per testcases.dtd's TYPE=not-wf clause)"
                       t.rt_entities)

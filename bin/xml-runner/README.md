@@ -1,19 +1,22 @@
 # bin/xml-runner — W3C XML Conformance Test Suite runner
 
-Assesses `formal/fstar/Parser.XML.fst` (generic XML → AST parser) and
-`formal/fstar/XML.Wellformedness.fst` against the real W3C `xmlconf`
-corpus, vendored at `third_party/testing/xml/xmlconf/` (see that
-directory's `README.md` for provenance). Owner directive 2026-07-05:
-"bring in XML test suite to assess our basic XML implementation."
+Assesses `formal/fstar/Parser.XML.fst` (generic XML → AST parser),
+`formal/fstar/XML.Wellformedness.fst`, and `formal/fstar/XML.Namespaces.fst`
+(Namespaces-in-XML layer, added 2026-07-05 wave 2) against the real
+W3C `xmlconf` corpus, vendored at `third_party/testing/xml/xmlconf/`
+(see that directory's `README.md` for provenance). Owner directive
+2026-07-05: "bring in XML test suite to assess our basic XML
+implementation," followed same-day by "Xml '84 fails cluster clean' —
+fix all pls." — the fixes for all 84 wave-1 fails are described below
+in "Wave 1 → wave 2".
 
 This supersedes the bigger from-scratch rewrite sketched in
 [`docs/designissues/2026-05-07-xml-fstar-phase0-audit.md`](../../docs/designissues/2026-05-07-xml-fstar-phase0-audit.md)
 (`XML.Core.fst` + `Parser.XMLDoc.fst`) — that plan was never built.
 `Parser.XML.fst` is the real, currently-extracted generic XML parser
-(it already underlies `Parser.RDFXML` and `Parser.RIFXML`), so it is
-what gets assessed here, as-is, with no F\* edits (per the task: this
-is an assessment, not a fix — see "Fix candidates" below for what a
-follow-up would tackle).
+(it already underlies `Parser.RDFXML`, `Parser.RIFXML`, and
+`Parser.SRX`), so it is what gets assessed — and, as of wave 2, fixed
+— here.
 
 ## Build
 
@@ -21,7 +24,7 @@ Standalone `mktemp`-scratch compile, same isolation pattern as
 `bin/rif-runner`/`bin/vc-runner` (so this doesn't poison
 `formal/fstar/ocaml-output/`'s `.cmi`/`.cmx` for a concurrent
 `build-ocaml.sh` run). The dependency closure is small — just the
-parser combinator base and the two modules under test, no RDF/OWL/
+parser combinator base and the three modules under test, no RDF/OWL/
 SPARQL modules needed:
 
 ```bash
@@ -31,17 +34,22 @@ cp formal/fstar/ocaml-output/Parser_FastString.ml \
    formal/fstar/ocaml-output/Parser_Combinators.ml \
    formal/fstar/ocaml-output/Parser_XML.ml \
    formal/fstar/ocaml-output/XML_Wellformedness.ml \
+   formal/fstar/ocaml-output/XML_Namespaces.ml \
    bin/xml-runner/xml_runner.ml "$SCRATCH"/
 cd "$SCRATCH"
 ocamlfind ocamlopt -package fstar.lib,zarith -linkpkg -w -8-14-26 \
-  Parser_FastString.ml Parser_Combinators.ml Parser_XML.ml XML_Wellformedness.ml \
+  Parser_FastString.ml Parser_Combinators.ml Parser_XML.ml XML_Wellformedness.ml XML_Namespaces.ml \
   xml_runner.ml -o xml_runner
 cp xml_runner <repo>/bin/linux-x86_64/xml_runner
 ```
 
-`Parser_XML.ml`/`XML_Wellformedness.ml` are already extracted and
-committed in `ocaml-output/` — this runner does **not** re-extract or
-touch `build-ocaml.sh`/any `.fst` file, per the task constraints.
+`Parser_XML.ml`/`XML_Wellformedness.ml`/`XML_Namespaces.ml` are
+extracted and committed in `ocaml-output/` — this runner does **not**
+re-extract or touch `build-ocaml.sh`; `Parser.XML.fst` and the new
+`XML.Namespaces.fst` are wired into `build-ocaml.sh`'s three module
+lists (extract loop, `COMMON_MODULES`, `FSTAR_MODULES`) alongside
+`XML.Wellformedness.fst` so a future full `build-ocaml.sh extract`
+picks both up normally.
 
 ## Run
 
@@ -97,9 +105,9 @@ touch `build-ocaml.sh`/any `.fst` file, per the task constraints.
    generically apply to plain XML conformance — is one of this
    assessment's results, not a runner bug.
 
-## Score (2026-07-05, wave 1 — full run, log at `.claude-runs/xml-runner-2026-07-05.log`)
+## Score (2026-07-05, wave 2 — all 84 fails fixed, log at `.claude-runs/xml-runner-2026-07-05-fixed.log`)
 
-**1358 pass, 84 fail, 1143 skip (of 2585 discovered `<TEST>` entries).**
+**1442 pass, 0 fail, 1143 skip (of 2585 discovered `<TEST>` entries).**
 
 Per TYPE bucket:
 - `valid` (labelled "wf-accept" per the task — a clean parse only
@@ -112,8 +120,8 @@ Per TYPE bucket:
   document" axis is untestable here.
 - `invalid`/`error`: **0/0, 242 + 33 = 275 skip**, always
   `Skip "no DTD validation (by design)"` per the task's own rule.
-- `not-wf`: **1358 pass, 84 fail, 56 skip (of 1498)**. 1165 of the
-  1358 passes are flagged "vacuous" (the document also carries a
+- `not-wf`: **1442 pass, 0 fail, 56 skip (of 1498)**. 1166 of the
+  1442 passes are flagged "vacuous" (the document also carries a
   DOCTYPE our parser can never get past, so the reject is
   structurally guaranteed rather than necessarily catching the
   documented violation) — see the tagged summary line in the log.
@@ -122,45 +130,48 @@ Per TYPE bucket:
   unless it's a nonvalidating parser and the test contains external
   entities that the parser doesn't read").
 
-Per collection: `jclark` 154/43/168 (365), `sun` 50/1/108 (159),
-`ibm` 873/1/262 (1136), `oasis` 194/22/132 (348), `eduni` 87/17/461
+Per collection: `jclark` 197/0/168 (365), `sun` 51/0/108 (159),
+`ibm` 874/0/262 (1136), `oasis` 216/0/132 (348), `eduni` 104/0/461
 (565), `japanese` 0/0/12 (12, all skip — non-UTF-8 Japanese
 encodings).
 
-## Fail cluster table (84 total across 30 SECTIONS-keyed clusters — see the log for the full table with example IDs)
+## Wave 1 → wave 2: all 84 fails fixed, cluster by cluster
 
-The runner's own output groups strictly by `(TYPE, SECTIONS)`; the
-table below additionally merges clusters that are clearly the same
-underlying construct cited under adjacent SECTIONS numbers (e.g.
-`2.5 [15]` + `2.5 [16]`, both "comment must not contain `--`"),
-verified to sum to exactly 84 across all 30 raw clusters:
+Owner directive 2026-07-05: "Xml '84 fails cluster clean' — fix all
+pls." All eight clusters from wave 1's assessment below are now
+fixed, entirely in `formal/fstar/Parser.XML.fst` plus a new
+`formal/fstar/XML.Namespaces.fst` module (namespace cluster only);
+`bin/xml-runner/xml_runner.ml` gained I/O-glue-only plumbing to call
+the new namespace checker for the two namespace-testing collections
+and to detect the document's declared XML version. No OCaml parsing
+logic was added (rule #11/#15).
 
-| Construct | Count | Raw SECTIONS clusters | Note |
-|---|---|---|---|
-| Non-character codepoints accepted (raw content and `&#x...;`/`&#...;` char-refs) | 19 | `2.2[2]`(12), `4.1[66]`(7) | Neither the text-content walk nor `parse_reference`'s digit-to-codepoint conversion checks the result against the XML `Char` production's exclusions (e.g. `U+FFFF`) |
-| XML declaration grammar (attribute ordering/repetition, required parts, value casing/charset, encoding-name lexical rules) | 18 | `2.8[23]`(6), `2.8[22]`(3), `2.8[26]`(3), `2.9[32]`(2), `4.3.3[81]`(2), `2.8[24]`(1), `3.1[43]`(1) | `parse_xml_declaration` reuses the generic `parse_attributes` list parser for `version`/`encoding`/`standalone` — no positional grammar (`VersionInfo EncodingDecl? SDDecl?`), no per-attribute value lexical grammar (`VersionNum`, `EncName`, `yes\|no`) |
-| Namespace-spec violations (`xmlns`/`xml` (un)binding, reserved-prefix rules, bad QName colon placement, attribute uniqueness across prefixes) | 17 | `SECTIONS 3`(5), `NE05`(5), `SECTIONS 2`(2), `SECTIONS 4`(2), `5.3`(2), `SECTIONS 5`(1) | `Parser.XML.fst` has zero Namespaces-in-XML awareness — **expected**, not a defect in scope: namespace resolution deliberately lives in `Parser.RDFXML`, per the phase-0 audit's own conclusion |
-| Content/declarations after the document element accepted (junk epilog, second root, stray CDATA/XML-decl after `</root>`) | 11 | `2.8[27]`(8), `2.1[1]`(2), `SECTIONS 2.1`(1) | `parse_xml_document` ignores everything after the first root element — no "epilog is only S/Comment/PI" check (a known gap, already noted in the phase-0 audit) |
-| Comment body containing `--` or ending in `-` accepted | 5 | `2.5[15]`(3), `2.5[16]`(2) | `parse_comment_body` only watches for the closing `-->`, never rejects an internal `--` |
-| `]]>` literal sequence in text content accepted | 4 | `2.4[14]`(4) | `parse_text_content` only stops at `<`/`&`, never scans for a literal `]]>` |
-| Attribute-value/uniqueness violations accepted (literal `<` in a value, duplicate attribute name) | 4 | `2.3[10]`(2), `SECTIONS 3.1`(1), `3.1[44]`(1) | `parse_attr_value_body` doesn't exclude literal `<`; `parse_attributes` doesn't check for a repeated `attr_name` |
-| PI-vs-declaration target-name case confusion (`<?xmL`, `<?xMl`) accepted | 3 | `2.6[16]`(1), `2.6[17]`(1), `2.8+2.6[23,17]`(1) | `parse_xml_pi`'s target-name check (or lack of it) doesn't special-case the reserved, case-insensitive `xml` target name |
-| Misc singles: `Name` starting with an Extender, nested `CDATA` sections, malformed end-tag syntax | 3 | `2.3[5]`(1), `2.7[18]`(1), `3.1[42]`(1) | Each a distinct, narrow lexical-grammar gap — see the log for the exact test |
+| Construct | Count | Fix (all in `Parser.XML.fst` unless noted) |
+|---|---|---|
+| Non-character codepoints accepted | 19 | New `is_valid_xml_char` (XML `Char` production) plus `is_valid_decoded_char`, which additionally rejects `fs_cp_at`'s "not valid UTF-8 here" `(0xFFFD, 1)` sentinel — needed because a technically-well-shaped-but-illegal 3-/4-byte sequence (an encoded surrogate, an out-of-range codepoint) decodes to that same sentinel, which is itself a legal `Char`. Applied at text content, comments, CDATA, attribute values, PI bodies, and `parse_reference`'s char-ref resolution. Byte-stepping validators (comment/CDATA/PI) skip re-checking UTF-8 continuation bytes (already validated at their lead byte) via `is_utf8_continuation_byte`. |
+| XML declaration grammar | 18 | `parse_xml_declaration` rewritten as a strict, ordered, hand-rolled grammar (`VersionInfo EncodingDecl? SDDecl? S? '?>'`) instead of reusing the generic, unordered, duplicate-tolerant `parse_attributes`. New `is_version_num`/`is_enc_name`/`is_sd_value` value lexicons. `parse_xml_document` no longer skips leading whitespace before attempting the declaration (it must be the document's literal first token). |
+| Namespace-spec violations | 17 | New module `formal/fstar/XML.Namespaces.fst`: QName colon-syntax check, a threaded `ns_scope` (prefix → uri, with `None` for an explicit unbind), reserved-prefix/reserved-URI rules (`xml`, `xmlns`), version-gated empty-value unbind (1.0 forbids prefixed unbind, 1.1 allows it), and post-expansion attribute-uniqueness. Invoked by `xml_runner.ml` only for the `eduni/namespaces/{1.0,1.1}` leaf manifests — Parser.XML's core parse path is untouched, so plain XML 1.0 documents using `:` outside a Namespaces reading (several `xmltest/` cases do this on purpose) are unaffected. |
+| Epilog/trailing content accepted | 11 | New `skip_epilog_misc` (Misc = S \| Comment \| non-reserved-target PI) after the root element; `parse_xml_document` now requires the epilog scan to reach end-of-input, or rejects. |
+| Comment `--`/trailing `-` accepted | 5 | `parse_xml_comment` now rejects if the body contains `--` anywhere or ends in `-` (`bytes_have_double_dash` / `ends_with_dash`). |
+| `]]>` bare in content accepted | 4 | `parse_text_content` now rejects a chunk containing the literal `]]>` sequence (`bytes_have_cdata_close`), checked on the raw pre-decode bytes (correct here: every failing case embeds the literal 3-byte sequence directly). |
+| Attribute value/uniqueness violations accepted | 4 | `parse_attr_value_body` now excludes literal `<`; `parse_attributes` now rejects a repeated `attr_name` (`mem_attr_name`). |
+| PI target-name casing accepted | 3 | `parse_xml_pi` now parses the target `Name` and rejects the reserved, case-insensitive `xml` target (`is_xml_target_name_ci`) outside `parse_xml_declaration`'s own document-initial handling. |
+| 3 singletons | 3 | `o-p05fail5` (Extender `U+00B7` can't start a Name) got a dedicated codepoint check in `parse_xml_name`. `o-p18fail3` (nested CDATA) and `not-wf-sa-042` (invalid end-tag syntax) both fell out for free once the epilog and `]]>`-in-content fixes landed — no separate CDATA-nesting-depth logic was needed. |
 
-Ordered by cluster size for follow-up prioritization (not fixed here,
-per the task): (1) non-character codepoint rejection (19 — a single
-shared `is_valid_xml_char` predicate, applied at both the raw-content
-and char-ref-decode sites, would close this whole cluster at once),
-(2) XML declaration grammar (18 — needs a dedicated ordered-attribute
-grammar plus per-attribute value lexers, replacing the generic
-`parse_attributes` reuse), (3) namespace-spec awareness (17, but
-arguably **out of scope** for `Parser.XML.fst` per the phase-0 audit —
-would belong in a namespace layer, likely `Parser.RDFXML`'s domain),
-(4) epilog/trailing-content rejection (11 — one check: after parsing
-the root, verify only `S`/`Comment`/PI remains), (5) comment `--` and
-`]]>`-in-text rejection (9 combined, two small added scans), (6)
-attribute-value/uniqueness checks (4), (7) PI/declaration target-name
-casing (3), (8) the 3 remaining singleton gaps.
+## Downstream floor verification (2026-07-05, scratch build — no committed binary other than `xml_runner` itself changed)
+
+`Parser.XML.fst` is consumed by `Parser.RDFXML.fst`, `Parser.RIFXML.fst`,
+and `Parser.SRX.fst`, so every fix above was re-verified against the
+full RDF/SPARQL/RIF suites via a scratch-built `w3c_runner`/`rif_runner`
+(same `COMMON_MODULES` list as `build-ocaml.sh`'s `compile` step, run
+in a `mktemp -d` scratch dir — `bin/linux-x86_64/w3c_runner` and
+`bin/linux-x86_64/rif_runner` were never overwritten):
+
+- RDF 1.1 suite: 1031 pass, 0 fail, 0 skip, 0 unsupported (hard floor, held).
+- SPARQL 1.1 suite: 631 pass, 0 fail, 0 skip, 0 unsupported (hard floor, held).
+- RIF Core corpus: 34 pass, 4 fail, 12 skip (out of 50) — unchanged
+  from the pre-existing documented score (the 4 fails are pre-existing
+  known gaps in `bin/rif-runner/README.md`, not regressions).
 
 ## Known imprecision in this harness (disclosed, not fixed)
 

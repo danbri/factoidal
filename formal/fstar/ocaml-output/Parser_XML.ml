@@ -67,6 +67,90 @@ let is_xml_space (c : FStar_Char.char) : Prims.bool=
   (((code = (Prims.of_int (0x20))) || (code = (Prims.of_int (0x09)))) ||
      (code = (Prims.of_int (0x0A))))
     || (code = (Prims.of_int (0x0D)))
+let to_lower_ascii (c : FStar_Char.char) : FStar_Char.char=
+  let code = FStar_Char.int_of_char c in
+  if (code >= (Prims.of_int (0x41))) && (code <= (Prims.of_int (0x5A)))
+  then FStar_Char.char_of_int (code + (Prims.of_int (0x20)))
+  else c
+let is_valid_xml_char (cp : Prims.int) : Prims.bool=
+  (((((cp = (Prims.of_int (0x9))) || (cp = (Prims.of_int (0xA)))) ||
+       (cp = (Prims.of_int (0xD))))
+      || ((cp >= (Prims.of_int (0x20))) && (cp <= (Prims.of_int (0xD7FF)))))
+     || ((cp >= (Prims.of_int (0xE000))) && (cp <= (Prims.of_int (0xFFFD)))))
+    ||
+    ((cp >= (Prims.parse_int "0x10000")) &&
+       (cp <= (Prims.parse_int "0x10FFFF")))
+let is_valid_decoded_char (cp : Prims.int) (adv : Prims.nat) : Prims.bool=
+  if (cp = (Prims.of_int (0xFFFD))) && (adv = Prims.int_one)
+  then false
+  else is_valid_xml_char cp
+let is_utf8_continuation_byte (c : FStar_Char.char) : Prims.bool=
+  let code = FStar_Char.int_of_char c in
+  (code >= (Prims.of_int (0x80))) && (code <= (Prims.of_int (0xBF)))
+let rec scan_chars_valid (input : Prims.string) (pos : Prims.nat)
+  (limit : Prims.nat) (fuel : Prims.nat) : Prims.bool=
+  if fuel = Prims.int_zero
+  then true
+  else
+    if pos >= limit
+    then true
+    else
+      (let uu___2 = Parser_FastString.fs_cp_at input pos in
+       match uu___2 with
+       | (cp, adv) ->
+           let adv' = if adv = Prims.int_zero then Prims.int_one else adv in
+           if is_valid_decoded_char cp adv'
+           then
+             scan_chars_valid input (pos + adv') limit (fuel - Prims.int_one)
+           else false)
+let rec bytes_have_double_dash (s : Prims.string) (pos : Prims.nat)
+  (limit : Prims.nat) (fuel : Prims.nat) : Prims.bool=
+  if fuel = Prims.int_zero
+  then false
+  else
+    if (pos + Prims.int_one) >= limit
+    then false
+    else
+      (let c0 = Parser_FastString.fs_byte_index s pos in
+       let c1 = Parser_FastString.fs_byte_index s (pos + Prims.int_one) in
+       if (c0 = 45) && (c1 = 45)
+       then true
+       else
+         bytes_have_double_dash s (pos + Prims.int_one) limit
+           (fuel - Prims.int_one))
+let ends_with_dash (s : Prims.string) : Prims.bool=
+  let len = Parser_FastString.fs_byte_length s in
+  (len > Prims.int_zero) &&
+    ((Parser_FastString.fs_byte_index s (len - Prims.int_one)) = 45)
+let rec bytes_have_cdata_close (input : Prims.string) (pos : Prims.nat)
+  (limit : Prims.nat) (fuel : Prims.nat) : Prims.bool=
+  if fuel = Prims.int_zero
+  then false
+  else
+    if (pos + (Prims.of_int (2))) >= limit
+    then false
+    else
+      if
+        (((Parser_FastString.fs_byte_index input pos) = 93) &&
+           ((Parser_FastString.fs_byte_index input (pos + Prims.int_one)) =
+              93))
+          &&
+          ((Parser_FastString.fs_byte_index input (pos + (Prims.of_int (2))))
+             = 62)
+      then true
+      else
+        bytes_have_cdata_close input (pos + Prims.int_one) limit
+          (fuel - Prims.int_one)
+let is_xml_target_name_ci (s : Prims.string) : Prims.bool=
+  ((((Parser_FastString.fs_byte_length s) = (Prims.of_int (3))) &&
+      ((to_lower_ascii (Parser_FastString.fs_byte_index s Prims.int_zero)) =
+         120))
+     &&
+     ((to_lower_ascii (Parser_FastString.fs_byte_index s Prims.int_one)) =
+        109))
+    &&
+    ((to_lower_ascii (Parser_FastString.fs_byte_index s (Prims.of_int (2))))
+       = 108)
 let parse_xml_name : Prims.string Parser_Combinators.parser=
   fun input pos ->
     let len = Parser_FastString.fs_byte_length input in
@@ -76,15 +160,23 @@ let parse_xml_name : Prims.string Parser_Combinators.parser=
       (let ch = Parser_FastString.fs_byte_index input pos in
        if is_name_start_char ch
        then
-         match Parser_Combinators.ptake_while_pos is_name_char input
-                 (pos + Prims.int_one)
-         with
-         | Parser_Combinators.ParseOk (rest, pos') ->
-             Parser_Combinators.ParseOk
-               ((FStar_String.concat ""
-                   [FStar_String.string_of_char ch; rest]), pos')
-         | Parser_Combinators.ParseFail (msg, fpos) ->
-             Parser_Combinators.ParseFail (msg, fpos)
+         let uu___1 = Parser_FastString.fs_cp_at input pos in
+         match uu___1 with
+         | (cp, _adv) ->
+             (if cp = (Prims.of_int (0xB7))
+              then
+                Parser_Combinators.ParseFail
+                  ("a Name cannot start with an Extender", pos)
+              else
+                (match Parser_Combinators.ptake_while_pos is_name_char input
+                         (pos + Prims.int_one)
+                 with
+                 | Parser_Combinators.ParseOk (rest, pos') ->
+                     Parser_Combinators.ParseOk
+                       ((FStar_String.concat ""
+                           [FStar_String.string_of_char ch; rest]), pos')
+                 | Parser_Combinators.ParseFail (msg, fpos) ->
+                     Parser_Combinators.ParseFail (msg, fpos)))
        else
          Parser_Combinators.ParseFail
            ("expected XML name start character", pos))
@@ -99,8 +191,17 @@ let hex_digit_value (c : FStar_Char.char) : Prims.int=
       if (code >= (Prims.of_int (0x61))) && (code <= (Prims.of_int (0x66)))
       then (code - (Prims.of_int (0x61))) + (Prims.of_int (10))
       else Prims.int_zero
-let rec parse_ref_digits (input : Prims.string) (pos : Prims.nat)
-  (acc : FStar_Char.char Prims.list) (fuel : Prims.nat) :
+let is_dec_digit_char (c : FStar_Char.char) : Prims.bool=
+  let code = FStar_Char.int_of_char c in
+  (code >= (Prims.of_int (0x30))) && (code <= (Prims.of_int (0x39)))
+let is_hex_digit_char (c : FStar_Char.char) : Prims.bool=
+  let code = FStar_Char.int_of_char c in
+  (((code >= (Prims.of_int (0x30))) && (code <= (Prims.of_int (0x39)))) ||
+     ((code >= (Prims.of_int (0x41))) && (code <= (Prims.of_int (0x46)))))
+    || ((code >= (Prims.of_int (0x61))) && (code <= (Prims.of_int (0x66))))
+let rec parse_ref_digits (valid_digit : FStar_Char.char -> Prims.bool)
+  (input : Prims.string) (pos : Prims.nat) (acc : FStar_Char.char Prims.list)
+  (fuel : Prims.nat) :
   FStar_Char.char Prims.list Parser_Combinators.parse_result=
   if fuel = Prims.int_zero
   then Parser_Combinators.ParseFail ("character reference too long", pos)
@@ -113,11 +214,20 @@ let rec parse_ref_digits (input : Prims.string) (pos : Prims.nat)
        (let ch = Parser_FastString.fs_byte_index input pos in
         if ch = 59
         then
-          Parser_Combinators.ParseOk
-            ((FStar_List_Tot_Base.rev acc), (pos + Prims.int_one))
+          (if (FStar_List_Tot_Base.length acc) = Prims.int_zero
+           then
+             Parser_Combinators.ParseFail ("empty character reference", pos)
+           else
+             Parser_Combinators.ParseOk
+               ((FStar_List_Tot_Base.rev acc), (pos + Prims.int_one)))
         else
-          parse_ref_digits input (pos + Prims.int_one) (ch :: acc)
-            (fuel - Prims.int_one)))
+          if valid_digit ch
+          then
+            parse_ref_digits valid_digit input (pos + Prims.int_one) (ch ::
+              acc) (fuel - Prims.int_one)
+          else
+            Parser_Combinators.ParseFail
+              ("invalid character reference digit", pos)))
 let rec pow10 (n : Prims.nat) : Prims.int=
   if n = Prims.int_zero
   then Prims.int_one
@@ -207,23 +317,37 @@ let parse_reference (input : Prims.string) (pos : Prims.nat) :
         else
           (let ch2 =
              Parser_FastString.fs_byte_index input (pos + Prims.int_one) in
-           if (ch2 = 120) || (ch2 = 88)
+           if ch2 = 120
            then
-             match parse_ref_digits input (pos + (Prims.of_int (2))) []
-                     (Prims.of_int (10))
+             let fuel = (len - (pos + (Prims.of_int (2)))) + Prims.int_one in
+             match parse_ref_digits is_hex_digit_char input
+                     (pos + (Prims.of_int (2))) [] fuel
              with
              | Parser_Combinators.ParseOk (digits, pos') ->
-                 Parser_Combinators.ParseOk
-                   ((codepoint_to_string (chars_to_hex digits)), pos')
+                 let cp = chars_to_hex digits in
+                 (if is_valid_xml_char cp
+                  then
+                    Parser_Combinators.ParseOk
+                      ((codepoint_to_string cp), pos')
+                  else
+                    Parser_Combinators.ParseFail
+                      ("character reference to a non-Char codepoint", pos'))
              | Parser_Combinators.ParseFail (msg, fpos) ->
                  Parser_Combinators.ParseFail (msg, fpos)
            else
-             (match parse_ref_digits input (pos + Prims.int_one) []
-                      (Prims.of_int (10))
+             (let fuel = (len - (pos + Prims.int_one)) + Prims.int_one in
+              match parse_ref_digits is_dec_digit_char input
+                      (pos + Prims.int_one) [] fuel
               with
               | Parser_Combinators.ParseOk (digits, pos') ->
-                  Parser_Combinators.ParseOk
-                    ((codepoint_to_string (chars_to_dec digits)), pos')
+                  let cp = chars_to_dec digits in
+                  if is_valid_xml_char cp
+                  then
+                    Parser_Combinators.ParseOk
+                      ((codepoint_to_string cp), pos')
+                  else
+                    Parser_Combinators.ParseFail
+                      ("character reference to a non-Char codepoint", pos')
               | Parser_Combinators.ParseFail (msg, fpos) ->
                   Parser_Combinators.ParseFail (msg, fpos))))
      else
@@ -270,29 +394,42 @@ let rec parse_attr_value_body (qch : FStar_Char.char) (input : Prims.string)
             ((FStar_String.concat "" (FStar_List_Tot_Base.rev acc)),
               (pos + Prims.int_one))
         else
-          if ch = 38
+          if ch = 60
           then
-            (match parse_reference input (pos + Prims.int_one) with
-             | Parser_Combinators.ParseOk (decoded, pos') ->
-                 parse_attr_value_body qch input pos' (decoded :: acc)
-                   (fuel - Prims.int_one)
-             | Parser_Combinators.ParseFail (msg, fpos) ->
-                 Parser_Combinators.ParseFail (msg, fpos))
+            Parser_Combinators.ParseFail
+              ("attribute values exclude '<'", pos)
           else
-            (match Parser_Combinators.ptake_while_pos
-                     (fun c -> (c <> qch) && (c <> 38)) input pos
-             with
-             | Parser_Combinators.ParseOk (s, pos') ->
-                 if (Parser_FastString.fs_byte_length s) > Prims.int_zero
-                 then
-                   parse_attr_value_body qch input pos' (s :: acc)
+            if ch = 38
+            then
+              (match parse_reference input (pos + Prims.int_one) with
+               | Parser_Combinators.ParseOk (decoded, pos') ->
+                   parse_attr_value_body qch input pos' (decoded :: acc)
                      (fuel - Prims.int_one)
-                 else
-                   parse_attr_value_body qch input (pos + Prims.int_one)
-                     ((FStar_String.string_of_char ch) :: acc)
-                     (fuel - Prims.int_one)
-             | Parser_Combinators.ParseFail (msg, fpos) ->
-                 Parser_Combinators.ParseFail (msg, fpos))))
+               | Parser_Combinators.ParseFail (msg, fpos) ->
+                   Parser_Combinators.ParseFail (msg, fpos))
+            else
+              (match Parser_Combinators.ptake_while_pos
+                       (fun c -> ((c <> qch) && (c <> 38)) && (c <> 60))
+                       input pos
+               with
+               | Parser_Combinators.ParseOk (s, pos') ->
+                   if (Parser_FastString.fs_byte_length s) > Prims.int_zero
+                   then
+                     (if
+                        Prims.op_Negation
+                          (scan_chars_valid input pos pos' (pos' - pos))
+                      then
+                        Parser_Combinators.ParseFail
+                          ("invalid character in attribute value", pos)
+                      else
+                        parse_attr_value_body qch input pos' (s :: acc)
+                          (fuel - Prims.int_one))
+                   else
+                     parse_attr_value_body qch input (pos + Prims.int_one)
+                       ((FStar_String.string_of_char ch) :: acc)
+                       (fuel - Prims.int_one)
+               | Parser_Combinators.ParseFail (msg, fpos) ->
+                   Parser_Combinators.ParseFail (msg, fpos))))
 let parse_attr_value (input : Prims.string) (pos : Prims.nat) :
   Prims.string Parser_Combinators.parse_result=
   let len = Parser_FastString.fs_byte_length input in
@@ -338,6 +475,11 @@ let parse_xml_attribute (input : Prims.string) (pos : Prims.nat) :
            Parser_Combinators.ParseFail (msg, fpos))
   | Parser_Combinators.ParseFail (msg, fpos) ->
       Parser_Combinators.ParseFail (msg, fpos)
+let rec mem_attr_name (name : Prims.string)
+  (attrs : xml_attribute Prims.list) : Prims.bool=
+  match attrs with
+  | [] -> false
+  | a::rest -> if a.attr_name = name then true else mem_attr_name name rest
 let rec parse_attributes (input : Prims.string) (pos : Prims.nat)
   (fuel : Prims.nat) :
   xml_attribute Prims.list Parser_Combinators.parse_result=
@@ -361,7 +503,13 @@ let rec parse_attributes (input : Prims.string) (pos : Prims.nat)
                               (fuel - Prims.int_one)
                       with
                       | Parser_Combinators.ParseOk (attrs, pos3) ->
-                          Parser_Combinators.ParseOk ((attr :: attrs), pos3)
+                          if mem_attr_name attr.attr_name attrs
+                          then
+                            Parser_Combinators.ParseFail
+                              ("duplicate attribute name", pos2)
+                          else
+                            Parser_Combinators.ParseOk
+                              ((attr :: attrs), pos3)
                       | Parser_Combinators.ParseFail (msg, fpos) ->
                           Parser_Combinators.ParseFail (msg, fpos))
                  | Parser_Combinators.ParseFail (msg, fpos) ->
@@ -405,8 +553,21 @@ let rec parse_text_content (input : Prims.string) (pos : Prims.nat)
              | Parser_Combinators.ParseOk (s, pos') ->
                  if (Parser_FastString.fs_byte_length s) > Prims.int_zero
                  then
-                   parse_text_content input pos' (s :: acc)
-                     (fuel - Prims.int_one)
+                   (if
+                      Prims.op_Negation
+                        (scan_chars_valid input pos pos' (pos' - pos))
+                    then
+                      Parser_Combinators.ParseFail
+                        ("invalid character in text content", pos)
+                    else
+                      if bytes_have_cdata_close input pos pos' (pos' - pos)
+                      then
+                        Parser_Combinators.ParseFail
+                          ("text may not contain a literal ']]>' sequence",
+                            pos)
+                      else
+                        parse_text_content input pos' (s :: acc)
+                          (fuel - Prims.int_one))
                  else
                    parse_text_content input (pos + Prims.int_one)
                      ((FStar_String.string_of_char ch) :: acc)
@@ -446,14 +607,40 @@ let rec parse_comment_body (input : Prims.string) (pos : Prims.nat)
             ((FStar_String.string_of_list (FStar_List_Tot_Base.rev acc)),
               (pos + (Prims.of_int (3))))
         else
-          parse_comment_body input (pos + Prims.int_one) (c0 :: acc)
-            (fuel - Prims.int_one))
+          if is_utf8_continuation_byte c0
+          then
+            parse_comment_body input (pos + Prims.int_one) (c0 :: acc)
+              (fuel - Prims.int_one)
+          else
+            (let uu___3 = Parser_FastString.fs_cp_at input pos in
+             match uu___3 with
+             | (cp, adv) ->
+                 if Prims.op_Negation (is_valid_decoded_char cp adv)
+                 then
+                   Parser_Combinators.ParseFail
+                     ("invalid character in comment", pos)
+                 else
+                   parse_comment_body input (pos + Prims.int_one) (c0 :: acc)
+                     (fuel - Prims.int_one)))
      else
        if pos < len
        then
          (let c0 = Parser_FastString.fs_byte_index input pos in
-          parse_comment_body input (pos + Prims.int_one) (c0 :: acc)
-            (fuel - Prims.int_one))
+          if is_utf8_continuation_byte c0
+          then
+            parse_comment_body input (pos + Prims.int_one) (c0 :: acc)
+              (fuel - Prims.int_one)
+          else
+            (let uu___3 = Parser_FastString.fs_cp_at input pos in
+             match uu___3 with
+             | (cp, adv) ->
+                 if Prims.op_Negation (is_valid_decoded_char cp adv)
+                 then
+                   Parser_Combinators.ParseFail
+                     ("invalid character in comment", pos)
+                 else
+                   parse_comment_body input (pos + Prims.int_one) (c0 :: acc)
+                     (fuel - Prims.int_one)))
        else Parser_Combinators.ParseFail ("unterminated comment", pos))
 let parse_xml_comment (input : Prims.string) (pos : Prims.nat) :
   xml_node Parser_Combinators.parse_result=
@@ -463,7 +650,15 @@ let parse_xml_comment (input : Prims.string) (pos : Prims.nat) :
       let fuel = (len - pos1) + Prims.int_one in
       (match parse_comment_body input pos1 [] fuel with
        | Parser_Combinators.ParseOk (text, pos2) ->
-           Parser_Combinators.ParseOk ((XComment text), pos2)
+           if
+             (bytes_have_double_dash text Prims.int_zero
+                (Parser_FastString.fs_byte_length text)
+                (Parser_FastString.fs_byte_length text))
+               || (ends_with_dash text)
+           then
+             Parser_Combinators.ParseFail
+               ("comment must not contain '--' or end in '-'", pos1)
+           else Parser_Combinators.ParseOk ((XComment text), pos2)
        | Parser_Combinators.ParseFail (msg, fpos) ->
            Parser_Combinators.ParseFail (msg, fpos))
   | Parser_Combinators.ParseFail (msg, fpos) ->
@@ -487,14 +682,40 @@ let rec parse_cdata_body (input : Prims.string) (pos : Prims.nat)
             ((FStar_String.string_of_list (FStar_List_Tot_Base.rev acc)),
               (pos + (Prims.of_int (3))))
         else
-          parse_cdata_body input (pos + Prims.int_one) (c0 :: acc)
-            (fuel - Prims.int_one))
+          if is_utf8_continuation_byte c0
+          then
+            parse_cdata_body input (pos + Prims.int_one) (c0 :: acc)
+              (fuel - Prims.int_one)
+          else
+            (let uu___3 = Parser_FastString.fs_cp_at input pos in
+             match uu___3 with
+             | (cp, adv) ->
+                 if Prims.op_Negation (is_valid_decoded_char cp adv)
+                 then
+                   Parser_Combinators.ParseFail
+                     ("invalid character in CDATA section", pos)
+                 else
+                   parse_cdata_body input (pos + Prims.int_one) (c0 :: acc)
+                     (fuel - Prims.int_one)))
      else
        if pos < len
        then
          (let c0 = Parser_FastString.fs_byte_index input pos in
-          parse_cdata_body input (pos + Prims.int_one) (c0 :: acc)
-            (fuel - Prims.int_one))
+          if is_utf8_continuation_byte c0
+          then
+            parse_cdata_body input (pos + Prims.int_one) (c0 :: acc)
+              (fuel - Prims.int_one)
+          else
+            (let uu___3 = Parser_FastString.fs_cp_at input pos in
+             match uu___3 with
+             | (cp, adv) ->
+                 if Prims.op_Negation (is_valid_decoded_char cp adv)
+                 then
+                   Parser_Combinators.ParseFail
+                     ("invalid character in CDATA section", pos)
+                 else
+                   parse_cdata_body input (pos + Prims.int_one) (c0 :: acc)
+                     (fuel - Prims.int_one)))
        else Parser_Combinators.ParseFail ("unterminated CDATA section", pos))
 let parse_xml_cdata (input : Prims.string) (pos : Prims.nat) :
   xml_node Parser_Combinators.parse_result=
@@ -524,7 +745,21 @@ let rec skip_pi_body (input : Prims.string) (pos : Prims.nat)
         then
           Parser_Combinators.ParseOk
             ((pos + (Prims.of_int (2))), (pos + (Prims.of_int (2))))
-        else skip_pi_body input (pos + Prims.int_one) (fuel - Prims.int_one))
+        else
+          if is_utf8_continuation_byte c0
+          then
+            skip_pi_body input (pos + Prims.int_one) (fuel - Prims.int_one)
+          else
+            (let uu___3 = Parser_FastString.fs_cp_at input pos in
+             match uu___3 with
+             | (cp, adv) ->
+                 if Prims.op_Negation (is_valid_decoded_char cp adv)
+                 then
+                   Parser_Combinators.ParseFail
+                     ("invalid character in processing instruction", pos)
+                 else
+                   skip_pi_body input (pos + Prims.int_one)
+                     (fuel - Prims.int_one)))
      else
        Parser_Combinators.ParseFail
          ("unterminated processing instruction", pos))
@@ -532,31 +767,213 @@ let parse_xml_pi (input : Prims.string) (pos : Prims.nat) :
   Prims.nat Parser_Combinators.parse_result=
   match Parser_Combinators.pstring "<?" input pos with
   | Parser_Combinators.ParseOk (uu___, pos1) ->
-      let len = Parser_FastString.fs_byte_length input in
-      let fuel = (len - pos1) + Prims.int_one in skip_pi_body input pos1 fuel
+      (match parse_xml_name input pos1 with
+       | Parser_Combinators.ParseFail (msg, fpos) ->
+           Parser_Combinators.ParseFail (msg, fpos)
+       | Parser_Combinators.ParseOk (target, pos2) ->
+           if is_xml_target_name_ci target
+           then
+             Parser_Combinators.ParseFail
+               ("PI target name 'xml' (any case) is reserved", pos1)
+           else
+             (let len = Parser_FastString.fs_byte_length input in
+              let fuel = (len - pos2) + Prims.int_one in
+              skip_pi_body input pos2 fuel))
   | Parser_Combinators.ParseFail (msg, fpos) ->
       Parser_Combinators.ParseFail (msg, fpos)
+let rec check_bytes_from (pred : FStar_Char.char -> Prims.bool)
+  (s : Prims.string) (pos : Prims.nat) (limit : Prims.nat) (fuel : Prims.nat)
+  : Prims.bool=
+  if fuel = Prims.int_zero
+  then true
+  else
+    if pos >= limit
+    then true
+    else
+      if pred (Parser_FastString.fs_byte_index s pos)
+      then
+        check_bytes_from pred s (pos + Prims.int_one) limit
+          (fuel - Prims.int_one)
+      else false
+let is_version_num (s : Prims.string) : Prims.bool=
+  let len = Parser_FastString.fs_byte_length s in
+  (((len >= (Prims.of_int (3))) &&
+      ((Parser_FastString.fs_byte_index s Prims.int_zero) = 49))
+     && ((Parser_FastString.fs_byte_index s Prims.int_one) = 46))
+    && (check_bytes_from is_dec_digit_char s (Prims.of_int (2)) len len)
+let is_enc_name_first_char (c : FStar_Char.char) : Prims.bool=
+  let code = FStar_Char.int_of_char c in
+  ((code >= (Prims.of_int (0x41))) && (code <= (Prims.of_int (0x5A)))) ||
+    ((code >= (Prims.of_int (0x61))) && (code <= (Prims.of_int (0x7A))))
+let is_enc_name_rest_char (c : FStar_Char.char) : Prims.bool=
+  let code = FStar_Char.int_of_char c in
+  ((((((code >= (Prims.of_int (0x41))) && (code <= (Prims.of_int (0x5A)))) ||
+        ((code >= (Prims.of_int (0x61))) && (code <= (Prims.of_int (0x7A)))))
+       ||
+       ((code >= (Prims.of_int (0x30))) && (code <= (Prims.of_int (0x39)))))
+      || (code = (Prims.of_int (0x2E))))
+     || (code = (Prims.of_int (0x5F))))
+    || (code = (Prims.of_int (0x2D)))
+let is_enc_name (s : Prims.string) : Prims.bool=
+  let len = Parser_FastString.fs_byte_length s in
+  ((len >= Prims.int_one) &&
+     (is_enc_name_first_char
+        (Parser_FastString.fs_byte_index s Prims.int_zero)))
+    && (check_bytes_from is_enc_name_rest_char s Prims.int_one len len)
+let is_sd_value (s : Prims.string) : Prims.bool= (s = "yes") || (s = "no")
+let try_pseudo_attr (name : Prims.string) (input : Prims.string)
+  (pos : Prims.nat) :
+  (Prims.string * Prims.nat) FStar_Pervasives_Native.option=
+  match Parser_Combinators.ptake_while1_pos is_xml_space input pos with
+  | Parser_Combinators.ParseFail (uu___, uu___1) ->
+      FStar_Pervasives_Native.None
+  | Parser_Combinators.ParseOk (uu___, pos1) ->
+      (match Parser_Combinators.pstring name input pos1 with
+       | Parser_Combinators.ParseFail (uu___1, uu___2) ->
+           FStar_Pervasives_Native.None
+       | Parser_Combinators.ParseOk (uu___1, pos2) ->
+           (match skip_xml_space input pos2 with
+            | Parser_Combinators.ParseFail (uu___2, uu___3) ->
+                FStar_Pervasives_Native.None
+            | Parser_Combinators.ParseOk ((), pos3) ->
+                (match Parser_Combinators.pchar 61 input pos3 with
+                 | Parser_Combinators.ParseFail (uu___2, uu___3) ->
+                     FStar_Pervasives_Native.None
+                 | Parser_Combinators.ParseOk (uu___2, pos4) ->
+                     (match skip_xml_space input pos4 with
+                      | Parser_Combinators.ParseFail (uu___3, uu___4) ->
+                          FStar_Pervasives_Native.None
+                      | Parser_Combinators.ParseOk ((), pos5) ->
+                          (match parse_attr_value input pos5 with
+                           | Parser_Combinators.ParseFail (uu___3, uu___4) ->
+                               FStar_Pervasives_Native.None
+                           | Parser_Combinators.ParseOk (v, pos6) ->
+                               FStar_Pervasives_Native.Some (v, pos6))))))
+let finish_xml_decl (input : Prims.string) (pos : Prims.nat)
+  (attrs : xml_attribute Prims.list) :
+  xml_attribute Prims.list Parser_Combinators.parse_result=
+  match skip_xml_space input pos with
+  | Parser_Combinators.ParseFail (msg, fpos) ->
+      Parser_Combinators.ParseFail (msg, fpos)
+  | Parser_Combinators.ParseOk ((), pos1) ->
+      (match Parser_Combinators.pstring "?>" input pos1 with
+       | Parser_Combinators.ParseOk (uu___, pos2) ->
+           Parser_Combinators.ParseOk (attrs, pos2)
+       | Parser_Combinators.ParseFail (msg, fpos) ->
+           Parser_Combinators.ParseFail (msg, fpos))
 let parse_xml_declaration (input : Prims.string) (pos : Prims.nat) :
   xml_attribute Prims.list Parser_Combinators.parse_result=
   match Parser_Combinators.pstring "<?xml" input pos with
-  | Parser_Combinators.ParseOk (uu___, pos1) ->
-      let len = Parser_FastString.fs_byte_length input in
-      let fuel = (len - pos1) + Prims.int_one in
-      (match parse_attributes input pos1 fuel with
-       | Parser_Combinators.ParseOk (attrs, pos2) ->
-           (match skip_xml_space input pos2 with
-            | Parser_Combinators.ParseOk ((), pos3) ->
-                (match Parser_Combinators.pstring "?>" input pos3 with
-                 | Parser_Combinators.ParseOk (uu___1, pos4) ->
-                     Parser_Combinators.ParseOk (attrs, pos4)
-                 | Parser_Combinators.ParseFail (msg, fpos) ->
-                     Parser_Combinators.ParseFail (msg, fpos))
-            | Parser_Combinators.ParseFail (msg, fpos) ->
-                Parser_Combinators.ParseFail (msg, fpos))
-       | Parser_Combinators.ParseFail (msg, fpos) ->
-           Parser_Combinators.ParseFail (msg, fpos))
   | Parser_Combinators.ParseFail (msg, fpos) ->
       Parser_Combinators.ParseFail (msg, fpos)
+  | Parser_Combinators.ParseOk (uu___, pos0) ->
+      (match Parser_Combinators.ptake_while1_pos is_xml_space input pos0 with
+       | Parser_Combinators.ParseFail (msg, fpos) ->
+           Parser_Combinators.ParseFail (msg, fpos)
+       | Parser_Combinators.ParseOk (uu___1, pos1) ->
+           (match Parser_Combinators.pstring "version" input pos1 with
+            | Parser_Combinators.ParseFail (msg, fpos) ->
+                Parser_Combinators.ParseFail (msg, fpos)
+            | Parser_Combinators.ParseOk (uu___2, pos2) ->
+                (match skip_xml_space input pos2 with
+                 | Parser_Combinators.ParseFail (msg, fpos) ->
+                     Parser_Combinators.ParseFail (msg, fpos)
+                 | Parser_Combinators.ParseOk ((), pos3) ->
+                     (match Parser_Combinators.pchar 61 input pos3 with
+                      | Parser_Combinators.ParseFail (msg, fpos) ->
+                          Parser_Combinators.ParseFail (msg, fpos)
+                      | Parser_Combinators.ParseOk (uu___3, pos4) ->
+                          (match skip_xml_space input pos4 with
+                           | Parser_Combinators.ParseFail (msg, fpos) ->
+                               Parser_Combinators.ParseFail (msg, fpos)
+                           | Parser_Combinators.ParseOk ((), pos5) ->
+                               (match parse_attr_value input pos5 with
+                                | Parser_Combinators.ParseFail (msg, fpos) ->
+                                    Parser_Combinators.ParseFail (msg, fpos)
+                                | Parser_Combinators.ParseOk (vernum, pos6)
+                                    ->
+                                    if
+                                      Prims.op_Negation
+                                        (is_version_num vernum)
+                                    then
+                                      Parser_Combinators.ParseFail
+                                        ("illegal VersionNum", pos5)
+                                    else
+                                      (let version_attr =
+                                         {
+                                           attr_name = "version";
+                                           attr_value = vernum
+                                         } in
+                                       match try_pseudo_attr "encoding" input
+                                               pos6
+                                       with
+                                       | FStar_Pervasives_Native.Some
+                                           (encval, pos7) ->
+                                           if
+                                             Prims.op_Negation
+                                               (is_enc_name encval)
+                                           then
+                                             Parser_Combinators.ParseFail
+                                               ("illegal EncName", pos7)
+                                           else
+                                             (let enc_attr =
+                                                {
+                                                  attr_name = "encoding";
+                                                  attr_value = encval
+                                                } in
+                                              match try_pseudo_attr
+                                                      "standalone" input pos7
+                                              with
+                                              | FStar_Pervasives_Native.Some
+                                                  (sdval, pos8) ->
+                                                  if
+                                                    Prims.op_Negation
+                                                      (is_sd_value sdval)
+                                                  then
+                                                    Parser_Combinators.ParseFail
+                                                      ("illegal SDDecl value",
+                                                        pos8)
+                                                  else
+                                                    (let sd_attr =
+                                                       {
+                                                         attr_name =
+                                                           "standalone";
+                                                         attr_value = sdval
+                                                       } in
+                                                     finish_xml_decl input
+                                                       pos8
+                                                       [version_attr;
+                                                       enc_attr;
+                                                       sd_attr])
+                                              | FStar_Pervasives_Native.None
+                                                  ->
+                                                  finish_xml_decl input pos7
+                                                    [version_attr; enc_attr])
+                                       | FStar_Pervasives_Native.None ->
+                                           (match try_pseudo_attr
+                                                    "standalone" input pos6
+                                            with
+                                            | FStar_Pervasives_Native.Some
+                                                (sdval, pos7) ->
+                                                if
+                                                  Prims.op_Negation
+                                                    (is_sd_value sdval)
+                                                then
+                                                  Parser_Combinators.ParseFail
+                                                    ("illegal SDDecl value",
+                                                      pos7)
+                                                else
+                                                  (let sd_attr =
+                                                     {
+                                                       attr_name =
+                                                         "standalone";
+                                                       attr_value = sdval
+                                                     } in
+                                                   finish_xml_decl input pos7
+                                                     [version_attr; sd_attr])
+                                            | FStar_Pervasives_Native.None ->
+                                                finish_xml_decl input pos6
+                                                  [version_attr]))))))))
 let rec parse_children (input : Prims.string) (pos : Prims.nat)
   (fuel : Prims.nat) (acc : xml_node Prims.list) :
   xml_node Prims.list Parser_Combinators.parse_result=
@@ -738,21 +1155,41 @@ let rec skip_misc (input : Prims.string) (pos : Prims.nat) (fuel : Prims.nat)
               Parser_Combinators.ParseOk ((), pos1))
      | Parser_Combinators.ParseFail (msg, fpos) ->
          Parser_Combinators.ParseFail (msg, fpos))
+let rec skip_epilog_misc (input : Prims.string) (pos : Prims.nat)
+  (fuel : Prims.nat) : unit Parser_Combinators.parse_result=
+  if fuel = Prims.int_zero
+  then Parser_Combinators.ParseOk ((), pos)
+  else
+    (match skip_xml_space input pos with
+     | Parser_Combinators.ParseOk ((), pos1) ->
+         (match parse_xml_comment input pos1 with
+          | Parser_Combinators.ParseOk (uu___1, pos2) ->
+              skip_epilog_misc input pos2 (fuel - Prims.int_one)
+          | Parser_Combinators.ParseFail (uu___1, uu___2) ->
+              (match parse_xml_pi input pos1 with
+               | Parser_Combinators.ParseOk (uu___3, pos2) ->
+                   skip_epilog_misc input pos2 (fuel - Prims.int_one)
+               | Parser_Combinators.ParseFail (uu___3, uu___4) ->
+                   Parser_Combinators.ParseOk ((), pos1)))
+     | Parser_Combinators.ParseFail (msg, fpos) ->
+         Parser_Combinators.ParseFail (msg, fpos))
 let parse_xml_document (input : Prims.string) :
   xml_node FStar_Pervasives_Native.option=
   let len = Parser_FastString.fs_byte_length input in
   let fuel = len + Prims.int_one in
-  match skip_xml_space input Prims.int_zero with
-  | Parser_Combinators.ParseOk ((), pos0) ->
-      let pos1 =
-        match parse_xml_declaration input pos0 with
-        | Parser_Combinators.ParseOk (_attrs, pos') -> pos'
-        | Parser_Combinators.ParseFail (uu___, uu___1) -> pos0 in
-      (match skip_misc input pos1 fuel with
-       | Parser_Combinators.ParseOk ((), pos2) ->
-           (match parse_xml_element input pos2 fuel with
-            | Parser_Combinators.ParseOk (root, _pos3) ->
-                FStar_Pervasives_Native.Some root
+  let pos1 =
+    match parse_xml_declaration input Prims.int_zero with
+    | Parser_Combinators.ParseOk (_attrs, pos') -> pos'
+    | Parser_Combinators.ParseFail (uu___, uu___1) -> Prims.int_zero in
+  match skip_misc input pos1 fuel with
+  | Parser_Combinators.ParseOk ((), pos2) ->
+      (match parse_xml_element input pos2 fuel with
+       | Parser_Combinators.ParseOk (root, pos3) ->
+           (match skip_epilog_misc input pos3 fuel with
+            | Parser_Combinators.ParseOk ((), pos4) ->
+                if pos4 >= (Parser_FastString.fs_byte_length input)
+                then FStar_Pervasives_Native.Some root
+                else FStar_Pervasives_Native.None
             | Parser_Combinators.ParseFail (uu___, uu___1) ->
                 FStar_Pervasives_Native.None)
        | Parser_Combinators.ParseFail (uu___, uu___1) ->
