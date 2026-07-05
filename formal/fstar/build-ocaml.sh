@@ -384,6 +384,7 @@ if [[ "$STEP" == "all" || "$STEP" == "extract" ]]; then
     Parser.JSONResults.fst
     SPARQL.JSON.Escape.fst
     Parser.JSON.fst JSONLD.Loader.fst JSONLD.Context.fst JSONLD.Expand.fst Parser.JSONLD.fst
+    ShEx.Schema.fst ShEx.Validation.fst
     SPARQL.Eval.TimeBudget.fst
     SPARQL.Eval.Limits.fst
     SPARQL.HTTP.Response.fst
@@ -712,7 +713,9 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
     RDF_Dataset_Graphs.ml \
     RDF_Canonical.ml \
     RDF_Canonical_Manifest.ml \
-    SPARQL11_Algebra.ml XSD_Datatypes.ml RDF_Pretty.ml OWL_QueryRewrite.ml OWL_QueryEval.ml OWL_Tests_Manifest.ml RIF_Core_Syntax.ml Parser_RIFXML.ml RIF_Core_Translation.ml RIF_Core_Eval.ml RIF_Core_Tests.ml SPARQL11_Parser.ml SHACL_Validation.ml SPARQL11_Store.ml RDF_Store_Combine.ml RDF_Dataset_Merge.ml SPARQL_Protocol.ml SPARQL_HTTP_RunQuery.ml \
+    SPARQL11_Algebra.ml XSD_Datatypes.ml RDF_Pretty.ml OWL_QueryRewrite.ml OWL_QueryEval.ml OWL_Tests_Manifest.ml RIF_Core_Syntax.ml Parser_RIFXML.ml RIF_Core_Translation.ml RIF_Core_Eval.ml RIF_Core_Tests.ml SPARQL11_Parser.ml SHACL_Validation.ml \
+    ShEx_Schema.ml ShEx_Validation.ml \
+    SPARQL11_Store.ml RDF_Store_Combine.ml RDF_Dataset_Merge.ml SPARQL_Protocol.ml SPARQL_HTTP_RunQuery.ml \
     SPARQL_Update_Sandbox.ml \
     SPARQL_Update_Analysis.ml \
     SPARQL_Diagnostics.ml \
@@ -978,6 +981,36 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
     fi
     echo "  Built: bin/${PLATFORM}/shacl_runner ($(wc -c < "$BINDIR/shacl_runner") bytes)"
 
+    # shex_runner — ShEx (Shape Expressions) validation manifest runner,
+    # stage 8 of the ShEx program
+    # (docs/designissues/2026-07-05-shex-program-plan.md). Walks
+    # third_party/testing/shex/validation/manifest.ttl via the
+    # F*-extracted Parser_Turtle, loads each test's ShExJ schema twin
+    # (schemas/<name>.json in place of the manifest's canonical
+    # ShExC .shex reference — see the plan's "ShExC vs ShExJ" scope
+    # cut) via ShEx_Schema.decode_shex_schema, and calls
+    # ShEx_Validation.validate_focus. See bin/shex-runner/shex_runner.ml's
+    # header comment for the PASS/MISMATCH/DEFERRED/SKIP classification.
+    SHEX_RUNNER_RC=0
+    run_with_heartbeat "ocamlopt shex_runner" "_ocamlopt_shex_runner.log" -- \
+      ocamlfind ocamlopt -package fstar.lib,str,zarith,sha,digestif.c,unix -linkpkg -w -8-14-26 \
+      $STATIC_FLAGS \
+      $COMMON_MODULES \
+      $PARQUET_NATIVE_STUBS \
+      ../../../bin/shex-runner/shex_runner.ml \
+      -o "$BINDIR/shex_runner" || SHEX_RUNNER_RC=$?
+    cat _ocamlopt_shex_runner.log
+    if [[ "$SHEX_RUNNER_RC" -ne 0 ]]; then
+      echo "  ERROR: shex_runner build failed (ocamlopt rc=$SHEX_RUNNER_RC)" >&2
+      echo "  See full log above. Build aborted." >&2
+      exit "$SHEX_RUNNER_RC"
+    fi
+    if [[ ! -x "$BINDIR/shex_runner" ]]; then
+      echo "  ERROR: shex_runner ocamlopt returned 0 but $BINDIR/shex_runner is missing or not executable" >&2
+      exit 1
+    fi
+    echo "  Built: bin/${PLATFORM}/shex_runner ($(wc -c < "$BINDIR/shex_runner") bytes)"
+
     # factoidal_http_client — minimal HTTP/1.1 client I/O glue around
     # the F*-extracted SPARQL.HTTP.Client module. Has a module-init
     # smoke-test hook gated on FACTOIDAL_HTTP_CLIENT_SMOKE=1 in the
@@ -1151,6 +1184,7 @@ if [[ "$STEP" == "all" || "$STEP" == "js" ]]; then
     RDF_Canonical.ml
     RDF_Canonical_Manifest.ml
     SPARQL11_Algebra.ml XSD_Datatypes.ml RDF_Pretty.ml OWL_QueryRewrite.ml OWL_QueryEval.ml OWL_Tests_Manifest.ml RIF_Core_Syntax.ml Parser_RIFXML.ml RIF_Core_Translation.ml RIF_Core_Eval.ml RIF_Core_Tests.ml SPARQL11_Parser.ml SHACL_Validation.ml
+    ShEx_Schema.ml ShEx_Validation.ml
     SPARQL11_Store.ml
     RDF_Store_Combine.ml
     RDF_Dataset_Merge.ml

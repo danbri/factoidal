@@ -1,0 +1,55 @@
+name: ShEx (Shape Expressions) Validation
+spec: https://shex.io/shex-semantics/
+runner: bin/linux-x86_64/shex_runner
+runner_args: []
+manifest: third_party/testing/shex/validation/manifest.ttl
+log_path: formal/fstar/ocaml-output/shex_results.log
+result_path: docs/test-results/by-suite/shex.json
+domain: SHEX
+foundational: false
+
+# Stage 8 of the ShEx program
+# (docs/designissues/2026-07-05-shex-program-plan.md), following stage 3
+# (commit 37ae500: triple-expression matching, disjoint-predicate fast
+# path). ShExJ-first (the vendored corpus's canonical ShExC `.shex`
+# schema references are swapped for their same-basename `.json` twin —
+# see bin/shex-runner/shex_runner.ml's header for the mapping and the
+# 4/346 known-missing twins); Logic-conformant only (boolean pass/fail,
+# no ValidationResult/error-report structure matching — the suite's own
+# README calls those tiers experimental); manifest-only shape maps (the
+# 3 `sht:ShapeMap`-trait fixtures using `sht:map` instead of `sht:focus`
+# SKIP, out of scope per the plan's scope cuts).
+#
+# The runner reports FOUR buckets, not two: PASS / MISMATCH (a real
+# wrong verdict) / DEFERRED (ShEx.Validation.validate_focus returned
+# `None` — Stage 4/5 territory: TE_OneOf, cardinality-wrapped groups,
+# overlapping-signature siblings, shapeExprRef recursion, fuel
+# exhaustion) / SKIP (couldn't even be attempted — missing ShExJ twin,
+# missing data/schema/focus fields). DEFERRED is an honest scope gap,
+# not a wrong answer — see ShEx.Validation.fst's file-header doc
+# comment for the `option bool` convention this bucketing mirrors.
+
+triggers:
+  paths:
+    # ShExJ AST + JSON decoder.
+    - formal/fstar/ShEx.Schema.fst
+    # NodeConstraint dispatch + triple-expression partition matching.
+    - formal/fstar/ShEx.Validation.fst
+    # The manifest itself, and schema/data fixtures, are plain Turtle.
+    - formal/fstar/Parser.Turtle.fst
+    # ShExJ schema fixtures are JSON.
+    - formal/fstar/Parser.JSON.fst
+    # Reused datatype-level arithmetic (literal_to_scaled / scaled_cmp /
+    # literal_ill_formed) — the same functions SHACL.Validation.fst calls.
+    - formal/fstar/XSD.Datatypes.fst
+    # `pattern` facet reuses SPARQL11.Algebra.regex_match (assume-val
+    # host-engine call-out, rule #11's acceptable form).
+    - formal/fstar/SPARQL11.Algebra.fst
+    - formal/fstar/minimal_regrettable_glue_code_each_with_an_open_issue/63_regex_hash_uuid_stubs.sh
+    # The runner.
+    - bin/shex-runner/**
+    # Vendored shexSpec/shexTest (manifest + validation/*.ttl +
+    # schemas/*.json fixtures).
+    - third_party/testing/shex/**
+
+  excludes: []
