@@ -1809,12 +1809,23 @@ let probe_parquet_column_delta_length_byte_array_decode_all
 //      page_header.data_page_header.num_values.
 //
 // The dictionary page lives at column_metadata.dictionary_page_offset
-// (Thrift field 14). The data page lives at column_metadata.data_page_offset
+// (Thrift field 11). The data page lives at column_metadata.data_page_offset
 // (field 9, already supported by the existing helpers).
 // ===========================================================================
 
-// Field-14 lookup of column_metadata.dictionary_page_offset. Mirrors the
+// Field-11 lookup of column_metadata.dictionary_page_offset. Mirrors the
 // shape of `probe_parquet_column_data_page_offset`.
+//
+// Bug history (#98 reopened 2026-07-05): this previously read Thrift
+// field 14, which is `bloom_filter_offset` (parquet.thrift
+// `ColumnMetaData`: 9=data_page_offset, 10=index_page_offset,
+// 11=dictionary_page_offset, 12=statistics, 13=encoding_stats,
+// 14=bloom_filter_offset). DuckDB/pycottas write a bloom filter after
+// the data pages by default, so field 14 was usually *present* and
+// looked like a valid answer — but it pointed at bloom-filter bytes,
+// not a dictionary page header, so every subsequent decompress/decode
+// step silently failed and the RLE_DICTIONARY column read as
+// undecodable. Fixed to field 11.
 let probe_parquet_column_dictionary_page_offset (path:string) (col_index:nat) : option nat =
   match probe_parquet_footer path with
   | None -> None
@@ -1848,7 +1859,7 @@ let probe_parquet_column_dictionary_page_offset (path:string) (col_index:nat) : 
                       | Some metadata_field ->
                         if metadata_field.cf_type <> compact_t_struct then None
                         else
-                          match nth_field_hex meta_hex 14 metadata_field.cf_value_start 0 meta_hex_len with
+                          match nth_field_hex meta_hex 11 metadata_field.cf_value_start 0 meta_hex_len with
                           | None -> None
                           | Some offset_field ->
                             if offset_field.cf_type <> compact_t_i64 then None
@@ -2148,6 +2159,31 @@ let rec map_indices_to_dict (indices:list nat) (dict:list string) (acc:list (opt
             | None -> None in
     map_indices_to_dict rest dict (v :: acc)
 
+// Skip the leading "first-level section" of a decompressed data-page
+// payload: a 4-byte LE byte-length, then that many bytes. Every COTTAS
+// column comes out of pycottas/DuckDB as Parquet-schema OPTIONAL — SQL
+// `NOT NULL` is not propagated to the Parquet `REQUIRED` repetition type
+// (confirmed via `parquet_schema()` on a fresh pycottas build, 2026-07-05:
+// all four of s/p/o/g report `OPTIONAL`) — so every data page, regardless
+// of value encoding, opens with a definition-level run: 4-byte length
+// prefix + that many bytes of RLE-encoded definition levels, THEN the
+// actual value stream. `probe_parquet_column_delta_length_byte_array_values_offset[_in_row_group]`
+// already skips exactly this section before reading the DELTA_BINARY_PACKED
+// lengths header (that is what "first_level_section_length" means); the
+// RLE_DICTIONARY decoder must skip it the same way before treating byte 0
+// of the value stream as the dictionary-index bit-width. Without this, the
+// decoder reads definition-level bytes as if they were bit-width + hybrid
+// RLE index bytes: on data shaped so the byte count still comes out right
+// (observed on a real 3-bit-dictionary predicate column) this SILENTLY
+// decodes the wrong indices instead of failing — issue #98 reopened
+// 2026-07-05's root cause, combined with the field-11/field-14 mixup above.
+let skip_first_level_section_hex (payload_hex:string) (section_len:nat) : option string =
+  let skip_bytes = 4 + section_len in
+  let skip_hex = mul_nat skip_bytes 2 in
+  let payload_len_hex = String.length payload_hex in
+  if skip_hex > payload_len_hex then None
+  else Some (String.sub payload_hex skip_hex (payload_len_hex - skip_hex))
+
 // Top-level: decode every row of an RLE_DICTIONARY column. Returns the
 // list-of-option-string in row order (one entry per page row), or None if
 // either page is missing / mis-encoded.
@@ -2172,20 +2208,42 @@ let probe_parquet_column_rle_dictionary_decode_all (path:string) (col_index:nat)
             match probe_parquet_column_page_header_num_values path col_index with
             | None -> None
             | Some value_count ->
-              match decode_rle_dictionary_data_page data_payload_hex value_count with
+              match probe_parquet_column_first_level_section_length path col_index with
               | None -> None
-              | Some indices -> Some (map_indices_to_dict indices dict [])
+              | Some section_len ->
+                match skip_first_level_section_hex data_payload_hex section_len with
+                | None -> None
+                | Some values_hex ->
+                  match decode_rle_dictionary_data_page values_hex value_count with
+                  | None -> None
+                  | Some indices -> Some (map_indices_to_dict indices dict [])
 
 // Combined dispatcher: try DELTA_LENGTH_BYTE_ARRAY first (covers cols 0+2
 // in a COTTAS), fall back to RLE_DICTIONARY (covers cols 1+3). Callers
 // (Parser.BallyhooCOTTAS) can swap to this single entry point and stop
 // caring about per-column encoding.
+// Dispatch on the column's DECLARED data-page encoding rather than "try
+// DLBA, if it returns Some at all use it, else try RLE_DICTIONARY."  The
+// try-then-fallback shape is unsound: the DLBA parser has no encoding
+// discriminator of its own -- given RLE_DICTIONARY bytes it walks the
+// generic varint header fields (block_size, miniblocks, value_count, ...)
+// and can land on an internally-consistent-looking small/zero value_count,
+// returning `Some []` (or `Some` of a short, wrong list) instead of `None`.
+// `Some []` is indistinguishable from "this column genuinely has zero
+// rows" to every caller upstream, which is a silent wrong answer, not a
+// decode failure -- observed in practice on a real RLE_DICTIONARY-encoded
+// named-graph column (#98 reopened 2026-07-05, root cause of the g21-style
+// silent COUNT=0). Reading the page header's own encoding field first
+// removes the ambiguity entirely: an encoding this reader doesn't
+// implement is a loud `None`, never a guess.
 let probe_parquet_column_decode_all (path:string) (col_index:nat)
   : option (list (option string)) =
-  match probe_parquet_column_delta_length_byte_array_decode_all path col_index with
-  | Some result -> Some result
-  | None ->
+  match probe_parquet_column_page_header_data_encoding path col_index with
+  | Some "DELTA_LENGTH_BYTE_ARRAY" ->
+    probe_parquet_column_delta_length_byte_array_decode_all path col_index
+  | Some "RLE_DICTIONARY" ->
     probe_parquet_column_rle_dictionary_decode_all path col_index
+  | _ -> None
 
 // ===========================================================================
 // Issue #98 Gap B — multi-row-group iteration.
@@ -2285,7 +2343,9 @@ let probe_parquet_column_data_page_offset_in_row_group
           | None -> None
           | Some raw -> Some (zigzag_decode_nat raw)
 
-// dictionary_page_offset for one (rg_index, col_index). Field 14.
+// dictionary_page_offset for one (rg_index, col_index). Field 11 (see the
+// bug-history note on `probe_parquet_column_dictionary_page_offset` above —
+// this per-row-group sibling had the identical field-14/field-11 mix-up).
 let probe_parquet_column_dictionary_page_offset_in_row_group
   (path:string) (rg_index:nat) (col_index:nat) : option nat =
   match probe_parquet_column_chunk_in_row_group_locator path rg_index col_index with
@@ -2294,7 +2354,7 @@ let probe_parquet_column_dictionary_page_offset_in_row_group
     match column_metadata_start_of loc with
     | None -> None
     | Some md_start ->
-      match nth_field_hex loc.mcc_meta_hex 14 md_start 0 loc.mcc_meta_hex_len with
+      match nth_field_hex loc.mcc_meta_hex 11 md_start 0 loc.mcc_meta_hex_len with
       | None -> None
       | Some offset_field ->
         if offset_field.cf_type <> compact_t_i64 then None
@@ -2494,21 +2554,63 @@ let probe_parquet_column_rle_dictionary_decode_all_in_row_group
                     path rg_index col_index with
             | None -> None
             | Some value_count ->
-              match decode_rle_dictionary_data_page data_payload_hex value_count with
+              match probe_parquet_column_first_level_section_length_in_row_group
+                      path rg_index col_index with
               | None -> None
-              | Some indices -> Some (map_indices_to_dict indices dict [])
+              | Some section_len ->
+                match skip_first_level_section_hex data_payload_hex section_len with
+                | None -> None
+                | Some values_hex ->
+                  match decode_rle_dictionary_data_page values_hex value_count with
+                  | None -> None
+                  | Some indices -> Some (map_indices_to_dict indices dict [])
 
-// Per-row-group dispatcher: try DLBA first, fall back to RLE_DICTIONARY.
-// Bet4 (lazy mmap'd backend) calls this one row group at a time.
+// Data-page encoding (Thrift enum name) for one (rg_index, col_index).
+// Mirrors `probe_parquet_column_page_header_data_encoding` but per-row-
+// group; see that function's comment (and the dispatcher below) for why
+// this reads the encoding directly instead of a try/fallback.
+let probe_parquet_column_page_header_data_encoding_in_row_group
+  (path:string) (rg_index:nat) (col_index:nat) : option string =
+  match probe_parquet_column_data_page_offset_in_row_group path rg_index col_index with
+  | None -> None
+  | Some page_offset ->
+    match parquet_read_range_hex path page_offset 128 with
+    | None -> None
+    | Some page_hex ->
+      match nth_field_hex page_hex 5 0 0 (String.length page_hex) with
+      | None -> None
+      | Some data_page_header_field ->
+        if data_page_header_field.cf_type <> compact_t_struct then None
+        else
+          match nth_field_hex page_hex 2 data_page_header_field.cf_value_start 0
+                  (String.length page_hex) with
+          | None -> None
+          | Some encoding_field ->
+            if encoding_field.cf_type <> compact_t_i32 then None
+            else
+              match decode_varint_value_hex page_hex
+                      encoding_field.cf_value_start 0 0 (String.length page_hex) with
+              | None -> None
+              | Some raw -> Some (parquet_encoding_name (zigzag_decode_nat raw))
+
+// Per-row-group dispatcher: dispatch on the column's DECLARED data-page
+// encoding rather than "try DLBA first, fall back to RLE_DICTIONARY" --
+// the try-then-fallback shape is unsound (see
+// `probe_parquet_column_decode_all`'s comment: the DLBA parser has no
+// encoding discriminator and can spuriously return `Some []`/`Some`-of-
+// wrong-length on RLE_DICTIONARY bytes instead of `None`). Bet4 (lazy
+// mmap'd backend) calls this one row group at a time.
 let probe_parquet_column_decode_in_row_group
   (path:string) (rg_index:nat) (col_index:nat)
   : option (list (option string)) =
-  match probe_parquet_column_delta_length_byte_array_decode_all_in_row_group
-          path rg_index col_index with
-  | Some result -> Some result
-  | None ->
+  match probe_parquet_column_page_header_data_encoding_in_row_group path rg_index col_index with
+  | Some "DELTA_LENGTH_BYTE_ARRAY" ->
+    probe_parquet_column_delta_length_byte_array_decode_all_in_row_group
+      path rg_index col_index
+  | Some "RLE_DICTIONARY" ->
     probe_parquet_column_rle_dictionary_decode_all_in_row_group
       path rg_index col_index
+  | _ -> None
 
 // Concatenate two lists, tail-recursive via reverse-then-flip. Avoids
 // `List.Tot.append`'s O(n) per-cons stack growth on the parliament-sized
