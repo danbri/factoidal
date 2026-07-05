@@ -1,6 +1,4 @@
 open Prims
-type bnode_id = Prims.string
-type iri = Prims.string
 let rec string_has_colon_from (s : Prims.string) (pos : Prims.nat)
   (fuel : Prims.nat) : Prims.bool=
   if fuel = Prims.int_zero
@@ -21,14 +19,11 @@ let string_contains_colon (s : Prims.string) : Prims.bool=
     ((FStar_String.strlen s) + Prims.int_one)
 let is_iri (s : Prims.string) : Prims.bool=
   ((FStar_String.strlen s) > Prims.int_zero) && (string_contains_colon s)
+type bnode_id = Prims.string
+type iri = Prims.string
 type wf_iri = iri
 let rdf_lang_string : wf_iri=
   "http://www.w3.org/1999/02/22-rdf-syntax-ns#langString"
-let xsd_string : wf_iri= "http://www.w3.org/2001/XMLSchema#string"
-let xsd_integer : wf_iri= "http://www.w3.org/2001/XMLSchema#integer"
-let xsd_decimal : wf_iri= "http://www.w3.org/2001/XMLSchema#decimal"
-let xsd_double : wf_iri= "http://www.w3.org/2001/XMLSchema#double"
-let xsd_boolean : wf_iri= "http://www.w3.org/2001/XMLSchema#boolean"
 type literal =
   {
   lexical_form: Prims.string ;
@@ -75,6 +70,11 @@ let uu___is_S_BNode (projectee : subject) : Prims.bool=
   match projectee with | S_BNode _0 -> true | uu___ -> false
 let __proj__S_BNode__item___0 (projectee : subject) : bnode_id=
   match projectee with | S_BNode _0 -> _0
+let xsd_string : wf_iri= "http://www.w3.org/2001/XMLSchema#string"
+let xsd_integer : wf_iri= "http://www.w3.org/2001/XMLSchema#integer"
+let xsd_decimal : wf_iri= "http://www.w3.org/2001/XMLSchema#decimal"
+let xsd_double : wf_iri= "http://www.w3.org/2001/XMLSchema#double"
+let xsd_boolean : wf_iri= "http://www.w3.org/2001/XMLSchema#boolean"
 let subject_eq (s1 : subject) (s2 : subject) : Prims.bool=
   match (s1, s2) with
   | (S_IRI i1, S_IRI i2) -> i1 = i2

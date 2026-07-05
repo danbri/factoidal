@@ -373,18 +373,16 @@ let resolve_iri_v2 (base : Prims.string) (ref_ : Prims.string) :
        | FStar_Pervasives_Native.Some r ->
            recompose (transform_references b r))
 let string_to_iri (s : Prims.string) :
-  RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option=
-  if RDF_Graph_Executable.is_iri s
+  RDF_Term.wf_iri FStar_Pervasives_Native.option=
+  if RDF_Term.is_iri s
   then FStar_Pervasives_Native.Some s
   else FStar_Pervasives_Native.None
-let resolve_iri (base : RDF_Graph_Executable.wf_iri)
-  (relative : Prims.string) : RDF_Graph_Executable.wf_iri=
+let resolve_iri (base : RDF_Term.wf_iri) (relative : Prims.string) :
+  RDF_Term.wf_iri=
   let result = resolve_iri_v2 base relative in
-  if RDF_Graph_Executable.is_iri result then result else base
-let resolve_query_iri
-  (base : RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option)
-  (rel : Prims.string) :
-  RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option=
+  if RDF_Term.is_iri result then result else base
+let resolve_query_iri (base : RDF_Term.wf_iri FStar_Pervasives_Native.option)
+  (rel : Prims.string) : RDF_Term.wf_iri FStar_Pervasives_Native.option=
   match base with
   | FStar_Pervasives_Native.Some b ->
       FStar_Pervasives_Native.Some (resolve_iri b rel)
