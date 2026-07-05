@@ -1,3 +1,14 @@
+* Warning 241 at RDF.IRI.fsti(0,0-0,0):
+  - Unable to load RDF.IRI.fsti.checked since checked file RDF.IRI.fsti.checked
+    does not exist; will recheck RDF.IRI.fsti (suppressing this warning for
+    further modules)
+
 Extracted module JSONLD.Expand
+* Warning 247 at JSONLD.Expand.fst(0,0-0,0):
+  - Checked file JSONLD.Expand.fst.checked was not written.
+  - Reason:
+      checked file SPARQL11.IRI.Resolve.fst.checked is stale (digest mismatch
+      for SPARQL11.IRI.Resolve.fst)
+
 Verified module: JSONLD.Expand
 All verification conditions discharged successfully

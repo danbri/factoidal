@@ -1,8 +1,7 @@
     Parser.JSONLD.fst (up to date, skipped -- source unchanged since last extract)
+    RIF.Core.Eval.fst (up to date, skipped -- source unchanged since last extract)
     RDF.CottasStore.OnDiskRuntime.fst (up to date, skipped -- source unchanged since last extract)
-    [RIF.Core.Eval.fst]
     SPARQL.Plan.AccessPath.fst (up to date, skipped -- source unchanged since last extract)
-    SPARQL11.Store.fst (up to date, skipped -- source unchanged since last extract)
     RDF.CottasInMem.fst (up to date, skipped -- source unchanged since last extract)
+    SPARQL11.Store.fst (up to date, skipped -- source unchanged since last extract)
     SPARQL.Plan.Explain.fst (up to date, skipped -- source unchanged since last extract)
-    [RIF.Core.Eval.fst] Extracted module RIF.Core.Eval

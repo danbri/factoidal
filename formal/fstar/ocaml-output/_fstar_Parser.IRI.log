@@ -1,3 +1,13 @@
+* Warning 241 at RDF.Graph.Executable.fst(0,0-0,0):
+  - Unable to load RDF.Graph.Executable.fst.checked since checked file
+    RDF.Graph.Executable.fst.checked is stale (digest mismatch for
+    RDF.Graph.Executable.fst); will recheck RDF.Graph.Executable.fst
+    (suppressing this warning for further modules)
+
 Extracted module Parser.IRI
+* Warning 247 at Parser.IRI.fst(0,0-0,0):
+  - Checked file Parser.IRI.fst.checked was not written.
+  - Reason: checked file RDF.IRI.fsti.checked does not exist
+
 Verified module: Parser.IRI
 All verification conditions discharged successfully

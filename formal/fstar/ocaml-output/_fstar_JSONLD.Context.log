@@ -1,3 +1,21 @@
+* Warning 241 at RDF.IRI.fsti(0,0-0,0):
+  - Unable to load RDF.IRI.fsti.checked since checked file RDF.IRI.fsti.checked
+    does not exist; will recheck RDF.IRI.fsti (suppressing this warning for
+    further modules)
+
+* Warning 349 at JSONLD.Context.fst(936,33-1042,28):
+  - The verification condition succeeded after splitting it to localize
+    potential errors, although the original non-split verification condition
+    failed. If you want to rely on splitting queries for verifying your program
+    please use the '--split_queries always' option rather than relying on it
+    implicitly.
+
 Extracted module JSONLD.Context
+* Warning 247 at JSONLD.Context.fst(0,0-0,0):
+  - Checked file JSONLD.Context.fst.checked was not written.
+  - Reason:
+      checked file SPARQL11.IRI.Resolve.fst.checked is stale (digest mismatch
+      for SPARQL11.IRI.Resolve.fst)
+
 Verified module: JSONLD.Context
 All verification conditions discharged successfully
