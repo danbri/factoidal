@@ -520,6 +520,52 @@ whether a design doc is needed first.
    OCaml logic this round") — filing as a followup is the right next
    step; described here rather than patched.
 
+   **FIXED 2026-07-05 (same day, follow-up session).** Root cause was
+   a one-constant writer/validator mismatch in F\*, not in the OCaml
+   boot wiring: `RDF.CottasStore.DictWriter.fst`'s `dict_magic` was
+   `0x444b4f43` ('COKD') — introduced when the #200 PR2 migration
+   moved the `.dict` byte assembly from OCaml into F\* — while the
+   reader/validator `RDF.CottasStore.OnDiskIndex.fst`
+   (`cotd_magic_u32`, checked by `dict_header_ok`, which
+   `companions_present_and_valid` calls per column) expects
+   `0x44544f43` ('COTD'), the magic the pre-migration OCaml writer
+   used. Every `.dict` written since that migration carries the wrong
+   magic and fails the boot-time header verify; the `.presence`
+   headers match on both sides ('COTP'), but
+   `companions_present_and_valid` ANDs all four dict+presence pairs,
+   so all four rebuilt on every boot. The non-validating readers
+   (`read_dict_header` consumers such as the bulk-load path and
+   `ensure_compound_po_built`) never check the magic, which is why
+   the mis-stamped files still *worked* — they were just never
+   *trusted*. Fix: one constant in `RDF.CottasStore.DictWriter.fst`
+   (verified, z3 4.13.3, no `--lax`; re-extracted;
+   `tests/unit/dict_writer_roundtrip.ml` hashes re-pinned to the
+   corrected 'COTD' bytes — round-trip parse/serialize equalities
+   were unaffected since `parse_dict` compares against the same
+   constant). Measured on the gene store (888,949 quads, 10
+   eagerly-built sidecars, `factoidal query --explain` boot, this
+   sandbox): pre-fix HEAD binary, second boot = **57.3 s** ("header
+   verify FAILED" ×4 + full rebuild of the four dict/presence pairs,
+   on every boot); post-fix binary, second boot = **0.26–0.27 s**,
+   all six companion types skipping ("mmap'd companion files,
+   skipping pre-warm"; offsets "skipping build"; compound-po "header
+   matches; skip"). Eager-at-import now recovers the full lazy-boot
+   cost, not just the ~41 s offsets/compound-po share. Old
+   'COKD'-stamped stores self-heal: the fixed binary rebuilds them
+   once (they do fail verify — wrong magic on disk) and skips
+   thereafter. Query
+   results are unchanged: `COUNT(*)` = 888,949 and a 3-triple subject
+   point lookup return byte-identical CSV from the pre-fix and
+   post-fix binaries. Regression pin: a ninth check in
+   [`tests/local/cottas_row_order_regressions.sh`](../../tests/local/cottas_row_order_regressions.sh)
+   (second-boot-must-not-rebuild: boots the eagerly-built store and
+   fails on any rebuild marker in the boot log; 9 checks, 9 pass, 0
+   fail), plus the re-pinned serializer hashes above. Floors after
+   the fix: SPARQL suite 631 pass, 0 fail (of 631, `w3c_runner` from
+   repo root); RDF suite 1031 pass, 0 fail (of 1031, `w3c_runner
+   --rdf`); `tests/unit/run-all.sh` from repo root: 28 files pass, 0
+   files fail (of 28).
+
    **Query measurements (gene corpus, 888,949 quads, 8 row groups both
    builds, `factoidal serve` + HTTP `/query`, 3 warm runs each,
    median-equivalent — all three runs agreed to within 2 ms):**
@@ -609,7 +655,11 @@ whether a design doc is needed first.
    1. Fix `Cottas_companion_boot.companions_present_and_valid`'s
       always-fails header check for the four dict/presence
       companions, so eager-at-import actually saves the full ~101 s
-      instead of ~41 s.
+      instead of ~41 s. **DONE 2026-07-05** — the check itself was
+      correct; the `.dict` *writer's* magic constant in
+      `RDF.CottasStore.DictWriter.fst` was wrong ('COKD' vs the
+      validator's 'COTD'). See the "FIXED 2026-07-05" paragraph
+      above: gene second boot 57.3 s → 0.26 s.
    2. Characterise and fix the on-disk reader's per-row-group cost
       that made 44 row groups 24× slower than 8, so `--row-group-size`
       can be safely lowered to let CS partitions map onto more,

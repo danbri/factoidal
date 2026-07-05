@@ -443,7 +443,7 @@ module Cottas_companion_writer = struct
      RDF.CottasStore.DictWriter.serialize_dict. The OCaml side here is
      reduced to the rule-#11(a) I/O step: convert the F*-extracted byte
      list to a string and atomic-write to disk. The F* serializer
-     enforces the same on-disk format invariants (magic 'COKD', version,
+     enforces the same on-disk format invariants (magic 'COTD', version,
      32-byte header, ids[], token_offs[], token_data) but with verified
      overflow checks (n < 2^32, total_offset < 2^64). *)
   let write_dict_file (path : string) (sorted_tokens : string array) : unit =

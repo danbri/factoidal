@@ -149,4 +149,33 @@ run_query "${CLUSTERED_ARTIFACT}" \
   "${WORKDIR}/clustered.gcount.csv"
 check_same "graph-groupby-count" "${WORKDIR}/unclustered.gcount.csv" "${WORKDIR}/clustered.gcount.csv"
 
+# (e) Second-boot-must-not-rebuild pin (2026-07-05 companion-magic fix).
+# Once the ten sidecars exist (built eagerly at import above), a boot
+# of the on-disk path must skip ALL rebuild paths: no
+# "companion header verify FAILED", no "building all companions", no
+# lamed3 offsets build, no compound-po build. Before the
+# RDF.CottasStore.DictWriter.fst dict_magic fix ('COKD' -> 'COTD',
+# matching RDF.CottasStore.OnDiskIndex.fst's cotd_magic_u32), the four
+# .dict/.presence pairs failed header verification on every single
+# boot -- ~57 s of rebuild per server start on the 888,949-quad gene
+# store -- even immediately after being written by the same binary.
+BOOT_LOG="${WORKDIR}/second-boot.log"
+FACTOIDAL_COTTAS_BRIDGE=/definitely/missing PYCOTTAS_PYTHON=/definitely/missing \
+  "${BIN}" query --data-cottas "${CLUSTERED_ARTIFACT}" \
+  --explain "SELECT * WHERE { ?s ?p ?o } LIMIT 1" \
+  >/dev/null 2>"${BOOT_LOG}"
+REBUILD_MARKERS='companion header verify FAILED|companion header read FAILED|companion absent for col=|building all companions|offsets file absent; building|\[lamed3-trace\] building offsets|\[compound-po-trace\] columnscan'
+if grep -Eq "${REBUILD_MARKERS}" "${BOOT_LOG}"; then
+  echo "FAIL cottas-roworder-second-boot-no-rebuild"
+  echo "  boot log rebuild lines:"
+  grep -E "${REBUILD_MARKERS}" "${BOOT_LOG}" | sed 's/^/    /'
+  FAIL=1
+elif ! grep -q "skipping pre-warm" "${BOOT_LOG}"; then
+  echo "FAIL cottas-roworder-second-boot-no-rebuild (no 'skipping pre-warm' marker; boot log follows)"
+  sed 's/^/    /' "${BOOT_LOG}"
+  FAIL=1
+else
+  echo "PASS cottas-roworder-second-boot-no-rebuild"
+fi
+
 exit "${FAIL}"

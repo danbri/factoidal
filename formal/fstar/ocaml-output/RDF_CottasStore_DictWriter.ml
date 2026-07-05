@@ -1,5 +1,5 @@
 open Prims
-let dict_magic : Prims.nat= (Prims.parse_int "0x444b4f43")
+let dict_magic : Prims.nat= (Prims.parse_int "0x44544f43")
 let dict_version : Prims.nat= Prims.int_one
 let header_size : Prims.nat= (Prims.of_int (32))
 let id_size : Prims.nat= (Prims.of_int (4))

@@ -11,7 +11,7 @@ module RDF.CottasStore.DictWriter
    On-disk format (little-endian throughout):
 
      Header (32 bytes):
-       [ magic    : u32  'COKD' = 0x444b4f43 (LE) ]
+       [ magic    : u32  'COTD' = 0x44544f43 (LE) ]
        [ version  : u32  layout version, currently 1 ]
        [ n        : u32  number of tokens ]
        [ pad      : u32  reserved 0 ]
@@ -45,7 +45,15 @@ module Lh = RDF.List.Helpers
 
 (* --- Header constants ------------------------------------------------- *)
 
-let dict_magic    : nat = 0x444b4f43      (* 'COKD' little-endian *)
+let dict_magic    : nat = 0x44544f43      (* 'COTD' little-endian — must match
+                                              RDF.CottasStore.OnDiskIndex.fst's
+                                              cotd_magic_u32. (Bug fixed
+                                              2026-07-05: this constant had
+                                              drifted to 0x444b4f43 'COKD'
+                                              during the #200 PR2 byte-layout
+                                              migration, so every dict-header
+                                              verify against the reader's
+                                              magic failed unconditionally.) *)
 let dict_version  : nat = 1
 let header_size   : nat = 32
 let id_size       : nat = 4
@@ -192,13 +200,13 @@ let rec parse_tokens_from_offsets
         | Some toks -> Some (tok :: toks)
 
 (* parse_dict bs
-     Inverse of [serialize_dict]. Reads the COKD header, skips the
+     Inverse of [serialize_dict]. Reads the COTD header, skips the
      trivially-redundant ids[] block (ids[i] = i for sorted tokens),
      reads the (n+1)-element cumulative-offsets array, and slices the
      token_data section into n strings.
 
      Returns [None] if any of:
-       - magic mismatch ('COKD' = 0x444b4f43)
+       - magic mismatch ('COTD' = 0x44544f43)
        - version mismatch (currently 1)
        - input shorter than declared by header
        - cumulative offsets non-monotonic

@@ -71,20 +71,26 @@ let () =
      byte sequence verbatim. UTF-8 fixtures are valuable but require
      a tighter byte-vs-codepoint contract in RDF.Bytes; that's
      follow-up work. *)
-  (* Hashes pinned 2026-05-09 against the F* serializer in
-     RDF.CottasStore.DictWriter.fst. Format: 32-byte 'COKD' header +
+  (* Hashes re-pinned 2026-07-05 against the F* serializer in
+     RDF.CottasStore.DictWriter.fst after the dict_magic fix: the
+     serializer's magic had drifted to 'COKD' (0x444b4f43) during the
+     #200 PR2 byte-layout migration, while the reader/validator in
+     RDF.CottasStore.OnDiskIndex.fst expects 'COTD' (0x44544f43) —
+     so Cottas_companion_boot.companions_present_and_valid failed its
+     header verify on every boot and rebuilt the four dict/presence
+     sidecars unconditionally. Format: 32-byte 'COTD' header +
      ids[] (4*n) + token_offs[] (8*(n+1)) + token_data. Drift in
      either side will surface as a hash mismatch. *)
   let cases : (string * string list * string) list = [
     "empty",         [],
-      "617ddd896d0bc888005f951633c104a8f46a746e878865b16692a35c96f0fd9a";
+      "486401ad3679ae7b4daf49a768ad655bb9d642287b1dfa0b41c54f4ca62eca87";
     "singleton",     ["alpha"],
-      "914645e77b226e024e378472eb1877ab71dde4f971ebcedd55a5b569d11c3c62";
+      "92ae5967933fd9d17749f04c7e519f5ddb4652e8ef0d188b988bb53885a2f919";
     "three-tokens",  ["alpha"; "beta"; "gamma"],
-      "5e6a3a7d03f637d0088decb5556b2631eb1cf8305d665d6a05e33c29f1b49936";
+      "33eb82007018dc8c745ceea06e7ade30698c37497a05f29ae1dc02d90279ce40";
     "ten-tokens",
       ["a"; "b"; "c"; "d"; "e"; "f"; "g"; "h"; "i"; "j"],
-      "81178eaf8dd38b0ab9ad758fbca35fe2b02f9d0b4464a10612dad61378adb539";
+      "8d6a7366e328729db17776a78f6701d3a2046874f9b4ad07bd226f8c4c36dd82";
   ] in
   List.iter (fun (name, toks, hash) ->
     run_case ~name ~expected_hash:hash toks
