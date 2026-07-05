@@ -1,3 +1,20 @@
+* Warning 241 at RDF.Graph.Executable.fst(0,0-0,0):
+  - Unable to load RDF.Graph.Executable.fst.checked since checked file
+    RDF.Graph.Executable.fst.checked is stale (digest mismatch for
+    RDF.Graph.Executable.fst); will recheck RDF.Graph.Executable.fst
+    (suppressing this warning for further modules)
+
+* Warning 328 at Parser.Turtle.fst(1530,4-1530,21):
+  - Global binding
+        'Parser.Turtle.parse_object_list'
+    is recursive but not used in its body
+
 Extracted module Parser.Turtle
+* Warning 247 at Parser.Turtle.fst(0,0-0,0):
+  - Checked file Parser.Turtle.fst.checked was not written.
+  - Reason:
+      checked file Parser.IRI.fst.checked is stale (digest mismatch for
+      Parser.IRI.fst)
+
 Verified module: Parser.Turtle
 All verification conditions discharged successfully

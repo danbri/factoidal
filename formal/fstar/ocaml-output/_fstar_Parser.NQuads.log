@@ -1,3 +1,15 @@
+* Warning 241 at RDF.Graph.Executable.fst(0,0-0,0):
+  - Unable to load RDF.Graph.Executable.fst.checked since checked file
+    RDF.Graph.Executable.fst.checked is stale (digest mismatch for
+    RDF.Graph.Executable.fst); will recheck RDF.Graph.Executable.fst
+    (suppressing this warning for further modules)
+
 Extracted module Parser.NQuads
+* Warning 247 at Parser.NQuads.fst(0,0-0,0):
+  - Checked file Parser.NQuads.fst.checked was not written.
+  - Reason:
+      checked file Parser.NTriples.fst.checked is stale (digest mismatch for
+      Parser.NTriples.fst)
+
 Verified module: Parser.NQuads
 All verification conditions discharged successfully
