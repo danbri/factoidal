@@ -1,0 +1,104 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<PositiveEntailmentTest id="Builtins_Numeric"
+    src="http://www.w3.org/2005/rules/test/repository/tc/Builtins_Numeric" xmlns="http://www.w3.org/2009/10/rif-test#">
+    <status>Approved</status>
+    <dialect>Core</dialect>
+    <dialect>BLD</dialect>
+    <dialect>PRD</dialect>
+    <purpose>Test built-in predicates and functions for XML Schema numeric datatypes</purpose>
+    <description/>
+    <PremiseDocument>
+        <Normative syntax="RIF/XML">
+            <name>Builtins_Numeric-premise.rif</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/Builtins_Numeric/Builtins_Numeric-premise.rif</remote>
+        </Normative>
+        <Presentation syntax="RIFBLD-PS"><![CDATA[
+Document( 
+ Prefix(xs <http://www.w3.org/2001/XMLSchema#>)
+ Prefix(ex <http://example.org/example#>) 
+ Prefix(func <http://www.w3.org/2007/rif-builtin-function#>) 
+ Prefix(pred <http://www.w3.org/2007/rif-builtin-predicate#>) 
+
+ Group ( 
+  ex:ok() :- 
+   And (
+    External( pred:is-literal-double( "1.2E34"^^xs:double ) )
+    External( pred:is-literal-float( "-INF"^^xs:float ) )
+    External( pred:is-literal-decimal( "1"^^xs:integer ) )
+    External( pred:is-literal-integer( "1"^^xs:integer ) )
+    External( pred:is-literal-long( "1"^^xs:integer ) )
+    External( pred:is-literal-int( "1"^^xs:integer ) )
+    External( pred:is-literal-short( "1"^^xs:integer ) )
+    External( pred:is-literal-byte( "1"^^xs:integer ) )
+    External( pred:is-literal-nonNegativeInteger( "1"^^xs:integer ) )
+    External( pred:is-literal-positiveInteger( "1"^^xs:integer ) )
+    External( pred:is-literal-unsignedLong( "1"^^xs:integer ) )
+    External( pred:is-literal-unsignedInt( "1"^^xs:integer ) )
+    External( pred:is-literal-unsignedShort( "1"^^xs:integer ) )
+    External( pred:is-literal-unsignedByte( "1"^^xs:integer ) )
+    External( pred:is-literal-nonPositiveInteger( "-1"^^xs:integer ) )
+    External( pred:is-literal-negativeInteger( "-1"^^xs:integer ) )
+    External( pred:is-literal-not-double( "foo"^^xs:string ) )
+    External( pred:is-literal-not-float( "foo"^^xs:string ) )
+    External( pred:is-literal-not-hexBinary( "foo"^^xs:string ) )
+    External( pred:is-literal-not-decimal( "foo"^^xs:string ) )
+    External( pred:is-literal-not-integer( "foo"^^xs:string ) )
+    External( pred:is-literal-not-long( "foo"^^xs:string ) )
+    External( pred:is-literal-not-int( "foo"^^xs:string ) )
+    External( pred:is-literal-not-short( "foo"^^xs:string ) )
+    External( pred:is-literal-not-byte( "foo"^^xs:string ) )
+    External( pred:is-literal-not-nonNegativeInteger( "foo"^^xs:string ) )
+    External( pred:is-literal-not-positiveInteger( "foo"^^xs:string ) )
+    External( pred:is-literal-not-unsignedLong( "foo"^^xs:string ) )
+    External( pred:is-literal-not-unsignedInt( "foo"^^xs:string ) )
+    External( pred:is-literal-not-unsignedShort( "foo"^^xs:string ) )
+    External( pred:is-literal-not-unsignedByte( "foo"^^xs:string ) )
+    External( pred:is-literal-not-nonPositiveInteger( "foo"^^xs:string ) )
+    External( pred:is-literal-not-negativeInteger( "foo"^^xs:string ) )
+    External( pred:is-literal-double( External ( xs:double ("1.2E34"^^xs:string ) ) ) )
+    External( pred:is-literal-float( External ( xs:float ( "-1"^^xs:string ) ) ) )
+    External( pred:is-literal-hexBinary( External ( xs:hexBinary (  "aabb"^^xs:string ) ) ) )
+    External( pred:is-literal-decimal( External( xs:decimal ( "1"^^xs:string ) ) ) )
+    External( pred:is-literal-integer(  External( xs:integer ( "1"^^xs:string ) ) ) )
+    External( pred:is-literal-long( External( xs:long ( "1"^^xs:string ) ) ) )
+    External( pred:is-literal-int(  External( xs:int ( "1"^^xs:string ) ) ) )
+    External( pred:is-literal-short(  External( xs:short ( "1"^^xs:string ) ) ) )
+    External( pred:is-literal-byte(  External( xs:byte ( "1"^^xs:string ) ) ) )
+    External( pred:is-literal-nonNegativeInteger(  External( xs:nonNegativeInteger ( "1"^^xs:string ) ) ) )
+    External( pred:is-literal-positiveInteger(  External( xs:positiveInteger ( "1"^^xs:string ) ) ) )
+    External( pred:is-literal-unsignedLong(  External( xs:unsignedLong ( "1"^^xs:string ) ) ) )
+    External( pred:is-literal-unsignedInt(  External( xs:unsignedInt ( "1"^^xs:string ) ) ) )
+    External( pred:is-literal-unsignedShort(  External( xs:unsignedShort ( "1"^^xs:string ) ) ) )
+    External( pred:is-literal-unsignedByte(  External( xs:unsignedByte ( "1"^^xs:string ) ) ) )
+    External( pred:is-literal-nonPositiveInteger( External( xs:nonPositiveInteger ("-1"^^xs:string ) ) ) )
+    External( pred:is-literal-negativeInteger( External( xs:negativeInteger ("-1"^^xs:string ) ) ) )
+    2 = External ( func:numeric-add( 1 1 ) )
+    1 = External ( func:numeric-subtract( 2 1 ) )
+    6 = External ( func:numeric-multiply( 2 3 ) )
+    2 = External ( func:numeric-divide( 6 3 ) )
+    1 = External ( func:numeric-integer-divide( 5 3 ) )
+    2 = External ( func:numeric-integer-mod( 5 3 ) )
+    External ( pred:numeric-equal( "0.0E0"^^xs:double External ( func:numeric-subtract( 1 1 ) ) ) )
+    External ( pred:numeric-not-equal( 0 1 ) )
+    External ( pred:numeric-less-than ( 1 2 ) )
+    External ( pred:numeric-less-than-or-equal ( 1 2 ) )
+    External ( pred:numeric-less-than-or-equal ( 1 1 ) )
+    External ( pred:numeric-greater-than ( 2 -1 ) )
+    External ( pred:numeric-greater-than-or-equal ( 2 -1 ) )
+    External ( pred:numeric-greater-than-or-equal ( 2  2 ) )
+    External ( pred:numeric-not-equal( 0 1  ) )
+   )
+  )
+)
+]]></Presentation>
+    </PremiseDocument>
+    <ConclusionDocument>
+        <Normative syntax="RIF/XML">
+            <name>Builtins_Numeric-conclusion.rif</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/Builtins_Numeric/Builtins_Numeric-conclusion.rif</remote>
+        </Normative>
+        <Presentation syntax="RIFBLD-PS"><![CDATA[
+ex:ok()
+]]></Presentation>
+    </ConclusionDocument>
+</PositiveEntailmentTest>

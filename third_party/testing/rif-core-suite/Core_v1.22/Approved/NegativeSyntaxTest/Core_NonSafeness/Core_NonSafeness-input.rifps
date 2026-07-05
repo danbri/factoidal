@@ -1,0 +1,10 @@
+Document( 
+    Prefix(ex <http://example.org/example#>) 
+    Prefix(pred <http://www.w3.org/2007/rif-builtin-predicate#>) 
+    Group( 
+      Forall ?y ?z (ex:p(?y) :- And(
+         ?y=?z 
+         External(pred:numeric-greater-than(?z 0))
+      )) 
+    ) 
+  )

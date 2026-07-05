@@ -1,0 +1,15 @@
+Document( 
+ Prefix(xs <http://www.w3.org/2001/XMLSchema#>) 
+ Prefix(ex <http://example.org/example#>)  
+ Prefix(pred <http://www.w3.org/2007/rif-builtin-predicate#>) 
+
+ Group ( 
+  ex:ok() :- 
+   And (
+    External( pred:is-literal-hexBinary( "aabb"^^xs:hexBinary ) )
+    External( pred:is-literal-base64Binary( "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz/+0123456789"^^xs:base64Binary ) )
+    External( pred:is-literal-not-base64Binary( "foo"^^xs:string ) )
+    External( pred:is-literal-base64Binary( External ( xs:base64Binary ( "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz/+0123456789"^^xs:string ) ) ) )
+   )
+  )
+)

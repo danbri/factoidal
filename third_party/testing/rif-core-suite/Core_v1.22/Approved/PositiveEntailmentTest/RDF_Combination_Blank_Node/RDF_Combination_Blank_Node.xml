@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<PositiveEntailmentTest id="RDF_Combination_Blank_Node"
+    src="http://www.w3.org/2005/rules/test/repository/tc/RDF_Combination_Blank_Node" xmlns="http://www.w3.org/2009/10/rif-test#">
+    <status>Approved</status>
+    <dialect>Core</dialect>
+    <dialect>BLD</dialect>
+    <dialect>PRD</dialect>
+    <Combinations>
+        <profile>http://www.w3.org/ns/entailment/RDF</profile>
+    </Combinations>
+    <purpose>Test interaction between RDF and BLD with respect to blank nodes</purpose>
+    <description>Blank nodes cannot be referenced directly from a RIF rule because they are local to a specific RDF graph. However, variables do range over objects denoted by blank nodes, so it is possible to "access" an object denoted by a blank node from a RIF rule by using a variable.</description>
+    <ImportedDocument>
+        <Normative syntax="RDF/XML">
+            <name>RDF_Combination_Blank_Node-import001.rdf</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/RDF_Combination_Blank_Node/RDF_Combination_Blank_Node-import001</remote>
+        </Normative>
+        <Presentation syntax="Turtle"><![CDATA[
+_:x <http://example.org/example#hasName> "John" .
+]]></Presentation>
+    </ImportedDocument>
+    <PremiseDocument>
+        <Normative syntax="RIF/XML">
+            <name>RDF_Combination_Blank_Node-premise.rif</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/RDF_Combination_Blank_Node/RDF_Combination_Blank_Node-premise.rif</remote>
+        </Normative>
+        <Presentation syntax="RIFBLD-PS"><![CDATA[
+Document(
+
+     Prefix(ex  <http://example.org/example#>)
+     Prefix(rdf <http://www.w3.org/1999/02/22-rdf-syntax-ns#>)
+     Import(<http://example.org/mygraph> <http://www.w3.org/ns/entailment/RDF>)
+
+     Group (
+        Forall ?x ?y ( ?x[rdf:type -> ex:named] :- ?x[ex:hasName -> ?y] )
+        
+     )
+ )
+]]></Presentation>
+    </PremiseDocument>
+    <ConclusionDocument>
+        <Normative syntax="RIF/XML">
+            <name>RDF_Combination_Blank_Node-conclusion.rif</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/RDF_Combination_Blank_Node/RDF_Combination_Blank_Node-conclusion.rif</remote>
+        </Normative>
+        <Presentation syntax="RIFBLD-PS"><![CDATA[
+Exists ?z ( ?z["http://www.w3.org/1999/02/22-rdf-syntax-ns#type"^^rif:iri -> <http://example.org/example#named>] )
+]]></Presentation>
+    </ConclusionDocument>
+</PositiveEntailmentTest>

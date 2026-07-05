@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<PositiveEntailmentTest id="Modeling_Brain_Anatomy"
+    src="http://www.w3.org/2005/rules/test/repository/tc/Modeling_Brain_Anatomy" xmlns="http://www.w3.org/2009/10/rif-test#">
+    <status>Approved</status>
+    <dialect>Core</dialect>
+    <dialect>BLD</dialect>
+    <dialect>PRD</dialect>
+    <Combinations>
+        <profile>http://www.w3.org/ns/entailment/OWL-Direct</profile>
+    </Combinations>
+    <purpose>A simplified example of RIF-Core rules combined with OWL to capture anatomical knowledge that can be used to help label brain cortex structures in MRI images.</purpose>
+    <description>This highly simplified ontology and rule base  gives the flavor of a system that could be used to identify brain cortex structures in MRI images. The ontology represents the main entities and properties of the brain, and the rule base specifies relationships between ontology properties. In this example, the rule says that two entities are connected when they have a common boundary. In a full usage example, the inferred fact in this case could be combined with other facts to identify g1 as an e.g. preCentralGyrus.</description>
+    <ImportedDocument>
+        <Normative syntax="RDF/XML">
+            <name>Modeling_Brain_Anatomy-import001.rdf</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/Modeling_Brain_Anatomy/Modeling_Brain_Anatomy-import001.rdf</remote>
+        </Normative>
+        <Presentation syntax="OWL2 Functional Syntax"><![CDATA[
+Namespace(=<http://example.org/testOntology.owl#>)
+
+Ontology(<http://example.org/testOntology.owl>
+
+SubClassOf(MaterialAnatomicalEntity AnatomicalEntity)
+SubClassOf(Gyrus MaterialAnatomicalEntity)
+
+SubClassOf(NonMaterialAnatomicalEntity AnatomicalEntity)
+SubClassOf(GyriConnection NonMaterialAnatomicalEntity)
+SubClassOf(SucalFold NonMaterialAnatomicalEntity)
+
+SymmetricObjectProperty(isMAEConnectedTo)
+ObjectPropertyDomain(isMAEConnectedTo MaterialAnatomicalEntity)
+ObjectPropertyRange(isMAEConnectedTo MaterialAnatomicalEntity)
+
+ObjectPropertyDomain(isMAEBoundedBy MaterialAnatomicalEntity)
+ObjectPropertyRange(isMAEBoundedBy ObjectUnionOf(SucalFold GyriConnection))
+
+Declaration(Individual(g1))
+ClassAssertion(g1 Gyrus)
+ObjectPropertyAssertion(isMAEBoundedBy g1 op)
+
+Declaration(Individual(pcg0))
+ClassAssertion(pcg0 Gyrus)
+ObjectPropertyAssertion(isMAEBoundedBy pcg0 op)
+
+Declaration(Individual(op))
+ClassAssertion(op GyriConnection)
+
+)
+]]></Presentation>
+    </ImportedDocument>
+    <PremiseDocument>
+        <Normative syntax="RIF/XML">
+            <name>Modeling_Brain_Anatomy-premise.rif</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/Modeling_Brain_Anatomy/Modeling_Brain_Anatomy-premise.rif</remote>
+        </Normative>
+        <Presentation syntax="RIFBLD-PS"><![CDATA[
+Document(
+  Prefix(ba <http://example.org/testOntology.owl#>)
+  Prefix(rdf <http://www.w3.org/1999/02/22-rdf-syntax-ns#>)
+  Prefix(dc  <http://purl.org/dc/elements/1.1/>)
+
+  Import(<http://example.org/ontology1> <http://www.w3.org/ns/entailment/OWL-Direct>)
+  
+  Group (
+   
+    (* _rule1[dc:description -> "entities that are bounded by a common gyri connection are connected to each other"] *)
+    
+     Forall ?X ?Y ?Z  ( 
+        ?X [ba:isMAEConnectedTo -> ?Y] :-
+              And (?X[ba:isMAEBoundedBy -> ?Z]
+                     ?Y[ba:isMAEBoundedBy -> ?Z]
+                     ?X[rdf:type -> ba:MaterialAnatomicalEntity]
+                     ?Y[rdf:type -> ba:MaterialAnatomicalEntity]
+                     ?Z[rdf:type -> ba:GyriConnection])
+     )
+   )
+  )
+]]></Presentation>
+    </PremiseDocument>
+    <ConclusionDocument>
+        <Normative syntax="RIF/XML">
+            <name>Modeling_Brain_Anatomy-conclusion.rif</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/Modeling_Brain_Anatomy/Modeling_Brain_Anatomy-conclusion.rif</remote>
+        </Normative>
+        <Presentation syntax="RIFBLD-PS"><![CDATA[
+ba:g1[ba:isMAEConnectedTo -> ba:pcg0]
+]]></Presentation>
+    </ConclusionDocument>
+</PositiveEntailmentTest>

@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<PositiveEntailmentTest id="Builtins_String"
+    src="http://www.w3.org/2005/rules/test/repository/tc/Builtins_String" xmlns="http://www.w3.org/2009/10/rif-test#">
+    <status>Approved</status>
+    <dialect>Core</dialect>
+    <dialect>BLD</dialect>
+    <dialect>PRD</dialect>
+    <purpose>Test built-in predicates and functions for XML schema string datatypes</purpose>
+    <description>Note the somewhat surprising results on substring.  RIF follows [http://www.w3.org/TR/xpath-functions/#func-substring XPath] on this.</description>
+    <PremiseDocument>
+        <Normative syntax="RIF/XML">
+            <name>Builtins_String-premise.rif</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/Builtins_String/Builtins_String-premise.rif</remote>
+        </Normative>
+        <Presentation syntax="RIFBLD-PS"><![CDATA[
+Document( 
+ Prefix(xs <http://www.w3.org/2001/XMLSchema#>)
+ Prefix(rdf <http://www.w3.org/1999/02/22-rdf-syntax-ns#>) 
+ Prefix(ex <http://example.org/example#>) 
+ Prefix(func <http://www.w3.org/2007/rif-builtin-function#>) 
+ Prefix(pred <http://www.w3.org/2007/rif-builtin-predicate#>) 
+
+ Group ( 
+  ex:ok() :- 
+    And (
+     External( pred:is-literal-string( "Hello world@"^^rdf:PlainLiteral ) )
+     External( pred:is-literal-string( "Hello world"^^xs:string ) )
+     External( pred:is-literal-normalizedString( "Hello world"^^xs:string ) )
+     External( pred:is-literal-token( "Hello world"^^xs:string ) )
+     External( pred:is-literal-language( "en"^^xs:language ) )
+     External( pred:is-literal-Name( "Hello"^^xs:Name ) )
+     External( pred:is-literal-NCName( "Hello"^^xs:NCName ) )
+     External( pred:is-literal-NMTOKEN( "Hello"^^xs:NMTOKEN ) )
+     External( pred:is-literal-not-string( "1"^^xs:integer ) )
+     External( pred:is-literal-not-normalizedString( "1"^^xs:integer ) )
+     External( pred:is-literal-not-token( "1"^^xs:integer ) )
+     External( pred:is-literal-not-language( "1"^^xs:integer ) )
+     External( pred:is-literal-not-Name( "1"^^xs:integer ) )
+     External( pred:is-literal-not-NCName( "1"^^xs:integer ) )
+     External( pred:is-literal-not-NMTOKEN( "1"^^xs:integer ) )
+     External( pred:is-literal-string(  External( xs:string ("1"^^xs:integer ) ) ) )
+     External( pred:is-literal-normalizedString(  External( xs:normalizedString ("1"^^xs:integer ) ) ) )
+     External( pred:is-literal-token( External( xs:token(  "de"^^xs:hexBinary ) ) ) )
+     External( pred:is-literal-language( External ( xs:language ( "de"^^xs:hexBinary ) ) ) )
+     External( pred:is-literal-Name( External ( xs:Name ( "de"^^xs:hexBinary ) ) ) )
+     External( pred:is-literal-NCName( External ( xs:NCName ( "de"^^xs:hexBinary ) ) ) )
+     External( pred:is-literal-NMTOKEN( External ( xs:NMTOKEN ( "de"^^xs:hexBinary ) ) ) )
+     External( pred:iri-string( <http://www.example.org> "http://www.example.org"  ) )
+     -1 = External ( func:compare( "bar" "foo" ) )
+     1 = External ( func:compare( "foo" "bar" ) )
+     0 = External ( func:compare( "bar" "bar" ) )
+     "foobar" = External ( func:concat( "foo" "bar" ) )
+     "foo,bar" = External ( func:string-join( "foo" "bar" "," ) )
+     "bar" = External ( func:substring( "foobar" 3 ) )
+     "fo" = External ( func:substring( "foobar" 0 3 ) )
+     3 = External ( func:string-length( "foo" ) )
+     "FOOBAR" = External ( func:upper-case( "FooBar" ) )
+     "foobar" = External ( func:lower-case( "FooBar" ) )
+     "RIF%20Basic%20Logic%20Dialect" = External ( func:encode-for-uri( "RIF Basic Logic Dialect" ) )
+     "http://www.example.com/~b%C3%A9b%C3%A9" = External ( func:iri-to-uri ( "http://www.example.com/~bÃ©bÃ©" ) )
+     "javascript:if (navigator.browserLanguage == 'fr') window.open('http://www.example.com/~b%C3%A9b%C3%A9');" = External ( func:escape-html-uri ( "javascript:if (navigator.browserLanguage == 'fr') window.open('http://www.example.com/~bÃ©bÃ©');" ) ) 
+     "foo" = External ( func:substring-before( "foobar" "bar" ) )
+     "bar" = External ( func:substring-after( "foobar" "foo" ) )
+     "[1=ab][2=]cd" = External ( func:replace( "abcd" "(ab)|(a)" "[1=$1][2=$2]" ) )
+     External( pred:contains ( "foobar" "foo" ) )
+     External( pred:starts-with ( "foobar" "foo" ) )
+     External( pred:ends-with ( "foobar" "bar" ) )
+     External( pred:matches ( "abracadabra" "^a.*a$" ) )
+   )
+ )
+)
+]]></Presentation>
+    </PremiseDocument>
+    <ConclusionDocument>
+        <Normative syntax="RIF/XML">
+            <name>Builtins_String-conclusion.rif</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/Builtins_String/Builtins_String-conclusion.rif</remote>
+        </Normative>
+        <Presentation syntax="RIFBLD-PS"><![CDATA[
+ex:ok()
+]]></Presentation>
+    </ConclusionDocument>
+</PositiveEntailmentTest>

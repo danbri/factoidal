@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<PositiveSyntaxTest id="Core_Safeness_2"
+    src="http://www.w3.org/2005/rules/test/repository/tc/Core_Safeness_2" xmlns="http://www.w3.org/2009/10/rif-test#">
+    <status>Approved</status>
+    <dialect>Core</dialect>
+    <dialect>BLD</dialect>
+    <dialect>PRD</dialect>
+    <purpose>Test that safe formulas are accepted.</purpose>
+    <description>The variables ?z and ?y are safe, because they are equated to ?x, which is safe.</description>
+    <InputDocument>
+        <Normative syntax="RIF/XML">
+            <name>Core_Safeness_2-input.rif</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/Core_Safeness_2/Core_Safeness_2-input.rif</remote>
+        </Normative>
+        <Presentation syntax="RIFBLD-PS"><![CDATA[
+Document( 
+    Prefix(ex <http://example.org/example#>) 
+    Group( 
+      Forall ?x ?y ?z (ex:p(?z) :- And(ex:q(?x) ?x=?y ?y=?z))
+    ) 
+  )
+]]></Presentation>
+    </InputDocument>
+</PositiveSyntaxTest>

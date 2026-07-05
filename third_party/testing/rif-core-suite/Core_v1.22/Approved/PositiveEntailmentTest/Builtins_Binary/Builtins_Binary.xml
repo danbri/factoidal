@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<PositiveEntailmentTest id="Builtins_Binary"
+    src="http://www.w3.org/2005/rules/test/repository/tc/Builtins_Binary" xmlns="http://www.w3.org/2009/10/rif-test#">
+    <status>Approved</status>
+    <dialect>Core</dialect>
+    <dialect>BLD</dialect>
+    <dialect>PRD</dialect>
+    <purpose>Test built-in predicates for XML Schema binary datatypes</purpose>
+    <description/>
+    <PremiseDocument>
+        <Normative syntax="RIF/XML">
+            <name>Builtins_Binary-premise.rif</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/Builtins_Binary/Builtins_Binary-premise.rif</remote>
+        </Normative>
+        <Presentation syntax="RIFBLD-PS"><![CDATA[
+Document( 
+ Prefix(xs <http://www.w3.org/2001/XMLSchema#>) 
+ Prefix(ex <http://example.org/example#>)  
+ Prefix(pred <http://www.w3.org/2007/rif-builtin-predicate#>) 
+
+ Group ( 
+  ex:ok() :- 
+   And (
+    External( pred:is-literal-hexBinary( "aabb"^^xs:hexBinary ) )
+    External( pred:is-literal-base64Binary( "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz/+0123456789"^^xs:base64Binary ) )
+    External( pred:is-literal-not-base64Binary( "foo"^^xs:string ) )
+    External( pred:is-literal-base64Binary( External ( xs:base64Binary ( "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz/+0123456789"^^xs:string ) ) ) )
+   )
+  )
+)
+]]></Presentation>
+    </PremiseDocument>
+    <ConclusionDocument>
+        <Normative syntax="RIF/XML">
+            <name>Builtins_Binary-conclusion.rif</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/Builtins_Binary/Builtins_Binary-conclusion.rif</remote>
+        </Normative>
+        <Presentation syntax="RIFBLD-PS"><![CDATA[
+ex:ok()
+]]></Presentation>
+    </ConclusionDocument>
+</PositiveEntailmentTest>

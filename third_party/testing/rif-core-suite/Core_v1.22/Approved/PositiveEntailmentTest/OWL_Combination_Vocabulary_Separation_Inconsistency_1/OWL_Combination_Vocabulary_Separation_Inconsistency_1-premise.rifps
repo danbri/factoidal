@@ -1,0 +1,11 @@
+Document(
+  Prefix(ex  <http://example.org/example#>)
+  Prefix(xs  <http://www.w3.org/2001/XMLSchema#>)
+  Prefix(rdf <http://www.w3.org/1999/02/22-rdf-syntax-ns#>)
+
+  Import(<http://www.w3.org/2005/rules/test/repository/tc/OWL_Combination_Vocabulary_Separation_Inconsistency_1/OWL_Combination_Vocabulary_Separation_Inconsistency_1-import001> <http://www.w3.org/ns/entailment/OWL-Direct>)
+
+  Group (
+   ex:myiri[rdf:type -> xs:string]
+  )
+ )

@@ -1,0 +1,5 @@
+@prefix ex: <http://example.org/example#> . 
+@prefix xs: <http://www.w3.org/2001/XMLSchema#> . 
+@prefix rif: <http://www.w3.org/2007/rif#> . 
+
+ ex:a ex:p "this is a plain literal" .

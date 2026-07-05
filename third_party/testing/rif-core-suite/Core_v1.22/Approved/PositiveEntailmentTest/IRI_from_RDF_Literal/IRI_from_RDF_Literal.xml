@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<PositiveEntailmentTest id="IRI_from_RDF_Literal"
+    src="http://www.w3.org/2005/rules/test/repository/tc/IRI_from_RDF_Literal" xmlns="http://www.w3.org/2009/10/rif-test#">
+    <status>Approved</status>
+    <dialect>Core</dialect>
+    <dialect>BLD</dialect>
+    <dialect>PRD</dialect>
+    <Combinations>
+        <profile>http://www.w3.org/ns/entailment/Simple</profile>
+    </Combinations>
+    <purpose>Test extracting IRIs from RDF plain literals</purpose>
+    <description>A plain literal in RDF is seen as a string in RIF-RDF combinations, and therefore it is possible to "extract" IRI constants from such literals using the &lt;tt&gt;pred:iri-string&lt;/tt&gt; built-in predicate.</description>
+    <ImportedDocument>
+        <Normative syntax="RDF/XML">
+            <name>IRI_from_RDF_Literal-import001.rdf</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/IRI_from_RDF_Literal/IRI_from_RDF_Literal-import001</remote>
+        </Normative>
+        <Presentation syntax="Turtle"><![CDATA[
+_:x <http://example.org/example#hasWebSite> "http://www.example.org/" .
+]]></Presentation>
+    </ImportedDocument>
+    <PremiseDocument>
+        <Normative syntax="RIF/XML">
+            <name>IRI_from_RDF_Literal-premise.rif</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/IRI_from_RDF_Literal/IRI_from_RDF_Literal-premise.rif</remote>
+        </Normative>
+        <Presentation syntax="RIFBLD-PS"><![CDATA[
+Document(
+     Prefix(ex  <http://example.org/example#>)
+     Prefix(pred <http://www.w3.org/2007/rif-builtin-predicate#>)
+     Prefix(foaf <http://xmlns.com/foaf/0.1/>)
+     Import(<http://example.org/mygraph> <http://www.w3.org/ns/entailment/Simple>)
+     Group (
+       Forall ?x ?y ?z (?y[foaf:homepage -> ?z] :- 
+         And(
+           ?y[ex:hasWebSite -> ?x] 
+           External(pred:iri-string(?z ?x))
+         )
+       )
+     )
+ )
+]]></Presentation>
+    </PremiseDocument>
+    <ConclusionDocument>
+        <Normative syntax="RIF/XML">
+            <name>IRI_from_RDF_Literal-conclusion.rif</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/IRI_from_RDF_Literal/IRI_from_RDF_Literal-conclusion.rif</remote>
+        </Normative>
+        <Presentation syntax="RIFBLD-PS"><![CDATA[
+Exists ?x (?x[foaf:homepage -> "http://www.example.org/"^^rif:iri])
+]]></Presentation>
+    </ConclusionDocument>
+</PositiveEntailmentTest>

@@ -1,0 +1,21 @@
+Document(
+  Prefix(ba <http://example.org/testOntology.owl#>)
+  Prefix(rdf <http://www.w3.org/1999/02/22-rdf-syntax-ns#>)
+  Prefix(dc  <http://purl.org/dc/elements/1.1/>)
+
+  Import(<http://www.w3.org/2005/rules/test/repository/tc/Modeling_Brain_Anatomy/Modeling_Brain_Anatomy-import001.rdf> <http://www.w3.org/ns/entailment/OWL-Direct>)
+  
+  Group (
+   
+    (* _rule1[dc:description -> "entities that are bounded by a common gyri connection are connected to each other"] *)
+    
+     Forall ?X ?Y ?Z  ( 
+        ?X [ba:isMAEConnectedTo -> ?Y] :-
+              And (?X[ba:isMAEBoundedBy -> ?Z]
+                     ?Y[ba:isMAEBoundedBy -> ?Z]
+                     ?X[rdf:type -> ba:MaterialAnatomicalEntity]
+                     ?Y[rdf:type -> ba:MaterialAnatomicalEntity]
+                     ?Z[rdf:type -> ba:GyriConnection])
+     )
+   )
+  )

@@ -1,0 +1,8 @@
+Document( 
+    Prefix(ex <http://example.org/example#>) 
+    Prefix(func <http://www.w3.org/2007/rif-builtin-function#>)  
+    Group( 
+      ex:p(0) 
+      Forall ?x (ex:p(External(func:numeric-add(?x 1))) :- ex:p(?x)) 
+    ) 
+  )

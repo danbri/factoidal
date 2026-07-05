@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<PositiveEntailmentTest id="Guards_and_subtypes"
+    src="http://www.w3.org/2005/rules/test/repository/tc/Guards_and_subtypes" xmlns="http://www.w3.org/2009/10/rif-test#">
+    <status>Approved</status>
+    <dialect>Core</dialect>
+    <dialect>BLD</dialect>
+    <dialect>PRD</dialect>
+    <purpose>Demonstrate subtype relationships between xs:decimal and xs:integer</purpose>
+    <description>Since xs:integer is a subtype of xs:decimal then "3"^^xs:decimal and "3"xs:integer are the same value and pass both integer and decimal guards</description>
+    <PremiseDocument>
+        <Normative syntax="RIF/XML">
+            <name>Guards_and_subtypes-premise.rif</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/Guards_and_subtypes/Guards_and_subtypes-premise.rif</remote>
+        </Normative>
+        <Presentation syntax="RIFBLD-PS"><![CDATA[
+Document(
+  Prefix(ex <http://example.org/example#>)
+  Prefix(pred <http://www.w3.org/2007/rif-builtin-predicate#>)
+  Prefix(xs <http://www.w3.org/2001/XMLSchema#>)
+  Group(
+   ex:p("pass 1") :- External(pred:is-literal-decimal("3"^^xs:integer))
+   ex:p("pass 2") :- External(pred:is-literal-integer("3"^^xs:decimal))
+  )
+ )
+]]></Presentation>
+    </PremiseDocument>
+    <ConclusionDocument>
+        <Normative syntax="RIF/XML">
+            <name>Guards_and_subtypes-conclusion.rif</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/Guards_and_subtypes/Guards_and_subtypes-conclusion.rif</remote>
+        </Normative>
+        <Presentation syntax="RIFBLD-PS"><![CDATA[
+And (
+  ex:p("pass 1")
+  ex:p("pass 2")
+)
+]]></Presentation>
+    </ConclusionDocument>
+</PositiveEntailmentTest>

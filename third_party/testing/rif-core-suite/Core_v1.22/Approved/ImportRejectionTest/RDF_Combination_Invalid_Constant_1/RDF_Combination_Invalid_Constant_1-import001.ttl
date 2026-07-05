@@ -1,0 +1,4 @@
+@prefix ex: <http://example.org/example#> . 
+@prefix rif: <http://www.w3.org/2007/rif#> . 
+
+ ex:a ex:p "http://example.org/#b"^^rif:iri .

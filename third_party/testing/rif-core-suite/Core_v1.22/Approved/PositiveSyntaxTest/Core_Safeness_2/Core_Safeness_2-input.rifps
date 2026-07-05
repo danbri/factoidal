@@ -1,0 +1,6 @@
+Document( 
+    Prefix(ex <http://example.org/example#>) 
+    Group( 
+      Forall ?x ?y ?z (ex:p(?z) :- And(ex:q(?x) ?x=?y ?y=?z))
+    ) 
+  )

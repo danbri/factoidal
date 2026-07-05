@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<NegativeEntailmentTest id="Local_Constant"
+    src="http://www.w3.org/2005/rules/test/repository/tc/Local_Constant" xmlns="http://www.w3.org/2009/10/rif-test#">
+    <status>Approved</status>
+    <dialect>Core</dialect>
+    <dialect>BLD</dialect>
+    <dialect>PRD</dialect>
+    <purpose>Test that the entailment relation does not preserve names of local constants</purpose>
+    <description>The labels of local constants are local to the specific document in which they occur.  Therefore, these labels are not visible outside the documents.  In particular, local constants in the entailed formulas should be considered distinct from those in the entailing document, even if the labels coincide.</description>
+    <PremiseDocument>
+        <Normative syntax="RIF/XML">
+            <name>Local_Constant-premise.rif</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/Local_Constant/Local_Constant-premise.rif</remote>
+        </Normative>
+        <Presentation syntax="RIFBLD-PS"><![CDATA[
+Document(
+  Group(<http://example.org/#p>("a"^^rif:local))
+ )
+]]></Presentation>
+    </PremiseDocument>
+    <NonConclusionDocument>
+        <Normative syntax="RIF/XML">
+            <name>Local_Constant-nonconclusion.rif</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/Local_Constant/Local_Constant-nonconclusion.rif</remote>
+        </Normative>
+        <Presentation syntax="RIFBLD-PS"><![CDATA[
+<http://example.org/#p>("a"^^rif:local)
+]]></Presentation>
+    </NonConclusionDocument>
+</NegativeEntailmentTest>

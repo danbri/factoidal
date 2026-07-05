@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<PositiveEntailmentTest id="Builtins_anyURI"
+    src="http://www.w3.org/2005/rules/test/repository/tc/Builtins_anyURI" xmlns="http://www.w3.org/2009/10/rif-test#">
+    <status>Approved</status>
+    <dialect>Core</dialect>
+    <dialect>BLD</dialect>
+    <dialect>PRD</dialect>
+    <purpose>Test built-in predicates for XML Schema anyURI datatype</purpose>
+    <description/>
+    <PremiseDocument>
+        <Normative syntax="RIF/XML">
+            <name>Builtins_anyURI-premise.rif</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/Builtins_anyURI/Builtins_anyURI-premise.rif</remote>
+        </Normative>
+        <Presentation syntax="RIFBLD-PS"><![CDATA[
+Document( 
+ Prefix(xs <http://www.w3.org/2001/XMLSchema#>) 
+ Prefix(ex <http://example.org/example#>)  
+ Prefix(pred <http://www.w3.org/2007/rif-builtin-predicate#>) 
+
+ Group ( 
+  ex:ok() :- 
+    And (
+     External( pred:is-literal-anyURI( "http://www.example.org"^^xs:anyURI ) )
+     External( pred:is-literal-not-anyURI("1"^^xs:integer ) )
+     External( pred:is-literal-anyURI( External ( xs:anyURI ( "http://www.example.org"^^xs:string ) ) ) )
+    )
+ )
+)
+]]></Presentation>
+    </PremiseDocument>
+    <ConclusionDocument>
+        <Normative syntax="RIF/XML">
+            <name>Builtins_anyURI-conclusion.rif</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/Builtins_anyURI/Builtins_anyURI-conclusion.rif</remote>
+        </Normative>
+        <Presentation syntax="RIFBLD-PS"><![CDATA[
+ex:ok()
+]]></Presentation>
+    </ConclusionDocument>
+</PositiveEntailmentTest>

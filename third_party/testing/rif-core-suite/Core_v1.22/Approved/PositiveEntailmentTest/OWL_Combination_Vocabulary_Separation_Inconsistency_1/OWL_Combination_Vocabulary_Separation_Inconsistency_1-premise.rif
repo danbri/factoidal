@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<!DOCTYPE Document [
+  <!ENTITY rif  "http://www.w3.org/2007/rif#">
+  <!ENTITY xs   "http://www.w3.org/2001/XMLSchema#">
+  <!ENTITY rdf  "http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+]>
+
+<Document xmlns="&rif;">
+  <directive>
+    <Import>
+      <location>http://www.w3.org/2005/rules/test/repository/tc/OWL_Combination_Vocabulary_Separation_Inconsistency_1/OWL_Combination_Vocabulary_Separation_Inconsistency_1-import001</location>
+      <profile>http://www.w3.org/ns/entailment/OWL-Direct</profile>
+    </Import>
+  </directive>
+  <payload>
+    <Group>
+      <sentence>
+        <Frame>
+          <object>
+            <Const type="&rif;iri">http://example.org/example#myiri</Const>
+          </object>
+          <slot ordered="yes">
+            <Const type="&rif;iri">http://www.w3.org/1999/02/22-rdf-syntax-ns#type</Const>
+            <Const type="&rif;iri">http://www.w3.org/2001/XMLSchema#string</Const>
+          </slot>
+        </Frame>
+      </sentence>
+    </Group>
+  </payload>
+</Document>
+<!--XML document generated on Sun Nov 07 10:36:15 EST 2010-->

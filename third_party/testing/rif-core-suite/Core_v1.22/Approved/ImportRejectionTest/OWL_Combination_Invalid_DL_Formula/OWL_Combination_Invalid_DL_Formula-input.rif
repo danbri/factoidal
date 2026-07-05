@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<!DOCTYPE Document [
+  <!ENTITY rif  "http://www.w3.org/2007/rif#">
+  <!ENTITY xs   "http://www.w3.org/2001/XMLSchema#">
+  <!ENTITY rdf  "http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+]>
+
+<Document xmlns="&rif;">
+  <directive>
+    <Import>
+      <location>http://www.w3.org/2005/rules/test/repository/tc/OWL_Combination_Invalid_DL_Formula/OWL_Combination_Invalid_DL_Formula-import001</location>
+      <profile>http://www.w3.org/ns/entailment/OWL-Direct</profile>
+    </Import>
+  </directive>
+  <payload>
+    <Group>
+      <sentence>
+        <Forall>
+          <declare>
+            <Var>x</Var>
+          </declare>
+          <formula>
+            <Implies>
+              <if>
+                <Frame>
+                  <object>
+                    <Const type="&rif;iri">http://example.org/#crt</Const>
+                  </object>
+                  <slot ordered="yes">
+                    <Var>x</Var>
+                    <Const type="&xs;integer">17</Const>
+                  </slot>
+                </Frame>
+              </if>
+              <then>
+                <Atom>
+                  <op>
+                    <Const type="&rif;iri">http://example.org/#p</Const>
+                  </op>
+                    <args ordered="yes">
+                      <Var>x</Var>
+                    </args>
+                </Atom>
+              </then>
+            </Implies>
+          </formula>
+        </Forall>
+      </sentence>
+    </Group>
+  </payload>
+</Document>
+<!--XML document generated on Sun Nov 07 10:36:13 EST 2010-->

@@ -1,0 +1,27 @@
+Document( 
+ Prefix(ex <http://example.org/example#>) 
+ Prefix(func <http://www.w3.org/2007/rif-builtin-function#>) 
+ Prefix(pred <http://www.w3.org/2007/rif-builtin-predicate#>) 
+
+ Group ( 
+  ex:ok() :- 
+    And (
+     External(pred:is-list(List(0 1 2 List(3 4))))
+     External(pred:list-contains(List(0 1 2 3 List(7 8)) List(7 8))) 
+     External( func:make-list(0 1 2) ) = List(0 1 2)
+     External(func:count(List(0 1 2 3 4))) = 5
+     External( func:get(List(0 1 2 3 4) -1) ) = 4
+     External( func:sublist(List(0 1 2 3 4) 0 5) ) = List(0 1 2 3 4)
+     External( func:append(List(0 1 2) 3 4) ) = List(0 1 2 3 4)
+     External( func:concatenate(List(0 1 2) List(3 4 5)) ) = List(0 1 2 3 4 5)
+     External( func:insert-before(List(0 1 2 3 4) -1 99) ) = List(0 1 2 3 99 4)
+     External( func:remove(List(0 1 2 3 4) -5) ) = List(1 2 3 4)
+     External( func:reverse(List(0 1 2 3 4)) ) = List(4 3 2 1 0)
+     External( func:index-of(List(0 1 2 3 4 5 2 2) 2) ) = List(2 6 7)
+     External( func:union(List(0 1 2 3) List(4)) ) = List(0 1 2 3 4)
+     External( func:distinct-values(List(3 3 3)) ) = List(3) 
+     External( func:intersect(List(0 1 2 3 4) List(3 1)) ) = List(1 3)
+     External( func:except(List(0 1 2 3 4) List(1 3)) ) = List(0 2 4)
+    )
+ )
+)

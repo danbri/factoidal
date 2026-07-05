@@ -1,0 +1,8 @@
+Document( 
+    Prefix(ex <http://example.org/example#>) 
+    Prefix(pred <http://www.w3.org/2007/rif-builtin-predicate#>) 
+    Group( 
+      Forall ?x ?z (ex:p(?x) :- 
+        And( ex:q(?z) External(pred:iri-string(?x ?z))))
+    ) 
+  )

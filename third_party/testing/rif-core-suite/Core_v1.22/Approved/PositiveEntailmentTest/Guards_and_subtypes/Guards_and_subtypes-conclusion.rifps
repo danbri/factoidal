@@ -1,0 +1,4 @@
+And (
+  ex:p("pass 1")
+  ex:p("pass 2")
+)

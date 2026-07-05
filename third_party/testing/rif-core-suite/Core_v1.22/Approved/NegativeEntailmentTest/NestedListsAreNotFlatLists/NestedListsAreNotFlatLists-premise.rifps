@@ -1,0 +1,6 @@
+Document(
+  Prefix(ex  <http://example.org/example#>)
+  Group(
+   ex:p(List(ex:a List(ex:b)))
+  )
+ )

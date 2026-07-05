@@ -1,0 +1,15 @@
+Document( 
+ Prefix(xs <http://www.w3.org/2001/XMLSchema#>)
+ Prefix(rdf <http://www.w3.org/1999/02/22-rdf-syntax-ns#>) 
+ Prefix(ex <http://example.org/example#>) 
+ Prefix(pred <http://www.w3.org/2007/rif-builtin-predicate#>) 
+
+ Group ( 
+  ex:ok() :- 
+    And (
+     External( pred:is-literal-XMLLiteral ( "<br></br>"^^rdf:XMLLiteral ) )
+     External( pred:is-literal-not-XMLLiteral ( "1"^^xs:integer ) )
+     External( pred:is-literal-XMLLiteral (  External ( rdf:XMLLiteral( "<br></br>"^^xs:string ) ) ) )
+    )
+   )
+)

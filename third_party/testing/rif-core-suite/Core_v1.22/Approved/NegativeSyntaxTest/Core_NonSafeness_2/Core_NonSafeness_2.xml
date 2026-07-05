@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<NegativeSyntaxTest id="Core_NonSafeness_2"
+    src="http://www.w3.org/2005/rules/test/repository/tc/Core_NonSafeness_2" xmlns="http://www.w3.org/2009/10/rif-test#">
+    <status>Approved</status>
+    <dialect>PRD</dialect>
+    <dialect>Core</dialect>
+    <purpose>Test that non-safe formulas are not accepted.</purpose>
+    <description>The variables &lt;tt&gt;?x&lt;/tt&gt; and &lt;tt&gt;?z&lt;/tt&gt; are unbound in the first disjunct of the condition, and &lt;tt&gt;(u,u)&lt;/tt&gt; is not a valid binding pattern for &lt;tt&gt;pred:iri-string&lt;/tt&gt;.</description>
+    <InputDocument>
+        <Normative syntax="RIF/XML">
+            <name>Core_NonSafeness_2-input.rif</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/Core_NonSafeness_2/Core_NonSafeness_2-input.rif</remote>
+        </Normative>
+        <Presentation syntax="RIFBLD-PS"><![CDATA[
+Document( 
+    Prefix(ex <http://example.org/example#>) 
+    Prefix(pred <http://www.w3.org/2007/rif-builtin-predicate#>) 
+    Group( 
+      Forall ?x ?y ?z (ex:p() :- Or( 
+        External(pred:iri-string(?x ?z))
+        And( ex:q(?x) ex:r(?z))))    ) 
+  )
+]]></Presentation>
+    </InputDocument>
+</NegativeSyntaxTest>

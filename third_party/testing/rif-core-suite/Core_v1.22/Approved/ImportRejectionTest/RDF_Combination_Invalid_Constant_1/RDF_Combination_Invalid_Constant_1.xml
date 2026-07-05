@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ImportRejectionTest id="RDF_Combination_Invalid_Constant_1"
+    src="http://www.w3.org/2005/rules/test/repository/tc/RDF_Combination_Invalid_Constant_1" xmlns="http://www.w3.org/2009/10/rif-test#">
+    <status>Approved</status>
+    <dialect>Core</dialect>
+    <dialect>BLD</dialect>
+    <dialect>PRD</dialect>
+    <Combinations>
+        <profile>http://www.w3.org/ns/entailment/Simple</profile>
+    </Combinations>
+    <purpose>Verify that rif:iri typed literals are not allowed in RDF graphs imported by RIF documents</purpose>
+    <description/>
+    <ImportedDocument>
+        <Normative syntax="RDF/XML">
+            <name>RDF_Combination_Invalid_Constant_1-import001.rdf</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/RDF_Combination_Invalid_Constant_1/RDF_Combination_Invalid_Constant_1-import001</remote>
+        </Normative>
+        <Presentation syntax="Turtle"><![CDATA[
+@prefix ex: <http://example.org/example#> . 
+@prefix rif: <http://www.w3.org/2007/rif#> . 
+
+ ex:a ex:p "http://example.org/#b"^^rif:iri .
+]]></Presentation>
+    </ImportedDocument>
+    <InputDocument>
+        <Normative syntax="RIF/XML">
+            <name>RDF_Combination_Invalid_Constant_1-input.rif</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/RDF_Combination_Invalid_Constant_1/RDF_Combination_Invalid_Constant_1-input.rif</remote>
+        </Normative>
+        <Presentation syntax="RIFBLD-PS"><![CDATA[
+Document(
+    Import(<http://example.org/mygraph> <http://www.w3.org/ns/entailment/Simple>)
+ )
+]]></Presentation>
+    </InputDocument>
+</ImportRejectionTest>

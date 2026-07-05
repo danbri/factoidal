@@ -1,0 +1,131 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<PositiveEntailmentTest id="Builtins_Time"
+    src="http://www.w3.org/2005/rules/test/repository/tc/Builtins_Time" xmlns="http://www.w3.org/2009/10/rif-test#">
+    <status>Approved</status>
+    <dialect>Core</dialect>
+    <dialect>BLD</dialect>
+    <dialect>PRD</dialect>
+    <purpose>Test built-in predicates and functions for XML Schema date, time and duration datatypes</purpose>
+    <description/>
+    <PremiseDocument>
+        <Normative syntax="RIF/XML">
+            <name>Builtins_Time-premise.rif</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/Builtins_Time/Builtins_Time-premise.rif</remote>
+        </Normative>
+        <Presentation syntax="RIFBLD-PS"><![CDATA[
+Document( 
+ Prefix(xs <http://www.w3.org/2001/XMLSchema#>)
+ Prefix(rdf <http://www.w3.org/1999/02/22-rdf-syntax-ns#>) 
+ Prefix(ex <http://example.org/example#>) 
+ Prefix(func <http://www.w3.org/2007/rif-builtin-function#>) 
+ Prefix(pred <http://www.w3.org/2007/rif-builtin-predicate#>) 
+
+ Group ( 
+  ex:ok() :- 
+   And (
+    External( pred:is-literal-date ( "2000-12-13-11:00"^^xs:date ) )
+    External( pred:is-literal-dateTime ( "2000-12-13T00:11:11.3"^^xs:dateTime ) )
+    External( pred:is-literal-dateTimeStamp ( "2000-12-13T00:11:11.3Z"^^xs:dateTimeStamp ) )
+    External( pred:is-literal-time ( "00:11:11.3Z"^^xs:time ) )
+    External( pred:is-literal-dayTimeDuration ( "P3DT2H"^^xs:dayTimeDuration ) )
+    External( pred:is-literal-yearMonthDuration ( "P1Y2M"^^xs:yearMonthDuration ) )
+    External( pred:is-literal-not-date ( "foo"^^xs:string ) )
+    External( pred:is-literal-not-dateTime ( "foo"^^xs:string ) )
+    External( pred:is-literal-not-dateTimeStamp ( "foo"^^xs:string ) )
+    External( pred:is-literal-not-time ( "foo"^^xs:string ) )
+    External( pred:is-literal-not-dayTimeDuration ( "foo"^^xs:string ) )
+    External( pred:is-literal-not-yearMonthDuration ( "foo"^^xs:string ) )
+    External( pred:is-literal-date ( External ( xs:date ( "2000-12-13-11:00"^^xs:string ) ) ) )
+    External( pred:is-literal-dateTime ( External ( xs:dateTime ( "2000-12-13T00:11:11.3"^^xs:string ) ) ) )
+    External( pred:is-literal-dateTimeStamp ( External ( xs:dateTimeStamp ( "2000-12-13T00:11:11.3Z"^^xs:string ) ) ) )
+    External( pred:is-literal-time (  External ( xs:time ( "00:11:11.3Z"^^xs:string ) ) ) )
+    External( pred:is-literal-dayTimeDuration (  External ( xs:dayTimeDuration ( "P3DT2H"^^xs:string ) ) ) )
+    External( pred:is-literal-yearMonthDuration (  External ( xs:yearMonthDuration ( "P1Y2M"^^xs:string ) ) ) )
+    External( func:year-from-dateTime( "1999-12-31T24:00:00"^^xs:dateTime ) ) = 2000
+    External( func:month-from-dateTime( "1999-05-31T13:20:00-05:00"^^xs:dateTime ) ) = 5
+    External( func:day-from-dateTime( "1999-05-31T13:20:00-05:00"^^xs:dateTime ) ) = 31
+    External( func:hours-from-dateTime( "1999-05-31T08:20:00-05:00"^^xs:dateTime ) ) = 8
+    External( func:minutes-from-dateTime( "1999-05-31T13:20:00-05:00"^^xs:dateTime ) ) = 20
+    External( func:seconds-from-dateTime( "1999-05-31T13:20:00-05:00"^^xs:dateTime ) ) = 0
+    External( func:year-from-date( "1999-12-31"^^xs:date ) ) = 1999
+    External( func:month-from-date( "1999-05-31"^^xs:date ) ) = 5
+    External( func:day-from-date( "1999-05-31"^^xs:date ) ) = 31
+    External( func:hours-from-time( "08:20:00-05:00"^^xs:time ) ) = 8
+    External( func:minutes-from-time( "13:20:00-05:00"^^xs:time ) ) = 20
+    External( func:seconds-from-time( "13:20:00-05:00"^^xs:time ) ) = 0
+    External( func:timezone-from-dateTime( "1999-05-31T13:20:00-05:00"^^xs:dateTime ) ) = "-PT5H"^^xs:dayTimeDuration
+    External( func:timezone-from-date( "1999-05-31-05:00"^^xs:date ) ) = "-PT5H"^^xs:dayTimeDuration
+    External( func:timezone-from-time( "13:20:00-05:00"^^xs:time) ) = "-PT5H"^^xs:dayTimeDuration
+    External( func:years-from-duration( "P20Y15M"^^xs:yearMonthDuration ) ) = 21
+    External( func:months-from-duration( "P20Y15M"^^xs:yearMonthDuration ) ) = 3
+    External( func:days-from-duration( "P3DT10H"^^xs:dayTimeDuration ) ) = 3
+    External( func:hours-from-duration( "P3DT10H"^^xs:dayTimeDuration ) ) = 10 
+    External( func:minutes-from-duration( "-P5DT12H30M"^^xs:dayTimeDuration ) ) = -30
+    External( func:seconds-from-duration( "P3DT10H12.5S"^^xs:dayTimeDuration ) ) = 12.5
+    External( func:subtract-dateTimes( "2000-10-30T06:12:00-05:00"^^xs:dateTime "1999-11-28T09:00:00Z"^^xs:dateTime) ) = "P337DT2H12M"^^xs:dayTimeDuration
+    External( func:subtract-dates( "2000-10-30Z"^^xs:date "1999-11-28Z"^^xs:date ) ) = "P337D"^^xs:dayTimeDuration
+    External( func:subtract-times( "11:12:00Z"^^xs:time "04:00:00Z"^^xs:time ) ) = "PT7H12M"^^xs:dayTimeDuration
+    External( func:add-yearMonthDurations("P2Y11M"^^xs:yearMonthDuration "P3Y3M"^^xs:yearMonthDuration) ) = "P6Y2M"^^xs:yearMonthDuration
+    External( func:subtract-yearMonthDurations("P2Y11M"^^xs:yearMonthDuration "P3Y3M"^^xs:yearMonthDuration ) ) = "-P4M"^^xs:yearMonthDuration
+    External( func:multiply-yearMonthDuration("P2Y11M"^^xs:yearMonthDuration 2.3 ) ) = "P6Y9M"^^xs:yearMonthDuration
+    External( func:divide-yearMonthDuration("P2Y11M"^^xs:yearMonthDuration 1.5 ) ) = "P1Y11M"^^xs:yearMonthDuration
+    External( func:divide-yearMonthDuration-by-yearMonthDuration( "P3Y4M"^^xs:yearMonthDuration "-P1Y4M"^^xs:yearMonthDuration ) ) = -2.5
+    External( func:add-dayTimeDurations( "P2DT12H5M"^^xs:dayTimeDuration "P5DT12H"^^xs:dayTimeDuration) ) = "P8DT5M"^^xs:dayTimeDuration
+    External( func:subtract-dayTimeDurations( "P2DT12H"^^xs:dayTimeDuration "P1DT10H30M"^^xs:dayTimeDuration ) ) = "P1DT1H30M"^^xs:dayTimeDuration
+    External( func:multiply-dayTimeDuration( "PT2H10M"^^xs:dayTimeDuration 2.1 ) ) = "PT4H33M"^^xs:dayTimeDuration
+    External( func:divide-dayTimeDuration( "P4D"^^xs:dayTimeDuration 2 ) ) = "P2D"^^xs:dayTimeDuration
+    External( func:divide-dayTimeDuration-by-dayTimeDuration( "P4D"^^xs:dayTimeDuration "P2D"^^xs:dayTimeDuration ) ) = 2
+    External( func:add-yearMonthDuration-to-dateTime( "2000-10-30T11:12:00"^^xs:dateTime "P1Y2M"^^xs:yearMonthDuration ) ) = "2001-12-30T11:12:00"^^xs:dateTime
+    External( func:add-yearMonthDuration-to-date( "2000-10-30"^^xs:date "P1Y2M"^^xs:yearMonthDuration ) ) = "2001-12-30"^^xs:date
+    External( func:add-dayTimeDuration-to-dateTime( "2000-10-30T11:12:00"^^xs:dateTime "P3DT1H15M"^^xs:dayTimeDuration ) ) = "2000-11-02T12:27:00"^^xs:dayTime
+    External( func:add-dayTimeDuration-to-date("2004-10-30Z"^^xs:date "P2DT2H30M0S"^^xs:dayTimeDuration ) ) = "2004-11-01Z"^^xs:date
+    External( func:add-dayTimeDuration-to-time( "11:12:00"^^xs:time "P3DT1H15M"^^xs:dayTimeDuration ) ) = "12:27:00"^^xs:time
+    External( func:add-dayTimeDuration-to-time( "23:12:00+03:00"^^xs:time "P1DT3H15M"^^xs:dayTimeDuration ) ) = "02:27:00+03:00"^^xs:time
+    External( func:subtract-yearMonthDuration-from-dateTime( "2000-10-30T11:12:00"^^xs:dateTime "P1Y2M"^^xs:yearMonthDuration ) ) = "1999-08-30T11:12:00"^^xs:dateTime
+    External( func:subtract-yearMonthDuration-from-date( "2000-10-30"^^xs:date "P1Y2M"^^xs:yearMonthDuration ) ) = "1999-08-30"^^xs:date
+    External( func:subtract-dayTimeDuration-from-dateTime( "2000-10-30T11:12:00"^^xs:dateTime "P3DT1H15M"^^xs:dayTimeDuration ) ) = "2000-10-27T09:57:00"^^xs:dateTime
+    External( func:subtract-dayTimeDuration-from-date( "2000-10-30"^^xs:date "P3DT1H15M"^^xs:dayTimeDuration ) ) = "2000-10-26"^^xs:date
+    External( func:subtract-dayTimeDuration-from-time( "11:12:00"^^xs:time "P3DT1H15M"^^xs:dayTimeDuration ) ) = "09:57:00"^^xs:time
+    External( pred:dateTime-equal( "2002-04-02T12:00:00-01:00"^^xs:dateTime "2002-04-02T17:00:00+04:00"^^xs:dateTime ) )
+    External( pred:dateTime-less-than( "2002-04-01T12:00:00-01:00"^^xs:dateTime "2002-04-02T17:00:00+04:00"^^xs:dateTime ) )
+    External( pred:dateTime-greater-than( "2002-04-03T12:00:00-01:00"^^xs:dateTime "2002-04-02T17:00:00+04:00"^^xs:dateTime ) )
+    External( pred:date-equal( "2004-12-25-12:00"^^xs:date "2004-12-26+12:00"^^xs:date ) )
+    External( pred:date-less-than( "2004-12-24"^^xs:date "2004-12-26"^^xs:date ) )
+    External( pred:date-greater-than( "2004-12-26"^^xs:date "2004-12-25"^^xs:date ) )
+    External( pred:time-equal( "21:30:00+10:30"^^xs:time "06:00:00-05:00"^^xs:time ) )
+    External( pred:time-less-than( "20:30:00+10:30"^^xs:time "06:00:00-05:00"^^xs:time ) )
+    External( pred:time-greater-than( "22:30:00+10:30"^^xs:time "06:00:00-05:00"^^xs:time ) )
+    External( pred:duration-equal( "P1Y"^^xs:yearMonthDuration "P12M"^^xs:yearMonthDuration ) )
+    External( pred:yearMonthDuration-less-than( "P1Y"^^xs:yearMonthDuration "P13M"^^xs:yearMonthDuration ) )
+    External( pred:yearMonthDuration-greater-than( "P1Y"^^xs:yearMonthDuration "P11M"^^xs:yearMonthDuration ) )
+    External( pred:dayTimeDuration-less-than( "P1D"^^xs:dayTimeDuration "PT25H"^^xs:dayTimeDuration ) )
+    External( pred:dayTimeDuration-greater-than( "P1D"^^xs:dayTimeDuration "PT23H"^^xs:dayTimeDuration ) )
+    External( pred:dateTime-not-equal( "2002-04-01T12:00:00-01:00"^^xs:dateTime "2002-04-02T17:00:00+04:00"^^xs:dateTime ) )
+    External( pred:dateTime-less-than-or-equal( "2002-04-01T12:00:00-01:00"^^xs:dateTime "2002-04-02T17:00:00+04:00"^^xs:dateTime ) )
+    External( pred:dateTime-greater-than-or-equal( "2002-04-03T12:00:00-01:00"^^xs:dateTime "2002-04-02T17:00:00+04:00"^^xs:dateTime ) )
+    External( pred:date-not-equal( "2004-12-24"^^xs:date "2004-12-26"^^xs:date ) )
+    External( pred:date-less-than-or-equal( "2004-12-24"^^xs:date "2004-12-26"^^xs:date ) )
+    External( pred:date-greater-than-or-equal( "2004-12-26"^^xs:date "2004-12-25"^^xs:date ) )
+    External( pred:time-not-equal( "20:30:00+10:30"^^xs:time "06:00:00-05:00"^^xs:time ) )
+    External( pred:time-less-than-or-equal( "20:30:00+10:30"^^xs:time "06:00:00-05:00"^^xs:time ) )
+    External( pred:time-greater-than-or-equal( "22:30:00+10:30"^^xs:time "06:00:00-05:00"^^xs:time ) )
+    External( pred:duration-not-equal( "P1Y"^^xs:yearMonthDuration "P1M"^^xs:yearMonthDuration ) )
+    External( pred:yearMonthDuration-less-than-or-equal( "P1Y"^^xs:yearMonthDuration "P13M"^^xs:yearMonthDuration ) )
+    External( pred:yearMonthDuration-greater-than-or-equal( "P1Y"^^xs:yearMonthDuration "P11M"^^xs:yearMonthDuration ) )
+    External( pred:dayTimeDuration-less-than-or-equal( "P1D"^^xs:dayTimeDuration "PT25H"^^xs:dayTimeDuration ) )
+    External( pred:dayTimeDuration-greater-than-or-equal( "P1D"^^xs:dayTimeDuration "PT23H"^^xs:dayTimeDuration ) )
+   )
+ )
+)
+]]></Presentation>
+    </PremiseDocument>
+    <ConclusionDocument>
+        <Normative syntax="RIF/XML">
+            <name>Builtins_Time-conclusion.rif</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/Builtins_Time/Builtins_Time-conclusion.rif</remote>
+        </Normative>
+        <Presentation syntax="RIFBLD-PS"><![CDATA[
+ex:ok()
+]]></Presentation>
+    </ConclusionDocument>
+</PositiveEntailmentTest>

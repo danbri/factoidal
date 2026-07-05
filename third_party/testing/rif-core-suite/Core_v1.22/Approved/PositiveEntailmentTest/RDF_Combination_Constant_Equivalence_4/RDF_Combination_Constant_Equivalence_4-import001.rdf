@@ -1,0 +1,8 @@
+<rdf:RDF
+    xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+    xmlns:xs="file:///C:/work/eclipse_workspaces/version3.4.2/rif/TestCaseManagement/www.w3.org/2001/XMLSchema#"
+    xmlns:j.0="http://example.org#" > 
+  <rdf:Description rdf:about="http://example.org#a">
+    <j.0:p rdf:datatype="file:///C:/work/eclipse_workspaces/version3.4.2/rif/TestCaseManagement/www.w3.org/2001/XMLSchema#string">this is a string</j.0:p>
+  </rdf:Description>
+</rdf:RDF>

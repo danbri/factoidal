@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<!DOCTYPE Document [
+  <!ENTITY rif  "http://www.w3.org/2007/rif#">
+  <!ENTITY xs   "http://www.w3.org/2001/XMLSchema#">
+  <!ENTITY rdf  "http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+]>
+
+  <Atom  xmlns="&rif;">
+    <op>
+      <Const type="&rif;iri">http://example.org/example#p</Const>
+    </op>
+      <args ordered="yes">
+        <List>
+          <items ordered="yes">
+            <Const type="&rif;iri">http://example.org/example#a</Const>
+            <Const type="&rif;iri">http://example.org/example#b</Const>
+          </items>
+        </List>
+      </args>
+  </Atom>
+<!--XML document generated on Sun Nov 07 10:35:29 EST 2010-->

@@ -1,4 +1,4 @@
-name: RIF Core (vendored W3C RIF test cases via SPARQL 1.1 entailment)
+name: RIF Core (vendored W3C RIF test cases + full Core dialect corpus)
 spec: https://www.w3.org/TR/rif-core/
 runner: bin/linux-x86_64/rif_runner
 runner_args: []
@@ -8,25 +8,57 @@ result_path: docs/test-results/by-suite/rif.json
 domain: RIF
 foundational: false
 
-# Standalone runner (bin/rif-runner/rif_runner.ml) for exactly the 4
-# vendored RIF Core test cases the SPARQL 1.1 entailment manifest
-# names under sd:entailmentRegime ent:RIF (:rif01 :rif03 :rif04
-# :rif06 -- see manifest above). A hardcoded 4-entry lookup table
-# (not a general manifest walker, per this suite's own scoping) maps
-# each mf:name to its third_party/testing/rif/tc/<TestName>/*.rif
-# rule document, qt:data .ttl, qt:query .rq, and mf:result .srx.
-# Pipeline: Parser_RIFXML.parse_rif_program_with_imports -> merge the
-# .ttl premise with any resolved <Import> companion .rdf graph (with
+# Standalone runner (bin/rif-runner/rif_runner.ml), two parts:
+#
+# Part 1 (original): exactly the 4 vendored RIF Core test cases the
+# SPARQL 1.1 entailment manifest names under sd:entailmentRegime
+# ent:RIF (:rif01 :rif03 :rif04 :rif06 -- see manifest above). A
+# hardcoded 4-entry lookup table (not a general manifest walker, per
+# this suite's own scoping) maps each mf:name to its
+# third_party/testing/rif/tc/<TestName>/*.rif rule document, qt:data
+# .ttl, qt:query .rq, and mf:result .srx. Pipeline:
+# Parser_RIFXML.parse_rif_program_with_imports -> merge the .ttl
+# premise with any resolved <Import> companion .rdf graph (with
 # OWL-Direct closure applied first when the import's own <profile>
 # declares it, e.g. Modeling_Brain_Anatomy) -> RIF_Core_Eval.fixpoint
 # (fuel 100) -> the SAME SPARQL11_Parser / OWL_QueryEval /
 # SPARQL11_Algebra evaluator every other W3C-conformance runner in
 # this repo uses (not RIF.Core.Tests' simplified triple-membership
-# shims). See bin/rif-runner/rif_runner.ml's header comment and
+# shims). Score: 4 pass, 0 fail (out of 4), measured 2026-07-05.
+#
+# Part 2 (corpus walker, added 2026-07-05): a directory walker over
+# the full vendored W3C RIF Core dialect corpus
+# (third_party/testing/rif-core-suite/Core_v1.22/Approved/*, 46
+# tests -- see that directory's README.md for source/license/
+# inventory, and bin/rif-runner/README.md for the pipeline and full
+# skip-bucket table). Each test is self-contained
+# (-premise.rif + -conclusion.rif/-nonconclusion.rif, no SPARQL
+# manifest needed): saturate the premise via the same
+# RIF_Core_Eval.fixpoint, translate the conclusion's fact(s) to a
+# BGP via RIF_Core_Translation.translate_atom, ASK it against the
+# saturated graph via the same OWL_QueryEval.eval_ask_query_owl.
+# PositiveSyntaxTest/NegativeSyntaxTest/ImportRejectionTest categories
+# are unconditionally SKIPPED (no dialect-safeness or
+# import-rejection consistency checker -- out of scope this slice).
+# Score: 7 pass, 3 fail, 36 skip (out of 46), measured 2026-07-05; the
+# 3 FAILs are diagnosed in bin/rif-runner/README.md (2 genuine
+# construct/semantics gaps -- rdf:PlainLiteral lang-tag decoding,
+# OWL-Direct annotation-triple exclusion -- and 1 corpus data defect
+# in the official Core_v1.22.zip's RDF_Combination_Constant_Equivalence_4
+# import files, not this project's fault).
+#
+# Combined score: 11 pass, 3 fail, 36 skip (out of 50). The runner
+# exits 1 whenever the combined fail count is nonzero (rif_runner.ml
+# main's `if grand_fail > 0 then exit 1`) -- CI consumers of this
+# suite's exit code should expect nonzero until the 3 diagnosed FAILs
+# above are fixed (all require F* edits, out of scope for the PR that
+# added Part 2).
+#
+# See bin/rif-runner/rif_runner.ml's header comment and
 # docs/claude-rules/scope.md's RIF paragraph for the up-to-date
 # supported-subset statement (RIF Core frames/BGP-shaped rule bodies
-# + the two Import shapes the vendored corpus exercises; RIF-BLD/PRD
-# remain out of scope).
+# + the Import/profile shapes the vendored corpus exercises;
+# RIF-BLD/PRD remain out of scope).
 
 triggers:
   paths:
@@ -36,24 +68,28 @@ triggers:
     - formal/fstar/RIF.Core.Translation.fst
     - formal/fstar/RIF.Core.Eval.fst
     # The BGP evaluator RIF_Core_Eval.fire_rule delegates to for rule
-    # bodies, and the OWL-Direct closure path this runner reuses for
-    # the Modeling_Brain_Anatomy import.
+    # bodies, and the OWL-Direct/RDFS closure paths this runner
+    # reuses for imports (e.g. Modeling_Brain_Anatomy, and Part 2's
+    # RDF_Combination_SubClass_2/etc.).
     - formal/fstar/SPARQL11.Algebra.fst
     - formal/fstar/RDF.Graph.Executable.fst
     - formal/fstar/Tableau.fst
     # The real SPARQL query parser + evaluator this runner drives the
-    # .rq files through.
+    # .rq files (Part 1) and the synthetic conclusion-BGP ASK queries
+    # (Part 2) through.
     - formal/fstar/SPARQL11.Parser.fst
     - formal/fstar/OWL.QueryRewrite.fst
     - formal/fstar/OWL.QueryEval.fst
     # The runner itself.
     - bin/rif-runner/**
     # Vendored RIF Test Cases mirror + the 4 rifNN.{ttl,rq,srx}
-    # fixtures under the SPARQL 1.1 entailment manifest.
+    # fixtures under the SPARQL 1.1 entailment manifest (Part 1).
     - third_party/testing/rif/tc/**
     - third_party/testing/w3c/sparql/sparql11/entailment/rif01.*
     - third_party/testing/w3c/sparql/sparql11/entailment/rif03.*
     - third_party/testing/w3c/sparql/sparql11/entailment/rif04.*
     - third_party/testing/w3c/sparql/sparql11/entailment/rif06.*
+    # Vendored W3C RIF Core dialect corpus (Part 2).
+    - third_party/testing/rif-core-suite/**
 
   excludes: []

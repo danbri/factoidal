@@ -1,0 +1,284 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<!DOCTYPE Document [
+  <!ENTITY rif  "http://www.w3.org/2007/rif#">
+  <!ENTITY xs   "http://www.w3.org/2001/XMLSchema#">
+  <!ENTITY rdf  "http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+]>
+
+<Document xmlns="&rif;">
+  <payload>
+    <Group>
+      <sentence>
+        <Implies>
+          <if>
+            <And>
+              <formula>
+                <External>
+                 <content>
+                  <Atom>
+                      <op>
+                        <Const type="&rif;iri">http://www.w3.org/2007/rif-builtin-predicate#is-literal-PlainLiteral</Const>
+                      </op>
+                        <args ordered="yes">
+                          <Const type="&rdf;PlainLiteral">Hello world@en</Const>
+                        </args>
+                  </Atom>
+                 </content>
+                </External>
+              </formula>
+              <formula>
+                <External>
+                 <content>
+                  <Atom>
+                      <op>
+                        <Const type="&rif;iri">http://www.w3.org/2007/rif-builtin-predicate#is-literal-PlainLiteral</Const>
+                      </op>
+                        <args ordered="yes">
+                          <Const type="&rdf;PlainLiteral">Hello world@</Const>
+                        </args>
+                  </Atom>
+                 </content>
+                </External>
+              </formula>
+              <formula>
+                <External>
+                 <content>
+                  <Atom>
+                      <op>
+                        <Const type="&rif;iri">http://www.w3.org/2007/rif-builtin-predicate#is-literal-not-PlainLiteral</Const>
+                      </op>
+                        <args ordered="yes">
+                          <Const type="&xs;integer">1</Const>
+                        </args>
+                  </Atom>
+                 </content>
+                </External>
+              </formula>
+              <formula>
+                <External>
+                 <content>
+                  <Atom>
+                      <op>
+                        <Const type="&rif;iri">http://www.w3.org/2007/rif-builtin-predicate#is-literal-PlainLiteral</Const>
+                      </op>
+                        <args ordered="yes">
+                          <External>
+                           <content>
+                            <Expr>
+                                <op>
+                                  <Const type="&rif;iri">http://www.w3.org/1999/02/22-rdf-syntax-ns#PlainLiteral</Const>
+                                </op>
+                                  <args ordered="yes">
+                                    <Const type="&xs;integer">1</Const>
+                                  </args>
+                            </Expr>
+                           </content>
+                          </External>
+                        </args>
+                  </Atom>
+                 </content>
+                </External>
+              </formula>
+              <formula>
+                <Equal>
+                  <left>
+                    <External>
+                     <content>
+                      <Expr>
+                          <op>
+                            <Const type="&rif;iri">http://www.w3.org/2007/rif-builtin-function#PlainLiteral-from-string-lang</Const>
+                          </op>
+                            <args ordered="yes">
+                              <Const type="&xs;string">Hello World!</Const>
+                              <Const type="&xs;string">en</Const>
+                            </args>
+                      </Expr>
+                     </content>
+                    </External>
+                  </left>
+                  <right>
+                    <Const type="&rdf;PlainLiteral">Hello World!@en</Const>
+                  </right>
+                </Equal>
+              </formula>
+              <formula>
+                <Equal>
+                  <left>
+                    <External>
+                     <content>
+                      <Expr>
+                          <op>
+                            <Const type="&rif;iri">http://www.w3.org/2007/rif-builtin-function#string-from-PlainLiteral</Const>
+                          </op>
+                            <args ordered="yes">
+                              <Const type="&rdf;PlainLiteral">Hello World!@en</Const>
+                            </args>
+                      </Expr>
+                     </content>
+                    </External>
+                  </left>
+                  <right>
+                    <Const type="&xs;string">Hello World!</Const>
+                  </right>
+                </Equal>
+              </formula>
+              <formula>
+                <Equal>
+                  <left>
+                    <External>
+                     <content>
+                      <Expr>
+                          <op>
+                            <Const type="&rif;iri">http://www.w3.org/2007/rif-builtin-function#string-from-PlainLiteral</Const>
+                          </op>
+                            <args ordered="yes">
+                              <Const type="&xs;string">Hello World!@en</Const>
+                            </args>
+                      </Expr>
+                     </content>
+                    </External>
+                  </left>
+                  <right>
+                    <Const type="&xs;string">Hello World!@en</Const>
+                  </right>
+                </Equal>
+              </formula>
+              <formula>
+                <Equal>
+                  <left>
+                    <External>
+                     <content>
+                      <Expr>
+                          <op>
+                            <Const type="&rif;iri">http://www.w3.org/2007/rif-builtin-function#lang-from-PlainLiteral</Const>
+                          </op>
+                            <args ordered="yes">
+                              <Const type="&rdf;PlainLiteral">Hello World!@en</Const>
+                            </args>
+                      </Expr>
+                     </content>
+                    </External>
+                  </left>
+                  <right>
+                    <Const type="&xs;lang">en</Const>
+                  </right>
+                </Equal>
+              </formula>
+              <formula>
+                <Equal>
+                  <left>
+                    <External>
+                     <content>
+                      <Expr>
+                          <op>
+                            <Const type="&rif;iri">http://www.w3.org/2007/rif-builtin-function#lang-from-PlainLiteral</Const>
+                          </op>
+                            <args ordered="yes">
+                              <Const type="&xs;string">Hello World!@en</Const>
+                            </args>
+                      </Expr>
+                     </content>
+                    </External>
+                  </left>
+                  <right>
+                    <Const type="&xs;string" />
+                  </right>
+                </Equal>
+              </formula>
+              <formula>
+                <Equal>
+                  <left>
+                    <Const type="&xs;integer">-1</Const>
+                  </left>
+                  <right>
+                    <External>
+                     <content>
+                      <Expr>
+                          <op>
+                            <Const type="&rif;iri">http://www.w3.org/2007/rif-builtin-function#PlainLiteral-compare</Const>
+                          </op>
+                            <args ordered="yes">
+                              <Const type="&rdf;PlainLiteral">hallo@de</Const>
+                              <Const type="&rdf;PlainLiteral">welt@de</Const>
+                            </args>
+                      </Expr>
+                     </content>
+                    </External>
+                  </right>
+                </Equal>
+              </formula>
+              <formula>
+                <Equal>
+                  <left>
+                    <Const type="&xs;integer">1</Const>
+                  </left>
+                  <right>
+                    <External>
+                     <content>
+                      <Expr>
+                          <op>
+                            <Const type="&rif;iri">http://www.w3.org/2007/rif-builtin-function#PlainLiteral-compare</Const>
+                          </op>
+                            <args ordered="yes">
+                              <Const type="&rdf;PlainLiteral">welt@de</Const>
+                              <Const type="&rdf;PlainLiteral">hallo@de</Const>
+                            </args>
+                      </Expr>
+                     </content>
+                    </External>
+                  </right>
+                </Equal>
+              </formula>
+              <formula>
+                <Equal>
+                  <left>
+                    <Const type="&xs;integer">0</Const>
+                  </left>
+                  <right>
+                    <External>
+                     <content>
+                      <Expr>
+                          <op>
+                            <Const type="&rif;iri">http://www.w3.org/2007/rif-builtin-function#PlainLiteral-compare</Const>
+                          </op>
+                            <args ordered="yes">
+                              <Const type="&rdf;PlainLiteral">hallo@de</Const>
+                              <Const type="&rdf;PlainLiteral">hallo@de</Const>
+                            </args>
+                      </Expr>
+                     </content>
+                    </External>
+                  </right>
+                </Equal>
+              </formula>
+              <formula>
+                <External>
+                 <content>
+                  <Atom>
+                      <op>
+                        <Const type="&rif;iri">http://www.w3.org/2007/rif-builtin-predicate#matches-language-range</Const>
+                      </op>
+                        <args ordered="yes">
+                          <Const type="&rdf;PlainLiteral">Schlagobers ist dasselbe wie Schlagsahne.@de-at</Const>
+                          <Const type="&xs;string">de-*</Const>
+                        </args>
+                  </Atom>
+                 </content>
+                </External>
+              </formula>
+            </And>
+          </if>
+          <then>
+            <Atom>
+              <op>
+                <Const type="&rif;iri">http://example.org/example#ok</Const>
+              </op>
+            </Atom>
+          </then>
+        </Implies>
+      </sentence>
+    </Group>
+  </payload>
+</Document>
+<!--XML document generated on Sun Nov 07 10:35:46 EST 2010-->

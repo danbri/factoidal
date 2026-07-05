@@ -1,0 +1,14 @@
+Document( 
+ Prefix(xs <http://www.w3.org/2001/XMLSchema#>) 
+ Prefix(ex <http://example.org/example#>)  
+ Prefix(pred <http://www.w3.org/2007/rif-builtin-predicate#>) 
+
+ Group ( 
+  ex:ok() :- 
+    And (
+     External( pred:is-literal-anyURI( "http://www.example.org"^^xs:anyURI ) )
+     External( pred:is-literal-not-anyURI("1"^^xs:integer ) )
+     External( pred:is-literal-anyURI( External ( xs:anyURI ( "http://www.example.org"^^xs:string ) ) ) )
+    )
+ )
+)

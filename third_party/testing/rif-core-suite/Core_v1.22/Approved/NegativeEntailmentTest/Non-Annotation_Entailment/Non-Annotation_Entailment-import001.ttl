@@ -1,0 +1,8 @@
+@prefix ex: <http://example.org/example#> . 
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> . 
+@prefix owl: <http://www.w3.org/2002/07/owl#> . 
+@prefix dc: <http://purl.org/dc/elements/1.1/> . 
+
+ex:myOnto rdf:type owl:Ontology .
+ex:myOnto dc:title "Example ontology" .
+dc:title rdf:type owl:OntologyProperty .

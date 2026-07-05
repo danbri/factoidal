@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<PositiveEntailmentTest id="Positional_Arguments"
+    src="http://www.w3.org/2005/rules/test/repository/tc/Positional_Arguments" xmlns="http://www.w3.org/2009/10/rif-test#">
+    <status>Approved</status>
+    <dialect>Core</dialect>
+    <dialect>BLD</dialect>
+    <dialect>PRD</dialect>
+    <purpose>To demonstrate different syntactic options for specifying arguments</purpose>
+    <description>This test case demonstrates the same use case as "named arguments" and "frames" using ordered (positional) arguments instead of named arguments or frames.</description>
+    <PremiseDocument>
+        <Normative syntax="RIF/XML">
+            <name>Positional_Arguments-premise.rif</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/Positional_Arguments/Positional_Arguments-premise.rif</remote>
+        </Normative>
+        <Presentation syntax="RIFBLD-PS"><![CDATA[
+Document (
+ Prefix(ex <http://example.org/example#>)
+ Prefix(xs <http://www.w3.org/2001/XMLSchema#>) 
+
+ Group ( 
+
+  Forall ?Customer (
+     ex:discount(?Customer 10) :- ex:gold(?Customer)
+  )
+
+  Forall ?Customer (
+     ex:discount(?Customer 5) :- ex:silver(?Customer)
+  )
+
+  ex:gold("John Doe")
+ )
+)
+]]></Presentation>
+    </PremiseDocument>
+    <ConclusionDocument>
+        <Normative syntax="RIF/XML">
+            <name>Positional_Arguments-conclusion.rif</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/Positional_Arguments/Positional_Arguments-conclusion.rif</remote>
+        </Normative>
+        <Presentation syntax="RIFBLD-PS"><![CDATA[
+ex:discount("John Doe" 10)
+]]></Presentation>
+    </ConclusionDocument>
+</PositiveEntailmentTest>

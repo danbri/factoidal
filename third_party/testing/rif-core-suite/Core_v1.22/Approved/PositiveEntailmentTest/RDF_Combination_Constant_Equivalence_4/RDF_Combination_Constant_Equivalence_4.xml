@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<PositiveEntailmentTest id="RDF_Combination_Constant_Equivalence_4"
+    src="http://www.w3.org/2005/rules/test/repository/tc/RDF_Combination_Constant_Equivalence_4" xmlns="http://www.w3.org/2009/10/rif-test#">
+    <status>Approved</status>
+    <dialect>Core</dialect>
+    <dialect>BLD</dialect>
+    <dialect>PRD</dialect>
+    <Combinations>
+        <profile>http://www.w3.org/ns/entailment/Simple</profile>
+    </Combinations>
+    <purpose>Test equivalent treatment of RDF constants and RIF symbols in simple entailment</purpose>
+    <description>The syntax for constants in RIF and RDF is slightly different; RDF has a number of different kinds of constants (e.g., IRI, in a literal, typed literal), whereas RIF has a single kind of constant (i.e., a pair &lt;literal, symbol space&gt;).  In particular, in combinations, there is no distinction between plain literals and literals with type xs:string.</description>
+    <ImportedDocument>
+        <Normative syntax="RDF/XML">
+            <name>RDF_Combination_Constant_Equivalence_4-import001.rdf</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/RDF_Combination_Constant_Equivalence_4/RDF_Combination_Constant_Equivalence_4-import001</remote>
+        </Normative>
+        <Presentation syntax="Turtle"><![CDATA[
+@prefix xs: <www.w3.org/2001/XMLSchema#> . 
+
+ <http://example.org#a> <http://example.org#p> "this is a string"^^xs:string .
+]]></Presentation>
+    </ImportedDocument>
+    <PremiseDocument>
+        <Normative syntax="RIF/XML">
+            <name>RDF_Combination_Constant_Equivalence_4-premise.rif</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/RDF_Combination_Constant_Equivalence_4/RDF_Combination_Constant_Equivalence_4-premise.rif</remote>
+        </Normative>
+        <Presentation syntax="RIFBLD-PS"><![CDATA[
+Document(
+    Import(<http://example.org/mygraph> <http://www.w3.org/ns/entailment/Simple>)
+ )
+]]></Presentation>
+    </PremiseDocument>
+    <ConclusionDocument>
+        <Normative syntax="RIF/XML">
+            <name>RDF_Combination_Constant_Equivalence_4-conclusion.rif</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/RDF_Combination_Constant_Equivalence_4/RDF_Combination_Constant_Equivalence_4-conclusion.rif</remote>
+        </Normative>
+        <Presentation syntax="RIFBLD-PS"><![CDATA[
+<http://example.org#a>[<http://example.org#p> -> "this is a string"]
+]]></Presentation>
+    </ConclusionDocument>
+</PositiveEntailmentTest>

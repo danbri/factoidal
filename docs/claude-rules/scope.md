@@ -15,7 +15,8 @@ so future agents (and humans) don't burn cycles attempting them.
   (`someValuesFrom`, `allValuesFrom`, `unionOf`, `intersectionOf`,
   cardinality CEs) — best-effort, not full DL classification.
 - RIF Core — the frame/BGP-shaped rule-body subset exercised by the
-  4 vendored W3C RIF test cases (see below), verified in
+  4 vendored W3C RIF test cases plus the applicable subset of the
+  full vendored Core dialect corpus (see below), verified in
   `RIF.Core.Syntax.fst` / `RIF.Core.Translation.fst` /
   `RIF.Core.Eval.fst` + `Parser.RIFXML.fst`, driven end-to-end by
   `bin/rif-runner/rif_runner.ml`.
@@ -54,6 +55,30 @@ Any RIF document whose rule bodies or imports fall outside the
 frame/BGP + single-`<Import>` shape above is out of scope; a runner
 encountering one should report an honest FAIL/SKIP with a diagnosis,
 not force a PASS.
+
+**Full Core dialect corpus (2026-07-05):** `bin/rif-runner/rif_runner.ml`
+also walks the complete official W3C RIF Core dialect test
+distribution vendored at `third_party/testing/rif-core-suite/`
+(46 tests — see that directory's `README.md` for source/license/
+inventory, and `bin/rif-runner/README.md` for the full pipeline,
+score, and skip-bucket table). Measured: **7 pass, 3 fail, 36 skip
+(out of 46)**; combined with the 4 tests above, **11 pass, 3 fail,
+36 skip (out of 50)**. The skips are almost entirely RIF-BLD
+built-ins (`External`, 16 tests) and the genuine RIF Core constructs
+this project does not implement (`Equal`, `Exists`, `List` — 4
+tests combined) plus the syntax-safeness/import-rejection test
+categories (12 tests, no dialect-conformance validator exists). The
+3 FAILs are diagnosed, not swept under a SKIP: 2 are real
+construct/semantics gaps (`rdf:PlainLiteral` language-tag decoding
+in `Parser.RIFXML.fst`'s `const_from_type`; OWL-Direct semantics has
+no ontology-annotation-triple exclusion step before RIF rule bodies
+evaluate against an imported graph) and 1 is a data defect in the
+official `Core_v1.22.zip` distribution itself (a malformed
+`xsd:string` datatype IRI in `RDF_Combination_Constant_Equivalence_4`'s
+vendored import files, present since the test was authored in 2010).
+None of the 3 are fixed here — all three need F\* edits, out of
+scope for the PR that added the corpus walker; see
+`bin/rif-runner/README.md` for the per-test detail.
 
 ### Full OWL DL tableau classifier
 

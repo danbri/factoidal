@@ -1,0 +1,7 @@
+Document(
+  Prefix(ex   <http://example.org/example#>)
+  
+  Group  (
+    ex:o[ex:a->1 ex:b->2]
+  ) 
+)

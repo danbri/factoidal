@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<!DOCTYPE Document [
+  <!ENTITY rif  "http://www.w3.org/2007/rif#">
+  <!ENTITY xs   "http://www.w3.org/2001/XMLSchema#">
+  <!ENTITY rdf  "http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+]>
+
+  <Exists  xmlns="&rif;">
+    <declare>
+      <Var>z</Var>
+    </declare>
+    <formula>
+      <Frame>
+        <object>
+          <Var>z</Var>
+        </object>
+        <slot ordered="yes">
+          <Const type="&rif;iri">http://www.w3.org/1999/02/22-rdf-syntax-ns#type</Const>
+          <Const type="&rif;iri">http://example.org/example#named</Const>
+        </slot>
+      </Frame>
+    </formula>
+  </Exists>
+<!--XML document generated on Sun Nov 07 10:35:34 EST 2010-->

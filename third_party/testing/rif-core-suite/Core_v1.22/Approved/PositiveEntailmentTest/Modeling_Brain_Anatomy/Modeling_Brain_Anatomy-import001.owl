@@ -1,0 +1,30 @@
+Namespace(=<http://example.org/testOntology.owl#>)
+
+Ontology(<http://example.org/testOntology.owl>
+
+SubClassOf(MaterialAnatomicalEntity AnatomicalEntity)
+SubClassOf(Gyrus MaterialAnatomicalEntity)
+
+SubClassOf(NonMaterialAnatomicalEntity AnatomicalEntity)
+SubClassOf(GyriConnection NonMaterialAnatomicalEntity)
+SubClassOf(SucalFold NonMaterialAnatomicalEntity)
+
+SymmetricObjectProperty(isMAEConnectedTo)
+ObjectPropertyDomain(isMAEConnectedTo MaterialAnatomicalEntity)
+ObjectPropertyRange(isMAEConnectedTo MaterialAnatomicalEntity)
+
+ObjectPropertyDomain(isMAEBoundedBy MaterialAnatomicalEntity)
+ObjectPropertyRange(isMAEBoundedBy ObjectUnionOf(SucalFold GyriConnection))
+
+Declaration(Individual(g1))
+ClassAssertion(g1 Gyrus)
+ObjectPropertyAssertion(isMAEBoundedBy g1 op)
+
+Declaration(Individual(pcg0))
+ClassAssertion(pcg0 Gyrus)
+ObjectPropertyAssertion(isMAEBoundedBy pcg0 op)
+
+Declaration(Individual(op))
+ClassAssertion(op GyriConnection)
+
+)

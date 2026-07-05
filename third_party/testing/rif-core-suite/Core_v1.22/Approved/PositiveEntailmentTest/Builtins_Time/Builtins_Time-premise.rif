@@ -1,0 +1,1737 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<!DOCTYPE Document [
+  <!ENTITY rif  "http://www.w3.org/2007/rif#">
+  <!ENTITY xs   "http://www.w3.org/2001/XMLSchema#">
+  <!ENTITY rdf  "http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+]>
+
+<Document xmlns="&rif;">
+  <payload>
+    <Group>
+      <sentence>
+        <Implies>
+          <if>
+            <And>
+              <formula>
+                <External>
+                 <content>
+                  <Atom>
+                      <op>
+                        <Const type="&rif;iri">http://www.w3.org/2007/rif-builtin-predicate#is-literal-date</Const>
+                      </op>
+                        <args ordered="yes">
+                          <Const type="&xs;date">2000-12-13-11:00</Const>
+                        </args>
+                  </Atom>
+                 </content>
+                </External>
+              </formula>
+              <formula>
+                <External>
+                 <content>
+                  <Atom>
+                      <op>
+                        <Const type="&rif;iri">http://www.w3.org/2007/rif-builtin-predicate#is-literal-dateTime</Const>
+                      </op>
+                        <args ordered="yes">
+                          <Const type="&xs;dateTime">2000-12-13T00:11:11.3</Const>
+                        </args>
+                  </Atom>
+                 </content>
+                </External>
+              </formula>
+              <formula>
+                <External>
+                 <content>
+                  <Atom>
+                      <op>
+                        <Const type="&rif;iri">http://www.w3.org/2007/rif-builtin-predicate#is-literal-dateTimeStamp</Const>
+                      </op>
+                        <args ordered="yes">
+                          <Const type="&xs;dateTimeStamp">2000-12-13T00:11:11.3Z</Const>
+                        </args>
+                  </Atom>
+                 </content>
+                </External>
+              </formula>
+              <formula>
+                <External>
+                 <content>
+                  <Atom>
+                      <op>
+                        <Const type="&rif;iri">http://www.w3.org/2007/rif-builtin-predicate#is-literal-time</Const>
+                      </op>
+                        <args ordered="yes">
+                          <Const type="&xs;time">00:11:11.3Z</Const>
+                        </args>
+                  </Atom>
+                 </content>
+                </External>
+              </formula>
+              <formula>
+                <External>
+                 <content>
+                  <Atom>
+                      <op>
+                        <Const type="&rif;iri">http://www.w3.org/2007/rif-builtin-predicate#is-literal-dayTimeDuration</Const>
+                      </op>
+                        <args ordered="yes">
+                          <Const type="&xs;dayTimeDuration">P3DT2H</Const>
+                        </args>
+                  </Atom>
+                 </content>
+                </External>
+              </formula>
+              <formula>
+                <External>
+                 <content>
+                  <Atom>
+                      <op>
+                        <Const type="&rif;iri">http://www.w3.org/2007/rif-builtin-predicate#is-literal-yearMonthDuration</Const>
+                      </op>
+                        <args ordered="yes">
+                          <Const type="&xs;yearMonthDuration">P1Y2M</Const>
+                        </args>
+                  </Atom>
+                 </content>
+                </External>
+              </formula>
+              <formula>
+                <External>
+                 <content>
+                  <Atom>
+                      <op>
+                        <Const type="&rif;iri">http://www.w3.org/2007/rif-builtin-predicate#is-literal-not-date</Const>
+                      </op>
+                        <args ordered="yes">
+                          <Const type="&xs;string">foo</Const>
+                        </args>
+                  </Atom>
+                 </content>
+                </External>
+              </formula>
+              <formula>
+                <External>
+                 <content>
+                  <Atom>
+                      <op>
+                        <Const type="&rif;iri">http://www.w3.org/2007/rif-builtin-predicate#is-literal-not-dateTime</Const>
+                      </op>
+                        <args ordered="yes">
+                          <Const type="&xs;string">foo</Const>
+                        </args>
+                  </Atom>
+                 </content>
+                </External>
+              </formula>
+              <formula>
+                <External>
+                 <content>
+                  <Atom>
+                      <op>
+                        <Const type="&rif;iri">http://www.w3.org/2007/rif-builtin-predicate#is-literal-not-dateTimeStamp</Const>
+                      </op>
+                        <args ordered="yes">
+                          <Const type="&xs;string">foo</Const>
+                        </args>
+                  </Atom>
+                 </content>
+                </External>
+              </formula>
+              <formula>
+                <External>
+                 <content>
+                  <Atom>
+                      <op>
+                        <Const type="&rif;iri">http://www.w3.org/2007/rif-builtin-predicate#is-literal-not-time</Const>
+                      </op>
+                        <args ordered="yes">
+                          <Const type="&xs;string">foo</Const>
+                        </args>
+                  </Atom>
+                 </content>
+                </External>
+              </formula>
+              <formula>
+                <External>
+                 <content>
+                  <Atom>
+                      <op>
+                        <Const type="&rif;iri">http://www.w3.org/2007/rif-builtin-predicate#is-literal-not-dayTimeDuration</Const>
+                      </op>
+                        <args ordered="yes">
+                          <Const type="&xs;string">foo</Const>
+                        </args>
+                  </Atom>
+                 </content>
+                </External>
+              </formula>
+              <formula>
+                <External>
+                 <content>
+                  <Atom>
+                      <op>
+                        <Const type="&rif;iri">http://www.w3.org/2007/rif-builtin-predicate#is-literal-not-yearMonthDuration</Const>
+                      </op>
+                        <args ordered="yes">
+                          <Const type="&xs;string">foo</Const>
+                        </args>
+                  </Atom>
+                 </content>
+                </External>
+              </formula>
+              <formula>
+                <External>
+                 <content>
+                  <Atom>
+                      <op>
+                        <Const type="&rif;iri">http://www.w3.org/2007/rif-builtin-predicate#is-literal-date</Const>
+                      </op>
+                        <args ordered="yes">
+                          <External>
+                           <content>
+                            <Expr>
+                                <op>
+                                  <Const type="&rif;iri">http://www.w3.org/2001/XMLSchema#date</Const>
+                                </op>
+                                  <args ordered="yes">
+                                    <Const type="&xs;string">2000-12-13-11:00</Const>
+                                  </args>
+                            </Expr>
+                           </content>
+                          </External>
+                        </args>
+                  </Atom>
+                 </content>
+                </External>
+              </formula>
+              <formula>
+                <External>
+                 <content>
+                  <Atom>
+                      <op>
+                        <Const type="&rif;iri">http://www.w3.org/2007/rif-builtin-predicate#is-literal-dateTime</Const>
+                      </op>
+                        <args ordered="yes">
+                          <External>
+                           <content>
+                            <Expr>
+                                <op>
+                                  <Const type="&rif;iri">http://www.w3.org/2001/XMLSchema#dateTime</Const>
+                                </op>
+                                  <args ordered="yes">
+                                    <Const type="&xs;string">2000-12-13T00:11:11.3</Const>
+                                  </args>
+                            </Expr>
+                           </content>
+                          </External>
+                        </args>
+                  </Atom>
+                 </content>
+                </External>
+              </formula>
+              <formula>
+                <External>
+                 <content>
+                  <Atom>
+                      <op>
+                        <Const type="&rif;iri">http://www.w3.org/2007/rif-builtin-predicate#is-literal-dateTimeStamp</Const>
+                      </op>
+                        <args ordered="yes">
+                          <External>
+                           <content>
+                            <Expr>
+                                <op>
+                                  <Const type="&rif;iri">http://www.w3.org/2001/XMLSchema#dateTimeStamp</Const>
+                                </op>
+                                  <args ordered="yes">
+                                    <Const type="&xs;string">2000-12-13T00:11:11.3Z</Const>
+                                  </args>
+                            </Expr>
+                           </content>
+                          </External>
+                        </args>
+                  </Atom>
+                 </content>
+                </External>
+              </formula>
+              <formula>
+                <External>
+                 <content>
+                  <Atom>
+                      <op>
+                        <Const type="&rif;iri">http://www.w3.org/2007/rif-builtin-predicate#is-literal-time</Const>
+                      </op>
+                        <args ordered="yes">
+                          <External>
+                           <content>
+                            <Expr>
+                                <op>
+                                  <Const type="&rif;iri">http://www.w3.org/2001/XMLSchema#time</Const>
+                                </op>
+                                  <args ordered="yes">
+                                    <Const type="&xs;string">00:11:11.3Z</Const>
+                                  </args>
+                            </Expr>
+                           </content>
+                          </External>
+                        </args>
+                  </Atom>
+                 </content>
+                </External>
+              </formula>
+              <formula>
+                <External>
+                 <content>
+                  <Atom>
+                      <op>
+                        <Const type="&rif;iri">http://www.w3.org/2007/rif-builtin-predicate#is-literal-dayTimeDuration</Const>
+                      </op>
+                        <args ordered="yes">
+                          <External>
+                           <content>
+                            <Expr>
+                                <op>
+                                  <Const type="&rif;iri">http://www.w3.org/2001/XMLSchema#dayTimeDuration</Const>
+                                </op>
+                                  <args ordered="yes">
+                                    <Const type="&xs;string">P3DT2H</Const>
+                                  </args>
+                            </Expr>
+                           </content>
+                          </External>
+                        </args>
+                  </Atom>
+                 </content>
+                </External>
+              </formula>
+              <formula>
+                <External>
+                 <content>
+                  <Atom>
+                      <op>
+                        <Const type="&rif;iri">http://www.w3.org/2007/rif-builtin-predicate#is-literal-yearMonthDuration</Const>
+                      </op>
+                        <args ordered="yes">
+                          <External>
+                           <content>
+                            <Expr>
+                                <op>
+                                  <Const type="&rif;iri">http://www.w3.org/2001/XMLSchema#yearMonthDuration</Const>
+                                </op>
+                                  <args ordered="yes">
+                                    <Const type="&xs;string">P1Y2M</Const>
+                                  </args>
+                            </Expr>
+                           </content>
+                          </External>
+                        </args>
+                  </Atom>
+                 </content>
+                </External>
+              </formula>
+              <formula>
+                <Equal>
+                  <left>
+                    <External>
+                     <content>
+                      <Expr>
+                          <op>
+                            <Const type="&rif;iri">http://www.w3.org/2007/rif-builtin-function#year-from-dateTime</Const>
+                          </op>
+                            <args ordered="yes">
+                              <Const type="&xs;dateTime">1999-12-31T24:00:00</Const>
+                            </args>
+                      </Expr>
+                     </content>
+                    </External>
+                  </left>
+                  <right>
+                    <Const type="&xs;integer">2000</Const>
+                  </right>
+                </Equal>
+              </formula>
+              <formula>
+                <Equal>
+                  <left>
+                    <External>
+                     <content>
+                      <Expr>
+                          <op>
+                            <Const type="&rif;iri">http://www.w3.org/2007/rif-builtin-function#month-from-dateTime</Const>
+                          </op>
+                            <args ordered="yes">
+                              <Const type="&xs;dateTime">1999-05-31T13:20:00-05:00</Const>
+                            </args>
+                      </Expr>
+                     </content>
+                    </External>
+                  </left>
+                  <right>
+                    <Const type="&xs;integer">5</Const>
+                  </right>
+                </Equal>
+              </formula>
+              <formula>
+                <Equal>
+                  <left>
+                    <External>
+                     <content>
+                      <Expr>
+                          <op>
+                            <Const type="&rif;iri">http://www.w3.org/2007/rif-builtin-function#day-from-dateTime</Const>
+                          </op>
+                            <args ordered="yes">
+                              <Const type="&xs;dateTime">1999-05-31T13:20:00-05:00</Const>
+                            </args>
+                      </Expr>
+                     </content>
+                    </External>
+                  </left>
+                  <right>
+                    <Const type="&xs;integer">31</Const>
+                  </right>
+                </Equal>
+              </formula>
+              <formula>
+                <Equal>
+                  <left>
+                    <External>
+                     <content>
+                      <Expr>
+                          <op>
+                            <Const type="&rif;iri">http://www.w3.org/2007/rif-builtin-function#hours-from-dateTime</Const>
+                          </op>
+                            <args ordered="yes">
+                              <Const type="&xs;dateTime">1999-05-31T08:20:00-05:00</Const>
+                            </args>
+                      </Expr>
+                     </content>
+                    </External>
+                  </left>
+                  <right>
+                    <Const type="&xs;integer">8</Const>
+                  </right>
+                </Equal>
+              </formula>
+              <formula>
+                <Equal>
+                  <left>
+                    <External>
+                     <content>
+                      <Expr>
+                          <op>
+                            <Const type="&rif;iri">http://www.w3.org/2007/rif-builtin-function#minutes-from-dateTime</Const>
+                          </op>
+                            <args ordered="yes">
+                              <Const type="&xs;dateTime">1999-05-31T13:20:00-05:00</Const>
+                            </args>
+                      </Expr>
+                     </content>
+                    </External>
+                  </left>
+                  <right>
+                    <Const type="&xs;integer">20</Const>
+                  </right>
+                </Equal>
+              </formula>
+              <formula>
+                <Equal>
+                  <left>
+                    <External>
+                     <content>
+                      <Expr>
+                          <op>
+                            <Const type="&rif;iri">http://www.w3.org/2007/rif-builtin-function#seconds-from-dateTime</Const>
+                          </op>
+                            <args ordered="yes">
+                              <Const type="&xs;dateTime">1999-05-31T13:20:00-05:00</Const>
+                            </args>
+                      </Expr>
+                     </content>
+                    </External>
+                  </left>
+                  <right>
+                    <Const type="&xs;integer">0</Const>
+                  </right>
+                </Equal>
+              </formula>
+              <formula>
+                <Equal>
+                  <left>
+                    <External>
+                     <content>
+                      <Expr>
+                          <op>
+                            <Const type="&rif;iri">http://www.w3.org/2007/rif-builtin-function#year-from-date</Const>
+                          </op>
+                            <args ordered="yes">
+                              <Const type="&xs;date">1999-12-31</Const>
+                            </args>
+                      </Expr>
+                     </content>
+                    </External>
+                  </left>
+                  <right>
+                    <Const type="&xs;integer">1999</Const>
+                  </right>
+                </Equal>
+              </formula>
+              <formula>
+                <Equal>
+                  <left>
+                    <External>
+                     <content>
+                      <Expr>
+                          <op>
+                            <Const type="&rif;iri">http://www.w3.org/2007/rif-builtin-function#month-from-date</Const>
+                          </op>
+                            <args ordered="yes">
+                              <Const type="&xs;date">1999-05-31</Const>
+                            </args>
+                      </Expr>
+                     </content>
+                    </External>
+                  </left>
+                  <right>
+                    <Const type="&xs;integer">5</Const>
+                  </right>
+                </Equal>
+              </formula>
+              <formula>
+                <Equal>
+                  <left>
+                    <External>
+                     <content>
+                      <Expr>
+                          <op>
+                            <Const type="&rif;iri">http://www.w3.org/2007/rif-builtin-function#day-from-date</Const>
+                          </op>
+                            <args ordered="yes">
+                              <Const type="&xs;date">1999-05-31</Const>
+                            </args>
+                      </Expr>
+                     </content>
+                    </External>
+                  </left>
+                  <right>
+                    <Const type="&xs;integer">31</Const>
+                  </right>
+                </Equal>
+              </formula>
+              <formula>
+                <Equal>
+                  <left>
+                    <External>
+                     <content>
+                      <Expr>
+                          <op>
+                            <Const type="&rif;iri">http://www.w3.org/2007/rif-builtin-function#hours-from-time</Const>
+                          </op>
+                            <args ordered="yes">
+                              <Const type="&xs;time">08:20:00-05:00</Const>
+                            </args>
+                      </Expr>
+                     </content>
+                    </External>
+                  </left>
+                  <right>
+                    <Const type="&xs;integer">8</Const>
+                  </right>
+                </Equal>
+              </formula>
+              <formula>
+                <Equal>
+                  <left>
+                    <External>
+                     <content>
+                      <Expr>
+                          <op>
+                            <Const type="&rif;iri">http://www.w3.org/2007/rif-builtin-function#minutes-from-time</Const>
+                          </op>
+                            <args ordered="yes">
+                              <Const type="&xs;time">13:20:00-05:00</Const>
+                            </args>
+                      </Expr>
+                     </content>
+                    </External>
+                  </left>
+                  <right>
+                    <Const type="&xs;integer">20</Const>
+                  </right>
+                </Equal>
+              </formula>
+              <formula>
+                <Equal>
+                  <left>
+                    <External>
+                     <content>
+                      <Expr>
+                          <op>
+                            <Const type="&rif;iri">http://www.w3.org/2007/rif-builtin-function#seconds-from-time</Const>
+                          </op>
+                            <args ordered="yes">
+                              <Const type="&xs;time">13:20:00-05:00</Const>
+                            </args>
+                      </Expr>
+                     </content>
+                    </External>
+                  </left>
+                  <right>
+                    <Const type="&xs;integer">0</Const>
+                  </right>
+                </Equal>
+              </formula>
+              <formula>
+                <Equal>
+                  <left>
+                    <External>
+                     <content>
+                      <Expr>
+                          <op>
+                            <Const type="&rif;iri">http://www.w3.org/2007/rif-builtin-function#timezone-from-dateTime</Const>
+                          </op>
+                            <args ordered="yes">
+                              <Const type="&xs;dateTime">1999-05-31T13:20:00-05:00</Const>
+                            </args>
+                      </Expr>
+                     </content>
+                    </External>
+                  </left>
+                  <right>
+                    <Const type="&xs;dayTimeDuration">-PT5H</Const>
+                  </right>
+                </Equal>
+              </formula>
+              <formula>
+                <Equal>
+                  <left>
+                    <External>
+                     <content>
+                      <Expr>
+                          <op>
+                            <Const type="&rif;iri">http://www.w3.org/2007/rif-builtin-function#timezone-from-date</Const>
+                          </op>
+                            <args ordered="yes">
+                              <Const type="&xs;date">1999-05-31-05:00</Const>
+                            </args>
+                      </Expr>
+                     </content>
+                    </External>
+                  </left>
+                  <right>
+                    <Const type="&xs;dayTimeDuration">-PT5H</Const>
+                  </right>
+                </Equal>
+              </formula>
+              <formula>
+                <Equal>
+                  <left>
+                    <External>
+                     <content>
+                      <Expr>
+                          <op>
+                            <Const type="&rif;iri">http://www.w3.org/2007/rif-builtin-function#timezone-from-time</Const>
+                          </op>
+                            <args ordered="yes">
+                              <Const type="&xs;time">13:20:00-05:00</Const>
+                            </args>
+                      </Expr>
+                     </content>
+                    </External>
+                  </left>
+                  <right>
+                    <Const type="&xs;dayTimeDuration">-PT5H</Const>
+                  </right>
+                </Equal>
+              </formula>
+              <formula>
+                <Equal>
+                  <left>
+                    <External>
+                     <content>
+                      <Expr>
+                          <op>
+                            <Const type="&rif;iri">http://www.w3.org/2007/rif-builtin-function#years-from-duration</Const>
+                          </op>
+                            <args ordered="yes">
+                              <Const type="&xs;yearMonthDuration">P20Y15M</Const>
+                            </args>
+                      </Expr>
+                     </content>
+                    </External>
+                  </left>
+                  <right>
+                    <Const type="&xs;integer">21</Const>
+                  </right>
+                </Equal>
+              </formula>
+              <formula>
+                <Equal>
+                  <left>
+                    <External>
+                     <content>
+                      <Expr>
+                          <op>
+                            <Const type="&rif;iri">http://www.w3.org/2007/rif-builtin-function#months-from-duration</Const>
+                          </op>
+                            <args ordered="yes">
+                              <Const type="&xs;yearMonthDuration">P20Y15M</Const>
+                            </args>
+                      </Expr>
+                     </content>
+                    </External>
+                  </left>
+                  <right>
+                    <Const type="&xs;integer">3</Const>
+                  </right>
+                </Equal>
+              </formula>
+              <formula>
+                <Equal>
+                  <left>
+                    <External>
+                     <content>
+                      <Expr>
+                          <op>
+                            <Const type="&rif;iri">http://www.w3.org/2007/rif-builtin-function#days-from-duration</Const>
+                          </op>
+                            <args ordered="yes">
+                              <Const type="&xs;dayTimeDuration">P3DT10H</Const>
+                            </args>
+                      </Expr>
+                     </content>
+                    </External>
+                  </left>
+                  <right>
+                    <Const type="&xs;integer">3</Const>
+                  </right>
+                </Equal>
+              </formula>
+              <formula>
+                <Equal>
+                  <left>
+                    <External>
+                     <content>
+                      <Expr>
+                          <op>
+                            <Const type="&rif;iri">http://www.w3.org/2007/rif-builtin-function#hours-from-duration</Const>
+                          </op>
+                            <args ordered="yes">
+                              <Const type="&xs;dayTimeDuration">P3DT10H</Const>
+                            </args>
+                      </Expr>
+                     </content>
+                    </External>
+                  </left>
+                  <right>
+                    <Const type="&xs;integer">10</Const>
+                  </right>
+                </Equal>
+              </formula>
+              <formula>
+                <Equal>
+                  <left>
+                    <External>
+                     <content>
+                      <Expr>
+                          <op>
+                            <Const type="&rif;iri">http://www.w3.org/2007/rif-builtin-function#minutes-from-duration</Const>
+                          </op>
+                            <args ordered="yes">
+                              <Const type="&xs;dayTimeDuration">-P5DT12H30M</Const>
+                            </args>
+                      </Expr>
+                     </content>
+                    </External>
+                  </left>
+                  <right>
+                    <Const type="&xs;integer">-30</Const>
+                  </right>
+                </Equal>
+              </formula>
+              <formula>
+                <Equal>
+                  <left>
+                    <External>
+                     <content>
+                      <Expr>
+                          <op>
+                            <Const type="&rif;iri">http://www.w3.org/2007/rif-builtin-function#seconds-from-duration</Const>
+                          </op>
+                            <args ordered="yes">
+                              <Const type="&xs;dayTimeDuration">P3DT10H12.5S</Const>
+                            </args>
+                      </Expr>
+                     </content>
+                    </External>
+                  </left>
+                  <right>
+                    <Const type="&xs;integer">12.5</Const>
+                  </right>
+                </Equal>
+              </formula>
+              <formula>
+                <Equal>
+                  <left>
+                    <External>
+                     <content>
+                      <Expr>
+                          <op>
+                            <Const type="&rif;iri">http://www.w3.org/2007/rif-builtin-function#subtract-dateTimes</Const>
+                          </op>
+                            <args ordered="yes">
+                              <Const type="&xs;dateTime">2000-10-30T06:12:00-05:00</Const>
+                              <Const type="&xs;dateTime">1999-11-28T09:00:00Z</Const>
+                            </args>
+                      </Expr>
+                     </content>
+                    </External>
+                  </left>
+                  <right>
+                    <Const type="&xs;dayTimeDuration">P337DT2H12M</Const>
+                  </right>
+                </Equal>
+              </formula>
+              <formula>
+                <Equal>
+                  <left>
+                    <External>
+                     <content>
+                      <Expr>
+                          <op>
+                            <Const type="&rif;iri">http://www.w3.org/2007/rif-builtin-function#subtract-dates</Const>
+                          </op>
+                            <args ordered="yes">
+                              <Const type="&xs;date">2000-10-30Z</Const>
+                              <Const type="&xs;date">1999-11-28Z</Const>
+                            </args>
+                      </Expr>
+                     </content>
+                    </External>
+                  </left>
+                  <right>
+                    <Const type="&xs;dayTimeDuration">P337D</Const>
+                  </right>
+                </Equal>
+              </formula>
+              <formula>
+                <Equal>
+                  <left>
+                    <External>
+                     <content>
+                      <Expr>
+                          <op>
+                            <Const type="&rif;iri">http://www.w3.org/2007/rif-builtin-function#subtract-times</Const>
+                          </op>
+                            <args ordered="yes">
+                              <Const type="&xs;time">11:12:00Z</Const>
+                              <Const type="&xs;time">04:00:00Z</Const>
+                            </args>
+                      </Expr>
+                     </content>
+                    </External>
+                  </left>
+                  <right>
+                    <Const type="&xs;dayTimeDuration">PT7H12M</Const>
+                  </right>
+                </Equal>
+              </formula>
+              <formula>
+                <Equal>
+                  <left>
+                    <External>
+                     <content>
+                      <Expr>
+                          <op>
+                            <Const type="&rif;iri">http://www.w3.org/2007/rif-builtin-function#add-yearMonthDurations</Const>
+                          </op>
+                            <args ordered="yes">
+                              <Const type="&xs;yearMonthDuration">P2Y11M</Const>
+                              <Const type="&xs;yearMonthDuration">P3Y3M</Const>
+                            </args>
+                      </Expr>
+                     </content>
+                    </External>
+                  </left>
+                  <right>
+                    <Const type="&xs;yearMonthDuration">P6Y2M</Const>
+                  </right>
+                </Equal>
+              </formula>
+              <formula>
+                <Equal>
+                  <left>
+                    <External>
+                     <content>
+                      <Expr>
+                          <op>
+                            <Const type="&rif;iri">http://www.w3.org/2007/rif-builtin-function#subtract-yearMonthDurations</Const>
+                          </op>
+                            <args ordered="yes">
+                              <Const type="&xs;yearMonthDuration">P2Y11M</Const>
+                              <Const type="&xs;yearMonthDuration">P3Y3M</Const>
+                            </args>
+                      </Expr>
+                     </content>
+                    </External>
+                  </left>
+                  <right>
+                    <Const type="&xs;yearMonthDuration">-P4M</Const>
+                  </right>
+                </Equal>
+              </formula>
+              <formula>
+                <Equal>
+                  <left>
+                    <External>
+                     <content>
+                      <Expr>
+                          <op>
+                            <Const type="&rif;iri">http://www.w3.org/2007/rif-builtin-function#multiply-yearMonthDuration</Const>
+                          </op>
+                            <args ordered="yes">
+                              <Const type="&xs;yearMonthDuration">P2Y11M</Const>
+                              <Const type="&xs;integer">2.3</Const>
+                            </args>
+                      </Expr>
+                     </content>
+                    </External>
+                  </left>
+                  <right>
+                    <Const type="&xs;yearMonthDuration">P6Y9M</Const>
+                  </right>
+                </Equal>
+              </formula>
+              <formula>
+                <Equal>
+                  <left>
+                    <External>
+                     <content>
+                      <Expr>
+                          <op>
+                            <Const type="&rif;iri">http://www.w3.org/2007/rif-builtin-function#divide-yearMonthDuration</Const>
+                          </op>
+                            <args ordered="yes">
+                              <Const type="&xs;yearMonthDuration">P2Y11M</Const>
+                              <Const type="&xs;integer">1.5</Const>
+                            </args>
+                      </Expr>
+                     </content>
+                    </External>
+                  </left>
+                  <right>
+                    <Const type="&xs;yearMonthDuration">P1Y11M</Const>
+                  </right>
+                </Equal>
+              </formula>
+              <formula>
+                <Equal>
+                  <left>
+                    <External>
+                     <content>
+                      <Expr>
+                          <op>
+                            <Const type="&rif;iri">http://www.w3.org/2007/rif-builtin-function#divide-yearMonthDuration-by-yearMonthDuration</Const>
+                          </op>
+                            <args ordered="yes">
+                              <Const type="&xs;yearMonthDuration">P3Y4M</Const>
+                              <Const type="&xs;yearMonthDuration">-P1Y4M</Const>
+                            </args>
+                      </Expr>
+                     </content>
+                    </External>
+                  </left>
+                  <right>
+                    <Const type="&xs;integer">-2.5</Const>
+                  </right>
+                </Equal>
+              </formula>
+              <formula>
+                <Equal>
+                  <left>
+                    <External>
+                     <content>
+                      <Expr>
+                          <op>
+                            <Const type="&rif;iri">http://www.w3.org/2007/rif-builtin-function#add-dayTimeDurations</Const>
+                          </op>
+                            <args ordered="yes">
+                              <Const type="&xs;dayTimeDuration">P2DT12H5M</Const>
+                              <Const type="&xs;dayTimeDuration">P5DT12H</Const>
+                            </args>
+                      </Expr>
+                     </content>
+                    </External>
+                  </left>
+                  <right>
+                    <Const type="&xs;dayTimeDuration">P8DT5M</Const>
+                  </right>
+                </Equal>
+              </formula>
+              <formula>
+                <Equal>
+                  <left>
+                    <External>
+                     <content>
+                      <Expr>
+                          <op>
+                            <Const type="&rif;iri">http://www.w3.org/2007/rif-builtin-function#subtract-dayTimeDurations</Const>
+                          </op>
+                            <args ordered="yes">
+                              <Const type="&xs;dayTimeDuration">P2DT12H</Const>
+                              <Const type="&xs;dayTimeDuration">P1DT10H30M</Const>
+                            </args>
+                      </Expr>
+                     </content>
+                    </External>
+                  </left>
+                  <right>
+                    <Const type="&xs;dayTimeDuration">P1DT1H30M</Const>
+                  </right>
+                </Equal>
+              </formula>
+              <formula>
+                <Equal>
+                  <left>
+                    <External>
+                     <content>
+                      <Expr>
+                          <op>
+                            <Const type="&rif;iri">http://www.w3.org/2007/rif-builtin-function#multiply-dayTimeDuration</Const>
+                          </op>
+                            <args ordered="yes">
+                              <Const type="&xs;dayTimeDuration">PT2H10M</Const>
+                              <Const type="&xs;integer">2.1</Const>
+                            </args>
+                      </Expr>
+                     </content>
+                    </External>
+                  </left>
+                  <right>
+                    <Const type="&xs;dayTimeDuration">PT4H33M</Const>
+                  </right>
+                </Equal>
+              </formula>
+              <formula>
+                <Equal>
+                  <left>
+                    <External>
+                     <content>
+                      <Expr>
+                          <op>
+                            <Const type="&rif;iri">http://www.w3.org/2007/rif-builtin-function#divide-dayTimeDuration</Const>
+                          </op>
+                            <args ordered="yes">
+                              <Const type="&xs;dayTimeDuration">P4D</Const>
+                              <Const type="&xs;integer">2</Const>
+                            </args>
+                      </Expr>
+                     </content>
+                    </External>
+                  </left>
+                  <right>
+                    <Const type="&xs;dayTimeDuration">P2D</Const>
+                  </right>
+                </Equal>
+              </formula>
+              <formula>
+                <Equal>
+                  <left>
+                    <External>
+                     <content>
+                      <Expr>
+                          <op>
+                            <Const type="&rif;iri">http://www.w3.org/2007/rif-builtin-function#divide-dayTimeDuration-by-dayTimeDuration</Const>
+                          </op>
+                            <args ordered="yes">
+                              <Const type="&xs;dayTimeDuration">P4D</Const>
+                              <Const type="&xs;dayTimeDuration">P2D</Const>
+                            </args>
+                      </Expr>
+                     </content>
+                    </External>
+                  </left>
+                  <right>
+                    <Const type="&xs;integer">2</Const>
+                  </right>
+                </Equal>
+              </formula>
+              <formula>
+                <Equal>
+                  <left>
+                    <External>
+                     <content>
+                      <Expr>
+                          <op>
+                            <Const type="&rif;iri">http://www.w3.org/2007/rif-builtin-function#add-yearMonthDuration-to-dateTime</Const>
+                          </op>
+                            <args ordered="yes">
+                              <Const type="&xs;dateTime">2000-10-30T11:12:00</Const>
+                              <Const type="&xs;yearMonthDuration">P1Y2M</Const>
+                            </args>
+                      </Expr>
+                     </content>
+                    </External>
+                  </left>
+                  <right>
+                    <Const type="&xs;dateTime">2001-12-30T11:12:00</Const>
+                  </right>
+                </Equal>
+              </formula>
+              <formula>
+                <Equal>
+                  <left>
+                    <External>
+                     <content>
+                      <Expr>
+                          <op>
+                            <Const type="&rif;iri">http://www.w3.org/2007/rif-builtin-function#add-yearMonthDuration-to-date</Const>
+                          </op>
+                            <args ordered="yes">
+                              <Const type="&xs;date">2000-10-30</Const>
+                              <Const type="&xs;yearMonthDuration">P1Y2M</Const>
+                            </args>
+                      </Expr>
+                     </content>
+                    </External>
+                  </left>
+                  <right>
+                    <Const type="&xs;date">2001-12-30</Const>
+                  </right>
+                </Equal>
+              </formula>
+              <formula>
+                <Equal>
+                  <left>
+                    <External>
+                     <content>
+                      <Expr>
+                          <op>
+                            <Const type="&rif;iri">http://www.w3.org/2007/rif-builtin-function#add-dayTimeDuration-to-dateTime</Const>
+                          </op>
+                            <args ordered="yes">
+                              <Const type="&xs;dateTime">2000-10-30T11:12:00</Const>
+                              <Const type="&xs;dayTimeDuration">P3DT1H15M</Const>
+                            </args>
+                      </Expr>
+                     </content>
+                    </External>
+                  </left>
+                  <right>
+                    <Const type="&xs;dayTime">2000-11-02T12:27:00</Const>
+                  </right>
+                </Equal>
+              </formula>
+              <formula>
+                <Equal>
+                  <left>
+                    <External>
+                     <content>
+                      <Expr>
+                          <op>
+                            <Const type="&rif;iri">http://www.w3.org/2007/rif-builtin-function#add-dayTimeDuration-to-date</Const>
+                          </op>
+                            <args ordered="yes">
+                              <Const type="&xs;date">2004-10-30Z</Const>
+                              <Const type="&xs;dayTimeDuration">P2DT2H30M0S</Const>
+                            </args>
+                      </Expr>
+                     </content>
+                    </External>
+                  </left>
+                  <right>
+                    <Const type="&xs;date">2004-11-01Z</Const>
+                  </right>
+                </Equal>
+              </formula>
+              <formula>
+                <Equal>
+                  <left>
+                    <External>
+                     <content>
+                      <Expr>
+                          <op>
+                            <Const type="&rif;iri">http://www.w3.org/2007/rif-builtin-function#add-dayTimeDuration-to-time</Const>
+                          </op>
+                            <args ordered="yes">
+                              <Const type="&xs;time">11:12:00</Const>
+                              <Const type="&xs;dayTimeDuration">P3DT1H15M</Const>
+                            </args>
+                      </Expr>
+                     </content>
+                    </External>
+                  </left>
+                  <right>
+                    <Const type="&xs;time">12:27:00</Const>
+                  </right>
+                </Equal>
+              </formula>
+              <formula>
+                <Equal>
+                  <left>
+                    <External>
+                     <content>
+                      <Expr>
+                          <op>
+                            <Const type="&rif;iri">http://www.w3.org/2007/rif-builtin-function#add-dayTimeDuration-to-time</Const>
+                          </op>
+                            <args ordered="yes">
+                              <Const type="&xs;time">23:12:00+03:00</Const>
+                              <Const type="&xs;dayTimeDuration">P1DT3H15M</Const>
+                            </args>
+                      </Expr>
+                     </content>
+                    </External>
+                  </left>
+                  <right>
+                    <Const type="&xs;time">02:27:00+03:00</Const>
+                  </right>
+                </Equal>
+              </formula>
+              <formula>
+                <Equal>
+                  <left>
+                    <External>
+                     <content>
+                      <Expr>
+                          <op>
+                            <Const type="&rif;iri">http://www.w3.org/2007/rif-builtin-function#subtract-yearMonthDuration-from-dateTime</Const>
+                          </op>
+                            <args ordered="yes">
+                              <Const type="&xs;dateTime">2000-10-30T11:12:00</Const>
+                              <Const type="&xs;yearMonthDuration">P1Y2M</Const>
+                            </args>
+                      </Expr>
+                     </content>
+                    </External>
+                  </left>
+                  <right>
+                    <Const type="&xs;dateTime">1999-08-30T11:12:00</Const>
+                  </right>
+                </Equal>
+              </formula>
+              <formula>
+                <Equal>
+                  <left>
+                    <External>
+                     <content>
+                      <Expr>
+                          <op>
+                            <Const type="&rif;iri">http://www.w3.org/2007/rif-builtin-function#subtract-yearMonthDuration-from-date</Const>
+                          </op>
+                            <args ordered="yes">
+                              <Const type="&xs;date">2000-10-30</Const>
+                              <Const type="&xs;yearMonthDuration">P1Y2M</Const>
+                            </args>
+                      </Expr>
+                     </content>
+                    </External>
+                  </left>
+                  <right>
+                    <Const type="&xs;date">1999-08-30</Const>
+                  </right>
+                </Equal>
+              </formula>
+              <formula>
+                <Equal>
+                  <left>
+                    <External>
+                     <content>
+                      <Expr>
+                          <op>
+                            <Const type="&rif;iri">http://www.w3.org/2007/rif-builtin-function#subtract-dayTimeDuration-from-dateTime</Const>
+                          </op>
+                            <args ordered="yes">
+                              <Const type="&xs;dateTime">2000-10-30T11:12:00</Const>
+                              <Const type="&xs;dayTimeDuration">P3DT1H15M</Const>
+                            </args>
+                      </Expr>
+                     </content>
+                    </External>
+                  </left>
+                  <right>
+                    <Const type="&xs;dateTime">2000-10-27T09:57:00</Const>
+                  </right>
+                </Equal>
+              </formula>
+              <formula>
+                <Equal>
+                  <left>
+                    <External>
+                     <content>
+                      <Expr>
+                          <op>
+                            <Const type="&rif;iri">http://www.w3.org/2007/rif-builtin-function#subtract-dayTimeDuration-from-date</Const>
+                          </op>
+                            <args ordered="yes">
+                              <Const type="&xs;date">2000-10-30</Const>
+                              <Const type="&xs;dayTimeDuration">P3DT1H15M</Const>
+                            </args>
+                      </Expr>
+                     </content>
+                    </External>
+                  </left>
+                  <right>
+                    <Const type="&xs;date">2000-10-26</Const>
+                  </right>
+                </Equal>
+              </formula>
+              <formula>
+                <Equal>
+                  <left>
+                    <External>
+                     <content>
+                      <Expr>
+                          <op>
+                            <Const type="&rif;iri">http://www.w3.org/2007/rif-builtin-function#subtract-dayTimeDuration-from-time</Const>
+                          </op>
+                            <args ordered="yes">
+                              <Const type="&xs;time">11:12:00</Const>
+                              <Const type="&xs;dayTimeDuration">P3DT1H15M</Const>
+                            </args>
+                      </Expr>
+                     </content>
+                    </External>
+                  </left>
+                  <right>
+                    <Const type="&xs;time">09:57:00</Const>
+                  </right>
+                </Equal>
+              </formula>
+              <formula>
+                <External>
+                 <content>
+                  <Atom>
+                      <op>
+                        <Const type="&rif;iri">http://www.w3.org/2007/rif-builtin-predicate#dateTime-equal</Const>
+                      </op>
+                        <args ordered="yes">
+                          <Const type="&xs;dateTime">2002-04-02T12:00:00-01:00</Const>
+                          <Const type="&xs;dateTime">2002-04-02T17:00:00+04:00</Const>
+                        </args>
+                  </Atom>
+                 </content>
+                </External>
+              </formula>
+              <formula>
+                <External>
+                 <content>
+                  <Atom>
+                      <op>
+                        <Const type="&rif;iri">http://www.w3.org/2007/rif-builtin-predicate#dateTime-less-than</Const>
+                      </op>
+                        <args ordered="yes">
+                          <Const type="&xs;dateTime">2002-04-01T12:00:00-01:00</Const>
+                          <Const type="&xs;dateTime">2002-04-02T17:00:00+04:00</Const>
+                        </args>
+                  </Atom>
+                 </content>
+                </External>
+              </formula>
+              <formula>
+                <External>
+                 <content>
+                  <Atom>
+                      <op>
+                        <Const type="&rif;iri">http://www.w3.org/2007/rif-builtin-predicate#dateTime-greater-than</Const>
+                      </op>
+                        <args ordered="yes">
+                          <Const type="&xs;dateTime">2002-04-03T12:00:00-01:00</Const>
+                          <Const type="&xs;dateTime">2002-04-02T17:00:00+04:00</Const>
+                        </args>
+                  </Atom>
+                 </content>
+                </External>
+              </formula>
+              <formula>
+                <External>
+                 <content>
+                  <Atom>
+                      <op>
+                        <Const type="&rif;iri">http://www.w3.org/2007/rif-builtin-predicate#date-equal</Const>
+                      </op>
+                        <args ordered="yes">
+                          <Const type="&xs;date">2004-12-25-12:00</Const>
+                          <Const type="&xs;date">2004-12-26+12:00</Const>
+                        </args>
+                  </Atom>
+                 </content>
+                </External>
+              </formula>
+              <formula>
+                <External>
+                 <content>
+                  <Atom>
+                      <op>
+                        <Const type="&rif;iri">http://www.w3.org/2007/rif-builtin-predicate#date-less-than</Const>
+                      </op>
+                        <args ordered="yes">
+                          <Const type="&xs;date">2004-12-24</Const>
+                          <Const type="&xs;date">2004-12-26</Const>
+                        </args>
+                  </Atom>
+                 </content>
+                </External>
+              </formula>
+              <formula>
+                <External>
+                 <content>
+                  <Atom>
+                      <op>
+                        <Const type="&rif;iri">http://www.w3.org/2007/rif-builtin-predicate#date-greater-than</Const>
+                      </op>
+                        <args ordered="yes">
+                          <Const type="&xs;date">2004-12-26</Const>
+                          <Const type="&xs;date">2004-12-25</Const>
+                        </args>
+                  </Atom>
+                 </content>
+                </External>
+              </formula>
+              <formula>
+                <External>
+                 <content>
+                  <Atom>
+                      <op>
+                        <Const type="&rif;iri">http://www.w3.org/2007/rif-builtin-predicate#time-equal</Const>
+                      </op>
+                        <args ordered="yes">
+                          <Const type="&xs;time">21:30:00+10:30</Const>
+                          <Const type="&xs;time">06:00:00-05:00</Const>
+                        </args>
+                  </Atom>
+                 </content>
+                </External>
+              </formula>
+              <formula>
+                <External>
+                 <content>
+                  <Atom>
+                      <op>
+                        <Const type="&rif;iri">http://www.w3.org/2007/rif-builtin-predicate#time-less-than</Const>
+                      </op>
+                        <args ordered="yes">
+                          <Const type="&xs;time">20:30:00+10:30</Const>
+                          <Const type="&xs;time">06:00:00-05:00</Const>
+                        </args>
+                  </Atom>
+                 </content>
+                </External>
+              </formula>
+              <formula>
+                <External>
+                 <content>
+                  <Atom>
+                      <op>
+                        <Const type="&rif;iri">http://www.w3.org/2007/rif-builtin-predicate#time-greater-than</Const>
+                      </op>
+                        <args ordered="yes">
+                          <Const type="&xs;time">22:30:00+10:30</Const>
+                          <Const type="&xs;time">06:00:00-05:00</Const>
+                        </args>
+                  </Atom>
+                 </content>
+                </External>
+              </formula>
+              <formula>
+                <External>
+                 <content>
+                  <Atom>
+                      <op>
+                        <Const type="&rif;iri">http://www.w3.org/2007/rif-builtin-predicate#duration-equal</Const>
+                      </op>
+                        <args ordered="yes">
+                          <Const type="&xs;yearMonthDuration">P1Y</Const>
+                          <Const type="&xs;yearMonthDuration">P12M</Const>
+                        </args>
+                  </Atom>
+                 </content>
+                </External>
+              </formula>
+              <formula>
+                <External>
+                 <content>
+                  <Atom>
+                      <op>
+                        <Const type="&rif;iri">http://www.w3.org/2007/rif-builtin-predicate#yearMonthDuration-less-than</Const>
+                      </op>
+                        <args ordered="yes">
+                          <Const type="&xs;yearMonthDuration">P1Y</Const>
+                          <Const type="&xs;yearMonthDuration">P13M</Const>
+                        </args>
+                  </Atom>
+                 </content>
+                </External>
+              </formula>
+              <formula>
+                <External>
+                 <content>
+                  <Atom>
+                      <op>
+                        <Const type="&rif;iri">http://www.w3.org/2007/rif-builtin-predicate#yearMonthDuration-greater-than</Const>
+                      </op>
+                        <args ordered="yes">
+                          <Const type="&xs;yearMonthDuration">P1Y</Const>
+                          <Const type="&xs;yearMonthDuration">P11M</Const>
+                        </args>
+                  </Atom>
+                 </content>
+                </External>
+              </formula>
+              <formula>
+                <External>
+                 <content>
+                  <Atom>
+                      <op>
+                        <Const type="&rif;iri">http://www.w3.org/2007/rif-builtin-predicate#dayTimeDuration-less-than</Const>
+                      </op>
+                        <args ordered="yes">
+                          <Const type="&xs;dayTimeDuration">P1D</Const>
+                          <Const type="&xs;dayTimeDuration">PT25H</Const>
+                        </args>
+                  </Atom>
+                 </content>
+                </External>
+              </formula>
+              <formula>
+                <External>
+                 <content>
+                  <Atom>
+                      <op>
+                        <Const type="&rif;iri">http://www.w3.org/2007/rif-builtin-predicate#dayTimeDuration-greater-than</Const>
+                      </op>
+                        <args ordered="yes">
+                          <Const type="&xs;dayTimeDuration">P1D</Const>
+                          <Const type="&xs;dayTimeDuration">PT23H</Const>
+                        </args>
+                  </Atom>
+                 </content>
+                </External>
+              </formula>
+              <formula>
+                <External>
+                 <content>
+                  <Atom>
+                      <op>
+                        <Const type="&rif;iri">http://www.w3.org/2007/rif-builtin-predicate#dateTime-not-equal</Const>
+                      </op>
+                        <args ordered="yes">
+                          <Const type="&xs;dateTime">2002-04-01T12:00:00-01:00</Const>
+                          <Const type="&xs;dateTime">2002-04-02T17:00:00+04:00</Const>
+                        </args>
+                  </Atom>
+                 </content>
+                </External>
+              </formula>
+              <formula>
+                <External>
+                 <content>
+                  <Atom>
+                      <op>
+                        <Const type="&rif;iri">http://www.w3.org/2007/rif-builtin-predicate#dateTime-less-than-or-equal</Const>
+                      </op>
+                        <args ordered="yes">
+                          <Const type="&xs;dateTime">2002-04-01T12:00:00-01:00</Const>
+                          <Const type="&xs;dateTime">2002-04-02T17:00:00+04:00</Const>
+                        </args>
+                  </Atom>
+                 </content>
+                </External>
+              </formula>
+              <formula>
+                <External>
+                 <content>
+                  <Atom>
+                      <op>
+                        <Const type="&rif;iri">http://www.w3.org/2007/rif-builtin-predicate#dateTime-greater-than-or-equal</Const>
+                      </op>
+                        <args ordered="yes">
+                          <Const type="&xs;dateTime">2002-04-03T12:00:00-01:00</Const>
+                          <Const type="&xs;dateTime">2002-04-02T17:00:00+04:00</Const>
+                        </args>
+                  </Atom>
+                 </content>
+                </External>
+              </formula>
+              <formula>
+                <External>
+                 <content>
+                  <Atom>
+                      <op>
+                        <Const type="&rif;iri">http://www.w3.org/2007/rif-builtin-predicate#date-not-equal</Const>
+                      </op>
+                        <args ordered="yes">
+                          <Const type="&xs;date">2004-12-24</Const>
+                          <Const type="&xs;date">2004-12-26</Const>
+                        </args>
+                  </Atom>
+                 </content>
+                </External>
+              </formula>
+              <formula>
+                <External>
+                 <content>
+                  <Atom>
+                      <op>
+                        <Const type="&rif;iri">http://www.w3.org/2007/rif-builtin-predicate#date-less-than-or-equal</Const>
+                      </op>
+                        <args ordered="yes">
+                          <Const type="&xs;date">2004-12-24</Const>
+                          <Const type="&xs;date">2004-12-26</Const>
+                        </args>
+                  </Atom>
+                 </content>
+                </External>
+              </formula>
+              <formula>
+                <External>
+                 <content>
+                  <Atom>
+                      <op>
+                        <Const type="&rif;iri">http://www.w3.org/2007/rif-builtin-predicate#date-greater-than-or-equal</Const>
+                      </op>
+                        <args ordered="yes">
+                          <Const type="&xs;date">2004-12-26</Const>
+                          <Const type="&xs;date">2004-12-25</Const>
+                        </args>
+                  </Atom>
+                 </content>
+                </External>
+              </formula>
+              <formula>
+                <External>
+                 <content>
+                  <Atom>
+                      <op>
+                        <Const type="&rif;iri">http://www.w3.org/2007/rif-builtin-predicate#time-not-equal</Const>
+                      </op>
+                        <args ordered="yes">
+                          <Const type="&xs;time">20:30:00+10:30</Const>
+                          <Const type="&xs;time">06:00:00-05:00</Const>
+                        </args>
+                  </Atom>
+                 </content>
+                </External>
+              </formula>
+              <formula>
+                <External>
+                 <content>
+                  <Atom>
+                      <op>
+                        <Const type="&rif;iri">http://www.w3.org/2007/rif-builtin-predicate#time-less-than-or-equal</Const>
+                      </op>
+                        <args ordered="yes">
+                          <Const type="&xs;time">20:30:00+10:30</Const>
+                          <Const type="&xs;time">06:00:00-05:00</Const>
+                        </args>
+                  </Atom>
+                 </content>
+                </External>
+              </formula>
+              <formula>
+                <External>
+                 <content>
+                  <Atom>
+                      <op>
+                        <Const type="&rif;iri">http://www.w3.org/2007/rif-builtin-predicate#time-greater-than-or-equal</Const>
+                      </op>
+                        <args ordered="yes">
+                          <Const type="&xs;time">22:30:00+10:30</Const>
+                          <Const type="&xs;time">06:00:00-05:00</Const>
+                        </args>
+                  </Atom>
+                 </content>
+                </External>
+              </formula>
+              <formula>
+                <External>
+                 <content>
+                  <Atom>
+                      <op>
+                        <Const type="&rif;iri">http://www.w3.org/2007/rif-builtin-predicate#duration-not-equal</Const>
+                      </op>
+                        <args ordered="yes">
+                          <Const type="&xs;yearMonthDuration">P1Y</Const>
+                          <Const type="&xs;yearMonthDuration">P1M</Const>
+                        </args>
+                  </Atom>
+                 </content>
+                </External>
+              </formula>
+              <formula>
+                <External>
+                 <content>
+                  <Atom>
+                      <op>
+                        <Const type="&rif;iri">http://www.w3.org/2007/rif-builtin-predicate#yearMonthDuration-less-than-or-equal</Const>
+                      </op>
+                        <args ordered="yes">
+                          <Const type="&xs;yearMonthDuration">P1Y</Const>
+                          <Const type="&xs;yearMonthDuration">P13M</Const>
+                        </args>
+                  </Atom>
+                 </content>
+                </External>
+              </formula>
+              <formula>
+                <External>
+                 <content>
+                  <Atom>
+                      <op>
+                        <Const type="&rif;iri">http://www.w3.org/2007/rif-builtin-predicate#yearMonthDuration-greater-than-or-equal</Const>
+                      </op>
+                        <args ordered="yes">
+                          <Const type="&xs;yearMonthDuration">P1Y</Const>
+                          <Const type="&xs;yearMonthDuration">P11M</Const>
+                        </args>
+                  </Atom>
+                 </content>
+                </External>
+              </formula>
+              <formula>
+                <External>
+                 <content>
+                  <Atom>
+                      <op>
+                        <Const type="&rif;iri">http://www.w3.org/2007/rif-builtin-predicate#dayTimeDuration-less-than-or-equal</Const>
+                      </op>
+                        <args ordered="yes">
+                          <Const type="&xs;dayTimeDuration">P1D</Const>
+                          <Const type="&xs;dayTimeDuration">PT25H</Const>
+                        </args>
+                  </Atom>
+                 </content>
+                </External>
+              </formula>
+              <formula>
+                <External>
+                 <content>
+                  <Atom>
+                      <op>
+                        <Const type="&rif;iri">http://www.w3.org/2007/rif-builtin-predicate#dayTimeDuration-greater-than-or-equal</Const>
+                      </op>
+                        <args ordered="yes">
+                          <Const type="&xs;dayTimeDuration">P1D</Const>
+                          <Const type="&xs;dayTimeDuration">PT23H</Const>
+                        </args>
+                  </Atom>
+                 </content>
+                </External>
+              </formula>
+            </And>
+          </if>
+          <then>
+            <Atom>
+              <op>
+                <Const type="&rif;iri">http://example.org/example#ok</Const>
+              </op>
+            </Atom>
+          </then>
+        </Implies>
+      </sentence>
+    </Group>
+  </payload>
+</Document>
+<!--XML document generated on Sun Nov 07 10:35:48 EST 2010-->

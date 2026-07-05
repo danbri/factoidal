@@ -1,0 +1,4 @@
+Document(
+    Import(<http://www.w3.org/2005/rules/test/repository/tc/RDF_Combination_Invalid_Profiles_1/RDF_Combination_Invalid_Profiles_1-import001> <http://www.w3.org/ns/entailment/Simple>)
+    Import(<http://www.w3.org/2005/rules/test/repository/tc/RDF_Combination_Invalid_Profiles_1/RDF_Combination_Invalid_Profiles_1-import002> <http://www.w3.org/ns/entailment/OWL-Direct>)
+ )

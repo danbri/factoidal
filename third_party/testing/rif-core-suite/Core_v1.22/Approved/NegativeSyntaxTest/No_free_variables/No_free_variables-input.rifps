@@ -1,0 +1,12 @@
+Document(
+
+   Prefix(eg <http://example.org/example#>)
+
+   Group
+   (
+     Forall ?buyer ?item ?seller (
+        eg:Buy(?buyer ?item ?seller) :- eg:Sell(?seller ?item ?buyer ?price)
+     )
+ 
+   )
+ )

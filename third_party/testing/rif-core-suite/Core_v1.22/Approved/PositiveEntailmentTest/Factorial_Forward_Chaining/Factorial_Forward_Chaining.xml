@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<PositiveEntailmentTest id="Factorial_Forward_Chaining"
+    src="http://www.w3.org/2005/rules/test/repository/tc/Factorial_Forward_Chaining" xmlns="http://www.w3.org/2009/10/rif-test#">
+    <status>Approved</status>
+    <dialect>Core</dialect>
+    <dialect>BLD</dialect>
+    <dialect>PRD</dialect>
+    <purpose>express factorial using Core</purpose>
+    <description>This version of factorial is safe, and thus can be implemented by a forward chaining Core or PRD reasoner. Note the difference from [[Factorial Relational]] -- the variable ?N is computed from ?N1 rather than the other way around.</description>
+    <PremiseDocument>
+        <Normative syntax="RIF/XML">
+            <name>Factorial_Forward_Chaining-premise.rif</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/Factorial_Forward_Chaining/Factorial_Forward_Chaining-premise.rif</remote>
+        </Normative>
+        <Presentation syntax="RIFBLD-PS"><![CDATA[
+Document(
+
+  Prefix(pred <http://www.w3.org/2007/rif-builtin-predicate#>)
+  Prefix(func <http://www.w3.org/2007/rif-builtin-function#>)
+  Prefix(ex   <http://example.org/example#>)
+
+  Group
+  (
+    ex:factorial(0 1)
+
+    Forall ?N ?F ?N1 ?F1 (
+         ex:factorial(?N ?F) :-  
+             And(External(pred:numeric-greater-than-or-equal(?N1 0)) 
+                   ?N = External(func:numeric-add(?N1 1)) 
+                   ex:factorial(?N1 ?F1) 
+                   ?F = External(func:numeric-multiply(?N ?F1)) )
+    )
+  )
+)
+]]></Presentation>
+    </PremiseDocument>
+    <ConclusionDocument>
+        <Normative syntax="RIF/XML">
+            <name>Factorial_Forward_Chaining-conclusion.rif</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/Factorial_Forward_Chaining/Factorial_Forward_Chaining-conclusion.rif</remote>
+        </Normative>
+        <Presentation syntax="RIFBLD-PS"><![CDATA[
+ex:factorial(6 720)
+]]></Presentation>
+    </ConclusionDocument>
+</PositiveEntailmentTest>

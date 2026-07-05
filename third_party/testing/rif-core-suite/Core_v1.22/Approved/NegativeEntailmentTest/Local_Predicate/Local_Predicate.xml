@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<NegativeEntailmentTest id="Local_Predicate"
+    src="http://www.w3.org/2005/rules/test/repository/tc/Local_Predicate" xmlns="http://www.w3.org/2009/10/rif-test#">
+    <status>Approved</status>
+    <dialect>Core</dialect>
+    <dialect>BLD</dialect>
+    <dialect>PRD</dialect>
+    <purpose>Test that the entailment relation does not preserve names of local predicates</purpose>
+    <description>The entailment relation does not preserve labels of local constants, neither when they are used as [[Local Constant|individuals]], nor when they are used as predicates (as in this case).</description>
+    <PremiseDocument>
+        <Normative syntax="RIF/XML">
+            <name>Local_Predicate-premise.rif</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/Local_Predicate/Local_Predicate-premise.rif</remote>
+        </Normative>
+        <Presentation syntax="RIFBLD-PS"><![CDATA[
+Document(
+  Group(_p(<http://example.org/#a>))
+ )
+]]></Presentation>
+    </PremiseDocument>
+    <NonConclusionDocument>
+        <Normative syntax="RIF/XML">
+            <name>Local_Predicate-nonconclusion.rif</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/Local_Predicate/Local_Predicate-nonconclusion.rif</remote>
+        </Normative>
+        <Presentation syntax="RIFBLD-PS"><![CDATA[
+_p(<http://example.org/#a>)
+]]></Presentation>
+    </NonConclusionDocument>
+</NegativeEntailmentTest>

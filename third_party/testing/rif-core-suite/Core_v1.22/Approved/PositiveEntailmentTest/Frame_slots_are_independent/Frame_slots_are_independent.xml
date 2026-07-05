@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<PositiveEntailmentTest id="Frame_slots_are_independent"
+    src="http://www.w3.org/2005/rules/test/repository/tc/Frame_slots_are_independent" xmlns="http://www.w3.org/2009/10/rif-test#">
+    <status>Approved</status>
+    <dialect>Core</dialect>
+    <dialect>BLD</dialect>
+    <dialect>PRD</dialect>
+    <purpose>Illustrate difference between frames and named-argument uniterms</purpose>
+    <description>Frames are essentially syntactic sugar for an open set of binary predicates.</description>
+    <PremiseDocument>
+        <Normative syntax="RIF/XML">
+            <name>Frame_slots_are_independent-premise.rif</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/Frame_slots_are_independent/Frame_slots_are_independent-premise.rif</remote>
+        </Normative>
+        <Presentation syntax="RIFBLD-PS"><![CDATA[
+Document(
+  Prefix(ex   <http://example.org/example#>)
+  
+  Group  (
+    ex:o[ex:a->1 ex:b->2]
+  ) 
+)
+]]></Presentation>
+    </PremiseDocument>
+    <ConclusionDocument>
+        <Normative syntax="RIF/XML">
+            <name>Frame_slots_are_independent-conclusion.rif</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/Frame_slots_are_independent/Frame_slots_are_independent-conclusion.rif</remote>
+        </Normative>
+        <Presentation syntax="RIFBLD-PS"><![CDATA[
+ex:o[ex:a->1]
+]]></Presentation>
+    </ConclusionDocument>
+</PositiveEntailmentTest>

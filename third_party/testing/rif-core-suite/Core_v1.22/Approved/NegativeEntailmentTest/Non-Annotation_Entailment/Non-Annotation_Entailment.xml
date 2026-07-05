@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<NegativeEntailmentTest id="Non-Annotation_Entailment"
+    src="http://www.w3.org/2005/rules/test/repository/tc/Non-Annotation_Entailment" xmlns="http://www.w3.org/2009/10/rif-test#">
+    <status>Approved</status>
+    <dialect>Core</dialect>
+    <dialect>BLD</dialect>
+    <dialect>PRD</dialect>
+    <Combinations>
+        <profile>http://www.w3.org/ns/entailment/OWL-Direct</profile>
+    </Combinations>
+    <purpose>Test that annotation properties are discarded when considering OWL-Direct entailment</purpose>
+    <description>When using the OWL-Direct profile for importing ontologies, annotation properties must be discarded, and do not affect the rules or the conclusions that may be drawn from the ruleset.</description>
+    <ImportedDocument>
+        <Normative syntax="RDF/XML">
+            <name>Non-Annotation_Entailment-import001.rdf</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/Non-Annotation_Entailment/Non-Annotation_Entailment-import001</remote>
+        </Normative>
+        <Presentation syntax="Turtle"><![CDATA[
+@prefix ex: <http://example.org/example#> . 
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> . 
+@prefix owl: <http://www.w3.org/2002/07/owl#> . 
+@prefix dc: <http://purl.org/dc/elements/1.1/> . 
+
+ex:myOnto rdf:type owl:Ontology .
+ex:myOnto dc:title "Example ontology" .
+dc:title rdf:type owl:OntologyProperty .
+]]></Presentation>
+    </ImportedDocument>
+    <PremiseDocument>
+        <Normative syntax="RIF/XML">
+            <name>Non-Annotation_Entailment-premise.rif</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/Non-Annotation_Entailment/Non-Annotation_Entailment-premise.rif</remote>
+        </Normative>
+        <Presentation syntax="RIFBLD-PS"><![CDATA[
+Document(
+  Prefix(ex  <http://example.org/example#>)
+  Prefix(dc <http://purl.org/dc/elements/1.1/>)
+
+  Import(<http://example.org/mygraph> <http://www.w3.org/ns/entailment/OWL-Direct>)
+
+  Group (
+   Forall ?x ?y ( ?x[ex:hasTitle -> ?y] :- ?x[dc:title -> ?y])
+  )
+ )
+]]></Presentation>
+    </PremiseDocument>
+    <NonConclusionDocument>
+        <Normative syntax="RIF/XML">
+            <name>Non-Annotation_Entailment-nonconclusion.rif</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/Non-Annotation_Entailment/Non-Annotation_Entailment-nonconclusion.rif</remote>
+        </Normative>
+        <Presentation syntax="RIFBLD-PS"><![CDATA[
+ex:myOnto[ex:hasTitle -> "Example ontology"]
+]]></Presentation>
+    </NonConclusionDocument>
+</NegativeEntailmentTest>

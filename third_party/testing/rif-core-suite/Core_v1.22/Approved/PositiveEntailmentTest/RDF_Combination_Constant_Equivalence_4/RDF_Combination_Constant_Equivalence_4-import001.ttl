@@ -1,0 +1,3 @@
+@prefix xs: <www.w3.org/2001/XMLSchema#> . 
+
+ <http://example.org#a> <http://example.org#p> "this is a string"^^xs:string .

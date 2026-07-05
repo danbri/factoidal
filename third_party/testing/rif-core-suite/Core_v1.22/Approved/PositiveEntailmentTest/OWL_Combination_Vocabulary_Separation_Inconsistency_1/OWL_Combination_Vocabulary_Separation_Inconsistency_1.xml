@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<PositiveEntailmentTest
+    id="OWL_Combination_Vocabulary_Separation_Inconsistency_1"
+    src="http://www.w3.org/2005/rules/test/repository/tc/OWL_Combination_Vocabulary_Separation_Inconsistency_1" xmlns="http://www.w3.org/2009/10/rif-test#">
+    <status>Approved</status>
+    <dialect>Core</dialect>
+    <dialect>BLD</dialect>
+    <dialect>PRD</dialect>
+    <Combinations>
+        <profile>http://www.w3.org/ns/entailment/OWL-Direct</profile>
+    </Combinations>
+    <purpose>Test that violation of separation of the (individual and data value) vocabulary leads to inconsistency</purpose>
+    <description>The same constant cannot be both an individual and a data value; this leads to inconsistency, and thus "a"="b" is entailed.</description>
+    <ImportedDocument>
+        <Normative syntax="RDF/XML">
+            <name>OWL_Combination_Vocabulary_Separation_Inconsistency_1-import001.rdf</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/OWL_Combination_Vocabulary_Separation_Inconsistency_1/OWL_Combination_Vocabulary_Separation_Inconsistency_1-import001</remote>
+        </Normative>
+        <Presentation syntax="Turtle"><![CDATA[
+@prefix ex: <http://example.org/example#> . 
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> . 
+@prefix owl: <http://www.w3.org/2002/07/owl#> . 
+
+ _:o rdf:type owl:Ontology .
+ ex:myiri rdf:type ex:A .
+]]></Presentation>
+    </ImportedDocument>
+    <PremiseDocument>
+        <Normative syntax="RIF/XML">
+            <name>OWL_Combination_Vocabulary_Separation_Inconsistency_1-premise.rif</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/OWL_Combination_Vocabulary_Separation_Inconsistency_1/OWL_Combination_Vocabulary_Separation_Inconsistency_1-premise.rif</remote>
+        </Normative>
+        <Presentation syntax="RIFBLD-PS"><![CDATA[
+Document(
+  Prefix(ex  <http://example.org/example#>)
+  Prefix(xs  <http://www.w3.org/2001/XMLSchema#>)
+  Prefix(rdf <http://www.w3.org/1999/02/22-rdf-syntax-ns#>)
+
+  Import(<http://example.org/mygraph> <http://www.w3.org/ns/entailment/OWL-Direct>)
+
+  Group (
+   ex:myiri[rdf:type -> xs:string]
+  )
+ )
+]]></Presentation>
+    </PremiseDocument>
+    <ConclusionDocument>
+        <Normative syntax="RIF/XML">
+            <name>OWL_Combination_Vocabulary_Separation_Inconsistency_1-conclusion.rif</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/OWL_Combination_Vocabulary_Separation_Inconsistency_1/OWL_Combination_Vocabulary_Separation_Inconsistency_1-conclusion.rif</remote>
+        </Normative>
+        <Presentation syntax="RIFBLD-PS"><![CDATA[
+"a"="b"
+]]></Presentation>
+    </ConclusionDocument>
+</PositiveEntailmentTest>

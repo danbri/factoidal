@@ -1,19 +1,32 @@
 # bin/rif-runner — vendored W3C RIF Core test runner
 
-Stand-alone CLI that drives the 4 vendored RIF Core test cases under
-`third_party/testing/rif/tc/` end-to-end: RIF-XML rule parsing,
-`<Import>` companion-graph resolution, forward-chaining saturation,
-and the real SPARQL 1.1 evaluator (not a triple-membership shim).
+Stand-alone CLI with two parts:
+
+1. The original 4 vendored RIF Core test cases under
+   `third_party/testing/rif/tc/`, paired with the SPARQL 1.1
+   entailment manifest's `.rq`/`.srx` fixtures — end-to-end RIF-XML
+   rule parsing, `<Import>` companion-graph resolution,
+   forward-chaining saturation, and the real SPARQL 1.1 evaluator
+   (not a triple-membership shim).
+2. A directory walker over the full vendored W3C RIF Core dialect
+   corpus (`third_party/testing/rif-core-suite/`, see that
+   directory's `README.md`), evaluating `PositiveEntailmentTest`/
+   `NegativeEntailmentTest` cases directly from their
+   premise/conclusion RIF-XML documents — no SPARQL-manifest `.rq`/
+   `.srx` needed, since the corpus is self-contained.
 
 ```
 rif_runner [-v|--verbose]
 ```
 
-No arguments needed: the four cases (mf:name from
+No arguments needed: both parts always run. Part 1's four cases
+(mf:name from
 `third_party/testing/w3c/sparql/sparql11/entailment/manifest.ttl`,
 IRIs `:rif01 :rif03 :rif04 :rif06`) are a hardcoded lookup table —
 see the module comment in `rif_runner.ml` for why a general manifest
-walker is not worth building for exactly four fixtures.
+walker is not worth building for exactly four fixtures. Part 2 walks
+`third_party/testing/rif-core-suite/Core_v1.22/Approved/*` directly
+(no hardcoded per-test table).
 
 ## Pipeline
 
@@ -54,12 +67,129 @@ SELECT projection or ASK boolean evaluation — using them would mean
 this runner isn't actually testing the SPARQL query, just checking a
 raw triple is present.
 
+## Part 2: the Core-suite corpus walker
+
+Each corpus test is self-contained: a `-premise.rif` RIF-XML document
+(rules AND ground facts — a fact parses to a rule with an empty body
+per `Parser.RIFXML.parse_fact_atom`) and a `-conclusion.rif`
+(`PositiveEntailmentTest`) or `-nonconclusion.rif`
+(`NegativeEntailmentTest`) RIF-XML document naming the fact(s) whose
+entailment is under test.
+
+1. Read + DOCTYPE-preprocess both documents (same
+   `expand_doctype_entities` as Part 1).
+2. Scan both raw texts for RIF-XML element tags this project does
+   not model at all (`<External>`, `<List>`, `<Equal>`, `<Exists>`,
+   `<Or>`, `<Naf>`/`<Neg>`) — if found, SKIP naming the construct.
+3. `parse_rif_program_lenient` — a thin textual-reshaping wrapper
+   around `Parser_RIFXML.parse_rif_program_with_imports` that fixes
+   two shapes the corpus uses but `Parser.RIFXML.fst`'s
+   `extract_group_from_doc`/`parse_group_children` do not recognise
+   (both discovered while building this walker, both **pure text
+   reshaping, not new parsing capability** — see the code comments
+   at `wrap_bare_fact_in_group` / `ensure_group_present` in
+   `rif_runner.ml`):
+   - a bare fact element as the whole document root (most
+     `-conclusion.rif`/`-nonconclusion.rif` files) is wrapped in
+     `<Group><sentence>...</sentence></Group>` — without the
+     `<sentence>` wrapper, `parse_group_children` silently treats an
+     unwrapped child as "unknown metadata" and drops it rather than
+     failing, which up until this fix produced silent **empty**
+     rule lists (a `bgp = []` "vacuous entailment" false pass/fail,
+     not a parse error) for corpus tests whose conclusion is a bare
+     fact — a real bug this project would not want to ship;
+   - a `<Document>` with only `<directive><Import>...` children and
+     no `<Group>` at all (premise is 100% import-derived, e.g.
+     `RDF_Combination_Constant_Equivalence_1`) gets an empty
+     `<payload><Group></Group></payload>` spliced in before
+     `</Document>`.
+4. Determine the `<Import><profile>` entailment regime the same way
+   Part 1's hardcoded table does (`Simple`/`RDF`/`RDFS` →
+   `No_Closure`/`RDFS_Closure`, `OWL-Direct` → `OWL_Direct_Closure`);
+   unrecognised profiles SKIP.
+5. `RIF_Core_Eval.fixpoint`-saturate the (closure-applied) import
+   graph under the premise program — the premise's own ground facts
+   materialise on round 1 of this same fixpoint, so no separate
+   "load facts" step is needed.
+6. Translate every conclusion fact's head atom to a SPARQL
+   `triple_pattern` via `RIF_Core_Translation.translate_atom` (reused
+   on a fact's HEAD position rather than a rule BODY — its type,
+   `rif_atom -> option triple_pattern`, does not care which position
+   its argument came from) and ask whether that BGP has ≥1 solution
+   over the saturated premise via `OWL_QueryEval.eval_ask_query_owl`
+   — the same machinery Part 1 drives, so blank nodes in the
+   conclusion BGP get the same existential treatment via
+   `SPARQL11_Algebra`'s internal `rewrite_query_bnodes_pattern` step.
+   `PositiveEntailmentTest` passes when the ASK is true;
+   `NegativeEntailmentTest` passes when it is false.
+
+`PositiveSyntaxTest`/`NegativeSyntaxTest` (RIF Core dialect
+"safeness" grammar restriction) and `ImportRejectionTest`
+(vocabulary-separation / DL-consistency rejection) are
+unconditionally SKIPPED — `Parser.RIFXML` is a structural RIF-XML →
+AST parser with no dialect-safeness checker and no import-rejection
+consistency checker, and building either is out of scope for this
+slice (new F* modules, not runner glue).
+
 ## Score
 
-4 pass, 0 fail (out of 4), measured 2026-07-04. See
-`docs/claude-rules/scope.md`'s RIF paragraph for the supported-subset
-statement (frame/BGP-shaped rule bodies + single `<Import>` — not
-general RIF-BLD/RIF-PRD).
+Measured 2026-07-05:
+
+- **Part 1 (original 4 vendored SPARQL-manifest cases): 4 pass, 0 fail (out of 4).**
+- **Part 2 (vendored W3C RIF Core dialect corpus): 7 pass, 3 fail, 36 skip (out of 46).**
+- **Combined: 11 pass, 3 fail, 36 skip (out of 50).**
+
+Skip buckets (by construct/reason):
+
+| Count | Reason |
+|---|---|
+| 16 | `External` (builtin predicate/function calls) |
+| 6 | RIF Core dialect safeness-condition checking not implemented |
+| 6 | import-rejection / vocabulary-separation consistency checking not implemented |
+| 3 | Parser_RIFXML could not parse the premise (Uniterm/Atom arity ≠ 2 — `Local_Constant`, `Local_Predicate`, `Positional_Arguments`, each using a unary Uniterm fact/atom RIF.Core.Syntax has no encoding for) |
+| 2 | `Equal` (equality atom) |
+| 1 | `List` (RIF list terms) |
+| 1 | conclusion.rif not in the vendored corpus (packaging gap in the official Core_v1.22 zip — `RDF_Combination_Constant_Equivalence_Graph_Entailment`) |
+| 1 | `Exists` (existential quantification — `RDF_Combination_Blank_Node`'s **corpus-path** conclusion; note this same test already PASSES via Part 1's hardcoded `rif06` path, which uses a hand-authored `.rq`/`.srx` pair instead of the official `-conclusion.rif`) |
+
+**What extending the F\* parser would unlock** (not attempted this
+slice, per brief): the 16 `External` skips are almost all
+`Builtins_*`/`Chaining_strategy_*`/`Guards_and_subtypes`/
+`EBusiness_Contract`/`Factorial_Forward_Chaining` — RIF-BLD built-in
+predicate/function calls layered on top of Core, out of this
+project's declared RIF scope (see `docs/claude-rules/scope.md`).
+`Equal`/`Exists`/`List` are genuine RIF Core constructs (equality
+atoms, existential quantification, list terms) that a real Core
+parser extension would need; each appears in only 1-2 tests here.
+
+The 3 FAILs are real, diagnosed, and left unfixed (fixing any of them
+needs F* edits, out of scope this slice):
+
+- `RDF_Combination_Constant_Equivalence_3` — the conclusion's
+  `<Const type="&rdf;PlainLiteral">with language tag@en</Const>`
+  should decode to a plain literal `"with language tag"@en`
+  (RIF-in-RDF's `rdf:PlainLiteral` symbol space packs `text@lang` as
+  one string); `Parser.RIFXML.fst`'s `const_from_type` treats
+  `rdf:PlainLiteral` as a generic typed literal and keeps the `@en`
+  suffix inside `lexical_form`, so it never matches the imported
+  graph's real language-tagged literal.
+- `RDF_Combination_Constant_Equivalence_4` — a **corpus data defect**,
+  not an engine gap: both `import001.rdf` (datatype
+  `file:///C:/work/eclipse_workspaces/.../XMLSchema#string`) and
+  `import001.ttl` (`@prefix xs: <www.w3.org/2001/XMLSchema#>`, no
+  scheme) declare a malformed `xsd:string` datatype IRI that does not
+  match the conclusion's correct `http://www.w3.org/2001/XMLSchema#string`
+  — present in the official W3C `Core_v1.22.zip` distribution as
+  authored in 2010, uncorrected in the "Second Edition".
+- `Non-Annotation_Entailment` — an OWL-Direct semantics gap: the
+  imported `dc:title` predicate is typed `owl:OntologyProperty`
+  (annotation-only) on an `owl:Ontology` individual; under the OWL 2
+  Direct Semantics RDF-compatible mapping, ontology-annotation
+  triples are excluded from the "regular" graph before entailment
+  checking, so the RIF rule `?x dc:title ?y => ?x hasTitle ?y`
+  should never fire. This project's OWL-Direct closure
+  (`owl_rl_closure_with_reflexivity` + `Tableau.tableau_materialise`)
+  has no annotation-triple exclusion step, so the rule fires anyway.
 
 ## Why the source lives here, not in `formal/fstar/ocaml-output/`
 
@@ -78,7 +208,26 @@ out) — the same isolation `formal/fstar/build-ocaml-serializer.sh`
 uses, so this doesn't poison `formal/fstar/ocaml-output/`'s `.cmi`/
 `.cmx` artifacts for whatever `build-ocaml.sh` invocation is
 in flight. Module list mirrors `bin/owl-runner`'s
-`COMMON_MODULES` (`build-ocaml.sh`'s `compile` step).
+`COMMON_MODULES` (`build-ocaml.sh`'s `compile` step) — this list
+transitively includes `Parquet_Footer.ml`, which needs the
+`experimental_ocaml_glue/parquet_zstd_stubs.c` C stub linked in (same
+as `build-ocaml.sh`'s `PARQUET_NATIVE_STUBS` block) or the link fails
+with `undefined reference to caml_parquet_zstd_decompress_hex`:
+
+```
+eval $(opam env --switch=fstar)
+SCRATCH=$(mktemp -d)
+cp formal/fstar/ocaml-output/*.ml "$SCRATCH"/
+cp bin/rif-runner/rif_runner.ml "$SCRATCH"/
+cd "$SCRATCH"
+ocamlfind ocamlopt -package fstar.lib,str,zarith,sha,digestif.c,unix -linkpkg -w -8-14-26 \
+  $COMMON_MODULES \
+  -ccopt -I/usr/include ../../../formal/fstar/experimental_ocaml_glue/parquet_zstd_stubs.c \
+  -cclib -L/usr/lib/x86_64-linux-gnu -cclib -lzstd \
+  rif_runner.ml -o rif_runner
+```
+(`$COMMON_MODULES` is the exact string from `build-ocaml.sh`'s
+`compile` step — not reproduced here to avoid drift.)
 
 ## Cross-references
 

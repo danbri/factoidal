@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<PositiveEntailmentTest id="Builtin_literal-not-identical"
+    src="http://www.w3.org/2005/rules/test/repository/tc/Builtin_literal-not-identical" xmlns="http://www.w3.org/2009/10/rif-test#">
+    <status>Approved</status>
+    <dialect>Core</dialect>
+    <dialect>BLD</dialect>
+    <dialect>PRD</dialect>
+    <purpose>Test the literal-not-identical built-in predicate.</purpose>
+    <description/>
+    <PremiseDocument>
+        <Normative syntax="RIF/XML">
+            <name>Builtin_literal-not-identical-premise.rif</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/Builtin_literal-not-identical/Builtin_literal-not-identical-premise.rif</remote>
+        </Normative>
+        <Presentation syntax="RIFBLD-PS"><![CDATA[
+Document( 
+ Prefix(xs <http://www.w3.org/2001/XMLSchema#>)
+ Prefix(rdf <http://www.w3.org/1999/02/22-rdf-syntax-ns#>) 
+ Prefix(ex <http://example.org/example#>)  
+ Prefix(pred <http://www.w3.org/2007/rif-builtin-predicate#>) 
+
+ Group ( 
+  ex:ok() :- 
+    And (
+     External( pred:literal-not-identical( "1"^^xs:integer "1"^^xs:string ) ) 
+     External( pred:literal-not-identical( "1"^^xs:integer "2"^^xs:integer ) )
+     External( pred:literal-not-identical( "Hello world@"^^rdf:PlainLiteral "Hello world@"^^xs:string ) )
+    )
+ )
+)
+]]></Presentation>
+    </PremiseDocument>
+    <ConclusionDocument>
+        <Normative syntax="RIF/XML">
+            <name>Builtin_literal-not-identical-conclusion.rif</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/Builtin_literal-not-identical/Builtin_literal-not-identical-conclusion.rif</remote>
+        </Normative>
+        <Presentation syntax="RIFBLD-PS"><![CDATA[
+ex:ok()
+]]></Presentation>
+    </ConclusionDocument>
+</PositiveEntailmentTest>

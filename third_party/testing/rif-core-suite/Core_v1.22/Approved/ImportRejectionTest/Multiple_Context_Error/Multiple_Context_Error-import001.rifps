@@ -1,0 +1,10 @@
+Document(
+ Prefix(eg <http://example.org/example#>)
+ Prefix(xs <http://www.w3.org/2001/XMLSchema#>) 
+
+ Group ( 
+   Forall ?Name (
+     eg:customer[eg:discount -> "10"^^xs:integer eg:name -> ?Name] :- eg:customer[eg:status -> "gold" eg:name -> ?Name] 
+   )
+ )
+)

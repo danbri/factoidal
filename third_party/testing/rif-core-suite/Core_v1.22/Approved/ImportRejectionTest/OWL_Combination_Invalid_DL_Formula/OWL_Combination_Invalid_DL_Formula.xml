@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ImportRejectionTest id="OWL_Combination_Invalid_DL_Formula"
+    src="http://www.w3.org/2005/rules/test/repository/tc/OWL_Combination_Invalid_DL_Formula" xmlns="http://www.w3.org/2009/10/rif-test#">
+    <status>Approved</status>
+    <dialect>Core</dialect>
+    <dialect>BLD</dialect>
+    <dialect>PRD</dialect>
+    <Combinations>
+        <profile>http://www.w3.org/ns/entailment/OWL-Direct</profile>
+    </Combinations>
+    <purpose>Test that an invalid combination is rejected</purpose>
+    <description>If a RIF document R imports only documents with OWL-Direct profiles and R is not a DL-document formula, then R must be rejected. The frame formula in the RIF document is not a DL-Frame formula because it has a variable in the property position, and so the document is not a DL-document formula.</description>
+    <ImportedDocument>
+        <Normative syntax="RDF/XML">
+            <name>OWL_Combination_Invalid_DL_Formula-import001.rdf</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/OWL_Combination_Invalid_DL_Formula/OWL_Combination_Invalid_DL_Formula-import001</remote>
+        </Normative>
+        <Presentation syntax="Turtle"><![CDATA[
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+_:x rdf:type owl:Ontology .
+]]></Presentation>
+    </ImportedDocument>
+    <InputDocument>
+        <Normative syntax="RIF/XML">
+            <name>OWL_Combination_Invalid_DL_Formula-input.rif</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/OWL_Combination_Invalid_DL_Formula/OWL_Combination_Invalid_DL_Formula-input.rif</remote>
+        </Normative>
+        <Presentation syntax="RIFBLD-PS"><![CDATA[
+Document(
+    Import(<http://example.org/mygraph> <http://www.w3.org/ns/entailment/OWL-Direct>)
+
+    Group (
+        Forall ?x (
+           <http://example.org/#p>(?x) :- <http://example.org/#crt>[?x -> "17"^^xs:integer] 
+        )
+    )
+ )
+]]></Presentation>
+    </InputDocument>
+</ImportRejectionTest>

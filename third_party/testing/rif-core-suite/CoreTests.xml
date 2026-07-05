@@ -1,0 +1,2102 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TestSuite id="core" version="1.22" xmlns="http://www.w3.org/2009/10/rif-test#">
+<PositiveEntailmentTest id="Builtins_anyURI"
+    src="http://www.w3.org/2005/rules/test/repository/tc/Builtins_anyURI">
+    <status>Approved</status>
+    <dialect>Core</dialect>
+    <dialect>BLD</dialect>
+    <dialect>PRD</dialect>
+    <purpose>Test built-in predicates for XML Schema anyURI datatype</purpose>
+    <description/>
+    <PremiseDocument>
+        <Normative syntax="RIF/XML">
+            <name>Builtins_anyURI-premise.rif</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/Builtins_anyURI/Builtins_anyURI-premise.rif</remote>
+        </Normative>
+        <Presentation syntax="RIFBLD-PS"><![CDATA[
+Document( 
+ Prefix(xs <http://www.w3.org/2001/XMLSchema#>) 
+ Prefix(ex <http://example.org/example#>)  
+ Prefix(pred <http://www.w3.org/2007/rif-builtin-predicate#>) 
+
+ Group ( 
+  ex:ok() :- 
+    And (
+     External( pred:is-literal-anyURI( "http://www.example.org"^^xs:anyURI ) )
+     External( pred:is-literal-not-anyURI("1"^^xs:integer ) )
+     External( pred:is-literal-anyURI( External ( xs:anyURI ( "http://www.example.org"^^xs:string ) ) ) )
+    )
+ )
+)
+]]></Presentation>
+    </PremiseDocument>
+    <ConclusionDocument>
+        <Normative syntax="RIF/XML">
+            <name>Builtins_anyURI-conclusion.rif</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/Builtins_anyURI/Builtins_anyURI-conclusion.rif</remote>
+        </Normative>
+        <Presentation syntax="RIFBLD-PS"><![CDATA[
+ex:ok()
+]]></Presentation>
+    </ConclusionDocument>
+</PositiveEntailmentTest>
+<PositiveEntailmentTest id="Builtins_Binary"
+    src="http://www.w3.org/2005/rules/test/repository/tc/Builtins_Binary">
+    <status>Approved</status>
+    <dialect>Core</dialect>
+    <dialect>BLD</dialect>
+    <dialect>PRD</dialect>
+    <purpose>Test built-in predicates for XML Schema binary datatypes</purpose>
+    <description/>
+    <PremiseDocument>
+        <Normative syntax="RIF/XML">
+            <name>Builtins_Binary-premise.rif</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/Builtins_Binary/Builtins_Binary-premise.rif</remote>
+        </Normative>
+        <Presentation syntax="RIFBLD-PS"><![CDATA[
+Document( 
+ Prefix(xs <http://www.w3.org/2001/XMLSchema#>) 
+ Prefix(ex <http://example.org/example#>)  
+ Prefix(pred <http://www.w3.org/2007/rif-builtin-predicate#>) 
+
+ Group ( 
+  ex:ok() :- 
+   And (
+    External( pred:is-literal-hexBinary( "aabb"^^xs:hexBinary ) )
+    External( pred:is-literal-base64Binary( "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz/+0123456789"^^xs:base64Binary ) )
+    External( pred:is-literal-not-base64Binary( "foo"^^xs:string ) )
+    External( pred:is-literal-base64Binary( External ( xs:base64Binary ( "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz/+0123456789"^^xs:string ) ) ) )
+   )
+  )
+)
+]]></Presentation>
+    </PremiseDocument>
+    <ConclusionDocument>
+        <Normative syntax="RIF/XML">
+            <name>Builtins_Binary-conclusion.rif</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/Builtins_Binary/Builtins_Binary-conclusion.rif</remote>
+        </Normative>
+        <Presentation syntax="RIFBLD-PS"><![CDATA[
+ex:ok()
+]]></Presentation>
+    </ConclusionDocument>
+</PositiveEntailmentTest>
+<PositiveEntailmentTest id="Builtins_boolean"
+    src="http://www.w3.org/2005/rules/test/repository/tc/Builtins_boolean">
+    <status>Approved</status>
+    <dialect>Core</dialect>
+    <dialect>BLD</dialect>
+    <dialect>PRD</dialect>
+    <purpose>Test built-in predicates for XML Schema boolean datatype</purpose>
+    <description/>
+    <PremiseDocument>
+        <Normative syntax="RIF/XML">
+            <name>Builtins_boolean-premise.rif</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/Builtins_boolean/Builtins_boolean-premise.rif</remote>
+        </Normative>
+        <Presentation syntax="RIFBLD-PS"><![CDATA[
+Document( 
+ Prefix(xs <http://www.w3.org/2001/XMLSchema#>)
+ Prefix(pred <http://www.w3.org/2007/rif-builtin-predicate#>) 
+ Prefix(ex <http://example.org/example#>)
+
+ Group ( 
+  ex:ok() :- 
+    And (
+     External( pred:is-literal-boolean( "1"^^xs:boolean ) )
+     External( pred:is-literal-not-boolean( "foo"^^xs:string ) )
+     External( pred:is-literal-boolean( External ( xs:boolean ( "1"^^xs:string ) ) ) )
+     External ( pred:boolean-equal( "0"^^xs:boolean "0"^^xs:boolean ) )
+     External ( pred:boolean-less-than( "0"^^xs:boolean "1"^^xs:boolean ) )
+     External ( pred:boolean-greater-than( "1"^^xs:boolean "0"^^xs:boolean ) )
+    )
+ )
+)
+]]></Presentation>
+    </PremiseDocument>
+    <ConclusionDocument>
+        <Normative syntax="RIF/XML">
+            <name>Builtins_boolean-conclusion.rif</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/Builtins_boolean/Builtins_boolean-conclusion.rif</remote>
+        </Normative>
+        <Presentation syntax="RIFBLD-PS"><![CDATA[
+ex:ok()
+]]></Presentation>
+    </ConclusionDocument>
+</PositiveEntailmentTest>
+<PositiveEntailmentTest id="Builtins_List"
+    src="http://www.w3.org/2005/rules/test/repository/tc/Builtins_List">
+    <status>Approved</status>
+    <dialect>Core</dialect>
+    <dialect>BLD</dialect>
+    <dialect>PRD</dialect>
+    <purpose>Test RIF list built-in predicates and functions</purpose>
+    <description/>
+    <PremiseDocument>
+        <Normative syntax="RIF/XML">
+            <name>Builtins_List-premise.rif</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/Builtins_List/Builtins_List-premise.rif</remote>
+        </Normative>
+        <Presentation syntax="RIFBLD-PS"><![CDATA[
+Document( 
+ Prefix(ex <http://example.org/example#>) 
+ Prefix(func <http://www.w3.org/2007/rif-builtin-function#>) 
+ Prefix(pred <http://www.w3.org/2007/rif-builtin-predicate#>) 
+
+ Group ( 
+  ex:ok() :- 
+    And (
+     External(pred:is-list(List(0 1 2 List(3 4))))
+     External(pred:list-contains(List(0 1 2 3 List(7 8)) List(7 8))) 
+     External( func:make-list(0 1 2) ) = List(0 1 2)
+     External(func:count(List(0 1 2 3 4))) = 5
+     External( func:get(List(0 1 2 3 4) -1) ) = 4
+     External( func:sublist(List(0 1 2 3 4) 0 5) ) = List(0 1 2 3 4)
+     External( func:append(List(0 1 2) 3 4) ) = List(0 1 2 3 4)
+     External( func:concatenate(List(0 1 2) List(3 4 5)) ) = List(0 1 2 3 4 5)
+     External( func:insert-before(List(0 1 2 3 4) -1 99) ) = List(0 1 2 3 99 4)
+     External( func:remove(List(0 1 2 3 4) -5) ) = List(1 2 3 4)
+     External( func:reverse(List(0 1 2 3 4)) ) = List(4 3 2 1 0)
+     External( func:index-of(List(0 1 2 3 4 5 2 2) 2) ) = List(2 6 7)
+     External( func:union(List(0 1 2 3) List(4)) ) = List(0 1 2 3 4)
+     External( func:distinct-values(List(3 3 3)) ) = List(3) 
+     External( func:intersect(List(0 1 2 3 4) List(3 1)) ) = List(1 3)
+     External( func:except(List(0 1 2 3 4) List(1 3)) ) = List(0 2 4)
+    )
+ )
+)
+]]></Presentation>
+    </PremiseDocument>
+    <ConclusionDocument>
+        <Normative syntax="RIF/XML">
+            <name>Builtins_List-conclusion.rif</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/Builtins_List/Builtins_List-conclusion.rif</remote>
+        </Normative>
+        <Presentation syntax="RIFBLD-PS"><![CDATA[
+ex:ok()
+]]></Presentation>
+    </ConclusionDocument>
+</PositiveEntailmentTest>
+<PositiveEntailmentTest id="Builtins_Numeric"
+    src="http://www.w3.org/2005/rules/test/repository/tc/Builtins_Numeric">
+    <status>Approved</status>
+    <dialect>Core</dialect>
+    <dialect>BLD</dialect>
+    <dialect>PRD</dialect>
+    <purpose>Test built-in predicates and functions for XML Schema numeric datatypes</purpose>
+    <description/>
+    <PremiseDocument>
+        <Normative syntax="RIF/XML">
+            <name>Builtins_Numeric-premise.rif</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/Builtins_Numeric/Builtins_Numeric-premise.rif</remote>
+        </Normative>
+        <Presentation syntax="RIFBLD-PS"><![CDATA[
+Document( 
+ Prefix(xs <http://www.w3.org/2001/XMLSchema#>)
+ Prefix(ex <http://example.org/example#>) 
+ Prefix(func <http://www.w3.org/2007/rif-builtin-function#>) 
+ Prefix(pred <http://www.w3.org/2007/rif-builtin-predicate#>) 
+
+ Group ( 
+  ex:ok() :- 
+   And (
+    External( pred:is-literal-double( "1.2E34"^^xs:double ) )
+    External( pred:is-literal-float( "-INF"^^xs:float ) )
+    External( pred:is-literal-decimal( "1"^^xs:integer ) )
+    External( pred:is-literal-integer( "1"^^xs:integer ) )
+    External( pred:is-literal-long( "1"^^xs:integer ) )
+    External( pred:is-literal-int( "1"^^xs:integer ) )
+    External( pred:is-literal-short( "1"^^xs:integer ) )
+    External( pred:is-literal-byte( "1"^^xs:integer ) )
+    External( pred:is-literal-nonNegativeInteger( "1"^^xs:integer ) )
+    External( pred:is-literal-positiveInteger( "1"^^xs:integer ) )
+    External( pred:is-literal-unsignedLong( "1"^^xs:integer ) )
+    External( pred:is-literal-unsignedInt( "1"^^xs:integer ) )
+    External( pred:is-literal-unsignedShort( "1"^^xs:integer ) )
+    External( pred:is-literal-unsignedByte( "1"^^xs:integer ) )
+    External( pred:is-literal-nonPositiveInteger( "-1"^^xs:integer ) )
+    External( pred:is-literal-negativeInteger( "-1"^^xs:integer ) )
+    External( pred:is-literal-not-double( "foo"^^xs:string ) )
+    External( pred:is-literal-not-float( "foo"^^xs:string ) )
+    External( pred:is-literal-not-hexBinary( "foo"^^xs:string ) )
+    External( pred:is-literal-not-decimal( "foo"^^xs:string ) )
+    External( pred:is-literal-not-integer( "foo"^^xs:string ) )
+    External( pred:is-literal-not-long( "foo"^^xs:string ) )
+    External( pred:is-literal-not-int( "foo"^^xs:string ) )
+    External( pred:is-literal-not-short( "foo"^^xs:string ) )
+    External( pred:is-literal-not-byte( "foo"^^xs:string ) )
+    External( pred:is-literal-not-nonNegativeInteger( "foo"^^xs:string ) )
+    External( pred:is-literal-not-positiveInteger( "foo"^^xs:string ) )
+    External( pred:is-literal-not-unsignedLong( "foo"^^xs:string ) )
+    External( pred:is-literal-not-unsignedInt( "foo"^^xs:string ) )
+    External( pred:is-literal-not-unsignedShort( "foo"^^xs:string ) )
+    External( pred:is-literal-not-unsignedByte( "foo"^^xs:string ) )
+    External( pred:is-literal-not-nonPositiveInteger( "foo"^^xs:string ) )
+    External( pred:is-literal-not-negativeInteger( "foo"^^xs:string ) )
+    External( pred:is-literal-double( External ( xs:double ("1.2E34"^^xs:string ) ) ) )
+    External( pred:is-literal-float( External ( xs:float ( "-1"^^xs:string ) ) ) )
+    External( pred:is-literal-hexBinary( External ( xs:hexBinary (  "aabb"^^xs:string ) ) ) )
+    External( pred:is-literal-decimal( External( xs:decimal ( "1"^^xs:string ) ) ) )
+    External( pred:is-literal-integer(  External( xs:integer ( "1"^^xs:string ) ) ) )
+    External( pred:is-literal-long( External( xs:long ( "1"^^xs:string ) ) ) )
+    External( pred:is-literal-int(  External( xs:int ( "1"^^xs:string ) ) ) )
+    External( pred:is-literal-short(  External( xs:short ( "1"^^xs:string ) ) ) )
+    External( pred:is-literal-byte(  External( xs:byte ( "1"^^xs:string ) ) ) )
+    External( pred:is-literal-nonNegativeInteger(  External( xs:nonNegativeInteger ( "1"^^xs:string ) ) ) )
+    External( pred:is-literal-positiveInteger(  External( xs:positiveInteger ( "1"^^xs:string ) ) ) )
+    External( pred:is-literal-unsignedLong(  External( xs:unsignedLong ( "1"^^xs:string ) ) ) )
+    External( pred:is-literal-unsignedInt(  External( xs:unsignedInt ( "1"^^xs:string ) ) ) )
+    External( pred:is-literal-unsignedShort(  External( xs:unsignedShort ( "1"^^xs:string ) ) ) )
+    External( pred:is-literal-unsignedByte(  External( xs:unsignedByte ( "1"^^xs:string ) ) ) )
+    External( pred:is-literal-nonPositiveInteger( External( xs:nonPositiveInteger ("-1"^^xs:string ) ) ) )
+    External( pred:is-literal-negativeInteger( External( xs:negativeInteger ("-1"^^xs:string ) ) ) )
+    2 = External ( func:numeric-add( 1 1 ) )
+    1 = External ( func:numeric-subtract( 2 1 ) )
+    6 = External ( func:numeric-multiply( 2 3 ) )
+    2 = External ( func:numeric-divide( 6 3 ) )
+    1 = External ( func:numeric-integer-divide( 5 3 ) )
+    2 = External ( func:numeric-integer-mod( 5 3 ) )
+    External ( pred:numeric-equal( "0.0E0"^^xs:double External ( func:numeric-subtract( 1 1 ) ) ) )
+    External ( pred:numeric-not-equal( 0 1 ) )
+    External ( pred:numeric-less-than ( 1 2 ) )
+    External ( pred:numeric-less-than-or-equal ( 1 2 ) )
+    External ( pred:numeric-less-than-or-equal ( 1 1 ) )
+    External ( pred:numeric-greater-than ( 2 -1 ) )
+    External ( pred:numeric-greater-than-or-equal ( 2 -1 ) )
+    External ( pred:numeric-greater-than-or-equal ( 2  2 ) )
+    External ( pred:numeric-not-equal( 0 1  ) )
+   )
+  )
+)
+]]></Presentation>
+    </PremiseDocument>
+    <ConclusionDocument>
+        <Normative syntax="RIF/XML">
+            <name>Builtins_Numeric-conclusion.rif</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/Builtins_Numeric/Builtins_Numeric-conclusion.rif</remote>
+        </Normative>
+        <Presentation syntax="RIFBLD-PS"><![CDATA[
+ex:ok()
+]]></Presentation>
+    </ConclusionDocument>
+</PositiveEntailmentTest>
+<PositiveEntailmentTest id="Builtins_PlainLiteral"
+    src="http://www.w3.org/2005/rules/test/repository/tc/Builtins_PlainLiteral">
+    <status>Approved</status>
+    <dialect>Core</dialect>
+    <dialect>BLD</dialect>
+    <dialect>PRD</dialect>
+    <purpose>Test built-in predicates and functions for RDF PlainLiteral datatype</purpose>
+    <description/>
+    <PremiseDocument>
+        <Normative syntax="RIF/XML">
+            <name>Builtins_PlainLiteral-premise.rif</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/Builtins_PlainLiteral/Builtins_PlainLiteral-premise.rif</remote>
+        </Normative>
+        <Presentation syntax="RIFBLD-PS"><![CDATA[
+Document( 
+ Prefix(xs <http://www.w3.org/2001/XMLSchema#>)
+ Prefix(rdf <http://www.w3.org/1999/02/22-rdf-syntax-ns#>) 
+ Prefix(ex <http://example.org/example#>) 
+ Prefix(func <http://www.w3.org/2007/rif-builtin-function#>) 
+ Prefix(pred <http://www.w3.org/2007/rif-builtin-predicate#>) 
+
+ Group ( 
+  ex:ok() :- 
+    And (
+     External( pred:is-literal-PlainLiteral( "Hello world@en"^^rdf:PlainLiteral ) )
+     External( pred:is-literal-PlainLiteral( "Hello world@"^^rdf:PlainLiteral ) )
+     External( pred:is-literal-not-PlainLiteral( "1"^^xs:integer ) )
+     External( pred:is-literal-PlainLiteral( External( rdf:PlainLiteral ("1"^^xs:integer ) ) ) )
+     External( func:PlainLiteral-from-string-lang( "Hello World!" "en" ) ) = "Hello World!"@en
+     External( func:string-from-PlainLiteral( "Hello World!"@en ) ) = "Hello World!"
+     External( func:string-from-PlainLiteral( "Hello World!@en" ) )= "Hello World!@en"
+     External( func:lang-from-PlainLiteral( "Hello World!@en"^^rdf:PlainLiteral ) )= "en"^^xs:lang
+     External( func:lang-from-PlainLiteral( "Hello World!@en" ) ) = ""
+     -1 = External ( func:PlainLiteral-compare( "hallo"@de "welt"@de ) )
+     1 = External ( func:PlainLiteral-compare( "welt"@de "hallo"@de ) )
+     0 = External ( func:PlainLiteral-compare( "hallo"@de "hallo"@de ) )
+     External ( pred:matches-language-range( "Schlagobers ist dasselbe wie Schlagsahne."@de-at "de-*" ) )
+    )
+ )
+)
+]]></Presentation>
+    </PremiseDocument>
+    <ConclusionDocument>
+        <Normative syntax="RIF/XML">
+            <name>Builtins_PlainLiteral-conclusion.rif</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/Builtins_PlainLiteral/Builtins_PlainLiteral-conclusion.rif</remote>
+        </Normative>
+        <Presentation syntax="RIFBLD-PS"><![CDATA[
+ex:ok()
+]]></Presentation>
+    </ConclusionDocument>
+</PositiveEntailmentTest>
+<PositiveEntailmentTest id="Builtins_String"
+    src="http://www.w3.org/2005/rules/test/repository/tc/Builtins_String">
+    <status>Approved</status>
+    <dialect>Core</dialect>
+    <dialect>BLD</dialect>
+    <dialect>PRD</dialect>
+    <purpose>Test built-in predicates and functions for XML schema string datatypes</purpose>
+    <description>Note the somewhat surprising results on substring.  RIF follows [http://www.w3.org/TR/xpath-functions/#func-substring XPath] on this.</description>
+    <PremiseDocument>
+        <Normative syntax="RIF/XML">
+            <name>Builtins_String-premise.rif</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/Builtins_String/Builtins_String-premise.rif</remote>
+        </Normative>
+        <Presentation syntax="RIFBLD-PS"><![CDATA[
+Document( 
+ Prefix(xs <http://www.w3.org/2001/XMLSchema#>)
+ Prefix(rdf <http://www.w3.org/1999/02/22-rdf-syntax-ns#>) 
+ Prefix(ex <http://example.org/example#>) 
+ Prefix(func <http://www.w3.org/2007/rif-builtin-function#>) 
+ Prefix(pred <http://www.w3.org/2007/rif-builtin-predicate#>) 
+
+ Group ( 
+  ex:ok() :- 
+    And (
+     External( pred:is-literal-string( "Hello world@"^^rdf:PlainLiteral ) )
+     External( pred:is-literal-string( "Hello world"^^xs:string ) )
+     External( pred:is-literal-normalizedString( "Hello world"^^xs:string ) )
+     External( pred:is-literal-token( "Hello world"^^xs:string ) )
+     External( pred:is-literal-language( "en"^^xs:language ) )
+     External( pred:is-literal-Name( "Hello"^^xs:Name ) )
+     External( pred:is-literal-NCName( "Hello"^^xs:NCName ) )
+     External( pred:is-literal-NMTOKEN( "Hello"^^xs:NMTOKEN ) )
+     External( pred:is-literal-not-string( "1"^^xs:integer ) )
+     External( pred:is-literal-not-normalizedString( "1"^^xs:integer ) )
+     External( pred:is-literal-not-token( "1"^^xs:integer ) )
+     External( pred:is-literal-not-language( "1"^^xs:integer ) )
+     External( pred:is-literal-not-Name( "1"^^xs:integer ) )
+     External( pred:is-literal-not-NCName( "1"^^xs:integer ) )
+     External( pred:is-literal-not-NMTOKEN( "1"^^xs:integer ) )
+     External( pred:is-literal-string(  External( xs:string ("1"^^xs:integer ) ) ) )
+     External( pred:is-literal-normalizedString(  External( xs:normalizedString ("1"^^xs:integer ) ) ) )
+     External( pred:is-literal-token( External( xs:token(  "de"^^xs:hexBinary ) ) ) )
+     External( pred:is-literal-language( External ( xs:language ( "de"^^xs:hexBinary ) ) ) )
+     External( pred:is-literal-Name( External ( xs:Name ( "de"^^xs:hexBinary ) ) ) )
+     External( pred:is-literal-NCName( External ( xs:NCName ( "de"^^xs:hexBinary ) ) ) )
+     External( pred:is-literal-NMTOKEN( External ( xs:NMTOKEN ( "de"^^xs:hexBinary ) ) ) )
+     External( pred:iri-string( <http://www.example.org> "http://www.example.org"  ) )
+     -1 = External ( func:compare( "bar" "foo" ) )
+     1 = External ( func:compare( "foo" "bar" ) )
+     0 = External ( func:compare( "bar" "bar" ) )
+     "foobar" = External ( func:concat( "foo" "bar" ) )
+     "foo,bar" = External ( func:string-join( "foo" "bar" "," ) )
+     "bar" = External ( func:substring( "foobar" 3 ) )
+     "fo" = External ( func:substring( "foobar" 0 3 ) )
+     3 = External ( func:string-length( "foo" ) )
+     "FOOBAR" = External ( func:upper-case( "FooBar" ) )
+     "foobar" = External ( func:lower-case( "FooBar" ) )
+     "RIF%20Basic%20Logic%20Dialect" = External ( func:encode-for-uri( "RIF Basic Logic Dialect" ) )
+     "http://www.example.com/~b%C3%A9b%C3%A9" = External ( func:iri-to-uri ( "http://www.example.com/~bÃ©bÃ©" ) )
+     "javascript:if (navigator.browserLanguage == 'fr') window.open('http://www.example.com/~b%C3%A9b%C3%A9');" = External ( func:escape-html-uri ( "javascript:if (navigator.browserLanguage == 'fr') window.open('http://www.example.com/~bÃ©bÃ©');" ) ) 
+     "foo" = External ( func:substring-before( "foobar" "bar" ) )
+     "bar" = External ( func:substring-after( "foobar" "foo" ) )
+     "[1=ab][2=]cd" = External ( func:replace( "abcd" "(ab)|(a)" "[1=$1][2=$2]" ) )
+     External( pred:contains ( "foobar" "foo" ) )
+     External( pred:starts-with ( "foobar" "foo" ) )
+     External( pred:ends-with ( "foobar" "bar" ) )
+     External( pred:matches ( "abracadabra" "^a.*a$" ) )
+   )
+ )
+)
+]]></Presentation>
+    </PremiseDocument>
+    <ConclusionDocument>
+        <Normative syntax="RIF/XML">
+            <name>Builtins_String-conclusion.rif</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/Builtins_String/Builtins_String-conclusion.rif</remote>
+        </Normative>
+        <Presentation syntax="RIFBLD-PS"><![CDATA[
+ex:ok()
+]]></Presentation>
+    </ConclusionDocument>
+</PositiveEntailmentTest>
+<PositiveEntailmentTest id="Builtins_Time"
+    src="http://www.w3.org/2005/rules/test/repository/tc/Builtins_Time">
+    <status>Approved</status>
+    <dialect>Core</dialect>
+    <dialect>BLD</dialect>
+    <dialect>PRD</dialect>
+    <purpose>Test built-in predicates and functions for XML Schema date, time and duration datatypes</purpose>
+    <description/>
+    <PremiseDocument>
+        <Normative syntax="RIF/XML">
+            <name>Builtins_Time-premise.rif</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/Builtins_Time/Builtins_Time-premise.rif</remote>
+        </Normative>
+        <Presentation syntax="RIFBLD-PS"><![CDATA[
+Document( 
+ Prefix(xs <http://www.w3.org/2001/XMLSchema#>)
+ Prefix(rdf <http://www.w3.org/1999/02/22-rdf-syntax-ns#>) 
+ Prefix(ex <http://example.org/example#>) 
+ Prefix(func <http://www.w3.org/2007/rif-builtin-function#>) 
+ Prefix(pred <http://www.w3.org/2007/rif-builtin-predicate#>) 
+
+ Group ( 
+  ex:ok() :- 
+   And (
+    External( pred:is-literal-date ( "2000-12-13-11:00"^^xs:date ) )
+    External( pred:is-literal-dateTime ( "2000-12-13T00:11:11.3"^^xs:dateTime ) )
+    External( pred:is-literal-dateTimeStamp ( "2000-12-13T00:11:11.3Z"^^xs:dateTimeStamp ) )
+    External( pred:is-literal-time ( "00:11:11.3Z"^^xs:time ) )
+    External( pred:is-literal-dayTimeDuration ( "P3DT2H"^^xs:dayTimeDuration ) )
+    External( pred:is-literal-yearMonthDuration ( "P1Y2M"^^xs:yearMonthDuration ) )
+    External( pred:is-literal-not-date ( "foo"^^xs:string ) )
+    External( pred:is-literal-not-dateTime ( "foo"^^xs:string ) )
+    External( pred:is-literal-not-dateTimeStamp ( "foo"^^xs:string ) )
+    External( pred:is-literal-not-time ( "foo"^^xs:string ) )
+    External( pred:is-literal-not-dayTimeDuration ( "foo"^^xs:string ) )
+    External( pred:is-literal-not-yearMonthDuration ( "foo"^^xs:string ) )
+    External( pred:is-literal-date ( External ( xs:date ( "2000-12-13-11:00"^^xs:string ) ) ) )
+    External( pred:is-literal-dateTime ( External ( xs:dateTime ( "2000-12-13T00:11:11.3"^^xs:string ) ) ) )
+    External( pred:is-literal-dateTimeStamp ( External ( xs:dateTimeStamp ( "2000-12-13T00:11:11.3Z"^^xs:string ) ) ) )
+    External( pred:is-literal-time (  External ( xs:time ( "00:11:11.3Z"^^xs:string ) ) ) )
+    External( pred:is-literal-dayTimeDuration (  External ( xs:dayTimeDuration ( "P3DT2H"^^xs:string ) ) ) )
+    External( pred:is-literal-yearMonthDuration (  External ( xs:yearMonthDuration ( "P1Y2M"^^xs:string ) ) ) )
+    External( func:year-from-dateTime( "1999-12-31T24:00:00"^^xs:dateTime ) ) = 2000
+    External( func:month-from-dateTime( "1999-05-31T13:20:00-05:00"^^xs:dateTime ) ) = 5
+    External( func:day-from-dateTime( "1999-05-31T13:20:00-05:00"^^xs:dateTime ) ) = 31
+    External( func:hours-from-dateTime( "1999-05-31T08:20:00-05:00"^^xs:dateTime ) ) = 8
+    External( func:minutes-from-dateTime( "1999-05-31T13:20:00-05:00"^^xs:dateTime ) ) = 20
+    External( func:seconds-from-dateTime( "1999-05-31T13:20:00-05:00"^^xs:dateTime ) ) = 0
+    External( func:year-from-date( "1999-12-31"^^xs:date ) ) = 1999
+    External( func:month-from-date( "1999-05-31"^^xs:date ) ) = 5
+    External( func:day-from-date( "1999-05-31"^^xs:date ) ) = 31
+    External( func:hours-from-time( "08:20:00-05:00"^^xs:time ) ) = 8
+    External( func:minutes-from-time( "13:20:00-05:00"^^xs:time ) ) = 20
+    External( func:seconds-from-time( "13:20:00-05:00"^^xs:time ) ) = 0
+    External( func:timezone-from-dateTime( "1999-05-31T13:20:00-05:00"^^xs:dateTime ) ) = "-PT5H"^^xs:dayTimeDuration
+    External( func:timezone-from-date( "1999-05-31-05:00"^^xs:date ) ) = "-PT5H"^^xs:dayTimeDuration
+    External( func:timezone-from-time( "13:20:00-05:00"^^xs:time) ) = "-PT5H"^^xs:dayTimeDuration
+    External( func:years-from-duration( "P20Y15M"^^xs:yearMonthDuration ) ) = 21
+    External( func:months-from-duration( "P20Y15M"^^xs:yearMonthDuration ) ) = 3
+    External( func:days-from-duration( "P3DT10H"^^xs:dayTimeDuration ) ) = 3
+    External( func:hours-from-duration( "P3DT10H"^^xs:dayTimeDuration ) ) = 10 
+    External( func:minutes-from-duration( "-P5DT12H30M"^^xs:dayTimeDuration ) ) = -30
+    External( func:seconds-from-duration( "P3DT10H12.5S"^^xs:dayTimeDuration ) ) = 12.5
+    External( func:subtract-dateTimes( "2000-10-30T06:12:00-05:00"^^xs:dateTime "1999-11-28T09:00:00Z"^^xs:dateTime) ) = "P337DT2H12M"^^xs:dayTimeDuration
+    External( func:subtract-dates( "2000-10-30Z"^^xs:date "1999-11-28Z"^^xs:date ) ) = "P337D"^^xs:dayTimeDuration
+    External( func:subtract-times( "11:12:00Z"^^xs:time "04:00:00Z"^^xs:time ) ) = "PT7H12M"^^xs:dayTimeDuration
+    External( func:add-yearMonthDurations("P2Y11M"^^xs:yearMonthDuration "P3Y3M"^^xs:yearMonthDuration) ) = "P6Y2M"^^xs:yearMonthDuration
+    External( func:subtract-yearMonthDurations("P2Y11M"^^xs:yearMonthDuration "P3Y3M"^^xs:yearMonthDuration ) ) = "-P4M"^^xs:yearMonthDuration
+    External( func:multiply-yearMonthDuration("P2Y11M"^^xs:yearMonthDuration 2.3 ) ) = "P6Y9M"^^xs:yearMonthDuration
+    External( func:divide-yearMonthDuration("P2Y11M"^^xs:yearMonthDuration 1.5 ) ) = "P1Y11M"^^xs:yearMonthDuration
+    External( func:divide-yearMonthDuration-by-yearMonthDuration( "P3Y4M"^^xs:yearMonthDuration "-P1Y4M"^^xs:yearMonthDuration ) ) = -2.5
+    External( func:add-dayTimeDurations( "P2DT12H5M"^^xs:dayTimeDuration "P5DT12H"^^xs:dayTimeDuration) ) = "P8DT5M"^^xs:dayTimeDuration
+    External( func:subtract-dayTimeDurations( "P2DT12H"^^xs:dayTimeDuration "P1DT10H30M"^^xs:dayTimeDuration ) ) = "P1DT1H30M"^^xs:dayTimeDuration
+    External( func:multiply-dayTimeDuration( "PT2H10M"^^xs:dayTimeDuration 2.1 ) ) = "PT4H33M"^^xs:dayTimeDuration
+    External( func:divide-dayTimeDuration( "P4D"^^xs:dayTimeDuration 2 ) ) = "P2D"^^xs:dayTimeDuration
+    External( func:divide-dayTimeDuration-by-dayTimeDuration( "P4D"^^xs:dayTimeDuration "P2D"^^xs:dayTimeDuration ) ) = 2
+    External( func:add-yearMonthDuration-to-dateTime( "2000-10-30T11:12:00"^^xs:dateTime "P1Y2M"^^xs:yearMonthDuration ) ) = "2001-12-30T11:12:00"^^xs:dateTime
+    External( func:add-yearMonthDuration-to-date( "2000-10-30"^^xs:date "P1Y2M"^^xs:yearMonthDuration ) ) = "2001-12-30"^^xs:date
+    External( func:add-dayTimeDuration-to-dateTime( "2000-10-30T11:12:00"^^xs:dateTime "P3DT1H15M"^^xs:dayTimeDuration ) ) = "2000-11-02T12:27:00"^^xs:dayTime
+    External( func:add-dayTimeDuration-to-date("2004-10-30Z"^^xs:date "P2DT2H30M0S"^^xs:dayTimeDuration ) ) = "2004-11-01Z"^^xs:date
+    External( func:add-dayTimeDuration-to-time( "11:12:00"^^xs:time "P3DT1H15M"^^xs:dayTimeDuration ) ) = "12:27:00"^^xs:time
+    External( func:add-dayTimeDuration-to-time( "23:12:00+03:00"^^xs:time "P1DT3H15M"^^xs:dayTimeDuration ) ) = "02:27:00+03:00"^^xs:time
+    External( func:subtract-yearMonthDuration-from-dateTime( "2000-10-30T11:12:00"^^xs:dateTime "P1Y2M"^^xs:yearMonthDuration ) ) = "1999-08-30T11:12:00"^^xs:dateTime
+    External( func:subtract-yearMonthDuration-from-date( "2000-10-30"^^xs:date "P1Y2M"^^xs:yearMonthDuration ) ) = "1999-08-30"^^xs:date
+    External( func:subtract-dayTimeDuration-from-dateTime( "2000-10-30T11:12:00"^^xs:dateTime "P3DT1H15M"^^xs:dayTimeDuration ) ) = "2000-10-27T09:57:00"^^xs:dateTime
+    External( func:subtract-dayTimeDuration-from-date( "2000-10-30"^^xs:date "P3DT1H15M"^^xs:dayTimeDuration ) ) = "2000-10-26"^^xs:date
+    External( func:subtract-dayTimeDuration-from-time( "11:12:00"^^xs:time "P3DT1H15M"^^xs:dayTimeDuration ) ) = "09:57:00"^^xs:time
+    External( pred:dateTime-equal( "2002-04-02T12:00:00-01:00"^^xs:dateTime "2002-04-02T17:00:00+04:00"^^xs:dateTime ) )
+    External( pred:dateTime-less-than( "2002-04-01T12:00:00-01:00"^^xs:dateTime "2002-04-02T17:00:00+04:00"^^xs:dateTime ) )
+    External( pred:dateTime-greater-than( "2002-04-03T12:00:00-01:00"^^xs:dateTime "2002-04-02T17:00:00+04:00"^^xs:dateTime ) )
+    External( pred:date-equal( "2004-12-25-12:00"^^xs:date "2004-12-26+12:00"^^xs:date ) )
+    External( pred:date-less-than( "2004-12-24"^^xs:date "2004-12-26"^^xs:date ) )
+    External( pred:date-greater-than( "2004-12-26"^^xs:date "2004-12-25"^^xs:date ) )
+    External( pred:time-equal( "21:30:00+10:30"^^xs:time "06:00:00-05:00"^^xs:time ) )
+    External( pred:time-less-than( "20:30:00+10:30"^^xs:time "06:00:00-05:00"^^xs:time ) )
+    External( pred:time-greater-than( "22:30:00+10:30"^^xs:time "06:00:00-05:00"^^xs:time ) )
+    External( pred:duration-equal( "P1Y"^^xs:yearMonthDuration "P12M"^^xs:yearMonthDuration ) )
+    External( pred:yearMonthDuration-less-than( "P1Y"^^xs:yearMonthDuration "P13M"^^xs:yearMonthDuration ) )
+    External( pred:yearMonthDuration-greater-than( "P1Y"^^xs:yearMonthDuration "P11M"^^xs:yearMonthDuration ) )
+    External( pred:dayTimeDuration-less-than( "P1D"^^xs:dayTimeDuration "PT25H"^^xs:dayTimeDuration ) )
+    External( pred:dayTimeDuration-greater-than( "P1D"^^xs:dayTimeDuration "PT23H"^^xs:dayTimeDuration ) )
+    External( pred:dateTime-not-equal( "2002-04-01T12:00:00-01:00"^^xs:dateTime "2002-04-02T17:00:00+04:00"^^xs:dateTime ) )
+    External( pred:dateTime-less-than-or-equal( "2002-04-01T12:00:00-01:00"^^xs:dateTime "2002-04-02T17:00:00+04:00"^^xs:dateTime ) )
+    External( pred:dateTime-greater-than-or-equal( "2002-04-03T12:00:00-01:00"^^xs:dateTime "2002-04-02T17:00:00+04:00"^^xs:dateTime ) )
+    External( pred:date-not-equal( "2004-12-24"^^xs:date "2004-12-26"^^xs:date ) )
+    External( pred:date-less-than-or-equal( "2004-12-24"^^xs:date "2004-12-26"^^xs:date ) )
+    External( pred:date-greater-than-or-equal( "2004-12-26"^^xs:date "2004-12-25"^^xs:date ) )
+    External( pred:time-not-equal( "20:30:00+10:30"^^xs:time "06:00:00-05:00"^^xs:time ) )
+    External( pred:time-less-than-or-equal( "20:30:00+10:30"^^xs:time "06:00:00-05:00"^^xs:time ) )
+    External( pred:time-greater-than-or-equal( "22:30:00+10:30"^^xs:time "06:00:00-05:00"^^xs:time ) )
+    External( pred:duration-not-equal( "P1Y"^^xs:yearMonthDuration "P1M"^^xs:yearMonthDuration ) )
+    External( pred:yearMonthDuration-less-than-or-equal( "P1Y"^^xs:yearMonthDuration "P13M"^^xs:yearMonthDuration ) )
+    External( pred:yearMonthDuration-greater-than-or-equal( "P1Y"^^xs:yearMonthDuration "P11M"^^xs:yearMonthDuration ) )
+    External( pred:dayTimeDuration-less-than-or-equal( "P1D"^^xs:dayTimeDuration "PT25H"^^xs:dayTimeDuration ) )
+    External( pred:dayTimeDuration-greater-than-or-equal( "P1D"^^xs:dayTimeDuration "PT23H"^^xs:dayTimeDuration ) )
+   )
+ )
+)
+]]></Presentation>
+    </PremiseDocument>
+    <ConclusionDocument>
+        <Normative syntax="RIF/XML">
+            <name>Builtins_Time-conclusion.rif</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/Builtins_Time/Builtins_Time-conclusion.rif</remote>
+        </Normative>
+        <Presentation syntax="RIFBLD-PS"><![CDATA[
+ex:ok()
+]]></Presentation>
+    </ConclusionDocument>
+</PositiveEntailmentTest>
+<PositiveEntailmentTest id="Builtins_XMLLiteral"
+    src="http://www.w3.org/2005/rules/test/repository/tc/Builtins_XMLLiteral">
+    <status>Approved</status>
+    <dialect>Core</dialect>
+    <dialect>BLD</dialect>
+    <dialect>PRD</dialect>
+    <purpose>Test built-in predicates for RDF XMLLiteral datatype</purpose>
+    <description>Note that the lexical space only allows for canonical XML, so use of "&lt;br /&gt;"^^rdf:XMLLiteral is a RIF syntax error.</description>
+    <PremiseDocument>
+        <Normative syntax="RIF/XML">
+            <name>Builtins_XMLLiteral-premise.rif</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/Builtins_XMLLiteral/Builtins_XMLLiteral-premise.rif</remote>
+        </Normative>
+        <Presentation syntax="RIFBLD-PS"><![CDATA[
+Document( 
+ Prefix(xs <http://www.w3.org/2001/XMLSchema#>)
+ Prefix(rdf <http://www.w3.org/1999/02/22-rdf-syntax-ns#>) 
+ Prefix(ex <http://example.org/example#>) 
+ Prefix(pred <http://www.w3.org/2007/rif-builtin-predicate#>) 
+
+ Group ( 
+  ex:ok() :- 
+    And (
+     External( pred:is-literal-XMLLiteral ( "<br></br>"^^rdf:XMLLiteral ) )
+     External( pred:is-literal-not-XMLLiteral ( "1"^^xs:integer ) )
+     External( pred:is-literal-XMLLiteral (  External ( rdf:XMLLiteral( "<br></br>"^^xs:string ) ) ) )
+    )
+   )
+)
+]]></Presentation>
+    </PremiseDocument>
+    <ConclusionDocument>
+        <Normative syntax="RIF/XML">
+            <name>Builtins_XMLLiteral-conclusion.rif</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/Builtins_XMLLiteral/Builtins_XMLLiteral-conclusion.rif</remote>
+        </Normative>
+        <Presentation syntax="RIFBLD-PS"><![CDATA[
+ex:ok()
+]]></Presentation>
+    </ConclusionDocument>
+</PositiveEntailmentTest>
+<PositiveEntailmentTest id="Builtin_literal-not-identical"
+    src="http://www.w3.org/2005/rules/test/repository/tc/Builtin_literal-not-identical">
+    <status>Approved</status>
+    <dialect>Core</dialect>
+    <dialect>BLD</dialect>
+    <dialect>PRD</dialect>
+    <purpose>Test the literal-not-identical built-in predicate.</purpose>
+    <description/>
+    <PremiseDocument>
+        <Normative syntax="RIF/XML">
+            <name>Builtin_literal-not-identical-premise.rif</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/Builtin_literal-not-identical/Builtin_literal-not-identical-premise.rif</remote>
+        </Normative>
+        <Presentation syntax="RIFBLD-PS"><![CDATA[
+Document( 
+ Prefix(xs <http://www.w3.org/2001/XMLSchema#>)
+ Prefix(rdf <http://www.w3.org/1999/02/22-rdf-syntax-ns#>) 
+ Prefix(ex <http://example.org/example#>)  
+ Prefix(pred <http://www.w3.org/2007/rif-builtin-predicate#>) 
+
+ Group ( 
+  ex:ok() :- 
+    And (
+     External( pred:literal-not-identical( "1"^^xs:integer "1"^^xs:string ) ) 
+     External( pred:literal-not-identical( "1"^^xs:integer "2"^^xs:integer ) )
+     External( pred:literal-not-identical( "Hello world@"^^rdf:PlainLiteral "Hello world@"^^xs:string ) )
+    )
+ )
+)
+]]></Presentation>
+    </PremiseDocument>
+    <ConclusionDocument>
+        <Normative syntax="RIF/XML">
+            <name>Builtin_literal-not-identical-conclusion.rif</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/Builtin_literal-not-identical/Builtin_literal-not-identical-conclusion.rif</remote>
+        </Normative>
+        <Presentation syntax="RIFBLD-PS"><![CDATA[
+ex:ok()
+]]></Presentation>
+    </ConclusionDocument>
+</PositiveEntailmentTest>
+<PositiveEntailmentTest id="Chaining_strategy_numeric-add_1"
+    src="http://www.w3.org/2005/rules/test/repository/tc/Chaining_strategy_numeric-add_1">
+    <status>Approved</status>
+    <dialect>Core</dialect>
+    <dialect>BLD</dialect>
+    <dialect>PRD</dialect>
+    <purpose>This test highlights the different behavior of forward-chaining vs. backward-chaining engines</purpose>
+    <description>The entailment holds, but some engines may have difficulty finding it and/or may behave badly with it. This particular test case may be hard to handle for backward-chaining engines, depending on their implementation of the func:numeric-add builtin. In a forward-chaining strategy, the entailment should be found, but since the minimal model itself is infinite, a naive engine, which tries to materialize the whole minimal model may not terminate.</description>
+    <PremiseDocument>
+        <Normative syntax="RIF/XML">
+            <name>Chaining_strategy_numeric-add_1-premise.rif</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/Chaining_strategy_numeric-add_1/Chaining_strategy_numeric-add_1-premise.rif</remote>
+        </Normative>
+        <Presentation syntax="RIFBLD-PS"><![CDATA[
+Document(
+  Prefix(ex   <http://example.org/example#>)
+  Prefix(func <http://www.w3.org/2007/rif-builtin-function#>)
+  
+  Group  (
+    Forall ?x ( ex:a(External(func:numeric-add(?x 1))) :- ex:a(?x) )
+    ex:a(1)
+  ) 
+)
+]]></Presentation>
+    </PremiseDocument>
+    <ConclusionDocument>
+        <Normative syntax="RIF/XML">
+            <name>Chaining_strategy_numeric-add_1-conclusion.rif</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/Chaining_strategy_numeric-add_1/Chaining_strategy_numeric-add_1-conclusion.rif</remote>
+        </Normative>
+        <Presentation syntax="RIFBLD-PS"><![CDATA[
+ex:a(3)
+]]></Presentation>
+    </ConclusionDocument>
+</PositiveEntailmentTest>
+<PositiveEntailmentTest id="Chaining_strategy_numeric-subtract_2"
+    src="http://www.w3.org/2005/rules/test/repository/tc/Chaining_strategy_numeric-subtract_2">
+    <status>Approved</status>
+    <dialect>Core</dialect>
+    <dialect>BLD</dialect>
+    <dialect>PRD</dialect>
+    <purpose>This test highlights the different behavior of forward-chaining vs. backward-chaining engines</purpose>
+    <description>The entailment holds, but some engines may have difficulty finding it and/or may behave badly with it. This particular test case may be hard to handle for backward-chaining engines, depending on their implementation of the func:numeric-subtract builtin. In a forward-chaining strategy, the entailment should be found. Note that a backward-chaining engine, which is able to handle the external built-in in the head would avoid non-termination problems on arbitrary other entailment tests with this ruleset by the termination condition in the body.</description>
+    <PremiseDocument>
+        <Normative syntax="RIF/XML">
+            <name>Chaining_strategy_numeric-subtract_2-premise.rif</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/Chaining_strategy_numeric-subtract_2/Chaining_strategy_numeric-subtract_2-premise.rif</remote>
+        </Normative>
+        <Presentation syntax="RIFBLD-PS"><![CDATA[
+Document(
+  Prefix(ex   <http://example.org/example#>)
+  Prefix(func <http://www.w3.org/2007/rif-builtin-function#>)
+  Prefix(pred <http://www.w3.org/2007/rif-builtin-predicate#>)
+  
+  Group  (
+    Forall ?x ( ex:a(External(func:numeric-subtract(?x 1))) :- 
+                    And ( ex:a(?x) External(pred:numeric-greater-than-or-equal(?x 0)))
+    )
+    ex:a(10)
+  ) 
+)
+]]></Presentation>
+    </PremiseDocument>
+    <ConclusionDocument>
+        <Normative syntax="RIF/XML">
+            <name>Chaining_strategy_numeric-subtract_2-conclusion.rif</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/Chaining_strategy_numeric-subtract_2/Chaining_strategy_numeric-subtract_2-conclusion.rif</remote>
+        </Normative>
+        <Presentation syntax="RIFBLD-PS"><![CDATA[
+ex:a(3)
+]]></Presentation>
+    </ConclusionDocument>
+</PositiveEntailmentTest>
+<NegativeSyntaxTest id="Core_NonSafeness"
+    src="http://www.w3.org/2005/rules/test/repository/tc/Core_NonSafeness">
+    <status>Approved</status>
+    <dialect>PRD</dialect>
+    <dialect>Core</dialect>
+    <purpose>Test that non-safe formulas are not accepted.</purpose>
+    <description>The variable ?z is not bound, and consequently ?y is not bound.</description>
+    <InputDocument>
+        <Normative syntax="RIF/XML">
+            <name>Core_NonSafeness-input.rif</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/Core_NonSafeness/Core_NonSafeness-input.rif</remote>
+        </Normative>
+        <Presentation syntax="RIFBLD-PS"><![CDATA[
+Document( 
+    Prefix(ex <http://example.org/example#>) 
+    Prefix(pred <http://www.w3.org/2007/rif-builtin-predicate#>) 
+    Group( 
+      Forall ?y ?z (ex:p(?y) :- And(
+         ?y=?z 
+         External(pred:numeric-greater-than(?z 0))
+      )) 
+    ) 
+  )
+]]></Presentation>
+    </InputDocument>
+</NegativeSyntaxTest>
+<NegativeSyntaxTest id="Core_NonSafeness_2"
+    src="http://www.w3.org/2005/rules/test/repository/tc/Core_NonSafeness_2">
+    <status>Approved</status>
+    <dialect>PRD</dialect>
+    <dialect>Core</dialect>
+    <purpose>Test that non-safe formulas are not accepted.</purpose>
+    <description>The variables &lt;tt&gt;?x&lt;/tt&gt; and &lt;tt&gt;?z&lt;/tt&gt; are unbound in the first disjunct of the condition, and &lt;tt&gt;(u,u)&lt;/tt&gt; is not a valid binding pattern for &lt;tt&gt;pred:iri-string&lt;/tt&gt;.</description>
+    <InputDocument>
+        <Normative syntax="RIF/XML">
+            <name>Core_NonSafeness_2-input.rif</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/Core_NonSafeness_2/Core_NonSafeness_2-input.rif</remote>
+        </Normative>
+        <Presentation syntax="RIFBLD-PS"><![CDATA[
+Document( 
+    Prefix(ex <http://example.org/example#>) 
+    Prefix(pred <http://www.w3.org/2007/rif-builtin-predicate#>) 
+    Group( 
+      Forall ?x ?y ?z (ex:p() :- Or( 
+        External(pred:iri-string(?x ?z))
+        And( ex:q(?x) ex:r(?z))))    ) 
+  )
+]]></Presentation>
+    </InputDocument>
+</NegativeSyntaxTest>
+<PositiveSyntaxTest id="Core_Safeness"
+    src="http://www.w3.org/2005/rules/test/repository/tc/Core_Safeness">
+    <status>Approved</status>
+    <dialect>Core</dialect>
+    <dialect>BLD</dialect>
+    <dialect>PRD</dialect>
+    <purpose>Test that safe formulas are accepted. Note that this ruleset does not have finite models, and is not strongly safe.</purpose>
+    <description/>
+    <InputDocument>
+        <Normative syntax="RIF/XML">
+            <name>Core_Safeness-input.rif</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/Core_Safeness/Core_Safeness-input.rif</remote>
+        </Normative>
+        <Presentation syntax="RIFBLD-PS"><![CDATA[
+Document( 
+    Prefix(ex <http://example.org/example#>) 
+    Prefix(func <http://www.w3.org/2007/rif-builtin-function#>)  
+    Group( 
+      ex:p(0) 
+      Forall ?x (ex:p(External(func:numeric-add(?x 1))) :- ex:p(?x)) 
+    ) 
+  )
+]]></Presentation>
+    </InputDocument>
+</PositiveSyntaxTest>
+<PositiveSyntaxTest id="Core_Safeness_2"
+    src="http://www.w3.org/2005/rules/test/repository/tc/Core_Safeness_2">
+    <status>Approved</status>
+    <dialect>Core</dialect>
+    <dialect>BLD</dialect>
+    <dialect>PRD</dialect>
+    <purpose>Test that safe formulas are accepted.</purpose>
+    <description>The variables ?z and ?y are safe, because they are equated to ?x, which is safe.</description>
+    <InputDocument>
+        <Normative syntax="RIF/XML">
+            <name>Core_Safeness_2-input.rif</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/Core_Safeness_2/Core_Safeness_2-input.rif</remote>
+        </Normative>
+        <Presentation syntax="RIFBLD-PS"><![CDATA[
+Document( 
+    Prefix(ex <http://example.org/example#>) 
+    Group( 
+      Forall ?x ?y ?z (ex:p(?z) :- And(ex:q(?x) ?x=?y ?y=?z))
+    ) 
+  )
+]]></Presentation>
+    </InputDocument>
+</PositiveSyntaxTest>
+<PositiveSyntaxTest id="Core_Safeness_3"
+    src="http://www.w3.org/2005/rules/test/repository/tc/Core_Safeness_3">
+    <status>Approved</status>
+    <dialect>Core</dialect>
+    <dialect>BLD</dialect>
+    <dialect>PRD</dialect>
+    <purpose>Test that safe formulas are accepted.</purpose>
+    <description>The variable &lt;tt&gt;?x&lt;/tt&gt; is unbound, but &lt;tt&gt;(u,b)&lt;/tt&gt; is a valid binding pattern for &lt;tt&gt;pred:iri-string&lt;/tt&gt;.</description>
+    <InputDocument>
+        <Normative syntax="RIF/XML">
+            <name>Core_Safeness_3-input.rif</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/Core_Safeness_3/Core_Safeness_3-input.rif</remote>
+        </Normative>
+        <Presentation syntax="RIFBLD-PS"><![CDATA[
+Document( 
+    Prefix(ex <http://example.org/example#>) 
+    Prefix(pred <http://www.w3.org/2007/rif-builtin-predicate#>) 
+    Group( 
+      Forall ?x ?z (ex:p(?x) :- 
+        And( ex:q(?z) External(pred:iri-string(?x ?z))))
+    ) 
+  )
+]]></Presentation>
+    </InputDocument>
+</PositiveSyntaxTest>
+<PositiveEntailmentTest id="EBusiness_Contract"
+    src="http://www.w3.org/2005/rules/test/repository/tc/EBusiness_Contract">
+    <status>Approved</status>
+    <dialect>Core</dialect>
+    <dialect>BLD</dialect>
+    <dialect>PRD</dialect>
+    <purpose>This test shows a sample scenario related to exchanging electronic business contracts across rule platforms.</purpose>
+    <description>The business rule captured is: if an item is perishable and it is delivered to a store more than ten days after the scheduled delivery date then the item will be rejected by the store</description>
+    <PremiseDocument>
+        <Normative syntax="RIF/XML">
+            <name>EBusiness_Contract-premise.rif</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/EBusiness_Contract/EBusiness_Contract-premise.rif</remote>
+        </Normative>
+        <Presentation syntax="RIFBLD-PS"><![CDATA[
+Document(
+  Prefix(stores <http://example.org/stores#>)
+  Prefix(cpt <http://example.org/concepts#>)
+  Prefix(ord <http://example.org/orders#>)  
+  Prefix(func <http://www.w3.org/2007/rif-builtin-function#>)
+  Prefix(pred <http://www.w3.org/2007/rif-builtin-predicate#>)
+  Prefix(xs <http://www.w3.org/2001/XMLSchema#>)
+  Prefix(owl <http://www.w3.org/2002/07/owl#>)
+  Prefix(dc <http://purl.org/dc/elements/1.1/>)
+ 
+  Group  (
+  
+   (* _rule1[dc:name -> "rule 1"
+                dc:publisher -> "http://www.w3.org/"^^rif:iri
+                dc:date -> "2008-04-04Z"^^xs:date
+                dc:description -> "if an item is perishable and it is delivered to a store more than ten days after the scheduled delivery date then the item will be rejected by the store"
+                owl:versionInfo -> "0.1"^^xs:decimal] *)
+  
+    Forall ?item ?store ?deliverydate ?scheduledate ?diffduration ?diffdays (
+        cpt:reject(?store ?item) :-
+            And(cpt:perishable(?item)
+                  cpt:delivered(?item ?deliverydate ?store)
+                  cpt:scheduled(?item ?scheduledate)
+                  External(pred:is-literal-dateTime(?deliverydate))               
+                  External(pred:is-literal-dateTime(?scheduledate))               
+                  ?diffduration = External(func:subtract-dateTimes(?deliverydate ?scheduledate))                              
+                  ?diffdays = External(func:days-from-duration(?diffduration))
+                  External(pred:numeric-greater-than(?diffdays 10)))
+    ) 
+    
+    
+    cpt:perishable(ord:Order14)   
+    cpt:delivered(ord:Order14 "2008-07-22Z"^^xs:date stores:Store9)
+    cpt:scheduled(ord:Order14 "2008-07-11Z"^^xs:date)    
+  )
+)
+]]></Presentation>
+    </PremiseDocument>
+    <ConclusionDocument>
+        <Normative syntax="RIF/XML">
+            <name>EBusiness_Contract-conclusion.rif</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/EBusiness_Contract/EBusiness_Contract-conclusion.rif</remote>
+        </Normative>
+        <Presentation syntax="RIFBLD-PS"><![CDATA[
+<http://example.org/concepts#reject>(<http://example.org/stores#Store9> <http://example.org/orders#Order14>)
+]]></Presentation>
+    </ConclusionDocument>
+</PositiveEntailmentTest>
+<PositiveEntailmentTest id="Factorial_Forward_Chaining"
+    src="http://www.w3.org/2005/rules/test/repository/tc/Factorial_Forward_Chaining">
+    <status>Approved</status>
+    <dialect>Core</dialect>
+    <dialect>BLD</dialect>
+    <dialect>PRD</dialect>
+    <purpose>express factorial using Core</purpose>
+    <description>This version of factorial is safe, and thus can be implemented by a forward chaining Core or PRD reasoner. Note the difference from [[Factorial Relational]] -- the variable ?N is computed from ?N1 rather than the other way around.</description>
+    <PremiseDocument>
+        <Normative syntax="RIF/XML">
+            <name>Factorial_Forward_Chaining-premise.rif</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/Factorial_Forward_Chaining/Factorial_Forward_Chaining-premise.rif</remote>
+        </Normative>
+        <Presentation syntax="RIFBLD-PS"><![CDATA[
+Document(
+
+  Prefix(pred <http://www.w3.org/2007/rif-builtin-predicate#>)
+  Prefix(func <http://www.w3.org/2007/rif-builtin-function#>)
+  Prefix(ex   <http://example.org/example#>)
+
+  Group
+  (
+    ex:factorial(0 1)
+
+    Forall ?N ?F ?N1 ?F1 (
+         ex:factorial(?N ?F) :-  
+             And(External(pred:numeric-greater-than-or-equal(?N1 0)) 
+                   ?N = External(func:numeric-add(?N1 1)) 
+                   ex:factorial(?N1 ?F1) 
+                   ?F = External(func:numeric-multiply(?N ?F1)) )
+    )
+  )
+)
+]]></Presentation>
+    </PremiseDocument>
+    <ConclusionDocument>
+        <Normative syntax="RIF/XML">
+            <name>Factorial_Forward_Chaining-conclusion.rif</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/Factorial_Forward_Chaining/Factorial_Forward_Chaining-conclusion.rif</remote>
+        </Normative>
+        <Presentation syntax="RIFBLD-PS"><![CDATA[
+ex:factorial(6 720)
+]]></Presentation>
+    </ConclusionDocument>
+</PositiveEntailmentTest>
+<PositiveEntailmentTest id="Frames"
+    src="http://www.w3.org/2005/rules/test/repository/tc/Frames">
+    <status>Approved</status>
+    <dialect>Core</dialect>
+    <dialect>BLD</dialect>
+    <dialect>PRD</dialect>
+    <purpose>To demonstrate different syntactic options for specifying arguments</purpose>
+    <description>This test case demonstrates the same use case as "named arguments" and "positional arguments" using frames instead of named or positional arguments.</description>
+    <PremiseDocument>
+        <Normative syntax="RIF/XML">
+            <name>Frames-premise.rif</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/Frames/Frames-premise.rif</remote>
+        </Normative>
+        <Presentation syntax="RIFBLD-PS"><![CDATA[
+Document(
+ Prefix(ex <http://example.org/example#>)
+ Prefix(xs <http://www.w3.org/2001/XMLSchema#>) 
+
+ Group ( 
+  Forall ?Customer (
+   ?Customer[ex:discount -> 10] :- ?Customer[ex:status -> "gold"] 
+  )
+
+  Forall ?Customer (
+   ?Customer[ex:discount -> 5] :- ?Customer[ex:status -> "silver"]
+  )
+
+   ex:customer017[ex:status -> "gold" ex:name -> "John Doe"]
+
+ )
+)
+]]></Presentation>
+    </PremiseDocument>
+    <ConclusionDocument>
+        <Normative syntax="RIF/XML">
+            <name>Frames-conclusion.rif</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/Frames/Frames-conclusion.rif</remote>
+        </Normative>
+        <Presentation syntax="RIFBLD-PS"><![CDATA[
+ex:customer017[ex:discount -> 10 ex:name -> "John Doe"]
+]]></Presentation>
+    </ConclusionDocument>
+</PositiveEntailmentTest>
+<PositiveEntailmentTest id="Frame_slots_are_independent"
+    src="http://www.w3.org/2005/rules/test/repository/tc/Frame_slots_are_independent">
+    <status>Approved</status>
+    <dialect>Core</dialect>
+    <dialect>BLD</dialect>
+    <dialect>PRD</dialect>
+    <purpose>Illustrate difference between frames and named-argument uniterms</purpose>
+    <description>Frames are essentially syntactic sugar for an open set of binary predicates.</description>
+    <PremiseDocument>
+        <Normative syntax="RIF/XML">
+            <name>Frame_slots_are_independent-premise.rif</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/Frame_slots_are_independent/Frame_slots_are_independent-premise.rif</remote>
+        </Normative>
+        <Presentation syntax="RIFBLD-PS"><![CDATA[
+Document(
+  Prefix(ex   <http://example.org/example#>)
+  
+  Group  (
+    ex:o[ex:a->1 ex:b->2]
+  ) 
+)
+]]></Presentation>
+    </PremiseDocument>
+    <ConclusionDocument>
+        <Normative syntax="RIF/XML">
+            <name>Frame_slots_are_independent-conclusion.rif</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/Frame_slots_are_independent/Frame_slots_are_independent-conclusion.rif</remote>
+        </Normative>
+        <Presentation syntax="RIFBLD-PS"><![CDATA[
+ex:o[ex:a->1]
+]]></Presentation>
+    </ConclusionDocument>
+</PositiveEntailmentTest>
+<PositiveEntailmentTest id="Guards_and_subtypes"
+    src="http://www.w3.org/2005/rules/test/repository/tc/Guards_and_subtypes">
+    <status>Approved</status>
+    <dialect>Core</dialect>
+    <dialect>BLD</dialect>
+    <dialect>PRD</dialect>
+    <purpose>Demonstrate subtype relationships between xs:decimal and xs:integer</purpose>
+    <description>Since xs:integer is a subtype of xs:decimal then "3"^^xs:decimal and "3"xs:integer are the same value and pass both integer and decimal guards</description>
+    <PremiseDocument>
+        <Normative syntax="RIF/XML">
+            <name>Guards_and_subtypes-premise.rif</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/Guards_and_subtypes/Guards_and_subtypes-premise.rif</remote>
+        </Normative>
+        <Presentation syntax="RIFBLD-PS"><![CDATA[
+Document(
+  Prefix(ex <http://example.org/example#>)
+  Prefix(pred <http://www.w3.org/2007/rif-builtin-predicate#>)
+  Prefix(xs <http://www.w3.org/2001/XMLSchema#>)
+  Group(
+   ex:p("pass 1") :- External(pred:is-literal-decimal("3"^^xs:integer))
+   ex:p("pass 2") :- External(pred:is-literal-integer("3"^^xs:decimal))
+  )
+ )
+]]></Presentation>
+    </PremiseDocument>
+    <ConclusionDocument>
+        <Normative syntax="RIF/XML">
+            <name>Guards_and_subtypes-conclusion.rif</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/Guards_and_subtypes/Guards_and_subtypes-conclusion.rif</remote>
+        </Normative>
+        <Presentation syntax="RIFBLD-PS"><![CDATA[
+And (
+  ex:p("pass 1")
+  ex:p("pass 2")
+)
+]]></Presentation>
+    </ConclusionDocument>
+</PositiveEntailmentTest>
+<PositiveEntailmentTest id="IRI_from_RDF_Literal"
+    src="http://www.w3.org/2005/rules/test/repository/tc/IRI_from_RDF_Literal">
+    <status>Approved</status>
+    <dialect>Core</dialect>
+    <dialect>BLD</dialect>
+    <dialect>PRD</dialect>
+    <Combinations>
+        <profile>http://www.w3.org/ns/entailment/Simple</profile>
+    </Combinations>
+    <purpose>Test extracting IRIs from RDF plain literals</purpose>
+    <description>A plain literal in RDF is seen as a string in RIF-RDF combinations, and therefore it is possible to "extract" IRI constants from such literals using the &lt;tt&gt;pred:iri-string&lt;/tt&gt; built-in predicate.</description>
+    <ImportedDocument>
+        <Normative syntax="RDF/XML">
+            <name>IRI_from_RDF_Literal-import001.rdf</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/IRI_from_RDF_Literal/IRI_from_RDF_Literal-import001</remote>
+        </Normative>
+        <Presentation syntax="Turtle"><![CDATA[
+_:x <http://example.org/example#hasWebSite> "http://www.example.org/" .
+]]></Presentation>
+    </ImportedDocument>
+    <PremiseDocument>
+        <Normative syntax="RIF/XML">
+            <name>IRI_from_RDF_Literal-premise.rif</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/IRI_from_RDF_Literal/IRI_from_RDF_Literal-premise.rif</remote>
+        </Normative>
+        <Presentation syntax="RIFBLD-PS"><![CDATA[
+Document(
+     Prefix(ex  <http://example.org/example#>)
+     Prefix(pred <http://www.w3.org/2007/rif-builtin-predicate#>)
+     Prefix(foaf <http://xmlns.com/foaf/0.1/>)
+     Import(<http://example.org/mygraph> <http://www.w3.org/ns/entailment/Simple>)
+     Group (
+       Forall ?x ?y ?z (?y[foaf:homepage -> ?z] :- 
+         And(
+           ?y[ex:hasWebSite -> ?x] 
+           External(pred:iri-string(?z ?x))
+         )
+       )
+     )
+ )
+]]></Presentation>
+    </PremiseDocument>
+    <ConclusionDocument>
+        <Normative syntax="RIF/XML">
+            <name>IRI_from_RDF_Literal-conclusion.rif</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/IRI_from_RDF_Literal/IRI_from_RDF_Literal-conclusion.rif</remote>
+        </Normative>
+        <Presentation syntax="RIFBLD-PS"><![CDATA[
+Exists ?x (?x[foaf:homepage -> "http://www.example.org/"^^rif:iri])
+]]></Presentation>
+    </ConclusionDocument>
+</PositiveEntailmentTest>
+<NegativeEntailmentTest id="Local_Constant"
+    src="http://www.w3.org/2005/rules/test/repository/tc/Local_Constant">
+    <status>Approved</status>
+    <dialect>Core</dialect>
+    <dialect>BLD</dialect>
+    <dialect>PRD</dialect>
+    <purpose>Test that the entailment relation does not preserve names of local constants</purpose>
+    <description>The labels of local constants are local to the specific document in which they occur.  Therefore, these labels are not visible outside the documents.  In particular, local constants in the entailed formulas should be considered distinct from those in the entailing document, even if the labels coincide.</description>
+    <PremiseDocument>
+        <Normative syntax="RIF/XML">
+            <name>Local_Constant-premise.rif</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/Local_Constant/Local_Constant-premise.rif</remote>
+        </Normative>
+        <Presentation syntax="RIFBLD-PS"><![CDATA[
+Document(
+  Group(<http://example.org/#p>("a"^^rif:local))
+ )
+]]></Presentation>
+    </PremiseDocument>
+    <NonConclusionDocument>
+        <Normative syntax="RIF/XML">
+            <name>Local_Constant-nonconclusion.rif</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/Local_Constant/Local_Constant-nonconclusion.rif</remote>
+        </Normative>
+        <Presentation syntax="RIFBLD-PS"><![CDATA[
+<http://example.org/#p>("a"^^rif:local)
+]]></Presentation>
+    </NonConclusionDocument>
+</NegativeEntailmentTest>
+<NegativeEntailmentTest id="Local_Predicate"
+    src="http://www.w3.org/2005/rules/test/repository/tc/Local_Predicate">
+    <status>Approved</status>
+    <dialect>Core</dialect>
+    <dialect>BLD</dialect>
+    <dialect>PRD</dialect>
+    <purpose>Test that the entailment relation does not preserve names of local predicates</purpose>
+    <description>The entailment relation does not preserve labels of local constants, neither when they are used as [[Local Constant|individuals]], nor when they are used as predicates (as in this case).</description>
+    <PremiseDocument>
+        <Normative syntax="RIF/XML">
+            <name>Local_Predicate-premise.rif</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/Local_Predicate/Local_Predicate-premise.rif</remote>
+        </Normative>
+        <Presentation syntax="RIFBLD-PS"><![CDATA[
+Document(
+  Group(_p(<http://example.org/#a>))
+ )
+]]></Presentation>
+    </PremiseDocument>
+    <NonConclusionDocument>
+        <Normative syntax="RIF/XML">
+            <name>Local_Predicate-nonconclusion.rif</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/Local_Predicate/Local_Predicate-nonconclusion.rif</remote>
+        </Normative>
+        <Presentation syntax="RIFBLD-PS"><![CDATA[
+_p(<http://example.org/#a>)
+]]></Presentation>
+    </NonConclusionDocument>
+</NegativeEntailmentTest>
+<PositiveEntailmentTest id="Modeling_Brain_Anatomy"
+    src="http://www.w3.org/2005/rules/test/repository/tc/Modeling_Brain_Anatomy">
+    <status>Approved</status>
+    <dialect>Core</dialect>
+    <dialect>BLD</dialect>
+    <dialect>PRD</dialect>
+    <Combinations>
+        <profile>http://www.w3.org/ns/entailment/OWL-Direct</profile>
+    </Combinations>
+    <purpose>A simplified example of RIF-Core rules combined with OWL to capture anatomical knowledge that can be used to help label brain cortex structures in MRI images.</purpose>
+    <description>This highly simplified ontology and rule base  gives the flavor of a system that could be used to identify brain cortex structures in MRI images. The ontology represents the main entities and properties of the brain, and the rule base specifies relationships between ontology properties. In this example, the rule says that two entities are connected when they have a common boundary. In a full usage example, the inferred fact in this case could be combined with other facts to identify g1 as an e.g. preCentralGyrus.</description>
+    <ImportedDocument>
+        <Normative syntax="RDF/XML">
+            <name>Modeling_Brain_Anatomy-import001.rdf</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/Modeling_Brain_Anatomy/Modeling_Brain_Anatomy-import001.rdf</remote>
+        </Normative>
+        <Presentation syntax="OWL2 Functional Syntax"><![CDATA[
+Namespace(=<http://example.org/testOntology.owl#>)
+
+Ontology(<http://example.org/testOntology.owl>
+
+SubClassOf(MaterialAnatomicalEntity AnatomicalEntity)
+SubClassOf(Gyrus MaterialAnatomicalEntity)
+
+SubClassOf(NonMaterialAnatomicalEntity AnatomicalEntity)
+SubClassOf(GyriConnection NonMaterialAnatomicalEntity)
+SubClassOf(SucalFold NonMaterialAnatomicalEntity)
+
+SymmetricObjectProperty(isMAEConnectedTo)
+ObjectPropertyDomain(isMAEConnectedTo MaterialAnatomicalEntity)
+ObjectPropertyRange(isMAEConnectedTo MaterialAnatomicalEntity)
+
+ObjectPropertyDomain(isMAEBoundedBy MaterialAnatomicalEntity)
+ObjectPropertyRange(isMAEBoundedBy ObjectUnionOf(SucalFold GyriConnection))
+
+Declaration(Individual(g1))
+ClassAssertion(g1 Gyrus)
+ObjectPropertyAssertion(isMAEBoundedBy g1 op)
+
+Declaration(Individual(pcg0))
+ClassAssertion(pcg0 Gyrus)
+ObjectPropertyAssertion(isMAEBoundedBy pcg0 op)
+
+Declaration(Individual(op))
+ClassAssertion(op GyriConnection)
+
+)
+]]></Presentation>
+    </ImportedDocument>
+    <PremiseDocument>
+        <Normative syntax="RIF/XML">
+            <name>Modeling_Brain_Anatomy-premise.rif</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/Modeling_Brain_Anatomy/Modeling_Brain_Anatomy-premise.rif</remote>
+        </Normative>
+        <Presentation syntax="RIFBLD-PS"><![CDATA[
+Document(
+  Prefix(ba <http://example.org/testOntology.owl#>)
+  Prefix(rdf <http://www.w3.org/1999/02/22-rdf-syntax-ns#>)
+  Prefix(dc  <http://purl.org/dc/elements/1.1/>)
+
+  Import(<http://example.org/ontology1> <http://www.w3.org/ns/entailment/OWL-Direct>)
+  
+  Group (
+   
+    (* _rule1[dc:description -> "entities that are bounded by a common gyri connection are connected to each other"] *)
+    
+     Forall ?X ?Y ?Z  ( 
+        ?X [ba:isMAEConnectedTo -> ?Y] :-
+              And (?X[ba:isMAEBoundedBy -> ?Z]
+                     ?Y[ba:isMAEBoundedBy -> ?Z]
+                     ?X[rdf:type -> ba:MaterialAnatomicalEntity]
+                     ?Y[rdf:type -> ba:MaterialAnatomicalEntity]
+                     ?Z[rdf:type -> ba:GyriConnection])
+     )
+   )
+  )
+]]></Presentation>
+    </PremiseDocument>
+    <ConclusionDocument>
+        <Normative syntax="RIF/XML">
+            <name>Modeling_Brain_Anatomy-conclusion.rif</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/Modeling_Brain_Anatomy/Modeling_Brain_Anatomy-conclusion.rif</remote>
+        </Normative>
+        <Presentation syntax="RIFBLD-PS"><![CDATA[
+ba:g1[ba:isMAEConnectedTo -> ba:pcg0]
+]]></Presentation>
+    </ConclusionDocument>
+</PositiveEntailmentTest>
+<ImportRejectionTest id="Multiple_Context_Error"
+    src="http://www.w3.org/2005/rules/test/repository/tc/Multiple_Context_Error">
+    <status>Approved</status>
+    <dialect>Core</dialect>
+    <dialect>BLD</dialect>
+    <dialect>PRD</dialect>
+    <purpose>A constant symbol that is not a rif:local constant cannot occur in more than one context in the imports closure of a RIF document.</purpose>
+    <description>The constant symbol eg:discount is used as a predicate in the importing document and as an individual in the imported document.</description>
+    <ImportedDocument>
+        <Normative syntax="RIF/XML">
+            <name>Multiple_Context_Error-import001.rif</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/Multiple_Context_Error/Multiple_Context_Error-import001.rif</remote>
+        </Normative>
+        <Presentation syntax="RIFBLD-PS"><![CDATA[
+Document(
+ Prefix(eg <http://example.org/example#>)
+ Prefix(xs <http://www.w3.org/2001/XMLSchema#>) 
+
+ Group ( 
+   Forall ?Name (
+     eg:customer[eg:discount -> "10"^^xs:integer eg:name -> ?Name] :- eg:customer[eg:status -> "gold" eg:name -> ?Name] 
+   )
+ )
+)
+]]></Presentation>
+    </ImportedDocument>
+    <InputDocument>
+        <Normative syntax="RIF/XML">
+            <name>Multiple_Context_Error-input.rif</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/Multiple_Context_Error/Multiple_Context_Error-input.rif</remote>
+        </Normative>
+        <Presentation syntax="RIFBLD-PS"><![CDATA[
+Document (
+ Prefix(eg <http://example.org/example#>)
+ Prefix(xs <http://www.w3.org/2001/XMLSchema#>) 
+ Import(<http://example.org/doc1>)
+
+ Group ( 
+
+   Forall ?Customer (
+     eg:discount(?Customer "5"^^xs:integer) :- eg:silver(?Customer)
+   )
+ )
+)
+]]></Presentation>
+    </InputDocument>
+</ImportRejectionTest>
+<NegativeEntailmentTest id="NestedListsAreNotFlatLists"
+    src="http://www.w3.org/2005/rules/test/repository/tc/NestedListsAreNotFlatLists">
+    <status>Approved</status>
+    <dialect>Core</dialect>
+    <dialect>BLD</dialect>
+    <dialect>PRD</dialect>
+    <purpose>Nested lists are not flat lists</purpose>
+    <description/>
+    <PremiseDocument>
+        <Normative syntax="RIF/XML">
+            <name>NestedListsAreNotFlatLists-premise.rif</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/NestedListsAreNotFlatLists/NestedListsAreNotFlatLists-premise.rif</remote>
+        </Normative>
+        <Presentation syntax="RIFBLD-PS"><![CDATA[
+Document(
+  Prefix(ex  <http://example.org/example#>)
+  Group(
+   ex:p(List(ex:a List(ex:b)))
+  )
+ )
+]]></Presentation>
+    </PremiseDocument>
+    <NonConclusionDocument>
+        <Normative syntax="RIF/XML">
+            <name>NestedListsAreNotFlatLists-nonconclusion.rif</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/NestedListsAreNotFlatLists/NestedListsAreNotFlatLists-nonconclusion.rif</remote>
+        </Normative>
+        <Presentation syntax="RIFBLD-PS"><![CDATA[
+ex:p(List(ex:a ex:b))
+]]></Presentation>
+    </NonConclusionDocument>
+</NegativeEntailmentTest>
+<NegativeEntailmentTest id="Non-Annotation_Entailment"
+    src="http://www.w3.org/2005/rules/test/repository/tc/Non-Annotation_Entailment">
+    <status>Approved</status>
+    <dialect>Core</dialect>
+    <dialect>BLD</dialect>
+    <dialect>PRD</dialect>
+    <Combinations>
+        <profile>http://www.w3.org/ns/entailment/OWL-Direct</profile>
+    </Combinations>
+    <purpose>Test that annotation properties are discarded when considering OWL-Direct entailment</purpose>
+    <description>When using the OWL-Direct profile for importing ontologies, annotation properties must be discarded, and do not affect the rules or the conclusions that may be drawn from the ruleset.</description>
+    <ImportedDocument>
+        <Normative syntax="RDF/XML">
+            <name>Non-Annotation_Entailment-import001.rdf</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/Non-Annotation_Entailment/Non-Annotation_Entailment-import001</remote>
+        </Normative>
+        <Presentation syntax="Turtle"><![CDATA[
+@prefix ex: <http://example.org/example#> . 
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> . 
+@prefix owl: <http://www.w3.org/2002/07/owl#> . 
+@prefix dc: <http://purl.org/dc/elements/1.1/> . 
+
+ex:myOnto rdf:type owl:Ontology .
+ex:myOnto dc:title "Example ontology" .
+dc:title rdf:type owl:OntologyProperty .
+]]></Presentation>
+    </ImportedDocument>
+    <PremiseDocument>
+        <Normative syntax="RIF/XML">
+            <name>Non-Annotation_Entailment-premise.rif</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/Non-Annotation_Entailment/Non-Annotation_Entailment-premise.rif</remote>
+        </Normative>
+        <Presentation syntax="RIFBLD-PS"><![CDATA[
+Document(
+  Prefix(ex  <http://example.org/example#>)
+  Prefix(dc <http://purl.org/dc/elements/1.1/>)
+
+  Import(<http://example.org/mygraph> <http://www.w3.org/ns/entailment/OWL-Direct>)
+
+  Group (
+   Forall ?x ?y ( ?x[ex:hasTitle -> ?y] :- ?x[dc:title -> ?y])
+  )
+ )
+]]></Presentation>
+    </PremiseDocument>
+    <NonConclusionDocument>
+        <Normative syntax="RIF/XML">
+            <name>Non-Annotation_Entailment-nonconclusion.rif</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/Non-Annotation_Entailment/Non-Annotation_Entailment-nonconclusion.rif</remote>
+        </Normative>
+        <Presentation syntax="RIFBLD-PS"><![CDATA[
+ex:myOnto[ex:hasTitle -> "Example ontology"]
+]]></Presentation>
+    </NonConclusionDocument>
+</NegativeEntailmentTest>
+<NegativeSyntaxTest id="No_free_variables"
+    src="http://www.w3.org/2005/rules/test/repository/tc/No_free_variables">
+    <status>Approved</status>
+    <dialect>BLD</dialect>
+    <dialect>PRD</dialect>
+    <dialect>Core</dialect>
+    <purpose>All free variables in the rule must be quantified with Forall</purpose>
+    <description>The variable "price" is not included in the variable list of the Forall &lt;!-- desc=on hold pending resolution of http://lists.w3.org/Archives/Public/public-rif-wg/2008Sep/0013.html--&gt;</description>
+    <InputDocument>
+        <Normative syntax="RIF/XML">
+            <name>No_free_variables-input.rif</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/No_free_variables/No_free_variables-input.rif</remote>
+        </Normative>
+        <Presentation syntax="RIFBLD-PS"><![CDATA[
+Document(
+
+   Prefix(eg <http://example.org/example#>)
+
+   Group
+   (
+     Forall ?buyer ?item ?seller (
+        eg:Buy(?buyer ?item ?seller) :- eg:Sell(?seller ?item ?buyer ?price)
+     )
+ 
+   )
+ )
+]]></Presentation>
+    </InputDocument>
+</NegativeSyntaxTest>
+<ImportRejectionTest id="OWL_Combination_Invalid_DL_Formula"
+    src="http://www.w3.org/2005/rules/test/repository/tc/OWL_Combination_Invalid_DL_Formula">
+    <status>Approved</status>
+    <dialect>Core</dialect>
+    <dialect>BLD</dialect>
+    <dialect>PRD</dialect>
+    <Combinations>
+        <profile>http://www.w3.org/ns/entailment/OWL-Direct</profile>
+    </Combinations>
+    <purpose>Test that an invalid combination is rejected</purpose>
+    <description>If a RIF document R imports only documents with OWL-Direct profiles and R is not a DL-document formula, then R must be rejected. The frame formula in the RIF document is not a DL-Frame formula because it has a variable in the property position, and so the document is not a DL-document formula.</description>
+    <ImportedDocument>
+        <Normative syntax="RDF/XML">
+            <name>OWL_Combination_Invalid_DL_Formula-import001.rdf</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/OWL_Combination_Invalid_DL_Formula/OWL_Combination_Invalid_DL_Formula-import001</remote>
+        </Normative>
+        <Presentation syntax="Turtle"><![CDATA[
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+_:x rdf:type owl:Ontology .
+]]></Presentation>
+    </ImportedDocument>
+    <InputDocument>
+        <Normative syntax="RIF/XML">
+            <name>OWL_Combination_Invalid_DL_Formula-input.rif</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/OWL_Combination_Invalid_DL_Formula/OWL_Combination_Invalid_DL_Formula-input.rif</remote>
+        </Normative>
+        <Presentation syntax="RIFBLD-PS"><![CDATA[
+Document(
+    Import(<http://example.org/mygraph> <http://www.w3.org/ns/entailment/OWL-Direct>)
+
+    Group (
+        Forall ?x (
+           <http://example.org/#p>(?x) :- <http://example.org/#crt>[?x -> "17"^^xs:integer] 
+        )
+    )
+ )
+]]></Presentation>
+    </InputDocument>
+</ImportRejectionTest>
+<ImportRejectionTest id="OWL_Combination_Invalid_DL_Import"
+    src="http://www.w3.org/2005/rules/test/repository/tc/OWL_Combination_Invalid_DL_Import">
+    <status>Approved</status>
+    <dialect>Core</dialect>
+    <dialect>BLD</dialect>
+    <dialect>PRD</dialect>
+    <Combinations>
+        <profile>http://www.w3.org/ns/entailment/OWL-Direct</profile>
+    </Combinations>
+    <purpose>Test that an invalid combination is rejected</purpose>
+    <description>If a RIF document R imports OWL ontologies using the OWL-Direct profile that are not OWL 2 DL ontologies, then R must be rejected. The imported ontology is not an OWL 2 DL ontology (because it is the empty graph), and so R must be rejected.</description>
+    <ImportedDocument>
+        <Normative syntax="RDF/XML">
+            <name>OWL_Combination_Invalid_DL_Import-import001.rdf</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/OWL_Combination_Invalid_DL_Import/OWL_Combination_Invalid_DL_Import-import001</remote>
+        </Normative>
+        <Presentation syntax="Turtle"><![CDATA[
+
+]]></Presentation>
+    </ImportedDocument>
+    <InputDocument>
+        <Normative syntax="RIF/XML">
+            <name>OWL_Combination_Invalid_DL_Import-input.rif</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/OWL_Combination_Invalid_DL_Import/OWL_Combination_Invalid_DL_Import-input.rif</remote>
+        </Normative>
+        <Presentation syntax="RIFBLD-PS"><![CDATA[
+Document(
+    Import(<http://example.org/mygraph> <http://www.w3.org/ns/entailment/OWL-Direct>)
+
+    Group (
+    )
+ )
+]]></Presentation>
+    </InputDocument>
+</ImportRejectionTest>
+<PositiveEntailmentTest
+    id="OWL_Combination_Vocabulary_Separation_Inconsistency_1"
+    src="http://www.w3.org/2005/rules/test/repository/tc/OWL_Combination_Vocabulary_Separation_Inconsistency_1">
+    <status>Approved</status>
+    <dialect>Core</dialect>
+    <dialect>BLD</dialect>
+    <dialect>PRD</dialect>
+    <Combinations>
+        <profile>http://www.w3.org/ns/entailment/OWL-Direct</profile>
+    </Combinations>
+    <purpose>Test that violation of separation of the (individual and data value) vocabulary leads to inconsistency</purpose>
+    <description>The same constant cannot be both an individual and a data value; this leads to inconsistency, and thus "a"="b" is entailed.</description>
+    <ImportedDocument>
+        <Normative syntax="RDF/XML">
+            <name>OWL_Combination_Vocabulary_Separation_Inconsistency_1-import001.rdf</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/OWL_Combination_Vocabulary_Separation_Inconsistency_1/OWL_Combination_Vocabulary_Separation_Inconsistency_1-import001</remote>
+        </Normative>
+        <Presentation syntax="Turtle"><![CDATA[
+@prefix ex: <http://example.org/example#> . 
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> . 
+@prefix owl: <http://www.w3.org/2002/07/owl#> . 
+
+ _:o rdf:type owl:Ontology .
+ ex:myiri rdf:type ex:A .
+]]></Presentation>
+    </ImportedDocument>
+    <PremiseDocument>
+        <Normative syntax="RIF/XML">
+            <name>OWL_Combination_Vocabulary_Separation_Inconsistency_1-premise.rif</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/OWL_Combination_Vocabulary_Separation_Inconsistency_1/OWL_Combination_Vocabulary_Separation_Inconsistency_1-premise.rif</remote>
+        </Normative>
+        <Presentation syntax="RIFBLD-PS"><![CDATA[
+Document(
+  Prefix(ex  <http://example.org/example#>)
+  Prefix(xs  <http://www.w3.org/2001/XMLSchema#>)
+  Prefix(rdf <http://www.w3.org/1999/02/22-rdf-syntax-ns#>)
+
+  Import(<http://example.org/mygraph> <http://www.w3.org/ns/entailment/OWL-Direct>)
+
+  Group (
+   ex:myiri[rdf:type -> xs:string]
+  )
+ )
+]]></Presentation>
+    </PremiseDocument>
+    <ConclusionDocument>
+        <Normative syntax="RIF/XML">
+            <name>OWL_Combination_Vocabulary_Separation_Inconsistency_1-conclusion.rif</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/OWL_Combination_Vocabulary_Separation_Inconsistency_1/OWL_Combination_Vocabulary_Separation_Inconsistency_1-conclusion.rif</remote>
+        </Normative>
+        <Presentation syntax="RIFBLD-PS"><![CDATA[
+"a"="b"
+]]></Presentation>
+    </ConclusionDocument>
+</PositiveEntailmentTest>
+<PositiveEntailmentTest
+    id="OWL_Combination_Vocabulary_Separation_Inconsistency_2"
+    src="http://www.w3.org/2005/rules/test/repository/tc/OWL_Combination_Vocabulary_Separation_Inconsistency_2">
+    <status>Approved</status>
+    <dialect>Core</dialect>
+    <dialect>BLD</dialect>
+    <dialect>PRD</dialect>
+    <Combinations>
+        <profile>http://www.w3.org/ns/entailment/OWL-Direct</profile>
+    </Combinations>
+    <purpose>Test that violation of separation of the (object and datatype value property) vocabulary leads to inconsistency</purpose>
+    <description>The same property cannot have both individuals and data values in its range. In particular, since ex:hasChild is an owl:ObjectProperty, there may be no concrete data values (e.g., strings) in its range.  Since in this case, there is a data value ("John") in its range, the combination is inconsistent, and an inconsistent atom ("a"="b") is derived.</description>
+    <ImportedDocument>
+        <Normative syntax="RDF/XML">
+            <name>OWL_Combination_Vocabulary_Separation_Inconsistency_2-import001.rdf</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/OWL_Combination_Vocabulary_Separation_Inconsistency_2/OWL_Combination_Vocabulary_Separation_Inconsistency_2-import001</remote>
+        </Normative>
+        <Presentation syntax="Turtle"><![CDATA[
+@prefix ex: <http://example.org/example#> . 
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> . 
+@prefix owl: <http://www.w3.org/2002/07/owl#> . 
+
+ _:o rdf:type owl:Ontology .
+ ex:hasChild rdf:type owl:ObjectProperty .
+]]></Presentation>
+    </ImportedDocument>
+    <PremiseDocument>
+        <Normative syntax="RIF/XML">
+            <name>OWL_Combination_Vocabulary_Separation_Inconsistency_2-premise.rif</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/OWL_Combination_Vocabulary_Separation_Inconsistency_2/OWL_Combination_Vocabulary_Separation_Inconsistency_2-premise.rif</remote>
+        </Normative>
+        <Presentation syntax="RIFBLD-PS"><![CDATA[
+Document(
+  Prefix(ex  <http://example.org/example#>)
+
+  Import(<http://example.org/mygraph> <http://www.w3.org/ns/entailment/OWL-Direct>)
+
+  Group (
+   ex:myiri[ex:hasChild -> "John"]
+  )
+ )
+]]></Presentation>
+    </PremiseDocument>
+    <ConclusionDocument>
+        <Normative syntax="RIF/XML">
+            <name>OWL_Combination_Vocabulary_Separation_Inconsistency_2-conclusion.rif</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/OWL_Combination_Vocabulary_Separation_Inconsistency_2/OWL_Combination_Vocabulary_Separation_Inconsistency_2-conclusion.rif</remote>
+        </Normative>
+        <Presentation syntax="RIFBLD-PS"><![CDATA[
+"a"="b"
+]]></Presentation>
+    </ConclusionDocument>
+</PositiveEntailmentTest>
+<PositiveEntailmentTest id="Positional_Arguments"
+    src="http://www.w3.org/2005/rules/test/repository/tc/Positional_Arguments">
+    <status>Approved</status>
+    <dialect>Core</dialect>
+    <dialect>BLD</dialect>
+    <dialect>PRD</dialect>
+    <purpose>To demonstrate different syntactic options for specifying arguments</purpose>
+    <description>This test case demonstrates the same use case as "named arguments" and "frames" using ordered (positional) arguments instead of named arguments or frames.</description>
+    <PremiseDocument>
+        <Normative syntax="RIF/XML">
+            <name>Positional_Arguments-premise.rif</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/Positional_Arguments/Positional_Arguments-premise.rif</remote>
+        </Normative>
+        <Presentation syntax="RIFBLD-PS"><![CDATA[
+Document (
+ Prefix(ex <http://example.org/example#>)
+ Prefix(xs <http://www.w3.org/2001/XMLSchema#>) 
+
+ Group ( 
+
+  Forall ?Customer (
+     ex:discount(?Customer 10) :- ex:gold(?Customer)
+  )
+
+  Forall ?Customer (
+     ex:discount(?Customer 5) :- ex:silver(?Customer)
+  )
+
+  ex:gold("John Doe")
+ )
+)
+]]></Presentation>
+    </PremiseDocument>
+    <ConclusionDocument>
+        <Normative syntax="RIF/XML">
+            <name>Positional_Arguments-conclusion.rif</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/Positional_Arguments/Positional_Arguments-conclusion.rif</remote>
+        </Normative>
+        <Presentation syntax="RIFBLD-PS"><![CDATA[
+ex:discount("John Doe" 10)
+]]></Presentation>
+    </ConclusionDocument>
+</PositiveEntailmentTest>
+<PositiveEntailmentTest id="RDF_Combination_Blank_Node"
+    src="http://www.w3.org/2005/rules/test/repository/tc/RDF_Combination_Blank_Node">
+    <status>Approved</status>
+    <dialect>Core</dialect>
+    <dialect>BLD</dialect>
+    <dialect>PRD</dialect>
+    <Combinations>
+        <profile>http://www.w3.org/ns/entailment/RDF</profile>
+    </Combinations>
+    <purpose>Test interaction between RDF and BLD with respect to blank nodes</purpose>
+    <description>Blank nodes cannot be referenced directly from a RIF rule because they are local to a specific RDF graph. However, variables do range over objects denoted by blank nodes, so it is possible to "access" an object denoted by a blank node from a RIF rule by using a variable.</description>
+    <ImportedDocument>
+        <Normative syntax="RDF/XML">
+            <name>RDF_Combination_Blank_Node-import001.rdf</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/RDF_Combination_Blank_Node/RDF_Combination_Blank_Node-import001</remote>
+        </Normative>
+        <Presentation syntax="Turtle"><![CDATA[
+_:x <http://example.org/example#hasName> "John" .
+]]></Presentation>
+    </ImportedDocument>
+    <PremiseDocument>
+        <Normative syntax="RIF/XML">
+            <name>RDF_Combination_Blank_Node-premise.rif</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/RDF_Combination_Blank_Node/RDF_Combination_Blank_Node-premise.rif</remote>
+        </Normative>
+        <Presentation syntax="RIFBLD-PS"><![CDATA[
+Document(
+
+     Prefix(ex  <http://example.org/example#>)
+     Prefix(rdf <http://www.w3.org/1999/02/22-rdf-syntax-ns#>)
+     Import(<http://example.org/mygraph> <http://www.w3.org/ns/entailment/RDF>)
+
+     Group (
+        Forall ?x ?y ( ?x[rdf:type -> ex:named] :- ?x[ex:hasName -> ?y] )
+        
+     )
+ )
+]]></Presentation>
+    </PremiseDocument>
+    <ConclusionDocument>
+        <Normative syntax="RIF/XML">
+            <name>RDF_Combination_Blank_Node-conclusion.rif</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/RDF_Combination_Blank_Node/RDF_Combination_Blank_Node-conclusion.rif</remote>
+        </Normative>
+        <Presentation syntax="RIFBLD-PS"><![CDATA[
+Exists ?z ( ?z["http://www.w3.org/1999/02/22-rdf-syntax-ns#type"^^rif:iri -> <http://example.org/example#named>] )
+]]></Presentation>
+    </ConclusionDocument>
+</PositiveEntailmentTest>
+<PositiveEntailmentTest id="RDF_Combination_Constant_Equivalence_1"
+    src="http://www.w3.org/2005/rules/test/repository/tc/RDF_Combination_Constant_Equivalence_1">
+    <status>Approved</status>
+    <dialect>Core</dialect>
+    <dialect>BLD</dialect>
+    <dialect>PRD</dialect>
+    <Combinations>
+        <profile>http://www.w3.org/ns/entailment/Simple</profile>
+    </Combinations>
+    <purpose>Test equivalent treatment of RDF constants and RIF symbols in simple entailment</purpose>
+    <description>The syntax for constants in RIF and RDF is slightly different; RDF has a number of different kinds of constants (e.g., IRI, in a literal, typed literal), whereas RIF has a single kind of constant (i.e., a pair &lt;literal, symbol space&gt;).  As a consequence, in RIF-RDF combinations, an IRI in RDF is equivalent to a literal with type rif:iri in RIF.</description>
+    <ImportedDocument>
+        <Normative syntax="RDF/XML">
+            <name>RDF_Combination_Constant_Equivalence_1-import001.rdf</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/RDF_Combination_Constant_Equivalence_1/RDF_Combination_Constant_Equivalence_1-import001</remote>
+        </Normative>
+        <Presentation syntax="Turtle"><![CDATA[
+<http://example.org#a> <http://example.org#p>  <http://example.org#b> .
+]]></Presentation>
+    </ImportedDocument>
+    <PremiseDocument>
+        <Normative syntax="RIF/XML">
+            <name>RDF_Combination_Constant_Equivalence_1-premise.rif</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/RDF_Combination_Constant_Equivalence_1/RDF_Combination_Constant_Equivalence_1-premise.rif</remote>
+        </Normative>
+        <Presentation syntax="RIFBLD-PS"><![CDATA[
+Document(
+    Import(<http://example.org/mygraph> <http://www.w3.org/ns/entailment/Simple>)
+ )
+]]></Presentation>
+    </PremiseDocument>
+    <ConclusionDocument>
+        <Normative syntax="RIF/XML">
+            <name>RDF_Combination_Constant_Equivalence_1-conclusion.rif</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/RDF_Combination_Constant_Equivalence_1/RDF_Combination_Constant_Equivalence_1-conclusion.rif</remote>
+        </Normative>
+        <Presentation syntax="RIFBLD-PS"><![CDATA[
+<http://example.org#a>[<http://example.org#p> -> <http://example.org#b>]
+]]></Presentation>
+    </ConclusionDocument>
+</PositiveEntailmentTest>
+<PositiveEntailmentTest id="RDF_Combination_Constant_Equivalence_2"
+    src="http://www.w3.org/2005/rules/test/repository/tc/RDF_Combination_Constant_Equivalence_2">
+    <status>Approved</status>
+    <dialect>Core</dialect>
+    <dialect>BLD</dialect>
+    <dialect>PRD</dialect>
+    <Combinations>
+        <profile>http://www.w3.org/ns/entailment/Simple</profile>
+    </Combinations>
+    <purpose>Test equivalent treatment of RDF constants and RIF symbols in simple entailment</purpose>
+    <description>The syntax for constants in RIF and RDF is slightly different; RDF has a number of different kinds of constants (e.g., IRI, in a literal, typed literal), whereas RIF has a single kind of constant (i.e., a pair &lt;literal, symbol space&gt;).  In particular, in combinations, there is no distinction between plain literals and literals with type xs:string.</description>
+    <ImportedDocument>
+        <Normative syntax="RDF/XML">
+            <name>RDF_Combination_Constant_Equivalence_2-import001.rdf</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/RDF_Combination_Constant_Equivalence_2/RDF_Combination_Constant_Equivalence_2-import001</remote>
+        </Normative>
+        <Presentation syntax="Turtle"><![CDATA[
+<http://example.org#a> <http://example.org#p> "this is a plain literal" .
+]]></Presentation>
+    </ImportedDocument>
+    <PremiseDocument>
+        <Normative syntax="RIF/XML">
+            <name>RDF_Combination_Constant_Equivalence_2-premise.rif</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/RDF_Combination_Constant_Equivalence_2/RDF_Combination_Constant_Equivalence_2-premise.rif</remote>
+        </Normative>
+        <Presentation syntax="RIFBLD-PS"><![CDATA[
+Document(
+    Import(<http://example.org/mygraph> <http://www.w3.org/ns/entailment/Simple>)
+ )
+]]></Presentation>
+    </PremiseDocument>
+    <ConclusionDocument>
+        <Normative syntax="RIF/XML">
+            <name>RDF_Combination_Constant_Equivalence_2-conclusion.rif</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/RDF_Combination_Constant_Equivalence_2/RDF_Combination_Constant_Equivalence_2-conclusion.rif</remote>
+        </Normative>
+        <Presentation syntax="RIFBLD-PS"><![CDATA[
+<http://example.org#a>[<http://example.org#p> -> "this is a plain literal"]
+]]></Presentation>
+    </ConclusionDocument>
+</PositiveEntailmentTest>
+<PositiveEntailmentTest id="RDF_Combination_Constant_Equivalence_3"
+    src="http://www.w3.org/2005/rules/test/repository/tc/RDF_Combination_Constant_Equivalence_3">
+    <status>Approved</status>
+    <dialect>Core</dialect>
+    <dialect>BLD</dialect>
+    <dialect>PRD</dialect>
+    <Combinations>
+        <profile>http://www.w3.org/ns/entailment/Simple</profile>
+    </Combinations>
+    <purpose>Test equivalent treatment of RDF constants and RIF symbols in simple entailment</purpose>
+    <description>The syntax for constants in RIF and RDF is slightly different; RDF has a number of different kinds of constants (e.g., IRI, in a literal, typed literal), whereas RIF has a single kind of constant (i.e., a pair &lt;literal, symbol space&gt;).  As a consequence, in RIF-RDF combinations, a plain literal with a language tag in RDF is equivalent to a literal of type rdf:plainLiteral in RIF.</description>
+    <ImportedDocument>
+        <Normative syntax="RDF/XML">
+            <name>RDF_Combination_Constant_Equivalence_3-import001.rdf</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/RDF_Combination_Constant_Equivalence_3/RDF_Combination_Constant_Equivalence_3-import001</remote>
+        </Normative>
+        <Presentation syntax="Turtle"><![CDATA[
+<http://example.org#a> <http://example.org#p> "with language tag"@en .
+]]></Presentation>
+    </ImportedDocument>
+    <PremiseDocument>
+        <Normative syntax="RIF/XML">
+            <name>RDF_Combination_Constant_Equivalence_3-premise.rif</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/RDF_Combination_Constant_Equivalence_3/RDF_Combination_Constant_Equivalence_3-premise.rif</remote>
+        </Normative>
+        <Presentation syntax="RIFBLD-PS"><![CDATA[
+Document(
+    Import(<http://example.org/mygraph> <http://www.w3.org/ns/entailment/Simple>)
+ )
+]]></Presentation>
+    </PremiseDocument>
+    <ConclusionDocument>
+        <Normative syntax="RIF/XML">
+            <name>RDF_Combination_Constant_Equivalence_3-conclusion.rif</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/RDF_Combination_Constant_Equivalence_3/RDF_Combination_Constant_Equivalence_3-conclusion.rif</remote>
+        </Normative>
+        <Presentation syntax="RIFBLD-PS"><![CDATA[
+<http://example.org#a>[<http://example.org#p> -> "with language tag@en"^^rdf:PlainLiteral]
+]]></Presentation>
+    </ConclusionDocument>
+</PositiveEntailmentTest>
+<PositiveEntailmentTest id="RDF_Combination_Constant_Equivalence_4"
+    src="http://www.w3.org/2005/rules/test/repository/tc/RDF_Combination_Constant_Equivalence_4">
+    <status>Approved</status>
+    <dialect>Core</dialect>
+    <dialect>BLD</dialect>
+    <dialect>PRD</dialect>
+    <Combinations>
+        <profile>http://www.w3.org/ns/entailment/Simple</profile>
+    </Combinations>
+    <purpose>Test equivalent treatment of RDF constants and RIF symbols in simple entailment</purpose>
+    <description>The syntax for constants in RIF and RDF is slightly different; RDF has a number of different kinds of constants (e.g., IRI, in a literal, typed literal), whereas RIF has a single kind of constant (i.e., a pair &lt;literal, symbol space&gt;).  In particular, in combinations, there is no distinction between plain literals and literals with type xs:string.</description>
+    <ImportedDocument>
+        <Normative syntax="RDF/XML">
+            <name>RDF_Combination_Constant_Equivalence_4-import001.rdf</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/RDF_Combination_Constant_Equivalence_4/RDF_Combination_Constant_Equivalence_4-import001</remote>
+        </Normative>
+        <Presentation syntax="Turtle"><![CDATA[
+@prefix xs: <www.w3.org/2001/XMLSchema#> . 
+
+ <http://example.org#a> <http://example.org#p> "this is a string"^^xs:string .
+]]></Presentation>
+    </ImportedDocument>
+    <PremiseDocument>
+        <Normative syntax="RIF/XML">
+            <name>RDF_Combination_Constant_Equivalence_4-premise.rif</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/RDF_Combination_Constant_Equivalence_4/RDF_Combination_Constant_Equivalence_4-premise.rif</remote>
+        </Normative>
+        <Presentation syntax="RIFBLD-PS"><![CDATA[
+Document(
+    Import(<http://example.org/mygraph> <http://www.w3.org/ns/entailment/Simple>)
+ )
+]]></Presentation>
+    </PremiseDocument>
+    <ConclusionDocument>
+        <Normative syntax="RIF/XML">
+            <name>RDF_Combination_Constant_Equivalence_4-conclusion.rif</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/RDF_Combination_Constant_Equivalence_4/RDF_Combination_Constant_Equivalence_4-conclusion.rif</remote>
+        </Normative>
+        <Presentation syntax="RIFBLD-PS"><![CDATA[
+<http://example.org#a>[<http://example.org#p> -> "this is a string"]
+]]></Presentation>
+    </ConclusionDocument>
+</PositiveEntailmentTest>
+<PositiveEntailmentTest
+    id="RDF_Combination_Constant_Equivalence_Graph_Entailment"
+    src="http://www.w3.org/2005/rules/test/repository/tc/RDF_Combination_Constant_Equivalence_Graph_Entailment">
+    <status>Approved</status>
+    <dialect>Core</dialect>
+    <dialect>BLD</dialect>
+    <dialect>PRD</dialect>
+    <Combinations>
+        <profile>http://www.w3.org/ns/entailment/Simple</profile>
+    </Combinations>
+    <purpose>Test equivalent treatment of RDF constants and RIF symbols in simple entailment</purpose>
+    <description>The syntax for constants in RIF and RDF is slightly different; RDF has a number of different kinds of constants (e.g., IRI, in a literal, typed literal), whereas RIF has a single kind of constants (i.e., pairs &lt;literal, symbol space&gt;).  In particular, in combinations, there is no distinction between plain literals and literals with type xs:string.</description>
+    <ImportedDocument>
+        <Normative syntax="RDF/XML">
+            <name>RDF_Combination_Constant_Equivalence_Graph_Entailment-import001.rdf</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/RDF_Combination_Constant_Equivalence_Graph_Entailment/RDF_Combination_Constant_Equivalence_Graph_Entailment-import001</remote>
+        </Normative>
+        <Presentation syntax="Turtle"><![CDATA[
+@prefix ex: <http://example.org/example#> . 
+@prefix xs: <http://www.w3.org/2001/XMLSchema#> . 
+@prefix rif: <http://www.w3.org/2007/rif#> . 
+
+ ex:a ex:p "this is a plain literal" .
+]]></Presentation>
+    </ImportedDocument>
+    <PremiseDocument>
+        <Normative syntax="RIF/XML">
+            <name>RDF_Combination_Constant_Equivalence_Graph_Entailment-premise.rif</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/RDF_Combination_Constant_Equivalence_Graph_Entailment/RDF_Combination_Constant_Equivalence_Graph_Entailment-premise.rif</remote>
+        </Normative>
+        <Presentation syntax="RIFBLD-PS"><![CDATA[
+Document(
+    Import(<http://example.org/mygraph> <http://www.w3.org/ns/entailment/Simple>)
+ )
+]]></Presentation>
+    </PremiseDocument>
+    <ConclusionDocument>
+        <Normative syntax="RIF/XML">
+            <name>RDF_Combination_Constant_Equivalence_Graph_Entailment-conclusion.rif</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/RDF_Combination_Constant_Equivalence_Graph_Entailment/RDF_Combination_Constant_Equivalence_Graph_Entailment-conclusion.rif</remote>
+        </Normative>
+        <Presentation syntax="RIFBLD-PS"><![CDATA[
+@prefix ex: <http://example.org/example#> . 
+@prefix xs: <http://www.w3.org/2001/XMLSchema#> . 
+
+ ex:a ex:p "this is a plain literal"^^xs:string .
+]]></Presentation>
+    </ConclusionDocument>
+</PositiveEntailmentTest>
+<ImportRejectionTest id="RDF_Combination_Invalid_Constant_1"
+    src="http://www.w3.org/2005/rules/test/repository/tc/RDF_Combination_Invalid_Constant_1">
+    <status>Approved</status>
+    <dialect>Core</dialect>
+    <dialect>BLD</dialect>
+    <dialect>PRD</dialect>
+    <Combinations>
+        <profile>http://www.w3.org/ns/entailment/Simple</profile>
+    </Combinations>
+    <purpose>Verify that rif:iri typed literals are not allowed in RDF graphs imported by RIF documents</purpose>
+    <description/>
+    <ImportedDocument>
+        <Normative syntax="RDF/XML">
+            <name>RDF_Combination_Invalid_Constant_1-import001.rdf</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/RDF_Combination_Invalid_Constant_1/RDF_Combination_Invalid_Constant_1-import001</remote>
+        </Normative>
+        <Presentation syntax="Turtle"><![CDATA[
+@prefix ex: <http://example.org/example#> . 
+@prefix rif: <http://www.w3.org/2007/rif#> . 
+
+ ex:a ex:p "http://example.org/#b"^^rif:iri .
+]]></Presentation>
+    </ImportedDocument>
+    <InputDocument>
+        <Normative syntax="RIF/XML">
+            <name>RDF_Combination_Invalid_Constant_1-input.rif</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/RDF_Combination_Invalid_Constant_1/RDF_Combination_Invalid_Constant_1-input.rif</remote>
+        </Normative>
+        <Presentation syntax="RIFBLD-PS"><![CDATA[
+Document(
+    Import(<http://example.org/mygraph> <http://www.w3.org/ns/entailment/Simple>)
+ )
+]]></Presentation>
+    </InputDocument>
+</ImportRejectionTest>
+<ImportRejectionTest id="RDF_Combination_Invalid_Constant_2"
+    src="http://www.w3.org/2005/rules/test/repository/tc/RDF_Combination_Invalid_Constant_2">
+    <status>Approved</status>
+    <dialect>Core</dialect>
+    <dialect>BLD</dialect>
+    <dialect>PRD</dialect>
+    <Combinations>
+        <profile>http://www.w3.org/ns/entailment/Simple</profile>
+    </Combinations>
+    <purpose>Verify that rdf:PlainLiteral typed literals are not allowed in RDF graphs imported by RIF documents</purpose>
+    <description/>
+    <ImportedDocument>
+        <Normative syntax="RDF/XML">
+            <name>RDF_Combination_Invalid_Constant_2-import001.rdf</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/RDF_Combination_Invalid_Constant_2/RDF_Combination_Invalid_Constant_2-import001</remote>
+        </Normative>
+        <Presentation syntax="Turtle"><![CDATA[
+@prefix ex: <http://example.org/example#> . 
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> . 
+
+ ex:a ex:p "with language tag@en"^^rdf:PlainLiteral .
+]]></Presentation>
+    </ImportedDocument>
+    <InputDocument>
+        <Normative syntax="RIF/XML">
+            <name>RDF_Combination_Invalid_Constant_2-input.rif</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/RDF_Combination_Invalid_Constant_2/RDF_Combination_Invalid_Constant_2-input.rif</remote>
+        </Normative>
+        <Presentation syntax="RIFBLD-PS"><![CDATA[
+Document(
+    Import(<http://example.org/mygraph> <http://www.w3.org/ns/entailment/Simple>)
+ )
+]]></Presentation>
+    </InputDocument>
+</ImportRejectionTest>
+<ImportRejectionTest id="RDF_Combination_Invalid_Profiles_1"
+    src="http://www.w3.org/2005/rules/test/repository/tc/RDF_Combination_Invalid_Profiles_1">
+    <status>Approved</status>
+    <dialect>Core</dialect>
+    <dialect>BLD</dialect>
+    <dialect>PRD</dialect>
+    <Combinations>
+        <profile>http://www.w3.org/ns/entailment/Simple</profile>
+        <profile>http://www.w3.org/ns/entailment/OWL-Direct</profile>
+    </Combinations>
+    <purpose>Test that a RIF document with an invalid set of import directives is rejected</purpose>
+    <description>There must be a highest profile in the set of profiles specified in a RIF document's import closure. There is no ordering defined between the Simple and OWL-Direct profiles, and so no highest profile. See SpecRef.</description>
+    <ImportedDocument>
+        <Normative syntax="RDF/XML">
+            <name>RDF_Combination_Invalid_Profiles_1-import001.rdf</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/RDF_Combination_Invalid_Profiles_1/RDF_Combination_Invalid_Profiles_1-import001</remote>
+        </Normative>
+        <Presentation syntax="Turtle"><![CDATA[
+
+]]></Presentation>
+    </ImportedDocument>
+    <ImportedDocument>
+        <Normative syntax="RDF/XML">
+            <name>RDF_Combination_Invalid_Profiles_1-import002.rdf</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/RDF_Combination_Invalid_Profiles_1/RDF_Combination_Invalid_Profiles_1-import002</remote>
+        </Normative>
+        <Presentation syntax="Turtle"><![CDATA[
+
+]]></Presentation>
+    </ImportedDocument>
+    <InputDocument>
+        <Normative syntax="RIF/XML">
+            <name>RDF_Combination_Invalid_Profiles_1-input.rif</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/RDF_Combination_Invalid_Profiles_1/RDF_Combination_Invalid_Profiles_1-input.rif</remote>
+        </Normative>
+        <Presentation syntax="RIFBLD-PS"><![CDATA[
+Document(
+    Import(<http://example.org/mygraph1> <http://www.w3.org/ns/entailment/Simple>)
+    Import(<http://example.org/mygraph2> <http://www.w3.org/ns/entailment/OWL-Direct>)
+ )
+]]></Presentation>
+    </InputDocument>
+</ImportRejectionTest>
+<NegativeEntailmentTest id="RDF_Combination_SubClass"
+    src="http://www.w3.org/2005/rules/test/repository/tc/RDF_Combination_SubClass">
+    <status>Approved</status>
+    <dialect>Core</dialect>
+    <dialect>BLD</dialect>
+    <dialect>PRD</dialect>
+    <Combinations>
+        <profile>http://www.w3.org/ns/entailment/Simple</profile>
+    </Combinations>
+    <purpose>Test interaction between rdfs:subClassOf, rdf:type, ## and # in RIF</purpose>
+    <description>In RIF-RDF combinations, we have that rdf:type statements are equivalent to RIF # statements and RIF ## statements imply rdfs:subClassOf statements. By the semantics of combinations, we have that ex:a rdf:type ex:C implies ex:a # ex:C, but ex:C rdfs:subClassOf ex:D does not imply ex:C ## ex:D. Therefore, ex:a # ex:D cannot be derived. Notice that the import profile is 'Simple'.</description>
+    <ImportedDocument>
+        <Normative syntax="RDF/XML">
+            <name>RDF_Combination_SubClass-import001.rdf</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/RDF_Combination_SubClass/RDF_Combination_SubClass-import001</remote>
+        </Normative>
+        <Presentation syntax="Turtle"><![CDATA[
+@prefix ex: <http://example.org/example#> . 
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> . 
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+
+ ex:a rdf:type ex:C .
+ ex:C rdfs:subClassOf ex:D .
+]]></Presentation>
+    </ImportedDocument>
+    <PremiseDocument>
+        <Normative syntax="RIF/XML">
+            <name>RDF_Combination_SubClass-premise.rif</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/RDF_Combination_SubClass/RDF_Combination_SubClass-premise.rif</remote>
+        </Normative>
+        <Presentation syntax="RIFBLD-PS"><![CDATA[
+Document(
+    Import(<http://example.org/mygraph> <http://www.w3.org/ns/entailment/Simple>)
+ )
+]]></Presentation>
+    </PremiseDocument>
+    <NonConclusionDocument>
+        <Normative syntax="RIF/XML">
+            <name>RDF_Combination_SubClass-nonconclusion.rif</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/RDF_Combination_SubClass/RDF_Combination_SubClass-nonconclusion.rif</remote>
+        </Normative>
+        <Presentation syntax="RIFBLD-PS"><![CDATA[
+ex:a # ex:D
+]]></Presentation>
+    </NonConclusionDocument>
+</NegativeEntailmentTest>
+<PositiveEntailmentTest id="RDF_Combination_SubClass_2"
+    src="http://www.w3.org/2005/rules/test/repository/tc/RDF_Combination_SubClass_2">
+    <status>Approved</status>
+    <dialect>Core</dialect>
+    <dialect>BLD</dialect>
+    <dialect>PRD</dialect>
+    <Combinations>
+        <profile>http://www.w3.org/ns/entailment/RDFS</profile>
+    </Combinations>
+    <purpose>Test interaction between rdfs:subClassOf, rdf:type, ## and # in RIF</purpose>
+    <description>In RIF-RDF combinations, we have that rdf:type statements are equivalent to RIF # statements and RIF ## statements imply rdfs:subClassOf statements. By the RDFS semantics we have that ex:a rdf:type ex:D must hold and by the semantics of combinations, we have that ex:a rdf:type ex:D implies ex:a # ex:D. Therefore, ex:a # ex:D is derived.</description>
+    <ImportedDocument>
+        <Normative syntax="RDF/XML">
+            <name>RDF_Combination_SubClass_2-import001.rdf</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/RDF_Combination_SubClass_2/RDF_Combination_SubClass_2-import001</remote>
+        </Normative>
+        <Presentation syntax="Turtle"><![CDATA[
+@prefix ex: <http://example.org/example#> . 
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> . 
+
+ ex:a rdf:type ex:C .
+ ex:C rdfs:subClassOf ex:D .
+]]></Presentation>
+    </ImportedDocument>
+    <PremiseDocument>
+        <Normative syntax="RIF/XML">
+            <name>RDF_Combination_SubClass_2-premise.rif</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/RDF_Combination_SubClass_2/RDF_Combination_SubClass_2-premise.rif</remote>
+        </Normative>
+        <Presentation syntax="RIFBLD-PS"><![CDATA[
+Document(
+    Import(<http://example.org/mygraph> <http://www.w3.org/ns/entailment/RDFS>)
+ )
+]]></Presentation>
+    </PremiseDocument>
+    <ConclusionDocument>
+        <Normative syntax="RIF/XML">
+            <name>RDF_Combination_SubClass_2-conclusion.rif</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/RDF_Combination_SubClass_2/RDF_Combination_SubClass_2-conclusion.rif</remote>
+        </Normative>
+        <Presentation syntax="RIFBLD-PS"><![CDATA[
+ex:a # ex:D
+]]></Presentation>
+    </ConclusionDocument>
+</PositiveEntailmentTest>
+</TestSuite>

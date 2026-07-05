@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ImportRejectionTest id="OWL_Combination_Invalid_DL_Import"
+    src="http://www.w3.org/2005/rules/test/repository/tc/OWL_Combination_Invalid_DL_Import" xmlns="http://www.w3.org/2009/10/rif-test#">
+    <status>Approved</status>
+    <dialect>Core</dialect>
+    <dialect>BLD</dialect>
+    <dialect>PRD</dialect>
+    <Combinations>
+        <profile>http://www.w3.org/ns/entailment/OWL-Direct</profile>
+    </Combinations>
+    <purpose>Test that an invalid combination is rejected</purpose>
+    <description>If a RIF document R imports OWL ontologies using the OWL-Direct profile that are not OWL 2 DL ontologies, then R must be rejected. The imported ontology is not an OWL 2 DL ontology (because it is the empty graph), and so R must be rejected.</description>
+    <ImportedDocument>
+        <Normative syntax="RDF/XML">
+            <name>OWL_Combination_Invalid_DL_Import-import001.rdf</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/OWL_Combination_Invalid_DL_Import/OWL_Combination_Invalid_DL_Import-import001</remote>
+        </Normative>
+        <Presentation syntax="Turtle"><![CDATA[
+
+]]></Presentation>
+    </ImportedDocument>
+    <InputDocument>
+        <Normative syntax="RIF/XML">
+            <name>OWL_Combination_Invalid_DL_Import-input.rif</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/OWL_Combination_Invalid_DL_Import/OWL_Combination_Invalid_DL_Import-input.rif</remote>
+        </Normative>
+        <Presentation syntax="RIFBLD-PS"><![CDATA[
+Document(
+    Import(<http://example.org/mygraph> <http://www.w3.org/ns/entailment/OWL-Direct>)
+
+    Group (
+    )
+ )
+]]></Presentation>
+    </InputDocument>
+</ImportRejectionTest>

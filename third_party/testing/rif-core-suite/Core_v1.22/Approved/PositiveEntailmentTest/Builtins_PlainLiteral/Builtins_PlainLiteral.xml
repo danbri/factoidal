@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<PositiveEntailmentTest id="Builtins_PlainLiteral"
+    src="http://www.w3.org/2005/rules/test/repository/tc/Builtins_PlainLiteral" xmlns="http://www.w3.org/2009/10/rif-test#">
+    <status>Approved</status>
+    <dialect>Core</dialect>
+    <dialect>BLD</dialect>
+    <dialect>PRD</dialect>
+    <purpose>Test built-in predicates and functions for RDF PlainLiteral datatype</purpose>
+    <description/>
+    <PremiseDocument>
+        <Normative syntax="RIF/XML">
+            <name>Builtins_PlainLiteral-premise.rif</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/Builtins_PlainLiteral/Builtins_PlainLiteral-premise.rif</remote>
+        </Normative>
+        <Presentation syntax="RIFBLD-PS"><![CDATA[
+Document( 
+ Prefix(xs <http://www.w3.org/2001/XMLSchema#>)
+ Prefix(rdf <http://www.w3.org/1999/02/22-rdf-syntax-ns#>) 
+ Prefix(ex <http://example.org/example#>) 
+ Prefix(func <http://www.w3.org/2007/rif-builtin-function#>) 
+ Prefix(pred <http://www.w3.org/2007/rif-builtin-predicate#>) 
+
+ Group ( 
+  ex:ok() :- 
+    And (
+     External( pred:is-literal-PlainLiteral( "Hello world@en"^^rdf:PlainLiteral ) )
+     External( pred:is-literal-PlainLiteral( "Hello world@"^^rdf:PlainLiteral ) )
+     External( pred:is-literal-not-PlainLiteral( "1"^^xs:integer ) )
+     External( pred:is-literal-PlainLiteral( External( rdf:PlainLiteral ("1"^^xs:integer ) ) ) )
+     External( func:PlainLiteral-from-string-lang( "Hello World!" "en" ) ) = "Hello World!"@en
+     External( func:string-from-PlainLiteral( "Hello World!"@en ) ) = "Hello World!"
+     External( func:string-from-PlainLiteral( "Hello World!@en" ) )= "Hello World!@en"
+     External( func:lang-from-PlainLiteral( "Hello World!@en"^^rdf:PlainLiteral ) )= "en"^^xs:lang
+     External( func:lang-from-PlainLiteral( "Hello World!@en" ) ) = ""
+     -1 = External ( func:PlainLiteral-compare( "hallo"@de "welt"@de ) )
+     1 = External ( func:PlainLiteral-compare( "welt"@de "hallo"@de ) )
+     0 = External ( func:PlainLiteral-compare( "hallo"@de "hallo"@de ) )
+     External ( pred:matches-language-range( "Schlagobers ist dasselbe wie Schlagsahne."@de-at "de-*" ) )
+    )
+ )
+)
+]]></Presentation>
+    </PremiseDocument>
+    <ConclusionDocument>
+        <Normative syntax="RIF/XML">
+            <name>Builtins_PlainLiteral-conclusion.rif</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/Builtins_PlainLiteral/Builtins_PlainLiteral-conclusion.rif</remote>
+        </Normative>
+        <Presentation syntax="RIFBLD-PS"><![CDATA[
+ex:ok()
+]]></Presentation>
+    </ConclusionDocument>
+</PositiveEntailmentTest>

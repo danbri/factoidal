@@ -1,0 +1,26 @@
+Document( 
+ Prefix(xs <http://www.w3.org/2001/XMLSchema#>)
+ Prefix(rdf <http://www.w3.org/1999/02/22-rdf-syntax-ns#>) 
+ Prefix(ex <http://example.org/example#>) 
+ Prefix(func <http://www.w3.org/2007/rif-builtin-function#>) 
+ Prefix(pred <http://www.w3.org/2007/rif-builtin-predicate#>) 
+
+ Group ( 
+  ex:ok() :- 
+    And (
+     External( pred:is-literal-PlainLiteral( "Hello world@en"^^rdf:PlainLiteral ) )
+     External( pred:is-literal-PlainLiteral( "Hello world@"^^rdf:PlainLiteral ) )
+     External( pred:is-literal-not-PlainLiteral( "1"^^xs:integer ) )
+     External( pred:is-literal-PlainLiteral( External( rdf:PlainLiteral ("1"^^xs:integer ) ) ) )
+     External( func:PlainLiteral-from-string-lang( "Hello World!" "en" ) ) = "Hello World!"@en
+     External( func:string-from-PlainLiteral( "Hello World!"@en ) ) = "Hello World!"
+     External( func:string-from-PlainLiteral( "Hello World!@en" ) )= "Hello World!@en"
+     External( func:lang-from-PlainLiteral( "Hello World!@en"^^rdf:PlainLiteral ) )= "en"^^xs:lang
+     External( func:lang-from-PlainLiteral( "Hello World!@en" ) ) = ""
+     -1 = External ( func:PlainLiteral-compare( "hallo"@de "welt"@de ) )
+     1 = External ( func:PlainLiteral-compare( "welt"@de "hallo"@de ) )
+     0 = External ( func:PlainLiteral-compare( "hallo"@de "hallo"@de ) )
+     External ( pred:matches-language-range( "Schlagobers ist dasselbe wie Schlagsahne."@de-at "de-*" ) )
+    )
+ )
+)

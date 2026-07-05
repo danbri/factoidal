@@ -1,0 +1,17 @@
+Document( 
+ Prefix(xs <http://www.w3.org/2001/XMLSchema#>)
+ Prefix(pred <http://www.w3.org/2007/rif-builtin-predicate#>) 
+ Prefix(ex <http://example.org/example#>)
+
+ Group ( 
+  ex:ok() :- 
+    And (
+     External( pred:is-literal-boolean( "1"^^xs:boolean ) )
+     External( pred:is-literal-not-boolean( "foo"^^xs:string ) )
+     External( pred:is-literal-boolean( External ( xs:boolean ( "1"^^xs:string ) ) ) )
+     External ( pred:boolean-equal( "0"^^xs:boolean "0"^^xs:boolean ) )
+     External ( pred:boolean-less-than( "0"^^xs:boolean "1"^^xs:boolean ) )
+     External ( pred:boolean-greater-than( "1"^^xs:boolean "0"^^xs:boolean ) )
+    )
+ )
+)

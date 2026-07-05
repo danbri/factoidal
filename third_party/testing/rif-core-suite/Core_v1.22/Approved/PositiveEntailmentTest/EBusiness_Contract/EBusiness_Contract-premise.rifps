@@ -1,0 +1,36 @@
+Document(
+  Prefix(stores <http://example.org/stores#>)
+  Prefix(cpt <http://example.org/concepts#>)
+  Prefix(ord <http://example.org/orders#>)  
+  Prefix(func <http://www.w3.org/2007/rif-builtin-function#>)
+  Prefix(pred <http://www.w3.org/2007/rif-builtin-predicate#>)
+  Prefix(xs <http://www.w3.org/2001/XMLSchema#>)
+  Prefix(owl <http://www.w3.org/2002/07/owl#>)
+  Prefix(dc <http://purl.org/dc/elements/1.1/>)
+ 
+  Group  (
+  
+   (* _rule1[dc:name -> "rule 1"
+                dc:publisher -> "http://www.w3.org/"^^rif:iri
+                dc:date -> "2008-04-04Z"^^xs:date
+                dc:description -> "if an item is perishable and it is delivered to a store more than ten days after the scheduled delivery date then the item will be rejected by the store"
+                owl:versionInfo -> "0.1"^^xs:decimal] *)
+  
+    Forall ?item ?store ?deliverydate ?scheduledate ?diffduration ?diffdays (
+        cpt:reject(?store ?item) :-
+            And(cpt:perishable(?item)
+                  cpt:delivered(?item ?deliverydate ?store)
+                  cpt:scheduled(?item ?scheduledate)
+                  External(pred:is-literal-dateTime(?deliverydate))               
+                  External(pred:is-literal-dateTime(?scheduledate))               
+                  ?diffduration = External(func:subtract-dateTimes(?deliverydate ?scheduledate))                              
+                  ?diffdays = External(func:days-from-duration(?diffduration))
+                  External(pred:numeric-greater-than(?diffdays 10)))
+    ) 
+    
+    
+    cpt:perishable(ord:Order14)   
+    cpt:delivered(ord:Order14 "2008-07-22Z"^^xs:date stores:Store9)
+    cpt:scheduled(ord:Order14 "2008-07-11Z"^^xs:date)    
+  )
+)

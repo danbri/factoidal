@@ -1,0 +1,14 @@
+Document(
+     Prefix(ex  <http://example.org/example#>)
+     Prefix(pred <http://www.w3.org/2007/rif-builtin-predicate#>)
+     Prefix(foaf <http://xmlns.com/foaf/0.1/>)
+     Import(<http://www.w3.org/2005/rules/test/repository/tc/IRI_from_RDF_Literal/IRI_from_RDF_Literal-import001> <http://www.w3.org/ns/entailment/Simple>)
+     Group (
+       Forall ?x ?y ?z (?y[foaf:homepage -> ?z] :- 
+         And(
+           ?y[ex:hasWebSite -> ?x] 
+           External(pred:iri-string(?z ?x))
+         )
+       )
+     )
+ )

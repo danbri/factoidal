@@ -1,0 +1,131 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<!DOCTYPE Document [
+  <!ENTITY rif  "http://www.w3.org/2007/rif#">
+  <!ENTITY xs   "http://www.w3.org/2001/XMLSchema#">
+  <!ENTITY rdf  "http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+]>
+
+<Document xmlns="&rif;">
+  <payload>
+    <Group>
+      <sentence>
+        <Atom>
+          <op>
+            <Const type="&rif;iri">http://example.org/example#factorial</Const>
+          </op>
+            <args ordered="yes">
+              <Const type="&xs;integer">0</Const>
+              <Const type="&xs;integer">1</Const>
+            </args>
+        </Atom>
+      </sentence>
+      <sentence>
+        <Forall>
+          <declare>
+            <Var>N</Var>
+          </declare>
+          <declare>
+            <Var>F</Var>
+          </declare>
+          <declare>
+            <Var>N1</Var>
+          </declare>
+          <declare>
+            <Var>F1</Var>
+          </declare>
+          <formula>
+            <Implies>
+              <if>
+                <And>
+                  <formula>
+                    <External>
+                     <content>
+                      <Atom>
+                          <op>
+                            <Const type="&rif;iri">http://www.w3.org/2007/rif-builtin-predicate#numeric-greater-than-or-equal</Const>
+                          </op>
+                            <args ordered="yes">
+                              <Var>N1</Var>
+                              <Const type="&xs;integer">0</Const>
+                            </args>
+                      </Atom>
+                     </content>
+                    </External>
+                  </formula>
+                  <formula>
+                    <Equal>
+                      <left>
+                        <Var>N</Var>
+                      </left>
+                      <right>
+                        <External>
+                         <content>
+                          <Expr>
+                              <op>
+                                <Const type="&rif;iri">http://www.w3.org/2007/rif-builtin-function#numeric-add</Const>
+                              </op>
+                                <args ordered="yes">
+                                  <Var>N1</Var>
+                                  <Const type="&xs;integer">1</Const>
+                                </args>
+                          </Expr>
+                         </content>
+                        </External>
+                      </right>
+                    </Equal>
+                  </formula>
+                  <formula>
+                    <Atom>
+                      <op>
+                        <Const type="&rif;iri">http://example.org/example#factorial</Const>
+                      </op>
+                        <args ordered="yes">
+                          <Var>N1</Var>
+                          <Var>F1</Var>
+                        </args>
+                    </Atom>
+                  </formula>
+                  <formula>
+                    <Equal>
+                      <left>
+                        <Var>F</Var>
+                      </left>
+                      <right>
+                        <External>
+                         <content>
+                          <Expr>
+                              <op>
+                                <Const type="&rif;iri">http://www.w3.org/2007/rif-builtin-function#numeric-multiply</Const>
+                              </op>
+                                <args ordered="yes">
+                                  <Var>N</Var>
+                                  <Var>F1</Var>
+                                </args>
+                          </Expr>
+                         </content>
+                        </External>
+                      </right>
+                    </Equal>
+                  </formula>
+                </And>
+              </if>
+              <then>
+                <Atom>
+                  <op>
+                    <Const type="&rif;iri">http://example.org/example#factorial</Const>
+                  </op>
+                    <args ordered="yes">
+                      <Var>N</Var>
+                      <Var>F</Var>
+                    </args>
+                </Atom>
+              </then>
+            </Implies>
+          </formula>
+        </Forall>
+      </sentence>
+    </Group>
+  </payload>
+</Document>
+<!--XML document generated on Sun Nov 07 10:35:59 EST 2010-->

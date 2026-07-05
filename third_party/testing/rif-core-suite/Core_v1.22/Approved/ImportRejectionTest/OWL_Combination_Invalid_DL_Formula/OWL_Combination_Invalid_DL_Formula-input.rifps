@@ -1,0 +1,9 @@
+Document(
+    Import(<http://www.w3.org/2005/rules/test/repository/tc/OWL_Combination_Invalid_DL_Formula/OWL_Combination_Invalid_DL_Formula-import001> <http://www.w3.org/ns/entailment/OWL-Direct>)
+
+    Group (
+        Forall ?x (
+           <http://example.org/#p>(?x) :- <http://example.org/#crt>[?x -> "17"^^xs:integer] 
+        )
+    )
+ )

@@ -1,0 +1,17 @@
+Document(
+ Prefix(ex <http://example.org/example#>)
+ Prefix(xs <http://www.w3.org/2001/XMLSchema#>) 
+
+ Group ( 
+  Forall ?Customer (
+   ?Customer[ex:discount -> 10] :- ?Customer[ex:status -> "gold"] 
+  )
+
+  Forall ?Customer (
+   ?Customer[ex:discount -> 5] :- ?Customer[ex:status -> "silver"]
+  )
+
+   ex:customer017[ex:status -> "gold" ex:name -> "John Doe"]
+
+ )
+)

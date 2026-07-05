@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ImportRejectionTest id="Multiple_Context_Error"
+    src="http://www.w3.org/2005/rules/test/repository/tc/Multiple_Context_Error" xmlns="http://www.w3.org/2009/10/rif-test#">
+    <status>Approved</status>
+    <dialect>Core</dialect>
+    <dialect>BLD</dialect>
+    <dialect>PRD</dialect>
+    <purpose>A constant symbol that is not a rif:local constant cannot occur in more than one context in the imports closure of a RIF document.</purpose>
+    <description>The constant symbol eg:discount is used as a predicate in the importing document and as an individual in the imported document.</description>
+    <ImportedDocument>
+        <Normative syntax="RIF/XML">
+            <name>Multiple_Context_Error-import001.rif</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/Multiple_Context_Error/Multiple_Context_Error-import001.rif</remote>
+        </Normative>
+        <Presentation syntax="RIFBLD-PS"><![CDATA[
+Document(
+ Prefix(eg <http://example.org/example#>)
+ Prefix(xs <http://www.w3.org/2001/XMLSchema#>) 
+
+ Group ( 
+   Forall ?Name (
+     eg:customer[eg:discount -> "10"^^xs:integer eg:name -> ?Name] :- eg:customer[eg:status -> "gold" eg:name -> ?Name] 
+   )
+ )
+)
+]]></Presentation>
+    </ImportedDocument>
+    <InputDocument>
+        <Normative syntax="RIF/XML">
+            <name>Multiple_Context_Error-input.rif</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/Multiple_Context_Error/Multiple_Context_Error-input.rif</remote>
+        </Normative>
+        <Presentation syntax="RIFBLD-PS"><![CDATA[
+Document (
+ Prefix(eg <http://example.org/example#>)
+ Prefix(xs <http://www.w3.org/2001/XMLSchema#>) 
+ Import(<http://example.org/doc1>)
+
+ Group ( 
+
+   Forall ?Customer (
+     eg:discount(?Customer "5"^^xs:integer) :- eg:silver(?Customer)
+   )
+ )
+)
+]]></Presentation>
+    </InputDocument>
+</ImportRejectionTest>

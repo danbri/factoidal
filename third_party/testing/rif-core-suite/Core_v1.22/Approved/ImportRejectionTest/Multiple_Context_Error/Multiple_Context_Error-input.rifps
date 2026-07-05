@@ -1,0 +1,12 @@
+Document (
+ Prefix(eg <http://example.org/example#>)
+ Prefix(xs <http://www.w3.org/2001/XMLSchema#>) 
+ Import(<http://www.w3.org/2005/rules/test/repository/tc/Multiple_Context_Error/Multiple_Context_Error-import001.rif>)
+
+ Group ( 
+
+   Forall ?Customer (
+     eg:discount(?Customer "5"^^xs:integer) :- eg:silver(?Customer)
+   )
+ )
+)

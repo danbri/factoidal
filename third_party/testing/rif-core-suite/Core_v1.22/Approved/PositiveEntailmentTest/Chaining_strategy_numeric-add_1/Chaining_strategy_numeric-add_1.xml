@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<PositiveEntailmentTest id="Chaining_strategy_numeric-add_1"
+    src="http://www.w3.org/2005/rules/test/repository/tc/Chaining_strategy_numeric-add_1" xmlns="http://www.w3.org/2009/10/rif-test#">
+    <status>Approved</status>
+    <dialect>Core</dialect>
+    <dialect>BLD</dialect>
+    <dialect>PRD</dialect>
+    <purpose>This test highlights the different behavior of forward-chaining vs. backward-chaining engines</purpose>
+    <description>The entailment holds, but some engines may have difficulty finding it and/or may behave badly with it. This particular test case may be hard to handle for backward-chaining engines, depending on their implementation of the func:numeric-add builtin. In a forward-chaining strategy, the entailment should be found, but since the minimal model itself is infinite, a naive engine, which tries to materialize the whole minimal model may not terminate.</description>
+    <PremiseDocument>
+        <Normative syntax="RIF/XML">
+            <name>Chaining_strategy_numeric-add_1-premise.rif</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/Chaining_strategy_numeric-add_1/Chaining_strategy_numeric-add_1-premise.rif</remote>
+        </Normative>
+        <Presentation syntax="RIFBLD-PS"><![CDATA[
+Document(
+  Prefix(ex   <http://example.org/example#>)
+  Prefix(func <http://www.w3.org/2007/rif-builtin-function#>)
+  
+  Group  (
+    Forall ?x ( ex:a(External(func:numeric-add(?x 1))) :- ex:a(?x) )
+    ex:a(1)
+  ) 
+)
+]]></Presentation>
+    </PremiseDocument>
+    <ConclusionDocument>
+        <Normative syntax="RIF/XML">
+            <name>Chaining_strategy_numeric-add_1-conclusion.rif</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/Chaining_strategy_numeric-add_1/Chaining_strategy_numeric-add_1-conclusion.rif</remote>
+        </Normative>
+        <Presentation syntax="RIFBLD-PS"><![CDATA[
+ex:a(3)
+]]></Presentation>
+    </ConclusionDocument>
+</PositiveEntailmentTest>

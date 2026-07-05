@@ -1,0 +1,128 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<!DOCTYPE Document [
+  <!ENTITY rif  "http://www.w3.org/2007/rif#">
+  <!ENTITY xs   "http://www.w3.org/2001/XMLSchema#">
+  <!ENTITY rdf  "http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+]>
+
+<Document xmlns="&rif;">
+  <payload>
+    <Group>
+      <sentence>
+        <Implies>
+          <if>
+            <And>
+              <formula>
+                <External>
+                 <content>
+                  <Atom>
+                      <op>
+                        <Const type="&rif;iri">http://www.w3.org/2007/rif-builtin-predicate#is-literal-boolean</Const>
+                      </op>
+                        <args ordered="yes">
+                          <Const type="&xs;boolean">1</Const>
+                        </args>
+                  </Atom>
+                 </content>
+                </External>
+              </formula>
+              <formula>
+                <External>
+                 <content>
+                  <Atom>
+                      <op>
+                        <Const type="&rif;iri">http://www.w3.org/2007/rif-builtin-predicate#is-literal-not-boolean</Const>
+                      </op>
+                        <args ordered="yes">
+                          <Const type="&xs;string">foo</Const>
+                        </args>
+                  </Atom>
+                 </content>
+                </External>
+              </formula>
+              <formula>
+                <External>
+                 <content>
+                  <Atom>
+                      <op>
+                        <Const type="&rif;iri">http://www.w3.org/2007/rif-builtin-predicate#is-literal-boolean</Const>
+                      </op>
+                        <args ordered="yes">
+                          <External>
+                           <content>
+                            <Expr>
+                                <op>
+                                  <Const type="&rif;iri">http://www.w3.org/2001/XMLSchema#boolean</Const>
+                                </op>
+                                  <args ordered="yes">
+                                    <Const type="&xs;string">1</Const>
+                                  </args>
+                            </Expr>
+                           </content>
+                          </External>
+                        </args>
+                  </Atom>
+                 </content>
+                </External>
+              </formula>
+              <formula>
+                <External>
+                 <content>
+                  <Atom>
+                      <op>
+                        <Const type="&rif;iri">http://www.w3.org/2007/rif-builtin-predicate#boolean-equal</Const>
+                      </op>
+                        <args ordered="yes">
+                          <Const type="&xs;boolean">0</Const>
+                          <Const type="&xs;boolean">0</Const>
+                        </args>
+                  </Atom>
+                 </content>
+                </External>
+              </formula>
+              <formula>
+                <External>
+                 <content>
+                  <Atom>
+                      <op>
+                        <Const type="&rif;iri">http://www.w3.org/2007/rif-builtin-predicate#boolean-less-than</Const>
+                      </op>
+                        <args ordered="yes">
+                          <Const type="&xs;boolean">0</Const>
+                          <Const type="&xs;boolean">1</Const>
+                        </args>
+                  </Atom>
+                 </content>
+                </External>
+              </formula>
+              <formula>
+                <External>
+                 <content>
+                  <Atom>
+                      <op>
+                        <Const type="&rif;iri">http://www.w3.org/2007/rif-builtin-predicate#boolean-greater-than</Const>
+                      </op>
+                        <args ordered="yes">
+                          <Const type="&xs;boolean">1</Const>
+                          <Const type="&xs;boolean">0</Const>
+                        </args>
+                  </Atom>
+                 </content>
+                </External>
+              </formula>
+            </And>
+          </if>
+          <then>
+            <Atom>
+              <op>
+                <Const type="&rif;iri">http://example.org/example#ok</Const>
+              </op>
+            </Atom>
+          </then>
+        </Implies>
+      </sentence>
+    </Group>
+  </payload>
+</Document>
+<!--XML document generated on Sun Nov 07 10:35:43 EST 2010-->

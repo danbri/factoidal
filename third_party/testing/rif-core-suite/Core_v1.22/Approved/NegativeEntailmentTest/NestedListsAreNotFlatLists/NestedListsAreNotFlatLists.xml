@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<NegativeEntailmentTest id="NestedListsAreNotFlatLists"
+    src="http://www.w3.org/2005/rules/test/repository/tc/NestedListsAreNotFlatLists" xmlns="http://www.w3.org/2009/10/rif-test#">
+    <status>Approved</status>
+    <dialect>Core</dialect>
+    <dialect>BLD</dialect>
+    <dialect>PRD</dialect>
+    <purpose>Nested lists are not flat lists</purpose>
+    <description/>
+    <PremiseDocument>
+        <Normative syntax="RIF/XML">
+            <name>NestedListsAreNotFlatLists-premise.rif</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/NestedListsAreNotFlatLists/NestedListsAreNotFlatLists-premise.rif</remote>
+        </Normative>
+        <Presentation syntax="RIFBLD-PS"><![CDATA[
+Document(
+  Prefix(ex  <http://example.org/example#>)
+  Group(
+   ex:p(List(ex:a List(ex:b)))
+  )
+ )
+]]></Presentation>
+    </PremiseDocument>
+    <NonConclusionDocument>
+        <Normative syntax="RIF/XML">
+            <name>NestedListsAreNotFlatLists-nonconclusion.rif</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/NestedListsAreNotFlatLists/NestedListsAreNotFlatLists-nonconclusion.rif</remote>
+        </Normative>
+        <Presentation syntax="RIFBLD-PS"><![CDATA[
+ex:p(List(ex:a ex:b))
+]]></Presentation>
+    </NonConclusionDocument>
+</NegativeEntailmentTest>

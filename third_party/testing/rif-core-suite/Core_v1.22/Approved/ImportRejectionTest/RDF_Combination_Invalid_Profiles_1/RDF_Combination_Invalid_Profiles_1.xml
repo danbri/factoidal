@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ImportRejectionTest id="RDF_Combination_Invalid_Profiles_1"
+    src="http://www.w3.org/2005/rules/test/repository/tc/RDF_Combination_Invalid_Profiles_1" xmlns="http://www.w3.org/2009/10/rif-test#">
+    <status>Approved</status>
+    <dialect>Core</dialect>
+    <dialect>BLD</dialect>
+    <dialect>PRD</dialect>
+    <Combinations>
+        <profile>http://www.w3.org/ns/entailment/Simple</profile>
+        <profile>http://www.w3.org/ns/entailment/OWL-Direct</profile>
+    </Combinations>
+    <purpose>Test that a RIF document with an invalid set of import directives is rejected</purpose>
+    <description>There must be a highest profile in the set of profiles specified in a RIF document's import closure. There is no ordering defined between the Simple and OWL-Direct profiles, and so no highest profile. See SpecRef.</description>
+    <ImportedDocument>
+        <Normative syntax="RDF/XML">
+            <name>RDF_Combination_Invalid_Profiles_1-import001.rdf</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/RDF_Combination_Invalid_Profiles_1/RDF_Combination_Invalid_Profiles_1-import001</remote>
+        </Normative>
+        <Presentation syntax="Turtle"><![CDATA[
+
+]]></Presentation>
+    </ImportedDocument>
+    <ImportedDocument>
+        <Normative syntax="RDF/XML">
+            <name>RDF_Combination_Invalid_Profiles_1-import002.rdf</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/RDF_Combination_Invalid_Profiles_1/RDF_Combination_Invalid_Profiles_1-import002</remote>
+        </Normative>
+        <Presentation syntax="Turtle"><![CDATA[
+
+]]></Presentation>
+    </ImportedDocument>
+    <InputDocument>
+        <Normative syntax="RIF/XML">
+            <name>RDF_Combination_Invalid_Profiles_1-input.rif</name>
+            <remote>http://www.w3.org/2005/rules/test/repository/tc/RDF_Combination_Invalid_Profiles_1/RDF_Combination_Invalid_Profiles_1-input.rif</remote>
+        </Normative>
+        <Presentation syntax="RIFBLD-PS"><![CDATA[
+Document(
+    Import(<http://example.org/mygraph1> <http://www.w3.org/ns/entailment/Simple>)
+    Import(<http://example.org/mygraph2> <http://www.w3.org/ns/entailment/OWL-Direct>)
+ )
+]]></Presentation>
+    </InputDocument>
+</ImportRejectionTest>

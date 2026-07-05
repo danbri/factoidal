@@ -1,0 +1,15 @@
+Document( 
+ Prefix(xs <http://www.w3.org/2001/XMLSchema#>)
+ Prefix(rdf <http://www.w3.org/1999/02/22-rdf-syntax-ns#>) 
+ Prefix(ex <http://example.org/example#>)  
+ Prefix(pred <http://www.w3.org/2007/rif-builtin-predicate#>) 
+
+ Group ( 
+  ex:ok() :- 
+    And (
+     External( pred:literal-not-identical( "1"^^xs:integer "1"^^xs:string ) ) 
+     External( pred:literal-not-identical( "1"^^xs:integer "2"^^xs:integer ) )
+     External( pred:literal-not-identical( "Hello world@"^^rdf:PlainLiteral "Hello world@"^^xs:string ) )
+    )
+ )
+)
