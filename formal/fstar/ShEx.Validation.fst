@@ -503,7 +503,14 @@ let node_constraint_matches (nc : shex_node_constraint) (t : rdf_term) : bool =
 // an O(shape-count) breadth (it walks every schema declaration once) on
 // top of the existing depth budget, comfortably inside `validate_focus`'s
 // existing shape-count-scaled margin (measured: no fixture in the
-// reachable corpus hits fuel exhaustion because of it).
+// reachable corpus hits fuel exhaustion because of it). The 2026-07-05
+// vitals-RESTRICTS revision widens WHEN that same witness search runs —
+// every `SE_Ref` (and the top-level target label, now routed through
+// `SE_Ref`) may consult it as a fallback OR-branch, not only abstract
+// references — but adds no new function and no new recursion depth:
+// same machinery, same `fuel - 1` discipline, breadth-only cost (in a
+// schema with no `extends` the per-declaration check fails fast on the
+// static `shape_decl_extends_label` test before any focus-term work).
 //
 // RECURSION SEMANTICS: `SE_Ref` carries a `visited : list (string &
 // rdf_term)` stack of (shape-label, focus-term) pairs currently being
@@ -1022,32 +1029,49 @@ let rec matches_shape_expr (decls : list shex_shape_decl) (idtab : list (string 
       else
         (match lookup_shape_decl decls label with
          | Some sd ->
-           (match matches_shape_expr decls idtab ((label, t) :: visited) sd.sd_expr t g fuel' with
-            | Some true ->
-              // ABSTRACT (Definition 4, "Shape Expressions with Inheritance",
-              // arxiv 2503.24299): "if z is abstract, there must exist
-              // x in desc(z) \ abstract such that G,n,tau |= Sdef(x)" — a
-              // node satisfying an abstract shape's OWN structural content
-              // is NOT enough; its typing must ALSO be witnessed by some
-              // NON-abstract descendant (a shape that itself `extends`,
-              // directly or transitively, this label). Only gated when
-              // `sd_is_abstract` — every non-abstract `SE_Ref` (the
-              // overwhelming common case) skips this entirely, so this can
-              // only ever turn a would-be Some true into Some false, never
-              // affect a non-abstract reference. `extends-abstract-multi-
-              // empty.shex`'s `IssueShape`'s `ex:reportedBy @<PersonShape>`
-              // is the fixture this closes: `User2` structurally satisfies
-              // ABSTRACT `PersonShape`'s own `(name|(givenName+;familyName));
-              // mbox`, but `_user-extraP.ttl`'s `User2` (extra `ex:p`) is
-              // witnessed by NEITHER of `PersonShape`'s two non-abstract
-              // descendants (`UserShape` — closed, rejects the extra `ex:p`;
-              // `EmployeeShape` — requires `foaf:phone`, absent) — Definition
-              // 4 fails, so the reference correctly rejects even though the
-              // abstract shape's own content alone would have accepted it.
-              if sd.sd_is_abstract
-              then exists_nonabstract_descendant_satisfying decls idtab visited label t g fuel'
-              else Some true
-            | other -> other)
+           // DESCENDANT-WITNESS SEMANTICS (upward-closed typing — Definition 4
+           // of "Shape Expressions with Inheritance", arxiv 2503.24299, and
+           // shex.js's `validateDescendants`, verified against the reference
+           // implementation @shexjs/validator 1.0.0-alpha.29 on the vitals-
+           // RESTRICTS fixtures, 2026-07-05): a node `t` validates against a
+           // shape LABEL iff
+           //   - the label is NON-abstract and `t` satisfies the label's own
+           //     declared shape expression (the ordinary structural check), OR
+           //   - SOME non-abstract declaration that (directly or transitively)
+           //     `extends` this label validates `t` (`exists_nonabstract_
+           //     descendant_satisfying`) — a correct typing is closed under
+           //     ancestors, so witnessing (t, ReclinedBP) also witnesses
+           //     (t, BP), (t, Posture), (t, Vital), ... up the whole chain.
+           // An ABSTRACT label offers ONLY the second route ("if z is
+           // abstract, there must exist x in desc(z) \ abstract such that
+           // G,n,tau |= Sdef(x)"), so its own-content check is skipped
+           // outright — `extends-abstract-multi-empty.shex`'s `_user-extraP`
+           // fixtures pin this: `User2` structurally satisfies ABSTRACT
+           // `PersonShape`'s own content but NEITHER non-abstract descendant
+           // (closed `UserShape` rejects the extra `ex:p`; `EmployeeShape`
+           // needs `foaf:phone`) validates it, so the reference rejects.
+           // The witness route for NON-abstract labels (this revision's
+           // vitals-RESTRICTS gap-closure) is what makes `pass_lie-Posture`
+           // pass: `:lie` fails `<#Posture>`'s own expression outright (the
+           // systolic/diastolic components are mentioned-predicate leftovers
+           // with no `extra` to excuse them — same strict leftover rule the
+           // Approved `1val1IRIREF_v1v2`/`1dotInline1_overReferrer` fixtures
+           // require) but non-abstract `<#ReclinedBP>` EXTENDS-reaches
+           // `<#Posture>` and validates `:lie` (BP's exact-value pair claims
+           // systolic+diastolic, Reclined's conjunct claims the posture
+           // component), so `(lie, Posture)` is witnessed. Both routes
+           // combine with the module's usual 3-valued OR (a definite witness
+           // outranks an unresolved self-check and vice versa).
+           let self_result =
+             if sd.sd_is_abstract then Some false
+             else matches_shape_expr decls idtab ((label, t) :: visited) sd.sd_expr t g fuel' in
+           (match self_result with
+            | Some true -> Some true
+            | _ ->
+              (match exists_nonabstract_descendant_satisfying decls idtab visited label t g fuel' with
+               | Some true -> Some true
+               | Some false -> (match self_result with Some false -> Some false | _ -> None)
+               | None -> None))
          | None -> None)
     | SE_Shape sh -> matches_shape decls idtab visited sh t g fuel'
     | SE_ShapeExternal -> None
@@ -1823,8 +1847,16 @@ let validate_focus (schema : shex_schema) (shape_id : option string) (t : rdf_te
     let fuel = 300 + op_Multiply 50 n_shapes + op_Multiply 30 n_graph + op_Multiply 5 (op_Multiply n_graph n_graph) in
     match shape_id with
     | Some label ->
+      // Routed through `SE_Ref` (rather than validating the looked-up
+      // declaration's expression directly) so the top-level target label
+      // gets the SAME descendant-witness semantics as an in-schema
+      // reference — see the `SE_Ref` case's doc comment: `vitals-RESTRICTS-
+      // pass_lie-Posture` targets `<#Posture>` from the MANIFEST, and its
+      // pass verdict is witnessed by descendant `<#ReclinedBP>`, exactly
+      // as it would be for `@<#Posture>` inside a schema. A nonexistent
+      // label still yields `None` (the `SE_Ref` case's own lookup miss).
       (match lookup_shape_decl schema.sch_shapes label with
-       | Some sd -> matches_shape_expr schema.sch_shapes idtab [] sd.sd_expr t g fuel
+       | Some _ -> matches_shape_expr schema.sch_shapes idtab [] (SE_Ref label) t g fuel
        | None -> None)
     | None ->
       (match schema.sch_start with

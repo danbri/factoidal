@@ -808,16 +808,28 @@ let rec matches_shape_expr (decls : ShEx_Schema.shex_shape_decl Prims.list)
          else
            (match lookup_shape_decl decls label with
             | FStar_Pervasives_Native.Some sd ->
-                (match matches_shape_expr decls idtab ((label, t) :: visited)
-                         sd.ShEx_Schema.sd_expr t g fuel'
-                 with
+                let self_result =
+                  if sd.ShEx_Schema.sd_is_abstract
+                  then FStar_Pervasives_Native.Some false
+                  else
+                    matches_shape_expr decls idtab ((label, t) :: visited)
+                      sd.ShEx_Schema.sd_expr t g fuel' in
+                (match self_result with
                  | FStar_Pervasives_Native.Some true ->
-                     if sd.ShEx_Schema.sd_is_abstract
-                     then
-                       exists_nonabstract_descendant_satisfying decls idtab
-                         visited label t g fuel'
-                     else FStar_Pervasives_Native.Some true
-                 | other -> other)
+                     FStar_Pervasives_Native.Some true
+                 | uu___2 ->
+                     (match exists_nonabstract_descendant_satisfying decls
+                              idtab visited label t g fuel'
+                      with
+                      | FStar_Pervasives_Native.Some true ->
+                          FStar_Pervasives_Native.Some true
+                      | FStar_Pervasives_Native.Some false ->
+                          (match self_result with
+                           | FStar_Pervasives_Native.Some false ->
+                               FStar_Pervasives_Native.Some false
+                           | uu___3 -> FStar_Pervasives_Native.None)
+                      | FStar_Pervasives_Native.None ->
+                          FStar_Pervasives_Native.None))
             | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None)
      | ShEx_Schema.SE_Shape sh ->
          matches_shape decls idtab visited sh t g fuel'
@@ -1774,9 +1786,9 @@ let validate_focus (schema : ShEx_Schema.shex_schema)
      match shape_id with
      | FStar_Pervasives_Native.Some label ->
          (match lookup_shape_decl schema.ShEx_Schema.sch_shapes label with
-          | FStar_Pervasives_Native.Some sd ->
+          | FStar_Pervasives_Native.Some uu___1 ->
               matches_shape_expr schema.ShEx_Schema.sch_shapes idtab []
-                sd.ShEx_Schema.sd_expr t g fuel
+                (ShEx_Schema.SE_Ref label) t g fuel
           | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None)
      | FStar_Pervasives_Native.None ->
          (match schema.ShEx_Schema.sch_start with
