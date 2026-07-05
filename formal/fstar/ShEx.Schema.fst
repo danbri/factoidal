@@ -160,6 +160,27 @@ type shex_value_set_value =
   | VSV_LanguageStem     : shex_stem -> shex_value_set_value
   | VSV_LanguageStemRange : shex_stem -> list shex_value_set_value -> shex_value_set_value
 
+// A bare JSON string inside a *StemRange's "exclusions" array is NOT always
+// an IRI shorthand — the ShExJ grammar types `IriStemRange.exclusions` as
+// `(IRI | IriStem) list`, but `LiteralStemRange.exclusions` as
+// `(string | LiteralStem) list` (a bare exclusion string = an exact literal
+// lexical form) and `LanguageStemRange.exclusions` as
+// `(string | LanguageStem) list` (a bare exclusion string = a language
+// tag/range). `decode_value_set_value`'s top-level "values"-array JString
+// case is correctly IRI-shorthand (per the general value_set_value
+// grammar), but reusing it verbatim for exclusions silently mis-decodes
+// e.g. `LiteralStemRange.exclusions: ["v1","v2","v3"]` as three IRI
+// ObjectValues that can never match a Literal target — the exclusion check
+// then vacuously never excludes anything. `decode_value_set_value_list_kind`
+// (below) is the context-aware exclusion-list decoder that fixes this.
+type shex_vsv_kind = | VSVK_Iri | VSVK_Literal | VSVK_Language
+
+let decode_bare_vsv_string (kind : shex_vsv_kind) (s : string) : shex_value_set_value =
+  match kind with
+  | VSVK_Iri -> VSV_Value (ShexOV_Iri s)
+  | VSVK_Literal -> VSV_Value (ShexOV_Literal s None None)
+  | VSVK_Language -> VSV_Language s
+
 type shex_node_constraint = {
   nc_node_kind      : option shex_node_kind;
   nc_datatype       : option string;
@@ -630,15 +651,15 @@ and decode_value_set_value (v:json_val) (fuel:nat)
              | Some lt -> Some (VSV_Language lt)
              | None -> None)
           | Some "IriStemRange" ->
-            (match decode_stem_range_parts v (fuel - 1) with
+            (match decode_stem_range_parts v VSVK_Iri (fuel - 1) with
              | Some (st, excl) -> Some (VSV_IriStemRange st excl)
              | None -> None)
           | Some "LiteralStemRange" ->
-            (match decode_stem_range_parts v (fuel - 1) with
+            (match decode_stem_range_parts v VSVK_Literal (fuel - 1) with
              | Some (st, excl) -> Some (VSV_LiteralStemRange st excl)
              | None -> None)
           | Some "LanguageStemRange" ->
-            (match decode_stem_range_parts v (fuel - 1) with
+            (match decode_stem_range_parts v VSVK_Language (fuel - 1) with
              | Some (st, excl) -> Some (VSV_LanguageStemRange st excl)
              | None -> None)
           | _ -> None))
@@ -658,11 +679,36 @@ and decode_value_set_value_list (items:list json_val) (fuel:nat)
           | None -> None
           | Some rest -> Some (vv :: rest)))
 
+// Context-aware exclusion-list decoder (see `shex_vsv_kind`'s doc comment):
+// a bare JString exclusion element is interpreted per `kind` instead of
+// always as an IRI; a JObject exclusion element (an explicit
+// IriStem/LiteralStem/LanguageStem, or an object-form Literal) is
+// unambiguous regardless of context, so it still goes through the general
+// `decode_value_set_value`.
+and decode_value_set_value_list_kind (items:list json_val) (kind:shex_vsv_kind) (fuel:nat)
+  : Tot (option (list shex_value_set_value)) (decreases fuel) =
+  if fuel = 0 then None
+  else
+    match items with
+    | [] -> Some []
+    | JString s :: tl ->
+      (match decode_value_set_value_list_kind tl kind (fuel - 1) with
+       | None -> None
+       | Some rest -> Some (decode_bare_vsv_string kind s :: rest))
+    | hd :: tl ->
+      (match decode_value_set_value hd (fuel - 1) with
+       | None -> None
+       | Some vv ->
+         (match decode_value_set_value_list_kind tl kind (fuel - 1) with
+          | None -> None
+          | Some rest -> Some (vv :: rest)))
+
 // Shared (stem, exclusions) decode for IriStemRange/LiteralStemRange/
 // LanguageStemRange — identical shape, differing only in which constructor
-// the caller wraps the result in. "exclusions" is optional (absent means no
-// exclusions, per the ShExJ grammar's "?" on that member).
-and decode_stem_range_parts (v:json_val) (fuel:nat)
+// the caller wraps the result in (and, per `kind`, how a bare-string
+// exclusion element is interpreted). "exclusions" is optional (absent means
+// no exclusions, per the ShExJ grammar's "?" on that member).
+and decode_stem_range_parts (v:json_val) (kind:shex_vsv_kind) (fuel:nat)
   : Tot (option (shex_stem & list shex_value_set_value)) (decreases fuel) =
   if fuel = 0 then None
   else
@@ -675,7 +721,7 @@ and decode_stem_range_parts (v:json_val) (fuel:nat)
          (match json_get_array "exclusions" v with
           | None -> Some (st, [])
           | Some items ->
-            (match decode_value_set_value_list items (fuel - 1) with
+            (match decode_value_set_value_list_kind items kind (fuel - 1) with
              | Some excl -> Some (st, excl)
              | None -> None)))
 
@@ -683,9 +729,25 @@ and decode_stem_range_parts (v:json_val) (fuel:nat)
 // Top level: ShapeDecl / Schema.
 // ================================================================
 
+// Two ShExJ ShapeDecl encodings both occur in the vendored corpus (stage 3
+// finding, formerly a stage-1 gap): the "generated" form
+// {"type":"ShapeDecl","id":..., "shapeExpr": {...}} used throughout
+// schemas/*.json, AND the "bare" shorthand ShExJ's own grammar also permits —
+// the shapeExpr object's own fields (e.g. {"type":"Shape","expression":...})
+// merged directly with "id" at the same JSON-object level, no nested
+// "shapeExpr" wrapper — used by several hand-written validation/*.json
+// fixtures (1dot-relative.json, Pstar.json, nPlus1.json, etc). Prefer the
+// nested "shapeExpr" field when present (unambiguous); otherwise treat `v`
+// itself as the shapeExpr (the extra "id"/"abstract" keys are simply ignored
+// by decode_shape_expr's field-specific accessors, which only look up the
+// keys they recognise).
 let decode_shape_decl (v:json_val) : option shex_shape_decl =
-  match json_get_string "id" v, json_get_field "shapeExpr" v with
-  | Some sid, Some sej ->
+  match json_get_string "id" v with
+  | None -> None
+  | Some sid ->
+    let sej = match json_get_field "shapeExpr" v with
+      | Some nested -> nested
+      | None -> v in
     (match decode_shape_expr sej (json_size sej) with
      | Some se ->
        Some ({
@@ -694,7 +756,6 @@ let decode_shape_decl (v:json_val) : option shex_shape_decl =
          sd_expr        = se;
        })
      | None -> None)
-  | _, _ -> None
 
 let rec decode_shape_decl_list (items:list json_val)
   : Tot (option (list shex_shape_decl)) (decreases items) =
