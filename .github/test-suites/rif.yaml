@@ -40,19 +40,28 @@ foundational: false
 # PositiveSyntaxTest/NegativeSyntaxTest/ImportRejectionTest categories
 # are unconditionally SKIPPED (no dialect-safeness or
 # import-rejection consistency checker -- out of scope this slice).
-# Score: 7 pass, 3 fail, 36 skip (out of 46), measured 2026-07-05; the
-# 3 FAILs are diagnosed in bin/rif-runner/README.md (2 genuine
-# construct/semantics gaps -- rdf:PlainLiteral lang-tag decoding,
-# OWL-Direct annotation-triple exclusion -- and 1 corpus data defect
-# in the official Core_v1.22.zip's RDF_Combination_Constant_Equivalence_4
-# import files, not this project's fault).
+# Score: 9 pass, 1 fail, 36 skip (out of 46), measured 2026-07-05
+# (updated from the initial 7/3/36 landing the same day -- see
+# bin/rif-runner/README.md's Score section). Two of the original 3
+# FAILs are now fixed in F*: rdf:PlainLiteral lang-tag decoding
+# (Parser.RIFXML.fst's const_from_type, "text@lang" ->
+# language-tagged literal / "text@" -> plain xsd:string) and
+# OWL-Direct annotation-triple exclusion (new
+# OWL.DirectMapping.Filter.fst, applied in rif_runner.ml's
+# apply_import_closure before the OWL-Direct closure runs). The 1
+# remaining FAIL, RDF_Combination_Constant_Equivalence_4, is a corpus
+# data defect in the official Core_v1.22.zip's import files
+# (malformed xsd:string datatype IRI), not this project's fault --
+# reported as a labelled FAIL with a KNOWN-DEFECT diagnostic line
+# (not moved to SKIP: the pipeline fully processes it, it just
+# doesn't entail under a correct datatype-IRI comparison).
 #
-# Combined score: 11 pass, 3 fail, 36 skip (out of 50). The runner
+# Combined score: 13 pass, 1 fail, 36 skip (out of 50). The runner
 # exits 1 whenever the combined fail count is nonzero (rif_runner.ml
 # main's `if grand_fail > 0 then exit 1`) -- CI consumers of this
-# suite's exit code should expect nonzero until the 3 diagnosed FAILs
-# above are fixed (all require F* edits, out of scope for the PR that
-# added Part 2).
+# suite's exit code should expect nonzero until the corpus-defect FAIL
+# above is somehow addressed upstream (it is not fixable in this
+# project without mismatching the correct RDF datatype-IRI semantics).
 #
 # See bin/rif-runner/rif_runner.ml's header comment and
 # docs/claude-rules/scope.md's RIF paragraph for the up-to-date
@@ -74,6 +83,10 @@ triggers:
     - formal/fstar/SPARQL11.Algebra.fst
     - formal/fstar/RDF.Graph.Executable.fst
     - formal/fstar/Tableau.fst
+    # OWL 2 Direct Semantics ontology-annotation-triple exclusion,
+    # applied to the imported companion graph before OWL-Direct
+    # closure (see the Non-Annotation_Entailment diagnosis above).
+    - formal/fstar/OWL.DirectMapping.Filter.fst
     # The real SPARQL query parser + evaluator this runner drives the
     # .rq files (Part 1) and the synthetic conclusion-BGP ASK queries
     # (Part 2) through.

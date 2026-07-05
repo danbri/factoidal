@@ -197,8 +197,17 @@ let apply_import_closure (mode : import_closure) (g : triple list) : triple list
     (try RDF_Graph_Executable.rdfs_closure_with_reflexivity g (Z.of_int 100)
      with _ -> g)
   | OWL_Direct_Closure ->
+    (* OWL 2 Direct Semantics excludes ontology-annotation triples
+       (predicates declared `rdf:type owl:AnnotationProperty` /
+       `owl:OntologyProperty`, e.g. dc:title on an owl:Ontology
+       individual) from the "regular" graph before entailment --
+       see OWL_DirectMapping_Filter.fst (F* semantics decision, per
+       bin/rif-runner/README.md's Non-Annotation_Entailment
+       diagnosis). Filtered BEFORE closure so annotation assertions
+       never seed a rule match downstream. *)
+    let g0 = OWL_DirectMapping_Filter.exclude_annotation_triples g in
     let fuel = Z.of_int 100 in
-    let g1 = RDF_Graph_Executable.owl_rl_closure_with_reflexivity g fuel in
+    let g1 = RDF_Graph_Executable.owl_rl_closure_with_reflexivity g0 fuel in
     let g2 = Tableau.tableau_materialise g1 in
     RDF_Graph_Executable.owl_rl_closure_with_reflexivity g2 fuel
 
@@ -779,6 +788,27 @@ let bump (tbl : bucket_tally) (label : string) : unit =
   let cur = try Hashtbl.find tbl label with Not_found -> 0 in
   Hashtbl.replace tbl label (cur + 1)
 
+(* RDF_Combination_Constant_Equivalence_4 is a genuine corpus data
+   defect, not an engine gap: both the vendored import001.rdf and
+   import001.ttl declare a malformed xsd:string datatype IRI (a
+   Windows local filesystem path / a scheme-less "www.w3.org/..."
+   prefix, respectively) that does not match the conclusion's
+   correctly-formed "http://www.w3.org/2001/XMLSchema#string" --
+   present in the official W3C Core_v1.22.zip distribution as
+   authored in 2010, uncorrected in the "Second Edition". Left
+   reporting FAIL rather than moved to SKIP: unlike the SKIP buckets
+   above (constructs this engine does not yet implement -- External,
+   Equal, Exists, List, safeness/import-rejection checking), this
+   test IS fully processed by the pipeline and genuinely does not
+   entail under a correct datatype-IRI comparison -- the honest
+   report is a labelled FAIL, not a skip that could be misread as
+   "not attempted". See bin/rif-runner/README.md's Score section for
+   the full diagnosis. *)
+let known_corpus_defect_note (name : string) : string option =
+  if name = "RDF_Combination_Constant_Equivalence_4"
+  then Some "KNOWN-DEFECT: malformed xsd:string datatype IRI in the official W3C Core_v1.22.zip corpus itself (see bin/rif-runner/README.md Score section) -- not an engine gap"
+  else None
+
 let run_corpus_suite (verbose : bool) : int * int * int * bucket_tally =
   let pass = ref 0 and fail = ref 0 and skip = ref 0 in
   let buckets : bucket_tally = Hashtbl.create 16 in
@@ -793,6 +823,11 @@ let run_corpus_suite (verbose : bool) : int * int * int * bucket_tally =
            Printf.printf "PASS corpus:%s (%s)\n" name category_name
          | CFail msg ->
            incr fail;
+           let msg =
+             match known_corpus_defect_note name with
+             | Some note -> Printf.sprintf "%s -- %s" msg note
+             | None -> msg
+           in
            Printf.printf "FAIL corpus:%s (%s): %s\n" name category_name msg
          | CSkip reason ->
            incr skip;

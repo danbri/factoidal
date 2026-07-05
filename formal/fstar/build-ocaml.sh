@@ -366,6 +366,7 @@ if [[ "$STEP" == "all" || "$STEP" == "extract" ]]; then
     RDF.Canonical.fst
     RDF.Canonical.Manifest.fst
     OWL.Vocabulary.fst
+    OWL.DirectMapping.Filter.fst
     Tableau.fst SPARQL11.IRI.Resolve.fst SPARQL11.Algebra.fst
     XSD.Datatypes.fst
     RDF.Pretty.fst
@@ -669,7 +670,7 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
   # (COTTAS runtime glue calls Parquet_Footer.probe_*). SPARQL11_Store
   # depends on Parser_BallyhooHDT and Parser_BallyhooCOTTAS. See
   # docs/designissues/2026-04-19-cottas-parquet-wiring-plan.md §Phase 1.
-  COMMON_MODULES="Util_Log.ml RDF_Format.ml RDF_Graph_Executable.ml RDF_List_Helpers.ml RDF_Bytes.ml RDF_Store_Loader.ml Parquet_Footer.ml OWL_Vocabulary.ml Tableau.ml \
+  COMMON_MODULES="Util_Log.ml RDF_Format.ml RDF_Graph_Executable.ml RDF_List_Helpers.ml RDF_Bytes.ml RDF_Store_Loader.ml Parquet_Footer.ml OWL_Vocabulary.ml OWL_DirectMapping_Filter.ml Tableau.ml \
     Parser_FastString.ml SPARQL11_IRI_Resolve.ml Parser_IRI.ml \
     RDF_NQuads_Serialize.ml \
     Parser_Combinators.ml Parser_TurtleScanner.ml Parser_NTriples.ml Parser_Turtle.ml \
@@ -1013,6 +1014,27 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
     fi
     echo "  Built: bin/${PLATFORM}/shex_runner ($(wc -c < "$BINDIR/shex_runner") bytes)"
 
+    # rif_runner — W3C RIF Core runner: the 4 vendored SPARQL-manifest
+    # cases (third_party/testing/rif/tc/) plus the official Core_v1.22
+    # corpus walker (third_party/testing/rif-core-suite/). Previously
+    # had no stanza here, so chain rebuilds silently reverted manual
+    # installs (caught 2026-07-05 when a concurrent agent's artifact
+    # revert restored a pre-fix binary). See bin/rif-runner/README.md.
+    RIF_RUNNER_RC=0
+    run_with_heartbeat "ocamlopt rif_runner" "_ocamlopt_rif_runner.log" -- \
+      ocamlfind ocamlopt -package fstar.lib,str,zarith,sha,digestif.c,unix -linkpkg -w -8-14-26 \
+      $STATIC_FLAGS \
+      $COMMON_MODULES \
+      $PARQUET_NATIVE_STUBS \
+      ../../../bin/rif-runner/rif_runner.ml \
+      -o "$BINDIR/rif_runner" || RIF_RUNNER_RC=$?
+    cat _ocamlopt_rif_runner.log
+    if [[ "$RIF_RUNNER_RC" -ne 0 ]]; then
+      echo "  ERROR: rif_runner build failed (ocamlopt rc=$RIF_RUNNER_RC)" >&2
+      exit "$RIF_RUNNER_RC"
+    fi
+    echo "  Built: bin/${PLATFORM}/rif_runner ($(wc -c < "$BINDIR/rif_runner") bytes)"
+
     # factoidal_http_client — minimal HTTP/1.1 client I/O glue around
     # the F*-extracted SPARQL.HTTP.Client module. Has a module-init
     # smoke-test hook gated on FACTOIDAL_HTTP_CLIENT_SMOKE=1 in the
@@ -1139,7 +1161,7 @@ if [[ "$STEP" == "all" || "$STEP" == "js" ]]; then
   # See docs/designissues/2026-04-19-cottas-parquet-wiring-plan.md.
   FSTAR_MODULES=(
     RDF_Format.ml
-    RDF_Graph_Executable.ml RDF_List_Helpers.ml RDF_Bytes.ml RDF_Store_Loader.ml Parquet_Footer.ml OWL_Vocabulary.ml Tableau.ml
+    RDF_Graph_Executable.ml RDF_List_Helpers.ml RDF_Bytes.ml RDF_Store_Loader.ml Parquet_Footer.ml OWL_Vocabulary.ml OWL_DirectMapping_Filter.ml Tableau.ml
     Parser_FastString.ml SPARQL11_IRI_Resolve.ml Parser_IRI.ml
     RDF_NQuads_Serialize.ml
     Parser_Combinators.ml Parser_TurtleScanner.ml Parser_NTriples.ml Parser_Turtle.ml

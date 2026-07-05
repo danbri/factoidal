@@ -1,5 +1,6 @@
 open Prims
 let rif_ns : Prims.string= "http://www.w3.org/2007/rif#"
+let rdf_ns : Prims.string= "http://www.w3.org/1999/02/22-rdf-syntax-ns#"
 let rec find_last_colon_aux (cs : FStar_Char.char Prims.list)
   (idx : Prims.nat) (last : Prims.nat FStar_Pervasives_Native.option) :
   Prims.nat FStar_Pervasives_Native.option=
@@ -122,6 +123,61 @@ let typed_literal_const (ty : Prims.string) (lex : Prims.string) :
               RDF_Graph_Executable.lang_tag = FStar_Pervasives_Native.None
             }))
   else FStar_Pervasives_Native.None
+let is_plain_literal_type_marker (ty : Prims.string) : Prims.bool=
+  ((ty = (FStar_String.concat "" [rdf_ns; "PlainLiteral"])) ||
+     (ty = "PlainLiteral"))
+    || ((local_name ty) = "PlainLiteral")
+let rec find_last_at_aux (cs : FStar_Char.char Prims.list) (idx : Prims.nat)
+  (last : Prims.nat FStar_Pervasives_Native.option) :
+  Prims.nat FStar_Pervasives_Native.option=
+  match cs with
+  | [] -> last
+  | c::rest ->
+      if (FStar_Char.int_of_char c) = (Prims.of_int (0x40))
+      then
+        find_last_at_aux rest (idx + Prims.int_one)
+          (FStar_Pervasives_Native.Some idx)
+      else find_last_at_aux rest (idx + Prims.int_one) last
+let find_last_at (s : Prims.string) :
+  Prims.nat FStar_Pervasives_Native.option=
+  find_last_at_aux (FStar_String.list_of_string s) Prims.int_zero
+    FStar_Pervasives_Native.None
+let plain_literal_const (lex : Prims.string) :
+  RIF_Core_Syntax.rif_term FStar_Pervasives_Native.option=
+  match find_last_at lex with
+  | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+  | FStar_Pervasives_Native.Some pos ->
+      let len = FStar_String.strlen lex in
+      if pos >= len
+      then FStar_Pervasives_Native.None
+      else
+        (let text = FStar_String.sub lex Prims.int_zero pos in
+         let lang =
+           FStar_String.sub lex (pos + Prims.int_one)
+             ((len - pos) - Prims.int_one) in
+         if (FStar_String.strlen lang) = Prims.int_zero
+         then
+           FStar_Pervasives_Native.Some
+             (RIF_Core_Syntax.mk_const
+                (RDF_Graph_Executable.T_Literal
+                   {
+                     RDF_Graph_Executable.lexical_form = text;
+                     RDF_Graph_Executable.datatype =
+                       RDF_Graph_Executable.xsd_string;
+                     RDF_Graph_Executable.lang_tag =
+                       FStar_Pervasives_Native.None
+                   }))
+         else
+           FStar_Pervasives_Native.Some
+             (RIF_Core_Syntax.mk_const
+                (RDF_Graph_Executable.T_Literal
+                   {
+                     RDF_Graph_Executable.lexical_form = text;
+                     RDF_Graph_Executable.datatype =
+                       RDF_Graph_Executable.rdf_lang_string;
+                     RDF_Graph_Executable.lang_tag =
+                       (FStar_Pervasives_Native.Some lang)
+                   })))
 let const_from_type (ty : Prims.string) (lex : Prims.string) :
   RIF_Core_Syntax.rif_term FStar_Pervasives_Native.option=
   if is_iri_type_marker ty
@@ -134,7 +190,10 @@ let const_from_type (ty : Prims.string) (lex : Prims.string) :
   else
     if is_local_type_marker ty
     then local_to_iri lex
-    else typed_literal_const ty lex
+    else
+      if is_plain_literal_type_marker ty
+      then plain_literal_const lex
+      else typed_literal_const ty lex
 let parse_const (n : Parser_XML.xml_node) :
   RIF_Core_Syntax.rif_term FStar_Pervasives_Native.option=
   match n with

@@ -133,11 +133,13 @@ slice (new F* modules, not runner glue).
 
 ## Score
 
-Measured 2026-07-05:
+Measured 2026-07-05 (initial corpus landing: 7 pass, 3 fail, 36 skip
+of 46 for Part 2; updated same day after fixing 2 of the 3 FAILs —
+see below):
 
 - **Part 1 (original 4 vendored SPARQL-manifest cases): 4 pass, 0 fail (out of 4).**
-- **Part 2 (vendored W3C RIF Core dialect corpus): 7 pass, 3 fail, 36 skip (out of 46).**
-- **Combined: 11 pass, 3 fail, 36 skip (out of 50).**
+- **Part 2 (vendored W3C RIF Core dialect corpus): 9 pass, 1 fail, 36 skip (out of 46).**
+- **Combined: 13 pass, 1 fail, 36 skip (out of 50).**
 
 Skip buckets (by construct/reason):
 
@@ -162,34 +164,65 @@ project's declared RIF scope (see `docs/claude-rules/scope.md`).
 atoms, existential quantification, list terms) that a real Core
 parser extension would need; each appears in only 1-2 tests here.
 
-The 3 FAILs are real, diagnosed, and left unfixed (fixing any of them
-needs F* edits, out of scope this slice):
+Of the original 3 FAILs, 2 are now fixed in F\* and 1 remains (a
+corpus data defect, not fixable without breaking correct RDF
+datatype-IRI semantics):
 
-- `RDF_Combination_Constant_Equivalence_3` — the conclusion's
-  `<Const type="&rdf;PlainLiteral">with language tag@en</Const>`
-  should decode to a plain literal `"with language tag"@en`
-  (RIF-in-RDF's `rdf:PlainLiteral` symbol space packs `text@lang` as
-  one string); `Parser.RIFXML.fst`'s `const_from_type` treats
-  `rdf:PlainLiteral` as a generic typed literal and keeps the `@en`
-  suffix inside `lexical_form`, so it never matches the imported
-  graph's real language-tagged literal.
-- `RDF_Combination_Constant_Equivalence_4` — a **corpus data defect**,
-  not an engine gap: both `import001.rdf` (datatype
+- `RDF_Combination_Constant_Equivalence_3` — **fixed.** The
+  conclusion's `<Const type="&rdf;PlainLiteral">with language
+  tag@en</Const>` needed to decode to a plain literal `"with language
+  tag"@en` (RIF-in-RDF's `rdf:PlainLiteral` symbol space packs
+  `text@lang` as one string, `text@` with an empty tag denoting a
+  plain `xsd:string`). `Parser.RIFXML.fst` gains
+  `is_plain_literal_type_marker` + `plain_literal_const`: on the
+  `rdf:PlainLiteral` type marker, split the lexical form on its last
+  `@` (`find_last_at`, same traversal shape as the existing
+  `find_last_colon` used by `local_name`) into text/lang, producing a
+  language-tagged literal when the tag is non-empty, else a plain
+  `xsd:string`. `const_from_type` dispatches to it before falling
+  through to the generic `typed_literal_const` path.
+- `Non-Annotation_Entailment` — **fixed.** The imported `dc:title`
+  predicate is typed `owl:OntologyProperty` (annotation-only) on an
+  `owl:Ontology` individual; under the OWL 2 Direct Semantics
+  RDF-compatible mapping, ontology-annotation triples are excluded
+  from the "regular" graph before entailment checking, so the RIF
+  rule `?x dc:title ?y => ?x hasTitle ?y` must never fire. New module
+  `OWL.DirectMapping.Filter.fst` — deliberately standalone rather
+  than an edit to `RDF.Graph.Executable.fst` (owned by a concurrent
+  work item the same wave this was fixed; the filter only needs that
+  file's already-exported `triple`/`rdf_graph`/`wf_iri` types) —
+  exports `exclude_annotation_triples`: drop every triple whose
+  predicate is declared (elsewhere in the same graph)
+  `rdf:type owl:AnnotationProperty` or the legacy OWL 1 DL
+  `owl:OntologyProperty`. `rif_runner.ml`'s `apply_import_closure`
+  calls it on the imported companion graph before the OWL-Direct
+  closure steps (`owl_rl_closure_with_reflexivity` +
+  `Tableau.tableau_materialise`) run, so the annotation assertion
+  never reaches the closure or the rule match. Scope note: this
+  covers the "predicate declared annotation/ontology-only in-graph"
+  case the corpus exercises; it does not special-case the built-in
+  OWL 2 annotation properties needing no declaration (`rdfs:label`,
+  `rdfs:comment`, `owl:versionInfo`, ...) or
+  `owl:annotatedSource`/`Property`/`Target` reification — no vendored
+  test here exercises those, so extending speculatively would be
+  scope creep without a driving test.
+- `RDF_Combination_Constant_Equivalence_4` — **still fails; a corpus
+  data defect**, not an engine gap: both `import001.rdf` (datatype
   `file:///C:/work/eclipse_workspaces/.../XMLSchema#string`) and
   `import001.ttl` (`@prefix xs: <www.w3.org/2001/XMLSchema#>`, no
   scheme) declare a malformed `xsd:string` datatype IRI that does not
   match the conclusion's correct `http://www.w3.org/2001/XMLSchema#string`
   — present in the official W3C `Core_v1.22.zip` distribution as
-  authored in 2010, uncorrected in the "Second Edition".
-- `Non-Annotation_Entailment` — an OWL-Direct semantics gap: the
-  imported `dc:title` predicate is typed `owl:OntologyProperty`
-  (annotation-only) on an `owl:Ontology` individual; under the OWL 2
-  Direct Semantics RDF-compatible mapping, ontology-annotation
-  triples are excluded from the "regular" graph before entailment
-  checking, so the RIF rule `?x dc:title ?y => ?x hasTitle ?y`
-  should never fire. This project's OWL-Direct closure
-  (`owl_rl_closure_with_reflexivity` + `Tableau.tableau_materialise`)
-  has no annotation-triple exclusion step, so the rule fires anyway.
+  authored in 2010, uncorrected in the "Second Edition". Left as a
+  labelled FAIL (not moved to a SKIP bucket): the pipeline fully
+  processes this test end to end and it genuinely does not entail
+  under a correct datatype-IRI comparison, which is a different kind
+  of honesty gap than the SKIP buckets above (constructs/checks not
+  yet implemented at all). `rif_runner.ml`'s `run_corpus_suite`
+  appends a `KNOWN-DEFECT: ...` note to this specific test's FAIL
+  line (`known_corpus_defect_note`) pointing back at this section
+  rather than silently leaving a bare "expected entailed=true, got
+  false".
 
 ## Why the source lives here, not in `formal/fstar/ocaml-output/`
 
@@ -228,6 +261,25 @@ ocamlfind ocamlopt -package fstar.lib,str,zarith,sha,digestif.c,unix -linkpkg -w
 ```
 (`$COMMON_MODULES` is the exact string from `build-ocaml.sh`'s
 `compile` step — not reproduced here to avoid drift.)
+
+**`OWL_DirectMapping_Filter.ml` caveat (as of the Non-Annotation_Entailment
+fix, 2026-07-05):** `rif_runner.ml` now calls
+`OWL_DirectMapping_Filter.exclude_annotation_triples`, but
+`OWL.DirectMapping.Filter.fst` was deliberately **not** added to
+`build-ocaml.sh`'s `ALL_MODULES`/`COMMON_MODULES` lists this wave —
+that script is shared with concurrent work and the new module's only
+consumer today is this runner. Until a follow-up wires it into the
+three lists (per the `fast-verify-extract`/`workflow-gotchas-debugging`
+skills' "new module" rule), build this runner with
+`OWL_DirectMapping_Filter.ml` inserted into `$COMMON_MODULES` by hand
+(right after `OWL_Vocabulary.ml`, since it depends only on
+`RDF_Graph_Executable.ml`), and extract it directly rather than via
+`build-ocaml.sh extract`:
+
+```
+fstar.exe --z3version 4.13.3 --codegen OCaml --odir formal/fstar/ocaml-output \
+  --cache_checked_modules formal/fstar/OWL.DirectMapping.Filter.fst
+```
 
 ## Cross-references
 

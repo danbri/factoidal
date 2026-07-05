@@ -91,6 +91,10 @@ module Syn = RIF.Core.Syntax
 
 let rif_ns : string = "http://www.w3.org/2007/rif#"
 
+// RDF namespace, needed to recognise the rdf:PlainLiteral type
+// marker (see is_plain_literal_type_marker below).
+let rdf_ns : string = "http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+
 // Find the position of the LAST colon, if any. RIF-XML never uses
 // hierarchical names with more than one colon, but tag inputs of
 // the form "rif:Atom" need the local name "Atom".
@@ -261,6 +265,64 @@ let typed_literal_const (ty : string) (lex : string) : option Syn.rif_term =
     })))
   else None
 
+// rdf:PlainLiteral marker — the RIF-in-RDF compatibility mapping
+// (https://www.w3.org/TR/rif-rdf-owl/#Data_Types), section on the
+// rdf:PlainLiteral datatype: its lexical space packs a text/language
+// pair as "text@lang", with the empty-tag case "text@" denoting a
+// plain (no language) string. Accept the fully-resolved IRI, the
+// bare local name, and any "prefix:PlainLiteral" form, mirroring
+// is_iri_type_marker / is_local_type_marker above.
+let is_plain_literal_type_marker (ty : string) : bool =
+  ty = String.concat "" [rdf_ns; "PlainLiteral"]
+  || ty = "PlainLiteral"
+  || local_name ty = "PlainLiteral"
+
+// Find the position of the LAST '@', if any — the language-tag
+// separator. Same traversal shape as find_last_colon_aux above.
+let rec find_last_at_aux (cs : list FStar.Char.char) (idx : nat) (last : option nat)
+  : Tot (option nat) (decreases cs) =
+  match cs with
+  | [] -> last
+  | c :: rest ->
+    if FStar.Char.int_of_char c = 0x40
+    then find_last_at_aux rest (idx + 1) (Some idx)
+    else find_last_at_aux rest (idx + 1) last
+
+let find_last_at (s : string) : option nat =
+  find_last_at_aux (String.list_of_string s) 0 None
+
+// Decode an rdf:PlainLiteral lexical form "text@lang" (or "text@",
+// empty tag) into the RIF term for the RDF literal it denotes: a
+// language-tagged literal when the tag is non-empty, else a plain
+// xsd:string literal. No '@' at all is not valid rdf:PlainLiteral
+// lexical form (the compatibility mapping always includes the
+// separator, even for the empty tag), so that case fails cleanly
+// rather than guessing.
+let plain_literal_const (lex : string) : option Syn.rif_term =
+  match find_last_at lex with
+  | None -> None
+  | Some pos ->
+    let len = String.length lex in
+    // find_last_at's result carries no refinement tying it back to
+    // String.length lex, so re-establish the bound explicitly (same
+    // pattern as local_name's "if pos + 1 >= len then ..." guard
+    // above) before the String.sub calls below can typecheck.
+    if pos >= len then None
+    else
+      let text = String.sub lex 0 pos in
+      let lang = String.sub lex (pos + 1) (len - pos - 1) in
+      if String.length lang = 0
+      then Some (Syn.mk_const (T_Literal ({
+             lexical_form = text;
+             datatype = xsd_string;
+             lang_tag = None;
+           })))
+      else Some (Syn.mk_const (T_Literal ({
+             lexical_form = text;
+             datatype = rdf_lang_string;
+             lang_tag = Some lang;
+           })))
+
 let const_from_type (ty : string) (lex : string) : option Syn.rif_term =
   if is_iri_type_marker ty then
     if is_iri lex
@@ -273,6 +335,8 @@ let const_from_type (ty : string) (lex : string) : option Syn.rif_term =
     // none of the four target tests rely on the more elaborate
     // semantics.
     local_to_iri lex
+  else if is_plain_literal_type_marker ty then
+    plain_literal_const lex
   else
     typed_literal_const ty lex
 
