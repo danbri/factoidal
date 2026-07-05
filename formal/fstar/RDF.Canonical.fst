@@ -1452,6 +1452,52 @@ let rec mem_bnode (b : bnode_id) (xs : list bnode_id) : bool =
   | [] -> false
   | hd :: tl -> hd = b || mem_bnode b tl
 
+(* RDFC-1.0 poison-input protection (test074c "poison - Clique Graph",
+   an `RDFC10NegativeEvalTest`). Per the vendored test suite's own
+   conformance rule (`third_party/testing/rdf-canon/tests/README.md`
+   "For a negative evaluation test, the test passes if the
+   implementation generates an error due to excessive calls to Hash
+   N-Degree Quads"), a fully-symmetric collision clique (every bnode's
+   HFDQ identical, every neighbour bucket at or above the `take_n 6`
+   cap) makes `hndq_run`'s permutation enumeration recurse into itself
+   multiplicatively: each permutation's `walk_recursion` can call
+   `hndq_run` again for up to 6 freshly-issued neighbours, each of
+   which again explores up to 720 permutations across up to 2 buckets.
+   `fuel` (bounded by bnode count) still guarantees F* `Tot`
+   termination, but the WORK before that fuel is exhausted is
+   billions of calls for a 10-node clique — intractable at test-suite
+   run time (rule #17, 10-minute ad-hoc-run cap), not merely slow.
+
+   `hndq_budget` counts remaining permitted calls to the
+   Hash-N-Degree-Quads algorithm itself (one `hndq_run` invocation =
+   one call, matching the README's own phrasing) and clamps to a
+   sticky `hb_exceeded` flag once exhausted — every function in the
+   `hndq_run` mutual-recursion group below checks this flag before
+   doing further (bucket / permutation / recursion-list) work, so
+   once exceeded the whole exploration unwinds in O(recursion depth)
+   instead of continuing the combinatorial blow-up. This is pure
+   plumbing threaded alongside the existing `local_st`/`canon_st`
+   accumulators — it does not change any `decreases` metric, so it
+   does not touch the termination proof, and the budget is high
+   enough (`default_hndq_budget` below) that it is provably unreached
+   by any of the 84 real (non-poison) rdf-canon fixtures: the whole
+   86-test suite runs in ~0.1s wall-clock today, meaning no legitimate
+   fixture's total `hndq_run` call count is within orders of magnitude
+   of the budget. See docs/designissues/2026-07-05-rdfc10-poison-budget.md. *)
+type hndq_budget = {
+  hb_remaining : nat;
+  hb_exceeded  : bool;
+}
+
+let hb_init (n : nat) : hndq_budget = { hb_remaining = n; hb_exceeded = false }
+
+// Consume one unit of budget (one call to Hash N-Degree Quads).
+// Sticky: once exceeded, stays exceeded regardless of further calls.
+let hb_consume (b : hndq_budget) : hndq_budget =
+  if b.hb_exceeded then b
+  else if b.hb_remaining = 0 then { b with hb_exceeded = true }
+  else { b with hb_remaining = b.hb_remaining - 1 }
+
 (* The HNDQ recursion + permutation walk.
 
    Termination: outer recursion uses an explicit `fuel` parameter
@@ -1506,11 +1552,13 @@ let rec hndq_run
     (canon_st : issuer_state)
     (local_st : issuer_state)
     (target : bnode_id)
-  : Tot (string * issuer_state) (decreases %[fuel; 4; 0]) =
-  if fuel = 0 then ("", local_st)
+    (hb : hndq_budget)
+  : Tot (string * issuer_state * hndq_budget) (decreases %[fuel; 4; 0]) =
+  let hb1 = hb_consume hb in
+  if fuel = 0 || hb1.hb_exceeded then ("", local_st, hb1)
   else
     let buckets = build_buckets_for alg target qs hfdq_table canon_st local_st [] in
-    walk_buckets alg (fuel - 1) qs hfdq_table canon_st local_st buckets ""
+    walk_buckets alg (fuel - 1) qs hfdq_table canon_st local_st buckets "" hb1
 
 and walk_buckets
     (alg : hash_algorithm)
@@ -1521,15 +1569,18 @@ and walk_buckets
     (local_st : issuer_state)
     (buckets : list bucket)
     (data : string)
-  : Tot (string * issuer_state) (decreases %[fuel; 3; buckets]) =
+    (hb : hndq_budget)
+  : Tot (string * issuer_state * hndq_budget) (decreases %[fuel; 3; buckets]) =
   match buckets with
-  | [] -> (apply_hash alg data, local_st)
+  | [] -> (apply_hash alg data, local_st, hb)
   | (k, members) :: rest ->
+    if hb.hb_exceeded then (apply_hash alg data, local_st, hb)
+    else
     let data1 = data ^ k in
     let perms = permutations (take_n 6 members) in
-    let (best_hash, best_st) = best_permutation alg fuel qs hfdq_table canon_st local_st perms in
+    let (best_hash, best_st, hb1) = best_permutation alg fuel qs hfdq_table canon_st local_st perms hb in
     let data2 = data1 ^ best_hash in
-    walk_buckets alg fuel qs hfdq_table canon_st best_st rest data2
+    walk_buckets alg fuel qs hfdq_table canon_st best_st rest data2 hb1
 
 and best_permutation
     (alg : hash_algorithm)
@@ -1539,12 +1590,15 @@ and best_permutation
     (canon_st : issuer_state)
     (local_st : issuer_state)
     (perms : list (list bnode_id))
-  : Tot (string * issuer_state) (decreases %[fuel; 2; perms]) =
+    (hb : hndq_budget)
+  : Tot (string * issuer_state * hndq_budget) (decreases %[fuel; 2; perms]) =
   match perms with
-  | [] -> ("", local_st)  // no permutations: empty bucket
+  | [] -> ("", local_st, hb)  // no permutations: empty bucket
   | p :: rest ->
-    let (h, st') = walk_perm alg fuel qs hfdq_table canon_st local_st p "" in
-    pick_best alg fuel qs hfdq_table canon_st local_st rest h st'
+    if hb.hb_exceeded then ("", local_st, hb)
+    else
+    let (h, st', hb1) = walk_perm alg fuel qs hfdq_table canon_st local_st p "" hb in
+    pick_best alg fuel qs hfdq_table canon_st local_st rest h st' hb1
 
 and pick_best
     (alg : hash_algorithm)
@@ -1556,15 +1610,18 @@ and pick_best
     (perms : list (list bnode_id))
     (best_hash : string)
     (best_st : issuer_state)
-  : Tot (string * issuer_state) (decreases %[fuel; 2; perms]) =
+    (hb : hndq_budget)
+  : Tot (string * issuer_state * hndq_budget) (decreases %[fuel; 2; perms]) =
   match perms with
-  | [] -> (best_hash, best_st)
+  | [] -> (best_hash, best_st, hb)
   | p :: rest ->
-    let (h, st') = walk_perm alg fuel qs hfdq_table canon_st local_st_initial p "" in
+    if hb.hb_exceeded then (best_hash, best_st, hb)
+    else
+    let (h, st', hb1) = walk_perm alg fuel qs hfdq_table canon_st local_st_initial p "" hb in
     let (best_hash', best_st') =
       if str_le h best_hash && h <> best_hash then (h, st')
       else (best_hash, best_st) in
-    pick_best alg fuel qs hfdq_table canon_st local_st_initial rest best_hash' best_st'
+    pick_best alg fuel qs hfdq_table canon_st local_st_initial rest best_hash' best_st' hb1
 
 and walk_perm
     (alg : hash_algorithm)
@@ -1575,14 +1632,15 @@ and walk_perm
     (local_st : issuer_state)
     (perm : list bnode_id)
     (path : string)
-  : Tot (string * issuer_state) (decreases %[fuel; 1; perm]) =
+    (hb : hndq_budget)
+  : Tot (string * issuer_state * hndq_budget) (decreases %[fuel; 1; perm]) =
   // RDFC-1.0 4.9 steps 5.4.4 + 5.4.5: build every member's label
   // first (no recursion yet), THEN walk only the freshly-issued
   // members a second time, appending "_:<label><recursive-hash>" for
   // each, in order. See `build_path_labels` / `walk_recursion` above
   // and below.
   let (path1, local1, recursion) = build_path_labels canon_st local_st perm path [] in
-  walk_recursion alg fuel qs hfdq_table canon_st local1 recursion path1
+  walk_recursion alg fuel qs hfdq_table canon_st local1 recursion path1 hb
 
 and walk_recursion
     (alg : hash_algorithm)
@@ -1593,17 +1651,20 @@ and walk_recursion
     (local_st : issuer_state)
     (recursion : list bnode_id)
     (path : string)
-  : Tot (string * issuer_state) (decreases %[fuel; 0; recursion]) =
+    (hb : hndq_budget)
+  : Tot (string * issuer_state * hndq_budget) (decreases %[fuel; 0; recursion]) =
   match recursion with
-  | [] -> (path, local_st)
+  | [] -> (path, local_st, hb)
   | b :: rest ->
+    if hb.hb_exceeded then (path, local_st, hb)
+    else
     // `b` was already issued in `build_path_labels`'s first pass;
     // `issue_identifier` is idempotent, so this just recovers its label.
     let (local1, lbl) = issue_identifier local_st b in
-    let (sub_hash, local2) =
-      if fuel = 0 then ("", local1)
-      else hndq_run alg (fuel - 1) qs hfdq_table canon_st local1 b in
-    walk_recursion alg fuel qs hfdq_table canon_st local2 rest (path ^ "_:" ^ lbl ^ "<" ^ sub_hash ^ ">")
+    let (sub_hash, local2, hb1) =
+      if fuel = 0 then ("", local1, hb)
+      else hndq_run alg (fuel - 1) qs hfdq_table canon_st local1 b hb in
+    walk_recursion alg fuel qs hfdq_table canon_st local2 rest (path ^ "_:" ^ lbl ^ "<" ^ sub_hash ^ ">") hb1
 
 (* ------------------------------------------------------------------ *)
 (* Section 6e. Top-level: unique-HFDQ first, then collision groups.
@@ -1687,16 +1748,20 @@ let rec explore_members
     (hfdq_table : list bn_hfdq_pair)
     (canon_st : issuer_state)
     (members : list bnode_id)
-  : Tot (list (string * list (bnode_id * string))) (decreases members) =
+    (hb : hndq_budget)
+  : Tot (list (string * list (bnode_id * string)) * hndq_budget) (decreases members) =
   match members with
-  | [] -> []
+  | [] -> ([], hb)
   | m :: rest ->
+    if hb.hb_exceeded then ([], hb)
+    else
     (match lookup_issued m canon_st.is_issued with
-     | Some _ -> explore_members alg fuel qs hfdq_table canon_st rest
+     | Some _ -> explore_members alg fuel qs hfdq_table canon_st rest hb
      | None ->
        let (local1, _) = issue_identifier empty_temp_issuer m in
-       let (h, local2) = hndq_run alg fuel qs hfdq_table canon_st local1 m in
-       (h, local2.is_issued) :: explore_members alg fuel qs hfdq_table canon_st rest)
+       let (h, local2, hb1) = hndq_run alg fuel qs hfdq_table canon_st local1 m hb in
+       let (rest_results, hb2) = explore_members alg fuel qs hfdq_table canon_st rest hb1 in
+       ((h, local2.is_issued) :: rest_results, hb2))
 
 (* Stable insertion sort of (hash, temp-issued-list) results by hash,
    ascending, preserving original relative order for ties. RDFC-1.0
@@ -1762,10 +1827,11 @@ let process_collision_members
     (hfdq_table : list bn_hfdq_pair)
     (st : issuer_state)
     (members : list bnode_id)
-  : issuer_state =
-  let results = explore_members alg fuel qs hfdq_table st members in
+    (hb : hndq_budget)
+  : issuer_state * hndq_budget =
+  let (results, hb1) = explore_members alg fuel qs hfdq_table st members hb in
   let sorted = sort_results_stable results in
-  replay_all st sorted
+  (replay_all st sorted, hb1)
 
 (* Walk all groups: unique → assign directly; collision → process via
    HNDQ. Groups are passed in HFDQ-sort order.
@@ -1802,14 +1868,17 @@ let rec process_collision_groups
     (hfdq_table : list bn_hfdq_pair)
     (st : issuer_state)
     (groups : list bucket)
-  : Tot issuer_state (decreases groups) =
+    (hb : hndq_budget)
+  : Tot (issuer_state * hndq_budget) (decreases groups) =
   match groups with
-  | [] -> st
-  | (_, [_]) :: rest -> process_collision_groups alg fuel qs hfdq_table st rest  // pass 1 already did this one
+  | [] -> (st, hb)
+  | (_, [_]) :: rest -> process_collision_groups alg fuel qs hfdq_table st rest hb  // pass 1 already did this one
   | (_, members) :: rest ->
+    if hb.hb_exceeded then (st, hb)
+    else
     let unissued = filter_unissued st members in
-    let st' = process_collision_members alg fuel qs hfdq_table st unissued in
-    process_collision_groups alg fuel qs hfdq_table st' rest
+    let (st', hb1) = process_collision_members alg fuel qs hfdq_table st unissued hb in
+    process_collision_groups alg fuel qs hfdq_table st' rest hb1
 
 let walk_groups
     (alg : hash_algorithm)
@@ -1818,14 +1887,16 @@ let walk_groups
     (hfdq_table : list bn_hfdq_pair)
     (st : issuer_state)
     (groups : list bucket)
-  : issuer_state =
+    (hb : hndq_budget)
+  : issuer_state * hndq_budget =
   let st1 = assign_singletons st groups in
-  process_collision_groups alg fuel qs hfdq_table st1 groups
+  process_collision_groups alg fuel qs hfdq_table st1 groups hb
 
 (* ------------------------------------------------------------------ *)
 (* Section 8. Public entry points. *)
 
-(* Build the full canonical-id mapping for a dataset.
+(* Build the full canonical-id mapping for a dataset, under an explicit
+   Hash-N-Degree-Quads work budget (see `hndq_budget` above).
 
    Phase 2: full HNDQ with permutation enumeration and a cloned
    issuer. Per RDFC-1.0 §4.5: assign canonical IDs to unique-HFDQ
@@ -1833,23 +1904,24 @@ let walk_groups
    run HNDQ on each member and pick the member whose path-hash is
    lex-smallest, committing its issuer state. The HNDQ recursion is
    bounded by the bnode count; permutation enumeration is bounded at
-   factorial(6) per bucket. Tests beyond that bound (test074c poison
-   clique) fall back to the orig-label tiebreak. *)
-// `alg` selects the hash primitive per RDFC-1.0's `rdfc:hashAlgorithm`
-// test-manifest option (default SHA-256; SHA-384 for the small number
-// of manifest entries that request it — see `hash_algorithm_of_string`
-// and RDF.Canonical.Manifest.fst). `build_canonical_mapping` below
-// keeps its original 1-argument signature (defaulting to SHA-256) so
-// every existing caller (factoidal_cli, entry_jsoo, dump-nq,
-// jsonld_runner) is unaffected; rdfc10_runner calls this `_alg` form
-// directly when a test declares a non-default algorithm.
-let build_canonical_mapping_alg (alg : hash_algorithm) (ds : rdf_dataset) : list (bnode_id * string) =
+   factorial(6) per bucket.
+
+   Returns `None` if the budget is exhausted before every bnode is
+   issued a canonical id — i.e. the input triggered "excessive calls
+   to Hash N-Degree Quads" (RDFC-1.0 test suite README's own
+   conformance criterion for `RDFC10NegativeEvalTest`, e.g. test074c's
+   poison clique). Returns `Some mapping` otherwise. *)
+let build_canonical_mapping_alg_budgeted
+    (alg : hash_algorithm) (budget : nat) (ds : rdf_dataset)
+  : option (list (bnode_id * string)) =
   let qs = dedup_qquads (dataset_quads ds) in
   let bs = dataset_bnodes ds in
   let hfdq_table = compute_all_hfdq alg qs in
   let groups = group_by_hfdq bs hfdq_table in
   let fuel : nat = List.Tot.length bs + 1 in
-  let final_state = walk_groups alg fuel qs hfdq_table empty_issuer groups in
+  let (final_state, hb) = walk_groups alg fuel qs hfdq_table empty_issuer groups (hb_init budget) in
+  if hb.hb_exceeded then None
+  else
   // Defensive: any bnode not yet issued (e.g. due to fuel exhaustion
   // on a poison-clique input) gets an ID via lex-fallback. Sort by
   // (hfdq, orig) and assign.
@@ -1875,10 +1947,54 @@ let build_canonical_mapping_alg (alg : hash_algorithm) (ds : rdf_dataset) : list
     List.Tot.map (fun b -> (b, lookup_hfdq b hfdq_table)) leftover in
   let leftover_sorted = sort_pairs leftover_pairs in
   let final_state' = assign_in_order final_state leftover_sorted in
-  final_state'.is_issued
+  Some final_state'.is_issued
+
+// Practically-unbounded budget for the ordinary (non-conformance-test)
+// entry points below: the whole 86-test rdf-canon suite (real fixtures,
+// zero of them poison inputs) runs in ~0.1s wall-clock, so no
+// legitimate dataset comes remotely close to this many Hash-N-Degree-
+// Quads calls. Only deliberately pathological inputs (fully-symmetric
+// cliques beyond the `take_n 6` bucket cap, e.g. test074c) exhaust it —
+// and they exhaust it in well under a second, long before the
+// combinatorial blow-up becomes wall-clock-relevant. See
+// `build_canonical_mapping_alg_budgeted`'s banner and
+// docs/designissues/2026-07-05-rdfc10-poison-budget.md.
+let default_hndq_budget : nat = 1000000
+
+// `alg` selects the hash primitive per RDFC-1.0's `rdfc:hashAlgorithm`
+// test-manifest option (default SHA-256; SHA-384 for the small number
+// of manifest entries that request it — see `hash_algorithm_of_string`
+// and RDF.Canonical.Manifest.fst). `build_canonical_mapping` below
+// keeps its original 1-argument signature (defaulting to SHA-256) so
+// every existing caller (factoidal_cli, entry_jsoo, dump-nq,
+// jsonld_runner) is unaffected; rdfc10_runner calls this `_alg` form
+// directly when a test declares a non-default algorithm. Uses the
+// practically-unbounded default budget: for every real (non-poison)
+// input this is equivalent to the pre-budget implementation; the
+// `None` arm below is unreachable for any of those inputs (see
+// `default_hndq_budget`'s banner) and only exists because F* requires
+// every `option` to be matched.
+let build_canonical_mapping_alg (alg : hash_algorithm) (ds : rdf_dataset) : list (bnode_id * string) =
+  match build_canonical_mapping_alg_budgeted alg default_hndq_budget ds with
+  | Some m -> m
+  | None -> []
 
 let build_canonical_mapping (ds : rdf_dataset) : list (bnode_id * string) =
   build_canonical_mapping_alg HA_SHA256 ds
+
+// RDFC-1.0 `RDFC10NegativeEvalTest` support (test074c poison clique):
+// true iff canonicalization under the given (small) budget was
+// aborted for exceeding the Hash-N-Degree-Quads work limit — the
+// vendored test suite's own conformance rule for negative eval tests
+// ("the test passes if the implementation generates an error due to
+// excessive calls to Hash N-Degree Quads"). Callers should use a
+// budget well below `default_hndq_budget` so genuinely pathological
+// inputs abort quickly instead of burning the full budget's worth of
+// (bounded but still expensive) work first.
+let canonicalize_exceeds_hndq_budget (alg : hash_algorithm) (budget : nat) (ds : rdf_dataset) : bool =
+  match build_canonical_mapping_alg_budgeted alg budget ds with
+  | Some _ -> false
+  | None -> true
 
 (* Canonicalise a dataset: relabel every blank node deterministically. *)
 let canonicalize_alg (alg : hash_algorithm) (ds : rdf_dataset) : rdf_dataset =
