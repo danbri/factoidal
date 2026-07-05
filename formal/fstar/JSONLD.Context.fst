@@ -144,6 +144,12 @@ let ck_is_list (k:container_kind) : bool = match k with | CK_List -> true | _ ->
 // here because propagate/override_protected depend on HOW the term is
 // used (JSONLD.Expand.apply_property_scoped_context /
 // apply_type_scoped_contexts apply it at the point of use).
+// PAIRED with the active context's ac_doc_url AS IT STOOD when this term
+// was defined (process_term_def_obj) — issue #275/tc031: if the raw value
+// is (or contains) a remote-context STRING reference, resolving it later
+// (at point of use, potentially from a DIFFERENT document/active
+// context) must use the document THIS scoped context was WRITTEN in, not
+// whatever document happens to be current at the point of use.
 // td_protected: whether this term definition may NOT be silently replaced
 // by a later, different context (JSON-LD 1.1 API "@protected").
 type term_def = {
@@ -170,7 +176,7 @@ type term_def = {
   // exactly like an ordinary property key — not a term-definition-time
   // one.
   td_index          : option string;
-  td_scoped_context : option json_val;
+  td_scoped_context : option (json_val & option string);
   td_protected      : bool;
   // JSON-LD 1.1 "prefix flag" (Create Term Definition step 24 / IRI
   // Expansion's compact-IRI step): only a term whose prefix flag is true
@@ -214,11 +220,68 @@ type active_context = {
   // check this flag and fail honestly rather than silently accepting
   // 1.1-only syntax under a declared 1.0 processing mode.
   ac_mode10    : bool;
+  // PHASE 6 follow-up (issue #275 diagnosis, tc031 "@context resolutions
+  // respect relative URLs"): the URL of the DOCUMENT whose CONTENT is
+  // currently being read as context material — distinct from ac_base
+  // (which "@base" directives can rewrite mid-context). A remote-context
+  // STRING reference (context_process's JString branch) or an "@import"
+  // reference resolves against ac_doc_url, never against ac_base — RFC
+  // 3986's "the base IRI of a retrieved representation is that
+  // resource's own URI", independent of any in-content @base rewrite.
+  // Seeded once, at the top-level entry (JSONLD.Expand.expand, from
+  // ac_base before any context processing has touched it — piggy-backed
+  // exactly like ac_mode10, zero signature changes needed elsewhere);
+  // updated ONLY by context_process's own JString/"@import" branches when
+  // they actually fetch a document (to that document's own resolved
+  // URL, for processing ITS content), and RESTORED on the surrounding
+  // active_context once that fetch's content has been folded in, so
+  // sibling context-array entries / fields keep resolving against the
+  // ORIGINAL document. A term's OWN scoped "@context" (td_scoped_context)
+  // snapshots ac_doc_url AT DEFINITION time (process_term_def_obj) since
+  // it is resolved LATER, at point of use, by JSONLD.Expand — see that
+  // field's doc comment.
+  ac_doc_url   : option string;
+  // ac_original_base: the document's OWN base IRI, fixed at the very
+  // start of processing (JSONLD.Expand.expand seeds this from ac_base,
+  // same point/reasoning as ac_doc_url) and never subsequently rewritten
+  // by any "@base" directive. JSON-LD 1.1 API Context Processing: an
+  // ENTIRE local context reset via JNull ("@context": null) restores the
+  // active context's base IRI to this original value (spec: "necessary
+  // ... to retain the original default base IRI") — toRdf/te060's outer
+  // "@context": null nested object resolves its relative "@id" against
+  // the DOCUMENT's base, not whatever @base happened to be active when
+  // the reset was encountered. NOTE this is UNLIKE an ordinary "@base"
+  // member being individually set to null (context_process_one_field's
+  // "@base" handling, unaffected by this field) — THAT sets ac_base to
+  // None outright (no restoration), per toRdf/te060's OWN "@base is set
+  // to none" sibling object, whose now-unresolvable relative "@id"
+  // ends up an invalid (non-absolute) IRI and is dropped by the existing
+  // invalid-IRI triple filtering, not resolved against anything.
+  ac_original_base : option string;
+  // PHASE 6 follow-up (tso06 "@propagate: false on property-scoped
+  // context with @import"): a ONE-SHOT flag consumed by
+  // JSONLD.Expand.expand_node's own entry-popping check. Set true by
+  // apply_property_scoped_context exactly when it ALSO freshly sets
+  // ac_previous (a non-propagating property-scoped context result) —
+  // that ac_eff is used DIRECTLY as the `ac` argument for expanding the
+  // property's OWN value (the scope's direct target, e.g. tso06's "bar"
+  // value), which must NOT immediately pop back (it would discard the
+  // very scope just computed for it) — UNLIKE a type-scoped context's
+  // ac_previous (set by JSONLD.Context.jldctx_apply_type_scoped), which
+  // is consumed strictly ONE level down (this node's OWN fields use the
+  // type-scoped ac directly, computed fresh INSIDE expand_node itself,
+  // never re-entering expand_node for the SAME node), so type-scoped's
+  // ac_previous never needs this suppression. expand_node clears the
+  // flag unconditionally on every entry (one-shot), so it correctly
+  // stops suppressing by the time a GRANDCHILD of the scoped value is
+  // reached — see that function's updated comment.
+  ac_suppress_pop : bool;
 }
 
 let empty_active_context : active_context =
   { ac_terms = []; ac_vocab = None; ac_base = None; ac_language = None;
-    ac_direction = None; ac_previous = None; ac_mode10 = false }
+    ac_direction = None; ac_previous = None; ac_mode10 = false;
+    ac_doc_url = None; ac_original_base = None; ac_suppress_pop = false }
 
 // ================================================================
 // Small string / list helpers
@@ -501,13 +564,24 @@ let jldctx_resolve (base:string) (relative:string) : string =
 let jld_remote_context_fuel : nat = 32
 
 // Resolve a context reference (the JString context value, or an
-// "@import" member's value) against the active context's current @base,
-// per RFC 3986 §5.1. Without a @base, only an already-absolute IRI is
-// usable (mirrors jldctx_expand_fallback's own no-base behavior).
+// "@import" member's value) against ac_doc_url — the URL of the document
+// whose CONTENT is currently being read, per RFC 3986 §5.1 (issue #275
+// tc031: NOT ac_base, which an in-content "@base" directive may already
+// have rewritten by the time a LATER array entry/field names a remote
+// context — the loading document's own URL never moves just because its
+// content set @base). Falls back to ac_base when ac_doc_url is unset
+// (the external `expandContext` API-option entry point, which seeds
+// neither field — see JSONLD.Expand.expand's banner) so that path keeps
+// its prior (ac_base-relative) behavior unchanged. Without either, only
+// an already-absolute IRI is usable (mirrors jldctx_expand_fallback's own
+// no-base behavior).
 let jldctx_resolve_context_iri (ac:active_context) (raw:string) : option string =
-  match ac.ac_base with
-  | Some b -> Some (jldctx_resolve b raw)
-  | None -> if is_iri raw then Some raw else None
+  match ac.ac_doc_url with
+  | Some d -> Some (jldctx_resolve d raw)
+  | None ->
+    (match ac.ac_base with
+     | Some b -> Some (jldctx_resolve b raw)
+     | None -> if is_iri raw then Some raw else None)
 
 // Split a context object's fields into its (at most one) "@import" value
 // and the rest — mirrors JSONLD.Expand.jexp_extract_context's shape for
@@ -846,6 +920,17 @@ let rec jldctx_term_obj_fields
       // @nest or any other unrecognized member: OUT of scope.
       None
 
+// Pair a term's raw scoped-@context value (if any) with the document URL
+// in effect AT THIS MOMENT (ac.ac_doc_url — the ac passed into
+// process_term_def_obj, current for the WHOLE of this term-definition
+// object's own processing, since no remote fetch happens mid-way through
+// parsing one term's sibling members) — see td_scoped_context's doc
+// comment / tc031.
+let jldctx_wrap_scoped (ac:active_context) (ctxf:option json_val) : option (json_val & option string) =
+  match ctxf with
+  | Some c -> Some (c, ac.ac_doc_url)
+  | None -> None
+
 let process_term_def_obj (ac:active_context) (key:string) (fields:list (string & json_val))
                           (default_protected:bool) (override_protected:bool)
   : Tot (option active_context) =
@@ -917,7 +1002,7 @@ let process_term_def_obj (ac:active_context) (key:string) (fields:list (string &
        else
        let td = { td_iri = iri; td_type_mapping = typef; td_container = contk;
                   td_reverse = false; td_language = langf; td_direction = dirf; td_index = idxf;
-                  td_scoped_context = ctxf; td_protected = protected; td_prefix = prefix_flag } in
+                  td_scoped_context = jldctx_wrap_scoped ac ctxf; td_protected = protected; td_prefix = prefix_flag } in
        (match jldctx_resolve_redefine ac key td override_protected with
         | Some final_td -> Some ({ ac with ac_terms = (key, final_td) :: ac.ac_terms })
         | None -> None)
@@ -932,7 +1017,7 @@ let process_term_def_obj (ac:active_context) (key:string) (fields:list (string &
        else
        let td = { td_iri = iri; td_type_mapping = typef; td_container = contk;
                   td_reverse = true; td_language = langf; td_direction = dirf; td_index = idxf;
-                  td_scoped_context = ctxf; td_protected = protected; td_prefix = prefix_flag } in
+                  td_scoped_context = jldctx_wrap_scoped ac ctxf; td_protected = protected; td_prefix = prefix_flag } in
        (match jldctx_resolve_redefine ac key td override_protected with
         | Some final_td -> Some ({ ac with ac_terms = (key, final_td) :: ac.ac_terms })
         | None -> None)
@@ -951,10 +1036,251 @@ let process_term_def_obj (ac:active_context) (key:string) (fields:list (string &
         | Some iri ->
           let td = { td_iri = iri; td_type_mapping = typef; td_container = contk;
                      td_reverse = false; td_language = langf; td_direction = dirf; td_index = idxf;
-                     td_scoped_context = ctxf; td_protected = protected; td_prefix = prefix_flag } in
+                     td_scoped_context = jldctx_wrap_scoped ac ctxf; td_protected = protected; td_prefix = prefix_flag } in
           (match jldctx_resolve_redefine ac key td override_protected with
            | Some final_td -> Some ({ ac with ac_terms = (key, final_td) :: ac.ac_terms })
            | None -> None)))
+
+// ================================================================
+// Top level: process an inline @context value (object, array, string, or
+// null) against an active context. override_protected: true only for a
+// property-/type-scoped context application (JSONLD.Expand); an ordinary
+// node object's own inline "@context" member always passes false.
+// ================================================================
+
+// The six "special" context-object keywords the JSON-LD 1.1 API
+// Context Processing algorithm updates BEFORE any ordinary term
+// definition is processed ("We first update the base IRI, the default
+// base direction, the default language, context propagation, the
+// processing mode, and the vocabulary mapping by processing six
+// specific keywords: @base, @direction, @language, @propagate,
+// @version, and @vocab. These are handled before any other entries in
+// the local context because they affect how the other entries are
+// processed"). Used only by the "@import" merge below
+// (jldctx_merge_import / the @import branch of context_process):
+// ordinary (non-@import) context objects here still process fields in
+// literal JSON order, a narrower simplification that already matches
+// every other fixture in this suite (test authors always write these
+// keywords first in an ordinary context object); @import is the one
+// construct that can introduce a term definition TEXTUALLY BEFORE a
+// keyword that must, per spec, still take effect first (toRdf/so09:
+// the imported context's own "term" needs the CONTAINING context's
+// LATER-written "@vocab" override already in place before "term" is
+// resolved).
+let jldctx_is_special_context_key (k:string) : bool =
+  k = "@base" || k = "@vocab" || k = "@language" || k = "@direction" ||
+  k = "@propagate" || k = "@version"
+
+let rec jldctx_partition_special (fields:list (string & json_val))
+  : Tot (list (string & json_val) & list (string & json_val)) (decreases fields) =
+  match fields with
+  | [] -> ([], [])
+  | (k, v) :: rest ->
+    let (sp, ord) = jldctx_partition_special rest in
+    if jldctx_is_special_context_key k then ((k, v) :: sp, ord) else (sp, (k, v) :: ord)
+
+// "@import" (JSON-LD 1.1 API §4.1: "Set context to the result of
+// merging context into import context, replacing common entries with
+// those from context" — a plain key-level union, with the CONTAINING
+// (local) context's own entry winning on collision): every
+// imported_fields entry whose key is ALSO present in local_fields is
+// dropped (local_fields' own copy is the one that survives), then
+// local_fields is appended — toRdf/so08/so09/so10/so11's "the
+// containing context is merged into the source context".
+let rec jldctx_merge_import (imported_fields local_fields:list (string & json_val))
+  : Tot (list (string & json_val)) (decreases imported_fields) =
+  match imported_fields with
+  | [] -> local_fields
+  | (k, v) :: rest ->
+    if List.Tot.existsb (fun (kv:(string & json_val)) -> fst kv = k) local_fields
+    then jldctx_merge_import rest local_fields
+    else (k, v) :: jldctx_merge_import rest local_fields
+
+// Forward-reference pre-pass (JSON-LD 1.1 API Create Term Definition's
+// `defined` map: "If the prefix is an entry in local context, then its
+// term definition must first be created, through recursion, before
+// continuing" — full support needs recursive dependency resolution
+// with cycle detection, which this module does not implement; this is
+// a narrow approximation covering the overwhelmingly common case). A
+// plain SIMPLE-STRING-FORM term/prefix declaration (e.g. "ex":
+// "http://example.org/") is pre-registered into `ac` BEFORE the main
+// left-to-right field pass, so an EARLIER field in the SAME context
+// object that uses it as a compact-IRI prefix resolves correctly
+// (toRdf/t0034 "context properties reordering": "link": {"@id":
+// "ex:link"} appears before "ex" is defined; toRdf/e007 "date
+// type-coercion": "ex:date": {"@type": "xsd:dateTime"} appears before
+// "xsd" is defined). Only NEW keys (not already in `ac.ac_terms`) are
+// previewed — never shadows an existing (possibly protected) entry
+// during the preview window. The main pass still runs afterward and
+// OVERWRITES each preview entry at its own textual position with the
+// fully-validated definition (respecting @protected, redefinition-
+// compatibility, the cyclic/self-consistency checks above, etc.) — the
+// preview is purely an early-availability shim, never authoritative.
+// Object-form term defs (which can themselves depend on further
+// not-yet-defined terms) are NOT previewed — the general recursive
+// case remains an open gap.
+let rec jldctx_preview_prefixes (ac:active_context) (fields:list (string & json_val))
+  : Tot active_context (decreases fields) =
+  match fields with
+  | [] -> ac
+  | (k, JString s) :: rest ->
+    if jldctx_actual_keyword k || jldctx_keyword_lookalike k || jldctx_keyword_lookalike s
+       || jldctx_is_keyword k || k = "" || Some? (jldctx_find_term ac.ac_terms k)
+    then jldctx_preview_prefixes ac rest
+    else
+      (match jldctx_expand_iri_ctx ac s true with
+       | None -> jldctx_preview_prefixes ac rest
+       | Some iri ->
+         if jldctx_is_keyword iri then jldctx_preview_prefixes ac rest
+         else
+           let td = { td_iri = iri; td_type_mapping = None; td_container = CK_None;
+                      td_reverse = false; td_language = None; td_direction = None; td_index = None;
+                      td_scoped_context = None; td_protected = false;
+                      td_prefix = jldctx_ends_gen_delim iri } in
+           jldctx_preview_prefixes ({ ac with ac_terms = (k, td) :: ac.ac_terms }) rest)
+  | _ :: rest -> jldctx_preview_prefixes ac rest
+
+// fuel: remote-fetch depth budget (jld_remote_context_fuel at every
+// external entry point — see apply_context_with_propagate /
+// jldctx_apply_type_scoped below); decremented ONLY on an actual fetch
+// (JString branch, "@import" branch), never on ordinary inline
+// recursion — so `%[fuel; ctx]` / `%[fuel; items]` below decrease via
+// their SECOND (structural) component for every inline call, exactly
+// as the pre-remote-loading version did via plain `decreases ctx` /
+// `decreases items`, and via the FIRST component only when a fetch
+// actually consumes depth. visited: absolute IRIs already fetched on
+// this chain (cycle guard — see jldctx_fetch_remote_context's callers).
+let rec context_process (ac:active_context) (ctx:json_val) (override_protected:bool)
+                         (fuel:nat) (visited:list string)
+  : Tot (option active_context) (decreases %[fuel; ctx]) =
+  match ctx with
+  | JNull ->
+    // JSON-LD 1.1 API Context Processing, resetting the active context
+    // by setting it to null: "initialize result ... setting both base
+    // IRI and original base URL to the value of original base URL in
+    // active context" (toRdf/te060 "context completely reset" — the
+    // reset restores the DOCUMENT's base, it does not merely clear it —
+    // see ac_original_base's doc comment for the CONTRASTING "@base":
+    // null member-level behavior, which stays a plain clear).
+    if (not override_protected) && jldctx_any_protected ac.ac_terms then None
+    else Some ({ ac with ac_terms = []; ac_vocab = None; ac_language = None;
+                 ac_base = ac.ac_original_base })
+  | JString s ->
+    // A remote context reference (JSON-LD 1.1 API §4.1's dereference
+    // step). fuel = 0 or a repeat IRI (cycle) is an honest failure.
+    if fuel = 0 then None
+    else
+      (match jldctx_resolve_context_iri ac s with
+       | None -> None
+       | Some resolved ->
+         if List.Tot.mem resolved visited then None
+         else
+           (match jldctx_fetch_remote_context resolved with
+            | None -> None
+            | Some inner ->
+              // The fetched document's content is read with ac_doc_url
+              // updated to ITS OWN resolved URL (tc031's second hop: a
+              // scoped context found INSIDE this document resolves
+              // relative to it, not the original document) — then
+              // RESTORED on the result so sibling context-array entries
+              // / fields (processed after this one returns) keep
+              // resolving against whatever document THEY were written
+              // in.
+              (match context_process ({ ac with ac_doc_url = Some resolved }) inner
+                       override_protected (fuel - 1) (resolved :: visited) with
+               | None -> None
+               | Some ac' -> Some ({ ac' with ac_doc_url = ac.ac_doc_url }))))
+  | JArray items -> context_process_array ac items override_protected fuel visited
+  | JObject fields ->
+    (match jldctx_extract_import fields with
+     | (None, _) ->
+       let ac_preview = jldctx_preview_prefixes ac fields in
+       context_process_fields ac_preview fields (jldctx_scan_bool_key fields "@protected" false) override_protected fuel visited
+     | (Some importref, restfields) ->
+       // "@import" (JSON-LD 1.1 API §4.1 "Import"): fetch the imported
+       // context, MERGE its fields with this object's own remaining
+       // members (local replacing imported on key collision —
+       // jldctx_merge_import), then process the merged set as ONE
+       // context object — special keywords (@base/@vocab/@language/
+       // @direction/@propagate/@version, wherever they came from) FIRST,
+       // ordinary term definitions SECOND (jldctx_partition_special) —
+       // toRdf/so08/so09/so10/so11's "the containing context is merged
+       // into the source context" (so09: the imported "term" must
+       // resolve against the CONTAINING context's own later "@vocab",
+       // which a naive "process import fully, then fold local fields on
+       // top" two-pass approach gets wrong, since the imported term
+       // would already be resolved against the OLD vocab by the time the
+       // local @vocab override is seen).
+       // 1.1-only ("If context has an @import entry: if processing mode
+       // is json-ld-1.0, an invalid context entry error has been
+       // detected" — toRdf/tso01).
+       if ac.ac_mode10 then None
+       else if fuel = 0 then None
+       else
+         (match jldctx_resolve_context_iri ac importref with
+          | None -> None
+          | Some resolved ->
+            if List.Tot.mem resolved visited then None
+            else
+              (match jldctx_fetch_remote_context resolved with
+               | None -> None
+               // "@import" (unlike an ordinary remote JString context)
+               // MUST reference a document whose "@context" is a single
+               // context OBJECT — not an array, not a further string
+               // reference (JSON-LD 1.1 API §4.1: "If the top-level
+               // element ... is not a valid remote context, an invalid
+               // remote context has been detected" — the toRdf so13
+               // "@import can only reference a single context" negative).
+               | Some imported_ctx ->
+                 (match imported_ctx with
+                  | JObject imported_fields ->
+                    let merged = jldctx_merge_import imported_fields restfields in
+                    let ac_preview = jldctx_preview_prefixes ac merged in
+                    let (special, ordinary) = jldctx_partition_special merged in
+                    let default_protected = jldctx_scan_bool_key merged "@protected" false in
+                    // fuel - 1 (not fuel) on both calls below: `special`/
+                    // `ordinary` are freshly-built lists (via
+                    // jldctx_merge_import / jldctx_partition_special),
+                    // not direct pattern-matched subterms of `fields`, so
+                    // the termination checker cannot see them as
+                    // structurally smaller; the already-spent fetch's
+                    // fuel decrement covers both calls too (this whole
+                    // branch only runs once per JObject, so it costs
+                    // only 1 extra unit of the generous 32-deep budget).
+                    (match context_process_fields ac_preview special default_protected override_protected (fuel - 1) (resolved :: visited) with
+                     | None -> None
+                     | Some ac_special ->
+                       context_process_fields ac_special ordinary default_protected override_protected (fuel - 1) (resolved :: visited))
+                  | _ -> None))))
+  | _ -> None
+
+and context_process_array (ac:active_context) (items:list json_val) (override_protected:bool)
+                           (fuel:nat) (visited:list string)
+  : Tot (option active_context) (decreases %[fuel; items]) =
+  match items with
+  | [] -> Some ac
+  | hd :: tl ->
+    (match context_process ac hd override_protected fuel visited with
+     | None -> None
+     | Some ac1 -> context_process_array ac1 tl override_protected fuel visited)
+
+// fuel/visited: threaded (unchanged) only to keep this function's
+// decreases metric shape %[fuel; fields] comparable with context_process
+// / context_process_array's within the shared mutual-recursion group —
+// context_process_one_field's OWN remote fetches (the eager scoped-
+// context validation, toRdf/tc033) use fuel - 1 / visited freshly at
+// THAT call site, not decremented here — an ordinary field consumes none
+// of ITS caller's remote-fetch depth budget merely by being visited.
+and context_process_fields (ac:active_context) (fields:list (string & json_val))
+                           (default_protected:bool) (override_protected:bool)
+                           (fuel:nat) (visited:list string)
+  : Tot (option active_context) (decreases %[fuel; fields]) =
+  match fields with
+  | [] -> Some ac
+  | (key, value) :: rest ->
+    (match context_process_one_field ac key value default_protected override_protected fuel visited with
+     | None -> None
+     | Some ac1 -> context_process_fields ac1 rest default_protected override_protected fuel visited)
 
 // One context-object member: "@base" / "@vocab" / "@language" / "@version" /
 // "@protected" / "@propagate", or an ordinary term definition (simple
@@ -972,15 +1298,34 @@ let process_term_def_obj (ac:active_context) (key:string) (fields:list (string &
 // member. override_protected: true when this whole context_process call
 // is a property-/type-scoped context application (JSONLD.Expand), which
 // per spec is allowed to touch protected terms.
-let context_process_one_field (ac:active_context) (key:string) (value:json_val)
+// fuel/visited: threaded UNCHANGED from context_process_fields (processing
+// one field consumes none of the remote-fetch depth budget by itself) —
+// needed ONLY so the ordinary-term-definition tail below can eagerly
+// VALIDATE a just-defined term's own scoped "@context" (toRdf/tc033 —
+// see that branch's comment), which is why this function now lives in
+// the SAME mutually-recursive group as context_process itself instead of
+// being a plain leaf `let`.
+and context_process_one_field (ac:active_context) (key:string) (value:json_val)
                                (default_protected:bool) (override_protected:bool)
-  : Tot (option active_context) =
+                               (fuel:nat) (visited:list string)
+  : Tot (option active_context) (decreases %[fuel; value]) =
   if key = "@base" then
     (match value with
      | JString s ->
-       let resolved = (match ac.ac_base with
-                       | Some b -> jldctx_resolve b s
-                       | None -> s) in
+       // toRdf/t0122-t0125 "IRI Resolution (2)-(5)": an ALREADY-ABSOLUTE
+       // @base value is adopted VERBATIM, not merged against the
+       // previous base via full RFC 3986 reference resolution — running
+       // it through jldctx_resolve/resolve_iri would apply that
+       // algorithm's remove_dot_segments step even though R (the new
+       // @base string) already carries its own scheme, silently
+       // stripping a deliberate "./" the fixtures keep (e.g. "@base":
+       // "http://a/bb/ccc/./d;p?q" must stay exactly that, not collapse
+       // to ".../ccc/d;p?q"). Only a genuinely RELATIVE @base value
+       // (no scheme of its own) gets resolved against the previous base.
+       let resolved = if is_iri s then s
+                      else (match ac.ac_base with
+                            | Some b -> jldctx_resolve b s
+                            | None -> s) in
        Some ({ ac with ac_base = Some resolved })
      | JNull -> Some ({ ac with ac_base = None })
      | _ -> None)
@@ -1207,229 +1552,90 @@ let context_process_one_field (ac:active_context) (key:string) (value:json_val)
                        td_reverse = false; td_language = None; td_direction = None; td_index = None;
                        td_scoped_context = None; td_protected = default_protected; td_prefix = false } in
             Some ({ ac with ac_terms = (key, td) :: ac.ac_terms }))
-       else process_term_def_obj ac key termfields default_protected override_protected
+       else
+         // toRdf/tc033 "Unused context with an embedded context error":
+         // JSON-LD 1.1 API Context Processing validates a term's OWN
+         // scoped "@context" member EAGERLY, at term-definition time —
+         // even when the term is never actually USED anywhere in the
+         // document (so JSONLD.Expand's apply_property_scoped_context /
+         // jldctx_apply_type_scoped never get a chance to run their OWN,
+         // later, point-of-use context_process call, which is all that
+         // used to validate it before this fix — tc032's twin fixture,
+         // where the term IS used, already worked). The validation
+         // RESULT is discarded either way (td_scoped_context still
+         // stores the RAW value + its doc_url, re-processed fresh at
+         // each point of use per propagate/override rules) — only a
+         // FAILURE here is load-bearing. fuel = 0 here means "no depth
+         // left to even ATTEMPT the validation fetch", an honest failure
+         // (mirrors every other fuel=0 branch in this module) rather
+         // than silently skipping the check.
+         // override_protected = TRUE here (not false): this eager pass
+         // exists to catch STRUCTURAL failures (an unresolvable term
+         // mapping, a malformed remote reference — tc033's actual
+         // failure mode), not to re-enforce protected-term rules ahead
+         // of time. The REAL protected-term check already happens
+         // correctly at each ACTUAL point of use with the RIGHT
+         // override_protected for how the term ends up being used
+         // (apply_property_scoped_context always passes true;
+         // jldctx_apply_type_scoped always passes false) — using false
+         // HERE would reject a scoped context that legitimately clears
+         // protected terms via PROPERTY-scoped application (toRdf/pr06
+         // "Clear active context of protected terms from a term",
+         // pr08-pr16 and others: an unused term's scoped context whose
+         // ONLY problem, under false, is touching a protected term the
+         // way property-scoped application is EXPLICITLY allowed to)
+         // before that term is ever actually applied.
+         if fuel = 0 then None
+         else
+           (match process_term_def_obj ac key termfields default_protected override_protected with
+            | None -> None
+            | Some ac' ->
+              (match jldctx_find_term ac'.ac_terms key with
+               | Some td ->
+                 (match td.td_scoped_context with
+                  // A REMOTE (JString) scoped-context reference is
+                  // skipped here — deliberately NOT run through the
+                  // "actually chase it" eager check. toRdf/te126/te127/
+                  // te128 ("a scoped context may include itself
+                  // recursively [...] no exception is raised") each
+                  // define a term whose scoped context is a JString
+                  // pointing back at the SAME document it is defined in
+                  // (directly, indirectly, or via a shared document with
+                  // ANOTHER term). At the REAL point of use, this is
+                  // harmless: apply_property_scoped_context /
+                  // jldctx_apply_type_scoped re-derive the scoped
+                  // context fresh only when the term is ACTUALLY used as
+                  // a key/type value, so a self-reference only recurses
+                  // as many times as the DOCUMENT itself actually nests
+                  // that property — never infinitely. EAGERLY "running"
+                  // the fetch to completion right here has no such
+                  // natural bound: with an honest cycle guard (`visited`
+                  // carrying this document forward) a legitimate self-
+                  // reference is wrongly rejected as a cycle; with a
+                  // FRESH `visited` per validation attempt (so the self-
+                  // reference itself is never caught as a cycle) the
+                  // eager recursion has NO way to terminate except by
+                  // exhausting `fuel`, an honest but wrong failure. Since
+                  // every remote-document TARGET of a JString scoped
+                  // context is separately validated by ITS OWN
+                  // term-definition sites when read (a genuinely invalid
+                  // remote scoped context still surfaces as an "invalid
+                  // scoped context" error the moment SOMETHING eagerly
+                  // validatable inside it is itself checked, or the
+                  // first time the term is actually applied), the
+                  // narrower INLINE-only eager check below already
+                  // covers tc033's actual failure mode (an inline
+                  // object, never a remote reference).
+                  | Some (JString _, _) -> Some ac'
+                  | Some (raw, def_doc_url) ->
+                    if Some? (context_process ({ ac' with ac_doc_url = def_doc_url }) raw
+                                true (fuel - 1) visited)
+                    then Some ac'
+                    else None
+                  | None -> Some ac')
+               | None -> Some ac'))
      | _ -> None)
 
-// ================================================================
-// Top level: process an inline @context value (object, array, string, or
-// null) against an active context. override_protected: true only for a
-// property-/type-scoped context application (JSONLD.Expand); an ordinary
-// node object's own inline "@context" member always passes false.
-// ================================================================
-
-// The six "special" context-object keywords the JSON-LD 1.1 API
-// Context Processing algorithm updates BEFORE any ordinary term
-// definition is processed ("We first update the base IRI, the default
-// base direction, the default language, context propagation, the
-// processing mode, and the vocabulary mapping by processing six
-// specific keywords: @base, @direction, @language, @propagate,
-// @version, and @vocab. These are handled before any other entries in
-// the local context because they affect how the other entries are
-// processed"). Used only by the "@import" merge below
-// (jldctx_merge_import / the @import branch of context_process):
-// ordinary (non-@import) context objects here still process fields in
-// literal JSON order, a narrower simplification that already matches
-// every other fixture in this suite (test authors always write these
-// keywords first in an ordinary context object); @import is the one
-// construct that can introduce a term definition TEXTUALLY BEFORE a
-// keyword that must, per spec, still take effect first (toRdf/so09:
-// the imported context's own "term" needs the CONTAINING context's
-// LATER-written "@vocab" override already in place before "term" is
-// resolved).
-let jldctx_is_special_context_key (k:string) : bool =
-  k = "@base" || k = "@vocab" || k = "@language" || k = "@direction" ||
-  k = "@propagate" || k = "@version"
-
-let rec jldctx_partition_special (fields:list (string & json_val))
-  : Tot (list (string & json_val) & list (string & json_val)) (decreases fields) =
-  match fields with
-  | [] -> ([], [])
-  | (k, v) :: rest ->
-    let (sp, ord) = jldctx_partition_special rest in
-    if jldctx_is_special_context_key k then ((k, v) :: sp, ord) else (sp, (k, v) :: ord)
-
-// "@import" (JSON-LD 1.1 API §4.1: "Set context to the result of
-// merging context into import context, replacing common entries with
-// those from context" — a plain key-level union, with the CONTAINING
-// (local) context's own entry winning on collision): every
-// imported_fields entry whose key is ALSO present in local_fields is
-// dropped (local_fields' own copy is the one that survives), then
-// local_fields is appended — toRdf/so08/so09/so10/so11's "the
-// containing context is merged into the source context".
-let rec jldctx_merge_import (imported_fields local_fields:list (string & json_val))
-  : Tot (list (string & json_val)) (decreases imported_fields) =
-  match imported_fields with
-  | [] -> local_fields
-  | (k, v) :: rest ->
-    if List.Tot.existsb (fun (kv:(string & json_val)) -> fst kv = k) local_fields
-    then jldctx_merge_import rest local_fields
-    else (k, v) :: jldctx_merge_import rest local_fields
-
-// Forward-reference pre-pass (JSON-LD 1.1 API Create Term Definition's
-// `defined` map: "If the prefix is an entry in local context, then its
-// term definition must first be created, through recursion, before
-// continuing" — full support needs recursive dependency resolution
-// with cycle detection, which this module does not implement; this is
-// a narrow approximation covering the overwhelmingly common case). A
-// plain SIMPLE-STRING-FORM term/prefix declaration (e.g. "ex":
-// "http://example.org/") is pre-registered into `ac` BEFORE the main
-// left-to-right field pass, so an EARLIER field in the SAME context
-// object that uses it as a compact-IRI prefix resolves correctly
-// (toRdf/t0034 "context properties reordering": "link": {"@id":
-// "ex:link"} appears before "ex" is defined; toRdf/e007 "date
-// type-coercion": "ex:date": {"@type": "xsd:dateTime"} appears before
-// "xsd" is defined). Only NEW keys (not already in `ac.ac_terms`) are
-// previewed — never shadows an existing (possibly protected) entry
-// during the preview window. The main pass still runs afterward and
-// OVERWRITES each preview entry at its own textual position with the
-// fully-validated definition (respecting @protected, redefinition-
-// compatibility, the cyclic/self-consistency checks above, etc.) — the
-// preview is purely an early-availability shim, never authoritative.
-// Object-form term defs (which can themselves depend on further
-// not-yet-defined terms) are NOT previewed — the general recursive
-// case remains an open gap.
-let rec jldctx_preview_prefixes (ac:active_context) (fields:list (string & json_val))
-  : Tot active_context (decreases fields) =
-  match fields with
-  | [] -> ac
-  | (k, JString s) :: rest ->
-    if jldctx_actual_keyword k || jldctx_keyword_lookalike k || jldctx_keyword_lookalike s
-       || jldctx_is_keyword k || k = "" || Some? (jldctx_find_term ac.ac_terms k)
-    then jldctx_preview_prefixes ac rest
-    else
-      (match jldctx_expand_iri_ctx ac s true with
-       | None -> jldctx_preview_prefixes ac rest
-       | Some iri ->
-         if jldctx_is_keyword iri then jldctx_preview_prefixes ac rest
-         else
-           let td = { td_iri = iri; td_type_mapping = None; td_container = CK_None;
-                      td_reverse = false; td_language = None; td_direction = None; td_index = None;
-                      td_scoped_context = None; td_protected = false;
-                      td_prefix = jldctx_ends_gen_delim iri } in
-           jldctx_preview_prefixes ({ ac with ac_terms = (k, td) :: ac.ac_terms }) rest)
-  | _ :: rest -> jldctx_preview_prefixes ac rest
-
-// fuel: remote-fetch depth budget (jld_remote_context_fuel at every
-// external entry point — see apply_context_with_propagate /
-// jldctx_apply_type_scoped below); decremented ONLY on an actual fetch
-// (JString branch, "@import" branch), never on ordinary inline
-// recursion — so `%[fuel; ctx]` / `%[fuel; items]` below decrease via
-// their SECOND (structural) component for every inline call, exactly
-// as the pre-remote-loading version did via plain `decreases ctx` /
-// `decreases items`, and via the FIRST component only when a fetch
-// actually consumes depth. visited: absolute IRIs already fetched on
-// this chain (cycle guard — see jldctx_fetch_remote_context's callers).
-let rec context_process (ac:active_context) (ctx:json_val) (override_protected:bool)
-                         (fuel:nat) (visited:list string)
-  : Tot (option active_context) (decreases %[fuel; ctx]) =
-  match ctx with
-  | JNull ->
-    if (not override_protected) && jldctx_any_protected ac.ac_terms then None
-    else Some ({ ac with ac_terms = []; ac_vocab = None; ac_language = None })
-  | JString s ->
-    // A remote context reference (JSON-LD 1.1 API §4.1's dereference
-    // step). fuel = 0 or a repeat IRI (cycle) is an honest failure.
-    if fuel = 0 then None
-    else
-      (match jldctx_resolve_context_iri ac s with
-       | None -> None
-       | Some resolved ->
-         if List.Tot.mem resolved visited then None
-         else
-           (match jldctx_fetch_remote_context resolved with
-            | None -> None
-            | Some inner -> context_process ac inner override_protected (fuel - 1) (resolved :: visited)))
-  | JArray items -> context_process_array ac items override_protected fuel visited
-  | JObject fields ->
-    (match jldctx_extract_import fields with
-     | (None, _) ->
-       let ac_preview = jldctx_preview_prefixes ac fields in
-       context_process_fields ac_preview fields (jldctx_scan_bool_key fields "@protected" false) override_protected fuel visited
-     | (Some importref, restfields) ->
-       // "@import" (JSON-LD 1.1 API §4.1 "Import"): fetch the imported
-       // context, MERGE its fields with this object's own remaining
-       // members (local replacing imported on key collision —
-       // jldctx_merge_import), then process the merged set as ONE
-       // context object — special keywords (@base/@vocab/@language/
-       // @direction/@propagate/@version, wherever they came from) FIRST,
-       // ordinary term definitions SECOND (jldctx_partition_special) —
-       // toRdf/so08/so09/so10/so11's "the containing context is merged
-       // into the source context" (so09: the imported "term" must
-       // resolve against the CONTAINING context's own later "@vocab",
-       // which a naive "process import fully, then fold local fields on
-       // top" two-pass approach gets wrong, since the imported term
-       // would already be resolved against the OLD vocab by the time the
-       // local @vocab override is seen).
-       // 1.1-only ("If context has an @import entry: if processing mode
-       // is json-ld-1.0, an invalid context entry error has been
-       // detected" — toRdf/tso01).
-       if ac.ac_mode10 then None
-       else if fuel = 0 then None
-       else
-         (match jldctx_resolve_context_iri ac importref with
-          | None -> None
-          | Some resolved ->
-            if List.Tot.mem resolved visited then None
-            else
-              (match jldctx_fetch_remote_context resolved with
-               | None -> None
-               // "@import" (unlike an ordinary remote JString context)
-               // MUST reference a document whose "@context" is a single
-               // context OBJECT — not an array, not a further string
-               // reference (JSON-LD 1.1 API §4.1: "If the top-level
-               // element ... is not a valid remote context, an invalid
-               // remote context has been detected" — the toRdf so13
-               // "@import can only reference a single context" negative).
-               | Some imported_ctx ->
-                 (match imported_ctx with
-                  | JObject imported_fields ->
-                    let merged = jldctx_merge_import imported_fields restfields in
-                    let ac_preview = jldctx_preview_prefixes ac merged in
-                    let (special, ordinary) = jldctx_partition_special merged in
-                    let default_protected = jldctx_scan_bool_key merged "@protected" false in
-                    // fuel - 1 (not fuel) on both calls below: `special`/
-                    // `ordinary` are freshly-built lists (via
-                    // jldctx_merge_import / jldctx_partition_special),
-                    // not direct pattern-matched subterms of `fields`, so
-                    // the termination checker cannot see them as
-                    // structurally smaller; the already-spent fetch's
-                    // fuel decrement covers both calls too (this whole
-                    // branch only runs once per JObject, so it costs
-                    // only 1 extra unit of the generous 32-deep budget).
-                    (match context_process_fields ac_preview special default_protected override_protected (fuel - 1) (resolved :: visited) with
-                     | None -> None
-                     | Some ac_special ->
-                       context_process_fields ac_special ordinary default_protected override_protected (fuel - 1) (resolved :: visited))
-                  | _ -> None))))
-  | _ -> None
-
-and context_process_array (ac:active_context) (items:list json_val) (override_protected:bool)
-                           (fuel:nat) (visited:list string)
-  : Tot (option active_context) (decreases %[fuel; items]) =
-  match items with
-  | [] -> Some ac
-  | hd :: tl ->
-    (match context_process ac hd override_protected fuel visited with
-     | None -> None
-     | Some ac1 -> context_process_array ac1 tl override_protected fuel visited)
-
-// fuel/visited: threaded (unchanged) only to keep this function's
-// decreases metric shape %[fuel; fields] comparable with context_process
-// / context_process_array's within the shared mutual-recursion group —
-// context_process_one_field never itself triggers a remote fetch (the
-// JString-context and "@import" cases are both handled by context_process
-// before delegating to this function), so fuel/visited are otherwise
-// inert here.
-and context_process_fields (ac:active_context) (fields:list (string & json_val))
-                           (default_protected:bool) (override_protected:bool)
-                           (fuel:nat) (visited:list string)
-  : Tot (option active_context) (decreases %[fuel; fields]) =
-  match fields with
-  | [] -> Some ac
-  | (key, value) :: rest ->
-    (match context_process_one_field ac key value default_protected override_protected with
-     | None -> None
-     | Some ac1 -> context_process_fields ac1 rest default_protected override_protected fuel visited)
 
 // ================================================================
 // @propagate-aware context application (JSON-LD 1.1 API §4/§5, the
@@ -1506,7 +1712,7 @@ let rec jldctx_apply_type_scoped (ac0:active_context) (ac_acc:active_context) (t
     (match jldctx_find_term ac0.ac_terms t with
      | Some td ->
        (match td.td_scoped_context with
-        | Some scoped ->
+        | Some (scoped, def_doc_url) ->
           // override_protected is FALSE here (NOT true): the JSON-LD 1.1
           // API Expansion algorithm's @type-key loop invokes the Context
           // Processing algorithm passing only active context, the type's
@@ -1526,7 +1732,7 @@ let rec jldctx_apply_type_scoped (ac0:active_context) (ac_acc:active_context) (t
           // terms must not be silently overridden by a type-scoped
           // context" fixtures that this blanket `true` used to pass
           // incorrectly).
-          (match context_process ac_acc scoped false jld_remote_context_fuel [] with
+          (match context_process ({ ac_acc with ac_doc_url = def_doc_url }) scoped false jld_remote_context_fuel [] with
            | None -> None
            | Some ac1 ->
              let propagate = jldctx_scan_propagate scoped false in

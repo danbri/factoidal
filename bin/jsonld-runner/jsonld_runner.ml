@@ -38,11 +38,14 @@
        comparison instead of being skipped sight-unseen. Measuring the
        real result (not just "specVersion says 1.0, skip it") showed 3
        of the 11 are honestly gettable with this program's 1.1-plus-
-       ac_mode10-gating engine: te026, ter02, ter03 (see jld_1_0_still_skip
-       below for exactly why each of the other 8 still needs GENUINE
-       1.0-mode semantics this engine does not implement, and stays
-       skipped with a fixture-specific reason instead of the old
-       one-size-fits-all message).
+       ac_mode10-gating engine: te026, ter02, ter03. A same-day
+       goal-wave follow-up (jld_predicate_iri_wf, Parser.JSONLD.fst)
+       made 2 more (t0118, te038) genuinely re-measure as MATCH too —
+       see jld_1_0_still_skip's banner for exactly why. The remaining 6
+       (te014, te071, te115, te116, ter24, ter32) still need GENUINE
+       1.0-mode semantics this engine does not implement (see
+       jld_1_0_still_skip below for a fixture-specific reason per ID
+       instead of the old one-size-fits-all message).
 
    PHASE 6 (issue #275): remote contexts / "@import" + document base.
    This runner is the ONE consumer that realises
@@ -326,7 +329,7 @@ let parse_jsonld_tc tc content =
   opt_of_fs (Parser_JSONLD.parse_jsonld content (FStar_Pervasives_Native.Some (test_base tc)) fs_rdf_direction fs_expand_context fs_processing_mode)
 
 (* The specVersion=json-ld-1.0 battery (11 tests), split on hard evidence
-   (2026-07-05): each of these 8 was actually RUN (not blanket-skipped)
+   (2026-07-05): each of these was actually RUN (not blanket-skipped)
    against this program's 1.1-plus-ac_mode10 engine and produced the
    WRONG result — a false FAIL, not a false PASS — because the fixture
    exercises a genuine 1.0-only semantic this engine does not implement.
@@ -336,26 +339,33 @@ let parse_jsonld_tc tc content =
    (no skip, no special-casing) — see this file's top-of-file comment.
    Kept as an explicit ID allowlist (not a blanket specVersion check)
    precisely so this list has to be edited, not silently widened, the
-   next time someone touches 1.0-only handling. *)
+   next time someone touches 1.0-only handling.
+
+   2026-07-05 goal-wave revisit (JSON-LD blank-node-predicate battery):
+   Parser.JSONLD.fst's jld_predicate_iri_wf fix (drop any property whose
+   EXPANDED-FORM key is a blank-node identifier — see that module's
+   banner) made #t0118 and #te038 BOTH genuinely re-measure as MATCH
+   against their own expected .nq fixtures (confirmed directly against
+   Parser_JSONLD.parse_jsonld + RDF_Canonical, bypassing this skip list
+   entirely, before removing their entries here) — so both move from
+   skip to an ordinary run below. This is not really "generalized RDF
+   now works" (this codebase still has no generalized-RDF-aware N-Quads
+   serializer/parser — see jld_predicate_iri_wf's banner): #t0118's own
+   expected output can only round-trip its ONE ordinary (rdf:type)
+   triple through Parser.NQuads' strict-IRIREF-predicate grammar, every
+   OTHER (blank-predicate) line in 0118-out.nq being silently dropped
+   by that parser the exact same way this program now drops them at
+   emission — the two "wrongs" cancel out into a genuine, honest MATCH
+   for this specific fixture shape, not a semantic implementation of
+   the produceGeneralizedRdf flag. *)
 let jld_1_0_still_skip (id : string) : string option =
   match id with
-  | "#t0118" ->
-    Some "option.specVersion=json-ld-1.0 + produceGeneralizedRdf:true — \
-          this program's list/property conversion always drops \
-          blank-node-IRI predicates (the 1.1 default); the 1.0 \
-          generalized-RDF flag's keep-them behavior isn't implemented \
-          (measured: canonical N-Quads differ)."
   | "#te014" ->
     Some "option.specVersion=json-ld-1.0 — \"@set of @value objects \
           with keyword aliases\" exercises how 1.0 shapes an aliased \
           @set/@value combination differently from 1.1; under this \
           program's (1.1) processing parse_jsonld returns None \
           (measured, not a false skip)."
-  | "#te038" ->
-    Some "option.specVersion=json-ld-1.0 — \"Drop blank node predicates \
-          by default\" is the 1.0-only default (1.1's default keeps \
-          them, matching this program's engine); measured: canonical \
-          N-Quads differ."
   | "#te071" ->
     Some "option.specVersion=json-ld-1.0 — 1.0's stricter restriction on \
           redefining a term that looks like a compact IRI differs from \

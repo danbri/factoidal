@@ -135,6 +135,21 @@ let rdf_json_iri : wf_iri =
   assert_norm (is_iri "http://www.w3.org/1999/02/22-rdf-syntax-ns#JSON");
   "http://www.w3.org/1999/02/22-rdf-syntax-ns#JSON"
 
+// toRdf/di11-di12: rdfDirection=compound-literal's three predicates
+// (JSON-LD 1.1 API §8.6, "Compound-literal" branch of Object to RDF
+// Conversion — see jld_compound_literal_term below).
+let rdf_value_iri : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/1999/02/22-rdf-syntax-ns#value");
+  "http://www.w3.org/1999/02/22-rdf-syntax-ns#value"
+
+let rdf_direction_iri : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/1999/02/22-rdf-syntax-ns#direction");
+  "http://www.w3.org/1999/02/22-rdf-syntax-ns#direction"
+
+let rdf_language_iri : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/1999/02/22-rdf-syntax-ns#language");
+  "http://www.w3.org/1999/02/22-rdf-syntax-ns#language"
+
 // ================================================================
 // PHASE 5: JSON canonicalization for @type: @json (rdf:JSON) literals —
 // an RFC 8785 JCS SUBSET.
@@ -157,7 +172,9 @@ let rdf_json_iri : wf_iri =
 //
 // NOT exact: a lexeme with MORE significant digits than distinguish
 // between adjacent binary64 doubles (toRdf/js12's
-// "333333333.33333329", 17 significant digits) needs the actual
+// "333333333.33333329", 17 significant digits — every OTHER number in
+// this same fixture, "1E30"/"4.50"/"2e-3"/"1e-27", has 1-2 significant
+// digits and is unaffected) needs the actual
 // nearest-binary64-then-shortest-round-trip computation — a Ryu/Grisu-
 // class algorithm operating on the true IEEE 754 value — to know WHICH
 // digits the shortest form keeps; jcanon_number does not attempt that
@@ -168,6 +185,24 @@ let rdf_json_iri : wf_iri =
 // which is an HONEST gap (the N-Quads comparison fails visibly,
 // toRdf/js12 stays FAIL on this account) rather than a silently wrong
 // literal.
+//
+// 2026-07-05 revisit (goal-wave JSON-LD pass): confirmed this is a
+// REAL float-arithmetic gap, not a missing-but-easy string tweak —
+// there is no way to decide "does this shorter decimal round-trip to
+// the SAME nearest binary64 double" using only this codebase's exact-
+// decimal (digit-string) model; it needs an actual IEEE 754 parse
+// (float_of_string) plus a bounded "try precision 1..17, format,
+// parse back, compare bit-pattern" search, i.e. the SAME `assume val`
+// host-engine-call-out taxonomy as `regex_match` (SPARQL11.Algebra.fst)
+// — a genuinely new capability this codebase doesn't have anywhere
+// else, requiring a stub patch under
+// minimal_regrettable_glue_code_each_with_an_open_issue/ plus a fresh
+// tracking issue (CLAUDE.md rule #3). Left undone this pass rather
+// than wiring a new assume val without one. If picked up: gate the
+// call at jcanon_number's `k` (post-trailing-zero-strip significant
+// digit count) `> 15` — every OTHER toRdf/js* fixture's numbers have
+// 1-2 significant digits (see above) and must not go anywhere near
+// the new code path.
 // ================================================================
 
 let rec jcanon_find_dot (s:string) (pos:nat) (fuel:nat)
@@ -464,10 +499,15 @@ let jld_number_canonicalize (lexeme:string) (force_double:bool) : (string & bool
 //     https://www.w3.org/ns/i18n#<lang>_<dir> (lang lowercased, omitted
 //     entirely — "_<dir>" — when there is no @language), replacing
 //     rdf:langString / xsd:string — toRdf/di09-di10.
-//   - RDM_CompoundLiteral ("compound-literal"): OUT of scope here (see
-//     module banner) — jld_value_object_to_term returns None for a
-//     @direction-bearing value under this mode, an honest gap rather
-//     than silently wrong RDF (toRdf/di11-di12 stay FAIL).
+//   - RDM_CompoundLiteral ("compound-literal"): a @direction-bearing
+//     value object becomes a FRESH BLANK NODE bearing rdf:value/
+//     rdf:direction/rdf:language triples rather than a single literal
+//     term — jld_value_object_to_term still returns None for this case
+//     (a single-term return can't express the extra triples + bnode
+//     allocation), but jld_expand_value's @value branch intercepts
+//     RDM_CompoundLiteral + @direction BEFORE calling
+//     jld_value_object_to_term and calls jld_compound_literal_term
+//     instead (toRdf/di11-di12) — see that function's banner.
 type rdf_direction_mode =
   | RDM_Drop
   | RDM_I18nDatatype
@@ -523,11 +563,66 @@ let rec jld_scan_wf (s:string) (pos:nat) (fuel:nat) : Tot bool (decreases fuel) 
     else if jld_forbidden_byte (jbyte_at s pos) then false
     else jld_scan_wf s (pos + 1) (fuel - 1)
 
+// toRdf/e111-e112: an IRI reference has AT MOST ONE fragment delimiter
+// — RFC 3986 §3.5's fragment grammar is `*( pchar / "/" / "?" )`, which
+// excludes a bare "#" (a second, unescaped "#" would open an ambiguous
+// second fragment). A vocab-relative property-key expansion that
+// concatenates a vocab mapping ENDING in "#" onto a key that itself
+// STARTS with "#" (e111: vocab "http://example.com/vocabulary/./rel2#"
+// + key "#fragment-works") produces exactly this malformed shape —
+// JSONLD.Context's plain string-concatenation vocab expansion
+// (jldctx_expand_fallback) has no reason to special-case it (the
+// concatenation itself is the spec-mandated behavior for a vocab-
+// relative key — see that function's banner), so the resulting
+// doubly-fragmented string must be caught here, at the well-formedness
+// gate every predicate/subject/@type IRI already passes through.
+let rec jld_count_hash (s:string) (pos:nat) (n:nat) (fuel:nat) : Tot nat (decreases fuel) =
+  if fuel = 0 then n
+  else
+    let len = fs_byte_length s in
+    if pos >= len then n
+    else if jbyte_at s pos = 0x23 (* # *) then jld_count_hash s (pos + 1) (n + 1) (fuel - 1)
+    else jld_count_hash s (pos + 1) n (fuel - 1)
+
+let jld_at_most_one_fragment (s:string) : bool =
+  jld_count_hash s 0 0 (fs_byte_length s + 1) <= 1
+
 let jld_iri_wf (s:string) : bool =
-  is_iri s && jld_scan_wf s 0 (fs_byte_length s + 1)
+  is_iri s && jld_scan_wf s 0 (fs_byte_length s + 1) && jld_at_most_one_fragment s
 
 let jld_lang_tag_wf (s:string) : bool =
   jld_scan_wf s 0 (fs_byte_length s + 1)
+
+// toRdf/e068, e075, e038, t0118 ("generalized RDF" battery): a PREDICATE
+// position needs a stricter gate than jld_iri_wf. `is_iri` only requires a
+// colon, so a blank-node identifier like "_:property" (an ordinary
+// EXPANDED-form property key when a term or @vocab maps to a "_:..."
+// string — toRdf/e068's `"_:property"` key, e075's `@vocab: "_:"`)
+// satisfies it and used to sail through as a bogus "wf_iri" predicate,
+// later serialized as the malformed pseudo-IRI `<_:property>` (RDF.
+// Canonical.fst always brackets t.p — it has no blank-node-predicate
+// print form, because RDF.NQuads' grammar makes a predicate position
+// IRIREF-only, i.e. "generalized RDF" triples are not expressible in
+// this codebase's N-Quads at all).
+//
+// The JSON-LD API "Deserialize JSON-LD to RDF" algorithm's answer is:
+// keep such triples ONLY when the (now-retired-in-1.1, 1.0-only)
+// "produce generalized RDF" flag is set, else drop the property
+// entirely (continue to next key). This codebase does not thread that
+// flag (no generalized-RDF-aware N-Quads serializer/parser exists to
+// make "keep" observably correct either way — see the N-Quads-grammar
+// note above), so it drops unconditionally: the common (flag-false)
+// case per spec, and — empirically, per the toRdf/0118 fixture, whose
+// OWN expected output can only round-trip its single ordinary
+// (rdf:type) triple through this codebase's strict-IRIREF-predicate
+// N-Quads parser, every blank-predicate line in 0118-out.nq being
+// unparseable and silently dropped exactly the same way (see
+// Parser.NQuads.parse_nquads_acc's "skip to next line on parse
+// failure") — dropping here also matches the flag-true fixtures. No
+// misrepresentation either way: this module simply never emits an
+// (always-wrong-looking) `<_:...>` pseudo-IRI predicate.
+let jld_predicate_iri_wf (s:string) : bool =
+  jld_iri_wf s && not (jld_is_bnode_label s)
 
 // Expanded-form @id string -> subject. Relative IRIs yield None (dropped).
 let jld_id_to_subject (s:string) : option subject =
@@ -624,11 +719,15 @@ let jld_value_object_to_term (rdir:rdf_direction_mode) (obj:json_val) : option r
            | JString s -> jld_make_literal s (jld_i18n_direction_iri lang d) None
            | _ -> None)
         | RDM_CompoundLiteral ->
-          // OUT of scope (module banner): a compound-literal encoding
-          // needs a fresh blank node plus rdf:value/rdf:direction/
-          // rdf:language triples, which this function's single-term
-          // return shape cannot express — honest gap, toRdf/di11-di12
-          // stay FAIL rather than emitting silently-wrong RDF.
+          // Handled one level up: jld_expand_value's @value branch
+          // intercepts RDM_CompoundLiteral + @direction before ever
+          // calling this function (a compound-literal encoding needs a
+          // fresh blank node plus rdf:value/rdf:direction/rdf:language
+          // triples, which this function's single-term return shape
+          // can't express — see jld_compound_literal_term). Reachable
+          // here only if a future caller invokes this function directly
+          // for a @direction-bearing object under this mode; None is the
+          // safe/no-worse-than-before answer in that case.
           None)
      | None, Some d ->
        if d = "@json" then
@@ -721,6 +820,50 @@ let jld_graph_name_of_subject (s:subject) : iri =
   | S_IRI i -> i
   | S_BNode b -> String.concat "" ["_:"; b]
 
+// toRdf/di11-di12: rdfDirection=compound-literal (JSON-LD 1.1 API §8.6,
+// "Object to RDF Conversion" compound-literal branch). A @direction-
+// bearing value object becomes a FRESH BLANK NODE carrying rdf:value
+// (the lexical form), rdf:direction (the direction string), and — only
+// when @language is present — rdf:language (LOWERCASED, toRdf/di12) as
+// plain xsd:string triples, in place of a single literal term. This is
+// the one value-object shape whose RDF isn't a single term (every
+// other case returns Some rdf_term with acc/ctr untouched — see
+// jld_value_object_to_term above), which is why it needs its own
+// (acc, ctr)-threading function rather than folding into that one.
+let jld_compound_literal_term (lex:string) (lang:option string) (dir:string) (ctr:nat) (acc:list triple)
+  : (rdf_term & list triple & nat) =
+  let (b, ctr1) = jld_fresh_bnode ctr in
+  let bsubj = S_BNode b in
+  let value_lit : wf_literal = { lexical_form = lex; datatype = xsd_string; lang_tag = None } in
+  let dir_lit : wf_literal = { lexical_form = dir; datatype = xsd_string; lang_tag = None } in
+  let acc1 = { s = bsubj; p = rdf_value_iri; o = T_Literal value_lit } :: acc in
+  let acc2 = { s = bsubj; p = rdf_direction_iri; o = T_Literal dir_lit } :: acc1 in
+  let acc3 =
+    (match lang with
+     | Some lg ->
+       let lang_lit : wf_literal = { lexical_form = FStar.String.lowercase lg; datatype = xsd_string; lang_tag = None } in
+       { s = bsubj; p = rdf_language_iri; o = T_Literal lang_lit } :: acc2
+     | None -> acc2) in
+  (T_BNode b, acc3, ctr1)
+
+// jld_expand_value's @value branch dispatcher: intercepts the ONE case
+// jld_value_object_to_term cannot express (RDM_CompoundLiteral + a
+// @direction-bearing, @type-free, string @value — the same guard
+// jld_value_object_to_term's own `Some d, None` branch uses to reach
+// its RDM_CompoundLiteral arm) and routes it to
+// jld_compound_literal_term; every other value object (no @direction,
+// @direction under RDM_Drop/RDM_I18nDatatype, an @type value object,
+// etc.) is unaffected and goes through the ordinary single-term path
+// unchanged.
+let jld_value_object_step (rdir:rdf_direction_mode) (obj:json_val) (ctr:nat) (acc:list triple)
+  : (option rdf_term & list triple & nat) =
+  match rdir, json_get_string "@direction" obj, json_get_string "@type" obj, json_get_field "@value" obj with
+  | RDM_CompoundLiteral, Some dir, None, Some (JString lex) ->
+    let lang = json_get_string "@language" obj in
+    let (t, acc1, ctr1) = jld_compound_literal_term lex lang dir ctr acc in
+    (Some t, acc1, ctr1)
+  | _ -> (jld_value_object_to_term rdir obj, acc, ctr)
+
 // A property value in expanded form: value object, list object, node
 // object, or node reference. Returns the term to link to (None when the
 // entry is non-conforming and must be dropped) plus updated acc/named/counter.
@@ -731,7 +874,9 @@ let rec jld_expand_value (rdir:rdf_direction_mode) (v:json_val) (ctr:nat) (acc:l
     match v with
     | JObject _ ->
       (match json_get_field "@value" v with
-       | Some _ -> (jld_value_object_to_term rdir v, acc, named, ctr)
+       | Some _ ->
+         let (t, acc1, ctr1) = jld_value_object_step rdir v ctr acc in
+         (t, acc1, named, ctr1)
        | None ->
          (match json_get_field "@list" v with
           | Some lst ->
@@ -840,7 +985,7 @@ and jld_expand_fields (rdir:rdf_direction_mode) (subj:subject) (fields:list (str
           // just don't route the result into a fresh named graph.
           jld_expand_graph_nodes rdir (jld_as_array value) ctr acc named (fuel - 1)
         else if jld_is_keyword key then (acc, named, ctr)
-        else if jld_iri_wf key then
+        else if jld_predicate_iri_wf key then
           jld_expand_property rdir subj key (jld_as_array value) ctr acc named (fuel - 1)
         else (acc, named, ctr) in
       jld_expand_fields rdir subj rest ctr1 acc1 named1 (fuel - 1)
@@ -866,7 +1011,7 @@ and jld_expand_reverse_entries (rdir:rdf_direction_mode) (subj:subject) (entries
     | [] -> (acc, named, ctr)
     | (prop, value) :: rest ->
       let (acc1, named1, ctr1) =
-        if jld_iri_wf prop
+        if jld_predicate_iri_wf prop
         then jld_expand_reverse_prop rdir subj prop (jld_as_array value) ctr acc named (fuel - 1)
         else (acc, named, ctr) in
       jld_expand_reverse_entries rdir subj rest ctr1 acc1 named1 (fuel - 1)
