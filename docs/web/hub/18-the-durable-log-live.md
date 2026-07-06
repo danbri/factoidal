@@ -347,6 +347,12 @@ accumulated delta back into a fresh `.cottas` base) and
 [the design doc](https://github.com/danbri/factoidal/blob/claude/main/docs/designissues/2026-07-06-browser-persistence.md)
 already named before this post existed.
 
+Two newer query-language features continue the series from here:
+[correlated joins with LATERAL](./19-correlated-joins-lateral.md) and
+[full-text search with text:query](./20-fulltext-search-text-query.md),
+both Jena-compatible and both running as plain SPARQL through the same
+in-browser `fn` adapter.
+
 The four live cells above are pinned in
 [`tests/hub/post18_test.mjs`](https://github.com/danbri/factoidal/blob/claude/main/tests/hub/post18_test.mjs) —
 the exact same source, executed against an in-memory stand-in for
