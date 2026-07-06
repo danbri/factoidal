@@ -1,9 +1,9 @@
-findlib: [WARNING] Interface ratio.cmi occurs in several directories: /root/.opam/fstar/lib/num, /root/.opam/fstar/lib/ocaml
 findlib: [WARNING] Interface big_int.cmi occurs in several directories: /root/.opam/fstar/lib/num, /root/.opam/fstar/lib/ocaml
-findlib: [WARNING] Interface num.cmi occurs in several directories: /root/.opam/fstar/lib/num, /root/.opam/fstar/lib/ocaml
 findlib: [WARNING] Interface nat.cmi occurs in several directories: /root/.opam/fstar/lib/num, /root/.opam/fstar/lib/ocaml
 findlib: [WARNING] Interface arith_status.cmi occurs in several directories: /root/.opam/fstar/lib/num, /root/.opam/fstar/lib/ocaml
 findlib: [WARNING] Interface digestif.cmi occurs in several directories: /root/.opam/fstar/lib/digestif/c, /root/.opam/fstar/lib/digestif
+findlib: [WARNING] Interface ratio.cmi occurs in several directories: /root/.opam/fstar/lib/num, /root/.opam/fstar/lib/ocaml
+findlib: [WARNING] Interface num.cmi occurs in several directories: /root/.opam/fstar/lib/num, /root/.opam/fstar/lib/ocaml
 ocamlfind: [WARNING] Package `threads': Linking problems may arise because of the missing -thread or -vmthread switch
 /usr/bin/ld: /root/.opam/fstar/lib/ocaml/libasmrun.a(unix.n.o): in function `caml_dlopen':
 /root/.opam/fstar/.opam-switch/build/ocaml-base-compiler.4.14.1/runtime/unix.c:272:(.text.caml_dlopen+0x13): warning: Using 'dlopen' in statically linked applications requires at runtime the shared libraries from the glibc version used for linking

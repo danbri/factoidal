@@ -2752,6 +2752,7 @@ Util_Log.cmx: \
 
 RDF.CottasStore.PageCache.fst.checked: \
 	RDF.CottasStore.PageCache.fst \
+	Parquet.Footer.fst.checked \
 	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Pervasives.Native.fst.checked \
 	/root/.opam/fstar/lib/fstar/ulib.checked/Prims.fst.checked \
 	RDF.CottasStore.ColumnSeq.fst.checked \
@@ -2768,6 +2769,7 @@ RDF_CottasStore_PageCache.krml: \
 
 RDF_CottasStore_PageCache.cmx: \
 	RDF_CottasStore_PageCache.ml \
+	Parquet_Footer.cmx \
 	RDF_CottasStore_ColumnSeq.cmx
 
 /root/.opam/fstar/lib/fstar/ulib.checked/FStar.Float.fsti.checked: \
@@ -3168,8 +3170,10 @@ SPARQL_Diagnostics.cmx: \
 
 VC.Credential.fst.checked: \
 	VC.Credential.fst \
+	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Pervasives.Native.fst.checked \
 	/root/.opam/fstar/lib/fstar/ulib.checked/Prims.fst.checked \
 	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Char.fsti.checked \
+	XSD.Datatypes.fst.checked \
 	Parser.JSON.fst.checked \
 	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.List.Tot.fst.checked \
 	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.String.fsti.checked \
@@ -3186,6 +3190,7 @@ VC_Credential.krml: \
 
 VC_Credential.cmx: \
 	VC_Credential.ml \
+	XSD_Datatypes.cmx \
 	Parser_JSON.cmx
 
 /root/.opam/fstar/lib/fstar/ulib.checked/FStar.All.fsti.checked: \
@@ -3730,6 +3735,7 @@ FStar_List_Tot_Base.krml: \
 RDF.CottasStore.ColumnSeq.fst.checked: \
 	RDF.CottasStore.ColumnSeq.fst \
 	/root/.opam/fstar/lib/fstar/ulib.checked/Prims.fst.checked \
+	Parquet.Footer.fst.checked \
 	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Prelude.fsti.checked
 
 RDF_CottasStore_ColumnSeq.ml: \
@@ -3742,7 +3748,8 @@ RDF_CottasStore_ColumnSeq.krml: \
 	RDF.CottasStore.ColumnSeq.fst.checked
 
 RDF_CottasStore_ColumnSeq.cmx: \
-	RDF_CottasStore_ColumnSeq.ml
+	RDF_CottasStore_ColumnSeq.ml \
+	Parquet_Footer.cmx
 
 SPARQL.HTTP.RunQuery.fst.checked: \
 	SPARQL.HTTP.RunQuery.fst \

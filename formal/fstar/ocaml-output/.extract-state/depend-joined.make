@@ -1162,7 +1162,7 @@ Util_Log.krml:  	Util.Log.fst.checked
 
 Util_Log.cmx:  	Util_Log.ml
 
-RDF.CottasStore.PageCache.fst.checked:  	RDF.CottasStore.PageCache.fst  	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Pervasives.Native.fst.checked  	/root/.opam/fstar/lib/fstar/ulib.checked/Prims.fst.checked  	RDF.CottasStore.ColumnSeq.fst.checked  	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Prelude.fsti.checked
+RDF.CottasStore.PageCache.fst.checked:  	RDF.CottasStore.PageCache.fst  	Parquet.Footer.fst.checked  	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Pervasives.Native.fst.checked  	/root/.opam/fstar/lib/fstar/ulib.checked/Prims.fst.checked  	RDF.CottasStore.ColumnSeq.fst.checked  	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Prelude.fsti.checked
 
 RDF_CottasStore_PageCache.ml:  	RDF.CottasStore.PageCache.fst.checked
 
@@ -1170,7 +1170,7 @@ RDF_CottasStore_PageCache.fs:  	RDF.CottasStore.PageCache.fst.checked
 
 RDF_CottasStore_PageCache.krml:  	RDF.CottasStore.PageCache.fst.checked
 
-RDF_CottasStore_PageCache.cmx:  	RDF_CottasStore_PageCache.ml  	RDF_CottasStore_ColumnSeq.cmx
+RDF_CottasStore_PageCache.cmx:  	RDF_CottasStore_PageCache.ml  	Parquet_Footer.cmx  	RDF_CottasStore_ColumnSeq.cmx
 
 /root/.opam/fstar/lib/fstar/ulib.checked/FStar.Float.fsti.checked:  	/root/.opam/fstar/lib/fstar/ulib/FStar.Float.fsti  	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Prelude.fsti.checked
 
@@ -1352,7 +1352,7 @@ SPARQL_Diagnostics.krml:  	SPARQL.Diagnostics.fst.checked
 
 SPARQL_Diagnostics.cmx:  	SPARQL_Diagnostics.ml  	SPARQL11_Store.cmx  	SPARQL11_Algebra.cmx
 
-VC.Credential.fst.checked:  	VC.Credential.fst  	/root/.opam/fstar/lib/fstar/ulib.checked/Prims.fst.checked  	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Char.fsti.checked  	Parser.JSON.fst.checked  	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.List.Tot.fst.checked  	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.String.fsti.checked  	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Prelude.fsti.checked
+VC.Credential.fst.checked:  	VC.Credential.fst  	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Pervasives.Native.fst.checked  	/root/.opam/fstar/lib/fstar/ulib.checked/Prims.fst.checked  	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Char.fsti.checked  	XSD.Datatypes.fst.checked  	Parser.JSON.fst.checked  	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.List.Tot.fst.checked  	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.String.fsti.checked  	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Prelude.fsti.checked
 
 VC_Credential.ml:  	VC.Credential.fst.checked
 
@@ -1360,7 +1360,7 @@ VC_Credential.fs:  	VC.Credential.fst.checked
 
 VC_Credential.krml:  	VC.Credential.fst.checked
 
-VC_Credential.cmx:  	VC_Credential.ml  	Parser_JSON.cmx
+VC_Credential.cmx:  	VC_Credential.ml  	XSD_Datatypes.cmx  	Parser_JSON.cmx
 
 /root/.opam/fstar/lib/fstar/ulib.checked/FStar.All.fsti.checked:  	/root/.opam/fstar/lib/fstar/ulib/FStar.All.fsti  	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Exn.fst.checked  	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.ST.fst.checked  	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Heap.fst.checked  	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Prelude.fsti.checked
 
@@ -1594,7 +1594,7 @@ FStar_List_Tot_Base.ml:  	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.List.To
 
 FStar_List_Tot_Base.krml:  	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.List.Tot.Base.fst.checked
 
-RDF.CottasStore.ColumnSeq.fst.checked:  	RDF.CottasStore.ColumnSeq.fst  	/root/.opam/fstar/lib/fstar/ulib.checked/Prims.fst.checked  	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Prelude.fsti.checked
+RDF.CottasStore.ColumnSeq.fst.checked:  	RDF.CottasStore.ColumnSeq.fst  	/root/.opam/fstar/lib/fstar/ulib.checked/Prims.fst.checked  	Parquet.Footer.fst.checked  	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Prelude.fsti.checked
 
 RDF_CottasStore_ColumnSeq.ml:  	RDF.CottasStore.ColumnSeq.fst.checked
 
@@ -1602,7 +1602,7 @@ RDF_CottasStore_ColumnSeq.fs:  	RDF.CottasStore.ColumnSeq.fst.checked
 
 RDF_CottasStore_ColumnSeq.krml:  	RDF.CottasStore.ColumnSeq.fst.checked
 
-RDF_CottasStore_ColumnSeq.cmx:  	RDF_CottasStore_ColumnSeq.ml
+RDF_CottasStore_ColumnSeq.cmx:  	RDF_CottasStore_ColumnSeq.ml  	Parquet_Footer.cmx
 
 SPARQL.HTTP.RunQuery.fst.checked:  	SPARQL.HTTP.RunQuery.fst  	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.List.Tot.fst.checked  	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Pervasives.Native.fst.checked  	SPARQL.Eval.Limits.fst.checked  	SPARQL11.Algebra.fst.checked  	SPARQL.HTTP.Response.fst.checked  	SPARQL.Protocol.fst.checked  	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Prelude.fsti.checked
 
