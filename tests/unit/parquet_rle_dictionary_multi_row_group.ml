@@ -363,6 +363,95 @@ let () =
      check ~name:"dpcache capacity 0 stores nothing" true
    | _ -> check ~name:"dpcache capacity 0 stores nothing" false);
 
+  (* 9. Selective-column exact-count regression (roadmap item 4,
+     2026-07-06: docs/designissues/2026-07-05-disk-backed-db-perf-
+     review.md). `cottas_ondisk_count_exact` used to decode ALL FOUR
+     s/p/o/g columns of every row group whenever ANY of s/p/o was
+     bound, even though `cell_match None _` always matches regardless
+     of the actual cell -- an unbound column's VALUE is never needed
+     for a count-only query, and on the gene corpus decoding the
+     unneeded high-cardinality s/o columns was measured as the
+     dominant cost of a ~55-58s cold COUNT. The fix
+     (`count_selective_matches_seq` / `bound_col_match` in
+     RDF.CottasStore.fst, driving `walk_row_groups_count_exact_global`)
+     decodes only the columns whose bound is actually `Some`. This pin
+     proves the new selective decoder returns the EXACT SAME count as
+     a naive full-column reference scan, across a spread of
+     bound-pattern shapes (bound-p-only, bound-p-and-o, bound-s-only,
+     bound-g-only, all-four-bound, no-bounds-at-all) and across all 3
+     row groups of this fixture (including the 4-row trailing group
+     where o adaptively switches encoding) -- the exact shape that
+     made the old function's blanket 4-column decode expensive. *)
+  Printf.printf "\n== selective-column exact count (roadmap item 4) ==\n%!";
+  let module CS = RDF_CottasStore_ColumnSeq in
+  let module Store = RDF_CottasStore in
+  let some x = FStar_Pervasives_Native.Some x in
+  let none = FStar_Pervasives_Native.None in
+  let rg_offset_table2 =
+    opt_get "row_group_offset_table (section 9)"
+      (Parquet_Footer.probe_parquet_row_group_offset_table fixture_path) in
+  (* Reference count: naive scan over the whole-column lists already
+     decoded in section 2/3 above (s_col/p_col/o_col/g_col), fully
+     independent of the new selective-decode function. *)
+  let cell_matches expected actual =
+    match expected with
+    | FStar_Pervasives_Native.None -> true
+    | FStar_Pervasives_Native.Some e -> e = actual
+  in
+  let naive_count bound_s bound_p bound_o bound_g =
+    let n = ref 0 in
+    for i = 0 to expected_n - 1 do
+      let s = string_of_cell (List.nth s_col i) in
+      let p = string_of_cell (List.nth p_col i) in
+      let o = string_of_cell (List.nth o_col i) in
+      let g = string_of_cell (List.nth g_col i) in
+      if cell_matches bound_s s && cell_matches bound_p p &&
+         cell_matches bound_o o && cell_matches bound_g g
+      then incr n
+    done;
+    !n
+  in
+  (* Selective-decode count: sum count_selective_matches_seq over the 3
+     row groups, decoding ONLY the bound columns (+ g, always -- same
+     contract as walk_row_groups_count_exact_global). *)
+  let selective_count bound_s bound_p bound_o bound_g =
+    let total = ref 0 in
+    for rg = 0 to 2 do
+      let g_col_seq =
+        opt_get (Printf.sprintf "seq-decode g col rg=%d" rg)
+          (CS.probe_parquet_column_decode_in_row_group_seq_from_table
+             rg_offset_table2 fixture_path (z rg) (z 3)) in
+      let decode_if bound col =
+        if bound <> none then
+          CS.probe_parquet_column_decode_in_row_group_seq_from_table
+            rg_offset_table2 fixture_path (z rg) (z col)
+        else none
+      in
+      let s_opt = decode_if bound_s 0 in
+      let p_opt = decode_if bound_p 1 in
+      let o_opt = decode_if bound_o 2 in
+      let n = CS.cottas_column_length g_col_seq in
+      let rg_count =
+        Store.count_selective_matches_seq
+          bound_s bound_p bound_o bound_g s_opt p_opt o_opt g_col_seq n (z 0) (z 0) in
+      total := !total + (Z.to_int rg_count)
+    done;
+    !total
+  in
+  let check_combo name bound_s bound_p bound_o bound_g =
+    let expected = naive_count bound_s bound_p bound_o bound_g in
+    let got = selective_count bound_s bound_p bound_o bound_g in
+    check ~name:(Printf.sprintf "selective count %s (expected %d, got %d)" name expected got)
+      (expected = got)
+  in
+  check_combo "bound-p-only" none (some "http://ex.org/p1") none none;
+  check_combo "bound-p-and-o" none (some "http://ex.org/p2") (some "lit4097") none;
+  check_combo "bound-s-only" (some "http://ex.org/s2") none none none;
+  check_combo "bound-g-only" none none none (some "http://ex.org/gA");
+  check_combo "all-four-bound" (some "http://ex.org/s0") (some "http://ex.org/p0")
+    (some "lit0") (some "http://ex.org/gA");
+  check_combo "no-bounds-at-all" none none none none;
+
   Printf.printf
     "== summary: %d pass, %d fail (out of %d) ==\n"
     !passed !failed (!passed + !failed);

@@ -838,6 +838,107 @@ let rec walk_row_groups_count_graph_global
       (rg_index + 1) rg_count (fuel - 1) acc'
 
 // ----------------------------------------------------------------------
+// Selective-column exact count (roadmap item 4, 2026-07-06 follow-up).
+//
+// Problem: `walk_row_groups_estimate_global` (used by
+// `cottas_ondisk_count_exact` whenever ANY of s/p/o is bound) decodes
+// ALL FOUR columns of every row group even when only a subset of
+// bounds is present -- e.g. `SELECT (COUNT(*)) WHERE { ?s a ?o }` has
+// bound_p = Some(rdf:type) but bound_s = bound_o = None. Neither the
+// match test (`cell_match None _` is always `true`, independent of the
+// actual cell) nor the query's output (a bare count, no bindings) ever
+// needs the decoded VALUE of an unbound column, yet the old walk paid
+// a full string-materialising decode of the subject and object columns
+// on every row group anyway. On the gene corpus (888,949 rows, 8 row
+// groups, `rdf:type` present in every row group so the dict-cache
+// candidate prune from `plan_candidate_rgs` cannot help either) s/o are
+// the two high-cardinality columns (adaptively DLBA/RLE_DICTIONARY,
+// tens of thousands of distinct tokens) -- decoding them is the
+// dominant cost of the measured ~55-58s cold COUNT. p and g are cheap
+// (tiny dictionaries: 6 predicates, 0-1 graphs on this corpus).
+//
+// Fix: decode ONLY the columns whose bound is `Some` (plus the graph
+// column, which is needed unconditionally both to establish the row
+// count `n` -- cheap, no whole-column materialisation avoided there
+// since it's already the cheapest column -- and because a live
+// GB_CottasOnDisk query always carries a graph bound per issue #267).
+// `bound_col_match` mirrors `cell_match`'s contract exactly: `None`
+// bound matches unconditionally without inspecting the (possibly
+// undecoded) column at all.
+let bound_col_match
+  (bound : option string) (col_opt : option cottas_column) (i : nat)
+  : Tot bool =
+  match bound with
+  | None -> true
+  | Some expected ->
+    (match col_opt with
+     | None -> false
+     | Some col ->
+       if i < cottas_column_length col then
+         (match cottas_column_get col i with
+          | Some tok -> tok = expected
+          | None -> false)
+       else false)
+
+let rec count_selective_matches_seq
+  (bound_s bound_p bound_o bound_g : option string)
+  (s_col p_col o_col : option cottas_column)
+  (g_col : cottas_column)
+  (n : nat) (i : nat{i <= n}) (acc : nat)
+  : Tot nat (decreases (n - i)) =
+  if i = n then acc
+  else
+    let acc' =
+      if i < cottas_column_length g_col then
+        (match cottas_column_get g_col i with
+         | Some g_tok ->
+           if bound_col_match bound_s s_col i &&
+              bound_col_match bound_p p_col i &&
+              bound_col_match bound_o o_col i &&
+              graph_cell_match bound_g g_tok
+           then acc + 1
+           else acc
+         | None -> acc)
+      else acc in
+    count_selective_matches_seq bound_s bound_p bound_o bound_g
+      s_col p_col o_col g_col n (i + 1) acc'
+
+// Only decodes a column when its bound is `Some` (col 3 / graph is
+// always decoded: cheap, and needed to source the row count `n`).
+// Preserves the pre-existing all-or-nothing-per-row-group semantics
+// for columns that ARE bound: if a bound column fails to decode for a
+// row group, that row group contributes 0 (same fallback
+// `walk_row_groups_estimate_global` used, just scoped to the columns
+// this query actually needs -- an unrelated unbound column failing to
+// decode no longer zeroes out a row group it was never going to touch).
+let rec walk_row_groups_count_exact_global
+  (h : cottas_ondisk_handle)
+  (table : option parquet_row_group_offset_table)
+  (bound_s bound_p bound_o bound_g : option string)
+  (rg_index : nat) (rg_count : nat) (fuel : nat) (acc : nat)
+  : Tot nat (decreases fuel) =
+  if fuel = 0 then acc
+  else if rg_index >= rg_count then acc
+  else
+    let acc' =
+      match pcache_decode_global_auto table h.coh_path rg_index 3 with
+      | None -> acc
+      | Some g_col ->
+        let s_col = if Some? bound_s then pcache_decode_global_auto table h.coh_path rg_index 0 else None in
+        let p_col = if Some? bound_p then pcache_decode_global_auto table h.coh_path rg_index 1 else None in
+        let o_col = if Some? bound_o then pcache_decode_global_auto table h.coh_path rg_index 2 else None in
+        let needed_ok =
+          (None? bound_s || Some? s_col) &&
+          (None? bound_p || Some? p_col) &&
+          (None? bound_o || Some? o_col) in
+        if needed_ok then
+          count_selective_matches_seq bound_s bound_p bound_o bound_g
+            s_col p_col o_col g_col (cottas_column_length g_col) 0 acc
+        else acc in
+    walk_row_groups_count_exact_global h table bound_s bound_p bound_o bound_g
+      (rg_index + 1) rg_count (fuel - 1) acc'
+
+// ----------------------------------------------------------------------
 // Phase 2.5b (issue #118): seq-shape variants of the hot-path walks.
 //
 // These mirror filter_zipped_rows / count_zipped_rows / walk_row_groups_*
@@ -1709,7 +1810,12 @@ let cottas_ondisk_count_exact
        if None? bound_s && None? bound_p && None? bound_o then
          walk_row_groups_count_graph_global h table bound_g 0 rg_count rg_count 0
        else
-         walk_row_groups_estimate_global h table
+         // Roadmap item 4 (2026-07-06): selective-column walk. Decodes
+         // only the columns whose bound is `Some` (plus the graph
+         // column, always needed for the row count and the graph
+         // filter) instead of unconditionally decoding all four —
+         // see `walk_row_groups_count_exact_global`'s banner comment.
+         walk_row_groups_count_exact_global h table
            bound_s bound_p bound_o bound_g 0 rg_count rg_count 0)
 
 // ----------------------------------------------------------------------

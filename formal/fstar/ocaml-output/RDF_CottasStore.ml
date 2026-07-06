@@ -1916,6 +1916,113 @@ let rec walk_row_groups_count_graph_global (h : cottas_ondisk_handle)
          | FStar_Pervasives_Native.None -> acc in
        walk_row_groups_count_graph_global h table bound_g
          (rg_index + Prims.int_one) rg_count (fuel - Prims.int_one) acc')
+let bound_col_match (bound : Prims.string FStar_Pervasives_Native.option)
+  (col_opt :
+    RDF_CottasStore_ColumnSeq.cottas_column FStar_Pervasives_Native.option)
+  (i : Prims.nat) : Prims.bool=
+  match bound with
+  | FStar_Pervasives_Native.None -> true
+  | FStar_Pervasives_Native.Some expected ->
+      (match col_opt with
+       | FStar_Pervasives_Native.None -> false
+       | FStar_Pervasives_Native.Some col ->
+           if i < (RDF_CottasStore_ColumnSeq.cottas_column_length col)
+           then
+             (match RDF_CottasStore_ColumnSeq.cottas_column_get col i with
+              | FStar_Pervasives_Native.Some tok -> tok = expected
+              | FStar_Pervasives_Native.None -> false)
+           else false)
+let rec count_selective_matches_seq
+  (bound_s : Prims.string FStar_Pervasives_Native.option)
+  (bound_p : Prims.string FStar_Pervasives_Native.option)
+  (bound_o : Prims.string FStar_Pervasives_Native.option)
+  (bound_g : Prims.string FStar_Pervasives_Native.option)
+  (s_col :
+    RDF_CottasStore_ColumnSeq.cottas_column FStar_Pervasives_Native.option)
+  (p_col :
+    RDF_CottasStore_ColumnSeq.cottas_column FStar_Pervasives_Native.option)
+  (o_col :
+    RDF_CottasStore_ColumnSeq.cottas_column FStar_Pervasives_Native.option)
+  (g_col : RDF_CottasStore_ColumnSeq.cottas_column) (n : Prims.nat)
+  (i : Prims.nat) (acc : Prims.nat) : Prims.nat=
+  if i = n
+  then acc
+  else
+    (let acc' =
+       if i < (RDF_CottasStore_ColumnSeq.cottas_column_length g_col)
+       then
+         match RDF_CottasStore_ColumnSeq.cottas_column_get g_col i with
+         | FStar_Pervasives_Native.Some g_tok ->
+             (if
+                (((bound_col_match bound_s s_col i) &&
+                    (bound_col_match bound_p p_col i))
+                   && (bound_col_match bound_o o_col i))
+                  && (graph_cell_match bound_g g_tok)
+              then acc + Prims.int_one
+              else acc)
+         | FStar_Pervasives_Native.None -> acc
+       else acc in
+     count_selective_matches_seq bound_s bound_p bound_o bound_g s_col p_col
+       o_col g_col n (i + Prims.int_one) acc')
+let rec walk_row_groups_count_exact_global (h : cottas_ondisk_handle)
+  (table :
+    Parquet_Footer.parquet_row_group_offset_table
+      FStar_Pervasives_Native.option)
+  (bound_s : Prims.string FStar_Pervasives_Native.option)
+  (bound_p : Prims.string FStar_Pervasives_Native.option)
+  (bound_o : Prims.string FStar_Pervasives_Native.option)
+  (bound_g : Prims.string FStar_Pervasives_Native.option)
+  (rg_index : Prims.nat) (rg_count : Prims.nat) (fuel : Prims.nat)
+  (acc : Prims.nat) : Prims.nat=
+  if fuel = Prims.int_zero
+  then acc
+  else
+    if rg_index >= rg_count
+    then acc
+    else
+      (let acc' =
+         match pcache_decode_global_auto table h.coh_path rg_index
+                 (Prims.of_int (3))
+         with
+         | FStar_Pervasives_Native.None -> acc
+         | FStar_Pervasives_Native.Some g_col ->
+             let s_col =
+               if FStar_Pervasives_Native.uu___is_Some bound_s
+               then
+                 pcache_decode_global_auto table h.coh_path rg_index
+                   Prims.int_zero
+               else FStar_Pervasives_Native.None in
+             let p_col =
+               if FStar_Pervasives_Native.uu___is_Some bound_p
+               then
+                 pcache_decode_global_auto table h.coh_path rg_index
+                   Prims.int_one
+               else FStar_Pervasives_Native.None in
+             let o_col =
+               if FStar_Pervasives_Native.uu___is_Some bound_o
+               then
+                 pcache_decode_global_auto table h.coh_path rg_index
+                   (Prims.of_int (2))
+               else FStar_Pervasives_Native.None in
+             let needed_ok =
+               (((FStar_Pervasives_Native.uu___is_None bound_s) ||
+                   (FStar_Pervasives_Native.uu___is_Some s_col))
+                  &&
+                  ((FStar_Pervasives_Native.uu___is_None bound_p) ||
+                     (FStar_Pervasives_Native.uu___is_Some p_col)))
+                 &&
+                 ((FStar_Pervasives_Native.uu___is_None bound_o) ||
+                    (FStar_Pervasives_Native.uu___is_Some o_col)) in
+             if needed_ok
+             then
+               count_selective_matches_seq bound_s bound_p bound_o bound_g
+                 s_col p_col o_col g_col
+                 (RDF_CottasStore_ColumnSeq.cottas_column_length g_col)
+                 Prims.int_zero acc
+             else acc in
+       walk_row_groups_count_exact_global h table bound_s bound_p bound_o
+         bound_g (rg_index + Prims.int_one) rg_count (fuel - Prims.int_one)
+         acc')
 type dict_cache =
   ((Prims.nat * Prims.nat) * Prims.string Prims.list) Prims.list
 let rec dict_cache_lookup (c : dict_cache) (rg : Prims.nat) (col : Prims.nat)
@@ -2758,7 +2865,7 @@ let cottas_ondisk_count_exact (ds : cottas_ondisk_store)
            walk_row_groups_count_graph_global h table bound_g Prims.int_zero
              rg_count rg_count Prims.int_zero
          else
-           walk_row_groups_estimate_global h table bound_s bound_p bound_o
+           walk_row_groups_count_exact_global h table bound_s bound_p bound_o
              bound_g Prims.int_zero rg_count rg_count Prims.int_zero)
 let cottas_ondisk_build_bound_qp_opt (ds : cottas_ondisk_store)
   (s : RDF_Term.subject FStar_Pervasives_Native.option)

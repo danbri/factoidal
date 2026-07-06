@@ -998,6 +998,171 @@ whether a design doc is needed first.
       is a poor structural match for the "kills most row groups"
       mechanism the roadmap describes — parliament's 26 row groups and
       232 predicates is the corpus this technique was designed for.
+   4. **Fix the cold full-column-decode cost of a COUNT over a
+      universally-present bound predicate** (the "one pre-existing
+      slow shape" noted above, filed against roadmap item 4).
+
+      **DONE 2026-07-06 (follow-up session).** Reproduced first,
+      before touching anything: a fresh CS-clustered + eager-sidecar
+      gene build (888,949 quads, 8 row groups, same pipeline as this
+      item), `factoidal query --data-cottas` (native CLI, not HTTP,
+      this sandbox), `SELECT (COUNT(*) AS ?n) WHERE { ?s a ?o }`
+      (`rdf:type`, present in every one of gene's 12 characteristic
+      sets — the dict-cache candidate prune cannot narrow the
+      row-group set for this predicate): **58.26 s wall**, correct
+      answer 91,871. `strace -f -c` on the same run attributed only
+      **22.6 ms of syscall time total** (93.7% of that in `munmap` at
+      process exit; 16 `read()` calls, 41 `mmap()` calls) — confirming
+      the perf review's own prior finding that this cost is CPU-bound
+      userspace work, not I/O, ruling out hypothesis (c)
+      (list-append quadratics would show as CPU too, but see below —
+      it wasn't the cause) and pointing at decode/materialisation
+      cost.
+
+      **Root cause, read directly from `RDF.CottasStore.fst`
+      (hypothesis (a), decoding entire unneeded columns): confirmed,
+      not hypothesis (d) (per-row dictionary-index re-resolution —
+      that was already fixed by the dict-cache work one item up) and
+      not (b) (hex-string materialisation — real, but not what this
+      query pays extra for) or (c) (list-append quadratics — the
+      hot walk already uses the array-shape `cottas_column`
+      seq-decoder from Phase 2.5b, not `list`).**
+      `cottas_ondisk_count_exact`'s bounds-present branch dispatched
+      to `walk_row_groups_estimate_global`, which unconditionally
+      decoded **all four** s/p/o/g columns of every row group via
+      `pcache_decode_global_auto`, then fed them to
+      `count_zipped_rows_seq` — even though `?s rdf:type ?o` has
+      `bound_s = None` and `bound_o = None`. `cell_match None _` is
+      `true` unconditionally, so neither the match test nor the
+      COUNT's output (a bare integer, no bindings) ever needed the
+      subject or object column's decoded VALUE — but the walk paid a
+      full string-materialising decode of both anyway. On gene, s and
+      o are exactly the two high-cardinality columns (adaptively
+      DLBA/RLE_DICTIONARY, tens of thousands of distinct tokens across
+      888,949 rows, per §1.1); p and g are cheap (6 and ≤1 distinct
+      values respectively on this corpus). This is the dominant cost:
+      the walk decoded 2 of the 4 columns for no reason a COUNT could
+      ever use.
+
+      **Fix, in F\* (verified, z3 4.13.3, no `--lax`; no extension
+      of `experimental_ocaml_glue/` beyond the pre-existing rule-#11
+      pass-through shims per the dispatch brief).**
+      `RDF.CottasStore.fst` gained `bound_col_match` (mirrors
+      `cell_match`'s contract exactly — `None` bound matches
+      unconditionally, without even inspecting an undecoded column),
+      `count_selective_matches_seq` (the zipped-match loop,
+      parameterised over `option cottas_column` for s/p/o so a
+      column whose bound is `None` never needs a value), and
+      `walk_row_groups_count_exact_global` (the per-row-group driver:
+      decodes column 3 (graph) unconditionally — cheap, and needed
+      both to source the row count `n` and because a live
+      `GB_CottasOnDisk` query always carries a graph bound per issue
+      #267 — and decodes columns 0/1/2 (s/p/o) ONLY when that
+      column's bound is `Some`). `cottas_ondisk_count_exact`'s
+      bounds-present branch now calls this selective walk instead of
+      the old all-four-columns `walk_row_groups_estimate_global`.
+      Semantics preserved exactly for the columns that ARE bound
+      (a bound column's decode failure still zeroes the whole row
+      group's contribution, matching the old all-or-nothing
+      fallback) and, as a side effect, no longer let an UNRELATED
+      unbound column's decode failure zero out a row group the query
+      never needed that column for — a latent under-counting risk in
+      the old code that this change also closes, though it was not
+      observed on this corpus (no decode failures occur post-#98).
+
+      **Measured (this sandbox, fresh gene CS-clustered + eager-sidecar
+      build, native CLI, `timeout` per anti-pattern #17, 3 warm-process
+      runs for the after column — the earlier §"Query measurements"
+      cells above show cache-on/off pairs from a warm HTTP server;
+      this table is the on-CLI, cold-per-invocation shape the ~55 s
+      case actually is). "Before" is the git-committed HEAD binary
+      (re-extracted to a scratch dir, unmodified by this fix) run
+      against the identical artifact, confirming the reproduction
+      independently of my working-tree state:**
+
+      | query | before | after |
+      |---|---:|---:|
+      | `SELECT (COUNT(*) AS ?n) WHERE { ?s a ?o }` (bound p only, universal predicate, 8 rg) | 58.26 s (first repro) / 54.99 s (HEAD binary, re-confirmed) | **2.77–2.82 s** |
+      | `SELECT (COUNT(*) AS ?n) WHERE { ?s ?p ?o }` (COUNT(*), unbound — graph-only walk, untouched by this fix) | 0.740 s | 0.727 s (unchanged, within noise) |
+
+      **~19–20× faster** on the target case (~55 s → ~2.8 s), and now
+      proportional to the cheap columns actually needed rather than to
+      the whole store's s/o content. The remaining ~2.8 s is the graph
+      + predicate column decode plus the per-row match loop over
+      888,949 rows (an O(rows), not O(store-content), cost) — smaller
+      than the ~55 s baseline by an order of magnitude but not yet
+      "milliseconds"; a further reduction would mean predicate-pushdown
+      by dictionary ID (resolve `rdf:type` to its per-row-group
+      dictionary index once, then compare integers against the RLE
+      index stream instead of decoding every matching cell to a string
+      at all) — the hypothesis (d) mechanism, not implemented here
+      because (a) alone already closed the dominant 2-of-4-columns
+      waste and delivered an order-of-magnitude win from a
+      commit-sized change; revisit hypothesis (d) if a future
+      corpus/predicate combination still shows a multi-second
+      selective-decode COUNT.
+
+      **Correctness, and an unrelated pre-existing bug found while
+      building the regression pin.** `COUNT(*)` = 888,949 exact
+      (unbound path, unchanged); the bound-`rdf:type` COUNT = 91,871
+      exact, identical before and after. The first regression-pin
+      draft wrapped its bound-p/bound-o/bound-s probe queries in
+      `GRAPH ?g { ... }` (mirroring the existing named-graph checks in
+      the same file) and one of them — a bound-p-and-bound-o pattern
+      against the CS-clustered build only — came back `0` instead of
+      `1`. Root cause was NOT this fix: `SPARQL11.Store.fst`'s
+      `detect_streaming_count_star` (the only caller of
+      `cottas_ondisk_count_exact`) matches via `extract_single_tp_bgp`,
+      which requires a bare `GP_BGP [tp]`; a `GRAPH ?g { tp }`-wrapped
+      COUNT never reaches `cottas_ondisk_count_exact` at all — it falls
+      through to the generic materialise-then-search evaluator, which
+      on the CS-clustered build's `filter_candidates_by_compound_po`
+      (the pre-existing `.po.presence` compound bitmap consult,
+      untouched by this change and never called by
+      `cottas_ondisk_count_exact`) apparently mis-prunes the one
+      row group that has both bound tokens present as a pair when the
+      corpus has been CS-clustered. Confirmed independent of this fix
+      by reproducing the same `0` on the unmodified git-committed HEAD
+      binary with a plain `SELECT ?g ?s WHERE { GRAPH ?g { ?s <p> <o>
+      } }` (no COUNT at all) — bound-p alone and bound-o alone each
+      correctly return the row; only the conjunction, only on the
+      clustered build, returns none. This is a real, separate bug in
+      the CS-clustered on-disk SEARCH path (roadmap item 3's
+      territory, not item 4's) — out of scope for this change, not
+      fixed, and reported here rather than silently worked around;
+      worth its own issue. The regression pin below was corrected to
+      use bare (non-`GRAPH`-wrapped) BGP COUNT queries against the
+      fixture's single default-graph quad instead, which DO exercise
+      `cottas_ondisk_count_exact` / this fix's code path, and all pass
+      on both builds.
+
+      Regression pins: five new checks in
+      [`tests/local/cottas_row_order_regressions.sh`](../../tests/local/cottas_row_order_regressions.sh)
+      (bound-p-only, bound-p-and-bound-o, bound-s-only, and a
+      zero-match bound-p-and-o case, each checked for cross-build
+      agreement AND a literal expected count — 1, 1, 1, 0 respectively
+      — so a regression that returns the same wrong number on both
+      builds still fails; the file is 17 checks total now, 17 pass, 0
+      fail, up from 9), and a new section 9 in
+      [`tests/unit/parquet_rle_dictionary_multi_row_group.ml`](../../tests/unit/parquet_rle_dictionary_multi_row_group.ml)
+      (102 assertions in the file now, 0 fail, up from 96) pinning
+      `count_selective_matches_seq` against a naive full-column
+      reference scan across six bound-pattern shapes (bound-p-only,
+      bound-p-and-o, bound-s-only, bound-g-only, all-four-bound,
+      no-bounds-at-all) on all 3 row groups of the existing
+      multi-row-group fixture, including the 4-row trailing group
+      where the object column adaptively switches encoding.
+
+      **Floors after the change (repo root only):** SPARQL suite 631
+      pass, 0 fail (of 631); RDF suite 1,031 pass, 0 fail (of 1,031);
+      `tests/unit/run-all.sh` 28 file(s) pass, 0 file(s) fail (of 28 —
+      a 29th file, `delta_log_roundtrip.ml`, fails to build in this
+      tree, but it is a concurrent sibling session's new,
+      not-yet-wired-in test, untouched by and unrelated to this
+      change); `tests/local/cottas_row_order_regressions.sh` 17 pass,
+      0 fail (of 17, up from 9); `tests/local/cottas_corpus_regressions.sh`
+      4 pass, 0 fail; `tests/local/dict_global_cache_parity.sh` 6
+      pass, 0 fail.
 4. **Make the in-memory query path bound memory (push aggregation /
    point-lookup through a streaming store scan).** *Win:* measured — a
    1-row answer costs 731 MiB today (§2.c); target O(working-set+result).
