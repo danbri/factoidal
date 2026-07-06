@@ -9,7 +9,7 @@ A home for longer-form, interactive write-ups about how Factoidal
 works — RDF/SPARQL concepts demonstrated by running the real
 F\*-extracted engine in your browser, not by prose alone.
 
-Five posts are published below, each with live runnable cells. The
+Thirteen posts are published below, each with live runnable cells. The
 rest of the series (see
 [the series plan](../../designissues/2026-07-05-docs-hub-plan/) for
 the full map and vocabulary strategy) is still planned.
@@ -82,15 +82,16 @@ headlessly.
   <li><a href="./03-schemas-that-infer-rdfs-owl/">Schemas that infer: RDFS and OWL 2 RL</a> — RDFS + OWL 2 RL closure (schema.org)</li>
   <li><a href="./04-concept-schemes-skos/">Concept schemes: SKOS and its integrity conditions</a> — SKOS + the S9/S13/S14/S27/S37/S46 integrity conditions (skos)</li>
   <li><a href="./05-shapes-that-validate-shacl/">Shapes that validate: SHACL</a> — minCount/datatype/class constraints, validation reports (foaf)</li>
-  <li class="placeholder">All the syntaxes: N-Triples, N-Quads, TriG, RDF/XML</li>
+  <li><a href="./11-one-graph-five-syntaxes/">One graph, five syntaxes</a> — Turtle/N-Triples/N-Quads/TriG/RDF-XML round-tripping to identical bytes (foaf)</li>
   <li class="placeholder">Mutating and serving data: SPARQL Update, Protocol, Graph Store</li>
-  <li class="placeholder">Shapes, the other dialect: ShEx</li>
-  <li class="placeholder">JSON-LD: RDF as JSON</li>
-  <li class="placeholder">Canonical graphs: RDFC-1.0 and content addressing</li>
-  <li class="placeholder">Mapping tables to triples: RML</li>
-  <li class="placeholder">Rules over RDF: RIF</li>
+  <li><a href="./06-shapes-the-other-dialect-shex/">Shapes, the other dialect: ShEx</a> — ShExJ validation, Wikidata EntitySchemas (wikidata)</li>
+  <li><a href="./07-json-ld-rdf-as-json/">JSON-LD: RDF as JSON</a> — @context as mapping, toRdf/jsonldToRdf (schema.org)</li>
+  <li><a href="./08-canonical-graphs-rdfc10/">Canonical graphs: RDFC-1.0 and content addressing</a> — canonicalize + urn:rdfc:sha256 (foaf)</li>
+  <li><a href="./09-mapping-tables-to-triples-rml/">Mapping tables to triples: RML</a> — CSV/JSON to RDF via rmlMap, real rml-core/rml-io fixtures (schema.org)</li>
+  <li><a href="./10-rules-rif-core/">Rules over RDF: RIF Core</a> — RIF frame/BGP rules forward-chained live</li>
   <li class="placeholder">The RDF/JS API</li>
-  <li class="placeholder">The functional dataset API</li>
+  <li><a href="./12-the-api-tour/">The API tour</a> — npm/factoidal's full function surface + a live capabilities probe (foaf)</li>
+  <li><a href="./13-verifiable-credentials-and-csvw/">Verifiable Credentials and CSVW</a> — VC structural validation (no crypto yet) + CSVW csv2rdf live (schema.org)</li>
   <li class="placeholder">How fast: the performance story</li>
   <li class="placeholder">The verified-in-F* story</li>
 </ul>

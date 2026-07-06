@@ -98,6 +98,14 @@ POSTS=(
   "web/hub/03-schemas-that-infer-rdfs-owl/"
   "web/hub/04-concept-schemes-skos/"
   "web/hub/05-shapes-that-validate-shacl/"
+  "web/hub/06-shapes-the-other-dialect-shex/"
+  "web/hub/07-json-ld-rdf-as-json/"
+  "web/hub/08-canonical-graphs-rdfc10/"
+  "web/hub/09-mapping-tables-to-triples-rml/"
+  "web/hub/10-rules-rif-core/"
+  "web/hub/11-one-graph-five-syntaxes/"
+  "web/hub/12-the-api-tour/"
+  "web/hub/13-verifiable-credentials-and-csvw/"
 )
 for p in "${POSTS[@]}"; do
   [ -f "$SITE_DIR/$p/index.html" ] || { echo "FAIL: $SITE_DIR/$p/index.html was not produced." >&2; exit 1; }
