@@ -232,7 +232,7 @@ test('post18 cell 4 degrades gracefully when loadNpmEntry throws', async () => {
   assert.match(result.note, /fetch failed/);
 });
 
-test('post18 cell 5 (the runtimes pretty() table): four rows, native/js/C/wasm in that order, wasm honestly disclosed', async () => {
+test('post18 cell 5 (the runtimes pretty() table): four rows, native/js/C/wasm in that order, wasm now proven too', async () => {
   const Factoidal = makeFactoidalStub();
   const result = await runObservableCell(cells[4], { Factoidal, pretty });
   assert.equal(result.kind, 'table');
@@ -243,7 +243,8 @@ test('post18 cell 5 (the runtimes pretty() table): four rows, native/js/C/wasm i
     'Native (OCaml)', 'JavaScript (js_of_ocaml)', 'C (KaRaMeL)', 'WebAssembly (wasm_of_ocaml)',
   ]);
   const wasmRow = result.rows[3];
-  assert.match(wasmRow[1], /nothing yet/i);
+  assert.doesNotMatch(wasmRow[1], /nothing yet/i,
+    'the wasm row was rebuilt to include DeltaLog/DeltaMerge -- update this assertion, not revert the rebuild, if it fails');
 });
 
 // ---------------------------------------------------------------------
@@ -295,7 +296,7 @@ test('post18: RDF.CottasStore.BaseWriter.fst exists and is the module the zero-P
   assert.ok(fs.existsSync(p), 'expected RDF.CottasStore.BaseWriter.fst to exist');
 });
 
-test('post18: the wasm npm-entry bundle genuinely predates the delta-log exports (grounds the "not yet in wasm" honesty section)', () => {
+test('post18: the wasm npm-entry bundle now contains the delta-log exports (grounds the "wasm now proven too" update)', () => {
   const wasmCandidates = [
     path.join(REPO_ROOT, 'docs', 'npm', 'foafos', 'factoidal-npm-entry.wasm.js'),
     path.join(REPO_ROOT, 'npm', 'factoidal', 'factoidal-npm-entry.wasm.js'),
@@ -303,8 +304,8 @@ test('post18: the wasm npm-entry bundle genuinely predates the delta-log exports
   const wasmPath = wasmCandidates.find((p) => fs.existsSync(p));
   assert.ok(wasmPath, `expected one of ${wasmCandidates.join(', ')} to exist`);
   const wasmSrc = fs.readFileSync(wasmPath, 'utf8');
-  assert.doesNotMatch(wasmSrc, /deltaBatchToHex|deltaMergeApplyBrowser/,
-    'the wasm bundle should NOT (yet) contain the delta-log exports -- if this now fails, the wasm bundle was rebuilt and this post\'s honesty disclosure needs updating instead of the test');
+  assert.match(wasmSrc, /deltaBatchToHex/);
+  assert.match(wasmSrc, /deltaMergeApplyBrowser/);
 });
 
 test('post18: the js npm-entry bundle DOES contain the delta-log exports (the contrapositive of the wasm check above)', () => {

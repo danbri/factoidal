@@ -1,6 +1,6 @@
 ---
 title: "The durable log, live: update, persist, reload, corrupt"
-description: "The full durable-UPDATE lifecycle running in your browser -- parse, SPARQL UPDATE, IndexedDB persistence proved across a real reload, and an honest checksum-rejection demo -- plus the same F* delta-log module proven running natively, as KaRaMeL C, and (honestly) not yet in wasm."
+description: "The full durable-UPDATE lifecycle running in your browser -- parse, SPARQL UPDATE, IndexedDB persistence proved across a real reload, and an honest checksum-rejection demo -- plus the same F* delta-log module proven running natively, as KaRaMeL C, and now as wasm_of_ocaml too."
 layout: hub.njk
 series: docs-hub
 series_order: 18
@@ -16,8 +16,11 @@ This post is the capstone the owner asked for directly: **run the
 whole lifecycle in the page** — parse, update, persist, reload, and
 (honestly) corrupt — and then show that the exact same F\* module
 proving all of it is not a browser-only trick. It runs natively, it
-runs as KaRaMeL-extracted C, and it is honestly disclosed where it does
-not yet run (wasm).
+runs as KaRaMeL-extracted C, and it runs as `wasm_of_ocaml` too — the
+wasm npm-entry bundle now ships `DeltaLog`/`DeltaMerge`, and a
+require.main path bug in `wasm.js`'s entry loader that had silently
+broken every wasm-side capability probe (SHACL, ShEx, OWL/RDFS
+closure, RML, CSVW, JSON-LD, RIF, and this delta log alike) is fixed.
 
 Nothing below is a mock. Every cell calls the real
 `RDF_Store_Columnar_DeltaLog`/`RDF_Store_Columnar_DeltaMerge` functions
@@ -214,7 +217,7 @@ contract the native on-disk log's crash harness measured 270 times
 (0 corrupt accepts) — here it's one keystroke away, in a browser tab,
 on a public page.
 
-## The clean-architecture proof: one module, three runtimes, one honest gap
+## The clean-architecture proof: one module, four runtimes, one honest gap
 
 Nothing above is browser-specific logic. `RDF.Store.Columnar.DeltaLog.fst`
 declares exactly **five** `ML`-effect `assume val`s for durability —
@@ -230,18 +233,22 @@ on where the module runs: **(1)** native OCaml, plain `Unix` syscalls
 issue #282) — real `fsync`, real `rename`, the path the CLI's
 `--delta-log` flag and `factoidal-http --rw` (commit
 [`e8085da`](https://github.com/danbri/factoidal/commit/e8085da)) both
-commit through; **(2)** if anything under `js_of_ocaml` called that
-*same* `Unix`-shaped realisation, it would hit jsoo's own ephemeral
-pseudo-filesystem (`MlFakeDevice`) — in-memory, reset on every page
-load — which is exactly why **(3)** the cells above never call it at
-all: `browser.js`'s `deltaLogOpen`/`deltaLogAppend`/.../`deltaLogMerge`
-bypass the `assume val` boundary entirely and hand the pure
-serialize/parse bytes straight to `IndexedDB` instead; **(4)** the
-KaRaMeL C target declares the same five primitives as `extern`s in its
-generated header but ships no C stub body for them yet — the demo
-below proves the pure spec cone, not the file-write boundary. Three of
-those four are durable and working today; the fourth (C file I/O) is a
-named gap, not a hidden one — see the table's own footnote.
+commit through; **(2)** if anything under `js_of_ocaml` or
+`wasm_of_ocaml` called that *same* `Unix`-shaped realisation, it would
+hit jsoo's own ephemeral pseudo-filesystem (`MlFakeDevice`) — in-memory,
+reset on every page load — which is exactly why **(3)** the cells
+above never call it at all: `browser.js`'s
+`deltaLogOpen`/`deltaLogAppend`/.../`deltaLogMerge` bypass the
+`assume val` boundary entirely and hand the pure serialize/parse bytes
+straight to `IndexedDB` instead, and the wasm npm-entry ABI's
+`deltaBatchToHex`/`deltaMergeApplyBrowser` call the identical pure
+functions compiled through `wasm_of_ocaml` instead of `js_of_ocaml`;
+**(4)** the KaRaMeL C target declares the same five primitives as
+`extern`s in its generated header but ships no C stub body for them
+yet — the demo below proves the pure spec cone, not the file-write
+boundary. Three of those four are durable and working today; the
+fourth (C file I/O) is a named gap, not a hidden one — see the table's
+own footnote.
 
 ```observable-js
 return pretty([
@@ -254,9 +261,9 @@ return pretty([
   { runtime: "C (KaRaMeL)", proves: "serialize/parse/checksum/epoch-filter -- the pure spec cone, NOT the file-write boundary",
     evidence: "delta_log_demo: 12 of 12 assertions pass",
     landed: "commit bd9e5be" },
-  { runtime: "WebAssembly (wasm_of_ocaml)", proves: "nothing yet for this module",
-    evidence: "factoidal-npm-entry.wasm.js predates DeltaLog's landing entirely -- 0 occurrences of deltaBatchToHex/deltaMergeApplyBrowser in the built bundle",
-    landed: "not rebuilt since (stale bundle, not a structural block -- rides the same FSTAR_MODULES list as the JS build)" },
+  { runtime: "WebAssembly (wasm_of_ocaml)", proves: "serialize/parse/merge -- the same pure functions as the JS row, called through the wasm npm-entry ABI",
+    evidence: "npm/factoidal/test/delta-log-wasm.test.js: 3/3 pass against factoidal-npm-entry.wasm.js; capabilities() on the wasm engine reports every npm-entry function true (was blocked by a require.main path bug in wasm.js's loader, not a missing feature or a missing build)",
+    landed: "wasm rebuild + wasm.js entry-loader fix" },
 ]);
 ```
 
@@ -333,9 +340,9 @@ byte pins that run everywhere regardless.
 ## What's next
 
 The delta log's file-I/O boundary in C (the fourth cell of the table
-above) and a wasm rebuild that actually includes `DeltaLog`/`DeltaMerge`
-are the two named, disclosed gaps this post leaves open. Compaction
-(folding an accumulated delta back into a fresh `.cottas` base) and
+above) is the one named, disclosed gap this post leaves open — the
+wasm gap the table used to carry is closed. Compaction (folding an
+accumulated delta back into a fresh `.cottas` base) and
 `navigator.storage.persist()` wiring remain the browser-side follow-ups
 [the design doc](https://github.com/danbri/factoidal/blob/claude/main/docs/designissues/2026-07-06-browser-persistence.md)
 already named before this post existed.

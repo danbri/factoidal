@@ -508,19 +508,20 @@ f=b<0;if(f)b=-b;var
 d=0,c=0;while(b){d++;c=a(c,Number(BigInt.asIntN(32,b)));b>>=e}if(d&1)c=a(c,0);if(f)c++;return c}function
 z(a,b){return d(BigInt(a)|BigInt(b))}function
 A(a,b){return d(BigInt(a)*BigInt(b))}function
-B(a,b){if(a==0){a=10;var
+B(a){return d(-BigInt(a))}function
+D(a,b){if(a==0){a=10;var
 c=0,k=1;if(b[c]==j){k=-1;c++}else if(b[c]==C)c++;if(b[c]==v){c++;if(b.length==c)return 0;else{var
 f=b[c];if(f=="o"||f=="O")a=8;else if(f=="x"||f=="X")a=16;else if(f=="b"||f=="B")a=2;if(a!=10){b=b.substring(c+1);if(k==-1)b=j+b}}}}function
 n(a){if(a>=48&&a<=57)return a-48;if(a>=97&&a<=102)return a-97+10;if(a>=65&&a<=70)return a-65+10;return V}var
 i=!1,e=0;if(b[e]==C)b=b.substring(1);else if(b[e]==j){i=!0;e++}if(b[e]=="_")return null;b=b.replace(/_/g,l);if(b==j||b==l)b=v;var
 g=0n,m=BigInt(a);for(;e<b.length;e++){var
 h=n(b.charCodeAt(e));if(h>=a)return null;g=g*m+BigInt(h)}if(i)g=-g;return d(g)}function
-D(a){return a>=0}function
-E(a,b){return d(BigInt(a)%BigInt(b))}function
-F(a,b,c){if(c<0)c=-c;do{var
+E(a){return a>=0}function
+F(a,b){return d(BigInt(a)%BigInt(b))}function
+G(a,b,c){if(c<0)c=-c;do{var
 d=Number(BigInt.asIntN(32,c));a(b,d);a(b,d>>>8);a(b,d>>>16);a(b,d>>>24);c>>=e}while(c)}function
-G(a,b){return d(BigInt(a)<<BigInt(b))}function
-H(a){if(a<0)a=-a;var
+H(a,b){return d(BigInt(a)<<BigInt(b))}function
+I(a){if(a<0)a=-a;var
 b=0,c=1n;while(c<=a){b+=1;c<<=e}return b}function
-I(a,b){return d(BigInt(a)-BigInt(b))}return{wasm_z_sub:I,wasm_z_size:H,wasm_z_shift_left:G,wasm_z_serialize:F,wasm_z_rem:E,wasm_z_positive:D,wasm_z_of_js_string_base:B,wasm_z_mul:A,wasm_z_logor:z,wasm_z_hash:y,wasm_z_format:x,wasm_z_fdiv:w,wasm_z_equal:u,wasm_z_deserialize:t,wasm_z_compare:s,wasm_z_cdiv:r,wasm_z_add:q,wasm_z_abs:p,unix_error:b,caml_strerror:m}}(globalThis))({"link":[["code-42052955f64c881c4a05",0]],"generated":(a=>{var
+J(a,b){return d(BigInt(a)-BigInt(b))}return{wasm_z_sub:J,wasm_z_size:I,wasm_z_shift_left:H,wasm_z_serialize:G,wasm_z_rem:F,wasm_z_positive:E,wasm_z_of_js_string_base:D,wasm_z_neg:B,wasm_z_mul:A,wasm_z_logor:z,wasm_z_hash:y,wasm_z_format:x,wasm_z_fdiv:w,wasm_z_equal:u,wasm_z_deserialize:t,wasm_z_compare:s,wasm_z_cdiv:r,wasm_z_add:q,wasm_z_abs:p,unix_error:b,caml_strerror:m}}(globalThis))({"link":[["code-fc09ea354cfa512e66fa",0]],"generated":(a=>{var
 b=a,c=a?.module?.export||a;return{"env":{"uint32_of_int":(...a)=>a[0]!==undefined?a[0]:0,"unix_pipe":(...a)=>a[0]!==undefined?a[0]:0,"uint64_max_int":(...a)=>a[0]!==undefined?a[0]:0,"uint32_or":(...a)=>a[0]!==undefined?a[0]:0,"int_of_uint32":(...a)=>a[0]!==undefined?a[0]:0,"int128_of_int":(...a)=>a[0]!==undefined?a[0]:0,"unix_execvp":(...a)=>a[0]!==undefined?a[0]:0,"uint64_of_int":(...a)=>a[0]!==undefined?a[0]:0,"uint32_sub":(...a)=>a[0]!==undefined?a[0]:0,"uint32_and":(...a)=>a[0]!==undefined?a[0]:0,"uint128_of_int":(...a)=>a[0]!==undefined?a[0]:0,"int56_of_int":(...a)=>a[0]!==undefined?a[0]:0,"int48_of_int":(...a)=>a[0]!==undefined?a[0]:0,"int40_of_int":(...a)=>a[0]!==undefined?a[0]:0,"unix_waitpid":(...a)=>a[0]!==undefined?a[0]:0,"unix_spawn":(...a)=>a[0]!==undefined?a[0]:0,"unix_environment":(...a)=>a[0]!==undefined?a[0]:0,"unix_dup":(...a)=>a[0]!==undefined?a[0]:0,"uint64_init_custom_ops":(...a)=>a[0]!==undefined?a[0]:0,"uint56_of_int":(...a)=>a[0]!==undefined?a[0]:0,"uint48_of_int":(...a)=>a[0]!==undefined?a[0]:0,"uint40_of_int":(...a)=>a[0]!==undefined?a[0]:0,"uint32_shift_right":(...a)=>a[0]!==undefined?a[0]:0,"uint32_shift_left":(...a)=>a[0]!==undefined?a[0]:0,"uint32_mul":(...a)=>a[0]!==undefined?a[0]:0,"uint32_mod":(...a)=>a[0]!==undefined?a[0]:0,"uint32_max_int":(...a)=>a[0]!==undefined?a[0]:0,"uint32_init_custom_ops":(...a)=>a[0]!==undefined?a[0]:0,"uint32_div":(...a)=>a[0]!==undefined?a[0]:0,"uint32_add":(...a)=>a[0]!==undefined?a[0]:0,"uint128_max_int":(...a)=>a[0]!==undefined?a[0]:0,"uint128_init_custom_ops":(...a)=>a[0]!==undefined?a[0]:0,"int56_min_int":(...a)=>a[0]!==undefined?a[0]:0,"int56_max_int":(...a)=>a[0]!==undefined?a[0]:0,"int48_min_int":(...a)=>a[0]!==undefined?a[0]:0,"int48_max_int":(...a)=>a[0]!==undefined?a[0]:0,"int40_min_int":(...a)=>a[0]!==undefined?a[0]:0,"int40_max_int":(...a)=>a[0]!==undefined?a[0]:0,"int128_min_int":(...a)=>a[0]!==undefined?a[0]:0,"int128_max_int":(...a)=>a[0]!==undefined?a[0]:0,"int128_init_custom_ops":(...a)=>a[0]!==undefined?a[0]:0,"caml_unix_map_file_bytecode":(...a)=>a[0]!==undefined?a[0]:0,"caml_parquet_zstd_decompress_hex":(...a)=>a[0]!==undefined?a[0]:0}}})(globalThis),"src":"factoidal.wasm.assets"});

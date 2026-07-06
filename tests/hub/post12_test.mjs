@@ -78,7 +78,7 @@ test('post12: capabilities() function list matches the table this post documents
   assert.equal(caps.csvw, true);
 });
 
-test('post12: the wasm entry\'s capabilities() genuinely lags the js entry (grounds the "wasm lags" prose claim)', async () => {
+test('post12: the wasm entry\'s capabilities() now matches the js entry (grounds the "wasm caught up" prose update)', async () => {
   let wasmFactoidal;
   try {
     wasmFactoidal = require('../../npm/factoidal/wasm.js');
@@ -89,10 +89,14 @@ test('post12: the wasm entry\'s capabilities() genuinely lags the js entry (grou
   const wasmCaps = await wasmFactoidal.capabilities();
   const jsCaps = await factoidal.capabilities();
   assert.equal(jsCaps.rif, true, 'js entry should support rif');
-  // The wasm entry's npm-entry ABI bundle predates rif/csvw/shacl/etc.
-  // in this repository today; this assertion is the measured fact the
-  // post's "wasm entry lags" section reports, not an assumption.
+  // The wasm entry's npm-entry ABI bundle was rebuilt and a
+  // require.main path bug in wasm.js's entry loader (which had
+  // silently reported every one of these as false, independent of
+  // whether the bundle actually had the function) is fixed. This
+  // assertion is the measured fact the post's "wasm caught up"
+  // section reports, not an assumption -- if this now fails, either
+  // the bundle regressed or the loader fix was reverted.
   for (const key of ['shacl', 'shex', 'owlClosure', 'rml', 'csvw', 'jsonld', 'rif']) {
-    assert.equal(wasmCaps[key], false, `expected wasm caps.${key} to still be false`);
+    assert.equal(wasmCaps[key], true, `expected wasm caps.${key} to be true`);
   }
 });
