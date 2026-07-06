@@ -69,6 +69,7 @@ COMMON_MODULES=(
   Parser_Combinators
   Parser_TurtleScanner
   Parser_NTriples
+  HDT_Container
   Parser_Turtle
   Parser_NQuads
   Parser_TriG
@@ -116,6 +117,7 @@ COMMON_MODULES=(
   RDF_Store_LazyTermCache
   RDF_Store_HDTTermCacheRegistry
   RDF_Store_Columnar_OffsetIndex
+  RDF_Store_Columnar_DeltaLog
   SPARQL_Plan_Pruning
   SPARQL_Plan_Estimate
   SPARQL_Plan_Loader
