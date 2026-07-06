@@ -96,7 +96,9 @@ return dataset.size;
 ```
 
 Five triples, exactly as counted above. Each one is a `{subject,
-predicate, object}` term triple — walk them and print each part:
+predicate, object}` term triple — `pretty()` (see
+[`README.md`](./README.md)) renders a `Dataset` as an s/p/o table
+directly, term values shortened for display:
 
 ```observable-js
 const turtle = `
@@ -112,15 +114,13 @@ const turtle = `
 `;
 
 const dataset = await fn.parse(turtle);
-const lines = [...dataset].map(
-  (q) => `${q.subject.value} -- ${q.predicate.value} --> ${q.object.value} (${q.object.termType})`
-);
-return lines.join("\n");
+return pretty(dataset);
 ```
 
-The object of the `foaf:name` triples is a `Literal`, everything else
-is a `NamedNode` (the RDF/JS spelling for an IRI term). That's
-`T_IRI` vs `T_Literal` from `RDF.Term.fsti`, made concrete.
+The `o` column shows quoted literals (`"Alice"`, `"Bob"`) alongside
+shortened IRIs (`Person`, `bob`) — hover any IRI cell for the full
+value in a tooltip. That's `T_IRI` vs `T_Literal` from
+`RDF.Term.fsti`, made concrete.
 
 ## The third kind: blank nodes
 

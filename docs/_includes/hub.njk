@@ -69,6 +69,44 @@
   .observable-cell { overflow-x: auto; }
   .observable-cell svg { max-width: 100%; height: auto; }
 
+  /* `pretty()` cell-output tables (see hub.njk's module script) --
+     reuses the page's own table/th/td rules for the grid itself; this
+     adds the scrollable wrapper (both axes -- the existing
+     overflow-x pattern plus a max-height/overflow-y cap for long
+     results) and the small caption/term styling pretty() needs that
+     nothing else on the page provides yet. */
+  .pretty-table-wrap {
+    max-height: 22em;
+    overflow: auto;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+  }
+  .pretty-table-wrap table { margin: 0; }
+  .pretty-table-wrap thead th { position: sticky; top: 0; }
+  .pretty-caption {
+    font-size: 0.78em;
+    color: #888;
+    font-style: italic;
+    padding: 0.3em 0.6em 0;
+  }
+  .pretty-term {
+    font-family: ui-monospace, monospace;
+    font-size: 0.9em;
+  }
+  .pretty-value {
+    display: inline-block;
+    font-family: ui-monospace, monospace;
+    font-size: 0.95em;
+    padding: 0.1em 0.4em;
+    background: #f5f5f5;
+    border-radius: 3px;
+  }
+  @media (prefers-color-scheme: dark) {
+    .pretty-table-wrap { border-color: #333a42; }
+    .pretty-caption { color: #98a2ad; }
+    .pretty-value { background: #1d2126; }
+  }
+
   /* Cell chrome: the toolbar (Edit toggle + Run button) sits between
      the code block and the output box. Mobile-first: tap targets are
      >= 44px, laid out in a wrapping flex row so the row never forces
@@ -371,18 +409,212 @@ const fn = {
   },
 };
 
+// ---------------------------------------------------------------------
+// `pretty` -- an opt-in, prettier rendering for cell output. A cell
+// that `return`s a raw array/object gets the Inspector's default
+// collapsed-JS-tree view; a cell that instead `return`s `pretty(value)`
+// gets a shape-dispatched DOM rendering instead:
+//
+//   (a) array of Map      -- SPARQL bindings rows (Map keys = vars)
+//                             -> a table, one column per variable.
+//   (b) array of plain {} -- table from the union of keys.
+//   (c) Dataset-like       -- (.size + Symbol.iterator yielding quads)
+//                             -> a triples/quads table (s/p/o[/g]).
+//   (d) plain object       -- a two-column key/value table.
+//   (e) scalar/string      -- a small styled value span.
+//   (f) anything else      -- returned unchanged; Inspector renders it.
+//
+// Term values (NamedNode/BlankNode/Literal, wherever they appear inside
+// a table cell) are shortened for display -- an IRI compacts to its
+// trailing path/fragment segment with the full IRI in a `title`
+// tooltip, a literal is quoted (with @lang or ^^datatype suffix, full
+// detail in the tooltip), a blank node gets a `_:` prefix. This is a
+// browser-only DOM-returning implementation; the Node-side test harness
+// (tests/hub/_helpers.mjs) provides a `pretty` stub with the same
+// shape-dispatch that returns a plain, DOM-free structure instead, so
+// pinned tests can assert on table shape without a browser. See
+// docs/web/hub/README.md's cell-bindings table for the contract both
+// sides implement.
+// ---------------------------------------------------------------------
+
+function prettyShortenIri(iri) {
+  const m = /[/#]([^/#]+)$/.exec(iri);
+  const tail = m ? m[1] : iri;
+  return tail.length > 0 ? tail : iri;
+}
+
+// Render one RDF/JS-shaped term ({termType, value, [language],
+// [datatype]}) as a compact <span> with the full detail in `title`;
+// anything that isn't actually a term-shaped object is rendered as
+// plain text so pretty() degrades gracefully on non-RDF data.
+function prettyTermNode(term) {
+  const span = document.createElement("span");
+  span.className = "pretty-term";
+  if (term && typeof term === "object" && typeof term.termType === "string") {
+    if (term.termType === "NamedNode") {
+      span.textContent = prettyShortenIri(term.value);
+      span.title = term.value;
+    } else if (term.termType === "BlankNode") {
+      span.textContent = "_:" + term.value;
+      span.title = "_:" + term.value;
+    } else if (term.termType === "Literal") {
+      let text = JSON.stringify(String(term.value));
+      let detail = '"' + term.value + '"';
+      if (term.language) {
+        text += "@" + term.language;
+        detail += "@" + term.language;
+      } else if (term.datatype && term.datatype.value && term.datatype.value !== XSD_STRING) {
+        text += "^^" + prettyShortenIri(term.datatype.value);
+        detail += "^^<" + term.datatype.value + ">";
+      }
+      span.textContent = text;
+      span.title = detail;
+    } else {
+      span.textContent = String(term.value);
+    }
+  } else {
+    span.textContent = term === undefined || term === null ? "" : String(term);
+  }
+  return span;
+}
+
+function prettyIsPlainObject(v) {
+  if (typeof v !== "object" || v === null) return false;
+  if (Array.isArray(v)) return false;
+  if (v instanceof Map || v instanceof Set) return false;
+  const proto = Object.getPrototypeOf(v);
+  return proto === Object.prototype || proto === null;
+}
+
+function prettyIsDatasetLike(v) {
+  return (
+    typeof v === "object" && v !== null && !Array.isArray(v) &&
+    !(v instanceof Map) && !(v instanceof Set) &&
+    typeof v.size === "number" && typeof v[Symbol.iterator] === "function"
+  );
+}
+
+function prettyCellNode(value) {
+  if (value && typeof value === "object" && typeof value.termType === "string") {
+    return prettyTermNode(value);
+  }
+  const span = document.createElement("span");
+  span.textContent = value === undefined || value === null ? "" : String(value);
+  return span;
+}
+
+function prettyCount(n, noun) {
+  return n + " " + noun + (n === 1 ? "" : "s");
+}
+
+function prettyBuildTable(columns, rows, captionText) {
+  const wrap = document.createElement("div");
+  wrap.className = "pretty-table-wrap";
+
+  const caption = document.createElement("div");
+  caption.className = "pretty-caption";
+  caption.textContent = captionText;
+  wrap.appendChild(caption);
+
+  const table = document.createElement("table");
+  table.className = "pretty-table";
+
+  const thead = document.createElement("thead");
+  const headRow = document.createElement("tr");
+  for (const col of columns) {
+    const th = document.createElement("th");
+    th.textContent = col;
+    headRow.appendChild(th);
+  }
+  thead.appendChild(headRow);
+  table.appendChild(thead);
+
+  const tbody = document.createElement("tbody");
+  for (const row of rows) {
+    const tr = document.createElement("tr");
+    for (const cell of row) {
+      const td = document.createElement("td");
+      td.appendChild(prettyCellNode(cell));
+      tr.appendChild(td);
+    }
+    tbody.appendChild(tr);
+  }
+  table.appendChild(tbody);
+  wrap.appendChild(table);
+  return wrap;
+}
+
+function pretty(value) {
+  // (a) array of Map -- SPARQL bindings rows.
+  if (Array.isArray(value) && value.length > 0 && value.every((r) => r instanceof Map)) {
+    const columns = [];
+    for (const row of value) {
+      for (const k of row.keys()) if (!columns.includes(k)) columns.push(k);
+    }
+    const rows = value.map((row) => columns.map((c) => (row.has(c) ? row.get(c) : "")));
+    return prettyBuildTable(columns, rows, prettyCount(value.length, "row"));
+  }
+
+  // (c) Dataset-like -- checked ahead of the plain-object-array case
+  // below since a Dataset is not itself an Array.
+  if (prettyIsDatasetLike(value)) {
+    const quads = [...value];
+    const hasGraph = quads.some((q) => q && q.graph && q.graph.value);
+    const columns = hasGraph ? ["s", "p", "o", "g"] : ["s", "p", "o"];
+    const rows = quads.map((q) => {
+      const row = [q.subject, q.predicate, q.object];
+      if (hasGraph) row.push(q.graph || "");
+      return row;
+    });
+    return prettyBuildTable(columns, rows, prettyCount(quads.length, "row"));
+  }
+
+  // (b) array of plain objects -- table from the union of keys.
+  if (Array.isArray(value) && value.length > 0 && value.every(prettyIsPlainObject)) {
+    const columns = [];
+    for (const obj of value) {
+      for (const k of Object.keys(obj)) if (!columns.includes(k)) columns.push(k);
+    }
+    const rows = value.map((obj) => columns.map((k) => (k in obj ? obj[k] : "")));
+    return prettyBuildTable(columns, rows, prettyCount(value.length, "row"));
+  }
+
+  // (d) plain object -- two-column key/value table.
+  if (prettyIsPlainObject(value)) {
+    const entries = Object.entries(value);
+    return prettyBuildTable(["key", "value"], entries, prettyCount(entries.length, "field"));
+  }
+
+  // (e) scalars/strings -- a simple styled value span.
+  if (
+    typeof value === "string" || typeof value === "number" ||
+    typeof value === "boolean" || typeof value === "bigint"
+  ) {
+    const span = document.createElement("span");
+    span.className = "pretty-value";
+    span.textContent = String(value);
+    return span;
+  }
+
+  // (f) anything else (null, undefined, DOM nodes, functions, a lone
+  // Map, an empty array, ...) -- unchanged, so Inspector's own
+  // renderer handles it.
+  return value;
+}
+
 // Fixed bindings every cell gets access to, by parameter name — this
 // is the whole "standard library" a hub post can rely on. Extend this
 // list (and the mirrored `new Function(...)` parameter list below)
 // deliberately; it's the interface post-authoring (wave B) writes
 // against. See docs/web/hub/README.md for the full contract.
-const CELL_BINDINGS = ["Factoidal", "fn", "d3", "Plot", "html", "md"];
+const CELL_BINDINGS = ["Factoidal", "fn", "d3", "Plot", "html", "md", "pretty"];
 main.variable().define("Factoidal", [], () => Factoidal);
 main.variable().define("fn", [], () => fn);
 main.variable().define("d3", [], () => d3);
 main.variable().define("Plot", [], () => Plot);
 main.variable().define("html", [], () => stdlib.html);
 main.variable().define("md", [], () => stdlib.md);
+main.variable().define("pretty", [], () => pretty);
 
 // Each cell body is an async function body: write a `return` statement
 // to produce the value the Inspector renders (or mutate the DOM

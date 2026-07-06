@@ -1,7 +1,7 @@
 // Pins every code sample in
 // docs/web/hub/02-asking-questions-sparql.md.
 
-import { NPM_FACTOIDAL_INDEX, extractObservableCells, runObservableCell } from './_helpers.mjs';
+import { NPM_FACTOIDAL_INDEX, extractObservableCells, runObservableCell, pretty } from './_helpers.mjs';
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -98,9 +98,17 @@ test('post02: post has at least 2 live cells', () => {
   assert.ok(cells.length >= 2, `expected >= 2 live cells, found ${cells.length}`);
 });
 
-test('post02 cell 1 (SELECT with OPTIONAL): 3 rows', async () => {
-  const result = await runObservableCell(cells[0], { fn: factoidal });
-  assert.equal(result, '3 row(s)');
+test('post02 cell 1 (pretty(SELECT bindings) -> table): 3 rows, one "label" column', async () => {
+  const result = await runObservableCell(cells[0], { fn: factoidal, pretty });
+  assert.equal(result.kind, 'table');
+  assert.deepEqual(result.columns, ['label']);
+  assert.equal(result.rows.length, 3);
+  // One of the three edges (rdf:type/instance-of/occupation OPTIONAL
+  // match) has no rdfs:label -- OPTIONAL leaves that binding unset,
+  // which the table renders as an empty cell rather than dropping the
+  // row.
+  const unbound = result.rows.filter((r) => r[0] === '');
+  assert.equal(unbound.length, 1, 'exactly one row has no OPTIONAL label binding');
 });
 
 test('post02 cell 2 (ASK): true', async () => {

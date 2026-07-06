@@ -68,11 +68,13 @@ const rows = await fn.query(dataset, `
     OPTIONAL { ?o rdfs:label ?label }
   }
 `);
-return `${rows.length} row(s)`; // one per outgoing edge from Q42: label, instance-of, occupation
+return pretty(rows); // one row per outgoing edge from Q42: label, instance-of, occupation
 ```
 
 `query()` returns an array of `Map<string, Term>` — one map per
-solution row, keyed by variable name.
+solution row, keyed by variable name; `pretty()` (see
+[`README.md`](./README.md)) renders that shape as a table, one column
+per variable, with a "N rows" caption.
 
 ## ASK
 

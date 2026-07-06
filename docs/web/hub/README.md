@@ -131,6 +131,7 @@ post needs a new binding.
 | `Plot` | vendored `@observablehq/plot` 0.6.17, for declarative charts. |
 | `html` | vendored `@observablehq/stdlib`'s tagged-template HTML helper. |
 | `md` | vendored `@observablehq/stdlib`'s tagged-template Markdown helper. |
+| `pretty` | opt-in prettier rendering for a cell's return value — see "The `pretty()` rendering option" below. Returns a DOM node in the browser; nothing else in the contract changes if a cell never calls it. |
 
 ### The `fn` typed surface in full
 
@@ -214,6 +215,52 @@ a small, self-contained reshaping layer defined directly in
 results through a short N-Quads/SPARQL-JSON parser to produce
 Dataset/Map-shaped values. It does not touch `npm/factoidal`,
 `lib/api.js`, or the `docs/npm/foafos/` mirror.
+
+### The `pretty()` rendering option
+
+Every cell can return raw arrays/objects and let the Inspector render
+its default collapsed-JS-tree view — that's still the default, and
+most cells (posts 03-05, and any cell not explicitly converted) do
+exactly that. `pretty(value)` is an **opt-in** alternative for the
+common shapes a query cell tends to produce: wrap the cell's return
+value in `pretty(...)` and get a small styled HTML table instead of a
+JS-tree the reader has to expand.
+
+Shape dispatch (checked in this order):
+
+| Input shape | Rendering |
+|---|---|
+| Array of `Map` (SPARQL bindings rows — Map keys are variable names) | table, one column per variable, in first-seen order across all rows |
+| Dataset-like (has `.size` and is `Symbol.iterator`-able over quads) | a triples/quads table: `s`/`p`/`o` columns, plus `g` if any quad has a graph |
+| Array of plain objects | table from the union of keys across all objects, in first-seen order |
+| Plain object | a two-column key/value table |
+| Scalar (`string`/`number`/`boolean`/`bigint`) | a small styled value span |
+| Anything else (`null`, `undefined`, an empty array, a DOM node, a lone `Map` not inside an array, ...) | returned **unchanged** — the Inspector's own renderer handles it exactly as if `pretty()` had never been called |
+
+Term values (`NamedNode`/`BlankNode`/`Literal`) inside a table cell are
+shortened for display: an IRI compacts to its trailing path/fragment
+segment with the full IRI in a `title` tooltip (hover on desktop; the
+raw value is still there for anyone who needs it); a blank node is
+shown `_:`-prefixed; a literal is quoted, with an `@lang` or
+`^^datatype` suffix when present (datatype/language also folded into
+the tooltip). Tables sit inside a scrollable wrapper — both axes, so a
+wide table doesn't force the page to scroll horizontally at a 390px
+viewport (same `overflow-x` pattern `.observable-cell` already uses)
+and a tall table scrolls internally instead of pushing the rest of the
+page down — with a small caption line above the grid giving the row
+(or field) count, e.g. "12 rows".
+
+**Browser vs. test duality.** `hub.njk`'s `pretty()` returns an actual
+DOM node — the Inspector's contract for a DOM-Node return value is to
+insert it as-is, so this composes with the existing Inspector
+machinery with no special-casing. `tests/hub/_helpers.mjs` exports a
+`pretty` stub with the *same shape dispatch* but no DOM dependency: it
+returns a plain, JSON-serializable structure instead —
+`{kind: 'table', columns: [...], rows: [[...], ...]}` or
+`{kind: 'value', value}` — so a pinned `node:test` can assert on table
+shape (`result.columns`, `result.rows.length`, cell contents) without a
+browser. Both implementations satisfy the same shape-dispatch contract
+above; a cell written against `pretty()` runs unchanged against either.
 
 ## Testing discipline
 

@@ -4,7 +4,7 @@
 // node:test, requiring the committed npm/factoidal bundles (no F*
 // toolchain needed) — mirrors npm/factoidal/test's own harness style.
 
-import { NPM_FACTOIDAL_INDEX, extractObservableCells, runObservableCell } from './_helpers.mjs';
+import { NPM_FACTOIDAL_INDEX, extractObservableCells, runObservableCell, pretty } from './_helpers.mjs';
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -90,12 +90,21 @@ test('post01 cell 1 (parse + size): returns 5', async () => {
   assert.equal(result, 5);
 });
 
-test('post01 cell 2 (iterate quads): 5 lines, 2 Literal, 3 NamedNode', async () => {
-  const result = await runObservableCell(cells[1], { fn: factoidal });
-  const lines = result.split('\n');
-  assert.equal(lines.length, 5);
-  assert.equal(lines.filter((l) => l.endsWith('(Literal)')).length, 2);
-  assert.equal(lines.filter((l) => l.endsWith('(NamedNode)')).length, 3);
+test('post01 cell 2 (pretty(dataset) -> triples table): 5 rows, 2 quoted literals, 3 IRIs', async () => {
+  const result = await runObservableCell(cells[1], { fn: factoidal, pretty });
+  assert.equal(result.kind, 'table');
+  assert.deepEqual(result.columns, ['s', 'p', 'o']);
+  assert.equal(result.rows.length, 5);
+
+  const literalObjects = result.rows.filter((r) => String(r[2]).startsWith('"'));
+  assert.equal(literalObjects.length, 2, 'foaf:name objects render as quoted literals');
+
+  const iriObjects = result.rows.filter((r) => !String(r[2]).startsWith('"'));
+  assert.equal(iriObjects.length, 3, 'rdf:type and foaf:knows objects render as bare IRIs');
+
+  for (const row of result.rows) {
+    assert.ok(row[0].startsWith('http://'), 'every subject here is an IRI');
+  }
 });
 
 test('post01 cell 3 (blank node): size 2, BlankNode subject, shared across both triples', async () => {
