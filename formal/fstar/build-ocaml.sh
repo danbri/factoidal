@@ -433,6 +433,7 @@ if [[ "$STEP" == "all" || "$STEP" == "extract" ]]; then
     SPARQL.Plan.AccessPath.fst
     RDF.CottasStore.fst
     RDF.CottasStore.OnDiskRuntime.fst
+    RDF.Store.Capabilities.fst RDF.Store.Capabilities.Cottas.fst
     RDF.CottasInMem.fst
     SPARQL.Plan.Streamable.fst
     SPARQL11.Store.fst
@@ -811,7 +812,7 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
     VC_Credential.ml \
     RML_Mapping.ml RML_Sources.ml RML_Eval.ml \
     CSVW_Metadata.ml CSVW_URITemplate.ml CSVW_Conversion.ml \
-    SPARQL_Plan_Streamable.ml \
+    SPARQL_Plan_Streamable.ml RDF_Store_Capabilities.ml RDF_Store_Capabilities_Cottas.ml \
     SPARQL11_Store.ml RDF_Store_Combine.ml RDF_Dataset_Merge.ml SPARQL_Protocol.ml SPARQL_HTTP_RunQuery.ml \
     SPARQL_Update_Sandbox.ml \
     SPARQL_Update_Analysis.ml \
@@ -1379,7 +1380,7 @@ if [[ "$STEP" == "all" || "$STEP" == "js" ]]; then
     RML_Mapping.ml RML_Sources.ml RML_Eval.ml
     CSVW_Metadata.ml CSVW_URITemplate.ml CSVW_Conversion.ml
     VC_Credential.ml
-    SPARQL_Plan_Streamable.ml
+    SPARQL_Plan_Streamable.ml RDF_Store_Capabilities.ml RDF_Store_Capabilities_Cottas.ml
     SPARQL11_Store.ml
     RDF_Store_Combine.ml
     RDF_Dataset_Merge.ml
