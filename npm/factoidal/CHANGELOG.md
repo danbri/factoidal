@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+- Browser-side durable-UPDATE persistence (issue #282): `browser.js`
+  gains `deltaLogOpen`/`deltaLogAppend`/`deltaLogReadAllHex`/
+  `deltaLogMerge`/`deltaLogDestroy` (IndexedDB-backed, survives page
+  reloads and browser restarts), plus `deltaBatchToHex`/
+  `deltaMergeApplyBrowser` on the npm-entry ABI. Every byte moved is
+  produced/consumed by the F*-verified `RDF_Store_Columnar_DeltaLog`/
+  `RDF_Store_Columnar_DeltaMerge` modules the native on-disk delta log
+  (`factoidal serve --rw --delta-log`) uses -- see
+  `docs/designissues/2026-07-06-browser-persistence.md` for the v1
+  architecture decision (IndexedDB vs. OPFS), the crash/reload
+  guarantee mapping, and the quota/eviction honesty section. Prototype
+  scope: no compaction, no `navigator.storage.persist()` wiring yet
+  (both named as staged next steps); supported update ops are
+  `INSERT DATA`/`DELETE DATA`/`CLEAR`/`DROP`/`CREATE`, same subset the
+  native `--rw` path accepts.
 - CSVW csv2rdf (`csvwToRdf`) added to the npm-entry ABI, the typed API
   (`index.js`/`wasm.js`), and the functional API (`factoidal/fn`:
   `fromCsvw`): raw CSV text + an optional CSVW metadata document

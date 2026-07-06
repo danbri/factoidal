@@ -852,6 +852,236 @@ export async function jsonldToRdf(jsonldText, options) {
   return parsed;
 }
 
+// ---------------------------------------------------------------------
+// Durable-UPDATE browser persistence (issue #282's browser realisation
+// -- see docs/designissues/2026-07-06-browser-persistence.md for the
+// full design: v1 architecture decision (IndexedDB, not OPFS -- OPFS
+// sync access handles are worker-only and there is no worker-RPC
+// layer for the engine yet), the tab-close/crash guarantee mapping,
+// and the quota/eviction honesty section).
+//
+// Every byte written here is exactly what bin/npm-entry/entry_jsoo.ml's
+// deltaBatchToHex/deltaMergeApplyBrowser exports produce/consume via
+// the F*-extracted, VERIFIED RDF_Store_Columnar_DeltaLog /
+// RDF_Store_Columnar_DeltaMerge modules -- this file moves opaque
+// hex-encoded bytes into/out of IndexedDB only (rule #11: no RDF/
+// SPARQL semantics here). It does NOT call the native delta_log_append/
+// _read_all assume-val realisation (that one is wired to Unix syscalls
+// which, under js_of_ocaml, hit the in-memory jsoo pseudo-FS -- reset
+// on every bundle eval, NOT persistent across a reload); this is a
+// wholly separate path.
+// ---------------------------------------------------------------------
+
+const DELTA_STORE = 'deltaBatches';
+const DEFAULT_DELTA_DB_NAME = 'factoidal-delta-log';
+
+function idbOpen(dbName) {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(dbName, 1);
+    req.onupgradeneeded = () => {
+      const db = req.result;
+      if (!db.objectStoreNames.contains(DELTA_STORE)) {
+        db.createObjectStore(DELTA_STORE, { keyPath: 'seq' });
+      }
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error || new Error('indexedDB.open failed'));
+    req.onblocked = () => reject(new Error('indexedDB.open blocked (another tab holds an open connection at an older version)'));
+  });
+}
+
+function reqToPromise(req) {
+  return new Promise((resolve, reject) => {
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error || new Error('IndexedDB request failed'));
+  });
+}
+
+/**
+ * Open (creating if needed) a browser-persistent delta log backed by
+ * IndexedDB. Returns a handle to pass to the other deltaLog* functions
+ * below. Data written through this handle survives page reloads and
+ * browser restarts -- subject to the browser's own storage-eviction
+ * policy under storage pressure (see the design doc's quota/eviction
+ * section); this function does not itself call
+ * `navigator.storage.persist()` (a named, not-yet-wired gap -- call it
+ * yourself first if you need the "exempt from eviction" request made).
+ *
+ * @param {string} [dbName='factoidal-delta-log']
+ * @returns {Promise<{dbName: string}>}
+ */
+export async function deltaLogOpen(dbName) {
+  const name = dbName || DEFAULT_DELTA_DB_NAME;
+  const db = await idbOpen(name);
+  db.close();
+  return { dbName: name };
+}
+
+/**
+ * Translate one SPARQL Update (INSERT DATA / DELETE DATA / CLEAR /
+ * DROP / CREATE -- the same subset the native --rw commit path
+ * accepts; anything else rejects rather than silently no-op'ing) into
+ * a delta_batch, serialize it (F*-verified,
+ * RDF_Store_Columnar_DeltaLog.serialize_delta_batch), and durably
+ * append it as one IndexedDB record. The commit point is the
+ * transaction's own 'complete' event.
+ *
+ * @param {{dbName: string}} handle from deltaLogOpen()
+ * @param {string} sparqlUpdate
+ * @param {{epoch?: number}} [options]
+ * @returns {Promise<{seq: number, opCount: number}>}
+ */
+export async function deltaLogAppend(handle, sparqlUpdate, options) {
+  if (!handle || typeof handle.dbName !== 'string') {
+    throw new TypeError('deltaLogAppend: handle must be the object deltaLogOpen() returned');
+  }
+  if (typeof sparqlUpdate !== 'string') {
+    throw new TypeError('deltaLogAppend: sparqlUpdate must be a string');
+  }
+  const opts = options || {};
+  const epoch = opts.epoch || 0;
+  const abi = await loadNpmEntry();
+  if (typeof abi.deltaBatchToHex !== 'function') {
+    throw new Error('deltaLogAppend: the loaded factoidal-npm-entry bundle predates the delta-log export');
+  }
+
+  const db = await idbOpen(handle.dbName);
+  try {
+    const seq = await reqToPromise(db.transaction(DELTA_STORE, 'readonly').objectStore(DELTA_STORE).count());
+
+    const parsed = JSON.parse(abi.deltaBatchToHex(sparqlUpdate, String(seq), String(epoch)));
+    if (!parsed.ok) throw new Error(parsed.error || 'deltaBatchToHex failed');
+
+    await new Promise((resolve, reject) => {
+      // `durability: 'strict'` matters here, not just as a knob: Chrome
+      // changed ITS OWN DEFAULT from 'strict' to 'relaxed' from Chrome
+      // 121 onward (matching Firefox/Safari's prior behavior) for
+      // throughput -- under 'relaxed', `oncomplete` can fire once
+      // changes reach the OS write buffer, before an actual disk flush
+      // (the buffer is "typically flushed every couple seconds", per
+      // Chrome's own devs blog). That is a materially weaker commit
+      // point than the native design's `fsync`-gated "committed means
+      // durable" promise (durable-update-design.md §3.3 step 3) -- so
+      // this call requests 'strict' explicitly rather than silently
+      // inheriting a browser's relaxed default, which would make the
+      // design doc's own honesty claim (§1.3: "the durability strength
+      // is whatever the browser's IndexedDB implementation guarantees")
+      // wrong in the weaker direction without anyone choosing that.
+      const tx = db.transaction(DELTA_STORE, 'readwrite', { durability: 'strict' });
+      tx.objectStore(DELTA_STORE).put({ seq, epoch, hex: parsed.hex });
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error || new Error('IndexedDB write failed'));
+      tx.onabort = () => reject(tx.error || new Error('IndexedDB write aborted'));
+    });
+
+    return { seq, opCount: parsed.opCount };
+  } finally {
+    db.close();
+  }
+}
+
+/**
+ * Read every committed batch back from IndexedDB, in seq order, as a
+ * newline-joined hex-blob string (the wire format deltaLogMerge()
+ * consumes). Exposed mainly for debugging and torn-write test setup;
+ * deltaLogMerge() below is the normal read path.
+ *
+ * @param {{dbName: string}} handle
+ * @returns {Promise<string>}
+ */
+export async function deltaLogReadAllHex(handle) {
+  const db = await idbOpen(handle.dbName);
+  try {
+    const all = await reqToPromise(db.transaction(DELTA_STORE, 'readonly').objectStore(DELTA_STORE).getAll());
+    all.sort((a, b) => a.seq - b.seq);
+    return all.map((r) => r.hex).join('\n');
+  } finally {
+    db.close();
+  }
+}
+
+/**
+ * Read back the durable log and merge it onto a base dataset (parse +
+ * merge-on-read, RDF_Store_Columnar_DeltaMerge.apply_entries_ref via
+ * the deltaMergeApplyBrowser ABI export) -- the "reload the page, read
+ * the log back, reproduce the updated dataset" proof. A batch record
+ * that fails to parse (a torn/corrupt write) is silently skipped,
+ * never partially applied -- see the design doc's torn-write section.
+ *
+ * @param {{dbName: string}} handle
+ * @param {string} baseNQuads dataset-handle N-Quads text (the pre-update graph)
+ * @returns {Promise<string>} merged N-Quads text
+ */
+export async function deltaLogMerge(handle, baseNQuads) {
+  if (!handle || typeof handle.dbName !== 'string') {
+    throw new TypeError('deltaLogMerge: handle must be the object deltaLogOpen() returned');
+  }
+  if (typeof baseNQuads !== 'string') {
+    throw new TypeError('deltaLogMerge: baseNQuads must be a string');
+  }
+  const abi = await loadNpmEntry();
+  if (typeof abi.deltaMergeApplyBrowser !== 'function') {
+    throw new Error('deltaLogMerge: the loaded factoidal-npm-entry bundle predates the delta-log export');
+  }
+  const hexBlobs = await deltaLogReadAllHex(handle);
+  const parsed = JSON.parse(abi.deltaMergeApplyBrowser(baseNQuads, hexBlobs));
+  if (!parsed.ok) throw new Error(parsed.error || 'deltaMergeApplyBrowser failed');
+  return parsed.nquads;
+}
+
+/**
+ * Delete a browser-persistent delta log entirely (test/demo cleanup;
+ * not part of the durability story -- this is a deliberate wipe, not
+ * an eviction).
+ *
+ * @param {{dbName: string}} handle
+ * @returns {Promise<void>}
+ */
+export async function deltaLogDestroy(handle) {
+  if (!handle || typeof handle.dbName !== 'string') {
+    throw new TypeError('deltaLogDestroy: handle must be the object deltaLogOpen() returned');
+  }
+  await new Promise((resolve, reject) => {
+    const req = indexedDB.deleteDatabase(handle.dbName);
+    req.onsuccess = () => resolve();
+    req.onerror = () => reject(req.error || new Error('indexedDB.deleteDatabase failed'));
+    req.onblocked = () => reject(new Error('indexedDB.deleteDatabase blocked (another open connection)'));
+  });
+}
+
+/**
+ * TEST-ONLY: corrupt the most recently written batch record by
+ * truncating its hex string, simulating a torn/partial write. Ordinary
+ * IndexedDB transactions are atomic (see the design doc's §2 table --
+ * this failure mode has no natural browser-native trigger the way a
+ * killed `write()` syscall does natively); this pokes the store
+ * directly to exercise the delta-log parser's checksum/length framing
+ * the same way the native crash-harness pattern does for the on-disk
+ * log. Returns false if the store is empty.
+ *
+ * @param {{dbName: string}} handle
+ * @returns {Promise<boolean>}
+ */
+export async function _deltaLogCorruptLastForTest(handle) {
+  const db = await idbOpen(handle.dbName);
+  try {
+    const all = await reqToPromise(db.transaction(DELTA_STORE, 'readonly').objectStore(DELTA_STORE).getAll());
+    if (all.length === 0) return false;
+    all.sort((a, b) => a.seq - b.seq);
+    const last = all[all.length - 1];
+    const truncated = last.hex.slice(0, Math.max(0, last.hex.length - 8));
+    await new Promise((resolve, reject) => {
+      const tx = db.transaction(DELTA_STORE, 'readwrite');
+      tx.objectStore(DELTA_STORE).put({ seq: last.seq, epoch: last.epoch, hex: truncated });
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error || new Error('IndexedDB corrupt-for-test write failed'));
+    });
+    return true;
+  } finally {
+    db.close();
+  }
+}
+
 // Best-effort version export for the browser. Consumers that care
 // about the exact version should import from the package root (which
 // reads package.json).
@@ -862,4 +1092,6 @@ export default {
   encodeTextAsBundleBytes, queryDataset, version,
   loadNpmEntry, setFactoidalNpmEntryUrl, rifSmoke, rifEval,
   shaclValidate, shexValidate, owlClosure, rmlMap, jsonldToRdf,
+  deltaLogOpen, deltaLogAppend, deltaLogReadAllHex, deltaLogMerge,
+  deltaLogDestroy, _deltaLogCorruptLastForTest,
 };

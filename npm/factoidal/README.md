@@ -154,6 +154,41 @@ readable as `result.engineMs` for timing/observability UIs. This is
 what `docs/fstar-extracted/factoidal-sparql-client.js`'s web component
 is built on, rather than duplicating the engine-invocation logic itself.
 
+### Durable browser persistence (delta log)
+
+`browser.js` also exports a small IndexedDB-backed durable-UPDATE log —
+see [`docs/designissues/2026-07-06-browser-persistence.md`](../../docs/designissues/2026-07-06-browser-persistence.md)
+for the full design (why IndexedDB and not OPFS for v1, the tab-close/
+crash guarantee mapping, and the quota/eviction honesty section). Every
+byte moved through these functions is produced/consumed by the same
+F\*-verified `RDF_Store_Columnar_DeltaLog`/`RDF_Store_Columnar_DeltaMerge`
+modules the native on-disk delta log uses (`factoidal serve --rw
+--delta-log`); this is a browser-native persistence path, not a mock:
+
+```js
+import { deltaLogOpen, deltaLogAppend, deltaLogMerge } from
+  'https://danbri.github.io/factoidal/npm/foafos/browser.js';
+
+const handle = await deltaLogOpen();               // opens/creates an IndexedDB database
+await deltaLogAppend(handle, 'INSERT DATA { <urn:x:a> <urn:x:p> "1" }');
+await deltaLogAppend(handle, 'INSERT DATA { <urn:x:b> <urn:x:p> "2" }');
+
+// ... reload the page, or close and reopen the browser ...
+
+const merged = await deltaLogMerge(handle, '');    // '' = empty base dataset
+console.log(merged);   // the two INSERT DATA ops, replayed from IndexedDB
+```
+
+Supported update ops: `INSERT DATA`, `DELETE DATA`, `CLEAR`, `DROP`,
+`CREATE` — the same subset the native `--rw` commit path accepts;
+anything else (`DELETE/INSERT WHERE`, `COPY`, `MOVE`, `ADD`) rejects
+with `ok:false` rather than silently no-op'ing. `deltaLogReadAllHex`,
+`deltaLogDestroy`, and the test-only `_deltaLogCorruptLastForTest` round
+out the surface (see `browser.js`'s own JSDoc for each). This is a
+prototype: no compaction and no `navigator.storage.persist()` wiring
+yet (both named as staged next steps in the design doc), and it does
+not yet back a hub demo page — that is separate, follow-on work.
+
 ### RDF/JS interop
 
 ```js
@@ -230,26 +265,39 @@ const saturated = await rif(data, rifRulesXml); // RIF Core forward chaining
 
 ## API (draft)
 
-| Function | Signature (informal) | Notes |
-|---|---|---|
-| `parse` | `(text, {format?, baseIRI?}) => Dataset` | formats: `turtle`, `ntriples`, `nquads`, `trig`, `rdfxml`, `jsonld`\* — auto-detected where possible. Each call is one document: blank-node labels are scoped per RDF 1.1 |
-| `query` | `(Dataset \| string, sparql, {entail?}) => Bindings[] \| boolean \| Dataset` | SELECT → array of `Map<var, Term>`; ASK → boolean; CONSTRUCT → Dataset\*\*; `entail: "RDFS" \| "OWL-RL"` |
-| `update` | `(Dataset, sparqlUpdate) => Dataset` | \*\* in-memory; no persistence |
-| `serialize` | `(Dataset, {format}) => string` | `nquads`, `ntriples` (sorted); prettier Turtle output is staged work |
-| `canonicalize` | `(Dataset \| string) => string` | RDFC-1.0 canonical N-Quads\*\* |
-| `graphs` | `(Dataset) => Array<[iri, Dataset]>` | enumerate named graphs (default graph excluded); pure enumeration, no engine round-trip |
-| `canonicalHash` | `(Dataset) => string` | RDFC-1.0 canonical hash of one graph\*\*; graph-scoped sibling of `canonicalize` — typically called with one entry of `graphs()`'s output |
-| `shaclValidate` | `(data, shapes) => {conforms, report: Dataset}` | \*\* SHACL Core validation; `report` is the `sh:ValidationReport` graph |
-| `shexValidate` | `(data, schemaJson, focus, shape?) => boolean \| null` | \*\* ShEx (Shape Expressions) validation of one focus node; `null` = outside this engine's decidable ShEx fragment, never a guessed answer |
-| `owlClosure` | `(data, mode) => Dataset` | \*\* `mode: "RDFS" \| "OWL-RL"`; materializes the entailment closure (input + derived triples), default graph only |
-| `rmlMap` | `(mapping, sourceData, sourceKind) => Dataset` | \*\* evaluates an RML mapping graph against one logical source (`sourceKind: "json" \| "csv"`); every triples map reads the SAME source — cross-source joins are out of scope for this entry point |
-| `csvwToRdf` | `(csvText, metadataJson?, {mode?, base?, url?}) => Dataset` | \*\* CSVW csv2rdf conversion; metadata omitted = schema inferred from the CSV header row; `mode: "standard" \| "minimal"` (default standard); every table in a multi-table group reads the SAME csvText |
-| `jsonldToRdf` | `(jsonldText, {base?, rdfDirection?, expandContext?, processingMode?}) => Dataset` | \*\* JSON-LD parsing with options `parse()` has no room for; plain `parse(text, {format:'jsonld'})` also works for the common case |
-| `rifEval` | `(data, rifRulesXml) => Dataset` | \*\* RIF Core forward-chaining saturation (materializes input + derived triples); accepts real vendored RIF-XML (`<!DOCTYPE>` + `&rif;`/`&xs;`/`&rdf;` entities) unmodified |
-| `queryRaw` | `(input, sparql) => string` | SPARQL-Results-JSON string, for callers that want the wire form |
-| `capabilities` | `() => {construct, update, canonicalize, graphs, canonicalHash, shacl, shex, owlClosure, rml, csvw, jsonld, rif, ...}` | runtime feature probe |
-| `dataFactory` | RDF/JS DataFactory | |
-| `Dataset` | RDF/JS DatasetCore | returned by `parse`; accepted everywhere |
+The `factoidal` CLI (`bin/factoidal-cli/factoidal_cli.ml`, built to
+`bin/<platform>/factoidal`) calls the exact same F\*-extracted
+functions as this npm surface — see `tests/local/cli_api_parity.sh`
+for the test that diffs CLI output against the npm API on shared
+fixtures.
+
+| Function | Signature (informal) | CLI equivalent | Notes |
+|---|---|---|---|
+| `parse` | `(text, {format?, baseIRI?}) => Dataset` | `factoidal dump-nq -d FILE` (or `dump`/`dump-turtle`) | formats: `turtle`, `ntriples`, `nquads`, `trig`, `rdfxml`, `jsonld`\* — auto-detected where possible. Each call is one document: blank-node labels are scoped per RDF 1.1 |
+| `query` | `(Dataset \| string, sparql, {entail?}) => Bindings[] \| boolean \| Dataset` | `factoidal query -d FILE -e 'SPARQL' [--entail RDFS\|OWL-RL]` | SELECT → array of `Map<var, Term>`; ASK → boolean; CONSTRUCT → Dataset\*\*; `entail: "RDFS" \| "OWL-RL"` |
+| `update` | `(Dataset, sparqlUpdate) => Dataset` | `factoidal update -d FILE -e 'SPARQL update'` | \*\* in-memory; no persistence. (Durable UPDATE against a COTTAS store is a separate path: `factoidal serve --rw --delta-log ...` / `factoidal compact`.) |
+| `serialize` | `(Dataset, {format}) => string` | `factoidal dump-nq FILE` (nquads) / `factoidal dump FILE` (ntriples) | `nquads`, `ntriples` (sorted); prettier Turtle output is staged work |
+| `canonicalize` | `(Dataset \| string) => string` | `factoidal canonicalize FILE` | RDFC-1.0 canonical N-Quads\*\* |
+| `graphs` | `(Dataset) => Array<[iri, Dataset]>` | `factoidal graphs list FILE` | enumerate named graphs (default graph excluded); pure enumeration, no engine round-trip |
+| `canonicalHash` | `(Dataset) => string` | `factoidal graphs hash FILE IRI` | RDFC-1.0 canonical hash of one graph\*\*; graph-scoped sibling of `canonicalize` — typically called with one entry of `graphs()`'s output |
+| `shaclValidate` | `(data, shapes) => {conforms, report: Dataset}` | `factoidal shacl --data FILE --shapes FILE [--json]` (alias: `factoidal validate --shapes FILE FILE`) | \*\* SHACL Core validation; `report` is the `sh:ValidationReport` graph; exit code 0 iff `sh:conforms` |
+| `shexValidate` | `(data, schemaJson, focus, shape?) => boolean \| null` | `factoidal shex --data FILE --schema FILE.json --node N [--shape S]` | \*\* ShEx (Shape Expressions) validation of one focus node; `null` = outside this engine's decidable ShEx fragment, never a guessed answer |
+| `owlClosure` | `(data, mode) => Dataset` | `factoidal entail --data FILE --regime RDFS\|OWL-RL` | \*\* materializes the entailment closure (input + derived triples), default graph only. (`query --entail` applies the same closure internally before evaluating a query, but does not dump it on its own.) |
+| `rmlMap` | `(mapping, sourceData, sourceKind) => Dataset` | `factoidal rml --mapping FILE --source FILE --kind json\|csv` | \*\* evaluates an RML mapping graph against one logical source (`sourceKind: "json" \| "csv"`); every triples map reads the SAME source — cross-source joins are out of scope for this entry point |
+| `csvwToRdf` | `(csvText, metadataJson?, {mode?, base?, url?}) => Dataset` | `factoidal csvw --csv FILE [--metadata FILE] [--minimal] [--base IRI] [--url URL]` | \*\* CSVW csv2rdf conversion; metadata omitted = schema inferred from the CSV header row; `mode: "standard" \| "minimal"` (default standard); every table in a multi-table group reads the SAME csvText |
+| `jsonldToRdf` | `(jsonldText, {base?, rdfDirection?, expandContext?, processingMode?}) => Dataset` | `factoidal jsonld --in FILE [--base IRI]` (or `factoidal dump-nq FILE.jsonld`, format auto-detected) | \*\* JSON-LD parsing with options `parse()` has no room for; plain `parse(text, {format:'jsonld'})` also works for the common case |
+| `rifEval` | `(data, rifRulesXml) => Dataset` | `factoidal rif --rules FILE --data FILE` | \*\* RIF Core forward-chaining saturation (materializes input + derived triples); accepts real vendored RIF-XML (`<!DOCTYPE>` + `&rif;`/`&xs;`/`&rdf;` entities) unmodified |
+| `queryRaw` | `(input, sparql) => string` | `factoidal query -d FILE -e 'SPARQL' -o json` | SPARQL-Results-JSON string, for callers that want the wire form |
+| `capabilities` | `() => {construct, update, canonicalize, graphs, canonicalHash, shacl, shex, owlClosure, rml, csvw, jsonld, rif, ...}` | N/A | runtime feature probe; the CLI is one fixed native binary, not a runtime bundle whose feature set varies |
+| `dataFactory` | RDF/JS DataFactory | N/A | data-model class, not an engine operation |
+| `Dataset` | RDF/JS DatasetCore | N/A | returned by `parse`; accepted everywhere |
+
+The `fn.js` functional layer's own combinators — `union`, `difference`,
+`filter`, `mapQuads`, `equals`, `hash`, `builder`/`fromChunks`,
+`cell`/`derive` — are pure client-side set algebra and dataflow
+plumbing over already-materialized `Dataset`s. They have no CLI
+equivalent by design: there is no engine operation to wrap, only JS
+composition on top of the operations already listed above.
 
 \* JSON-LD parsing (expanded form, inline `@context`, `@base`
 resolution, `@reverse`, container maps) works through both `parse()`

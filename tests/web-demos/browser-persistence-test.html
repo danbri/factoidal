@@ -1,0 +1,24 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>browser persistence test fixture (tests/web-demos/browser_persistence_smoke.sh)</title>
+</head>
+<body>
+<!--
+  Test-only fixture, NOT a demo page (the hub demo is separate, later
+  work -- see docs/designissues/2026-07-06-browser-persistence.md §4.3).
+  Loads npm/factoidal/browser.js (served alongside this file by the
+  smoke script) and exposes it on window for
+  tests/web-demos/browser_persistence_smoke.sh's Playwright driver to
+  call directly via page.evaluate(). No UI; all assertions happen in
+  the driver script, in Node, against real IndexedDB state a real
+  page.reload() actually persisted.
+-->
+<script type="module">
+  import * as Factoidal from './browser.js';
+  window.__factoidalBrowserPersistence = Factoidal;
+  window.__factoidalBrowserPersistenceReady = true;
+</script>
+</body>
+</html>

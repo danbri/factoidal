@@ -134,6 +134,37 @@
        lookup_parent hook) are not reachable through this one-document
        entry point; see bin/rml-runner/rml_runner.ml for the full
        multi-source join driver this does not attempt to replicate.
+     factoidalNpmEntry.deltaBatchToHex(sparqlUpdate, seq, epoch)
+       -> {"ok":true,"hex":"...","opCount":N} | {"ok":false,"error":"..."}
+       Browser-persistence prototype (issue #282's browser realisation,
+       docs/designissues/2026-07-06-browser-persistence.md). Translates
+       one SPARQL Update -- INSERT DATA / DELETE DATA / CLEAR / DROP /
+       CREATE only, the same subset RDF_Store_Columnar_DeltaMerge.
+       update_ops_to_delta_entries covers and bin/factoidal-http/
+       factoidal_http.ml's --rw commit path already accepts -- into one
+       framed `delta_batch` (RDF_Store_Columnar_DeltaLog.
+       serialize_delta_batch, the same verified byte format the native
+       on-disk delta log uses), hex-encoded for the caller to persist
+       as one record in IndexedDB/OPFS. `seq`/`epoch` are decimal
+       strings (the caller owns log ordering/compaction bookkeeping --
+       e.g. an IndexedDB autoIncrement-style counter); DELETE/INSERT
+       WHERE, COPY, MOVE, ADD are not yet translatable and return
+       ok:false rather than silently no-op'ing (rule #26).
+     factoidalNpmEntry.deltaMergeApplyBrowser(nquads, hexBlobsNewlineJoined)
+       -> {"ok":true,"nquads":"..."} | {"ok":false,"error":"..."}
+       The read-back half: `nquads` is the pre-update dataset handle;
+       `hexBlobsNewlineJoined` is every persisted delta_batch hex blob,
+       one per line, in ANY order (sorted here by db_seq). Each line is
+       independently parsed (RDF_Store_Columnar_DeltaLog.
+       parse_delta_batch -- self-framed: magic+version+length+
+       checksum); a blob that fails to parse (a torn/corrupted record)
+       is SKIPPED, never partially decoded -- the per-record analogue
+       of the on-disk log's "accept a prefix, never a torn entry"
+       contract. Surviving batches are merged onto the base dataset via
+       RDF_Store_Columnar_DeltaMerge.apply_entries_ref, one call per
+       graph (default graph plus every named graph the base or the
+       delta batches mention -- DeltaMerge.delta_batches_named_graphs
+       discovers CREATE-only graphs with no base rows of their own).
      factoidalNpmEntry.csvwToRdf(csvText, metadataJson, optionsJson)
        -> {"ok":true,"nquads":"..."} | {"ok":false,"error":"..."}
        CSVW csv2rdf conversion (w3.org/TR/csv2rdf). csvText is the raw
@@ -817,6 +848,136 @@ let csvw_to_rdf_json (csv_text : string) (metadata_json : string)
         "csvwToRdf: unknown mode '%s' (expected 'standard' or 'minimal')" mode))
 
 (* ---------------------------------------------------------------------
+   Durable-UPDATE browser persistence (rule #11 consumer -- exports
+   only). Issue #282's browser realisation of the five delta-log I/O
+   primitives; see docs/designissues/2026-07-06-browser-persistence.md
+   for the v1 architecture decision (IndexedDB, not OPFS -- OPFS sync
+   access handles are worker-only and this entry point runs on the
+   main thread inside a hub cell). Every semantic/byte-layout decision
+   below is F*: RDF_Store_Columnar_DeltaLog.{serialize_delta_batch,
+   parse_delta_batch} (the verified, checksummed, self-framed delta-
+   batch format the native on-disk log already uses) and
+   RDF_Store_Columnar_DeltaMerge.{update_ops_to_delta_entries,
+   apply_entries_ref, delta_batches_named_graphs} (the same verified
+   translator/merge functions bin/factoidal-http/factoidal_http.ml's
+   --rw commit path drives natively). This OCaml layer moves opaque
+   bytes and dispatches per-graph loops only -- no RDF/SPARQL
+   semantics of its own.
+   --------------------------------------------------------------------- *)
+
+module DLog = RDF_Store_Columnar_DeltaLog
+module DMerge = RDF_Store_Columnar_DeltaMerge
+
+(* Wire transport: RDF_Bytes.bytes is `int list` (each element 0..255 --
+   FStar.Char.char extracts to plain OCaml int, see FStar_Char.ml).
+   Hex-encode/decode directly against that int list rather than routing
+   through RDF_Bytes.bytes_to_string/bytes_of_string, which round-trip
+   through BatUTF8 (FStar_String.ml) and can raise BatUChar.Out_of_range
+   on an arbitrary byte >= 128 that doesn't happen to start a valid
+   UTF-8 sequence -- the exact trap bin/delta-log-probe/probe.ml's own
+   header comment documents for this same byte type. Hex sidesteps any
+   string-encoding question entirely; this is ABI wire-transport
+   encoding at a bin/<consumer> boundary, not delta-log byte-LAYOUT
+   logic (rule #11 scopes the latter to F*, not the former). *)
+let hex_of_bytes (bs : RDF_Bytes.bytes) : string =
+  let buf = Buffer.create (List.length bs * 2) in
+  List.iter (fun b -> Buffer.add_string buf (Printf.sprintf "%02x" b)) bs;
+  Buffer.contents buf
+
+let bytes_of_hex (s : string) : RDF_Bytes.bytes option =
+  let n = String.length s in
+  if n mod 2 <> 0 then None
+  else
+    let rec go i acc =
+      if i >= n then Some (List.rev acc)
+      else
+        match (try Some (int_of_string ("0x" ^ String.sub s i 2)) with _ -> None) with
+        | None -> None
+        | Some b -> go (i + 2) (b :: acc)
+    in
+    go 0 []
+
+(* Per-call request salt for the same insert-data-same-bnode uniqueness
+   discipline SPARQL11_Algebra's apply_insert_data/apply_delete_data
+   already use (mirrors bnode_scope_counter above and factoidal-http's
+   own `next_seq`/`Unix.gettimeofday` salt -- this entry point has no
+   process-uptime clock worth reading, so a plain counter is the
+   simplest per-call-unique salt available here). *)
+let delta_salt_counter = ref 0
+let next_delta_salt () =
+  let n = !delta_salt_counter in
+  incr delta_salt_counter;
+  Printf.sprintf "browser_%d" n
+
+let delta_batch_to_hex (sparql_update : string) (seq : string) (epoch : string) : string =
+  guarded (fun () ->
+    match SPARQL11_Parser.parse_sparql_update sparql_update with
+    | SPARQL11_Parser.ParseErr msg -> err_json ("SPARQL update parse error: " ^ msg)
+    | SPARQL11_Parser.ParseOk (u, _rest) ->
+      let salt = next_delta_salt () in
+      (match DMerge.update_ops_to_delta_entries salt u.u_ops with
+       | FStar_Pervasives_Native.None ->
+         err_json
+           ("unsupported update op for the delta log (supported: INSERT " ^
+            "DATA, DELETE DATA, CLEAR, DROP, CREATE; DELETE/INSERT WHERE, " ^
+            "COPY, MOVE, ADD are not yet translatable)")
+       | FStar_Pervasives_Native.Some entries ->
+         let batch : DLog.delta_batch =
+           { DLog.db_seq = Z.of_string seq; DLog.db_epoch = Z.of_string epoch;
+             DLog.db_ops = entries }
+         in
+         let hex = hex_of_bytes (DLog.serialize_delta_batch batch) in
+         let op_count = string_of_int (List.length entries) in
+         "{\"ok\":true,\"hex\":" ^ jstr hex ^ ",\"opCount\":" ^ op_count ^ "}"))
+
+let delta_merge_apply_browser (nquads : string) (hex_blobs : string) : string =
+  guarded (fun () ->
+    let ds0 = dataset_of_nquads nquads in
+    let lines =
+      String.split_on_char '\n' hex_blobs
+      |> List.filter (fun s -> String.length (String.trim s) > 0)
+    in
+    (* Each line independently parsed; a torn/corrupt blob is skipped,
+       never partially decoded (see the ABI doc comment above). *)
+    let batches =
+      List.filter_map
+        (fun line ->
+           match bytes_of_hex (String.trim line) with
+           | None -> None
+           | Some bs ->
+             (match DLog.parse_delta_batch bs with
+              | FStar_Pervasives_Native.Some (b, _leftover) -> Some b
+              | FStar_Pervasives_Native.None -> None))
+        lines
+    in
+    let sorted =
+      List.sort (fun a b -> Z.compare a.DLog.db_seq b.DLog.db_seq) batches
+    in
+    let all_ops = List.concat_map (fun b -> b.DLog.db_ops) sorted in
+    let existing_names = List.map (fun ng -> ng.ng_name) ds0.ds_named in
+    let delta_names = DMerge.delta_batches_named_graphs sorted in
+    let all_names = List.sort_uniq compare (existing_names @ delta_names) in
+    let base_graph_for name =
+      match List.find_opt (fun ng -> ng.ng_name = name) ds0.ds_named with
+      | Some ng -> ng.ng_graph
+      | None -> []
+    in
+    let new_default =
+      DMerge.apply_entries_ref FStar_Pervasives_Native.None ds0.ds_default all_ops
+    in
+    let new_named =
+      List.map
+        (fun name ->
+           { ng_name = name;
+             ng_graph =
+               DMerge.apply_entries_ref (FStar_Pervasives_Native.Some name)
+                 (base_graph_for name) all_ops })
+        all_names
+    in
+    let ds' : rdf_dataset = { ds_default = new_default; ds_named = new_named } in
+    ok_nquads_json (RDF_Canonical.canonical_nquads ds'))
+
+(* ---------------------------------------------------------------------
    Js.export — the only js_of_ocaml-specific code. Strings cross the
    boundary via Js.to_string / Js.string (UTF-16 JS <-> UTF-8 OCaml).
    --------------------------------------------------------------------- *)
@@ -863,5 +1024,7 @@ let () =
           ("shexValidate", s4 shex_validate_json);
           ("owlClosure", s2 owl_closure_json);
           ("rmlMap", s3 rml_map_json);
-          ("csvwToRdf", s3 csvw_to_rdf_json)
+          ("csvwToRdf", s3 csvw_to_rdf_json);
+          ("deltaBatchToHex", s3 delta_batch_to_hex);
+          ("deltaMergeApplyBrowser", s2 delta_merge_apply_browser)
        |])
