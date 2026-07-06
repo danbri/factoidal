@@ -12,14 +12,24 @@
 # deploy -a factoidal`. Without the secret this workflow fails fast
 # with a clear message instead of a cryptic flyctl error.
 #
-# Trigger: manual only (workflow_dispatch). Deploys ship whatever
-# commit you run it from - keep it deliberate rather than on-push,
-# since the live endpoint is user-facing.
+# Triggers: manual (workflow_dispatch, from the Actions tab - API
+# dispatch is not available to the repo's app integration), plus
+# automatically when the pieces that make up the image change on
+# claude/main: the CI server binaries, the Dockerfile/fly.toml, or
+# the entrypoint. The Parliament data volume is untouched either way.
 
 name: fly-deploy
 
 on:
   workflow_dispatch: {}
+  push:
+    branches: [claude/main]
+    paths:
+      - 'bin/ci-linux-x86_64/**'
+      - 'Dockerfile'
+      - 'fly.toml'
+      - 'tools/docker-entrypoint.sh'
+      - '.github/workflows/fly-deploy.yml'
 
 concurrency:
   group: fly-deploy
