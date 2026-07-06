@@ -174,10 +174,15 @@ lookups 62s→17.7s (bound-side encode in flight); COTTAS full-scan
 aggregates beat Jena TDB2. **Tri-target write path** — the delta log
 runs natively, as KaRaMeL-extracted C (12/12 demo), and under
 js\_of\_ocaml + wasm\_of\_ocaml with IndexedDB persistence proven
-across real page reloads. **HDT stages 1-3** — verified container/
-dictionary/triples readers, 74/74 fixture checks; stage 4 (pattern
-resolution through the seam, closes #253) in flight. Hub grew to 18
-posts; post 18 runs the durable-log lifecycle live.
+across real page reloads. **HDT stages 1-4** — verified container/
+dictionary/triples readers plus SPO pattern resolution through the
+capability seam (`57cb2ee`): `Parser.BallyhooHDT.fst` is pure Tot F\*,
+12 assume vals + the opaque handle type eliminated, the 555-line
+`ballyhoo_hdt_runtime.sh` shim deleted (#253), `--data-hdt` on the
+CLI, 74/74 fixture checks + 6/6 backend-parity queries. Stage 5
+(indexed rank/select shared with the Roaring track) is the remaining
+HDT item. Hub grew to 18 posts; post 18 runs the durable-log
+lifecycle live.
 
 Landed 2026-07-05 wave 4 (all six agents gate-evidenced together):
 SHACL phase 3 — core 98 pass, 0 fail (of 98) under the suite's full
