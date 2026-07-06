@@ -220,6 +220,11 @@ session.
 - [`site-and-dashboard`](skills/site-and-dashboard/SKILL.md) — the
   11ty site, test-results dashboard, demos, Fly.io endpoint, and the
   registry of progress tables + who updates each.
+- [`disk-storage-format`](skills/disk-storage-format/SKILL.md) — how
+  data lands on disk: the COTTAS/Parquet base + its 10 sidecars, the
+  durable-UPDATE delta log (framing, crash-safety, epoch guard), the
+  symlink-current compaction layout, and the exact import/query/
+  compact/serve CLI invocations.
 - [`fstar-module-style`](skills/fstar-module-style/SKILL.md) — module
   organization (semantic core vs pragmatics), stratification roadmap,
   .fsti policy, syntax traps in full, KaRaMeL-compatible style.
