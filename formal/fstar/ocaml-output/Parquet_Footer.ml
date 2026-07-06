@@ -116,6 +116,25 @@ let parquet_magic_hex : Prims.string= "50415231"
 
 let __mim2_file_bytes_cache : (string, string) Hashtbl.t = Hashtbl.create 7
 
+(* In-memory bytes store, stage 1 (docs/designissues/2026-07-06-
+   inmemory-bytes-store.md). Seed the SAME process-wide cache
+   `__mim2_load_file_bytes`/`parquet_read_*` already consult, under a
+   synthetic handle that names no real file. Every later
+   `parquet_read_tail_hex`/`parquet_read_range_hex` call for `handle`
+   is served straight out of this cache -- the `Sys.file_exists`
+   fallback in `__mim2_load_file_bytes` is never reached for a handle
+   registered here, because the cache lookup happens first.
+
+   Last-registration-wins (`Hashtbl.replace`, not `Hashtbl.add`):
+   re-registering the same handle with new bytes is well-defined and
+   intentional (lets a caller rebind a synthetic handle to fresh bytes
+   without restarting the process), matching how a real file's cache
+   entry would need an explicit invalidation to pick up an on-disk
+   change too -- this backend is no less consistent than the file
+   backend it shares a cache with. *)
+let register_memory_buffer (handle : Prims.string) (raw_bytes : Prims.string) : unit =
+  Hashtbl.replace __mim2_file_bytes_cache handle raw_bytes
+
 let __mim2_load_file_bytes path =
   match Hashtbl.find_opt __mim2_file_bytes_cache path with
   | Some s -> Some s
@@ -2264,8 +2283,14 @@ let probe_parquet_column_decompressed_payload_hex (path : Prims.string)
                  | FStar_Pervasives_Native.None ->
                      FStar_Pervasives_Native.None
                  | FStar_Pervasives_Native.Some compressed_hex ->
-                     parquet_zstd_decompress_hex compressed_hex
-                       uncompressed_size)))
+                     (match probe_parquet_column_compression_codec path
+                              col_index
+                      with
+                      | FStar_Pervasives_Native.Some "UNCOMPRESSED" ->
+                          FStar_Pervasives_Native.Some compressed_hex
+                      | uu___ ->
+                          parquet_zstd_decompress_hex compressed_hex
+                            uncompressed_size))))
 let probe_parquet_column_decompressed_payload_prefix_hex
   (path : Prims.string) (col_index : Prims.nat) (prefix_bytes : Prims.nat) :
   Prims.string FStar_Pervasives_Native.option=
@@ -3804,6 +3829,35 @@ let probe_parquet_column_page_header_num_values_in_row_group
                           | FStar_Pervasives_Native.Some raw ->
                               FStar_Pervasives_Native.Some
                                 (zigzag_decode_nat raw)))))
+let probe_parquet_column_compression_codec_in_row_group (path : Prims.string)
+  (rg_index : Prims.nat) (col_index : Prims.nat) :
+  Prims.string FStar_Pervasives_Native.option=
+  match probe_parquet_column_chunk_in_row_group_locator path rg_index
+          col_index
+  with
+  | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+  | FStar_Pervasives_Native.Some loc ->
+      (match column_metadata_start_of loc with
+       | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+       | FStar_Pervasives_Native.Some md_start ->
+           (match nth_field_hex loc.mcc_meta_hex (Prims.of_int (4)) md_start
+                    Prims.int_zero loc.mcc_meta_hex_len
+            with
+            | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+            | FStar_Pervasives_Native.Some codec_field ->
+                if codec_field.cf_type <> compact_t_i32
+                then FStar_Pervasives_Native.None
+                else
+                  (match decode_varint_value_hex loc.mcc_meta_hex
+                           codec_field.cf_value_start Prims.int_zero
+                           Prims.int_zero loc.mcc_meta_hex_len
+                   with
+                   | FStar_Pervasives_Native.None ->
+                       FStar_Pervasives_Native.None
+                   | FStar_Pervasives_Native.Some raw ->
+                       FStar_Pervasives_Native.Some
+                         (parquet_compression_codec_name
+                            (zigzag_decode_nat raw)))))
 let probe_parquet_column_decompressed_payload_hex_in_row_group
   (path : Prims.string) (rg_index : Prims.nat) (col_index : Prims.nat) :
   Prims.string FStar_Pervasives_Native.option=
@@ -3823,7 +3877,13 @@ let probe_parquet_column_decompressed_payload_hex_in_row_group
       (match parquet_read_range_hex path payload_offset compressed_size with
        | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
        | FStar_Pervasives_Native.Some compressed_hex ->
-           parquet_zstd_decompress_hex compressed_hex uncompressed_size)
+           (match probe_parquet_column_compression_codec_in_row_group path
+                    rg_index col_index
+            with
+            | FStar_Pervasives_Native.Some "UNCOMPRESSED" ->
+                FStar_Pervasives_Native.Some compressed_hex
+            | uu___ ->
+                parquet_zstd_decompress_hex compressed_hex uncompressed_size))
   | uu___ -> FStar_Pervasives_Native.None
 let probe_parquet_column_first_level_section_length_in_row_group
   (path : Prims.string) (rg_index : Prims.nat) (col_index : Prims.nat) :
@@ -4339,6 +4399,35 @@ let probe_parquet_column_page_header_num_values_in_row_group_from_table
                           | FStar_Pervasives_Native.Some raw ->
                               FStar_Pervasives_Native.Some
                                 (zigzag_decode_nat raw)))))
+let probe_parquet_column_compression_codec_in_row_group_from_table
+  (table : parquet_row_group_offset_table) (rg_index : Prims.nat)
+  (col_index : Prims.nat) : Prims.string FStar_Pervasives_Native.option=
+  match probe_parquet_column_chunk_locator_from_table table rg_index
+          col_index
+  with
+  | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+  | FStar_Pervasives_Native.Some loc ->
+      (match column_metadata_start_of loc with
+       | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+       | FStar_Pervasives_Native.Some md_start ->
+           (match nth_field_hex loc.mcc_meta_hex (Prims.of_int (4)) md_start
+                    Prims.int_zero loc.mcc_meta_hex_len
+            with
+            | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+            | FStar_Pervasives_Native.Some codec_field ->
+                if codec_field.cf_type <> compact_t_i32
+                then FStar_Pervasives_Native.None
+                else
+                  (match decode_varint_value_hex loc.mcc_meta_hex
+                           codec_field.cf_value_start Prims.int_zero
+                           Prims.int_zero loc.mcc_meta_hex_len
+                   with
+                   | FStar_Pervasives_Native.None ->
+                       FStar_Pervasives_Native.None
+                   | FStar_Pervasives_Native.Some raw ->
+                       FStar_Pervasives_Native.Some
+                         (parquet_compression_codec_name
+                            (zigzag_decode_nat raw)))))
 let probe_parquet_column_decompressed_payload_hex_in_row_group_from_table
   (table : parquet_row_group_offset_table) (path : Prims.string)
   (rg_index : Prims.nat) (col_index : Prims.nat) :
@@ -4359,7 +4448,13 @@ let probe_parquet_column_decompressed_payload_hex_in_row_group_from_table
       (match parquet_read_range_hex path payload_offset compressed_size with
        | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
        | FStar_Pervasives_Native.Some compressed_hex ->
-           parquet_zstd_decompress_hex compressed_hex uncompressed_size)
+           (match probe_parquet_column_compression_codec_in_row_group_from_table
+                    table rg_index col_index
+            with
+            | FStar_Pervasives_Native.Some "UNCOMPRESSED" ->
+                FStar_Pervasives_Native.Some compressed_hex
+            | uu___ ->
+                parquet_zstd_decompress_hex compressed_hex uncompressed_size))
   | uu___ -> FStar_Pervasives_Native.None
 let probe_parquet_column_first_level_section_length_in_row_group_from_table
   (table : parquet_row_group_offset_table) (path : Prims.string)

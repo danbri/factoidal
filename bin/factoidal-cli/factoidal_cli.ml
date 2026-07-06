@@ -243,6 +243,38 @@ let open_cottas_ondisk_store path =
     Printf.eprintf "Error: could not open on-disk COTTAS artifact: %s\n" path;
     exit 1
 
+(* In-memory bytes store, stage 3 (docs/designissues/2026-07-06-
+   inmemory-bytes-store.md): `--data-cottas-mem FILE` reads FILE fully
+   into an OCaml string and registers it under a synthetic handle via
+   `Parquet_Footer.register_memory_buffer` (stage 1's glue addition,
+   experimental_ocaml_glue/parquet_footer_zz_register_memory_buffer.sh)
+   -- the SAME process-wide cache `--data-cottas`'s real-path reads
+   already populate. The synthetic handle is then pushed onto
+   `cfg.data_cottas_files` exactly like a real path would be: every
+   existing consumer of that list (`open_cottas_ondisk_store`, the
+   dataset-backend builder, the delta-log overlay wiring) works
+   unmodified, because from their point of view it IS just a path
+   string that happens to already be cached. This is the whole point
+   of the design doc's §2.1 finding -- no new query logic, one new
+   glue entry point, reused everywhere `--data-cottas` already flows. *)
+let mem_handle_counter = ref 0
+
+let register_cottas_mem_file (f : string) : string =
+  if not (Sys.file_exists f) then begin
+    Printf.eprintf "Error: --data-cottas-mem file not found: %s\n" f; exit 1
+  end;
+  let ic = open_in_bin f in
+  let len = in_channel_length ic in
+  let bytes =
+    try really_input_string ic len
+    with e -> close_in_noerr ic; raise e
+  in
+  close_in ic;
+  incr mem_handle_counter;
+  let handle = Printf.sprintf "mem:%d:%s" !mem_handle_counter f in
+  Parquet_Footer.register_memory_buffer handle bytes;
+  handle
+
 (* Durable-UPDATE stage 4 (compaction) needs this reader in TWO places:
    here (so an ordinary query sees the epoch-filtered delta a compacted
    store requires) and in `run_compact` below (to decide what "already
@@ -531,6 +563,11 @@ let usage () =
   Printf.printf "                         Parsed via the F*-verified Parquet footer\n";
   Printf.printf "                         + DeltaLengthByteArray decoder; Zstd\n";
   Printf.printf "                         decompression via the C stub.\n";
+  Printf.printf "      --data-cottas-mem FILE  Read FILE fully into memory and query it\n";
+  Printf.printf "                         through the SAME on-disk COTTAS code path via a\n";
+  Printf.printf "                         synthetic byte-cache handle (repeatable). No\n";
+  Printf.printf "                         file is opened again after the initial read;\n";
+  Printf.printf "                         composes with --delta-log like --data-cottas.\n";
   Printf.printf "      --delta-log PATH   Durable-UPDATE stage 3 (merge-on-read): read\n";
   Printf.printf "                         --data-cottas's store composed with the delta\n";
   Printf.printf "                         batches recorded at PATH. Requires exactly one\n";
@@ -602,6 +639,11 @@ let parse_args ?args () =
     | ("--data" | "-d") :: f :: rest -> cfg.data_files <- cfg.data_files @ [f]; loop rest
     | "--data-cottas" :: f :: rest ->
       cfg.data_cottas_files <- cfg.data_cottas_files @ [f]; loop rest
+    | "--data-cottas-mem" :: f :: rest ->
+      (* Stage 3, in-memory bytes store: load FILE fully into RAM and
+         query it through the SAME on-disk COTTAS code path via a
+         synthetic cache handle -- see register_cottas_mem_file above. *)
+      cfg.data_cottas_files <- cfg.data_cottas_files @ [register_cottas_mem_file f]; loop rest
     | "--delta-log" :: f :: rest ->
       cfg.delta_log_path <- Some f; loop rest
     | ("--named" | "-n") :: spec :: rest ->
@@ -682,7 +724,8 @@ let parse_args ?args () =
 
 let known_subcommands =
   ["help"; "version"; "query"; "serve"; "dump"; "dump-nq"; "dump-turtle"; "canonicalize";
-   "count"; "test"; "cottas-import"; "cottas-info"; "graphs"; "validate"; "compact"]
+   "count"; "test"; "cottas-import"; "cottas-info"; "graphs"; "validate"; "compact"; "import";
+   "shacl"; "shex"; "rml"; "csvw"; "jsonld"; "rif"; "entail"; "update"]
 
 (* Locate a sibling binary by the same convention busybox uses: look in
    the same directory as argv[0] first, fall back to PATH. *)
@@ -881,6 +924,36 @@ let run_and_wait (argv : string array) : int * string =
    content). *)
 let fsync_file path = DLog.delta_log_fsync path
 
+(* Fast path for writing a POTENTIALLY LARGE `RDF.Bytes.bytes` (F*
+   `list char`) payload to disk. `DLog.delta_log_append` (issue #282)
+   is right for what it was built for -- single delta-log entries/
+   batches/an 8-byte epoch marker, all a few dozen to a few hundred
+   bytes -- because its OCaml realisation converts via
+   `RDF_Bytes.bytes_to_string`, i.e. F*'s stdlib `String.string_of_list`,
+   which extracts (ulib/ml/app/FStar_String.ml) to
+   `BatUTF8.init (List.length l) (fun i -> BatUChar.chr (List.at l i))`
+   -- an O(n) `List.at` INSIDE an O(n) `init` loop, i.e. quadratic in
+   the byte count. Confirmed by measurement, not just reading the
+   source: a 903,559-byte `data.cottas` (the 6,780-quad medication
+   fixture) via `delta_log_append` did not finish in over 3 minutes of
+   100% CPU before being killed; the same bytes converted the way
+   `write_dict_file`/`write_presence_file`
+   (experimental_ocaml_glue/cottas_ondisk_zzzzz_ondisk_index.sh) already
+   do it -- walk the list ONCE with `List.iter` into a `Buffer` -- is
+   linear and takes a fraction of a second. Reusing `delta_log_append`
+   for a whole COTTAS base file was the wrong call; this is the
+   dedicated O(n) path a base-file-sized payload needs. Still rule-#11(a)
+   pure I/O: no branching on byte CONTENT, just format conversion +
+   write. *)
+let write_bytes_file (path : string) (bytes : RDF_Bytes.bytes) : unit =
+  let buf = Buffer.create (List.length bytes) in
+  List.iter (fun b -> Buffer.add_char buf (Char.chr (b land 0xff))) bytes;
+  let oc = open_out_bin path in
+  Buffer.output_buffer oc buf;
+  flush oc;
+  (try Unix.fsync (Unix.descr_of_out_channel oc) with _ -> ());
+  close_out oc
+
 let list_regular_files dir =
   Sys.readdir dir |> Array.to_list
   |> List.filter (fun name -> not (Sys.is_directory (Filename.concat dir name)))
@@ -903,6 +976,95 @@ let next_version_number chunk_dir =
 let rm_rf path =
   ignore (Sys.command (Printf.sprintf "rm -rf %s" (Filename.quote path)))
 
+(* ----------------------------------------------------------------------
+   Shared native-writer core (2026-07-06), used by BOTH `factoidal
+   import` and `factoidal compact --native-writer`: parse N-Quads text
+   with the F*-extracted parser, sort (s,p,o,g) consumer-side, call the
+   pure F* serializer RDF.CottasStore.BaseWriter.serialize_cottas, write
+   DIR/data.cottas, and (optionally) eagerly build the 10 companion
+   sidecars by re-invoking this same binary's `query --explain` path
+   (the exact trick corpus_pipeline.py's build_cottas_sidecars_eager
+   uses -- prewarm_via_companions writes dict/presence/offsets/
+   compound-po to disk as a side effect of opening the store).
+   Returns the quad count. Rule #11: parse and byte layout are F*;
+   this function is argv-free orchestration + plain I/O.
+   ---------------------------------------------------------------------- *)
+
+let subject_to_cottas_string (s : RDF_Graph_Executable.subject) : string =
+  match s with
+  | S_IRI i -> Printf.sprintf "<%s>" i
+  | S_BNode b -> Printf.sprintf "_:%s" b
+
+let cottas_quad_of_triple_graph
+    (t : RDF_Graph_Executable.triple) (g : string option)
+    : RDF_CottasStore_BaseWriter.cottas_quad =
+  { RDF_CottasStore_BaseWriter.cq_s = subject_to_cottas_string t.s;
+    RDF_CottasStore_BaseWriter.cq_p = Printf.sprintf "<%s>" t.p;
+    RDF_CottasStore_BaseWriter.cq_o = term_to_ntriples t.o;
+    RDF_CottasStore_BaseWriter.cq_g =
+      (match g with Some iri -> Printf.sprintf "<%s>" iri | None -> "DEFAULT") }
+
+let cottas_quad_key (q : RDF_CottasStore_BaseWriter.cottas_quad) =
+  (q.RDF_CottasStore_BaseWriter.cq_s, q.RDF_CottasStore_BaseWriter.cq_p,
+   q.RDF_CottasStore_BaseWriter.cq_o, q.RDF_CottasStore_BaseWriter.cq_g)
+
+let native_write_base_and_sidecars
+    ~(nq_content : string) ~(out_dir : string)
+    ~(build_sidecars : bool) ~(verb : string) : int =
+  (try Unix.mkdir out_dir 0o755 with Unix.Unix_error (Unix.EEXIST, _, _) -> ());
+  let t0 = Unix.gettimeofday () in
+  let quads_rev =
+    Parser_NQuads.fold_nquads
+      (fun t g acc -> cottas_quad_of_triple_graph t g :: acc)
+      (fun _ -> false)
+      []
+      nq_content
+  in
+  let quads = List.rev quads_rev in
+  let quad_count = List.length quads in
+  Printf.printf "%s: parsed %d quads (%.2fs)\n%!" verb quad_count (Unix.gettimeofday () -. t0);
+
+  (* Consumer-side sort (rule #11's consumer carve-out). Array-based:
+     stdlib List.sort/List.map are non-tail-recursive in OCaml 4.x and
+     blew the native stack at 888,949 quads (gene corpus, measured
+     2026-07-06). *)
+  let t1 = Unix.gettimeofday () in
+  let arr = Array.of_list quads in
+  Array.sort (fun a b -> compare (cottas_quad_key a) (cottas_quad_key b)) arr;
+  let sorted = Array.to_list arr in
+  Printf.printf "%s: sorted (%.2fs)\n%!" verb (Unix.gettimeofday () -. t1);
+
+  (* Native F* writer: pure Tot function, no I/O, no assume val. *)
+  let t2 = Unix.gettimeofday () in
+  let bytes = RDF_CottasStore_BaseWriter.serialize_cottas sorted in
+  let byte_count = List.length bytes in
+  Printf.printf "%s: serialized %d bytes (%.2fs, %.2f bytes/quad)\n%!"
+    verb byte_count (Unix.gettimeofday () -. t2)
+    (if quad_count = 0 then 0.0 else float_of_int byte_count /. float_of_int quad_count);
+
+  let cottas_path = Filename.concat out_dir "data.cottas" in
+  let tmp_cottas = Printf.sprintf "%s.tmp.%d" cottas_path (Unix.getpid ()) in
+  (try Sys.remove tmp_cottas with Sys_error _ -> ());
+  write_bytes_file tmp_cottas bytes;
+  DLog.atomic_rename tmp_cottas cottas_path;
+  DLog.fsync_dir out_dir;
+  Printf.printf "%s: wrote %s\n%!" verb cottas_path;
+
+  if build_sidecars then begin
+    Printf.printf "%s: building eager sidecars via self-query --explain ...\n%!" verb;
+    let self_bin = Sys.executable_name in
+    let argv =
+      [| self_bin; "query"; "--data-cottas"; cottas_path;
+         "--explain"; "SELECT * WHERE { ?s ?p ?o } LIMIT 1" |]
+    in
+    let (code, output) = run_and_wait argv in
+    if code <> 0 then begin
+      Printf.eprintf "%s: sidecar pre-warm failed (rc=%d):\n%s\n" verb code output;
+      exit 1
+    end
+  end;
+  quad_count
+
 let usage_compact () =
   Printf.eprintf
     "Usage: factoidal compact --data-cottas FILE --delta-log PATH\n\
@@ -921,6 +1083,18 @@ let run_compact (args : string list) : unit =
   let python = ref (match Sys.getenv_opt "PYCOTTAS_PYTHON" with Some p -> p | None -> "python3") in
   let parser_name = ref "factoidal" in
   let index_perm = ref "spog" in
+  (* Native-writer path (2026-07-06): rebuild the compacted base with
+     RDF.CottasStore.BaseWriter.serialize_cottas + the eager-sidecar
+     self-invocation instead of shelling out to corpus_pipeline.py /
+     pycottas / DuckDB -- the LAST Python dependency in the write path.
+     Opt in per-invocation with --native-writer, or globally with
+     FACTOIDAL_COMPACT_NATIVE=1 (lets existing scripts switch without
+     changing their own argv). --python-writer forces the legacy path
+     even when the env var is set. *)
+  let native_writer =
+    ref (match Sys.getenv_opt "FACTOIDAL_COMPACT_NATIVE" with
+         | Some ("1" | "true" | "yes") -> true
+         | _ -> false) in
   let rec loop = function
     | [] -> ()
     | "--data-cottas" :: v :: rest -> data_cottas := Some v; loop rest
@@ -928,6 +1102,8 @@ let run_compact (args : string list) : unit =
     | "--python" :: v :: rest -> python := v; loop rest
     | "--parser" :: v :: rest -> parser_name := v; loop rest
     | "--index" :: v :: rest -> index_perm := v; loop rest
+    | "--native-writer" :: rest -> native_writer := true; loop rest
+    | "--python-writer" :: rest -> native_writer := false; loop rest
     | ("--help" | "-h") :: _ -> usage_compact ()
     | _ -> usage_compact ()
   in
@@ -986,38 +1162,50 @@ let run_compact (args : string list) : unit =
   let new_version_dir = Filename.concat chunk_dir new_version_name in
   if Sys.file_exists new_version_dir then rm_rf new_version_dir;
 
-  let tmp_nq = Filename.temp_file "factoidal-compact-" ".nq" in
-  let oc = open_out tmp_nq in
-  output_string oc nq_text;
-  close_out oc;
+  if !native_writer then begin
+    (* Native path: same materialized N-Quads text, written by the F*
+       serializer + eager sidecars, no subprocess beyond the sidecar
+       self-invocation. See `native_write_base_and_sidecars`'s banner. *)
+    Printf.printf "compact: native writer (RDF.CottasStore.BaseWriter) -> %s\n%!"
+      new_version_dir;
+    let (_ : int) =
+      native_write_base_and_sidecars ~nq_content:nq_text
+        ~out_dir:new_version_dir ~build_sidecars:true ~verb:"compact"
+    in ()
+  end else begin
+    let tmp_nq = Filename.temp_file "factoidal-compact-" ".nq" in
+    let oc = open_out tmp_nq in
+    output_string oc nq_text;
+    close_out oc;
 
-  let repo_root = match find_repo_root () with
-    | Some r -> r
-    | None ->
-      failwith "factoidal compact: could not locate tools/corpus_pipeline.py \
-                (set FACTOIDAL_REPO_ROOT)"
-  in
-  let corpus_script = Filename.concat repo_root "tools/corpus_pipeline.py" in
-  let argv =
-    [| !python; corpus_script; "materialize-nq-cottas-corpus";
-       "--input"; tmp_nq; "--input-format"; "nq";
-       "--corpus-root"; corpus_root;
-       "--dataset-name"; chunk_name;
-       "--chunk-name"; chunk_name;
-       "--version"; new_version_name;
-       "--parser"; !parser_name;
-       "--index"; !index_perm;
-       "--build-sidecars" |]
-  in
-  Printf.printf "compact: %s\n%!" (String.concat " " (Array.to_list argv));
-  let (code, output) = run_and_wait argv in
-  (try Sys.remove tmp_nq with Sys_error _ -> ());
-  if code <> 0 then begin
-    Printf.eprintf "factoidal compact: corpus_pipeline.py failed (rc=%d):\n%s\n" code output;
-    rm_rf new_version_dir;
-    exit 1
+    let repo_root = match find_repo_root () with
+      | Some r -> r
+      | None ->
+        failwith "factoidal compact: could not locate tools/corpus_pipeline.py \
+                  (set FACTOIDAL_REPO_ROOT)"
+    in
+    let corpus_script = Filename.concat repo_root "tools/corpus_pipeline.py" in
+    let argv =
+      [| !python; corpus_script; "materialize-nq-cottas-corpus";
+         "--input"; tmp_nq; "--input-format"; "nq";
+         "--corpus-root"; corpus_root;
+         "--dataset-name"; chunk_name;
+         "--chunk-name"; chunk_name;
+         "--version"; new_version_name;
+         "--parser"; !parser_name;
+         "--index"; !index_perm;
+         "--build-sidecars" |]
+    in
+    Printf.printf "compact: %s\n%!" (String.concat " " (Array.to_list argv));
+    let (code, output) = run_and_wait argv in
+    (try Sys.remove tmp_nq with Sys_error _ -> ());
+    if code <> 0 then begin
+      Printf.eprintf "factoidal compact: corpus_pipeline.py failed (rc=%d):\n%s\n" code output;
+      rm_rf new_version_dir;
+      exit 1
+    end;
+    print_string output
   end;
-  print_string output;
 
   (* 4. Write the compacted-epoch companion file INSIDE the new (not
      yet live) version directory -- it becomes visible atomically
@@ -1067,6 +1255,635 @@ let run_compact (args : string list) : unit =
     (Filename.concat current_path "data.cottas")
     (Z.to_string new_epoch)
 
+(* ============================================================================
+   Native COTTAS import ("factoidal import") -- 2026-07-06, closing the
+   owner's "why is Python still needed to write it" gap.
+
+   Every prior store-creation path (cottas-import, compact) shells out to
+   corpus_pipeline.py -> pycottas.rdf2cottas -> DuckDB to write data.cottas.
+   This command instead calls the native F* writer
+   (RDF.CottasStore.BaseWriter.serialize_cottas, a pure `Tot` function --
+   the byte layout, DELTA_LENGTH_BYTE_ARRAY encoding, and thrift-compact
+   footer assembly are ALL in F*, per rule #11) so store CREATION has
+   zero Python in its critical path.
+
+   What stays in OCaml here, and why each piece is rule-#11 acceptable:
+     - Parsing: Parser_NQuads.fold_nquads (an EXTRACTED F* parser --
+       Iron Rule #4). No hand-written tokenizer.
+     - Term -> COTTAS-column-string rendering (subject_to_cottas_string /
+       RDF_Pretty.term_to_ntriples): reuses the SAME N-Triples token
+       rendering `print_results_ntriples` already uses elsewhere in this
+       file, not a new serializer. The default graph gets the literal
+       sentinel "DEFAULT", matching cottas_ondisk_runtime.sh's
+       collect_distinct_graph convention (never NULL, never "").
+     - Sort order: (s,p,o,g) lexicographic via OCaml's polymorphic
+       `compare` on tuples of strings. This is exactly the "Consumer
+       tools ... are not part of the verified library" carve-out in rule
+       #11 -- reordering already-parsed strings is not RDF/SPARQL
+       semantic logic. Matches corpus_pipeline.py's `index=spog` default
+       row order (pycottas.rdf2cottas's `ORDER BY s,p,o,g`).
+       Characteristic-set clustering (`--row-order cs`) is NOT
+       implemented here -- follow-up, not a correctness requirement.
+     - File I/O: DLog.delta_log_append / delta_log_fsync / atomic_rename
+       / fsync_dir -- the SAME five issue-#282 primitives `compact`
+       already uses above. `delta_log_append` is a generic "write bytes
+       to a path" primitive despite its name (see `fsync_file`'s comment
+       a few hundred lines up); no new `assume val`.
+
+   Eager sidecars (dict/presence/offsets/compound-po): built by
+   re-invoking this SAME binary's `query --explain` path as a
+   subprocess, exactly the trick corpus_pipeline.py's
+   `build_cottas_sidecars_eager` already uses (prewarm_via_companions
+   runs as a side effect of opening the store for --explain). Zero new
+   sidecar-writing logic; reuses the existing eager-build path
+   verbatim.
+
+   Epoch marker + empty delta log: writing `data.compacted-epoch = 0`
+   and an initialized (header-only) `data.deltalog` makes a freshly
+   imported store immediately eligible for `--delta-log`-flagged
+   queries/updates without a separate init step -- `read_compacted_epoch_
+   opt` treats an absent marker as "never compacted" already, so this is
+   not required for correctness, but matches what a compacted store
+   carries and lets `factoidal serve --rw --delta-log <dir>/data.deltalog`
+   work against a brand-new import with no extra step. *)
+
+(* subject_to_cottas_string / cottas_quad_of_triple_graph /
+   cottas_quad_key / the parse-sort-serialize-write-sidecars core all
+   live above `run_compact` as `native_write_base_and_sidecars`,
+   shared with `factoidal compact --native-writer`. *)
+
+let usage_import () =
+  Printf.eprintf
+    "Usage: factoidal import --nq FILE.nq --out DIR [--build-sidecars] [--no-epoch-marker]\n\n\
+     Native (zero-Python) COTTAS store creation: parses FILE.nq with the\n\
+     F*-extracted N-Quads parser, sorts (s,p,o,g), writes DIR/data.cottas\n\
+     via RDF.CottasStore.BaseWriter.serialize_cottas, then (by default)\n\
+     eagerly builds the 10 companion sidecars and initializes\n\
+     data.compacted-epoch + data.deltalog so the store is immediately\n\
+     queryable and --delta-log-ready.\n";
+  exit 2
+
+let run_import (args : string list) : unit =
+  let nq_path = ref None in
+  let out_dir = ref None in
+  let build_sidecars = ref true in
+  let write_epoch_marker = ref true in
+  let rec loop = function
+    | [] -> ()
+    | "--nq" :: v :: rest -> nq_path := Some v; loop rest
+    | "--out" :: v :: rest -> out_dir := Some v; loop rest
+    | "--build-sidecars" :: rest -> build_sidecars := true; loop rest
+    | "--no-sidecars" :: rest -> build_sidecars := false; loop rest
+    | "--no-epoch-marker" :: rest -> write_epoch_marker := false; loop rest
+    | ("-h" | "--help") :: _ -> usage_import ()
+    | unknown :: _ ->
+      Printf.eprintf "factoidal import: unrecognised argument '%s'\n" unknown;
+      usage_import ()
+  in
+  loop args;
+  let nq_path = match !nq_path with Some p -> p | None -> usage_import () in
+  let out_dir = match !out_dir with Some d -> d | None -> usage_import () in
+  if not (Sys.file_exists nq_path) then begin
+    Printf.eprintf "factoidal import: --nq file not found: %s\n" nq_path;
+    exit 1
+  end;
+  (try Unix.mkdir out_dir 0o755 with Unix.Unix_error (Unix.EEXIST, _, _) -> ());
+
+  Printf.printf "import: parsing %s ...\n%!" nq_path;
+  let content = read_file nq_path in
+  (* Shared core (also used by `compact --native-writer`): parse via the
+     F*-extracted N-Quads parser, sort (s,p,o,g), serialize via the pure
+     F* writer, write data.cottas, eager sidecars. *)
+  let quad_count =
+    native_write_base_and_sidecars ~nq_content:content ~out_dir
+      ~build_sidecars:!build_sidecars ~verb:"import"
+  in
+
+  if !write_epoch_marker then begin
+    let epoch_marker_path = Filename.concat out_dir "data.compacted-epoch" in
+    let tmp_epoch = Printf.sprintf "%s.tmp.%d" epoch_marker_path (Unix.getpid ()) in
+    (try Sys.remove tmp_epoch with Sys_error _ -> ());
+    DLog.delta_log_append tmp_epoch (DLog.serialize_compacted_epoch Z.zero);
+    DLog.delta_log_fsync tmp_epoch;
+    DLog.atomic_rename tmp_epoch epoch_marker_path;
+
+    let delta_log_path = Filename.concat out_dir "data.deltalog" in
+    let tmp_log = Printf.sprintf "%s.tmp.%d" delta_log_path (Unix.getpid ()) in
+    (try Sys.remove tmp_log with Sys_error _ -> ());
+    DLog.delta_log_append tmp_log (DLog.serialize_log []);
+    DLog.delta_log_fsync tmp_log;
+    DLog.atomic_rename tmp_log delta_log_path;
+    DLog.fsync_dir out_dir;
+    Printf.printf "import: initialized %s and %s\n%!" epoch_marker_path delta_log_path
+  end;
+
+  Printf.printf "import: OK quads=%d out=%s\n%!" quad_count out_dir
+
+(* ============================================================================
+   npm FP API parity: shacl / shex / rml / csvw / jsonld / rif / entail /
+   update -- thin CLI wrappers over the SAME F*-extracted functions the
+   npm-entry ABI (bin/npm-entry/entry_jsoo.ml) already calls, one call
+   each (parse_shape_from_graph+validate, decode_shex_schema+
+   validate_focus, decode_mapping_document+eval_triples_map_*,
+   csvw_decode_metadata_text+csvw_convert_document_*, parse_rif_program+
+   RIF_Core_Eval.fixpoint, rdfs/owl_rl_closure_with_reflexivity,
+   parse_sparql_update+apply_update) -- so the native CLI reaches the
+   same npm/factoidal surface (owner directive: "ensure full npm fp api
+   surface is usable via cli tools," 2026-07-06). Every module below
+   ($COMMON_MODULES in build-ocaml.sh) is already linked into this
+   binary via bin/shacl-runner, bin/shex-runner, bin/rml-runner,
+   bin/csvw-runner, bin/rif-runner's own builds, so no new link-line
+   entry is needed. Rule #11: this section is argv parsing, file I/O,
+   and output formatting only -- zero RDF/RML/ShEx/CSVW/RIF semantics
+   live here. *)
+
+(* ---- shacl (SHACL Core validation; `validate` is the original verb
+   name, kept unchanged below for backward compatibility -- `shacl` is
+   the npm-name-parity alias, extended with --data/--json). ---- *)
+
+let usage_shacl () =
+  Printf.eprintf
+    "Usage: factoidal shacl --data DATA.ttl --shapes SHAPES.ttl [--json]\n\
+    \       factoidal validate --shapes SHAPES.ttl DATA.ttl   (legacy form)\n";
+  exit 2
+
+let run_shacl_validate (args : string list) : unit =
+  let shapes_path = ref None in
+  let data_path = ref None in
+  let json_out = ref false in
+  let rec loop = function
+    | [] -> ()
+    | "--shapes" :: p :: rest -> shapes_path := Some p; loop rest
+    | "--data" :: p :: rest -> data_path := Some p; loop rest
+    | "--json" :: rest -> json_out := true; loop rest
+    | ("--help" | "-h") :: _ -> usage_shacl ()
+    | p :: rest when !data_path = None && String.length p > 0 && p.[0] <> '-' ->
+      data_path := Some p; loop rest
+    | _ -> usage_shacl ()
+  in
+  loop args;
+  match !shapes_path, !data_path with
+  | Some sp, Some dp ->
+    let shapes_triples =
+      try load_triples sp
+      with e ->
+        Printf.eprintf "Error parsing shapes graph %s: %s\n" sp (Printexc.to_string e);
+        exit 1
+    in
+    let data_triples =
+      try load_triples dp
+      with e ->
+        Printf.eprintf "Error parsing data graph %s: %s\n" dp (Printexc.to_string e);
+        exit 1
+    in
+    let sg = SHACL_Validation.parse_shape_from_graph shapes_triples in
+    let report = SHACL_Validation.validate data_triples shapes_triples sg in
+    let conforms = report.SHACL_Validation.conforms in
+    if !json_out then begin
+      let report_graph = SHACL_Validation.validation_report_to_graph report in
+      let report_ds = RDF_Graph_Executable.({ ds_default = report_graph; ds_named = [] }) in
+      let report_nq = RDF_Canonical.canonical_nquads report_ds in
+      Printf.printf "{\"conforms\":%s,\"report\":\"%s\"}\n"
+        (if conforms then "true" else "false") (json_escape report_nq)
+    end else begin
+      let results = report.SHACL_Validation.results in
+      let string_of_term t = RDF_Pretty.term_to_turtle t in
+      let string_of_path_opt = function
+        | FStar_Pervasives_Native.None -> "(none)"
+        | FStar_Pervasives_Native.Some (SHACL_Validation.P_Predicate p) -> p
+        | FStar_Pervasives_Native.Some (SHACL_Validation.P_Inverse (SHACL_Validation.P_Predicate p)) ->
+          "^" ^ p
+        | FStar_Pervasives_Native.Some _ -> "(complex path)"
+      in
+      let string_of_severity = function
+        | SHACL_Validation.Sev_Info -> "Info"
+        | SHACL_Validation.Sev_Warning -> "Warning"
+        | SHACL_Validation.Sev_Violation -> "Violation"
+        | SHACL_Validation.Sev_Custom iri -> iri
+      in
+      Printf.printf "sh:conforms %b\n" conforms;
+      List.iter
+        (fun v ->
+           Printf.printf "  [%s] focus=%s path=%s%s source=%s\n"
+             (string_of_severity v.SHACL_Validation.v_severity)
+             (string_of_term v.SHACL_Validation.v_focus_node)
+             (string_of_path_opt v.SHACL_Validation.v_path)
+             (match v.SHACL_Validation.v_value with
+              | FStar_Pervasives_Native.Some value -> " value=" ^ string_of_term value
+              | FStar_Pervasives_Native.None -> "")
+             v.SHACL_Validation.v_source_shape)
+        results
+    end;
+    exit (if conforms then 0 else 1)
+  | _ -> usage_shacl ()
+
+(* ---- shex (ShEx / Shape Expressions validation of one focus node) ---- *)
+
+let usage_shex () =
+  Printf.eprintf
+    "Usage: factoidal shex --data DATA.ttl --schema SCHEMA.json --node NODE [--shape SHAPE]\n\
+    \       NODE/SHAPE are an IRI, or \"_:label\" for a blank node.\n\
+     Prints \"true\" / \"false\" / \"null\" (deferred -- outside this\n\
+     engine's decidable ShEx fragment, never a guessed answer) and exits\n\
+     0 / 1 / 2 respectively.\n";
+  exit 2
+
+(* Same IRI / "_:label" convention bin/shex-runner and entry_jsoo.ml's
+   term_of_focus_string use, so a caller round-tripping a shex_runner-
+   style ShapeMap entry gets the identical term. *)
+let shex_term_of_focus_string (s : string) : RDF_Graph_Executable.rdf_term =
+  if String.length s >= 2 && String.sub s 0 2 = "_:"
+  then RDF_Graph_Executable.T_BNode (String.sub s 2 (String.length s - 2))
+  else RDF_Graph_Executable.T_IRI s
+
+let run_shex (args : string list) : unit =
+  let data_path = ref None in
+  let schema_path = ref None in
+  let node = ref None in
+  let shape = ref None in
+  let rec loop = function
+    | [] -> ()
+    | "--data" :: p :: rest -> data_path := Some p; loop rest
+    | "--schema" :: p :: rest -> schema_path := Some p; loop rest
+    | "--node" :: n :: rest -> node := Some n; loop rest
+    | "--shape" :: s :: rest -> shape := Some s; loop rest
+    | ("--help" | "-h") :: _ -> usage_shex ()
+    | _ -> usage_shex ()
+  in
+  loop args;
+  match !data_path, !schema_path, !node with
+  | Some dp, Some sp, Some n ->
+    let data_graph =
+      try load_triples dp
+      with e -> Printf.eprintf "Error parsing %s: %s\n" dp (Printexc.to_string e); exit 1
+    in
+    let schema_json =
+      try read_file sp
+      with e -> Printf.eprintf "Error reading %s: %s\n" sp (Printexc.to_string e); exit 1
+    in
+    (match ShEx_Schema.decode_shex_schema schema_json "" with
+     | FStar_Pervasives_Native.None ->
+       Printf.eprintf "Error: could not decode ShExJ schema %s\n" sp; exit 1
+     | FStar_Pervasives_Native.Some schema ->
+       let focus_term = shex_term_of_focus_string n in
+       let shape_id = match !shape with
+         | None -> FStar_Pervasives_Native.None
+         | Some s -> FStar_Pervasives_Native.Some s
+       in
+       (match ShEx_Validation.validate_focus schema shape_id focus_term data_graph with
+        | FStar_Pervasives_Native.None -> Printf.printf "null\n"; exit 2
+        | FStar_Pervasives_Native.Some true -> Printf.printf "true\n"; exit 0
+        | FStar_Pervasives_Native.Some false -> Printf.printf "false\n"; exit 1))
+  | _ -> usage_shex ()
+
+(* ---- rml (RML mapping evaluation against one logical source) ---- *)
+
+let usage_rml () =
+  Printf.eprintf
+    "Usage: factoidal rml --mapping MAPPING.ttl --source SOURCE [--kind json|csv]\n\
+    \       --kind defaults from SOURCE's extension (.json -> json, .csv -> csv).\n\
+     Every triples map in MAPPING reads the SAME source (no cross-source\n\
+     joins through this entry point -- see bin/rml-runner/rml_runner.ml\n\
+     for the full multi-source join driver). Prints the generated\n\
+     triples as N-Quads.\n";
+  exit 2
+
+let run_rml (args : string list) : unit =
+  let mapping_path = ref None in
+  let source_path = ref None in
+  let kind = ref None in
+  let rec loop = function
+    | [] -> ()
+    | "--mapping" :: p :: rest -> mapping_path := Some p; loop rest
+    | "--source" :: p :: rest -> source_path := Some p; loop rest
+    | "--kind" :: k :: rest -> kind := Some (String.lowercase_ascii k); loop rest
+    | ("--help" | "-h") :: _ -> usage_rml ()
+    | _ -> usage_rml ()
+  in
+  loop args;
+  match !mapping_path, !source_path with
+  | Some mp, Some srcp ->
+    let mapping_graph =
+      try load_triples mp
+      with e -> Printf.eprintf "Error parsing %s: %s\n" mp (Printexc.to_string e); exit 1
+    in
+    let source_data =
+      try read_file srcp
+      with e -> Printf.eprintf "Error reading %s: %s\n" srcp (Printexc.to_string e); exit 1
+    in
+    let source_kind = match !kind with
+      | Some k -> k
+      | None ->
+        (match String.lowercase_ascii (Filename.extension srcp) with
+         | ".json" -> "json"
+         | ".csv" -> "csv"
+         | _ ->
+           Printf.eprintf "Error: --kind json|csv required (could not infer from %s)\n" srcp;
+           exit 1)
+    in
+    if source_kind <> "json" && source_kind <> "csv" then begin
+      Printf.eprintf "Error: --kind must be 'json' or 'csv' (got '%s')\n" source_kind; exit 1
+    end;
+    let doc = RML_Mapping.decode_mapping_document mapping_graph in
+    let eval_one (tmap : RML_Mapping.triples_map) : RML_Eval.placed_triple list =
+      match source_kind with
+      | "json" ->
+        (match Parser_JSON.parse_json source_data with
+         | FStar_Pervasives_Native.None -> []
+         | FStar_Pervasives_Native.Some root ->
+           RML_Eval.eval_triples_map_json tmap root FStar_Pervasives_Native.None)
+      | _ (* "csv" *) ->
+        RML_Eval.eval_triples_map_csv tmap source_data FStar_Pervasives_Native.None
+    in
+    let all_pts = List.concat_map eval_one doc.RML_Mapping.md_triples_maps in
+    let ds = RML_Eval.place_into_dataset RDF_Graph_Executable.empty_dataset all_pts in
+    print_string (RDF_Canonical.canonical_nquads ds)
+  | _ -> usage_rml ()
+
+(* ---- csvw (CSVW csv2rdf conversion) ---- *)
+
+let usage_csvw () =
+  Printf.eprintf
+    "Usage: factoidal csvw --csv DATA.csv [--metadata METADATA.json] [--minimal]\n\
+    \                      [--base IRI] [--url URL]\n\
+     mode defaults to \"standard\" (full csvw:TableGroup/Table/Row wrapper);\n\
+     --minimal selects the flat mode. Metadata omitted infers the schema\n\
+     from the CSV's own header row. Prints the generated triples as N-Quads.\n";
+  exit 2
+
+let run_csvw (args : string list) : unit =
+  let csv_path = ref None in
+  let metadata_path = ref None in
+  let minimal = ref false in
+  let base_iri = ref "file:///" in
+  let url = ref None in
+  let rec loop = function
+    | [] -> ()
+    | "--csv" :: p :: rest -> csv_path := Some p; loop rest
+    | "--metadata" :: p :: rest -> metadata_path := Some p; loop rest
+    | "--minimal" :: rest -> minimal := true; loop rest
+    | "--base" :: b :: rest -> base_iri := b; loop rest
+    | "--url" :: u :: rest -> url := Some u; loop rest
+    | ("--help" | "-h") :: _ -> usage_csvw ()
+    | _ -> usage_csvw ()
+  in
+  loop args;
+  match !csv_path with
+  | Some cp ->
+    let csv_text =
+      try read_file cp
+      with e -> Printf.eprintf "Error reading %s: %s\n" cp (Printexc.to_string e); exit 1
+    in
+    let metadata_json = match !metadata_path with
+      | None -> ""
+      | Some mp ->
+        (try read_file mp
+         with e -> Printf.eprintf "Error reading %s: %s\n" mp (Printexc.to_string e); exit 1)
+    in
+    let fallback_url = match !url with Some u -> u | None -> Filename.basename cp in
+    let tables_opt =
+      if metadata_json = "" then
+        FStar_Pervasives_Native.Some [ CSVW_Conversion.csvw_no_metadata_table ]
+      else
+        (match CSVW_Metadata.csvw_decode_metadata_text metadata_json with
+         | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+         | FStar_Pervasives_Native.Some (CSVW_Metadata.CSVW_Table t) ->
+           FStar_Pervasives_Native.Some [ t ]
+         | FStar_Pervasives_Native.Some (CSVW_Metadata.CSVW_TableGroup ts) ->
+           FStar_Pervasives_Native.Some ts)
+    in
+    (match tables_opt with
+     | FStar_Pervasives_Native.None ->
+       Printf.eprintf "Error: %s is not a decodable CSVW metadata document\n"
+         (match !metadata_path with Some m -> m | None -> "(none)");
+       exit 1
+     | FStar_Pervasives_Native.Some tables ->
+       let rows = RML_Sources.csv_parse_rows csv_text in
+       let tables_with_rows = List.map (fun t -> (t, fallback_url, rows)) tables in
+       let triples =
+         if !minimal
+         then CSVW_Conversion.csvw_convert_document_minimal !base_iri tables_with_rows
+         else CSVW_Conversion.csvw_convert_document_standard !base_iri tables_with_rows
+       in
+       let ds = RDF_Graph_Executable.({ ds_default = triples; ds_named = [] }) in
+       print_string (RDF_Canonical.canonical_nquads (scope_dataset_bnodes ds)))
+  | None -> usage_csvw ()
+
+(* ---- jsonld (JSON-LD -> RDF, dedicated verb + --base) ----
+   `factoidal dump-nq FILE.jsonld` (extension auto-detect) or
+   `factoidal dump-nq --format jsonld FILE` already work via
+   load_dataset's existing JSONLD branch; this is a friendlier,
+   npm-name-parity verb over the exact same load_dataset call. *)
+
+let usage_jsonld () =
+  Printf.eprintf
+    "Usage: factoidal jsonld --in DOC.jsonld [--base IRI]\n\
+     Remote @context URLs are an honest failure -- no documentLoader is\n\
+     registered for this CLI. Prints canonical N-Quads.\n";
+  exit 2
+
+let run_jsonld (args : string list) : unit =
+  let in_path = ref None in
+  let base = ref None in
+  let rec loop = function
+    | [] -> ()
+    | "--in" :: p :: rest -> in_path := Some p; loop rest
+    | "--base" :: b :: rest -> base := Some b; loop rest
+    | ("--help" | "-h") :: _ -> usage_jsonld ()
+    | p :: rest when !in_path = None && String.length p > 0 && p.[0] <> '-' ->
+      in_path := Some p; loop rest
+    | _ -> usage_jsonld ()
+  in
+  loop args;
+  match !in_path with
+  | Some path ->
+    let ds =
+      try load_dataset ~format:(Some JSONLD) ~base:!base path
+      with e -> Printf.eprintf "Error parsing %s: %s\n" path (Printexc.to_string e); exit 1
+    in
+    print_string (RDF_Canonical.canonical_nquads ds)
+  | None -> usage_jsonld ()
+
+(* ---- rif (RIF Core forward-chaining saturation) ---- *)
+
+(* Ported verbatim from bin/npm-entry/entry_jsoo.ml's rif_xml_preprocess
+   (itself ported from bin/w3c-runner/w3c_runner.ml) -- real vendored
+   RIF-XML fixtures carry a <!DOCTYPE ... [ <!ENTITY rif "..."> ... ]>
+   prolog that Parser_RIFXML (an XML *content* parser, not a DTD
+   processor) cannot see through; this consumer-side text
+   preprocessing strips the DOCTYPE and inlines the &rif;/&xs;/&rdf;
+   entities it declares. Not RIF semantics -- rule #11/#15 stays
+   satisfied. *)
+let rif_xml_preprocess (s : string) : string =
+  let drop_doctype s =
+    match Str.search_forward (Str.regexp_string "<!DOCTYPE") s 0 with
+    | exception Not_found -> s
+    | start ->
+      let close_with_subset =
+        try Some (Str.search_forward (Str.regexp_string "]>") s start)
+        with Not_found -> None in
+      let close_idx =
+        match close_with_subset with
+        | Some i -> i + 2
+        | None ->
+          (try (Str.search_forward (Str.regexp_string ">") s start) + 1
+           with Not_found -> String.length s)
+      in
+      let pre = String.sub s 0 start in
+      let post = String.sub s close_idx (String.length s - close_idx) in
+      pre ^ post
+  in
+  let inline_entities s =
+    s
+    |> Str.global_replace (Str.regexp_string "&rif;")
+         "http://www.w3.org/2007/rif#"
+    |> Str.global_replace (Str.regexp_string "&xs;")
+         "http://www.w3.org/2001/XMLSchema#"
+    |> Str.global_replace (Str.regexp_string "&rdf;")
+         "http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+  in
+  s |> drop_doctype |> inline_entities
+
+let usage_rif () =
+  Printf.eprintf
+    "Usage: factoidal rif --rules RULES.rif --data DATA.ttl\n\
+    \       RULES.rif is a RIF Core XML rule document (real vendored\n\
+    \       <!DOCTYPE>/entity-form accepted unmodified). Prints the\n\
+     saturated graph (input + derived triples) as N-Quads.\n";
+  exit 2
+
+let run_rif (args : string list) : unit =
+  let rules_path = ref None in
+  let data_path = ref None in
+  let rec loop = function
+    | [] -> ()
+    | "--rules" :: p :: rest -> rules_path := Some p; loop rest
+    | "--data" :: p :: rest -> data_path := Some p; loop rest
+    | ("--help" | "-h") :: _ -> usage_rif ()
+    | _ -> usage_rif ()
+  in
+  loop args;
+  match !rules_path, !data_path with
+  | Some rp, Some dp ->
+    let rules_xml =
+      try rif_xml_preprocess (read_file rp)
+      with e -> Printf.eprintf "Error reading %s: %s\n" rp (Printexc.to_string e); exit 1
+    in
+    let premise =
+      try load_triples dp
+      with e -> Printf.eprintf "Error parsing %s: %s\n" dp (Printexc.to_string e); exit 1
+    in
+    (match Parser_RIFXML.parse_rif_program rules_xml with
+     | FStar_Pervasives_Native.None ->
+       Printf.eprintf "Error: could not parse RIF-XML program %s\n" rp; exit 1
+     | FStar_Pervasives_Native.Some program ->
+       let saturated = RIF_Core_Eval.fixpoint premise program (Z.of_int 100) in
+       let ds = RDF_Graph_Executable.({ ds_default = saturated; ds_named = [] }) in
+       print_string (RDF_Canonical.canonical_nquads ds))
+  | _ -> usage_rif ()
+
+(* ---- entail (materialize an RDFS/OWL-RL closure as a standalone dump;
+   the npm owlClosure()-equivalent. `query --entail REGIME` applies the
+   SAME closure internally before evaluating a query, but has no way to
+   dump the closure itself -- this is that missing standalone verb.) ---- *)
+
+let usage_entail () =
+  Printf.eprintf
+    "Usage: factoidal entail --data FILE [--data FILE...] --regime RDFS|OWL-RL\n\
+    \       Materializes the entailment closure (input + derived triples)\n\
+    \       and prints it as N-Quads. Default graph + each named graph\n\
+    \       are closed independently.\n";
+  exit 2
+
+let run_entail (args : string list) : unit =
+  let data_paths = ref [] in
+  let regime = ref None in
+  let rec loop = function
+    | [] -> ()
+    | "--data" :: p :: rest -> data_paths := !data_paths @ [p]; loop rest
+    | "--regime" :: r :: rest ->
+      let norm = match normalise_entail_regime r with
+        | Some "RDFS" -> "RDFS"
+        | Some "OWL-RL" -> "OWL-RL"
+        | _ ->
+          Printf.eprintf "Error: --regime must be RDFS or OWL-RL (got '%s')\n" r; exit 1
+      in
+      regime := Some norm; loop rest
+    | ("--help" | "-h") :: _ -> usage_entail ()
+    | p :: rest when String.length p > 0 && p.[0] <> '-' ->
+      data_paths := !data_paths @ [p]; loop rest
+    | _ -> usage_entail ()
+  in
+  loop args;
+  match !data_paths, !regime with
+  | [], _ | _, None -> usage_entail ()
+  | paths, Some norm ->
+    let datasets = List.map (fun f ->
+      try load_dataset f
+      with e -> Printf.eprintf "Error parsing %s: %s\n" f (Printexc.to_string e); exit 1
+    ) paths in
+    let closure tr =
+      if norm = "OWL-RL"
+      then RDF_Graph_Executable.owl_rl_closure_with_reflexivity tr (Z.of_int 100)
+      else RDF_Graph_Executable.rdfs_closure_with_reflexivity tr (Z.of_int 100)
+    in
+    let graph = closure (concat_map_preserve_order (fun ds -> ds.ds_default) datasets) in
+    let named = concat_map_preserve_order (fun ds -> ds.ds_named) datasets in
+    let named = List.map (fun ng ->
+      RDF_Graph_Executable.({ ng_name = ng.ng_name; ng_graph = closure ng.ng_graph })
+    ) named in
+    let ds = RDF_Graph_Executable.({ ds_default = graph; ds_named = named }) in
+    print_string (RDF_Canonical.canonical_nquads ds)
+
+(* ---- update (in-memory SPARQL 1.1 Update apply + dump; the npm
+   update()-equivalent. Durable, on-disk UPDATE against a COTTAS store
+   is a SEPARATE path: `factoidal serve --rw --delta-log ...` /
+   `factoidal compact`, docs/designissues/2026-07-06-durable-update-
+   design.md -- this is the in-memory-only counterpart.) ---- *)
+
+let usage_update () =
+  Printf.eprintf
+    "Usage: factoidal update --data FILE [--data FILE...] -e 'SPARQL update'\n\
+    \       factoidal update --data FILE [--data FILE...] --update FILE.ru\n\
+    \       In-memory apply (no persistence) -- prints the resulting\n\
+    \       dataset as N-Quads.\n";
+  exit 2
+
+let run_update (args : string list) : unit =
+  let data_paths = ref [] in
+  let update_string = ref None in
+  let update_file = ref None in
+  let rec loop = function
+    | [] -> ()
+    | "--data" :: p :: rest -> data_paths := !data_paths @ [p]; loop rest
+    | "-e" :: u :: rest -> update_string := Some u; loop rest
+    | "--update" :: f :: rest -> update_file := Some f; loop rest
+    | ("--help" | "-h") :: _ -> usage_update ()
+    | p :: rest when !data_paths = [] && String.length p > 0 && p.[0] <> '-' ->
+      data_paths := [p]; loop rest
+    | _ -> usage_update ()
+  in
+  loop args;
+  if !data_paths = [] then usage_update ();
+  let update_text = match !update_string, !update_file with
+    | Some u, _ -> u
+    | None, Some f -> read_file f
+    | None, None -> usage_update ()
+  in
+  let datasets = List.map (fun f ->
+    try load_dataset f
+    with e -> Printf.eprintf "Error parsing %s: %s\n" f (Printexc.to_string e); exit 1
+  ) !data_paths in
+  let ds_default = concat_map_preserve_order (fun ds -> ds.ds_default) datasets in
+  let ds_named = concat_map_preserve_order (fun ds -> ds.ds_named) datasets in
+  let ds = RDF_Graph_Executable.({ ds_default; ds_named }) in
+  match SPARQL11_Parser.parse_sparql_update update_text with
+  | SPARQL11_Parser.ParseErr msg ->
+    Printf.eprintf "SPARQL update parse error: %s\n" msg; exit 1
+  | SPARQL11_Parser.ParseOk (u, _) ->
+    let ds' = SPARQL11_Algebra.apply_update ds u in
+    print_string (RDF_Canonical.canonical_nquads ds')
+
 let print_navigation_help () =
   Printf.printf "factoidal — formally verified RDF/SPARQL toolkit\n\n";
   Printf.printf "Usage: factoidal <subcommand> [options...]\n\n";
@@ -1092,6 +1909,24 @@ let print_navigation_help () =
   Printf.printf "  validate       SHACL Core validation (slice 1, issue #181)\n";
   Printf.printf "                   factoidal validate --shapes shapes.ttl data.ttl\n";
   Printf.printf "                   (see formal/fstar/SHACL.Validation.fst for constraint coverage)\n";
+  Printf.printf "  shacl          SHACL Core validation (npm shaclValidate()-equivalent)\n";
+  Printf.printf "                   factoidal shacl --data data.ttl --shapes shapes.ttl [--json]\n";
+  Printf.printf "                   (alias of `validate`, plus --data/--json)\n";
+  Printf.printf "  shex           ShEx (Shape Expressions) validation of one focus node\n";
+  Printf.printf "                   factoidal shex --data data.ttl --schema schema.json --node N [--shape S]\n";
+  Printf.printf "  rml            RML mapping evaluation against one JSON/CSV logical source\n";
+  Printf.printf "                   factoidal rml --mapping map.ttl --source data.json --kind json\n";
+  Printf.printf "  csvw           CSVW csv2rdf conversion\n";
+  Printf.printf "                   factoidal csvw --csv data.csv [--metadata meta.json] [--minimal]\n";
+  Printf.printf "  jsonld         JSON-LD -> RDF (dedicated verb; N-Quads out)\n";
+  Printf.printf "                   factoidal jsonld --in doc.jsonld [--base IRI]\n";
+  Printf.printf "  rif            RIF Core forward-chaining saturation\n";
+  Printf.printf "                   factoidal rif --rules rules.rif --data data.ttl\n";
+  Printf.printf "  entail         Materialize an RDFS/OWL-RL entailment closure (npm owlClosure())\n";
+  Printf.printf "                   factoidal entail --data data.ttl --regime RDFS|OWL-RL\n";
+  Printf.printf "  update         In-memory SPARQL 1.1 Update apply + dump (npm update())\n";
+  Printf.printf "                   factoidal update --data data.ttl -e 'INSERT DATA {...}'\n";
+  Printf.printf "                   (durable on-disk UPDATE: `serve --rw --delta-log` / `compact`)\n";
   Printf.printf "  cottas-import  Import RDF -> COTTAS/Parquet artifact\n";
   Printf.printf "                   factoidal cottas-import --input X.trig --corpus-root C ...\n";
   Printf.printf "                   (shim: execs python3 tools/corpus_pipeline.py)\n";
@@ -1373,6 +2208,15 @@ let dispatch_subcommand () =
           exit (if conforms then 0 else 1)
         | _ -> usage_validate ())
      | "compact" -> run_compact rest; exit 0
+     | "import" -> run_import rest; exit 0
+     | "shacl" -> run_shacl_validate rest; exit 0
+     | "shex" -> run_shex rest; exit 0
+     | "rml" -> run_rml rest; exit 0
+     | "csvw" -> run_csvw rest; exit 0
+     | "jsonld" -> run_jsonld rest; exit 0
+     | "rif" -> run_rif rest; exit 0
+     | "entail" -> run_entail rest; exit 0
+     | "update" -> run_update rest; exit 0
      | "query" -> rest
      | "dump"  -> "--dump"  :: List.concat_map (fun f -> ["--data"; f]) rest
      | "dump-nq" -> "--dump-nq" :: List.concat_map (fun f -> ["--data"; f]) rest

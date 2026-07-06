@@ -114,6 +114,7 @@ COMMON_MODULES=(
   RDF_CottasStore_CompoundPresenceBitmap
   RDF_CottasStore_CompoundPresenceWriter
   RDF_CottasStore_OffsetsWriter
+  RDF_CottasStore_BaseWriter
   RDF_CottasStore_LazyDict
   RDF_CottasStore_LazyDictRegistry
   RDF_Store_LazyTermCache

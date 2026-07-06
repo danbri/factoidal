@@ -1162,6 +1162,15 @@ let probe_parquet_column_zstd_frame_size_matches_page (path:string) (col_index:n
     if page_compressed_size = accounted then Some 1 else Some 0
   | _ -> None
 
+// #<native-cottas-writer> (2026-07-06): this used to unconditionally
+// zstd-decompress every page regardless of the declared column
+// compression codec, so a codec=UNCOMPRESSED column chunk (the native
+// F* writer in RDF.CottasStore.BaseWriter.fst emits exactly these, to
+// avoid needing a from-scratch zstd encoder) would silently fail here
+// -- parquet_zstd_decompress_hex has no valid zstd frame to parse.
+// UNCOMPRESSED is legal Parquet (and the simplest correct choice): the
+// page bytes on disk ARE the uncompressed bytes, no decompression step
+// at all. Every other codec keeps the prior zstd path unchanged.
 let probe_parquet_column_decompressed_payload_hex (path:string) (col_index:nat) : option string =
   match probe_parquet_column_page_payload_offset path col_index with
   | None -> None
@@ -1175,7 +1184,9 @@ let probe_parquet_column_decompressed_payload_hex (path:string) (col_index:nat) 
         match parquet_read_range_hex path payload_offset compressed_size with
         | None -> None
         | Some compressed_hex ->
-          parquet_zstd_decompress_hex compressed_hex uncompressed_size
+          match probe_parquet_column_compression_codec path col_index with
+          | Some "UNCOMPRESSED" -> Some compressed_hex
+          | _ -> parquet_zstd_decompress_hex compressed_hex uncompressed_size
 
 let probe_parquet_column_decompressed_payload_prefix_hex (path:string) (col_index:nat) (prefix_bytes:nat) : option string =
   match probe_parquet_column_decompressed_payload_hex path col_index with
@@ -2070,6 +2081,15 @@ let rec decode_bit_packed_indices
 // `fuel` bounds the run-iteration count; in practice it never blows up on
 // real Parquet pages (each run consumes at least one index), but the F*
 // totality checker needs an explicit decreasing measure.
+//
+// #<native-cottas-writer> (2026-07-06): this termination proof is right at
+// the default z3 resource-limit edge -- observed flaking to a bare
+// "Assertion failed" (no semantic content change nearby) once the file's
+// .checked cache was invalidated by an unrelated earlier edit forced a
+// full recheck without a warm hint file. Bumping rlimit locally (proof-
+// budget only, no logic change) rather than touching this pre-existing
+// decoder.
+#push-options "--z3rlimit 40"
 let rec decode_hybrid_rle_runs
   (values_hex:string) (vh_len:nat) (pos:nat) (bit_width:nat)
   (remaining:nat) (acc:list nat) (fuel:nat)
@@ -2116,6 +2136,7 @@ let rec decode_hybrid_rle_runs
               bit_width (remaining - take) acc' (fuel - 1)
         end
       end
+#pop-options
 
 // Decode an RLE_DICTIONARY data-page payload. The first byte is the bit
 // width of indices; the remaining bytes are a hybrid RLE / bit-packed
@@ -2410,8 +2431,35 @@ let probe_parquet_column_page_header_num_values_in_row_group
               | None -> None
               | Some raw -> Some (zigzag_decode_nat raw)
 
+// codec (ColumnMetaData field 4) for one (rg_index, col_index). Same
+// field-4 read `probe_parquet_column_compression_codec` does for row
+// group 0, but against THIS row group's column chunk -- Parquet permits
+// per-column-chunk codecs, so the per-row-group decompress below must
+// not assume row group 0's codec. Added with the UNCOMPRESSED read
+// path (#<native-cottas-writer>, 2026-07-06).
+let probe_parquet_column_compression_codec_in_row_group
+  (path:string) (rg_index:nat) (col_index:nat) : option string =
+  match probe_parquet_column_chunk_in_row_group_locator path rg_index col_index with
+  | None -> None
+  | Some loc ->
+    match column_metadata_start_of loc with
+    | None -> None
+    | Some md_start ->
+      match nth_field_hex loc.mcc_meta_hex 4 md_start 0 loc.mcc_meta_hex_len with
+      | None -> None
+      | Some codec_field ->
+        if codec_field.cf_type <> compact_t_i32 then None
+        else
+          match decode_varint_value_hex loc.mcc_meta_hex
+                  codec_field.cf_value_start 0 0 loc.mcc_meta_hex_len with
+          | None -> None
+          | Some raw -> Some (parquet_compression_codec_name (zigzag_decode_nat raw))
+
 // Decompress the data page payload for one (rg_index, col_index). Mirrors
-// `probe_parquet_column_decompressed_payload_hex` but per-row-group.
+// `probe_parquet_column_decompressed_payload_hex` but per-row-group --
+// including the UNCOMPRESSED branch (#<native-cottas-writer>): the
+// native F* writer's pages are stored uncompressed, so the raw page
+// bytes ARE the payload; only other codecs go through zstd.
 let probe_parquet_column_decompressed_payload_hex_in_row_group
   (path:string) (rg_index:nat) (col_index:nat) : option string =
   match probe_parquet_column_data_page_offset_in_row_group path rg_index col_index,
@@ -2423,7 +2471,9 @@ let probe_parquet_column_decompressed_payload_hex_in_row_group
     (match parquet_read_range_hex path payload_offset compressed_size with
      | None -> None
      | Some compressed_hex ->
-       parquet_zstd_decompress_hex compressed_hex uncompressed_size)
+       match probe_parquet_column_compression_codec_in_row_group path rg_index col_index with
+       | Some "UNCOMPRESSED" -> Some compressed_hex
+       | _ -> parquet_zstd_decompress_hex compressed_hex uncompressed_size)
   | _ -> None
 
 // First-level section length (LE u32 at offset 0 of the decompressed page).
@@ -2830,6 +2880,26 @@ let probe_parquet_column_page_header_num_values_in_row_group_from_table
               | None -> None
               | Some raw -> Some (zigzag_decode_nat raw)
 
+// _from_table sibling of `probe_parquet_column_compression_codec_in_row_group`
+// (#<native-cottas-writer>, 2026-07-06).
+let probe_parquet_column_compression_codec_in_row_group_from_table
+  (table:parquet_row_group_offset_table) (rg_index:nat) (col_index:nat) : option string =
+  match probe_parquet_column_chunk_locator_from_table table rg_index col_index with
+  | None -> None
+  | Some loc ->
+    match column_metadata_start_of loc with
+    | None -> None
+    | Some md_start ->
+      match nth_field_hex loc.mcc_meta_hex 4 md_start 0 loc.mcc_meta_hex_len with
+      | None -> None
+      | Some codec_field ->
+        if codec_field.cf_type <> compact_t_i32 then None
+        else
+          match decode_varint_value_hex loc.mcc_meta_hex
+                  codec_field.cf_value_start 0 0 loc.mcc_meta_hex_len with
+          | None -> None
+          | Some raw -> Some (parquet_compression_codec_name (zigzag_decode_nat raw))
+
 let probe_parquet_column_decompressed_payload_hex_in_row_group_from_table
   (table:parquet_row_group_offset_table) (path:string) (rg_index:nat) (col_index:nat) : option string =
   match probe_parquet_column_data_page_offset_in_row_group_from_table table rg_index col_index,
@@ -2841,7 +2911,11 @@ let probe_parquet_column_decompressed_payload_hex_in_row_group_from_table
     (match parquet_read_range_hex path payload_offset compressed_size with
      | None -> None
      | Some compressed_hex ->
-       parquet_zstd_decompress_hex compressed_hex uncompressed_size)
+       // Same UNCOMPRESSED branch as the path-based sibling above
+       // (#<native-cottas-writer>): raw page bytes ARE the payload.
+       match probe_parquet_column_compression_codec_in_row_group_from_table table rg_index col_index with
+       | Some "UNCOMPRESSED" -> Some compressed_hex
+       | _ -> parquet_zstd_decompress_hex compressed_hex uncompressed_size)
   | _ -> None
 
 let probe_parquet_column_first_level_section_length_in_row_group_from_table

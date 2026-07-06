@@ -421,6 +421,7 @@ if [[ "$STEP" == "all" || "$STEP" == "extract" ]]; then
     RDF.CottasStore.CompoundPresenceBitmap.fst
     RDF.CottasStore.CompoundPresenceWriter.fst
     RDF.CottasStore.OffsetsWriter.fst
+    RDF.CottasStore.BaseWriter.fst
     RDF.CottasStore.LazyDict.fst
     RDF.CottasStore.LazyDictRegistry.fst
     RDF.Store.LazyTermCache.fst
@@ -792,6 +793,7 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
     RDF_CottasStore_CompoundPresenceBitmap.ml \
     RDF_CottasStore_CompoundPresenceWriter.ml \
     RDF_CottasStore_OffsetsWriter.ml \
+    RDF_CottasStore_BaseWriter.ml \
     RDF_CottasStore_LazyDict.ml \
     RDF_CottasStore_LazyDictRegistry.ml \
     RDF_Store_LazyTermCache.ml \
@@ -1360,6 +1362,7 @@ if [[ "$STEP" == "all" || "$STEP" == "js" ]]; then
     RDF_CottasStore_CompoundPresenceBitmap.ml
     RDF_CottasStore_CompoundPresenceWriter.ml
     RDF_CottasStore_OffsetsWriter.ml
+    RDF_CottasStore_BaseWriter.ml
     RDF_CottasStore_LazyDict.ml
     RDF_CottasStore_LazyDictRegistry.ml
     RDF_Store_LazyTermCache.ml
