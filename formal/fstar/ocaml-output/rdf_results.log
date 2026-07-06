@@ -16,10 +16,10 @@
   [16/39] rdf-mt/rdfms-seq-representation-test002 ok
   [17/39] rdf-mt/rdfms-seq-representation-test003 ok
   [18/39] rdf-mt/rdfms-seq-representation-test004 ok
-  [19/39] rdf-mt/rdfms-xmllang-test007a ok
+  [19/39] rdf-mt/rdfms-xmllang-test007a ok (81ms)
   [20/39] rdf-mt/rdfms-xmllang-test007b ok
   [21/39] rdf-mt/rdfms-xmllang-test007c ok
-  [22/39] rdf-mt/rdfs-container-membership-superProperty-test001 ok
+  [22/39] rdf-mt/rdfs-container-membership-superProperty-test001 ok (56ms)
   [23/39] rdf-mt/rdfs-domain-and-range-intensionality-range ok
   [24/39] rdf-mt/rdfs-domain-and-range-intensionality-domain ok
   [25/39] rdf-mt/rdfs-entailment-test001 ok
@@ -557,7 +557,7 @@
   [5/313] rdf-turtle/bareword_a_predicate ok
   [6/313] rdf-turtle/old_style_prefix ok
   [7/313] rdf-turtle/SPARQL_style_prefix ok
-  [8/313] rdf-turtle/prefixed_IRI_predicate ok
+  [8/313] rdf-turtle/prefixed_IRI_predicate ok (50ms)
   [9/313] rdf-turtle/prefixed_IRI_object ok
   [10/313] rdf-turtle/prefix_only_IRI ok
   [11/313] rdf-turtle/prefix_with_PN_CHARS_BASE_character_boundaries ok
@@ -1052,10 +1052,10 @@ Test base: third_party/testing/w3c/rdf/rdf11
   PASS: rdfms-seq-representation-test002
   PASS: rdfms-seq-representation-test003
   PASS: rdfms-seq-representation-test004
-  PASS: rdfms-xmllang-test007a
+  PASS: rdfms-xmllang-test007a (81ms)
   PASS: rdfms-xmllang-test007b
   PASS: rdfms-xmllang-test007c
-  PASS: rdfs-container-membership-superProperty-test001
+  PASS: rdfs-container-membership-superProperty-test001 (56ms)
   PASS: rdfs-domain-and-range-intensionality-range
   PASS: rdfs-domain-and-range-intensionality-domain
   PASS: rdfs-entailment-test001
@@ -1073,7 +1073,7 @@ Test base: third_party/testing/w3c/rdf/rdf11
   PASS: xmlsch-02-whitespace-facet-1
   PASS: xmlsch-02-whitespace-facet-2
   PASS: xmlsch-02-whitespace-facet-4
-  [suite time: 0.0s]
+  [suite time: 0.2s]
 
 --- rdf-n-quads ---
   PASS: nq-syntax-uri-01
@@ -1605,7 +1605,7 @@ Test base: third_party/testing/w3c/rdf/rdf11
   PASS: bareword_a_predicate
   PASS: old_style_prefix
   PASS: SPARQL_style_prefix
-  PASS: prefixed_IRI_predicate
+  PASS: prefixed_IRI_predicate (50ms)
   PASS: prefixed_IRI_object
   PASS: prefix_only_IRI
   PASS: prefix_with_PN_CHARS_BASE_character_boundaries
