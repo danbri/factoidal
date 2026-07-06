@@ -1,0 +1,435 @@
+{
+  "commit": "ea873340202c5f0edf34dfd9a253d7713c4f6e93",
+  "measured_at_utc": "2026-07-06T16:33:36Z",
+  "runs_per_measurement": 3,
+  "cap_seconds": 600,
+  "machine": {
+    "cpu_model": "Intel(R) Xeon(R) Processor @ 2.10GHz",
+    "logical_cores": "4",
+    "node_version": "v22.22.2",
+    "ocaml_version": "The OCaml toplevel, version 4.14.1",
+    "gcc_version": "gcc (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0",
+    "clang_version": "Ubuntu clang version 18.1.3 (1ubuntu1)",
+    "krml_available": true
+  },
+  "records": [
+    {
+      "section": "fullengine",
+      "engine": "native",
+      "op": "parse",
+      "size": "100000",
+      "status": "OK",
+      "note": "",
+      "median_s": 0.6345
+    },
+    {
+      "section": "fullengine",
+      "engine": "js",
+      "op": "parse",
+      "size": "100000",
+      "status": "OK",
+      "note": "",
+      "median_s": 2.6637
+    },
+    {
+      "section": "fullengine",
+      "engine": "wasm",
+      "op": "parse",
+      "size": "100000",
+      "status": "OK",
+      "note": "",
+      "median_s": 0.4704
+    },
+    {
+      "section": "fullengine",
+      "engine": "native",
+      "op": "count",
+      "size": "100000",
+      "status": "OK",
+      "note": "",
+      "median_s": 0.6338
+    },
+    {
+      "section": "fullengine",
+      "engine": "native",
+      "op": "join-filter",
+      "size": "100000",
+      "status": "OK",
+      "note": "",
+      "median_s": 14.9158
+    },
+    {
+      "section": "fullengine",
+      "engine": "native",
+      "op": "group-by",
+      "size": "100000",
+      "status": "OK",
+      "note": "",
+      "median_s": 1.7078
+    },
+    {
+      "section": "fullengine",
+      "engine": "native",
+      "op": "regex-filter",
+      "size": "100000",
+      "status": "OK",
+      "note": "",
+      "median_s": 1.7376
+    },
+    {
+      "section": "fullengine",
+      "engine": "js",
+      "op": "count",
+      "size": "100000",
+      "status": "OK",
+      "note": "",
+      "median_s": 2.5833
+    },
+    {
+      "section": "fullengine",
+      "engine": "js",
+      "op": "join-filter",
+      "size": "100000",
+      "status": "OK",
+      "note": "",
+      "median_s": 38.54
+    },
+    {
+      "section": "fullengine",
+      "engine": "js",
+      "op": "group-by",
+      "size": "100000",
+      "status": "OK",
+      "note": "",
+      "median_s": 7.4014
+    },
+    {
+      "section": "fullengine",
+      "engine": "js",
+      "op": "regex-filter",
+      "size": "100000",
+      "status": "OK",
+      "note": "",
+      "median_s": 7.0943
+    },
+    {
+      "section": "fullengine",
+      "engine": "wasm",
+      "op": "count",
+      "size": "100000",
+      "status": "OK",
+      "note": "",
+      "median_s": 2.6107
+    },
+    {
+      "section": "fullengine",
+      "engine": "wasm",
+      "op": "join-filter",
+      "size": "100000",
+      "status": "OK",
+      "note": "",
+      "median_s": 34.6163
+    },
+    {
+      "section": "fullengine",
+      "engine": "wasm",
+      "op": "group-by",
+      "size": "100000",
+      "status": "OK",
+      "note": "",
+      "median_s": 3.1108
+    },
+    {
+      "section": "fullengine",
+      "engine": "wasm",
+      "op": "regex-filter",
+      "size": "100000",
+      "status": "OK",
+      "note": "",
+      "median_s": 2.8533
+    },
+    {
+      "section": "fullengine",
+      "engine": "native",
+      "op": "parse",
+      "size": "1000000",
+      "status": "OK",
+      "note": "",
+      "median_s": 6.457
+    },
+    {
+      "section": "fullengine",
+      "engine": "js",
+      "op": "parse",
+      "size": "1000000",
+      "status": "OK",
+      "note": "",
+      "median_s": 26.4285
+    },
+    {
+      "section": "fullengine",
+      "engine": "wasm",
+      "op": "parse",
+      "size": "1000000",
+      "status": "OK",
+      "note": "",
+      "median_s": 4.0813
+    },
+    {
+      "section": "fullengine",
+      "engine": "native",
+      "op": "count",
+      "size": "1000000",
+      "status": "OK",
+      "note": "",
+      "median_s": 6.5857
+    },
+    {
+      "section": "fullengine",
+      "engine": "native",
+      "op": "join-filter",
+      "size": "1000000",
+      "status": "SKIP",
+      "note": "timeout 600s"
+    },
+    {
+      "section": "fullengine",
+      "engine": "native",
+      "op": "group-by",
+      "size": "1000000",
+      "status": "OK",
+      "note": "",
+      "median_s": 20.9109
+    },
+    {
+      "section": "fullengine",
+      "engine": "js",
+      "op": "count",
+      "size": "1000000",
+      "status": "OK",
+      "note": "",
+      "median_s": 25.1319
+    },
+    {
+      "section": "fullengine",
+      "engine": "js",
+      "op": "join-filter",
+      "size": "1000000",
+      "status": "SKIP",
+      "note": "timeout 600s"
+    },
+    {
+      "section": "fullengine",
+      "engine": "js",
+      "op": "group-by",
+      "size": "1000000",
+      "status": "OK",
+      "note": "",
+      "median_s": 484.2007
+    },
+    {
+      "section": "fullengine",
+      "engine": "wasm",
+      "op": "count",
+      "size": "1000000",
+      "status": "OK",
+      "note": "",
+      "median_s": 35.3539
+    },
+    {
+      "section": "fullengine",
+      "engine": "wasm",
+      "op": "join-filter",
+      "size": "1000000",
+      "status": "SKIP",
+      "note": "timeout 600s"
+    },
+    {
+      "section": "fullengine",
+      "engine": "wasm",
+      "op": "group-by",
+      "size": "1000000",
+      "status": "OK",
+      "note": "",
+      "median_s": 270.2915
+    },
+    {
+      "section": "fullengine",
+      "engine": "all",
+      "op": "regex-filter",
+      "size": "1000000",
+      "status": "SKIP",
+      "note": "time-budget capped in this bench run; not attempted at 1M"
+    },
+    {
+      "section": "deltalog",
+      "engine": "ocaml-native",
+      "op": "pure",
+      "size": "1000",
+      "status": "OK",
+      "note": "{\"mode\":\"pure\",\"n\":1000,\"bytes\":108816,\"serialize_s\":0.018103,\"parse_s\":0.025865,\"parse_ok\":true} [re-measured manually after harness build fix, same protocol]",
+      "median_s": 0.056
+    },
+    {
+      "section": "deltalog",
+      "engine": "c-native",
+      "op": "pure",
+      "size": "1000",
+      "status": "OK",
+      "note": "{\"n\":1000,\"bytes\":108816,\"serialize_s\":0.020619,\"parse_s\":0.013863,\"parse_ok\":true}",
+      "median_s": 0.0473
+    },
+    {
+      "section": "deltalog",
+      "engine": "c-wasm",
+      "op": "pure",
+      "size": "1000",
+      "status": "OK",
+      "note": "{\"n\":1000,\"bytes\":108816,\"serialize_s\":0.027934,\"parse_s\":0.015650,\"parse_ok\":true}",
+      "median_s": 0.1073
+    },
+    {
+      "section": "deltalog",
+      "engine": "ocaml-native",
+      "op": "pure",
+      "size": "5000",
+      "status": "OK",
+      "note": "{\"mode\":\"pure\",\"n\":5000,\"bytes\":552816,\"serialize_s\":0.102308,\"parse_s\":0.185417,\"parse_ok\":true} [re-measured manually after harness build fix, same protocol]",
+      "median_s": 0.3162
+    },
+    {
+      "section": "deltalog",
+      "engine": "c-native",
+      "op": "pure",
+      "size": "5000",
+      "status": "OK",
+      "note": "{\"n\":5000,\"bytes\":552816,\"serialize_s\":0.117270,\"parse_s\":0.076742,\"parse_ok\":true}",
+      "median_s": 0.2424
+    },
+    {
+      "section": "deltalog",
+      "engine": "c-wasm",
+      "op": "pure",
+      "size": "5000",
+      "status": "OK",
+      "note": "{\"n\":5000,\"bytes\":552816,\"serialize_s\":0.138081,\"parse_s\":0.078043,\"parse_ok\":true}",
+      "median_s": 0.3189
+    },
+    {
+      "section": "deltalog",
+      "engine": "ocaml-native",
+      "op": "pure",
+      "size": "10000",
+      "status": "OK",
+      "note": "{\"mode\":\"pure\",\"n\":10000,\"bytes\":1107816,\"serialize_s\":0.214478,\"parse_s\":0.462882,\"parse_ok\":true} [re-measured manually after harness build fix, same protocol]",
+      "median_s": 0.7468
+    },
+    {
+      "section": "deltalog",
+      "engine": "c-native",
+      "op": "pure",
+      "size": "10000",
+      "status": "OK",
+      "note": "{\"n\":10000,\"bytes\":1107816,\"serialize_s\":0.220874,\"parse_s\":0.148629,\"parse_ok\":true}",
+      "median_s": 0.4646
+    },
+    {
+      "section": "deltalog",
+      "engine": "c-wasm",
+      "op": "pure",
+      "size": "10000",
+      "status": "OK",
+      "note": "{\"n\":10000,\"bytes\":1107816,\"serialize_s\":0.290622,\"parse_s\":7.161895,\"parse_ok\":true} [harness run hit a V8 stack failure on 1 of 3 runs; 6 of 6 immediate manual retries succeeded (walls 6.95-8.25s, parse_s 6.5-7.9s) -- N=10000 sits near the stack ceiling for this build, see perf hub]",
+      "median_s": 7.609
+    },
+    {
+      "section": "deltalog_rss",
+      "engine": "c-native",
+      "op": "pure",
+      "size": "100000",
+      "status": "INFO",
+      "note": "",
+      "raw": "{\"wall_s\": 4.618868802001089, \"peak_rss_kb\": 4071872, \"returncode\": 0}"
+    },
+    {
+      "section": "deltalog_rss",
+      "engine": "c-native",
+      "op": "pure",
+      "size": "300000",
+      "status": "INFO",
+      "note": "",
+      "raw": "{\"wall_s\": 14.320985995000228, \"peak_rss_kb\": 12384448, \"returncode\": 0}"
+    },
+    {
+      "section": "deltalog_rss",
+      "engine": "c-native",
+      "op": "pure",
+      "size": "1000000",
+      "status": "SKIP",
+      "note": "OOM-killed at ~15GB RSS in prior manual run; not re-attempted automatically"
+    },
+    {
+      "section": "deltalog",
+      "engine": "ocaml-native",
+      "op": "sparql",
+      "size": "100",
+      "status": "OK",
+      "median_s": 0.3895,
+      "note": "{\"mode\":\"sparql\",\"n\":100,\"opCount\":100,\"hexLen\":21432,\"total_s\":0.379203} [re-measured manually after harness build fix, same protocol]"
+    },
+    {
+      "section": "deltalog",
+      "engine": "ocaml-native",
+      "op": "sparql",
+      "size": "300",
+      "status": "OK",
+      "median_s": 3.4583,
+      "note": "{\"mode\":\"sparql\",\"n\":300,\"opCount\":300,\"hexLen\":65032,\"total_s\":3.439055} [re-measured manually after harness build fix, same protocol]"
+    },
+    {
+      "section": "deltalog",
+      "engine": "js-of-ocaml",
+      "op": "sparql",
+      "size": "100",
+      "status": "OK",
+      "note": "{\"mode\":\"sparql\",\"engine\":\"js\",\"n\":100,\"opCount\":100,\"hexLen\":21432,\"total_s\":0.565582883}",
+      "median_s": 0.6741
+    },
+    {
+      "section": "deltalog",
+      "engine": "wasm-of-ocaml",
+      "op": "sparql",
+      "size": "100",
+      "status": "OK",
+      "note": "{\"mode\":\"sparql\",\"engine\":\"wasm\",\"n\":100,\"opCount\":100,\"hexLen\":21432,\"total_s\":0.337339865}",
+      "median_s": 0.4078
+    },
+    {
+      "section": "deltalog",
+      "engine": "js-of-ocaml",
+      "op": "sparql",
+      "size": "300",
+      "status": "OK",
+      "note": "{\"mode\":\"sparql\",\"engine\":\"js\",\"n\":300,\"opCount\":300,\"hexLen\":65032,\"total_s\":4.874925128}",
+      "median_s": 4.9984
+    },
+    {
+      "section": "deltalog",
+      "engine": "wasm-of-ocaml",
+      "op": "sparql",
+      "size": "300",
+      "status": "OK",
+      "note": "{\"mode\":\"sparql\",\"engine\":\"wasm\",\"n\":300,\"opCount\":300,\"hexLen\":65032,\"total_s\":2.801221965}",
+      "median_s": 2.8904
+    },
+    {
+      "section": "deltalog",
+      "engine": "all",
+      "op": "sparql",
+      "size": "1000",
+      "status": "SKIP",
+      "note": "quadratic-looking SPARQL-Update-parsing wall: N=1000 took ~39s native vs ~0.4s at N=100 (~100x for 10x input); not attempted at larger N in this bench run"
+    }
+  ],
+  "notes": "deltalog ocaml-native rows and c-wasm N=10000 were re-measured manually (same protocol: median of 3, ulimit -s unlimited, timeout 600) minutes after the main harness run, following a harness build bug fixed in the same commit. All other rows are as emitted by tools/bench-runtimes.sh."
+}

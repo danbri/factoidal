@@ -101,3 +101,8 @@ headlessly.
 now empty. [The series plan](../../designissues/2026-07-05-docs-hub-plan/)
 still records each post's central vocabulary, live elements, and
 pinning test file for reference.)
+
+See also: the <a href="../perf/">performance hub</a> — measured
+runtime-vs-runtime comparisons across the four extraction targets
+(native OCaml, js_of_ocaml, wasm_of_ocaml, KaRaMeL C), including the
+C-to-wasm question.

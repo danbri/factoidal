@@ -59,6 +59,11 @@ names its date and the commit it was measured on.
 | OWL-RL closure, sameAs 32-clique (was >590s cap-trip) | 1.07s — closure step reduced from O(k⁶) to ~O(k³) | 2026-07-03, [`4812c3d`](https://github.com/danbri/factoidal/commit/4812c3d) |
 | On-disk COTTAS | serves the 3,143,406-quad UK Parliament corpus ([live demo]({{ '/web/demos/ukparliament/' | url }})); fast paths still unverified OCaml being migrated to F\* | [issue #118](https://github.com/danbri/factoidal/issues/118) |
 
+How the four extraction targets (native OCaml, js\_of\_ocaml,
+wasm\_of\_ocaml, KaRaMeL C) compare on the same work — including
+whether the C pathway could yield a faster wasm — is measured on the
+[performance hub]({{ '/web/perf/' | url }}).
+
 ## A read-write database
 
 The on-disk store accepts SPARQL UPDATE and the Graph Store Protocol
