@@ -1,22 +1,21 @@
 open Prims
 type graph_backend =
-  | GB_List of RDF_Graph_Executable.rdf_graph 
-  | GB_Indexed of RDF_Graph_Executable.indexed_graph 
+  | GB_List of RDF_Graph.rdf_graph 
+  | GB_Indexed of RDF_Indexed.indexed_graph 
   | GB_HDT of Parser_BallyhooHDT.hdt_graph_store 
-  | GB_COTTAS of Parser_BallyhooCOTTAS.cottas_dataset_store *
-  RDF_Graph_Executable.iri FStar_Pervasives_Native.option 
+  | GB_COTTAS of Parser_BallyhooCOTTAS.cottas_dataset_store * RDF_Term.iri
+  FStar_Pervasives_Native.option 
   | GB_CottasOnDisk of RDF_CottasStore.cottas_ondisk_store *
   RDF_CottasStore.cottas_ondisk_graph_scope 
   | GB_Union of graph_backend Prims.list 
 let uu___is_GB_List (projectee : graph_backend) : Prims.bool=
   match projectee with | GB_List _0 -> true | uu___ -> false
 let __proj__GB_List__item___0 (projectee : graph_backend) :
-  RDF_Graph_Executable.rdf_graph= match projectee with | GB_List _0 -> _0
+  RDF_Graph.rdf_graph= match projectee with | GB_List _0 -> _0
 let uu___is_GB_Indexed (projectee : graph_backend) : Prims.bool=
   match projectee with | GB_Indexed _0 -> true | uu___ -> false
 let __proj__GB_Indexed__item___0 (projectee : graph_backend) :
-  RDF_Graph_Executable.indexed_graph=
-  match projectee with | GB_Indexed _0 -> _0
+  RDF_Indexed.indexed_graph= match projectee with | GB_Indexed _0 -> _0
 let uu___is_GB_HDT (projectee : graph_backend) : Prims.bool=
   match projectee with | GB_HDT _0 -> true | uu___ -> false
 let __proj__GB_HDT__item___0 (projectee : graph_backend) :
@@ -27,7 +26,7 @@ let __proj__GB_COTTAS__item___0 (projectee : graph_backend) :
   Parser_BallyhooCOTTAS.cottas_dataset_store=
   match projectee with | GB_COTTAS (_0, _1) -> _0
 let __proj__GB_COTTAS__item___1 (projectee : graph_backend) :
-  RDF_Graph_Executable.iri FStar_Pervasives_Native.option=
+  RDF_Term.iri FStar_Pervasives_Native.option=
   match projectee with | GB_COTTAS (_0, _1) -> _1
 let uu___is_GB_CottasOnDisk (projectee : graph_backend) : Prims.bool=
   match projectee with | GB_CottasOnDisk (_0, _1) -> true | uu___ -> false
@@ -43,10 +42,10 @@ let __proj__GB_Union__item___0 (projectee : graph_backend) :
   graph_backend Prims.list= match projectee with | GB_Union _0 -> _0
 type named_graph_backend =
   {
-  ngb_name: RDF_Graph_Executable.iri ;
+  ngb_name: RDF_Term.iri ;
   ngb_graph: graph_backend }
 let __proj__Mknamed_graph_backend__item__ngb_name
-  (projectee : named_graph_backend) : RDF_Graph_Executable.iri=
+  (projectee : named_graph_backend) : RDF_Term.iri=
   match projectee with | { ngb_name; ngb_graph;_} -> ngb_name
 let __proj__Mknamed_graph_backend__item__ngb_graph
   (projectee : named_graph_backend) : graph_backend=
@@ -61,20 +60,18 @@ let __proj__Mkdataset_backend__item__dsb_default
 let __proj__Mkdataset_backend__item__dsb_named (projectee : dataset_backend)
   : named_graph_backend Prims.list=
   match projectee with | { dsb_default; dsb_named;_} -> dsb_named
-let indexed_graph_backend (g : RDF_Graph_Executable.rdf_graph) :
-  graph_backend= GB_Indexed (RDF_Graph_Executable.build_indexed g)
-let indexed_dataset_backend (ds : RDF_Graph_Executable.rdf_dataset) :
-  dataset_backend=
+let indexed_graph_backend (g : RDF_Graph.rdf_graph) : graph_backend=
+  GB_Indexed (RDF_Indexed.build_indexed g)
+let indexed_dataset_backend (ds : RDF_Graph.rdf_dataset) : dataset_backend=
   {
-    dsb_default = (indexed_graph_backend ds.RDF_Graph_Executable.ds_default);
+    dsb_default = (indexed_graph_backend ds.RDF_Graph.ds_default);
     dsb_named =
       (FStar_List_Tot_Base.map
          (fun ng ->
             {
-              ngb_name = (ng.RDF_Graph_Executable.ng_name);
-              ngb_graph =
-                (indexed_graph_backend ng.RDF_Graph_Executable.ng_graph)
-            }) ds.RDF_Graph_Executable.ds_named)
+              ngb_name = (ng.RDF_Graph.ng_name);
+              ngb_graph = (indexed_graph_backend ng.RDF_Graph.ng_graph)
+            }) ds.RDF_Graph.ds_named)
   }
 let cottas_ondisk_dataset_backend
   (cods : RDF_CottasStore.cottas_ondisk_store) : dataset_backend=
@@ -95,8 +92,7 @@ let cottas_ondisk_dataset_backend
   }
 let rec union_backend_search_acc (members : graph_backend Prims.list)
   (b : SPARQL11_Algebra.triple_pattern_bound)
-  (acc_rev : RDF_Graph_Executable.triple Prims.list) :
-  RDF_Graph_Executable.triple Prims.list=
+  (acc_rev : RDF_Triple.triple Prims.list) : RDF_Triple.triple Prims.list=
   match members with
   | [] -> FStar_List_Tot_Base.rev acc_rev
   | member::rest ->
@@ -104,8 +100,7 @@ let rec union_backend_search_acc (members : graph_backend Prims.list)
       union_backend_search_acc rest b
         (FStar_List_Tot_Base.rev_acc part acc_rev)
 and backend_search (gb : graph_backend)
-  (b : SPARQL11_Algebra.triple_pattern_bound) :
-  RDF_Graph_Executable.triple Prims.list=
+  (b : SPARQL11_Algebra.triple_pattern_bound) : RDF_Triple.triple Prims.list=
   match gb with
   | GB_List g ->
       SPARQL11_Algebra.store_search (SPARQL11_Algebra.graph_to_store g) b
@@ -132,8 +127,7 @@ and backend_search (gb : graph_backend)
            RDF_CottasStore.cottas_ondisk_rows_to_triples cods rows)
   | GB_Union members -> union_backend_search_acc members b []
 let union_backend_search (members : graph_backend Prims.list)
-  (b : SPARQL11_Algebra.triple_pattern_bound) :
-  RDF_Graph_Executable.triple Prims.list=
+  (b : SPARQL11_Algebra.triple_pattern_bound) : RDF_Triple.triple Prims.list=
   union_backend_search_acc members b []
 let rec list_take_n : 'a . Prims.nat -> 'a Prims.list -> 'a Prims.list =
   fun n xs ->
@@ -145,8 +139,8 @@ let rec list_take_n : 'a . Prims.nat -> 'a Prims.list -> 'a Prims.list =
        | hd::tl -> hd :: (list_take_n (n - Prims.int_one) tl))
 let rec union_backend_search_limited_acc (members : graph_backend Prims.list)
   (b : SPARQL11_Algebra.triple_pattern_bound) (limit : Prims.nat)
-  (acc_rev : RDF_Graph_Executable.triple Prims.list) (acc_len : Prims.nat) :
-  RDF_Graph_Executable.triple Prims.list=
+  (acc_rev : RDF_Triple.triple Prims.list) (acc_len : Prims.nat) :
+  RDF_Triple.triple Prims.list=
   if acc_len >= limit
   then acc_rev
   else
@@ -160,7 +154,7 @@ let rec union_backend_search_limited_acc (members : graph_backend Prims.list)
            (FStar_List_Tot_Base.rev_acc part acc_rev) (acc_len + part_len))
 and backend_search_limited (gb : graph_backend)
   (b : SPARQL11_Algebra.triple_pattern_bound) (limit : Prims.nat) :
-  RDF_Graph_Executable.triple Prims.list=
+  RDF_Triple.triple Prims.list=
   match gb with
   | GB_CottasOnDisk (cods, scope) ->
       (match RDF_CottasStore.cottas_ondisk_build_bound_qp_opt cods
@@ -230,15 +224,15 @@ and backend_count_exact (gb : graph_backend)
   | GB_Union members -> union_backend_count_exact members b
   | uu___ -> backend_estimate gb b
 let rec union_backend_predicate_present (members : graph_backend Prims.list)
-  (pred : RDF_Graph_Executable.wf_iri) : Prims.bool=
+  (pred : RDF_Term.wf_iri) : Prims.bool=
   match members with
   | [] -> false
   | member::rest ->
       if backend_predicate_present member pred
       then true
       else union_backend_predicate_present rest pred
-and backend_predicate_present (gb : graph_backend)
-  (pred : RDF_Graph_Executable.wf_iri) : Prims.bool=
+and backend_predicate_present (gb : graph_backend) (pred : RDF_Term.wf_iri) :
+  Prims.bool=
   match gb with
   | GB_List g ->
       (backend_estimate (GB_List g)
@@ -281,7 +275,7 @@ and backend_decode_failure (gb : graph_backend) : Prims.bool=
         cods.RDF_CottasStore.cods_handle
   | GB_Union members -> union_backend_decode_failure members
   | uu___ -> false
-let rec lookup_named_backend (name : RDF_Graph_Executable.iri)
+let rec lookup_named_backend (name : RDF_Term.iri)
   (named : named_graph_backend Prims.list) :
   graph_backend FStar_Pervasives_Native.option=
   match named with
@@ -338,7 +332,7 @@ let rec choose_best_tp_backend (patterns : SPARQL11_Algebra.bgp)
            then FStar_Pervasives_Native.Some (tp, rest)
            else FStar_Pervasives_Native.Some (best, (tp :: remaining)))
 let rec pattern_predicate_hint (p : SPARQL11_Algebra.group_graph_pattern) :
-  RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option=
+  RDF_Term.wf_iri FStar_Pervasives_Native.option=
   match p with
   | SPARQL11_Algebra.GP_BGP [] -> FStar_Pervasives_Native.None
   | SPARQL11_Algebra.GP_BGP (tp::uu___) ->
@@ -364,9 +358,8 @@ let rec pattern_predicate_hint (p : SPARQL11_Algebra.group_graph_pattern) :
   | SPARQL11_Algebra.GP_PropertyPath (uu___, uu___1, uu___2) ->
       FStar_Pervasives_Native.None
 let named_candidate_backends (named : named_graph_backend Prims.list)
-  (predicate_hint :
-    RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option)
-  : named_graph_backend Prims.list=
+  (predicate_hint : RDF_Term.wf_iri FStar_Pervasives_Native.option) :
+  named_graph_backend Prims.list=
   match predicate_hint with
   | FStar_Pervasives_Native.None -> named
   | FStar_Pervasives_Native.Some pred ->
@@ -424,8 +417,19 @@ let detect_count_star_select (sel : SPARQL11_Algebra.select_clause) :
               | uu___1 -> FStar_Pervasives_Native.None)
        | uu___ -> FStar_Pervasives_Native.None)
   | uu___ -> FStar_Pervasives_Native.None
+let extract_single_tp_bgp_scoped (p : SPARQL11_Algebra.group_graph_pattern) :
+  (SPARQL11_Algebra.triple_pattern * RDF_Term.wf_iri
+    FStar_Pervasives_Native.option) FStar_Pervasives_Native.option=
+  match p with
+  | SPARQL11_Algebra.GP_BGP (tp::[]) ->
+      FStar_Pervasives_Native.Some (tp, FStar_Pervasives_Native.None)
+  | SPARQL11_Algebra.GP_Graph
+      (SPARQL11_Algebra.PT_IRI g, SPARQL11_Algebra.GP_BGP (tp::[])) ->
+      FStar_Pervasives_Native.Some (tp, (FStar_Pervasives_Native.Some g))
+  | uu___ -> FStar_Pervasives_Native.None
 let detect_streaming_count_star (q : SPARQL11_Algebra.query) :
-  (SPARQL11_Algebra.var_name * SPARQL11_Algebra.triple_pattern)
+  (SPARQL11_Algebra.var_name * SPARQL11_Algebra.triple_pattern *
+    RDF_Term.wf_iri FStar_Pervasives_Native.option)
     FStar_Pervasives_Native.option=
   match q.SPARQL11_Algebra.q_form with
   | SPARQL11_Algebra.QF_Select sel ->
@@ -460,22 +464,22 @@ let detect_streaming_count_star (q : SPARQL11_Algebra.query) :
                          (q.SPARQL11_Algebra.q_modifier).SPARQL11_Algebra.sm_order_by
                      then FStar_Pervasives_Native.None
                      else
-                       (match extract_single_tp_bgp
+                       (match extract_single_tp_bgp_scoped
                                 q.SPARQL11_Algebra.q_pattern
                         with
                         | FStar_Pervasives_Native.None ->
                             FStar_Pervasives_Native.None
-                        | FStar_Pervasives_Native.Some tp ->
-                            FStar_Pervasives_Native.Some (v, tp)))
+                        | FStar_Pervasives_Native.Some (tp, scope) ->
+                            FStar_Pervasives_Native.Some (v, tp, scope)))
   | uu___ -> FStar_Pervasives_Native.None
 let count_star_solution (alias : SPARQL11_Algebra.var_name) (n : Prims.nat) :
   SPARQL11_Algebra.solution_sequence=
   let lit_term =
-    RDF_Graph_Executable.T_Literal
+    RDF_Term.T_Literal
       {
-        RDF_Graph_Executable.lexical_form = (Prims.string_of_int n);
-        RDF_Graph_Executable.datatype = RDF_Graph_Executable.xsd_integer;
-        RDF_Graph_Executable.lang_tag = FStar_Pervasives_Native.None
+        RDF_Term.lexical_form = (Prims.string_of_int n);
+        RDF_Term.datatype = RDF_Term.xsd_integer;
+        RDF_Term.lang_tag = FStar_Pervasives_Native.None
       } in
   [SPARQL11_Algebra.sm_bind alias lit_term SPARQL11_Algebra.sm_empty]
 let detect_streaming_count_group_by_graph (q : SPARQL11_Algebra.query) :
@@ -574,20 +578,20 @@ let rec count_group_by_graph_solutions_acc
         } in
       let cnt = backend_count_exact ngb.ngb_graph bound in
       let lit_term =
-        RDF_Graph_Executable.T_Literal
+        RDF_Term.T_Literal
           {
-            RDF_Graph_Executable.lexical_form = (Prims.string_of_int cnt);
-            RDF_Graph_Executable.datatype = RDF_Graph_Executable.xsd_integer;
-            RDF_Graph_Executable.lang_tag = FStar_Pervasives_Native.None
+            RDF_Term.lexical_form = (Prims.string_of_int cnt);
+            RDF_Term.datatype = RDF_Term.xsd_integer;
+            RDF_Term.lang_tag = FStar_Pervasives_Native.None
           } in
       let mu0 =
         SPARQL11_Algebra.sm_bind count_alias lit_term
           SPARQL11_Algebra.sm_empty in
       let mu =
-        if RDF_Graph_Executable.is_iri ngb.ngb_name
+        if RDF_Term.is_iri ngb.ngb_name
         then
-          SPARQL11_Algebra.sm_bind graph_var
-            (RDF_Graph_Executable.T_IRI (ngb.ngb_name)) mu0
+          SPARQL11_Algebra.sm_bind graph_var (RDF_Term.T_IRI (ngb.ngb_name))
+            mu0
         else mu0 in
       count_group_by_graph_solutions_acc graph_var count_alias (mu :: acc)
         rest
@@ -672,7 +676,7 @@ let eval_limit_single_tp (sel : SPARQL11_Algebra.select_clause)
         (SPARQL11_Algebra.select_item_vars items) omega'
   | SPARQL11_Algebra.Select_All -> omega'
 let rec eval_pattern_backend
-  (base : RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option)
+  (base : RDF_Term.wf_iri FStar_Pervasives_Native.option)
   (p : SPARQL11_Algebra.group_graph_pattern) (gb : graph_backend)
   (dsb : dataset_backend) : SPARQL11_Algebra.solution_sequence=
   match p with
@@ -723,13 +727,12 @@ let rec eval_pattern_backend
              (fun ngb ->
                 let ng_results =
                   eval_pattern_backend base p' ngb.ngb_graph dsb in
-                if RDF_Graph_Executable.is_iri ngb.ngb_name
+                if RDF_Term.is_iri ngb.ngb_name
                 then
                   FStar_List_Tot_Base.map
                     (fun mu ->
                        SPARQL11_Algebra.sm_bind v
-                         (RDF_Graph_Executable.T_IRI (ngb.ngb_name)) mu)
-                    ng_results
+                         (RDF_Term.T_IRI (ngb.ngb_name)) mu) ng_results
                 else ng_results) candidates
        | uu___ -> eval_pattern_backend base p' gb dsb)
   | SPARQL11_Algebra.GP_Service (uu___, uu___1, uu___2) -> []
@@ -754,18 +757,13 @@ let rec eval_pattern_backend
             let constant_terms =
               RDF_List_Helpers.append_tr
                 (match ps with
-                 | SPARQL11_Algebra.PS_IRI i ->
-                     [RDF_Graph_Executable.T_IRI i]
-                 | SPARQL11_Algebra.PS_BNode b ->
-                     [RDF_Graph_Executable.T_BNode b]
+                 | SPARQL11_Algebra.PS_IRI i -> [RDF_Term.T_IRI i]
+                 | SPARQL11_Algebra.PS_BNode b -> [RDF_Term.T_BNode b]
                  | SPARQL11_Algebra.PS_Var uu___1 -> [])
                 (match pt with
-                 | SPARQL11_Algebra.PT_IRI i ->
-                     [RDF_Graph_Executable.T_IRI i]
-                 | SPARQL11_Algebra.PT_BNode b ->
-                     [RDF_Graph_Executable.T_BNode b]
-                 | SPARQL11_Algebra.PT_Literal l ->
-                     [RDF_Graph_Executable.T_Literal l]
+                 | SPARQL11_Algebra.PT_IRI i -> [RDF_Term.T_IRI i]
+                 | SPARQL11_Algebra.PT_BNode b -> [RDF_Term.T_BNode b]
+                 | SPARQL11_Algebra.PT_Literal l -> [RDF_Term.T_Literal l]
                  | SPARQL11_Algebra.PT_Var uu___1 -> []) in
             let has_reflexive t =
               FStar_List_Tot_Base.existsb
@@ -773,8 +771,8 @@ let rec eval_pattern_backend
                    let uu___1 = pair in
                    match uu___1 with
                    | (s, o) ->
-                       (RDF_Graph_Executable.rdf_term_eq s t) &&
-                         (RDF_Graph_Executable.rdf_term_eq o t)) pairs in
+                       (RDF_Term.rdf_term_eq s t) &&
+                         (RDF_Term.rdf_term_eq o t)) pairs in
             let new_terms =
               FStar_List_Tot_Base.filter
                 (fun t -> Prims.op_Negation (has_reflexive t)) constant_terms in
@@ -785,18 +783,13 @@ let rec eval_pattern_backend
             let constant_terms =
               RDF_List_Helpers.append_tr
                 (match ps with
-                 | SPARQL11_Algebra.PS_IRI i ->
-                     [RDF_Graph_Executable.T_IRI i]
-                 | SPARQL11_Algebra.PS_BNode b ->
-                     [RDF_Graph_Executable.T_BNode b]
+                 | SPARQL11_Algebra.PS_IRI i -> [RDF_Term.T_IRI i]
+                 | SPARQL11_Algebra.PS_BNode b -> [RDF_Term.T_BNode b]
                  | SPARQL11_Algebra.PS_Var uu___1 -> [])
                 (match pt with
-                 | SPARQL11_Algebra.PT_IRI i ->
-                     [RDF_Graph_Executable.T_IRI i]
-                 | SPARQL11_Algebra.PT_BNode b ->
-                     [RDF_Graph_Executable.T_BNode b]
-                 | SPARQL11_Algebra.PT_Literal l ->
-                     [RDF_Graph_Executable.T_Literal l]
+                 | SPARQL11_Algebra.PT_IRI i -> [RDF_Term.T_IRI i]
+                 | SPARQL11_Algebra.PT_BNode b -> [RDF_Term.T_BNode b]
+                 | SPARQL11_Algebra.PT_Literal l -> [RDF_Term.T_Literal l]
                  | SPARQL11_Algebra.PT_Var uu___1 -> []) in
             let has_reflexive t =
               FStar_List_Tot_Base.existsb
@@ -804,8 +797,8 @@ let rec eval_pattern_backend
                    let uu___1 = pair in
                    match uu___1 with
                    | (s, o) ->
-                       (RDF_Graph_Executable.rdf_term_eq s t) &&
-                         (RDF_Graph_Executable.rdf_term_eq o t)) pairs in
+                       (RDF_Term.rdf_term_eq s t) &&
+                         (RDF_Term.rdf_term_eq o t)) pairs in
             let new_terms =
               FStar_List_Tot_Base.filter
                 (fun t -> Prims.op_Negation (has_reflexive t)) constant_terms in
@@ -868,7 +861,7 @@ and eval_select_query_backend_on_graph (q : SPARQL11_Algebra.query)
   (gb : graph_backend) (dsb : dataset_backend) :
   SPARQL11_Algebra.solution_sequence FStar_Pervasives_Native.option=
   match detect_streaming_count_star q with
-  | FStar_Pervasives_Native.Some (alias, tp) ->
+  | FStar_Pervasives_Native.Some (alias, tp, graph_scope) ->
       let bound =
         {
           SPARQL11_Algebra.bs =
@@ -881,7 +874,14 @@ and eval_select_query_backend_on_graph (q : SPARQL11_Algebra.query)
             (SPARQL11_Algebra.bound_object_of_pattern
                tp.SPARQL11_Algebra.tp_o SPARQL11_Algebra.sm_empty)
         } in
-      let n = backend_count_exact gb bound in
+      let n =
+        match graph_scope with
+        | FStar_Pervasives_Native.None -> backend_count_exact gb bound
+        | FStar_Pervasives_Native.Some g ->
+            (match lookup_named_backend g dsb.dsb_named with
+             | FStar_Pervasives_Native.Some ngb ->
+                 backend_count_exact ngb bound
+             | FStar_Pervasives_Native.None -> Prims.int_zero) in
       let omega = count_star_solution alias n in
       FStar_Pervasives_Native.Some
         (SPARQL11_Algebra.slice_solutions

@@ -2338,6 +2338,16 @@ let plan_candidate_rgs (h : cottas_ondisk_handle)
   let st3 = step st2 (Prims.of_int (2)) bound_o in
   let st4 = step st3 (Prims.of_int (3)) bound_g in
   let uu___ = st4 in match uu___ with | (final, c, uu___1) -> (final, c)
+let compound_po_dict_encode (path : Prims.string) (col_suffix : Prims.string)
+  (tok : Prims.string) : Prims.nat FStar_Pervasives_Native.option=
+  let dict_path =
+    Prims.strcat path (Prims.strcat "." (Prims.strcat col_suffix ".dict")) in
+  match RDF_CottasStore_OnDiskIndex.read_dict_header dict_path with
+  | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+  | FStar_Pervasives_Native.Some dh ->
+      if Prims.op_Negation (RDF_CottasStore_OnDiskIndex.dict_header_ok dh)
+      then FStar_Pervasives_Native.None
+      else RDF_CottasStore_OnDiskIndex.dict_encode_token dict_path dh tok
 let filter_candidates_by_compound_po (path : Prims.string)
   (candidates : Prims.nat Prims.list)
   (bound_p_str : Prims.string FStar_Pervasives_Native.option)
@@ -2345,8 +2355,8 @@ let filter_candidates_by_compound_po (path : Prims.string)
   Prims.nat Prims.list=
   match (bound_p_str, bound_o_str) with
   | (FStar_Pervasives_Native.Some bp, FStar_Pervasives_Native.Some bo) ->
-      let p_id = ondisk_lookup_pred_id_global path bp in
-      let o_id = ondisk_lookup_obj_id_global path bo in
+      let p_id = compound_po_dict_encode path "p" bp in
+      let o_id = compound_po_dict_encode path "o" bo in
       (match (p_id, o_id) with
        | (FStar_Pervasives_Native.Some uu___, FStar_Pervasives_Native.Some
           uu___1) ->

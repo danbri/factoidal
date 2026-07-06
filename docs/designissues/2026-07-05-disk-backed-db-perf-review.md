@@ -1163,6 +1163,163 @@ whether a design doc is needed first.
       0 fail (of 17, up from 9); `tests/local/cottas_corpus_regressions.sh`
       4 pass, 0 fail; `tests/local/dict_global_cache_parity.sh` 6
       pass, 0 fail.
+   5. **Fix the item-4 follow-up's own pre-existing bug (issue #297,
+      2026-07-06, second follow-up session): the CS-clustered
+      compound-(p,o) SEARCH wrong answer.** *Win:* correctness —
+      `GRAPH ?g { ?s <bound-p> <bound-o> }` on a CS-clustered
+      COTTAS store silently returned `0` matches instead of `1`; not a
+      slow-but-right answer, a WRONG one. *Type:* F\* reader fix
+      (`RDF.CottasStore.fst`).
+
+      **Reproduced first, on the unmodified pre-fix binary, against a
+      dedicated small CS-clustered build** (`tools/corpus_pipeline.py
+      materialize-nq-cottas-corpus --row-order cs --build-sidecars`,
+      the 5-quad `tests/local/data/cottas_sample.nq` fixture — a single
+      row group is enough to reproduce this; it is not a
+      many-row-groups pruning-selectivity artifact). `SELECT ?g ?s
+      WHERE { GRAPH ?g { ?s <https://example.org/name> "Alice" } }`
+      returned zero rows against the CS-clustered artifact and the
+      correct one row against both the producer-order artifact and the
+      in-memory engine on the same data.
+
+      **Root-cause verdict: READER bug, not a writer bug** (the task's
+      required determination). Read directly: the `.po.presence`
+      compound bitmap's bytes on disk were byte-for-byte correct —
+      dumping the file with a standalone parser
+      (`struct.unpack_from` over the documented header + per-rg sorted
+      `(p_id, o_id)` pair-code layout) showed the pair for
+      (`<name>`, `"Alice"`) present and correctly sorted among its
+      row group's other pairs. The bug is that
+      `filter_candidates_by_compound_po` in `RDF.CottasStore.fst`
+      resolved its OWN `p_id`/`o_id` for the *query's* bound tokens via
+      `ondisk_lookup_pred_id_global` / `_obj_id_global` — the Bet7
+      lazy-runtime revmap (`cottas_ondisk_runtime.sh`'s
+      `collect_distinct`), whose id assignment is FIRST-OCCURRENCE
+      order over the physical row scan. The `.po.presence` WRITER
+      (`Cottas_compound_po_writer.build_tok_to_id`, reading
+      `.p.dict` / `.o.dict`) assigns ids by SORTED-LEXICOGRAPHIC RANK
+      instead (`RDF.CottasStore.DictWriter.fst`'s `ids[i] = i`
+      invariant: dict ids ARE the alphabetical rank of the token within
+      that column's distinct-token set). These are two independently
+      deterministic but DIFFERENT id-spaces over the same token set.
+      They coincide by coincidence when physical row order already
+      correlates with alphabetical order (true of the producer/SPOG-
+      sorted layout on this small fixture, and probably on any
+      SPOG-sorted corpus small enough that per-subject predicate runs
+      dominate) and diverge once CS clustering reorders rows: measured
+      directly on the repro fixture, predicate `<name>` is
+      sorted-dict-rank `1` but Bet7 first-occurrence rank `2` under CS
+      row order (object `"Alice"` similarly `0` vs `4`), so the reader
+      searched the compound bitmap for pair-code `(2,4)` — absent, safe
+      over-... no, UNsafe: `rg_could_contain_pair` returned `false` for
+      the one row group that DOES contain the true pair-code `(1,0)`,
+      and `filter_candidates_by_compound_po` pruned it out entirely.
+      Single-column bound-p-only / bound-o-only queries were unaffected
+      because `plan_candidate_rgs` (issue #118 Phase 2.6's *per-column*
+      prune) reads the raw Parquet row-group dictionary PAGE strings
+      directly — no id resolution at all, hence no id-space to
+      mismatch — so only the joint (p, o) compound path, the ONLY
+      id-resolving prune in the live search path, was exposed.
+
+      **Fix.** Added `compound_po_dict_encode` to `RDF.CottasStore.fst`
+      (reads `.p.dict` / `.o.dict` via the existing
+      `RDF.CottasStore.OnDiskIndex.read_dict_header` +
+      `dict_encode_token` — the SAME sorted-rank id-space the writer
+      used) and rewired `filter_candidates_by_compound_po`'s two id
+      lookups through it instead of the Bet7 revmap. `build_qp_row`'s
+      OWN Bet7-revmap round-trip (encode via `ondisk_lookup_*_id_global`,
+      decode via `id_to_raw_token_via_global`, both ends of the SAME
+      revmap, used only to shape the caller's OWN result row) is
+      untouched and remains correct — it was never compared against
+      the on-disk `.po.presence` codes, so it was never part of the
+      bug. Verified F\*, z3 4.13.3, no `--lax`; no `experimental_ocaml_glue/`
+      changes (the fix is pure F\*, reusing an existing OCaml `assume
+      val` I/O primitive already realised for `dict_encode_token`'s own
+      binary search).
+
+      **Existing-store handling: no migration needed.** Because the
+      `.po.presence` bytes were always correct (verdict above), no
+      on-disk format version bump, magic-number change, or forced
+      rebuild is required for stores built before this fix — the
+      corrected reader reads the SAME files correctly on its next
+      query. (Contrast with the loud-failure precedent this project
+      follows when a sidecar format genuinely IS wrong or ambiguous on
+      disk — issue #269's decode-failure detection and issue #98's
+      dict-magic mismatch both fail loud / trigger a rebuild rather
+      than silently return a wrong answer; this case simply doesn't
+      need that machinery because the bytes were never the problem.)
+
+      **Three-way agreement matrix (CS-clustered vs producer-order
+      COTTAS vs the in-memory engine, same fixture data), plus item-1
+      widening below.** Extended
+      [`tests/local/cottas_row_order_regressions.sh`](../../tests/local/cottas_row_order_regressions.sh)
+      with `GRAPH`-wrapped checks (j)-(p): bound-p-only (2 rows),
+      bound-o-only (1), bound-p-and-o (1 — the exact failing shape),
+      bound-p-and-o with an IRI-typed object (1), bound-p-and-o
+      zero-match (0), bound-s-and-p (1), bound-s-only (2). Each check
+      diffs all three engines' output AND asserts the literal expected
+      row count, so a regression that returns the same wrong count on
+      all three would still fail. All pass post-fix; all reproduce the
+      bug pre-fix (verified against `git show
+      HEAD:bin/linux-x86_64/factoidal`, the pre-fix committed binary,
+      per this doc's own measurement-provenance convention). File is
+      26 checks total now, 26 pass, 0 fail, up from 17.
+
+      **Item 1 (widen the streaming-COUNT-star fast path to
+      GRAPH-wrapped queries): done for constant graph IRIs, NOT done
+      for graph variables.** `cottas_ondisk_count_exact` (the streaming
+      fast path's backend, per `SPARQL11.Store.fst`'s
+      `detect_streaming_count_star`) never calls
+      `filter_candidates_by_compound_po` at all — confirmed by
+      re-reading its call graph — so this widening is independent of
+      the bug fix above and carries no correctness risk from it.
+      Checked #267 first: a `GB_CottasOnDisk` backend's graph scope is
+      a fixed `cottas_ondisk_graph_scope` (`COS_DefaultOnly` /
+      `COS_NamedGraph`) baked into ONE `graph_backend` value per named
+      graph in `dataset_backend.dsb_named` — exactly the shape
+      `GRAPH <constant-iri> { tp }` needs (`lookup_named_backend`
+      resolves the constant IRI to its backend, unchanged from what
+      the existing materialise-path `GP_Graph (PT_IRI name)` arm
+      already does). Added `extract_single_tp_bgp_scoped` (matches
+      bare `GP_BGP [tp]` as `(tp, None)` or `GP_Graph (PT_IRI g)
+      (GP_BGP [tp])` as `(tp, Some g)`) and widened
+      `detect_streaming_count_star`'s return type to carry the
+      optional graph IRI; `eval_select_query_backend_on_graph`'s fast
+      path now looks up the named backend via `dsb.dsb_named` when
+      present. `GRAPH ?g { tp }` with an UNBOUND graph variable is
+      deliberately NOT matched: per SPARQL 1.1 dataset semantics an
+      unbound `?g` ranges over EVERY named graph, so a non-grouped
+      `COUNT(*)` over that shape must SUM `backend_count_exact` across
+      every named graph — a genuinely different evaluation shape (one
+      sum over N backends, no existing entry point) than "one
+      `graph_backend`, one exact count," not a mechanical widening of
+      the detector, and not commit-sized alongside the correctness fix
+      above. Documented here rather than attempted; falls through to
+      the (correct, just not fast) materialise path unchanged. Pinned:
+      new three-way checks
+      `cottas-roworder-graph-count-fastpath-named-graph-people`
+      (fast-path COUNT vs materialise-path COUNT vs in-memory, all
+      three agree) plus literal-value checks for a real named graph
+      (COUNT = 3) and an unknown graph IRI (COUNT = 0, matching
+      `GP_Graph (PT_IRI name)`'s `None -> []` semantics for a name
+      absent from the dataset).
+
+      **Floors after this fix (repo root only — other cwds show a
+      misleading 629 pass, 2 fail for the SPARQL suite):** SPARQL
+      suite 631 pass, 0 fail (of 631); RDF suite 1,031 pass, 0 fail
+      (of 1,031); `tests/unit/run-all.sh` 28 file(s) pass, 1 file(s)
+      fail (of 29 — `delta_log_roundtrip.ml` still fails to BUILD,
+      `Error: Unbound type constructor DL.delta_batch` against
+      `RDF.Store.Columnar.DeltaLog.fst`; both files are modified in
+      this working tree by a concurrent sibling session (durable-UPDATE
+      delta-log work, unrelated to on-disk COTTAS query correctness)
+      and untouched by this fix — measured honestly rather than
+      assumed fixed, per this project's own rule against reporting
+      test scores that don't match what was actually run);
+      `tests/local/cottas_row_order_regressions.sh` 26 pass, 0 fail
+      (of 26, up from 17); `tests/local/cottas_corpus_regressions.sh`
+      4 pass, 0 fail; `tests/local/dict_global_cache_parity.sh` 6
+      pass, 0 fail.
 4. **Make the in-memory query path bound memory (push aggregation /
    point-lookup through a streaming store scan).** *Win:* measured — a
    1-row answer costs 731 MiB today (§2.c); target O(working-set+result).

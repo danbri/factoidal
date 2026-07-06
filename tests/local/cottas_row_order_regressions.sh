@@ -267,4 +267,151 @@ else
   echo "PASS cottas-roworder-second-boot-no-rebuild"
 fi
 
+# (j)-(p) GRAPH-wrapped compound (p,o) prune matrix (issue #297,
+# 2026-07-06, docs/designissues/2026-07-05-disk-backed-db-perf-review.md
+# roadmap item 4 follow-up). Root cause: `filter_candidates_by_compound_po`
+# in `RDF.CottasStore.fst` resolved its predicate/object token ids via
+# `ondisk_lookup_pred_id_global` / `_obj_id_global` (the Bet7 lazy-runtime
+# revmap, id = FIRST-OCCURRENCE order over the physical row scan) instead
+# of via the `.p.dict` / `.o.dict` companion files (id = SORTED-LEXICOGRAPHIC
+# RANK, the space `.po.presence`'s writer actually used, per
+# `RDF.CottasStore.DictWriter.fst`'s `ids[i] = i` invariant and
+# `Cottas_compound_po_writer.build_tok_to_id`). The two id-spaces happen
+# to coincide on a small producer-order (SPOG-sorted) build by
+# coincidence, but diverge once CS clustering changes physical row
+# order, so the reader binary-searches the WRONG pair-code and
+# `compound_rg_passes_pair` wrongly prunes the one row group that DOES
+# contain the (p, o) pair -- a wrong `0`/empty answer, not a slow one.
+# Fix: `filter_candidates_by_compound_po` now resolves ids via the new
+# `compound_po_dict_encode` helper (reads `.p.dict` / `.o.dict` directly,
+# order-independent), matching the writer. The `.po.presence` bytes
+# on disk were always correct -- this was a READER bug, not a writer
+# bug, so no existing-store migration/rebuild is needed.
+#
+# Each shape below is checked for THREE-WAY agreement -- CS-clustered
+# build, producer-order build, AND the in-memory engine loading the
+# same fixture directly (`--data`, no COTTAS at all) -- plus a literal
+# expected row count, so a regression that returns the same wrong
+# answer on all three builds still fails.
+csv_data_row_count() {
+  # csv_data_row_count FILE -- number of CSV data rows (total lines minus
+  # the header line). The runner always emits a header, even for a
+  # zero-row result (verified empirically: "g,s" with no further lines).
+  local file="$1"
+  local total
+  total="$(wc -l < "${file}" | tr -d ' ')"
+  if [[ "${total}" -eq 0 ]]; then
+    echo 0
+  else
+    echo $((total - 1))
+  fi
+}
+
+three_way_check() {
+  # three_way_check NAME QUERY EXPECTED_N
+  local name="$1" query="$2" expected="$3"
+  local out_uncl="${WORKDIR}/3way.${name}.uncl.csv"
+  local out_cl="${WORKDIR}/3way.${name}.cl.csv"
+  local out_mem="${WORKDIR}/3way.${name}.mem.csv"
+  run_query "${UNCLUSTERED_ARTIFACT}" "${query}" "${out_uncl}"
+  run_query "${CLUSTERED_ARTIFACT}" "${query}" "${out_cl}"
+  FACTOIDAL_COTTAS_BRIDGE=/definitely/missing PYCOTTAS_PYTHON=/definitely/missing \
+    "${BIN}" --data "${INPUT}" -e "${query}" -o csv >"${out_mem}" 2>"${out_mem}.err"
+
+  local ok=1
+  if ! diff -q <(sort "${out_uncl}") <(sort "${out_cl}") >/dev/null; then
+    ok=0
+  fi
+  if ! diff -q <(sort "${out_uncl}") <(sort "${out_mem}") >/dev/null; then
+    ok=0
+  fi
+  local got
+  got="$(csv_data_row_count "${out_uncl}")"
+  if [[ "${got}" != "${expected}" ]]; then
+    ok=0
+  fi
+
+  if [[ "${ok}" -eq 1 ]]; then
+    echo "PASS cottas-roworder-graph-${name}"
+  else
+    echo "FAIL cottas-roworder-graph-${name} (expected ${expected} rows; unclustered=${got:-?})"
+    echo "  --- unclustered (producer-order COTTAS) ---"; cat "${out_uncl}"
+    echo "  --- clustered (CS-clustered COTTAS) ---"; cat "${out_cl}"
+    echo "  --- in-memory engine ---"; cat "${out_mem}"
+    FAIL=1
+  fi
+}
+
+# (j) bound-p only (2 matches: alice/name/Alice, bob/name/Bob)
+three_way_check "bound-p" \
+  "SELECT ?g ?s ?o WHERE { GRAPH ?g { ?s <https://example.org/name> ?o } }" \
+  2
+
+# (k) bound-o only (1 match: alice/name/Alice)
+three_way_check "bound-o" \
+  'SELECT ?g ?s ?p WHERE { GRAPH ?g { ?s ?p "Alice" } }' \
+  1
+
+# (l) bound-p AND bound-o -- THE FAILING SHAPE reported 2026-07-06:
+# returned 0 instead of 1 on the CS-clustered build only, before the fix.
+three_way_check "bound-p-and-o" \
+  'SELECT ?g ?s WHERE { GRAPH ?g { ?s <https://example.org/name> "Alice" } }' \
+  1
+
+# (m) bound-p AND bound-o, IRI-typed object (not just literal) -- the
+# `.o.dict` token includes angle-bracket IRIs too; exercise that path.
+three_way_check "bound-p-and-o-iri-object" \
+  "SELECT ?g ?s WHERE { GRAPH ?g { ?s <https://example.org/knows> <https://example.org/bob> } }" \
+  1
+
+# (n) bound-p AND bound-o, zero matches (name/"Specimen" doesn't exist)
+three_way_check "bound-p-and-o-zero" \
+  'SELECT ?g ?s WHERE { GRAPH ?g { ?s <https://example.org/name> "Specimen" } }' \
+  0
+
+# (o) bound-s AND bound-p (2-of-3 bound; different code path than (l))
+three_way_check "bound-s-and-p" \
+  "SELECT ?g ?o WHERE { GRAPH ?g { <https://example.org/alice> <https://example.org/name> ?o } }" \
+  1
+
+# (p) bound-s only (2 matches: alice/name/Alice, alice/knows/bob)
+three_way_check "bound-s" \
+  "SELECT ?g ?p ?o WHERE { GRAPH ?g { <https://example.org/alice> ?p ?o } }" \
+  2
+
+# (q)-(r) Issue #297 item 1: streaming-COUNT(*) fast-path widened to
+# GRAPH <constant-iri> { tp } (SPARQL11.Store.fst's
+# `extract_single_tp_bgp_scoped` / `detect_streaming_count_star`). This
+# is a DIFFERENT code path than (j)-(p) above -- COUNT(*) dispatches to
+# `cottas_ondisk_count_exact`, which never calls
+# `filter_candidates_by_compound_po` at all (confirmed in the perf
+# review doc), so these checks pin the NEW feature, not the (j)-(p) bug
+# fix. GRAPH ?g (unbound variable) COUNT(*) is deliberately NOT
+# fast-pathed (would need a sum-across-all-named-graphs evaluation
+# shape, not a single dataset scope) and still takes the materialise
+# path -- not tested here since its correctness was never in question.
+three_way_check "count-fastpath-named-graph-people" \
+  "SELECT (COUNT(*) AS ?n) WHERE { GRAPH <https://example.org/graph/people> { ?s ?p ?o } }" \
+  1
+run_query "${UNCLUSTERED_ARTIFACT}" \
+  "SELECT (COUNT(*) AS ?n) WHERE { GRAPH <https://example.org/graph/people> { ?s ?p ?o } }" \
+  "${WORKDIR}/count-fastpath.csv"
+if [[ "$(tail -n1 "${WORKDIR}/count-fastpath.csv" | tr -d '\r')" != "3" ]]; then
+  echo "FAIL cottas-roworder-count-fastpath-named-graph-people-value (expected 3)"
+  cat "${WORKDIR}/count-fastpath.csv"
+  FAIL=1
+else
+  echo "PASS cottas-roworder-count-fastpath-named-graph-people-value"
+fi
+run_query "${UNCLUSTERED_ARTIFACT}" \
+  "SELECT (COUNT(*) AS ?n) WHERE { GRAPH <https://example.org/graph/does-not-exist> { ?s ?p ?o } }" \
+  "${WORKDIR}/count-fastpath-unknown-graph.csv"
+if [[ "$(tail -n1 "${WORKDIR}/count-fastpath-unknown-graph.csv" | tr -d '\r')" != "0" ]]; then
+  echo "FAIL cottas-roworder-count-fastpath-unknown-graph-value (expected 0)"
+  cat "${WORKDIR}/count-fastpath-unknown-graph.csv"
+  FAIL=1
+else
+  echo "PASS cottas-roworder-count-fastpath-unknown-graph-value"
+fi
+
 exit "${FAIL}"

@@ -7,6 +7,7 @@ open RDF.CottasStore.PageCache
 open RDF.CottasStore.ColumnSeq
 open FStar.All
 module CPO = RDF.CottasStore.CompoundPresenceBitmap
+module ODI = RDF.CottasStore.OnDiskIndex
 
 // On-disk COTTAS store, query-time interface (issue #100).
 //
@@ -1322,20 +1323,54 @@ let plan_candidate_rgs
 //
 // Implementation notes:
 //
-//   * Token→id is resolved via `ondisk_lookup_pred_id_global` /
-//     `_obj_id_global` — the same Phase 2.7-mini boundary
-//     `build_qp_row` uses, so the lookup honours Bet7's lazy populate.
+//   * Token→id is resolved via the on-disk `.p.dict` / `.o.dict`
+//     companion files (`compound_po_dict_encode` below), i.e. the
+//     SAME sorted-lexicographic-rank id-space the `.po.presence`
+//     writer used (`Cottas_compound_po_writer.build_tok_to_id`, which
+//     enumerates `dict_decode_token dict_path dh id` for id =
+//     0..num_tokens-1 against that same `.<col>.dict` file — see
+//     `RDF.CottasStore.DictWriter.fst`'s `ids[i] = i` invariant: dict
+//     ids ARE the sorted rank).
 //
-//   * Companion file `<path>.po.presence` is opened per call. It is
-//     small (kB-scale on parliament's 956k objects × 232 predicates
-//     × 26 RGs) so the open cost is negligible vs the saved DLBA
-//     decode of pruned RGs. Future: open at handle-open time and
-//     cache via assume val.
+//     This is DELIBERATELY NOT `ondisk_lookup_pred_id_global` /
+//     `_obj_id_global` (issue #297, found 2026-07-06 building the
+//     roadmap-item-4 regression pin, see
+//     docs/designissues/2026-07-05-disk-backed-db-perf-review.md):
+//     those resolve through the Bet7 lazy-runtime revmap
+//     (`cottas_ondisk_runtime.sh`'s `collect_distinct`), whose id
+//     assignment is FIRST-OCCURRENCE order over the physical row
+//     scan — a different, row-order-dependent id-space that happens
+//     to coincide with the dict's sorted-rank space on small
+//     producer-order (SPOG-sorted) builds by coincidence, but
+//     diverges once physical row order changes (e.g. CS clustering
+//     via `--row-order cs`), silently mis-encoding (p, o) into the
+//     WRONG pair-code and causing `compound_rg_passes_pair` to prune
+//     the one row group that actually contains the pair — a wrong
+//     `0` answer, not a slow one. `build_qp_row` below still uses the
+//     Bet7 revmap ids for ITS OWN internal round-trip (encode via
+//     `ondisk_lookup_*_id_global`, decode via
+//     `id_to_raw_token_via_global`, both ends of the SAME revmap) —
+//     that use is self-consistent and untouched by this fix.
+//
+//   * Companion files `<path>.{p,o}.dict` and `<path>.po.presence`
+//     are opened per call. They are small (kB-scale on parliament's
+//     956k objects × 232 predicates × 26 RGs) so the open cost is
+//     negligible vs the saved DLBA decode of pruned RGs. Future:
+//     open at handle-open time and cache via assume val.
 //
 //   * Either bound missing, or either lookup returning None, or the
 //     companion file missing → return candidates unchanged
 //     (sound over-include; the executor's filter-loop will catch the
 //     rest).
+let compound_po_dict_encode (path : string) (col_suffix : string) (tok : string)
+  : Tot (option nat) =
+  let dict_path = path ^ "." ^ col_suffix ^ ".dict" in
+  match ODI.read_dict_header dict_path with
+  | None -> None
+  | Some dh ->
+    if not (ODI.dict_header_ok dh) then None
+    else ODI.dict_encode_token dict_path dh tok
+
 let filter_candidates_by_compound_po
   (path : string)
   (candidates : list nat)
@@ -1343,8 +1378,8 @@ let filter_candidates_by_compound_po
   : Tot (list nat) =
   match bound_p_str, bound_o_str with
   | Some bp, Some bo ->
-    let p_id = ondisk_lookup_pred_id_global path bp in
-    let o_id = ondisk_lookup_obj_id_global  path bo in
+    let p_id = compound_po_dict_encode path "p" bp in
+    let o_id = compound_po_dict_encode path "o" bo in
     (match p_id, o_id with
      | Some _, Some _ ->
        let oh = CPO.open_compound (path ^ ".po.presence") in

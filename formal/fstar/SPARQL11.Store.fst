@@ -448,11 +448,40 @@ let detect_count_star_select (sel : select_clause) : option var_name =
      | _ -> None)
   | _ -> None
 
+// Roadmap-item-4 follow-up (issue #297, 2026-07-06): extract a
+// single-tp BGP that is EITHER bare OR wrapped in exactly one
+// `GRAPH <constant-iri> { ... }` layer. Returns
+// `Some (tp, None)` for a bare `GP_BGP [tp]` (evaluate against the
+// query's current graph backend, unchanged behaviour) or
+// `Some (tp, Some g)` for `GRAPH <g> { tp }` with a CONSTANT graph IRI
+// (evaluate against the dataset's named backend for `g`).
+//
+// Deliberately does NOT match `GRAPH ?g { tp }` (an unbound graph
+// variable). Per SPARQL 1.1 dataset semantics an unbound ?g ranges
+// over EVERY named graph; a non-grouped `COUNT(*)` over that shape
+// must SUM `backend_count_exact` across every named graph — a
+// fundamentally different evaluation shape (one sum over N backends)
+// than the "one graph_backend, one exact count" this fast path
+// assumes, and not a mechanical widening of the detector. (The
+// GROUP-BY-?g sibling above, `detect_streaming_count_group_by_graph`,
+// legitimately needs the PER-GRAPH breakdown rather than a sum, so it
+// already has its own dedicated path.) Left as future work; falls
+// through to the materialise path here, which is correct, just not
+// fast for this one shape.
+let extract_single_tp_bgp_scoped (p : group_graph_pattern)
+  : option (triple_pattern & option wf_iri) =
+  match p with
+  | GP_BGP [tp] -> Some (tp, None)
+  | GP_Graph (PT_IRI g) (GP_BGP [tp]) -> Some (tp, Some g)
+  | _ -> None
+
 // Detect the streaming-COUNT(*) shape of a whole query and return the
-// alias variable name plus the triple pattern. Conservative — bails
-// out on any modifier that would change the count (DISTINCT, ORDER BY,
-// HAVING, GROUP BY, VALUES, etc.).
-let detect_streaming_count_star (q : query) : option (var_name & triple_pattern) =
+// alias variable name, the triple pattern, and (issue #297) an
+// optional constant graph IRI when the pattern is `GRAPH <g> { tp }`
+// rather than a bare BGP. Conservative — bails out on any modifier
+// that would change the count (DISTINCT, ORDER BY, HAVING, GROUP BY,
+// VALUES, etc.).
+let detect_streaming_count_star (q : query) : option (var_name & triple_pattern & option wf_iri) =
   match q.q_form with
   | QF_Select sel ->
     (match detect_count_star_select sel with
@@ -465,9 +494,9 @@ let detect_streaming_count_star (q : query) : option (var_name & triple_pattern)
        else if q.q_modifier.sm_reduced then None
        else if Some? q.q_modifier.sm_order_by then None
        else
-         (match extract_single_tp_bgp q.q_pattern with
+         (match extract_single_tp_bgp_scoped q.q_pattern with
           | None -> None
-          | Some tp -> Some (v, tp)))
+          | Some (tp, scope) -> Some (v, tp, scope)))
   | _ -> None
 
 // Build the one-row solution sequence for COUNT(*) = n.
@@ -792,14 +821,25 @@ and eval_select_query_backend_on_graph (q : query) (gb : graph_backend) (dsb : d
   // directly (one walk, no per-row materialisation). Semantics-
   // preserving: equivalent to materialising and counting.
   match detect_streaming_count_star q with
-  | Some (alias, tp) ->
+  | Some (alias, tp, graph_scope) ->
     let bound = {
       bs = bound_subject_of_pattern tp.tp_s sm_empty;
       bp = bound_predicate_of_pattern tp.tp_p sm_empty;
       bo = bound_object_of_pattern tp.tp_o sm_empty;
     } in
     // Exact, not estimate: this count IS the query result (E1 bug).
-    let n = backend_count_exact gb bound in
+    // Issue #297: a `GRAPH <g> { tp }`-shaped COUNT (constant `g`,
+    // caught by `extract_single_tp_bgp_scoped` above) must count
+    // against the NAMED backend for `g`, not the caller's current
+    // `gb` — exactly what `eval_pattern_backend`'s own
+    // `GP_Graph (PT_IRI name)` arm does for the materialise path
+    // (`lookup_named_backend`, `[]`/0 on an unknown graph name).
+    let n = match graph_scope with
+      | None -> backend_count_exact gb bound
+      | Some g ->
+        (match lookup_named_backend g dsb.dsb_named with
+         | Some ngb -> backend_count_exact ngb bound
+         | None -> 0) in
     let omega = count_star_solution alias n in
     Some (slice_solutions q.q_modifier.sm_offset q.q_modifier.sm_limit omega)
   | None ->
