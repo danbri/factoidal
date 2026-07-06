@@ -53,6 +53,7 @@ if grep -q 'module Cottas_ondisk_runtime' "$FILE"; then
 fi
 
 python3 - "$FILE" <<'PYEOF'
+import re
 import sys
 from pathlib import Path
 
@@ -619,120 +620,205 @@ content = content.replace(open_marker, open_impl, 1)
 # Hashtbl-backed Cottas_ondisk_runtime.* equivalents. The F* spec stays
 # the verification source of truth; these replacements are pure runtime
 # perf (rule #15 conformant — no semantic changes). ----
+#
+# Issue #261 follow-up (2026-07-05): the module qualifier F* extraction
+# picks for RDF.Term's types (`subject` / `wf_iri` / `rdf_term` / `iri`)
+# is NOT stable across extractions — depending on how RDF.Graph.Executable
+# currently re-exports RDF.Term, some extractions emit
+# `RDF_Graph_Executable.<type>` and others emit `RDF_Term.<type>` for
+# the exact same F* type. This patch used to hardcode
+# `RDF_Graph_Executable`; when an extraction emitted `RDF_Term` instead
+# (as happened here), every entry in the table below silently failed
+# to match — the loop only counted "0/9 applied" to a non-fatal
+# stderr line — so `cottas_ondisk_encode_object` stayed on the O(n)
+# Tot assoc-list path with the Bet7-empty `coh_obj_revmap`,
+# REINTRODUCING the exact "literal-bound object returns 0 rows" bug
+# #261 was filed for (and the `cottas_ondisk_named_graphs` shim below
+# failed the same way, reintroducing the GRAPH-pattern-returns-0-rows
+# bug from the #261 follow-up comment). Fixed by matching the
+# qualifier with a regex alternation, captured and re-emitted verbatim
+# so the header stays valid for whichever qualifier this extraction
+# used, and by turning "didn't apply" into a hard build failure
+# (iron rule #3: no silent holes) instead of a WARN nobody reads.
 
-shim_replacements = {
-    # encode_subject (slow F* assoc-list lookup -> Hashtbl)
-    """let cottas_ondisk_encode_subject (ds : cottas_ondisk_store)
-  (s : RDF_Graph_Executable.subject) :
+QUAL = r"(RDF_Graph_Executable|RDF_Term)"
+
+def make_pattern(old_tmpl):
+    # old_tmpl contains the literal marker "@Q@" wherever the module
+    # qualifier appears. Beyond the qualifier itself, F*'s pretty-
+    # printer also varies its LINE-WRAPPING between extractions (a
+    # signature that wraps onto 2 lines with the long
+    # "RDF_Graph_Executable" qualifier can sit on 1 line with the
+    # shorter "RDF_Term" qualifier) — observed directly comparing two
+    # extractions of this same file. So we tokenize on whitespace and
+    # join tokens with `\s+` instead of matching literal newlines, and
+    # substitute the qualifier marker with the alternation group
+    # wherever it appears (as its own token or glued to a following
+    # ".ident").
+    tokens = old_tmpl.split()
+    assert any("@Q@" in t for t in tokens), "old_tmpl marker lost during tokenize"
+    parts = []
+    for tok in tokens:
+        if "@Q@" not in tok:
+            parts.append(re.escape(tok))
+            continue
+        pre, _, post = tok.partition("@Q@")
+        parts.append(re.escape(pre) + QUAL + re.escape(post))
+    return re.compile(r"\s+".join(parts))
+
+def apply_qualified(content, name, old_tmpl, new_tmpl):
+    rx = make_pattern(old_tmpl)
+    m = rx.search(content)
+    if not m:
+        return content, False
+    qual = m.group(1)
+    replacement = new_tmpl.replace("@Q@", qual)
+    content = content[:m.start()] + replacement + content[m.end():]
+    return content, True
+
+# (name, old_tmpl, new_tmpl) — each old/new pair identical except for
+# the body line(s), with "@Q@" standing in for whichever qualifier
+# module F* chose this run.
+shim_entries = [
+  ("encode_subject",
+   """let cottas_ondisk_encode_subject (ds : cottas_ondisk_store)
+  (s : @Q@.subject) :
   Parser_BallyhooCOTTAS.cottas_term_ref FStar_Pervasives_Native.option=
   revmap_lookup (ds.cods_handle).coh_subj_revmap (subject_to_revmap_key s)
-""": """let cottas_ondisk_encode_subject (ds : cottas_ondisk_store)
-  (s : RDF_Graph_Executable.subject) :
+""",
+   """let cottas_ondisk_encode_subject (ds : cottas_ondisk_store)
+  (s : @Q@.subject) :
   Parser_BallyhooCOTTAS.cottas_term_ref FStar_Pervasives_Native.option=
   Cottas_ondisk_runtime.encode_subject_fast ds.cods_handle s
-""",
-    """let cottas_ondisk_encode_predicate (ds : cottas_ondisk_store)
-  (p : RDF_Graph_Executable.wf_iri) :
+"""),
+  ("encode_predicate",
+   """let cottas_ondisk_encode_predicate (ds : cottas_ondisk_store)
+  (p : @Q@.wf_iri) :
   Parser_BallyhooCOTTAS.cottas_term_ref FStar_Pervasives_Native.option=
   revmap_lookup (ds.cods_handle).coh_pred_revmap (iri_to_revmap_key p)
-""": """let cottas_ondisk_encode_predicate (ds : cottas_ondisk_store)
-  (p : RDF_Graph_Executable.wf_iri) :
+""",
+   """let cottas_ondisk_encode_predicate (ds : cottas_ondisk_store)
+  (p : @Q@.wf_iri) :
   Parser_BallyhooCOTTAS.cottas_term_ref FStar_Pervasives_Native.option=
   Cottas_ondisk_runtime.encode_predicate_fast ds.cods_handle p
-""",
-    """let cottas_ondisk_encode_object (ds : cottas_ondisk_store)
-  (o : RDF_Graph_Executable.rdf_term) :
+"""),
+  ("encode_object",
+   """let cottas_ondisk_encode_object (ds : cottas_ondisk_store)
+  (o : @Q@.rdf_term) :
   Parser_BallyhooCOTTAS.cottas_term_ref FStar_Pervasives_Native.option=
   revmap_lookup (ds.cods_handle).coh_obj_revmap (object_to_revmap_key o)
-""": """let cottas_ondisk_encode_object (ds : cottas_ondisk_store)
-  (o : RDF_Graph_Executable.rdf_term) :
+""",
+   """let cottas_ondisk_encode_object (ds : cottas_ondisk_store)
+  (o : @Q@.rdf_term) :
   Parser_BallyhooCOTTAS.cottas_term_ref FStar_Pervasives_Native.option=
   Cottas_ondisk_runtime.encode_object_fast ds.cods_handle o
-""",
-    """let cottas_ondisk_encode_graph_name (ds : cottas_ondisk_store)
-  (g : RDF_Graph_Executable.iri) :
+"""),
+  ("encode_graph_name",
+   """let cottas_ondisk_encode_graph_name (ds : cottas_ondisk_store)
+  (g : @Q@.iri) :
   Parser_BallyhooCOTTAS.cottas_graph_ref FStar_Pervasives_Native.option=
   revmap_lookup (ds.cods_handle).coh_graph_revmap (iri_to_revmap_key g)
-""": """let cottas_ondisk_encode_graph_name (ds : cottas_ondisk_store)
-  (g : RDF_Graph_Executable.iri) :
+""",
+   """let cottas_ondisk_encode_graph_name (ds : cottas_ondisk_store)
+  (g : @Q@.iri) :
   Parser_BallyhooCOTTAS.cottas_graph_ref FStar_Pervasives_Native.option=
   Cottas_ondisk_runtime.encode_graph_fast ds.cods_handle g
-""",
-    # decode_* (slow list_nth -> Hashtbl)
-    """let cottas_ondisk_decode_subject (ds : cottas_ondisk_store)
+"""),
+  # decode_* (slow list_nth -> Hashtbl)
+  ("decode_subject",
+   """let cottas_ondisk_decode_subject (ds : cottas_ondisk_store)
   (id : Parser_BallyhooCOTTAS.cottas_term_ref) :
-  RDF_Graph_Executable.subject=
+  @Q@.subject=
   match list_nth (ds.cods_handle).coh_subjects id with
   | FStar_Pervasives_Native.Some s -> s
   | FStar_Pervasives_Native.None ->
-      RDF_Graph_Executable.S_BNode "cottas_decode_oor"
-""": """let cottas_ondisk_decode_subject (ds : cottas_ondisk_store)
-  (id : Parser_BallyhooCOTTAS.cottas_term_ref) :
-  RDF_Graph_Executable.subject=
-  Cottas_ondisk_runtime.decode_subject_fast ds.cods_handle id
+      @Q@.S_BNode "cottas_decode_oor"
 """,
-    """let cottas_ondisk_decode_object (ds : cottas_ondisk_store)
+   """let cottas_ondisk_decode_subject (ds : cottas_ondisk_store)
   (id : Parser_BallyhooCOTTAS.cottas_term_ref) :
-  RDF_Graph_Executable.rdf_term=
+  @Q@.subject=
+  Cottas_ondisk_runtime.decode_subject_fast ds.cods_handle id
+"""),
+  ("decode_object",
+   """let cottas_ondisk_decode_object (ds : cottas_ondisk_store)
+  (id : Parser_BallyhooCOTTAS.cottas_term_ref) :
+  @Q@.rdf_term=
   match list_nth (ds.cods_handle).coh_objects id with
   | FStar_Pervasives_Native.Some o -> o
   | FStar_Pervasives_Native.None ->
-      RDF_Graph_Executable.T_BNode "cottas_decode_oor"
-""": """let cottas_ondisk_decode_object (ds : cottas_ondisk_store)
-  (id : Parser_BallyhooCOTTAS.cottas_term_ref) :
-  RDF_Graph_Executable.rdf_term=
-  Cottas_ondisk_runtime.decode_object_fast ds.cods_handle id
+      @Q@.T_BNode "cottas_decode_oor"
 """,
-    # decode_predicate (correctness bug: was missing from this dict;
-    # F* version's `coh_predicates` list is empty post-Bet7 lazy-open,
-    # so every decode missed and fell back to the F* sentinel
-    # "urn:factoidal:cottas-decode-predicate-unknown-id" — or, before
-    # the F* fix, the silent rdf:type fallback that masked the bug.
-    # This shim routes through Cottas_ondisk_runtime.decode_predicate_fast
-    # which consults the populated `tables.ft_id_to_predicate` Hashtbl.)
-    """let cottas_ondisk_decode_predicate (ds : cottas_ondisk_store)
-  (id : Parser_BallyhooCOTTAS.cottas_term_ref) : RDF_Graph_Executable.wf_iri=
+   """let cottas_ondisk_decode_object (ds : cottas_ondisk_store)
+  (id : Parser_BallyhooCOTTAS.cottas_term_ref) :
+  @Q@.rdf_term=
+  Cottas_ondisk_runtime.decode_object_fast ds.cods_handle id
+"""),
+  # decode_predicate (correctness bug: was missing from the original
+  # dict; F* version's `coh_predicates` list is empty post-Bet7
+  # lazy-open, so every decode missed and fell back to the F* sentinel
+  # "urn:factoidal:cottas-decode-predicate-unknown-id" — or, before
+  # the F* fix, the silent rdf:type fallback that masked the bug.
+  # This shim routes through Cottas_ondisk_runtime.decode_predicate_fast
+  # which consults the populated `tables.ft_id_to_predicate` Hashtbl.)
+  ("decode_predicate",
+   """let cottas_ondisk_decode_predicate (ds : cottas_ondisk_store)
+  (id : Parser_BallyhooCOTTAS.cottas_term_ref) : @Q@.wf_iri=
   match list_nth (ds.cods_handle).coh_predicates id with
   | FStar_Pervasives_Native.Some p -> p
   | FStar_Pervasives_Native.None ->
       let fallback = "urn:factoidal:cottas-decode-predicate-unknown-id" in
       fallback
-""": """let cottas_ondisk_decode_predicate (ds : cottas_ondisk_store)
-  (id : Parser_BallyhooCOTTAS.cottas_term_ref) : RDF_Graph_Executable.wf_iri=
-  Cottas_ondisk_runtime.decode_predicate_fast ds.cods_handle id
 """,
-    """let cottas_ondisk_decode_graph_name (ds : cottas_ondisk_store)
-  (id : Parser_BallyhooCOTTAS.cottas_graph_ref) : RDF_Graph_Executable.iri=
+   """let cottas_ondisk_decode_predicate (ds : cottas_ondisk_store)
+  (id : Parser_BallyhooCOTTAS.cottas_term_ref) : @Q@.wf_iri=
+  Cottas_ondisk_runtime.decode_predicate_fast ds.cods_handle id
+"""),
+  ("decode_graph_name",
+   """let cottas_ondisk_decode_graph_name (ds : cottas_ondisk_store)
+  (id : Parser_BallyhooCOTTAS.cottas_graph_ref) : @Q@.iri=
   match list_nth (ds.cods_handle).coh_graphs id with
   | FStar_Pervasives_Native.Some g -> g
   | FStar_Pervasives_Native.None -> ""
-""": """let cottas_ondisk_decode_graph_name (ds : cottas_ondisk_store)
-  (id : Parser_BallyhooCOTTAS.cottas_graph_ref) : RDF_Graph_Executable.iri=
-  Cottas_ondisk_runtime.decode_graph_fast ds.cods_handle id
 """,
-    # predicate_present (slow assoc-list lookup -> Hashtbl)
-    """let cottas_ondisk_predicate_present (ds : cottas_ondisk_store)
-  (pred : RDF_Graph_Executable.wf_iri) : Prims.bool=
+   """let cottas_ondisk_decode_graph_name (ds : cottas_ondisk_store)
+  (id : Parser_BallyhooCOTTAS.cottas_graph_ref) : @Q@.iri=
+  Cottas_ondisk_runtime.decode_graph_fast ds.cods_handle id
+"""),
+  # predicate_present (slow assoc-list lookup -> Hashtbl)
+  ("predicate_present",
+   """let cottas_ondisk_predicate_present (ds : cottas_ondisk_store)
+  (pred : @Q@.wf_iri) : Prims.bool=
   match revmap_lookup (ds.cods_handle).coh_pred_revmap
           (iri_to_revmap_key pred)
   with
   | FStar_Pervasives_Native.None -> false
   | FStar_Pervasives_Native.Some uu___ -> true
-""": """let cottas_ondisk_predicate_present (ds : cottas_ondisk_store)
-  (pred : RDF_Graph_Executable.wf_iri) : Prims.bool=
-  Cottas_ondisk_runtime.predicate_present_fast ds.cods_handle pred
 """,
-}
+   """let cottas_ondisk_predicate_present (ds : cottas_ondisk_store)
+  (pred : @Q@.wf_iri) : Prims.bool=
+  Cottas_ondisk_runtime.predicate_present_fast ds.cods_handle pred
+"""),
+]
 
-# Apply each shim. Track how many succeed (some may already be patched
-# in a previous run if extraction is idempotent and the file is being
-# re-patched).
 applied = 0
-for old, new in shim_replacements.items():
-    if old in content:
-        content = content.replace(old, new, 1)
+failed_names = []
+for name, old_tmpl, new_tmpl in shim_entries:
+    content, ok = apply_qualified(content, name, old_tmpl, new_tmpl)
+    if ok:
         applied += 1
-sys.stderr.write(f"  [cottas_ondisk_runtime] perf-shim applied {applied}/{len(shim_replacements)} encode/decode/predicate replacements\n")
+    else:
+        failed_names.append(name)
+sys.stderr.write(f"  [cottas_ondisk_runtime] perf-shim applied {applied}/{len(shim_entries)} encode/decode/predicate replacements\n")
+if failed_names:
+    sys.stderr.write(f"  [cottas_ondisk_runtime] FAILED to match: {', '.join(failed_names)}\n")
+    raise SystemExit(
+        "cottas_ondisk_runtime.sh: perf-shim replacement(s) did not match "
+        f"the extracted OCaml ({', '.join(failed_names)}). This is the "
+        "silent-hole failure mode from issue #261 — the on-disk COTTAS "
+        "backend would silently drop literal-bound-object rows (and/or "
+        "named-graph rows) if this were allowed to continue. Inspect "
+        "the current RDF_CottasStore.ml signatures for cottas_ondisk_"
+        f"{failed_names[0]} and update the qualifier handling above.")
 
 # Phase 2.5e (issue #118): the cottas_ondisk_search /
 # cottas_ondisk_estimate dispatch substitutions are RETIRED. The
@@ -758,12 +844,16 @@ sys.stderr.write(f"  [cottas_ondisk_runtime] perf-shim applied {applied}/{len(sh
 # dataset-construction time, so any `GRAPH ?g { ... }` query returns
 # 0 results. Fix: post-extraction, replace the body with one that
 # triggers ensure_graphs_loaded and reads ft_id_to_graph.
-old_named_graphs = '''let cottas_ondisk_named_graphs (ds : cottas_ondisk_store) :
-  (RDF_Graph_Executable.iri * Parser_BallyhooCOTTAS.cottas_graph_ref)
+#
+# Same qualifier-drift hazard as the shim table above (issue #261
+# follow-up, 2026-07-05) — match via regex alternation, hard-fail if
+# it doesn't apply.
+old_named_graphs = """let cottas_ondisk_named_graphs (ds : cottas_ondisk_store) :
+  (@Q@.iri * Parser_BallyhooCOTTAS.cottas_graph_ref)
     Prims.list=
-  named_graphs_aux (ds.cods_handle).coh_graphs Prims.int_zero'''
-new_named_graphs = '''let cottas_ondisk_named_graphs (ds : cottas_ondisk_store) :
-  (RDF_Graph_Executable.iri * Parser_BallyhooCOTTAS.cottas_graph_ref)
+  named_graphs_aux (ds.cods_handle).coh_graphs Prims.int_zero"""
+new_named_graphs = """let cottas_ondisk_named_graphs (ds : cottas_ondisk_store) :
+  (@Q@.iri * Parser_BallyhooCOTTAS.cottas_graph_ref)
     Prims.list=
   (* #261 fix part B: Bet7-lazy-opened handles defer coh_graphs.
      Trigger the OCaml-side populate, then read from ft_id_to_graph.
@@ -776,12 +866,21 @@ new_named_graphs = '''let cottas_ondisk_named_graphs (ds : cottas_ondisk_store) 
   Hashtbl.iter (fun id iri ->
     acc := (iri, Z.of_int id) :: !acc
   ) tables.Cottas_ondisk_runtime.ft_id_to_graph;
-  !acc'''
-content = content.replace(old_named_graphs, new_named_graphs, 1)
-if 'cottas_ondisk_named_graphs (ds : cottas_ondisk_store)' not in content or '#261 fix part B' not in content:
-    sys.stderr.write("  [cottas_ondisk_runtime] WARN: cottas_ondisk_named_graphs replacement did not apply\n")
-else:
-    sys.stderr.write("  [cottas_ondisk_runtime] cottas_ondisk_named_graphs replaced for Bet7 awareness\n")
+  !acc"""
+content, named_graphs_ok = apply_qualified(
+    content, "named_graphs", old_named_graphs, new_named_graphs)
+if not named_graphs_ok:
+    sys.stderr.write("  [cottas_ondisk_runtime] FAILED to match: named_graphs\n")
+    raise SystemExit(
+        "cottas_ondisk_runtime.sh: cottas_ondisk_named_graphs replacement "
+        "did not match the extracted OCaml. This is the silent-hole "
+        "failure mode from issue #261 follow-up — GRAPH ?g { ... } "
+        "queries against a Bet7-lazy-opened COTTAS handle would "
+        "silently return 0 rows if this were allowed to continue. "
+        "Inspect the current RDF_CottasStore.ml signature for "
+        "cottas_ondisk_named_graphs and update the qualifier handling "
+        "above.")
+sys.stderr.write("  [cottas_ondisk_runtime] cottas_ondisk_named_graphs replaced for Bet7 awareness\n")
 
 path.write_text(content)
 PYEOF

@@ -48,8 +48,30 @@ if grep -q 'service_endpoint_table' "$FILE"; then
   exit 0
 fi
 
-python3 -c "
-with open('$FILE', 'r') as f:
+# 2026-07-05 follow-up (same class of hazard fixed for issue #261 in
+# experimental_ocaml_glue/cottas_ondisk_runtime.sh): F* extraction's
+# choice of module qualifier for `wf_iri` is NOT stable — the ongoing
+# RDF.Graph.Executable -> RDF.Term/RDF.Triple/RDF.Graph split means a
+# fresh extraction can emit `RDF_Graph_Executable.wf_iri`,
+# `RDF_Term.wf_iri`, or (for other types touched by this same split)
+# other new qualifiers. This patch used to hardcode
+# `RDF_Graph_Executable.wf_iri` in the OLD-stub match, so a fresh
+# extraction that emitted `RDF_Term.wf_iri` instead made the whole
+# replacement silently miss (only a non-fatal WARNING from
+# ocaml-patches.sh), leaving `service_endpoint_lookup` as
+# `failwith "Not yet implemented"` -- every SPARQL SERVICE clause
+# query would then crash at runtime instead of resolving.  Fixed by
+# matching the qualifier with a regex alternation, and by writing the
+# NEW code with no explicit type annotation on the `rdf_graph` value
+# at all -- it's pinned by unification with `graph_to_store`'s
+# existing parameter type instead, so this patch never needs to know
+# which qualifier module owns `rdf_graph` this run either.
+python3 - "$FILE" <<'PYEOF'
+import re
+import sys
+
+path = sys.argv[1]
+with open(path, "r") as f:
     content = f.read()
 
 # Replace the extracted failwith stub. The F* function returns
@@ -57,17 +79,22 @@ with open('$FILE', 'r') as f:
 # extracted as a record with a single field [gs_graph]. We construct
 # Some/None purely; the hashtable holds rdf_graph values keyed by IRI
 # string and we wrap them on lookup.
-old = '''let service_endpoint_lookup (uu___ : RDF_Graph_Executable.wf_iri) :
-  graph_store FStar_Pervasives_Native.option=
-  failwith \"Not yet implemented: SPARQL11.Algebra.service_endpoint_lookup\"'''
+old_re = re.compile(
+    r"let service_endpoint_lookup \(uu___ : (RDF_Graph_Executable|RDF_Term)\.wf_iri\) :\n"
+    r"  graph_store FStar_Pervasives_Native\.option=\n"
+    r'  failwith "Not yet implemented: SPARQL11\.Algebra\.service_endpoint_lookup"'
+)
 
-new = '''(* SERVICE endpoint resolver — issue #57.
+new = '''(* SERVICE endpoint resolver -- issue #57.
    Global table populated by the test runner from qt:serviceData
    manifest declarations. Lookup is keyed on the absolute IRI string
-   of the endpoint. *)
-let service_endpoint_table : (Prims.string, RDF_Graph_Executable.rdf_graph) Hashtbl.t =
-  Hashtbl.create 16
-let service_endpoint_register (iri : Prims.string) (g : RDF_Graph_Executable.rdf_graph) : unit =
+   of the endpoint. The value type is deliberately left unannotated:
+   `graph_to_store g` below pins it to whatever module currently
+   owns `rdf_graph` (RDF.Graph.Executable is being split into
+   RDF.Term/RDF.Triple/RDF.Graph; the qualifier has already moved
+   once) without this patch needing to track the split. *)
+let service_endpoint_table = Hashtbl.create 16
+let service_endpoint_register (iri : Prims.string) g : unit =
   Hashtbl.replace service_endpoint_table iri g
 let service_endpoint_clear () : unit =
   Hashtbl.clear service_endpoint_table
@@ -76,13 +103,19 @@ let service_endpoint_lookup (iri : Prims.string) : graph_store FStar_Pervasives_
   | Some g -> FStar_Pervasives_Native.Some (graph_to_store g)
   | None -> FStar_Pervasives_Native.None'''
 
-if old not in content:
-    raise SystemExit('patch 57: did not find expected service_endpoint_lookup stub in ' + '$FILE')
+m = old_re.search(content)
+if not m:
+    sys.stderr.write(
+        "  ERROR: patch 57 did not find the expected service_endpoint_lookup "
+        f"stub in {path}\n"
+        "         Has the extraction shape changed beyond the qualifier?\n"
+    )
+    sys.exit(1)
 
-content = content.replace(old, new)
+content = content[:m.start()] + new + content[m.end():]
 
-with open('$FILE', 'w') as f:
+with open(path, "w") as f:
     f.write(content)
-"
+PYEOF
 
 echo "  SERVICE resolver patched."

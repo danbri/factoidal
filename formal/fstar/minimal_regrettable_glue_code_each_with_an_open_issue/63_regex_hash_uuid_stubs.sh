@@ -34,9 +34,12 @@ echo "  Patching $FILE (regex/hash/UUID stubs)..."
 
 # All patches are applied in a single python3 pass for atomicity
 if ! grep -q 'xpath_to_str_regex' "$FILE"; then
-  python3 -c "
+  python3 - "$FILE" <<'PYEOF'
 import re
-with open('$FILE', 'r') as f:
+import sys
+
+path = sys.argv[1]
+with open(path, 'r') as f:
     content = f.read()
 
 # 1. Replace regex_match stub with OCaml Str implementation
@@ -44,13 +47,13 @@ with open('$FILE', 'r') as f:
 content = content.replace(
     '''let regex_match (uu___ : Prims.string) (uu___1 : Prims.string)
   (uu___2 : Prims.string FStar_Pervasives_Native.option) : Prims.bool=
-  failwith \"Not yet implemented: SPARQL11.Algebra.regex_match\"''',
+  failwith "Not yet implemented: SPARQL11.Algebra.regex_match"''',
     '''let xpath_to_str_regex (p : string) : string =
   let open Stdlib in
   let len = String.length p in
   let buf = Buffer.create (len * 2) in
   let i = ref 0 in
-  let last_atom = ref \"\" in
+  let last_atom = ref "" in
   let last_atom_start = ref 0 in
   (* NOT annotated `: int list` — this .ml file has a top-level
      `open Prims` (F* extraction convention) that shadows the bare
@@ -65,44 +68,44 @@ content = content.replace(
   let set_atom s = last_atom_start := Buffer.length buf; last_atom := s; Buffer.add_string buf s in
   while !i < len do
     let c = p.[!i] in
-    if c = '\\\\\\\\' && !i + 1 < len then begin
+    if c = '\\\\' && !i + 1 < len then begin
       let next = p.[!i + 1] in
       if next = '(' || next = ')' || next = '|' || next = '{' || next = '}' then
         (set_atom (String.make 1 next); i := !i + 2)
-      else if next = '?' then (set_atom \"\\\\?\"; i := !i + 2)
-      else if next = '+' then (set_atom \"\\\\+\"; i := !i + 2)
-      else if next = '*' then (set_atom \"\\\\*\"; i := !i + 2)
-      else if next = 'd' then (set_atom \"[0-9]\"; i := !i + 2)
-      else if next = 'D' then (set_atom \"[^0-9]\"; i := !i + 2)
-      else if next = 'w' then (set_atom \"[a-zA-Z0-9_]\"; i := !i + 2)
-      else if next = 'W' then (set_atom \"[^a-zA-Z0-9_]\"; i := !i + 2)
-      else if next = 's' then (set_atom \"[ \\\\t\\\\n\\\\r]\"; i := !i + 2)
-      else if next = 'S' then (set_atom \"[^ \\\\t\\\\n\\\\r]\"; i := !i + 2)
+      else if next = '?' then (set_atom "\\?"; i := !i + 2)
+      else if next = '+' then (set_atom "\\+"; i := !i + 2)
+      else if next = '*' then (set_atom "\\*"; i := !i + 2)
+      else if next = 'd' then (set_atom "[0-9]"; i := !i + 2)
+      else if next = 'D' then (set_atom "[^0-9]"; i := !i + 2)
+      else if next = 'w' then (set_atom "[a-zA-Z0-9_]"; i := !i + 2)
+      else if next = 'W' then (set_atom "[^a-zA-Z0-9_]"; i := !i + 2)
+      else if next = 's' then (set_atom "[ \\t\\n\\r]"; i := !i + 2)
+      else if next = 'S' then (set_atom "[^ \\t\\n\\r]"; i := !i + 2)
       (* Outside-BMP ShEx characterization (#277 comment / follow-up
          issue): literal outside-BMP UTF-8 byte sequences embedded
          directly in a pattern already match correctly (no lead/cont.
          byte collides with an ASCII regex metachar), so no BMP-range
          translation belongs here. The XSD/XPath regex SingleCharEsc
-         control escapes \\n \\r \\t DO need translating though: OCaml
-         Str has no notion of them (Str.regexp \"\\\\t\" matches the
+         control escapes \n \r \t DO need translating though: OCaml
+         Str has no notion of them (Str.regexp "\\t" matches the
          literal letter 't', not a tab byte), so without this the
-         ShExJ \"REGEXP_escapes\" fixtures (which combine these with an
+         ShExJ "REGEXP_escapes" fixtures (which combine these with an
          astral character, hence their OutsideBMP trait tag) fail on
          the control-char escape, not on the astral byte matching. *)
-      else if next = 'n' then (set_atom \"\\\\n\"; i := !i + 2)
-      else if next = 'r' then (set_atom \"\\\\r\"; i := !i + 2)
-      else if next = 't' then (set_atom \"\\\\t\"; i := !i + 2)
+      else if next = 'n' then (set_atom "\\n"; i := !i + 2)
+      else if next = 'r' then (set_atom "\\r"; i := !i + 2)
+      else if next = 't' then (set_atom "\\t"; i := !i + 2)
       else (let s = String.sub p !i 2 in set_atom s; i := !i + 2)
     end else if c = '(' then
       (group_starts := (Buffer.length buf) :: !group_starts;
-       Buffer.add_string buf \"\\\\(\"; last_atom := \"\"; i := !i + 1)
+       Buffer.add_string buf "\\("; last_atom := ""; i := !i + 1)
     else if c = ')' then begin
-      Buffer.add_string buf \"\\\\)\";
+      Buffer.add_string buf "\\)";
       (* #277: capture the FULL group text (not just the closing
          delimiter) so {n,m} repetition of a group re-emits the whole
          group instead of stray close-parens. group_starts is a stack
          (not last_atom_start) because atoms *inside* the group (e.g.
-         the 'b' in \"(ab)\") run through set_atom too and would
+         the 'b' in "(ab)") run through set_atom too and would
          otherwise clobber the group's own start position before we
          get here — nesting-safe via push on '(' / pop on ')'. *)
       (match !group_starts with
@@ -114,11 +117,11 @@ content = content.replace(
          (* Unmatched ')' in a malformed pattern: no group to close
             over, fall back to the pre-#277 behaviour rather than
             crash on Buffer.sub with a bogus start. *)
-         last_atom := \"\\\\)\");
+         last_atom := "\\)");
       i := !i + 1
     end
     else if c = '|' then
-      (Buffer.add_string buf \"\\\\|\"; last_atom := \"\"; i := !i + 1)
+      (Buffer.add_string buf "\\|"; last_atom := ""; i := !i + 1)
     else if c = '?' || c = '+' || c = '*' then
       (Buffer.add_char buf c; i := !i + 1)
     else if c = '{' then begin
@@ -144,7 +147,7 @@ content = content.replace(
           Buffer.add_char mb p.[!i]; i := !i + 1 done;
         if !i < len then i := !i + 1;
         let ms = Buffer.contents mb in
-        if ms = \"\" then begin
+        if ms = "" then begin
           (* {n,} unbounded: n mandatory copies + 0-or-more extra *)
           for _ = 1 to n do Buffer.add_string buf !last_atom done;
           Buffer.add_string buf !last_atom; Buffer.add_char buf '*'
@@ -154,7 +157,7 @@ content = content.replace(
           for _ = 1 to n do Buffer.add_string buf !last_atom done;
           for _ = n + 1 to m do
             Buffer.add_string buf !last_atom;
-            Buffer.add_string buf \"?\" done
+            Buffer.add_string buf "?" done
         end
       end else begin
         (* {n} exact: n mandatory copies, none at all when n = 0 *)
@@ -193,7 +196,7 @@ content = content.replace(
     '''let regex_replace (uu___ : Prims.string) (uu___1 : Prims.string)
   (uu___2 : Prims.string)
   (uu___3 : Prims.string FStar_Pervasives_Native.option) : Prims.string=
-  failwith \"Not yet implemented: SPARQL11.Algebra.regex_replace\"''',
+  failwith "Not yet implemented: SPARQL11.Algebra.regex_replace"''',
     '''let regex_replace_ref : (Prims.string -> Prims.string -> Prims.string -> Prims.string FStar_Pervasives_Native.option -> Prims.string) ref =
   ref (fun t _ _ _ -> t)
 let regex_replace (text : Prims.string) (pattern : Prims.string)
@@ -207,66 +210,66 @@ let regex_replace (text : Prims.string) (pattern : Prims.string)
 # js_of_ocaml + wasm_of_ocaml. See ocaml-output/fstar_pure_hashes.ml.
 content = content.replace(
     '''let hash_md5 (uu___ : Prims.string) : Prims.string=
-  failwith \"Not yet implemented: SPARQL11.Algebra.hash_md5\"''',
+  failwith "Not yet implemented: SPARQL11.Algebra.hash_md5"''',
     '''let hash_md5 (s : Prims.string) : Prims.string=
   Fstar_pure_hashes.md5 s'''
 )
 content = content.replace(
     '''let hash_sha1 (uu___ : Prims.string) : Prims.string=
-  failwith \"Not yet implemented: SPARQL11.Algebra.hash_sha1\"''',
+  failwith "Not yet implemented: SPARQL11.Algebra.hash_sha1"''',
     '''let hash_sha1 (s : Prims.string) : Prims.string=
   Fstar_pure_hashes.sha1 s'''
 )
 content = content.replace(
     '''let hash_sha256 (uu___ : Prims.string) : Prims.string=
-  failwith \"Not yet implemented: SPARQL11.Algebra.hash_sha256\"''',
+  failwith "Not yet implemented: SPARQL11.Algebra.hash_sha256"''',
     '''let hash_sha256 (s : Prims.string) : Prims.string=
   Fstar_pure_hashes.sha256 s'''
 )
 content = content.replace(
     '''let hash_sha384 (uu___ : Prims.string) : Prims.string=
-  failwith \"Not yet implemented: SPARQL11.Algebra.hash_sha384\"''',
+  failwith "Not yet implemented: SPARQL11.Algebra.hash_sha384"''',
     '''let hash_sha384 (s : Prims.string) : Prims.string=
   Fstar_pure_hashes.sha384 s'''
 )
 content = content.replace(
     '''let hash_sha512 (uu___ : Prims.string) : Prims.string=
-  failwith \"Not yet implemented: SPARQL11.Algebra.hash_sha512\"''',
+  failwith "Not yet implemented: SPARQL11.Algebra.hash_sha512"''',
     '''let hash_sha512 (s : Prims.string) : Prims.string=
   Fstar_pure_hashes.sha512 s'''
 )
 
 # 4. Replace UUID/STRUUID hardcoded stubs with random UUID v4 generation
 content = content.replace(
-    '''          if iri_s = \"http://www.w3.org/2005/xpath-functions#uuid\"
+    '''          if iri_s = "http://www.w3.org/2005/xpath-functions#uuid"
           then
             ER_Term
               (RDF_Graph_Executable.T_IRI
-                 \"urn:uuid:00000000-0000-0000-0000-000000000000\")
+                 "urn:uuid:00000000-0000-0000-0000-000000000000")
           else
-            if iri_s = \"http://www.w3.org/2005/xpath-functions#struuid\"
-            then er_string \"00000000-0000-0000-0000-000000000000\"''',
-    '''          if iri_s = \"http://www.w3.org/2005/xpath-functions#uuid\"
+            if iri_s = "http://www.w3.org/2005/xpath-functions#struuid"
+            then er_string "00000000-0000-0000-0000-000000000000"''',
+    '''          if iri_s = "http://www.w3.org/2005/xpath-functions#uuid"
           then
             let () = Random.self_init () in
-            let hex () = Printf.sprintf \"%04x\" (Random.int 0x10000) in
-            let s = Printf.sprintf \"%s%s-%s-%s-%s-%s%s%s\"
+            let hex () = Printf.sprintf "%04x" (Random.int 0x10000) in
+            let s = Printf.sprintf "%s%s-%s-%s-%s-%s%s%s"
               (hex ()) (hex ()) (hex ())
-              (Printf.sprintf \"4%03x\" (Random.int 0x1000))
-              (Printf.sprintf \"%04x\" (0x8000 lor (Random.int 0x4000)))
+              (Printf.sprintf "4%03x" (Random.int 0x1000))
+              (Printf.sprintf "%04x" (0x8000 lor (Random.int 0x4000)))
               (hex ()) (hex ()) (hex ()) in
             ER_Term
               (RDF_Graph_Executable.T_IRI
-                 (Prims.strcat \"urn:uuid:\" s))
+                 (Prims.strcat "urn:uuid:" s))
           else
-            if iri_s = \"http://www.w3.org/2005/xpath-functions#struuid\"
+            if iri_s = "http://www.w3.org/2005/xpath-functions#struuid"
             then
               let () = Random.self_init () in
-              let hex () = Printf.sprintf \"%04x\" (Random.int 0x10000) in
-              let s = Printf.sprintf \"%s%s-%s-%s-%s-%s%s%s\"
+              let hex () = Printf.sprintf "%04x" (Random.int 0x10000) in
+              let s = Printf.sprintf "%s%s-%s-%s-%s-%s%s%s"
                 (hex ()) (hex ()) (hex ())
-                (Printf.sprintf \"4%03x\" (Random.int 0x1000))
-                (Printf.sprintf \"%04x\" (0x8000 lor (Random.int 0x4000)))
+                (Printf.sprintf "4%03x" (Random.int 0x1000))
+                (Printf.sprintf "%04x" (0x8000 lor (Random.int 0x4000)))
                 (hex ()) (hex ()) (hex ()) in
               er_string s'''
 )
@@ -372,9 +375,9 @@ let () = regex_replace_ref := (fun text pattern replacement flags ->
   with _ -> text)'''
 )
 
-with open('$FILE', 'w') as f:
+with open(path, 'w') as f:
     f.write(content)
-"
+PYEOF
 fi
 
 echo "  Regex/hash/UUID stubs patched."
