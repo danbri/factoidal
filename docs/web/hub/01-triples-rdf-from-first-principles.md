@@ -131,11 +131,14 @@ Turtle's `[]` syntax introduces a blank node — "some person, unnamed":
 [] a foaf:Person ; foaf:name "Anonymous Friend" .
 ```
 
+Turtle also allows an *empty* prefix, which makes small examples
+shorter still — the live cell below uses it:
+
 ```observable-js
-const bnodeTurtle =
-  '@prefix foaf: <http://xmlns.com/foaf/0.1/> . ' +
-  '[] a foaf:Person ; foaf:name "Anonymous Friend" .';
-const ds2 = await fn.parse(bnodeTurtle);
+const ds2 = await fn.parse(`
+  @prefix : <http://xmlns.com/foaf/0.1/> .
+  [] a :Person ; :name "Blank Friend" .
+`);
 const quads = [...ds2];
 return {
   size: ds2.size,
