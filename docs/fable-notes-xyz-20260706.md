@@ -189,7 +189,7 @@ The operating pattern that produced ~15 clean landings today:
 - **Use `git -C <abs-path>` for every git call during landings.**
   I corrupted my own cwd bookkeeping once today and started a
   cherry-pick in the wrong repo. Absolute paths cost nothing.
-- **docs/ is 11ty-rendered.** Any `{{ ... }}` or `{% ... %}` in a
+- **docs/ is 11ty-rendered.** Any double-curly or curly-percent template expression in a
   committed markdown file (e.g. quoting GitHub Actions syntax)
   breaks the site build — wrap in raw tags. This broke the deploy
   once today; check `cd docs && npm run build` with a REAL exit
