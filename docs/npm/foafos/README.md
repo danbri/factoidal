@@ -281,14 +281,18 @@ fixtures.
 | `graphs` | `(Dataset) => Array<[iri, Dataset]>` | `factoidal graphs list FILE` | enumerate named graphs (default graph excluded); pure enumeration, no engine round-trip |
 | `canonicalHash` | `(Dataset) => string` | `factoidal graphs hash FILE IRI` | RDFC-1.0 canonical hash of one graph\*\*; graph-scoped sibling of `canonicalize` — typically called with one entry of `graphs()`'s output |
 | `shaclValidate` | `(data, shapes) => {conforms, report: Dataset}` | `factoidal shacl --data FILE --shapes FILE [--json]` (alias: `factoidal validate --shapes FILE FILE`) | \*\* SHACL Core validation; `report` is the `sh:ValidationReport` graph; exit code 0 iff `sh:conforms` |
-| `shexValidate` | `(data, schemaJson, focus, shape?) => boolean \| null` | `factoidal shex --data FILE --schema FILE.json --node N [--shape S]` | \*\* ShEx (Shape Expressions) validation of one focus node; `null` = outside this engine's decidable ShEx fragment, never a guessed answer |
+| `shexValidate` | `(data, schemaText, focus, shape?) => boolean \| null` | `factoidal shex --data FILE --schema FILE.{json,shex} --node N [--shape S]` | \*\* ShEx (Shape Expressions) validation of one focus node; `schemaText` accepts ShExJ or ShExC — dispatched by the first non-whitespace character (`{` ⇒ ShExJ, else ShExC; the CLI additionally honors a `.shex` file extension); `null` = outside this engine's decidable ShEx fragment, never a guessed answer |
 | `owlClosure` | `(data, mode) => Dataset` | `factoidal entail --data FILE --regime RDFS\|OWL-RL` | \*\* materializes the entailment closure (input + derived triples), default graph only. (`query --entail` applies the same closure internally before evaluating a query, but does not dump it on its own.) |
 | `rmlMap` | `(mapping, sourceData, sourceKind) => Dataset` | `factoidal rml --mapping FILE --source FILE --kind json\|csv` | \*\* evaluates an RML mapping graph against one logical source (`sourceKind: "json" \| "csv"`); every triples map reads the SAME source — cross-source joins are out of scope for this entry point |
 | `csvwToRdf` | `(csvText, metadataJson?, {mode?, base?, url?}) => Dataset` | `factoidal csvw --csv FILE [--metadata FILE] [--minimal] [--base IRI] [--url URL]` | \*\* CSVW csv2rdf conversion; metadata omitted = schema inferred from the CSV header row; `mode: "standard" \| "minimal"` (default standard); every table in a multi-table group reads the SAME csvText |
 | `jsonldToRdf` | `(jsonldText, {base?, rdfDirection?, expandContext?, processingMode?}) => Dataset` | `factoidal jsonld --in FILE [--base IRI]` (or `factoidal dump-nq FILE.jsonld`, format auto-detected) | \*\* JSON-LD parsing with options `parse()` has no room for; plain `parse(text, {format:'jsonld'})` also works for the common case |
 | `rifEval` | `(data, rifRulesXml) => Dataset` | `factoidal rif --rules FILE --data FILE` | \*\* RIF Core forward-chaining saturation (materializes input + derived triples); accepts real vendored RIF-XML (`<!DOCTYPE>` + `&rif;`/`&xs;`/`&rdf;` entities) unmodified |
+| `toCottas` | `(data, {format?}) => Uint8Array` | `factoidal compact --native-writer` | \*\* serializes a dataset to COTTAS/Parquet bytes via the native writer; round-trips into `openCottas()` and into the native `--data-cottas`/`--data-cottas-mem` CLI flags byte-for-byte |
+| `openCottas` | `(bytes: string \| Uint8Array \| ArrayBuffer) => handle` | `factoidal query --data-cottas-mem FILE` | \*\* opens a whole `.cottas` artifact's bytes as a queryable, read-only, in-memory store; rows decode lazily as `queryCottas()` touches them (no heap `Dataset`, no full parse) |
+| `queryCottas` | `(handle, sparql) => Bindings[] \| boolean \| Dataset` | `factoidal query --data-cottas-mem FILE -e 'SPARQL'` | \*\* SPARQL over a store opened by `openCottas()`; no `entail` option, no write overlay (read-only), no DESCRIBE |
+| `closeCottas` | `(handle) => void` | N/A | releases a handle from this process's registry; does not evict the underlying byte cache |
 | `queryRaw` | `(input, sparql) => string` | `factoidal query -d FILE -e 'SPARQL' -o json` | SPARQL-Results-JSON string, for callers that want the wire form |
-| `capabilities` | `() => {construct, update, canonicalize, graphs, canonicalHash, shacl, shex, owlClosure, rml, csvw, jsonld, rif, ...}` | N/A | runtime feature probe; the CLI is one fixed native binary, not a runtime bundle whose feature set varies |
+| `capabilities` | `() => {construct, update, canonicalize, graphs, canonicalHash, shacl, shex, owlClosure, rml, csvw, jsonld, rif, cottasBytesStore, ...}` | N/A | runtime feature probe; the CLI is one fixed native binary, not a runtime bundle whose feature set varies |
 | `dataFactory` | RDF/JS DataFactory | N/A | data-model class, not an engine operation |
 | `Dataset` | RDF/JS DatasetCore | N/A | returned by `parse`; accepted everywhere |
 
@@ -307,13 +311,35 @@ don't register (an honest failure, not a silent wrong answer) —
 tracked against the vendored W3C json-ld-api suite.
 \*\* CONSTRUCT, UPDATE, `canonicalize`, `canonicalHash`,
 `shaclValidate`, `shexValidate`, `owlClosure`, `rmlMap`, `csvwToRdf`,
-`jsonldToRdf`, and `rifEval` are probed via `capabilities()`: they
-activate automatically when the dedicated npm-entry engine bundle is
-present, and the package reports their absence honestly against
-older bundles instead of guessing.
+`jsonldToRdf`, `rifEval`, `toCottas`, `openCottas`, `queryCottas`, and
+`closeCottas` are probed via `capabilities()`: they activate
+automatically when the dedicated npm-entry engine bundle is present,
+and the package reports their absence honestly against older bundles
+instead of guessing.
 `canonicalHash` rides the same engine support as `canonicalize` (it
 computes `canonicalize()` over one graph's triples); `graphs` is pure
 JS enumeration and is always available.
+
+### The db API (openCottas/queryCottas/closeCottas/toCottas)
+
+The in-memory COTTAS/Parquet bytes store works identically on both
+engines: `require('factoidal')` (js_of_ocaml) and
+`require('factoidal/wasm')` (wasm_of_ocaml, Node ≥ 22) expose the same
+`toCottas`/`openCottas`/`queryCottas`/`closeCottas` functions, backed
+by the same F\*-verified reader
+(`RDF.CottasStore`/`Parquet.Footer`/`SPARQL11_Store`). A store is
+read-only and holds no `entail` option — see the divergence list on
+`queryCottas`'s doc comment in `lib/api.js`. Zstd-compressed COTTAS
+pages are supported under js_of_ocaml (via the vendored `fzstd`
+decompressor baked into `factoidal.js`); under wasm_of_ocaml, Zstd
+decompression is still an identity-stubbed primitive (a documented
+gap, tracked separately) — write bytes with `toCottas()` (which never
+reaches for Zstd on small in-memory writes) rather than a
+Zstd-compressed on-disk fixture if you need a wasm-portable test case.
+The browser entries mirror this: `browser.js`'s `openCottas`/
+`queryCottas`/`closeCottas`/`toCottas` drive the js_of_ocaml npm-entry
+ABI over `fetch()`; `browser-wasm.js` exposes the same four functions
+against the wasm_of_ocaml npm-entry ABI (`factoidal-npm-entry.wasm.js`).
 
 ## Limits (deliberate, documented)
 
@@ -321,8 +347,12 @@ JS enumeration and is always available.
   1.2 GB. No streaming parse yet — inputs are whole strings.
 - Lenient Turtle parsing: `parse()` cannot yet reject syntax errors
   (bad input can yield an empty dataset).
-- No persistence in the npm build; the on-disk store (COTTAS) is
-  native-only today.
+- No *write* persistence in the npm build (SPARQL Update stays
+  in-memory; durable UPDATE against a COTTAS store on disk is
+  native-only today). *Reading* a COTTAS artifact's bytes is available
+  in-process via `openCottas`/`queryCottas`/`closeCottas`/`toCottas`
+  (both engines, both npm and browser entries) — see "The db API"
+  above.
 - Bundle sizes (measured 2026-07-04): JS engine 554 KB, npm entry
   461 KB, Wasm 43 KB loader + 1.3 MB assets. The Wasm entry trades
   startup cost for throughput.
