@@ -173,6 +173,54 @@ violator).
 | `util_log_runtime.sh` | Realises `assume val emit` for `Util.Log.fst`: env-var-controlled log level, ISO-8601 timestamp, file-or-stderr, mutex. | `ASSUME-IO` (logging is the canonical "I/O sink" example) | ALLOWED. |
 | `parquet_zstd_stubs.c` | C stubs for libzstd. (Not a `.sh` patch but lives in the directory.) | `ASSUME-IO` (vendored binding to libzstd, akin to HACL\* policy) | ALLOWED — document under `formal/third_party/` policy when the README is added. |
 
+**2026-07-06 ratchet-attempt follow-up (#118).** Commits `9750eb7`
+(output-side) and `9c3d160` (bound-side) rewired
+`RDF.Store.Capabilities.Cottas.fst`'s `sc_solve` / `sc_solve_limited` /
+`sc_estimate` / `sc_count_exact` to the token-direct `_tok` entry
+points in `RDF.CottasStore.fst`, and their commit messages describe
+this as removing the *production SPARQL query path's* dependence on
+the id-based dictionary glue (`cottas_ondisk_encode_*` /
+`cottas_ondisk_decode_*` / `cottas_ondisk_search[_limited]` /
+`_estimate` / `_count_exact` / `cottas_ondisk_build_bound_qp_opt`, and
+transitively `cottas_ondisk_runtime.sh`'s `Cottas_ondisk_runtime`
+module, `cottas_ondisk_z_lazy_open.sh`'s `Cottas_ondisk_lazy` module,
+and `cottas_ondisk_zzzzzzzzzzzzzzzzz_token_lookup_runtime.sh`'s
+`Cottas_token_lookup_global` module). That claim is accurate for the
+production path, but a same-day call-graph audit (prompted by a
+request to delete the now-dead glue) found the glue is **not**
+actually unreachable: three consumers still call the id-based entry
+points directly, in real code (not comments) —
+
+- `tests/unit/cottas_memory_buffer_unit.ml` (a `tests/unit/run-all.sh`
+  gate) calls `cottas_ondisk_build_bound_qp_opt`,
+  `cottas_ondisk_search`, `cottas_ondisk_search_limited`,
+  `cottas_ondisk_estimate`, and `cottas_ondisk_count_exact` directly,
+  as its "buffer vs file" equivalence baseline (stage 1 of the
+  in-memory bytes store design, predates the `_tok` migration and was
+  not updated alongside it).
+- `bin/cottas-ondisk-smoketest/cottas_ondisk_smoketest.ml` calls
+  `cottas_ondisk_estimate`.
+- `bin/factoidal-explain/factoidal_explain.ml` calls
+  `cottas_ondisk_build_bound_qp_opt` and the `_ml` encode variants
+  (`cottas_ondisk_encode_subject_ml` etc., the `LazyDictRegistry` path,
+  a sibling of but distinct from the `Cottas_ondisk_runtime` `_fast`
+  functions — also still live).
+
+So `cottas_ondisk_runtime.sh`, `cottas_ondisk_z_lazy_open.sh`, and
+`cottas_ondisk_zzzzzzzzzzzzzzzzz_token_lookup_runtime.sh` remain
+`VIOLATION-SEM`/`MIXED` as tabled above — none of their rows changed
+state on 2026-07-06. Iron Rule #11 retirement (zero live callers) is
+gated on migrating or retiring those three consumers to the `_tok`
+entry points first (#118/#254); until then this is not a safe
+deletion. Separately: `cottas_runtime.sh` (the *other* glue file, one
+row below, backing `Parser.BallyhooCOTTAS`) is unrelated to this
+migration entirely — it is a distinct in-memory backend still called
+directly by `bin/factoidal-cli` and `bin/factoidal-http`, and neither
+`9750eb7` nor `9c3d160` touched it. A prior handoff note
+(`docs/fable-notes-xyz-20260706.md` §4.3/§6, corrected same day)
+conflated the two files' names; this paragraph is the correction of
+record.
+
 ### `formal/fstar/minimal_regrettable_glue_code_each_with_an_open_issue/`
 
 | Patch file | What it does (one sentence) | Category | Action |

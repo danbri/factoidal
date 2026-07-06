@@ -122,10 +122,22 @@ Ranked by my judgement of impact:
    per-row searches (q6 hypothesis, unconfirmed — verify first).
 3. **The #118 glue migration.** ~4,000 lines of unverified OCaml on
    the COTTAS fast paths is the reason the README qualifier exists.
-   The bound-side landing (9c3d160) already made part of
-   cottas_runtime.sh's term-dictionary machinery dead on the live
-   query path — deleting dead glue is cheap ratchet progress before
-   the harder rewrites.
+   The bound-side landing (9c3d160) removed the *production SPARQL
+   query path's* (`RDF.Store.Capabilities.Cottas.fst`'s `sc_solve` /
+   `sc_solve_limited` / `sc_estimate` / `sc_count_exact`) dependence on
+   the id-based term-dictionary glue in `cottas_ondisk_runtime.sh` /
+   `cottas_ondisk_z_lazy_open.sh` / the token-lookup patch — not
+   `cottas_runtime.sh`, which backs the unrelated, still-live
+   `Parser.BallyhooCOTTAS` in-memory backend. Correction from a same-
+   day follow-up audit (2026-07-06, #118 ratchet pass): the glue
+   itself is not yet deletable. `tests/unit/cottas_memory_buffer_unit.ml`
+   (a `run-all.sh` gate), `bin/cottas-ondisk-smoketest/
+   cottas_ondisk_smoketest.ml`, and `bin/factoidal-explain/
+   factoidal_explain.ml` all still call the id-based
+   `cottas_ondisk_build_bound_qp_opt` / `cottas_ondisk_search[_limited]`
+   / `_estimate` / `_count_exact` / the `_ml` encode variants directly.
+   Retirement needs those three consumers migrated or retired first
+   (tracked under #118/#254) before this ratchet is actually cheap.
 4. **Fulltext ranking** (score is a stub) and index persistence (the
    design doc's later slices — in-memory rebuild-on-batch landed).
 5. **GeoSPARQL phases 3-5**: R-tree over bboxes, then the COTTAS
@@ -208,7 +220,12 @@ Near term (finish the started things first):
    reports; their worktrees may still exist under .claude/worktrees.
 2. Hash join + estimate-driven BGP ordering. Measure with the
    competitive harness; the 1M join timeout is the acceptance test.
-3. Delete the dead Bet7 term-dictionary glue paths (ratchet #118).
+3. Migrate or retire the three remaining id-based-dictionary consumers
+   (`tests/unit/cottas_memory_buffer_unit.ml`,
+   `bin/cottas-ondisk-smoketest/`, `bin/factoidal-explain/`) to the
+   `_tok` entry points — only THEN is the Bet7/`cottas_ondisk_runtime.sh`
+   term-dictionary glue actually deletable (ratchet #118; see §4.3
+   correction above — it is not dead yet).
 4. Wasm zstd shim (mirrors the stdint fix).
 
 Medium term:
