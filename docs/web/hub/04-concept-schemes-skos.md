@@ -63,7 +63,7 @@ ex:PetsCollection a skos:Collection ;
 
 One scheme, four concepts (`Animal`, `Mammal`, `Cat`, `Dog`), and one
 `skos:Collection` — this exact fixture comes from
-[`skills/skos-integrity/sample-vocab.ttl`](https://github.com/danbri/factoidal/blob/main/skills/skos-integrity/sample-vocab.ttl),
+[`skills/skos-integrity/sample-vocab.ttl`](https://github.com/danbri/factoidal/blob/claude/main/skills/skos-integrity/sample-vocab.ttl),
 built for this project's SKOS-checking skill. Parse it and pull out
 each concept's English label:
 
@@ -215,7 +215,7 @@ axioms `skos.rdf` asserts. The checks below come straight from that
 prose and are verified with this project's own SHACL and SPARQL
 machinery — no SKOS-specific engine code, and no external answer key
 to score against. That's a documented, honest gap in coverage, not a
-weaker one: the [`skos-integrity` skill](https://github.com/danbri/factoidal/blob/main/skills/skos-integrity/SKILL.md)
+weaker one: the [`skos-integrity` skill](https://github.com/danbri/factoidal/blob/claude/main/skills/skos-integrity/SKILL.md)
 this section reuses records exactly how each condition was checked.
 
 | S# | Statement | Checked by |
@@ -564,6 +564,6 @@ deeper into the validator this post leaned on: shapes as reusable
 contracts for *any* RDF data, not just SKOS's own integrity rules.
 
 Every live cell above is pinned in
-[`tests/hub/post04_test.mjs`](../../../tests/hub/post04_test.mjs) —
+[`tests/hub/post04_test.mjs`](https://github.com/danbri/factoidal/blob/claude/main/tests/hub/post04_test.mjs) —
 the exact same source, executed against the real `npm/factoidal`
 typed API instead of the in-browser `fn` adapter.

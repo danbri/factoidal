@@ -278,6 +278,6 @@ engineering story — is still planned. See the
 full map.
 
 Every live cell above is pinned in
-[`tests/hub/post05_test.mjs`](../../../tests/hub/post05_test.mjs) —
+[`tests/hub/post05_test.mjs`](https://github.com/danbri/factoidal/blob/claude/main/tests/hub/post05_test.mjs) —
 the exact same source, executed against the real `npm/factoidal`
 typed API instead of the in-browser `fn` adapter.

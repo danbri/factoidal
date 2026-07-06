@@ -54,7 +54,7 @@ names its date and the commit it was measured on.
 | What | Measured | Date / commit |
 |---|---|---|
 | Turtle parsing | ~100k triples/s, near-linear to 1M triples (1M in 9.66s) | 2026-07-03, [`11ba254`](https://github.com/danbri/factoidal/commit/11ba254) |
-| In-memory dataset, end-to-end (parse + index + GRAPH-count query) | 1M quads in ~41s, ~1.2 GB peak RSS (~1.2 KB/quad) | 2026-07-03, [`723db3c`](https://github.com/danbri/factoidal/commit/723db3c) |
+| In-memory dataset, end-to-end (parse + index + GRAPH-count query) | 1M quads in ~41s, ~1.2 GB peak RSS (~1.2 KB/quad) | 2026-07-03, [`bef4e4b`](https://github.com/danbri/factoidal/commit/bef4e4b) |
 | OWL-RL closure, sameAs 32-clique (was >590s cap-trip) | 1.07s — closure step reduced from O(k⁶) to ~O(k³) | 2026-07-03, [`4812c3d`](https://github.com/danbri/factoidal/commit/4812c3d) |
 | On-disk COTTAS (WIP) | serves the 3,143,406-quad UK Parliament corpus ([live demo]({{ '/web/demos/ukparliament/' | url }})); fast paths still unverified OCaml being migrated to F\* | [issue #118](https://github.com/danbri/factoidal/issues/118) |
 

@@ -179,6 +179,6 @@ implying — types nobody asserted, derived from a subclass axiom or an
 `owl:equivalentClass` mapping.
 
 Every live cell above is pinned in
-[`tests/hub/post02_test.mjs`](../../../tests/hub/post02_test.mjs) —
+[`tests/hub/post02_test.mjs`](https://github.com/danbri/factoidal/blob/claude/main/tests/hub/post02_test.mjs) —
 the exact same source, executed against the real `npm/factoidal`
 typed API instead of the in-browser `fn` adapter.

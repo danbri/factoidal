@@ -28,6 +28,12 @@ Built with Eleventy (11ty) from `docs/`; published at
   `workflow_run` subscription exists; don't remove it).
 - Advisory link check: `tests/local/check_pages_links.sh docs/_site`
   (non-blocking in CI; run it locally after structural edits).
+- Hub-specific link check (headless-browser link walk over the
+  documentation hub + homepage, catches wrong-branch `github.com/blob`
+  URLs and repo-relative markdown links that escape the site root):
+  `tests/web-demos/hub_links_check.sh` (exits nonzero on broken
+  same-site links), `--external` also probes `github.com` links
+  (advisory only, never fails the script — CI may lack egress).
 
 Site content map: `docs/index.md` (front page + build-targets table),
 `docs/web/landing/` (landing page), `docs/web/demos/` (demo pages),

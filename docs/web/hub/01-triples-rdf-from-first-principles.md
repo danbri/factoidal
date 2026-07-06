@@ -20,7 +20,7 @@ the F\*-extracted engine.
 
 Every triple is built from **terms**, and RDF 1.1 recognizes exactly
 three disjoint kinds of term. This project's F\* specification says so
-directly — [`RDF.Term.fsti`](https://github.com/danbri/factoidal/blob/main/formal/fstar/RDF.Term.fsti)
+directly — [`RDF.Term.fsti`](https://github.com/danbri/factoidal/blob/claude/main/formal/fstar/RDF.Term.fsti)
 is written to be read by a human who knows RDF but not F\*, one
 concept per block:
 
@@ -160,6 +160,6 @@ over a small Wikidata-shaped dataset. After that, [RDFS and OWL 2 RL](./03-schem
 show how a graph can imply triples nobody asserted.
 
 Every live cell above is pinned in
-[`tests/hub/post01_test.mjs`](../../../tests/hub/post01_test.mjs) —
+[`tests/hub/post01_test.mjs`](https://github.com/danbri/factoidal/blob/claude/main/tests/hub/post01_test.mjs) —
 the exact same source, executed against the real `npm/factoidal`
 typed API instead of the in-browser `fn` adapter.

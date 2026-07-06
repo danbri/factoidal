@@ -131,6 +131,6 @@ the [series plan](../../designissues/2026-07-05-docs-hub-plan.md) for
 the full map.
 
 Every live cell above is pinned in
-[`tests/hub/post03_test.mjs`](../../../tests/hub/post03_test.mjs) —
+[`tests/hub/post03_test.mjs`](https://github.com/danbri/factoidal/blob/claude/main/tests/hub/post03_test.mjs) —
 the exact same source, executed against the real `npm/factoidal`
 typed API instead of the in-browser `fn` adapter.
