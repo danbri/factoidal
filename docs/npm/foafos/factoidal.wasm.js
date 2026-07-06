@@ -206,8 +206,8 @@ of
 d.getSystemErrorMap())if(a[1][0]===e)return a[1][1];return e||c+a}else
 return d.getSystemErrorMessage(a)}function
 p(a){return a>=0?a:-BigInt(a)}function
-d(a){return a==BigInt.asIntN(31,a)?Number(a):a}function
-q(a,b){return d(BigInt(a)+BigInt(b))}var
+e(a){return a==BigInt.asIntN(31,a)?Number(a):a}function
+q(a,b){return e(BigInt(a)+BigInt(b))}var
 v="0",V=1000,j="-",l="",C="+",h=function(J){"use strict";var
 m=1e7,i=m,ak=7,w=9007199254740992,M=s(w),W="0123456789abcdefghijklmnopqrstuvwxyz",b=ai.BigInt,I=typeof
 b==="function";function
@@ -482,10 +482,10 @@ c};f.randBetween=aq;f.fromArray=function(a,b,c){return ac(a.map(g),g(b||10),c)};
 i(a){throw a}var
 g=[0];function
 k(){i(g["predef:Division_by_zero"])}function
-f(a){var
+d(a){var
 b=a.toJSNumber()|0;if(a.equals(h(b)))return b;return a}function
-c(a,b){b=h(b);if(b.equals(h(0)))k();return f(h(a).divide(h(b)))}function
-n(a,b){return f(h(a).add(h(b)))}function
+c(a,b){b=h(b);if(b.equals(h(0)))k();return d(h(a).divide(h(b)))}function
+n(a,b){return d(h(a).add(h(b)))}function
 r(a,b){if(a==0)return 0;if(a>0==b>0)if(BigInt(a)%BigInt(b)!=0)return n(c(a,b),1n);return c(a,b)}function
 s(a,b){return(a>b)-(a<b)}function
 t(a,b,c,d){var
@@ -493,7 +493,7 @@ f=0n;for(var
 g=0;g<d/4;g++){var
 e=BigInt(a(b));e|=BigInt(a(b))<<8n;e|=BigInt(a(b))<<16n;e|=BigInt(a(b))<<24n;f|=e<<BigInt(32*g)}if(c)f=-f;return f}function
 u(a,b){return a==b}function
-o(a,b){return f(h(a).subtract(h(b)))}function
+o(a,b){return d(h(a).subtract(h(b)))}function
 w(a,b){if(a==0)return 0;if(a>0!=b>0)if(BigInt(a)%BigInt(b)!=0)return o(c(a,b),1n);return c(a,b)}function
 x(a,b){b=BigInt(b);var
 h=10,o=0,k=0,g=0,n=0,i=l,m=" ",f=m,d=0,e=l;while(a[d]=="%")d++;for(;;d++)if(a[d]=="#")g=1;else if(a[d]==v)f=v;else if(a[d]==j)n=1;else if(a[d]==m||a[d]==C)i=a[d];else
@@ -502,26 +502,24 @@ break;if(b<0){i=j;b=-b}for(;a[d]>=v&&a[d]<="9";d++)k=10*k+
 c=b.toString(h);if(o===1)c=c.toUpperCase();var
 q=c.length;if(f==m)if(n){c=i+e+c;for(;c.length<k;)c=c+f}else{c=i+e+c;for(;c.length<k;)c=f+c}else{var
 p=i+e;for(;c.length+p.length<k;)c=f+c;c=p+c}return c}var
-e=32n;function
+f=32n;function
 y(a,b){b=BigInt(b);var
-f=b<0;if(f)b=-b;var
-d=0,c=0;while(b){d++;c=a(c,Number(BigInt.asIntN(32,b)));b>>=e}if(d&1)c=a(c,0);if(f)c++;return c}function
-z(a,b){return d(BigInt(a)|BigInt(b))}function
-A(a,b){return d(BigInt(a)*BigInt(b))}function
-B(a){return d(-BigInt(a))}function
-D(a,b){if(a==0){a=10;var
+e=b<0;if(e)b=-b;var
+d=0,c=0;while(b){d++;c=a(c,Number(BigInt.asIntN(32,b)));b>>=f}if(d&1)c=a(c,0);if(e)c++;return c}function
+z(a,b){return e(BigInt(a)*BigInt(b))}function
+A(a){return e(-BigInt(a))}function
+B(a,b){if(a==0){a=10;var
 c=0,k=1;if(b[c]==j){k=-1;c++}else if(b[c]==C)c++;if(b[c]==v){c++;if(b.length==c)return 0;else{var
 f=b[c];if(f=="o"||f=="O")a=8;else if(f=="x"||f=="X")a=16;else if(f=="b"||f=="B")a=2;if(a!=10){b=b.substring(c+1);if(k==-1)b=j+b}}}}function
 n(a){if(a>=48&&a<=57)return a-48;if(a>=97&&a<=102)return a-97+10;if(a>=65&&a<=70)return a-65+10;return V}var
-i=!1,e=0;if(b[e]==C)b=b.substring(1);else if(b[e]==j){i=!0;e++}if(b[e]=="_")return null;b=b.replace(/_/g,l);if(b==j||b==l)b=v;var
-g=0n,m=BigInt(a);for(;e<b.length;e++){var
-h=n(b.charCodeAt(e));if(h>=a)return null;g=g*m+BigInt(h)}if(i)g=-g;return d(g)}function
-E(a){return a>=0}function
-F(a,b){return d(BigInt(a)%BigInt(b))}function
-G(a,b,c){if(c<0)c=-c;do{var
-d=Number(BigInt.asIntN(32,c));a(b,d);a(b,d>>>8);a(b,d>>>16);a(b,d>>>24);c>>=e}while(c)}function
-H(a,b){return d(BigInt(a)<<BigInt(b))}function
-I(a){if(a<0)a=-a;var
-b=0,c=1n;while(c<=a){b+=1;c<<=e}return b}function
-J(a,b){return d(BigInt(a)-BigInt(b))}return{wasm_z_sub:J,wasm_z_size:I,wasm_z_shift_left:H,wasm_z_serialize:G,wasm_z_rem:F,wasm_z_positive:E,wasm_z_of_js_string_base:D,wasm_z_neg:B,wasm_z_mul:A,wasm_z_logor:z,wasm_z_hash:y,wasm_z_format:x,wasm_z_fdiv:w,wasm_z_equal:u,wasm_z_deserialize:t,wasm_z_compare:s,wasm_z_cdiv:r,wasm_z_add:q,wasm_z_abs:p,unix_error:b,caml_strerror:m}}(globalThis))({"link":[["code-fc09ea354cfa512e66fa",0]],"generated":(a=>{var
-b=a,c=a?.module?.export||a;return{"env":{"uint32_of_int":(...a)=>a[0]!==undefined?a[0]:0,"unix_pipe":(...a)=>a[0]!==undefined?a[0]:0,"uint64_max_int":(...a)=>a[0]!==undefined?a[0]:0,"uint32_or":(...a)=>a[0]!==undefined?a[0]:0,"int_of_uint32":(...a)=>a[0]!==undefined?a[0]:0,"int128_of_int":(...a)=>a[0]!==undefined?a[0]:0,"unix_execvp":(...a)=>a[0]!==undefined?a[0]:0,"uint64_of_int":(...a)=>a[0]!==undefined?a[0]:0,"uint32_sub":(...a)=>a[0]!==undefined?a[0]:0,"uint32_and":(...a)=>a[0]!==undefined?a[0]:0,"uint128_of_int":(...a)=>a[0]!==undefined?a[0]:0,"int56_of_int":(...a)=>a[0]!==undefined?a[0]:0,"int48_of_int":(...a)=>a[0]!==undefined?a[0]:0,"int40_of_int":(...a)=>a[0]!==undefined?a[0]:0,"unix_waitpid":(...a)=>a[0]!==undefined?a[0]:0,"unix_spawn":(...a)=>a[0]!==undefined?a[0]:0,"unix_environment":(...a)=>a[0]!==undefined?a[0]:0,"unix_dup":(...a)=>a[0]!==undefined?a[0]:0,"uint64_init_custom_ops":(...a)=>a[0]!==undefined?a[0]:0,"uint56_of_int":(...a)=>a[0]!==undefined?a[0]:0,"uint48_of_int":(...a)=>a[0]!==undefined?a[0]:0,"uint40_of_int":(...a)=>a[0]!==undefined?a[0]:0,"uint32_shift_right":(...a)=>a[0]!==undefined?a[0]:0,"uint32_shift_left":(...a)=>a[0]!==undefined?a[0]:0,"uint32_mul":(...a)=>a[0]!==undefined?a[0]:0,"uint32_mod":(...a)=>a[0]!==undefined?a[0]:0,"uint32_max_int":(...a)=>a[0]!==undefined?a[0]:0,"uint32_init_custom_ops":(...a)=>a[0]!==undefined?a[0]:0,"uint32_div":(...a)=>a[0]!==undefined?a[0]:0,"uint32_add":(...a)=>a[0]!==undefined?a[0]:0,"uint128_max_int":(...a)=>a[0]!==undefined?a[0]:0,"uint128_init_custom_ops":(...a)=>a[0]!==undefined?a[0]:0,"int56_min_int":(...a)=>a[0]!==undefined?a[0]:0,"int56_max_int":(...a)=>a[0]!==undefined?a[0]:0,"int48_min_int":(...a)=>a[0]!==undefined?a[0]:0,"int48_max_int":(...a)=>a[0]!==undefined?a[0]:0,"int40_min_int":(...a)=>a[0]!==undefined?a[0]:0,"int40_max_int":(...a)=>a[0]!==undefined?a[0]:0,"int128_min_int":(...a)=>a[0]!==undefined?a[0]:0,"int128_max_int":(...a)=>a[0]!==undefined?a[0]:0,"int128_init_custom_ops":(...a)=>a[0]!==undefined?a[0]:0,"caml_unix_map_file_bytecode":(...a)=>a[0]!==undefined?a[0]:0,"caml_parquet_zstd_decompress_hex":(...a)=>a[0]!==undefined?a[0]:0}}})(globalThis),"src":"factoidal.wasm.assets"});
+i=!1,d=0;if(b[d]==C)b=b.substring(1);else if(b[d]==j){i=!0;d++}if(b[d]=="_")return null;b=b.replace(/_/g,l);if(b==j||b==l)b=v;var
+g=0n,m=BigInt(a);for(;d<b.length;d++){var
+h=n(b.charCodeAt(d));if(h>=a)return null;g=g*m+BigInt(h)}if(i)g=-g;return e(g)}function
+D(a){return a>=0}function
+E(a,b){return e(BigInt(a)%BigInt(b))}function
+F(a,b,c){if(c<0)c=-c;do{var
+d=Number(BigInt.asIntN(32,c));a(b,d);a(b,d>>>8);a(b,d>>>16);a(b,d>>>24);c>>=f}while(c)}function
+G(a){if(a<0)a=-a;var
+b=0,c=1n;while(c<=a){b+=1;c<<=f}return b}function
+H(a,b){return e(BigInt(a)-BigInt(b))}return{wasm_z_sub:H,wasm_z_size:G,wasm_z_serialize:F,wasm_z_rem:E,wasm_z_positive:D,wasm_z_of_js_string_base:B,wasm_z_neg:A,wasm_z_mul:z,wasm_z_hash:y,wasm_z_format:x,wasm_z_fdiv:w,wasm_z_equal:u,wasm_z_deserialize:t,wasm_z_compare:s,wasm_z_cdiv:r,wasm_z_add:q,wasm_z_abs:p,unix_error:b,caml_strerror:m}}(globalThis))({"link":[["code-679fdef951918152ef52",0]],"generated":(a=>{var
+b=a,c=a?.module?.export||a;return{"env":{"uint32_of_int":(...a)=>a[0]!==undefined?a[0]:0,"unix_getpid":(...a)=>a[0]!==undefined?a[0]:0,"uint64_max_int":(...a)=>a[0]!==undefined?a[0]:0,"uint32_and":(...a)=>a[0]!==undefined?a[0]:0,"uint32_or":(...a)=>a[0]!==undefined?a[0]:0,"int_of_uint32":(...a)=>a[0]!==undefined?a[0]:0,"int128_of_int":(...a)=>a[0]!==undefined?a[0]:0,"unix_execvp":(...a)=>a[0]!==undefined?a[0]:0,"uint64_of_int":(...a)=>a[0]!==undefined?a[0]:0,"uint32_xor":(...a)=>a[0]!==undefined?a[0]:0,"uint32_sub":(...a)=>a[0]!==undefined?a[0]:0,"uint128_of_int":(...a)=>a[0]!==undefined?a[0]:0,"int56_of_int":(...a)=>a[0]!==undefined?a[0]:0,"int48_of_int":(...a)=>a[0]!==undefined?a[0]:0,"int40_of_int":(...a)=>a[0]!==undefined?a[0]:0,"unix_waitpid":(...a)=>a[0]!==undefined?a[0]:0,"unix_spawn":(...a)=>a[0]!==undefined?a[0]:0,"unix_set_close_on_exec":(...a)=>a[0]!==undefined?a[0]:0,"unix_pipe":(...a)=>a[0]!==undefined?a[0]:0,"unix_dup":(...a)=>a[0]!==undefined?a[0]:0,"uint64_init_custom_ops":(...a)=>a[0]!==undefined?a[0]:0,"uint56_of_int":(...a)=>a[0]!==undefined?a[0]:0,"uint48_of_int":(...a)=>a[0]!==undefined?a[0]:0,"uint40_of_int":(...a)=>a[0]!==undefined?a[0]:0,"uint32_shift_right":(...a)=>a[0]!==undefined?a[0]:0,"uint32_shift_left":(...a)=>a[0]!==undefined?a[0]:0,"uint32_mul":(...a)=>a[0]!==undefined?a[0]:0,"uint32_mod":(...a)=>a[0]!==undefined?a[0]:0,"uint32_max_int":(...a)=>a[0]!==undefined?a[0]:0,"uint32_init_custom_ops":(...a)=>a[0]!==undefined?a[0]:0,"uint32_div":(...a)=>a[0]!==undefined?a[0]:0,"uint32_add":(...a)=>a[0]!==undefined?a[0]:0,"uint128_max_int":(...a)=>a[0]!==undefined?a[0]:0,"uint128_init_custom_ops":(...a)=>a[0]!==undefined?a[0]:0,"int56_min_int":(...a)=>a[0]!==undefined?a[0]:0,"int56_max_int":(...a)=>a[0]!==undefined?a[0]:0,"int48_min_int":(...a)=>a[0]!==undefined?a[0]:0,"int48_max_int":(...a)=>a[0]!==undefined?a[0]:0,"int40_min_int":(...a)=>a[0]!==undefined?a[0]:0,"int40_max_int":(...a)=>a[0]!==undefined?a[0]:0,"int128_min_int":(...a)=>a[0]!==undefined?a[0]:0,"int128_max_int":(...a)=>a[0]!==undefined?a[0]:0,"int128_init_custom_ops":(...a)=>a[0]!==undefined?a[0]:0,"caml_unix_map_file_bytecode":(...a)=>a[0]!==undefined?a[0]:0,"caml_parquet_zstd_decompress_hex":(...a)=>a[0]!==undefined?a[0]:0}}})(globalThis),"src":"factoidal.wasm.assets"});

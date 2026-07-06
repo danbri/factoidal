@@ -852,6 +852,118 @@ export async function jsonldToRdf(jsonldText, options) {
   return parsed;
 }
 
+/**
+ * Open a COTTAS/Parquet artifact's raw bytes as a queryable, read-only
+ * store (bin/npm-entry/entry_jsoo.ml's openCottas export;
+ * docs/designissues/2026-07-06-inmemory-bytes-store.md, browser call
+ * site). Rows decode lazily as queryCottas() touches them -- the
+ * corpus is never parsed into a heap dataset (that would defeat the
+ * memory win the design doc measures).
+ *
+ * @param {string|Uint8Array|ArrayBuffer} bytes whole `.cottas` file contents
+ * @returns {Promise<string>} opaque handle for queryCottas()/closeCottas()
+ */
+export async function openCottas(bytes) {
+  let hex;
+  if (typeof bytes === 'string') {
+    if (!/^[0-9a-fA-F]*$/.test(bytes) || bytes.length % 2 !== 0) {
+      throw new TypeError('openCottas: string input must be an even-length hex string');
+    }
+    hex = bytes.toLowerCase();
+  } else {
+    const u8 = bytes instanceof Uint8Array ? bytes
+      : bytes instanceof ArrayBuffer ? new Uint8Array(bytes) : null;
+    if (!u8) {
+      throw new TypeError('openCottas: expected a hex string, Uint8Array, or ArrayBuffer');
+    }
+    // Array-join, not per-byte string concat -- the concat loop
+    // allocates millions of intermediate strings on a corpus-scale
+    // artifact (same fix as lib/api.js's bytesToHex).
+    const HEX = '0123456789abcdef';
+    const parts = new Array(u8.length);
+    for (let i = 0; i < u8.length; i++) {
+      parts[i] = HEX[u8[i] >> 4] + HEX[u8[i] & 15];
+    }
+    hex = parts.join('');
+  }
+  const abi = await loadNpmEntry();
+  if (typeof abi.openCottas !== 'function') {
+    throw new Error('openCottas: the loaded factoidal-npm-entry bundle predates the openCottas export');
+  }
+  const parsed = JSON.parse(abi.openCottas(hex));
+  if (!parsed.ok) throw new Error(parsed.error || 'openCottas failed');
+  return parsed.handle;
+}
+
+/**
+ * Run a SPARQL 1.1 query against a store opened by openCottas()
+ * (bin/npm-entry/entry_jsoo.ml's queryCottas export). No `entail`
+ * option and no write overlay (read-only) -- see entry_jsoo.ml's
+ * queryCottas doc comment for the full divergence list from query().
+ *
+ * @param {string} handle from openCottas()
+ * @param {string} sparql
+ * @returns {Promise<{ok:true,kind:'select',srj:object}|{ok:true,kind:'ask',boolean:boolean}|{ok:true,kind:'construct',nquads:string}>}
+ */
+export async function queryCottas(handle, sparql) {
+  if (typeof handle !== 'string') {
+    throw new TypeError('queryCottas: handle must be the string openCottas() returned');
+  }
+  if (typeof sparql !== 'string') {
+    throw new TypeError('queryCottas: sparql must be a string');
+  }
+  const abi = await loadNpmEntry();
+  if (typeof abi.queryCottas !== 'function') {
+    throw new Error('queryCottas: the loaded factoidal-npm-entry bundle predates the queryCottas export');
+  }
+  const parsed = JSON.parse(abi.queryCottas(handle, encodeTextAsBundleBytes(sparql)));
+  if (!parsed.ok) throw new Error(parsed.error || 'queryCottas failed');
+  return parsed;
+}
+
+/**
+ * Release a store opened by openCottas() (bin/npm-entry/entry_jsoo.ml's
+ * closeCottas export). Drops the handle from the entry bundle's own
+ * registry only -- does not evict the underlying byte cache (design
+ * doc "Open decisions" item 1: no eviction API exists yet).
+ * @param {string} handle
+ * @returns {Promise<void>}
+ */
+export async function closeCottas(handle) {
+  const abi = await loadNpmEntry();
+  if (typeof abi.closeCottas !== 'function') {
+    throw new Error('closeCottas: the loaded factoidal-npm-entry bundle predates the closeCottas export');
+  }
+  const parsed = JSON.parse(abi.closeCottas(handle));
+  if (!parsed.ok) throw new Error(parsed.error || 'closeCottas failed');
+}
+
+/**
+ * Serialize a dataset-handle N-Quads string to COTTAS/Parquet bytes via
+ * the native writer (bin/npm-entry/entry_jsoo.ml's toCottas export;
+ * RDF.CottasStore.BaseWriter.serialize_cottas_v2, the same pure `Tot`
+ * function `factoidal compact --native-writer` uses). Round-trips into
+ * openCottas() byte-for-byte.
+ *
+ * @param {string} nQuads dataset-handle N-Quads text (see toRdf() to get here from another format)
+ * @returns {Promise<Uint8Array>}
+ */
+export async function toCottas(nQuads) {
+  if (typeof nQuads !== 'string') {
+    throw new TypeError('toCottas: nQuads must be a string');
+  }
+  const abi = await loadNpmEntry();
+  if (typeof abi.toCottas !== 'function') {
+    throw new Error('toCottas: the loaded factoidal-npm-entry bundle predates the toCottas export');
+  }
+  const parsed = JSON.parse(abi.toCottas(nQuads));
+  if (!parsed.ok) throw new Error(parsed.error || 'toCottas failed');
+  const hex = parsed.cottasHex;
+  const out = new Uint8Array(hex.length / 2);
+  for (let i = 0; i < out.length; i++) out[i] = parseInt(hex.substr(i * 2, 2), 16);
+  return out;
+}
+
 // ---------------------------------------------------------------------
 // Durable-UPDATE browser persistence (issue #282's browser realisation
 // -- see docs/designissues/2026-07-06-browser-persistence.md for the
@@ -1094,4 +1206,5 @@ export default {
   shaclValidate, shexValidate, owlClosure, rmlMap, jsonldToRdf,
   deltaLogOpen, deltaLogAppend, deltaLogReadAllHex, deltaLogMerge,
   deltaLogDestroy, _deltaLogCorruptLastForTest,
+  openCottas, queryCottas, closeCottas, toCottas,
 };

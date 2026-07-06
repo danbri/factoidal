@@ -699,6 +699,166 @@ function buildApi(driver) {
     });
   }
 
+  // -----------------------------------------------------------------
+  // In-memory COTTAS bytes store (docs/designissues/2026-07-06-
+  // inmemory-bytes-store.md, stage 5). Needs the npm-entry bundle
+  // (bin/npm-entry/entry_jsoo.ml's openCottas/queryCottas/closeCottas/
+  // toCottas exports). Unlike every other operation in this file, the
+  // "dataset" here is NOT an in-heap Dataset: openCottas() returns an
+  // opaque handle string naming an entry the F*-verified COTTAS/Parquet
+  // reader decodes lazily, row-group by row-group, as queryCottas()
+  // touches it -- the whole point of the design (heap-store parity
+  // would defeat the memory win the design doc measures). See
+  // queryCottas's doc comment for the query-shape/entailment/write
+  // divergences from query() this implies.
+  // -----------------------------------------------------------------
+
+  // Accept a hex string, a Uint8Array/Buffer, or a plain ArrayBuffer;
+  // normalize to the lowercase hex string the entry ABI's string-only
+  // wire contract requires (same "strings in, JSON out" ABI every
+  // other entry export uses -- see entry_jsoo.ml's file header).
+  function bytesToHex(bytesLike, who) {
+    if (typeof bytesLike === 'string') {
+      if (!/^[0-9a-fA-F]*$/.test(bytesLike) || bytesLike.length % 2 !== 0) {
+        throw new TypeError(`${who}: string input must be an even-length hex string`);
+      }
+      return bytesLike.toLowerCase();
+    }
+    let u8;
+    if (bytesLike instanceof Uint8Array) u8 = bytesLike;
+    else if (bytesLike instanceof ArrayBuffer) u8 = new Uint8Array(bytesLike);
+    else {
+      throw new TypeError(
+        `${who}: expected a hex string, Uint8Array, Buffer, or ArrayBuffer`);
+    }
+    // Buffer's native hex codec when available (Node); a per-byte
+    // string-concat loop allocates millions of intermediate strings on
+    // a corpus-scale artifact (it measurably dominated the bytes-store
+    // path's RSS at 50,000 quads before this branch existed).
+    if (typeof Buffer !== 'undefined' && typeof Buffer.from === 'function') {
+      return Buffer.from(u8.buffer, u8.byteOffset, u8.byteLength).toString('hex');
+    }
+    const HEX = '0123456789abcdef';
+    const parts = new Array(u8.length);
+    for (let i = 0; i < u8.length; i++) {
+      parts[i] = HEX[u8[i] >> 4] + HEX[u8[i] & 15];
+    }
+    return parts.join('');
+  }
+
+  function hexToBytes(hex) {
+    const out = new Uint8Array(hex.length / 2);
+    for (let i = 0; i < out.length; i++) {
+      out[i] = parseInt(hex.substr(i * 2, 2), 16);
+    }
+    return out;
+  }
+
+  /**
+   * Open a COTTAS/Parquet artifact's raw bytes as a queryable,
+   * read-only store -- the in-memory-bytes-store design's browser call
+   * site. Needs the npm-entry bundle. The store is NOT materialized
+   * into a heap Dataset: rows are decoded lazily by queryCottas() as a
+   * query actually touches them (measured 64-161 B/quad in the design
+   * doc's native numbers, vs. ~877 B/quad for a fully-parsed heap
+   * Dataset of the same data).
+   *
+   * @param {string|Uint8Array|ArrayBuffer} bytes whole `.cottas` file contents
+   * @returns {Promise<string>} an opaque handle for queryCottas()/closeCottas()
+   */
+  async function openCottas(bytes) {
+    const e = await entry();
+    if (!e) throw pendingError('openCottas (in-memory COTTAS bytes store)');
+    requireEntryFn(e, 'openCottas', 'openCottas');
+    const hex = bytesToHex(bytes, 'openCottas');
+    const r = entryResult(e.openCottas(hex), 'openCottas');
+    return r.handle;
+  }
+
+  /**
+   * Run a SPARQL 1.1 query against a store opened by openCottas().
+   * Needs the npm-entry bundle.
+   *
+   * Divergences from query() (documented, not silent):
+   *  - No `entail` option -- bare COTTAS bytes carry no closure step.
+   *  - No write/--delta-log overlay -- read-only (design doc §2.4's
+   *    write-overlay story composes at the native store_caps layer;
+   *    it is not wired into this browser ABI).
+   *  - A query SHAPE the backend executor can't push down (rare; the
+   *    same honest-failure posture the native `--data-cottas` CLI path
+   *    has for run_select_query_backend_dataset/run_ask_query_backend_
+   *    dataset returning None) rejects with an Error rather than
+   *    silently falling back to a full materialize -- that fallback
+   *    would defeat the store's whole memory argument.
+   *  - DESCRIBE is not supported (same cut queryDataset's ABI has).
+   *
+   * @param {string} handle from openCottas()
+   * @param {string} sparql
+   * @returns {Promise<Array<Map<string, object>>|boolean|Dataset>}
+   *   SELECT -> Bindings[], ASK -> boolean, CONSTRUCT -> Dataset
+   *   (materialized once, via SPARQL11_Store.materialize_dataset_backend
+   *   -- see entry_jsoo.ml's queryCottas doc comment for why CONSTRUCT
+   *   alone pays that cost).
+   */
+  async function queryCottas(handle, sparql) {
+    if (typeof handle !== 'string') {
+      throw new TypeError('queryCottas: handle must be the string openCottas() returned');
+    }
+    if (typeof sparql !== 'string') {
+      throw new TypeError('queryCottas: sparql must be a string');
+    }
+    const e = await entry();
+    if (!e) throw pendingError('queryCottas');
+    requireEntryFn(e, 'queryCottas', 'queryCottas');
+    const r = entryResult(e.queryCottas(handle, sparql), 'queryCottas');
+    if (r.kind === 'ask') return r.boolean;
+    if (r.kind === 'construct') {
+      return Dataset.fromNQuads(r.nquads, { blankNodePrefix: freshBnodePrefix() });
+    }
+    return bindingsFromSrj(r.srj);
+  }
+
+  /**
+   * Release a store opened by openCottas(). Drops the handle from this
+   * process's registry only -- it does NOT evict the underlying byte
+   * cache the entry bundle keeps for the process's lifetime (design
+   * doc "Open decisions" item 1: no eviction API exists yet). A page
+   * that opens many short-lived stores still grows that cache for the
+   * tab's lifetime; this is a documented limitation, not a silent leak.
+   * @param {string} handle
+   * @returns {Promise<void>}
+   */
+  async function closeCottas(handle) {
+    if (typeof handle !== 'string') {
+      throw new TypeError('closeCottas: handle must be the string openCottas() returned');
+    }
+    const e = await entry();
+    if (!e) throw pendingError('closeCottas');
+    requireEntryFn(e, 'closeCottas', 'closeCottas');
+    entryResult(e.closeCottas(handle), 'closeCottas');
+  }
+
+  /**
+   * Serialize a dataset to COTTAS/Parquet bytes via the native writer
+   * (RDF.CottasStore.BaseWriter.serialize_cottas_v2 -- the SAME pure
+   * `Tot` F* function `factoidal compact --native-writer` uses), for a
+   * caller to persist (IndexedDB/OPFS) or offer as a download. Needs
+   * the npm-entry bundle. Round-trips through openCottas(): the bytes
+   * this returns are valid input to openCottas() and to the native
+   * `--data-cottas`/`--data-cottas-mem` CLI flags, byte-for-byte.
+   * @param {Dataset|string|Array} data
+   * @param {{format?: string}} [options]
+   * @returns {Promise<Uint8Array>}
+   */
+  async function toCottas(data, options) {
+    const e = await entry();
+    if (!e) throw pendingError('toCottas (native COTTAS serialization)');
+    requireEntryFn(e, 'toCottas', 'toCottas');
+    const nq = docsToEntryNQuads(e, toDocs(data, options), 'toCottas');
+    const r = entryResult(e.toCottas(nq), 'toCottas');
+    return hexToBytes(r.cottasHex);
+  }
+
   /**
    * Feature probe, for tests and downstream capability checks.
    * @returns {Promise<{entry: boolean, construct: boolean,
@@ -731,6 +891,8 @@ function buildApi(driver) {
         csvw: typeof e.csvwToRdf === 'function',
         jsonld: typeof e.jsonldToRdf === 'function',
         rif: typeof e.rifEval === 'function',
+        cottasBytesStore: typeof e.openCottas === 'function' &&
+          typeof e.queryCottas === 'function' && typeof e.toCottas === 'function',
       };
     }
     // Probe --canonicalize support on the CLI bundle with a 1-quad doc.
@@ -749,7 +911,7 @@ function buildApi(driver) {
       entry: false, construct: false, update: false, canonicalize: canon,
       graphs: true, canonicalHash: canon,
       shacl: false, shex: false, owlClosure: false, rml: false,
-      csvw: false, jsonld: false, rif: false,
+      csvw: false, jsonld: false, rif: false, cottasBytesStore: false,
     };
   }
 
@@ -768,6 +930,10 @@ function buildApi(driver) {
     csvwToRdf,
     jsonldToRdf,
     rifEval,
+    openCottas,
+    queryCottas,
+    closeCottas,
+    toCottas,
     capabilities,
     Dataset,
     dataFactory,

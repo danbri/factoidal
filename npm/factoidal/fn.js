@@ -540,6 +540,60 @@ async function equals(a, b) {
 }
 
 /**
+ * Open a COTTAS/Parquet artifact's raw bytes as a queryable, read-only
+ * store (docs/designissues/2026-07-06-inmemory-bytes-store.md, browser
+ * call site). Needs the npm-entry engine bundle. Unlike every other
+ * constructor in this module, the returned object is NOT an FnDataset:
+ * the whole point of the design is that rows decode lazily as a query
+ * touches them, never materializing the corpus into heap FnDataset
+ * quads (measured 64-161 B/quad vs. an FnDataset/heap Dataset's
+ * ~877 B/quad for the same data, in the design doc's native numbers).
+ *
+ * @param {string|Uint8Array|ArrayBuffer} bytes whole `.cottas` file contents
+ * @returns {Promise<{handle: string,
+ *   query: (sparql: string) => Promise<Array<Map<string,object>>|boolean|FnDataset>,
+ *   close: () => Promise<void>}>}
+ *   query() divergences from fn.query() (documented, not silent): no
+ *   entail option, no write/--delta-log overlay (read-only), and a
+ *   query shape the backend executor can't push down rejects instead
+ *   of silently falling back to a full materialize (see
+ *   engineApi.queryCottas's doc comment). CONSTRUCT still returns an
+ *   FnDataset (materialized once for that query only).
+ */
+async function openCottas(bytes) {
+  const handle = await engineApi.openCottas(bytes);
+  let closed = false;
+  return {
+    handle,
+    async query(sparql) {
+      if (closed) throw new Error('openCottas store: query() called after close()');
+      const result = await engineApi.queryCottas(handle, sparql);
+      return result instanceof Dataset ? fromDataset(result) : result;
+    },
+    async close() {
+      if (closed) return;
+      closed = true;
+      await engineApi.closeCottas(handle);
+    },
+  };
+}
+
+/**
+ * Serialize an FnDataset to COTTAS/Parquet bytes via the native writer
+ * (the same pure `Tot` F* function `factoidal compact --native-writer`
+ * uses). Needs the npm-entry engine bundle. Round-trips through
+ * openCottas(): feeding the result straight back into openCottas()
+ * reproduces the same queryable store.
+ *
+ * @param {FnDataset} ds
+ * @returns {Promise<Uint8Array>}
+ */
+async function toCottas(ds) {
+  assertFnDataset(ds, 'toCottas');
+  return engineApi.toCottas(toDataset(ds));
+}
+
+/**
  * Enumerate named graphs (default graph excluded), first-seen order.
  * Reuses index.js's graphs() enumeration; wraps each per-graph
  * Dataset back into an FnDataset.
@@ -621,6 +675,8 @@ module.exports = {
   canonicalize,
   hash,
   equals,
+  openCottas,
+  toCottas,
   graphs,
   cell,
   derive,

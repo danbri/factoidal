@@ -1,21 +1,21 @@
 Warning [deprecated-joo-global-object]: /root/.opam/fstar/lib/zarith_stubs_js/biginteger.js:3: 'joo_global_object' is being deprecated, please use `globalThis` instead
-Warning [free-variables]: free variables in primitive code "ffactoidal_hash_digest_hex" (/home/user/factoidal/formal/fstar/ocaml-output/fstar_hash_stubs.js:23)
+Warning [free-variables]: free variables in primitive code "ffactoidal_hash_digest_hex" (/home/user/factoidal/.claude/worktrees/agent-abd50c531ab35df44/formal/fstar/ocaml-output/fstar_hash_stubs.js:23)
 vars: process
 Warning [overriding-primitive]: overriding primitive "caml_ml_output_bytes"
   old: +io.js:635
-  new: /home/user/factoidal/formal/fstar/ocaml-output/fstar_utf8_output_stubs.js:178
+  new: /home/user/factoidal/.claude/worktrees/agent-abd50c531ab35df44/formal/fstar/ocaml-output/fstar_utf8_output_stubs.js:178
 Warning [overriding-primitive]: overriding primitive "caml_ml_output"
   old: +io.js:650
-  new: /home/user/factoidal/formal/fstar/ocaml-output/fstar_utf8_output_stubs.js:203
+  new: /home/user/factoidal/.claude/worktrees/agent-abd50c531ab35df44/formal/fstar/ocaml-output/fstar_utf8_output_stubs.js:203
 Warning [overriding-primitive]: overriding primitive "caml_ml_output_char"
   old: +io.js:661
-  new: /home/user/factoidal/formal/fstar/ocaml-output/fstar_utf8_output_stubs.js:212
+  new: /home/user/factoidal/.claude/worktrees/agent-abd50c531ab35df44/formal/fstar/ocaml-output/fstar_utf8_output_stubs.js:212
 Warning [overriding-primitive]: overriding primitive "caml_ml_flush"
   old: +io.js:571
-  new: /home/user/factoidal/formal/fstar/ocaml-output/fstar_utf8_output_stubs.js:225
-Warning [free-variables]: free variables in primitive code "caml_parquet_fetch_range_hex_node" (/home/user/factoidal/formal/fstar/ocaml-output/parquet_zstd_stubs.js:119)
+  new: /home/user/factoidal/.claude/worktrees/agent-abd50c531ab35df44/formal/fstar/ocaml-output/fstar_utf8_output_stubs.js:225
+Warning [free-variables]: free variables in primitive code "caml_parquet_fetch_range_hex_node" (/home/user/factoidal/.claude/worktrees/agent-abd50c531ab35df44/formal/fstar/ocaml-output/parquet_zstd_stubs.js:119)
 vars: Buffer
-Warning [free-variables]: free variables in primitive code "caml_parquet_fetch_range_hex" (/home/user/factoidal/formal/fstar/ocaml-output/parquet_zstd_stubs.js:142)
+Warning [free-variables]: free variables in primitive code "caml_parquet_fetch_range_hex" (/home/user/factoidal/.claude/worktrees/agent-abd50c531ab35df44/formal/fstar/ocaml-output/parquet_zstd_stubs.js:142)
 vars: process
 Warning [integer-overflow]: integer 0xffffffff (4294967295) truncated to 0xffffffff (-1); the generated code might be incorrect.
 Warning [integer-overflow]: integer 0xffffffff (4294967295) truncated to 0xffffffff (-1); the generated code might be incorrect.
@@ -28,8 +28,3 @@ Dummy implementations (raising 'Failure' exception) will be used if they are not
 You can prevent the generation of dummy implementations with the commandline option '--disable genprim'
 Missing primitives:
   caml_unix_map_file_bytecode
-  unix_dup
-  unix_environment
-  unix_pipe
-  unix_spawn
-  unix_waitpid

@@ -16,12 +16,24 @@
 //   csvwToRdf(csvText, metadataJson, options) -> Promise<Dataset>  (CSVW csv2rdf)
 //   jsonldToRdf(jsonldText, options)    -> Promise<Dataset>
 //   rifEval(data, rifRulesXml)          -> Promise<Dataset>  (RIF Core saturation)
+//   openCottas(bytes)                   -> Promise<string>   (handle; bytes is
+//                                          hex|Uint8Array|ArrayBuffer of a
+//                                          whole .cottas artifact)
+//   queryCottas(handle, sparql)         -> Promise<Bindings[] | boolean | Dataset>
+//                                          (in-memory COTTAS bytes store --
+//                                          rows decode lazily, no heap Dataset)
+//   closeCottas(handle)                 -> Promise<void>
+//   toCottas(data)                      -> Promise<Uint8Array>  (native COTTAS
+//                                          writer; round-trips into openCottas)
 //   dataFactory                         -> RDF/JS DataFactory
 //   Dataset                             -> RDF/JS DatasetCore class
 //
-// shaclValidate/shexValidate/owlClosure/rmlMap/csvwToRdf/jsonldToRdf/rifEval need
-// the npm-entry ABI bundle (same gate as update()/canonicalize()); see
-// capabilities() to probe for it.
+// shaclValidate/shexValidate/owlClosure/rmlMap/csvwToRdf/jsonldToRdf/rifEval/
+// openCottas/queryCottas/closeCottas/toCottas need the npm-entry ABI bundle
+// (same gate as update()/canonicalize()); see capabilities() to probe for it.
+// See docs/designissues/2026-07-06-inmemory-bytes-store.md for the
+// openCottas/queryCottas/toCottas design and its documented divergences
+// from parse()/query() (no entailment, no write overlay, read-only).
 //
 // Bindings are Maps of variable name -> RDF/JS Term. See index.d.ts
 // for the full types and README.md for examples.
@@ -159,6 +171,10 @@ module.exports = {
   csvwToRdf: api.csvwToRdf,
   jsonldToRdf: api.jsonldToRdf,
   rifEval: api.rifEval,
+  openCottas: api.openCottas,
+  queryCottas: api.queryCottas,
+  closeCottas: api.closeCottas,
+  toCottas: api.toCottas,
   capabilities: api.capabilities,
   Dataset: rdfjs.Dataset,
   dataFactory: rdfjs.dataFactory,

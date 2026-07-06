@@ -165,6 +165,85 @@
        graph (default graph plus every named graph the base or the
        delta batches mention -- DeltaMerge.delta_batches_named_graphs
        discovers CREATE-only graphs with no base rows of their own).
+     factoidalNpmEntry.openCottas(bytesHex)
+       -> {"ok":true,"handle":"npmcottas:N"} | {"ok":false,"error":"..."}
+       In-memory COTTAS bytes store (docs/designissues/2026-07-06-
+       inmemory-bytes-store.md stage 5). bytesHex is a whole `.cottas`
+       (COTTAS/Parquet) artifact, hex-encoded. Registers the bytes under
+       a fresh synthetic handle (Parquet_Footer.register_memory_buffer
+       -- the same cache the native CLI's `--data-cottas-mem` populates,
+       RDF.CottasStore.fst:344's `cottas_ondisk_open` never distinguishes
+       a synthetic handle from a real path) and opens it as a
+       cottas_ondisk_store, kept in a process-wide registry keyed by the
+       returned handle string. `cottas_ondisk_open`'s OCaml realization
+       is LAZY (issue Bet7 -- see RDF.CottasStore.LazyDict.fst's own
+       banner): opening never eagerly decodes the footer or any column,
+       so a malformed/truncated artifact usually still returns ok:true
+       here -- the honest failure surfaces on the FIRST queryCottas()
+       call that actually needs to touch a column, as ok:false (this
+       function's own `guarded` wrapper still turns any exception
+       load_handle itself cannot tolerate into ok:false, so a caller
+       never sees an uncaught throw either way). This is a QUERY-ONLY
+       store: no delta-log overlay, no --rw -- see queryCottas's doc
+       comment for what query shapes are actually reachable.
+     factoidalNpmEntry.queryCottas(handle, sparql)
+       -> {"ok":true,"kind":"select","srj":{...}}
+        | {"ok":true,"kind":"ask","boolean":true|false}
+        | {"ok":true,"kind":"construct","nquads":"..."}
+        | {"ok":false,"error":"..."}
+       Runs sparql against the store opened by openCottas(handle) via
+       the SAME SPARQL11_Store backend-executor path (`cottas_ondisk_
+       dataset_backend` / `run_select_query_backend_dataset` /
+       `run_ask_query_backend_dataset`) the native `--data-cottas` CLI
+       query path uses -- no triple is ever fully materialized into a
+       heap `rdf_dataset` for SELECT/ASK; only the rows the query
+       actually touches are decoded (the whole point of the bytes-store
+       design: O(quad-cardinality-touched), not O(dataset-size), memory).
+       A query SHAPE the backend executor cannot handle (same honest-
+       failure posture factoidal_cli.ml's `run_select_query_backend_
+       dataset`/`run_ask_query_backend_dataset` None case has, no silent
+       fallback) returns ok:false rather than materializing anyway.
+       CONSTRUCT is the one exception: it goes through `materialize_
+       dataset_backend` (a full decode of the matched rows into an
+       `rdf_dataset`, same cost as the native CLI's CONSTRUCT-over-
+       COTTAS path) before `eval_construct_query`, since there is no
+       backend-executor CONSTRUCT path yet (issue #103, same gap the
+       native CLI documents). DESCRIBE is not supported (ok:false).
+       Divergence from queryDataset (the heap-store ABI): no entailment
+       parameter (bare COTTAS bytes carry no closure step), and no
+       --delta-log/write overlay -- read-only, matching design doc
+       §2.4's "write/delta-overlay story" (the overlay composes at the
+       NATIVE store_caps layer; wiring it into this browser ABI is not
+       done here, tracked as an open gap, not a silent omission).
+     factoidalNpmEntry.closeCottas(handle)
+       -> {"ok":true} | {"ok":false,"error":"..."}
+       Drops `handle` from this entry point's own registry so a later
+       queryCottas(handle, ...) fails cleanly ("unknown handle") instead
+       of silently reusing a store the caller considers closed. Does
+       NOT evict the underlying `__mim2_file_bytes_cache` entry
+       (Parquet_Footer.ml's process-wide cache has no eviction API --
+       design doc §"Open decisions" item 1); a long-lived page that
+       opens many short-lived stores still grows that cache for the tab's
+       lifetime. Documented divergence, not a silent leak: the design
+       doc flags this as an open decision, not a solved one.
+     factoidalNpmEntry.toCottas(nquads)
+       -> {"ok":true,"cottasHex":"...","quadCount":N} | {"ok":false,"error":"..."}
+       The write half (design doc §2.3/§3 stage 3's "parse -> serialize
+       -> buffer -> query, entirely in one process" composition, minus
+       the buffer/query steps -- those are openCottas/queryCottas
+       above). nquads is a dataset handle (N-Quads text, same convention
+       as every other ABI call); quads are sorted (s,p,o,g) and encoded
+       via the pure `Tot` F* serializer RDF.CottasStore.BaseWriter.
+       serialize_cottas_v2 -- the SAME function `factoidal compact
+       --native-writer` / `factoidal import` call natively, so a
+       browser-produced .cottas is byte-for-byte the same writer's
+       output, not a parallel encoder. cottasHex is the resulting
+       artifact, hex-encoded, for the caller to persist (IndexedDB/OPFS,
+       or offer as a browser download) and later feed back into
+       openCottas verbatim -- toCottas + openCottas round-trip through
+       the exact same reader/writer pair the native CLI's `factoidal
+       compact --native-writer` and `--data-cottas-mem` already use in
+       production, so this is a compatibility guarantee, not a hope.
      factoidalNpmEntry.csvwToRdf(csvText, metadataJson, optionsJson)
        -> {"ok":true,"nquads":"..."} | {"ok":false,"error":"..."}
        CSVW csv2rdf conversion (w3.org/TR/csv2rdf). csvText is the raw
@@ -978,6 +1057,184 @@ let delta_merge_apply_browser (nquads : string) (hex_blobs : string) : string =
     ok_nquads_json (RDF_Canonical.canonical_nquads ds'))
 
 (* ---------------------------------------------------------------------
+   In-memory COTTAS bytes store (rule #11 consumer -- exports only;
+   docs/designissues/2026-07-06-inmemory-bytes-store.md, stage 5 "the
+   browser call site"). Read path: Parquet_Footer.register_memory_buffer
+   (experimental_ocaml_glue/parquet_footer_zz_register_memory_buffer.sh)
+   + RDF.CottasStore.cottas_ondisk_open (both already linked into every
+   js_of_ocaml/wasm_of_ocaml bundle this file builds into -- see
+   formal/fstar/build-ocaml.sh's FSTAR_MODULES list, which has carried
+   RDF_CottasStore*/Parquet_Footer/RDF_Store_Capabilities_Cottas since
+   Phase 2, 2026-04-20) + SPARQL11_Store.cottas_ondisk_dataset_backend /
+   run_select_query_backend_dataset / run_ask_query_backend_dataset --
+   the EXACT same reader the native `--data-cottas`/`--data-cottas-mem`
+   CLI paths use (bin/factoidal-cli/factoidal_cli.ml's
+   open_cottas_ondisk_store / build_dataset_backend). No new decode or
+   query logic lives here: this is the browser call site the design
+   doc's stage list asked for, not a new engine.
+
+   Write path: RDF.CottasStore.BaseWriter.serialize_cottas_v2 is a pure
+   `Tot` function (no I/O, no assume val) already linked into this same
+   bundle -- toCottas below is argv-free orchestration around it,
+   mirroring bin/factoidal-cli/factoidal_cli.ml's
+   native_write_base_and_sidecars (quad conversion + consumer-side sort
+   + serialize), minus the sidecar/self-query prewarm step (out of
+   scope for a browser bytes handle -- sidecars are an on-disk-file
+   optimization; a buffer opened via openCottas has no sidecar files to
+   build).
+   --------------------------------------------------------------------- *)
+
+(* Registry: JS-visible handle string -> the opened on-disk-shaped
+   store. Process-wide (module-level ref), matching the same-lifetime
+   contract Parquet_Footer.ml's own __mim2_file_bytes_cache already
+   has (design doc "Open decisions" item 1: no eviction of the
+   underlying byte cache; closeCottas below only drops OUR registry
+   entry, disclosed in its own ABI doc comment above). *)
+let cottas_registry : (string, RDF_CottasStore.cottas_ondisk_store) Hashtbl.t =
+  Hashtbl.create 16
+
+let cottas_mem_counter = ref 0
+
+(* Hex -> raw OCaml string (binary-safe, unlike RDF_Bytes.bytes's
+   int-list-then-BatUTF8 round trip -- see hex_of_bytes's own comment
+   above for why that path is avoided for arbitrary bytes). None on
+   odd length or a non-hex-digit character; openCottas turns this into
+   an honest ok:false rather than an OCaml exception. *)
+let raw_string_of_hex (s : string) : string option =
+  let n = String.length s in
+  if n mod 2 <> 0 then None
+  else
+    let hex_digit c =
+      match c with
+      | '0'..'9' -> Some (Char.code c - Char.code '0')
+      | 'a'..'f' -> Some (Char.code c - Char.code 'a' + 10)
+      | 'A'..'F' -> Some (Char.code c - Char.code 'A' + 10)
+      | _ -> None
+    in
+    let out = Bytes.create (n / 2) in
+    let rec go i =
+      if i >= n / 2 then true
+      else
+        match hex_digit s.[2 * i], hex_digit s.[2 * i + 1] with
+        | Some hi, Some lo -> Bytes.set out i (Char.chr (hi * 16 + lo)); go (i + 1)
+        | _, _ -> false
+    in
+    if go 0 then Some (Bytes.unsafe_to_string out) else None
+
+let open_cottas (bytes_hex : string) : string =
+  guarded (fun () ->
+    match raw_string_of_hex bytes_hex with
+    | None ->
+      err_json "openCottas: bytesHex is not a valid hex string (odd length or non-hex digit)"
+    | Some raw_bytes ->
+      incr cottas_mem_counter;
+      let handle = Printf.sprintf "npmcottas:%d" !cottas_mem_counter in
+      Parquet_Footer.register_memory_buffer handle raw_bytes;
+      (match RDF_CottasStore.cottas_ondisk_open handle with
+       | FStar_Pervasives_Native.None ->
+         err_json
+           "openCottas: could not open COTTAS artifact from bytes \
+            (bad/missing Parquet footer, or truncated data)"
+       | FStar_Pervasives_Native.Some store ->
+         Hashtbl.replace cottas_registry handle store;
+         "{\"ok\":true,\"handle\":" ^ jstr handle ^ "}"))
+
+let close_cottas (handle : string) : string =
+  guarded (fun () ->
+    if Hashtbl.mem cottas_registry handle then begin
+      Hashtbl.remove cottas_registry handle;
+      "{\"ok\":true}"
+    end else
+      err_json (Printf.sprintf "closeCottas: unknown handle %s" handle))
+
+let query_cottas (handle : string) (sparql : string) : string =
+  guarded (fun () ->
+    match Hashtbl.find_opt cottas_registry handle with
+    | None -> err_json (Printf.sprintf "queryCottas: unknown handle %s" handle)
+    | Some cods ->
+      match SPARQL11_Parser.parse_sparql sparql with
+      | SPARQL11_Parser.ParseErr msg -> err_json ("SPARQL parse error: " ^ msg)
+      | SPARQL11_Parser.ParseOk (q, _) ->
+        let q = OWL_QueryRewrite.rewrite_query q in
+        let dsb = SPARQL11_Store.cottas_ondisk_dataset_backend cods in
+        (match q.q_form with
+         | QF_Ask ->
+           (match SPARQL11_Store.run_ask_query_backend_dataset q dsb with
+            | FStar_Pervasives_Native.Some b ->
+              "{\"ok\":true,\"kind\":\"ask\",\"boolean\":"
+              ^ (if b then "true" else "false") ^ "}"
+            | FStar_Pervasives_Native.None ->
+              err_json "queryCottas: backend ASK path unavailable for this query shape")
+         | QF_Select _ ->
+           (match SPARQL11_Store.run_select_query_backend_dataset q dsb with
+            | FStar_Pervasives_Native.Some rows ->
+              let vars = vars_of_query_or_rows q rows in
+              "{\"ok\":true,\"kind\":\"select\",\"srj\":" ^ srj_of_rows vars rows ^ "}"
+            | FStar_Pervasives_Native.None ->
+              err_json "queryCottas: backend SELECT path unavailable for this query shape")
+         | QF_Construct _ ->
+           let ds0 = SPARQL11_Store.materialize_dataset_backend dsb in
+           let triples = SPARQL11_Algebra.eval_construct_query q ds0.ds_default ds0 in
+           "{\"ok\":true,\"kind\":\"construct\",\"nquads\":"
+           ^ jstr (construct_triples_to_ntriples triples) ^ "}"
+         | QF_Describe _ ->
+           err_json "queryCottas: DESCRIBE is not supported"))
+
+(* Mirrors bin/factoidal-cli/factoidal_cli.ml's subject_to_cottas_string /
+   cottas_quad_of_triple_graph / cottas_quad_key -- duplicated here
+   (rule #11 consumer code, not shared library code) rather than
+   factored into a shared module, same pattern this file's rif_xml_
+   preprocess already follows relative to bin/w3c-runner/w3c_runner.ml. *)
+let subject_to_cottas_string (s : RDF_Graph_Executable.subject) : string =
+  match s with
+  | S_IRI i -> Printf.sprintf "<%s>" i
+  | S_BNode b -> Printf.sprintf "_:%s" b
+
+let cottas_quad_of_triple_graph
+    (t : RDF_Graph_Executable.triple) (g : string option)
+    : RDF_CottasStore_BaseWriter.cottas_quad =
+  { RDF_CottasStore_BaseWriter.cq_s = subject_to_cottas_string t.s;
+    RDF_CottasStore_BaseWriter.cq_p = Printf.sprintf "<%s>" t.p;
+    RDF_CottasStore_BaseWriter.cq_o = RDF_Pretty.term_to_ntriples t.o;
+    RDF_CottasStore_BaseWriter.cq_g =
+      (match g with Some iri -> Printf.sprintf "<%s>" iri | None -> "DEFAULT") }
+
+let cottas_quad_key (q : RDF_CottasStore_BaseWriter.cottas_quad) =
+  (q.RDF_CottasStore_BaseWriter.cq_s, q.RDF_CottasStore_BaseWriter.cq_p,
+   q.RDF_CottasStore_BaseWriter.cq_o, q.RDF_CottasStore_BaseWriter.cq_g)
+
+(* Anti-pattern #9-adjacent: stdlib `List.map`/`List.concat_map` are
+   NOT tail-recursive (each recursive call must `::` the result of the
+   one after it) and, per bin/factoidal-cli/factoidal_cli.ml's own
+   native_write_base_and_sidecars comment, blow the stack on a
+   large-enough input even natively (888,949 quads there); under
+   js_of_ocaml the effective call-stack budget is far smaller than
+   native OCaml's, so the SAME non-tail construction overflows at only
+   tens of thousands of quads (measured: 50,000 quads threw
+   `RangeError`/`Stack overflow` here before this fix). Build the
+   quad list with `List.iter` + a mutable accumulator (properly
+   tail-recursive; no result-consing after the recursive call) instead,
+   mirroring the CLI's own `Array.of_list`+`Array.sort` fix for the
+   same reason. *)
+let to_cottas (nq : string) : string =
+  guarded (fun () ->
+    let ds = dataset_of_nquads nq in
+    let acc = ref [] in
+    List.iter (fun t -> acc := cottas_quad_of_triple_graph t None :: !acc) ds.ds_default;
+    List.iter
+      (fun (ng : RDF_Graph_Executable.named_graph) ->
+         List.iter
+           (fun t -> acc := cottas_quad_of_triple_graph t (Some ng.ng_name) :: !acc)
+           ng.ng_graph)
+      ds.ds_named;
+    let arr = Array.of_list !acc in
+    Array.sort (fun a b -> compare (cottas_quad_key a) (cottas_quad_key b)) arr;
+    let sorted = Array.to_list arr in
+    let bytes = RDF_CottasStore_BaseWriter.serialize_cottas_v2 sorted in
+    "{\"ok\":true,\"cottasHex\":" ^ jstr (hex_of_bytes bytes)
+    ^ ",\"quadCount\":" ^ string_of_int (List.length sorted) ^ "}")
+
+(* ---------------------------------------------------------------------
    Js.export — the only js_of_ocaml-specific code. Strings cross the
    boundary via Js.to_string / Js.string (UTF-16 JS <-> UTF-8 OCaml).
    --------------------------------------------------------------------- *)
@@ -1026,5 +1283,9 @@ let () =
           ("rmlMap", s3 rml_map_json);
           ("csvwToRdf", s3 csvw_to_rdf_json);
           ("deltaBatchToHex", s3 delta_batch_to_hex);
-          ("deltaMergeApplyBrowser", s2 delta_merge_apply_browser)
+          ("deltaMergeApplyBrowser", s2 delta_merge_apply_browser);
+          ("openCottas", s1 open_cottas);
+          ("queryCottas", s2 query_cottas);
+          ("closeCottas", s1 close_cottas);
+          ("toCottas", s1 to_cottas)
        |])

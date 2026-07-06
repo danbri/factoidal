@@ -511,7 +511,52 @@ rule-#11 taxonomy (five `assume val`s total, issue #282, no shadow
 semantic logic). The debt this qualifier refers to is the pre-existing
 COTTAS-on-disk *read* fast path, not this durable-UPDATE layer.
 
-## 6. Pointers
+## 6. Browser/JS in-memory bytes store (npm entry points)
+
+`docs/designissues/2026-07-06-inmemory-bytes-store.md` stage 5: the
+native `--data-cottas-mem FILE` flag (§4 above) has a browser/JS
+equivalent in the npm-entry ABI (`bin/npm-entry/entry_jsoo.ml`, built
+into both `factoidal-npm-entry.js` (js_of_ocaml) and
+`factoidal-npm-entry.wasm.js` (wasm_of_ocaml) — no new `assume val`,
+no F* change; `register_memory_buffer` and `cottas_ondisk_open` already
+treat a synthetic handle exactly like a real path):
+
+- `openCottas(bytes)` — registers a whole `.cottas` artifact's bytes
+  (hex string / `Uint8Array` / `ArrayBuffer`/`Buffer`) under a
+  synthetic handle and opens it read-only. Returns an opaque handle
+  string; `{ok:false}` on a bad/truncated footer rather than throwing.
+- `queryCottas(handle, sparql)` — SELECT/ASK/CONSTRUCT via the same
+  `SPARQL11_Store` backend-executor path (`cottas_ondisk_dataset_
+  backend` / `run_select_query_backend_dataset` / `run_ask_query_
+  backend_dataset`) the native `--data-cottas`/`--data-cottas-mem` CLI
+  query path uses — rows decode lazily, no heap materialization except
+  for CONSTRUCT (`materialize_dataset_backend`, same cost as the
+  native CLI's CONSTRUCT-over-COTTAS path). No entailment option, no
+  `--delta-log`/write overlay (read-only); DESCRIBE is unsupported.
+- `closeCottas(handle)` — drops the handle from this entry point's own
+  registry only; does NOT evict the underlying `__mim2_file_bytes_
+  cache` (no eviction API exists — a page opening many short-lived
+  stores still grows that cache for the tab's lifetime).
+- `toCottas(nquads)` — the write half: sorts + serializes a dataset via
+  the pure `Tot` `RDF.CottasStore.BaseWriter.serialize_cottas_v2`, the
+  SAME writer `factoidal compact --native-writer`/`factoidal import`
+  call natively, so a browser-produced `.cottas` round-trips into
+  `openCottas` (and into the native CLI) byte-for-byte. No sidecars are
+  built (sidecars are an on-disk-file optimization; a buffer handle has
+  no sidecar files).
+
+npm surface: `index.js`/`wasm.js` (`openCottas`/`queryCottas`/
+`closeCottas`/`toCottas`, Dataset-shaped results, gated via
+`capabilities().cottasBytesStore`), `fn.js` (`fn.openCottas(bytes)`
+returns `{handle, query(sparql), close()}`; `fn.toCottas(ds)`), and
+`browser.js` (raw-ABI wrappers of the same four calls). `browser-wasm.js`
+does not yet load the npm-entry ABI at all (a pre-existing gap, not
+introduced by this — it only drives the CLI bundle's `query()`).
+Tests: `npm/factoidal/test/cottas-bytes-store.test.js` (js) and
+`cottas-bytes-store-wasm.test.js` (wasm), against the committed fixture
+`tests/unit/fixtures/store_capabilities_sample.cottas`.
+
+## 7. Pointers
 
 - [`docs/designissues/2026-07-06-durable-update-design.md`](../../docs/designissues/2026-07-06-durable-update-design.md)
   — the design doc this whole delta-log section follows (architecture
