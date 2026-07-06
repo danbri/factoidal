@@ -278,6 +278,10 @@ session.
   descriptive names per the recovery plan.
 - [`docs/claude-rules/README.md`](docs/claude-rules/README.md) — index
   and the relationship between this file and the expanded docs.
+- [`docs/fable-notes-xyz-20260706.md`](docs/fable-notes-xyz-20260706.md)
+  — strategy + workflow handoff notes from the 2026-07-06 sessions
+  (state of the project, impact ranking, landing discipline, gaps,
+  sequencing). Read early in a fresh autonomous session.
 
 ## Recovery + planning docs
 
