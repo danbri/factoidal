@@ -65,6 +65,34 @@ let bucket_push (#a:Type) (m : bucket_map a) (k : string) (t : a)
 /// Comparator for `List.Tot.sortWith`, generic over `key_of`.
 /// Elements with no key for this bucket (`None`) sort first; the
 /// grouping pass below filters them out.
+///
+/// 2026-07-06 (GROUP BY / index-build linear-constant perf investigation,
+/// docs/designissues/2026-07-06-competitive-benchmark-results.md): this
+/// comparator used to be handed DIRECTLY to `List.Tot.sortWith` together
+/// with `key_of`, so it recomputed `key_of t1`/`key_of t2` on EVERY
+/// comparison the sort performed — O(N log N) key computations per
+/// bucket, not O(N). For `sp_key`/`po_key_opt`/`so_key_opt` each
+/// recomputation is itself a `String.concat` (allocating a fresh
+/// composite string), so the *N log N factor multiplied an allocating
+/// string-concat*: profiled with `valgrind --tool=callgrind` on a
+/// 51,696-triple/100k-line subset of `gene.ttl` (isolating the GROUP BY
+/// query's cost against an otherwise-identical `COUNT(*)`-only query
+/// evaluated over the same data — the only code this differential can
+/// attribute to is whatever the GROUP BY path exercises that COUNT(*)
+/// does not): `String.unsafe_blits` (1.08B instructions of the 6.3B-
+/// instruction differential, ~17%), `String.concat` (0.30B),
+/// `caml_blit_string`/`caml_alloc_string`/`__memcpy_avx_unaligned_erms`
+/// (a further ~1.5B combined), plus knock-on GC pressure from the
+/// allocation churn (`do_some_marking`/`caml_oldify_one`/`sweep_slice`/
+/// `bf_allocate`, ~0.9B combined) — all traced to `build_indexed`
+/// (`graph_to_store` in `SPARQL11.Algebra.fst` calls it unconditionally
+/// for every non-streaming-fast-path query) building its 6 bucket maps
+/// (`ig_pred`/`ig_subj`/`ig_obj`/`ig_sp`/`ig_po`/`ig_so`) via
+/// `build_bucket`, each a full `List.Tot.sortWith` over the whole graph.
+/// This function is unchanged; `build_bucket` below now decorates each
+/// element with its key ONCE before sorting (a standard
+/// decorate-sort-undecorate / Schwartzian transform) instead of calling
+/// this comparator's `key_of` per element per comparison.
 let cmp_by_key (#a:Type) (key_of : a -> option string) (t1 t2 : a) : int =
   match key_of t1, key_of t2 with
   | None, None       -> 0
@@ -72,10 +100,61 @@ let cmp_by_key (#a:Type) (key_of : a -> option string) (t1 t2 : a) : int =
   | Some _, None     -> 1
   | Some k1, Some k2 -> String.compare k1 k2
 
+/// Comparator over PRE-COMPUTED `(key, elem)` pairs — same ordering as
+/// `cmp_by_key` (None-first, then `String.compare` on the key), but
+/// reads the already-computed key instead of calling `key_of` again.
+/// Because `key_of` is a pure/deterministic (`Tot`) function, this
+/// comparator decides every pair exactly as `cmp_by_key key_of` would
+/// have, so `build_bucket`'s sorted order (and hence its grouping) is
+/// unchanged — only the number of `key_of` calls drops, from O(N log N)
+/// to exactly N.
+let cmp_by_decorated_key (#a:Type) (p1 p2 : (option string * a)) : int =
+  match fst p1, fst p2 with
+  | None, None       -> 0
+  | None, Some _     -> -1
+  | Some _, None     -> 1
+  | Some k1, Some k2 -> String.compare k1 k2
+
+/// Walk a key-sorted list of PRE-COMPUTED `(key, elem)` pairs,
+/// collapsing each run of same-key elements into one `(key, elements)`
+/// binding. Tail-rec via reversed accumulator; `bucket_map` lookup
+/// doesn't depend on bucket order so this doesn't bother to reverse at
+/// the end. Same shape as the old `group_sorted_aux` (kept below,
+/// unused by `build_bucket` now but left as the reference definition
+/// `cmp_by_key`/decorate-free callers could still use), just reading
+/// each element's key from the pair instead of calling `key_of` again.
+let rec group_sorted_decorated_aux (#a:Type)
+    (ts : list (option string * a))
+    (cur_key : option string) (cur_bucket : list a)
+    (acc : bucket_map a)
+  : Tot (bucket_map a) (decreases ts) =
+  match ts with
+  | [] ->
+    (match cur_key with
+     | Some k -> (k, cur_bucket) :: acc
+     | None   -> acc)
+  | (k, t) :: rest ->
+    (match k with
+     | None -> group_sorted_decorated_aux rest cur_key cur_bucket acc
+     | Some kk ->
+       (match cur_key with
+        | Some k0 ->
+          if kk = k0 then
+            group_sorted_decorated_aux rest cur_key (t :: cur_bucket) acc
+          else
+            group_sorted_decorated_aux rest (Some kk) [t] ((k0, cur_bucket) :: acc)
+        | None ->
+          group_sorted_decorated_aux rest (Some kk) [t] acc))
+
 /// Walk a key-sorted list, collapsing each run of same-key elements
 /// into one `(key, elements)` binding. Tail-rec via reversed
 /// accumulator; `bucket_map` lookup doesn't depend on bucket order so
 /// this doesn't bother to reverse at the end.
+///
+/// No longer called by `build_bucket` (see `group_sorted_decorated_aux`
+/// above) — kept as the reference, decoration-free definition since it
+/// documents the grouping algorithm most directly and nothing else in
+/// this file depends on removing it.
 let rec group_sorted_aux (#a:Type)
     (key_of : a -> option string)
     (ts : list a)
@@ -106,10 +185,19 @@ let rec group_sorted_aux (#a:Type)
 /// O(N log N) — see `RDF.Graph.Executable.fst`'s `build_indexed`
 /// banner (issue #259) for why this replaced an O(N*K) per-insert
 /// build.
+///
+/// 2026-07-06: decorate-sort-undecorate — `key_of` is now called
+/// exactly once per element (the `List.Tot.map` below) instead of once
+/// per comparison inside the sort (see `cmp_by_key`'s banner above for
+/// the profiling evidence). The sort itself is still O(N log N)
+/// comparisons, but each comparison is now a cheap `String.compare` (or
+/// `option` short-circuit) over an already-built string, not a fresh
+/// `String.concat` allocation.
 let build_bucket (#a:Type) (key_of : a -> option string) (ts : list a)
   : Tot (bucket_map a) =
-  let sorted = List.Tot.sortWith (cmp_by_key key_of) ts in
-  group_sorted_aux key_of sorted None [] []
+  let decorated = List.Tot.map (fun (t : a) -> (key_of t, t)) ts in
+  let sorted = List.Tot.sortWith cmp_by_decorated_key decorated in
+  group_sorted_decorated_aux sorted None [] []
 
 (** ==================================================================== *)
 (** Concept: `indexed_graph` — a multi-index acceleration structure     *)

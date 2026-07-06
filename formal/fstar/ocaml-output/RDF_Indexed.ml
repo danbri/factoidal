@@ -32,6 +32,49 @@ let cmp_by_key (key_of : 'a -> Prims.string FStar_Pervasives_Native.option)
       Prims.int_one
   | (FStar_Pervasives_Native.Some k1, FStar_Pervasives_Native.Some k2) ->
       FStar_String.compare k1 k2
+let cmp_by_decorated_key
+  (p1 : (Prims.string FStar_Pervasives_Native.option * 'a))
+  (p2 : (Prims.string FStar_Pervasives_Native.option * 'a)) : Prims.int=
+  match ((FStar_Pervasives_Native.fst p1), (FStar_Pervasives_Native.fst p2))
+  with
+  | (FStar_Pervasives_Native.None, FStar_Pervasives_Native.None) ->
+      Prims.int_zero
+  | (FStar_Pervasives_Native.None, FStar_Pervasives_Native.Some uu___) ->
+      (Prims.of_int (-1))
+  | (FStar_Pervasives_Native.Some uu___, FStar_Pervasives_Native.None) ->
+      Prims.int_one
+  | (FStar_Pervasives_Native.Some k1, FStar_Pervasives_Native.Some k2) ->
+      FStar_String.compare k1 k2
+let rec group_sorted_decorated_aux :
+  'a .
+    (Prims.string FStar_Pervasives_Native.option * 'a) Prims.list ->
+      Prims.string FStar_Pervasives_Native.option ->
+        'a Prims.list -> 'a bucket_map -> 'a bucket_map
+  =
+  fun ts cur_key cur_bucket acc ->
+    match ts with
+    | [] ->
+        (match cur_key with
+         | FStar_Pervasives_Native.Some k -> (k, cur_bucket) :: acc
+         | FStar_Pervasives_Native.None -> acc)
+    | (k, t)::rest ->
+        (match k with
+         | FStar_Pervasives_Native.None ->
+             group_sorted_decorated_aux rest cur_key cur_bucket acc
+         | FStar_Pervasives_Native.Some kk ->
+             (match cur_key with
+              | FStar_Pervasives_Native.Some k0 ->
+                  if kk = k0
+                  then
+                    group_sorted_decorated_aux rest cur_key (t :: cur_bucket)
+                      acc
+                  else
+                    group_sorted_decorated_aux rest
+                      (FStar_Pervasives_Native.Some kk) [t] ((k0, cur_bucket)
+                      :: acc)
+              | FStar_Pervasives_Native.None ->
+                  group_sorted_decorated_aux rest
+                    (FStar_Pervasives_Native.Some kk) [t] acc))
 let rec group_sorted_aux :
   'a .
     ('a -> Prims.string FStar_Pervasives_Native.option) ->
@@ -65,8 +108,9 @@ let rec group_sorted_aux :
                     (FStar_Pervasives_Native.Some k) [t] acc))
 let build_bucket (key_of : 'a -> Prims.string FStar_Pervasives_Native.option)
   (ts : 'a Prims.list) : 'a bucket_map=
-  let sorted = FStar_List_Tot_Base.sortWith (cmp_by_key key_of) ts in
-  group_sorted_aux key_of sorted FStar_Pervasives_Native.None [] []
+  let decorated = FStar_List_Tot_Base.map (fun t -> ((key_of t), t)) ts in
+  let sorted = FStar_List_Tot_Base.sortWith cmp_by_decorated_key decorated in
+  group_sorted_decorated_aux sorted FStar_Pervasives_Native.None [] []
 type indexed_graph =
   {
   ig_triples: RDF_Triple.triple Prims.list ;
