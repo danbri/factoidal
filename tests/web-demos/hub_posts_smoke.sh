@@ -182,11 +182,79 @@ for (const post of POSTS) {
   });
   check('at least one cell produced a nonempty value', nonEmptyCount >= 1);
 
+  // Interaction pass (one page is enough): edit cell 0's source via the
+  // Edit toggle, replace it with a trivially different deterministic
+  // expression, tap Run, and confirm the output actually changed and
+  // no .observable-cell-error appeared. DOM order per hub.njk's
+  // mountCell() is: <pre>, textarea.observable-cell-editor,
+  // div.observable-cell-toolbar, div.observable-cell -- walk siblings
+  // from the container rather than relying on index-based selectors.
+  if (post === POSTS[0]) {
+    console.log('  -- interaction: edit + run cell 0 --');
+    const cellSel = '.observable-cell[data-hub-cell=\"0\"]';
+    await page.waitForSelector(cellSel);
+
+    const beforeText = await page.\$eval(cellSel, (el) => el.textContent.trim());
+    check('cell 0 has a nonempty output before editing (was: ' + beforeText + ')', beforeText.length > 0);
+
+    const editorState = await page.evaluate((sel) => {
+      const container = document.querySelector(sel);
+      const toolbar = container.previousElementSibling;
+      const editBtn = toolbar.querySelector('.observable-cell-edit-btn');
+      editBtn.click();
+      const editor = toolbar.previousElementSibling;
+      return { notHidden: !editor.hidden, computedDisplay: getComputedStyle(editor).display };
+    }, cellSel);
+    check('Edit toggle reveals the textarea editor (hidden attr cleared)', editorState.notHidden);
+    // Regression guard: an author `.observable-cell-editor { display:
+    // block }` rule can silently outrank the UA `[hidden]` rule at
+    // equal specificity, leaving the textarea visible even while
+    // `.hidden` reads true -- assert the *rendered* state too.
+    check(
+      'Edit toggle actually renders the textarea (computed display: ' + editorState.computedDisplay + ')',
+      editorState.computedDisplay !== 'none'
+    );
+
+    await page.evaluate((sel) => {
+      const container = document.querySelector(sel);
+      const toolbar = container.previousElementSibling;
+      const editor = toolbar.previousElementSibling;
+      editor.value = 'return 6 * 7;';
+      editor.dispatchEvent(new Event('input', { bubbles: true }));
+    }, cellSel);
+
+    await page.evaluate((sel) => {
+      const container = document.querySelector(sel);
+      const toolbar = container.previousElementSibling;
+      const runBtn = toolbar.querySelector('.observable-cell-run-btn');
+      runBtn.click();
+    }, cellSel);
+
+    // The Inspector renders named variables as 'hubCell0 = <value>',
+    // same format the pre-edit assertion above already observed.
+    try {
+      await page.waitForFunction((sel) => {
+        const el = document.querySelector(sel);
+        return el && /(^|\s)42$/.test(el.textContent.trim());
+      }, cellSel, { timeout: 5000 });
+    } catch (e) {
+      // fall through -- the check() below reports the actual text.
+    }
+
+    const afterText = await page.\$eval(cellSel, (el) => el.textContent.trim());
+    const afterErrored = await page.\$eval(cellSel, (el) => el.classList.contains('observable-cell-error'));
+    check('edited cell (return 6 * 7;) re-ran via Run and now outputs 42 (was: ' + afterText + ')', /(^|\s)42$/.test(afterText));
+    check('edited cell has no .observable-cell-error after Run', !afterErrored);
+  }
+
   if (failures > 0) {
     console.log('  console log:\n' + consoleMsgs.join('\n'));
   }
 
-  // 390px mobile viewport: no page-level horizontal scroll.
+  // 390px mobile viewport: no page-level horizontal scroll. Run after
+  // the interaction pass on post 0 too, so this also exercises the
+  // toolbar/editor chrome left in its post-edit state (editor visible)
+  // for that page -- not just the pristine pre/toolbar layout.
   await page.setViewportSize({ width: 390, height: 844 });
   await page.waitForTimeout(200);
   const overflow = await page.evaluate(() => ({

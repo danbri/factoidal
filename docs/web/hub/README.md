@@ -41,6 +41,72 @@ post's author will grep for them.
   wraps its text content in an async function body, and runs it
   through the vendored Observable Runtime + Inspector. Write a
   `return` statement to produce the value the Inspector renders.
+
+### Cell chrome: Edit + Run
+
+Every mounted cell auto-runs on page load exactly as before, but now
+also gets a small toolbar (an Edit toggle and a Run button) inserted
+between the code and the output box. DOM order after `mountCell()`
+runs is:
+
+```
+<pre><code class="language-observable-js">...</code></pre>   <!-- original source, static view -->
+<textarea class="observable-cell-editor" hidden>...</textarea>  <!-- editable view, seeded from the pre -->
+<div class="observable-cell-toolbar">
+  <button class="observable-cell-edit-btn">Edit</button>
+  <button class="observable-cell-run-btn">Run</button>
+  <!-- + a one-line hint span, first cell of the page only -->
+</div>
+<div class="observable-cell" data-hub-cell="N">...</div>   <!-- Inspector output -->
+```
+
+- **Edit toggle** swaps the static `<pre>` for a `<textarea>` seeded
+  with the current source (`hidden` attribute flips both ways; the
+  button label flips "Edit" / "Done"). The textarea is a deliberate
+  choice over `contenteditable`: iOS Safari's contenteditable caret
+  placement and undo stack are unreliable (cursor jumps on
+  re-render, inconsistent Enter-key node splitting), whereas a plain
+  `<textarea>` gets the native mobile keyboard, native undo/redo, and
+  reliable `autocorrect`/`autocapitalize`/`spellcheck` suppression via
+  ordinary attributes — the properties code entry on a phone actually
+  needs. It autogrows via an `input` listener (`scrollHeight` resize
+  trick) instead of a fixed row count.
+- **Run** re-executes whatever the *current* source is (the textarea's
+  value if editing, otherwise the unedited source) using the vendored
+  Observable runtime's `module.redefine(name, inputs, definition)` —
+  confirmed present on the vendored bundle
+  (`third_party/observable/dist/runtime.esm.js`'s `module_redefine`,
+  exported on `Module.prototype.redefine`). `redefine` looks up the
+  already-`define()`d variable by name and re-runs `variable.define`
+  on it, so the *same* `Variable` (and therefore the same attached
+  `Inspector`/output node) recomputes in place — no delete+recreate,
+  no new output box. `hub.njk` names each cell's variable `"hubCell" +
+  index`, matching the name it was originally `define()`d with, so
+  `main.redefine("hubCell" + index, CELL_BINDINGS, newFn)` always finds
+  it.
+- **Errors don't kill the cell.** `hub.njk` wraps the `Inspector`
+  instance passed to `main.variable()` so a runtime rejection (thrown
+  inside the cell's async body, on the initial run or any subsequent
+  Run) adds the existing `.observable-cell-error` class to the output
+  box, and a later successful Run removes it again — the same styling
+  every static-render error already used, now also applied to
+  redefine-triggered errors. A synchronous compile error (bad syntax in
+  the edited source) is caught before `redefine` is even called and
+  reported the same way. Either way the cell stays mounted: fixing the
+  source and tapping Run again works.
+- **Keyboard:** Cmd/Ctrl+Enter inside the textarea runs the cell
+  without touching the Run button — the desktop equivalent of the
+  mobile tap target.
+- **Discoverability:** a `title` attribute on the toolbar documents the
+  Edit/Run affordance for desktop hover, but a phone has no hover — so
+  the first cell on each page also gets a small, visible, italic hint
+  ("Edit & re-run — computed in your browser.") next to its toolbar.
+  Only the first cell gets it, to avoid cluttering every cell on the
+  page with the same sentence.
+- **Tap targets** (`.observable-cell-btn`) are >= 44px in both
+  dimensions and wrap in a flex row, so the toolbar never forces
+  page-level horizontal scroll at a 390px viewport; the textarea is
+  `width: 100%` / `box-sizing: border-box` for the same reason.
 - ` ```js `, ` ```turtle `, ` ```fstar `, etc. — static, inert code
   samples. Use these for pure notation (Turtle syntax being
   introduced, an F\* type definition being quoted) where there is
@@ -169,6 +235,16 @@ against the real F\*-extracted engine in a real browser) is
 `tests/web-demos/hub_posts_smoke.sh`, which drives headless Chromium
 over each built post page and asserts every `.observable-cell` on the
 page computes without `.observable-cell-error` and produces a value.
+It also drives one interaction pass, on the first post's first cell:
+click the Edit toggle, overwrite the textarea with a trivially
+different deterministic expression (`return 6 * 7;`), click Run, and
+assert the output box updates to `42` with no
+`.observable-cell-error` — i.e. that the toolbar's Edit/Run chrome and
+`module.redefine()` re-run path actually work end to end, not just
+that the auto-run-on-load path does. The 390px no-horizontal-overflow
+check (`document.documentElement.scrollWidth <= clientWidth`) runs on
+every page after the toolbar has mounted, so it also covers the
+toolbar/editor chrome added by this change.
 
 ## Constraints every cell must respect
 

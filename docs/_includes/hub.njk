@@ -68,9 +68,85 @@
   }
   .observable-cell { overflow-x: auto; }
   .observable-cell svg { max-width: 100%; height: auto; }
+
+  /* Cell chrome: the toolbar (Edit toggle + Run button) sits between
+     the code block and the output box. Mobile-first: tap targets are
+     >= 44px, laid out in a wrapping flex row so the row never forces
+     page-level horizontal scroll on a ~390px phone. */
+  .observable-cell-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5em;
+    margin: 0.5em 0 0.8em;
+  }
+  .observable-cell-btn {
+    box-sizing: border-box;
+    min-height: 44px;
+    min-width: 44px;
+    padding: 0.5em 1.1em;
+    font: inherit;
+    font-size: 0.85em;
+    color: #2d6a4f;
+    background: #f8f8f8;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    cursor: pointer;
+    line-height: 1.2;
+  }
+  .observable-cell-btn:hover { background: #eef6f1; }
+  .observable-cell-btn:active { background: #e2efe8; }
+  .observable-cell-btn[aria-pressed="true"] {
+    background: #2d6a4f;
+    color: #fff;
+    border-color: #2d6a4f;
+  }
+  .observable-cell-hint {
+    flex-basis: 100%;
+    font-size: 0.78em;
+    color: #888;
+    font-style: italic;
+  }
+  .observable-cell-editor {
+    display: block;
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+    font-family: ui-monospace, monospace;
+    font-size: 0.9em;
+    background: #f8f8f8;
+    border: 1px solid #ddd;
+    border-left: 3px solid #2d6a4f;
+    border-radius: 4px;
+    padding: 1em;
+    line-height: 1.5;
+    color: inherit;
+    resize: vertical;
+    overflow-x: auto;
+  }
+  .observable-cell-editor:focus {
+    outline: 2px solid #2d6a4f;
+    outline-offset: -1px;
+  }
+  /* Same specificity as `.observable-cell-editor { display: block }`
+     above, but author-origin `[hidden]` here needs the extra class in
+     the selector to win the tie -- a bare UA `[hidden]` rule would
+     lose to the author `display: block` declaration regardless of
+     specificity, since normal author rules outrank normal
+     user-agent rules irrespective of selector weight. */
+  .observable-cell-editor[hidden] {
+    display: none;
+  }
   @media (prefers-color-scheme: dark) {
     .observable-cell { background: #1a1e23; border-color: #333a42; }
     .observable-cell.observable-cell-error { border-color: #e07060; color: #e07060; }
+    .observable-cell-btn { background: #1a1e23; border-color: #333a42; color: #7fd0a7; }
+    .observable-cell-btn:hover { background: #232830; }
+    .observable-cell-btn:active { background: #272d36; }
+    .observable-cell-btn[aria-pressed="true"] { background: #7fd0a7; color: #10130f; border-color: #7fd0a7; }
+    .observable-cell-hint { color: #98a2ad; }
+    .observable-cell-editor { background: #1a1e23; border-color: #333a42; border-left-color: #7fd0a7; }
+    .observable-cell-editor:focus { outline-color: #7fd0a7; }
   }
 </style>
 </head>
@@ -308,25 +384,167 @@ main.variable().define("Plot", [], () => Plot);
 main.variable().define("html", [], () => stdlib.html);
 main.variable().define("md", [], () => stdlib.md);
 
+// Each cell body is an async function body: write a `return` statement
+// to produce the value the Inspector renders (or mutate the DOM
+// directly via a passed-in element -- Inspector handles DOM-Node
+// return values by inserting them as-is). Shared by the initial mount
+// and every subsequent Run.
+function compileCell(source) {
+  return new Function(
+    ...CELL_BINDINGS,
+    "return (async () => {\n" + source + "\n})();"
+  );
+}
+
 function mountCell(codeEl, index) {
   const pre = codeEl.closest("pre") || codeEl.parentElement;
-  const source = codeEl.textContent;
+  let currentSource = codeEl.textContent;
+  let editing = false;
+
+  // --- Editable source: a textarea seeded from the shipped code,
+  // swapped in for the static <pre> by the Edit toggle. A textarea
+  // (rather than a contenteditable region) is deliberate: iOS Safari's
+  // contenteditable caret placement and undo stack are unreliable
+  // (cursor jumps on re-render, inconsistent Enter-key node splitting),
+  // whereas a plain textarea gets the native mobile keyboard, native
+  // undo, and reliable autocorrect/autocapitalize suppression via
+  // ordinary attributes -- exactly what code entry on a phone needs.
+  const editor = document.createElement("textarea");
+  editor.className = "observable-cell-editor";
+  editor.spellcheck = false;
+  editor.setAttribute("autocapitalize", "off");
+  editor.setAttribute("autocorrect", "off");
+  editor.setAttribute("autocomplete", "off");
+  editor.setAttribute("wrap", "soft");
+  editor.setAttribute("aria-label", "Cell source (editable)");
+  editor.value = currentSource;
+  editor.rows = Math.min(20, Math.max(3, currentSource.split("\n").length));
+  editor.hidden = true;
+
+  function autoGrow() {
+    editor.style.height = "auto";
+    editor.style.height = editor.scrollHeight + "px";
+  }
+  editor.addEventListener("input", autoGrow);
+  editor.addEventListener("keydown", (ev) => {
+    // Cmd/Ctrl+Enter: run the current source without leaving the
+    // keyboard -- the desktop-friendly counterpart to the mobile Run
+    // button.
+    if ((ev.metaKey || ev.ctrlKey) && ev.key === "Enter") {
+      ev.preventDefault();
+      runCell();
+    }
+  });
+
+  // --- Toolbar: Edit toggle + Run button, between the code and the
+  // output box. Tap targets are >= 44px (see .observable-cell-btn);
+  // deliberately quiet styling since the page is a blog first.
+  const toolbar = document.createElement("div");
+  toolbar.className = "observable-cell-toolbar";
+  toolbar.title = "Edit the code above and tap Run to re-execute it live in your browser.";
+
+  const editBtn = document.createElement("button");
+  editBtn.type = "button";
+  editBtn.className = "observable-cell-btn observable-cell-edit-btn";
+  editBtn.textContent = "Edit";
+  editBtn.setAttribute("aria-pressed", "false");
+  editBtn.addEventListener("click", () => setEditing(!editing));
+
+  const runBtn = document.createElement("button");
+  runBtn.type = "button";
+  runBtn.className = "observable-cell-btn observable-cell-run-btn";
+  runBtn.textContent = "Run";
+  runBtn.addEventListener("click", runCell);
+
+  toolbar.appendChild(editBtn);
+  toolbar.appendChild(runBtn);
+
+  // Discoverability: a phone has no hover, so a title attribute alone
+  // (the desktop affordance above) is invisible on mobile -- the owner
+  // report this change fixes. Spell it out visibly, once per page, on
+  // the first cell only, so the read-flow isn't cluttered on every one.
+  if (index === 0) {
+    const hint = document.createElement("span");
+    hint.className = "observable-cell-hint";
+    hint.textContent = "Edit & re-run — computed in your browser.";
+    toolbar.appendChild(hint);
+  }
+
+  function setEditing(on) {
+    editing = on;
+    pre.hidden = on;
+    editor.hidden = !on;
+    editBtn.textContent = on ? "Done" : "Edit";
+    editBtn.setAttribute("aria-pressed", on ? "true" : "false");
+    if (on) {
+      editor.value = currentSource;
+      requestAnimationFrame(() => {
+        autoGrow();
+        editor.focus();
+      });
+    }
+  }
+
   const container = document.createElement("div");
   container.className = "observable-cell";
   container.setAttribute("data-hub-cell", String(index));
-  pre.insertAdjacentElement("afterend", container);
+
+  pre.insertAdjacentElement("afterend", editor);
+  editor.insertAdjacentElement("afterend", toolbar);
+  toolbar.insertAdjacentElement("afterend", container);
 
   const name = "hubCell" + index;
-  let fn;
+
+  // Wrap the Inspector so a runtime error (thrown during the cell's
+  // async body, on the initial run or any subsequent Run) gets the
+  // existing .observable-cell-error styling the rest of the page
+  // already uses, and so a later successful Run clears it again --
+  // Inspector's own state (the observablehq--error class on the same
+  // node) is left in place underneath, this just adds the project's
+  // own class on top of it.
+  const inspector = new Inspector(container);
+  const inspectorFulfilled = inspector.fulfilled.bind(inspector);
+  const inspectorRejected = inspector.rejected.bind(inspector);
+  inspector.fulfilled = (value, varName) => {
+    container.classList.remove("observable-cell-error");
+    inspectorFulfilled(value, varName);
+  };
+  inspector.rejected = (error, varName) => {
+    container.classList.add("observable-cell-error");
+    inspectorRejected(error, varName);
+  };
+
+  function runCell() {
+    const source = editing ? editor.value : currentSource;
+    currentSource = source;
+    codeEl.textContent = source; // keep the static view in sync for next Edit/toggle
+    let fn;
+    try {
+      fn = compileCell(source);
+    } catch (err) {
+      container.classList.add("observable-cell-error");
+      container.textContent = "Cell parse error: " + err.message;
+      return;
+    }
+    try {
+      // module.redefine(name, inputs, definition): looks up the
+      // already-defined variable by name and re-runs variable.define
+      // on it, so the SAME Variable (and therefore the SAME attached
+      // Inspector/output node) recomputes with the new function body
+      // -- this is the supported "edit and re-run" path the vendored
+      // runtime exposes (see third_party/observable/dist/runtime.esm.js's
+      // module_redefine, which throws if the name was never defined,
+      // hence the try/define fallback below for the very first mount).
+      main.redefine(name, CELL_BINDINGS, fn);
+    } catch (err) {
+      container.classList.add("observable-cell-error");
+      container.textContent = "Cell define error: " + err.message;
+    }
+  }
+
+  let fn0;
   try {
-    // Each cell body is an async function body: write a `return`
-    // statement to produce the value the Inspector renders (or
-    // mutate the DOM directly via a passed-in element -- Inspector
-    // handles DOM-Node return values by inserting them as-is).
-    fn = new Function(
-      ...CELL_BINDINGS,
-      "return (async () => {\n" + source + "\n})();"
-    );
+    fn0 = compileCell(currentSource);
   } catch (err) {
     container.classList.add("observable-cell-error");
     container.textContent = "Cell parse error: " + err.message;
@@ -334,7 +552,7 @@ function mountCell(codeEl, index) {
   }
 
   try {
-    main.variable(new Inspector(container)).define(name, CELL_BINDINGS, fn);
+    main.variable(inspector).define(name, CELL_BINDINGS, fn0);
   } catch (err) {
     container.classList.add("observable-cell-error");
     container.textContent = "Cell define error: " + err.message;
