@@ -1,0 +1,19 @@
+* Warning 241 at Parser.IRI.fst(0,0-0,0):
+  - Unable to load Parser.IRI.fst.checked since checked file
+    Parser.IRI.fst.checked is stale (digest mismatch for Parser.IRI.fst); will
+    recheck Parser.IRI.fst (suppressing this warning for further modules)
+
+* Warning 328 at Parser.Turtle.fst(1530,4-1530,21):
+  - Global binding
+        'Parser.Turtle.parse_object_list'
+    is recursive but not used in its body
+
+Extracted module SPARQL.Protocol.Client
+* Warning 247 at SPARQL.Protocol.Client.fst(0,0-0,0):
+  - Checked file SPARQL.Protocol.Client.fst.checked was not written.
+  - Reason:
+      checked file Parser.CSVResults.fst.checked is stale (dependence hash
+      mismatch, use --debug CheckedFiles for more details)
+
+Verified module: SPARQL.Protocol.Client
+All verification conditions discharged successfully

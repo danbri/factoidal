@@ -1,0 +1,33 @@
+findlib: [WARNING] Interface big_int.cmi occurs in several directories: /root/.opam/fstar/lib/num, /root/.opam/fstar/lib/ocaml
+findlib: [WARNING] Interface nat.cmi occurs in several directories: /root/.opam/fstar/lib/num, /root/.opam/fstar/lib/ocaml
+findlib: [WARNING] Interface arith_status.cmi occurs in several directories: /root/.opam/fstar/lib/num, /root/.opam/fstar/lib/ocaml
+findlib: [WARNING] Interface digestif.cmi occurs in several directories: /root/.opam/fstar/lib/digestif/c, /root/.opam/fstar/lib/digestif
+findlib: [WARNING] Interface ratio.cmi occurs in several directories: /root/.opam/fstar/lib/num, /root/.opam/fstar/lib/ocaml
+findlib: [WARNING] Interface num.cmi occurs in several directories: /root/.opam/fstar/lib/num, /root/.opam/fstar/lib/ocaml
+ocamlfind: [WARNING] Package `threads': Linking problems may arise because of the missing -thread or -vmthread switch
+/usr/bin/ld: /root/.opam/fstar/lib/ocaml/libasmrun.a(unix.n.o): in function `caml_dlopen':
+/root/.opam/fstar/.opam-switch/build/ocaml-base-compiler.4.14.1/runtime/unix.c:272:(.text.caml_dlopen+0x13): warning: Using 'dlopen' in statically linked applications requires at runtime the shared libraries from the glibc version used for linking
+/usr/bin/ld: /root/.opam/fstar/lib/ocaml/libunix.a(getgr.o): in function `unix_getgrgid':
+/root/.opam/fstar/.opam-switch/build/ocaml-base-compiler.4.14.1/otherlibs/unix/getgr.c:65:(.text.unix_getgrgid+0x22): warning: Using 'getgrgid' in statically linked applications requires at runtime the shared libraries from the glibc version used for linking
+/usr/bin/ld: /root/.opam/fstar/lib/ocaml/libunix.a(getgr.o): in function `unix_getgrnam':
+/root/.opam/fstar/.opam-switch/build/ocaml-base-compiler.4.14.1/otherlibs/unix/getgr.c:50:(.text.unix_getgrnam+0x28): warning: Using 'getgrnam' in statically linked applications requires at runtime the shared libraries from the glibc version used for linking
+/usr/bin/ld: /root/.opam/fstar/lib/ocaml/libunix.a(initgroups.o): in function `unix_initgroups':
+/root/.opam/fstar/.opam-switch/build/ocaml-base-compiler.4.14.1/otherlibs/unix/initgroups.c:35:(.text.unix_initgroups+0x23): warning: Using 'initgroups' in statically linked applications requires at runtime the shared libraries from the glibc version used for linking
+/usr/bin/ld: /root/.opam/fstar/lib/ocaml/libunix.a(getaddrinfo.o): in function `unix_getaddrinfo':
+/root/.opam/fstar/.opam-switch/build/ocaml-base-compiler.4.14.1/otherlibs/unix/getaddrinfo.c:111:(.text.unix_getaddrinfo+0x249): warning: Using 'getaddrinfo' in statically linked applications requires at runtime the shared libraries from the glibc version used for linking
+/usr/bin/ld: /root/.opam/fstar/lib/ocaml/libunix.a(gethost.o): in function `unix_gethostbyaddr':
+/root/.opam/fstar/.opam-switch/build/ocaml-base-compiler.4.14.1/otherlibs/unix/gethost.c:104:(.text.unix_gethostbyaddr+0x69): warning: Using 'gethostbyaddr_r' in statically linked applications requires at runtime the shared libraries from the glibc version used for linking
+/usr/bin/ld: /root/.opam/fstar/lib/ocaml/libunix.a(gethost.o): in function `unix_gethostbyname':
+/root/.opam/fstar/.opam-switch/build/ocaml-base-compiler.4.14.1/otherlibs/unix/gethost.c:145:(.text.unix_gethostbyname+0x71): warning: Using 'gethostbyname_r' in statically linked applications requires at runtime the shared libraries from the glibc version used for linking
+/usr/bin/ld: /root/.opam/fstar/lib/ocaml/libunix.a(getproto.o): in function `unix_getprotobynumber':
+/root/.opam/fstar/.opam-switch/build/ocaml-base-compiler.4.14.1/otherlibs/unix/getproto.c:56:(.text.unix_getprotobynumber+0xc): warning: Using 'getprotobynumber' in statically linked applications requires at runtime the shared libraries from the glibc version used for linking
+/usr/bin/ld: /root/.opam/fstar/lib/ocaml/libunix.a(getproto.o): in function `unix_getprotobyname':
+/root/.opam/fstar/.opam-switch/build/ocaml-base-compiler.4.14.1/otherlibs/unix/getproto.c:48:(.text.unix_getprotobyname+0x15): warning: Using 'getprotobyname' in statically linked applications requires at runtime the shared libraries from the glibc version used for linking
+/usr/bin/ld: /root/.opam/fstar/lib/ocaml/libunix.a(getpw.o): in function `unix_getpwnam':
+/root/.opam/fstar/.opam-switch/build/ocaml-base-compiler.4.14.1/otherlibs/unix/getpw.c:57:(.text.unix_getpwnam+0x28): warning: Using 'getpwnam' in statically linked applications requires at runtime the shared libraries from the glibc version used for linking
+/usr/bin/ld: /root/.opam/fstar/lib/ocaml/libunix.a(getpw.o): in function `unix_getpwuid':
+/root/.opam/fstar/.opam-switch/build/ocaml-base-compiler.4.14.1/otherlibs/unix/getpw.c:72:(.text.unix_getpwuid+0x22): warning: Using 'getpwuid' in statically linked applications requires at runtime the shared libraries from the glibc version used for linking
+/usr/bin/ld: /root/.opam/fstar/lib/ocaml/libunix.a(getserv.o): in function `unix_getservbyname':
+/root/.opam/fstar/.opam-switch/build/ocaml-base-compiler.4.14.1/otherlibs/unix/getserv.c:55:(.text.unix_getservbyname+0x2c): warning: Using 'getservbyname' in statically linked applications requires at runtime the shared libraries from the glibc version used for linking
+/usr/bin/ld: /root/.opam/fstar/lib/ocaml/libunix.a(getserv.o): in function `unix_getservbyport':
+/root/.opam/fstar/.opam-switch/build/ocaml-base-compiler.4.14.1/otherlibs/unix/getserv.c:64:(.text.unix_getservbyport+0x2d): warning: Using 'getservbyport' in statically linked applications requires at runtime the shared libraries from the glibc version used for linking

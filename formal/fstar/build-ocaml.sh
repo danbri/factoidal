@@ -451,6 +451,7 @@ if [[ "$STEP" == "all" || "$STEP" == "extract" ]]; then
     SPARQL.Plan.Explain.fst
     SPARQL.HTTP.fst
     SPARQL.HTTP.Client.fst
+    SPARQL.Protocol.Client.fst
     SPARQL.ServiceDescription.fst
     SPARQL.GraphStore.fst
   )
@@ -824,7 +825,7 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
     SPARQL_Explain.ml \
     SPARQL_Query_Analysis.ml \
     SPARQL_Plan_Explain.ml \
-    SPARQL_HTTP.ml SPARQL_HTTP_Client.ml SPARQL_ServiceDescription.ml \
+    SPARQL_HTTP.ml SPARQL_HTTP_Client.ml SPARQL_Protocol_Client.ml SPARQL_ServiceDescription.ml \
     SPARQL_GraphStore.ml"
 
   # Parquet/Zstd C stub — compiled and linked into native binaries when the
@@ -901,6 +902,7 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
     ../../../bin/factoidal-http/factoidal_http.ml
     ../../../bin/factoidal-serve/factoidal_serve.ml
     ../../../bin/factoidal-explain/factoidal_explain.ml
+    ../../../bin/factoidal-http-client/factoidal_http_client.ml
     ../../../bin/factoidal-cli/factoidal_cli.ml
     ../../../bin/factoidal-http/factoidal_http_main.ml
     ../../../bin/owl-runner/owl_runner.ml
@@ -956,11 +958,13 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
       -I ../../../bin/factoidal-serve \
       -I ../../../bin/factoidal-explain \
       -I ../../../bin/factoidal-http \
+      -I ../../../bin/factoidal-http-client \
       $COMMON_MODULES \
       $PARQUET_NATIVE_STUBS \
       ../../../bin/factoidal-http/factoidal_http.ml \
       ../../../bin/factoidal-serve/factoidal_serve.ml \
       ../../../bin/factoidal-explain/factoidal_explain.ml \
+      ../../../bin/factoidal-http-client/factoidal_http_client.ml \
       ../../../bin/factoidal-cli/factoidal_cli.ml \
       -o "$BINDIR/factoidal"
     cat _ocamlopt_factoidal.log
@@ -1397,7 +1401,7 @@ if [[ "$STEP" == "all" || "$STEP" == "js" ]]; then
     SPARQL_Diagnostics.ml
     SPARQL_Explain.ml
     SPARQL_Query_Analysis.ml
-    SPARQL_HTTP.ml SPARQL_HTTP_Client.ml SPARQL_ServiceDescription.ml SPARQL_GraphStore.ml
+    SPARQL_HTTP.ml SPARQL_HTTP_Client.ml SPARQL_Protocol_Client.ml SPARQL_ServiceDescription.ml SPARQL_GraphStore.ml
   )
   JS_TARGETS=(
     w3c_runner.byte
@@ -1412,6 +1416,7 @@ if [[ "$STEP" == "all" || "$STEP" == "js" ]]; then
     ../../../bin/w3c-runner/w3c_runner.ml
     ../../../bin/factoidal-serve/factoidal_serve.ml
     ../../../bin/factoidal-serve/factoidal_serve_jsoo.ml
+    ../../../bin/factoidal-http-client/factoidal_http_client_jsoo.ml
     ../../../bin/factoidal-cli/factoidal_cli.ml
     ../../../bin/npm-entry/entry_jsoo.ml
     parquet_zstd_stubs_jsoo.c
@@ -1457,6 +1462,12 @@ if [[ "$STEP" == "all" || "$STEP" == "js" ]]; then
     # (which becomes the OCaml `Factoidal_serve` module name), pointed
     # at the jsoo variant; clean up after the build.
     cp ../../../bin/factoidal-serve/factoidal_serve_jsoo.ml factoidal_serve.ml
+    # Same staging trick for the query --endpoint remote-client path:
+    # stage the JS stub as `factoidal_http_client.ml` in cwd so it
+    # resolves to the OCaml module name factoidal_cli.ml expects
+    # (Factoidal_http_client), without linking the native Unix-socket
+    # glue (js_of_ocaml has no raw-TCP primitive).
+    cp ../../../bin/factoidal-http-client/factoidal_http_client_jsoo.ml factoidal_http_client.ml
     FACTOIDAL_BYTE_RC=0
     run_with_heartbeat "ocamlc factoidal.byte" "_ocamlc_factoidal.log" -- \
       ocamlfind ocamlc -package fstar.lib,str,zarith,sha,digestif.c,unix,uucp -linkpkg -w -8-14-26 \
@@ -1465,11 +1476,12 @@ if [[ "$STEP" == "all" || "$STEP" == "js" ]]; then
       "${FSTAR_MODULES[@]}" \
       ../../../bin/factoidal-explain/factoidal_explain.ml \
       factoidal_serve.ml \
+      factoidal_http_client.ml \
       ../../../bin/factoidal-cli/factoidal_cli.ml \
       -o factoidal.byte || FACTOIDAL_BYTE_RC=$?
-    # Clean up the staged stub so a subsequent native build doesn't
-    # pick it up. Always clean, even on compile failure.
-    rm -f factoidal_serve.ml
+    # Clean up the staged stubs so a subsequent native build doesn't
+    # pick them up. Always clean, even on compile failure.
+    rm -f factoidal_serve.ml factoidal_http_client.ml
     if [[ "$FACTOIDAL_BYTE_RC" -ne 0 ]]; then
       cat _ocamlc_factoidal.log
       echo "  ERROR: factoidal.byte build failed (rc=$FACTOIDAL_BYTE_RC)" >&2

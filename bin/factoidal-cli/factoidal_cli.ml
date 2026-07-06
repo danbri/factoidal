@@ -26,6 +26,76 @@ open SPARQL11_Algebra
 let () = JSONLD_Loader.jsonld_loader_register (fun _ -> FStar_Pervasives_Native.None)
 
 (* ============================================================================
+   Remote SPARQL 1.1 Protocol client (`query --endpoint URL`)
+
+   All request construction, Accept-header selection, and response
+   Content-Type dispatch is the F*-extracted SPARQL_Protocol_Client
+   module (formal/fstar/SPARQL.Protocol.Client.fst), itself layered on
+   the F*-extracted HTTP/1.1 framing in SPARQL_HTTP_Client (formal/
+   fstar/SPARQL.HTTP.Client.fst). This file only does two things a
+   verified library can't: split a URL into (host, port, path) for the
+   OS-level `connect(2)` call, and pretty-print the typed result using
+   the SAME table/CSV/JSON/N-Triples renderers the local-query path
+   already uses (rule #15 — no second, drifting formatter).
+
+   Factoidal_http_client (bin/factoidal-http-client/factoidal_http_client.ml)
+   is the Unix-socket I/O glue — a CONSUMER module per rule #11, not an
+   `assume val` realisation, following the same precedent as the
+   server side (bin/factoidal-http/factoidal_http.ml uses plain Unix
+   accept/read/write, not an assume-val seam either; see
+   skills/ocaml-boundary/SKILL.md's CONSUMER row). No new `assume val`
+   is introduced by this feature. *)
+module HTTPC   = SPARQL_HTTP_Client
+module PClient = SPARQL_Protocol_Client
+
+(* Split "http://host[:port][/path]" into (host, port, path). No HTTPS
+   in this phase: no TLS stack is linked into the native binary (the
+   project's TLS options — an OCaml TLS library, or shelling out to
+   curl — are both left for a follow-up; see the `query --endpoint`
+   section of the CLI usage text and the tracking issue). *)
+let parse_endpoint_url (url : string) : string * int * string =
+  let marker = "://" in
+  let url_len = String.length url in
+  let marker_len = String.length marker in
+  let find_marker () =
+    let rec go i =
+      if i + marker_len > url_len then None
+      else if String.sub url i marker_len = marker then Some i
+      else go (i + 1)
+    in go 0
+  in
+  let is_https, rest =
+    match find_marker () with
+    | Some idx ->
+      let scheme = String.sub url 0 idx in
+      let after = String.sub url (idx + marker_len) (url_len - idx - marker_len) in
+      (String.lowercase_ascii scheme = "https", after)
+    | None -> (false, url)
+  in
+  if is_https then begin
+    Printf.eprintf
+      "Error: https:// endpoints are not supported yet (no TLS stack linked \
+       into this binary). Use an http:// endpoint, or front the HTTPS \
+       endpoint with a local http:// proxy.\n";
+    exit 1
+  end;
+  let path_idx = try String.index rest '/' with Not_found -> String.length rest in
+  let hostport = String.sub rest 0 path_idx in
+  let path =
+    if path_idx >= String.length rest then "/"
+    else String.sub rest path_idx (String.length rest - path_idx)
+  in
+  let host, port =
+    match String.rindex_opt hostport ':' with
+    | Some ci ->
+      let h = String.sub hostport 0 ci in
+      let p = String.sub hostport (ci + 1) (String.length hostport - ci - 1) in
+      (h, (try int_of_string p with _ -> 80))
+    | None -> (hostport, 80)
+  in
+  (host, port, path)
+
+(* ============================================================================
    Output formatting
    ============================================================================ *)
 
@@ -475,6 +545,34 @@ let print_results_ntriples triples =
 
 type output_format = Table | CSV | NTOut | JSON
 
+(* Pretty-print a remote SPARQL_Protocol_Client.client_result (from
+   `query --endpoint`) using the SAME renderers the local-query path
+   uses above — no second, drifting formatter (rule #15). *)
+let print_client_result (ofmt : output_format) (r : PClient.client_result) : unit =
+  match r with
+  | PClient.CLR_Boolean b ->
+    (match ofmt with
+     | JSON -> Printf.printf "{\n  \"head\": {},\n  \"boolean\": %s\n}\n" (if b then "true" else "false")
+     | _ -> Printf.printf "%s\n" (if b then "true" else "false"))
+  | PClient.CLR_Bindings (vars, rows) ->
+    (match ofmt with
+     | Table | NTOut -> print_results_table vars rows
+     | CSV -> print_results_csv vars rows
+     | JSON -> print_results_json vars rows)
+  | PClient.CLR_Graph triples ->
+    print_results_ntriples triples
+  | PClient.CLR_HttpError (status, body) ->
+    Printf.eprintf "Error: endpoint returned HTTP %s:\n%s\n" (Z.to_string status) body;
+    exit 1
+  | PClient.CLR_ParseError detail ->
+    Printf.eprintf "Error: could not parse endpoint response: %s\n" detail;
+    exit 1
+  | PClient.CLR_UnknownContentType (ct, body) ->
+    Printf.eprintf "Error: endpoint returned an unrecognised Content-Type '%s'\n" ct;
+    (if String.length body > 0 then Printf.eprintf "Body preview: %s\n"
+       (if String.length body > 200 then String.sub body 0 200 ^ "..." else body));
+    exit 1
+
 type config = {
   mutable data_files : string list;
   mutable data_cottas_files : string list;  (* COTTAS/Parquet artifacts *)
@@ -496,6 +594,9 @@ type config = {
   mutable help_mode : bool;
   mutable version_mode : bool;
   mutable entail_regime : string;  (* "" (none), "RDFS", or "OWL-RL" *)
+  mutable endpoint : string option;      (* --endpoint URL: remote SPARQL 1.1 Protocol query *)
+  mutable accept_override : string option;  (* --accept MEDIA-TYPE: override the sniffed Accept header *)
+  mutable dispatch_via : string;         (* --via get|post|form; default "post" (direct POST) *)
 }
 
 (* Shared SELECT/ASK output formatter — factored out of the query-
@@ -577,6 +678,11 @@ let usage () =
   Printf.printf "  factoidal -d data.trig -e 'SELECT ?g ?s WHERE { GRAPH ?g { ?s ?p ?o } }'\n";
   Printf.printf "  factoidal -d data.nq -e 'SELECT * WHERE { ?s ?p ?o }'  (queries default graph)\n";
   Printf.printf "\n";
+  Printf.printf "Remote SPARQL 1.1 Protocol query (query --endpoint):\n";
+  Printf.printf "  factoidal query --endpoint http://host:port/sparql -e 'ASK{}'\n";
+  Printf.printf "  factoidal query --endpoint http://host:port/sparql --query-file q.rq -o json\n";
+  Printf.printf "  factoidal query --endpoint http://host:port/sparql -e '...' --via get\n";
+  Printf.printf "\n";
   Printf.printf "RDF parsing/dump:\n";
   Printf.printf "  factoidal --dump FILE.ttl           Parse and dump as N-Triples\n";
   Printf.printf "  factoidal --dump-nq FILE.trig       Parse and dump as sorted N-Quads\n";
@@ -607,8 +713,17 @@ let usage () =
   Printf.printf "                         named graphs -- HDTQ is a separate, deferred\n";
   Printf.printf "                         extension); SELECT/ASK only.\n";
   Printf.printf "  -n, --named IRI=FILE   Load named graph\n";
-  Printf.printf "  -q, --query FILE       SPARQL query file\n";
+  Printf.printf "  -q, --query, --query-file FILE   SPARQL query file\n";
   Printf.printf "  -e SPARQL              Inline SPARQL query string\n";
+  Printf.printf "      --endpoint URL     Run the query against a remote SPARQL 1.1\n";
+  Printf.printf "                         Protocol endpoint instead of local --data/\n";
+  Printf.printf "                         --data-cottas. http:// only (no TLS stack\n";
+  Printf.printf "                         linked yet); -o table|csv|json|ntriples all\n";
+  Printf.printf "                         work (ntriples path is for CONSTRUCT/DESCRIBE\n";
+  Printf.printf "                         graph results).\n";
+  Printf.printf "      --accept MEDIA     Override the auto-selected Accept header.\n";
+  Printf.printf "      --via get|post|form  Query dispatch method (default: post, i.e.\n";
+  Printf.printf "                         application/sparql-query direct POST body).\n";
   Printf.printf "  -b, --base IRI         Base IRI for parsing\n";
   Printf.printf "  -f, --format FMT       Input format: turtle, ntriples, nquads, trig, rdfxml,\n";
   Printf.printf "                         jsonld (Phase 1: expanded form only)\n";
@@ -662,6 +777,7 @@ let parse_args ?args () =
     explain_mode = false; explain_out = None;
     help_mode = false; version_mode = false;
     entail_regime = "";
+    endpoint = None; accept_override = None; dispatch_via = "post";
   } in
   let args = match args with
     | Some a -> a
@@ -695,8 +811,14 @@ let parse_args ?args () =
        | None ->
          Printf.eprintf "Error: --named requires IRI=FILE format\n"; exit 1);
       loop rest
-    | ("--query" | "-q") :: f :: rest -> cfg.query_file <- Some f; loop rest
+    | ("--query" | "-q" | "--query-file") :: f :: rest -> cfg.query_file <- Some f; loop rest
     | "-e" :: q :: rest -> cfg.query_string <- Some q; loop rest
+    | "--endpoint" :: url :: rest -> cfg.endpoint <- Some url; loop rest
+    | "--accept" :: media :: rest -> cfg.accept_override <- Some media; loop rest
+    | "--via" :: how :: rest ->
+      (match String.lowercase_ascii how with
+       | ("get" | "post" | "form") as v -> cfg.dispatch_via <- v; loop rest
+       | _ -> Printf.eprintf "Error: --via expects get, post, or form (got '%s')\n" how; exit 1)
     | ("--base" | "-b") :: b :: rest -> cfg.base_iri <- Some b; loop rest
     | ("--format" | "-f") :: fmt :: rest ->
       (match format_of_string fmt with
@@ -2504,6 +2626,50 @@ let () =
     ) cfg.data_cottas_files;
     exit 0
   end;
+
+  (* Remote query mode: --endpoint bypasses the local evaluator
+     entirely and runs the SPARQL 1.1 Protocol client instead (see the
+     module banner near `parse_endpoint_url` above, and
+     formal/fstar/SPARQL.Protocol.Client.fst). *)
+  (match cfg.endpoint with
+   | None -> ()
+   | Some url ->
+     let query_text = match cfg.query_string, cfg.query_file with
+       | Some q, _ -> q
+       | None, Some f -> read_file f
+       | None, None ->
+         Printf.eprintf
+           "Error: --endpoint requires a query via --query FILE, --query-file FILE, or -e 'SPARQL'\n";
+         exit 1
+     in
+     let (host, port, path) = parse_endpoint_url url in
+     let method_ = match cfg.dispatch_via with
+       | "get"  -> PClient.CDM_Get
+       | "form" -> PClient.CDM_PostForm
+       | _      -> PClient.CDM_PostDirect
+     in
+     let req0 = PClient.build_query_request method_ host path query_text [] [] in
+     let req = match cfg.accept_override with
+       | None -> req0
+       | Some a ->
+         HTTPC.(
+           let kept = List.filter (fun (k, _) -> String.lowercase_ascii k <> "accept") req0.rm_headers in
+           { req0 with rm_headers = kept @ [("Accept", a)] })
+     in
+     let req_bytes = HTTPC.format_request req in
+     let raw =
+       try Factoidal_http_client.perform_request ~host ~port ~req_bytes
+       with e ->
+         Printf.eprintf "Error: could not reach endpoint %s: %s\n" url (Printexc.to_string e);
+         exit 1
+     in
+     (match HTTPC.parse_http_response raw (Z.of_int 16384) (Z.of_int (64 * 1024 * 1024)) with
+      | FStar_Pervasives.Inr _ ->
+        Printf.eprintf "Error: malformed HTTP response from endpoint %s\n" url;
+        exit 1
+      | FStar_Pervasives.Inl resp ->
+        print_client_result cfg.output_format (PClient.handle_http_response resp);
+        exit 0));
 
   (* Query mode *)
   let query_text = match cfg.query_string, cfg.query_file with
