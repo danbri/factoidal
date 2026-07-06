@@ -922,7 +922,7 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
     # The Ballyhoo HDT/COTTAS runtime glue pulls in Unix (Unix.open_process_full,
     # etc.), so we now always link -package unix.
     run_with_heartbeat "ocamlopt w3c_runner" "_ocamlopt_w3c_runner.log" -- \
-      ocamlfind ocamlopt -package fstar.lib,str,zarith,sha,digestif.c,unix -linkpkg -w -8-14-26 \
+      ocamlfind ocamlopt -package fstar.lib,str,zarith,sha,digestif.c,unix,uucp -linkpkg -w -8-14-26 \
       $STATIC_FLAGS \
       $COMMON_MODULES \
       $PARQUET_NATIVE_STUBS \
@@ -945,7 +945,7 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
     # on every uncaught exception in the cottas-ondisk query path, and
     # without -g those frames just say "Called from unknown".
     run_with_heartbeat "ocamlopt factoidal" "_ocamlopt_factoidal.log" -- \
-      ocamlfind ocamlopt -g -thread -package fstar.lib,str,zarith,sha,digestif.c,unix,threads.posix -linkpkg -w -8-14-26 \
+      ocamlfind ocamlopt -g -thread -package fstar.lib,str,zarith,sha,digestif.c,unix,uucp,threads.posix -linkpkg -w -8-14-26 \
       $STATIC_FLAGS \
       -I ../../../bin/factoidal-serve \
       -I ../../../bin/factoidal-explain \
@@ -968,7 +968,7 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
     # threads.posix: see comment above on the factoidal target.
     # -g: see comment above on the factoidal target (qof3 defensive-debug).
     run_with_heartbeat "ocamlopt factoidal-http" "_ocamlopt_factoidal_http.log" -- \
-      ocamlfind ocamlopt -g -thread -package fstar.lib,str,zarith,sha,digestif.c,unix,threads.posix -linkpkg -w -8-14-26 \
+      ocamlfind ocamlopt -g -thread -package fstar.lib,str,zarith,sha,digestif.c,unix,uucp,threads.posix -linkpkg -w -8-14-26 \
       $STATIC_FLAGS \
       -I ../../../bin/factoidal-http \
       $COMMON_MODULES \
@@ -984,7 +984,7 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
     # + types, emits final count. No reasoning wired yet.
     # See docs/designissues/2026-04-24-owl-test-harness.md.
     run_with_heartbeat "ocamlopt owl_runner" "_ocamlopt_owl_runner.log" -- \
-      ocamlfind ocamlopt -package fstar.lib,str,zarith,sha,digestif.c,unix -linkpkg -w -8-14-26 \
+      ocamlfind ocamlopt -package fstar.lib,str,zarith,sha,digestif.c,unix,uucp -linkpkg -w -8-14-26 \
       $STATIC_FLAGS \
       $COMMON_MODULES \
       $PARQUET_NATIVE_STUBS \
@@ -1006,7 +1006,7 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
   # ocaml-output/ for _ocamlopt_*.log.
     RDFC10_RC=0
     run_with_heartbeat "ocamlopt rdfc10_runner" "_ocamlopt_rdfc10_runner.log" -- \
-      ocamlfind ocamlopt -package fstar.lib,str,zarith,sha,digestif.c,unix -linkpkg -w -8-14-26 \
+      ocamlfind ocamlopt -package fstar.lib,str,zarith,sha,digestif.c,unix,uucp -linkpkg -w -8-14-26 \
       $STATIC_FLAGS \
       $COMMON_MODULES \
       $PARQUET_NATIVE_STUBS \
@@ -1033,7 +1033,7 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
     # docs/designissues/2026-07-05-jsonld-phase2-runner.md.
     JSONLD_RUNNER_RC=0
     run_with_heartbeat "ocamlopt jsonld_runner" "_ocamlopt_jsonld_runner.log" -- \
-      ocamlfind ocamlopt -package fstar.lib,str,zarith,sha,digestif.c,unix -linkpkg -w -8-14-26 \
+      ocamlfind ocamlopt -package fstar.lib,str,zarith,sha,digestif.c,unix,uucp -linkpkg -w -8-14-26 \
       $STATIC_FLAGS \
       $COMMON_MODULES \
       $PARQUET_NATIVE_STUBS \
@@ -1065,7 +1065,7 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
     # result against each filename's own -ok/-fail suffix.
     VC_RUNNER_RC=0
     run_with_heartbeat "ocamlopt vc_runner" "_ocamlopt_vc_runner.log" -- \
-      ocamlfind ocamlopt -package fstar.lib,str,zarith,sha,digestif.c,unix -linkpkg -w -8-14-26 \
+      ocamlfind ocamlopt -package fstar.lib,str,zarith,sha,digestif.c,unix,uucp -linkpkg -w -8-14-26 \
       $STATIC_FLAGS \
       $COMMON_MODULES \
       $PARQUET_NATIVE_STUBS \
@@ -1095,7 +1095,7 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
     # coverage and what is deferred.
     SHACL_RUNNER_RC=0
     run_with_heartbeat "ocamlopt shacl_runner" "_ocamlopt_shacl_runner.log" -- \
-      ocamlfind ocamlopt -package fstar.lib,str,zarith,sha,digestif.c,unix -linkpkg -w -8-14-26 \
+      ocamlfind ocamlopt -package fstar.lib,str,zarith,sha,digestif.c,unix,uucp -linkpkg -w -8-14-26 \
       $STATIC_FLAGS \
       $COMMON_MODULES \
       $PARQUET_NATIVE_STUBS \
@@ -1127,7 +1127,7 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
     # / N-Quads-sanitizing details.
     RML_RUNNER_RC=0
     run_with_heartbeat "ocamlopt rml_runner" "_ocamlopt_rml_runner.log" -- \
-      ocamlfind ocamlopt -package fstar.lib,str,zarith,sha,digestif.c,unix -linkpkg -w -8-14-26 \
+      ocamlfind ocamlopt -package fstar.lib,str,zarith,sha,digestif.c,unix,uucp -linkpkg -w -8-14-26 \
       $STATIC_FLAGS \
       $COMMON_MODULES \
       $PARQUET_NATIVE_STUBS \
@@ -1157,7 +1157,7 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
     # header comment for the PASS/MISMATCH/DEFERRED/SKIP classification.
     SHEX_RUNNER_RC=0
     run_with_heartbeat "ocamlopt shex_runner" "_ocamlopt_shex_runner.log" -- \
-      ocamlfind ocamlopt -package fstar.lib,str,zarith,sha,digestif.c,unix -linkpkg -w -8-14-26 \
+      ocamlfind ocamlopt -package fstar.lib,str,zarith,sha,digestif.c,unix,uucp -linkpkg -w -8-14-26 \
       $STATIC_FLAGS \
       $COMMON_MODULES \
       $PARQUET_NATIVE_STUBS \
@@ -1183,7 +1183,7 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
     # revert restored a pre-fix binary). See bin/rif-runner/README.md.
     RIF_RUNNER_RC=0
     run_with_heartbeat "ocamlopt rif_runner" "_ocamlopt_rif_runner.log" -- \
-      ocamlfind ocamlopt -package fstar.lib,str,zarith,sha,digestif.c,unix -linkpkg -w -8-14-26 \
+      ocamlfind ocamlopt -package fstar.lib,str,zarith,sha,digestif.c,unix,uucp -linkpkg -w -8-14-26 \
       $STATIC_FLAGS \
       $COMMON_MODULES \
       $PARQUET_NATIVE_STUBS \
@@ -1203,7 +1203,7 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
     # (relocated 2026-05-08).
     FACTOIDAL_HTTP_CLIENT_RC=0
     run_with_heartbeat "ocamlopt factoidal_http_client" "_ocamlopt_factoidal_http_client.log" -- \
-      ocamlfind ocamlopt -package fstar.lib,str,zarith,sha,digestif.c,unix -linkpkg -w -8-14-26 \
+      ocamlfind ocamlopt -package fstar.lib,str,zarith,sha,digestif.c,unix,uucp -linkpkg -w -8-14-26 \
       $STATIC_FLAGS \
       $COMMON_MODULES \
       $PARQUET_NATIVE_STUBS \
@@ -1222,7 +1222,7 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
     # in bin/parquet-probe/ per #200 D Phase 8 (relocated 2026-05-08).
     PARQUET_PROBE_RC=0
     run_with_heartbeat "ocamlopt parquet_probe" "_ocamlopt_parquet_probe.log" -- \
-      ocamlfind ocamlopt -package fstar.lib,str,zarith,sha,digestif.c,unix -linkpkg -w -8-14-26 \
+      ocamlfind ocamlopt -package fstar.lib,str,zarith,sha,digestif.c,unix,uucp -linkpkg -w -8-14-26 \
       $STATIC_FLAGS \
       $COMMON_MODULES \
       $PARQUET_NATIVE_STUBS \
@@ -1247,7 +1247,7 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
     # iron rule #11 (consumer code is not part of the verified library).
     COTTAS_SMOKE_RC=0
     run_with_heartbeat "ocamlopt cottas_ondisk_smoketest" "_ocamlopt_cottas_ondisk_smoketest.log" -- \
-      ocamlfind ocamlopt -package fstar.lib,str,zarith,sha,digestif.c,unix -linkpkg -w -8-14-26 \
+      ocamlfind ocamlopt -package fstar.lib,str,zarith,sha,digestif.c,unix,uucp -linkpkg -w -8-14-26 \
       $STATIC_FLAGS \
       $COMMON_MODULES \
       $PARQUET_NATIVE_STUBS \
@@ -1430,7 +1430,7 @@ if [[ "$STEP" == "all" || "$STEP" == "js" ]]; then
     # the JS shim at bundle time. The stub returns None and is never
     # actually executed in the JS build path.
     run_with_heartbeat "ocamlc w3c_runner.byte" "_ocamlc_w3c_runner.log" -- \
-      ocamlfind ocamlc -package fstar.lib,str,zarith,sha,digestif.c,unix -linkpkg -w -8-14-26 \
+      ocamlfind ocamlc -package fstar.lib,str,zarith,sha,digestif.c,unix,uucp -linkpkg -w -8-14-26 \
       -custom parquet_zstd_stubs_jsoo.c \
       "${FSTAR_MODULES[@]}" \
       ../../../bin/w3c-runner/w3c_runner.ml \
@@ -1450,7 +1450,7 @@ if [[ "$STEP" == "all" || "$STEP" == "js" ]]; then
     cp ../../../bin/factoidal-serve/factoidal_serve_jsoo.ml factoidal_serve.ml
     FACTOIDAL_BYTE_RC=0
     run_with_heartbeat "ocamlc factoidal.byte" "_ocamlc_factoidal.log" -- \
-      ocamlfind ocamlc -package fstar.lib,str,zarith,sha,digestif.c,unix -linkpkg -w -8-14-26 \
+      ocamlfind ocamlc -package fstar.lib,str,zarith,sha,digestif.c,unix,uucp -linkpkg -w -8-14-26 \
       -custom parquet_zstd_stubs_jsoo.c \
       -I ../../../bin/factoidal-explain \
       "${FSTAR_MODULES[@]}" \
@@ -1472,7 +1472,7 @@ if [[ "$STEP" == "all" || "$STEP" == "js" ]]; then
     # persistent string/JSON ABI for the npm package. Needs the
     # js_of_ocaml library for Js.export / Js.wrap_callback.
     run_with_heartbeat "ocamlc npm_entry.byte" "_ocamlc_npm_entry.log" -- \
-      ocamlfind ocamlc -package fstar.lib,str,zarith,sha,digestif.c,unix,js_of_ocaml -linkpkg -w -8-14-26 \
+      ocamlfind ocamlc -package fstar.lib,str,zarith,sha,digestif.c,unix,uucp,js_of_ocaml -linkpkg -w -8-14-26 \
       -custom parquet_zstd_stubs_jsoo.c \
       "${FSTAR_MODULES[@]}" \
       ../../../bin/npm-entry/entry_jsoo.ml \

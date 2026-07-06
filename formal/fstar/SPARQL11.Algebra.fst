@@ -732,8 +732,25 @@ let string_substring (s : string) (start : nat) (len : option nat) : string =
   if actual_len = 0 || start' >= slen then ""
   else String.sub s start' actual_len
 
-let string_upper (s : string) : string = String.uppercase s
-let string_lower (s : string) : string = String.lowercase s
+(* SPARQL 1.1 §17.4.3.20/17.4.3.21 fn:upper-case / fn:lower-case are
+   the XPath F&O Unicode case-mapping functions, not ASCII-only
+   transforms. F*'s own `FStar.String.uppercase`/`lowercase` realise
+   (in the F* standard library's `FStar_String.ml`) to
+   `BatString.uppercase_ascii` / `lowercase_ascii` — only the 26
+   ASCII letters map; "Müller" comes back "MüLLER" with the `ü` left
+   untouched. Issue #250.
+   `string_uppercase_unicode` / `string_lowercase_unicode` are new
+   assume vals realised via the `uucp` opam package (Unicode
+   character-property tables) in
+   `minimal_regrettable_glue_code_each_with_an_open_issue/250_unicode_case_mapping.sh`.
+   Per rule #3 / the #181 lesson: issue #250 stays OPEN after that
+   patch lands — it is the acknowledged-gap tracker for these two
+   OCaml-realised primitives, not just a symptom report to close out. *)
+assume val string_uppercase_unicode (s : string) : string
+assume val string_lowercase_unicode (s : string) : string
+
+let string_upper (s : string) : string = string_uppercase_unicode s
+let string_lower (s : string) : string = string_lowercase_unicode s
 
 (* Numeric datatype check *)
 let is_numeric_datatype (dt : wf_iri) : bool =

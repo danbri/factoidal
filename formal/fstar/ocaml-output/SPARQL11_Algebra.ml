@@ -1,47 +1,41 @@
 open Prims
-let lit_lexical (l : RDF_Graph_Executable.wf_literal) : Prims.string=
-  l.RDF_Graph_Executable.lexical_form
-let lit_datatype (l : RDF_Graph_Executable.wf_literal) :
-  RDF_Graph_Executable.wf_iri= l.RDF_Graph_Executable.datatype
-let lit_lang (l : RDF_Graph_Executable.wf_literal) :
-  Prims.string FStar_Pervasives_Native.option=
-  l.RDF_Graph_Executable.lang_tag
-let iri_to_string (i : RDF_Graph_Executable.wf_iri) : Prims.string= i
+let lit_lexical (l : RDF_Term.wf_literal) : Prims.string=
+  l.RDF_Term.lexical_form
+let lit_datatype (l : RDF_Term.wf_literal) : RDF_Term.wf_iri=
+  l.RDF_Term.datatype
+let lit_lang (l : RDF_Term.wf_literal) :
+  Prims.string FStar_Pervasives_Native.option= l.RDF_Term.lang_tag
+let iri_to_string (i : RDF_Term.wf_iri) : Prims.string= i
 let string_to_iri (s : Prims.string) :
-  RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option=
-  if RDF_Graph_Executable.is_iri s
+  RDF_Term.wf_iri FStar_Pervasives_Native.option=
+  if RDF_Term.is_iri s
   then FStar_Pervasives_Native.Some s
   else FStar_Pervasives_Native.None
-let rdf_langString : RDF_Graph_Executable.wf_iri=
-  RDF_Graph_Executable.rdf_lang_string
-let xsd_float : RDF_Graph_Executable.wf_iri=
-  "http://www.w3.org/2001/XMLSchema#float"
-let xsd_dateTime : RDF_Graph_Executable.wf_iri=
+let rdf_langString : RDF_Term.wf_iri= RDF_Term.rdf_lang_string
+let xsd_float : RDF_Term.wf_iri= "http://www.w3.org/2001/XMLSchema#float"
+let xsd_dateTime : RDF_Term.wf_iri=
   "http://www.w3.org/2001/XMLSchema#dateTime"
-let xsd_date : RDF_Graph_Executable.wf_iri=
-  "http://www.w3.org/2001/XMLSchema#date"
-let xsd_time : RDF_Graph_Executable.wf_iri=
-  "http://www.w3.org/2001/XMLSchema#time"
-let xsd_duration : RDF_Graph_Executable.wf_iri=
+let xsd_date : RDF_Term.wf_iri= "http://www.w3.org/2001/XMLSchema#date"
+let xsd_time : RDF_Term.wf_iri= "http://www.w3.org/2001/XMLSchema#time"
+let xsd_duration : RDF_Term.wf_iri=
   "http://www.w3.org/2001/XMLSchema#duration"
-let xsd_dayTimeDuration : RDF_Graph_Executable.wf_iri=
+let xsd_dayTimeDuration : RDF_Term.wf_iri=
   "http://www.w3.org/2001/XMLSchema#dayTimeDuration"
-let xsd_yearMonthDuration : RDF_Graph_Executable.wf_iri=
+let xsd_yearMonthDuration : RDF_Term.wf_iri=
   "http://www.w3.org/2001/XMLSchema#yearMonthDuration"
 let sm_empty : RDF_Graph_Executable.solution_mapping= []
 let sm_lookup (v : Prims.string) (mu : RDF_Graph_Executable.solution_mapping)
-  : RDF_Graph_Executable.rdf_term FStar_Pervasives_Native.option=
+  : RDF_Term.rdf_term FStar_Pervasives_Native.option=
   RDF_List_Helpers.assoc_tr v mu
-let sm_bind (v : Prims.string) (t : RDF_Graph_Executable.rdf_term)
+let sm_bind (v : Prims.string) (t : RDF_Term.rdf_term)
   (mu : RDF_Graph_Executable.solution_mapping) :
   RDF_Graph_Executable.solution_mapping= (v, t) :: mu
-let sm_bind_if_compatible (v : Prims.string)
-  (t : RDF_Graph_Executable.rdf_term)
+let sm_bind_if_compatible (v : Prims.string) (t : RDF_Term.rdf_term)
   (mu : RDF_Graph_Executable.solution_mapping) :
   RDF_Graph_Executable.solution_mapping FStar_Pervasives_Native.option=
   match sm_lookup v mu with
   | FStar_Pervasives_Native.Some existing ->
-      if RDF_Graph_Executable.rdf_term_eq existing t
+      if RDF_Term.rdf_term_eq existing t
       then FStar_Pervasives_Native.Some mu
       else FStar_Pervasives_Native.None
   | FStar_Pervasives_Native.None ->
@@ -57,8 +51,7 @@ let rec sm_compatible (mu1 : RDF_Graph_Executable.solution_mapping)
       (match FStar_List_Tot_Base.assoc v mu2 with
        | FStar_Pervasives_Native.None -> sm_compatible rest mu2
        | FStar_Pervasives_Native.Some t2 ->
-           (RDF_Graph_Executable.rdf_term_eq t t2) &&
-             (sm_compatible rest mu2))
+           (RDF_Term.rdf_term_eq t t2) && (sm_compatible rest mu2))
 let rec sm_merge_aux (mu1 : RDF_Graph_Executable.solution_mapping)
   (mu2 : RDF_Graph_Executable.solution_mapping) :
   RDF_Graph_Executable.solution_mapping=
@@ -75,37 +68,36 @@ let sm_merge (mu1 : RDF_Graph_Executable.solution_mapping)
   RDF_Graph_Executable.solution_mapping= sm_merge_aux mu1 mu2
 type triple_pattern_bound =
   {
-  bs: RDF_Graph_Executable.subject FStar_Pervasives_Native.option ;
-  bp: RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option ;
-  bo: RDF_Graph_Executable.rdf_term FStar_Pervasives_Native.option }
+  bs: RDF_Term.subject FStar_Pervasives_Native.option ;
+  bp: RDF_Term.wf_iri FStar_Pervasives_Native.option ;
+  bo: RDF_Term.rdf_term FStar_Pervasives_Native.option }
 let __proj__Mktriple_pattern_bound__item__bs
   (projectee : triple_pattern_bound) :
-  RDF_Graph_Executable.subject FStar_Pervasives_Native.option=
+  RDF_Term.subject FStar_Pervasives_Native.option=
   match projectee with | { bs; bp; bo;_} -> bs
 let __proj__Mktriple_pattern_bound__item__bp
   (projectee : triple_pattern_bound) :
-  RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option=
+  RDF_Term.wf_iri FStar_Pervasives_Native.option=
   match projectee with | { bs; bp; bo;_} -> bp
 let __proj__Mktriple_pattern_bound__item__bo
   (projectee : triple_pattern_bound) :
-  RDF_Graph_Executable.rdf_term FStar_Pervasives_Native.option=
+  RDF_Term.rdf_term FStar_Pervasives_Native.option=
   match projectee with | { bs; bp; bo;_} -> bo
 type graph_store =
   {
-  gs_graph: RDF_Graph_Executable.rdf_graph ;
-  gs_indexed: RDF_Graph_Executable.indexed_graph }
+  gs_graph: RDF_Graph.rdf_graph ;
+  gs_indexed: RDF_Indexed.indexed_graph }
 let __proj__Mkgraph_store__item__gs_graph (projectee : graph_store) :
-  RDF_Graph_Executable.rdf_graph=
+  RDF_Graph.rdf_graph=
   match projectee with | { gs_graph; gs_indexed;_} -> gs_graph
 let __proj__Mkgraph_store__item__gs_indexed (projectee : graph_store) :
-  RDF_Graph_Executable.indexed_graph=
+  RDF_Indexed.indexed_graph=
   match projectee with | { gs_graph; gs_indexed;_} -> gs_indexed
-type named_graph_store =
-  {
-  ngs_name: RDF_Graph_Executable.iri ;
+type named_graph_store = {
+  ngs_name: RDF_Term.iri ;
   ngs_store: graph_store }
 let __proj__Mknamed_graph_store__item__ngs_name
-  (projectee : named_graph_store) : RDF_Graph_Executable.iri=
+  (projectee : named_graph_store) : RDF_Term.iri=
   match projectee with | { ngs_name; ngs_store;_} -> ngs_name
 let __proj__Mknamed_graph_store__item__ngs_store
   (projectee : named_graph_store) : graph_store=
@@ -120,36 +112,33 @@ let __proj__Mkrdf_dataset_store__item__dss_default
 let __proj__Mkrdf_dataset_store__item__dss_named
   (projectee : rdf_dataset_store) : named_graph_store Prims.list=
   match projectee with | { dss_default; dss_named;_} -> dss_named
-let graph_to_store (g : RDF_Graph_Executable.rdf_graph) : graph_store=
-  { gs_graph = g; gs_indexed = (RDF_Graph_Executable.build_indexed g) }
-let dataset_to_store (ds : RDF_Graph_Executable.rdf_dataset) :
-  rdf_dataset_store=
+let graph_to_store (g : RDF_Graph.rdf_graph) : graph_store=
+  { gs_graph = g; gs_indexed = (RDF_Indexed.build_indexed g) }
+let dataset_to_store (ds : RDF_Graph.rdf_dataset) : rdf_dataset_store=
   {
-    dss_default = (graph_to_store ds.RDF_Graph_Executable.ds_default);
+    dss_default = (graph_to_store ds.RDF_Graph.ds_default);
     dss_named =
       (FStar_List_Tot_Base.map
          (fun ng ->
             {
-              ngs_name = (ng.RDF_Graph_Executable.ng_name);
-              ngs_store = (graph_to_store ng.RDF_Graph_Executable.ng_graph)
-            }) ds.RDF_Graph_Executable.ds_named)
+              ngs_name = (ng.RDF_Graph.ng_name);
+              ngs_store = (graph_to_store ng.RDF_Graph.ng_graph)
+            }) ds.RDF_Graph.ds_named)
   }
-let store_to_dataset (dss : rdf_dataset_store) :
-  RDF_Graph_Executable.rdf_dataset=
+let store_to_dataset (dss : rdf_dataset_store) : RDF_Graph.rdf_dataset=
   {
-    RDF_Graph_Executable.ds_default = ((dss.dss_default).gs_graph);
-    RDF_Graph_Executable.ds_named =
+    RDF_Graph.ds_default = ((dss.dss_default).gs_graph);
+    RDF_Graph.ds_named =
       (FStar_List_Tot_Base.map
          (fun ngs ->
             {
-              RDF_Graph_Executable.ng_name = (ngs.ngs_name);
-              RDF_Graph_Executable.ng_graph = ((ngs.ngs_store).gs_graph)
+              RDF_Graph.ng_name = (ngs.ngs_name);
+              RDF_Graph.ng_graph = ((ngs.ngs_store).gs_graph)
             }) dss.dss_named)
   }
 let rec triple_matches_bound_acc (b : triple_pattern_bound)
-  (ts : RDF_Graph_Executable.triple Prims.list)
-  (acc : RDF_Graph_Executable.triple Prims.list) :
-  RDF_Graph_Executable.triple Prims.list=
+  (ts : RDF_Triple.triple Prims.list) (acc : RDF_Triple.triple Prims.list) :
+  RDF_Triple.triple Prims.list=
   match ts with
   | [] -> acc
   | t::rest ->
@@ -157,27 +146,26 @@ let rec triple_matches_bound_acc (b : triple_pattern_bound)
         match b.bs with
         | FStar_Pervasives_Native.None -> true
         | FStar_Pervasives_Native.Some s ->
-            RDF_Graph_Executable.subject_eq s t.RDF_Graph_Executable.s in
+            RDF_Term.subject_eq s t.RDF_Triple.s in
       let pred_ok =
         match b.bp with
         | FStar_Pervasives_Native.None -> true
-        | FStar_Pervasives_Native.Some p -> p = t.RDF_Graph_Executable.p in
+        | FStar_Pervasives_Native.Some p -> p = t.RDF_Triple.p in
       let obj_ok =
         match b.bo with
         | FStar_Pervasives_Native.None -> true
         | FStar_Pervasives_Native.Some o ->
-            RDF_Graph_Executable.rdf_term_eq o t.RDF_Graph_Executable.o in
+            RDF_Term.rdf_term_eq o t.RDF_Triple.o in
       if (subj_ok && pred_ok) && obj_ok
       then triple_matches_bound_acc b rest (t :: acc)
       else triple_matches_bound_acc b rest acc
 let triple_matches_bound (b : triple_pattern_bound)
-  (ts : RDF_Graph_Executable.triple Prims.list) :
-  RDF_Graph_Executable.triple Prims.list=
+  (ts : RDF_Triple.triple Prims.list) : RDF_Triple.triple Prims.list=
   FStar_List_Tot_Base.rev (triple_matches_bound_acc b ts [])
 let pick_smaller_bucket
-  (a : RDF_Graph_Executable.triple Prims.list FStar_Pervasives_Native.option)
-  (b : RDF_Graph_Executable.triple Prims.list FStar_Pervasives_Native.option)
-  : RDF_Graph_Executable.triple Prims.list FStar_Pervasives_Native.option=
+  (a : RDF_Triple.triple Prims.list FStar_Pervasives_Native.option)
+  (b : RDF_Triple.triple Prims.list FStar_Pervasives_Native.option) :
+  RDF_Triple.triple Prims.list FStar_Pervasives_Native.option=
   match (a, b) with
   | (FStar_Pervasives_Native.None, FStar_Pervasives_Native.None) ->
       FStar_Pervasives_Native.None
@@ -187,57 +175,53 @@ let pick_smaller_bucket
       if (FStar_List_Tot_Base.length la) <= (FStar_List_Tot_Base.length lb)
       then FStar_Pervasives_Native.Some la
       else FStar_Pervasives_Native.Some lb
-let ig_search (ig : RDF_Graph_Executable.indexed_graph)
-  (b : triple_pattern_bound) : RDF_Graph_Executable.triple Prims.list=
+let ig_search (ig : RDF_Indexed.indexed_graph) (b : triple_pattern_bound) :
+  RDF_Triple.triple Prims.list=
   let pred_b =
     match b.bp with
     | FStar_Pervasives_Native.Some p ->
         FStar_Pervasives_Native.Some
-          (RDF_Graph_Executable.bucket_lookup ig.RDF_Graph_Executable.ig_pred
-             p)
+          (RDF_Indexed.bucket_lookup ig.RDF_Indexed.ig_pred p)
     | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None in
   let subj_b =
     match b.bs with
     | FStar_Pervasives_Native.Some s ->
         FStar_Pervasives_Native.Some
-          (RDF_Graph_Executable.bucket_lookup ig.RDF_Graph_Executable.ig_subj
-             (RDF_Graph_Executable.subject_to_key s))
+          (RDF_Indexed.bucket_lookup ig.RDF_Indexed.ig_subj
+             (RDF_Indexed.subject_to_key s))
     | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None in
   let obj_b =
     match b.bo with
     | FStar_Pervasives_Native.Some o ->
-        (match RDF_Graph_Executable.term_to_key_opt o with
+        (match RDF_Indexed.term_to_key_opt o with
          | FStar_Pervasives_Native.Some k ->
              FStar_Pervasives_Native.Some
-               (RDF_Graph_Executable.bucket_lookup
-                  ig.RDF_Graph_Executable.ig_obj k)
+               (RDF_Indexed.bucket_lookup ig.RDF_Indexed.ig_obj k)
          | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None)
     | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None in
   let sp_b =
     match ((b.bs), (b.bp)) with
     | (FStar_Pervasives_Native.Some s, FStar_Pervasives_Native.Some p) ->
         FStar_Pervasives_Native.Some
-          (RDF_Graph_Executable.bucket_lookup ig.RDF_Graph_Executable.ig_sp
-             (RDF_Graph_Executable.sp_key s p))
+          (RDF_Indexed.bucket_lookup ig.RDF_Indexed.ig_sp
+             (RDF_Indexed.sp_key s p))
     | uu___ -> FStar_Pervasives_Native.None in
   let po_b =
     match ((b.bp), (b.bo)) with
     | (FStar_Pervasives_Native.Some p, FStar_Pervasives_Native.Some o) ->
-        (match RDF_Graph_Executable.po_key_opt p o with
+        (match RDF_Indexed.po_key_opt p o with
          | FStar_Pervasives_Native.Some k ->
              FStar_Pervasives_Native.Some
-               (RDF_Graph_Executable.bucket_lookup
-                  ig.RDF_Graph_Executable.ig_po k)
+               (RDF_Indexed.bucket_lookup ig.RDF_Indexed.ig_po k)
          | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None)
     | uu___ -> FStar_Pervasives_Native.None in
   let so_b =
     match ((b.bs), (b.bo)) with
     | (FStar_Pervasives_Native.Some s, FStar_Pervasives_Native.Some o) ->
-        (match RDF_Graph_Executable.so_key_opt s o with
+        (match RDF_Indexed.so_key_opt s o with
          | FStar_Pervasives_Native.Some k ->
              FStar_Pervasives_Native.Some
-               (RDF_Graph_Executable.bucket_lookup
-                  ig.RDF_Graph_Executable.ig_so k)
+               (RDF_Indexed.bucket_lookup ig.RDF_Indexed.ig_so k)
          | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None)
     | uu___ -> FStar_Pervasives_Native.None in
   let compound = pick_smaller_bucket (pick_smaller_bucket sp_b po_b) so_b in
@@ -246,20 +230,20 @@ let ig_search (ig : RDF_Graph_Executable.indexed_graph)
   let pool =
     match candidate with
     | FStar_Pervasives_Native.Some bucket -> bucket
-    | FStar_Pervasives_Native.None -> ig.RDF_Graph_Executable.ig_triples in
+    | FStar_Pervasives_Native.None -> ig.RDF_Indexed.ig_triples in
   triple_matches_bound b pool
-let ig_estimate (ig : RDF_Graph_Executable.indexed_graph)
-  (b : triple_pattern_bound) : Prims.nat=
+let ig_estimate (ig : RDF_Indexed.indexed_graph) (b : triple_pattern_bound) :
+  Prims.nat=
   match ((b.bs), (b.bp), (b.bo)) with
   | (FStar_Pervasives_Native.None, FStar_Pervasives_Native.None,
      FStar_Pervasives_Native.None) ->
-      FStar_List_Tot_Base.length ig.RDF_Graph_Executable.ig_triples
+      FStar_List_Tot_Base.length ig.RDF_Indexed.ig_triples
   | uu___ -> FStar_List_Tot_Base.length (ig_search ig b)
 let store_search (g : graph_store) (b : triple_pattern_bound) :
-  RDF_Graph_Executable.triple Prims.list= ig_search g.gs_indexed b
+  RDF_Triple.triple Prims.list= ig_search g.gs_indexed b
 let store_estimate (g : graph_store) (b : triple_pattern_bound) : Prims.nat=
   ig_estimate g.gs_indexed b
-let rec lookup_named_store (name : RDF_Graph_Executable.iri)
+let rec lookup_named_store (name : RDF_Term.iri)
   (named : named_graph_store Prims.list) :
   graph_store FStar_Pervasives_Native.option=
   match named with
@@ -271,41 +255,41 @@ let rec lookup_named_store (name : RDF_Graph_Executable.iri)
 type var_name = Prims.string
 type pattern_term =
   | PT_Var of var_name 
-  | PT_IRI of RDF_Graph_Executable.wf_iri 
-  | PT_BNode of RDF_Graph_Executable.bnode_id 
-  | PT_Literal of RDF_Graph_Executable.wf_literal 
+  | PT_IRI of RDF_Term.wf_iri 
+  | PT_BNode of RDF_Term.bnode_id 
+  | PT_Literal of RDF_Term.wf_literal 
 let uu___is_PT_Var (projectee : pattern_term) : Prims.bool=
   match projectee with | PT_Var _0 -> true | uu___ -> false
 let __proj__PT_Var__item___0 (projectee : pattern_term) : var_name=
   match projectee with | PT_Var _0 -> _0
 let uu___is_PT_IRI (projectee : pattern_term) : Prims.bool=
   match projectee with | PT_IRI _0 -> true | uu___ -> false
-let __proj__PT_IRI__item___0 (projectee : pattern_term) :
-  RDF_Graph_Executable.wf_iri= match projectee with | PT_IRI _0 -> _0
+let __proj__PT_IRI__item___0 (projectee : pattern_term) : RDF_Term.wf_iri=
+  match projectee with | PT_IRI _0 -> _0
 let uu___is_PT_BNode (projectee : pattern_term) : Prims.bool=
   match projectee with | PT_BNode _0 -> true | uu___ -> false
 let __proj__PT_BNode__item___0 (projectee : pattern_term) :
-  RDF_Graph_Executable.bnode_id= match projectee with | PT_BNode _0 -> _0
+  RDF_Term.bnode_id= match projectee with | PT_BNode _0 -> _0
 let uu___is_PT_Literal (projectee : pattern_term) : Prims.bool=
   match projectee with | PT_Literal _0 -> true | uu___ -> false
 let __proj__PT_Literal__item___0 (projectee : pattern_term) :
-  RDF_Graph_Executable.wf_literal= match projectee with | PT_Literal _0 -> _0
+  RDF_Term.wf_literal= match projectee with | PT_Literal _0 -> _0
 type pattern_subject =
   | PS_Var of var_name 
-  | PS_IRI of RDF_Graph_Executable.wf_iri 
-  | PS_BNode of RDF_Graph_Executable.bnode_id 
+  | PS_IRI of RDF_Term.wf_iri 
+  | PS_BNode of RDF_Term.bnode_id 
 let uu___is_PS_Var (projectee : pattern_subject) : Prims.bool=
   match projectee with | PS_Var _0 -> true | uu___ -> false
 let __proj__PS_Var__item___0 (projectee : pattern_subject) : var_name=
   match projectee with | PS_Var _0 -> _0
 let uu___is_PS_IRI (projectee : pattern_subject) : Prims.bool=
   match projectee with | PS_IRI _0 -> true | uu___ -> false
-let __proj__PS_IRI__item___0 (projectee : pattern_subject) :
-  RDF_Graph_Executable.wf_iri= match projectee with | PS_IRI _0 -> _0
+let __proj__PS_IRI__item___0 (projectee : pattern_subject) : RDF_Term.wf_iri=
+  match projectee with | PS_IRI _0 -> _0
 let uu___is_PS_BNode (projectee : pattern_subject) : Prims.bool=
   match projectee with | PS_BNode _0 -> true | uu___ -> false
 let __proj__PS_BNode__item___0 (projectee : pattern_subject) :
-  RDF_Graph_Executable.bnode_id= match projectee with | PS_BNode _0 -> _0
+  RDF_Term.bnode_id= match projectee with | PS_BNode _0 -> _0
 type triple_pattern =
   {
   tp_s: pattern_subject ;
@@ -319,45 +303,42 @@ let __proj__Mktriple_pattern__item__tp_o (projectee : triple_pattern) :
   pattern_term= match projectee with | { tp_s; tp_p; tp_o;_} -> tp_o
 let bound_subject_of_pattern (ps : pattern_subject)
   (mu : RDF_Graph_Executable.solution_mapping) :
-  RDF_Graph_Executable.subject FStar_Pervasives_Native.option=
+  RDF_Term.subject FStar_Pervasives_Native.option=
   match ps with
-  | PS_IRI i -> FStar_Pervasives_Native.Some (RDF_Graph_Executable.S_IRI i)
-  | PS_BNode b ->
-      FStar_Pervasives_Native.Some (RDF_Graph_Executable.S_BNode b)
+  | PS_IRI i -> FStar_Pervasives_Native.Some (RDF_Term.S_IRI i)
+  | PS_BNode b -> FStar_Pervasives_Native.Some (RDF_Term.S_BNode b)
   | PS_Var v ->
       (match sm_lookup v mu with
-       | FStar_Pervasives_Native.Some (RDF_Graph_Executable.T_IRI i) ->
-           FStar_Pervasives_Native.Some (RDF_Graph_Executable.S_IRI i)
-       | FStar_Pervasives_Native.Some (RDF_Graph_Executable.T_BNode b) ->
-           FStar_Pervasives_Native.Some (RDF_Graph_Executable.S_BNode b)
-       | FStar_Pervasives_Native.Some (RDF_Graph_Executable.T_Literal uu___)
-           -> FStar_Pervasives_Native.None
+       | FStar_Pervasives_Native.Some (RDF_Term.T_IRI i) ->
+           FStar_Pervasives_Native.Some (RDF_Term.S_IRI i)
+       | FStar_Pervasives_Native.Some (RDF_Term.T_BNode b) ->
+           FStar_Pervasives_Native.Some (RDF_Term.S_BNode b)
+       | FStar_Pervasives_Native.Some (RDF_Term.T_Literal uu___) ->
+           FStar_Pervasives_Native.None
        | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None)
 let bound_predicate_of_pattern (pt : pattern_term)
   (mu : RDF_Graph_Executable.solution_mapping) :
-  RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option=
+  RDF_Term.wf_iri FStar_Pervasives_Native.option=
   match pt with
   | PT_IRI i -> FStar_Pervasives_Native.Some i
   | PT_BNode uu___ -> FStar_Pervasives_Native.None
   | PT_Literal uu___ -> FStar_Pervasives_Native.None
   | PT_Var v ->
       (match sm_lookup v mu with
-       | FStar_Pervasives_Native.Some (RDF_Graph_Executable.T_IRI i) ->
+       | FStar_Pervasives_Native.Some (RDF_Term.T_IRI i) ->
            FStar_Pervasives_Native.Some i
-       | FStar_Pervasives_Native.Some (RDF_Graph_Executable.T_BNode uu___) ->
+       | FStar_Pervasives_Native.Some (RDF_Term.T_BNode uu___) ->
            FStar_Pervasives_Native.None
-       | FStar_Pervasives_Native.Some (RDF_Graph_Executable.T_Literal uu___)
-           -> FStar_Pervasives_Native.None
+       | FStar_Pervasives_Native.Some (RDF_Term.T_Literal uu___) ->
+           FStar_Pervasives_Native.None
        | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None)
 let bound_object_of_pattern (pt : pattern_term)
   (mu : RDF_Graph_Executable.solution_mapping) :
-  RDF_Graph_Executable.rdf_term FStar_Pervasives_Native.option=
+  RDF_Term.rdf_term FStar_Pervasives_Native.option=
   match pt with
-  | PT_IRI i -> FStar_Pervasives_Native.Some (RDF_Graph_Executable.T_IRI i)
-  | PT_BNode b ->
-      FStar_Pervasives_Native.Some (RDF_Graph_Executable.T_BNode b)
-  | PT_Literal l ->
-      FStar_Pervasives_Native.Some (RDF_Graph_Executable.T_Literal l)
+  | PT_IRI i -> FStar_Pervasives_Native.Some (RDF_Term.T_IRI i)
+  | PT_BNode b -> FStar_Pervasives_Native.Some (RDF_Term.T_BNode b)
+  | PT_Literal l -> FStar_Pervasives_Native.Some (RDF_Term.T_Literal l)
   | PT_Var v -> sm_lookup v mu
 let pattern_subject_eq (a : pattern_subject) (b : pattern_subject) :
   Prims.bool=
@@ -371,7 +352,7 @@ let pattern_term_eq (a : pattern_term) (b : pattern_term) : Prims.bool=
   | (PT_Var v1, PT_Var v2) -> v1 = v2
   | (PT_IRI i1, PT_IRI i2) -> i1 = i2
   | (PT_BNode b1, PT_BNode b2) -> b1 = b2
-  | (PT_Literal l1, PT_Literal l2) -> RDF_Graph_Executable.literal_eq l1 l2
+  | (PT_Literal l1, PT_Literal l2) -> RDF_Term.literal_eq l1 l2
   | (uu___, uu___1) -> false
 let triple_pattern_eq (a : triple_pattern) (b : triple_pattern) : Prims.bool=
   ((pattern_subject_eq a.tp_s b.tp_s) && (pattern_term_eq a.tp_p b.tp_p)) &&
@@ -436,8 +417,8 @@ let uu___is_Agg_Sample (projectee : aggregate_fn) : Prims.bool=
   match projectee with | Agg_Sample -> true | uu___ -> false
 type expr =
   | E_Var of var_name 
-  | E_IRI of RDF_Graph_Executable.wf_iri 
-  | E_Literal of RDF_Graph_Executable.wf_literal 
+  | E_IRI of RDF_Term.wf_iri 
+  | E_Literal of RDF_Term.wf_literal 
   | E_BoolLit of Prims.bool 
   | E_NumericLit of Prims.int 
   | E_DecimalLit of Prims.string 
@@ -499,9 +480,9 @@ type expr =
   | E_Exists of group_graph_pattern 
   | E_NotExists of group_graph_pattern 
   | E_Aggregate of aggregate_fn * Prims.bool * expr 
-  | E_FunctionCall of RDF_Graph_Executable.wf_iri * expr Prims.list 
+  | E_FunctionCall of RDF_Term.wf_iri * expr Prims.list 
 and property_path =
-  | PP_IRI of RDF_Graph_Executable.wf_iri 
+  | PP_IRI of RDF_Term.wf_iri 
   | PP_Inverse of property_path 
   | PP_Sequence of property_path * property_path 
   | PP_Alternative of property_path * property_path 
@@ -518,10 +499,9 @@ and group_graph_pattern =
   | GP_Graph of pattern_term * group_graph_pattern 
   | GP_Minus of group_graph_pattern * group_graph_pattern 
   | GP_Bind of expr * var_name * group_graph_pattern 
-  | GP_Values of var_name Prims.list * RDF_Graph_Executable.rdf_term
+  | GP_Values of var_name Prims.list * RDF_Term.rdf_term
   FStar_Pervasives_Native.option Prims.list Prims.list 
-  | GP_Service of RDF_Graph_Executable.wf_iri * group_graph_pattern *
-  Prims.bool 
+  | GP_Service of RDF_Term.wf_iri * group_graph_pattern * Prims.bool 
   | GP_ServiceVar of var_name * group_graph_pattern * Prims.bool 
   | GP_SubSelect of query 
   | GP_PropertyPath of pattern_subject * property_path * pattern_term 
@@ -552,12 +532,12 @@ and query_form =
   | QF_Ask 
   | QF_Describe of pattern_term Prims.list 
 and dataset_clause =
-  | DC_Default of RDF_Graph_Executable.wf_iri 
-  | DC_Named of RDF_Graph_Executable.wf_iri 
+  | DC_Default of RDF_Term.wf_iri 
+  | DC_Named of RDF_Term.wf_iri 
 and query =
   {
-  q_base: RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option ;
-  q_prefixes: (Prims.string * RDF_Graph_Executable.wf_iri) Prims.list ;
+  q_base: RDF_Term.wf_iri FStar_Pervasives_Native.option ;
+  q_prefixes: (Prims.string * RDF_Term.wf_iri) Prims.list ;
   q_form: query_form ;
   q_dataset: dataset_clause Prims.list ;
   q_pattern: group_graph_pattern ;
@@ -565,7 +545,7 @@ and query =
   q_having: expr Prims.list FStar_Pervasives_Native.option ;
   q_modifier: solution_modifier ;
   q_values:
-    (var_name * RDF_Graph_Executable.rdf_term) Prims.list Prims.list
+    (var_name * RDF_Term.rdf_term) Prims.list Prims.list
       FStar_Pervasives_Native.option
     }
 let uu___is_E_Var (projectee : expr) : Prims.bool=
@@ -574,12 +554,12 @@ let __proj__E_Var__item___0 (projectee : expr) : var_name=
   match projectee with | E_Var _0 -> _0
 let uu___is_E_IRI (projectee : expr) : Prims.bool=
   match projectee with | E_IRI _0 -> true | uu___ -> false
-let __proj__E_IRI__item___0 (projectee : expr) : RDF_Graph_Executable.wf_iri=
+let __proj__E_IRI__item___0 (projectee : expr) : RDF_Term.wf_iri=
   match projectee with | E_IRI _0 -> _0
 let uu___is_E_Literal (projectee : expr) : Prims.bool=
   match projectee with | E_Literal _0 -> true | uu___ -> false
-let __proj__E_Literal__item___0 (projectee : expr) :
-  RDF_Graph_Executable.wf_literal= match projectee with | E_Literal _0 -> _0
+let __proj__E_Literal__item___0 (projectee : expr) : RDF_Term.wf_literal=
+  match projectee with | E_Literal _0 -> _0
 let uu___is_E_BoolLit (projectee : expr) : Prims.bool=
   match projectee with | E_BoolLit _0 -> true | uu___ -> false
 let __proj__E_BoolLit__item___0 (projectee : expr) : Prims.bool=
@@ -881,15 +861,14 @@ let __proj__E_Aggregate__item___2 (projectee : expr) : expr=
   match projectee with | E_Aggregate (_0, _1, _2) -> _2
 let uu___is_E_FunctionCall (projectee : expr) : Prims.bool=
   match projectee with | E_FunctionCall (_0, _1) -> true | uu___ -> false
-let __proj__E_FunctionCall__item___0 (projectee : expr) :
-  RDF_Graph_Executable.wf_iri=
+let __proj__E_FunctionCall__item___0 (projectee : expr) : RDF_Term.wf_iri=
   match projectee with | E_FunctionCall (_0, _1) -> _0
 let __proj__E_FunctionCall__item___1 (projectee : expr) : expr Prims.list=
   match projectee with | E_FunctionCall (_0, _1) -> _1
 let uu___is_PP_IRI (projectee : property_path) : Prims.bool=
   match projectee with | PP_IRI _0 -> true | uu___ -> false
-let __proj__PP_IRI__item___0 (projectee : property_path) :
-  RDF_Graph_Executable.wf_iri= match projectee with | PP_IRI _0 -> _0
+let __proj__PP_IRI__item___0 (projectee : property_path) : RDF_Term.wf_iri=
+  match projectee with | PP_IRI _0 -> _0
 let uu___is_PP_Inverse (projectee : property_path) : Prims.bool=
   match projectee with | PP_Inverse _0 -> true | uu___ -> false
 let __proj__PP_Inverse__item___0 (projectee : property_path) : property_path=
@@ -977,14 +956,12 @@ let uu___is_GP_Values (projectee : group_graph_pattern) : Prims.bool=
 let __proj__GP_Values__item___0 (projectee : group_graph_pattern) :
   var_name Prims.list= match projectee with | GP_Values (_0, _1) -> _0
 let __proj__GP_Values__item___1 (projectee : group_graph_pattern) :
-  RDF_Graph_Executable.rdf_term FStar_Pervasives_Native.option Prims.list
-    Prims.list=
+  RDF_Term.rdf_term FStar_Pervasives_Native.option Prims.list Prims.list=
   match projectee with | GP_Values (_0, _1) -> _1
 let uu___is_GP_Service (projectee : group_graph_pattern) : Prims.bool=
   match projectee with | GP_Service (_0, _1, _2) -> true | uu___ -> false
 let __proj__GP_Service__item___0 (projectee : group_graph_pattern) :
-  RDF_Graph_Executable.wf_iri=
-  match projectee with | GP_Service (_0, _1, _2) -> _0
+  RDF_Term.wf_iri= match projectee with | GP_Service (_0, _1, _2) -> _0
 let __proj__GP_Service__item___1 (projectee : group_graph_pattern) :
   group_graph_pattern= match projectee with | GP_Service (_0, _1, _2) -> _1
 let __proj__GP_Service__item___2 (projectee : group_graph_pattern) :
@@ -1096,18 +1073,18 @@ let __proj__QF_Describe__item___0 (projectee : query_form) :
 let uu___is_DC_Default (projectee : dataset_clause) : Prims.bool=
   match projectee with | DC_Default _0 -> true | uu___ -> false
 let __proj__DC_Default__item___0 (projectee : dataset_clause) :
-  RDF_Graph_Executable.wf_iri= match projectee with | DC_Default _0 -> _0
+  RDF_Term.wf_iri= match projectee with | DC_Default _0 -> _0
 let uu___is_DC_Named (projectee : dataset_clause) : Prims.bool=
   match projectee with | DC_Named _0 -> true | uu___ -> false
 let __proj__DC_Named__item___0 (projectee : dataset_clause) :
-  RDF_Graph_Executable.wf_iri= match projectee with | DC_Named _0 -> _0
+  RDF_Term.wf_iri= match projectee with | DC_Named _0 -> _0
 let __proj__Mkquery__item__q_base (projectee : query) :
-  RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option=
+  RDF_Term.wf_iri FStar_Pervasives_Native.option=
   match projectee with
   | { q_base; q_prefixes; q_form; q_dataset; q_pattern; q_group_by; q_having;
       q_modifier; q_values;_} -> q_base
 let __proj__Mkquery__item__q_prefixes (projectee : query) :
-  (Prims.string * RDF_Graph_Executable.wf_iri) Prims.list=
+  (Prims.string * RDF_Term.wf_iri) Prims.list=
   match projectee with
   | { q_base; q_prefixes; q_form; q_dataset; q_pattern; q_group_by; q_having;
       q_modifier; q_values;_} -> q_prefixes
@@ -1141,15 +1118,14 @@ let __proj__Mkquery__item__q_modifier (projectee : query) :
   | { q_base; q_prefixes; q_form; q_dataset; q_pattern; q_group_by; q_having;
       q_modifier; q_values;_} -> q_modifier
 let __proj__Mkquery__item__q_values (projectee : query) :
-  (var_name * RDF_Graph_Executable.rdf_term) Prims.list Prims.list
+  (var_name * RDF_Term.rdf_term) Prims.list Prims.list
     FStar_Pervasives_Native.option=
   match projectee with
   | { q_base; q_prefixes; q_form; q_dataset; q_pattern; q_group_by; q_having;
       q_modifier; q_values;_} -> q_values
 type having_condition = expr
 let query_with_prebound_values (q : query)
-  (vals : (var_name * RDF_Graph_Executable.rdf_term) Prims.list Prims.list) :
-  query=
+  (vals : (var_name * RDF_Term.rdf_term) Prims.list Prims.list) : query=
   {
     q_base = (q.q_base);
     q_prefixes = (q.q_prefixes);
@@ -1164,7 +1140,7 @@ let query_with_prebound_values (q : query)
 let query_form_of (q : query) : query_form= q.q_form
 let query_pattern_of (q : query) : group_graph_pattern= q.q_pattern
 let query_values_of (q : query) :
-  (var_name * RDF_Graph_Executable.rdf_term) Prims.list Prims.list
+  (var_name * RDF_Term.rdf_term) Prims.list Prims.list
     FStar_Pervasives_Native.option=
   q.q_values
 let query_with_pattern (q : query) (p : group_graph_pattern) : query=
@@ -1183,7 +1159,7 @@ type graph_ref =
   | GR_Default 
   | GR_Named 
   | GR_All 
-  | GR_Graph of RDF_Graph_Executable.wf_iri 
+  | GR_Graph of RDF_Term.wf_iri 
 let uu___is_GR_Default (projectee : graph_ref) : Prims.bool=
   match projectee with | GR_Default -> true | uu___ -> false
 let uu___is_GR_Named (projectee : graph_ref) : Prims.bool=
@@ -1192,21 +1168,21 @@ let uu___is_GR_All (projectee : graph_ref) : Prims.bool=
   match projectee with | GR_All -> true | uu___ -> false
 let uu___is_GR_Graph (projectee : graph_ref) : Prims.bool=
   match projectee with | GR_Graph _0 -> true | uu___ -> false
-let __proj__GR_Graph__item___0 (projectee : graph_ref) :
-  RDF_Graph_Executable.wf_iri= match projectee with | GR_Graph _0 -> _0
+let __proj__GR_Graph__item___0 (projectee : graph_ref) : RDF_Term.wf_iri=
+  match projectee with | GR_Graph _0 -> _0
 type update_op =
-  | U_Load of Prims.bool * RDF_Graph_Executable.wf_iri *
-  RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option 
+  | U_Load of Prims.bool * RDF_Term.wf_iri * RDF_Term.wf_iri
+  FStar_Pervasives_Native.option 
   | U_Clear of Prims.bool * graph_ref 
   | U_Drop of Prims.bool * graph_ref 
-  | U_Create of Prims.bool * RDF_Graph_Executable.wf_iri 
+  | U_Create of Prims.bool * RDF_Term.wf_iri 
   | U_Add of Prims.bool * graph_ref * graph_ref 
   | U_Move of Prims.bool * graph_ref * graph_ref 
   | U_Copy of Prims.bool * graph_ref * graph_ref 
   | U_InsertData of group_graph_pattern 
   | U_DeleteData of group_graph_pattern 
   | U_DeleteWhere of group_graph_pattern 
-  | U_Modify of RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option *
+  | U_Modify of RDF_Term.wf_iri FStar_Pervasives_Native.option *
   group_graph_pattern FStar_Pervasives_Native.option * group_graph_pattern
   FStar_Pervasives_Native.option * dataset_clause Prims.list *
   group_graph_pattern 
@@ -1214,11 +1190,10 @@ let uu___is_U_Load (projectee : update_op) : Prims.bool=
   match projectee with | U_Load (_0, _1, _2) -> true | uu___ -> false
 let __proj__U_Load__item___0 (projectee : update_op) : Prims.bool=
   match projectee with | U_Load (_0, _1, _2) -> _0
-let __proj__U_Load__item___1 (projectee : update_op) :
-  RDF_Graph_Executable.wf_iri=
+let __proj__U_Load__item___1 (projectee : update_op) : RDF_Term.wf_iri=
   match projectee with | U_Load (_0, _1, _2) -> _1
 let __proj__U_Load__item___2 (projectee : update_op) :
-  RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option=
+  RDF_Term.wf_iri FStar_Pervasives_Native.option=
   match projectee with | U_Load (_0, _1, _2) -> _2
 let uu___is_U_Clear (projectee : update_op) : Prims.bool=
   match projectee with | U_Clear (_0, _1) -> true | uu___ -> false
@@ -1236,8 +1211,8 @@ let uu___is_U_Create (projectee : update_op) : Prims.bool=
   match projectee with | U_Create (_0, _1) -> true | uu___ -> false
 let __proj__U_Create__item___0 (projectee : update_op) : Prims.bool=
   match projectee with | U_Create (_0, _1) -> _0
-let __proj__U_Create__item___1 (projectee : update_op) :
-  RDF_Graph_Executable.wf_iri= match projectee with | U_Create (_0, _1) -> _1
+let __proj__U_Create__item___1 (projectee : update_op) : RDF_Term.wf_iri=
+  match projectee with | U_Create (_0, _1) -> _1
 let uu___is_U_Add (projectee : update_op) : Prims.bool=
   match projectee with | U_Add (_0, _1, _2) -> true | uu___ -> false
 let __proj__U_Add__item___0 (projectee : update_op) : Prims.bool=
@@ -1279,7 +1254,7 @@ let uu___is_U_Modify (projectee : update_op) : Prims.bool=
   | U_Modify (_0, _1, _2, _3, _4) -> true
   | uu___ -> false
 let __proj__U_Modify__item___0 (projectee : update_op) :
-  RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option=
+  RDF_Term.wf_iri FStar_Pervasives_Native.option=
   match projectee with | U_Modify (_0, _1, _2, _3, _4) -> _0
 let __proj__U_Modify__item___1 (projectee : update_op) :
   group_graph_pattern FStar_Pervasives_Native.option=
@@ -1294,14 +1269,14 @@ let __proj__U_Modify__item___4 (projectee : update_op) : group_graph_pattern=
   match projectee with | U_Modify (_0, _1, _2, _3, _4) -> _4
 type sparql_update =
   {
-  u_base: RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option ;
-  u_prefixes: (Prims.string * RDF_Graph_Executable.wf_iri) Prims.list ;
+  u_base: RDF_Term.wf_iri FStar_Pervasives_Native.option ;
+  u_prefixes: (Prims.string * RDF_Term.wf_iri) Prims.list ;
   u_ops: update_op Prims.list }
 let __proj__Mksparql_update__item__u_base (projectee : sparql_update) :
-  RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option=
+  RDF_Term.wf_iri FStar_Pervasives_Native.option=
   match projectee with | { u_base; u_prefixes; u_ops;_} -> u_base
 let __proj__Mksparql_update__item__u_prefixes (projectee : sparql_update) :
-  (Prims.string * RDF_Graph_Executable.wf_iri) Prims.list=
+  (Prims.string * RDF_Term.wf_iri) Prims.list=
   match projectee with | { u_base; u_prefixes; u_ops;_} -> u_prefixes
 let __proj__Mksparql_update__item__u_ops (projectee : sparql_update) :
   update_op Prims.list=
@@ -1376,21 +1351,62 @@ let string_substring (s : Prims.string) (start : Prims.nat)
   if (actual_len = Prims.int_zero) || (start' >= slen)
   then ""
   else FStar_String.sub s start' actual_len
-let string_upper (s : Prims.string) : Prims.string= FStar_String.uppercase s
-let string_lower (s : Prims.string) : Prims.string= FStar_String.lowercase s
-let is_numeric_datatype (dt : RDF_Graph_Executable.wf_iri) : Prims.bool=
-  (((dt = RDF_Graph_Executable.xsd_integer) ||
-      (dt = RDF_Graph_Executable.xsd_decimal))
-     || (dt = RDF_Graph_Executable.xsd_double))
+module Uucp_case_runtime = struct
+  (* Issue #250: Unicode-aware UCASE()/LCASE() via `uucp`.
+     `cmap_utf_8` is uucp's own documented recipe (uucp.mli,
+     "Default case conversion on UTF-8 strings") for applying a
+     per-Uchar case map across a UTF-8-encoded OCaml string. Invalid
+     UTF-8 byte sequences decode to U+FFFD (replacement character)
+     rather than raising -- SPARQL literals are already validated
+     UTF-8 by the F*-side lexical-form parser, so this path is a
+     defensive fallback, not the common case. *)
+  let cmap_utf_8 (cmap : Uchar.t -> [ `Self | `Uchars of Uchar.t list ]) (s : string) : string =
+    (* SPARQL11_Algebra.ml opens `Prims` at file scope, which rebinds
+       `(+)`/`(-)`/etc. to Z.add/Z.sub (F*'s Prims.int/nat are
+       unbounded, extracted via zarith). `String.get_utf_8_uchar`
+       and `Buffer`/`Uchar` all need native OCaml `int`, so re-open
+       `Stdlib` locally to get the native operators back -- same
+       pattern already used in 63_regex_hash_uuid_stubs.sh's glue in
+       this same file. *)
+    let open Stdlib in
+    let rec loop buf s i max =
+      if i > max then Buffer.contents buf
+      else begin
+        let dec = String.get_utf_8_uchar s i in
+        let u = Uchar.utf_decode_uchar dec in
+        (match cmap u with
+         | `Self -> Buffer.add_utf_8_uchar buf u
+         | `Uchars us -> List.iter (Buffer.add_utf_8_uchar buf) us);
+        loop buf s (i + Uchar.utf_decode_length dec) max
+      end
+    in
+    let buf = Buffer.create (String.length s * 2) in
+    if String.length s = 0 then "" else loop buf s 0 (String.length s - 1)
+
+  let uppercase_utf_8 (s : string) : string = cmap_utf_8 Uucp.Case.Map.to_upper s
+  let lowercase_utf_8 (s : string) : string = cmap_utf_8 Uucp.Case.Map.to_lower s
+end
+
+let string_uppercase_unicode (s : Prims.string) : Prims.string=
+  Uucp_case_runtime.uppercase_utf_8 s
+let string_lowercase_unicode (s : Prims.string) : Prims.string=
+  Uucp_case_runtime.lowercase_utf_8 s
+let string_upper (s : Prims.string) : Prims.string=
+  string_uppercase_unicode s
+let string_lower (s : Prims.string) : Prims.string=
+  string_lowercase_unicode s
+let is_numeric_datatype (dt : RDF_Term.wf_iri) : Prims.bool=
+  (((dt = RDF_Term.xsd_integer) || (dt = RDF_Term.xsd_decimal)) ||
+     (dt = RDF_Term.xsd_double))
     || (dt = xsd_float)
-let mk_plain_literal (s : Prims.string) : RDF_Graph_Executable.wf_literal=
+let mk_plain_literal (s : Prims.string) : RDF_Term.wf_literal=
   {
-    RDF_Graph_Executable.lexical_form = s;
-    RDF_Graph_Executable.datatype = RDF_Graph_Executable.xsd_string;
-    RDF_Graph_Executable.lang_tag = FStar_Pervasives_Native.None
+    RDF_Term.lexical_form = s;
+    RDF_Term.datatype = RDF_Term.xsd_string;
+    RDF_Term.lang_tag = FStar_Pervasives_Native.None
   }
 type eval_result =
-  | ER_Term of RDF_Graph_Executable.rdf_term 
+  | ER_Term of RDF_Term.rdf_term 
   | ER_Bool of Prims.bool 
   | ER_Num of Prims.int 
   | ER_Dec of Prims.string 
@@ -1398,8 +1414,8 @@ type eval_result =
   | ER_Error 
 let uu___is_ER_Term (projectee : eval_result) : Prims.bool=
   match projectee with | ER_Term _0 -> true | uu___ -> false
-let __proj__ER_Term__item___0 (projectee : eval_result) :
-  RDF_Graph_Executable.rdf_term= match projectee with | ER_Term _0 -> _0
+let __proj__ER_Term__item___0 (projectee : eval_result) : RDF_Term.rdf_term=
+  match projectee with | ER_Term _0 -> _0
 let uu___is_ER_Bool (projectee : eval_result) : Prims.bool=
   match projectee with | ER_Bool _0 -> true | uu___ -> false
 let __proj__ER_Bool__item___0 (projectee : eval_result) : Prims.bool=
@@ -1424,11 +1440,11 @@ let ebv (v : eval_result) : Prims.bool=
   | ER_Num n -> n <> Prims.int_zero
   | ER_Dec s -> ((s <> "0") && (s <> "0.0")) && (s <> "")
   | ER_Dbl s -> (((s <> "0") && (s <> "0.0")) && (s <> "NaN")) && (s <> "")
-  | ER_Term (RDF_Graph_Executable.T_Literal l) ->
-      if (lit_datatype l) = RDF_Graph_Executable.xsd_boolean
+  | ER_Term (RDF_Term.T_Literal l) ->
+      if (lit_datatype l) = RDF_Term.xsd_boolean
       then ((lit_lexical l) = "true") || ((lit_lexical l) = "1")
       else
-        if (lit_datatype l) = RDF_Graph_Executable.xsd_string
+        if (lit_datatype l) = RDF_Term.xsd_string
         then (FStar_String.strlen (lit_lexical l)) > Prims.int_zero
         else
           if (lit_datatype l) = rdf_langString
@@ -1442,56 +1458,56 @@ let ebv (v : eval_result) : Prims.bool=
   | ER_Term uu___ -> false
   | ER_Error -> false
 let er_to_term (v : eval_result) :
-  RDF_Graph_Executable.rdf_term FStar_Pervasives_Native.option=
+  RDF_Term.rdf_term FStar_Pervasives_Native.option=
   match v with
   | ER_Term t -> FStar_Pervasives_Native.Some t
   | ER_Bool true ->
       FStar_Pervasives_Native.Some
-        (RDF_Graph_Executable.T_Literal
+        (RDF_Term.T_Literal
            {
-             RDF_Graph_Executable.lexical_form = "true";
-             RDF_Graph_Executable.datatype = RDF_Graph_Executable.xsd_boolean;
-             RDF_Graph_Executable.lang_tag = FStar_Pervasives_Native.None
+             RDF_Term.lexical_form = "true";
+             RDF_Term.datatype = RDF_Term.xsd_boolean;
+             RDF_Term.lang_tag = FStar_Pervasives_Native.None
            })
   | ER_Bool false ->
       FStar_Pervasives_Native.Some
-        (RDF_Graph_Executable.T_Literal
+        (RDF_Term.T_Literal
            {
-             RDF_Graph_Executable.lexical_form = "false";
-             RDF_Graph_Executable.datatype = RDF_Graph_Executable.xsd_boolean;
-             RDF_Graph_Executable.lang_tag = FStar_Pervasives_Native.None
+             RDF_Term.lexical_form = "false";
+             RDF_Term.datatype = RDF_Term.xsd_boolean;
+             RDF_Term.lang_tag = FStar_Pervasives_Native.None
            })
   | ER_Num n ->
       FStar_Pervasives_Native.Some
-        (RDF_Graph_Executable.T_Literal
+        (RDF_Term.T_Literal
            {
-             RDF_Graph_Executable.lexical_form = (Prims.string_of_int n);
-             RDF_Graph_Executable.datatype = RDF_Graph_Executable.xsd_integer;
-             RDF_Graph_Executable.lang_tag = FStar_Pervasives_Native.None
+             RDF_Term.lexical_form = (Prims.string_of_int n);
+             RDF_Term.datatype = RDF_Term.xsd_integer;
+             RDF_Term.lang_tag = FStar_Pervasives_Native.None
            })
   | ER_Dec s ->
       FStar_Pervasives_Native.Some
-        (RDF_Graph_Executable.T_Literal
+        (RDF_Term.T_Literal
            {
-             RDF_Graph_Executable.lexical_form = s;
-             RDF_Graph_Executable.datatype = RDF_Graph_Executable.xsd_decimal;
-             RDF_Graph_Executable.lang_tag = FStar_Pervasives_Native.None
+             RDF_Term.lexical_form = s;
+             RDF_Term.datatype = RDF_Term.xsd_decimal;
+             RDF_Term.lang_tag = FStar_Pervasives_Native.None
            })
   | ER_Dbl s ->
       FStar_Pervasives_Native.Some
-        (RDF_Graph_Executable.T_Literal
+        (RDF_Term.T_Literal
            {
-             RDF_Graph_Executable.lexical_form = s;
-             RDF_Graph_Executable.datatype = RDF_Graph_Executable.xsd_double;
-             RDF_Graph_Executable.lang_tag = FStar_Pervasives_Native.None
+             RDF_Term.lexical_form = s;
+             RDF_Term.datatype = RDF_Term.xsd_double;
+             RDF_Term.lang_tag = FStar_Pervasives_Native.None
            })
   | ER_Error -> FStar_Pervasives_Native.None
 let er_to_string (v : eval_result) :
   Prims.string FStar_Pervasives_Native.option=
   match v with
-  | ER_Term (RDF_Graph_Executable.T_Literal l) ->
+  | ER_Term (RDF_Term.T_Literal l) ->
       FStar_Pervasives_Native.Some (lit_lexical l)
-  | ER_Term (RDF_Graph_Executable.T_IRI i) ->
+  | ER_Term (RDF_Term.T_IRI i) ->
       FStar_Pervasives_Native.Some (iri_to_string i)
   | ER_Num n -> FStar_Pervasives_Native.Some (Prims.string_of_int n)
   | ER_Dec s -> FStar_Pervasives_Native.Some s
@@ -1499,58 +1515,55 @@ let er_to_string (v : eval_result) :
   | ER_Bool b -> FStar_Pervasives_Native.Some (if b then "true" else "false")
   | uu___ -> FStar_Pervasives_Native.None
 let er_string (s : Prims.string) : eval_result=
-  ER_Term (RDF_Graph_Executable.T_Literal (mk_plain_literal s))
+  ER_Term (RDF_Term.T_Literal (mk_plain_literal s))
 let er_string_info (v : eval_result) :
   (Prims.string * Prims.string FStar_Pervasives_Native.option * Prims.string)
     FStar_Pervasives_Native.option=
   match v with
-  | ER_Term (RDF_Graph_Executable.T_Literal l) ->
+  | ER_Term (RDF_Term.T_Literal l) ->
       FStar_Pervasives_Native.Some
-        ((lit_lexical l), (l.RDF_Graph_Executable.lang_tag),
-          (l.RDF_Graph_Executable.datatype))
+        ((lit_lexical l), (l.RDF_Term.lang_tag), (l.RDF_Term.datatype))
   | ER_Num n ->
       FStar_Pervasives_Native.Some
         ((Prims.string_of_int n), FStar_Pervasives_Native.None,
-          RDF_Graph_Executable.xsd_integer)
+          RDF_Term.xsd_integer)
   | ER_Dec s ->
       FStar_Pervasives_Native.Some
-        (s, FStar_Pervasives_Native.None, RDF_Graph_Executable.xsd_decimal)
+        (s, FStar_Pervasives_Native.None, RDF_Term.xsd_decimal)
   | ER_Dbl s ->
       FStar_Pervasives_Native.Some
-        (s, FStar_Pervasives_Native.None, RDF_Graph_Executable.xsd_double)
+        (s, FStar_Pervasives_Native.None, RDF_Term.xsd_double)
   | ER_Bool b ->
       FStar_Pervasives_Native.Some
         ((if b then "true" else "false"), FStar_Pervasives_Native.None,
-          RDF_Graph_Executable.xsd_boolean)
+          RDF_Term.xsd_boolean)
   | uu___ -> FStar_Pervasives_Native.None
 let er_string_preserve (s : Prims.string)
   (lang : Prims.string FStar_Pervasives_Native.option) (dt : Prims.string) :
   eval_result=
-  if RDF_Graph_Executable.is_iri dt
+  if RDF_Term.is_iri dt
   then
     match lang with
     | FStar_Pervasives_Native.None ->
-        (if dt <> RDF_Graph_Executable.rdf_lang_string
+        (if dt <> RDF_Term.rdf_lang_string
          then
            ER_Term
-             (RDF_Graph_Executable.T_Literal
+             (RDF_Term.T_Literal
                 {
-                  RDF_Graph_Executable.lexical_form = s;
-                  RDF_Graph_Executable.datatype = dt;
-                  RDF_Graph_Executable.lang_tag =
-                    FStar_Pervasives_Native.None
+                  RDF_Term.lexical_form = s;
+                  RDF_Term.datatype = dt;
+                  RDF_Term.lang_tag = FStar_Pervasives_Native.None
                 })
          else er_string s)
     | FStar_Pervasives_Native.Some l ->
-        (if dt = RDF_Graph_Executable.rdf_lang_string
+        (if dt = RDF_Term.rdf_lang_string
          then
            ER_Term
-             (RDF_Graph_Executable.T_Literal
+             (RDF_Term.T_Literal
                 {
-                  RDF_Graph_Executable.lexical_form = s;
-                  RDF_Graph_Executable.datatype = dt;
-                  RDF_Graph_Executable.lang_tag =
-                    (FStar_Pervasives_Native.Some l)
+                  RDF_Term.lexical_form = s;
+                  RDF_Term.datatype = dt;
+                  RDF_Term.lang_tag = (FStar_Pervasives_Native.Some l)
                 })
          else er_string s)
   else er_string s
@@ -1614,14 +1627,13 @@ let eval_arith_int (op : arith_op) (a : Prims.int) (b : Prims.int) :
 let er_to_datetime_lex (v : eval_result) :
   Prims.string FStar_Pervasives_Native.option=
   match v with
-  | ER_Term (RDF_Graph_Executable.T_Literal l) ->
+  | ER_Term (RDF_Term.T_Literal l) ->
       if (lit_datatype l) = xsd_dateTime
       then FStar_Pervasives_Native.Some (lit_lexical l)
       else FStar_Pervasives_Native.None
   | uu___ -> FStar_Pervasives_Native.None
 let rec zip_bindings (vars : var_name Prims.list)
-  (terms :
-    RDF_Graph_Executable.rdf_term FStar_Pervasives_Native.option Prims.list)
+  (terms : RDF_Term.rdf_term FStar_Pervasives_Native.option Prims.list)
   (acc : RDF_Graph_Executable.solution_mapping) :
   RDF_Graph_Executable.solution_mapping=
   match (vars, terms) with
@@ -1631,8 +1643,7 @@ let rec zip_bindings (vars : var_name Prims.list)
   | (uu___, uu___1) -> acc
 let eval_values (vars : var_name Prims.list)
   (rows :
-    RDF_Graph_Executable.rdf_term FStar_Pervasives_Native.option Prims.list
-      Prims.list)
+    RDF_Term.rdf_term FStar_Pervasives_Native.option Prims.list Prims.list)
   : RDF_Graph_Executable.solution_mapping Prims.list=
   FStar_List_Tot_Base.map (fun row -> zip_bindings vars row sm_empty) rows
 let apply_comp_op (cmp : Prims.int) (op : comp_op) : Prims.bool=
@@ -1649,17 +1660,17 @@ let int_compare (a : Prims.int) (b : Prims.int) : Prims.int=
   else if a = b then Prims.int_zero else Prims.int_one
 let fn_isIRI (v : eval_result) : eval_result=
   match v with
-  | ER_Term (RDF_Graph_Executable.T_IRI uu___) -> ER_Bool true
+  | ER_Term (RDF_Term.T_IRI uu___) -> ER_Bool true
   | ER_Error -> ER_Error
   | uu___ -> ER_Bool false
 let fn_isBlank (v : eval_result) : eval_result=
   match v with
-  | ER_Term (RDF_Graph_Executable.T_BNode uu___) -> ER_Bool true
+  | ER_Term (RDF_Term.T_BNode uu___) -> ER_Bool true
   | ER_Error -> ER_Error
   | uu___ -> ER_Bool false
 let fn_isLiteral (v : eval_result) : eval_result=
   match v with
-  | ER_Term (RDF_Graph_Executable.T_Literal uu___) -> ER_Bool true
+  | ER_Term (RDF_Term.T_Literal uu___) -> ER_Bool true
   | ER_Num uu___ -> ER_Bool true
   | ER_Dec uu___ -> ER_Bool true
   | ER_Dbl uu___ -> ER_Bool true
@@ -1671,65 +1682,52 @@ let fn_isNumeric (v : eval_result) : eval_result=
   | ER_Num uu___ -> ER_Bool true
   | ER_Dec uu___ -> ER_Bool true
   | ER_Dbl uu___ -> ER_Bool true
-  | ER_Term (RDF_Graph_Executable.T_Literal l) ->
+  | ER_Term (RDF_Term.T_Literal l) ->
       ER_Bool (is_numeric_datatype (lit_datatype l))
   | ER_Error -> ER_Error
   | uu___ -> ER_Bool false
 let fn_str (v : eval_result) : eval_result=
   match v with
-  | ER_Term (RDF_Graph_Executable.T_IRI i) ->
-      ER_Term
-        (RDF_Graph_Executable.T_Literal (mk_plain_literal (iri_to_string i)))
-  | ER_Term (RDF_Graph_Executable.T_Literal l) ->
-      ER_Term
-        (RDF_Graph_Executable.T_Literal (mk_plain_literal (lit_lexical l)))
-  | ER_Term (RDF_Graph_Executable.T_BNode b) ->
-      ER_Term (RDF_Graph_Executable.T_Literal (mk_plain_literal b))
+  | ER_Term (RDF_Term.T_IRI i) ->
+      ER_Term (RDF_Term.T_Literal (mk_plain_literal (iri_to_string i)))
+  | ER_Term (RDF_Term.T_Literal l) ->
+      ER_Term (RDF_Term.T_Literal (mk_plain_literal (lit_lexical l)))
+  | ER_Term (RDF_Term.T_BNode b) ->
+      ER_Term (RDF_Term.T_Literal (mk_plain_literal b))
   | ER_Num n ->
-      ER_Term
-        (RDF_Graph_Executable.T_Literal
-           (mk_plain_literal (Prims.string_of_int n)))
-  | ER_Dec s -> ER_Term (RDF_Graph_Executable.T_Literal (mk_plain_literal s))
-  | ER_Dbl s -> ER_Term (RDF_Graph_Executable.T_Literal (mk_plain_literal s))
+      ER_Term (RDF_Term.T_Literal (mk_plain_literal (Prims.string_of_int n)))
+  | ER_Dec s -> ER_Term (RDF_Term.T_Literal (mk_plain_literal s))
+  | ER_Dbl s -> ER_Term (RDF_Term.T_Literal (mk_plain_literal s))
   | ER_Bool b ->
       ER_Term
-        (RDF_Graph_Executable.T_Literal
+        (RDF_Term.T_Literal
            {
-             RDF_Graph_Executable.lexical_form =
-               (if b then "true" else "false");
-             RDF_Graph_Executable.datatype = RDF_Graph_Executable.xsd_boolean;
-             RDF_Graph_Executable.lang_tag = FStar_Pervasives_Native.None
+             RDF_Term.lexical_form = (if b then "true" else "false");
+             RDF_Term.datatype = RDF_Term.xsd_boolean;
+             RDF_Term.lang_tag = FStar_Pervasives_Native.None
            })
   | ER_Error -> ER_Error
 let fn_lang (v : eval_result) : eval_result=
   match v with
-  | ER_Term (RDF_Graph_Executable.T_Literal l) ->
+  | ER_Term (RDF_Term.T_Literal l) ->
       (match lit_lang l with
        | FStar_Pervasives_Native.Some tag ->
-           ER_Term (RDF_Graph_Executable.T_Literal (mk_plain_literal tag))
+           ER_Term (RDF_Term.T_Literal (mk_plain_literal tag))
        | FStar_Pervasives_Native.None ->
-           ER_Term (RDF_Graph_Executable.T_Literal (mk_plain_literal "")))
-  | ER_Num uu___ ->
-      ER_Term (RDF_Graph_Executable.T_Literal (mk_plain_literal ""))
-  | ER_Dec uu___ ->
-      ER_Term (RDF_Graph_Executable.T_Literal (mk_plain_literal ""))
-  | ER_Dbl uu___ ->
-      ER_Term (RDF_Graph_Executable.T_Literal (mk_plain_literal ""))
-  | ER_Bool uu___ ->
-      ER_Term (RDF_Graph_Executable.T_Literal (mk_plain_literal ""))
+           ER_Term (RDF_Term.T_Literal (mk_plain_literal "")))
+  | ER_Num uu___ -> ER_Term (RDF_Term.T_Literal (mk_plain_literal ""))
+  | ER_Dec uu___ -> ER_Term (RDF_Term.T_Literal (mk_plain_literal ""))
+  | ER_Dbl uu___ -> ER_Term (RDF_Term.T_Literal (mk_plain_literal ""))
+  | ER_Bool uu___ -> ER_Term (RDF_Term.T_Literal (mk_plain_literal ""))
   | uu___ -> ER_Error
 let fn_datatype (v : eval_result) : eval_result=
   match v with
-  | ER_Term (RDF_Graph_Executable.T_Literal l) ->
-      ER_Term (RDF_Graph_Executable.T_IRI (lit_datatype l))
-  | ER_Num uu___ ->
-      ER_Term (RDF_Graph_Executable.T_IRI RDF_Graph_Executable.xsd_integer)
-  | ER_Dec uu___ ->
-      ER_Term (RDF_Graph_Executable.T_IRI RDF_Graph_Executable.xsd_decimal)
-  | ER_Dbl uu___ ->
-      ER_Term (RDF_Graph_Executable.T_IRI RDF_Graph_Executable.xsd_double)
-  | ER_Bool uu___ ->
-      ER_Term (RDF_Graph_Executable.T_IRI RDF_Graph_Executable.xsd_boolean)
+  | ER_Term (RDF_Term.T_Literal l) ->
+      ER_Term (RDF_Term.T_IRI (lit_datatype l))
+  | ER_Num uu___ -> ER_Term (RDF_Term.T_IRI RDF_Term.xsd_integer)
+  | ER_Dec uu___ -> ER_Term (RDF_Term.T_IRI RDF_Term.xsd_decimal)
+  | ER_Dbl uu___ -> ER_Term (RDF_Term.T_IRI RDF_Term.xsd_double)
+  | ER_Bool uu___ -> ER_Term (RDF_Term.T_IRI RDF_Term.xsd_boolean)
   | uu___ -> ER_Error
 let rec find_substring_pos_aux :
   'a .
@@ -1906,14 +1904,14 @@ let xpath_to_str_regex (p : string) : string =
   let i = ref 0 in
   let last_atom = ref "" in
   let last_atom_start = ref 0 in
-  (* NOT annotated  — this .ml file has a top-level
-      (F* extraction convention) that shadows the bare
-      type name to  (zarith bignum) for the
-     rest of the file, so an explicit  annotation here would
+  (* NOT annotated `: int list` — this .ml file has a top-level
+     `open Prims` (F* extraction convention) that shadows the bare
+     `int` type name to `Prims.int = Z.t` (zarith bignum) for the
+     rest of the file, so an explicit `int` annotation here would
      silently pin this ref to a bignum list instead of Stdlib's
-     native int, conflicting with  (genuinely
+     native int, conflicting with `Buffer.length buf` (genuinely
      native int) at every push/pop. Leave it unannotated; the first
-     push below () fixes the
+     push below (`(Buffer.length buf) :: !group_starts`) fixes the
      concrete native-int type from Buffer.length's real signature. *)
   let group_starts = ref [] in
   let set_atom s = last_atom_start := Buffer.length buf; last_atom := s; Buffer.add_string buf s in
@@ -2047,34 +2045,32 @@ let fn_substr_spec (s : Prims.string) (start : Prims.nat)
   let idx =
     if start > Prims.int_zero then start - Prims.int_one else Prims.int_zero in
   string_substring s idx len
-let fn_strdt (lex : Prims.string) (dt : RDF_Graph_Executable.wf_iri) :
-  RDF_Graph_Executable.rdf_term=
-  if dt = RDF_Graph_Executable.rdf_lang_string
+let fn_strdt (lex : Prims.string) (dt : RDF_Term.wf_iri) : RDF_Term.rdf_term=
+  if dt = RDF_Term.rdf_lang_string
   then
-    RDF_Graph_Executable.T_Literal
+    RDF_Term.T_Literal
       {
-        RDF_Graph_Executable.lexical_form = lex;
-        RDF_Graph_Executable.datatype = RDF_Graph_Executable.xsd_string;
-        RDF_Graph_Executable.lang_tag = FStar_Pervasives_Native.None
+        RDF_Term.lexical_form = lex;
+        RDF_Term.datatype = RDF_Term.xsd_string;
+        RDF_Term.lang_tag = FStar_Pervasives_Native.None
       }
   else
-    RDF_Graph_Executable.T_Literal
+    RDF_Term.T_Literal
       {
-        RDF_Graph_Executable.lexical_form = lex;
-        RDF_Graph_Executable.datatype = dt;
-        RDF_Graph_Executable.lang_tag = FStar_Pervasives_Native.None
+        RDF_Term.lexical_form = lex;
+        RDF_Term.datatype = dt;
+        RDF_Term.lang_tag = FStar_Pervasives_Native.None
       }
 let fn_strlang (lex : Prims.string) (lang : Prims.string) :
-  RDF_Graph_Executable.rdf_term=
-  RDF_Graph_Executable.T_Literal
+  RDF_Term.rdf_term=
+  RDF_Term.T_Literal
     {
-      RDF_Graph_Executable.lexical_form = lex;
-      RDF_Graph_Executable.datatype = RDF_Graph_Executable.rdf_lang_string;
-      RDF_Graph_Executable.lang_tag = (FStar_Pervasives_Native.Some lang)
+      RDF_Term.lexical_form = lex;
+      RDF_Term.datatype = RDF_Term.rdf_lang_string;
+      RDF_Term.lang_tag = (FStar_Pervasives_Native.Some lang)
     }
-let same_term (t1 : RDF_Graph_Executable.rdf_term)
-  (t2 : RDF_Graph_Executable.rdf_term) : Prims.bool=
-  RDF_Graph_Executable.rdf_term_eq t1 t2
+let same_term (t1 : RDF_Term.rdf_term) (t2 : RDF_Term.rdf_term) : Prims.bool=
+  RDF_Term.rdf_term_eq t1 t2
 let fn_langMatches_spec (tag : Prims.string) (range : Prims.string) :
   Prims.bool=
   if range = "*"
@@ -2420,13 +2416,11 @@ let value_compare (v1 : eval_result) (v2 : eval_result) (op : comp_op) :
       let ia = if a then Prims.int_one else Prims.int_zero in
       let ib = if b then Prims.int_one else Prims.int_zero in
       FStar_Pervasives_Native.Some (apply_comp_op (int_compare ia ib) op)
-  | (ER_Term (RDF_Graph_Executable.T_IRI i1), ER_Term
-     (RDF_Graph_Executable.T_IRI i2)) ->
+  | (ER_Term (RDF_Term.T_IRI i1), ER_Term (RDF_Term.T_IRI i2)) ->
       FStar_Pervasives_Native.Some
         (apply_comp_op
            (FStar_String.compare (iri_to_string i1) (iri_to_string i2)) op)
-  | (ER_Term (RDF_Graph_Executable.T_Literal l1), ER_Term
-     (RDF_Graph_Executable.T_Literal l2)) ->
+  | (ER_Term (RDF_Term.T_Literal l1), ER_Term (RDF_Term.T_Literal l2)) ->
       if (lit_datatype l1) = (lit_datatype l2)
       then
         (if (lit_lang l1) = (lit_lang l2)
@@ -2674,13 +2668,10 @@ let dt_tz (s : Prims.string) : Prims.string FStar_Pervasives_Native.option=
               FStar_Pervasives_Native.Some
                 (FStar_String.sub s pos (len - pos))
             else FStar_Pervasives_Native.None))
-let resolve_iri (base : RDF_Graph_Executable.wf_iri)
-  (relative : Prims.string) : RDF_Graph_Executable.wf_iri=
-  SPARQL11_IRI_Resolve.resolve_iri base relative
-let resolve_query_iri
-  (base : RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option)
-  (rel : Prims.string) :
-  RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option=
+let resolve_iri (base : RDF_Term.wf_iri) (relative : Prims.string) :
+  RDF_Term.wf_iri= SPARQL11_IRI_Resolve.resolve_iri base relative
+let resolve_query_iri (base : RDF_Term.wf_iri FStar_Pervasives_Native.option)
+  (rel : Prims.string) : RDF_Term.wf_iri FStar_Pervasives_Native.option=
   SPARQL11_IRI_Resolve.resolve_query_iri base rel
 let rec unescape_chars (cs : FStar_String.char Prims.list) :
   FStar_String.char Prims.list=
@@ -2725,26 +2716,24 @@ let fn_regex_spec (s : Prims.string) (pattern : Prims.string)
   (flags : Prims.string FStar_Pervasives_Native.option) : Prims.bool=
   regex_match s (unescape_sparql_string pattern) flags
 type solution_sequence = RDF_Graph_Executable.solution_mapping Prims.list
-let subject_to_term (s : RDF_Graph_Executable.subject) :
-  RDF_Graph_Executable.rdf_term=
+let subject_to_term (s : RDF_Term.subject) : RDF_Term.rdf_term=
   match s with
-  | RDF_Graph_Executable.S_IRI i -> RDF_Graph_Executable.T_IRI i
-  | RDF_Graph_Executable.S_BNode b -> RDF_Graph_Executable.T_BNode b
-let try_bind_subject (ps : pattern_subject)
-  (s : RDF_Graph_Executable.subject)
+  | RDF_Term.S_IRI i -> RDF_Term.T_IRI i
+  | RDF_Term.S_BNode b -> RDF_Term.T_BNode b
+let try_bind_subject (ps : pattern_subject) (s : RDF_Term.subject)
   (mu : RDF_Graph_Executable.solution_mapping) :
   RDF_Graph_Executable.solution_mapping FStar_Pervasives_Native.option=
   match ps with
   | PS_IRI i ->
       (match s with
-       | RDF_Graph_Executable.S_IRI i' ->
+       | RDF_Term.S_IRI i' ->
            if i = i'
            then FStar_Pervasives_Native.Some mu
            else FStar_Pervasives_Native.None
        | uu___ -> FStar_Pervasives_Native.None)
   | PS_BNode b ->
       (match s with
-       | RDF_Graph_Executable.S_BNode b' ->
+       | RDF_Term.S_BNode b' ->
            if b = b'
            then FStar_Pervasives_Native.Some mu
            else FStar_Pervasives_Native.None
@@ -2753,64 +2742,60 @@ let try_bind_subject (ps : pattern_subject)
       let term = subject_to_term s in
       (match sm_lookup v mu with
        | FStar_Pervasives_Native.Some existing ->
-           if RDF_Graph_Executable.rdf_term_eq existing term
+           if RDF_Term.rdf_term_eq existing term
            then FStar_Pervasives_Native.Some mu
            else FStar_Pervasives_Native.None
        | FStar_Pervasives_Native.None ->
            FStar_Pervasives_Native.Some (sm_bind v term mu))
-let try_bind_term (pt : pattern_term) (t : RDF_Graph_Executable.rdf_term)
+let try_bind_term (pt : pattern_term) (t : RDF_Term.rdf_term)
   (mu : RDF_Graph_Executable.solution_mapping) :
   RDF_Graph_Executable.solution_mapping FStar_Pervasives_Native.option=
   match pt with
   | PT_IRI i ->
       (match t with
-       | RDF_Graph_Executable.T_IRI i' ->
+       | RDF_Term.T_IRI i' ->
            if i = i'
            then FStar_Pervasives_Native.Some mu
            else FStar_Pervasives_Native.None
        | uu___ -> FStar_Pervasives_Native.None)
   | PT_BNode b ->
       (match t with
-       | RDF_Graph_Executable.T_BNode b' ->
+       | RDF_Term.T_BNode b' ->
            if b = b'
            then FStar_Pervasives_Native.Some mu
            else FStar_Pervasives_Native.None
        | uu___ -> FStar_Pervasives_Native.None)
   | PT_Literal l ->
       (match t with
-       | RDF_Graph_Executable.T_Literal l' ->
-           if RDF_Graph_Executable.literal_eq l l'
+       | RDF_Term.T_Literal l' ->
+           if RDF_Term.literal_eq l l'
            then FStar_Pervasives_Native.Some mu
            else FStar_Pervasives_Native.None
        | uu___ -> FStar_Pervasives_Native.None)
   | PT_Var v ->
       (match sm_lookup v mu with
        | FStar_Pervasives_Native.Some existing ->
-           if RDF_Graph_Executable.rdf_term_eq existing t
+           if RDF_Term.rdf_term_eq existing t
            then FStar_Pervasives_Native.Some mu
            else FStar_Pervasives_Native.None
        | FStar_Pervasives_Native.None ->
            FStar_Pervasives_Native.Some (sm_bind v t mu))
-let pattern_term_matches (pt : pattern_term)
-  (t : RDF_Graph_Executable.rdf_term)
+let pattern_term_matches (pt : pattern_term) (t : RDF_Term.rdf_term)
   (mu : RDF_Graph_Executable.solution_mapping) : Prims.bool=
   FStar_Pervasives_Native.uu___is_Some (try_bind_term pt t mu)
-let pattern_subject_matches (ps : pattern_subject)
-  (s : RDF_Graph_Executable.subject)
+let pattern_subject_matches (ps : pattern_subject) (s : RDF_Term.subject)
   (mu : RDF_Graph_Executable.solution_mapping) : Prims.bool=
   FStar_Pervasives_Native.uu___is_Some (try_bind_subject ps s mu)
-let tp_match (tp : triple_pattern) (t : RDF_Graph_Executable.triple)
+let tp_match (tp : triple_pattern) (t : RDF_Triple.triple)
   (mu : RDF_Graph_Executable.solution_mapping) :
   RDF_Graph_Executable.solution_mapping FStar_Pervasives_Native.option=
-  match try_bind_subject tp.tp_s t.RDF_Graph_Executable.s mu with
+  match try_bind_subject tp.tp_s t.RDF_Triple.s mu with
   | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
   | FStar_Pervasives_Native.Some mu1 ->
-      (match try_bind_term tp.tp_p
-               (RDF_Graph_Executable.T_IRI (t.RDF_Graph_Executable.p)) mu1
-       with
+      (match try_bind_term tp.tp_p (RDF_Term.T_IRI (t.RDF_Triple.p)) mu1 with
        | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
        | FStar_Pervasives_Native.Some mu2 ->
-           try_bind_term tp.tp_o t.RDF_Graph_Executable.o mu2)
+           try_bind_term tp.tp_o t.RDF_Triple.o mu2)
 let eval_single_tp_store (tp : triple_pattern) (gs : graph_store)
   (mu : RDF_Graph_Executable.solution_mapping) : solution_sequence=
   let bound =
@@ -2864,8 +2849,8 @@ let rec eval_bgp_store_from_mu_fuel (patterns : bgp) (gs : graph_store)
 let eval_bgp_store (patterns : bgp) (gs : graph_store) : solution_sequence=
   eval_bgp_store_from_mu_fuel patterns gs sm_empty
     ((FStar_List_Tot_Base.length patterns) + Prims.int_one)
-let eval_bgp (patterns : bgp) (g : RDF_Graph_Executable.rdf_graph) :
-  solution_sequence= eval_bgp_store patterns (graph_to_store g)
+let eval_bgp (patterns : bgp) (g : RDF_Graph.rdf_graph) : solution_sequence=
+  eval_bgp_store patterns (graph_to_store g)
 let join (omega1 : solution_sequence) (omega2 : solution_sequence) :
   solution_sequence=
   RDF_List_Helpers.concatMap_tr
@@ -2876,62 +2861,65 @@ let join (omega1 : solution_sequence) (omega2 : solution_sequence) :
             then FStar_Pervasives_Native.Some (sm_merge mu1 mu2)
             else FStar_Pervasives_Native.None) omega2) omega1
 let eval_expr_ebv_ref :
-  (RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option ->
+  (RDF_Term.wf_iri FStar_Pervasives_Native.option ->
     expr -> RDF_Graph_Executable.solution_mapping -> Prims.bool) Stdlib.ref=
   Stdlib.ref (fun _ _ _ -> failwith "eval_expr_ebv not yet wired")
 let eval_expr_fwd_ref :
-  (RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option ->
+  (RDF_Term.wf_iri FStar_Pervasives_Native.option ->
     expr -> RDF_Graph_Executable.solution_mapping -> eval_result) Stdlib.ref=
   Stdlib.ref (fun _ _ _ -> failwith "eval_expr_fwd not yet wired")
 let eval_exists_fwd_ref :
-  (RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option ->
+  (RDF_Term.wf_iri FStar_Pervasives_Native.option ->
     group_graph_pattern ->
     RDF_Graph_Executable.solution_mapping ->
-    RDF_Graph_Executable.rdf_graph ->
-    RDF_Graph_Executable.rdf_dataset -> Prims.bool) Stdlib.ref=
+    RDF_Graph.rdf_graph ->
+    RDF_Graph.rdf_dataset -> Prims.bool) Stdlib.ref=
   Stdlib.ref (fun _ _ _ _ _ -> false)
 let eval_subselect_fwd_ref :
   (query ->
-    RDF_Graph_Executable.rdf_graph ->
-    RDF_Graph_Executable.rdf_dataset -> solution_sequence) Stdlib.ref=
+    RDF_Graph.rdf_graph ->
+    RDF_Graph.rdf_dataset -> solution_sequence) Stdlib.ref=
   Stdlib.ref (fun _ _ _ -> [])
 let eval_expr_ebv
-  (base : RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option)
+  (base : RDF_Term.wf_iri FStar_Pervasives_Native.option)
   (e : expr)
   (mu : RDF_Graph_Executable.solution_mapping) : Prims.bool=
   !eval_expr_ebv_ref base e mu
 let eval_expr_fwd
-  (base : RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option)
+  (base : RDF_Term.wf_iri FStar_Pervasives_Native.option)
   (e : expr)
   (mu : RDF_Graph_Executable.solution_mapping) : eval_result=
   !eval_expr_fwd_ref base e mu
 let eval_exists_fwd
-  (base : RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option)
+  (base : RDF_Term.wf_iri FStar_Pervasives_Native.option)
   (p : group_graph_pattern)
   (mu : RDF_Graph_Executable.solution_mapping)
-  (g : RDF_Graph_Executable.rdf_graph)
-  (ds : RDF_Graph_Executable.rdf_dataset) : Prims.bool=
+  (g : RDF_Graph.rdf_graph)
+  (ds : RDF_Graph.rdf_dataset) : Prims.bool=
   !eval_exists_fwd_ref base p mu g ds
 let eval_subselect_fwd (q : query)
-  (g : RDF_Graph_Executable.rdf_graph)
-  (ds : RDF_Graph_Executable.rdf_dataset) : solution_sequence=
+  (g : RDF_Graph.rdf_graph)
+  (ds : RDF_Graph.rdf_dataset) : solution_sequence=
   !eval_subselect_fwd_ref q g ds
 type path_result_fwd =
-  (RDF_Graph_Executable.rdf_term * RDF_Graph_Executable.rdf_term) Prims.list
+  (RDF_Term.rdf_term * RDF_Term.rdf_term) Prims.list
 let eval_property_path_fwd_ref :
   (property_path ->
-    RDF_Graph_Executable.rdf_graph -> path_result_fwd) Stdlib.ref=
+    RDF_Graph.rdf_graph -> path_result_fwd) Stdlib.ref=
   Stdlib.ref (fun _ _ -> [])
 let eval_property_path_fwd (p : property_path)
-  (g : RDF_Graph_Executable.rdf_graph) : path_result_fwd=
+  (g : RDF_Graph.rdf_graph) : path_result_fwd=
   !eval_property_path_fwd_ref p g
-(* SERVICE endpoint resolver — issue #57.
+(* SERVICE endpoint resolver -- issue #57.
    Global table populated by the test runner from qt:serviceData
    manifest declarations. Lookup is keyed on the absolute IRI string
-   of the endpoint. *)
-let service_endpoint_table : (Prims.string, RDF_Graph_Executable.rdf_graph) Hashtbl.t =
-  Hashtbl.create 16
-let service_endpoint_register (iri : Prims.string) (g : RDF_Graph_Executable.rdf_graph) : unit =
+   of the endpoint. The value type is deliberately left unannotated:
+   `graph_to_store g` below pins it to whatever module currently
+   owns `rdf_graph` (RDF.Graph.Executable is being split into
+   RDF.Term/RDF.Triple/RDF.Graph; the qualifier has already moved
+   once) without this patch needing to track the split. *)
+let service_endpoint_table = Hashtbl.create 16
+let service_endpoint_register (iri : Prims.string) g : unit =
   Hashtbl.replace service_endpoint_table iri g
 let service_endpoint_clear () : unit =
   Hashtbl.clear service_endpoint_table
@@ -2950,15 +2938,11 @@ let path_result_to_solutions (ps : pattern_subject) (pt : pattern_term)
              match ps with
              | PS_Var v -> FStar_Pervasives_Native.Some [(v, s)]
              | PS_IRI i ->
-                 if
-                   RDF_Graph_Executable.rdf_term_eq
-                     (RDF_Graph_Executable.T_IRI i) s
+                 if RDF_Term.rdf_term_eq (RDF_Term.T_IRI i) s
                  then FStar_Pervasives_Native.Some []
                  else FStar_Pervasives_Native.None
              | PS_BNode b ->
-                 if
-                   RDF_Graph_Executable.rdf_term_eq
-                     (RDF_Graph_Executable.T_BNode b) s
+                 if RDF_Term.rdf_term_eq (RDF_Term.T_BNode b) s
                  then FStar_Pervasives_Native.Some []
                  else FStar_Pervasives_Native.None in
            (match mu_s with
@@ -2969,33 +2953,26 @@ let path_result_to_solutions (ps : pattern_subject) (pt : pattern_term)
                   | PT_Var v ->
                       (match FStar_List_Tot_Base.assoc v bindings_s with
                        | FStar_Pervasives_Native.Some existing ->
-                           if RDF_Graph_Executable.rdf_term_eq existing o
+                           if RDF_Term.rdf_term_eq existing o
                            then FStar_Pervasives_Native.Some bindings_s
                            else FStar_Pervasives_Native.None
                        | FStar_Pervasives_Native.None ->
                            FStar_Pervasives_Native.Some ((v, o) ::
                              bindings_s))
                   | PT_IRI i ->
-                      if
-                        RDF_Graph_Executable.rdf_term_eq
-                          (RDF_Graph_Executable.T_IRI i) o
+                      if RDF_Term.rdf_term_eq (RDF_Term.T_IRI i) o
                       then FStar_Pervasives_Native.Some bindings_s
                       else FStar_Pervasives_Native.None
                   | PT_BNode b ->
-                      if
-                        RDF_Graph_Executable.rdf_term_eq
-                          (RDF_Graph_Executable.T_BNode b) o
+                      if RDF_Term.rdf_term_eq (RDF_Term.T_BNode b) o
                       then FStar_Pervasives_Native.Some bindings_s
                       else FStar_Pervasives_Native.None
                   | PT_Literal l ->
-                      if
-                        RDF_Graph_Executable.rdf_term_eq
-                          (RDF_Graph_Executable.T_Literal l) o
+                      if RDF_Term.rdf_term_eq (RDF_Term.T_Literal l) o
                       then FStar_Pervasives_Native.Some bindings_s
                       else FStar_Pervasives_Native.None in
                 mu_o)) pairs
-let left_join
-  (base : RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option)
+let left_join (base : RDF_Term.wf_iri FStar_Pervasives_Native.option)
   (omega1 : solution_sequence) (omega2 : solution_sequence)
   (filter_expr : expr) : solution_sequence=
   RDF_List_Helpers.concatMap_tr
@@ -3014,14 +2991,13 @@ let left_join
        then joins
        else [mu1]) omega1
 let filter_solutions_fwd
-  (base : RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option)
-  (e : expr) (omega : solution_sequence) : solution_sequence=
+  (base : RDF_Term.wf_iri FStar_Pervasives_Native.option) (e : expr)
+  (omega : solution_sequence) : solution_sequence=
   FStar_List_Tot_Base.filter (eval_expr_ebv base e) omega
 let rec substitute_existentials
-  (base : RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option)
-  (e : expr) (mu : RDF_Graph_Executable.solution_mapping)
-  (g : RDF_Graph_Executable.rdf_graph)
-  (ds : RDF_Graph_Executable.rdf_dataset) : expr=
+  (base : RDF_Term.wf_iri FStar_Pervasives_Native.option) (e : expr)
+  (mu : RDF_Graph_Executable.solution_mapping) (g : RDF_Graph.rdf_graph)
+  (ds : RDF_Graph.rdf_dataset) : expr=
   match e with
   | E_Exists p -> E_BoolLit (eval_exists_fwd base p mu g ds)
   | E_NotExists p ->
@@ -3145,38 +3121,35 @@ let rec substitute_existentials
       E_FunctionCall (iri, (substitute_existentials_list base args mu g ds))
   | uu___ -> e
 and substitute_existentials_list
-  (base : RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option)
+  (base : RDF_Term.wf_iri FStar_Pervasives_Native.option)
   (es : expr Prims.list) (mu : RDF_Graph_Executable.solution_mapping)
-  (g : RDF_Graph_Executable.rdf_graph)
-  (ds : RDF_Graph_Executable.rdf_dataset) : expr Prims.list=
+  (g : RDF_Graph.rdf_graph) (ds : RDF_Graph.rdf_dataset) : expr Prims.list=
   match es with
   | [] -> []
   | hd::tl -> (substitute_existentials base hd mu g ds) ::
       (substitute_existentials_list base tl mu g ds)
 and substitute_existentials_opt
-  (base : RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option)
+  (base : RDF_Term.wf_iri FStar_Pervasives_Native.option)
   (eo : expr FStar_Pervasives_Native.option)
-  (mu : RDF_Graph_Executable.solution_mapping)
-  (g : RDF_Graph_Executable.rdf_graph)
-  (ds : RDF_Graph_Executable.rdf_dataset) :
-  expr FStar_Pervasives_Native.option=
+  (mu : RDF_Graph_Executable.solution_mapping) (g : RDF_Graph.rdf_graph)
+  (ds : RDF_Graph.rdf_dataset) : expr FStar_Pervasives_Native.option=
   match eo with
   | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
   | FStar_Pervasives_Native.Some e ->
       FStar_Pervasives_Native.Some (substitute_existentials base e mu g ds)
 let filter_solutions_with_graph
-  (base : RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option)
-  (e : expr) (omega : solution_sequence) (g : RDF_Graph_Executable.rdf_graph)
-  (ds : RDF_Graph_Executable.rdf_dataset) : solution_sequence=
+  (base : RDF_Term.wf_iri FStar_Pervasives_Native.option) (e : expr)
+  (omega : solution_sequence) (g : RDF_Graph.rdf_graph)
+  (ds : RDF_Graph.rdf_dataset) : solution_sequence=
   FStar_List_Tot_Base.filter
     (fun mu ->
        let e' = substitute_existentials base e mu g ds in
        eval_expr_ebv base e' mu) omega
 let left_join_with_graph
-  (base : RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option)
+  (base : RDF_Term.wf_iri FStar_Pervasives_Native.option)
   (omega1 : solution_sequence) (omega2 : solution_sequence)
-  (filter_expr : expr) (g : RDF_Graph_Executable.rdf_graph)
-  (ds : RDF_Graph_Executable.rdf_dataset) : solution_sequence=
+  (filter_expr : expr) (g : RDF_Graph.rdf_graph) (ds : RDF_Graph.rdf_dataset)
+  : solution_sequence=
   RDF_List_Helpers.concatMap_tr
     (fun mu1 ->
        let joins =
@@ -3215,7 +3188,7 @@ let minus (omega1 : solution_sequence) (omega2 : solution_sequence) :
                  (Prims.op_Negation (domains_disjoint mu1 mu2))) omega2))
     omega1
 let rec eval_pattern_store
-  (base : RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option)
+  (base : RDF_Term.wf_iri FStar_Pervasives_Native.option)
   (p : group_graph_pattern) (gs : graph_store) (dss : rdf_dataset_store) :
   solution_sequence=
   match p with
@@ -3225,8 +3198,8 @@ let rec eval_pattern_store
       RDF_List_Helpers.concatMap_tr
         (fun mu ->
            match sm_lookup v mu with
-           | FStar_Pervasives_Native.Some (RDF_Graph_Executable.T_IRI iri) ->
-               if RDF_Graph_Executable.is_iri iri
+           | FStar_Pervasives_Native.Some (RDF_Term.T_IRI iri) ->
+               if RDF_Term.is_iri iri
                then
                  (match service_endpoint_lookup iri with
                   | FStar_Pervasives_Native.Some remote_gs ->
@@ -3246,8 +3219,8 @@ let rec eval_pattern_store
       RDF_List_Helpers.concatMap_tr
         (fun mu ->
            match sm_lookup v mu with
-           | FStar_Pervasives_Native.Some (RDF_Graph_Executable.T_IRI iri) ->
-               if RDF_Graph_Executable.is_iri iri
+           | FStar_Pervasives_Native.Some (RDF_Term.T_IRI iri) ->
+               if RDF_Term.is_iri iri
                then
                  (match service_endpoint_lookup iri with
                   | FStar_Pervasives_Native.Some remote_gs ->
@@ -3302,12 +3275,12 @@ let rec eval_pattern_store
            RDF_List_Helpers.concatMap_tr
              (fun ngs ->
                 let ng_results = eval_pattern_store base p' ngs.ngs_store dss in
-                if RDF_Graph_Executable.is_iri ngs.ngs_name
+                if RDF_Term.is_iri ngs.ngs_name
                 then
                   RDF_List_Helpers.concatMap_tr
                     (fun mu ->
                        match sm_bind_if_compatible v
-                               (RDF_Graph_Executable.T_IRI (ngs.ngs_name)) mu
+                               (RDF_Term.T_IRI (ngs.ngs_name)) mu
                        with
                        | FStar_Pervasives_Native.Some mu' -> [mu']
                        | FStar_Pervasives_Native.None -> []) ng_results
@@ -3328,13 +3301,13 @@ let rec eval_pattern_store
             let constant_terms =
               RDF_List_Helpers.append_tr
                 (match ps with
-                 | PS_IRI i -> [RDF_Graph_Executable.T_IRI i]
-                 | PS_BNode b -> [RDF_Graph_Executable.T_BNode b]
+                 | PS_IRI i -> [RDF_Term.T_IRI i]
+                 | PS_BNode b -> [RDF_Term.T_BNode b]
                  | PS_Var uu___1 -> [])
                 (match pt with
-                 | PT_IRI i -> [RDF_Graph_Executable.T_IRI i]
-                 | PT_BNode b -> [RDF_Graph_Executable.T_BNode b]
-                 | PT_Literal l -> [RDF_Graph_Executable.T_Literal l]
+                 | PT_IRI i -> [RDF_Term.T_IRI i]
+                 | PT_BNode b -> [RDF_Term.T_BNode b]
+                 | PT_Literal l -> [RDF_Term.T_Literal l]
                  | PT_Var uu___1 -> []) in
             let has_reflexive t =
               FStar_List_Tot_Base.existsb
@@ -3342,8 +3315,8 @@ let rec eval_pattern_store
                    let uu___1 = pair in
                    match uu___1 with
                    | (s, o) ->
-                       (RDF_Graph_Executable.rdf_term_eq s t) &&
-                         (RDF_Graph_Executable.rdf_term_eq o t)) pairs in
+                       (RDF_Term.rdf_term_eq s t) &&
+                         (RDF_Term.rdf_term_eq o t)) pairs in
             let new_terms =
               FStar_List_Tot_Base.filter
                 (fun t -> Prims.op_Negation (has_reflexive t)) constant_terms in
@@ -3354,13 +3327,13 @@ let rec eval_pattern_store
             let constant_terms =
               RDF_List_Helpers.append_tr
                 (match ps with
-                 | PS_IRI i -> [RDF_Graph_Executable.T_IRI i]
-                 | PS_BNode b -> [RDF_Graph_Executable.T_BNode b]
+                 | PS_IRI i -> [RDF_Term.T_IRI i]
+                 | PS_BNode b -> [RDF_Term.T_BNode b]
                  | PS_Var uu___1 -> [])
                 (match pt with
-                 | PT_IRI i -> [RDF_Graph_Executable.T_IRI i]
-                 | PT_BNode b -> [RDF_Graph_Executable.T_BNode b]
-                 | PT_Literal l -> [RDF_Graph_Executable.T_Literal l]
+                 | PT_IRI i -> [RDF_Term.T_IRI i]
+                 | PT_BNode b -> [RDF_Term.T_BNode b]
+                 | PT_Literal l -> [RDF_Term.T_Literal l]
                  | PT_Var uu___1 -> []) in
             let has_reflexive t =
               FStar_List_Tot_Base.existsb
@@ -3368,8 +3341,8 @@ let rec eval_pattern_store
                    let uu___1 = pair in
                    match uu___1 with
                    | (s, o) ->
-                       (RDF_Graph_Executable.rdf_term_eq s t) &&
-                         (RDF_Graph_Executable.rdf_term_eq o t)) pairs in
+                       (RDF_Term.rdf_term_eq s t) &&
+                         (RDF_Term.rdf_term_eq o t)) pairs in
             let new_terms =
               FStar_List_Tot_Base.filter
                 (fun t -> Prims.op_Negation (has_reflexive t)) constant_terms in
@@ -3378,10 +3351,9 @@ let rec eval_pattern_store
             RDF_List_Helpers.append_tr pairs new_reflexive
         | uu___ -> pairs in
       path_result_to_solutions ps pt pairs1
-let eval_pattern
-  (base : RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option)
-  (p : group_graph_pattern) (g : RDF_Graph_Executable.rdf_graph)
-  (ds : RDF_Graph_Executable.rdf_dataset) : solution_sequence=
+let eval_pattern (base : RDF_Term.wf_iri FStar_Pervasives_Native.option)
+  (p : group_graph_pattern) (g : RDF_Graph.rdf_graph)
+  (ds : RDF_Graph.rdf_dataset) : solution_sequence=
   eval_pattern_store base p (graph_to_store g) (dataset_to_store ds)
 let strip_leading_plus (s : Prims.string) : Prims.string=
   if (FStar_String.strlen s) > Prims.int_zero
@@ -3403,9 +3375,9 @@ let eval_xsd_cast (v : eval_result) (target_type : Prims.string)
     | ER_Dbl s -> FStar_Pervasives_Native.Some s
     | ER_Bool b ->
         FStar_Pervasives_Native.Some (if b then "true" else "false")
-    | ER_Term (RDF_Graph_Executable.T_Literal l) ->
+    | ER_Term (RDF_Term.T_Literal l) ->
         FStar_Pervasives_Native.Some (lit_lexical l)
-    | ER_Term (RDF_Graph_Executable.T_IRI i) ->
+    | ER_Term (RDF_Term.T_IRI i) ->
         FStar_Pervasives_Native.Some (iri_to_string i)
     | uu___ -> FStar_Pervasives_Native.None in
   match get_lex with
@@ -3502,12 +3474,11 @@ let eval_xsd_cast (v : eval_result) (target_type : Prims.string)
             then
               (let mk_float s =
                  ER_Term
-                   (RDF_Graph_Executable.T_Literal
+                   (RDF_Term.T_Literal
                       {
-                        RDF_Graph_Executable.lexical_form = s;
-                        RDF_Graph_Executable.datatype = xsd_float;
-                        RDF_Graph_Executable.lang_tag =
-                          FStar_Pervasives_Native.None
+                        RDF_Term.lexical_form = s;
+                        RDF_Term.datatype = xsd_float;
+                        RDF_Term.lang_tag = FStar_Pervasives_Native.None
                       }) in
                let canon_int_float n =
                  if n = Prims.int_zero
@@ -3624,49 +3595,48 @@ let eval_xsd_cast (v : eval_result) (target_type : Prims.string)
                    | uu___5 -> er_string lex)
                 else
                   if
-                    (RDF_Graph_Executable.is_iri full_iri) &&
-                      (full_iri <> RDF_Graph_Executable.rdf_lang_string)
+                    (RDF_Term.is_iri full_iri) &&
+                      (full_iri <> RDF_Term.rdf_lang_string)
                   then
                     ER_Term
-                      (RDF_Graph_Executable.T_Literal
+                      (RDF_Term.T_Literal
                          {
-                           RDF_Graph_Executable.lexical_form = lex;
-                           RDF_Graph_Executable.datatype = full_iri;
-                           RDF_Graph_Executable.lang_tag =
-                             FStar_Pervasives_Native.None
+                           RDF_Term.lexical_form = lex;
+                           RDF_Term.datatype = full_iri;
+                           RDF_Term.lang_tag = FStar_Pervasives_Native.None
                          })
                   else ER_Error
 let rec eval_expr_with_base
-  (base : RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option)
-  (e : expr) (mu : RDF_Graph_Executable.solution_mapping) : eval_result=
+  (base : RDF_Term.wf_iri FStar_Pervasives_Native.option) (e : expr)
+  (mu : RDF_Graph_Executable.solution_mapping) : eval_result=
   match e with
   | E_Var v ->
       (match sm_lookup v mu with
-       | FStar_Pervasives_Native.Some (RDF_Graph_Executable.T_Literal l) ->
-           if (lit_datatype l) = RDF_Graph_Executable.xsd_integer
+       | FStar_Pervasives_Native.Some (RDF_Term.T_Literal l) ->
+           if (lit_datatype l) = RDF_Term.xsd_integer
            then
              (match parse_int_string (lit_lexical l) with
               | FStar_Pervasives_Native.Some n -> ER_Num n
               | FStar_Pervasives_Native.None ->
-                  ER_Term (RDF_Graph_Executable.T_Literal l))
+                  ER_Term (RDF_Term.T_Literal l))
            else
-             if (lit_datatype l) = RDF_Graph_Executable.xsd_decimal
+             if (lit_datatype l) = RDF_Term.xsd_decimal
              then ER_Dec (lit_lexical l)
              else
                if
-                 ((lit_datatype l) = RDF_Graph_Executable.xsd_double) ||
+                 ((lit_datatype l) = RDF_Term.xsd_double) ||
                    ((lit_datatype l) = xsd_float)
                then ER_Dbl (lit_lexical l)
                else
-                 if (lit_datatype l) = RDF_Graph_Executable.xsd_boolean
+                 if (lit_datatype l) = RDF_Term.xsd_boolean
                  then
                    ER_Bool
                      (((lit_lexical l) = "true") || ((lit_lexical l) = "1"))
-                 else ER_Term (RDF_Graph_Executable.T_Literal l)
+                 else ER_Term (RDF_Term.T_Literal l)
        | FStar_Pervasives_Native.Some t -> ER_Term t
        | FStar_Pervasives_Native.None -> ER_Error)
-  | E_IRI i -> ER_Term (RDF_Graph_Executable.T_IRI i)
-  | E_Literal l -> ER_Term (RDF_Graph_Executable.T_Literal l)
+  | E_IRI i -> ER_Term (RDF_Term.T_IRI i)
+  | E_Literal l -> ER_Term (RDF_Term.T_Literal l)
   | E_BoolLit b -> ER_Bool b
   | E_NumericLit n -> ER_Num n
   | E_DecimalLit s -> ER_Dec s
@@ -3770,37 +3740,34 @@ let rec eval_expr_with_base
   | E_Datatype e1 -> fn_datatype (eval_expr_with_base base e1 mu)
   | E_IRI_fn e1 ->
       (match eval_expr_with_base base e1 mu with
-       | ER_Term (RDF_Graph_Executable.T_IRI i) ->
-           ER_Term (RDF_Graph_Executable.T_IRI i)
-       | ER_Term (RDF_Graph_Executable.T_Literal l) ->
+       | ER_Term (RDF_Term.T_IRI i) -> ER_Term (RDF_Term.T_IRI i)
+       | ER_Term (RDF_Term.T_Literal l) ->
            let s = lit_lexical l in
            (match base with
             | FStar_Pervasives_Native.Some b ->
-                ER_Term (RDF_Graph_Executable.T_IRI (resolve_iri b s))
+                ER_Term (RDF_Term.T_IRI (resolve_iri b s))
             | FStar_Pervasives_Native.None ->
                 (match string_to_iri s with
                  | FStar_Pervasives_Native.Some i ->
-                     ER_Term (RDF_Graph_Executable.T_IRI i)
+                     ER_Term (RDF_Term.T_IRI i)
                  | FStar_Pervasives_Native.None -> ER_Error))
        | uu___ -> ER_Error)
   | E_StrDt (e1, e2) ->
       (match ((er_to_string (eval_expr_with_base base e1 mu)),
                (eval_expr_with_base base e2 mu))
        with
-       | (FStar_Pervasives_Native.Some s, ER_Term (RDF_Graph_Executable.T_IRI
-          dt)) -> ER_Term (fn_strdt s dt)
+       | (FStar_Pervasives_Native.Some s, ER_Term (RDF_Term.T_IRI dt)) ->
+           ER_Term (fn_strdt s dt)
        | (uu___, uu___1) -> ER_Error)
   | E_StrLang (e1, e2) ->
       let v1 = eval_expr_with_base base e1 mu in
       (match (v1, (er_to_string (eval_expr_with_base base e2 mu))) with
-       | (ER_Term (RDF_Graph_Executable.T_Literal l),
-          FStar_Pervasives_Native.Some lang) ->
+       | (ER_Term (RDF_Term.T_Literal l), FStar_Pervasives_Native.Some lang)
+           ->
            if
-             (((lit_datatype l) = RDF_Graph_Executable.xsd_string) ||
+             (((lit_datatype l) = RDF_Term.xsd_string) ||
                 ((lit_datatype l) = ""))
-               &&
-               (l.RDF_Graph_Executable.lang_tag =
-                  FStar_Pervasives_Native.None)
+               && (l.RDF_Term.lang_tag = FStar_Pervasives_Native.None)
            then ER_Term (fn_strlang (lit_lexical l) lang)
            else ER_Error
        | (uu___, uu___1) -> ER_Error)
@@ -3887,18 +3854,17 @@ let rec eval_expr_with_base
                    (FStar_Pervasives_Native.uu___is_None lang2))
                   ||
                   ((((FStar_Pervasives_Native.uu___is_None lang1) &&
-                       (dt1 = RDF_Graph_Executable.xsd_string))
+                       (dt1 = RDF_Term.xsd_string))
                       && (FStar_Pervasives_Native.uu___is_None lang2))
-                     && (dt2 = RDF_Graph_Executable.xsd_string)))
+                     && (dt2 = RDF_Term.xsd_string)))
                  ||
                  (((FStar_Pervasives_Native.uu___is_Some lang1) &&
                      (FStar_Pervasives_Native.uu___is_None lang2))
                     &&
-                    ((dt2 = RDF_Graph_Executable.xsd_string) ||
-                       (dt2 = rdf_langString))))
+                    ((dt2 = RDF_Term.xsd_string) || (dt2 = rdf_langString))))
                 ||
                 (((FStar_Pervasives_Native.uu___is_None lang1) &&
-                    (dt1 = RDF_Graph_Executable.xsd_string))
+                    (dt1 = RDF_Term.xsd_string))
                    && (FStar_Pervasives_Native.uu___is_Some lang2)))
                ||
                (((FStar_Pervasives_Native.uu___is_Some lang1) &&
@@ -3928,18 +3894,17 @@ let rec eval_expr_with_base
                    (FStar_Pervasives_Native.uu___is_None lang2))
                   ||
                   ((((FStar_Pervasives_Native.uu___is_None lang1) &&
-                       (dt1 = RDF_Graph_Executable.xsd_string))
+                       (dt1 = RDF_Term.xsd_string))
                       && (FStar_Pervasives_Native.uu___is_None lang2))
-                     && (dt2 = RDF_Graph_Executable.xsd_string)))
+                     && (dt2 = RDF_Term.xsd_string)))
                  ||
                  (((FStar_Pervasives_Native.uu___is_Some lang1) &&
                      (FStar_Pervasives_Native.uu___is_None lang2))
                     &&
-                    ((dt2 = RDF_Graph_Executable.xsd_string) ||
-                       (dt2 = rdf_langString))))
+                    ((dt2 = RDF_Term.xsd_string) || (dt2 = rdf_langString))))
                 ||
                 (((FStar_Pervasives_Native.uu___is_None lang1) &&
-                    (dt1 = RDF_Graph_Executable.xsd_string))
+                    (dt1 = RDF_Term.xsd_string))
                    && (FStar_Pervasives_Native.uu___is_Some lang2)))
                ||
                (((FStar_Pervasives_Native.uu___is_Some lang1) &&
@@ -4104,12 +4069,11 @@ let rec eval_expr_with_base
             | FStar_Pervasives_Native.Some "" -> ER_Error
             | FStar_Pervasives_Native.Some tz ->
                 ER_Term
-                  (RDF_Graph_Executable.T_Literal
+                  (RDF_Term.T_Literal
                      {
-                       RDF_Graph_Executable.lexical_form = tz;
-                       RDF_Graph_Executable.datatype = xsd_dayTimeDuration;
-                       RDF_Graph_Executable.lang_tag =
-                         FStar_Pervasives_Native.None
+                       RDF_Term.lexical_form = tz;
+                       RDF_Term.datatype = xsd_dayTimeDuration;
+                       RDF_Term.lang_tag = FStar_Pervasives_Native.None
                      })
             | FStar_Pervasives_Native.None -> ER_Error)
        | FStar_Pervasives_Native.None -> ER_Error)
@@ -4154,8 +4118,8 @@ let rec eval_expr_with_base
           if iri_s = "http://www.w3.org/2005/xpath-functions#uuid"
           then
             (let uuid_iri = "urn:uuid:00000000-0000-0000-0000-000000000000" in
-             if RDF_Graph_Executable.is_iri uuid_iri
-             then ER_Term (RDF_Graph_Executable.T_IRI uuid_iri)
+             if RDF_Term.is_iri uuid_iri
+             then ER_Term (RDF_Term.T_IRI uuid_iri)
              else ER_Error)
           else
             if iri_s = "http://www.w3.org/2005/xpath-functions#struuid"
@@ -4164,14 +4128,12 @@ let rec eval_expr_with_base
               if iri_s = "http://www.w3.org/2005/xpath-functions#bnode"
               then
                 (match args with
-                 | [] -> ER_Term (RDF_Graph_Executable.T_BNode "_:b0")
+                 | [] -> ER_Term (RDF_Term.T_BNode "_:b0")
                  | e1::[] ->
                      (match er_to_string (eval_expr_with_base base e1 mu)
                       with
                       | FStar_Pervasives_Native.Some s ->
-                          ER_Term
-                            (RDF_Graph_Executable.T_BNode
-                               (Prims.strcat "_:b" s))
+                          ER_Term (RDF_Term.T_BNode (Prims.strcat "_:b" s))
                       | FStar_Pervasives_Native.None -> ER_Error)
                  | uu___4 -> ER_Error)
               else
@@ -4195,7 +4157,7 @@ let rec eval_expr_with_base
                    | uu___5 -> ER_Error
                  else ER_Error)
 and eval_coalesce_with_base
-  (base : RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option)
+  (base : RDF_Term.wf_iri FStar_Pervasives_Native.option)
   (es : expr Prims.list) (mu : RDF_Graph_Executable.solution_mapping) :
   eval_result=
   match es with
@@ -4204,8 +4166,7 @@ and eval_coalesce_with_base
       (match eval_expr_with_base base e mu with
        | ER_Error -> eval_coalesce_with_base base rest mu
        | v -> v)
-and eval_in_with_base
-  (base : RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option)
+and eval_in_with_base (base : RDF_Term.wf_iri FStar_Pervasives_Native.option)
   (v : eval_result) (es : expr Prims.list)
   (mu : RDF_Graph_Executable.solution_mapping) : eval_result=
   match es with
@@ -4215,7 +4176,7 @@ and eval_in_with_base
        | FStar_Pervasives_Native.Some true -> ER_Bool true
        | uu___ -> eval_in_with_base base v rest mu)
 and eval_concat_with_base
-  (base : RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option)
+  (base : RDF_Term.wf_iri FStar_Pervasives_Native.option)
   (es : expr Prims.list) (mu : RDF_Graph_Executable.solution_mapping) :
   eval_result=
   match es with
@@ -4231,33 +4192,32 @@ and eval_concat_with_base
       (match er_string_info v with
        | FStar_Pervasives_Native.Some (s, lang, dt) ->
            (match eval_concat_with_base base rest mu with
-            | ER_Term (RDF_Graph_Executable.T_Literal l) ->
+            | ER_Term (RDF_Term.T_Literal l) ->
                 let combined = Prims.strcat s (lit_lexical l) in
-                (match (lang, (l.RDF_Graph_Executable.lang_tag)) with
+                (match (lang, (l.RDF_Term.lang_tag)) with
                  | (FStar_Pervasives_Native.Some l1,
                     FStar_Pervasives_Native.Some l2) ->
                      if (string_lower l1) = (string_lower l2)
                      then
                        ER_Term
-                         (RDF_Graph_Executable.T_Literal
+                         (RDF_Term.T_Literal
                             {
-                              RDF_Graph_Executable.lexical_form = combined;
-                              RDF_Graph_Executable.datatype =
-                                RDF_Graph_Executable.rdf_lang_string;
-                              RDF_Graph_Executable.lang_tag =
+                              RDF_Term.lexical_form = combined;
+                              RDF_Term.datatype = RDF_Term.rdf_lang_string;
+                              RDF_Term.lang_tag =
                                 (FStar_Pervasives_Native.Some l1)
                             })
                      else er_string combined
                  | (FStar_Pervasives_Native.None,
                     FStar_Pervasives_Native.None) ->
-                     if dt = l.RDF_Graph_Executable.datatype
+                     if dt = l.RDF_Term.datatype
                      then
                        ER_Term
-                         (RDF_Graph_Executable.T_Literal
+                         (RDF_Term.T_Literal
                             {
-                              RDF_Graph_Executable.lexical_form = combined;
-                              RDF_Graph_Executable.datatype = dt;
-                              RDF_Graph_Executable.lang_tag =
+                              RDF_Term.lexical_form = combined;
+                              RDF_Term.datatype = dt;
+                              RDF_Term.lang_tag =
                                 FStar_Pervasives_Native.None
                             })
                      else er_string combined
@@ -4276,9 +4236,6 @@ let () = regex_replace_ref := (fun text pattern replacement flags ->
     let re = if case_insensitive
       then Str.regexp_case_fold converted
       else Str.regexp converted in
-    (* Manual global replace that handles unmatched groups gracefully.
-       OCaml Str.matched_group raises Not_found for unmatched groups;
-       we replace them with empty string per XPath/SPARQL semantics. *)
     let open Stdlib in
     let build_replacement matched_text =
       let len = String.length replacement in
@@ -4298,15 +4255,6 @@ let () = regex_replace_ref := (fun text pattern replacement flags ->
       done;
       Buffer.contents buf
     in
-    (* UTF-8 correction: OCaml Str treats the input as bytes. A character
-       class like  will match each byte of a multi-byte codepoint
-       separately — e.g. 日 (E6 97 A5) produces three matches instead of one.
-       We post-process Str matches so that:
-         * a match starting at a UTF-8 continuation byte is skipped
-           (it's inside a codepoint the regex couldn't actually match),
-         * a single-byte match whose byte is a UTF-8 lead byte is extended
-           to cover the whole codepoint.
-       SPARQL REPLACE is defined over codepoint strings (XPath regex). *)
     let utf8_cp_len_at s pos =
       if pos >= String.length s then 1
       else
@@ -4364,7 +4312,7 @@ let __proj__Mkgroup__item__g_solutions (projectee : group) :
   solution_sequence=
   match projectee with | { g_key; g_solutions;_} -> g_solutions
 let eval_group_condition
-  (base : RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option)
+  (base : RDF_Term.wf_iri FStar_Pervasives_Native.option)
   (gc : group_condition) (mu : RDF_Graph_Executable.solution_mapping) :
   eval_result=
   match gc with
@@ -4374,21 +4322,20 @@ let eval_group_condition
        | FStar_Pervasives_Native.None -> ER_Error)
   | GC_Expr (e, uu___) -> eval_expr_with_base base e mu
   | GC_BuiltIn e -> eval_expr_with_base base e mu
-let eval_group_key
-  (base : RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option)
+let eval_group_key (base : RDF_Term.wf_iri FStar_Pervasives_Native.option)
   (conds : group_condition Prims.list)
   (mu : RDF_Graph_Executable.solution_mapping) : eval_result Prims.list=
   FStar_List_Tot_Base.map (fun gc -> eval_group_condition base gc mu) conds
 let er_rank (v : eval_result) : Prims.int=
   match v with
   | ER_Error -> Prims.int_zero
-  | ER_Term (RDF_Graph_Executable.T_BNode uu___) -> Prims.int_one
-  | ER_Term (RDF_Graph_Executable.T_IRI uu___) -> (Prims.of_int (2))
+  | ER_Term (RDF_Term.T_BNode uu___) -> Prims.int_one
+  | ER_Term (RDF_Term.T_IRI uu___) -> (Prims.of_int (2))
   | ER_Bool uu___ -> (Prims.of_int (3))
   | ER_Num uu___ -> (Prims.of_int (4))
   | ER_Dec uu___ -> (Prims.of_int (4))
   | ER_Dbl uu___ -> (Prims.of_int (4))
-  | ER_Term (RDF_Graph_Executable.T_Literal uu___) -> (Prims.of_int (7))
+  | ER_Term (RDF_Term.T_Literal uu___) -> (Prims.of_int (7))
 let sparql_order (a : eval_result) (b : eval_result) : Prims.int=
   let ra = er_rank a in
   let rb = er_rank b in
@@ -4400,10 +4347,9 @@ let sparql_order (a : eval_result) (b : eval_result) : Prims.int=
     else
       (match (a, b) with
        | (ER_Error, ER_Error) -> Prims.int_zero
-       | (ER_Term (RDF_Graph_Executable.T_BNode x), ER_Term
-          (RDF_Graph_Executable.T_BNode y)) -> FStar_String.compare x y
-       | (ER_Term (RDF_Graph_Executable.T_IRI x), ER_Term
-          (RDF_Graph_Executable.T_IRI y)) ->
+       | (ER_Term (RDF_Term.T_BNode x), ER_Term (RDF_Term.T_BNode y)) ->
+           FStar_String.compare x y
+       | (ER_Term (RDF_Term.T_IRI x), ER_Term (RDF_Term.T_IRI y)) ->
            FStar_String.compare (iri_to_string x) (iri_to_string y)
        | (ER_Bool x, ER_Bool y) ->
            int_compare (if x then Prims.int_one else Prims.int_zero)
@@ -4420,8 +4366,8 @@ let sparql_order (a : eval_result) (b : eval_result) : Prims.int=
            (match numeric_compare a b with
             | FStar_Pervasives_Native.Some cmp -> cmp
             | FStar_Pervasives_Native.None -> Prims.int_zero)
-       | (ER_Term (RDF_Graph_Executable.T_Literal l1), ER_Term
-          (RDF_Graph_Executable.T_Literal l2)) ->
+       | (ER_Term (RDF_Term.T_Literal l1), ER_Term (RDF_Term.T_Literal l2))
+           ->
            let dc = FStar_String.compare (lit_datatype l1) (lit_datatype l2) in
            if dc <> Prims.int_zero
            then dc
@@ -4492,7 +4438,7 @@ let add_to_groups (key : eval_result Prims.list)
         RDF_List_Helpers.append_tr ordered
           [{ g_key = key; g_solutions = [mu] }]
 let extend_with_group_aliases
-  (base : RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option)
+  (base : RDF_Term.wf_iri FStar_Pervasives_Native.option)
   (conds : group_condition Prims.list)
   (mu : RDF_Graph_Executable.solution_mapping) :
   RDF_Graph_Executable.solution_mapping=
@@ -4505,8 +4451,7 @@ let extend_with_group_aliases
             | FStar_Pervasives_Native.Some t -> sm_bind v t acc
             | FStar_Pervasives_Native.None -> acc)
        | uu___ -> acc) mu conds
-let group_by
-  (base : RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option)
+let group_by (base : RDF_Term.wf_iri FStar_Pervasives_Native.option)
   (conds : group_condition Prims.list) (omega : solution_sequence) :
   group Prims.list=
   FStar_List_Tot_Base.fold_left
@@ -4516,8 +4461,7 @@ let group_by
        add_to_groups key mu' groups) [] omega
 let implicit_group (omega : solution_sequence) : group Prims.list=
   [{ g_key = []; g_solutions = omega }]
-let eval_over_group
-  (base : RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option)
+let eval_over_group (base : RDF_Term.wf_iri FStar_Pervasives_Native.option)
   (e : expr) (g : group) : eval_result Prims.list=
   FStar_List_Tot_Base.map (fun mu -> eval_expr_with_base base e mu)
     g.g_solutions
@@ -4564,8 +4508,7 @@ let rec first_non_error (vals : eval_result Prims.list) : eval_result=
   match vals with
   | [] -> ER_Error
   | v::rest -> if uu___is_ER_Error v then first_non_error rest else v
-let eval_aggregate
-  (base : RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option)
+let eval_aggregate (base : RDF_Term.wf_iri FStar_Pervasives_Native.option)
   (fn : aggregate_fn) (distinct : Prims.bool) (e : expr) (g : group) :
   eval_result=
   match fn with
@@ -4582,9 +4525,9 @@ let eval_aggregate
                        Prims.strcat (FStar_Pervasives_Native.fst p)
                          (Prims.strcat "="
                             (match FStar_Pervasives_Native.snd p with
-                             | RDF_Graph_Executable.T_IRI i -> i
-                             | RDF_Graph_Executable.T_BNode b -> b
-                             | RDF_Graph_Executable.T_Literal l ->
+                             | RDF_Term.T_IRI i -> i
+                             | RDF_Term.T_BNode b -> b
+                             | RDF_Term.T_Literal l ->
                                  Prims.strcat (lit_lexical l)
                                    (Prims.strcat "^^" (lit_datatype l))))) mu) in
              let dedup_strings_tr keys =
@@ -4608,9 +4551,9 @@ let eval_aggregate
                        Prims.strcat (FStar_Pervasives_Native.fst p)
                          (Prims.strcat "="
                             (match FStar_Pervasives_Native.snd p with
-                             | RDF_Graph_Executable.T_IRI i -> i
-                             | RDF_Graph_Executable.T_BNode b -> b
-                             | RDF_Graph_Executable.T_Literal l ->
+                             | RDF_Term.T_IRI i -> i
+                             | RDF_Term.T_BNode b -> b
+                             | RDF_Term.T_Literal l ->
                                  Prims.strcat (lit_lexical l)
                                    (Prims.strcat "^^" (lit_datatype l))))) mu) in
              let dedup_strings_tr keys =
@@ -4662,12 +4605,11 @@ let eval_aggregate
         | FStar_Pervasives_Native.None -> " " in
       let strs = collect_strings vals1 in
       ER_Term
-        (RDF_Graph_Executable.T_Literal
-           (mk_plain_literal (FStar_String.concat sep strs)))
+        (RDF_Term.T_Literal (mk_plain_literal (FStar_String.concat sep strs)))
   | Agg_Sample -> let vals = eval_over_group base e g in first_non_error vals
 let rec rewrite_aggregates
-  (base : RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option)
-  (e : expr) (g : group) : expr=
+  (base : RDF_Term.wf_iri FStar_Pervasives_Native.option) (e : expr)
+  (g : group) : expr=
   match e with
   | E_Aggregate (fn, distinct, sub_e) ->
       let r = eval_aggregate base fn distinct sub_e g in
@@ -4678,8 +4620,8 @@ let rec rewrite_aggregates
        | ER_Dbl d -> E_DoubleLit d
        | ER_Term t ->
            (match t with
-            | RDF_Graph_Executable.T_IRI i -> E_IRI i
-            | RDF_Graph_Executable.T_Literal l -> E_Literal l
+            | RDF_Term.T_IRI i -> E_IRI i
+            | RDF_Term.T_Literal l -> E_Literal l
             | uu___ -> E_BoolLit false)
        | ER_Error -> E_Var "_:error:")
   | E_Compare (op, e1, e2) ->
@@ -4694,8 +4636,7 @@ let rec rewrite_aggregates
         (op, (rewrite_aggregates base e1 g), (rewrite_aggregates base e2 g))
   | E_Not e1 -> E_Not (rewrite_aggregates base e1 g)
   | uu___ -> e
-let having_filter
-  (base : RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option)
+let having_filter (base : RDF_Term.wf_iri FStar_Pervasives_Native.option)
   (conditions : having_condition Prims.list) (groups : group Prims.list) :
   group Prims.list=
   FStar_List_Tot_Base.filter
@@ -4706,16 +4647,16 @@ let having_filter
             let rewritten = rewrite_aggregates base cond g in
             ebv (eval_expr_with_base base rewritten mu)) conditions) groups
 let eval_expr_in_group
-  (base : RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option)
-  (e : expr) (g : group) : eval_result=
+  (base : RDF_Term.wf_iri FStar_Pervasives_Native.option) (e : expr)
+  (g : group) : eval_result=
   let rewritten = rewrite_aggregates base e g in
   match g.g_solutions with
   | mu::uu___ -> eval_expr_with_base base rewritten mu
   | [] -> eval_expr_with_base base rewritten sm_empty
 let eval_select_item_group
-  (base : RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option)
+  (base : RDF_Term.wf_iri FStar_Pervasives_Native.option)
   (item : select_item) (g : group) :
-  (var_name * RDF_Graph_Executable.rdf_term) FStar_Pervasives_Native.option=
+  (var_name * RDF_Term.rdf_term) FStar_Pervasives_Native.option=
   match item with
   | SI_Var v ->
       (match g.g_solutions with
@@ -4731,13 +4672,11 @@ let eval_select_item_group
        | FStar_Pervasives_Native.Some t ->
            FStar_Pervasives_Native.Some (v, t)
        | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None)
-let aggregate_group
-  (base : RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option)
+let aggregate_group (base : RDF_Term.wf_iri FStar_Pervasives_Native.option)
   (items : select_item Prims.list) (g : group) :
   RDF_Graph_Executable.solution_mapping=
   list_filter_map (fun item -> eval_select_item_group base item g) items
-let aggregate_groups
-  (base : RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option)
+let aggregate_groups (base : RDF_Term.wf_iri FStar_Pervasives_Native.option)
   (items : select_item Prims.list) (groups : group Prims.list) :
   solution_sequence=
   FStar_List_Tot_Base.map (aggregate_group base items) groups
@@ -4805,7 +4744,7 @@ let select_has_aggregates (sel : select_clause) : Prims.bool=
   | Select_Vars items ->
       FStar_List_Tot_Base.existsb select_item_has_aggregate items
 let compare_on_condition
-  (base : RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option)
+  (base : RDF_Term.wf_iri FStar_Pervasives_Native.option)
   (c : order_condition) (mu1 : RDF_Graph_Executable.solution_mapping)
   (mu2 : RDF_Graph_Executable.solution_mapping) : Prims.int=
   match c with
@@ -4816,7 +4755,7 @@ let compare_on_condition
       sparql_order (eval_expr_with_base base e mu2)
         (eval_expr_with_base base e mu1)
 let rec compare_on_conditions
-  (base : RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option)
+  (base : RDF_Term.wf_iri FStar_Pervasives_Native.option)
   (conds : order_condition Prims.list)
   (mu1 : RDF_Graph_Executable.solution_mapping)
   (mu2 : RDF_Graph_Executable.solution_mapping) : Prims.int=
@@ -4827,8 +4766,7 @@ let rec compare_on_conditions
       if r <> Prims.int_zero
       then r
       else compare_on_conditions base rest mu1 mu2
-let sort_solutions
-  (base : RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option)
+let sort_solutions (base : RDF_Term.wf_iri FStar_Pervasives_Native.option)
   (conds : order_condition Prims.list) (omega : solution_sequence) :
   solution_sequence=
   FStar_List_Tot_Base.sortWith (compare_on_conditions base conds) omega
@@ -4837,8 +4775,7 @@ let rec sm_equal (m1 : RDF_Graph_Executable.solution_mapping)
   match (m1, m2) with
   | ([], []) -> true
   | ((v1, t1)::r1, (v2, t2)::r2) ->
-      ((v1 = v2) && (RDF_Graph_Executable.rdf_term_eq t1 t2)) &&
-        (sm_equal r1 r2)
+      ((v1 = v2) && (RDF_Term.rdf_term_eq t1 t2)) && (sm_equal r1 r2)
   | (uu___, uu___1) -> false
 let rec sm_mem (mu : RDF_Graph_Executable.solution_mapping)
   (l : RDF_Graph_Executable.solution_mapping Prims.list) : Prims.bool=
@@ -4887,11 +4824,9 @@ let rec project_solutions_acc (vars : var_name Prims.list)
 let project_solutions (vars : var_name Prims.list)
   (omega : solution_sequence) : solution_sequence=
   FStar_List_Tot_Base.rev (project_solutions_acc vars omega [])
-let eval_select_item
-  (base : RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option)
+let eval_select_item (base : RDF_Term.wf_iri FStar_Pervasives_Native.option)
   (item : select_item) (mu : RDF_Graph_Executable.solution_mapping)
-  (g : RDF_Graph_Executable.rdf_graph) :
-  RDF_Graph_Executable.solution_mapping=
+  (g : RDF_Graph.rdf_graph) : RDF_Graph_Executable.solution_mapping=
   match item with
   | SI_Var uu___ -> mu
   | SI_Expr (e, v) ->
@@ -4899,10 +4834,9 @@ let eval_select_item
       (match er_to_term r with
        | FStar_Pervasives_Native.Some t -> sm_bind v t mu
        | FStar_Pervasives_Native.None -> mu)
-let eval_select_items
-  (base : RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option)
+let eval_select_items (base : RDF_Term.wf_iri FStar_Pervasives_Native.option)
   (items : select_item Prims.list) (omega : solution_sequence)
-  (g : RDF_Graph_Executable.rdf_graph) : solution_sequence=
+  (g : RDF_Graph.rdf_graph) : solution_sequence=
   FStar_List_Tot_Base.map
     (fun mu ->
        FStar_List_Tot_Base.fold_left
@@ -4998,62 +4932,55 @@ let strip_synthetic_bnode_vars (omega : solution_sequence) :
   solution_sequence=
   FStar_List_Tot_Base.map strip_synthetic_bnode_vars_mu omega
 let rec q_dataset_default_iris (dcs : dataset_clause Prims.list) :
-  RDF_Graph_Executable.wf_iri Prims.list=
+  RDF_Term.wf_iri Prims.list=
   match dcs with
   | [] -> []
   | (DC_Default i)::rest -> i :: (q_dataset_default_iris rest)
   | (DC_Named uu___)::rest -> q_dataset_default_iris rest
 let rec q_dataset_named_iris (dcs : dataset_clause Prims.list) :
-  RDF_Graph_Executable.wf_iri Prims.list=
+  RDF_Term.wf_iri Prims.list=
   match dcs with
   | [] -> []
   | (DC_Named i)::rest -> i :: (q_dataset_named_iris rest)
   | (DC_Default uu___)::rest -> q_dataset_named_iris rest
-let rec q_union_named_graphs_by_iri
-  (iris : RDF_Graph_Executable.wf_iri Prims.list)
-  (named : RDF_Graph_Executable.named_graph Prims.list) :
-  RDF_Graph_Executable.rdf_graph=
+let rec q_union_named_graphs_by_iri (iris : RDF_Term.wf_iri Prims.list)
+  (named : RDF_Graph.named_graph Prims.list) : RDF_Graph.rdf_graph=
   match iris with
-  | [] -> RDF_Graph_Executable.empty_graph
+  | [] -> RDF_Graph.empty_graph
   | i::rest ->
       let g =
-        match RDF_Graph_Executable.lookup_named_graph i named with
+        match RDF_Graph.lookup_named_graph i named with
         | FStar_Pervasives_Native.Some g1 -> g1
-        | FStar_Pervasives_Native.None -> RDF_Graph_Executable.empty_graph in
+        | FStar_Pervasives_Native.None -> RDF_Graph.empty_graph in
       RDF_Graph_Executable.graph_union g
         (q_union_named_graphs_by_iri rest named)
-let rec q_named_graphs_by_iri (iris : RDF_Graph_Executable.wf_iri Prims.list)
-  (named : RDF_Graph_Executable.named_graph Prims.list) :
-  RDF_Graph_Executable.named_graph Prims.list=
+let rec q_named_graphs_by_iri (iris : RDF_Term.wf_iri Prims.list)
+  (named : RDF_Graph.named_graph Prims.list) :
+  RDF_Graph.named_graph Prims.list=
   match iris with
   | [] -> []
   | i::rest ->
       let g =
-        match RDF_Graph_Executable.lookup_named_graph i named with
+        match RDF_Graph.lookup_named_graph i named with
         | FStar_Pervasives_Native.Some g1 -> g1
-        | FStar_Pervasives_Native.None -> RDF_Graph_Executable.empty_graph in
-      { RDF_Graph_Executable.ng_name = i; RDF_Graph_Executable.ng_graph = g }
-        :: (q_named_graphs_by_iri rest named)
+        | FStar_Pervasives_Native.None -> RDF_Graph.empty_graph in
+      { RDF_Graph.ng_name = i; RDF_Graph.ng_graph = g } ::
+        (q_named_graphs_by_iri rest named)
 let apply_query_dataset (dcs : dataset_clause Prims.list)
-  (g : RDF_Graph_Executable.rdf_graph)
-  (ds : RDF_Graph_Executable.rdf_dataset) :
-  (RDF_Graph_Executable.rdf_graph * RDF_Graph_Executable.rdf_dataset)=
+  (g : RDF_Graph.rdf_graph) (ds : RDF_Graph.rdf_dataset) :
+  (RDF_Graph.rdf_graph * RDF_Graph.rdf_dataset)=
   match dcs with
   | [] -> (g, ds)
   | uu___ ->
       let def_iris = q_dataset_default_iris dcs in
       let nam_iris = q_dataset_named_iris dcs in
       let new_def =
-        q_union_named_graphs_by_iri def_iris ds.RDF_Graph_Executable.ds_named in
-      let new_named =
-        q_named_graphs_by_iri nam_iris ds.RDF_Graph_Executable.ds_named in
+        q_union_named_graphs_by_iri def_iris ds.RDF_Graph.ds_named in
+      let new_named = q_named_graphs_by_iri nam_iris ds.RDF_Graph.ds_named in
       (new_def,
-        {
-          RDF_Graph_Executable.ds_default = new_def;
-          RDF_Graph_Executable.ds_named = new_named
-        })
-let eval_select_query (q : query) (g : RDF_Graph_Executable.rdf_graph)
-  (ds : RDF_Graph_Executable.rdf_dataset) : solution_sequence=
+        { RDF_Graph.ds_default = new_def; RDF_Graph.ds_named = new_named })
+let eval_select_query (q : query) (g : RDF_Graph.rdf_graph)
+  (ds : RDF_Graph.rdf_dataset) : solution_sequence=
   let uu___ = apply_query_dataset q.q_dataset g ds in
   match uu___ with
   | (g1, ds1) ->
@@ -5146,8 +5073,8 @@ let eval_select_query (q : query) (g : RDF_Graph_Executable.rdf_graph)
        | QF_Construct uu___1 -> []
        | QF_Ask -> []
        | QF_Describe uu___1 -> [])
-let eval_ask_query (q : query) (g : RDF_Graph_Executable.rdf_graph)
-  (ds : RDF_Graph_Executable.rdf_dataset) : Prims.bool=
+let eval_ask_query (q : query) (g : RDF_Graph.rdf_graph)
+  (ds : RDF_Graph.rdf_dataset) : Prims.bool=
   let uu___ = apply_query_dataset q.q_dataset g ds in
   match uu___ with
   | (g1, ds1) ->
@@ -5162,53 +5089,52 @@ let eval_ask_query (q : query) (g : RDF_Graph_Executable.rdf_graph)
            (match omega with | [] -> false | uu___1 -> true)
        | uu___1 -> false)
 let fresh_bnode_for (sol_ix : Prims.nat) (template_label : Prims.string) :
-  RDF_Graph_Executable.bnode_id=
+  RDF_Term.bnode_id=
   Prims.strcat "tpl_"
     (Prims.strcat (Prims.string_of_int sol_ix)
        (Prims.strcat "_" template_label))
 let construct_subject (ps : pattern_subject)
   (mu : RDF_Graph_Executable.solution_mapping) (sol_ix : Prims.nat) :
-  RDF_Graph_Executable.subject FStar_Pervasives_Native.option=
+  RDF_Term.subject FStar_Pervasives_Native.option=
   match ps with
-  | PS_IRI i -> FStar_Pervasives_Native.Some (RDF_Graph_Executable.S_IRI i)
+  | PS_IRI i -> FStar_Pervasives_Native.Some (RDF_Term.S_IRI i)
   | PS_BNode b ->
       FStar_Pervasives_Native.Some
-        (RDF_Graph_Executable.S_BNode (fresh_bnode_for sol_ix b))
+        (RDF_Term.S_BNode (fresh_bnode_for sol_ix b))
   | PS_Var v ->
       (match sm_lookup v mu with
-       | FStar_Pervasives_Native.Some (RDF_Graph_Executable.T_IRI i) ->
-           FStar_Pervasives_Native.Some (RDF_Graph_Executable.S_IRI i)
-       | FStar_Pervasives_Native.Some (RDF_Graph_Executable.T_BNode b) ->
-           FStar_Pervasives_Native.Some (RDF_Graph_Executable.S_BNode b)
-       | FStar_Pervasives_Native.Some (RDF_Graph_Executable.T_Literal uu___)
-           -> FStar_Pervasives_Native.None
+       | FStar_Pervasives_Native.Some (RDF_Term.T_IRI i) ->
+           FStar_Pervasives_Native.Some (RDF_Term.S_IRI i)
+       | FStar_Pervasives_Native.Some (RDF_Term.T_BNode b) ->
+           FStar_Pervasives_Native.Some (RDF_Term.S_BNode b)
+       | FStar_Pervasives_Native.Some (RDF_Term.T_Literal uu___) ->
+           FStar_Pervasives_Native.None
        | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None)
 let construct_predicate (pt : pattern_term)
   (mu : RDF_Graph_Executable.solution_mapping) :
-  RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option=
+  RDF_Term.wf_iri FStar_Pervasives_Native.option=
   match pt with
   | PT_IRI i -> FStar_Pervasives_Native.Some i
   | PT_BNode uu___ -> FStar_Pervasives_Native.None
   | PT_Literal uu___ -> FStar_Pervasives_Native.None
   | PT_Var v ->
       (match sm_lookup v mu with
-       | FStar_Pervasives_Native.Some (RDF_Graph_Executable.T_IRI i) ->
+       | FStar_Pervasives_Native.Some (RDF_Term.T_IRI i) ->
            FStar_Pervasives_Native.Some i
        | uu___ -> FStar_Pervasives_Native.None)
 let construct_object (pt : pattern_term)
   (mu : RDF_Graph_Executable.solution_mapping) (sol_ix : Prims.nat) :
-  RDF_Graph_Executable.rdf_term FStar_Pervasives_Native.option=
+  RDF_Term.rdf_term FStar_Pervasives_Native.option=
   match pt with
-  | PT_IRI i -> FStar_Pervasives_Native.Some (RDF_Graph_Executable.T_IRI i)
+  | PT_IRI i -> FStar_Pervasives_Native.Some (RDF_Term.T_IRI i)
   | PT_BNode b ->
       FStar_Pervasives_Native.Some
-        (RDF_Graph_Executable.T_BNode (fresh_bnode_for sol_ix b))
-  | PT_Literal l ->
-      FStar_Pervasives_Native.Some (RDF_Graph_Executable.T_Literal l)
+        (RDF_Term.T_BNode (fresh_bnode_for sol_ix b))
+  | PT_Literal l -> FStar_Pervasives_Native.Some (RDF_Term.T_Literal l)
   | PT_Var v -> sm_lookup v mu
 let instantiate_template (template : triple_pattern Prims.list)
   (mu : RDF_Graph_Executable.solution_mapping) (sol_ix : Prims.nat) :
-  RDF_Graph_Executable.triple Prims.list=
+  RDF_Triple.triple Prims.list=
   FStar_List_Tot_Base.fold_left
     (fun acc tp ->
        match construct_subject tp.tp_s mu sol_ix with
@@ -5220,31 +5146,25 @@ let instantiate_template (template : triple_pattern Prims.list)
                 (match construct_object tp.tp_o mu sol_ix with
                  | FStar_Pervasives_Native.None -> acc
                  | FStar_Pervasives_Native.Some o ->
-                     {
-                       RDF_Graph_Executable.s = s;
-                       RDF_Graph_Executable.p = p;
-                       RDF_Graph_Executable.o = o
-                     } :: acc))) [] template
+                     { RDF_Triple.s = s; RDF_Triple.p = p; RDF_Triple.o = o }
+                     :: acc))) [] template
 let rec instantiate_solutions (template : triple_pattern Prims.list)
-  (mus : solution_sequence) (ix : Prims.nat) :
-  RDF_Graph_Executable.triple Prims.list=
+  (mus : solution_sequence) (ix : Prims.nat) : RDF_Triple.triple Prims.list=
   match mus with
   | [] -> []
   | mu::rest ->
       let here = instantiate_template template mu ix in
       let later = instantiate_solutions template rest (ix + Prims.int_one) in
       FStar_List_Tot_Base.append here later
-let dedup_triples (ts : RDF_Graph_Executable.triple Prims.list) :
-  RDF_Graph_Executable.triple Prims.list=
+let dedup_triples (ts : RDF_Triple.triple Prims.list) :
+  RDF_Triple.triple Prims.list=
   let acc =
     FStar_List_Tot_Base.fold_left
-      (fun acc1 t ->
-         if RDF_Graph_Executable.mem_triple t acc1 then acc1 else t :: acc1)
+      (fun acc1 t -> if RDF_Graph.mem_triple t acc1 then acc1 else t :: acc1)
       [] ts in
   FStar_List_Tot_Base.rev acc
-let eval_construct_query (q : query) (g : RDF_Graph_Executable.rdf_graph)
-  (ds : RDF_Graph_Executable.rdf_dataset) :
-  RDF_Graph_Executable.triple Prims.list=
+let eval_construct_query (q : query) (g : RDF_Graph.rdf_graph)
+  (ds : RDF_Graph.rdf_dataset) : RDF_Triple.triple Prims.list=
   let uu___ = apply_query_dataset q.q_dataset g ds in
   match uu___ with
   | (g1, ds1) ->
@@ -5262,24 +5182,18 @@ let eval_construct_query (q : query) (g : RDF_Graph_Executable.rdf_graph)
            dedup_triples
              (instantiate_solutions template limited Prims.int_zero)
        | uu___1 -> [])
-type path_result =
-  (RDF_Graph_Executable.rdf_term * RDF_Graph_Executable.rdf_term) Prims.list
-let is_not_literal (t : RDF_Graph_Executable.rdf_term) : Prims.bool=
-  match t with
-  | RDF_Graph_Executable.T_Literal uu___ -> false
-  | uu___ -> true
-let path_pair_eq
-  (p1 : (RDF_Graph_Executable.rdf_term * RDF_Graph_Executable.rdf_term))
-  (p2 : (RDF_Graph_Executable.rdf_term * RDF_Graph_Executable.rdf_term)) :
-  Prims.bool=
+type path_result = (RDF_Term.rdf_term * RDF_Term.rdf_term) Prims.list
+let is_not_literal (t : RDF_Term.rdf_term) : Prims.bool=
+  match t with | RDF_Term.T_Literal uu___ -> false | uu___ -> true
+let path_pair_eq (p1 : (RDF_Term.rdf_term * RDF_Term.rdf_term))
+  (p2 : (RDF_Term.rdf_term * RDF_Term.rdf_term)) : Prims.bool=
   let uu___ = p1 in
   match uu___ with
   | (a1, b1) ->
       let uu___1 = p2 in
       (match uu___1 with
        | (a2, b2) ->
-           (RDF_Graph_Executable.rdf_term_eq a1 a2) &&
-             (RDF_Graph_Executable.rdf_term_eq b1 b2))
+           (RDF_Term.rdf_term_eq a1 a2) && (RDF_Term.rdf_term_eq b1 b2))
 let rec list_dedup_by :
   'a . ('a -> 'a -> Prims.bool) -> 'a Prims.list -> 'a Prims.list =
   fun eq l ->
@@ -5292,44 +5206,39 @@ let rec list_dedup_by :
 let dedup_path (pairs : path_result) : path_result=
   list_dedup_by path_pair_eq pairs
 let rec negated_direct_iris (ps : property_path Prims.list) :
-  RDF_Graph_Executable.wf_iri Prims.list=
+  RDF_Term.wf_iri Prims.list=
   match ps with
   | [] -> []
   | (PP_IRI i)::rest -> i :: (negated_direct_iris rest)
   | uu___::rest -> negated_direct_iris rest
 let rec negated_inverse_iris (ps : property_path Prims.list) :
-  RDF_Graph_Executable.wf_iri Prims.list=
+  RDF_Term.wf_iri Prims.list=
   match ps with
   | [] -> []
   | (PP_Inverse (PP_IRI i))::rest -> i :: (negated_inverse_iris rest)
   | uu___::rest -> negated_inverse_iris rest
-let rec iri_in_list (iri : RDF_Graph_Executable.wf_iri)
-  (iris : RDF_Graph_Executable.wf_iri Prims.list) : Prims.bool=
+let rec iri_in_list (iri : RDF_Term.wf_iri)
+  (iris : RDF_Term.wf_iri Prims.list) : Prims.bool=
   match iris with
   | [] -> false
   | hd::tl -> if hd = iri then true else iri_in_list iri tl
-let graph_nodes (g : RDF_Graph_Executable.rdf_graph) :
-  RDF_Graph_Executable.rdf_term Prims.list=
+let graph_nodes (g : RDF_Graph.rdf_graph) : RDF_Term.rdf_term Prims.list=
   let subj_nodes =
-    FStar_List_Tot_Base.map
-      (fun t -> subject_to_term t.RDF_Graph_Executable.s) g in
-  let obj_nodes =
-    FStar_List_Tot_Base.map (fun t -> t.RDF_Graph_Executable.o) g in
+    FStar_List_Tot_Base.map (fun t -> subject_to_term t.RDF_Triple.s) g in
+  let obj_nodes = FStar_List_Tot_Base.map (fun t -> t.RDF_Triple.o) g in
   let pairs =
     dedup_path
       (FStar_List_Tot_Base.map (fun n -> (n, n))
          (RDF_List_Helpers.append_tr subj_nodes obj_nodes)) in
   FStar_List_Tot_Base.map FStar_Pervasives_Native.fst pairs
-let rec eval_property_path (p : property_path)
-  (g : RDF_Graph_Executable.rdf_graph) : path_result=
+let rec eval_property_path (p : property_path) (g : RDF_Graph.rdf_graph) :
+  path_result=
   match p with
   | PP_IRI iri ->
       RDF_List_Helpers.concatMap_tr
         (fun t ->
-           if t.RDF_Graph_Executable.p = iri
-           then
-             [((subject_to_term t.RDF_Graph_Executable.s),
-                (t.RDF_Graph_Executable.o))]
+           if t.RDF_Triple.p = iri
+           then [((subject_to_term t.RDF_Triple.s), (t.RDF_Triple.o))]
            else []) g
   | PP_Inverse pp ->
       let pairs = eval_property_path pp g in
@@ -5351,7 +5260,7 @@ let rec eval_property_path (p : property_path)
                     let uu___1 = pair2 in
                     match uu___1 with
                     | (mid2, o) ->
-                        if RDF_Graph_Executable.rdf_term_eq mid1 mid2
+                        if RDF_Term.rdf_term_eq mid1 mid2
                         then [(s, o)]
                         else []) r2) r1
   | PP_Alternative (p1, p2) ->
@@ -5378,7 +5287,7 @@ let rec eval_property_path (p : property_path)
                         let uu___1 = pair2 in
                         match uu___1 with
                         | (mid2, o) ->
-                            if RDF_Graph_Executable.rdf_term_eq mid mid2
+                            if RDF_Term.rdf_term_eq mid mid2
                             then [(s, o)]
                             else []) step) current in
         dedup_path (RDF_List_Helpers.append_tr current new_pairs) in
@@ -5410,7 +5319,7 @@ let rec eval_property_path (p : property_path)
                         let uu___1 = pair2 in
                         match uu___1 with
                         | (mid2, o) ->
-                            if RDF_Graph_Executable.rdf_term_eq mid mid2
+                            if RDF_Term.rdf_term_eq mid mid2
                             then [(s, o)]
                             else []) step) current in
         dedup_path (RDF_List_Helpers.append_tr current new_pairs) in
@@ -5439,22 +5348,18 @@ let rec eval_property_path (p : property_path)
         else
           RDF_List_Helpers.concatMap_tr
             (fun t ->
-               if iri_in_list t.RDF_Graph_Executable.p excluded_direct
+               if iri_in_list t.RDF_Triple.p excluded_direct
                then []
-               else
-                 [((subject_to_term t.RDF_Graph_Executable.s),
-                    (t.RDF_Graph_Executable.o))]) g in
+               else [((subject_to_term t.RDF_Triple.s), (t.RDF_Triple.o))]) g in
       let inverse_pairs =
         if has_direct && (Prims.op_Negation has_inverse)
         then []
         else
           RDF_List_Helpers.concatMap_tr
             (fun t ->
-               if iri_in_list t.RDF_Graph_Executable.p excluded_inverse
+               if iri_in_list t.RDF_Triple.p excluded_inverse
                then []
-               else
-                 [((t.RDF_Graph_Executable.o),
-                    (subject_to_term t.RDF_Graph_Executable.s))]) g in
+               else [((t.RDF_Triple.o), (subject_to_term t.RDF_Triple.s))]) g in
       RDF_List_Helpers.append_tr direct_pairs inverse_pairs
 let () = eval_property_path_fwd_ref := eval_property_path
 type numeric_precision =
@@ -5470,18 +5375,18 @@ let uu___is_NP_Float (projectee : numeric_precision) : Prims.bool=
   match projectee with | NP_Float -> true | uu___ -> false
 let uu___is_NP_Double (projectee : numeric_precision) : Prims.bool=
   match projectee with | NP_Double -> true | uu___ -> false
-let numeric_precision_of (dt : RDF_Graph_Executable.wf_iri) :
+let numeric_precision_of (dt : RDF_Term.wf_iri) :
   numeric_precision FStar_Pervasives_Native.option=
-  if dt = RDF_Graph_Executable.xsd_integer
+  if dt = RDF_Term.xsd_integer
   then FStar_Pervasives_Native.Some NP_Integer
   else
-    if dt = RDF_Graph_Executable.xsd_decimal
+    if dt = RDF_Term.xsd_decimal
     then FStar_Pervasives_Native.Some NP_Decimal
     else
       if dt = xsd_float
       then FStar_Pervasives_Native.Some NP_Float
       else
-        if dt = RDF_Graph_Executable.xsd_double
+        if dt = RDF_Term.xsd_double
         then FStar_Pervasives_Native.Some NP_Double
         else FStar_Pervasives_Native.None
 let promote_numeric (a : numeric_precision) (b : numeric_precision) :
@@ -5494,12 +5399,12 @@ let promote_numeric (a : numeric_precision) (b : numeric_precision) :
   | (NP_Decimal, uu___) -> NP_Decimal
   | (uu___, NP_Decimal) -> NP_Decimal
   | (NP_Integer, NP_Integer) -> NP_Integer
-let promoted_datatype (p : numeric_precision) : RDF_Graph_Executable.wf_iri=
+let promoted_datatype (p : numeric_precision) : RDF_Term.wf_iri=
   match p with
-  | NP_Integer -> RDF_Graph_Executable.xsd_integer
-  | NP_Decimal -> RDF_Graph_Executable.xsd_decimal
+  | NP_Integer -> RDF_Term.xsd_integer
+  | NP_Decimal -> RDF_Term.xsd_decimal
   | NP_Float -> xsd_float
-  | NP_Double -> RDF_Graph_Executable.xsd_double
+  | NP_Double -> RDF_Term.xsd_double
 type cast_target =
   | Cast_Integer 
   | Cast_Decimal 
@@ -5567,17 +5472,17 @@ let xsd_cast (v : eval_result) (target : cast_target) :
                      FStar_Pervasives_Native.Some (ER_Num n)
                  | FStar_Pervasives_Native.None ->
                      FStar_Pervasives_Native.None))
-       | ER_Term (RDF_Graph_Executable.T_Literal l) ->
+       | ER_Term (RDF_Term.T_Literal l) ->
            if
-             ((lit_datatype l) = RDF_Graph_Executable.xsd_integer) ||
-               ((lit_datatype l) = RDF_Graph_Executable.xsd_string)
+             ((lit_datatype l) = RDF_Term.xsd_integer) ||
+               ((lit_datatype l) = RDF_Term.xsd_string)
            then
              (match parse_int_string (lit_lexical l) with
               | FStar_Pervasives_Native.Some n ->
                   FStar_Pervasives_Native.Some (ER_Num n)
               | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None)
            else
-             if (lit_datatype l) = RDF_Graph_Executable.xsd_boolean
+             if (lit_datatype l) = RDF_Term.xsd_boolean
              then
                (if ((lit_lexical l) = "true") || ((lit_lexical l) = "1")
                 then FStar_Pervasives_Native.Some (ER_Num Prims.int_one)
@@ -5587,8 +5492,8 @@ let xsd_cast (v : eval_result) (target : cast_target) :
                   else FStar_Pervasives_Native.None)
              else
                if
-                 (((lit_datatype l) = RDF_Graph_Executable.xsd_decimal) ||
-                    ((lit_datatype l) = RDF_Graph_Executable.xsd_double))
+                 (((lit_datatype l) = RDF_Term.xsd_decimal) ||
+                    ((lit_datatype l) = RDF_Term.xsd_double))
                    || ((lit_datatype l) = xsd_float)
                then
                  (let chars = FStar_String.list_of_string (lit_lexical l) in
@@ -5615,13 +5520,13 @@ let xsd_cast (v : eval_result) (target : cast_target) :
        | ER_Bool true -> FStar_Pervasives_Native.Some (ER_Dec "1.0")
        | ER_Bool false -> FStar_Pervasives_Native.Some (ER_Dec "0.0")
        | ER_Dbl s -> FStar_Pervasives_Native.Some (ER_Dec s)
-       | ER_Term (RDF_Graph_Executable.T_Literal l) ->
+       | ER_Term (RDF_Term.T_Literal l) ->
            if
-             ((lit_datatype l) = RDF_Graph_Executable.xsd_decimal) ||
-               ((lit_datatype l) = RDF_Graph_Executable.xsd_string)
+             ((lit_datatype l) = RDF_Term.xsd_decimal) ||
+               ((lit_datatype l) = RDF_Term.xsd_string)
            then FStar_Pervasives_Native.Some (ER_Dec (lit_lexical l))
            else
-             if (lit_datatype l) = RDF_Graph_Executable.xsd_integer
+             if (lit_datatype l) = RDF_Term.xsd_integer
              then
                (match parse_int_string (lit_lexical l) with
                 | FStar_Pervasives_Native.Some n ->
@@ -5630,7 +5535,7 @@ let xsd_cast (v : eval_result) (target : cast_target) :
                 | FStar_Pervasives_Native.None ->
                     FStar_Pervasives_Native.None)
              else
-               if (lit_datatype l) = RDF_Graph_Executable.xsd_boolean
+               if (lit_datatype l) = RDF_Term.xsd_boolean
                then
                  (if ((lit_lexical l) = "true") || ((lit_lexical l) = "1")
                   then FStar_Pervasives_Native.Some (ER_Dec "1.0")
@@ -5649,15 +5554,15 @@ let xsd_cast (v : eval_result) (target : cast_target) :
        | ER_Dec s -> FStar_Pervasives_Native.Some (ER_Dbl s)
        | ER_Bool true -> FStar_Pervasives_Native.Some (ER_Dbl "1.0E0")
        | ER_Bool false -> FStar_Pervasives_Native.Some (ER_Dbl "0.0E0")
-       | ER_Term (RDF_Graph_Executable.T_Literal l) ->
+       | ER_Term (RDF_Term.T_Literal l) ->
            if
-             ((((lit_datatype l) = RDF_Graph_Executable.xsd_double) ||
+             ((((lit_datatype l) = RDF_Term.xsd_double) ||
                  ((lit_datatype l) = xsd_float))
-                || ((lit_datatype l) = RDF_Graph_Executable.xsd_decimal))
-               || ((lit_datatype l) = RDF_Graph_Executable.xsd_string)
+                || ((lit_datatype l) = RDF_Term.xsd_decimal))
+               || ((lit_datatype l) = RDF_Term.xsd_string)
            then FStar_Pervasives_Native.Some (ER_Dbl (lit_lexical l))
            else
-             if (lit_datatype l) = RDF_Graph_Executable.xsd_integer
+             if (lit_datatype l) = RDF_Term.xsd_integer
              then
                (match parse_int_string (lit_lexical l) with
                 | FStar_Pervasives_Native.Some n ->
@@ -5666,7 +5571,7 @@ let xsd_cast (v : eval_result) (target : cast_target) :
                 | FStar_Pervasives_Native.None ->
                     FStar_Pervasives_Native.None)
              else
-               if (lit_datatype l) = RDF_Graph_Executable.xsd_boolean
+               if (lit_datatype l) = RDF_Term.xsd_boolean
                then
                  (if ((lit_lexical l) = "true") || ((lit_lexical l) = "1")
                   then FStar_Pervasives_Native.Some (ER_Dbl "1.0E0")
@@ -5685,15 +5590,15 @@ let xsd_cast (v : eval_result) (target : cast_target) :
        | ER_Dec s -> FStar_Pervasives_Native.Some (ER_Dbl s)
        | ER_Bool true -> FStar_Pervasives_Native.Some (ER_Dbl "1.0E0")
        | ER_Bool false -> FStar_Pervasives_Native.Some (ER_Dbl "0.0E0")
-       | ER_Term (RDF_Graph_Executable.T_Literal l) ->
+       | ER_Term (RDF_Term.T_Literal l) ->
            if
-             ((((lit_datatype l) = RDF_Graph_Executable.xsd_double) ||
+             ((((lit_datatype l) = RDF_Term.xsd_double) ||
                  ((lit_datatype l) = xsd_float))
-                || ((lit_datatype l) = RDF_Graph_Executable.xsd_decimal))
-               || ((lit_datatype l) = RDF_Graph_Executable.xsd_string)
+                || ((lit_datatype l) = RDF_Term.xsd_decimal))
+               || ((lit_datatype l) = RDF_Term.xsd_string)
            then FStar_Pervasives_Native.Some (ER_Dbl (lit_lexical l))
            else
-             if (lit_datatype l) = RDF_Graph_Executable.xsd_integer
+             if (lit_datatype l) = RDF_Term.xsd_integer
              then
                (match parse_int_string (lit_lexical l) with
                 | FStar_Pervasives_Native.Some n ->
@@ -5702,7 +5607,7 @@ let xsd_cast (v : eval_result) (target : cast_target) :
                 | FStar_Pervasives_Native.None ->
                     FStar_Pervasives_Native.None)
              else
-               if (lit_datatype l) = RDF_Graph_Executable.xsd_boolean
+               if (lit_datatype l) = RDF_Term.xsd_boolean
                then
                  (if ((lit_lexical l) = "true") || ((lit_lexical l) = "1")
                   then FStar_Pervasives_Native.Some (ER_Dbl "1.0E0")
@@ -5720,12 +5625,11 @@ let xsd_cast (v : eval_result) (target : cast_target) :
        | ER_Dbl s -> FStar_Pervasives_Native.Some (er_string s)
        | ER_Bool true -> FStar_Pervasives_Native.Some (er_string "true")
        | ER_Bool false -> FStar_Pervasives_Native.Some (er_string "false")
-       | ER_Term (RDF_Graph_Executable.T_IRI i) ->
+       | ER_Term (RDF_Term.T_IRI i) ->
            FStar_Pervasives_Native.Some (er_string (iri_to_string i))
-       | ER_Term (RDF_Graph_Executable.T_Literal l) ->
+       | ER_Term (RDF_Term.T_Literal l) ->
            FStar_Pervasives_Native.Some (er_string (lit_lexical l))
-       | ER_Term (RDF_Graph_Executable.T_BNode uu___) ->
-           FStar_Pervasives_Native.None
+       | ER_Term (RDF_Term.T_BNode uu___) -> FStar_Pervasives_Native.None
        | ER_Error -> FStar_Pervasives_Native.None)
   | Cast_Boolean ->
       (match v with
@@ -5738,8 +5642,8 @@ let xsd_cast (v : eval_result) (target : cast_target) :
        | ER_Dbl s ->
            FStar_Pervasives_Native.Some
              (ER_Bool (((s <> "0") && (s <> "0.0")) && (s <> "0.0E0")))
-       | ER_Term (RDF_Graph_Executable.T_Literal l) ->
-           if (lit_datatype l) = RDF_Graph_Executable.xsd_boolean
+       | ER_Term (RDF_Term.T_Literal l) ->
+           if (lit_datatype l) = RDF_Term.xsd_boolean
            then
              (if ((lit_lexical l) = "true") || ((lit_lexical l) = "1")
               then FStar_Pervasives_Native.Some (ER_Bool true)
@@ -5748,7 +5652,7 @@ let xsd_cast (v : eval_result) (target : cast_target) :
                 then FStar_Pervasives_Native.Some (ER_Bool false)
                 else FStar_Pervasives_Native.None)
            else
-             if (lit_datatype l) = RDF_Graph_Executable.xsd_string
+             if (lit_datatype l) = RDF_Term.xsd_string
              then
                (if ((lit_lexical l) = "true") || ((lit_lexical l) = "1")
                 then FStar_Pervasives_Native.Some (ER_Bool true)
@@ -5757,7 +5661,7 @@ let xsd_cast (v : eval_result) (target : cast_target) :
                   then FStar_Pervasives_Native.Some (ER_Bool false)
                   else FStar_Pervasives_Native.None)
              else
-               if (lit_datatype l) = RDF_Graph_Executable.xsd_integer
+               if (lit_datatype l) = RDF_Term.xsd_integer
                then
                  (match parse_int_string (lit_lexical l) with
                   | FStar_Pervasives_Native.Some n ->
@@ -5769,20 +5673,19 @@ let xsd_cast (v : eval_result) (target : cast_target) :
        | uu___ -> FStar_Pervasives_Native.None)
   | Cast_DateTime ->
       (match v with
-       | ER_Term (RDF_Graph_Executable.T_Literal l) ->
+       | ER_Term (RDF_Term.T_Literal l) ->
            if (lit_datatype l) = xsd_dateTime
            then FStar_Pervasives_Native.Some v
            else
-             if (lit_datatype l) = RDF_Graph_Executable.xsd_string
+             if (lit_datatype l) = RDF_Term.xsd_string
              then
                FStar_Pervasives_Native.Some
                  (ER_Term
-                    (RDF_Graph_Executable.T_Literal
+                    (RDF_Term.T_Literal
                        {
-                         RDF_Graph_Executable.lexical_form = (lit_lexical l);
-                         RDF_Graph_Executable.datatype = xsd_dateTime;
-                         RDF_Graph_Executable.lang_tag =
-                           FStar_Pervasives_Native.None
+                         RDF_Term.lexical_form = (lit_lexical l);
+                         RDF_Term.datatype = xsd_dateTime;
+                         RDF_Term.lang_tag = FStar_Pervasives_Native.None
                        }))
              else FStar_Pervasives_Native.None
        | uu___ -> FStar_Pervasives_Native.None)
@@ -5791,12 +5694,9 @@ let substitute_pattern_term (mu : RDF_Graph_Executable.solution_mapping)
   match pt with
   | PT_Var v ->
       (match sm_lookup v mu with
-       | FStar_Pervasives_Native.Some (RDF_Graph_Executable.T_IRI i) ->
-           PT_IRI i
-       | FStar_Pervasives_Native.Some (RDF_Graph_Executable.T_BNode b) ->
-           PT_BNode b
-       | FStar_Pervasives_Native.Some (RDF_Graph_Executable.T_Literal l) ->
-           PT_Literal l
+       | FStar_Pervasives_Native.Some (RDF_Term.T_IRI i) -> PT_IRI i
+       | FStar_Pervasives_Native.Some (RDF_Term.T_BNode b) -> PT_BNode b
+       | FStar_Pervasives_Native.Some (RDF_Term.T_Literal l) -> PT_Literal l
        | FStar_Pervasives_Native.None -> PT_Var v)
   | uu___ -> pt
 let substitute_pattern_subject (mu : RDF_Graph_Executable.solution_mapping)
@@ -5804,12 +5704,9 @@ let substitute_pattern_subject (mu : RDF_Graph_Executable.solution_mapping)
   match ps with
   | PS_Var v ->
       (match sm_lookup v mu with
-       | FStar_Pervasives_Native.Some (RDF_Graph_Executable.T_IRI i) ->
-           PS_IRI i
-       | FStar_Pervasives_Native.Some (RDF_Graph_Executable.T_BNode b) ->
-           PS_BNode b
-       | FStar_Pervasives_Native.Some (RDF_Graph_Executable.T_Literal uu___)
-           -> PS_Var v
+       | FStar_Pervasives_Native.Some (RDF_Term.T_IRI i) -> PS_IRI i
+       | FStar_Pervasives_Native.Some (RDF_Term.T_BNode b) -> PS_BNode b
+       | FStar_Pervasives_Native.Some (RDF_Term.T_Literal uu___) -> PS_Var v
        | FStar_Pervasives_Native.None -> PS_Var v)
   | uu___ -> ps
 let substitute_triple_pattern (mu : RDF_Graph_Executable.solution_mapping)
@@ -5841,8 +5738,8 @@ let rec substitute_pattern (mu : RDF_Graph_Executable.solution_mapping)
   | GP_Service (iri, p1, silent) -> GP_Service (iri, p1, silent)
   | GP_ServiceVar (v, p1, silent) ->
       (match sm_lookup v mu with
-       | FStar_Pervasives_Native.Some (RDF_Graph_Executable.T_IRI iri) ->
-           if RDF_Graph_Executable.is_iri iri
+       | FStar_Pervasives_Native.Some (RDF_Term.T_IRI iri) ->
+           if RDF_Term.is_iri iri
            then GP_Service (iri, (substitute_pattern mu p1), silent)
            else GP_ServiceVar (v, (substitute_pattern mu p1), silent)
        | uu___ -> GP_ServiceVar (v, (substitute_pattern mu p1), silent))
@@ -5888,53 +5785,47 @@ let rec ggp_has_var (v : var_name) (p : group_graph_pattern) : Prims.bool=
       (match ps with | PS_Var sv -> sv = v | uu___1 -> false) ||
         ((match pt with | PT_Var tv -> tv = v | uu___1 -> false))
   | GP_Empty -> false
-let eval_exists
-  (base : RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option)
+let eval_exists (base : RDF_Term.wf_iri FStar_Pervasives_Native.option)
   (pattern : group_graph_pattern)
-  (mu : RDF_Graph_Executable.solution_mapping)
-  (graph : RDF_Graph_Executable.rdf_graph)
-  (ds : RDF_Graph_Executable.rdf_dataset) : Prims.bool=
+  (mu : RDF_Graph_Executable.solution_mapping) (graph : RDF_Graph.rdf_graph)
+  (ds : RDF_Graph.rdf_dataset) : Prims.bool=
   let substituted = substitute_pattern mu pattern in
   (FStar_List_Tot_Base.length (eval_pattern base substituted graph ds)) >
     Prims.int_zero
 let () = eval_exists_fwd_ref := eval_exists
-let filter_solutions
-  (base : RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option)
+let filter_solutions (base : RDF_Term.wf_iri FStar_Pervasives_Native.option)
   (e : expr) (omega : solution_sequence) : solution_sequence=
   FStar_List_Tot_Base.filter (eval_expr_ebv base e) omega
-let rec count_named_triples
-  (ngs : RDF_Graph_Executable.named_graph Prims.list) : Prims.nat=
+let rec count_named_triples (ngs : RDF_Graph.named_graph Prims.list) :
+  Prims.nat=
   match ngs with
   | [] -> Prims.int_zero
   | ng::rest ->
-      (FStar_List_Tot_Base.length ng.RDF_Graph_Executable.ng_graph) +
+      (FStar_List_Tot_Base.length ng.RDF_Graph.ng_graph) +
         (count_named_triples rest)
-let dataset_triple_count (ds : RDF_Graph_Executable.rdf_dataset) : Prims.nat=
-  (FStar_List_Tot_Base.length ds.RDF_Graph_Executable.ds_default) +
-    (count_named_triples ds.RDF_Graph_Executable.ds_named)
+let dataset_triple_count (ds : RDF_Graph.rdf_dataset) : Prims.nat=
+  (FStar_List_Tot_Base.length ds.RDF_Graph.ds_default) +
+    (count_named_triples ds.RDF_Graph.ds_named)
 let ps_to_subject_concrete (ps : pattern_subject) :
-  RDF_Graph_Executable.subject FStar_Pervasives_Native.option=
+  RDF_Term.subject FStar_Pervasives_Native.option=
   match ps with
-  | PS_IRI i -> FStar_Pervasives_Native.Some (RDF_Graph_Executable.S_IRI i)
-  | PS_BNode b ->
-      FStar_Pervasives_Native.Some (RDF_Graph_Executable.S_BNode b)
+  | PS_IRI i -> FStar_Pervasives_Native.Some (RDF_Term.S_IRI i)
+  | PS_BNode b -> FStar_Pervasives_Native.Some (RDF_Term.S_BNode b)
   | PS_Var uu___ -> FStar_Pervasives_Native.None
 let pt_to_iri_concrete (pt : pattern_term) :
-  RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option=
+  RDF_Term.wf_iri FStar_Pervasives_Native.option=
   match pt with
   | PT_IRI i -> FStar_Pervasives_Native.Some i
   | uu___ -> FStar_Pervasives_Native.None
 let pt_to_term_concrete (pt : pattern_term) :
-  RDF_Graph_Executable.rdf_term FStar_Pervasives_Native.option=
+  RDF_Term.rdf_term FStar_Pervasives_Native.option=
   match pt with
-  | PT_IRI i -> FStar_Pervasives_Native.Some (RDF_Graph_Executable.T_IRI i)
-  | PT_BNode b ->
-      FStar_Pervasives_Native.Some (RDF_Graph_Executable.T_BNode b)
-  | PT_Literal l ->
-      FStar_Pervasives_Native.Some (RDF_Graph_Executable.T_Literal l)
+  | PT_IRI i -> FStar_Pervasives_Native.Some (RDF_Term.T_IRI i)
+  | PT_BNode b -> FStar_Pervasives_Native.Some (RDF_Term.T_BNode b)
+  | PT_Literal l -> FStar_Pervasives_Native.Some (RDF_Term.T_Literal l)
   | PT_Var uu___ -> FStar_Pervasives_Native.None
 let tp_to_triple_concrete (tp : triple_pattern) :
-  RDF_Graph_Executable.triple FStar_Pervasives_Native.option=
+  RDF_Triple.triple FStar_Pervasives_Native.option=
   match ps_to_subject_concrete tp.tp_s with
   | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
   | FStar_Pervasives_Native.Some s ->
@@ -5945,13 +5836,8 @@ let tp_to_triple_concrete (tp : triple_pattern) :
             | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
             | FStar_Pervasives_Native.Some o ->
                 FStar_Pervasives_Native.Some
-                  {
-                    RDF_Graph_Executable.s = s;
-                    RDF_Graph_Executable.p = p;
-                    RDF_Graph_Executable.o = o
-                  }))
-let rec bgp_to_triples_concrete (b : bgp) :
-  RDF_Graph_Executable.triple Prims.list=
+                  { RDF_Triple.s = s; RDF_Triple.p = p; RDF_Triple.o = o }))
+let rec bgp_to_triples_concrete (b : bgp) : RDF_Triple.triple Prims.list=
   match b with
   | [] -> []
   | tp::rest ->
@@ -5960,10 +5846,10 @@ let rec bgp_to_triples_concrete (b : bgp) :
        | FStar_Pervasives_Native.None -> rest_ts
        | FStar_Pervasives_Native.Some t -> t :: rest_ts)
 let rec collect_quads
-  (outer : RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option)
+  (outer : RDF_Term.wf_iri FStar_Pervasives_Native.option)
   (g : group_graph_pattern) :
-  (RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option *
-    RDF_Graph_Executable.triple) Prims.list=
+  (RDF_Term.wf_iri FStar_Pervasives_Native.option * RDF_Triple.triple)
+    Prims.list=
   match g with
   | GP_Empty -> []
   | GP_BGP b ->
@@ -5979,152 +5865,126 @@ let rec collect_quads
        | uu___ -> collect_quads outer inner)
   | uu___ -> []
 let rename_quad_bnodes (prefix : Prims.string)
-  (q :
-    (RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option *
-      RDF_Graph_Executable.triple))
-  :
-  (RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option *
-    RDF_Graph_Executable.triple)=
+  (q : (RDF_Term.wf_iri FStar_Pervasives_Native.option * RDF_Triple.triple))
+  : (RDF_Term.wf_iri FStar_Pervasives_Native.option * RDF_Triple.triple)=
   let uu___ = q in
   match uu___ with
   | (g_opt, t) ->
       (g_opt, (RDF_Graph_Executable.rename_triple_bnodes prefix t))
-let rec upsert_named_graph (name : RDF_Graph_Executable.iri)
-  (t : RDF_Graph_Executable.triple)
-  (named : RDF_Graph_Executable.named_graph Prims.list) :
-  RDF_Graph_Executable.named_graph Prims.list=
+let rec upsert_named_graph (name : RDF_Term.iri) (t : RDF_Triple.triple)
+  (named : RDF_Graph.named_graph Prims.list) :
+  RDF_Graph.named_graph Prims.list=
   match named with
-  | [] ->
-      [{
-         RDF_Graph_Executable.ng_name = name;
-         RDF_Graph_Executable.ng_graph = [t]
-       }]
+  | [] -> [{ RDF_Graph.ng_name = name; RDF_Graph.ng_graph = [t] }]
   | ng::rest ->
-      if ng.RDF_Graph_Executable.ng_name = name
+      if ng.RDF_Graph.ng_name = name
       then
         {
-          RDF_Graph_Executable.ng_name = (ng.RDF_Graph_Executable.ng_name);
-          RDF_Graph_Executable.ng_graph =
-            (RDF_Graph_Executable.graph_add t
-               ng.RDF_Graph_Executable.ng_graph)
+          RDF_Graph.ng_name = (ng.RDF_Graph.ng_name);
+          RDF_Graph.ng_graph = (RDF_Graph.graph_add t ng.RDF_Graph.ng_graph)
         } :: rest
       else ng :: (upsert_named_graph name t rest)
-let insert_quad (ds : RDF_Graph_Executable.rdf_dataset)
-  (q :
-    (RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option *
-      RDF_Graph_Executable.triple))
-  : RDF_Graph_Executable.rdf_dataset=
+let insert_quad (ds : RDF_Graph.rdf_dataset)
+  (q : (RDF_Term.wf_iri FStar_Pervasives_Native.option * RDF_Triple.triple))
+  : RDF_Graph.rdf_dataset=
   let uu___ = q in
   match uu___ with
   | (g_opt, t) ->
       (match g_opt with
        | FStar_Pervasives_Native.None ->
            {
-             RDF_Graph_Executable.ds_default =
-               (RDF_Graph_Executable.graph_add t
-                  ds.RDF_Graph_Executable.ds_default);
-             RDF_Graph_Executable.ds_named =
-               (ds.RDF_Graph_Executable.ds_named)
+             RDF_Graph.ds_default =
+               (RDF_Graph.graph_add t ds.RDF_Graph.ds_default);
+             RDF_Graph.ds_named = (ds.RDF_Graph.ds_named)
            }
        | FStar_Pervasives_Native.Some g_iri ->
            {
-             RDF_Graph_Executable.ds_default =
-               (ds.RDF_Graph_Executable.ds_default);
-             RDF_Graph_Executable.ds_named =
-               (upsert_named_graph g_iri t ds.RDF_Graph_Executable.ds_named)
+             RDF_Graph.ds_default = (ds.RDF_Graph.ds_default);
+             RDF_Graph.ds_named =
+               (upsert_named_graph g_iri t ds.RDF_Graph.ds_named)
            })
-let rec insert_quads (ds : RDF_Graph_Executable.rdf_dataset)
+let rec insert_quads (ds : RDF_Graph.rdf_dataset)
   (qs :
-    (RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option *
-      RDF_Graph_Executable.triple) Prims.list)
-  : RDF_Graph_Executable.rdf_dataset=
+    (RDF_Term.wf_iri FStar_Pervasives_Native.option * RDF_Triple.triple)
+      Prims.list)
+  : RDF_Graph.rdf_dataset=
   match qs with | [] -> ds | q::rest -> insert_quads (insert_quad ds q) rest
 let apply_insert_data (request_salt : Prims.string)
-  (ds : RDF_Graph_Executable.rdf_dataset) (ggp : group_graph_pattern) :
-  RDF_Graph_Executable.rdf_dataset=
+  (ds : RDF_Graph.rdf_dataset) (ggp : group_graph_pattern) :
+  RDF_Graph.rdf_dataset=
   let quads = collect_quads FStar_Pervasives_Native.None ggp in
   let prefix = FStar_String.concat "" ["_insdata_"; request_salt] in
   let renamed = FStar_List_Tot_Base.map (rename_quad_bnodes prefix) quads in
   insert_quads ds renamed
-let triple_has_bnode (t : RDF_Graph_Executable.triple) : Prims.bool=
-  (match t.RDF_Graph_Executable.s with
-   | RDF_Graph_Executable.S_BNode uu___ -> true
+let triple_has_bnode (t : RDF_Triple.triple) : Prims.bool=
+  (match t.RDF_Triple.s with
+   | RDF_Term.S_BNode uu___ -> true
    | uu___ -> false) ||
-    (match t.RDF_Graph_Executable.o with
-     | RDF_Graph_Executable.T_BNode uu___ -> true
+    (match t.RDF_Triple.o with
+     | RDF_Term.T_BNode uu___ -> true
      | uu___ -> false)
 let quad_has_bnode
-  (q :
-    (RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option *
-      RDF_Graph_Executable.triple))
+  (q : (RDF_Term.wf_iri FStar_Pervasives_Native.option * RDF_Triple.triple))
   : Prims.bool= triple_has_bnode (FStar_Pervasives_Native.snd q)
 let rec filter_no_bnode_quads
   (qs :
-    (RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option *
-      RDF_Graph_Executable.triple) Prims.list)
+    (RDF_Term.wf_iri FStar_Pervasives_Native.option * RDF_Triple.triple)
+      Prims.list)
   :
-  (RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option *
-    RDF_Graph_Executable.triple) Prims.list=
+  (RDF_Term.wf_iri FStar_Pervasives_Native.option * RDF_Triple.triple)
+    Prims.list=
   match qs with
   | [] -> []
   | q::rest ->
       if quad_has_bnode q
       then filter_no_bnode_quads rest
       else q :: (filter_no_bnode_quads rest)
-let rec remove_from_named_graph (name : RDF_Graph_Executable.iri)
-  (t : RDF_Graph_Executable.triple)
-  (named : RDF_Graph_Executable.named_graph Prims.list) :
-  RDF_Graph_Executable.named_graph Prims.list=
+let rec remove_from_named_graph (name : RDF_Term.iri) (t : RDF_Triple.triple)
+  (named : RDF_Graph.named_graph Prims.list) :
+  RDF_Graph.named_graph Prims.list=
   match named with
   | [] -> []
   | ng::rest ->
-      if ng.RDF_Graph_Executable.ng_name = name
+      if ng.RDF_Graph.ng_name = name
       then
         {
-          RDF_Graph_Executable.ng_name = (ng.RDF_Graph_Executable.ng_name);
-          RDF_Graph_Executable.ng_graph =
-            (RDF_Graph_Executable.graph_remove t
-               ng.RDF_Graph_Executable.ng_graph)
+          RDF_Graph.ng_name = (ng.RDF_Graph.ng_name);
+          RDF_Graph.ng_graph =
+            (RDF_Graph_Executable.graph_remove t ng.RDF_Graph.ng_graph)
         } :: rest
       else ng :: (remove_from_named_graph name t rest)
-let delete_quad (ds : RDF_Graph_Executable.rdf_dataset)
-  (q :
-    (RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option *
-      RDF_Graph_Executable.triple))
-  : RDF_Graph_Executable.rdf_dataset=
+let delete_quad (ds : RDF_Graph.rdf_dataset)
+  (q : (RDF_Term.wf_iri FStar_Pervasives_Native.option * RDF_Triple.triple))
+  : RDF_Graph.rdf_dataset=
   let uu___ = q in
   match uu___ with
   | (g_opt, t) ->
       (match g_opt with
        | FStar_Pervasives_Native.None ->
            {
-             RDF_Graph_Executable.ds_default =
-               (RDF_Graph_Executable.graph_remove t
-                  ds.RDF_Graph_Executable.ds_default);
-             RDF_Graph_Executable.ds_named =
-               (ds.RDF_Graph_Executable.ds_named)
+             RDF_Graph.ds_default =
+               (RDF_Graph_Executable.graph_remove t ds.RDF_Graph.ds_default);
+             RDF_Graph.ds_named = (ds.RDF_Graph.ds_named)
            }
        | FStar_Pervasives_Native.Some g_iri ->
            {
-             RDF_Graph_Executable.ds_default =
-               (ds.RDF_Graph_Executable.ds_default);
-             RDF_Graph_Executable.ds_named =
-               (remove_from_named_graph g_iri t
-                  ds.RDF_Graph_Executable.ds_named)
+             RDF_Graph.ds_default = (ds.RDF_Graph.ds_default);
+             RDF_Graph.ds_named =
+               (remove_from_named_graph g_iri t ds.RDF_Graph.ds_named)
            })
-let rec delete_quads (ds : RDF_Graph_Executable.rdf_dataset)
+let rec delete_quads (ds : RDF_Graph.rdf_dataset)
   (qs :
-    (RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option *
-      RDF_Graph_Executable.triple) Prims.list)
-  : RDF_Graph_Executable.rdf_dataset=
+    (RDF_Term.wf_iri FStar_Pervasives_Native.option * RDF_Triple.triple)
+      Prims.list)
+  : RDF_Graph.rdf_dataset=
   match qs with | [] -> ds | q::rest -> delete_quads (delete_quad ds q) rest
-let apply_delete_data (ds : RDF_Graph_Executable.rdf_dataset)
-  (ggp : group_graph_pattern) : RDF_Graph_Executable.rdf_dataset=
+let apply_delete_data (ds : RDF_Graph.rdf_dataset)
+  (ggp : group_graph_pattern) : RDF_Graph.rdf_dataset=
   let quads = collect_quads FStar_Pervasives_Native.None ggp in
   let clean = filter_no_bnode_quads quads in delete_quads ds clean
 let instantiate_tp (tp : triple_pattern)
   (mu : RDF_Graph_Executable.solution_mapping) :
-  RDF_Graph_Executable.triple FStar_Pervasives_Native.option=
+  RDF_Triple.triple FStar_Pervasives_Native.option=
   match bound_subject_of_pattern tp.tp_s mu with
   | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
   | FStar_Pervasives_Native.Some s ->
@@ -6135,14 +5995,10 @@ let instantiate_tp (tp : triple_pattern)
             | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
             | FStar_Pervasives_Native.Some o ->
                 FStar_Pervasives_Native.Some
-                  {
-                    RDF_Graph_Executable.s = s;
-                    RDF_Graph_Executable.p = p;
-                    RDF_Graph_Executable.o = o
-                  }))
+                  { RDF_Triple.s = s; RDF_Triple.p = p; RDF_Triple.o = o }))
 let rec instantiate_bgp (b : bgp)
   (mu : RDF_Graph_Executable.solution_mapping) :
-  RDF_Graph_Executable.triple Prims.list=
+  RDF_Triple.triple Prims.list=
   match b with
   | [] -> []
   | tp::rest ->
@@ -6151,42 +6007,41 @@ let rec instantiate_bgp (b : bgp)
        | FStar_Pervasives_Native.None -> rest_ts
        | FStar_Pervasives_Native.Some t -> t :: rest_ts)
 let fresh_bnode_for_op (op_salt : Prims.string) (sol_ix : Prims.nat)
-  (label : Prims.string) : RDF_Graph_Executable.bnode_id=
+  (label : Prims.string) : RDF_Term.bnode_id=
   FStar_String.concat ""
     [op_salt; "_sm"; Prims.string_of_int sol_ix; "_"; label]
 let bound_subject_of_pattern_freshen (op_salt : Prims.string)
   (sol_ix : Prims.nat) (ps : pattern_subject)
   (mu : RDF_Graph_Executable.solution_mapping) :
-  RDF_Graph_Executable.subject FStar_Pervasives_Native.option=
+  RDF_Term.subject FStar_Pervasives_Native.option=
   match ps with
-  | PS_IRI i -> FStar_Pervasives_Native.Some (RDF_Graph_Executable.S_IRI i)
+  | PS_IRI i -> FStar_Pervasives_Native.Some (RDF_Term.S_IRI i)
   | PS_BNode b ->
       FStar_Pervasives_Native.Some
-        (RDF_Graph_Executable.S_BNode (fresh_bnode_for_op op_salt sol_ix b))
+        (RDF_Term.S_BNode (fresh_bnode_for_op op_salt sol_ix b))
   | PS_Var v ->
       (match sm_lookup v mu with
-       | FStar_Pervasives_Native.Some (RDF_Graph_Executable.T_IRI i) ->
-           FStar_Pervasives_Native.Some (RDF_Graph_Executable.S_IRI i)
-       | FStar_Pervasives_Native.Some (RDF_Graph_Executable.T_BNode b) ->
-           FStar_Pervasives_Native.Some (RDF_Graph_Executable.S_BNode b)
-       | FStar_Pervasives_Native.Some (RDF_Graph_Executable.T_Literal uu___)
-           -> FStar_Pervasives_Native.None
+       | FStar_Pervasives_Native.Some (RDF_Term.T_IRI i) ->
+           FStar_Pervasives_Native.Some (RDF_Term.S_IRI i)
+       | FStar_Pervasives_Native.Some (RDF_Term.T_BNode b) ->
+           FStar_Pervasives_Native.Some (RDF_Term.S_BNode b)
+       | FStar_Pervasives_Native.Some (RDF_Term.T_Literal uu___) ->
+           FStar_Pervasives_Native.None
        | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None)
 let bound_object_of_pattern_freshen (op_salt : Prims.string)
   (sol_ix : Prims.nat) (pt : pattern_term)
   (mu : RDF_Graph_Executable.solution_mapping) :
-  RDF_Graph_Executable.rdf_term FStar_Pervasives_Native.option=
+  RDF_Term.rdf_term FStar_Pervasives_Native.option=
   match pt with
-  | PT_IRI i -> FStar_Pervasives_Native.Some (RDF_Graph_Executable.T_IRI i)
+  | PT_IRI i -> FStar_Pervasives_Native.Some (RDF_Term.T_IRI i)
   | PT_BNode b ->
       FStar_Pervasives_Native.Some
-        (RDF_Graph_Executable.T_BNode (fresh_bnode_for_op op_salt sol_ix b))
-  | PT_Literal l ->
-      FStar_Pervasives_Native.Some (RDF_Graph_Executable.T_Literal l)
+        (RDF_Term.T_BNode (fresh_bnode_for_op op_salt sol_ix b))
+  | PT_Literal l -> FStar_Pervasives_Native.Some (RDF_Term.T_Literal l)
   | PT_Var v -> sm_lookup v mu
 let instantiate_tp_freshen (op_salt : Prims.string) (sol_ix : Prims.nat)
   (tp : triple_pattern) (mu : RDF_Graph_Executable.solution_mapping) :
-  RDF_Graph_Executable.triple FStar_Pervasives_Native.option=
+  RDF_Triple.triple FStar_Pervasives_Native.option=
   match bound_subject_of_pattern_freshen op_salt sol_ix tp.tp_s mu with
   | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
   | FStar_Pervasives_Native.Some s ->
@@ -6198,14 +6053,10 @@ let instantiate_tp_freshen (op_salt : Prims.string) (sol_ix : Prims.nat)
             | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
             | FStar_Pervasives_Native.Some o ->
                 FStar_Pervasives_Native.Some
-                  {
-                    RDF_Graph_Executable.s = s;
-                    RDF_Graph_Executable.p = p;
-                    RDF_Graph_Executable.o = o
-                  }))
+                  { RDF_Triple.s = s; RDF_Triple.p = p; RDF_Triple.o = o }))
 let rec instantiate_bgp_freshen (op_salt : Prims.string) (sol_ix : Prims.nat)
   (b : bgp) (mu : RDF_Graph_Executable.solution_mapping) :
-  RDF_Graph_Executable.triple Prims.list=
+  RDF_Triple.triple Prims.list=
   match b with
   | [] -> []
   | tp::rest ->
@@ -6214,10 +6065,10 @@ let rec instantiate_bgp_freshen (op_salt : Prims.string) (sol_ix : Prims.nat)
        | FStar_Pervasives_Native.None -> rest_ts
        | FStar_Pervasives_Native.Some t -> t :: rest_ts)
 let rec instantiate_ggp_quads
-  (outer : RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option)
+  (outer : RDF_Term.wf_iri FStar_Pervasives_Native.option)
   (g : group_graph_pattern) (mu : RDF_Graph_Executable.solution_mapping) :
-  (RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option *
-    RDF_Graph_Executable.triple) Prims.list=
+  (RDF_Term.wf_iri FStar_Pervasives_Native.option * RDF_Triple.triple)
+    Prims.list=
   match g with
   | GP_Empty -> []
   | GP_BGP b ->
@@ -6235,10 +6086,10 @@ let rec instantiate_ggp_quads
   | uu___ -> []
 let rec instantiate_ggp_quads_freshen (op_salt : Prims.string)
   (sol_ix : Prims.nat)
-  (outer : RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option)
+  (outer : RDF_Term.wf_iri FStar_Pervasives_Native.option)
   (g : group_graph_pattern) (mu : RDF_Graph_Executable.solution_mapping) :
-  (RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option *
-    RDF_Graph_Executable.triple) Prims.list=
+  (RDF_Term.wf_iri FStar_Pervasives_Native.option * RDF_Triple.triple)
+    Prims.list=
   match g with
   | GP_Empty -> []
   | GP_BGP b ->
@@ -6256,98 +6107,84 @@ let rec instantiate_ggp_quads_freshen (op_salt : Prims.string)
        | uu___ -> instantiate_ggp_quads_freshen op_salt sol_ix outer inner mu)
   | uu___ -> []
 let rec instantiate_ggp_all
-  (outer : RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option)
+  (outer : RDF_Term.wf_iri FStar_Pervasives_Native.option)
   (g : group_graph_pattern) (mus : solution_sequence) :
-  (RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option *
-    RDF_Graph_Executable.triple) Prims.list=
+  (RDF_Term.wf_iri FStar_Pervasives_Native.option * RDF_Triple.triple)
+    Prims.list=
   match mus with
   | [] -> []
   | mu::rest ->
       RDF_List_Helpers.append_tr (instantiate_ggp_quads outer g mu)
         (instantiate_ggp_all outer g rest)
-let apply_delete_where (ds : RDF_Graph_Executable.rdf_dataset)
-  (ggp : group_graph_pattern) : RDF_Graph_Executable.rdf_dataset=
+let apply_delete_where (ds : RDF_Graph.rdf_dataset)
+  (ggp : group_graph_pattern) : RDF_Graph.rdf_dataset=
   let rewritten = rewrite_query_bnodes_pattern ggp in
   let mus =
     eval_pattern FStar_Pervasives_Native.None rewritten
-      ds.RDF_Graph_Executable.ds_default ds in
+      ds.RDF_Graph.ds_default ds in
   let quads = instantiate_ggp_all FStar_Pervasives_Native.None rewritten mus in
   delete_quads ds quads
 let rec using_default_iris (dcs : dataset_clause Prims.list) :
-  RDF_Graph_Executable.wf_iri Prims.list=
+  RDF_Term.wf_iri Prims.list=
   match dcs with
   | [] -> []
   | (DC_Default i)::rest -> i :: (using_default_iris rest)
   | (DC_Named uu___)::rest -> using_default_iris rest
 let rec using_named_iris (dcs : dataset_clause Prims.list) :
-  RDF_Graph_Executable.wf_iri Prims.list=
+  RDF_Term.wf_iri Prims.list=
   match dcs with
   | [] -> []
   | (DC_Named i)::rest -> i :: (using_named_iris rest)
   | (DC_Default uu___)::rest -> using_named_iris rest
-let rec union_named_graphs_by_iri
-  (iris : RDF_Graph_Executable.wf_iri Prims.list)
-  (named : RDF_Graph_Executable.named_graph Prims.list) :
-  RDF_Graph_Executable.rdf_graph=
+let rec union_named_graphs_by_iri (iris : RDF_Term.wf_iri Prims.list)
+  (named : RDF_Graph.named_graph Prims.list) : RDF_Graph.rdf_graph=
   match iris with
-  | [] -> RDF_Graph_Executable.empty_graph
+  | [] -> RDF_Graph.empty_graph
   | i::rest ->
       let g =
-        match RDF_Graph_Executable.lookup_named_graph i named with
+        match RDF_Graph.lookup_named_graph i named with
         | FStar_Pervasives_Native.Some g1 -> g1
-        | FStar_Pervasives_Native.None -> RDF_Graph_Executable.empty_graph in
+        | FStar_Pervasives_Native.None -> RDF_Graph.empty_graph in
       RDF_Graph_Executable.graph_union g
         (union_named_graphs_by_iri rest named)
-let rec named_graphs_by_iri (iris : RDF_Graph_Executable.wf_iri Prims.list)
-  (named : RDF_Graph_Executable.named_graph Prims.list) :
-  RDF_Graph_Executable.named_graph Prims.list=
+let rec named_graphs_by_iri (iris : RDF_Term.wf_iri Prims.list)
+  (named : RDF_Graph.named_graph Prims.list) :
+  RDF_Graph.named_graph Prims.list=
   match iris with
   | [] -> []
   | i::rest ->
       let g =
-        match RDF_Graph_Executable.lookup_named_graph i named with
+        match RDF_Graph.lookup_named_graph i named with
         | FStar_Pervasives_Native.Some g1 -> g1
-        | FStar_Pervasives_Native.None -> RDF_Graph_Executable.empty_graph in
-      { RDF_Graph_Executable.ng_name = i; RDF_Graph_Executable.ng_graph = g }
-        :: (named_graphs_by_iri rest named)
-let build_where_dataset (ds : RDF_Graph_Executable.rdf_dataset)
-  (with_iri : RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option)
-  (using : dataset_clause Prims.list) : RDF_Graph_Executable.rdf_dataset=
+        | FStar_Pervasives_Native.None -> RDF_Graph.empty_graph in
+      { RDF_Graph.ng_name = i; RDF_Graph.ng_graph = g } ::
+        (named_graphs_by_iri rest named)
+let build_where_dataset (ds : RDF_Graph.rdf_dataset)
+  (with_iri : RDF_Term.wf_iri FStar_Pervasives_Native.option)
+  (using : dataset_clause Prims.list) : RDF_Graph.rdf_dataset=
   match using with
   | [] ->
       (match with_iri with
        | FStar_Pervasives_Native.None -> ds
        | FStar_Pervasives_Native.Some g ->
            let def_g =
-             match RDF_Graph_Executable.lookup_named_graph g
-                     ds.RDF_Graph_Executable.ds_named
-             with
+             match RDF_Graph.lookup_named_graph g ds.RDF_Graph.ds_named with
              | FStar_Pervasives_Native.Some x -> x
-             | FStar_Pervasives_Native.None ->
-                 RDF_Graph_Executable.empty_graph in
+             | FStar_Pervasives_Native.None -> RDF_Graph.empty_graph in
            {
-             RDF_Graph_Executable.ds_default = def_g;
-             RDF_Graph_Executable.ds_named =
-               (ds.RDF_Graph_Executable.ds_named)
+             RDF_Graph.ds_default = def_g;
+             RDF_Graph.ds_named = (ds.RDF_Graph.ds_named)
            })
   | uu___ ->
       let def_iris = using_default_iris using in
       let nam_iris = using_named_iris using in
-      let def_g =
-        union_named_graphs_by_iri def_iris ds.RDF_Graph_Executable.ds_named in
-      let nam = named_graphs_by_iri nam_iris ds.RDF_Graph_Executable.ds_named in
-      {
-        RDF_Graph_Executable.ds_default = def_g;
-        RDF_Graph_Executable.ds_named = nam
-      }
+      let def_g = union_named_graphs_by_iri def_iris ds.RDF_Graph.ds_named in
+      let nam = named_graphs_by_iri nam_iris ds.RDF_Graph.ds_named in
+      { RDF_Graph.ds_default = def_g; RDF_Graph.ds_named = nam }
 let redirect_default_quad
-  (with_iri : RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option)
-  (q :
-    (RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option *
-      RDF_Graph_Executable.triple))
-  :
-  (RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option *
-    RDF_Graph_Executable.triple)=
+  (with_iri : RDF_Term.wf_iri FStar_Pervasives_Native.option)
+  (q : (RDF_Term.wf_iri FStar_Pervasives_Native.option * RDF_Triple.triple))
+  : (RDF_Term.wf_iri FStar_Pervasives_Native.option * RDF_Triple.triple)=
   let uu___ = q in
   match uu___ with
   | (g_opt, t) ->
@@ -6356,59 +6193,58 @@ let redirect_default_quad
            ((FStar_Pervasives_Native.Some g), t)
        | (uu___1, uu___2) -> (g_opt, t))
 let rec redirect_default_quads
-  (with_iri : RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option)
+  (with_iri : RDF_Term.wf_iri FStar_Pervasives_Native.option)
   (qs :
-    (RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option *
-      RDF_Graph_Executable.triple) Prims.list)
+    (RDF_Term.wf_iri FStar_Pervasives_Native.option * RDF_Triple.triple)
+      Prims.list)
   :
-  (RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option *
-    RDF_Graph_Executable.triple) Prims.list=
+  (RDF_Term.wf_iri FStar_Pervasives_Native.option * RDF_Triple.triple)
+    Prims.list=
   match qs with
   | [] -> []
   | q::rest -> (redirect_default_quad with_iri q) ::
       (redirect_default_quads with_iri rest)
 let rec per_mapping_quads
-  (outer : RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option)
+  (outer : RDF_Term.wf_iri FStar_Pervasives_Native.option)
   (ggp : group_graph_pattern) (mus : solution_sequence) :
-  (RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option *
-    RDF_Graph_Executable.triple) Prims.list Prims.list=
+  (RDF_Term.wf_iri FStar_Pervasives_Native.option * RDF_Triple.triple)
+    Prims.list Prims.list=
   match mus with
   | [] -> []
   | mu::rest -> (instantiate_ggp_quads outer ggp mu) ::
       (per_mapping_quads outer ggp rest)
 let rec per_mapping_insert_quads (op_salt : Prims.string)
-  (outer : RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option)
+  (outer : RDF_Term.wf_iri FStar_Pervasives_Native.option)
   (ggp : group_graph_pattern) (mus : solution_sequence) (sol_ix : Prims.nat)
   :
-  (RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option *
-    RDF_Graph_Executable.triple) Prims.list Prims.list=
+  (RDF_Term.wf_iri FStar_Pervasives_Native.option * RDF_Triple.triple)
+    Prims.list Prims.list=
   match mus with
   | [] -> []
   | mu::rest -> (instantiate_ggp_quads_freshen op_salt sol_ix outer ggp mu)
       ::
       (per_mapping_insert_quads op_salt outer ggp rest
          (sol_ix + Prims.int_one))
-let rec insert_per_mapping_quads (ds : RDF_Graph_Executable.rdf_dataset)
+let rec insert_per_mapping_quads (ds : RDF_Graph.rdf_dataset)
   (per_mu_quads :
-    (RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option *
-      RDF_Graph_Executable.triple) Prims.list Prims.list)
-  : RDF_Graph_Executable.rdf_dataset=
+    (RDF_Term.wf_iri FStar_Pervasives_Native.option * RDF_Triple.triple)
+      Prims.list Prims.list)
+  : RDF_Graph.rdf_dataset=
   match per_mu_quads with
   | [] -> ds
   | qs::rest ->
       let ds' = insert_quads ds qs in insert_per_mapping_quads ds' rest
-let apply_modify (op_salt : Prims.string)
-  (ds : RDF_Graph_Executable.rdf_dataset)
-  (with_iri : RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option)
+let apply_modify (op_salt : Prims.string) (ds : RDF_Graph.rdf_dataset)
+  (with_iri : RDF_Term.wf_iri FStar_Pervasives_Native.option)
   (delete_tmpl : group_graph_pattern FStar_Pervasives_Native.option)
   (insert_tmpl : group_graph_pattern FStar_Pervasives_Native.option)
   (using : dataset_clause Prims.list) (where_ggp : group_graph_pattern) :
-  RDF_Graph_Executable.rdf_dataset=
+  RDF_Graph.rdf_dataset=
   let where_rewritten = rewrite_query_bnodes_pattern where_ggp in
   let where_ds = build_where_dataset ds with_iri using in
   let mus =
     eval_pattern FStar_Pervasives_Native.None where_rewritten
-      where_ds.RDF_Graph_Executable.ds_default where_ds in
+      where_ds.RDF_Graph.ds_default where_ds in
   let del_quads_per_mu =
     match delete_tmpl with
     | FStar_Pervasives_Native.None -> []
@@ -6429,112 +6265,93 @@ let apply_modify (op_salt : Prims.string)
         FStar_List_Tot_Base.map
           (fun qs -> redirect_default_quads with_iri qs) ins_quads_per_mu in
       insert_per_mapping_quads ds_after_delete redirected_per_mu
-let rec find_named_graph_triples (iri : RDF_Graph_Executable.wf_iri)
-  (named : RDF_Graph_Executable.named_graph Prims.list) :
-  RDF_Graph_Executable.triple Prims.list=
+let rec find_named_graph_triples (iri : RDF_Term.wf_iri)
+  (named : RDF_Graph.named_graph Prims.list) : RDF_Triple.triple Prims.list=
   match named with
   | [] -> []
   | ng::rest ->
-      if ng.RDF_Graph_Executable.ng_name = iri
-      then ng.RDF_Graph_Executable.ng_graph
+      if ng.RDF_Graph.ng_name = iri
+      then ng.RDF_Graph.ng_graph
       else find_named_graph_triples iri rest
-let rec has_named_graph (iri : RDF_Graph_Executable.wf_iri)
-  (named : RDF_Graph_Executable.named_graph Prims.list) : Prims.bool=
+let rec has_named_graph (iri : RDF_Term.wf_iri)
+  (named : RDF_Graph.named_graph Prims.list) : Prims.bool=
   match named with
   | [] -> false
-  | ng::rest ->
-      (ng.RDF_Graph_Executable.ng_name = iri) || (has_named_graph iri rest)
-let rec replace_named_graph_triples (iri : RDF_Graph_Executable.wf_iri)
-  (ts : RDF_Graph_Executable.triple Prims.list)
-  (named : RDF_Graph_Executable.named_graph Prims.list) :
-  RDF_Graph_Executable.named_graph Prims.list=
+  | ng::rest -> (ng.RDF_Graph.ng_name = iri) || (has_named_graph iri rest)
+let rec replace_named_graph_triples (iri : RDF_Term.wf_iri)
+  (ts : RDF_Triple.triple Prims.list)
+  (named : RDF_Graph.named_graph Prims.list) :
+  RDF_Graph.named_graph Prims.list=
   match named with
-  | [] ->
-      [{
-         RDF_Graph_Executable.ng_name = iri;
-         RDF_Graph_Executable.ng_graph = ts
-       }]
+  | [] -> [{ RDF_Graph.ng_name = iri; RDF_Graph.ng_graph = ts }]
   | ng::rest ->
-      if ng.RDF_Graph_Executable.ng_name = iri
+      if ng.RDF_Graph.ng_name = iri
       then
-        {
-          RDF_Graph_Executable.ng_name = (ng.RDF_Graph_Executable.ng_name);
-          RDF_Graph_Executable.ng_graph = ts
+        { RDF_Graph.ng_name = (ng.RDF_Graph.ng_name); RDF_Graph.ng_graph = ts
         } :: rest
       else ng :: (replace_named_graph_triples iri ts rest)
-let rec empty_graph_named (iri : RDF_Graph_Executable.wf_iri)
-  (named : RDF_Graph_Executable.named_graph Prims.list) :
-  RDF_Graph_Executable.named_graph Prims.list=
+let rec empty_graph_named (iri : RDF_Term.wf_iri)
+  (named : RDF_Graph.named_graph Prims.list) :
+  RDF_Graph.named_graph Prims.list=
   match named with
   | [] -> []
   | ng::rest ->
-      if ng.RDF_Graph_Executable.ng_name = iri
+      if ng.RDF_Graph.ng_name = iri
       then
-        {
-          RDF_Graph_Executable.ng_name = (ng.RDF_Graph_Executable.ng_name);
-          RDF_Graph_Executable.ng_graph = []
+        { RDF_Graph.ng_name = (ng.RDF_Graph.ng_name); RDF_Graph.ng_graph = []
         } :: rest
       else ng :: (empty_graph_named iri rest)
-let rec drop_named_by_iri (iri : RDF_Graph_Executable.wf_iri)
-  (named : RDF_Graph_Executable.named_graph Prims.list) :
-  RDF_Graph_Executable.named_graph Prims.list=
+let rec drop_named_by_iri (iri : RDF_Term.wf_iri)
+  (named : RDF_Graph.named_graph Prims.list) :
+  RDF_Graph.named_graph Prims.list=
   match named with
   | [] -> []
   | ng::rest ->
-      if ng.RDF_Graph_Executable.ng_name = iri
+      if ng.RDF_Graph.ng_name = iri
       then rest
       else ng :: (drop_named_by_iri iri rest)
-let rec empty_all_named (named : RDF_Graph_Executable.named_graph Prims.list)
-  : RDF_Graph_Executable.named_graph Prims.list=
+let rec empty_all_named (named : RDF_Graph.named_graph Prims.list) :
+  RDF_Graph.named_graph Prims.list=
   match named with
   | [] -> []
   | ng::rest ->
-      {
-        RDF_Graph_Executable.ng_name = (ng.RDF_Graph_Executable.ng_name);
-        RDF_Graph_Executable.ng_graph = []
-      } :: (empty_all_named rest)
-let ensure_named_graph (iri : RDF_Graph_Executable.wf_iri)
-  (named : RDF_Graph_Executable.named_graph Prims.list) :
-  RDF_Graph_Executable.named_graph Prims.list=
+      { RDF_Graph.ng_name = (ng.RDF_Graph.ng_name); RDF_Graph.ng_graph = [] }
+      :: (empty_all_named rest)
+let ensure_named_graph (iri : RDF_Term.wf_iri)
+  (named : RDF_Graph.named_graph Prims.list) :
+  RDF_Graph.named_graph Prims.list=
   if has_named_graph iri named
   then named
   else
     RDF_List_Helpers.append_tr named
-      [{
-         RDF_Graph_Executable.ng_name = iri;
-         RDF_Graph_Executable.ng_graph = []
-       }]
-let read_graph_ref (gr : graph_ref) (ds : RDF_Graph_Executable.rdf_dataset) :
-  RDF_Graph_Executable.triple Prims.list=
+      [{ RDF_Graph.ng_name = iri; RDF_Graph.ng_graph = [] }]
+let read_graph_ref (gr : graph_ref) (ds : RDF_Graph.rdf_dataset) :
+  RDF_Triple.triple Prims.list=
   match gr with
-  | GR_Default -> ds.RDF_Graph_Executable.ds_default
-  | GR_Graph iri ->
-      find_named_graph_triples iri ds.RDF_Graph_Executable.ds_named
+  | GR_Default -> ds.RDF_Graph.ds_default
+  | GR_Graph iri -> find_named_graph_triples iri ds.RDF_Graph.ds_named
   | GR_Named -> []
   | GR_All -> []
-let graph_ref_exists (gr : graph_ref) (ds : RDF_Graph_Executable.rdf_dataset)
-  : Prims.bool=
+let graph_ref_exists (gr : graph_ref) (ds : RDF_Graph.rdf_dataset) :
+  Prims.bool=
   match gr with
   | GR_Default -> true
-  | GR_Graph iri -> has_named_graph iri ds.RDF_Graph_Executable.ds_named
+  | GR_Graph iri -> has_named_graph iri ds.RDF_Graph.ds_named
   | GR_Named -> false
   | GR_All -> false
-let write_graph_ref (gr : graph_ref)
-  (ts : RDF_Graph_Executable.triple Prims.list)
-  (ds : RDF_Graph_Executable.rdf_dataset) : RDF_Graph_Executable.rdf_dataset=
+let write_graph_ref (gr : graph_ref) (ts : RDF_Triple.triple Prims.list)
+  (ds : RDF_Graph.rdf_dataset) : RDF_Graph.rdf_dataset=
   match gr with
   | GR_Default ->
       {
-        RDF_Graph_Executable.ds_default = ts;
-        RDF_Graph_Executable.ds_named = (ds.RDF_Graph_Executable.ds_named)
+        RDF_Graph.ds_default = ts;
+        RDF_Graph.ds_named = (ds.RDF_Graph.ds_named)
       }
   | GR_Graph iri ->
       {
-        RDF_Graph_Executable.ds_default =
-          (ds.RDF_Graph_Executable.ds_default);
-        RDF_Graph_Executable.ds_named =
-          (replace_named_graph_triples iri ts
-             ds.RDF_Graph_Executable.ds_named)
+        RDF_Graph.ds_default = (ds.RDF_Graph.ds_default);
+        RDF_Graph.ds_named =
+          (replace_named_graph_triples iri ts ds.RDF_Graph.ds_named)
       }
   | GR_Named -> ds
   | GR_All -> ds
@@ -6545,73 +6362,59 @@ let graph_ref_eq (a : graph_ref) (b : graph_ref) : Prims.bool=
   | (GR_All, GR_All) -> true
   | (GR_Graph i1, GR_Graph i2) -> i1 = i2
   | (uu___, uu___1) -> false
-let apply_create (ds : RDF_Graph_Executable.rdf_dataset)
-  (silent : Prims.bool) (iri : RDF_Graph_Executable.wf_iri) :
-  RDF_Graph_Executable.rdf_dataset=
+let apply_create (ds : RDF_Graph.rdf_dataset) (silent : Prims.bool)
+  (iri : RDF_Term.wf_iri) : RDF_Graph.rdf_dataset=
   let uu___ = silent in
   {
-    RDF_Graph_Executable.ds_default = (ds.RDF_Graph_Executable.ds_default);
-    RDF_Graph_Executable.ds_named =
-      (ensure_named_graph iri ds.RDF_Graph_Executable.ds_named)
+    RDF_Graph.ds_default = (ds.RDF_Graph.ds_default);
+    RDF_Graph.ds_named = (ensure_named_graph iri ds.RDF_Graph.ds_named)
   }
-let apply_clear (ds : RDF_Graph_Executable.rdf_dataset) (silent : Prims.bool)
-  (gr : graph_ref) : RDF_Graph_Executable.rdf_dataset=
+let apply_clear (ds : RDF_Graph.rdf_dataset) (silent : Prims.bool)
+  (gr : graph_ref) : RDF_Graph.rdf_dataset=
   let uu___ = silent in
   match gr with
   | GR_Default ->
       {
-        RDF_Graph_Executable.ds_default = [];
-        RDF_Graph_Executable.ds_named = (ds.RDF_Graph_Executable.ds_named)
+        RDF_Graph.ds_default = [];
+        RDF_Graph.ds_named = (ds.RDF_Graph.ds_named)
       }
   | GR_Named ->
       {
-        RDF_Graph_Executable.ds_default =
-          (ds.RDF_Graph_Executable.ds_default);
-        RDF_Graph_Executable.ds_named =
-          (empty_all_named ds.RDF_Graph_Executable.ds_named)
+        RDF_Graph.ds_default = (ds.RDF_Graph.ds_default);
+        RDF_Graph.ds_named = (empty_all_named ds.RDF_Graph.ds_named)
       }
   | GR_All ->
       {
-        RDF_Graph_Executable.ds_default = [];
-        RDF_Graph_Executable.ds_named =
-          (empty_all_named ds.RDF_Graph_Executable.ds_named)
+        RDF_Graph.ds_default = [];
+        RDF_Graph.ds_named = (empty_all_named ds.RDF_Graph.ds_named)
       }
   | GR_Graph iri ->
       {
-        RDF_Graph_Executable.ds_default =
-          (ds.RDF_Graph_Executable.ds_default);
-        RDF_Graph_Executable.ds_named =
-          (empty_graph_named iri ds.RDF_Graph_Executable.ds_named)
+        RDF_Graph.ds_default = (ds.RDF_Graph.ds_default);
+        RDF_Graph.ds_named = (empty_graph_named iri ds.RDF_Graph.ds_named)
       }
-let apply_drop (ds : RDF_Graph_Executable.rdf_dataset) (silent : Prims.bool)
-  (gr : graph_ref) : RDF_Graph_Executable.rdf_dataset=
+let apply_drop (ds : RDF_Graph.rdf_dataset) (silent : Prims.bool)
+  (gr : graph_ref) : RDF_Graph.rdf_dataset=
   let uu___ = silent in
   match gr with
   | GR_Default ->
       {
-        RDF_Graph_Executable.ds_default = [];
-        RDF_Graph_Executable.ds_named = (ds.RDF_Graph_Executable.ds_named)
+        RDF_Graph.ds_default = [];
+        RDF_Graph.ds_named = (ds.RDF_Graph.ds_named)
       }
   | GR_Named ->
       {
-        RDF_Graph_Executable.ds_default =
-          (ds.RDF_Graph_Executable.ds_default);
-        RDF_Graph_Executable.ds_named = []
+        RDF_Graph.ds_default = (ds.RDF_Graph.ds_default);
+        RDF_Graph.ds_named = []
       }
-  | GR_All ->
-      {
-        RDF_Graph_Executable.ds_default = [];
-        RDF_Graph_Executable.ds_named = []
-      }
+  | GR_All -> { RDF_Graph.ds_default = []; RDF_Graph.ds_named = [] }
   | GR_Graph iri ->
       {
-        RDF_Graph_Executable.ds_default =
-          (ds.RDF_Graph_Executable.ds_default);
-        RDF_Graph_Executable.ds_named =
-          (drop_named_by_iri iri ds.RDF_Graph_Executable.ds_named)
+        RDF_Graph.ds_default = (ds.RDF_Graph.ds_default);
+        RDF_Graph.ds_named = (drop_named_by_iri iri ds.RDF_Graph.ds_named)
       }
-let apply_copy (ds : RDF_Graph_Executable.rdf_dataset) (silent : Prims.bool)
-  (src : graph_ref) (dst : graph_ref) : RDF_Graph_Executable.rdf_dataset=
+let apply_copy (ds : RDF_Graph.rdf_dataset) (silent : Prims.bool)
+  (src : graph_ref) (dst : graph_ref) : RDF_Graph.rdf_dataset=
   let uu___ = silent in
   if graph_ref_eq src dst
   then ds
@@ -6621,8 +6424,8 @@ let apply_copy (ds : RDF_Graph_Executable.rdf_dataset) (silent : Prims.bool)
     else
       (let src_triples = read_graph_ref src ds in
        write_graph_ref dst src_triples ds)
-let apply_move (ds : RDF_Graph_Executable.rdf_dataset) (silent : Prims.bool)
-  (src : graph_ref) (dst : graph_ref) : RDF_Graph_Executable.rdf_dataset=
+let apply_move (ds : RDF_Graph.rdf_dataset) (silent : Prims.bool)
+  (src : graph_ref) (dst : graph_ref) : RDF_Graph.rdf_dataset=
   let uu___ = silent in
   if graph_ref_eq src dst
   then ds
@@ -6635,26 +6438,24 @@ let apply_move (ds : RDF_Graph_Executable.rdf_dataset) (silent : Prims.bool)
        match src with
        | GR_Default ->
            {
-             RDF_Graph_Executable.ds_default = [];
-             RDF_Graph_Executable.ds_named =
-               (ds_copied.RDF_Graph_Executable.ds_named)
+             RDF_Graph.ds_default = [];
+             RDF_Graph.ds_named = (ds_copied.RDF_Graph.ds_named)
            }
        | GR_Graph iri ->
            {
-             RDF_Graph_Executable.ds_default =
-               (ds_copied.RDF_Graph_Executable.ds_default);
-             RDF_Graph_Executable.ds_named =
-               (drop_named_by_iri iri ds_copied.RDF_Graph_Executable.ds_named)
+             RDF_Graph.ds_default = (ds_copied.RDF_Graph.ds_default);
+             RDF_Graph.ds_named =
+               (drop_named_by_iri iri ds_copied.RDF_Graph.ds_named)
            }
        | GR_Named -> ds_copied
        | GR_All -> ds_copied)
-let rec graph_append (src : RDF_Graph_Executable.triple Prims.list)
-  (dst : RDF_Graph_Executable.rdf_graph) : RDF_Graph_Executable.rdf_graph=
+let rec graph_append (src : RDF_Triple.triple Prims.list)
+  (dst : RDF_Graph.rdf_graph) : RDF_Graph.rdf_graph=
   match src with
   | [] -> dst
-  | t::rest -> graph_append rest (RDF_Graph_Executable.graph_add t dst)
-let apply_add (ds : RDF_Graph_Executable.rdf_dataset) (silent : Prims.bool)
-  (src : graph_ref) (dst : graph_ref) : RDF_Graph_Executable.rdf_dataset=
+  | t::rest -> graph_append rest (RDF_Graph.graph_add t dst)
+let apply_add (ds : RDF_Graph.rdf_dataset) (silent : Prims.bool)
+  (src : graph_ref) (dst : graph_ref) : RDF_Graph.rdf_dataset=
   let uu___ = silent in
   if graph_ref_eq src dst
   then ds
@@ -6667,8 +6468,7 @@ let apply_add (ds : RDF_Graph_Executable.rdf_dataset) (silent : Prims.bool)
        let merged = graph_append src_triples cur_dst in
        write_graph_ref dst merged ds)
 let apply_update_op (request_salt : Prims.string) (op_idx : Prims.nat)
-  (ds : RDF_Graph_Executable.rdf_dataset) (op : update_op) :
-  RDF_Graph_Executable.rdf_dataset=
+  (ds : RDF_Graph.rdf_dataset) (op : update_op) : RDF_Graph.rdf_dataset=
   let op_salt = FStar_String.concat "" ["op"; Prims.string_of_int op_idx] in
   match op with
   | U_InsertData g -> apply_insert_data request_salt ds g
@@ -6683,19 +6483,19 @@ let apply_update_op (request_salt : Prims.string) (op_idx : Prims.nat)
   | U_Add (silent, src, dst) -> apply_add ds silent src dst
   | U_Load (uu___, uu___1, uu___2) -> ds
 let rec apply_update_ops_aux (request_salt : Prims.string)
-  (op_idx : Prims.nat) (ds : RDF_Graph_Executable.rdf_dataset)
-  (ops : update_op Prims.list) : RDF_Graph_Executable.rdf_dataset=
+  (op_idx : Prims.nat) (ds : RDF_Graph.rdf_dataset)
+  (ops : update_op Prims.list) : RDF_Graph.rdf_dataset=
   match ops with
   | [] -> ds
   | op::rest ->
       let ds' = apply_update_op request_salt op_idx ds op in
       apply_update_ops_aux request_salt (op_idx + Prims.int_one) ds' rest
-let apply_update_ops (ds : RDF_Graph_Executable.rdf_dataset)
-  (ops : update_op Prims.list) : RDF_Graph_Executable.rdf_dataset=
+let apply_update_ops (ds : RDF_Graph.rdf_dataset)
+  (ops : update_op Prims.list) : RDF_Graph.rdf_dataset=
   let request_salt = Prims.string_of_int (dataset_triple_count ds) in
   apply_update_ops_aux request_salt Prims.int_zero ds ops
-let apply_update (ds : RDF_Graph_Executable.rdf_dataset) (u : sparql_update)
-  : RDF_Graph_Executable.rdf_dataset= apply_update_ops ds u.u_ops
+let apply_update (ds : RDF_Graph.rdf_dataset) (u : sparql_update) :
+  RDF_Graph.rdf_dataset= apply_update_ops ds u.u_ops
 let is_implemented_op (op : update_op) : Prims.bool=
   match op with
   | U_InsertData uu___ -> true

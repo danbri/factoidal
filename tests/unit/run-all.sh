@@ -219,7 +219,7 @@ for name in "${ALL_TESTS[@]}"; do
   # native binaries. -I $OCAML_OUT so .cmi files are discoverable.
   BUILD_RC=0
   BUILD_OUT=$(ocamlfind ocamlopt \
-    -package fstar.lib,str,zarith,sha,digestif.c,unix \
+    -package fstar.lib,str,zarith,sha,digestif.c,unix,uucp \
     -linkpkg -w -8-14-26 \
     -I "$OCAML_OUT" \
     "${CMX_LIST[@]}" \

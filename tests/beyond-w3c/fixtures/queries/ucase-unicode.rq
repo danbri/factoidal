@@ -1,16 +1,19 @@
 PREFIX foaf: <http://xmlns.com/foaf/0.1/>
 
-# UCASE / LCASE Unicode-correctness probe (#250).
+# UCASE / LCASE Unicode-correctness probe (#250, fixed 2026-07-06).
 #
-# Currently expected_to_fail: SPARQL UCASE/LCASE in factoidal map only
-# ASCII A-Z. Non-ASCII letters (German ü, Greek, Cyrillic, dotted/dotless
-# Turkish i) pass through unchanged, so this query returns
-# "Eve MüLLER" / "MüLLER" / etc instead of the spec-correct
-# "EVE MÜLLER" / "MÜLLER".
+# SPARQL UCASE/LCASE now map non-ASCII letters correctly (German ü,
+# Greek, Cyrillic, etc.) via `uucp`-backed
+# string_uppercase_unicode/string_lowercase_unicode (see
+# minimal_regrettable_glue_code_each_with_an_open_issue/
+# 250_unicode_case_mapping.sh). This query now returns
+# "EVE MÜLLER" / "eve müller" for Eve Müller, the spec-correct result
+# — was "EVE MüLLER" / "eve müller" (upper case only ASCII-cased the
+# non-ü letters) before the fix.
 #
-# When fix #250 lands (Uucp-backed FStar_String.{upper,lower}case),
-# the manifest's expected_to_fail marker should be removed and the
-# expected upper-cased rows should match exactly.
+# Note: this dataset only exercises ü; the harder cases (German ß
+# expanding to "SS", Greek sigma's non-context-sensitive lowercasing)
+# are pinned in tests/unit/ucase_lcase_unicode.ml instead.
 
 SELECT ?name ?upper ?lower
 WHERE {

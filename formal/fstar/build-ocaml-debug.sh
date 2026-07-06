@@ -129,7 +129,7 @@ case "$TARGET" in
     cp ../../../bin/factoidal-serve/factoidal_serve_debug.ml factoidal_serve.ml
     FACTOIDAL_DEBUG_RC=0
     run_with_heartbeat "ocamlc factoidal.byte" "$LOG" -- \
-      ocamlfind ocamlc -g -thread -package fstar.lib,str,zarith,sha,digestif.c,unix,threads.posix -linkpkg -w -8-14-26 \
+      ocamlfind ocamlc -g -thread -package fstar.lib,str,zarith,sha,digestif.c,unix,uucp,threads.posix -linkpkg -w -8-14-26 \
       $PARQUET_BYTECODE_STUBS \
       -I ../../../bin/factoidal-explain \
       $COMMON_MODULES \
@@ -147,7 +147,7 @@ case "$TARGET" in
     OUT="$BINDIR/factoidal-http.byte"
     echo "--- Building debug bytecode: factoidal-http.byte ---"
     run_with_heartbeat "ocamlc factoidal-http.byte" "$LOG" -- \
-      ocamlfind ocamlc -g -thread -package fstar.lib,str,zarith,sha,digestif.c,unix,threads.posix -linkpkg -w -8-14-26 \
+      ocamlfind ocamlc -g -thread -package fstar.lib,str,zarith,sha,digestif.c,unix,uucp,threads.posix -linkpkg -w -8-14-26 \
       $PARQUET_BYTECODE_STUBS \
       -I ../../../bin/factoidal-http \
       $COMMON_MODULES \

@@ -23,17 +23,13 @@
     },
     {
       "name": "ucase-unicode",
-      "label": "UCASE/LCASE on non-ASCII (#250)",
+      "label": "UCASE/LCASE on non-ASCII (#250, fixed)",
       "dataset": "people",
       "file": "tests/beyond-w3c/fixtures/queries/ucase-unicode.rq",
       "expected": {
         "kind": "row-count",
         "rows": 8,
-        "_note": "All 8 people; the query exists to surface the value-level UCASE/LCASE wrongness, not row-count."
-      },
-      "expected_to_fail": {
-        "issue": 250,
-        "note": "FStar_String.{upper,lower}case is BatString.{upper,lower}case_ascii — non-ASCII letters pass through unchanged. 'Eve Müller' uppercases to 'EVE MüLLER' instead of 'EVE MÜLLER'. Affects native + js-node + wasm-node equally; not a runtime asymmetry. When this turns green the expected_to_fail marker should be removed and a value-equivalence check added."
+        "_note": "All 8 people. Fixed 2026-07-06: SPARQL11.Algebra.string_upper/string_lower now call the string_uppercase_unicode/string_lowercase_unicode assume vals, realised via the `uucp` opam package in minimal_regrettable_glue_code_each_with_an_open_issue/250_unicode_case_mapping.sh. 'Eve Müller' now upper-cases to 'EVE MÜLLER' (was 'EVE MüLLER'). Value-level pinning (incl. the harder 'straße'->'STRASSE' and Greek-sigma cases, which this dataset doesn't cover) lives in tests/unit/ucase_lcase_unicode.ml — this fixture only checks row-count since Phase 2a (#243)'s row-set comparison logic isn't implemented in bin/run-parity.py yet."
       }
     }
   ]
