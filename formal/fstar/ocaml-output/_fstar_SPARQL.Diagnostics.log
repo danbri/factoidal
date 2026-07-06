@@ -1,3 +1,31 @@
+* Warning 241 at RDF.CottasStore.LazyDictRegistry.fst(0,0-0,0):
+  - Unable to load RDF.CottasStore.LazyDictRegistry.fst.checked since checked
+    file RDF.CottasStore.LazyDictRegistry.fst.checked is stale (dependence hash
+    mismatch, use --debug CheckedFiles for more details); will recheck
+    RDF.CottasStore.LazyDictRegistry.fst (suppressing this warning for further
+    modules)
+
+* Warning 328 at SPARQL11.Store.fst(882,4-882,33):
+  - Global binding
+        'SPARQL11.Store.eval_select_query_backend_bgp'
+    is recursive but not used in its body
+
+* Warning 328 at SPARQL11.Store.fst(1003,4-1003,37):
+  - Global binding
+        'SPARQL11.Store.eval_select_query_backend_dataset'
+    is recursive but not used in its body
+
+* Warning 328 at SPARQL11.Store.fst(1022,4-1022,34):
+  - Global binding
+        'SPARQL11.Store.eval_ask_query_backend_dataset'
+    is recursive but not used in its body
+
 Extracted module SPARQL.Diagnostics
+* Warning 247 at SPARQL.Diagnostics.fst(0,0-0,0):
+  - Checked file SPARQL.Diagnostics.fst.checked was not written.
+  - Reason:
+      checked file SPARQL11.Store.fst.checked is stale (digest mismatch for
+      SPARQL11.Store.fst)
+
 Verified module: SPARQL.Diagnostics
 All verification conditions discharged successfully

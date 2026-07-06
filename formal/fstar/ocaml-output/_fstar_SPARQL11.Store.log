@@ -1,3 +1,30 @@
+* Warning 241 at RDF.Store.Capabilities.fst(0,0-0,0):
+  - Unable to load RDF.Store.Capabilities.fst.checked since checked file
+    RDF.Store.Capabilities.fst.checked is stale (dependence hash mismatch, use
+    --debug CheckedFiles for more details); will recheck
+    RDF.Store.Capabilities.fst (suppressing this warning for further modules)
+
+* Warning 328 at SPARQL11.Store.fst(923,4-923,33):
+  - Global binding
+        'SPARQL11.Store.eval_select_query_backend_bgp'
+    is recursive but not used in its body
+
+* Warning 328 at SPARQL11.Store.fst(1044,4-1044,37):
+  - Global binding
+        'SPARQL11.Store.eval_select_query_backend_dataset'
+    is recursive but not used in its body
+
+* Warning 328 at SPARQL11.Store.fst(1063,4-1063,34):
+  - Global binding
+        'SPARQL11.Store.eval_ask_query_backend_dataset'
+    is recursive but not used in its body
+
 Extracted module SPARQL11.Store
+* Warning 247 at SPARQL11.Store.fst(0,0-0,0):
+  - Checked file SPARQL11.Store.fst.checked was not written.
+  - Reason:
+      checked file Parser.BallyhooCOTTAS.fst.checked is stale (dependence hash
+      mismatch, use --debug CheckedFiles for more details)
+
 Verified module: SPARQL11.Store
 All verification conditions discharged successfully
