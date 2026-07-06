@@ -2666,6 +2666,7 @@ RDF.CottasStore.fst.checked: \
 	RDF.CottasStore.OnDiskIndex.fst.checked \
 	RDF.CottasStore.CompoundPresenceBitmap.fst.checked \
 	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.All.fsti.checked \
+	RDF.NQuads.Serialize.fst.checked \
 	Parser.NTriples.fst.checked \
 	Parser.FastString.fst.checked \
 	Parser.Combinators.fst.checked \
@@ -2691,6 +2692,7 @@ RDF_CottasStore.cmx: \
 	RDF_CottasStore_LazyDictRegistry.cmx \
 	RDF_CottasStore_OnDiskIndex.cmx \
 	RDF_CottasStore_CompoundPresenceBitmap.cmx \
+	RDF_NQuads_Serialize.cmx \
 	Parser_NTriples.cmx \
 	Parser_FastString.cmx \
 	Parser_Combinators.cmx \
@@ -4591,6 +4593,7 @@ ALL_FS_FILES= \
 	RDF_CottasStore_OnDiskIndex.fs \
 	RDF_CottasStore_PresenceBitmap.fs \
 	RDF_CottasStore_CompoundPresenceBitmap.fs \
+	RDF_NQuads_Serialize.fs \
 	RDF_CottasStore_ColumnSeq.fs \
 	RDF_CottasStore_PageCache.fs \
 	Parser_BallyhooCOTTAS.fs \
@@ -4647,7 +4650,6 @@ ALL_FS_FILES= \
 	RIF_Core_Conformance.fs \
 	SPARQL_Protocol.fs \
 	SPARQL_Plan_Pruning.fs \
-	RDF_NQuads_Serialize.fs \
 	HDT_Dictionary.fs \
 	RIF_Core_Tests.fs \
 	SPARQL_GraphStore.fs \
@@ -4726,6 +4728,7 @@ ALL_ML_FILES= \
 	RDF_CottasStore_OnDiskIndex.ml \
 	RDF_CottasStore_PresenceBitmap.ml \
 	RDF_CottasStore_CompoundPresenceBitmap.ml \
+	RDF_NQuads_Serialize.ml \
 	RDF_CottasStore_ColumnSeq.ml \
 	RDF_CottasStore_PageCache.ml \
 	Parser_BallyhooCOTTAS.ml \
@@ -4782,7 +4785,6 @@ ALL_ML_FILES= \
 	RIF_Core_Conformance.ml \
 	SPARQL_Protocol.ml \
 	SPARQL_Plan_Pruning.ml \
-	RDF_NQuads_Serialize.ml \
 	HDT_Dictionary.ml \
 	RIF_Core_Tests.ml \
 	SPARQL_GraphStore.ml \
@@ -4922,6 +4924,7 @@ ALL_KRML_FILES= \
 	RDF_CottasStore_OnDiskIndex.krml \
 	RDF_CottasStore_PresenceBitmap.krml \
 	RDF_CottasStore_CompoundPresenceBitmap.krml \
+	RDF_NQuads_Serialize.krml \
 	RDF_CottasStore_ColumnSeq.krml \
 	RDF_CottasStore_PageCache.krml \
 	Parser_BallyhooCOTTAS.krml \
@@ -4979,7 +4982,6 @@ ALL_KRML_FILES= \
 	RIF_Core_Conformance.krml \
 	SPARQL_Protocol.krml \
 	SPARQL_Plan_Pruning.krml \
-	RDF_NQuads_Serialize.krml \
 	HDT_Dictionary.krml \
 	SPARQL_GraphStore.krml \
 	VC_Credential.krml \

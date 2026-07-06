@@ -1,8 +1,9 @@
-    HDT.Triples.fst (up to date, skipped -- source unchanged since last extract)
     RIF.Core.Eval.fst (up to date, skipped -- source unchanged since last extract)
+    HDT.Triples.fst (up to date, skipped -- source unchanged since last extract)
     Parser.JSONLD.fst (up to date, skipped -- source unchanged since last extract)
     SPARQL.Plan.AccessPath.fst (up to date, skipped -- source unchanged since last extract)
-    RDF.CottasStore.OnDiskRuntime.fst (up to date, skipped -- source unchanged since last extract)
-    SPARQL.Plan.Explain.fst (up to date, skipped -- source unchanged since last extract)
-    RDF.Store.Capabilities.Cottas.fst (up to date, skipped -- source unchanged since last extract)
     RDF.CottasInMem.fst (up to date, skipped -- source unchanged since last extract)
+    SPARQL.Plan.Explain.fst (up to date, skipped -- source unchanged since last extract)
+    RDF.CottasStore.OnDiskRuntime.fst (up to date, skipped -- source unchanged since last extract)
+    [RDF.Store.Capabilities.Cottas.fst]
+    [RDF.Store.Capabilities.Cottas.fst] Extracted module RDF.Store.Capabilities.Cottas

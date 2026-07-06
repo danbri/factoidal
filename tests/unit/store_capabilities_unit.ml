@@ -37,9 +37,9 @@
        verified via `pycottas.verify` at build time) -- a REAL
        N-Quads-token-encoded artifact, unlike the bare-string
        Parquet-decode fixtures elsewhere in tests/unit/fixtures/, so
-       cottas_ondisk_build_bound_qp_opt's term-to-dictionary encoding
-       actually round-trips and bound queries produce non-empty
-       results to compare. *)
+       cottas_ondisk_build_bound_qp_tok's term-to-token serialization
+       actually matches real row cells and bound queries produce
+       non-empty results to compare. *)
 
 let passed = ref 0
 let failed = ref 0
@@ -145,39 +145,42 @@ let check_indexed_graph ~label ~(ig : RDF_Indexed.indexed_graph)
 (* COTTAS-on-disk backend: caps_of_cottas vs the raw entry points     *)
 (* ---------------------------------------------------------------- *)
 
-let raw_bound_opt cods scope (b : SPARQL11_Algebra.triple_pattern_bound) =
-  RDF_CottasStore.cottas_ondisk_build_bound_qp_opt cods
+(* 2026-07-06 follow-up (BOUND-side selectivity): the raw comparison
+   below now goes through `cottas_ondisk_build_bound_qp_tok` (direct
+   term -> token serialization, no corpus-wide dictionary/Bet7) and the
+   `_tok` search/estimate/count_exact entry points -- the SAME pairing
+   `RDF.Store.Capabilities.Cottas.fst`'s `sc_solve`/etc. now use in
+   production. The tok builder never returns `None` (serialization
+   always succeeds -- see its own F* banner comment for why the old
+   "term absent from corpus" early-exit isn't needed for correctness),
+   so there is no option to match here. *)
+let raw_bound_tok cods_ignored scope (b : SPARQL11_Algebra.triple_pattern_bound) =
+  ignore cods_ignored;
+  RDF_CottasStore.cottas_ondisk_build_bound_qp_tok
     b.SPARQL11_Algebra.bs b.SPARQL11_Algebra.bp b.SPARQL11_Algebra.bo scope
 
-(* 2026-07-06: `cottas_ondisk_search[_limited]` now return
-   `cottas_qp_row_tok` (raw column strings), not the id-based
-   `cottas_qp_row` -- see RDF.CottasStore.fst's `cottas_qp_row_tok`
+(* `cottas_ondisk_search[_limited]_tok` return `cottas_qp_row_tok` (raw
+   column strings) -- see RDF.CottasStore.fst's `cottas_qp_row_tok`
    banner comment. Consumed via the tok-shaped sibling
    `cottas_ondisk_rows_tok_to_triples`, which takes no `cods` handle
    (no id to decode through). *)
 let raw_solve cods scope b =
-  match raw_bound_opt cods scope b with
-  | FStar_Pervasives_Native.None -> []
-  | FStar_Pervasives_Native.Some bnd ->
-    RDF_CottasStore.cottas_ondisk_rows_tok_to_triples
-      (RDF_CottasStore.cottas_ondisk_search cods bnd)
+  let bnd = raw_bound_tok cods scope b in
+  RDF_CottasStore.cottas_ondisk_rows_tok_to_triples
+    (RDF_CottasStore.cottas_ondisk_search_tok cods bnd)
 
 let raw_solve_limited cods scope b n =
-  match raw_bound_opt cods scope b with
-  | FStar_Pervasives_Native.None -> []
-  | FStar_Pervasives_Native.Some bnd ->
-    RDF_CottasStore.cottas_ondisk_rows_tok_to_triples
-      (RDF_CottasStore.cottas_ondisk_search_limited cods bnd n)
+  let bnd = raw_bound_tok cods scope b in
+  RDF_CottasStore.cottas_ondisk_rows_tok_to_triples
+    (RDF_CottasStore.cottas_ondisk_search_limited_tok cods bnd n)
 
 let raw_estimate cods scope b =
-  match raw_bound_opt cods scope b with
-  | FStar_Pervasives_Native.None -> Z.zero
-  | FStar_Pervasives_Native.Some bnd -> RDF_CottasStore.cottas_ondisk_estimate cods bnd
+  let bnd = raw_bound_tok cods scope b in
+  RDF_CottasStore.cottas_ondisk_estimate_tok cods bnd
 
 let raw_count_exact cods scope b =
-  match raw_bound_opt cods scope b with
-  | FStar_Pervasives_Native.None -> Z.zero
-  | FStar_Pervasives_Native.Some bnd -> RDF_CottasStore.cottas_ondisk_count_exact cods bnd
+  let bnd = raw_bound_tok cods scope b in
+  RDF_CottasStore.cottas_ondisk_count_exact_tok cods bnd
 
 let check_cottas_scope ~label ~cods ~scope
     ~(caps : RDF_Store_Capabilities.store_caps) ~(anchor : RDF_Triple.triple)

@@ -13,42 +13,34 @@ let caps_of_cottas (cods : RDF_CottasStore.cottas_ondisk_store)
       };
     RDF_Store_Capabilities.sc_solve =
       (fun b ->
-         match RDF_CottasStore.cottas_ondisk_build_bound_qp_opt cods
-                 b.SPARQL11_Algebra.bs b.SPARQL11_Algebra.bp
-                 b.SPARQL11_Algebra.bo scope
-         with
-         | FStar_Pervasives_Native.None -> []
-         | FStar_Pervasives_Native.Some bound ->
-             RDF_CottasStore.cottas_ondisk_rows_tok_to_triples
-               (RDF_CottasStore.cottas_ondisk_search cods bound));
+         let bound =
+           RDF_CottasStore.cottas_ondisk_build_bound_qp_tok
+             b.SPARQL11_Algebra.bs b.SPARQL11_Algebra.bp
+             b.SPARQL11_Algebra.bo scope in
+         RDF_CottasStore.cottas_ondisk_rows_tok_to_triples
+           (RDF_CottasStore.cottas_ondisk_search_tok cods bound));
     RDF_Store_Capabilities.sc_solve_limited =
       (fun b n ->
-         match RDF_CottasStore.cottas_ondisk_build_bound_qp_opt cods
-                 b.SPARQL11_Algebra.bs b.SPARQL11_Algebra.bp
-                 b.SPARQL11_Algebra.bo scope
-         with
-         | FStar_Pervasives_Native.None -> []
-         | FStar_Pervasives_Native.Some bound ->
-             RDF_CottasStore.cottas_ondisk_rows_tok_to_triples
-               (RDF_CottasStore.cottas_ondisk_search_limited cods bound n));
+         let bound =
+           RDF_CottasStore.cottas_ondisk_build_bound_qp_tok
+             b.SPARQL11_Algebra.bs b.SPARQL11_Algebra.bp
+             b.SPARQL11_Algebra.bo scope in
+         RDF_CottasStore.cottas_ondisk_rows_tok_to_triples
+           (RDF_CottasStore.cottas_ondisk_search_limited_tok cods bound n));
     RDF_Store_Capabilities.sc_estimate =
       (fun b ->
-         match RDF_CottasStore.cottas_ondisk_build_bound_qp_opt cods
-                 b.SPARQL11_Algebra.bs b.SPARQL11_Algebra.bp
-                 b.SPARQL11_Algebra.bo scope
-         with
-         | FStar_Pervasives_Native.None -> Prims.int_zero
-         | FStar_Pervasives_Native.Some bound ->
-             RDF_CottasStore.cottas_ondisk_estimate cods bound);
+         let bound =
+           RDF_CottasStore.cottas_ondisk_build_bound_qp_tok
+             b.SPARQL11_Algebra.bs b.SPARQL11_Algebra.bp
+             b.SPARQL11_Algebra.bo scope in
+         RDF_CottasStore.cottas_ondisk_estimate_tok cods bound);
     RDF_Store_Capabilities.sc_count_exact =
       (fun b ->
-         match RDF_CottasStore.cottas_ondisk_build_bound_qp_opt cods
-                 b.SPARQL11_Algebra.bs b.SPARQL11_Algebra.bp
-                 b.SPARQL11_Algebra.bo scope
-         with
-         | FStar_Pervasives_Native.None -> Prims.int_zero
-         | FStar_Pervasives_Native.Some bound ->
-             RDF_CottasStore.cottas_ondisk_count_exact cods bound);
+         let bound =
+           RDF_CottasStore.cottas_ondisk_build_bound_qp_tok
+             b.SPARQL11_Algebra.bs b.SPARQL11_Algebra.bp
+             b.SPARQL11_Algebra.bo scope in
+         RDF_CottasStore.cottas_ondisk_count_exact_tok cods bound);
     RDF_Store_Capabilities.sc_predicate_present =
       (fun pred -> RDF_CottasStore.cottas_ondisk_predicate_present cods pred);
     RDF_Store_Capabilities.sc_decode_failure =

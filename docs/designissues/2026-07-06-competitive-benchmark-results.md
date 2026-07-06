@@ -575,3 +575,115 @@ SPARQL suite 631 pass, 0 fail (of 631); RDF suite 1,031 pass, 0 fail
 29). The raw numbers above are also recorded in
 `docs/test-results/competitive-bench.json`'s
 `search_selective_decode_2026_07_06` key.
+
+## 9. Update, 2026-07-06: BOUND-side token-direct — §8's "not fixed this round" residual, closed
+
+§8 left the bound-side term→id resolution in place: any query that
+BINDS a subject/predicate/object still paid that column's one-time
+corpus-wide `collect_distinct` populate (subject ~9-10 s / 91,871
+distinct; the mechanism §8 named as the surviving residual). This
+round mirrors the output-side fix on the bound side.
+
+**Fix, in F\*** (verified, F\* 2025.12.15 / z3 4.13.3, no `--lax`; no
+`experimental_ocaml_glue/` changes — this removes the live query
+path's LAST dependence on the Bet7 term-dictionary glue, it adds
+none): `RDF.CottasStore.fst` gained `bound_subject_to_token` /
+`bound_predicate_to_token` / `bound_object_to_token` /
+`bound_graph_iri_to_token` (serialize the query's own typed bound term
+directly to its COTTAS cell token via the existing verified N-Quads
+serializer `RDF.NQuads.Serialize` — `docs/cottas-format-v1.md` §4
+defines the cell grammar as exactly that token form), the
+`cottas_bound_qp_tok` record (bounds as raw token strings, the
+bound-side sibling of §8's `cottas_qp_row_tok`),
+`cottas_ondisk_build_bound_qp_tok` (no dictionary lookup, never
+`None` — an absent term still yields zero rows cheaply via the
+dict-page candidate prune), and `_tok` siblings of all four entry
+points (`cottas_ondisk_search_tok` / `_search_limited_tok` /
+`_estimate_tok` / `_count_exact_tok`).
+`RDF.Store.Capabilities.Cottas.fst`'s `sc_solve` / `sc_solve_limited`
+/ `sc_estimate` / `sc_count_exact` now use the tok pairing; the
+id-based functions remain defined (verification spec + compat) with
+no live caller.
+
+**What still legitimately needs ids, kept as-is per structure:**
+
+| Structure | Needs an id? | How it gets one |
+|---|---|---|
+| compound (p,o) presence bitmap prefilter | yes (sorted-rank pair-code) | `compound_po_dict_encode` reads `.p.dict`/`.o.dict` headers directly (1576873 path) — cheap, never the Bet7 revmap; unchanged |
+| row-group pruning (`plan_candidate_rgs`) | no | dict-PAGE membership test compares the bound TOKEN string against per-rg dictionary pages — already token-shaped, unchanged |
+| row matching (`cell_match` in the walks) | no | bound token vs decoded cell, string equality — now fed by direct serialization instead of id→token |
+| output construction | no | token-direct since 9750eb7 (§8) |
+| graph scope | no | `COS_DefaultOnly` → `"DEFAULT"` sentinel, `COS_NamedGraph` → `"<iri>"` — serialized directly, no graph-dict encode |
+
+**Measured** (gene corpus, 888,949 quads, artifact
+`.claude-runs/repro/corpus-gene/gene/v1/data.cottas`, one-shot
+`factoidal query --data-cottas`, `tools/bench_rusage_run.py`, 3 runs
+each, median wall / max RSS; "before" = committed HEAD binary
+`f30bc52`, "after" = working-tree binary carrying this fix — see the
+provenance caveat below):
+
+| Query | Before wall | After wall | Before peak RSS | After peak RSS | Bound-side populate removed |
+|---|---:|---:|---:|---:|---|
+| q1 `COUNT(*)` | 0.37 s | 0.39 s | 56,004 KB (54.7 MiB) | 60,368 KB (59.0 MiB) | none bound — untouched by design |
+| q2 bound-predicate COUNT | 1.77 s | 1.11 s | 91,500 KB (89.4 MiB) | 92,880 KB (90.7 MiB) | predicate `collect_distinct` (6 distinct, full 888,949-row walk) |
+| q3 subject point lookup (3 rows) | 12.06 s | 2.17 s (**5.6×**) | 139,724 KB (136.4 MiB) | 94,264 KB (**92.1 MiB**) | subject `collect_distinct` (91,871 distinct) |
+| q4 two-pattern join (14 rows) | 31.08 s | 4.07 s (**7.6×**) | 191,112 KB (186.6 MiB) | 146,788 KB (143.3 MiB) | predicate + subject populates |
+| q6 optional-filter (25,083 rows) | 73.94 s | 44.88 s (**1.65×**) | 210,888 KB (205.9 MiB) | 209,900 KB (205.0 MiB) | predicate populate; residual is real per-row work on the 25,083-row match set |
+| stage-4 point lookup `LIMIT 1` | 11.67 s | 1.75 s | 139,664 KB (136.4 MiB) | 94,052 KB (**91.8 MiB**) | subject populate |
+| buffer mode (`--data-cottas-mem`) point lookup | — | 1.79 s | — | 94,052 KB — identical to file mode | " |
+
+The stage-4 target ("subject-bound point lookup under 100 MiB, from
+136.4") is met: 94,052-94,264 KB across every point-lookup variant,
+file and buffer mode alike. `tests/local/cottas_lazy_dictionary_stage4.sh`'s
+interim <150 MiB pin is tightened to <100 MiB, and its per-column
+trace expectations inverted (a bound query now populates NO term
+dictionary; only the named-graph enumeration at dataset construction
+still fires, by design) — 12 pass, 0 fail (out of 12) post-change.
+
+Attribution is trace-pinned, not inferred: in every "before" stderr
+the removed cost appears as `ensure_subjects_loaded` /
+`ensure_predicates_loaded` + `collect_distinct` lines; in every
+"after" stderr those lines are absent (`ensure_graphs_loaded` alone
+remains). Outputs are byte-identical before vs after on all of
+q1/q2/q3/q4/q6 (`diff` on the CLI table output; q6's 25,083 rows
+included), and stable across repeat runs.
+
+**Provenance caveat.** The "after" binary also carries a concurrent
+sibling session's uncommitted BaseWriter-v2 work
+(`Parquet.Footer.fst`: dictionary-page codec plumbing + a
+position-indexed dictionary lookup tree; `bin/factoidal-cli/
+factoidal_cli.ml`: import/compact call `serialize_cottas_v2`), which
+touches the read path's dictionary decode. The wall-clock wins above
+are attributable to THIS fix via the trace pins (the removed
+`collect_distinct` walks are the removed seconds), but the small RSS
+deltas outside the point-lookup shape — q1's +4.4 MiB and q2's
++1.4 MiB — are NOT explained by this fix (identical traces, identical
+walks, structurally identical extracted code for the id/tok
+`count_exact` pair; process baseline on a 1-quad fixture is 124 KB
+SMALLER in the after binary) and are consistent with the sibling's
+in-flight dictionary-lookup tree. Disclosed rather than untangled:
+isolating it would need a third binary built from HEAD plus only this
+diff, which the landing coordinator can do if the delta matters.
+
+**Floors after the change** (working tree, repo root): SPARQL 631
+pass, 0 fail (of 631); RDF 1,031 pass, 0 fail (of 1,031);
+`tests/unit/run-all.sh` 32 file(s) pass, 0 fail (of 32) — includes
+`store_capabilities_unit` 521 pass, 0 fail (the wrapper-vs-raw
+equivalence net, its raw side updated to the tok pairing) and
+`parquet_rle_dictionary_multi_row_group` 116 pass, 0 fail (the
+multi-row-group pins); `cottas_row_order_regressions.sh` 27 pass, 0
+fail (the three-way agreement matrix); `cottas_corpus_regressions.sh`
+4 pass, 0 fail; `cottas_native_import_regressions.sh` 17 pass, 0
+fail; `dict_global_cache_parity.sh` 6 pass, 0 fail;
+`streamable_fastpath_regressions.sh` 13 pass, 0 fail;
+`inmemory_bytes_store_stage3.sh` 23 pass, 0 fail;
+`durable_update_stage3.sh` 15 pass, 0 fail;
+`durable_update_stage4_compaction.sh` 29 pass, 0 fail;
+`cottas_lazy_dictionary_stage4.sh` 12 pass, 0 fail.
+(A first unit-suite run showed 3 build-stage failures that
+disappeared on re-run — link races against the sibling session's
+concurrent compile, each file green when rerun alone and the full
+suite 32/32 on the quiet rerun. `cottas_ask_decode_failure_
+regressions.sh` reports its single check as SKIP — "fixture no longer
+reproduces the undecodable-column shape" — with the HEAD binary too;
+pre-existing, not this change.)

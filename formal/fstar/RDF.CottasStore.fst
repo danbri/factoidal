@@ -8,6 +8,7 @@ open RDF.CottasStore.ColumnSeq
 open Parser.Combinators
 open Parser.FastString
 open Parser.NTriples
+open RDF.NQuads.Serialize
 open FStar.All
 module CPO = RDF.CottasStore.CompoundPresenceBitmap
 module ODI = RDF.CottasStore.OnDiskIndex
@@ -580,6 +581,69 @@ let token_to_graph_name (tok : string) : Tot iri =
   match parse_iri tok 0 with
   | ParseOk g pos -> if pos = fs_byte_length tok then g else ""
   | ParseFail _ _ -> ""
+
+// ----------------------------------------------------------------------
+// Direct term -> token serialization (BOUND-side selectivity, 2026-07-06
+// follow-up to the SEARCH-selectivity fix above, docs/designissues/
+// 2026-07-06-competitive-benchmark-results.md §8's "not fixed this
+// round"). `token_to_subject` et al. above parse an already-decoded ROW
+// cell into a typed term (reverse direction); these four are the
+// forward direction: serialize the QUERY'S OWN typed bound term into
+// the token string it would appear as in a COTTAS cell, so `cell_match`
+// can compare it directly against decoded row tokens without ever
+// resolving a corpus-wide term-id.
+//
+// Why this was an id round-trip before: `cottas_ondisk_build_bound_qp_
+// opt` called `cottas_ondisk_encode_subject`/`_predicate`/`_object`
+// (term -> id, via the corpus-wide revmap / the OCaml Bet7 runtime's
+// `ft_*_tok_to_id`), and `cottas_ondisk_search`/`_estimate`/
+// `_count_exact` immediately called `id_to_raw_token_via_global`
+// (id -> token, via Bet7's `ft_id_to_*_tok`, populated by the SAME
+// per-column `ensure_*_loaded` populate as the encode step) just to get
+// back the token string `cell_match` needed all along. Both directions
+// share one `collect_distinct` populate per column
+// (`experimental_ocaml_glue/cottas_ondisk_z_lazy_open.sh`), which on
+// FIRST TOUCH decodes and dedupes that column across every row group of
+// the whole corpus — the identical O(corpus) tax the SEARCH-selectivity
+// fix above already eliminated on the OUTPUT side. Measured (gene.ttl,
+// 888,949 rows): subject `collect_distinct` costs ~9-10s, paid once per
+// process the first time ANY bound query touches the subject column,
+// independent of how selective that query is.
+//
+// Fix: serialize the term directly using the SAME verified N-Quads term
+// serializer the wire/dump output path already uses
+// (`RDF.NQuads.Serialize`, migrated from factoidal_http.ml per iron
+// rule #1) — no id, no revmap, no `experimental_ocaml_glue`
+// involvement at all. `docs/cottas-format-v1.md` section 4 defines the
+// cell grammar as an N-Quads term token; `nq_subject_to_string` /
+// `nq_term_to_string` already produce exactly that grammar (`<iri>`,
+// `_:label`, `"lex"`, `"lex"@lang`, `"lex"^^<dt>`) for the call sites
+// that predate this fix. Predicate/graph tokens are IRI-only per
+// cottas-format-v1.md's per-column table, so they get a small direct
+// wrapper instead of routing through `nq_term_to_string`'s full
+// rdf_term match.
+//
+// Caveat (disclosed, not hidden — same gap as every other
+// `nq_term_to_string` call site, not introduced here): `nq_escape_
+// literal` escapes `\\`, `\"`, `\n`, `\r`, `\t` but not `\b`/`\f`
+// (0x08/0x0C), which cottas-format-v1.md's lex grammar also allows as
+// escapes. A bound literal whose lexical form contains a literal
+// backspace or form-feed byte serializes here as the raw byte instead
+// of the escaped form pycottas would have written, so it would fail to
+// token-match a row that legitimately contains it — an existing gap in
+// `RDF.NQuads.Serialize` shared by every other caller, not something to
+// paper over with new escaping logic bolted onto this file.
+let bound_subject_to_token (s : subject) : Tot string =
+  nq_subject_to_string s
+
+let bound_predicate_to_token (p : wf_iri) : Tot string =
+  "<" ^ p ^ ">"
+
+let bound_object_to_token (o : rdf_term) : Tot string =
+  nq_term_to_string o
+
+let bound_graph_iri_to_token (g : iri) : Tot string =
+  "<" ^ g ^ ">"
 
 // Row shape for the on-disk SEARCH path: the four already-decoded raw
 // column tokens, held as-is. No id, no corpus-wide dictionary lookup —
@@ -1608,19 +1672,29 @@ let cottas_ondisk_has_decode_failure (h : cottas_ondisk_handle) : bool =
 // Bet7's lazy populate.
 //
 // 2026-07-06 follow-up (selective-column SEARCH, see
-// `cottas_qp_row_tok`'s banner comment): the BOUND-side resolution
-// below (`bound_s`/`bound_p`/`bound_o`) is UNCHANGED — it still goes
-// through `id_to_raw_token_via_global`/Bet7, a one-time-per-query cost
-// bounded by the number of bound columns, not by result cardinality.
-// What changed is OUTPUT construction: the walks now return
-// `cottas_qp_row_tok` (raw strings) via the tok-shaped walk family
-// instead of `cottas_qp_row` (ids via `build_qp_row`), so a MATCHED
-// row's subject/predicate/object never needs the corpus-wide
-// `ondisk_lookup_*_id_global` round-trip at all. See
-// docs/designissues/2026-07-06-search-selective-decode.md for the
-// profiling that attributes the on-disk SELECT path's O(corpus) (not
-// O(matches)) cost to that round-trip, not to this function's own
-// row-group-level column decode.
+// `cottas_qp_row_tok`'s banner comment): OUTPUT construction — the
+// walks return `cottas_qp_row_tok` (raw strings) via the tok-shaped
+// walk family instead of `cottas_qp_row` (ids via `build_qp_row`), so a
+// MATCHED row's subject/predicate/object never needs the corpus-wide
+// `ondisk_lookup_*_id_global` round-trip at all.
+//
+// This function's own BOUND-side resolution (`bound_s`/`bound_p`/
+// `bound_o`/`bound_g` below, via `id_to_raw_token_via_global`/Bet7) is
+// kept AS-IS for callers that still hold an id-based `cottas_bound_qp`
+// (built by `cottas_ondisk_build_bound_qp_opt`) — no live caller remains
+// after this same-day follow-up (see `cottas_ondisk_search_tok` right
+// below), but the id-based path is left in place rather than deleted,
+// same precedent as `filter_zipped_rows`/`build_qp_row` above ("legacy,
+// no in-tree callers, kept for compat"). New/updated call sites should
+// use `cottas_ondisk_search_tok`, which takes a `cottas_bound_qp_tok`
+// (raw token strings, built by direct term serialization — no id, no
+// corpus-wide dictionary, no `experimental_ocaml_glue` involvement) and
+// skips this function's `id_to_raw_token_via_global` calls entirely.
+// See `bound_subject_to_token`'s banner comment above for why that
+// round-trip existed and what it cost; and
+// docs/designissues/2026-07-06-competitive-benchmark-results.md §8 for
+// the profiling that identified this as the surviving residual after
+// the OUTPUT-side fix.
 let cottas_ondisk_search
   (ds : cottas_ondisk_store) (bound : cottas_bound_qp)
   : Tot (list cottas_qp_row_tok) =
@@ -1647,6 +1721,90 @@ let cottas_ondisk_search
       let (candidates0, _dc) = plan_candidate_rgs h table
         bound_s bound_p bound_o bound_g rg_count in
       // Phase 2.6: AND-compose with compound (p,o) bitmap when both bound.
+      let candidates = filter_candidates_by_compound_po
+        h.coh_path candidates0 bound_p bound_o in
+      let acc_rev = walk_candidate_rgs_search_tok_global h.coh_path table
+        bound_s bound_p bound_o bound_g
+        candidates [] in
+      list_rev acc_rev
+    else
+      let acc_rev = walk_row_groups_search_tok_global h.coh_path table
+        bound_s bound_p bound_o bound_g
+        0 rg_count rg_count [] in
+      list_rev acc_rev
+
+// ----------------------------------------------------------------------
+// BOUND-side selectivity (2026-07-06 follow-up to the SEARCH-selectivity
+// fix above — the "not fixed this round" item from
+// docs/designissues/2026-07-06-competitive-benchmark-results.md §8).
+//
+// `cottas_bound_qp_tok` is the BOUND-side sibling of `cottas_qp_row_tok`
+// above: it carries the query's own subject/predicate/object/graph
+// bounds as raw column-token STRINGS (produced by direct serialization
+// via `bound_subject_to_token` et al.), not corpus-wide term-ids. This
+// is what lets `cottas_ondisk_search_tok` and its LIMIT/estimate/
+// count-exact siblings skip `id_to_raw_token_via_global`/Bet7 entirely
+// on the bound side — the symmetric fix to this file's `cottas_qp_row_
+// tok` output-side one.
+noeq type cottas_bound_qp_tok = {
+  cbqpt_s : option string;
+  cbqpt_p : option string;
+  cbqpt_o : option string;
+  // Graph bound as a raw token: `Some "DEFAULT"` (default-graph scope),
+  // `Some "<iri>"` (named-graph scope), or `None` (dead in-memory
+  // GB_COTTAS / CGB_Unbound path only — no live GB_CottasOnDisk
+  // constructor produces `None` here, matching `graph_bound_to_raw_
+  // token`'s existing contract for CGB_Unbound).
+  cbqpt_g : option string;
+}
+
+// Build a tok-shaped bound directly from the query's typed terms plus a
+// graph scope — no dictionary lookup, no "term absent from corpus"
+// `None` branch, because there is nothing to look up: serialization
+// always succeeds. (The id-based `cottas_ondisk_build_bound_qp_opt`
+// returns `None` when a bound term isn't in the corpus dictionary,
+// letting the caller skip the search call entirely — that early-exit
+// is not available here, but it is not needed for correctness either: a
+// term genuinely absent from the corpus still yields zero matches,
+// cheaply, via the per-row-group DICT-PAGE candidate prune in
+// `plan_candidate_rgs` (reads only small on-disk dictionary pages, the
+// same mechanism `compound_po_dict_encode` already uses for the
+// compound (p,o) prefilter — see that function's own banner comment)
+// and the compound-po bitmap prefilter, neither of which needs the
+// corpus-wide revmap this function no longer calls.
+let cottas_ondisk_build_bound_qp_tok
+  (s : option subject) (p : option wf_iri) (o : option rdf_term)
+  (scope : cottas_ondisk_graph_scope)
+  : Tot cottas_bound_qp_tok =
+  {
+    cbqpt_s = (match s with | None -> None | Some sv -> Some (bound_subject_to_token sv));
+    cbqpt_p = (match p with | None -> None | Some pv -> Some (bound_predicate_to_token pv));
+    cbqpt_o = (match o with | None -> None | Some ov -> Some (bound_object_to_token ov));
+    cbqpt_g = (match scope with
+      | COS_DefaultOnly -> Some "DEFAULT"
+      | COS_NamedGraph gv -> Some (bound_graph_iri_to_token gv));
+  }
+
+// Tok-shaped sibling of `cottas_ondisk_search` — identical row-group
+// planning / pruning / walking, but the bound is already token strings,
+// so no `id_to_raw_token_via_global` call and no Bet7 touch at all.
+let cottas_ondisk_search_tok
+  (ds : cottas_ondisk_store) (bound : cottas_bound_qp_tok)
+  : Tot (list cottas_qp_row_tok) =
+  let h = ds.cods_handle in
+  let bound_s = bound.cbqpt_s in
+  let bound_p = bound.cbqpt_p in
+  let bound_o = bound.cbqpt_o in
+  let bound_g = bound.cbqpt_g in
+  match probe_parquet_row_group_count h.coh_path with
+  | None -> []
+  | Some rg_count ->
+    let table = probe_parquet_row_group_offset_table h.coh_path in
+    let any_bound_present =
+      Some? bound_s || Some? bound_p || Some? bound_o || Some? bound_g in
+    if any_bound_present then
+      let (candidates0, _dc) = plan_candidate_rgs h table
+        bound_s bound_p bound_o bound_g rg_count in
       let candidates = filter_candidates_by_compound_po
         h.coh_path candidates0 bound_p bound_o in
       let acc_rev = walk_candidate_rgs_search_tok_global h.coh_path table
@@ -1945,7 +2103,8 @@ let rec walk_candidate_rgs_search_limited_tok_global
 //
 // Phase 2.5e: global-cache walks. F* owns the algorithm. 2026-07-06
 // follow-up: tok-shaped output construction, see `cottas_ondisk_search`'s
-// banner comment above — same Bet7-bypass, same unchanged bound-side.
+// banner comment above — bound-side resolution kept for compat, no live
+// caller after `cottas_ondisk_search_limited_tok` right below.
 let cottas_ondisk_search_limited
   (ds : cottas_ondisk_store) (bound : cottas_bound_qp) (limit : nat)
   : Tot (list cottas_qp_row_tok) =
@@ -1969,6 +2128,37 @@ let cottas_ondisk_search_limited
       let (candidates0, _dc) = plan_candidate_rgs h table
         bound_s bound_p bound_o bound_g rg_count in
       // Phase 2.6: compound (p,o) prune.
+      let candidates = filter_candidates_by_compound_po
+        h.coh_path candidates0 bound_p bound_o in
+      let acc_rev = walk_candidate_rgs_search_limited_tok_global h.coh_path table
+        bound_s bound_p bound_o bound_g
+        candidates [] 0 limit in
+      list_rev acc_rev
+    else
+      let acc_rev = walk_row_groups_search_limited_tok_global h.coh_path table
+        bound_s bound_p bound_o bound_g
+        0 rg_count rg_count [] 0 limit in
+      list_rev acc_rev
+
+// Tok-shaped sibling of `cottas_ondisk_search_limited` — see
+// `cottas_ondisk_search_tok`'s banner comment; same Bet7-bypass.
+let cottas_ondisk_search_limited_tok
+  (ds : cottas_ondisk_store) (bound : cottas_bound_qp_tok) (limit : nat)
+  : Tot (list cottas_qp_row_tok) =
+  let h = ds.cods_handle in
+  let bound_s = bound.cbqpt_s in
+  let bound_p = bound.cbqpt_p in
+  let bound_o = bound.cbqpt_o in
+  let bound_g = bound.cbqpt_g in
+  match probe_parquet_row_group_count h.coh_path with
+  | None -> []
+  | Some rg_count ->
+    let table = probe_parquet_row_group_offset_table h.coh_path in
+    let any_bound_present =
+      Some? bound_s || Some? bound_p || Some? bound_o || Some? bound_g in
+    if any_bound_present then
+      let (candidates0, _dc) = plan_candidate_rgs h table
+        bound_s bound_p bound_o bound_g rg_count in
       let candidates = filter_candidates_by_compound_po
         h.coh_path candidates0 bound_p bound_o in
       let acc_rev = walk_candidate_rgs_search_limited_tok_global h.coh_path table
@@ -2077,6 +2267,51 @@ let cottas_ondisk_estimate
            let prod : int = n_candidates `op_Multiply` avg in
            if prod < 0 then 0 else prod)
 
+// Tok-shaped sibling of `cottas_ondisk_estimate` — see
+// `cottas_ondisk_search_tok`'s banner comment; same Bet7-bypass. Body
+// logic (Aleph6 unbound fast path, Mem5 presence-bitmap approximation)
+// is otherwise identical, just consuming the already-token bound.
+let cottas_ondisk_estimate_tok
+  (ds : cottas_ondisk_store) (bound : cottas_bound_qp_tok)
+  : Tot nat =
+  let h = ds.cods_handle in
+  let bound_s = bound.cbqpt_s in
+  let bound_p = bound.cbqpt_p in
+  let bound_o = bound.cbqpt_o in
+  let bound_g = bound.cbqpt_g in
+  let any_bound_present =
+    Some? bound_s || Some? bound_p || Some? bound_o || Some? bound_g in
+  if not any_bound_present then
+    (match probe_parquet_num_rows h.coh_path with
+     | Some n -> n
+     | None ->
+       (match probe_parquet_row_group_count h.coh_path with
+        | None -> 0
+        | Some rg_count ->
+          let table = probe_parquet_row_group_offset_table h.coh_path in
+          walk_row_groups_estimate_global h table
+            bound_s bound_p bound_o bound_g
+            0 rg_count rg_count 0))
+  else
+    match probe_parquet_row_group_count h.coh_path with
+    | None -> 0
+    | Some rg_count ->
+      let table = probe_parquet_row_group_offset_table h.coh_path in
+      let (candidates0, _dc) = plan_candidate_rgs h table
+        bound_s bound_p bound_o bound_g rg_count in
+      let candidates = filter_candidates_by_compound_po
+        h.coh_path candidates0 bound_p bound_o in
+      let n_candidates : nat = List.Tot.length candidates in
+      if n_candidates = 0 then 0
+      else if rg_count = 0 then 0
+      else
+        (match probe_parquet_num_rows h.coh_path with
+         | None -> n_candidates
+         | Some total_rows ->
+           let avg : nat = total_rows / rg_count in
+           let prod : int = n_candidates `op_Multiply` avg in
+           if prod < 0 then 0 else prod)
+
 // EXACT count — for result-producing callers (the streaming COUNT
 // fast paths in SPARQL11.Store). Contract difference from
 // cottas_ondisk_estimate: never approximates. Unbound: parquet
@@ -2141,6 +2376,38 @@ let cottas_ondisk_count_exact
          walk_row_groups_count_exact_global h table
            bound_s bound_p bound_o bound_g 0 rg_count rg_count 0)
 
+// Tok-shaped sibling of `cottas_ondisk_count_exact` — see
+// `cottas_ondisk_search_tok`'s banner comment; same Bet7-bypass, same
+// unbound/graph-only/selective-column branch structure.
+let cottas_ondisk_count_exact_tok
+  (ds : cottas_ondisk_store) (bound : cottas_bound_qp_tok)
+  : Tot nat =
+  let h = ds.cods_handle in
+  let bound_s = bound.cbqpt_s in
+  let bound_p = bound.cbqpt_p in
+  let bound_o = bound.cbqpt_o in
+  let bound_g = bound.cbqpt_g in
+  if None? bound_s && None? bound_p && None? bound_o && None? bound_g then
+    (match probe_parquet_num_rows h.coh_path with
+     | Some n -> n
+     | None ->
+       (match probe_parquet_row_group_count h.coh_path with
+        | None -> 0
+        | Some rg_count ->
+          let table = probe_parquet_row_group_offset_table h.coh_path in
+          walk_row_groups_estimate_global h table
+            bound_s bound_p bound_o bound_g 0 rg_count rg_count 0))
+  else
+    (match probe_parquet_row_group_count h.coh_path with
+     | None -> 0
+     | Some rg_count ->
+       let table = probe_parquet_row_group_offset_table h.coh_path in
+       if None? bound_s && None? bound_p && None? bound_o then
+         walk_row_groups_count_graph_global h table bound_g 0 rg_count rg_count 0
+       else
+         walk_row_groups_count_exact_global h table
+           bound_s bound_p bound_o bound_g 0 rg_count rg_count 0)
+
 // ----------------------------------------------------------------------
 // Bound-pattern + row-to-quad helpers (moved from Parser.BallyhooCOTTAS).
 // These compose the encode/decode primitives and are pure F*.
@@ -2153,6 +2420,14 @@ let cottas_ondisk_count_exact
 // DEFAULT-sentinel rows"). Returns None when any bound term (including
 // a COS_NamedGraph IRI absent from this corpus's graph dictionary) is
 // absent from the dictionary, meaning a definitively empty result.
+//
+// 2026-07-06 follow-up: kept for compat (no live caller — see
+// `cottas_ondisk_build_bound_qp_tok`, defined next to
+// `cottas_bound_qp_tok` above, right after `cottas_ondisk_search`).
+// That tok-shaped builder does the SAME job without ever calling
+// `cottas_ondisk_encode_subject`/`_predicate`/`_object` (each an
+// id-in, corpus-wide-dictionary/Bet7 round trip) — it serializes the
+// typed term directly to its token form instead.
 let cottas_ondisk_build_bound_qp_opt
   (ds : cottas_ondisk_store)
   (s : option subject) (p : option wf_iri) (o : option rdf_term)

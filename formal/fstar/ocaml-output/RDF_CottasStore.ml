@@ -1616,6 +1616,14 @@ let token_to_graph_name (tok : Prims.string) : RDF_Term.iri=
   | Parser_Combinators.ParseOk (g, pos) ->
       if pos = (Parser_FastString.fs_byte_length tok) then g else ""
   | Parser_Combinators.ParseFail (uu___, uu___1) -> ""
+let bound_subject_to_token (s : RDF_Term.subject) : Prims.string=
+  RDF_NQuads_Serialize.nq_subject_to_string s
+let bound_predicate_to_token (p : RDF_Term.wf_iri) : Prims.string=
+  Prims.strcat "<" (Prims.strcat p ">")
+let bound_object_to_token (o : RDF_Term.rdf_term) : Prims.string=
+  RDF_NQuads_Serialize.nq_term_to_string o
+let bound_graph_iri_to_token (g : RDF_Term.iri) : Prims.string=
+  Prims.strcat "<" (Prims.strcat g ">")
 type cottas_qp_row_tok =
   {
   cqprt_s: Prims.string ;
@@ -2632,6 +2640,90 @@ let cottas_ondisk_search (ds : cottas_ondisk_store)
            walk_row_groups_search_tok_global h.coh_path table bound_s bound_p
              bound_o bound_g Prims.int_zero rg_count rg_count [] in
          Parquet_Footer.list_rev acc_rev)
+type cottas_bound_qp_tok =
+  {
+  cbqpt_s: Prims.string FStar_Pervasives_Native.option ;
+  cbqpt_p: Prims.string FStar_Pervasives_Native.option ;
+  cbqpt_o: Prims.string FStar_Pervasives_Native.option ;
+  cbqpt_g: Prims.string FStar_Pervasives_Native.option }
+let __proj__Mkcottas_bound_qp_tok__item__cbqpt_s
+  (projectee : cottas_bound_qp_tok) :
+  Prims.string FStar_Pervasives_Native.option=
+  match projectee with | { cbqpt_s; cbqpt_p; cbqpt_o; cbqpt_g;_} -> cbqpt_s
+let __proj__Mkcottas_bound_qp_tok__item__cbqpt_p
+  (projectee : cottas_bound_qp_tok) :
+  Prims.string FStar_Pervasives_Native.option=
+  match projectee with | { cbqpt_s; cbqpt_p; cbqpt_o; cbqpt_g;_} -> cbqpt_p
+let __proj__Mkcottas_bound_qp_tok__item__cbqpt_o
+  (projectee : cottas_bound_qp_tok) :
+  Prims.string FStar_Pervasives_Native.option=
+  match projectee with | { cbqpt_s; cbqpt_p; cbqpt_o; cbqpt_g;_} -> cbqpt_o
+let __proj__Mkcottas_bound_qp_tok__item__cbqpt_g
+  (projectee : cottas_bound_qp_tok) :
+  Prims.string FStar_Pervasives_Native.option=
+  match projectee with | { cbqpt_s; cbqpt_p; cbqpt_o; cbqpt_g;_} -> cbqpt_g
+let cottas_ondisk_build_bound_qp_tok
+  (s : RDF_Term.subject FStar_Pervasives_Native.option)
+  (p : RDF_Term.wf_iri FStar_Pervasives_Native.option)
+  (o : RDF_Term.rdf_term FStar_Pervasives_Native.option)
+  (scope : cottas_ondisk_graph_scope) : cottas_bound_qp_tok=
+  {
+    cbqpt_s =
+      (match s with
+       | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+       | FStar_Pervasives_Native.Some sv ->
+           FStar_Pervasives_Native.Some (bound_subject_to_token sv));
+    cbqpt_p =
+      (match p with
+       | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+       | FStar_Pervasives_Native.Some pv ->
+           FStar_Pervasives_Native.Some (bound_predicate_to_token pv));
+    cbqpt_o =
+      (match o with
+       | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+       | FStar_Pervasives_Native.Some ov ->
+           FStar_Pervasives_Native.Some (bound_object_to_token ov));
+    cbqpt_g =
+      (match scope with
+       | COS_DefaultOnly -> FStar_Pervasives_Native.Some "DEFAULT"
+       | COS_NamedGraph gv ->
+           FStar_Pervasives_Native.Some (bound_graph_iri_to_token gv))
+  }
+let cottas_ondisk_search_tok (ds : cottas_ondisk_store)
+  (bound : cottas_bound_qp_tok) : cottas_qp_row_tok Prims.list=
+  let h = ds.cods_handle in
+  let bound_s = bound.cbqpt_s in
+  let bound_p = bound.cbqpt_p in
+  let bound_o = bound.cbqpt_o in
+  let bound_g = bound.cbqpt_g in
+  match Parquet_Footer.probe_parquet_row_group_count h.coh_path with
+  | FStar_Pervasives_Native.None -> []
+  | FStar_Pervasives_Native.Some rg_count ->
+      let table =
+        Parquet_Footer.probe_parquet_row_group_offset_table h.coh_path in
+      let any_bound_present =
+        (((FStar_Pervasives_Native.uu___is_Some bound_s) ||
+            (FStar_Pervasives_Native.uu___is_Some bound_p))
+           || (FStar_Pervasives_Native.uu___is_Some bound_o))
+          || (FStar_Pervasives_Native.uu___is_Some bound_g) in
+      if any_bound_present
+      then
+        let uu___ =
+          plan_candidate_rgs h table bound_s bound_p bound_o bound_g rg_count in
+        (match uu___ with
+         | (candidates0, _dc) ->
+             let candidates =
+               filter_candidates_by_compound_po h.coh_path candidates0
+                 bound_p bound_o in
+             let acc_rev =
+               walk_candidate_rgs_search_tok_global h.coh_path table bound_s
+                 bound_p bound_o bound_g candidates [] in
+             Parquet_Footer.list_rev acc_rev)
+      else
+        (let acc_rev =
+           walk_row_groups_search_tok_global h.coh_path table bound_s bound_p
+             bound_o bound_g Prims.int_zero rg_count rg_count [] in
+         Parquet_Footer.list_rev acc_rev)
 let rec filter_zipped_rows_limited_seq (h : cottas_ondisk_handle)
   (bound_s : Prims.string FStar_Pervasives_Native.option)
   (bound_p : Prims.string FStar_Pervasives_Native.option)
@@ -3110,6 +3202,44 @@ let cottas_ondisk_search_limited (ds : cottas_ondisk_store)
              bound_p bound_o bound_g Prims.int_zero rg_count rg_count []
              Prims.int_zero limit in
          Parquet_Footer.list_rev acc_rev)
+let cottas_ondisk_search_limited_tok (ds : cottas_ondisk_store)
+  (bound : cottas_bound_qp_tok) (limit : Prims.nat) :
+  cottas_qp_row_tok Prims.list=
+  let h = ds.cods_handle in
+  let bound_s = bound.cbqpt_s in
+  let bound_p = bound.cbqpt_p in
+  let bound_o = bound.cbqpt_o in
+  let bound_g = bound.cbqpt_g in
+  match Parquet_Footer.probe_parquet_row_group_count h.coh_path with
+  | FStar_Pervasives_Native.None -> []
+  | FStar_Pervasives_Native.Some rg_count ->
+      let table =
+        Parquet_Footer.probe_parquet_row_group_offset_table h.coh_path in
+      let any_bound_present =
+        (((FStar_Pervasives_Native.uu___is_Some bound_s) ||
+            (FStar_Pervasives_Native.uu___is_Some bound_p))
+           || (FStar_Pervasives_Native.uu___is_Some bound_o))
+          || (FStar_Pervasives_Native.uu___is_Some bound_g) in
+      if any_bound_present
+      then
+        let uu___ =
+          plan_candidate_rgs h table bound_s bound_p bound_o bound_g rg_count in
+        (match uu___ with
+         | (candidates0, _dc) ->
+             let candidates =
+               filter_candidates_by_compound_po h.coh_path candidates0
+                 bound_p bound_o in
+             let acc_rev =
+               walk_candidate_rgs_search_limited_tok_global h.coh_path table
+                 bound_s bound_p bound_o bound_g candidates [] Prims.int_zero
+                 limit in
+             Parquet_Footer.list_rev acc_rev)
+      else
+        (let acc_rev =
+           walk_row_groups_search_limited_tok_global h.coh_path table bound_s
+             bound_p bound_o bound_g Prims.int_zero rg_count rg_count []
+             Prims.int_zero limit in
+         Parquet_Footer.list_rev acc_rev)
 let cottas_ondisk_estimate (ds : cottas_ondisk_store)
   (bound : Parser_BallyhooCOTTAS.cottas_bound_qp) : Prims.nat=
   let h = ds.cods_handle in
@@ -3169,6 +3299,58 @@ let cottas_ondisk_estimate (ds : cottas_ondisk_store)
                        let avg = total_rows / rg_count in
                        let prod = n_candidates * avg in
                        if prod < Prims.int_zero then Prims.int_zero else prod)))
+let cottas_ondisk_estimate_tok (ds : cottas_ondisk_store)
+  (bound : cottas_bound_qp_tok) : Prims.nat=
+  let h = ds.cods_handle in
+  let bound_s = bound.cbqpt_s in
+  let bound_p = bound.cbqpt_p in
+  let bound_o = bound.cbqpt_o in
+  let bound_g = bound.cbqpt_g in
+  let any_bound_present =
+    (((FStar_Pervasives_Native.uu___is_Some bound_s) ||
+        (FStar_Pervasives_Native.uu___is_Some bound_p))
+       || (FStar_Pervasives_Native.uu___is_Some bound_o))
+      || (FStar_Pervasives_Native.uu___is_Some bound_g) in
+  if Prims.op_Negation any_bound_present
+  then
+    match Parquet_Footer.probe_parquet_num_rows h.coh_path with
+    | FStar_Pervasives_Native.Some n -> n
+    | FStar_Pervasives_Native.None ->
+        (match Parquet_Footer.probe_parquet_row_group_count h.coh_path with
+         | FStar_Pervasives_Native.None -> Prims.int_zero
+         | FStar_Pervasives_Native.Some rg_count ->
+             let table =
+               Parquet_Footer.probe_parquet_row_group_offset_table h.coh_path in
+             walk_row_groups_estimate_global h table bound_s bound_p bound_o
+               bound_g Prims.int_zero rg_count rg_count Prims.int_zero)
+  else
+    (match Parquet_Footer.probe_parquet_row_group_count h.coh_path with
+     | FStar_Pervasives_Native.None -> Prims.int_zero
+     | FStar_Pervasives_Native.Some rg_count ->
+         let table =
+           Parquet_Footer.probe_parquet_row_group_offset_table h.coh_path in
+         let uu___1 =
+           plan_candidate_rgs h table bound_s bound_p bound_o bound_g
+             rg_count in
+         (match uu___1 with
+          | (candidates0, _dc) ->
+              let candidates =
+                filter_candidates_by_compound_po h.coh_path candidates0
+                  bound_p bound_o in
+              let n_candidates = FStar_List_Tot_Base.length candidates in
+              if n_candidates = Prims.int_zero
+              then Prims.int_zero
+              else
+                if rg_count = Prims.int_zero
+                then Prims.int_zero
+                else
+                  (match Parquet_Footer.probe_parquet_num_rows h.coh_path
+                   with
+                   | FStar_Pervasives_Native.None -> n_candidates
+                   | FStar_Pervasives_Native.Some total_rows ->
+                       let avg = total_rows / rg_count in
+                       let prod = n_candidates * avg in
+                       if prod < Prims.int_zero then Prims.int_zero else prod)))
 let cottas_ondisk_count_exact (ds : cottas_ondisk_store)
   (bound : Parser_BallyhooCOTTAS.cottas_bound_qp) : Prims.nat=
   let h = ds.cods_handle in
@@ -3183,6 +3365,45 @@ let cottas_ondisk_count_exact (ds : cottas_ondisk_store)
       bound.Parser_BallyhooCOTTAS.cbqp_o in
   let bound_g =
     graph_bound_to_raw_token h.coh_path bound.Parser_BallyhooCOTTAS.cbqp_g in
+  if
+    (((FStar_Pervasives_Native.uu___is_None bound_s) &&
+        (FStar_Pervasives_Native.uu___is_None bound_p))
+       && (FStar_Pervasives_Native.uu___is_None bound_o))
+      && (FStar_Pervasives_Native.uu___is_None bound_g)
+  then
+    match Parquet_Footer.probe_parquet_num_rows h.coh_path with
+    | FStar_Pervasives_Native.Some n -> n
+    | FStar_Pervasives_Native.None ->
+        (match Parquet_Footer.probe_parquet_row_group_count h.coh_path with
+         | FStar_Pervasives_Native.None -> Prims.int_zero
+         | FStar_Pervasives_Native.Some rg_count ->
+             let table =
+               Parquet_Footer.probe_parquet_row_group_offset_table h.coh_path in
+             walk_row_groups_estimate_global h table bound_s bound_p bound_o
+               bound_g Prims.int_zero rg_count rg_count Prims.int_zero)
+  else
+    (match Parquet_Footer.probe_parquet_row_group_count h.coh_path with
+     | FStar_Pervasives_Native.None -> Prims.int_zero
+     | FStar_Pervasives_Native.Some rg_count ->
+         let table =
+           Parquet_Footer.probe_parquet_row_group_offset_table h.coh_path in
+         if
+           ((FStar_Pervasives_Native.uu___is_None bound_s) &&
+              (FStar_Pervasives_Native.uu___is_None bound_p))
+             && (FStar_Pervasives_Native.uu___is_None bound_o)
+         then
+           walk_row_groups_count_graph_global h table bound_g Prims.int_zero
+             rg_count rg_count Prims.int_zero
+         else
+           walk_row_groups_count_exact_global h table bound_s bound_p bound_o
+             bound_g Prims.int_zero rg_count rg_count Prims.int_zero)
+let cottas_ondisk_count_exact_tok (ds : cottas_ondisk_store)
+  (bound : cottas_bound_qp_tok) : Prims.nat=
+  let h = ds.cods_handle in
+  let bound_s = bound.cbqpt_s in
+  let bound_p = bound.cbqpt_p in
+  let bound_o = bound.cbqpt_o in
+  let bound_g = bound.cbqpt_g in
   if
     (((FStar_Pervasives_Native.uu___is_None bound_s) &&
         (FStar_Pervasives_Native.uu___is_None bound_p))

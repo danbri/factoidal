@@ -105,12 +105,19 @@ if [[ ! -f "${ARTIFACT}" ]]; then
 fi
 
 # ------------------------------------------------------------------
-# (a) Per-column laziness: a predicate-bound query must populate ONLY
-# the predicate dictionary. gene has ~6 distinct predicates but tens
+# (a) Per-column laziness: since the 2026-07-06 bound-side
+# token-direct fix, a predicate-bound query must populate NO term
+# dictionary at all -- not even the predicate one. The bound predicate
+# is serialized straight to its column-token form in F*
+# (cottas_ondisk_build_bound_qp_tok, RDF.CottasStore.fst) and compared
+# against decoded cells directly; the output side has been
+# token-direct since 9750eb7. gene has ~6 distinct predicates but tens
 # of thousands of distinct subjects/objects (design doc §1.c boot
-# log: subjs=91871 preds=6 objs=75142 graphs=1) -- if subjects/objects
-# were ALSO eagerly touched, that would show up as their own
-# ensure_*_loaded trace lines, which is exactly what this checks for.
+# log: subjs=91871 preds=6 objs=75142 graphs=1) -- if ANY of the three
+# term columns were touched, that would show up as its own
+# ensure_*_loaded trace line, which is exactly what this checks for.
+# (Only the graph dict populates, at dataset construction -- pinned
+# separately below.)
 # ------------------------------------------------------------------
 echo "-- (a) per-column laziness (bet7-trace stderr lines) --"
 
@@ -126,9 +133,9 @@ else
 fi
 
 if grep -q 'ensure_predicates_loaded: lazy populate' "${STDERR_PRED_ONLY}"; then
-  pass "pred-bound/predicates-loaded"
+  fail "pred-bound/predicates-NOT-loaded(token-direct bound side)" "a predicate-bound query populated the predicate dictionary -- the bound-side token-direct path has regressed to id resolution"
 else
-  fail "pred-bound/predicates-loaded" "expected an ensure_predicates_loaded trace line; got: $(cat "${STDERR_PRED_ONLY}")"
+  pass "pred-bound/predicates-NOT-loaded(token-direct bound side)"
 fi
 if grep -q 'ensure_subjects_loaded: lazy populate' "${STDERR_PRED_ONLY}"; then
   fail "pred-bound/subjects-NOT-loaded" "a rdf:type-bound query should not need the subject dictionary at all (search parses tokens directly, commit 9750eb7)"
@@ -160,10 +167,16 @@ else
   fail "pred-bound/gene-has-zero-named-graphs" "$(grep 'collect_distinct_graph' "${STDERR_PRED_ONLY}" || echo 'no collect_distinct_graph trace at all')"
 fi
 
-# A subject-bound point lookup, by contrast, SHOULD populate the
-# subject dictionary (encode_subject_fast needs the tok_to_id table
-# to resolve the bound IRI) -- confirms the trace mechanism itself
-# isn't just silent/broken.
+# A subject-bound point lookup, since the 2026-07-06 bound-side
+# token-direct fix, must NOT populate the subject dictionary either:
+# the bound IRI is serialized straight to its column-token form in F*
+# (cottas_ondisk_build_bound_qp_tok -> cottas_ondisk_search_tok,
+# RDF.CottasStore.fst) and compared against decoded cells directly --
+# no tok_to_id resolution, no encode_subject_fast, no corpus-wide
+# collect_distinct. This inverts the pre-fix expectation this check
+# used to pin ("subjects-loaded-on-demand"); the populate machinery
+# itself is still exercised by the graph-dict trace lines above, so
+# flipping this check does not blind us to a silently-broken tracer.
 STDERR_SUBJ="${WORKDIR}/subj-bound.stderr"
 # Ask the store itself for a subject IRI (robust against gene.ttl's
 # prefixed-name syntax; the store's dump is always absolute).
@@ -174,9 +187,9 @@ if [[ -n "${FIRST_SUBJ_IRI}" && "${FIRST_SUBJ_IRI}" != "s" ]]; then
     -e "SELECT ?p ?o WHERE { <${FIRST_SUBJ_IRI}> ?p ?o } LIMIT 1" \
     >/dev/null 2>"${STDERR_SUBJ}"
   if grep -q 'ensure_subjects_loaded: lazy populate' "${STDERR_SUBJ}"; then
-    pass "subj-bound/subjects-loaded-on-demand"
+    fail "subj-bound/subjects-NOT-loaded(token-direct bound side)" "the subject-bound query (<${FIRST_SUBJ_IRI}>) populated the subject dictionary -- the bound-side token-direct path has regressed to id resolution"
   else
-    fail "subj-bound/subjects-loaded-on-demand" "expected the subject-bound query (<${FIRST_SUBJ_IRI}>) to populate the subject dictionary"
+    pass "subj-bound/subjects-NOT-loaded(token-direct bound side)"
   fi
 else
   echo "  (skip: could not obtain a sample subject IRI from the store for the contrast check)"
@@ -240,24 +253,25 @@ if [[ -n "${LOOKUP_KB}" && "${LOOKUP_KB}" -lt "${TARGET_KB}" ]]; then
 else
   fail "rss/predicate-bound-lookup-under-100mib" "peak_rss_kb=${LOOKUP_KB:-N/A}, target<${TARGET_KB}"
 fi
-# The subject-bound point lookup is the one shape still above 100 MiB
-# (measured 2026-07-06 post-streaming-fix: ~137 MiB, down from the
-# pre-fix ~160+ MiB trajectory and the 226 MiB serve-eager figure).
-# Honest breakdown of the residual: (1) the retained subject
-# dictionary itself (91,871 distinct tokens x {token string + typed
-# copy + 3 hashtable slots}), (2) the page cache's decoded columns for
-# the row group the LIMIT-pushdown search actually touched, (3) the
-# ~56 MiB COUNT-baseline (binary + runtime + graph-enumeration
-# transient). Getting THIS shape under 100 MiB needs the bound-side
-# encode to stop round-tripping through the corpus-wide dictionary
-# (serialize the bound term to its column token directly in F*) --
-# design-doc follow-up, not this stage. Pin at <150 MiB so the win
-# already banked cannot silently regress.
-POINT_PIN_KB=$((150 * 1024))
+# The subject-bound point lookup came under the 100 MiB target on
+# 2026-07-06 (bound-side token-direct fix: the query's own bound term
+# is serialized straight to its column-token form in F* via
+# RDF.NQuads.Serialize -- cottas_ondisk_build_bound_qp_tok /
+# cottas_ondisk_search_tok in RDF.CottasStore.fst -- so the subject
+# dictionary's corpus-wide collect_distinct populate, previously the
+# ~45 MiB / ~10 s residual that kept this shape at ~137 MiB, never
+# runs at all; the subj-bound trace check above now expects NO
+# ensure_subjects_loaded line). Measured post-fix: ~92-95 MiB peak
+# (gene, max of 3 runs; the remaining bulk is the page cache's decoded
+# columns for the touched row groups plus the COUNT-baseline). Pin at
+# the original 100 MiB target so the banked win cannot silently
+# regress; the earlier interim <150 MiB pin (pre-bound-side-fix) is
+# superseded.
+POINT_PIN_KB=$((100 * 1024))
 if [[ -n "${POINT_KB}" && "${POINT_KB}" -lt "${POINT_PIN_KB}" ]]; then
-  pass "rss/point-lookup-under-150mib(honest: above 100MiB target, see comment)"
+  pass "rss/point-lookup-under-100mib"
 else
-  fail "rss/point-lookup-under-150mib(honest: above 100MiB target, see comment)" "peak_rss_kb=${POINT_KB:-N/A}, pin<${POINT_PIN_KB}"
+  fail "rss/point-lookup-under-100mib" "peak_rss_kb=${POINT_KB:-N/A}, pin<${POINT_PIN_KB}"
 fi
 
 # ------------------------------------------------------------------

@@ -545,6 +545,20 @@ quads; marginal = after subtracting the 11,540 KB process baseline):**
   bound term to its column token directly in F\*, the same way the
   output side already went tok-direct at 9750eb7) — follow-up, its
   own commit.
+  **Update, later the same day (2026-07-06): that follow-up landed**
+  (`cottas_ondisk_build_bound_qp_tok` / `cottas_ondisk_search_tok` in
+  `RDF.CottasStore.fst`, bound terms serialized via
+  `RDF.NQuads.Serialize`) — subject-bound point lookup now measures
+  **94,052 KB (91.8 MiB) peak, file mode and buffer mode identical**,
+  under the 100 MiB target (108.3 B/quad; marginal 95.1). The stage-4
+  script's interim <150 MiB pin is tightened to <100 MiB, and its
+  subject/predicate dictionary-populate trace expectations are
+  inverted: a bound query now populates NO term dictionary at all
+  (only the graph enumeration at dataset construction remains, by
+  design). Wall for the same point lookup: 11.7 s → 1.75 s. Full
+  before/after matrix in
+  [`2026-07-06-competitive-benchmark-results.md`](2026-07-06-competitive-benchmark-results.md)
+  §9.
 - Buffer mode vs file mode is within 0.2% on every shape (the image
   IS the cache entry either way, §2.1) — the buffer backend costs
   nothing over the on-disk reader, exactly as §1.d predicted.
