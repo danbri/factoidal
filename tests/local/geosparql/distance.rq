@@ -1,0 +1,8 @@
+PREFIX ex: <http://example.org/>
+PREFIX geof: <http://www.opengis.net/def/function/geosparql/>
+
+SELECT ?cityName (geof:distance(?g, ?londonGeom) AS ?d) WHERE {
+  ex:London ex:hasGeom ?londonGeom .
+  ?city a ex:City ; ex:name ?cityName ; ex:hasGeom ?g .
+}
+ORDER BY ?d

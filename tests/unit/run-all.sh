@@ -69,6 +69,11 @@ COMMON_MODULES=(
   Parser_Combinators
   Parser_TurtleScanner
   Parser_NTriples
+  RDF_Geo_Types
+  RDF_Geo_BBox
+  Parser_WKT
+  RDF_Geo_Topology
+  RDF_Geo_Functions
   HDT_Container
   HDT_Dictionary
   HDT_Triples

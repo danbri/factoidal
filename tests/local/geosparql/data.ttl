@@ -1,0 +1,31 @@
+@prefix ex: <http://example.org/> .
+@prefix geo: <http://www.opengis.net/ont/geosparql#> .
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+
+# Three UK city points (WGS84 lon/lat order, matching the WKT
+# convention: x=longitude, y=latitude) and two toy bounding-box
+# "constituency-ish" polygons, hand-picked so exactly one city falls
+# inside each polygon and one city (Manchester) falls inside neither —
+# a small, self-contained fixture per CLAUDE.md rule #6 (no synthetic
+# data "inspired by" external corpora, this is data we define and
+# check by hand).
+
+ex:London a ex:City ;
+  ex:name "London" ;
+  ex:hasGeom "POINT(-0.1278 51.5074)"^^geo:wktLiteral .
+
+ex:Manchester a ex:City ;
+  ex:name "Manchester" ;
+  ex:hasGeom "POINT(-2.2426 53.4808)"^^geo:wktLiteral .
+
+ex:Edinburgh a ex:City ;
+  ex:name "Edinburgh" ;
+  ex:hasGeom "POINT(-3.1883 55.9533)"^^geo:wktLiteral .
+
+ex:GreaterLondonArea a ex:Area ;
+  ex:name "Greater London (toy box)" ;
+  ex:hasGeom "POLYGON((-0.5 51.3, 0.3 51.3, 0.3 51.7, -0.5 51.7, -0.5 51.3))"^^geo:wktLiteral .
+
+ex:ScotlandArea a ex:Area ;
+  ex:name "Scotland (toy box)" ;
+  ex:hasGeom "POLYGON((-8 54.5, -1 54.5, -1 60.9, -8 60.9, -8 54.5))"^^geo:wktLiteral .

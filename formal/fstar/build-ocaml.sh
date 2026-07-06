@@ -383,8 +383,9 @@ if [[ "$STEP" == "all" || "$STEP" == "extract" ]]; then
     OWL.Tests.Manifest.fst
     RIF.Core.Syntax.fst RIF.Core.Translation.fst
     SHACL.Validation.fst
+    RDF.Geo.Types.fst RDF.Geo.BBox.fst RDF.Geo.Topology.fst RDF.Geo.Functions.fst
     Parser.FastString.fst Parser.IRI.fst
-    Parser.Combinators.fst Parser.TurtleScanner.fst SPARQL11.Parser.fst
+    Parser.Combinators.fst Parser.TurtleScanner.fst SPARQL11.Parser.fst Parser.WKT.fst
     Parser.NTriples.fst Parser.Turtle.fst HDT.Container.fst HDT.Dictionary.fst HDT.Triples.fst
     Parser.OWLFunctional.fst
     RDF.Turtle.Serialize.fst
@@ -768,6 +769,7 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
     Parser_FastString.ml RDF_IRI.ml SPARQL11_IRI_Resolve.ml Parser_IRI.ml \
     RDF_NQuads_Serialize.ml \
     Parser_Combinators.ml Parser_TurtleScanner.ml Parser_NTriples.ml Parser_Turtle.ml HDT_Container.ml HDT_Dictionary.ml HDT_Triples.ml \
+    RDF_Geo_Types.ml RDF_Geo_BBox.ml Parser_WKT.ml RDF_Geo_Topology.ml RDF_Geo_Functions.ml \
     Parser_OWLFunctional.ml \
     RDF_Turtle_Serialize.ml \
     Parser_NQuads.ml Parser_TriG.ml Parser_XML.ml XML_Wellformedness.ml XML_Namespaces.ml Parser_XPath.ml XPath_Eval.ml Parser_RDFXML.ml \
@@ -1339,6 +1341,7 @@ if [[ "$STEP" == "all" || "$STEP" == "js" ]]; then
     Parser_FastString.ml RDF_IRI.ml SPARQL11_IRI_Resolve.ml Parser_IRI.ml
     RDF_NQuads_Serialize.ml
     Parser_Combinators.ml Parser_TurtleScanner.ml Parser_NTriples.ml Parser_Turtle.ml HDT_Container.ml HDT_Dictionary.ml HDT_Triples.ml
+    RDF_Geo_Types.ml RDF_Geo_BBox.ml Parser_WKT.ml RDF_Geo_Topology.ml RDF_Geo_Functions.ml
     Parser_OWLFunctional.ml
     RDF_Turtle_Serialize.ml
     Parser_NQuads.ml Parser_TriG.ml Parser_XML.ml XML_Wellformedness.ml XML_Namespaces.ml Parser_XPath.ml XPath_Eval.ml Parser_RDFXML.ml

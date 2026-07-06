@@ -3641,6 +3641,122 @@ let eval_xsd_cast (v : eval_result) (target_type : Prims.string)
                            RDF_Term.lang_tag = FStar_Pervasives_Native.None
                          })
                   else ER_Error
+let er_to_geo_wkt (v : eval_result) :
+  RDF_Geo_Types.geo_wkt_value FStar_Pervasives_Native.option=
+  match er_string_info v with
+  | FStar_Pervasives_Native.Some (s, uu___, dt) ->
+      if dt = RDF_Geo_Types.geo_wktLiteral
+      then Parser_WKT.parse_wkt_literal s
+      else FStar_Pervasives_Native.None
+  | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+let geo_bool_result (b : Prims.bool FStar_Pervasives_Native.option) :
+  eval_result=
+  match b with
+  | FStar_Pervasives_Native.Some bb -> ER_Bool bb
+  | FStar_Pervasives_Native.None -> ER_Error
+let geo_double_result (v : RDF_Geo_Types.geo_scaled) : eval_result=
+  ER_Term
+    (RDF_Term.T_Literal
+       {
+         RDF_Term.lexical_form = (RDF_Geo_Types.gs_to_string v);
+         RDF_Term.datatype = RDF_Term.xsd_double;
+         RDF_Term.lang_tag = FStar_Pervasives_Native.None
+       })
+let geo_wkt_result (v : RDF_Geo_Types.geo_wkt_value) : eval_result=
+  ER_Term
+    (RDF_Term.T_Literal
+       {
+         RDF_Term.lexical_form = (Parser_WKT.serialize_wkt_value v);
+         RDF_Term.datatype = RDF_Geo_Types.geo_wktLiteral;
+         RDF_Term.lang_tag = FStar_Pervasives_Native.None
+       })
+let eval_geof_predicate (name : Prims.string)
+  (a : RDF_Geo_Types.geo_wkt_value) (b : RDF_Geo_Types.geo_wkt_value) :
+  eval_result FStar_Pervasives_Native.option=
+  let go f = geo_bool_result (RDF_Geo_Topology.geo_wkt_predicate f a b) in
+  if name = "sfEquals"
+  then FStar_Pervasives_Native.Some (go RDF_Geo_Topology.sf_equals)
+  else
+    if name = "sfDisjoint"
+    then FStar_Pervasives_Native.Some (go RDF_Geo_Topology.sf_disjoint)
+    else
+      if name = "sfIntersects"
+      then FStar_Pervasives_Native.Some (go RDF_Geo_Topology.sf_intersects)
+      else
+        if name = "sfTouches"
+        then FStar_Pervasives_Native.Some (go RDF_Geo_Topology.sf_touches)
+        else
+          if name = "sfWithin"
+          then FStar_Pervasives_Native.Some (go RDF_Geo_Topology.sf_within)
+          else
+            if name = "sfContains"
+            then
+              FStar_Pervasives_Native.Some (go RDF_Geo_Topology.sf_contains)
+            else
+              if name = "sfOverlaps"
+              then
+                FStar_Pervasives_Native.Some
+                  (go RDF_Geo_Topology.sf_overlaps)
+              else
+                if name = "sfCrosses"
+                then
+                  FStar_Pervasives_Native.Some
+                    (go RDF_Geo_Topology.sf_crosses)
+                else FStar_Pervasives_Native.None
+let eval_geof_call (iri_s : Prims.string) (arg_vals : eval_result Prims.list)
+  : eval_result=
+  let ns_len = FStar_String.strlen RDF_Geo_Types.geof_ns in
+  if
+    Prims.op_Negation
+      (((FStar_String.strlen iri_s) > ns_len) &&
+         ((FStar_String.sub iri_s Prims.int_zero ns_len) =
+            RDF_Geo_Types.geof_ns))
+  then ER_Error
+  else
+    (let name =
+       FStar_String.sub iri_s ns_len ((FStar_String.strlen iri_s) - ns_len) in
+     match arg_vals with
+     | a::b::[] ->
+         (match ((er_to_geo_wkt a), (er_to_geo_wkt b)) with
+          | (FStar_Pervasives_Native.Some wa, FStar_Pervasives_Native.Some
+             wb) ->
+              (match eval_geof_predicate name wa wb with
+               | FStar_Pervasives_Native.Some r -> r
+               | FStar_Pervasives_Native.None ->
+                   if name = "distance"
+                   then
+                     (if
+                        RDF_Geo_Topology.geo_crs_compatible
+                          wa.RDF_Geo_Types.gw_crs wb.RDF_Geo_Types.gw_crs
+                      then
+                        match RDF_Geo_Functions.geo_distance
+                                wa.RDF_Geo_Types.gw_geom
+                                wb.RDF_Geo_Types.gw_geom
+                        with
+                        | FStar_Pervasives_Native.Some d ->
+                            geo_double_result d
+                        | FStar_Pervasives_Native.None -> ER_Error
+                      else ER_Error)
+                   else ER_Error)
+          | (uu___1, uu___2) -> ER_Error)
+     | a::[] ->
+         if name = "envelope"
+         then
+           (match er_to_geo_wkt a with
+            | FStar_Pervasives_Native.Some wa ->
+                (match RDF_Geo_Functions.geo_envelope
+                         wa.RDF_Geo_Types.gw_geom
+                 with
+                 | FStar_Pervasives_Native.Some env ->
+                     geo_wkt_result
+                       {
+                         RDF_Geo_Types.gw_crs = (wa.RDF_Geo_Types.gw_crs);
+                         RDF_Geo_Types.gw_geom = env
+                       }
+                 | FStar_Pervasives_Native.None -> ER_Error)
+            | FStar_Pervasives_Native.None -> ER_Error)
+         else ER_Error
+     | uu___1 -> ER_Error)
 let rec eval_expr_with_base
   (base : RDF_Term.wf_iri FStar_Pervasives_Native.option) (e : expr)
   (mu : RDF_Graph_Executable.solution_mapping) : eval_result=
@@ -4172,25 +4288,37 @@ let rec eval_expr_with_base
                       | FStar_Pervasives_Native.None -> ER_Error)
                  | uu___4 -> ER_Error)
               else
-                (let xsd_ns = "http://www.w3.org/2001/XMLSchema#" in
-                 if
-                   ((FStar_String.strlen iri_s) >
-                      (FStar_String.strlen xsd_ns))
-                     &&
-                     ((FStar_String.sub iri_s Prims.int_zero
-                         (FStar_String.strlen xsd_ns))
-                        = xsd_ns)
-                 then
-                   match args with
-                   | e1::[] ->
-                       let v = eval_expr_with_base base e1 mu in
-                       let target_type =
-                         FStar_String.sub iri_s (FStar_String.strlen xsd_ns)
-                           ((FStar_String.strlen iri_s) -
-                              (FStar_String.strlen xsd_ns)) in
-                       eval_xsd_cast v target_type iri_s
-                   | uu___5 -> ER_Error
-                 else ER_Error)
+                if
+                  ((FStar_String.strlen iri_s) >
+                     (FStar_String.strlen RDF_Geo_Types.geof_ns))
+                    &&
+                    ((FStar_String.sub iri_s Prims.int_zero
+                        (FStar_String.strlen RDF_Geo_Types.geof_ns))
+                       = RDF_Geo_Types.geof_ns)
+                then
+                  eval_geof_call iri_s
+                    (eval_geof_args_with_base base args mu)
+                else
+                  (let xsd_ns = "http://www.w3.org/2001/XMLSchema#" in
+                   if
+                     ((FStar_String.strlen iri_s) >
+                        (FStar_String.strlen xsd_ns))
+                       &&
+                       ((FStar_String.sub iri_s Prims.int_zero
+                           (FStar_String.strlen xsd_ns))
+                          = xsd_ns)
+                   then
+                     match args with
+                     | e1::[] ->
+                         let v = eval_expr_with_base base e1 mu in
+                         let target_type =
+                           FStar_String.sub iri_s
+                             (FStar_String.strlen xsd_ns)
+                             ((FStar_String.strlen iri_s) -
+                                (FStar_String.strlen xsd_ns)) in
+                         eval_xsd_cast v target_type iri_s
+                     | uu___6 -> ER_Error
+                   else ER_Error)
 and eval_coalesce_with_base
   (base : RDF_Term.wf_iri FStar_Pervasives_Native.option)
   (es : expr Prims.list) (mu : RDF_Graph_Executable.solution_mapping) :
@@ -4201,6 +4329,14 @@ and eval_coalesce_with_base
       (match eval_expr_with_base base e mu with
        | ER_Error -> eval_coalesce_with_base base rest mu
        | v -> v)
+and eval_geof_args_with_base
+  (base : RDF_Term.wf_iri FStar_Pervasives_Native.option)
+  (es : expr Prims.list) (mu : RDF_Graph_Executable.solution_mapping) :
+  eval_result Prims.list=
+  match es with
+  | [] -> []
+  | e::rest -> (eval_expr_with_base base e mu) ::
+      (eval_geof_args_with_base base rest mu)
 and eval_in_with_base (base : RDF_Term.wf_iri FStar_Pervasives_Native.option)
   (v : eval_result) (es : expr Prims.list)
   (mu : RDF_Graph_Executable.solution_mapping) : eval_result=

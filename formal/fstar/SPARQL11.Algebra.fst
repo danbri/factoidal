@@ -31,6 +31,11 @@ open FStar.List.Tot
 open RDF.Graph.Executable
 open SPARQL.FullText
 module Lh = RDF.List.Helpers
+module Geo = RDF.Geo.Types
+module GeoBBox = RDF.Geo.BBox
+module GeoTopo = RDF.Geo.Topology
+module GeoFn = RDF.Geo.Functions
+module WKT = Parser.WKT
 
 (** ====================================================================== **)
 (** Part 1: Concrete RDF Types (imported from RDF.Graph.Executable)         **)
@@ -2573,6 +2578,85 @@ let eval_xsd_cast (v : eval_result) (target_type : string) (full_iri : string) :
         ER_Term (T_Literal { lexical_form = lex; datatype = full_iri; lang_tag = None })
       else ER_Error
 
+(* ================================================================ *)
+(* GeoSPARQL v0 `geof:` function-call dispatch.                       *)
+(*                                                                    *)
+(* Pure F* (RDF.Geo.Types / RDF.Geo.BBox / RDF.Geo.Topology /          *)
+(* RDF.Geo.Functions / Parser.WKT) — see                               *)
+(* docs/designissues/2026-05-07-geosparql-fstar-investigation.md and   *)
+(* the decided-vs-refused predicate table in RDF.Geo.Topology.fst's    *)
+(* header. `None` from any predicate/function (CRS mismatch,           *)
+(* undecided geometry-kind pair, or a non-`geo:wktLiteral` argument)    *)
+(* maps to `ER_Error`, never to a guessed boolean.                     *)
+(*                                                                    *)
+(* This is a plain (non-recursive) helper taking already-evaluated     *)
+(* argument results — it does not need to join `eval_expr_with_base`'s  *)
+(* big mutual-recursion clique below, it is simply called from the      *)
+(* `E_FunctionCall` arm with `args` pre-evaluated.                       *)
+(* ================================================================ *)
+
+let er_to_geo_wkt (v : eval_result) : option Geo.geo_wkt_value =
+  match er_string_info v with
+  | Some (s, _, dt) -> if dt = Geo.geo_wktLiteral then WKT.parse_wkt_literal s else None
+  | None -> None
+
+let geo_bool_result (b : option bool) : eval_result =
+  match b with
+  | Some bb -> ER_Bool bb
+  | None -> ER_Error
+
+let geo_double_result (v : Geo.geo_scaled) : eval_result =
+  ER_Term (T_Literal { lexical_form = Geo.gs_to_string v; datatype = xsd_double; lang_tag = None })
+
+let geo_wkt_result (v : Geo.geo_wkt_value) : eval_result =
+  ER_Term (T_Literal { lexical_form = WKT.serialize_wkt_value v;
+                        datatype = Geo.geo_wktLiteral; lang_tag = None })
+
+// The 8 Simple Features predicates, dispatched by exact IRI match.
+let eval_geof_predicate (name : string) (a b : Geo.geo_wkt_value) : option eval_result =
+  let go (f : Geo.geo_geometry -> Geo.geo_geometry -> option bool) : eval_result =
+    geo_bool_result (GeoTopo.geo_wkt_predicate f a b) in
+  if name = "sfEquals" then Some (go GeoTopo.sf_equals)
+  else if name = "sfDisjoint" then Some (go GeoTopo.sf_disjoint)
+  else if name = "sfIntersects" then Some (go GeoTopo.sf_intersects)
+  else if name = "sfTouches" then Some (go GeoTopo.sf_touches)
+  else if name = "sfWithin" then Some (go GeoTopo.sf_within)
+  else if name = "sfContains" then Some (go GeoTopo.sf_contains)
+  else if name = "sfOverlaps" then Some (go GeoTopo.sf_overlaps)
+  else if name = "sfCrosses" then Some (go GeoTopo.sf_crosses)
+  else None
+
+let eval_geof_call (iri_s : string) (arg_vals : list eval_result) : eval_result =
+  let ns_len = String.length Geo.geof_ns in
+  if not (String.length iri_s > ns_len && String.sub iri_s 0 ns_len = Geo.geof_ns) then ER_Error
+  else
+    let name = String.sub iri_s ns_len (String.length iri_s - ns_len) in
+    match arg_vals with
+    | [a; b] ->
+      (match er_to_geo_wkt a, er_to_geo_wkt b with
+       | Some wa, Some wb ->
+         (match eval_geof_predicate name wa wb with
+          | Some r -> r
+          | None ->
+            if name = "distance" then
+              if GeoTopo.geo_crs_compatible wa.Geo.gw_crs wb.Geo.gw_crs then
+                (match GeoFn.geo_distance wa.Geo.gw_geom wb.Geo.gw_geom with
+                 | Some d -> geo_double_result d
+                 | None -> ER_Error)
+              else ER_Error
+            else ER_Error)
+       | _, _ -> ER_Error)
+    | [a] ->
+      if name = "envelope" then
+        (match er_to_geo_wkt a with
+         | Some wa ->
+           (match GeoFn.geo_envelope wa.Geo.gw_geom with
+            | Some env -> geo_wkt_result ({ Geo.gw_crs = wa.Geo.gw_crs; Geo.gw_geom = env })
+            | None -> ER_Error)
+         | None -> ER_Error)
+      else ER_Error
+    | _ -> ER_Error
+
 let rec eval_expr_with_base (base : option wf_iri) (e : expr) (mu : solution_mapping)
   : Tot eval_result (decreases e) =
   match e with
@@ -2961,6 +3045,11 @@ let rec eval_expr_with_base (base : option wf_iri) (e : expr) (mu : solution_map
           | Some s -> ER_Term (T_BNode ("_:b" ^ s))
           | None -> ER_Error)
        | _ -> ER_Error
+     // GeoSPARQL v0 geof: function calls (Simple Features predicates,
+     // geof:distance, geof:envelope) — see eval_geof_call above.
+     else if String.length iri_s > String.length Geo.geof_ns &&
+             String.sub iri_s 0 (String.length Geo.geof_ns) = Geo.geof_ns then
+       eval_geof_call iri_s (eval_geof_args_with_base base args mu)
      // XSD type constructor function calls (casting)
      else
        let xsd_ns = "http://www.w3.org/2001/XMLSchema#" in
@@ -2983,6 +3072,19 @@ and eval_coalesce_with_base (base : option wf_iri) (es : list expr) (mu : soluti
     (match eval_expr_with_base base e mu with
      | ER_Error -> eval_coalesce_with_base base rest mu
      | v -> v)
+
+// Evaluate a geof: function call's argument list. A plain
+// `List.Tot.map (fun e -> eval_expr_with_base base e mu) args` at the
+// `E_FunctionCall` call site does not let F* discharge the
+// termination obligation for the closure's recursive call — this
+// explicit structurally-recursive helper (joined into the same `and`
+// clique as `eval_expr_with_base`, exactly like `eval_coalesce_with_base`
+// / `eval_in_with_base` just above) does.
+and eval_geof_args_with_base (base : option wf_iri) (es : list expr) (mu : solution_mapping)
+  : Tot (list eval_result) (decreases es) =
+  match es with
+  | [] -> []
+  | e :: rest -> eval_expr_with_base base e mu :: eval_geof_args_with_base base rest mu
 
 (* IN: check if value equals any in list *)
 and eval_in_with_base (base : option wf_iri) (v : eval_result) (es : list expr) (mu : solution_mapping)

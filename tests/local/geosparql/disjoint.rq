@@ -1,0 +1,9 @@
+PREFIX ex: <http://example.org/>
+PREFIX geof: <http://www.opengis.net/def/function/geosparql/>
+
+SELECT ?cityName WHERE {
+  ex:GreaterLondonArea ex:hasGeom ?ageom .
+  ?city a ex:City ; ex:name ?cityName ; ex:hasGeom ?cgeom .
+  FILTER(geof:sfDisjoint(?cgeom, ?ageom))
+}
+ORDER BY ?cityName

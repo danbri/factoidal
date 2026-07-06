@@ -1,2 +1,4 @@
-    RDF.Store.Combine.fst (up to date, skipped -- source unchanged since last extract)
-    SPARQL.Diagnostics.fst (up to date, skipped -- source unchanged since last extract)
+    RIF.Core.Tests.fst (up to date, skipped -- source unchanged since last extract)
+    [SPARQL11.Store.fst]
+    Parser.BallyhooHDTQ.fst (up to date, skipped -- source unchanged since last extract)
+    [SPARQL11.Store.fst] Extracted module SPARQL11.Store
