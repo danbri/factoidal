@@ -1,0 +1,275 @@
+---
+title: "Mutating and serving data: SPARQL Update, Protocol, Graph Store"
+description: "SPARQL 1.1 Update live in your browser via the npm-entry ABI, this week's durable delta-log UPDATE work dated commit by commit, and an honest look at what factoidal-http and the Graph Store Protocol do and don't do today."
+layout: hub.njk
+series: docs-hub
+series_order: 17
+vocab: foaf
+status: published
+tests: tests/hub/post17_test.mjs
+---
+
+Every post so far in this series read data. This one writes it —
+SPARQL 1.1 Update, and then, because a write that vanishes on restart
+isn't durable, the delta-log work that shipped *this week* to give
+updates a crash-safe home on disk. It closes the hub's original series
+plan: the [index](../) has carried a placeholder titled exactly this
+since the first wave shipped, waiting on the durability work below to
+be real rather than aspirational.
+
+## SPARQL 1.1 Update: not a gap
+
+`SPARQL11.Algebra.fst:5733`'s `apply_update : rdf_dataset ->
+sparql_update -> rdf_dataset` is a verified, total F\* function
+implementing INSERT DATA, DELETE DATA, DELETE/INSERT WHERE, CLEAR, and
+full graph management (ADD/COPY/MOVE/CREATE/DROP) — LOAD is accepted by
+the algebra but rejected defensively at the HTTP sandbox layer
+(`SPARQL.Update.Analysis.fst`'s `update_has_load`, an operational
+policy decision, not a gap in the algebra). The W3C SPARQL 1.1 Update
+conformance suite — 14 manifests, 176 test cases — scores **176 pass, 0
+fail (out of 176)**, per
+[`docs/test-results/latest.json`](https://github.com/danbri/factoidal/blob/claude/main/docs/test-results/latest.json)
+(2026-07-06 05:29 UTC, commit
+[`616247d`](https://github.com/danbri/factoidal/commit/616247d)):
+`add` 8/8, `basic-update` 13/13, `clear` 4/4, `copy` 6/6, `delete`
+19/19, `delete-data` 6/6, `delete-insert` 17/17, `delete-where` 6/6,
+`drop` 4/4, `move` 6/6, `syntax-update-1` 54/54, `syntax-update-2`
+1/1, `update-silent` 13/13, `http-rdf-update` 19/19.
+
+### Try it — INSERT DATA, live
+
+The typed `fn` adapter every other post in this series uses doesn't
+wire up `update` yet (`docs/_includes/hub.njk`'s `fn` object exposes
+`parse`/`query`/`shaclValidate` — no `update` method; that's an honest
+gap in the adapter, not the engine). But [post 12](./12-the-api-tour.md)'s
+capability probe already established the escape hatch: `Factoidal.
+loadNpmEntry()` returns the raw npm-entry ABI object underneath `fn`,
+and that ABI exports `updateDataset` directly — the js_of_ocaml build
+this whole series' cells run against. So this cell reaches for the ABI
+the same way post 12's capability probe does, wraps it in a try/catch
+per the [cell contract](./README/)'s capability-check pattern (an
+older bundle might predate `updateDataset`), and actually runs an
+INSERT DATA:
+
+```observable-js
+const ttl = `
+  @prefix foaf: <http://xmlns.com/foaf/0.1/> .
+  <http://example.org/alice> foaf:name "Alice" .
+`;
+
+try {
+  const abi = await Factoidal.loadNpmEntry();
+  const before = JSON.parse(abi.parseToDatasetJson(ttl, "turtle", ""));
+
+  const insertData = `
+    PREFIX foaf: <http://xmlns.com/foaf/0.1/>
+    INSERT DATA { <http://example.org/bob> foaf:name "Bob" . }
+  `;
+  const after = JSON.parse(abi.updateDataset(before.nquads, insertData));
+
+  const rows = JSON.parse(abi.queryDataset(
+    after.nquads,
+    "PREFIX foaf: <http://xmlns.com/foaf/0.1/> SELECT ?name WHERE { ?s foaf:name ?name } ORDER BY ?name"
+  ));
+
+  return {
+    available: true,
+    namesBeforeInsertData: ["Alice"],
+    namesAfterInsertData: rows.srj.results.bindings.map((b) => b.name.value),
+  };
+} catch (err) {
+  return { available: false, note: err.message };
+}
+```
+
+`namesAfterInsertData` should read `["Alice", "Bob"]` — Bob's triple,
+inserted by a real `apply_update` call running in your browser right
+now, is already there when the very next query runs.
+
+### Try it — DELETE/INSERT WHERE
+
+INSERT DATA/DELETE DATA only ever touch ground triples. The pattern
+most real edits need is DELETE/INSERT WHERE — find whatever matches a
+pattern, then replace it. Same ABI, same engine, correcting Bob's name
+in place rather than deleting and re-inserting by hand:
+
+```observable-js
+const ttl2 = `
+  @prefix foaf: <http://xmlns.com/foaf/0.1/> .
+  <http://example.org/alice> foaf:name "Alice" .
+  <http://example.org/bob> foaf:name "Bob" .
+`;
+
+try {
+  const abi = await Factoidal.loadNpmEntry();
+  const before = JSON.parse(abi.parseToDatasetJson(ttl2, "turtle", ""));
+
+  const deleteInsertWhere = `
+    PREFIX foaf: <http://xmlns.com/foaf/0.1/>
+    DELETE { ?s foaf:name "Bob" }
+    INSERT { ?s foaf:name "Bobby" }
+    WHERE  { ?s foaf:name "Bob" }
+  `;
+  const after = JSON.parse(abi.updateDataset(before.nquads, deleteInsertWhere));
+
+  const rows = JSON.parse(abi.queryDataset(
+    after.nquads,
+    "PREFIX foaf: <http://xmlns.com/foaf/0.1/> SELECT ?name WHERE { ?s foaf:name ?name } ORDER BY ?name"
+  ));
+
+  return {
+    available: true,
+    namesAfterDeleteInsertWhere: rows.srj.results.bindings.map((b) => b.name.value),
+  };
+} catch (err) {
+  return { available: false, note: err.message };
+}
+```
+
+`namesAfterDeleteInsertWhere` should read `["Alice", "Bobby"]` — the
+`WHERE` clause found the one triple matching `foaf:name "Bob"`, and
+the `DELETE`/`INSERT` pair swapped it for `"Bobby"` in a single
+request, entirely in your browser, against the same engine
+`bin/linux-x86_64/factoidal` runs natively.
+
+## The durability story, dated
+
+Everything above runs `apply_update` over a plain in-memory
+`rdf_dataset` — correct, but gone the moment the process exits. Until
+**this week**, that was the whole story: no F\* module in this tree
+touched a file for UPDATE durability at all. That changed across three
+commits landed today, 2026-07-06, all on `claude/main`, all specified
+first in
+[`docs/designissues/2026-07-06-durable-update-design.md`](https://github.com/danbri/factoidal/blob/claude/main/docs/designissues/2026-07-06-durable-update-design.md):
+
+1. **Stage 1 — the delta-log entry format, proved.**
+   [`RDF.Store.Columnar.DeltaLog.fst`](https://github.com/danbri/factoidal/blob/claude/main/formal/fstar/RDF.Store.Columnar.DeltaLog.fst)
+   defines the five delta-entry shapes an update can produce
+   (`DE_Add`/`DE_Remove`/`DE_Clear`/`DE_Drop`/`DE_Create`), each
+   serialized to a length-prefixed, checksummed byte frame. The
+   module's payoff is a proved lemma, not an assertion: `parse_delta_entry
+   (serialize_delta_entry e ++ rest) == Some (e, rest)` for every
+   well-formed entry — parsing what serializing just wrote is a
+   **theorem**, checked by Z3 4.13.3, not a round-trip test that merely
+   happened to pass. Commit
+   [`868a20b`](https://github.com/danbri/factoidal/commit/868a20b),
+   2026-07-06 — 74 unit assertions (every constructor, non-ASCII and
+   astral-plane UTF-8, an 100KB literal, 8 corruption cases) additionally
+   pin the extracted OCaml against the same claim.
+2. **Stage 2 — a crash-safe log file, 270 kills, 270 clean
+   recoveries.** The same module's `delta_batch`/`DLOG` file layer adds
+   streaming `serialize_log`/`parse_log` with an extended round-trip
+   lemma, realized on disk by five `assume val` I/O primitives (append/
+   fsync/read-all/atomic-rename/fsync-dir — issue #282, per Iron Rule
+   #3). The empirical check that actually matters for a crash-safety
+   claim: `tests/local/delta_log_crash_harness.sh` SIGKILLs a writer
+   process mid-append at random points and confirms the log recovers a
+   clean prefix every time. Measured, two seeded runs, this week:
+   **270 kills, 270 clean recoveries, 0 corrupt accepts.** Commit
+   [`1f27320`](https://github.com/danbri/factoidal/commit/1f27320),
+   2026-07-06.
+3. **Stage 3 — reads see the delta.** New module
+   [`RDF.Store.Columnar.DeltaMerge.fst`](https://github.com/danbri/factoidal/blob/claude/main/formal/fstar/RDF.Store.Columnar.DeltaMerge.fst)'s
+   `merge_on_read` composes a base graph's rows with a resolved delta
+   (adds, tombstoned removes, CLEAR/DROP/CREATE applied in sequence
+   order), backed by a **proved** correspondence lemma
+   (`lemma_merge_on_read_matches_apply_entries`): for every triple,
+   membership in the reference application of delta entries to the
+   base graph equals membership in the merged read. The CLI grew
+   `--delta-log PATH` (alongside `--data-cottas`) so a query can
+   actually route through this path today. Commit
+   [`5e8399a`](https://github.com/danbri/factoidal/commit/5e8399a),
+   2026-07-06 (this is also, as of this writing, `claude/main`'s
+   `HEAD`) — end-to-end acceptance
+   (`tests/local/durable_update_stage3.sh`, 15 pass, 0 fail) plus a
+   further 25-kill-iteration harness, 25 clean recoveries.
+
+Honestly staged, not oversold: the proved lemma covers `merge_on_read`
+against *delta entries*, the primitive op shapes — the fuller
+design-doc lemma over real SPARQL `update_op` values (what `apply_update`
+actually consumes) awaits an `update_ops_to_delta_entries` translator
+that hasn't landed yet. That gap is written into the module itself as
+a residual, pinned by the stage-3 acceptance test rather than by proof,
+until the translator exists.
+
+**What remains**, per the design doc's own staged plan — none of this
+is done:
+
+- **Compaction** (stage 4): folding an accumulated delta back into a
+  fresh `.cottas` base via the existing `corpus_pipeline.py` writer, so
+  the delta log doesn't grow without bound. Unstarted.
+- **HTTP wiring** (stage 8): `factoidal-http`'s `/update` endpoint
+  still mutates an in-memory `rdf_dataset` and discards it on restart
+  — nothing in the live HTTP server touches the delta log yet (see
+  "Serving" below). Unstarted.
+- **Parliament-scale validation** (stage 9): re-running the
+  delta-penalty measurement (empty-delta query cost must match the
+  base-file baseline; a realistic-size delta must add a small, bounded
+  cost, not scale with corpus size) against the actual 3.14M-quad
+  UK Parliament store. Blocked on corpus access from this sandbox,
+  same caveat the [performance post](./15-how-fast-the-performance-story.md)'s
+  COTTAS numbers carried.
+
+Three stages landed in one day is fast — which is exactly why every
+claim above carries its own commit and date rather than a blanket
+"durable UPDATE shipped."
+
+## Serving: the SPARQL Protocol, observability, and the Graph Store gap
+
+`bin/factoidal-http` is the standalone SPARQL 1.1 Protocol server:
+`GET`/`POST /query` (and `/sparql`), `POST /update`, a `--read-only`
+flag that turns the latter into a 403, and CORS controls — the same
+34/34 `protocol` suite score cited above covers this dispatch layer.
+It's what serves the
+[live UK Parliament demo]({{ '/web/demos/ukparliament/' | url }}) —
+**3,143,406 real quads**, queryable today over the actual SPARQL 1.1
+Protocol, not a mock.
+
+Every query against it produces layered timing data
+([`docs/observability.md`](https://github.com/danbri/factoidal/blob/claude/main/docs/observability.md)):
+a fixed-field stderr line per query (operator-only), a machine-readable
+`Server-Timing` response header (`parse;dur=0, eval;dur=137000,
+format;dur=0, total;dur=137001`, renders natively in browser DevTools),
+and `/admin/recent.json` (last 50 queries + counters). The
+`Server-Timing` header is the one surface gated by policy — per issue
+[`#266`](https://github.com/danbri/factoidal/issues/266), per-stage
+timing can leak query-cost information (named-graph cardinality, FILTER
+selectivity) to a requester who shouldn't observe it, so
+`--server-timing` defaults to `auto`: **off** whenever the deployment
+looks multi-tenant or tunnel-exposed (a per-user write sandbox flag is
+set, CORS is anything but off, or the bind host isn't loopback), **on**
+otherwise. `on`/`off` are also available as explicit overrides. The
+stderr line and `/admin/recent.json` are operator-only and are never
+gated — only the header that goes back to the requester is.
+
+**Graph Store Protocol: specified and proven, not yet exposed as
+routes.**
+[`SPARQL.GraphStore.fst`](https://github.com/danbri/factoidal/blob/claude/main/formal/fstar/SPARQL.GraphStore.fst)
+is a verified, `assume-val`-free F\* module implementing the five GSP
+operations (`gsp_get`/`gsp_head`/`gsp_put`/`gsp_post`/`gsp_delete`) over
+a `graph_store` value — PUT-creates-vs-replaces, POST-merges,
+DELETE-existence, all decided in F\*, not in a runner shim. It's
+exercised by the W3C `http-rdf-update` manifest's stateful test
+sequence in the test runner (19/19, cited above) — a suite-level shared
+store that runs PUT/POST/DELETE against it across a whole manifest.
+What it is **not**, today: wired into `bin/factoidal-http` as live HTTP
+routes. Grep `bin/factoidal-http/factoidal_http.ml`'s route table and
+there is no `PUT`/`POST`/`DELETE /data?graph=...`-shaped endpoint —
+only `/query`, `/sparql`, and the whole-dataset `/update` described
+above. A client that wants per-graph document semantics against a
+running `factoidal-http` server can't do it yet; the semantics exist
+and are proven, the HTTP surface for them does not.
+
+## What's next
+
+This closes the hub's original series plan — every placeholder the
+[index](../) named is now a published post. [The previous
+post](./16-the-verified-in-fstar-story.md) covered why F\* and what
+"verified" means here; this one covered the newest work in the project,
+still landing as this post is written.
+
+The live cells above are pinned in
+[`tests/hub/post17_test.mjs`](https://github.com/danbri/factoidal/blob/claude/main/tests/hub/post17_test.mjs) —
+the exact same source, executed against the real `npm/factoidal`
+npm-entry ABI bundle instead of the in-browser `Factoidal.loadNpmEntry()`
+adapter.

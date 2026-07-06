@@ -109,6 +109,7 @@ POSTS=(
   "web/hub/14-the-rdfjs-api/"
   "web/hub/15-how-fast-the-performance-story/"
   "web/hub/16-the-verified-in-fstar-story/"
+  "web/hub/17-mutating-and-serving-data/"
 )
 for p in "${POSTS[@]}"; do
   [ -f "$SITE_DIR/$p/index.html" ] || { echo "FAIL: $SITE_DIR/$p/index.html was not produced." >&2; exit 1; }

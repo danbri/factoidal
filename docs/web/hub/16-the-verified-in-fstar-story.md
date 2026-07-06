@@ -206,13 +206,15 @@ and `current-state.md`'s own "assume val inventory" section.
 
 ## What's next
 
-This is the last post in the current wave — the [hub index](../)
-lists everything published so far. The series plan
-([`docs/designissues/2026-07-05-docs-hub-plan.md`](https://github.com/danbri/factoidal/blob/claude/main/docs/designissues/2026-07-05-docs-hub-plan.md))
-still names "Mutating and serving data" (SPARQL Update, Protocol, Graph
-Store) as the one remaining placeholder — it becomes real when durable
-UPDATE, the feature this post's first proof story is a stage of,
-actually ships.
+This series' last placeholder — "Mutating and serving data" (SPARQL
+Update, Protocol, Graph Store) — named durable UPDATE as the thing
+that would make it real rather than aspirational. The delta-log proof
+story above is stage 1 of exactly that work, and by the time this
+sentence is being read, stages 2 and 3 have landed alongside it:
+[the next post](./17-mutating-and-serving-data.md) covers SPARQL 1.1
+Update live in your browser, the durability work dated commit by
+commit, and an honest look at what `factoidal-http` and the Graph
+Store Protocol do and don't do yet.
 
 The live cell above is pinned in
 [`tests/hub/post16_test.mjs`](https://github.com/danbri/factoidal/blob/claude/main/tests/hub/post16_test.mjs) —
