@@ -149,18 +149,24 @@ let raw_bound_opt cods scope (b : SPARQL11_Algebra.triple_pattern_bound) =
   RDF_CottasStore.cottas_ondisk_build_bound_qp_opt cods
     b.SPARQL11_Algebra.bs b.SPARQL11_Algebra.bp b.SPARQL11_Algebra.bo scope
 
+(* 2026-07-06: `cottas_ondisk_search[_limited]` now return
+   `cottas_qp_row_tok` (raw column strings), not the id-based
+   `cottas_qp_row` -- see RDF.CottasStore.fst's `cottas_qp_row_tok`
+   banner comment. Consumed via the tok-shaped sibling
+   `cottas_ondisk_rows_tok_to_triples`, which takes no `cods` handle
+   (no id to decode through). *)
 let raw_solve cods scope b =
   match raw_bound_opt cods scope b with
   | FStar_Pervasives_Native.None -> []
   | FStar_Pervasives_Native.Some bnd ->
-    RDF_CottasStore.cottas_ondisk_rows_to_triples cods
+    RDF_CottasStore.cottas_ondisk_rows_tok_to_triples
       (RDF_CottasStore.cottas_ondisk_search cods bnd)
 
 let raw_solve_limited cods scope b n =
   match raw_bound_opt cods scope b with
   | FStar_Pervasives_Native.None -> []
   | FStar_Pervasives_Native.Some bnd ->
-    RDF_CottasStore.cottas_ondisk_rows_to_triples cods
+    RDF_CottasStore.cottas_ondisk_rows_tok_to_triples
       (RDF_CottasStore.cottas_ondisk_search_limited cods bnd n)
 
 let raw_estimate cods scope b =

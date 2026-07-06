@@ -41,11 +41,19 @@ let caps_of_cottas (cods : cottas_ondisk_store) (scope : cottas_ondisk_graph_sco
 
     // Realises the GB_CottasOnDisk arm of backend_search
     // (SPARQL11.Store.fst:114-126).
+    // 2026-07-06: `cottas_ondisk_search[_limited]` now return
+    // `cottas_qp_row_tok` (raw column strings), not the id-based
+    // `cottas_qp_row` — a matched row's subject/predicate/object no
+    // longer round-trips through the corpus-wide `ondisk_lookup_*_id_
+    // global`/Bet7 tables (see RDF.CottasStore.fst's `cottas_qp_row_tok`
+    // banner comment for the profiling that motivated this). Consumed
+    // here via `cottas_ondisk_rows_tok_to_triples`, the tok-shaped
+    // sibling of the old `cottas_ondisk_rows_to_triples`.
     sc_solve =
       (fun b ->
         match cottas_ondisk_build_bound_qp_opt cods b.bs b.bp b.bo scope with
         | None -> []
-        | Some bound -> cottas_ondisk_rows_to_triples cods (cottas_ondisk_search cods bound));
+        | Some bound -> cottas_ondisk_rows_tok_to_triples (cottas_ondisk_search cods bound));
 
     // Real LIMIT pushdown — realises the GB_CottasOnDisk arm of
     // backend_search_limited (SPARQL11.Store.fst:171-179).
@@ -53,7 +61,7 @@ let caps_of_cottas (cods : cottas_ondisk_store) (scope : cottas_ondisk_graph_sco
       (fun b n ->
         match cottas_ondisk_build_bound_qp_opt cods b.bs b.bp b.bo scope with
         | None -> []
-        | Some bound -> cottas_ondisk_rows_to_triples cods (cottas_ondisk_search_limited cods bound n));
+        | Some bound -> cottas_ondisk_rows_tok_to_triples (cottas_ondisk_search_limited cods bound n));
 
     // Realises the GB_CottasOnDisk arm of backend_estimate
     // (SPARQL11.Store.fst:207-210).

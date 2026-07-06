@@ -19,7 +19,7 @@ let caps_of_cottas (cods : RDF_CottasStore.cottas_ondisk_store)
          with
          | FStar_Pervasives_Native.None -> []
          | FStar_Pervasives_Native.Some bound ->
-             RDF_CottasStore.cottas_ondisk_rows_to_triples cods
+             RDF_CottasStore.cottas_ondisk_rows_tok_to_triples
                (RDF_CottasStore.cottas_ondisk_search cods bound));
     RDF_Store_Capabilities.sc_solve_limited =
       (fun b n ->
@@ -29,7 +29,7 @@ let caps_of_cottas (cods : RDF_CottasStore.cottas_ondisk_store)
          with
          | FStar_Pervasives_Native.None -> []
          | FStar_Pervasives_Native.Some bound ->
-             RDF_CottasStore.cottas_ondisk_rows_to_triples cods
+             RDF_CottasStore.cottas_ondisk_rows_tok_to_triples
                (RDF_CottasStore.cottas_ondisk_search_limited cods bound n));
     RDF_Store_Capabilities.sc_estimate =
       (fun b ->

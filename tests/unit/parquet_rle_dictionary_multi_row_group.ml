@@ -452,6 +452,100 @@ let () =
     (some "lit0") (some "http://ex.org/gA");
   check_combo "no-bounds-at-all" none none none none;
 
+  (* 10. Selective-column SEARCH (2026-07-06 follow-up to item 9's
+     COUNT fix, docs/designissues/2026-07-05-disk-backed-db-perf-
+     review.md and the accompanying search-selective-decode design
+     note): `cottas_ondisk_search`'s output construction used to
+     round-trip every matched row's already-decoded column token
+     through `ondisk_lookup_*_id_global` (token -> corpus-wide id, via
+     the OCaml Bet7 lazy loader's `collect_distinct`, which decodes and
+     dedupes an ENTIRE COLUMN ACROSS EVERY ROW GROUP the first time
+     that column is touched, regardless of how few row groups a query
+     actually needed). `token_to_subject` / `_predicate` / `_object` /
+     `_graph_name` (new in RDF.CottasStore.fst) parse the raw column
+     token DIRECTLY into its typed term via `Parser.NTriples`'s
+     verified N-Triples term grammar instead -- no id, no corpus-wide
+     dictionary. This section pins those four functions directly
+     against hand-written, format-conformant tokens (`<iri>`,
+     `_:bnode`, `"lex"`, `"lex"@lang`, `"lex"^^<dt>` --
+     docs/cottas-format-v1.md section 4) rather than against this
+     file's own fixture, whose s/p/o sample values
+     (`http://ex.org/s0`, etc.) are NOT bracket-wrapped and so are not
+     valid IRI tokens per that grammar -- this fixture was built to
+     pin the byte-level Parquet/RLE_DICTIONARY decode (sections 1-9
+     above), never term-level parsing, and real pycottas-produced
+     artifacts DO bracket every IRI token (confirmed directly against
+     the gene.cottas corpus this fix was profiled against: `SELECT s
+     FROM parquet_scan(...)` returns
+     `<http://www.wikidata.org/entity/Q18053115>`, not the bare IRI).
+     End-to-end equivalence on a REAL, conformant, pycottas-built
+     store is covered by `tests/local/cottas_row_order_regressions.sh`
+     and `tests/local/cottas_corpus_regressions.sh`, which exercise
+     `cottas_ondisk_search` (via `sc_solve`/`sc_solve_limited`) through
+     the actual SPARQL engine with literal expected row counts, both
+     before and after this change. *)
+  Printf.printf "\n== direct token -> term parsing (selective SEARCH, 2026-07-06) ==\n%!";
+  let module G = RDF_Graph_Executable in
+  let module Store = RDF_CottasStore in
+  check ~name:"token_to_subject <iri>"
+    (Store.token_to_subject "<http://example.org/s>" = G.S_IRI "http://example.org/s");
+  check ~name:"token_to_subject _:bnode"
+    (Store.token_to_subject "_:b1" = G.S_BNode "b1");
+  check ~name:"token_to_predicate <iri>"
+    (Store.token_to_predicate "<http://example.org/p>" = "http://example.org/p");
+  check ~name:"token_to_object <iri>"
+    (Store.token_to_object "<http://example.org/o>" = G.T_IRI "http://example.org/o");
+  check ~name:"token_to_object _:bnode"
+    (Store.token_to_object "_:b2" = G.T_BNode "b2");
+  check ~name:"token_to_object bare literal (xsd:string)"
+    (match Store.token_to_object "\"hello\"" with
+     | G.T_Literal { G.lexical_form = "hello"; G.datatype = dt; G.lang_tag = None } ->
+       dt = "http://www.w3.org/2001/XMLSchema#string"
+     | _ -> false);
+  check ~name:"token_to_object language-tagged literal"
+    (match Store.token_to_object "\"bonjour\"@fr" with
+     | G.T_Literal { G.lexical_form = "bonjour";
+                     G.datatype = "http://www.w3.org/1999/02/22-rdf-syntax-ns#langString";
+                     G.lang_tag = Some "fr" } -> true
+     | _ -> false);
+  check ~name:"token_to_object typed literal"
+    (match Store.token_to_object
+             "\"42\"^^<http://www.w3.org/2001/XMLSchema#integer>" with
+     | G.T_Literal { G.lexical_form = "42";
+                     G.datatype = "http://www.w3.org/2001/XMLSchema#integer";
+                     G.lang_tag = None } -> true
+     | _ -> false);
+  check ~name:"token_to_graph_name <iri>"
+    (Store.token_to_graph_name "<http://example.org/g>" = "http://example.org/g");
+  (* Malformed / non-conformant tokens must fall back to the SAME
+     out-of-range sentinels the id-based decode path
+     (`cottas_ondisk_decode_subject` / `_object`) already uses for
+     corrupt data, never raise or silently fabricate a plausible term. *)
+  check ~name:"token_to_subject malformed token -> sentinel, not a crash"
+    (Store.token_to_subject "not-a-valid-token" = G.S_BNode "cottas_decode_oor");
+  check ~name:"token_to_object malformed token -> sentinel, not a crash"
+    (Store.token_to_object "not-a-valid-token" = G.T_BNode "cottas_decode_oor");
+  (* `cottas_ondisk_row_tok_to_quad` composes the four parsers plus the
+     DEFAULT-graph sentinel handling (docs/cottas-format-v1.md section
+     6): a "DEFAULT" graph token must decode to `None`, not an IRI. *)
+  let row_default = {
+    Store.cqprt_s = "<http://example.org/s>";
+    Store.cqprt_p = "<http://example.org/p>";
+    Store.cqprt_o = "<http://example.org/o>";
+    Store.cqprt_g = "DEFAULT";
+  } in
+  let (t, g) = Store.cottas_ondisk_row_tok_to_quad row_default in
+  check ~name:"row_tok_to_quad: DEFAULT graph token -> None"
+    (g = FStar_Pervasives_Native.None);
+  check ~name:"row_tok_to_quad: triple fields parsed correctly"
+    (t.G.s = G.S_IRI "http://example.org/s" &&
+     t.G.p = "http://example.org/p" &&
+     t.G.o = G.T_IRI "http://example.org/o");
+  let row_named = { row_default with Store.cqprt_g = "<http://example.org/g>" } in
+  let (_, g2) = Store.cottas_ondisk_row_tok_to_quad row_named in
+  check ~name:"row_tok_to_quad: named graph token -> Some iri"
+    (g2 = FStar_Pervasives_Native.Some "http://example.org/g");
+
   Printf.printf
     "== summary: %d pass, %d fail (out of %d) ==\n"
     !passed !failed (!passed + !failed);

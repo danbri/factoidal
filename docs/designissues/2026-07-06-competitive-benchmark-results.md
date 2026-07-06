@@ -435,3 +435,143 @@ regression caused by this fix; it is called out here rather than
 silently omitted. The raw numbers above are also recorded in
 `docs/test-results/competitive-bench.json`'s `group_by_fix_2026_07_06`
 key and the three updated `q5_group_by` rows in `query_results`.
+
+## 8. Update, 2026-07-06: SEARCH selectivity — loss 3's inverted curve, partially flattened
+
+§5's loss 3 ("COTTAS gets slower, not faster, as selectivity/row-count
+increases") was profiled and partially fixed this session. **Profile
+attribution first, with file:line** (strace + the stderr trace already
+compiled into the binary — no new instrumentation needed): the SELECT
+path's 62.17 s / 92.11 s / 159.51 s costs for `q3`/`q4`/`q6` were NOT
+dominated by `RDF.CottasStore.fst`'s row-group walk decoding all four
+columns of every row group (the mechanism the task brief assumed, by
+analogy with the 2026-07-06 COUNT fix, §7's sibling item recorded
+elsewhere in this doc's companion perf-review doc) — every one of
+those three queries binds or projects every one of `s`/`p`/`o`, so
+skipping a column's decode the way the COUNT fix does buys nothing
+here. The real cost, found by adding a timestamped wrapper around the
+binary's own `[bet7-trace]`/`[qof3-trace]` stderr lines: `build_qp_row`
+(`RDF.CottasStore.fst:503-508`) converts every matched row's
+already-decoded column TOKEN into an id via
+`ondisk_lookup_*_id_global`, which on first touch of a column
+triggers the OCaml Bet7 lazy loader's `collect_distinct`
+(`experimental_ocaml_glue/cottas_ondisk_runtime.sh:213-238`) —
+decoding and deduping **the entire column across every row group of
+the whole corpus**, ignoring `plan_candidate_rgs`'s row-group pruning
+entirely, just to hand back a value the row-group decode already had
+as a string. Measured on gene.ttl (888,949 rows, 8 row groups):
+subject `collect_distinct` ~9-10 s (91,871 distinct values), object
+`collect_distinct` ~43 s (75,142 distinct values) — a fixed,
+corpus-wide tax paid once per column per process, independent of how
+selective the query is.
+
+**Crossover policy** (the task's own framing asked for one): there
+isn't a useful column-skip crossover on this corpus — every SEARCH
+query here needs every column's value, so "decode only the bound
+columns" has nothing to skip. The crossover that matters is a
+different axis: stop resolving a corpus-wide id at all for output
+construction, and parse the raw token directly instead. That is what
+this fix does.
+
+**Fix, in F\*** (verified, z3 4.13.3, no `--lax`; no
+`experimental_ocaml_glue/` changes — this fix REMOVES a code path's
+dependence on that glue, it adds none): `RDF.CottasStore.fst` gained
+`cottas_qp_row_tok` (a row shape holding the four raw column strings a
+matched row already decoded, instead of ids), `token_to_subject` /
+`_predicate` / `_object` / `_graph_name` (parse a raw COTTAS cell
+directly into its typed RDF term via `Parser.NTriples`'s existing
+verified N-Triples term grammar — `docs/cottas-format-v1.md` §4
+defines the COTTAS cell grammar as literally a subset of that grammar,
+confirmed against the real gene.cottas artifact via
+`SELECT s FROM parquet_scan(...)`, which returns bracket-wrapped IRI
+tokens exactly as the format spec requires), `filter_zipped_rows_tok_seq`
+/ `_limited_tok_seq`, and tok-shaped siblings of every row-group walk
+(`walk_row_groups_search_tok_global`, `walk_candidate_rgs_search_tok_
+global`, and their `_limited` variants), plus `cottas_ondisk_row_tok_
+to_quad` / `cottas_ondisk_rows_tok_to_triples`. `cottas_ondisk_search`
+and `cottas_ondisk_search_limited` now return `cottas_qp_row_tok`
+instead of the id-based `cottas_qp_row` (`Parser.BallyhooCOTTAS.fst`);
+`RDF.Store.Capabilities.Cottas.fst`'s `sc_solve`/`sc_solve_limited` —
+the only call site of either function — updated to match. The
+BOUND-side resolution (a query's own literal subject/predicate/object
+→ id, via `cottas_ondisk_encode_subject`/`_predicate`/`_object`) is
+**unchanged** and still goes through Bet7; see "not fixed" below.
+
+**Measured** (gene.ttl, 888,949 quads, CS-clustered + eager sidecars,
+8 row groups; "before" = binary `a3ef63c`, the numbers in §4 above;
+"after" = this fix, measured in an isolated git worktree from HEAD
+`2030fb2` with only the `RDF.CottasStore.fst` /
+`RDF.Store.Capabilities.Cottas.fst` /
+`tests/unit/parquet_rle_dictionary_multi_row_group.ml` diff applied —
+same isolation discipline §7 used, for the same reason: a concurrent
+sibling session was mid-rebuild in the main tree throughout):
+
+| Query | Before | After | Ratio | Why |
+|---|---:|---:|---:|---|
+| `q1_count_star` | 0.74 s | 0.76 s | ~flat | unbound `COUNT(*)`, never calls `cottas_ondisk_search` — untouched by design |
+| `q2_bound_predicate_count` | 2.89 s | 2.92 s | ~flat | bound-predicate `COUNT`, uses `cottas_ondisk_count_exact` — untouched by design |
+| `q3_subject_point_lookup` | 62.17 s | **17.7 s** | **~3.5×** | object's Bet7 tax (~43 s) gone; subject's Bet7 tax (~9-10 s, bound-side, not fixed) remains |
+| `q4_two_pattern_join` | 92.11 s | **31.1 s** | **~3.0×** | same as q3 — the join executor binds subject mid-plan even though the SPARQL text never does, re-triggering the unfixed bound-side resolution |
+| `q6_optional_filter` | 159.51 s | **100.7 s** | **~1.6×** | Bet7 fully eliminated (no `collect_distinct` call appears in the trace at all); the remaining ~100 s is genuinely proportional to the 25,083-row match set (row-group decode + per-row term parsing), not a corpus-wide constant |
+
+This is **not** the full flattening the task asked for — `q3`/`q4`
+still cost an order of magnitude more than Jena TDB2's 1.16-3.88 s
+flat curve (§4), because the bound-side Bet7 tax (documented below)
+survives this round, and `q6`'s residual cost reflects real per-row
+work on a genuinely large (25,083-row) result set, which even a flat
+index-scan engine pays something for. What the fix does establish:
+the selectivity curve's *inversion* — the specific finding that a
+1-row aggregate government cost less than a 3-row lookup which cost
+less than a 14-row join which cost less than a 25,083-row scan, in
+that exact backwards order — is gone for the two point/join queries,
+and materially reduced for the large scan; every "after" number is now
+closer to (though still above) TDB2's order of magnitude than to the
+"before" column.
+
+**Correctness.** All 5 queries' output is byte-identical before vs
+after (row counts, bindings, and content unchanged) — confirmed by
+diffing the CLI's table output. Regression pins:
+`tests/unit/parquet_rle_dictionary_multi_row_group.ml` grew a tenth
+section (116 assertions in the file now, 0 fail, up from 102): 14 new
+pins on `token_to_subject`/`_predicate`/`_object`/`_graph_name`
+against hand-written, format-conformant tokens (this file's own
+fixture data is not bracket-wrapped and so is deliberately not reused
+for term-level parsing pins — see the section's own comment for why)
+plus `cottas_ondisk_row_tok_to_quad`'s `DEFAULT`-sentinel and
+named-graph handling. `tests/unit/store_capabilities_unit.ml`'s
+`raw_solve`/`raw_solve_limited` (which call `cottas_ondisk_search`
+directly, cross-checking the `store_caps` wrapper against the raw
+entry point) were updated to the tok-shaped consumer — this file's
+381 assertions all pass, and would have caught a mismatch between the
+wrapper and the raw path had one existed.
+
+**Not fixed this round.** The bound-side term→id resolution
+(`cottas_ondisk_encode_subject`/`_predicate`/`_object`/`_graph_name`,
+`RDF.CottasStore.fst`:152-170) still goes through the same Bet7
+corpus-wide revmap — any query (or join/optional execution step) that
+BINDS a subject still pays that column's one-time `collect_distinct`.
+Closing this means serializing the query's own literal term directly
+to its raw column-token form (a local, O(1) computation — the
+symmetric operation to this fix's `token_to_subject`/etc) instead of
+resolving an id, and touches `cottas_bound_qp` (shared with the dead
+in-memory `GB_COTTAS` path in `Parser.BallyhooCOTTAS.fst`) — a wider
+change than this one, not attempted here to keep this fix
+commit-sized. Filed as the natural next item. A second, smaller,
+unconfirmed hypothesis about `q6`'s residual cost (the `OPTIONAL`
+pattern's join strategy may re-issue a bound on-disk search per outer
+row rather than a single batched pass) is noted but not investigated
+further this round.
+
+**Floors after the change** (measured in the isolated worktree
+described above — repo root only, per this doc's own convention):
+SPARQL suite 631 pass, 0 fail (of 631); RDF suite 1,031 pass, 0 fail
+(of 1,031); `tests/unit/run-all.sh` 30 file(s) pass, 0 file(s) fail
+(of 30); `tests/local/cottas_row_order_regressions.sh` 26 pass, 0 fail
+(of 26); `tests/local/cottas_corpus_regressions.sh` 4 pass, 0 fail (of
+4); `tests/local/dict_global_cache_parity.sh` 6 pass, 0 fail (of 6);
+`tests/local/streamable_fastpath_regressions.sh` 13 pass, 0 fail (of
+13); `tests/local/durable_update_stage3.sh` 15 pass, 0 fail (of 15);
+`tests/local/durable_update_stage4_compaction.sh` 29 pass, 0 fail (of
+29). The raw numbers above are also recorded in
+`docs/test-results/competitive-bench.json`'s
+`search_selective_decode_2026_07_06` key.
