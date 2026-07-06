@@ -178,8 +178,11 @@ COMMON_MODULES=(
   SPARQL_Plan_Explain
   SPARQL_HTTP
   SPARQL_HTTP_Client
+  SPARQL_Protocol_Client
   SPARQL_ServiceDescription
   SPARQL_GraphStore
+  SPARQL_Service_Wrap
+  service_wrap_http
 )
 
 # Build the list of .cmx paths + the C stub object (needed to resolve
