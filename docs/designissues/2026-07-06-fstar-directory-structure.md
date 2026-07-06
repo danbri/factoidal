@@ -329,7 +329,7 @@ by reading the actual scripts (not guessed):
 - **`check-extraction.yml`** — `paths: ['formal/fstar/*.fst', ...]`
   (line 6, won't fire on changes inside a subfolder) and the
   `.checked` cache `path: formal/fstar/*.fst.checked` /
-  `key: ...${{ hashFiles('formal/fstar/*.fst', 'formal/fstar/*.fsti') }}`
+  {% raw %}`key: ...${{ hashFiles('formal/fstar/*.fst', 'formal/fstar/*.fsti') }}`{% endraw %}
   (lines 39–40) — all need `**/*.fst` / `**/*.fsti` globs.
 - **`check-derived-files.yml`** — `paths: ['formal/fstar/ocaml-output/*.ml']`
   is unaffected (flat, stays flat), but the internal
