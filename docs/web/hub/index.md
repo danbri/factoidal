@@ -9,7 +9,7 @@ A home for longer-form, interactive write-ups about how Factoidal
 works — RDF/SPARQL concepts demonstrated by running the real
 F\*-extracted engine in your browser, not by prose alone.
 
-Twenty posts are published below, each with live runnable cells. The
+Twenty-one posts are published below, each with live runnable cells. The
 rest of the series (see
 [the series plan](../../designissues/2026-07-05-docs-hub-plan/) for
 the full map and vocabulary strategy) is still planned.
@@ -97,6 +97,7 @@ headlessly.
   <li><a href="./18-the-durable-log-live/">The durable log, live: update, persist, reload, corrupt</a> — the full durable-UPDATE lifecycle running in your browser via IndexedDB across a real page reload, a live checksum-rejection demo, and the same delta-log module proven running natively, as KaRaMeL C, and honestly not yet in wasm (foaf)</li>
   <li><a href="./19-correlated-joins-lateral/">Correlated joins: LATERAL</a> — LATERAL evaluates its right side once per left row with that row's bindings substituted in, making top-N-per-group expressible (SPARQL 1.2-track / Jena-compatible)</li>
   <li><a href="./20-fulltext-search-text-query/">Full-text search: text:query</a> — the jena-text magic predicate that searches literals instead of matching triples, AND-by-default token semantics, slice-1 (no scoring yet)</li>
+  <li><a href="./21-geosparql-geometry-and-topology/">GeoSPARQL: geometry, topology, and exact-rational arithmetic</a> — geo:wktLiteral geometries and the geof: Simple Features predicates (sfWithin/sfIntersects/sfDisjoint/sfTouches), geof:distance and geof:envelope, with a point-exactly-on-a-polygon-edge case decided by pure exact-rational F* — no floating-point epsilon (geosparql)</li>
 </ul>
 
 (Every post above has shipped — the series plan's placeholder list is
