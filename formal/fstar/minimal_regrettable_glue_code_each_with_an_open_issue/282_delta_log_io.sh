@@ -1,5 +1,5 @@
 #!/bin/bash
-# Issue #NNN (TBD -- open-issue number not yet filed; see this patch's
+# Issue #282 (delta-log I/O assume vals; see this patch's
 # landing PR/report): realise the five durable-UPDATE delta-log I/O
 # assume vals (rule-#11(a) pure-I/O realisations) in
 # RDF.Store.Columnar.DeltaLog.fst §3.3 / stage 2 of
