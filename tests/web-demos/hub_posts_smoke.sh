@@ -106,6 +106,9 @@ POSTS=(
   "web/hub/11-one-graph-five-syntaxes/"
   "web/hub/12-the-api-tour/"
   "web/hub/13-verifiable-credentials-and-csvw/"
+  "web/hub/14-the-rdfjs-api/"
+  "web/hub/15-how-fast-the-performance-story/"
+  "web/hub/16-the-verified-in-fstar-story/"
 )
 for p in "${POSTS[@]}"; do
   [ -f "$SITE_DIR/$p/index.html" ] || { echo "FAIL: $SITE_DIR/$p/index.html was not produced." >&2; exit 1; }
@@ -129,11 +132,25 @@ POSTS_JSON="["
 for p in "${POSTS[@]}"; do POSTS_JSON="$POSTS_JSON\"$p\","; done
 POSTS_JSON="${POSTS_JSON%,}]"
 
+# Per-post minimum live-cell count. Every post defaults to 2 (the
+# original blanket check); posts 15 and 16 are deliberately single-cell
+# by design (post 15: one in-browser timing illustration, explicitly
+# not a benchmark; post 16: the "live element" is mostly the reader
+# opening RDF.Term.fsti, with one pretty()-table cell rendering the
+# extraction pipeline -- see docs/designissues/2026-07-05-docs-hub-plan.md
+# and this post's own brief for why a second cell would not add
+# anything real).
+MIN_CELLS_JSON='{
+  "web/hub/15-how-fast-the-performance-story/": 1,
+  "web/hub/16-the-verified-in-fstar-story/": 1
+}'
+
 timeout 120 node --input-type=module -e "
 import { chromium } from '$PLAYWRIGHT_IMPORT_SPEC';
 
 const PORT = $PORT;
 const POSTS = $POSTS_JSON;
+const MIN_CELLS = $MIN_CELLS_JSON;
 
 const browser = await chromium.launch();
 let totalFailures = 0;
@@ -166,7 +183,8 @@ for (const post of POSTS) {
     await page.close();
     continue;
   }
-  check('at least 2 live cells mounted (found ' + cellCount + ')', cellCount >= 2);
+  const minCells = MIN_CELLS[post] || 2;
+  check('at least ' + minCells + ' live cell(s) mounted (found ' + cellCount + ')', cellCount >= minCells);
 
   // Give every cell's async body time to settle.
   try {

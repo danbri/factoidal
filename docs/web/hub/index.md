@@ -9,7 +9,7 @@ A home for longer-form, interactive write-ups about how Factoidal
 works — RDF/SPARQL concepts demonstrated by running the real
 F\*-extracted engine in your browser, not by prose alone.
 
-Thirteen posts are published below, each with live runnable cells. The
+Sixteen posts are published below, each with live runnable cells. The
 rest of the series (see
 [the series plan](../../designissues/2026-07-05-docs-hub-plan/) for
 the full map and vocabulary strategy) is still planned.
@@ -89,11 +89,11 @@ headlessly.
   <li><a href="./08-canonical-graphs-rdfc10/">Canonical graphs: RDFC-1.0 and content addressing</a> — canonicalize + urn:rdfc:sha256 (foaf)</li>
   <li><a href="./09-mapping-tables-to-triples-rml/">Mapping tables to triples: RML</a> — CSV/JSON to RDF via rmlMap, real rml-core/rml-io fixtures (schema.org)</li>
   <li><a href="./10-rules-rif-core/">Rules over RDF: RIF Core</a> — RIF frame/BGP rules forward-chained live</li>
-  <li class="placeholder">The RDF/JS API</li>
+  <li><a href="./14-the-rdfjs-api/">The RDF/JS API</a> — DataFactory, Quad terms, .equals() vs === (foaf)</li>
   <li><a href="./12-the-api-tour/">The API tour</a> — npm/factoidal's full function surface + a live capabilities probe (foaf)</li>
   <li><a href="./13-verifiable-credentials-and-csvw/">Verifiable Credentials and CSVW</a> — VC structural validation (no crypto yet) + CSVW csv2rdf live (schema.org)</li>
-  <li class="placeholder">How fast: the performance story</li>
-  <li class="placeholder">The verified-in-F* story</li>
+  <li><a href="./15-how-fast-the-performance-story/">How fast: the performance story</a> — dated, commit-linked throughput and on-disk reader numbers, one live in-browser timing illustration (wikidata)</li>
+  <li><a href="./16-the-verified-in-fstar-story/">The verified-in-F* story</a> — why F*, the standing verification qualifier, the skimmable RDF.Term.fsti core, one source to four extraction targets</li>
 </ul>
 
 (Placeholder titles come straight from
