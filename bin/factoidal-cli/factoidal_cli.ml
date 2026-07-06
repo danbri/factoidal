@@ -1742,8 +1742,12 @@ let run_shacl_validate (args : string list) : unit =
 
 let usage_shex () =
   Printf.eprintf
-    "Usage: factoidal shex --data DATA.ttl --schema SCHEMA.json --node NODE [--shape SHAPE]\n\
+    "Usage: factoidal shex --data DATA.ttl --schema SCHEMA.{json,shex} --node NODE [--shape SHAPE]\n\
     \       NODE/SHAPE are an IRI, or \"_:label\" for a blank node.\n\
+    \       SCHEMA accepts ShExJ (.json) or ShExC (.shex) text -- routed by\n\
+    \       the .shex extension, or by content-sniffing the first non-\n\
+    \       whitespace character ('{' => ShExJ, else ShExC) for any other\n\
+    \       extension.\n\
      Prints \"true\" / \"false\" / \"null\" (deferred -- outside this\n\
      engine's decidable ShEx fragment, never a guessed answer) and exits\n\
      0 / 1 / 2 respectively.\n";
@@ -1756,6 +1760,28 @@ let shex_term_of_focus_string (s : string) : RDF_Graph_Executable.rdf_term =
   if String.length s >= 2 && String.sub s 0 2 = "_:"
   then RDF_Graph_Executable.T_BNode (String.sub s 2 (String.length s - 2))
   else RDF_Graph_Executable.T_IRI s
+
+(* ShExJ-vs-ShExC dispatch (Stage 9, Parser.ShExC.fst), same rule as
+   npm/factoidal's shexValidate (entry_jsoo.ml's decode_shex_schema_text):
+   a `.shex`-suffixed path routes straight to the ShExC parser; anything
+   else falls back to content-sniffing the first non-whitespace
+   character ('{' => ShExJ, else ShExC). *)
+let shex_schema_looks_like_json (text : string) : bool =
+  let len = String.length text in
+  let rec go i =
+    if i >= len then false
+    else match text.[i] with
+      | ' ' | '\t' | '\n' | '\r' -> go (i + 1)
+      | '{' -> true
+      | _ -> false
+  in
+  go 0
+
+let decode_shex_schema_path (path : string) (text : string)
+  : ShEx_Schema.shex_schema FStar_Pervasives_Native.option =
+  if Filename.check_suffix path ".shex" then Parser_ShExC.parse_shexc_schema text ""
+  else if shex_schema_looks_like_json text then ShEx_Schema.decode_shex_schema text ""
+  else Parser_ShExC.parse_shexc_schema text ""
 
 let run_shex (args : string list) : unit =
   let data_path = ref None in
@@ -1778,13 +1804,13 @@ let run_shex (args : string list) : unit =
       try load_triples dp
       with e -> Printf.eprintf "Error parsing %s: %s\n" dp (Printexc.to_string e); exit 1
     in
-    let schema_json =
+    let schema_text =
       try read_file sp
       with e -> Printf.eprintf "Error reading %s: %s\n" sp (Printexc.to_string e); exit 1
     in
-    (match ShEx_Schema.decode_shex_schema schema_json "" with
+    (match decode_shex_schema_path sp schema_text with
      | FStar_Pervasives_Native.None ->
-       Printf.eprintf "Error: could not decode ShExJ schema %s\n" sp; exit 1
+       Printf.eprintf "Error: could not decode schema %s (tried ShExJ then ShExC)\n" sp; exit 1
      | FStar_Pervasives_Native.Some schema ->
        let focus_term = shex_term_of_focus_string n in
        let shape_id = match !shape with

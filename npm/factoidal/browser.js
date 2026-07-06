@@ -706,7 +706,11 @@ export async function shaclValidate(dataNQuads, shapesNQuads) {
  * `shapeLabel` "" validates against the schema's own `start`.
  *
  * @param {string} dataNQuads
- * @param {string} schemaJson ShExJ (JSON Schema form), as text
+ * @param {string} schemaJson the schema, as text -- either ShExJ (a JSON
+ *   Schema document) or ShExC (the compact human-readable syntax).
+ *   Dispatch rule: the first non-whitespace character decides the
+ *   format -- '{' means ShExJ, anything else is parsed as ShExC (no
+ *   valid ShExC document starts with '{' after whitespace).
  * @param {string} focus
  * @param {string} shapeLabel
  * @returns {Promise<{ok:true,verdict:boolean|null,deferred:boolean}>}

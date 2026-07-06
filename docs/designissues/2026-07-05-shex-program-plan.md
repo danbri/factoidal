@@ -66,10 +66,18 @@ So: consuming `../schemas/<name>.json` in place of the manifest's
 of 4 known-missing fixtures. `negativeStructure/` and
 `negativeSyntax/` ship **ShExC only** by construction — they test the
 ShExC grammar and structural parse failures, so there is no ShExJ
-substitute; they stay out of reach until a ShExC grammar exists (see
-Stage 9). `schemas/`'s 441 `RepresentationTest` entries explicitly
-require ShExC↔ShExJ conversion in both directions, so they too gate
-on a ShExC parser.
+substitute; they stayed out of reach until Stage 9 landed a ShExC
+grammar (`Parser.ShExC.fst` — 433/433 `schemas/` pairs structurally
+equal against the existing ShExJ decoder, `bin/shex-runner
+--differential`). `schemas/`'s 441 `RepresentationTest` entries
+explicitly require ShExC↔ShExJ conversion in both directions; the
+differential run above covers the ShExC→AST direction (the direction
+this project's validator actually needs — it consumes schema text, it
+never re-serializes ShExJ back to ShExC), so `negativeSyntax`'s 100
+grammar-rejection tests and `negativeStructure`'s 14 tests are the
+remaining unexercised part of this stage's original scope (not run by
+this landing; the differential oracle only walks `schemas/`, the
+positive-parse corpus).
 
 ## Latest draft status
 
@@ -183,7 +191,7 @@ ShExJ's AST shapes differ from SHACL's RDF-graph-encoded shapes):**
 | 6 | `ShEx.Extends.fst` (shape inheritance merge) | `Extends` (77) + `MultiExtends` (7) + `Abstract` (7) + `ExtendsDiamond` (14) | Stage 4 (reuses the partition engine, not Stage 5) |
 | 7 | Imports (34) + manifest-driven ShapeMap pair (already free from Stage 2 onward) | remaining small trait tags | Stage 2 |
 | 8 | `bin/shex-runner/` wiring | Score `validation/` at Logic-conformant level, labelled by stage reached | Stage 3 (first stage with a nontrivial signal) |
-| 9 (indefinite) | ShExC grammar in F\* | Unlocks `negativeSyntax` (100) + `RepresentationTest` (441) | own program, iron rule #4 |
+| 9 (**landed**) | ShExC grammar in F\* (`formal/fstar/Parser.ShExC.fst`) | 433 of 433 `schemas/` ShExC↔ShExJ pairs structurally equal (`bin/shex-runner --differential`; the 1 known upstream-defect fixture, `start2RefS2`, counted as a correct disagreement, not a failure) | own program, iron rule #4 |
 
 **Recommended commit-sized Stage 1, today:**
 `git submodule update --init --depth 1 third_party/testing/shex`

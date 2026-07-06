@@ -29,8 +29,8 @@ const FactoidalNode = {
   },
 };
 
-test('post06: post has at least 3 live cells', () => {
-  assert.ok(cells.length >= 3, `expected >= 3 live cells, found ${cells.length}`);
+test('post06: post has at least 5 live cells', () => {
+  assert.ok(cells.length >= 5, `expected >= 5 live cells, found ${cells.length}`);
 });
 
 test('post06 cell 1 (parse the Wikidata-shaped dataset): 3 triples', async () => {
@@ -38,13 +38,23 @@ test('post06 cell 1 (parse the Wikidata-shaped dataset): 3 triples', async () =>
   assert.equal(result, 3);
 });
 
-test('post06 cell 2 (conforming node): Q42 matches HumanShape', async () => {
+test('post06 cell 2 (conforming node, ShExJ schema): Q42 matches HumanShape', async () => {
   const result = await runObservableCell(cells[1], { fn: factoidal, Factoidal: FactoidalNode });
   assert.deepEqual(result, { available: true, verdict: true, deferred: false });
 });
 
-test('post06 cell 3 (non-conforming node): Q5 does not match HumanShape', async () => {
+test('post06 cell 3 (non-conforming node, ShExJ schema): Q5 does not match HumanShape', async () => {
   const result = await runObservableCell(cells[2], { fn: factoidal, Factoidal: FactoidalNode });
+  assert.deepEqual(result, { available: true, verdict: false, deferred: false });
+});
+
+test('post06 cell 4 (conforming node, ShExC schema text): Q42 matches HumanShape', async () => {
+  const result = await runObservableCell(cells[3], { fn: factoidal, Factoidal: FactoidalNode });
+  assert.deepEqual(result, { available: true, verdict: true, deferred: false });
+});
+
+test('post06 cell 5 (non-conforming node, ShExC schema text): Q5 does not match HumanShape', async () => {
+  const result = await runObservableCell(cells[4], { fn: factoidal, Factoidal: FactoidalNode });
   assert.deepEqual(result, { available: true, verdict: false, deferred: false });
 });
 
@@ -80,5 +90,25 @@ test('post06: shexValidate accepts RDF/JS terms for focus/shape too', async () =
   });
   const verdict = await factoidal.shexValidate(
     dataset, schema, 'http://example.org/alice', 'http://example.org/PersonShape');
+  assert.equal(verdict, true);
+});
+
+test('post06: shexValidate dispatches ShExC text (no leading "{") straight to Parser.ShExC.fst', async () => {
+  const ttl = `
+    @prefix foaf: <http://xmlns.com/foaf/0.1/> .
+    @prefix ex:   <http://example.org/> .
+    ex:alice a foaf:Person ; foaf:name "Alice" .
+  `;
+  const dataset = await factoidal.parse(ttl);
+  const shexc = `
+    PREFIX foaf: <http://xmlns.com/foaf/0.1/>
+    PREFIX ex:   <http://example.org/>
+
+    <http://example.org/PersonShape> {
+      foaf:name LITERAL
+    }
+  `;
+  const verdict = await factoidal.shexValidate(
+    dataset, shexc, 'http://example.org/alice', 'http://example.org/PersonShape');
   assert.equal(verdict, true);
 });

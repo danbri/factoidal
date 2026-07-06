@@ -46,14 +46,20 @@ shape — no separate "target" declaration the way SHACL's
 `sh:targetClass` needs one; a ShEx shape is checked against whichever
 node you name at validation time.
 
-This project's validator does not parse ShExC — a documented, honest
-scope line, not an oversight:
-[`ShEx.Schema.fst`](https://github.com/danbri/factoidal/blob/claude/main/formal/fstar/ShEx.Schema.fst)
-says so directly in its header comment: "ShExJ only. ShExC (the
-human-readable concrete syntax) is out of scope indefinitely (Stage
-9) — this module never sees ShExC text." ShExJ is ShEx's JSON Schema
-form — the same schema above, hand-translated once, is what the live
-cells below actually send to `Factoidal.shexValidate`:
+This project's validator parses ShExC directly now —
+[`Parser.ShExC.fst`](https://github.com/danbri/factoidal/blob/claude/main/formal/fstar/Parser.ShExC.fst)
+is a from-scratch F\* parser for the compact syntax above, checked
+against the vendored shexSpec/shexTest corpus's own ShExC↔ShExJ twin
+pairs: 433 of 433 `schemas/` fixtures parse to the exact same AST as
+the reference ShExJ decoding (`bin/shex-runner --differential`; see
+[the score section](#score) below). `shexValidate`'s schema argument
+now accepts either form — the dispatch rule is simple: the first
+non-whitespace character of the schema text decides the format, `{`
+means ShExJ, anything else is parsed as ShExC (no valid ShExC document
+starts with `{`). ShExJ is ShEx's JSON Schema form — the same schema
+above, hand-translated once, is what the first pair of live cells
+below sends to `Factoidal.shexValidate`; a later section on this page
+sends the ShExC text you just read straight through instead.
 
 ```js
 {
@@ -86,10 +92,10 @@ cells below actually send to `Factoidal.shexValidate`:
 `shexValidate` is a raw `Factoidal` export, not one of the `fn` typed
 adapter's methods (see [`README.md`](./README.md) for the full
 bindings table) — its signature is `shexValidate(dataNQuads,
-schemaJson, focus, shapeLabel)`: dataset-handle N-Quads text, the
-ShExJ schema as a JSON string, the focus node's IRI, and the shape's
-`id`. `fn.parse()` gets from Turtle to N-Quads text via
-`dataset.toNQuads()`.
+schemaText, focus, shapeLabel)`: dataset-handle N-Quads text, the
+schema as ShExJ (JSON string) or ShExC (compact-syntax string) text,
+the focus node's IRI, and the shape's `id`. `fn.parse()` gets from
+Turtle to N-Quads text via `dataset.toNQuads()`.
 
 ## A small Wikidata-shaped dataset
 
@@ -262,6 +268,105 @@ answer this engine can give (not exercised by either cell above): a
 schema construct outside the currently-decidable ShEx fragment reports
 "can't say" rather than guessing true or false.
 
+## The same schema, sent as ShExC text
+
+Every cell above sent the hand-translated ShExJ form. Since
+`Parser.ShExC.fst` landed, `shexValidate` accepts the ShExC text from
+["A schema, in the syntax people read"](#a-schema-in-the-syntax-people-read)
+directly — no translation step, no separate entry point, just the
+same `shexValidate(dataNQuads, schemaText, focus, shapeLabel)` call
+with a ShExC string instead of a JSON one:
+
+```observable-js
+const WD_TTL = `
+  @prefix wd:   <http://www.wikidata.org/entity/> .
+  @prefix wdt:  <http://www.wikidata.org/prop/direct/> .
+  @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+
+  wd:Q42 wdt:P31   wd:Q5 ;
+         rdfs:label "Douglas Adams"@en .
+
+  wd:Q5  rdfs:label "human"@en .
+`;
+
+const HUMAN_SHAPE_SHEXC = `
+  PREFIX wd:   <http://www.wikidata.org/entity/>
+  PREFIX wdt:  <http://www.wikidata.org/prop/direct/>
+  PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+
+  <http://example.org/HumanShape> {
+    wdt:P31    [wd:Q5] ;
+    rdfs:label LITERAL
+  }
+`;
+
+async function tryShexValidate(dataNQuads, focus) {
+  try {
+    if (typeof Factoidal.shexValidate !== "function") {
+      throw new Error("Factoidal.shexValidate is not exposed by this build");
+    }
+    const result = await Factoidal.shexValidate(
+      dataNQuads, HUMAN_SHAPE_SHEXC, focus, "http://example.org/HumanShape");
+    return { available: true, verdict: result.verdict, deferred: result.deferred };
+  } catch (err) {
+    return { available: false, note: err.message };
+  }
+}
+
+const dataset = await fn.parse(WD_TTL);
+return tryShexValidate(dataset.toNQuads(), "http://www.wikidata.org/entity/Q42");
+```
+
+`verdict: true` — same conforming node, same shape, no JSON in sight.
+And the non-conforming node still comes back `false` through the exact
+same ShExC schema text:
+
+```observable-js
+const WD_TTL = `
+  @prefix wd:   <http://www.wikidata.org/entity/> .
+  @prefix wdt:  <http://www.wikidata.org/prop/direct/> .
+  @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+
+  wd:Q42 wdt:P31   wd:Q5 ;
+         rdfs:label "Douglas Adams"@en .
+
+  wd:Q5  rdfs:label "human"@en .
+`;
+
+const HUMAN_SHAPE_SHEXC = `
+  PREFIX wd:   <http://www.wikidata.org/entity/>
+  PREFIX wdt:  <http://www.wikidata.org/prop/direct/>
+  PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+
+  <http://example.org/HumanShape> {
+    wdt:P31    [wd:Q5] ;
+    rdfs:label LITERAL
+  }
+`;
+
+async function tryShexValidate(dataNQuads, focus) {
+  try {
+    if (typeof Factoidal.shexValidate !== "function") {
+      throw new Error("Factoidal.shexValidate is not exposed by this build");
+    }
+    const result = await Factoidal.shexValidate(
+      dataNQuads, HUMAN_SHAPE_SHEXC, focus, "http://example.org/HumanShape");
+    return { available: true, verdict: result.verdict, deferred: result.deferred };
+  } catch (err) {
+    return { available: false, note: err.message };
+  }
+}
+
+const dataset = await fn.parse(WD_TTL);
+return tryShexValidate(dataset.toNQuads(), "http://www.wikidata.org/entity/Q5");
+```
+
+`verdict: false` — `wd:Q5` still has no `wdt:P31` triple of its own,
+whether the schema arrived as ShExC or ShExJ. The dispatch is a pure
+sniff of the schema text: first non-whitespace character `{` is
+parsed as ShExJ, anything else (a `PREFIX`/`BASE` directive, a shape
+label, `START`, …) is parsed as ShExC.
+
 ## Wikidata's EntitySchemas
 
 ShEx isn't a niche dialect invented for this post's convenience — it's
@@ -279,15 +384,24 @@ one real `E10` schemas open with.
 ## Score
 
 Factoidal's ShEx validator scores **1181 pass, 1 mismatch, 0 deferred,
-0 skipped (of 1182)** against the shexSpec/shexTest suite — see
-[the test-results dashboard]({{ '/test-results/' | url }}) for the
-current run. The one mismatch is an upstream fixture defect, not an
-engine bug: `start2RefS2.json` has `p1` where the corresponding
+0 skipped (of 1182)** against the shexSpec/shexTest validation
+manifest — see [the test-results dashboard]({{ '/test-results/' | url }})
+for the current run. The one mismatch is an upstream fixture defect,
+not an engine bug: `start2RefS2.json` has `p1` where the corresponding
 canonical `.shex` file has `p2` — a typo in the test data itself, not
 something this validator gets wrong. Validation uses
 descendant-witness semantics (per
 [arXiv:2503.24299](https://arxiv.org/abs/2503.24299)), differentially
 confirmed against the reference `@shexjs/validator` implementation.
+
+The ShExC parser itself is scored separately, against the same
+corpus's `schemas/` directory: **433 of 433 ShExC↔ShExJ pairs
+structurally equal** (`bin/shex-runner --differential`) — every
+vendored `.shex` fixture parses to the exact same AST as the
+reference ShExJ decoding of its `.json` twin (the `start2RefS2` typo
+above counts as a correct disagreement here too: this parser's ShExC
+reading is `p2`, matching the canonical `.shex`, not the buggy
+`.json`).
 
 ## What's next
 

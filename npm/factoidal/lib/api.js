@@ -517,7 +517,15 @@ function buildApi(driver) {
    * ShEx (Shape Expressions) validation of one focus node against one
    * shape. Needs the npm-entry bundle.
    * @param {Dataset|string|Array} data
-   * @param {string} schemaJson ShExJ (JSON Schema form), as text
+   * @param {string} schemaJson the schema, as text -- either ShExJ (a
+   *   JSON Schema document) or ShExC (the compact human-readable
+   *   syntax; formal/fstar/Parser.ShExC.fst). Dispatch rule: the schema
+   *   text's first non-whitespace character decides the format -- '{'
+   *   means ShExJ, anything else is parsed as ShExC. No separate flag
+   *   or file-extension hint is needed; a schema whose ShExC text
+   *   happens to start with whitespace then '{' would misdetect, but no
+   *   valid ShExC document starts that way (ShExC always opens with a
+   *   directive keyword, a shape label, or START).
    * @param {string|{termType,value}} focus an IRI, "_:label", or an
    *   RDF/JS NamedNode/BlankNode term
    * @param {string|{termType,value}|null} [shape] a shape label (same

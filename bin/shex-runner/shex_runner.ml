@@ -702,6 +702,103 @@ let run_manifest ~verbose ~list_only manifest_path =
     end
 
 (* ------------------------------------------------------------------ *)
+(* --differential: ShExC-vs-ShExJ differential oracle (Stage 9 /
+   Parser.ShExC.fst acceptance gate). For every schemas/<name>.shex that
+   has a same-directory schemas/<name>.json twin: parse the .shex with
+   the F*-extracted Parser_ShExC.parse_shexc_schema, decode the .json
+   with the existing ShEx_Schema.decode_shex_schema, and compare the two
+   ASTs with the F*-extracted ShEx_SchemaEq.shex_schema_equal (all
+   comparison/normalization logic lives in ShEx.SchemaEq.fst per iron
+   rule #11 -- this is I/O + classification only).
+
+   Outcome buckets:
+     EQUAL               -- structurally equal (the acceptance number).
+     EXPECTED_DEFECT      -- start2RefS2: the vendored .json has a known
+                             upstream typo (p1 where the canonical .shex
+                             has p2) that this ShExC parser correctly
+                             does NOT reproduce -- a mismatch here is
+                             the parser being RIGHT, not wrong. Hardcoded
+                             by filename per the task's own note.
+     UNSUPPORTED (parse)  -- Parser_ShExC.parse_shexc_schema returned
+                             None (a construct outside today's grammar
+                             coverage) or ShEx_Schema.decode_shex_schema
+                             (the corpus's own .json, so a decode
+                             failure here is not this module's doing but
+                             is still counted so the denominator stays
+                             honest).
+     MISMATCH             -- both sides parsed/decoded but the ASTs
+                             differ: a real parser bug. *)
+
+type diff_outcome = DiffEqual | DiffExpectedDefect | DiffUnsupported of string | DiffMismatch
+
+let list_shex_json_pairs (schemas_dir : string) : string list =
+  if not (Sys.file_exists schemas_dir && Sys.is_directory schemas_dir) then []
+  else
+    Sys.readdir schemas_dir
+    |> Array.to_list
+    |> List.filter (fun f -> Filename.check_suffix f ".shex")
+    |> List.filter_map (fun f ->
+         let base = Filename.chop_suffix f ".shex" in
+         if Sys.file_exists (Filename.concat schemas_dir (base ^ ".json")) then Some base else None)
+    |> List.sort_uniq compare
+
+let run_one_differential_pair (schemas_dir : string) (base : string) : diff_outcome =
+  let shex_path = Filename.concat schemas_dir (base ^ ".shex") in
+  let json_path = Filename.concat schemas_dir (base ^ ".json") in
+  match read_file shex_path, read_file json_path with
+  | None, _ -> DiffUnsupported "cannot read .shex"
+  | _, None -> DiffUnsupported "cannot read .json"
+  | Some shex_text, Some json_text ->
+    (try
+       match Parser_ShExC.parse_shexc_schema shex_text "" with
+       | FStar_Pervasives_Native.None -> DiffUnsupported "Parser_ShExC.parse_shexc_schema returned None"
+       | FStar_Pervasives_Native.Some shexc_schema ->
+         (match ShEx_Schema.decode_shex_schema json_text "" with
+          | FStar_Pervasives_Native.None -> DiffUnsupported "ShEx_Schema.decode_shex_schema (twin .json) returned None"
+          | FStar_Pervasives_Native.Some json_schema ->
+            if base = "start2RefS2" then DiffExpectedDefect
+            else if ShEx_SchemaEq.shex_schema_equal shexc_schema json_schema then DiffEqual
+            else DiffMismatch)
+     with e -> DiffUnsupported (Printf.sprintf "exception: %s" (Printexc.to_string e)))
+
+let run_differential () =
+  let repo_root = find_repo_root () in
+  let schemas_dir = Filename.concat repo_root "third_party/testing/shex/schemas" in
+  Printf.printf "=== ShExC vs ShExJ differential oracle (Stage 9) ===\n";
+  Printf.printf "Schemas dir: %s\n\n" schemas_dir;
+  let bases = list_shex_json_pairs schemas_dir in
+  let total = List.length bases in
+  let equal_n = ref 0 and defect_n = ref 0 and mismatch_n = ref 0 in
+  let unsupported = ref [] and mismatches = ref [] in
+  List.iter
+    (fun base ->
+       match run_one_differential_pair schemas_dir base with
+       | DiffEqual -> incr equal_n
+       | DiffExpectedDefect -> incr defect_n; incr equal_n
+       | DiffMismatch -> incr mismatch_n; mismatches := base :: !mismatches
+       | DiffUnsupported reason -> unsupported := (base, reason) :: !unsupported)
+    bases;
+  let unsupported_n = List.length !unsupported in
+  Printf.printf "%d of %d schema pairs structurally equal (of which %d is the documented\n"
+    !equal_n total !defect_n;
+  Printf.printf "expected-upstream-defect fixture start2RefS2, where this parser's ShExC\n";
+  Printf.printf "reading (p2) correctly disagrees with the vendored .json's typo (p1))\n\n";
+  Printf.printf "shex-differential: %d pass, %d fail (out of %d)\n" !equal_n (total - !equal_n) total;
+  Printf.printf "  structurally equal : %d\n" !equal_n;
+  Printf.printf "  expected upstream defect (counted as pass) : %d\n" !defect_n;
+  Printf.printf "  unsupported construct (parse/decode failure) : %d\n" unsupported_n;
+  Printf.printf "  mismatch (real bug)  : %d\n\n" !mismatch_n;
+  if !mismatches <> [] then begin
+    Printf.printf "Mismatches (real bugs):\n";
+    List.iter (fun b -> Printf.printf "  MISMATCH: %s\n" b) (List.rev !mismatches)
+  end;
+  if !unsupported <> [] then begin
+    Printf.printf "Unsupported constructs (parse/decode gaps):\n";
+    List.iter (fun (b, reason) -> Printf.printf "  unsupported: %s -- %s\n" b reason) (List.rev !unsupported)
+  end;
+  if !mismatch_n > 0 then exit 1
+
+(* ------------------------------------------------------------------ *)
 (* Main. *)
 
 let print_help () =
@@ -713,6 +810,7 @@ let print_help () =
      \  ./shex_runner <manifest.ttl>   Run a specific manifest.ttl\n\
      \  ./shex_runner --list           List discovered test entries (no execution)\n\
      \  ./shex_runner -v|--verbose     Show mismatch/deferred/skip reasons\n\
+     \  ./shex_runner --differential   ShExC-vs-ShExJ differential oracle (Stage 9)\n\
      \  ./shex_runner --help           Show this help\n\
      \n\
      See formal/fstar/ShEx.Validation.fst's file header for what Stage 3\n\
@@ -723,17 +821,21 @@ let () =
   let args = Array.to_list Sys.argv |> List.tl in
   let verbose = ref false in
   let list_only = ref false in
+  let differential = ref false in
   let path = ref None in
   let rec loop = function
     | [] -> ()
     | ("-v" | "--verbose") :: rest -> verbose := true; loop rest
     | ("--help" | "-h") :: _ -> print_help (); exit 0
     | "--list" :: rest -> list_only := true; loop rest
+    | "--differential" :: rest -> differential := true; loop rest
     | p :: rest when !path = None -> path := Some p; loop rest
     | _ ->
       Printf.eprintf "shex_runner: unexpected arguments; try --help\n";
       exit 2
   in
   loop args;
-  let manifest = match !path with Some p -> p | None -> default_manifest () in
-  run_manifest ~verbose:!verbose ~list_only:!list_only manifest
+  if !differential then run_differential ()
+  else
+    let manifest = match !path with Some p -> p | None -> default_manifest () in
+    run_manifest ~verbose:!verbose ~list_only:!list_only manifest

@@ -779,14 +779,40 @@ let term_of_focus_string (s : string) : rdf_term =
   then T_BNode (String.sub s 2 (String.length s - 2))
   else T_IRI s
 
+(* ShExJ-vs-ShExC schema-text dispatch (Stage 9, Parser.ShExC.fst): the
+   first non-whitespace character of a ShExJ document is always '{' (a
+   JSON object); ShExC schemas never start that way (a ShExC document
+   starts with a directive keyword, a shape label, or START). Both
+   decoders live in F* (ShEx_Schema.decode_shex_schema / Parser_ShExC.
+   parse_shexc_schema) -- this is pure I/O-adjacent dispatch, not
+   semantic logic, per iron rule #11. Documented in npm/factoidal's
+   shexValidate jsdoc and README as the sniffing rule callers can rely
+   on. *)
+let first_non_ws_char (s : string) : char option =
+  let len = String.length s in
+  let rec go i =
+    if i >= len then None
+    else match s.[i] with
+      | ' ' | '\t' | '\n' | '\r' -> go (i + 1)
+      | c -> Some c
+  in
+  go 0
+
+let decode_shex_schema_text (schema_text : string) : ShEx_Schema.shex_schema FStar_Pervasives_Native.option =
+  match first_non_ws_char schema_text with
+  | Some '{' -> ShEx_Schema.decode_shex_schema schema_text ""
+  | _ -> Parser_ShExC.parse_shexc_schema schema_text ""
+
 (* dataNQuads is a dataset handle (see shaclValidate's comment above for
-   the default-graph-only scope cut this shares). *)
-let shex_validate_json (data_nquads : string) (schema_json : string)
+   the default-graph-only scope cut this shares). schemaText accepts
+   EITHER ShExJ (JSON) or ShExC (compact syntax) text -- see
+   decode_shex_schema_text's dispatch rule above. *)
+let shex_validate_json (data_nquads : string) (schema_text : string)
     (focus : string) (shape_label : string) : string =
   guarded (fun () ->
-    match ShEx_Schema.decode_shex_schema schema_json "" with
+    match decode_shex_schema_text schema_text with
     | FStar_Pervasives_Native.None ->
-      err_json "ShEx_Schema.decode_shex_schema failed to decode schemaJson"
+      err_json "could not decode schema (tried ShExJ then ShExC)"
     | FStar_Pervasives_Native.Some schema ->
       let data_graph = (dataset_of_nquads data_nquads).ds_default in
       let focus_term = term_of_focus_string focus in

@@ -153,6 +153,9 @@ COMMON_MODULES=(
   RIF_Core_Conformance
   SPARQL11_Parser
   SHACL_Validation
+  ShEx_Schema
+  Parser_ShExC
+  ShEx_SchemaEq
   VC_Credential
   RML_Mapping
   RML_Sources

@@ -409,7 +409,7 @@ if [[ "$STEP" == "all" || "$STEP" == "extract" ]]; then
     Parser.JSONResults.fst
     SPARQL.JSON.Escape.fst
     Parser.JSON.fst JSONLD.Loader.fst JSONLD.Context.fst JSONLD.Expand.fst Parser.JSONLD.fst
-    ShEx.Schema.fst ShEx.Validation.fst
+    ShEx.Schema.fst Parser.ShExC.fst ShEx.SchemaEq.fst ShEx.Validation.fst
     VC.Credential.fst
     RML.Mapping.fst RML.Sources.fst RML.Eval.fst
     CSVW.Metadata.fst CSVW.URITemplate.fst CSVW.Conversion.fst
@@ -829,7 +829,7 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
     RDF_Canonical_Manifest.ml \
     service_wrap_hook.ml \
     SPARQL_FullText.ml SPARQL11_Algebra.ml XSD_Datatypes.ml RDF_Pretty.ml OWL_QueryRewrite.ml OWL_QueryEval.ml OWL_Tests_Manifest.ml RIF_Core_Syntax.ml Parser_RIFXML.ml RIF_Core_Translation.ml RIF_Core_Builtins.ml RIF_Core_Conformance.ml RIF_Core_Eval.ml RIF_Core_Tests.ml SPARQL11_Parser.ml SHACL_Validation.ml \
-    ShEx_Schema.ml ShEx_Validation.ml \
+    ShEx_Schema.ml Parser_ShExC.ml ShEx_SchemaEq.ml ShEx_Validation.ml \
     VC_Credential.ml \
     RML_Mapping.ml RML_Sources.ml RML_Eval.ml \
     CSVW_Metadata.ml CSVW_URITemplate.ml CSVW_Conversion.ml \
@@ -1406,7 +1406,7 @@ if [[ "$STEP" == "all" || "$STEP" == "js" ]]; then
     RDF_Canonical_Manifest.ml
     service_wrap_hook.ml
     SPARQL_FullText.ml SPARQL11_Algebra.ml XSD_Datatypes.ml RDF_Pretty.ml OWL_QueryRewrite.ml OWL_QueryEval.ml OWL_Tests_Manifest.ml RIF_Core_Syntax.ml Parser_RIFXML.ml RIF_Core_Translation.ml RIF_Core_Builtins.ml RIF_Core_Conformance.ml RIF_Core_Eval.ml RIF_Core_Tests.ml SPARQL11_Parser.ml SHACL_Validation.ml
-    ShEx_Schema.ml ShEx_Validation.ml
+    ShEx_Schema.ml Parser_ShExC.ml ShEx_SchemaEq.ml ShEx_Validation.ml
     RML_Mapping.ml RML_Sources.ml RML_Eval.ml
     CSVW_Metadata.ml CSVW_URITemplate.ml CSVW_Conversion.ml
     VC_Credential.ml
