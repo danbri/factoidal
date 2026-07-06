@@ -1,11 +1,11 @@
 ---
 name: workflow-gotchas-debugging
-description: Diagnostic playbook for the dev-loop hazards that recur in this repo. Use when a build mysteriously fails, a fresh clone breaks where local works, an agent's work doesn't appear on its branch, the same uncommitted file keeps coming back after `git checkout`, a secondary compile script poisons shared `.cmi`/`.cmx` files, a `set -e` + cleanup trap eats a failing build's log, or "stop hook fires every turn but I'm not done." Ten hazards total (see "Lessons from 2026-05-07" below): subagent worktree-leakage, concurrent F* extract races, source-without-build-wiring, stale doc numbers, the build-aware stop-hook gap, the `(* *)` comment trap, worktree garbage, secondary-script `.cmx` poisoning, editing build inputs mid-build, and cleanup traps eating diagnostics — plus their detection + recovery steps.
+description: Diagnostic playbook for the dev-loop hazards that recur in this repo. Use when a build mysteriously fails, a fresh clone breaks where local works, an agent's work doesn't appear on its branch, the same uncommitted file keeps coming back after `git checkout`, a secondary compile script poisons shared `.cmi`/`.cmx` files, a `set -e` + cleanup trap eats a failing build's log, or "stop hook fires every turn but I'm not done." Twelve hazards total (see "Lessons from 2026-05-07" below): subagent worktree-leakage, concurrent F* extract races, source-without-build-wiring, stale doc numbers, the build-aware stop-hook gap, the `(* *)` comment trap, worktree garbage, secondary-script `.cmx` poisoning, editing build inputs mid-build, cleanup traps eating diagnostics, old-base cherry-picks silently dropping build-list/consumer entries, and stale js/npm bundles failing hub cells — plus their detection + recovery steps.
 ---
 
 # Workflow gotchas + debugging
 
-This skill catalogues the ten hazards that have actually bitten this
+This skill catalogues the twelve hazards that have actually bitten this
 project in production. Each section lists symptoms, root cause, the
 recovery procedure, and (where applicable) the prevention now in place.
 
@@ -300,6 +300,126 @@ set -e exits before the `cat`, the trap deletes the evidence. Always
 capture rc explicitly (`CMD_RC=0; cmd || CMD_RC=$?`, anti-pattern
 #14), cat the log, THEN exit on failure.
 
+## 11. Old-base agent commit cherry-picked onto a much newer tip (2026-07-06)
+
+### Symptom
+
+You land a long-running agent's commit by cherry-picking it onto the
+current tip. Conflicts look like binaries only; you take `--theirs`,
+rebuild, and the build **succeeds** — but the feature isn't actually
+there. The runner has no `--crypto` subcommand; the ShExC dispatch
+never fires; a hub cell fails with "decode failed". `git log --oneline
+-1 -- <the-consumer-file>` shows an *old* commit, not the one you just
+picked.
+
+### Root cause
+
+The agent branched hours ago, before several other features landed.
+Its commit's changes to shared files are relative to that old base.
+Cherry-picked onto the newer tip, git does two silent bad things:
+
+1. **`build-ocaml.sh` module lists auto-merge WRONG.** The agent added
+   its module entries; the tip added other features' entries in the
+   same list regions. Git's 3-way auto-merge drops a subset of the
+   agent's entries with no conflict marker. The dropped module then
+   simply isn't extracted/compiled — and the build still exits 0,
+   because "module absent from the list" is not an error. The feature
+   silently doesn't exist in the binary. (Measured: 12 of 21b5cf0's 27
+   VC/HACL `build-ocaml.sh` lines survived the auto-merge; `VC.
+   DataIntegrity` never built, yet PIPELINE_RC=0.)
+2. **Consumer `.ml` files get the wrong side.** A blanket `git checkout
+   --theirs` over the whole conflict set, or an auto-merge that keeps
+   "ours", leaves `bin/<consumer>/*.ml` (runners, test drivers) at the
+   *tip's* old version, dropping the agent's additions.
+
+### Detection
+
+```bash
+# Did the feature's module actually make the build list?
+grep -c 'VC_DataIntegrity\|<YourModule>' formal/fstar/build-ocaml.sh
+# Compare to what the picked commit intended:
+git show <picked-commit>:formal/fstar/build-ocaml.sh | grep -c '<YourModule>'
+# Mismatch => auto-merge dropped entries.
+
+# Did the consumer file keep the agent's changes?
+git log --oneline -1 -- bin/<consumer>/<file>.ml   # old commit => dropped
+grep -c '<feature-marker>' bin/<consumer>/<file>.ml  # 0 => dropped
+```
+
+### Recovery / prevention
+
+Do NOT land an old-base agent commit with blanket `--theirs`. Instead:
+
+- **Verify the module list explicitly** after the pick: every module
+  the picked commit added must be present in `build-ocaml.sh`, in the
+  right dependency position, in the right list (native-only vs the
+  js/wasm `FSTAR_MODULES` — e.g. HACL-backed modules are native-only).
+  Diff against `git show <commit>:formal/fstar/build-ocaml.sh` and
+  hand-add any dropped entry, KEEPING the tip's other-feature entries.
+- **Force consumer files that are ancestor-safe supersets.** If the
+  tip's version of the file is an ancestor of the picked commit
+  (`git merge-base --is-ancestor <tip-file-commit> <picked-commit>`),
+  `git checkout <picked-commit> -- <file>` is safe — it's a superset.
+  Verify with a marker grep afterward.
+- The reliable move for a messy old-base landing is a **dedicated
+  landing agent** in a fresh worktree branched from the current tip:
+  it cherry-picks, reconciles the module list, forces the consumer
+  files, does a full extract+compile+js, and runs every gate — then
+  you verify floors + the feature's own gate and push. Cheaper than
+  hand-untangling a partial `build-ocaml.sh` merge under time
+  pressure, and it keeps the coordinator's context clean.
+
+## 12. Stale js/npm bundle: a hub cell fails on a feature that IS built (2026-07-06)
+
+### Symptom
+
+A new hub post's live cells fail (`node --test tests/hub/postNN` shows
+e.g. 6/9), with an error like `decode_shex_schema failed to decode
+schemaJson` — the npm API got the new input but ran it through the old
+code path. The native binary has the feature; the W3C floors pass; only
+the browser/npm cells fail.
+
+### Root cause
+
+Hub cells run against the **js_of_ocaml npm bundle**
+(`npm/factoidal/factoidal-npm-entry.js`, copied from
+`docs/fstar-extracted/`), not the native binary. A hub page whose cells
+depend on an F\* feature needs that bundle rebuilt. But
+`build-ocaml.sh js` **incrementally SKIPS the npm-entry sub-bundle**
+even when `bin/npm-entry/entry_jsoo.ml` changed (the `changed_modules=0`
+footgun, hazard #9's cousin, applied to the js step). The stale bundle
+lacks the new dispatch, so the cell runs the old path. A "Built
+npm-entry" log line does NOT prove it regenerated.
+
+### Detection
+
+```bash
+# Is the docs bundle newer than the js-build start? (mtime, not the log line)
+ls -la --time-style=+%H:%M docs/fstar-extracted/factoidal-npm-entry.js
+# Is the npm PACKAGE copy in sync with the docs one?
+ls -la --time-style=+%H:%M npm/factoidal/factoidal-npm-entry.js
+# The real test: run the failing hub cell and read the assertion error.
+node --test tests/hub/postNN_test.mjs 2>&1 | grep -A3 'not ok'
+```
+
+### Recovery / prevention
+
+- Force the npm-entry rebuild: `touch bin/npm-entry/entry_jsoo.ml
+  ocaml-output/<NewModule>.ml` before `./build-ocaml.sh js`, and CONFIRM
+  the bundle's mtime advanced (don't trust the log line). If it still
+  didn't regenerate, run the js build's npm-entry ocamlfind +
+  js_of_ocaml sub-invocation (build-ocaml.sh ~line 1520-1570) directly.
+- **Sync the npm package copy**: `npm/factoidal/*.js` are copies of
+  `docs/fstar-extracted/*.js`; the npm tests load the copies. If the
+  docs bundle is fresh but `npm/factoidal/`'s is older, run the repo's
+  established sync step (grep build-ocaml.sh / package scripts) — the
+  hub/npm tests use the copies, not the docs originals.
+- Whenever a docs landing adds live cells that call a new F\* feature,
+  the landing is NOT docs-only — it needs the js/npm bundle rebuilt and
+  the `node --test tests/hub/postNN` gate green, or the cells ship
+  broken. A hub page whose cell exercises a native-built feature can
+  still fail in the browser; the bundle is the thing under test.
+
 ## Lessons from 2026-05-07
 
 This skill is the durable form of a single bad session:
@@ -325,6 +445,11 @@ This skill is the durable form of a single bad session:
 4. New `.fst` in recent merges? → grep build-ocaml.sh for it (#3).
 5. Build-running flag set? → wait, don't commit partial.
 6. Doc number that "doesn't match what I just measured"? → stale (#4).
+7. Landed an old-branch agent commit and the feature "isn't there"
+   despite a green build? → `grep -c <module> build-ocaml.sh` vs the
+   picked commit; check `git log -1 -- bin/<consumer>.ml` (#11).
+8. Hub cell fails but the native binary has the feature? → stale
+   js/npm bundle; force the npm-entry rebuild + sync the copy (#12).
 
 ## What this skill does NOT cover
 

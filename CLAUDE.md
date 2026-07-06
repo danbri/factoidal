@@ -167,6 +167,17 @@ rule #17").
     `key insight`, `key finding`, etc. perform candor instead of
     being clear. The sentence either carries weight or it doesn't.
     Full rule + rewrites in `skills/markdown-style/SKILL.md`.
+27. Landing an old-branch agent commit onto a much newer tip silently
+    drops `build-ocaml.sh` module-list entries (auto-merge) and
+    consumer `.ml` changes — the build exits 0 but the feature isn't
+    built. Verify the module list + force ancestor-safe consumer files;
+    prefer a dedicated landing agent. Full text: hazard #11 in
+    `skills/workflow-gotchas-debugging/SKILL.md`.
+28. A hub post's live cells run against the js/npm bundle, not the
+    native binary. A docs landing that adds cells calling a new F\*
+    feature is NOT docs-only — rebuild the bundle (the js build
+    incrementally SKIPS npm-entry; force it) and gate on `node --test
+    tests/hub/postNN`. Full text: hazard #12 in the same skill.
 
 ## Skills (operational details, on-demand)
 
