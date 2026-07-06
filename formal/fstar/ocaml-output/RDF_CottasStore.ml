@@ -715,69 +715,111 @@ module Cottas_ondisk_runtime = struct
         | Some lit -> Some (RDF_Graph_Executable.T_Literal lit)
         | None -> None
 
-  (* ---- Distinct-token collector. We walk all row groups via the F*
-         multi-row-group decoder, then dedupe to build the dictionary.
-         Phase B drops the per-row int[] columns; we only need the
-         distinct token list (indexed by id) + a raw-token-keyed
-         revmap. ---- *)
+  (* ---- Distinct-token collector. We walk the row groups ONE AT A
+         TIME via the F* per-row-group decoder and dedupe into the
+         dictionary as we go. Phase B drops the per-row int[] columns;
+         we only need the distinct token list (indexed by id) + a
+         raw-token-keyed revmap.
+
+         In-memory bytes store stage 4 (docs/designissues/2026-07-06-
+         inmemory-bytes-store.md, dictionary-cost lever): this used to
+         call `probe_parquet_column_decode_all_row_groups`, which
+         materializes the ENTIRE column as one `string option list`
+         (888,949 cons+option+string cells on the gene corpus, tens of
+         MB of transient allocation) before the dedupe loop ever ran --
+         and that transient, not the resulting dictionary, dominated
+         peak RSS for every `ensure_*_loaded` populate (measured:
+         COUNT-star on gene peaked at 86 MB with the graph-column
+         enumeration as the ONLY dictionary touch). Walking per row
+         group via `probe_parquet_column_decode_in_row_group[_from_
+         table]` (the same F*-verified decoders `probe_parquet_column_
+         decode_all_row_groups` itself dispatches to, minus the
+         whole-column concatenation) bounds the transient at one row
+         group's cells. Same values, same order, same failure
+         behaviour -- pure memory layout, rule #11 conformant; all
+         decode logic stays in F*. *)
+
+  (* Shared per-row-group walk. `on_cell` sees every cell (row order
+     within each group, groups in index order), exactly as the old
+     whole-column List.iter did. Returns the total row count. *)
+  let iter_column_cells (label : string) (artifact_path : string) (col_idx : pint)
+      (on_cell : string -> unit) : pint =
+    let rg_count =
+      match Parquet_Footer.probe_parquet_row_group_count artifact_path with
+      | FStar_Pervasives_Native.Some n -> Z.to_int n
+      | FStar_Pervasives_Native.None ->
+        Printf.eprintf "[qof3-FATAL] %s: could not read row-group count\n%!" label;
+        failwith (Printf.sprintf "COTTAS on-disk: could not read row-group count (column %d)" col_idx)
+    in
+    (* Build the row-group-offset table ONCE for the whole walk, same
+       as probe_parquet_column_decode_all_row_groups does (issue
+       #98/Mim3: avoids the O(rg^2) footer re-walk). *)
+    let table = Parquet_Footer.probe_parquet_row_group_offset_table artifact_path in
+    let row_count = ref 0 in
+    for rg = 0 to rg_count - 1 do
+      let decoded =
+        match table with
+        | FStar_Pervasives_Native.Some t ->
+          Parquet_Footer.probe_parquet_column_decode_in_row_group_from_table
+            t artifact_path (Z.of_int rg) (Z.of_int col_idx)
+        | FStar_Pervasives_Native.None ->
+          Parquet_Footer.probe_parquet_column_decode_in_row_group
+            artifact_path (Z.of_int rg) (Z.of_int col_idx)
+      in
+      match decoded with
+      | FStar_Pervasives_Native.None ->
+        Printf.eprintf "[qof3-FATAL] %s: could not decode column %d row group %d\n%!" label col_idx rg;
+        failwith (Printf.sprintf "COTTAS on-disk: could not decode column %d" col_idx)
+      | FStar_Pervasives_Native.Some lst ->
+        List.iter (function
+          | FStar_Pervasives_Native.None ->
+            Printf.eprintf "[qof3-FATAL] %s: missing cell in column %d\n%!" label col_idx;
+            failwith (Printf.sprintf "COTTAS on-disk: missing cell in column %d" col_idx)
+          | FStar_Pervasives_Native.Some r ->
+            incr row_count;
+            on_cell r) lst
+    done;
+    !row_count
 
   let collect_distinct (artifact_path : string) (col_idx : pint)
     : (string list * (string, pint) Hashtbl.t * pint) =
     Printf.eprintf "[qof3-trace] collect_distinct col=%d path=%s\n%!" col_idx artifact_path;
-    match Parquet_Footer.probe_parquet_column_decode_all_row_groups
-            artifact_path (Z.of_int col_idx) with
-    | FStar_Pervasives_Native.None ->
-      Printf.eprintf "[qof3-FATAL] collect_distinct: could not decode column %d\n%!" col_idx;
-      failwith (Printf.sprintf "COTTAS on-disk: could not decode column %d" col_idx)
-    | FStar_Pervasives_Native.Some lst ->
-      let revmap : (string, pint) Hashtbl.t = Hashtbl.create 257 in
-      let strs_rev = ref [] in
-      let next_id = ref 0 in
-      let row_count = ref 0 in
-      List.iter (function
-        | FStar_Pervasives_Native.None ->
-          Printf.eprintf "[qof3-FATAL] collect_distinct: missing cell in column %d\n%!" col_idx;
-          failwith (Printf.sprintf "COTTAS on-disk: missing cell in column %d" col_idx)
-        | FStar_Pervasives_Native.Some r ->
-          incr row_count;
+    let revmap : (string, pint) Hashtbl.t = Hashtbl.create 257 in
+    let strs_rev = ref [] in
+    let next_id = ref 0 in
+    let row_count =
+      iter_column_cells "collect_distinct" artifact_path col_idx
+        (fun r ->
           if not (Hashtbl.mem revmap r) then begin
             Hashtbl.add revmap r !next_id;
             strs_rev := r :: !strs_rev;
             incr next_id
-          end) lst;
-      Printf.eprintf "[qof3-trace] collect_distinct col=%d distinct=%d rows=%d\n%!"
-        col_idx !next_id !row_count;
-      (List.rev !strs_rev, revmap, !row_count)
+          end)
+    in
+    Printf.eprintf "[qof3-trace] collect_distinct col=%d distinct=%d rows=%d\n%!"
+      col_idx !next_id row_count;
+    (List.rev !strs_rev, revmap, row_count)
 
   (* Same shape as collect_distinct, but for the graph column: skip the
      "DEFAULT" sentinel so it never enters the dictionary. *)
   let collect_distinct_graph (artifact_path : string) (col_idx : pint)
     : (string list * (string, pint) Hashtbl.t * pint) =
     Printf.eprintf "[qof3-trace] collect_distinct_graph col=%d path=%s\n%!" col_idx artifact_path;
-    match Parquet_Footer.probe_parquet_column_decode_all_row_groups
-            artifact_path (Z.of_int col_idx) with
-    | FStar_Pervasives_Native.None ->
-      Printf.eprintf "[qof3-FATAL] collect_distinct_graph: could not decode column %d\n%!" col_idx;
-      failwith (Printf.sprintf "COTTAS on-disk: could not decode column %d" col_idx)
-    | FStar_Pervasives_Native.Some lst ->
-      let revmap : (string, pint) Hashtbl.t = Hashtbl.create 17 in
-      let strs_rev = ref [] in
-      let next_id = ref 0 in
-      let row_count = ref 0 in
-      List.iter (function
-        | FStar_Pervasives_Native.None ->
-          Printf.eprintf "[qof3-FATAL] collect_distinct_graph: missing cell in column %d\n%!" col_idx;
-          failwith (Printf.sprintf "COTTAS on-disk: missing cell in column %d" col_idx)
-        | FStar_Pervasives_Native.Some r ->
-          incr row_count;
+    let revmap : (string, pint) Hashtbl.t = Hashtbl.create 17 in
+    let strs_rev = ref [] in
+    let next_id = ref 0 in
+    let row_count =
+      iter_column_cells "collect_distinct_graph" artifact_path col_idx
+        (fun r ->
           if r <> "DEFAULT" && not (Hashtbl.mem revmap r) then begin
             Hashtbl.add revmap r !next_id;
             strs_rev := r :: !strs_rev;
             incr next_id
-          end) lst;
-      Printf.eprintf "[qof3-trace] collect_distinct_graph col=%d named_graphs=%d rows=%d\n%!"
-        col_idx !next_id !row_count;
-      (List.rev !strs_rev, revmap, !row_count)
+          end)
+    in
+    Printf.eprintf "[qof3-trace] collect_distinct_graph col=%d named_graphs=%d rows=%d\n%!"
+      col_idx !next_id row_count;
+    (List.rev !strs_rev, revmap, row_count)
 
   let build_summary_for_handle artifact_path total_rows graph_count
     : Parser_BallyhooCOTTAS.cottas_artifact_summary FStar_Pervasives_Native.option =

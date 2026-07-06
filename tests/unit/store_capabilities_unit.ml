@@ -273,6 +273,114 @@ let check_overlay_nonempty ~label ~cods ~scope
   ignore scope
 
 (* ---------------------------------------------------------------- *)
+(* In-memory bytes store, stage 2 (docs/designissues/2026-07-06-      *)
+(* inmemory-bytes-store.md): `caps_of_cottas` is a Tot record builder *)
+(* over an already-open `cottas_ondisk_store` (RDF_Store_Capabilities *)
+(* _Cottas.fst) -- it has NO path-shaped logic of its own beyond      *)
+(* forwarding `cods_handle.coh_path` through to the entry points it   *)
+(* wraps 1:1. Stage 1's `cottas_memory_buffer_unit.ml` already proved *)
+(* the underlying reader (`cottas_ondisk_search`/`_estimate`/etc.)    *)
+(* gives identical answers over a synthetic in-memory handle vs a     *)
+(* real file. This block is the CAPABILITY-SEAM half of that claim:   *)
+(* build `store_caps` over the SAME bytes two ways -- via a real      *)
+(* on-disk store and via a synthetic `Parquet_Footer.               *)
+(* register_memory_buffer` handle, both through the IDENTICAL         *)
+(* `caps_of_cottas` builder -- and assert every `store_caps` field     *)
+(* returns exactly the same thing across the full bound/unbound shape *)
+(* matrix, for both graph scopes. Zero new query logic: this is a      *)
+(* buffer-vs-file equivalence check on the EXISTING builder, not a     *)
+(* new `caps_of_cottas_bytes` function -- composing                    *)
+(* `register_memory_buffer` + `cottas_ondisk_open` + `caps_of_cottas`  *)
+(* at the call site IS the "builder taking (name, bytes) and          *)
+(* returning store_caps" the design doc's stage 2 asks for; there is   *)
+(* no separate F* signature to add on top of what already exists       *)
+(* (design doc §2.2: "nothing in caps_of_cottas or the store_caps       *)
+(* record cares whether coh_path names a real file or a synthetic      *)
+(* in-memory handle -- the seam already generalizes for free"). *)
+
+let check_caps_equivalence ~label ~(caps_a : RDF_Store_Capabilities.store_caps)
+    ~(caps_b : RDF_Store_Capabilities.store_caps) ~(anchor : RDF_Triple.triple)
+    ~(known_pred : string) =
+  List.iter
+    (fun (shape_name, b) ->
+      let name field = Printf.sprintf "%s/%s/%s" label shape_name field in
+      check ~name:(name "solve")
+        ((caps_a.RDF_Store_Capabilities.sc_solve b) = (caps_b.RDF_Store_Capabilities.sc_solve b));
+      check ~name:(name "solve_limited(1)")
+        ((caps_a.RDF_Store_Capabilities.sc_solve_limited b Z.one)
+         = (caps_b.RDF_Store_Capabilities.sc_solve_limited b Z.one));
+      check ~name:(name "estimate")
+        ((caps_a.RDF_Store_Capabilities.sc_estimate b) = (caps_b.RDF_Store_Capabilities.sc_estimate b));
+      check ~name:(name "count_exact")
+        ((caps_a.RDF_Store_Capabilities.sc_count_exact b) = (caps_b.RDF_Store_Capabilities.sc_count_exact b)))
+    (shapes_of anchor);
+  check ~name:(Printf.sprintf "%s/predicate_present/known" label)
+    ((caps_a.RDF_Store_Capabilities.sc_predicate_present known_pred)
+     = (caps_b.RDF_Store_Capabilities.sc_predicate_present known_pred));
+  check ~name:(Printf.sprintf "%s/predicate_present/absent" label)
+    ((caps_a.RDF_Store_Capabilities.sc_predicate_present p_absent)
+     = (caps_b.RDF_Store_Capabilities.sc_predicate_present p_absent));
+  check ~name:(Printf.sprintf "%s/decode_failure" label)
+    ((caps_a.RDF_Store_Capabilities.sc_decode_failure ()) = (caps_b.RDF_Store_Capabilities.sc_decode_failure ()))
+
+let run_buffer_scope_equivalence () =
+  let fixture_path = Filename.concat "tests/unit/fixtures" "store_capabilities_sample.cottas" in
+  if not (Sys.file_exists fixture_path) then begin
+    Printf.printf "  FAIL  buffer-scope fixture missing at %s\n" fixture_path;
+    incr failed
+  end else begin
+    let ic = open_in_bin fixture_path in
+    let len = in_channel_length ic in
+    let bytes = try really_input_string ic len with e -> close_in_noerr ic; raise e in
+    close_in ic;
+    let mem_handle = "mem:store_capabilities_unit" in
+    Parquet_Footer.register_memory_buffer mem_handle bytes;
+    match RDF_CottasStore.cottas_ondisk_open fixture_path,
+          RDF_CottasStore.cottas_ondisk_open mem_handle
+    with
+    | FStar_Pervasives_Native.Some cods_file, FStar_Pervasives_Native.Some cods_mem ->
+      let named_graphs = RDF_CottasStore.cottas_ondisk_named_graphs cods_file in
+      let people_graph_iri =
+        match List.find_opt (fun (iri, _) -> contains ~needle:"graph/people" iri) named_graphs with
+        | Some (iri, _) -> iri
+        | None -> failwith "store_capabilities_unit: no .../graph/people entry (buffer-scope block)"
+      in
+      let caps_file_default = RDF_Store_Capabilities_Cottas.caps_of_cottas cods_file RDF_CottasStore.COS_DefaultOnly in
+      let caps_mem_default = RDF_Store_Capabilities_Cottas.caps_of_cottas cods_mem RDF_CottasStore.COS_DefaultOnly in
+      let caps_file_people =
+        RDF_Store_Capabilities_Cottas.caps_of_cottas cods_file (RDF_CottasStore.COS_NamedGraph people_graph_iri) in
+      let caps_mem_people =
+        RDF_Store_Capabilities_Cottas.caps_of_cottas cods_mem (RDF_CottasStore.COS_NamedGraph people_graph_iri) in
+      let default_anchor =
+        match raw_solve cods_file RDF_CottasStore.COS_DefaultOnly (bound ()) with
+        | t :: _ -> t
+        | [] -> failwith "store_capabilities_unit: buffer-scope default anchor missing"
+      in
+      let people_anchor =
+        match raw_solve cods_file (RDF_CottasStore.COS_NamedGraph people_graph_iri) (bound ()) with
+        | t :: _ -> t
+        | [] -> failwith "store_capabilities_unit: buffer-scope people anchor missing"
+      in
+      (* (a) buffer caps vs file caps, same scope -- the headline claim. *)
+      check_caps_equivalence ~label:"buffer-vs-file/default" ~caps_a:caps_file_default ~caps_b:caps_mem_default
+        ~anchor:default_anchor ~known_pred:p_status;
+      check_caps_equivalence ~label:"buffer-vs-file/named-graph(people)" ~caps_a:caps_file_people ~caps_b:caps_mem_people
+        ~anchor:people_anchor ~known_pred:p_name;
+      (* (b) the buffer-backed caps are still a faithful wrapper around
+         the buffer-backed raw entry points (same discipline as
+         check_cottas_scope above, applied to the memory-handle store,
+         not just a file). *)
+      check_cottas_scope ~label:"buffer/default" ~cods:cods_mem ~scope:RDF_CottasStore.COS_DefaultOnly
+        ~caps:caps_mem_default ~anchor:default_anchor ~known_pred:p_status;
+      check_cottas_scope ~label:"buffer/named-graph(people)" ~cods:cods_mem
+        ~scope:(RDF_CottasStore.COS_NamedGraph people_graph_iri)
+        ~caps:caps_mem_people ~anchor:people_anchor ~known_pred:p_name
+    | _ ->
+      Printf.printf "  FAIL  cottas_ondisk_open failed for file or memory handle (buffer-scope block)\n";
+      incr failed
+  end
+
+(* ---------------------------------------------------------------- *)
 (* GB_Union equivalence: RDF_Store_Capabilities.union_caps vs the     *)
 (* pre-U2 GB_Union recursion (SPARQL11_Store.backend_search/_limited/ *)
 (* estimate/count_exact/predicate_present/decode_failure applied to a *)
@@ -436,6 +544,10 @@ let () =
        ~caps:caps_cottas_default ~anchor:default_anchor;
      check_overlay_nonempty ~label:"default" ~cods ~scope:RDF_CottasStore.COS_DefaultOnly
        ~caps:caps_cottas_default ~anchor:default_anchor);
+
+  (* In-memory bytes store, stage 2: buffer-vs-file capability-seam
+     equivalence (see the banner comment above run_buffer_scope_equivalence). *)
+  run_buffer_scope_equivalence ();
 
   (* ---------------------------------------------------------------- *)
   (* dataset_caps: the U1.5 amendment (owner requirement, 2026-07-06 -- *)

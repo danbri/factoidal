@@ -425,10 +425,9 @@ let rec delta_batch_ops_ok (ops : delta_entry Prims.list) : Prims.bool=
   match ops with
   | [] -> true
   | e::rest -> (delta_entry_ok e) && (delta_batch_ops_ok rest)
+let u64_max_nat : Prims.nat= (Prims.parse_int "18446744073709551615")
 let delta_batch_ok (b : delta_batch) : Prims.bool=
-  ((((b.db_seq < (Prims.parse_int "18446744073709551616")) &&
-       (b.db_epoch < (Prims.parse_int "18446744073709551616")))
-      &&
+  ((((b.db_seq <= u64_max_nat) && (b.db_epoch <= u64_max_nat)) &&
       ((FStar_List_Tot_Base.length b.db_ops) < (Prims.parse_int "4294967296")))
      && (delta_batch_ops_ok b.db_ops))
     &&
@@ -436,9 +435,7 @@ let delta_batch_ok (b : delta_batch) : Prims.bool=
        (Prims.parse_int "4294967276"))
 let serialize_delta_batch_body (b : delta_batch) : RDF_Bytes.bytes=
   if
-    ((b.db_seq >= (Prims.parse_int "18446744073709551616")) ||
-       (b.db_epoch >= (Prims.parse_int "18446744073709551616")))
-      ||
+    ((b.db_seq > u64_max_nat) || (b.db_epoch > u64_max_nat)) ||
       ((FStar_List_Tot_Base.length b.db_ops) >=
          (Prims.parse_int "4294967296"))
   then []

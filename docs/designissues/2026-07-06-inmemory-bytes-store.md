@@ -502,6 +502,53 @@ workloads stay on the heap store (§3.5 below explains why explicitly).
    which is a correctness-adjacent surprise (not wrong, just
    unpredictably slow) regardless of byte source.
 
+### Stage outcomes (implemented 2026-07-06, same day, this round)
+
+Stages 1-4 landed; measured results below. Stage 5 (browser call
+site) and stage 6 (cold-start tax) remain open.
+
+| stage | outcome | evidence |
+|---|---|---|
+| 1. Confirm the seam | **Held, with zero extra glue points.** `register_memory_buffer` added (`experimental_ocaml_glue/parquet_footer_zz_register_memory_buffer.sh`, one `Hashtbl.replace` on the existing Mim2 cache). The §2.1-item-2 worry did NOT materialise: `cottas_ondisk_open` on a synthetic handle worked with no second patch — `load_handle`'s column scans reach bytes exclusively through `parquet_read_*`, as the module banner claimed. | `tests/unit/cottas_memory_buffer_unit.ml`: 73 pass, 0 fail (out of 73) — file-path vs memory-handle open of the same fixture bytes, identical solve/solve_limited/estimate/count_exact across the full 8-shape bound matrix, both graph scopes, plus named-graph inventory and re-registration idempotency. |
+| 2. Capability seam | **No new F\* surface needed, as §2.2 predicted.** Composing `register_memory_buffer` + `cottas_ondisk_open` + the EXISTING `caps_of_cottas` at the call site IS the "(name, bytes) → store_caps" builder; a separate `caps_of_cottas_bytes` would have wrapped exactly that composition and was not added. | `tests/unit/store_capabilities_unit.ml` buffer-scope block: every `store_caps` field over the buffer handle equals the same field over the real file, both scopes, full shape matrix; file total now 521 pass, 0 fail (out of 521). |
+| 3. CLI composition + delta overlay | **`factoidal query --data-cottas-mem FILE` shipped** (`bin/factoidal-cli/factoidal_cli.ml`: read file → `register_memory_buffer` under `mem:<n>:<path>` → push the synthetic handle onto the ordinary `--data-cottas` list; every downstream consumer unchanged). The `--delta-log` overlay composes over the buffer base unmodified, confirming §2.4's claim end-to-end. | `tests/local/inmemory_bytes_store_stage3.sh`: 23 pass, 0 fail (out of 23) — SELECT/ASK/GRAPH/bound-p identical file-vs-mem; the durable-UPDATE scenario batch gives identical post-delta answers over `--data-cottas` and `--data-cottas-mem`; missing-file fails loudly. |
+| 4. Dictionary cost | **Two findings.** (a) The "make prewarm lazy per column" half already shipped long before this doc (Bet7, commit 7ecf720): `cottas_ondisk_open` is footer-only (~0.02 s) and all four `coh_*` handle lists are EMPTY on the lazy path — §1.c's 226 MiB is `factoidal serve`'s own eager `prewarm_via_companions` boot choice, which plain `factoidal query` never pays. (b) The profiled remaining cost was NOT the retained dictionary but the populate TRANSIENT: `collect_distinct` materialised the whole column (888,949 `string option` cells) via `probe_parquet_column_decode_all_row_groups` before deduping. Fixed by streaming per row group through the same F\*-verified per-rg decoder (`cottas_ondisk_runtime.sh`, memory layout only, identical values/order/failures). | RSS table below; `tests/local/cottas_lazy_dictionary_stage4.sh`: 12 pass, 0 fail (out of 12), incl. per-column-laziness trace pins (predicate-bound query populates predicates ONLY; graph dict populates at dataset construction by design, finding 0 named graphs on gene). |
+
+**Peak RSS, gene corpus (888,949 quads, 1,012,509-byte artifact),
+one-shot `factoidal query`, max of 3 runs, `bench_rusage_run.py`:**
+
+| query shape | before streaming fix | after | `serve` eager-prewarm (§1.c) | heap store (§1.b) |
+|---|---:|---:|---:|---:|
+| open + `COUNT(*)` | 86,328 KB (84.3 MiB) | **56,000 KB (54.7 MiB)** | 231,272 KB (225.9 MiB) | 45,968 KB |
+| open + point lookup (subject-bound) | 156,408 KB (152.7 MiB) | **139,724 KB (136.4 MiB)** | 231,272 KB | ~744 MiB |
+| bound-p (`rdf:type` LIMIT 5) | 121,812 KB (119.0 MiB) | **95,048 KB (92.8 MiB)** | 231,272 KB | ~744 MiB |
+| buffer mode (`--data-cottas-mem`) `COUNT(*)` | — | **55,932 KB (54.6 MiB)** | — | — |
+| buffer mode point lookup | — | **139,664 KB (136.4 MiB)** | — | — |
+
+Process baseline (same binary, 1-quad fixture, `COUNT(*)`): 11,540 KB
+— subtract it for marginal-cost accounting.
+
+**Bytes per quad held in memory (whole-process peak RSS ÷ 888,949
+quads; marginal = after subtracting the 11,540 KB process baseline):**
+
+- open + `COUNT(*)`, buffer mode: **64.4 B/quad** (marginal 51.1) —
+  13.6× under the heap store's 877 B/quad, 4.1× under the
+  serve-eager 266 B/quad-equivalent.
+- open + point lookup, buffer mode: **160.9 B/quad** (marginal 147.6)
+  — 5.5× under the heap store. Above the 100 MiB absolute target on
+  this corpus (136.4 MiB): the residual is the retained subject
+  dictionary (91,871 distinct tokens × {token string + typed copy +
+  3 hashtable slots}) plus the page cache's decoded columns for the
+  one row group the LIMIT-pushdown search touched. Getting THIS
+  shape under 100 MiB needs the bound-side encode to stop
+  round-tripping through the corpus-wide dictionary (serialize the
+  bound term to its column token directly in F\*, the same way the
+  output side already went tok-direct at 9750eb7) — follow-up, its
+  own commit.
+- Buffer mode vs file mode is within 0.2% on every shape (the image
+  IS the cache entry either way, §2.1) — the buffer backend costs
+  nothing over the on-disk reader, exactly as §1.d predicted.
+
 ### What this means for `RDF.Indexed`'s future
 
 **Complement, not replacement**, for two concrete reasons visible in
