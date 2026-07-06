@@ -67,8 +67,10 @@ ex:bob a foaf:Person ;
   foaf:name "Bob" .
 ```
 
-That's four statements about Alice (type, name, knows-Bob... plus the
-implicit `a` triple) and two about Bob — five triples in total. Parse
+That's three statements about Alice (type, name, knows-Bob) and two
+about Bob — five triples in total. The `a` keyword is Turtle (and
+SPARQL) shorthand for the `rdf:type` predicate, so `ex:alice a
+foaf:Person` *is* the type triple, not an extra one. Parse
 it with the same F\*-extracted Turtle parser the W3C conformance suite
 runs against (`Parser.Turtle.fst`, 313 pass, 0 fail on the rdf-turtle
 suite — see the plan doc for the full RDF 1.1 scorecard). The cell

@@ -81,3 +81,14 @@ it up here. When in doubt, the doc references are authoritative.
 If a short-code is missing from the table above and you can't
 figure out what it means from context, that's a bug — file a PR
 adding it.
+
+## Rename-cluster disposition (owner decision, 2026-07-06)
+
+Issues #106–#116 asked for wholesale renames of the short-coded
+identifiers in code and traces. Closed as **wontfix for now** by
+owner decision: the going-forward rules above (no new short-codes,
+expand on touch, descriptive commit messages, trace tags keep the
+codes) are the policy; churn-renaming stable identifiers wholesale
+is not. Revisit only if a specific short-code causes a real
+misunderstanding — then rename that one thing in the commit that
+touches it, per rule 2.
