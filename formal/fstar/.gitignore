@@ -20,6 +20,7 @@ z3-4.13.3
 krml-output/
 c-output/_*.log
 c-output/demo/format_demo
+c-output/deltalog/demo/delta_log_demo
 
 # build-ocaml.sh runtime state
 .build.lock

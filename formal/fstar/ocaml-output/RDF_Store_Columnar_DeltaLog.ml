@@ -386,8 +386,6 @@ let delta_entry_ok (e : delta_entry) : Prims.bool=
   | DE_Clear g -> graph_opt_ok g
   | DE_Drop g -> (FStar_String.strlen g) < max_field_chars
   | DE_Create g -> (FStar_String.strlen g) < max_field_chars
-let payload_len_bound : Prims.nat=
-  (Prims.of_int (10)) * (max_field_chars + (Prims.of_int (10)))
 let delta_entry_frame_ok (e : delta_entry) : Prims.bool=
   (FStar_List_Tot_Base.length (serialize_delta_entry_payload e)) <
     (Prims.parse_int "4294967296")

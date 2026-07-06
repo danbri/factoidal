@@ -577,6 +577,19 @@ let lemma_delta_entry_payload_roundtrip (e : delta_entry) (rest : B.bytes)
    trivial regardless of which constructor's exact worst case is
    largest. *)
 
+(* `noextract`: this constant is a proof-only bound (only referenced by
+   `lemma_delta_entry_payload_length`'s `ensures` clause below, a Lemma —
+   erased at extraction, never called at runtime). Its VALUE
+   (10 * (2^28 + 10) ≈ 2.68e9) exceeds krml's default 32-bit
+   `krml_checked_int_t` compat-mode range for `Prims.nat`
+   (`formal/karamel/include/krml/internal/compat.h`), which would abort
+   `krmlinit_globals()` with a spurious overflow at C-program startup if
+   this were extracted as a global — a KaRaMeL-compat-only concern (OCaml
+   `int` is 63-bit and never had this problem). `noextract` drops it from
+   both extraction targets; nothing outside this module references it
+   (grepped), and the lemma it appears in continues to verify against the
+   same literal arithmetic either way. *)
+noextract
 let payload_len_bound : nat = 10 `op_Multiply` (max_field_chars + 10)
 
 let lemma_subject_length_bound (s : T.subject{subject_ok s})
@@ -751,9 +764,26 @@ let rec delta_batch_ops_ok (ops : list delta_entry) : bool =
   | [] -> true
   | e :: rest -> delta_entry_ok e && delta_batch_ops_ok rest
 
+(* `u64_max_nat`: 2^64 - 1, spelled as `<= u64_max_nat` rather than the
+   more obvious `< 18446744073709551616` (2^64) below. Semantically
+   identical for a `nat` (`n < 2^64 <=> n <= 2^64 - 1`), but the literal
+   2^64 itself cannot be written as a plain C integer constant at all —
+   it is one past `ULLONG_MAX`, the largest value any standard C integer
+   type (signed or unsigned, up to 64-bit) can hold, so a KaRaMeL-
+   extracted C build silently mis-parses that literal at the call site
+   (confirmed empirically: `gcc -Wall` on the krml-extracted build warns
+   "integer constant is too large for its type" here and nowhere else in
+   this module, and the check evaluates wrong at runtime as a result).
+   2^64 - 1 has no such problem — it fits exactly in `unsigned long
+   long`/`uint64_t`, so it extracts correctly to every backend (OCaml,
+   krml/C) instead of just OCaml. See
+   tools/karamel-c-build.sh --group-c and its dry-run history for the
+   krml reproduction. *)
+let u64_max_nat : nat = 18446744073709551615
+
 let delta_batch_ok (b : delta_batch) : bool =
-  b.db_seq < 18446744073709551616 &&
-  b.db_epoch < 18446744073709551616 &&
+  b.db_seq <= u64_max_nat &&
+  b.db_epoch <= u64_max_nat &&
   length b.db_ops < 4294967296 &&
   delta_batch_ops_ok b.db_ops &&
   length (serialize_ops b.db_ops) < 4294967276  (* 2^32 - 20: seq(8)+epoch(8)+count(4) header *)
@@ -761,7 +791,7 @@ let delta_batch_ok (b : delta_batch) : bool =
 (* --- serialize / parse: body (seq+epoch+count+ops, no outer frame) --- *)
 
 let serialize_delta_batch_body (b : delta_batch) : Tot B.bytes =
-  if b.db_seq >= 18446744073709551616 || b.db_epoch >= 18446744073709551616
+  if b.db_seq > u64_max_nat || b.db_epoch > u64_max_nat
      || length b.db_ops >= 4294967296
   then []
   else
