@@ -171,5 +171,59 @@ let () =
 
   Sys.remove tmp;
 
+  (* 4. Writer v2 (RDF.CottasStore.BaseWriter.serialize_cottas_v2,
+     2026-07-06): RLE_DICTIONARY for p/g always, plus s/o via
+     encode_column_choose_smaller (build both DLBA and RLE_DICTIONARY,
+     keep whichever is fewer bytes -- see the module banner). At this
+     5-row fixture: s has 4 distinct values (one repeat: "alice" x2) so
+     dictionary encoding already wins even at this tiny scale (787 <
+     858 total file bytes, smaller than v1's DLBA-only output); o has 5
+     distinct values out of 5 rows (no repetition at all) so DLBA
+     correctly wins there -- a real, measured instance of the
+     "choose smaller" crossover, not an assumed one. p and g are
+     forced RLE_DICTIONARY per the always-dictionary policy. *)
+  let bs2 = RDF_CottasStore_BaseWriter.serialize_cottas_v2 sample_quads in
+  let serialized2 = bytes_to_string bs2 in
+  let actual_hash2 = sha256_hex serialized2 in
+  Printf.printf "  HASH  v2 sample sha256=%s len=%d (v1 len=%d)\n"
+    actual_hash2 (String.length serialized2) (String.length serialized);
+  let expected_sha256_v2 =
+    "e74e99dfe06c2a4b76b4fd1636f8ecf549252dd69f6ccfa4e81cfc4db32b04fa" in
+  check ~name:"v2 sample [byte hash pin]" (actual_hash2 = expected_sha256_v2);
+  check ~name:"v2 smaller than v1 on this fixture"
+    (String.length serialized2 < String.length serialized);
+  let tmp2 = Filename.temp_file "cottas_base_writer_roundtrip_v2" ".cottas" in
+  let oc2 = open_out_bin tmp2 in
+  output_string oc2 serialized2;
+  close_out oc2;
+  let expect_encoding = [| "RLE_DICTIONARY"; "RLE_DICTIONARY"; "DELTA_LENGTH_BYTE_ARRAY"; "RLE_DICTIONARY" |] in
+  List.iteri (fun i name ->
+    (match Parquet_Footer.probe_parquet_column_compression_codec tmp2 (Z.of_int i) with
+     | FStar_Pervasives_Native.Some c ->
+       check ~name:(Printf.sprintf "v2 column %d (%s) codec UNCOMPRESSED" i name) (c = "UNCOMPRESSED")
+     | FStar_Pervasives_Native.None ->
+       check ~name:(Printf.sprintf "v2 column %d (%s) codec UNCOMPRESSED" i name) false);
+    (match Parquet_Footer.probe_parquet_column_page_header_data_encoding tmp2 (Z.of_int i) with
+     | FStar_Pervasives_Native.Some e ->
+       check ~name:(Printf.sprintf "v2 column %d (%s) encoding %s" i name expect_encoding.(i))
+         (e = expect_encoding.(i))
+     | FStar_Pervasives_Native.None ->
+       check ~name:(Printf.sprintf "v2 column %d (%s) encoding %s" i name expect_encoding.(i)) false))
+    ["s"; "p"; "o"; "g"];
+  Array.iteri (fun col expected ->
+    match Parquet_Footer.probe_parquet_column_decode_in_row_group
+            tmp2 Z.zero (Z.of_int col) with
+    | FStar_Pervasives_Native.Some cells ->
+      let actual =
+        List.map (function
+          | FStar_Pervasives_Native.Some s -> s
+          | FStar_Pervasives_Native.None -> "<NULL>") cells in
+      check ~name:(Printf.sprintf "v2 column %d decode matches" col)
+        (actual = expected)
+    | FStar_Pervasives_Native.None ->
+      check ~name:(Printf.sprintf "v2 column %d decode matches" col) false)
+    expect_col;
+  Sys.remove tmp2;
+
   Printf.printf "cottas_base_writer_roundtrip: %d pass, %d fail\n" !passed !failed;
   if !failed > 0 then exit 1

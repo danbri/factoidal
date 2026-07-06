@@ -1019,7 +1019,7 @@ let rm_rf path =
    Shared native-writer core (2026-07-06), used by BOTH `factoidal
    import` and `factoidal compact --native-writer`: parse N-Quads text
    with the F*-extracted parser, sort (s,p,o,g) consumer-side, call the
-   pure F* serializer RDF.CottasStore.BaseWriter.serialize_cottas, write
+   pure F* serializer RDF.CottasStore.BaseWriter.serialize_cottas_v2, write
    DIR/data.cottas, and (optionally) eagerly build the 10 companion
    sidecars by re-invoking this same binary's `query --explain` path
    (the exact trick corpus_pipeline.py's build_cottas_sidecars_eager
@@ -1073,9 +1073,15 @@ let native_write_base_and_sidecars
   let sorted = Array.to_list arr in
   Printf.printf "%s: sorted (%.2fs)\n%!" verb (Unix.gettimeofday () -. t1);
 
-  (* Native F* writer: pure Tot function, no I/O, no assume val. *)
+  (* Native F* writer: pure Tot function, no I/O, no assume val.
+     v2 (2026-07-06): RLE_DICTIONARY for p/g always, s/o via
+     encode_column_choose_smaller (build both DLBA and RLE_DICTIONARY,
+     keep whichever is fewer bytes). serialize_cottas (v1, DLBA-only)
+     stays defined for its own pinned round-trip test but is no longer
+     the writer this CLI path calls -- see RDF.CottasStore.BaseWriter.fst's
+     "Writer v2" banner for the encoding-choice policy. *)
   let t2 = Unix.gettimeofday () in
-  let bytes = RDF_CottasStore_BaseWriter.serialize_cottas sorted in
+  let bytes = RDF_CottasStore_BaseWriter.serialize_cottas_v2 sorted in
   let byte_count = List.length bytes in
   Printf.printf "%s: serialized %d bytes (%.2fs, %.2f bytes/quad)\n%!"
     verb byte_count (Unix.gettimeofday () -. t2)
@@ -1123,7 +1129,7 @@ let run_compact (args : string list) : unit =
   let parser_name = ref "factoidal" in
   let index_perm = ref "spog" in
   (* Native-writer path (2026-07-06): rebuild the compacted base with
-     RDF.CottasStore.BaseWriter.serialize_cottas + the eager-sidecar
+     RDF.CottasStore.BaseWriter.serialize_cottas_v2 + the eager-sidecar
      self-invocation instead of shelling out to corpus_pipeline.py /
      pycottas / DuckDB -- the LAST Python dependency in the write path.
      Opt in per-invocation with --native-writer, or globally with
@@ -1301,8 +1307,8 @@ let run_compact (args : string list) : unit =
    Every prior store-creation path (cottas-import, compact) shells out to
    corpus_pipeline.py -> pycottas.rdf2cottas -> DuckDB to write data.cottas.
    This command instead calls the native F* writer
-   (RDF.CottasStore.BaseWriter.serialize_cottas, a pure `Tot` function --
-   the byte layout, DELTA_LENGTH_BYTE_ARRAY encoding, and thrift-compact
+   (RDF.CottasStore.BaseWriter.serialize_cottas_v2, a pure `Tot` function --
+   the byte layout, RLE_DICTIONARY/DELTA_LENGTH_BYTE_ARRAY encoding, and thrift-compact
    footer assembly are ALL in F*, per rule #11) so store CREATION has
    zero Python in its critical path.
 
@@ -1356,7 +1362,7 @@ let usage_import () =
     "Usage: factoidal import --nq FILE.nq --out DIR [--build-sidecars] [--no-epoch-marker]\n\n\
      Native (zero-Python) COTTAS store creation: parses FILE.nq with the\n\
      F*-extracted N-Quads parser, sorts (s,p,o,g), writes DIR/data.cottas\n\
-     via RDF.CottasStore.BaseWriter.serialize_cottas, then (by default)\n\
+     via RDF.CottasStore.BaseWriter.serialize_cottas_v2, then (by default)\n\
      eagerly builds the 10 companion sidecars and initializes\n\
      data.compacted-epoch + data.deltalog so the store is immediately\n\
      queryable and --delta-log-ready.\n";

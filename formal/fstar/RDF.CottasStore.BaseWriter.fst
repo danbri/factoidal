@@ -452,12 +452,20 @@ let build_def_level_section (value_count : nat) : Tot B.bytes =
 // Page header + column page assembly.
 // ===========================================================================
 
-let build_page_header (num_values : nat) (uncompressed_size : nat) (compressed_size : nat) : Tot B.bytes =
+// `encoding` (writer v2, 2026-07-06): parameterised over the data page's
+// declared value-encoding so the same header builder serves both DLBA
+// columns (v1, unchanged behaviour when called with
+// `parquet_encoding_dlba`) and RLE_DICTIONARY columns (v2, below). The
+// definition-level / repetition-level encodings (fields 3/4) stay RLE
+// regardless -- those describe the def/rep-level sections, which use the
+// same trivial single-run RLE shape either way (see
+// `build_def_level_section`'s banner).
+let build_page_header (encoding : nat) (num_values : nat) (uncompressed_size : nat) (compressed_size : nat) : Tot B.bytes =
   let f1 = write_field_i32 1 0 parquet_page_type_data_page in
   let f2 = write_field_i32 2 1 uncompressed_size in
   let f3 = write_field_i32 3 2 compressed_size in
   let d1 = write_field_i32 1 0 num_values in
-  let d2 = write_field_i32 2 1 parquet_encoding_dlba in
+  let d2 = write_field_i32 2 1 encoding in
   let d3 = write_field_i32 3 2 parquet_encoding_rle in
   let d4 = write_field_i32 4 3 parquet_encoding_rle in
   let dph = Lh.append_tr d1 (Lh.append_tr d2 (Lh.append_tr d3 (Lh.append_tr d4 write_stop))) in
@@ -472,7 +480,7 @@ let build_column_page (values : list string) : Tot (nat & nat & B.bytes) =
   let value_bytes = concat_strings_bytes values in
   let payload = Lh.append_tr def_section (Lh.append_tr length_block value_bytes) in
   let payload_len = list_len payload in
-  let header = build_page_header value_count payload_len payload_len in
+  let header = build_page_header parquet_encoding_dlba value_count payload_len payload_len in
   let page_bytes = Lh.append_tr header payload in
   (value_count, list_len page_bytes, page_bytes)
 
@@ -616,6 +624,464 @@ let serialize_cottas (rows : list cottas_quad) : Tot B.bytes =
   let groups = chunk_rows rows row_group_size in
   let (_final_offset, page_bytes, rg_metas, num_rows) =
     build_row_groups_acc (List.Tot.length magic_header) groups in
+  let metadata = build_file_metadata num_rows rg_metas in
+  let metadata_len = list_len metadata in
+  if metadata_len >= 4294967296 then Lh.append_tr magic_header page_bytes
+  else
+    Lh.append_tr magic_header
+      (Lh.append_tr page_bytes
+        (Lh.append_tr metadata
+          (Lh.append_tr (B.write_u32_le metadata_len) magic_header)))
+
+// ===========================================================================
+// Writer v2: RLE_DICTIONARY encoding (closing the v1-disclosed ~60x size
+// premium vs pycottas ZSTD, 2026-07-06).
+//
+// v1 (4f8fc95) always writes DELTA_LENGTH_BYTE_ARRAY: correct for any
+// cardinality but pays the full string bytes on every row, every column,
+// even for p/g whose whole point is massive repetition. v2 adds
+// RLE_DICTIONARY (dictionary page + hybrid-RLE index stream), matching
+// exactly the byte shapes Parquet.Footer's decoder consumes (issue #98's
+// hardened section above: PLAIN dictionary entries are LE-u32-length-
+// prefixed BYTE_ARRAY values; the data page opens with the same
+// definition-level section every column already has, THEN a 1-byte
+// index bit-width, THEN a hybrid RLE/bit-packed index stream).
+//
+// Encoding-choice policy (the "crossover"):
+//   * p and g are ALWAYS dictionary-encoded (`encode_column_forced_dict`)
+//     -- matching pycottas/DuckDB's own convention and RDF's structural
+//     reality (predicate and graph vocabularies are small closed sets
+//     relative to row count in every corpus we carry).
+//   * s and o use `encode_column_choose_smaller`: this writer builds
+//     BOTH the DLBA and the RLE_DICTIONARY encoding for the column and
+//     keeps whichever is fewer bytes, per row group. This is deliberately
+//     NOT a hardcoded "cardinality < X%" threshold -- picking a single
+//     fixed percentage would either leave size on the table (too
+//     conservative) or blow up on a corpus whose subject/object
+//     cardinality profile doesn't match the corpus the threshold was
+//     tuned on (too aggressive). Comparing actual encoded byte counts is
+//     strictly at least as good on every corpus, and the tests/local
+//     measurement run reports where the two costs actually cross on the
+//     real corpora (see the writer-v2 measurement note in the PR
+//     description) so the "crossover" claim is falsifiable instead of
+//     asserted.
+//   * Complexity: both the dictionary build (merge sort + dedup, O(n log
+//     n)) and the choose-smaller comparison are safe to run
+//     UNCONDITIONALLY, even on a high-cardinality column where dictionary
+//     encoding will lose -- there is no O(n * distinct) blowup path here
+//     (see `dict_tree_of_sorted`/`dict_tree_find` below), unlike a naive
+//     linear-scan "is this value already in the dictionary?" approach,
+//     which would be quadratic on exactly the columns (s/o) where
+//     cardinality is least predictable.
+//
+// RLE-only run policy: this encoder ALWAYS uses hybrid-RLE "mode 0" (RLE)
+// runs for the index stream, never "mode 1" (bit-packed) runs. Parquet's
+// hybrid format allows freely mixing both, and bit-packed runs pack
+// slightly tighter for a column with almost no local repetition (a
+// handful of bits/value instead of ~2-3 bytes/run-header+body). But mode
+// 1 runs are REQUIRED to represent an exact multiple of 8 values (a
+// "group of 8"), and any run that isn't the last one in the page cannot
+// be padded (the reader always advances past a run's FULL declared body,
+// so padding a non-final run would inject bogus indices into the middle
+// of the decoded stream). Achieving the extra bit-packing win without
+// that correctness hazard needs interleaved run-splitting logic
+// (flush-current-bitpack-batch-before-emitting-an-RLE-run); RLE-only is
+// the simpler, still fully spec-compliant first cut -- every run length
+// (including runs of length 1) is exactly representable with no padding
+// math, and it already captures the dominant win (replacing full string
+// values with small integer indices) even where there's no repetition to
+// exploit. Tightening the tail with bit-packed runs is a follow-up, not
+// a correctness requirement.
+// ===========================================================================
+
+let parquet_encoding_plain : nat = 0
+let parquet_encoding_rle_dictionary : nat = 8
+let parquet_page_type_dictionary_page : nat = 2
+
+// --- Local total string sort + dedup ---------------------------------------
+// Self-contained copy of RDF.Canonical.fst's proven no-worst-case-blowup
+// merge sort shape (split-by-POSITION, never by pivot value, so no input
+// ordering -- sorted, reverse-sorted, many-duplicate-prefix -- can
+// degrade it to O(n^2) or blow the OCaml stack the way a first-element-
+// pivot quicksort can). Kept local (not `open RDF.Canonical`) to keep
+// this module's dependency footprint scoped to what it actually needs --
+// RDF.Canonical is a large, unrelated (RDFC-1.0 canonicalization) module.
+
+let str_lt (a b : string) : bool = String.compare a b < 0
+let str_le (a b : string) : bool = String.compare a b <= 0
+
+let rec str_list_len_acc (xs : list string) (acc : nat) : Tot nat (decreases xs) =
+  match xs with
+  | [] -> acc
+  | _ :: tl -> str_list_len_acc tl (acc + 1)
+
+let str_list_len (xs : list string) : nat = str_list_len_acc xs 0
+
+let rec split_pos_str_acc (n : nat) (xs : list string) (acc : list string)
+  : Tot (list string & list string) (decreases xs) =
+  match xs with
+  | [] -> (List.Tot.rev acc, [])
+  | hd :: tl -> if n = 0 then (List.Tot.rev acc, xs) else split_pos_str_acc (n - 1) tl (hd :: acc)
+
+let rec merge_sorted_str_acc (xs ys : list string) (fuel : nat) (acc : list string)
+  : Tot (list string) (decreases fuel) =
+  if fuel = 0 then List.Tot.rev acc `Lh.append_tr` (xs `Lh.append_tr` ys)
+  else
+    match xs, ys with
+    | [], [] -> List.Tot.rev acc
+    | [], hd :: tl -> merge_sorted_str_acc [] tl (fuel - 1) (hd :: acc)
+    | hd :: tl, [] -> merge_sorted_str_acc tl [] (fuel - 1) (hd :: acc)
+    | hx :: tx, hy :: ty ->
+      if str_le hx hy
+      then merge_sorted_str_acc tx ys (fuel - 1) (hx :: acc)
+      else merge_sorted_str_acc xs ty (fuel - 1) (hy :: acc)
+
+// `depth_fuel` is a totality device (as in RDF.Canonical's identical
+// idiom): seeded generously above the ~log2(n) levels the split
+// recursion actually needs, so `depth_fuel = 0` is unreachable for any
+// real input.
+let rec merge_sort_strings_fuel (xs : list string) (depth_fuel : nat)
+  : Tot (list string) (decreases depth_fuel) =
+  match xs with
+  | [] -> []
+  | [_] -> xs
+  | _ :: _ :: _ ->
+    if depth_fuel = 0 then xs
+    else
+      let n = str_list_len xs in
+      let (left, right) = split_pos_str_acc (n / 2) xs [] in
+      let sl = merge_sort_strings_fuel left (depth_fuel - 1) in
+      let sr = merge_sort_strings_fuel right (depth_fuel - 1) in
+      let fuel = str_list_len sl + str_list_len sr in
+      merge_sorted_str_acc sl sr fuel []
+
+let merge_sort_strings (xs : list string) : Tot (list string) =
+  merge_sort_strings_fuel xs (str_list_len xs + 1)
+
+let rec dedup_sorted_str_acc (xs : list string) (acc : list string)
+  : Tot (list string) (decreases xs) =
+  match xs with
+  | [] -> List.Tot.rev acc
+  | [x] -> List.Tot.rev (x :: acc)
+  | x :: y :: tl -> if x = y then dedup_sorted_str_acc (y :: tl) acc else dedup_sorted_str_acc (y :: tl) (x :: acc)
+
+let dedup_sorted_str (xs : list string) : Tot (list string) = dedup_sorted_str_acc xs []
+
+let rec zip_with_index_acc (xs : list string) (i : nat) (acc : list (string & nat))
+  : Tot (list (string & nat)) (decreases xs) =
+  match xs with
+  | [] -> List.Tot.rev acc
+  | hd :: tl -> zip_with_index_acc tl (i + 1) ((hd, i) :: acc)
+
+let zip_with_index (xs : list string) : Tot (list (string & nat)) = zip_with_index_acc xs 0 []
+
+// --- Balanced lookup tree (value -> dictionary index), O(log d) find ------
+// Same shape as RDF.Canonical.fst's `bn_lookup_tree` (split by position
+// from an already-sorted list, so the tree is balanced regardless of
+// input order) -- built ONCE per column per row group (O(d log d)), then
+// `dict_tree_find` is O(log d) per row, giving O(n log d) total instead
+// of a naive linear-scan-per-row O(n * d). This is what makes it safe to
+// run the dictionary build unconditionally on s/o (see the banner above):
+// even a high-cardinality column (d close to n) costs O(n log n), never
+// O(n^2).
+
+type dict_lookup_tree =
+  | DLT_Leaf
+  | DLT_Node of dict_lookup_tree * string * nat * dict_lookup_tree
+
+let rec split_pos_pair_acc (n : nat) (xs : list (string & nat)) (acc : list (string & nat))
+  : Tot (list (string & nat) & list (string & nat)) (decreases xs) =
+  match xs with
+  | [] -> (List.Tot.rev acc, [])
+  | hd :: tl -> if n = 0 then (List.Tot.rev acc, xs) else split_pos_pair_acc (n - 1) tl (hd :: acc)
+
+let rec dict_tree_of_sorted (xs : list (string & nat)) (n : nat) : Tot dict_lookup_tree (decreases n) =
+  if n = 0 then DLT_Leaf
+  else
+    let mid = n / 2 in
+    let (left, rest) = split_pos_pair_acc mid xs [] in
+    match rest with
+    | [] -> DLT_Leaf  // unreachable: `xs` has `n` elements by construction
+    | (k, v) :: right ->
+      DLT_Node (dict_tree_of_sorted left mid, k, v, dict_tree_of_sorted right (n - mid - 1))
+
+let rec dict_tree_find (v : string) (t : dict_lookup_tree) : Tot (option nat) (decreases t) =
+  match t with
+  | DLT_Leaf -> None
+  | DLT_Node (l, k, idx, r) ->
+    if v = k then Some idx
+    else if str_lt v k then dict_tree_find v l
+    else dict_tree_find v r
+
+// Per-row lookup walk; tail-recursive per the module's stack-safety note
+// (row-group scale, up to 122,880 elements).
+let rec lookup_indices_acc (values : list string) (t : dict_lookup_tree) (acc : list nat)
+  : Tot (list nat) (decreases values) =
+  match values with
+  | [] -> List.Tot.rev acc
+  | v :: tl ->
+    let idx = (match dict_tree_find v t with Some i -> i | None -> 0) in  // None unreachable: v is drawn from the same values the tree was built from
+    lookup_indices_acc tl t (idx :: acc)
+
+let lookup_indices (values : list string) (t : dict_lookup_tree) : Tot (list nat) =
+  lookup_indices_acc values t []
+
+// --- Maximal-run grouping (for RLE-only hybrid encoding) -------------------
+
+let rec group_runs_acc (indices : list nat) (cur_val : nat) (cur_count : nat) (acc : list (nat & nat))
+  : Tot (list (nat & nat)) (decreases indices) =
+  match indices with
+  | [] -> List.Tot.rev ((cur_val, cur_count) :: acc)
+  | v :: tl ->
+    if v = cur_val then group_runs_acc tl cur_val (cur_count + 1) acc
+    else group_runs_acc tl v 1 ((cur_val, cur_count) :: acc)
+
+let group_runs (indices : list nat) : Tot (list (nat & nat)) =
+  match indices with
+  | [] -> []
+  | v :: tl -> group_runs_acc tl v 1 []
+
+// --- Hybrid RLE run byte assembly ------------------------------------------
+// Matches Parquet.Footer's `decode_hybrid_rle_runs` mode-0 (RLE) branch
+// exactly: header = plain (non-zigzag) varint of (run_length << 1 | 0),
+// body = the single value as `ceil(bit_width / 8)` little-endian bytes.
+
+let rec write_le_uint_bytes_acc (v : nat) (nbytes : nat) (acc : list B.byte)
+  : Tot B.bytes (decreases nbytes) =
+  if nbytes = 0 then List.Tot.rev acc
+  else write_le_uint_bytes_acc (v / 256) (nbytes - 1) (B.byte_of_int (v % 256) :: acc)
+
+let write_le_uint_bytes (v : nat) (nbytes : nat) : Tot B.bytes =
+  write_le_uint_bytes_acc v nbytes []
+
+// Per-run recursion (depth = number of maximal runs, up to row-group
+// scale in the degenerate all-distinct case) -- accumulator style per
+// the module's stack-safety note.
+let rec build_rle_runs_acc (body_nbytes : nat) (runs : list (nat & nat)) (racc : B.bytes)
+  : Tot B.bytes (decreases runs) =
+  match runs with
+  | [] -> List.Tot.rev racc
+  | (value, count) :: tl ->
+    let header = write_uvarint (count + count) in  // mode 0 (RLE): (run_length << 1) | 0
+    let body = write_le_uint_bytes value body_nbytes in
+    build_rle_runs_acc body_nbytes tl (List.Tot.rev_acc (Lh.append_tr header body) racc)
+
+let build_rle_runs (body_nbytes : nat) (runs : list (nat & nat)) : Tot B.bytes =
+  build_rle_runs_acc body_nbytes runs []
+
+// --- Dictionary page assembly -----------------------------------------------
+// PLAIN encoding for BYTE_ARRAY: LE u32 length prefix + raw bytes, no
+// varint (matches `decode_one_plain_dictionary_entry`'s `le_u32_at_hex`
+// read, NOT a varint-length read like DLBA's length block).
+
+let write_dict_entry (e : string) : Tot B.bytes =
+  let len = String.length e in
+  if len >= 4294967296 then []  // unreachable for real corpora; keeps F* honest per DictWriter.fst's house style
+  else Lh.append_tr (B.write_u32_le len) (B.bytes_of_string e)
+
+let rec build_dict_entries_acc (entries : list string) (racc : B.bytes)
+  : Tot B.bytes (decreases entries) =
+  match entries with
+  | [] -> List.Tot.rev racc
+  | e :: tl -> build_dict_entries_acc tl (List.Tot.rev_acc (write_dict_entry e) racc)
+
+let build_dict_page_payload (entries : list string) : Tot B.bytes =
+  build_dict_entries_acc entries []
+
+// DictionaryPageHeader: field 1 num_values, field 2 encoding (PLAIN).
+// PageHeader: field 1 type=DICTIONARY_PAGE, field 2/3 sizes, field 7
+// dictionary_page_header struct (matches
+// `parquet_dictionary_page_num_values_at`'s field7->field1 read).
+let build_dictionary_page_header (num_values : nat) (uncompressed_size : nat) (compressed_size : nat) : Tot B.bytes =
+  let f1 = write_field_i32 1 0 parquet_page_type_dictionary_page in
+  let f2 = write_field_i32 2 1 uncompressed_size in
+  let f3 = write_field_i32 3 2 compressed_size in
+  let d1 = write_field_i32 1 0 num_values in
+  let d2 = write_field_i32 2 1 parquet_encoding_plain in
+  let dph = Lh.append_tr d1 (Lh.append_tr d2 write_stop) in
+  let f7 = Lh.append_tr (write_field_header PF.compact_t_struct 7 3) dph in
+  Lh.append_tr f1 (Lh.append_tr f2 (Lh.append_tr f3 (Lh.append_tr f7 write_stop)))
+
+// --- RLE_DICTIONARY data-page payload ---------------------------------------
+// Same def-level section every column has, then the 1-byte index
+// bit-width, then the RLE-only hybrid index stream (matches
+// `decode_rle_dictionary_data_page`'s "byte 0 = bit_width, rest = hybrid
+// RLE/bit-packed stream" contract exactly, using only mode-0 runs).
+
+let build_rle_dictionary_page_payload (value_count : nat) (bit_width : nat) (runs : list (nat & nat)) : Tot B.bytes =
+  let def_section = build_def_level_section value_count in
+  let body_nbytes = (bit_width + 7) / 8 in
+  let runs_bytes = build_rle_runs body_nbytes runs in
+  Lh.append_tr def_section (Lh.append_tr [B.byte_of_int (bit_width % 256)] runs_bytes)
+
+// --- Column-level encoding choice -------------------------------------------
+
+type column_encoding =
+  | CE_DLBA
+  | CE_RleDictionary
+
+// ce_dict_page_len is 0 for CE_DLBA (no dictionary page at all);
+// ce_total_len is the FULL byte length of this column's page(s)
+// (dictionary page + data page for CE_RleDictionary, just the data page
+// for CE_DLBA) -- exactly what `build_row_group`'s cumulative-offset
+// arithmetic already expects from a column encoder.
+type col_encoded = {
+  ce_kind : column_encoding;
+  ce_num_values : nat;
+  ce_dict_page_len : nat;
+  ce_total_len : nat;
+  ce_bytes : B.bytes;
+}
+
+let build_column_page_dlba_v2 (values : list string) : Tot col_encoded =
+  let (nv, len, bytes) = build_column_page values in
+  { ce_kind = CE_DLBA; ce_num_values = nv; ce_dict_page_len = 0; ce_total_len = len; ce_bytes = bytes }
+
+// Builds the full RLE_DICTIONARY encoding (dictionary page ++ data page)
+// for one column's values in one row group. See the module-level banner
+// above for the complexity argument (O(n log n), never O(n * distinct)).
+let build_column_page_rle_dict (values : list string) : Tot col_encoded =
+  let value_count = list_len values in
+  if value_count = 0 then
+    let dict_header = build_dictionary_page_header 0 0 0 in
+    let dict_len = list_len dict_header in
+    let data_payload = build_rle_dictionary_page_payload 0 0 [] in
+    let data_payload_len = list_len data_payload in
+    let data_header = build_page_header parquet_encoding_rle_dictionary 0 data_payload_len data_payload_len in
+    let data_bytes = Lh.append_tr data_header data_payload in
+    let data_len = list_len data_bytes in
+    {
+      ce_kind = CE_RleDictionary;
+      ce_num_values = 0;
+      ce_dict_page_len = dict_len;
+      ce_total_len = dict_len + data_len;
+      ce_bytes = Lh.append_tr dict_header data_bytes;
+    }
+  else
+    let sorted = merge_sort_strings values in
+    let distinct = dedup_sorted_str sorted in
+    let dict_size = list_len distinct in
+    let indexed = zip_with_index distinct in
+    let tree = dict_tree_of_sorted indexed dict_size in
+    let indices = lookup_indices values tree in
+    let max_index = if dict_size = 0 then 0 else dict_size - 1 in
+    let bit_width = bits_needed max_index in
+    let runs = group_runs indices in
+    let data_payload = build_rle_dictionary_page_payload value_count bit_width runs in
+    let data_payload_len = list_len data_payload in
+    let data_header = build_page_header parquet_encoding_rle_dictionary value_count data_payload_len data_payload_len in
+    let data_bytes = Lh.append_tr data_header data_payload in
+    let dict_payload = build_dict_page_payload distinct in
+    let dict_payload_len = list_len dict_payload in
+    let dict_header = build_dictionary_page_header dict_size dict_payload_len dict_payload_len in
+    let dict_bytes = Lh.append_tr dict_header dict_payload in
+    let dict_len = list_len dict_bytes in
+    let data_len = list_len data_bytes in
+    {
+      ce_kind = CE_RleDictionary;
+      ce_num_values = value_count;
+      ce_dict_page_len = dict_len;
+      ce_total_len = dict_len + data_len;
+      ce_bytes = Lh.append_tr dict_bytes data_bytes;
+    }
+
+// p/g: always dictionary-encoded (see module banner).
+let encode_column_forced_dict (values : list string) : Tot col_encoded =
+  build_column_page_rle_dict values
+
+// s/o: build both, keep whichever is smaller (the "crossover" is this
+// comparison itself, not a hardcoded threshold -- see module banner).
+let encode_column_choose_smaller (values : list string) : Tot col_encoded =
+  let dlba = build_column_page_dlba_v2 values in
+  let dict = build_column_page_rle_dict values in
+  if dict.ce_total_len < dlba.ce_total_len then dict else dlba
+
+// --- ColumnMetaData / ColumnChunk, encoding-aware ---------------------------
+// CE_DLBA reuses the v1 builders unchanged (identical byte shape: no
+// dictionary_page_offset field, one declared encoding). CE_RleDictionary
+// adds: encodings list of 2 ([PLAIN, RLE_DICTIONARY] -- the dictionary
+// page's own encoding, then the data page's), and field 11
+// (dictionary_page_offset) pointing at the START of the column chunk
+// (the dictionary page always comes first); field 9 (data_page_offset)
+// is shifted past the dictionary page's length, per the #98 bug-history
+// note on `probe_parquet_column_dictionary_page_offset` (field9 = the
+// DATA page, field11 = the DICT page -- our reader treats them as
+// distinct offsets, matching real pycottas/DuckDB output).
+let build_column_metadata_v2 (name : string) (ce : col_encoded) (chunk_start_offset : nat) : Tot B.bytes =
+  match ce.ce_kind with
+  | CE_DLBA -> build_column_metadata name ce.ce_num_values ce.ce_total_len chunk_start_offset
+  | CE_RleDictionary ->
+    let data_page_offset = chunk_start_offset + ce.ce_dict_page_len in
+    let f1 = write_field_i32 1 0 parquet_type_byte_array in
+    let f2 = write_field_list_header 2 1 2 PF.compact_t_i32 in
+    let f2v =
+      Lh.append_tr (write_uvarint (zigzag_encode_nat parquet_encoding_plain))
+        (write_uvarint (zigzag_encode_nat parquet_encoding_rle_dictionary)) in
+    let f3 = write_field_list_header 3 2 1 PF.compact_t_binary in
+    let f3v = Lh.append_tr (write_uvarint (String.length name)) (B.bytes_of_string name) in
+    let f4 = write_field_i32 4 3 parquet_codec_uncompressed in
+    let f5 = write_field_i64 5 4 ce.ce_num_values in
+    let f6 = write_field_i64 6 5 ce.ce_total_len in
+    let f7 = write_field_i64 7 6 ce.ce_total_len in
+    let f9 = write_field_i64 9 7 data_page_offset in
+    let f11 = write_field_i64 11 9 chunk_start_offset in
+    Lh.append_tr f1 (Lh.append_tr f2 (Lh.append_tr f2v (Lh.append_tr f3 (Lh.append_tr f3v
+      (Lh.append_tr f4 (Lh.append_tr f5 (Lh.append_tr f6 (Lh.append_tr f7 (Lh.append_tr f9 (Lh.append_tr f11 write_stop))))))))))
+
+let build_column_chunk_v2 (name : string) (ce : col_encoded) (chunk_start_offset : nat) : Tot B.bytes =
+  let f2 = write_field_i64 2 0 chunk_start_offset in
+  let meta = build_column_metadata_v2 name ce chunk_start_offset in
+  let f3 = Lh.append_tr (write_field_header PF.compact_t_struct 3 2) meta in
+  Lh.append_tr f2 (Lh.append_tr f3 write_stop)
+
+// --- Row group / top-level entry point, v2 ----------------------------------
+
+let build_row_group_v2 (start_offset : nat) (rows : list cottas_quad) : Tot (nat & B.bytes & B.bytes & nat) =
+  let num_rows = list_len rows in
+  let ce_s = encode_column_choose_smaller (map_cq_s rows) in
+  let off_s = start_offset in
+  let off_p = off_s + ce_s.ce_total_len in
+  let ce_p = encode_column_forced_dict (map_cq_p rows) in
+  let off_o = off_p + ce_p.ce_total_len in
+  let ce_o = encode_column_choose_smaller (map_cq_o rows) in
+  let off_g = off_o + ce_o.ce_total_len in
+  let ce_g = encode_column_forced_dict (map_cq_g rows) in
+  let next_offset = off_g + ce_g.ce_total_len in
+  let page_bytes = Lh.append_tr ce_s.ce_bytes (Lh.append_tr ce_p.ce_bytes (Lh.append_tr ce_o.ce_bytes ce_g.ce_bytes)) in
+  let chunk_s = build_column_chunk_v2 "s" ce_s off_s in
+  let chunk_p = build_column_chunk_v2 "p" ce_p off_p in
+  let chunk_o = build_column_chunk_v2 "o" ce_o off_o in
+  let chunk_g = build_column_chunk_v2 "g" ce_g off_g in
+  let columns_list =
+    Lh.append_tr (write_list_header 4 PF.compact_t_struct)
+      (Lh.append_tr chunk_s (Lh.append_tr chunk_p (Lh.append_tr chunk_o chunk_g))) in
+  let f1 = Lh.append_tr (write_field_header PF.compact_t_list 1 0) columns_list in
+  let total_byte_size = ce_s.ce_total_len + ce_p.ce_total_len + ce_o.ce_total_len + ce_g.ce_total_len in
+  let f2 = write_field_i64 2 1 total_byte_size in
+  let f3 = write_field_i64 3 2 num_rows in
+  let rg_meta = Lh.append_tr f1 (Lh.append_tr f2 (Lh.append_tr f3 write_stop)) in
+  (next_offset, page_bytes, rg_meta, num_rows)
+
+let rec build_row_groups_acc_v2 (start_offset : nat) (groups : list (list cottas_quad))
+  : Tot (nat & B.bytes & list B.bytes & nat) (decreases groups) =
+  match groups with
+  | [] -> (start_offset, [], [], 0)
+  | g :: rest ->
+    let (off1, pbytes, rgmeta, nrows) = build_row_group_v2 start_offset g in
+    let (off2, rest_pbytes, rest_rgmeta, rest_nrows) = build_row_groups_acc_v2 off1 rest in
+    (off2, Lh.append_tr pbytes rest_pbytes, rgmeta :: rest_rgmeta, nrows + rest_nrows)
+
+// serialize_cottas_v2 sorted_rows
+//   Same contract as `serialize_cottas` (caller sorts by s,p,o,g first)
+//   but with p/g always RLE_DICTIONARY-encoded and s/o encoded with
+//   whichever of DLBA/RLE_DICTIONARY is smaller per row group. This is
+//   the function the CLI's `import`/`compact --native-writer` paths call
+//   as of writer v2 -- `serialize_cottas` (v1) stays as-is for its own
+//   pinned round-trip test, not superseded.
+let serialize_cottas_v2 (rows : list cottas_quad) : Tot B.bytes =
+  let groups = chunk_rows rows row_group_size in
+  let (_final_offset, page_bytes, rg_metas, num_rows) =
+    build_row_groups_acc_v2 (List.Tot.length magic_header) groups in
   let metadata = build_file_metadata num_rows rg_metas in
   let metadata_len = list_len metadata in
   if metadata_len >= 4294967296 then Lh.append_tr magic_header page_bytes

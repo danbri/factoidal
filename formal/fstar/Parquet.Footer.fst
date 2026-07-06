@@ -1947,7 +1947,18 @@ let parquet_dictionary_page_num_values_at (path:string) (page_offset:nat) : opti
 // in storage). Mirrors the body of
 // `probe_parquet_column_decompressed_payload_hex`, but starting at an
 // arbitrary page offset.
-let parquet_decompressed_page_at (path:string) (page_offset:nat) : option string =
+//
+// `codec` (writer v2, 2026-07-06): the dictionary page shares its column
+// chunk's codec with the data page (Parquet has one codec per column
+// chunk, not per page), so callers must pass the SAME codec they already
+// look up for the data page. Originally this always zstd-decompressed
+// unconditionally, which silently broke on any UNCOMPRESSED-codec
+// dictionary page (RDF.CottasStore.BaseWriter's RLE_DICTIONARY columns):
+// `parquet_zstd_decompress_hex` on non-zstd bytes returns None, so every
+// dictionary-encoded column from our own writer would fail to decode.
+// Mirrors the UNCOMPRESSED branch already present in
+// `probe_parquet_column_decompressed_payload_hex[_in_row_group[_from_table]]`.
+let parquet_decompressed_page_at (path:string) (page_offset:nat) (codec:string) : option string =
   match parquet_page_header_length_at path page_offset with
   | None -> None
   | Some header_len ->
@@ -1961,7 +1972,8 @@ let parquet_decompressed_page_at (path:string) (page_offset:nat) : option string
         match parquet_read_range_hex path payload_offset compressed_size with
         | None -> None
         | Some compressed_hex ->
-          parquet_zstd_decompress_hex compressed_hex uncompressed_size
+          if codec = "UNCOMPRESSED" then Some compressed_hex
+          else parquet_zstd_decompress_hex compressed_hex uncompressed_size
 
 // ---------------------------------------------------------------------------
 // PLAIN_DICTIONARY parser: walk a sequence of `num_values` length-prefixed
@@ -2160,25 +2172,71 @@ let decode_rle_dictionary_data_page (payload_hex:string) (value_count:nat)
 // Index-to-value lookup against the dictionary list. Returns None on
 // out-of-range indices (defensive — pycottas-emitted Parquet should never
 // produce them, but verification is "no holes").
+//
+// Position-indexed balanced tree (writer-v2 follow-on, 2026-07-06): the
+// original `list_nth_string` walked the dictionary list from the front on
+// EVERY row (O(d) per lookup), so a full-column decode cost O(n * d).
+// That was invisible while every RLE_DICTIONARY column in practice was
+// p/g (dictionaries of dozens-to-hundreds of entries), but
+// RDF.CottasStore.BaseWriter's writer v2 now dictionary-encodes s/o too
+// whenever that is the smaller encoding -- and on the 888,949-quad gene
+// corpus that gives dictionaries in the thousands of entries, which
+// measured as a real query-time regression on full-column-decode filter
+// queries (`filter_zipped_rows`/`count_zipped_rows` in
+// RDF.CottasStore.fst): ~19.5s (v1, DLBA) -> ~61.6s (v2 with the O(n*d)
+// lookup) for a bound-subject-and-predicate point lookup on gene. This
+// tree mirrors `RDF.CottasStore.BaseWriter`'s `dict_tree_of_sorted` /
+// `dict_tree_find` shape exactly, but indexes by POSITION rather than by
+// sorted key: split-by-position (never by value) keeps it balanced
+// regardless of dictionary content, `left_size` at each node lets
+// `dict_index_tree_find` route left/exact/right in O(log d), and the
+// tree is built ONCE per column-page decode (O(d log d)) rather than
+// once per row.
 // ---------------------------------------------------------------------------
 
-let rec list_nth_string (xs:list string) (idx:nat) : Tot (option string) (decreases xs) =
-  match xs with
-  | [] -> None
-  | hd :: tl -> if idx = 0 then Some hd else list_nth_string tl (idx - 1)
+type dict_index_tree =
+  | DIT_Leaf
+  | DIT_Node of dict_index_tree * nat * string * dict_index_tree
 
-// Build a flat array-like cache of the dictionary entries for O(N) cons.
-// We expose a list-of-options because callers consume it as a row order
-// stream identical in shape to `dlba_page_decode_all_strings`.
-let rec map_indices_to_dict (indices:list nat) (dict:list string) (acc:list (option string))
+let rec split_pos_dict_acc (n:nat) (xs:list string) (acc:list string)
+  : Tot (list string & list string) (decreases xs) =
+  match xs with
+  | [] -> (List.Tot.rev acc, [])
+  | hd :: tl -> if n = 0 then (List.Tot.rev acc, xs) else split_pos_dict_acc (n - 1) tl (hd :: acc)
+
+let rec build_dict_index_tree (xs : list string) (n : nat) : Tot dict_index_tree (decreases n) =
+  if n = 0 then DIT_Leaf
+  else
+    let mid = n / 2 in
+    let (left, rest) = split_pos_dict_acc mid xs [] in
+    match rest with
+    | [] -> DIT_Leaf  // unreachable: `xs` has `n` elements by construction
+    | v :: right ->
+      DIT_Node (build_dict_index_tree left mid, mid, v, build_dict_index_tree right (n - mid - 1))
+
+let rec dict_index_tree_find (idx:nat) (t:dict_index_tree) : Tot (option string) (decreases t) =
+  match t with
+  | DIT_Leaf -> None
+  | DIT_Node (l, left_size, v, r) ->
+    if idx < left_size then dict_index_tree_find idx l
+    else if idx = left_size then Some v
+    else dict_index_tree_find (idx - left_size - 1) r
+
+// Per-row lookup walk against an ALREADY-BUILT tree; tail-recursive per
+// the writer module's stack-safety convention (row-group scale).
+let rec map_indices_to_dict_via_tree (indices:list nat) (t:dict_index_tree) (acc:list (option string))
   : Tot (list (option string)) (decreases indices) =
   match indices with
   | [] -> List.Tot.rev acc
-  | i :: rest ->
-    let v = match list_nth_string dict i with
-            | Some s -> Some s
-            | None -> None in
-    map_indices_to_dict rest dict (v :: acc)
+  | i :: rest -> map_indices_to_dict_via_tree rest t (dict_index_tree_find i t :: acc)
+
+// Same external signature/semantics as the original list-scan version
+// (every call site still calls `map_indices_to_dict indices dict []`) --
+// only the internal lookup strategy changed, from O(d)-per-row to a tree
+// built once (O(d log d)) then O(log d) per row.
+let map_indices_to_dict (indices:list nat) (dict:list string) (acc:list (option string))
+  : Tot (list (option string)) =
+  map_indices_to_dict_via_tree indices (build_dict_index_tree dict (List.Tot.length dict)) acc
 
 // Skip the leading "first-level section" of a decompressed data-page
 // payload: a 4-byte LE byte-length, then that many bytes. Every COTTAS
@@ -2213,7 +2271,10 @@ let probe_parquet_column_rle_dictionary_decode_all (path:string) (col_index:nat)
   match probe_parquet_column_dictionary_page_offset path col_index with
   | None -> None
   | Some dict_offset ->
-    match parquet_decompressed_page_at path dict_offset with
+    match probe_parquet_column_compression_codec path col_index with
+    | None -> None
+    | Some codec ->
+    match parquet_decompressed_page_at path dict_offset codec with
     | None -> None
     | Some dict_payload_hex ->
       match parquet_dictionary_page_num_values_at path dict_offset with
@@ -2587,7 +2648,10 @@ let probe_parquet_column_rle_dictionary_decode_all_in_row_group
           path rg_index col_index with
   | None -> None
   | Some dict_offset ->
-    match parquet_decompressed_page_at path dict_offset with
+    match probe_parquet_column_compression_codec_in_row_group path rg_index col_index with
+    | None -> None
+    | Some codec ->
+    match parquet_decompressed_page_at path dict_offset codec with
     | None -> None
     | Some dict_payload_hex ->
       match parquet_dictionary_page_num_values_at path dict_offset with
@@ -3020,7 +3084,10 @@ let probe_parquet_column_rle_dictionary_decode_all_in_row_group_from_table
           table rg_index col_index with
   | None -> None
   | Some dict_offset ->
-    match parquet_decompressed_page_at path dict_offset with
+    match probe_parquet_column_compression_codec_in_row_group_from_table table rg_index col_index with
+    | None -> None
+    | Some codec ->
+    match parquet_decompressed_page_at path dict_offset codec with
     | None -> None
     | Some dict_payload_hex ->
       match parquet_dictionary_page_num_values_at path dict_offset with
@@ -3100,7 +3167,10 @@ let probe_parquet_column_dictionary_in_row_group_from_table
           table rg_index col_index with
   | None -> None
   | Some dict_offset ->
-    match parquet_decompressed_page_at path dict_offset with
+    match probe_parquet_column_compression_codec_in_row_group_from_table table rg_index col_index with
+    | None -> None
+    | Some codec ->
+    match parquet_decompressed_page_at path dict_offset codec with
     | None -> None
     | Some dict_payload_hex ->
       match parquet_dictionary_page_num_values_at path dict_offset with
@@ -3194,7 +3264,10 @@ let probe_parquet_column_dictionary_in_row_group
           path rg_index col_index with
   | None -> None
   | Some dict_offset ->
-    match parquet_decompressed_page_at path dict_offset with
+    match probe_parquet_column_compression_codec_in_row_group path rg_index col_index with
+    | None -> None
+    | Some codec ->
+    match parquet_decompressed_page_at path dict_offset codec with
     | None -> None
     | Some dict_payload_hex ->
       match parquet_dictionary_page_num_values_at path dict_offset with
