@@ -1,0 +1,70 @@
+# Deploy the UK Parliament live endpoint (factoidal.fly.dev) from CI.
+#
+# The image (root Dockerfile) copies the CI-built Linux binaries from
+# bin/ci-linux-x86_64/ (kept fresh by w3c-tests.yml's native-shadow
+# job on every push) plus docs/web/ and docs/fstar-extracted/. The
+# 3,143,406-quad Parliament COTTAS store lives on the Fly volume
+# mounted at /data and is NOT part of the image - a redeploy swaps the
+# binary and web assets, the data stays.
+#
+# Auth: set the FLY_API_TOKEN repository secret (Settings > Secrets
+# and variables > Actions). Generate one with `flyctl tokens create
+# deploy -a factoidal`. Without the secret this workflow fails fast
+# with a clear message instead of a cryptic flyctl error.
+#
+# Trigger: manual only (workflow_dispatch). Deploys ship whatever
+# commit you run it from - keep it deliberate rather than on-push,
+# since the live endpoint is user-facing.
+
+name: fly-deploy
+
+on:
+  workflow_dispatch: {}
+
+concurrency:
+  group: fly-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check FLY_API_TOKEN is configured
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          if [ -z "$FLY_API_TOKEN" ]; then
+            echo "::error::FLY_API_TOKEN repository secret is not set." \
+                 "Create a deploy token with: flyctl tokens create deploy -a factoidal" \
+                 "and add it under Settings > Secrets and variables > Actions."
+            exit 1
+          fi
+
+      - uses: actions/checkout@v4
+
+      - name: Sanity-check the CI server binary is present
+        run: |
+          test -x bin/ci-linux-x86_64/factoidal-http || {
+            echo "::error::bin/ci-linux-x86_64/factoidal-http missing or not executable -" \
+                 "w3c-tests.yml's native-shadow job populates it; deploy from a commit where it exists."
+            exit 1
+          }
+
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: Deploy
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: flyctl deploy --remote-only
+
+      - name: Post-deploy smoke test
+        run: |
+          sleep 10
+          COUNT_JSON=$(curl -sS -m 30 "https://factoidal.fly.dev/sparql?query=SELECT%20(COUNT(*)%20AS%20?n)%20WHERE%20%7B?s%20?p%20?o%7D" \
+            -H "Accept: application/sparql-results+json")
+          echo "$COUNT_JSON"
+          echo "$COUNT_JSON" | grep -q '"3143406"' || {
+            echo "::error::Post-deploy COUNT over the Parliament corpus did not return 3143406."
+            exit 1
+          }
