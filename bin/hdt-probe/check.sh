@@ -92,6 +92,18 @@ if [[ $RC -ne 0 ]]; then echo "  FAIL  probe exited rc=$RC"; FAIL=$((FAIL + 1));
   expect "$TMPLOG" 'subjects *: dictionary 1 terms, ground truth 1 terms -> MATCH'   "subject term set matches test002.nt"
   expect "$TMPLOG" 'predicates *: dictionary 1 terms, ground truth 1 terms -> MATCH' "predicate term set matches test002.nt"
   expect "$TMPLOG" 'objects *: dictionary 1 terms, ground truth 1 terms -> MATCH'    "object term set matches test002.nt"
+
+  # --- stage 3: BitmapTriples navigation ---
+  expect "$TMPLOG" 'triples crc *: OK'                                              "triples section CRC8/CRC32C validate"
+  expect "$TMPLOG" 'triple count : 1 \(ArrayZ entries\)'                            "triple count = 1"
+  expect "$TMPLOG" '\(s,p\) pairs *: 1 \(ArrayY entries\)'                          "(s,p) pair count = 1"
+  expect "$TMPLOG" 'num subjects : 1 \(BitmapY ones-count; dictionary role max = 1, match=true\)' "num subjects (BitmapY) matches dictionary role max"
+  expect "$TMPLOG" 'bitmapY *: rank1\(select1 k\) = k\+1 for 1 pass, 0 fail \(out of 1\)' "bitmapY rank1(select1 k)=k+1 regression"
+  expect "$TMPLOG" 'bitmapZ *: rank1\(select1 k\) = k\+1 for 1 pass, 0 fail \(out of 1\)' "bitmapZ rank1(select1 k)=k+1 regression"
+  expect "$TMPLOG" 'subject 1 <http://example.org/foo> : 1 pairs'                    "subject 1 spot check (1 pair, grep-derived)"
+  expect "$TMPLOG" 'id-triples decoded *: 1 \(unresolved: 0\)'                       "all id-triples resolved to terms"
+  expect "$TMPLOG" 'hdt lines \(unique\) *: 1, ground truth lines \(unique\): 1'     "enumeration line counts match test002.nt"
+  expect "$TMPLOG" 'enumeration vs source \(sorted N-Triples compare\) -> MATCH'     "enumeration equals source (test002.nt, stage-3 gate)"
 fi
 
 echo "--- rml-core-ontology.hdt (input: 343 triples) ---"
@@ -133,6 +145,18 @@ if [[ $RC -ne 0 ]]; then echo "  FAIL  probe exited rc=$RC"; FAIL=$((FAIL + 1));
   expect "$TMPLOG" 'subjects *: dictionary 84 terms, ground truth 84 terms -> MATCH'    "subject term set matches ontology.nt (= distinctSubjects)"
   expect "$TMPLOG" 'predicates *: dictionary 22 terms, ground truth 22 terms -> MATCH'  "predicate term set matches ontology.nt"
   expect "$TMPLOG" 'objects *: dictionary 173 terms, ground truth 173 terms -> MATCH'   "object term set matches ontology.nt (= distinctObjects)"
+
+  # --- stage 3: BitmapTriples navigation ---
+  expect "$TMPLOG" 'triples crc *: OK'                                                 "triples section CRC8/CRC32C validate"
+  expect "$TMPLOG" 'triple count : 343 \(ArrayZ entries\)'                             "triple count = 343"
+  expect "$TMPLOG" '\(s,p\) pairs *: 335 \(ArrayY entries\)'                            "(s,p) pair count = 335"
+  expect "$TMPLOG" 'num subjects : 84 \(BitmapY ones-count; dictionary role max = 84, match=true\)' "num subjects (BitmapY) matches dictionary role max (84 = 39 shared + 45 subjects)"
+  expect "$TMPLOG" 'bitmapY *: rank1\(select1 k\) = k\+1 for 84 pass, 0 fail \(out of 84\)'   "bitmapY rank1(select1 k)=k+1 regression (84 ones)"
+  expect "$TMPLOG" 'bitmapZ *: rank1\(select1 k\) = k\+1 for 335 pass, 0 fail \(out of 335\)' "bitmapZ rank1(select1 k)=k+1 regression (335 ones)"
+  expect "$TMPLOG" 'subject [0-9]+ <http://w3id\.org/rml/core/> : 21 pairs'             "rml/core subject spot check (21 pairs, grep-derived: grep -c '^<http://w3id.org/rml/core/> ' ontology.nt)"
+  expect "$TMPLOG" 'id-triples decoded *: 343 \(unresolved: 0\)'                        "all id-triples resolved to terms"
+  expect "$TMPLOG" 'hdt lines \(unique\) *: 343, ground truth lines \(unique\): 343'    "enumeration line counts match ontology.nt"
+  expect "$TMPLOG" 'enumeration vs source \(sorted N-Triples compare\) -> MATCH'        "enumeration equals source (ontology.nt, stage-3 gate)"
 fi
 
 echo "--- truncated container must fail loudly ---"
@@ -146,7 +170,25 @@ else
   FAIL=$((FAIL + 1)); echo "  FAIL  truncated file did not fail loudly (rc=$RC)"
 fi
 
+echo "--- triples-section truncation must fail loudly (stage 3) ---"
+# Cuts inside ArrayY's log-array payload (byte 8600, between the
+# section's data_start=8515 and data_end=8725) while leaving the
+# Triples control information (ends at 8409) and both bitmaps
+# (end at 8459/8510) fully intact — so stage 1's
+# `hdt_read_inventory` still succeeds (it never reads triples
+# payload bytes) and the failure is pinned specifically to stage 3's
+# own `hdt_read_triples`.
+TRUNC2="$(mktemp --suffix=.hdt)"
+head -c 8600 "$FIXTURES/rml-core-ontology.hdt" > "$TRUNC2"
+RC=0; timeout 120 "$PROBE" "$TRUNC2" > "$TMPLOG" 2>&1 || RC=$?
+rm -f "$TRUNC2"
+if [[ $RC -eq 1 ]] && grep -q "TRIPLES PARSE FAILED" "$TMPLOG" && ! grep -q "^PARSE FAILED" "$TMPLOG"; then
+  PASS=$((PASS + 1)); echo "  ok    triples-section truncation -> loud parse failure (rc=1), stage 1 inventory still succeeded"
+else
+  FAIL=$((FAIL + 1)); echo "  FAIL  triples-section truncation did not fail loudly as expected (rc=$RC)"
+fi
+
 echo "============================================================"
 TOTAL=$((PASS + FAIL))
-echo "hdt-probe stage-1/stage-2 checks: ${PASS} pass, ${FAIL} fail (out of ${TOTAL})"
+echo "hdt-probe stage-1/2/3 checks: ${PASS} pass, ${FAIL} fail (out of ${TOTAL})"
 [[ $FAIL -eq 0 ]]

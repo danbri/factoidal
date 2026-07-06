@@ -385,7 +385,7 @@ if [[ "$STEP" == "all" || "$STEP" == "extract" ]]; then
     SHACL.Validation.fst
     Parser.FastString.fst Parser.IRI.fst
     Parser.Combinators.fst Parser.TurtleScanner.fst SPARQL11.Parser.fst
-    Parser.NTriples.fst Parser.Turtle.fst HDT.Container.fst HDT.Dictionary.fst
+    Parser.NTriples.fst Parser.Turtle.fst HDT.Container.fst HDT.Dictionary.fst HDT.Triples.fst
     Parser.OWLFunctional.fst
     RDF.Turtle.Serialize.fst
     Parser.NQuads.fst Parser.TriG.fst
@@ -764,7 +764,7 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
   COMMON_MODULES="Util_Log.ml RDF_Format.ml RDF_Vocabulary.ml RDF_Term.ml RDF_Triple.ml RDF_Indexed.ml RDF_Graph.ml RDF_Vocabulary_Axioms.ml RDFS_Closure.ml OWL_Closure.ml RDF_Graph_Executable.ml RDF_List_Helpers.ml RDF_Bytes.ml RDF_Store_Loader.ml Parquet_Footer.ml OWL_Vocabulary.ml OWL_DirectMapping_Filter.ml Tableau.ml \
     Parser_FastString.ml RDF_IRI.ml SPARQL11_IRI_Resolve.ml Parser_IRI.ml \
     RDF_NQuads_Serialize.ml \
-    Parser_Combinators.ml Parser_TurtleScanner.ml Parser_NTriples.ml Parser_Turtle.ml HDT_Container.ml HDT_Dictionary.ml \
+    Parser_Combinators.ml Parser_TurtleScanner.ml Parser_NTriples.ml Parser_Turtle.ml HDT_Container.ml HDT_Dictionary.ml HDT_Triples.ml \
     Parser_OWLFunctional.ml \
     RDF_Turtle_Serialize.ml \
     Parser_NQuads.ml Parser_TriG.ml Parser_XML.ml XML_Wellformedness.ml XML_Namespaces.ml Parser_XPath.ml XPath_Eval.ml Parser_RDFXML.ml \
@@ -1330,7 +1330,7 @@ if [[ "$STEP" == "all" || "$STEP" == "js" ]]; then
     RDF_Graph_Executable.ml RDF_List_Helpers.ml RDF_Bytes.ml RDF_Store_Loader.ml Parquet_Footer.ml OWL_Vocabulary.ml OWL_DirectMapping_Filter.ml Tableau.ml
     Parser_FastString.ml RDF_IRI.ml SPARQL11_IRI_Resolve.ml Parser_IRI.ml
     RDF_NQuads_Serialize.ml
-    Parser_Combinators.ml Parser_TurtleScanner.ml Parser_NTriples.ml Parser_Turtle.ml HDT_Container.ml HDT_Dictionary.ml
+    Parser_Combinators.ml Parser_TurtleScanner.ml Parser_NTriples.ml Parser_Turtle.ml HDT_Container.ml HDT_Dictionary.ml HDT_Triples.ml
     Parser_OWLFunctional.ml
     RDF_Turtle_Serialize.ml
     Parser_NQuads.ml Parser_TriG.ml Parser_XML.ml XML_Wellformedness.ml XML_Namespaces.ml Parser_XPath.ml XPath_Eval.ml Parser_RDFXML.ml

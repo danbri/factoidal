@@ -170,6 +170,159 @@ let () =
            label !pass !fail maxid)
       roles;
 
+    (* --- stage 3: BitmapTriples navigation (HDT.Triples) ---
+       Decodes the two bitmaps (Y, Z) and two log-arrays (Y, Z)
+       directly following the Triples control information, validates
+       their CRC8/CRC32C payloads, derives the triple count and
+       subject count from the bitmaps alone, and exercises the naive
+       rank1/select1 scan against every valid position of both
+       bitmaps (the identity `rank1 (select1 k) = k + 1`, this
+       stage's rank/select regression pin — see HDT_Triples.fst's
+       module banner for why this is a runtime pin rather than a
+       from-scratch universal proof at this stage). *)
+    Printf.printf "\n--- stage 3: BitmapTriples navigation ---\n";
+    (match HDT_Triples.hdt_read_triples hex inv with
+     | FStar_Pervasives_Native.None ->
+       print_endline
+         "TRIPLES PARSE FAILED: truncated or invalid BitmapTriples section";
+       exit 1
+     | FStar_Pervasives_Native.Some tinfo ->
+       let crc_ok = HDT_Triples.triples_crc_ok hex tinfo in
+       let triple_count = Z.to_int (HDT_Triples.hdt_triple_count tinfo) in
+       let ypairs =
+         Z.to_int (tinfo.HDT_Triples.tri_array_y).HDT_Container.la_numentries in
+       Printf.printf "triples crc  : %s\n" (if crc_ok then "OK" else "MISMATCH");
+       Printf.printf "triple count : %d (ArrayZ entries)\n" triple_count;
+       Printf.printf "(s,p) pairs  : %d (ArrayY entries)\n" ypairs;
+       let num_subjects =
+         match HDT_Triples.hdt_num_subjects hex tinfo with
+         | FStar_Pervasives_Native.None -> None
+         | FStar_Pervasives_Native.Some ns -> Some (Z.to_int ns)
+       in
+       (match num_subjects with
+        | None -> print_endline "num subjects : COULD NOT DERIVE (BitmapY scan failed)"
+        | Some ns_i ->
+          let dict_max =
+            Z.to_int (HDT_Dictionary.hdt_role_max_id inv HDT_Dictionary.Role_Subject) in
+          Printf.printf
+            "num subjects : %d (BitmapY ones-count; dictionary role max = %d, match=%b)\n"
+            ns_i dict_max (ns_i = dict_max));
+
+       (* rank1/select1 regression pin over every valid k of both
+          bitmaps: BitmapY has `num_subjects` ones, BitmapZ has
+          `ypairs` ones (one per (s,p) pair — every ArrayY position
+          ends exactly one Z-range). *)
+       let check_rank_select label bm ones =
+         let pass = ref 0 and fail = ref 0 in
+         for k = 0 to ones - 1 do
+           let kz = Z.of_int k in
+           (match HDT_Triples.select1 hex bm kz with
+            | FStar_Pervasives_Native.None -> incr fail
+            | FStar_Pervasives_Native.Some pos ->
+              (match HDT_Triples.rank1 hex bm pos with
+               | FStar_Pervasives_Native.Some r when Z.equal r (Z.of_int (k + 1)) ->
+                 incr pass
+               | _ -> incr fail))
+         done;
+         Printf.printf
+           "  %-8s : rank1(select1 k) = k+1 for %d pass, %d fail (out of %d)\n"
+           label !pass !fail ones
+       in
+       Printf.printf "\n--- stage 3: rank1/select1 regression (naive scan, stage-5 swap seam) ---\n";
+       (match num_subjects with
+        | Some ns_i -> check_rank_select "bitmapY" tinfo.HDT_Triples.tri_bitmap_y ns_i
+        | None -> ());
+       check_rank_select "bitmapZ" tinfo.HDT_Triples.tri_bitmap_z ypairs;
+
+       (* Per-subject spot check: every subject's resolved term plus
+          its (predicate, object) pair count, so check.sh can pin a
+          specific subject's count against a grep-derived expectation
+          from the fixture's own source .nt. *)
+       Printf.printf "\n--- stage 3: per-subject (p,o) pair counts ---\n";
+       (match num_subjects with
+        | None -> ()
+        | Some ns_i ->
+          for i = 1 to ns_i do
+            let sid = Z.of_int i in
+            (match HDT_Dictionary.hdt_id_to_term hex inv HDT_Dictionary.Role_Subject sid,
+                   HDT_Triples.hdt_triples_for_subject hex tinfo sid with
+             | FStar_Pervasives_Native.Some term, FStar_Pervasives_Native.Some pairs ->
+               Printf.printf "  subject %d %s : %d pairs\n"
+                 i (RDF_NQuads_Serialize.nq_term_to_string term) (List.length pairs)
+             | _, _ ->
+               Printf.printf "  subject %d : RESOLUTION FAILED\n" i)
+          done);
+
+       (* --- stage 3 acceptance gate: enumerate every triple through
+          BitmapTriples, resolve ids to terms via HDT.Dictionary, and
+          compare the resulting N-Triples line set to the fixture's
+          ground-truth source (optional 2nd argument, shared with the
+          stage-2 comparison below). Method: SORTED N-TRIPLES LINE
+          COMPARE, not RDFC-1.0 canonicalization — both sides are
+          serialized with the same verified `RDF_NQuads_Serialize`
+          writer (the HDT side after id->term resolution, the source
+          side after `Parser_NTriples.parse_ntriples`), and stage 2
+          already established (term-set MATCH, both fixtures) that
+          hdt-cpp's PFC dictionary preserves the source file's
+          blank-node labels verbatim — so a plain sorted-line compare
+          is sound here without needing RDFC-1.0's isomorphism
+          handling for differently-labelled blank nodes. --- *)
+       if Array.length Sys.argv >= 3 then begin
+         let nt_path = Sys.argv.(2) in
+         let ic = open_in_bin nt_path in
+         let n = in_channel_length ic in
+         let buf = Bytes.create n in
+         really_input ic buf 0 n;
+         close_in ic;
+         let content = Bytes.to_string buf in
+         let gt_triples = Parser_NTriples.parse_ntriples content in
+         let gt_lines =
+           List.sort_uniq compare
+             (List.map RDF_NQuads_Serialize.nq_line_for_triple_default_graph gt_triples)
+         in
+         match HDT_Triples.hdt_enumerate_all hex tinfo with
+         | FStar_Pervasives_Native.None ->
+           Printf.printf "\n--- stage 3: enumeration vs ground truth (%s) ---\n" nt_path;
+           print_endline "  FAIL  hdt_enumerate_all returned None"
+         | FStar_Pervasives_Native.Some id_triples ->
+           let resolve role id =
+             HDT_Dictionary.hdt_id_to_term hex inv role id in
+           let to_line (it : HDT_Triples.hdt_id_triple) =
+             match resolve HDT_Dictionary.Role_Subject it.HDT_Triples.it_s,
+                   resolve HDT_Dictionary.Role_Predicate it.HDT_Triples.it_p,
+                   resolve HDT_Dictionary.Role_Object it.HDT_Triples.it_o with
+             | FStar_Pervasives_Native.Some s, FStar_Pervasives_Native.Some p,
+               FStar_Pervasives_Native.Some o ->
+               let subj =
+                 match s with
+                 | RDF_Term.T_IRI i -> Some (RDF_Term.S_IRI i)
+                 | RDF_Term.T_BNode b -> Some (RDF_Term.S_BNode b)
+                 | RDF_Term.T_Literal _ -> None
+               in
+               let pred = match p with RDF_Term.T_IRI i -> Some i | _ -> None in
+               (match subj, pred with
+                | Some sv, Some pv ->
+                  Some (RDF_NQuads_Serialize.nq_line_for_triple_default_graph
+                          { RDF_Triple.s = sv; RDF_Triple.p = pv; RDF_Triple.o = o })
+                | _, _ -> None)
+             | _, _, _ -> None
+           in
+           let resolved = List.map to_line id_triples in
+           let n_unresolved =
+             List.length (List.filter (fun x -> x = None) resolved) in
+           let hdt_lines =
+             List.sort_uniq compare
+               (List.filter_map (fun x -> x) resolved)
+           in
+           Printf.printf "\n--- stage 3: enumeration vs ground truth (%s) ---\n" nt_path;
+           Printf.printf "  id-triples decoded : %d (unresolved: %d)\n"
+             (List.length id_triples) n_unresolved;
+           Printf.printf "  hdt lines (unique) : %d, ground truth lines (unique): %d\n"
+             (List.length hdt_lines) (List.length gt_lines);
+           Printf.printf "  enumeration vs source (sorted N-Triples compare) -> %s\n"
+             (if hdt_lines = gt_lines then "MATCH" else "MISMATCH")
+       end);
+
     (* --- stage 2: dictionary term set vs. ground-truth .nt (optional
        2nd argument) — parsed independently via the project's own
        verified Parser.NTriples, never via the PFC decoder under
