@@ -107,13 +107,17 @@ let cottas_ondisk_dataset_backend
                 }) (RDF_CottasStore.cottas_ondisk_named_graphs cods))
   }
 let cottas_with_delta_dataset_backend
-  (cods : RDF_CottasStore.cottas_ondisk_store) (log_path : Prims.string) :
+  (cods : RDF_CottasStore.cottas_ondisk_store) (log_path : Prims.string)
+  (compacted_epoch : Prims.nat FStar_Pervasives_Native.option) :
   dataset_backend=
   let log_bytes = RDF_Store_Columnar_DeltaLog.delta_log_read_all log_path in
-  let batches =
+  let raw_batches =
     match RDF_Store_Columnar_DeltaLog.parse_log log_bytes with
     | FStar_Pervasives_Native.Some (bs, _leftover) -> bs
     | FStar_Pervasives_Native.None -> [] in
+  let batches =
+    RDF_Store_Columnar_DeltaLog.filter_batches_since_epoch compacted_epoch
+      raw_batches in
   let base_named = RDF_CottasStore.cottas_ondisk_named_graphs cods in
   let default_delta =
     RDF_Store_Columnar_DeltaMerge.fold_delta_batches batches
@@ -318,6 +322,24 @@ let backend_count_exact (gb : graph_backend)
 let backend_predicate_present (gb : graph_backend) (pred : RDF_Term.wf_iri) :
   Prims.bool=
   (caps_of_backend gb).RDF_Store_Capabilities.sc_predicate_present pred
+let materialize_dataset_backend (dsb : dataset_backend) :
+  RDF_Graph.rdf_dataset=
+  let unbound =
+    {
+      SPARQL11_Algebra.bs = FStar_Pervasives_Native.None;
+      SPARQL11_Algebra.bp = FStar_Pervasives_Native.None;
+      SPARQL11_Algebra.bo = FStar_Pervasives_Native.None
+    } in
+  {
+    RDF_Graph.ds_default = (backend_search dsb.dsb_default unbound);
+    RDF_Graph.ds_named =
+      (FStar_List_Tot_Base.map
+         (fun ngb ->
+            {
+              RDF_Graph.ng_name = (ngb.ngb_name);
+              RDF_Graph.ng_graph = (backend_search ngb.ngb_graph unbound)
+            }) dsb.dsb_named)
+  }
 let backend_decode_failure (gb : graph_backend) : Prims.bool=
   (caps_of_backend gb).RDF_Store_Capabilities.sc_decode_failure ()
 let rec lookup_named_backend (name : RDF_Term.iri)

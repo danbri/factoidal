@@ -130,12 +130,26 @@ let cottas_ondisk_dataset_backend (cods : cottas_ondisk_store) : dataset_backend
 // `Tot`, called from here as ordinary function calls (F* does not
 // distinguish Tot-call-from-ML from ML-call-from-ML at the value level;
 // the effect annotation only tracks what THIS function may itself do).
-let cottas_with_delta_dataset_backend (cods : cottas_ondisk_store) (log_path : string)
+//
+// Durable-UPDATE stage 4 (compaction, docs/designissues/2026-07-06-
+// durable-update-design.md §3.3 step 5 / open decision 6):
+// `compacted_epoch` is whatever `DL.parse_compacted_epoch` returned for
+// the live base's `data.compacted-epoch` companion file (`None` if the
+// store has never been compacted — the file doesn't exist, nothing to
+// skip). Every parsed batch is filtered through
+// `DL.filter_batches_since_epoch` BEFORE folding, so a delta log that
+// still physically contains batches already folded into a compacted
+// base (the crash window between a compaction's base-rename and its
+// log-truncation, design doc §3.3 step 5) contributes nothing extra —
+// this is the idempotent-replay guard, not an optimisation.
+let cottas_with_delta_dataset_backend
+    (cods : cottas_ondisk_store) (log_path : string) (compacted_epoch : option nat)
   : ML dataset_backend =
   let log_bytes = DL.delta_log_read_all log_path in
-  let batches = match DL.parse_log log_bytes with
+  let raw_batches = match DL.parse_log log_bytes with
     | Some (bs, _leftover) -> bs
     | None -> [] in
+  let batches = DL.filter_batches_since_epoch compacted_epoch raw_batches in
   let base_named = cottas_ondisk_named_graphs cods in
   let default_delta = DM.fold_delta_batches batches None in
   let base_named_entries =
@@ -346,6 +360,33 @@ let backend_count_exact (gb : graph_backend) (b : triple_pattern_bound) : Tot na
 
 let backend_predicate_present (gb : graph_backend) (pred : wf_iri) : Tot bool =
   (caps_of_backend gb).sc_predicate_present pred
+
+// Durable-UPDATE stage 4 (compaction, docs/designissues/2026-07-06-
+// durable-update-design.md §5 row 4 / §4.3): materialize a whole
+// `dataset_backend` — default graph plus every named graph, base rows
+// composed with any live delta via whichever `graph_backend` arm each
+// one is (GB_CottasOnDisk, GB_CottasOnDiskDelta via `overlay`, GB_Union,
+// ...) — into a plain in-memory `rdf_dataset`. Reuses the exact
+// `backend_search gb { bs = None; bp = None; bo = None }` "unbound
+// scan" shape already used above (GP_PropertyPath's materialised-graph
+// fallback, issue #268) rather than inventing a second way to read
+// "every triple in this backend." The result is fed to
+// `RDF.Canonical.canonical_nquads` (existing, Tot, already what
+// bin/factoidal-dump-nq/factoidal_dump_nq.ml uses) by the compaction
+// orchestrator to get plain N-Quads text for corpus_pipeline.py's
+// EXISTING import pipeline (rule #15: no new store-writing logic) —
+// this function's whole job is the "read back everything, base ⊕
+// delta, as one rdf_dataset" step, not serialization or I/O.
+let materialize_dataset_backend (dsb : dataset_backend) : Tot rdf_dataset =
+  let unbound : triple_pattern_bound = { bs = None; bp = None; bo = None } in
+  {
+    ds_default = backend_search dsb.dsb_default unbound;
+    ds_named =
+      List.Tot.map
+        (fun (ngb : named_graph_backend) ->
+          { ng_name = ngb.ngb_name; ng_graph = backend_search ngb.ngb_graph unbound })
+        dsb.dsb_named;
+  }
 
 // Issue #269: did evaluating this backend involve a COTTAS on-disk
 // artifact with a column that failed to decode (e.g. an RLE_DICTIONARY

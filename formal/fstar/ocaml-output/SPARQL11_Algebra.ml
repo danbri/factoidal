@@ -4433,11 +4433,7 @@ let add_to_groups (key : eval_result Prims.list)
              if (Prims.op_Negation f) && (keys_equal key g.g_key)
              then
                let g' =
-                 {
-                   g_key = (g.g_key);
-                   g_solutions =
-                     (RDF_List_Helpers.append_tr g.g_solutions [mu])
-                 } in
+                 { g_key = (g.g_key); g_solutions = (mu :: (g.g_solutions)) } in
                ((g' :: acc), true)
              else ((g :: acc), f)) ([], false) groups in
   match uu___ with
@@ -4465,11 +4461,18 @@ let extend_with_group_aliases
 let group_by (base : RDF_Term.wf_iri FStar_Pervasives_Native.option)
   (conds : group_condition Prims.list) (omega : solution_sequence) :
   group Prims.list=
-  FStar_List_Tot_Base.fold_left
-    (fun groups mu ->
-       let key = eval_group_key base conds mu in
-       let mu' = extend_with_group_aliases base conds mu in
-       add_to_groups key mu' groups) [] omega
+  let groups_reversed =
+    FStar_List_Tot_Base.fold_left
+      (fun groups mu ->
+         let key = eval_group_key base conds mu in
+         let mu' = extend_with_group_aliases base conds mu in
+         add_to_groups key mu' groups) [] omega in
+  FStar_List_Tot_Base.map
+    (fun g ->
+       {
+         g_key = (g.g_key);
+         g_solutions = (FStar_List_Tot_Base.rev g.g_solutions)
+       }) groups_reversed
 let implicit_group (omega : solution_sequence) : group Prims.list=
   [{ g_key = []; g_solutions = omega }]
 let eval_over_group (base : RDF_Term.wf_iri FStar_Pervasives_Native.option)

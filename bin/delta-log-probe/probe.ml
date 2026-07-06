@@ -165,6 +165,145 @@ let hashcheck (path : string) : unit =
     exit 1
   end
 
+(* --------------------------------------------------------------------
+   Durable-UPDATE stage 3 (merge-on-read, tests/local/
+   durable_update_stage3.sh): one semantically-real batch -- an ADD +
+   a tombstoning REMOVE on the default graph, a CREATE+ADD into a
+   brand-new named graph, and a CLEAR wiping an existing named graph --
+   against the SAME small fixture tests/unit/store_capabilities_unit.ml
+   already hardcodes (tests/local/data/cottas_sample.nq; reused rather
+   than re-parsed for the same "both routes load literally the same
+   dataset" reason that file's own banner gives). Unlike `append`
+   above (deterministic but semantically arbitrary filler content),
+   this scenario's ops are chosen to exercise every delta_entry
+   constructor `tests/local/durable_update_stage3.sh` needs, and its
+   ground truth is computed by calling the F*-extracted, VERIFIED
+   `RDF_Store_Columnar_DeltaMerge.apply_entries_ref` directly on the
+   hardcoded base graphs -- the same reference function that module's
+   own `lemma_merge_on_read_matches_apply_entries` proves the delta-
+   log/merge-on-read path agrees with. *)
+
+module DM = RDF_Store_Columnar_DeltaMerge
+
+let lit (v : string) : RDF_Term.rdf_term =
+  RDF_Term.T_Literal
+    { RDF_Term.lexical_form = v; RDF_Term.datatype = RDF_Term.xsd_string;
+      RDF_Term.lang_tag = FStar_Pervasives_Native.None }
+
+let mk_triple (s : string) (p : string) (o : RDF_Term.rdf_term) : RDF_Triple.triple =
+  { RDF_Triple.s = RDF_Term.S_IRI s; RDF_Triple.p = p; RDF_Triple.o = o }
+
+let iri_default_subject = "https://example.org/default-subject"
+let iri_status = "https://example.org/status"
+let iri_carol = "https://example.org/carol"
+let iri_name = "https://example.org/name"
+let iri_graph_events = "https://example.org/graph/events"
+let iri_attends = "https://example.org/attends"
+let iri_event_x = "https://example.org/event-x"
+let iri_graph_docs = "https://example.org/graph/docs"
+let iri_graph_people = "https://example.org/graph/people"
+
+let scenario_default_subject_status = mk_triple iri_default_subject iri_status (lit "default")
+let scenario_carol_name = mk_triple iri_carol iri_name (lit "Carol")
+let scenario_carol_attends = mk_triple iri_carol iri_attends (RDF_Term.T_IRI iri_event_x)
+
+(* Fixture base graphs, hardcoded to match tests/local/data/
+   cottas_sample.nq exactly (5 triples: 1 default, 3 in graph/people,
+   1 in graph/docs). *)
+let people_triples =
+  [ mk_triple "https://example.org/alice" "https://example.org/name" (lit "Alice");
+    mk_triple "https://example.org/alice" "https://example.org/knows"
+      (RDF_Term.T_IRI "https://example.org/bob");
+    mk_triple "https://example.org/bob" "https://example.org/name" (lit "Bob");
+  ]
+let docs_triples = [ mk_triple "https://example.org/doc" "https://example.org/title" (lit "Specimen") ]
+let default_triples = [ scenario_default_subject_status ]
+
+(* Durable-UPDATE stage 4 (compaction, tests/local/
+   durable_update_stage4_compaction.sh): `epoch` is now a parameter
+   (default 0, matching stage 3's original hardcoded value, so stage
+   3's own script -- which never passes an epoch arg -- is unaffected)
+   rather than a fixed constant, because stage 4's compaction protocol
+   requires a caller appending AFTER a compaction to stamp its batch
+   with an epoch strictly greater than the base's own recorded
+   compacted_through_epoch (RDF.Store.Columnar.DeltaLog.fst section 13's
+   banner) or the write is silently treated as already-folded and
+   ignored at merge-on-read time. *)
+let scenario_batch (epoch : int) : DL.delta_batch =
+  { DL.db_seq = Z.zero; DL.db_epoch = Z.of_int epoch;
+    DL.db_ops =
+      [ DL.DE_Add (scenario_carol_name, FStar_Pervasives_Native.None);
+        DL.DE_Remove (scenario_default_subject_status, FStar_Pervasives_Native.None);
+        DL.DE_Create iri_graph_events;
+        DL.DE_Add (scenario_carol_attends, FStar_Pervasives_Native.Some iri_graph_events);
+        DL.DE_Clear (FStar_Pervasives_Native.Some iri_graph_docs);
+      ] }
+
+let scenario_write ?(epoch = 0) (path : string) : unit =
+  (if Sys.file_exists path then Sys.remove path);
+  DL.delta_log_append path DL.serialize_log_header;
+  DL.delta_log_append path (DL.serialize_delta_batch (scenario_batch epoch));
+  DL.delta_log_fsync path;
+  Printf.printf "SCENARIO_WRITE_OK path=%s\n%!" path
+
+(* Same content, sliced across small appends with a pause between each
+   -- for the crash harness to SIGKILL mid-write, exactly the
+   `append_one_batch` shape `append` above already uses. *)
+let scenario_write_sliced ?(epoch = 0) (path : string) (chunk_size : int) : unit =
+  (if Sys.file_exists path then Sys.remove path);
+  DL.delta_log_append path DL.serialize_log_header;
+  DL.delta_log_fsync path;
+  append_one_batch path (scenario_batch epoch) chunk_size;
+  Printf.printf "SCENARIO_WRITE_SLICED_DONE path=%s\n%!" path
+
+(* Stage 4's "layering continues" scenario: a SECOND, distinct batch
+   (adds "Dave") appended AFTER a compaction has already folded
+   `scenario_batch` into a fresh base and truncated the log. Unlike
+   `scenario_write` above, this APPENDS to whatever is already at
+   `path` (typically just the fresh empty-log header a compaction just
+   wrote) rather than removing/recreating it -- exactly the shape a
+   real post-compaction Update commit would take. *)
+let iri_dave = "https://example.org/dave"
+let scenario_dave_name = mk_triple iri_dave iri_name (lit "Dave")
+
+let scenario2_batch (epoch : int) : DL.delta_batch =
+  { DL.db_seq = Z.zero; DL.db_epoch = Z.of_int epoch;
+    DL.db_ops = [ DL.DE_Add (scenario_dave_name, FStar_Pervasives_Native.None) ] }
+
+let scenario2_write (path : string) (epoch : int) : unit =
+  DL.delta_log_append path (DL.serialize_delta_batch (scenario2_batch epoch));
+  DL.delta_log_fsync path;
+  Printf.printf "SCENARIO2_WRITE_OK path=%s epoch=%d\n%!" path epoch
+
+let triple_line (t : RDF_Triple.triple) : string =
+  let term_str (o : RDF_Term.rdf_term) =
+    match o with
+    | RDF_Term.T_IRI i -> "<" ^ i ^ ">"
+    | RDF_Term.T_BNode b -> "_:" ^ b
+    | RDF_Term.T_Literal l -> "\"" ^ l.RDF_Term.lexical_form ^ "\""
+  in
+  let subj_str =
+    match t.RDF_Triple.s with
+    | RDF_Term.S_IRI i -> "<" ^ i ^ ">"
+    | RDF_Term.S_BNode b -> "_:" ^ b
+  in
+  Printf.sprintf "%s <%s> %s" subj_str t.RDF_Triple.p (term_str t.RDF_Triple.o)
+
+(* Ground truth for one graph: apply_entries_ref over the hardcoded
+   base, sorted (order-independent set comparison -- the shell script
+   sorts the CLI's own SELECT output the same way before diffing). *)
+let scenario_expect (which : string) : unit =
+  let (graph_key, base) =
+    match which with
+    | "default" -> (FStar_Pervasives_Native.None, default_triples)
+    | "people" -> (FStar_Pervasives_Native.Some iri_graph_people, people_triples)
+    | "docs" -> (FStar_Pervasives_Native.Some iri_graph_docs, docs_triples)
+    | "events" -> (FStar_Pervasives_Native.Some iri_graph_events, [])
+    | _ -> failwith ("scenario-expect: unknown graph " ^ which)
+  in
+  let result = DM.apply_entries_ref graph_key base (scenario_batch 0).DL.db_ops in
+  List.iter (fun t -> print_endline (triple_line t)) (List.sort compare result)
+
 let () =
   match Array.to_list Sys.argv with
   | _ :: "init" :: path :: [] -> init path
@@ -174,8 +313,20 @@ let () =
   | _ :: "verify" :: path :: seed :: num_batches :: ops_per_batch :: [] ->
     verify path (int_of_string seed) (int_of_string num_batches) (int_of_string ops_per_batch)
   | _ :: "hashcheck" :: path :: [] -> hashcheck path
+  | _ :: "scenario-write" :: path :: [] -> scenario_write path
+  | _ :: "scenario-write" :: path :: epoch :: [] -> scenario_write ~epoch:(int_of_string epoch) path
+  | _ :: "scenario-write-sliced" :: path :: chunk_size :: [] ->
+    scenario_write_sliced path (int_of_string chunk_size)
+  | _ :: "scenario-write-sliced" :: path :: chunk_size :: epoch :: [] ->
+    scenario_write_sliced ~epoch:(int_of_string epoch) path (int_of_string chunk_size)
+  | _ :: "scenario-expect" :: which :: [] -> scenario_expect which
+  | _ :: "scenario2-write" :: path :: epoch :: [] -> scenario2_write path (int_of_string epoch)
   | _ ->
     Printf.eprintf
       "usage: probe (init|append <path> <seed> <num_batches> <ops_per_batch> <chunk_size>\n\
-      \             |verify <path> <seed> <num_batches> <ops_per_batch>|hashcheck <path>)\n";
+      \             |verify <path> <seed> <num_batches> <ops_per_batch>|hashcheck <path>\n\
+      \             |scenario-write <path> [epoch]\n\
+      \             |scenario-write-sliced <path> <chunk_size> [epoch]\n\
+      \             |scenario2-write <path> <epoch>\n\
+      \             |scenario-expect (default|people|docs|events))\n";
     exit 2

@@ -1127,3 +1127,123 @@ assume val delta_log_fsync    : path:string -> ML unit
 assume val delta_log_read_all : path:string -> ML B.bytes
 assume val atomic_rename      : from_path:string -> to_path:string -> ML unit
 assume val fsync_dir          : path:string -> ML unit
+
+(* ======================================================================
+   13. Compacted-epoch companion file — stage 4 (compaction), durable-
+   update-design.md §3.3 step 5 / open decision 6.
+
+   Disclosed decision (open decision 6): a SEPARATE companion file
+   (`data.compacted-epoch`, sitting next to a compacted `.cottas` base,
+   this format), NOT a header field folded into an existing sidecar --
+   picked so the compactor never has to understand/rewrite an existing
+   sidecar's own format to record this one small fact, and so a reader
+   indifferent to compaction (pycottas, `factoidal --explain`, etc.)
+   never has to parse it. Same magic+version+length+checksum framing
+   shape as sections 5/7 above.
+
+   Semantics: the value recorded is "every delta_batch with db_epoch
+   <= this value has ALREADY been folded into this base and MUST be
+   skipped on replay" -- the crash-recovery idempotence guard for the
+   window between a compaction's base-rename and its delta-log
+   truncation (design doc §3.3 step 5's own prose: "a batch whose
+   epoch is at or below the base file's own recorded 'compacted
+   through epoch N' marker ... is skipped on replay rather than
+   re-applied"). `filter_batches_since_epoch` below is that skip,
+   applied wherever a parsed batch list is about to be folded
+   (SPARQL11.Store.fst's `cottas_with_delta_dataset_backend`).
+
+   Caller contract (stated here since this is the one place both
+   producer and consumer of the value meet): a writer appending a
+   NEW batch after a compaction has recorded epoch CE must stamp that
+   batch's own `db_epoch` as CE+1 or higher, or the batch will be
+   silently treated as already-folded and ignored at merge-on-read
+   time -- a disclosed sharp edge, not a silent-wrong-answer risk,
+   since "wrongly skip a stale-tagged write" is the safe failure
+   direction (never double-applies a write), not the dangerous one. *)
+
+let compacted_epoch_magic   : nat = 0x31504543  (* 'CEP1' LE: bytes 43 45 50 31 *)
+let compacted_epoch_version : nat = 1
+
+let serialize_compacted_epoch (n : nat{n < 18446744073709551616}) : Tot B.bytes =
+  let body = B.write_u64_le n in
+  let len = length body in
+  append (B.write_u32_le compacted_epoch_magic)
+    (append (B.write_u32_le compacted_epoch_version)
+      (append (B.write_u32_le len)
+        (append body (B.write_u32_le (simple_checksum body)))))
+
+let parse_compacted_epoch (bs : B.bytes) : Tot (option nat) =
+  match B.parse_u32_le bs with
+  | None -> None
+  | Some (magic, after_magic) ->
+    if magic <> compacted_epoch_magic then None
+    else
+      match B.parse_u32_le after_magic with
+      | None -> None
+      | Some (ver, after_ver) ->
+        if ver <> compacted_epoch_version then None
+        else
+          match B.parse_u32_le after_ver with
+          | None -> None
+          | Some (len, after_len) ->
+            match B.parse_n_bytes len after_len with
+            | None -> None
+            | Some (body, after_body) ->
+              match B.parse_u32_le after_body with
+              | None -> None
+              | Some (chk, _rest) ->
+                if chk <> simple_checksum body then None
+                else
+                  (match B.parse_u64_le body with
+                   | Some (n, []) -> Some n
+                   | _ -> None)
+
+#push-options "--z3rlimit 200"
+let lemma_compacted_epoch_roundtrip (n : nat{n < 18446744073709551616})
+  : Lemma (parse_compacted_epoch (serialize_compacted_epoch n) == Some n)
+  = let body = B.write_u64_le n in
+    let len = length body in
+    lemma_write_u64_le_length n;
+    let magic_b = B.write_u32_le compacted_epoch_magic in
+    let ver_b = B.write_u32_le compacted_epoch_version in
+    let len_b = B.write_u32_le len in
+    let chk_b = B.write_u32_le (simple_checksum body) in
+    let tail0 = append ver_b (append len_b (append body chk_b)) in
+    let tail1 = append len_b (append body chk_b) in
+    let tail2 = append body chk_b in
+    FStar.List.Tot.Properties.append_assoc magic_b tail0 [];
+    FStar.List.Tot.Properties.append_l_nil tail0;
+    B.lemma_parse_write_u32_le_inverse compacted_epoch_magic tail0;
+    FStar.List.Tot.Properties.append_assoc ver_b tail1 [];
+    FStar.List.Tot.Properties.append_l_nil tail1;
+    B.lemma_parse_write_u32_le_inverse compacted_epoch_version tail1;
+    FStar.List.Tot.Properties.append_assoc len_b tail2 [];
+    FStar.List.Tot.Properties.append_l_nil tail2;
+    B.lemma_parse_write_u32_le_inverse len tail2;
+    FStar.List.Tot.Properties.append_assoc body chk_b [];
+    FStar.List.Tot.Properties.append_l_nil chk_b;
+    FStar.List.Tot.Properties.append_l_nil body;
+    B.lemma_parse_n_bytes_inverse body chk_b;
+    B.lemma_parse_write_u32_le_inverse (simple_checksum body) [];
+    B.lemma_parse_write_u64_le_inverse n []
+#pop-options
+
+(* ======================================================================
+   14. Epoch-skip filter — the fold_delta_batches input, filtered.
+   Pure `Tot`, no I/O; called once at store-open/refresh time with
+   whatever `parse_compacted_epoch` returned for the live base's
+   companion file (`None` if the store has never been compacted --
+   nothing to skip, every batch is fresh). *)
+
+let rec filter_batches_since_epoch (threshold : option nat) (batches : list delta_batch)
+  : Tot (list delta_batch) (decreases batches) =
+  match batches with
+  | [] -> []
+  | b :: rest ->
+    let keep = match threshold with
+      | None -> true
+      | Some ce -> b.db_epoch > ce
+    in
+    if keep
+    then b :: filter_batches_since_epoch threshold rest
+    else filter_batches_since_epoch threshold rest

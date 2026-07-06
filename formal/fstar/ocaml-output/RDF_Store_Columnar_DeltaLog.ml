@@ -630,3 +630,60 @@ let atomic_rename (from_path : Prims.string) (to_path : Prims.string) :
 let fsync_dir (path : Prims.string) : unit=
   let fd = Unix.openfile path [Unix.O_RDONLY] 0o644 in
   Fun.protect ~finally:(fun () -> Unix.close fd) (fun () -> Unix.fsync fd)
+let compacted_epoch_magic : Prims.nat= (Prims.parse_int "0x31504543")
+let compacted_epoch_version : Prims.nat= Prims.int_one
+let serialize_compacted_epoch (n : Prims.nat) : RDF_Bytes.bytes=
+  let body = RDF_Bytes.write_u64_le n in
+  let len = FStar_List_Tot_Base.length body in
+  FStar_List_Tot_Base.append (RDF_Bytes.write_u32_le compacted_epoch_magic)
+    (FStar_List_Tot_Base.append
+       (RDF_Bytes.write_u32_le compacted_epoch_version)
+       (FStar_List_Tot_Base.append (RDF_Bytes.write_u32_le len)
+          (FStar_List_Tot_Base.append body
+             (RDF_Bytes.write_u32_le (simple_checksum body)))))
+let parse_compacted_epoch (bs : RDF_Bytes.bytes) :
+  Prims.nat FStar_Pervasives_Native.option=
+  match RDF_Bytes.parse_u32_le bs with
+  | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+  | FStar_Pervasives_Native.Some (magic, after_magic) ->
+      if magic <> compacted_epoch_magic
+      then FStar_Pervasives_Native.None
+      else
+        (match RDF_Bytes.parse_u32_le after_magic with
+         | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+         | FStar_Pervasives_Native.Some (ver, after_ver) ->
+             if ver <> compacted_epoch_version
+             then FStar_Pervasives_Native.None
+             else
+               (match RDF_Bytes.parse_u32_le after_ver with
+                | FStar_Pervasives_Native.None ->
+                    FStar_Pervasives_Native.None
+                | FStar_Pervasives_Native.Some (len, after_len) ->
+                    (match RDF_Bytes.parse_n_bytes len after_len with
+                     | FStar_Pervasives_Native.None ->
+                         FStar_Pervasives_Native.None
+                     | FStar_Pervasives_Native.Some (body, after_body) ->
+                         (match RDF_Bytes.parse_u32_le after_body with
+                          | FStar_Pervasives_Native.None ->
+                              FStar_Pervasives_Native.None
+                          | FStar_Pervasives_Native.Some (chk, _rest) ->
+                              if chk <> (simple_checksum body)
+                              then FStar_Pervasives_Native.None
+                              else
+                                (match RDF_Bytes.parse_u64_le body with
+                                 | FStar_Pervasives_Native.Some (n, []) ->
+                                     FStar_Pervasives_Native.Some n
+                                 | uu___3 -> FStar_Pervasives_Native.None)))))
+let rec filter_batches_since_epoch
+  (threshold : Prims.nat FStar_Pervasives_Native.option)
+  (batches : delta_batch Prims.list) : delta_batch Prims.list=
+  match batches with
+  | [] -> []
+  | b::rest ->
+      let keep =
+        match threshold with
+        | FStar_Pervasives_Native.None -> true
+        | FStar_Pervasives_Native.Some ce -> b.db_epoch > ce in
+      if keep
+      then b :: (filter_batches_since_epoch threshold rest)
+      else filter_batches_since_epoch threshold rest

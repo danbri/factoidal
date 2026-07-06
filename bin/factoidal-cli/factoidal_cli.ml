@@ -243,6 +243,32 @@ let open_cottas_ondisk_store path =
     Printf.eprintf "Error: could not open on-disk COTTAS artifact: %s\n" path;
     exit 1
 
+(* Durable-UPDATE stage 4 (compaction) needs this reader in TWO places:
+   here (so an ordinary query sees the epoch-filtered delta a compacted
+   store requires) and in `run_compact` below (to decide what "already
+   folded" means for the NEXT compaction) -- defined once, shared.
+   `module DLog` is likewise shared with `run_compact`'s much larger
+   compaction banner further down this file. *)
+module DLog = RDF_Store_Columnar_DeltaLog
+
+(* Best-effort: does `<version_dir>/data.compacted-epoch` exist, and if
+   so what epoch does it record? `None` = never compacted -- nothing to
+   skip (matches SPARQL11_Store.cottas_with_delta_dataset_backend's own
+   `compacted_epoch : option nat` contract). *)
+let read_compacted_epoch (version_dir : string) : Z.t option =
+  let marker = Filename.concat version_dir "data.compacted-epoch" in
+  if not (Sys.file_exists marker) then None
+  else
+    let bytes = DLog.delta_log_read_all marker in
+    match DLog.parse_compacted_epoch bytes with
+    | FStar_Pervasives_Native.Some n -> Some n
+    | FStar_Pervasives_Native.None -> None
+
+let read_compacted_epoch_opt (version_dir : string) : Z.t FStar_Pervasives_Native.option =
+  match read_compacted_epoch version_dir with
+  | Some n -> FStar_Pervasives_Native.Some n
+  | None -> FStar_Pervasives_Native.None
+
 (* Durable-UPDATE stage 3 (merge-on-read, docs/designissues/2026-07-06-
    durable-update-design.md) -- CLI-side plumbing only (rule #11: this
    file is a consumer, not the verified library). `--delta-log PATH`
@@ -254,20 +280,30 @@ let open_cottas_ondisk_store path =
 let build_dataset_backend
     (in_memory : RDF_Graph_Executable.rdf_dataset)
     (cottas_stores : RDF_CottasStore.cottas_ondisk_store list)
+    (cottas_paths : string list)
     (delta_log_path : string option)
     : SPARQL11_Store.dataset_backend =
   let module S = SPARQL11_Store in
   let in_memory_backend = S.indexed_dataset_backend in_memory in
-  match delta_log_path, cottas_stores with
-  | Some log_path, [ cods ] ->
-    let delta_backend = S.cottas_with_delta_dataset_backend cods log_path in
+  match delta_log_path, cottas_stores, cottas_paths with
+  | Some log_path, [ cods ], [ cpath ] ->
+    (* Durable-UPDATE stage 4: an ordinary query against a store that
+       has been compacted must see the SAME epoch-filtered delta the
+       `compact` command itself reads (this file's `read_compacted_
+       epoch`, defined below with the rest of stage 4's compaction
+       code) -- otherwise a ordinary `--data-cottas current/data.cottas
+       --delta-log PATH` query would double-apply whatever the last
+       compaction already folded in, exactly the crash-window bug
+       filter_batches_since_epoch exists to prevent. *)
+    let epoch = read_compacted_epoch_opt (Filename.dirname cpath) in
+    let delta_backend = S.cottas_with_delta_dataset_backend cods log_path epoch in
     RDF_Store_Combine.combine_dataset_backends [ in_memory_backend; delta_backend ]
-  | Some _, _ ->
+  | Some _, _, _ ->
     Printf.eprintf
       "Error: --delta-log requires exactly one --data-cottas store (got %d)\n"
       (List.length cottas_stores);
     exit 1
-  | None, _ ->
+  | None, _, _ ->
     let cottas_backends =
       List.map S.cottas_ondisk_dataset_backend cottas_stores
     in
@@ -646,7 +682,7 @@ let parse_args ?args () =
 
 let known_subcommands =
   ["help"; "version"; "query"; "serve"; "dump"; "dump-nq"; "dump-turtle"; "canonicalize";
-   "count"; "test"; "cottas-import"; "cottas-info"; "graphs"; "validate"]
+   "count"; "test"; "cottas-import"; "cottas-info"; "graphs"; "validate"; "compact"]
 
 (* Locate a sibling binary by the same convention busybox uses: look in
    the same directory as argv[0] first, fall back to PATH. *)
@@ -714,6 +750,323 @@ let exec_corpus_pipeline subcmd args =
          script (Unix.error_message e);
        exit 127)
 
+(* ============================================================================
+   Durable-UPDATE stage 4: compaction ("factoidal compact")
+   docs/designissues/2026-07-06-durable-update-design.md §3.3 step 5 / §5
+   row 4. Consumer-side orchestration only (rule #11's last paragraph):
+   every byte-format DECISION (what the compacted-epoch marker looks
+   like, which delta batches survive an epoch filter, how base ⊕ delta
+   materializes into one rdf_dataset) is F* -- RDF.Store.Columnar.
+   DeltaLog.fst's serialize/parse_compacted_epoch + filter_batches_
+   since_epoch, and SPARQL11.Store.fst's materialize_dataset_backend.
+   This function only decides WHEN to call those, invokes the EXISTING
+   corpus_pipeline.py import pipeline unmodified (rule #15: no new
+   store-writing logic), and performs the atomic swap with the SAME
+   five stage-2 I/O primitives (issue #282) already used by the delta
+   log itself -- zero new `assume val`s.
+
+   ---------------------------------------------------------------------
+   Directory-layout / swap-protocol decision (the design doc under-
+   specifies this: §3.3 step 5 says "atomic_rename the temp base over
+   the live path" for what reads like a single file, but a compacted
+   COTTAS base is actually a SET of files -- data.cottas plus its eager
+   sidecars plus this stage's own data.compacted-epoch plus a few
+   metadata files. One `atomic_rename` cannot swap a SET of files as
+   one step, and renaming a whole directory ONTO an existing non-empty
+   directory is not POSIX-atomic (rename(2) refuses unless the target
+   is empty). Disclosed decision: symlink indirection, the standard
+   "atomic release swap" pattern --
+
+     <chunk_dir>/v1/          the FIRST import (corpus_pipeline.py's own
+                               convention; unchanged, always directly
+                               queryable by its own path)
+     <chunk_dir>/v2/, v3/...  one full artifact SET per compaction,
+                               written to a FRESH, never-yet-referenced
+                               directory name -- an existing version is
+                               never mutated in place
+     <chunk_dir>/current      a SYMLINK to "v1"/"v2"/... -- the live
+                               pointer. Renaming a symlink onto an
+                               existing name (`atomic_rename`, the SAME
+                               issue-#282 primitive the base-file swap
+                               itself uses) is a single atomic syscall
+                               with NO window where the name is absent
+                               -- unlike a directory rename, which needs
+                               the old target removed first. This one
+                               property is what makes the WHOLE artifact
+                               set become visible together, atomically.
+
+   Callers wanting the crash-safe live view point `--data-cottas` at
+   `<chunk_dir>/current/data.cottas` (this command prints that path on
+   success). Any earlier version (`v1/data.cottas`, ...) remains
+   directly queryable and untouched.
+
+   The delta log is NOT inside a version directory -- it is a
+   store-level, not a base-version-level, artifact (the same logical
+   append stream survives across many compactions) -- and is truncated
+   via its own temp-write + atomic_rename + fsync_dir, identical in
+   shape to stage 2's own protocol, reusing the same functions.
+
+   Crash-safety argument (a kill at ANY point during this function):
+     - before the `current` rename (step 6 below): `current` still
+       resolves to whatever it did before this run (or does not exist
+       yet, on a store's very first compaction) -- the pre-compaction
+       base and the pre-compaction, untouched delta log are both
+       exactly as they were. A half-written v2/v3/... directory is
+       orphaned garbage, never referenced by `current`, harmless.
+     - after the `current` rename, before the delta-log truncate
+       (step 7): a reader opening `current` gets the fully-compacted
+       new base (durable -- every file in it was fsynced, then the
+       directory itself fsynced, BEFORE the symlink flip). The delta
+       log may still physically contain the just-folded batch(es), but
+       `filter_batches_since_epoch` (keyed off the new base's own
+       data.compacted-epoch) makes their contribution zero -- the
+       composed read gives EXACTLY the post-compaction view regardless
+       of whether truncation ever runs. Log truncation is thus a
+       space-reclamation step, not a correctness dependency, given the
+       epoch filter is wired into the read path
+       (SPARQL11_Store.cottas_with_delta_dataset_backend).
+     - after the delta-log truncate completes: same post-compaction
+       view, smaller log file.
+   In every case: the store opens readable, and its content is EXACTLY
+   the pre- or the post-compaction view -- never a third state.
+
+   Single-writer assumption (open decision 4, disclosed): this command
+   assumes no OTHER process appends to the SAME delta log while it
+   runs -- an "explicit `factoidal compact`, one at a time" operational
+   model (open decision 1's recommended starting point, not an
+   automatic background trigger). A concurrent appender writing to the
+   live delta log during compaction could have its batch's effect
+   lost when the log is truncated post-swap; that hazard is open
+   decision 4's own scope, not re-solved here.
+   ---------------------------------------------------------------------- *)
+
+let read_whole_fd fd =
+  let buf = Buffer.create 65536 in
+  let chunk = Bytes.create 65536 in
+  let rec loop () =
+    let n = Unix.read fd chunk 0 65536 in
+    if n > 0 then begin Buffer.add_subbytes buf chunk 0 n; loop () end
+  in
+  (try loop () with Unix.Unix_error _ -> ());
+  Buffer.contents buf
+
+(* Spawn argv.(0) (looked up on PATH), wait for it, return (exit_code,
+   combined stdout+stderr) -- unlike exec_sibling/exec_corpus_pipeline
+   above (which replace this process), compaction needs to keep running
+   AFTER the subprocess exits (build the epoch marker, fsync, swap). *)
+let run_and_wait (argv : string array) : int * string =
+  let (r, w) = Unix.pipe () in
+  Unix.set_close_on_exec r;
+  let pid =
+    try Unix.create_process argv.(0) argv Unix.stdin w w
+    with Unix.Unix_error (e, _, _) ->
+      Unix.close r; Unix.close w;
+      failwith (Printf.sprintf "could not spawn %s: %s" argv.(0) (Unix.error_message e))
+  in
+  Unix.close w;
+  let out = read_whole_fd r in
+  Unix.close r;
+  let (_, status) = Unix.waitpid [] pid in
+  let code = match status with
+    | Unix.WEXITED c -> c
+    | Unix.WSIGNALED s -> 128 + s
+    | Unix.WSTOPPED s -> 128 + s
+  in
+  (code, out)
+
+(* fsync a single regular file. Reuses the F*-extracted, already-tested
+   `delta_log_fsync` (issue #282) -- its OCaml realisation is a generic
+   "open O_WRONLY, fsync, close," with no dependence on the path being
+   a delta log specifically (rule #11(a): pure I/O, no branching on
+   content). *)
+let fsync_file path = DLog.delta_log_fsync path
+
+let list_regular_files dir =
+  Sys.readdir dir |> Array.to_list
+  |> List.filter (fun name -> not (Sys.is_directory (Filename.concat dir name)))
+
+let version_dir_re = Str.regexp "^v\\([0-9]+\\)$"
+
+let next_version_number chunk_dir =
+  let entries = try Array.to_list (Sys.readdir chunk_dir) with Sys_error _ -> [] in
+  let nums =
+    List.filter_map
+      (fun name ->
+         if Str.string_match version_dir_re name 0
+            && Sys.is_directory (Filename.concat chunk_dir name)
+         then Some (int_of_string (Str.matched_group 1 name))
+         else None)
+      entries
+  in
+  1 + List.fold_left max 0 nums
+
+let rm_rf path =
+  ignore (Sys.command (Printf.sprintf "rm -rf %s" (Filename.quote path)))
+
+let usage_compact () =
+  Printf.eprintf
+    "Usage: factoidal compact --data-cottas FILE --delta-log PATH\n\
+    \                          [--python PATH] [--parser NAME] [--index PERM]\n\n\
+     Durable-UPDATE stage 4: fold the delta log into a fresh .cottas base\n\
+     via the existing corpus_pipeline.py import pipeline, then atomically\n\
+     swap it in (chunk_dir/current -> vN symlink flip) and truncate the\n\
+     delta log. See docs/designissues/2026-07-06-durable-update-design.md\n\
+     section 3.3 step 5 and this file's own compaction banner (above\n\
+     `run_compact`) for the swap protocol and its crash-safety argument.\n";
+  exit 2
+
+let run_compact (args : string list) : unit =
+  let data_cottas = ref None in
+  let delta_log = ref None in
+  let python = ref (match Sys.getenv_opt "PYCOTTAS_PYTHON" with Some p -> p | None -> "python3") in
+  let parser_name = ref "factoidal" in
+  let index_perm = ref "spog" in
+  let rec loop = function
+    | [] -> ()
+    | "--data-cottas" :: v :: rest -> data_cottas := Some v; loop rest
+    | "--delta-log" :: v :: rest -> delta_log := Some v; loop rest
+    | "--python" :: v :: rest -> python := v; loop rest
+    | "--parser" :: v :: rest -> parser_name := v; loop rest
+    | "--index" :: v :: rest -> index_perm := v; loop rest
+    | ("--help" | "-h") :: _ -> usage_compact ()
+    | _ -> usage_compact ()
+  in
+  loop args;
+  let data_cottas_path = match !data_cottas with Some p -> p | None -> usage_compact () in
+  let delta_log_path = match !delta_log with Some p -> p | None -> usage_compact () in
+  if not (Sys.file_exists data_cottas_path) then begin
+    Printf.eprintf "Error: --data-cottas file not found: %s\n" data_cottas_path; exit 1
+  end;
+  let old_version_dir = Filename.dirname data_cottas_path in
+  let chunk_dir = Filename.dirname old_version_dir in
+  let chunk_name = Filename.basename chunk_dir in
+  let corpus_root = Filename.dirname chunk_dir in
+
+  Printf.printf "compact: chunk_dir=%s corpus_root=%s chunk_name=%s\n%!"
+    chunk_dir corpus_root chunk_name;
+
+  (* 1. Read the CURRENT base + delta log through the SAME F*-verified
+     read path a query would use, and materialize base (+) delta into a
+     plain in-memory rdf_dataset via SPARQL11_Store.materialize_dataset_
+     backend (Tot) -- no new store-reading logic (rule #15/#7). *)
+  let old_epoch = read_compacted_epoch old_version_dir in
+  let old_epoch_fs = read_compacted_epoch_opt old_version_dir in
+  let cods = open_cottas_ondisk_store data_cottas_path in
+  let dsb = SPARQL11_Store.cottas_with_delta_dataset_backend cods delta_log_path old_epoch_fs in
+  let merged_ds = SPARQL11_Store.materialize_dataset_backend dsb in
+  let nq_text = RDF_Canonical.canonical_nquads merged_ds in
+
+  (* 2. Compute the new "compacted through epoch": the max db_epoch
+     among the batches actually folded (the SAME epoch filter
+     cottas_with_delta_dataset_backend just used above), or the old
+     epoch unchanged if the log contributed nothing new. *)
+  let log_bytes = DLog.delta_log_read_all delta_log_path in
+  let raw_batches = match DLog.parse_log log_bytes with
+    | FStar_Pervasives_Native.Some (bs, _) -> bs
+    | FStar_Pervasives_Native.None -> [] in
+  let kept_batches = DLog.filter_batches_since_epoch old_epoch_fs raw_batches in
+  let new_epoch =
+    List.fold_left
+      (fun acc (b : DLog.delta_batch) -> Z.max acc b.DLog.db_epoch)
+      (match old_epoch with Some n -> n | None -> Z.zero)
+      kept_batches
+  in
+  Printf.printf "compact: folded %d batch(es), compacted_through_epoch=%s\n%!"
+    (List.length kept_batches) (Z.to_string new_epoch);
+
+  (* 3. Build the new version directory DIRECTLY via corpus_pipeline.py
+     (rule #15: reuse the existing import pipeline, no new store
+     writer) -- --corpus-root/--dataset-name/--chunk-name/--version
+     target it so the output lands EXACTLY at chunk_dir/vN, not a
+     nested scratch copy that then needs moving. vN is a FRESH name,
+     never before referenced by `current`, so building into it cannot
+     disturb anything live. *)
+  let next_num = next_version_number chunk_dir in
+  let new_version_name = Printf.sprintf "v%d" next_num in
+  let new_version_dir = Filename.concat chunk_dir new_version_name in
+  if Sys.file_exists new_version_dir then rm_rf new_version_dir;
+
+  let tmp_nq = Filename.temp_file "factoidal-compact-" ".nq" in
+  let oc = open_out tmp_nq in
+  output_string oc nq_text;
+  close_out oc;
+
+  let repo_root = match find_repo_root () with
+    | Some r -> r
+    | None ->
+      failwith "factoidal compact: could not locate tools/corpus_pipeline.py \
+                (set FACTOIDAL_REPO_ROOT)"
+  in
+  let corpus_script = Filename.concat repo_root "tools/corpus_pipeline.py" in
+  let argv =
+    [| !python; corpus_script; "materialize-nq-cottas-corpus";
+       "--input"; tmp_nq; "--input-format"; "nq";
+       "--corpus-root"; corpus_root;
+       "--dataset-name"; chunk_name;
+       "--chunk-name"; chunk_name;
+       "--version"; new_version_name;
+       "--parser"; !parser_name;
+       "--index"; !index_perm;
+       "--build-sidecars" |]
+  in
+  Printf.printf "compact: %s\n%!" (String.concat " " (Array.to_list argv));
+  let (code, output) = run_and_wait argv in
+  (try Sys.remove tmp_nq with Sys_error _ -> ());
+  if code <> 0 then begin
+    Printf.eprintf "factoidal compact: corpus_pipeline.py failed (rc=%d):\n%s\n" code output;
+    rm_rf new_version_dir;
+    exit 1
+  end;
+  print_string output;
+
+  (* 4. Write the compacted-epoch companion file INSIDE the new (not
+     yet live) version directory -- it becomes visible atomically
+     together with the rest of the base when `current` flips, in
+     step 6. *)
+  let epoch_marker_path = Filename.concat new_version_dir "data.compacted-epoch" in
+  DLog.delta_log_append epoch_marker_path (DLog.serialize_compacted_epoch new_epoch);
+  DLog.delta_log_fsync epoch_marker_path;
+
+  (* 5. fsync every regular file in the new version directory, then the
+     directory itself -- durability of the whole base must be
+     established BEFORE it becomes reachable via `current`. *)
+  List.iter
+    (fun name -> fsync_file (Filename.concat new_version_dir name))
+    (list_regular_files new_version_dir);
+  DLog.fsync_dir new_version_dir;
+
+  (* 6. The atomic swap: symlink indirection (see this function's own
+     banner above for why a plain directory rename cannot do this
+     atomically). Create a temp symlink, then atomic_rename it onto
+     `current` -- ONE syscall, no window where `current` is absent. *)
+  let current_path = Filename.concat chunk_dir "current" in
+  let tmp_symlink = Filename.concat chunk_dir
+      (Printf.sprintf ".current.tmp.%d" (Unix.getpid ())) in
+  (try Sys.remove tmp_symlink with Sys_error _ -> ());
+  Unix.symlink new_version_name tmp_symlink;
+  DLog.atomic_rename tmp_symlink current_path;
+  DLog.fsync_dir chunk_dir;
+  Printf.printf "compact: current -> %s\n%!" new_version_name;
+
+  (* 7. Truncate the delta log: fresh empty log to a temp path, fsync,
+     atomic_rename over the live log, fsync the containing directory --
+     the SAME temp+fsync+rename+fsync_dir shape as the base swap,
+     reusing the SAME five stage-2 assume vals (issue #282), zero new
+     ones. Space reclamation, not a correctness dependency (see the
+     crash-safety argument in this function's banner). *)
+  let log_dir = Filename.dirname delta_log_path in
+  let tmp_log = Printf.sprintf "%s.tmp.%d" delta_log_path (Unix.getpid ()) in
+  (try Sys.remove tmp_log with Sys_error _ -> ());
+  DLog.delta_log_append tmp_log (DLog.serialize_log []);
+  DLog.delta_log_fsync tmp_log;
+  DLog.atomic_rename tmp_log delta_log_path;
+  DLog.fsync_dir log_dir;
+
+  Printf.printf "compact: OK new_base=%s current=%s compacted_through_epoch=%s\n%!"
+    (Filename.concat new_version_dir "data.cottas")
+    (Filename.concat current_path "data.cottas")
+    (Z.to_string new_epoch)
+
 let print_navigation_help () =
   Printf.printf "factoidal — formally verified RDF/SPARQL toolkit\n\n";
   Printf.printf "Usage: factoidal <subcommand> [options...]\n\n";
@@ -744,6 +1097,9 @@ let print_navigation_help () =
   Printf.printf "                   (shim: execs python3 tools/corpus_pipeline.py)\n";
   Printf.printf "  cottas-info    Summary stats for a COTTAS/Parquet file\n";
   Printf.printf "                   factoidal cottas-info FILE.cottas\n";
+  Printf.printf "  compact        Durable-UPDATE stage 4: fold --delta-log into a fresh base\n";
+  Printf.printf "                   factoidal compact --data-cottas FILE --delta-log PATH\n";
+  Printf.printf "                   (atomic chunk_dir/current -> vN swap; see factoidal_cli.ml)\n";
   Printf.printf "  test SUITE     Run W3C / OWL / RDFC test suites\n";
   Printf.printf "                   factoidal test w3c          (sibling: w3c_runner)\n";
   Printf.printf "                   factoidal test owl-rl       (sibling: owl_runner)\n";
@@ -1016,6 +1372,7 @@ let dispatch_subcommand () =
             results;
           exit (if conforms then 0 else 1)
         | _ -> usage_validate ())
+     | "compact" -> run_compact rest; exit 0
      | "query" -> rest
      | "dump"  -> "--dump"  :: List.concat_map (fun f -> ["--data"; f]) rest
      | "dump-nq" -> "--dump-nq" :: List.concat_map (fun f -> ["--data"; f]) rest
@@ -1502,7 +1859,7 @@ let () =
             Printf.eprintf "Error opening on-disk COTTAS %s: %s\n" f (Printexc.to_string e);
             exit 1
         ) cfg.data_cottas_files in
-        let dsb = build_dataset_backend dataset cottas_stores cfg.delta_log_path in
+        let dsb = build_dataset_backend dataset cottas_stores cfg.data_cottas_files cfg.delta_log_path in
         let ask_answer =
           if is_ask then
             match SPARQL11_Store.run_ask_query_backend_dataset rewritten_query dsb with
