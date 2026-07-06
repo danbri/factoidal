@@ -147,9 +147,15 @@ test('post17: SPARQL.GraphStore.fst is verified F* with no assume vals (grounds 
   }
 });
 
-test('post17: factoidal-http genuinely has no Graph Store Protocol routes (grounds "not yet exposed as routes")', () => {
+test('post17: factoidal-http now routes the Graph Store Protocol (grounds the "landed, routed" update)', () => {
   const http = fs.readFileSync(
     path.join(REPO_ROOT, 'bin', 'factoidal-http', 'factoidal_http.ml'), 'utf8');
-  assert.doesNotMatch(http, /GraphStore/, 'factoidal_http.ml should not reference the GraphStore module');
+  assert.match(http, /GraphStore/, 'factoidal_http.ml should reference the GraphStore module now that stage 8 has landed');
   assert.match(http, /POST \/update/, 'expected the whole-dataset /update route to still be documented');
+});
+
+test('post17: the stage-8 HTTP-wiring commit cited exists on this branch', () => {
+  const { execFileSync } = require('node:child_process');
+  const out = execFileSync('git', ['cat-file', '-t', 'e8085da'], { cwd: REPO_ROOT }).toString().trim();
+  assert.equal(out, 'commit', 'expected e8085da to be a commit reachable in this repo');
 });

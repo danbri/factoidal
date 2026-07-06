@@ -198,10 +198,19 @@ is done:
 - **Compaction** (stage 4): folding an accumulated delta back into a
   fresh `.cottas` base via the existing `corpus_pipeline.py` writer, so
   the delta log doesn't grow without bound. Unstarted.
-- **HTTP wiring** (stage 8): `factoidal-http`'s `/update` endpoint
+- ~~**HTTP wiring** (stage 8): `factoidal-http`'s `/update` endpoint
   still mutates an in-memory `rdf_dataset` and discards it on restart
   — nothing in the live HTTP server touches the delta log yet (see
-  "Serving" below). Unstarted.
+  "Serving" below). Unstarted.~~ **Landed the same day this post was
+  published**, commit
+  [`e8085da`](https://github.com/danbri/factoidal/commit/e8085da):
+  `factoidal-http` gained `--delta-log`/`--rw` — reads flow through
+  the stage-3 merged view, and SPARQL UPDATE requests translate to
+  delta entries via `update_ops_to_delta_entries` (INSERT/DELETE DATA,
+  CLEAR/DROP/CREATE; anything else 501s rather than silently applying
+  in memory only). See the "Serving" section below, corrected in
+  place, and [post 18](./18-the-durable-log-live.md) for the
+  in-browser lifecycle this closes the loop with.
 - **Parliament-scale validation** (stage 9): re-running the
   delta-penalty measurement (empty-delta query cost must match the
   base-file baseline; a realistic-size delta must add a small, bounded
@@ -242,8 +251,9 @@ otherwise. `on`/`off` are also available as explicit overrides. The
 stderr line and `/admin/recent.json` are operator-only and are never
 gated — only the header that goes back to the requester is.
 
-**Graph Store Protocol: specified and proven, not yet exposed as
-routes.**
+**Graph Store Protocol: specified, proven, and — as of commit
+[`e8085da`](https://github.com/danbri/factoidal/commit/e8085da),
+landed the same day this post was first published — routed.**
 [`SPARQL.GraphStore.fst`](https://github.com/danbri/factoidal/blob/claude/main/formal/fstar/SPARQL.GraphStore.fst)
 is a verified, `assume-val`-free F\* module implementing the five GSP
 operations (`gsp_get`/`gsp_head`/`gsp_put`/`gsp_post`/`gsp_delete`) over
@@ -252,13 +262,22 @@ DELETE-existence, all decided in F\*, not in a runner shim. It's
 exercised by the W3C `http-rdf-update` manifest's stateful test
 sequence in the test runner (19/19, cited above) — a suite-level shared
 store that runs PUT/POST/DELETE against it across a whole manifest.
-What it is **not**, today: wired into `bin/factoidal-http` as live HTTP
-routes. Grep `bin/factoidal-http/factoidal_http.ml`'s route table and
-there is no `PUT`/`POST`/`DELETE /data?graph=...`-shaped endpoint —
-only `/query`, `/sparql`, and the whole-dataset `/update` described
-above. A client that wants per-graph document semantics against a
-running `factoidal-http` server can't do it yet; the semantics exist
-and are proven, the HTTP surface for them does not.
+
+The paragraph originally here said this was proven but not routed —
+that gap is now closed: `bin/factoidal-http/factoidal_http.ml` wires
+`GET`/`HEAD /data?graph=...` unconditionally and `PUT`/`POST`/`DELETE`
+under a `--rw` flag, through total GSP-to-delta-entry translators
+(`update_ops_to_delta_entries`'s sibling for GSP verbs), with
+`SPARQL.GraphStore.fst`'s own spec-correct status codes, 405 without
+`--rw`. One limitation is disclosed rather than papered over: a
+`DELETE` durably clears a named graph's content, but a later `GET` may
+still answer `200` with an empty body rather than `404` — the
+merge-on-read architecture doesn't yet distinguish "emptied" from
+"never existed." Acceptance:
+`tests/local/durable_update_stage8_http.sh`, 29 pass, 0 fail (a curl
+matrix over all five GSP verbs, plus concurrent-reader/SIGKILL-mid-
+write recovery checks). [Post 18](./18-the-durable-log-live.md) picks
+up the in-browser side of this same durable-UPDATE story.
 
 ## What's next
 

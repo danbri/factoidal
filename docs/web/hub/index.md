@@ -9,7 +9,7 @@ A home for longer-form, interactive write-ups about how Factoidal
 works — RDF/SPARQL concepts demonstrated by running the real
 F\*-extracted engine in your browser, not by prose alone.
 
-Seventeen posts are published below, each with live runnable cells. The
+Eighteen posts are published below, each with live runnable cells. The
 rest of the series (see
 [the series plan](../../designissues/2026-07-05-docs-hub-plan/) for
 the full map and vocabulary strategy) is still planned.
@@ -94,6 +94,7 @@ headlessly.
   <li><a href="./13-verifiable-credentials-and-csvw/">Verifiable Credentials and CSVW</a> — VC structural validation (no crypto yet) + CSVW csv2rdf live (schema.org)</li>
   <li><a href="./15-how-fast-the-performance-story/">How fast: the performance story</a> — dated, commit-linked throughput and on-disk reader numbers, one live in-browser timing illustration (wikidata)</li>
   <li><a href="./16-the-verified-in-fstar-story/">The verified-in-F* story</a> — why F*, the standing verification qualifier, the skimmable RDF.Term.fsti core, one source to four extraction targets</li>
+  <li><a href="./18-the-durable-log-live/">The durable log, live: update, persist, reload, corrupt</a> — the full durable-UPDATE lifecycle running in your browser via IndexedDB across a real page reload, a live checksum-rejection demo, and the same delta-log module proven running natively, as KaRaMeL C, and honestly not yet in wasm (foaf)</li>
 </ul>
 
 (Every post above has shipped — the series plan's placeholder list is
