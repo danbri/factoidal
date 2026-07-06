@@ -1,0 +1,1002 @@
+{
+  "generated_at": "2026-07-06T05:20:09Z",
+  "host_note": "cloud sandbox, 4-core Linux, shared with other sessions -- wall-clock, not isolated benchmark hardware",
+  "factoidal_commit": "a3ef63c54bd6174bc172184a5a80ed76849fc054",
+  "engines": {
+    "factoidal": {
+      "available": true,
+      "version": "factoidal (bin/linux-x86_64), commit a3ef63c",
+      "provenance": "bin/linux-x86_64 was locally modified mid-rebuild; used HEAD (a3ef63c54bd6174bc172184a5a80ed76849fc054) copy via `git show` into /tmp/claude-0/-home-user-factoidal/7adc2ce1-f0f1-56dc-9a3f-7f9c4d22ed9c/scratchpad/real-run-scratch/head-bin"
+    },
+    "jena": {
+      "available": true,
+      "version": "Apache Jena 5.2.0",
+      "home": "/tmp/claude-0/-home-user-factoidal/7adc2ce1-f0f1-56dc-9a3f-7f9c4d22ed9c/scratchpad/apache-jena-5.2.0"
+    },
+    "pyoxigraph": {
+      "available": true,
+      "version": "pyoxigraph 0.5.9"
+    },
+    "rdflib": {
+      "available": true,
+      "version": "rdflib 7.6.0"
+    }
+  },
+  "corpora": {
+    "gene": {
+      "path": "/home/user/factoidal/examples/wikidata/subsets/lifesci-kgx/data/gene.ttl",
+      "bytes": 17363312
+    },
+    "lifesci-all": {
+      "path": "/tmp/claude-0/-home-user-factoidal/7adc2ce1-f0f1-56dc-9a3f-7f9c4d22ed9c/scratchpad/real-run-scratch/lifesci-all.ttl",
+      "bytes": 29008189,
+      "source_files": [
+        "Protein__protein2.ttl",
+        "Protein__protein4.ttl",
+        "active_site.ttl",
+        "anatomical_structure.ttl",
+        "binding_site.ttl",
+        "biological_pathway.ttl",
+        "chemical_compound.ttl",
+        "chromosome.ttl",
+        "disease.ttl",
+        "gene.ttl",
+        "mechanism_of_action.ttl",
+        "medication.ttl",
+        "pharmaceutical_product.ttl",
+        "pharmacologic_action.ttl",
+        "protein_domain.ttl",
+        "protein_family.ttl",
+        "ribosomal_RNA.ttl",
+        "sequence_variant.ttl",
+        "supersecondary_structure.ttl",
+        "symptom.ttl",
+        "therapeutic_use.ttl"
+      ]
+    }
+  },
+  "rss_methodology": "CLI/process-per-query engines (factoidal CLI, Jena arq, Jena tdb2.tdbquery): peak_rss_kb is resource.getrusage(RUSAGE_CHILDREN) scoped to exactly that one invocation, via tools/bench_rusage_run.py (no /usr/bin/time -v in this sandbox). Persistent-process engines (pyoxigraph, rdflib): peak_rss_kb is resource.getrusage(RUSAGE_SELF) sampled once, immediately after load and before any query -- the LOAD table's peak_rss_kb for these two engines is load-only, not the whole process lifetime.",
+  "cold_warm_methodology": "CLI/process-per-query engines: cold = first fresh-process invocation, warm = median of 3 further fresh-process invocations (OS page cache warm; no persistent engine state). Persistent-process engines (pyoxigraph, rdflib): cold = first query() call in a freshly-loaded process, warm = median of 3 further calls in the SAME process. This asymmetry is real (persistent engines never pay process-startup cost on 'warm'; CLI engines always do) and is not papered over.",
+  "queries": {
+    "q1_count_star": {
+      "sparql": "SELECT (COUNT(*) AS ?c) WHERE { ?s ?p ?o }",
+      "description": "COUNT(*) over the whole default graph.",
+      "category": "aggregate-full-scan"
+    },
+    "q2_bound_predicate_count": {
+      "sparql": "PREFIX wdt: <http://www.wikidata.org/prop/direct/>\nSELECT (COUNT(*) AS ?c) WHERE { ?s wdt:P684 ?o }",
+      "description": "Bound-predicate COUNT on wdt:P684, the dominant predicate (759,263 of 888,949 triples on gene.ttl).",
+      "category": "aggregate-bound-predicate"
+    },
+    "q3_subject_point_lookup": {
+      "sparql": "PREFIX wd: <http://www.wikidata.org/entity/>\nSELECT ?p ?o WHERE { wd:Q100085837 ?p ?o }",
+      "description": "Subject point lookup: all (p, o) for one fixed subject IRI present in gene.ttl (3 triples: 1 rdf:type + 2 wdt:P684 edges).",
+      "category": "point-lookup"
+    },
+    "q4_two_pattern_join": {
+      "sparql": "PREFIX wdt: <http://www.wikidata.org/prop/direct/>\nSELECT ?s ?o1 ?o2 WHERE { ?s wdt:P684 ?o1 . ?s wdt:P682 ?o2 }",
+      "description": "Same-subject 2-pattern join between the dominant predicate (wdt:P684) and the rarest one (wdt:P682, 4 triples total); 14 result rows on gene.ttl.",
+      "category": "join"
+    },
+    "q5_group_by": {
+      "sparql": "PREFIX wdt: <http://www.wikidata.org/prop/direct/>\nSELECT ?p (COUNT(*) AS ?c) WHERE { ?s ?p ?o } GROUP BY ?p",
+      "description": "GROUP BY predicate over the whole default graph; 6 groups on gene.ttl.",
+      "category": "group-by"
+    },
+    "q6_optional_filter": {
+      "sparql": "PREFIX wdt: <http://www.wikidata.org/prop/direct/>\nSELECT ?s ?o1 ?o2 WHERE {\n  ?s wdt:P1057 ?o1 .\n  OPTIONAL { ?s wdt:P688 ?o2 }\n  FILTER(isIRI(?o1))\n}",
+      "description": "Required wdt:P1057 pattern + OPTIONAL wdt:P688 + a FILTER; 25,083 rows on gene.ttl, 9,117 with the optional var bound.",
+      "category": "optional-filter"
+    }
+  },
+  "load": [
+    {
+      "engine": "factoidal-cli-fast-path",
+      "corpus": "gene",
+      "method": "3x fresh-process point-lookup query (materializing, non-fast-path-eligible)",
+      "n_runs": 3,
+      "n_ok": 3,
+      "wall_s_runs": [
+        26.30979226099953,
+        26.52336675100014,
+        26.26190710100036
+      ],
+      "wall_s_median": 26.30979226099953,
+      "peak_rss_kb_runs": [
+        761904,
+        762032,
+        762012
+      ],
+      "peak_rss_kb_median": 762012,
+      "any_timed_out": false
+    },
+    {
+      "engine": "factoidal-cli-forced-slow-path (kill switch)",
+      "corpus": "gene",
+      "method": "3x fresh-process point-lookup query, FACTOIDAL_DISABLE_STREAM_FASTPATH=1",
+      "n_runs": 3,
+      "n_ok": 3,
+      "wall_s_runs": [
+        25.74090157200044,
+        25.171179615000256,
+        25.155116345999886
+      ],
+      "wall_s_median": 25.171179615000256,
+      "peak_rss_kb_runs": [
+        761960,
+        761972,
+        762028
+      ],
+      "peak_rss_kb_median": 761972,
+      "any_timed_out": false
+    },
+    {
+      "engine": "jena-arq-inmemory",
+      "corpus": "gene",
+      "method": "3x fresh-process point-lookup query (arq reparses the file every invocation)",
+      "n_runs": 3,
+      "n_ok": 3,
+      "wall_s_runs": [
+        10.156527956999525,
+        9.928317322000112,
+        9.709689026999513
+      ],
+      "wall_s_median": 9.928317322000112,
+      "peak_rss_kb_runs": [
+        1478624,
+        1527744,
+        1581228
+      ],
+      "peak_rss_kb_median": 1527744,
+      "any_timed_out": false
+    },
+    {
+      "engine": "jena-tdb2 (on-disk)",
+      "corpus": "gene",
+      "method": "3x fresh tdb2.tdbloader runs (fresh target dir each run)",
+      "n_runs": 3,
+      "n_ok": 3,
+      "wall_s_runs": [
+        9.591197036000267,
+        9.539999005000027,
+        10.102258005999829
+      ],
+      "wall_s_median": 9.591197036000267,
+      "peak_rss_kb_runs": [
+        2184528,
+        2052892,
+        1954924
+      ],
+      "peak_rss_kb_median": 2052892,
+      "any_timed_out": false,
+      "last_db_dir": "/tmp/claude-0/-home-user-factoidal/7adc2ce1-f0f1-56dc-9a3f-7f9c4d22ed9c/scratchpad/real-run-scratch/tdb2-gene-run2"
+    },
+    {
+      "engine": "pyoxigraph (in-memory)",
+      "corpus": "gene",
+      "method": "3x fresh Python process, Store().load()",
+      "n_runs": 3,
+      "n_ok": 3,
+      "wall_s_runs": [
+        2.4575863310001296,
+        2.326911737000046,
+        2.3192870670000048
+      ],
+      "wall_s_median": 2.326911737000046,
+      "peak_rss_kb_runs": [
+        322468,
+        322468,
+        322504
+      ],
+      "peak_rss_kb_median": 322468,
+      "any_timed_out": false
+    },
+    {
+      "engine": "rdflib (in-memory, floor baseline)",
+      "corpus": "gene",
+      "method": "3x fresh Python process, Graph().parse()",
+      "n_runs": 3,
+      "n_ok": 3,
+      "wall_s_runs": [
+        24.37611215099969,
+        24.730798067999785,
+        23.583607595999638
+      ],
+      "wall_s_median": 24.37611215099969,
+      "peak_rss_kb_runs": [
+        744956,
+        744964,
+        744940
+      ],
+      "peak_rss_kb_median": 744956,
+      "any_timed_out": false
+    },
+    {
+      "engine": "factoidal cottas-import (on-disk build)",
+      "corpus": "gene",
+      "method": "tools/corpus_pipeline.py materialize-nq-cottas-corpus --build-sidecars",
+      "wall_s": 129.08166560800055,
+      "peak_rss_kb": 1758412,
+      "returncode": 0,
+      "timed_out": false,
+      "stdout_path": "/tmp/claude-0/-home-user-factoidal/7adc2ce1-f0f1-56dc-9a3f-7f9c4d22ed9c/scratchpad/real-run-scratch/cottas-import-gene-bench.out",
+      "stderr_path": "/tmp/claude-0/-home-user-factoidal/7adc2ce1-f0f1-56dc-9a3f-7f9c4d22ed9c/scratchpad/real-run-scratch/cottas-import-gene-bench.err",
+      "ok": true,
+      "artifact_path": "/tmp/claude-0/-home-user-factoidal/7adc2ce1-f0f1-56dc-9a3f-7f9c4d22ed9c/scratchpad/real-run-scratch/cottas-gene/gene-bench/v1/data.cottas",
+      "n_runs": 1,
+      "note": "single run (import cost ~2 min on gene.ttl; median-of-3 not run for this workload)"
+    },
+    {
+      "engine": "factoidal-cli-fast-path",
+      "corpus": "lifesci-all",
+      "method": "3x fresh-process point-lookup query (materializing, non-fast-path-eligible)",
+      "n_runs": 3,
+      "n_ok": 3,
+      "wall_s_runs": [
+        40.025397343000805,
+        40.219312014000025,
+        40.27106814000035
+      ],
+      "wall_s_median": 40.219312014000025,
+      "peak_rss_kb_runs": [
+        1211460,
+        1211344,
+        1211460
+      ],
+      "peak_rss_kb_median": 1211460,
+      "any_timed_out": false
+    },
+    {
+      "engine": "factoidal-cli-forced-slow-path (kill switch)",
+      "corpus": "lifesci-all",
+      "method": "3x fresh-process point-lookup query, FACTOIDAL_DISABLE_STREAM_FASTPATH=1",
+      "n_runs": 3,
+      "n_ok": 3,
+      "wall_s_runs": [
+        40.32893316700029,
+        40.07868664099988,
+        39.78374545200131
+      ],
+      "wall_s_median": 40.07868664099988,
+      "peak_rss_kb_runs": [
+        1211392,
+        1211392,
+        1211392
+      ],
+      "peak_rss_kb_median": 1211392,
+      "any_timed_out": false
+    },
+    {
+      "engine": "jena-arq-inmemory",
+      "corpus": "lifesci-all",
+      "method": "3x fresh-process point-lookup query (arq reparses the file every invocation)",
+      "n_runs": 3,
+      "n_ok": 3,
+      "wall_s_runs": [
+        13.861372608000238,
+        15.00061468399872,
+        14.235422641000696
+      ],
+      "wall_s_median": 14.235422641000696,
+      "peak_rss_kb_runs": [
+        1775152,
+        1883952,
+        1774432
+      ],
+      "peak_rss_kb_median": 1775152,
+      "any_timed_out": false
+    },
+    {
+      "engine": "jena-tdb2 (on-disk)",
+      "corpus": "lifesci-all",
+      "method": "3x fresh tdb2.tdbloader runs (fresh target dir each run)",
+      "n_runs": 3,
+      "n_ok": 3,
+      "wall_s_runs": [
+        15.055020187999617,
+        13.216310980000344,
+        14.35841431299923
+      ],
+      "wall_s_median": 14.35841431299923,
+      "peak_rss_kb_runs": [
+        2498508,
+        2379204,
+        2530052
+      ],
+      "peak_rss_kb_median": 2498508,
+      "any_timed_out": false,
+      "last_db_dir": "/tmp/claude-0/-home-user-factoidal/7adc2ce1-f0f1-56dc-9a3f-7f9c4d22ed9c/scratchpad/real-run-scratch/tdb2-lifesci-all-run2"
+    },
+    {
+      "engine": "pyoxigraph (in-memory)",
+      "corpus": "lifesci-all",
+      "method": "3x fresh Python process, Store().load()",
+      "n_runs": 3,
+      "n_ok": 3,
+      "wall_s_runs": [
+        4.4502272110003105,
+        4.418384832999436,
+        4.281960275999154
+      ],
+      "wall_s_median": 4.418384832999436,
+      "peak_rss_kb_runs": [
+        463308,
+        463284,
+        463268
+      ],
+      "peak_rss_kb_median": 463284,
+      "any_timed_out": false
+    },
+    {
+      "engine": "rdflib (in-memory, floor baseline)",
+      "corpus": "lifesci-all",
+      "method": "3x fresh Python process, Graph().parse()",
+      "n_runs": 3,
+      "n_ok": 3,
+      "wall_s_runs": [
+        38.807123864999085,
+        38.454424814999584,
+        38.849425360998794
+      ],
+      "wall_s_median": 38.807123864999085,
+      "peak_rss_kb_runs": [
+        1129324,
+        1129300,
+        1129344
+      ],
+      "peak_rss_kb_median": 1129324,
+      "any_timed_out": false
+    }
+  ],
+  "query_results": [
+    {
+      "engine": "factoidal-cli-fast-path",
+      "query": "q1_count_star",
+      "cold_s": 6.654049003998807,
+      "cold_peak_rss_kb": 46172,
+      "row_count": 1,
+      "warm_s_runs": [
+        6.468835159999799,
+        6.5730666809995455,
+        6.586463921001268
+      ],
+      "warm_s_median": 6.5730666809995455,
+      "answer_sha256": "03379de524d3f0e6"
+    },
+    {
+      "engine": "factoidal-cli-forced-slow-path (kill switch)",
+      "query": "q1_count_star",
+      "cold_s": 26.27581638799893,
+      "cold_peak_rss_kb": 762156,
+      "row_count": 1,
+      "warm_s_runs": [
+        25.826439911001216,
+        26.18688881900016,
+        25.874229540999295
+      ],
+      "warm_s_median": 25.874229540999295,
+      "answer_sha256": "03379de524d3f0e6"
+    },
+    {
+      "engine": "factoidal-cottas (on-disk)",
+      "query": "q1_count_star",
+      "cold_s": 0.7415305310005351,
+      "cold_peak_rss_kb": 82812,
+      "row_count": 1,
+      "warm_s_runs": [
+        0.7331140419992153,
+        0.7104525069989904,
+        0.7158818320003775
+      ],
+      "warm_s_median": 0.7158818320003775,
+      "answer_sha256": "03379de524d3f0e6"
+    },
+    {
+      "engine": "jena-arq-inmemory",
+      "query": "q1_count_star",
+      "cold_s": 11.058911779999107,
+      "cold_peak_rss_kb": 1675240,
+      "row_count": 1,
+      "warm_s_runs": [
+        10.499201652999545,
+        12.209315768999659,
+        10.562781810998786
+      ],
+      "warm_s_median": 10.562781810998786,
+      "answer_sha256": "03379de524d3f0e6"
+    },
+    {
+      "engine": "jena-tdb2 (on-disk)",
+      "query": "q1_count_star",
+      "cold_s": 1.9065986740006338,
+      "cold_peak_rss_kb": 371796,
+      "row_count": 1,
+      "warm_s_runs": [
+        1.8283381239998562,
+        1.815339724000296,
+        1.826128245000291
+      ],
+      "warm_s_median": 1.826128245000291,
+      "answer_sha256": "03379de524d3f0e6"
+    },
+    {
+      "engine": "factoidal-cli-fast-path",
+      "query": "q2_bound_predicate_count",
+      "cold_s": 6.547710408998682,
+      "cold_peak_rss_kb": 46172,
+      "row_count": 1,
+      "warm_s_runs": [
+        6.499777200000608,
+        6.624145550998946,
+        6.527455371999167
+      ],
+      "warm_s_median": 6.527455371999167,
+      "answer_sha256": "fe789892d36760f0"
+    },
+    {
+      "engine": "factoidal-cli-forced-slow-path (kill switch)",
+      "query": "q2_bound_predicate_count",
+      "cold_s": 26.751707894998617,
+      "cold_peak_rss_kb": 775852,
+      "row_count": 1,
+      "warm_s_runs": [
+        26.760902879999776,
+        26.521153514000616,
+        25.891828804000397
+      ],
+      "warm_s_median": 26.521153514000616,
+      "answer_sha256": "fe789892d36760f0"
+    },
+    {
+      "engine": "factoidal-cottas (on-disk)",
+      "query": "q2_bound_predicate_count",
+      "cold_s": 2.8876262860012503,
+      "cold_peak_rss_kb": 101304,
+      "row_count": 1,
+      "warm_s_runs": [
+        2.8777148480003234,
+        2.8594340620002185,
+        2.9645465740013606
+      ],
+      "warm_s_median": 2.8777148480003234,
+      "answer_sha256": "fe789892d36760f0"
+    },
+    {
+      "engine": "jena-arq-inmemory",
+      "query": "q2_bound_predicate_count",
+      "cold_s": 11.040209684000729,
+      "cold_peak_rss_kb": 1647736,
+      "row_count": 1,
+      "warm_s_runs": [
+        10.782749989000877,
+        10.617809639999905,
+        11.393279242000062
+      ],
+      "warm_s_median": 10.782749989000877,
+      "answer_sha256": "fe789892d36760f0"
+    },
+    {
+      "engine": "jena-tdb2 (on-disk)",
+      "query": "q2_bound_predicate_count",
+      "cold_s": 2.0016496129992447,
+      "cold_peak_rss_kb": 354924,
+      "row_count": 1,
+      "warm_s_runs": [
+        1.786978417998398,
+        1.819403715999215,
+        1.7589917090008385
+      ],
+      "warm_s_median": 1.786978417998398,
+      "answer_sha256": "fe789892d36760f0"
+    },
+    {
+      "engine": "factoidal-cli-fast-path",
+      "query": "q3_subject_point_lookup",
+      "cold_s": 26.305713609999657,
+      "cold_peak_rss_kb": 762164,
+      "row_count": 3,
+      "warm_s_runs": [
+        26.541983742999946,
+        26.01891728099872,
+        26.376881760999822
+      ],
+      "warm_s_median": 26.376881760999822,
+      "answer_sha256": "fe19111a52800397"
+    },
+    {
+      "engine": "factoidal-cli-forced-slow-path (kill switch)",
+      "query": "q3_subject_point_lookup",
+      "cold_s": 26.200089338999533,
+      "cold_peak_rss_kb": 762156,
+      "row_count": 3,
+      "warm_s_runs": [
+        26.837080110000898,
+        26.35782227799973,
+        26.684807520001414
+      ],
+      "warm_s_median": 26.684807520001414,
+      "answer_sha256": "fe19111a52800397"
+    },
+    {
+      "engine": "factoidal-cottas (on-disk)",
+      "query": "q3_subject_point_lookup",
+      "cold_s": 62.17283646500073,
+      "cold_peak_rss_kb": 205184,
+      "row_count": 3,
+      "warm_s_runs": [
+        61.57794137699966,
+        61.63700783100103,
+        61.748542076999
+      ],
+      "warm_s_median": 61.63700783100103,
+      "answer_sha256": "fe19111a52800397"
+    },
+    {
+      "engine": "jena-arq-inmemory",
+      "query": "q3_subject_point_lookup",
+      "cold_s": 9.938252902000386,
+      "cold_peak_rss_kb": 1714644,
+      "row_count": 3,
+      "warm_s_runs": [
+        9.984560984999916,
+        10.249737391999588,
+        10.052291904999947
+      ],
+      "warm_s_median": 10.052291904999947,
+      "answer_sha256": "fe19111a52800397"
+    },
+    {
+      "engine": "jena-tdb2 (on-disk)",
+      "query": "q3_subject_point_lookup",
+      "cold_s": 1.16110018299878,
+      "cold_peak_rss_kb": 123700,
+      "row_count": 3,
+      "warm_s_runs": [
+        1.1755109389996505,
+        1.1546425800006546,
+        1.1828983689993038
+      ],
+      "warm_s_median": 1.1755109389996505,
+      "answer_sha256": "fe19111a52800397"
+    },
+    {
+      "engine": "factoidal-cli-fast-path",
+      "query": "q4_two_pattern_join",
+      "cold_s": 25.94932953999887,
+      "cold_peak_rss_kb": 776112,
+      "row_count": 14,
+      "warm_s_runs": [
+        26.218566579000253,
+        26.06158731100004,
+        26.388134544000422
+      ],
+      "warm_s_median": 26.218566579000253,
+      "answer_sha256": "ae7167c4b350975c"
+    },
+    {
+      "engine": "factoidal-cli-forced-slow-path (kill switch)",
+      "query": "q4_two_pattern_join",
+      "cold_s": 26.312172428999475,
+      "cold_peak_rss_kb": 776108,
+      "row_count": 14,
+      "warm_s_runs": [
+        25.78383581199887,
+        26.210634731000027,
+        26.58834844699959
+      ],
+      "warm_s_median": 26.210634731000027,
+      "answer_sha256": "ae7167c4b350975c"
+    },
+    {
+      "engine": "factoidal-cottas (on-disk)",
+      "query": "q4_two_pattern_join",
+      "cold_s": 92.10917662599968,
+      "cold_peak_rss_kb": 224440,
+      "row_count": 14,
+      "warm_s_runs": [
+        91.49075885899947,
+        93.70288979999896,
+        91.58705994000047
+      ],
+      "warm_s_median": 91.58705994000047,
+      "answer_sha256": "ae7167c4b350975c"
+    },
+    {
+      "engine": "jena-arq-inmemory",
+      "query": "q4_two_pattern_join",
+      "cold_s": 11.395844708998993,
+      "cold_peak_rss_kb": 1724480,
+      "row_count": 14,
+      "warm_s_runs": [
+        11.125141741000334,
+        11.476059585000257,
+        11.65127055099947
+      ],
+      "warm_s_median": 11.476059585000257,
+      "answer_sha256": "ae7167c4b350975c"
+    },
+    {
+      "engine": "jena-tdb2 (on-disk)",
+      "query": "q4_two_pattern_join",
+      "cold_s": 3.876131480999902,
+      "cold_peak_rss_kb": 567052,
+      "row_count": 14,
+      "warm_s_runs": [
+        3.875302981999994,
+        4.400785960999201,
+        3.7919051319986465
+      ],
+      "warm_s_median": 3.875302981999994,
+      "answer_sha256": "ae7167c4b350975c"
+    },
+    {
+      "engine": "factoidal-cli-fast-path",
+      "query": "q5_group_by",
+      "cold_s": 600.3993623669994,
+      "cold_peak_rss_kb": 1022828,
+      "skip_reason": "cold run timed out or failed; warm runs not attempted",
+      "warm_s_runs": []
+    },
+    {
+      "engine": "factoidal-cli-forced-slow-path (kill switch)",
+      "query": "q5_group_by",
+      "cold_s": 600.4201131989994,
+      "cold_peak_rss_kb": 1022824,
+      "skip_reason": "cold run timed out or failed; warm runs not attempted",
+      "warm_s_runs": []
+    },
+    {
+      "engine": "factoidal-cottas (on-disk)",
+      "query": "q5_group_by",
+      "cold_s": 600.2685784359983,
+      "cold_peak_rss_kb": 709356,
+      "skip_reason": "cold run timed out or failed; warm runs not attempted",
+      "warm_s_runs": []
+    },
+    {
+      "engine": "jena-arq-inmemory",
+      "query": "q5_group_by",
+      "cold_s": 11.683637291000196,
+      "cold_peak_rss_kb": 1824016,
+      "row_count": 6,
+      "warm_s_runs": [
+        11.265966307000781,
+        10.754951259001245,
+        10.893837269999494
+      ],
+      "warm_s_median": 10.893837269999494,
+      "answer_sha256": "e709bd9ceadd3c45"
+    },
+    {
+      "engine": "jena-tdb2 (on-disk)",
+      "query": "q5_group_by",
+      "cold_s": 2.1506072640004277,
+      "cold_peak_rss_kb": 356160,
+      "row_count": 6,
+      "warm_s_runs": [
+        2.203367761998379,
+        2.045714214000327,
+        2.0348869410008774
+      ],
+      "warm_s_median": 2.045714214000327,
+      "answer_sha256": "e709bd9ceadd3c45"
+    },
+    {
+      "engine": "factoidal-cli-fast-path",
+      "query": "q6_optional_filter",
+      "cold_s": 68.78249394199884,
+      "cold_peak_rss_kb": 762164,
+      "row_count": 25083,
+      "warm_s_runs": [
+        69.45513961499819,
+        69.10785648700039,
+        68.69514235099996
+      ],
+      "warm_s_median": 69.10785648700039,
+      "answer_sha256": "e30f57b54d8878dc"
+    },
+    {
+      "engine": "factoidal-cli-forced-slow-path (kill switch)",
+      "query": "q6_optional_filter",
+      "cold_s": 69.39508409200062,
+      "cold_peak_rss_kb": 762156,
+      "row_count": 25083,
+      "warm_s_runs": [
+        68.93796980600018,
+        73.00937719899957,
+        69.27557008700023
+      ],
+      "warm_s_median": 69.27557008700023,
+      "answer_sha256": "e30f57b54d8878dc"
+    },
+    {
+      "engine": "factoidal-cottas (on-disk)",
+      "query": "q6_optional_filter",
+      "cold_s": 159.51028027999928,
+      "cold_peak_rss_kb": 288316,
+      "row_count": 25083,
+      "warm_s_runs": [
+        165.0881614509999,
+        158.74158514300143,
+        159.57165159300348
+      ],
+      "warm_s_median": 159.57165159300348,
+      "answer_sha256": "e30f57b54d8878dc"
+    },
+    {
+      "engine": "jena-arq-inmemory",
+      "query": "q6_optional_filter",
+      "cold_s": 10.357273214998713,
+      "cold_peak_rss_kb": 1505296,
+      "row_count": 25083,
+      "warm_s_runs": [
+        10.761104327000794,
+        10.7392547260024,
+        10.04878899599862
+      ],
+      "warm_s_median": 10.7392547260024,
+      "answer_sha256": "e30f57b54d8878dc"
+    },
+    {
+      "engine": "jena-tdb2 (on-disk)",
+      "query": "q6_optional_filter",
+      "cold_s": 2.5688006300006236,
+      "cold_peak_rss_kb": 268596,
+      "row_count": 25083,
+      "warm_s_runs": [
+        2.6746099699994375,
+        2.6176581130021077,
+        2.4454916509967006
+      ],
+      "warm_s_median": 2.6176581130021077,
+      "answer_sha256": "e30f57b54d8878dc"
+    },
+    {
+      "engine": "pyoxigraph (in-memory)",
+      "query": "q1_count_star",
+      "cold_s": 0.22177304800061393,
+      "warm_s_runs": [
+        0.20260481199875358,
+        0.206544427001063,
+        0.21480427300048177
+      ],
+      "warm_s_median": 0.206544427001063,
+      "row_count": 1,
+      "answer_sha256": "03379de524d3f0e6"
+    },
+    {
+      "engine": "pyoxigraph (in-memory)",
+      "query": "q2_bound_predicate_count",
+      "cold_s": 0.17499414100166177,
+      "warm_s_runs": [
+        0.17200410900113638,
+        0.17611078399932012,
+        0.17246723900098004
+      ],
+      "warm_s_median": 0.17246723900098004,
+      "row_count": 1,
+      "answer_sha256": "fe789892d36760f0"
+    },
+    {
+      "engine": "pyoxigraph (in-memory)",
+      "query": "q3_subject_point_lookup",
+      "cold_s": 0.0001648399993428029,
+      "warm_s_runs": [
+        7.73859974287916e-05,
+        6.708900036755949e-05,
+        5.686700023943558e-05
+      ],
+      "warm_s_median": 6.708900036755949e-05,
+      "row_count": 3,
+      "answer_sha256": "fe19111a52800397"
+    },
+    {
+      "engine": "pyoxigraph (in-memory)",
+      "query": "q4_two_pattern_join",
+      "cold_s": 0.5841383950028103,
+      "warm_s_runs": [
+        0.5786917419973179,
+        0.5642123450015788,
+        0.562942283002485
+      ],
+      "warm_s_median": 0.5642123450015788,
+      "row_count": 14,
+      "answer_sha256": "ae7167c4b350975c"
+    },
+    {
+      "engine": "pyoxigraph (in-memory)",
+      "query": "q5_group_by",
+      "cold_s": 0.22776737900130684,
+      "warm_s_runs": [
+        0.2253152550001687,
+        0.2264867960002448,
+        0.22779822899974533
+      ],
+      "warm_s_median": 0.2264867960002448,
+      "row_count": 6,
+      "answer_sha256": "e709bd9ceadd3c45"
+    },
+    {
+      "engine": "pyoxigraph (in-memory)",
+      "query": "q6_optional_filter",
+      "cold_s": 0.21868509699925198,
+      "warm_s_runs": [
+        0.218878825999127,
+        0.21483609799906844,
+        0.21909705600046436
+      ],
+      "warm_s_median": 0.218878825999127,
+      "row_count": 25083,
+      "answer_sha256": "e30f57b54d8878dc"
+    },
+    {
+      "engine": "rdflib (in-memory, floor baseline)",
+      "query": "q1_count_star",
+      "cold_s": 8.782423542001197,
+      "warm_s_runs": [
+        8.403400518000126,
+        8.45966871699784,
+        8.40098274200136
+      ],
+      "warm_s_median": 8.403400518000126,
+      "row_count": 1,
+      "answer_sha256": "03379de524d3f0e6"
+    },
+    {
+      "engine": "rdflib (in-memory, floor baseline)",
+      "query": "q2_bound_predicate_count",
+      "cold_s": 6.249856344002183,
+      "warm_s_runs": [
+        6.206197275001614,
+        6.323377265001909,
+        6.19943368299937
+      ],
+      "warm_s_median": 6.206197275001614,
+      "row_count": 1,
+      "answer_sha256": "fe789892d36760f0"
+    },
+    {
+      "engine": "rdflib (in-memory, floor baseline)",
+      "query": "q3_subject_point_lookup",
+      "cold_s": 0.003132170000753831,
+      "warm_s_runs": [
+        0.002452289998473134,
+        0.0028865339991170913,
+        0.002327072998014046
+      ],
+      "warm_s_median": 0.002452289998473134,
+      "row_count": 3,
+      "answer_sha256": "fe19111a52800397"
+    },
+    {
+      "engine": "rdflib (in-memory, floor baseline)",
+      "query": "q4_two_pattern_join",
+      "cold_s": 0.00340147600218188,
+      "warm_s_runs": [
+        0.003213842999684857,
+        0.00324980100049288,
+        0.003333740998641588
+      ],
+      "warm_s_median": 0.00324980100049288,
+      "row_count": 14,
+      "answer_sha256": "ae7167c4b350975c"
+    },
+    {
+      "engine": "rdflib (in-memory, floor baseline)",
+      "query": "q5_group_by",
+      "cold_s": 11.711886484001298,
+      "warm_s_runs": [
+        11.484210047998204,
+        11.409637877000932,
+        11.510611932000756
+      ],
+      "warm_s_median": 11.484210047998204,
+      "row_count": 6,
+      "answer_sha256": "e709bd9ceadd3c45"
+    },
+    {
+      "engine": "rdflib (in-memory, floor baseline)",
+      "query": "q6_optional_filter",
+      "cold_s": 2.827454594000301,
+      "warm_s_runs": [
+        2.705902249999781,
+        2.6870167259985465,
+        2.770244682997145
+      ],
+      "warm_s_median": 2.705902249999781,
+      "row_count": 25083,
+      "answer_sha256": "e30f57b54d8878dc"
+    }
+  ],
+  "agreement": [
+    {
+      "query": "q1_count_star",
+      "agree": true,
+      "engines_compared": [
+        "factoidal-cli-fast-path",
+        "factoidal-cli-forced-slow-path (kill switch)",
+        "factoidal-cottas (on-disk)",
+        "jena-arq-inmemory",
+        "jena-tdb2 (on-disk)",
+        "pyoxigraph (in-memory)",
+        "rdflib (in-memory, floor baseline)"
+      ],
+      "mismatches": [],
+      "reference_engine": "factoidal-cli-fast-path"
+    },
+    {
+      "query": "q2_bound_predicate_count",
+      "agree": true,
+      "engines_compared": [
+        "factoidal-cli-fast-path",
+        "factoidal-cli-forced-slow-path (kill switch)",
+        "factoidal-cottas (on-disk)",
+        "jena-arq-inmemory",
+        "jena-tdb2 (on-disk)",
+        "pyoxigraph (in-memory)",
+        "rdflib (in-memory, floor baseline)"
+      ],
+      "mismatches": [],
+      "reference_engine": "factoidal-cli-fast-path"
+    },
+    {
+      "query": "q3_subject_point_lookup",
+      "agree": true,
+      "engines_compared": [
+        "factoidal-cli-fast-path",
+        "factoidal-cli-forced-slow-path (kill switch)",
+        "factoidal-cottas (on-disk)",
+        "jena-arq-inmemory",
+        "jena-tdb2 (on-disk)",
+        "pyoxigraph (in-memory)",
+        "rdflib (in-memory, floor baseline)"
+      ],
+      "mismatches": [],
+      "reference_engine": "factoidal-cli-fast-path"
+    },
+    {
+      "query": "q4_two_pattern_join",
+      "agree": true,
+      "engines_compared": [
+        "factoidal-cli-fast-path",
+        "factoidal-cli-forced-slow-path (kill switch)",
+        "factoidal-cottas (on-disk)",
+        "jena-arq-inmemory",
+        "jena-tdb2 (on-disk)",
+        "pyoxigraph (in-memory)",
+        "rdflib (in-memory, floor baseline)"
+      ],
+      "mismatches": [],
+      "reference_engine": "factoidal-cli-fast-path"
+    },
+    {
+      "query": "q5_group_by",
+      "agree": true,
+      "engines_compared": [
+        "jena-arq-inmemory",
+        "jena-tdb2 (on-disk)",
+        "pyoxigraph (in-memory)",
+        "rdflib (in-memory, floor baseline)"
+      ],
+      "mismatches": [],
+      "reference_engine": "jena-arq-inmemory"
+    },
+    {
+      "query": "q6_optional_filter",
+      "agree": true,
+      "engines_compared": [
+        "factoidal-cli-fast-path",
+        "factoidal-cli-forced-slow-path (kill switch)",
+        "factoidal-cottas (on-disk)",
+        "jena-arq-inmemory",
+        "jena-tdb2 (on-disk)",
+        "pyoxigraph (in-memory)",
+        "rdflib (in-memory, floor baseline)"
+      ],
+      "mismatches": [],
+      "reference_engine": "factoidal-cli-fast-path"
+    }
+  ],
+  "_gene_tdb2_dir": "/tmp/claude-0/-home-user-factoidal/7adc2ce1-f0f1-56dc-9a3f-7f9c4d22ed9c/scratchpad/real-run-scratch/tdb2-gene-run2",
+  "_gene_cottas_artifact": "/tmp/claude-0/-home-user-factoidal/7adc2ce1-f0f1-56dc-9a3f-7f9c4d22ed9c/scratchpad/real-run-scratch/cottas-gene/gene-bench/v1/data.cottas"
+}
