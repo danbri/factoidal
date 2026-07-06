@@ -2795,7 +2795,7 @@ let tp_match (tp : triple_pattern) (t : RDF_Triple.triple)
        | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
        | FStar_Pervasives_Native.Some mu2 ->
            try_bind_term tp.tp_o t.RDF_Triple.o mu2)
-let eval_single_tp_store (tp : triple_pattern) (gs : graph_store)
+let eval_single_tp_store_default (tp : triple_pattern) (gs : graph_store)
   (mu : RDF_Graph_Executable.solution_mapping) : solution_sequence=
   let bound =
     {
@@ -2805,6 +2805,42 @@ let eval_single_tp_store (tp : triple_pattern) (gs : graph_store)
     } in
   let candidates = store_search gs bound in
   list_filter_map (fun t -> tp_match tp t mu) candidates
+let eval_fulltext_tp_store (ftq : SPARQL_FullText.fulltext_query)
+  (tp : triple_pattern) (gs : graph_store)
+  (mu : RDF_Graph_Executable.solution_mapping) : solution_sequence=
+  let bound =
+    {
+      bs = FStar_Pervasives_Native.None;
+      bp = (ftq.SPARQL_FullText.ftq_field);
+      bo = FStar_Pervasives_Native.None
+    } in
+  let candidates = store_search gs bound in
+  let matched =
+    FStar_List_Tot_Base.filter
+      (fun t -> SPARQL_FullText.object_matches_query ftq t.RDF_Triple.o)
+      candidates in
+  let limited =
+    match ftq.SPARQL_FullText.ftq_limit with
+    | FStar_Pervasives_Native.Some n -> list_take n matched
+    | FStar_Pervasives_Native.None -> matched in
+  list_filter_map (fun t -> try_bind_subject tp.tp_s t.RDF_Triple.s mu)
+    limited
+let eval_single_tp_store (tp : triple_pattern) (gs : graph_store)
+  (mu : RDF_Graph_Executable.solution_mapping) : solution_sequence=
+  match tp.tp_p with
+  | PT_IRI pred ->
+      if pred = SPARQL_FullText.fulltext_query_pred
+      then
+        (match tp.tp_o with
+         | PT_Literal args_lit ->
+             (match SPARQL_FullText.decode_fulltext_literal args_lit with
+              | FStar_Pervasives_Native.Some ftq ->
+                  eval_fulltext_tp_store ftq tp gs mu
+              | FStar_Pervasives_Native.None ->
+                  eval_single_tp_store_default tp gs mu)
+         | uu___ -> eval_single_tp_store_default tp gs mu)
+      else eval_single_tp_store_default tp gs mu
+  | uu___ -> eval_single_tp_store_default tp gs mu
 let estimate_tp_store_mu (tp : triple_pattern) (gs : graph_store)
   (mu : RDF_Graph_Executable.solution_mapping) : Prims.nat=
   store_estimate gs

@@ -149,7 +149,7 @@ COMMON_MODULES=(
   RDF_Store_LazyTermCache RDF_Store_HDTTermCacheRegistry RDF_Store_Columnar_OffsetIndex
   RDF_Store_Columnar_DeltaLog SPARQL_Plan_Pruning SPARQL_Plan_Estimate SPARQL_Plan_Loader
   SPARQL_Plan_AccessPath RDF_CottasStore RDF_CottasStore_OnDiskRuntime RDF_CottasInMem
-  fstar_pure_hashes RDF_Canonical RDF_Canonical_Manifest SPARQL11_Algebra XSD_Datatypes
+  fstar_pure_hashes RDF_Canonical RDF_Canonical_Manifest SPARQL_FullText SPARQL11_Algebra XSD_Datatypes
   RDF_Pretty OWL_QueryRewrite OWL_QueryEval OWL_Tests_Manifest RIF_Core_Syntax
   Parser_RIFXML RIF_Core_Builtins RIF_Core_Translation RIF_Core_Eval RIF_Core_Tests
   RIF_Core_Conformance SPARQL11_Parser SHACL_Validation VC_Credential CSVW_Metadata

@@ -14,6 +14,7 @@ module SPARQL11.Parser
 open FStar.String
 open FStar.List.Tot
 open RDF.Graph.Executable
+open SPARQL.FullText
 open SPARQL11.Algebra
 
 #push-options "--z3rlimit 100 --fuel 2 --ifuel 2"
@@ -2535,15 +2536,92 @@ and parse_object_list_simple (pm : prefix_map) (fuel : nat) (subj : pattern_subj
   (pred : pattern_term) (acc : group_graph_pattern) (ts : token_stream)
   : Tot (parse_result group_graph_pattern) (decreases fuel) =
   if fuel = 0 then ParseOk acc ts
-  else match parse_object_with_extras pm (fuel-1) ts with
-  | ParseErr m -> ParseErr m
-  | ParseOk (obj, extras) ts' ->
-    let acc' = ggp_add_triple acc { tp_s = subj; tp_p = pred; tp_o = obj } in
-    let acc' = ggp_join acc' extras in
-    begin match parse_peek ts' with
-    | Tok_COMMA -> parse_object_list_simple pm (fuel-1) subj pred acc' (parse_advance ts')
-    | _ -> ParseOk acc' ts'
-    end
+  else
+    let is_fulltext_query =
+      match pred with
+      | PT_IRI p -> p = SPARQL.FullText.fulltext_query_pred
+      | _ -> false
+    in
+    if is_fulltext_query then
+      // text:query — see SPARQL.FullText.fst's module banner for why this
+      // predicate gets its own bespoke argument grammar instead of the
+      // generic object/collection path: jena-text's list-argument form
+      // is ordinary `()` collection syntax, which desugars (below, in
+      // parse_collection) into an rdf:first/rdf:rest chain the data graph
+      // never actually contains. Parsing it here, before that desugaring,
+      // and encoding the resolved (field, term, limit) into one
+      // internally-tagged literal (SPARQL.FullText.encode_fulltext_literal)
+      // keeps `text:query` a single ordinary triple pattern — no new
+      // group_graph_pattern constructor, no BGP-level rewrite pass.
+      match parse_fulltext_query_object pm (fuel-1) ts with
+      | ParseErr m -> ParseErr m
+      | ParseOk args_lit ts' ->
+        let acc' = ggp_add_triple acc { tp_s = subj; tp_p = pred; tp_o = PT_Literal args_lit } in
+        ParseOk acc' ts'
+    else
+      match parse_object_with_extras pm (fuel-1) ts with
+      | ParseErr m -> ParseErr m
+      | ParseOk (obj, extras) ts' ->
+        let acc' = ggp_add_triple acc { tp_s = subj; tp_p = pred; tp_o = obj } in
+        let acc' = ggp_join acc' extras in
+        begin match parse_peek ts' with
+        | Tok_COMMA -> parse_object_list_simple pm (fuel-1) subj pred acc' (parse_advance ts')
+        | _ -> ParseOk acc' ts'
+        end
+
+// text:query's object-argument grammar (design doc §1/§2.2, task brief's
+// "at minimum" floor): a bare string term (2-arity: `?s text:query
+// "term"`, field=None/limit=None), or a parenthesized list restricting
+// the field and/or capping the result count:
+//   ( property "term" )        -- field restriction, no limit
+//   ( property "term" limit )  -- field restriction + limit
+// `property` must be a plain IRI (jena-text has no property-path fields
+// here); reuses `parse_verb` for that single IRI/pname resolution rather
+// than writing a second prefixed-name resolver.
+and parse_fulltext_query_object (pm : prefix_map) (fuel : nat) (ts : token_stream)
+  : Tot (parse_result wf_literal) (decreases fuel) =
+  if fuel = 0 then ParseErr "recursion limit"
+  else match parse_peek ts with
+  | Tok_STRING term ->
+    let ftq : SPARQL.FullText.fulltext_query =
+      { SPARQL.FullText.ftq_field = None; SPARQL.FullText.ftq_terms = term; SPARQL.FullText.ftq_limit = None } in
+    ParseOk (SPARQL.FullText.encode_fulltext_literal ftq) (parse_advance ts)
+  | Tok_LPAREN ->
+    (match parse_verb pm (fuel-1) (parse_advance ts) with
+     | ParseErr m -> ParseErr m
+     | ParseOk verb ts2 ->
+       match verb with
+       | VPath _ -> ParseErr "text:query field must be a plain IRI, not a property path"
+       | VSimple (PT_IRI field_iri) ->
+         (match parse_peek ts2 with
+          | Tok_STRING term ->
+            let ts3 = parse_advance ts2 in
+            (match parse_peek ts3 with
+             | Tok_RPAREN ->
+               let ftq : SPARQL.FullText.fulltext_query =
+                 { SPARQL.FullText.ftq_field = Some field_iri;
+                   SPARQL.FullText.ftq_terms = term;
+                   SPARQL.FullText.ftq_limit = None } in
+               ParseOk (SPARQL.FullText.encode_fulltext_literal ftq) (parse_advance ts3)
+             | Tok_INTEGER n ->
+               let ts4 = parse_advance ts3 in
+               (match parse_expect Tok_RPAREN ts4 with
+                | ParseErr m -> ParseErr m
+                | ParseOk () ts5 ->
+                  (match parse_int_str n with
+                   | Some limit_i ->
+                     if limit_i >= 0 then
+                       let ftq : SPARQL.FullText.fulltext_query =
+                         { SPARQL.FullText.ftq_field = Some field_iri;
+                           SPARQL.FullText.ftq_terms = term;
+                           SPARQL.FullText.ftq_limit = Some (limit_i <: nat) } in
+                       ParseOk (SPARQL.FullText.encode_fulltext_literal ftq) ts5
+                     else ParseErr "text:query limit must be non-negative"
+                   | None -> ParseErr "invalid text:query limit"))
+             | _ -> ParseErr "expected limit or ')' after text:query field/term")
+          | _ -> ParseErr "expected string term in text:query argument list")
+       | VSimple _ -> ParseErr "text:query field must be an IRI")
+  | _ -> ParseErr "expected string or '(' after text:query"
 
 // Parse object list for property path predicates: obj1, obj2, obj3
 and parse_object_list_path (pm : prefix_map) (fuel : nat) (subj : pattern_subject)

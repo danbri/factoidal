@@ -360,7 +360,7 @@ let dataset_caps_of_backend (dsb : dataset_backend) :
          (fun ngb -> ((ngb.ngb_name), (caps_of_backend ngb.ngb_graph)))
          dsb.dsb_named)
   }
-let eval_single_tp_backend (tp : SPARQL11_Algebra.triple_pattern)
+let eval_single_tp_backend_default (tp : SPARQL11_Algebra.triple_pattern)
   (gb : graph_backend) (mu : RDF_Graph_Executable.solution_mapping) :
   SPARQL11_Algebra.solution_sequence=
   let bound =
@@ -377,6 +377,46 @@ let eval_single_tp_backend (tp : SPARQL11_Algebra.triple_pattern)
   let candidates = backend_search gb bound in
   SPARQL11_Algebra.list_filter_map
     (fun t -> SPARQL11_Algebra.tp_match tp t mu) candidates
+let eval_fulltext_tp_backend (ftq : SPARQL_FullText.fulltext_query)
+  (tp : SPARQL11_Algebra.triple_pattern) (gb : graph_backend)
+  (mu : RDF_Graph_Executable.solution_mapping) :
+  SPARQL11_Algebra.solution_sequence=
+  let bound =
+    {
+      SPARQL11_Algebra.bs = FStar_Pervasives_Native.None;
+      SPARQL11_Algebra.bp = (ftq.SPARQL_FullText.ftq_field);
+      SPARQL11_Algebra.bo = FStar_Pervasives_Native.None
+    } in
+  let candidates = backend_search gb bound in
+  let matched =
+    FStar_List_Tot_Base.filter
+      (fun t -> SPARQL_FullText.object_matches_query ftq t.RDF_Triple.o)
+      candidates in
+  let limited =
+    match ftq.SPARQL_FullText.ftq_limit with
+    | FStar_Pervasives_Native.Some n -> list_take_n n matched
+    | FStar_Pervasives_Native.None -> matched in
+  SPARQL11_Algebra.list_filter_map
+    (fun t ->
+       SPARQL11_Algebra.try_bind_subject tp.SPARQL11_Algebra.tp_s
+         t.RDF_Triple.s mu) limited
+let eval_single_tp_backend (tp : SPARQL11_Algebra.triple_pattern)
+  (gb : graph_backend) (mu : RDF_Graph_Executable.solution_mapping) :
+  SPARQL11_Algebra.solution_sequence=
+  match tp.SPARQL11_Algebra.tp_p with
+  | SPARQL11_Algebra.PT_IRI pred ->
+      if pred = SPARQL_FullText.fulltext_query_pred
+      then
+        (match tp.SPARQL11_Algebra.tp_o with
+         | SPARQL11_Algebra.PT_Literal args_lit ->
+             (match SPARQL_FullText.decode_fulltext_literal args_lit with
+              | FStar_Pervasives_Native.Some ftq ->
+                  eval_fulltext_tp_backend ftq tp gb mu
+              | FStar_Pervasives_Native.None ->
+                  eval_single_tp_backend_default tp gb mu)
+         | uu___ -> eval_single_tp_backend_default tp gb mu)
+      else eval_single_tp_backend_default tp gb mu
+  | uu___ -> eval_single_tp_backend_default tp gb mu
 let estimate_tp_backend_mu (tp : SPARQL11_Algebra.triple_pattern)
   (gb : graph_backend) (mu : RDF_Graph_Executable.solution_mapping) :
   Prims.nat=

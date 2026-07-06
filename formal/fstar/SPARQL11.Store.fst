@@ -2,6 +2,7 @@ module SPARQL11.Store
 
 open FStar.All
 open RDF.Graph.Executable
+open SPARQL.FullText
 open SPARQL11.Algebra
 open Parser.BallyhooHDT
 open Parser.BallyhooCOTTAS
@@ -437,7 +438,7 @@ let dataset_caps_of_backend (dsb : dataset_backend) : Tot dataset_caps =
         dsb.dsb_named;
   }
 
-let eval_single_tp_backend (tp : triple_pattern) (gb : graph_backend) (mu : solution_mapping)
+let eval_single_tp_backend_default (tp : triple_pattern) (gb : graph_backend) (mu : solution_mapping)
   : solution_sequence =
   let bound = {
     bs = bound_subject_of_pattern tp.tp_s mu;
@@ -446,6 +447,40 @@ let eval_single_tp_backend (tp : triple_pattern) (gb : graph_backend) (mu : solu
   } in
   let candidates = backend_search gb bound in
   list_filter_map (fun t -> tp_match tp t mu) candidates
+
+// Fulltext SPARQL slice 1 dispatch point (design doc §3, backend-neutral
+// path — what the CLI/HTTP binaries actually exercise). Same shape as
+// SPARQL11.Algebra's `eval_fulltext_tp_store` twin, over `backend_search`
+// instead of `store_search` so it works identically across GB_List,
+// GB_Indexed, GB_HDT, GB_COTTAS(OnDisk[Delta]), and GB_Union — no new
+// `graph_backend` constructor (design doc §7 open decision 2 left
+// unresolved; slice 1 needs no wrapper since the index is query-time-only,
+// no on-disk companion file per §6).
+let eval_fulltext_tp_backend (ftq : SPARQL.FullText.fulltext_query) (tp : triple_pattern)
+  (gb : graph_backend) (mu : solution_mapping) : solution_sequence =
+  let bound = { bs = None; bp = ftq.ftq_field; bo = None } in
+  let candidates = backend_search gb bound in
+  let matched =
+    List.Tot.filter (fun (t : triple) -> SPARQL.FullText.object_matches_query ftq t.o) candidates in
+  let limited =
+    match ftq.ftq_limit with
+    | Some n -> list_take_n n matched
+    | None -> matched in
+  list_filter_map (fun t -> try_bind_subject tp.tp_s t.s mu) limited
+
+let eval_single_tp_backend (tp : triple_pattern) (gb : graph_backend) (mu : solution_mapping)
+  : solution_sequence =
+  match tp.tp_p with
+  | PT_IRI pred ->
+    if pred = SPARQL.FullText.fulltext_query_pred then
+      match tp.tp_o with
+      | PT_Literal args_lit ->
+        (match SPARQL.FullText.decode_fulltext_literal args_lit with
+         | Some ftq -> eval_fulltext_tp_backend ftq tp gb mu
+         | None -> eval_single_tp_backend_default tp gb mu)
+      | _ -> eval_single_tp_backend_default tp gb mu
+    else eval_single_tp_backend_default tp gb mu
+  | _ -> eval_single_tp_backend_default tp gb mu
 
 // Compact bound-shape descriptor. Encodes which positions have a
 let estimate_tp_backend_mu (tp : triple_pattern) (gb : graph_backend) (mu : solution_mapping) : nat =

@@ -1,20 +1,21 @@
-* Warning 241 at RDF.Store.Capabilities.fst(0,0-0,0):
-  - Unable to load RDF.Store.Capabilities.fst.checked since checked file
-    RDF.Store.Capabilities.fst.checked is stale (dependence hash mismatch, use
-    --debug CheckedFiles for more details); will recheck
-    RDF.Store.Capabilities.fst (suppressing this warning for further modules)
+* Warning 241 at RDF.Store.Columnar.DeltaMerge.fst(0,0-0,0):
+  - Unable to load RDF.Store.Columnar.DeltaMerge.fst.checked since checked file
+    RDF.Store.Columnar.DeltaMerge.fst.checked is stale (dependence hash
+    mismatch, use --debug CheckedFiles for more details); will recheck
+    RDF.Store.Columnar.DeltaMerge.fst (suppressing this warning for further
+    modules)
 
-* Warning 328 at SPARQL11.Store.fst(923,4-923,33):
+* Warning 328 at SPARQL11.Store.fst(958,4-958,33):
   - Global binding
         'SPARQL11.Store.eval_select_query_backend_bgp'
     is recursive but not used in its body
 
-* Warning 328 at SPARQL11.Store.fst(1044,4-1044,37):
+* Warning 328 at SPARQL11.Store.fst(1079,4-1079,37):
   - Global binding
         'SPARQL11.Store.eval_select_query_backend_dataset'
     is recursive but not used in its body
 
-* Warning 328 at SPARQL11.Store.fst(1063,4-1063,34):
+* Warning 328 at SPARQL11.Store.fst(1098,4-1098,34):
   - Global binding
         'SPARQL11.Store.eval_ask_query_backend_dataset'
     is recursive but not used in its body

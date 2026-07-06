@@ -1,9 +1,9 @@
-FAIL rif01 (RIF Logical Entailment (referencing RIF XML)): cannot read third_party/testing/w3c/sparql/sparql11/entailment/rif01.rq
-FAIL rif03 (RIF Core WG tests: Frames): cannot read third_party/testing/w3c/sparql/sparql11/entailment/rif03.rq
-FAIL rif04 (RIF Core WG tests: Modeling Brain Anatomy): cannot read third_party/testing/w3c/sparql/sparql11/entailment/rif04.rq
-FAIL rif06 (RIF Core WG tests: RDF Combination Blank Node): cannot read third_party/testing/w3c/sparql/sparql11/entailment/rif06.rq
+PASS rif01 (RIF Logical Entailment (referencing RIF XML))
+PASS rif03 (RIF Core WG tests: Frames)
+PASS rif04 (RIF Core WG tests: Modeling Brain Anatomy)
+PASS rif06 (RIF Core WG tests: RDF Combination Blank Node)
 ========================================
-rif (original 4 vendored SPARQL-manifest cases): 0 pass, 4 fail (out of 4)
+rif (original 4 vendored SPARQL-manifest cases): 4 pass, 0 fail (out of 4)
 PASS corpus:Builtin_literal-not-identical (PositiveEntailmentTest)
 PASS corpus:Builtins_Binary (PositiveEntailmentTest)
 SKIP corpus:Builtins_List (PositiveEntailmentTest): List (RIF list terms)
@@ -63,4 +63,4 @@ Skip buckets (by construct/reason):
     1  External (unimplemented builtin: is-literal-string)
     1  RDF_Combination_Constant_Equivalence_Graph_Entailment-conclusion.rif not in vendored corpus (packaging gap in the official Core_v1.22 zip)
 ========================================
-rif TOTAL: 30 pass, 8 fail, 12 skip (out of 50)
+rif TOTAL: 34 pass, 4 fail, 12 skip (out of 50)

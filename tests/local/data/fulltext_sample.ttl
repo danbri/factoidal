@@ -1,0 +1,28 @@
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix dc: <http://purl.org/dc/elements/1.1/> .
+@prefix ex: <http://example.org/> .
+
+# Fixture for tests/local/fulltext_slice1.sh (design doc
+# docs/designissues/2026-07-05-fulltext-sparql-design.md, Slice 1).
+# rdfs:label/dc:title carry the fulltext-searchable literals;
+# ex:status is the "ordinary BGP pattern alongside text:query" fixture.
+
+ex:panel1 rdfs:label "Solar panel array" ;
+          dc:title "Rooftop installation" ;
+          ex:status "active" .
+
+ex:panel2 rdfs:label "Solar panel kit" ;
+          dc:title "Backyard installation" ;
+          ex:status "active" .
+
+ex:heater rdfs:label "Water heater" ;
+          dc:title "Boiler room unit" ;
+          ex:status "retired" .
+
+ex:battery rdfs:label "Battery storage panel" ;
+           dc:title "Energy storage unit" ;
+           ex:status "retired" .
+
+ex:controlpanel rdfs:label "Interface unit" ;
+                 dc:title "Control panel interface" ;
+                 ex:status "active" .

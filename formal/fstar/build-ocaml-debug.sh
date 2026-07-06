@@ -86,7 +86,7 @@ COMMON_MODULES="RDF_Graph_Executable.ml Parquet_Footer.ml Tableau.ml \
   RDF_CottasStore.ml \
   fstar_pure_hashes.ml \
   RDF_Canonical.ml \
-  SPARQL11_Algebra.ml OWL_QueryRewrite.ml OWL_QueryEval.ml SPARQL11_Parser.ml SPARQL11_Store.ml SPARQL_Protocol.ml \
+  SPARQL_FullText.ml SPARQL11_Algebra.ml OWL_QueryRewrite.ml OWL_QueryEval.ml SPARQL11_Parser.ml SPARQL11_Store.ml SPARQL_Protocol.ml \
   SPARQL_Diagnostics.ml \
   SPARQL_Explain.ml \
   SPARQL_HTTP.ml SPARQL_HTTP_Client.ml SPARQL_ServiceDescription.ml \

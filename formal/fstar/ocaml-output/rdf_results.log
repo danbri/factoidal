@@ -1030,7 +1030,7 @@
   [165/166] rdf-xml/xmlbase-test013 ok
   [166/166] rdf-xml/xmlbase-test014 ok
 === W3C RDF 1.1 Test Runner ===
-Test base: ../../../third_party/testing/w3c/rdf/rdf11
+Test base: third_party/testing/w3c/rdf/rdf11
 
 
 --- rdf-mt ---
@@ -1595,7 +1595,7 @@ Test base: ../../../third_party/testing/w3c/rdf/rdf11
   PASS: IRI-resolution-02
   PASS: IRI-resolution-07
   PASS: IRI-resolution-08
-  [suite time: 0.1s]
+  [suite time: 0.2s]
 
 --- rdf-turtle ---
   PASS: IRI_subject

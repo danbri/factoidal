@@ -131,6 +131,7 @@ COMMON_MODULES=(
   fstar_pure_hashes
   RDF_Canonical
   RDF_Canonical_Manifest
+  SPARQL_FullText
   SPARQL11_Algebra
   XSD_Datatypes
   RDF_Pretty

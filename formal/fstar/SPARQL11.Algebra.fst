@@ -29,6 +29,7 @@ module SPARQL11.Algebra
 open FStar.String
 open FStar.List.Tot
 open RDF.Graph.Executable
+open SPARQL.FullText
 module Lh = RDF.List.Helpers
 
 (** ====================================================================== **)
@@ -1782,7 +1783,7 @@ let tp_match (tp : triple_pattern) (t : triple) (mu : solution_mapping)
 (** 7.2 BGP evaluation — CONCRETE **)
 
 (* Evaluate a single triple pattern against the graph, extending a given mapping *)
-let eval_single_tp_store (tp : triple_pattern) (gs : graph_store) (mu : solution_mapping)
+let eval_single_tp_store_default (tp : triple_pattern) (gs : graph_store) (mu : solution_mapping)
   : solution_sequence =
   let bound = {
     bs = bound_subject_of_pattern tp.tp_s mu;
@@ -1791,6 +1792,38 @@ let eval_single_tp_store (tp : triple_pattern) (gs : graph_store) (mu : solution
   } in
   let candidates = store_search gs bound in
   list_filter_map (fun t -> tp_match tp t mu) candidates
+
+// Fulltext SPARQL slice 1 dispatch point (design doc §3, in-memory path).
+// `ftq` was already resolved by SPARQL11.Parser (or, if the query built the
+// triple by hand, decoded from tp.tp_o just above the call site). Index is
+// in-memory only — a field-restricted (or, if ftq_field=None, unrestricted)
+// linear scan tokenized per-candidate at query time, no on-disk companion
+// file, no ranking (dataset order only) — exactly slice 1's scope (§6).
+let eval_fulltext_tp_store (ftq : SPARQL.FullText.fulltext_query) (tp : triple_pattern)
+  (gs : graph_store) (mu : solution_mapping) : solution_sequence =
+  let bound = { bs = None; bp = ftq.ftq_field; bo = None } in
+  let candidates = store_search gs bound in
+  let matched =
+    List.Tot.filter (fun (t : triple) -> SPARQL.FullText.object_matches_query ftq t.o) candidates in
+  let limited =
+    match ftq.ftq_limit with
+    | Some n -> list_take n matched
+    | None -> matched in
+  list_filter_map (fun t -> try_bind_subject tp.tp_s t.s mu) limited
+
+let eval_single_tp_store (tp : triple_pattern) (gs : graph_store) (mu : solution_mapping)
+  : solution_sequence =
+  match tp.tp_p with
+  | PT_IRI pred ->
+    if pred = SPARQL.FullText.fulltext_query_pred then
+      match tp.tp_o with
+      | PT_Literal args_lit ->
+        (match SPARQL.FullText.decode_fulltext_literal args_lit with
+         | Some ftq -> eval_fulltext_tp_store ftq tp gs mu
+         | None -> eval_single_tp_store_default tp gs mu)
+      | _ -> eval_single_tp_store_default tp gs mu
+    else eval_single_tp_store_default tp gs mu
+  | _ -> eval_single_tp_store_default tp gs mu
 
 let estimate_tp_store_mu (tp : triple_pattern) (gs : graph_store) (mu : solution_mapping) : nat =
   store_estimate gs {

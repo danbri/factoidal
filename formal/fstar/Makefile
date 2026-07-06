@@ -3,7 +3,7 @@ KRML ?= krml
 KRML_HOME ?= /tmp/karamel
 ROARING_DIR = ../roaring/src
 
-MODULES = RDF.Graph.Executable SPARQL11.Algebra Tableau SPARQL.ServiceDescription SPARQL.GraphStore
+MODULES = RDF.Graph.Executable SPARQL.FullText SPARQL11.Algebra Tableau SPARQL.ServiceDescription SPARQL.GraphStore
 
 .PHONY: verify verify-roaring verify-all clean extract-c
 
