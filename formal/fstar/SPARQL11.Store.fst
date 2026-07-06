@@ -1,5 +1,6 @@
 module SPARQL11.Store
 
+open FStar.All
 open RDF.Graph.Executable
 open SPARQL11.Algebra
 open Parser.BallyhooHDT
@@ -7,8 +8,11 @@ open Parser.BallyhooCOTTAS
 open RDF.CottasStore
 open RDF.Store.Capabilities
 open RDF.Store.Capabilities.Cottas
+open RDF.Store.Capabilities.Delta
 
 module Lh = RDF.List.Helpers
+module DL = RDF.Store.Columnar.DeltaLog
+module DM = RDF.Store.Columnar.DeltaMerge
 
 // Note: this module previously imported Util.Log for in-line debug
 // tracing in choose_best_tp_backend. Removed because F* erases
@@ -33,6 +37,22 @@ noeq type graph_backend =
   // `option iri` shape let the default-graph backend's `None` be
   // read as "no graph constraint" instead of "DEFAULT rows only."
   | GB_CottasOnDisk : cottas_ondisk_store -> cottas_ondisk_graph_scope -> graph_backend
+  // Durable-UPDATE stage 3 (docs/designissues/2026-07-06-durable-update-
+  // design.md, merge-on-read) / the D-overlay (2026-07-06-unified-
+  // store-architecture.md §3.3): the SAME base COTTAS-on-disk store
+  // and scope as GB_CottasOnDisk, plus an already-RESOLVED per-graph
+  // delta (DM.delta_resolved — folded once at store-construction time,
+  // see `cottas_with_delta_dataset_backend` below, not re-folded per
+  // query). This is NOT a new backend in the sense §3.3 warns against —
+  // its `caps_of_backend` arm below is one line, `overlay (caps_of_cottas
+  // ...) delta`, delegating entirely to the existing COTTAS builder and
+  // the D-overlay combinator. It exists as a `graph_backend` constructor
+  // (rather than the seam's own `store`/`dataset` types) only because
+  // `graph_backend`/`dataset_backend` are still what the CLI's
+  // SELECT/ASK evaluator (`run_select_query_backend_dataset` et al.)
+  // consumes pre-U4 — see this module's own caps_of_backend banner for
+  // why `caps_of_backend` is the ONE dispatch point a new backend touches.
+  | GB_CottasOnDiskDelta : cottas_ondisk_store -> cottas_ondisk_graph_scope -> DM.delta_resolved -> graph_backend
   | GB_Union : list graph_backend -> graph_backend
 
 noeq type named_graph_backend = {
@@ -83,6 +103,65 @@ let cottas_ondisk_dataset_backend (cods : cottas_ondisk_store) : dataset_backend
           let (gname, _) = g in
           { ngb_name = gname; ngb_graph = GB_CottasOnDisk cods (COS_NamedGraph gname) })
         (cottas_ondisk_named_graphs cods)
+  }
+
+// ----------------------------------------------------------------------
+// Durable-UPDATE stage 3 (merge-on-read) — the delta-aware store
+// construction path (durable-update-design.md §5's staged table, row 3;
+// unified-store-architecture.md §3.3's D-overlay). Loads a delta log
+// (stage 2's already-wired ML assume vals + `DL.parse_log`, Tot),
+// resolves it once per graph (`DM.fold_delta_batches`), and builds a
+// `dataset_backend` whose every graph_backend is a `GB_CottasOnDiskDelta`
+// — same shape as `cottas_ondisk_dataset_backend` above, plus the
+// resolved delta threaded through `overlay`'s single dispatch arm.
+//
+// Named-graph discovery: a graph a delta CREATEs/ADDs into that the
+// base COTTAS store has never seen (no rows for it at all) still needs
+// a `dsb_named` entry — `DM.delta_batches_named_graphs` lists every
+// graph IRI the delta mentions; any not already in the base's own
+// `cottas_ondisk_named_graphs` gets a fresh `GB_CottasOnDiskDelta` whose
+// base read side is simply empty for that graph (COS_NamedGraph on a
+// name the base file carries no rows for is not an error — it's
+// "empty base," exactly what a from-scratch named graph created purely
+// by the delta log needs).
+//
+// `ML` because loading the log is I/O (`DL.delta_log_read_all`); every
+// byte-format DECISION is `DL.parse_log`/`DM.fold_delta_batches`, both
+// `Tot`, called from here as ordinary function calls (F* does not
+// distinguish Tot-call-from-ML from ML-call-from-ML at the value level;
+// the effect annotation only tracks what THIS function may itself do).
+let cottas_with_delta_dataset_backend (cods : cottas_ondisk_store) (log_path : string)
+  : ML dataset_backend =
+  let log_bytes = DL.delta_log_read_all log_path in
+  let batches = match DL.parse_log log_bytes with
+    | Some (bs, _leftover) -> bs
+    | None -> [] in
+  let base_named = cottas_ondisk_named_graphs cods in
+  let default_delta = DM.fold_delta_batches batches None in
+  let base_named_entries =
+    List.Tot.map
+      (fun (g : (iri & cottas_graph_ref)) ->
+        let (gname, _) = g in
+        let gdelta = DM.fold_delta_batches batches (Some gname) in
+        { ngb_name = gname; ngb_graph = GB_CottasOnDiskDelta cods (COS_NamedGraph gname) gdelta })
+      base_named
+  in
+  let base_names = List.Tot.map (fun (g : (iri & cottas_graph_ref)) -> fst g) base_named in
+  let delta_only_names =
+    List.Tot.filter
+      (fun (gi : iri) -> not (List.Tot.existsb (fun (bn : iri) -> bn = gi) base_names))
+      (DM.delta_batches_named_graphs batches)
+  in
+  let delta_only_entries =
+    List.Tot.map
+      (fun (gname : iri) ->
+        let gdelta = DM.fold_delta_batches batches (Some gname) in
+        { ngb_name = gname; ngb_graph = GB_CottasOnDiskDelta cods (COS_NamedGraph gname) gdelta })
+      delta_only_names
+  in
+  {
+    dsb_default = GB_CottasOnDiskDelta cods COS_DefaultOnly default_delta;
+    dsb_named = List.Tot.append base_named_entries delta_only_entries;
   }
 
 // Aleph6 (issue #100, demo prep): LIMIT-pushdown truncation helper.
@@ -221,6 +300,11 @@ let rec caps_of_backend (gb : graph_backend) : Tot store_caps (decreases gb) =
       sc_decode_failure = (fun () -> false);
     }
   | GB_CottasOnDisk cods scope -> caps_of_cottas cods scope
+  // Stage 3 D-overlay (see the constructor's own comment above): the
+  // seam's whole point is that adding this backend touches ONLY this
+  // arm — `overlay` (RDF.Store.Capabilities.Delta.fst) is the entire
+  // realisation, reusing the unmodified COTTAS builder as its base.
+  | GB_CottasOnDiskDelta cods scope delta -> overlay (caps_of_cottas cods scope) delta
   | GB_Union members -> union_caps (caps_of_backend_list members)
 
 // Structural twin of caps_of_backend over a list. Replaces the six

@@ -7,6 +7,8 @@ let rec graph_backend_kind_string (g : SPARQL11_Store.graph_backend) :
   | SPARQL11_Store.GB_HDT uu___ -> "GB_HDT"
   | SPARQL11_Store.GB_COTTAS (uu___, uu___1) -> "GB_COTTAS"
   | SPARQL11_Store.GB_CottasOnDisk (uu___, uu___1) -> "GB_CottasOnDisk"
+  | SPARQL11_Store.GB_CottasOnDiskDelta (uu___, uu___1, uu___2) ->
+      "GB_CottasOnDiskDelta"
   | SPARQL11_Store.GB_Union gs ->
       Prims.strcat "GB_Union["
         (Prims.strcat (FStar_String.concat "," (map_kinds gs)) "]")

@@ -149,9 +149,11 @@ COMMON_MODULES=(
   CSVW_Metadata
   CSVW_URITemplate
   CSVW_Conversion
+  RDF_Store_Columnar_DeltaMerge
   SPARQL_Plan_Streamable
   RDF_Store_Capabilities
   RDF_Store_Capabilities_Cottas
+  RDF_Store_Capabilities_Delta
   SPARQL11_Store
   RDF_Store_Combine
   SPARQL_Protocol

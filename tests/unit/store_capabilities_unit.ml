@@ -199,6 +199,74 @@ let check_cottas_scope ~label ~cods ~scope
      = (RDF_CottasStore.cottas_ondisk_has_decode_failure cods.RDF_CottasStore.cods_handle))
 
 (* ---------------------------------------------------------------- *)
+(* Durable-UPDATE stage 3 (merge-on-read) / D-overlay: RDF_Store_     *)
+(* Capabilities_Delta.overlay applied to the SAME COTTAS-on-disk      *)
+(* fixture caps_of_cottas already built above, checked two ways:      *)
+(*   1. Empty delta is a no-op -- every field of `overlay caps        *)
+(*      delta_resolved_empty` returns EXACTLY what `caps` itself      *)
+(*      returns, for every shape (the "empty delta costs nothing"    *)
+(*      floor, functional half; perf-benchmarking measures the other *)
+(*      half separately).                                             *)
+(*   2. A non-empty delta (one DE_Add of a fresh triple, one          *)
+(*      DE_Remove tombstoning the fixture's own anchor triple, both   *)
+(*      on the default graph) composed via fold_delta_batches/        *)
+(*      merge_on_read -- checked against a hand-computed expectation, *)
+(*      not just "overlay doesn't crash": the new triple is present,  *)
+(*      the tombstoned anchor is absent, and count_exact/estimate     *)
+(*      both reflect net +1-1 = same row count as the base.           *)
+(* ---------------------------------------------------------------- *)
+
+let check_overlay_noop ~label ~cods ~scope
+    ~(caps : RDF_Store_Capabilities.store_caps) ~(anchor : RDF_Triple.triple) =
+  let overlaid =
+    RDF_Store_Capabilities_Delta.overlay caps RDF_Store_Columnar_DeltaMerge.delta_resolved_empty in
+  List.iter
+    (fun (shape_name, b) ->
+      let name field = Printf.sprintf "overlay/%s/empty-noop/%s/%s" label shape_name field in
+      check ~name:(name "solve")
+        ((overlaid.RDF_Store_Capabilities.sc_solve b) = (caps.RDF_Store_Capabilities.sc_solve b));
+      check ~name:(name "estimate")
+        ((overlaid.RDF_Store_Capabilities.sc_estimate b) = (caps.RDF_Store_Capabilities.sc_estimate b));
+      check ~name:(name "count_exact")
+        ((overlaid.RDF_Store_Capabilities.sc_count_exact b) = (caps.RDF_Store_Capabilities.sc_count_exact b)))
+    (shapes_of anchor);
+  ignore scope;
+  check ~name:(Printf.sprintf "overlay/%s/empty-noop/flags/supports_update" label)
+    overlaid.RDF_Store_Capabilities.sc_flags.RDF_Store_Capabilities.scf_supports_update
+
+let check_overlay_nonempty ~label ~cods ~scope
+    ~(caps : RDF_Store_Capabilities.store_caps) ~(anchor : RDF_Triple.triple) =
+  let fresh_s = "https://example.org/overlay-fresh-subject" in
+  let fresh_p = "https://example.org/overlay-fresh-predicate" in
+  let fresh_o = t_iri "https://example.org/overlay-fresh-object" in
+  let fresh_triple = mk_triple (s_iri fresh_s) fresh_p fresh_o in
+  let batch : RDF_Store_Columnar_DeltaLog.delta_batch =
+    { RDF_Store_Columnar_DeltaLog.db_seq = Z.zero;
+      RDF_Store_Columnar_DeltaLog.db_epoch = Z.zero;
+      RDF_Store_Columnar_DeltaLog.db_ops =
+        [ RDF_Store_Columnar_DeltaLog.DE_Add (fresh_triple, none);
+          RDF_Store_Columnar_DeltaLog.DE_Remove (anchor, none) ] } in
+  let delta = RDF_Store_Columnar_DeltaMerge.fold_delta_batches [ batch ] none in
+  let overlaid = RDF_Store_Capabilities_Delta.overlay caps delta in
+  let b_unbound = bound () in
+  let expected_solve = RDF_Store_Columnar_DeltaMerge.merge_on_read (caps.RDF_Store_Capabilities.sc_solve b_unbound) delta b_unbound in
+  check ~name:(Printf.sprintf "overlay/%s/nonempty/solve-matches-merge_on_read" label)
+    ((overlaid.RDF_Store_Capabilities.sc_solve b_unbound) = expected_solve);
+  check ~name:(Printf.sprintf "overlay/%s/nonempty/fresh-triple-present" label)
+    (List.exists (fun (t : RDF_Triple.triple) -> t = fresh_triple)
+       (overlaid.RDF_Store_Capabilities.sc_solve b_unbound));
+  check ~name:(Printf.sprintf "overlay/%s/nonempty/anchor-tombstoned" label)
+    (not (List.exists (fun (t : RDF_Triple.triple) -> t = anchor)
+            (overlaid.RDF_Store_Capabilities.sc_solve b_unbound)));
+  let base_count = caps.RDF_Store_Capabilities.sc_count_exact b_unbound in
+  check ~name:(Printf.sprintf "overlay/%s/nonempty/count_exact-net-unchanged" label)
+    ((overlaid.RDF_Store_Capabilities.sc_count_exact b_unbound) = base_count);
+  let base_estimate = caps.RDF_Store_Capabilities.sc_estimate b_unbound in
+  check ~name:(Printf.sprintf "overlay/%s/nonempty/estimate-adds-delta-only" label)
+    ((overlaid.RDF_Store_Capabilities.sc_estimate b_unbound) = Z.add base_estimate Z.one);
+  ignore scope
+
+(* ---------------------------------------------------------------- *)
 (* GB_Union equivalence: RDF_Store_Capabilities.union_caps vs the     *)
 (* pre-U2 GB_Union recursion (SPARQL11_Store.backend_search/_limited/ *)
 (* estimate/count_exact/predicate_present/decode_failure applied to a *)
@@ -354,7 +422,14 @@ let () =
      check_union_case ~label:"mixed(indexed+cottas-ondisk)" ~gb_union:gb_mixed
        ~caps_union:caps_mixed
        ~anchors:[ List.hd default_triples; default_anchor ]
-       ~known_preds:[ p_status ]);
+       ~known_preds:[ p_status ];
+
+     (* Durable-UPDATE stage 3: the D-overlay over the same real
+        on-disk COTTAS fixture already loaded above. *)
+     check_overlay_noop ~label:"default" ~cods ~scope:RDF_CottasStore.COS_DefaultOnly
+       ~caps:caps_cottas_default ~anchor:default_anchor;
+     check_overlay_nonempty ~label:"default" ~cods ~scope:RDF_CottasStore.COS_DefaultOnly
+       ~caps:caps_cottas_default ~anchor:default_anchor);
 
   (* ---------------------------------------------------------------- *)
   (* dataset_caps: the U1.5 amendment (owner requirement, 2026-07-06 -- *)

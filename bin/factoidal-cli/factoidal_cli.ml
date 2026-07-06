@@ -243,17 +243,36 @@ let open_cottas_ondisk_store path =
     Printf.eprintf "Error: could not open on-disk COTTAS artifact: %s\n" path;
     exit 1
 
+(* Durable-UPDATE stage 3 (merge-on-read, docs/designissues/2026-07-06-
+   durable-update-design.md) -- CLI-side plumbing only (rule #11: this
+   file is a consumer, not the verified library). `--delta-log PATH`
+   pairs with exactly one `--data-cottas` store: reads through that
+   store now see the delta, via SPARQL11_Store.cottas_with_delta_
+   dataset_backend (the F*-side D-overlay wiring -- RDF.Store.
+   Capabilities.Delta.fst's `overlay`, reached through SPARQL11.Store's
+   GB_CottasOnDiskDelta arm, no new dispatch logic on this side). *)
 let build_dataset_backend
     (in_memory : RDF_Graph_Executable.rdf_dataset)
     (cottas_stores : RDF_CottasStore.cottas_ondisk_store list)
+    (delta_log_path : string option)
     : SPARQL11_Store.dataset_backend =
   let module S = SPARQL11_Store in
   let in_memory_backend = S.indexed_dataset_backend in_memory in
-  let cottas_backends =
-    List.map S.cottas_ondisk_dataset_backend cottas_stores
-  in
-  RDF_Store_Combine.combine_dataset_backends
-    (in_memory_backend :: cottas_backends)
+  match delta_log_path, cottas_stores with
+  | Some log_path, [ cods ] ->
+    let delta_backend = S.cottas_with_delta_dataset_backend cods log_path in
+    RDF_Store_Combine.combine_dataset_backends [ in_memory_backend; delta_backend ]
+  | Some _, _ ->
+    Printf.eprintf
+      "Error: --delta-log requires exactly one --data-cottas store (got %d)\n"
+      (List.length cottas_stores);
+    exit 1
+  | None, _ ->
+    let cottas_backends =
+      List.map S.cottas_ondisk_dataset_backend cottas_stores
+    in
+    RDF_Store_Combine.combine_dataset_backends
+      (in_memory_backend :: cottas_backends)
 
 (* ============================================================================
    Result table formatting (like arq / isql)
@@ -362,6 +381,7 @@ type output_format = Table | CSV | NTOut | JSON
 type config = {
   mutable data_files : string list;
   mutable data_cottas_files : string list;  (* COTTAS/Parquet artifacts *)
+  mutable delta_log_path : string option;   (* durable-UPDATE stage 3: --delta-log PATH *)
   mutable named_graphs : (string * string) list;  (* (iri, file) *)
   mutable query_file : string option;
   mutable query_string : string option;
@@ -475,6 +495,10 @@ let usage () =
   Printf.printf "                         Parsed via the F*-verified Parquet footer\n";
   Printf.printf "                         + DeltaLengthByteArray decoder; Zstd\n";
   Printf.printf "                         decompression via the C stub.\n";
+  Printf.printf "      --delta-log PATH   Durable-UPDATE stage 3 (merge-on-read): read\n";
+  Printf.printf "                         --data-cottas's store composed with the delta\n";
+  Printf.printf "                         batches recorded at PATH. Requires exactly one\n";
+  Printf.printf "                         --data-cottas FILE.\n";
   Printf.printf "  -n, --named IRI=FILE   Load named graph\n";
   Printf.printf "  -q, --query FILE       SPARQL query file\n";
   Printf.printf "  -e SPARQL              Inline SPARQL query string\n";
@@ -523,7 +547,7 @@ let version () =
    legacy callers. *)
 let parse_args ?args () =
   let cfg = {
-    data_files = []; data_cottas_files = []; named_graphs = []; query_file = None;
+    data_files = []; data_cottas_files = []; delta_log_path = None; named_graphs = []; query_file = None;
     query_string = None; base_iri = None; input_format = None;
     output_format = Table; dump_mode = false; dump_nq_mode = false;
     dump_turtle_mode = false;
@@ -542,6 +566,8 @@ let parse_args ?args () =
     | ("--data" | "-d") :: f :: rest -> cfg.data_files <- cfg.data_files @ [f]; loop rest
     | "--data-cottas" :: f :: rest ->
       cfg.data_cottas_files <- cfg.data_cottas_files @ [f]; loop rest
+    | "--delta-log" :: f :: rest ->
+      cfg.delta_log_path <- Some f; loop rest
     | ("--named" | "-n") :: spec :: rest ->
       (* spec is IRI=FILE *)
       (match String.index_opt spec '=' with
@@ -1476,7 +1502,7 @@ let () =
             Printf.eprintf "Error opening on-disk COTTAS %s: %s\n" f (Printexc.to_string e);
             exit 1
         ) cfg.data_cottas_files in
-        let dsb = build_dataset_backend dataset cottas_stores in
+        let dsb = build_dataset_backend dataset cottas_stores cfg.delta_log_path in
         let ask_answer =
           if is_ask then
             match SPARQL11_Store.run_ask_query_backend_dataset rewritten_query dsb with

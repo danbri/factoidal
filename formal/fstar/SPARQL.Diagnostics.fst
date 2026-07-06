@@ -22,6 +22,7 @@ let rec graph_backend_kind_string g =
   | GB_HDT _         -> "GB_HDT"
   | GB_COTTAS _ _    -> "GB_COTTAS"
   | GB_CottasOnDisk _ _ -> "GB_CottasOnDisk"
+  | GB_CottasOnDiskDelta _ _ _ -> "GB_CottasOnDiskDelta"
   | GB_Union gs ->
     "GB_Union[" ^ FStar.String.concat "," (map_kinds gs) ^ "]"
 

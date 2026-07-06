@@ -7,6 +7,9 @@ type graph_backend =
   FStar_Pervasives_Native.option 
   | GB_CottasOnDisk of RDF_CottasStore.cottas_ondisk_store *
   RDF_CottasStore.cottas_ondisk_graph_scope 
+  | GB_CottasOnDiskDelta of RDF_CottasStore.cottas_ondisk_store *
+  RDF_CottasStore.cottas_ondisk_graph_scope *
+  RDF_Store_Columnar_DeltaMerge.delta_resolved 
   | GB_Union of graph_backend Prims.list 
 let uu___is_GB_List (projectee : graph_backend) : Prims.bool=
   match projectee with | GB_List _0 -> true | uu___ -> false
@@ -36,6 +39,19 @@ let __proj__GB_CottasOnDisk__item___0 (projectee : graph_backend) :
 let __proj__GB_CottasOnDisk__item___1 (projectee : graph_backend) :
   RDF_CottasStore.cottas_ondisk_graph_scope=
   match projectee with | GB_CottasOnDisk (_0, _1) -> _1
+let uu___is_GB_CottasOnDiskDelta (projectee : graph_backend) : Prims.bool=
+  match projectee with
+  | GB_CottasOnDiskDelta (_0, _1, _2) -> true
+  | uu___ -> false
+let __proj__GB_CottasOnDiskDelta__item___0 (projectee : graph_backend) :
+  RDF_CottasStore.cottas_ondisk_store=
+  match projectee with | GB_CottasOnDiskDelta (_0, _1, _2) -> _0
+let __proj__GB_CottasOnDiskDelta__item___1 (projectee : graph_backend) :
+  RDF_CottasStore.cottas_ondisk_graph_scope=
+  match projectee with | GB_CottasOnDiskDelta (_0, _1, _2) -> _1
+let __proj__GB_CottasOnDiskDelta__item___2 (projectee : graph_backend) :
+  RDF_Store_Columnar_DeltaMerge.delta_resolved=
+  match projectee with | GB_CottasOnDiskDelta (_0, _1, _2) -> _2
 let uu___is_GB_Union (projectee : graph_backend) : Prims.bool=
   match projectee with | GB_Union _0 -> true | uu___ -> false
 let __proj__GB_Union__item___0 (projectee : graph_backend) :
@@ -89,6 +105,61 @@ let cottas_ondisk_dataset_backend
                     (GB_CottasOnDisk
                        (cods, (RDF_CottasStore.COS_NamedGraph gname)))
                 }) (RDF_CottasStore.cottas_ondisk_named_graphs cods))
+  }
+let cottas_with_delta_dataset_backend
+  (cods : RDF_CottasStore.cottas_ondisk_store) (log_path : Prims.string) :
+  dataset_backend=
+  let log_bytes = RDF_Store_Columnar_DeltaLog.delta_log_read_all log_path in
+  let batches =
+    match RDF_Store_Columnar_DeltaLog.parse_log log_bytes with
+    | FStar_Pervasives_Native.Some (bs, _leftover) -> bs
+    | FStar_Pervasives_Native.None -> [] in
+  let base_named = RDF_CottasStore.cottas_ondisk_named_graphs cods in
+  let default_delta =
+    RDF_Store_Columnar_DeltaMerge.fold_delta_batches batches
+      FStar_Pervasives_Native.None in
+  let base_named_entries =
+    FStar_List_Tot_Base.map
+      (fun g ->
+         let uu___ = g in
+         match uu___ with
+         | (gname, uu___1) ->
+             let gdelta =
+               RDF_Store_Columnar_DeltaMerge.fold_delta_batches batches
+                 (FStar_Pervasives_Native.Some gname) in
+             {
+               ngb_name = gname;
+               ngb_graph =
+                 (GB_CottasOnDiskDelta
+                    (cods, (RDF_CottasStore.COS_NamedGraph gname), gdelta))
+             }) base_named in
+  let base_names =
+    FStar_List_Tot_Base.map (fun g -> FStar_Pervasives_Native.fst g)
+      base_named in
+  let delta_only_names =
+    FStar_List_Tot_Base.filter
+      (fun gi ->
+         Prims.op_Negation
+           (FStar_List_Tot_Base.existsb (fun bn -> bn = gi) base_names))
+      (RDF_Store_Columnar_DeltaMerge.delta_batches_named_graphs batches) in
+  let delta_only_entries =
+    FStar_List_Tot_Base.map
+      (fun gname ->
+         let gdelta =
+           RDF_Store_Columnar_DeltaMerge.fold_delta_batches batches
+             (FStar_Pervasives_Native.Some gname) in
+         {
+           ngb_name = gname;
+           ngb_graph =
+             (GB_CottasOnDiskDelta
+                (cods, (RDF_CottasStore.COS_NamedGraph gname), gdelta))
+         }) delta_only_names in
+  {
+    dsb_default =
+      (GB_CottasOnDiskDelta
+         (cods, RDF_CottasStore.COS_DefaultOnly, default_delta));
+    dsb_named =
+      (FStar_List_Tot_Base.append base_named_entries delta_only_entries)
   }
 let rec list_take_n : 'a . Prims.nat -> 'a Prims.list -> 'a Prims.list =
   fun n xs ->
@@ -221,6 +292,9 @@ let rec caps_of_backend (gb : graph_backend) :
       }
   | GB_CottasOnDisk (cods, scope) ->
       RDF_Store_Capabilities_Cottas.caps_of_cottas cods scope
+  | GB_CottasOnDiskDelta (cods, scope, delta) ->
+      RDF_Store_Capabilities_Delta.overlay
+        (RDF_Store_Capabilities_Cottas.caps_of_cottas cods scope) delta
   | GB_Union members ->
       RDF_Store_Capabilities.union_caps (caps_of_backend_list members)
 and caps_of_backend_list (members : graph_backend Prims.list) :
