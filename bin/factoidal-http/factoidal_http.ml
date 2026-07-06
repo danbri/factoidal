@@ -39,6 +39,13 @@ open RDF_Graph_Executable
 open SPARQL11_Algebra
 module P = SPARQL_Protocol
 module S = SPARQL11_Store
+(* Durable-UPDATE stage 8 (docs/designissues/2026-07-06-durable-update-
+   design.md §5 row 8): the delta-log byte format + I/O primitives
+   (stages 1-2) and the merge-on-read / op-to-delta-entry translator
+   (stage 3 / stage 8's own residual) this server's --rw path drives. *)
+module DLog = RDF_Store_Columnar_DeltaLog
+module DMerge = RDF_Store_Columnar_DeltaMerge
+module GStore = SPARQL_GraphStore
 
 (* Issue #275 (rule #11 ASSUME-IO): explicitly realise the JSON-LD
    documentLoader seam as an honest "no remote loading" for the HTTP
@@ -249,6 +256,20 @@ type config = {
      above for the threat model and [server_timing_enabled] for the
      auto predicate. Default ST_Auto. *)
   mutable server_timing : server_timing_mode;
+  (* Durable-UPDATE stage 8. `delta_log_path` pairs with exactly one
+     --data-cottas file (validated at startup, mirroring
+     factoidal_cli.ml's `--delta-log` constraint): reads compose the
+     on-disk COTTAS base with this delta log via SPARQL11_Store's
+     `cottas_with_delta_dataset_backend`, same as the CLI's own
+     `--delta-log` flag. `rw` additionally lets POST /update and the
+     Graph Store Protocol endpoint (/data, SPARQL_GraphStore) commit
+     durably by appending translated delta entries to this log —
+     absent --rw, both remain read-only against the durable store
+     (the existing --read-only / proxied-auth-rw-graphnames gating is
+     unaffected and continues to govern the LEGACY in-memory
+     dataset_ref path only). *)
+  mutable delta_log_path : string option;
+  mutable rw : bool;
 }
 
 let default_dump_dir =
@@ -273,6 +294,8 @@ let default_config () = {
   max_rows = 50_000;
   query_timeout = 30;
   server_timing = ST_Auto;
+  delta_log_path = None;
+  rw = false;
 }
 
 let usage () =
@@ -296,6 +319,23 @@ let usage () =
   print_endline "  -b, --base IRI         Base IRI for parsing";
   print_endline "      --read-only        Reject POST /update with 403 Forbidden";
   print_endline "                         (safe for public tunnels)";
+  print_endline "      --delta-log PATH   Durable-UPDATE stage 8: compose --data-cottas";
+  print_endline "                         reads with this append-only delta log";
+  print_endline "                         (merge-on-read, same mechanism as factoidal";
+  print_endline "                         query --delta-log). Requires exactly one";
+  print_endline "                         --data-cottas FILE. Read-only unless --rw.";
+  print_endline "      --rw               Durable read-write: POST /update and the";
+  print_endline "                         Graph Store Protocol (/data) commit by";
+  print_endline "                         appending translated delta entries to";
+  print_endline "                         --delta-log (fsync'd before the response is";
+  print_endline "                         sent). Requires --delta-log. Only INSERT";
+  print_endline "                         DATA / DELETE DATA / CLEAR / DROP / CREATE";
+  print_endline "                         translate to durable entries today; other";
+  print_endline "                         UPDATE forms (DELETE/INSERT WHERE, COPY,";
+  print_endline "                         MOVE, ADD) get 501 rather than a silent,";
+  print_endline "                         non-durable in-memory-only apply. Default";
+  print_endline "                         off (explicit opt-in, per the design doc's";
+  print_endline "                         stage 8 requirement).";
   print_endline "      --cors=ORIGINS     Enable CORS. ORIGINS is either \"*\" (allow any";
   print_endline "                         origin) or a comma-separated allowlist of exact";
   print_endline "                         origin strings (e.g. https://foo.example,https://bar.example).";
@@ -444,6 +484,8 @@ let parse_args ?args () =
       loop rest
     | ("-b" | "--base") :: b :: rest -> cfg.base_iri <- Some b; loop rest
     | "--read-only" :: rest -> cfg.read_only <- true; loop rest
+    | "--delta-log" :: f :: rest -> cfg.delta_log_path <- Some f; loop rest
+    | "--rw" :: rest -> cfg.rw <- true; loop rest
     | ("-v" | "--verbose") :: rest -> cfg.verbose <- true; loop rest
     | "--max-rows" :: n :: rest ->
       (match int_of_string_opt n with
@@ -538,6 +580,26 @@ let parse_args ?args () =
         All POST /update requests will be rejected with 403.\n";
      cfg.proxied_auth_rw_graphnames <- None
    | _ -> ());
+  (* Durable-UPDATE stage 8: --rw needs --delta-log; --delta-log needs
+     exactly one --data-cottas store (same pairing factoidal_cli.ml's
+     `--delta-log` flag already enforces, checked here eagerly at
+     startup instead of per-request so a misconfigured deployment
+     fails fast rather than silently serving in-memory-only). *)
+  if cfg.rw && cfg.delta_log_path = None then begin
+    Printf.eprintf "Error: --rw requires --delta-log PATH.\n";
+    exit 1
+  end;
+  (match cfg.delta_log_path with
+   | Some _ when List.length cfg.data_cottas_files <> 1 ->
+     Printf.eprintf
+       "Error: --delta-log requires exactly one --data-cottas FILE (got %d).\n"
+       (List.length cfg.data_cottas_files);
+     exit 1
+   | _ -> ());
+  if cfg.rw && cfg.read_only then begin
+    Printf.eprintf "Error: --rw and --read-only are contradictory; pick one.\n";
+    exit 1
+  end;
   cfg
 
 (* ============================================================================
@@ -761,24 +823,134 @@ let open_cottas_ondisk_files (paths : string list) : cottas_ondisk_loaded list =
       None
   ) paths
 
+(* Durable-UPDATE stage 4/8: does `<version_dir>/data.compacted-epoch`
+   exist, and if so what epoch does it record? `None` = never
+   compacted -- nothing to skip (matches SPARQL11_Store.
+   cottas_with_delta_dataset_backend's own `compacted_epoch : option
+   nat` contract). Mirrors factoidal_cli.ml's `read_compacted_epoch`
+   (rule #11: this is glue reading a companion file whose byte layout
+   is F*-defined, not a semantic decision). *)
+let read_compacted_epoch (version_dir : string) : Z.t option =
+  let marker = Filename.concat version_dir "data.compacted-epoch" in
+  if not (Sys.file_exists marker) then None
+  else
+    let bytes = DLog.delta_log_read_all marker in
+    match DLog.parse_compacted_epoch bytes with
+    | FStar_Pervasives_Native.Some n -> Some n
+    | FStar_Pervasives_Native.None -> None
+
+let read_compacted_epoch_opt (version_dir : string) : Z.t FStar_Pervasives_Native.option =
+  match read_compacted_epoch version_dir with
+  | Some n -> FStar_Pervasives_Native.Some n
+  | None -> FStar_Pervasives_Native.None
+
 (* Combine the in-memory rdf_dataset side and the cottas-ondisk side into a
    single dataset_backend. Default + per-named-graph slots are unioned so
    the engine sees both halves through the same backend_search dispatch.
 
-   Three shapes:
-     - cottas-ondisk only: union over each ondisk store's
-       cottas_ondisk_dataset_backend; the in-memory side contributes empty.
-     - in-memory only: indexed_dataset_backend over dataset_ref. *)
+   Four shapes now (durable-UPDATE stage 8 adds the delta-aware one):
+     - delta_log_path = Some, exactly one cottas store: compose that
+       store with the delta log via S.cottas_with_delta_dataset_backend
+       (merge-on-read, epoch-filtered exactly as factoidal_cli.ml's own
+       `--delta-log` reader does).
+     - delta_log_path = Some, zero cottas stores: the issue #99
+       bind-first bootstrap window (listener up, COTTAS loader thread
+       still opening the single --data-cottas file) -- NOT an error,
+       falls back to in-memory-only until the loader thread's
+       completion callback rebuilds this with the real store.
+     - delta_log_path = Some, 2+ cottas stores: startup validation
+       (parse_args) should have already rejected this; defensive
+       fallback logs and serves the read-only cottas union instead of
+       crashing the request path.
+     - delta_log_path = None: unchanged pre-stage-8 behaviour, union of
+       cottas_ondisk_dataset_backend over every --data-cottas file. *)
 let build_dataset_backend
     (in_memory : rdf_dataset)
     (cottas_stores : cottas_ondisk_loaded list)
+    (delta_log_path : string option)
     : S.dataset_backend =
   let in_memory_backend = S.indexed_dataset_backend in_memory in
-  let cottas_backends =
-    List.map (fun s -> S.cottas_ondisk_dataset_backend s.cod_store) cottas_stores
-  in
-  RDF_Store_Combine.combine_dataset_backends
-    (in_memory_backend :: cottas_backends)
+  match delta_log_path, cottas_stores with
+  | Some log_path, [ cs ] ->
+    let epoch = read_compacted_epoch_opt (Filename.dirname cs.cod_path) in
+    let delta_backend = S.cottas_with_delta_dataset_backend cs.cod_store log_path epoch in
+    RDF_Store_Combine.combine_dataset_backends [ in_memory_backend; delta_backend ]
+  | Some _, [] ->
+    in_memory_backend
+  | Some _, (_ :: _ :: _ as many) ->
+    Printf.eprintf
+      "Error: --delta-log requires exactly one --data-cottas store (got %d); \
+       serving in-memory + read-only cottas union instead of the durable delta view.\n%!"
+      (List.length many);
+    let cottas_backends =
+      List.map (fun s -> S.cottas_ondisk_dataset_backend s.cod_store) many in
+    RDF_Store_Combine.combine_dataset_backends (in_memory_backend :: cottas_backends)
+  | None, _ ->
+    let cottas_backends =
+      List.map (fun s -> S.cottas_ondisk_dataset_backend s.cod_store) cottas_stores
+    in
+    RDF_Store_Combine.combine_dataset_backends
+      (in_memory_backend :: cottas_backends)
+
+(* ============================================================================
+   Durable-UPDATE stage 8: the delta-log WRITE path.
+
+   Everything the design doc's §3.3 fsync/rename protocol asks of a
+   writer, minus compaction (stage 4's `factoidal compact`, unchanged):
+   ensure the log file exists (header-only, if this is the very first
+   write), append one serialized delta_batch, fsync before reporting
+   success. `next_seq` is a per-process monotonic counter -- db_seq's
+   VALUE is bookkeeping only (RDF.Store.Columnar.DeltaMerge.fst's
+   `fold_delta_batches` orders entries by LOG POSITION, i.e. append
+   order, not by this field), so a simple in-process counter is enough;
+   it is not a cross-process/crash-persistent sequence number and does
+   not need to be.
+   ============================================================================ *)
+
+let next_seq : int ref = ref 0
+
+(* Create the log file (header, zero batches) if it doesn't exist yet.
+   Same tmp-write + fsync + atomic-rename dance factoidal_cli.ml's
+   `run_compact` uses to truncate a log post-compaction -- reused here
+   for the symmetric "create a fresh, empty, well-formed log" case. *)
+let ensure_delta_log_exists (log_path : string) : unit =
+  if not (Sys.file_exists log_path) then begin
+    let dir = Filename.dirname log_path in
+    let tmp = Printf.sprintf "%s.tmp.%d" log_path (Unix.getpid ()) in
+    DLog.delta_log_append tmp (DLog.serialize_log []);
+    DLog.delta_log_fsync tmp;
+    DLog.atomic_rename tmp log_path;
+    (try DLog.fsync_dir dir with _ -> ())
+  end
+
+(* Append one batch of delta entries and fsync -- the commit point
+   (design doc §3.3 step 3): the caller MUST NOT report success to the
+   HTTP client until this returns. `cottas_path` is the --data-cottas
+   file's OWN path (used only to find its sibling
+   data.compacted-epoch marker, same directory `read_compacted_epoch`
+   above reads) -- stamping `db_epoch` at (compacted_epoch + 1) so a
+   post-compaction writer's batches are never mistaken for
+   already-folded ones (DeltaLog.fst's disclosed sharp edge, §13
+   banner: "a writer appending after a compaction must stamp db_epoch
+   > the recorded compacted epoch or the batch is treated as
+   already-folded"). *)
+let commit_delta_entries
+    ~(log_path : string) ~(cottas_path : string)
+    (entries : DLog.delta_entry list)
+    : unit =
+  if entries = [] then ()
+  else begin
+    ensure_delta_log_exists log_path;
+    let epoch = match read_compacted_epoch (Filename.dirname cottas_path) with
+      | None -> Z.zero
+      | Some ce -> Z.add ce Z.one in
+    let seq = !next_seq in
+    next_seq := seq + 1;
+    let batch : DLog.delta_batch =
+      { DLog.db_seq = Z.of_int seq; DLog.db_epoch = epoch; DLog.db_ops = entries } in
+    DLog.delta_log_append log_path (DLog.serialize_delta_batch batch);
+    DLog.delta_log_fsync log_path
+  end
 
 (* ============================================================================
    HTTP/1.1 request framing.
@@ -2134,6 +2306,162 @@ let serve_backend_info_json
 let accept_wants_html (accept : string) : bool =
   ci_find accept "text/html" >= 0
 
+(* ============================================================================
+   SPARQL 1.1 Graph Store HTTP Protocol (GSP) — durable-UPDATE stage 8's
+   second wiring surface (docs/designissues/2026-07-06-durable-update-
+   design.md §5 row 8; hub post 17's documented gap: SPARQL.GraphStore.fst
+   was verified, W3C http-rdf-update 19/19, but only ever exercised
+   in-process by bin/w3c-runner/w3c_runner.ml's `_gsp_dispatch` — never
+   routed over a real socket until now).
+
+   Mount point: `SPARQL_HTTP_Routes.gsp_path_prefix` ("/data"). GET/HEAD
+   always work (read through the same backend_ref every SPARQL query
+   uses); PUT/POST/DELETE require --rw and commit through the same
+   delta-log path as durable POST /update (SPARQL_GraphStore's pure
+   gsp_put/gsp_post/gsp_delete decide status codes; DMerge's
+   gsp_*_to_delta_entries translate the accepted write into durable
+   entries — see RDF.Store.Columnar.DeltaMerge.fst section 8).
+   ============================================================================ *)
+
+(* GSP §4.1's three URL shapes, same resolution w3c_runner.ml's
+   `_gsp_target_of_request` already uses for its in-process dispatch —
+   kept consistent here so a live request and the in-process W3C
+   harness agree on what a given URL denotes.
+     1. "?default"     -> the default graph (indirect identification).
+     2. "?graph=<URI>" -> a named graph (indirect identification). NOT
+        URL-decoded today (known gap — the W3C http-rdf-update fixtures
+        and this project's own curl-based subset test both use graph
+        IRIs with no percent-escaped characters, so this is deferred
+        rather than blocking stage 8 on a general percent-decoder).
+     3. anything else  -> "direct" identification: the request path
+        itself is the graph's key (every W3C http-rdf-update test file
+        uses this shape for its primary graph). *)
+let gsp_target_of_request ~(path : string) ~(qs : string) : GStore.gs_target =
+  if qs = "default" || qs = "default=" then GStore.GT_Default
+  else
+    let prefix = "graph=" in
+    let plen = String.length prefix in
+    if String.length qs >= plen && String.sub qs 0 plen = prefix then
+      GStore.GT_Named (String.sub qs plen (String.length qs - plen))
+    else
+      GStore.GT_Named path
+
+let gsp_graph_key (t : GStore.gs_target) : string option =
+  match t with
+  | GStore.GT_Default -> None
+  | GStore.GT_Named k -> Some k
+
+(* GraphStore.fst's `graph_store` is the same {gs_default; gs_named}
+   shape as `rdf_dataset` under a field rename — trivial reindexing,
+   no semantic decision (rule #15 glue). Used only for GET/HEAD, and
+   only for the target the request actually asked about; the caller
+   materializes the WHOLE backend first (S.materialize_dataset_backend,
+   already used by the compactor) which is correct but not yet
+   graph-scoped — a known perf simplification for a large COTTAS-backed
+   store, out of scope for stage 8's correctness/durability brief. *)
+let graph_store_of_dataset (ds : rdf_dataset) : GStore.graph_store =
+  { GStore.gs_default = ds.ds_default;
+    GStore.gs_named =
+      List.map
+        (fun (ng : named_graph) -> { GStore.gn_iri = ng.ng_name; GStore.gn_graph = ng.ng_graph })
+        ds.ds_named }
+
+(* Parse a GSP request body into a graph (list triple) by Content-Type.
+   Reuses the SAME F*-extracted parsers load_rdf_dataset already calls
+   for --dataset files (rule #4: parsers live in F-star) — no new parsing
+   code, just a content-type dispatch at the boundary. Defaults to
+   Turtle on an empty/unrecognised Content-Type (matches most GSP test
+   clients, which send text/turtle without always being precise about
+   charset parameters). *)
+let parse_gsp_body (ct : string) (body : string) : rdf_graph option =
+  let ct_main =
+    match String.index_opt ct ';' with
+    | Some i -> String.trim (String.sub ct 0 i)
+    | None -> String.trim ct
+  in
+  try
+    match String.lowercase_ascii ct_main with
+    | "application/n-triples" | "text/plain" ->
+      Some (Parser_NTriples.parse_ntriples body)
+    | "application/rdf+xml" | "text/xml" | "application/xml" ->
+      Some (Parser_RDFXML.parse_rdfxml body)
+    | "" | "text/turtle" | _ ->
+      Some (Parser_Turtle.parse_turtle body)
+  with _ -> None
+
+let gsp_method_not_allowed =
+  { rb_status = 405;
+    rb_content_type = "text/plain; charset=utf-8";
+    rb_body = "Method not allowed for the Graph Store Protocol (GET, HEAD, PUT, POST, DELETE only)\n" }
+
+(* Dispatch one GSP request. Reads always work (materializes the
+   current backend_ref view — base ⊕ delta when --delta-log/--rw are
+   active, exactly the same view SELECT/ASK see). Writes require --rw
+   + --delta-log; without --rw they 405 rather than silently no-op'ing
+   (the design doc's "default remains read-only" requirement, applied
+   to the Graph Store endpoint the same way it applies to POST
+   /update). *)
+let handle_gsp_request ~cfg ~dataset_ref ~backend_ref ~cottas_stores_ref ~meth ~path ~qs ~ct ~body
+    : response_body =
+  let target = gsp_target_of_request ~path ~qs in
+  let graph_key = gsp_graph_key target in
+  match meth with
+  | "GET" | "HEAD" ->
+    let ds = S.materialize_dataset_backend !backend_ref in
+    let store = graph_store_of_dataset ds in
+    if meth = "HEAD" then
+      { rb_status = (if GStore.gsp_head target store then 200 else 404);
+        rb_content_type = "application/n-triples"; rb_body = "" }
+    else
+      (match GStore.gsp_get target store with
+       | FStar_Pervasives_Native.None ->
+         { rb_status = 404; rb_content_type = "text/plain; charset=utf-8";
+           rb_body = "Graph not found\n" }
+       | FStar_Pervasives_Native.Some g ->
+         let body =
+           String.concat "" (List.map RDF_NQuads_Serialize.nq_line_for_triple_default_graph g) in
+         { rb_status = 200; rb_content_type = "application/n-triples"; rb_body = body })
+  | "PUT" | "POST" | "DELETE" ->
+    if not cfg.rw then gsp_method_not_allowed
+    else
+      (match cfg.delta_log_path, !cottas_stores_ref with
+       | Some log_path, [ cs ] ->
+         let ds = S.materialize_dataset_backend !backend_ref in
+         let store = graph_store_of_dataset ds in
+         let commit entries status =
+           match (try Ok (commit_delta_entries ~log_path ~cottas_path:cs.cod_path entries)
+                  with e -> Error (Printexc.to_string e))
+           with
+           | Error msg ->
+             Printf.eprintf "  GSP commit error: %s\n%!" msg;
+             { rb_status = 500; rb_content_type = "text/plain; charset=utf-8";
+               rb_body = "durable GSP write failed: " ^ msg ^ "\n" }
+           | Ok () ->
+             backend_ref := build_dataset_backend !dataset_ref !cottas_stores_ref cfg.delta_log_path;
+             { rb_status = status; rb_content_type = "text/plain; charset=utf-8"; rb_body = "" }
+         in
+         (match meth with
+          | "DELETE" ->
+            let (_new_store, did_exist) = GStore.gsp_delete target store in
+            commit (DMerge.gsp_delete_to_delta_entries graph_key) (Z.to_int (GStore.status_delete did_exist))
+          | "PUT" | "POST" ->
+            (match parse_gsp_body ct body with
+             | None ->
+               { rb_status = 400; rb_content_type = "text/plain; charset=utf-8";
+                 rb_body = "could not parse request body as RDF (Content-Type: text/turtle, application/n-triples, application/rdf+xml)\n" }
+             | Some g ->
+               if meth = "PUT" then
+                 let (_new_store, did_replace) = GStore.gsp_put target g store in
+                 commit (DMerge.gsp_put_to_delta_entries graph_key g) (Z.to_int (GStore.status_put did_replace))
+               else
+                 let (_new_store, did_exist) = GStore.gsp_post target g store in
+                 commit (DMerge.gsp_post_to_delta_entries graph_key g) (Z.to_int (GStore.status_post did_exist)))
+          | _ -> gsp_method_not_allowed)
+       | _ ->
+         { rb_status = 500; rb_content_type = "text/plain; charset=utf-8";
+           rb_body = "server misconfigured: --rw requires --delta-log PATH with exactly one --data-cottas store\n" })
+  | _ -> gsp_method_not_allowed
+
 (* Try to handle the request as a static / landing-page route. Returns
    Some response_body if the path matched, None to fall through to the
    F* SPARQL Protocol decoder.
@@ -2245,6 +2573,19 @@ let handle_connection cfg dataset_ref backend_ref cottas_stores_ref ic oc =
         ~body:""
     end else
 
+    (* SPARQL 1.1 Graph Store HTTP Protocol (durable-UPDATE stage 8).
+       Checked before try_static_route/the SPARQL Protocol decoder —
+       GSP uses GET/HEAD/PUT/POST/DELETE on its own path prefix, not
+       the SPARQL query/update grammar try_static_route's non-GET
+       short-circuit and P.decode_request both assume. *)
+    if SPARQL_HTTP_Routes.is_gsp_path path then begin
+      let resp =
+        handle_gsp_request ~cfg ~dataset_ref ~backend_ref ~cottas_stores_ref
+          ~meth ~path ~qs ~ct ~body in
+      write_response ~extra_headers:cors_hdrs oc
+        ~status:resp.rb_status ~content_type:resp.rb_content_type ~body:resp.rb_body
+    end else
+
     (* Static / landing-page routes intercept before the F* protocol
        decoder. Pure I/O glue (rule #15). *)
     (match try_static_route ~cfg ~dataset_ref ~cottas_stores_ref
@@ -2351,23 +2692,72 @@ let handle_connection cfg dataset_ref backend_ref cottas_stores_ref ic oc =
                  rb_content_type = "text/plain; charset=utf-8";
                  rb_body = "update rejected: " ^ msg ^ "\n" }
              | Ok u' ->
-               let new_ds =
-                 try SPARQL11_Algebra.apply_update dataset u'
-                 with e ->
-                   Printf.eprintf "  update execution error: %s\n%!"
-                     (Printexc.to_string e);
-                   dataset
-               in
-               dataset_ref := new_ds;
-               (* Rebuild the backend so subsequent queries see the
-                  updated in-memory side. The cottas-ondisk handles are
-                  read-only and unchanged across UPDATEs (rule #15: glue
-                  only — no semantic change). *)
-               backend_ref :=
-                 build_dataset_backend new_ds !cottas_stores_ref;
-               { rb_status = 204;
-                 rb_content_type = "text/plain; charset=utf-8";
-                 rb_body = "" }
+               (* Durable-UPDATE stage 8: --rw diverts commit through the
+                  delta log (SPARQL11_Store's --delta-log-composed store)
+                  instead of mutating the legacy in-memory dataset_ref.
+                  The two are deliberately NOT both engaged for the same
+                  request — a durable deployment's whole point is that a
+                  client's "204 committed" means fsync'd to disk, and
+                  falling back to an in-memory-only apply on translation
+                  failure would silently break that promise (rule #26:
+                  no misleading success). *)
+               if cfg.rw then
+                 (match cfg.delta_log_path, !cottas_stores_ref with
+                  | Some log_path, [ cs ] ->
+                    let request_salt =
+                      Printf.sprintf "http_%d_%.6f" !next_seq (Unix.gettimeofday ()) in
+                    (match DMerge.update_ops_to_delta_entries request_salt u'.u_ops with
+                     | FStar_Pervasives_Native.None ->
+                       { rb_status = 501;
+                         rb_content_type = "text/plain; charset=utf-8";
+                         rb_body =
+                           "durable UPDATE (--rw) does not yet translate this \
+                            operation to the delta log. Supported: INSERT DATA, \
+                            DELETE DATA, CLEAR, DROP, CREATE. DELETE/INSERT WHERE, \
+                            COPY, MOVE, ADD are not yet durable (docs/designissues/\
+                            2026-07-06-durable-update-design.md stage 8's residual) \
+                            -- rejected rather than silently applied in-memory only.\n" }
+                     | FStar_Pervasives_Native.Some entries ->
+                       (match
+                          (try Ok (commit_delta_entries ~log_path ~cottas_path:cs.cod_path entries)
+                           with e -> Error (Printexc.to_string e))
+                        with
+                        | Error msg ->
+                          Printf.eprintf "  durable update commit error: %s\n%!" msg;
+                          { rb_status = 500;
+                            rb_content_type = "text/plain; charset=utf-8";
+                            rb_body = "durable UPDATE commit failed: " ^ msg ^ "\n" }
+                        | Ok () ->
+                          backend_ref :=
+                            build_dataset_backend !dataset_ref !cottas_stores_ref cfg.delta_log_path;
+                          { rb_status = 204;
+                            rb_content_type = "text/plain; charset=utf-8";
+                            rb_body = "" }))
+                  | _ ->
+                    { rb_status = 500;
+                      rb_content_type = "text/plain; charset=utf-8";
+                      rb_body =
+                        "server misconfigured: --rw requires --delta-log PATH \
+                         with exactly one --data-cottas store\n" })
+               else begin
+                 let new_ds =
+                   try SPARQL11_Algebra.apply_update dataset u'
+                   with e ->
+                     Printf.eprintf "  update execution error: %s\n%!"
+                       (Printexc.to_string e);
+                     dataset
+                 in
+                 dataset_ref := new_ds;
+                 (* Rebuild the backend so subsequent queries see the
+                    updated in-memory side. The cottas-ondisk handles are
+                    read-only and unchanged across UPDATEs (rule #15: glue
+                    only — no semantic change). *)
+                 backend_ref :=
+                   build_dataset_backend new_ds !cottas_stores_ref cfg.delta_log_path;
+                 { rb_status = 204;
+                   rb_content_type = "text/plain; charset=utf-8";
+                   rb_body = "" }
+               end
            end))
       | P.PR_Query (q, _dflt, _named) ->
         (* Stage 1: ignore default-graph-uri / named-graph-uri (would
@@ -2471,6 +2861,18 @@ let resolve_host h =
     exit 1
 
 let run_server cfg =
+  (* Durable-UPDATE stage 8: the delta log must exist (header, zero
+     batches) before ANY read through it -- cottas_with_delta_dataset_
+     backend's `DL.delta_log_read_all` has no "file absent = empty log"
+     fallback (unlike, say, --data-cottas's own missing-file handling),
+     so a first-ever `--delta-log PATH` pointed at a path nothing has
+     written yet would otherwise crash the loader thread the first
+     time it tries to build the delta-aware backend. Idempotent
+     (ensure_delta_log_exists no-ops if the file already exists from a
+     prior run or an earlier `factoidal compact`). *)
+  (match cfg.delta_log_path with
+   | Some log_path -> ensure_delta_log_exists log_path
+   | None -> ());
   (* Issue #99: bind the listening socket BEFORE doing any heavy COTTAS
      parquet decoding. Load the cheap RDF/N-Quads parts up front (these
      are usually fast and the user reasonably expects an "empty" or
@@ -2483,7 +2885,7 @@ let run_server cfg =
      COTTAS loader thread completes and after every UPDATE. *)
   let cottas_stores_ref : cottas_ondisk_loaded list ref = ref [] in
   let backend_ref : S.dataset_backend ref =
-    ref (build_dataset_backend !dataset_ref []) in
+    ref (build_dataset_backend !dataset_ref [] cfg.delta_log_path) in
   (* snapshot_iris is the list of named-graph IRIs present at full-load
      completion. It's used by the graceful-shutdown handler to diff
      against the live dataset and dump user-added (RW) graphs. We can't
@@ -2654,7 +3056,7 @@ let run_server cfg =
        let opened = open_cottas_ondisk_files cfg.data_cottas_files in
        Mutex.lock loading_mu;
        cottas_stores_ref := opened;
-       backend_ref := build_dataset_backend !dataset_ref opened;
+       backend_ref := build_dataset_backend !dataset_ref opened cfg.delta_log_path;
        (* Build snapshot_iris from the union of in-memory named graphs
           and cottas-ondisk named graphs. This gives the SIGTERM dumper
           a complete pre-RW baseline; user-added graphs will diff out. *)

@@ -696,3 +696,208 @@ let lemma_merge_on_read_matches_apply_entries
    residual states is exercised at the OCaml/CLI boundary even where
    it is not yet an F* theorem.
    --------------------------------------------------------------------- *)
+
+(* ======================================================================
+   7. update_ops_to_delta_entries — stage 8 (docs/designissues/2026-07-
+   06-durable-update-design.md §5 row 8, HTTP/Protocol wiring). This is
+   the translator the section 6 banner named and left unbuilt: turn a
+   SANDBOXED, PARSED `list update_op` (the same value factoidal_http.ml
+   already produces at the POST /update boundary, after
+   SPARQL.Update.Sandbox's rewrite pass) into the `list DL.delta_entry`
+   a durably-committed batch carries — or `None` if the request uses an
+   op this translator does not (yet) express as delta entries.
+
+   Ground-quad extraction reuses `collect_quads`/`rename_quad_bnodes`/
+   `filter_no_bnode_quads`, ALREADY-VERIFIED SPARQL11.Algebra.fst
+   functions that `apply_insert_data`/`apply_delete_data` themselves
+   call (lines 4919-5044) — this translator does not reimplement ground-
+   triple extraction or bnode freshening, it feeds the exact same
+   helpers and wraps their output as DE_Add/DE_Remove instead of an
+   in-place graph mutation. `request_salt` is threaded exactly as
+   `apply_update_ops` threads it (SPARQL11.Algebra.fst:5729-5762) so a
+   durably-committed INSERT DATA gets the SAME bnode identity the
+   in-memory evaluator would have given it, had this op run there
+   instead — required for the two paths (durable delta log vs. legacy
+   in-memory dataset_ref) to ever agree on `:insert-data-same-bnode.
+
+   Translatable vocabulary (`Some entries`):
+     - U_InsertData / U_DeleteData: any ground quads the template
+       carries, across ANY number of graphs (collect_quads already
+       walks nested GP_Graph wrappers and tags each quad with its own
+       graph — no single-graph restriction is needed here, unlike the
+       design doc §3.2 sketch's `graph_key`-scoped phrasing suggested;
+       DL.delta_entry's `graph:option T.iri` is already per-entry, and
+       fold_entries_for_graph already filters per graph_key at fold
+       time, so a multi-graph INSERT DATA template translates directly
+       into a mixed-graph delta_entry list with no fan-out logic here).
+     - U_Clear/U_Drop targeting GR_Default or GR_Graph <iri>. DE_Drop
+       only carries a named-graph iri (no DEFAULT variant — see
+       DeltaLog.fst's delta_entry banner); DROP DEFAULT has the exact
+       same triple-level effect as CLEAR DEFAULT (apply_drop's own
+       GR_Default arm just empties the default graph, identically to
+       apply_clear's), so it translates to `DE_Clear None` too — this
+       is NOT a semantic shortcut, it is what SPARQL11.Algebra.fst's
+       own apply_drop/apply_clear already do for GR_Default.
+     - U_Create <iri>: `DE_Create iri`, existence bookkeeping only
+       (module banner §2) — always translatable, never fails.
+
+   NOT translatable (`None` — the whole request is rejected, honestly,
+   rather than partially committed):
+     - U_Clear/U_Drop against GR_Named/GR_All: a fan-out over every
+       named graph the store currently has, which this op-local
+       translator cannot resolve (it never sees a `dataset`/backend,
+       by design — see the module banner's "no I/O, no assume val").
+     - U_DeleteWhere/U_Modify: require WHERE-clause evaluation against
+       the composed (base ⊕ delta) view before there are any ground
+       quads to turn into entries.
+     - U_Copy/U_Move/U_Add: read one graph_ref and write another,
+       which needs dataset-level graph lookup this translator does not
+       have.
+     - U_Load: already rejected upstream (LOAD needs HTTP I/O, gated at
+       `SPARQL.Update.Analysis.update_has_load` before this translator
+       ever runs).
+
+   This IS the stage-3.5 residual named in section 6, built now for the
+   part that is genuinely ground-quad-shaped — not a superset of it.
+   The full-generality bridge lemma (`lemma_merge_on_read_matches_
+   apply_update`, section 6's uncompiled statement) is NOT proved for
+   this translator either: proving it requires, per graph_key, that
+   `apply_update_ops` restricted to this exact vocabulary agrees with
+   `apply_entries_ref` — four separate reductions (insert_data/
+   delete_data/clear/drop each restricted to GR_Default/GR_Graph) that
+   are plausible from SPARQL11.Algebra.fst's own definitions but are
+   real, separate F* proof work, not merge-on-read logic. Per this
+   task's own escape hatch ("prove if commit-sized, else pin
+   exhaustively and keep the residual honest"): PINNED, not proved.
+   Exercised by tests/local/durable_update_stage8_http.sh, which drives
+   INSERT DATA / DELETE DATA / CLEAR / DROP / CREATE through the live
+   --rw HTTP endpoint and checks the delta-log-backed read view agrees
+   with an independent in-memory apply_update_ops run on the same op
+   sequence — the same "three ways" empirical bridge stage 3 already
+   established, now at the HTTP boundary. Every op OUTSIDE this
+   vocabulary (Modify/DeleteWhere/Copy/Move/Add) is rejected with an
+   explicit error at the OCaml boundary (factoidal_http.ml) rather than
+   silently falling back to an in-memory-only apply that would desync
+   the durable store from what a client was told succeeded — the
+   translator's `None` is load-bearing, not a placeholder.
+   ====================================================================== *)
+
+// One collected (graph, triple) pair, promoted to a DE_Add. Typed over
+// `option T.wf_iri` (collect_quads/rename_quad_bnodes's actual output
+// type), not `option T.iri` — DE_Add's field is `option T.iri`, but the
+// wf_iri -> iri refinement coercion only goes through cleanly at a
+// concrete constructor application, not through a `list`-of-tuples
+// codomain (F* cannot derive `list (option wf_iri * triple) <: list
+// (option iri * triple)` from the function's arrow type alone; see
+// RDF.Term.fsti's own `is_iri`/`wf_iri` banner and the CSVW.Conversion
+// module's `pred_valid` comment for the same trap).
+let quad_to_add (q : option T.wf_iri * triple) : DL.delta_entry =
+  let (g, t) = q in
+  // `option wf_iri` does not coerce to `option T.iri` as a whole value
+  // (F*'s subtyping does not propagate through an already-applied
+  // parametric type here) — rebuilding via Some/None forces the
+  // coercion at the single `wf_iri`-typed argument position instead,
+  // where it DOES hold (wf_iri is a plain refinement of iri).
+  let g' : option T.iri = (match g with None -> None | Some gi -> Some gi) in
+  DL.DE_Add t g'
+
+// One collected (graph, triple) pair, promoted to a DE_Remove.
+let quad_to_remove (q : option T.wf_iri * triple) : DL.delta_entry =
+  let (g, t) = q in
+  let g' : option T.iri = (match g with None -> None | Some gi -> Some gi) in
+  DL.DE_Remove t g'
+
+// Translate ONE update_op into its delta_entry sequence, or None if it
+// falls outside the ground-data vocabulary above.
+let op_to_delta_entries (request_salt : string) (op : update_op)
+  : Tot (option (list DL.delta_entry)) =
+  match op with
+  | U_InsertData g ->
+    let quads = collect_quads None g in
+    let prefix = String.concat "" ["_insdata_"; request_salt] in
+    let renamed = List.Tot.map (rename_quad_bnodes prefix) quads in
+    Some (List.Tot.map quad_to_add renamed)
+  | U_DeleteData g ->
+    let quads = filter_no_bnode_quads (collect_quads None g) in
+    Some (List.Tot.map quad_to_remove quads)
+  | U_Clear _silent GR_Default     -> Some [ DL.DE_Clear None ]
+  | U_Clear _silent (GR_Graph iri) -> Some [ DL.DE_Clear (Some iri) ]
+  | U_Clear _silent GR_Named       -> None
+  | U_Clear _silent GR_All         -> None
+  | U_Drop  _silent GR_Default     -> Some [ DL.DE_Clear None ]  // see banner
+  | U_Drop  _silent (GR_Graph iri) -> Some [ DL.DE_Drop iri ]
+  | U_Drop  _silent GR_Named       -> None
+  | U_Drop  _silent GR_All         -> None
+  | U_Create _silent iri           -> Some [ DL.DE_Create iri ]
+  | U_DeleteWhere _                -> None
+  | U_Modify _ _ _ _ _             -> None
+  | U_Copy _ _ _                   -> None
+  | U_Move _ _ _                   -> None
+  | U_Add _ _ _                    -> None
+  | U_Load _ _ _                   -> None
+
+// Translate a whole request's op list, in order (order matters:
+// fold_entries_for_graph replays entries sequentially, so an op list
+// containing e.g. an INSERT then a later DELETE of the same triple must
+// keep that order in the emitted entries). `None` if ANY op in the list
+// falls outside the translatable vocabulary — the whole request is
+// rejected rather than partially durable (see banner).
+let rec update_ops_to_delta_entries (request_salt : string) (ops : list update_op)
+  : Tot (option (list DL.delta_entry)) (decreases ops) =
+  match ops with
+  | [] -> Some []
+  | op :: rest ->
+    (match op_to_delta_entries request_salt op with
+     | None -> None
+     | Some es ->
+       (match update_ops_to_delta_entries request_salt rest with
+        | None -> None
+        | Some es' -> Some (es @ es')))
+
+(* ======================================================================
+   8. GSP write ops -> delta entries (stage 8's second wiring surface:
+   the SPARQL 1.1 Graph Store HTTP Protocol, SPARQL.GraphStore.fst).
+
+   Unlike `update_ops_to_delta_entries` above, all three GSP write verbs
+   translate COMPLETELY — no `None` case, no residual. PUT/POST/DELETE
+   are whole-graph replace/merge/remove operations against a single,
+   already-resolved target graph (the GSP request target, `gs_target`
+   in SPARQL.GraphStore.fst, is resolved to a `graph_key` by the HTTP
+   layer BEFORE this runs — no WHERE clause, no multi-graph fan-out,
+   no bnode-freshening request-salt threading the way INSERT DATA
+   needs). This is exactly the shape a `delta_entry` sequence expresses
+   natively, so no `option` return type is needed here.
+
+   `graph_key : option T.iri` mirrors `DL.delta_entry`'s own convention
+   (`None` = default graph); the OCaml boundary computes it from
+   `SPARQL.GraphStore.gs_target` (`GT_Default -> None`, `GT_Named k ->
+   Some k`) before calling in. `SPARQL.GraphStore.graph_key = string`
+   is intentionally NOT `T.wf_iri` (that module's own banner: GSP graph
+   IRIs may be relative, colon-optional) — no coercion trap here since
+   `T.iri = string` is a plain alias, not a refinement, so a bare
+   `graph_key` value already IS a `T.iri`. *)
+
+// PUT: replace the target graph's entire content with `g`. Semantically
+// CLEAR the graph then ADD every triple in `g` — `fold_entries_for_graph`
+// processes entries in order, and `DE_Clear` resets `dr_added` to `[]`
+// (module banner §2's `delta_resolved_cleared`), so the DE_Add entries
+// that follow land in a genuinely-emptied accumulator, matching PUT's
+// "replace" semantics (`SPARQL.GraphStore.gsp_put`) exactly.
+let gsp_put_to_delta_entries (graph_key : option T.iri) (g : rdf_graph)
+  : Tot (list DL.delta_entry) =
+  DL.DE_Clear graph_key :: List.Tot.map (fun (t : triple) -> DL.DE_Add t graph_key) g
+
+// POST: merge `g` into the target graph (`SPARQL.GraphStore.gsp_post`'s
+// `graph_union`) — no CLEAR, just additions; `merge_on_read`'s own
+// additive union with the base already gives set semantics (a
+// re-added existing triple is a no-op via `graph_add`'s dedup, same as
+// `gsp_post`'s `graph_union`).
+let gsp_post_to_delta_entries (graph_key : option T.iri) (g : rdf_graph)
+  : Tot (list DL.delta_entry) =
+  List.Tot.map (fun (t : triple) -> DL.DE_Add t graph_key) g
+
+// DELETE: remove the target graph entirely (`SPARQL.GraphStore.gsp_delete`
+// empties it to `empty_graph`) — a single CLEAR.
+let gsp_delete_to_delta_entries (graph_key : option T.iri)
+  : Tot (list DL.delta_entry) =
+  [ DL.DE_Clear graph_key ]

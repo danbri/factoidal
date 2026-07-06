@@ -171,3 +171,111 @@ let bound_matches (b : SPARQL11_Algebra.triple_pattern_bound)
      | FStar_Pervasives_Native.Some o ->
          RDF_Term.rdf_term_eq o t.RDF_Triple.o)
 type ('guref, 'gubase, 'dr) state_agrees = unit
+let quad_to_add
+  (q : (RDF_Term.wf_iri FStar_Pervasives_Native.option * RDF_Triple.triple))
+  : RDF_Store_Columnar_DeltaLog.delta_entry=
+  let uu___ = q in
+  match uu___ with
+  | (g, t) ->
+      let g' =
+        match g with
+        | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+        | FStar_Pervasives_Native.Some gi -> FStar_Pervasives_Native.Some gi in
+      RDF_Store_Columnar_DeltaLog.DE_Add (t, g')
+let quad_to_remove
+  (q : (RDF_Term.wf_iri FStar_Pervasives_Native.option * RDF_Triple.triple))
+  : RDF_Store_Columnar_DeltaLog.delta_entry=
+  let uu___ = q in
+  match uu___ with
+  | (g, t) ->
+      let g' =
+        match g with
+        | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+        | FStar_Pervasives_Native.Some gi -> FStar_Pervasives_Native.Some gi in
+      RDF_Store_Columnar_DeltaLog.DE_Remove (t, g')
+let op_to_delta_entries (request_salt : Prims.string)
+  (op : SPARQL11_Algebra.update_op) :
+  RDF_Store_Columnar_DeltaLog.delta_entry Prims.list
+    FStar_Pervasives_Native.option=
+  match op with
+  | SPARQL11_Algebra.U_InsertData g ->
+      let quads =
+        SPARQL11_Algebra.collect_quads FStar_Pervasives_Native.None g in
+      let prefix = FStar_String.concat "" ["_insdata_"; request_salt] in
+      let renamed =
+        FStar_List_Tot_Base.map (SPARQL11_Algebra.rename_quad_bnodes prefix)
+          quads in
+      FStar_Pervasives_Native.Some
+        (FStar_List_Tot_Base.map quad_to_add renamed)
+  | SPARQL11_Algebra.U_DeleteData g ->
+      let quads =
+        SPARQL11_Algebra.filter_no_bnode_quads
+          (SPARQL11_Algebra.collect_quads FStar_Pervasives_Native.None g) in
+      FStar_Pervasives_Native.Some
+        (FStar_List_Tot_Base.map quad_to_remove quads)
+  | SPARQL11_Algebra.U_Clear (_silent, SPARQL11_Algebra.GR_Default) ->
+      FStar_Pervasives_Native.Some
+        [RDF_Store_Columnar_DeltaLog.DE_Clear FStar_Pervasives_Native.None]
+  | SPARQL11_Algebra.U_Clear (_silent, SPARQL11_Algebra.GR_Graph iri) ->
+      FStar_Pervasives_Native.Some
+        [RDF_Store_Columnar_DeltaLog.DE_Clear
+           (FStar_Pervasives_Native.Some iri)]
+  | SPARQL11_Algebra.U_Clear (_silent, SPARQL11_Algebra.GR_Named) ->
+      FStar_Pervasives_Native.None
+  | SPARQL11_Algebra.U_Clear (_silent, SPARQL11_Algebra.GR_All) ->
+      FStar_Pervasives_Native.None
+  | SPARQL11_Algebra.U_Drop (_silent, SPARQL11_Algebra.GR_Default) ->
+      FStar_Pervasives_Native.Some
+        [RDF_Store_Columnar_DeltaLog.DE_Clear FStar_Pervasives_Native.None]
+  | SPARQL11_Algebra.U_Drop (_silent, SPARQL11_Algebra.GR_Graph iri) ->
+      FStar_Pervasives_Native.Some [RDF_Store_Columnar_DeltaLog.DE_Drop iri]
+  | SPARQL11_Algebra.U_Drop (_silent, SPARQL11_Algebra.GR_Named) ->
+      FStar_Pervasives_Native.None
+  | SPARQL11_Algebra.U_Drop (_silent, SPARQL11_Algebra.GR_All) ->
+      FStar_Pervasives_Native.None
+  | SPARQL11_Algebra.U_Create (_silent, iri) ->
+      FStar_Pervasives_Native.Some
+        [RDF_Store_Columnar_DeltaLog.DE_Create iri]
+  | SPARQL11_Algebra.U_DeleteWhere uu___ -> FStar_Pervasives_Native.None
+  | SPARQL11_Algebra.U_Modify (uu___, uu___1, uu___2, uu___3, uu___4) ->
+      FStar_Pervasives_Native.None
+  | SPARQL11_Algebra.U_Copy (uu___, uu___1, uu___2) ->
+      FStar_Pervasives_Native.None
+  | SPARQL11_Algebra.U_Move (uu___, uu___1, uu___2) ->
+      FStar_Pervasives_Native.None
+  | SPARQL11_Algebra.U_Add (uu___, uu___1, uu___2) ->
+      FStar_Pervasives_Native.None
+  | SPARQL11_Algebra.U_Load (uu___, uu___1, uu___2) ->
+      FStar_Pervasives_Native.None
+let rec update_ops_to_delta_entries (request_salt : Prims.string)
+  (ops : SPARQL11_Algebra.update_op Prims.list) :
+  RDF_Store_Columnar_DeltaLog.delta_entry Prims.list
+    FStar_Pervasives_Native.option=
+  match ops with
+  | [] -> FStar_Pervasives_Native.Some []
+  | op::rest ->
+      (match op_to_delta_entries request_salt op with
+       | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+       | FStar_Pervasives_Native.Some es ->
+           (match update_ops_to_delta_entries request_salt rest with
+            | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+            | FStar_Pervasives_Native.Some es' ->
+                FStar_Pervasives_Native.Some
+                  (FStar_List_Tot_Base.op_At es es')))
+let gsp_put_to_delta_entries
+  (graph_key : RDF_Term.iri FStar_Pervasives_Native.option)
+  (g : RDF_Graph.rdf_graph) :
+  RDF_Store_Columnar_DeltaLog.delta_entry Prims.list=
+  (RDF_Store_Columnar_DeltaLog.DE_Clear graph_key) ::
+  (FStar_List_Tot_Base.map
+     (fun t -> RDF_Store_Columnar_DeltaLog.DE_Add (t, graph_key)) g)
+let gsp_post_to_delta_entries
+  (graph_key : RDF_Term.iri FStar_Pervasives_Native.option)
+  (g : RDF_Graph.rdf_graph) :
+  RDF_Store_Columnar_DeltaLog.delta_entry Prims.list=
+  FStar_List_Tot_Base.map
+    (fun t -> RDF_Store_Columnar_DeltaLog.DE_Add (t, graph_key)) g
+let gsp_delete_to_delta_entries
+  (graph_key : RDF_Term.iri FStar_Pervasives_Native.option) :
+  RDF_Store_Columnar_DeltaLog.delta_entry Prims.list=
+  [RDF_Store_Columnar_DeltaLog.DE_Clear graph_key]
