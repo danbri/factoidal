@@ -2280,6 +2280,11 @@ let si_assigns_prebound (si : Alg.select_item) : bool =
 let rec prebinding_unsupported (p : Alg.group_graph_pattern) : Tot (option string) (decreases p) =
   match p with
   | Alg.GP_Minus _ _ -> Some "MINUS is not supported with pre-bound variables"
+  // LATERAL's RHS is correlated-substituted (SPARQL11.Algebra.lateral_substitute),
+  // not $this-substituted (subst_var_gp above intentionally leaves GP_Lateral's
+  // children untouched via its wildcard) -- reject rather than silently skip
+  // the pre-binding substitution, same posture as MINUS/SERVICE/VALUES above.
+  | Alg.GP_Lateral _ _ -> Some "LATERAL is not supported with pre-bound variables"
   | Alg.GP_Service _ _ _ -> Some "SERVICE is not supported with pre-bound variables"
   | Alg.GP_ServiceVar _ _ _ -> Some "SERVICE is not supported with pre-bound variables"
   | Alg.GP_Values _ _ -> Some "VALUES is not supported with pre-bound variables"

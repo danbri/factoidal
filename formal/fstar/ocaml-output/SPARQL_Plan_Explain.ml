@@ -7,6 +7,7 @@ type plan_node =
   | Plan_Union of plan_node * plan_node 
   | Plan_Graph of Prims.string * plan_node 
   | Plan_Minus of plan_node * plan_node 
+  | Plan_Lateral of plan_node * plan_node 
   | Plan_Bind of SPARQL11_Algebra.var_name * plan_node 
   | Plan_Values of SPARQL11_Algebra.var_name Prims.list 
   | Plan_Service of Prims.string * plan_node 
@@ -53,6 +54,12 @@ let __proj__Plan_Minus__item___0 (projectee : plan_node) : plan_node=
   match projectee with | Plan_Minus (_0, _1) -> _0
 let __proj__Plan_Minus__item___1 (projectee : plan_node) : plan_node=
   match projectee with | Plan_Minus (_0, _1) -> _1
+let uu___is_Plan_Lateral (projectee : plan_node) : Prims.bool=
+  match projectee with | Plan_Lateral (_0, _1) -> true | uu___ -> false
+let __proj__Plan_Lateral__item___0 (projectee : plan_node) : plan_node=
+  match projectee with | Plan_Lateral (_0, _1) -> _0
+let __proj__Plan_Lateral__item___1 (projectee : plan_node) : plan_node=
+  match projectee with | Plan_Lateral (_0, _1) -> _1
 let uu___is_Plan_Bind (projectee : plan_node) : Prims.bool=
   match projectee with | Plan_Bind (_0, _1) -> true | uu___ -> false
 let __proj__Plan_Bind__item___0 (projectee : plan_node) :
@@ -211,12 +218,14 @@ let rec build_plan (p : SPARQL11_Algebra.group_graph_pattern)
         ((RDF_Pretty.pattern_term_short_explain gt), (build_plan p1 rows))
   | SPARQL11_Algebra.GP_Minus (p1, p2) ->
       Plan_Minus ((build_plan p1 rows), (build_plan p2 rows))
+  | SPARQL11_Algebra.GP_Lateral (p1, p2) ->
+      Plan_Lateral ((build_plan p1 rows), (build_plan p2 rows))
   | SPARQL11_Algebra.GP_Bind (uu___, v, p1) ->
       Plan_Bind (v, (build_plan p1 rows))
   | SPARQL11_Algebra.GP_Values (vars, uu___) -> Plan_Values vars
   | SPARQL11_Algebra.GP_Service (iri, p1, uu___) ->
       Plan_Service
-        ((RDF_Pretty.term_short_explain (RDF_Graph_Executable.T_IRI iri)),
+        ((RDF_Pretty.term_short_explain (RDF_Term.T_IRI iri)),
           (build_plan p1 rows))
   | SPARQL11_Algebra.GP_ServiceVar (v, p1, uu___) ->
       Plan_ServiceVar (v, (build_plan p1 rows))
@@ -375,6 +384,12 @@ let rec plan_node_to_text (depth : Prims.nat) (n : plan_node) : Prims.string=
            (Prims.strcat nl
               (Prims.strcat (plan_node_to_text (depth + Prims.int_one) p1)
                  (plan_node_to_text (depth + Prims.int_one) p2))))
+  | Plan_Lateral (p1, p2) ->
+      Prims.strcat ind
+        (Prims.strcat "Lateral"
+           (Prims.strcat nl
+              (Prims.strcat (plan_node_to_text (depth + Prims.int_one) p1)
+                 (plan_node_to_text (depth + Prims.int_one) p2))))
   | Plan_Bind (v, p1) ->
       Prims.strcat ind
         (Prims.strcat "Bind ?"
@@ -513,6 +528,11 @@ let rec plan_node_to_json (n : plan_node) : Prims.string=
               (Prims.strcat (plan_node_to_json p1) "}")))
   | Plan_Minus (p1, p2) ->
       Prims.strcat "{\"kind\":\"minus\",\"left\":"
+        (Prims.strcat (plan_node_to_json p1)
+           (Prims.strcat ",\"right\":"
+              (Prims.strcat (plan_node_to_json p2) "}")))
+  | Plan_Lateral (p1, p2) ->
+      Prims.strcat "{\"kind\":\"lateral\",\"left\":"
         (Prims.strcat (plan_node_to_json p1)
            (Prims.strcat ",\"right\":"
               (Prims.strcat (plan_node_to_json p2) "}")))

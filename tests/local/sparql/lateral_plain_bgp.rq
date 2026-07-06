@@ -1,0 +1,14 @@
+PREFIX : <https://example.org/>
+PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+
+# Plain correlated BGP inside LATERAL, no BIND/VALUES/sub-SELECT. Since
+# nothing is "assigned" at the RHS's top level, this is semantically
+# identical to the equivalent ordinary join (?s rdf:type :Person . ?s
+# :label ?label .) -- LATERAL degenerates to JOIN when the RHS only
+# pattern-matches, never assigns. Sanity/regression check for the
+# substitution machinery outside the sub-SELECT case.
+SELECT ?s ?label WHERE {
+  ?s rdf:type :Person .
+  LATERAL { ?s :label ?label }
+}
+ORDER BY ?s ?label

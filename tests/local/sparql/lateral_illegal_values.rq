@@ -1,0 +1,9 @@
+PREFIX : <https://example.org/>
+PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+
+# Illegal: LATERAL's RHS reassigns ?s via VALUES, and ?s is already
+# bound by the LHS.
+SELECT * WHERE {
+  ?s rdf:type :Person .
+  LATERAL { VALUES ?s { <https://example.org/nope> } }
+}

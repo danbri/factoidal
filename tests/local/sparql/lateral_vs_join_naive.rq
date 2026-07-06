@@ -1,0 +1,15 @@
+PREFIX : <https://example.org/>
+PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+
+# The naive ordinary-JOIN counterpart of lateral_topn_per_key.rq: without
+# LATERAL's per-row substitution, ORDER BY + LIMIT applies GLOBALLY to
+# the whole join, giving exactly ONE row total instead of one row PER
+# SUBJECT. This is the concrete case where LATERAL and an ordinary join
+# produce observably different results (2 rows for LATERAL: alice + bob,
+# vs 1 row here) -- the reason SPARQL needed LATERAL in the first place.
+SELECT ?s ?label WHERE {
+  ?s rdf:type :Person .
+  ?s :label ?label
+}
+ORDER BY ?label
+LIMIT 1

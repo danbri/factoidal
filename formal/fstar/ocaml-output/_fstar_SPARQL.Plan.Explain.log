@@ -1,3 +1,15 @@
+* Warning 241 at RDF.Pretty.fst(0,0-0,0):
+  - Unable to load RDF.Pretty.fst.checked since checked file
+    RDF.Pretty.fst.checked is stale (dependence hash mismatch, use --debug
+    CheckedFiles for more details); will recheck RDF.Pretty.fst (suppressing
+    this warning for further modules)
+
 Extracted module SPARQL.Plan.Explain
+* Warning 247 at SPARQL.Plan.Explain.fst(0,0-0,0):
+  - Checked file SPARQL.Plan.Explain.fst.checked was not written.
+  - Reason:
+      checked file RDF.Pretty.fst.checked is stale (dependence hash mismatch,
+      use --debug CheckedFiles for more details)
+
 Verified module: SPARQL.Plan.Explain
 All verification conditions discharged successfully

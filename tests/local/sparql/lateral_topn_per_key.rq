@@ -1,0 +1,22 @@
+PREFIX : <https://example.org/>
+PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+
+# Jena's motivating "top-N-per-key" example (lateral-join.html): pick
+# exactly one label per subject, chosen deterministically via ORDER BY +
+# LIMIT inside the LATERAL sub-SELECT. The inner sub-SELECT MUST use
+# `SELECT *` (not `SELECT ?label`) -- per the Jena doc's own "Sub-SELECT
+# projection masking" rule, LATERAL only substitutes the outer ?s into
+# the inner WHERE clause for variables the sub-SELECT actually projects.
+# `SELECT *` projects ?s too, so the outer row's ?s is substituted in
+# before LIMIT applies, giving one label per outer subject. (Confirmed
+# against Apache Jena 5.2.0 arq -- see lateral_subselect_masking.rq for
+# the SELECT-?label-only variant that does NOT correlate.) carol has no
+# :label triple, so her row disappears (LATERAL is a flatmap/join, not a
+# left-join -- an empty per-row RHS drops the row).
+SELECT ?s ?label WHERE {
+  ?s rdf:type :Person .
+  LATERAL {
+    SELECT * WHERE { ?s :label ?label } ORDER BY ?label LIMIT 1
+  }
+}
+ORDER BY ?s

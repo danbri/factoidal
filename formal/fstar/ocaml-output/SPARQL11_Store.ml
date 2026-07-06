@@ -463,6 +463,7 @@ let rec pattern_predicate_hint (p : SPARQL11_Algebra.group_graph_pattern) :
       pattern_predicate_hint p1
   | SPARQL11_Algebra.GP_Union (p1, uu___) -> pattern_predicate_hint p1
   | SPARQL11_Algebra.GP_Minus (p1, uu___) -> pattern_predicate_hint p1
+  | SPARQL11_Algebra.GP_Lateral (p1, uu___) -> pattern_predicate_hint p1
   | SPARQL11_Algebra.GP_Empty -> FStar_Pervasives_Native.None
   | SPARQL11_Algebra.GP_Values (uu___, uu___1) ->
       FStar_Pervasives_Native.None
@@ -812,6 +813,32 @@ let rec eval_pattern_backend
   | SPARQL11_Algebra.GP_Minus (p1, p2) ->
       SPARQL11_Algebra.minus (eval_pattern_backend base p1 gb dsb)
         (eval_pattern_backend base p2 gb dsb)
+  | SPARQL11_Algebra.GP_Lateral (p1, p2) ->
+      let omega1 = eval_pattern_backend base p1 gb dsb in
+      let ds0 = materialize_dataset_backend dsb in
+      let g_current =
+        backend_search gb
+          {
+            SPARQL11_Algebra.bs = FStar_Pervasives_Native.None;
+            SPARQL11_Algebra.bp = FStar_Pervasives_Native.None;
+            SPARQL11_Algebra.bo = FStar_Pervasives_Native.None
+          } in
+      let ds =
+        {
+          RDF_Graph.ds_default = g_current;
+          RDF_Graph.ds_named = (ds0.RDF_Graph.ds_named)
+        } in
+      RDF_List_Helpers.concatMap_tr
+        (fun mu1 ->
+           let p2' = SPARQL11_Algebra.lateral_substitute mu1 p2 in
+           let omega2 = SPARQL11_Algebra.eval_pattern base p2' g_current ds in
+           SPARQL11_Algebra.list_filter_map
+             (fun mu2 ->
+                if SPARQL11_Algebra.sm_compatible mu1 mu2
+                then
+                  FStar_Pervasives_Native.Some
+                    (SPARQL11_Algebra.sm_merge mu1 mu2)
+                else FStar_Pervasives_Native.None) omega2) omega1
   | SPARQL11_Algebra.GP_Empty -> [SPARQL11_Algebra.sm_empty]
   | SPARQL11_Algebra.GP_Bind (e, v, p') ->
       let omega = eval_pattern_backend base p' gb dsb in

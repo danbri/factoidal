@@ -498,6 +498,7 @@ and group_graph_pattern =
   | GP_Union of group_graph_pattern * group_graph_pattern 
   | GP_Graph of pattern_term * group_graph_pattern 
   | GP_Minus of group_graph_pattern * group_graph_pattern 
+  | GP_Lateral of group_graph_pattern * group_graph_pattern 
   | GP_Bind of expr * var_name * group_graph_pattern 
   | GP_Values of var_name Prims.list * RDF_Term.rdf_term
   FStar_Pervasives_Native.option Prims.list Prims.list 
@@ -943,6 +944,12 @@ let __proj__GP_Minus__item___0 (projectee : group_graph_pattern) :
   group_graph_pattern= match projectee with | GP_Minus (_0, _1) -> _0
 let __proj__GP_Minus__item___1 (projectee : group_graph_pattern) :
   group_graph_pattern= match projectee with | GP_Minus (_0, _1) -> _1
+let uu___is_GP_Lateral (projectee : group_graph_pattern) : Prims.bool=
+  match projectee with | GP_Lateral (_0, _1) -> true | uu___ -> false
+let __proj__GP_Lateral__item___0 (projectee : group_graph_pattern) :
+  group_graph_pattern= match projectee with | GP_Lateral (_0, _1) -> _0
+let __proj__GP_Lateral__item___1 (projectee : group_graph_pattern) :
+  group_graph_pattern= match projectee with | GP_Lateral (_0, _1) -> _1
 let uu___is_GP_Bind (projectee : group_graph_pattern) : Prims.bool=
   match projectee with | GP_Bind (_0, _1, _2) -> true | uu___ -> false
 let __proj__GP_Bind__item___0 (projectee : group_graph_pattern) : expr=
@@ -2895,6 +2902,164 @@ let join (omega1 : solution_sequence) (omega2 : solution_sequence) :
             if sm_compatible mu1 mu2
             then FStar_Pervasives_Native.Some (sm_merge mu1 mu2)
             else FStar_Pervasives_Native.None) omega2) omega1
+let lateral_subst_pattern_term (mu : RDF_Graph_Executable.solution_mapping)
+  (pt : pattern_term) : pattern_term=
+  match pt with
+  | PT_Var v ->
+      (match sm_lookup v mu with
+       | FStar_Pervasives_Native.Some (RDF_Term.T_IRI i) -> PT_IRI i
+       | FStar_Pervasives_Native.Some (RDF_Term.T_BNode b) -> PT_BNode b
+       | FStar_Pervasives_Native.Some (RDF_Term.T_Literal l) -> PT_Literal l
+       | FStar_Pervasives_Native.None -> PT_Var v)
+  | uu___ -> pt
+let lateral_subst_pattern_subject
+  (mu : RDF_Graph_Executable.solution_mapping) (ps : pattern_subject) :
+  pattern_subject=
+  match ps with
+  | PS_Var v ->
+      (match sm_lookup v mu with
+       | FStar_Pervasives_Native.Some (RDF_Term.T_IRI i) -> PS_IRI i
+       | FStar_Pervasives_Native.Some (RDF_Term.T_BNode b) -> PS_BNode b
+       | FStar_Pervasives_Native.Some (RDF_Term.T_Literal uu___) -> PS_Var v
+       | FStar_Pervasives_Native.None -> PS_Var v)
+  | uu___ -> ps
+let lateral_subst_triple_pattern (mu : RDF_Graph_Executable.solution_mapping)
+  (tp : triple_pattern) : triple_pattern=
+  {
+    tp_s = (lateral_subst_pattern_subject mu tp.tp_s);
+    tp_p = (lateral_subst_pattern_term mu tp.tp_p);
+    tp_o = (lateral_subst_pattern_term mu tp.tp_o)
+  }
+let lateral_subst_bgp (mu : RDF_Graph_Executable.solution_mapping) (b : bgp)
+  : bgp= FStar_List_Tot_Base.map (lateral_subst_triple_pattern mu) b
+let rec lateral_assignable_vars (p : group_graph_pattern) :
+  var_name Prims.list=
+  match p with
+  | GP_Bind (uu___, v, p1) -> v :: (lateral_assignable_vars p1)
+  | GP_Values (vars, uu___) -> vars
+  | GP_SubSelect q ->
+      (match q.q_form with
+       | QF_Select (Select_Vars items) ->
+           list_filter_map
+             (fun item ->
+                match item with
+                | SI_Var uu___ -> FStar_Pervasives_Native.None
+                | SI_Expr (uu___, v) -> FStar_Pervasives_Native.Some v) items
+       | QF_Select (Select_All) -> lateral_assignable_vars q.q_pattern
+       | uu___ -> [])
+  | GP_Join (p1, p2) ->
+      FStar_List_Tot_Base.op_At (lateral_assignable_vars p1)
+        (lateral_assignable_vars p2)
+  | GP_LeftJoin (p1, p2, uu___) ->
+      FStar_List_Tot_Base.op_At (lateral_assignable_vars p1)
+        (lateral_assignable_vars p2)
+  | GP_Union (p1, p2) ->
+      FStar_List_Tot_Base.op_At (lateral_assignable_vars p1)
+        (lateral_assignable_vars p2)
+  | GP_Lateral (p1, p2) ->
+      FStar_List_Tot_Base.op_At (lateral_assignable_vars p1)
+        (lateral_assignable_vars p2)
+  | GP_Filter (uu___, p1) -> lateral_assignable_vars p1
+  | GP_Graph (uu___, p1) -> lateral_assignable_vars p1
+  | GP_Minus (p1, uu___) -> lateral_assignable_vars p1
+  | GP_Service (uu___, p1, uu___1) -> lateral_assignable_vars p1
+  | GP_ServiceVar (uu___, p1, uu___1) -> lateral_assignable_vars p1
+  | GP_BGP uu___ -> []
+  | GP_PropertyPath (uu___, uu___1, uu___2) -> []
+  | GP_Empty -> []
+let lateral_subselect_visible_vars (q : query) :
+  var_name Prims.list FStar_Pervasives_Native.option=
+  match q.q_form with
+  | QF_Select (Select_Vars items) ->
+      FStar_Pervasives_Native.Some
+        (FStar_List_Tot_Base.map
+           (fun item ->
+              match item with | SI_Var v -> v | SI_Expr (uu___, v) -> v)
+           items)
+  | QF_Select (Select_All) -> FStar_Pervasives_Native.None
+  | uu___ -> FStar_Pervasives_Native.Some []
+let rec lateral_substitute (mu : RDF_Graph_Executable.solution_mapping)
+  (p : group_graph_pattern) : group_graph_pattern=
+  match p with
+  | GP_BGP b -> GP_BGP (lateral_subst_bgp mu b)
+  | GP_Join (p1, p2) ->
+      GP_Join ((lateral_substitute mu p1), (lateral_substitute mu p2))
+  | GP_LeftJoin (p1, p2, e) ->
+      GP_LeftJoin ((lateral_substitute mu p1), (lateral_substitute mu p2), e)
+  | GP_Filter (e, p1) -> GP_Filter (e, (lateral_substitute mu p1))
+  | GP_Union (p1, p2) ->
+      GP_Union ((lateral_substitute mu p1), (lateral_substitute mu p2))
+  | GP_Graph (gt, p1) ->
+      GP_Graph
+        ((lateral_subst_pattern_term mu gt), (lateral_substitute mu p1))
+  | GP_Minus (p1, p2) ->
+      GP_Minus ((lateral_substitute mu p1), (lateral_substitute mu p2))
+  | GP_Bind (e, v, p1) -> GP_Bind (e, v, (lateral_substitute mu p1))
+  | GP_Values (vars, rows) -> GP_Values (vars, rows)
+  | GP_Service (iri, p1, silent) ->
+      GP_Service (iri, (lateral_substitute mu p1), silent)
+  | GP_ServiceVar (v, p1, silent) ->
+      (match sm_lookup v mu with
+       | FStar_Pervasives_Native.Some (RDF_Term.T_IRI iri) ->
+           if RDF_Term.is_iri iri
+           then GP_Service (iri, (lateral_substitute mu p1), silent)
+           else GP_ServiceVar (v, (lateral_substitute mu p1), silent)
+       | uu___ -> GP_ServiceVar (v, (lateral_substitute mu p1), silent))
+  | GP_SubSelect q ->
+      let mu_visible =
+        match lateral_subselect_visible_vars q with
+        | FStar_Pervasives_Native.None -> mu
+        | FStar_Pervasives_Native.Some vis ->
+            FStar_List_Tot_Base.filter
+              (fun b ->
+                 FStar_List_Tot_Base.existsb
+                   (fun v -> v = (FStar_Pervasives_Native.fst b)) vis) mu in
+      let shadowed = lateral_assignable_vars q.q_pattern in
+      let mu' =
+        FStar_List_Tot_Base.filter
+          (fun b ->
+             Prims.op_Negation
+               (FStar_List_Tot_Base.existsb
+                  (fun s -> s = (FStar_Pervasives_Native.fst b)) shadowed))
+          mu_visible in
+      GP_SubSelect
+        {
+          q_base = (q.q_base);
+          q_prefixes = (q.q_prefixes);
+          q_form = (q.q_form);
+          q_dataset = (q.q_dataset);
+          q_pattern = (lateral_substitute mu' q.q_pattern);
+          q_group_by = (q.q_group_by);
+          q_having = (q.q_having);
+          q_modifier = (q.q_modifier);
+          q_values = (q.q_values)
+        }
+  | GP_PropertyPath (ps, pp, pt) ->
+      GP_PropertyPath
+        ((lateral_subst_pattern_subject mu ps), pp,
+          (lateral_subst_pattern_term mu pt))
+  | GP_Lateral (p1, p2) ->
+      GP_Lateral ((lateral_substitute mu p1), (lateral_substitute mu p2))
+  | GP_Empty -> GP_Empty
+let lateral_wrap_as_query (p : group_graph_pattern) : query=
+  {
+    q_base = FStar_Pervasives_Native.None;
+    q_prefixes = [];
+    q_form = (QF_Select Select_All);
+    q_dataset = [];
+    q_pattern = p;
+    q_group_by = FStar_Pervasives_Native.None;
+    q_having = FStar_Pervasives_Native.None;
+    q_modifier =
+      {
+        sm_order_by = FStar_Pervasives_Native.None;
+        sm_distinct = false;
+        sm_reduced = false;
+        sm_offset = FStar_Pervasives_Native.None;
+        sm_limit = FStar_Pervasives_Native.None
+      };
+    q_values = FStar_Pervasives_Native.None
+  }
 let eval_expr_ebv_ref :
   (RDF_Term.wf_iri FStar_Pervasives_Native.option ->
     expr -> RDF_Graph_Executable.solution_mapping -> Prims.bool) Stdlib.ref=
@@ -3287,6 +3452,19 @@ let rec eval_pattern_store
   | GP_Minus (p1, p2) ->
       minus (eval_pattern_store base p1 gs dss)
         (eval_pattern_store base p2 gs dss)
+  | GP_Lateral (p1, p2) ->
+      let omega1 = eval_pattern_store base p1 gs dss in
+      RDF_List_Helpers.concatMap_tr
+        (fun mu1 ->
+           let p2' = lateral_substitute mu1 p2 in
+           let omega2 =
+             eval_subselect_fwd (lateral_wrap_as_query p2') gs.gs_graph
+               (store_to_dataset dss) in
+           list_filter_map
+             (fun mu2 ->
+                if sm_compatible mu1 mu2
+                then FStar_Pervasives_Native.Some (sm_merge mu1 mu2)
+                else FStar_Pervasives_Native.None) omega2) omega1
   | GP_Empty -> [sm_empty]
   | GP_Bind (e, v, p') ->
       let omega = eval_pattern_store base p' gs dss in
@@ -5087,6 +5265,10 @@ let rec rewrite_query_bnodes_pattern (p : group_graph_pattern) :
       GP_Minus
         ((rewrite_query_bnodes_pattern p1),
           (rewrite_query_bnodes_pattern p2))
+  | GP_Lateral (p1, p2) ->
+      GP_Lateral
+        ((rewrite_query_bnodes_pattern p1),
+          (rewrite_query_bnodes_pattern p2))
   | GP_Bind (e, v, p1) -> GP_Bind (e, v, (rewrite_query_bnodes_pattern p1))
   | GP_SubSelect q ->
       GP_SubSelect
@@ -5919,6 +6101,8 @@ let rec substitute_pattern (mu : RDF_Graph_Executable.solution_mapping)
       GP_Graph ((substitute_pattern_term mu gt), (substitute_pattern mu p1))
   | GP_Minus (p1, p2) ->
       GP_Minus ((substitute_pattern mu p1), (substitute_pattern mu p2))
+  | GP_Lateral (p1, p2) ->
+      GP_Lateral ((substitute_pattern mu p1), (substitute_pattern mu p2))
   | GP_Bind (e, v, p1) -> GP_Bind (e, v, (substitute_pattern mu p1))
   | GP_Values (vars, rows) -> GP_Values (vars, rows)
   | GP_Service (iri, p1, silent) -> GP_Service (iri, p1, silent)
@@ -5952,6 +6136,7 @@ let rec ggp_has_var (v : var_name) (p : group_graph_pattern) : Prims.bool=
   | GP_Union (p1, p2) -> (ggp_has_var v p1) || (ggp_has_var v p2)
   | GP_Graph (uu___, p1) -> ggp_has_var v p1
   | GP_Minus (p1, p2) -> (ggp_has_var v p1) || (ggp_has_var v p2)
+  | GP_Lateral (p1, p2) -> (ggp_has_var v p1) || (ggp_has_var v p2)
   | GP_Bind (uu___, bv, p1) -> (bv = v) || (ggp_has_var v p1)
   | GP_Values (vars, uu___) ->
       FStar_List_Tot_Base.existsb (fun vn -> vn = v) vars

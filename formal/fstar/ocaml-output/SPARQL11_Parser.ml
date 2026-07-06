@@ -13,6 +13,7 @@ type token =
   | Tok_FILTER 
   | Tok_BIND 
   | Tok_VALUES 
+  | Tok_LATERAL 
   | Tok_GRAPH 
   | Tok_SERVICE 
   | Tok_SILENT 
@@ -175,6 +176,8 @@ let uu___is_Tok_BIND (projectee : token) : Prims.bool=
   match projectee with | Tok_BIND -> true | uu___ -> false
 let uu___is_Tok_VALUES (projectee : token) : Prims.bool=
   match projectee with | Tok_VALUES -> true | uu___ -> false
+let uu___is_Tok_LATERAL (projectee : token) : Prims.bool=
+  match projectee with | Tok_LATERAL -> true | uu___ -> false
 let uu___is_Tok_GRAPH (projectee : token) : Prims.bool=
   match projectee with | Tok_GRAPH -> true | uu___ -> false
 let uu___is_Tok_SERVICE (projectee : token) : Prims.bool=
@@ -934,88 +937,96 @@ let keyword_of_upper (upper : Prims.string) (original : Prims.string) :
                     if streq upper "MINUS"
                     then Tok_MINUS_KW
                     else
-                      if streq upper "FILTER"
-                      then Tok_FILTER
+                      if streq upper "LATERAL"
+                      then Tok_LATERAL
                       else
-                        if streq upper "BIND"
-                        then Tok_BIND
+                        if streq upper "FILTER"
+                        then Tok_FILTER
                         else
-                          if streq upper "VALUES"
-                          then Tok_VALUES
+                          if streq upper "BIND"
+                          then Tok_BIND
                           else
-                            if streq upper "GRAPH"
-                            then Tok_GRAPH
+                            if streq upper "VALUES"
+                            then Tok_VALUES
                             else
-                              if streq upper "SERVICE"
-                              then Tok_SERVICE
+                              if streq upper "GRAPH"
+                              then Tok_GRAPH
                               else
-                                if streq upper "SILENT"
-                                then Tok_SILENT
+                                if streq upper "SERVICE"
+                                then Tok_SERVICE
                                 else
-                                  if streq upper "EXISTS"
-                                  then Tok_EXISTS
+                                  if streq upper "SILENT"
+                                  then Tok_SILENT
                                   else
-                                    if streq upper "NOT"
-                                    then Tok_NOT
+                                    if streq upper "EXISTS"
+                                    then Tok_EXISTS
                                     else
-                                      if streq upper "AS"
-                                      then Tok_AS
+                                      if streq upper "NOT"
+                                      then Tok_NOT
                                       else
-                                        if streq upper "DISTINCT"
-                                        then Tok_DISTINCT
+                                        if streq upper "AS"
+                                        then Tok_AS
                                         else
-                                          if streq upper "REDUCED"
-                                          then Tok_REDUCED
+                                          if streq upper "DISTINCT"
+                                          then Tok_DISTINCT
                                           else
-                                            if streq upper "ORDER"
-                                            then Tok_ORDER
+                                            if streq upper "REDUCED"
+                                            then Tok_REDUCED
                                             else
-                                              if streq upper "BY"
-                                              then Tok_BY
+                                              if streq upper "ORDER"
+                                              then Tok_ORDER
                                               else
-                                                if streq upper "ASC"
-                                                then Tok_ASC
+                                                if streq upper "BY"
+                                                then Tok_BY
                                                 else
-                                                  if streq upper "DESC"
-                                                  then Tok_DESC
+                                                  if streq upper "ASC"
+                                                  then Tok_ASC
                                                   else
-                                                    if streq upper "GROUP"
-                                                    then Tok_GROUP
+                                                    if streq upper "DESC"
+                                                    then Tok_DESC
                                                     else
-                                                      if streq upper "HAVING"
-                                                      then Tok_HAVING
+                                                      if streq upper "GROUP"
+                                                      then Tok_GROUP
                                                       else
                                                         if
-                                                          streq upper "LIMIT"
-                                                        then Tok_LIMIT
+                                                          streq upper
+                                                            "HAVING"
+                                                        then Tok_HAVING
                                                         else
                                                           if
                                                             streq upper
-                                                              "OFFSET"
-                                                          then Tok_OFFSET
+                                                              "LIMIT"
+                                                          then Tok_LIMIT
                                                           else
                                                             if
                                                               streq upper
-                                                                "FROM"
-                                                            then Tok_FROM
+                                                                "OFFSET"
+                                                            then Tok_OFFSET
                                                             else
                                                               if
                                                                 streq upper
-                                                                  "NAMED"
-                                                              then Tok_NAMED
+                                                                  "FROM"
+                                                              then Tok_FROM
                                                               else
                                                                 if
                                                                   streq upper
-                                                                    "IN"
-                                                                then Tok_IN
+                                                                    "NAMED"
+                                                                then
+                                                                  Tok_NAMED
                                                                 else
                                                                   if
                                                                     streq
                                                                     upper
-                                                                    "TRUE"
-                                                                  then
-                                                                    Tok_TRUE
+                                                                    "IN"
+                                                                  then Tok_IN
                                                                   else
+                                                                    if
+                                                                    streq
+                                                                    upper
+                                                                    "TRUE"
+                                                                    then
+                                                                    Tok_TRUE
+                                                                    else
                                                                     if
                                                                     streq
                                                                     upper
@@ -3190,6 +3201,8 @@ and ggp_labeled_bnodes (g : SPARQL11_Algebra.group_graph_pattern) :
       local_string_union (ggp_labeled_bnodes g1) (ggp_labeled_bnodes g2)
   | SPARQL11_Algebra.GP_LeftJoin (g1, g2, uu___) ->
       local_string_union (ggp_labeled_bnodes g1) (ggp_labeled_bnodes g2)
+  | SPARQL11_Algebra.GP_Lateral (g1, g2) ->
+      local_string_union (ggp_labeled_bnodes g1) (ggp_labeled_bnodes g2)
   | SPARQL11_Algebra.GP_Filter (uu___, g1) -> ggp_labeled_bnodes g1
   | SPARQL11_Algebra.GP_Graph (uu___, g1) -> ggp_labeled_bnodes g1
   | SPARQL11_Algebra.GP_Bind (uu___, uu___1, g1) -> ggp_labeled_bnodes g1
@@ -3452,6 +3465,27 @@ and parse_ggp_body (pm : prefix_map) (fuel : Prims.nat)
                 | Tok_DOT -> parse_advance ts'
                 | uu___1 -> ts' in
               parse_ggp_body pm (fuel - Prims.int_one) acc' filters true ts'1)
+     | Tok_LATERAL ->
+         (match parse_group_graph_pattern pm (fuel - Prims.int_one)
+                  (parse_advance ts)
+          with
+          | ParseErr m -> ParseErr m
+          | ParseOk (g, ts') ->
+              if
+                FStar_List_Tot_Base.existsb
+                  (fun v -> SPARQL11_Algebra.ggp_has_var v acc)
+                  (SPARQL11_Algebra.lateral_assignable_vars g)
+              then
+                ParseErr
+                  "LATERAL: right-hand side reassigns a variable already bound by the left-hand pattern"
+              else
+                (let acc' = SPARQL11_Algebra.GP_Lateral (acc, g) in
+                 let ts'1 =
+                   match parse_peek ts' with
+                   | Tok_DOT -> parse_advance ts'
+                   | uu___2 -> ts' in
+                 parse_ggp_body pm (fuel - Prims.int_one) acc' filters true
+                   ts'1))
      | Tok_GRAPH ->
          let ts' = parse_advance ts in
          (match parse_graph_name pm (fuel - Prims.int_one) ts' with
@@ -4731,6 +4765,7 @@ and parse_pred_obj_list (pm : prefix_map) (fuel : Prims.nat)
                     | Tok_SERVICE -> ParseOk (acc', ts''')
                     | Tok_VALUES -> ParseOk (acc', ts''')
                     | Tok_UNION -> ParseOk (acc', ts''')
+                    | Tok_LATERAL -> ParseOk (acc', ts''')
                     | Tok_LBRACE -> ParseOk (acc', ts''')
                     | Tok_RBRACKET -> ParseOk (acc', ts''')
                     | Tok_EOF -> ParseOk (acc', ts''')
@@ -6244,6 +6279,15 @@ let rec validate_bnode_scope_pattern
                      ((((ok1 && ok2) && ok3) &&
                          (Prims.op_Negation (string_overlaps b1 b2))),
                        (string_union b1 b2)))))
+  | SPARQL11_Algebra.GP_Lateral (p1, p2) ->
+      let uu___ = validate_bnode_scope_pattern p1 in
+      (match uu___ with
+       | (ok1, b1) ->
+           let uu___1 = validate_bnode_scope_pattern p2 in
+           (match uu___1 with
+            | (ok2, b2) ->
+                (((ok1 && ok2) && (Prims.op_Negation (string_overlaps b1 b2))),
+                  (string_union b1 b2))))
   | SPARQL11_Algebra.GP_Graph (uu___, p1) -> validate_bnode_scope_pattern p1
   | SPARQL11_Algebra.GP_Service (uu___, p1, uu___1) ->
       validate_bnode_scope_pattern p1
@@ -6540,6 +6584,7 @@ let rec gp_has_var (g : SPARQL11_Algebra.group_graph_pattern) : Prims.bool=
       (gp_has_var a) || (gp_has_var b)
   | SPARQL11_Algebra.GP_Union (a, b) -> (gp_has_var a) || (gp_has_var b)
   | SPARQL11_Algebra.GP_Minus (a, b) -> (gp_has_var a) || (gp_has_var b)
+  | SPARQL11_Algebra.GP_Lateral (a, b) -> (gp_has_var a) || (gp_has_var b)
   | SPARQL11_Algebra.GP_Filter (uu___, inner) -> gp_has_var inner
   | SPARQL11_Algebra.GP_Bind (uu___, uu___1, inner) -> gp_has_var inner
   | SPARQL11_Algebra.GP_Values (uu___, uu___1) -> true
@@ -6578,6 +6623,8 @@ let rec gp_has_bnode (g : SPARQL11_Algebra.group_graph_pattern) : Prims.bool=
       (gp_has_bnode a) || (gp_has_bnode b)
   | SPARQL11_Algebra.GP_Union (a, b) -> (gp_has_bnode a) || (gp_has_bnode b)
   | SPARQL11_Algebra.GP_Minus (a, b) -> (gp_has_bnode a) || (gp_has_bnode b)
+  | SPARQL11_Algebra.GP_Lateral (a, b) ->
+      (gp_has_bnode a) || (gp_has_bnode b)
   | SPARQL11_Algebra.GP_Filter (uu___, inner) -> gp_has_bnode inner
   | SPARQL11_Algebra.GP_Bind (uu___, uu___1, inner) -> gp_has_bnode inner
   | SPARQL11_Algebra.GP_Values (uu___, uu___1) -> false
@@ -7362,6 +7409,9 @@ and sse_ggp (ggp : SPARQL11_Algebra.group_graph_pattern) : Prims.string=
            (Prims.strcat "\n  " (sse_ggp g)))
   | SPARQL11_Algebra.GP_Minus (g1, g2) ->
       sse_wrap "minus"
+        (Prims.strcat (sse_ggp g1) (Prims.strcat "\n  " (sse_ggp g2)))
+  | SPARQL11_Algebra.GP_Lateral (g1, g2) ->
+      sse_wrap "lateral"
         (Prims.strcat (sse_ggp g1) (Prims.strcat "\n  " (sse_ggp g2)))
   | SPARQL11_Algebra.GP_Bind (e, v, g) ->
       sse_wrap "extend"

@@ -1,0 +1,7 @@
+<https://example.org/alice> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://example.org/Person> .
+<https://example.org/bob> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://example.org/Person> .
+<https://example.org/carol> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://example.org/Person> .
+<https://example.org/alice> <https://example.org/label> "Alice A" .
+<https://example.org/alice> <https://example.org/label> "Alice B" .
+<https://example.org/bob> <https://example.org/label> "Bob A" .
+<https://example.org/bob> <https://example.org/label> "Bob B" .

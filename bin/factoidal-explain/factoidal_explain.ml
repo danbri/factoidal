@@ -78,6 +78,10 @@ let rec print_ggp (out : out_channel) (depth : int) (p : A.group_graph_pattern) 
     Printf.fprintf out "%sMinus\n" ind;
     print_ggp out (depth+1) p1;
     print_ggp out (depth+1) p2
+  | A.GP_Lateral (p1, p2) ->
+    Printf.fprintf out "%sLateral\n" ind;
+    print_ggp out (depth+1) p1;
+    print_ggp out (depth+1) p2
   | A.GP_Bind (_e, v, p1) ->
     Printf.fprintf out "%sBind ?%s\n" ind v;
     print_ggp out (depth+1) p1
@@ -163,6 +167,7 @@ let collect_triple_patterns (q : A.query) : (string * A.triple_pattern) list =
     | A.GP_Union (p1, p2) -> go p1; go p2
     | A.GP_Graph (_, p1) -> go p1
     | A.GP_Minus (p1, p2) -> go p1; go p2
+    | A.GP_Lateral (p1, p2) -> go p1; go p2
     | A.GP_Bind (_, _, p1) -> go p1
     | A.GP_Service (_, p1, _) -> go p1
     | A.GP_ServiceVar (_, p1, _) -> go p1

@@ -50,7 +50,7 @@ Running 20 PositiveEntailmentTest(s) through owl_rl_closure_with_reflexivity (fu
   PASS  WebOnt-imports-011
   FAIL  WebOnt-miscellaneous-302-Direct
 
-Profile-RL PositiveEntailmentTests: 16 pass, 4 fail (out of 20 RDF/XML tests), 0 skipped (functional-syntax-only) in 0.32s
+Profile-RL PositiveEntailmentTests: 16 pass, 4 fail (out of 20 RDF/XML tests), 0 skipped (functional-syntax-only) in 0.31s
   (bnode pattern matches any term at the position; full isomorphism deferred — see docs/designissues/2026-04-24-owl-runner-phase1.md)
 
 Running 3 NegativeEntailmentTest(s) through owl_rl_closure_with_reflexivity (fuel=100)...

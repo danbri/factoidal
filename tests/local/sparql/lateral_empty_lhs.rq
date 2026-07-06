@@ -1,0 +1,9 @@
+PREFIX : <https://example.org/>
+PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+
+# Empty-LHS case: the pattern before LATERAL matches nothing, so LATERAL's
+# RHS is never even evaluated (foreach over an empty multiset) -- 0 rows.
+SELECT ?s ?label WHERE {
+  ?s rdf:type :NoSuchClass .
+  LATERAL { ?s :label ?label }
+}

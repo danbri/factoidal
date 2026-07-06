@@ -1,0 +1,12 @@
+PREFIX : <https://example.org/>
+PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+
+# Empty-RHS-per-row case: carol matches the LHS (rdf:type :Person) but has
+# no :label triple, so her per-row LATERAL evaluation is empty -- LATERAL
+# is a flatmap/join, not a left-join, so her row is DROPPED (0 rows),
+# not preserved unmatched the way OPTIONAL would preserve it.
+SELECT ?s ?label WHERE {
+  ?s rdf:type :Person .
+  FILTER(?s = :carol)
+  LATERAL { ?s :label ?label }
+}

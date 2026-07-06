@@ -512,6 +512,12 @@ and group_graph_pattern =
   | GP_Graph      : pattern_term -> group_graph_pattern -> group_graph_pattern
       (* GRAPH ?g { P } or GRAPH <iri> { P } [S6] *)
   | GP_Minus      : group_graph_pattern -> group_graph_pattern -> group_graph_pattern
+  | GP_Lateral    : group_graph_pattern -> group_graph_pattern -> group_graph_pattern
+      (* SPARQL 1.2 / Jena LATERAL: P1 LATERAL { P2 } — for each solution mu
+         of P1 (LHS), evaluate P2 (RHS) with mu's bindings substituted in
+         (correlated evaluation), then merge each RHS solution with mu.
+         Order-dependent, unlike GP_Join. Jena semantics:
+         https://jena.apache.org/documentation/query/lateral-join.html *)
   | GP_Bind       : expr -> var_name -> group_graph_pattern -> group_graph_pattern
       (* BIND(expr AS ?var) appended to pattern *)
   | GP_Values     : list var_name -> list (list (option rdf_term)) -> group_graph_pattern
@@ -1887,6 +1893,188 @@ let join (omega1 omega2 : solution_sequence) : solution_sequence =
       omega2)
     omega1
 
+(** ====================================================================== **)
+(** LATERAL join (SPARQL 1.2 track / Jena extension) — substitution and    **)
+(** well-formedness machinery. Placed here (before eval_pattern_store) —   **)
+(** rather than alongside `substitute_pattern`/`eval_exists` in Part 17 —  **)
+(** so eval_pattern_store's GP_Lateral arm can call it directly without a  **)
+(** forward-ref assume val (this codebase's usual break-the-cycle device,
+    e.g. eval_exists_fwd below): these are plain, self-contained recursive
+    functions with no dependency on anything defined between here and
+    Part 17, so moving the small substitution primitives up costs nothing.
+    Reference: https://jena.apache.org/documentation/query/lateral-join.html *)
+
+let lateral_subst_pattern_term (mu : solution_mapping) (pt : pattern_term) : pattern_term =
+  match pt with
+  | PT_Var v ->
+    (match sm_lookup v mu with
+     | Some (T_IRI i) -> PT_IRI i
+     | Some (T_BNode b) -> PT_BNode b
+     | Some (T_Literal l) -> PT_Literal l
+     | None -> PT_Var v)
+  | _ -> pt
+
+let lateral_subst_pattern_subject (mu : solution_mapping) (ps : pattern_subject) : pattern_subject =
+  match ps with
+  | PS_Var v ->
+    (match sm_lookup v mu with
+     | Some (T_IRI i) -> PS_IRI i
+     | Some (T_BNode b) -> PS_BNode b
+     | Some (T_Literal _) -> PS_Var v  (* literals cannot be subjects *)
+     | None -> PS_Var v)
+  | _ -> ps
+
+let lateral_subst_triple_pattern (mu : solution_mapping) (tp : triple_pattern) : triple_pattern =
+  { tp_s = lateral_subst_pattern_subject mu tp.tp_s;
+    tp_p = lateral_subst_pattern_term mu tp.tp_p;
+    tp_o = lateral_subst_pattern_term mu tp.tp_o }
+
+let lateral_subst_bgp (mu : solution_mapping) (b : bgp) : bgp =
+  List.Tot.map (lateral_subst_triple_pattern mu) b
+
+(* Variables a group_graph_pattern can ASSIGN (as opposed to merely
+   pattern-match) at its own top level: BIND / VALUES / an "AS" alias in
+   a sub-SELECT's SELECT list. Per the Jena LATERAL doc: "there can [be]
+   no variable introduced by AS (BIND, or sub-query) or VALUES in-scope
+   at the top level of the LATERAL RHS[] that is the same name as any
+   in-scope variable from the LHS" — such a reassignment would conflict
+   with the variable already being set by the row being correlated-
+   joined. "Introduced by AS" is the operative phrase for the sub-query
+   case too: confirmed against Apache Jena 5.2.0 (arq) —
+   `LATERAL { SELECT ?s WHERE { ?s :label ?label } }` (a plain SI_Var
+   pass-through projection, re-exposing the WHERE clause's own ?s
+   binding) runs WITHOUT error, while
+   `LATERAL { SELECT (1 AS ?s) WHERE {...} }` is rejected ("Variable
+   used when already in-scope: ?s in (1 AS ?s)"). So only SI_Expr
+   (the "AS" form) counts as an assignment here; SI_Var does not.
+   Ordinary triple-pattern variables are likewise NOT assignable: after
+   substitution they are already the constant from the LHS row, so
+   matching against them is exactly the correlated-join point, not a
+   reassignment. MINUS's right operand never surfaces bindings, so it is
+   excluded. A nested GP_SubSelect's OWN non-projected variables are a
+   fresh, deeper scope — not reachable "at the top level" of THIS
+   pattern — so Select_Vars only contributes its "AS"-aliased names;
+   Select_All conservatively recurses (it re-exposes everything the
+   inner pattern could itself assign, since Select_All includes any AS
+   aliases bound inside). *)
+let rec lateral_assignable_vars (p : group_graph_pattern) : Tot (list var_name) (decreases p) =
+  match p with
+  | GP_Bind _ v p1 -> v :: lateral_assignable_vars p1
+  | GP_Values vars _ -> vars
+  | GP_SubSelect q ->
+    (match q.q_form with
+     | QF_Select (Select_Vars items) ->
+       list_filter_map
+         (fun (item : select_item) -> match item with SI_Var _ -> None | SI_Expr _ v -> Some v)
+         items
+     | QF_Select Select_All -> lateral_assignable_vars q.q_pattern
+     | _ -> [])
+  | GP_Join p1 p2 -> lateral_assignable_vars p1 @ lateral_assignable_vars p2
+  | GP_LeftJoin p1 p2 _ -> lateral_assignable_vars p1 @ lateral_assignable_vars p2
+  | GP_Union p1 p2 -> lateral_assignable_vars p1 @ lateral_assignable_vars p2
+  | GP_Lateral p1 p2 -> lateral_assignable_vars p1 @ lateral_assignable_vars p2
+  | GP_Filter _ p1 -> lateral_assignable_vars p1
+  | GP_Graph _ p1 -> lateral_assignable_vars p1
+  | GP_Minus p1 _ -> lateral_assignable_vars p1
+  | GP_Service _ p1 _ -> lateral_assignable_vars p1
+  | GP_ServiceVar _ p1 _ -> lateral_assignable_vars p1
+  | GP_BGP _ | GP_PropertyPath _ _ _ | GP_Empty -> []
+
+(* Variables a sub-SELECT actually exposes to LATERAL substitution:
+   Select_Vars projects exactly its listed names; Select_All exposes
+   everything (no restriction — None); a non-SELECT sub-query form
+   exposes nothing. This is DIFFERENT from `lateral_assignable_vars`
+   (which asks "could this pattern REASSIGN a name") — this asks "is
+   this name even part of what the sub-query outputs, for substitution
+   to make sense." Confirmed empirically against Apache Jena 5.2.0
+   (arq): `LATERAL { SELECT ?label { ?s :label ?label } LIMIT 1 }`
+   gives every outer row the SAME globally-smallest label (the outer
+   ?s is NOT substituted in, because the sub-SELECT does not project
+   ?s), whereas `LATERAL { SELECT * { ?s :label ?label } LIMIT 1 }`
+   correlates correctly per outer row (SELECT * projects ?s too). This
+   is exactly the Jena doc's "Sub-SELECT projection masking" section:
+   "Variables not included in a sub-SELECT's projection list remain
+   hidden from lateral binding." *)
+let lateral_subselect_visible_vars (q : query) : option (list var_name) =
+  match q.q_form with
+  | QF_Select (Select_Vars items) ->
+    Some (List.Tot.map
+      (fun (item : select_item) -> match item with SI_Var v -> v | SI_Expr _ v -> v)
+      items)
+  | QF_Select Select_All -> None  (* no restriction *)
+  | _ -> Some []                 (* non-SELECT sub-query: nothing visible *)
+
+(* Correlated substitution: inject the LHS row [mu]'s bindings into the
+   RHS pattern before evaluating it once per row (Jena's `inject`, the
+   same operation `substitute_pattern` below performs for EXISTS — except
+   LATERAL's substitution also has to reach INTO a nested sub-SELECT's
+   WHERE clause, gated by `lateral_subselect_visible_vars` above so the
+   masking rule holds; `substitute_pattern` deliberately does not dive
+   into GP_SubSelect at all since EXISTS doesn't need it). When a
+   sub-SELECT reached during descent locally reassigns one of the names
+   in [mu] (per `lateral_assignable_vars` on ITS OWN pattern), that name
+   is shadowed from THAT SUBTREE down — it is a fresh, deeper-scoped
+   variable, not the outer one — so it is dropped from the mapping
+   before recursing into that sub-SELECT's pattern. A name that is
+   neither masked-out nor reassigned continues to substitute through
+   arbitrarily deep sub-SELECT nesting, exactly like the SELECT * topN
+   example. *)
+let rec lateral_substitute (mu : solution_mapping) (p : group_graph_pattern)
+  : Tot group_graph_pattern (decreases p) =
+  match p with
+  | GP_BGP b -> GP_BGP (lateral_subst_bgp mu b)
+  | GP_Join p1 p2 -> GP_Join (lateral_substitute mu p1) (lateral_substitute mu p2)
+  | GP_LeftJoin p1 p2 e -> GP_LeftJoin (lateral_substitute mu p1) (lateral_substitute mu p2) e
+  | GP_Filter e p1 -> GP_Filter e (lateral_substitute mu p1)
+  | GP_Union p1 p2 -> GP_Union (lateral_substitute mu p1) (lateral_substitute mu p2)
+  | GP_Graph gt p1 -> GP_Graph (lateral_subst_pattern_term mu gt) (lateral_substitute mu p1)
+  | GP_Minus p1 p2 -> GP_Minus (lateral_substitute mu p1) (lateral_substitute mu p2)
+  | GP_Bind e v p1 -> GP_Bind e v (lateral_substitute mu p1)
+  | GP_Values vars rows -> GP_Values vars rows
+  | GP_Service iri p1 silent -> GP_Service iri (lateral_substitute mu p1) silent
+  | GP_ServiceVar v p1 silent ->
+    (match sm_lookup v mu with
+     | Some (T_IRI iri) ->
+       if is_iri iri then GP_Service iri (lateral_substitute mu p1) silent
+       else GP_ServiceVar v (lateral_substitute mu p1) silent
+     | _ -> GP_ServiceVar v (lateral_substitute mu p1) silent)
+  | GP_SubSelect q ->
+    let mu_visible = match lateral_subselect_visible_vars q with
+      | None -> mu
+      | Some vis ->
+        List.Tot.filter
+          (fun (b : var_name * rdf_term) -> List.Tot.existsb (fun v -> v = fst b) vis)
+          mu in
+    let shadowed = lateral_assignable_vars q.q_pattern in
+    let mu' = List.Tot.filter
+      (fun (b : var_name * rdf_term) -> not (List.Tot.existsb (fun s -> s = fst b) shadowed))
+      mu_visible in
+    GP_SubSelect ({ q with q_pattern = lateral_substitute mu' q.q_pattern })
+  | GP_PropertyPath ps pp pt ->
+    GP_PropertyPath (lateral_subst_pattern_subject mu ps) pp (lateral_subst_pattern_term mu pt)
+  | GP_Lateral p1 p2 -> GP_Lateral (lateral_substitute mu p1) (lateral_substitute mu p2)
+  | GP_Empty -> GP_Empty
+
+(* Wrap a substituted RHS pattern as a trivial `SELECT * WHERE { p }` query
+   so LATERAL's per-row RHS evaluation can go through the existing
+   `eval_subselect_fwd` forward-ref (already wired to eval_select_query by
+   62_forward_ref_wiring.sh) instead of a direct recursive call to
+   eval_pattern_store — the substituted pattern is not a structural
+   subterm of the GP_Lateral node being evaluated, so a direct recursive
+   call would not satisfy `eval_pattern_store`'s `decreases p`. This is
+   the SAME escape hatch GP_SubSelect below already uses to call back
+   into full query evaluation from inside eval_pattern_store; no new
+   assume val is introduced. With no GROUP BY / ORDER BY / DISTINCT /
+   REDUCED / OFFSET / LIMIT and Select_All, eval_select_query reduces to
+   exactly `strip_synthetic_bnode_vars (eval_pattern base p g ds)` —
+   i.e. semantically transparent pattern evaluation. *)
+let lateral_wrap_as_query (p : group_graph_pattern) : query =
+  { q_base = None; q_prefixes = []; q_form = QF_Select Select_All;
+    q_dataset = []; q_pattern = p; q_group_by = None; q_having = None;
+    q_modifier = { sm_order_by = None; sm_distinct = false; sm_reduced = false;
+                   sm_offset = None; sm_limit = None };
+    q_values = None }
+
 (* Forward declarations — concrete definitions follow eval_pattern.
    #65 Step 2c (2026-05-10): both forward refs take `option wf_iri` so
    the FILTER / BIND paths in eval_pattern_store thread the BASE IRI
@@ -2241,6 +2429,22 @@ let rec eval_pattern_store (base : option wf_iri) (p : group_graph_pattern) (gs 
 
   | GP_Minus p1 p2 ->
     minus (eval_pattern_store base p1 gs dss) (eval_pattern_store base p2 gs dss)
+
+  | GP_Lateral p1 p2 ->
+    (* P1 LATERAL { P2 }: foreach solution mu1 of P1, substitute mu1 into
+       P2 and evaluate once per row (correlated join), merging each mu2
+       from that per-row evaluation with mu1. Threads through the SAME
+       gs/dss store-capability seam as every other combinator here — no
+       backend-specific code. *)
+    let omega1 = eval_pattern_store base p1 gs dss in
+    Lh.concatMap_tr
+      (fun mu1 ->
+        let p2' = lateral_substitute mu1 p2 in
+        let omega2 = eval_subselect_fwd (lateral_wrap_as_query p2') gs.gs_graph (store_to_dataset dss) in
+        list_filter_map
+          (fun mu2 -> if sm_compatible mu1 mu2 then Some (sm_merge mu1 mu2) else None)
+          omega2)
+      omega1
 
   | GP_Empty -> [sm_empty]
 
@@ -3811,6 +4015,7 @@ let rec rewrite_query_bnodes_pattern (p : group_graph_pattern)
   | GP_Union p1 p2 -> GP_Union (rewrite_query_bnodes_pattern p1) (rewrite_query_bnodes_pattern p2)
   | GP_Graph gt p1 -> GP_Graph (rewrite_query_bnode_term gt) (rewrite_query_bnodes_pattern p1)
   | GP_Minus p1 p2 -> GP_Minus (rewrite_query_bnodes_pattern p1) (rewrite_query_bnodes_pattern p2)
+  | GP_Lateral p1 p2 -> GP_Lateral (rewrite_query_bnodes_pattern p1) (rewrite_query_bnodes_pattern p2)
   | GP_Bind e v p1 -> GP_Bind e v (rewrite_query_bnodes_pattern p1)
   | GP_SubSelect q -> GP_SubSelect { q with q_pattern = rewrite_query_bnodes_pattern q.q_pattern }
   | GP_PropertyPath s pp o ->
@@ -4685,6 +4890,7 @@ let rec substitute_pattern (mu : solution_mapping) (p : group_graph_pattern)
   | GP_Union p1 p2 -> GP_Union (substitute_pattern mu p1) (substitute_pattern mu p2)
   | GP_Graph gt p1 -> GP_Graph (substitute_pattern_term mu gt) (substitute_pattern mu p1)
   | GP_Minus p1 p2 -> GP_Minus (substitute_pattern mu p1) (substitute_pattern mu p2)
+  | GP_Lateral p1 p2 -> GP_Lateral (substitute_pattern mu p1) (substitute_pattern mu p2)
   | GP_Bind e v p1 -> GP_Bind e v (substitute_pattern mu p1)
   | GP_Values vars rows -> GP_Values vars rows
   | GP_Service iri p1 silent -> GP_Service iri p1 silent
@@ -4723,6 +4929,7 @@ let rec ggp_has_var (v : var_name) (p : group_graph_pattern) : Tot bool (decreas
   | GP_Union p1 p2 -> ggp_has_var v p1 || ggp_has_var v p2
   | GP_Graph _ p1 -> ggp_has_var v p1
   | GP_Minus p1 p2 -> ggp_has_var v p1 || ggp_has_var v p2
+  | GP_Lateral p1 p2 -> ggp_has_var v p1 || ggp_has_var v p2
   | GP_Bind _ bv p1 -> bv = v || ggp_has_var v p1
   | GP_Values vars _ -> List.Tot.existsb (fun vn -> vn = v) vars
   | GP_Service _ p1 _ -> ggp_has_var v p1

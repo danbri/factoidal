@@ -1,0 +1,19 @@
+PREFIX : <https://example.org/>
+PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+
+# Illegal: LATERAL's RHS is a sub-SELECT whose SELECT list "AS"-aliases
+# a new binding onto ?s, and ?s is already bound by the LHS -- a
+# conflicting sub-query projection, per the Jena rule ("... no variable
+# introduced by AS (BIND, or sub-query) ... that is the same name as
+# any in-scope variable from the LHS"). NOTE: a PLAIN `SELECT ?s`
+# pass-through projection (re-exposing the WHERE clause's own ?s
+# binding, not introducing a new one via AS) is legal -- confirmed
+# against Apache Jena 5.2.0 (arq), which runs `LATERAL { SELECT ?s
+# WHERE { ?s :label ?label } }` without error but rejects `LATERAL {
+# SELECT (1 AS ?s) WHERE {...} }` with "Variable used when already
+# in-scope: ?s in (1 AS ?s)". This fixture uses the AS form so it is
+# genuinely illegal.
+SELECT * WHERE {
+  ?s rdf:type :Person .
+  LATERAL { SELECT (1 AS ?s) WHERE { ?s :label ?label } }
+}

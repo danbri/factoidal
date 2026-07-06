@@ -1692,6 +1692,7 @@ let rec normalise_joins (g : group_graph_pattern)
   | GP_Union a b       -> GP_Union (normalise_joins a) (normalise_joins b)
   | GP_Graph gt a      -> GP_Graph gt (normalise_joins a)
   | GP_Minus a b       -> GP_Minus (normalise_joins a) (normalise_joins b)
+  | GP_Lateral a b     -> GP_Lateral (normalise_joins a) (normalise_joins b)
   | GP_Bind e v a      -> GP_Bind e v (normalise_joins a)
   | GP_Values vs rs    -> GP_Values vs rs
   | GP_Service i a s   -> GP_Service i (normalise_joins a) s
@@ -1715,6 +1716,7 @@ let rec rewrite_ggp (g : group_graph_pattern)
   | GP_Union a b       -> GP_Union (rewrite_ggp a) (rewrite_ggp b)
   | GP_Graph gt a      -> GP_Graph gt (rewrite_ggp a)
   | GP_Minus a b       -> GP_Minus (rewrite_ggp a) (rewrite_ggp b)
+  | GP_Lateral a b     -> GP_Lateral (rewrite_ggp a) (rewrite_ggp b)
   | GP_Bind e v a      -> GP_Bind e v (rewrite_ggp a)
   | GP_Values vs rs    -> GP_Values vs rs
   | GP_Service i a s   -> GP_Service i (rewrite_ggp a) s
@@ -1764,6 +1766,7 @@ let rec ggp_has_ce_marker (g : group_graph_pattern)
   | GP_Union a b       -> ggp_has_ce_marker a || ggp_has_ce_marker b
   | GP_Graph _ a       -> ggp_has_ce_marker a
   | GP_Minus a b       -> ggp_has_ce_marker a || ggp_has_ce_marker b
+  | GP_Lateral a b     -> ggp_has_ce_marker a || ggp_has_ce_marker b
   | GP_Bind _ _ a      -> ggp_has_ce_marker a
   | GP_Values _ _      -> false
   | GP_Service _ a _   -> ggp_has_ce_marker a

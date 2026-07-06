@@ -2320,6 +2320,9 @@ let rec prebinding_unsupported (p : SPARQL11_Algebra.group_graph_pattern) :
   | SPARQL11_Algebra.GP_Minus (uu___, uu___1) ->
       FStar_Pervasives_Native.Some
         "MINUS is not supported with pre-bound variables"
+  | SPARQL11_Algebra.GP_Lateral (uu___, uu___1) ->
+      FStar_Pervasives_Native.Some
+        "LATERAL is not supported with pre-bound variables"
   | SPARQL11_Algebra.GP_Service (uu___, uu___1, uu___2) ->
       FStar_Pervasives_Native.Some
         "SERVICE is not supported with pre-bound variables"

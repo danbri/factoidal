@@ -38,6 +38,7 @@ let rec collect_bgps_aux
   | GP_LeftJoin p1 p2 _ -> collect_bgps_aux (collect_bgps_aux acc p1) p2
   | GP_Union p1 p2 -> collect_bgps_aux (collect_bgps_aux acc p1) p2
   | GP_Minus p1 p2 -> collect_bgps_aux (collect_bgps_aux acc p1) p2
+  | GP_Lateral p1 p2 -> collect_bgps_aux (collect_bgps_aux acc p1) p2
   | GP_Filter _ p1 -> collect_bgps_aux acc p1
   | GP_Graph _ p1 -> collect_bgps_aux acc p1
   | GP_Bind _ _ p1 -> collect_bgps_aux acc p1

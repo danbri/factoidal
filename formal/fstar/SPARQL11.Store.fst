@@ -524,6 +524,7 @@ let rec pattern_predicate_hint (p : group_graph_pattern)
   | GP_LeftJoin p1 _ _ -> pattern_predicate_hint p1
   | GP_Union p1 _ -> pattern_predicate_hint p1
   | GP_Minus p1 _ -> pattern_predicate_hint p1
+  | GP_Lateral p1 _ -> pattern_predicate_hint p1
   | GP_Empty -> None
   | GP_Values _ _ -> None
   | GP_Service _ _ _ -> None
@@ -842,6 +843,41 @@ let rec eval_pattern_backend (base : option wf_iri) (p : group_graph_pattern) (g
 
   | GP_Minus p1 p2 ->
     minus (eval_pattern_backend base p1 gb dsb) (eval_pattern_backend base p2 gb dsb)
+
+  | GP_Lateral p1 p2 ->
+    // P1 LATERAL { P2 }: correlated per-row evaluation, backend-native
+    // path. `eval_pattern_backend` is mutually recursive (via `and`)
+    // with `eval_select_query_backend_on_graph`/`_bgp` and its
+    // `decreases p` obligation only lets it recurse into structural
+    // subterms of `p` — a per-row SUBSTITUTED p2 is not one, so a direct
+    // `eval_pattern_backend base p2' gb dsb` call here would not
+    // typecheck (same obstacle GP_SubSelect works around by staying
+    // inside the mutual group with a `query`-shaped subterm; a lateral
+    // substitution manufactures a brand-new pattern, not a subterm).
+    // Rather than add a new assume val to break the cycle, reuse the
+    // exact "materialize this backend, then delegate to the in-memory
+    // algebra evaluator" device issue #268 already established for
+    // GP_PropertyPath just below (same backend_search unbound-scan
+    // shape, same rationale: correctness first, backend-native fast
+    // path is a follow-up). This is still backend-neutral BY
+    // CONSTRUCTION: `backend_search`/`materialize_dataset_backend` are
+    // the same store-capability seam every GB_* constructor already
+    // dispatches through (GB_List/GB_Indexed/GB_HDT/GB_COTTAS/
+    // GB_CottasOnDisk/GB_CottasOnDiskDelta/GB_Union), so in-memory and
+    // on-disk COTTAS queries reach `lateral_substitute` +
+    // `eval_pattern` identically.
+    let omega1 = eval_pattern_backend base p1 gb dsb in
+    let ds0 = materialize_dataset_backend dsb in
+    let g_current = backend_search gb { bs = None; bp = None; bo = None } in
+    let ds = { ds0 with ds_default = g_current } in
+    Lh.concatMap_tr
+      (fun mu1 ->
+        let p2' = lateral_substitute mu1 p2 in
+        let omega2 = eval_pattern base p2' g_current ds in
+        list_filter_map
+          (fun mu2 -> if sm_compatible mu1 mu2 then Some (sm_merge mu1 mu2) else None)
+          omega2)
+      omega1
 
   | GP_Empty ->
     [sm_empty]

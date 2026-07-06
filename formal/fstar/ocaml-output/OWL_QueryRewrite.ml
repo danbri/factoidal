@@ -1,43 +1,42 @@
 open Prims
-let owl_intersectionOf_iri : RDF_Graph_Executable.wf_iri=
+let owl_intersectionOf_iri : RDF_Term.wf_iri=
   "http://www.w3.org/2002/07/owl#intersectionOf"
-let owl_unionOf_iri : RDF_Graph_Executable.wf_iri=
+let owl_unionOf_iri : RDF_Term.wf_iri=
   "http://www.w3.org/2002/07/owl#unionOf"
-let owl_Class_iri : RDF_Graph_Executable.wf_iri=
-  "http://www.w3.org/2002/07/owl#Class"
-let rdf_first_iri : RDF_Graph_Executable.wf_iri=
+let owl_Class_iri : RDF_Term.wf_iri= "http://www.w3.org/2002/07/owl#Class"
+let rdf_first_iri : RDF_Term.wf_iri=
   "http://www.w3.org/1999/02/22-rdf-syntax-ns#first"
-let rdf_rest_iri : RDF_Graph_Executable.wf_iri=
+let rdf_rest_iri : RDF_Term.wf_iri=
   "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest"
-let rdf_nil_iri : RDF_Graph_Executable.wf_iri=
+let rdf_nil_iri : RDF_Term.wf_iri=
   "http://www.w3.org/1999/02/22-rdf-syntax-ns#nil"
-let rdf_type_iri : RDF_Graph_Executable.wf_iri=
+let rdf_type_iri : RDF_Term.wf_iri=
   "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
-let owl_Restriction_iri : RDF_Graph_Executable.wf_iri=
+let owl_Restriction_iri : RDF_Term.wf_iri=
   "http://www.w3.org/2002/07/owl#Restriction"
-let owl_onProperty_iri : RDF_Graph_Executable.wf_iri=
+let owl_onProperty_iri : RDF_Term.wf_iri=
   "http://www.w3.org/2002/07/owl#onProperty"
-let owl_someValuesFrom_iri : RDF_Graph_Executable.wf_iri=
+let owl_someValuesFrom_iri : RDF_Term.wf_iri=
   "http://www.w3.org/2002/07/owl#someValuesFrom"
-let owl_allValuesFrom_iri : RDF_Graph_Executable.wf_iri=
+let owl_allValuesFrom_iri : RDF_Term.wf_iri=
   "http://www.w3.org/2002/07/owl#allValuesFrom"
-let owl_minCardinality_iri : RDF_Graph_Executable.wf_iri=
+let owl_minCardinality_iri : RDF_Term.wf_iri=
   "http://www.w3.org/2002/07/owl#minCardinality"
-let owl_maxCardinality_iri : RDF_Graph_Executable.wf_iri=
+let owl_maxCardinality_iri : RDF_Term.wf_iri=
   "http://www.w3.org/2002/07/owl#maxCardinality"
-let owl_cardinality_iri : RDF_Graph_Executable.wf_iri=
+let owl_cardinality_iri : RDF_Term.wf_iri=
   "http://www.w3.org/2002/07/owl#cardinality"
-let owl_minQualifiedCardinality_iri : RDF_Graph_Executable.wf_iri=
+let owl_minQualifiedCardinality_iri : RDF_Term.wf_iri=
   "http://www.w3.org/2002/07/owl#minQualifiedCardinality"
-let owl_maxQualifiedCardinality_iri : RDF_Graph_Executable.wf_iri=
+let owl_maxQualifiedCardinality_iri : RDF_Term.wf_iri=
   "http://www.w3.org/2002/07/owl#maxQualifiedCardinality"
-let owl_qualifiedCardinality_iri : RDF_Graph_Executable.wf_iri=
+let owl_qualifiedCardinality_iri : RDF_Term.wf_iri=
   "http://www.w3.org/2002/07/owl#qualifiedCardinality"
-let owl_onClass_iri : RDF_Graph_Executable.wf_iri=
+let owl_onClass_iri : RDF_Term.wf_iri=
   "http://www.w3.org/2002/07/owl#onClass"
-let owl_complementOf_iri : RDF_Graph_Executable.wf_iri=
+let owl_complementOf_iri : RDF_Term.wf_iri=
   "http://www.w3.org/2002/07/owl#complementOf"
-let owl_disjointWith_iri : RDF_Graph_Executable.wf_iri=
+let owl_disjointWith_iri : RDF_Term.wf_iri=
   "http://www.w3.org/2002/07/owl#disjointWith"
 let bnode_var_prefix : Prims.string= "_bnode_"
 let strip_bnode_prefix (v : Prims.string) :
@@ -68,7 +67,7 @@ let ps_pt_same_anon (ps : SPARQL11_Algebra.pattern_subject)
       k1 = k2
   | (uu___, uu___1) -> false
 let rec bgp_find_first_obj (b : SPARQL11_Algebra.bgp)
-  (subj_key : Prims.string) (pred : RDF_Graph_Executable.wf_iri) :
+  (subj_key : Prims.string) (pred : RDF_Term.wf_iri) :
   SPARQL11_Algebra.pattern_term FStar_Pervasives_Native.option=
   match b with
   | [] -> FStar_Pervasives_Native.None
@@ -297,7 +296,7 @@ let uu___is_CE_ExactCardinality (projectee : ce_combinator) : Prims.bool=
   match projectee with | CE_ExactCardinality -> true | uu___ -> false
 let uu___is_CE_ComplementOf (projectee : ce_combinator) : Prims.bool=
   match projectee with | CE_ComplementOf -> true | uu___ -> false
-let combinator_of_pred_flat (p : RDF_Graph_Executable.wf_iri) :
+let combinator_of_pred_flat (p : RDF_Term.wf_iri) :
   ce_combinator FStar_Pervasives_Native.option=
   if p = owl_intersectionOf_iri
   then FStar_Pervasives_Native.Some CE_Intersect
@@ -305,7 +304,7 @@ let combinator_of_pred_flat (p : RDF_Graph_Executable.wf_iri) :
     if p = owl_unionOf_iri
     then FStar_Pervasives_Native.Some CE_Union
     else FStar_Pervasives_Native.None
-let combinator_of_card_pred (p : RDF_Graph_Executable.wf_iri) :
+let combinator_of_card_pred (p : RDF_Term.wf_iri) :
   ce_combinator FStar_Pervasives_Native.option=
   if (p = owl_minCardinality_iri) || (p = owl_minQualifiedCardinality_iri)
   then FStar_Pervasives_Native.Some CE_MinCardinality
@@ -316,7 +315,7 @@ let combinator_of_card_pred (p : RDF_Graph_Executable.wf_iri) :
       if (p = owl_cardinality_iri) || (p = owl_qualifiedCardinality_iri)
       then FStar_Pervasives_Native.Some CE_ExactCardinality
       else FStar_Pervasives_Native.None
-let combinator_of_pred (p : RDF_Graph_Executable.wf_iri) :
+let combinator_of_pred (p : RDF_Term.wf_iri) :
   ce_combinator FStar_Pervasives_Native.option=
   if p = owl_intersectionOf_iri
   then FStar_Pervasives_Native.Some CE_Intersect
@@ -896,7 +895,7 @@ let rec expand_ce_subject (b : SPARQL11_Algebra.bgp)
                                   owl_maxQualifiedCardinality_iri);
                              SPARQL11_Algebra.tp_o =
                                (SPARQL11_Algebra.PT_Literal
-                                  RDF_Graph_Executable.one_nonNegInteger_literal)
+                                  OWL_Closure.one_nonNegInteger_literal)
                            } in
                          let shape_onclass_triple =
                            {
@@ -1227,6 +1226,8 @@ let rec normalise_joins (g : SPARQL11_Algebra.group_graph_pattern) :
       SPARQL11_Algebra.GP_Graph (gt, (normalise_joins a))
   | SPARQL11_Algebra.GP_Minus (a, b) ->
       SPARQL11_Algebra.GP_Minus ((normalise_joins a), (normalise_joins b))
+  | SPARQL11_Algebra.GP_Lateral (a, b) ->
+      SPARQL11_Algebra.GP_Lateral ((normalise_joins a), (normalise_joins b))
   | SPARQL11_Algebra.GP_Bind (e, v, a) ->
       SPARQL11_Algebra.GP_Bind (e, v, (normalise_joins a))
   | SPARQL11_Algebra.GP_Values (vs, rs) ->
@@ -1255,6 +1256,8 @@ let rec rewrite_ggp (g : SPARQL11_Algebra.group_graph_pattern) :
       SPARQL11_Algebra.GP_Graph (gt, (rewrite_ggp a))
   | SPARQL11_Algebra.GP_Minus (a, b) ->
       SPARQL11_Algebra.GP_Minus ((rewrite_ggp a), (rewrite_ggp b))
+  | SPARQL11_Algebra.GP_Lateral (a, b) ->
+      SPARQL11_Algebra.GP_Lateral ((rewrite_ggp a), (rewrite_ggp b))
   | SPARQL11_Algebra.GP_Bind (e, v, a) ->
       SPARQL11_Algebra.GP_Bind (e, v, (rewrite_ggp a))
   | SPARQL11_Algebra.GP_Values (vs, rs) ->
@@ -1297,6 +1300,8 @@ let rec ggp_has_ce_marker (g : SPARQL11_Algebra.group_graph_pattern) :
       (ggp_has_ce_marker a) || (ggp_has_ce_marker b)
   | SPARQL11_Algebra.GP_Graph (uu___, a) -> ggp_has_ce_marker a
   | SPARQL11_Algebra.GP_Minus (a, b) ->
+      (ggp_has_ce_marker a) || (ggp_has_ce_marker b)
+  | SPARQL11_Algebra.GP_Lateral (a, b) ->
       (ggp_has_ce_marker a) || (ggp_has_ce_marker b)
   | SPARQL11_Algebra.GP_Bind (uu___, uu___1, a) -> ggp_has_ce_marker a
   | SPARQL11_Algebra.GP_Values (uu___, uu___1) -> false

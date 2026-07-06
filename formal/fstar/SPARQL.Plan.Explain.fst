@@ -81,6 +81,7 @@ noeq type plan_node =
   | Plan_Graph        : string -> plan_node -> plan_node
       // Pretty-printed graph term (subject-position rendering).
   | Plan_Minus        : plan_node -> plan_node -> plan_node
+  | Plan_Lateral      : plan_node -> plan_node -> plan_node
   | Plan_Bind         : A.var_name -> plan_node -> plan_node
   | Plan_Values       : list A.var_name -> plan_node
   | Plan_Service      : string -> plan_node -> plan_node
@@ -205,6 +206,8 @@ let rec build_plan
     Plan_Graph (RP.pattern_term_short_explain gt) (build_plan p1 rows)
   | A.GP_Minus p1 p2 ->
     Plan_Minus (build_plan p1 rows) (build_plan p2 rows)
+  | A.GP_Lateral p1 p2 ->
+    Plan_Lateral (build_plan p1 rows) (build_plan p2 rows)
   | A.GP_Bind _ v p1 ->
     Plan_Bind v (build_plan p1 rows)
   | A.GP_Values vars _ ->
@@ -343,6 +346,10 @@ let rec plan_node_to_text (depth : nat) (n : plan_node)
     ind ^ "Minus" ^ nl
     ^ plan_node_to_text (depth + 1) p1
     ^ plan_node_to_text (depth + 1) p2
+  | Plan_Lateral p1 p2 ->
+    ind ^ "Lateral" ^ nl
+    ^ plan_node_to_text (depth + 1) p1
+    ^ plan_node_to_text (depth + 1) p2
   | Plan_Bind v p1 ->
     ind ^ "Bind ?" ^ v ^ nl
     ^ plan_node_to_text (depth + 1) p1
@@ -446,6 +453,9 @@ let rec plan_node_to_json (n : plan_node) : Tot string (decreases n) =
     ^ "\",\"inner\":" ^ plan_node_to_json p1 ^ "}"
   | Plan_Minus p1 p2 ->
     "{\"kind\":\"minus\",\"left\":" ^ plan_node_to_json p1
+    ^ ",\"right\":" ^ plan_node_to_json p2 ^ "}"
+  | Plan_Lateral p1 p2 ->
+    "{\"kind\":\"lateral\",\"left\":" ^ plan_node_to_json p1
     ^ ",\"right\":" ^ plan_node_to_json p2 ^ "}"
   | Plan_Bind v p1 ->
     "{\"kind\":\"bind\",\"var\":\"" ^ JE.json_escape v

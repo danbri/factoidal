@@ -1,0 +1,11 @@
+PREFIX : <https://example.org/>
+PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+
+# Illegal: LATERAL's RHS reassigns ?s via BIND, and ?s is already bound
+# by the LHS. Jena: "there can [be] no variable introduced by AS (BIND,
+# or sub-query) or VALUES in-scope at the top level of the LATERAL RHS
+# [] that is the same name as any in-scope variable from the LHS."
+SELECT * WHERE {
+  ?s rdf:type :Person .
+  LATERAL { BIND(1 AS ?s) }
+}

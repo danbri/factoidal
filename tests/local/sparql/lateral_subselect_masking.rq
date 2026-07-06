@@ -1,0 +1,22 @@
+PREFIX : <https://example.org/>
+PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+
+# Jena doc "Sub-SELECT projection masking" corner case: the sub-SELECT
+# projects ONLY ?label, not ?s, so the outer ?s is NOT substituted into
+# the inner WHERE clause -- "the inner ?s in SELECT ?label is not the
+# outer ?s because SELECT ?label does not pass out ?s." The inner query
+# is evaluated as an ordinary (non-correlated) nested SELECT: LIMIT 1
+# applies GLOBALLY across every (?s, ?label) pair in the graph, so every
+# outer subject ends up joined with the SAME single globally-smallest
+# label. This is legal (not an error -- contrast with
+# lateral_illegal_subselect_projection.rq, which explicitly projects the
+# conflicting ?s and IS an error); it is simply not what a naive reading
+# of "substitute the outer row in" would predict. Confirmed against
+# Apache Jena 5.2.0 (arq): every row gets label "Alice A".
+SELECT ?s ?label WHERE {
+  ?s rdf:type :Person .
+  LATERAL {
+    SELECT ?label WHERE { ?s :label ?label } ORDER BY ?label LIMIT 1
+  }
+}
+ORDER BY ?s

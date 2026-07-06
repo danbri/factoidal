@@ -5,17 +5,17 @@
     RDF.Store.Columnar.DeltaMerge.fst (suppressing this warning for further
     modules)
 
-* Warning 328 at SPARQL11.Store.fst(958,4-958,33):
+* Warning 328 at SPARQL11.Store.fst(994,4-994,33):
   - Global binding
         'SPARQL11.Store.eval_select_query_backend_bgp'
     is recursive but not used in its body
 
-* Warning 328 at SPARQL11.Store.fst(1079,4-1079,37):
+* Warning 328 at SPARQL11.Store.fst(1115,4-1115,37):
   - Global binding
         'SPARQL11.Store.eval_select_query_backend_dataset'
     is recursive but not used in its body
 
-* Warning 328 at SPARQL11.Store.fst(1098,4-1098,34):
+* Warning 328 at SPARQL11.Store.fst(1134,4-1134,34):
   - Global binding
         'SPARQL11.Store.eval_ask_query_backend_dataset'
     is recursive but not used in its body

@@ -1,4 +1,4 @@
-* Warning 361 at SPARQL11.Algebra.fst(5931,0-5932,40):
+* Warning 361 at SPARQL11.Algebra.fst(6138,0-6139,40):
   - Some #push-options have not been popped. Current depth is 1.
 
 Extracted module SPARQL11.Algebra

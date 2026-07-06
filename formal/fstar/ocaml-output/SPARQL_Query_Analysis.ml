@@ -13,6 +13,8 @@ let rec collect_bgps_aux (acc : SPARQL11_Algebra.bgp Prims.list)
       collect_bgps_aux (collect_bgps_aux acc p1) p2
   | SPARQL11_Algebra.GP_Minus (p1, p2) ->
       collect_bgps_aux (collect_bgps_aux acc p1) p2
+  | SPARQL11_Algebra.GP_Lateral (p1, p2) ->
+      collect_bgps_aux (collect_bgps_aux acc p1) p2
   | SPARQL11_Algebra.GP_Filter (uu___, p1) -> collect_bgps_aux acc p1
   | SPARQL11_Algebra.GP_Graph (uu___, p1) -> collect_bgps_aux acc p1
   | SPARQL11_Algebra.GP_Bind (uu___, uu___1, p1) -> collect_bgps_aux acc p1

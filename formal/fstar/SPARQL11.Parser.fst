@@ -28,6 +28,7 @@ type token =
   | Tok_SELECT | Tok_ASK | Tok_CONSTRUCT | Tok_DESCRIBE
   | Tok_WHERE | Tok_PREFIX | Tok_BASE
   | Tok_OPTIONAL | Tok_UNION | Tok_MINUS_KW | Tok_FILTER | Tok_BIND | Tok_VALUES
+  | Tok_LATERAL  (* SPARQL 1.2 track / Jena extension, issue: LATERAL join *)
   | Tok_GRAPH | Tok_SERVICE | Tok_SILENT
   | Tok_EXISTS | Tok_NOT
   | Tok_AS | Tok_DISTINCT | Tok_REDUCED
@@ -527,6 +528,7 @@ let keyword_of_upper (upper : string) (original : string) : token =
   else if streq upper "OPTIONAL" then Tok_OPTIONAL
   else if streq upper "UNION" then Tok_UNION
   else if streq upper "MINUS" then Tok_MINUS_KW
+  else if streq upper "LATERAL" then Tok_LATERAL
   else if streq upper "FILTER" then Tok_FILTER
   else if streq upper "BIND" then Tok_BIND
   else if streq upper "VALUES" then Tok_VALUES
@@ -1762,6 +1764,8 @@ and ggp_labeled_bnodes (g : group_graph_pattern) : Tot (list string) (decreases 
     local_string_union (ggp_labeled_bnodes g1) (ggp_labeled_bnodes g2)
   | GP_LeftJoin g1 g2 _ ->
     local_string_union (ggp_labeled_bnodes g1) (ggp_labeled_bnodes g2)
+  | GP_Lateral g1 g2 ->
+    local_string_union (ggp_labeled_bnodes g1) (ggp_labeled_bnodes g2)
   | GP_Filter _ g1
   | GP_Graph _ g1
   | GP_Bind _ _ g1
@@ -1811,6 +1815,28 @@ and parse_ggp_body (pm : prefix_map) (fuel : nat) (acc : group_graph_pattern)
        let acc' = GP_Minus acc g in
        let ts' = match parse_peek ts' with Tok_DOT -> parse_advance ts' | _ -> ts' in
        parse_ggp_body pm (fuel-1) acc' filters true ts')
+  | Tok_LATERAL ->
+    // SPARQL 1.2 track / Jena extension:
+    // https://jena.apache.org/documentation/query/lateral-join.html
+    // `acc LATERAL { g }` — same grammar position as OPTIONAL/MINUS
+    // (a GraphPatternNotTriples element combining the accumulated
+    // left-hand pattern with a following group). Jena well-formedness
+    // rule: "there can [be] no variable introduced by AS (BIND, or
+    // sub-query) or VALUES in-scope at the top level of the LATERAL
+    // RHS[] that is the same name as any in-scope variable from the
+    // LHS" — such a reassignment would conflict with the variable
+    // already set by the row being correlated-joined. Checked here,
+    // at parse time, exactly like the existing BIND-scope check above
+    // ("BIND variable already in scope").
+    (match parse_group_graph_pattern pm (fuel-1) (parse_advance ts) with
+     | ParseErr m -> ParseErr m
+     | ParseOk g ts' ->
+       if List.Tot.existsb (fun v -> ggp_has_var v acc) (lateral_assignable_vars g) then
+         ParseErr "LATERAL: right-hand side reassigns a variable already bound by the left-hand pattern"
+       else
+         let acc' = GP_Lateral acc g in
+         let ts' = match parse_peek ts' with Tok_DOT -> parse_advance ts' | _ -> ts' in
+         parse_ggp_body pm (fuel-1) acc' filters true ts')
   | Tok_GRAPH ->
     let ts' = parse_advance ts in
     (match parse_graph_name pm (fuel-1) ts' with
@@ -2659,6 +2685,7 @@ and parse_pred_obj_list (pm : prefix_map) (fuel : nat) (subj : pattern_subject)
         (match parse_peek ts''' with
          | Tok_DOT | Tok_RBRACE | Tok_OPTIONAL | Tok_MINUS_KW | Tok_FILTER
          | Tok_BIND | Tok_GRAPH | Tok_SERVICE | Tok_VALUES | Tok_UNION
+         | Tok_LATERAL
          | Tok_LBRACE | Tok_RBRACKET | Tok_EOF -> ParseOk acc' ts'''
          | _ -> parse_pred_obj_list pm (fuel-1) subj acc' ts''')
       | _ -> ParseOk acc' ts''
@@ -3465,6 +3492,10 @@ let rec validate_bnode_scope_pattern (p : group_graph_pattern)
     let (ok2, b2) = validate_bnode_scope_pattern p2 in
     let (ok3, _) = validate_bnode_scope_expr e in
     (ok1 && ok2 && ok3 && not (string_overlaps b1 b2), string_union b1 b2)
+  | GP_Lateral p1 p2 ->
+    let (ok1, b1) = validate_bnode_scope_pattern p1 in
+    let (ok2, b2) = validate_bnode_scope_pattern p2 in
+    (ok1 && ok2 && not (string_overlaps b1 b2), string_union b1 b2)
   | GP_Graph _ p1
   | GP_Service _ p1 _
   | GP_ServiceVar _ p1 _ ->
@@ -3707,6 +3738,7 @@ let rec gp_has_var (g : group_graph_pattern) : Tot bool (decreases g) =
   | GP_LeftJoin a b _ -> gp_has_var a || gp_has_var b
   | GP_Union a b -> gp_has_var a || gp_has_var b
   | GP_Minus a b -> gp_has_var a || gp_has_var b
+  | GP_Lateral a b -> gp_has_var a || gp_has_var b
   | GP_Filter _ inner -> gp_has_var inner
   | GP_Bind _ _ inner -> gp_has_var inner
   | GP_Values _ _ -> true
@@ -3735,6 +3767,7 @@ let rec gp_has_bnode (g : group_graph_pattern) : Tot bool (decreases g) =
   | GP_LeftJoin a b _ -> gp_has_bnode a || gp_has_bnode b
   | GP_Union a b -> gp_has_bnode a || gp_has_bnode b
   | GP_Minus a b -> gp_has_bnode a || gp_has_bnode b
+  | GP_Lateral a b -> gp_has_bnode a || gp_has_bnode b
   | GP_Filter _ inner -> gp_has_bnode inner
   | GP_Bind _ _ inner -> gp_has_bnode inner
   | GP_Values _ _ -> false
@@ -4382,6 +4415,7 @@ and sse_ggp (ggp : group_graph_pattern) : Tot string (decreases ggp) =
   | GP_Union g1 g2 -> sse_wrap "union" (sse_ggp g1 ^ "\n  " ^ sse_ggp g2)
   | GP_Graph term g -> sse_wrap "graph" (sse_pattern_term term ^ "\n  " ^ sse_ggp g)
   | GP_Minus g1 g2 -> sse_wrap "minus" (sse_ggp g1 ^ "\n  " ^ sse_ggp g2)
+  | GP_Lateral g1 g2 -> sse_wrap "lateral" (sse_ggp g1 ^ "\n  " ^ sse_ggp g2)
   | GP_Bind e v g -> sse_wrap "extend" ("(?" ^ v ^ " " ^ sse_expr e ^ ")\n  " ^ sse_ggp g)
   | GP_Values vars rows -> sse_wrap "table" (sse_vars vars)
   | GP_Service iri g silent ->

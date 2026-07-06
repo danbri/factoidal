@@ -61,6 +61,7 @@ let rec hoist_group_filters g =
     | GP_LeftJoin (l, r, e) -> GP_LeftJoin (hoist_group_filters l, hoist_group_filters r, e)
     | GP_Union (l, r) -> GP_Union (hoist_group_filters l, hoist_group_filters r)
     | GP_Minus (l, r) -> GP_Minus (hoist_group_filters l, hoist_group_filters r)
+    | GP_Lateral (l, r) -> GP_Lateral (hoist_group_filters l, hoist_group_filters r)
     | GP_Bind (e, v, inner) -> GP_Bind (e, v, hoist_group_filters inner)
     | GP_Graph (n, inner) -> GP_Graph (n, hoist_group_filters inner)
     | GP_Service (iri, inner, s) -> GP_Service (iri, hoist_group_filters inner, s)
