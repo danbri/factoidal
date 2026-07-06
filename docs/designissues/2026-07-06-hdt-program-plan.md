@@ -308,6 +308,29 @@ in-memory (backend-parity regression, same pattern as
 `tests/local/backend_parity_regressions.sh`); W3C floors unchanged;
 `ballyhoo_hdt_runtime.sh` deleted; #253 closed.
 
+**Status 2026-07-06: landed.** `Parser.BallyhooHDT.fst` is now pure
+Tot F\* — the 12 `assume val`s plus the opaque `assume type
+hdt_handle` are gone; `hdt_graph_store` carries the hex bytes +
+stage-1 inventory + stage-3 triples info, and every arm calls
+stages 1-3 directly. Open decision 1 resolved as the **lean sibling
+ADT**: `hdt_access_path` (`HAP_BoundSubject` select-jump via
+`hdt_triples_for_subject` / `HAP_FullScan` via `hdt_enumerate_all`,
+post-filtered) — the COTTAS `access_path` was not generalised. The
+capability seam was already wired (`caps_of_backend`'s GB_HDT arm
+consumes `hdt_search_triples`/`hdt_estimate`/`hdt_predicate_present`
+unchanged); the CLI grew `--data-hdt FILE` (read-only, default graph
+only) feeding a `GB_HDT` `dataset_backend` through the existing
+combiner. `ballyhoo_hdt_runtime.sh` (555 lines) deleted; the
+LazyTermCache/HDTTermCacheRegistry modules + their two glue scripts
+remain in the tree but nothing HDT consumes them — candidates for
+the stage-5 perf pass or removal. Measured at landing:
+`bin/hdt-probe/check.sh` 74 pass, 0 fail (out of 74) on both
+fixtures; new `tests/local/hdt_stage4_parity.sh` 6 pass, 0 fail
+(unbound scan, bound-S, bound-P, bound-O, ASK, COUNT — byte-identical
+modulo the in-memory loader's documented `d0_` bnode-label prefix);
+W3C floors unchanged (SPARQL 631 pass, 0 fail; RDF 1031 pass,
+0 fail).
+
 ### Stage 5 — optimized rank/select, joining the Roaring/KaRaMeL track
 
 Replace naive rank/select with indexed structures (BitSequence375-

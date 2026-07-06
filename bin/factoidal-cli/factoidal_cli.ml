@@ -243,6 +243,22 @@ let open_cottas_ondisk_store path =
     Printf.eprintf "Error: could not open on-disk COTTAS artifact: %s\n" path;
     exit 1
 
+(* HDT program plan stage 4 (docs/designissues/2026-07-06-hdt-program-
+   plan.md): open an HDT artifact through the verified stage 1-3
+   reader chain (Parser_BallyhooHDT.hdt_open_graph_store, itself pure
+   F* calling HDT_Container/HDT_Dictionary/HDT_Triples -- no HDT-
+   specific OCaml glue left to call into). `None` means the container
+   inventory or triples section failed to parse (wrong cookie, a
+   CRC mismatch, or truncation) -- loud failure, same posture as
+   open_cottas_ondisk_store above. *)
+let open_hdt_store path =
+  match Parser_BallyhooHDT.hdt_open_graph_store FStar_Pervasives_Native.None path
+          FStar_Pervasives_Native.None with
+  | FStar_Pervasives_Native.Some store -> store
+  | FStar_Pervasives_Native.None ->
+    Printf.eprintf "Error: could not open HDT artifact: %s\n" path;
+    exit 1
+
 (* In-memory bytes store, stage 3 (docs/designissues/2026-07-06-
    inmemory-bytes-store.md): `--data-cottas-mem FILE` reads FILE fully
    into an OCaml string and registers it under a synthetic handle via
@@ -314,9 +330,21 @@ let build_dataset_backend
     (cottas_stores : RDF_CottasStore.cottas_ondisk_store list)
     (cottas_paths : string list)
     (delta_log_path : string option)
+    (hdt_stores : Parser_BallyhooHDT.hdt_graph_store list)
     : SPARQL11_Store.dataset_backend =
   let module S = SPARQL11_Store in
   let in_memory_backend = S.indexed_dataset_backend in_memory in
+  (* HDT program plan stage 4: read-only, triples-only (no HDTQ yet,
+     docs/designissues/2026-07-06-hdt-program-plan.md "Out of scope"),
+     so every HDT store is a default-graph-only backend with no named
+     graphs -- same shape indexed_dataset_backend/cottas_ondisk_
+     dataset_backend build for their own default graph. *)
+  let hdt_backends =
+    List.map
+      (fun (hgs : Parser_BallyhooHDT.hdt_graph_store) ->
+         S.({ dsb_default = GB_HDT hgs; dsb_named = [] }))
+      hdt_stores
+  in
   match delta_log_path, cottas_stores, cottas_paths with
   | Some log_path, [ cods ], [ cpath ] ->
     (* Durable-UPDATE stage 4: an ordinary query against a store that
@@ -329,7 +357,8 @@ let build_dataset_backend
        filter_batches_since_epoch exists to prevent. *)
     let epoch = read_compacted_epoch_opt (Filename.dirname cpath) in
     let delta_backend = S.cottas_with_delta_dataset_backend cods log_path epoch in
-    RDF_Store_Combine.combine_dataset_backends [ in_memory_backend; delta_backend ]
+    RDF_Store_Combine.combine_dataset_backends
+      ([ in_memory_backend; delta_backend ] @ hdt_backends)
   | Some _, _, _ ->
     Printf.eprintf
       "Error: --delta-log requires exactly one --data-cottas store (got %d)\n"
@@ -340,7 +369,7 @@ let build_dataset_backend
       List.map S.cottas_ondisk_dataset_backend cottas_stores
     in
     RDF_Store_Combine.combine_dataset_backends
-      (in_memory_backend :: cottas_backends)
+      (in_memory_backend :: (cottas_backends @ hdt_backends))
 
 (* ============================================================================
    Result table formatting (like arq / isql)
@@ -449,6 +478,7 @@ type output_format = Table | CSV | NTOut | JSON
 type config = {
   mutable data_files : string list;
   mutable data_cottas_files : string list;  (* COTTAS/Parquet artifacts *)
+  mutable data_hdt_files : string list;     (* HDT artifacts, read-only, default graph only *)
   mutable delta_log_path : string option;   (* durable-UPDATE stage 3: --delta-log PATH *)
   mutable named_graphs : (string * string) list;  (* (iri, file) *)
   mutable query_file : string option;
@@ -572,6 +602,10 @@ let usage () =
   Printf.printf "                         --data-cottas's store composed with the delta\n";
   Printf.printf "                         batches recorded at PATH. Requires exactly one\n";
   Printf.printf "                         --data-cottas FILE.\n";
+  Printf.printf "      --data-hdt FILE    Load a read-only HDT (Header-Dictionary-Triples)\n";
+  Printf.printf "                         artifact (repeatable). Default graph only (no\n";
+  Printf.printf "                         named graphs -- HDTQ is a separate, deferred\n";
+  Printf.printf "                         extension); SELECT/ASK only.\n";
   Printf.printf "  -n, --named IRI=FILE   Load named graph\n";
   Printf.printf "  -q, --query FILE       SPARQL query file\n";
   Printf.printf "  -e SPARQL              Inline SPARQL query string\n";
@@ -620,7 +654,7 @@ let version () =
    legacy callers. *)
 let parse_args ?args () =
   let cfg = {
-    data_files = []; data_cottas_files = []; delta_log_path = None; named_graphs = []; query_file = None;
+    data_files = []; data_cottas_files = []; data_hdt_files = []; delta_log_path = None; named_graphs = []; query_file = None;
     query_string = None; base_iri = None; input_format = None;
     output_format = Table; dump_mode = false; dump_nq_mode = false;
     dump_turtle_mode = false;
@@ -644,6 +678,11 @@ let parse_args ?args () =
          query it through the SAME on-disk COTTAS code path via a
          synthetic cache handle -- see register_cottas_mem_file above. *)
       cfg.data_cottas_files <- cfg.data_cottas_files @ [register_cottas_mem_file f]; loop rest
+    | "--data-hdt" :: f :: rest ->
+      (* HDT program plan stage 4 (docs/designissues/2026-07-06-hdt-
+         program-plan.md): a read-only, default-graph-only backend --
+         see build_dataset_backend's hdt handling below. *)
+      cfg.data_hdt_files <- cfg.data_hdt_files @ [f]; loop rest
     | "--delta-log" :: f :: rest ->
       cfg.delta_log_path <- Some f; loop rest
     | ("--named" | "-n") :: spec :: rest ->
@@ -2512,6 +2551,7 @@ let () =
   in
   if not fastpath_disabled
      && cfg.data_cottas_files = []
+     && cfg.data_hdt_files = []
      && cfg.named_graphs = []
      && cfg.entail_regime = ""
      && cfg.data_files <> []
@@ -2703,7 +2743,15 @@ let () =
             Printf.eprintf "Error opening on-disk COTTAS %s: %s\n" f (Printexc.to_string e);
             exit 1
         ) cfg.data_cottas_files in
-        let dsb = build_dataset_backend dataset cottas_stores cfg.data_cottas_files cfg.delta_log_path in
+        let hdt_stores = List.map (fun f ->
+          try open_hdt_store f
+          with e ->
+            Printf.eprintf "Error opening HDT %s: %s\n" f (Printexc.to_string e);
+            exit 1
+        ) cfg.data_hdt_files in
+        let dsb =
+          build_dataset_backend dataset cottas_stores cfg.data_cottas_files cfg.delta_log_path hdt_stores
+        in
         let ask_answer =
           if is_ask then
             match SPARQL11_Store.run_ask_query_backend_dataset rewritten_query dsb with

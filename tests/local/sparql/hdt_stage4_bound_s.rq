@@ -1,0 +1,4 @@
+SELECT ?p ?o WHERE {
+  <http://w3id.org/rml/core/> ?p ?o
+}
+ORDER BY ?p ?o

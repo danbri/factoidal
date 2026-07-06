@@ -19,17 +19,21 @@
 #
 # Both hashtables populate together on first lookup. The mutex
 # delivers the strict thread-safety improvement called out in the
-# #253 plan's risk register (the current ballyhoo_hdt_runtime.sh
-# Hashtbls are not Mutex-protected; cross-thread access works only
+# #253 plan's risk register (the old ballyhoo_hdt_runtime.sh
+# Hashtbls were not Mutex-protected; cross-thread access worked only
 # by accident via OCaml's GC-pause behaviour).
 #
 # Rule #11(c) compliant: thin glue, no semantic decisions. The F*
 # spec layer reasons about populate-once + idempotent-lookup
 # invariants; this realisation is mechanical state plumbing.
 #
-# Replaces ballyhoo_hdt_runtime.sh once the HDT cache consumers
-# (Parser.BallyhooHDT.fst:hdt_open_graph_store + term-ID decoders)
-# migrate to LazyTermCache. Distinction from cottas_lazy_dict:
+# 2026-07-06 status (HDT program stage 4): ballyhoo_hdt_runtime.sh is
+# DELETED — Parser.BallyhooHDT now calls the verified stage 1-3
+# readers (HDT.Container / HDT.Dictionary / HDT.Triples) directly and
+# does NOT consume LazyTermCache. This glue stays only as the
+# realisation of RDF.Store.LazyTermCache's assume vals, a candidate
+# memoization seam for the stage-5 perf pass (or removal if that pass
+# finds it unneeded). Distinction from cottas_lazy_dict:
 # 2 directions (HDT's Front-Coded dict has no separate raw view)
 # vs 4 (cottas needs raw column tokens alongside typed values).
 

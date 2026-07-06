@@ -1,3 +1,20 @@
+* Warning 241 at Parquet.Footer.fst(0,0-0,0):
+  - Unable to load Parquet.Footer.fst.checked since checked file
+    Parquet.Footer.fst.checked is stale (digest mismatch for
+    Parquet.Footer.fst); will recheck Parquet.Footer.fst (suppressing this
+    warning for further modules)
+
+* Warning 328 at Parquet.Footer.fst(296,8-296,31):
+  - Global binding
+        'Parquet.Footer.decode_varint_value_hex'
+    is recursive but not used in its body
+
 Extracted module Parser.BallyhooHDT
+* Warning 247 at Parser.BallyhooHDT.fst(0,0-0,0):
+  - Checked file Parser.BallyhooHDT.fst.checked was not written.
+  - Reason:
+      checked file Parquet.Footer.fst.checked is stale (digest mismatch for
+      Parquet.Footer.fst)
+
 Verified module: Parser.BallyhooHDT
 All verification conditions discharged successfully

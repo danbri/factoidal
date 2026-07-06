@@ -12,11 +12,19 @@ open FStar.All
 // Realised in OCaml as two Hashtbl.t + a populate thunk + a loaded
 // flag + a mutex.
 //
-// Issue #253 (ballyhoo_hdt_runtime retirement) — replaces the
-// 555-line ballyhoo_hdt_runtime.sh patch's hand-written term-ID
-// allocator + Hashtbl pair with an F*-spec'd populate-on-demand
-// cache. Design plan:
+// Issue #253 (ballyhoo_hdt_runtime retirement) — originally scoped
+// to replace the 555-line ballyhoo_hdt_runtime.sh patch's
+// hand-written term-ID allocator + Hashtbl pair with an F*-spec'd
+// populate-on-demand cache. Design plan:
 //   docs/designissues/2026-05-13-issue-253-hdt-runtime-retirement-plan.md
+//
+// 2026-07-06 (HDT program stage 4): #253 closed a different way —
+// ballyhoo_hdt_runtime.sh is deleted and Parser.BallyhooHDT calls
+// the verified HDT.Container/HDT.Dictionary/HDT.Triples readers
+// directly, with no cache in the path. This module is currently
+// UNUSED by the HDT backend; it remains as a candidate memoization
+// seam for the stage-5 perf pass (or removal if that pass finds it
+// unneeded).
 //
 // Distinction from RDF.CottasStore.LazyDict (#254):
 //   - LazyDict has 4 directions (typed/raw forward + canonical/raw

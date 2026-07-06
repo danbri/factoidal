@@ -2,7 +2,14 @@
 
 **Date:** 2026-05-13 (scoped during the #200 closeout session).
 **Tracker:** GitHub issue #253 / boundary-audit `ballyhoo_hdt_runtime.sh`.
-**Status:** scoped, not yet executed.
+**Status:** SUPERSEDED and closed 2026-07-06 by the HDT program's
+stage 4 ([`2026-07-06-hdt-program-plan.md`](2026-07-06-hdt-program-plan.md)),
+which went further than this plan scoped: instead of keeping
+`parse_front_coded_section` as an `assume val` behind a LazyTermCache,
+the byte format itself is parsed in F\* (HDT.Container / HDT.Dictionary
+/ HDT.Triples) and `ballyhoo_hdt_runtime.sh` was deleted outright. The
+LazyTermCache abstraction this plan proposed landed but ended up unused
+by the HDT path — retained as a possible stage-5 memoization seam.
 **Estimated effort:** 2-3 days for the core lift, +1 day for the
 re-verification (HDT W3C interop tests + the BSBM micro-bench).
 
