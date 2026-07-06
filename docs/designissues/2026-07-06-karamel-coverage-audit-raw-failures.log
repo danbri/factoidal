@@ -1,0 +1,1408 @@
+=== fstar.exe --codegen krml (RDF.Vocabulary.Axioms) rc=0 dt=3.2s timeout=False ===
+Extracted module FStar.Attributes
+Extracted module FStar.NormSteps
+Extracted module FStar.Pervasives.Native
+Extracted module FStar.Pervasives
+  [... 112 lines trimmed — full log reproducible via tools/karamel-coverage-audit.sh ...]
+Not extracting FStar.Monotonic.Heap.free_mm to KaRaMeL (polymorphic assumes are not supported)
+Not extracting type definition FStar.Monotonic.Heap.aref to KaRaMeL (assumed type)
+Not extracting FStar.Monotonic.Heap.aref_of to KaRaMeL (polymorphic assumes are not supported)
+Not extracting type definition FStar.Monotonic.Heap.aref_unused_in to KaRaMeL (assumed type)
+Not extracting type definition FStar.Monotonic.Heap.aref_live_at to KaRaMeL (assumed type)
+Attempting to translate module FStar.Heap
+Attempting to translate module FStar.ST
+Not extracting FStar.ST.gst_witness to KaRaMeL (polymorphic assumes are not supported)
+Not extracting FStar.ST.gst_recall to KaRaMeL (polymorphic assumes are not supported)
+Attempting to translate module FStar.All
+Not extracting FStar.All.exit to KaRaMeL (polymorphic assumes are not supported)
+Not extracting FStar.All.try_with to KaRaMeL (polymorphic assumes are not supported)
+Not extracting exception Failure to KaRaMeL (exceptions unsupported)
+Not extracting FStar.All.failwith to KaRaMeL (polymorphic assumes are not supported)
+Attempting to translate module FStar.List
+* Warning 250 at RDF.Vocabulary.Axioms.fst(257,0-258,48):
+  - Error while extracting (["FStar", "List"], "filter_map") to KaRaMeL.
+  - Got an exception:Failure("Internal error: name not found filter_map_acc\n")
+
+* Warning 250 at RDF.Vocabulary.Axioms.fst(257,0-258,48):
+  - Error while extracting (["FStar", "List"], "index") to KaRaMeL.
+  - Got an exception:Failure("Internal error: name not found index\n")
+
+Attempting to translate module FStar.String
+Attempting to translate module RDF.Term
+Attempting to translate module RDF.Triple
+Attempting to translate module RDF.Vocabulary.Axioms
+Verified module: RDF.Vocabulary.Axioms
+All verification conditions discharged successfully
+
+
+=== krml lowering (RDF.Vocabulary.Axioms) rc=None dt=120.1s timeout=True ===
+✔ [Monomorphization] ⏱️ 12ms
+
+
+=== fstar.exe --codegen krml (Parser.XPath) rc=0 dt=2.1s timeout=False ===
+Extracted module FStar.Pervasives.Native
+Extracted module FStar.Attributes
+Extracted module FStar.NormSteps
+Extracted module FStar.Pervasives
+  [... 132 lines trimmed — full log reproducible via tools/karamel-coverage-audit.sh ...]
+Not extracting Parser.Combinators.peof to KaRaMeL (function type annotation has less arrows than the number of arguments; please mark the return type abbreviation as inline_for_extraction)
+Not extracting Parser.Combinators.pstring to KaRaMeL (function type annotation has less arrows than the number of arguments; please mark the return type abbreviation as inline_for_extraction)
+Not extracting Parser.Combinators.pbind to KaRaMeL (function type annotation has less arrows than the number of arguments; please mark the return type abbreviation as inline_for_extraction)
+Not extracting Parser.Combinators.pmap to KaRaMeL (function type annotation has less arrows than the number of arguments; please mark the return type abbreviation as inline_for_extraction)
+Not extracting Parser.Combinators.palt to KaRaMeL (function type annotation has less arrows than the number of arguments; please mark the return type abbreviation as inline_for_extraction)
+Not extracting Parser.Combinators.popt to KaRaMeL (function type annotation has less arrows than the number of arguments; please mark the return type abbreviation as inline_for_extraction)
+Not extracting Parser.Combinators.pbetween to KaRaMeL (function type annotation has less arrows than the number of arguments; please mark the return type abbreviation as inline_for_extraction)
+Not extracting Parser.Combinators.pleft to KaRaMeL (function type annotation has less arrows than the number of arguments; please mark the return type abbreviation as inline_for_extraction)
+Not extracting Parser.Combinators.pright to KaRaMeL (function type annotation has less arrows than the number of arguments; please mark the return type abbreviation as inline_for_extraction)
+Attempting to translate module Parser.XPath
+* Warning 250:
+  - Error while extracting (["Parser", "XPath"], "parse_node_test") to KaRaMeL.
+  - Got an exception:Failure("todo: translate_pat [MLP_Const]")
+
+* Warning 250:
+  - Error while extracting (["Parser", "XPath"], "parse_path_expr") to KaRaMeL.
+  - Got an exception:Failure("todo: translate_pat [MLP_Const]")
+
+* Warning 250:
+  - Error while extracting (["Parser", "XPath"], "parse_primary_expr") to
+    KaRaMeL.
+  - Got an exception:Failure("todo: translate_pat [MLP_Const]")
+
+* Warning 250:
+  - Error while extracting (["Parser", "XPath"], "parse_step") to KaRaMeL.
+  - Got an exception:Failure("todo: translate_pat [MLP_Const]")
+
+Verified module: Parser.XPath
+All verification conditions discharged successfully
+
+
+=== krml lowering (Parser.XPath) rc=2 dt=0.8s timeout=False ===
+Cannot re-check Parser.Combinators.pstring as valid Low* and will not extract it.  If Parser.Combinators.pstring is not meant to be extracted, consider marking it as Ghost, noextract, or using a bundle. If it is meant to be extracted, use -dast for further debugging.
+
+Warning 4: in the arguments to ParseOk, after the definition of sub_str, in top-level declaration Parser.Combinators.pstring, in file Audit: Malformed input:
+Type annotation is not an lid but Prims_string -> krml_checked_int_t -> Parser_Combinators_parse_result Prims_string
+--------------------------------------------------------------------------------
+
+Cannot re-check Parser.XPath.match_keyword as valid Low* and will not extract it.  If Parser.XPath.match_keyword is not meant to be extracted, consider marking it as Ghost, noextract, or using a bundle. If it is meant to be extracted, use -dast for further debugging.
+
+Warning 4: in top-level declaration Parser.XPath.match_keyword, in file Audit: Malformed input:
+Type annotation is not an lid but Prims_string -> krml_checked_int_t -> Parser_Combinators_parse_result Prims_string
+--------------------------------------------------------------------------------
+
+Warning 2: in the arguments to Prims.uu___is_Nil, in the scrutinee, after the definition of pos2, in top-level declaration Parser.XPath.parse_filter_suffix, in file Audit: Reference to Prims.uu___is_Nil has no corresponding implementation; please provide a C implementation
+⚠ [Monomorphization] ⏱️ 22ms
+Fatal error: exception Stack overflow
+
+
+=== fstar.exe --codegen krml (Tableau) rc=0 dt=12.7s timeout=False ===
+Extracted module FStar.Attributes
+Extracted module FStar.NormSteps
+Extracted module FStar.Pervasives.Native
+Extracted module FStar.Pervasives
+  [... 131 lines trimmed — full log reproducible via tools/karamel-coverage-audit.sh ...]
+Not extracting type definition FStar.Seq.Base.equal to KaRaMeL (assumed type)
+Not extracting FStar.Seq.Base.eq_i to KaRaMeL (polymorphic assumes are not supported)
+Not extracting FStar.Seq.Base.eq to KaRaMeL (polymorphic assumes are not supported)
+Attempting to translate module FStar.Math.Lemmas
+Attempting to translate module FStar.BitVector
+Attempting to translate module FStar.UInt
+Attempting to translate module FStar.UInt32
+Not extracting type definition FStar.UInt32.t to KaRaMeL (assumed type)
+Attempting to translate module FStar.Char
+Not extracting type definition FStar.Char.char to KaRaMeL (assumed type)
+Attempting to translate module FStar.String
+Attempting to translate module RDF.Vocabulary
+Attempting to translate module RDF.Term
+Attempting to translate module RDF.Triple
+Attempting to translate module RDF.Indexed
+Attempting to translate module RDF.Graph
+Attempting to translate module RDF.Vocabulary.Axioms
+Attempting to translate module RDFS.Closure
+Attempting to translate module OWL.Closure
+* Warning 250 at Tableau.fst(979,0-1103,9):
+  - Error while extracting (["OWL", "Closure"], "strip_trailing_zeros") to
+    KaRaMeL.
+  - Got an exception:Failure("Internal error: name not found drop_zeros\n")
+
+Attempting to translate module RDF.Graph.Executable
+Attempting to translate module OWL.Vocabulary
+Attempting to translate module Tableau
+Verified module: Tableau
+All verification conditions discharged successfully
+
+
+=== krml lowering (Tableau) rc=2 dt=0.7s timeout=False ===
+Warning 2: in the arguments to Prims.uu___is_Nil, after the definition of succs, in top-level declaration Tableau.already_has_witness, in file Audit: Reference to Prims.uu___is_Nil has no corresponding implementation; please provide a C implementation
+✔ [Monomorphization] ⏱️ 34ms
+Fatal error: exception Stack overflow
+
+
+=== fstar.exe --codegen krml (SPARQL11.Algebra) rc=0 dt=42.5s timeout=False ===
+Extracted module FStar.Attributes
+Extracted module FStar.NormSteps
+Extracted module FStar.Pervasives.Native
+Extracted module FStar.Pervasives
+  [... 175 lines trimmed — full log reproducible via tools/karamel-coverage-audit.sh ...]
+* Warning 250 at SPARQL11.Algebra.fst(5796,0-5797,40):
+  - Error while extracting (["SPARQL11", "Algebra"], "dt_seconds") to KaRaMeL.
+  - Got an exception:Failure("Internal error: name not found find_end\n")
+
+* Warning 250 at SPARQL11.Algebra.fst(5796,0-5797,40):
+  - Error while extracting (["SPARQL11", "Algebra"], "dt_timezone") to KaRaMeL.
+  - Got an exception:Failure("Internal error: name not found find_tz\n")
+
+* Warning 250 at SPARQL11.Algebra.fst(5796,0-5797,40):
+  - Error while extracting (["SPARQL11", "Algebra"], "dt_tz") to KaRaMeL.
+  - Got an exception:Failure("Internal error: name not found find_tz_pos\n")
+
+* Warning 250 at SPARQL11.Algebra.fst(5796,0-5797,40):
+  - Error while extracting (["SPARQL11", "Algebra"], "eval_expr_with_base") to
+    KaRaMeL.
+  - Got an exception:Failure("todo: translate_pat [MLP_Const]")
+
+* Warning 250 at SPARQL11.Algebra.fst(5796,0-5797,40):
+  - Error while extracting (["SPARQL11", "Algebra"], "eval_aggregate") to
+    KaRaMeL.
+  - Got an exception:Failure("todo: translate_pat [MLP_Const]")
+
+* Warning 250 at SPARQL11.Algebra.fst(5796,0-5797,40):
+  - Error while extracting (["SPARQL11", "Algebra"], "eval_property_path") to
+    KaRaMeL.
+  - Got an exception:Failure("Internal error: name not found fixpoint\n")
+
+Verified module: SPARQL11.Algebra
+All verification conditions discharged successfully
+
+
+=== krml lowering (SPARQL11.Algebra) rc=2 dt=1.6s timeout=False ===
+Warning 16: Cannot enforce arity at call-site for FStar.List.Tot.Base.bool_of_compare (Invalid_argument split -- is this a partial application?)
+Warning 16: Cannot enforce arity at call-site for RDF.Indexed.cmp_by_key (Invalid_argument split -- is this a partial application?)
+Warning 16: Cannot enforce arity at call-site for SPARQL11.Algebra.aggregate_group (Invalid_argument split -- is this a partial application?)
+Warning 16: Cannot enforce arity at call-site for SPARQL11.Algebra.compare_on_conditions (Invalid_argument split -- is this a partial application?)
+Warning 16: Cannot enforce arity at call-site for SPARQL11.Algebra.substitute_triple_pattern (Invalid_argument split -- is this a partial application?)
+Warning 16: Cannot enforce arity at call-site for SPARQL11.Algebra.rename_quad_bnodes (Invalid_argument split -- is this a partial application?)
+Warning 2: in the arguments to Prims.uu___is_Nil, in top-level declaration SPARQL11.Algebra.list_contains_sublist__FStar_Char_char, in file Audit: Reference to Prims.uu___is_Nil has no corresponding implementation; please provide a C implementation
+Warning 2: in the arguments to Prims.uu___is_Nil, in the scrutinee, in top-level declaration SPARQL11.Algebra.find_substring_pos_aux__FStar_Char_char, in file Audit: Reference to Prims.uu___is_Nil has no corresponding implementation; please provide a C implementation
+Warning 2: in the arguments to Prims.uu___is_Nil, in the scrutinee, in top-level declaration SPARQL11.Algebra.replace_all_chars, in file Audit: Reference to Prims.uu___is_Nil has no corresponding implementation; please provide a C implementation
+Warning 2: in the arguments to Prims.uu___is_Nil, in the definition of has_dot, after the definition of after_with_dot, in top-level declaration SPARQL11.Algebra.split_decimal, in file Audit: Reference to Prims.uu___is_Nil has no corresponding implementation; please provide a C implementation
+Warning 2: in the arguments to Prims.uu___is_Nil, in the scrutinee, after the definition of uu___, in top-level declaration SPARQL11.Algebra.int_round, in file Audit: Reference to Prims.uu___is_Nil has no corresponding implementation; please provide a C implementation
+Warning 2: in the arguments to Prims.uu___is_Nil, in the scrutinee, after the definition of stripped, in top-level declaration SPARQL11.Algebra.strip_trailing_zeros_chars, in file Audit: Reference to Prims.uu___is_Nil has no corresponding implementation; please provide a C implementation
+Warning 2: in the arguments to Prims.uu___is_Nil, in the scrutinee, after the definition of after_e_with, in top-level declaration SPARQL11.Algebra.parse_double_to_scaled, in file Audit: Reference to Prims.uu___is_Nil has no corresponding implementation; please provide a C implementation
+Warning 2: in the arguments to Prims.uu___is_Nil, in the scrutinee, after the definition of after_dot_with, in top-level declaration SPARQL11.Algebra.strip_trailing_decimal_zeros, in file Audit: Reference to Prims.uu___is_Nil has no corresponding implementation; please provide a C implementation
+✔ [Monomorphization] ⏱️ 977ms
+Fatal error: exception Stack overflow
+
+
+=== fstar.exe --codegen krml (CSVW.Metadata) rc=0 dt=1.9s timeout=False ===
+Extracted module FStar.Pervasives.Native
+Extracted module FStar.Attributes
+Extracted module FStar.NormSteps
+Extracted module FStar.Pervasives
+  [... 117 lines trimmed — full log reproducible via tools/karamel-coverage-audit.sh ...]
+Attempting to translate module FStar.List
+* Warning 250:
+  - Error while extracting (["FStar", "List"], "filter_map") to KaRaMeL.
+  - Got an exception:Failure("Internal error: name not found filter_map_acc\n")
+
+* Warning 250:
+  - Error while extracting (["FStar", "List"], "index") to KaRaMeL.
+  - Got an exception:Failure("Internal error: name not found index\n")
+
+Attempting to translate module FStar.String
+Attempting to translate module Parser.Combinators
+Not extracting Parser.Combinators.preturn to KaRaMeL (function type annotation has less arrows than the number of arguments; please mark the return type abbreviation as inline_for_extraction)
+Not extracting Parser.Combinators.pfail to KaRaMeL (function type annotation has less arrows than the number of arguments; please mark the return type abbreviation as inline_for_extraction)
+Not extracting Parser.Combinators.pchar to KaRaMeL (function type annotation has less arrows than the number of arguments; please mark the return type abbreviation as inline_for_extraction)
+Not extracting Parser.Combinators.psat to KaRaMeL (function type annotation has less arrows than the number of arguments; please mark the return type abbreviation as inline_for_extraction)
+Not extracting Parser.Combinators.pany to KaRaMeL (function type annotation has less arrows than the number of arguments; please mark the return type abbreviation as inline_for_extraction)
+Not extracting Parser.Combinators.peof to KaRaMeL (function type annotation has less arrows than the number of arguments; please mark the return type abbreviation as inline_for_extraction)
+Not extracting Parser.Combinators.pstring to KaRaMeL (function type annotation has less arrows than the number of arguments; please mark the return type abbreviation as inline_for_extraction)
+Not extracting Parser.Combinators.pbind to KaRaMeL (function type annotation has less arrows than the number of arguments; please mark the return type abbreviation as inline_for_extraction)
+Not extracting Parser.Combinators.pmap to KaRaMeL (function type annotation has less arrows than the number of arguments; please mark the return type abbreviation as inline_for_extraction)
+Not extracting Parser.Combinators.palt to KaRaMeL (function type annotation has less arrows than the number of arguments; please mark the return type abbreviation as inline_for_extraction)
+Not extracting Parser.Combinators.popt to KaRaMeL (function type annotation has less arrows than the number of arguments; please mark the return type abbreviation as inline_for_extraction)
+Not extracting Parser.Combinators.pbetween to KaRaMeL (function type annotation has less arrows than the number of arguments; please mark the return type abbreviation as inline_for_extraction)
+Not extracting Parser.Combinators.pleft to KaRaMeL (function type annotation has less arrows than the number of arguments; please mark the return type abbreviation as inline_for_extraction)
+Not extracting Parser.Combinators.pright to KaRaMeL (function type annotation has less arrows than the number of arguments; please mark the return type abbreviation as inline_for_extraction)
+Attempting to translate module Parser.JSON
+Attempting to translate module CSVW.Metadata
+Verified module: CSVW.Metadata
+All verification conditions discharged successfully
+
+
+=== krml lowering (CSVW.Metadata) rc=2 dt=0.3s timeout=False ===
+Cannot re-check Parser.Combinators.pstring as valid Low* and will not extract it.  If Parser.Combinators.pstring is not meant to be extracted, consider marking it as Ghost, noextract, or using a bundle. If it is meant to be extracted, use -dast for further debugging.
+
+Warning 4: in the arguments to ParseOk, after the definition of sub_str, in top-level declaration Parser.Combinators.pstring, in file Audit: Malformed input:
+Type annotation is not an lid but Prims_string -> krml_checked_int_t -> Parser_Combinators_parse_result Prims_string
+--------------------------------------------------------------------------------
+
+Cannot re-check Parser.JSON.json_parse_value as valid Low* and will not extract it.  If Parser.JSON.json_parse_value is not meant to be extracted, consider marking it as Ghost, noextract, or using a bundle. If it is meant to be extracted, use -dast for further debugging.
+
+Warning 4: after the definition of b, in top-level declaration Parser.JSON.json_parse_value, in file Audit: Malformed input:
+Type annotation is not an lid but Prims_string -> krml_checked_int_t -> Parser_Combinators_parse_result Prims_string
+--------------------------------------------------------------------------------
+
+⚠ [Monomorphization] ⏱️ 20ms
+Cannot re-check Parser.JSON.parse_json_text as valid Low* and will not extract it.  If Parser.JSON.parse_json_text is not meant to be extracted, consider marking it as Ghost, noextract, or using a bundle. If it is meant to be extracted, use -dast for further debugging.
+
+Warning 4: after the definition of len, in top-level declaration Parser.JSON.parse_json_text, in file Audit: Malformed input:
+Type annotation is not an lid but any
+--------------------------------------------------------------------------------
+
+⚠ [Inlining] ⏱️ 28ms
+✔ [Pattern matches compilation] ⏱️ 11ms
+Fatal error: exception Failure("nth")
+
+
+=== fstar.exe --codegen krml (OWL.QueryRewrite) rc=0 dt=46.6s timeout=False ===
+Extracted module FStar.Pervasives.Native
+Extracted module FStar.Attributes
+Extracted module FStar.NormSteps
+Extracted module FStar.Pervasives
+  [... 182 lines trimmed — full log reproducible via tools/karamel-coverage-audit.sh ...]
+  - Got an exception:Failure("Internal error: name not found find_tz\n")
+
+* Warning 250 at OWL.QueryRewrite.fst(1796,0-1796,70):
+  - Error while extracting (["SPARQL11", "Algebra"], "dt_tz") to KaRaMeL.
+  - Got an exception:Failure("Internal error: name not found find_tz_pos\n")
+
+* Warning 250 at OWL.QueryRewrite.fst(1796,0-1796,70):
+  - Error while extracting (["SPARQL11", "Algebra"], "eval_expr_with_base") to
+    KaRaMeL.
+  - Got an exception:Failure("todo: translate_pat [MLP_Const]")
+
+* Warning 250 at OWL.QueryRewrite.fst(1796,0-1796,70):
+  - Error while extracting (["SPARQL11", "Algebra"], "eval_aggregate") to
+    KaRaMeL.
+  - Got an exception:Failure("todo: translate_pat [MLP_Const]")
+
+* Warning 250 at OWL.QueryRewrite.fst(1796,0-1796,70):
+  - Error while extracting (["SPARQL11", "Algebra"], "eval_property_path") to
+    KaRaMeL.
+  - Got an exception:Failure("Internal error: name not found fixpoint\n")
+
+Attempting to translate module OWL.QueryRewrite
+* Warning 250 at OWL.QueryRewrite.fst(1796,0-1796,70):
+  - Error while extracting (["OWL", "QueryRewrite"], "ce_combinator_for_term")
+    to KaRaMeL.
+  - Got an exception:Failure("Internal error: name not found lookup\n")
+
+Verified module: OWL.QueryRewrite
+All verification conditions discharged successfully
+
+
+=== krml lowering (OWL.QueryRewrite) rc=2 dt=1.9s timeout=False ===
+✔ [Monomorphization] ⏱️ 50ms
+Fatal error: exception Stack overflow
+
+
+=== fstar.exe --codegen krml (JSONLD.Context) rc=0 dt=52.1s timeout=False ===
+Extracted module FStar.Pervasives.Native
+Extracted module FStar.Attributes
+Extracted module FStar.NormSteps
+Extracted module FStar.Pervasives
+  [... 167 lines trimmed — full log reproducible via tools/karamel-coverage-audit.sh ...]
+
+Attempting to translate module RDF.Graph.Executable
+Attempting to translate module RDF.IRI
+Attempting to translate module SPARQL11.IRI.Resolve
+Attempting to translate module Parser.FastString
+Attempting to translate module Parser.Combinators
+Not extracting Parser.Combinators.preturn to KaRaMeL (function type annotation has less arrows than the number of arguments; please mark the return type abbreviation as inline_for_extraction)
+Not extracting Parser.Combinators.pfail to KaRaMeL (function type annotation has less arrows than the number of arguments; please mark the return type abbreviation as inline_for_extraction)
+Not extracting Parser.Combinators.pchar to KaRaMeL (function type annotation has less arrows than the number of arguments; please mark the return type abbreviation as inline_for_extraction)
+Not extracting Parser.Combinators.psat to KaRaMeL (function type annotation has less arrows than the number of arguments; please mark the return type abbreviation as inline_for_extraction)
+Not extracting Parser.Combinators.pany to KaRaMeL (function type annotation has less arrows than the number of arguments; please mark the return type abbreviation as inline_for_extraction)
+Not extracting Parser.Combinators.peof to KaRaMeL (function type annotation has less arrows than the number of arguments; please mark the return type abbreviation as inline_for_extraction)
+Not extracting Parser.Combinators.pstring to KaRaMeL (function type annotation has less arrows than the number of arguments; please mark the return type abbreviation as inline_for_extraction)
+Not extracting Parser.Combinators.pbind to KaRaMeL (function type annotation has less arrows than the number of arguments; please mark the return type abbreviation as inline_for_extraction)
+Not extracting Parser.Combinators.pmap to KaRaMeL (function type annotation has less arrows than the number of arguments; please mark the return type abbreviation as inline_for_extraction)
+Not extracting Parser.Combinators.palt to KaRaMeL (function type annotation has less arrows than the number of arguments; please mark the return type abbreviation as inline_for_extraction)
+Not extracting Parser.Combinators.popt to KaRaMeL (function type annotation has less arrows than the number of arguments; please mark the return type abbreviation as inline_for_extraction)
+Not extracting Parser.Combinators.pbetween to KaRaMeL (function type annotation has less arrows than the number of arguments; please mark the return type abbreviation as inline_for_extraction)
+Not extracting Parser.Combinators.pleft to KaRaMeL (function type annotation has less arrows than the number of arguments; please mark the return type abbreviation as inline_for_extraction)
+Not extracting Parser.Combinators.pright to KaRaMeL (function type annotation has less arrows than the number of arguments; please mark the return type abbreviation as inline_for_extraction)
+Attempting to translate module Parser.JSON
+Attempting to translate module JSONLD.Context
+* Warning 250 at JSONLD.Context.fst(1750,0-1754,83):
+  - Error while extracting (["JSONLD", "Context"], "context_process_one_field")
+    to KaRaMeL.
+  - Got an exception:Failure("todo: translate_pat [MLP_Const]")
+
+Verified module: JSONLD.Context
+All verification conditions discharged successfully
+
+
+=== krml lowering (JSONLD.Context) rc=2 dt=1.1s timeout=False ===
+Cannot re-check Parser.Combinators.pstring as valid Low* and will not extract it.  If Parser.Combinators.pstring is not meant to be extracted, consider marking it as Ghost, noextract, or using a bundle. If it is meant to be extracted, use -dast for further debugging.
+
+Warning 4: in the arguments to ParseOk, after the definition of sub_str, in top-level declaration Parser.Combinators.pstring, in file Audit: Malformed input:
+Type annotation is not an lid but Prims_string -> krml_checked_int_t -> Parser_Combinators_parse_result Prims_string
+--------------------------------------------------------------------------------
+
+Cannot re-check Parser.JSON.json_parse_value as valid Low* and will not extract it.  If Parser.JSON.json_parse_value is not meant to be extracted, consider marking it as Ghost, noextract, or using a bundle. If it is meant to be extracted, use -dast for further debugging.
+
+Warning 4: after the definition of b, in top-level declaration Parser.JSON.json_parse_value, in file Audit: Malformed input:
+Type annotation is not an lid but Prims_string -> krml_checked_int_t -> Parser_Combinators_parse_result Prims_string
+--------------------------------------------------------------------------------
+
+⚠ [Monomorphization] ⏱️ 56ms
+Cannot re-check Parser.JSON.parse_json_text as valid Low* and will not extract it.  If Parser.JSON.parse_json_text is not meant to be extracted, consider marking it as Ghost, noextract, or using a bundle. If it is meant to be extracted, use -dast for further debugging.
+
+Warning 4: after the definition of len, in top-level declaration Parser.JSON.parse_json_text, in file Audit: Malformed input:
+Type annotation is not an lid but any
+--------------------------------------------------------------------------------
+
+⚠ [Inlining] ⏱️ 54ms
+✔ [Pattern matches compilation] ⏱️ 36ms
+Warning 17: The top-level declaration JSONLD.Context.empty_active_context, once compiled to a C global variable, generates a static initializer (i.e. run-time code in krmlinit) because its definition is not a C constant; it is:
+  { ac_terms = eternal newbuf { tag = Prims_Nil; }: Prims_list__(Prims_string * JSONLD_Context_term_def) 1uint32_t; ac_vocab = { tag = FStar_Pervasives_Native_None; }: FStar_Pervasives_Native_option__Prims_string; ac_base = { tag = FStar_Pervasives_Native_None; }: FStar_Pervasives_Native_option__Prims_string; ac_language = { tag = FStar_Pervasives_Native_None; }: FStar_Pervasives_Native_option__Prims_string; ac_direction = { tag = FStar_Pervasives_Native_None; }: FStar_Pervasives_Native_option__Prims_string; ac_previous = { tag = FStar_Pervasives_Native_None; }: FStar_Pervasives_Native_option__JSONLD_Context_active_context; ac_mode10 = false; ac_doc_url = { tag = FStar_Pervasives_Native_None; }: FStar_Pervasives_Native_option__Prims_string; ac_original_base = { tag = FStar_Pervasives_Native_None; }: FStar_Pervasives_Native_option__Prims_string; ac_suppress_pop = false; }: JSONLD_Context_active_context
+Fatal error: exception Failure("nth")
+
+
+=== fstar.exe --codegen krml (Parser.NQuads) rc=0 dt=59.0s timeout=False ===
+Extracted module FStar.Pervasives.Native
+Extracted module FStar.Attributes
+Extracted module FStar.NormSteps
+Extracted module FStar.Pervasives
+  [... 218 lines trimmed — full log reproducible via tools/karamel-coverage-audit.sh ...]
+  - Error while extracting (["Parser", "NTriples"], "count_ntriples_acc") to
+    KaRaMeL.
+  - Got an exception:Failure("Internal error: name not found skip_line\n")
+
+Attempting to translate module Parser.NQuads
+Not extracting Parser.NQuads.parse_graph_label to KaRaMeL (function type annotation has less arrows than the number of arguments; please mark the return type abbreviation as inline_for_extraction)
+Not extracting Parser.NQuads.parse_opt_graph_label to KaRaMeL (function type annotation has less arrows than the number of arguments; please mark the return type abbreviation as inline_for_extraction)
+Not extracting Parser.NQuads.parse_nquad to KaRaMeL (function type annotation has less arrows than the number of arguments; please mark the return type abbreviation as inline_for_extraction)
+* Warning 250 at Parser.NQuads.fst(596,0-598,44):
+  - Error while extracting (["Parser", "NQuads"], "parse_nquads_acc") to
+    KaRaMeL.
+  - Got an exception:Failure("Internal error: name not found skip_line\n")
+
+* Warning 250 at Parser.NQuads.fst(596,0-598,44):
+  - Error while extracting (["Parser", "NQuads"], "fold_nquads_acc") to KaRaMeL.
+  - Got an exception:Failure("Internal error: name not found skip_line\n")
+
+* Warning 250 at Parser.NQuads.fst(596,0-598,44):
+  - Error while extracting (["Parser", "NQuads"], "count_nquads_acc") to
+    KaRaMeL.
+  - Got an exception:Failure("Internal error: name not found skip_line\n")
+
+* Warning 250 at Parser.NQuads.fst(596,0-598,44):
+  - Error while extracting (["Parser", "NQuads"], "parse_nquads_flat_acc") to
+    KaRaMeL.
+  - Got an exception:Failure("Internal error: name not found skip_line\n")
+
+Verified module: Parser.NQuads
+All verification conditions discharged successfully
+
+
+=== krml lowering (Parser.NQuads) rc=2 dt=0.2s timeout=False ===
+Cannot re-check Parser.NTriples.parse_iri as valid Low* and will not extract it.  If Parser.NTriples.parse_iri is not meant to be extracted, consider marking it as Ghost, noextract, or using a bundle. If it is meant to be extracted, use -dast for further debugging.
+
+Warning 4: in top-level declaration Parser.NTriples.parse_iri, in file Audit: Malformed input:
+Type annotation is not an lid but Prims_string -> krml_checked_int_t -> Parser_Combinators_parse_result Prims_string
+  [... 53 lines trimmed — full log reproducible via tools/karamel-coverage-audit.sh ...]
+Type annotation is not an lid but Prims_string -> krml_checked_int_t -> Parser_Combinators_parse_result FStar_Pervasives_Native_option Prims_string
+--------------------------------------------------------------------------------
+
+Cannot re-check Parser.NQuads.parse_nquad as valid Low* and will not extract it.  If Parser.NQuads.parse_nquad is not meant to be extracted, consider marking it as Ghost, noextract, or using a bundle. If it is meant to be extracted, use -dast for further debugging.
+
+Warning 4: in top-level declaration Parser.NQuads.parse_nquad, in file Audit: Malformed input:
+Type annotation is not an lid but Prims_string -> krml_checked_int_t -> Parser_Combinators_parse_result RDF_Term_subject
+--------------------------------------------------------------------------------
+
+Cannot re-check Parser.NQuads.parse_nquads_strict_acc as valid Low* and will not extract it.  If Parser.NQuads.parse_nquads_strict_acc is not meant to be extracted, consider marking it as Ghost, noextract, or using a bundle. If it is meant to be extracted, use -dast for further debugging.
+
+Warning 4: after the definition of code, in top-level declaration Parser.NQuads.parse_nquads_strict_acc, in file Audit: Malformed input:
+Type annotation is not an lid but Prims_string -> krml_checked_int_t -> Parser_Combinators_parse_result (RDF_Triple_triple * FStar_Pervasives_Native_option Prims_string)
+--------------------------------------------------------------------------------
+
+⚠ [Monomorphization] ⏱️ 30ms
+Cannot re-check Parser.NQuads.parse_nquads_strict as valid Low* and will not extract it.  If Parser.NQuads.parse_nquads_strict is not meant to be extracted, consider marking it as Ghost, noextract, or using a bundle. If it is meant to be extracted, use -dast for further debugging.
+
+Warning 4: after the definition of len, in top-level declaration Parser.NQuads.parse_nquads_strict, in file Audit: Malformed input:
+Type annotation is not an lid but any
+--------------------------------------------------------------------------------
+
+⚠ [Inlining] ⏱️ 19ms
+✔ [Pattern matches compilation] ⏱️ 14ms
+Warning 17: The top-level declaration RDF.Graph.empty_graph, once compiled to a C global variable, generates a static initializer (i.e. run-time code in krmlinit) because its definition is not a C constant; it is:
+  eternal newbuf { tag = Prims_Nil; }: RDF_Graph_rdf_graph_gc 1uint32_t
+Warning 17: The top-level declaration RDF.Graph.empty_dataset, once compiled to a C global variable, generates a static initializer (i.e. run-time code in krmlinit) because its definition is not a C constant; it is:
+  { ds_default = RDF.Graph.empty_graph; ds_named = eternal newbuf { tag = Prims_Nil; }: Prims_list__RDF_Graph_named_graph 1uint32_t; }: RDF_Graph_rdf_dataset
+Fatal error: exception Failure("nth")
+
+
+=== fstar.exe --codegen krml (SPARQL.HTTP.RunQuery) rc=0 dt=25.3s timeout=False ===
+Extracted module FStar.Attributes
+Extracted module FStar.NormSteps
+Extracted module FStar.Pervasives.Native
+Extracted module FStar.Pervasives
+  [... 190 lines trimmed — full log reproducible via tools/karamel-coverage-audit.sh ...]
+  - Error while extracting (["SPARQL11", "Algebra"], "dt_tz") to KaRaMeL.
+  - Got an exception:Failure("Internal error: name not found find_tz_pos\n")
+
+* Warning 250 at SPARQL.HTTP.RunQuery.fst(198,0-230,66):
+  - Error while extracting (["SPARQL11", "Algebra"], "eval_expr_with_base") to
+    KaRaMeL.
+  - Got an exception:Failure("todo: translate_pat [MLP_Const]")
+
+* Warning 250 at SPARQL.HTTP.RunQuery.fst(198,0-230,66):
+  - Error while extracting (["SPARQL11", "Algebra"], "eval_aggregate") to
+    KaRaMeL.
+  - Got an exception:Failure("todo: translate_pat [MLP_Const]")
+
+* Warning 250 at SPARQL.HTTP.RunQuery.fst(198,0-230,66):
+  - Error while extracting (["SPARQL11", "Algebra"], "eval_property_path") to
+    KaRaMeL.
+  - Got an exception:Failure("Internal error: name not found fixpoint\n")
+
+Attempting to translate module SPARQL.HTTP.Response
+Attempting to translate module Parser.FastString
+Attempting to translate module SPARQL.Protocol
+* Warning 250 at SPARQL.HTTP.RunQuery.fst(198,0-230,66):
+  - Error while extracting (["SPARQL", "Protocol"], "chars_contains_word") to
+    KaRaMeL.
+  - Got an exception:Failure("Internal error: name not found drop_n\n")
+
+Attempting to translate module SPARQL.HTTP.RunQuery
+Verified module: SPARQL.HTTP.RunQuery
+All verification conditions discharged successfully
+
+
+=== krml lowering (SPARQL.HTTP.RunQuery) rc=2 dt=1.8s timeout=False ===
+✔ [Monomorphization] ⏱️ 45ms
+Fatal error: exception Stack overflow
+
+
+=== fstar.exe --codegen krml (SPARQL.Plan.Streamable) rc=0 dt=25.2s timeout=False ===
+Extracted module FStar.Pervasives.Native
+Extracted module FStar.Attributes
+Extracted module FStar.NormSteps
+Extracted module FStar.Pervasives
+  [... 182 lines trimmed — full log reproducible via tools/karamel-coverage-audit.sh ...]
+  - Got an exception:Failure("Internal error: name not found find_tz\n")
+
+* Warning 250 at SPARQL.Plan.Streamable.fst(301,0-301,62):
+  - Error while extracting (["SPARQL11", "Algebra"], "dt_tz") to KaRaMeL.
+  - Got an exception:Failure("Internal error: name not found find_tz_pos\n")
+
+* Warning 250 at SPARQL.Plan.Streamable.fst(301,0-301,62):
+  - Error while extracting (["SPARQL11", "Algebra"], "eval_expr_with_base") to
+    KaRaMeL.
+  - Got an exception:Failure("todo: translate_pat [MLP_Const]")
+
+* Warning 250 at SPARQL.Plan.Streamable.fst(301,0-301,62):
+  - Error while extracting (["SPARQL11", "Algebra"], "eval_aggregate") to
+    KaRaMeL.
+  - Got an exception:Failure("todo: translate_pat [MLP_Const]")
+
+* Warning 250 at SPARQL.Plan.Streamable.fst(301,0-301,62):
+  - Error while extracting (["SPARQL11", "Algebra"], "eval_property_path") to
+    KaRaMeL.
+  - Got an exception:Failure("Internal error: name not found fixpoint\n")
+
+Attempting to translate module SPARQL.Plan.Streamable
+* Warning 250 at SPARQL.Plan.Streamable.fst(301,0-301,62):
+  - Error while extracting (["SPARQL", "Plan", "Streamable"],
+    "detect_count_star_select") to KaRaMeL.
+  - Got an exception:Failure("todo: translate_pat [MLP_Const]")
+
+Verified module: SPARQL.Plan.Streamable
+All verification conditions discharged successfully
+
+
+=== krml lowering (SPARQL.Plan.Streamable) rc=2 dt=1.4s timeout=False ===
+✔ [Monomorphization] ⏱️ 37ms
+Fatal error: exception Stack overflow
+
+
+=== fstar.exe --codegen krml (RDF.Store.Columnar.DeltaMerge) rc=0 dt=46.9s timeout=False ===
+Extracted module FStar.Attributes
+Extracted module FStar.NormSteps
+Extracted module FStar.Pervasives.Native
+Extracted module FStar.Pervasives
+  [... 190 lines trimmed — full log reproducible via tools/karamel-coverage-audit.sh ...]
+  - Error while extracting (["SPARQL11", "Algebra"], "dt_seconds") to KaRaMeL.
+  - Got an exception:Failure("Internal error: name not found find_end\n")
+
+* Warning 250 at RDF.Store.Columnar.DeltaMerge.fst(901,0-903,27):
+  - Error while extracting (["SPARQL11", "Algebra"], "dt_timezone") to KaRaMeL.
+  - Got an exception:Failure("Internal error: name not found find_tz\n")
+
+* Warning 250 at RDF.Store.Columnar.DeltaMerge.fst(901,0-903,27):
+  - Error while extracting (["SPARQL11", "Algebra"], "dt_tz") to KaRaMeL.
+  - Got an exception:Failure("Internal error: name not found find_tz_pos\n")
+
+* Warning 250 at RDF.Store.Columnar.DeltaMerge.fst(901,0-903,27):
+  - Error while extracting (["SPARQL11", "Algebra"], "eval_expr_with_base") to
+    KaRaMeL.
+  - Got an exception:Failure("todo: translate_pat [MLP_Const]")
+
+* Warning 250 at RDF.Store.Columnar.DeltaMerge.fst(901,0-903,27):
+  - Error while extracting (["SPARQL11", "Algebra"], "eval_aggregate") to
+    KaRaMeL.
+  - Got an exception:Failure("todo: translate_pat [MLP_Const]")
+
+* Warning 250 at RDF.Store.Columnar.DeltaMerge.fst(901,0-903,27):
+  - Error while extracting (["SPARQL11", "Algebra"], "eval_property_path") to
+    KaRaMeL.
+  - Got an exception:Failure("Internal error: name not found fixpoint\n")
+
+Attempting to translate module RDF.Store.Columnar.DeltaMerge
+Verified module: RDF.Store.Columnar.DeltaMerge
+All verification conditions discharged successfully
+
+
+=== krml lowering (RDF.Store.Columnar.DeltaMerge) rc=2 dt=1.4s timeout=False ===
+Warning 16: Cannot enforce arity at call-site for SPARQL11.Algebra.rename_quad_bnodes (Invalid_argument split -- is this a partial application?)
+✔ [Monomorphization] ⏱️ 40ms
+Fatal error: exception Stack overflow
+
+
+=== fstar.exe --codegen krml (SPARQL.Query.Analysis) rc=0 dt=24.9s timeout=False ===
+Extracted module FStar.Attributes
+Extracted module FStar.NormSteps
+Extracted module FStar.Pervasives.Native
+Extracted module FStar.Pervasives
+  [... 177 lines trimmed — full log reproducible via tools/karamel-coverage-audit.sh ...]
+  - Error while extracting (["SPARQL11", "Algebra"], "dt_seconds") to KaRaMeL.
+  - Got an exception:Failure("Internal error: name not found find_end\n")
+
+* Warning 250 at SPARQL.Query.Analysis.fst(51,0-52,39):
+  - Error while extracting (["SPARQL11", "Algebra"], "dt_timezone") to KaRaMeL.
+  - Got an exception:Failure("Internal error: name not found find_tz\n")
+
+* Warning 250 at SPARQL.Query.Analysis.fst(51,0-52,39):
+  - Error while extracting (["SPARQL11", "Algebra"], "dt_tz") to KaRaMeL.
+  - Got an exception:Failure("Internal error: name not found find_tz_pos\n")
+
+* Warning 250 at SPARQL.Query.Analysis.fst(51,0-52,39):
+  - Error while extracting (["SPARQL11", "Algebra"], "eval_expr_with_base") to
+    KaRaMeL.
+  - Got an exception:Failure("todo: translate_pat [MLP_Const]")
+
+* Warning 250 at SPARQL.Query.Analysis.fst(51,0-52,39):
+  - Error while extracting (["SPARQL11", "Algebra"], "eval_aggregate") to
+    KaRaMeL.
+  - Got an exception:Failure("todo: translate_pat [MLP_Const]")
+
+* Warning 250 at SPARQL.Query.Analysis.fst(51,0-52,39):
+  - Error while extracting (["SPARQL11", "Algebra"], "eval_property_path") to
+    KaRaMeL.
+  - Got an exception:Failure("Internal error: name not found fixpoint\n")
+
+Attempting to translate module SPARQL.Query.Analysis
+Verified module: SPARQL.Query.Analysis
+All verification conditions discharged successfully
+
+
+=== krml lowering (SPARQL.Query.Analysis) rc=2 dt=0.9s timeout=False ===
+Warning 2: in the arguments to Prims.uu___is_Cons, in the scrutinee, in top-level declaration SPARQL.Query.Analysis.collect_bgps_aux, in file Audit: Reference to Prims.uu___is_Cons has no corresponding implementation; please provide a C implementation
+✔ [Monomorphization] ⏱️ 33ms
+Fatal error: exception Stack overflow
+
+
+=== fstar.exe --codegen krml (SPARQL.Update.Analysis) rc=0 dt=22.9s timeout=False ===
+Extracted module FStar.Attributes
+Extracted module FStar.NormSteps
+Extracted module FStar.Pervasives.Native
+Extracted module FStar.Pervasives
+  [... 177 lines trimmed — full log reproducible via tools/karamel-coverage-audit.sh ...]
+  - Error while extracting (["SPARQL11", "Algebra"], "dt_seconds") to KaRaMeL.
+  - Got an exception:Failure("Internal error: name not found find_end\n")
+
+* Warning 250 at SPARQL.Update.Analysis.fst(30,0-31,28):
+  - Error while extracting (["SPARQL11", "Algebra"], "dt_timezone") to KaRaMeL.
+  - Got an exception:Failure("Internal error: name not found find_tz\n")
+
+* Warning 250 at SPARQL.Update.Analysis.fst(30,0-31,28):
+  - Error while extracting (["SPARQL11", "Algebra"], "dt_tz") to KaRaMeL.
+  - Got an exception:Failure("Internal error: name not found find_tz_pos\n")
+
+* Warning 250 at SPARQL.Update.Analysis.fst(30,0-31,28):
+  - Error while extracting (["SPARQL11", "Algebra"], "eval_expr_with_base") to
+    KaRaMeL.
+  - Got an exception:Failure("todo: translate_pat [MLP_Const]")
+
+* Warning 250 at SPARQL.Update.Analysis.fst(30,0-31,28):
+  - Error while extracting (["SPARQL11", "Algebra"], "eval_aggregate") to
+    KaRaMeL.
+  - Got an exception:Failure("todo: translate_pat [MLP_Const]")
+
+* Warning 250 at SPARQL.Update.Analysis.fst(30,0-31,28):
+  - Error while extracting (["SPARQL11", "Algebra"], "eval_property_path") to
+    KaRaMeL.
+  - Got an exception:Failure("Internal error: name not found fixpoint\n")
+
+Attempting to translate module SPARQL.Update.Analysis
+Verified module: SPARQL.Update.Analysis
+All verification conditions discharged successfully
+
+
+=== krml lowering (SPARQL.Update.Analysis) rc=2 dt=1.3s timeout=False ===
+✔ [Monomorphization] ⏱️ 32ms
+Fatal error: exception Stack overflow
+
+
+=== fstar.exe --codegen krml (SPARQL.Update.Sandbox) rc=0 dt=24.8s timeout=False ===
+Extracted module FStar.Attributes
+Extracted module FStar.NormSteps
+Extracted module FStar.Pervasives.Native
+Extracted module FStar.Pervasives
+  [... 177 lines trimmed — full log reproducible via tools/karamel-coverage-audit.sh ...]
+  - Error while extracting (["SPARQL11", "Algebra"], "dt_seconds") to KaRaMeL.
+  - Got an exception:Failure("Internal error: name not found find_end\n")
+
+* Warning 250 at SPARQL.Update.Sandbox.fst(320,0-323,48):
+  - Error while extracting (["SPARQL11", "Algebra"], "dt_timezone") to KaRaMeL.
+  - Got an exception:Failure("Internal error: name not found find_tz\n")
+
+* Warning 250 at SPARQL.Update.Sandbox.fst(320,0-323,48):
+  - Error while extracting (["SPARQL11", "Algebra"], "dt_tz") to KaRaMeL.
+  - Got an exception:Failure("Internal error: name not found find_tz_pos\n")
+
+* Warning 250 at SPARQL.Update.Sandbox.fst(320,0-323,48):
+  - Error while extracting (["SPARQL11", "Algebra"], "eval_expr_with_base") to
+    KaRaMeL.
+  - Got an exception:Failure("todo: translate_pat [MLP_Const]")
+
+* Warning 250 at SPARQL.Update.Sandbox.fst(320,0-323,48):
+  - Error while extracting (["SPARQL11", "Algebra"], "eval_aggregate") to
+    KaRaMeL.
+  - Got an exception:Failure("todo: translate_pat [MLP_Const]")
+
+* Warning 250 at SPARQL.Update.Sandbox.fst(320,0-323,48):
+  - Error while extracting (["SPARQL11", "Algebra"], "eval_property_path") to
+    KaRaMeL.
+  - Got an exception:Failure("Internal error: name not found fixpoint\n")
+
+Attempting to translate module SPARQL.Update.Sandbox
+Verified module: SPARQL.Update.Sandbox
+All verification conditions discharged successfully
+
+
+=== krml lowering (SPARQL.Update.Sandbox) rc=2 dt=1.0s timeout=False ===
+✔ [Monomorphization] ⏱️ 35ms
+Fatal error: exception Stack overflow
+
+
+=== fstar.exe --codegen krml (ShEx.Schema) rc=0 dt=17.9s timeout=False ===
+Extracted module FStar.Pervasives.Native
+Extracted module FStar.Attributes
+Extracted module FStar.NormSteps
+Extracted module FStar.Pervasives
+  [... 175 lines trimmed — full log reproducible via tools/karamel-coverage-audit.sh ...]
+Not extracting Parser.Combinators.pbetween to KaRaMeL (function type annotation has less arrows than the number of arguments; please mark the return type abbreviation as inline_for_extraction)
+Not extracting Parser.Combinators.pleft to KaRaMeL (function type annotation has less arrows than the number of arguments; please mark the return type abbreviation as inline_for_extraction)
+Not extracting Parser.Combinators.pright to KaRaMeL (function type annotation has less arrows than the number of arguments; please mark the return type abbreviation as inline_for_extraction)
+Attempting to translate module Parser.JSON
+Attempting to translate module ShEx.Schema
+* Warning 250 at ShEx.Schema.fst(870,0-873,34):
+  - Error while extracting (["ShEx", "Schema"], "decode_stem") to KaRaMeL.
+  - Got an exception:Failure("todo: translate_pat [MLP_Const]")
+
+* Warning 250 at ShEx.Schema.fst(870,0-873,34):
+  - Error while extracting (["ShEx", "Schema"], "decode_shape_expr") to KaRaMeL.
+  - Got an exception:Failure("todo: translate_pat [MLP_Const]")
+
+* Warning 250 at ShEx.Schema.fst(870,0-873,34):
+  - Error while extracting (["ShEx", "Schema"], "decode_triple_expr") to
+    KaRaMeL.
+  - Got an exception:Failure("todo: translate_pat [MLP_Const]")
+
+* Warning 250 at ShEx.Schema.fst(870,0-873,34):
+  - Error while extracting (["ShEx", "Schema"], "decode_value_set_value") to
+    KaRaMeL.
+  - Got an exception:Failure("todo: translate_pat [MLP_Const]")
+
+* Warning 250 at ShEx.Schema.fst(870,0-873,34):
+  - Error while extracting (["ShEx", "Schema"], "decode_schema") to KaRaMeL.
+  - Got an exception:Failure("todo: translate_pat [MLP_Const]")
+
+Verified module: ShEx.Schema
+All verification conditions discharged successfully
+
+
+=== krml lowering (ShEx.Schema) rc=2 dt=0.4s timeout=False ===
+Cannot re-check Parser.Combinators.pstring as valid Low* and will not extract it.  If Parser.Combinators.pstring is not meant to be extracted, consider marking it as Ghost, noextract, or using a bundle. If it is meant to be extracted, use -dast for further debugging.
+
+Warning 4: in the arguments to ParseOk, after the definition of sub_str, in top-level declaration Parser.Combinators.pstring, in file Audit: Malformed input:
+Type annotation is not an lid but Prims_string -> krml_checked_int_t -> Parser_Combinators_parse_result Prims_string
+--------------------------------------------------------------------------------
+
+Cannot re-check Parser.JSON.json_parse_value as valid Low* and will not extract it.  If Parser.JSON.json_parse_value is not meant to be extracted, consider marking it as Ghost, noextract, or using a bundle. If it is meant to be extracted, use -dast for further debugging.
+
+Warning 4: after the definition of b, in top-level declaration Parser.JSON.json_parse_value, in file Audit: Malformed input:
+Type annotation is not an lid but Prims_string -> krml_checked_int_t -> Parser_Combinators_parse_result Prims_string
+--------------------------------------------------------------------------------
+
+⚠ [Monomorphization] ⏱️ 45ms
+Cannot re-check Parser.JSON.parse_json_text as valid Low* and will not extract it.  If Parser.JSON.parse_json_text is not meant to be extracted, consider marking it as Ghost, noextract, or using a bundle. If it is meant to be extracted, use -dast for further debugging.
+
+Warning 4: after the definition of len, in top-level declaration Parser.JSON.parse_json_text, in file Audit: Malformed input:
+Type annotation is not an lid but any
+--------------------------------------------------------------------------------
+
+⚠ [Inlining] ⏱️ 40ms
+✔ [Pattern matches compilation] ⏱️ 23ms
+Fatal error: exception Failure("nth")
+
+
+=== fstar.exe --codegen krml (XPath.Eval) rc=0 dt=10.9s timeout=False ===
+Extracted module FStar.Pervasives.Native
+Extracted module FStar.Attributes
+Extracted module FStar.NormSteps
+Extracted module FStar.Pervasives
+  [... 145 lines trimmed — full log reproducible via tools/karamel-coverage-audit.sh ...]
+  - Error while extracting (["Parser", "XPath"], "parse_node_test") to KaRaMeL.
+  - Got an exception:Failure("todo: translate_pat [MLP_Const]")
+
+* Warning 250 at XPath.Eval.fst(988,0-996,31):
+  - Error while extracting (["Parser", "XPath"], "parse_path_expr") to KaRaMeL.
+  - Got an exception:Failure("todo: translate_pat [MLP_Const]")
+
+* Warning 250 at XPath.Eval.fst(988,0-996,31):
+  - Error while extracting (["Parser", "XPath"], "parse_primary_expr") to
+    KaRaMeL.
+  - Got an exception:Failure("todo: translate_pat [MLP_Const]")
+
+* Warning 250 at XPath.Eval.fst(988,0-996,31):
+  - Error while extracting (["Parser", "XPath"], "parse_step") to KaRaMeL.
+  - Got an exception:Failure("todo: translate_pat [MLP_Const]")
+
+Attempting to translate module Parser.XML
+Not extracting Parser.XML.parse_xml_name to KaRaMeL (function type annotation has less arrows than the number of arguments; please mark the return type abbreviation as inline_for_extraction)
+Attempting to translate module XPath.Eval
+* Warning 250 at XPath.Eval.fst(988,0-996,31):
+  - Error while extracting (["XPath", "Eval"], "xn_to_string") to KaRaMeL.
+  - Got an exception:Failure("Internal error: name not found pad\n")
+
+* Warning 250 at XPath.Eval.fst(988,0-996,31):
+  - Error while extracting (["XPath", "Eval"], "normalize_space") to KaRaMeL.
+  - Got an exception:Failure("todo: translate_pat [MLP_Const]")
+
+Verified module: XPath.Eval
+All verification conditions discharged successfully
+
+
+=== krml lowering (XPath.Eval) rc=2 dt=0.4s timeout=False ===
+Warning 16: Cannot enforce arity at call-site for XPath.Eval.matches_node_test (Invalid_argument split -- is this a partial application?)
+Cannot re-check Parser.Combinators.pstring as valid Low* and will not extract it.  If Parser.Combinators.pstring is not meant to be extracted, consider marking it as Ghost, noextract, or using a bundle. If it is meant to be extracted, use -dast for further debugging.
+
+Warning 4: in the arguments to ParseOk, after the definition of sub_str, in top-level declaration Parser.Combinators.pstring, in file Audit: Malformed input:
+Type annotation is not an lid but Prims_string -> krml_checked_int_t -> Parser_Combinators_parse_result Prims_string
+--------------------------------------------------------------------------------
+
+Cannot re-check Parser.XPath.match_keyword as valid Low* and will not extract it.  If Parser.XPath.match_keyword is not meant to be extracted, consider marking it as Ghost, noextract, or using a bundle. If it is meant to be extracted, use -dast for further debugging.
+
+Warning 4: in top-level declaration Parser.XPath.match_keyword, in file Audit: Malformed input:
+Type annotation is not an lid but Prims_string -> krml_checked_int_t -> Parser_Combinators_parse_result Prims_string
+--------------------------------------------------------------------------------
+
+Warning 2: in the arguments to Prims.uu___is_Nil, in top-level declaration XPath.Eval.to_bool_val, in file Audit: Reference to Prims.uu___is_Nil has no corresponding implementation; please provide a C implementation
+Warning 2: in the arguments to Prims.uu___is_Nil, in top-level declaration XPath.Eval.xp_compare, in file Audit: Reference to Prims.uu___is_Nil has no corresponding implementation; please provide a C implementation
+Warning 2: in the arguments to Prims.uu___is_Nil, in the scrutinee, after the definition of pv, in top-level declaration XPath.Eval.eval_expr, in file Audit: Reference to Prims.uu___is_Nil has no corresponding implementation; please provide a C implementation
+⚠ [Monomorphization] ⏱️ 41ms
+Fatal error: exception Stack overflow
+
+
+=== fstar.exe --codegen krml (SPARQL11.Parser) rc=0 dt=56.5s timeout=False ===
+Extracted module FStar.Pervasives.Native
+Extracted module FStar.Attributes
+Extracted module FStar.NormSteps
+Extracted module FStar.Pervasives
+  [... 322 lines trimmed — full log reproducible via tools/karamel-coverage-audit.sh ...]
+  - Error while extracting (["SPARQL11", "Algebra"], "dt_seconds") to KaRaMeL.
+  - Got an exception:Failure("Internal error: name not found find_end\n")
+
+* Warning 250 at SPARQL11.Parser.fst(4200,0-4353,40):
+  - Error while extracting (["SPARQL11", "Algebra"], "dt_timezone") to KaRaMeL.
+  - Got an exception:Failure("Internal error: name not found find_tz\n")
+
+* Warning 250 at SPARQL11.Parser.fst(4200,0-4353,40):
+  - Error while extracting (["SPARQL11", "Algebra"], "dt_tz") to KaRaMeL.
+  - Got an exception:Failure("Internal error: name not found find_tz_pos\n")
+
+* Warning 250 at SPARQL11.Parser.fst(4200,0-4353,40):
+  - Error while extracting (["SPARQL11", "Algebra"], "eval_expr_with_base") to
+    KaRaMeL.
+  - Got an exception:Failure("todo: translate_pat [MLP_Const]")
+
+* Warning 250 at SPARQL11.Parser.fst(4200,0-4353,40):
+  - Error while extracting (["SPARQL11", "Algebra"], "eval_aggregate") to
+    KaRaMeL.
+  - Got an exception:Failure("todo: translate_pat [MLP_Const]")
+
+* Warning 250 at SPARQL11.Parser.fst(4200,0-4353,40):
+  - Error while extracting (["SPARQL11", "Algebra"], "eval_property_path") to
+    KaRaMeL.
+  - Got an exception:Failure("Internal error: name not found fixpoint\n")
+
+Attempting to translate module SPARQL11.Parser
+Verified module: SPARQL11.Parser
+All verification conditions discharged successfully
+
+
+=== krml lowering (SPARQL11.Parser) rc=2 dt=1.1s timeout=False ===
+✔ [Monomorphization] ⏱️ 290ms
+Fatal error: exception Stack overflow
+
+
+=== fstar.exe --codegen krml (OWL.QueryEval) rc=0 dt=29.1s timeout=False ===
+Extracted module FStar.Pervasives.Native
+Extracted module FStar.Attributes
+Extracted module FStar.NormSteps
+Extracted module FStar.Pervasives
+  [... 184 lines trimmed — full log reproducible via tools/karamel-coverage-audit.sh ...]
+
+* Warning 250 at OWL.QueryEval.fst(44,0-46,45):
+  - Error while extracting (["SPARQL11", "Algebra"], "dt_tz") to KaRaMeL.
+  - Got an exception:Failure("Internal error: name not found find_tz_pos\n")
+
+* Warning 250 at OWL.QueryEval.fst(44,0-46,45):
+  - Error while extracting (["SPARQL11", "Algebra"], "eval_expr_with_base") to
+    KaRaMeL.
+  - Got an exception:Failure("todo: translate_pat [MLP_Const]")
+
+* Warning 250 at OWL.QueryEval.fst(44,0-46,45):
+  - Error while extracting (["SPARQL11", "Algebra"], "eval_aggregate") to
+    KaRaMeL.
+  - Got an exception:Failure("todo: translate_pat [MLP_Const]")
+
+* Warning 250 at OWL.QueryEval.fst(44,0-46,45):
+  - Error while extracting (["SPARQL11", "Algebra"], "eval_property_path") to
+    KaRaMeL.
+  - Got an exception:Failure("Internal error: name not found fixpoint\n")
+
+Attempting to translate module OWL.QueryRewrite
+* Warning 250 at OWL.QueryEval.fst(44,0-46,45):
+  - Error while extracting (["OWL", "QueryRewrite"], "ce_combinator_for_term")
+    to KaRaMeL.
+  - Got an exception:Failure("Internal error: name not found lookup\n")
+
+Attempting to translate module OWL.QueryEval
+Verified module: OWL.QueryEval
+All verification conditions discharged successfully
+
+
+=== krml lowering (OWL.QueryEval) rc=2 dt=1.8s timeout=False ===
+Warning 16: Cannot enforce arity at call-site for FStar.List.Tot.Base.bool_of_compare (Invalid_argument split -- is this a partial application?)
+Warning 16: Cannot enforce arity at call-site for RDF.Indexed.cmp_by_key (Invalid_argument split -- is this a partial application?)
+Warning 16: Cannot enforce arity at call-site for SPARQL11.Algebra.aggregate_group (Invalid_argument split -- is this a partial application?)
+Warning 16: Cannot enforce arity at call-site for SPARQL11.Algebra.compare_on_conditions (Invalid_argument split -- is this a partial application?)
+Warning 2: in the arguments to Prims.uu___is_Nil, in the definition of has_dot, after the definition of after_with_dot, in top-level declaration SPARQL11.Algebra.split_decimal, in file Audit: Reference to Prims.uu___is_Nil has no corresponding implementation; please provide a C implementation
+Warning 2: in the arguments to Prims.uu___is_Nil, in the scrutinee, after the definition of after_e_with, in top-level declaration SPARQL11.Algebra.parse_double_to_scaled, in file Audit: Reference to Prims.uu___is_Nil has no corresponding implementation; please provide a C implementation
+✔ [Monomorphization] ⏱️ 182ms
+Fatal error: exception Stack overflow
+
+
+=== fstar.exe --codegen krml (JSONLD.Expand) rc=0 dt=31.3s timeout=False ===
+Extracted module FStar.Pervasives.Native
+Extracted module FStar.Attributes
+Extracted module FStar.NormSteps
+Extracted module FStar.Pervasives
+  [... 167 lines trimmed — full log reproducible via tools/karamel-coverage-audit.sh ...]
+Not extracting Parser.Combinators.preturn to KaRaMeL (function type annotation has less arrows than the number of arguments; please mark the return type abbreviation as inline_for_extraction)
+Not extracting Parser.Combinators.pfail to KaRaMeL (function type annotation has less arrows than the number of arguments; please mark the return type abbreviation as inline_for_extraction)
+Not extracting Parser.Combinators.pchar to KaRaMeL (function type annotation has less arrows than the number of arguments; please mark the return type abbreviation as inline_for_extraction)
+Not extracting Parser.Combinators.psat to KaRaMeL (function type annotation has less arrows than the number of arguments; please mark the return type abbreviation as inline_for_extraction)
+Not extracting Parser.Combinators.pany to KaRaMeL (function type annotation has less arrows than the number of arguments; please mark the return type abbreviation as inline_for_extraction)
+Not extracting Parser.Combinators.peof to KaRaMeL (function type annotation has less arrows than the number of arguments; please mark the return type abbreviation as inline_for_extraction)
+Not extracting Parser.Combinators.pstring to KaRaMeL (function type annotation has less arrows than the number of arguments; please mark the return type abbreviation as inline_for_extraction)
+Not extracting Parser.Combinators.pbind to KaRaMeL (function type annotation has less arrows than the number of arguments; please mark the return type abbreviation as inline_for_extraction)
+Not extracting Parser.Combinators.pmap to KaRaMeL (function type annotation has less arrows than the number of arguments; please mark the return type abbreviation as inline_for_extraction)
+Not extracting Parser.Combinators.palt to KaRaMeL (function type annotation has less arrows than the number of arguments; please mark the return type abbreviation as inline_for_extraction)
+Not extracting Parser.Combinators.popt to KaRaMeL (function type annotation has less arrows than the number of arguments; please mark the return type abbreviation as inline_for_extraction)
+Not extracting Parser.Combinators.pbetween to KaRaMeL (function type annotation has less arrows than the number of arguments; please mark the return type abbreviation as inline_for_extraction)
+Not extracting Parser.Combinators.pleft to KaRaMeL (function type annotation has less arrows than the number of arguments; please mark the return type abbreviation as inline_for_extraction)
+Not extracting Parser.Combinators.pright to KaRaMeL (function type annotation has less arrows than the number of arguments; please mark the return type abbreviation as inline_for_extraction)
+Attempting to translate module Parser.JSON
+Attempting to translate module JSONLD.Context
+* Warning 250 at JSONLD.Expand.fst(1782,0-1820,13):
+  - Error while extracting (["JSONLD", "Context"], "context_process_one_field")
+    to KaRaMeL.
+  - Got an exception:Failure("todo: translate_pat [MLP_Const]")
+
+Attempting to translate module JSONLD.Expand
+* Warning 250 at JSONLD.Expand.fst(1782,0-1820,13):
+  - Error while extracting (["JSONLD", "Expand"], "jexp_expand_language_map") to
+    KaRaMeL.
+  - Got an exception:Failure("todo: translate_pat [MLP_Const]")
+
+Verified module: JSONLD.Expand
+All verification conditions discharged successfully
+
+
+=== krml lowering (JSONLD.Expand) rc=2 dt=0.8s timeout=False ===
+Cannot re-check Parser.Combinators.pstring as valid Low* and will not extract it.  If Parser.Combinators.pstring is not meant to be extracted, consider marking it as Ghost, noextract, or using a bundle. If it is meant to be extracted, use -dast for further debugging.
+
+Warning 4: in the arguments to ParseOk, after the definition of sub_str, in top-level declaration Parser.Combinators.pstring, in file Audit: Malformed input:
+Type annotation is not an lid but Prims_string -> krml_checked_int_t -> Parser_Combinators_parse_result Prims_string
+--------------------------------------------------------------------------------
+
+Cannot re-check Parser.JSON.json_parse_value as valid Low* and will not extract it.  If Parser.JSON.json_parse_value is not meant to be extracted, consider marking it as Ghost, noextract, or using a bundle. If it is meant to be extracted, use -dast for further debugging.
+
+Warning 4: after the definition of b, in top-level declaration Parser.JSON.json_parse_value, in file Audit: Malformed input:
+Type annotation is not an lid but Prims_string -> krml_checked_int_t -> Parser_Combinators_parse_result Prims_string
+--------------------------------------------------------------------------------
+
+⚠ [Monomorphization] ⏱️ 74ms
+Cannot re-check Parser.JSON.parse_json_text as valid Low* and will not extract it.  If Parser.JSON.parse_json_text is not meant to be extracted, consider marking it as Ghost, noextract, or using a bundle. If it is meant to be extracted, use -dast for further debugging.
+
+Warning 4: after the definition of len, in top-level declaration Parser.JSON.parse_json_text, in file Audit: Malformed input:
+Type annotation is not an lid but any
+--------------------------------------------------------------------------------
+
+⚠ [Inlining] ⏱️ 68ms
+✔ [Pattern matches compilation] ⏱️ 59ms
+Fatal error: exception Failure("nth")
+
+
+=== fstar.exe --codegen krml (RIF.Core.Builtins) rc=0 dt=27.9s timeout=False ===
+Extracted module FStar.Pervasives.Native
+Extracted module FStar.Attributes
+Extracted module FStar.NormSteps
+Extracted module FStar.Pervasives
+  [... 193 lines trimmed — full log reproducible via tools/karamel-coverage-audit.sh ...]
+
+* Warning 250 at RIF.Core.Builtins.fst(374,0-397,18):
+  - Error while extracting (["SPARQL11", "Algebra"], "eval_aggregate") to
+    KaRaMeL.
+  - Got an exception:Failure("todo: translate_pat [MLP_Const]")
+
+* Warning 250 at RIF.Core.Builtins.fst(374,0-397,18):
+  - Error while extracting (["SPARQL11", "Algebra"], "eval_property_path") to
+    KaRaMeL.
+  - Got an exception:Failure("Internal error: name not found fixpoint\n")
+
+Attempting to translate module XSD.Datatypes
+* Warning 250 at RIF.Core.Builtins.fst(374,0-397,18):
+  - Error while extracting (["XSD", "Datatypes"], "dt_parse_tail") to KaRaMeL.
+  - Got an exception:Failure("Internal error: name not found frac_end\n")
+
+Attempting to translate module RIF.Core.Builtins
+* Warning 250 at RIF.Core.Builtins.fst(374,0-397,18):
+  - Error while extracting (["RIF", "Core", "Builtins"], "eval_function") to
+    KaRaMeL.
+  - Got an exception:Failure("todo: translate_pat [MLP_Const]")
+
+* Warning 250 at RIF.Core.Builtins.fst(374,0-397,18):
+  - Error while extracting (["RIF", "Core", "Builtins"], "eval_predicate") to
+    KaRaMeL.
+  - Got an exception:Failure("todo: translate_pat [MLP_Const]")
+
+Verified module: RIF.Core.Builtins
+All verification conditions discharged successfully
+
+
+=== krml lowering (RIF.Core.Builtins) rc=2 dt=1.1s timeout=False ===
+Warning 2: in the arguments to Prims.uu___is_Nil, in the definition of has_dot, after the definition of after_with_dot, in top-level declaration SPARQL11.Algebra.split_decimal, in file Audit: Reference to Prims.uu___is_Nil has no corresponding implementation; please provide a C implementation
+Warning 2: in the arguments to Prims.uu___is_Nil, in the scrutinee, after the definition of after_e_with, in top-level declaration SPARQL11.Algebra.parse_double_to_scaled, in file Audit: Reference to Prims.uu___is_Nil has no corresponding implementation; please provide a C implementation
+Warning 2: in the arguments to Prims.uu___is_Cons, after the definition of digits, in top-level declaration XSD.Datatypes.is_signed_digits_chars, in file Audit: Reference to Prims.uu___is_Cons has no corresponding implementation; please provide a C implementation
+Warning 2: in the arguments to Prims.uu___is_Cons, after the definition of body, in top-level declaration XSD.Datatypes.is_decimal_lexical_chars, in file Audit: Reference to Prims.uu___is_Cons has no corresponding implementation; please provide a C implementation
+✔ [Monomorphization] ⏱️ 45ms
+Fatal error: exception Stack overflow
+
+
+=== fstar.exe --codegen krml (VC.Credential) rc=0 dt=26.2s timeout=False ===
+Extracted module FStar.Pervasives.Native
+Extracted module FStar.Attributes
+Extracted module FStar.NormSteps
+Extracted module FStar.Pervasives
+  [... 203 lines trimmed — full log reproducible via tools/karamel-coverage-audit.sh ...]
+  - Error while extracting (["SPARQL11", "Algebra"], "eval_property_path") to
+    KaRaMeL.
+  - Got an exception:Failure("Internal error: name not found fixpoint\n")
+
+Attempting to translate module XSD.Datatypes
+* Warning 250 at VC.Credential.fst(635,0-641,61):
+  - Error while extracting (["XSD", "Datatypes"], "dt_parse_tail") to KaRaMeL.
+  - Got an exception:Failure("Internal error: name not found frac_end\n")
+
+Attempting to translate module Parser.FastString
+Attempting to translate module Parser.Combinators
+Not extracting Parser.Combinators.preturn to KaRaMeL (function type annotation has less arrows than the number of arguments; please mark the return type abbreviation as inline_for_extraction)
+Not extracting Parser.Combinators.pfail to KaRaMeL (function type annotation has less arrows than the number of arguments; please mark the return type abbreviation as inline_for_extraction)
+Not extracting Parser.Combinators.pchar to KaRaMeL (function type annotation has less arrows than the number of arguments; please mark the return type abbreviation as inline_for_extraction)
+Not extracting Parser.Combinators.psat to KaRaMeL (function type annotation has less arrows than the number of arguments; please mark the return type abbreviation as inline_for_extraction)
+Not extracting Parser.Combinators.pany to KaRaMeL (function type annotation has less arrows than the number of arguments; please mark the return type abbreviation as inline_for_extraction)
+Not extracting Parser.Combinators.peof to KaRaMeL (function type annotation has less arrows than the number of arguments; please mark the return type abbreviation as inline_for_extraction)
+Not extracting Parser.Combinators.pstring to KaRaMeL (function type annotation has less arrows than the number of arguments; please mark the return type abbreviation as inline_for_extraction)
+Not extracting Parser.Combinators.pbind to KaRaMeL (function type annotation has less arrows than the number of arguments; please mark the return type abbreviation as inline_for_extraction)
+Not extracting Parser.Combinators.pmap to KaRaMeL (function type annotation has less arrows than the number of arguments; please mark the return type abbreviation as inline_for_extraction)
+Not extracting Parser.Combinators.palt to KaRaMeL (function type annotation has less arrows than the number of arguments; please mark the return type abbreviation as inline_for_extraction)
+Not extracting Parser.Combinators.popt to KaRaMeL (function type annotation has less arrows than the number of arguments; please mark the return type abbreviation as inline_for_extraction)
+Not extracting Parser.Combinators.pbetween to KaRaMeL (function type annotation has less arrows than the number of arguments; please mark the return type abbreviation as inline_for_extraction)
+Not extracting Parser.Combinators.pleft to KaRaMeL (function type annotation has less arrows than the number of arguments; please mark the return type abbreviation as inline_for_extraction)
+Not extracting Parser.Combinators.pright to KaRaMeL (function type annotation has less arrows than the number of arguments; please mark the return type abbreviation as inline_for_extraction)
+Attempting to translate module Parser.JSON
+Attempting to translate module VC.Credential
+Verified module: VC.Credential
+All verification conditions discharged successfully
+
+
+=== krml lowering (VC.Credential) rc=2 dt=0.4s timeout=False ===
+Cannot re-check Parser.Combinators.pstring as valid Low* and will not extract it.  If Parser.Combinators.pstring is not meant to be extracted, consider marking it as Ghost, noextract, or using a bundle. If it is meant to be extracted, use -dast for further debugging.
+
+Warning 4: in the arguments to ParseOk, after the definition of sub_str, in top-level declaration Parser.Combinators.pstring, in file Audit: Malformed input:
+Type annotation is not an lid but Prims_string -> krml_checked_int_t -> Parser_Combinators_parse_result Prims_string
+--------------------------------------------------------------------------------
+
+Cannot re-check Parser.JSON.json_parse_value as valid Low* and will not extract it.  If Parser.JSON.json_parse_value is not meant to be extracted, consider marking it as Ghost, noextract, or using a bundle. If it is meant to be extracted, use -dast for further debugging.
+
+Warning 4: after the definition of b, in top-level declaration Parser.JSON.json_parse_value, in file Audit: Malformed input:
+Type annotation is not an lid but Prims_string -> krml_checked_int_t -> Parser_Combinators_parse_result Prims_string
+--------------------------------------------------------------------------------
+
+⚠ [Monomorphization] ⏱️ 41ms
+Cannot re-check Parser.JSON.parse_json_text as valid Low* and will not extract it.  If Parser.JSON.parse_json_text is not meant to be extracted, consider marking it as Ghost, noextract, or using a bundle. If it is meant to be extracted, use -dast for further debugging.
+
+Warning 4: after the definition of len, in top-level declaration Parser.JSON.parse_json_text, in file Audit: Malformed input:
+Type annotation is not an lid but any
+--------------------------------------------------------------------------------
+
+⚠ [Inlining] ⏱️ 27ms
+✔ [Pattern matches compilation] ⏱️ 14ms
+Fatal error: exception Failure("nth")
+
+
+=== fstar.exe --codegen krml (SHACL.Validation) rc=0 dt=99.0s timeout=False ===
+Extracted module FStar.Attributes
+Extracted module FStar.NormSteps
+Extracted module FStar.Pervasives.Native
+Extracted module FStar.Pervasives
+  [... 340 lines trimmed — full log reproducible via tools/karamel-coverage-audit.sh ...]
+  - Error while extracting (["SPARQL11", "Algebra"], "eval_expr_with_base") to
+    KaRaMeL.
+  - Got an exception:Failure("todo: translate_pat [MLP_Const]")
+
+* Warning 250 at SHACL.Validation.fst(2852,0-2858,56):
+  - Error while extracting (["SPARQL11", "Algebra"], "eval_aggregate") to
+    KaRaMeL.
+  - Got an exception:Failure("todo: translate_pat [MLP_Const]")
+
+* Warning 250 at SHACL.Validation.fst(2852,0-2858,56):
+  - Error while extracting (["SPARQL11", "Algebra"], "eval_property_path") to
+    KaRaMeL.
+  - Got an exception:Failure("Internal error: name not found fixpoint\n")
+
+Attempting to translate module XSD.Datatypes
+* Warning 250 at SHACL.Validation.fst(2852,0-2858,56):
+  - Error while extracting (["XSD", "Datatypes"], "dt_parse_tail") to KaRaMeL.
+  - Got an exception:Failure("Internal error: name not found frac_end\n")
+
+Attempting to translate module RDF.Bytes
+Attempting to translate module SPARQL11.Parser
+Attempting to translate module SHACL.Validation
+* Warning 250 at SHACL.Validation.fst(2852,0-2858,56):
+  - Error while extracting (["SHACL", "Validation"], "duplicated_lang_tags") to
+    KaRaMeL.
+  - Got an exception:Failure("Internal error: name not found distinct_dups\n")
+
+Verified module: SHACL.Validation
+All verification conditions discharged successfully
+
+
+=== krml lowering (SHACL.Validation) rc=2 dt=2.8s timeout=False ===
+Warning 16: Cannot enforce arity at call-site for FStar.List.Tot.Base.bool_of_compare (Invalid_argument split -- is this a partial application?)
+Warning 16: Cannot enforce arity at call-site for RDF.Indexed.cmp_by_key (Invalid_argument split -- is this a partial application?)
+Warning 16: Cannot enforce arity at call-site for SPARQL11.Algebra.aggregate_group (Invalid_argument split -- is this a partial application?)
+Warning 16: Cannot enforce arity at call-site for SPARQL11.Algebra.compare_on_conditions (Invalid_argument split -- is this a partial application?)
+Warning 16: Cannot enforce arity at call-site for RDF.Term.subject_eq (Invalid_argument split -- is this a partial application?)
+Warning 16: Cannot enforce arity at call-site for RDF.Term.rdf_term_eq (Invalid_argument split -- is this a partial application?)
+Warning 16: Cannot enforce arity at call-site for SHACL.Validation.is_custom_component_def (Invalid_argument split -- is this a partial application?)
+Warning 16: Cannot enforce arity at call-site for SHACL.Validation.is_shape_establishing (Invalid_argument split -- is this a partial application?)
+Warning 16: Cannot enforce arity at call-site for SHACL.Validation.build_shape (Invalid_argument split -- is this a partial application?)
+Warning 16: Cannot enforce arity at call-site for SHACL.Validation.lang_matches_range (Invalid_argument split -- is this a partial application?)
+Warning 2: in the arguments to Prims.uu___is_Nil, in top-level declaration SPARQL11.Algebra.list_contains_sublist__FStar_Char_char, in file Audit: Reference to Prims.uu___is_Nil has no corresponding implementation; please provide a C implementation
+Warning 2: in the arguments to Prims.uu___is_Nil, in the scrutinee, in top-level declaration SPARQL11.Algebra.replace_all_chars, in file Audit: Reference to Prims.uu___is_Nil has no corresponding implementation; please provide a C implementation
+Warning 2: in the arguments to Prims.uu___is_Nil, in the definition of has_dot, after the definition of after_with_dot, in top-level declaration SPARQL11.Algebra.split_decimal, in file Audit: Reference to Prims.uu___is_Nil has no corresponding implementation; please provide a C implementation
+Warning 2: in the arguments to Prims.uu___is_Nil, in the scrutinee, after the definition of after_e_with, in top-level declaration SPARQL11.Algebra.parse_double_to_scaled, in file Audit: Reference to Prims.uu___is_Nil has no corresponding implementation; please provide a C implementation
+Warning 2: in the arguments to Prims.uu___is_Cons, after the definition of digits, in top-level declaration XSD.Datatypes.is_signed_digits_chars, in file Audit: Reference to Prims.uu___is_Cons has no corresponding implementation; please provide a C implementation
+Warning 2: in the arguments to Prims.uu___is_Cons, after the definition of body, in top-level declaration XSD.Datatypes.is_decimal_lexical_chars, in file Audit: Reference to Prims.uu___is_Cons has no corresponding implementation; please provide a C implementation
+Warning 2: in the arguments to Prims.uu___is_Cons, in top-level declaration SHACL.Validation.is_custom_component_def, in file Audit: Reference to Prims.uu___is_Cons has no corresponding implementation; please provide a C implementation
+Warning 2: in the arguments to Prims.uu___is_Nil, in the scrutinee, after the definition of params, in top-level declaration SHACL.Validation.build_custom_constraints, in file Audit: Reference to Prims.uu___is_Nil has no corresponding implementation; please provide a C implementation
+Warning 2: in the arguments to Prims.uu___is_Cons, in the definition of is_prop, after the definition of path_objs, in top-level declaration SHACL.Validation.build_shape, in file Audit: Reference to Prims.uu___is_Cons has no corresponding implementation; please provide a C implementation
+Warning 2: in the arguments to Prims.uu___is_Nil, in the scrutinee, after the definition of viol, in top-level declaration SHACL.Validation.eval_one_constraint, in file Audit: Reference to Prims.uu___is_Nil has no corresponding implementation; please provide a C implementation
+Warning 2: in the arguments to Prims.uu___is_Nil, in the definition of matches, after the definition of viol, in top-level declaration SHACL.Validation.eval_one_constraint, in file Audit: Reference to Prims.uu___is_Nil has no corresponding implementation; please provide a C implementation
+Warning 2: in the arguments to Prims.uu___is_Nil, in the definition of conforms_q, after the definition of sibling_qrefs, in the definition of qualifying_count, after the definition of fuel', in top-level declaration SHACL.Validation.eval_aggregate_constraints, in file Audit: Reference to Prims.uu___is_Nil has no corresponding implementation; please provide a C implementation
+Warning 2: in the arguments to Prims.uu___is_Nil, in the definition of excluded, after the definition of conforms_q, in the definition of qualifying_count, after the definition of fuel', in top-level declaration SHACL.Validation.eval_aggregate_constraints, in file Audit: Reference to Prims.uu___is_Nil has no corresponding implementation; please provide a C implementation
+Warning 2: in the arguments to Prims.uu___is_Nil, in the scrutinee, after the definition of ccs, in top-level declaration SHACL.Validation.sparql_violations_for_shape, in file Audit: Reference to Prims.uu___is_Nil has no corresponding implementation; please provide a C implementation
+Warning 2: in the arguments to Prims.uu___is_Nil, in the scrutinee, in the definition of uu___1, after the definition of customs, in top-level declaration SHACL.Validation.custom_violations_for_occurrence, in file Audit: Reference to Prims.uu___is_Nil has no corresponding implementation; please provide a C implementation
+Warning 2: in the arguments to Prims.uu___is_Cons, in the definition of root_shapes, after the definition of fuel0, in top-level declaration SHACL.Validation.validate, in file Audit: Reference to Prims.uu___is_Cons has no corresponding implementation; please provide a C implementation
+Warning 2: in the arguments to Prims.uu___is_Nil, after the definition of all_results, in top-level declaration SHACL.Validation.validate, in file Audit: Reference to Prims.uu___is_Nil has no corresponding implementation; please provide a C implementation
+✔ [Monomorphization] ⏱️ 2s and 71ms
+Fatal error: exception Stack overflow
+
+
+=== fstar.exe --codegen krml (RDF.CottasStore.PageCache.Bounds) rc=1 dt=33.6s timeout=False ===
+Extracted module FStar.Pervasives.Native
+Extracted module FStar.Attributes
+Extracted module FStar.NormSteps
+Extracted module FStar.Pervasives
+  [... 32 lines trimmed — full log reproducible via tools/karamel-coverage-audit.sh ...]
+Extracted module RDF.Term
+Extracted module RDF.Triple
+Extracted module RDF.Indexed
+Extracted module RDF.Graph
+Extracted module RDF.Vocabulary
+Extracted module RDF.Vocabulary.Axioms
+Extracted module RDFS.Closure
+Extracted module OWL.Closure
+Extracted module RDF.Graph.Executable
+Extracted module Parser.BallyhooCOTTAS
+Extracted module RDF.CottasStore.LazyDict
+Extracted module RDF.CottasStore.LazyDictRegistry
+Extracted module RDF.CottasStore.OnDiskIndex
+Extracted module RDF.CottasStore.PresenceBitmap
+Extracted module RDF.CottasStore.CompoundPresenceBitmap
+Extracted module Parser.FastString
+Extracted module RDF.NQuads.Serialize
+Extracted module Parser.Combinators
+Extracted module Parser.NTriples
+Extracted module RDF.CottasStore.ColumnSeq
+Extracted module RDF.CottasStore.PageCache
+Extracted module RDF.CottasStore
+* Error 189 at RDF.CottasStore.PageCache.Bounds.fst(215,35-215,36):
+  - Expected expression of type RDF.CottasStore.ColumnSeq.cottas_column
+    got expression v
+    of type Prims.list (FStar.Pervasives.Native.option Prims.string)
+  - See also RDF.CottasStore.PageCache.Bounds.fst(210,38-210,39)
+
+1 error was reported (see above)
+
+
+=== fstar.exe --codegen krml (SPARQL.Plan.Explain) rc=0 dt=35.5s timeout=False ===
+Extracted module FStar.Pervasives.Native
+Extracted module FStar.Attributes
+Extracted module FStar.NormSteps
+Extracted module FStar.Pervasives
+  [... 187 lines trimmed — full log reproducible via tools/karamel-coverage-audit.sh ...]
+  - Error while extracting (["SPARQL11", "Algebra"], "dt_timezone") to KaRaMeL.
+  - Got an exception:Failure("Internal error: name not found find_tz\n")
+
+* Warning 250 at SPARQL.Plan.Explain.fst(537,0-543,6):
+  - Error while extracting (["SPARQL11", "Algebra"], "dt_tz") to KaRaMeL.
+  - Got an exception:Failure("Internal error: name not found find_tz_pos\n")
+
+* Warning 250 at SPARQL.Plan.Explain.fst(537,0-543,6):
+  - Error while extracting (["SPARQL11", "Algebra"], "eval_expr_with_base") to
+    KaRaMeL.
+  - Got an exception:Failure("todo: translate_pat [MLP_Const]")
+
+* Warning 250 at SPARQL.Plan.Explain.fst(537,0-543,6):
+  - Error while extracting (["SPARQL11", "Algebra"], "eval_aggregate") to
+    KaRaMeL.
+  - Got an exception:Failure("todo: translate_pat [MLP_Const]")
+
+* Warning 250 at SPARQL.Plan.Explain.fst(537,0-543,6):
+  - Error while extracting (["SPARQL11", "Algebra"], "eval_property_path") to
+    KaRaMeL.
+  - Got an exception:Failure("Internal error: name not found fixpoint\n")
+
+Attempting to translate module RDF.Pretty
+Attempting to translate module Parser.FastString
+Attempting to translate module SPARQL.JSON.Escape
+Attempting to translate module SPARQL.Explain
+Attempting to translate module SPARQL.Plan.Explain
+Verified module: SPARQL.Plan.Explain
+All verification conditions discharged successfully
+
+
+=== krml lowering (SPARQL.Plan.Explain) rc=2 dt=0.6s timeout=False ===
+✔ [Monomorphization] ⏱️ 33ms
+Fatal error: exception Stack overflow
+
+
+=== fstar.exe --codegen krml (RIF.Core.Tests) rc=0 dt=23.2s timeout=False ===
+Extracted module FStar.Pervasives.Native
+Extracted module FStar.Attributes
+Extracted module FStar.NormSteps
+Extracted module FStar.Pervasives
+  [... 245 lines trimmed — full log reproducible via tools/karamel-coverage-audit.sh ...]
+  - Error while extracting (["XSD", "Datatypes"], "dt_parse_tail") to KaRaMeL.
+  - Got an exception:Failure("Internal error: name not found frac_end\n")
+
+Attempting to translate module RIF.Core.Builtins
+* Warning 250 at RIF.Core.Tests.fst(238,0-247,19):
+  - Error while extracting (["RIF", "Core", "Builtins"], "eval_function") to
+    KaRaMeL.
+  - Got an exception:Failure("todo: translate_pat [MLP_Const]")
+
+* Warning 250 at RIF.Core.Tests.fst(238,0-247,19):
+  - Error while extracting (["RIF", "Core", "Builtins"], "eval_predicate") to
+    KaRaMeL.
+  - Got an exception:Failure("todo: translate_pat [MLP_Const]")
+
+Attempting to translate module RIF.Core.Translation
+* Warning 250 at RIF.Core.Tests.fst(238,0-247,19):
+  - Error while extracting (["RIF", "Core", "Translation"], "translate_program")
+    to KaRaMeL.
+  - Got an exception:Failure("Internal error: name not found keep_some\n")
+
+* Warning 250 at RIF.Core.Tests.fst(238,0-247,19):
+  - Error while extracting (["RIF", "Core", "Translation"],
+    "translate_program_diag") to KaRaMeL.
+  - Got an exception:Failure("Internal error: name not found aux\n")
+
+Attempting to translate module RIF.Core.Eval
+Attempting to translate module RIF.Core.Tests
+Verified module: RIF.Core.Tests
+All verification conditions discharged successfully
+
+
+=== krml lowering (RIF.Core.Tests) rc=2 dt=0.7s timeout=False ===
+Warning 16: Cannot enforce arity at call-site for FStar.List.Tot.Base.bool_of_compare (Invalid_argument split -- is this a partial application?)
+Warning 16: Cannot enforce arity at call-site for RDF.Indexed.cmp_by_key (Invalid_argument split -- is this a partial application?)
+Warning 2: in the arguments to Prims.uu___is_Nil, in the definition of has_dot, after the definition of after_with_dot, in top-level declaration SPARQL11.Algebra.split_decimal, in file Audit: Reference to Prims.uu___is_Nil has no corresponding implementation; please provide a C implementation
+Warning 2: in the arguments to Prims.uu___is_Nil, in the scrutinee, after the definition of after_e_with, in top-level declaration SPARQL11.Algebra.parse_double_to_scaled, in file Audit: Reference to Prims.uu___is_Nil has no corresponding implementation; please provide a C implementation
+  [... 79 lines trimmed — full log reproducible via tools/karamel-coverage-audit.sh ...]
+Cannot re-check Parser.XML.skip_epilog_misc as valid Low* and will not extract it.  If Parser.XML.skip_epilog_misc is not meant to be extracted, consider marking it as Ghost, noextract, or using a bundle. If it is meant to be extracted, use -dast for further debugging.
+
+Warning 4: in the else branch, in top-level declaration Parser.XML.skip_epilog_misc, in file Audit: Malformed input:
+Type annotation is not an lid but any
+--------------------------------------------------------------------------------
+
+Cannot re-check Parser.XML.parse_xml_document as valid Low* and will not extract it.  If Parser.XML.parse_xml_document is not meant to be extracted, consider marking it as Ghost, noextract, or using a bundle. If it is meant to be extracted, use -dast for further debugging.
+
+Warning 4: in the definition of pos1, after the definition of fuel, in top-level declaration Parser.XML.parse_xml_document, in file Audit: Malformed input:
+Type annotation is not an lid but any
+--------------------------------------------------------------------------------
+
+⚠ [Inlining] ⏱️ 85ms
+✔ [Pattern matches compilation] ⏱️ 66ms
+Warning 17: The top-level declaration RDFS.Closure.rdfs_subClassOf, once compiled to a C global variable, generates a static initializer (i.e. run-time code in krmlinit) because its definition is not a C constant; it is:
+  RDF.Vocabulary.rdfs_subClassOf
+Warning 17: The top-level declaration RDFS.Closure.rdf_type, once compiled to a C global variable, generates a static initializer (i.e. run-time code in krmlinit) because its definition is not a C constant; it is:
+  RDF.Vocabulary.rdf_type
+Warning 17: The top-level declaration SPARQL11.Algebra.sm_empty, once compiled to a C global variable, generates a static initializer (i.e. run-time code in krmlinit) because its definition is not a C constant; it is:
+  eternal newbuf { tag = Prims_Nil; }: RDF_Graph_Executable_solution_mapping_gc 1uint32_t
+Warning 17: The top-level declaration RIF.Core.Translation.rif_rdf_type, once compiled to a C global variable, generates a static initializer (i.e. run-time code in krmlinit) because its definition is not a C constant; it is:
+  RDFS.Closure.rdf_type
+Warning 17: The top-level declaration RIF.Core.Translation.rif_rdfs_subclassof, once compiled to a C global variable, generates a static initializer (i.e. run-time code in krmlinit) because its definition is not a C constant; it is:
+  RDFS.Closure.rdfs_subClassOf
+Warning 17: The top-level declaration RIF.Core.Translation.rif_uniterm_true_marker, once compiled to a C global variable, generates a static initializer (i.e. run-time code in krmlinit) because its definition is not a C constant; it is:
+  { tag = RDF_Term_T_Literal; val = { case_T_Literal = { lexical_form = "true"; datatype = RDF.Term.xsd_boolean; lang_tag = { tag = FStar_Pervasives_Native_None; }: FStar_Pervasives_Native_option__Prims_string; }: RDF_Term_literal; }: union { case_T_IRI = Prims_string;
+case_T_BNode = Prims_string;
+case_T_Literal = RDF_Term_literal }; }: RDF_Term_rdf_term
+Fatal error: exception Failure("nth")
+
+
+=== fstar.exe --codegen krml (SPARQL11.Store) rc=0 dt=32.9s timeout=False ===
+Extracted module FStar.Pervasives.Native
+Extracted module FStar.Attributes
+Extracted module FStar.NormSteps
+Extracted module FStar.Pervasives
+  [... 401 lines trimmed — full log reproducible via tools/karamel-coverage-audit.sh ...]
+Attempting to translate module RDF.CottasStore.ColumnSeq
+Not extracting type definition RDF.CottasStore.ColumnSeq.cottas_column to KaRaMeL (assumed type)
+Attempting to translate module RDF.CottasStore.PageCache
+Attempting to translate module Parser.BallyhooCOTTAS
+Not extracting type definition Parser.BallyhooCOTTAS.cottas_handle to KaRaMeL (assumed type)
+Attempting to translate module RDF.CottasStore
+* Warning 250 at SPARQL11.Store.fst(1109,0-1112,73):
+  - Error while extracting (["RDF", "CottasStore"], "id_to_raw_token") to
+    KaRaMeL.
+  - Got an exception:Failure("Refusing to translate a string literal that contains a null character: \000cottas_decode_oor")
+
+Attempting to translate module RDF.Store.Capabilities.Cottas
+Attempting to translate module HDT.Container
+Attempting to translate module HDT.Dictionary
+Attempting to translate module HDT.Triples
+Attempting to translate module Parser.BallyhooHDT
+Attempting to translate module SPARQL11.Store
+* Warning 250 at SPARQL11.Store.fst(1109,0-1112,73):
+  - Error while extracting (["SPARQL11", "Store"], "detect_count_star_select")
+    to KaRaMeL.
+  - Got an exception:Failure("todo: translate_pat [MLP_Const]")
+
+* Warning 250 at SPARQL11.Store.fst(1109,0-1112,73):
+  - Error while extracting (["SPARQL11", "Store"],
+    "detect_streaming_count_group_by_graph") to KaRaMeL.
+  - Got an exception:Failure("todo: translate_pat [MLP_Const]")
+
+Verified module: SPARQL11.Store
+All verification conditions discharged successfully
+
+
+=== krml lowering (SPARQL11.Store) rc=2 dt=1.7s timeout=False ===
+Warning 16: Cannot enforce arity at call-site for FStar.List.Tot.Base.bool_of_compare (Invalid_argument split -- is this a partial application?)
+Warning 16: Cannot enforce arity at call-site for RDF.Indexed.cmp_by_key (Invalid_argument split -- is this a partial application?)
+Warning 16: Cannot enforce arity at call-site for Parser.BallyhooHDT.hdt_id_triple_matches (Invalid_argument split -- is this a partial application?)
+Warning 16: Cannot enforce arity at call-site for SPARQL11.Algebra.aggregate_group (Invalid_argument split -- is this a partial application?)
+  [... 48 lines trimmed — full log reproducible via tools/karamel-coverage-audit.sh ...]
+
+Warning 2: in the arguments to Prims.uu___is_Nil, in the definition of has_dot, after the definition of after_with_dot, in top-level declaration SPARQL11.Algebra.split_decimal, in file Audit: Reference to Prims.uu___is_Nil has no corresponding implementation; please provide a C implementation
+Warning 2: in the arguments to Prims.uu___is_Nil, in the scrutinee, after the definition of after_e_with, in top-level declaration SPARQL11.Algebra.parse_double_to_scaled, in file Audit: Reference to Prims.uu___is_Nil has no corresponding implementation; please provide a C implementation
+Cannot re-check RDF.CottasStore.token_to_subject as valid Low* and will not extract it.  If RDF.CottasStore.token_to_subject is not meant to be extracted, consider marking it as Ghost, noextract, or using a bundle. If it is meant to be extracted, use -dast for further debugging.
+
+Warning 4: in top-level declaration RDF.CottasStore.token_to_subject, in file Audit: Malformed input:
+Type annotation is not an lid but Prims_string -> krml_checked_int_t -> Parser_Combinators_parse_result RDF_Term_subject
+--------------------------------------------------------------------------------
+
+Cannot re-check RDF.CottasStore.token_to_predicate as valid Low* and will not extract it.  If RDF.CottasStore.token_to_predicate is not meant to be extracted, consider marking it as Ghost, noextract, or using a bundle. If it is meant to be extracted, use -dast for further debugging.
+
+Warning 4: in top-level declaration RDF.CottasStore.token_to_predicate, in file Audit: Malformed input:
+Type annotation is not an lid but Prims_string -> krml_checked_int_t -> Parser_Combinators_parse_result Prims_string
+--------------------------------------------------------------------------------
+
+Cannot re-check RDF.CottasStore.token_to_object as valid Low* and will not extract it.  If RDF.CottasStore.token_to_object is not meant to be extracted, consider marking it as Ghost, noextract, or using a bundle. If it is meant to be extracted, use -dast for further debugging.
+
+Warning 4: in top-level declaration RDF.CottasStore.token_to_object, in file Audit: Malformed input:
+Type annotation is not an lid but Prims_string -> krml_checked_int_t -> Parser_Combinators_parse_result RDF_Term_rdf_term
+--------------------------------------------------------------------------------
+
+Cannot re-check RDF.CottasStore.token_to_graph_name as valid Low* and will not extract it.  If RDF.CottasStore.token_to_graph_name is not meant to be extracted, consider marking it as Ghost, noextract, or using a bundle. If it is meant to be extracted, use -dast for further debugging.
+
+Warning 4: in top-level declaration RDF.CottasStore.token_to_graph_name, in file Audit: Malformed input:
+Type annotation is not an lid but Prims_string -> krml_checked_int_t -> Parser_Combinators_parse_result Prims_string
+--------------------------------------------------------------------------------
+
+⚠ [Monomorphization] ⏱️ 1s and 29ms
+Fatal error: exception Stack overflow
+
+
+=== fstar.exe --codegen krml (SPARQL.Diagnostics) rc=0 dt=45.5s timeout=False ===
+Extracted module FStar.Attributes
+Extracted module FStar.NormSteps
+Extracted module FStar.Pervasives.Native
+Extracted module FStar.Pervasives
+  [... 403 lines trimmed — full log reproducible via tools/karamel-coverage-audit.sh ...]
+Not extracting type definition RDF.CottasStore.ColumnSeq.cottas_column to KaRaMeL (assumed type)
+Attempting to translate module RDF.CottasStore.PageCache
+Attempting to translate module Parser.BallyhooCOTTAS
+Not extracting type definition Parser.BallyhooCOTTAS.cottas_handle to KaRaMeL (assumed type)
+Attempting to translate module RDF.CottasStore
+* Warning 250 at SPARQL.Diagnostics.fst(60,0-77,29):
+  - Error while extracting (["RDF", "CottasStore"], "id_to_raw_token") to
+    KaRaMeL.
+  - Got an exception:Failure("Refusing to translate a string literal that contains a null character: \000cottas_decode_oor")
+
+Attempting to translate module RDF.Store.Capabilities.Cottas
+Attempting to translate module HDT.Container
+Attempting to translate module HDT.Dictionary
+Attempting to translate module HDT.Triples
+Attempting to translate module Parser.BallyhooHDT
+Attempting to translate module SPARQL11.Store
+* Warning 250 at SPARQL.Diagnostics.fst(60,0-77,29):
+  - Error while extracting (["SPARQL11", "Store"], "detect_count_star_select")
+    to KaRaMeL.
+  - Got an exception:Failure("todo: translate_pat [MLP_Const]")
+
+* Warning 250 at SPARQL.Diagnostics.fst(60,0-77,29):
+  - Error while extracting (["SPARQL11", "Store"],
+    "detect_streaming_count_group_by_graph") to KaRaMeL.
+  - Got an exception:Failure("todo: translate_pat [MLP_Const]")
+
+Attempting to translate module SPARQL.Diagnostics
+Verified module: SPARQL.Diagnostics
+All verification conditions discharged successfully
+
+
+=== krml lowering (SPARQL.Diagnostics) rc=2 dt=0.6s timeout=False ===
+✔ [Monomorphization] ⏱️ 50ms
+Fatal error: exception Stack overflow
+

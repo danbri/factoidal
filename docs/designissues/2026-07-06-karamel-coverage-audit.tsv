@@ -1,0 +1,135 @@
+module	status	blocker_category	first_error	direct_deps	n_direct_deps	fstar_s	krml_s
+CSVW.Conversion	PASS			CSVW.Metadata,CSVW.URITemplate,RDF.Graph.Executable,SPARQL11.Algebra	4	30.89	0.71
+CSVW.Metadata	BLOCKED_SELF	krml fatal: Failure("nth")	Fatal error: exception Failure("nth")	Parser.JSON	1	1.91	0.34
+CSVW.URITemplate	PASS			SPARQL11.Algebra	1	33.21	0.77
+HDT.Container	PASS			Parquet.Footer,Parser.NTriples,RDF.Graph.Executable	3	19.40	0.50
+HDT.Dictionary	PASS			HDT.Container,Parser.Combinators,Parser.NTriples,RDF.Graph.Executable,RDF.NQuads.Serialize	5	28.16	0.48
+HDT.Triples	PASS			HDT.Container,HDT.Dictionary	2	36.71	0.57
+JSONLD.Context	BLOCKED_SELF	krml fatal: Failure("nth")	Fatal error: exception Failure("nth")	JSONLD.Loader,Parser.FastString,Parser.JSON,RDF.Graph.Executable,SPARQL11.IRI.Resolve	5	52.06	1.07
+JSONLD.Expand	BLOCKED_TRANSITIVE	krml fatal: Failure("nth") [failing deps in closure: JSONLD.Context]	Fatal error: exception Failure("nth")	JSONLD.Context,Parser.FastString,Parser.JSON	3	31.31	0.83
+JSONLD.Loader	PASS	header-only (all-assume-val module, no C body emitted)			0	0.38	0.13
+OWL.Closure	PASS				0	17.08	6.35
+OWL.DirectMapping.Filter	PASS			RDF.Graph.Executable	1	8.52	0.31
+OWL.QueryEval	BLOCKED_TRANSITIVE	monomorphization stack overflow [failing deps in closure: OWL.QueryRewrite, SPARQL11.Algebra]	Fatal error: exception Stack overflow	OWL.QueryRewrite,RDF.Graph.Executable,SPARQL11.Algebra	3	29.09	1.79
+OWL.QueryRewrite	BLOCKED_TRANSITIVE	monomorphization stack overflow [failing deps in closure: SPARQL11.Algebra]	Fatal error: exception Stack overflow	RDF.Graph.Executable,SPARQL11.Algebra	2	46.57	1.91
+OWL.Tests.Manifest	PASS				0	1.24	0.29
+OWL.Vocabulary	PASS			RDF.Graph.Executable	1	9.06	0.45
+Parquet.Footer	PASS				0	1.87	1.62
+Parser.Ballyhoo	PASS			Parser.Combinators,Parser.NQuads,RDF.Graph.Executable	3	14.85	0.25
+Parser.BallyhooBloom	PASS			RDF.Graph.Executable	1	8.70	0.38
+Parser.BallyhooCOTTAS	PASS			RDF.Graph.Executable	1	8.26	0.36
+Parser.BallyhooHDT	PASS			HDT.Container,HDT.Dictionary,HDT.Triples,RDF.Graph.Executable	4	14.55	0.40
+Parser.BallyhooHDTQ	PASS			Parser.BallyhooHDT,RDF.Graph.Executable	2	15.62	0.20
+Parser.CSVResults	PASS			Parser.Combinators,RDF.Graph.Executable	2	12.33	0.58
+Parser.Combinators	PASS			Parser.FastString	1	1.62	0.15
+Parser.FastString	PASS				0	0.66	0.19
+Parser.IRI	PASS				0	10.25	0.35
+Parser.JSON	PASS			Parser.Combinators,Parser.FastString	2	1.81	0.55
+Parser.JSONLD	PASS			JSONLD.Context,JSONLD.Expand,Parser.FastString,Parser.JSON,RDF.Graph.Executable,SPARQL.JSON.Escape	6	51.94	1.21
+Parser.JSONResults	PASS			Parser.Combinators,RDF.Graph.Executable	2	16.48	0.61
+Parser.NQuads	BLOCKED_SELF	krml fatal: Failure("nth")	Fatal error: exception Failure("nth")	Parser.Combinators,Parser.FastString,Parser.NTriples,RDF.Graph.Executable	4	59.04	0.17
+Parser.NTriples	PASS			Parser.Combinators,Parser.FastString,RDF.Graph.Executable	3	46.27	0.44
+Parser.OWLFunctional	PASS			Parser.Combinators,Parser.FastString,RDF.Graph.Executable	3	13.19	0.49
+Parser.RDFXML	PASS			Parser.Combinators,Parser.IRI,Parser.XML,RDF.Graph.Executable	4	25.26	1.10
+Parser.RIFXML	PASS			Parser.XML,RDF.Graph.Executable,RIF.Core.Syntax	3	18.97	1.22
+Parser.SRX	PASS			Parser.XML,RDF.Graph.Executable	2	10.98	0.42
+Parser.TriG	PASS			Parser.Combinators,Parser.FastString,Parser.NTriples,Parser.Turtle,RDF.Graph.Executable	5	21.06	1.27
+Parser.Turtle	PASS			Parser.Combinators,Parser.FastString,Parser.IRI,Parser.NTriples,Parser.TurtleScanner,RDF.Graph.Executable	6	33.54	0.85
+Parser.TurtleScanner	PASS			Parser.Combinators,Parser.FastString	2	1.83	0.41
+Parser.XML	PASS			Parser.Combinators,Parser.FastString	2	2.25	0.44
+Parser.XPath	BLOCKED_SELF	monomorphization stack overflow	Fatal error: exception Stack overflow	Parser.Combinators,Parser.FastString	2	2.13	0.80
+RDF.Bytes	PASS				0	1.98	0.35
+RDF.Canonical	PASS			Parser.FastString,RDF.Dataset.Graphs,RDF.Graph.Executable	3	18.11	0.84
+RDF.Canonical.Manifest	PASS				0	0.78	0.24
+RDF.CottasInMem	PASS	header-only (all-assume-val module, no C body emitted)		RDF.CottasStore,RDF.Graph.Executable	2	33.11	0.58
+RDF.CottasStore	PASS			Parquet.Footer,Parser.BallyhooCOTTAS,Parser.Combinators,Parser.FastString,Parser.NTriples,RDF.CottasStore.ColumnSeq,RDF.CottasStore.CompoundPresenceBitmap,RDF.CottasStore.LazyDict,RDF.CottasStore.LazyDictRegistry,RDF.CottasStore.OnDiskIndex,RDF.CottasStore.PageCache,RDF.Graph.Executable,RDF.NQuads.Serialize	13	45.37	1.05
+RDF.CottasStore.BaseWriter	PASS			Parquet.Footer,RDF.Bytes,RDF.List.Helpers	3	1.73	0.80
+RDF.CottasStore.ColumnSeq	PASS			Parquet.Footer	1	2.53	0.53
+RDF.CottasStore.CompoundPresenceBitmap	PASS			RDF.CottasStore.OnDiskIndex,RDF.CottasStore.PresenceBitmap	2	2.61	0.41
+RDF.CottasStore.CompoundPresenceWriter	PASS			RDF.Bytes,RDF.List.Helpers	2	1.49	0.28
+RDF.CottasStore.DictWriter	PASS			RDF.Bytes,RDF.List.Helpers	2	1.35	0.47
+RDF.CottasStore.LazyDict	PASS				0	1.24	0.36
+RDF.CottasStore.LazyDictRegistry	PASS	header-only (all-assume-val module, no C body emitted)		RDF.CottasStore.LazyDict,RDF.Graph.Executable	2	11.21	0.38
+RDF.CottasStore.OffsetsWriter	PASS			RDF.Bytes,RDF.List.Helpers	2	1.88	0.15
+RDF.CottasStore.OnDiskIndex	PASS			Parquet.Footer	1	2.14	0.33
+RDF.CottasStore.OnDiskRuntime	PASS	header-only (all-assume-val module, no C body emitted)		Parser.BallyhooCOTTAS,RDF.CottasStore,RDF.Graph.Executable	3	29.87	0.65
+RDF.CottasStore.PageCache	PASS			Parquet.Footer,RDF.CottasStore.ColumnSeq	2	1.65	0.31
+RDF.CottasStore.PageCache.Bounds	BLOCKED_SELF	F* codegen-krml error 189	* Error 189 at RDF.CottasStore.PageCache.Bounds.fst(215,35-215,36):	Parquet.Footer,Parser.BallyhooCOTTAS,RDF.CottasStore,RDF.CottasStore.PageCache	4	33.60	0.00
+RDF.CottasStore.PresenceBitmap	PASS			RDF.CottasStore.OnDiskIndex	1	2.17	0.26
+RDF.CottasStore.PresenceWriter	PASS			RDF.Bytes,RDF.List.Helpers	2	1.43	0.44
+RDF.Dataset.Graphs	PASS			RDF.Graph.Executable	1	10.39	0.28
+RDF.Dataset.Merge	PASS			RDF.Graph.Executable	1	10.75	0.13
+RDF.Format	PASS				0	1.57	0.39
+RDF.Graph	PASS				0	3.62	0.69
+RDF.Graph.Executable	PASS				0	11.25	0.68
+RDF.IRI	PASS			Parser.FastString,RDF.Graph.Executable	2	13.96	0.18
+RDF.Indexed	PASS				0	2.48	0.49
+RDF.List.Helpers	PASS				0	1.04	0.23
+RDF.NQuads.Serialize	PASS			Parser.FastString,RDF.Graph.Executable	2	7.60	0.13
+RDF.Pretty	PASS			RDF.Graph.Executable,SPARQL11.Algebra	2	22.56	0.31
+RDF.Store.Capabilities	PASS			RDF.Graph.Executable,RDF.Store.Columnar.DeltaLog,SPARQL11.Algebra	3	27.74	0.53
+RDF.Store.Capabilities.Cottas	PASS			RDF.CottasStore,RDF.Graph.Executable,RDF.Store.Capabilities,SPARQL11.Algebra	4	58.16	0.60
+RDF.Store.Capabilities.Delta	PASS			RDF.Graph.Executable,RDF.Store.Capabilities,RDF.Store.Columnar.DeltaMerge,SPARQL11.Algebra	4	28.13	0.17
+RDF.Store.Columnar.DeltaLog	PASS			RDF.Bytes	1	51.96	0.23
+RDF.Store.Columnar.DeltaMerge	BLOCKED_TRANSITIVE	monomorphization stack overflow [failing deps in closure: SPARQL11.Algebra]	Fatal error: exception Stack overflow	RDF.Graph.Executable,RDF.Store.Columnar.DeltaLog,SPARQL11.Algebra	3	46.92	1.42
+RDF.Store.Columnar.OffsetIndex	PASS			RDF.CottasStore.OnDiskIndex	1	1.51	0.26
+RDF.Store.Combine	PASS			RDF.Graph.Executable,SPARQL11.Store	2	44.74	0.18
+RDF.Store.HDTTermCacheRegistry	PASS	header-only (all-assume-val module, no C body emitted)		RDF.Graph.Executable,RDF.Store.LazyTermCache	2	5.70	0.27
+RDF.Store.LazyTermCache	PASS				0	1.22	0.13
+RDF.Store.Loader	PASS			RDF.Graph.Executable,RDF.List.Helpers	2	7.79	0.14
+RDF.Term	PASS				0	2.16	0.41
+RDF.Triple	PASS				0	2.18	0.31
+RDF.Turtle.Serialize	PASS			Parser.FastString,Parser.Turtle,RDF.Graph.Executable,RDF.NQuads.Serialize	4	21.38	0.46
+RDF.Vocabulary	PASS				0	0.61	0.28
+RDF.Vocabulary.Axioms	TIMEOUT	timeout (120s cap, krml lowering)	(timed out)		0	3.20	120.11
+RDFS.Closure	PASS			RDF.Vocabulary.Axioms	1	4.99	0.23
+RIF.Core.Builtins	BLOCKED_TRANSITIVE	monomorphization stack overflow [failing deps in closure: SPARQL11.Algebra]	Fatal error: exception Stack overflow	RDF.Graph.Executable,SPARQL11.Algebra,XSD.Datatypes	3	27.91	1.14
+RIF.Core.Conformance	PASS			Parser.RIFXML,Parser.XML,RDF.Graph.Executable,RIF.Core.Syntax	4	12.44	0.51
+RIF.Core.Eval	PASS			RDF.Graph.Executable,RIF.Core.Builtins,RIF.Core.Syntax,RIF.Core.Translation,SPARQL11.Algebra	5	49.08	1.17
+RIF.Core.Syntax	PASS			RDF.Graph.Executable	1	8.49	0.33
+RIF.Core.Tests	BLOCKED_TRANSITIVE	krml fatal: Failure("nth") [failing deps in closure: RIF.Core.Builtins, SPARQL11.Algebra]	Fatal error: exception Failure("nth")	Parser.RIFXML,RDF.Graph.Executable,RIF.Core.Eval,RIF.Core.Syntax	4	23.18	0.67
+RIF.Core.Translation	PASS			RDF.Graph.Executable,RIF.Core.Syntax,SPARQL11.Algebra	3	23.38	0.48
+RML.Eval	PASS			Parser.JSON,RDF.Graph.Executable,RML.Mapping,RML.Sources,SPARQL11.Algebra	5	28.40	1.31
+RML.Mapping	PASS			RDF.Graph.Executable	1	12.86	0.70
+RML.Sources	PASS			Parser.JSON	1	1.99	0.37
+SHACL.Validation	BLOCKED_TRANSITIVE	monomorphization stack overflow [failing deps in closure: SPARQL11.Algebra, SPARQL11.Parser]	Fatal error: exception Stack overflow	RDF.Graph.Executable,SPARQL11.Algebra,SPARQL11.Parser,XSD.Datatypes	4	99.04	2.83
+SPARQL.Diagnostics	BLOCKED_TRANSITIVE	monomorphization stack overflow [failing deps in closure: RDF.Store.Columnar.DeltaMerge, SPARQL11.Algebra, SPARQL11.Store]	Fatal error: exception Stack overflow	SPARQL11.Algebra,SPARQL11.Store	2	45.53	0.60
+SPARQL.Eval.Limits	PASS				0	1.21	0.29
+SPARQL.Eval.TimeBudget	PASS				0	1.47	0.67
+SPARQL.Explain	PASS			RDF.Pretty,SPARQL.JSON.Escape,SPARQL11.Algebra	3	28.37	0.17
+SPARQL.GraphStore	PASS			RDF.Graph.Executable	1	7.57	0.36
+SPARQL.HTTP	PASS				0	2.98	0.66
+SPARQL.HTTP.Admin	PASS			SPARQL.JSON.Escape	1	1.02	0.20
+SPARQL.HTTP.BackendInfo	PASS			RDF.Graph.Executable,SPARQL.JSON.Escape	2	8.15	7.94
+SPARQL.HTTP.Client	PASS				0	3.04	0.45
+SPARQL.HTTP.QueriesIndex	PASS			Parser.FastString,SPARQL.JSON.Escape	2	0.92	0.15
+SPARQL.HTTP.Response	PASS				0	1.33	0.29
+SPARQL.HTTP.Routes	PASS				0	1.24	0.15
+SPARQL.HTTP.RunQuery	BLOCKED_TRANSITIVE	monomorphization stack overflow [failing deps in closure: SPARQL11.Algebra]	Fatal error: exception Stack overflow	SPARQL.Eval.Limits,SPARQL.HTTP.Response,SPARQL.Protocol,SPARQL11.Algebra	4	25.32	1.77
+SPARQL.HTTP.StaticFiles	PASS				0	1.21	0.26
+SPARQL.HTTP.Timing	PASS				0	0.68	0.31
+SPARQL.JSON.Escape	PASS			Parser.FastString	1	1.35	0.25
+SPARQL.Plan.AccessPath	PASS			RDF.Store.Columnar.OffsetIndex,SPARQL.Plan.Pruning	2	3.30	0.29
+SPARQL.Plan.Estimate	PASS				0	0.81	0.12
+SPARQL.Plan.Explain	BLOCKED_TRANSITIVE	monomorphization stack overflow [failing deps in closure: SPARQL11.Algebra]	Fatal error: exception Stack overflow	RDF.Graph.Executable,RDF.Pretty,SPARQL.Explain,SPARQL.JSON.Escape,SPARQL.Plan.Estimate,SPARQL11.Algebra	6	35.52	0.57
+SPARQL.Plan.Loader	PASS				0	0.45	0.21
+SPARQL.Plan.Pruning	PASS			RDF.CottasStore.CompoundPresenceBitmap,RDF.CottasStore.PresenceBitmap	2	1.20	0.15
+SPARQL.Plan.Streamable	BLOCKED_TRANSITIVE	monomorphization stack overflow [failing deps in closure: SPARQL11.Algebra]	Fatal error: exception Stack overflow	RDF.Graph.Executable,SPARQL11.Algebra	2	25.20	1.37
+SPARQL.Protocol	PASS			Parser.FastString,RDF.Graph.Executable	2	14.40	0.86
+SPARQL.Query.Analysis	BLOCKED_TRANSITIVE	monomorphization stack overflow [failing deps in closure: SPARQL11.Algebra]	Fatal error: exception Stack overflow	SPARQL11.Algebra	1	24.86	0.93
+SPARQL.ServiceDescription	PASS			RDF.Graph.Executable	1	11.98	5.04
+SPARQL.Update.Analysis	BLOCKED_TRANSITIVE	monomorphization stack overflow [failing deps in closure: SPARQL11.Algebra]	Fatal error: exception Stack overflow	SPARQL11.Algebra	1	22.87	1.30
+SPARQL.Update.Sandbox	BLOCKED_TRANSITIVE	monomorphization stack overflow [failing deps in closure: SPARQL11.Algebra]	Fatal error: exception Stack overflow	RDF.Graph.Executable,SPARQL11.Algebra	2	24.82	1.02
+SPARQL11.Algebra	BLOCKED_SELF	monomorphization stack overflow	Fatal error: exception Stack overflow	RDF.Graph.Executable,RDF.List.Helpers,SPARQL11.IRI.Resolve	3	42.46	1.58
+SPARQL11.IRI.Resolve	PASS			RDF.Graph.Executable	1	10.48	0.23
+SPARQL11.Parser	BLOCKED_TRANSITIVE	monomorphization stack overflow [failing deps in closure: SPARQL11.Algebra]	Fatal error: exception Stack overflow	RDF.Bytes,RDF.Graph.Executable,SPARQL11.Algebra	3	56.54	1.07
+SPARQL11.Store	BLOCKED_TRANSITIVE	monomorphization stack overflow [failing deps in closure: RDF.Store.Columnar.DeltaMerge, SPARQL11.Algebra]	Fatal error: exception Stack overflow	Parser.BallyhooCOTTAS,Parser.BallyhooHDT,RDF.CottasStore,RDF.Graph.Executable,RDF.List.Helpers,RDF.Store.Capabilities,RDF.Store.Capabilities.Cottas,RDF.Store.Capabilities.Delta,RDF.Store.Columnar.DeltaLog,RDF.Store.Columnar.DeltaMerge,SPARQL11.Algebra	11	32.89	1.69
+ShEx.Schema	BLOCKED_SELF	krml fatal: Failure("nth")	Fatal error: exception Failure("nth")	Parser.IRI,Parser.JSON	2	17.93	0.35
+ShEx.Validation	PASS			RDF.Graph.Executable,SPARQL11.Algebra,ShEx.Schema,XSD.Datatypes	4	53.97	0.54
+Tableau	BLOCKED_SELF	monomorphization stack overflow	Fatal error: exception Stack overflow	OWL.Vocabulary,RDF.Graph.Executable	2	12.65	0.69
+Util.Log	PASS				0	0.39	0.10
+VC.Credential	BLOCKED_TRANSITIVE	krml fatal: Failure("nth") [failing deps in closure: SPARQL11.Algebra]	Fatal error: exception Failure("nth")	Parser.JSON,XSD.Datatypes	2	26.16	0.43
+XML.Namespaces	PASS			Parser.FastString,Parser.XML	2	1.92	0.26
+XML.Wellformedness	PASS				0	0.67	0.16
+XPath.Eval	BLOCKED_TRANSITIVE	monomorphization stack overflow [failing deps in closure: Parser.XPath]	Fatal error: exception Stack overflow	Parser.XML,Parser.XPath	2	10.89	0.45
+XSD.Datatypes	PASS			RDF.Graph.Executable,SPARQL11.Algebra	2	18.40	0.19
