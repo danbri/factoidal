@@ -148,6 +148,30 @@ let rec union_decode_failure (members : store_caps Prims.list) : Prims.bool=
   match members with
   | [] -> false
   | m::rest -> (m.sc_decode_failure ()) || (union_decode_failure rest)
+let rec union_solve_limited_acc (members : store_caps Prims.list)
+  (b : SPARQL11_Algebra.triple_pattern_bound) (limit : Prims.nat)
+  (acc_rev : RDF_Triple.triple Prims.list) (acc_len : Prims.nat) :
+  RDF_Triple.triple Prims.list=
+  if acc_len >= limit
+  then acc_rev
+  else
+    (match members with
+     | [] -> acc_rev
+     | m::rest ->
+         let need = limit - acc_len in
+         let part = m.sc_solve_limited b need in
+         let part_len = FStar_List_Tot_Base.length part in
+         union_solve_limited_acc rest b limit
+           (FStar_List_Tot_Base.rev_acc part acc_rev) (acc_len + part_len))
+let union_solve_limited (members : store_caps Prims.list)
+  (b : SPARQL11_Algebra.triple_pattern_bound) (limit : Prims.nat) :
+  RDF_Triple.triple Prims.list=
+  if limit = Prims.int_zero
+  then []
+  else
+    (let result_rev =
+       union_solve_limited_acc members b limit [] Prims.int_zero in
+     caps_take_n limit (FStar_List_Tot_Base.rev result_rev))
 let union_caps (members : store_caps Prims.list) : store_caps=
   {
     sc_flags =
@@ -159,7 +183,7 @@ let union_caps (members : store_caps Prims.list) : store_caps=
         scf_can_report_decode_fail = true
       };
     sc_solve = (fun b -> union_solve members b);
-    sc_solve_limited = (fun b n -> caps_take_n n (union_solve members b));
+    sc_solve_limited = (fun b n -> union_solve_limited members b n);
     sc_estimate = (fun b -> union_estimate members b);
     sc_count_exact = (fun b -> union_count_exact members b);
     sc_predicate_present = (fun pred -> union_predicate_present members pred);
@@ -191,3 +215,27 @@ let caps_of_indexed (ig : RDF_Indexed.indexed_graph) : store_caps=
            > Prims.int_zero);
     sc_decode_failure = (fun uu___ -> false)
   }
+type dataset_caps =
+  {
+  dsc_default: store_caps ;
+  dsc_named: (RDF_Term.iri * store_caps) Prims.list }
+let __proj__Mkdataset_caps__item__dsc_default (projectee : dataset_caps) :
+  store_caps=
+  match projectee with | { dsc_default; dsc_named;_} -> dsc_default
+let __proj__Mkdataset_caps__item__dsc_named (projectee : dataset_caps) :
+  (RDF_Term.iri * store_caps) Prims.list=
+  match projectee with | { dsc_default; dsc_named;_} -> dsc_named
+let rec dataset_caps_lookup_named (name : RDF_Term.iri)
+  (named : (RDF_Term.iri * store_caps) Prims.list) :
+  store_caps FStar_Pervasives_Native.option=
+  match named with
+  | [] -> FStar_Pervasives_Native.None
+  | (n, caps)::rest ->
+      if n = name
+      then FStar_Pervasives_Native.Some caps
+      else dataset_caps_lookup_named name rest
+let rec dataset_caps_list_graphs
+  (named : (RDF_Term.iri * store_caps) Prims.list) : RDF_Term.iri Prims.list=
+  match named with
+  | [] -> []
+  | (n, uu___)::rest -> n :: (dataset_caps_list_graphs rest)

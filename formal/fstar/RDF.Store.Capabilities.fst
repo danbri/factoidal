@@ -51,11 +51,31 @@ module RDF.Store.Capabilities
      4. `union_caps` is written per §4 ("one `store_caps` whose
         `sc_solve` concatenates the members'") and open decision 2
         (§7): it builds a READ-ONLY `store_caps` (no `store`-level
-        combinator, no write semantics for a federation). It is
-        UNTESTED in this stage — U1's equivalence-test floor (task
-        item 3) covers only the two single-backend builders; wiring
-        and testing `union_caps` is U2/U4 territory (design doc §4,
-        "the six `union_*` twins fold into `union_caps`").
+        combinator, no write semantics for a federation).
+
+   Stage U2 update (docs/designissues/2026-07-06-unified-store-
+   architecture.md, migration table): `union_caps` is now wired
+   (`SPARQL11.Store.caps_of_backend`'s `GB_Union` arm) and covered by
+   `tests/unit/store_capabilities_unit.ml`'s union-scope assertions,
+   which compare it directly against the pre-U2 `GB_Union` recursion
+   (`SPARQL11_Store.backend_search`/etc. applied to an actual
+   `GB_Union [...]` value) rather than against a hand-derived
+   reference. `sc_solve_limited`'s realisation changed from this
+   module's original U1 draft (`caps_take_n n (union_solve members
+   b)`, a "solve everything then truncate" shape) to
+   `union_solve_limited` below, which asks each member for only its
+   REMAINING budget — the real per-member LIMIT pushdown the old
+   `union_backend_search_limited_acc` accumulator had
+   (SPARQL11.Store.fst, pre-U2). The naive draft was BYTE-IDENTICAL in
+   output (same final list) but not in COST: a union member with real
+   on-disk pushdown (GB_CottasOnDisk) would have been forced to decode
+   its entire result before the union truncated it, defeating the one
+   pushdown path that exists specifically to avoid that (design doc
+   §6.1's perf-regression guard: "any regression is a pure indirection
+   cost, isolable" — this was not an indirection cost, it was a real
+   algorithmic regression for LIMIT queries over a union containing an
+   on-disk member, e.g. `combine_dataset_backends`'s in-memory + N
+   `--data-cottas` union, RDF.Store.Combine.fst).
 *)
 
 open FStar.List.Tot
@@ -180,9 +200,10 @@ let rec caps_take_n (#a:Type) (n : nat) (xs : list a)
 // --------------------------------------------------------------------
 // union_caps (design doc §4 / §7 open decision 2): a read-only
 // combinator over a list of read seams. Mirrors the union_backend_*
-// family's per-field arithmetic (SPARQL11.Store.fst:94-296) without
-// introducing a `GB_Union`-shaped constructor. UNTESTED in stage U1
-// (adjustment #4 above) — no caller builds a union today.
+// family's per-field arithmetic (SPARQL11.Store.fst:94-296, pre-U2)
+// without introducing a `GB_Union`-shaped constructor. Wired and
+// tested from stage U2 (adjustment #4 above / SPARQL11.Store.fst's
+// `caps_of_backend`'s `GB_Union` arm).
 // --------------------------------------------------------------------
 let rec union_solve (members : list store_caps) (b : triple_pattern_bound)
   : Tot (list triple) (decreases members) =
@@ -214,6 +235,40 @@ let rec union_decode_failure (members : list store_caps)
   | [] -> false
   | m :: rest -> m.sc_decode_failure () || union_decode_failure rest
 
+// Real per-member LIMIT pushdown (stage U2 fix, see the disclosure
+// comment above adjustment #4): mirrors the pre-U2
+// `union_backend_search_limited_acc` accumulator exactly, but calling
+// each member's OWN `sc_solve_limited` (so a COTTAS-on-disk member's
+// real pushdown still stops early) instead of `caps_take_n` over a
+// fully-materialised `union_solve`. `need` is the REMAINING budget
+// after prior members' contributions; the early "already have enough"
+// check short-circuits before touching a later member at all — the
+// same early-exit shape the old accumulator had for `GB_Union`. Order
+// preserved: reversed accumulator, `rev` once at the end, `caps_take_n`
+// to enforce the exact limit (a member's own solve_limited can return
+// up to `need` rows, so the running total can slightly overshoot
+// `limit` only in the sense that the FINAL truncation still needs to
+// apply — same as the pre-U2 code's own final `list_take_n`).
+let rec union_solve_limited_acc (members : list store_caps) (b : triple_pattern_bound)
+  (limit : nat) (acc_rev : list triple) (acc_len : nat)
+  : Tot (list triple) (decreases members) =
+  if acc_len >= limit then acc_rev
+  else
+    match members with
+    | [] -> acc_rev
+    | m :: rest ->
+      let need : nat = limit - acc_len in
+      let part = m.sc_solve_limited b need in
+      let part_len = length part in
+      union_solve_limited_acc rest b limit (rev_acc part acc_rev) (acc_len + part_len)
+
+let union_solve_limited (members : list store_caps) (b : triple_pattern_bound) (limit : nat)
+  : Tot (list triple) =
+  if limit = 0 then []
+  else
+    let result_rev = union_solve_limited_acc members b limit [] 0 in
+    caps_take_n limit (rev result_rev)
+
 let union_caps (members : list store_caps) : Tot store_caps =
   {
     sc_flags = {
@@ -224,7 +279,7 @@ let union_caps (members : list store_caps) : Tot store_caps =
       scf_can_report_decode_fail = true;
     };
     sc_solve = (fun b -> union_solve members b);
-    sc_solve_limited = (fun b n -> caps_take_n n (union_solve members b));
+    sc_solve_limited = (fun b n -> union_solve_limited members b n);
     sc_estimate = (fun b -> union_estimate members b);
     sc_count_exact = (fun b -> union_count_exact members b);
     sc_predicate_present = (fun pred -> union_predicate_present members pred);
@@ -253,3 +308,74 @@ let caps_of_indexed (ig : indexed_graph) : Tot store_caps =
       (fun pred -> ig_estimate ig ({ bs = None; bp = Some pred; bo = None }) > 0);
     sc_decode_failure = (fun () -> false);
   }
+
+// ======================================================================
+// U1.5 amendment (owner requirement, 2026-07-06, landed alongside U2's
+// dispatcher rewiring rather than deferred to U4: "the db must support
+// full named graphs too, not just triples" -- named-graph ROUTING must
+// flow through capability records, not around the seam).
+//
+// A `store_caps` is already graph-scoped by construction: `caps_of_
+// cottas` takes a `cottas_ondisk_graph_scope`; `caps_of_indexed` wraps
+// ONE `indexed_graph`, which is already either the default graph's
+// content or one named graph's content. What was missing at the SEAM
+// level (as opposed to the `graph_backend`/`dataset_backend` tag level
+// SPARQL11.Store.fst still uses, unchanged per U2's own migration-table
+// scope -- design doc §5, "graph_backend stays as a constructor set for
+// now") was a way to ask "the capability record for graph named G" or
+// "every graph name this dataset carries" without stepping back through
+// that tag. `dataset_caps` is that composition: a `store_caps`-shaped
+// SIBLING of `SPARQL11.Store.dataset_backend`, built FROM one via
+// `SPARQL11.Store.dataset_caps_of_backend` (which lives there, not
+// here, for the same DAG reason `caps_of_backend` does -- dataset_
+// backend/named_graph_backend are SPARQL11.Store types).
+//
+// This does NOT replace dataset_backend (that is U4's job, replacing
+// graph_backend/dataset_backend with store/dataset at the type level
+// per the design doc's migration table) -- it is an ADDITIONAL,
+// equivalence-tested view over the exact same underlying graphs, so
+// GRAPH-scoped routing has a seam-level path available today instead
+// of only ever resolving through the tag.
+//
+// Residual, written up rather than half-implemented here (task report
+// carries the full text; see also SPARQL11.Store.fst's caps_of_backend
+// banner): every field below is still TRIPLE-shaped
+// (`triple_pattern_bound` = bound S/P/O only, no graph position). There
+// is no quad-native `sc_solve_quad : quad_pattern_bound -> Tot (list
+// quad)` primitive that lets a caller push a GRAPH-VARIABLE bound INTO
+// one seam call spanning every graph in a single on-disk walk --
+// `GRAPH ?g { ?s ?p ?o }` still enumerates `dsc_named` and calls
+// `sc_solve` once per named graph (the same cost shape the pre-U2
+// `named_candidate_backends` + concatMap path already had). A COTTAS
+// store carries `g` as a first-class column (cottas-format-v1 §6) and
+// COULD answer an unbound-graph pattern in one walk instead of N -- that
+// is real, unimplemented work, scoped as a follow-up (U2.5) rather than
+// attempted under this task's floor-preserving, commit-sized mandate.
+// ======================================================================
+noeq type dataset_caps = {
+  dsc_default : store_caps;
+  dsc_named : list (iri & store_caps);
+}
+
+// Resolve the store_caps for a named graph, or None if the dataset has
+// no graph by that name. Mirrors SPARQL11.Store.lookup_named_backend's
+// contract exactly (same linear scan over the SAME iri equality test,
+// same None on miss) -- over (iri & store_caps) pairs instead of
+// named_graph_backend records, so the "does named-graph resolution
+// still agree with the pre-U2 path" equivalence is checkable directly.
+let rec dataset_caps_lookup_named (name : iri) (named : list (iri & store_caps))
+  : Tot (option store_caps) (decreases named) =
+  match named with
+  | [] -> None
+  | (n, caps) :: rest -> if n = name then Some caps else dataset_caps_lookup_named name rest
+
+// Enumerate every named-graph IRI this composition carries -- the
+// "list_graphs" the owner's requirement names. A `GRAPH ?g` query still
+// has to fan out over this list and call `sc_solve`/`sc_estimate`/etc.
+// once per graph (the residual above); this is the enumeration that
+// fan-out walks.
+let rec dataset_caps_list_graphs (named : list (iri & store_caps))
+  : Tot (list iri) (decreases named) =
+  match named with
+  | [] -> []
+  | (n, _) :: rest -> n :: dataset_caps_list_graphs rest

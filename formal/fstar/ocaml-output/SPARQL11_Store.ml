@@ -90,45 +90,6 @@ let cottas_ondisk_dataset_backend
                        (cods, (RDF_CottasStore.COS_NamedGraph gname)))
                 }) (RDF_CottasStore.cottas_ondisk_named_graphs cods))
   }
-let rec union_backend_search_acc (members : graph_backend Prims.list)
-  (b : SPARQL11_Algebra.triple_pattern_bound)
-  (acc_rev : RDF_Triple.triple Prims.list) : RDF_Triple.triple Prims.list=
-  match members with
-  | [] -> FStar_List_Tot_Base.rev acc_rev
-  | member::rest ->
-      let part = backend_search member b in
-      union_backend_search_acc rest b
-        (FStar_List_Tot_Base.rev_acc part acc_rev)
-and backend_search (gb : graph_backend)
-  (b : SPARQL11_Algebra.triple_pattern_bound) : RDF_Triple.triple Prims.list=
-  match gb with
-  | GB_List g ->
-      SPARQL11_Algebra.store_search (SPARQL11_Algebra.graph_to_store g) b
-  | GB_Indexed ig -> SPARQL11_Algebra.ig_search ig b
-  | GB_HDT hgs ->
-      Parser_BallyhooHDT.hdt_search_triples hgs b.SPARQL11_Algebra.bs
-        b.SPARQL11_Algebra.bp b.SPARQL11_Algebra.bo
-  | GB_COTTAS (cds, graph_name) ->
-      let rows =
-        Parser_BallyhooCOTTAS.cottas_search cds
-          (Parser_BallyhooCOTTAS.cottas_build_bound_qp cds
-             b.SPARQL11_Algebra.bs b.SPARQL11_Algebra.bp
-             b.SPARQL11_Algebra.bo graph_name) in
-      FStar_List_Tot_Base.map FStar_Pervasives_Native.fst
-        (Parser_BallyhooCOTTAS.cottas_rows_to_quads cds rows)
-  | GB_CottasOnDisk (cods, scope) ->
-      (match RDF_CottasStore.cottas_ondisk_build_bound_qp_opt cods
-               b.SPARQL11_Algebra.bs b.SPARQL11_Algebra.bp
-               b.SPARQL11_Algebra.bo scope
-       with
-       | FStar_Pervasives_Native.None -> []
-       | FStar_Pervasives_Native.Some bound ->
-           let rows = RDF_CottasStore.cottas_ondisk_search cods bound in
-           RDF_CottasStore.cottas_ondisk_rows_to_triples cods rows)
-  | GB_Union members -> union_backend_search_acc members b []
-let union_backend_search (members : graph_backend Prims.list)
-  (b : SPARQL11_Algebra.triple_pattern_bound) : RDF_Triple.triple Prims.list=
-  union_backend_search_acc members b []
 let rec list_take_n : 'a . Prims.nat -> 'a Prims.list -> 'a Prims.list =
   fun n xs ->
     if n = Prims.int_zero
@@ -137,144 +98,154 @@ let rec list_take_n : 'a . Prims.nat -> 'a Prims.list -> 'a Prims.list =
       (match xs with
        | [] -> []
        | hd::tl -> hd :: (list_take_n (n - Prims.int_one) tl))
-let rec union_backend_search_limited_acc (members : graph_backend Prims.list)
-  (b : SPARQL11_Algebra.triple_pattern_bound) (limit : Prims.nat)
-  (acc_rev : RDF_Triple.triple Prims.list) (acc_len : Prims.nat) :
-  RDF_Triple.triple Prims.list=
-  if acc_len >= limit
-  then acc_rev
-  else
-    (match members with
-     | [] -> acc_rev
-     | member::rest ->
-         let need = limit - acc_len in
-         let part = backend_search_limited member b need in
-         let part_len = FStar_List_Tot_Base.length part in
-         union_backend_search_limited_acc rest b limit
-           (FStar_List_Tot_Base.rev_acc part acc_rev) (acc_len + part_len))
-and backend_search_limited (gb : graph_backend)
+let rec caps_of_backend (gb : graph_backend) :
+  RDF_Store_Capabilities.store_caps=
+  match gb with
+  | GB_List g ->
+      let st = SPARQL11_Algebra.graph_to_store g in
+      {
+        RDF_Store_Capabilities.sc_flags =
+          {
+            RDF_Store_Capabilities.scf_supports_named_graphs = false;
+            RDF_Store_Capabilities.scf_supports_update = false;
+            RDF_Store_Capabilities.scf_streaming_shapes = true;
+            RDF_Store_Capabilities.scf_estimate_is_exact = true;
+            RDF_Store_Capabilities.scf_can_report_decode_fail = false
+          };
+        RDF_Store_Capabilities.sc_solve =
+          ((fun b -> SPARQL11_Algebra.store_search st b));
+        RDF_Store_Capabilities.sc_solve_limited =
+          ((fun b n -> list_take_n n (SPARQL11_Algebra.store_search st b)));
+        RDF_Store_Capabilities.sc_estimate =
+          ((fun b -> SPARQL11_Algebra.store_estimate st b));
+        RDF_Store_Capabilities.sc_count_exact =
+          ((fun b -> SPARQL11_Algebra.store_estimate st b));
+        RDF_Store_Capabilities.sc_predicate_present =
+          ((fun pred ->
+              (SPARQL11_Algebra.store_estimate st
+                 {
+                   SPARQL11_Algebra.bs = FStar_Pervasives_Native.None;
+                   SPARQL11_Algebra.bp = (FStar_Pervasives_Native.Some pred);
+                   SPARQL11_Algebra.bo = FStar_Pervasives_Native.None
+                 })
+                > Prims.int_zero));
+        RDF_Store_Capabilities.sc_decode_failure = ((fun uu___ -> false))
+      }
+  | GB_Indexed ig -> RDF_Store_Capabilities.caps_of_indexed ig
+  | GB_HDT hgs ->
+      {
+        RDF_Store_Capabilities.sc_flags =
+          {
+            RDF_Store_Capabilities.scf_supports_named_graphs = false;
+            RDF_Store_Capabilities.scf_supports_update = false;
+            RDF_Store_Capabilities.scf_streaming_shapes = true;
+            RDF_Store_Capabilities.scf_estimate_is_exact = true;
+            RDF_Store_Capabilities.scf_can_report_decode_fail = false
+          };
+        RDF_Store_Capabilities.sc_solve =
+          ((fun b ->
+              Parser_BallyhooHDT.hdt_search_triples hgs b.SPARQL11_Algebra.bs
+                b.SPARQL11_Algebra.bp b.SPARQL11_Algebra.bo));
+        RDF_Store_Capabilities.sc_solve_limited =
+          ((fun b n ->
+              list_take_n n
+                (Parser_BallyhooHDT.hdt_search_triples hgs
+                   b.SPARQL11_Algebra.bs b.SPARQL11_Algebra.bp
+                   b.SPARQL11_Algebra.bo)));
+        RDF_Store_Capabilities.sc_estimate =
+          ((fun b ->
+              Parser_BallyhooHDT.hdt_estimate hgs
+                (Parser_BallyhooHDT.hdt_build_bound_tp hgs
+                   b.SPARQL11_Algebra.bs b.SPARQL11_Algebra.bp
+                   b.SPARQL11_Algebra.bo)));
+        RDF_Store_Capabilities.sc_count_exact =
+          ((fun b ->
+              Parser_BallyhooHDT.hdt_estimate hgs
+                (Parser_BallyhooHDT.hdt_build_bound_tp hgs
+                   b.SPARQL11_Algebra.bs b.SPARQL11_Algebra.bp
+                   b.SPARQL11_Algebra.bo)));
+        RDF_Store_Capabilities.sc_predicate_present =
+          ((fun pred -> Parser_BallyhooHDT.hdt_predicate_present hgs pred));
+        RDF_Store_Capabilities.sc_decode_failure = ((fun uu___ -> false))
+      }
+  | GB_COTTAS (cds, graph_name) ->
+      {
+        RDF_Store_Capabilities.sc_flags =
+          {
+            RDF_Store_Capabilities.scf_supports_named_graphs = true;
+            RDF_Store_Capabilities.scf_supports_update = false;
+            RDF_Store_Capabilities.scf_streaming_shapes = true;
+            RDF_Store_Capabilities.scf_estimate_is_exact = true;
+            RDF_Store_Capabilities.scf_can_report_decode_fail = false
+          };
+        RDF_Store_Capabilities.sc_solve =
+          ((fun b ->
+              let rows =
+                Parser_BallyhooCOTTAS.cottas_search cds
+                  (Parser_BallyhooCOTTAS.cottas_build_bound_qp cds
+                     b.SPARQL11_Algebra.bs b.SPARQL11_Algebra.bp
+                     b.SPARQL11_Algebra.bo graph_name) in
+              FStar_List_Tot_Base.map FStar_Pervasives_Native.fst
+                (Parser_BallyhooCOTTAS.cottas_rows_to_quads cds rows)));
+        RDF_Store_Capabilities.sc_solve_limited =
+          ((fun b n ->
+              let rows =
+                Parser_BallyhooCOTTAS.cottas_search cds
+                  (Parser_BallyhooCOTTAS.cottas_build_bound_qp cds
+                     b.SPARQL11_Algebra.bs b.SPARQL11_Algebra.bp
+                     b.SPARQL11_Algebra.bo graph_name) in
+              list_take_n n
+                (FStar_List_Tot_Base.map FStar_Pervasives_Native.fst
+                   (Parser_BallyhooCOTTAS.cottas_rows_to_quads cds rows))));
+        RDF_Store_Capabilities.sc_estimate =
+          ((fun b ->
+              Parser_BallyhooCOTTAS.cottas_estimate cds
+                (Parser_BallyhooCOTTAS.cottas_build_bound_qp cds
+                   b.SPARQL11_Algebra.bs b.SPARQL11_Algebra.bp
+                   b.SPARQL11_Algebra.bo graph_name)));
+        RDF_Store_Capabilities.sc_count_exact =
+          ((fun b ->
+              Parser_BallyhooCOTTAS.cottas_estimate cds
+                (Parser_BallyhooCOTTAS.cottas_build_bound_qp cds
+                   b.SPARQL11_Algebra.bs b.SPARQL11_Algebra.bp
+                   b.SPARQL11_Algebra.bo graph_name)));
+        RDF_Store_Capabilities.sc_predicate_present =
+          ((fun pred ->
+              (Parser_BallyhooCOTTAS.cottas_estimate cds
+                 (Parser_BallyhooCOTTAS.cottas_build_bound_qp cds
+                    FStar_Pervasives_Native.None
+                    (FStar_Pervasives_Native.Some pred)
+                    FStar_Pervasives_Native.None graph_name))
+                > Prims.int_zero));
+        RDF_Store_Capabilities.sc_decode_failure = ((fun uu___ -> false))
+      }
+  | GB_CottasOnDisk (cods, scope) ->
+      RDF_Store_Capabilities_Cottas.caps_of_cottas cods scope
+  | GB_Union members ->
+      RDF_Store_Capabilities.union_caps (caps_of_backend_list members)
+and caps_of_backend_list (members : graph_backend Prims.list) :
+  RDF_Store_Capabilities.store_caps Prims.list=
+  match members with
+  | [] -> []
+  | m::rest -> (caps_of_backend m) :: (caps_of_backend_list rest)
+let backend_search (gb : graph_backend)
+  (b : SPARQL11_Algebra.triple_pattern_bound) : RDF_Triple.triple Prims.list=
+  (caps_of_backend gb).RDF_Store_Capabilities.sc_solve b
+let backend_search_limited (gb : graph_backend)
   (b : SPARQL11_Algebra.triple_pattern_bound) (limit : Prims.nat) :
   RDF_Triple.triple Prims.list=
-  match gb with
-  | GB_CottasOnDisk (cods, scope) ->
-      (match RDF_CottasStore.cottas_ondisk_build_bound_qp_opt cods
-               b.SPARQL11_Algebra.bs b.SPARQL11_Algebra.bp
-               b.SPARQL11_Algebra.bo scope
-       with
-       | FStar_Pervasives_Native.None -> []
-       | FStar_Pervasives_Native.Some bound ->
-           let rows =
-             RDF_CottasStore.cottas_ondisk_search_limited cods bound limit in
-           RDF_CottasStore.cottas_ondisk_rows_to_triples cods rows)
-  | GB_Union members ->
-      if limit = Prims.int_zero
-      then []
-      else
-        (let result_rev =
-           union_backend_search_limited_acc members b limit [] Prims.int_zero in
-         list_take_n limit (FStar_List_Tot_Base.rev result_rev))
-  | uu___ -> list_take_n limit (backend_search gb b)
-let rec union_backend_estimate (members : graph_backend Prims.list)
+  (caps_of_backend gb).RDF_Store_Capabilities.sc_solve_limited b limit
+let backend_estimate (gb : graph_backend)
   (b : SPARQL11_Algebra.triple_pattern_bound) : Prims.nat=
-  match members with
-  | [] -> Prims.int_zero
-  | member::rest ->
-      (backend_estimate member b) + (union_backend_estimate rest b)
-and backend_estimate (gb : graph_backend)
+  (caps_of_backend gb).RDF_Store_Capabilities.sc_estimate b
+let backend_count_exact (gb : graph_backend)
   (b : SPARQL11_Algebra.triple_pattern_bound) : Prims.nat=
-  match gb with
-  | GB_List g ->
-      SPARQL11_Algebra.store_estimate (SPARQL11_Algebra.graph_to_store g) b
-  | GB_Indexed ig -> SPARQL11_Algebra.ig_estimate ig b
-  | GB_HDT hgs ->
-      Parser_BallyhooHDT.hdt_estimate hgs
-        (Parser_BallyhooHDT.hdt_build_bound_tp hgs b.SPARQL11_Algebra.bs
-           b.SPARQL11_Algebra.bp b.SPARQL11_Algebra.bo)
-  | GB_COTTAS (cds, graph_name) ->
-      Parser_BallyhooCOTTAS.cottas_estimate cds
-        (Parser_BallyhooCOTTAS.cottas_build_bound_qp cds
-           b.SPARQL11_Algebra.bs b.SPARQL11_Algebra.bp b.SPARQL11_Algebra.bo
-           graph_name)
-  | GB_CottasOnDisk (cods, scope) ->
-      (match RDF_CottasStore.cottas_ondisk_build_bound_qp_opt cods
-               b.SPARQL11_Algebra.bs b.SPARQL11_Algebra.bp
-               b.SPARQL11_Algebra.bo scope
-       with
-       | FStar_Pervasives_Native.None -> Prims.int_zero
-       | FStar_Pervasives_Native.Some bound ->
-           RDF_CottasStore.cottas_ondisk_estimate cods bound)
-  | GB_Union members -> union_backend_estimate members b
-let rec union_backend_count_exact (members : graph_backend Prims.list)
-  (b : SPARQL11_Algebra.triple_pattern_bound) : Prims.nat=
-  match members with
-  | [] -> Prims.int_zero
-  | member::rest ->
-      (backend_count_exact member b) + (union_backend_count_exact rest b)
-and backend_count_exact (gb : graph_backend)
-  (b : SPARQL11_Algebra.triple_pattern_bound) : Prims.nat=
-  match gb with
-  | GB_CottasOnDisk (cods, scope) ->
-      (match RDF_CottasStore.cottas_ondisk_build_bound_qp_opt cods
-               b.SPARQL11_Algebra.bs b.SPARQL11_Algebra.bp
-               b.SPARQL11_Algebra.bo scope
-       with
-       | FStar_Pervasives_Native.None -> Prims.int_zero
-       | FStar_Pervasives_Native.Some bound ->
-           RDF_CottasStore.cottas_ondisk_count_exact cods bound)
-  | GB_Union members -> union_backend_count_exact members b
-  | uu___ -> backend_estimate gb b
-let rec union_backend_predicate_present (members : graph_backend Prims.list)
-  (pred : RDF_Term.wf_iri) : Prims.bool=
-  match members with
-  | [] -> false
-  | member::rest ->
-      if backend_predicate_present member pred
-      then true
-      else union_backend_predicate_present rest pred
-and backend_predicate_present (gb : graph_backend) (pred : RDF_Term.wf_iri) :
+  (caps_of_backend gb).RDF_Store_Capabilities.sc_count_exact b
+let backend_predicate_present (gb : graph_backend) (pred : RDF_Term.wf_iri) :
   Prims.bool=
-  match gb with
-  | GB_List g ->
-      (backend_estimate (GB_List g)
-         {
-           SPARQL11_Algebra.bs = FStar_Pervasives_Native.None;
-           SPARQL11_Algebra.bp = (FStar_Pervasives_Native.Some pred);
-           SPARQL11_Algebra.bo = FStar_Pervasives_Native.None
-         })
-        > Prims.int_zero
-  | GB_Indexed ig ->
-      (backend_estimate (GB_Indexed ig)
-         {
-           SPARQL11_Algebra.bs = FStar_Pervasives_Native.None;
-           SPARQL11_Algebra.bp = (FStar_Pervasives_Native.Some pred);
-           SPARQL11_Algebra.bo = FStar_Pervasives_Native.None
-         })
-        > Prims.int_zero
-  | GB_HDT hgs -> Parser_BallyhooHDT.hdt_predicate_present hgs pred
-  | GB_COTTAS (cds, graph_name) ->
-      (backend_estimate (GB_COTTAS (cds, graph_name))
-         {
-           SPARQL11_Algebra.bs = FStar_Pervasives_Native.None;
-           SPARQL11_Algebra.bp = (FStar_Pervasives_Native.Some pred);
-           SPARQL11_Algebra.bo = FStar_Pervasives_Native.None
-         })
-        > Prims.int_zero
-  | GB_CottasOnDisk (cods, uu___) ->
-      RDF_CottasStore.cottas_ondisk_predicate_present cods pred
-  | GB_Union members -> union_backend_predicate_present members pred
-let rec union_backend_decode_failure (members : graph_backend Prims.list) :
-  Prims.bool=
-  match members with
-  | [] -> false
-  | member::rest ->
-      (backend_decode_failure member) || (union_backend_decode_failure rest)
-and backend_decode_failure (gb : graph_backend) : Prims.bool=
-  match gb with
-  | GB_CottasOnDisk (cods, uu___) ->
-      RDF_CottasStore.cottas_ondisk_has_decode_failure
-        cods.RDF_CottasStore.cods_handle
-  | GB_Union members -> union_backend_decode_failure members
-  | uu___ -> false
+  (caps_of_backend gb).RDF_Store_Capabilities.sc_predicate_present pred
+let backend_decode_failure (gb : graph_backend) : Prims.bool=
+  (caps_of_backend gb).RDF_Store_Capabilities.sc_decode_failure ()
 let rec lookup_named_backend (name : RDF_Term.iri)
   (named : named_graph_backend Prims.list) :
   graph_backend FStar_Pervasives_Native.option=
@@ -284,6 +255,15 @@ let rec lookup_named_backend (name : RDF_Term.iri)
       if ng.ngb_name = name
       then FStar_Pervasives_Native.Some (ng.ngb_graph)
       else lookup_named_backend name rest
+let dataset_caps_of_backend (dsb : dataset_backend) :
+  RDF_Store_Capabilities.dataset_caps=
+  {
+    RDF_Store_Capabilities.dsc_default = (caps_of_backend dsb.dsb_default);
+    RDF_Store_Capabilities.dsc_named =
+      (FStar_List_Tot_Base.map
+         (fun ngb -> ((ngb.ngb_name), (caps_of_backend ngb.ngb_graph)))
+         dsb.dsb_named)
+  }
 let eval_single_tp_backend (tp : SPARQL11_Algebra.triple_pattern)
   (gb : graph_backend) (mu : RDF_Graph_Executable.solution_mapping) :
   SPARQL11_Algebra.solution_sequence=
@@ -1032,7 +1012,8 @@ and eval_ask_query_backend_dataset (q : SPARQL11_Algebra.query)
              FStar_List_Tot_Base.map (fun ngb -> ngb.ngb_graph) dsb.dsb_named in
            if
              (backend_decode_failure dsb.dsb_default) ||
-               (union_backend_decode_failure named_backends)
+               (FStar_List_Tot_Base.existsb backend_decode_failure
+                  named_backends)
            then FStar_Pervasives_Native.None
            else FStar_Pervasives_Native.Some false
        | uu___ -> FStar_Pervasives_Native.Some true)

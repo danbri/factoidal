@@ -5,6 +5,8 @@ open SPARQL11.Algebra
 open Parser.BallyhooHDT
 open Parser.BallyhooCOTTAS
 open RDF.CottasStore
+open RDF.Store.Capabilities
+open RDF.Store.Capabilities.Cottas
 
 module Lh = RDF.List.Helpers
 
@@ -83,58 +85,12 @@ let cottas_ondisk_dataset_backend (cods : cottas_ondisk_store) : dataset_backend
         (cottas_ondisk_named_graphs cods)
   }
 
-// Tail-rec accumulator. The original used `backend_search member b @
-// union_backend_search rest b` — both the recursion AND the `@` walk the
-// LHS list (each search result, up to 3M triples) on every step. On a
-// multi-graph dataset that overflows the macOS main-thread stack BEFORE
-// Tav5's HTTP-level row cap (commit 4ff2321) can fire. Sin7 fix
-// (2026-04-26): walk members tail-recursively, accumulating each
-// member's results in reverse via `List.Tot.rev_acc`, then reverse once
-// at the end. Order is preserved (semantics unchanged).
-let rec union_backend_search_acc (members : list graph_backend)
-  (b : triple_pattern_bound) (acc_rev : list triple)
-  : Tot (list triple) (decreases members) =
-  match members with
-  | [] -> List.Tot.rev acc_rev
-  | member :: rest ->
-    let part = backend_search member b in
-    union_backend_search_acc rest b (List.Tot.rev_acc part acc_rev)
-
-and backend_search (gb : graph_backend) (b : triple_pattern_bound) : list triple =
-  match gb with
-  | GB_List g ->
-    store_search (graph_to_store g) b
-  | GB_Indexed ig ->
-    ig_search ig b
-  | GB_HDT hgs ->
-    hdt_search_triples hgs b.bs b.bp b.bo
-  | GB_COTTAS cds graph_name ->
-    let rows = cottas_search cds (cottas_build_bound_qp cds b.bs b.bp b.bo graph_name) in
-    List.Tot.map fst (cottas_rows_to_quads cds rows)
-  | GB_CottasOnDisk cods scope ->
-    (* On-disk search: encode bounds → integer term-ids, walk per-row term-id
-       arrays (no parsed terms), decode terms only for matched rows.
-       If any bound term is absent from the dictionary the result is
-       definitively empty without scanning.
-       Sin7 (2026-04-26): use the fused tail-rec
-       `cottas_ondisk_rows_to_triples` to avoid the non-tail-rec
-       `List.Tot.map fst` walk on 3M-row results. *)
-    (match cottas_ondisk_build_bound_qp_opt cods b.bs b.bp b.bo scope with
-     | None -> []
-     | Some bound ->
-       let rows = cottas_ondisk_search cods bound in
-       cottas_ondisk_rows_to_triples cods rows)
-  | GB_Union members ->
-    union_backend_search_acc members b []
-
-let union_backend_search (members : list graph_backend) (b : triple_pattern_bound)
-  : Tot (list triple) =
-  union_backend_search_acc members b []
-
-// Aleph6 (issue #100, demo prep): LIMIT-pushdown variant of backend_search.
+// Aleph6 (issue #100, demo prep): LIMIT-pushdown truncation helper.
 // The COTTAS-on-disk backend stops walking once `limit` matched rows are
-// accumulated; non-disk backends fall back to a simple List.Tot.takeWhile-style
-// truncation since their search is already in-memory and cheap.
+// accumulated (real pushdown, wired through caps_of_cottas below);
+// non-disk backends fall back to this simple truncation since their
+// search is already in-memory and cheap. Also used directly by
+// eval_limit_single_tp further down.
 let rec list_take_n (#a:Type) (n : nat) (xs : list a)
   : Tot (list a) (decreases n) =
   if n = 0 then []
@@ -143,133 +99,169 @@ let rec list_take_n (#a:Type) (n : nat) (xs : list a)
     | [] -> []
     | hd :: tl -> hd :: list_take_n (n - 1) tl
 
-// Tail-rec accumulator for LIMIT-pushdown union search. Same hazard as
-// `union_backend_search` (sin7 2026-04-26): the original used `part @
-// more`, walking the LHS on every step. Even with LIMIT pushdown, a
-// single member's pre-truncate result list could still be large; the
-// per-member result is fed unchanged to `List.Tot.rev_acc`. Order
-// preserved (rev at end, then take_n).
-let rec union_backend_search_limited_acc (members : list graph_backend)
-  (b : triple_pattern_bound) (limit : nat) (acc_rev : list triple)
-  (acc_len : nat)
-  : Tot (list triple) (decreases members) =
-  if acc_len >= limit then acc_rev
-  else
-    match members with
-    | [] -> acc_rev
-    | member :: rest ->
-      let need : nat = limit - acc_len in
-      let part = backend_search_limited member b need in
-      let part_len = List.Tot.length part in
-      union_backend_search_limited_acc rest b limit
-        (List.Tot.rev_acc part acc_rev) (acc_len + part_len)
+// ----------------------------------------------------------------------
+// Stage U2 (docs/designissues/2026-07-06-unified-store-architecture.md):
+// the six backend_* dispatchers below used to `match gb with` directly,
+// one arm per graph_backend constructor, with a GB_Union recursion twin
+// apiece (union_backend_search_acc, union_backend_search_limited_acc,
+// union_backend_estimate, union_backend_count_exact,
+// union_backend_predicate_present, union_backend_decode_failure — 12
+// functions total, the design doc's §1.1 audit — now deleted, not
+// commented out). `caps_of_backend` below is the ONE place that still
+// consults the `graph_backend` tag: it builds a
+// `RDF.Store.Capabilities.store_caps` record, dispatching on the
+// constructor exactly once, and every backend_* function below becomes
+// a one-line field projection through it.
+//
+// GB_Indexed and GB_CottasOnDisk reuse the U1 builders verbatim
+// (`caps_of_indexed` / `caps_of_cottas`, RDF.Store.Capabilities[.Cottas]
+// — design doc §3.1/§3.2). GB_List, GB_HDT, and the dead in-memory
+// GB_COTTAS path (RDF.CottasStore.fst:1681 names it "the dead in-memory
+// GB_COTTAS path" — no live construction site, same for GB_List, see
+// the comment at `indexed_graph_backend` above) get their own inline
+// builders here, because RDF.Store.Capabilities intentionally ships
+// only the in-memory-via-RDF.Indexed and COTTAS-on-disk builders
+// (keeping that module Unix/HDT/COTTAS-import-free per its own §6.2
+// mitigation) — this module already imports Parser.BallyhooHDT /
+// Parser.BallyhooCOTTAS / RDF.CottasStore, so it is the natural home
+// for the three constructors the design doc didn't scope a builder for.
+// GB_Union folds its members' caps through `union_caps` (§4 of the
+// doc): the six union twins collapse into that one combinator plus the
+// `caps_of_backend_list` structural-mapping helper below.
+//
+// Every field below is the EXACT same underlying call the old
+// per-constructor match arm made — byte-identical behaviour, not a
+// re-derivation. Where a field's realisation differs textually from
+// the old arm (e.g. GB_List/GB_HDT/GB_COTTAS's sc_solve_limited, which
+// didn't have their own old arm — they fell through backend_search_
+// limited's wildcard `_ -> list_take_n limit (backend_search gb b)`),
+// the comment inline says so.
+let rec caps_of_backend (gb : graph_backend) : Tot store_caps (decreases gb) =
+  match gb with
+  | GB_List g ->
+    // Old arms: backend_search/backend_estimate -> store_search/
+    // store_estimate (graph_to_store g) directly; backend_count_exact
+    // fell through its wildcard (-> backend_estimate); predicate_present
+    // had its own GB_List arm computing the same backend_estimate
+    // {bp=Some pred}>0 shape; decode_failure fell through its wildcard
+    // (-> false). solve_limited had no GB_List arm -> the wildcard
+    // `list_take_n limit (backend_search gb b)`.
+    let st = graph_to_store g in
+    {
+      sc_flags = {
+        scf_supports_named_graphs = false;
+        scf_supports_update = false;
+        scf_streaming_shapes = true;
+        scf_estimate_is_exact = true;
+        scf_can_report_decode_fail = false;
+      };
+      sc_solve = (fun b -> store_search st b);
+      sc_solve_limited = (fun b n -> list_take_n n (store_search st b));
+      sc_estimate = (fun b -> store_estimate st b);
+      sc_count_exact = (fun b -> store_estimate st b);
+      sc_predicate_present =
+        (fun pred -> store_estimate st ({ bs = None; bp = Some pred; bo = None }) > 0);
+      sc_decode_failure = (fun () -> false);
+    }
+  | GB_Indexed ig -> caps_of_indexed ig
+  | GB_HDT hgs ->
+    // Old arms: backend_search -> hdt_search_triples; backend_estimate
+    // -> hdt_estimate (hdt_build_bound_tp ...); backend_count_exact fell
+    // through its wildcard (-> backend_estimate); predicate_present ->
+    // hdt_predicate_present directly; decode_failure fell through its
+    // wildcard (-> false); solve_limited had no GB_HDT arm -> the
+    // wildcard truncation.
+    {
+      sc_flags = {
+        scf_supports_named_graphs = false;
+        scf_supports_update = false;
+        scf_streaming_shapes = true;
+        scf_estimate_is_exact = true;
+        scf_can_report_decode_fail = false;
+      };
+      sc_solve = (fun b -> hdt_search_triples hgs b.bs b.bp b.bo);
+      sc_solve_limited = (fun b n -> list_take_n n (hdt_search_triples hgs b.bs b.bp b.bo));
+      sc_estimate = (fun b -> hdt_estimate hgs (hdt_build_bound_tp hgs b.bs b.bp b.bo));
+      sc_count_exact = (fun b -> hdt_estimate hgs (hdt_build_bound_tp hgs b.bs b.bp b.bo));
+      sc_predicate_present = (fun pred -> hdt_predicate_present hgs pred);
+      sc_decode_failure = (fun () -> false);
+    }
+  | GB_COTTAS cds graph_name ->
+    // Old arms: backend_search -> cottas_search + the fst-projection of
+    // cottas_rows_to_quads; backend_estimate -> cottas_estimate;
+    // backend_count_exact fell through its wildcard (-> backend_
+    // estimate); predicate_present had its own GB_COTTAS arm computing
+    // the same backend_estimate {bp=Some pred}>0 shape (i.e. the same
+    // cottas_estimate call with bs/bo cleared); decode_failure fell
+    // through its wildcard (-> false); solve_limited had no GB_COTTAS
+    // arm -> the wildcard truncation.
+    {
+      sc_flags = {
+        scf_supports_named_graphs = true;
+        scf_supports_update = false;
+        scf_streaming_shapes = true;
+        scf_estimate_is_exact = true;
+        scf_can_report_decode_fail = false;
+      };
+      sc_solve =
+        (fun b ->
+          let rows = cottas_search cds (cottas_build_bound_qp cds b.bs b.bp b.bo graph_name) in
+          List.Tot.map fst (cottas_rows_to_quads cds rows));
+      sc_solve_limited =
+        (fun b n ->
+          let rows = cottas_search cds (cottas_build_bound_qp cds b.bs b.bp b.bo graph_name) in
+          list_take_n n (List.Tot.map fst (cottas_rows_to_quads cds rows)));
+      sc_estimate =
+        (fun b -> cottas_estimate cds (cottas_build_bound_qp cds b.bs b.bp b.bo graph_name));
+      sc_count_exact =
+        (fun b -> cottas_estimate cds (cottas_build_bound_qp cds b.bs b.bp b.bo graph_name));
+      sc_predicate_present =
+        (fun pred ->
+          cottas_estimate cds (cottas_build_bound_qp cds None (Some pred) None graph_name) > 0);
+      sc_decode_failure = (fun () -> false);
+    }
+  | GB_CottasOnDisk cods scope -> caps_of_cottas cods scope
+  | GB_Union members -> union_caps (caps_of_backend_list members)
 
-and backend_search_limited (gb : graph_backend) (b : triple_pattern_bound)
-  (limit : nat)
+// Structural twin of caps_of_backend over a list. Replaces the six
+// union_* recursion twins: union_caps (RDF.Store.Capabilities.fst) IS
+// the design doc's single combinator (§4); this is the small mapping
+// helper that gets caps_of_backend's per-constructor output into the
+// `list store_caps` shape union_caps consumes, mirroring how the old
+// union_backend_* family recursed `member :: rest` one graph_backend
+// at a time.
+and caps_of_backend_list (members : list graph_backend) : Tot (list store_caps) (decreases members) =
+  match members with
+  | [] -> []
+  | m :: rest -> caps_of_backend m :: caps_of_backend_list rest
+
+// ----------------------------------------------------------------------
+// The six backend_* dispatchers. Each is now a one-line forwarder
+// through caps_of_backend's single dispatch point (design doc §5, U2).
+// Byte-identical behaviour to the pre-U2 per-constructor match — see
+// caps_of_backend's per-constructor comments above, and
+// RDF.Store.Capabilities.fst / RDF.Store.Capabilities.Cottas.fst's own
+// per-field comments for the GB_Indexed / GB_CottasOnDisk cases, and
+// RDF.Store.Capabilities.fst's union_caps/union_solve_limited for the
+// GB_Union case (including the real per-member LIMIT-pushdown fix that
+// stage U2 made to union_caps's sc_solve_limited — see that module's
+// disclosed adjustment #4).
+// ----------------------------------------------------------------------
+let backend_search (gb : graph_backend) (b : triple_pattern_bound) : list triple =
+  (caps_of_backend gb).sc_solve b
+
+let backend_search_limited (gb : graph_backend) (b : triple_pattern_bound) (limit : nat)
   : Tot (list triple) =
-  match gb with
-  | GB_CottasOnDisk cods scope ->
-    (* COTTAS-on-disk: real LIMIT pushdown — walker stops at `limit` rows.
-       Sin7 (2026-04-26): tail-rec rows->triples to avoid stack overflow
-       even at LIMIT=50000 if pushdown returns more than expected. *)
-    (match cottas_ondisk_build_bound_qp_opt cods b.bs b.bp b.bo scope with
-     | None -> []
-     | Some bound ->
-       let rows = cottas_ondisk_search_limited cods bound limit in
-       cottas_ondisk_rows_to_triples cods rows)
-  | GB_Union members ->
-    if limit = 0 then []
-    else
-      let result_rev = union_backend_search_limited_acc members b limit [] 0 in
-      list_take_n limit (List.Tot.rev result_rev)
-  | _ ->
-    (* Other backends: no pushdown, just truncate. Their search results
-       are already in memory; LIMIT is a small post-step. *)
-    list_take_n limit (backend_search gb b)
+  (caps_of_backend gb).sc_solve_limited b limit
 
-let rec union_backend_estimate (members : list graph_backend) (b : triple_pattern_bound)
-  : Tot nat (decreases members) =
-  match members with
-  | [] -> 0
-  | member :: rest ->
-    backend_estimate member b + union_backend_estimate rest b
+let backend_estimate (gb : graph_backend) (b : triple_pattern_bound) : nat =
+  (caps_of_backend gb).sc_estimate b
 
-and backend_estimate (gb : graph_backend) (b : triple_pattern_bound) : nat =
-  match gb with
-  | GB_List g ->
-    store_estimate (graph_to_store g) b
-  | GB_Indexed ig ->
-    ig_estimate ig b
-  | GB_HDT hgs ->
-    hdt_estimate hgs (hdt_build_bound_tp hgs b.bs b.bp b.bo)
-  | GB_COTTAS cds graph_name ->
-    cottas_estimate cds (cottas_build_bound_qp cds b.bs b.bp b.bo graph_name)
-  | GB_CottasOnDisk cods scope ->
-    (match cottas_ondisk_build_bound_qp_opt cods b.bs b.bp b.bo scope with
-     | None -> 0
-     | Some bound -> cottas_ondisk_estimate cods bound)
-  | GB_Union members ->
-    union_backend_estimate members b
+let backend_count_exact (gb : graph_backend) (b : triple_pattern_bound) : Tot nat =
+  (caps_of_backend gb).sc_count_exact b
 
-// EXACT counting for result-producing callers (the Bet5 streaming
-// GROUP BY ?g path and the Aleph6 COUNT-star path below).
-// backend_estimate is the join-order-optimiser contract and may
-// approximate (GB_CottasOnDisk's bounds-present branch does, by
-// design); consuming it as a query RESULT returned wrong per-graph
-// counts (E1 experiment, 2026-07-03). Every non-on-disk backend's
-// estimate is already exact, so only GB_CottasOnDisk (and unions
-// containing it) dispatch differently here.
-let rec union_backend_count_exact (members : list graph_backend) (b : triple_pattern_bound)
-  : Tot nat (decreases members) =
-  match members with
-  | [] -> 0
-  | member :: rest ->
-    backend_count_exact member b + union_backend_count_exact rest b
-
-and backend_count_exact (gb : graph_backend) (b : triple_pattern_bound) : Tot nat (decreases gb) =
-  match gb with
-  | GB_CottasOnDisk cods scope ->
-    (match cottas_ondisk_build_bound_qp_opt cods b.bs b.bp b.bo scope with
-     | None -> 0
-     | Some bound -> cottas_ondisk_count_exact cods bound)
-  | GB_Union members -> union_backend_count_exact members b
-  | _ -> backend_estimate gb b
-
-let rec union_backend_predicate_present (members : list graph_backend) (pred : wf_iri)
-  : Tot bool (decreases members) =
-  match members with
-  | [] -> false
-  | member :: rest ->
-    if backend_predicate_present member pred then true
-    else union_backend_predicate_present rest pred
-
-and backend_predicate_present (gb : graph_backend) (pred : wf_iri)
-  : Tot bool (decreases gb) =
-  match gb with
-  | GB_List g ->
-    backend_estimate (GB_List g) {
-      bs = None;
-      bp = Some pred;
-      bo = None;
-    } > 0
-  | GB_Indexed ig ->
-    backend_estimate (GB_Indexed ig) {
-      bs = None;
-      bp = Some pred;
-      bo = None;
-    } > 0
-  | GB_HDT hgs ->
-    hdt_predicate_present hgs pred
-  | GB_COTTAS cds graph_name ->
-    backend_estimate (GB_COTTAS cds graph_name) {
-      bs = None;
-      bp = Some pred;
-      bo = None;
-    } > 0
-  | GB_CottasOnDisk cods _ ->
-    cottas_ondisk_predicate_present cods pred
-  | GB_Union members ->
-    union_backend_predicate_present members pred
+let backend_predicate_present (gb : graph_backend) (pred : wf_iri) : Tot bool =
+  (caps_of_backend gb).sc_predicate_present pred
 
 // Issue #269: did evaluating this backend involve a COTTAS on-disk
 // artifact with a column that failed to decode (e.g. an RLE_DICTIONARY
@@ -280,20 +272,8 @@ and backend_predicate_present (gb : graph_backend) (pred : wf_iri)
 // the ambiguity that let `ASK { ?s ?p ?o }` answer `false` instead of
 // erroring on a corpus it could not fully read. Callers that treat an
 // empty solution set as a meaningful answer (ASK) must check this first.
-let rec union_backend_decode_failure (members : list graph_backend)
-  : Tot bool (decreases members) =
-  match members with
-  | [] -> false
-  | member :: rest ->
-    backend_decode_failure member || union_backend_decode_failure rest
-
-and backend_decode_failure (gb : graph_backend) : Tot bool (decreases gb) =
-  match gb with
-  | GB_CottasOnDisk cods _ ->
-    cottas_ondisk_has_decode_failure cods.cods_handle
-  | GB_Union members ->
-    union_backend_decode_failure members
-  | _ -> false
+let backend_decode_failure (gb : graph_backend) : Tot bool =
+  (caps_of_backend gb).sc_decode_failure ()
 
 let rec lookup_named_backend (name : iri) (named : list named_graph_backend)
   : Tot (option graph_backend) (decreases named) =
@@ -301,6 +281,36 @@ let rec lookup_named_backend (name : iri) (named : list named_graph_backend)
   | [] -> None
   | ng :: rest ->
     if ng.ngb_name = name then Some ng.ngb_graph else lookup_named_backend name rest
+
+// U1.5 amendment (owner requirement, 2026-07-06: "the db must support
+// full named graphs too, not just triples" — landed alongside U2, not
+// deferred to U4). Builds RDF.Store.Capabilities.dataset_caps — the
+// store_caps-shaped SIBLING of this module's own dataset_backend — by
+// running caps_of_backend once over the default graph and once per
+// named graph. No new per-backend logic: every field of the result IS
+// caps_of_backend applied to a `graph_backend` this module already
+// had, exactly the discipline caps_of_backend itself follows one level
+// down. This does NOT replace dataset_backend/named_graph_backend or
+// change lookup_named_backend/eval_pattern_backend's GP_Graph routing
+// above — it is an additional, equivalence-tested view (see
+// tests/unit/store_capabilities_unit.ml's "GB_Union"/dataset section)
+// proving named-graph resolution agrees between the two routes.
+//
+// Residual (see RDF.Store.Capabilities.fst's own banner above
+// `dataset_caps`, and the task report): this is still a per-graph
+// TRIPLE-shaped composition — a `GRAPH ?g` caller still enumerates
+// `dsc_named` and calls `sc_solve` once per graph, same cost shape as
+// `named_candidate_backends` + `Lh.concatMap_tr` below. A quad-native
+// `sc_solve_quad` that pushes an unbound graph term into one on-disk
+// walk is unimplemented, scoped as U2.5.
+let dataset_caps_of_backend (dsb : dataset_backend) : Tot dataset_caps =
+  {
+    dsc_default = caps_of_backend dsb.dsb_default;
+    dsc_named =
+      List.Tot.map
+        (fun (ngb : named_graph_backend) -> (ngb.ngb_name, caps_of_backend ngb.ngb_graph))
+        dsb.dsb_named;
+  }
 
 let eval_single_tp_backend (tp : triple_pattern) (gb : graph_backend) (mu : solution_mapping)
   : solution_sequence =
@@ -948,8 +958,12 @@ and eval_ask_query_backend_dataset (q : query) (dsb : dataset_backend)
        // backend ASK path.
        let named_backends = List.Tot.map
          (fun (ngb : named_graph_backend) -> ngb.ngb_graph) dsb.dsb_named in
+       // Stage U2: union_backend_decode_failure is gone (folded into
+       // caps_of_backend/union_caps); the OR-over-members shape is now
+       // List.Tot.existsb over backend_decode_failure, same semantics
+       // (a boolean OR doesn't care about accumulation order).
        if backend_decode_failure dsb.dsb_default ||
-          union_backend_decode_failure named_backends
+          List.Tot.existsb backend_decode_failure named_backends
        then None
        else Some false
      | _ -> Some true)
