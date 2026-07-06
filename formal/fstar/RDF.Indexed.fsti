@@ -211,6 +211,57 @@ let build_bucket (#a:Type) (key_of : a -> option string) (ts : list a)
 (** purely mechanical parts, each 1-3 lines — flagged inline below.     *)
 (** ==================================================================== *)
 
+(* 2026-07-06 (lazy per-bucket index construction -- the residual flagged
+   by the decorate-sort-undecorate commit's own banner above: gene.ttl's
+   888,949-triple GROUP BY ?p spent ~11.5s of its ~11.5s total inside
+   `build_indexed` building all 6 sorted bucket maps, of which the
+   all-unbound BGP `?s ?p ?o` reads NONE -- `ig_search` on that pattern
+   never calls a single `bucket_lookup`). `bucket_needs` records which of
+   the 6 buckets a caller actually wants built; `build_indexed_selective`
+   below builds only those, leaving the rest `[]`. This is SAFE regardless
+   of how (im)precise a caller's `bucket_needs` is: `SPARQL11.Algebra
+   .ig_search`'s last step is always `triple_matches_bound b pool`, which
+   re-checks every candidate against the ACTUAL runtime-bound
+   `triple_pattern_bound` -- a bucket that was never built simply isn't
+   offered as a narrowing candidate (see `ig_built`-gated reads in
+   `ig_search`), so the search falls back to `ig_triples` (the
+   always-present full list) for that one lookup. Wrong `bucket_needs`
+   can only make a query slower (an O(n) scan instead of an O(log n)
+   bucket read), never wrong -- so the query-shape pre-pass that computes
+   `bucket_needs` (`SPARQL11.Algebra.bucket_needs_of_pattern`) is free to
+   over-approximate. `build_indexed` (unchanged name/signature) is now
+   `build_indexed_selective all_bucket_needs` -- full build, byte-identical
+   to before this change -- so SHACL/OWL/RDFS closure and any other caller
+   that doesn't know its own query shape keeps building every bucket. *)
+type bucket_needs = {
+  bn_pred : bool;
+  bn_subj : bool;
+  bn_obj  : bool;
+  bn_sp   : bool;
+  bn_po   : bool;
+  bn_so   : bool;
+}
+
+let all_bucket_needs : bucket_needs =
+  { bn_pred = true; bn_subj = true; bn_obj = true; bn_sp = true; bn_po = true; bn_so = true }
+
+let no_bucket_needs : bucket_needs =
+  { bn_pred = false; bn_subj = false; bn_obj = false; bn_sp = false; bn_po = false; bn_so = false }
+
+(* Union of two needs sets -- used to combine the needs computed for the
+   default graph across every triple pattern the query's algebra can
+   reach (RDF.Indexed has no dependency on the algebra's pattern types,
+   so the combinator lives here; the per-pattern analysis lives in
+   `SPARQL11.Algebra.bucket_needs_of_pattern`). *)
+let bucket_needs_or (a b : bucket_needs) : bucket_needs = {
+  bn_pred = a.bn_pred || b.bn_pred;
+  bn_subj = a.bn_subj || b.bn_subj;
+  bn_obj  = a.bn_obj  || b.bn_obj;
+  bn_sp   = a.bn_sp   || b.bn_sp;
+  bn_po   = a.bn_po   || b.bn_po;
+  bn_so   = a.bn_so   || b.bn_so;
+}
+
 noeq type indexed_graph = {
   ig_triples : list triple;     (* preserves source-of-truth order semantics *)
   ig_pred    : bucket_map triple;       (* keyed by predicate IRI string *)
@@ -223,6 +274,14 @@ noeq type indexed_graph = {
   ig_sp      : bucket_map triple;       (* keyed by sp_key   : subj_key ^ "\x1f" ^ pred_iri *)
   ig_po      : bucket_map triple;       (* keyed by po_key   : pred_iri ^ "\x1f" ^ obj_key  *)
   ig_so      : bucket_map triple;       (* keyed by so_key   : subj_key ^ "\x1f" ^ obj_key  *)
+  (* Which of the 6 buckets above were actually built by whoever
+     constructed this record -- see the `bucket_needs` banner above.
+     `build_indexed` sets every flag true (full build). A bucket whose
+     flag is `false` is `[]` *by construction, not because it happens to
+     have no matches* -- readers MUST check the flag (see `ig_search`'s
+     `ig_built`-gated candidates) before trusting an empty bucket_lookup
+     as "no matches." *)
+  ig_built   : bucket_needs;
 }
 
 (* Canonical key for a subject. Total. *)
@@ -307,6 +366,8 @@ let add_triple_to_indexes (ig : indexed_graph) (t : triple) : indexed_graph =
     ig_sp = new_sp;
     ig_po = new_po;
     ig_so = new_so;
+    ig_built = ig.ig_built;    (* incremental update: leaves whichever buckets
+                                  the input `ig` already had (un)built alone *)
   }
 
 (* Build the index from a flat triple list. Linear in the input length;
@@ -347,19 +408,33 @@ let empty_indexed : indexed_graph = {
   ig_sp = [];
   ig_po = [];
   ig_so = [];
+  ig_built = all_bucket_needs;
 }
 
-(* Takes a plain `list triple` (not `RDF.Graph.rdf_graph`, which is a
-   transparent alias for exactly this type) — see the module banner for
-   why: this keeps RDF.Indexed's dependency on RDF.Graph at zero. *)
-let build_indexed (g : list triple) : Tot indexed_graph =
-  (* #259 fix: sort-and-group per bucket — see comment on build_indexed_aux. *)
+(* Build the index from a flat triple list, but only the buckets
+   `needs` flags on -- the rest are left `[]` and marked unbuilt in
+   `ig_built` (see the `bucket_needs` banner above `indexed_graph` for
+   why this is safe regardless of `needs`'s precision). Takes a plain
+   `list triple` (not `RDF.Graph.rdf_graph`, which is a transparent
+   alias for exactly this type) — see the module banner for why: this
+   keeps RDF.Indexed's dependency on RDF.Graph at zero. *)
+let build_indexed_selective (needs : bucket_needs) (g : list triple) : Tot indexed_graph =
   {
     ig_triples = g;
-    ig_pred = build_bucket bucket_key_pred g;
-    ig_subj = build_bucket bucket_key_subj g;
-    ig_obj  = build_bucket bucket_key_obj  g;
-    ig_sp   = build_bucket bucket_key_sp   g;
-    ig_po   = build_bucket bucket_key_po   g;
-    ig_so   = build_bucket bucket_key_so   g;
+    ig_pred = if needs.bn_pred then build_bucket bucket_key_pred g else [];
+    ig_subj = if needs.bn_subj then build_bucket bucket_key_subj g else [];
+    ig_obj  = if needs.bn_obj  then build_bucket bucket_key_obj  g else [];
+    ig_sp   = if needs.bn_sp   then build_bucket bucket_key_sp   g else [];
+    ig_po   = if needs.bn_po   then build_bucket bucket_key_po   g else [];
+    ig_so   = if needs.bn_so   then build_bucket bucket_key_so   g else [];
+    ig_built = needs;
   }
+
+(* Full build -- every bucket, always. Unchanged name/signature/
+   behaviour from before the lazy-index-construction change: every
+   existing caller that doesn't (or can't) know its own query shape
+   -- SHACL.Validation, OWL.Closure, RDFS.Closure, and any future one
+   -- keeps building every bucket, byte-identical to before. *)
+let build_indexed (g : list triple) : Tot indexed_graph =
+  (* #259 fix: sort-and-group per bucket — see comment on build_indexed_aux. *)
+  build_indexed_selective all_bucket_needs g

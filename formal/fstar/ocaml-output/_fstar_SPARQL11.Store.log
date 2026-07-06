@@ -3,7 +3,7 @@
     RDF.Bytes.fst.checked does not exist; will recheck RDF.Bytes.fst
     (suppressing this warning for further modules)
 
-* Warning 361 at SPARQL11.Algebra.fst(6138,0-6139,40):
+* Warning 361 at SPARQL11.Algebra.fst(6328,0-6329,40):
   - Some #push-options have not been popped. Current depth is 1.
 
 * Warning 328 at Parquet.Footer.fst(296,8-296,31):
@@ -11,17 +11,17 @@
         'Parquet.Footer.decode_varint_value_hex'
     is recursive but not used in its body
 
-* Warning 328 at SPARQL11.Store.fst(1006,4-1006,33):
+* Warning 328 at SPARQL11.Store.fst(1043,4-1043,33):
   - Global binding
         'SPARQL11.Store.eval_select_query_backend_bgp'
     is recursive but not used in its body
 
-* Warning 328 at SPARQL11.Store.fst(1127,4-1127,37):
+* Warning 328 at SPARQL11.Store.fst(1164,4-1164,37):
   - Global binding
         'SPARQL11.Store.eval_select_query_backend_dataset'
     is recursive but not used in its body
 
-* Warning 328 at SPARQL11.Store.fst(1146,4-1146,34):
+* Warning 328 at SPARQL11.Store.fst(1183,4-1183,34):
   - Global binding
         'SPARQL11.Store.eval_ask_query_backend_dataset'
     is recursive but not used in its body
@@ -29,9 +29,7 @@
 Extracted module SPARQL11.Store
 * Warning 247 at SPARQL11.Store.fst(0,0-0,0):
   - Checked file SPARQL11.Store.fst.checked was not written.
-  - Reason:
-      checked file RDF.Graph.Executable.fst.checked is stale (digest mismatch
-      for RDF.Graph.Executable.fst)
+  - Reason: checked file Parser.BallyhooCOTTAS.fst.checked does not exist
 
 Verified module: SPARQL11.Store
 All verification conditions discharged successfully

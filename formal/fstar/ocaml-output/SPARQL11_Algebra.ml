@@ -180,49 +180,67 @@ let ig_search (ig : RDF_Indexed.indexed_graph) (b : triple_pattern_bound) :
   let pred_b =
     match b.bp with
     | FStar_Pervasives_Native.Some p ->
-        FStar_Pervasives_Native.Some
-          (RDF_Indexed.bucket_lookup ig.RDF_Indexed.ig_pred p)
+        if (ig.RDF_Indexed.ig_built).RDF_Indexed.bn_pred
+        then
+          FStar_Pervasives_Native.Some
+            (RDF_Indexed.bucket_lookup ig.RDF_Indexed.ig_pred p)
+        else FStar_Pervasives_Native.None
     | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None in
   let subj_b =
     match b.bs with
     | FStar_Pervasives_Native.Some s ->
-        FStar_Pervasives_Native.Some
-          (RDF_Indexed.bucket_lookup ig.RDF_Indexed.ig_subj
-             (RDF_Indexed.subject_to_key s))
+        if (ig.RDF_Indexed.ig_built).RDF_Indexed.bn_subj
+        then
+          FStar_Pervasives_Native.Some
+            (RDF_Indexed.bucket_lookup ig.RDF_Indexed.ig_subj
+               (RDF_Indexed.subject_to_key s))
+        else FStar_Pervasives_Native.None
     | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None in
   let obj_b =
     match b.bo with
     | FStar_Pervasives_Native.Some o ->
-        (match RDF_Indexed.term_to_key_opt o with
-         | FStar_Pervasives_Native.Some k ->
-             FStar_Pervasives_Native.Some
-               (RDF_Indexed.bucket_lookup ig.RDF_Indexed.ig_obj k)
-         | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None)
+        if (ig.RDF_Indexed.ig_built).RDF_Indexed.bn_obj
+        then
+          (match RDF_Indexed.term_to_key_opt o with
+           | FStar_Pervasives_Native.Some k ->
+               FStar_Pervasives_Native.Some
+                 (RDF_Indexed.bucket_lookup ig.RDF_Indexed.ig_obj k)
+           | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None)
+        else FStar_Pervasives_Native.None
     | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None in
   let sp_b =
     match ((b.bs), (b.bp)) with
     | (FStar_Pervasives_Native.Some s, FStar_Pervasives_Native.Some p) ->
-        FStar_Pervasives_Native.Some
-          (RDF_Indexed.bucket_lookup ig.RDF_Indexed.ig_sp
-             (RDF_Indexed.sp_key s p))
+        if (ig.RDF_Indexed.ig_built).RDF_Indexed.bn_sp
+        then
+          FStar_Pervasives_Native.Some
+            (RDF_Indexed.bucket_lookup ig.RDF_Indexed.ig_sp
+               (RDF_Indexed.sp_key s p))
+        else FStar_Pervasives_Native.None
     | uu___ -> FStar_Pervasives_Native.None in
   let po_b =
     match ((b.bp), (b.bo)) with
     | (FStar_Pervasives_Native.Some p, FStar_Pervasives_Native.Some o) ->
-        (match RDF_Indexed.po_key_opt p o with
-         | FStar_Pervasives_Native.Some k ->
-             FStar_Pervasives_Native.Some
-               (RDF_Indexed.bucket_lookup ig.RDF_Indexed.ig_po k)
-         | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None)
+        if (ig.RDF_Indexed.ig_built).RDF_Indexed.bn_po
+        then
+          (match RDF_Indexed.po_key_opt p o with
+           | FStar_Pervasives_Native.Some k ->
+               FStar_Pervasives_Native.Some
+                 (RDF_Indexed.bucket_lookup ig.RDF_Indexed.ig_po k)
+           | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None)
+        else FStar_Pervasives_Native.None
     | uu___ -> FStar_Pervasives_Native.None in
   let so_b =
     match ((b.bs), (b.bo)) with
     | (FStar_Pervasives_Native.Some s, FStar_Pervasives_Native.Some o) ->
-        (match RDF_Indexed.so_key_opt s o with
-         | FStar_Pervasives_Native.Some k ->
-             FStar_Pervasives_Native.Some
-               (RDF_Indexed.bucket_lookup ig.RDF_Indexed.ig_so k)
-         | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None)
+        if (ig.RDF_Indexed.ig_built).RDF_Indexed.bn_so
+        then
+          (match RDF_Indexed.so_key_opt s o with
+           | FStar_Pervasives_Native.Some k ->
+               FStar_Pervasives_Native.Some
+                 (RDF_Indexed.bucket_lookup ig.RDF_Indexed.ig_so k)
+           | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None)
+        else FStar_Pervasives_Native.None
     | uu___ -> FStar_Pervasives_Native.None in
   let compound = pick_smaller_bucket (pick_smaller_bucket sp_b po_b) so_b in
   let single = pick_smaller_bucket (pick_smaller_bucket pred_b subj_b) obj_b in
@@ -3060,6 +3078,158 @@ let lateral_wrap_as_query (p : group_graph_pattern) : query=
       };
     q_values = FStar_Pervasives_Native.None
   }
+let rec pattern_has_binding_source (p : group_graph_pattern) : Prims.bool=
+  match p with
+  | GP_Bind (uu___, uu___1, uu___2) -> true
+  | GP_Values (uu___, uu___1) -> true
+  | GP_SubSelect uu___ -> true
+  | GP_Service (uu___, uu___1, uu___2) -> true
+  | GP_ServiceVar (uu___, uu___1, uu___2) -> true
+  | GP_Lateral (uu___, uu___1) -> true
+  | GP_BGP uu___ -> false
+  | GP_PropertyPath (uu___, uu___1, uu___2) -> false
+  | GP_Empty -> false
+  | GP_Join (p1, p2) ->
+      (pattern_has_binding_source p1) || (pattern_has_binding_source p2)
+  | GP_Union (p1, p2) ->
+      (pattern_has_binding_source p1) || (pattern_has_binding_source p2)
+  | GP_Minus (p1, p2) ->
+      (pattern_has_binding_source p1) || (pattern_has_binding_source p2)
+  | GP_LeftJoin (p1, p2, uu___) ->
+      (pattern_has_binding_source p1) || (pattern_has_binding_source p2)
+  | GP_Filter (uu___, p1) -> pattern_has_binding_source p1
+  | GP_Graph (uu___, p1) -> pattern_has_binding_source p1
+let pattern_subject_var (ps : pattern_subject) : var_name Prims.list=
+  match ps with | PS_Var v -> [v] | PS_IRI uu___ -> [] | PS_BNode uu___ -> []
+let pattern_term_var (pt : pattern_term) : var_name Prims.list=
+  match pt with
+  | PT_Var v -> [v]
+  | PT_IRI uu___ -> []
+  | PT_BNode uu___ -> []
+  | PT_Literal uu___ -> []
+let tp_vars (tp : triple_pattern) : var_name Prims.list=
+  FStar_List_Tot_Base.op_At (pattern_subject_var tp.tp_s)
+    (FStar_List_Tot_Base.op_At (pattern_term_var tp.tp_p)
+       (pattern_term_var tp.tp_o))
+let rec bgp_vars (b : bgp) : var_name Prims.list=
+  match b with
+  | [] -> []
+  | tp::rest -> FStar_List_Tot_Base.op_At (tp_vars tp) (bgp_vars rest)
+let rec pattern_var_occurrences (p : group_graph_pattern) :
+  var_name Prims.list=
+  match p with
+  | GP_BGP b -> bgp_vars b
+  | GP_PropertyPath (ps, uu___, pt) ->
+      FStar_List_Tot_Base.op_At (pattern_subject_var ps)
+        (pattern_term_var pt)
+  | GP_Join (p1, p2) ->
+      FStar_List_Tot_Base.op_At (pattern_var_occurrences p1)
+        (pattern_var_occurrences p2)
+  | GP_Union (p1, p2) ->
+      FStar_List_Tot_Base.op_At (pattern_var_occurrences p1)
+        (pattern_var_occurrences p2)
+  | GP_Minus (p1, p2) ->
+      FStar_List_Tot_Base.op_At (pattern_var_occurrences p1)
+        (pattern_var_occurrences p2)
+  | GP_LeftJoin (p1, p2, uu___) ->
+      FStar_List_Tot_Base.op_At (pattern_var_occurrences p1)
+        (pattern_var_occurrences p2)
+  | GP_Filter (uu___, p1) -> pattern_var_occurrences p1
+  | GP_Graph (uu___, p1) -> pattern_var_occurrences p1
+  | GP_Bind (uu___, uu___1, uu___2) -> []
+  | GP_Values (uu___, uu___1) -> []
+  | GP_SubSelect uu___ -> []
+  | GP_Service (uu___, uu___1, uu___2) -> []
+  | GP_ServiceVar (uu___, uu___1, uu___2) -> []
+  | GP_Lateral (uu___, uu___1) -> []
+  | GP_Empty -> []
+let var_is_shared (occ : var_name Prims.list) (v : var_name) : Prims.bool=
+  (FStar_List_Tot_Base.length
+     (FStar_List_Tot_Base.filter (fun x -> x = v) occ))
+    >= (Prims.of_int (2))
+let subj_boundable (occ : var_name Prims.list) (ps : pattern_subject) :
+  Prims.bool=
+  match ps with
+  | PS_IRI uu___ -> true
+  | PS_BNode uu___ -> true
+  | PS_Var v -> var_is_shared occ v
+let term_boundable (occ : var_name Prims.list) (pt : pattern_term) :
+  Prims.bool=
+  match pt with
+  | PT_IRI uu___ -> true
+  | PT_BNode uu___ -> true
+  | PT_Literal uu___ -> true
+  | PT_Var v -> var_is_shared occ v
+let tp_bucket_needs (occ : var_name Prims.list) (tp : triple_pattern) :
+  RDF_Indexed.bucket_needs=
+  let s_ok = subj_boundable occ tp.tp_s in
+  let p_ok = term_boundable occ tp.tp_p in
+  let o_ok = term_boundable occ tp.tp_o in
+  {
+    RDF_Indexed.bn_pred = p_ok;
+    RDF_Indexed.bn_subj = s_ok;
+    RDF_Indexed.bn_obj = o_ok;
+    RDF_Indexed.bn_sp = (s_ok && p_ok);
+    RDF_Indexed.bn_po = (p_ok && o_ok);
+    RDF_Indexed.bn_so = (s_ok && o_ok)
+  }
+let rec bgp_bucket_needs (occ : var_name Prims.list) (b : bgp) :
+  RDF_Indexed.bucket_needs=
+  match b with
+  | [] -> RDF_Indexed.no_bucket_needs
+  | tp::rest ->
+      RDF_Indexed.bucket_needs_or (tp_bucket_needs occ tp)
+        (bgp_bucket_needs occ rest)
+let rec pattern_bucket_needs (occ : var_name Prims.list)
+  (p : group_graph_pattern) : RDF_Indexed.bucket_needs=
+  match p with
+  | GP_BGP b -> bgp_bucket_needs occ b
+  | GP_PropertyPath (uu___, uu___1, uu___2) -> RDF_Indexed.no_bucket_needs
+  | GP_Join (p1, p2) ->
+      RDF_Indexed.bucket_needs_or (pattern_bucket_needs occ p1)
+        (pattern_bucket_needs occ p2)
+  | GP_Union (p1, p2) ->
+      RDF_Indexed.bucket_needs_or (pattern_bucket_needs occ p1)
+        (pattern_bucket_needs occ p2)
+  | GP_Minus (p1, p2) ->
+      RDF_Indexed.bucket_needs_or (pattern_bucket_needs occ p1)
+        (pattern_bucket_needs occ p2)
+  | GP_LeftJoin (p1, p2, uu___) ->
+      RDF_Indexed.bucket_needs_or (pattern_bucket_needs occ p1)
+        (pattern_bucket_needs occ p2)
+  | GP_Filter (uu___, p1) -> pattern_bucket_needs occ p1
+  | GP_Graph (uu___, p1) -> pattern_bucket_needs occ p1
+  | GP_Bind (uu___, uu___1, uu___2) -> RDF_Indexed.all_bucket_needs
+  | GP_Values (uu___, uu___1) -> RDF_Indexed.all_bucket_needs
+  | GP_SubSelect uu___ -> RDF_Indexed.all_bucket_needs
+  | GP_Service (uu___, uu___1, uu___2) -> RDF_Indexed.all_bucket_needs
+  | GP_ServiceVar (uu___, uu___1, uu___2) -> RDF_Indexed.all_bucket_needs
+  | GP_Lateral (uu___, uu___1) -> RDF_Indexed.all_bucket_needs
+  | GP_Empty -> RDF_Indexed.no_bucket_needs
+let bucket_needs_of_pattern (p : group_graph_pattern) :
+  RDF_Indexed.bucket_needs=
+  if pattern_has_binding_source p
+  then RDF_Indexed.all_bucket_needs
+  else pattern_bucket_needs (pattern_var_occurrences p) p
+let graph_to_store_for (p : group_graph_pattern) (g : RDF_Graph.rdf_graph) :
+  graph_store=
+  {
+    gs_graph = g;
+    gs_indexed =
+      (RDF_Indexed.build_indexed_selective (bucket_needs_of_pattern p) g)
+  }
+let dataset_to_store_for (p : group_graph_pattern)
+  (ds : RDF_Graph.rdf_dataset) : rdf_dataset_store=
+  {
+    dss_default = (graph_to_store_for p ds.RDF_Graph.ds_default);
+    dss_named =
+      (FStar_List_Tot_Base.map
+         (fun ng ->
+            {
+              ngs_name = (ng.RDF_Graph.ng_name);
+              ngs_store = (graph_to_store_for p ng.RDF_Graph.ng_graph)
+            }) ds.RDF_Graph.ds_named)
+  }
 let eval_expr_ebv_ref :
   (RDF_Term.wf_iri FStar_Pervasives_Native.option ->
     expr -> RDF_Graph_Executable.solution_mapping -> Prims.bool) Stdlib.ref=
@@ -3567,7 +3737,8 @@ let rec eval_pattern_store
 let eval_pattern (base : RDF_Term.wf_iri FStar_Pervasives_Native.option)
   (p : group_graph_pattern) (g : RDF_Graph.rdf_graph)
   (ds : RDF_Graph.rdf_dataset) : solution_sequence=
-  eval_pattern_store base p (graph_to_store g) (dataset_to_store ds)
+  eval_pattern_store base p (graph_to_store_for p g)
+    (dataset_to_store_for p ds)
 let strip_leading_plus (s : Prims.string) : Prims.string=
   if (FStar_String.strlen s) > Prims.int_zero
   then

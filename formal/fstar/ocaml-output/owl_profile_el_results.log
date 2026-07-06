@@ -68,7 +68,7 @@ Running 29 PositiveEntailmentTest(s) through owl_rl_closure_with_reflexivity (fu
   PASS  chain2trans1
   FAIL  somevaluesfrom2bnode
 
-Profile-RL PositiveEntailmentTests: 21 pass, 8 fail (out of 29 RDF/XML tests), 0 skipped (functional-syntax-only) in 5.76s
+Profile-RL PositiveEntailmentTests: 21 pass, 8 fail (out of 29 RDF/XML tests), 0 skipped (functional-syntax-only) in 5.86s
   (bnode pattern matches any term at the position; full isomorphism deferred — see docs/designissues/2026-04-24-owl-runner-phase1.md)
 
 Running 6 NegativeEntailmentTest(s) through owl_rl_closure_with_reflexivity (fuel=100)...
@@ -155,7 +155,7 @@ Running 72 ConsistencyTest(s) through is_inconsistent (closure fuel=100)...
   PASS  owl2-rl-invalid-rightside-somevaluesfrom
   PASS  somevaluesfrom2bnode
 
-Profile-RL ConsistencyTests: 72 pass, 0 fail (out of 72), 0 skipped (functional-syntax-only) in 6.26s
+Profile-RL ConsistencyTests: 72 pass, 0 fail (out of 72), 0 skipped (functional-syntax-only) in 6.56s
 
 Running 14 InconsistencyTest(s) through is_inconsistent (closure fuel=100)...
   PASS  DisjointClasses-002
@@ -173,4 +173,4 @@ Running 14 InconsistencyTest(s) through is_inconsistent (closure fuel=100)...
   FAIL/unexpected-consistency  WebOnt-Thing-005
   PASS  string-integer-clash
 
-Profile-RL InconsistencyTests: 9 pass, 5 fail (out of 14), 0 skipped (functional-syntax-only) in 0.16s
+Profile-RL InconsistencyTests: 9 pass, 5 fail (out of 14), 0 skipped (functional-syntax-only) in 0.15s

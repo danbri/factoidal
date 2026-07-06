@@ -1,3 +1,4 @@
-    Parser.BallyhooHDTQ.fst (up to date, skipped -- source unchanged since last extract)
-    SPARQL11.Store.fst (up to date, skipped -- source unchanged since last extract)
+    [SPARQL11.Store.fst]
     RIF.Core.Tests.fst (up to date, skipped -- source unchanged since last extract)
+    Parser.BallyhooHDTQ.fst (up to date, skipped -- source unchanged since last extract)
+    [SPARQL11.Store.fst] Extracted module SPARQL11.Store

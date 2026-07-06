@@ -97,6 +97,43 @@ let indexed_dataset_backend (ds : rdf_dataset) : dataset_backend =
         ds.ds_named
   }
 
+(* 2026-07-06 (lazy per-bucket index construction): siblings of
+   `indexed_graph_backend`/`indexed_dataset_backend` above that only
+   build the buckets `needs` flags on (`RDF.Indexed.build_indexed_
+   selective`) instead of always building all 6 (`build_indexed`). This
+   is THE live path for a plain in-memory (no COTTAS/HDT) Turtle-loaded
+   query — `factoidal_cli.ml`'s `build_dataset_backend` takes the
+   `use_backend_exec` branch (entailment = "") for every SELECT/ASK, and
+   that branch's `in_memory_backend` is exactly `indexed_dataset_backend`
+   / `indexed_graph_backend` below (see that file's own banner). The
+   6.3B-instruction `build_indexed` differential the decorate-sort-
+   undecorate commit profiled (docs/designissues/2026-07-06-competitive-
+   benchmark-results.md §7/§9) is paid HERE, once per query, for every
+   SELECT/ASK regardless of whether the query's BGP ever calls
+   `bucket_lookup` on the resulting buckets. `SPARQL11.Algebra
+   .bucket_needs_of_pattern` computes a safe over-approximation of which
+   buckets a query's own algebra tree can read (safety argument: RDF
+   .Indexed.fsti's `bucket_needs` banner + `ig_search`'s `ig_built`-gated
+   candidates, reused unchanged here since `caps_of_indexed` dispatches
+   `sc_solve`/`sc_estimate` straight to `ig_search`/`ig_estimate`). *)
+let indexed_graph_backend_for (needs : bucket_needs) (g : rdf_graph) : graph_backend =
+  GB_Indexed (build_indexed_selective needs g)
+
+let indexed_dataset_backend_for (needs : bucket_needs) (ds : rdf_dataset) : dataset_backend =
+  {
+    dsb_default = indexed_graph_backend_for needs ds.ds_default;
+    dsb_named =
+      List.Tot.map
+        (fun (ng : named_graph) ->
+          { ngb_name = ng.ng_name; ngb_graph = indexed_graph_backend_for needs ng.ng_graph })
+        ds.ds_named
+  }
+
+(* Convenience entry point: derive `needs` from the query's own WHERE-
+   clause pattern. This is the one `factoidal_cli.ml` calls. *)
+let indexed_dataset_backend_for_query (p : group_graph_pattern) (ds : rdf_dataset) : dataset_backend =
+  indexed_dataset_backend_for (bucket_needs_of_pattern p) ds
+
 (* Build a dataset_backend whose default + named graphs all dispatch to
    the same on-disk COTTAS store, with named-graph dispatch using the
    stored graph IRI as the bound. The default graph is the COTTAS rows

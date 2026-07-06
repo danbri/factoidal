@@ -215,38 +215,54 @@ let pick_smaller_bucket (a b : option (list triple)) : option (list triple) =
   | Some la, Some lb ->
     if List.Tot.length la <= List.Tot.length lb then Some la else Some lb
 
+(* 2026-07-06 (lazy per-bucket index construction): each candidate below
+   is additionally gated on `ig.ig_built.bn_*` -- a bucket the caller
+   never built (see RDF.Indexed.fsti's `build_indexed_selective`) is
+   simply not offered as a narrowing candidate, exactly as if `b`'s
+   corresponding component were unbound. This is what makes an unbuilt
+   bucket a pure-performance concern rather than a correctness one:
+   `pool` below falls back to `ig.ig_triples` (the always-present full
+   list) whenever no built bucket applies, and `triple_matches_bound`
+   at the end re-checks every element against the ACTUAL `b`, not
+   against whatever pool produced the candidates. *)
 let ig_search (ig : indexed_graph) (b : triple_pattern_bound) : list triple =
   (* Single-key candidates *)
   let pred_b = match b.bp with
-    | Some p -> Some (bucket_lookup ig.ig_pred p)
+    | Some p -> if ig.ig_built.bn_pred then Some (bucket_lookup ig.ig_pred p) else None
     | None -> None in
   let subj_b = match b.bs with
-    | Some s -> Some (bucket_lookup ig.ig_subj (subject_to_key s))
+    | Some s -> if ig.ig_built.bn_subj then Some (bucket_lookup ig.ig_subj (subject_to_key s)) else None
     | None -> None in
   let obj_b = match b.bo with
     | Some o ->
-      (match term_to_key_opt o with
-       | Some k -> Some (bucket_lookup ig.ig_obj k)
-       | None -> None)
+      if ig.ig_built.bn_obj then
+        (match term_to_key_opt o with
+         | Some k -> Some (bucket_lookup ig.ig_obj k)
+         | None -> None)
+      else None
     | None -> None in
   (* Compound-key candidates (issue #100 Phase 1). Each tighter than the
      single-key alternatives whenever both keys are bound and the second
      position is indexable. Literals fall through via po_key_opt /
      so_key_opt returning None, dropping us back to single-key buckets. *)
   let sp_b = match b.bs, b.bp with
-    | Some s, Some p -> Some (bucket_lookup ig.ig_sp (sp_key s p))
+    | Some s, Some p -> if ig.ig_built.bn_sp then Some (bucket_lookup ig.ig_sp (sp_key s p)) else None
     | _ -> None in
   let po_b = match b.bp, b.bo with
     | Some p, Some o ->
-      (match po_key_opt p o with
-       | Some k -> Some (bucket_lookup ig.ig_po k)
-       | None -> None)
+      if ig.ig_built.bn_po then
+        (match po_key_opt p o with
+         | Some k -> Some (bucket_lookup ig.ig_po k)
+         | None -> None)
+      else None
     | _ -> None in
   let so_b = match b.bs, b.bo with
     | Some s, Some o ->
-      (match so_key_opt s o with
-       | Some k -> Some (bucket_lookup ig.ig_so k)
-       | None -> None)
+      if ig.ig_built.bn_so then
+        (match so_key_opt s o with
+         | Some k -> Some (bucket_lookup ig.ig_so k)
+         | None -> None)
+      else None
     | _ -> None in
   let compound = pick_smaller_bucket (pick_smaller_bucket sp_b po_b) so_b in
   let single   = pick_smaller_bucket (pick_smaller_bucket pred_b subj_b) obj_b in
@@ -2075,6 +2091,175 @@ let lateral_wrap_as_query (p : group_graph_pattern) : query =
                    sm_offset = None; sm_limit = None };
     q_values = None }
 
+(** ====================================================================== **)
+(** Lazy per-bucket index construction — query-shape pre-pass (2026-07-06) **)
+(** ====================================================================== **)
+(* Continuation of the decorate-sort-undecorate commit's own "Remaining
+   floor" note: `build_indexed`/`indexed_graph_backend` built all 6
+   bucket maps for EVERY query, even ones like a COUNT-star GROUP BY ?p
+   over `?s ?p ?o` (SELECT ?p, COUNT-star AS ?c, WHERE ?s ?p ?o, GROUP
+   BY ?p) whose single all-unbound triple pattern reads none of them
+   (`ig_search` never calls a single `bucket_lookup` for it). This section computes,
+   from the query's OWN algebra tree, a conservative over-approximation
+   of which of the 6 buckets it can possibly read — BEFORE the graph is
+   indexed — so `build_indexed_selective` (RDF.Indexed.fsti) builds only
+   those. Over-approximating is always safe for CORRECTNESS: RDF.Indexed
+   .fsti's `bucket_needs` banner and `ig_search`'s `ig_built`-gated reads
+   establish that an unbuilt bucket only costs an O(n) `ig_triples` scan
+   for that one lookup instead of an O(log n) bucket read — it can never
+   change which triples a search returns. The goal here is only to not
+   systematically under-count for the common cases (point lookups,
+   joins, OPTIONAL), which would forfeit the win without being wrong.
+
+   Design: a triple pattern's subject/predicate/object position is
+   "boundable" — could plausibly be `Some` at the moment THIS exact
+   pattern is evaluated, for some evaluation order the planner might
+   pick — if it is a constant in the query text, OR a variable that
+   also occurs somewhere else in the SAME query (another triple-pattern
+   slot sharing the name — the ordinary join/OPTIONAL case). Property-
+   path subject/object positions are tracked as occurrences too (a
+   variable shared between a path and a sibling BGP pattern must still
+   mark that BGP slot boundable), even though property paths themselves
+   never consult the 6 buckets (`eval_pattern_store`'s GP_PropertyPath
+   arm reads `gs_graph` directly).
+
+   Constructs that manufacture bindings OUTSIDE any triple-pattern slot
+   — BIND, VALUES, sub-SELECT projection, SERVICE, LATERAL correlated
+   substitution — are not modeled precisely here. ANY of them appearing
+   ANYWHERE in the query's pattern tree makes this pre-pass give up and
+   ask for every bucket (`all_bucket_needs`) — i.e. EXACTLY today's
+   eager behaviour for such queries, zero risk of a missed occurrence
+   turning into a slow surprise. This keeps the change's effective
+   scope to BGP-shaped queries built only from GP_BGP / GP_Join /
+   GP_LeftJoin / GP_Union / GP_Minus / GP_Filter / GP_Graph /
+   GP_PropertyPath / GP_Empty — exactly the shape of the 4 gate query
+   families (point lookup, join, OPTIONAL, GROUP BY over the whole
+   graph). *)
+
+let rec pattern_has_binding_source (p : group_graph_pattern) : Tot bool (decreases p) =
+  match p with
+  | GP_Bind _ _ _ | GP_Values _ _ | GP_SubSelect _
+  | GP_Service _ _ _ | GP_ServiceVar _ _ _ | GP_Lateral _ _ -> true
+  | GP_BGP _ | GP_PropertyPath _ _ _ | GP_Empty -> false
+  | GP_Join p1 p2 | GP_Union p1 p2 | GP_Minus p1 p2 ->
+    pattern_has_binding_source p1 || pattern_has_binding_source p2
+  | GP_LeftJoin p1 p2 _ ->
+    pattern_has_binding_source p1 || pattern_has_binding_source p2
+  | GP_Filter _ p1 | GP_Graph _ p1 -> pattern_has_binding_source p1
+
+let pattern_subject_var (ps : pattern_subject) : list var_name =
+  match ps with
+  | PS_Var v -> [v]
+  | PS_IRI _ | PS_BNode _ -> []
+
+let pattern_term_var (pt : pattern_term) : list var_name =
+  match pt with
+  | PT_Var v -> [v]
+  | PT_IRI _ | PT_BNode _ | PT_Literal _ -> []
+
+let tp_vars (tp : triple_pattern) : list var_name =
+  pattern_subject_var tp.tp_s @ pattern_term_var tp.tp_p @ pattern_term_var tp.tp_o
+
+let rec bgp_vars (b : bgp) : Tot (list var_name) (decreases b) =
+  match b with
+  | [] -> []
+  | tp :: rest -> tp_vars tp @ bgp_vars rest
+
+(* Every variable name that occurs in a triple-pattern slot (or a
+   property path's subject/object) anywhere in the tree, as a flat
+   multiset — duplicates ARE the point: a name occurring >=2 times is
+   exactly a name that could be bound by one occurrence before another
+   one is evaluated, in some evaluation order. Only meaningful when
+   `pattern_has_binding_source p` is false, so the tree's only possible
+   binding-producing shapes are triple-pattern slots and property-path
+   endpoints — hence the binding-source constructors below just
+   contribute no occurrences (they're never reached from
+   `bucket_needs_of_pattern`, which checks `pattern_has_binding_source`
+   first and falls back to `all_bucket_needs` instead of calling this). *)
+let rec pattern_var_occurrences (p : group_graph_pattern) : Tot (list var_name) (decreases p) =
+  match p with
+  | GP_BGP b -> bgp_vars b
+  | GP_PropertyPath ps _ pt -> pattern_subject_var ps @ pattern_term_var pt
+  | GP_Join p1 p2 | GP_Union p1 p2 | GP_Minus p1 p2 ->
+    pattern_var_occurrences p1 @ pattern_var_occurrences p2
+  | GP_LeftJoin p1 p2 _ -> pattern_var_occurrences p1 @ pattern_var_occurrences p2
+  | GP_Filter _ p1 | GP_Graph _ p1 -> pattern_var_occurrences p1
+  | GP_Bind _ _ _ | GP_Values _ _ | GP_SubSelect _
+  | GP_Service _ _ _ | GP_ServiceVar _ _ _ | GP_Lateral _ _ -> []
+  | GP_Empty -> []
+
+let var_is_shared (occ : list var_name) (v : var_name) : bool =
+  List.Tot.length (List.Tot.filter (fun (x : var_name) -> x = v) occ) >= 2
+
+let subj_boundable (occ : list var_name) (ps : pattern_subject) : bool =
+  match ps with
+  | PS_IRI _ | PS_BNode _ -> true
+  | PS_Var v -> var_is_shared occ v
+
+let term_boundable (occ : list var_name) (pt : pattern_term) : bool =
+  match pt with
+  | PT_IRI _ | PT_BNode _ | PT_Literal _ -> true
+  | PT_Var v -> var_is_shared occ v
+
+(* Which buckets a single triple pattern could read, given the
+   whole-query occurrence multiset `occ`. Compound buckets (sp/po/so)
+   are needed whenever BOTH their positions are boundable — tighter
+   than either single-key bucket whenever both keys really are bound
+   at once, and `ig_search`'s `pick_smaller_bucket` already prefers the
+   compound candidate in that case. *)
+let tp_bucket_needs (occ : list var_name) (tp : triple_pattern) : bucket_needs =
+  let s_ok = subj_boundable occ tp.tp_s in
+  let p_ok = term_boundable occ tp.tp_p in
+  let o_ok = term_boundable occ tp.tp_o in
+  {
+    bn_subj = s_ok; bn_pred = p_ok; bn_obj = o_ok;
+    bn_sp = s_ok && p_ok; bn_po = p_ok && o_ok; bn_so = s_ok && o_ok;
+  }
+
+let rec bgp_bucket_needs (occ : list var_name) (b : bgp) : Tot bucket_needs (decreases b) =
+  match b with
+  | [] -> no_bucket_needs
+  | tp :: rest -> bucket_needs_or (tp_bucket_needs occ tp) (bgp_bucket_needs occ rest)
+
+let rec pattern_bucket_needs (occ : list var_name) (p : group_graph_pattern)
+  : Tot bucket_needs (decreases p) =
+  match p with
+  | GP_BGP b -> bgp_bucket_needs occ b
+  | GP_PropertyPath _ _ _ -> no_bucket_needs  (* never reads the 6 buckets *)
+  | GP_Join p1 p2 | GP_Union p1 p2 | GP_Minus p1 p2 ->
+    bucket_needs_or (pattern_bucket_needs occ p1) (pattern_bucket_needs occ p2)
+  | GP_LeftJoin p1 p2 _ ->
+    bucket_needs_or (pattern_bucket_needs occ p1) (pattern_bucket_needs occ p2)
+  | GP_Filter _ p1 | GP_Graph _ p1 -> pattern_bucket_needs occ p1
+  | GP_Bind _ _ _ | GP_Values _ _ | GP_SubSelect _
+  | GP_Service _ _ _ | GP_ServiceVar _ _ _ | GP_Lateral _ _ -> all_bucket_needs  (* unreached *)
+  | GP_Empty -> no_bucket_needs
+
+(* Top-level entry point: compute the bucket_needs a query's algebra
+   tree can possibly read, for use by `build_indexed_selective` at
+   store-construction time. *)
+let bucket_needs_of_pattern (p : group_graph_pattern) : bucket_needs =
+  if pattern_has_binding_source p then all_bucket_needs
+  else pattern_bucket_needs (pattern_var_occurrences p) p
+
+(* Query-shape-aware sibling of `graph_to_store` (line ~159, kept
+   unchanged/unselective for the lemmas at the bottom of this file and
+   any other caller that doesn't know its own query shape). Same
+   contract, but the `indexed_graph` it builds only has the buckets
+   `p` can possibly read. *)
+let graph_to_store_for (p : group_graph_pattern) (g : rdf_graph) : graph_store =
+  { gs_graph = g; gs_indexed = build_indexed_selective (bucket_needs_of_pattern p) g }
+
+let dataset_to_store_for (p : group_graph_pattern) (ds : rdf_dataset) : rdf_dataset_store =
+  {
+    dss_default = graph_to_store_for p ds.ds_default;
+    dss_named =
+      List.Tot.map
+        (fun (ng : named_graph) ->
+          { ngs_name = ng.ng_name; ngs_store = graph_to_store_for p ng.ng_graph })
+        ds.ds_named
+  }
+
 (* Forward declarations — concrete definitions follow eval_pattern.
    #65 Step 2c (2026-05-10): both forward refs take `option wf_iri` so
    the FILTER / BIND paths in eval_pattern_store thread the BASE IRI
@@ -2564,10 +2749,15 @@ let rec eval_pattern_store (base : option wf_iri) (p : group_graph_pattern) (gs 
    The dataset carries named graphs for GP_Graph evaluation.
    [S1] Property paths deferred.
    Sub-SELECT deferred (requires eval_select_query).
-   #65 Step 2c (2026-05-10): threads BASE IRI through. *)
+   #65 Step 2c (2026-05-10): threads BASE IRI through.
+   2026-07-06 (lazy per-bucket index construction): builds the stores
+   with `graph_to_store_for`/`dataset_to_store_for` — `p` is the WHOLE
+   pattern about to be evaluated (recursively, `eval_pattern_store`
+   threads the SAME `gs`/`dss` through every nested node), so the
+   query-shape pre-pass above sees everything it needs to. *)
 let eval_pattern (base : option wf_iri) (p : group_graph_pattern) (g : rdf_graph) (ds : rdf_dataset)
   : solution_sequence =
-  eval_pattern_store base p (graph_to_store g) (dataset_to_store ds)
+  eval_pattern_store base p (graph_to_store_for p g) (dataset_to_store_for p ds)
 
 (** ====================================================================== **)
 (** Part 8: SPARQL 1.1 Expression Evaluation (§17)                         **)

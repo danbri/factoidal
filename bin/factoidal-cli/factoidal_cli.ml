@@ -458,6 +458,7 @@ let read_compacted_epoch_opt (version_dir : string) : Z.t FStar_Pervasives_Nativ
    Capabilities.Delta.fst's `overlay`, reached through SPARQL11.Store's
    GB_CottasOnDiskDelta arm, no new dispatch logic on this side). *)
 let build_dataset_backend
+    (query_pattern : SPARQL11_Algebra.group_graph_pattern)
     (in_memory : RDF_Graph_Executable.rdf_dataset)
     (cottas_stores : RDF_CottasStore.cottas_ondisk_store list)
     (cottas_paths : string list)
@@ -466,7 +467,14 @@ let build_dataset_backend
     (rml_backends : SPARQL11_Store.graph_backend list)
     : SPARQL11_Store.dataset_backend =
   let module S = SPARQL11_Store in
-  let in_memory_backend = S.indexed_dataset_backend in_memory in
+  (* 2026-07-06 (lazy per-bucket index construction): the in-memory
+     backend is the one this repo's own gene.ttl GROUP BY benchmark
+     measured build_indexed's full-6-bucket cost against (see
+     SPARQL11.Store.fst's banner on indexed_graph_backend_for) --
+     `_for_query` derives which of the 6 buckets `query_pattern` can
+     possibly read (SPARQL11.Algebra.bucket_needs_of_pattern) instead
+     of always building every one. *)
+  let in_memory_backend = S.indexed_dataset_backend_for_query query_pattern in_memory in
   (* HDT program plan stage 4: read-only, triples-only (no HDTQ yet,
      docs/designissues/2026-07-06-hdt-program-plan.md "Out of scope"),
      so every HDT store is a default-graph-only backend with no named
@@ -3015,7 +3023,7 @@ let () =
             exit 1
         ) cfg.data_rml_files in
         let dsb =
-          build_dataset_backend dataset cottas_stores cfg.data_cottas_files cfg.delta_log_path hdt_stores rml_backends
+          build_dataset_backend rewritten_query.q_pattern dataset cottas_stores cfg.data_cottas_files cfg.delta_log_path hdt_stores rml_backends
         in
         let ask_answer =
           if is_ask then

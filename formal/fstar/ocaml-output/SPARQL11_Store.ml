@@ -95,6 +95,26 @@ let indexed_dataset_backend (ds : RDF_Graph.rdf_dataset) : dataset_backend=
               ngb_graph = (indexed_graph_backend ng.RDF_Graph.ng_graph)
             }) ds.RDF_Graph.ds_named)
   }
+let indexed_graph_backend_for (needs : RDF_Indexed.bucket_needs)
+  (g : RDF_Graph.rdf_graph) : graph_backend=
+  GB_Indexed (RDF_Indexed.build_indexed_selective needs g)
+let indexed_dataset_backend_for (needs : RDF_Indexed.bucket_needs)
+  (ds : RDF_Graph.rdf_dataset) : dataset_backend=
+  {
+    dsb_default = (indexed_graph_backend_for needs ds.RDF_Graph.ds_default);
+    dsb_named =
+      (FStar_List_Tot_Base.map
+         (fun ng ->
+            {
+              ngb_name = (ng.RDF_Graph.ng_name);
+              ngb_graph =
+                (indexed_graph_backend_for needs ng.RDF_Graph.ng_graph)
+            }) ds.RDF_Graph.ds_named)
+  }
+let indexed_dataset_backend_for_query
+  (p : SPARQL11_Algebra.group_graph_pattern) (ds : RDF_Graph.rdf_dataset) :
+  dataset_backend=
+  indexed_dataset_backend_for (SPARQL11_Algebra.bucket_needs_of_pattern p) ds
 let cottas_ondisk_dataset_backend
   (cods : RDF_CottasStore.cottas_ondisk_store) : dataset_backend=
   {

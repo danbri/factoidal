@@ -111,6 +111,65 @@ let build_bucket (key_of : 'a -> Prims.string FStar_Pervasives_Native.option)
   let decorated = FStar_List_Tot_Base.map (fun t -> ((key_of t), t)) ts in
   let sorted = FStar_List_Tot_Base.sortWith cmp_by_decorated_key decorated in
   group_sorted_decorated_aux sorted FStar_Pervasives_Native.None [] []
+type bucket_needs =
+  {
+  bn_pred: Prims.bool ;
+  bn_subj: Prims.bool ;
+  bn_obj: Prims.bool ;
+  bn_sp: Prims.bool ;
+  bn_po: Prims.bool ;
+  bn_so: Prims.bool }
+let __proj__Mkbucket_needs__item__bn_pred (projectee : bucket_needs) :
+  Prims.bool=
+  match projectee with
+  | { bn_pred; bn_subj; bn_obj; bn_sp; bn_po; bn_so;_} -> bn_pred
+let __proj__Mkbucket_needs__item__bn_subj (projectee : bucket_needs) :
+  Prims.bool=
+  match projectee with
+  | { bn_pred; bn_subj; bn_obj; bn_sp; bn_po; bn_so;_} -> bn_subj
+let __proj__Mkbucket_needs__item__bn_obj (projectee : bucket_needs) :
+  Prims.bool=
+  match projectee with
+  | { bn_pred; bn_subj; bn_obj; bn_sp; bn_po; bn_so;_} -> bn_obj
+let __proj__Mkbucket_needs__item__bn_sp (projectee : bucket_needs) :
+  Prims.bool=
+  match projectee with
+  | { bn_pred; bn_subj; bn_obj; bn_sp; bn_po; bn_so;_} -> bn_sp
+let __proj__Mkbucket_needs__item__bn_po (projectee : bucket_needs) :
+  Prims.bool=
+  match projectee with
+  | { bn_pred; bn_subj; bn_obj; bn_sp; bn_po; bn_so;_} -> bn_po
+let __proj__Mkbucket_needs__item__bn_so (projectee : bucket_needs) :
+  Prims.bool=
+  match projectee with
+  | { bn_pred; bn_subj; bn_obj; bn_sp; bn_po; bn_so;_} -> bn_so
+let all_bucket_needs : bucket_needs=
+  {
+    bn_pred = true;
+    bn_subj = true;
+    bn_obj = true;
+    bn_sp = true;
+    bn_po = true;
+    bn_so = true
+  }
+let no_bucket_needs : bucket_needs=
+  {
+    bn_pred = false;
+    bn_subj = false;
+    bn_obj = false;
+    bn_sp = false;
+    bn_po = false;
+    bn_so = false
+  }
+let bucket_needs_or (a : bucket_needs) (b : bucket_needs) : bucket_needs=
+  {
+    bn_pred = (a.bn_pred || b.bn_pred);
+    bn_subj = (a.bn_subj || b.bn_subj);
+    bn_obj = (a.bn_obj || b.bn_obj);
+    bn_sp = (a.bn_sp || b.bn_sp);
+    bn_po = (a.bn_po || b.bn_po);
+    bn_so = (a.bn_so || b.bn_so)
+  }
 type indexed_graph =
   {
   ig_triples: RDF_Triple.triple Prims.list ;
@@ -119,36 +178,48 @@ type indexed_graph =
   ig_obj: RDF_Triple.triple bucket_map ;
   ig_sp: RDF_Triple.triple bucket_map ;
   ig_po: RDF_Triple.triple bucket_map ;
-  ig_so: RDF_Triple.triple bucket_map }
+  ig_so: RDF_Triple.triple bucket_map ;
+  ig_built: bucket_needs }
 let __proj__Mkindexed_graph__item__ig_triples (projectee : indexed_graph) :
   RDF_Triple.triple Prims.list=
   match projectee with
-  | { ig_triples; ig_pred; ig_subj; ig_obj; ig_sp; ig_po; ig_so;_} ->
-      ig_triples
+  | { ig_triples; ig_pred; ig_subj; ig_obj; ig_sp; ig_po; ig_so; ig_built;_}
+      -> ig_triples
 let __proj__Mkindexed_graph__item__ig_pred (projectee : indexed_graph) :
   RDF_Triple.triple bucket_map=
   match projectee with
-  | { ig_triples; ig_pred; ig_subj; ig_obj; ig_sp; ig_po; ig_so;_} -> ig_pred
+  | { ig_triples; ig_pred; ig_subj; ig_obj; ig_sp; ig_po; ig_so; ig_built;_}
+      -> ig_pred
 let __proj__Mkindexed_graph__item__ig_subj (projectee : indexed_graph) :
   RDF_Triple.triple bucket_map=
   match projectee with
-  | { ig_triples; ig_pred; ig_subj; ig_obj; ig_sp; ig_po; ig_so;_} -> ig_subj
+  | { ig_triples; ig_pred; ig_subj; ig_obj; ig_sp; ig_po; ig_so; ig_built;_}
+      -> ig_subj
 let __proj__Mkindexed_graph__item__ig_obj (projectee : indexed_graph) :
   RDF_Triple.triple bucket_map=
   match projectee with
-  | { ig_triples; ig_pred; ig_subj; ig_obj; ig_sp; ig_po; ig_so;_} -> ig_obj
+  | { ig_triples; ig_pred; ig_subj; ig_obj; ig_sp; ig_po; ig_so; ig_built;_}
+      -> ig_obj
 let __proj__Mkindexed_graph__item__ig_sp (projectee : indexed_graph) :
   RDF_Triple.triple bucket_map=
   match projectee with
-  | { ig_triples; ig_pred; ig_subj; ig_obj; ig_sp; ig_po; ig_so;_} -> ig_sp
+  | { ig_triples; ig_pred; ig_subj; ig_obj; ig_sp; ig_po; ig_so; ig_built;_}
+      -> ig_sp
 let __proj__Mkindexed_graph__item__ig_po (projectee : indexed_graph) :
   RDF_Triple.triple bucket_map=
   match projectee with
-  | { ig_triples; ig_pred; ig_subj; ig_obj; ig_sp; ig_po; ig_so;_} -> ig_po
+  | { ig_triples; ig_pred; ig_subj; ig_obj; ig_sp; ig_po; ig_so; ig_built;_}
+      -> ig_po
 let __proj__Mkindexed_graph__item__ig_so (projectee : indexed_graph) :
   RDF_Triple.triple bucket_map=
   match projectee with
-  | { ig_triples; ig_pred; ig_subj; ig_obj; ig_sp; ig_po; ig_so;_} -> ig_so
+  | { ig_triples; ig_pred; ig_subj; ig_obj; ig_sp; ig_po; ig_so; ig_built;_}
+      -> ig_so
+let __proj__Mkindexed_graph__item__ig_built (projectee : indexed_graph) :
+  bucket_needs=
+  match projectee with
+  | { ig_triples; ig_pred; ig_subj; ig_obj; ig_sp; ig_po; ig_so; ig_built;_}
+      -> ig_built
 let subject_to_key (s : RDF_Term.subject) : Prims.string=
   match s with
   | RDF_Term.S_IRI i -> FStar_String.concat "" ["I_"; i]
@@ -215,7 +286,8 @@ let add_triple_to_indexes (ig : indexed_graph) (t : RDF_Triple.triple) :
     ig_obj = new_obj;
     ig_sp = new_sp;
     ig_po = new_po;
-    ig_so = new_so
+    ig_so = new_so;
+    ig_built = (ig.ig_built)
   }
 let rec build_indexed_aux (g : RDF_Triple.triple Prims.list)
   (acc : indexed_graph) : indexed_graph=
@@ -247,15 +319,20 @@ let empty_indexed : indexed_graph=
     ig_obj = [];
     ig_sp = [];
     ig_po = [];
-    ig_so = []
+    ig_so = [];
+    ig_built = all_bucket_needs
   }
-let build_indexed (g : RDF_Triple.triple Prims.list) : indexed_graph=
+let build_indexed_selective (needs : bucket_needs)
+  (g : RDF_Triple.triple Prims.list) : indexed_graph=
   {
     ig_triples = g;
-    ig_pred = (build_bucket bucket_key_pred g);
-    ig_subj = (build_bucket bucket_key_subj g);
-    ig_obj = (build_bucket bucket_key_obj g);
-    ig_sp = (build_bucket bucket_key_sp g);
-    ig_po = (build_bucket bucket_key_po g);
-    ig_so = (build_bucket bucket_key_so g)
+    ig_pred = (if needs.bn_pred then build_bucket bucket_key_pred g else []);
+    ig_subj = (if needs.bn_subj then build_bucket bucket_key_subj g else []);
+    ig_obj = (if needs.bn_obj then build_bucket bucket_key_obj g else []);
+    ig_sp = (if needs.bn_sp then build_bucket bucket_key_sp g else []);
+    ig_po = (if needs.bn_po then build_bucket bucket_key_po g else []);
+    ig_so = (if needs.bn_so then build_bucket bucket_key_so g else []);
+    ig_built = needs
   }
+let build_indexed (g : RDF_Triple.triple Prims.list) : indexed_graph=
+  build_indexed_selective all_bucket_needs g
