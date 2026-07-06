@@ -20,7 +20,7 @@
   [pe-running] WebOnt-miscellaneous-302-Direct
 Closure regime: RL
 OWL 2 test catalog: third_party/testing/owl/profile-QL.rdf
-  parsed 1275 triples in 0.04s
+  parsed 1275 triples in 0.03s
 Totals: 65 test cases
   PositiveEntailmentTest:    20
   NegativeEntailmentTest:    3

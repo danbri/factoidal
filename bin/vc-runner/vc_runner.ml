@@ -217,6 +217,114 @@ let run_suite ~verbose ~list_only fixture_dir =
   end
 
 (* ------------------------------------------------------------------ *)
+(* Crypto mode — eddsa-rdfc-2022 Data Integrity roundtrip (Stage 5).
+
+   Exercises the F*-extracted VC_DataIntegrity pipeline end to end:
+   RDFC-1.0 transform (RDF_Canonical) -> SHA-256 (HACL-star) -> Ed25519
+   sign/verify (HACL-star) -> multibase-z proofValue (VC_Multibase).  The
+   crypto seam routes to the vendored HACL* C (third_party/hacl/); there
+   is no offline W3C cryptosuite fixture directory (the vc-di-eddsa suite
+   is live-endpoint driven), so this is a self-contained roundtrip:
+   generate a keypair, sign a credential dataset, verify it, and confirm
+   a wrong key / tampered proof is rejected.
+
+   !! I/O + orchestration GLUE ONLY — all crypto + hashing + canonicalize
+   logic lives in formal/fstar/VC.DataIntegrity.fst, VC.Multibase.fst, and
+   RDF.Canonical.fst. This block only builds inputs, calls extracted F*,
+   and tallies. *)
+
+let crypto_check name cond =
+  Printf.printf "  [%s] %s\n" (if cond then "PASS" else "FAIL") name;
+  cond
+
+let run_crypto () =
+  Printf.printf "=== VC Data Integrity eddsa-rdfc-2022 roundtrip (crypto mode) ===\n\n";
+  (* A fixed 32-byte Ed25519 secret key (hex). Any valid 32-byte key works
+     for a roundtrip; this one is deterministic for reproducibility. *)
+  let sk = "9d61b19deffebc3a4a3c9d0b3b0f8f0e7a5b6c4d2e1f00112233445566778899" in
+  let pk = VC_DataIntegrity.ed25519_secret_to_public sk in
+  (* A different key, for the negative (wrong-key) test. *)
+  let sk2 = "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20" in
+  let pk2 = VC_DataIntegrity.ed25519_secret_to_public sk2 in
+  (* The unsecured credential, as an RDF dataset (N-Quads in, canonicalized
+     by RDFC-1.0 inside the pipeline). Bnode present so canonicalization is
+     genuinely exercised, not a no-op. *)
+  let doc_nq =
+    "<urn:credential:1> <https://www.w3.org/2018/credentials#issuer> <urn:issuer:acme> .\n\
+     <urn:credential:1> <http://schema.org/credentialSubject> _:b0 .\n\
+     _:b0 <http://schema.org/name> \"Alice\" .\n" in
+  (* The proof-options dataset (proof block minus proofValue), as RDF. *)
+  let cfg_nq =
+    "_:pc <http://www.w3.org/ns/data-integrity#cryptosuite> \"eddsa-rdfc-2022\" .\n\
+     _:pc <http://www.w3.org/ns/data-integrity#proofPurpose> \"assertionMethod\" .\n" in
+  (* A DIFFERENT document, for the wrong-document negative test. *)
+  let doc_nq2 =
+    "<urn:credential:1> <https://www.w3.org/2018/credentials#issuer> <urn:issuer:acme> .\n\
+     <urn:credential:1> <http://schema.org/credentialSubject> _:b0 .\n\
+     _:b0 <http://schema.org/name> \"Mallory\" .\n" in
+  let ds   = Parser_NQuads.parse_nquads doc_nq in
+  let ds2  = Parser_NQuads.parse_nquads doc_nq2 in
+  let cfg  = Parser_NQuads.parse_nquads cfg_nq in
+  let ok_keypair =
+    crypto_check "Ed25519 keypair derived (HACL* secret_to_public)"
+      (String.length pk = 64 && String.length pk2 = 64 && pk <> pk2) in
+  match VC_DataIntegrity.eddsa_rdfc_2022_create sk ds cfg with
+  | None ->
+    ignore (crypto_check "eddsa-rdfc-2022 create produced a proofValue" false);
+    false
+  | Some proof_value ->
+    let is_multibase_z = String.length proof_value > 1 && proof_value.[0] = 'z' in
+    let c_created = crypto_check "create produced a multibase-z proofValue" is_multibase_z in
+    (* multibase roundtrip (VC_Multibase) *)
+    let c_mb =
+      crypto_check "multibase-z proofValue decodes back to signature hex"
+        (match VC_Multibase.multibase_z_to_hex proof_value with
+         | Some h -> String.length h = 128
+         | None -> false) in
+    let c_verify =
+      crypto_check "verify with correct key + document + proof = true"
+        (VC_DataIntegrity.eddsa_rdfc_2022_verify pk ds cfg proof_value) in
+    let c_wrongkey =
+      crypto_check "verify with WRONG public key = false"
+        (not (VC_DataIntegrity.eddsa_rdfc_2022_verify pk2 ds cfg proof_value)) in
+    let c_wrongdoc =
+      crypto_check "verify against a DIFFERENT document = false"
+        (not (VC_DataIntegrity.eddsa_rdfc_2022_verify pk ds2 cfg proof_value)) in
+    (* tamper: swap two chars of the proofValue body *)
+    let tampered =
+      let b = Bytes.of_string proof_value in
+      if Bytes.length b > 3 then begin
+        let c1 = Bytes.get b 1 and c2 = Bytes.get b 2 in
+        Bytes.set b 1 c2; Bytes.set b 2 c1
+      end;
+      Bytes.to_string b in
+    let c_tamper =
+      crypto_check "verify with a TAMPERED proofValue = false"
+        (not (VC_DataIntegrity.eddsa_rdfc_2022_verify pk ds cfg tampered)) in
+    (* verification-method multikey + proof-block serialization *)
+    let vm = match VC_Multibase.ed25519_pubkey_to_multikey pk with
+      | Some s -> "did:key:" ^ s ^ "#" ^ s | None -> "" in
+    let proof =
+      VC_DataIntegrity.make_eddsa_proof vm "assertionMethod" "" proof_value in
+    let proof_json = VC_DataIntegrity.serialize_proof proof in
+    let c_proofblock =
+      crypto_check "DataIntegrityProof block serializes with proofValue"
+        (let has s = try ignore (Str.search_forward (Str.regexp_string s) proof_json 0); true
+                     with Not_found -> false in
+         has "\"DataIntegrityProof\"" && has "\"eddsa-rdfc-2022\""
+         && has proof_value && String.length vm > 8) in
+    let all = ok_keypair && c_created && c_mb && c_verify && c_wrongkey
+              && c_wrongdoc && c_tamper && c_proofblock in
+    Printf.printf "\n========================================\n";
+    let npass = List.fold_left (fun a b -> if b then a+1 else a) 0
+                  [ok_keypair; c_created; c_mb; c_verify; c_wrongkey;
+                   c_wrongdoc; c_tamper; c_proofblock] in
+    Printf.printf "vc-dataintegrity-eddsa-rdfc-2022: %d pass, %d fail (out of 8)\n"
+      npass (8 - npass);
+    Printf.printf "========================================\n";
+    all
+
+(* ------------------------------------------------------------------ *)
 (* Main. *)
 
 let print_help () =
@@ -227,6 +335,8 @@ let print_help () =
      \  ./vc_runner                Run the default fixture directory\n\
      \  ./vc_runner <dir>          Run fixtures from a specific directory\n\
      \  ./vc_runner --list         List classified fixtures (no execution)\n\
+     \  ./vc_runner --crypto       Run the eddsa-rdfc-2022 Data Integrity roundtrip\n\
+     \                             (HACL* Ed25519 + SHA-256, self-contained)\n\
      \  ./vc_runner -v|--verbose   Show SKIP reasons too (FAIL always shown)\n\
      \  ./vc_runner --help         Show this help\n\
      \n\
@@ -240,11 +350,13 @@ let () =
   let args = Array.to_list Sys.argv |> List.tl in
   let verbose = ref false in
   let list_only = ref false in
+  let crypto = ref false in
   let dir = ref None in
   let rec loop = function
     | [] -> ()
     | ("-v" | "--verbose") :: rest -> verbose := true; loop rest
     | ("--help" | "-h") :: _ -> print_help (); exit 0
+    | "--crypto" :: rest -> crypto := true; loop rest
     | "--list" :: rest -> list_only := true; loop rest
     | p :: rest when !dir = None -> dir := Some p; loop rest
     | _ ->
@@ -252,6 +364,9 @@ let () =
       exit 2
   in
   loop args;
+  if !crypto then begin
+    if run_crypto () then exit 0 else exit 1
+  end;
   let fixture_dir = match !dir with
     | Some p -> p
     | None -> default_fixture_dir ()

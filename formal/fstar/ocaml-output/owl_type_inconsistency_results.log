@@ -1,6 +1,6 @@
 Closure regime: RL
 OWL 2 test catalog: third_party/testing/owl/type-inconsistency.rdf
-  parsed 3220 triples in 0.11s
+  parsed 3220 triples in 0.10s
 Totals: 128 test cases
   PositiveEntailmentTest:    0
   NegativeEntailmentTest:    0

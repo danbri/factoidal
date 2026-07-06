@@ -411,6 +411,8 @@ if [[ "$STEP" == "all" || "$STEP" == "extract" ]]; then
     Parser.JSON.fst JSONLD.Loader.fst JSONLD.Context.fst JSONLD.Expand.fst Parser.JSONLD.fst
     ShEx.Schema.fst Parser.ShExC.fst ShEx.SchemaEq.fst ShEx.Validation.fst
     VC.Credential.fst
+    VC.Multibase.fst
+    VC.DataIntegrity.fst
     RML.Mapping.fst RML.Sources.fst RML.Eval.fst
     CSVW.Metadata.fst CSVW.URITemplate.fst CSVW.Conversion.fst
     SPARQL.Eval.TimeBudget.fst
@@ -831,6 +833,9 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
     SPARQL_FullText.ml SPARQL11_Algebra.ml XSD_Datatypes.ml RDF_Pretty.ml OWL_QueryRewrite.ml OWL_QueryEval.ml OWL_Tests_Manifest.ml RIF_Core_Syntax.ml Parser_RIFXML.ml RIF_Core_Translation.ml RIF_Core_Builtins.ml RIF_Core_Conformance.ml RIF_Core_Eval.ml RIF_Core_Tests.ml SPARQL11_Parser.ml SHACL_Validation.ml \
     ShEx_Schema.ml Parser_ShExC.ml ShEx_SchemaEq.ml ShEx_Validation.ml \
     VC_Credential.ml \
+    VC_Multibase.ml \
+    fstar_hacl_crypto.ml \
+    VC_DataIntegrity.ml \
     RML_Mapping.ml RML_Sources.ml RML_Eval.ml \
     CSVW_Metadata.ml CSVW_URITemplate.ml CSVW_Conversion.ml \
     RDF_Store_Columnar_DeltaMerge.ml \
@@ -877,6 +882,42 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
     else
       echo "  Parquet/Zstd stub: DISABLED (libzstd headers not found; set FACTOIDAL_NO_ZSTD=0 after installing zstd to enable)"
     fi
+  fi
+
+  # HACL* vendored crypto stubs (Ed25519 sign/verify + SHA-256) for the VC
+  # Data Integrity eddsa-rdfc-2022 native path. Compiled once from the
+  # vendored, F*/Low*-verified extracted C (third_party/hacl/, Apache-2.0)
+  # plus the CAMLprim FFI (experimental_ocaml_glue/hacl_stubs.c), then linked
+  # into every native binary (VC_DataIntegrity is in COMMON_MODULES).
+  # Crypto sourcing policy: skills/crypto-policy/SKILL.md. NATIVE-ONLY —
+  # vendored HACL* C does not link under wasm_of_ocaml (GitHub #286), so
+  # VC.DataIntegrity is excluded from the js/wasm bundle. cwd is $OUTDIR.
+  HACL_NATIVE_STUBS=""
+  HACL_DIR="../../../third_party/hacl"
+  if [[ -d "$HACL_DIR/src" ]]; then
+    HACL_OBJ_DIR="hacl-obj"
+    mkdir -p "$HACL_OBJ_DIR"
+    OCAML_WHERE="$(ocamlfind ocamlc -where)"
+    HACL_CC="${CC:-cc}"
+    HACL_SRCS=(
+      "$HACL_DIR/src/Hacl_Ed25519.c"
+      "$HACL_DIR/src/Hacl_Curve25519_51.c"
+      "$HACL_DIR/src/Hacl_Hash_SHA2.c"
+      "../experimental_ocaml_glue/hacl_stubs.c"
+    )
+    HACL_OBJS=()
+    for c in "${HACL_SRCS[@]}"; do
+      o="$HACL_OBJ_DIR/$(basename "${c%.c}").o"
+      HACL_OBJS+=("$o")
+      if [[ ! -f "$o" || "$c" -nt "$o" ]]; then
+        "$HACL_CC" -O2 -fPIC -I"$HACL_DIR/include" -I"$OCAML_WHERE" \
+          -c "$c" -o "$o"
+      fi
+    done
+    HACL_NATIVE_STUBS="${HACL_OBJS[*]}"
+    echo "  HACL* crypto stubs: enabled (Ed25519 + SHA-256, vendored C)"
+  else
+    echo "  HACL* crypto stubs: DISABLED (third_party/hacl not found — VC crypto will failwith)"
   fi
 
   # Determine platform for binary output directory
@@ -932,6 +973,8 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
     ../../../bin/vc-runner/vc_runner.ml
     ../../../bin/cottas-ondisk-smoketest/cottas_ondisk_smoketest.ml
     ../experimental_ocaml_glue/parquet_zstd_stubs.c
+    ../experimental_ocaml_glue/hacl_stubs.c
+    fstar_hacl_crypto.ml
   )
   NATIVE_NEEDS_REBUILD=0
   for target in "${NATIVE_TARGETS[@]}"; do
@@ -953,6 +996,7 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
       $STATIC_FLAGS \
       $COMMON_MODULES \
       $PARQUET_NATIVE_STUBS \
+      $HACL_NATIVE_STUBS \
       ../../../bin/w3c-runner/w3c_runner.ml \
       -o "$BINDIR/w3c_runner"
     cat _ocamlopt_w3c_runner.log
@@ -980,6 +1024,7 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
       -I ../../../bin/factoidal-http-client \
       $COMMON_MODULES \
       $PARQUET_NATIVE_STUBS \
+      $HACL_NATIVE_STUBS \
       ../../../bin/factoidal-http/factoidal_http.ml \
       ../../../bin/factoidal-serve/factoidal_serve.ml \
       ../../../bin/factoidal-explain/factoidal_explain.ml \
@@ -1002,6 +1047,7 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
       -I ../../../bin/factoidal-http \
       $COMMON_MODULES \
       $PARQUET_NATIVE_STUBS \
+      $HACL_NATIVE_STUBS \
       ../../../bin/factoidal-http/factoidal_http.ml \
       ../../../bin/factoidal-http/factoidal_http_main.ml \
       -o "$BINDIR/factoidal-http"
@@ -1017,6 +1063,7 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
       $STATIC_FLAGS \
       $COMMON_MODULES \
       $PARQUET_NATIVE_STUBS \
+      $HACL_NATIVE_STUBS \
       ../../../bin/owl-runner/owl_runner.ml \
       -o "$BINDIR/owl_runner"
     cat _ocamlopt_owl_runner.log
@@ -1039,6 +1086,7 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
       $STATIC_FLAGS \
       $COMMON_MODULES \
       $PARQUET_NATIVE_STUBS \
+      $HACL_NATIVE_STUBS \
       ../../../bin/rdfc10-runner/rdfc10_runner.ml \
       -o "$BINDIR/rdfc10_runner" || RDFC10_RC=$?
     cat _ocamlopt_rdfc10_runner.log
@@ -1066,6 +1114,7 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
       $STATIC_FLAGS \
       $COMMON_MODULES \
       $PARQUET_NATIVE_STUBS \
+      $HACL_NATIVE_STUBS \
       ../../../bin/jsonld-runner/jsonld_runner.ml \
       -o "$BINDIR/jsonld_runner" || JSONLD_RUNNER_RC=$?
     cat _ocamlopt_jsonld_runner.log
@@ -1098,6 +1147,7 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
       $STATIC_FLAGS \
       $COMMON_MODULES \
       $PARQUET_NATIVE_STUBS \
+      $HACL_NATIVE_STUBS \
       ../../../bin/vc-runner/vc_runner.ml \
       -o "$BINDIR/vc_runner" || VC_RUNNER_RC=$?
     cat _ocamlopt_vc_runner.log
@@ -1128,6 +1178,7 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
       $STATIC_FLAGS \
       $COMMON_MODULES \
       $PARQUET_NATIVE_STUBS \
+      $HACL_NATIVE_STUBS \
       ../../../bin/shacl-runner/shacl_runner.ml \
       -o "$BINDIR/shacl_runner" || SHACL_RUNNER_RC=$?
     cat _ocamlopt_shacl_runner.log
@@ -1160,6 +1211,7 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
       $STATIC_FLAGS \
       $COMMON_MODULES \
       $PARQUET_NATIVE_STUBS \
+      $HACL_NATIVE_STUBS \
       ../../../bin/rml-runner/rml_runner.ml \
       -o "$BINDIR/rml_runner" || RML_RUNNER_RC=$?
     cat _ocamlopt_rml_runner.log
@@ -1190,6 +1242,7 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
       $STATIC_FLAGS \
       $COMMON_MODULES \
       $PARQUET_NATIVE_STUBS \
+      $HACL_NATIVE_STUBS \
       ../../../bin/shex-runner/shex_runner.ml \
       -o "$BINDIR/shex_runner" || SHEX_RUNNER_RC=$?
     cat _ocamlopt_shex_runner.log
@@ -1216,6 +1269,7 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
       $STATIC_FLAGS \
       $COMMON_MODULES \
       $PARQUET_NATIVE_STUBS \
+      $HACL_NATIVE_STUBS \
       ../../../bin/rif-runner/rif_runner.ml \
       -o "$BINDIR/rif_runner" || RIF_RUNNER_RC=$?
     cat _ocamlopt_rif_runner.log
@@ -1236,6 +1290,7 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
       $STATIC_FLAGS \
       $COMMON_MODULES \
       $PARQUET_NATIVE_STUBS \
+      $HACL_NATIVE_STUBS \
       ../../../bin/factoidal-http-client/factoidal_http_client.ml \
       -o "$BINDIR/factoidal_http_client" || FACTOIDAL_HTTP_CLIENT_RC=$?
     cat _ocamlopt_factoidal_http_client.log 2>/dev/null || true
@@ -1255,6 +1310,7 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
       $STATIC_FLAGS \
       $COMMON_MODULES \
       $PARQUET_NATIVE_STUBS \
+      $HACL_NATIVE_STUBS \
       ../../../bin/parquet-probe/parquet_probe.ml \
       -o "$BINDIR/parquet_probe" || PARQUET_PROBE_RC=$?
     cat _ocamlopt_parquet_probe.log 2>/dev/null || true
@@ -1280,6 +1336,7 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
       $STATIC_FLAGS \
       $COMMON_MODULES \
       $PARQUET_NATIVE_STUBS \
+      $HACL_NATIVE_STUBS \
       ../../../bin/cottas-ondisk-smoketest/cottas_ondisk_smoketest.ml \
       -o "$BINDIR/cottas_ondisk_smoketest" || COTTAS_SMOKE_RC=$?
     cat _ocamlopt_cottas_ondisk_smoketest.log 2>/dev/null || true
