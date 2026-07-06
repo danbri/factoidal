@@ -279,8 +279,8 @@
 <header>
   <div class="inner">
     <div class="rendered-pill" title="Rendered = when this page was last regenerated. Tests = when the *_results.log files inside the repository were last updated. Both UTC.">
-      <span class="row"><span class="label">Rendered</span><strong>2026-07-06 12:23 UTC</strong></span>
-      <span class="row"><span class="label">Tests</span><strong class="tests">2026-07-05 19:22 UTC</strong></span>
+      <span class="row"><span class="label">Rendered</span><strong>2026-07-06 13:34 UTC</strong></span>
+      <span class="row"><span class="label">Tests</span><strong class="tests">2026-07-06 13:31 UTC</strong></span>
     </div>
     <h1>W3C test results</h1>
     <p>Pass/fail/skip counts against every standards suite this project measures: RDF 1.1, SPARQL 1.1, RDFS/OWL 2, SHACL, ShEx, RIF Core, RML, JSON-LD 1.1, and Verifiable Credentials 2.0.</p>
@@ -936,34 +936,6 @@
       <span class="p">6 pass</span>, <span class="f">0 fail</span>
       <small>(of 6)</small>
     </div>
-  </div><div class="suite-row amber">
-    <div class="suite-name">sem-Direct PE</div>
-    <div class="meter"><div class="seg seg-pass" style="width:45.10%"></div><div class="seg seg-fail" style="width:54.90%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
-    <div class="suite-numbers">
-      <span class="p">92 pass</span>, <span class="f">112 fail</span>
-      <small>(of 204)</small>
-    </div>
-  </div><div class="suite-row amber">
-    <div class="suite-name">sem-Direct NE</div>
-    <div class="meter"><div class="seg seg-pass" style="width:95.65%"></div><div class="seg seg-fail" style="width:4.35%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
-    <div class="suite-numbers">
-      <span class="p">22 pass</span>, <span class="f">1 fail</span>
-      <small>(of 23)</small>
-    </div>
-  </div><div class="suite-row amber">
-    <div class="suite-name">sem-Direct Cons</div>
-    <div class="meter"><div class="seg seg-pass" style="width:93.62%"></div><div class="seg seg-fail" style="width:6.38%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
-    <div class="suite-numbers">
-      <span class="p">323 pass</span>, <span class="f">22 fail</span>
-      <small>(of 345)</small>
-    </div>
-  </div><div class="suite-row amber">
-    <div class="suite-name">sem-Direct Inc</div>
-    <div class="meter"><div class="seg seg-pass" style="width:29.06%"></div><div class="seg seg-fail" style="width:70.94%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
-    <div class="suite-numbers">
-      <span class="p">34 pass</span>, <span class="f">83 fail</span>
-      <small>(of 117)</small>
-    </div>
   </div>
   <div class="suite-row grey">
     <div class="suite-name">syntax-dl</div>
@@ -1120,14 +1092,14 @@
 
 <section class="family amber" id="vc2">
   <h2>Verifiable Credentials 2.0</h2>
-  <p class="fam-headline amber">80 pass, 34 fail, 6 skip (of 120) — structural Stage 1 checks only; no cryptographic proof verification.</p>
+  <p class="fam-headline amber">109 pass, 5 fail, 6 skip (of 120) — structural Stage 1 checks only; no cryptographic proof verification.</p>
   <details open>
     <summary>Suites in this family (tap to collapse)</summary>
     <div class="suites">
       <div class="suite-row amber">
         <div class="suite-name">VC Data Model 2.0 — structural (Stage 1)</div>
-        <div class="meter"><div class="seg seg-pass" style="width:66.67%"></div><div class="seg seg-fail" style="width:28.33%"></div><div class="seg seg-skip" style="width:5.00%"></div></div>
-        <div class="suite-numbers"><small>80 pass, 34 fail, 6 skip (of 120)</small></div>
+        <div class="meter"><div class="seg seg-pass" style="width:90.83%"></div><div class="seg seg-fail" style="width:4.17%"></div><div class="seg seg-skip" style="width:5.00%"></div></div>
+        <div class="suite-numbers"><small>109 pass, 5 fail, 6 skip (of 120)</small></div>
       </div>
       <p class="suite-prov">Runner: <code>bin/vc-runner</code> (<code>bin/linux-x86_64/vc_runner</code>) &middot; Suite: <code>third_party/testing/vc/tests/input/</code> (structural fixtures, filename-encoded verdicts) &middot; <a href="https://github.com/danbri/factoidal/blob/claude/main/docs/designissues/2026-07-05-vc-program-plan.md" target="_blank" rel="noopener">diagnosis: all 34 fails are documented Stage 2 deferrals (issuer shape, validFrom/validUntil ordering, credentialStatus/credentialSchema/etc. inner shapes) — see the VC program plan</a></p>
     </div>
@@ -1205,7 +1177,7 @@ shex:         1181 pass, 1 fail, 0 skip (of 1182) — present=1
 jsonld-tordf: 460 pass, 1 fail, 6 skip (of 467) — present=1
 rml-core:     76 pass, 0 fail, 0 skip (of 76) — present=1
 rif-core:     34 pass, 4 fail, 12 skip (of 50) — present=1
-vc-stage1:    80 pass, 34 fail, 6 skip (of 120) — present=1</pre>
+vc-stage1:    109 pass, 5 fail, 6 skip (of 120) — present=1</pre>
 </details>
 
 <details>
@@ -1223,9 +1195,9 @@ vc-stage1:    80 pass, 34 fail, 6 skip (of 120) — present=1</pre>
 </main>
 
 <footer>
-  Generated <strong>2026-07-06 12:23 UTC</strong> from commit
-  <code><a href="https://github.com/danbri/factoidal/commit/5ba811cb9ad9faa3b1682e8eb3dc903bc8aa5c9e">5ba811cb</a></code>
-  on branch <code>claude/main</code> — &ldquo;CLI parity: the full npm API surface is usable from factoidal&rdquo;.
+  Generated <strong>2026-07-06 13:34 UTC</strong> from commit
+  <code><a href="https://github.com/danbri/factoidal/commit/4002b17888546285b04538d5717b289be4598b22">4002b178</a></code>
+  on branch <code>claude/main</code> — &ldquo;Artifacts for the in-memory-bytes landing: rebuilt probe objects and bytecode&rdquo;.
   Re-run locally: <code>cd formal/fstar &amp;&amp; ./generate-report.sh --run</code>.
 </footer>
 
