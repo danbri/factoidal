@@ -141,11 +141,43 @@ This file is a **periodic refresh doc** — it goes stale within a week.
 Update after material progress (suite-score movements, new F\* modules,
 resolved `assume val`s).
 
-## Standing priorities (as of 2026-07-04)
+## Standing priorities (as of 2026-07-06)
 
 Toward the goal in CLAUDE.md (performant, compliant RDF/S + OWL +
 SHACL + RDFC + SPARQL engine). Re-rank when one lands; a dashboard
 red always jumps the queue.
+
+Landed 2026-07-05/06 database program (the read-write DB goal):
+**Durable SPARQL UPDATE stages 1-4 + 8** — append-only delta log
+with F\*-proved framing round-trips (five I/O `assume val`s under
+issue #282, realised four ways: Unix, KaRaMeL C externs, IndexedDB
+in the browser, in-memory buffer), merge-on-read with a proved
+apply-entries equivalence lemma, compaction via atomic symlink swap
+with an epoch guard in the read path, and `factoidal-http --rw`
+serving SPARQL UPDATE + Graph Store Protocol. Crash-safety measured:
+SIGKILL harnesses across the write stages (270+25+25 kill points)
+accept zero torn or corrupt states; 6 concurrent readers during 40
+writes observed 0 inconsistent reads. **Native COTTAS writer**
+(`RDF.CottasStore.BaseWriter.fst`) — `factoidal import` / `compact
+--native-writer`, DuckDB-byte-exact, removing Python from the store
+lifecycle entirely (v1 emits DLBA+UNCOMPRESSED at ~133 B/quad on
+disk, ~60x pycottas-zstd; RLE_DICTIONARY v2 in flight). **Unified
+store architecture** — `store_caps`/`dataset_caps` capability seam
+(`RDF.Store.Capabilities.fst`), `caps_of_backend` as the single
+dispatch point (12 ad-hoc dispatchers deleted), delta overlay and
+named graphs land through the same seam. **In-memory bytes store**
+(`--data-cottas-mem`) — 64.4 B/quad for a corpus COUNT, 160.9 for
+lookups, vs 877 B/quad on the heap store. **Perf vs peers**
+(`2026-07-06-competitive-benchmark-results.md`): GROUP BY 600s→27s
+(O(n²) append fixed; ~13x linear constant vs Jena remains), point
+lookups 62s→17.7s (bound-side encode in flight); COTTAS full-scan
+aggregates beat Jena TDB2. **Tri-target write path** — the delta log
+runs natively, as KaRaMeL-extracted C (12/12 demo), and under
+js\_of\_ocaml + wasm\_of\_ocaml with IndexedDB persistence proven
+across real page reloads. **HDT stages 1-3** — verified container/
+dictionary/triples readers, 74/74 fixture checks; stage 4 (pattern
+resolution through the seam, closes #253) in flight. Hub grew to 18
+posts; post 18 runs the durable-log lifecycle live.
 
 Landed 2026-07-05 wave 4 (all six agents gate-evidenced together):
 SHACL phase 3 — core 98 pass, 0 fail (of 98) under the suite's full
