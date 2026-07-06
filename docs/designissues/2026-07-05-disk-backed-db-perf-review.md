@@ -865,6 +865,133 @@ whether a design doc is needed first.
       pruning saves at gene's scale — so `--row-group-size` keeps
       DuckDB's default; revisit after a cross-query dict cache lands
       or against parliament's 232-predicate shape.
+
+      **DONE 2026-07-06 (follow-up session): the cross-query
+      dictionary cache (Tsade2 "Phase E refinement") is in.** The
+      residual linear per-row-group warm cost was profiled first, by
+      attribution against a kill switch (below): the column-prune
+      planner's per-QUERY `dict_cache`
+      (`RDF.CottasStore.fst` § Tsade2, rebuilt from `[]` on every
+      `plan_candidate_rgs` call) redid the per-row-group dictionary
+      page decompress + plain-dictionary decode
+      (`Parquet.Footer.probe_parquet_column_dictionary_in_row_group_from_table`)
+      on EVERY query, even though a read-only store's dictionaries are
+      invariant for the handle's lifetime. Measured share of the warm
+      per-query time on the gene 44-group build (same server process,
+      cache on vs off): 54% of `?s rdf:type ?o LIMIT 5` (87.4 →
+      39.9 ms), 70% of the point lookup (170 → 50.5 ms), 54% of the
+      rare predicate (90.3 → 41.0 ms), ~0% of `COUNT(*)` (66 → 63 ms —
+      no bound column, planner never probes dictionaries). A
+      planner-only probe (bound predicate absent from the store, so
+      candidates prune to zero and no data page is touched) runs in
+      4.3 ms warm at 44 groups — the planner's per-row-group cost is
+      now effectively gone; what remains of the 44-vs-8 gap is
+      data-walk-side (per-candidate-rg decode/filter restarts), not
+      dictionary or locate work.
+
+      **Design split (rule #11).** WHAT is cached and its correctness
+      contract is F\*: `RDF.CottasStore.PageCache.fst` gained
+      `dict_page_cache` — an LRU cache keyed `(rg_index, col_index)`
+      holding `list string` dictionaries, mirroring the existing
+      verified `page_cache`/`pcache_*` LRU exactly (same age-stamp
+      eviction, same key shape; only the value type differs) — plus
+      `dpcache_get`/`dpcache_put`/`dpcache_probe_dict_in_row_group_from_table`
+      (all verified, z3 4.13.3, no `--lax`). Store identity is the
+      artifact path via the F\*-computed row-group-offset table, and
+      invalidation is store-handle/process lifetime (stores are
+      write-once read-only; same contract the existing page cache
+      relies on). The CROSS-CALL STORAGE CELL is the same rule-#11(c)
+      shim shape as the two existing `pcache_*_global` realisations
+      and lives in the SAME glue file
+      (`experimental_ocaml_glue/cottas_pagecache_global_runtime.sh`,
+      extended, not duplicated): a `dict_page_cache ref` threaded
+      through the F\*-pure functions, zero OCaml decode logic (rule
+      #15 — decode stays solely in `Parquet.Footer`).
+      `RDF.CottasStore.populate_dict_cache_loop`'s table branch now
+      calls the global probe instead of the raw per-call probe; the
+      per-query `dict_cache` remains as the intra-query memo, and the
+      no-table fallback branch is untouched. Kill switch:
+      `FACTOIDAL_DISABLE_DICT_GLOBAL_CACHE=1` bypasses the ref
+      entirely and takes the pre-change per-query path (the
+      `FACTOIDAL_DISABLE_STREAM_FASTPATH` precedent).
+
+      **Memory bound.** Capacity 1024 entries with LRU eviction
+      (44 rgs × 4 cols = 176 on the finest gene build; parliament
+      26 × 4 = 104), so growth is capped on pathological stores —
+      past capacity the planner just redecodes evicted entries,
+      degrading to pre-change behavior rather than growing. Gene's
+      total decoded dictionary footprint (whole-store distinct token
+      bytes: `.s.dict` 4.99 MB + `.o.dict` 4.07 MB + `.p.dict` 372 B +
+      `.g.dict` 59 B) is ~9.1 MB; measured server peak RSS after 3
+      rounds of the 4-query set on the 44-group build: 126.0 MiB cache
+      on vs 126.4 MiB cache off — no measurable growth (the cache
+      displaces transient decode allocations of the same strings).
+
+      **Measured (gene, 888,949 quads, CS-clustered + eager sidecars,
+      `factoidal serve` + HTTP `/query`, one server process per
+      config, 3 warm runs each; "pre" = same binary with the kill
+      switch set, which reproduces the previous section's committed-
+      HEAD numbers within noise — e.g. 44-group type 87.4 ms vs the
+      83–84 ms recorded above):**
+
+      | query | 8 rg pre | 8 rg post | 44 rg pre | 44 rg post |
+      |---|---:|---:|---:|---:|
+      | `?s rdf:type ?o LIMIT 5` | 19.9–20.3 ms | **12.2–13.7 ms** | 87.0–90.0 ms | **39.3–40.0 ms** |
+      | point lookup (`Q100085837 ?p ?o`) | 110–111 ms | **20.0–21.5 ms** | 170–173 ms | **50.5–50.7 ms** |
+      | rare predicate (`wdt:P682` LIMIT 5) | 29.1–30.6 ms | **19.7–21.2 ms** | 90.2–91.7 ms | **40.9–41.2 ms** |
+      | `COUNT(*)` | 35.9–36.1 ms | 34.6–36.1 ms | 66.4 ms | 62.8–63.8 ms |
+
+      The 44-group probe lands at 39.9 ms — exactly 2.0× the previous
+      8-group baseline (20 ms, the "≤2× the 8-group time" target as
+      posed, from 4.1×). Against the CONCURRENT post-change 8-group
+      time (12.2 ms, itself improved 39% by the same cache) the ratio
+      is 3.2× — the dictionary component of the gap is gone and the
+      remainder is data-walk-side, at most linear in row-group count.
+      The 8-group build did not regress on any shape (COUNT flat,
+      everything else faster). One pre-existing slow shape noted while
+      profiling, unchanged by this work (identical at ~55 s with the
+      cache on and off, correct answer 91,871 both ways): a COUNT over
+      a bound predicate present in every row group
+      (`COUNT` of `?s rdf:type ?o`) on the 8-group build pays a full
+      cold s/p/o/g decode of 122,880-row groups in one CLI shot — that
+      is the unbounded data-walk cost of roadmap item 4, not planner
+      work.
+
+      **Correctness.** All 24 HTTP response bodies (2 stores × 4
+      queries × 3 runs) are byte-identical cache-on vs cache-off;
+      `COUNT(*)` = 888,949 exact on both builds; the point lookup
+      returns the same 3 bindings on both builds. Regression pins:
+      [`tests/local/dict_global_cache_parity.sh`](../../tests/local/dict_global_cache_parity.sh)
+      (6 checks, 6 pass, 0 fail — builds a CS-clustered store from the
+      shared 5-quad fixture and byte-diffs five query shapes across
+      the kill switch, including an absent-predicate full-prune and a
+      no-bound full walk), and
+      `tests/unit/parquet_rle_dictionary_multi_row_group.ml` grew a
+      section 8 (96 assertions in the file now, 0 fail): the global
+      cached probe must equal the raw path-based probe on both the
+      miss and the hit call for every dictionary-bearing (rg, col) of
+      the 3-row-group fixture, plus pure-F\* LRU pins
+      (get-returns-stored, LRU eviction at capacity,
+      recently-used+new survive, capacity-0 stores nothing).
+
+      **Row-group-size decision, re-measured with the cache in: keep
+      122,880.** The rare/shape-confined predicate probe (`wdt:P682`)
+      is 41 ms warm at 44 groups vs 20 ms at 8 groups — smaller groups
+      still lose about 2× on this corpus even with planner cost per
+      group now near zero, because the data-walk side retains a
+      per-candidate-group cost and gene's CS-confinement only halves
+      the candidate set. Report only, per the tasking; revisit against
+      parliament's 26-group/232-predicate shape where confinement
+      kills a larger fraction.
+
+      **Floors after the change (repo root only — other cwds show a
+      misleading 629 pass, 2 fail for the SPARQL suite):** SPARQL
+      suite 631 pass, 0 fail (of 631); RDF suite 1,031 pass, 0 fail
+      (of 1,031); `tests/unit/run-all.sh` 28 file(s) pass, 0 file(s)
+      fail (of 28); `tests/local/cottas_row_order_regressions.sh` 9
+      pass, 0 fail; `tests/local/cottas_corpus_regressions.sh` 4 pass,
+      0 fail; `tests/local/dict_global_cache_parity.sh` 6 pass, 0
+      fail (new).
    3. Re-run this whole comparison against the UK Parliament corpus
       (absent from this sandbox, per §0's caveat) once it is
       reachable, since gene's 8-row-group / 12-CS / 6-predicate shape

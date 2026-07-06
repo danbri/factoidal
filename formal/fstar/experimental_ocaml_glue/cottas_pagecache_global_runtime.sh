@@ -14,6 +14,14 @@
 # Rule #11(c) compliant: thin dispatch shim. No semantic decisions —
 # only state plumbing. Capacity 256 covers parliament's 26 rgs * 4
 # cols = 104 entries with headroom.
+#
+# Tsade2 Phase E (issue #100 followup, 2026-07-06) extended this same
+# file with a THIRD realisation, `dpcache_probe_dict_in_row_group_global_from_table`
+# — a separate cross-query cache for the column-prune PLANNER's per-row-
+# group DICTIONARY probe (a different value shape and a different call
+# site than the two data-page decoders above; see that block's own
+# comment below for the full rationale and the FACTOIDAL_DISABLE_DICT_GLOBAL_CACHE
+# kill switch).
 
 set -euo pipefail
 
@@ -155,9 +163,111 @@ if n_tbl != 1:
     sys.stderr.write("  [pagecache-global] WARN: from_table assume-val stub not matched (regex didn't fire)\n")
     sys.exit(1)
 
+# ----------------------------------------------------------------------
+# Tsade2 Phase E (issue #100 followup, 2026-07-06): realise
+# `dpcache_probe_dict_in_row_group_global_from_table`.
+#
+# This is the CROSS-QUERY sibling of the per-query `dict_cache` the
+# column-prune planner (RDF.CottasStore.populate_dict_cache_loop)
+# rebuilds from `[]` on every call. Same storage-cell shim shape as the
+# two blocks above, but a SEPARATE ref (`dpcache_global_ref`, type
+# `dict_page_cache`, not `page_cache` -- different value shape, a
+# dictionary `string list` instead of a decoded data column) because
+# the two caches serve different call sites and have independent
+# working sets. Extending this file rather than adding a new one, per
+# CLAUDE.md's "the existing PageCache glue layer already has the
+# storage-cell + kill-switch plumbing -- extend, don't duplicate."
+#
+# FACTOIDAL_DISABLE_DICT_GLOBAL_CACHE=1 forces every call straight
+# through to the underlying F*-pure per-call probe
+# (Parquet_Footer.probe_parquet_column_dictionary_in_row_group_from_table),
+# bypassing the ref entirely (not just clearing it) -- used by
+# tests/local/dict_global_cache_parity.sh to diff cache-on vs
+# cache-off query output on the same fixtures, following the
+# FACTOIDAL_DISABLE_STREAM_FASTPATH precedent in factoidal_cli.ml.
+# Capacity 1024 covers gene's largest built row-group count (44 rgs *
+# 4 cols = 176 entries) and parliament's (26 rgs * 4 cols = 104
+# entries) with headroom for smaller-row-group experiments (e.g. a
+# 128-row-group build = 512 entries) before LRU eviction kicks in;
+# past capacity the cache is still BOUNDED (old entries evicted, never
+# unbounded growth) and simply falls back to redecoding evicted
+# entries, so pathological row-group counts degrade to today's
+# behavior rather than growing memory without bound.
+# ----------------------------------------------------------------------
+
+fn_dict = "dpcache_probe_dict_in_row_group_global_from_table"
+pattern_dict = re.compile(
+    r"let " + re.escape(fn_dict) +
+    r"\s*\(table\s*:\s*Parquet_Footer\.parquet_row_group_offset_table\)\s*"
+    r"\(path\s*:\s*Prims\.string\)\s*"
+    r"\(rg_index\s*:\s*Prims\.nat\)\s*"
+    r"\(col_index\s*:\s*Prims\.nat\)\s*"
+    r":\s*Prims\.string\s+Prims\.list\s+FStar_Pervasives_Native\.option=\s*"
+    r"failwith\s*"
+    r'"Not yet implemented: RDF\.CottasStore\.PageCache\.' + re.escape(fn_dict) + r'"',
+    re.MULTILINE,
+)
+
+new_block_dict = '''(* Tsade2 Phase E (issue #100 followup, 2026-07-06): cross-query
+   DICTIONARY cache storage cell + realisation of the F*-pure
+   `dpcache_probe_dict_in_row_group_global_from_table` assume val.
+
+   LRU eviction, monotone clock, key match all live in the F*-verified
+   `dpcache_get` / `dpcache_put` / `dpcache_probe_dict_in_row_group_from_table`
+   functions above (mirrors `pcache_*` exactly, different value type).
+   This shim only threads the mutable storage ref across calls and
+   honours the FACTOIDAL_DISABLE_DICT_GLOBAL_CACHE kill switch. Rule
+   #11(c): no semantic decisions, no dictionary decode logic here --
+   that stays in Parquet_Footer. __PAGECACHE_GLOBAL_APPLIED__ *)
+let dpcache_global_capacity : Z.t = Z.of_int 1024
+
+let dpcache_global_ref : dict_page_cache ref =
+  ref (dpcache_empty dpcache_global_capacity)
+
+let dpcache_global_n_hits   : Stdlib.Int.t ref = Stdlib.ref 0
+let dpcache_global_n_misses : Stdlib.Int.t ref = Stdlib.ref 0
+
+let dpcache_global_disabled : bool =
+  match Stdlib.Sys.getenv_opt "FACTOIDAL_DISABLE_DICT_GLOBAL_CACHE" with
+  | Some "1" -> true
+  | _ -> false
+
+let dpcache_probe_dict_in_row_group_global_from_table
+  (table : Parquet_Footer.parquet_row_group_offset_table)
+  (path : Prims.string)
+  (rg_index : Prims.nat) (col_index : Prims.nat)
+  : Prims.string Prims.list FStar_Pervasives_Native.option =
+  if dpcache_global_disabled then
+    Parquet_Footer.probe_parquet_column_dictionary_in_row_group_from_table
+      table path rg_index col_index
+  else begin
+    let cap = (!dpcache_global_ref).dpc_capacity in
+    let key_present =
+      let (v, _) = dpcache_get !dpcache_global_ref (rg_index, col_index) in
+      match v with FStar_Pervasives_Native.Some _ -> true | _ -> false in
+    let (result, c') =
+      dpcache_probe_dict_in_row_group_from_table !dpcache_global_ref table path rg_index col_index cap in
+    dpcache_global_ref := c';
+    (if key_present then Stdlib.incr dpcache_global_n_hits
+     else Stdlib.incr dpcache_global_n_misses);
+    let total : Stdlib.Int.t = Stdlib.(!dpcache_global_n_hits + !dpcache_global_n_misses) in
+    (if Stdlib.(total mod 32 = 0) then
+      Printf.eprintf "[dictcache-global-trace] hits=%d misses=%d entries=%d cap=%d\\n%!"
+        !dpcache_global_n_hits !dpcache_global_n_misses
+        (Stdlib.List.length (!dpcache_global_ref).dpc_entries)
+        (Z.to_int cap));
+    result
+  end'''
+
+new_content, n_dict = pattern_dict.subn(new_block_dict, new_content, count=1)
+if n_dict != 1:
+    sys.stderr.write("  [pagecache-global] WARN: dict-cache assume-val stub not matched (regex didn't fire)\n")
+    sys.exit(1)
+
 path.write_text(new_content)
 sys.stderr.write("  [pagecache-global] replaced pcache_decode_in_row_group_global stub\n")
 sys.stderr.write("  [pagecache-global] replaced pcache_decode_in_row_group_global_from_table stub\n")
+sys.stderr.write("  [pagecache-global] replaced dpcache_probe_dict_in_row_group_global_from_table stub\n")
 PYEOF
 
 echo "  Cottas page-cache global decoder applied."

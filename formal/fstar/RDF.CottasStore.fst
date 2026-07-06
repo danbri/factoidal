@@ -925,6 +925,20 @@ let rec list_string_mem (xs : list string) (s : string)
 // (table build failed — e.g. a malformed footer) falls back to the
 // original per-call path-based probe so behaviour is unchanged on that
 // path, just not accelerated.
+//
+// Tsade2 Phase E (issue #100 followup, 2026-07-06): the `Some t` branch
+// now goes through `PageCache.dpcache_probe_dict_in_row_group_global_from_table`
+// instead of calling `probe_parquet_column_dictionary_in_row_group_from_table`
+// directly. `c` (this function's own `dict_cache` argument) still exists
+// and is still checked first — it is the PER-QUERY memo that lets
+// multiple bound columns in the SAME query planning pass share a
+// populate — but on a miss there it now asks the PROCESS-LIFETIME cache
+// instead of redecoding, so the dictionary decompress + plain-dictionary
+// decode work happens at most once per (row-group, column) per store
+// handle, not once per (row-group, column) per query. The `None` (no
+// table) branch is intentionally left calling the raw, unaccelerated
+// probe — same "fall back to unaccelerated, never wrong" precedent
+// `table` itself established.
 let rec populate_dict_cache_loop
   (c : dict_cache) (table : option parquet_row_group_offset_table)
   (path : string) (col_index : nat)
@@ -940,7 +954,7 @@ let rec populate_dict_cache_loop
         let dict_opt =
           match table with
           | Some t ->
-            probe_parquet_column_dictionary_in_row_group_from_table
+            dpcache_probe_dict_in_row_group_global_from_table
               t path rg_index col_index
           | None ->
             probe_parquet_column_dictionary_in_row_group path rg_index col_index in

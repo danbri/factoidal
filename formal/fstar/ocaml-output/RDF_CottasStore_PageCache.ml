@@ -227,3 +227,190 @@ let pcache_decode_in_row_group_global_from_table
       (Stdlib.List.length (!pcache_global_ref).pc_entries)
       (Z.to_int cap));
   result
+type dict_pcache_entry =
+  {
+  dpce_key: pcache_key ;
+  dpce_value: Prims.string Prims.list ;
+  dpce_age: Prims.nat }
+let __proj__Mkdict_pcache_entry__item__dpce_key
+  (projectee : dict_pcache_entry) : pcache_key=
+  match projectee with | { dpce_key; dpce_value; dpce_age;_} -> dpce_key
+let __proj__Mkdict_pcache_entry__item__dpce_value
+  (projectee : dict_pcache_entry) : Prims.string Prims.list=
+  match projectee with | { dpce_key; dpce_value; dpce_age;_} -> dpce_value
+let __proj__Mkdict_pcache_entry__item__dpce_age
+  (projectee : dict_pcache_entry) : Prims.nat=
+  match projectee with | { dpce_key; dpce_value; dpce_age;_} -> dpce_age
+type dict_page_cache =
+  {
+  dpc_entries: dict_pcache_entry Prims.list ;
+  dpc_clock: Prims.nat ;
+  dpc_capacity: Prims.nat }
+let __proj__Mkdict_page_cache__item__dpc_entries
+  (projectee : dict_page_cache) : dict_pcache_entry Prims.list=
+  match projectee with
+  | { dpc_entries; dpc_clock; dpc_capacity;_} -> dpc_entries
+let __proj__Mkdict_page_cache__item__dpc_clock (projectee : dict_page_cache)
+  : Prims.nat=
+  match projectee with
+  | { dpc_entries; dpc_clock; dpc_capacity;_} -> dpc_clock
+let __proj__Mkdict_page_cache__item__dpc_capacity
+  (projectee : dict_page_cache) : Prims.nat=
+  match projectee with
+  | { dpc_entries; dpc_clock; dpc_capacity;_} -> dpc_capacity
+let dpcache_empty (capacity : Prims.nat) : dict_page_cache=
+  { dpc_entries = []; dpc_clock = Prims.int_zero; dpc_capacity = capacity }
+let rec dpc_lookup_entry (entries : dict_pcache_entry Prims.list)
+  (k : pcache_key) : dict_pcache_entry FStar_Pervasives_Native.option=
+  match entries with
+  | [] -> FStar_Pervasives_Native.None
+  | e::rest ->
+      if key_eq e.dpce_key k
+      then FStar_Pervasives_Native.Some e
+      else dpc_lookup_entry rest k
+let rec dpc_replace_entry (entries : dict_pcache_entry Prims.list)
+  (k : pcache_key) (new_e : dict_pcache_entry) :
+  dict_pcache_entry Prims.list=
+  match entries with
+  | [] -> []
+  | e::rest ->
+      if key_eq e.dpce_key k
+      then new_e :: rest
+      else e :: (dpc_replace_entry rest k new_e)
+let rec dpc_drop_entry (entries : dict_pcache_entry Prims.list)
+  (k : pcache_key) : dict_pcache_entry Prims.list=
+  match entries with
+  | [] -> []
+  | e::rest ->
+      if key_eq e.dpce_key k then rest else e :: (dpc_drop_entry rest k)
+let dpcache_get (cache : dict_page_cache) (k : pcache_key) :
+  (Prims.string Prims.list FStar_Pervasives_Native.option * dict_page_cache)=
+  match dpc_lookup_entry cache.dpc_entries k with
+  | FStar_Pervasives_Native.None -> (FStar_Pervasives_Native.None, cache)
+  | FStar_Pervasives_Native.Some entry ->
+      let new_clock = cache.dpc_clock + Prims.int_one in
+      let bumped =
+        {
+          dpce_key = (entry.dpce_key);
+          dpce_value = (entry.dpce_value);
+          dpce_age = new_clock
+        } in
+      let updated =
+        {
+          dpc_entries = (dpc_replace_entry cache.dpc_entries k bumped);
+          dpc_clock = new_clock;
+          dpc_capacity = (cache.dpc_capacity)
+        } in
+      ((FStar_Pervasives_Native.Some (entry.dpce_value)), updated)
+let rec dpc_find_oldest_aux (entries : dict_pcache_entry Prims.list)
+  (best_key : pcache_key) (best_age : Prims.nat) (found : Prims.bool) :
+  pcache_key FStar_Pervasives_Native.option=
+  match entries with
+  | [] ->
+      if found
+      then FStar_Pervasives_Native.Some best_key
+      else FStar_Pervasives_Native.None
+  | e::rest ->
+      if Prims.op_Negation found
+      then dpc_find_oldest_aux rest e.dpce_key e.dpce_age true
+      else
+        if e.dpce_age < best_age
+        then dpc_find_oldest_aux rest e.dpce_key e.dpce_age true
+        else dpc_find_oldest_aux rest best_key best_age true
+let dpc_find_oldest (entries : dict_pcache_entry Prims.list) :
+  pcache_key FStar_Pervasives_Native.option=
+  dpc_find_oldest_aux entries (Prims.int_zero, Prims.int_zero) Prims.int_zero
+    false
+let dpcache_put (cache : dict_page_cache) (k : pcache_key)
+  (v : Prims.string Prims.list) (capacity : Prims.nat) : dict_page_cache=
+  if capacity = Prims.int_zero
+  then cache
+  else
+    (let new_clock = cache.dpc_clock + Prims.int_one in
+     let new_entry = { dpce_key = k; dpce_value = v; dpce_age = new_clock } in
+     let entries_after =
+       match dpc_lookup_entry cache.dpc_entries k with
+       | FStar_Pervasives_Native.Some uu___1 ->
+           dpc_replace_entry cache.dpc_entries k new_entry
+       | FStar_Pervasives_Native.None -> new_entry :: (cache.dpc_entries) in
+     let entries_capped =
+       if (list_len entries_after) > capacity
+       then
+         match dpc_find_oldest entries_after with
+         | FStar_Pervasives_Native.None -> entries_after
+         | FStar_Pervasives_Native.Some victim_key ->
+             dpc_drop_entry entries_after victim_key
+       else entries_after in
+     {
+       dpc_entries = entries_capped;
+       dpc_clock = new_clock;
+       dpc_capacity = capacity
+     })
+let dpcache_probe_dict_in_row_group_from_table (cache : dict_page_cache)
+  (table : Parquet_Footer.parquet_row_group_offset_table)
+  (path : Prims.string) (rg_index : Prims.nat) (col_index : Prims.nat)
+  (capacity : Prims.nat) :
+  (Prims.string Prims.list FStar_Pervasives_Native.option * dict_page_cache)=
+  let key = (rg_index, col_index) in
+  match dpcache_get cache key with
+  | (FStar_Pervasives_Native.Some v, c1) ->
+      ((FStar_Pervasives_Native.Some v), c1)
+  | (FStar_Pervasives_Native.None, c1) ->
+      (match Parquet_Footer.probe_parquet_column_dictionary_in_row_group_from_table
+               table path rg_index col_index
+       with
+       | FStar_Pervasives_Native.None -> (FStar_Pervasives_Native.None, c1)
+       | FStar_Pervasives_Native.Some v ->
+           let c2 = dpcache_put c1 key v capacity in
+           ((FStar_Pervasives_Native.Some v), c2))
+(* Tsade2 Phase E (issue #100 followup, 2026-07-06): cross-query
+   DICTIONARY cache storage cell + realisation of the F*-pure
+   `dpcache_probe_dict_in_row_group_global_from_table` assume val.
+
+   LRU eviction, monotone clock, key match all live in the F*-verified
+   `dpcache_get` / `dpcache_put` / `dpcache_probe_dict_in_row_group_from_table`
+   functions above (mirrors `pcache_*` exactly, different value type).
+   This shim only threads the mutable storage ref across calls and
+   honours the FACTOIDAL_DISABLE_DICT_GLOBAL_CACHE kill switch. Rule
+   #11(c): no semantic decisions, no dictionary decode logic here --
+   that stays in Parquet_Footer. __PAGECACHE_GLOBAL_APPLIED__ *)
+let dpcache_global_capacity : Z.t = Z.of_int 1024
+
+let dpcache_global_ref : dict_page_cache ref =
+  ref (dpcache_empty dpcache_global_capacity)
+
+let dpcache_global_n_hits   : Stdlib.Int.t ref = Stdlib.ref 0
+let dpcache_global_n_misses : Stdlib.Int.t ref = Stdlib.ref 0
+
+let dpcache_global_disabled : bool =
+  match Stdlib.Sys.getenv_opt "FACTOIDAL_DISABLE_DICT_GLOBAL_CACHE" with
+  | Some "1" -> true
+  | _ -> false
+
+let dpcache_probe_dict_in_row_group_global_from_table
+  (table : Parquet_Footer.parquet_row_group_offset_table)
+  (path : Prims.string)
+  (rg_index : Prims.nat) (col_index : Prims.nat)
+  : Prims.string Prims.list FStar_Pervasives_Native.option =
+  if dpcache_global_disabled then
+    Parquet_Footer.probe_parquet_column_dictionary_in_row_group_from_table
+      table path rg_index col_index
+  else begin
+    let cap = (!dpcache_global_ref).dpc_capacity in
+    let key_present =
+      let (v, _) = dpcache_get !dpcache_global_ref (rg_index, col_index) in
+      match v with FStar_Pervasives_Native.Some _ -> true | _ -> false in
+    let (result, c') =
+      dpcache_probe_dict_in_row_group_from_table !dpcache_global_ref table path rg_index col_index cap in
+    dpcache_global_ref := c';
+    (if key_present then Stdlib.incr dpcache_global_n_hits
+     else Stdlib.incr dpcache_global_n_misses);
+    let total : Stdlib.Int.t = Stdlib.(!dpcache_global_n_hits + !dpcache_global_n_misses) in
+    (if Stdlib.(total mod 32 = 0) then
+      Printf.eprintf "[dictcache-global-trace] hits=%d misses=%d entries=%d cap=%d
+%!"
+        !dpcache_global_n_hits !dpcache_global_n_misses
+        (Stdlib.List.length (!dpcache_global_ref).dpc_entries)
+        (Z.to_int cap));
+    result
+  end

@@ -1950,7 +1950,7 @@ let rec populate_dict_cache_loop (c : dict_cache)
              let dict_opt =
                match table with
                | FStar_Pervasives_Native.Some t ->
-                   Parquet_Footer.probe_parquet_column_dictionary_in_row_group_from_table
+                   RDF_CottasStore_PageCache.dpcache_probe_dict_in_row_group_global_from_table
                      t path rg_index col_index
                | FStar_Pervasives_Native.None ->
                    Parquet_Footer.probe_parquet_column_dictionary_in_row_group

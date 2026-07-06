@@ -245,3 +245,171 @@ assume val pcache_decode_in_row_group_global_from_table :
   (table : Parquet.Footer.parquet_row_group_offset_table) ->
   (path : string) -> (rg_index : nat) -> (col_index : nat) ->
   Tot (option cottas_column)
+
+// ----------------------------------------------------------------------
+// Tsade2 Phase E (issue #100 followup, 2026-07-06): cross-query DICTIONARY
+// cache.
+//
+// The two caches above memoise DATA-page decode (`cottas_column`, the
+// actual row values). Query PLANNING (RDF.CottasStore.fst's
+// `populate_dict_cache_for_column`, called once per `plan_candidate_rgs`,
+// itself called once per public query entry point) needs a DIFFERENT
+// artifact per (row-group, column): the column's DICTIONARY (`list
+// string`, the distinct values a RLE_DICTIONARY-encoded column can take
+// in that row group), used only to decide which row groups can possibly
+// contain a bound term. That planner rebuilds its dict cache from `[]`
+// on every single query (see the module banner at
+// `RDF.CottasStore.dict_cache`), so
+// `Parquet.Footer.probe_parquet_column_dictionary_in_row_group[_from_table]`
+// -- dictionary-page decompress + plain-dictionary decode -- reruns on
+// every query for every (row-group, bound-column) pair, even though the
+// dictionary is invariant for the lifetime of a read-only store handle.
+// This is the measured residual cost behind the post-offset-table 44-vs-
+// 8-row-group ratio (2026-07-05 perf review, roadmap item 2): the
+// per-locate O(row_groups^2) walk is gone, but this per-query O(row_groups)
+// redecode remains and is what makes 44 groups still ~4x an 8-group query
+// instead of the ~5.5x-row-group-ratio-bound linear cost alone would give.
+//
+// Cache shape mirrors `page_cache`/`pcache_*` above EXACTLY (same
+// assoc-list-with-age-stamps LRU, same key shape) -- only the stored
+// value type differs (`list string` dictionaries vs `cottas_column` data).
+// Kept as a separate small type instead of parameterizing `page_cache`
+// over a type variable, to avoid touching every existing `page_cache`-
+// typed call site for an unrelated change. The duplication below is of
+// LRU BOOKKEEPING only (rule #15 concerns decode logic, not cache
+// scaffolding) -- the actual dictionary decompress/decode stays solely
+// in `Parquet.Footer`, called exactly once per (rg, col) per PROCESS
+// instead of once per (rg, col) per QUERY.
+// ----------------------------------------------------------------------
+
+noeq type dict_pcache_entry = {
+  dpce_key : pcache_key;
+  dpce_value : list string;
+  dpce_age : nat;
+}
+
+noeq type dict_page_cache = {
+  dpc_entries : list dict_pcache_entry;
+  dpc_clock : nat;
+  dpc_capacity : nat;  // 0 = disabled (every call is a miss, no growth).
+}
+
+let dpcache_empty (capacity : nat) : dict_page_cache = {
+  dpc_entries = [];
+  dpc_clock = 0;
+  dpc_capacity = capacity;
+}
+
+let rec dpc_lookup_entry (entries : list dict_pcache_entry) (k : pcache_key)
+  : Tot (option dict_pcache_entry) (decreases entries) =
+  match entries with
+  | [] -> None
+  | e :: rest -> if key_eq e.dpce_key k then Some e else dpc_lookup_entry rest k
+
+let rec dpc_replace_entry (entries : list dict_pcache_entry) (k : pcache_key)
+  (new_e : dict_pcache_entry)
+  : Tot (list dict_pcache_entry) (decreases entries) =
+  match entries with
+  | [] -> []
+  | e :: rest ->
+    if key_eq e.dpce_key k then new_e :: rest
+    else e :: dpc_replace_entry rest k new_e
+
+let rec dpc_drop_entry (entries : list dict_pcache_entry) (k : pcache_key)
+  : Tot (list dict_pcache_entry) (decreases entries) =
+  match entries with
+  | [] -> []
+  | e :: rest -> if key_eq e.dpce_key k then rest else e :: dpc_drop_entry rest k
+
+// Cache lookup. Returns the cached dictionary if present + cache with
+// the matched entry's age bumped.
+let dpcache_get (cache : dict_page_cache) (k : pcache_key)
+  : Tot (option (list string) & dict_page_cache) =
+  match dpc_lookup_entry cache.dpc_entries k with
+  | None -> (None, cache)
+  | Some entry ->
+    let new_clock = cache.dpc_clock + 1 in
+    let bumped = { entry with dpce_age = new_clock; } in
+    let updated = {
+      cache with
+        dpc_entries = dpc_replace_entry cache.dpc_entries k bumped;
+        dpc_clock = new_clock;
+    } in
+    (Some entry.dpce_value, updated)
+
+let rec dpc_find_oldest_aux
+  (entries : list dict_pcache_entry)
+  (best_key : pcache_key) (best_age : nat) (found : bool)
+  : Tot (option pcache_key) (decreases entries) =
+  match entries with
+  | [] -> if found then Some best_key else None
+  | e :: rest ->
+    if not found then dpc_find_oldest_aux rest e.dpce_key e.dpce_age true
+    else if e.dpce_age < best_age then dpc_find_oldest_aux rest e.dpce_key e.dpce_age true
+    else dpc_find_oldest_aux rest best_key best_age true
+
+let dpc_find_oldest (entries : list dict_pcache_entry) : Tot (option pcache_key) =
+  dpc_find_oldest_aux entries (0, 0) 0 false
+
+// Put an entry, evicting the LRU victim past capacity. Same policy as
+// `pcache_put`.
+let dpcache_put
+  (cache : dict_page_cache) (k : pcache_key) (v : list string)
+  (capacity : nat)
+  : Tot dict_page_cache =
+  if capacity = 0 then cache
+  else
+    let new_clock = cache.dpc_clock + 1 in
+    let new_entry = { dpce_key = k; dpce_value = v; dpce_age = new_clock; } in
+    let entries_after =
+      match dpc_lookup_entry cache.dpc_entries k with
+      | Some _ -> dpc_replace_entry cache.dpc_entries k new_entry
+      | None -> new_entry :: cache.dpc_entries in
+    let entries_capped =
+      if list_len entries_after > capacity then
+        match dpc_find_oldest entries_after with
+        | None -> entries_after  // unreachable when len > 0
+        | Some victim_key -> dpc_drop_entry entries_after victim_key
+      else entries_after in
+    {
+      dpc_entries = entries_capped;
+      dpc_clock = new_clock;
+      dpc_capacity = capacity;
+    }
+
+// Cache-wrapped dictionary probe (table-threaded). A cache miss decodes
+// through `Parquet.Footer.probe_parquet_column_dictionary_in_row_group_from_table`
+// -- the exact call the planner makes on every query today -- and stores
+// the result for the next caller.
+let dpcache_probe_dict_in_row_group_from_table
+  (cache : dict_page_cache)
+  (table : Parquet.Footer.parquet_row_group_offset_table)
+  (path : string)
+  (rg_index : nat) (col_index : nat) (capacity : nat)
+  : Tot (option (list string) & dict_page_cache) =
+  let key = (rg_index, col_index) in
+  match dpcache_get cache key with
+  | (Some v, c1) -> (Some v, c1)
+  | (None, c1) ->
+    match Parquet.Footer.probe_parquet_column_dictionary_in_row_group_from_table
+            table path rg_index col_index with
+    | None -> (None, c1)
+    | Some v ->
+      let c2 = dpcache_put c1 key v capacity in
+      (Some v, c2)
+
+// Global (cross-call storage cell) variant. Same rule-#11(c) shape as
+// `pcache_decode_in_row_group_global_from_table`: the OCaml realisation
+// only forwards the F*-computed table and threads a mutable
+// `dict_page_cache ref` across calls -- no semantic decisions, no
+// OCaml-side dictionary decode. This is the function
+// `RDF.CottasStore.populate_dict_cache_loop` calls instead of the raw
+// per-call probe, so the planner's per-query cache populate becomes a
+// process-lifetime cache populate. Realisation: the same
+// experimental_ocaml_glue/cottas_pagecache_global_runtime.sh file (the
+// existing OCaml page-cache glue layer already has the storage-cell +
+// env-kill-switch plumbing this needs; extended, not duplicated).
+assume val dpcache_probe_dict_in_row_group_global_from_table :
+  (table : Parquet.Footer.parquet_row_group_offset_table) ->
+  (path : string) -> (rg_index : nat) -> (col_index : nat) ->
+  Tot (option (list string))

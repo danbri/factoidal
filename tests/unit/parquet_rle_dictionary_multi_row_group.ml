@@ -293,6 +293,76 @@ let () =
     ) [1; 3]
   done;
 
+  (* 8. Cross-query dictionary cache (Tsade2 Phase E, 2026-07-06 --
+     docs/designissues/2026-07-05-disk-backed-db-perf-review.md roadmap
+     item 2's residual: the planner rebuilt its dict cache from scratch
+     on EVERY query, redoing the per-row-group dictionary decompress +
+     decode each time; `RDF.CottasStore.PageCache` now carries a
+     process-lifetime `dict_page_cache` the planner consults instead).
+     Correctness pins, per the same correctness-over-timing rule as
+     section 7:
+
+     (a) the global cached probe must return byte-identical results to
+         the raw path-based probe for every (rg, dictionary-bearing col)
+         -- on BOTH the first call (cache miss -> decode -> insert) and
+         a repeated call (cache hit -> stored value), because a hit that
+         differs from a fresh decode is exactly the stale/corrupt-cache
+         wrong-answer failure mode the kill switch exists to bisect;
+
+     (b) the pure F* LRU bookkeeping (`dpcache_get` / `dpcache_put` /
+         eviction at capacity) must behave as specified, since the OCaml
+         glue only threads a ref through these verified functions. *)
+  for rg = 0 to 2 do
+    List.iter (fun col ->
+      let via_path =
+        Parquet_Footer.probe_parquet_column_dictionary_in_row_group
+          fixture_path (Z.of_int rg) (Z.of_int col) in
+      let via_global_first =
+        RDF_CottasStore_PageCache.dpcache_probe_dict_in_row_group_global_from_table
+          rg_offset_table fixture_path (Z.of_int rg) (Z.of_int col) in
+      let via_global_again =
+        RDF_CottasStore_PageCache.dpcache_probe_dict_in_row_group_global_from_table
+          rg_offset_table fixture_path (Z.of_int rg) (Z.of_int col) in
+      check
+        ~name:(Printf.sprintf "global dict cache miss == path-based dict (rg=%d, col=%d)" rg col)
+        (via_global_first = via_path);
+      check
+        ~name:(Printf.sprintf "global dict cache hit == path-based dict (rg=%d, col=%d)" rg col)
+        (via_global_again = via_path)
+    ) [1; 3]
+  done;
+
+  (* (b) Pure LRU semantics of the F*-verified dict_page_cache. *)
+  let module PC = RDF_CottasStore_PageCache in
+  let z = Z.of_int in
+  let cap2 = z 2 in
+  let c0 = PC.dpcache_empty cap2 in
+  let k1 = (z 0, z 1) and k2 = (z 1, z 1) and k3 = (z 2, z 1) in
+  let c1 = PC.dpcache_put c0 k1 ["a"] cap2 in
+  let c2 = PC.dpcache_put c1 k2 ["b"] cap2 in
+  (match PC.dpcache_get c2 k1 with
+   | (FStar_Pervasives_Native.Some ["a"], _) ->
+     check ~name:"dpcache_get returns stored dict" true
+   | _ -> check ~name:"dpcache_get returns stored dict" false);
+  (* Touch k1 (bumps its age above k2's), then insert k3 past capacity:
+     k2 is now the LRU victim; k1 and k3 must survive. *)
+  let (_, c3) = PC.dpcache_get c2 k1 in
+  let c4 = PC.dpcache_put c3 k3 ["c"] cap2 in
+  (match PC.dpcache_get c4 k2 with
+   | (FStar_Pervasives_Native.None, _) ->
+     check ~name:"dpcache_put evicts LRU entry at capacity" true
+   | _ -> check ~name:"dpcache_put evicts LRU entry at capacity" false);
+  (match PC.dpcache_get c4 k1, PC.dpcache_get c4 k3 with
+   | (FStar_Pervasives_Native.Some ["a"], _), (FStar_Pervasives_Native.Some ["c"], _) ->
+     check ~name:"dpcache_put keeps recently-used + new entries" true
+   | _ -> check ~name:"dpcache_put keeps recently-used + new entries" false);
+  (* Capacity 0 disables the cache: puts are dropped, gets miss. *)
+  let cz = PC.dpcache_put (PC.dpcache_empty (z 0)) k1 ["a"] (z 0) in
+  (match PC.dpcache_get cz k1 with
+   | (FStar_Pervasives_Native.None, _) ->
+     check ~name:"dpcache capacity 0 stores nothing" true
+   | _ -> check ~name:"dpcache capacity 0 stores nothing" false);
+
   Printf.printf
     "== summary: %d pass, %d fail (out of %d) ==\n"
     !passed !failed (!passed + !failed);
