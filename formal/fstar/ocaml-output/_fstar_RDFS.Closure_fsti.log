@@ -7,8 +7,8 @@
 * Warning 247 at RDFS.Closure.fsti(0,0-0,0):
   - Checked file RDFS.Closure.fsti.checked was not written.
   - Reason:
-      checked file RDF.Graph.fsti.checked is stale (digest mismatch for
-      RDF.Graph.fsti)
+      checked file RDF.Vocabulary.Axioms.fst.checked is stale (digest mismatch
+      for RDF.Vocabulary.Axioms.fst)
 
 Verified i'face (or impl+i'face): RDFS.Closure
 All verification conditions discharged successfully

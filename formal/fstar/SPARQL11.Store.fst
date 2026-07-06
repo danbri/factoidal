@@ -10,6 +10,7 @@ open RDF.CottasStore
 open RDF.Store.Capabilities
 open RDF.Store.Capabilities.Cottas
 open RDF.Store.Capabilities.Delta
+open RML.VirtualSource
 
 module Lh = RDF.List.Helpers
 module DL = RDF.Store.Columnar.DeltaLog
@@ -55,6 +56,16 @@ noeq type graph_backend =
   // why `caps_of_backend` is the ONE dispatch point a new backend touches.
   | GB_CottasOnDiskDelta : cottas_ondisk_store -> cottas_ondisk_graph_scope -> DM.delta_resolved -> graph_backend
   | GB_Union : list graph_backend -> graph_backend
+  // Virtual-sources Part B (docs/designissues/2026-07-06-virtual-
+  // sources-design.md §3 / stage 5): a D2RQ/Ontop-style non-
+  // materialized backend over an RML mapping + its already-read
+  // source payloads. `caps_of_backend`'s arm below is one line,
+  // `RML.VirtualSource.caps_of_rml_source rvs` — the whole pushdown
+  // model (structural TriplesMap narrowing, row-level subject-template
+  // pushdown, the default-graph-only v1 scope) lives in that module,
+  // not here, same "one dispatch point" discipline every other
+  // backend already follows.
+  | GB_VirtualRML : RML.VirtualSource.rml_virtual_source -> graph_backend
 
 noeq type named_graph_backend = {
   ngb_name : iri;
@@ -321,6 +332,7 @@ let rec caps_of_backend (gb : graph_backend) : Tot store_caps (decreases gb) =
   // realisation, reusing the unmodified COTTAS builder as its base.
   | GB_CottasOnDiskDelta cods scope delta -> overlay (caps_of_cottas cods scope) delta
   | GB_Union members -> union_caps (caps_of_backend_list members)
+  | GB_VirtualRML rvs -> RML.VirtualSource.caps_of_rml_source rvs
 
 // Structural twin of caps_of_backend over a list. Replaces the six
 // union_* recursion twins: union_caps (RDF.Store.Capabilities.fst) IS

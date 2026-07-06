@@ -11,6 +11,7 @@ type graph_backend =
   RDF_CottasStore.cottas_ondisk_graph_scope *
   RDF_Store_Columnar_DeltaMerge.delta_resolved 
   | GB_Union of graph_backend Prims.list 
+  | GB_VirtualRML of RML_VirtualSource.rml_virtual_source 
 let uu___is_GB_List (projectee : graph_backend) : Prims.bool=
   match projectee with | GB_List _0 -> true | uu___ -> false
 let __proj__GB_List__item___0 (projectee : graph_backend) :
@@ -56,6 +57,11 @@ let uu___is_GB_Union (projectee : graph_backend) : Prims.bool=
   match projectee with | GB_Union _0 -> true | uu___ -> false
 let __proj__GB_Union__item___0 (projectee : graph_backend) :
   graph_backend Prims.list= match projectee with | GB_Union _0 -> _0
+let uu___is_GB_VirtualRML (projectee : graph_backend) : Prims.bool=
+  match projectee with | GB_VirtualRML _0 -> true | uu___ -> false
+let __proj__GB_VirtualRML__item___0 (projectee : graph_backend) :
+  RML_VirtualSource.rml_virtual_source=
+  match projectee with | GB_VirtualRML _0 -> _0
 type named_graph_backend =
   {
   ngb_name: RDF_Term.iri ;
@@ -301,6 +307,7 @@ let rec caps_of_backend (gb : graph_backend) :
         (RDF_Store_Capabilities_Cottas.caps_of_cottas cods scope) delta
   | GB_Union members ->
       RDF_Store_Capabilities.union_caps (caps_of_backend_list members)
+  | GB_VirtualRML rvs -> RML_VirtualSource.caps_of_rml_source rvs
 and caps_of_backend_list (members : graph_backend Prims.list) :
   RDF_Store_Capabilities.store_caps Prims.list=
   match members with

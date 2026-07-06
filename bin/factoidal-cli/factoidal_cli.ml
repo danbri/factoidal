@@ -329,6 +329,68 @@ let open_hdt_store path =
     Printf.eprintf "Error: could not open HDT artifact: %s\n" path;
     exit 1
 
+(* Virtual-sources Part B (docs/designissues/2026-07-06-virtual-sources-
+   design.md, stage 5): `--data-rml MAPPING.ttl` answers SPARQL against
+   an RML mapping's raw JSON/CSV sources WITHOUT materializing RDF —
+   RML_VirtualSource.caps_of_rml_source (formal/fstar/RML.VirtualSource.fst)
+   is the F*-side pushdown backend; this loader is CONSUMER-side I/O
+   only (rule #11): read the mapping + each triples map's own source
+   file ONCE, hand the already-parsed payload to the F* record. Same
+   read+parse seam bin/rml-runner/rml_runner.ml's `resolve_rows`
+   already uses (read_file -> Parser_JSON.parse_json for JSONPath
+   sources; read_file raw text for CSV) — reused here, not forked.
+
+   Source paths resolve relative to `rml:root` per the RML-Core spec:
+   rml:MappingDirectory (default -- every rml-core fixture uses this)
+   -> the mapping.ttl's OWN directory; rml:CurrentWorkingDirectory ->
+   the process cwd. There is no CLI flag yet for the "execution
+   environment" default base IRI (RML-Core 4.1.1) that some mappings
+   need when they carry no in-document rml:baseIRI -- None is passed,
+   matching every rml-core stage-5 fixture actually exercised (none
+   need it); a --rml-base-iri flag is a natural, small follow-up if a
+   future mapping needs one. *)
+let load_rml_mapping_backend (mapping_path : string) : SPARQL11_Store.graph_backend =
+  if not (Sys.file_exists mapping_path) then begin
+    Printf.eprintf "Error: --data-rml mapping file not found: %s\n" mapping_path; exit 1
+  end;
+  let mapping_dir = Filename.dirname mapping_path in
+  let ttl = read_file mapping_path in
+  let g = Parser_Turtle.parse_turtle ttl in
+  let doc = RML_Mapping.decode_mapping_document g in
+  let source_dir (ls : RML_Mapping.logical_source) =
+    match ls.RML_Mapping.ls_source_root with
+    | FStar_Pervasives_Native.Some RML_Mapping.Root_CurrentWorkingDirectory -> Sys.getcwd ()
+    | _ (* Root_MappingDirectory or unspecified *) -> mapping_dir
+  in
+  let read_source path =
+    try Some (read_file path) with Sys_error _ -> None
+  in
+  let source_for_map (tmap : RML_Mapping.triples_map) : (string * RML_VirtualSource.rml_source_data) option =
+    match tmap.RML_Mapping.tm_logical_source with
+    | FStar_Pervasives_Native.None -> None
+    | FStar_Pervasives_Native.Some ls ->
+      (match ls.RML_Mapping.ls_source_path with
+       | FStar_Pervasives_Native.None -> Some (tmap.RML_Mapping.tm_id, RML_VirtualSource.RSD_None)
+       | FStar_Pervasives_Native.Some p ->
+         let path = Filename.concat (source_dir ls) p in
+         (match ls.RML_Mapping.ls_reference_formulation with
+          | FStar_Pervasives_Native.Some RML_Mapping.RF_JSONPath ->
+            (match read_source path with
+             | None -> Some (tmap.RML_Mapping.tm_id, RML_VirtualSource.RSD_None)
+             | Some content ->
+               (match Parser_JSON.parse_json content with
+                | FStar_Pervasives_Native.None -> Some (tmap.RML_Mapping.tm_id, RML_VirtualSource.RSD_None)
+                | FStar_Pervasives_Native.Some root -> Some (tmap.RML_Mapping.tm_id, RML_VirtualSource.RSD_Json root)))
+          | FStar_Pervasives_Native.Some RML_Mapping.RF_CSV ->
+            (match read_source path with
+             | None -> Some (tmap.RML_Mapping.tm_id, RML_VirtualSource.RSD_None)
+             | Some content -> Some (tmap.RML_Mapping.tm_id, RML_VirtualSource.RSD_Csv content))
+          | _ -> Some (tmap.RML_Mapping.tm_id, RML_VirtualSource.RSD_None)))
+  in
+  let sources = List.filter_map source_for_map doc.RML_Mapping.md_triples_maps in
+  SPARQL11_Store.GB_VirtualRML
+    RML_VirtualSource.({ rvs_doc = doc; rvs_sources = sources; rvs_base_iri = FStar_Pervasives_Native.None })
+
 (* In-memory bytes store, stage 3 (docs/designissues/2026-07-06-
    inmemory-bytes-store.md): `--data-cottas-mem FILE` reads FILE fully
    into an OCaml string and registers it under a synthetic handle via
@@ -401,6 +463,7 @@ let build_dataset_backend
     (cottas_paths : string list)
     (delta_log_path : string option)
     (hdt_stores : Parser_BallyhooHDT.hdt_graph_store list)
+    (rml_backends : SPARQL11_Store.graph_backend list)
     : SPARQL11_Store.dataset_backend =
   let module S = SPARQL11_Store in
   let in_memory_backend = S.indexed_dataset_backend in_memory in
@@ -415,6 +478,16 @@ let build_dataset_backend
          S.({ dsb_default = GB_HDT hgs; dsb_named = [] }))
       hdt_stores
   in
+  (* Virtual-sources Part B (docs/designissues/2026-07-06-virtual-
+     sources-design.md, stage 5): each --data-rml mapping is, like HDT,
+     a read-only, default-graph-only backend (v1 scope -- RML.
+     VirtualSource.fst's own banner) that composes via GB_Union/
+     combine_dataset_backends with zero new plumbing here. *)
+  let rml_dataset_backends =
+    List.map
+      (fun (gb : SPARQL11_Store.graph_backend) -> S.({ dsb_default = gb; dsb_named = [] }))
+      rml_backends
+  in
   match delta_log_path, cottas_stores, cottas_paths with
   | Some log_path, [ cods ], [ cpath ] ->
     (* Durable-UPDATE stage 4: an ordinary query against a store that
@@ -428,7 +501,7 @@ let build_dataset_backend
     let epoch = read_compacted_epoch_opt (Filename.dirname cpath) in
     let delta_backend = S.cottas_with_delta_dataset_backend cods log_path epoch in
     RDF_Store_Combine.combine_dataset_backends
-      ([ in_memory_backend; delta_backend ] @ hdt_backends)
+      ([ in_memory_backend; delta_backend ] @ hdt_backends @ rml_dataset_backends)
   | Some _, _, _ ->
     Printf.eprintf
       "Error: --delta-log requires exactly one --data-cottas store (got %d)\n"
@@ -439,7 +512,7 @@ let build_dataset_backend
       List.map S.cottas_ondisk_dataset_backend cottas_stores
     in
     RDF_Store_Combine.combine_dataset_backends
-      (in_memory_backend :: (cottas_backends @ hdt_backends))
+      (in_memory_backend :: (cottas_backends @ hdt_backends @ rml_dataset_backends))
 
 (* ============================================================================
    Result table formatting (like arq / isql)
@@ -577,6 +650,7 @@ type config = {
   mutable data_files : string list;
   mutable data_cottas_files : string list;  (* COTTAS/Parquet artifacts *)
   mutable data_hdt_files : string list;     (* HDT artifacts, read-only, default graph only *)
+  mutable data_rml_files : string list;     (* RML mappings, virtual (non-materialized), default graph only *)
   mutable delta_log_path : string option;   (* durable-UPDATE stage 3: --delta-log PATH *)
   mutable named_graphs : (string * string) list;  (* (iri, file) *)
   mutable query_file : string option;
@@ -712,6 +786,13 @@ let usage () =
   Printf.printf "                         artifact (repeatable). Default graph only (no\n";
   Printf.printf "                         named graphs -- HDTQ is a separate, deferred\n";
   Printf.printf "                         extension); SELECT/ASK only.\n";
+  Printf.printf "      --data-rml MAPPING.ttl  Answer SPARQL against an RML mapping's raw\n";
+  Printf.printf "                         JSON/CSV sources WITHOUT materializing RDF\n";
+  Printf.printf "                         (repeatable). Source files resolve relative to\n";
+  Printf.printf "                         the mapping's own directory (rml:MappingDirectory)\n";
+  Printf.printf "                         or the process cwd (rml:CurrentWorkingDirectory).\n";
+  Printf.printf "                         Read-only, default graph only (v1 scope). See\n";
+  Printf.printf "                         docs/designissues/2026-07-06-virtual-sources-design.md.\n";
   Printf.printf "  -n, --named IRI=FILE   Load named graph\n";
   Printf.printf "  -q, --query, --query-file FILE   SPARQL query file\n";
   Printf.printf "  -e SPARQL              Inline SPARQL query string\n";
@@ -769,7 +850,7 @@ let version () =
    legacy callers. *)
 let parse_args ?args () =
   let cfg = {
-    data_files = []; data_cottas_files = []; data_hdt_files = []; delta_log_path = None; named_graphs = []; query_file = None;
+    data_files = []; data_cottas_files = []; data_hdt_files = []; data_rml_files = []; delta_log_path = None; named_graphs = []; query_file = None;
     query_string = None; base_iri = None; input_format = None;
     output_format = Table; dump_mode = false; dump_nq_mode = false;
     dump_turtle_mode = false;
@@ -799,6 +880,11 @@ let parse_args ?args () =
          program-plan.md): a read-only, default-graph-only backend --
          see build_dataset_backend's hdt handling below. *)
       cfg.data_hdt_files <- cfg.data_hdt_files @ [f]; loop rest
+    | "--data-rml" :: f :: rest ->
+      (* Virtual-sources Part B (docs/designissues/2026-07-06-virtual-
+         sources-design.md, stage 5) -- see build_dataset_backend's rml
+         handling above and load_rml_mapping_backend. *)
+      cfg.data_rml_files <- cfg.data_rml_files @ [f]; loop rest
     | "--delta-log" :: f :: rest ->
       cfg.delta_log_path <- Some f; loop rest
     | ("--named" | "-n") :: spec :: rest ->
@@ -2724,6 +2810,7 @@ let () =
   if not fastpath_disabled
      && cfg.data_cottas_files = []
      && cfg.data_hdt_files = []
+     && cfg.data_rml_files = []
      && cfg.named_graphs = []
      && cfg.entail_regime = ""
      && cfg.data_files <> []
@@ -2921,8 +3008,14 @@ let () =
             Printf.eprintf "Error opening HDT %s: %s\n" f (Printexc.to_string e);
             exit 1
         ) cfg.data_hdt_files in
+        let rml_backends = List.map (fun f ->
+          try load_rml_mapping_backend f
+          with e ->
+            Printf.eprintf "Error loading RML mapping %s: %s\n" f (Printexc.to_string e);
+            exit 1
+        ) cfg.data_rml_files in
         let dsb =
-          build_dataset_backend dataset cottas_stores cfg.data_cottas_files cfg.delta_log_path hdt_stores
+          build_dataset_backend dataset cottas_stores cfg.data_cottas_files cfg.delta_log_path hdt_stores rml_backends
         in
         let ask_answer =
           if is_ask then

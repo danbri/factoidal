@@ -153,6 +153,9 @@ COMMON_MODULES=(
   SPARQL11_Parser
   SHACL_Validation
   VC_Credential
+  RML_Mapping
+  RML_Sources
+  RML_Eval
   CSVW_Metadata
   CSVW_URITemplate
   CSVW_Conversion
@@ -161,6 +164,7 @@ COMMON_MODULES=(
   RDF_Store_Capabilities
   RDF_Store_Capabilities_Cottas
   RDF_Store_Capabilities_Delta
+  RML_VirtualSource
   SPARQL11_Store
   RDF_Store_Combine
   SPARQL_Protocol
