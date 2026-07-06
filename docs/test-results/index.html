@@ -279,8 +279,8 @@
 <header>
   <div class="inner">
     <div class="rendered-pill" title="Rendered = when this page was last regenerated. Tests = when the *_results.log files inside the repository were last updated. Both UTC.">
-      <span class="row"><span class="label">Rendered</span><strong>2026-07-06 17:10 UTC</strong></span>
-      <span class="row"><span class="label">Tests</span><strong class="tests">2026-07-06 16:49 UTC</strong></span>
+      <span class="row"><span class="label">Rendered</span><strong>2026-07-06 17:26 UTC</strong></span>
+      <span class="row"><span class="label">Tests</span><strong class="tests">2026-07-06 16:53 UTC</strong></span>
     </div>
     <h1>W3C test results</h1>
     <p>Pass/fail/skip counts against every standards suite this project measures: RDF 1.1, SPARQL 1.1, RDFS/OWL 2, SHACL, ShEx, RIF Core, RML, JSON-LD 1.1, and Verifiable Credentials 2.0.</p>
@@ -1042,20 +1042,20 @@
 
 <section class="family amber" id="rules">
   <h2>Rules: RIF Core</h2>
-  <p class="fam-headline amber">30 pass, 8 fail, 12 skip (of 50) — Part 1 (4 vendored SPARQL-manifest cases) + Part 2 (46-test W3C RIF Core dialect corpus).</p>
+  <p class="fam-headline amber">34 pass, 4 fail, 12 skip (of 50) — Part 1 (4 vendored SPARQL-manifest cases) + Part 2 (46-test W3C RIF Core dialect corpus).</p>
   <details open>
     <summary>Suites in this family (tap to collapse)</summary>
     <div class="suites">
       <div class="suite-row amber">
         <div class="suite-name">RIF Core — combined (Part 1 + Part 2)</div>
-        <div class="meter"><div class="seg seg-pass" style="width:60.00%"></div><div class="seg seg-fail" style="width:16.00%"></div><div class="seg seg-skip" style="width:24.00%"></div></div>
-        <div class="suite-numbers"><small>30 pass, 8 fail, 12 skip (of 50)</small></div>
+        <div class="meter"><div class="seg seg-pass" style="width:68.00%"></div><div class="seg seg-fail" style="width:8.00%"></div><div class="seg seg-skip" style="width:24.00%"></div></div>
+        <div class="suite-numbers"><small>34 pass, 4 fail, 12 skip (of 50)</small></div>
       </div>
       <p class="suite-prov">Runner: <code>bin/rif-runner</code> (<code>bin/linux-x86_64/rif_runner</code>) &middot; Suites: <code>third_party/testing/rif/tc/</code> + <code>third_party/testing/rif-core-suite/</code> &middot; <a href="https://github.com/danbri/factoidal/blob/claude/main/bin/rif-runner/README.md" target="_blank" rel="noopener">diagnosis: 1 corpus data defect (malformed xsd:string IRI in the official W3C zip) + 3 labelled engine KNOWN-GAPs, see bin/rif-runner/README.md</a></p>
-      <div class="suite-row amber">
+      <div class="suite-row green">
         <div class="suite-name">RIF Core — Part 1 (4 vendored SPARQL-manifest cases)</div>
-        <div class="meter"><div class="seg seg-pass" style="width:0.00%"></div><div class="seg seg-fail" style="width:100.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
-        <div class="suite-numbers"><small>0 pass, 4 fail, 0 skip (of 4)</small></div>
+        <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+        <div class="suite-numbers"><small>4 pass, 0 fail, 0 skip (of 4)</small></div>
       </div>
       <p class="suite-prov">Runner: <code>bin/rif-runner</code> &middot; Suite: <code>third_party/testing/rif/tc/</code> (the same 4 cases are also scored independently as the &ldquo;RIF Core&rdquo; row under SPARQL 1.1 Entailment Regimes above, via <code>w3c_runner</code>'s entailment dispatch — both pipelines agree)</p>
       <div class="suite-row amber">
@@ -1204,7 +1204,7 @@ shacl-sparql: 0 pass, 0 fail, 0 skip (of 0) — present=1
 shex:         0 pass, 0 fail, 0 skip (of 0) — present=0
 jsonld-tordf: 449 pass, 12 fail, 6 skip (of 467) — present=1
 rml-core:     76 pass, 0 fail, 0 skip (of 76) — present=1
-rif-core:     30 pass, 8 fail, 12 skip (of 50) — present=1
+rif-core:     34 pass, 4 fail, 12 skip (of 50) — present=1
 vc-stage1:    109 pass, 5 fail, 6 skip (of 120) — present=1</pre>
 </details>
 
@@ -1223,9 +1223,9 @@ vc-stage1:    109 pass, 5 fail, 6 skip (of 120) — present=1</pre>
 </main>
 
 <footer>
-  Generated <strong>2026-07-06 17:10 UTC</strong> from commit
-  <code><a href="https://github.com/danbri/factoidal/commit/2bec68e0b9d1b8aad9c70415ce8830f5abc93fec">2bec68e0</a></code>
-  on branch <code>claude/main</code> — &ldquo;SPARQL 1.1 Protocol client: query --endpoint over GET/POST/POST-form&rdquo;.
+  Generated <strong>2026-07-06 17:26 UTC</strong> from commit
+  <code><a href="https://github.com/danbri/factoidal/commit/2fe187fd7ac1cc108d76c629bf9e87fef259f740">2fe187fd</a></code>
+  on branch <code>claude/main</code> — &ldquo;Add fulltext SPARQL Slice 1 (text:query, pure F*, no scoring)&rdquo;.
   Re-run locally: <code>cd formal/fstar &amp;&amp; ./generate-report.sh --run</code>.
 </footer>
 
