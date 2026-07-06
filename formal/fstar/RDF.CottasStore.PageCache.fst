@@ -207,3 +207,41 @@ let pcache_decode_in_row_group
 assume val pcache_decode_in_row_group_global :
   (path : string) -> (rg_index : nat) -> (col_index : nat) ->
   Tot (option cottas_column)
+
+// Table-threaded sibling of `pcache_decode_in_row_group` (issue
+// #98/Mim3 follow-up, 2026-07-05): same LRU semantics, but a cache
+// MISS decodes through the row-group-offset-table decoder
+// (`probe_parquet_column_decode_in_row_group_seq_from_table`) instead
+// of the per-call footer re-walk. The table is
+// `Parquet.Footer.probe_parquet_row_group_offset_table`'s output,
+// built ONCE per query by the RDF.CottasStore public entry points and
+// threaded down through the row-group walks -- offsets are F*
+// semantics, computed in Parquet.Footer, never cached OCaml-side.
+let pcache_decode_in_row_group_from_table
+  (cache : page_cache)
+  (table : Parquet.Footer.parquet_row_group_offset_table)
+  (path : string)
+  (rg_index : nat) (col_index : nat) (capacity : nat)
+  : Tot (option cottas_column & page_cache) =
+  let key = (rg_index, col_index) in
+  match pcache_get cache key with
+  | (Some v, c1) -> (Some v, c1)
+  | (None, c1) ->
+    match probe_parquet_column_decode_in_row_group_seq_from_table
+            table path rg_index col_index with
+    | None -> (None, c1)
+    | Some v ->
+      let c2 = pcache_put c1 key v capacity in
+      (Some v, c2)
+
+// Global (cross-call storage cell) variant of the table-threaded
+// decoder. Same rule-#11(c) shape as `pcache_decode_in_row_group_global`
+// above: the OCaml realisation only forwards the F*-computed table and
+// threads the mutable page_cache ref through
+// `pcache_decode_in_row_group_from_table` -- no semantic decisions.
+// Realisation lives alongside the existing one in
+// experimental_ocaml_glue/cottas_pagecache_global_runtime.sh.
+assume val pcache_decode_in_row_group_global_from_table :
+  (table : Parquet.Footer.parquet_row_group_offset_table) ->
+  (path : string) -> (rg_index : nat) -> (col_index : nat) ->
+  Tot (option cottas_column)

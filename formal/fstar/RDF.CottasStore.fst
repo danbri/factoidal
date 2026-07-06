@@ -729,8 +729,26 @@ let rec walk_row_groups_estimate
 // 2.5e retires the OCaml runtime perf-shim.
 // ----------------------------------------------------------------------
 
+// Issue #98/Mim3 follow-up (2026-07-05): the global walks below now
+// take the per-query row-group-offset table (built ONCE per public
+// entry-point call via `Parquet.Footer.probe_parquet_row_group_offset_table`)
+// and decode through the table-indexed page-cache decoder, removing
+// the O(rg_index) footer re-walk that every per-row-group decode used
+// to pay inside `probe_parquet_column_chunk_in_row_group_locator`
+// (O(row_groups^2) summed over an unpruned scan). `None` (footer
+// table build failed) falls back to the original per-call decoder --
+// behaviour unchanged, just not accelerated.
+let pcache_decode_global_auto
+  (table : option parquet_row_group_offset_table)
+  (path : string) (rg_index : nat) (col_index : nat)
+  : Tot (option cottas_column) =
+  match table with
+  | Some t -> pcache_decode_in_row_group_global_from_table t path rg_index col_index
+  | None -> pcache_decode_in_row_group_global path rg_index col_index
+
 let rec walk_row_groups_search_global
   (h : cottas_ondisk_handle)
+  (table : option parquet_row_group_offset_table)
   (bound_s bound_p bound_o bound_g : option string)
   (rg_index : nat) (rg_count : nat) (fuel : nat)
   (acc_rev : list cottas_qp_row)
@@ -738,10 +756,10 @@ let rec walk_row_groups_search_global
   if fuel = 0 then acc_rev
   else if rg_index >= rg_count then acc_rev
   else
-    let s_col = pcache_decode_in_row_group_global h.coh_path rg_index 0 in
-    let p_col = pcache_decode_in_row_group_global h.coh_path rg_index 1 in
-    let o_col = pcache_decode_in_row_group_global h.coh_path rg_index 2 in
-    let g_col = pcache_decode_in_row_group_global h.coh_path rg_index 3 in
+    let s_col = pcache_decode_global_auto table h.coh_path rg_index 0 in
+    let p_col = pcache_decode_global_auto table h.coh_path rg_index 1 in
+    let o_col = pcache_decode_global_auto table h.coh_path rg_index 2 in
+    let g_col = pcache_decode_global_auto table h.coh_path rg_index 3 in
     let acc_rev' =
       match s_col, p_col, o_col, g_col with
       | Some sc, Some pc, Some oc, Some gc ->
@@ -749,21 +767,22 @@ let rec walk_row_groups_search_global
         filter_zipped_rows_seq h bound_s bound_p bound_o bound_g
           sc pc oc gc n 0 acc_rev
       | _ -> acc_rev in
-    walk_row_groups_search_global h bound_s bound_p bound_o bound_g
+    walk_row_groups_search_global h table bound_s bound_p bound_o bound_g
       (rg_index + 1) rg_count (fuel - 1) acc_rev'
 
 let rec walk_row_groups_estimate_global
   (h : cottas_ondisk_handle)
+  (table : option parquet_row_group_offset_table)
   (bound_s bound_p bound_o bound_g : option string)
   (rg_index : nat) (rg_count : nat) (fuel : nat) (acc : nat)
   : Tot nat (decreases fuel) =
   if fuel = 0 then acc
   else if rg_index >= rg_count then acc
   else
-    let s_col = pcache_decode_in_row_group_global h.coh_path rg_index 0 in
-    let p_col = pcache_decode_in_row_group_global h.coh_path rg_index 1 in
-    let o_col = pcache_decode_in_row_group_global h.coh_path rg_index 2 in
-    let g_col = pcache_decode_in_row_group_global h.coh_path rg_index 3 in
+    let s_col = pcache_decode_global_auto table h.coh_path rg_index 0 in
+    let p_col = pcache_decode_global_auto table h.coh_path rg_index 1 in
+    let o_col = pcache_decode_global_auto table h.coh_path rg_index 2 in
+    let g_col = pcache_decode_global_auto table h.coh_path rg_index 3 in
     let acc' =
       match s_col, p_col, o_col, g_col with
       | Some sc, Some pc, Some oc, Some gc ->
@@ -771,7 +790,7 @@ let rec walk_row_groups_estimate_global
         count_zipped_rows_seq bound_s bound_p bound_o bound_g
           sc pc oc gc n 0 acc
       | _ -> acc in
-    walk_row_groups_estimate_global h bound_s bound_p bound_o bound_g
+    walk_row_groups_estimate_global h table bound_s bound_p bound_o bound_g
       (rg_index + 1) rg_count (fuel - 1) acc'
 
 // ----------------------------------------------------------------------
@@ -802,18 +821,20 @@ let rec count_graph_col_matches_seq
     count_graph_col_matches_seq bound_g g_col n (i + 1) acc'
 
 let rec walk_row_groups_count_graph_global
-  (h : cottas_ondisk_handle) (bound_g : option string)
+  (h : cottas_ondisk_handle)
+  (table : option parquet_row_group_offset_table)
+  (bound_g : option string)
   (rg_index : nat) (rg_count : nat) (fuel : nat) (acc : nat)
   : Tot nat (decreases fuel) =
   if fuel = 0 then acc
   else if rg_index >= rg_count then acc
   else
     let acc' =
-      match pcache_decode_in_row_group_global h.coh_path rg_index 3 with
+      match pcache_decode_global_auto table h.coh_path rg_index 3 with
       | Some gc ->
         count_graph_col_matches_seq bound_g gc (cottas_column_length gc) 0 acc
       | None -> acc in
-    walk_row_groups_count_graph_global h bound_g
+    walk_row_groups_count_graph_global h table bound_g
       (rg_index + 1) rg_count (fuel - 1) acc'
 
 // ----------------------------------------------------------------------
@@ -894,8 +915,19 @@ let rec list_string_mem (xs : list string) (s : string)
 // store dict-absent rgs with an absent-marker `["__no_dict__"]` —
 // but actually a cleaner approach: skip insertion entirely on None
 // (lookup returns None, planner falls back to "include this rg").
+//
+// `table` (issue #98/Mim3 follow-up, 2026-07-05): this loop runs once
+// per rg_index in [0 .. rg_count) for the SAME `path` — exactly the
+// "computed once per query/open" scope for
+// `Parquet.Footer.probe_parquet_row_group_offset_table`. The caller
+// (`plan_candidate_rgs`) builds the table once and passes it down here;
+// `Some t` takes the O(1)-ish table-indexed dictionary probe, `None`
+// (table build failed — e.g. a malformed footer) falls back to the
+// original per-call path-based probe so behaviour is unchanged on that
+// path, just not accelerated.
 let rec populate_dict_cache_loop
-  (c : dict_cache) (path : string) (col_index : nat)
+  (c : dict_cache) (table : option parquet_row_group_offset_table)
+  (path : string) (col_index : nat)
   (rg_index : nat) (rg_count : nat) (fuel : nat)
   : Tot dict_cache (decreases fuel) =
   if fuel = 0 then c
@@ -905,15 +937,23 @@ let rec populate_dict_cache_loop
       match dict_cache_lookup c rg_index col_index with
       | Some _ -> c  // already populated
       | None ->
-        match probe_parquet_column_dictionary_in_row_group path rg_index col_index with
+        let dict_opt =
+          match table with
+          | Some t ->
+            probe_parquet_column_dictionary_in_row_group_from_table
+              t path rg_index col_index
+          | None ->
+            probe_parquet_column_dictionary_in_row_group path rg_index col_index in
+        match dict_opt with
         | None -> c  // no dict page — leave absent (planner falls back)
         | Some dict -> ((rg_index, col_index), dict) :: c in
-    populate_dict_cache_loop c' path col_index (rg_index + 1) rg_count (fuel - 1)
+    populate_dict_cache_loop c' table path col_index (rg_index + 1) rg_count (fuel - 1)
 
 let populate_dict_cache_for_column
-  (c : dict_cache) (path : string) (col_index : nat) (rg_count : nat)
+  (c : dict_cache) (table : option parquet_row_group_offset_table)
+  (path : string) (col_index : nat) (rg_count : nat)
   : Tot dict_cache =
-  populate_dict_cache_loop c path col_index 0 rg_count rg_count
+  populate_dict_cache_loop c table path col_index 0 rg_count rg_count
 
 // Compute the candidate row-groups for a column-bound. `bound_token` is
 // the raw column-token string (e.g. "<https://id.parliament.uk/...>")
@@ -1033,8 +1073,11 @@ let rec walk_candidate_rgs_estimate
       rest acc' c4
 
 // Phase 2.5e: candidate-rg walks using the global-cache decoder.
+// Issue #98/Mim3 follow-up: table-threaded, see the note at
+// `pcache_decode_global_auto` above.
 let rec walk_candidate_rgs_search_global
   (h : cottas_ondisk_handle)
+  (table : option parquet_row_group_offset_table)
   (bound_s bound_p bound_o bound_g : option string)
   (candidates : list nat)
   (acc_rev : list cottas_qp_row)
@@ -1042,10 +1085,10 @@ let rec walk_candidate_rgs_search_global
   match candidates with
   | [] -> acc_rev
   | rg_index :: rest ->
-    let s_col = pcache_decode_in_row_group_global h.coh_path rg_index 0 in
-    let p_col = pcache_decode_in_row_group_global h.coh_path rg_index 1 in
-    let o_col = pcache_decode_in_row_group_global h.coh_path rg_index 2 in
-    let g_col = pcache_decode_in_row_group_global h.coh_path rg_index 3 in
+    let s_col = pcache_decode_global_auto table h.coh_path rg_index 0 in
+    let p_col = pcache_decode_global_auto table h.coh_path rg_index 1 in
+    let o_col = pcache_decode_global_auto table h.coh_path rg_index 2 in
+    let g_col = pcache_decode_global_auto table h.coh_path rg_index 3 in
     let acc_rev' =
       match s_col, p_col, o_col, g_col with
       | Some sc, Some pc, Some oc, Some gc ->
@@ -1053,21 +1096,22 @@ let rec walk_candidate_rgs_search_global
         filter_zipped_rows_seq h bound_s bound_p bound_o bound_g
           sc pc oc gc n 0 acc_rev
       | _ -> acc_rev in
-    walk_candidate_rgs_search_global h bound_s bound_p bound_o bound_g
+    walk_candidate_rgs_search_global h table bound_s bound_p bound_o bound_g
       rest acc_rev'
 
 let rec walk_candidate_rgs_estimate_global
   (h : cottas_ondisk_handle)
+  (table : option parquet_row_group_offset_table)
   (bound_s bound_p bound_o bound_g : option string)
   (candidates : list nat) (acc : nat)
   : Tot nat (decreases candidates) =
   match candidates with
   | [] -> acc
   | rg_index :: rest ->
-    let s_col = pcache_decode_in_row_group_global h.coh_path rg_index 0 in
-    let p_col = pcache_decode_in_row_group_global h.coh_path rg_index 1 in
-    let o_col = pcache_decode_in_row_group_global h.coh_path rg_index 2 in
-    let g_col = pcache_decode_in_row_group_global h.coh_path rg_index 3 in
+    let s_col = pcache_decode_global_auto table h.coh_path rg_index 0 in
+    let p_col = pcache_decode_global_auto table h.coh_path rg_index 1 in
+    let o_col = pcache_decode_global_auto table h.coh_path rg_index 2 in
+    let g_col = pcache_decode_global_auto table h.coh_path rg_index 3 in
     let acc' =
       match s_col, p_col, o_col, g_col with
       | Some sc, Some pc, Some oc, Some gc ->
@@ -1075,7 +1119,7 @@ let rec walk_candidate_rgs_estimate_global
         count_zipped_rows_seq bound_s bound_p bound_o bound_g
           sc pc oc gc n 0 acc
       | _ -> acc in
-    walk_candidate_rgs_estimate_global h bound_s bound_p bound_o bound_g
+    walk_candidate_rgs_estimate_global h table bound_s bound_p bound_o bound_g
       rest acc'
 
 // ---- Candidate-set computation -------------------------------------
@@ -1084,10 +1128,11 @@ let rec walk_candidate_rgs_estimate_global
 // parquet column index (0=subject, 1=predicate, 2=object, 3=graph).
 // Returns the (candidate_rgs_in_ascending_order, updated_dict_cache).
 let candidates_for_one_bound
-  (c : dict_cache) (path : string) (col_index : nat)
+  (c : dict_cache) (table : option parquet_row_group_offset_table)
+  (path : string) (col_index : nat)
   (bound_token : string) (rg_count : nat)
   : Tot (list nat & dict_cache) =
-  let c' = populate_dict_cache_for_column c path col_index rg_count in
+  let c' = populate_dict_cache_for_column c table path col_index rg_count in
   let cands = compute_candidate_rgs c' col_index bound_token rg_count in
   (cands, c')
 
@@ -1114,10 +1159,20 @@ let all_rgs (rg_count : nat) : Tot (list nat) =
 //   - Graph bound (col 3) is ALSO usable for pruning; we include it.
 let plan_candidate_rgs
   (h : cottas_ondisk_handle)
+  (table : option parquet_row_group_offset_table)
   (bound_s bound_p bound_o bound_g : option string)
   (rg_count : nat)
   : Tot (list nat & dict_cache) =
   let path = h.coh_path in
+  // Issue #98/Mim3 follow-up (2026-07-05): the row-group-offset table
+  // is built ONCE per public entry-point call (`cottas_ondisk_search`
+  // / `_limited` / `_estimate` / `_count_exact` -- the "per query"
+  // scope) via `Parquet.Footer.probe_parquet_row_group_offset_table`
+  // and threaded here, so each per-column dict-cache populate below
+  // indexes into it instead of independently re-walking the footer's
+  // row-group list from scratch per row group (see that function's
+  // module-banner comment for the full story). `None` (malformed
+  // footer) falls back to the pre-existing per-call path-based probe.
   // Start with "all rgs" as the universal set; intersect each present
   // bound's candidate set into it. We track whether any bound has been
   // applied to avoid a wasted intersect when none were.
@@ -1129,7 +1184,7 @@ let plan_candidate_rgs
     | None -> acc
     | Some tok ->
       let (cur, c, _started) = acc in
-      let (cands, c') = candidates_for_one_bound c path col_index tok rg_count in
+      let (cands, c') = candidates_for_one_bound c table path col_index tok rg_count in
       let combined = intersect_sorted_rg_lists cur cands in
       (combined, c', true) in
   let st1 = step init  0 bound_s in
@@ -1236,22 +1291,25 @@ let cottas_ondisk_search
   match probe_parquet_row_group_count h.coh_path with
   | None -> []
   | Some rg_count ->
+    // Issue #98/Mim3 follow-up (2026-07-05): build the row-group-offset
+    // table ONCE per query and thread it through the planner + walks.
+    let table = probe_parquet_row_group_offset_table h.coh_path in
     // Phase D: column-prune planner. If any column-bound is present,
     // compute the candidate-rgs via per-rg dict probes; else full walk.
     let any_bound_present =
       Some? bound_s || Some? bound_p || Some? bound_o || Some? bound_g in
     if any_bound_present then
-      let (candidates0, _dc) = plan_candidate_rgs h
+      let (candidates0, _dc) = plan_candidate_rgs h table
         bound_s bound_p bound_o bound_g rg_count in
       // Phase 2.6: AND-compose with compound (p,o) bitmap when both bound.
       let candidates = filter_candidates_by_compound_po
         h.coh_path candidates0 bound_p bound_o in
-      let acc_rev = walk_candidate_rgs_search_global h
+      let acc_rev = walk_candidate_rgs_search_global h table
         bound_s bound_p bound_o bound_g
         candidates [] in
       list_rev acc_rev
     else
-      let acc_rev = walk_row_groups_search_global h
+      let acc_rev = walk_row_groups_search_global h table
         bound_s bound_p bound_o bound_g
         0 rg_count rg_count [] in
       list_rev acc_rev
@@ -1392,6 +1450,7 @@ let rec walk_candidate_rgs_search_limited
 
 let rec walk_row_groups_search_limited_global
   (h : cottas_ondisk_handle)
+  (table : option parquet_row_group_offset_table)
   (bound_s bound_p bound_o bound_g : option string)
   (rg_index : nat) (rg_count : nat) (fuel : nat)
   (acc_rev : list cottas_qp_row) (acc_count : nat) (limit : nat)
@@ -1400,10 +1459,10 @@ let rec walk_row_groups_search_limited_global
   else if rg_index >= rg_count then acc_rev
   else if acc_count >= limit then acc_rev
   else
-    let s_col = pcache_decode_in_row_group_global h.coh_path rg_index 0 in
-    let p_col = pcache_decode_in_row_group_global h.coh_path rg_index 1 in
-    let o_col = pcache_decode_in_row_group_global h.coh_path rg_index 2 in
-    let g_col = pcache_decode_in_row_group_global h.coh_path rg_index 3 in
+    let s_col = pcache_decode_global_auto table h.coh_path rg_index 0 in
+    let p_col = pcache_decode_global_auto table h.coh_path rg_index 1 in
+    let o_col = pcache_decode_global_auto table h.coh_path rg_index 2 in
+    let g_col = pcache_decode_global_auto table h.coh_path rg_index 3 in
     let (acc_rev', acc_count', hit) =
       match s_col, p_col, o_col, g_col with
       | Some sc, Some pc, Some oc, Some gc ->
@@ -1413,11 +1472,12 @@ let rec walk_row_groups_search_limited_global
       | _ -> (acc_rev, acc_count, false) in
     if hit then acc_rev'
     else
-      walk_row_groups_search_limited_global h bound_s bound_p bound_o bound_g
+      walk_row_groups_search_limited_global h table bound_s bound_p bound_o bound_g
         (rg_index + 1) rg_count (fuel - 1) acc_rev' acc_count' limit
 
 let rec walk_candidate_rgs_search_limited_global
   (h : cottas_ondisk_handle)
+  (table : option parquet_row_group_offset_table)
   (bound_s bound_p bound_o bound_g : option string)
   (candidates : list nat)
   (acc_rev : list cottas_qp_row) (acc_count : nat) (limit : nat)
@@ -1427,10 +1487,10 @@ let rec walk_candidate_rgs_search_limited_global
     match candidates with
     | [] -> acc_rev
     | rg_index :: rest ->
-      let s_col = pcache_decode_in_row_group_global h.coh_path rg_index 0 in
-      let p_col = pcache_decode_in_row_group_global h.coh_path rg_index 1 in
-      let o_col = pcache_decode_in_row_group_global h.coh_path rg_index 2 in
-      let g_col = pcache_decode_in_row_group_global h.coh_path rg_index 3 in
+      let s_col = pcache_decode_global_auto table h.coh_path rg_index 0 in
+      let p_col = pcache_decode_global_auto table h.coh_path rg_index 1 in
+      let o_col = pcache_decode_global_auto table h.coh_path rg_index 2 in
+      let g_col = pcache_decode_global_auto table h.coh_path rg_index 3 in
       let (acc_rev', acc_count', hit) =
         match s_col, p_col, o_col, g_col with
         | Some sc, Some pc, Some oc, Some gc ->
@@ -1440,7 +1500,7 @@ let rec walk_candidate_rgs_search_limited_global
         | _ -> (acc_rev, acc_count, false) in
       if hit then acc_rev'
       else
-        walk_candidate_rgs_search_limited_global h bound_s bound_p bound_o bound_g
+        walk_candidate_rgs_search_limited_global h table bound_s bound_p bound_o bound_g
           rest acc_rev' acc_count' limit
 
 // LIMIT-pushdown public entry: same as `cottas_ondisk_search` but stops
@@ -1463,20 +1523,22 @@ let cottas_ondisk_search_limited
   match probe_parquet_row_group_count h.coh_path with
   | None -> []
   | Some rg_count ->
+    // Issue #98/Mim3 follow-up: per-query row-group-offset table.
+    let table = probe_parquet_row_group_offset_table h.coh_path in
     let any_bound_present =
       Some? bound_s || Some? bound_p || Some? bound_o || Some? bound_g in
     if any_bound_present then
-      let (candidates0, _dc) = plan_candidate_rgs h
+      let (candidates0, _dc) = plan_candidate_rgs h table
         bound_s bound_p bound_o bound_g rg_count in
       // Phase 2.6: compound (p,o) prune.
       let candidates = filter_candidates_by_compound_po
         h.coh_path candidates0 bound_p bound_o in
-      let acc_rev = walk_candidate_rgs_search_limited_global h
+      let acc_rev = walk_candidate_rgs_search_limited_global h table
         bound_s bound_p bound_o bound_g
         candidates [] 0 limit in
       list_rev acc_rev
     else
-      let acc_rev = walk_row_groups_search_limited_global h
+      let acc_rev = walk_row_groups_search_limited_global h table
         bound_s bound_p bound_o bound_g
         0 rg_count rg_count [] 0 limit in
       list_rev acc_rev
@@ -1528,7 +1590,8 @@ let cottas_ondisk_estimate
         | Some rg_count ->
           // Phase 2.5e: global-cache walk; F* owns algorithm, OCaml
           // provides cross-call cache cell.
-          walk_row_groups_estimate_global h
+          let table = probe_parquet_row_group_offset_table h.coh_path in
+          walk_row_groups_estimate_global h table
             bound_s bound_p bound_o bound_g
             0 rg_count rg_count 0))
   else
@@ -1553,7 +1616,9 @@ let cottas_ondisk_estimate
     match probe_parquet_row_group_count h.coh_path with
     | None -> 0
     | Some rg_count ->
-      let (candidates0, _dc) = plan_candidate_rgs h
+      // Issue #98/Mim3 follow-up: per-query row-group-offset table.
+      let table = probe_parquet_row_group_offset_table h.coh_path in
+      let (candidates0, _dc) = plan_candidate_rgs h table
         bound_s bound_p bound_o bound_g rg_count in
       // Phase 2.6: compound (p,o) prune for the estimator too.
       let candidates = filter_candidates_by_compound_po
@@ -1618,16 +1683,19 @@ let cottas_ondisk_count_exact
        (match probe_parquet_row_group_count h.coh_path with
         | None -> 0
         | Some rg_count ->
-          walk_row_groups_estimate_global h
+          let table = probe_parquet_row_group_offset_table h.coh_path in
+          walk_row_groups_estimate_global h table
             bound_s bound_p bound_o bound_g 0 rg_count rg_count 0))
   else
     (match probe_parquet_row_group_count h.coh_path with
      | None -> 0
      | Some rg_count ->
+       // Issue #98/Mim3 follow-up: per-query row-group-offset table.
+       let table = probe_parquet_row_group_offset_table h.coh_path in
        if None? bound_s && None? bound_p && None? bound_o then
-         walk_row_groups_count_graph_global h bound_g 0 rg_count rg_count 0
+         walk_row_groups_count_graph_global h table bound_g 0 rg_count rg_count 0
        else
-         walk_row_groups_estimate_global h
+         walk_row_groups_estimate_global h table
            bound_s bound_p bound_o bound_g 0 rg_count rg_count 0)
 
 // ----------------------------------------------------------------------

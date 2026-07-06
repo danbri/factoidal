@@ -13,6 +13,15 @@ let probe_parquet_column_decode_in_row_group_seq
   | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
   | FStar_Pervasives_Native.Some lst ->
     FStar_Pervasives_Native.Some (Array.of_list lst)
+let probe_parquet_column_decode_in_row_group_seq_from_table
+    (table : Parquet_Footer.parquet_row_group_offset_table)
+    (path : Prims.string) (rg_index : Prims.nat) (col_index : Prims.nat)
+  : cottas_column FStar_Pervasives_Native.option =
+  match Parquet_Footer.probe_parquet_column_decode_in_row_group_from_table
+          table path rg_index col_index with
+  | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+  | FStar_Pervasives_Native.Some lst ->
+    FStar_Pervasives_Native.Some (Array.of_list lst)
 let rec column_to_list_acc (c : cottas_column) (i : Prims.nat)
   (acc : Prims.string FStar_Pervasives_Native.option Prims.list) :
   Prims.string FStar_Pervasives_Native.option Prims.list=

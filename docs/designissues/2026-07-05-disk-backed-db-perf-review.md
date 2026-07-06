@@ -771,6 +771,100 @@ whether a design doc is needed first.
       `Parquet.Footer.fst` under z3 4.13.3 — real F\* work, not a
       caching patch, and out of scope for this redispatch. Filing as
       the next item in this list.
+
+      **DONE 2026-07-06 (follow-up session). The O(row_groups)
+      per-locate walk is eliminated, in F\*.** New in
+      `Parquet.Footer.fst` (all verified, z3 4.13.3, no `--lax`):
+      `parquet_row_group_offset_table` (a record bundling the footer
+      meta hex + every row group's struct start offset),
+      `collect_compact_list_starts_loop` (ONE linear pass performing
+      the same `skip_compact_value_hex` steps the old per-call
+      `nth_compact_list_element_start_hex` loop performed, recording
+      every element start instead of discarding the walk),
+      `probe_parquet_row_group_offset_table` (builds the table from
+      one footer read), and a `_from_table` sibling family of the
+      `_in_row_group` probes (locator, data/dictionary page offsets,
+      page-header probes, payload decompress, DLBA + RLE_DICTIONARY
+      decode, declared-encoding dispatch, dictionary-only decode) that
+      indexes `List.Tot.nth table.prgt_row_group_starts rg_index`
+      instead of re-walking. The #98 encoding dispatch and
+      definition-levels skip are body-identical in the siblings; the
+      original path-based family is untouched. Threading (justified in
+      the module banner): the table is built ONCE per public query
+      entry point in `RDF.CottasStore.fst` (`cottas_ondisk_search` /
+      `_search_limited` / `_estimate` / `_count_exact`) and passed
+      down as an ordinary F\* argument through `plan_candidate_rgs` →
+      `populate_dict_cache_for_column` and through the `walk_*_global`
+      row-group walks; the whole-column eager walk
+      `probe_parquet_column_decode_all_row_groups` builds it once per
+      call internally. Two new `assume val`s pass the table through
+      the existing page-cache boundary
+      (`probe_parquet_column_decode_in_row_group_seq_from_table` in
+      ColumnSeq, `pcache_decode_in_row_group_global_from_table` in
+      PageCache); their OCaml realisations (same two glue scripts as
+      their non-table siblings) only FORWARD the F\*-computed table —
+      no OCaml-side computation or caching of offsets, per rule #11.
+
+      **Measured (this sandbox, 3 warm runs each; all outputs
+      byte-identical pre-fix vs post-fix on both stores AND identical
+      between the 8- and 44-group builds; COUNT(\*) = 888,949 exact on
+      both gene builds).** Pre-fix = committed HEAD `fa62460`;
+      post-fix = this change. 50,000-quad fixture (first 50k gene
+      quads, CS-clustered, identical content, only `ROW_GROUP_SIZE`
+      varied; full-scan CLI query `?s rdf:type "no-such-object"`):
+
+      | build | pre-fix | post-fix |
+      |---|---:|---:|
+      | 2 row groups | 0.76–0.80 s | 0.70–0.71 s |
+      | 25 row groups | 7.46–7.62 s | **0.80–0.82 s** |
+      | 25-vs-2 ratio | ~9.8× | **~1.15×** |
+
+      Gene corpus (888,949 quads, CS-clustered + eager sidecars,
+      `factoidal-http` + HTTP `/query`, warm):
+
+      | query | 8 rg pre | 8 rg post | 44 rg pre | 44 rg post |
+      |---|---:|---:|---:|---:|
+      | `?s rdf:type ?o LIMIT 5` | 62–63 ms | **20 ms** | 1,427–1,446 ms | **83–84 ms** |
+      | point lookup (`Q100085837 ?p ?o`) | 149–154 ms | **101–103 ms** | 1,492–1,513 ms | **160–162 ms** |
+      | rare predicate (`wdt:P682` LIMIT 5) | 69–70 ms | **28–29 ms** | 1,419–1,473 ms | **84–85 ms** |
+      | `COUNT(*)` | 35–36 ms | 35–37 ms | 39–41 ms | 60–62 ms |
+
+      The 44-vs-8 ratio on the review's own query fell from ~22.9×
+      (measured pre-fix here; the earlier session recorded ~19.8×) to
+      **~4.1×** (83 ms vs 20 ms) — short of the ~2× target, but the
+      remaining gap is now BELOW the 5.5× row-group-count ratio: the
+      quadratic per-locate component is gone and what remains is at
+      most linear in row-group count (the per-query `dict_cache`
+      rebuild and per-rg walk overheads; a cross-query dict cache, the
+      Tsade2 "Phase E refinement", is the next lever if ~2× is wanted
+      strictly). The 44-group absolute warm time (83–84 ms) now sits
+      inside the previous 8-group baseline range (62–81 ms). One shape
+      regressed slightly: `COUNT(*)` on the 44-group build went 39–41
+      → 60–62 ms (graph-column-only exact-count walk, still dominated
+      by the 888,949-cell fold; small in absolute terms, 8-group build
+      unchanged). Regression pin:
+      `tests/unit/parquet_rle_dictionary_multi_row_group.ml` grew a
+      correctness section — the offset table on the 3-group fixture
+      must have exactly 3 entries, and for every (row group, column)
+      pair the table-indexed decode and the table-indexed dictionary
+      probe must equal the path-based originals (80 assertions in the
+      file, 0 fail). Floors after the change (repo root): SPARQL suite
+      631 pass, 0 fail (of 631); RDF suite 1,031 pass, 0 fail (of
+      1,031); `tests/unit/run-all.sh` 28 file(s) pass, 0 file(s) fail
+      (of 28); `tests/local/cottas_row_order_regressions.sh` 9 pass, 0
+      fail; `tests/local/cottas_corpus_regressions.sh` 4 pass, 0 fail.
+
+      **Row-group-size default decision (the question this item
+      gates): keep 122,880.** With the fix in, the 20,000-rows/group
+      gene build (44 groups) was re-measured against the default build
+      (8 groups) on the rare/shape-confined predicate query the E1
+      clustering work targets (`wdt:P682`, 4 quads, 2 of 12
+      characteristic sets): 84–85 ms at 44 groups vs 28–29 ms at 8
+      groups. Smaller groups still LOSE on this corpus — the linear
+      per-row-group planner cost still exceeds what CS-confined
+      pruning saves at gene's scale — so `--row-group-size` keeps
+      DuckDB's default; revisit after a cross-query dict cache lands
+      or against parliament's 232-predicate shape.
    3. Re-run this whole comparison against the UK Parliament corpus
       (absent from this sandbox, per §0's caveat) once it is
       reachable, since gene's 8-row-group / 12-CS / 6-predicate shape

@@ -1357,11 +1357,21 @@ def materialize_nq_cottas_corpus(args: argparse.Namespace) -> int:
     # PARTIALLY fixed. The dominant re-hex-encoding-the-footer-per-probe
     # cost is now memoized (OCaml I/O glue, Parquet_Footer.ml's Mim3
     # cache) -- ~23% faster at 44 groups on gene (1.88s -> ~1.45s) -- but
-    # a second, larger cost remains uncached (an O(row_groups) structural
-    # walk inside Parquet.Footer.fst itself, not OCaml-glue-fixable; see
-    # the doc). 44 groups is therefore still ~20x slower than 8 on an
-    # unpruned (universal-predicate) query, so --row-group-size still
-    # defaults to DuckDB's own default until that second cost is closed.
+    # a second, larger cost remained (an O(row_groups) structural walk
+    # inside Parquet.Footer.fst itself).
+    #
+    # Follow-up (2026-07-06, same doc, item 2 DONE): that second cost is
+    # now closed in F* (row-group-offset table built once per query,
+    # Parquet.Footer.probe_parquet_row_group_offset_table + the
+    # _from_table probe family). 44 groups on gene is now 83-84ms vs
+    # 20ms at 8 groups on the universal-predicate query (was ~1.45s vs
+    # 62-63ms) -- the quadratic component is gone; the residual ~4x is
+    # linear per-row-group planner cost. Re-measured with the fix in:
+    # the rare/shape-confined predicate query is STILL slower at 44
+    # groups (84-85ms) than at the default 8 (28-29ms), so smaller row
+    # groups still lose on this corpus and --row-group-size keeps
+    # DuckDB's own default. Revisit after a cross-query dict cache
+    # (Tsade2 Phase E) or against parliament's 232-predicate shape.
     row_group_size = getattr(args, "row_group_size", None) or 122880
 
     try:

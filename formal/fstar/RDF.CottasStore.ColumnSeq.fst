@@ -75,6 +75,30 @@ assume val probe_parquet_column_decode_in_row_group_seq :
   Tot (option cottas_column)
 
 // ------------------------------------------------------------------
+// Table-threaded sibling (issue #98/Mim3 follow-up, 2026-07-05): same
+// contract as probe_parquet_column_decode_in_row_group_seq, but the
+// row-group LOCATE step indexes into a precomputed
+// `Parquet.Footer.parquet_row_group_offset_table` (built ONCE per
+// query by the F* caller -- see plan_candidate_rgs /
+// cottas_ondisk_search in RDF.CottasStore.fst) instead of
+// skip-decoding every preceding row-group struct from scratch on
+// every call. The OCaml realisation is the same mechanical
+// Array.of_list coercion, over
+// `Parquet_Footer.probe_parquet_column_decode_in_row_group_from_table`.
+// The offsets themselves are computed in verified F*
+// (`Parquet.Footer.probe_parquet_row_group_offset_table`) and only
+// PASSED THROUGH this boundary, never computed or cached on the
+// OCaml side (rule #11: the offsets are semantics; they live in F*).
+// ------------------------------------------------------------------
+
+assume val probe_parquet_column_decode_in_row_group_seq_from_table :
+  table:Parquet.Footer.parquet_row_group_offset_table ->
+  path:string ->
+  rg_index:nat ->
+  col_index:nat ->
+  Tot (option cottas_column)
+
+// ------------------------------------------------------------------
 // Bridge functions for the transition period. These let Phase 2.5b
 // refactor functions one at a time: a hot-path function can take the
 // new shape and use either path until all callers have migrated.

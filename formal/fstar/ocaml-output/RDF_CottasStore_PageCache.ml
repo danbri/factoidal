@@ -181,3 +181,49 @@ let pcache_decode_in_row_group_global (path : Prims.string)
       (Stdlib.List.length (!pcache_global_ref).pc_entries)
       (Z.to_int cap));
   result
+let pcache_decode_in_row_group_from_table (cache : page_cache)
+  (table : Parquet_Footer.parquet_row_group_offset_table)
+  (path : Prims.string) (rg_index : Prims.nat) (col_index : Prims.nat)
+  (capacity : Prims.nat) :
+  (RDF_CottasStore_ColumnSeq.cottas_column FStar_Pervasives_Native.option *
+    page_cache)=
+  let key = (rg_index, col_index) in
+  match pcache_get cache key with
+  | (FStar_Pervasives_Native.Some v, c1) ->
+      ((FStar_Pervasives_Native.Some v), c1)
+  | (FStar_Pervasives_Native.None, c1) ->
+      (match RDF_CottasStore_ColumnSeq.probe_parquet_column_decode_in_row_group_seq_from_table
+               table path rg_index col_index
+       with
+       | FStar_Pervasives_Native.None -> (FStar_Pervasives_Native.None, c1)
+       | FStar_Pervasives_Native.Some v ->
+           let c2 = pcache_put c1 key v capacity in
+           ((FStar_Pervasives_Native.Some v), c2))
+(* Issue #98/Mim3 follow-up (2026-07-05): table-threaded sibling of
+   pcache_decode_in_row_group_global above. Same cross-call storage
+   cell (pcache_global_ref), same LRU logic in F*-pure
+   pcache_decode_in_row_group_from_table; this shim only forwards the
+   F*-computed row-group-offset table and threads the mutable ref.
+   Rule #11(c). *)
+let pcache_decode_in_row_group_global_from_table
+  (table : Parquet_Footer.parquet_row_group_offset_table)
+  (path : Prims.string)
+  (rg_index : Prims.nat) (col_index : Prims.nat)
+  : RDF_CottasStore_ColumnSeq.cottas_column FStar_Pervasives_Native.option =
+  let cap = (!pcache_global_ref).pc_capacity in
+  let key_present =
+    let (v, _) = pcache_get !pcache_global_ref (rg_index, col_index) in
+    match v with FStar_Pervasives_Native.Some _ -> true | _ -> false in
+  let (result, c') =
+    pcache_decode_in_row_group_from_table !pcache_global_ref table path rg_index col_index cap in
+  pcache_global_ref := c';
+  (if key_present then Stdlib.incr pcache_global_n_hits
+   else Stdlib.incr pcache_global_n_misses);
+  let total : Stdlib.Int.t = Stdlib.(!pcache_global_n_hits + !pcache_global_n_misses) in
+  (if Stdlib.(total mod 32 = 0) then
+    Printf.eprintf "[pagecache-global-trace] hits=%d misses=%d entries=%d cap=%d
+%!"
+      !pcache_global_n_hits !pcache_global_n_misses
+      (Stdlib.List.length (!pcache_global_ref).pc_entries)
+      (Z.to_int cap));
+  result

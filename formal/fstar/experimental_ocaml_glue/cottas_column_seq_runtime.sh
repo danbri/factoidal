@@ -157,10 +157,44 @@ for cand in decode_old_candidates:
 if not decode_replaced:
     sys.stderr.write("  [column-seq-runtime] WARN: probe_parquet_column_decode_in_row_group_seq stub not found in any expected shape\n")
 
-n_applied = sum([type_replaced, len_replaced, get_replaced, decode_replaced])
-sys.stderr.write(f"  [column-seq-runtime] applied {n_applied}/4 substitutions\n")
+# ----------------------------------------------------------------------
+# 5. Replace the table-threaded parquet decoder stub (issue #98/Mim3
+#    follow-up, 2026-07-05) with a call to the table-indexed list-shape
+#    decoder + Array.of_list. Same mechanical coercion as (4); the
+#    row-group offset table is COMPUTED in F* (Parquet.Footer.
+#    probe_parquet_row_group_offset_table) and only FORWARDED here --
+#    rule #11: the offsets are semantics, they live in F*.
+# ----------------------------------------------------------------------
 
-if n_applied < 4:
+decode_tbl_old_candidates = [
+    # F* 2025.x: direct let.
+    'let probe_parquet_column_decode_in_row_group_seq_from_table\n  (table : Parquet_Footer.parquet_row_group_offset_table)\n  (path : Prims.string) (rg_index : Prims.nat) (col_index : Prims.nat) :\n  cottas_column FStar_Pervasives_Native.option=\n  failwith\n    "Not yet implemented: RDF.CottasStore.ColumnSeq.probe_parquet_column_decode_in_row_group_seq_from_table"\n',
+]
+decode_tbl_new = '''let probe_parquet_column_decode_in_row_group_seq_from_table
+    (table : Parquet_Footer.parquet_row_group_offset_table)
+    (path : Prims.string) (rg_index : Prims.nat) (col_index : Prims.nat)
+  : cottas_column FStar_Pervasives_Native.option =
+  match Parquet_Footer.probe_parquet_column_decode_in_row_group_from_table
+          table path rg_index col_index with
+  | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+  | FStar_Pervasives_Native.Some lst ->
+    FStar_Pervasives_Native.Some (Array.of_list lst)
+'''
+decode_tbl_replaced = False
+for cand in decode_tbl_old_candidates:
+    if cand in content:
+        content = content.replace(cand, decode_tbl_new, 1)
+        decode_tbl_replaced = True
+        sys.stderr.write("  [column-seq-runtime] replaced probe_parquet_column_decode_in_row_group_seq_from_table stub with Array.of_list realisation\n")
+        break
+
+if not decode_tbl_replaced:
+    sys.stderr.write("  [column-seq-runtime] WARN: probe_parquet_column_decode_in_row_group_seq_from_table stub not found in any expected shape\n")
+
+n_applied = sum([type_replaced, len_replaced, get_replaced, decode_replaced, decode_tbl_replaced])
+sys.stderr.write(f"  [column-seq-runtime] applied {n_applied}/5 substitutions\n")
+
+if n_applied < 5:
     # Don't fatal-out — the missing pieces will trigger failwith at runtime
     # and surface clearly. Useful for iterating on the patch.
     sys.stderr.write("  [column-seq-runtime] some substitutions missed; expect runtime failwith if those code paths run.\n")

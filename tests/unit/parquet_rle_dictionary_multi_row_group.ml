@@ -236,6 +236,63 @@ let () =
     ) [0; 1; 2; 3; 408; 409; 816; 817]
   end;
 
+  (* 7. Row-group-offset-table correctness pin (2026-07-05 follow-up to
+     issue #98 / the Mim3 footer-hex memoization): `probe_parquet_column_
+     chunk_in_row_group_locator` re-walks and skip-decodes every
+     PRECEDING row-group struct from scratch on every call, which is
+     O(rg_index) per call and, summed over an unpruned scan of every
+     row group, O(row_groups^2) -- see
+     docs/designissues/2026-07-05-disk-backed-db-perf-review.md roadmap
+     item 2. The fix computes every row group's start offset in ONE
+     linear pass (`probe_parquet_row_group_offset_table`) and threads it
+     through `_from_table` siblings of the `_in_row_group` family
+     instead of re-deriving it per call. This is a CORRECTNESS pin (not
+     a timing pin, per CLAUDE.md's "correctness pins matter more than
+     timing pins in unit tests"): every table-indexed probe must return
+     byte-identical results to the original per-call, path-based probe,
+     across all 3 row groups x 4 columns of the same fixture the rest of
+     this file already exercises -- a store with "enough groups" (3,
+     already used above) that the old O(rg_index) walk is exercised at
+     every index, not just rg_index=0. *)
+  let rg_offset_table =
+    opt_get "row_group_offset_table"
+      (Parquet_Footer.probe_parquet_row_group_offset_table fixture_path) in
+  check ~name:"offset table has 3 row-group starts"
+    (List.length rg_offset_table.Parquet_Footer.prgt_row_group_starts = 3);
+
+  for rg = 0 to 2 do
+    for col = 0 to 3 do
+      let via_table =
+        Parquet_Footer.probe_parquet_column_decode_in_row_group_from_table
+          rg_offset_table fixture_path (Z.of_int rg) (Z.of_int col) in
+      let via_path =
+        Parquet_Footer.probe_parquet_column_decode_in_row_group
+          fixture_path (Z.of_int rg) (Z.of_int col) in
+      check
+        ~name:(Printf.sprintf "table-indexed decode == path-based decode (rg=%d, col=%d)" rg col)
+        (via_table = via_path)
+    done
+  done;
+
+  (* Dictionary-only probe (used by the column-prune planner's per-query
+     dict cache, `RDF.CottasStore.fst`'s `populate_dict_cache_for_column`
+     -- the other measured O(row_groups^2) call site) must likewise
+     agree with the original path-based probe for every row group, on
+     the dictionary-bearing p and g columns (col 1, col 3). *)
+  for rg = 0 to 2 do
+    List.iter (fun col ->
+      let via_table =
+        Parquet_Footer.probe_parquet_column_dictionary_in_row_group_from_table
+          rg_offset_table fixture_path (Z.of_int rg) (Z.of_int col) in
+      let via_path =
+        Parquet_Footer.probe_parquet_column_dictionary_in_row_group
+          fixture_path (Z.of_int rg) (Z.of_int col) in
+      check
+        ~name:(Printf.sprintf "table-indexed dict == path-based dict (rg=%d, col=%d)" rg col)
+        (via_table = via_path)
+    ) [1; 3]
+  done;
+
   Printf.printf
     "== summary: %d pass, %d fail (out of %d) ==\n"
     !passed !failed (!passed + !failed);

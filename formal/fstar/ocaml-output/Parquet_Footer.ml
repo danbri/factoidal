@@ -4105,12 +4105,572 @@ let probe_parquet_column_decode_in_row_group (path : Prims.string)
       probe_parquet_column_rle_dictionary_decode_all_in_row_group path
         rg_index col_index
   | uu___ -> FStar_Pervasives_Native.None
+type parquet_row_group_offset_table =
+  {
+  prgt_meta_hex: Prims.string ;
+  prgt_meta_hex_len: Prims.nat ;
+  prgt_row_group_starts: Prims.nat Prims.list }
+let __proj__Mkparquet_row_group_offset_table__item__prgt_meta_hex
+  (projectee : parquet_row_group_offset_table) : Prims.string=
+  match projectee with
+  | { prgt_meta_hex; prgt_meta_hex_len; prgt_row_group_starts;_} ->
+      prgt_meta_hex
+let __proj__Mkparquet_row_group_offset_table__item__prgt_meta_hex_len
+  (projectee : parquet_row_group_offset_table) : Prims.nat=
+  match projectee with
+  | { prgt_meta_hex; prgt_meta_hex_len; prgt_row_group_starts;_} ->
+      prgt_meta_hex_len
+let __proj__Mkparquet_row_group_offset_table__item__prgt_row_group_starts
+  (projectee : parquet_row_group_offset_table) : Prims.nat Prims.list=
+  match projectee with
+  | { prgt_meta_hex; prgt_meta_hex_len; prgt_row_group_starts;_} ->
+      prgt_row_group_starts
+let rec collect_compact_list_starts_loop (hex : Prims.string)
+  (etype : Prims.nat) (remaining : Prims.nat) (p : Prims.nat)
+  (acc_rev : Prims.nat Prims.list) (fuel : Prims.nat) :
+  Prims.nat Prims.list FStar_Pervasives_Native.option=
+  if fuel = Prims.int_zero
+  then FStar_Pervasives_Native.None
+  else
+    if remaining = Prims.int_zero
+    then FStar_Pervasives_Native.Some (FStar_List_Tot_Base.rev acc_rev)
+    else
+      (match skip_compact_value_hex hex etype p (fuel - Prims.int_one) with
+       | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+       | FStar_Pervasives_Native.Some next ->
+           collect_compact_list_starts_loop hex etype
+             (remaining - Prims.int_one) next (p :: acc_rev)
+             (fuel - Prims.int_one))
+let probe_parquet_row_group_offset_table (path : Prims.string) :
+  parquet_row_group_offset_table FStar_Pervasives_Native.option=
+  match probe_parquet_footer path with
+  | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+  | FStar_Pervasives_Native.Some footer ->
+      (match parquet_read_tail_hex path footer.pf_footer_len with
+       | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+       | FStar_Pervasives_Native.Some footer_hex ->
+           let meta_hex_len = footer.pf_metadata_len + footer.pf_metadata_len in
+           if meta_hex_len <= (FStar_String.strlen footer_hex)
+           then
+             let meta_hex =
+               FStar_String.sub footer_hex Prims.int_zero meta_hex_len in
+             (match nth_field_hex meta_hex (Prims.of_int (4)) Prims.int_zero
+                      Prims.int_zero meta_hex_len
+              with
+              | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+              | FStar_Pervasives_Native.Some row_groups_field ->
+                  if row_groups_field.cf_type <> compact_t_list
+                  then FStar_Pervasives_Native.None
+                  else
+                    (match decode_compact_list_info_hex meta_hex
+                             row_groups_field.cf_value_start meta_hex_len
+                     with
+                     | FStar_Pervasives_Native.None ->
+                         FStar_Pervasives_Native.None
+                     | FStar_Pervasives_Native.Some row_groups_info ->
+                         if row_groups_info.cli_etype <> compact_t_struct
+                         then FStar_Pervasives_Native.None
+                         else
+                           (match collect_compact_list_starts_loop meta_hex
+                                    row_groups_info.cli_etype
+                                    row_groups_info.cli_count
+                                    row_groups_info.cli_payload_start []
+                                    meta_hex_len
+                            with
+                            | FStar_Pervasives_Native.None ->
+                                FStar_Pervasives_Native.None
+                            | FStar_Pervasives_Native.Some starts ->
+                                FStar_Pervasives_Native.Some
+                                  {
+                                    prgt_meta_hex = meta_hex;
+                                    prgt_meta_hex_len = meta_hex_len;
+                                    prgt_row_group_starts = starts
+                                  })))
+           else FStar_Pervasives_Native.None)
+let probe_parquet_column_chunk_locator_from_table
+  (table : parquet_row_group_offset_table) (rg_index : Prims.nat)
+  (col_index : Prims.nat) :
+  meta_column_chunk_locator FStar_Pervasives_Native.option=
+  match FStar_List_Tot_Base.nth table.prgt_row_group_starts rg_index with
+  | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+  | FStar_Pervasives_Native.Some rg_start ->
+      (match nth_field_hex table.prgt_meta_hex Prims.int_one rg_start
+               Prims.int_zero table.prgt_meta_hex_len
+       with
+       | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+       | FStar_Pervasives_Native.Some columns_field ->
+           if columns_field.cf_type <> compact_t_list
+           then FStar_Pervasives_Native.None
+           else
+             (match nth_compact_list_element_start_hex table.prgt_meta_hex
+                      columns_field.cf_value_start col_index
+                      table.prgt_meta_hex_len
+              with
+              | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+              | FStar_Pervasives_Native.Some column_chunk_start ->
+                  FStar_Pervasives_Native.Some
+                    {
+                      mcc_meta_hex = (table.prgt_meta_hex);
+                      mcc_meta_hex_len = (table.prgt_meta_hex_len);
+                      mcc_column_chunk_start = column_chunk_start
+                    }))
+let probe_parquet_column_data_page_offset_in_row_group_from_table
+  (table : parquet_row_group_offset_table) (rg_index : Prims.nat)
+  (col_index : Prims.nat) : Prims.nat FStar_Pervasives_Native.option=
+  match probe_parquet_column_chunk_locator_from_table table rg_index
+          col_index
+  with
+  | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+  | FStar_Pervasives_Native.Some loc ->
+      (match column_metadata_start_of loc with
+       | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+       | FStar_Pervasives_Native.Some md_start ->
+           (match nth_field_hex loc.mcc_meta_hex (Prims.of_int (9)) md_start
+                    Prims.int_zero loc.mcc_meta_hex_len
+            with
+            | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+            | FStar_Pervasives_Native.Some offset_field ->
+                if offset_field.cf_type <> compact_t_i64
+                then FStar_Pervasives_Native.None
+                else
+                  (match decode_varint_value_hex loc.mcc_meta_hex
+                           offset_field.cf_value_start Prims.int_zero
+                           Prims.int_zero loc.mcc_meta_hex_len
+                   with
+                   | FStar_Pervasives_Native.None ->
+                       FStar_Pervasives_Native.None
+                   | FStar_Pervasives_Native.Some raw ->
+                       FStar_Pervasives_Native.Some (zigzag_decode_nat raw))))
+let probe_parquet_column_dictionary_page_offset_in_row_group_from_table
+  (table : parquet_row_group_offset_table) (rg_index : Prims.nat)
+  (col_index : Prims.nat) : Prims.nat FStar_Pervasives_Native.option=
+  match probe_parquet_column_chunk_locator_from_table table rg_index
+          col_index
+  with
+  | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+  | FStar_Pervasives_Native.Some loc ->
+      (match column_metadata_start_of loc with
+       | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+       | FStar_Pervasives_Native.Some md_start ->
+           (match nth_field_hex loc.mcc_meta_hex (Prims.of_int (11)) md_start
+                    Prims.int_zero loc.mcc_meta_hex_len
+            with
+            | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+            | FStar_Pervasives_Native.Some offset_field ->
+                if offset_field.cf_type <> compact_t_i64
+                then FStar_Pervasives_Native.None
+                else
+                  (match decode_varint_value_hex loc.mcc_meta_hex
+                           offset_field.cf_value_start Prims.int_zero
+                           Prims.int_zero loc.mcc_meta_hex_len
+                   with
+                   | FStar_Pervasives_Native.None ->
+                       FStar_Pervasives_Native.None
+                   | FStar_Pervasives_Native.Some raw ->
+                       FStar_Pervasives_Native.Some (zigzag_decode_nat raw))))
+let probe_parquet_column_page_header_compressed_size_in_row_group_from_table
+  (table : parquet_row_group_offset_table) (path : Prims.string)
+  (rg_index : Prims.nat) (col_index : Prims.nat) :
+  Prims.nat FStar_Pervasives_Native.option=
+  match probe_parquet_column_data_page_offset_in_row_group_from_table table
+          rg_index col_index
+  with
+  | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+  | FStar_Pervasives_Native.Some page_offset ->
+      parquet_page_header_compressed_size_at path page_offset
+let probe_parquet_column_page_header_uncompressed_size_in_row_group_from_table
+  (table : parquet_row_group_offset_table) (path : Prims.string)
+  (rg_index : Prims.nat) (col_index : Prims.nat) :
+  Prims.nat FStar_Pervasives_Native.option=
+  match probe_parquet_column_data_page_offset_in_row_group_from_table table
+          rg_index col_index
+  with
+  | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+  | FStar_Pervasives_Native.Some page_offset ->
+      parquet_page_header_uncompressed_size_at path page_offset
+let probe_parquet_column_page_header_length_in_row_group_from_table
+  (table : parquet_row_group_offset_table) (path : Prims.string)
+  (rg_index : Prims.nat) (col_index : Prims.nat) :
+  Prims.nat FStar_Pervasives_Native.option=
+  match probe_parquet_column_data_page_offset_in_row_group_from_table table
+          rg_index col_index
+  with
+  | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+  | FStar_Pervasives_Native.Some page_offset ->
+      parquet_page_header_length_at path page_offset
+let probe_parquet_column_page_header_num_values_in_row_group_from_table
+  (table : parquet_row_group_offset_table) (path : Prims.string)
+  (rg_index : Prims.nat) (col_index : Prims.nat) :
+  Prims.nat FStar_Pervasives_Native.option=
+  match probe_parquet_column_data_page_offset_in_row_group_from_table table
+          rg_index col_index
+  with
+  | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+  | FStar_Pervasives_Native.Some page_offset ->
+      (match parquet_read_range_hex path page_offset (Prims.of_int (128))
+       with
+       | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+       | FStar_Pervasives_Native.Some page_hex ->
+           (match nth_field_hex page_hex (Prims.of_int (5)) Prims.int_zero
+                    Prims.int_zero (FStar_String.strlen page_hex)
+            with
+            | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+            | FStar_Pervasives_Native.Some data_page_header_field ->
+                if data_page_header_field.cf_type <> compact_t_struct
+                then FStar_Pervasives_Native.None
+                else
+                  (match nth_field_hex page_hex Prims.int_one
+                           data_page_header_field.cf_value_start
+                           Prims.int_zero (FStar_String.strlen page_hex)
+                   with
+                   | FStar_Pervasives_Native.None ->
+                       FStar_Pervasives_Native.None
+                   | FStar_Pervasives_Native.Some num_values_field ->
+                       if num_values_field.cf_type <> compact_t_i32
+                       then FStar_Pervasives_Native.None
+                       else
+                         (match decode_varint_value_hex page_hex
+                                  num_values_field.cf_value_start
+                                  Prims.int_zero Prims.int_zero
+                                  (FStar_String.strlen page_hex)
+                          with
+                          | FStar_Pervasives_Native.None ->
+                              FStar_Pervasives_Native.None
+                          | FStar_Pervasives_Native.Some raw ->
+                              FStar_Pervasives_Native.Some
+                                (zigzag_decode_nat raw)))))
+let probe_parquet_column_decompressed_payload_hex_in_row_group_from_table
+  (table : parquet_row_group_offset_table) (path : Prims.string)
+  (rg_index : Prims.nat) (col_index : Prims.nat) :
+  Prims.string FStar_Pervasives_Native.option=
+  match ((probe_parquet_column_data_page_offset_in_row_group_from_table table
+            rg_index col_index),
+          (probe_parquet_column_page_header_length_in_row_group_from_table
+             table path rg_index col_index),
+          (probe_parquet_column_page_header_compressed_size_in_row_group_from_table
+             table path rg_index col_index),
+          (probe_parquet_column_page_header_uncompressed_size_in_row_group_from_table
+             table path rg_index col_index))
+  with
+  | (FStar_Pervasives_Native.Some page_offset, FStar_Pervasives_Native.Some
+     header_len, FStar_Pervasives_Native.Some compressed_size,
+     FStar_Pervasives_Native.Some uncompressed_size) ->
+      let payload_offset = page_offset + header_len in
+      (match parquet_read_range_hex path payload_offset compressed_size with
+       | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+       | FStar_Pervasives_Native.Some compressed_hex ->
+           parquet_zstd_decompress_hex compressed_hex uncompressed_size)
+  | uu___ -> FStar_Pervasives_Native.None
+let probe_parquet_column_first_level_section_length_in_row_group_from_table
+  (table : parquet_row_group_offset_table) (path : Prims.string)
+  (rg_index : Prims.nat) (col_index : Prims.nat) :
+  Prims.nat FStar_Pervasives_Native.option=
+  match probe_parquet_column_decompressed_payload_hex_in_row_group_from_table
+          table path rg_index col_index
+  with
+  | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+  | FStar_Pervasives_Native.Some payload_hex ->
+      if (FStar_String.strlen payload_hex) < (Prims.of_int (8))
+      then FStar_Pervasives_Native.None
+      else le_u32_at_hex payload_hex Prims.int_zero
+let probe_parquet_column_delta_length_byte_array_values_offset_in_row_group_from_table
+  (table : parquet_row_group_offset_table) (path : Prims.string)
+  (rg_index : Prims.nat) (col_index : Prims.nat) :
+  Prims.nat FStar_Pervasives_Native.option=
+  match probe_parquet_column_first_level_section_length_in_row_group_from_table
+          table path rg_index col_index
+  with
+  | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+  | FStar_Pervasives_Native.Some section_len ->
+      FStar_Pervasives_Native.Some ((Prims.of_int (4)) + section_len)
+let probe_parquet_column_delta_length_byte_array_page_cache_in_row_group_from_table
+  (table : parquet_row_group_offset_table) (path : Prims.string)
+  (rg_index : Prims.nat) (col_index : Prims.nat) :
+  dlba_page_cache FStar_Pervasives_Native.option=
+  match ((probe_parquet_column_decompressed_payload_hex_in_row_group_from_table
+            table path rg_index col_index),
+          (probe_parquet_column_delta_length_byte_array_values_offset_in_row_group_from_table
+             table path rg_index col_index))
+  with
+  | (FStar_Pervasives_Native.Some payload_hex, FStar_Pervasives_Native.Some
+     values_offset) ->
+      let payload_len_hex = FStar_String.strlen payload_hex in
+      let values_start_hex = mul_nat values_offset (Prims.of_int (2)) in
+      if values_start_hex > payload_len_hex
+      then FStar_Pervasives_Native.None
+      else
+        (let values_hex =
+           FStar_String.sub payload_hex values_start_hex
+             (payload_len_hex - values_start_hex) in
+         let vh_len = FStar_String.strlen values_hex in
+         match decode_varint_value_with_end_hex values_hex Prims.int_zero
+                 Prims.int_zero Prims.int_zero vh_len
+         with
+         | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+         | FStar_Pervasives_Native.Some (block_size, p1) ->
+             (match decode_varint_value_with_end_hex values_hex p1
+                      Prims.int_zero Prims.int_zero vh_len
+              with
+              | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+              | FStar_Pervasives_Native.Some (miniblocks, p2) ->
+                  if miniblocks = Prims.int_zero
+                  then FStar_Pervasives_Native.None
+                  else
+                    (match decode_varint_value_with_end_hex values_hex p2
+                             Prims.int_zero Prims.int_zero vh_len
+                     with
+                     | FStar_Pervasives_Native.None ->
+                         FStar_Pervasives_Native.None
+                     | FStar_Pervasives_Native.Some (value_count, p3) ->
+                         (match decode_varint_value_with_end_hex values_hex
+                                  p3 Prims.int_zero Prims.int_zero vh_len
+                          with
+                          | FStar_Pervasives_Native.None ->
+                              FStar_Pervasives_Native.None
+                          | FStar_Pervasives_Native.Some (first_raw, p4) ->
+                              let first_length = zigzag_decode_nat first_raw in
+                              (match decode_varint_value_with_end_hex
+                                       values_hex p4 Prims.int_zero
+                                       Prims.int_zero vh_len
+                               with
+                               | FStar_Pervasives_Native.None ->
+                                   FStar_Pervasives_Native.None
+                               | FStar_Pervasives_Native.Some
+                                   (min_delta_raw, p5) ->
+                                   let min_delta =
+                                     zigzag_decode_int min_delta_raw in
+                                   if (p5 + Prims.int_one) >= vh_len
+                                   then FStar_Pervasives_Native.None
+                                   else
+                                     (match byte_at_hex values_hex p5 with
+                                      | FStar_Pervasives_Native.None ->
+                                          FStar_Pervasives_Native.None
+                                      | FStar_Pervasives_Native.Some
+                                          bit_width ->
+                                          let widths_offset = p5 in
+                                          let packed_start =
+                                            p5 +
+                                              (mul_nat miniblocks
+                                                 (Prims.of_int (2))) in
+                                          let values_per_miniblock =
+                                            if miniblocks > Prims.int_zero
+                                            then
+                                              div_nat_pos block_size
+                                                miniblocks
+                                            else Prims.int_zero in
+                                          (match build_dlba_length_list
+                                                   values_hex vh_len
+                                                   block_size miniblocks
+                                                   values_per_miniblock
+                                                   min_delta widths_offset
+                                                   packed_start bit_width
+                                                   Prims.int_zero
+                                                   Prims.int_zero value_count
+                                                   first_length []
+                                           with
+                                           | FStar_Pervasives_Native.None ->
+                                               FStar_Pervasives_Native.None
+                                           | FStar_Pervasives_Native.Some
+                                               lengths ->
+                                               let total_value_bytes =
+                                                 sum_nat_list lengths in
+                                               let payload_byte_len =
+                                                 payload_len_hex /
+                                                   (Prims.of_int (2)) in
+                                               if
+                                                 values_offset >
+                                                   payload_byte_len
+                                               then
+                                                 FStar_Pervasives_Native.None
+                                               else
+                                                 (let values_stream_len =
+                                                    payload_byte_len -
+                                                      values_offset in
+                                                  if
+                                                    total_value_bytes >
+                                                      values_stream_len
+                                                  then
+                                                    FStar_Pervasives_Native.None
+                                                  else
+                                                    (let value_data_offset =
+                                                       values_stream_len -
+                                                         total_value_bytes in
+                                                     let starts =
+                                                       prefix_sums lengths
+                                                         Prims.int_zero [] in
+                                                     FStar_Pervasives_Native.Some
+                                                       {
+                                                         dpc_payload_hex =
+                                                           payload_hex;
+                                                         dpc_values_offset =
+                                                           values_offset;
+                                                         dpc_value_count =
+                                                           value_count;
+                                                         dpc_first_length =
+                                                           first_length;
+                                                         dpc_min_delta =
+                                                           min_delta;
+                                                         dpc_bit_width =
+                                                           bit_width;
+                                                         dpc_packed_start =
+                                                           packed_start;
+                                                         dpc_value_data_offset
+                                                           =
+                                                           value_data_offset;
+                                                         dpc_lengths =
+                                                           lengths;
+                                                         dpc_value_starts =
+                                                           starts
+                                                       })))))))))
+  | uu___ -> FStar_Pervasives_Native.None
+let probe_parquet_column_delta_length_byte_array_decode_all_in_row_group_from_table
+  (table : parquet_row_group_offset_table) (path : Prims.string)
+  (rg_index : Prims.nat) (col_index : Prims.nat) :
+  Prims.string FStar_Pervasives_Native.option Prims.list
+    FStar_Pervasives_Native.option=
+  match probe_parquet_column_delta_length_byte_array_page_cache_in_row_group_from_table
+          table path rg_index col_index
+  with
+  | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+  | FStar_Pervasives_Native.Some cache ->
+      FStar_Pervasives_Native.Some (dlba_page_decode_all_strings cache)
+let probe_parquet_column_rle_dictionary_decode_all_in_row_group_from_table
+  (table : parquet_row_group_offset_table) (path : Prims.string)
+  (rg_index : Prims.nat) (col_index : Prims.nat) :
+  Prims.string FStar_Pervasives_Native.option Prims.list
+    FStar_Pervasives_Native.option=
+  match probe_parquet_column_dictionary_page_offset_in_row_group_from_table
+          table rg_index col_index
+  with
+  | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+  | FStar_Pervasives_Native.Some dict_offset ->
+      (match parquet_decompressed_page_at path dict_offset with
+       | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+       | FStar_Pervasives_Native.Some dict_payload_hex ->
+           (match parquet_dictionary_page_num_values_at path dict_offset with
+            | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+            | FStar_Pervasives_Native.Some dict_num_values ->
+                (match decode_plain_dictionary dict_payload_hex
+                         dict_num_values
+                 with
+                 | FStar_Pervasives_Native.None ->
+                     FStar_Pervasives_Native.None
+                 | FStar_Pervasives_Native.Some dict ->
+                     (match probe_parquet_column_decompressed_payload_hex_in_row_group_from_table
+                              table path rg_index col_index
+                      with
+                      | FStar_Pervasives_Native.None ->
+                          FStar_Pervasives_Native.None
+                      | FStar_Pervasives_Native.Some data_payload_hex ->
+                          (match probe_parquet_column_page_header_num_values_in_row_group_from_table
+                                   table path rg_index col_index
+                           with
+                           | FStar_Pervasives_Native.None ->
+                               FStar_Pervasives_Native.None
+                           | FStar_Pervasives_Native.Some value_count ->
+                               (match probe_parquet_column_first_level_section_length_in_row_group_from_table
+                                        table path rg_index col_index
+                                with
+                                | FStar_Pervasives_Native.None ->
+                                    FStar_Pervasives_Native.None
+                                | FStar_Pervasives_Native.Some section_len ->
+                                    (match skip_first_level_section_hex
+                                             data_payload_hex section_len
+                                     with
+                                     | FStar_Pervasives_Native.None ->
+                                         FStar_Pervasives_Native.None
+                                     | FStar_Pervasives_Native.Some
+                                         values_hex ->
+                                         (match decode_rle_dictionary_data_page
+                                                  values_hex value_count
+                                          with
+                                          | FStar_Pervasives_Native.None ->
+                                              FStar_Pervasives_Native.None
+                                          | FStar_Pervasives_Native.Some
+                                              indices ->
+                                              FStar_Pervasives_Native.Some
+                                                (map_indices_to_dict indices
+                                                   dict [])))))))))
+let probe_parquet_column_page_header_data_encoding_in_row_group_from_table
+  (table : parquet_row_group_offset_table) (path : Prims.string)
+  (rg_index : Prims.nat) (col_index : Prims.nat) :
+  Prims.string FStar_Pervasives_Native.option=
+  match probe_parquet_column_data_page_offset_in_row_group_from_table table
+          rg_index col_index
+  with
+  | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+  | FStar_Pervasives_Native.Some page_offset ->
+      (match parquet_read_range_hex path page_offset (Prims.of_int (128))
+       with
+       | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+       | FStar_Pervasives_Native.Some page_hex ->
+           (match nth_field_hex page_hex (Prims.of_int (5)) Prims.int_zero
+                    Prims.int_zero (FStar_String.strlen page_hex)
+            with
+            | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+            | FStar_Pervasives_Native.Some data_page_header_field ->
+                if data_page_header_field.cf_type <> compact_t_struct
+                then FStar_Pervasives_Native.None
+                else
+                  (match nth_field_hex page_hex (Prims.of_int (2))
+                           data_page_header_field.cf_value_start
+                           Prims.int_zero (FStar_String.strlen page_hex)
+                   with
+                   | FStar_Pervasives_Native.None ->
+                       FStar_Pervasives_Native.None
+                   | FStar_Pervasives_Native.Some encoding_field ->
+                       if encoding_field.cf_type <> compact_t_i32
+                       then FStar_Pervasives_Native.None
+                       else
+                         (match decode_varint_value_hex page_hex
+                                  encoding_field.cf_value_start
+                                  Prims.int_zero Prims.int_zero
+                                  (FStar_String.strlen page_hex)
+                          with
+                          | FStar_Pervasives_Native.None ->
+                              FStar_Pervasives_Native.None
+                          | FStar_Pervasives_Native.Some raw ->
+                              FStar_Pervasives_Native.Some
+                                (parquet_encoding_name
+                                   (zigzag_decode_nat raw))))))
+let probe_parquet_column_decode_in_row_group_from_table
+  (table : parquet_row_group_offset_table) (path : Prims.string)
+  (rg_index : Prims.nat) (col_index : Prims.nat) :
+  Prims.string FStar_Pervasives_Native.option Prims.list
+    FStar_Pervasives_Native.option=
+  match probe_parquet_column_page_header_data_encoding_in_row_group_from_table
+          table path rg_index col_index
+  with
+  | FStar_Pervasives_Native.Some "DELTA_LENGTH_BYTE_ARRAY" ->
+      probe_parquet_column_delta_length_byte_array_decode_all_in_row_group_from_table
+        table path rg_index col_index
+  | FStar_Pervasives_Native.Some "RLE_DICTIONARY" ->
+      probe_parquet_column_rle_dictionary_decode_all_in_row_group_from_table
+        table path rg_index col_index
+  | uu___ -> FStar_Pervasives_Native.None
+let probe_parquet_column_dictionary_in_row_group_from_table
+  (table : parquet_row_group_offset_table) (path : Prims.string)
+  (rg_index : Prims.nat) (col_index : Prims.nat) :
+  Prims.string Prims.list FStar_Pervasives_Native.option=
+  match probe_parquet_column_dictionary_page_offset_in_row_group_from_table
+          table rg_index col_index
+  with
+  | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+  | FStar_Pervasives_Native.Some dict_offset ->
+      (match parquet_decompressed_page_at path dict_offset with
+       | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+       | FStar_Pervasives_Native.Some dict_payload_hex ->
+           (match parquet_dictionary_page_num_values_at path dict_offset with
+            | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+            | FStar_Pervasives_Native.Some dict_num_values ->
+                decode_plain_dictionary dict_payload_hex dict_num_values))
 let rec list_rev_append :
   'a . 'a Prims.list -> 'a Prims.list -> 'a Prims.list =
   fun xs acc ->
     match xs with | [] -> acc | hd::tl -> list_rev_append tl (hd :: acc)
 let list_rev (xs : 'a Prims.list) : 'a Prims.list= list_rev_append xs []
 let rec collect_row_group_columns (path : Prims.string)
+  (table : parquet_row_group_offset_table FStar_Pervasives_Native.option)
   (col_index : Prims.nat) (rg_index : Prims.nat) (rg_count : Prims.nat)
   (fuel : Prims.nat)
   (acc_rev : Prims.string FStar_Pervasives_Native.option Prims.list) :
@@ -4122,12 +4682,18 @@ let rec collect_row_group_columns (path : Prims.string)
     if rg_index >= rg_count
     then FStar_Pervasives_Native.Some acc_rev
     else
-      (match probe_parquet_column_decode_in_row_group path rg_index col_index
-       with
+      (let decoded =
+         match table with
+         | FStar_Pervasives_Native.Some t ->
+             probe_parquet_column_decode_in_row_group_from_table t path
+               rg_index col_index
+         | FStar_Pervasives_Native.None ->
+             probe_parquet_column_decode_in_row_group path rg_index col_index in
+       match decoded with
        | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
        | FStar_Pervasives_Native.Some this_rg ->
            let acc_rev' = list_rev_append this_rg acc_rev in
-           collect_row_group_columns path col_index
+           collect_row_group_columns path table col_index
              (rg_index + Prims.int_one) rg_count (fuel - Prims.int_one)
              acc_rev')
 let probe_parquet_column_decode_all_row_groups (path : Prims.string)
@@ -4137,8 +4703,9 @@ let probe_parquet_column_decode_all_row_groups (path : Prims.string)
   match probe_parquet_row_group_count path with
   | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
   | FStar_Pervasives_Native.Some rg_count ->
-      (match collect_row_group_columns path col_index Prims.int_zero rg_count
-               rg_count []
+      let table = probe_parquet_row_group_offset_table path in
+      (match collect_row_group_columns path table col_index Prims.int_zero
+               rg_count rg_count []
        with
        | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
        | FStar_Pervasives_Native.Some acc_rev ->
