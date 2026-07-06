@@ -55,8 +55,37 @@ names its date and the commit it was measured on.
 |---|---|---|
 | Turtle parsing | ~100k triples/s, near-linear to 1M triples (1M in 9.66s) | 2026-07-03, [`11ba254`](https://github.com/danbri/factoidal/commit/11ba254) |
 | In-memory dataset, end-to-end (parse + index + GRAPH-count query) | 1M quads in ~41s, ~1.2 GB peak RSS (~1.2 KB/quad) | 2026-07-03, [`bef4e4b`](https://github.com/danbri/factoidal/commit/bef4e4b) |
+| In-memory COTTAS-bytes store (`--data-cottas-mem`) | 64.4 B/quad for a full-corpus COUNT, 160.9 B/quad for point lookups — vs 877 B/quad on the heap store | 2026-07-06, [`677bdf1`](https://github.com/danbri/factoidal/commit/677bdf1) |
 | OWL-RL closure, sameAs 32-clique (was >590s cap-trip) | 1.07s — closure step reduced from O(k⁶) to ~O(k³) | 2026-07-03, [`4812c3d`](https://github.com/danbri/factoidal/commit/4812c3d) |
-| On-disk COTTAS (WIP) | serves the 3,143,406-quad UK Parliament corpus ([live demo]({{ '/web/demos/ukparliament/' | url }})); fast paths still unverified OCaml being migrated to F\* | [issue #118](https://github.com/danbri/factoidal/issues/118) |
+| On-disk COTTAS | serves the 3,143,406-quad UK Parliament corpus ([live demo]({{ '/web/demos/ukparliament/' | url }})); fast paths still unverified OCaml being migrated to F\* | [issue #118](https://github.com/danbri/factoidal/issues/118) |
+
+## A read-write database
+
+The on-disk store accepts SPARQL UPDATE and the Graph Store Protocol
+over HTTP (`factoidal-http --rw`), backed by an immutable COTTAS base
+plus an append-only delta log with framing round-trips proved in F\*.
+Readers merge the log on read (the merge lemma is proved, not
+asserted); compaction swaps in a new base atomically via a symlink,
+guarded by an epoch check. Crash-safety is measured, not claimed:
+SIGKILL harnesses at every write stage accept zero torn or corrupt
+states. The store lifecycle is self-contained — `factoidal import`
+writes COTTAS natively (byte-compatible with DuckDB's Parquet reader),
+so no Python or third-party tooling is needed to create, update,
+compact, or serve a database.
+
+The same delta-log write path runs on all three extraction targets:
+native OCaml, KaRaMeL-extracted C
+([`bd9e5be`](https://github.com/danbri/factoidal/commit/bd9e5be)), and
+js\_of\_ocaml / wasm\_of\_ocaml in the browser, where the log persists
+in IndexedDB across page reloads
+([`8ff60eb`](https://github.com/danbri/factoidal/commit/8ff60eb)).
+[Hub post 18]({{ '/web/hub/18-the-durable-log-live/' | url }}) runs
+the whole cycle — update, persist, reload, corrupt, recover — live in
+the page.
+
+On-disk fast paths still include unverified OCaml optimization layers
+being migrated back to F\* (see the recovery plan) — the parser and
+algebra spec are verified; that boundary is tracked openly.
 
 ## Build targets
 
