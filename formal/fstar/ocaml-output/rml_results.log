@@ -1,6 +1,6 @@
 === RML Test Runner ===
 
-=== rml-core: ../../../third_party/testing/rml-modules/rml-core/test-cases (76 test rows) ===
+=== rml-core: /home/user/factoidal/.claude/worktrees/agent-a03293295b15d7786/third_party/testing/rml-modules/rml-core/test-cases (76 test rows) ===
 PASS RMLTC0000-JSON
 PASS RMLTC0001a-JSON
 PASS RMLTC0001b-JSON

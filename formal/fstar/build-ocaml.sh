@@ -40,13 +40,25 @@
 # arrived in v0.17 — so we vendor them under
 # ocaml-output/wasm_runtime/ and link them explicitly here.
 #
+# Stdint.Uint32 (FStar_UInt32's OCaml realization — Parquet.Footer's
+# u32 magic numbers/lengths, HDT's CRC32c) needed the same treatment:
+# ocaml-output/wasm_runtime/stdint_uint32_runtime.wat is a hand-written
+# (not vendored) Wasm module giving wasm_of_ocaml real `uint32_*`
+# bindings — see that file's header for why the existing
+# `fstar_int_stubs.js` (js_of_ocaml's JS stubs, same primitive names)
+# doesn't cover wasm_of_ocaml too. Wider stdint fixed-width types
+# (Uint64/Int40/48/56/128/…) are unused for real arithmetic anywhere in
+# this project and stay identity-shimmed by wasm_stub_shims.py.
+#
 # Status after the wasm_runtime link + wasm_stub_shims.py post-processor:
 # most SPARQL suites run identically to the native binary (bind 10/10,
 # bindings 10/10, aggregates 46/46, exists 6/6, property-path ~29/33,
-# syntax-query 93/94, subquery 12/14, etc.). Suites that invoke
-# SHA/MD5 (the `functions` suite's hash tests) still crash with
-# "illegal cast" because stub_sha*/caml_digestif_* have no real
-# binding — fix is to vendor or write wasm-side shims for those too.
+# syntax-query 93/94, subquery 12/14, etc.), and COTTAS/Parquet opens
+# (previously `Invalid_argument("Uint32.of_string")` on every wasm
+# COTTAS open) now work. Suites that invoke SHA/MD5 (the `functions`
+# suite's hash tests) still crash with "illegal cast" because
+# stub_sha*/caml_digestif_* have no real binding — fix is to vendor or
+# write wasm-side shims for those too.
 
 set -euo pipefail
 cd "$(dirname "$0")"
@@ -1578,8 +1590,8 @@ if [[ "$STEP" == "wasm" ]]; then
   W3C_WASM_LOADER="../../../docs/fstar-extracted/w3c-runner.wasm.js"
   W3C_WASM_ASSET="$(ls -1 ../../../docs/fstar-extracted/w3c-runner.wasm.assets/*.wasm 2>/dev/null | head -n 1 || true)"
   if [[ -n "$W3C_WASM_ASSET" ]] \
-     && ! needs_rebuild_from_sources "$W3C_WASM_LOADER" w3c_runner.byte wasm_runtime/zarith_runtime_wasm.js wasm_runtime/zarith_runtime.wat fstar_int_stubs.js \
-     && ! needs_rebuild_from_sources "$W3C_WASM_ASSET" w3c_runner.byte wasm_runtime/zarith_runtime_wasm.js wasm_runtime/zarith_runtime.wat fstar_int_stubs.js; then
+     && ! needs_rebuild_from_sources "$W3C_WASM_LOADER" w3c_runner.byte wasm_runtime/zarith_runtime_wasm.js wasm_runtime/zarith_runtime.wat wasm_runtime/stdint_uint32_runtime.wat fstar_int_stubs.js \
+     && ! needs_rebuild_from_sources "$W3C_WASM_ASSET" w3c_runner.byte wasm_runtime/zarith_runtime_wasm.js wasm_runtime/zarith_runtime.wat wasm_runtime/stdint_uint32_runtime.wat fstar_int_stubs.js; then
     echo "  WebAssembly bundle already up to date; skipping wasm_of_ocaml rebuild."
   else
     WASM_RC=0
@@ -1589,6 +1601,7 @@ if [[ "$STEP" == "wasm" ]]; then
       +zarith_stubs_js/runtime.js \
       wasm_runtime/zarith_runtime_wasm.js \
       wasm_runtime/zarith_runtime.wat \
+      wasm_runtime/stdint_uint32_runtime.wat \
       fstar_int_stubs.js \
       w3c_runner.byte \
       -o ../../../docs/fstar-extracted/w3c-runner.wasm.js \
@@ -1634,8 +1647,8 @@ if [[ "$STEP" == "wasm-factoidal" ]]; then
   FACTOIDAL_WASM_LOADER="../../../docs/fstar-extracted/factoidal.wasm.js"
   FACTOIDAL_WASM_ASSET="$(ls -1 ../../../docs/fstar-extracted/factoidal.wasm.assets/*.wasm 2>/dev/null | head -n 1 || true)"
   if [[ -n "$FACTOIDAL_WASM_ASSET" ]] \
-     && ! needs_rebuild_from_sources "$FACTOIDAL_WASM_LOADER" factoidal.byte wasm_runtime/zarith_runtime_wasm.js wasm_runtime/zarith_runtime.wat fstar_int_stubs.js \
-     && ! needs_rebuild_from_sources "$FACTOIDAL_WASM_ASSET" factoidal.byte wasm_runtime/zarith_runtime_wasm.js wasm_runtime/zarith_runtime.wat fstar_int_stubs.js; then
+     && ! needs_rebuild_from_sources "$FACTOIDAL_WASM_LOADER" factoidal.byte wasm_runtime/zarith_runtime_wasm.js wasm_runtime/zarith_runtime.wat wasm_runtime/stdint_uint32_runtime.wat fstar_int_stubs.js \
+     && ! needs_rebuild_from_sources "$FACTOIDAL_WASM_ASSET" factoidal.byte wasm_runtime/zarith_runtime_wasm.js wasm_runtime/zarith_runtime.wat wasm_runtime/stdint_uint32_runtime.wat fstar_int_stubs.js; then
     echo "  factoidal WebAssembly bundle already up to date; skipping wasm_of_ocaml rebuild."
   else
     WASM_RC=0
@@ -1645,6 +1658,7 @@ if [[ "$STEP" == "wasm-factoidal" ]]; then
       +zarith_stubs_js/runtime.js \
       wasm_runtime/zarith_runtime_wasm.js \
       wasm_runtime/zarith_runtime.wat \
+      wasm_runtime/stdint_uint32_runtime.wat \
       fstar_int_stubs.js \
       factoidal.byte \
       -o ../../../docs/fstar-extracted/factoidal.wasm.js \
@@ -1672,6 +1686,7 @@ if [[ "$STEP" == "wasm-factoidal" ]]; then
       +zarith_stubs_js/runtime.js \
       wasm_runtime/zarith_runtime_wasm.js \
       wasm_runtime/zarith_runtime.wat \
+      wasm_runtime/stdint_uint32_runtime.wat \
       fstar_int_stubs.js \
       npm_entry.byte \
       -o ../../../docs/fstar-extracted/factoidal-npm-entry.wasm.js

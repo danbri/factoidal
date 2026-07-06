@@ -2,32 +2,61 @@
 // in-memory COTTAS bytes store ABI (openCottas/queryCottas/closeCottas/
 // toCottas, bin/npm-entry/entry_jsoo.ml) also works when the npm-entry
 // bundle is compiled through wasm_of_ocaml (factoidal-npm-entry.wasm.js)
-// rather than js_of_ocaml (factoidal-npm-entry.js). Same fixture, same
-// assertions as the js version; run against the wasm ABI via wasm.js's
-// `_loadEntryForTest` test hook (mirrors delta-log-wasm.test.js /
-// wasm-parity.test.js's js-vs-wasm parity pattern). Skips cleanly when
+// rather than js_of_ocaml (factoidal-npm-entry.js). Same fixture data,
+// same assertions as the js version; run against the wasm ABI via
+// wasm.js's `_loadEntryForTest` test hook (mirrors delta-log-wasm.test.js
+// / wasm-parity.test.js's js-vs-wasm parity pattern). Skips cleanly when
 // the wasm bundle or a WasmGC-capable Node is unavailable.
 //
-// PRE-EXISTING GAP (discovered by this file, not introduced by it):
-// the whole COTTAS/Parquet reader -- on-disk `--data-cottas` as much as
-// the in-memory bytes store -- fails under wasm_of_ocaml today with
-// `Invalid_argument("Uint32.of_string")`. `FStar_UInt32`'s OCaml
-// realization (ulib/ml/FStar_UInt32.ml) is `Stdint.Uint32`, and
-// `wasm_of_ocaml`'s own build log (this session's `build-ocaml.sh
-// wasm-factoidal` run) lists `uint32_of_int`/`uint32_and`/`uint32_or`/
-// etc. under "Missing Wasm primitives" -- `Stdint`'s C stubs have no
-// wasm_of_ocaml realization, so any F* code touching a `u32` (Parquet's
-// magic numbers, page checksums, ...) throws the moment it's forced.
-// Confirmed independent of this task's own code: `factoidal.wasm.js`'s
-// plain CLI `--data-cottas` path (no in-memory buffer involved at all)
-// throws the identical error opening the SAME fixture. This is the gap
-// design doc 2026-07-06-inmemory-bytes-store.md's "Open decisions" item
-// 3 flagged as "not checked in this task" for the wasm track -- now
-// checked, and the answer is "does not work yet, needs a Stdint-for-
-// wasm_of_ocaml shim or a u32-representation change in Parquet.Footer.
-// fst, neither of which is new OCaml glue this task should add". Every
-// test below probes for this exact failure signature and skips with a
-// named reason rather than either hiding it or hard-failing the suite.
+// HISTORY -- the Stdint/wasm gap this file used to pin, and why the
+// fixture strategy changed:
+//
+// Until 2026-07-06, EVERY wasm COTTAS open failed with
+// `Invalid_argument("Uint32.of_string")`: `FStar_UInt32`'s OCaml
+// realization (F*'s ulib/ml/FStar_UInt32.ml) is `Stdint.Uint32`, and
+// wasm_of_ocaml had no Wasm-level binding for the `uint32_*` primitives
+// Stdint's C stubs realize natively and js_of_ocaml realizes via
+// ../fstar_int_stubs.js's plain-JS `//Provides:` functions -- confirmed
+// by disassembling a built factoidal.wasm.js with `wasm-dis` and
+// finding every `uint32_*` import wired to wasm_stub_shims.py's blanket
+// identity stub (`(...a)=>a[0]!==undefined?a[0]:0`) rather than real
+// arithmetic, even though fstar_int_stubs.js was already being passed
+// to `wasm_of_ocaml compile`. That's now fixed by
+// ocaml-output/wasm_runtime/stdint_uint32_runtime.wat, a hand-written
+// (not vendored) Wasm module giving wasm_of_ocaml real `uint32_*`
+// bindings the same way ocaml-output/wasm_runtime/zarith_runtime.wat
+// already does for Zarith's `ml_z_*` -- see that .wat file's header for
+// the full rationale, and this directory's ../wasm_runtime/README.md.
+//
+// Fixing that gap exposed a SEPARATE, narrower one: the on-disk
+// `tests/unit/fixtures/store_capabilities_sample.cottas` fixture (built
+// long ago from tests/local/data/cottas_sample.nq, and normally read
+// via `fs.readFileSync` + `openCottas`) has Zstd-compressed pages
+// (confirmed: its bytes contain the Zstd frame magic `28 B5 2F FD`
+// three times). Zstd decompression is realized by a *different*
+// primitive, `caml_parquet_zstd_decompress_hex`
+// (formal/fstar/experimental_ocaml_glue/parquet_zstd_stubs.c /
+// ocaml-output/parquet_zstd_stubs.js), which is ALSO still
+// identity/dummy-shimmed under wasm_of_ocaml (it shows up in
+// `build-ocaml.sh wasm-factoidal`'s own "Missing Wasm primitives" log,
+// same family as the pre-existing documented SHA/digestif gap in that
+// script's header comment) -- opening the static compressed fixture
+// under wasm now gets past the Stdint failure and instead throws a
+// Wasm-level `RuntimeError: illegal cast` while decoding a page that
+// decompressed to garbage. That is a distinct, still-open gap, out of
+// scope for the Stdint fix; it does not affect js_of_ocaml (whose
+// fzstd.umd.js-backed decompressor works today) or native.
+//
+// Because the *content* of that fixture is exactly
+// tests/local/data/cottas_sample.nq (see cottas-bytes-store.test.js's
+// header), every test below builds its own COTTAS bytes via
+// `toCottas(nq)` (uncompressed -- small in-memory writes don't reach
+// for Zstd) instead of reading the static compressed file, so these
+// tests exercise the now-fixed Stdint/u32 path end-to-end (open, query,
+// including default-graph matching, GRAPH ?g, ASK, and toCottas' own
+// writer) without tripping over the separate Zstd gap. The static
+// compressed fixture is still exercised fine on native and js_of_ocaml
+// (cottas-bytes-store.test.js), so nothing regresses there.
 
 'use strict';
 
@@ -42,12 +71,9 @@ const wasmEngine = require('../wasm.js');
 
 const NODE_MAJOR = Number(process.versions.node.split('.')[0]);
 
-const FIXTURE_COTTAS = path.resolve(
-  __dirname, '..', '..', '..', 'tests', 'unit', 'fixtures',
-  'store_capabilities_sample.cottas');
 const FIXTURE_NQ = path.resolve(
   __dirname, '..', '..', '..', 'tests', 'local', 'data', 'cottas_sample.nq');
-const haveFixtures = fs.existsSync(FIXTURE_COTTAS) && fs.existsSync(FIXTURE_NQ);
+const haveFixtures = fs.existsSync(FIXTURE_NQ);
 
 function wasmSkipReason() {
   if (NODE_MAJOR < 22) {
@@ -57,7 +83,7 @@ function wasmSkipReason() {
     return 'factoidal.wasm.js / .wasm asset not present ' +
       "(run 'build-ocaml.sh wasm-factoidal', then 'build-ocaml.sh npm')";
   }
-  if (!haveFixtures) return 'fixture .cottas/.nq not found';
+  if (!haveFixtures) return 'fixture .nq not found';
   return null;
 }
 
@@ -67,42 +93,16 @@ async function loadAbi() {
   return null;
 }
 
-function hexOfBuffer(buf) {
-  return Buffer.from(buf).toString('hex');
-}
-
-const STDINT_GAP = 'wasm_of_ocaml cannot yet run the COTTAS/Parquet reader ' +
-  '(Invalid_argument("Uint32.of_string") -- Stdint.Uint32 has no ' +
-  'wasm_of_ocaml primitive realization; see this file\'s header comment)';
-
-// Probe once: open + query the real fixture, and if that throws with
-// the Stdint/wasm signature, every test below skips with STDINT_GAP
-// instead of failing -- this is an engine-compatibility gap the design
-// doc's own open questions flagged as unchecked, not a bug in the new
-// openCottas/queryCottas/toCottas ABI this file is meant to pin.
-let stdintGapCache; // undefined = not probed; true/false once probed
-async function hasStdintGap(abi) {
-  if (stdintGapCache !== undefined) return stdintGapCache;
-  try {
-    const bytes = fs.readFileSync(FIXTURE_COTTAS);
-    const opened = JSON.parse(abi.openCottas(hexOfBuffer(bytes)));
-    // Under wasm_of_ocaml the Stdint gap can surface as early as
-    // openCottas() itself (unlike js_of_ocaml, where cottas_ondisk_
-    // open's lazy-open design defers it to the first query -- see
-    // cottas-bytes-store.test.js's "garbage bytes open lazily" test).
-    // Check both surfaces rather than assuming one.
-    if (!opened.ok) {
-      stdintGapCache = /Uint32\.of_string/.test(opened.error || '');
-      return stdintGapCache;
-    }
-    const r = JSON.parse(
-      abi.queryCottas(opened.handle, 'SELECT (COUNT(*) AS ?c) WHERE { ?s ?p ?o }'));
-    abi.closeCottas(opened.handle);
-    stdintGapCache = !r.ok && /Uint32\.of_string/.test(r.error || '');
-  } catch (e) {
-    stdintGapCache = /Uint32\.of_string/.test(String(e && e.message));
-  }
-  return stdintGapCache;
+// Builds a fresh, uncompressed COTTAS byte buffer (hex) from the
+// shared fixture .nq via the wasm ABI's own toCottas writer -- see the
+// file header for why this replaces reading the static compressed
+// fixture directly.
+function buildCottasHex(abi) {
+  const nq = fs.readFileSync(FIXTURE_NQ, 'utf8');
+  const written = JSON.parse(abi.toCottas(nq));
+  assert.equal(written.ok, true, JSON.stringify(written));
+  assert.equal(written.quadCount, 5);
+  return written.cottasHex;
 }
 
 test('wasm ABI: openCottas + queryCottas match the fixture\'s known content', async (t) => {
@@ -110,10 +110,9 @@ test('wasm ABI: openCottas + queryCottas match the fixture\'s known content', as
   if (reason) { t.skip(reason); return; }
   const abi = await loadAbi();
   if (!abi) { t.skip('wasm npm-entry bundle predates openCottas'); return; }
-  if (await hasStdintGap(abi)) { t.skip(STDINT_GAP); return; }
 
-  const bytes = fs.readFileSync(FIXTURE_COTTAS);
-  const opened = JSON.parse(abi.openCottas(hexOfBuffer(bytes)));
+  const cottasHex = buildCottasHex(abi);
+  const opened = JSON.parse(abi.openCottas(cottasHex));
   assert.equal(opened.ok, true, JSON.stringify(opened));
   const handle = opened.handle;
 
@@ -138,14 +137,9 @@ test('wasm ABI: toCottas + openCottas round-trip', async (t) => {
   if (reason) { t.skip(reason); return; }
   const abi = await loadAbi();
   if (!abi) { t.skip('wasm npm-entry bundle predates toCottas'); return; }
-  if (await hasStdintGap(abi)) { t.skip(STDINT_GAP); return; }
 
-  const nq = fs.readFileSync(FIXTURE_NQ, 'utf8');
-  const written = JSON.parse(abi.toCottas(nq));
-  assert.equal(written.ok, true, JSON.stringify(written));
-  assert.equal(written.quadCount, 5);
-
-  const opened = JSON.parse(abi.openCottas(written.cottasHex));
+  const cottasHex = buildCottasHex(abi);
+  const opened = JSON.parse(abi.openCottas(cottasHex));
   assert.equal(opened.ok, true, JSON.stringify(opened));
   const count = JSON.parse(abi.queryCottas(opened.handle,
     'SELECT (COUNT(*) AS ?c) WHERE { GRAPH ?g { ?s ?p ?o } }'));
@@ -158,17 +152,17 @@ test('wasm/js parity: openCottas + queryCottas give byte-identical SELECT bindin
   if (reason) { t.skip(reason); return; }
   const wasmAbi = await loadAbi();
   if (!wasmAbi) { t.skip('wasm npm-entry bundle predates openCottas'); return; }
-  if (await hasStdintGap(wasmAbi)) { t.skip(STDINT_GAP); return; }
 
   const jsEngine = require('..');
-  const bytes = fs.readFileSync(FIXTURE_COTTAS);
+  const cottasHex = buildCottasHex(wasmAbi);
+  const bytes = Buffer.from(cottasHex, 'hex');
 
   const jsHandle = await jsEngine.openCottas(bytes);
   const jsRows = await jsEngine.queryCottas(jsHandle,
     'SELECT ?s ?p ?o WHERE { GRAPH ?g { ?s ?p ?o } }');
   await jsEngine.closeCottas(jsHandle);
 
-  const wasmHandle = JSON.parse(wasmAbi.openCottas(hexOfBuffer(bytes))).handle;
+  const wasmHandle = JSON.parse(wasmAbi.openCottas(cottasHex)).handle;
   const wasmSrj = JSON.parse(wasmAbi.queryCottas(wasmHandle,
     'SELECT ?s ?p ?o WHERE { GRAPH ?g { ?s ?p ?o } }'));
   wasmAbi.closeCottas(wasmHandle);
