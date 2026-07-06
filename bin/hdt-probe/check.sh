@@ -1,16 +1,23 @@
 #!/bin/bash
-# bin/hdt-probe/check.sh — stage-1 regression pins for the HDT
-# container reader (HDT.Container.fst) over the two real vendored
-# fixtures in third_party/testing/hdt/ (reference-implementation-
-# generated; provenance in that directory's README.md).
+# bin/hdt-probe/check.sh — regression pins for the HDT container
+# reader (HDT.Container.fst, stage 1) and PFC dictionary decoder
+# (HDT.Dictionary.fst, stage 2) over the two real vendored fixtures
+# in third_party/testing/hdt/ (reference-implementation-generated;
+# provenance in that directory's README.md).
 #
 # Usage: check.sh [path-to-hdt_probe-binary]
 #   Default binary: bin/<platform>/hdt_probe (once build-ocaml.sh
 #   registration lands), falling back to ./hdt_probe next to this
 #   script. Until the module is registered in build-ocaml.sh, build
 #   ad hoc per docs/designissues/2026-07-06-hdt-program-plan.md
-#   stage 1 (extract HDT.Container.fst, compile against
-#   ocaml-output, link hdt_probe.ml).
+#   stage 1/2 (extract HDT.Container.fst / HDT.Dictionary.fst,
+#   compile against ocaml-output, link hdt_probe.ml).
+#
+# Stage 2 checks (PFC dictionary decode + ID<->term mapping) pass the
+# fixture's ground-truth source .nt as hdt_probe's second argument —
+# the probe cross-checks the dictionary's decoded term set against
+# that file as parsed by the project's own verified Parser.NTriples,
+# a code path independent of the PFC decoder under test.
 #
 # Exit 0 iff every pinned assertion holds. Per CLAUDE.md rule #14 no
 # failure is swallowed; per rule #25 the summary is worded, not a
@@ -20,6 +27,8 @@ set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 FIXTURES="$REPO_ROOT/third_party/testing/hdt"
+NT_TEST002="$REPO_ROOT/third_party/testing/w3c/rdf/rdf11/rdf-mt/datatypes/test002.nt"
+NT_RMLCORE="$REPO_ROOT/third_party/testing/rml-modules/rml-core/ontology/documentation/ontology.nt"
 
 PLATFORM_BIN="$REPO_ROOT/bin/$(uname -s | tr '[:upper:]' '[:lower:]')-$(uname -m)/hdt_probe"
 PROBE="${1:-}"
@@ -45,7 +54,7 @@ TMPLOG="$(mktemp)"
 trap 'rm -f "$TMPLOG"' EXIT
 
 echo "--- rdf-mt-test002.hdt (input: 1 triple) ---"
-RC=0; timeout 120 "$PROBE" "$FIXTURES/rdf-mt-test002.hdt" > "$TMPLOG" 2>&1 || RC=$?
+RC=0; timeout 120 "$PROBE" "$FIXTURES/rdf-mt-test002.hdt" "$NT_TEST002" > "$TMPLOG" 2>&1 || RC=$?
 if [[ $RC -ne 0 ]]; then echo "  FAIL  probe exited rc=$RC"; FAIL=$((FAIL + 1)); cat "$TMPLOG"; else
   expect "$TMPLOG" '^file *: .*2040 bytes'                         "file size 2040"
   expect "$TMPLOG" 'global.*'                                      "global CI parsed"
@@ -61,10 +70,32 @@ if [[ $RC -ne 0 ]]; then echo "  FAIL  probe exited rc=$RC"; FAIL=$((FAIL + 1));
   if grep -q MISMATCH "$TMPLOG"; then
     FAIL=$((FAIL + 1)); echo "  FAIL  a CRC16 mismatch was reported"
   else PASS=$((PASS + 1)); echo "  ok    all CI CRC16s validate"; fi
+
+  # --- stage 2: PFC dictionary decode ---
+  expect "$TMPLOG" 'shared *: decoded 0 strings \(expected 0\), crc OK, term-parse 0/0 ok'      "shared: 0 strings, crc ok, 0/0 terms"
+  expect "$TMPLOG" 'subjects *: decoded 1 strings \(expected 1\), crc OK, term-parse 1/1 ok'     "subjects: 1 string, crc ok, term parses"
+  expect "$TMPLOG" 'predicates *: decoded 1 strings \(expected 1\), crc OK, term-parse 1/1 ok'   "predicates: 1 string, crc ok, term parses"
+  expect "$TMPLOG" 'objects *: decoded 1 strings \(expected 1\), crc OK, term-parse 1/1 ok'      "objects: 1 string, crc ok, term parses (literal w/ datatype)"
+
+  # --- stage 2: per-section ID round-trip (pfc_locate . pfc_extract = id) ---
+  expect "$TMPLOG" 'shared *: round-trip 0 pass, 0 fail \(out of 0\)'      "shared round-trip vacuous (0 strings)"
+  expect "$TMPLOG" 'subjects *: round-trip 1 pass, 0 fail \(out of 1\)'   "subjects round-trip 1/1"
+  expect "$TMPLOG" 'predicates *: round-trip 1 pass, 0 fail \(out of 1\)' "predicates round-trip 1/1"
+  expect "$TMPLOG" 'objects *: round-trip 1 pass, 0 fail \(out of 1\)'    "objects round-trip 1/1"
+
+  # --- stage 2: role-level ID round-trip (shared/subjects/objects arithmetic) ---
+  expect "$TMPLOG" 'subject *: round-trip 1 pass, 0 fail \(out of 1\)'    "subject-role round-trip (0 shared + 1 subjects)"
+  expect "$TMPLOG" 'predicate *: round-trip 1 pass, 0 fail \(out of 1\)'  "predicate-role round-trip"
+  expect "$TMPLOG" 'object *: round-trip 1 pass, 0 fail \(out of 1\)'     "object-role round-trip (0 shared + 1 objects)"
+
+  # --- stage 2: dictionary term set vs. ground-truth test002.nt ---
+  expect "$TMPLOG" 'subjects *: dictionary 1 terms, ground truth 1 terms -> MATCH'   "subject term set matches test002.nt"
+  expect "$TMPLOG" 'predicates *: dictionary 1 terms, ground truth 1 terms -> MATCH' "predicate term set matches test002.nt"
+  expect "$TMPLOG" 'objects *: dictionary 1 terms, ground truth 1 terms -> MATCH'    "object term set matches test002.nt"
 fi
 
 echo "--- rml-core-ontology.hdt (input: 343 triples) ---"
-RC=0; timeout 120 "$PROBE" "$FIXTURES/rml-core-ontology.hdt" > "$TMPLOG" 2>&1 || RC=$?
+RC=0; timeout 120 "$PROBE" "$FIXTURES/rml-core-ontology.hdt" "$NT_RMLCORE" > "$TMPLOG" 2>&1 || RC=$?
 if [[ $RC -ne 0 ]]; then echo "  FAIL  probe exited rc=$RC"; FAIL=$((FAIL + 1)); cat "$TMPLOG"; else
   expect "$TMPLOG" '^file *: .*9124 bytes'                          "file size 9124"
   expect "$TMPLOG" 'header data : bytes 69 \.\. 1770 \(1701'        "header data range"
@@ -80,6 +111,28 @@ if [[ $RC -ne 0 ]]; then echo "  FAIL  probe exited rc=$RC"; FAIL=$((FAIL + 1));
   if grep -q MISMATCH "$TMPLOG"; then
     FAIL=$((FAIL + 1)); echo "  FAIL  a CRC16 mismatch was reported"
   else PASS=$((PASS + 1)); echo "  ok    all CI CRC16s validate"; fi
+
+  # --- stage 2: PFC dictionary decode ---
+  expect "$TMPLOG" 'shared *: decoded 39 strings \(expected 39\), crc OK, term-parse 39/39 ok'      "shared: 39 strings decode+parse"
+  expect "$TMPLOG" 'subjects *: decoded 45 strings \(expected 45\), crc OK, term-parse 45/45 ok'     "subjects: 45 strings decode+parse"
+  expect "$TMPLOG" 'predicates *: decoded 22 strings \(expected 22\), crc OK, term-parse 22/22 ok'   "predicates: 22 strings decode+parse"
+  expect "$TMPLOG" 'objects *: decoded 134 strings \(expected 134\), crc OK, term-parse 134/134 ok'  "objects: 134 strings decode+parse"
+
+  # --- stage 2: per-section ID round-trip (pfc_locate . pfc_extract = id) ---
+  expect "$TMPLOG" 'shared *: round-trip 39 pass, 0 fail \(out of 39\)'     "shared round-trip 39/39"
+  expect "$TMPLOG" 'subjects *: round-trip 45 pass, 0 fail \(out of 45\)'   "subjects round-trip 45/45"
+  expect "$TMPLOG" 'predicates *: round-trip 22 pass, 0 fail \(out of 22\)' "predicates round-trip 22/22"
+  expect "$TMPLOG" 'objects *: round-trip 134 pass, 0 fail \(out of 134\)' "objects round-trip 134/134"
+
+  # --- stage 2: role-level ID round-trip (shared/subjects/objects arithmetic) ---
+  expect "$TMPLOG" 'subject *: round-trip 84 pass, 0 fail \(out of 84\)'   "subject-role round-trip (39 shared + 45 subjects)"
+  expect "$TMPLOG" 'predicate *: round-trip 22 pass, 0 fail \(out of 22\)' "predicate-role round-trip"
+  expect "$TMPLOG" 'object *: round-trip 173 pass, 0 fail \(out of 173\)'  "object-role round-trip (39 shared + 134 objects)"
+
+  # --- stage 2: dictionary term set vs. ground-truth ontology.nt ---
+  expect "$TMPLOG" 'subjects *: dictionary 84 terms, ground truth 84 terms -> MATCH'    "subject term set matches ontology.nt (= distinctSubjects)"
+  expect "$TMPLOG" 'predicates *: dictionary 22 terms, ground truth 22 terms -> MATCH'  "predicate term set matches ontology.nt"
+  expect "$TMPLOG" 'objects *: dictionary 173 terms, ground truth 173 terms -> MATCH'   "object term set matches ontology.nt (= distinctObjects)"
 fi
 
 echo "--- truncated container must fail loudly ---"
@@ -95,5 +148,5 @@ fi
 
 echo "============================================================"
 TOTAL=$((PASS + FAIL))
-echo "hdt-probe stage-1 checks: ${PASS} pass, ${FAIL} fail (out of ${TOTAL})"
+echo "hdt-probe stage-1/stage-2 checks: ${PASS} pass, ${FAIL} fail (out of ${TOTAL})"
 [[ $FAIL -eq 0 ]]

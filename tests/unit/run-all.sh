@@ -70,6 +70,7 @@ COMMON_MODULES=(
   Parser_TurtleScanner
   Parser_NTriples
   HDT_Container
+  HDT_Dictionary
   Parser_Turtle
   Parser_NQuads
   Parser_TriG
