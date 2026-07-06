@@ -1,18 +1,26 @@
 module RDF.Store.Columnar.DeltaLog
 
 (* Durable-UPDATE delta-log entry format — stage 1 of
-   docs/designissues/2026-07-06-durable-update-design.md §3.1.
+   docs/designissues/2026-07-06-durable-update-design.md §3.1, EXTENDED
+   with stage 2 (§3.3: the delta-log FILE, atomic append, crash safety).
 
    Per CLAUDE.md rule #11 and the hash-witness pattern in
    docs/designissues/2026-05-07-io-verification-and-third-party.md:
    the byte layout of every durable companion file is specified in
-   F*, `Tot`, no `assume val`. This module owns *only* the pure
-   byte format for one delta-log entry (and the framing around it
-   that lets a reader re-synchronize after a corrupted/truncated
-   tail — §3.3's crash-recovery replay story). The fsync/rename
-   I/O protocol (`delta_log_append`, `delta_log_fsync`, ...) is
-   stage 2 (§3.3) and is out of scope here: this module is pure,
-   `Tot` throughout, no `ML` effect anywhere.
+   F*, `Tot`, no `assume val`. Section 1-6 below (stage 1, unchanged)
+   own *only* the pure byte format for one delta-log entry (and the
+   framing around it that lets a reader re-synchronize after a
+   corrupted/truncated tail — §3.3's crash-recovery replay story).
+   Sections 7+ (stage 2, this extension) add: the `delta_batch`
+   record (§3.1's original sketch, deferred out of stage 1's scope),
+   its own framing distinct from the per-entry framing above, a
+   log-file header, `serialize_log`/`parse_log` streaming over
+   `parse_delta_entry` batch-by-batch, a round-trip lemma extending
+   stage 1's to the whole log, and — at the very end — the five
+   `ML`-effect `assume val`s that are the actual fsync/rename I/O
+   boundary (§3.3's protocol). Everything above that final section
+   remains pure `Tot`; the module's ONLY `ML` surface is those five
+   declarations.
 
    Term encoding — deliberate divergence from the design doc's
    "reuse the existing term encoding" suggestion (§3.1): the only
@@ -55,6 +63,7 @@ module RDF.Store.Columnar.DeltaLog
    `expected_digest`, not reimplemented here. *)
 
 open FStar.List.Tot
+open FStar.All
 
 module B = RDF.Bytes
 module T = RDF.Term
@@ -682,3 +691,439 @@ let lemma_delta_entry_roundtrip (e : delta_entry) (rest : B.bytes)
     B.lemma_parse_write_u32_le_inverse (simple_checksum payload) rest;
     lemma_delta_entry_payload_roundtrip e [];
     FStar.List.Tot.Properties.append_l_nil payload
+
+(* ======================================================================
+   7. delta_batch — one committed batch of ops (§3.1's original
+   sketch, deferred out of stage 1's scope). A batch groups the ops
+   belonging to one SPARQL Update request under a monotonic sequence
+   number (`db_seq` — the log's total order) and a compaction epoch
+   (`db_epoch` — §3.3 step 5's "compacted through epoch N" skip-on-
+   replay guard). Batch framing has its OWN magic/version, distinct
+   from the per-entry framing above (section 5), so a reader can
+   tell "this looks like a batch header" from "this looks like a
+   bare entry" even in a corrupted stream where the two might
+   otherwise be confused.
+   ====================================================================== *)
+
+noeq type delta_batch = {
+  db_seq   : nat;
+  db_epoch : nat;
+  db_ops   : list delta_entry;
+}
+
+let delta_batch_magic   : nat = 0x31424C44  (* 'DLB1' LE: bytes 44 4C 42 31 *)
+let delta_batch_version : nat = 1
+
+(* --- ops list: N delta_entries back to back, reusing section 5's
+   per-entry framing/checksum unchanged (each op is independently
+   re-synchronizable, same crash-recovery property section 5 already
+   established). --------------------------------------------------- *)
+
+let rec serialize_ops (ops : list delta_entry) : Tot B.bytes (decreases ops) =
+  match ops with
+  | [] -> []
+  | e :: rest -> append (serialize_delta_entry e) (serialize_ops rest)
+
+let rec parse_n_delta_entries (n : nat) (bs : B.bytes)
+  : Tot (option (list delta_entry & B.bytes)) (decreases n) =
+  if n = 0 then Some ([], bs)
+  else
+    match parse_delta_entry bs with
+    | None -> None
+    | Some (e, rest) ->
+      (match parse_n_delta_entries (n - 1) rest with
+       | None -> None
+       | Some (es, rest2) -> Some (e :: es, rest2))
+
+(* --- batch well-formedness -------------------------------------------
+
+   `db_seq`/`db_epoch` bounded to fit `write_u64_le`'s precondition;
+   `db_ops`' count and total serialized size bounded to fit the u32
+   frame-length field, mirroring `delta_entry_ok`/`delta_entry_frame_ok`
+   above (section 6). Computed directly against the batch's actual op
+   list (not derived from a separate small-field bound) since a
+   batch's op count is the real scaling knob here — the design doc's
+   §4.2 sizes an uncompacted delta at "thousands to low tens of
+   thousands" of entries, nowhere near the u32 boundary. *)
+
+let rec delta_batch_ops_ok (ops : list delta_entry) : bool =
+  match ops with
+  | [] -> true
+  | e :: rest -> delta_entry_ok e && delta_batch_ops_ok rest
+
+let delta_batch_ok (b : delta_batch) : bool =
+  b.db_seq < 18446744073709551616 &&
+  b.db_epoch < 18446744073709551616 &&
+  length b.db_ops < 4294967296 &&
+  delta_batch_ops_ok b.db_ops &&
+  length (serialize_ops b.db_ops) < 4294967276  (* 2^32 - 20: seq(8)+epoch(8)+count(4) header *)
+
+(* --- serialize / parse: body (seq+epoch+count+ops, no outer frame) --- *)
+
+let serialize_delta_batch_body (b : delta_batch) : Tot B.bytes =
+  if b.db_seq >= 18446744073709551616 || b.db_epoch >= 18446744073709551616
+     || length b.db_ops >= 4294967296
+  then []
+  else
+    append (B.write_u64_le b.db_seq)
+      (append (B.write_u64_le b.db_epoch)
+        (append (B.write_u32_le (length b.db_ops)) (serialize_ops b.db_ops)))
+
+let parse_delta_batch_body (bs : B.bytes) : Tot (option (delta_batch & B.bytes)) =
+  match B.parse_u64_le bs with
+  | None -> None
+  | Some (sq, after_seq) ->
+    (match B.parse_u64_le after_seq with
+     | None -> None
+     | Some (ep, after_epoch) ->
+       (match B.parse_u32_le after_epoch with
+        | None -> None
+        | Some (n, after_n) ->
+          (match parse_n_delta_entries n after_n with
+           | None -> None
+           | Some (ops, rest) -> Some ({ db_seq = sq; db_epoch = ep; db_ops = ops }, rest))))
+
+(* --- serialize / parse: full framed batch (magic+version+length+
+   body+checksum — same shape as section 5's entry framing, one level
+   up) ------------------------------------------------------------- *)
+
+let serialize_delta_batch (b : delta_batch) : Tot B.bytes =
+  let body = serialize_delta_batch_body b in
+  let len = length body in
+  if len >= 4294967296 then []
+  else
+    append (B.write_u32_le delta_batch_magic)
+      (append (B.write_u32_le delta_batch_version)
+        (append (B.write_u32_le len)
+          (append body (B.write_u32_le (simple_checksum body)))))
+
+let parse_delta_batch (bs : B.bytes) : Tot (option (delta_batch & B.bytes)) =
+  match B.parse_u32_le bs with
+  | None -> None
+  | Some (magic, after_magic) ->
+    if magic <> delta_batch_magic then None
+    else
+      (match B.parse_u32_le after_magic with
+       | None -> None
+       | Some (ver, after_ver) ->
+         if ver <> delta_batch_version then None
+         else
+           (match B.parse_u32_le after_ver with
+            | None -> None
+            | Some (len, after_len) ->
+              (match B.parse_n_bytes len after_len with
+               | None -> None
+               | Some (body, after_body) ->
+                 (match B.parse_u32_le after_body with
+                  | None -> None
+                  | Some (chk, rest) ->
+                    if chk <> simple_checksum body then None
+                    else
+                      (match parse_delta_batch_body body with
+                       | Some (b, []) -> Some (b, rest)
+                       | _ -> None)))))
+
+(* ======================================================================
+   8. Batch round-trip lemmas — same proof shape as section 6,
+   composed bottom-up: ops-list, then body, then the full frame.
+   ====================================================================== *)
+
+let rec lemma_ops_roundtrip (ops : list delta_entry) (rest : B.bytes)
+  : Lemma
+      (requires delta_batch_ops_ok ops)
+      (ensures parse_n_delta_entries (length ops) (append (serialize_ops ops) rest) == Some (ops, rest))
+      (decreases ops)
+  = match ops with
+    | [] -> ()
+    | e :: more ->
+      let more_bytes = serialize_ops more in
+      lemma_delta_entry_roundtrip e (append more_bytes rest);
+      FStar.List.Tot.Properties.append_assoc (serialize_delta_entry e) more_bytes rest;
+      lemma_ops_roundtrip more rest
+
+(* Reuse RDF.Bytes's own `lemma_write_u64_le_decompose` (write_u64_le n
+   == write_u32_le lo @ write_u32_le hi, lo/hi the 32-bit halves)
+   rather than unfolding the raw 8-element list literal — `write_u32_le`
+   already carries a `{length b == 4}` refinement in its return type,
+   so `append_length` gives 4+4=8 with no further reduction needed. *)
+let lemma_write_u64_le_length (n : nat{n < 18446744073709551616})
+  : Lemma (length (B.write_u64_le n) == 8)
+  = B.lemma_write_u64_le_decompose n;
+    FStar.List.Tot.Properties.append_length
+      (B.write_u32_le (n % 4294967296)) (B.write_u32_le (n / 4294967296))
+
+let lemma_batch_body_length (b : delta_batch{delta_batch_ok b})
+  : Lemma (length (serialize_delta_batch_body b) == 20 + length (serialize_ops b.db_ops))
+  = let seqb = B.write_u64_le b.db_seq in
+    let epochb = B.write_u64_le b.db_epoch in
+    let nb = B.write_u32_le (length b.db_ops) in
+    let opsb = serialize_ops b.db_ops in
+    lemma_write_u64_le_length b.db_seq;
+    lemma_write_u64_le_length b.db_epoch;
+    FStar.List.Tot.Properties.append_length nb opsb;
+    FStar.List.Tot.Properties.append_length epochb (append nb opsb);
+    FStar.List.Tot.Properties.append_length seqb (append epochb (append nb opsb))
+
+let lemma_delta_batch_frame_ok (b : delta_batch{delta_batch_ok b})
+  : Lemma (length (serialize_delta_batch_body b) < 4294967296)
+  = lemma_batch_body_length b
+
+let lemma_delta_batch_body_roundtrip (b : delta_batch)
+  : Lemma
+      (requires delta_batch_ok b)
+      (ensures parse_delta_batch_body (serialize_delta_batch_body b) == Some (b, []))
+  = let n = length b.db_ops in
+    let opsb = serialize_ops b.db_ops in
+    let nb = B.write_u32_le n in
+    lemma_ops_roundtrip b.db_ops [];
+    FStar.List.Tot.Properties.append_l_nil opsb;
+    B.lemma_parse_write_u32_le_inverse n opsb;
+    FStar.List.Tot.Properties.append_assoc nb opsb [];
+    B.lemma_parse_write_u64_le_inverse b.db_epoch (append nb opsb);
+    FStar.List.Tot.Properties.append_assoc (B.write_u64_le b.db_epoch) nb opsb;
+    B.lemma_parse_write_u64_le_inverse b.db_seq
+      (append (B.write_u64_le b.db_epoch) (append nb opsb))
+
+#push-options "--z3rlimit 300"
+let lemma_delta_batch_roundtrip (b : delta_batch) (rest : B.bytes)
+  : Lemma
+      (requires delta_batch_ok b)
+      (ensures parse_delta_batch (append (serialize_delta_batch b) rest) == Some (b, rest))
+  = lemma_delta_batch_frame_ok b;
+    let body = serialize_delta_batch_body b in
+    let len = length body in
+    let magic_b = B.write_u32_le delta_batch_magic in
+    let ver_b = B.write_u32_le delta_batch_version in
+    let len_b = B.write_u32_le len in
+    let chk_b = B.write_u32_le (simple_checksum body) in
+    let tail0 = append ver_b (append len_b (append body chk_b)) in
+    let tail1 = append len_b (append body chk_b) in
+    let tail2 = append body chk_b in
+    FStar.List.Tot.Properties.append_assoc magic_b tail0 rest;
+    B.lemma_parse_write_u32_le_inverse delta_batch_magic (append tail0 rest);
+    FStar.List.Tot.Properties.append_assoc ver_b tail1 rest;
+    B.lemma_parse_write_u32_le_inverse delta_batch_version (append tail1 rest);
+    FStar.List.Tot.Properties.append_assoc len_b tail2 rest;
+    B.lemma_parse_write_u32_le_inverse len (append tail2 rest);
+    FStar.List.Tot.Properties.append_assoc body chk_b rest;
+    B.lemma_parse_n_bytes_inverse body (append chk_b rest);
+    B.lemma_parse_write_u32_le_inverse (simple_checksum body) rest;
+    lemma_delta_batch_body_roundtrip b;
+    FStar.List.Tot.Properties.append_l_nil body
+#pop-options
+
+(* ======================================================================
+   9. The log file — header, once, then batches back to back.
+
+   [ log_magic   : u32  0x474F4C44 ('DLOG')            ]
+   [ log_version : u32  1                              ]
+   [ batch_0 (section 7 framing) ]
+   [ batch_1 (section 7 framing) ]
+   ...
+
+   `parse_log_batches` streams over the tail: it decodes as many
+   WHOLE, checksum-valid batches as it can and stops — without
+   erroring — at the first byte that doesn't start a complete batch
+   frame. That "accept a prefix, never a torn entry" contract is
+   exactly what §3.3's crash-recovery story needs: a process killed
+   mid-append leaves a torn tail batch (bad length/checksum/magic),
+   which `parse_delta_batch` rejects, so `parse_log_batches` simply
+   stops there and returns every batch fully committed before the
+   crash, plus the raw undecoded suffix (for a caller that wants to
+   report/discard it, not for this module to interpret).
+   ====================================================================== *)
+
+let delta_log_magic   : nat = 0x474F4C44  (* 'DLOG' LE: bytes 44 4C 4F 47 *)
+let delta_log_version : nat = 1
+
+let serialize_log_header : B.bytes =
+  append (B.write_u32_le delta_log_magic) (B.write_u32_le delta_log_version)
+
+let parse_log_header (bs : B.bytes) : Tot (option B.bytes) =
+  match B.parse_u32_le bs with
+  | None -> None
+  | Some (magic, after_magic) ->
+    if magic <> delta_log_magic then None
+    else
+      (match B.parse_u32_le after_magic with
+       | None -> None
+       | Some (ver, rest) -> if ver <> delta_log_version then None else Some rest)
+
+let lemma_log_header_roundtrip (rest : B.bytes)
+  : Lemma (parse_log_header (append serialize_log_header rest) == Some rest)
+  = let magic_b = B.write_u32_le delta_log_magic in
+    let ver_b = B.write_u32_le delta_log_version in
+    FStar.List.Tot.Properties.append_assoc magic_b ver_b rest;
+    B.lemma_parse_write_u32_le_inverse delta_log_magic (append ver_b rest);
+    B.lemma_parse_write_u32_le_inverse delta_log_version rest
+
+(* --- shrink lemma: parsing a batch strictly consumes bytes, the
+   structural-recursion measure `parse_log_batches` needs. Walks the
+   same nested-match cascade as `parse_delta_batch` itself so each
+   `B.parse_u32_le`/`B.parse_n_bytes` call's length fact lines up
+   with the corresponding step there; the final checksum/body check
+   is irrelevant to the length arithmetic, so this establishes the
+   bound whether or not `parse_delta_batch` ultimately returns
+   `Some` or falls through to `None` on that check (the `None` arm
+   of this lemma's own conclusion is trivially true either way). --- *)
+
+let lemma_parse_u32_le_length (bs : B.bytes)
+  : Lemma (match B.parse_u32_le bs with
+           | Some (_, rest) -> length bs == length rest + 4
+           | None -> True)
+  = match bs with
+    | _ :: _ :: _ :: _ :: _ -> ()
+    | _ -> ()
+
+let rec lemma_parse_n_bytes_length (n : nat) (bs : B.bytes)
+  : Lemma (ensures (match B.parse_n_bytes n bs with
+                     | Some (_, rest) -> length bs == length rest + n
+                     | None -> True))
+          (decreases n)
+  = if n = 0 then ()
+    else
+      match bs with
+      | [] -> ()
+      | _ :: rest -> lemma_parse_n_bytes_length (n - 1) rest
+
+let lemma_parse_delta_batch_shrinks (bs : B.bytes)
+  : Lemma (match parse_delta_batch bs with
+           | Some (_, rest) -> length rest < length bs
+           | None -> True)
+  = match B.parse_u32_le bs with
+    | None -> ()
+    | Some (magic, after_magic) ->
+      lemma_parse_u32_le_length bs;
+      if magic <> delta_batch_magic then ()
+      else
+        (match B.parse_u32_le after_magic with
+         | None -> ()
+         | Some (ver, after_ver) ->
+           lemma_parse_u32_le_length after_magic;
+           if ver <> delta_batch_version then ()
+           else
+             (match B.parse_u32_le after_ver with
+              | None -> ()
+              | Some (len, after_len) ->
+                lemma_parse_u32_le_length after_ver;
+                (match B.parse_n_bytes len after_len with
+                 | None -> ()
+                 | Some (body, after_body) ->
+                   lemma_parse_n_bytes_length len after_len;
+                   (match B.parse_u32_le after_body with
+                    | None -> ()
+                    | Some (chk, rest) -> lemma_parse_u32_le_length after_body))))
+
+let rec parse_log_batches (bs : B.bytes) : Tot (list delta_batch & B.bytes) (decreases (length bs)) =
+  match parse_delta_batch bs with
+  | None -> ([], bs)
+  | Some (b, rest) ->
+    lemma_parse_delta_batch_shrinks bs;
+    let (more, tail) = parse_log_batches rest in
+    (b :: more, tail)
+
+let rec serialize_delta_batches (bs : list delta_batch) : Tot B.bytes (decreases bs) =
+  match bs with
+  | [] -> []
+  | b :: rest -> append (serialize_delta_batch b) (serialize_delta_batches rest)
+
+let rec delta_batches_ok (bs : list delta_batch) : bool =
+  match bs with
+  | [] -> true
+  | b :: rest -> delta_batch_ok b && delta_batches_ok rest
+
+let serialize_log (bs : list delta_batch) : Tot B.bytes =
+  append serialize_log_header (serialize_delta_batches bs)
+
+let parse_log (bs : B.bytes) : Tot (option (list delta_batch & B.bytes)) =
+  match parse_log_header bs with
+  | None -> None
+  | Some rest -> Some (parse_log_batches rest)
+
+(* ======================================================================
+   10. The log round-trip lemma — extends section 8's single-batch
+   lemma to a whole log: appending a list of well-formed batches
+   after the header and parsing the result back recovers exactly
+   those batches, in order, with nothing left over. This is stage
+   2's whole value, the direct analogue of section 6's
+   `lemma_delta_entry_roundtrip` one layer up the format.
+   ====================================================================== *)
+
+let rec lemma_parse_log_batches_roundtrip (bs : list delta_batch)
+  : Lemma
+      (requires delta_batches_ok bs)
+      (ensures parse_log_batches (serialize_delta_batches bs) == (bs, []))
+      (decreases bs)
+  = match bs with
+    | [] -> ()
+    | b :: rest ->
+      let rest_bytes = serialize_delta_batches rest in
+      lemma_delta_batch_roundtrip b rest_bytes;
+      lemma_parse_log_batches_roundtrip rest
+
+let lemma_log_roundtrip (bs : list delta_batch)
+  : Lemma
+      (requires delta_batches_ok bs)
+      (ensures parse_log (serialize_log bs) == Some (bs, []))
+  = let batch_bytes = serialize_delta_batches bs in
+    lemma_log_header_roundtrip batch_bytes;
+    lemma_parse_log_batches_roundtrip bs
+
+(* ======================================================================
+   11. Hash-witness surface (io-verification doc pattern) — thin by
+   design. This module exposes only the BYTES to hash
+   (`expected_digest_bytes`), not a call to `sha256` itself.
+
+   Why: the project's only wired sha256 realisation is
+   `Fstar_pure_hashes.sha256` (issue #63's patch, applied to
+   SPARQL11_Algebra.ml / RDF_Canonical.ml). `build-ocaml.sh`'s
+   hardcoded native-compile order links `fstar_pure_hashes.ml`
+   *after* `RDF_Store_Columnar_DeltaLog.ml` (see the `.ml` compile
+   list: "RDF_Store_Columnar_OffsetIndex.ml RDF_Store_Columnar_DeltaLog.ml"
+   appears well before "fstar_pure_hashes.ml"). An `assume val
+   hash_sha256` realised in THIS module would need
+   `Fstar_pure_hashes` available at THIS module's compile step,
+   which the current link order does not provide — and this task's
+   brief instructs not to edit build-ocaml.sh's registration/compile
+   order. Rather than duplicate the ~90-line SHA-256 implementation
+   into a second glue patch (drift risk with zero benefit), the
+   hash-witness comparison happens one layer up: the crash harness /
+   unit test calls the ALREADY-wired `Fstar_pure_hashes.sha256`
+   directly on the bytes this function produces, and compares against
+   `Fstar_pure_hashes.sha256` of the on-disk bytes read back after a
+   real append+fsync+read cycle. Same property the io-verification
+   doc's pattern asks for (F*-computed bytes hashed and compared
+   against on-disk bytes hashed) — the hash call itself just lives at
+   the test-driver layer instead of inside this `Tot` module. If
+   `fstar_pure_hashes.ml`'s link position ever moves earlier than
+   this module's, inlining a real `assume val hash_sha256` call here
+   is the natural follow-up.
+   ====================================================================== *)
+
+val expected_digest_bytes : delta_batch -> Tot B.bytes
+let expected_digest_bytes b = serialize_delta_batch b
+
+(* ======================================================================
+   12. The fsync/rename atomicity protocol (§3.3) — the ONLY `ML`
+   surface in this module. Five assume vals, all pure I/O per rule
+   #11(a): no branching on delta_batch contents beyond "write these
+   bytes then fsync" / "rename this path" / "read this whole file
+   back". The *decision* of what bytes to write (`serialize_log`,
+   `serialize_delta_batch`, `serialize_log_header`, all `Tot` above)
+   and the commit-sequence prose (append -> fsync -> report success
+   -> ... -> compaction's rename + fsync_dir) both live in the design
+   doc's §3.3, not re-encoded here as executable logic.
+
+   Realised in
+   formal/fstar/minimal_regrettable_glue_code_each_with_an_open_issue/NNN_delta_log_io.sh
+   (NNN: open-issue number TBD — see this task's report) with plain
+   OCaml `Unix` I/O: `Unix.openfile` + `O_APPEND` writes for
+   `delta_log_append`, `Unix.fsync` for `delta_log_fsync`/`fsync_dir`,
+   `Unix.rename` for `atomic_rename`, and a whole-file read for
+   `delta_log_read_all`. *)
+
+assume val delta_log_append   : path:string -> bytes:B.bytes -> ML unit
+assume val delta_log_fsync    : path:string -> ML unit
+assume val delta_log_read_all : path:string -> ML B.bytes
+assume val atomic_rename      : from_path:string -> to_path:string -> ML unit
+assume val fsync_dir          : path:string -> ML unit

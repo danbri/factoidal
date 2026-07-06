@@ -244,6 +244,120 @@ let () =
    | Some (e, []) -> check ~name:"corrupt.control-still-decodes" (e = good_entry)
    | _ -> check ~name:"corrupt.control-still-decodes" false);
 
+  (* ==========================================================
+     29+: stage 2 — delta_batch / log-file round-trip witness.
+     formal/fstar/RDF.Store.Columnar.DeltaLog.fst sections 7-10
+     (serialize_delta_batch/parse_delta_batch,
+     serialize_log/parse_log). Same discipline as the entry-level
+     tests above: round-trip every shape, then corrupt and confirm
+     rejection (never a torn/wrong decode). *)
+
+  let module DL = RDF_Store_Columnar_DeltaLog in
+  (* db_seq/db_epoch are Prims.nat (= Z.t after extraction) — plain
+     OCaml int literals must go through Z.of_int, same convention as
+     compound_presence_writer_roundtrip.ml / offsets_writer_roundtrip.ml. *)
+  let mk_batch (seq : int) (epoch : int) ops : DL.delta_batch =
+    { DL.db_seq = Z.of_int seq; DL.db_epoch = Z.of_int epoch; DL.db_ops = ops } in
+  let mk_batch_z (seq : Z.t) (epoch : Z.t) ops : DL.delta_batch =
+    { DL.db_seq = seq; DL.db_epoch = epoch; DL.db_ops = ops } in
+
+  let assert_batch_roundtrip ~name (b : DL.delta_batch) =
+    let bs = DL.serialize_delta_batch b in
+    match DL.parse_delta_batch bs with
+    | None -> check ~name:(name ^ " [parse]") false
+    | Some (b', rest) ->
+      check ~name:(name ^ " [parse]") true;
+      check ~name:(name ^ " [value]") (b' = b);
+      check ~name:(name ^ " [remainder-empty]") (rest = [])
+  in
+
+  let op1 =
+    DL.DE_Add (triple s_alice p_knows (RDF_Term.T_IRI (iri "http://example.org/bob")), None) in
+  let op2 = DL.DE_Clear (Some g_named) in
+  let op3 =
+    DL.DE_Add (triple s_blank (iri "http://example.org/name") (lang_lit "X" "fr"), Some g_named) in
+
+  assert_batch_roundtrip ~name:"batch.empty-ops" (mk_batch 0 0 []);
+  assert_batch_roundtrip ~name:"batch.single-op" (mk_batch 1 0 [op1]);
+  assert_batch_roundtrip ~name:"batch.multi-op" (mk_batch 42 3 [op1; op2; op3]);
+  assert_batch_roundtrip ~name:"batch.large-seq-epoch"
+    (mk_batch_z (Z.of_string "18446744073709551615") (Z.of_string "18446744073709551615") [op1]);
+
+  (* streaming: a batch's parse must hand back the exact trailing
+     bytes, same "remainder preserved" contract as entries. *)
+  (let b = mk_batch 5 0 [op1; op3] in
+   let bs = DL.serialize_delta_batch b in
+   let tail = RDF_Bytes.bytes_of_string "AFTER-BATCH" in
+   match DL.parse_delta_batch (bs @ tail) with
+   | Some (b', rest) ->
+     check ~name:"batch.streaming.value" (b' = b);
+     check ~name:"batch.streaming.remainder" (rest = tail)
+   | None -> check ~name:"batch.streaming" false);
+
+  (* batch-level corruption: bad magic / bad version / bad checksum /
+     truncated must all reject, never mis-decode. *)
+  (let good_batch = mk_batch 7 1 [op1; op2] in
+   let good_bytes = DL.serialize_delta_batch good_batch in
+   let good_len = List.length good_bytes in
+   let assert_batch_none ~name bs =
+     match DL.parse_delta_batch bs with
+     | None -> check ~name true
+     | Some _ -> check ~name false
+   in
+   assert_batch_none ~name:"batch.corrupt.empty" [];
+   assert_batch_none ~name:"batch.corrupt.truncated-header" (take 3 good_bytes);
+   assert_batch_none ~name:"batch.corrupt.truncated-tail" (take (good_len - 1) good_bytes);
+   assert_batch_none ~name:"batch.corrupt.bad-magic" (flip_at good_bytes 0);
+   assert_batch_none ~name:"batch.corrupt.bad-version" (flip_at good_bytes 4);
+   assert_batch_none ~name:"batch.corrupt.bad-checksum" (flip_at good_bytes (good_len - 2));
+   assert_batch_none ~name:"batch.corrupt.bad-body-byte" (flip_at good_bytes 16);
+   (match DL.parse_delta_batch good_bytes with
+    | Some (b, []) -> check ~name:"batch.corrupt.control-still-decodes" (b = good_batch)
+    | _ -> check ~name:"batch.corrupt.control-still-decodes" false));
+
+  (* --- log-file level: header + several batches, round-trip and
+     the "accept a prefix, never a torn entry" crash-recovery
+     contract (a truncated/corrupt trailing batch must not stop the
+     earlier, complete batches from being recovered). --- *)
+
+  let log_batches = [
+    mk_batch 1 0 [op1];
+    mk_batch 2 0 [op2; op3];
+    mk_batch 3 0 [];
+    mk_batch 4 1 [op1; op2; op3];
+  ] in
+  let log_bytes = DL.serialize_log log_batches in
+
+  (match DL.parse_log log_bytes with
+   | Some (bs, []) ->
+     check ~name:"log.roundtrip.value" (bs = log_batches);
+   | _ -> check ~name:"log.roundtrip" false);
+
+  (* Bad log header (wrong magic) must reject outright. *)
+  check ~name:"log.corrupt.bad-header" (DL.parse_log (flip_at log_bytes 0) = None);
+
+  (* Truncate the log so only a PARTIAL final batch remains: the
+     earlier, complete batches must still be recovered exactly, and
+     the torn tail must never be accepted as a (wrong) decoded
+     batch. This is the same property the crash harness
+     (tests/local/delta_log_crash_harness.sh) exercises against a
+     real killed process — this is its pure, in-process control. *)
+  (let full_len = List.length log_bytes in
+   let torn_len = full_len - 7 in (* lop off the last batch's tail *)
+   let torn_bytes = take torn_len log_bytes in
+   match DL.parse_log torn_bytes with
+   | None -> check ~name:"log.torn-tail.header-still-parses" false
+   | Some (bs, leftover) ->
+     check ~name:"log.torn-tail.recovers-complete-prefix"
+       (bs = [mk_batch 1 0 [op1]; mk_batch 2 0 [op2; op3]; mk_batch 3 0 []]);
+     check ~name:"log.torn-tail.leftover-is-undecoded-suffix" (leftover <> []));
+
+  (* expected_digest_bytes is exactly serialize_delta_batch — the
+     hash-witness surface's whole contract (section 11 of the .fst). *)
+  (let b = mk_batch 9 0 [op1] in
+   check ~name:"expected_digest_bytes.matches-serialize"
+     (DL.expected_digest_bytes b = DL.serialize_delta_batch b));
+
   Printf.printf
     "== summary: %d pass, %d fail (out of %d) ==\n"
     !passed !failed (!passed + !failed);
