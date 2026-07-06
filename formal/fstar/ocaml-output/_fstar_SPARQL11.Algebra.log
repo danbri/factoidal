@@ -1,18 +1,18 @@
-* Warning 241 at SPARQL11.IRI.Resolve.fst(0,0-0,0):
-  - Unable to load SPARQL11.IRI.Resolve.fst.checked since checked file
-    SPARQL11.IRI.Resolve.fst.checked is stale (dependence hash mismatch, use
-    --debug CheckedFiles for more details); will recheck
-    SPARQL11.IRI.Resolve.fst (suppressing this warning for further modules)
+* Warning 241 at RDF.Graph.Executable.fst(0,0-0,0):
+  - Unable to load RDF.Graph.Executable.fst.checked since checked file
+    RDF.Graph.Executable.fst.checked is stale (digest mismatch for
+    RDF.Graph.Executable.fst); will recheck RDF.Graph.Executable.fst
+    (suppressing this warning for further modules)
 
-* Warning 361 at SPARQL11.Algebra.fst(5748,0-5749,40):
+* Warning 361 at SPARQL11.Algebra.fst(5765,0-5766,40):
   - Some #push-options have not been popped. Current depth is 1.
 
 Extracted module SPARQL11.Algebra
 * Warning 247 at SPARQL11.Algebra.fst(0,0-0,0):
   - Checked file SPARQL11.Algebra.fst.checked was not written.
   - Reason:
-      checked file SPARQL11.IRI.Resolve.fst.checked is stale (dependence hash
-      mismatch, use --debug CheckedFiles for more details)
+      checked file RDF.Graph.Executable.fst.checked is stale (digest mismatch
+      for RDF.Graph.Executable.fst)
 
 Verified module: SPARQL11.Algebra
 All verification conditions discharged successfully

@@ -1936,8 +1936,7 @@ let xpath_to_str_regex (p : string) : string =
          byte collides with an ASCII regex metachar), so no BMP-range
          translation belongs here. The XSD/XPath regex SingleCharEsc
          control escapes 
- 
- 	 DO need translating though: OCaml
+  	 DO need translating though: OCaml
          Str has no notion of them (Str.regexp "\t" matches the
          literal letter 't', not a tab byte), so without this the
          ShExJ "REGEXP_escapes" fixtures (which combine these with an
@@ -4236,6 +4235,9 @@ let () = regex_replace_ref := (fun text pattern replacement flags ->
     let re = if case_insensitive
       then Str.regexp_case_fold converted
       else Str.regexp converted in
+    (* Manual global replace that handles unmatched groups gracefully.
+       OCaml Str.matched_group raises Not_found for unmatched groups;
+       we replace them with empty string per XPath/SPARQL semantics. *)
     let open Stdlib in
     let build_replacement matched_text =
       let len = String.length replacement in
@@ -4255,6 +4257,15 @@ let () = regex_replace_ref := (fun text pattern replacement flags ->
       done;
       Buffer.contents buf
     in
+    (* UTF-8 correction: OCaml Str treats the input as bytes. A character
+       class like `[^a-z0-9]` will match each byte of a multi-byte codepoint
+       separately — e.g. "日" (E6 97 A5) produces three matches instead of one.
+       We post-process Str matches so that:
+         * a match starting at a UTF-8 continuation byte is skipped
+           (it's inside a codepoint the regex couldn't actually match),
+         * a single-byte match whose byte is a UTF-8 lead byte is extended
+           to cover the whole codepoint.
+       SPARQL REPLACE is defined over codepoint strings (XPath regex). *)
     let utf8_cp_len_at s pos =
       if pos >= String.length s then 1
       else

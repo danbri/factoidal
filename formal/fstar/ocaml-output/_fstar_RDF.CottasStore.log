@@ -1,15 +1,16 @@
-* Warning 241 at RDF.Graph.Executable.fst(0,0-0,0):
-  - Unable to load RDF.Graph.Executable.fst.checked since checked file
-    RDF.Graph.Executable.fst.checked is stale (digest mismatch for
-    RDF.Graph.Executable.fst); will recheck RDF.Graph.Executable.fst
-    (suppressing this warning for further modules)
+* Warning 241 at RDF.CottasStore.LazyDictRegistry.fst(0,0-0,0):
+  - Unable to load RDF.CottasStore.LazyDictRegistry.fst.checked since checked
+    file RDF.CottasStore.LazyDictRegistry.fst.checked is stale (dependence hash
+    mismatch, use --debug CheckedFiles for more details); will recheck
+    RDF.CottasStore.LazyDictRegistry.fst (suppressing this warning for further
+    modules)
 
 Extracted module RDF.CottasStore
 * Warning 247 at RDF.CottasStore.fst(0,0-0,0):
   - Checked file RDF.CottasStore.fst.checked was not written.
   - Reason:
-      checked file RDF.Graph.Executable.fst.checked is stale (digest mismatch
-      for RDF.Graph.Executable.fst)
+      checked file Parser.BallyhooCOTTAS.fst.checked is stale (dependence hash
+      mismatch, use --debug CheckedFiles for more details)
 
 Verified module: RDF.CottasStore
 All verification conditions discharged successfully
