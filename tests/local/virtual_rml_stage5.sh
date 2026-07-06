@@ -259,7 +259,7 @@ COMMON_MODULES=(
   RDF_Dataset_Graphs
   RDF_Canonical
   RDF_Canonical_Manifest
-  SPARQL_FullText SPARQL11_Algebra XSD_Datatypes RDF_Pretty OWL_QueryRewrite OWL_QueryEval OWL_Tests_Manifest RIF_Core_Syntax Parser_RIFXML RIF_Core_Translation RIF_Core_Builtins RIF_Core_Conformance RIF_Core_Eval RIF_Core_Tests SPARQL11_Parser SHACL_Validation
+  SPARQL_FullText service_wrap_hook SPARQL11_Algebra XSD_Datatypes RDF_Pretty OWL_QueryRewrite OWL_QueryEval OWL_Tests_Manifest RIF_Core_Syntax Parser_RIFXML RIF_Core_Translation RIF_Core_Builtins RIF_Core_Conformance RIF_Core_Eval RIF_Core_Tests SPARQL11_Parser SHACL_Validation
   ShEx_Schema ShEx_Validation
   VC_Credential
   RML_Mapping RML_Sources RML_Eval

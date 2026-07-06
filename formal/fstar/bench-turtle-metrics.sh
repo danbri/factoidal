@@ -51,6 +51,7 @@ ocamlfind ocamlopt -package fstar.lib,str,zarith,sha,digestif.c -linkpkg -w -8-1
   Parser_SRX.ml Parser_CSVResults.ml \
   Parser_JSONResults.ml \
   Parser_JSON.ml Parser_JSONLD.ml \
+  service_wrap_hook.ml \
   SPARQL_FullText.ml SPARQL11_Algebra.ml SPARQL11_Parser.ml \
   factoidal_cli.ml \
   -o "$OUT_BIN"

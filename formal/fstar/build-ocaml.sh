@@ -468,6 +468,7 @@ if [[ "$STEP" == "all" || "$STEP" == "extract" ]]; then
     SPARQL.Protocol.Client.fst
     SPARQL.ServiceDescription.fst
     SPARQL.GraphStore.fst
+    SPARQL.Service.Wrap.fst
   )
 
   # Only modules actually present on disk are scheduled (mirrors the old
@@ -826,6 +827,7 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
     RDF_Dataset_Graphs.ml \
     RDF_Canonical.ml \
     RDF_Canonical_Manifest.ml \
+    service_wrap_hook.ml \
     SPARQL_FullText.ml SPARQL11_Algebra.ml XSD_Datatypes.ml RDF_Pretty.ml OWL_QueryRewrite.ml OWL_QueryEval.ml OWL_Tests_Manifest.ml RIF_Core_Syntax.ml Parser_RIFXML.ml RIF_Core_Translation.ml RIF_Core_Builtins.ml RIF_Core_Conformance.ml RIF_Core_Eval.ml RIF_Core_Tests.ml SPARQL11_Parser.ml SHACL_Validation.ml \
     ShEx_Schema.ml ShEx_Validation.ml \
     VC_Credential.ml \
@@ -842,7 +844,8 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
     SPARQL_Query_Analysis.ml \
     SPARQL_Plan_Explain.ml \
     SPARQL_HTTP.ml SPARQL_HTTP_Client.ml SPARQL_Protocol_Client.ml SPARQL_ServiceDescription.ml \
-    SPARQL_GraphStore.ml"
+    SPARQL_GraphStore.ml \
+    SPARQL_Service_Wrap.ml service_wrap_http.ml"
 
   # Parquet/Zstd C stub — compiled and linked into native binaries when the
   # system libzstd is available. If libzstd is missing, FACTOIDAL_NO_ZSTD=1
@@ -1401,6 +1404,7 @@ if [[ "$STEP" == "all" || "$STEP" == "js" ]]; then
     RDF_Dataset_Graphs.ml
     RDF_Canonical.ml
     RDF_Canonical_Manifest.ml
+    service_wrap_hook.ml
     SPARQL_FullText.ml SPARQL11_Algebra.ml XSD_Datatypes.ml RDF_Pretty.ml OWL_QueryRewrite.ml OWL_QueryEval.ml OWL_Tests_Manifest.ml RIF_Core_Syntax.ml Parser_RIFXML.ml RIF_Core_Translation.ml RIF_Core_Builtins.ml RIF_Core_Conformance.ml RIF_Core_Eval.ml RIF_Core_Tests.ml SPARQL11_Parser.ml SHACL_Validation.ml
     ShEx_Schema.ml ShEx_Validation.ml
     RML_Mapping.ml RML_Sources.ml RML_Eval.ml

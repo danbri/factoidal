@@ -1,4 +1,4 @@
 === ShEx Validation Manifest Runner (stage 8) ===
-Manifest: /home/user/factoidal/.claude/worktrees/agent-ab47403c613f8463a/third_party/testing/shex/validation/manifest.ttl
+Manifest: /home/user/factoidal/.claude/worktrees/agent-afda429a6b5abf08f/third_party/testing/shex/validation/manifest.ttl
 
-shex_runner: cannot read /home/user/factoidal/.claude/worktrees/agent-ab47403c613f8463a/third_party/testing/shex/validation/manifest.ttl
+shex_runner: cannot read /home/user/factoidal/.claude/worktrees/agent-afda429a6b5abf08f/third_party/testing/shex/validation/manifest.ttl

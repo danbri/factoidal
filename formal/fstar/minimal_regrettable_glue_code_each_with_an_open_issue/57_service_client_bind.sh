@@ -17,8 +17,19 @@
 # from manifests by the runner. The decision of HOW to dispatch a
 # SERVICE request lives in F* (SPARQL11.Algebra.eval_pattern_store).
 #
-# Live HTTP federation is a future phase: would require Dv-effecting
-# evaluator (or a snapshot-based bulk fetch up-front).
+# 2026-07-06 extension (virtual-sources design doc, Part A Stages 1-2:
+# docs/designissues/2026-07-06-virtual-sources-design.md §2.5): a
+# static-table MISS now falls back to `Service_wrap_hook.resolver`
+# (ocaml-output/service_wrap_hook.ml) before giving up and returning
+# None. That hook defaults to "always None" (today's exact behaviour)
+# until ocaml-output/service_wrap_http.ml -- a later-linked, native-only
+# module -- sets it at program start. This preserves the "zero RDF/
+# SPARQL semantic logic" claim above: the hook only decides WHETHER a
+# wrap+ resolver is installed at all, never HOW to triplify (that is
+# 100% SPARQL.Service.Wrap.fst, called from service_wrap_http.ml).
+#
+# Live HTTP federation (arbitrary SPARQL-speaking endpoints) is still a
+# future phase; this patch only wires wrapped, non-SPARQL sources.
 
 set -euo pipefail
 
@@ -92,7 +103,14 @@ new = '''(* SERVICE endpoint resolver -- issue #57.
    `graph_to_store g` below pins it to whatever module currently
    owns `rdf_graph` (RDF.Graph.Executable is being split into
    RDF.Term/RDF.Triple/RDF.Graph; the qualifier has already moved
-   once) without this patch needing to track the split. *)
+   once) without this patch needing to track the split.
+
+   2026-07-06: a static-table MISS falls back to
+   `Service_wrap_hook.resolver` (virtual-sources design doc Stages 1-2,
+   issue #57 family) before returning None -- see that file's banner
+   and this patch's own header comment for why the fallback is a
+   forward-ref hook cell rather than a direct call into the wrap+
+   resolver module. *)
 let service_endpoint_table = Hashtbl.create 16
 let service_endpoint_register (iri : Prims.string) g : unit =
   Hashtbl.replace service_endpoint_table iri g
@@ -101,7 +119,10 @@ let service_endpoint_clear () : unit =
 let service_endpoint_lookup (iri : Prims.string) : graph_store FStar_Pervasives_Native.option=
   match Hashtbl.find_opt service_endpoint_table iri with
   | Some g -> FStar_Pervasives_Native.Some (graph_to_store g)
-  | None -> FStar_Pervasives_Native.None'''
+  | None ->
+    (match !Service_wrap_hook.resolver iri with
+     | Some g -> FStar_Pervasives_Native.Some (graph_to_store g)
+     | None -> FStar_Pervasives_Native.None)'''
 
 m = old_re.search(content)
 if not m:
