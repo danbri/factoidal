@@ -632,26 +632,29 @@
     {
       "engine": "factoidal-cli-fast-path",
       "query": "q5_group_by",
-      "cold_s": 600.3993623669994,
+      "cold_s": 27.166754718,
       "cold_peak_rss_kb": 1022828,
-      "skip_reason": "cold run timed out or failed; warm runs not attempted",
-      "warm_s_runs": []
+      "row_count": 6,
+      "answer_sha256": "e709bd9ceadd3c45",
+      "note": "2026-07-06 post-fix (uncommitted at measurement time): SPARQL11.Algebra.fst group_by/add_to_groups fixed from O(n^2) list-append accumulation to O(1) cons + single reverse; measured on an isolated git-worktree build from HEAD 94df5d3 plus only that one-file patch. Single run, not median-of-3 (the pre-fix row never completed to have a warm baseline to match)."
     },
     {
       "engine": "factoidal-cli-forced-slow-path (kill switch)",
       "query": "q5_group_by",
-      "cold_s": 600.4201131989994,
+      "cold_s": 26.742481073,
       "cold_peak_rss_kb": 1022824,
-      "skip_reason": "cold run timed out or failed; warm runs not attempted",
-      "warm_s_runs": []
+      "row_count": 6,
+      "answer_sha256": "e709bd9ceadd3c45",
+      "note": "2026-07-06 post-fix, same patch as the fast-path row above; FACTOIDAL_DISABLE_STREAM_FASTPATH=1."
     },
     {
       "engine": "factoidal-cottas (on-disk)",
       "query": "q5_group_by",
-      "cold_s": 600.2685784359983,
+      "cold_s": 109.92514503,
       "cold_peak_rss_kb": 709356,
-      "skip_reason": "cold run timed out or failed; warm runs not attempted",
-      "warm_s_runs": []
+      "row_count": 6,
+      "answer_sha256": "e709bd9ceadd3c45",
+      "note": "2026-07-06 post-fix, same patch; COTTAS artifact freshly built for this measurement (materialize-nq-cottas-corpus --build-sidecars) in the isolated worktree's scratch dir, not the original benchmark's artifact."
     },
     {
       "engine": "jena-arq-inmemory",
@@ -998,5 +1001,21 @@
     }
   ],
   "_gene_tdb2_dir": "/tmp/claude-0/-home-user-factoidal/7adc2ce1-f0f1-56dc-9a3f-7f9c4d22ed9c/scratchpad/real-run-scratch/tdb2-gene-run2",
-  "_gene_cottas_artifact": "/tmp/claude-0/-home-user-factoidal/7adc2ce1-f0f1-56dc-9a3f-7f9c4d22ed9c/scratchpad/real-run-scratch/cottas-gene/gene-bench/v1/data.cottas"
+  "_gene_cottas_artifact": "/tmp/claude-0/-home-user-factoidal/7adc2ce1-f0f1-56dc-9a3f-7f9c4d22ed9c/scratchpad/real-run-scratch/cottas-gene/gene-bench/v1/data.cottas",
+  "group_by_fix_2026_07_06": {
+    "summary": "SPARQL11.Algebra.fst's group_by/add_to_groups accumulated each group's solutions via Lh.append_tr g.g_solutions [mu] -- O(current group size) per row, because append_tr walks its entire first argument. GROUP BY ?p over gene.ttl produces 6 groups, one holding 759,263 of 888,949 rows; appending onto that one group's growing list gave ~10^11 operations total, matching the >600s timeout on all three factoidal paths recorded above. Fix: cons the new solution onto the front of the matched group (O(1)) during the fold, then reverse each group's solution list exactly once after the fold completes (group_by), restoring original row order in O(n) total instead of O(n) per row. Verified under F* 2025.12.15 / z3 4.13.3, no --lax, no --admit_smt_queries. Subset growth curve (gene.ttl prefix subsets, same query, same unfixed vs fixed binary): unfixed 10k/50k/100k/200k lines -> 0.18s/2.61s/16.11s/112.48s (exponent trending toward ~2.6-2.8, consistent with O(n^2) plus GC pressure at scale); fixed -> 0.13s/0.70s/1.50s/3.21s (exponent ~1.1, linear). Full 888,949-triple corpus, fixed: in-memory fast-path 27.17s, in-memory forced-slow-path 26.74s, COTTAS on-disk 109.93s -- all three now finish and all three produce the answer_sha256 e709bd9ceadd3c45, byte-identical to Jena/pyoxigraph/rdflib's answer for this query. This is order-of-magnitude, not literal, parity with Jena in-memory's 2.05s (~13x slower) -- the quadratic cliff is gone but the linear constant factor of GROUP BY partitioning is its own, separate, smaller optimization opportunity not addressed by this fix.",
+    "mechanism": "formal/fstar/SPARQL11.Algebra.fst add_to_groups (~line 3115-3140) and group_by (~line 3170-3190)",
+    "measured_by": "isolated git worktree built from HEAD 94df5d3 plus only the SPARQL11.Algebra.fst patch (main tree had a concurrent, unrelated, uncommitted WIP session touching bin/factoidal-cli/factoidal_cli.ml, RDF.Store.Columnar.DeltaLog.fst, SPARQL11.Store.fst)",
+    "floors_checked_in_isolated_worktree": {
+      "sparql_w3c": "631 pass, 0 fail (out of 631)",
+      "rdf_w3c": "1031 pass, 0 fail (out of 1031)",
+      "rdfc10": "86 pass, 0 fail (out of 86)",
+      "unit_tests": "30 file(s) pass, 0 file(s) fail (out of 30)",
+      "cottas_row_order_regressions": "27 pass, 0 fail (out of 27)",
+      "cottas_corpus_regressions": "4 pass, 0 fail (out of 4)",
+      "dict_global_cache_parity": "6 pass, 0 fail (out of 6)",
+      "streamable_fastpath_regressions": "13 pass, 0 fail (out of 13)",
+      "durable_update_stage3": "6 pass, 9 fail (out of 15) -- PRE-EXISTING at HEAD 94df5d3, unrelated to this fix; the failing checks all involve --delta-log querying (RDF.Store.Columnar.DeltaLog.fst / SPARQL11.Store.fst / bin/factoidal-cli/factoidal_cli.ml --delta-log flag), none of which this patch touches. A concurrent session had uncommitted WIP changes to exactly those files at measurement time."
+    }
+  }
 }

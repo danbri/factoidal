@@ -3110,8 +3110,25 @@ let rec find_group (key : list eval_result) (groups : list group)
    the end. Preserves original group order. The earlier triple-`@` form
    (before @ ... @ after) was non-tail-rec inside List.Tot.append and
    overflowed the JS / native stack on aggregations with hundreds of groups.
-   O(n) scan per insertion — simple algorithm; hash-based grouping is a
-   separate perf track. *)
+   O(g) scan per insertion, g = number of DISTINCT group keys seen so far —
+   simple algorithm; hash-based grouping is a separate perf track.
+
+   2026-07-06 (competitive-benchmark GROUP BY cliff): the matched group's
+   `g_solutions` is now grown by CONSING `mu` onto the front — O(1) — not
+   by `Lh.append_tr g.g_solutions [mu]`, which walked (and reallocated) the
+   *entire* existing solution list on every single row. With only a
+   handful of distinct keys (e.g. GROUP BY ?p over gene.ttl: 6 groups,
+   one holding 759,263 of 888,949 rows), that append made each row's cost
+   proportional to how many rows had already landed in its group, i.e.
+   O(k^2) work for a group of eventual size k — 888,949 rows into 6
+   groups is ~10^11 operations, which is exactly the >600s timeout
+   observed in docs/designissues/2026-07-06-competitive-benchmark-results.md
+   (§4, q5_group_by, all three factoidal paths). Groups now accumulate in
+   REVERSE row order; `group_by` below reverses each group's solutions
+   exactly once after the fold completes, restoring the original
+   chronological order (needed because `having_filter` /
+   `eval_expr_in_group` / `eval_select_item_group` all treat
+   `g.g_solutions`'s head as "the representative/first solution"). *)
 let add_to_groups (key : list eval_result) (mu : solution_mapping) (groups : list group) : list group =
   let (rev_groups, found) =
     List.Tot.fold_left
@@ -3119,7 +3136,7 @@ let add_to_groups (key : list eval_result) (mu : solution_mapping) (groups : lis
          let acc, f = acc_f in
          if not f && keys_equal key g.g_key
          then
-           let g' = { g with g_solutions = Lh.append_tr g.g_solutions [mu] } in
+           let g' = { g with g_solutions = mu :: g.g_solutions } in
            (g' :: acc, true)
          else (g :: acc, f))
       ([], false) groups
@@ -3145,15 +3162,29 @@ let extend_with_group_aliases (base : option wf_iri) (conds : list group_conditi
     conds
 
 (* Partition a solution sequence by GROUP BY expressions — CONCRETE implementation.
-   Also extends each solution mapping with alias bindings from GC_Expr (e, Some v). *)
+   Also extends each solution mapping with alias bindings from GC_Expr (e, Some v).
+
+   `add_to_groups` now accumulates each group's solutions by consing onto
+   the front (O(1) per row) rather than appending onto the back (O(current
+   group size) per row — the mechanism behind the GROUP BY performance
+   cliff documented at `add_to_groups` above). That leaves every group's
+   `g_solutions` in reverse chronological order; this single
+   `List.Tot.map`/`List.Tot.rev` pass over the (small) finished group list
+   undoes that once, for a total O(n) cost across every group combined
+   (each row's solution mapping is touched by exactly one `rev`), instead
+   of the O(n) reversal being paid PER ROW as an implicit side effect of
+   the old repeated appends. *)
 let group_by (base : option wf_iri) (conds : list group_condition) (omega : solution_sequence) : list group =
-  List.Tot.fold_left
-    (fun (groups : list group) (mu : solution_mapping) ->
-      let key = eval_group_key base conds mu in
-      let mu' = extend_with_group_aliases base conds mu in
-      add_to_groups key mu' groups)
-    []
-    omega
+  let groups_reversed =
+    List.Tot.fold_left
+      (fun (groups : list group) (mu : solution_mapping) ->
+        let key = eval_group_key base conds mu in
+        let mu' = extend_with_group_aliases base conds mu in
+        add_to_groups key mu' groups)
+      []
+      omega
+  in
+  List.Tot.map (fun (g : group) -> { g with g_solutions = List.Tot.rev g.g_solutions }) groups_reversed
 
 (* When no GROUP BY is specified, the entire sequence is one group *)
 let implicit_group (omega : solution_sequence) : list group =

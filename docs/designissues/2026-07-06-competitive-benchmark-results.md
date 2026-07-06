@@ -267,6 +267,10 @@ class" claim:**
    wrong data) and filed as its own GitHub issue with this benchmark's
    JSON as the reproduction case, not folded into the general
    "GROUP BY is slow" prior art already in the codebase.
+   **Update 2026-07-06: fixed — see §7.** The O(n²) list-append
+   accumulation in `SPARQL11.Algebra.fst`'s `add_to_groups` is gone;
+   all three factoidal paths now finish (27.17 s / 26.74 s / 109.93 s
+   vs. Jena's 2.05 s — order-of-magnitude, not literal, parity).
 2. **The streaming "fast path" only accelerates two of the six query
    shapes tested (`COUNT(*)` and bound-predicate `COUNT`), and the
    speedup it buys (6.6 s vs 26-27 s, ~4×) evaporates for every other
@@ -336,3 +340,98 @@ Every per-invocation timeout is capped at 600 s (anti-pattern #17); a
 cold run that hits the cap skips its warm runs rather than repeating a
 proven-hanging combination 3 more times, and is reported as SKIP with
 the reason stated, never silently dropped.
+
+## 7. Update, 2026-07-06: the GROUP BY cliff (§4/§5 item 1) is fixed
+
+**Mechanism, named with file:line.** `formal/fstar/SPARQL11.Algebra.fst`'s
+`add_to_groups` (the per-row group-accumulation step inside `group_by`,
+~line 3115) grew the matched group's solution list with
+`Lh.append_tr g.g_solutions [mu]`. `append_tr xs ys` (`RDF.List.Helpers.fst`)
+walks its **entire first argument** to build a reversed accumulator before
+splicing `ys` on — it is O(len xs), not O(1). Since `g.g_solutions` is
+exactly the list being appended onto, every one of the 888,949 rows in
+`q5_group_by` paid a cost proportional to how many rows had already
+landed in its group. `GROUP BY ?p` over `gene.ttl` produces 6 groups, one
+of which (`wdt:P684`) holds 759,263 rows — so the append chain for that
+one group alone cost 1+2+...+759,263 ≈ 2.9×10^11 operations, which is
+exactly the >600 s timeout recorded in §4 on **all three** factoidal
+paths (in-memory fast path, in-memory forced-slow-path, COTTAS on-disk):
+the cliff is in the shared `SPARQL11.Algebra.fst` grouping code, not in
+any one storage backend.
+
+**Fix.** `add_to_groups` now conses the new solution onto the front of
+the matched group (`mu :: g.g_solutions`, O(1)) instead of appending to
+the back; `group_by` reverses each group's solution list exactly once,
+after its fold over all rows completes, restoring the original row
+order in one O(n) pass total (rather than paying an implicit O(n)
+reversal on every single row, as the old repeated-append code did).
+Group lookup itself (scanning the small number of *distinct* keys seen
+so far) is unchanged — still O(g) per row, g = distinct group count;
+that remains fine for this benchmark's g=6 and is flagged in the code
+comment as a separate perf track if a future workload has very many
+distinct GROUP BY keys. Verified clean under F* 2025.12.15 / z3 4.13.3,
+no `--lax`, no `--admit_smt_queries`.
+
+**Growth curve, before and after** (same query, subsets of `gene.ttl`
+by line-prefix, same CLI invocation pattern as `bench_competitive.py`):
+
+| Subset | Unfixed (committed `bin/linux-x86_64/factoidal`, commit `5e8399a`) | Fixed |
+|---|---:|---:|
+| ~10k lines | 0.18 s | 0.13 s |
+| ~50k lines | 2.61 s | 0.70 s |
+| ~100k lines | 16.11 s | 1.50 s |
+| ~200k lines | 112.48 s | 3.21 s |
+
+Unfixed: exponent trending from ~1.7 (10k→50k) to ~2.8 (100k→200k) —
+consistent with an O(n²) mechanism whose relative overhead grows as the
+dominant group's list gets larger (plus additional GC pressure from the
+ever-larger repeated copies). Fixed: exponent ~1.1 across the same
+range — linear, as expected once the accumulation is O(1) per row.
+
+**Full 888,949-triple corpus, fixed, all three factoidal paths** (measured
+in an isolated git worktree built from HEAD `94df5d3` plus only the
+`SPARQL11.Algebra.fst` patch — see provenance note below):
+
+| Path | Time | Answer |
+|---|---:|---|
+| in-memory (fast path) | 27.17 s | `e709bd9ceadd3c45` |
+| in-memory (forced slow path) | 26.74 s | `e709bd9ceadd3c45` |
+| COTTAS on-disk | 109.93 s | `e709bd9ceadd3c45` |
+
+All three now finish (down from >600 s / indeterminate) and all three
+produce `e709bd9ceadd3c45` — byte-identical to Jena's, pyoxigraph's, and
+rdflib's answer for this query (§4 table above). This is
+**order-of-magnitude, not literal, parity** with Jena's in-memory 2.05 s
+warm figure (27.17/2.05 ≈ 13×) — the quadratic cliff that made the query
+never finish is gone, but the remaining linear-time constant factor of
+GROUP BY partitioning (per-row key evaluation, alias binding, and the
+O(g) group-list scan) is a separate, smaller optimization opportunity
+this fix does not address.
+
+**Provenance and isolation.** At measurement time, `bin/factoidal-cli/factoidal_cli.ml`,
+`formal/fstar/RDF.Store.Columnar.DeltaLog.fst`, and
+`formal/fstar/SPARQL11.Store.fst` had uncommitted, unrelated, in-flight
+changes from a concurrent session (a durable-update/compaction feature,
+`docs/designissues/2026-07-06-durable-update-design.md`) that briefly left
+the main tree's `bin/factoidal-cli` consumer binary in a non-compiling
+state. The `SPARQL11.Algebra.fst` GROUP BY fix was verified, extracted,
+compiled, benchmarked, and floor-tested in an isolated `git worktree`
+checked out from `HEAD` (commit `94df5d3`) with **only** the
+`SPARQL11.Algebra.fst` diff applied on top — not the concurrent session's
+WIP — so none of the numbers or floor results above are affected by that
+unrelated, still-in-progress work. Floors checked in that isolated
+worktree: SPARQL 631 pass/0 fail (out of 631, includes the aggregates
+suite that exercises GROUP BY), RDF 1031 pass/0 fail (out of 1031),
+RDFC-1.0 86 pass/0 fail (out of 86), `tests/unit/` 30 file(s) pass/0
+fail (out of 30), `cottas_row_order_regressions.sh` 27 pass/0 fail (out
+of 27), `cottas_corpus_regressions.sh` 4 pass/0 fail (out of 4),
+`dict_global_cache_parity.sh` 6 pass/0 fail (out of 6),
+`streamable_fastpath_regressions.sh` 13 pass/0 fail (out of 13).
+`tests/local/durable_update_stage3.sh` showed 6 pass, 9 fail (out of 15)
+in this same isolated worktree — this is the concurrent session's
+in-progress durability feature at its last-committed state (every
+failing check touches `--delta-log`, which this patch does not), not a
+regression caused by this fix; it is called out here rather than
+silently omitted. The raw numbers above are also recorded in
+`docs/test-results/competitive-bench.json`'s `group_by_fix_2026_07_06`
+key and the three updated `q5_group_by` rows in `query_results`.
