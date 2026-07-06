@@ -95,3 +95,11 @@ test('post03 cell 2 (OWL-RL toggle): equivalentClass only fires under OWL-RL', a
     ],
   });
 });
+
+test('post03 cell 3 (mutual subClassOf): equivalence in pure RDFS', async () => {
+  const result = await runObservableCell(cells[2], { fn: factoidal });
+  assert.deepEqual(result, [
+    'http://xmlns.com/foaf/0.1/Person',
+    'https://schema.org/Person',
+  ]);
+});

@@ -61,9 +61,9 @@ appears as a second type — derived, not asserted.
 
 ## OWL 2 RL: equivalentClass
 
-RDFS's subclass rule doesn't know about *equivalence* between two
-classes from different vocabularies — that's an OWL construct. Map
-`schema:Person` onto `foaf:Person`:
+To map two classes from different vocabularies onto each other, OWL
+gives you a single, self-documenting triple. Map `schema:Person` onto
+`foaf:Person`:
 
 ```turtle
 @prefix schema: <https://schema.org/> .
@@ -103,6 +103,34 @@ do with it. `entail: 'OWL-RL'` derives two more types: `foaf:Person`
 (via the equivalence, both directions) and `owl:Thing` (every OWL
 individual belongs to it). Same input graph, same query — the only
 thing that changed is which closure ran first.
+
+Plain RDFS *can* express the same equivalence, though — assert
+`rdfs:subClassOf` in **both directions** and the subclass rule fires
+both ways. (That is exactly how OWL defines `EquivalentClasses`: a
+subclass axiom in each direction.) What `owl:equivalentClass` buys is
+the single self-documenting triple rather than a pair:
+
+```observable-js
+const bothWays = `
+  @prefix schema: <https://schema.org/> .
+  @prefix foaf:   <http://xmlns.com/foaf/0.1/> .
+  @prefix rdfs:   <http://www.w3.org/2000/01/rdf-schema#> .
+  @prefix ex:     <http://example.org/> .
+
+  schema:Person rdfs:subClassOf foaf:Person .
+  foaf:Person   rdfs:subClassOf schema:Person .
+  ex:alice a schema:Person .
+`;
+const ds3 = await fn.parse(bothWays);
+const rows = await fn.query(
+  ds3,
+  `SELECT ?type WHERE { <http://example.org/alice> a ?type }`,
+  { entail: "RDFS" }
+);
+return rows.map((r) => r.get("type").value).sort();
+```
+
+Both types, pure RDFS, no OWL vocabulary in sight.
 
 This is measured against the real W3C OWL 2 RL test catalog, not
 asserted: positive entailment 28 pass, 2 fail (of 30 — the two fails
