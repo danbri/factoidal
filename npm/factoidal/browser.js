@@ -888,6 +888,85 @@ export async function jsonldToRdf(jsonldText, options) {
 }
 
 /**
+ * Serialize an RDF dataset (N-Quads text) as an expanded-form JSON-LD
+ * document -- the reverse of jsonldToRdf (bin/npm-entry/entry_jsoo.ml's
+ * jsonldFromRdf export -> the verified JSONLD.FromRdf.from_rdf). The
+ * returned `jsonld` string is JCS-canonical JSON.
+ *
+ * @param {string} nquads  N-Quads text
+ * @param {{useNativeTypes?:boolean,useRdfType?:boolean}} [options]
+ * @returns {Promise<{ok:true,jsonld:string}>}
+ */
+export async function jsonldFromRdf(nquads, options) {
+  if (typeof nquads !== 'string') {
+    throw new TypeError('jsonldFromRdf: nquads must be a string');
+  }
+  const abi = await loadNpmEntry();
+  if (typeof abi.jsonldFromRdf !== 'function') {
+    throw new Error(
+      'jsonldFromRdf: the loaded factoidal-npm-entry bundle predates the jsonldFromRdf export');
+  }
+  const opts = options || {};
+  const optionsJson = JSON.stringify({
+    ...(opts.useNativeTypes ? { useNativeTypes: true } : {}),
+    ...(opts.useRdfType ? { useRdfType: true } : {}),
+  });
+  const parsed = JSON.parse(abi.jsonldFromRdf(nquads, optionsJson));
+  if (!parsed.ok) throw new Error(parsed.error || 'jsonldFromRdf failed');
+  return parsed;
+}
+
+/**
+ * Test whether an XML document is well-formed (bin/npm-entry/
+ * entry_jsoo.ml's xmlWellformed export -> Parser_XML.parse_xml_document,
+ * the accept/reject signal bin/xml-runner drives against W3C xmlconf).
+ * The byte-oriented parser has no DOCTYPE/DTD production, so a document
+ * containing a DOCTYPE reports wellformed:false.
+ *
+ * @param {string} xmlText
+ * @returns {Promise<{ok:true,wellformed:boolean}>}
+ */
+export async function xmlWellformed(xmlText) {
+  if (typeof xmlText !== 'string') {
+    throw new TypeError('xmlWellformed: xmlText must be a string');
+  }
+  const abi = await loadNpmEntry();
+  if (typeof abi.xmlWellformed !== 'function') {
+    throw new Error(
+      'xmlWellformed: the loaded factoidal-npm-entry bundle predates the xmlWellformed export');
+  }
+  const parsed = JSON.parse(abi.xmlWellformed(xmlText));
+  if (!parsed.ok) throw new Error(parsed.error || 'xmlWellformed failed');
+  return parsed;
+}
+
+/**
+ * Evaluate an XPath 1.0 expression over an XML document (bin/npm-entry/
+ * entry_jsoo.ml's xpathEval export -> XPath_Eval.eval_xpath_from_root,
+ * the Stage-1 engine tests/unit/xpath_tests.ml drives). The result
+ * envelope carries `resultType` ('nodeset'|'string'|'number'|'boolean')
+ * plus the value: for a node-set, `count`, `stringValue`, and a `nodes`
+ * array of {kind,name,value}; otherwise a scalar `value`.
+ *
+ * @param {string} xmlText
+ * @param {string} xpathExpr
+ * @returns {Promise<object>}
+ */
+export async function xpathEval(xmlText, xpathExpr) {
+  if (typeof xmlText !== 'string' || typeof xpathExpr !== 'string') {
+    throw new TypeError('xpathEval: xmlText and xpathExpr must be strings');
+  }
+  const abi = await loadNpmEntry();
+  if (typeof abi.xpathEval !== 'function') {
+    throw new Error(
+      'xpathEval: the loaded factoidal-npm-entry bundle predates the xpathEval export');
+  }
+  const parsed = JSON.parse(abi.xpathEval(xmlText, xpathExpr));
+  if (!parsed.ok) throw new Error(parsed.error || 'xpathEval failed');
+  return parsed;
+}
+
+/**
  * Open a COTTAS/Parquet artifact's raw bytes as a queryable, read-only
  * store (bin/npm-entry/entry_jsoo.ml's openCottas export;
  * docs/designissues/2026-07-06-inmemory-bytes-store.md, browser call
@@ -1239,6 +1318,7 @@ export default {
   encodeTextAsBundleBytes, queryDataset, version,
   loadNpmEntry, setFactoidalNpmEntryUrl, rifSmoke, rifEval,
   shaclValidate, shexValidate, didKeyResolve, owlClosure, rmlMap, jsonldToRdf,
+  jsonldFromRdf, xmlWellformed, xpathEval,
   deltaLogOpen, deltaLogAppend, deltaLogReadAllHex, deltaLogMerge,
   deltaLogDestroy, _deltaLogCorruptLastForTest,
   openCottas, queryCottas, closeCottas, toCottas,

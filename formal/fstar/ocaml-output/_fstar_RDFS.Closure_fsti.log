@@ -1,14 +1,11 @@
-* Warning 241 at RDF.Graph.fsti(0,0-0,0):
-  - Unable to load RDF.Graph.fsti.checked since checked file
-    RDF.Graph.fsti.checked is stale (dependence hash mismatch, use --debug
-    CheckedFiles for more details); will recheck RDF.Graph.fsti (suppressing
-    this warning for further modules)
+* Warning 241 at RDF.Vocabulary.Axioms.fst(0,0-0,0):
+  - Unable to load RDF.Vocabulary.Axioms.fst.checked since checked file
+    RDF.Vocabulary.Axioms.fst.checked does not exist; will recheck
+    RDF.Vocabulary.Axioms.fst (suppressing this warning for further modules)
 
 * Warning 247 at RDFS.Closure.fsti(0,0-0,0):
   - Checked file RDFS.Closure.fsti.checked was not written.
-  - Reason:
-      checked file RDF.Graph.fsti.checked is stale (dependence hash mismatch,
-      use --debug CheckedFiles for more details)
+  - Reason: checked file RDF.Graph.fsti.checked does not exist
 
 Verified i'face (or impl+i'face): RDFS.Closure
 All verification conditions discharged successfully

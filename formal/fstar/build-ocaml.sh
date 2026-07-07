@@ -408,7 +408,7 @@ if [[ "$STEP" == "all" || "$STEP" == "extract" ]]; then
     Parser.SRX.fst Parser.CSVResults.fst
     Parser.JSONResults.fst
     SPARQL.JSON.Escape.fst
-    Parser.JSON.fst JSONLD.Loader.fst JSONLD.Context.fst JSONLD.Expand.fst Parser.JSONLD.fst
+    Parser.JSON.fst JSONLD.Loader.fst JSONLD.Context.fst JSONLD.Expand.fst Parser.JSONLD.fst JSONLD.FromRdf.fst
     ShEx.Schema.fst Parser.ShExC.fst ShEx.SchemaEq.fst ShEx.Validation.fst
     VC.Credential.fst
     VC.Multibase.fst
@@ -792,7 +792,7 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
     Parser_NQuads.ml Parser_TriG.ml Parser_XML.ml XML_Wellformedness.ml XML_Namespaces.ml Parser_XPath.ml XPath_Eval.ml Parser_RDFXML.ml \
     Parser_SRX.ml Parser_CSVResults.ml Parser_JSONResults.ml \
     SPARQL_JSON_Escape.ml \
-    Parser_JSON.ml JSONLD_Loader.ml JSONLD_Context.ml JSONLD_Expand.ml Parser_JSONLD.ml \
+    Parser_JSON.ml JSONLD_Loader.ml JSONLD_Context.ml JSONLD_Expand.ml Parser_JSONLD.ml JSONLD_FromRdf.ml \
     SPARQL_Eval_TimeBudget.ml \
     SPARQL_Eval_Limits.ml \
     SPARQL_HTTP_Response.ml \
@@ -953,6 +953,7 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
     "$BINDIR/owl_runner"
     "$BINDIR/rdfc10_runner"
     "$BINDIR/jsonld_runner"
+    "$BINDIR/jsonld_fromrdf_runner"
     "$BINDIR/shacl_runner"
     "$BINDIR/rml_runner"
     "$BINDIR/vc_runner"
@@ -972,6 +973,7 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
     ../../../bin/shacl-runner/shacl_runner.ml
     ../../../bin/rdfc10-runner/rdfc10_runner.ml
     ../../../bin/jsonld-runner/jsonld_runner.ml
+    ../../../bin/jsonld-fromrdf-runner/jsonld_fromrdf_runner.ml
     ../../../bin/rml-runner/rml_runner.ml
     ../../../bin/vc-runner/vc_runner.ml
     ../../../bin/did-runner/did_runner.ml
@@ -1132,6 +1134,34 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
       exit 1
     fi
     echo "  Built: bin/${PLATFORM}/jsonld_runner ($(wc -c < "$BINDIR/jsonld_runner") bytes)"
+
+    # jsonld_fromrdf_runner — JSON-LD 1.1 fromRdf ("Serialize RDF as
+    # JSON-LD") manifest runner. Reads
+    # third_party/testing/json-ld/tests/fromRdf-manifest.jsonld via the
+    # F*-extracted Parser_JSON, parses each -in.nq with
+    # Parser_NQuads.parse_nquads, calls JSONLD_FromRdf.from_rdf, and
+    # compares against the expected -out.jsonld via
+    # Parser_JSONLD.jcanon_document (JCS canonical JSON string equality).
+    JSONLD_FROMRDF_RUNNER_RC=0
+    run_with_heartbeat "ocamlopt jsonld_fromrdf_runner" "_ocamlopt_jsonld_fromrdf_runner.log" -- \
+      ocamlfind ocamlopt -package fstar.lib,str,zarith,sha,digestif.c,unix,uucp -linkpkg -w -8-14-26 \
+      $STATIC_FLAGS \
+      $COMMON_MODULES \
+      $PARQUET_NATIVE_STUBS \
+      $HACL_NATIVE_STUBS \
+      ../../../bin/jsonld-fromrdf-runner/jsonld_fromrdf_runner.ml \
+      -o "$BINDIR/jsonld_fromrdf_runner" || JSONLD_FROMRDF_RUNNER_RC=$?
+    cat _ocamlopt_jsonld_fromrdf_runner.log
+    if [[ "$JSONLD_FROMRDF_RUNNER_RC" -ne 0 ]]; then
+      echo "  ERROR: jsonld_fromrdf_runner build failed (ocamlopt rc=$JSONLD_FROMRDF_RUNNER_RC)" >&2
+      echo "  See full log above. Build aborted." >&2
+      exit "$JSONLD_FROMRDF_RUNNER_RC"
+    fi
+    if [[ ! -x "$BINDIR/jsonld_fromrdf_runner" ]]; then
+      echo "  ERROR: jsonld_fromrdf_runner ocamlopt returned 0 but $BINDIR/jsonld_fromrdf_runner is missing or not executable" >&2
+      exit 1
+    fi
+    echo "  Built: bin/${PLATFORM}/jsonld_fromrdf_runner ($(wc -c < "$BINDIR/jsonld_fromrdf_runner") bytes)"
 
     # vc_runner — Verifiable Credentials Data Model 2.0 structural
     # fixture runner, Stage 1 of the VC program
@@ -1455,7 +1485,7 @@ if [[ "$STEP" == "all" || "$STEP" == "js" ]]; then
     Parser_NQuads.ml Parser_TriG.ml Parser_XML.ml XML_Wellformedness.ml XML_Namespaces.ml Parser_XPath.ml XPath_Eval.ml Parser_RDFXML.ml
     Parser_SRX.ml Parser_CSVResults.ml Parser_JSONResults.ml
     SPARQL_JSON_Escape.ml
-    Parser_JSON.ml JSONLD_Loader.ml JSONLD_Context.ml JSONLD_Expand.ml Parser_JSONLD.ml
+    Parser_JSON.ml JSONLD_Loader.ml JSONLD_Context.ml JSONLD_Expand.ml Parser_JSONLD.ml JSONLD_FromRdf.ml
     SPARQL_Eval_TimeBudget.ml
     SPARQL_Eval_Limits.ml
     SPARQL_HTTP_Response.ml

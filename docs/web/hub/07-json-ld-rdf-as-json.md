@@ -164,6 +164,35 @@ return rows.map((r) => ({ name: r.get("name").value, title: r.get("title").value
 produced two paragraphs up — nothing about the query layer knows or
 cares that this data started life as JSON.
 
+## The reverse: RDF back to JSON-LD
+
+Expansion has an inverse. JSON-LD's **fromRdf** algorithm (the
+"Serialize RDF as JSON-LD" direction) takes an RDF dataset and produces
+the **expanded-form** JSON-LD document for it: no `@context`, every
+predicate spelled as a full IRI, every value wrapped as a `@value`
+object. `Factoidal.jsonldFromRdf` runs it — hand it the same three
+triples as N-Quads and it hands back the node object they describe:
+
+```observable-js
+const NQUADS = [
+  '<http://example.org/alice> <http://schema.org/name> "Alice" .',
+  '<http://example.org/alice> <http://schema.org/jobTitle> "Engineer" .',
+  '<http://example.org/alice> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://schema.org/Person> .',
+].join("\n");
+
+const result = await Factoidal.jsonldFromRdf(NQUADS);
+return JSON.parse(result.jsonld);
+```
+
+One node object: its `@id` is `http://example.org/alice`, its `@type`
+lists `http://schema.org/Person`, and each `schema:` predicate carries a
+one-element array of `{"@value": …}`. This is the round trip closing —
+the expanded document, when fed back through `jsonldToRdf` with an
+identity context, reproduces the triples it came from. `jsonldFromRdf`
+is the raw ABI export backing the verified
+[`JSONLD.FromRdf.fst`](https://github.com/danbri/factoidal/blob/claude/main/formal/fstar/JSONLD.FromRdf.fst)
+algorithm, scored below.
+
 ## Score
 
 Factoidal's JSON-LD `toRdf` conformance scores **460 pass, 1 fail, 6
@@ -174,6 +203,13 @@ case (a specific `xsd:double` lexical form the serializer renders
 differently than the suite expects, not a semantic error); the 6
 skips are tests that only apply under JSON-LD 1.0 processing mode,
 which this engine does not target.
+
+The reverse direction, `jsonldFromRdf`, scores **49 pass, 5 fail (of
+54)** against the JSON-LD 1.1 `fromRdf` manifest — driven by
+[`bin/jsonld-fromrdf-runner`](https://github.com/danbri/factoidal/blob/claude/main/bin/jsonld-fromrdf-runner/jsonld_fromrdf_runner.ml).
+The 5 fails are the non-normative `rdfDirection` variants and the
+JSON-LD-1.0 list-serialization semantics, neither of which this slice
+targets.
 
 ## What's next
 

@@ -757,6 +757,116 @@ let jsonld_to_rdf_json (jsonld_text : string) (options_json : string) : string =
     | FStar_Pervasives_Native.Some ds ->
       ok_nquads_json (RDF_Canonical.canonical_nquads (scope_dataset_bnodes ds)))
 
+(* jsonldFromRdf(nquads, optionsJson) -- the reverse of jsonldToRdf:
+   "Serialize RDF as JSON-LD". Parses the N-Quads dataset with the
+   F*-extracted Parser_NQuads.parse_nquads, calls JSONLD_FromRdf.from_rdf
+   (the same verified fromRdf algorithm bin/jsonld-fromrdf-runner drives
+   against the W3C json-ld fromRdf manifest), and serialises the resulting
+   expanded-form JSON-LD document with Parser_JSONLD.jcanon_document (JCS
+   canonical JSON). optionsJson fields: useNativeTypes / useRdfType (both
+   bool, both default false -- matching JSONLD_FromRdf.default_options).
+   Rule #11: no fromRdf semantics here, only marshalling + a call into the
+   extracted F* module. from_rdf returns None only for an invalid rdf:JSON
+   literal, mapped to the error envelope. *)
+let jsonld_from_rdf_json (nquads_text : string) (options_json : string) : string =
+  guarded (fun () ->
+    let root_opt =
+      if options_json = "" then FStar_Pervasives_Native.None
+      else Parser_JSON.parse_json options_json
+    in
+    let bool_field key =
+      match root_opt with
+      | FStar_Pervasives_Native.None -> false
+      | FStar_Pervasives_Native.Some root ->
+        (match Parser_JSON.json_get_field key root with
+         | FStar_Pervasives_Native.Some (Parser_JSON.JBool b) -> b
+         | _ -> false)
+    in
+    let opts =
+      { JSONLD_FromRdf.use_native_types = bool_field "useNativeTypes";
+        JSONLD_FromRdf.use_rdf_type = bool_field "useRdfType" } in
+    let ds = Parser_NQuads.parse_nquads nquads_text in
+    match JSONLD_FromRdf.from_rdf ds opts with
+    | FStar_Pervasives_Native.None ->
+      err_json
+        ("jsonldFromRdf: from_rdf returned None (an rdf:JSON typed literal "
+         ^ "in the input is not valid JSON)")
+    | FStar_Pervasives_Native.Some doc ->
+      "{\"ok\":true,\"jsonld\":" ^ jstr (Parser_JSONLD.jcanon_document doc) ^ "}")
+
+(* ---------------------------------------------------------------------
+   XML well-formedness + XPath 1.0 (rule #11 consumers -- exports only).
+   Parser_XML.parse_xml_document (formal/fstar/Parser.XML.fst) is the
+   accept/reject signal bin/xml-runner drives against the W3C xmlconf
+   corpus; XPath_Eval.eval_xpath_from_root (formal/fstar/XPath.Eval.fst)
+   is the Stage-1 XPath engine tests/unit/xpath_tests.ml drives. This
+   wraps them for the browser ABI. No XML/XPath logic lives here.
+   --------------------------------------------------------------------- *)
+
+(* xmlWellformed(xmlText) -- generic XML 1.0 well-formedness, decided
+   solely by whether Parser_XML.parse_xml_document accepts the byte
+   string (Some = well-formed, None = not). The parser is byte-oriented
+   (UTF-8/ASCII) and has no DOCTYPE/DTD production, so a document with a
+   DOCTYPE reports wellformed:false -- the same documented scope
+   bin/xml-runner reports as "DOCTYPE/DTD not parsed". *)
+let xml_wellformed_json (xml_text : string) : string =
+  guarded (fun () ->
+    match Parser_XML.parse_xml_document xml_text with
+    | FStar_Pervasives_Native.Some _ -> "{\"ok\":true,\"wellformed\":true}"
+    | FStar_Pervasives_Native.None -> "{\"ok\":true,\"wellformed\":false}")
+
+(* xpathEval(xmlText, xpathExpr) -- evaluate an XPath 1.0 expression over
+   an XML document. Parses via Parser_XML.parse_xml_document, then calls
+   XPath_Eval.eval_xpath_from_root with no external variables. The result
+   is one of the four XPath 1.0 value types (node-set / string / number /
+   boolean); every string projection (to_string_val, item_string_value,
+   element_tag, attr field access) is F*-extracted -- this only shapes
+   the JSON envelope. *)
+let xpath_eval_json (xml_text : string) (xpath_expr : string) : string =
+  guarded (fun () ->
+    match Parser_XML.parse_xml_document xml_text with
+    | FStar_Pervasives_Native.None ->
+      err_json
+        "xpathEval: XML document is not well-formed (parse_xml_document returned None)"
+    | FStar_Pervasives_Native.Some root ->
+      (match XPath_Eval.eval_xpath_from_root root [] xpath_expr with
+       | FStar_Pervasives_Native.None ->
+         err_json
+           ("xpathEval: XPath parse error or Stage-1-unsupported construct: "
+            ^ xpath_expr)
+       | FStar_Pervasives_Native.Some v ->
+         (match v with
+          | XPath_Eval.XV_Bool b ->
+            "{\"ok\":true,\"resultType\":\"boolean\",\"value\":"
+            ^ (if b then "true" else "false") ^ "}"
+          | XPath_Eval.XV_Num _ ->
+            "{\"ok\":true,\"resultType\":\"number\",\"value\":"
+            ^ jstr (XPath_Eval.to_string_val v) ^ "}"
+          | XPath_Eval.XV_Str s ->
+            "{\"ok\":true,\"resultType\":\"string\",\"value\":" ^ jstr s ^ "}"
+          | XPath_Eval.XV_Nodes items ->
+            let node_json it =
+              let kind, name =
+                match it with
+                | XPath_Eval.CI_Elem (_, n) ->
+                  ("element",
+                   (match Parser_XML.element_tag n with
+                    | FStar_Pervasives_Native.Some t -> t
+                    | FStar_Pervasives_Native.None -> ""))
+                | XPath_Eval.CI_Attr (_, _, a) ->
+                  ("attribute", a.Parser_XML.attr_name)
+                | XPath_Eval.CI_Text (_, _, _) -> ("text", "")
+                | XPath_Eval.CI_Comment (_, _, _) -> ("comment", "")
+              in
+              "{\"kind\":" ^ jstr kind ^ ",\"name\":" ^ jstr name
+              ^ ",\"value\":" ^ jstr (XPath_Eval.item_string_value it) ^ "}"
+            in
+            let arr = String.concat "," (List.map node_json items) in
+            "{\"ok\":true,\"resultType\":\"nodeset\",\"count\":"
+            ^ string_of_int (List.length items)
+            ^ ",\"stringValue\":" ^ jstr (XPath_Eval.to_string_val v)
+            ^ ",\"nodes\":[" ^ arr ^ "]}")))
+
 (* ---------------------------------------------------------------------
    SHACL (rule #11 consumer -- exports only). All shape parsing, target
    computation, constraint evaluation and report serialization live in
@@ -1325,6 +1435,9 @@ let () =
           ("rifSmoke", s0 rif_smoke_json);
           ("rifEval", s2 rif_eval_json);
           ("jsonldToRdf", s2 jsonld_to_rdf_json);
+          ("jsonldFromRdf", s2 jsonld_from_rdf_json);
+          ("xmlWellformed", s1 xml_wellformed_json);
+          ("xpathEval", s2 xpath_eval_json);
           ("shaclValidate", s2 shacl_validate_json);
           ("shexValidate", s4 shex_validate_json);
           ("owlClosure", s2 owl_closure_json);

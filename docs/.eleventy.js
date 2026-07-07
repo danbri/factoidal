@@ -29,6 +29,18 @@ module.exports = function(eleventyConfig) {
   // but dropping sibling CSV/JSON.
   eleventyConfig.addPassthroughCopy("test-results");
 
+  // HDT hub post (web/hub/24-...) fetches the in-repo RML-Core ontology
+  // HDT fixture as raw bytes and runs SPARQL over it via
+  // runFactoidalCli --data-hdt. The single source of truth stays under
+  // third_party/testing/hdt/ (vendored, license-documented); this
+  // passthrough is the only thing that puts the .hdt bytes under docs/,
+  // served alongside the post so a page-relative fetch("../rml-core-
+  // ontology.hdt") resolves regardless of pathPrefix.
+  eleventyConfig.addPassthroughCopy({
+    "../third_party/testing/hdt/rml-core-ontology.hdt":
+      "web/hub/rml-core-ontology.hdt",
+  });
+
   // F* module dep-graph demo (web/demos/dep-graph/index.html) fetches
   // modules.json + namespaces.json. JSON isn't an Eleventy template
   // format so it isn't emitted by default. We also ship the static
