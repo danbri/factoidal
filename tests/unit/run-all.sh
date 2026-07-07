@@ -86,6 +86,10 @@ COMMON_MODULES=(
   XML_Wellformedness
   XML_Namespaces
   Parser_RDFXML
+  Math_Expr
+  Math_Subst
+  Math_Diff
+  Math_Simplify
   Parser_SRX
   Parser_CSVResults
   Parser_JSONResults
