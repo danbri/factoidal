@@ -140,6 +140,7 @@ COMMON_MODULES=(
   SPARQL_FullText
   SPARQL11_Algebra
   XSD_Datatypes
+  XForms_Bind
   RDF_Pretty
   OWL_QueryRewrite
   OWL_QueryEval

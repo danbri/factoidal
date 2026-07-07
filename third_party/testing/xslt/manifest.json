@@ -1,0 +1,514 @@
+[
+  {
+    "name": "conflict-resolution-1301",
+    "category": "apply-templates",
+    "stylesheet": "files/apply-templates__conflict-resolution-1301.xsl",
+    "source": "files/apply-templates__conflict-resolution-1301.src.xml",
+    "expected": "files/apply-templates__conflict-resolution-1301.expected.xml",
+    "description": ""
+  },
+  {
+    "name": "avt-1501",
+    "category": "avt",
+    "stylesheet": "files/avt__avt-1501.xsl",
+    "source": "files/avt__avt-1501.src.xml",
+    "expected": "files/avt__avt-1501.expected.xml",
+    "description": "Test context within an AVT."
+  },
+  {
+    "name": "axes-047",
+    "category": "axes",
+    "stylesheet": "files/axes__axes-047.xsl",
+    "source": "files/axes__axes-047.src.xml",
+    "expected": "files/axes__axes-047.expected.xml",
+    "description": "Test for repeated use of //name (Saxon optimisation)."
+  },
+  {
+    "name": "axes-084",
+    "category": "axes",
+    "stylesheet": "files/axes__axes-084.xsl",
+    "source": "files/axes__axes-084.src.xml",
+    "expected": "files/axes__axes-084.expected.xml",
+    "description": "Purpose: Tests apply-templates starting with a attribute axes followed by additional relative-location-path steps. Author: Paul Dick"
+  },
+  {
+    "name": "axes-090",
+    "category": "axes",
+    "stylesheet": "files/axes__axes-090.xsl",
+    "source": "files/axes__axes-090.src.xml",
+    "expected": "files/axes__axes-090.expected.xml",
+    "description": "Test for likely optimizations of descendant patterns to make sure they're done correctly. DS meands the location path is optimizable as a single descendant iter"
+  },
+  {
+    "name": "axes-119",
+    "category": "axes",
+    "stylesheet": "files/axes__axes-119.xsl",
+    "source": "files/axes__axes-119.src.xml",
+    "expected": "files/axes__axes-119.expected.xml",
+    "description": "Test of //@ sequences The above two, respectively, must equal the sums of sect-*-attribs and sect-*-titles below. Rather than iterate, we want to have a sub-ele"
+  },
+  {
+    "name": "axes-131",
+    "category": "axes",
+    "stylesheet": "files/axes__axes-131.xsl",
+    "source": "files/axes__axes-131.src.xml",
+    "expected": "files/axes__axes-131.expected.xml",
+    "description": "Test for descendant axis when siblings have some children or the context node has no siblings."
+  },
+  {
+    "name": "axes-162",
+    "category": "axes",
+    "stylesheet": "files/axes__axes-162.xsl",
+    "source": "files/axes__axes-162.src.xml",
+    "expected": "files/axes__axes-162.expected.xml",
+    "description": "Test that // goes down at least 15 levels."
+  },
+  {
+    "name": "axes-171",
+    "category": "axes",
+    "stylesheet": "files/axes__axes-171.xsl",
+    "source": "files/axes__axes-171.src.xml",
+    "expected": "files/axes__axes-171.expected.xml",
+    "description": "Compound test for preceding-sibling:: and following-sibling:: with explicit iteration."
+  },
+  {
+    "name": "axes-176",
+    "category": "axes",
+    "stylesheet": "files/axes__axes-176.xsl",
+    "source": "files/axes__axes-176.src.xml",
+    "expected": "files/axes__axes-176.expected.xml",
+    "description": "Compound test for following-sibling:: and preceding-sibling:: with explicit iteration."
+  },
+  {
+    "name": "axes-184",
+    "category": "axes",
+    "stylesheet": "files/axes__axes-184.xsl",
+    "source": "files/axes__axes-184.src.xml",
+    "expected": "files/axes__axes-184.expected.xml",
+    "description": "Test simple notation to select entire tree."
+  },
+  {
+    "name": "boolean-026",
+    "category": "boolean",
+    "stylesheet": "files/boolean__boolean-026.xsl",
+    "source": "files/boolean__boolean-026.src.xml",
+    "expected": "files/boolean__boolean-026.expected.xml",
+    "description": "Test \"fortran\" operators applied to numbers (XPath 2.0)"
+  },
+  {
+    "name": "boolean-027",
+    "category": "boolean",
+    "stylesheet": "files/boolean__boolean-027.xsl",
+    "source": "files/boolean__boolean-027.src.xml",
+    "expected": "files/boolean__boolean-027.expected.xml",
+    "description": "Test \"fortran\" operators applied to strings (XPath 2.0) actually this is false actually this is false"
+  },
+  {
+    "name": "bug-3301",
+    "category": "bug",
+    "stylesheet": "files/bug__bug-3301.xsl",
+    "source": "files/bug__bug-3301.src.xml",
+    "expected": "files/bug__bug-3301.expected.xml",
+    "description": "BUG: Saxon 5.4.1/009 DESCRIPTION: An IndexOutOfBoundException occurs if the nesting depth of any element within a document (that is, the number of ancestors) ex"
+  },
+  {
+    "name": "bug-3401",
+    "category": "bug",
+    "stylesheet": "files/bug__bug-3401.xsl",
+    "source": "files/bug__bug-3401.src.xml",
+    "expected": "files/bug__bug-3401.expected.xml",
+    "description": "test nesting depth > 100"
+  },
+  {
+    "name": "bug-5501",
+    "category": "bug",
+    "stylesheet": "files/bug__bug-5501.xsl",
+    "source": "files/bug__bug-5501.src.xml",
+    "expected": "files/bug__bug-5501.expected.xml",
+    "description": "Bug reported as https://sourceforge.net/forum/forum.php?thread_id=637041&forum_id=94027 Apparent cause is an error in the optimization of constant [true()] pred"
+  },
+  {
+    "name": "construct-node-026",
+    "category": "construct-node",
+    "stylesheet": "files/construct-node__construct-node-026.xsl",
+    "source": "files/construct-node__construct-node-026.src.xml",
+    "expected": "files/construct-node__construct-node-026.expected.xml",
+    "description": "Test case that uses processing-instruction() node test in the match attribute of a template and use the content of the processing instructions as the value of n"
+  },
+  {
+    "name": "copy-0101",
+    "category": "copy",
+    "stylesheet": "files/copy__copy-0101.xsl",
+    "source": "files/copy__copy-0101.src.xml",
+    "expected": "files/copy__copy-0101.expected.xml",
+    "description": "Test for simple identity transformation w/Template match"
+  },
+  {
+    "name": "copy-0102",
+    "category": "copy",
+    "stylesheet": "files/copy__copy-0102.xsl",
+    "source": "files/copy__copy-0102.src.xml",
+    "expected": "files/copy__copy-0102.expected.xml",
+    "description": "Test for simple identity transformation, in main template"
+  },
+  {
+    "name": "copy-0103",
+    "category": "copy",
+    "stylesheet": "files/copy__copy-0103.xsl",
+    "source": "files/copy__copy-0103.src.xml",
+    "expected": "files/copy__copy-0103.expected.xml",
+    "description": "Simple identity transformation, Result tree fragment test for xsl:copy-of"
+  },
+  {
+    "name": "copy-0601",
+    "category": "copy",
+    "stylesheet": "files/copy__copy-0601.xsl",
+    "source": "files/copy__copy-0601.src.xml",
+    "expected": "files/copy__copy-0601.expected.xml",
+    "description": "test use copy-namespaces attribute of xsl:copy-of (XSLT 2.0)"
+  },
+  {
+    "name": "copy-1001",
+    "category": "copy",
+    "stylesheet": "files/copy__copy-1001.xsl",
+    "source": "files/copy__copy-1001.src.xml",
+    "expected": "files/copy__copy-1001.expected.xml",
+    "description": "Purpose: Test for identity transformation exactly as in spec."
+  },
+  {
+    "name": "copy-1002",
+    "category": "copy",
+    "stylesheet": "files/copy__copy-1002.xsl",
+    "source": "files/copy__copy-1002.src.xml",
+    "expected": "files/copy__copy-1002.expected.xml",
+    "description": "Another style of identity transform, where attributes are copied by copy-of rather than by recursive use of the template."
+  },
+  {
+    "name": "copy-1003",
+    "category": "copy",
+    "stylesheet": "files/copy__copy-1003.xsl",
+    "source": "files/copy__copy-1003.src.xml",
+    "expected": "files/copy__copy-1003.expected.xml",
+    "description": "FileName: copy43 Document: http://www.w3.org/TR/xslt DocVersion: 19991116 Section: 11.3"
+  },
+  {
+    "name": "copy-2101",
+    "category": "copy",
+    "stylesheet": "files/copy__copy-2101.xsl",
+    "source": "files/copy__copy-2101.src.xml",
+    "expected": "files/copy__copy-2101.expected.xml",
+    "description": "current() should work in copy-of."
+  },
+  {
+    "name": "copy-2301",
+    "category": "copy",
+    "stylesheet": "files/copy__copy-2301.xsl",
+    "source": "files/copy__copy-2301.src.xml",
+    "expected": "files/copy__copy-2301.expected.xml",
+    "description": "Test for xsl:copy with nodeset. Shows handling of namespaces."
+  },
+  {
+    "name": "copy-2601",
+    "category": "copy",
+    "stylesheet": "files/copy__copy-2601.xsl",
+    "source": "files/copy__copy-2601.src.xml",
+    "expected": "files/copy__copy-2601.expected.xml",
+    "description": "Use prefixed attributes with no preceding text nodes."
+  },
+  {
+    "name": "copy-2701",
+    "category": "copy",
+    "stylesheet": "files/copy__copy-2701.xsl",
+    "source": "files/copy__copy-2701.src.xml",
+    "expected": "files/copy__copy-2701.expected.xml",
+    "description": "Look for bug in building union for identity transform."
+  },
+  {
+    "name": "copy-3101",
+    "category": "copy",
+    "stylesheet": "files/copy__copy-3101.xsl",
+    "source": "files/copy__copy-3101.src.xml",
+    "expected": "files/copy__copy-3101.expected.xml",
+    "description": "FileName: copy44 Document: http://www.w3.org/TR/xslt DocVersion: 19991116 Section: 11.3"
+  },
+  {
+    "name": "copy-3102",
+    "category": "copy",
+    "stylesheet": "files/copy__copy-3102.xsl",
+    "source": "files/copy__copy-3102.src.xml",
+    "expected": "files/copy__copy-3102.expected.xml",
+    "description": "FileName: copy46 Document: http://www.w3.org/TR/xslt DocVersion: 19991116 Section: 11.2"
+  },
+  {
+    "name": "copy-3301",
+    "category": "copy",
+    "stylesheet": "files/copy__copy-3301.xsl",
+    "source": "files/copy__copy-3301.src.xml",
+    "expected": "files/copy__copy-3301.expected.xml",
+    "description": "FileName: copy47 Document: http://www.w3.org/TR/xslt DocVersion: 19991116 Section: 7.1.1 (and 11.3)"
+  },
+  {
+    "name": "copy-3302",
+    "category": "copy",
+    "stylesheet": "files/copy__copy-3302.xsl",
+    "source": "files/copy__copy-3302.src.xml",
+    "expected": "files/copy__copy-3302.expected.xml",
+    "description": "FileName: copy48 Document: http://www.w3.org/TR/xslt DocVersion: 19991116 Section: 7.1.1 (and 11.3)"
+  },
+  {
+    "name": "copy-3701",
+    "category": "copy",
+    "stylesheet": "files/copy__copy-3701.xsl",
+    "source": "files/copy__copy-3701.src.xml",
+    "expected": "files/copy__copy-3701.expected.xml",
+    "description": "FileName: COPY55 Document: http://www.w3.org/TR/xslt DocVersion: 19991116 Section: 7.5"
+  },
+  {
+    "name": "expression-0901",
+    "category": "expression",
+    "stylesheet": "files/expression__expression-0901.xsl",
+    "source": "files/expression__expression-0901.src.xml",
+    "expected": "files/expression__expression-0901.expected.xml",
+    "description": "Test sum() inside a predicate (bug in expression reduction in 6.4.4)"
+  },
+  {
+    "name": "function-available-1006",
+    "category": "function-available",
+    "stylesheet": "files/function-available__function-available-1006.xsl",
+    "source": "files/function-available__function-available-1006.src.xml",
+    "expected": "files/function-available__function-available-1006.expected.xml",
+    "description": "test function-available() using the fn:namespace"
+  },
+  {
+    "name": "id-016",
+    "category": "id",
+    "stylesheet": "files/id__id-016.xsl",
+    "source": "files/id__id-016.src.xml",
+    "expected": "files/id__id-016.expected.xml",
+    "description": "Test for id() in complex structure."
+  },
+  {
+    "name": "lre-004",
+    "category": "lre",
+    "stylesheet": "files/lre__lre-004.xsl",
+    "source": "files/lre__lre-004.src.xml",
+    "expected": "files/lre__lre-004.expected.xml",
+    "description": "The designation of a namespace as an excluded namespace is effective within the subtree of the stylesheet rooted at the element bearing the exclude-result-prefi"
+  },
+  {
+    "name": "match-015",
+    "category": "match",
+    "stylesheet": "files/match__match-015.xsl",
+    "source": "files/match__match-015.src.xml",
+    "expected": "files/match__match-015.expected.xml",
+    "description": "Purpose: Test that apply-templates goes down at least 15 levels. Suppress the default action on these. To suppress empty lines"
+  },
+  {
+    "name": "match-032",
+    "category": "match",
+    "stylesheet": "files/match__match-032.xsl",
+    "source": "files/match__match-032.src.xml",
+    "expected": "files/match__match-032.expected.xml",
+    "description": "Purpose: Use multiple levels of child axis in match patterns. Intermix 'child::' and default, but only with child:: in the middle."
+  },
+  {
+    "name": "match-033",
+    "category": "match",
+    "stylesheet": "files/match__match-033.xsl",
+    "source": "files/match__match-033.src.xml",
+    "expected": "files/match__match-033.expected.xml",
+    "description": "Purpose: Use multiple levels of child axis in match patterns. Intermix 'child::' and default, but only with child:: on the tail."
+  },
+  {
+    "name": "match-034",
+    "category": "match",
+    "stylesheet": "files/match__match-034.xsl",
+    "source": "files/match__match-034.src.xml",
+    "expected": "files/match__match-034.expected.xml",
+    "description": "Purpose: Use multiple levels of child axis in match patterns. Spell out 'child::' sometimes."
+  },
+  {
+    "name": "match-045",
+    "category": "match",
+    "stylesheet": "files/match__match-045.xsl",
+    "source": "files/match__match-045.src.xml",
+    "expected": "files/match__match-045.expected.xml",
+    "description": "Bug 1069950 - patterns of the form ns:* ignore the node kind"
+  },
+  {
+    "name": "math-1301",
+    "category": "math",
+    "stylesheet": "files/math__math-1301.xsl",
+    "source": "files/math__math-1301.src.xml",
+    "expected": "files/math__math-1301.expected.xml",
+    "description": "Purpose: Test of is-a-number technique."
+  },
+  {
+    "name": "namespace-1701",
+    "category": "namespace",
+    "stylesheet": "files/namespace__namespace-1701.xsl",
+    "source": "files/namespace__namespace-1701.src.xml",
+    "expected": "files/namespace__namespace-1701.expected.xml",
+    "description": "test that the default namespace is not applied to names in XPath expressions or to variable names"
+  },
+  {
+    "name": "namespace-4101",
+    "category": "namespace",
+    "stylesheet": "files/namespace__namespace-4101.xsl",
+    "source": "files/namespace__namespace-4101.src.xml",
+    "expected": "files/namespace__namespace-4101.expected.xml",
+    "description": "Test of 'namespace-uri()' function, with hyphenated node name."
+  },
+  {
+    "name": "namespace-4501",
+    "category": "namespace",
+    "stylesheet": "files/namespace__namespace-4501.xsl",
+    "source": "files/namespace__namespace-4501.src.xml",
+    "expected": "files/namespace__namespace-4501.expected.xml",
+    "description": "Test for resetting of an unspecified default namespace by copy-of. extended variant of namespace137 to check special cases create an RTF with a mix of namespace"
+  },
+  {
+    "name": "namespace-4801",
+    "category": "namespace",
+    "stylesheet": "files/namespace__namespace-4801.xsl",
+    "source": "files/namespace__namespace-4801.src.xml",
+    "expected": "files/namespace__namespace-4801.expected.xml",
+    "description": "Test exclude-result-prefixes."
+  },
+  {
+    "name": "namespace-5501",
+    "category": "namespace",
+    "stylesheet": "files/namespace__namespace-5501.xsl",
+    "source": "files/namespace__namespace-5501.src.xml",
+    "expected": "files/namespace__namespace-5501.expected.xml",
+    "description": "Test name functions on text nodes."
+  },
+  {
+    "name": "node-1101",
+    "category": "node",
+    "stylesheet": "files/node__node-1101.xsl",
+    "source": "files/node__node-1101.src.xml",
+    "expected": "files/node__node-1101.expected.xml",
+    "description": "Test for node tests in match patterns (and union in select). for child elements"
+  },
+  {
+    "name": "node-1102",
+    "category": "node",
+    "stylesheet": "files/node__node-1102.xsl",
+    "source": "files/node__node-1102.src.xml",
+    "expected": "files/node__node-1102.expected.xml",
+    "description": "Test for node() in match patterns. Default axis is child. Override built-in template"
+  },
+  {
+    "name": "node-1201",
+    "category": "node",
+    "stylesheet": "files/node__node-1201.xsl",
+    "source": "files/node__node-1201.src.xml",
+    "expected": "files/node__node-1201.expected.xml",
+    "description": "Test for node tests in select in for-each. for child elements"
+  },
+  {
+    "name": "node-1601",
+    "category": "node",
+    "stylesheet": "files/node__node-1601.xsl",
+    "source": "files/node__node-1601.src.xml",
+    "expected": "files/node__node-1601.expected.xml",
+    "description": "Test that 'namespace::node()' selects all namespaces."
+  },
+  {
+    "name": "position-5501",
+    "category": "position",
+    "stylesheet": "files/position__position-5501.xsl",
+    "source": "files/position__position-5501.src.xml",
+    "expected": "files/position__position-5501.expected.xml",
+    "description": "Section: 4.1"
+  },
+  {
+    "name": "position-6802",
+    "category": "position",
+    "stylesheet": "files/position__position-6802.xsl",
+    "source": "files/position__position-6802.src.xml",
+    "expected": "files/position__position-6802.expected.xml",
+    "description": "Section: 2.2"
+  },
+  {
+    "name": "position-6901",
+    "category": "position",
+    "stylesheet": "files/position__position-6901.xsl",
+    "source": "files/position__position-6901.src.xml",
+    "expected": "files/position__position-6901.expected.xml",
+    "description": "Section: 2.2"
+  },
+  {
+    "name": "position-7002",
+    "category": "position",
+    "stylesheet": "files/position__position-7002.xsl",
+    "source": "files/position__position-7002.src.xml",
+    "expected": "files/position__position-7002.expected.xml",
+    "description": "Section: 2.2"
+  },
+  {
+    "name": "position-8001",
+    "category": "position",
+    "stylesheet": "files/position__position-8001.xsl",
+    "source": "files/position__position-8001.src.xml",
+    "expected": "files/position__position-8001.expected.xml",
+    "description": ""
+  },
+  {
+    "name": "position-8101",
+    "category": "position",
+    "stylesheet": "files/position__position-8101.xsl",
+    "source": "files/position__position-8101.src.xml",
+    "expected": "files/position__position-8101.expected.xml",
+    "description": ""
+  },
+  {
+    "name": "select-0401",
+    "category": "select",
+    "stylesheet": "files/select__select-0401.xsl",
+    "source": "files/select__select-0401.src.xml",
+    "expected": "files/select__select-0401.expected.xml",
+    "description": "Purpose: Test of unions, returned in document order."
+  },
+  {
+    "name": "select-0601",
+    "category": "select",
+    "stylesheet": "files/select__select-0601.xsl",
+    "source": "files/select__select-0601.src.xml",
+    "expected": "files/select__select-0601.expected.xml",
+    "description": "Test nesting of for-each."
+  },
+  {
+    "name": "select-1001",
+    "category": "select",
+    "stylesheet": "files/select__select-1001.xsl",
+    "source": "files/select__select-1001.src.xml",
+    "expected": "files/select__select-1001.expected.xml",
+    "description": "Test that for-each doesn't care about current node Collect a node-set, outside any template"
+  },
+  {
+    "name": "select-5901",
+    "category": "select",
+    "stylesheet": "files/select__select-5901.xsl",
+    "source": "files/select__select-5901.src.xml",
+    "expected": "files/select__select-5901.expected.xml",
+    "description": "Purpose: Test union operator using overlapping node-sets. Results should always be output in doc order regardless of order of select attribute."
+  },
+  {
+    "name": "select-7201",
+    "category": "select",
+    "stylesheet": "files/select__select-7201.xsl",
+    "source": "files/select__select-7201.src.xml",
+    "expected": "files/select__select-7201.expected.xml",
+    "description": "Test //@* to get all attributes in the tree"
+  },
+  {
+    "name": "variable-1701",
+    "category": "variable",
+    "stylesheet": "files/variable__variable-1701.xsl",
+    "source": "files/variable__variable-1701.src.xml",
+    "expected": "files/variable__variable-1701.expected.xml",
+    "description": "Purpose: Verify that a variable in an inner template can take on a new value \"Only the innermost binding of a variable is visible.\" suppress empty lines"
+  }
+]

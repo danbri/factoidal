@@ -1,11 +1,2 @@
-* Warning 241 at RDF.Term.fsti(0,0-0,0):
-  - Unable to load RDF.Term.fsti.checked since checked file
-    RDF.Term.fsti.checked does not exist; will recheck RDF.Term.fsti
-    (suppressing this warning for further modules)
-
-* Warning 247 at RDF.Indexed.fsti(0,0-0,0):
-  - Checked file RDF.Indexed.fsti.checked was not written.
-  - Reason: checked file RDF.Term.fsti.checked does not exist
-
 Verified i'face (or impl+i'face): RDF.Indexed
 All verification conditions discharged successfully

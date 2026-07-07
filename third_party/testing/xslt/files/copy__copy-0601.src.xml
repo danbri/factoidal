@@ -1,0 +1,7 @@
+<pink xmlns:rose="http://www.rose.com">
+ <green xmlns:grass="http://www.grass.com">
+  <red xmlns:blood="http://www.blood.com">
+   <blue xmlns:sky="http://www.sky.com"/>
+  </red>
+ </green>
+</pink>

@@ -402,7 +402,8 @@ if [[ "$STEP" == "all" || "$STEP" == "extract" ]]; then
     Parser.OWLFunctional.fst
     RDF.Turtle.Serialize.fst
     Parser.NQuads.fst Parser.TriG.fst
-    Parser.XML.fst XML.Wellformedness.fst XML.Namespaces.fst Parser.XPath.fst XPath.Eval.fst Parser.RDFXML.fst Parser.RIFXML.fst
+    Parser.XML.fst XML.Wellformedness.fst XML.Namespaces.fst Parser.XPath.fst XPath.Eval.fst XSLT.Transform.fst Parser.RDFXML.fst Parser.RIFXML.fst
+    Math.Expr.fst MathML.Content.fst XForms.Bind.fst
     RIF.Core.Builtins.fst RIF.Core.Conformance.fst
     RIF.Core.Eval.fst RIF.Core.Tests.fst
     Parser.SRX.fst Parser.CSVResults.fst
@@ -789,7 +790,7 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
     RDF_Geo_Types.ml RDF_Geo_BBox.ml Parser_WKT.ml RDF_Geo_Topology.ml RDF_Geo_Functions.ml \
     Parser_OWLFunctional.ml \
     RDF_Turtle_Serialize.ml \
-    Parser_NQuads.ml Parser_TriG.ml Parser_XML.ml XML_Wellformedness.ml XML_Namespaces.ml Parser_XPath.ml XPath_Eval.ml Parser_RDFXML.ml \
+    Parser_NQuads.ml Parser_TriG.ml Parser_XML.ml XML_Wellformedness.ml XML_Namespaces.ml Parser_XPath.ml XPath_Eval.ml XSLT_Transform.ml Parser_RDFXML.ml Math_Expr.ml MathML_Content.ml \
     Parser_SRX.ml Parser_CSVResults.ml Parser_JSONResults.ml \
     SPARQL_JSON_Escape.ml \
     Parser_JSON.ml JSONLD_Loader.ml JSONLD_Context.ml JSONLD_Expand.ml Parser_JSONLD.ml JSONLD_FromRdf.ml \
@@ -831,7 +832,7 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
     RDF_Canonical.ml \
     RDF_Canonical_Manifest.ml \
     service_wrap_hook.ml \
-    SPARQL_FullText.ml SPARQL11_Algebra.ml XSD_Datatypes.ml RDF_Pretty.ml OWL_QueryRewrite.ml OWL_QueryEval.ml OWL_Tests_Manifest.ml RIF_Core_Syntax.ml Parser_RIFXML.ml RIF_Core_Translation.ml RIF_Core_Builtins.ml RIF_Core_Conformance.ml RIF_Core_Eval.ml RIF_Core_Tests.ml SPARQL11_Parser.ml SHACL_Validation.ml \
+    SPARQL_FullText.ml SPARQL11_Algebra.ml XSD_Datatypes.ml XForms_Bind.ml RDF_Pretty.ml OWL_QueryRewrite.ml OWL_QueryEval.ml OWL_Tests_Manifest.ml RIF_Core_Syntax.ml Parser_RIFXML.ml RIF_Core_Translation.ml RIF_Core_Builtins.ml RIF_Core_Conformance.ml RIF_Core_Eval.ml RIF_Core_Tests.ml SPARQL11_Parser.ml SHACL_Validation.ml \
     ShEx_Schema.ml Parser_ShExC.ml ShEx_SchemaEq.ml ShEx_Validation.ml \
     VC_Credential.ml \
     VC_Multibase.ml \
@@ -1163,6 +1164,66 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
     fi
     echo "  Built: bin/${PLATFORM}/jsonld_fromrdf_runner ($(wc -c < "$BINDIR/jsonld_fromrdf_runner") bytes)"
 
+    # mathml_runner — Content MathML evaluation corpus runner. Reads
+    # third_party/testing/mathml/manifest.json via the F*-extracted
+    # Parser_JSON, parses each input with Parser_XML.parse_xml_document,
+    # calls MathML_Content.eval_doc_env, and compares
+    # MathML_Content.value_to_string against expectedValue. All math /
+    # number parsing / canonicalisation lives in MathML.Content.fst
+    # (extracted to MathML_Content, in COMMON_MODULES above); this .ml is
+    # I/O + compare only (iron rule #7 / #11).
+    MATHML_RUNNER_RC=0
+    run_with_heartbeat "ocamlopt mathml_runner" "_ocamlopt_mathml_runner.log" -- \
+      ocamlfind ocamlopt -package fstar.lib,str,zarith,sha,digestif.c,unix,uucp -linkpkg -w -8-14-26 \
+      $STATIC_FLAGS \
+      $COMMON_MODULES \
+      $PARQUET_NATIVE_STUBS \
+      $HACL_NATIVE_STUBS \
+      ../../../bin/mathml-runner/mathml_runner.ml \
+      -o "$BINDIR/mathml_runner" || MATHML_RUNNER_RC=$?
+    cat _ocamlopt_mathml_runner.log
+    if [[ "$MATHML_RUNNER_RC" -ne 0 ]]; then
+      echo "  ERROR: mathml_runner build failed (ocamlopt rc=$MATHML_RUNNER_RC)" >&2
+      echo "  See full log above. Build aborted." >&2
+      exit "$MATHML_RUNNER_RC"
+    fi
+    if [[ ! -x "$BINDIR/mathml_runner" ]]; then
+      echo "  ERROR: mathml_runner ocamlopt returned 0 but $BINDIR/mathml_runner is missing or not executable" >&2
+      exit 1
+    fi
+    echo "  Built: bin/${PLATFORM}/mathml_runner ($(wc -c < "$BINDIR/mathml_runner") bytes)"
+
+    # xslt_runner — XSLT 1.0 transform conformance runner (first wave of
+    # the XSLT -> MathML -> XForms program). Reads the curated,
+    # W3C-sourced XSLT-1.0-expressible subset vendored under
+    # third_party/testing/xslt/ (selected from w3c/xslt30-test; see that
+    # dir's README.md for provenance), parses each stylesheet + source
+    # via the F*-extracted Parser_XML.parse_xml_document, runs
+    # XSLT_Transform.transform (formal/fstar/XSLT.Transform.fst), and
+    # compares the serialized result to the expected assert-xml file
+    # (exact or whitespace-collapsed). Manifest parsed via the
+    # F*-extracted Parser_JSON. I/O + compare only (iron rule #11).
+    XSLT_RUNNER_RC=0
+    run_with_heartbeat "ocamlopt xslt_runner" "_ocamlopt_xslt_runner.log" -- \
+      ocamlfind ocamlopt -package fstar.lib,str,zarith,sha,digestif.c,unix,uucp -linkpkg -w -8-14-26 \
+      $STATIC_FLAGS \
+      $COMMON_MODULES \
+      $PARQUET_NATIVE_STUBS \
+      $HACL_NATIVE_STUBS \
+      ../../../bin/xslt-runner/xslt_runner.ml \
+      -o "$BINDIR/xslt_runner" || XSLT_RUNNER_RC=$?
+    cat _ocamlopt_xslt_runner.log
+    if [[ "$XSLT_RUNNER_RC" -ne 0 ]]; then
+      echo "  ERROR: xslt_runner build failed (ocamlopt rc=$XSLT_RUNNER_RC)" >&2
+      echo "  See full log above. Build aborted." >&2
+      exit "$XSLT_RUNNER_RC"
+    fi
+    if [[ ! -x "$BINDIR/xslt_runner" ]]; then
+      echo "  ERROR: xslt_runner ocamlopt returned 0 but $BINDIR/xslt_runner is missing or not executable" >&2
+      exit 1
+    fi
+    echo "  Built: bin/${PLATFORM}/xslt_runner ($(wc -c < "$BINDIR/xslt_runner") bytes)"
+
     # vc_runner — Verifiable Credentials Data Model 2.0 structural
     # fixture runner, Stage 1 of the VC program
     # (docs/designissues/2026-07-05-vc-program-plan.md). Walks the
@@ -1482,7 +1543,7 @@ if [[ "$STEP" == "all" || "$STEP" == "js" ]]; then
     RDF_Geo_Types.ml RDF_Geo_BBox.ml Parser_WKT.ml RDF_Geo_Topology.ml RDF_Geo_Functions.ml
     Parser_OWLFunctional.ml
     RDF_Turtle_Serialize.ml
-    Parser_NQuads.ml Parser_TriG.ml Parser_XML.ml XML_Wellformedness.ml XML_Namespaces.ml Parser_XPath.ml XPath_Eval.ml Parser_RDFXML.ml
+    Parser_NQuads.ml Parser_TriG.ml Parser_XML.ml XML_Wellformedness.ml XML_Namespaces.ml Parser_XPath.ml XPath_Eval.ml XSLT_Transform.ml Parser_RDFXML.ml Math_Expr.ml MathML_Content.ml
     Parser_SRX.ml Parser_CSVResults.ml Parser_JSONResults.ml
     SPARQL_JSON_Escape.ml
     Parser_JSON.ml JSONLD_Loader.ml JSONLD_Context.ml JSONLD_Expand.ml Parser_JSONLD.ml JSONLD_FromRdf.ml
@@ -1526,7 +1587,7 @@ if [[ "$STEP" == "all" || "$STEP" == "js" ]]; then
     RDF_Canonical.ml
     RDF_Canonical_Manifest.ml
     service_wrap_hook.ml
-    SPARQL_FullText.ml SPARQL11_Algebra.ml XSD_Datatypes.ml RDF_Pretty.ml OWL_QueryRewrite.ml OWL_QueryEval.ml OWL_Tests_Manifest.ml RIF_Core_Syntax.ml Parser_RIFXML.ml RIF_Core_Translation.ml RIF_Core_Builtins.ml RIF_Core_Conformance.ml RIF_Core_Eval.ml RIF_Core_Tests.ml SPARQL11_Parser.ml SHACL_Validation.ml
+    SPARQL_FullText.ml SPARQL11_Algebra.ml XSD_Datatypes.ml XForms_Bind.ml RDF_Pretty.ml OWL_QueryRewrite.ml OWL_QueryEval.ml OWL_Tests_Manifest.ml RIF_Core_Syntax.ml Parser_RIFXML.ml RIF_Core_Translation.ml RIF_Core_Builtins.ml RIF_Core_Conformance.ml RIF_Core_Eval.ml RIF_Core_Tests.ml SPARQL11_Parser.ml SHACL_Validation.ml
     ShEx_Schema.ml Parser_ShExC.ml ShEx_SchemaEq.ml ShEx_Validation.ml
     RML_Mapping.ml RML_Sources.ml RML_Eval.ml
     CSVW_Metadata.ml CSVW_URITemplate.ml CSVW_Conversion.ml
