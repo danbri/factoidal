@@ -9,8 +9,8 @@ A home for longer-form, interactive write-ups about how Factoidal
 works — RDF/SPARQL concepts demonstrated by running the real
 F\*-extracted engine in your browser, not by prose alone.
 
-Twenty-two posts are published below. Most carry live runnable cells;
-the last is an honest CLI-transcript-and-architecture page for the
+Twenty-three posts are published below. Most carry live runnable cells;
+one is a CLI-transcript-and-architecture page for the
 network/native features a sandboxed browser cell can't run. The
 rest of the series (see
 [the series plan](../../designissues/2026-07-05-docs-hub-plan/) for
@@ -101,6 +101,7 @@ headlessly.
   <li><a href="./20-fulltext-search-text-query/">Full-text search: text:query</a> — the jena-text magic predicate that searches literals instead of matching triples, AND-by-default token semantics, slice-1 (no scoring yet)</li>
   <li><a href="./21-geosparql-geometry-and-topology/">GeoSPARQL: geometry, topology, and exact-rational arithmetic</a> — geo:wktLiteral geometries and the geof: Simple Features predicates (sfWithin/sfIntersects/sfDisjoint/sfTouches), geof:distance and geof:envelope, with a point-exactly-on-a-polygon-edge case decided by pure exact-rational F* — no floating-point epsilon (geosparql)</li>
   <li><a href="./22-reaching-out-to-other-data/">Reaching out to other data: the SPARQL client, SERVICE tool-wrapping, and virtual RML</a> — answering SPARQL over data factoidal doesn't hold locally, three ways: query --endpoint against a remote SPARQL 1.1 Protocol server, SERVICE &lt;wrap+http://...&gt; triplifying a REST/CSV/Turtle source (SPARQL-Anything-adjacent), and --data-rml answering through an RML mapping non-materialized (D2RQ/Ontop-style pushdown). A CLI-transcript-and-architecture page — network/native features, no live cell (none)</li>
+  <li><a href="./23-decentralized-identifiers-did-key/">Decentralized Identifiers: did:key</a> — resolving a did:key:z6Mk… Ed25519 identifier to its DID Document as pure, offline, F*-verified function application, rendered live as triples and a node-graph (did)</li>
 </ul>
 
 (Every post above has shipped — the series plan's placeholder list is

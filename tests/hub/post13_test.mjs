@@ -94,20 +94,34 @@ test('post13 cell 2 (VC step 2: SHA-256 of canonical form): 64 hex chars, stable
   assert.equal(result.sha256, '1ae5f4ab2b655716e6fa6ce7e340fbeb13512adb6d09815e5e7b3f29c8a25e43');
 });
 
-test('post13 cell 3 (CSVW standard mode): 24 total quads, 10 of them row data', async () => {
+test('post13 cell 3 (CSVW standard mode): 22 quads = 8 typed row data + 14 provenance', async () => {
   const result = await runObservableCell(cells[2], { Factoidal });
   assert.equal(result.available, true);
-  assert.equal(result.totalQuads, 24);
-  assert.equal(result.dataQuads, 10);
-  // 5 lines whose subject is gid-1, plus 1 provenance line
-  // (`csvw:describes` pointing at gid-1 from its row resource).
-  assert.equal(result.firstRow.length, 6);
+  assert.equal(result.totalQuads, 22);
+  assert.equal(result.dataQuads, 8);
+  assert.equal(result.provenanceQuads, 14);
+  // The first row's four emitted columns (code is suppressOutput), all
+  // sharing the subject the {#code} fragment template built.
+  assert.equal(result.sampleTypedTriples.length, 4);
+  assert.ok(result.sampleTypedTriples.every((l) => l.startsWith('<http://example.org/sites#BRS>')));
+  // datatype coercion is visible in the literal type: number -> xsd:double,
+  // integer -> xsd:integer.
+  assert.ok(result.sampleTypedTriples.some(
+    (l) => l.includes('http://schema.org/latitude') && l.includes('XMLSchema#double')));
+  assert.ok(result.sampleTypedTriples.some(
+    (l) => l.includes('http://schema.org/population') && l.includes('XMLSchema#integer')));
 });
 
-test('post13 cell 4 (CSVW minimal mode): exactly 10 quads, no provenance triples', async () => {
+test('post13 cell 4 (CSVW minimal mode): 8 typed quads, no provenance, template subjects', async () => {
   const result = await runObservableCell(cells[3], { Factoidal });
   assert.equal(result.available, true);
-  assert.equal(result.totalQuads, 10);
+  assert.equal(result.totalQuads, 8);
+  assert.equal(result.hasDoubleTyping, true);
+  assert.equal(result.hasIntegerTyping, true);
+  // Both subjects come from the RFC 6570 fragment template aboutUrl.
+  assert.deepEqual(
+    [...result.templatedSubjects].sort(),
+    ['<http://example.org/sites#BRS>', '<http://example.org/sites#BTH>']);
   assert.ok(!result.lines.some((l) => l.includes('csvw#Row') || l.includes('csvw#Table')));
 });
 

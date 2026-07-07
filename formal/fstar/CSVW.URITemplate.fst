@@ -135,12 +135,24 @@ let csvw_var_name (v : string) : string =
 //    the current row/column context.
 // ------------------------------------------------------------------
 
+// RFC 6570 section 3.2.4 fragment expansion `{#var}`: when the variable
+// is DEFINED, the result is prefixed with a literal '#' (the fragment
+// operator's own first-character); an UNDEFINED variable produces no
+// output at all (no stray '#'). Level-1 simple expansion `{var}` carries
+// no such prefix. The earlier code dropped the '#' entirely, so a
+// `countries.csv{#countryCode}` template resolved to `countries.csvAD`
+// instead of `countries.csv#AD` — every aboutUrl/valueUrl fragment
+// template in the csv2rdf corpus (tree-ops, countries, roles, ...) came
+// out wrong.
 let csvw_expand_segment (lookup : string -> option string) (seg : csvw_template_segment) : string =
   match seg with
   | CT_Literal l -> l
   | CT_Var v ->
-    let raw = (match lookup (csvw_var_name v) with Some s -> s | None -> "") in
-    if csvw_var_is_fragment v then csvw_encode_fragment raw else string_encode_uri raw
+    (match lookup (csvw_var_name v) with
+     | None -> ""
+     | Some raw ->
+       if csvw_var_is_fragment v then "#" ^ csvw_encode_fragment raw
+       else string_encode_uri raw)
 
 let rec csvw_expand_segments (lookup : string -> option string) (segs : list csvw_template_segment)
   : Tot string (decreases segs) =

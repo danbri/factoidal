@@ -97,13 +97,12 @@ let csvw_expand_segment
   match seg with
   | CT_Literal l -> l
   | CT_Var v ->
-      let raw =
-        match lookup (csvw_var_name v) with
-        | FStar_Pervasives_Native.Some s -> s
-        | FStar_Pervasives_Native.None -> "" in
-      if csvw_var_is_fragment v
-      then csvw_encode_fragment raw
-      else SPARQL11_Algebra.string_encode_uri raw
+      (match lookup (csvw_var_name v) with
+       | FStar_Pervasives_Native.None -> ""
+       | FStar_Pervasives_Native.Some raw ->
+           if csvw_var_is_fragment v
+           then Prims.strcat "#" (csvw_encode_fragment raw)
+           else SPARQL11_Algebra.string_encode_uri raw)
 let rec csvw_expand_segments
   (lookup : Prims.string -> Prims.string FStar_Pervasives_Native.option)
   (segs : csvw_template_segment Prims.list) : Prims.string=

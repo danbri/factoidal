@@ -198,6 +198,18 @@ type csvw_table = {
   tbl_url          : option string;
   tbl_dialect      : option csvw_dialect;
   tbl_table_schema : option csvw_table_schema;
+  // Common properties (tabular-metadata section 5.8): every top-level
+  // member of the table object whose name is a prefixed name or an
+  // absolute URL (heuristic: contains a ':') rather than a reserved
+  // CSVW keyword — kept as the VERBATIM json_val so the conversion
+  // layer (CSVW.Conversion) can emit them as RDF triples on the table
+  // node. Reserved CSVW keys (url, tableSchema, dialect, notes, ...)
+  // never contain ':', so this simple filter never captures one; the
+  // '@'-prefixed JSON-LD keywords (@context/@id/@type) likewise carry
+  // no ':' and are excluded. Interpreting these into RDF (CURIE
+  // expansion, @value/@id/@language node forms) is CSVW.Conversion's
+  // job, not this decoder's.
+  tbl_common       : list (string & json_val);
 }
 
 // A metadata document is either a single annotated table (top-level
@@ -352,6 +364,19 @@ let csvw_decode_table_schema (v:json_val) : option csvw_table_schema =
 // Table decode
 // ================================================================
 
+// A metadata key names a common property when it is a prefixed name or
+// an absolute URL — heuristically, when it contains a ':'. Reserved CSVW
+// keywords (url, tableSchema, dialect, ...) and the JSON-LD keywords
+// (@context/@id/@type) contain no ':' and are therefore never captured.
+let csvw_key_is_common (k:string) : bool =
+  List.Tot.existsb (fun (c:FStar.Char.char) -> FStar.Char.int_of_char c = 58 (* ':' *))
+    (String.list_of_string k)
+
+let csvw_common_fields (v:json_val) : list (string & json_val) =
+  match v with
+  | JObject fields -> List.Tot.filter (fun (kv:(string & json_val)) -> csvw_key_is_common (fst kv)) fields
+  | _ -> []
+
 let csvw_decode_table (v:json_val) : option csvw_table =
   match v with
   | JObject _ ->
@@ -372,6 +397,7 @@ let csvw_decode_table (v:json_val) : option csvw_table =
         tbl_url          = json_get_string "url" v;
         tbl_dialect      = dialect;
         tbl_table_schema = schema;
+        tbl_common       = csvw_common_fields v;
       })
   | _ -> None
 

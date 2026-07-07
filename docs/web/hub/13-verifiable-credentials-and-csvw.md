@@ -201,147 +201,184 @@ verifies it, runs each negative case, and confirms the
 CSVW turns an ordinary CSV file plus a JSON metadata document into
 RDF. The metadata document (`tableSchema.columns`) names each column,
 its datatype, and how to build a subject IRI per row; `csv2rdf`
-combines the two into triples. Below is the W3C CSVW spec's own
-canonical example — a small municipal tree-maintenance table — run
+combines the two into triples. Two features carry the weight and both
+run live below: **datatype coercion** — a column's declared `datatype`
+becomes the RDF literal's `^^` type — and **URI templates** — RFC 6570
+templates in `aboutUrl`/`propertyUrl` turn a cell value into a subject
+or predicate IRI. Below is a small municipal-facilities table run
 live through `Factoidal.csvwToRdf(csvText, metadataJson, options)`
 (`npm/factoidal/browser.js`'s raw CSVW export):
 
+{% raw %}
+
 ```csv
-GID,On Street,Species,Trim Cycle,Inventory Date
-1,ADDISON AV,Celtis australis,Large Tree Routine Prune,10/18/2010
-2,EMERSON ST,Liquidambar styraciflua,Large Tree Routine Prune,6/2/2010
+code,name,latitude,longitude,population
+BRS,Bristol City Hall,51.4545,-2.5879,459300
+BTH,Bath Guildhall,51.3811,-2.359,94782
 ```
 
 ```json
 {
-  "@context": ["http://www.w3.org/ns/csvw", {"@language": "en"}],
-  "url": "tree-ops.csv",
+  "@context": "http://www.w3.org/ns/csvw",
+  "url": "sites.csv",
   "tableSchema": {
     "columns": [
-      {"name": "GID", "titles": ["GID"], "datatype": "string", "required": true},
-      {"name": "on_street", "titles": "On Street", "datatype": "string"},
-      {"name": "species", "titles": "Species", "datatype": "string"},
-      {"name": "trim_cycle", "titles": "Trim Cycle", "datatype": "string"},
-      {"name": "inventory_date", "titles": "Inventory Date",
-       "datatype": {"base": "date", "format": "M/d/yyyy"}}
+      {"name": "code", "titles": "code", "datatype": "string", "suppressOutput": true},
+      {"name": "name", "titles": "name", "datatype": "string", "propertyUrl": "http://schema.org/name"},
+      {"name": "latitude", "titles": "latitude", "datatype": "number", "propertyUrl": "http://schema.org/latitude"},
+      {"name": "longitude", "titles": "longitude", "datatype": "number", "propertyUrl": "http://schema.org/longitude"},
+      {"name": "population", "titles": "population", "datatype": "integer", "propertyUrl": "http://schema.org/population"}
     ],
-    "primaryKey": "GID",
-    "aboutUrl": "#gid-{GID}"
+    "aboutUrl": "http://example.org/sites{#code}",
+    "primaryKey": "code"
   }
 }
 ```
 
-**Standard mode** — the default — emits the row data plus CSVW's own
-provenance triples (`csvw:TableGroup`/`csvw:Table`/`csvw:Row`,
-recording which row each subject came from):
+Three things the metadata asks for, each visible in the output:
+`aboutUrl` is a fragment template `{#code}` (RFC 6570 fragment
+expansion), so each row's subject is `…/sites#BRS`, `…/sites#BTH` —
+the `code` column feeds the template but `suppressOutput` keeps it
+from also emitting a plain triple. `datatype: "number"` is a CSVW
+built-in that maps to `xsd:double`; `datatype: "integer"` maps to
+`xsd:integer`. **Standard mode** — the default — emits the row data
+plus CSVW's own provenance triples (`csvw:TableGroup`/`csvw:Table`/
+`csvw:Row`, recording which row each subject came from):
 
 ```observable-js
-const csvText = `GID,On Street,Species,Trim Cycle,Inventory Date
-1,ADDISON AV,Celtis australis,Large Tree Routine Prune,10/18/2010
-2,EMERSON ST,Liquidambar styraciflua,Large Tree Routine Prune,6/2/2010
+const csvText = `code,name,latitude,longitude,population
+BRS,Bristol City Hall,51.4545,-2.5879,459300
+BTH,Bath Guildhall,51.3811,-2.359,94782
 `;
 
 const metadataJson = JSON.stringify({
-  "@context": ["http://www.w3.org/ns/csvw", { "@language": "en" }],
-  "url": "tree-ops.csv",
+  "@context": "http://www.w3.org/ns/csvw",
+  "url": "sites.csv",
   "tableSchema": {
     "columns": [
-      { "name": "GID", "titles": ["GID"], "datatype": "string", "required": true },
-      { "name": "on_street", "titles": "On Street", "datatype": "string" },
-      { "name": "species", "titles": "Species", "datatype": "string" },
-      { "name": "trim_cycle", "titles": "Trim Cycle", "datatype": "string" },
-      { "name": "inventory_date", "titles": "Inventory Date",
-        "datatype": { "base": "date", "format": "M/d/yyyy" } }
+      { "name": "code", "titles": "code", "datatype": "string", "suppressOutput": true },
+      { "name": "name", "titles": "name", "datatype": "string", "propertyUrl": "http://schema.org/name" },
+      { "name": "latitude", "titles": "latitude", "datatype": "number", "propertyUrl": "http://schema.org/latitude" },
+      { "name": "longitude", "titles": "longitude", "datatype": "number", "propertyUrl": "http://schema.org/longitude" },
+      { "name": "population", "titles": "population", "datatype": "integer", "propertyUrl": "http://schema.org/population" }
     ],
-    "primaryKey": "GID",
-    "aboutUrl": "#gid-{GID}"
+    "aboutUrl": "http://example.org/sites{#code}",
+    "primaryKey": "code"
   }
 });
 
 try {
   const result = await Factoidal.csvwToRdf(csvText, metadataJson, { base: "http://example.org/" });
   const lines = result.nquads.trim().split("\n");
+  const data = lines.filter((l) => l.includes("schema.org"));
   return {
     available: true,
     totalQuads: lines.length,
-    dataQuads: lines.filter((l) => l.includes("#GID") || l.includes("#on_street") ||
-      l.includes("#species") || l.includes("#trim_cycle") || l.includes("#inventory_date")).length,
-    firstRow: lines.filter((l) => l.includes("gid-1")),
+    dataQuads: data.length,
+    provenanceQuads: lines.filter((l) => l.includes("ns/csvw#")).length,
+    sampleTypedTriples: data.filter((l) => l.includes("#BRS")),
   };
 } catch (err) {
   return { available: false, note: err.message };
 }
 ```
 
-24 quads total: 10 data triples (5 columns × 2 rows) plus 14
-provenance triples describing the table and its rows. **Minimal
-mode** drops the provenance layer and emits only the row data:
+22 quads total: 8 data triples (4 emitted columns × 2 rows — `code` is
+suppressed) plus 14 provenance triples describing the table and its
+rows. The `sampleTypedTriples` for the first row show the coercion at
+work: `<…/sites#BRS> <http://schema.org/latitude> "51.4545"^^…double`,
+`…population> "459300"^^…integer`. **Minimal mode** drops the
+provenance layer and emits only the typed row data:
 
 ```observable-js
-const csvText = `GID,On Street,Species,Trim Cycle,Inventory Date
-1,ADDISON AV,Celtis australis,Large Tree Routine Prune,10/18/2010
-2,EMERSON ST,Liquidambar styraciflua,Large Tree Routine Prune,6/2/2010
+const csvText = `code,name,latitude,longitude,population
+BRS,Bristol City Hall,51.4545,-2.5879,459300
+BTH,Bath Guildhall,51.3811,-2.359,94782
 `;
 
 const metadataJson = JSON.stringify({
-  "@context": ["http://www.w3.org/ns/csvw", { "@language": "en" }],
-  "url": "tree-ops.csv",
+  "@context": "http://www.w3.org/ns/csvw",
+  "url": "sites.csv",
   "tableSchema": {
     "columns": [
-      { "name": "GID", "titles": ["GID"], "datatype": "string", "required": true },
-      { "name": "on_street", "titles": "On Street", "datatype": "string" },
-      { "name": "species", "titles": "Species", "datatype": "string" },
-      { "name": "trim_cycle", "titles": "Trim Cycle", "datatype": "string" },
-      { "name": "inventory_date", "titles": "Inventory Date",
-        "datatype": { "base": "date", "format": "M/d/yyyy" } }
+      { "name": "code", "titles": "code", "datatype": "string", "suppressOutput": true },
+      { "name": "name", "titles": "name", "datatype": "string", "propertyUrl": "http://schema.org/name" },
+      { "name": "latitude", "titles": "latitude", "datatype": "number", "propertyUrl": "http://schema.org/latitude" },
+      { "name": "longitude", "titles": "longitude", "datatype": "number", "propertyUrl": "http://schema.org/longitude" },
+      { "name": "population", "titles": "population", "datatype": "integer", "propertyUrl": "http://schema.org/population" }
     ],
-    "primaryKey": "GID",
-    "aboutUrl": "#gid-{GID}"
+    "aboutUrl": "http://example.org/sites{#code}",
+    "primaryKey": "code"
   }
 });
 
 try {
   const result = await Factoidal.csvwToRdf(csvText, metadataJson, { base: "http://example.org/", mode: "minimal" });
   const lines = result.nquads.trim().split("\n");
-  return { available: true, totalQuads: lines.length, lines };
+  return {
+    available: true,
+    totalQuads: lines.length,
+    hasDoubleTyping: lines.some((l) => l.includes("XMLSchema#double")),
+    hasIntegerTyping: lines.some((l) => l.includes("XMLSchema#integer")),
+    templatedSubjects: [...new Set(lines.map((l) => l.split(" ")[0]))],
+    lines,
+  };
 } catch (err) {
   return { available: false, note: err.message };
 }
 ```
 
-10 quads — exactly the row data, no `csvw:Row`/`csvw:Table` bookkeeping.
-Both modes are real conversion output from the same F\*-extracted
-`CSVW.Conversion.fst`, not two different tools.
+{% endraw %}
+
+8 quads — exactly the typed row data, no `csvw:Row`/`csvw:Table`
+bookkeeping; `templatedSubjects` is the two fragment-template IRIs
+`<…/sites#BRS>` and `<…/sites#BTH>`. Both modes are real conversion
+output from the same F\*-extracted `CSVW.Conversion.fst`, not two
+different tools.
 
 ### How far csv2rdf goes today
 
-This example converts cleanly, but it's a simple table — no list-valued
-cells, no multi-table joins. Measured against the full vendored W3C
-CSVW test suite (`manifest-rdf.jsonld`, 270 entries, compared via
-RDFC-1.0 canonicalization the same way this project's other W3C
-runners compare): **19 pass (of 270)**. The fail buckets are named,
-not hidden behind one number:
+This example converts cleanly, but it stays inside the features that
+are fully built. Measured against the full vendored W3C CSVW test
+suite (`manifest-rdf.jsonld`, 270 entries, compared via RDFC-1.0
+canonicalization the same way this project's other W3C runners
+compare): **74 pass (of 270)** — 27 of 76 `ToRdfTest`, 47 of 136
+`ToRdfTestWithWarnings`, 0 of 58 `NegativeRdfTest`. That is up from a
+previous 19; the lift came from three conversion fixes this post's
+work landed — the built-in datatype aliases (`number`→`xsd:double`,
+`binary`→`xsd:base64Binary`, `datetime`→`xsd:dateTime`,
+`any`→`xsd:anyAtomicType`) with an invalid-lexical-form fallback to a
+plain string, RFC 6570 fragment URI templates — the `#`-prefixed
+variable form, where previously the leading `#` was dropped so every
+fragment `aboutUrl`/`valueUrl` came out wrong — and emitting a table's
+common properties (`dc:title`,
+`rdfs:comment`, …) as RDF triples on the table node. The fail buckets
+that remain are named, not hidden behind one number:
 
 - **58 `NegativeRdfTest`** — fixtures that should be *rejected*; there
-  is no CSVW validation layer yet (a later stage).
-- **~105 format-facet fixtures** — the `datatype.format` facet (like
-  this post's own `M/d/yyyy` date format, which happens to work) isn't
-  implemented broadly enough to cover the suite's harder cases (a
-  later stage).
-- **13 separator/list-valued-cell fixtures** — CSVW's `separator`
-  facet (one cell, multiple values) isn't decoded yet.
-- **The remainder** span multi-level `aboutUrl`/`propertyUrl`/
-  `valueUrl` inheritance the suite's harder fixtures stress beyond this
-  pass's one-level approximation, plus assorted per-fixture edge cases.
+  is still no CSVW validation layer (a later stage).
+- **Format-facet fixtures** — the `datatype.format` facet (custom
+  date patterns like `M/d/yyyy`, `#,##0` number patterns, `Y`/`N`
+  booleans) is the largest remaining positive cluster; the value's
+  raw text is used verbatim rather than reformatted, so any fixture
+  whose expected output depends on format-driven reformatting still
+  differs.
+- **Value constraints** (`minLength`/`maxLength`/`minInclusive`/… and
+  the `separator`/list-valued-cell facet), plus per-column `lang` and
+  `@context`-level `@language` tagging of cell and common-property
+  strings — all decoded-or-partial, not yet applied.
+- **The remainder** span full multi-level `aboutUrl`/`propertyUrl`/
+  `valueUrl` inheritance, foreign-key and `primaryKey`-uniqueness
+  checking, and metadata-discovery edge cases (`/.well-known/csvm`).
 
 Metadata decoding — parsing a CSVW metadata document at all, separate
-from doing the conversion — is much further along: **286 of 293**
-vendored metadata documents decode to a valid table or table group (a
-further 1 decodes to a valid-but-empty table group, itself not a
-decoder failure; the remaining fixtures are either deliberately
-malformed negative tests the decoder correctly rejects, or schemas
-referenced by external URL, out of scope for an offline decoder). Both
-figures are measured by `bin/csvw-runner`, not estimated — see
+from doing the conversion — is further along: **286 of 293** vendored
+metadata documents decode to a valid table or table group (a further 1
+decodes to a valid-but-empty table group, itself not a decoder
+failure; the remaining fixtures are either deliberately malformed
+negative tests the decoder correctly rejects, or schemas referenced by
+external URL, out of scope for an offline decoder). Both figures are
+measured by `bin/csvw-runner`, not estimated — see
 [the test-results dashboard]({{ '/test-results/' | url }}).
 
 ## What's next

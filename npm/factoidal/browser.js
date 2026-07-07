@@ -738,6 +738,37 @@ export async function shexValidate(dataNQuads, schemaJson, focus, shapeLabel) {
 }
 
 /**
+ * Resolve a `did:key:z6Mk...` identifier to its DID Document as RDF
+ * (bin/npm-entry/entry_jsoo.ml's didKeyResolve export -> the verified
+ * DID_Key.did_key_document, formal/fstar/DID.Key.fst). Pure and offline:
+ * a did:key IS a multibase+multicodec Ed25519 public key, so resolution
+ * is total function application -- no network, no registry.
+ *
+ * Scope: Ed25519 (the `z6Mk...` prefix, multicodec 0xed01) only. The
+ * X25519 `keyAgreement` verification method is deferred (curve
+ * conversion, not byte encoding). A non-Ed25519 did:key rejects.
+ *
+ * @param {string} didString e.g. "did:key:z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK"
+ * @returns {Promise<{ok:true,did:string,nquads:string}>} `nquads` is the
+ *   DID Document as N-Triples (verificationMethod, controller,
+ *   publicKeyMultibase, authentication, assertionMethod,
+ *   capabilityInvocation, capabilityDelegation).
+ */
+export async function didKeyResolve(didString) {
+  if (typeof didString !== 'string') {
+    throw new TypeError('didKeyResolve: didString must be a string');
+  }
+  const abi = await loadNpmEntry();
+  if (typeof abi.didKeyResolve !== 'function') {
+    throw new Error(
+      'didKeyResolve: the loaded factoidal-npm-entry bundle predates the did:key export');
+  }
+  const parsed = JSON.parse(abi.didKeyResolve(didString));
+  if (!parsed.ok) throw new Error(parsed.error || 'didKeyResolve failed');
+  return parsed;
+}
+
+/**
  * RDFS or OWL-RL entailment closure (bin/npm-entry/entry_jsoo.ml's
  * owlClosure export). Default graph only.
  *
@@ -1207,7 +1238,7 @@ export default {
   query, toRdf, canonicalize, runFactoidalCli, setFactoidalUrl, getFactoidalUrl,
   encodeTextAsBundleBytes, queryDataset, version,
   loadNpmEntry, setFactoidalNpmEntryUrl, rifSmoke, rifEval,
-  shaclValidate, shexValidate, owlClosure, rmlMap, jsonldToRdf,
+  shaclValidate, shexValidate, didKeyResolve, owlClosure, rmlMap, jsonldToRdf,
   deltaLogOpen, deltaLogAppend, deltaLogReadAllHex, deltaLogMerge,
   deltaLogDestroy, _deltaLogCorruptLastForTest,
   openCottas, queryCottas, closeCottas, toCottas,

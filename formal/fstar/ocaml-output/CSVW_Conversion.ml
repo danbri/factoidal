@@ -17,7 +17,22 @@ let csvw_base_name_to_iri (n : Prims.string) : Prims.string=
     else
       if n = "json"
       then Prims.strcat csvw_ns "JSON"
-      else Prims.strcat "http://www.w3.org/2001/XMLSchema#" n
+      else
+        if n = "number"
+        then "http://www.w3.org/2001/XMLSchema#double"
+        else
+          if n = "binary"
+          then "http://www.w3.org/2001/XMLSchema#base64Binary"
+          else
+            if n = "datetime"
+            then "http://www.w3.org/2001/XMLSchema#dateTime"
+            else
+              if n = "any"
+              then "http://www.w3.org/2001/XMLSchema#anyAtomicType"
+              else
+                if RDF_Term.string_contains_colon n
+                then n
+                else Prims.strcat "http://www.w3.org/2001/XMLSchema#" n
 let csvw_datatype_iri
   (dt : CSVW_Metadata.csvw_datatype FStar_Pervasives_Native.option) :
   Prims.string=
@@ -226,7 +241,20 @@ let csvw_cell_object (table_url_resolved : Prims.string)
        | FStar_Pervasives_Native.Some txt ->
            if txt = ""
            then FStar_Pervasives_Native.None
-           else csvw_build_literal txt (csvw_datatype_iri spec.cs_datatype))
+           else
+             (let dt_str = csvw_datatype_iri spec.cs_datatype in
+              let dt_wf =
+                if RDF_Term.is_iri dt_str
+                then FStar_Pervasives_Native.Some dt_str
+                else FStar_Pervasives_Native.None in
+              match dt_wf with
+              | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+              | FStar_Pervasives_Native.Some d ->
+                  let eff =
+                    if XSD_Datatypes.literal_ill_formed d txt
+                    then RDF_Term.xsd_string
+                    else d in
+                  csvw_build_literal txt eff))
 let csvw_process_cell (table_url_resolved : Prims.string)
   (lookup : Prims.string -> Prims.string FStar_Pervasives_Native.option)
   (default_subject : RDF_Term.subject) (spec : csvw_col_spec)
@@ -307,6 +335,259 @@ let csvw_row_cell_results (table_url_resolved : Prims.string)
        (fun s ->
           csvw_process_cell table_url_resolved lookup default_subject s
             FStar_Pervasives_Native.None) virt_specs)
+let csvw_curie_ns (prefix : Prims.string) :
+  Prims.string FStar_Pervasives_Native.option=
+  if prefix = "rdf"
+  then
+    FStar_Pervasives_Native.Some
+      "http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+  else
+    if prefix = "rdfs"
+    then FStar_Pervasives_Native.Some "http://www.w3.org/2000/01/rdf-schema#"
+    else
+      if prefix = "xsd"
+      then FStar_Pervasives_Native.Some "http://www.w3.org/2001/XMLSchema#"
+      else
+        if prefix = "dc"
+        then FStar_Pervasives_Native.Some "http://purl.org/dc/terms/"
+        else
+          if prefix = "dcterms"
+          then FStar_Pervasives_Native.Some "http://purl.org/dc/terms/"
+          else
+            if prefix = "dc11"
+            then
+              FStar_Pervasives_Native.Some "http://purl.org/dc/elements/1.1/"
+            else
+              if prefix = "dcat"
+              then FStar_Pervasives_Native.Some "http://www.w3.org/ns/dcat#"
+              else
+                if prefix = "schema"
+                then FStar_Pervasives_Native.Some "http://schema.org/"
+                else
+                  if prefix = "foaf"
+                  then
+                    FStar_Pervasives_Native.Some "http://xmlns.com/foaf/0.1/"
+                  else
+                    if prefix = "skos"
+                    then
+                      FStar_Pervasives_Native.Some
+                        "http://www.w3.org/2004/02/skos/core#"
+                    else
+                      if prefix = "owl"
+                      then
+                        FStar_Pervasives_Native.Some
+                          "http://www.w3.org/2002/07/owl#"
+                      else
+                        if prefix = "org"
+                        then
+                          FStar_Pervasives_Native.Some
+                            "http://www.w3.org/ns/org#"
+                        else
+                          if prefix = "oa"
+                          then
+                            FStar_Pervasives_Native.Some
+                              "http://www.w3.org/ns/oa#"
+                          else
+                            if prefix = "prov"
+                            then
+                              FStar_Pervasives_Native.Some
+                                "http://www.w3.org/ns/prov#"
+                            else
+                              if prefix = "as"
+                              then
+                                FStar_Pervasives_Native.Some
+                                  "https://www.w3.org/ns/activitystreams#"
+                              else FStar_Pervasives_Native.None
+let rec csvw_split_colon (chars : FStar_Char.char Prims.list) :
+  (FStar_Char.char Prims.list * FStar_Char.char Prims.list)
+    FStar_Pervasives_Native.option=
+  match chars with
+  | [] -> FStar_Pervasives_Native.None
+  | c::rest ->
+      if (FStar_Char.int_of_char c) = (Prims.of_int (58))
+      then FStar_Pervasives_Native.Some ([], rest)
+      else
+        (match csvw_split_colon rest with
+         | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+         | FStar_Pervasives_Native.Some (b, a) ->
+             FStar_Pervasives_Native.Some ((c :: b), a))
+let csvw_expand_curie (key : Prims.string) : Prims.string=
+  match csvw_split_colon (FStar_String.list_of_string key) with
+  | FStar_Pervasives_Native.None -> key
+  | FStar_Pervasives_Native.Some (b, a) ->
+      let local = FStar_String.string_of_list a in
+      if
+        ((FStar_String.strlen local) >= (Prims.of_int (2))) &&
+          ((FStar_String.sub local Prims.int_zero (Prims.of_int (2))) = "//")
+      then key
+      else
+        (match csvw_curie_ns (FStar_String.string_of_list b) with
+         | FStar_Pervasives_Native.Some ns -> Prims.strcat ns local
+         | FStar_Pervasives_Native.None -> key)
+let csvw_mk_literal (lex : Prims.string) (dt : RDF_Term.wf_iri)
+  (lang : Prims.string FStar_Pervasives_Native.option) :
+  RDF_Term.rdf_term FStar_Pervasives_Native.option=
+  let l =
+    {
+      RDF_Term.lexical_form = lex;
+      RDF_Term.datatype = dt;
+      RDF_Term.lang_tag = lang
+    } in
+  if RDF_Term.literal_wf l
+  then FStar_Pervasives_Native.Some (RDF_Term.T_Literal l)
+  else FStar_Pervasives_Native.None
+let csvw_typed_literal_opt (lex : Prims.string) (dt : Prims.string) :
+  RDF_Term.rdf_term FStar_Pervasives_Native.option=
+  if RDF_Term.is_iri dt
+  then csvw_mk_literal lex dt FStar_Pervasives_Native.None
+  else csvw_mk_literal lex RDF_Term.xsd_string FStar_Pervasives_Native.None
+let csvw_number_literal_opt (lex : Prims.string) :
+  RDF_Term.rdf_term FStar_Pervasives_Native.option=
+  if XSD_Datatypes.is_integer_lexical lex
+  then csvw_mk_literal lex RDF_Term.xsd_integer FStar_Pervasives_Native.None
+  else csvw_mk_literal lex RDF_Term.xsd_double FStar_Pervasives_Native.None
+let csvw_opt_to_list (o : 'a FStar_Pervasives_Native.option) : 'a Prims.list=
+  match o with
+  | FStar_Pervasives_Native.Some x -> [x]
+  | FStar_Pervasives_Native.None -> []
+let rec csvw_common_value (fuel : Prims.nat) (seed : Prims.string)
+  (v : Parser_JSON.json_val) :
+  (RDF_Term.rdf_term Prims.list * RDF_Triple.triple Prims.list)=
+  if fuel = Prims.int_zero
+  then ([], [])
+  else
+    (match v with
+     | Parser_JSON.JNull -> ([], [])
+     | Parser_JSON.JString s ->
+         ((csvw_opt_to_list
+             (csvw_mk_literal s RDF_Term.xsd_string
+                FStar_Pervasives_Native.None)), [])
+     | Parser_JSON.JBool b ->
+         ((csvw_opt_to_list
+             (csvw_mk_literal (if b then "true" else "false")
+                RDF_Term.xsd_boolean FStar_Pervasives_Native.None)), [])
+     | Parser_JSON.JNumber s ->
+         ((csvw_opt_to_list (csvw_number_literal_opt s)), [])
+     | Parser_JSON.JArray items ->
+         csvw_common_array (fuel - Prims.int_one) seed Prims.int_zero items
+     | Parser_JSON.JObject fields ->
+         (match Parser_JSON.json_get_field "@value" v with
+          | FStar_Pervasives_Native.Some (Parser_JSON.JString lex) ->
+              let term =
+                match Parser_JSON.json_get_string "@type" v with
+                | FStar_Pervasives_Native.Some t ->
+                    csvw_typed_literal_opt lex (csvw_expand_curie t)
+                | FStar_Pervasives_Native.None ->
+                    (match Parser_JSON.json_get_string "@language" v with
+                     | FStar_Pervasives_Native.Some l ->
+                         csvw_mk_literal lex RDF_Term.rdf_lang_string
+                           (FStar_Pervasives_Native.Some l)
+                     | FStar_Pervasives_Native.None ->
+                         csvw_mk_literal lex RDF_Term.xsd_string
+                           FStar_Pervasives_Native.None) in
+              ((csvw_opt_to_list term), [])
+          | uu___1 ->
+              (match Parser_JSON.json_get_field "@id" v with
+               | FStar_Pervasives_Native.Some (Parser_JSON.JString idv) ->
+                   let iri = csvw_expand_curie idv in
+                   if RDF_Term.is_iri iri
+                   then ([RDF_Term.T_IRI iri], [])
+                   else ([], [])
+               | uu___2 ->
+                   let lbl = Prims.strcat "csvwCP_" seed in
+                   let b = RDF_Term.S_BNode lbl in
+                   let inner =
+                     csvw_common_object_fields (fuel - Prims.int_one) b lbl
+                       fields in
+                   ([csvw_term_of_subject b], inner))))
+and csvw_common_array (fuel : Prims.nat) (seed : Prims.string)
+  (idx : Prims.nat) (items : Parser_JSON.json_val Prims.list) :
+  (RDF_Term.rdf_term Prims.list * RDF_Triple.triple Prims.list)=
+  if fuel = Prims.int_zero
+  then ([], [])
+  else
+    (match items with
+     | [] -> ([], [])
+     | hd::tl ->
+         let uu___1 =
+           csvw_common_value (fuel - Prims.int_one)
+             (Prims.strcat seed (Prims.strcat "_" (Prims.string_of_int idx)))
+             hd in
+         (match uu___1 with
+          | (t1, r1) ->
+              let uu___2 =
+                csvw_common_array (fuel - Prims.int_one) seed
+                  (idx + Prims.int_one) tl in
+              (match uu___2 with
+               | (t2, r2) ->
+                   ((FStar_List_Tot_Base.op_At t1 t2),
+                     (FStar_List_Tot_Base.op_At r1 r2)))))
+and csvw_common_object_fields (fuel : Prims.nat) (subj : RDF_Term.subject)
+  (seed : Prims.string)
+  (fields : (Prims.string * Parser_JSON.json_val) Prims.list) :
+  RDF_Triple.triple Prims.list=
+  if fuel = Prims.int_zero
+  then []
+  else
+    (match fields with
+     | [] -> []
+     | (k, v)::tl ->
+         let here =
+           if k = "@type"
+           then
+             match v with
+             | Parser_JSON.JString tv ->
+                 let ti = csvw_expand_curie tv in
+                 (match if RDF_Term.is_iri ti
+                        then FStar_Pervasives_Native.Some ti
+                        else FStar_Pervasives_Native.None
+                  with
+                  | FStar_Pervasives_Native.Some tiw ->
+                      let tiw1 = tiw in
+                      [{
+                         RDF_Triple.s = subj;
+                         RDF_Triple.p = RDFS_Closure.rdf_type;
+                         RDF_Triple.o = (RDF_Term.T_IRI tiw1)
+                       }]
+                  | FStar_Pervasives_Native.None -> [])
+             | uu___1 -> []
+           else
+             if RDF_Term.string_contains_colon k
+             then
+               (let praw = csvw_expand_curie k in
+                match if RDF_Term.is_iri praw
+                      then FStar_Pervasives_Native.Some praw
+                      else FStar_Pervasives_Native.None
+                with
+                | FStar_Pervasives_Native.None -> []
+                | FStar_Pervasives_Native.Some pred ->
+                    let pred1 = pred in
+                    let uu___2 =
+                      csvw_common_value (fuel - Prims.int_one)
+                        (Prims.strcat seed (Prims.strcat "_" k)) v in
+                    (match uu___2 with
+                     | (terms, sub) ->
+                         FStar_List_Tot_Base.op_At
+                           (FStar_List_Tot_Base.map
+                              (fun t ->
+                                 {
+                                   RDF_Triple.s = subj;
+                                   RDF_Triple.p = pred1;
+                                   RDF_Triple.o = t
+                                 }) terms) sub))
+             else [] in
+         FStar_List_Tot_Base.op_At here
+           (csvw_common_object_fields (fuel - Prims.int_one) subj seed tl))
+let rec csvw_common_fuel
+  (common : (Prims.string * Parser_JSON.json_val) Prims.list) : Prims.nat=
+  match common with
+  | [] -> Prims.int_one
+  | (uu___, v)::tl ->
+      (Prims.int_one + (Parser_JSON.json_size v)) + (csvw_common_fuel tl)
+let csvw_table_common_triples (subj : RDF_Term.subject) (seed : Prims.string)
+  (common : (Prims.string * Parser_JSON.json_val) Prims.list) :
+  RDF_Triple.triple Prims.list=
+  csvw_common_object_fields (csvw_common_fuel common) subj seed common
 let csvw_row_triples_minimal (table_url_resolved : Prims.string)
   (col_specs : csvw_col_spec Prims.list) (row_num : Prims.nat)
   (source_row_num : Prims.nat) (cells : Prims.string Prims.list) :
@@ -441,6 +722,10 @@ let csvw_convert_table_standard (base_iri : Prims.string)
           }]) row_results in
   let row_all =
     FStar_List_Tot_Base.concatMap FStar_Pervasives_Native.snd row_results in
+  let t_common =
+    csvw_table_common_triples t_node
+      (SPARQL11_Algebra.string_encode_uri table_url_resolved)
+      tbl.CSVW_Metadata.tbl_common in
   let t_meta =
     FStar_List_Tot_Base.op_At
       [{
@@ -458,7 +743,8 @@ let csvw_convert_table_standard (base_iri : Prims.string)
        else []) in
   (t_node,
     (FStar_List_Tot_Base.op_At t_meta
-       (FStar_List_Tot_Base.op_At row_links row_all)))
+       (FStar_List_Tot_Base.op_At t_common
+          (FStar_List_Tot_Base.op_At row_links row_all))))
 let csvw_convert_document_minimal (base_iri : Prims.string)
   (tables_with_rows :
     (CSVW_Metadata.csvw_table * Prims.string * Prims.string Prims.list
@@ -508,5 +794,6 @@ let csvw_no_metadata_table : CSVW_Metadata.csvw_table=
   {
     CSVW_Metadata.tbl_url = FStar_Pervasives_Native.None;
     CSVW_Metadata.tbl_dialect = FStar_Pervasives_Native.None;
-    CSVW_Metadata.tbl_table_schema = FStar_Pervasives_Native.None
+    CSVW_Metadata.tbl_table_schema = FStar_Pervasives_Native.None;
+    CSVW_Metadata.tbl_common = []
   }

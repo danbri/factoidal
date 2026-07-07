@@ -77,6 +77,7 @@ open RDF.IRI                // resolve_iri_v2
 open CSVW.Metadata
 open CSVW.URITemplate
 open SPARQL11.Algebra       // string_encode_uri (default propertyUrl's column-name encoding)
+open Parser.JSON            // json_val + accessors, for common-property emission
 
 // ================================================================
 // csvw: vocabulary constants (w3.org/ns/csvw#). Local to this module
@@ -111,10 +112,22 @@ let csvw_describes : wf_iri =
 // html -> rdf:HTML, xml -> rdf:XMLLiteral, json -> csvw:JSON.
 // ================================================================
 
+// The four CSVW built-in datatype names that are NOT literally an
+// xsd:<name> (tabular-metadata section 5.11.1 "Built-in datatypes"):
+//   number  -> xsd:double        binary -> xsd:base64Binary
+//   datetime-> xsd:dateTime      any    -> xsd:anyAtomicType
+// plus the three non-XSD ones (html/xml/json). A `base`/`datatype`
+// value that is itself an absolute URL (contains ':') — the
+// datatype-@id-is-an-absolute-URL cases — is used verbatim.
 let csvw_base_name_to_iri (n : string) : string =
   if n = "html" then "http://www.w3.org/1999/02/22-rdf-syntax-ns#HTML"
   else if n = "xml" then "http://www.w3.org/1999/02/22-rdf-syntax-ns#XMLLiteral"
   else if n = "json" then csvw_ns ^ "JSON"
+  else if n = "number" then "http://www.w3.org/2001/XMLSchema#double"
+  else if n = "binary" then "http://www.w3.org/2001/XMLSchema#base64Binary"
+  else if n = "datetime" then "http://www.w3.org/2001/XMLSchema#dateTime"
+  else if n = "any" then "http://www.w3.org/2001/XMLSchema#anyAtomicType"
+  else if string_contains_colon n then n
   else "http://www.w3.org/2001/XMLSchema#" ^ n
 
 let csvw_datatype_iri (dt : option csvw_datatype) : string =
@@ -300,7 +313,20 @@ let csvw_cell_object
      | None -> None                      // virtual column with no valueUrl: nothing to emit
      | Some txt ->
        if txt = "" then None             // default null value ("") -> no cell triple
-       else csvw_build_literal txt (csvw_datatype_iri spec.cs_datatype))
+       else
+         // A cell whose text is not a valid lexical form for its declared
+         // datatype does NOT get that datatype (tabular-data-model
+         // section 6.4.2 step: an invalid value is a validation error;
+         // the cell's value keeps the datatype's LEXICAL string but is
+         // emitted as a plain string literal — the csv2rdf "invalid X"
+         // fixtures, test172-182, expect e.g. "1z" not "1z"^^xsd:double).
+         let dt_str = csvw_datatype_iri spec.cs_datatype in
+         let dt_wf : option wf_iri = if is_iri dt_str then Some dt_str else None in
+         (match dt_wf with
+          | None -> None
+          | Some d ->
+            let eff : wf_iri = if XSD.Datatypes.literal_ill_formed d txt then xsd_string else d in
+            csvw_build_literal txt eff))
 
 let csvw_process_cell
     (table_url_resolved : string)
@@ -361,6 +387,177 @@ let csvw_row_cell_results
   @ List.Tot.map
       (fun (s : csvw_col_spec) -> csvw_process_cell table_url_resolved lookup default_subject s None)
       virt_specs
+
+// ================================================================
+// Common properties -> RDF (tabular-metadata section 5.8 / csv2rdf
+// "Generating RDF" step for a table's common properties). A metadata
+// object's prefixed-name / absolute-URL members (captured verbatim by
+// CSVW.Metadata as tbl_common) become RDF triples on that object's
+// node (here: the table node, standard mode only — minimal mode emits
+// cell triples only, so this section is unused there). Value forms:
+//   - JString / JNumber / JBool -> a plain typed literal.
+//   - {"@value": s, "@type": t} / {"@value": s, "@language": l}
+//     -> a typed / language-tagged literal.
+//   - {"@id": iri}  -> an IRI node reference.
+//   - a nested object (no @value/@id) -> a fresh blank node carrying
+//     its own members (recursively), with an optional "@type" member
+//     emitted as an rdf:type triple.
+//   - an array -> one object per element, same predicate.
+//   - JNull / anything unresolvable -> nothing.
+// ================================================================
+
+// CURIE prefix table — the subset of the CSVW default context (which
+// imports the RDFa 1.1 initial context) that the csv2rdf corpus's
+// common properties actually use. An unknown prefix leaves the key
+// unexpanded (dropped downstream by the is_iri guard).
+let csvw_curie_ns (prefix : string) : option string =
+  if prefix = "rdf" then Some "http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+  else if prefix = "rdfs" then Some "http://www.w3.org/2000/01/rdf-schema#"
+  else if prefix = "xsd" then Some "http://www.w3.org/2001/XMLSchema#"
+  else if prefix = "dc" then Some "http://purl.org/dc/terms/"
+  else if prefix = "dcterms" then Some "http://purl.org/dc/terms/"
+  else if prefix = "dc11" then Some "http://purl.org/dc/elements/1.1/"
+  else if prefix = "dcat" then Some "http://www.w3.org/ns/dcat#"
+  else if prefix = "schema" then Some "http://schema.org/"
+  else if prefix = "foaf" then Some "http://xmlns.com/foaf/0.1/"
+  else if prefix = "skos" then Some "http://www.w3.org/2004/02/skos/core#"
+  else if prefix = "owl" then Some "http://www.w3.org/2002/07/owl#"
+  else if prefix = "org" then Some "http://www.w3.org/ns/org#"
+  else if prefix = "oa" then Some "http://www.w3.org/ns/oa#"
+  else if prefix = "prov" then Some "http://www.w3.org/ns/prov#"
+  else if prefix = "as" then Some "https://www.w3.org/ns/activitystreams#"
+  else None
+
+// Split a key at its FIRST ':' into (before-chars, after-chars).
+let rec csvw_split_colon (chars : list FStar.Char.char)
+  : Tot (option (list FStar.Char.char & list FStar.Char.char)) (decreases chars) =
+  match chars with
+  | [] -> None
+  | c :: rest ->
+    if FStar.Char.int_of_char c = 58 (* ':' *) then Some ([], rest)
+    else (match csvw_split_colon rest with
+          | None -> None
+          | Some (b, a) -> Some (c :: b, a))
+
+// Expand a prefixed name to an absolute IRI. A key whose part after the
+// first ':' begins with "//" (i.e. scheme://...) is an absolute URL and
+// returned verbatim; a known prefix expands; anything else is returned
+// unchanged (dropped downstream if not a well-formed IRI).
+let csvw_expand_curie (key : string) : string =
+  match csvw_split_colon (String.list_of_string key) with
+  | None -> key
+  | Some (b, a) ->
+    let local = String.string_of_list a in
+    if String.length local >= 2 && String.sub local 0 2 = "//" then key
+    else (match csvw_curie_ns (String.string_of_list b) with
+          | Some ns -> ns ^ local
+          | None -> key)
+
+// Guarded literal builder (same discipline as csvw_build_literal, but
+// with an optional language tag): only a well-formed literal is emitted.
+let csvw_mk_literal (lex : string) (dt : wf_iri) (lang : option string) : option rdf_term =
+  let l : literal = { lexical_form = lex; datatype = dt; lang_tag = lang } in
+  if literal_wf l then Some (T_Literal l) else None
+
+let csvw_typed_literal_opt (lex : string) (dt : string) : option rdf_term =
+  if is_iri dt then csvw_mk_literal lex dt None else csvw_mk_literal lex xsd_string None
+
+// A JSON number lexeme -> xsd:integer if it is an integer lexeme, else
+// xsd:double (JSON-LD's native-number typing).
+let csvw_number_literal_opt (lex : string) : option rdf_term =
+  if XSD.Datatypes.is_integer_lexical lex
+  then csvw_mk_literal lex xsd_integer None
+  else csvw_mk_literal lex xsd_double None
+
+let csvw_opt_to_list (#a:Type) (o : option a) : list a =
+  match o with Some x -> [x] | None -> []
+
+// Emit the term(s) for a common-property value plus any triples its
+// nested structure contributes. `seed` seeds fresh blank-node labels
+// for nested objects/array elements; termination is by fuel decrease,
+// with the top-level caller supplying fuel >= the value forest's total
+// json_size so a well-formed document never truncates.
+let rec csvw_common_value (fuel : nat) (seed : string) (v : json_val)
+  : Tot (list rdf_term & list triple) (decreases fuel) =
+  if fuel = 0 then ([], [])
+  else
+    match v with
+    | JNull -> ([], [])
+    | JString s -> (csvw_opt_to_list (csvw_mk_literal s xsd_string None), [])
+    | JBool b -> (csvw_opt_to_list (csvw_mk_literal (if b then "true" else "false") xsd_boolean None), [])
+    | JNumber s -> (csvw_opt_to_list (csvw_number_literal_opt s), [])
+    | JArray items -> csvw_common_array (fuel - 1) seed 0 items
+    | JObject fields ->
+      (match json_get_field "@value" v with
+       | Some (JString lex) ->
+         let term =
+           (match json_get_string "@type" v with
+            | Some t -> csvw_typed_literal_opt lex (csvw_expand_curie t)
+            | None ->
+              (match json_get_string "@language" v with
+               | Some l -> csvw_mk_literal lex rdf_lang_string (Some l)
+               | None -> csvw_mk_literal lex xsd_string None)) in
+         (csvw_opt_to_list term, [])
+       | _ ->
+         (match json_get_field "@id" v with
+          | Some (JString idv) ->
+            let iri = csvw_expand_curie idv in
+            if is_iri iri then ([T_IRI iri], []) else ([], [])
+          | _ ->
+            let lbl = "csvwCP_" ^ seed in
+            let b : subject = S_BNode lbl in
+            let inner = csvw_common_object_fields (fuel - 1) b lbl fields in
+            ([csvw_term_of_subject b], inner)))
+
+and csvw_common_array (fuel : nat) (seed : string) (idx : nat) (items : list json_val)
+  : Tot (list rdf_term & list triple) (decreases fuel) =
+  if fuel = 0 then ([], [])
+  else
+    match items with
+    | [] -> ([], [])
+    | hd :: tl ->
+      let (t1, r1) = csvw_common_value (fuel - 1) (seed ^ "_" ^ string_of_int idx) hd in
+      let (t2, r2) = csvw_common_array (fuel - 1) seed (idx + 1) tl in
+      (t1 @ t2, r1 @ r2)
+
+and csvw_common_object_fields (fuel : nat) (subj : subject) (seed : string)
+    (fields : list (string & json_val))
+  : Tot (list triple) (decreases fuel) =
+  if fuel = 0 then []
+  else
+    match fields with
+    | [] -> []
+    | (k, v) :: tl ->
+      let here : list triple =
+        if k = "@type" then
+          (match v with
+           | JString tv ->
+             let ti = csvw_expand_curie tv in
+             (match (if is_iri ti then Some ti else None) with
+              | Some (tiw:wf_iri) -> [ { s = subj; p = rdf_type; o = T_IRI tiw } ]
+              | None -> [])
+           | _ -> [])
+        else if string_contains_colon k then
+          let praw = csvw_expand_curie k in
+          (match (if is_iri praw then Some praw else None) with
+           | None -> []
+           | Some (pred:wf_iri) ->
+             let (terms, sub) = csvw_common_value (fuel - 1) (seed ^ "_" ^ k) v in
+             List.Tot.map (fun (t:rdf_term) -> ({ s = subj; p = pred; o = t } <: triple)) terms @ sub)
+        else [] in
+      here @ csvw_common_object_fields (fuel - 1) subj seed tl
+
+// Total json_size budget across a common-property list — a fuel bound
+// generous enough that csvw_common_object_fields never truncates a
+// well-formed document (see csvw_common_value's termination note).
+let rec csvw_common_fuel (common : list (string & json_val)) : Tot nat (decreases common) =
+  match common with
+  | [] -> 1
+  | (_, v) :: tl -> 1 + json_size v + csvw_common_fuel tl
+
+let csvw_table_common_triples (subj : subject) (seed : string) (common : list (string & json_val))
+  : list triple =
+  csvw_common_object_fields (csvw_common_fuel common) subj seed common
 
 // ================================================================
 // Minimal mode: bare cell-value triples only, no wrapper nodes.
@@ -452,10 +649,11 @@ let csvw_convert_table_standard
       (fun (r : (subject & list triple)) -> [ { s = t_node; p = csvw_row_pred; o = csvw_term_of_subject (fst r) } ])
       row_results in
   let row_all = List.Tot.concatMap snd row_results in
+  let t_common = csvw_table_common_triples t_node (string_encode_uri table_url_resolved) tbl.tbl_common in
   let t_meta =
     [ { s = t_node; p = rdf_type; o = T_IRI csvw_Table } ]
     @ (if is_iri table_url_resolved then [ { s = t_node; p = csvw_url_pred; o = T_IRI table_url_resolved } ] else []) in
-  (t_node, t_meta @ row_links @ row_all)
+  (t_node, t_meta @ t_common @ row_links @ row_all)
 
 // ================================================================
 // Whole-document entry points. `tables_with_rows` pairs each table in
@@ -503,4 +701,5 @@ let csvw_no_metadata_table : csvw_table = {
   tbl_url = None;
   tbl_dialect = None;
   tbl_table_schema = None;
+  tbl_common = [];
 }

@@ -293,19 +293,25 @@ type csvw_table =
   {
   tbl_url: Prims.string FStar_Pervasives_Native.option ;
   tbl_dialect: csvw_dialect FStar_Pervasives_Native.option ;
-  tbl_table_schema: csvw_table_schema FStar_Pervasives_Native.option }
+  tbl_table_schema: csvw_table_schema FStar_Pervasives_Native.option ;
+  tbl_common: (Prims.string * Parser_JSON.json_val) Prims.list }
 let __proj__Mkcsvw_table__item__tbl_url (projectee : csvw_table) :
   Prims.string FStar_Pervasives_Native.option=
   match projectee with
-  | { tbl_url; tbl_dialect; tbl_table_schema;_} -> tbl_url
+  | { tbl_url; tbl_dialect; tbl_table_schema; tbl_common;_} -> tbl_url
 let __proj__Mkcsvw_table__item__tbl_dialect (projectee : csvw_table) :
   csvw_dialect FStar_Pervasives_Native.option=
   match projectee with
-  | { tbl_url; tbl_dialect; tbl_table_schema;_} -> tbl_dialect
+  | { tbl_url; tbl_dialect; tbl_table_schema; tbl_common;_} -> tbl_dialect
 let __proj__Mkcsvw_table__item__tbl_table_schema (projectee : csvw_table) :
   csvw_table_schema FStar_Pervasives_Native.option=
   match projectee with
-  | { tbl_url; tbl_dialect; tbl_table_schema;_} -> tbl_table_schema
+  | { tbl_url; tbl_dialect; tbl_table_schema; tbl_common;_} ->
+      tbl_table_schema
+let __proj__Mkcsvw_table__item__tbl_common (projectee : csvw_table) :
+  (Prims.string * Parser_JSON.json_val) Prims.list=
+  match projectee with
+  | { tbl_url; tbl_dialect; tbl_table_schema; tbl_common;_} -> tbl_common
 type csvw_metadata =
   | CSVW_Table of csvw_table 
   | CSVW_TableGroup of csvw_table Prims.list 
@@ -437,6 +443,18 @@ let csvw_decode_table_schema (v : Parser_JSON.json_val) :
                  ts_value_url = (Parser_JSON.json_get_string "valueUrl" v)
                })
   | uu___ -> FStar_Pervasives_Native.None
+let csvw_key_is_common (k : Prims.string) : Prims.bool=
+  FStar_List_Tot_Base.existsb
+    (fun c -> (FStar_Char.int_of_char c) = (Prims.of_int (58)))
+    (FStar_String.list_of_string k)
+let csvw_common_fields (v : Parser_JSON.json_val) :
+  (Prims.string * Parser_JSON.json_val) Prims.list=
+  match v with
+  | Parser_JSON.JObject fields ->
+      FStar_List_Tot_Base.filter
+        (fun kv -> csvw_key_is_common (FStar_Pervasives_Native.fst kv))
+        fields
+  | uu___ -> []
 let csvw_decode_table (v : Parser_JSON.json_val) :
   csvw_table FStar_Pervasives_Native.option=
   match v with
@@ -464,7 +482,8 @@ let csvw_decode_table (v : Parser_JSON.json_val) :
                {
                  tbl_url = (Parser_JSON.json_get_string "url" v);
                  tbl_dialect = dialect;
-                 tbl_table_schema = schema
+                 tbl_table_schema = schema;
+                 tbl_common = (csvw_common_fields v)
                })
   | uu___ -> FStar_Pervasives_Native.None
 let rec csvw_decode_table_list (items : Parser_JSON.json_val Prims.list) :

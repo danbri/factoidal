@@ -569,6 +569,27 @@ let serialize_turtle (nq : string) : string =
     let g = ds.ds_default @ List.concat_map (fun ng -> ng.ng_graph) ds.ds_named in
     ok_turtle_json (RDF_Turtle_Serialize.turtle_of_graph_auto g))
 
+(* did:key resolution -- DID_Key.did_key_document (formal/fstar/DID.Key.fst),
+   the verified Ed25519 did:key resolver. Pure, no I/O: a did:key:z6Mk...
+   identifier IS a multibase+multicodec-encoded Ed25519 public key, and
+   "resolving" it is total function application producing the DID Document as
+   RDF triples. The consumer side only serializes those triples to N-Triples
+   with the same RDF_NQuads_Serialize path CONSTRUCT uses -- rule #11 holds
+   (no did:key semantics live here; all of parse/decode/vocabulary is in the
+   extracted F* module). None -> error for anything that is not a resolvable
+   Ed25519 did:key (non-"did:key:" prefix, non-z multibase, wrong multicodec,
+   or wrong decoded length). *)
+let did_key_resolve (did : string) : string =
+  guarded (fun () ->
+    match DID_Key.did_key_document did with
+    | FStar_Pervasives_Native.None ->
+      err_json
+        ("didKeyResolve: not a resolvable did:key (Ed25519 z6Mk... only): "
+         ^ did)
+    | FStar_Pervasives_Native.Some triples ->
+      "{\"ok\":true,\"did\":" ^ jstr did
+      ^ ",\"nquads\":" ^ jstr (construct_triples_to_ntriples triples) ^ "}")
+
 (* ---------------------------------------------------------------------
    RIF Core (rule #11 consumer -- exports only). All semantics come
    from F*-extracted modules already on the link line
@@ -1300,6 +1321,7 @@ let () =
           ("serializeNQuads", s1 serialize_nquads);
           ("canonicalizeToNQuads", s1 canonicalize_to_nquads);
           ("serializeTurtle", s1 serialize_turtle);
+          ("didKeyResolve", s1 did_key_resolve);
           ("rifSmoke", s0 rif_smoke_json);
           ("rifEval", s2 rif_eval_json);
           ("jsonldToRdf", s2 jsonld_to_rdf_json);
