@@ -412,6 +412,7 @@ if [[ "$STEP" == "all" || "$STEP" == "extract" ]]; then
     ShEx.Schema.fst Parser.ShExC.fst ShEx.SchemaEq.fst ShEx.Validation.fst
     VC.Credential.fst
     VC.Multibase.fst
+    DID.Key.fst
     VC.DataIntegrity.fst
     RML.Mapping.fst RML.Sources.fst RML.Eval.fst
     CSVW.Metadata.fst CSVW.URITemplate.fst CSVW.Conversion.fst
@@ -834,6 +835,7 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
     ShEx_Schema.ml Parser_ShExC.ml ShEx_SchemaEq.ml ShEx_Validation.ml \
     VC_Credential.ml \
     VC_Multibase.ml \
+    DID_Key.ml \
     fstar_hacl_crypto.ml \
     VC_DataIntegrity.ml \
     RML_Mapping.ml RML_Sources.ml RML_Eval.ml \
@@ -954,6 +956,7 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
     "$BINDIR/shacl_runner"
     "$BINDIR/rml_runner"
     "$BINDIR/vc_runner"
+    "$BINDIR/did_runner"
     "$BINDIR/cottas_ondisk_smoketest"
   )
   NATIVE_SOURCES=(
@@ -971,6 +974,7 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
     ../../../bin/jsonld-runner/jsonld_runner.ml
     ../../../bin/rml-runner/rml_runner.ml
     ../../../bin/vc-runner/vc_runner.ml
+    ../../../bin/did-runner/did_runner.ml
     ../../../bin/cottas-ondisk-smoketest/cottas_ondisk_smoketest.ml
     ../experimental_ocaml_glue/parquet_zstd_stubs.c
     ../experimental_ocaml_glue/hacl_stubs.c
@@ -1161,6 +1165,36 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
       exit 1
     fi
     echo "  Built: bin/${PLATFORM}/vc_runner ($(wc -c < "$BINDIR/vc_runner") bytes)"
+
+    # did_runner — did:key DID method resolution vector runner
+    # (Factoidal's first Decentralized Identifiers capability). Walks
+    # tests/did/*.did / *.nt vector pairs, calls the F*-extracted
+    # DID_Key.did_key_document (formal/fstar/DID.Key.fst) on each did:key
+    # string, serializes the resulting triples via
+    # RDF_NQuads_Serialize.nq_line_for_triple_default_graph, and compares
+    # the sorted line set against the vector's hand-transcribed expected
+    # DID Document. Also self-checks DID_Key.parse_did_key's rejection
+    # paths. See tests/did/README.md for vector provenance.
+    DID_RUNNER_RC=0
+    run_with_heartbeat "ocamlopt did_runner" "_ocamlopt_did_runner.log" -- \
+      ocamlfind ocamlopt -package fstar.lib,str,zarith,sha,digestif.c,unix,uucp -linkpkg -w -8-14-26 \
+      $STATIC_FLAGS \
+      $COMMON_MODULES \
+      $PARQUET_NATIVE_STUBS \
+      $HACL_NATIVE_STUBS \
+      ../../../bin/did-runner/did_runner.ml \
+      -o "$BINDIR/did_runner" || DID_RUNNER_RC=$?
+    cat _ocamlopt_did_runner.log
+    if [[ "$DID_RUNNER_RC" -ne 0 ]]; then
+      echo "  ERROR: did_runner build failed (ocamlopt rc=$DID_RUNNER_RC)" >&2
+      echo "  See full log above. Build aborted." >&2
+      exit "$DID_RUNNER_RC"
+    fi
+    if [[ ! -x "$BINDIR/did_runner" ]]; then
+      echo "  ERROR: did_runner ocamlopt returned 0 but $BINDIR/did_runner is missing or not executable" >&2
+      exit 1
+    fi
+    echo "  Built: bin/${PLATFORM}/did_runner ($(wc -c < "$BINDIR/did_runner") bytes)"
 
     # shacl_runner — SHACL Core W3C data-shapes-test-suite runner
     # (slice 1, issue #181). Walks
@@ -1467,6 +1501,8 @@ if [[ "$STEP" == "all" || "$STEP" == "js" ]]; then
     RML_Mapping.ml RML_Sources.ml RML_Eval.ml
     CSVW_Metadata.ml CSVW_URITemplate.ml CSVW_Conversion.ml
     VC_Credential.ml
+    VC_Multibase.ml
+    DID_Key.ml
     RDF_Store_Columnar_DeltaMerge.ml
     SPARQL_Plan_Streamable.ml RDF_Store_Capabilities.ml RDF_Store_Capabilities_Cottas.ml RDF_Store_Capabilities_Delta.ml
     RML_VirtualSource.ml

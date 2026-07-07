@@ -157,6 +157,8 @@ COMMON_MODULES=(
   Parser_ShExC
   ShEx_SchemaEq
   VC_Credential
+  VC_Multibase
+  DID_Key
   RML_Mapping
   RML_Sources
   RML_Eval

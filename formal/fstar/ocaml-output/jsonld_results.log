@@ -84,10 +84,10 @@
   [84/467] #tc028 ok
   [85/467] #tc029 ok
   [86/467] #tc030 ok
-  [87/467] #tc031 ok
+  [87/467] #tc031 FAIL
   [88/467] #tc032 ok
   [89/467] #tc033 ok
-  [90/467] #tc034 ok
+  [90/467] #tc034 FAIL
   [91/467] #tc035 ok
   [92/467] #tc036 ok
   [93/467] #tc037 ok
@@ -180,7 +180,7 @@
   [180/467] #te074 ok
   [181/467] #te075 ok
   [182/467] #te076 ok
-  [183/467] #te077 ok
+  [183/467] #te077 FAIL
   [184/467] #te078 ok
   [185/467] #te079 ok
   [186/467] #te080 ok
@@ -229,9 +229,9 @@
   [229/467] #te123 ok
   [230/467] #te124 ok
   [231/467] #te125 ok
-  [232/467] #te126 ok
-  [233/467] #te127 ok
-  [234/467] #te128 ok
+  [232/467] #te126 FAIL
+  [233/467] #te127 FAIL
+  [234/467] #te128 FAIL
   [235/467] #te129 ok
   [236/467] #te130 ok
   [237/467] #tec01 ok
@@ -448,13 +448,13 @@
   [448/467] #tso01 ok
   [449/467] #tso02 ok
   [450/467] #tso03 ok
-  [451/467] #tso05 ok
-  [452/467] #tso06 ok
+  [451/467] #tso05 FAIL
+  [452/467] #tso06 FAIL
   [453/467] #tso07 ok
-  [454/467] #tso08 ok
-  [455/467] #tso09 ok
+  [454/467] #tso08 FAIL
+  [455/467] #tso09 FAIL
   [456/467] #tso10 ok
-  [457/467] #tso11 ok
+  [457/467] #tso11 FAIL
   [458/467] #tso12 ok
   [459/467] #tso13 ok
   [460/467] #ttn01 ok
@@ -466,7 +466,7 @@
   [466/467] #twf05 ok
   [467/467] #twf07 ok
 === JSON-LD 1.1 toRdf Test Runner ===
-Manifest: /home/user/factoidal/third_party/testing/json-ld/tests/toRdf-manifest.jsonld
+Manifest: ../../../third_party/testing/json-ld/tests/toRdf-manifest.jsonld
 
 Totals: 467 test entries
 
@@ -556,10 +556,10 @@ Totals: 467 test entries
   PASS: @propagate: false on embedded context
   PASS: @propagate is invalid in 1.0
   PASS: @propagate must be boolean valued
-  PASS: @context resolutions respects relative URLs.
+  FAIL: @context resolutions respects relative URLs. — parse_jsonld returned None (expected a valid expanded-form dataset)
   PASS: Unused embedded context with error.
   PASS: Unused context with an embedded context error.
-  PASS: Remote scoped context.
+  FAIL: Remote scoped context. — parse_jsonld returned None (expected a valid expanded-form dataset)
   PASS: Term scoping with embedded contexts.
   PASS: Expansion with empty property-scoped context.
   PASS: property-scoped contexts which are alias of @nest
@@ -650,7 +650,7 @@ Totals: 467 test entries
   PASS: @id not first property
   PASS: @vocab as blank node identifier
   PASS: base option overrides document location
-  PASS: expandContext option
+  FAIL: expandContext option — parse_jsonld returned None (expected a valid expanded-form dataset)
   PASS: multiple reverse properties
   PASS: expand @graph container
   PASS: expand [@graph, @set] container
@@ -697,9 +697,9 @@ Totals: 467 test entries
   PASS: Value objects including invalid literal datatype IRIs are rejected
   PASS: compact IRI as @vocab
   PASS: term as @vocab
-  PASS: A scoped context may include itself recursively (direct)
-  PASS: A scoped context may include itself recursively (indirect)
-  PASS: Two scoped context may include a shared context
+  FAIL: A scoped context may include itself recursively (direct) — parse_jsonld returned None (expected a valid expanded-form dataset)
+  FAIL: A scoped context may include itself recursively (indirect) — parse_jsonld returned None (expected a valid expanded-form dataset)
+  FAIL: Two scoped context may include a shared context — parse_jsonld returned None (expected a valid expanded-form dataset)
   PASS: Base without trailing slash, without path
   PASS: Base without trailing slash, with path
   PASS: Invalid keyword in term definition
@@ -919,13 +919,13 @@ _:c14n0 <http://example.org/vocab#c14n> "{\"literals\":[null,true,false],\"numbe
   PASS: @import is invalid in 1.0.
   PASS: @import must be a string
   PASS: @import overflow
-  PASS: @propagate: true on type-scoped context with @import
-  PASS: @propagate: false on property-scoped context with @import
+  FAIL: @propagate: true on type-scoped context with @import — parse_jsonld returned None (expected a valid expanded-form dataset)
+  FAIL: @propagate: false on property-scoped context with @import — parse_jsonld returned None (expected a valid expanded-form dataset)
   PASS: Protect all terms in sourced context
-  PASS: Override term defined in sourced context
-  PASS: Override @vocab defined in sourced context
+  FAIL: Override term defined in sourced context — parse_jsonld returned None (expected a valid expanded-form dataset)
+  FAIL: Override @vocab defined in sourced context — parse_jsonld returned None (expected a valid expanded-form dataset)
   PASS: Protect terms in sourced context
-  PASS: Override protected terms in sourced context
+  FAIL: Override protected terms in sourced context — parse_jsonld returned None (expected a valid expanded-form dataset)
   PASS: @import may not be used in an imported context.
   PASS: @import can only reference a single context
   PASS: @type: @none is illegal in 1.0.
@@ -939,10 +939,10 @@ _:c14n0 <http://example.org/vocab#c14n> "{\"literals\":[null,true,false],\"numbe
 
 ========================================
 Suite Results:
-  toRdf-Positive            pass:342 fail:1 skip:2
+  toRdf-Positive            pass:331 fail:12 skip:2
   toRdf-Negative            pass:102 fail:0 skip:4
   toRdf-PositiveSyntax      pass:16 fail:0 skip:0
 ========================================
-TOTAL: 460 pass, 1 fail, 6 skip (out of 467)
+TOTAL: 449 pass, 12 fail, 6 skip (out of 467)
 ========================================
-jsonld-toRdf: 460 pass, 1 fail, 6 skip (out of 467)
+jsonld-toRdf: 449 pass, 12 fail, 6 skip (out of 467)

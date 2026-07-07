@@ -1,0 +1,16 @@
+# Expected DID Document for did:key:z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK,
+# transcribed from the "Create" section canonical example of the
+# w3c-ccg did-method-key spec (Ed25519VerificationKey2020 revision):
+# https://web.archive.org/web/20221117145136/https://w3c-ccg.github.io/did-method-key/
+# (@context: https://www.w3.org/ns/did/v1, https://w3id.org/security/suites/ed25519-2020/v1).
+# Predicate/type IRIs are the exact @id mappings from those two JSON-LD
+# context documents (fetched directly, not re-derived). keyAgreement is
+# OMITTED per DID.Key.fst's documented scope (X25519 derivation deferred).
+<did:key:z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK> <https://w3id.org/security#verificationMethod> <did:key:z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK#z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK> .
+<did:key:z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK#z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://w3id.org/security#Ed25519VerificationKey2020> .
+<did:key:z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK#z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK> <https://w3id.org/security#controller> <did:key:z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK> .
+<did:key:z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK#z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK> <https://w3id.org/security#publicKeyMultibase> "z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK"^^<https://w3id.org/security#multibase> .
+<did:key:z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK> <https://w3id.org/security#authenticationMethod> <did:key:z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK#z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK> .
+<did:key:z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK> <https://w3id.org/security#assertionMethod> <did:key:z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK#z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK> .
+<did:key:z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK> <https://w3id.org/security#capabilityInvocationMethod> <did:key:z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK#z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK> .
+<did:key:z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK> <https://w3id.org/security#capabilityDelegationMethod> <did:key:z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK#z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK> .
