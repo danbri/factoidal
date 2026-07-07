@@ -206,7 +206,7 @@
   [pe-running] somevaluesfrom2bnode
 Closure regime: RL
 OWL 2 test catalog: third_party/testing/owl/semantics-direct.rdf
-  parsed 12070 triples in 0.69s
+  parsed 12070 triples in 0.67s
 Totals: 482 test cases
   PositiveEntailmentTest:    206
   NegativeEntailmentTest:    23
@@ -424,7 +424,7 @@ Running 206 PositiveEntailmentTest(s) through owl_rl_closure_with_reflexivity (f
   FAIL  rdfbased-sem-restrict-somevalues-inst-subj
   FAIL  somevaluesfrom2bnode
 
-Profile-RL PositiveEntailmentTests: 92 pass, 112 fail (out of 204 RDF/XML tests), 2 skipped (functional-syntax-only) in 18.62s
+Profile-RL PositiveEntailmentTests: 92 pass, 112 fail (out of 204 RDF/XML tests), 2 skipped (functional-syntax-only) in 22.04s
   (bnode pattern matches any term at the position; full isomorphism deferred — see docs/designissues/2026-04-24-owl-runner-phase1.md)
 
 Running 23 NegativeEntailmentTest(s) through owl_rl_closure_with_reflexivity (fuel=100)...
@@ -452,7 +452,7 @@ Running 23 NegativeEntailmentTest(s) through owl_rl_closure_with_reflexivity (fu
   PASS  WebOnt-miscellaneous-302
   PASS  WebOnt-someValuesFrom-002
 
-Profile-RL NegativeEntailmentTests: 22 pass, 1 fail (out of 23) in 1.01s
+Profile-RL NegativeEntailmentTests: 22 pass, 1 fail (out of 23) in 1.02s
 
 Running 353 ConsistencyTest(s) through is_inconsistent (closure fuel=100)...
   SKIP/functional-syntax-only  Consistent Datatype restrictions with Different Types
@@ -817,7 +817,7 @@ Running 353 ConsistencyTest(s) through is_inconsistent (closure fuel=100)...
   PASS  rdfbased-sem-restrict-somevalues-inst-subj
   PASS  somevaluesfrom2bnode
 
-Profile-RL ConsistencyTests: 323 pass, 22 fail (out of 345), 8 skipped (functional-syntax-only) in 23.97s
+Profile-RL ConsistencyTests: 323 pass, 22 fail (out of 345), 8 skipped (functional-syntax-only) in 25.63s
 
 Running 128 InconsistencyTest(s) through is_inconsistent (closure fuel=100)...
   SKIP/functional-syntax-only  Contradicting datatype Restrictions
@@ -960,4 +960,4 @@ Running 128 InconsistencyTest(s) through is_inconsistent (closure fuel=100)...
   FAIL/unexpected-consistency  rdfbased-sem-restrict-maxqcr-inst-obj-zero
   PASS  string-integer-clash
 
-Profile-RL InconsistencyTests: 34 pass, 83 fail (out of 117), 11 skipped (functional-syntax-only) in 4.18s
+Profile-RL InconsistencyTests: 34 pass, 83 fail (out of 117), 11 skipped (functional-syntax-only) in 4.32s

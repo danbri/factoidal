@@ -954,6 +954,60 @@ let tableau_introduce_witnesses (g : rdf_graph) : rdf_graph =
   let extras = witnesses_for_all g ces in
   add_triples_if_new g extras
 
+(* -------------------------------------------------------------------
+   8b. DIRECT owl:unionOf / owl:intersectionOf subclass materialisation.
+
+   An OWL class defined DIRECTLY as `(S owl:unionOf (X1 ... Xn))` denotes
+   S ≡ X1 ⊔ ... ⊔ Xn, and `(S owl:intersectionOf (X1 ... Xn))` denotes
+   S ≡ X1 ⊓ ... ⊓ Xn. Neither the OWL-RL Datalog closure (which has no
+   union/intersection rules at all) nor `materialise_eqc_expansion`
+   (which only fires when the boolean combinator sits on the RIGHT of an
+   `owl:equivalentClass` triple) emits the entailed subClassOf axioms in
+   the direct case. This pass fills that gap.
+
+   Emitted axioms (both sound in EVERY model, purely additive):
+     - unionOf S (X1..Xn)        ==>  Xi rdfs:subClassOf S  for each Xi.
+       Soundness: the interpretation of Xi is a subset of the union
+       X1 ⊔ .. ⊔ Xn, which equals the interpretation of S, so Xi ⊑ S
+       holds in every model of the KB. (reuses
+       emit_union_subclasses_via_eqc, whose output is exactly
+       `Xi rdfs:subClassOf named_subj`.)
+     - intersectionOf S (X1..Xn) ==>  S rdfs:subClassOf Xi  for each Xi.
+       Soundness: the interpretation of S is the intersection of the Xi,
+       hence a subset of each Xi, so S ⊑ Xi holds in every model.
+       (reuses emit_intersection_subclasses_via_eqc, output
+       `named_subj rdfs:subClassOf Xi`.)
+
+   We NEVER emit an rdfs:subClassOf that could be false, so this pass is
+   sound in the same option-bool sense as the rest of the module (it only
+   ever adds entailed triples; it removes nothing and never guesses).
+
+   RESTRICTION to S_IRI subjects: we skip bnode union/intersection
+   subjects. Anonymous boolean class-expression bnodes are used as QUERY
+   patterns (e.g. `?C rdfs:subClassOf [ owl:unionOf (..) ]` in parent9/
+   parent10); emitting subClassOf edges onto such bnodes would pollute
+   those answer sets with spurious anonymous classes (the same hazard the
+   equivalentClass path documents by emitting on the NAMED side). Named
+   union/intersection classes carry no such risk. Skipping bnode subjects
+   only WITHHOLDS inferences — it is sound (never emits a wrong triple)
+   and keeps the SPARQL 1.1 entailment regime suite at 70/70. *)
+let rec materialise_direct_boolean_subclasses (g : rdf_graph) (all : rdf_graph)
+  : Tot (list triple) (decreases g) =
+  match g with
+  | []      -> []
+  | t :: tl ->
+    let tail = materialise_direct_boolean_subclasses tl all in
+    (match t.s with
+     | S_IRI _ ->
+       if t.p = owl_unionOf then
+         let items = walk_rdf_list all t.o 64 in
+         emit_union_subclasses_via_eqc t.s items @ tail
+       else if t.p = owl_intersectionOf then
+         let items = walk_rdf_list all t.o 64 in
+         emit_intersection_subclasses_via_eqc t.s items @ tail
+       else tail
+     | _ -> tail)
+
 (* Public entry: one-shot materialisation pass. Runs to completion (no
    iteration) — the closure caller can re-run the Datalog closure
    afterwards to propagate any new rdf:type triples through
@@ -962,14 +1016,23 @@ let tableau_introduce_witnesses (g : rdf_graph) : rdf_graph =
 
    Phase 1: we first introduce existential witnesses (parent4 fix), then
    materialise CE-bnode memberships against the augmented graph so newly-
-   minted witness P-successors can satisfy MinCard/SomeValuesFrom checks. *)
+   minted witness P-successors can satisfy MinCard/SomeValuesFrom checks.
+
+   Direct boolean subclasses (§8b): we additionally emit the subClassOf
+   axioms entailed by direct owl:unionOf / owl:intersectionOf named-class
+   definitions, so the following RL closure pass can propagate instance
+   memberships through them (rdfs9). *)
 let tableau_materialise (g : rdf_graph) : rdf_graph =
   let g1 = tableau_introduce_witnesses g in
   let ces = collect_ce_bnodes g1 g1 in
   let individuals = collect_candidate_individuals g1 g1 in
   let instance_triples   = materialise_all g1 individuals ces in
   let structural_triples = materialise_eqc_expansion g1 g1 in
-  add_triples_if_new (add_triples_if_new g1 structural_triples) instance_triples
+  let bool_subclasses    = materialise_direct_boolean_subclasses g1 g1 in
+  add_triples_if_new
+    (add_triples_if_new
+      (add_triples_if_new g1 structural_triples) bool_subclasses)
+    instance_triples
 
 (* -------------------------------------------------------------------
    9. In-file test matrix (guarded, dead-code).

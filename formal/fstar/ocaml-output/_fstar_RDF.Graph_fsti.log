@@ -1,2 +1,11 @@
+* Warning 241 at RDF.Indexed.fsti(0,0-0,0):
+  - Unable to load RDF.Indexed.fsti.checked since checked file
+    RDF.Indexed.fsti.checked does not exist; will recheck RDF.Indexed.fsti
+    (suppressing this warning for further modules)
+
+* Warning 247 at RDF.Graph.fsti(0,0-0,0):
+  - Checked file RDF.Graph.fsti.checked was not written.
+  - Reason: checked file RDF.Indexed.fsti.checked does not exist
+
 Verified i'face (or impl+i'face): RDF.Graph
 All verification conditions discharged successfully

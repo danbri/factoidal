@@ -29,8 +29,8 @@
   [pe-running] owl2-rl-rules-fp-differentFrom
   [pe-running] owl2-rl-rules-ifp-differentFrom
 Closure regime: RL
-OWL 2 test catalog: /home/user/factoidal/.claude/worktrees/agent-abdda39ad890b49d7/third_party/testing/owl/profile-RL.rdf
-  parsed 1896 triples in 0.08s
+OWL 2 test catalog: /home/user/factoidal/.claude/worktrees/agent-a501dee03f9880230/third_party/testing/owl/profile-RL.rdf
+  parsed 1896 triples in 0.07s
 Totals: 91 test cases
   PositiveEntailmentTest:    30
   NegativeEntailmentTest:    6
@@ -70,7 +70,7 @@ Running 30 PositiveEntailmentTest(s) through owl_rl_closure_with_reflexivity (fu
   PASS  owl2-rl-rules-fp-differentFrom
   PASS  owl2-rl-rules-ifp-differentFrom
 
-Profile-RL PositiveEntailmentTests: 28 pass, 2 fail (out of 30 RDF/XML tests), 0 skipped (functional-syntax-only) in 0.48s
+Profile-RL PositiveEntailmentTests: 28 pass, 2 fail (out of 30 RDF/XML tests), 0 skipped (functional-syntax-only) in 0.50s
   (bnode pattern matches any term at the position; full isomorphism deferred — see docs/designissues/2026-04-24-owl-runner-phase1.md)
 
 Running 6 NegativeEntailmentTest(s) through owl_rl_closure_with_reflexivity (fuel=100)...
@@ -161,7 +161,7 @@ Running 76 ConsistencyTest(s) through is_inconsistent (closure fuel=100)...
   PASS  owl2-rl-valid-oneof
   PASS  owl2-rl-valid-rightside-allvaluesfrom
 
-Profile-RL ConsistencyTests: 76 pass, 0 fail (out of 76), 0 skipped (functional-syntax-only) in 1.34s
+Profile-RL ConsistencyTests: 76 pass, 0 fail (out of 76), 0 skipped (functional-syntax-only) in 1.33s
 
 Running 14 InconsistencyTest(s) through is_inconsistent (closure fuel=100)...
   PASS  DisjointClasses-002
