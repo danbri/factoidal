@@ -1,3 +1,15 @@
+* Warning 241 at RDF.Graph.fsti(0,0-0,0):
+  - Unable to load RDF.Graph.fsti.checked since checked file
+    RDF.Graph.fsti.checked is stale (dependence hash mismatch, use --debug
+    CheckedFiles for more details); will recheck RDF.Graph.fsti (suppressing
+    this warning for further modules)
+
 Extracted module Tableau
+* Warning 247 at Tableau.fst(0,0-0,0):
+  - Checked file Tableau.fst.checked was not written.
+  - Reason:
+      checked file RDF.Graph.fsti.checked is stale (dependence hash mismatch,
+      use --debug CheckedFiles for more details)
+
 Verified module: Tableau
 All verification conditions discharged successfully

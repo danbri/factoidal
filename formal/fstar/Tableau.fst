@@ -1008,6 +1008,188 @@ let rec materialise_direct_boolean_subclasses (g : rdf_graph) (all : rdf_graph)
        else tail
      | _ -> tail)
 
+(* -------------------------------------------------------------------
+   8c. NAMED class-expression membership materialisation (cls-svf /
+       cls-hv / reverse cls-int for NAMED restriction / boolean subjects).
+
+   A class-expression can be denoted by a NAMED IRI subject, not only an
+   anonymous bnode. In OWL 2 RDF-Based semantics a subject `z` carrying
+   restriction / boolean markers directly denotes exactly that class:
+
+     z owl:onProperty p . z owl:someValuesFrom c .
+        ==>  CEXT(z) = { x : exists y. (x,y) in EXT(p) and y in CEXT(c) }
+     z owl:onProperty p . z owl:hasValue v .
+        ==>  CEXT(z) = { x : (x,v) in EXT(p) }
+     c owl:intersectionOf (X1..Xn)
+        ==>  CEXT(c) = CEXT(X1) INTERSECT .. INTERSECT CEXT(Xn)
+     c owl:unionOf (X1..Xn)
+        ==>  CEXT(c) = CEXT(X1) UNION .. UNION CEXT(Xn)
+
+   The pre-existing materialisation collects ONLY bnode class-expression
+   subjects (`collect_ce_bnodes` matches `S_BNode` only), and
+   `parse_class_expr` maps every IRI straight to `CE_Named` (so it never
+   inspects a named subject's own restriction markers). Consequently a
+   ground membership like `w rdf:type z` (z a NAMED restriction) or
+   `z rdf:type c` (c a NAMED intersection) is never emitted, even though
+   it is entailed. This pass fills that gap for NAMED subjects.
+
+   SOUNDNESS — this pass emits `i rdf:type z` (z a NAMED IRI) ONLY when
+   `is_member g i (parse z) = Some true` AND the parsed class expression
+   is `ce_positive_sound`. `ce_positive_sound` admits exactly the shapes
+   whose `is_member`-`Some true` is unconditionally entailment-sound
+   (every model of the KB has i in CEXT(z)):
+     - CE_Named c        : `Some true` == asserted `i rdf:type c`
+       (set-semantics: i in the interpretation of c). Sound.
+     - CE_HasValue p v   : `Some true` == asserted `i p v`, so i in the
+       interpretation of exists-p.{v}. Sound.
+     - CE_SomeValuesFrom p c (c positive-sound): a known successor y with
+       i p y and y in the interpretation of c exhibits a witness, so i is
+       in exists-p.c in every model. Sound.
+     - CE_MinCard k p    : k known distinct successors are witnesses for
+       min-k p (a conservative lower bound; `Some true` only when the
+       count already reaches k). Sound.
+     - CE_MinQualCard k p c (c positive-sound): as MinCard but successors
+       provably in the interpretation of c. Sound.
+     - CE_IntersectionOf / CE_UnionOf of positive-sound parts: INTERSECT
+       needs all conjuncts `Some true` (each sound => i in each set => i in
+       the intersection); UNION needs one disjunct `Some true` (i in that
+       set, which is a subset of the union). Sound.
+   We DELIBERATELY EXCLUDE the open-world-unsound positive directions —
+   CE_AllValuesFrom (a hidden/unseen successor could violate C, so
+   "all KNOWN successors in C" does NOT entail i in all-p.C), CE_MaxCard /
+   CE_ExactCard / CE_MaxQualCard / CE_ExactQualCard (need sameAs / UNA to
+   assert a positive membership) and CE_ComplementOf (needs classical
+   negation). For those `ce_positive_sound` returns false and the pass
+   withholds — withholding an entailment is always sound.
+
+   Named subjects only (S_IRI). Bnode boolean/restriction subjects stay
+   the exclusive territory of the bnode passes above; emitting named
+   memberships never pollutes the anonymous-class query answer sets that
+   the bnode-skipping rationale (section 8b) protects, because the emitted
+   object is a NAMED class (`w rdf:type z`, z an IRI), exactly what a
+   Datalog closure would itself carry. *)
+
+(* Parse the class expression denoted by an arbitrary subject (IRI or
+   bnode) by inspecting ITS OWN restriction / boolean markers — unlike
+   parse_class_expr, which maps every IRI directly to CE_Named. Non-
+   recursive in the mutual-recursion sense: it only calls the already-
+   defined parse_class_expr / parse_class_expr_list for the fillers, so
+   termination is immediate. Returns CE_Unknown when the subject carries
+   no class-expression markers (the caller then emits nothing). *)
+let parse_ce_of_subject (g : rdf_graph) (s : subject) : class_expr =
+  match find_first_object g s owl_intersectionOf with
+  | Some list_head ->
+    CE_IntersectionOf (parse_class_expr_list g (walk_rdf_list g list_head 32) 31)
+  | None ->
+    match find_first_object g s owl_unionOf with
+    | Some list_head ->
+      CE_UnionOf (parse_class_expr_list g (walk_rdf_list g list_head 32) 31)
+    | None ->
+      match find_first_object g s owl_complementOf with
+      | Some c -> CE_ComplementOf (parse_class_expr g c 31)
+      | None ->
+        match find_first_object g s owl_onProperty with
+        | Some (T_IRI p) ->
+          (match find_first_object g s owl_someValuesFrom with
+           | Some c -> CE_SomeValuesFrom p (parse_class_expr g c 31)
+           | None ->
+             match find_first_object g s owl_allValuesFrom with
+             | Some c -> CE_AllValuesFrom p (parse_class_expr g c 31)
+             | None ->
+               match find_first_object g s owl_hasValue with
+               | Some v -> CE_HasValue p v
+               | None ->
+                 (match cardinality_value g s owl_minQualifiedCardinality with
+                  | Some k ->
+                    (match find_first_object g s owl_onClass with
+                     | Some c -> CE_MinQualCard k p (parse_class_expr g c 31)
+                     | None -> CE_MinCard k p)
+                  | None ->
+                    match cardinality_value g s owl_maxQualifiedCardinality with
+                    | Some k ->
+                      (match find_first_object g s owl_onClass with
+                       | Some c -> CE_MaxQualCard k p (parse_class_expr g c 31)
+                       | None -> CE_MaxCard k p)
+                    | None ->
+                      match cardinality_value g s owl_qualifiedCardinality with
+                      | Some k ->
+                        (match find_first_object g s owl_onClass with
+                         | Some c -> CE_ExactQualCard k p (parse_class_expr g c 31)
+                         | None -> CE_ExactCard k p)
+                      | None ->
+                        match cardinality_value g s owl_minCardinality with
+                        | Some k -> CE_MinCard k p
+                        | None ->
+                          match cardinality_value g s owl_maxCardinality with
+                          | Some k -> CE_MaxCard k p
+                          | None ->
+                            match cardinality_value g s owl_cardinality with
+                            | Some k -> CE_ExactCard k p
+                            | None -> CE_Unknown))
+        | _ -> CE_Unknown
+
+(* The soundness gate: does every `Some true` `is_member` can produce for
+   this class expression correspond to an ENTAILED membership (holds in
+   every model)? See the section 8c banner for the per-shape argument. *)
+let rec ce_positive_sound (ce : class_expr) : Tot bool (decreases ce) =
+  match ce with
+  | CE_Named _            -> true
+  | CE_HasValue _ _       -> true
+  | CE_MinCard _ _        -> true
+  | CE_SomeValuesFrom _ c -> ce_positive_sound c
+  | CE_MinQualCard _ _ c  -> ce_positive_sound c
+  | CE_IntersectionOf ces -> ce_list_positive_sound ces
+  | CE_UnionOf ces        -> ce_list_positive_sound ces
+  | _                     -> false
+and ce_list_positive_sound (ces : list class_expr) : Tot bool (decreases ces) =
+  match ces with
+  | []      -> true
+  | c :: tl -> ce_positive_sound c && ce_list_positive_sound tl
+
+(* A NAMED (IRI) subject that carries restriction / boolean markers. *)
+let is_named_ce_subject (g : rdf_graph) (s : subject) : bool =
+  match s with
+  | S_BNode _ -> false
+  | S_IRI _ ->
+    Some? (find_first_object g s owl_onProperty) ||
+    Some? (find_first_object g s owl_intersectionOf) ||
+    Some? (find_first_object g s owl_unionOf)
+
+(* Collect every NAMED subject that appears to be a class expression. *)
+let rec collect_named_ce_subjects (g : rdf_graph) (gfull : rdf_graph)
+  : Tot (list subject) (decreases g) =
+  match g with
+  | []      -> []
+  | t :: tl ->
+    let rest = collect_named_ce_subjects tl gfull in
+    (match t.s with
+     | S_IRI _ ->
+       if is_named_ce_subject gfull t.s &&
+          not (List.Tot.existsb (fun x -> subject_eq x t.s) rest)
+       then t.s :: rest
+       else rest
+     | _ -> rest)
+
+(* For every NAMED class-expression subject whose parsed CE is
+   positive-sound, emit `i rdf:type z` for each candidate individual i
+   that `is_member` proves a member. Skips CE_Named / CE_Unknown and any
+   CE outside the positive-sound fragment (withholding is sound). *)
+let rec materialise_all_named (g : rdf_graph) (candidates : list subject)
+                              (ces : list subject)
+  : Tot (list triple) (decreases ces) =
+  match ces with
+  | []         -> []
+  | ce_s :: tl ->
+    let ce = parse_ce_of_subject g ce_s in
+    (match ce with
+     | CE_Named _   -> materialise_all_named g candidates tl
+     | CE_Unknown   -> materialise_all_named g candidates tl
+     | _ ->
+       if ce_positive_sound ce
+       then materialise_for_ce g candidates ce_s ce
+            @ materialise_all_named g candidates tl
+       else materialise_all_named g candidates tl)
+
 (* Public entry: one-shot materialisation pass. Runs to completion (no
    iteration) — the closure caller can re-run the Datalog closure
    afterwards to propagate any new rdf:type triples through
@@ -1021,7 +1203,12 @@ let rec materialise_direct_boolean_subclasses (g : rdf_graph) (all : rdf_graph)
    Direct boolean subclasses (§8b): we additionally emit the subClassOf
    axioms entailed by direct owl:unionOf / owl:intersectionOf named-class
    definitions, so the following RL closure pass can propagate instance
-   memberships through them (rdfs9). *)
+   memberships through them (rdfs9).
+
+   Named class-expression memberships (section 8c): we emit `i rdf:type z`
+   for NAMED restriction / boolean class subjects z whose parsed CE is
+   positive-sound and which `is_member` proves i satisfies (cls-svf /
+   cls-hv / reverse cls-int over a NAMED subject). *)
 let tableau_materialise (g : rdf_graph) : rdf_graph =
   let g1 = tableau_introduce_witnesses g in
   let ces = collect_ce_bnodes g1 g1 in
@@ -1029,10 +1216,14 @@ let tableau_materialise (g : rdf_graph) : rdf_graph =
   let instance_triples   = materialise_all g1 individuals ces in
   let structural_triples = materialise_eqc_expansion g1 g1 in
   let bool_subclasses    = materialise_direct_boolean_subclasses g1 g1 in
+  let named_ces          = collect_named_ce_subjects g1 g1 in
+  let named_instance_triples = materialise_all_named g1 individuals named_ces in
   add_triples_if_new
     (add_triples_if_new
-      (add_triples_if_new g1 structural_triples) bool_subclasses)
-    instance_triples
+      (add_triples_if_new
+        (add_triples_if_new g1 structural_triples) bool_subclasses)
+      instance_triples)
+    named_instance_triples
 
 (* -------------------------------------------------------------------
    9. In-file test matrix (guarded, dead-code).
@@ -1160,6 +1351,39 @@ let _tableau_sanity_matrix : unit =
       assert (obl_neg1 = None);
       let obl_neg2 = existential_obligation (CE_MinCard 2 i_hasChild) in
       assert (obl_neg2 = None);
+
+      // Section 8c sanity: the positive-sound gate admits the sound
+      // positive shapes and rejects the open-world-unsound ones.
+      assert (ce_positive_sound (CE_SomeValuesFrom i_hasChild (CE_Named i_male)));
+      assert (ce_positive_sound (CE_HasValue i_hasChild (T_IRI i_charlie)));
+      assert (ce_positive_sound (CE_MinCard 1 i_hasChild));
+      assert (ce_positive_sound
+                (CE_IntersectionOf [CE_Named i_male; CE_Named i_person]));
+      assert (not (ce_positive_sound (CE_AllValuesFrom i_hasChild (CE_Named i_male))));
+      assert (not (ce_positive_sound (CE_MaxCard 0 i_hasChild)));
+      assert (not (ce_positive_sound
+                     (CE_IntersectionOf
+                        [CE_Named i_male;
+                         CE_AllValuesFrom i_hasChild (CE_Named i_person)])));
+
+      // NAMED restriction membership (cls-svf, named subject z):
+      //   z owl:onProperty hasChild ; owl:someValuesFrom Male .
+      //   Bob hasChild Charlie . Charlie a Male .
+      //   ==> Bob a z   (z a NAMED IRI class).
+      let i_z : wf_iri =
+        assert_norm (is_iri "http://ex/Zclass");
+        "http://ex/Zclass" in
+      let z_onprop : triple = {
+        s = S_IRI i_z; p = owl_onProperty; o = T_IRI i_hasChild;
+      } in
+      let z_svf : triple = {
+        s = S_IRI i_z; p = owl_someValuesFrom; o = T_IRI i_male;
+      } in
+      let g5 : rdf_graph = [bob_has_charlie; charlie_male; z_onprop; z_svf] in
+      let z_ce = parse_ce_of_subject g5 (S_IRI i_z) in
+      assert (z_ce = CE_SomeValuesFrom i_hasChild (CE_Named i_male));
+      let res_bob_z = is_member g5 (S_IRI i_bob) z_ce 16 in
+      assert (res_bob_z = Some true);
 
       ()
     end

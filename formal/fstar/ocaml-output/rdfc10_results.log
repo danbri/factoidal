@@ -1,2 +1,96 @@
-RDFC-1.0 manifest: /home/user/factoidal/.claude/worktrees/agent-a501dee03f9880230/third_party/testing/rdf-canon/tests/manifest.ttl
-rdfc10_runner: cannot read /home/user/factoidal/.claude/worktrees/agent-a501dee03f9880230/third_party/testing/rdf-canon/tests/manifest.ttl
+RDFC-1.0 manifest: /home/user/factoidal/.claude/worktrees/agent-af596773f1fbb2e52/third_party/testing/rdf-canon/tests/manifest.ttl
+  parsed 713 triples in 0.01s
+Totals: 86 test entries
+  RDFC10EvalTest:         64
+  RDFC10MapTest:          21
+  RDFC10NegativeEvalTest: 1
+
+  PASS  [Eval] test001c      simple id
+  PASS  [Eval] test002c      duplicate property iri values
+  PASS  [Eval] test003c      bnode
+  PASS  [Map] test003m      bnode (map test)
+  PASS  [Eval] test004c      bnode plus embed w/subject
+  PASS  [Map] test004m      bnode plus embed w/subject (map test)
+  PASS  [Eval] test005c      bnode embed
+  PASS  [Map] test005m      bnode embed (map test)
+  PASS  [Eval] test006c      multiple rdf types
+  PASS  [Eval] test008c      single subject complex
+  PASS  [Eval] test009c      multiple subjects - complex
+  PASS  [Eval] test010c      type
+  PASS  [Eval] test011c      type-coerced type
+  PASS  [Eval] test013c      type-coerced type, cycle
+  PASS  [Eval] test014c      check types
+  PASS  [Eval] test016c      blank node - dual link - embed
+  PASS  [Map] test016m      blank node - dual link - embed (map test)
+  PASS  [Eval] test017c      blank node - dual link - non-embed
+  PASS  [Map] test017m      blank node - dual link - non-embed (map test)
+  PASS  [Eval] test018c      blank node - self link
+  PASS  [Map] test018m      blank node - self link (map test)
+  PASS  [Eval] test019c      blank node - disjoint self links
+  PASS  [Eval] test020c      blank node - diamond
+  PASS  [Map] test020m      blank node - diamond (map test)
+  PASS  [Eval] test021c      blank node - circle of 2
+  PASS  [Eval] test022c      blank node - double circle of 2
+  PASS  [Eval] test023c      blank node - circle of 3
+  PASS  [Eval] test024c      blank node - double circle of 3 (0-1-2)
+  PASS  [Eval] test025c      blank node - double circle of 3 (0-2-1)
+  PASS  [Eval] test026c      blank node - double circle of 3 (1-0-2)
+  PASS  [Eval] test027c      blank node - double circle of 3 (1-2-0)
+  PASS  [Eval] test028c      blank node - double circle of 3 (2-1-0)
+  PASS  [Eval] test029c      blank node - double circle of 3 (2-0-1)
+  PASS  [Eval] test030c      blank node - point at circle of 3
+  PASS  [Map] test030m      blank node - point at circle of 3 (map test)
+  PASS  [Eval] test033c      disjoint identical subgraphs (1)
+  PASS  [Eval] test034c      disjoint identical subgraphs (2)
+  PASS  [Eval] test035c      reordered w/strings (1)
+  PASS  [Eval] test036c      reordered w/strings (2)
+  PASS  [Eval] test038c      reordered 4 bnodes, reordered 2 properties (1)
+  PASS  [Eval] test039c      reordered 4 bnodes, reordered 2 properties (2)
+  PASS  [Eval] test040c      reordered 6 bnodes (1)
+  PASS  [Eval] test043c      literal with language
+  PASS  [Eval] test044c      poison – evil (1)
+  PASS  [Eval] test045c      poison – evil (2)
+  PASS  [Eval] test046c      poison – evil (3)
+  PASS  [Eval] test047c      deep diff (1)
+  PASS  [Map] test047m      deep diff (1) (map test)
+  PASS  [Eval] test048c      deep diff (2)
+  PASS  [Map] test048m      deep diff (2) (map test)
+  PASS  [Eval] test053c      @list
+  PASS  [Map] test053m      @list (map test)
+  PASS  [Eval] test054c      t-graph
+  PASS  [Eval] test055c      simple reorder (1)
+  PASS  [Map] test055m      simple reorder (1) (map test)
+  PASS  [Eval] test056c      simple reorder (2)
+  PASS  [Map] test056m      simple reorder (2) (map test)
+  PASS  [Eval] test057c      unnamed graph
+  PASS  [Map] test057m      unnamed graph (map test)
+  PASS  [Eval] test058c      unnamed graph with blank node objects
+  PASS  [Eval] test059c      n-quads parsing
+  PASS  [Eval] test060c      n-quads escaping
+  PASS  [Map] test060m      n-quads escaping (map test)
+  PASS  [Eval] test061c      same literal value with multiple languages
+  PASS  [Eval] test062c      same literal value with multiple datatypes
+  PASS  [Eval] test063c      blank node - diamond (with _:b)
+  PASS  [Map] test063m      blank node - diamond (with _:b) (map test)
+  PASS  [Eval] test064c      blank node - double circle of 3 (0-1-2, reversed)
+  PASS  [Eval] test065c      blank node - double circle of 3 (0-2-1, reversed)
+  PASS  [Eval] test066c      blank node - double circle of 3 (1-0-2, reversed)
+  PASS  [Eval] test067c      blank node - double circle of 3 (1-2-0, reversed)
+  PASS  [Eval] test068c      blank node - double circle of 3 (2-1-0, reversed)
+  PASS  [Eval] test069c      blank node - double circle of 3 (2-0-1, reversed)
+  PASS  [Eval] test070c      dataset - isomorphic default and iri named
+  PASS  [Map] test070m      dataset - isomorphic default and iri named (map test)
+  PASS  [Eval] test071c      dataset - isomorphic default and node named
+  PASS  [Map] test071m      dataset - isomorphic default and node named (map test)
+  PASS  [Eval] test072c      dataset - shared blank nodes
+  PASS  [Map] test072m      dataset - shared blank nodes (map test)
+  PASS  [Eval] test073c      dataset - referencing graph name
+  PASS  [Map] test073m      dataset - referencing graph name (map test)
+  PASS  [NegEval] test074c      poison - Clique Graph (negative test)
+  PASS  [Eval] test075c      blank node - diamond (uses SHA-384)
+  PASS  [Map] test075m      blank node - diamond (uses SHA-384) (map test)
+  PASS  [Eval] test076c      duplicate ground triple in input
+  PASS  [Eval] test077c      duplicate triple with blank node in input
+
+RDFC-1.0 tests: 86 pass, 0 fail, 0 stub (out of 86)
+  (HFDQ + full HNDQ permutation enumeration (F* RDF.Canonical), Map tests compared structurally, NegEval tests checked against an HNDQ work budget. See docs/designissues/2026-07-04-rdfc10-ndegree-plan.md and docs/designissues/2026-07-05-rdfc10-poison-budget.md.)
