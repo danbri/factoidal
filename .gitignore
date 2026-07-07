@@ -56,3 +56,10 @@ third_party/data/ukparliament/*.nq
 # Application logs (per-invocation log files emitted by --log-file or
 # FACTOIDAL_LOG_FILE). Gitignored — these are runtime artefacts, not source.
 data/logs/
+
+# Eleventy npm-cache byproduct: `third_party/eleventy/install.sh docs`
+# populates an offline npm cache under here and the docs build writes
+# _logs/ into it. The vendored cache tree is committed; its per-run log
+# byproducts are not — they recur on every docs build and otherwise trip
+# the untracked-files stop hook.
+third_party/eleventy/npm-cache/_logs/
