@@ -888,7 +888,7 @@ OWL_SKIP_ROWS+="$(emit_owl_skip_row "syntax-dl" "$OWL_SYNDL_N" "runner not wired
 # independent test sets.
 #
 # OGC GeoSPARQL — Tier C, separate spec stack. Roadmap in #239.
-OWL_SKIP_ROWS+="$(emit_owl_skip_row "GeoSPARQL"  "?"            "vendoring + runner pending (see <a href='https://github.com/danbri/factoidal/issues/239'>#239</a>)")"$'\n'
+OWL_SKIP_ROWS+="$(emit_owl_skip_row "GeoSPARQL"  "v0"           "v0 implemented (RDF.Geo.* — exact-rational WKT geometry + Simple-Features topology + geof: functions, 11 local tests); OGC W3C-suite runner pending (see <a href='https://github.com/danbri/factoidal/issues/239'>#239</a>)")"$'\n'
 # 2026-07-05 wave: ShEx, JSON-LD 1.1, VC 2.0, and RML now have their own
 # runners and live dashboard families below (Shapes, JSON-LD 1.1, VC,
 # Mapping) — retired from this roadmap list so the same suite doesn't
@@ -1152,7 +1152,7 @@ RULES_HTML=$(family_section "rules" "Rules: RIF Core" "$RULES_STATUS" "$RULES_HE
 # --- Mapping: RML / CSVW ---------------------------------------------------
 MAPPING_STATUS=$(status_for "$RML_FAIL" "$RML_PRESENT")
 if [ "$RML_PRESENT" -eq 1 ]; then
-  MAPPING_HEADLINE="${RML_PASS} pass, ${RML_FAIL} fail, ${RML_SKIP} skip (of ${RML_TOTAL}) on RML rml-core; CSVW is prose-only below (no committed runner yet)."
+  MAPPING_HEADLINE="${RML_PASS} pass, ${RML_FAIL} fail, ${RML_SKIP} skip (of ${RML_TOTAL}) on RML rml-core; CSVW has an early csv2rdf runner (csvw_runner, ~19/270 on the W3C csv2rdf corpus) not yet wired into this dashboard."
 else
   MAPPING_HEADLINE="Not measured this run."
 fi
@@ -1196,7 +1196,7 @@ JSONLD_FAMILY_HTML=$(family_section "jsonld11" "JSON-LD 1.1" "$JSONLD_STATUS" "$
 # --- Verifiable Credentials 2.0 --------------------------------------------
 VC_STATUS=$(status_for "$VC_FAIL" "$VC_PRESENT")
 if [ "$VC_PRESENT" -eq 1 ]; then
-  VC_FAMILY_HEADLINE="${VC_PASS} pass, ${VC_FAIL} fail, ${VC_SKIP} skip (of ${VC_TOTAL}) — structural Stage 1 checks only; no cryptographic proof verification."
+  VC_FAMILY_HEADLINE="${VC_PASS} pass, ${VC_FAIL} fail, ${VC_SKIP} skip (of ${VC_TOTAL}) on the structural Stage 1 suite; the Data Integrity eddsa-rdfc-2022 sign/verify layer (RDFC-1.0 + SHA-256 + Ed25519 via vendored HACL* C) is implemented separately (vc_runner --crypto roundtrip, native-only, wasm tracked in #286); full W3C VC-DI conformance (JSON-LD proof-options expansion) is still pending."
 else
   VC_FAMILY_HEADLINE="Not measured this run."
 fi

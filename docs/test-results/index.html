@@ -279,7 +279,7 @@
 <header>
   <div class="inner">
     <div class="rendered-pill" title="Rendered = when this page was last regenerated. Tests = when the *_results.log files inside the repository were last updated. Both UTC.">
-      <span class="row"><span class="label">Rendered</span><strong>2026-07-07 01:39 UTC</strong></span>
+      <span class="row"><span class="label">Rendered</span><strong>2026-07-07 06:58 UTC</strong></span>
       <span class="row"><span class="label">Tests</span><strong class="tests">2026-07-07 01:16 UTC</strong></span>
     </div>
     <h1>W3C test results</h1>
@@ -640,7 +640,7 @@
 
 <section class="family green" id="rdf-core">
   <h2>RDF 1.1 core</h2>
-  <p class="fam-headline green">1031 pass, 0 fail, 0 skip (of 1031) across N-Triples, Turtle, N-Quads, TriG, RDF/XML, RDF 1.1 Semantics (rdf-mt), and RDFC-1.0 canonicalization.</p>
+  <p class="fam-headline green">1117 pass, 0 fail, 0 skip (of 1117) across N-Triples, Turtle, N-Quads, TriG, RDF/XML, RDF 1.1 Semantics (rdf-mt), and RDFC-1.0 canonicalization.</p>
   <details open>
     <summary>Suites in this family (tap to collapse)</summary>
     <div class="suites">
@@ -699,12 +699,12 @@
         </div>
       </div>
   <h3 class="rec-subhead"><a href="https://www.w3.org/TR/rdf-canon/" target="_blank" rel="noopener">RDF Dataset Canonicalization (RDFC-1.0)</a></h3>
-<div class="suite-row grey">
+<div class="suite-row green">
     <div class="suite-name">RDFC-1.0 (eval + Map + NegEval)</div>
-    <div class="meter"><div class="seg seg-pass" style="width:0%"></div><div class="seg seg-fail" style="width:0%"></div><div class="seg seg-skip" style="width:0%"></div></div>
+    <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
     <div class="suite-numbers">
-      <span class="p">0 pass</span>, <span class="f">0 fail</span>
-      <small>(of 0)</small>
+      <span class="p">86 pass</span>, <span class="f">0 fail</span>
+      <small>(of 86)</small>
     </div>
   </div>
   <p class="suite-prov">
@@ -978,7 +978,7 @@
     <div class="meter"><div class="seg seg-skip" style="width:100%"></div></div>
     <div class="suite-numbers">
       <span style="color:var(--muted)">&mdash;</span>
-      <small>? tests &middot; vendoring + runner pending (see <a href='https://github.com/danbri/factoidal/issues/239'>#239</a>)</small>
+      <small>v0 tests &middot; v0 implemented (RDF.Geo.* — exact-rational WKT geometry + Simple-Features topology + geof: functions, 11 local tests); OGC W3C-suite runner pending (see <a href='https://github.com/danbri/factoidal/issues/239'>#239</a>)</small>
     </div>
   </div>
   <div class="suite-row grey">
@@ -1011,30 +1011,30 @@
   
 </section>
 
-<section class="family green" id="shapes">
+<section class="family amber" id="shapes">
   <h2>Shapes: SHACL / ShEx</h2>
-  <p class="fam-headline green">0 pass, 0 fail, 0 skip (of 0) across SHACL Core, SHACL SPARQL-based Constraints, and ShEx validation.</p>
+  <p class="fam-headline amber">1301 pass, 1 fail, 0 skip (of 1302) across SHACL Core, SHACL SPARQL-based Constraints, and ShEx validation.</p>
   <details open>
     <summary>Suites in this family (tap to collapse)</summary>
     <div class="suites">
-      <div class="suite-row grey">
+      <div class="suite-row green">
         <div class="suite-name">SHACL Core</div>
-        <div class="meter"><div class="seg seg-skip" style="width:100%"></div></div>
-        <div class="suite-numbers"><small>not measured this run</small></div>
+        <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+        <div class="suite-numbers"><small>98 pass, 0 fail, 0 skip (of 98)</small></div>
       </div>
       <p class="suite-prov">Runner: <code>bin/shacl-runner</code> (<code>bin/linux-x86_64/shacl_runner</code>) &middot; Suite: <code>third_party/testing/shacl/data-shapes-test-suite/tests/core/</code></p>
-      <div class="suite-row grey">
+      <div class="suite-row green">
         <div class="suite-name">SHACL SPARQL-based Constraints</div>
-        <div class="meter"><div class="seg seg-skip" style="width:100%"></div></div>
-        <div class="suite-numbers"><small>not measured this run</small></div>
+        <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+        <div class="suite-numbers"><small>22 pass, 0 fail, 0 skip (of 22)</small></div>
       </div>
       <p class="suite-prov">Runner: <code>bin/shacl-runner</code> (<code>bin/linux-x86_64/shacl_runner tests/sparql/manifest.ttl</code>) &middot; Suite: <code>third_party/testing/shacl/data-shapes-test-suite/tests/sparql/</code></p>
-      <div class="suite-row grey">
+      <div class="suite-row amber">
         <div class="suite-name">ShEx Validation</div>
-        <div class="meter"><div class="seg seg-skip" style="width:100%"></div></div>
-        <div class="suite-numbers"><small>not measured this run</small></div>
+        <div class="meter"><div class="seg seg-pass" style="width:99.92%"></div><div class="seg seg-fail" style="width:0.08%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+        <div class="suite-numbers"><small>1181 pass, 1 fail, 0 skip (of 1182)</small></div>
       </div>
-      <p class="suite-prov">Runner: <code>bin/shex-runner</code> (<code>bin/linux-x86_64/shex_runner</code>) &middot; Suite: <code>third_party/testing/shex/</code> (shexSpec/shexTest, ShExJ-first)</p>
+      <p class="suite-prov">Runner: <code>bin/shex-runner</code> (<code>bin/linux-x86_64/shex_runner</code>) &middot; Suite: <code>third_party/testing/shex/</code> (shexSpec/shexTest, ShExJ-first) &middot; <a href="https://github.com/danbri/factoidal/blob/claude/main/.github/test-suites/shex.yaml" target="_blank" rel="noopener">diagnosis: the 1 mismatch is an upstream fixture defect (start2RefS2.json p1/p2), not an engine bug</a></p>
     </div>
   </details>
   
@@ -1071,7 +1071,7 @@
 
 <section class="family green" id="mapping">
   <h2>Mapping: RML / CSVW</h2>
-  <p class="fam-headline green">76 pass, 0 fail, 0 skip (of 76) on RML rml-core; CSVW is prose-only below (no committed runner yet).</p>
+  <p class="fam-headline green">76 pass, 0 fail, 0 skip (of 76) on RML rml-core; CSVW has an early csv2rdf runner (csvw_runner, ~19/270 on the W3C csv2rdf corpus) not yet wired into this dashboard.</p>
   <details open>
     <summary>Suites in this family (tap to collapse)</summary>
     <div class="suites">
@@ -1103,14 +1103,14 @@
 
 <section class="family amber" id="jsonld11">
   <h2>JSON-LD 1.1</h2>
-  <p class="fam-headline amber">449 pass, 12 fail, 6 skip (of 467) against the W3C JSON-LD 1.1 toRdf manifest.</p>
+  <p class="fam-headline amber">460 pass, 1 fail, 6 skip (of 467) against the W3C JSON-LD 1.1 toRdf manifest.</p>
   <details open>
     <summary>Suites in this family (tap to collapse)</summary>
     <div class="suites">
       <div class="suite-row amber">
         <div class="suite-name">JSON-LD 1.1 toRdf</div>
-        <div class="meter"><div class="seg seg-pass" style="width:96.15%"></div><div class="seg seg-fail" style="width:2.57%"></div><div class="seg seg-skip" style="width:1.28%"></div></div>
-        <div class="suite-numbers"><small>449 pass, 12 fail, 6 skip (of 467)</small></div>
+        <div class="meter"><div class="seg seg-pass" style="width:98.50%"></div><div class="seg seg-fail" style="width:0.21%"></div><div class="seg seg-skip" style="width:1.28%"></div></div>
+        <div class="suite-numbers"><small>460 pass, 1 fail, 6 skip (of 467)</small></div>
       </div>
       <p class="suite-prov">Runner: <code>bin/jsonld-runner</code> (<code>bin/linux-x86_64/jsonld_runner</code>) &middot; Suite: <code>third_party/testing/json-ld/</code> (toRdf manifest) &middot; <a href="https://github.com/danbri/factoidal/blob/claude/main/docs/designissues/2026-07-05-docs-hub-plan.md" target="_blank" rel="noopener">diagnosis: the 1 fail is the documented Ryu-class float-formatting case; the 6 skips are JSON-LD 1.0-only fixtures, out of scope for this 1.1 program</a></p>
     </div>
@@ -1120,7 +1120,7 @@
 
 <section class="family amber" id="vc2">
   <h2>Verifiable Credentials 2.0</h2>
-  <p class="fam-headline amber">109 pass, 5 fail, 6 skip (of 120) — structural Stage 1 checks only; no cryptographic proof verification.</p>
+  <p class="fam-headline amber">109 pass, 5 fail, 6 skip (of 120) on the structural Stage 1 suite; the Data Integrity eddsa-rdfc-2022 sign/verify layer (RDFC-1.0 + SHA-256 + Ed25519 via vendored HACL* C) is implemented separately (vc_runner --crypto roundtrip, native-only, wasm tracked in #286); full W3C VC-DI conformance (JSON-LD proof-options expansion) is still pending.</p>
   <details open>
     <summary>Suites in this family (tap to collapse)</summary>
     <div class="suites">
@@ -1199,10 +1199,10 @@
   rdf-turtle                          pass:313 fail:0 skip:0 unsupported:0
   rdf-xml                             pass:166 fail:0 skip:0 unsupported:0</pre>
   <h3 style="font-size: 0.95em; margin: 0.8em 0 0.3em;">Shapes / Rules / Mapping / JSON-LD / VC</h3>
-  <pre>shacl-core:   0 pass, 0 fail, 0 skip (of 0) — present=1
-shacl-sparql: 0 pass, 0 fail, 0 skip (of 0) — present=1
-shex:         0 pass, 0 fail, 0 skip (of 0) — present=0
-jsonld-tordf: 449 pass, 12 fail, 6 skip (of 467) — present=1
+  <pre>shacl-core:   98 pass, 0 fail, 0 skip (of 98) — present=1
+shacl-sparql: 22 pass, 0 fail, 0 skip (of 22) — present=1
+shex:         1181 pass, 1 fail, 0 skip (of 1182) — present=1
+jsonld-tordf: 460 pass, 1 fail, 6 skip (of 467) — present=1
 rml-core:     76 pass, 0 fail, 0 skip (of 76) — present=1
 rif-core:     34 pass, 4 fail, 12 skip (of 50) — present=1
 vc-stage1:    109 pass, 5 fail, 6 skip (of 120) — present=1</pre>
@@ -1223,9 +1223,9 @@ vc-stage1:    109 pass, 5 fail, 6 skip (of 120) — present=1</pre>
 </main>
 
 <footer>
-  Generated <strong>2026-07-07 01:39 UTC</strong> from commit
-  <code><a href="https://github.com/danbri/factoidal/commit/acccbd48a62167a7a217bf37de0b50cf2332769c">acccbd48</a></code>
-  on branch <code>claude/main</code> — &ldquo;Reconcile balanced-tree bucket index + hash join with lazy per-bucket construction&rdquo;.
+  Generated <strong>2026-07-07 06:58 UTC</strong> from commit
+  <code><a href="https://github.com/danbri/factoidal/commit/c53ac6d0d4c02eaa243437c7cf43b5c38c4609bf">c53ac6d</a></code>
+  on branch <code>claude/main</code> — &ldquo;ci: refresh dashboard&rdquo;.
   Re-run locally: <code>cd formal/fstar &amp;&amp; ./generate-report.sh --run</code>.
 </footer>
 
