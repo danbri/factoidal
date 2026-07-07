@@ -94,6 +94,17 @@ runs is:
   the edited source) is caught before `redefine` is even called and
   reported the same way. Either way the cell stays mounted: fixing the
   source and tapping Run again works.
+- **Output-format toggle.** Each cell's toolbar carries a small
+  radio-style segmented control, `Output: [Auto] [Table]`. `Auto`
+  (the default, so nothing regresses) renders the cell's returned
+  value with the Observable Inspector's js/json widget; `Table` wraps
+  the same value in the existing `pretty()` helper. `hub.njk`'s
+  `createOutput()` caches the last computed value and re-renders it on
+  toggle, so flipping the control does **not** re-run the cell's
+  computation. Because `pretty()` returns non-table shapes unchanged
+  (DOM nodes, `null`, empty arrays, …), `Table` on a cell that already
+  returns a DOM node (e.g. `Plot.plot(...)`) is a no-op — the Inspector
+  renders it identically either way.
 - **Keyboard:** Cmd/Ctrl+Enter inside the textarea runs the cell
   without touching the Run button — the desktop equivalent of the
   mobile tap target.
@@ -261,6 +272,21 @@ returns a plain, JSON-serializable structure instead —
 shape (`result.columns`, `result.rows.length`, cell contents) without a
 browser. Both implementations satisfy the same shape-dispatch contract
 above; a cell written against `pretty()` runs unchanged against either.
+
+## Reader-added cells
+
+Below the pinned cells, `hub.njk`'s `initUserCells()` appends a "Your
+own cells" section with an `+ Add a cell` button. Clicking it mounts a
+fresh live cell — an editable `<textarea>` plus a `Run`, `Remove` and
+the same `Output: [Auto] [Table]` toggle — that evaluates through the
+**same** `compileCell()` / `CELL_BINDINGS` path the pinned cells use,
+so `fn`, `Factoidal`, `Plot`, `d3`, `html`, `md` and `pretty` are all
+in scope. Each user cell gets its own Observable runtime `Variable`
+(`userCell<seq>`); `Run` (re-)defines it in place, `Remove` calls
+`variable.delete()` to tear it out of the runtime and drops the DOM
+block. The pinned cells are never touched — this only adds cells on
+top. Nothing a reader types is persisted or sent anywhere; it runs in
+their browser and disappears on reload.
 
 ## Testing discipline
 

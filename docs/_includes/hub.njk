@@ -175,6 +175,51 @@
   .observable-cell-editor[hidden] {
     display: none;
   }
+
+  /* Output-format toggle: a small radio-style segmented control in the
+     cell toolbar choosing how the cell's returned value renders --
+     "Auto" (the Observable Inspector's default js/json widget) or
+     "Table" (wrapped in the pretty() helper). Flipping it re-renders the
+     cached value; it does NOT re-run the cell's computation. Tap targets
+     stay >= 44px tall and the group wraps, so it never forces page-level
+     horizontal scroll at a ~390px viewport. */
+  .observable-cell-render-toggle {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.3em;
+  }
+  .observable-cell-render-label {
+    font-size: 0.78em;
+    color: #888;
+  }
+  .observable-cell-render-btn {
+    padding: 0.5em 0.7em;
+  }
+  .observable-cell-btn[aria-checked="true"] {
+    background: #2d6a4f;
+    color: #fff;
+    border-color: #2d6a4f;
+  }
+
+  /* Reader-added cells (the "Add a cell" affordance): the reader can
+     append their own live cells running in the same fn/Factoidal/Plot/
+     d3/pretty scope as the pinned cells, and remove the ones they added.
+     Same visual language as a pinned cell; width-constrained so the
+     block never overflows horizontally on a narrow phone. */
+  .hub-user-cells {
+    margin-top: 2.5em;
+    border-top: 1px solid #ddd;
+    padding-top: 0.5em;
+  }
+  .hub-user-cells-intro { font-size: 0.9em; color: #666; }
+  .hub-user-cell {
+    margin: 0 0 1.6em;
+    padding-left: 0.8em;
+    border-left: 3px solid #2d6a4f;
+  }
+  .hub-add-cell-btn { margin-top: 0.5em; }
+
   @media (prefers-color-scheme: dark) {
     .observable-cell { background: #1a1e23; border-color: #333a42; }
     .observable-cell.observable-cell-error { border-color: #e07060; color: #e07060; }
@@ -182,9 +227,13 @@
     .observable-cell-btn:hover { background: #232830; }
     .observable-cell-btn:active { background: #272d36; }
     .observable-cell-btn[aria-pressed="true"] { background: #7fd0a7; color: #10130f; border-color: #7fd0a7; }
+    .observable-cell-btn[aria-checked="true"] { background: #7fd0a7; color: #10130f; border-color: #7fd0a7; }
+    .observable-cell-render-label { color: #98a2ad; }
     .observable-cell-hint { color: #98a2ad; }
     .observable-cell-editor { background: #1a1e23; border-color: #333a42; border-left-color: #7fd0a7; }
     .observable-cell-editor:focus { outline-color: #7fd0a7; }
+    .hub-user-cells { border-top-color: #333a42; }
+    .hub-user-cells-intro { color: #98a2ad; }
   }
 </style>
 </head>
@@ -628,6 +677,95 @@ function compileCell(source) {
   );
 }
 
+// Output controller: owns a cell's output box + its Observable
+// Inspector, caches the last computed value, and can re-render that
+// cached value either through the Inspector's default js/json widget
+// ("auto") or wrapped in pretty() ("pretty") -- the output-format
+// toggle -- WITHOUT re-running the cell's computation. The default is
+// "auto", byte-identical to the pre-toggle behavior, so no pinned cell
+// regresses. The .observable-cell-error class handling (add on reject,
+// clear on a later fulfil) is preserved from the previous inline
+// wrapper.
+function createOutput(name) {
+  const container = document.createElement("div");
+  container.className = "observable-cell";
+
+  const inspector = new Inspector(container);
+  const inspectorFulfilled = inspector.fulfilled.bind(inspector);
+  const inspectorRejected = inspector.rejected.bind(inspector);
+
+  let lastValue;
+  let hasValue = false;
+  let mode = "auto"; // "auto" = Inspector default; "pretty" = pretty() table
+
+  function paint(value) {
+    container.classList.remove("observable-cell-error");
+    // pretty() returns the value unchanged for shapes it doesn't handle
+    // (DOM nodes, null, empty arrays, ...), so wrapping is always safe:
+    // the Inspector then renders exactly what it would have rendered raw.
+    inspectorFulfilled(mode === "pretty" ? pretty(value) : value, name);
+  }
+
+  inspector.fulfilled = (value) => {
+    lastValue = value;
+    hasValue = true;
+    paint(value);
+  };
+  inspector.rejected = (error, varName) => {
+    container.classList.add("observable-cell-error");
+    inspectorRejected(error, varName);
+  };
+
+  return {
+    container,
+    inspector,
+    getMode() { return mode; },
+    setMode(next) {
+      if (next === mode) return;
+      mode = next;
+      if (hasValue) paint(lastValue); // re-render from cache -- no recompute
+    },
+  };
+}
+
+// The output-format toggle itself: a small radio-style segmented control
+// (Auto | Table) wired to an output controller's setMode(). Lives in the
+// cell toolbar; flipping it re-renders the cached value in place.
+function createRenderToggle(output) {
+  const group = document.createElement("span");
+  group.className = "observable-cell-render-toggle";
+  group.setAttribute("role", "radiogroup");
+  group.setAttribute("aria-label", "Output format");
+
+  const label = document.createElement("span");
+  label.className = "observable-cell-render-label";
+  label.textContent = "Output:";
+  group.appendChild(label);
+
+  const modes = [["auto", "Auto"], ["pretty", "Table"]];
+  const btns = [];
+  for (const [value, text] of modes) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "observable-cell-btn observable-cell-render-btn";
+    b.textContent = text;
+    b.setAttribute("role", "radio");
+    b.setAttribute("aria-checked", value === output.getMode() ? "true" : "false");
+    b.title = value === "pretty"
+      ? "Render this cell's value as a pretty() table"
+      : "Render this cell's value with the default inspector";
+    b.addEventListener("click", () => {
+      output.setMode(value);
+      for (const other of btns) {
+        other.setAttribute("aria-checked", other === b ? "true" : "false");
+      }
+    });
+    btns.push(b);
+    group.appendChild(b);
+  }
+  return group;
+}
+
 function mountCell(codeEl, index) {
   const pre = codeEl.closest("pre") || codeEl.parentElement;
   let currentSource = codeEl.textContent;
@@ -688,8 +826,14 @@ function mountCell(codeEl, index) {
   runBtn.textContent = "Run";
   runBtn.addEventListener("click", runCell);
 
+  const name = "hubCell" + index;
+  const output = createOutput(name);
+  const container = output.container;
+  container.setAttribute("data-hub-cell", String(index));
+
   toolbar.appendChild(editBtn);
   toolbar.appendChild(runBtn);
+  toolbar.appendChild(createRenderToggle(output));
 
   // Discoverability: a phone has no hover, so a title attribute alone
   // (the desktop affordance above) is invisible on mobile -- the owner
@@ -717,34 +861,16 @@ function mountCell(codeEl, index) {
     }
   }
 
-  const container = document.createElement("div");
-  container.className = "observable-cell";
-  container.setAttribute("data-hub-cell", String(index));
-
   pre.insertAdjacentElement("afterend", editor);
   editor.insertAdjacentElement("afterend", toolbar);
   toolbar.insertAdjacentElement("afterend", container);
 
-  const name = "hubCell" + index;
-
-  // Wrap the Inspector so a runtime error (thrown during the cell's
-  // async body, on the initial run or any subsequent Run) gets the
-  // existing .observable-cell-error styling the rest of the page
-  // already uses, and so a later successful Run clears it again --
-  // Inspector's own state (the observablehq--error class on the same
-  // node) is left in place underneath, this just adds the project's
-  // own class on top of it.
-  const inspector = new Inspector(container);
-  const inspectorFulfilled = inspector.fulfilled.bind(inspector);
-  const inspectorRejected = inspector.rejected.bind(inspector);
-  inspector.fulfilled = (value, varName) => {
-    container.classList.remove("observable-cell-error");
-    inspectorFulfilled(value, varName);
-  };
-  inspector.rejected = (error, varName) => {
-    container.classList.add("observable-cell-error");
-    inspectorRejected(error, varName);
-  };
+  // The Inspector is wrapped by createOutput() above: a runtime error
+  // (thrown during the cell's async body, on the initial run or any
+  // subsequent Run) gets the existing .observable-cell-error styling,
+  // a later successful Run clears it, and the output-format toggle can
+  // re-render the cached value without re-running the cell.
+  const inspector = output.inspector;
 
   function runCell() {
     const source = editing ? editor.value : currentSource;
@@ -791,9 +917,167 @@ function mountCell(codeEl, index) {
   }
 }
 
+// ---------------------------------------------------------------------
+// Reader-added cells. The pinned (```observable-js) cells above stay
+// exactly as authored; this lets a reader turn the page into their own
+// notebook -- append a fresh live cell (a textarea + Run) that evaluates
+// through the SAME compileCell()/CELL_BINDINGS path (so `fn`,
+// `Factoidal`, `Plot`, `d3`, `html`, `md`, `pretty` are all in scope),
+// with the same output-format toggle, and Remove the ones they add.
+// Each user cell gets its own runtime Variable (`userCell<seq>`); Remove
+// calls variable.delete() to tear it out of the module cleanly.
+// ---------------------------------------------------------------------
+
+const USER_CELL_STARTER =
+  "// Edit me, then tap Run. `fn`, `Factoidal`, `Plot`, `d3`, `html`,\n" +
+  "// `md` and `pretty` are all in scope. Try the Output: Table toggle.\n" +
+  "return [\n" +
+  "  { n: 1, square: 1 },\n" +
+  "  { n: 2, square: 4 },\n" +
+  "  { n: 3, square: 9 },\n" +
+  "];";
+
+let userCellSeq = 0;
+
+function mountUserCell(listEl, initialSource) {
+  const seq = userCellSeq++;
+  const name = "userCell" + seq;
+
+  const block = document.createElement("div");
+  block.className = "hub-user-cell";
+  block.setAttribute("data-hub-user-cell", String(seq));
+
+  // Edit-first textarea (same reasons a textarea beats contenteditable
+  // as documented for the pinned-cell editor: native mobile keyboard,
+  // undo, and autocorrect/autocapitalize suppression).
+  const editor = document.createElement("textarea");
+  editor.className = "observable-cell-editor";
+  editor.spellcheck = false;
+  editor.setAttribute("autocapitalize", "off");
+  editor.setAttribute("autocorrect", "off");
+  editor.setAttribute("autocomplete", "off");
+  editor.setAttribute("wrap", "soft");
+  editor.setAttribute("aria-label", "Your cell source (editable)");
+  editor.value = initialSource;
+  editor.rows = Math.min(20, Math.max(3, initialSource.split("\n").length));
+
+  function autoGrow() {
+    editor.style.height = "auto";
+    editor.style.height = editor.scrollHeight + "px";
+  }
+  editor.addEventListener("input", autoGrow);
+  editor.addEventListener("keydown", (ev) => {
+    if ((ev.metaKey || ev.ctrlKey) && ev.key === "Enter") {
+      ev.preventDefault();
+      runCell();
+    }
+  });
+
+  const output = createOutput(name);
+  const container = output.container;
+  container.setAttribute("data-hub-cell", "user-" + seq);
+
+  const toolbar = document.createElement("div");
+  toolbar.className = "observable-cell-toolbar";
+
+  const runBtn = document.createElement("button");
+  runBtn.type = "button";
+  runBtn.className = "observable-cell-btn observable-cell-run-btn";
+  runBtn.textContent = "Run";
+  runBtn.addEventListener("click", runCell);
+
+  const removeBtn = document.createElement("button");
+  removeBtn.type = "button";
+  removeBtn.className = "observable-cell-btn observable-cell-remove-btn";
+  removeBtn.textContent = "Remove";
+  removeBtn.title = "Delete this cell you added";
+
+  toolbar.appendChild(runBtn);
+  toolbar.appendChild(removeBtn);
+  toolbar.appendChild(createRenderToggle(output));
+
+  block.appendChild(editor);
+  block.appendChild(toolbar);
+  block.appendChild(container);
+  listEl.appendChild(block);
+
+  // One runtime Variable per user cell. First Run creates it; every
+  // later Run re-defines the SAME variable in place (the identical path
+  // module.redefine takes internally) so the same output box recomputes.
+  let variable = null;
+
+  function runCell() {
+    const source = editor.value;
+    let fn;
+    try {
+      fn = compileCell(source);
+    } catch (err) {
+      container.classList.add("observable-cell-error");
+      container.textContent = "Cell parse error: " + err.message;
+      return;
+    }
+    try {
+      if (!variable) variable = main.variable(output.inspector);
+      variable.define(name, CELL_BINDINGS, fn);
+    } catch (err) {
+      container.classList.add("observable-cell-error");
+      container.textContent = "Cell define error: " + err.message;
+    }
+  }
+
+  removeBtn.addEventListener("click", () => {
+    if (variable) {
+      try { variable.delete(); } catch (err) { /* variable already gone */ }
+      variable = null;
+    }
+    block.remove();
+  });
+
+  requestAnimationFrame(autoGrow);
+  return { runCell };
+}
+
+function initUserCells() {
+  const footer = document.querySelector("footer");
+  const section = document.createElement("section");
+  section.className = "hub-user-cells";
+
+  const heading = document.createElement("h2");
+  heading.textContent = "Your own cells";
+  section.appendChild(heading);
+
+  const intro = document.createElement("p");
+  intro.className = "hub-user-cells-intro";
+  intro.textContent =
+    "Make this page your own notebook: add live cells that run in your " +
+    "browser with the same fn, Factoidal, Plot, d3 and pretty scope as " +
+    "the cells above. Edit the code, tap Run, and Remove the ones you " +
+    "don't want. Nothing you add is saved or sent anywhere.";
+  section.appendChild(intro);
+
+  const list = document.createElement("div");
+  list.className = "hub-user-cells-list";
+  section.appendChild(list);
+
+  const addBtn = document.createElement("button");
+  addBtn.type = "button";
+  addBtn.className = "observable-cell-btn hub-add-cell-btn";
+  addBtn.textContent = "+ Add a cell";
+  addBtn.addEventListener("click", () => {
+    const cell = mountUserCell(list, USER_CELL_STARTER);
+    cell.runCell(); // run the starter so the reader sees output immediately
+  });
+  section.appendChild(addBtn);
+
+  if (footer && footer.parentNode) footer.parentNode.insertBefore(section, footer);
+  else document.body.appendChild(section);
+}
+
 document
   .querySelectorAll("pre > code.language-observable-js")
   .forEach((codeEl, index) => mountCell(codeEl, index));
+
+initUserCells();
 </script>
 </body>
 </html>
