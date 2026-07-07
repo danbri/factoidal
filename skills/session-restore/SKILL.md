@@ -24,9 +24,25 @@ in remote sandboxes on every session start, all steps idempotent:
 | **Skill discovery symlinks** `.claude/skills/<n>` | regenerated fresh from `skills/*/` | instant | instant |
 | F\* toolchain (backgrounded) | `toolchain-cache` branch | ~2-4 min | no-op |
 | fstar-mcp binary + daemon | cargo / running pid | ~2-3 min | instant |
+| **Git freshness** (fetch + auto-ff when behind) | `origin/<branch>` | ~2 s | ~2 s |
 
 Container state is cached after the hook completes, so a warm
 container pays none of this.
+
+**Behind-origin is the silent killer (2026-07-07).** A resumed/recycled
+container can come up on an OLD commit — one incident had it **78
+commits behind** `origin/claude/main`, undetected until a push was
+rejected, after which a whole pass was spent diagnosing a dashboard
+"bug" that origin had already fixed and re-`--run`-ning suites on stale
+binaries. The hook now guards this: on start it fetches `origin/<current
+branch>` and, if behind, **fast-forwards automatically when the working
+tree is clean**, or prints a loud `BEHIND … DIRTY … NOT auto-pulled`
+warning when it isn't (never overwrites uncommitted work). The `git:`
+line in the orientation block reports the outcome. Still, before
+publishing anything (dashboard, docs) or diagnosing "missing" work,
+confirm `git rev-parse HEAD == origin/<branch>` — the auto-ff only fires
+if the tree was clean at start. If you find yourself confused that
+landed work "isn't here," check freshness FIRST, not the code.
 
 ## The cache branches (orphan, never merged)
 

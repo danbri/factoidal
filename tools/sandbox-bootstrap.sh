@@ -146,6 +146,32 @@ if [[ "$MCP_STATUS" == "F* MCP daemon on :3700" ]]; then
       MCP_STATUS="F* MCP unavailable (daemon failed)"; }
 fi
 
+# 2.5 Git freshness. A stale/behind checkout silently republishes old
+#     numbers and wastes a session diagnosing a state origin already
+#     fixed (2026-07-07 incident: a resumed container sat 78 commits
+#     behind origin, unnoticed until a push was rejected). Fetch; if
+#     behind, fast-forward when the tree is clean (auto-pull), and warn
+#     loudly — never auto-overwrite — when it is dirty. Never blocks.
+GIT_FRESHNESS="up to date with origin"
+if BR=$(git -C "$REPO_ROOT" rev-parse --abbrev-ref HEAD 2>/dev/null) && [ -n "$BR" ] && [ "$BR" != "HEAD" ]; then
+  if timeout 30 git -C "$REPO_ROOT" fetch -q origin "$BR" 2>/dev/null; then
+    BEHIND=$(git -C "$REPO_ROOT" rev-list --count "HEAD..origin/$BR" 2>/dev/null || echo 0)
+    if [ "${BEHIND:-0}" -gt 0 ]; then
+      if [ -z "$(git -C "$REPO_ROOT" status --porcelain 2>/dev/null)" ]; then
+        if git -C "$REPO_ROOT" merge --ff-only "origin/$BR" -q 2>/dev/null; then
+          GIT_FRESHNESS="was ${BEHIND} commit(s) behind origin/${BR} — auto-fast-forwarded to $(git -C "$REPO_ROOT" rev-parse --short HEAD)"
+        else
+          GIT_FRESHNESS="DIVERGED from origin/${BR} (behind ${BEHIND}, ff failed) — reconcile before trusting local state"
+        fi
+      else
+        GIT_FRESHNESS="BEHIND origin/${BR} by ${BEHIND} but working tree is DIRTY — NOT auto-pulled; commit/stash, then 'git merge --ff-only origin/${BR}' before trusting local state or publishing"
+      fi
+    fi
+  else
+    GIT_FRESHNESS="could NOT fetch origin (offline/timeout) — freshness unconfirmed; verify before publishing dashboard/docs"
+  fi
+fi
+
 # 3. Compact orientation block (stdout → added to session context).
 #    Keep this short: it exists so the agent does NOT re-derive
 #    environment state with a dozen exploratory commands.
@@ -157,6 +183,7 @@ factoidal session bootstrap:
 - test submodules: $([ -e "$REPO_ROOT/third_party/testing/w3c/README.md" ] && echo present || echo "MISSING (0/0 runs will lie)")
 - F* toolchain: ${FSTAR_STATUS}
 - ${MCP_STATUS}
+- git: ${GIT_FRESHNESS}
 - goal + working discipline: CLAUDE.md (skills index at the bottom)
 - run tests: ./w3c-tests.sh | current scores: docs/test-results/latest.json
 ORIENT

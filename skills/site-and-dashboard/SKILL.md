@@ -90,6 +90,21 @@ them fresh:
   timestamp is always current; the numbers change only when the heavy
   pipeline reruns.
 
+**The committed-log trap (2026-07-07).** Because `dashboard-refresh.yml`
+reads the committed `*_results.log` **as-is** (no `--run`), a stale or
+truncated log silently makes its suite VANISH from the page, not error.
+`generate-report.sh` gates each suite on `<SUITE>_PRESENT`, set only
+when it finds the runner's score line (e.g. `^RDFC-1\.0 tests:`) in the
+committed log. RDFC-1.0 read "0 of 0" for weeks because the committed
+`rdfc10_results.log` had lost its score line — the runner passed 86/86
+the whole time. Detection: `grep -c '<score-line>' formal/fstar/
+ocaml-output/<suite>_results.log` — 0 means the next refresh will drop
+it. Fix: run `./w3c-tests.sh --run` (committed binaries, no toolchain)
+to regenerate ALL logs, and **commit the fresh `*_results.log`** — the
+log-reading refresh only reports what's committed. A suite reading 0/0
+or "—" on the page while its runner passes is this trap, not a
+regression.
+
 Rules:
 
 - Never hand-edit anything under `docs/test-results/`.
