@@ -1,6 +1,6 @@
 ---
 title: "Verifiable Credentials and CSVW"
-description: "The two newest arrivals: honest VC Data Model structural validation with no crypto yet, and CSVW csv2rdf converting a real municipal-data fixture live in the browser."
+description: "VC Data Model structural validation plus eddsa-rdfc-2022 Data Integrity signatures — real Ed25519 + SHA-256 via vendored HACL* (no hand-rolled crypto) — and CSVW csv2rdf converting a real municipal-data fixture live in the browser."
 layout: hub.njk
 series: docs-hub
 series_order: 13
@@ -13,12 +13,14 @@ The last three posts covered rules ([RIF](./10-rules-rif-core.md)),
 syntax ([post 11](./11-one-graph-five-syntaxes.md)), and the whole npm
 surface ([post 12](./12-the-api-tour.md)). This post closes the series
 on the two newest capabilities this project has added: **Verifiable
-Credentials** structural validation and **CSVW** (CSV on the Web)
-csv2rdf conversion. Both are recent and both are honestly
-mid-development — the point of this post is to say exactly how far
-each one goes today, not further.
+Credentials** — structural validation *and* `eddsa-rdfc-2022` Data
+Integrity signatures — and **CSVW** (CSV on the Web) csv2rdf
+conversion. The point of this post is to say exactly how far each one
+goes today, and to draw the line honestly between the pipeline steps
+that run live in your browser and the signature step that runs
+natively.
 
-## Verifiable Credentials: structural validation, no crypto yet
+## Verifiable Credentials: structural validation
 
 A Verifiable Credential is a JSON(-LD) document — an issuer's claim
 about a subject, structured so it can later be cryptographically
@@ -45,22 +47,12 @@ structurally identical and any offline check that catches the
 plain-verdict fixtures is the measured ceiling for a structural
 validator with no live substitution step.
 
-**There is no cryptography here, deliberately.** VC Data Integrity
-proofs (`eddsa-rdfc-2022` and similar) need real signature
-verification, and this project's crypto-sourcing policy is explicit
-about how that has to arrive: never hand-rolled, adopted from HACL\*
-(the F\*/Low\*-verified library Mozilla ships inside NSS) in a fixed
-order, gated on wasm compatibility — see
-[`skills/crypto-policy/SKILL.md`](https://github.com/danbri/factoidal/blob/claude/main/skills/crypto-policy/SKILL.md)
-for the full policy. Structural validation (this post) is everything
-that can be checked *before* a signature enters the picture; signing
-and verifying is a later, separate stage.
-
-**VC has no browser cell in this post.** `npm/factoidal`'s browser
-entry (`browser.js`) exports no VC function at all — no `vcValidate`,
-nothing VC-shaped — so unlike every other post in this series there is
-nothing to run live here. Below is one of the vendored test fixtures
-this project's own validator checks, shown statically (not executed):
+**Structural validation has no browser export.** `npm/factoidal`'s
+browser entry (`browser.js`) exports no VC structural-validation
+function — no `vcValidate`, nothing VC-shaped — so that particular
+check runs in the native/Node runner, not live on this page. Below is
+one of the vendored test fixtures the validator checks, shown
+statically (not executed):
 
 ```json
 {
@@ -79,6 +71,130 @@ A minimal but valid credential: a `@context`, a `type` that includes
 enough to pass every structural check `VC.Credential.fst` runs today
 — issuer, status, schema, and the rest are optional fields this
 fixture simply omits.
+
+## Data Integrity: eddsa-rdfc-2022 signatures, via HACL\*
+
+Structural validation is everything you can check *before* a signature
+enters the picture. The signature layer is now here too.
+`VC.DataIntegrity.fst` implements the `eddsa-rdfc-2022` cryptosuite end
+to end — the same pipeline the W3C Data Integrity spec defines:
+
+1. **Canonicalize** the unsecured credential (and, separately, the
+   proof-options block) to a stable byte sequence with RDFC-1.0, so two
+   isomorphic graphs sign to the same thing regardless of blank-node
+   labelling or triple order.
+2. **Hash** each canonical form with SHA-256.
+3. **Sign** the combined digest with Ed25519, producing a 64-byte
+   signature.
+4. **Encode** the signature as a multibase-`z` (base58btc) `proofValue`
+   and wrap it in a `DataIntegrityProof` block.
+5. **Verify** by recomputing the digest and checking the signature
+   against the issuer's public key.
+
+**No cryptography is hand-rolled.** Ed25519 and SHA-256 both come from
+[HACL\*](https://github.com/danbri/factoidal/blob/claude/main/third_party/hacl/PROVENANCE.md)
+— the F\*/Low\*-verified crypto library Mozilla ships inside NSS —
+vendored as C (cryspen/hacl-packages, Apache-2.0) and called through a
+thin `assume val` seam, exactly as the project's crypto-sourcing policy
+requires
+([`skills/crypto-policy/SKILL.md`](https://github.com/danbri/factoidal/blob/claude/main/skills/crypto-policy/SKILL.md)).
+The F\* pipeline around them — canonicalize, assemble the hash input,
+multibase-encode the signature, serialize the proof block — is verified
+in F\*; those two primitive call-outs are the only crypto that isn't
+ours to prove.
+
+### Steps 1–2 run live in your browser
+
+The first two steps are pure transforms with no secret key, so they run
+live here on the same credential dataset the native runner signs below.
+Step 1 is RDFC-1.0 canonicalization — `Factoidal.canonicalize`, the raw
+ABI export [post 08](./08-canonical-graphs-rdfc10.md) introduced:
+
+```observable-js
+// The unsecured credential, as an RDF dataset -- the exact one the
+// native vc_runner signs further down. The blank node _:b0 makes
+// canonicalization do real work rather than a no-op.
+const credential = `<urn:credential:1> <https://www.w3.org/2018/credentials#issuer> <urn:issuer:acme> .
+<urn:credential:1> <http://schema.org/credentialSubject> _:b0 .
+_:b0 <http://schema.org/name> "Alice" .
+`;
+
+const canonical = await Factoidal.canonicalize(credential, { format: "nquads" });
+return { canonical, lines: canonical.trim().split("\n").length };
+```
+
+The blank node `_:b0` comes out as `_:c14n0` — RDFC-1.0's canonical
+label — so the same credential serialized with any other blank-node
+name produces byte-identical output. Step 2 is SHA-256 of those
+canonical bytes. This cell uses Web Crypto's `crypto.subtle.digest`,
+the browser's own SHA-256, which computes bit-for-bit the same digest
+the native pipeline gets from HACL\*:
+
+```observable-js
+const credential = `<urn:credential:1> <https://www.w3.org/2018/credentials#issuer> <urn:issuer:acme> .
+<urn:credential:1> <http://schema.org/credentialSubject> _:b0 .
+_:b0 <http://schema.org/name> "Alice" .
+`;
+
+async function sha256Hex(text) {
+  const bytes = new TextEncoder().encode(text);
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+const canonical = await Factoidal.canonicalize(credential, { format: "nquads" });
+const sha256 = await sha256Hex(canonical);
+return { sha256, hashLength: sha256.length };
+```
+
+That 32-byte digest (64 hex characters) is the input the signature
+covers. Everything up to this line runs in the browser; the step that
+needs a secret key — Ed25519 sign, and its verify — does not.
+
+### Steps 3–5 run natively: the real roundtrip
+
+Ed25519 sign and verify go through the vendored HACL\* C, which does
+**not** link under `wasm_of_ocaml` today, so there is no live
+browser/wasm cell for the signature itself — that gap is tracked in
+[#286](https://github.com/danbri/factoidal/issues/286). The honest form
+for a native-only step is its actual transcript. Here is
+`./bin/linux-x86_64/vc_runner --crypto`, run against the vendored
+HACL\* build, verbatim:
+
+```text
+=== VC Data Integrity eddsa-rdfc-2022 roundtrip (crypto mode) ===
+
+  [PASS] Ed25519 keypair derived (HACL* secret_to_public)
+  [PASS] create produced a multibase-z proofValue
+  [PASS] multibase-z proofValue decodes back to signature hex
+  [PASS] verify with correct key + document + proof = true
+  [PASS] verify with WRONG public key = false
+  [PASS] verify against a DIFFERENT document = false
+  [PASS] verify with a TAMPERED proofValue = false
+  [PASS] DataIntegrityProof block serializes with proofValue
+
+========================================
+vc-dataintegrity-eddsa-rdfc-2022: 8 pass, 0 fail (out of 8)
+========================================
+```
+
+Read the negative cases, because they are the point of a signature.
+**Verify returns `false`** when the public key is wrong (someone else's
+key can't validate this issuer's proof), when the document differs by a
+single triple (the runner changes `"Alice"` to `"Mallory"`, the digest
+moves, and the signature no longer matches), and when the `proofValue`
+itself is tampered (swap two characters of its base58 body and the
+decoded signature is garbage). Only the correct key, against the exact
+signed document, with an untouched proof, returns `true`. That trio —
+wrong key, wrong document, tampered proof, all rejected — is what a
+Data Integrity proof buys you.
+
+Because Ed25519 is native-only, this roundtrip is not one of the live
+browser cells above; it is pinned instead by the `vc_runner --crypto`
+self-test itself, whose real output is the transcript above (8 pass, 0
+fail). That self-test derives a keypair, signs the credential dataset,
+verifies it, runs each negative case, and confirms the
+`DataIntegrityProof` block serializes with its `proofValue`.
 
 ## CSVW: CSV on the Web, converted live
 
