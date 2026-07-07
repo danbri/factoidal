@@ -707,6 +707,89 @@ function buildApi(driver) {
     });
   }
 
+  /**
+   * Serialize an RDF dataset as an expanded-form JSON-LD document --
+   * the reverse of jsonldToRdf (entry_jsoo.ml's jsonldFromRdf export ->
+   * the verified JSONLD.FromRdf.from_rdf). Returns the parsed JSON-LD
+   * value (an array of node objects). Needs the npm-entry bundle.
+   * @param {Dataset|string|Array} data
+   * @param {{useNativeTypes?:boolean,useRdfType?:boolean,format?:string}} [options]
+   * @returns {Promise<any>} the JSON-LD document (JCS-canonical, parsed)
+   */
+  async function jsonldFromRdf(data, options) {
+    const e = await entry();
+    if (!e) throw pendingError('jsonldFromRdf');
+    requireEntryFn(e, 'jsonldFromRdf', 'jsonldFromRdf');
+    const dataNq = docsToEntryNQuads(e, toDocs(data, options), 'jsonldFromRdf(data)');
+    const opts = options || {};
+    const optionsJson = JSON.stringify({
+      ...(opts.useNativeTypes ? { useNativeTypes: true } : {}),
+      ...(opts.useRdfType ? { useRdfType: true } : {}),
+    });
+    const r = entryResult(e.jsonldFromRdf(dataNq, optionsJson), 'jsonldFromRdf');
+    return JSON.parse(r.jsonld);
+  }
+
+  /**
+   * did:key resolution (entry_jsoo.ml's didKeyResolve export -> the
+   * verified DID_Key.did_key_document). Resolves a did:key:z6Mk...
+   * (Ed25519) to its DID Document, returned as a Dataset. Needs the
+   * npm-entry bundle.
+   * @param {string} didString a did:key URI
+   * @returns {Promise<Dataset>} the DID Document as RDF
+   */
+  async function didKeyResolve(didString) {
+    if (typeof didString !== 'string') {
+      throw new TypeError('didKeyResolve: didString must be a string');
+    }
+    const e = await entry();
+    if (!e) throw pendingError('didKeyResolve');
+    requireEntryFn(e, 'didKeyResolve', 'did:key resolution');
+    const r = entryResult(e.didKeyResolve(didString), 'didKeyResolve');
+    return Dataset.fromNQuads(r.nquads, { blankNodePrefix: freshBnodePrefix() });
+  }
+
+  /**
+   * Test whether an XML document is well-formed (entry_jsoo.ml's
+   * xmlWellformed export -> Parser_XML.parse_xml_document, the
+   * accept/reject signal bin/xml-runner drives against W3C xmlconf).
+   * The byte-oriented parser has no DOCTYPE/DTD production, so a
+   * document containing a DOCTYPE reports false. Needs the npm-entry
+   * bundle.
+   * @param {string} xmlText
+   * @returns {Promise<boolean>}
+   */
+  async function xmlWellformed(xmlText) {
+    if (typeof xmlText !== 'string') {
+      throw new TypeError('xmlWellformed: xmlText must be a string');
+    }
+    const e = await entry();
+    if (!e) throw pendingError('xmlWellformed');
+    requireEntryFn(e, 'xmlWellformed', 'XML well-formedness');
+    const r = entryResult(e.xmlWellformed(xmlText), 'xmlWellformed');
+    return !!r.wellformed;
+  }
+
+  /**
+   * Evaluate an XPath 1.0 expression over an XML document (entry_jsoo.ml's
+   * xpathEval export -> XPath_Eval.eval_xpath_from_root). Returns the
+   * result envelope: `resultType` ('nodeset'|'string'|'number'|'boolean')
+   * plus, for a node-set, `count`/`stringValue`/`nodes`, else a scalar
+   * `value`. Needs the npm-entry bundle.
+   * @param {string} xmlText
+   * @param {string} xpathExpr
+   * @returns {Promise<object>}
+   */
+  async function xpathEval(xmlText, xpathExpr) {
+    if (typeof xmlText !== 'string' || typeof xpathExpr !== 'string') {
+      throw new TypeError('xpathEval: xmlText and xpathExpr must be strings');
+    }
+    const e = await entry();
+    if (!e) throw pendingError('xpathEval');
+    requireEntryFn(e, 'xpathEval', 'XPath evaluation');
+    return entryResult(e.xpathEval(xmlText, xpathExpr), 'xpathEval');
+  }
+
   // -----------------------------------------------------------------
   // In-memory COTTAS bytes store (docs/designissues/2026-07-06-
   // inmemory-bytes-store.md, stage 5). Needs the npm-entry bundle
@@ -898,6 +981,10 @@ function buildApi(driver) {
         rml: typeof e.rmlMap === 'function',
         csvw: typeof e.csvwToRdf === 'function',
         jsonld: typeof e.jsonldToRdf === 'function',
+        jsonldFromRdf: typeof e.jsonldFromRdf === 'function',
+        didKey: typeof e.didKeyResolve === 'function',
+        xml: typeof e.xmlWellformed === 'function',
+        xpath: typeof e.xpathEval === 'function',
         rif: typeof e.rifEval === 'function',
         cottasBytesStore: typeof e.openCottas === 'function' &&
           typeof e.queryCottas === 'function' && typeof e.toCottas === 'function',
@@ -919,7 +1006,8 @@ function buildApi(driver) {
       entry: false, construct: false, update: false, canonicalize: canon,
       graphs: true, canonicalHash: canon,
       shacl: false, shex: false, owlClosure: false, rml: false,
-      csvw: false, jsonld: false, rif: false, cottasBytesStore: false,
+      csvw: false, jsonld: false, jsonldFromRdf: false, didKey: false,
+      xml: false, xpath: false, rif: false, cottasBytesStore: false,
     };
   }
 
@@ -937,6 +1025,10 @@ function buildApi(driver) {
     rmlMap,
     csvwToRdf,
     jsonldToRdf,
+    jsonldFromRdf,
+    didKeyResolve,
+    xmlWellformed,
+    xpathEval,
     rifEval,
     openCottas,
     queryCottas,

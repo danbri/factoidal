@@ -286,13 +286,17 @@ fixtures.
 | `rmlMap` | `(mapping, sourceData, sourceKind) => Dataset` | `factoidal rml --mapping FILE --source FILE --kind json\|csv` | \*\* evaluates an RML mapping graph against one logical source (`sourceKind: "json" \| "csv"`); every triples map reads the SAME source — cross-source joins are out of scope for this entry point |
 | `csvwToRdf` | `(csvText, metadataJson?, {mode?, base?, url?}) => Dataset` | `factoidal csvw --csv FILE [--metadata FILE] [--minimal] [--base IRI] [--url URL]` | \*\* CSVW csv2rdf conversion; metadata omitted = schema inferred from the CSV header row; `mode: "standard" \| "minimal"` (default standard); every table in a multi-table group reads the SAME csvText |
 | `jsonldToRdf` | `(jsonldText, {base?, rdfDirection?, expandContext?, processingMode?}) => Dataset` | `factoidal jsonld --in FILE [--base IRI]` (or `factoidal dump-nq FILE.jsonld`, format auto-detected) | \*\* JSON-LD parsing with options `parse()` has no room for; plain `parse(text, {format:'jsonld'})` also works for the common case |
+| `jsonldFromRdf` | `(data, {useNativeTypes?, useRdfType?}) => JSON-LD` | `factoidal dump-nq` ← (reverse) | \*\* serializes an RDF dataset as expanded-form JSON-LD (the reverse of `jsonldToRdf`); returns the parsed JSON-LD document (array of node objects), JCS-canonical |
+| `didKeyResolve` | `(didString) => Dataset` | N/A (`did_runner`) | \*\* resolves a `did:key:z6Mk...` (Ed25519) to its DID Document as RDF; non-Ed25519 / malformed inputs reject rather than guess |
+| `xmlWellformed` | `(xmlText) => boolean` | N/A (`xml_runner`) | \*\* XML 1.0 well-formedness check (byte-oriented, no DOCTYPE/DTD production — a document with a DOCTYPE reports `false`) |
+| `xpathEval` | `(xmlText, xpathExpr) => {resultType, value \| nodes, ...}` | N/A | \*\* XPath 1.0 evaluation over an XML document; `resultType` is `'nodeset' \| 'string' \| 'number' \| 'boolean'` |
 | `rifEval` | `(data, rifRulesXml) => Dataset` | `factoidal rif --rules FILE --data FILE` | \*\* RIF Core forward-chaining saturation (materializes input + derived triples); accepts real vendored RIF-XML (`<!DOCTYPE>` + `&rif;`/`&xs;`/`&rdf;` entities) unmodified |
 | `toCottas` | `(data, {format?}) => Uint8Array` | `factoidal compact --native-writer` | \*\* serializes a dataset to COTTAS/Parquet bytes via the native writer; round-trips into `openCottas()` and into the native `--data-cottas`/`--data-cottas-mem` CLI flags byte-for-byte |
 | `openCottas` | `(bytes: string \| Uint8Array \| ArrayBuffer) => handle` | `factoidal query --data-cottas-mem FILE` | \*\* opens a whole `.cottas` artifact's bytes as a queryable, read-only, in-memory store; rows decode lazily as `queryCottas()` touches them (no heap `Dataset`, no full parse) |
 | `queryCottas` | `(handle, sparql) => Bindings[] \| boolean \| Dataset` | `factoidal query --data-cottas-mem FILE -e 'SPARQL'` | \*\* SPARQL over a store opened by `openCottas()`; no `entail` option, no write overlay (read-only), no DESCRIBE |
 | `closeCottas` | `(handle) => void` | N/A | releases a handle from this process's registry; does not evict the underlying byte cache |
 | `queryRaw` | `(input, sparql) => string` | `factoidal query -d FILE -e 'SPARQL' -o json` | SPARQL-Results-JSON string, for callers that want the wire form |
-| `capabilities` | `() => {construct, update, canonicalize, graphs, canonicalHash, shacl, shex, owlClosure, rml, csvw, jsonld, rif, cottasBytesStore, ...}` | N/A | runtime feature probe; the CLI is one fixed native binary, not a runtime bundle whose feature set varies |
+| `capabilities` | `() => {construct, update, canonicalize, graphs, canonicalHash, shacl, shex, owlClosure, rml, csvw, jsonld, jsonldFromRdf, didKey, xml, xpath, rif, cottasBytesStore, ...}` | N/A | runtime feature probe; the CLI is one fixed native binary, not a runtime bundle whose feature set varies |
 | `dataFactory` | RDF/JS DataFactory | N/A | data-model class, not an engine operation |
 | `Dataset` | RDF/JS DatasetCore | N/A | returned by `parse`; accepted everywhere |
 
@@ -311,7 +315,7 @@ don't register (an honest failure, not a silent wrong answer) —
 tracked against the vendored W3C json-ld-api suite.
 \*\* CONSTRUCT, UPDATE, `canonicalize`, `canonicalHash`,
 `shaclValidate`, `shexValidate`, `owlClosure`, `rmlMap`, `csvwToRdf`,
-`jsonldToRdf`, `rifEval`, `toCottas`, `openCottas`, `queryCottas`, and
+`jsonldToRdf`, `jsonldFromRdf`, `didKeyResolve`, `xmlWellformed`, `xpathEval`, `rifEval`, `toCottas`, `openCottas`, `queryCottas`, and
 `closeCottas` are probed via `capabilities()`: they activate
 automatically when the dedicated npm-entry engine bundle is present,
 and the package reports their absence honestly against older bundles

@@ -325,6 +325,55 @@ export function jsonldToRdf(
   options?: JsonLdOptions
 ): Promise<Dataset>;
 
+export interface JsonLdFromRdfOptions {
+  useNativeTypes?: boolean;
+  useRdfType?: boolean;
+  format?: DataFormat;
+}
+
+/**
+ * Serialize an RDF dataset as an expanded-form JSON-LD document -- the
+ * reverse of jsonldToRdf (the verified JSONLD.FromRdf.from_rdf).
+ * Returns the parsed JSON-LD value (an array of node objects). Needs
+ * the npm-entry engine bundle.
+ */
+export function jsonldFromRdf(
+  data: DataInput,
+  options?: JsonLdFromRdfOptions
+): Promise<any>;
+
+/**
+ * did:key resolution: resolve a `did:key:z6Mk...` (Ed25519) to its DID
+ * Document, returned as a Dataset (the verified DID_Key.did_key_document).
+ * Needs the npm-entry engine bundle.
+ */
+export function didKeyResolve(didString: string): Promise<Dataset>;
+
+/**
+ * Test whether an XML document is well-formed (Parser_XML). The
+ * byte-oriented parser has no DOCTYPE/DTD production, so a document
+ * containing a DOCTYPE reports false. Needs the npm-entry engine bundle.
+ */
+export function xmlWellformed(xmlText: string): Promise<boolean>;
+
+/** The value shape returned by {@link xpathEval}. */
+export interface XPathResult {
+  resultType: 'nodeset' | 'string' | 'number' | 'boolean';
+  count?: number;
+  stringValue?: string;
+  nodes?: Array<{ kind: string; name: string; value: string }>;
+  value?: string | number | boolean;
+}
+
+/**
+ * Evaluate an XPath 1.0 expression over an XML document
+ * (XPath_Eval.eval_xpath_from_root). Needs the npm-entry engine bundle.
+ */
+export function xpathEval(
+  xmlText: string,
+  xpathExpr: string
+): Promise<XPathResult>;
+
 /**
  * RIF Core forward-chaining saturation, materialized as a new Dataset
  * (input triples + derived triples, default graph only). Needs the
@@ -352,6 +401,10 @@ export function capabilities(): Promise<{
   rml: boolean;
   csvw: boolean;
   jsonld: boolean;
+  jsonldFromRdf: boolean;
+  didKey: boolean;
+  xml: boolean;
+  xpath: boolean;
   rif: boolean;
 }>;
 
@@ -407,6 +460,10 @@ declare const _default: {
   rmlMap: typeof rmlMap;
   csvwToRdf: typeof csvwToRdf;
   jsonldToRdf: typeof jsonldToRdf;
+  jsonldFromRdf: typeof jsonldFromRdf;
+  didKeyResolve: typeof didKeyResolve;
+  xmlWellformed: typeof xmlWellformed;
+  xpathEval: typeof xpathEval;
   rifEval: typeof rifEval;
   capabilities: typeof capabilities;
   Dataset: typeof Dataset;

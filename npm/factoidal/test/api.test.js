@@ -17,7 +17,8 @@ const assert = require('node:assert/strict');
 const factoidal = require('..');
 const { parse, query, update, serialize, canonicalize, graphs,
   canonicalHash, shaclValidate, shexValidate, owlClosure, rmlMap,
-  csvwToRdf, jsonldToRdf, rifEval, capabilities, Dataset,
+  csvwToRdf, jsonldToRdf, jsonldFromRdf, didKeyResolve, xmlWellformed,
+  xpathEval, rifEval, capabilities, Dataset,
   dataFactory: df } = factoidal;
 
 const PENDING = 'pending npm-entry build';
@@ -564,9 +565,34 @@ test('rifEval: RIF Core saturation materializes derived triples',
 
 test('capabilities: shacl/shex/owlClosure/rml/jsonld/rif fields are present', async () => {
   const caps = await capabilities();
-  for (const key of ['shacl', 'shex', 'owlClosure', 'rml', 'jsonld', 'rif']) {
+  for (const key of ['shacl', 'shex', 'owlClosure', 'rml', 'jsonld', 'rif',
+                     'jsonldFromRdf', 'didKey', 'xml', 'xpath']) {
     assert.equal(typeof caps[key], 'boolean', `capabilities().${key} is a boolean`);
   }
+});
+
+test('xmlWellformed: accepts well-formed, rejects malformed', async () => {
+  assert.equal(await xmlWellformed('<a><b/></a>'), true);
+  assert.equal(await xmlWellformed('<a><b></a>'), false);
+});
+
+test('xpathEval: XPath 1.0 over an XML document', async () => {
+  const r = await xpathEval('<r><a>1</a><a>2</a></r>', 'count(/r/a)');
+  assert.equal(r.resultType, 'number');
+  assert.equal(Number(r.value), 2);
+});
+
+test('didKeyResolve: Ed25519 did:key resolves to a DID Document', async () => {
+  const doc = await didKeyResolve(
+    'did:key:z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK');
+  assert.ok(doc instanceof Dataset);
+  assert.ok(doc.size >= 1, 'DID Document has at least one triple');
+});
+
+test('jsonldFromRdf: N-Quads serialize to expanded JSON-LD (reverse of jsonldToRdf)', async () => {
+  const jld = await jsonldFromRdf('<http://ex/s> <http://ex/p> "o" .');
+  assert.ok(Array.isArray(jld), 'expanded JSON-LD is an array of node objects');
+  assert.equal(jld.length, 1);
 });
 
 test('version matches package.json', () => {
