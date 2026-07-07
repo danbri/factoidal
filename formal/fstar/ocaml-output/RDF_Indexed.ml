@@ -1,26 +1,54 @@
 open Prims
-type 'a bucket_map = (Prims.string * 'a Prims.list) Prims.list
+type 'a bucket_tree =
+  | BLeaf 
+  | BNode of Prims.string * 'a Prims.list * 'a bucket_tree * 'a bucket_tree 
+let uu___is_BLeaf (projectee : 'a bucket_tree) : Prims.bool=
+  match projectee with | BLeaf -> true | uu___ -> false
+let uu___is_BNode (projectee : 'a bucket_tree) : Prims.bool=
+  match projectee with
+  | BNode (key, value, left, right) -> true
+  | uu___ -> false
+let __proj__BNode__item__key (projectee : 'a bucket_tree) : Prims.string=
+  match projectee with | BNode (key, value, left, right) -> key
+let __proj__BNode__item__value (projectee : 'a bucket_tree) : 'a Prims.list=
+  match projectee with | BNode (key, value, left, right) -> value
+let __proj__BNode__item__left (projectee : 'a bucket_tree) : 'a bucket_tree=
+  match projectee with | BNode (key, value, left, right) -> left
+let __proj__BNode__item__right (projectee : 'a bucket_tree) : 'a bucket_tree=
+  match projectee with | BNode (key, value, left, right) -> right
+type 'a bucket_map = 'a bucket_tree
 let rec bucket_lookup : 'a . 'a bucket_map -> Prims.string -> 'a Prims.list =
   fun m k ->
     match m with
-    | [] -> []
-    | (k', v)::rest -> if k = k' then v else bucket_lookup rest k
-let rec bucket_replace_acc :
-  'a .
-    'a bucket_map ->
-      'a bucket_map -> Prims.string -> 'a Prims.list -> 'a bucket_map
-  =
-  fun acc m k v ->
-    match m with
-    | [] -> FStar_List_Tot_Base.rev_acc acc [(k, v)]
-    | (k', v')::rest ->
+    | BLeaf -> []
+    | BNode (k', v, l, r) ->
         if k = k'
-        then FStar_List_Tot_Base.rev_acc acc ((k, v) :: rest)
-        else bucket_replace_acc ((k', v') :: acc) rest k v
-let bucket_replace (m : 'a bucket_map) (k : Prims.string) (v : 'a Prims.list)
-  : 'a bucket_map= bucket_replace_acc [] m k v
+        then v
+        else
+          if (FStar_String.compare k k') < Prims.int_zero
+          then bucket_lookup l k
+          else bucket_lookup r k
+let rec bucket_replace :
+  'a . 'a bucket_map -> Prims.string -> 'a Prims.list -> 'a bucket_map =
+  fun m k v ->
+    match m with
+    | BLeaf -> BNode (k, v, BLeaf, BLeaf)
+    | BNode (k', v', l, r) ->
+        if k = k'
+        then BNode (k', v, l, r)
+        else
+          if (FStar_String.compare k k') < Prims.int_zero
+          then BNode (k', v', (bucket_replace l k v), r)
+          else BNode (k', v', l, (bucket_replace r k v))
 let bucket_push (m : 'a bucket_map) (k : Prims.string) (t : 'a) :
   'a bucket_map= bucket_replace m k (t :: (bucket_lookup m k))
+let rec bucket_tree_values : 'a . 'a bucket_tree -> 'a Prims.list =
+  fun t ->
+    match t with
+    | BLeaf -> []
+    | BNode (uu___, v, l, r) ->
+        FStar_List_Tot_Base.append (bucket_tree_values l)
+          (FStar_List_Tot_Base.append v (bucket_tree_values r))
 let cmp_by_key (key_of : 'a -> Prims.string FStar_Pervasives_Native.option)
   (t1 : 'a) (t2 : 'a) : Prims.int=
   match ((key_of t1), (key_of t2)) with
@@ -49,7 +77,9 @@ let rec group_sorted_decorated_aux :
   'a .
     (Prims.string FStar_Pervasives_Native.option * 'a) Prims.list ->
       Prims.string FStar_Pervasives_Native.option ->
-        'a Prims.list -> 'a bucket_map -> 'a bucket_map
+        'a Prims.list ->
+          (Prims.string * 'a Prims.list) Prims.list ->
+            (Prims.string * 'a Prims.list) Prims.list
   =
   fun ts cur_key cur_bucket acc ->
     match ts with
@@ -80,7 +110,9 @@ let rec group_sorted_aux :
     ('a -> Prims.string FStar_Pervasives_Native.option) ->
       'a Prims.list ->
         Prims.string FStar_Pervasives_Native.option ->
-          'a Prims.list -> 'a bucket_map -> 'a bucket_map
+          'a Prims.list ->
+            (Prims.string * 'a Prims.list) Prims.list ->
+              (Prims.string * 'a Prims.list) Prims.list
   =
   fun key_of ts cur_key cur_bucket acc ->
     match ts with
@@ -106,11 +138,55 @@ let rec group_sorted_aux :
               | FStar_Pervasives_Native.None ->
                   group_sorted_aux key_of rest
                     (FStar_Pervasives_Native.Some k) [t] acc))
+let rec take_prefix_acc :
+  'a .
+    Prims.nat ->
+      'a Prims.list -> 'a Prims.list -> ('a Prims.list * 'a Prims.list)
+  =
+  fun n acc xs ->
+    if n = Prims.int_zero
+    then ((FStar_List_Tot_Base.rev acc), xs)
+    else
+      (match xs with
+       | [] -> ((FStar_List_Tot_Base.rev acc), [])
+       | hd::tl -> take_prefix_acc (n - Prims.int_one) (hd :: acc) tl)
+let take_prefix (n : Prims.nat) (xs : 'a Prims.list) :
+  ('a Prims.list * 'a Prims.list)= take_prefix_acc n [] xs
+let rec sorted_list_to_tree_fuel :
+  'a .
+    (Prims.string * 'a Prims.list) Prims.list -> Prims.nat -> 'a bucket_tree
+  =
+  fun xs fuel ->
+    match xs with
+    | [] -> BLeaf
+    | uu___ ->
+        if fuel = Prims.int_zero
+        then BLeaf
+        else
+          (let n = FStar_List_Tot_Base.length xs in
+           let mid = n / (Prims.of_int (2)) in
+           let uu___2 = take_prefix mid xs in
+           match uu___2 with
+           | (left_xs, rest) ->
+               (match rest with
+                | (k, v)::right_xs ->
+                    BNode
+                      (k, v,
+                        (sorted_list_to_tree_fuel left_xs
+                           (fuel - Prims.int_one)),
+                        (sorted_list_to_tree_fuel right_xs
+                           (fuel - Prims.int_one)))
+                | [] -> BLeaf))
+let sorted_list_to_tree (xs : (Prims.string * 'a Prims.list) Prims.list) :
+  'a bucket_tree= sorted_list_to_tree_fuel xs (FStar_List_Tot_Base.length xs)
 let build_bucket (key_of : 'a -> Prims.string FStar_Pervasives_Native.option)
   (ts : 'a Prims.list) : 'a bucket_map=
   let decorated = FStar_List_Tot_Base.map (fun t -> ((key_of t), t)) ts in
   let sorted = FStar_List_Tot_Base.sortWith cmp_by_decorated_key decorated in
-  group_sorted_decorated_aux sorted FStar_Pervasives_Native.None [] []
+  let grouped =
+    group_sorted_decorated_aux sorted FStar_Pervasives_Native.None [] [] in
+  let ascending = FStar_List_Tot_Base.rev grouped in
+  sorted_list_to_tree ascending
 type bucket_needs =
   {
   bn_pred: Prims.bool ;
@@ -314,24 +390,26 @@ let bucket_key_so (t : RDF_Triple.triple) :
 let empty_indexed : indexed_graph=
   {
     ig_triples = [];
-    ig_pred = [];
-    ig_subj = [];
-    ig_obj = [];
-    ig_sp = [];
-    ig_po = [];
-    ig_so = [];
+    ig_pred = BLeaf;
+    ig_subj = BLeaf;
+    ig_obj = BLeaf;
+    ig_sp = BLeaf;
+    ig_po = BLeaf;
+    ig_so = BLeaf;
     ig_built = all_bucket_needs
   }
 let build_indexed_selective (needs : bucket_needs)
   (g : RDF_Triple.triple Prims.list) : indexed_graph=
   {
     ig_triples = g;
-    ig_pred = (if needs.bn_pred then build_bucket bucket_key_pred g else []);
-    ig_subj = (if needs.bn_subj then build_bucket bucket_key_subj g else []);
-    ig_obj = (if needs.bn_obj then build_bucket bucket_key_obj g else []);
-    ig_sp = (if needs.bn_sp then build_bucket bucket_key_sp g else []);
-    ig_po = (if needs.bn_po then build_bucket bucket_key_po g else []);
-    ig_so = (if needs.bn_so then build_bucket bucket_key_so g else []);
+    ig_pred =
+      (if needs.bn_pred then build_bucket bucket_key_pred g else BLeaf);
+    ig_subj =
+      (if needs.bn_subj then build_bucket bucket_key_subj g else BLeaf);
+    ig_obj = (if needs.bn_obj then build_bucket bucket_key_obj g else BLeaf);
+    ig_sp = (if needs.bn_sp then build_bucket bucket_key_sp g else BLeaf);
+    ig_po = (if needs.bn_po then build_bucket bucket_key_po g else BLeaf);
+    ig_so = (if needs.bn_so then build_bucket bucket_key_so g else BLeaf);
     ig_built = needs
   }
 let build_indexed (g : RDF_Triple.triple Prims.list) : indexed_graph=

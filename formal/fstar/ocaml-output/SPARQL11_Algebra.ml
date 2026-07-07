@@ -2911,8 +2911,69 @@ let eval_bgp_store (patterns : bgp) (gs : graph_store) : solution_sequence=
     ((FStar_List_Tot_Base.length patterns) + Prims.int_one)
 let eval_bgp (patterns : bgp) (g : RDF_Graph.rdf_graph) : solution_sequence=
   eval_bgp_store patterns (graph_to_store g)
-let join (omega1 : solution_sequence) (omega2 : solution_sequence) :
-  solution_sequence=
+let rec vars_intersect (vs1 : var_name Prims.list)
+  (vs2 : var_name Prims.list) : var_name Prims.list=
+  match vs1 with
+  | [] -> []
+  | v::rest ->
+      if FStar_List_Tot_Base.mem v vs2
+      then v :: (vars_intersect rest vs2)
+      else vars_intersect rest vs2
+let rec sm_join_key (vars : var_name Prims.list)
+  (mu : RDF_Graph_Executable.solution_mapping) :
+  Prims.string FStar_Pervasives_Native.option=
+  match vars with
+  | [] -> FStar_Pervasives_Native.Some ""
+  | v::rest ->
+      (match ((sm_lookup v mu), (sm_join_key rest mu)) with
+       | (FStar_Pervasives_Native.Some t, FStar_Pervasives_Native.Some
+          rest_key) ->
+           FStar_Pervasives_Native.Some
+             (Prims.strcat (RDF_NQuads_Serialize.nq_term_to_string t)
+                (Prims.strcat RDF_Indexed.unit_sep rest_key))
+       | (uu___, uu___1) -> FStar_Pervasives_Native.None)
+type join_index =
+  {
+  ji_keyed: RDF_Graph_Executable.solution_mapping RDF_Indexed.bucket_tree ;
+  ji_wildcard: RDF_Graph_Executable.solution_mapping Prims.list }
+let __proj__Mkjoin_index__item__ji_keyed (projectee : join_index) :
+  RDF_Graph_Executable.solution_mapping RDF_Indexed.bucket_tree=
+  match projectee with | { ji_keyed; ji_wildcard;_} -> ji_keyed
+let __proj__Mkjoin_index__item__ji_wildcard (projectee : join_index) :
+  RDF_Graph_Executable.solution_mapping Prims.list=
+  match projectee with | { ji_keyed; ji_wildcard;_} -> ji_wildcard
+let build_join_index (vars : var_name Prims.list) (omega : solution_sequence)
+  : join_index=
+  let decorated =
+    FStar_List_Tot_Base.map (fun mu -> ((sm_join_key vars mu), mu)) omega in
+  let sorted =
+    FStar_List_Tot_Base.sortWith RDF_Indexed.cmp_by_decorated_key decorated in
+  let grouped =
+    FStar_List_Tot_Base.rev
+      (RDF_Indexed.group_sorted_decorated_aux sorted
+         FStar_Pervasives_Native.None [] []) in
+  let wildcard =
+    list_filter_map
+      (fun mu ->
+         if (sm_join_key vars mu) = FStar_Pervasives_Native.None
+         then FStar_Pervasives_Native.Some mu
+         else FStar_Pervasives_Native.None) omega in
+  {
+    ji_keyed = (RDF_Indexed.sorted_list_to_tree grouped);
+    ji_wildcard = wildcard
+  }
+let join_candidates (idx : join_index) (vars : var_name Prims.list)
+  (mu : RDF_Graph_Executable.solution_mapping) :
+  RDF_Graph_Executable.solution_mapping Prims.list=
+  match sm_join_key vars mu with
+  | FStar_Pervasives_Native.Some k ->
+      RDF_List_Helpers.append_tr idx.ji_wildcard
+        (RDF_Indexed.bucket_lookup idx.ji_keyed k)
+  | FStar_Pervasives_Native.None ->
+      RDF_List_Helpers.append_tr idx.ji_wildcard
+        (RDF_Indexed.bucket_tree_values idx.ji_keyed)
+let join_nested_loop (omega1 : solution_sequence)
+  (omega2 : solution_sequence) : solution_sequence=
   RDF_List_Helpers.concatMap_tr
     (fun mu1 ->
        list_filter_map
@@ -2920,6 +2981,40 @@ let join (omega1 : solution_sequence) (omega2 : solution_sequence) :
             if sm_compatible mu1 mu2
             then FStar_Pervasives_Native.Some (sm_merge mu1 mu2)
             else FStar_Pervasives_Native.None) omega2) omega1
+let join (omega1 : solution_sequence) (omega2 : solution_sequence) :
+  solution_sequence=
+  match (omega1, omega2) with
+  | ([], uu___) -> []
+  | (uu___, []) -> []
+  | (mu1_0::uu___, mu2_0::uu___1) ->
+      let vars = vars_intersect (sm_domain mu1_0) (sm_domain mu2_0) in
+      if vars = []
+      then join_nested_loop omega1 omega2
+      else
+        (let build_is_omega1 =
+           (FStar_List_Tot_Base.length omega1) <=
+             (FStar_List_Tot_Base.length omega2) in
+         let uu___3 =
+           if build_is_omega1 then (omega1, omega2) else (omega2, omega1) in
+         match uu___3 with
+         | (build_omega, probe_omega) ->
+             let idx = build_join_index vars build_omega in
+             RDF_List_Helpers.concatMap_tr
+               (fun mu_probe ->
+                  let candidates = join_candidates idx vars mu_probe in
+                  list_filter_map
+                    (fun mu_build ->
+                       let uu___4 =
+                         if build_is_omega1
+                         then (mu_build, mu_probe)
+                         else (mu_probe, mu_build) in
+                       match uu___4 with
+                       | (mu1, mu2) ->
+                           if sm_compatible mu1 mu2
+                           then
+                             FStar_Pervasives_Native.Some (sm_merge mu1 mu2)
+                           else FStar_Pervasives_Native.None) candidates)
+               probe_omega)
 let lateral_subst_pattern_term (mu : RDF_Graph_Executable.solution_mapping)
   (pt : pattern_term) : pattern_term=
   match pt with
@@ -3355,21 +3450,46 @@ let path_result_to_solutions (ps : pattern_subject) (pt : pattern_term)
 let left_join (base : RDF_Term.wf_iri FStar_Pervasives_Native.option)
   (omega1 : solution_sequence) (omega2 : solution_sequence)
   (filter_expr : expr) : solution_sequence=
-  RDF_List_Helpers.concatMap_tr
-    (fun mu1 ->
-       let joins =
-         list_filter_map
-           (fun mu2 ->
-              if sm_compatible mu1 mu2
-              then
-                let merged = sm_merge mu1 mu2 in
-                (if eval_expr_ebv base filter_expr merged
-                 then FStar_Pervasives_Native.Some merged
-                 else FStar_Pervasives_Native.None)
-              else FStar_Pervasives_Native.None) omega2 in
-       if (FStar_List_Tot_Base.length joins) > Prims.int_zero
-       then joins
-       else [mu1]) omega1
+  match (omega1, omega2) with
+  | ([], uu___) -> []
+  | (uu___, []) -> omega1
+  | (mu1_0::uu___, mu2_0::uu___1) ->
+      let vars = vars_intersect (sm_domain mu1_0) (sm_domain mu2_0) in
+      if vars = []
+      then
+        RDF_List_Helpers.concatMap_tr
+          (fun mu1 ->
+             let joins =
+               list_filter_map
+                 (fun mu2 ->
+                    if sm_compatible mu1 mu2
+                    then
+                      let merged = sm_merge mu1 mu2 in
+                      (if eval_expr_ebv base filter_expr merged
+                       then FStar_Pervasives_Native.Some merged
+                       else FStar_Pervasives_Native.None)
+                    else FStar_Pervasives_Native.None) omega2 in
+             if (FStar_List_Tot_Base.length joins) > Prims.int_zero
+             then joins
+             else [mu1]) omega1
+      else
+        (let idx = build_join_index vars omega2 in
+         RDF_List_Helpers.concatMap_tr
+           (fun mu1 ->
+              let candidates = join_candidates idx vars mu1 in
+              let joins =
+                list_filter_map
+                  (fun mu2 ->
+                     if sm_compatible mu1 mu2
+                     then
+                       let merged = sm_merge mu1 mu2 in
+                       (if eval_expr_ebv base filter_expr merged
+                        then FStar_Pervasives_Native.Some merged
+                        else FStar_Pervasives_Native.None)
+                     else FStar_Pervasives_Native.None) candidates in
+              if (FStar_List_Tot_Base.length joins) > Prims.int_zero
+              then joins
+              else [mu1]) omega1)
 let filter_solutions_fwd
   (base : RDF_Term.wf_iri FStar_Pervasives_Native.option) (e : expr)
   (omega : solution_sequence) : solution_sequence=
@@ -3530,22 +3650,50 @@ let left_join_with_graph
   (omega1 : solution_sequence) (omega2 : solution_sequence)
   (filter_expr : expr) (g : RDF_Graph.rdf_graph) (ds : RDF_Graph.rdf_dataset)
   : solution_sequence=
-  RDF_List_Helpers.concatMap_tr
-    (fun mu1 ->
-       let joins =
-         list_filter_map
-           (fun mu2 ->
-              if sm_compatible mu1 mu2
-              then
-                let merged = sm_merge mu1 mu2 in
-                let e' = substitute_existentials base filter_expr merged g ds in
-                (if eval_expr_ebv base e' merged
-                 then FStar_Pervasives_Native.Some merged
-                 else FStar_Pervasives_Native.None)
-              else FStar_Pervasives_Native.None) omega2 in
-       if (FStar_List_Tot_Base.length joins) > Prims.int_zero
-       then joins
-       else [mu1]) omega1
+  match (omega1, omega2) with
+  | ([], uu___) -> []
+  | (uu___, []) -> omega1
+  | (mu1_0::uu___, mu2_0::uu___1) ->
+      let vars = vars_intersect (sm_domain mu1_0) (sm_domain mu2_0) in
+      if vars = []
+      then
+        RDF_List_Helpers.concatMap_tr
+          (fun mu1 ->
+             let joins =
+               list_filter_map
+                 (fun mu2 ->
+                    if sm_compatible mu1 mu2
+                    then
+                      let merged = sm_merge mu1 mu2 in
+                      let e' =
+                        substitute_existentials base filter_expr merged g ds in
+                      (if eval_expr_ebv base e' merged
+                       then FStar_Pervasives_Native.Some merged
+                       else FStar_Pervasives_Native.None)
+                    else FStar_Pervasives_Native.None) omega2 in
+             if (FStar_List_Tot_Base.length joins) > Prims.int_zero
+             then joins
+             else [mu1]) omega1
+      else
+        (let idx = build_join_index vars omega2 in
+         RDF_List_Helpers.concatMap_tr
+           (fun mu1 ->
+              let candidates = join_candidates idx vars mu1 in
+              let joins =
+                list_filter_map
+                  (fun mu2 ->
+                     if sm_compatible mu1 mu2
+                     then
+                       let merged = sm_merge mu1 mu2 in
+                       let e' =
+                         substitute_existentials base filter_expr merged g ds in
+                       (if eval_expr_ebv base e' merged
+                        then FStar_Pervasives_Native.Some merged
+                        else FStar_Pervasives_Native.None)
+                     else FStar_Pervasives_Native.None) candidates in
+              if (FStar_List_Tot_Base.length joins) > Prims.int_zero
+              then joins
+              else [mu1]) omega1)
 let union (omega1 : solution_sequence) (omega2 : solution_sequence) :
   solution_sequence= RDF_List_Helpers.append_tr omega1 omega2
 let rec domains_disjoint (mu1 : RDF_Graph_Executable.solution_mapping)

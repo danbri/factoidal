@@ -30,6 +30,7 @@ open FStar.String
 open FStar.List.Tot
 open RDF.Graph.Executable
 open SPARQL.FullText
+open RDF.NQuads.Serialize
 module Lh = RDF.List.Helpers
 module Geo = RDF.Geo.Types
 module GeoBBox = RDF.Geo.BBox
@@ -1900,14 +1901,132 @@ let eval_bgp (patterns : bgp) (g : rdf_graph) : solution_sequence =
 
 (** 7.3 Core algebra operations (§18.5) **)
 
+(** ====================================================================== **)
+(** Hash join (2026-07-06 join-algorithm perf fix). `join`/`left_join`/     **)
+(** `left_join_with_graph` used to be a plain nested-loop compatible-merge **)
+(** — O(|omega1| * |omega2|), no keying at all. This is the algorithmic     **)
+(** hole the task brief named directly and the same *shape* of defect       **)
+(** independently confirmed for BGP evaluation's index probes (see         **)
+(** RDF.Indexed.fsti's banner: `bucket_lookup` was an O(K) linear scan of a **)
+(** *pre-sorted* association list). Fix, mirroring that one: when the two   **)
+(** sides share at least one bound variable, build a keyed index on one     **)
+(** side (a `bucket_tree`, RDF.Indexed's balanced-tree idiom, reused as-is  **)
+(** via the `include RDF.Indexed` chain — SPARQL11.Algebra never needed a   **)
+(** new module dependency for this) and probe with the other, narrowing    **)
+(** the candidate list before the UNCHANGED `sm_compatible`/`sm_merge`      **)
+(** check runs. No shared variables (a genuine cross product) falls back   **)
+(** to the original nested loop untouched — a hash key would not narrow    **)
+(** anything there anyway.                                                 **)
+(**                                                                         **)
+(** Correctness: the key (`sm_join_key`, canonical `nq_term_to_string`      **)
+(** serialization per bound variable, RDF.NQuads.Serialize — already        **)
+(** trusted for N-Quads output, so injective on well-formed terms) is used  **)
+(** ONLY to narrow candidates; `join_candidates` always returns a SUPERSET  **)
+(** of the true matches (wildcard rows — missing one of the chosen key      **)
+(** variables — are always included; a probe row missing a key variable    **)
+(** conservatively pulls every keyed row too), so a hash-key collision or   **)
+(** an atypical representative row picked for `vars` can only add spurious  **)
+(** candidates, never drop a true one — the pre-existing `sm_compatible`    **)
+(** check is still the ground truth for every candidate emitted. Multiset   **)
+(** membership is therefore unchanged from the original nested loop; ROW    **)
+(** ORDER can change (sorting by key reorders), which is exactly the        **)
+(** "unordered without ORDER BY" case the SPARQL algebra already allows.    **)
+(** ====================================================================== **)
+
+(* Variables common to two solution-mapping domains. Empty means no join
+   column exists between the (representative) domains sampled — the
+   caller then skips hashing entirely (a hash key would not narrow a
+   true cross product). *)
+let rec vars_intersect (vs1 vs2 : list var_name) : list var_name =
+  match vs1 with
+  | [] -> []
+  | v :: rest ->
+    if List.Tot.mem v vs2 then v :: vars_intersect rest vs2
+    else vars_intersect rest vs2
+
+(* Canonical join key for [mu] restricted to [vars]: None if any variable
+   in [vars] is unbound in [mu] — such rows cannot be narrowed by this key
+   (see the banner above) and fall back to a full scan via the wildcard
+   list in `join_index`/`join_candidates`. `unit_sep` is RDF.Indexed's
+   existing composite-key separator (ASCII Unit Separator, forbidden in
+   IRIs, already used for `sp_key`/`po_key_opt`/`so_key_opt`); reused here
+   for the same reason: unambiguous concatenation of per-variable tokens. *)
+let rec sm_join_key (vars : list var_name) (mu : solution_mapping) : option string =
+  match vars with
+  | [] -> Some ""
+  | v :: rest ->
+    (match sm_lookup v mu, sm_join_key rest mu with
+     | Some t, Some rest_key -> Some (nq_term_to_string t ^ RDF.Indexed.unit_sep ^ rest_key)
+     | _, _ -> None)
+
+(* One side of a hash join, indexed by [vars]: rows whose full key is
+   known go into a balanced `bucket_tree` (RDF.Indexed's idiom, built via
+   the same decorate-sort-group-bisect pipeline `build_bucket` uses for
+   `indexed_graph`, just inlined here since the elements are
+   `solution_mapping`, not `triple`); rows missing a key variable go into
+   `ji_wildcard` and are always offered as candidates (see
+   `join_candidates`). *)
+noeq type join_index = {
+  ji_keyed    : bucket_tree solution_mapping;
+  ji_wildcard : list solution_mapping;
+}
+
+let build_join_index (vars : list var_name) (omega : solution_sequence) : join_index =
+  let decorated = List.Tot.map (fun mu -> (sm_join_key vars mu, mu)) omega in
+  let sorted = List.Tot.sortWith cmp_by_decorated_key decorated in
+  // group_sorted_decorated_aux returns its groups key-DESCENDING (see
+  // RDF.Indexed.fsti's `build_bucket` comment — its own accumulator
+  // reverses the ascending-sorted input); `sorted_list_to_tree` needs
+  // ASCENDING input to build a tree matching `bucket_lookup`'s binary
+  // search. Reverse once, same as `build_bucket` does.
+  let grouped = List.Tot.rev (group_sorted_decorated_aux sorted None [] []) in
+  let wildcard = list_filter_map (fun mu -> if sm_join_key vars mu = None then Some mu else None) omega in
+  { ji_keyed = sorted_list_to_tree grouped; ji_wildcard = wildcard }
+
+(* Candidates from [idx] for probe row [mu]: always a SUPERSET of the true
+   matches (see the banner above for why this is safe) — the wildcard
+   rows plus either the exact key bucket (probe row has a full key) or,
+   conservatively, every keyed row (probe row itself is missing a key
+   variable, so it cannot be narrowed either). *)
+let join_candidates (idx : join_index) (vars : list var_name) (mu : solution_mapping)
+  : list solution_mapping =
+  match sm_join_key vars mu with
+  | Some k -> Lh.append_tr idx.ji_wildcard (bucket_lookup idx.ji_keyed k)
+  | None -> Lh.append_tr idx.ji_wildcard (bucket_tree_values idx.ji_keyed)
+
 (* Join: compatible merge of solution mappings from two patterns *)
 (* Ω1 Join Ω2 = { merge(μ1, μ2) | μ1 ∈ Ω1, μ2 ∈ Ω2, compatible(μ1, μ2) } *)
-let join (omega1 omega2 : solution_sequence) : solution_sequence =
+let join_nested_loop (omega1 omega2 : solution_sequence) : solution_sequence =
   Lh.concatMap_tr
     (fun mu1 -> list_filter_map
       (fun mu2 -> if sm_compatible mu1 mu2 then Some (sm_merge mu1 mu2) else None)
       omega2)
     omega1
+
+let join (omega1 omega2 : solution_sequence) : solution_sequence =
+  match omega1, omega2 with
+  | [], _ | _, [] -> []
+  | mu1_0 :: _, mu2_0 :: _ ->
+    let vars = vars_intersect (sm_domain mu1_0) (sm_domain mu2_0) in
+    if vars = [] then join_nested_loop omega1 omega2
+    else
+      // Build the index on the smaller side (standard hash-join
+      // orientation — minimizes index build cost); probe with the
+      // other. `mu1`/`mu2` are reconstructed in ORIGINAL argument order
+      // before `sm_compatible`/`sm_merge` so merge-priority semantics
+      // (mu1's bindings win) are byte-identical to the nested-loop form.
+      let build_is_omega1 = List.Tot.length omega1 <= List.Tot.length omega2 in
+      let (build_omega, probe_omega) = if build_is_omega1 then (omega1, omega2) else (omega2, omega1) in
+      let idx = build_join_index vars build_omega in
+      Lh.concatMap_tr
+        (fun mu_probe ->
+          let candidates = join_candidates idx vars mu_probe in
+          list_filter_map
+            (fun mu_build ->
+              let (mu1, mu2) = if build_is_omega1 then (mu_build, mu_probe) else (mu_probe, mu_build) in
+              if sm_compatible mu1 mu2 then Some (sm_merge mu1 mu2) else None)
+            candidates)
+        probe_omega
 
 (** ====================================================================== **)
 (** LATERAL join (SPARQL 1.2 track / Jena extension) — substitution and    **)
@@ -2321,19 +2440,48 @@ let path_result_to_solutions (ps : pattern_subject) (pt : pattern_term)
         mu_o)
     pairs
 
-(* LeftJoin (OPTIONAL): join + unmatched from left *)
+(* LeftJoin (OPTIONAL): join + unmatched from left.
+   2026-07-06 hash-join fix (see the banner above `join`): unlike `join`,
+   LeftJoin is NOT commutative — omega1 (LEFT) must stay the outer
+   iteration, since an unmatched left row survives verbatim. That's
+   unaffected here: only the RIGHT side (omega2) gets indexed, once,
+   outside the loop, so each left row's candidate lookup narrows from
+   O(|omega2|) to O(log K + |candidates|) instead of scanning all of
+   omega2; omega1's row order (and hence the overall output order
+   across distinct left rows) is untouched. No shared variables (the
+   `vars = []` branch) keeps the exact original nested-loop behavior. *)
 let left_join (base : option wf_iri) (omega1 omega2 : solution_sequence) (filter_expr : expr) : solution_sequence =
-  Lh.concatMap_tr
-    (fun mu1 ->
-      let joins = list_filter_map
-        (fun mu2 ->
-          if sm_compatible mu1 mu2 then
-            let merged = sm_merge mu1 mu2 in
-            if eval_expr_ebv base filter_expr merged then Some merged else None
-          else None)
-        omega2 in
-      if List.Tot.length joins > 0 then joins else [mu1])
-    omega1
+  match omega1, omega2 with
+  | [], _ -> []
+  | _, [] -> omega1
+  | mu1_0 :: _, mu2_0 :: _ ->
+    let vars = vars_intersect (sm_domain mu1_0) (sm_domain mu2_0) in
+    if vars = [] then
+      Lh.concatMap_tr
+        (fun mu1 ->
+          let joins = list_filter_map
+            (fun mu2 ->
+              if sm_compatible mu1 mu2 then
+                let merged = sm_merge mu1 mu2 in
+                if eval_expr_ebv base filter_expr merged then Some merged else None
+              else None)
+            omega2 in
+          if List.Tot.length joins > 0 then joins else [mu1])
+        omega1
+    else
+      let idx = build_join_index vars omega2 in
+      Lh.concatMap_tr
+        (fun mu1 ->
+          let candidates = join_candidates idx vars mu1 in
+          let joins = list_filter_map
+            (fun mu2 ->
+              if sm_compatible mu1 mu2 then
+                let merged = sm_merge mu1 mu2 in
+                if eval_expr_ebv base filter_expr merged then Some merged else None
+              else None)
+            candidates in
+          if List.Tot.length joins > 0 then joins else [mu1])
+        omega1
 
 (* Filter: retain solutions where expression evaluates to true *)
 let filter_solutions_fwd (base : option wf_iri) (e : expr) (omega : solution_sequence) : solution_sequence =
@@ -2492,24 +2640,59 @@ let filter_solutions_with_graph
       eval_expr_ebv base e' mu)
     omega
 
-(* LeftJoin with graph context: same substitution applied per-mapping. *)
+(* LeftJoin with graph context: same substitution applied per-mapping.
+   2026-07-06 hash-join fix: same shape as `left_join` above — omega1
+   stays the outer loop (LeftJoin is not commutative), omega2 gets
+   indexed once outside the loop when a shared variable exists. This is
+   also the path the on-disk/COTTAS backend dispatches OPTIONAL through
+   (SPARQL11.Store.fst's `GP_LeftJoin` arm calls `left_join`, and the
+   in-memory `eval_pattern_store`'s `GP_LeftJoin` arm calls this
+   function) — confirming/refuting the competitive-benchmark q6 hypothesis
+   ("OPTIONAL re-issues a bound backend search per outer row"): it does
+   NOT — both dispatch paths evaluate the RHS pattern exactly once
+   (`eval_pattern_store`/`eval_pattern_backend` called once before this
+   function runs), then this nested-loop-turned-hash-join runs over the
+   two already-materialized sequences. The q6 residual cost was this
+   O(|omega1|*|omega2|) nested loop plus genuine per-row decode work on
+   a 25,083-row result, not repeated backend queries. *)
 let left_join_with_graph
   (base : option wf_iri)
   (omega1 omega2 : solution_sequence) (filter_expr : expr)
   (g : rdf_graph) (ds : rdf_dataset)
   : solution_sequence =
-  Lh.concatMap_tr
-    (fun mu1 ->
-      let joins = list_filter_map
-        (fun mu2 ->
-          if sm_compatible mu1 mu2 then
-            let merged = sm_merge mu1 mu2 in
-            let e' = substitute_existentials base filter_expr merged g ds in
-            if eval_expr_ebv base e' merged then Some merged else None
-          else None)
-        omega2 in
-      if List.Tot.length joins > 0 then joins else [mu1])
-    omega1
+  match omega1, omega2 with
+  | [], _ -> []
+  | _, [] -> omega1
+  | mu1_0 :: _, mu2_0 :: _ ->
+    let vars = vars_intersect (sm_domain mu1_0) (sm_domain mu2_0) in
+    if vars = [] then
+      Lh.concatMap_tr
+        (fun mu1 ->
+          let joins = list_filter_map
+            (fun mu2 ->
+              if sm_compatible mu1 mu2 then
+                let merged = sm_merge mu1 mu2 in
+                let e' = substitute_existentials base filter_expr merged g ds in
+                if eval_expr_ebv base e' merged then Some merged else None
+              else None)
+            omega2 in
+          if List.Tot.length joins > 0 then joins else [mu1])
+        omega1
+    else
+      let idx = build_join_index vars omega2 in
+      Lh.concatMap_tr
+        (fun mu1 ->
+          let candidates = join_candidates idx vars mu1 in
+          let joins = list_filter_map
+            (fun mu2 ->
+              if sm_compatible mu1 mu2 then
+                let merged = sm_merge mu1 mu2 in
+                let e' = substitute_existentials base filter_expr merged g ds in
+                if eval_expr_ebv base e' merged then Some merged else None
+              else None)
+            candidates in
+          if List.Tot.length joins > 0 then joins else [mu1])
+        omega1
 
 (* Union: multiset union of solution mappings.
    Tail-rec @ — issue #95. Stdlib `@` (List.Tot.append) is non-tail-rec
@@ -5280,8 +5463,12 @@ let rec lemma_concatMap_nil (#a #b:Type) (f : a -> list b) (l : list a) :
 
 let lemma_join_empty_r (omega1 : solution_sequence) :
   Lemma (join omega1 [] == []) =
-  (* TODO: proof needs rework after = → == migration (was previously proved) *)
-  admit ()
+  // 2026-07-06 hash-join fix: `join`'s new definition matches `_, []`
+  // to `[]` directly (see the banner above `join`), so this is now a
+  // one-step computation instead of the induction the old nested-loop
+  // definition needed — the previous `admit()` here predates that
+  // rewrite and is no longer needed.
+  ()
 
 (** 19.18 Minus with empty right operand is identity — PROVED **)
 let lemma_minus_empty_r (omega : solution_sequence) :

@@ -29,7 +29,7 @@
   [pe-running] owl2-rl-rules-fp-differentFrom
   [pe-running] owl2-rl-rules-ifp-differentFrom
 Closure regime: RL
-OWL 2 test catalog: /home/user/factoidal/third_party/testing/owl/profile-RL.rdf
+OWL 2 test catalog: /home/user/factoidal/.claude/worktrees/agent-a07c16dd09a4bc26b/third_party/testing/owl/profile-RL.rdf
   parsed 1896 triples in 0.05s
 Totals: 91 test cases
   PositiveEntailmentTest:    30
@@ -161,7 +161,7 @@ Running 76 ConsistencyTest(s) through is_inconsistent (closure fuel=100)...
   PASS  owl2-rl-valid-oneof
   PASS  owl2-rl-valid-rightside-allvaluesfrom
 
-Profile-RL ConsistencyTests: 76 pass, 0 fail (out of 76), 0 skipped (functional-syntax-only) in 1.03s
+Profile-RL ConsistencyTests: 76 pass, 0 fail (out of 76), 0 skipped (functional-syntax-only) in 0.99s
 
 Running 14 InconsistencyTest(s) through is_inconsistent (closure fuel=100)...
   PASS  DisjointClasses-002
@@ -179,4 +179,4 @@ Running 14 InconsistencyTest(s) through is_inconsistent (closure fuel=100)...
   PASS  functionality-clash
   PASS  string-integer-clash
 
-Profile-RL InconsistencyTests: 14 pass, 0 fail (out of 14), 0 skipped (functional-syntax-only) in 0.17s
+Profile-RL InconsistencyTests: 14 pass, 0 fail (out of 14), 0 skipped (functional-syntax-only) in 0.16s
