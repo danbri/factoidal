@@ -140,6 +140,160 @@ neither, so it produces no row. Swapping the argument order and using
 `geof:sfContains` — "which area box *contains* London" — is the same
 relation read the other way and would return the Greater London box.
 
+### `sfWithin` on a map
+
+A table of `(cityName, areaName)` pairs is the query result; a map of
+colored points is the same query result, read visually. The cell below
+runs the identical `geof:sfWithin` cross-product query, then hands
+every city and area geometry to [Leaflet](https://leafletjs.com/)
+(vendored, no CDN — see
+[`third_party/leaflet/`](https://github.com/danbri/factoidal/blob/claude/main/third_party/leaflet/PROVENANCE.md))
+purely to draw the shapes: **the marker colors are the engine's
+`sfWithin` answer**, not a recomputation in JavaScript. Green means the
+F\* engine decided that city's point is `sfWithin` one of the two area
+polygons; grey means it decided the opposite. London gets a bigger
+marker and a fixed label, since it's the pairing the prose above
+walked through by hand. There is no tile layer — the two toy boxes and
+three city points are drawn as plain vector shapes on a blank
+background, so the map needs no network access to render.
+
+```observable-js
+const GEO_MAP_TTL = `
+  @prefix ex:  <http://example.org/> .
+  @prefix geo: <http://www.opengis.net/ont/geosparql#> .
+
+  ex:London a ex:City ; ex:name "London" ;
+    ex:hasGeom "POINT(-0.1278 51.5074)"^^geo:wktLiteral .
+  ex:Manchester a ex:City ; ex:name "Manchester" ;
+    ex:hasGeom "POINT(-2.2426 53.4808)"^^geo:wktLiteral .
+  ex:Edinburgh a ex:City ; ex:name "Edinburgh" ;
+    ex:hasGeom "POINT(-3.1883 55.9533)"^^geo:wktLiteral .
+
+  ex:GreaterLondonArea a ex:Area ; ex:name "Greater London (toy box)" ;
+    ex:hasGeom "POLYGON((-0.5 51.3, 0.3 51.3, 0.3 51.7, -0.5 51.7, -0.5 51.3))"^^geo:wktLiteral .
+  ex:ScotlandArea a ex:Area ; ex:name "Scotland (toy box)" ;
+    ex:hasGeom "POLYGON((-8 54.5, -1 54.5, -1 60.9, -8 60.9, -8 54.5))"^^geo:wktLiteral .
+`;
+
+// Tiny WKT -> coordinate parser: POINT and POLYGON only, no full WKT
+// library (this post's dataset never uses anything else). Positions
+// come out in WKT's own (and GeoJSON's) [lon, lat] order, so a
+// POLYGON ring can feed L.geoJSON's coordinates array directly;
+// callers that need Leaflet's [lat, lon] point order (L.circleMarker,
+// L.latLng, fitBounds) swap explicitly at the call site below.
+function wktParse(wkt) {
+  const s = wkt.trim();
+  let m = /^POINT\s*\(\s*([+-]?[\d.]+)\s+([+-]?[\d.]+)\s*\)$/i.exec(s);
+  if (m) return { type: "Point", lon: Number(m[1]), lat: Number(m[2]) };
+  m = /^POLYGON\s*\(\s*\(([^)]*)\)\s*\)$/i.exec(s);
+  if (m) {
+    const ring = m[1].split(",").map((pair) => {
+      const parts = pair.trim().split(/\s+/).map(Number);
+      return [parts[0], parts[1]]; // [lon, lat]
+    });
+    return { type: "Polygon", ring };
+  }
+  throw new Error("wktParse: unrecognized WKT: " + wkt);
+}
+
+// The ONLY thing that decides a marker's color: the sfWithin boolean
+// the F* engine already computed. No geometry math happens in this
+// function or anywhere else in this cell.
+function colorForWithin(isWithin) {
+  return isWithin ? "#2d6a4f" : "#8a8f98";
+}
+
+try {
+  const dataset = await fn.parse(GEO_MAP_TTL);
+
+  const areaRows = await fn.query(dataset, `
+    PREFIX ex: <http://example.org/>
+    SELECT ?areaName ?ageom WHERE {
+      ?area a ex:Area ; ex:name ?areaName ; ex:hasGeom ?ageom .
+    } ORDER BY ?areaName`);
+  const cityRows = await fn.query(dataset, `
+    PREFIX ex: <http://example.org/>
+    SELECT ?cityName ?cgeom WHERE {
+      ?city a ex:City ; ex:name ?cityName ; ex:hasGeom ?cgeom .
+    } ORDER BY ?cityName`);
+  // The exact sfWithin cross-product query from the cell above --
+  // this Map of cityName -> areaName IS the query result the map
+  // renders; every marker color below is read straight out of it.
+  const withinRows = await fn.query(dataset, `
+    PREFIX ex:   <http://example.org/>
+    PREFIX geof: <http://www.opengis.net/def/function/geosparql/>
+    SELECT ?cityName ?areaName WHERE {
+      ?city a ex:City ; ex:name ?cityName ; ex:hasGeom ?cgeom .
+      ?area a ex:Area ; ex:name ?areaName ; ex:hasGeom ?ageom .
+      FILTER(geof:sfWithin(?cgeom, ?ageom))
+    } ORDER BY ?cityName`);
+  const withinArea = new Map(
+    withinRows.map((r) => [r.get("cityName").value, r.get("areaName").value])
+  );
+
+  const container = document.createElement("div");
+  container.className = "hub-leaflet-map";
+
+  const map = L.map(container, { zoomControl: true, attributionControl: false });
+  const allLatLngs = [];
+
+  for (const row of areaRows) {
+    const name = row.get("areaName").value;
+    const geom = wktParse(row.get("ageom").value);
+    const geojson = { type: "Polygon", coordinates: [geom.ring] };
+    L.geoJSON(geojson, {
+      style: { color: "#2d6a4f", weight: 1, fillColor: "#2d6a4f", fillOpacity: 0.08 },
+    })
+      .bindTooltip(name)
+      .addTo(map);
+    for (const [lon, lat] of geom.ring) allLatLngs.push([lat, lon]);
+  }
+
+  for (const row of cityRows) {
+    const name = row.get("cityName").value;
+    const geom = wktParse(row.get("cgeom").value);
+    const area = withinArea.get(name);
+    const isWithin = area !== undefined;
+    const latlng = [geom.lat, geom.lon];
+    const marker = L.circleMarker(latlng, {
+      radius: name === "London" ? 10 : 7,
+      color: "#1a1e23",
+      weight: name === "London" ? 2 : 1,
+      fillColor: colorForWithin(isWithin),
+      fillOpacity: 0.9,
+    }).addTo(map);
+    const label = isWithin
+      ? name + " — geof:sfWithin " + area
+      : name + " — not sfWithin any area shown";
+    marker.bindTooltip(label, name === "London" ? { permanent: true, direction: "top" } : {});
+    allLatLngs.push(latlng);
+  }
+
+  map.fitBounds(allLatLngs, { padding: [16, 16] });
+
+  // Leaflet needs its container sized AND attached to the document
+  // before it can lay out tiles/panes correctly; the runtime attaches
+  // this cell's returned node to the page only after this function
+  // returns, so invalidateSize() has to run on a later frame.
+  const invalidate = () => map.invalidateSize();
+  if (typeof requestAnimationFrame === "function") requestAnimationFrame(invalidate);
+  else setTimeout(invalidate, 0);
+
+  return container;
+} catch (err) {
+  return html`<div>map unavailable: ${String((err && err.message) || err)}</div>`;
+}
+```
+
+Every color on this map came out of the same `FILTER(geof:sfWithin(...))`
+call the table above ran: London and Edinburgh render green because
+their `(cityName, areaName)` pair is in the engine's result set;
+Manchester renders grey because it isn't in either area box. The map
+draws the query's answer — it does not re-derive point-in-polygon
+membership in JavaScript, and the two toy polygons and three points
+are the same WKT literals from the dataset at the top of this post,
+run through the tiny parser above rather than a general WKT library.
+
 `geof:sfDisjoint` is the complement of `sfIntersects`: two geometries
 that share nothing. "Which cities lie *outside* the Greater London
 box":

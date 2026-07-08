@@ -4,6 +4,20 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{{ title }} — Factoidal</title>
+<!--
+  Vendored Leaflet (third_party/leaflet/, BSD-2-Clause, see its
+  PROVENANCE.md) — same-origin, no CDN, passthrough-copied to
+  /vendor/leaflet/ by docs/.eleventy.js. leaflet.js is Leaflet's own
+  prebuilt UMD bundle: loaded as a classic (non-module) script it runs
+  synchronously in document order and sets window.L, so it is ready
+  before the `type="module"` script below (module scripts always defer
+  until after parsing) reads window.L into the `L` cell binding.
+  leaflet.css is required for Leaflet's panes/controls to lay out
+  correctly even in the vector-only, no-tile-layer usage the hub's map
+  cell makes.
+-->
+<link rel="stylesheet" href="{{ '/vendor/leaflet/leaflet.css' | url }}">
+<script src="{{ '/vendor/leaflet/leaflet.js' | url }}"></script>
 <style>
   /* Mobile-first: base rules target a ~390px phone; the only
      widening is the max-width cap. No rule may cause page-level
@@ -68,6 +82,22 @@
   }
   .observable-cell { overflow-x: auto; }
   .observable-cell svg { max-width: 100%; height: auto; }
+
+  /* Leaflet map cells (docs/web/hub/21-geosparql-geometry-and-topology.md):
+     an explicit, non-collapsing height is required -- Leaflet lays out
+     its panes against the container's own box, and a height:0 div
+     renders nothing. Vector-only usage (no tile layer), so the plain
+     background below IS the map background, not a loading flash. */
+  .hub-leaflet-map {
+    height: 420px;
+    width: 100%;
+    max-width: 100%;
+    border-radius: 4px;
+    background: #eef3ef;
+  }
+  @media (prefers-color-scheme: dark) {
+    .hub-leaflet-map { background: #1a1e23; }
+  }
 
   /* `pretty()` cell-output tables (see hub.njk's module script) --
      reuses the page's own table/th/td rules for the grid itself; this
@@ -815,7 +845,7 @@ function pretty(value) {
 // list (and the mirrored `new Function(...)` parameter list below)
 // deliberately; it's the interface post-authoring (wave B) writes
 // against. See docs/web/hub/README.md for the full contract.
-const CELL_BINDINGS = ["Factoidal", "fn", "d3", "Plot", "html", "md", "pretty"];
+const CELL_BINDINGS = ["Factoidal", "fn", "d3", "Plot", "html", "md", "pretty", "L"];
 main.variable().define("Factoidal", [], () => Factoidal);
 main.variable().define("fn", [], () => fn);
 main.variable().define("d3", [], () => d3);
@@ -823,6 +853,10 @@ main.variable().define("Plot", [], () => Plot);
 main.variable().define("html", [], () => stdlib.html);
 main.variable().define("md", [], () => stdlib.md);
 main.variable().define("pretty", [], () => pretty);
+// Leaflet (third_party/leaflet/, vendored, no CDN) -- loaded above as a
+// classic <script> that sets window.L; exposed as the `L` cell binding
+// so a cell can build a map without touching `window` directly.
+main.variable().define("L", [], () => window.L);
 
 // ---------------------------------------------------------------------
 // Reactive dataflow (ObservableHQ-style).
@@ -1010,7 +1044,20 @@ function mountCell(codeEl, index) {
   editBtn.className = "observable-cell-btn observable-cell-edit-btn";
   editBtn.textContent = "Edit";
   editBtn.setAttribute("aria-pressed", "false");
-  editBtn.addEventListener("click", () => setEditing(!editing));
+  editBtn.addEventListener("click", () => {
+    if (editing) {
+      // "Done": apply the edit (same as Run) THEN leave edit mode.
+      // runCell() reads editor.value while `editing` is still true, so
+      // it captures the change and updates currentSource before we
+      // exit -- without this, Done silently discarded the edit (only
+      // Run applied it), and re-opening Edit reset editor.value back
+      // to the stale currentSource below.
+      runCell();
+      setEditing(false);
+    } else {
+      setEditing(true);
+    }
+  });
 
   const runBtn = document.createElement("button");
   runBtn.type = "button";
@@ -1123,7 +1170,7 @@ function mountCell(codeEl, index) {
 
 const USER_CELL_STARTER =
   "// Edit me, then tap Run. `fn`, `Factoidal`, `Plot`, `d3`, `html`,\n" +
-  "// `md` and `pretty` are all in scope. Try the Output: Table toggle.\n" +
+  "// `md`, `pretty` and `L` (Leaflet) are all in scope. Try the Output: Table toggle.\n" +
   "return [\n" +
   "  { n: 1, square: 1 },\n" +
   "  { n: 2, square: 4 },\n" +

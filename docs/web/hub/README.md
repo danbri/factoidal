@@ -143,6 +143,7 @@ post needs a new binding.
 | `html` | vendored `@observablehq/stdlib`'s tagged-template HTML helper. |
 | `md` | vendored `@observablehq/stdlib`'s tagged-template Markdown helper. |
 | `pretty` | opt-in prettier rendering for a cell's return value — see "The `pretty()` rendering option" below. Returns a DOM node in the browser; nothing else in the contract changes if a cell never calls it. |
+| `L` | vendored Leaflet 1.9.4 (`third_party/leaflet/`, BSD-2-Clause, no CDN) — `window.L` as set by the classic `<script>` load in `hub.njk`'s head. Use `L.map()`/`L.circleMarker()`/`L.geoJSON()` for vector-only map cells (no default marker-icon PNGs are vendored, so `L.marker()` with the stock icon will 404 — use `L.circleMarker` instead). |
 
 ### The `fn` typed surface in full
 

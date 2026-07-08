@@ -49,6 +49,13 @@ module.exports = function(eleventyConfig) {
   // this passthrough is the only thing that puts bytes under docs/.
   eleventyConfig.addPassthroughCopy({ "../third_party/observable/dist": "vendor/observable" });
 
+  // Pass-through the vendored Leaflet library (third_party/leaflet/ --
+  // leaflet.js + leaflet.css, BSD-2-Clause, see its PROVENANCE.md) so
+  // the GeoSPARQL hub post's live map cell can load it same-origin from
+  // Pages at /vendor/leaflet/*, no CDN. Same pattern as the Observable
+  // passthrough above.
+  eleventyConfig.addPassthroughCopy({ "../third_party/leaflet": "vendor/leaflet" });
+
   // Pass-through the project-owned reactive-cell compiler
   // (docs/web/hub/reactive-cells.mjs) to /vendor/hub/reactive-cells.mjs
   // so hub.njk can import it same-origin (no CDN). .mjs isn't an
