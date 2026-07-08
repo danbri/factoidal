@@ -62,6 +62,21 @@ let default_manifest () =
   with Not_found ->
     Filename.concat (find_repo_root ()) "third_party/testing/mathml/manifest.json"
 
+let matrix_manifest_candidates () =
+  let repo_root = find_repo_root () in
+  [ Filename.concat repo_root "third_party/testing/mathml/matrix-manifest.json";
+    "third_party/testing/mathml/matrix-manifest.json";
+    "../../third_party/testing/mathml/matrix-manifest.json";
+    "../../../third_party/testing/mathml/matrix-manifest.json" ]
+
+(* The default run scores both the scalar corpus and the linear-algebra
+   corpus (matrix-manifest.json, REC MathML3 section 4.4.10). *)
+let default_manifests () =
+  let scalar = default_manifest () in
+  match List.find_opt Sys.file_exists (matrix_manifest_candidates ()) with
+  | Some m -> [scalar; m]
+  | None -> [scalar]
+
 (* ------------------------------------------------------------------ *)
 (* File I/O. *)
 
@@ -145,11 +160,15 @@ let run_test tc =
   match opt_of_fs (Parser_XML.parse_xml_document tc.input) with
   | None -> Fail "input MathML did not parse (Parser_XML returned None)"
   | Some root ->
-    let v = MathML_Content.eval_doc_env tc.env root in
-    let got = MathML_Content.value_to_string v in
+    (* eval_doc_env_string routes through the matrix-aware evaluation path
+       (Math.Matrix.mres): scalars stringify exactly as before, matrices as
+       [[..],[..]], vectors as [..], undefined as "undef". All arithmetic,
+       shape checking and canonicalisation live in MathML.Content /
+       Math.Matrix; this runner only compares strings. *)
+    let got = MathML_Content.eval_doc_env_string tc.env root in
     if got = tc.expected then Pass
     else
-      let reason = MathML_Content.value_reason v in
+      let reason = MathML_Content.eval_doc_env_reason tc.env root in
       Fail (Printf.sprintf "expected %s, got %s%s"
               tc.expected got
               (if String.length reason > 0 then " (" ^ reason ^ ")" else ""))
@@ -183,12 +202,12 @@ let () =
       \  ./mathml_runner --help       Show this help\n";
     exit 0
   end;
-  let manifest_path =
+  let manifest_paths =
     match List.filter (fun a -> String.length a > 0 && a.[0] <> '-') (List.tl args) with
-    | m :: _ -> m
-    | [] -> default_manifest ()
+    | m :: _ -> [m]
+    | [] -> default_manifests ()
   in
-  let tests = load_manifest manifest_path in
+  let tests = List.concat_map load_manifest manifest_paths in
   let results = List.map (fun tc -> (tc, run_test tc)) tests in
   let pass = List.length (List.filter (fun (_, o) -> o = Pass) results) in
   let fail =

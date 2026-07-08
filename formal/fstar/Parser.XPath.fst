@@ -11,12 +11,14 @@ open Parser.Combinators
 // Parser.XML — the expression grammar is pure text, the AST here is
 // consumed by XPath.Eval.fst which pairs it with Parser.XML's xml_node.
 //
-// Scope (2026-07-05 xforms-model-program-plan, Stage 1): abbreviated +
+// Scope (2026-07-05 xforms-model-program-plan, extended): abbreviated +
 // full axis syntax for child/descendant/descendant-or-self/parent/
-// self/attribute/ancestor/ancestor-or-self (following/preceding/
-// following-sibling/preceding-sibling deferred to Stage 1.5 — see the
-// plan doc's Open decision #5); node tests (name, *, prefix:*, text(),
-// comment(), node()); predicates; the six comparison operators with
+// self/attribute/ancestor/ancestor-or-self AND the document-order axes
+// following/preceding/following-sibling/preceding-sibling (namespace
+// remains deferred — Parser.XML has no namespace-node kind); node tests
+// (name, *, prefix:*, text(), comment(), node(),
+// processing-instruction() / processing-instruction('t')); predicates;
+// the six comparison operators with
 // §3.4 type coercion; +,-,*,div,mod, unary minus; '|' union. Numeric
 // literals follow the XPath 1.0 `Number` production exactly (Digits
 // ('.' Digits?)? | '.' Digits) — no E-notation, no sign (a leading '-'
@@ -44,6 +46,11 @@ type xp_axis =
   | Ax_Parent | Ax_Self
   | Ax_Attribute
   | Ax_Ancestor | Ax_AncestorOrSelf
+  // Forward and reverse sibling / document-order axes (XPath 1.0 §2.2),
+  // previously deferred to "Stage 1.5". `namespace` remains deferred:
+  // Parser.XML does not model namespace nodes as a distinct node kind.
+  | Ax_Following | Ax_Preceding
+  | Ax_FollowingSibling | Ax_PrecedingSibling
 
 // NT_Name carries the full tag/attribute-name string as stored by
 // Parser.XML's xml_node (which does not split QNames — "rdf:Description"
@@ -58,6 +65,9 @@ type xp_nodetest =
   | NT_Text    : xp_nodetest             // text()
   | NT_Comment : xp_nodetest             // comment()
   | NT_Node    : xp_nodetest             // node()
+  // processing-instruction() (None) or processing-instruction('target')
+  // (Some target) — XPath 1.0 §2.3 NodeType test.
+  | NT_PI      : option string -> xp_nodetest
 
 type xp_comp_op = | Cmp_Eq | Cmp_Ne | Cmp_Lt | Cmp_Le | Cmp_Gt | Cmp_Ge
 type xp_arith_op = | Ar_Add | Ar_Sub | Ar_Mul | Ar_Div | Ar_Mod
@@ -237,7 +247,11 @@ let axis_of_name (name:string) : option xp_axis =
   else if name = "attribute" then Some Ax_Attribute
   else if name = "ancestor" then Some Ax_Ancestor
   else if name = "ancestor-or-self" then Some Ax_AncestorOrSelf
-  else None // following/preceding/(-sibling)/namespace: Stage 1.5, not recognized
+  else if name = "following" then Some Ax_Following
+  else if name = "preceding" then Some Ax_Preceding
+  else if name = "following-sibling" then Some Ax_FollowingSibling
+  else if name = "preceding-sibling" then Some Ax_PrecedingSibling
+  else None // namespace: deferred (Parser.XML has no namespace-node kind)
 
 let is_nodetype_keyword (name:string) : bool =
   name = "text" || name = "comment" || name = "node" || name = "processing-instruction"
@@ -263,7 +277,18 @@ let parse_node_test (input:string) (pos:nat) : option (xp_nodetest & nat) =
        else
          let posws = skip_ws input pos1 in
          if posws < len && fs_byte_index input posws = '(' && is_nodetype_keyword nm then
-           if nm = "processing-instruction" then None // unsupported: Stage 1.5
+           if nm = "processing-instruction" then
+             // processing-instruction() | processing-instruction('target')
+             let posws2 = skip_ws input (posws + 1) in
+             if posws2 < len && fs_byte_index input posws2 = ')' then
+               Some (NT_PI None, posws2 + 1)
+             else
+               (match parse_string_lit input posws2 with
+                | None -> None
+                | Some (lit, p) ->
+                  let p2 = skip_ws input p in
+                  if p2 < len && fs_byte_index input p2 = ')' then Some (NT_PI (Some lit), p2 + 1)
+                  else None)
            else
              let posws2 = skip_ws input (posws + 1) in
              if posws2 < len && fs_byte_index input posws2 = ')' then
@@ -561,7 +586,7 @@ and parse_name_lead (input:string) (pos:nat) (fuel:nat)
           if posws < len && fs_byte_index input posws = '(' then
             if is_nodetype_keyword nm then
               (match parse_node_test input pos with
-               | None -> ParseFail "unsupported node type (processing-instruction — Stage 1.5)" pos
+               | None -> ParseFail "malformed node-type test" pos
                | Some (test, pos1') ->
                  (match parse_predicates input pos1' (fuel - 1) with
                   | ParseFail msg fpos -> ParseFail msg fpos

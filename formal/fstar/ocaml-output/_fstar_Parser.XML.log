@@ -1,3 +1,17 @@
+* Warning 349 at Parser.XML.fst(450,2-479,22):
+  - The verification condition succeeded after splitting it to localize
+    potential errors, although the original non-split verification condition
+    failed. If you want to rely on splitting queries for verifying your program
+    please use the '--split_queries always' option rather than relying on it
+    implicitly.
+
+* Warning 349 at Parser.XML.fst(936,2-990,46):
+  - The verification condition succeeded after splitting it to localize
+    potential errors, although the original non-split verification condition
+    failed. If you want to rely on splitting queries for verifying your program
+    please use the '--split_queries always' option rather than relying on it
+    implicitly.
+
 Extracted module Parser.XML
 Verified module: Parser.XML
 All verification conditions discharged successfully

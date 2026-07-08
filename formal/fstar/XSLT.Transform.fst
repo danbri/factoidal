@@ -167,10 +167,11 @@ let rec raw_text (children:list xml_node) : Tot string (decreases children) =
 
 let item_to_rnode (it:xctx_item) : rnode =
   match it with
-  | CI_Elem _ n -> R_Node n
-  | CI_Text _ _ t -> R_Node (XText t)
-  | CI_Comment _ _ t -> R_Node (XComment t)
-  | CI_Attr _ _ a -> R_Attr a
+  | CI_Elem _ _ n -> R_Node n
+  | CI_Text _ _ _ t -> R_Node (XText t)
+  | CI_Comment _ _ _ t -> R_Node (XComment t)
+  | CI_PI _ _ _ tg d -> R_Node (XPI tg d)
+  | CI_Attr _ _ _ a -> R_Attr a
 
 (* ================================================================ *)
 (* Driver node: any real tree node (an xctx_item, which carries its    *)
@@ -191,23 +192,23 @@ noeq type dnode =
 // wrapper would otherwise leak an empty-tag element into copy-of ".").
 let dnode_ci (nd:dnode) : xctx_item =
   match nd with
-  | D_Doc root -> CI_Elem [] root
+  | D_Doc root -> CI_Elem [] [] root
   | D_Item it -> it
 
 // The children of a driver node, in document order, as driver nodes --
 // the default node-set for xsl:apply-templates with no select.
 let dnode_children (nd:dnode) : list dnode =
   match nd with
-  | D_Doc root -> [D_Item (CI_Elem [] root)]
-  | D_Item (CI_Elem anc n) -> List.Tot.map (fun it -> D_Item it) (child_items anc n)
+  | D_Doc root -> [D_Item (CI_Elem [] [] root)]
+  | D_Item (CI_Elem p anc n) -> List.Tot.map (fun it -> D_Item it) (child_items p anc n)
   | D_Item _ -> []
 
 // (attributes, child-nodes) of a driver node in document order -- the
 // basis of the child-union select fast path (see select_child_union).
 let dnode_attrs_and_kids (nd:dnode) : (list xctx_item & list xctx_item) =
   match nd with
-  | D_Doc root -> ([], [CI_Elem [] root])
-  | D_Item (CI_Elem anc n) -> (attribute_items anc n, child_items anc n)
+  | D_Doc root -> ([], [CI_Elem [] [] root])
+  | D_Item (CI_Elem p anc n) -> (attribute_items p anc n, child_items p anc n)
   | D_Item _ -> ([], [])
 
 (* ================================================================ *)
@@ -402,24 +403,26 @@ let alt_matches_elem (a:string) (it:xctx_item) (tag:string) : bool =
 let alt_matches_core (alt:string) (nd:dnode) : bool =
   let a = trim_str alt in
   if a = "/" then (match nd with D_Doc _ -> true | _ -> false)
-  else if a = "*" then (match nd with D_Item (CI_Elem _ _) -> true | _ -> false)
-  else if a = "@*" then (match nd with D_Item (CI_Attr _ _ _) -> true | _ -> false)
-  else if a = "text()" then (match nd with D_Item (CI_Text _ _ _) -> true | _ -> false)
-  else if a = "comment()" then (match nd with D_Item (CI_Comment _ _ _) -> true | _ -> false)
+  else if a = "*" then (match nd with D_Item (CI_Elem _ _ _) -> true | _ -> false)
+  else if a = "@*" then (match nd with D_Item (CI_Attr _ _ _ _) -> true | _ -> false)
+  else if a = "text()" then (match nd with D_Item (CI_Text _ _ _ _) -> true | _ -> false)
+  else if a = "comment()" then (match nd with D_Item (CI_Comment _ _ _ _) -> true | _ -> false)
   else if a = "node()" then
     (match nd with
-     | D_Item (CI_Elem _ _) -> true
-     | D_Item (CI_Text _ _ _) -> true
-     | D_Item (CI_Comment _ _ _) -> true
+     | D_Item (CI_Elem _ _ _) -> true
+     | D_Item (CI_Text _ _ _ _) -> true
+     | D_Item (CI_Comment _ _ _ _) -> true
+     | D_Item (CI_PI _ _ _ _ _) -> true
      | _ -> false)
-  else if a = "processing-instruction()" then false
+  else if a = "processing-instruction()" then
+    (match nd with D_Item (CI_PI _ _ _ _ _) -> true | _ -> false)
   else if starts_with "@" a then
     (match nd with
-     | D_Item (CI_Attr _ _ att) -> att.attr_name = str_of_chars (drop_prefix_chars (chars_of a) 1)
+     | D_Item (CI_Attr _ _ _ att) -> att.attr_name = str_of_chars (drop_prefix_chars (chars_of a) 1)
      | _ -> false)
   else
     (match nd with
-     | D_Item (CI_Elem _ n) ->
+     | D_Item (CI_Elem _ _ n) ->
        (match element_tag n with
         | Some tag -> alt_matches_elem a (dnode_ci nd) tag
         | None -> false)
@@ -581,6 +584,7 @@ let rec serialize_node (n:xml_node) : Tot string (decreases n) =
   | XText t -> escape_text t
   | XCDATA t -> escape_text t
   | XComment t -> String.concat "" ["<!--"; t; "-->"]
+  | XPI tg d -> String.concat "" ["<?"; tg; " "; d; "?>"]
   | XElement tag attrs children ->
     let a = serialize_attrs attrs in
     if Nil? children then String.concat "" ["<"; tag; a; "/>"]
@@ -600,6 +604,7 @@ let rec text_value_node (n:xml_node) : Tot string (decreases n) =
   | XText t -> t
   | XCDATA t -> t
   | XComment _ -> ""
+  | XPI _ _ -> ""
   | XElement _ _ children -> text_value_nodes children
 
 and text_value_nodes (ns:list xml_node) : Tot string (decreases ns) =
@@ -634,12 +639,13 @@ and builtin_rule (fuel:nat) (st:xstyle) (nd:dnode) : Tot (list rnode) (decreases
     | D_Doc _ ->
       let kids = dnode_children nd in
       apply_list (fuel - 1) st kids 1 (List.Tot.length kids)
-    | D_Item (CI_Elem _ _) ->
+    | D_Item (CI_Elem _ _ _) ->
       let kids = dnode_children nd in
       apply_list (fuel - 1) st kids 1 (List.Tot.length kids)
-    | D_Item (CI_Text _ _ t) -> [R_Node (XText t)]
-    | D_Item (CI_Attr _ _ a) -> [R_Node (XText a.attr_value)]
-    | D_Item (CI_Comment _ _ _) -> []
+    | D_Item (CI_Text _ _ _ t) -> [R_Node (XText t)]
+    | D_Item (CI_Attr _ _ _ a) -> [R_Node (XText a.attr_value)]
+    | D_Item (CI_Comment _ _ _ _) -> []
+    | D_Item (CI_PI _ _ _ _ _) -> []
 
 // Apply templates to a list of driver nodes, threading 1-based
 // position and the common size.
@@ -688,6 +694,7 @@ and instantiate_one (fuel:nat) (st:xstyle) (ctx:dnode) (pos size:nat)
     match node with
     | XText t -> if is_all_ws t then [] else [R_Node (XText t)]
     | XComment _ -> []
+    | XPI tg d -> [R_Node (XPI tg d)]
     | XCDATA t -> [R_Node (XText t)]
     | XElement tag attrs children ->
       if is_xsl st.xs_pfx tag then
@@ -773,15 +780,16 @@ and instantiate_copy (fuel:nat) (st:xstyle) (ctx:dnode) (pos size:nat)
   else
     match ctx with
     | D_Doc _ -> instantiate_seq (fuel - 1) st ctx pos size vars children
-    | D_Item (CI_Elem _ n) ->
+    | D_Item (CI_Elem _ _ n) ->
       (match n with
        | XElement t _ _ ->
          let body = instantiate_seq (fuel - 1) st ctx pos size vars children in
          [R_Node (build_element t [] body)]
        | _ -> instantiate_seq (fuel - 1) st ctx pos size vars children)
-    | D_Item (CI_Text _ _ t) -> [R_Node (XText t)]
-    | D_Item (CI_Comment _ _ t) -> [R_Node (XComment t)]
-    | D_Item (CI_Attr _ _ a) -> [R_Attr a]
+    | D_Item (CI_Text _ _ _ t) -> [R_Node (XText t)]
+    | D_Item (CI_Comment _ _ _ t) -> [R_Node (XComment t)]
+    | D_Item (CI_PI _ _ _ tg d) -> [R_Node (XPI tg d)]
+    | D_Item (CI_Attr _ _ _ a) -> [R_Attr a]
 
 and for_each_items (fuel:nat) (st:xstyle) (body:list xml_node)
                    (vars:list (string & xp_value)) (items:list xctx_item) (pos size:nat)
@@ -836,7 +844,7 @@ let rec collect_globals (pfx:string) (children:list xml_node) (source:xml_node)
           (let ln = xsl_instr pfx tag in ln = "variable" || ln = "param") then
          (match attr_opt "select" attrs, attr_opt "name" attrs with
           | Some sel, Some nm ->
-            let v = eval_val (CI_Elem [] source) 1 1 [] sel in
+            let v = eval_val (CI_Elem [] [] source) 1 1 [] sel in
             (nm, v) :: collect_globals pfx tl source
           | _, _ -> collect_globals pfx tl source)
        else collect_globals pfx tl source

@@ -1,14 +1,14 @@
-    Tableau.fst (up to date, skipped -- source unchanged since last extract)
-    RDF.Canonical.fst (up to date, skipped -- source unchanged since last extract)
-    RDF.Geo.Functions.fst (up to date, skipped -- source unchanged since last extract)
     RDF.Geo.Topology.fst (up to date, skipped -- source unchanged since last extract)
-    Parser.TurtleScanner.fst (up to date, skipped -- source unchanged since last extract)
-    Parser.WKT.fst (up to date, skipped -- source unchanged since last extract)
-    Parser.NTriples.fst (up to date, skipped -- source unchanged since last extract)
+    RDF.Canonical.fst (up to date, skipped -- source unchanged since last extract)
+    Tableau.fst (up to date, skipped -- source unchanged since last extract)
+    RDF.Geo.Functions.fst (up to date, skipped -- source unchanged since last extract)
     Parser.OWLFunctional.fst (up to date, skipped -- source unchanged since last extract)
-    Parser.XML.fst (up to date, skipped -- source unchanged since last extract)
-    Parser.XPath.fst (up to date, skipped -- source unchanged since last extract)
+    Parser.TurtleScanner.fst (up to date, skipped -- source unchanged since last extract)
+    Parser.NTriples.fst (up to date, skipped -- source unchanged since last extract)
+    Parser.WKT.fst (up to date, skipped -- source unchanged since last extract)
+    [Parser.XML.fst]
     Parser.CSVResults.fst (up to date, skipped -- source unchanged since last extract)
+    [Parser.XPath.fst]
     Parser.JSON.fst (up to date, skipped -- source unchanged since last extract)
     Parser.JSONResults.fst (up to date, skipped -- source unchanged since last extract)
     SPARQL.HTTP.BackendInfo.fst (up to date, skipped -- source unchanged since last extract)
@@ -17,3 +17,7 @@
     RDF.CottasStore.PageCache.fst (up to date, skipped -- source unchanged since last extract)
     RDF.CottasStore.PresenceBitmap.fst (up to date, skipped -- source unchanged since last extract)
     RDF.Store.Columnar.OffsetIndex.fst (up to date, skipped -- source unchanged since last extract)
+    [Parser.XPath.fst] Extracted module Parser.XPath
+    [Parser.XML.fst]     potential errors, although the original non-split verification condition
+    [Parser.XML.fst]     potential errors, although the original non-split verification condition
+    [Parser.XML.fst] Extracted module Parser.XML

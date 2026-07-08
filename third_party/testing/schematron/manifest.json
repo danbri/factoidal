@@ -61,13 +61,12 @@
     ]
   },
   {
-    "name": "unsupported-axis-indeterminate",
-    "category": "soundness-indeterminate",
+    "name": "preceding-sibling-reverse-axis",
+    "category": "reverse-axis-support",
     "schema": "cases/table.sch",
     "instance": "cases/table.xml",
     "expect": [
-      { "type": "indeterminate", "context": "row", "test": "count(preceding-sibling::row) < 100" },
-      { "type": "indeterminate", "context": "row", "test": "count(preceding-sibling::row) < 100" }
+      { "type": "assert-fail", "context": "row", "test": "count(preceding-sibling::row) < 1" }
     ]
   }
 ]

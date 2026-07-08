@@ -78,6 +78,11 @@ let fixture_b = doc_of "<a><b><c><d>leaf</d></c></b></a>"
 (* FIXTURE_C: numeric attributes for sum()/relational-coercion tests. *)
 let fixture_c = doc_of "<nums><n v=\"3\"/><n v=\"7\"/><n v=\"10\"/></nums>"
 
+(* FIXTURE_D: processing instructions (retained as XPI nodes) mixed with
+   an element, for processing-instruction() / node() node-test and
+   PI string-value / name() tests. *)
+let fixture_d = doc_of "<doc><?pi-target pi data?><a>x</a><?other more?></doc>"
+
 let () =
   (* --- §2.2 child axis (default) --- *)
   check ~name:"§2.2 child axis count" "3" (str fixture_a "count(/root/child)");
@@ -213,13 +218,61 @@ let () =
   check ~name:"§3.7 VariableReference in an arithmetic expression" "6"
     (str_v fixture_a [("x", XPath_Eval.XV_Num (XPath_Eval.XN_Finite (Z.of_int 5, Z.of_int 0)))] "$x + 1");
 
-  (* --- Stage 1.5 deferral is a clean parse failure, not a silent
-     mis-parse (see the program plan's Open decision #5) --- *)
-  check_bool ~name:"Stage 1.5: 'following::*' is rejected at parse time" true
-    (parse_fails "following::*");
-  check_bool ~name:"Stage 1.5: 'preceding-sibling::*' is rejected at parse time" true
-    (parse_fails "preceding-sibling::*");
-  check_bool ~name:"Stage 1.5: 'id(\"x\")' (unknown function) does not crash the parser" false
+  (* --- §2.2 forward/reverse document-order axes (previously deferred) --- *)
+  check ~name:"§2.2 following-sibling axis count" "3"
+    (str fixture_a "count(/root/child[1]/following-sibling::*)");
+  check ~name:"§2.2 following-sibling::child[1] is c2" "c2"
+    (str fixture_a "string(/root/child[1]/following-sibling::child[1]/@id)");
+  check ~name:"§2.2 preceding-sibling count of the last child" "3"
+    (str fixture_a "count(/root/ns:tagged/preceding-sibling::*)");
+  check ~name:"§2.2 preceding-sibling is a reverse axis (nearest first)" "c2"
+    (str fixture_a "string(/root/child[3]/preceding-sibling::child[1]/@id)");
+  check ~name:"§2.2 following axis excludes descendants, counts later elements" "3"
+    (str fixture_a "count(/root/child[1]/following::*)");
+  check ~name:"§2.2 preceding axis excludes ancestors, counts earlier elements" "3"
+    (str fixture_a "count(/root/ns:tagged/preceding::*)");
+  check ~name:"§2.2 following-sibling of the last child is empty" "0"
+    (str fixture_a "count(/root/ns:tagged/following-sibling::*)");
+
+  (* --- §2.3 processing-instruction() node test on retained XPI nodes --- *)
+  check ~name:"§2.3 processing-instruction() counts both PIs" "2"
+    (str fixture_d "count(/doc/processing-instruction())");
+  check ~name:"§2.3 processing-instruction('target') filters by target" "1"
+    (str fixture_d "count(/doc/processing-instruction('pi-target'))");
+  check ~name:"§5 PI string-value is its data" "pi data"
+    (str fixture_d "string(/doc/processing-instruction('pi-target'))");
+  check ~name:"§2.3 name() of a PI is its target" "pi-target"
+    (str fixture_d "name(/doc/processing-instruction()[1])");
+  check ~name:"§2.3 node() sees PIs + element (2 PIs + 1 element = 3)" "3"
+    (str fixture_d "count(/doc/node())");
+  check ~name:"§2.3 '*' does NOT match PIs (principal node type)" "1"
+    (str fixture_d "count(/doc/*)");
+
+  (* --- §3.3 union: document order, duplicates removed (not concatenation) --- *)
+  check ~name:"§3.3 union of overlapping node-sets removes duplicates" "3"
+    (str fixture_a "count(/root/child | /root/child[1])");
+  check ~name:"§3.3 self-union removes all duplicates" "3"
+    (str fixture_a "count(/root/child | /root/child)");
+  check ~name:"§3.3 union result is in document order, not concatenation order" "child"
+    (str fixture_a "name((/root/ns:tagged | /root/child[1])[1])");
+
+  (* --- §3.4 comparison matrix (confirming completeness) --- *)
+  check_bool ~name:"§3.4 string < string (lexicographic)" true (boolean fixture_a "\"abc\" < \"abd\"");
+  check_bool ~name:"§3.4 string > string" true (boolean fixture_a "\"b\" > \"a\"");
+  check_bool ~name:"§3.4 number < number" true (boolean fixture_a "3 < 4");
+  check_bool ~name:"§3.4 number >= number (equal)" true (boolean fixture_a "3.5 >= 3.5");
+  check_bool ~name:"§3.4 node-set = node-set (some equal pair)" true
+    (boolean fixture_a "/root/child[1] = /root/child[1]");
+  check_bool ~name:"§3.4 node-set != node-set (distinct string values)" true
+    (boolean fixture_a "/root/child[1] != /root/child[2]");
+  check ~name:"§3.4 relational node-set coercion (>=)" "2"
+    (str fixture_c "count(/nums/n[@v >= 7])");
+
+  (* --- namespace axis remains deferred (clean parse failure), and an
+     unknown function still parses (no crash) --- *)
+  check_bool ~name:"namespace axis is deferred: clean parse failure" true
+    (parse_fails "namespace::*");
+  check_bool ~name:"'id(\"x\")' (unknown function) does not crash the parser" false
     (parse_fails "id(\"x\")");
 
   Printf.printf "xpath_tests: %d pass, %d fail (out of %d)\n"

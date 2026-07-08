@@ -14,6 +14,7 @@ type xml_node =
   
   | XComment of Prims.string 
   | XCDATA of Prims.string 
+  | XPI of Prims.string * Prims.string 
 let uu___is_XText (projectee : xml_node) : Prims.bool=
   match projectee with | XText text -> true | uu___ -> false
 let __proj__XText__item__text (projectee : xml_node) : Prims.string=
@@ -38,6 +39,12 @@ let uu___is_XCDATA (projectee : xml_node) : Prims.bool=
   match projectee with | XCDATA text -> true | uu___ -> false
 let __proj__XCDATA__item__text (projectee : xml_node) : Prims.string=
   match projectee with | XCDATA text -> text
+let uu___is_XPI (projectee : xml_node) : Prims.bool=
+  match projectee with | XPI (target, data) -> true | uu___ -> false
+let __proj__XPI__item__target (projectee : xml_node) : Prims.string=
+  match projectee with | XPI (target, data) -> target
+let __proj__XPI__item__data (projectee : xml_node) : Prims.string=
+  match projectee with | XPI (target, data) -> data
 let is_name_start_char (c : FStar_Char.char) : Prims.bool=
   let code = FStar_Char.int_of_char c in
   if code < (Prims.of_int (0x80))
@@ -730,8 +737,9 @@ let parse_xml_cdata (input : Prims.string) (pos : Prims.nat) :
            Parser_Combinators.ParseFail (msg, fpos))
   | Parser_Combinators.ParseFail (msg, fpos) ->
       Parser_Combinators.ParseFail (msg, fpos)
-let rec skip_pi_body (input : Prims.string) (pos : Prims.nat)
-  (fuel : Prims.nat) : Prims.nat Parser_Combinators.parse_result=
+let rec collect_pi_body (input : Prims.string) (pos : Prims.nat)
+  (acc : FStar_Char.char Prims.list) (fuel : Prims.nat) :
+  Prims.string Parser_Combinators.parse_result=
   if fuel = Prims.int_zero
   then
     Parser_Combinators.ParseFail ("unterminated processing instruction", pos)
@@ -744,11 +752,13 @@ let rec skip_pi_body (input : Prims.string) (pos : Prims.nat)
        (if (c0 = 63) && (c1 = 62)
         then
           Parser_Combinators.ParseOk
-            ((pos + (Prims.of_int (2))), (pos + (Prims.of_int (2))))
+            ((FStar_String.string_of_list (FStar_List_Tot_Base.rev acc)),
+              (pos + (Prims.of_int (2))))
         else
           if is_utf8_continuation_byte c0
           then
-            skip_pi_body input (pos + Prims.int_one) (fuel - Prims.int_one)
+            collect_pi_body input (pos + Prims.int_one) (c0 :: acc)
+              (fuel - Prims.int_one)
           else
             (let uu___3 = Parser_FastString.fs_cp_at input pos in
              match uu___3 with
@@ -758,13 +768,13 @@ let rec skip_pi_body (input : Prims.string) (pos : Prims.nat)
                    Parser_Combinators.ParseFail
                      ("invalid character in processing instruction", pos)
                  else
-                   skip_pi_body input (pos + Prims.int_one)
+                   collect_pi_body input (pos + Prims.int_one) (c0 :: acc)
                      (fuel - Prims.int_one)))
      else
        Parser_Combinators.ParseFail
          ("unterminated processing instruction", pos))
 let parse_xml_pi (input : Prims.string) (pos : Prims.nat) :
-  Prims.nat Parser_Combinators.parse_result=
+  xml_node Parser_Combinators.parse_result=
   match Parser_Combinators.pstring "<?" input pos with
   | Parser_Combinators.ParseOk (uu___, pos1) ->
       (match parse_xml_name input pos1 with
@@ -777,8 +787,31 @@ let parse_xml_pi (input : Prims.string) (pos : Prims.nat) :
                ("PI target name 'xml' (any case) is reserved", pos1)
            else
              (let len = Parser_FastString.fs_byte_length input in
-              let fuel = (len - pos2) + Prims.int_one in
-              skip_pi_body input pos2 fuel))
+              if
+                (((pos2 + Prims.int_one) < len) &&
+                   ((Parser_FastString.fs_byte_index input pos2) = 63))
+                  &&
+                  ((Parser_FastString.fs_byte_index input
+                      (pos2 + Prims.int_one))
+                     = 62)
+              then
+                Parser_Combinators.ParseOk
+                  ((XPI (target, "")), (pos2 + (Prims.of_int (2))))
+              else
+                (match Parser_Combinators.ptake_while1_pos is_xml_space input
+                         pos2
+                 with
+                 | Parser_Combinators.ParseFail (uu___3, uu___4) ->
+                     Parser_Combinators.ParseFail
+                       ("S after PITarget is required", pos2)
+                 | Parser_Combinators.ParseOk (uu___3, pos_data) ->
+                     let fuel = (len - pos_data) + Prims.int_one in
+                     (match collect_pi_body input pos_data [] fuel with
+                      | Parser_Combinators.ParseOk (data, pos3) ->
+                          Parser_Combinators.ParseOk
+                            ((XPI (target, data)), pos3)
+                      | Parser_Combinators.ParseFail (msg, fpos) ->
+                          Parser_Combinators.ParseFail (msg, fpos)))))
   | Parser_Combinators.ParseFail (msg, fpos) ->
       Parser_Combinators.ParseFail (msg, fpos)
 let rec check_bytes_from (pred : FStar_Char.char -> Prims.bool)
@@ -1013,8 +1046,9 @@ let rec parse_children (input : Prims.string) (pos : Prims.nat)
                   if ch2 = 63
                   then
                     (match parse_xml_pi input pos with
-                     | Parser_Combinators.ParseOk (uu___4, pos') ->
-                         parse_children input pos' (fuel - Prims.int_one) acc
+                     | Parser_Combinators.ParseOk (pi_node, pos') ->
+                         parse_children input pos' (fuel - Prims.int_one)
+                           (pi_node :: acc)
                      | Parser_Combinators.ParseFail (msg, fpos) ->
                          Parser_Combinators.ParseFail (msg, fpos))
                   else
@@ -1218,6 +1252,7 @@ let rec text_content (node : xml_node) : Prims.string=
   | XText t -> t
   | XCDATA t -> t
   | XComment uu___ -> ""
+  | XPI (uu___, uu___1) -> ""
   | XElement (uu___, uu___1, children) ->
       FStar_String.concat "" (text_content_list children)
 and text_content_list (nodes : xml_node Prims.list) :

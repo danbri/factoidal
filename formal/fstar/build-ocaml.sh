@@ -403,7 +403,7 @@ if [[ "$STEP" == "all" || "$STEP" == "extract" ]]; then
     RDF.Turtle.Serialize.fst
     Parser.NQuads.fst Parser.TriG.fst
     Parser.XML.fst XML.Wellformedness.fst XML.Namespaces.fst Parser.XPath.fst XPath.Eval.fst XSLT.Transform.fst Schematron.Validate.fst Parser.RDFXML.fst Parser.RIFXML.fst
-    Math.Expr.fst Math.Subst.fst Math.Diff.fst Math.Simplify.fst MathML.Content.fst XForms.Bind.fst
+    Math.Expr.fst Math.Subst.fst Math.Diff.fst Math.Simplify.fst Math.Matrix.fst MathML.Content.fst XForms.Bind.fst
     RIF.Core.Builtins.fst RIF.Core.Conformance.fst
     RIF.Core.Eval.fst RIF.Core.Tests.fst
     Parser.SRX.fst Parser.CSVResults.fst
@@ -790,7 +790,7 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
     RDF_Geo_Types.ml RDF_Geo_BBox.ml Parser_WKT.ml RDF_Geo_Topology.ml RDF_Geo_Functions.ml \
     Parser_OWLFunctional.ml \
     RDF_Turtle_Serialize.ml \
-    Parser_NQuads.ml Parser_TriG.ml Parser_XML.ml XML_Wellformedness.ml XML_Namespaces.ml Parser_XPath.ml XPath_Eval.ml XSLT_Transform.ml Schematron_Validate.ml Parser_RDFXML.ml Math_Expr.ml Math_Subst.ml Math_Diff.ml Math_Simplify.ml MathML_Content.ml \
+    Parser_NQuads.ml Parser_TriG.ml Parser_XML.ml XML_Wellformedness.ml XML_Namespaces.ml Parser_XPath.ml XPath_Eval.ml XSLT_Transform.ml Schematron_Validate.ml Parser_RDFXML.ml Math_Expr.ml Math_Subst.ml Math_Diff.ml Math_Simplify.ml Math_Matrix.ml MathML_Content.ml \
     Parser_SRX.ml Parser_CSVResults.ml Parser_JSONResults.ml \
     SPARQL_JSON_Escape.ml \
     Parser_JSON.ml JSONLD_Loader.ml JSONLD_Context.ml JSONLD_Expand.ml Parser_JSONLD.ml JSONLD_FromRdf.ml JSONSchema_Validate.ml \
@@ -1603,7 +1603,7 @@ if [[ "$STEP" == "all" || "$STEP" == "js" ]]; then
     RDF_Geo_Types.ml RDF_Geo_BBox.ml Parser_WKT.ml RDF_Geo_Topology.ml RDF_Geo_Functions.ml
     Parser_OWLFunctional.ml
     RDF_Turtle_Serialize.ml
-    Parser_NQuads.ml Parser_TriG.ml Parser_XML.ml XML_Wellformedness.ml XML_Namespaces.ml Parser_XPath.ml XPath_Eval.ml XSLT_Transform.ml Schematron_Validate.ml Parser_RDFXML.ml Math_Expr.ml Math_Subst.ml Math_Diff.ml Math_Simplify.ml MathML_Content.ml
+    Parser_NQuads.ml Parser_TriG.ml Parser_XML.ml XML_Wellformedness.ml XML_Namespaces.ml Parser_XPath.ml XPath_Eval.ml XSLT_Transform.ml Schematron_Validate.ml Parser_RDFXML.ml Math_Expr.ml Math_Subst.ml Math_Diff.ml Math_Simplify.ml Math_Matrix.ml MathML_Content.ml
     Parser_SRX.ml Parser_CSVResults.ml Parser_JSONResults.ml
     SPARQL_JSON_Escape.ml
     Parser_JSON.ml JSONLD_Loader.ml JSONLD_Context.ml JSONLD_Expand.ml Parser_JSONLD.ml JSONLD_FromRdf.ml JSONSchema_Validate.ml

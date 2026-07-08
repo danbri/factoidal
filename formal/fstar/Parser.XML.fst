@@ -21,6 +21,12 @@ type xml_node =
   | XElement : tag:string -> attrs:list xml_attribute -> children:list xml_node -> xml_node
   | XComment : text:string -> xml_node
   | XCDATA : text:string -> xml_node
+  // Processing instruction (XML 1.0 §2.6): `<?target data?>`. Retained
+  // in the tree (rather than skipped) so XPath's processing-instruction()
+  // node test and XSLT/Schematron can see it. `data` excludes the target
+  // and the single run of whitespace separating it from the target, per
+  // the DOM/XPath string-value convention.
+  | XPI : target:string -> data:string -> xml_node
 
 
 (* ================================================================ *)
@@ -629,22 +635,27 @@ let parse_xml_cdata (input:string) (pos:nat) : parse_result xml_node =
 (* skipper is for every other target name.                          *)
 (* ================================================================ *)
 
-let rec skip_pi_body (input:string) (pos:nat) (fuel:nat)
-  : Tot (parse_result nat) (decreases fuel) =
+// Collect the PI data (everything from `pos` up to the closing '?>'),
+// accumulating one byte per step. Same byte-stepping / continuation-byte
+// / character-validity discipline as parse_comment_body and
+// parse_cdata_body. Returns the decoded data string.
+let rec collect_pi_body (input:string) (pos:nat) (acc:list char) (fuel:nat)
+  : Tot (parse_result string) (decreases fuel) =
   if fuel = 0 then ParseFail "unterminated processing instruction" pos
   else
     let len = fs_byte_length input in
     if pos + 1 < len then
       let c0 = fs_byte_index input pos in
       let c1 = fs_byte_index input (pos + 1) in
-      if c0 = '?' && c1 = '>' then ParseOk (pos + 2) (pos + 2)
+      if c0 = '?' && c1 = '>' then
+        ParseOk (String.string_of_list (List.Tot.rev acc)) (pos + 2)
       else if is_utf8_continuation_byte c0 then
-        skip_pi_body input (pos + 1) (fuel - 1)
+        collect_pi_body input (pos + 1) (c0 :: acc) (fuel - 1)
       else
         let (cp, adv) = fs_cp_at input pos in
         if not (is_valid_decoded_char cp adv) then
           ParseFail "invalid character in processing instruction" pos
-        else skip_pi_body input (pos + 1) (fuel - 1)
+        else collect_pi_body input (pos + 1) (c0 :: acc) (fuel - 1)
     else ParseFail "unterminated processing instruction" pos
 
 // PI ::= '<?' PITarget (S (Char* - (Char* '?>' Char*)))? '?>'
@@ -657,7 +668,7 @@ let rec skip_pi_body (input:string) (pos:nat) (fuel:nat)
 // in the epilog, wrong case) is not a legal generic PI, matching
 // xmlconf's PI-target-casing cluster and several "XML declaration
 // may not appear here" cases that a plain PI walk encounters.
-let parse_xml_pi (input:string) (pos:nat) : parse_result nat =
+let parse_xml_pi (input:string) (pos:nat) : parse_result xml_node =
   match pstring "<?" input pos with
   | ParseOk _ pos1 ->
     begin match parse_xml_name input pos1 with
@@ -667,8 +678,25 @@ let parse_xml_pi (input:string) (pos:nat) : parse_result nat =
         ParseFail "PI target name 'xml' (any case) is reserved" pos1
       else
         let len = fs_byte_length input in
-        let fuel = len - pos2 + 1 in
-        skip_pi_body input pos2 fuel
+        // PI ::= '<?' PITarget (S (Char* - (Char* '?>' Char*)))? '?>'.
+        // Either '?>' follows the target immediately (empty data), or S
+        // is REQUIRED between the target and the data. Enforcing the S
+        // is what keeps the not-wf "S after PITarget is required"
+        // cluster (o-p16fail3 et al.) rejected now that prolog/epilog/
+        // content PIs are all parsed through here. The DOM/XPath data
+        // string excludes that separating whitespace.
+        if pos2 + 1 < len && fs_byte_index input pos2 = '?' && fs_byte_index input (pos2 + 1) = '>' then
+          ParseOk (XPI target "") (pos2 + 2)
+        else
+          begin match ptake_while1_pos is_xml_space input pos2 with
+          | ParseFail _ _ -> ParseFail "S after PITarget is required" pos2
+          | ParseOk _ pos_data ->
+            let fuel = len - pos_data + 1 in
+            begin match collect_pi_body input pos_data [] fuel with
+            | ParseOk data pos3 -> ParseOk (XPI target data) pos3
+            | ParseFail msg fpos -> ParseFail msg fpos
+            end
+          end
     end
   | ParseFail msg fpos -> ParseFail msg fpos
 
@@ -881,11 +909,11 @@ let rec parse_children (input:string) (pos:nat) (fuel:nat) (acc:list xml_node)
               end
             end
           else if ch2 = '?' then
-            (* Processing instruction in content position: skip it
-               and continue with the following children. PIs aren't
-               part of the RDF model. *)
+            (* Processing instruction in content position: retain it as
+               an XPI child so processing-instruction() and XSLT can see
+               it. *)
             begin match parse_xml_pi input pos with
-            | ParseOk _ pos' -> parse_children input pos' (fuel - 1) acc
+            | ParseOk pi_node pos' -> parse_children input pos' (fuel - 1) (pi_node :: acc)
             | ParseFail msg fpos -> ParseFail msg fpos
             end
           else
@@ -977,6 +1005,15 @@ let rec skip_misc (input:string) (pos:nat) (fuel:nat)
       | ParseFail _ _ -> ParseOk () pos1
       end
     | ParseFail msg fpos -> ParseFail msg fpos
+    // NOTE: prolog processing instructions are deliberately NOT consumed
+    // here. Parser.XML returns the root element (no separate document
+    // node), so a prolog PI could not be attached to the tree anyway;
+    // and consuming them here would make the parser accept documents
+    // whose prolog PI the engine does not fully validate (XML 1.1 C1
+    // control chars, colon-in-PITarget namespace-wellformedness — the
+    // ibm xml-1.1 / eduni rmt-ns10 not-wf clusters), regressing the
+    // 1442/0 xmlconf score. Content PIs (the XPath/XSLT payoff) and
+    // epilog PIs are still parsed, via parse_children / skip_epilog_misc.
 
 // Epilog ::= Misc* , Misc ::= Comment | PI | S. After the document
 // element, ONLY whitespace/comments/(non-"xml"-target) PIs may
@@ -1066,6 +1103,7 @@ let rec text_content (node:xml_node) : Tot string (decreases node) =
   | XText t -> t
   | XCDATA t -> t
   | XComment _ -> ""
+  | XPI _ _ -> ""
   | XElement _ _ children ->
     String.concat "" (text_content_list children)
 

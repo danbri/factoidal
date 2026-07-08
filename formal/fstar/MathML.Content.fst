@@ -20,6 +20,7 @@ open FStar.String
 open FStar.List.Tot
 open Parser.XML
 open Math.Expr
+open Math.Matrix
 
 (* ================================================================ *)
 (* MathML / XML navigation helpers                                   *)
@@ -229,6 +230,154 @@ let eval_doc_env (pairs:list (string & string)) (root:xml_node) : mvalue =
 // Re-exported for the runner's stable API (all logic is Math.Expr's).
 let value_to_string (v:mvalue) : string = Math.Expr.value_to_string v
 let value_reason (v:mvalue) : string = Math.Expr.value_reason v
+
+(* ================================================================ *)
+(* Content MathML linear algebra (MathML3 ch.4 §4.4.10)              *)
+(*                                                                   *)
+(* A parallel evaluation path that yields a Math.Matrix.mres (scalar, *)
+(* matrix, vector, or explicit undefined). Scalar leaves and scalar   *)
+(* operators delegate unchanged to the existing mathml_to_expr /      *)
+(* Math.Expr.eval pipeline (so the scalar corpus is untouched); the   *)
+(* only new knowledge here is the linear-algebra element vocabulary   *)
+(* (<matrix>/<matrixrow>/<vector>) and the linalg1/linalg2 operator   *)
+(* names, which map onto Math.Matrix's dynamically-checked dyn_* ops. *)
+(* All shape checking and arithmetic live in Math.Matrix.             *)
+(* ================================================================ *)
+
+// Evaluate one node as an exact scalar via the existing scalar path.
+let eval_scalar (env:list (string & mvalue)) (n:xml_node) : mvalue =
+  match mathml_to_expr n eval_fuel with
+  | Some e -> eval env e eval_fuel
+  | None -> MV_Undef "unmappable-mathml"
+
+// Evaluate a list of entry nodes (matrix-row cells or vector entries).
+let rec eval_entries (env:list (string & mvalue)) (nodes:list xml_node)
+  : Tot (list mvalue) (decreases nodes) =
+  match nodes with
+  | [] -> []
+  | e :: rest -> eval_scalar env e :: eval_entries env rest
+
+// Evaluate the <matrixrow> children of a <matrix> into rows of values.
+let rec eval_matrix_rows (env:list (string & mvalue)) (rows:list xml_node)
+  : Tot (list (list mvalue)) (decreases rows) =
+  match rows with
+  | [] -> []
+  | r :: rest ->
+    let cells =
+      match r with
+      | XElement _ _ children -> eval_entries env (element_children_only children)
+      | _ -> []
+    in
+    cells :: eval_matrix_rows env rest
+
+// Integer index carried by a selector argument (a <cn> literal).
+let mres_int (x:Math.Matrix.mres) : option int =
+  match x with
+  | Math.Matrix.R_Scalar v -> Math.Expr.as_int v
+  | _ -> None
+
+// Fold a binary result combiner over a value list (used for n-ary
+// plus / times, folding from the first operand so no scalar identity
+// is injected into a matrix chain).
+let rec fold_mres (f:(Math.Matrix.mres -> Math.Matrix.mres -> Math.Matrix.mres))
+                  (acc:Math.Matrix.mres) (xs:list Math.Matrix.mres)
+  : Tot Math.Matrix.mres (decreases xs) =
+  match xs with
+  | [] -> acc
+  | h :: t -> fold_mres f (f acc h) t
+
+let neg_mres (x:Math.Matrix.mres) : Math.Matrix.mres =
+  Math.Matrix.dyn_times (Math.Matrix.R_Scalar (MV_Rat (-1) 1)) x
+
+let rec eval_mres (env:list (string & mvalue)) (n:xml_node) (fuel:nat)
+  : Tot Math.Matrix.mres (decreases %[fuel; 0])
+=
+  if fuel = 0 then Math.Matrix.R_Undef "fuel-exhausted"
+  else
+    match n with
+    | XElement tag _ children ->
+      let ln = local_name tag in
+      if ln = "math" || ln = "cerror" then
+        (match first_element children with
+         | Some e -> eval_mres env e (fuel - 1)
+         | None -> Math.Matrix.R_Undef "empty-document")
+      else if ln = "matrix" then
+        Math.Matrix.mk_matrix_res (eval_matrix_rows env (element_children_only children))
+      else if ln = "vector" then
+        Math.Matrix.mk_vector_res (eval_entries env (element_children_only children))
+      else if ln = "apply" then
+        (match element_children_only children with
+         | [] -> Math.Matrix.R_Undef "empty-apply"
+         | opnode :: rest ->
+           let op = mathml_op_name opnode in
+           let args = drop_qualifiers rest in
+           let vals = eval_mres_list env args (fuel - 1) in
+           if op = "determinant" then
+             (match vals with [a] -> Math.Matrix.dyn_determinant a | _ -> Math.Matrix.R_Undef "determinant-arity")
+           else if op = "transpose" then
+             (match vals with [a] -> Math.Matrix.dyn_transpose a | _ -> Math.Matrix.R_Undef "transpose-arity")
+           else if op = "trace" then
+             (match vals with [a] -> Math.Matrix.dyn_trace a | _ -> Math.Matrix.R_Undef "trace-arity")
+           else if op = "scalarproduct" then
+             (match vals with [a; b] -> Math.Matrix.dyn_scalarproduct a b | _ -> Math.Matrix.R_Undef "scalarproduct-arity")
+           else if op = "vectorproduct" then
+             (match vals with [a; b] -> Math.Matrix.dyn_vectorproduct a b | _ -> Math.Matrix.R_Undef "vectorproduct-arity")
+           else if op = "outerproduct" then
+             (match vals with [a; b] -> Math.Matrix.dyn_outerproduct a b | _ -> Math.Matrix.R_Undef "outerproduct-arity")
+           else if op = "selector" then
+             (match vals with
+              | [a; i] ->
+                (match mres_int i with
+                 | Some iv -> Math.Matrix.dyn_selector_matrix a iv 1
+                 | None -> Math.Matrix.R_Undef "selector-index-not-integer")
+              | [a; i; j] ->
+                (match mres_int i, mres_int j with
+                 | Some iv, Some jv -> Math.Matrix.dyn_selector_matrix a iv jv
+                 | _ -> Math.Matrix.R_Undef "selector-index-not-integer")
+              | _ -> Math.Matrix.R_Undef "selector-arity")
+           else if op = "plus" then
+             (match vals with [] -> Math.Matrix.R_Scalar (MV_Rat 0 1) | h :: t -> fold_mres Math.Matrix.dyn_add h t)
+           else if op = "times" then
+             (match vals with [] -> Math.Matrix.R_Scalar (MV_Rat 1 1) | h :: t -> fold_mres Math.Matrix.dyn_times h t)
+           else if op = "minus" then
+             (match vals with
+              | [a] -> neg_mres a
+              | [a; b] -> Math.Matrix.dyn_sub a b
+              | _ -> Math.Matrix.R_Undef "minus-arity")
+           else
+             // Any other operator (power, root, abs, gcd, relations, ...)
+             // is scalar: evaluate the whole node on the scalar path.
+             Math.Matrix.R_Scalar (eval_scalar env n))
+      else
+        Math.Matrix.R_Scalar (eval_scalar env n)
+    | _ -> Math.Matrix.R_Undef "non-element"
+
+and eval_mres_list (env:list (string & mvalue)) (ns:list xml_node) (fuel:nat)
+  : Tot (list Math.Matrix.mres) (decreases %[fuel; 1 + List.Tot.length ns])
+=
+  match ns with
+  | [] -> []
+  | hd :: tl -> eval_mres env hd fuel :: eval_mres_list env tl fuel
+
+// Matrix-aware document evaluation: unwrap an outer <math>, then take
+// the linear-algebra path (scalars still flow through unchanged).
+let eval_doc_mres (env:list (string & mvalue)) (root:xml_node) : Math.Matrix.mres =
+  let start =
+    match root with
+    | XElement tag _ children ->
+      if local_name tag = "math" then
+        (match first_element children with Some e -> e | None -> root)
+      else root
+    | _ -> root
+  in
+  eval_mres env start eval_fuel
+
+// Runner-facing entry points: canonical string + diagnostic reason.
+let eval_doc_env_string (pairs:list (string & string)) (root:xml_node) : string =
+  Math.Matrix.mres_to_string (eval_doc_mres (mk_env pairs) root)
+
+let eval_doc_env_reason (pairs:list (string & string)) (root:xml_node) : string =
+  Math.Matrix.mres_reason (eval_doc_mres (mk_env pairs) root)
 
 (* ================================================================ *)
 (* Presentation vs Content MathML detection                          *)

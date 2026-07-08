@@ -8,6 +8,10 @@ type xp_axis =
   | Ax_Attribute 
   | Ax_Ancestor 
   | Ax_AncestorOrSelf 
+  | Ax_Following 
+  | Ax_Preceding 
+  | Ax_FollowingSibling 
+  | Ax_PrecedingSibling 
 let uu___is_Ax_Child (projectee : xp_axis) : Prims.bool=
   match projectee with | Ax_Child -> true | uu___ -> false
 let uu___is_Ax_Descendant (projectee : xp_axis) : Prims.bool=
@@ -24,6 +28,14 @@ let uu___is_Ax_Ancestor (projectee : xp_axis) : Prims.bool=
   match projectee with | Ax_Ancestor -> true | uu___ -> false
 let uu___is_Ax_AncestorOrSelf (projectee : xp_axis) : Prims.bool=
   match projectee with | Ax_AncestorOrSelf -> true | uu___ -> false
+let uu___is_Ax_Following (projectee : xp_axis) : Prims.bool=
+  match projectee with | Ax_Following -> true | uu___ -> false
+let uu___is_Ax_Preceding (projectee : xp_axis) : Prims.bool=
+  match projectee with | Ax_Preceding -> true | uu___ -> false
+let uu___is_Ax_FollowingSibling (projectee : xp_axis) : Prims.bool=
+  match projectee with | Ax_FollowingSibling -> true | uu___ -> false
+let uu___is_Ax_PrecedingSibling (projectee : xp_axis) : Prims.bool=
+  match projectee with | Ax_PrecedingSibling -> true | uu___ -> false
 type xp_nodetest =
   | NT_Name of Prims.string 
   | NT_Prefix of Prims.string 
@@ -31,6 +43,7 @@ type xp_nodetest =
   | NT_Text 
   | NT_Comment 
   | NT_Node 
+  | NT_PI of Prims.string FStar_Pervasives_Native.option 
 let uu___is_NT_Name (projectee : xp_nodetest) : Prims.bool=
   match projectee with | NT_Name _0 -> true | uu___ -> false
 let __proj__NT_Name__item___0 (projectee : xp_nodetest) : Prims.string=
@@ -47,6 +60,11 @@ let uu___is_NT_Comment (projectee : xp_nodetest) : Prims.bool=
   match projectee with | NT_Comment -> true | uu___ -> false
 let uu___is_NT_Node (projectee : xp_nodetest) : Prims.bool=
   match projectee with | NT_Node -> true | uu___ -> false
+let uu___is_NT_PI (projectee : xp_nodetest) : Prims.bool=
+  match projectee with | NT_PI _0 -> true | uu___ -> false
+let __proj__NT_PI__item___0 (projectee : xp_nodetest) :
+  Prims.string FStar_Pervasives_Native.option=
+  match projectee with | NT_PI _0 -> _0
 type xp_comp_op =
   | Cmp_Eq 
   | Cmp_Ne 
@@ -354,7 +372,19 @@ let axis_of_name (name : Prims.string) :
               else
                 if name = "ancestor-or-self"
                 then FStar_Pervasives_Native.Some Ax_AncestorOrSelf
-                else FStar_Pervasives_Native.None
+                else
+                  if name = "following"
+                  then FStar_Pervasives_Native.Some Ax_Following
+                  else
+                    if name = "preceding"
+                    then FStar_Pervasives_Native.Some Ax_Preceding
+                    else
+                      if name = "following-sibling"
+                      then FStar_Pervasives_Native.Some Ax_FollowingSibling
+                      else
+                        if name = "preceding-sibling"
+                        then FStar_Pervasives_Native.Some Ax_PrecedingSibling
+                        else FStar_Pervasives_Native.None
 let is_nodetype_keyword (name : Prims.string) : Prims.bool=
   (((name = "text") || (name = "comment")) || (name = "node")) ||
     (name = "processing-instruction")
@@ -403,7 +433,31 @@ let parse_node_test (input : Prims.string) (pos : Prims.nat) :
                     && (is_nodetype_keyword nm)
                 then
                   (if nm = "processing-instruction"
-                   then FStar_Pervasives_Native.None
+                   then
+                     let posws2 = skip_ws input (posws + Prims.int_one) in
+                     (if
+                        (posws2 < len) &&
+                          ((Parser_FastString.fs_byte_index input posws2) =
+                             41)
+                      then
+                        FStar_Pervasives_Native.Some
+                          ((NT_PI FStar_Pervasives_Native.None),
+                            (posws2 + Prims.int_one))
+                      else
+                        (match parse_string_lit input posws2 with
+                         | FStar_Pervasives_Native.None ->
+                             FStar_Pervasives_Native.None
+                         | FStar_Pervasives_Native.Some (lit, p) ->
+                             let p2 = skip_ws input p in
+                             if
+                               (p2 < len) &&
+                                 ((Parser_FastString.fs_byte_index input p2)
+                                    = 41)
+                             then
+                               FStar_Pervasives_Native.Some
+                                 ((NT_PI (FStar_Pervasives_Native.Some lit)),
+                                   (p2 + Prims.int_one))
+                             else FStar_Pervasives_Native.None))
                    else
                      (let posws2 = skip_ws input (posws + Prims.int_one) in
                       if
@@ -965,8 +1019,7 @@ and parse_name_lead (input : Prims.string) (pos : Prims.nat)
                     match parse_node_test input pos with
                     | FStar_Pervasives_Native.None ->
                         Parser_Combinators.ParseFail
-                          ("unsupported node type (processing-instruction \226\128\148 Stage 1.5)",
-                            pos)
+                          ("malformed node-type test", pos)
                     | FStar_Pervasives_Native.Some (test, pos1') ->
                         (match parse_predicates input pos1'
                                  (fuel - Prims.int_one)

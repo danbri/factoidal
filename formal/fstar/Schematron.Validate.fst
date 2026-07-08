@@ -210,11 +210,11 @@ let extract_schema (schema_root:xml_node) : sch_schema =
 // listed right after their owning element.
 let node_with_attrs (it:xctx_item) : list xctx_item =
   match it with
-  | CI_Elem anc n -> it :: attribute_items anc n
+  | CI_Elem p anc n -> it :: attribute_items p anc n
   | _ -> [it]
 
 let all_doc_items (root:xml_node) : list xctx_item =
-  flatmap node_with_attrs (CI_Elem [] root :: descendant_items [] root)
+  flatmap node_with_attrs (CI_Elem [] [] root :: descendant_items [] [] root)
 
 (* ================================================================ *)
 (* XPath call-outs (all logic delegated to XPath.Eval).              *)
@@ -244,10 +244,11 @@ let context_matches (ctx:string) (vars:list (string & xp_value)) (it:xctx_item) 
 
 let item_self_label (it:xctx_item) : string =
   match it with
-  | CI_Elem _ n -> (match element_tag n with Some t -> t | None -> "")
-  | CI_Attr _ _ a -> strcat "@" a.attr_name
-  | CI_Text _ _ _ -> "text()"
-  | CI_Comment _ _ _ -> "comment()"
+  | CI_Elem _ _ n -> (match element_tag n with Some t -> t | None -> "")
+  | CI_Attr _ _ _ a -> strcat "@" a.attr_name
+  | CI_Text _ _ _ _ -> "text()"
+  | CI_Comment _ _ _ _ -> "comment()"
+  | CI_PI _ _ _ tg _ -> strcat "processing-instruction()::" tg
 
 let item_path (it:xctx_item) : string =
   let anc = List.Tot.rev (ancestor_tags_of it) in  // ancestor_tags_of: nearest-first; rev => root-first
@@ -313,7 +314,7 @@ let validate_pattern (pat:sch_pattern) (items:list xctx_item) (gvars:list (strin
 let validate (schema_root:xml_node) (instance_root:xml_node) : list finding =
   let sch = extract_schema schema_root in
   let items = all_doc_items instance_root in
-  let gvars = eval_lets (CI_Elem [] instance_root) [] sch.ss_lets in
+  let gvars = eval_lets (CI_Elem [] [] instance_root) [] sch.ss_lets in
   flatmap (fun pat -> validate_pattern pat items gvars) sch.ss_patterns
 
 // A document is "valid" for this slice iff no assert failed and no

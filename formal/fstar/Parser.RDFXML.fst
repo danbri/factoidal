@@ -365,6 +365,7 @@ let rec collect_text (children : list xml_node) : string =
       | XText t -> t
       | XCDATA t -> t
       | XComment _ -> ""
+      | XPI _ _ -> ""
       | XElement _ _ _ -> ""
     in
     String.concat "" [this_text; collect_text rest]
@@ -378,6 +379,7 @@ let rec is_all_text (children : list xml_node) : bool =
      | XText _ -> is_all_text rest
      | XCDATA _ -> is_all_text rest
      | XComment _ -> is_all_text rest
+     | XPI _ _ -> is_all_text rest
      | XElement _ _ _ -> false)
 
 
@@ -477,6 +479,7 @@ let rec serialize_xml_node_c14n (node : xml_node) (ns_decls : string)
     | XText t -> t
     | XCDATA t -> String.concat "" ["<![CDATA["; t; "]]>"]
     | XComment t -> String.concat "" ["<!--"; t; "-->"]
+    | XPI tg d -> String.concat "" ["<?"; tg; " "; d; "?>"]
     | XElement tag attrs children ->
       let attr_strs = List.Tot.map (fun (a : xml_attribute) ->
         String.concat "" [" "; a.attr_name; "=\""; a.attr_value; "\""]) attrs in
@@ -503,6 +506,7 @@ let rec serialize_xml_node (node : xml_node) (fuel : nat) : Tot string (decrease
     | XText t -> t
     | XCDATA t -> String.concat "" ["<![CDATA["; t; "]]>"]
     | XComment t -> String.concat "" ["<!--"; t; "-->"]
+    | XPI tg d -> String.concat "" ["<?"; tg; " "; d; "?>"]
     | XElement tag attrs children ->
       let attr_strs = List.Tot.map (fun (a : xml_attribute) ->
         String.concat "" [" "; a.attr_name; "=\""; a.attr_value; "\""]) attrs in

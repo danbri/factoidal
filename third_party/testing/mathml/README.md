@@ -1,9 +1,22 @@
 # Content MathML evaluation corpus (REC-cited)
 
-This directory holds `manifest.json`, a corpus of Content MathML
-expressions with expected exact-evaluation results, used by
-`bin/mathml-runner/mathml_runner.ml` to score
-`formal/fstar/MathML.Content.fst`.
+This directory holds two manifests, both scored by
+`bin/mathml-runner/mathml_runner.ml` against
+`formal/fstar/MathML.Content.fst`:
+
+- `manifest.json` — scalar Content MathML (arithmetic, relations, `cn`
+  literals) evaluated over exact rationals via `Math.Expr`.
+- `matrix-manifest.json` — Content MathML **linear algebra**
+  (MathML3 §4.4.10: `<matrix>`/`<matrixrow>`/`<vector>` and the
+  `linalg1`/`linalg2` operators `determinant`, `transpose`,
+  `scalarproduct`, `vectorproduct`, `outerproduct`, `selector`, plus
+  matrix/scalar `plus`/`minus`/`times`) evaluated via `Math.Matrix`.
+  Matrices print as `[[a,b],[c,d]]`, vectors as `[a,b,c]`; shape
+  violations (non-square determinant, inner-dimension mismatch,
+  ragged add, out-of-range selector) print as `undef`.
+
+The default `mathml_runner` invocation scores both manifests and reports
+a combined labelled total.
 
 ## Provenance
 

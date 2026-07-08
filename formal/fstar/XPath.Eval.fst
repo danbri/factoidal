@@ -279,101 +279,190 @@ let xn_ceiling (n:xpath_number) : xpath_number =
 (* 1.0 §2.4 defines for reverse axes, with no separate bookkeeping.   *)
 (* ================================================================ *)
 
+// Every item carries a `path : list int` — the child-index chain from
+// the document root (root = []; child index i of a node with path P has
+// path P @ [i]; attribute j of an element with path P has path
+// P @ [-1; j], the -1 marker sorting attributes after their element but
+// before its children). Lexicographic compare of paths IS document
+// order (a proper prefix sorts first, so element-before-attributes-
+// before-children-before-following-sibling all fall out), and path
+// equality IS node identity (distinct nodes never share a path). This
+// is what powers the reverse/forward document-order axes and the
+// document-order + duplicate-removed union, neither of which the
+// ancestor list alone can express.
 noeq type xctx_item =
-  | CI_Elem    : ancestors:list xml_node -> node:xml_node -> xctx_item
-  | CI_Attr    : ancestors:list xml_node -> owner:xml_node -> attr:xml_attribute -> xctx_item
-  | CI_Text    : ancestors:list xml_node -> parent:xml_node -> text:string -> xctx_item
-  | CI_Comment : ancestors:list xml_node -> parent:xml_node -> text:string -> xctx_item
+  | CI_Elem    : path:list int -> ancestors:list xml_node -> node:xml_node -> xctx_item
+  | CI_Attr    : path:list int -> ancestors:list xml_node -> owner:xml_node -> attr:xml_attribute -> xctx_item
+  | CI_Text    : path:list int -> ancestors:list xml_node -> parent:xml_node -> text:string -> xctx_item
+  | CI_Comment : path:list int -> ancestors:list xml_node -> parent:xml_node -> text:string -> xctx_item
+  | CI_PI      : path:list int -> ancestors:list xml_node -> parent:xml_node -> target:string -> data:string -> xctx_item
 
-let child_items (ancestors:list xml_node) (node:xml_node) : list xctx_item =
-  let new_anc = node :: ancestors in
-  let one (c:xml_node) : xctx_item =
-    match c with
-    | XElement _ _ _ -> CI_Elem new_anc c
-    | XText t -> CI_Text new_anc node t
-    | XCDATA t -> CI_Text new_anc node t
-    | XComment t -> CI_Comment new_anc node t
-  in
-  List.Tot.map one (element_children node)
+let item_path (it:xctx_item) : list int =
+  match it with
+  | CI_Elem p _ _ -> p
+  | CI_Attr p _ _ _ -> p
+  | CI_Text p _ _ _ -> p
+  | CI_Comment p _ _ _ -> p
+  | CI_PI p _ _ _ _ -> p
 
-let attribute_items (ancestors:list xml_node) (node:xml_node) : list xctx_item =
-  List.Tot.map (fun (a:xml_attribute) -> CI_Attr ancestors node a) (element_attrs node)
+// Drop the last element of a path (the parent-of operation on a
+// child path); [] for the root's empty/singleton path.
+let rec path_drop_last (l:list int) : Tot (list int) (decreases l) =
+  match l with
+  | [] -> []
+  | [_] -> []
+  | x :: tl -> x :: path_drop_last tl
 
-let rec descendant_items (ancestors:list xml_node) (node:xml_node)
+// The owner-element path of an attribute (its path ends in [-1; j]).
+let attr_owner_path (p:list int) : list int = path_drop_last (path_drop_last p)
+
+// Lexicographic path compare: <0 / 0 / >0 for document order.
+let rec path_compare (a b:list int) : Tot int (decreases a) =
+  match a, b with
+  | [], [] -> 0
+  | [], _ -> -1
+  | _, [] -> 1
+  | x :: xs, y :: ys -> if x < y then -1 else if x > y then 1 else path_compare xs ys
+
+// Is `a` a (non-strict) prefix of `b`? (ancestor/descendant test.)
+let rec path_is_prefix (a b:list int) : Tot bool (decreases a) =
+  match a, b with
+  | [], _ -> true
+  | _, [] -> false
+  | x :: xs, y :: ys -> x = y && path_is_prefix xs ys
+
+// Children of `node` with document-order paths (parent_path @ [i]),
+// `i` the 0-based index over ALL children (element/text/comment/pi).
+let rec children_with_paths (parent_path:list int) (new_anc:list xml_node) (parent:xml_node)
+                            (nodes:list xml_node) (i:nat)
+  : Tot (list xctx_item) (decreases nodes) =
+  match nodes with
+  | [] -> []
+  | c :: rest ->
+    let cpath = parent_path @ [i] in
+    let item =
+      match c with
+      | XElement _ _ _ -> CI_Elem cpath new_anc c
+      | XText t -> CI_Text cpath new_anc parent t
+      | XCDATA t -> CI_Text cpath new_anc parent t
+      | XComment t -> CI_Comment cpath new_anc parent t
+      | XPI tg d -> CI_PI cpath new_anc parent tg d
+    in
+    item :: children_with_paths parent_path new_anc parent rest (i + 1)
+
+let child_items (path:list int) (ancestors:list xml_node) (node:xml_node) : list xctx_item =
+  children_with_paths path (node :: ancestors) node (element_children node) 0
+
+// Attribute nodes: path = owner_path @ [-1; j], the -1 marker sorting
+// them after the owner element but before its children.
+let rec attrs_with_paths (owner_path:list int) (ancestors:list xml_node) (owner:xml_node)
+                         (attrs:list xml_attribute) (j:nat)
+  : Tot (list xctx_item) (decreases attrs) =
+  match attrs with
+  | [] -> []
+  | a :: rest ->
+    CI_Attr (owner_path @ [(-1); j]) ancestors owner a
+      :: attrs_with_paths owner_path ancestors owner rest (j + 1)
+
+let attribute_items (path:list int) (ancestors:list xml_node) (node:xml_node) : list xctx_item =
+  attrs_with_paths path ancestors node (element_attrs node) 0
+
+let rec descendant_items (path:list int) (ancestors:list xml_node) (node:xml_node)
   : Tot (list xctx_item) (decreases node) =
   match node with
-  | XElement _ _ children -> descendant_items_children (node :: ancestors) node children
+  | XElement _ _ children -> descendant_items_children path (node :: ancestors) node children 0
   | _ -> []
 
-and descendant_items_children (new_anc:list xml_node) (parent:xml_node) (nodes:list xml_node)
+and descendant_items_children (parent_path:list int) (new_anc:list xml_node) (parent:xml_node)
+                              (nodes:list xml_node) (i:nat)
   : Tot (list xctx_item) (decreases nodes) =
   match nodes with
   | [] -> []
   | hd :: tl ->
+    let cpath = parent_path @ [i] in
     let self_item =
       match hd with
-      | XElement _ _ _ -> [CI_Elem new_anc hd]
-      | XText t -> [CI_Text new_anc parent t]
-      | XCDATA t -> [CI_Text new_anc parent t]
-      | XComment t -> [CI_Comment new_anc parent t]
+      | XElement _ _ _ -> [CI_Elem cpath new_anc hd]
+      | XText t -> [CI_Text cpath new_anc parent t]
+      | XCDATA t -> [CI_Text cpath new_anc parent t]
+      | XComment t -> [CI_Comment cpath new_anc parent t]
+      | XPI tg d -> [CI_PI cpath new_anc parent tg d]
     in
-    self_item @ descendant_items new_anc hd @ descendant_items_children new_anc parent tl
+    self_item @ descendant_items cpath new_anc hd @ descendant_items_children parent_path new_anc parent tl (i + 1)
 
 // Nearest-first: p1 (immediate parent) :: p2 :: ... — see the module
 // banner for why this ordering directly gives reverse-axis proximity
 // position.
-let rec ancestor_items (ancestors:list xml_node) : Tot (list xctx_item) (decreases ancestors) =
+let rec ancestor_items (self_path:list int) (ancestors:list xml_node)
+  : Tot (list xctx_item) (decreases ancestors) =
   match ancestors with
   | [] -> []
-  | p :: rest -> CI_Elem rest p :: ancestor_items rest
+  | p :: rest ->
+    let ppath = path_drop_last self_path in
+    CI_Elem ppath rest p :: ancestor_items ppath rest
 
 let item_ancestors (it:xctx_item) : list xml_node =
   match it with
-  | CI_Elem anc _ -> anc
-  | CI_Attr anc _ _ -> anc
-  | CI_Text anc _ _ -> anc
-  | CI_Comment anc _ _ -> anc
+  | CI_Elem _ anc _ -> anc
+  | CI_Attr _ anc _ _ -> anc
+  | CI_Text _ anc _ _ -> anc
+  | CI_Comment _ anc _ _ -> anc
+  | CI_PI _ anc _ _ _ -> anc
 
 // parent axis: the owner element for an attribute; the immediate
 // ancestor for anything else (empty if already at the document root).
 let parent_axis (it:xctx_item) : list xctx_item =
   match it with
-  | CI_Attr anc owner _ -> [CI_Elem anc owner]
-  | CI_Elem anc _ | CI_Text anc _ _ | CI_Comment anc _ _ ->
-    (match anc with [] -> [] | p :: rest -> [CI_Elem rest p])
+  | CI_Attr p anc owner _ -> [CI_Elem (attr_owner_path p) anc owner]
+  | CI_Elem p anc _ | CI_Text p anc _ _ | CI_Comment p anc _ _ | CI_PI p anc _ _ _ ->
+    (match anc with [] -> [] | q :: rest -> [CI_Elem (path_drop_last p) rest q])
 
 // ancestor axis (nearest-first): for CI_Attr, the owner element is
 // itself the nearest ancestor (XPath 1.0 §2.3), then its own ancestors.
 let ancestor_axis (it:xctx_item) : list xctx_item =
   match it with
-  | CI_Attr anc owner _ -> CI_Elem anc owner :: ancestor_items anc
-  | CI_Elem anc _ | CI_Text anc _ _ | CI_Comment anc _ _ -> ancestor_items anc
+  | CI_Attr p anc owner _ ->
+    let opath = attr_owner_path p in
+    CI_Elem opath anc owner :: ancestor_items opath anc
+  | CI_Elem p anc _ | CI_Text p anc _ _ | CI_Comment p anc _ _ | CI_PI p anc _ _ _ ->
+    ancestor_items p anc
 
 let child_axis (it:xctx_item) : list xctx_item =
   match it with
-  | CI_Elem anc n -> child_items anc n
-  | _ -> []   // attribute/text/comment nodes have no children
+  | CI_Elem p anc n -> child_items p anc n
+  | _ -> []   // attribute/text/comment/pi nodes have no children
 
 let descendant_axis (it:xctx_item) : list xctx_item =
   match it with
-  | CI_Elem anc n -> descendant_items anc n
+  | CI_Elem p anc n -> descendant_items p anc n
   | _ -> []
 
 let attribute_axis (it:xctx_item) : list xctx_item =
   match it with
-  | CI_Elem anc n -> attribute_items anc n
+  | CI_Elem p anc n -> attribute_items p anc n
   | _ -> []
 
-let apply_axis (ax:xp_axis) (it:xctx_item) : list xctx_item =
-  match ax with
-  | Ax_Self -> [it]
-  | Ax_Child -> child_axis it
-  | Ax_Descendant -> descendant_axis it
-  | Ax_DescendantOrSelf -> it :: descendant_axis it
-  | Ax_Parent -> parent_axis it
-  | Ax_Ancestor -> ancestor_axis it
-  | Ax_AncestorOrSelf -> it :: ancestor_axis it
-  | Ax_Attribute -> attribute_axis it
+// Sibling axes. `siblings_of` rebuilds the parent's child list (in
+// document order, with paths) from the item's ancestor chain; the
+// item's own path locates it among them. Attributes have no siblings
+// via these axes (XPath 1.0 §2.2).
+let siblings_of (it:xctx_item) : list xctx_item =
+  match it with
+  | CI_Elem p anc _ | CI_Text p anc _ _ | CI_Comment p anc _ _ | CI_PI p anc _ _ _ ->
+    (match anc with
+     | [] -> []                       // the root has no parent, hence no siblings
+     | parent :: grand -> child_items (path_drop_last p) grand parent)
+  | CI_Attr _ _ _ _ -> []
+
+// following-sibling (forward axis, document order).
+let following_sibling_axis (it:xctx_item) : list xctx_item =
+  let p = item_path it in
+  List.Tot.filter (fun s -> path_compare (item_path s) p > 0) (siblings_of it)
+
+// preceding-sibling (reverse axis: nearest first = reverse document order).
+let preceding_sibling_axis (it:xctx_item) : list xctx_item =
+  let p = item_path it in
+  List.Tot.rev (List.Tot.filter (fun s -> path_compare (item_path s) p < 0) (siblings_of it))
 
 
 (* ================================================================ *)
@@ -391,19 +480,22 @@ let string_starts_with (s prefix:string) : bool =
 let matches_node_test (test:xp_nodetest) (it:xctx_item) : bool =
   match test, it with
   | NT_Node, _ -> true
-  | NT_Text, CI_Text _ _ _ -> true
+  | NT_Text, CI_Text _ _ _ _ -> true
   | NT_Text, _ -> false
-  | NT_Comment, CI_Comment _ _ _ -> true
+  | NT_Comment, CI_Comment _ _ _ _ -> true
   | NT_Comment, _ -> false
-  | NT_Any, CI_Elem _ _ -> true
-  | NT_Any, CI_Attr _ _ _ -> true
+  | NT_PI None, CI_PI _ _ _ _ _ -> true
+  | NT_PI (Some tgt), CI_PI _ _ _ t _ -> t = tgt
+  | NT_PI _, _ -> false
+  | NT_Any, CI_Elem _ _ _ -> true
+  | NT_Any, CI_Attr _ _ _ _ -> true
   | NT_Any, _ -> false
-  | NT_Name nm, CI_Elem _ n -> (match element_tag n with Some t -> t = nm | None -> false)
-  | NT_Name nm, CI_Attr _ _ a -> a.attr_name = nm
+  | NT_Name nm, CI_Elem _ _ n -> (match element_tag n with Some t -> t = nm | None -> false)
+  | NT_Name nm, CI_Attr _ _ _ a -> a.attr_name = nm
   | NT_Name _, _ -> false
-  | NT_Prefix pfx, CI_Elem _ n ->
+  | NT_Prefix pfx, CI_Elem _ _ n ->
     (match element_tag n with Some t -> string_starts_with t (pfx ^ ":") | None -> false)
-  | NT_Prefix pfx, CI_Attr _ _ a -> string_starts_with a.attr_name (pfx ^ ":")
+  | NT_Prefix pfx, CI_Attr _ _ _ a -> string_starts_with a.attr_name (pfx ^ ":")
   | NT_Prefix _, _ -> false
 
 let filter_by_node_test (test:xp_nodetest) (items:list xctx_item) : list xctx_item =
@@ -420,12 +512,53 @@ let rec list_last_or (default_val:xml_node) (l:list xml_node) : Tot xml_node (de
 let root_of_item (it:xctx_item) : xml_node =
   let self_node =
     match it with
-    | CI_Elem _ n -> n
-    | CI_Attr _ owner _ -> owner
-    | CI_Text _ parent _ -> parent
-    | CI_Comment _ parent _ -> parent
+    | CI_Elem _ _ n -> n
+    | CI_Attr _ _ owner _ -> owner
+    | CI_Text _ _ parent _ -> parent
+    | CI_Comment _ _ parent _ -> parent
+    | CI_PI _ _ parent _ _ -> parent
   in
   list_last_or self_node (item_ancestors it)
+
+// All document node-items (root element + every descendant), in
+// document order, keyed by path — the substrate for the following /
+// preceding axes and for locating a context node's position.
+let all_document_items (it:xctx_item) : list xctx_item =
+  let root = root_of_item it in
+  CI_Elem [] [] root :: descendant_items [] [] root
+
+// following axis: nodes after the context node in document order,
+// excluding its descendants (XPath 1.0 §2.2). Ancestors sort before
+// the context node so are excluded by the path_compare > 0 test.
+let following_axis (it:xctx_item) : list xctx_item =
+  let p = item_path it in
+  List.Tot.filter
+    (fun x -> path_compare (item_path x) p > 0 && not (path_is_prefix p (item_path x)))
+    (all_document_items it)
+
+// preceding axis: nodes before the context node in document order,
+// excluding its ancestors; reverse axis, so reverse document order.
+let preceding_axis (it:xctx_item) : list xctx_item =
+  let p = item_path it in
+  List.Tot.rev
+    (List.Tot.filter
+      (fun x -> path_compare (item_path x) p < 0 && not (path_is_prefix (item_path x) p))
+      (all_document_items it))
+
+let apply_axis (ax:xp_axis) (it:xctx_item) : list xctx_item =
+  match ax with
+  | Ax_Self -> [it]
+  | Ax_Child -> child_axis it
+  | Ax_Descendant -> descendant_axis it
+  | Ax_DescendantOrSelf -> it :: descendant_axis it
+  | Ax_Parent -> parent_axis it
+  | Ax_Ancestor -> ancestor_axis it
+  | Ax_AncestorOrSelf -> it :: ancestor_axis it
+  | Ax_Attribute -> attribute_axis it
+  | Ax_FollowingSibling -> following_sibling_axis it
+  | Ax_PrecedingSibling -> preceding_sibling_axis it
+  | Ax_Following -> following_axis it
+  | Ax_Preceding -> preceding_axis it
 
 
 (* ================================================================ *)
@@ -456,10 +589,11 @@ let lookup_var (vars:list (string & xp_value)) (name:string) : option xp_value =
 // element case (descendant text concatenation), reused directly.
 let item_string_value (it:xctx_item) : string =
   match it with
-  | CI_Elem _ n -> text_content n
-  | CI_Attr _ _ a -> a.attr_value
-  | CI_Text _ _ t -> t
-  | CI_Comment _ _ t -> t
+  | CI_Elem _ _ n -> text_content n
+  | CI_Attr _ _ _ a -> a.attr_value
+  | CI_Text _ _ _ t -> t
+  | CI_Comment _ _ _ t -> t
+  | CI_PI _ _ _ _ d -> d
 
 // String-value of a node-SET: the string-value of the node "first in
 // document order" (§1.1). Simplification, disclosed in the program
@@ -642,8 +776,9 @@ let substring_impl (s:string) (start_n len_n:xpath_number) : string =
 
 let item_qname (it:xctx_item) : string =
   match it with
-  | CI_Elem _ n -> (match element_tag n with Some t -> t | None -> "")
-  | CI_Attr _ _ a -> a.attr_name
+  | CI_Elem _ _ n -> (match element_tag n with Some t -> t | None -> "")
+  | CI_Attr _ _ _ a -> a.attr_name
+  | CI_PI _ _ _ tg _ -> tg   // name()/local-name() of a PI is its target
   | _ -> ""
 
 let rec find_char_from (s:string) (c:FStar.Char.char) (pos:nat) (len:nat{len = String.length s})
@@ -661,6 +796,23 @@ let rec sum_items (items:list xctx_item) : Tot xpath_number (decreases items) =
   match items with
   | [] -> XN_Finite 0 0
   | hd :: tl -> xn_arith Ar_Add (string_to_xn (item_string_value hd)) (sum_items tl)
+
+// Insertion into a document-ordered list, dropping duplicates (a node
+// already present by path). Used to realise XPath 1.0 §3.3 union
+// semantics: result in document order with duplicates removed.
+let rec insert_by_doc (x:xctx_item) (l:list xctx_item) : Tot (list xctx_item) (decreases l) =
+  match l with
+  | [] -> [x]
+  | y :: ys ->
+    let c = path_compare (item_path x) (item_path y) in
+    if c < 0 then x :: l
+    else if c = 0 then l              // same node (identical path): keep existing
+    else y :: insert_by_doc x ys
+
+let rec doc_sort_dedup (l:list xctx_item) : Tot (list xctx_item) (decreases l) =
+  match l with
+  | [] -> []
+  | x :: xs -> insert_by_doc x (doc_sort_dedup xs)
 
 
 (* ================================================================ *)
@@ -741,21 +893,15 @@ let rec eval_expr (fuel:nat) (env:xp_env) (e:xp_expr) : Tot xp_value (decreases 
     | XE_Or a b ->
       XV_Bool (to_bool_val (eval_expr (fuel - 1) env a) || to_bool_val (eval_expr (fuel - 1) env b))
     | XE_Union a b ->
-      // Disclosed Stage 1 gap: XPath 1.0 §3.3 requires the union
-      // result in document order with duplicates removed. This is
-      // plain list concatenation — no dedup, no cross-branch document
-      // ordering. `xctx_item` is `noeq` (it embeds `xml_node`, and a
-      // document-order comparator would need the flattening index
-      // table this stage deliberately does not build — see the
-      // program plan's Open decision on following/preceding axes),
-      // so dedup needs a hand-written structural comparator, not
-      // done here. Safe for `count(a | b)` on genuinely disjoint
-      // node-sets (the common case, and what this stage's tests
-      // exercise); a union of OVERLAPPING node-sets over-counts.
+      // XPath 1.0 §3.3: the union result is the two node-sets combined,
+      // in document order, with duplicates removed. Each item carries a
+      // document-order path (see xctx_item's banner); `doc_sort_dedup`
+      // sorts by that path and drops any node already present, so an
+      // overlapping union no longer over-counts.
       (match eval_expr (fuel - 1) env a, eval_expr (fuel - 1) env b with
-       | XV_Nodes na, XV_Nodes nb -> XV_Nodes (na @ nb)
-       | XV_Nodes na, _ -> XV_Nodes na
-       | _, XV_Nodes nb -> XV_Nodes nb
+       | XV_Nodes na, XV_Nodes nb -> XV_Nodes (doc_sort_dedup (na @ nb))
+       | XV_Nodes na, _ -> XV_Nodes (doc_sort_dedup na)
+       | _, XV_Nodes nb -> XV_Nodes (doc_sort_dedup nb)
        | _, _ -> XV_Nodes [])
     | XE_FunCall name args -> eval_funcall (fuel - 1) env name args
     | XE_Path absolute steps ->
@@ -781,7 +927,7 @@ and eval_absolute_steps (fuel:nat) (vars:list (string & xp_value)) (root_node:xm
   : Tot (list xctx_item) (decreases fuel) =
   if fuel = 0 then []
   else
-    let root_item = CI_Elem [] root_node in
+    let root_item = CI_Elem [] [] root_node in
     match steps with
     | [] -> [root_item]
     | s :: rest ->
@@ -789,7 +935,7 @@ and eval_absolute_steps (fuel:nat) (vars:list (string & xp_value)) (root_node:xm
         match s.step_axis with
         | Ax_Child -> filter_by_node_test s.step_test [root_item]
         | Ax_Self -> filter_by_node_test s.step_test [root_item]
-        | Ax_DescendantOrSelf -> filter_by_node_test s.step_test (root_item :: descendant_items [] root_node)
+        | Ax_DescendantOrSelf -> filter_by_node_test s.step_test (root_item :: descendant_items [] [] root_node)
         | _ -> []
       in
       let kept = filter_items_by_preds (fuel - 1) vars expansion s.step_preds in
@@ -970,6 +1116,34 @@ and eval_funcall (fuel:nat) (env:xp_env) (name:string) (args:list xp_expr)
 (* Entry points                                                      *)
 (* ================================================================ *)
 
+// Locate `target` among `nodes` by structural identity, returning its
+// index (0 if absent — best-effort, see path_of_chain).
+let rec find_child_index (nodes:list xml_node) (target:xml_node) (i:nat)
+  : Tot nat (decreases nodes) =
+  match nodes with
+  | [] -> 0
+  | x :: rest -> if x = target then i else find_child_index rest target (i + 1)
+
+// Document-order path of a root-to-node chain [root; ...; parent; ctx],
+// each hop the child index of the next node within the current node.
+let rec path_of_chain (chain:list xml_node) : Tot (list int) (decreases chain) =
+  match chain with
+  | [] -> []
+  | [_] -> []
+  | parent :: rest ->
+    (match rest with
+     | [] -> []
+     | child :: _ ->
+       let i = find_child_index (element_children parent) child 0 in
+       i :: path_of_chain rest)
+
+// Reconstruct a context node's path from its ancestor chain
+// (nearest-first). Best-effort: structurally-identical siblings on the
+// ancestor path are indistinguishable, affecting only the document-order
+// axes from such a mid-document entry (eval_xpath_from_root is exact).
+let compute_ctx_path (ancestors:list xml_node) (ctx:xml_node) : list int =
+  path_of_chain (List.Tot.append (List.Tot.rev ancestors) [ctx])
+
 // Evaluate `expr_text` with the document root as the initial context
 // node (position 1, size 1) — the common case for a fresh document.
 let eval_xpath_from_root (root_node:xml_node) (vars:list (string & xp_value)) (expr_text:string)
@@ -978,7 +1152,7 @@ let eval_xpath_from_root (root_node:xml_node) (vars:list (string & xp_value)) (e
   | None -> None
   | Some e ->
     let fuel = initial_eval_fuel e (xml_node_count root_node) in
-    let env = { env_item = CI_Elem [] root_node; env_pos = 1; env_size = 1; env_vars = vars } in
+    let env = { env_item = CI_Elem [] [] root_node; env_pos = 1; env_size = 1; env_vars = vars } in
     Some (eval_expr fuel env e)
 
 // Evaluate with an arbitrary context node deeper in the document,
@@ -992,5 +1166,6 @@ let eval_xpath_from_item (ancestors:list xml_node) (context_node:xml_node) (vars
   | Some e ->
     let doc_nodes = xml_node_count context_node + xml_nodes_count ancestors in
     let fuel = initial_eval_fuel e doc_nodes in
-    let env = { env_item = CI_Elem ancestors context_node; env_pos = 1; env_size = 1; env_vars = vars } in
+    let env = { env_item = CI_Elem (compute_ctx_path ancestors context_node) ancestors context_node;
+                env_pos = 1; env_size = 1; env_vars = vars } in
     Some (eval_expr fuel env e)

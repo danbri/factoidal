@@ -358,69 +358,64 @@ let is_xml_or_xmlns_attr (name : Prims.string) : Prims.bool=
   | (prefix, _local) ->
       ((prefix = "xml") || (prefix = "xmlns")) || (name = "xmlns")
 let make_wf_iri (s : Prims.string) :
-  RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option=
-  if RDF_Graph_Executable.is_iri s
+  RDF_Term.wf_iri FStar_Pervasives_Native.option=
+  if RDF_Term.is_iri s
   then FStar_Pervasives_Native.Some s
   else FStar_Pervasives_Native.None
 let make_iri_subject (iri_str : Prims.string) :
-  RDF_Graph_Executable.subject FStar_Pervasives_Native.option=
-  if RDF_Graph_Executable.is_iri iri_str
-  then FStar_Pervasives_Native.Some (RDF_Graph_Executable.S_IRI iri_str)
+  RDF_Term.subject FStar_Pervasives_Native.option=
+  if RDF_Term.is_iri iri_str
+  then FStar_Pervasives_Native.Some (RDF_Term.S_IRI iri_str)
   else FStar_Pervasives_Native.None
-let make_bnode_subject (id : Prims.string) : RDF_Graph_Executable.subject=
-  RDF_Graph_Executable.S_BNode id
+let make_bnode_subject (id : Prims.string) : RDF_Term.subject=
+  RDF_Term.S_BNode id
 let make_iri_object (iri_str : Prims.string) :
-  RDF_Graph_Executable.rdf_term FStar_Pervasives_Native.option=
-  if RDF_Graph_Executable.is_iri iri_str
-  then FStar_Pervasives_Native.Some (RDF_Graph_Executable.T_IRI iri_str)
+  RDF_Term.rdf_term FStar_Pervasives_Native.option=
+  if RDF_Term.is_iri iri_str
+  then FStar_Pervasives_Native.Some (RDF_Term.T_IRI iri_str)
   else FStar_Pervasives_Native.None
 let make_plain_literal (lex : Prims.string)
   (lang : Prims.string FStar_Pervasives_Native.option) :
-  RDF_Graph_Executable.rdf_term FStar_Pervasives_Native.option=
+  RDF_Term.rdf_term FStar_Pervasives_Native.option=
   match lang with
   | FStar_Pervasives_Native.Some l ->
       FStar_Pervasives_Native.Some
-        (RDF_Graph_Executable.T_Literal
+        (RDF_Term.T_Literal
            {
-             RDF_Graph_Executable.lexical_form = lex;
-             RDF_Graph_Executable.datatype =
-               RDF_Graph_Executable.rdf_lang_string;
-             RDF_Graph_Executable.lang_tag = (FStar_Pervasives_Native.Some l)
+             RDF_Term.lexical_form = lex;
+             RDF_Term.datatype = RDF_Term.rdf_lang_string;
+             RDF_Term.lang_tag = (FStar_Pervasives_Native.Some l)
            })
   | FStar_Pervasives_Native.None ->
       FStar_Pervasives_Native.Some
-        (RDF_Graph_Executable.T_Literal
+        (RDF_Term.T_Literal
            {
-             RDF_Graph_Executable.lexical_form = lex;
-             RDF_Graph_Executable.datatype = RDF_Graph_Executable.xsd_string;
-             RDF_Graph_Executable.lang_tag = FStar_Pervasives_Native.None
+             RDF_Term.lexical_form = lex;
+             RDF_Term.datatype = RDF_Term.xsd_string;
+             RDF_Term.lang_tag = FStar_Pervasives_Native.None
            })
 let make_typed_literal (lex : Prims.string) (dt : Prims.string) :
-  RDF_Graph_Executable.rdf_term FStar_Pervasives_Native.option=
-  if RDF_Graph_Executable.is_iri dt
+  RDF_Term.rdf_term FStar_Pervasives_Native.option=
+  if RDF_Term.is_iri dt
   then
     (if dt = "http://www.w3.org/1999/02/22-rdf-syntax-ns#langString"
      then FStar_Pervasives_Native.None
      else
        FStar_Pervasives_Native.Some
-         (RDF_Graph_Executable.T_Literal
+         (RDF_Term.T_Literal
             {
-              RDF_Graph_Executable.lexical_form = lex;
-              RDF_Graph_Executable.datatype = dt;
-              RDF_Graph_Executable.lang_tag = FStar_Pervasives_Native.None
+              RDF_Term.lexical_form = lex;
+              RDF_Term.datatype = dt;
+              RDF_Term.lang_tag = FStar_Pervasives_Native.None
             }))
   else FStar_Pervasives_Native.None
-let make_triple (subj : RDF_Graph_Executable.subject)
-  (pred_iri : Prims.string) (obj : RDF_Graph_Executable.rdf_term) :
-  RDF_Graph_Executable.triple FStar_Pervasives_Native.option=
-  if RDF_Graph_Executable.is_iri pred_iri
+let make_triple (subj : RDF_Term.subject) (pred_iri : Prims.string)
+  (obj : RDF_Term.rdf_term) :
+  RDF_Triple.triple FStar_Pervasives_Native.option=
+  if RDF_Term.is_iri pred_iri
   then
     FStar_Pervasives_Native.Some
-      {
-        RDF_Graph_Executable.s = subj;
-        RDF_Graph_Executable.p = pred_iri;
-        RDF_Graph_Executable.o = obj
-      }
+      { RDF_Triple.s = subj; RDF_Triple.p = pred_iri; RDF_Triple.o = obj }
   else FStar_Pervasives_Native.None
 let rec collect_text (children : Parser_XML.xml_node Prims.list) :
   Prims.string=
@@ -432,6 +427,7 @@ let rec collect_text (children : Parser_XML.xml_node Prims.list) :
         | Parser_XML.XText t -> t
         | Parser_XML.XCDATA t -> t
         | Parser_XML.XComment uu___ -> ""
+        | Parser_XML.XPI (uu___, uu___1) -> ""
         | Parser_XML.XElement (uu___, uu___1, uu___2) -> "" in
       FStar_String.concat "" [this_text; collect_text rest]
 let rec is_all_text (children : Parser_XML.xml_node Prims.list) : Prims.bool=
@@ -442,6 +438,7 @@ let rec is_all_text (children : Parser_XML.xml_node Prims.list) : Prims.bool=
        | Parser_XML.XText uu___ -> is_all_text rest
        | Parser_XML.XCDATA uu___ -> is_all_text rest
        | Parser_XML.XComment uu___ -> is_all_text rest
+       | Parser_XML.XPI (uu___, uu___1) -> is_all_text rest
        | Parser_XML.XElement (uu___, uu___1, uu___2) -> false)
 let is_seeded_default_ns (uri : Prims.string) : Prims.bool=
   (((uri = rdfs_ns) || (uri = xml_ns)) || (uri = xmlns_ns)) || (uri = xsd_ns)
@@ -498,6 +495,8 @@ let rec serialize_xml_node_c14n (node : Parser_XML.xml_node)
      | Parser_XML.XText t -> t
      | Parser_XML.XCDATA t -> FStar_String.concat "" ["<![CDATA["; t; "]]>"]
      | Parser_XML.XComment t -> FStar_String.concat "" ["<!--"; t; "-->"]
+     | Parser_XML.XPI (tg, d) ->
+         FStar_String.concat "" ["<?"; tg; " "; d; "?>"]
      | Parser_XML.XElement (tag, attrs, children) ->
          let attr_strs =
            FStar_List_Tot_Base.map
@@ -535,6 +534,8 @@ let rec serialize_xml_node (node : Parser_XML.xml_node) (fuel : Prims.nat) :
      | Parser_XML.XText t -> t
      | Parser_XML.XCDATA t -> FStar_String.concat "" ["<![CDATA["; t; "]]>"]
      | Parser_XML.XComment t -> FStar_String.concat "" ["<!--"; t; "-->"]
+     | Parser_XML.XPI (tg, d) ->
+         FStar_String.concat "" ["<?"; tg; " "; d; "?>"]
      | Parser_XML.XElement (tag, attrs, children) ->
          let attr_strs =
            FStar_List_Tot_Base.map
@@ -558,64 +559,61 @@ let rec serialize_xml_node (node : Parser_XML.xml_node) (fuel : Prims.nat) :
               ["<"; tag; attr_str; ">"; children_str; "</"; tag; ">"]))
 type process_result =
   {
-  pr_triples: RDF_Graph_Executable.triple Prims.list ;
+  pr_triples: RDF_Triple.triple Prims.list ;
   pr_state: rdfxml_state }
 let __proj__Mkprocess_result__item__pr_triples (projectee : process_result) :
-  RDF_Graph_Executable.triple Prims.list=
+  RDF_Triple.triple Prims.list=
   match projectee with | { pr_triples; pr_state;_} -> pr_triples
 let __proj__Mkprocess_result__item__pr_state (projectee : process_result) :
   rdfxml_state= match projectee with | { pr_triples; pr_state;_} -> pr_state
 let empty_result (st : rdfxml_state) : process_result=
   { pr_triples = []; pr_state = st }
-let add_triples (pr : process_result)
-  (ts : RDF_Graph_Executable.triple Prims.list) : process_result=
+let add_triples (pr : process_result) (ts : RDF_Triple.triple Prims.list) :
+  process_result=
   {
     pr_triples = (FStar_List_Tot_Base.op_At pr.pr_triples ts);
     pr_state = (pr.pr_state)
   }
 let determine_subject_readonly (st : rdfxml_state)
   (attrs : Parser_XML.xml_attribute Prims.list) :
-  (RDF_Graph_Executable.subject * rdfxml_state)=
+  (RDF_Term.subject * rdfxml_state)=
   match Parser_XML.find_attr "rdf:about" attrs with
   | FStar_Pervasives_Native.Some about_val ->
       let iri = resolve_iri st.base_iri about_val in
-      if RDF_Graph_Executable.is_iri iri
-      then ((RDF_Graph_Executable.S_IRI iri), st)
+      if RDF_Term.is_iri iri
+      then ((RDF_Term.S_IRI iri), st)
       else
         (let uu___1 = fresh_bnode st in
-         match uu___1 with
-         | (bid, st') -> ((RDF_Graph_Executable.S_BNode bid), st'))
+         match uu___1 with | (bid, st') -> ((RDF_Term.S_BNode bid), st'))
   | FStar_Pervasives_Native.None ->
       (match Parser_XML.find_attr "rdf:ID" attrs with
        | FStar_Pervasives_Native.Some id_val ->
            let iri =
              resolve_iri st.base_iri (FStar_String.concat "" ["#"; id_val]) in
-           if RDF_Graph_Executable.is_iri iri
-           then ((RDF_Graph_Executable.S_IRI iri), st)
+           if RDF_Term.is_iri iri
+           then ((RDF_Term.S_IRI iri), st)
            else
              (let uu___1 = fresh_bnode st in
-              match uu___1 with
-              | (bid, st') -> ((RDF_Graph_Executable.S_BNode bid), st'))
+              match uu___1 with | (bid, st') -> ((RDF_Term.S_BNode bid), st'))
        | FStar_Pervasives_Native.None ->
            (match Parser_XML.find_attr "rdf:nodeID" attrs with
             | FStar_Pervasives_Native.Some nid ->
-                ((RDF_Graph_Executable.S_BNode nid), st)
+                ((RDF_Term.S_BNode nid), st)
             | FStar_Pervasives_Native.None ->
                 let uu___ = fresh_bnode st in
                 (match uu___ with
-                 | (bid, st') -> ((RDF_Graph_Executable.S_BNode bid), st'))))
+                 | (bid, st') -> ((RDF_Term.S_BNode bid), st'))))
 let determine_subject (st : rdfxml_state)
   (attrs : Parser_XML.xml_attribute Prims.list) :
-  (RDF_Graph_Executable.subject * rdfxml_state)=
+  (RDF_Term.subject * rdfxml_state)=
   match Parser_XML.find_attr "rdf:about" attrs with
   | FStar_Pervasives_Native.Some about_val ->
       let iri = resolve_iri st.base_iri about_val in
-      if RDF_Graph_Executable.is_iri iri
-      then ((RDF_Graph_Executable.S_IRI iri), st)
+      if RDF_Term.is_iri iri
+      then ((RDF_Term.S_IRI iri), st)
       else
         (let uu___1 = fresh_bnode st in
-         match uu___1 with
-         | (bid, st') -> ((RDF_Graph_Executable.S_BNode bid), st'))
+         match uu___1 with | (bid, st') -> ((RDF_Term.S_BNode bid), st'))
   | FStar_Pervasives_Native.None ->
       (match Parser_XML.find_attr "rdf:ID" attrs with
        | FStar_Pervasives_Native.Some id_val ->
@@ -633,41 +631,36 @@ let determine_subject (st : rdfxml_state)
                seen_ids = (dup_key :: (st.seen_ids));
                has_error = (st.has_error || dup)
              } in
-           if RDF_Graph_Executable.is_iri iri
-           then ((RDF_Graph_Executable.S_IRI iri), st_tracked)
+           if RDF_Term.is_iri iri
+           then ((RDF_Term.S_IRI iri), st_tracked)
            else
              (let uu___1 = fresh_bnode st_tracked in
-              match uu___1 with
-              | (bid, st') -> ((RDF_Graph_Executable.S_BNode bid), st'))
+              match uu___1 with | (bid, st') -> ((RDF_Term.S_BNode bid), st'))
        | FStar_Pervasives_Native.None ->
            (match Parser_XML.find_attr "rdf:nodeID" attrs with
             | FStar_Pervasives_Native.Some nid ->
-                ((RDF_Graph_Executable.S_BNode nid), st)
+                ((RDF_Term.S_BNode nid), st)
             | FStar_Pervasives_Native.None ->
                 let uu___ = fresh_bnode st in
                 (match uu___ with
-                 | (bid, st') -> ((RDF_Graph_Executable.S_BNode bid), st'))))
+                 | (bid, st') -> ((RDF_Term.S_BNode bid), st'))))
 let determine_property_object_from_attrs (st : rdfxml_state)
   (attrs : Parser_XML.xml_attribute Prims.list) :
-  (RDF_Graph_Executable.rdf_term * rdfxml_state)
-    FStar_Pervasives_Native.option=
+  (RDF_Term.rdf_term * rdfxml_state) FStar_Pervasives_Native.option=
   match Parser_XML.find_attr "rdf:resource" attrs with
   | FStar_Pervasives_Native.Some res_val ->
       let iri = resolve_iri st.base_iri res_val in
-      if RDF_Graph_Executable.is_iri iri
-      then
-        FStar_Pervasives_Native.Some ((RDF_Graph_Executable.T_IRI iri), st)
+      if RDF_Term.is_iri iri
+      then FStar_Pervasives_Native.Some ((RDF_Term.T_IRI iri), st)
       else FStar_Pervasives_Native.None
   | FStar_Pervasives_Native.None ->
       (match Parser_XML.find_attr "rdf:nodeID" attrs with
        | FStar_Pervasives_Native.Some nid ->
-           FStar_Pervasives_Native.Some
-             ((RDF_Graph_Executable.T_BNode nid), st)
+           FStar_Pervasives_Native.Some ((RDF_Term.T_BNode nid), st)
        | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None)
 let rec collect_property_attributes (st : rdfxml_state)
-  (subj : RDF_Graph_Executable.subject)
-  (attrs : Parser_XML.xml_attribute Prims.list) :
-  RDF_Graph_Executable.triple Prims.list=
+  (subj : RDF_Term.subject) (attrs : Parser_XML.xml_attribute Prims.list) :
+  RDF_Triple.triple Prims.list=
   match attrs with
   | [] -> []
   | attr::rest ->
@@ -684,28 +677,25 @@ let rec collect_property_attributes (st : rdfxml_state)
                then
                  (let type_iri =
                     resolve_iri st.base_iri attr.Parser_XML.attr_value in
-                  if
-                    (RDF_Graph_Executable.is_iri full_iri) &&
-                      (RDF_Graph_Executable.is_iri type_iri)
+                  if (RDF_Term.is_iri full_iri) && (RDF_Term.is_iri type_iri)
                   then
                     {
-                      RDF_Graph_Executable.s = subj;
-                      RDF_Graph_Executable.p = full_iri;
-                      RDF_Graph_Executable.o =
-                        (RDF_Graph_Executable.T_IRI type_iri)
+                      RDF_Triple.s = subj;
+                      RDF_Triple.p = full_iri;
+                      RDF_Triple.o = (RDF_Term.T_IRI type_iri)
                     } :: rest_triples
                   else rest_triples)
                else
-                 if RDF_Graph_Executable.is_iri full_iri
+                 if RDF_Term.is_iri full_iri
                  then
                    (match make_plain_literal attr.Parser_XML.attr_value
                             st.lang
                     with
                     | FStar_Pervasives_Native.Some lit_term ->
                         {
-                          RDF_Graph_Executable.s = subj;
-                          RDF_Graph_Executable.p = full_iri;
-                          RDF_Graph_Executable.o = lit_term
+                          RDF_Triple.s = subj;
+                          RDF_Triple.p = full_iri;
+                          RDF_Triple.o = lit_term
                         } :: rest_triples
                     | FStar_Pervasives_Native.None -> rest_triples)
                  else rest_triples
@@ -718,51 +708,46 @@ let rdf_predicate_iri : Prims.string=
   "http://www.w3.org/1999/02/22-rdf-syntax-ns#predicate"
 let rdf_object_iri : Prims.string=
   "http://www.w3.org/1999/02/22-rdf-syntax-ns#object"
-let subject_to_term (s : RDF_Graph_Executable.subject) :
-  RDF_Graph_Executable.rdf_term=
+let subject_to_term (s : RDF_Term.subject) : RDF_Term.rdf_term=
   match s with
-  | RDF_Graph_Executable.S_IRI i -> RDF_Graph_Executable.T_IRI i
-  | RDF_Graph_Executable.S_BNode b -> RDF_Graph_Executable.T_BNode b
+  | RDF_Term.S_IRI i -> RDF_Term.T_IRI i
+  | RDF_Term.S_BNode b -> RDF_Term.T_BNode b
 let make_reification_triples (reif_iri : Prims.string)
-  (subj : RDF_Graph_Executable.subject) (pred_iri : Prims.string)
-  (obj : RDF_Graph_Executable.rdf_term) :
-  RDF_Graph_Executable.triple Prims.list=
+  (subj : RDF_Term.subject) (pred_iri : Prims.string)
+  (obj : RDF_Term.rdf_term) : RDF_Triple.triple Prims.list=
   if
-    (Prims.op_Negation (RDF_Graph_Executable.is_iri reif_iri)) ||
-      (Prims.op_Negation (RDF_Graph_Executable.is_iri pred_iri))
+    (Prims.op_Negation (RDF_Term.is_iri reif_iri)) ||
+      (Prims.op_Negation (RDF_Term.is_iri pred_iri))
   then []
   else
     if
-      ((((Prims.op_Negation (RDF_Graph_Executable.is_iri rdf_type_iri)) ||
-           (Prims.op_Negation (RDF_Graph_Executable.is_iri rdf_statement_iri)))
-          ||
-          (Prims.op_Negation (RDF_Graph_Executable.is_iri rdf_subject_iri)))
-         ||
-         (Prims.op_Negation (RDF_Graph_Executable.is_iri rdf_predicate_iri)))
-        || (Prims.op_Negation (RDF_Graph_Executable.is_iri rdf_object_iri))
+      ((((Prims.op_Negation (RDF_Term.is_iri rdf_type_iri)) ||
+           (Prims.op_Negation (RDF_Term.is_iri rdf_statement_iri)))
+          || (Prims.op_Negation (RDF_Term.is_iri rdf_subject_iri)))
+         || (Prims.op_Negation (RDF_Term.is_iri rdf_predicate_iri)))
+        || (Prims.op_Negation (RDF_Term.is_iri rdf_object_iri))
     then []
     else
-      (let reif_s = RDF_Graph_Executable.S_IRI reif_iri in
+      (let reif_s = RDF_Term.S_IRI reif_iri in
        [{
-          RDF_Graph_Executable.s = reif_s;
-          RDF_Graph_Executable.p = rdf_type_iri;
-          RDF_Graph_Executable.o =
-            (RDF_Graph_Executable.T_IRI rdf_statement_iri)
+          RDF_Triple.s = reif_s;
+          RDF_Triple.p = rdf_type_iri;
+          RDF_Triple.o = (RDF_Term.T_IRI rdf_statement_iri)
         };
        {
-         RDF_Graph_Executable.s = reif_s;
-         RDF_Graph_Executable.p = rdf_subject_iri;
-         RDF_Graph_Executable.o = (subject_to_term subj)
+         RDF_Triple.s = reif_s;
+         RDF_Triple.p = rdf_subject_iri;
+         RDF_Triple.o = (subject_to_term subj)
        };
        {
-         RDF_Graph_Executable.s = reif_s;
-         RDF_Graph_Executable.p = rdf_predicate_iri;
-         RDF_Graph_Executable.o = (RDF_Graph_Executable.T_IRI pred_iri)
+         RDF_Triple.s = reif_s;
+         RDF_Triple.p = rdf_predicate_iri;
+         RDF_Triple.o = (RDF_Term.T_IRI pred_iri)
        };
        {
-         RDF_Graph_Executable.s = reif_s;
-         RDF_Graph_Executable.p = rdf_object_iri;
-         RDF_Graph_Executable.o = obj
+         RDF_Triple.s = reif_s;
+         RDF_Triple.p = rdf_object_iri;
+         RDF_Triple.o = obj
        }])
 let compute_reif_iri (st : rdfxml_state)
   (attrs : Parser_XML.xml_attribute Prims.list) :
@@ -771,7 +756,7 @@ let compute_reif_iri (st : rdfxml_state)
   | FStar_Pervasives_Native.Some id_val ->
       let frag = FStar_String.concat "" ["#"; id_val] in
       let r = resolve_iri st.base_iri frag in
-      if RDF_Graph_Executable.is_iri r
+      if RDF_Term.is_iri r
       then FStar_Pervasives_Native.Some r
       else FStar_Pervasives_Native.None
   | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
@@ -812,14 +797,13 @@ let rec process_node_element (st : rdfxml_state) (node : Parser_XML.xml_node)
                             (FStar_String.concat "" [rdf_ns; "Bag"])
                         then
                           (if
-                             (RDF_Graph_Executable.is_iri rdf_type_iri) &&
-                               (RDF_Graph_Executable.is_iri full_tag_iri)
+                             (RDF_Term.is_iri rdf_type_iri) &&
+                               (RDF_Term.is_iri full_tag_iri)
                            then
                              [{
-                                RDF_Graph_Executable.s = subj;
-                                RDF_Graph_Executable.p = rdf_type_iri;
-                                RDF_Graph_Executable.o =
-                                  (RDF_Graph_Executable.T_IRI full_tag_iri)
+                                RDF_Triple.s = subj;
+                                RDF_Triple.p = rdf_type_iri;
+                                RDF_Triple.o = (RDF_Term.T_IRI full_tag_iri)
                               }]
                            else [])
                         else
@@ -828,14 +812,14 @@ let rec process_node_element (st : rdfxml_state) (node : Parser_XML.xml_node)
                               (FStar_String.concat "" [rdf_ns; "Seq"])
                           then
                             (if
-                               (RDF_Graph_Executable.is_iri rdf_type_iri) &&
-                                 (RDF_Graph_Executable.is_iri full_tag_iri)
+                               (RDF_Term.is_iri rdf_type_iri) &&
+                                 (RDF_Term.is_iri full_tag_iri)
                              then
                                [{
-                                  RDF_Graph_Executable.s = subj;
-                                  RDF_Graph_Executable.p = rdf_type_iri;
-                                  RDF_Graph_Executable.o =
-                                    (RDF_Graph_Executable.T_IRI full_tag_iri)
+                                  RDF_Triple.s = subj;
+                                  RDF_Triple.p = rdf_type_iri;
+                                  RDF_Triple.o =
+                                    (RDF_Term.T_IRI full_tag_iri)
                                 }]
                              else [])
                           else
@@ -844,28 +828,26 @@ let rec process_node_element (st : rdfxml_state) (node : Parser_XML.xml_node)
                                 (FStar_String.concat "" [rdf_ns; "Alt"])
                             then
                               (if
-                                 (RDF_Graph_Executable.is_iri rdf_type_iri)
-                                   &&
-                                   (RDF_Graph_Executable.is_iri full_tag_iri)
+                                 (RDF_Term.is_iri rdf_type_iri) &&
+                                   (RDF_Term.is_iri full_tag_iri)
                                then
                                  [{
-                                    RDF_Graph_Executable.s = subj;
-                                    RDF_Graph_Executable.p = rdf_type_iri;
-                                    RDF_Graph_Executable.o =
-                                      (RDF_Graph_Executable.T_IRI
-                                         full_tag_iri)
+                                    RDF_Triple.s = subj;
+                                    RDF_Triple.p = rdf_type_iri;
+                                    RDF_Triple.o =
+                                      (RDF_Term.T_IRI full_tag_iri)
                                   }]
                                else [])
                             else
                               if
-                                (RDF_Graph_Executable.is_iri rdf_type_iri) &&
-                                  (RDF_Graph_Executable.is_iri full_tag_iri)
+                                (RDF_Term.is_iri rdf_type_iri) &&
+                                  (RDF_Term.is_iri full_tag_iri)
                               then
                                 [{
-                                   RDF_Graph_Executable.s = subj;
-                                   RDF_Graph_Executable.p = rdf_type_iri;
-                                   RDF_Graph_Executable.o =
-                                     (RDF_Graph_Executable.T_IRI full_tag_iri)
+                                   RDF_Triple.s = subj;
+                                   RDF_Triple.p = rdf_type_iri;
+                                   RDF_Triple.o =
+                                     (RDF_Term.T_IRI full_tag_iri)
                                  }]
                               else []
                 | FStar_Pervasives_Native.None -> [] in
@@ -883,10 +865,9 @@ let rec process_node_element (st : rdfxml_state) (node : Parser_XML.xml_node)
                 pr_state = (restore_scope st child_result.pr_state)
               })
      | uu___1 -> empty_result st)
-and process_property_children (st : rdfxml_state)
-  (subj : RDF_Graph_Executable.subject)
+and process_property_children (st : rdfxml_state) (subj : RDF_Term.subject)
   (children : Parser_XML.xml_node Prims.list) (fuel : Prims.nat)
-  (acc : RDF_Graph_Executable.triple Prims.list) : process_result=
+  (acc : RDF_Triple.triple Prims.list) : process_result=
   if fuel = Prims.int_zero
   then { pr_triples = (FStar_List_Tot_Base.rev acc); pr_state = st }
   else
@@ -903,9 +884,8 @@ and process_property_children (st : rdfxml_state)
           | uu___1 ->
               process_property_children st subj rest (fuel - Prims.int_one)
                 acc))
-and process_property_element (st : rdfxml_state)
-  (subj : RDF_Graph_Executable.subject) (node : Parser_XML.xml_node)
-  (fuel : Prims.nat) : process_result=
+and process_property_element (st : rdfxml_state) (subj : RDF_Term.subject)
+  (node : Parser_XML.xml_node) (fuel : Prims.nat) : process_result=
   if fuel = Prims.int_zero
   then empty_result st
   else
@@ -939,11 +919,11 @@ and process_property_element (st : rdfxml_state)
                  let uu___2 = next_li st1 in
                  (match uu___2 with
                   | (li_iri, st') ->
-                      if RDF_Graph_Executable.is_iri li_iri
+                      if RDF_Term.is_iri li_iri
                       then ((FStar_Pervasives_Native.Some li_iri), st')
                       else (FStar_Pervasives_Native.None, st'))
                else
-                 if RDF_Graph_Executable.is_iri full_iri
+                 if RDF_Term.is_iri full_iri
                  then ((FStar_Pervasives_Native.Some full_iri), st1)
                  else (FStar_Pervasives_Native.None, st1)
            | FStar_Pervasives_Native.None ->
@@ -953,8 +933,7 @@ and process_property_element (st : rdfxml_state)
               (match pred_iri_opt with
                | FStar_Pervasives_Native.None -> empty_result st2
                | FStar_Pervasives_Native.Some pred_iri ->
-                   if
-                     Prims.op_Negation (RDF_Graph_Executable.is_iri pred_iri)
+                   if Prims.op_Negation (RDF_Term.is_iri pred_iri)
                    then empty_result st2
                    else
                      (let parse_type =
@@ -963,7 +942,7 @@ and process_property_element (st : rdfxml_state)
                       | FStar_Pervasives_Native.Some "Literal" ->
                           let xml_content =
                             serialize_children_xml children st1.namespaces in
-                          if RDF_Graph_Executable.is_iri rdf_xmlliteral_iri
+                          if RDF_Term.is_iri rdf_xmlliteral_iri
                           then
                             (match make_typed_literal xml_content
                                      rdf_xmlliteral_iri
@@ -971,9 +950,9 @@ and process_property_element (st : rdfxml_state)
                              | FStar_Pervasives_Native.Some obj ->
                                  let t =
                                    {
-                                     RDF_Graph_Executable.s = subj;
-                                     RDF_Graph_Executable.p = pred_iri;
-                                     RDF_Graph_Executable.o = obj
+                                     RDF_Triple.s = subj;
+                                     RDF_Triple.p = pred_iri;
+                                     RDF_Triple.o = obj
                                    } in
                                  {
                                    pr_triples = (t :: (reif_of pred_iri obj));
@@ -986,15 +965,13 @@ and process_property_element (st : rdfxml_state)
                           let uu___3 = fresh_bnode st2 in
                           (match uu___3 with
                            | (bid, st3) ->
-                               let bnode_subj =
-                                 RDF_Graph_Executable.S_BNode bid in
-                               let obj_term =
-                                 RDF_Graph_Executable.T_BNode bid in
+                               let bnode_subj = RDF_Term.S_BNode bid in
+                               let obj_term = RDF_Term.T_BNode bid in
                                let link_triple =
                                  {
-                                   RDF_Graph_Executable.s = subj;
-                                   RDF_Graph_Executable.p = pred_iri;
-                                   RDF_Graph_Executable.o = obj_term
+                                   RDF_Triple.s = subj;
+                                   RDF_Triple.p = pred_iri;
+                                   RDF_Triple.o = obj_term
                                  } in
                                let st4 = reset_li_counter st3 in
                                let child_result =
@@ -1020,21 +997,21 @@ and process_property_element (st : rdfxml_state)
                            | FStar_Pervasives_Native.Some (obj, st3) ->
                                let link_triple =
                                  {
-                                   RDF_Graph_Executable.s = subj;
-                                   RDF_Graph_Executable.p = pred_iri;
-                                   RDF_Graph_Executable.o = obj
+                                   RDF_Triple.s = subj;
+                                   RDF_Triple.p = pred_iri;
+                                   RDF_Triple.o = obj
                                  } in
                                let obj_subj_opt =
                                  match obj with
-                                 | RDF_Graph_Executable.T_IRI i ->
-                                     if RDF_Graph_Executable.is_iri i
+                                 | RDF_Term.T_IRI i ->
+                                     if RDF_Term.is_iri i
                                      then
                                        FStar_Pervasives_Native.Some
-                                         (RDF_Graph_Executable.S_IRI i)
+                                         (RDF_Term.S_IRI i)
                                      else FStar_Pervasives_Native.None
-                                 | RDF_Graph_Executable.T_BNode b ->
+                                 | RDF_Term.T_BNode b ->
                                      FStar_Pervasives_Native.Some
-                                       (RDF_Graph_Executable.S_BNode b)
+                                       (RDF_Term.S_BNode b)
                                  | uu___4 -> FStar_Pervasives_Native.None in
                                let prop_attr_triples =
                                  match obj_subj_opt with
@@ -1081,20 +1058,15 @@ and process_property_element (st : rdfxml_state)
                                        | (child_s, st3) ->
                                            let obj_term =
                                              match child_s with
-                                             | RDF_Graph_Executable.S_IRI i
-                                                 ->
-                                                 RDF_Graph_Executable.T_IRI i
-                                             | RDF_Graph_Executable.S_BNode b
-                                                 ->
-                                                 RDF_Graph_Executable.T_BNode
-                                                   b in
+                                             | RDF_Term.S_IRI i ->
+                                                 RDF_Term.T_IRI i
+                                             | RDF_Term.S_BNode b ->
+                                                 RDF_Term.T_BNode b in
                                            let link_triple =
                                              {
-                                               RDF_Graph_Executable.s = subj;
-                                               RDF_Graph_Executable.p =
-                                                 pred_iri;
-                                               RDF_Graph_Executable.o =
-                                                 obj_term
+                                               RDF_Triple.s = subj;
+                                               RDF_Triple.p = pred_iri;
+                                               RDF_Triple.o = obj_term
                                              } in
                                            {
                                              pr_triples =
@@ -1121,8 +1093,7 @@ and process_property_element (st : rdfxml_state)
                                     match uu___5 with
                                     | (probe_bid, uu___6) ->
                                         collect_property_attributes st2
-                                          (RDF_Graph_Executable.S_BNode
-                                             probe_bid) attrs in
+                                          (RDF_Term.S_BNode probe_bid) attrs in
                                   if
                                     ((Prims.op_Negation has_text) &&
                                        (Prims.op_Negation has_datatype))
@@ -1134,15 +1105,13 @@ and process_property_element (st : rdfxml_state)
                                     let uu___5 = fresh_bnode st2 in
                                     match uu___5 with
                                     | (bid, st3) ->
-                                        let bnode_subj =
-                                          RDF_Graph_Executable.S_BNode bid in
-                                        let obj_term =
-                                          RDF_Graph_Executable.T_BNode bid in
+                                        let bnode_subj = RDF_Term.S_BNode bid in
+                                        let obj_term = RDF_Term.T_BNode bid in
                                         let link_triple =
                                           {
-                                            RDF_Graph_Executable.s = subj;
-                                            RDF_Graph_Executable.p = pred_iri;
-                                            RDF_Graph_Executable.o = obj_term
+                                            RDF_Triple.s = subj;
+                                            RDF_Triple.p = pred_iri;
+                                            RDF_Triple.o = obj_term
                                           } in
                                         let prop_attr_triples =
                                           collect_property_attributes st3
@@ -1170,10 +1139,9 @@ and process_property_element (st : rdfxml_state)
                                      | FStar_Pervasives_Native.Some obj ->
                                          let t =
                                            {
-                                             RDF_Graph_Executable.s = subj;
-                                             RDF_Graph_Executable.p =
-                                               pred_iri;
-                                             RDF_Graph_Executable.o = obj
+                                             RDF_Triple.s = subj;
+                                             RDF_Triple.p = pred_iri;
+                                             RDF_Triple.o = obj
                                            } in
                                          {
                                            pr_triples = (t ::
@@ -1183,8 +1151,8 @@ and process_property_element (st : rdfxml_state)
                                      | FStar_Pervasives_Native.None ->
                                          empty_result st2))))))
      | uu___1 -> empty_result st)
-and process_collection (st : rdfxml_state)
-  (subj : RDF_Graph_Executable.subject) (pred_iri : Prims.string)
+and process_collection (st : rdfxml_state) (subj : RDF_Term.subject)
+  (pred_iri : Prims.string)
   (reif_iri_opt : Prims.string FStar_Pervasives_Native.option)
   (items : Parser_XML.xml_node Prims.list) (fuel : Prims.nat) :
   process_result=
@@ -1204,24 +1172,22 @@ and process_collection (st : rdfxml_state)
        | FStar_Pervasives_Native.None -> [] in
      if (FStar_List_Tot_Base.length elem_items) = Prims.int_zero
      then
-       (if
-          (RDF_Graph_Executable.is_iri rdf_nil_iri) &&
-            (RDF_Graph_Executable.is_iri pred_iri)
+       (if (RDF_Term.is_iri rdf_nil_iri) && (RDF_Term.is_iri pred_iri)
         then
-          let obj = RDF_Graph_Executable.T_IRI rdf_nil_iri in
+          let obj = RDF_Term.T_IRI rdf_nil_iri in
           let t =
             {
-              RDF_Graph_Executable.s = subj;
-              RDF_Graph_Executable.p = pred_iri;
-              RDF_Graph_Executable.o = obj
+              RDF_Triple.s = subj;
+              RDF_Triple.p = pred_iri;
+              RDF_Triple.o = obj
             } in
           { pr_triples = (t :: (reif_for obj)); pr_state = st }
         else empty_result st)
      else
        build_collection_list st subj pred_iri reif_iri_opt elem_items
          (fuel - Prims.int_one))
-and build_collection_list (st : rdfxml_state)
-  (subj : RDF_Graph_Executable.subject) (pred_iri : Prims.string)
+and build_collection_list (st : rdfxml_state) (subj : RDF_Term.subject)
+  (pred_iri : Prims.string)
   (reif_iri_opt : Prims.string FStar_Pervasives_Native.option)
   (items : Parser_XML.xml_node Prims.list) (fuel : Prims.nat) :
   process_result=
@@ -1235,33 +1201,31 @@ and build_collection_list (st : rdfxml_state)
        | FStar_Pervasives_Native.None -> [] in
      match items with
      | [] ->
-         if
-           (RDF_Graph_Executable.is_iri rdf_nil_iri) &&
-             (RDF_Graph_Executable.is_iri pred_iri)
+         if (RDF_Term.is_iri rdf_nil_iri) && (RDF_Term.is_iri pred_iri)
          then
-           let obj = RDF_Graph_Executable.T_IRI rdf_nil_iri in
+           let obj = RDF_Term.T_IRI rdf_nil_iri in
            let t =
              {
-               RDF_Graph_Executable.s = subj;
-               RDF_Graph_Executable.p = pred_iri;
-               RDF_Graph_Executable.o = obj
+               RDF_Triple.s = subj;
+               RDF_Triple.p = pred_iri;
+               RDF_Triple.o = obj
              } in
            { pr_triples = (t :: (reif_for obj)); pr_state = st }
          else empty_result st
      | item::rest ->
-         if Prims.op_Negation (RDF_Graph_Executable.is_iri pred_iri)
+         if Prims.op_Negation (RDF_Term.is_iri pred_iri)
          then empty_result st
          else
            (let uu___2 = fresh_bnode st in
             match uu___2 with
             | (list_bid, st2) ->
-                let list_node = RDF_Graph_Executable.S_BNode list_bid in
-                let link_obj = RDF_Graph_Executable.T_BNode list_bid in
+                let list_node = RDF_Term.S_BNode list_bid in
+                let link_obj = RDF_Term.T_BNode list_bid in
                 let link_triple =
                   {
-                    RDF_Graph_Executable.s = subj;
-                    RDF_Graph_Executable.p = pred_iri;
-                    RDF_Graph_Executable.o = link_obj
+                    RDF_Triple.s = subj;
+                    RDF_Triple.p = pred_iri;
+                    RDF_Triple.o = link_obj
                   } in
                 let link_reif = reif_for link_obj in
                 let item_result =
@@ -1276,20 +1240,18 @@ and build_collection_list (st : rdfxml_state)
                  | (item_subj, st3) ->
                      let item_term =
                        match item_subj with
-                       | RDF_Graph_Executable.S_IRI i ->
-                           RDF_Graph_Executable.T_IRI i
-                       | RDF_Graph_Executable.S_BNode b ->
-                           RDF_Graph_Executable.T_BNode b in
-                     if RDF_Graph_Executable.is_iri rdf_first_iri
+                       | RDF_Term.S_IRI i -> RDF_Term.T_IRI i
+                       | RDF_Term.S_BNode b -> RDF_Term.T_BNode b in
+                     if RDF_Term.is_iri rdf_first_iri
                      then
                        let first_triple =
                          {
-                           RDF_Graph_Executable.s = list_node;
-                           RDF_Graph_Executable.p = rdf_first_iri;
-                           RDF_Graph_Executable.o = item_term
+                           RDF_Triple.s = list_node;
+                           RDF_Triple.p = rdf_first_iri;
+                           RDF_Triple.o = item_term
                          } in
                        let rest_result =
-                         if RDF_Graph_Executable.is_iri rdf_rest_iri
+                         if RDF_Term.is_iri rdf_rest_iri
                          then
                            build_collection_list st3 list_node rdf_rest_iri
                              FStar_Pervasives_Native.None rest
@@ -1306,7 +1268,7 @@ and build_collection_list (st : rdfxml_state)
                        }
                      else
                        (let rest_result =
-                          if RDF_Graph_Executable.is_iri rdf_rest_iri
+                          if RDF_Term.is_iri rdf_rest_iri
                           then
                             build_collection_list st3 list_node rdf_rest_iri
                               FStar_Pervasives_Native.None rest
@@ -1323,7 +1285,7 @@ and build_collection_list (st : rdfxml_state)
                         }))))
 let rec process_node_elements (st : rdfxml_state)
   (nodes : Parser_XML.xml_node Prims.list) (fuel : Prims.nat)
-  (acc : RDF_Graph_Executable.triple Prims.list) : process_result=
+  (acc : RDF_Triple.triple Prims.list) : process_result=
   if fuel = Prims.int_zero
   then { pr_triples = (FStar_List_Tot_Base.rev acc); pr_state = st }
   else
@@ -1354,21 +1316,21 @@ let process_xml_tree_full (st : rdfxml_state) (root : Parser_XML.xml_node)
       else process_node_element st1 root fuel
   | uu___ -> empty_result st
 let process_xml_tree (st : rdfxml_state) (root : Parser_XML.xml_node)
-  (fuel : Prims.nat) : RDF_Graph_Executable.triple Prims.list=
+  (fuel : Prims.nat) : RDF_Triple.triple Prims.list=
   (process_xml_tree_full st root fuel).pr_triples
 let parse_rdfxml_with_base (base_iri : Prims.string) (input : Prims.string) :
-  RDF_Graph_Executable.triple Prims.list=
+  RDF_Triple.triple Prims.list=
   match Parser_XML.parse_xml_document input with
   | FStar_Pervasives_Native.Some root ->
       let st = initial_state base_iri in
       let fuel = (FStar_String.strlen input) + Prims.int_one in
       process_xml_tree st root fuel
   | FStar_Pervasives_Native.None -> []
-let parse_rdfxml (input : Prims.string) :
-  RDF_Graph_Executable.triple Prims.list= parse_rdfxml_with_base "" input
+let parse_rdfxml (input : Prims.string) : RDF_Triple.triple Prims.list=
+  parse_rdfxml_with_base "" input
 let parse_rdfxml_with_base_strict (base_iri : Prims.string)
   (input : Prims.string) :
-  RDF_Graph_Executable.triple Prims.list FStar_Pervasives_Native.option=
+  RDF_Triple.triple Prims.list FStar_Pervasives_Native.option=
   match Parser_XML.parse_xml_document input with
   | FStar_Pervasives_Native.Some root ->
       let st = initial_state base_iri in
@@ -1379,5 +1341,5 @@ let parse_rdfxml_with_base_strict (base_iri : Prims.string)
       else FStar_Pervasives_Native.Some (r.pr_triples)
   | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
 let parse_rdfxml_strict (input : Prims.string) :
-  RDF_Graph_Executable.triple Prims.list FStar_Pervasives_Native.option=
+  RDF_Triple.triple Prims.list FStar_Pervasives_Native.option=
   parse_rdfxml_with_base_strict "" input
