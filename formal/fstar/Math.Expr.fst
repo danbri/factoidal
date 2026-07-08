@@ -1,9 +1,12 @@
 module Math.Expr
 
 // Domain-neutral symbolic-math foundation, intended to be the shared
-// CAS-agnostic core: a SymPy-style symbolic expression AST, an exact
-// rational value type with its arithmetic, and a fuel-bounded numeric
-// evaluator. NOTHING in this module is MathML-specific; the Content
+// CAS-agnostic core: a symbolic expression AST (numbers, symbols, and
+// n-ary function-application nodes), an exact rational value type with
+// its arithmetic, and a fuel-bounded numeric evaluator. This is an
+// independent F* implementation of standard computer-algebra data
+// structures -- no code, API, or algorithm is ported from SymPy or any
+// other CAS. NOTHING in this module is MathML-specific; the Content
 // MathML front-end (MathML.Content.fst) maps its xml_node trees into
 // Math.Expr.expr and reuses `eval` here, and a future verified CAS
 // (simplify / differentiate / substitute / expand) will pattern-match
