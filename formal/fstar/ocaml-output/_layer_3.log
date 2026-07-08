@@ -2,20 +2,17 @@
     SPARQL11.Algebra.fst (up to date, skipped -- source unchanged since last extract)
     HDT.Container.fst (up to date, skipped -- source unchanged since last extract)
     Parser.NQuads.fst (up to date, skipped -- source unchanged since last extract)
+    XPath.Eval.fst (up to date, skipped -- source unchanged since last extract)
     XML.Namespaces.fst (up to date, skipped -- source unchanged since last extract)
-    [XPath.Eval.fst]
-    [Parser.RDFXML.fst]
+    Parser.RDFXML.fst (up to date, skipped -- source unchanged since last extract)
     Parser.RIFXML.fst (up to date, skipped -- source unchanged since last extract)
+    MathML.Content.fst (up to date, skipped -- source unchanged since last extract)
     Parser.SRX.fst (up to date, skipped -- source unchanged since last extract)
-    [MathML.Content.fst]
     JSONLD.Context.fst (up to date, skipped -- source unchanged since last extract)
     JSONLD.FromRdf.fst (up to date, skipped -- source unchanged since last extract)
-    JSONSchema.Validate.fst (up to date, skipped -- source unchanged since last extract)
     ShEx.Schema.fst (up to date, skipped -- source unchanged since last extract)
+    JSONSchema.Validate.fst (up to date, skipped -- source unchanged since last extract)
     VC.DataIntegrity.fst (up to date, skipped -- source unchanged since last extract)
-    RML.Sources.fst (up to date, skipped -- source unchanged since last extract)
     CSVW.Metadata.fst (up to date, skipped -- source unchanged since last extract)
+    RML.Sources.fst (up to date, skipped -- source unchanged since last extract)
     RDF.CottasStore.CompoundPresenceBitmap.fst (up to date, skipped -- source unchanged since last extract)
-    [MathML.Content.fst] Extracted module MathML.Content
-    [XPath.Eval.fst] Extracted module XPath.Eval
-    [Parser.RDFXML.fst] Extracted module Parser.RDFXML

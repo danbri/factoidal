@@ -90,6 +90,9 @@ COMMON_MODULES=(
   Math_Subst
   Math_Diff
   Math_Simplify
+  MathML_Content
+  Math_Series
+  MathML_Present
   Parser_SRX
   Parser_CSVResults
   Parser_JSONResults

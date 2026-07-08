@@ -11,8 +11,9 @@ module Math.Simplify
 //     6/2 -> 3, 2^3 -> 8). Folding that would be undefined (e.g. /0)
 //     is left symbolic — never faked.
 //   * plus  : flatten nested plus, drop +0 identities, sum numeric
-//     literals into one constant, collect repeated summands into an
-//     integer coefficient (x+x -> 2*x), deterministic ordering.
+//     literals into one constant, and merge like terms by summing their
+//     rational coefficients over a canonical core key — so x+x -> 2*x
+//     and y + 2*y + 3*y + 4*y -> 10*y. Deterministic ordering.
 //   * times : flatten nested times, annihilate on any literal 0,
 //     drop *1 identities, multiply numeric literals into one constant,
 //     combine equal bases with integer exponents (x*x -> x^2,
@@ -22,8 +23,6 @@ module Math.Simplify
 // What it deliberately does NOT do (documented gaps, all sound to omit):
 //   * distribute / expand products over sums (that is a separate
 //     `expand`); no factoring.
-//   * fold coefficient-carrying like-terms such as (2*x)+x -> 3*x
-//     (only exact repeats of an identical subterm are collected).
 //   * a^0 -> 1 for a symbolic base (unsound at a = 0), or any rule
 //     that changes the domain of definition.
 //   * trig/log simplification identities.
@@ -121,20 +120,6 @@ let rec flatten_op (fn:string) (args:list expr) : Tot (list expr) (decreases arg
      | _ -> h :: rest)
 
 (* ---------------------------------------------------------------- *)
-(* Tally identical exprs into (expr, count) pairs, insertion-ordered. *)
-(* ---------------------------------------------------------------- *)
-
-let rec bump (t:expr) (acc:list (expr & nat)) : Tot (list (expr & nat)) (decreases acc) =
-  match acc with
-  | [] -> [(t, 1)]
-  | (h, c) :: rest -> if h = t then (h, c + 1) :: rest else (h, c) :: bump t rest
-
-let rec tally (l:list expr) (acc:list (expr & nat)) : Tot (list (expr & nat)) (decreases l) =
-  match l with
-  | [] -> acc
-  | h :: t -> tally t (bump h acc)
-
-(* ---------------------------------------------------------------- *)
 (* Base/exponent view of a factor and integer-exponent combination.  *)
 (* ---------------------------------------------------------------- *)
 
@@ -179,12 +164,73 @@ let rec split_prod (args:list expr) (constv:mvalue) (factors:list expr)
 (* Emit summands / factors from the collected structures.            *)
 (* ---------------------------------------------------------------- *)
 
-let rec emit_summands (pairs:list (expr & nat)) : Tot (list expr) (decreases pairs) =
-  match pairs with
+(* ---------------------------------------------------------------- *)
+(* Coefficient-carrying like-term merge for a sum.                    *)
+(*                                                                    *)
+(* Each non-numeric summand is split into a rational coefficient and  *)
+(* a "core" — the list of its non-numeric factors (already sorted,    *)
+(* because the child was simplified). Summands whose cores share a    *)
+(* canonical key (expr_key of the core) have their coefficients       *)
+(* SUMMED, so y + 2*y + 3*y + 4*y -> 10*y and x + x -> 2*x. Only      *)
+(* genuinely like terms merge: distinct cores have distinct keys, so  *)
+(* unlike terms are never combined (soundness > coverage).            *)
+(* ---------------------------------------------------------------- *)
+
+// Split a summand into (rational coefficient, core factor list). A
+// times node contributes its numeric-literal factors to the coefficient
+// and the rest to the core; anything else is coefficient 1 over itself.
+let split_coeff (e:expr) : (mvalue & list expr) =
+  match e with
+  | E_App "times" factors -> split_prod factors (MV_Rat 1 1) []
+  | _ -> (MV_Rat 1 1, [e])
+
+// Canonical key for a core factor list (the empty core denotes a pure
+// number, folded into the additive constant rather than keyed).
+let core_key (cf:list expr) : string =
+  match cf with
+  | [] -> ""
+  | [f] -> expr_key f
+  | _ -> expr_key (E_App "times" cf)
+
+// Add coefficient c for the core keyed by k (factors cf) into acc,
+// summing into an existing group with the same key.
+let rec bump_core (k:string) (cf:list expr) (c:mvalue)
+                  (acc:list (string & list expr & mvalue))
+  : Tot (list (string & list expr & mvalue)) (decreases acc) =
+  match acc with
+  | [] -> [(k, cf, c)]
+  | (hk, hcf, hc) :: rest ->
+    if hk = k then (hk, hcf, m_add hc c) :: rest
+    else (hk, hcf, hc) :: bump_core k cf c rest
+
+// Fold the non-numeric summands into (additive constant, keyed groups).
+// A summand that reduces to a pure number (empty core) is added to the
+// constant instead of forming a group.
+let rec collect_coeffs (terms:list expr) (constv:mvalue)
+                       (acc:list (string & list expr & mvalue))
+  : Tot (mvalue & list (string & list expr & mvalue)) (decreases terms) =
+  match terms with
+  | [] -> (constv, acc)
+  | t :: rest ->
+    let (c, cf) = split_coeff t in
+    (match cf with
+     | [] -> collect_coeffs rest (m_add constv c) acc
+     | _ -> collect_coeffs rest constv (bump_core (core_key cf) cf c acc))
+
+// Rebuild one summand from its coefficient and core. Coefficient 0
+// annihilates (empty), 1 drops (bare core), otherwise emit a flat
+// times node coeff::core so a re-simplify is stable (idempotence).
+let merged_term (cf:list expr) (c:mvalue) : list expr =
+  match c with
+  | MV_Rat 0 1 -> []
+  | MV_Rat 1 1 -> [ (match cf with [f] -> f | _ -> E_App "times" cf) ]
+  | _ -> [ E_App "times" (value_to_lit c :: cf) ]
+
+let rec emit_merged (groups:list (string & list expr & mvalue))
+  : Tot (list expr) (decreases groups) =
+  match groups with
   | [] -> []
-  | (t, c) :: rest ->
-    let head = if c <= 1 then t else E_App "times" [E_Int c; t] in
-    head :: emit_summands rest
+  | (_, cf, c) :: rest -> append (merged_term cf c) (emit_merged rest)
 
 let rec emit_factors (pairs:list (expr & int)) : Tot (list expr) (decreases pairs) =
   match pairs with
@@ -201,9 +247,9 @@ let rec emit_factors (pairs:list (expr & int)) : Tot (list expr) (decreases pair
 
 let simplify_plus (args:list expr) : expr =
   let flat = flatten_op "plus" args in
-  let (constv, terms) = split_sum flat (MV_Rat 0 1) [] in
-  let pairs = tally terms [] in
-  let summands = sort_exprs (emit_summands pairs) in
+  let (constv0, terms) = split_sum flat (MV_Rat 0 1) [] in
+  let (constv, groups) = collect_coeffs terms constv0 [] in
+  let summands = sort_exprs (emit_merged groups) in
   let const_lit =
     (match constv with
      | MV_Rat 0 1 -> []
