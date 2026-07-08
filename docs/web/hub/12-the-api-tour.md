@@ -105,7 +105,7 @@ A stale bundle would show `false` for whichever feature it predates,
 which is exactly what `capabilities()`'s own doc comment (`{entry:
 boolean, ..., rif: boolean}` — see
 [`npm/factoidal/lib/api.js`](https://github.com/danbri/factoidal/blob/claude/main/npm/factoidal/lib/api.js))
-promises server-side: an honest per-feature probe, not a blanket
+promises server-side: a per-feature probe, not a blanket
 version check.
 
 ## The wasm entry caught up
@@ -125,10 +125,10 @@ measured directly against this repository's current wasm build —
 }
 ```
 
-Two things landed together to get here: a rebuild of the npm-entry
-ABI bundle (`factoidal-npm-entry.wasm.js`) so it actually includes
-every export the js_of_ocaml build ships, and a fix to a
-`require.main`-path bug in `wasm.js`'s entry loader — the loader
+Two things make this work: the npm-entry ABI bundle
+(`factoidal-npm-entry.wasm.js`) includes every export the js_of_ocaml
+build ships, and a `require.main`-path bug in `wasm.js`'s entry loader
+is fixed — the loader
 resolved the bundle's `.wasm.assets/` directory relative to
 `require.main.filename`, which is wrong for any caller whose own main
 module lives somewhere else (any `test/` file, any downstream

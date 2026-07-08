@@ -9,12 +9,13 @@ A home for longer-form, interactive write-ups about how Factoidal
 works — RDF/SPARQL concepts demonstrated by running the real
 F\*-extracted engine in your browser, not by prose alone.
 
-Twenty-three posts are published below. Most carry live runnable cells;
-one is a CLI-transcript-and-architecture page for the
-network/native features a sandboxed browser cell can't run. The
-rest of the series (see
-[the series plan](../../designissues/2026-07-05-docs-hub-plan/) for
-the full map and vocabulary strategy) is still planned.
+Each post takes one thing you can do with RDF data — parse it, query
+it, validate it, transform it, canonicalize it, serve it — and shows
+it running. Most carry live runnable cells; one is a
+CLI-transcript-and-architecture page for the network/native features a
+sandboxed browser cell can't run. The
+[series plan](../../designissues/2026-07-05-docs-hub-plan/) records
+each post's central vocabulary and live elements.
 
 ## How the interactive cells work
 
@@ -85,7 +86,7 @@ headlessly.
   <li><a href="./04-concept-schemes-skos/">Concept schemes: SKOS and its integrity conditions</a> — SKOS + the S9/S13/S14/S27/S37/S46 integrity conditions (skos)</li>
   <li><a href="./05-shapes-that-validate-shacl/">Shapes that validate: SHACL</a> — minCount/datatype/class constraints, validation reports (foaf)</li>
   <li><a href="./11-one-graph-five-syntaxes/">One graph, five syntaxes</a> — Turtle/N-Triples/N-Quads/TriG/RDF-XML round-tripping to identical bytes (foaf)</li>
-  <li><a href="./17-mutating-and-serving-data/">Mutating and serving data: SPARQL Update, Protocol, Graph Store</a> — INSERT/DELETE DATA and DELETE/INSERT WHERE live via the npm-entry ABI, this week's durable delta-log work dated commit by commit, and factoidal-http/Graph Store Protocol status (foaf)</li>
+  <li><a href="./17-mutating-and-serving-data/">Mutating and serving data: SPARQL Update, Protocol, Graph Store</a> — INSERT/DELETE DATA and DELETE/INSERT WHERE live via the npm-entry ABI, the durable delta-log write path, and factoidal-http/Graph Store Protocol status (foaf)</li>
   <li><a href="./06-shapes-the-other-dialect-shex/">Shapes, the other dialect: ShEx</a> — ShExJ validation, Wikidata EntitySchemas (wikidata)</li>
   <li><a href="./07-json-ld-rdf-as-json/">JSON-LD: RDF as JSON</a> — @context as mapping, toRdf/jsonldToRdf (schema.org)</li>
   <li><a href="./08-canonical-graphs-rdfc10/">Canonical graphs: RDFC-1.0 and content addressing</a> — canonicalize + urn:rdfc:sha256 (foaf)</li>
@@ -96,20 +97,15 @@ headlessly.
   <li><a href="./13-verifiable-credentials-and-csvw/">Verifiable Credentials and CSVW</a> — VC structural validation (no crypto yet) + CSVW csv2rdf live (schema.org)</li>
   <li><a href="./15-how-fast-the-performance-story/">How fast: the performance story</a> — dated, commit-linked throughput and on-disk reader numbers, one live in-browser timing illustration (wikidata)</li>
   <li><a href="./16-the-verified-in-fstar-story/">The verified-in-F* story</a> — why F*, the standing verification qualifier, the skimmable RDF.Term.fsti core, one source to four extraction targets</li>
-  <li><a href="./18-the-durable-log-live/">The durable log, live: update, persist, reload, corrupt</a> — the full durable-UPDATE lifecycle running in your browser via IndexedDB across a real page reload, a live checksum-rejection demo, and the same delta-log module proven running natively, as KaRaMeL C, and honestly not yet in wasm (foaf)</li>
+  <li><a href="./18-the-durable-log-live/">The durable log, live: update, persist, reload, corrupt</a> — the full durable-UPDATE lifecycle running in your browser via IndexedDB across a real page reload, a live checksum-rejection demo, and the same delta-log module proven running natively, as KaRaMeL C, and as wasm (foaf)</li>
   <li><a href="./19-correlated-joins-lateral/">Correlated joins: LATERAL</a> — LATERAL evaluates its right side once per left row with that row's bindings substituted in, making top-N-per-group expressible (SPARQL 1.2-track / Jena-compatible)</li>
-  <li><a href="./20-fulltext-search-text-query/">Full-text search: text:query</a> — the jena-text magic predicate that searches literals instead of matching triples, AND-by-default token semantics, slice-1 (no scoring yet)</li>
+  <li><a href="./20-fulltext-search-text-query/">Full-text search: text:query</a> — the jena-text magic predicate that searches literals instead of matching triples, conjunctive token matching, no relevance ranking</li>
   <li><a href="./21-geosparql-geometry-and-topology/">GeoSPARQL: geometry, topology, and exact-rational arithmetic</a> — geo:wktLiteral geometries and the geof: Simple Features predicates (sfWithin/sfIntersects/sfDisjoint/sfTouches), geof:distance and geof:envelope, with a point-exactly-on-a-polygon-edge case decided by pure exact-rational F* — no floating-point epsilon (geosparql)</li>
   <li><a href="./22-reaching-out-to-other-data/">Reaching out to other data: the SPARQL client, SERVICE tool-wrapping, and virtual RML</a> — answering SPARQL over data factoidal doesn't hold locally, three ways: query --endpoint against a remote SPARQL 1.1 Protocol server, SERVICE &lt;wrap+http://...&gt; triplifying a REST/CSV/Turtle source (SPARQL-Anything-adjacent), and --data-rml answering through an RML mapping non-materialized (D2RQ/Ontop-style pushdown). A CLI-transcript-and-architecture page — network/native features, no live cell (none)</li>
   <li><a href="./23-decentralized-identifiers-did-key/">Decentralized Identifiers: did:key</a> — resolving a did:key:z6Mk… Ed25519 identifier to its DID Document as pure, offline, F*-verified function application, rendered live as triples and a node-graph (did)</li>
   <li><a href="./24-hdt-header-dictionary-triples/">HDT: querying a compressed binary RDF file</a> — SPARQL run straight over the RML-Core ontology's Header-Dictionary-Triples binary via --data-hdt, with a live triple count, class table, and predicate histogram; no prior decompression to text (hdt)</li>
   <li><a href="./25-xml-wellformedness-and-xpath/">XML well-formedness and XPath</a> — the generic F* XML parser deciding well-formed vs malformed live, plus XPath 1.0 evaluation returning node-sets, strings, numbers, and booleans over a sample document (xml)</li>
 </ul>
-
-(Every post above has shipped — the series plan's placeholder list is
-now empty. [The series plan](../../designissues/2026-07-05-docs-hub-plan/)
-still records each post's central vocabulary, live elements, and
-pinning test file for reference.)
 
 See also: the <a href="../perf/">performance hub</a> — measured
 runtime-vs-runtime comparisons across the four extraction targets

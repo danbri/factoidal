@@ -1,6 +1,6 @@
 ---
 title: "Reaching out to other data: the SPARQL client, SERVICE tool-wrapping, and virtual RML"
-description: "Three ways factoidal answers SPARQL over data it doesn't hold locally — a SPARQL 1.1 Protocol client, SERVICE-wrapped REST/tool sources, and non-materialized (D2RQ-style) RML query answering — as an honest CLI-transcript-and-architecture page, since all three need the network or a process and cannot run in a sandboxed browser cell."
+description: "Three ways factoidal answers SPARQL over data it doesn't hold locally — a SPARQL 1.1 Protocol client, SERVICE-wrapped REST/tool sources, and non-materialized (D2RQ-style) RML query answering — as a CLI-transcript-and-architecture page, since all three need the network or a process and cannot run in a sandboxed browser cell."
 layout: hub.njk
 series: docs-hub
 series_order: 22
@@ -12,8 +12,8 @@ tests: tests/local/sparql_client_protocol.sh, tests/local/service_wrap_stage12.s
 Every hub post before this one asked factoidal a question about data it
 already held — a Turtle document you pasted, a fixture it loaded from
 disk. This post is about the other direction: answering SPARQL over
-data factoidal does **not** hold locally. Three features that landed
-2026-07-06 do this, each reaching outward a different way:
+data factoidal does **not** hold locally. Three features do this, each
+reaching outward a different way:
 
 1. **The SPARQL client** — `factoidal query --endpoint URL` sends your
    query to a remote SPARQL 1.1 Protocol endpoint and parses whatever
@@ -386,14 +386,13 @@ back to F\* — the virtual-RML `store_caps` member itself is F\*, the
 socket/file I/O beneath the client and `wrap+` fetch is the acknowledged
 glue.
 
-## What's next
+## Beyond the three
 
-The design doc's staged rollout has more that hasn't landed: `wrap+mcp:`
+The design doc sketches more that is not yet implemented: `wrap+mcp:`
 (wrapping an MCP tool over JSON-RPC), `wrap+exec:` (a spawned local
-binary behind an allowlist, the one genuinely new process-I/O
-primitive), an XML/XPath source once RML Stage 4 lands, and a v2
-TTL-keyed cross-query cache. None are promised; each is gated on a real
-corpus showing the need.
+binary behind an allowlist, a new process-I/O primitive), an XML/XPath
+source through RML, and a TTL-keyed cross-query cache. None are
+promised; each is gated on a real corpus showing the need.
 
 Because these are native and network features, they have no live cell —
 the transcripts above are the demonstration, and they are pinned by the

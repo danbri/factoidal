@@ -208,7 +208,7 @@ The reverse direction, `jsonldFromRdf`, scores **49 pass, 5 fail (of
 54)** against the JSON-LD 1.1 `fromRdf` manifest — driven by
 [`bin/jsonld-fromrdf-runner`](https://github.com/danbri/factoidal/blob/claude/main/bin/jsonld-fromrdf-runner/jsonld_fromrdf_runner.ml).
 The 5 fails are the non-normative `rdfDirection` variants and the
-JSON-LD-1.0 list-serialization semantics, neither of which this slice
+JSON-LD-1.0 list-serialization semantics, neither of which this engine
 targets.
 
 ## What's next

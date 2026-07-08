@@ -1,6 +1,6 @@
 ---
 title: "The durable log, live: update, persist, reload, corrupt"
-description: "The full durable-UPDATE lifecycle running in your browser -- parse, SPARQL UPDATE, IndexedDB persistence proved across a real reload, and an honest checksum-rejection demo -- plus the same F* delta-log module proven running natively, as KaRaMeL C, and now as wasm_of_ocaml too."
+description: "The full durable-UPDATE lifecycle running in your browser -- parse, SPARQL UPDATE, IndexedDB persistence proved across a real reload, and a checksum-rejection demo -- plus the same F* delta-log module proven running natively, as KaRaMeL C, and as wasm_of_ocaml too."
 layout: hub.njk
 series: docs-hub
 series_order: 18
@@ -9,13 +9,11 @@ status: published
 tests: tests/hub/post18_test.mjs
 ---
 
-[Post 17](./17-mutating-and-serving-data.md) closed the hub's original
-series plan with SPARQL 1.1 Update running live and a dated account of
-that week's durable delta-log work — three stages, landed in one day.
-This post is the capstone the owner asked for directly: **run the
-whole lifecycle in the page** — parse, update, persist, reload, and
-(honestly) corrupt — and then show that the exact same F\* module
-proving all of it is not a browser-only trick. It runs natively, it
+[Post 17](./17-mutating-and-serving-data.md) covered SPARQL 1.1 Update
+running live and the durable delta-log write path. This post runs the
+**whole lifecycle in the page** — parse, update, persist, reload, and
+corrupt — and then shows that the exact same F\* module proving all of
+it is not a browser-only trick. It runs natively, it
 runs as KaRaMeL-extracted C, and it runs as `wasm_of_ocaml` too — the
 wasm npm-entry bundle now ships `DeltaLog`/`DeltaMerge`, and a
 require.main path bug in `wasm.js`'s entry loader that had silently
@@ -33,8 +31,8 @@ code, running against real browser `IndexedDB`.
 ## Step 1 of 4: parse and update, in memory
 
 Same escape hatch [post 17](./17-mutating-and-serving-data.md) used —
-the typed `fn` adapter still has no `update()` method (an honest gap
-in the adapter, not the engine), so this cell reaches for
+the typed `fn` adapter still has no `update()` method (a gap in the
+adapter, not the engine), so this cell reaches for
 `Factoidal.loadNpmEntry()`'s raw ABI directly, capability-checked per
 the [cell contract](./README/)'s try/catch pattern:
 
@@ -168,7 +166,7 @@ is the harder version of this same proof: real headless Chromium, a
 real `page.reload()`, and an assertion that the merged output is
 byte-identical before and after — 17 of 17 checks, not a sample of 1.
 
-## Step 4 of 4: the torn write, honestly
+## Step 4 of 4: the torn write
 
 Ordinary `IndexedDB` transactions are atomic — there's no natural
 browser-native way to reproduce a killed `write()` syscall mid-append
@@ -217,7 +215,7 @@ contract the native on-disk log's crash harness measured 270 times
 (0 corrupt accepts) — here it's one keystroke away, in a browser tab,
 on a public page.
 
-## The clean-architecture proof: one module, four runtimes, one honest gap
+## One module, four runtimes, one gap
 
 Nothing above is browser-specific logic. `RDF.Store.Columnar.DeltaLog.fst`
 declares exactly **five** `ML`-effect `assume val`s for durability —
@@ -298,7 +296,7 @@ distinction the table above draws between "proves" and "not yet."
 
 ### What the browser demo above does *not* do: no `BaseWriter` in the browser
 
-One honest residual worth naming directly, since it's easy to
+One residual worth naming directly, since it's easy to
 conflate: this page's persistence story is the **delta log**
 (append-only, small updates), not the **base store**. The native
 `factoidal import`/`compact --native-writer` path
@@ -314,7 +312,7 @@ but grepping `bin/npm-entry/entry_jsoo.ml`'s export list — `parseToDatasetJson
 the file rather than assumed — turns up no `BaseWriter`/`serializeCottas`
 export at all. **The "create a store" story in a browser today is the
 delta log you just ran above, not a browser-written `.cottas` base
-file.** That's an honest scope boundary, not a bug: nothing requires a
+file.** That's a scope boundary, not a bug: nothing requires a
 browser to write its own base file yet, and the delta-log path is
 sufficient for the durable-UPDATE story this post and post 17 cover.
 Wiring `BaseWriter` into the npm-entry ABI, if ever wanted, is

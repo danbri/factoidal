@@ -1,6 +1,6 @@
 ---
 title: "Full-text search: text:query"
-description: "text:query is a magic predicate — it searches literals for words rather than matching a triple — using the jena-text vocabulary, AND-by-default token semantics, and a slice-1 stub that makes no ranking claim yet, shown live against a small labelled dataset."
+description: "text:query is a magic predicate — it searches literals for words rather than matching a triple — using the jena-text vocabulary and conjunctive token matching (a literal matches only if it contains every token), shown live against a small labelled dataset."
 layout: hub.njk
 series: docs-hub
 series_order: 20
@@ -24,12 +24,13 @@ This is the same `text:query` shape
 exposes, down to the vocabulary IRI (`http://jena.apache.org/text#`) —
 so query text written for a jena-text endpoint runs here unchanged. In
 this engine it's specified in
-[`SPARQL.FullText.fst`](https://github.com/danbri/factoidal/blob/claude/main/formal/fstar/SPARQL.FullText.fst),
-whose own header is blunt about the scope: this is **Slice 1** — exact
-token matching with a pure-F\* tokenizer (lowercase + punctuation
-split), AND-by-default semantics, and *no scoring*. There is no
-`text:score` yet; the module "makes no ranking claim; callers apply the
-limit in dataset order only." The regression suite is
+[`SPARQL.FullText.fst`](https://github.com/danbri/factoidal/blob/claude/main/formal/fstar/SPARQL.FullText.fst).
+The matching is exact-token, with a pure-F\* tokenizer (lowercase +
+punctuation split) and conjunctive multi-word semantics: a literal
+matches only if it contains every token. There is no relevance ranking
+— `text:score` is not part of the vocabulary the engine answers, so a
+result limit returns matches in dataset order, not by relevance. The
+regression suite is
 [`tests/local/fulltext_slice1.sh`](https://github.com/danbri/factoidal/blob/claude/main/tests/local/fulltext_slice1.sh);
 every query below is drawn from it.
 
@@ -108,7 +109,7 @@ form ignores which predicate the literal hangs off).
 
 ## AND by default
 
-Give `text:query` more than one word and Slice 1 treats it as a
+Give `text:query` more than one word and it matches as a
 conjunction: a literal matches only if it contains **all** the tokens.
 "solar panel" therefore keeps `panel1` and `panel2` (whose labels have
 both words) but drops `battery` — its label "Battery storage panel" has
@@ -135,8 +136,8 @@ const rows = await fn.query(dataset, `
 return pretty(rows);
 ```
 
-Two subjects, `panel1` and `panel2`. AND-by-default is the jena-text
-Slice-1 default; token order does not matter, but every token must be
+Two subjects, `panel1` and `panel2`. Conjunctive matching is the
+jena-text default; token order does not matter, but every token must be
 present.
 
 ## The list form: restrict to a property
@@ -175,9 +176,9 @@ the field restriction is doing exactly its job.
 ## The limit form: cap the result count
 
 A third element in the list is a result limit: `(rdfs:label "panel" 2)`
-returns at most two matches. Because Slice 1 makes no ranking claim,
-*which* two you get is dataset order, not a relevance ranking — so the
-honest thing to assert is the count, not the identities:
+returns at most two matches. Because `text:query` makes no ranking
+claim, *which* two you get is dataset order, not a relevance ranking —
+so the thing to assert is the count, not the identities:
 
 ```observable-js
 const FT_TTL = `
@@ -202,9 +203,9 @@ return { matchCount: rows.length };
 ```
 
 `matchCount` is `2` — the same three-candidate `(rdfs:label "panel")`
-search as above, capped. Once Slice 2 lands `text:score`, this cap
-becomes "top 2 by relevance"; today it is "first 2 in dataset order,"
-and the module says so.
+search as above, capped. The cap takes the first 2 in dataset order:
+without a relevance score, "first 2" is the only meaning the count can
+carry, and the module says so.
 
 ## A no-match search
 
@@ -273,12 +274,12 @@ triple pattern joined on `?s` and removed the one retired match. The
 magic predicate and the plain BGP compose exactly as two patterns
 sharing a variable should.
 
-## What's next
+## Related
 
-This closes the two features that landed alongside each other — the
-[LATERAL post](./19-correlated-joins-lateral.md) covers the correlated
-join that shipped in the same wave. The rest of the series is mapped in
-the [series plan](../../designissues/2026-07-05-docs-hub-plan.md).
+The [LATERAL post](./19-correlated-joins-lateral.md) covers the
+correlated join, another way to shape query results. The rest of the
+series is mapped in the
+[series plan](../../designissues/2026-07-05-docs-hub-plan.md).
 
 The live cells above are pinned in
 [`tests/hub/post20_test.mjs`](https://github.com/danbri/factoidal/blob/claude/main/tests/hub/post20_test.mjs) —

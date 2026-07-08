@@ -121,15 +121,21 @@ Two boundaries are deliberate and named in the runner:
   subset is reported as not well-formed rather than validated. This is a
   scope cut, not a defect — the W3C runner skips DTD-validation tests
   by design.
-- **XPath is Stage 1.** The forward and reverse axes, positional
-  predicates, the node tests, and the core function library are in;
-  `following::`/`preceding-sibling::` and the id() function are rejected
-  cleanly at parse time rather than mis-evaluated.
+- **XPath covers a documented subset.** The forward and reverse axes,
+  positional predicates, the node tests, and the core function library
+  are supported; `following::`/`preceding-sibling::` and the id()
+  function are rejected cleanly at parse time rather than
+  mis-evaluated.
 
 Against the vendored
 [W3C XML Conformance Test Suite](https://github.com/danbri/factoidal/tree/claude/main/third_party/testing/xml/xmlconf),
-the parser scores **1442 pass, 0 fail** (with DTD-validation and
-UTF-16-encoded cases skipped as above) — driven by
+the parser scores **244 real pass, 0 fail** out of 2585 — "real"
+meaning the parser rejected the construct actually under test. The
+rest are skipped rather than force-passed: 1166 documents this
+well-formedness-only parser can reject only because it does not
+implement DOCTYPE/DTD (the tested construct is never exercised), and 32
+that are not-well-formed only under XML 1.1 or Namespaces, outside what
+this XML-1.0, non-namespace parser claims. Driven by
 [`bin/xml-runner`](https://github.com/danbri/factoidal/blob/claude/main/bin/xml-runner/xml_runner.ml).
 
 ## What's next

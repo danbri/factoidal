@@ -214,8 +214,8 @@ conformant SKOS graph is expected to satisfy, on top of whatever OWL
 axioms `skos.rdf` asserts. The checks below come straight from that
 prose and are verified with this project's own SHACL and SPARQL
 machinery — no SKOS-specific engine code, and no external answer key
-to score against. That's a documented, honest gap in coverage, not a
-weaker one: the [`skos-integrity` skill](https://github.com/danbri/factoidal/blob/claude/main/skills/skos-integrity/SKILL.md)
+to score against. That's a documented gap in coverage, not a weaker
+one: the [`skos-integrity` skill](https://github.com/danbri/factoidal/blob/claude/main/skills/skos-integrity/SKILL.md)
 this section reuses records exactly how each condition was checked.
 
 | S# | Statement | Checked by |

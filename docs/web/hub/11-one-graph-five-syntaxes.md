@@ -156,15 +156,17 @@ Same result: `identicalBytes: true`. TriG's `{ }` block and N-Quads'
 fourth term are two spellings of the same fact — "this triple is in
 graph `ex:g`."
 
-## The newest parser strata
+## Two more parsing surfaces underneath
 
-Two more W3C-conformance surfaces landed recently, underneath the
-syntaxes above rather than alongside them: full **XML 1.0
-well-formedness** (`Parser.XML.fst`, needed by RDF/XML parsing itself)
-scores 1442 pass, 0 fail on well-formedness of 2585 total in the W3C
-XML Conformance Suite — the remaining 1143 are DTD-validation buckets
-this project doesn't implement (well-formedness only, not the DOCTYPE
-validation layer), skipped rather than force-passed. **XPath 1.0**
+Two more W3C-conformance surfaces sit underneath the syntaxes above
+rather than alongside them: full **XML 1.0 well-formedness** (`Parser.XML.fst`, needed by RDF/XML parsing itself)
+scores 244 real pass, 0 fail out of 2585 in the W3C XML Conformance
+Suite — real meaning the parser rejected the construct actually under
+test. The rest are skipped, not force-passed: 1166 documents that this
+well-formedness-only parser can reject only because it does not
+implement DOCTYPE/DTD (so the tested construct is never exercised), and
+32 that are not-well-formed only under XML 1.1 or Namespaces, outside
+what this XML-1.0, non-namespace parser claims. **XPath 1.0**
 (`Parser.XPath.fst`/`XPath.Eval.fst`, 8 of 13 axes and all 22 core
 functions) scores 69 pass, 0 fail on its 69 spec-cited unit tests. Both
 are documented in

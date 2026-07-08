@@ -1,6 +1,6 @@
 ---
 title: "How fast: the performance story"
-description: "Every number here carries a date and a commit — Turtle throughput, the streaming fast path, and this week's COTTAS on-disk reader wins, plus one in-browser timing illustration (not a benchmark)."
+description: "Every number here carries a date and a commit — Turtle throughput, the streaming fast path, and the COTTAS on-disk reader wins, plus one in-browser timing illustration (not a benchmark)."
 layout: hub.njk
 series: docs-hub
 series_order: 15
@@ -33,12 +33,12 @@ Measured 2026-07-03, commit
 [`11ba254`](https://github.com/danbri/factoidal/commit/11ba254) — see
 [`docs/claude-rules/performance.md`](https://github.com/danbri/factoidal/blob/claude/main/docs/claude-rules/performance.md)
 for the full table and the 2026-04 slow-Turtle history this replaced
-(1,000 triples took 25s before the fix landed).
+(1,000 triples took 25s under the earlier implementation).
 
 ## The streaming fast path: RAM bounded by the answer, not the store
 
-Parsing is fast, but until this week a query still had to materialize
-the *entire* graph into memory before answering even a one-row question.
+Parsing is fast, but a naive query has to materialize the *entire*
+graph into memory before answering even a one-row question.
 `SELECT (COUNT(*) AS ?n) WHERE { ?s ?p ?o }` over 888,949 triples
 (the vendored Wikidata life-sci gene subset) cost 730.5 MiB peak RSS
 and 28.4 seconds — RAM and time scaling with the whole store, not with
@@ -59,12 +59,12 @@ full writeup, including the exact query shapes the fast path covers
 (`tests/local/streamable_fastpath_regressions.sh`, 13 pass, 0 fail), is
 in [`docs/designissues/2026-07-05-disk-backed-db-perf-review.md`](https://github.com/danbri/factoidal/blob/claude/main/docs/designissues/2026-07-05-disk-backed-db-perf-review.md).
 
-## This week's COTTAS on-disk reader wins
+## COTTAS on-disk reader wins
 
-The on-disk COTTAS (Parquet-backed quad store) reader got three
-separate, individually measured fixes this week — a pattern worth
-naming explicitly: each is a specific bug found by measuring, not a
-general "made it faster":
+The on-disk COTTAS (Parquet-backed quad store) reader carries three
+separate, individually measured fixes — a pattern worth naming
+explicitly: each is a specific bug found by measuring, not a general
+"made it faster":
 
 | Fix | Before | After | Commit |
 |---|---|---|---|
@@ -138,8 +138,8 @@ engine took on your device, right now.
 
 [The next post](./16-the-verified-in-fstar-story.md) is this series'
 last: why F\*, what "verified" actually means here, and what proof
-caught (and, honestly, what a proof gap missed) this same week these
-performance fixes landed.
+caught — along with what a proof gap missed — while these performance
+fixes were made.
 
 The live cell above is pinned in
 [`tests/hub/post15_test.mjs`](https://github.com/danbri/factoidal/blob/claude/main/tests/hub/post15_test.mjs) —

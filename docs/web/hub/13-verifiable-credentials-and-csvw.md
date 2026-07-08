@@ -16,9 +16,8 @@ on the two newest capabilities this project has added: **Verifiable
 Credentials** — structural validation *and* `eddsa-rdfc-2022` Data
 Integrity signatures — and **CSVW** (CSV on the Web) csv2rdf
 conversion. The point of this post is to say exactly how far each one
-goes today, and to draw the line honestly between the pipeline steps
-that run live in your browser and the signature step that runs
-natively.
+goes, and to draw the line between the pipeline steps that run live in
+your browser and the signature step that runs natively.
 
 ## Verifiable Credentials: structural validation
 
@@ -156,7 +155,7 @@ needs a secret key — Ed25519 sign, and its verify — does not.
 Ed25519 sign and verify go through the vendored HACL\* C, which does
 **not** link under `wasm_of_ocaml` today, so there is no live
 browser/wasm cell for the signature itself — that gap is tracked in
-[#286](https://github.com/danbri/factoidal/issues/286). The honest form
+[#286](https://github.com/danbri/factoidal/issues/286). The right form
 for a native-only step is its actual transcript. Here is
 `./bin/linux-x86_64/vc_runner --crypto`, run against the vendored
 HACL\* build, verbatim:
@@ -343,9 +342,8 @@ are fully built. Measured against the full vendored W3C CSVW test
 suite (`manifest-rdf.jsonld`, 270 entries, compared via RDFC-1.0
 canonicalization the same way this project's other W3C runners
 compare): **74 pass (of 270)** — 27 of 76 `ToRdfTest`, 47 of 136
-`ToRdfTestWithWarnings`, 0 of 58 `NegativeRdfTest`. That is up from a
-previous 19; the lift came from three conversion fixes this post's
-work landed — the built-in datatype aliases (`number`→`xsd:double`,
+`ToRdfTestWithWarnings`, 0 of 58 `NegativeRdfTest`. Three conversion
+fixes account for that count: the built-in datatype aliases (`number`→`xsd:double`,
 `binary`→`xsd:base64Binary`, `datetime`→`xsd:dateTime`,
 `any`→`xsd:anyAtomicType`) with an invalid-lexical-form fallback to a
 plain string, RFC 6570 fragment URI templates — the `#`-prefixed

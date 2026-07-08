@@ -1,6 +1,6 @@
 ---
 title: "GeoSPARQL: geometry, topology, and exact-rational arithmetic"
-description: "GeoSPARQL adds geometry literals and topological functions to SPARQL. Factoidal's v0 support is pure exact-rational F* — a point exactly on a polygon edge is decided exactly, with no floating-point epsilon anywhere on the decided path — checked live in your browser."
+description: "GeoSPARQL adds geometry literals and topological functions to SPARQL. Factoidal's support is pure exact-rational F* — a point exactly on a polygon edge is decided exactly, with no floating-point epsilon anywhere on the decided path — checked live in your browser."
 layout: hub.njk
 series: docs-hub
 series_order: 21
@@ -20,11 +20,11 @@ through the same `fn.query` path every other post in this series uses —
 no new API surface, just new functions the engine recognises inside a
 `FILTER` or a projection.
 
-This post covers Factoidal's **v0** GeoSPARQL slice, which landed as
-pure F* with no floating-point arithmetic anywhere on its decided path.
+This post covers Factoidal's GeoSPARQL support: pure F* with no
+floating-point arithmetic anywhere on its decided path.
 That last part is the reason the post exists: a spatial engine built on
 floating-point has to decide, for every "is this point on the edge"
-question, how big an epsilon counts as "on". Factoidal's v0 decides
+question, how big an epsilon counts as "on". Factoidal decides
 those cases with exact rational arithmetic, so a point that lies
 *exactly* on a polygon's edge is classified as boundary — not nudged
 inside or outside by rounding. The [last cell below](#the-exact-boundary-case)
@@ -180,9 +180,9 @@ exactly because it is not disjoint from the box it sits inside.
 ## `geof:distance`: exact squared distance, one disclosed square root
 
 `geof:distance` returns a number, not a boolean, so it goes in the
-`SELECT` projection rather than a `FILTER`. In v0 it is defined for
+`SELECT` projection rather than a `FILTER`. It is defined for
 point-to-point only. The arithmetic is worth spelling out because it is
-where the "exact rational" story meets its one honest exception:
+where the "exact rational" story meets its one exception:
 Factoidal computes the *squared* distance
 `(x₁ − x₂)² + (y₁ − y₂)²` exactly — sums and products of exact
 rationals, no rounding — and then takes a single, disclosed,
@@ -229,9 +229,9 @@ London is `0.00000000000000000` — the squared distance from a point to
 itself is exactly zero, and the square root of exact zero is exactly
 zero, so there is no floating-point drift on the self-distance case.
 Manchester (about 2.89 degrees away) and Edinburgh (about 5.40) follow
-in order. The units are raw coordinate degrees here, not metres — v0
-does no CRS-aware geodesic reprojection, a scope boundary the last
-section names explicitly.
+in order. The units are raw coordinate degrees here, not metres — the
+engine does no CRS-aware geodesic reprojection, a scope boundary the
+last section names explicitly.
 
 ## `geof:envelope`: the bounding box, exactly
 
@@ -269,7 +269,7 @@ Note the result literal comes back typed `geo:wktLiteral`, so an
 ## The exact-boundary case
 
 This is the case a floating-point spatial engine has to make a judgment
-call about, and the one Factoidal v0 decides exactly. Take the Greater
+call about, and the one Factoidal decides exactly. Take the Greater
 London box and three points: one lying **exactly** on its bottom edge
 (`POINT(0 51.3)`, where `51.3` is the box's south edge), one strictly
 inside, and one clearly outside. Run all three against `sfWithin`,
@@ -325,9 +325,9 @@ classified as boundary and not nudged either way — a property of the
 arithmetic, not a tuning parameter (see
 [`RDF.Geo.Topology.fst`](https://github.com/danbri/factoidal/blob/claude/main/formal/fstar/RDF.Geo.Topology.fst)).
 
-## v0 scope: what is decided, what is refused
+## Scope: what is decided, what is refused
 
-v0 is a slice, and it is honest about being one. Every predicate
+The scope is deliberately narrow. Every predicate
 returns "decided exactly" or "refused" per geometry-kind pair — a
 refused pair maps to a SPARQL error, never to a guessed boolean. The
 [`RDF.Geo.Topology.fst`](https://github.com/danbri/factoidal/blob/claude/main/formal/fstar/RDF.Geo.Topology.fst)
@@ -347,7 +347,7 @@ it:
   simple non-self-intersecting polygons, `sfWithin`/`sfContains`)
   decided, with `sfTouches`/`sfCrosses`/`sfOverlaps` largely refused
   pending a full DE-9IM boundary/interior classification.
-- **`geof:distance`** — point/point only in v0; every other kind pair
+- **`geof:distance`** — point/point only; every other kind pair
   refused (not implemented, distinct from a topological refusal).
 - **CRS** — no coordinate transformation. A call across two
   *differently* stated CRS IRIs is refused rather than silently
@@ -355,13 +355,13 @@ it:
   compatible with any explicitly stated CRS. Distances are in raw
   coordinate units, not geodesic metres.
 
-The v0 goal was to ship the exact-arithmetic core for the pairs it can
-prove, and to refuse loudly everywhere else, rather than to cover the
+The design covers the exact-arithmetic core for the pairs it can
+prove and refuses loudly everywhere else, rather than covering the
 whole Simple Features matrix approximately. Widening the decided set —
 `sfCrosses`/`sfOverlaps` for mixed-dimension pairs, a full DE-9IM
-classifier, CRS-aware geodesic distance — is follow-on work, and each
-addition stays on the same no-floating-point-on-the-decided-path
-discipline the boundary cell above demonstrates.
+classifier, CRS-aware geodesic distance — would extend it, on the same
+no-floating-point-on-the-decided-path discipline the boundary cell
+above demonstrates.
 
 ## What's next
 

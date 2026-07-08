@@ -271,9 +271,9 @@ core-constraint tests check against.
 
 ## What's next
 
-The rest of this series — the other RDF syntaxes, SPARQL Update and
-the HTTP protocol, ShEx, JSON-LD, RDFC-1.0 canonicalization, and the
-engineering story — is still planned. See the
+Other posts in this series cover the other RDF syntaxes, SPARQL Update
+and the HTTP protocol, ShEx, JSON-LD, RDFC-1.0 canonicalization, and
+the verification story. See the
 [series plan](../../designissues/2026-07-05-docs-hub-plan.md) for the
 full map.
 

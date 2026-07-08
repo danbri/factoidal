@@ -1,6 +1,6 @@
 ---
 title: "Mutating and serving data: SPARQL Update, Protocol, Graph Store"
-description: "SPARQL 1.1 Update live in your browser via the npm-entry ABI, this week's durable delta-log UPDATE work dated commit by commit, and an honest look at what factoidal-http and the Graph Store Protocol do and don't do today."
+description: "SPARQL 1.1 Update live in your browser via the npm-entry ABI, the durable delta-log write path that gives updates a crash-safe home on disk, and what factoidal-http and the Graph Store Protocol do and don't do."
 layout: hub.njk
 series: docs-hub
 series_order: 17
@@ -11,11 +11,8 @@ tests: tests/hub/post17_test.mjs
 
 Every post so far in this series read data. This one writes it —
 SPARQL 1.1 Update, and then, because a write that vanishes on restart
-isn't durable, the delta-log work that shipped *this week* to give
-updates a crash-safe home on disk. It closes the hub's original series
-plan: the [index](../) has carried a placeholder titled exactly this
-since the first wave shipped, waiting on the durability work below to
-be real rather than aspirational.
+isn't durable, the delta-log write path that gives updates a crash-safe
+home on disk.
 
 ## SPARQL 1.1 Update: not a gap
 
@@ -40,8 +37,8 @@ fail (out of 176)**, per
 
 The typed `fn` adapter every other post in this series uses doesn't
 wire up `update` yet (`docs/_includes/hub.njk`'s `fn` object exposes
-`parse`/`query`/`shaclValidate` — no `update` method; that's an honest
-gap in the adapter, not the engine). But [post 12](./12-the-api-tour.md)'s
+`parse`/`query`/`shaclValidate` — no `update` method; that's a gap in
+the adapter, not the engine). But [post 12](./12-the-api-tour.md)'s
 capability probe already established the escape hatch: `Factoidal.
 loadNpmEntry()` returns the raw npm-entry ABI object underneath `fn`,
 and that ABI exports `updateDataset` directly — the js_of_ocaml build
@@ -132,96 +129,77 @@ the `DELETE`/`INSERT` pair swapped it for `"Bobby"` in a single
 request, entirely in your browser, against the same engine
 `bin/linux-x86_64/factoidal` runs natively.
 
-## The durability story, dated
+## Durability: a crash-safe delta log
 
 Everything above runs `apply_update` over a plain in-memory
-`rdf_dataset` — correct, but gone the moment the process exits. Until
-**this week**, that was the whole story: no F\* module in this tree
-touched a file for UPDATE durability at all. That changed across three
-commits landed today, 2026-07-06, all on `claude/main`, all specified
-first in
-[`docs/designissues/2026-07-06-durable-update-design.md`](https://github.com/danbri/factoidal/blob/claude/main/docs/designissues/2026-07-06-durable-update-design.md):
+`rdf_dataset` — correct, but gone the moment the process exits. To make
+an update survive a restart, factoidal writes it to an append-only
+delta log on disk, specified first in
+[`docs/designissues/2026-07-06-durable-update-design.md`](https://github.com/danbri/factoidal/blob/claude/main/docs/designissues/2026-07-06-durable-update-design.md).
+Three layers make that work, each with its own proof and measurement:
 
-1. **Stage 1 — the delta-log entry format, proved.**
-   [`RDF.Store.Columnar.DeltaLog.fst`](https://github.com/danbri/factoidal/blob/claude/main/formal/fstar/RDF.Store.Columnar.DeltaLog.fst)
-   defines the five delta-entry shapes an update can produce
-   (`DE_Add`/`DE_Remove`/`DE_Clear`/`DE_Drop`/`DE_Create`), each
-   serialized to a length-prefixed, checksummed byte frame. The
-   module's payoff is a proved lemma, not an assertion: `parse_delta_entry
-   (serialize_delta_entry e ++ rest) == Some (e, rest)` for every
-   well-formed entry — parsing what serializing just wrote is a
-   **theorem**, checked by Z3 4.13.3, not a round-trip test that merely
-   happened to pass. Commit
-   [`868a20b`](https://github.com/danbri/factoidal/commit/868a20b),
-   2026-07-06 — 74 unit assertions (every constructor, non-ASCII and
-   astral-plane UTF-8, an 100KB literal, 8 corruption cases) additionally
-   pin the extracted OCaml against the same claim.
-2. **Stage 2 — a crash-safe log file, 270 kills, 270 clean
-   recoveries.** The same module's `delta_batch`/`DLOG` file layer adds
-   streaming `serialize_log`/`parse_log` with an extended round-trip
-   lemma, realized on disk by five `assume val` I/O primitives (append/
-   fsync/read-all/atomic-rename/fsync-dir — issue #282, per Iron Rule
-   #3). The empirical check that actually matters for a crash-safety
-   claim: `tests/local/delta_log_crash_harness.sh` SIGKILLs a writer
-   process mid-append at random points and confirms the log recovers a
-   clean prefix every time. Measured, two seeded runs, this week:
-   **270 kills, 270 clean recoveries, 0 corrupt accepts.** Commit
-   [`1f27320`](https://github.com/danbri/factoidal/commit/1f27320),
-   2026-07-06.
-3. **Stage 3 — reads see the delta.** New module
-   [`RDF.Store.Columnar.DeltaMerge.fst`](https://github.com/danbri/factoidal/blob/claude/main/formal/fstar/RDF.Store.Columnar.DeltaMerge.fst)'s
-   `merge_on_read` composes a base graph's rows with a resolved delta
-   (adds, tombstoned removes, CLEAR/DROP/CREATE applied in sequence
-   order), backed by a **proved** correspondence lemma
-   (`lemma_merge_on_read_matches_apply_entries`): for every triple,
-   membership in the reference application of delta entries to the
-   base graph equals membership in the merged read. The CLI grew
-   `--delta-log PATH` (alongside `--data-cottas`) so a query can
-   actually route through this path today. Commit
-   [`5e8399a`](https://github.com/danbri/factoidal/commit/5e8399a),
-   2026-07-06 (this is also, as of this writing, `claude/main`'s
-   `HEAD`) — end-to-end acceptance
-   (`tests/local/durable_update_stage3.sh`, 15 pass, 0 fail) plus a
-   further 25-kill-iteration harness, 25 clean recoveries.
+**The delta-log entry format, proved.**
+[`RDF.Store.Columnar.DeltaLog.fst`](https://github.com/danbri/factoidal/blob/claude/main/formal/fstar/RDF.Store.Columnar.DeltaLog.fst)
+defines the five delta-entry shapes an update can produce
+(`DE_Add`/`DE_Remove`/`DE_Clear`/`DE_Drop`/`DE_Create`), each
+serialized to a length-prefixed, checksummed byte frame. The module's
+payoff is a proved lemma, not an assertion: `parse_delta_entry
+(serialize_delta_entry e ++ rest) == Some (e, rest)` for every
+well-formed entry — parsing what serializing just wrote is a
+**theorem**, checked by Z3 4.13.3, not a round-trip test that merely
+happened to pass. 74 unit assertions (every constructor, non-ASCII and
+astral-plane UTF-8, a 100KB literal, 8 corruption cases) additionally
+pin the extracted OCaml against the same claim
+([`868a20b`](https://github.com/danbri/factoidal/commit/868a20b)).
 
-Honestly staged, not oversold: the proved lemma covers `merge_on_read`
-against *delta entries*, the primitive op shapes — the fuller
-design-doc lemma over real SPARQL `update_op` values (what `apply_update`
-actually consumes) awaits an `update_ops_to_delta_entries` translator
-that hasn't landed yet. That gap is written into the module itself as
-a residual, pinned by the stage-3 acceptance test rather than by proof,
-until the translator exists.
+**A crash-safe log file.** The same module's `delta_batch`/`DLOG` file
+layer adds streaming `serialize_log`/`parse_log` with an extended
+round-trip lemma, realized on disk by five `assume val` I/O primitives
+(append/fsync/read-all/atomic-rename/fsync-dir — issue #282, per Iron
+Rule #3). The check that matters for a crash-safety claim:
+`tests/local/delta_log_crash_harness.sh` SIGKILLs a writer process
+mid-append at random points and confirms the log recovers a clean
+prefix every time — **270 kills, 270 clean recoveries, 0 corrupt
+accepts** over two seeded runs
+([`1f27320`](https://github.com/danbri/factoidal/commit/1f27320)).
 
-**What remains**, per the design doc's own staged plan — none of this
-is done:
+**Reads see the delta.**
+[`RDF.Store.Columnar.DeltaMerge.fst`](https://github.com/danbri/factoidal/blob/claude/main/formal/fstar/RDF.Store.Columnar.DeltaMerge.fst)'s
+`merge_on_read` composes a base graph's rows with a resolved delta
+(adds, tombstoned removes, CLEAR/DROP/CREATE applied in sequence
+order), backed by a **proved** correspondence lemma
+(`lemma_merge_on_read_matches_apply_entries`): for every triple,
+membership in the reference application of delta entries to the base
+graph equals membership in the merged read. The CLI's `--delta-log
+PATH` (alongside `--data-cottas`) routes a query through this path
+([`5e8399a`](https://github.com/danbri/factoidal/commit/5e8399a),
+`tests/local/durable_update_stage3.sh`, 15 pass, 0 fail, plus a
+25-kill-iteration harness with 25 clean recoveries).
 
-- **Compaction** (stage 4): folding an accumulated delta back into a
-  fresh `.cottas` base via the existing `corpus_pipeline.py` writer, so
-  the delta log doesn't grow without bound. Unstarted.
-- ~~**HTTP wiring** (stage 8): `factoidal-http`'s `/update` endpoint
-  still mutates an in-memory `rdf_dataset` and discards it on restart
-  — nothing in the live HTTP server touches the delta log yet (see
-  "Serving" below). Unstarted.~~ **Landed the same day this post was
-  published**, commit
-  [`e8085da`](https://github.com/danbri/factoidal/commit/e8085da):
-  `factoidal-http` gained `--delta-log`/`--rw` — reads flow through
-  the stage-3 merged view, and SPARQL UPDATE requests translate to
-  delta entries via `update_ops_to_delta_entries` (INSERT/DELETE DATA,
-  CLEAR/DROP/CREATE; anything else 501s rather than silently applying
-  in memory only). See the "Serving" section below, corrected in
-  place, and [post 18](./18-the-durable-log-live.md) for the
-  in-browser lifecycle this closes the loop with.
-- **Parliament-scale validation** (stage 9): re-running the
-  delta-penalty measurement (empty-delta query cost must match the
-  base-file baseline; a realistic-size delta must add a small, bounded
-  cost, not scale with corpus size) against the actual 3.14M-quad
-  UK Parliament store. Blocked on corpus access from this sandbox,
-  same caveat the [performance post](./15-how-fast-the-performance-story.md)'s
-  COTTAS numbers carried.
+One boundary, stated plainly rather than oversold: the proved lemma
+covers `merge_on_read` against *delta entries*, the primitive op
+shapes. The fuller lemma over real SPARQL `update_op` values (what
+`apply_update` consumes) rests on the `update_ops_to_delta_entries`
+translator, which is pinned by acceptance test rather than by proof.
+That gap is written into the module itself as a residual.
 
-Three stages landed in one day is fast — which is exactly why every
-claim above carries its own commit and date rather than a blanket
-"durable UPDATE shipped."
+**What the delta log does not yet do:**
+
+- **Compaction**: folding an accumulated delta back into a fresh
+  `.cottas` base via the existing `corpus_pipeline.py` writer, so the
+  delta log doesn't grow without bound, is not yet implemented.
+- **Parliament-scale validation**: the delta-penalty measurement
+  (empty-delta query cost must match the base-file baseline; a
+  realistic-size delta must add a small, bounded cost, not scale with
+  corpus size) has not been run against the full 3.14M-quad UK
+  Parliament store — it needs corpus access the sandbox doesn't have,
+  the same caveat the
+  [performance post](./15-how-fast-the-performance-story.md)'s COTTAS
+  numbers carry.
+
+Every claim above carries its own commit rather than a blanket "durable
+UPDATE shipped" — the write path is real and measured, the two items
+above are not.
 
 ## Serving: the SPARQL Protocol, observability, and the Graph Store gap
 
@@ -251,9 +229,8 @@ otherwise. `on`/`off` are also available as explicit overrides. The
 stderr line and `/admin/recent.json` are operator-only and are never
 gated — only the header that goes back to the requester is.
 
-**Graph Store Protocol: specified, proven, and — as of commit
-[`e8085da`](https://github.com/danbri/factoidal/commit/e8085da),
-landed the same day this post was first published — routed.**
+**Graph Store Protocol: specified, proven, and routed**
+([`e8085da`](https://github.com/danbri/factoidal/commit/e8085da)).
 [`SPARQL.GraphStore.fst`](https://github.com/danbri/factoidal/blob/claude/main/formal/fstar/SPARQL.GraphStore.fst)
 is a verified, `assume-val`-free F\* module implementing the five GSP
 operations (`gsp_get`/`gsp_head`/`gsp_put`/`gsp_post`/`gsp_delete`) over
@@ -263,8 +240,7 @@ exercised by the W3C `http-rdf-update` manifest's stateful test
 sequence in the test runner (19/19, cited above) — a suite-level shared
 store that runs PUT/POST/DELETE against it across a whole manifest.
 
-The paragraph originally here said this was proven but not routed —
-that gap is now closed: `bin/factoidal-http/factoidal_http.ml` wires
+`bin/factoidal-http/factoidal_http.ml` wires
 `GET`/`HEAD /data?graph=...` unconditionally and `PUT`/`POST`/`DELETE`
 under a `--rw` flag, through total GSP-to-delta-entry translators
 (`update_ops_to_delta_entries`'s sibling for GSP verbs), with
@@ -279,13 +255,13 @@ matrix over all five GSP verbs, plus concurrent-reader/SIGKILL-mid-
 write recovery checks). [Post 18](./18-the-durable-log-live.md) picks
 up the in-browser side of this same durable-UPDATE story.
 
-## What's next
+## Related
 
-This closes the hub's original series plan — every placeholder the
-[index](../) named is now a published post. [The previous
-post](./16-the-verified-in-fstar-story.md) covered why F\* and what
-"verified" means here; this one covered the newest work in the project,
-still landing as this post is written.
+[The verified-in-F\* post](./16-the-verified-in-fstar-story.md) covers
+why F\* and what "verified" means here.
+[Post 18](./18-the-durable-log-live.md) runs the durable-UPDATE
+lifecycle — update, persist, reload, corrupt, recover — live in your
+browser.
 
 The live cells above are pinned in
 [`tests/hub/post17_test.mjs`](https://github.com/danbri/factoidal/blob/claude/main/tests/hub/post17_test.mjs) —

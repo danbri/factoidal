@@ -1,6 +1,6 @@
 ---
 title: "The verified-in-F* story"
-description: "Why F*, what verified actually means here (with the standing qualifier quoted, not hidden), the skimmable core, one source extracted to four targets, and what proofs — and one proof gap — bought this project this week."
+description: "Why F*, what verified actually means here (with the standing qualifier quoted, not hidden), the skimmable core, one source extracted to four targets, and what proofs — and one proof gap — bought this project."
 layout: hub.njk
 series: docs-hub
 series_order: 16
@@ -12,10 +12,8 @@ tests: tests/hub/post16_test.mjs
 Fifteen posts in this series ran F\*-extracted code in your browser
 without ever showing you F\* itself. This last post closes that gap:
 why the project is built this way, what "verified" actually means for
-this codebase today, and — since the point of verification is to catch
-real bugs — what it bought, and once didn't, in the same week the
-[previous post](./15-how-fast-the-performance-story.md)'s speed
-numbers were measured.
+this codebase, and — since the point of verification is to catch real
+bugs — what it bought, and once didn't.
 
 ## Why F\*
 

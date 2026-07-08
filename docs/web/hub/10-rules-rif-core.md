@@ -1,6 +1,6 @@
 ---
 title: "Rules over RDF: RIF Core"
-description: "RIF frame rules as data, forward-chained live over two customer records — plus the honest boundary of the subset this project implements."
+description: "RIF frame rules as data, forward-chained live over two customer records — plus the boundary of the subset this project implements."
 layout: hub.njk
 series: docs-hub
 series_order: 10
@@ -91,7 +91,7 @@ saturation over `RIF.Core.Eval.fst`'s fixpoint). The call is wrapped
 in a try/catch: an older engine bundle that predates the RIF export
 would throw "the loaded factoidal-npm-entry bundle predates the RIF
 exports" rather than silently produce nothing, so this cell reports
-that honestly instead of failing invisibly.
+that instead of failing invisibly.
 
 ```observable-js
 const rifRulesXml = `<?xml version="1.0" encoding="UTF-8"?>

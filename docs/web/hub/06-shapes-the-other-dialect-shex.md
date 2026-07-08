@@ -270,10 +270,10 @@ schema construct outside the currently-decidable ShEx fragment reports
 
 ## The same schema, sent as ShExC text
 
-Every cell above sent the hand-translated ShExJ form. Since
-`Parser.ShExC.fst` landed, `shexValidate` accepts the ShExC text from
+Every cell above sent the hand-translated ShExJ form. `shexValidate`
+also accepts the ShExC text from
 ["A schema, in the syntax people read"](#a-schema-in-the-syntax-people-read)
-directly — no translation step, no separate entry point, just the
+directly (via `Parser.ShExC.fst`) — no translation step, no separate entry point, just the
 same `shexValidate(dataNQuads, schemaText, focus, shapeLabel)` call
 with a ShExC string instead of a JSON one:
 

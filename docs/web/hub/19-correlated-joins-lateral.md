@@ -202,11 +202,11 @@ is whether the `LIMIT` sits inside a `LATERAL`'s per-row sub-query or
 outside it applying to the whole join. That gap, "the `LIMIT` I want is
 per-group, not global," is the reason SPARQL needed `LATERAL` at all.
 
-## What's next
+## Related
 
 [The full-text search post](./20-fulltext-search-text-query.md) covers
-the other feature that landed alongside this one — `text:query`, a
-magic predicate that searches literals instead of matching triples,
+`text:query` — a magic predicate that searches literals instead of
+matching triples,
 also Jena-compatible and also plain SPARQL query text through the same
 `fn` adapter.
 

@@ -153,10 +153,10 @@ ever runs.
 
 [Concept schemes: SKOS](./04-concept-schemes-skos.md) is next, followed
 by [Shapes that validate: SHACL](./05-shapes-that-validate-shacl.md).
-The other RDF serializations (N-Triples, N-Quads, TriG, RDF/XML),
-SPARQL Update and the HTTP protocol, and ShEx are still planned — see
-the [series plan](../../designissues/2026-07-05-docs-hub-plan.md) for
-the full map.
+Other posts in the series cover the RDF serializations (N-Triples,
+N-Quads, TriG, RDF/XML), SPARQL Update and the HTTP protocol, and ShEx
+— see the [series plan](../../designissues/2026-07-05-docs-hub-plan.md)
+for the full map.
 
 Every live cell above is pinned in
 [`tests/hub/post03_test.mjs`](https://github.com/danbri/factoidal/blob/claude/main/tests/hub/post03_test.mjs) —
