@@ -15,27 +15,39 @@ open XPath.Eval
 // First wave of the XSLT -> MathML -> XForms -> JSON-Schema/Schematron
 // program. See docs/designissues/2026-07-05-xforms-model-program-plan.md.
 //
-// SCOPE (slice 1), instructions supported:
-//   xsl:template (match + name collected; dispatch is match-based),
-//   xsl:apply-templates (default + select), xsl:value-of (select),
-//   xsl:for-each (select), xsl:if (test), xsl:choose/when/otherwise,
-//   xsl:element, xsl:attribute, xsl:text, xsl:comment, xsl:copy,
-//   xsl:copy-of (select), xsl:variable/xsl:param (constant, select=),
-//   literal result elements with attribute value templates ({expr}),
-//   and the built-in template rules (root/element -> apply-templates,
+// SCOPE, instructions supported:
+//   xsl:template (match-based dispatch, name= for call-template,
+//   mode=, priority= override), xsl:apply-templates (default + select +
+//   mode= + xsl:sort children), xsl:call-template + xsl:with-param,
+//   xsl:param/xsl:variable (select= constant AND element/text body =
+//   result-tree-fragment), xsl:value-of (select), xsl:for-each (select
+//   + xsl:sort children), xsl:sort (select, data-type number|text,
+//   order ascending|descending, stable, NaN-first ascending),
+//   xsl:if (test), xsl:choose/when/otherwise, xsl:element,
+//   xsl:attribute, xsl:text, xsl:comment, xsl:copy, xsl:copy-of
+//   (node-set select AND $rtf-variable), literal result elements with
+//   attribute value templates ({expr}), and the built-in template
+//   rules (root/element -> apply-templates in the current mode,
 //   text/attribute -> copy string value, comment/PI -> no output).
 // Output methods: "xml" (default) and "text".
 //
-// Deliberately OUT of slice 1 (a mismatch here is expected, not a bug):
-//   modes, xsl:call-template / named-template invocation, with-param,
-//   xsl:sort, xsl:number, xsl:key/key(), document(), xsl:import/include,
-//   xsl:apply-imports/next-match, format-number, namespace-node
-//   synthesis / exclude-result-prefixes, disable-output-escaping,
-//   positional pattern predicates (predicates are evaluated as a plain
-//   boolean against the candidate node, so [1]-style position tests can
-//   be wrong), and the processing-instruction() node test (a gap
-//   inherited from XPath.Eval; PI alternatives are dropped from a
-//   union select before evaluation).
+// Match patterns: a general right-to-left location-path matcher over
+// name/"*" steps with "/" (child) and "//" (descendant) separators,
+// optional leading "/" (root-anchored) or "//" (any-descendant), and
+// "child::" axis prefixes; plus "@name"/"@*"/node-test alternatives.
+//
+// Deliberately OUT of scope (a mismatch here is expected, not a bug):
+//   xsl:number, xsl:key/key(), document(), xsl:import/include,
+//   xsl:apply-imports/next-match, format-number, xsl:sort case-order /
+//   lang collations, namespace-node synthesis / exclude-result-prefixes,
+//   disable-output-escaping, positional pattern predicates (predicates
+//   are evaluated as a plain boolean against the candidate node, so
+//   [1]-style position tests can be wrong), and the
+//   processing-instruction() node test (a gap inherited from
+//   XPath.Eval; PI alternatives are dropped from a union select before
+//   evaluation). call-template recursion is bounded by the shared fuel
+//   parameter: a self-calling template exhausts fuel and yields [], it
+//   cannot diverge.
 //
 // TOTALITY: the template-dispatch / instantiation cycle can loop
 // (a template applies templates that re-match the same node), so the
@@ -216,8 +228,10 @@ let dnode_attrs_and_kids (nd:dnode) : (list xctx_item & list xctx_item) =
 (* ================================================================ *)
 
 type template = {
-  tpl_match : string;
-  tpl_priority : int;   // default priorities x10: node()/text() = -5, name = 0, path/predicate = 5
+  tpl_match : string;   // "" when this is a name-only (call-template) template
+  tpl_name : string;    // name= for xsl:call-template; "" if none
+  tpl_mode : string;    // mode= ; "" is the default (unnamed) mode
+  tpl_prio : option int;  // priority= override, x10-scaled to match the defaults below
   tpl_body : list xml_node;
 }
 
@@ -379,26 +393,70 @@ let split_predicate (alt:string) : (string & option string) =
 let ancestor_tags_of (it:xctx_item) : list string =
   List.Tot.choose (fun (m:xml_node) -> element_tag m) (item_ancestors it)
 
+// General location-path pattern matcher for element nodes: a chain of
+// name/"*" steps separated by "/" (child) or "//" (descendant), with an
+// optional leading "/" (root-anchored) or "//" (any-descendant), and
+// "child::" axis prefixes normalized away. Matching is right-to-left
+// (the last step matches the node; earlier steps match its ancestor
+// tags), with backtracking over "//" so "a/b//c" means "a c that is a
+// descendant of a b that is a child of an a". This replaces the earlier
+// single-"//"-step approximation and makes the multi-level match tests
+// (doc/l1//v3, doc//l2/w3, doc/child::l1/x2, ...) resolve correctly.
+type pconn = | PC_Child | PC_Desc
+
+let norm_pstep (s:string) : string =
+  let s0 = trim_str s in
+  if starts_with "child::" s0 then str_of_chars (drop_prefix_chars (chars_of s0) 7)
+  else s0
+
+let pname_ok (nm:string) (tag:string) : bool = nm = "*" || nm = tag
+
+let rec build_psteps (toks:list string) (pending:pconn) : Tot (list (pconn & string)) (decreases toks) =
+  match toks with
+  | [] -> []
+  | t :: rest ->
+    if trim_str t = "" then build_psteps rest PC_Desc
+    else (pending, norm_pstep t) :: build_psteps rest PC_Child
+
+// (root-anchored?, steps in document order, top-first).
+let parse_psteps (a:string) : (bool & list (pconn & string)) =
+  let toks = split_on_char '/' a in
+  match toks with
+  | first :: t2 :: rest ->
+    if trim_str first = "" then
+      (if trim_str t2 = "" then (false, build_psteps rest PC_Desc)   // "//x": relative descendant
+       else (true, build_psteps (t2 :: rest) PC_Child))              // "/x":  root-anchored
+    else (false, build_psteps toks PC_Child)
+  | _ -> (false, build_psteps toks PC_Child)
+
+// rsteps: remaining steps most-specific-first (excluding the node step).
+// childconn: how the more-specific step below connects to rsteps' head.
+let rec match_up (anchored:bool) (rsteps:list (pconn & string)) (childconn:pconn) (anc:list string)
+  : Tot bool (decreases (List.Tot.length rsteps + List.Tot.length anc)) =
+  match rsteps with
+  | [] -> if anchored then Nil? anc else true
+  | (c, nm) :: rest ->
+    (match childconn with
+     | PC_Child ->
+       (match anc with
+        | [] -> false
+        | a :: az -> pname_ok nm a && match_up anchored rest c az)
+     | PC_Desc -> match_desc anchored nm rest c anc)
+
+and match_desc (anchored:bool) (nm:string) (rest:list (pconn & string)) (c:pconn) (anc:list string)
+  : Tot bool (decreases (List.Tot.length rest + List.Tot.length anc)) =
+  match anc with
+  | [] -> false
+  | a :: az ->
+    (pname_ok nm a && match_up anchored rest c az) || match_desc anchored nm rest c az
+
 let alt_matches_elem (a:string) (it:xctx_item) (tag:string) : bool =
-  if contains_double_slash a then
-    // "a//b" or "//b": b is the last step (name or "*"), and a (if
-    // present) must match some ancestor's tag.
-    let parts = split_on_char '/' a in
-    (match List.Tot.rev parts with
-     | last :: before_rev ->
-       if not (step_ok last tag) then false
-       else
-         let before = List.Tot.filter (fun (p:string) -> trim_str p <> "") (List.Tot.rev before_rev) in
-         (match List.Tot.rev before with
-          | [] -> true
-          | anc_step :: _ -> any_tag_matches anc_step (ancestor_tags_of it))
-     | [] -> false)
-  else if contains_char '/' a then
-    let steps = List.Tot.filter (fun (p:string) -> trim_str p <> "") (split_on_char '/' a) in
-    match_chain (List.Tot.rev steps) (tag :: ancestor_tags_of it)
-  else
-    // plain element name
-    a = tag
+  let (anchored, steps) = parse_psteps a in
+  match List.Tot.rev steps with
+  | [] -> false
+  | (ck, nk) :: rrest ->
+    if not (pname_ok nk tag) then false
+    else match_up anchored rrest ck (ancestor_tags_of it)
 
 let alt_matches_core (alt:string) (nd:dnode) : bool =
   let a = trim_str alt in
@@ -527,23 +585,32 @@ let rec max_alt_priority (alts:list string) (cur:int) : Tot int (decreases alts)
     max_alt_priority rest (if p > cur then p else cur)
 
 let template_priority (tpl:template) : int =
-  max_alt_priority (split_on_char '|' tpl.tpl_match) (-100)
+  match tpl.tpl_prio with
+  | Some p -> p
+  | None -> max_alt_priority (split_on_char '|' tpl.tpl_match) (-100)
 
-// Highest-priority matching template; ties resolved to the LAST in
+// Highest-priority template that both matches `nd` AND is declared in
+// the active `mode` (default mode = ""); ties resolved to the LAST in
 // document order (XSLT 1.0 conflict resolution, minus the error).
-let rec pick_template (vars) (tpls:list template) (nd:dnode) (best:option template)
+let rec pick_template (vars) (mode:string) (tpls:list template) (nd:dnode) (best:option template)
   : Tot (option template) (decreases tpls) =
   match tpls with
   | [] -> best
   | t :: rest ->
     let best' =
-      if template_matches vars t nd then
+      if t.tpl_mode = mode && template_matches vars t nd then
         (match best with
          | None -> Some t
          | Some b -> if template_priority t >= template_priority b then Some t else best)
       else best
     in
-    pick_template vars rest nd best'
+    pick_template vars mode rest nd best'
+
+// Look up a named template (xsl:call-template target); first match wins.
+let rec find_named_template (tpls:list template) (nm:string) : Tot (option template) (decreases tpls) =
+  match tpls with
+  | [] -> None
+  | t :: rest -> if t.tpl_name = nm && nm <> "" then Some t else find_named_template rest nm
 
 (* ================================================================ *)
 (* Serialization: result tree -> XML text (method="xml") or text       *)
@@ -613,6 +680,105 @@ and text_value_nodes (ns:list xml_node) : Tot string (decreases ns) =
   | hd :: tl -> strcat (text_value_node hd) (text_value_nodes tl)
 
 (* ================================================================ *)
+(* xsl:sort -- key specs collected from the leading xsl:sort children  *)
+(* of an xsl:for-each / xsl:apply-templates, and a stable sort of the  *)
+(* selected node-set by those keys. Sort keys are evaluated with each  *)
+(* candidate as the context node (self-fuelled via eval_string).       *)
+(* ================================================================ *)
+
+type sortspec = {
+  so_select : string;
+  so_numeric : bool;
+  so_descending : bool;
+}
+
+let parse_sort (pfx:string) (n:xml_node) : option sortspec =
+  match n with
+  | XElement tag attrs _ ->
+    if is_xsl pfx tag && xsl_instr pfx tag = "sort" then
+      Some { so_select = attr_or "select" "." attrs;
+             so_numeric = (attr_or "data-type" "text" attrs = "number");
+             so_descending = (attr_or "order" "ascending" attrs = "descending") }
+    else None
+  | _ -> None
+
+// Leading xsl:sort children (whitespace-only text between them is
+// skipped; the first non-sort content stops the collection).
+let rec collect_sorts (pfx:string) (body:list xml_node) : Tot (list sortspec) (decreases body) =
+  match body with
+  | [] -> []
+  | hd :: tl ->
+    (match parse_sort pfx hd with
+     | Some s -> s :: collect_sorts pfx tl
+     | None ->
+       (match hd with
+        | XText t -> if is_all_ws t then collect_sorts pfx tl else []
+        | _ -> []))
+
+let rec sort_key_cmp (vars:list (string & xp_value)) (specs:list sortspec) (a b:xctx_item)
+  : Tot int (decreases specs) =
+  match specs with
+  | [] -> 0
+  | s :: rest ->
+    let sa = eval_string a 1 1 vars s.so_select in
+    let sb = eval_string b 1 1 vars s.so_select in
+    let raw =
+      if s.so_numeric then
+        (let na = string_to_xn sa in
+         let nb = string_to_xn sb in
+         match xn_compare na nb with
+         | Some c -> c
+         | None ->
+           // A NaN key (non-numeric text under data-type="number") sorts
+           // before every real number in ascending order (so it sorts
+           // last once the descending sign-flip below is applied), which
+           // is what the W3C numeric-sort reference outputs expect.
+           let a_nan = (match na with XN_NaN -> true | _ -> false) in
+           let b_nan = (match nb with XN_NaN -> true | _ -> false) in
+           if a_nan && b_nan then 0 else if a_nan then -1 else 1)
+      else String.compare sa sb in
+    let signed = if s.so_descending then 0 - raw else raw in
+    if signed <> 0 then signed else sort_key_cmp vars rest a b
+
+// Stable insertion sort: an element with a key equal to an already-
+// placed one is inserted AFTER it, preserving original document order
+// among equal keys (XSLT 1.0 sorts are stable).
+let rec sort_insert (vars:list (string & xp_value)) (specs:list sortspec) (x:xctx_item) (l:list xctx_item)
+  : Tot (list xctx_item) (decreases l) =
+  match l with
+  | [] -> [x]
+  | y :: ys -> if sort_key_cmp vars specs x y <= 0 then x :: l else y :: sort_insert vars specs x ys
+
+let rec sort_items (vars:list (string & xp_value)) (specs:list sortspec) (l:list xctx_item)
+  : Tot (list xctx_item) (decreases l) =
+  match l with
+  | [] -> []
+  | x :: xs -> sort_insert vars specs x (sort_items vars specs xs)
+
+let sort_maybe (pfx:string) (vars:list (string & xp_value)) (body:list xml_node) (items:list xctx_item)
+  : list xctx_item =
+  match collect_sorts pfx body with
+  | [] -> items
+  | specs -> sort_items vars specs items
+
+(* ================================================================ *)
+(* Result-tree-fragment variables. A variable/param with element/text  *)
+(* content (no select=) binds to the sequence of result nodes its body  *)
+(* instantiates. The string-value is bound in the XPath variable list   *)
+(* (so value-of/string contexts work); the node sequence is kept in a   *)
+(* separate rtf table so xsl:copy-of select="$var" can re-emit it.      *)
+(* ================================================================ *)
+
+let rtf_var_name (sel:string) : option string =
+  let s = trim_str sel in
+  if starts_with "$" s then Some (str_of_chars (drop_prefix_chars (chars_of s) 1)) else None
+
+let rec rtf_find (rtf:list (string & list rnode)) (nm:string) : option (list rnode) =
+  match rtf with
+  | [] -> None
+  | (k, v) :: rest -> if k = nm then Some v else rtf_find rest nm
+
+(* ================================================================ *)
 (* The transform engine -- one fuel-threaded mutual-recursion family.  *)
 (* ================================================================ *)
 
@@ -624,45 +790,46 @@ and text_value_nodes (ns:list xml_node) : Tot string (decreases ns) =
 // XPath call-outs use `dnode_ci ctx` (the document node presents as
 // its root element for expression evaluation).
 
-let rec dispatch (fuel:nat) (st:xstyle) (nd:dnode) (pos size:nat)
+let rec dispatch (fuel:nat) (st:xstyle) (nd:dnode) (pos size:nat) (mode:string)
   : Tot (list rnode) (decreases fuel) =
   if fuel = 0 then []
   else
-    match pick_template st.xs_globals st.xs_templates nd None with
-    | Some tpl -> instantiate_seq (fuel - 1) st nd pos size st.xs_globals tpl.tpl_body
-    | None -> builtin_rule (fuel - 1) st nd
+    match pick_template st.xs_globals mode st.xs_templates nd None with
+    | Some tpl -> instantiate_seq (fuel - 1) st nd pos size st.xs_globals [] tpl.tpl_body
+    | None -> builtin_rule (fuel - 1) st nd mode
 
-and builtin_rule (fuel:nat) (st:xstyle) (nd:dnode) : Tot (list rnode) (decreases fuel) =
+and builtin_rule (fuel:nat) (st:xstyle) (nd:dnode) (mode:string) : Tot (list rnode) (decreases fuel) =
   if fuel = 0 then []
   else
     match nd with
     | D_Doc _ ->
       let kids = dnode_children nd in
-      apply_list (fuel - 1) st kids 1 (List.Tot.length kids)
+      apply_list (fuel - 1) st kids 1 (List.Tot.length kids) mode
     | D_Item (CI_Elem _ _ _) ->
       let kids = dnode_children nd in
-      apply_list (fuel - 1) st kids 1 (List.Tot.length kids)
+      apply_list (fuel - 1) st kids 1 (List.Tot.length kids) mode
     | D_Item (CI_Text _ _ _ t) -> [R_Node (XText t)]
     | D_Item (CI_Attr _ _ _ a) -> [R_Node (XText a.attr_value)]
     | D_Item (CI_Comment _ _ _ _) -> []
     | D_Item (CI_PI _ _ _ _ _) -> []
 
-// Apply templates to a list of driver nodes, threading 1-based
-// position and the common size.
-and apply_list (fuel:nat) (st:xstyle) (nodes:list dnode) (pos size:nat)
+// Apply templates (in the active mode) to a list of driver nodes,
+// threading 1-based position and the common size.
+and apply_list (fuel:nat) (st:xstyle) (nodes:list dnode) (pos size:nat) (mode:string)
   : Tot (list rnode) (decreases fuel) =
   if fuel = 0 then []
   else
     match nodes with
     | [] -> []
     | hd :: tl ->
-      let here = dispatch (fuel - 1) st hd pos size in
-      here @ apply_list (fuel - 1) st tl (pos + 1) size
+      let here = dispatch (fuel - 1) st hd pos size mode in
+      here @ apply_list (fuel - 1) st tl (pos + 1) size mode
 
 // Instantiate a template body (sequence of instruction nodes),
-// threading local variable bindings across siblings.
+// threading local variable bindings (xp-value + result-tree-fragment)
+// across siblings.
 and instantiate_seq (fuel:nat) (st:xstyle) (ctx:dnode) (pos size:nat)
-                    (vars:list (string & xp_value)) (nodes:list xml_node)
+                    (vars:list (string & xp_value)) (rtf:list (string & list rnode)) (nodes:list xml_node)
   : Tot (list rnode) (decreases fuel) =
   if fuel = 0 then []
   else
@@ -670,24 +837,62 @@ and instantiate_seq (fuel:nat) (st:xstyle) (ctx:dnode) (pos size:nat)
     | [] -> []
     | hd :: tl ->
       (match hd with
-       | XElement tag attrs _ ->
+       | XElement tag attrs children ->
          if is_xsl st.xs_pfx tag &&
             (let ln = xsl_instr st.xs_pfx tag in ln = "variable" || ln = "param") then
+           let nm = attr_or "name" "" attrs in
+           // xsl:param uses an already-bound value (e.g. from
+           // xsl:with-param on the calling xsl:call-template) if present,
+           // and only falls back to its own default otherwise.
+           let already = (xsl_instr st.xs_pfx tag = "param") && Some? (lookup_var vars nm) in
+           if already then instantiate_seq (fuel - 1) st ctx pos size vars rtf tl
+           else
+             (match attr_opt "select" attrs with
+              | Some sel ->
+                let v = eval_val (dnode_ci ctx) pos size vars sel in
+                instantiate_seq (fuel - 1) st ctx pos size ((nm, v) :: vars) rtf tl
+              | None ->
+                // Result-tree-fragment: instantiate the body, bind its
+                // string-value for XPath and its nodes for copy-of.
+                let frag = instantiate_seq (fuel - 1) st ctx pos size vars rtf children in
+                let sval = text_value_nodes (only_nodes frag) in
+                instantiate_seq (fuel - 1) st ctx pos size ((nm, XV_Str sval) :: vars) ((nm, frag) :: rtf) tl)
+         else
+           let here = instantiate_one (fuel - 1) st ctx pos size vars rtf hd in
+           here @ instantiate_seq (fuel - 1) st ctx pos size vars rtf tl
+       | _ ->
+         let here = instantiate_one (fuel - 1) st ctx pos size vars rtf hd in
+         here @ instantiate_seq (fuel - 1) st ctx pos size vars rtf tl)
+
+// Bind xsl:with-param children (select= or body RTF) onto the variable
+// lists that will seed a called template. First non-param handling is
+// skipped; params accumulate onto (vars, rtf).
+and bind_with_params (fuel:nat) (st:xstyle) (ctx:dnode) (pos size:nat)
+                     (vars:list (string & xp_value)) (rtf:list (string & list rnode))
+                     (children:list xml_node)
+  : Tot (list (string & xp_value) & list (string & list rnode)) (decreases fuel) =
+  if fuel = 0 then (vars, rtf)
+  else
+    match children with
+    | [] -> (vars, rtf)
+    | hd :: tl ->
+      (match hd with
+       | XElement tag attrs pchildren ->
+         if is_xsl st.xs_pfx tag && xsl_instr st.xs_pfx tag = "with-param" then
+           let nm = attr_or "name" "" attrs in
            (match attr_opt "select" attrs with
             | Some sel ->
               let v = eval_val (dnode_ci ctx) pos size vars sel in
-              let vars' = (attr_or "name" "" attrs, v) :: vars in
-              instantiate_seq (fuel - 1) st ctx pos size vars' tl
-            | None -> instantiate_seq (fuel - 1) st ctx pos size vars tl)
-         else
-           let here = instantiate_one (fuel - 1) st ctx pos size vars hd in
-           here @ instantiate_seq (fuel - 1) st ctx pos size vars tl
-       | _ ->
-         let here = instantiate_one (fuel - 1) st ctx pos size vars hd in
-         here @ instantiate_seq (fuel - 1) st ctx pos size vars tl)
+              bind_with_params (fuel - 1) st ctx pos size ((nm, v) :: vars) rtf tl
+            | None ->
+              let frag = instantiate_seq (fuel - 1) st ctx pos size vars rtf pchildren in
+              let sval = text_value_nodes (only_nodes frag) in
+              bind_with_params (fuel - 1) st ctx pos size ((nm, XV_Str sval) :: vars) ((nm, frag) :: rtf) tl)
+         else bind_with_params (fuel - 1) st ctx pos size vars rtf tl
+       | _ -> bind_with_params (fuel - 1) st ctx pos size vars rtf tl)
 
 and instantiate_one (fuel:nat) (st:xstyle) (ctx:dnode) (pos size:nat)
-                    (vars:list (string & xp_value)) (node:xml_node)
+                    (vars:list (string & xp_value)) (rtf:list (string & list rnode)) (node:xml_node)
   : Tot (list rnode) (decreases fuel) =
   if fuel = 0 then []
   else
@@ -705,41 +910,61 @@ and instantiate_one (fuel:nat) (st:xstyle) (ctx:dnode) (pos size:nat)
           [R_Node (XText (raw_text children))]
         else if ln = "if" then
           (if eval_bool (dnode_ci ctx) pos size vars (attr_or "test" "false()" attrs)
-           then instantiate_seq (fuel - 1) st ctx pos size vars children
+           then instantiate_seq (fuel - 1) st ctx pos size vars rtf children
            else [])
         else if ln = "choose" then
-          instantiate_choose (fuel - 1) st ctx pos size vars children
+          instantiate_choose (fuel - 1) st ctx pos size vars rtf children
         else if ln = "for-each" then
           let sel = attr_or "select" "." attrs in
-          let items = select_nodes ctx pos size vars sel in
-          for_each_items (fuel - 1) st children vars items 1 (List.Tot.length items)
+          let items0 = select_nodes ctx pos size vars sel in
+          let items = sort_maybe st.xs_pfx vars children items0 in
+          for_each_items (fuel - 1) st children vars rtf items 1 (List.Tot.length items)
         else if ln = "apply-templates" then
+          let amode = attr_or "mode" "" attrs in
           (match attr_opt "select" attrs with
            | Some sel ->
-             let items = select_nodes ctx pos size vars sel in
+             let items0 = select_nodes ctx pos size vars sel in
+             let items = sort_maybe st.xs_pfx vars children items0 in
              let dns = List.Tot.map (fun it -> D_Item it) items in
-             apply_list (fuel - 1) st dns 1 (List.Tot.length items)
+             apply_list (fuel - 1) st dns 1 (List.Tot.length items) amode
            | None ->
              let kids = dnode_children ctx in
-             apply_list (fuel - 1) st kids 1 (List.Tot.length kids))
+             apply_list (fuel - 1) st kids 1 (List.Tot.length kids) amode)
+        else if ln = "call-template" then
+          let nm = attr_or "name" "" attrs in
+          (match find_named_template st.xs_templates nm with
+           | Some tpl ->
+             // Named-template invocation keeps the current context node.
+             // with-param bindings seed the called template's params;
+             // recursion is bounded by the same fuel as every other call
+             // (a self-calling template exhausts fuel and yields [], not
+             // a nonterminating loop).
+             let (cvars, crtf) = bind_with_params (fuel - 1) st ctx pos size st.xs_globals [] children in
+             instantiate_seq (fuel - 1) st ctx pos size cvars crtf tpl.tpl_body
+           | None -> [])
         else if ln = "copy-of" then
-          let items = select_nodes ctx pos size vars (attr_or "select" "." attrs) in
-          List.Tot.map item_to_rnode items
+          let sel = attr_or "select" "." attrs in
+          (match rtf_var_name sel with
+           | Some nm ->
+             (match rtf_find rtf nm with
+              | Some frag -> frag
+              | None -> List.Tot.map item_to_rnode (select_nodes ctx pos size vars sel))
+           | None -> List.Tot.map item_to_rnode (select_nodes ctx pos size vars sel))
         else if ln = "copy" then
-          instantiate_copy (fuel - 1) st ctx pos size vars children
+          instantiate_copy (fuel - 1) st ctx pos size vars rtf children
         else if ln = "element" then
           let nm = expand_avt (dnode_ci ctx) pos size vars (attr_or "name" "" attrs) in
-          let body = instantiate_seq (fuel - 1) st ctx pos size vars children in
+          let body = instantiate_seq (fuel - 1) st ctx pos size vars rtf children in
           [R_Node (build_element nm [] body)]
         else if ln = "attribute" then
           let nm = expand_avt (dnode_ci ctx) pos size vars (attr_or "name" "" attrs) in
-          let body = instantiate_seq (fuel - 1) st ctx pos size vars children in
+          let body = instantiate_seq (fuel - 1) st ctx pos size vars rtf children in
           [R_Attr ({ attr_name = nm; attr_value = rnodes_text body })]
         else if ln = "comment" then
-          let body = instantiate_seq (fuel - 1) st ctx pos size vars children in
+          let body = instantiate_seq (fuel - 1) st ctx pos size vars rtf children in
           [R_Node (XComment (rnodes_text body))]
         else
-          []  // unsupported xsl instruction (slice 1): emit nothing
+          []  // unsupported xsl instruction: emit nothing
       else
         // literal result element: copy tag, AVT-expand its attributes,
         // instantiate its content; xsl:attribute children fold in.
@@ -748,11 +973,11 @@ and instantiate_one (fuel:nat) (st:xstyle) (ctx:dnode) (pos size:nat)
             (fun (a:xml_attribute) ->
                { attr_name = a.attr_name; attr_value = expand_avt (dnode_ci ctx) pos size vars a.attr_value })
             attrs in
-        let body = instantiate_seq (fuel - 1) st ctx pos size vars children in
+        let body = instantiate_seq (fuel - 1) st ctx pos size vars rtf children in
         [R_Node (build_element tag out_attrs body)]
 
 and instantiate_choose (fuel:nat) (st:xstyle) (ctx:dnode) (pos size:nat)
-                       (vars:list (string & xp_value)) (branches:list xml_node)
+                       (vars:list (string & xp_value)) (rtf:list (string & list rnode)) (branches:list xml_node)
   : Tot (list rnode) (decreases fuel) =
   if fuel = 0 then []
   else
@@ -765,46 +990,63 @@ and instantiate_choose (fuel:nat) (st:xstyle) (ctx:dnode) (pos size:nat)
            let ln = xsl_instr st.xs_pfx tag in
            if ln = "when" then
              (if eval_bool (dnode_ci ctx) pos size vars (attr_or "test" "false()" attrs)
-              then instantiate_seq (fuel - 1) st ctx pos size vars children
-              else instantiate_choose (fuel - 1) st ctx pos size vars tl)
+              then instantiate_seq (fuel - 1) st ctx pos size vars rtf children
+              else instantiate_choose (fuel - 1) st ctx pos size vars rtf tl)
            else if ln = "otherwise" then
-             instantiate_seq (fuel - 1) st ctx pos size vars children
-           else instantiate_choose (fuel - 1) st ctx pos size vars tl
-         else instantiate_choose (fuel - 1) st ctx pos size vars tl
-       | _ -> instantiate_choose (fuel - 1) st ctx pos size vars tl)
+             instantiate_seq (fuel - 1) st ctx pos size vars rtf children
+           else instantiate_choose (fuel - 1) st ctx pos size vars rtf tl
+         else instantiate_choose (fuel - 1) st ctx pos size vars rtf tl
+       | _ -> instantiate_choose (fuel - 1) st ctx pos size vars rtf tl)
 
 and instantiate_copy (fuel:nat) (st:xstyle) (ctx:dnode) (pos size:nat)
-                     (vars:list (string & xp_value)) (children:list xml_node)
+                     (vars:list (string & xp_value)) (rtf:list (string & list rnode)) (children:list xml_node)
   : Tot (list rnode) (decreases fuel) =
   if fuel = 0 then []
   else
     match ctx with
-    | D_Doc _ -> instantiate_seq (fuel - 1) st ctx pos size vars children
+    | D_Doc _ -> instantiate_seq (fuel - 1) st ctx pos size vars rtf children
     | D_Item (CI_Elem _ _ n) ->
       (match n with
        | XElement t _ _ ->
-         let body = instantiate_seq (fuel - 1) st ctx pos size vars children in
+         let body = instantiate_seq (fuel - 1) st ctx pos size vars rtf children in
          [R_Node (build_element t [] body)]
-       | _ -> instantiate_seq (fuel - 1) st ctx pos size vars children)
+       | _ -> instantiate_seq (fuel - 1) st ctx pos size vars rtf children)
     | D_Item (CI_Text _ _ _ t) -> [R_Node (XText t)]
     | D_Item (CI_Comment _ _ _ t) -> [R_Node (XComment t)]
     | D_Item (CI_PI _ _ _ tg d) -> [R_Node (XPI tg d)]
     | D_Item (CI_Attr _ _ _ a) -> [R_Attr a]
 
 and for_each_items (fuel:nat) (st:xstyle) (body:list xml_node)
-                   (vars:list (string & xp_value)) (items:list xctx_item) (pos size:nat)
+                   (vars:list (string & xp_value)) (rtf:list (string & list rnode))
+                   (items:list xctx_item) (pos size:nat)
   : Tot (list rnode) (decreases fuel) =
   if fuel = 0 then []
   else
     match items with
     | [] -> []
     | it :: rest ->
-      let here = instantiate_seq (fuel - 1) st (D_Item it) pos size vars body in
-      here @ for_each_items (fuel - 1) st body vars rest (pos + 1) size
+      let here = instantiate_seq (fuel - 1) st (D_Item it) pos size vars rtf body in
+      here @ for_each_items (fuel - 1) st body vars rtf rest (pos + 1) size
 
 (* ================================================================ *)
 (* Stylesheet compilation.                                            *)
 (* ================================================================ *)
+
+// Parse an integer priority= attribute, x10-scaled to match the
+// default-priority scale (name=0, node-test=-5, path/predicate=5). A
+// fractional or unparseable value falls back to the computed default.
+let rec digits_to_int (cs:list char) (acc:int) : Tot (option int) (decreases cs) =
+  match cs with
+  | [] -> Some acc
+  | c :: rest ->
+    let d = FStar.Char.int_of_char c - 0x30 in
+    if d >= 0 && d <= 9 then digits_to_int rest (op_Multiply acc 10 + d) else None
+
+let parse_priority (s:string) : option int =
+  match chars_of (trim_str s) with
+  | [] -> None
+  | '-' :: rest -> (match digits_to_int rest 0 with Some n -> Some (op_Multiply (0 - n) 10) | None -> None)
+  | cs -> (match digits_to_int cs 0 with Some n -> Some (op_Multiply n 10) | None -> None)
 
 let rec collect_templates (pfx:string) (children:list xml_node) : Tot (list template) (decreases children) =
   match children with
@@ -813,11 +1055,16 @@ let rec collect_templates (pfx:string) (children:list xml_node) : Tot (list temp
     (match hd with
      | XElement tag attrs body ->
        if is_xsl pfx tag && xsl_instr pfx tag = "template" then
-         (match attr_opt "match" attrs with
-          | Some m ->
-            let t = { tpl_match = m; tpl_priority = 0; tpl_body = body } in
-            t :: collect_templates pfx tl
-          | None -> collect_templates pfx tl)
+         let m = attr_or "match" "" attrs in
+         let nm = attr_or "name" "" attrs in
+         if m = "" && nm = "" then collect_templates pfx tl
+         else
+           let t = { tpl_match = m; tpl_name = nm;
+                     tpl_mode = attr_or "mode" "" attrs;
+                     tpl_prio = (match attr_opt "priority" attrs with
+                                 | Some p -> parse_priority p | None -> None);
+                     tpl_body = body } in
+           t :: collect_templates pfx tl
        else collect_templates pfx tl
      | _ -> collect_templates pfx tl)
 
@@ -864,7 +1111,7 @@ let build_style (stylesheet:xml_node) (source:xml_node) : xstyle =
       // Simplified stylesheet: the literal result element IS the body
       // of a single template matching the document root.
       { xs_pfx = pfx;
-        xs_templates = [ { tpl_match = "/"; tpl_priority = 0; tpl_body = [stylesheet] } ];
+        xs_templates = [ { tpl_match = "/"; tpl_name = ""; tpl_mode = ""; tpl_prio = None; tpl_body = [stylesheet] } ];
         xs_method = "xml";
         xs_globals = [] }
   | _ ->
@@ -880,7 +1127,7 @@ let transform (stylesheet:xml_node) (source:xml_node) : string =
   // apply-templates / instantiate step consumes one unit.
   let sz = xml_node_count stylesheet + xml_node_count source in
   let fuel = op_Multiply (sz + 1) 256 + 100000 in
-  let result = dispatch fuel st (D_Doc source) 1 1 in
+  let result = dispatch fuel st (D_Doc source) 1 1 "" in
   let nodes = only_nodes result in
   if st.xs_method = "text" then text_value_nodes nodes
   else serialize_nodes nodes

@@ -1186,7 +1186,11 @@ let rec skip_misc (input : Prims.string) (pos : Prims.nat) (fuel : Prims.nat)
           | Parser_Combinators.ParseOk (uu___1, pos2) ->
               skip_misc input pos2 (fuel - Prims.int_one)
           | Parser_Combinators.ParseFail (uu___1, uu___2) ->
-              Parser_Combinators.ParseOk ((), pos1))
+              (match parse_xml_pi input pos1 with
+               | Parser_Combinators.ParseOk (uu___3, pos2) ->
+                   skip_misc input pos2 (fuel - Prims.int_one)
+               | Parser_Combinators.ParseFail (uu___3, uu___4) ->
+                   Parser_Combinators.ParseOk ((), pos1)))
      | Parser_Combinators.ParseFail (msg, fpos) ->
          Parser_Combinators.ParseFail (msg, fpos))
 let rec skip_epilog_misc (input : Prims.string) (pos : Prims.nat)

@@ -510,5 +510,197 @@
     "source": "files/variable__variable-1701.src.xml",
     "expected": "files/variable__variable-1701.expected.xml",
     "description": "Purpose: Verify that a variable in an inner template can take on a new value \"Only the innermost binding of a variable is visible.\" suppress empty lines"
+  },
+  {
+    "name": "sort-001",
+    "category": "sort",
+    "stylesheet": "files/sort__sort-001.xsl",
+    "source": "files/sort__sort-001.src.xml",
+    "expected": "files/sort__sort-001.expected.xml",
+    "description": "xsl:sort (vendored w3c/xslt30-test insn/sort, XSLT10)"
+  },
+  {
+    "name": "sort-005",
+    "category": "sort",
+    "stylesheet": "files/sort__sort-005.xsl",
+    "source": "files/sort__sort-005.src.xml",
+    "expected": "files/sort__sort-005.expected.xml",
+    "description": "xsl:sort (vendored w3c/xslt30-test insn/sort, XSLT10)"
+  },
+  {
+    "name": "sort-007",
+    "category": "sort",
+    "stylesheet": "files/sort__sort-007.xsl",
+    "source": "files/sort__sort-007.src.xml",
+    "expected": "files/sort__sort-007.expected.xml",
+    "description": "xsl:sort (vendored w3c/xslt30-test insn/sort, XSLT10)"
+  },
+  {
+    "name": "sort-008",
+    "category": "sort",
+    "stylesheet": "files/sort__sort-008.xsl",
+    "source": "files/sort__sort-008.src.xml",
+    "expected": "files/sort__sort-008.expected.xml",
+    "description": "xsl:sort (vendored w3c/xslt30-test insn/sort, XSLT10)"
+  },
+  {
+    "name": "sort-009",
+    "category": "sort",
+    "stylesheet": "files/sort__sort-009.xsl",
+    "source": "files/sort__sort-009.src.xml",
+    "expected": "files/sort__sort-009.expected.xml",
+    "description": "xsl:sort (vendored w3c/xslt30-test insn/sort, XSLT10)"
+  },
+  {
+    "name": "sort-011",
+    "category": "sort",
+    "stylesheet": "files/sort__sort-011.xsl",
+    "source": "files/sort__sort-011.src.xml",
+    "expected": "files/sort__sort-011.expected.xml",
+    "description": "xsl:sort (vendored w3c/xslt30-test insn/sort, XSLT10)"
+  },
+  {
+    "name": "sort-012",
+    "category": "sort",
+    "stylesheet": "files/sort__sort-012.xsl",
+    "source": "files/sort__sort-012.src.xml",
+    "expected": "files/sort__sort-012.expected.xml",
+    "description": "xsl:sort (vendored w3c/xslt30-test insn/sort, XSLT10)"
+  },
+  {
+    "name": "sort-016",
+    "category": "sort",
+    "stylesheet": "files/sort__sort-016.xsl",
+    "source": "files/sort__sort-016.src.xml",
+    "expected": "files/sort__sort-016.expected.xml",
+    "description": "xsl:sort (vendored w3c/xslt30-test insn/sort, XSLT10)"
+  },
+  {
+    "name": "sort-021",
+    "category": "sort",
+    "stylesheet": "files/sort__sort-021.xsl",
+    "source": "files/sort__sort-021.src.xml",
+    "expected": "files/sort__sort-021.expected.xml",
+    "description": "xsl:sort (vendored w3c/xslt30-test insn/sort, XSLT10)"
+  },
+  {
+    "name": "sort-022",
+    "category": "sort",
+    "stylesheet": "files/sort__sort-022.xsl",
+    "source": "files/sort__sort-022.src.xml",
+    "expected": "files/sort__sort-022.expected.xml",
+    "description": "xsl:sort (vendored w3c/xslt30-test insn/sort, XSLT10)"
+  },
+  {
+    "name": "sort-023",
+    "category": "sort",
+    "stylesheet": "files/sort__sort-023.xsl",
+    "source": "files/sort__sort-023.src.xml",
+    "expected": "files/sort__sort-023.expected.xml",
+    "description": "xsl:sort (vendored w3c/xslt30-test insn/sort, XSLT10)"
+  },
+  {
+    "name": "sort-033",
+    "category": "sort",
+    "stylesheet": "files/sort__sort-033.xsl",
+    "source": "files/sort__sort-033.src.xml",
+    "expected": "files/sort__sort-033.expected.xml",
+    "description": "xsl:sort (vendored w3c/xslt30-test insn/sort, XSLT10)"
+  },
+  {
+    "name": "sort-034",
+    "category": "sort",
+    "stylesheet": "files/sort__sort-034.xsl",
+    "source": "files/sort__sort-034.src.xml",
+    "expected": "files/sort__sort-034.expected.xml",
+    "description": "xsl:sort (vendored w3c/xslt30-test insn/sort, XSLT10)"
+  },
+  {
+    "name": "sort-035",
+    "category": "sort",
+    "stylesheet": "files/sort__sort-035.xsl",
+    "source": "files/sort__sort-035.src.xml",
+    "expected": "files/sort__sort-035.expected.xml",
+    "description": "xsl:sort (vendored w3c/xslt30-test insn/sort, XSLT10)"
+  },
+  {
+    "name": "sort-036",
+    "category": "sort",
+    "stylesheet": "files/sort__sort-036.xsl",
+    "source": "files/sort__sort-036.src.xml",
+    "expected": "files/sort__sort-036.expected.xml",
+    "description": "xsl:sort (vendored w3c/xslt30-test insn/sort, XSLT10)"
+  },
+  {
+    "name": "sort-041",
+    "category": "sort",
+    "stylesheet": "files/sort__sort-041.xsl",
+    "source": "files/sort__sort-041.src.xml",
+    "expected": "files/sort__sort-041.expected.xml",
+    "description": "xsl:sort (vendored w3c/xslt30-test insn/sort, XSLT10)"
+  },
+  {
+    "name": "sort-042",
+    "category": "sort",
+    "stylesheet": "files/sort__sort-042.xsl",
+    "source": "files/sort__sort-042.src.xml",
+    "expected": "files/sort__sort-042.expected.xml",
+    "description": "xsl:sort (vendored w3c/xslt30-test insn/sort, XSLT10)"
+  },
+  {
+    "name": "sort-043",
+    "category": "sort",
+    "stylesheet": "files/sort__sort-043.xsl",
+    "source": "files/sort__sort-043.src.xml",
+    "expected": "files/sort__sort-043.expected.xml",
+    "description": "xsl:sort (vendored w3c/xslt30-test insn/sort, XSLT10)"
+  },
+  {
+    "name": "sort-044",
+    "category": "sort",
+    "stylesheet": "files/sort__sort-044.xsl",
+    "source": "files/sort__sort-044.src.xml",
+    "expected": "files/sort__sort-044.expected.xml",
+    "description": "xsl:sort (vendored w3c/xslt30-test insn/sort, XSLT10)"
+  },
+  {
+    "name": "sort-045",
+    "category": "sort",
+    "stylesheet": "files/sort__sort-045.xsl",
+    "source": "files/sort__sort-045.src.xml",
+    "expected": "files/sort__sort-045.expected.xml",
+    "description": "xsl:sort (vendored w3c/xslt30-test insn/sort, XSLT10)"
+  },
+  {
+    "name": "sort-046",
+    "category": "sort",
+    "stylesheet": "files/sort__sort-046.xsl",
+    "source": "files/sort__sort-046.src.xml",
+    "expected": "files/sort__sort-046.expected.xml",
+    "description": "xsl:sort (vendored w3c/xslt30-test insn/sort, XSLT10)"
+  },
+  {
+    "name": "sort-048",
+    "category": "sort",
+    "stylesheet": "files/sort__sort-048.xsl",
+    "source": "files/sort__sort-048.src.xml",
+    "expected": "files/sort__sort-048.expected.xml",
+    "description": "xsl:sort (vendored w3c/xslt30-test insn/sort, XSLT10)"
+  },
+  {
+    "name": "sort-049",
+    "category": "sort",
+    "stylesheet": "files/sort__sort-049.xsl",
+    "source": "files/sort__sort-049.src.xml",
+    "expected": "files/sort__sort-049.expected.xml",
+    "description": "xsl:sort (vendored w3c/xslt30-test insn/sort, XSLT10)"
+  },
+  {
+    "name": "sort-050",
+    "category": "sort",
+    "stylesheet": "files/sort__sort-050.xsl",
+    "source": "files/sort__sort-050.src.xml",
+    "expected": "files/sort__sort-050.expected.xml",
+    "description": "xsl:sort (vendored w3c/xslt30-test insn/sort, XSLT10)"
   }
 ]

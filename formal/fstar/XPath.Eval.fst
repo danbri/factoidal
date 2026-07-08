@@ -1036,6 +1036,15 @@ and eval_funcall (fuel:nat) (env:xp_env) (name:string) (args:list xp_expr)
        | it :: _ ->
          let qn = item_qname it in
          XV_Str (if name = "local-name" then local_name_of qn else qn))
+    else if name = "current" then
+      // XSLT current(): the node the XSLT template is processing. This
+      // engine threads it as env_item at each XPath call-out, so at the
+      // outermost expression current() = the context node. Inside a
+      // location-step predicate the context node changes but env_item
+      // tracks it, so current() there returns the step's context rather
+      // than the XSLT current node (disclosed divergence; the faithful
+      // reading needs a separate current-node slot in xp_env).
+      XV_Nodes [env.env_item]
     else if name = "string" then
       (match args with
        | [] -> XV_Str (item_string_value env.env_item)

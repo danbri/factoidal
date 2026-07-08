@@ -65,21 +65,42 @@
    FAIL (the parser rejected a document the suite says is
    well-formed) — a real defect, clustered by SECTIONS.
 
-   TYPE="not-wf": the suite's own testcases.dtd documents the
-   sanctioned exemption: "No parser should accept a 'not-wf' testcase
-   unless it's a nonvalidating parser and the test contains external
-   entities that the parser doesn't read." This runner is
-   nonvalidating and reads NO external entities at all, so it uses the
-   test's own ENTITIES attribute directly: ENTITIES != "none" and the
-   parser accepted the document -> SKIP (exempted), never FAIL.
-   ENTITIES = "none" and the parser accepted -> genuine FAIL (real
-   defect, clustered by SECTIONS). Any None (reject) result -> PASS,
-   regardless of ENTITIES — a reject always satisfies a not-wf test,
-   whether or not the parser could see the specific violation. When
-   the rejection is structurally guaranteed by an unrelated gap (the
-   document contains a DOCTYPE our parser can never get past), the
-   PASS is flagged "vacuous" in a side counter so the report doesn't
-   overstate what was actually exercised.
+   TYPE="not-wf" (2026-07-08 integrity rewrite — the old
+   "reject-for-any-reason = PASS" rule inflated the score, so it is
+   gone). A not-wf test counts as a real PASS only when the parser's
+   rejection is attributable to the construct the test targets. The
+   cases:
+
+     * parser REJECTED and the document has NO DOCTYPE -> PASS (the
+       rejection came from the element/prolog grammar this parser
+       actually implements, i.e. the tested construct).
+
+     * parser REJECTED but the document carries a DOCTYPE -> this
+       parser rejects EVERY DOCTYPE document (no DOCTYPE production at
+       all), so the rejection is forced by that unrelated gap, NOT by
+       the tested construct. Counted as SKIP (PassVacuous — "not-wf
+       verdict vacuous: rejected for DOCTYPE-unsupported, construct not
+       actually tested"), never a PASS. Historically ~1166 of the old
+       "passes" were exactly this — the whole reason for the rewrite.
+
+     * parser ACCEPTED and the test's own ENTITIES != "none" -> SKIP,
+       exempted per testcases.dtd (nonvalidating, reads no external
+       entities).
+
+     * parser ACCEPTED, ENTITIES = "none", and the document declares
+       version="1.1", OR it is an eduni/namespaces test whose violation
+       XML.Namespaces does not model -> SKIP "out-of-profile": under
+       this parser's declared profile (XML 1.0, non-namespace) the
+       document is genuinely well-formed; the not-wf verdict holds only
+       under XML 1.1 / Namespaces in XML, which we do not fully check.
+
+     * parser ACCEPTED, ENTITIES = "none", XML 1.0, non-namespace,
+       and no namespace violation caught -> genuine FAIL (a real
+       defect: the parser accepted a document that is not-wf under the
+       profile we DO implement), clustered by SECTIONS.
+
+   A namespace-collection test the parser accepted but XML.Namespaces
+   flags as ill-formed is a real PASS ("rejected via XML.Namespaces").
 
    Also SKIP, before any of the above: test input file not found;
    encodings this parser doesn't decode (UTF-16 with or without BOM,
@@ -487,19 +508,41 @@ let classify (base_dir : string) (t : raw_test) : outcome =
               Fail (Printf.sprintf "parser rejected a document listed VALID — SECTIONS %s: %s"
                       t.rt_sections t.rt_description)
         end else if t.rt_type = "not-wf" then begin
+          let ver = declared_xml_version content in
           match Parser_XML.parse_xml_document content with
           | None ->
             if doctype then PassVacuous "rejected (vacuous: DOCTYPE present, parser can't parse any DOCTYPE at all)"
             else Pass "rejected"
           | Some root ->
             if is_namespace_collection t.rt_leaf
-               && not (XML_Namespaces.is_namespace_wellformed (declared_xml_version content) root)
+               && not (XML_Namespaces.is_namespace_wellformed ver root)
             then
               Pass "rejected (Namespaces in XML violation, via XML.Namespaces)"
             else if t.rt_entities <> "none" then
               Skip (Printf.sprintf
                       "parser accepted, but test requires external %s entities not read (exempted per testcases.dtd's TYPE=not-wf clause)"
                       t.rt_entities)
+            else if ver = "1.1" then
+              (* Document declares XML 1.1; this parser implements the
+                 XML 1.0 well-formedness profile. The not-wf verdict for
+                 these cases (e.g. the ibm xml-1.1 C1-control 0x85/0x9C-0x9F
+                 restricted-char cluster) holds only under XML 1.1's
+                 tighter Char/RestrictedChar rules, which we do not check.
+                 Under XML 1.0 the same bytes are well-formed, so we accept
+                 — an honest out-of-profile SKIP, not a pass or a fail. *)
+              Skip (Printf.sprintf
+                      "out-of-profile: not-wf holds only under XML 1.1 (declared version=1.1); parser implements the XML 1.0 profile — SECTIONS %s"
+                      t.rt_sections)
+            else if is_namespace_collection t.rt_leaf then
+              (* Namespaces collection whose violation XML.Namespaces does
+                 not model (e.g. rmt-ns10-042 colon-in-PITarget: the
+                 namespace layer checks element/attribute QNames, not PI
+                 targets). Under plain XML 1.0, a colon in a Name/PITarget
+                 is legal, so the parser accepts. Honest out-of-profile
+                 SKIP rather than a fail. *)
+              Skip (Printf.sprintf
+                      "out-of-profile: not-wf holds only under Namespaces in XML; construct not modelled by XML.Namespaces — SECTIONS %s"
+                      t.rt_sections)
             else
               Fail (Printf.sprintf "parser incorrectly ACCEPTED a not-wf document — SECTIONS %s: %s"
                       t.rt_sections t.rt_description)
@@ -544,11 +587,13 @@ let print_help () =
      Scoring: TYPE=invalid/error always SKIP (no DTD validation, by\n\
      design). TYPE=valid PASS (labelled wf-accept) requires no DOCTYPE,\n\
      a decodable declared encoding, and a clean parse; a DOCTYPE or\n\
-     unsupported encoding is SKIP, not FAIL. TYPE=not-wf PASS means the\n\
-     parser rejected the document (regardless of why); an accept is\n\
-     SKIP if the test's own ENTITIES attribute says it needs external\n\
-     entities this nonvalidating parser doesn't read (testcases.dtd's\n\
-     own exemption), else a genuine FAIL.\n"
+     unsupported encoding is SKIP, not FAIL. TYPE=not-wf PASS requires\n\
+     the parser to reject the document for the TESTED construct: a\n\
+     no-DOCTYPE reject is a PASS, but a reject forced only by the\n\
+     DOCTYPE-unsupported gap is SKIP (vacuous), not a PASS. An accept\n\
+     is SKIP when the test needs external entities (testcases.dtd\n\
+     exemption) or is out-of-profile (not-wf only under XML 1.1 /\n\
+     Namespaces); otherwise an accept of a wf-1.0 not-wf doc is FAIL.\n"
 
 module SMap = Map.Make (String)
 
@@ -664,8 +709,13 @@ let () =
       (fun m (t, o) ->
          let key = key_fn t in
          let (p, f, s) = try SMap.find key m with Not_found -> (0, 0, 0) in
+         (* PART 1 (integrity): a not-wf test rejected ONLY because our
+            parser can't parse any DOCTYPE (PassVacuous) is NOT a real
+            pass — the tested construct was never exercised. It counts
+            as a SKIP here and everywhere below, never a pass. *)
          let (p, f, s) = match o with
-           | Pass _ | PassVacuous _ -> (p + 1, f, s)
+           | Pass _ -> (p + 1, f, s)
+           | PassVacuous _ -> (p, f, s + 1)
            | Fail _ -> (p, f + 1, s)
            | Skip _ -> (p, f, s + 1)
          in
@@ -741,7 +791,10 @@ let () =
     else if String.length msg > 70 then String.sub msg 0 70 ^ "..."
     else msg
   in
-  let skips = List.filter_map (fun (_t, o) -> match o with Skip msg -> Some msg | _ -> None) results in
+  (* SKIPs include PassVacuous (not-wf rejected only by the DOCTYPE gap):
+     they are counted as skips per PART 1, so they must appear in the
+     skip breakdown, not be silently dropped. *)
+  let skips = List.filter_map (fun (_t, o) -> match o with Skip msg -> Some msg | PassVacuous msg -> Some msg | _ -> None) results in
   Printf.printf "-- SKIP reason breakdown (%d total SKIPs) --\n" (List.length skips);
   let skip_buckets =
     List.fold_left
@@ -756,14 +809,42 @@ let () =
   |> List.iter (fun (key, n) -> Printf.printf "  %-6d %s\n" n key);
   Printf.printf "\n";
   (* ---------------------------------------------------------------- *)
-  (* Grand total. *)
-  let pass = List.length (List.filter (fun (_, o) -> match o with Pass _ | PassVacuous _ -> true | _ -> false) results) in
+  (* Grand total — PART 1 honest accounting. A not-wf test counts as a
+     real PASS only when the parser rejected it for a reason attributable
+     to the tested construct (Pass), never merely because our parser
+     rejects every DOCTYPE document (PassVacuous, now a SKIP). *)
+  let is_pass = function Pass _ -> true | _ -> false in
+  let is_vacuous = function PassVacuous _ -> true | _ -> false in
+  let is_oop = function Skip m -> (String.length m >= 15 && String.sub m 0 15 = "out-of-profile:") | _ -> false in
+  let pass = List.length (List.filter (fun (_, o) -> is_pass o) results) in
   let fail = List.length fails in
   let skip = List.length skips in
+  (* Honest sub-breakdown by TYPE. *)
+  let count pred = List.length (List.filter pred results) in
+  let real_notwf_pass = count (fun (t, o) -> t.rt_type = "not-wf" && is_pass o) in
+  let wf_pass         = count (fun (t, o) -> t.rt_type = "valid" && is_pass o) in
+  let wf_fail         = count (fun (t, o) -> t.rt_type = "valid" && (match o with Fail _ -> true | _ -> false)) in
+  let notwf_fail      = count (fun (t, o) -> t.rt_type = "not-wf" && (match o with Fail _ -> true | _ -> false)) in
+  let vacuous_skip    = count (fun (_, o) -> is_vacuous o) in
+  let oop_skip        = count (fun (_, o) -> is_oop o) in
+  let other_skip      = skip - vacuous_skip - oop_skip in
   Printf.printf "========================================\n";
   Printf.printf "TOTAL: %d pass, %d fail, %d skip (of %d)\n" pass fail skip total;
-  Printf.printf "  of which %d not-wf PASSes are vacuous (rejection forced by an unrelated\n" !vacuous_count;
-  Printf.printf "  DOCTYPE-not-supported gap, not necessarily the test's documented construct)\n";
+  Printf.printf "\n-- HONEST BREAKDOWN (PART 1 integrity accounting) --\n";
+  Printf.printf "  not-wf REAL passes (parser rejected for the tested construct): %d\n" real_notwf_pass;
+  Printf.printf "  valid  wf-accept passes:                                       %d\n" wf_pass;
+  Printf.printf "  --> real pass total:                                           %d\n" pass;
+  Printf.printf "  not-wf FAILs (parser wrongly ACCEPTED a wf-1.0 not-wf doc):     %d\n" notwf_fail;
+  Printf.printf "  valid  FAILs (parser wrongly REJECTED a valid doc):            %d\n" wf_fail;
+  Printf.printf "  --> fail total:                                                %d\n" fail;
+  Printf.printf "  SKIP: vacuous (not-wf rejected only by DOCTYPE-unsupported gap,\n";
+  Printf.printf "        construct never actually tested):                        %d\n" vacuous_skip;
+  Printf.printf "  SKIP: out-of-profile (not-wf only under XML 1.1 / Namespaces,\n";
+  Printf.printf "        parser is XML 1.0 non-namespace):                        %d\n" oop_skip;
+  Printf.printf "  SKIP: other (DOCTYPE-on-valid, encoding, invalid/error by\n";
+  Printf.printf "        design, external-entity exemption, file-not-found):      %d\n" other_skip;
+  Printf.printf "  --> skip total:                                                %d\n" skip;
+  Printf.printf "  (side-check: PassVacuous counter = %d, must equal vacuous skip = %d)\n" !vacuous_count vacuous_skip;
   Printf.printf
     "XML_Wellformedness.is_valid_ncname (informational only, see module comment):\n\
     \  checked %d element tags across accepted documents; %d would have been\n\

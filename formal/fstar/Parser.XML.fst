@@ -994,6 +994,26 @@ and parse_xml_element (input:string) (pos:nat) (fuel:nat)
 (* Misc / Prolog helpers                                             *)
 (* ================================================================ *)
 
+// Prolog ::= XMLDecl? Misc* (doctypedecl Misc*)? , Misc ::= Comment | PI | S.
+// PIs are legal Misc in the prolog (XML 1.0 §2.1/§2.8), exactly as they
+// are in the epilog -- so this mirrors skip_epilog_misc and consumes any
+// non-"xml"-target PI here. parse_xml_pi itself rejects the reserved
+// "xml" target (any case), so a second XML-declaration-shaped token in
+// the prolog fails to parse as Misc and correctly leaves the document to
+// be rejected (the "XML declaration may not follow content" cluster).
+// The PI is not attached to the returned tree (Parser.XML yields the
+// root element, no document node), but consuming it un-skips the XSLT
+// stylesheets that open with a `<?xml-stylesheet?>`-style prolog PI and
+// stops the parser choking on an unconsumed prolog `<?`.
+//
+// Profile note: the ibm xml-1.1 restricted-C1-control cluster and the
+// eduni rmt-ns10 colon-in-PITarget case used to be rejected here ONLY as
+// a side effect of that prolog-`<?` choke -- a wrong-reason rejection.
+// Under this parser's declared profile (XML 1.0, non-namespace) those
+// documents are genuinely well-formed, so a correct parser accepts them;
+// their not-wf verdict holds only under XML 1.1 / Namespaces in XML,
+// checked elsewhere (declared-version gating / XML.Namespaces), not by
+// silently choking in the prolog.
 let rec skip_misc (input:string) (pos:nat) (fuel:nat)
   : Tot (parse_result unit) (decreases fuel) =
   if fuel = 0 then ParseOk () pos
@@ -1002,18 +1022,13 @@ let rec skip_misc (input:string) (pos:nat) (fuel:nat)
     | ParseOk () pos1 ->
       begin match parse_xml_comment input pos1 with
       | ParseOk _ pos2 -> skip_misc input pos2 (fuel - 1)
-      | ParseFail _ _ -> ParseOk () pos1
+      | ParseFail _ _ ->
+        begin match parse_xml_pi input pos1 with
+        | ParseOk _ pos2 -> skip_misc input pos2 (fuel - 1)
+        | ParseFail _ _ -> ParseOk () pos1
+        end
       end
     | ParseFail msg fpos -> ParseFail msg fpos
-    // NOTE: prolog processing instructions are deliberately NOT consumed
-    // here. Parser.XML returns the root element (no separate document
-    // node), so a prolog PI could not be attached to the tree anyway;
-    // and consuming them here would make the parser accept documents
-    // whose prolog PI the engine does not fully validate (XML 1.1 C1
-    // control chars, colon-in-PITarget namespace-wellformedness — the
-    // ibm xml-1.1 / eduni rmt-ns10 not-wf clusters), regressing the
-    // 1442/0 xmlconf score. Content PIs (the XPath/XSLT payoff) and
-    // epilog PIs are still parsed, via parse_children / skip_epilog_misc.
 
 // Epilog ::= Misc* , Misc ::= Comment | PI | S. After the document
 // element, ONLY whitespace/comments/(non-"xml"-target) PIs may

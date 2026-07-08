@@ -57,9 +57,34 @@ value comparisons in `boolean-*`) will simply fail against our XPath
 - `files/<category>__<name>.expected.xml` — the upstream `assert-xml`
   expected output.
 
-64 tests across 18 categories (apply-templates, avt, axes, boolean,
-bug, construct-node, copy, expression, function-available, id, lre,
-match, math, namespace, node, position, select, variable).
+Originally 64 tests across 18 categories (apply-templates, avt, axes,
+boolean, bug, construct-node, copy, expression, function-available, id,
+lre, match, math, namespace, node, position, select, variable).
+
+## `sort` category (added 2026-07-08)
+
+24 `xsl:sort` tests vendored from **`tests/insn/sort`** of the same
+upstream commit (`fddf1cf920087e791f13315d68dfbe874d97dc56`), selected
+as the `<dependencies><spec value="XSLT10+"/>` (1.0-expressible)
+test-cases with a single principal source, an `assert-xml` result, and
+no `initial-template` entry point. They exercise the newly added
+`xsl:sort` engine support (data-type number|text, order
+ascending|descending, stable ordering, NaN-first ascending numeric,
+multi-key tie-breakers).
+
+**One normalization** was applied to these vendored files, documented
+here for transparency: the upstream `tests/insn/sort` stylesheets carry
+a `<?spec …?>` processing-instruction in the document **prolog** (before
+the root element). `Parser.XML` deliberately does not consume prolog
+PIs — doing so would regress the xmlconf 1442/0 not-wf clusters
+(colon-in-PITarget, C0 control chars) — so these test-harness metadata
+PIs, which any conformant parser discards and which carry no transform
+semantics, are stripped from the prolog of the vendored `.xsl`/`.src`
+files. The transform logic itself is verbatim upstream. Of the 24, the
+ones that still fail do so on features deliberately out of scope
+(`case-order`/`lang` collations, `iso-8859-1` source encoding, dynamic
+sort keys chosen through a stylesheet param); they are kept as
+documented fails, not dropped.
 
 ## Scoring
 

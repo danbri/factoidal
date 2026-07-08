@@ -105,35 +105,46 @@ picks both up normally.
    generically apply to plain XML conformance — is one of this
    assessment's results, not a runner bug.
 
-## Score (2026-07-05, wave 2 — all 84 fails fixed, log at `.claude-runs/xml-runner-2026-07-05-fixed.log`)
+## Score (2026-07-08, integrity accounting — vacuous DOCTYPE-forced rejections no longer counted as passes)
 
-**1442 pass, 0 fail, 1143 skip (of 2585 discovered `<TEST>` entries).**
+**244 real pass, 0 fail, 2341 skip (of 2585 discovered `<TEST>` entries).**
+
+A `not-wf` test counts as a real PASS only when the parser rejects it
+for the construct the test targets. The earlier headline of **1442**
+counted every rejection as a pass regardless of cause — 1166 of those
+were vacuous (rejected only because `Parser.XML.fst` has no DOCTYPE/DTD
+production at all, so the reject is forced by that unrelated gap, not by
+the documented violation). Those 1166 are now SKIP, and the headline
+dropped accordingly. This is the correct, honest number; the previous
+one was inflated (anti-patterns #3 / #25).
 
 Per TYPE bucket:
-- `valid` (labelled "wf-accept" per the task — a clean parse only
-  exercises well-formedness, not DTD validity): **0 pass, 0 fail, 812
-  skip (of 812)**. Every `valid` test in this suite carries a
-  DOCTYPE — expected, since validity is *defined* relative to a DTD —
-  so this entire bucket reduces to `Skip "DOCTYPE/DTD not parsed"`. No
-  bug: this project's parser has zero DTD support, so the suite's
-  entire "does it correctly ACCEPT a well-formed, DTD-bearing
-  document" axis is untestable here.
+- `valid` (labelled "wf-accept" — a clean parse only exercises
+  well-formedness, not DTD validity): **0 pass, 0 fail, 812 skip (of
+  812)**. Every `valid` test in this suite carries a DOCTYPE, so this
+  entire bucket is `Skip "DOCTYPE/DTD not parsed"`. This project's
+  parser has zero DTD support (see the DTD slice design note
+  `docs/designissues/2026-07-08-xml-dtd-support.md` for the plan to
+  convert these into real verdicts).
 - `invalid`/`error`: **0/0, 242 + 33 = 275 skip**, always
-  `Skip "no DTD validation (by design)"` per the task's own rule.
-- `not-wf`: **1442 pass, 0 fail, 56 skip (of 1498)**. 1166 of the
-  1442 passes are flagged "vacuous" (the document also carries a
-  DOCTYPE our parser can never get past, so the reject is
-  structurally guaranteed rather than necessarily catching the
-  documented violation) — see the tagged summary line in the log.
-  The 56 skips are the `ENTITIES != "none"` exemption
-  (`testcases.dtd`: "No parser should accept a 'not-wf' testcase
-  unless it's a nonvalidating parser and the test contains external
-  entities that the parser doesn't read").
+  `Skip "no DTD validation (by design)"`.
+- `not-wf`: **244 real pass, 0 fail, the balance skip (of 1498)**.
+  1166 are vacuous DOCTYPE-forced rejections, now counted as SKIP, not
+  pass. A further 32 are out-of-profile SKIP: the parser ACCEPTS them
+  because under its declared profile (XML 1.0, non-namespace) they are
+  genuinely well-formed — their not-wf verdict holds only under XML 1.1
+  (ibm xml-1.1 restricted-C1-control cluster) or Namespaces in XML
+  (eduni rmt-ns10-042 colon-in-PITarget); these are gated on the
+  declared `version="1.1"` / `XML.Namespaces` and skipped honestly
+  rather than force-passed or force-failed. The remaining skips are the
+  `ENTITIES != "none"` external-entity exemption (`testcases.dtd`).
 
-Per collection: `jclark` 197/0/168 (365), `sun` 51/0/108 (159),
-`ibm` 874/0/262 (1136), `oasis` 216/0/132 (348), `eduni` 104/0/461
-(565), `japanese` 0/0/12 (12, all skip — non-UTF-8 Japanese
-encodings).
+Per collection (pass/fail/skip, honest accounting): `jclark`
+88/0/277 (365), `sun` 3/0/156 (159), `ibm` 37/0/1099 (1136),
+`oasis` 95/0/253 (348), `eduni` 21/0/544 (565), `japanese` 0/0/12
+(12, all skip — non-UTF-8 Japanese encodings). The large `ibm` skip
+count is dominated by its DOCTYPE-bearing not-wf files (now vacuous
+SKIP, previously vacuous PASS) and the xml-1.1 out-of-profile cluster.
 
 ## Wave 1 → wave 2: all 84 fails fixed, cluster by cluster
 
