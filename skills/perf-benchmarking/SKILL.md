@@ -123,14 +123,22 @@ Parse throughput is no longer the bottleneck. The current walls:
   numbers say nothing about scale either way: the suites run on tiny
   fixtures.
 - **On-disk (COTTAS)**: opens and serves the 3,143,406-quad UK
-  Parliament corpus (the Fly.io endpoint + ukparliament demo), but
-  the performant search/estimate path is the 718-line unverified
-  OCaml override (`cottas_ondisk_runtime.sh`); the extracted F\*
-  path is not yet fast enough to replace it. Retirement is scoped in
+  Parliament corpus (the Fly.io endpoint + ukparliament demo). As of
+  2026-07-06 the **production** search/estimate path
+  (`RDF.Store.Capabilities.Cottas.fst`'s `sc_solve`/`sc_estimate`/etc.)
+  runs through F\*-extracted token-direct `_tok` entry points
+  (`9750eb7`/`9c3d160`) — it no longer calls the 928-line unverified
+  OCaml override (`cottas_ondisk_runtime.sh`). That glue file still
+  exists (three non-production consumers — a `tests/unit` baseline, the
+  `cottas-ondisk-smoketest` binary, `factoidal-explain` — still call
+  the id-based entry points), so #118 retirement (delete the patch) is
+  not yet done. Scoped in
   `docs/designissues/2026-05-13-issue-118-cottas-ondisk-runtime-retirement-plan.md`
-  (#118) with ukparliament-bench gating each step. History of
-  soundness bugs in this layer (silent literal-bound-object drops,
-  #261, fixed) is exactly why the glue must shrink.
+  (#118) with ukparliament-bench gating each step; current row-by-row
+  state in `docs/designissues/fstar-ocaml-boundary-audit.md` (2026-07-06
+  ratchet audit). History of soundness bugs in this layer (silent
+  literal-bound-object drops, #261, fixed) is exactly why the glue must
+  shrink.
 - **HDT**: interface-only in F\*; shells out to the external
   `hdtSearch` CLI per query (#253 retirement plan).
 - **OWL-RL closure**: blows up on sameAs clusters

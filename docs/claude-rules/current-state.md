@@ -234,9 +234,15 @@ slice 1 (22 of 30). Three of the four serializer-side bugs were the
 same bytes-vs-codepoints disease — the RDF.Unicode foundation module
 in item 4 is where that class of bug goes to die.
 
-1. **#118 — retire the COTTAS on-disk OCaml runtime** (718 lines of
-   unverified glue on the hot path; plan doc scoped, ukparliament-bench
-   gated). The precondition for dropping the rule-#11 qualifier.
+1. **#118 — retire the COTTAS on-disk OCaml runtime** (928 lines of
+   unverified glue). As of 2026-07-06 the production query path no
+   longer calls it (`sc_solve`/`sc_estimate` rewired to F\* `_tok`,
+   `9750eb7`/`9c3d160`); three non-production consumers still do, so the
+   patch remains and #118 (delete it) is still open. Plan doc scoped,
+   ukparliament-bench gated; row-by-row state in
+   `docs/designissues/fstar-ocaml-boundary-audit.md`. Retiring it (zero
+   live callers) is the precondition for dropping the rule-#11
+   qualifier.
 2. **#262 — OWL-RL sameAs closure blow-up** — diagnosed 2026-07-03
    (`2026-07-03-owl-rl-sameas-blowup-diagnosis.md`): measured O(k⁶)
    per closure step (163.87 s at a 24-individual sameAs clique); fix

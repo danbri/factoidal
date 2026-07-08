@@ -1,8 +1,24 @@
 # F\*-purity unwind — retiring the OCaml semantic shims
 
-**Status:** active plan, written 2026-04-26 after the user observed that
-`experimental_ocaml_glue/` had accumulated ~3000 LoC of semantic logic
-overriding F\* runtime functions.
+> **⚠️ SUPERSEDED (2026-07-06).** This document's *inventory of
+> overrides* is a 2026-04-26 snapshot and no longer reflects the tree.
+> Many patches listed below have since been retired or migrated to F\*
+> (see the RETIRED rows), and the production SPARQL query path was
+> rewired to F\*-extracted `_tok` entry points on 2026-07-06, so it no
+> longer flows through `cottas_ondisk_runtime.sh`. For the current,
+> row-by-row boundary state — which patches are still `VIOLATION-SEM`,
+> which are `ASSUME-IO`/DONE, and exactly which three non-production
+> consumers still block Iron Rule #11 retirement — read
+> [`fstar-ocaml-boundary-audit.md`](./fstar-ocaml-boundary-audit.md)
+> (the 2026-07-06 ratchet audit), which is authoritative. This doc is
+> kept for its cause-attribution history and the original migration
+> rationale; **do not cite its counts or "still overrides" claims as
+> current.**
+
+**Status:** SUPERSEDED historical plan, written 2026-04-26 after the
+user observed that `experimental_ocaml_glue/` had accumulated ~3000 LoC
+of semantic logic overriding F\* runtime functions. Superseded by the
+2026-07-06 boundary audit (link above).
 
 **Cause attribution (honest):** I (top-level Claude) wrote agent prompts
 between 2026-04-25 and 2026-04-26 that contained "Shape A vs Shape B"

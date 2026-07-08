@@ -499,7 +499,7 @@ stage 3/4 test scripts.
 | delta-log framing + merge-on-read | F\*-verified, `Tot` (`DeltaLog.fst` sections 1-11 + 13-14, `DeltaMerge.fst` entirely) |
 | delta-log I/O (append/fsync/read/rename/fsync_dir) | **Issue #282** — five `assume val`s, rule-#11(a)-acceptable pure I/O, realised in `minimal_regrettable_glue_code_each_with_an_open_issue/282_delta_log_io.sh` |
 | compaction orchestration (`factoidal compact`) | consumer tool (`bin/factoidal-cli/factoidal_cli.ml`), not verified-library code — it only sequences already-verified F\* calls + the existing import pipeline; no new byte-layout decisions live there |
-| the 718-line `cottas_ondisk_runtime.sh` fast-path override | the **largest standing rule-#11 violation** (unrelated to durable UPDATE; see `perf-benchmarking` and `ocaml-boundary` skills, issue #118) |
+| the 928-line `cottas_ondisk_runtime.sh` fast-path override | still a standing rule-#11 violation (VIOLATION-SEM), but as of 2026-07-06 the **production SPARQL query path no longer calls it** — `RDF.Store.Capabilities.Cottas.fst`'s `sc_solve`/`sc_estimate`/etc. were rewired to F\* `_tok` entry points (`9750eb7`/`9c3d160`). The patch can't be deleted yet because three non-production consumers (a `tests/unit` baseline, the `cottas-ondisk-smoketest` binary, `factoidal-explain`) still call the id-based entry points. See `fstar-ocaml-boundary-audit.md` (2026-07-06 ratchet audit, authoritative), issue #118/#254. |
 
 **Standing qualifier** (Iron Rule #11, until the boundary audit + recovery
 Phase 9 land): "parser and algebra spec verified in F\*; on-disk backend

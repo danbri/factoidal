@@ -40,7 +40,7 @@ Classify any OCaml you meet or write
 | ASSUME-HOST | Host-engine call-out, e.g. regex (host-defined per SPARQL 1.1 — moving it into F\* would be *wrong*) | acceptable |
 | ASSUME-CRYPTO | Vendored/pure crypto primitive | acceptable; prefer HACL\* long-term |
 | CONSUMER | CLI, runners, HTTP entry points | fine, but lives in `bin/<consumer>/`, not `ocaml-output/`; not claimed verified |
-| VIOLATION-SEM | Semantic logic in OCaml | migrate to F\*; currently at zero — keep it there |
+| VIOLATION-SEM | Semantic logic in OCaml | migrate to F\*. As of the 2026-07-06 audit, **not** zero: `cottas_ondisk_runtime.sh`, `cottas_ondisk_z_lazy_open.sh`, and `..._token_lookup_runtime.sh` remain VIOLATION-SEM/MIXED. The production SPARQL query path no longer calls them (rewired to F\* `_tok` on 2026-07-06), but three non-production consumers still do, so the patches can't be deleted yet (#118/#254). |
 | MIXED | Both | split it |
 
 **"Mirroring" a glue change into `ocaml-output/` is not a loophole

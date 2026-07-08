@@ -50,15 +50,31 @@ Iron Rule #11:
 Concretely: the RDF/SPARQL parsers and the query algebra — the code
 paths every post in this series exercised, in-memory, in your browser
 — are F\*, checked under Z3 4.13.3 with no `--lax` and no
-`--admit_smt_queries` (Iron Rule #10). The **on-disk** COTTAS reader
-[post 15](./15-how-fast-the-performance-story.md) measured this week's
-speed wins against still leans on `experimental_ocaml_glue/cottas_ondisk_runtime.sh`,
-718 lines of hand-written OCaml that overrides the extracted F\* body —
-the single largest violation of the "OCaml is `assume val` glue only"
-rule (Iron Rule #11), tracked with its own recovery plan in
-[`docs/designissues/2026-05-07-query-planning-fstar-recovery.md`](https://github.com/danbri/factoidal/blob/claude/main/docs/designissues/2026-05-07-query-planning-fstar-recovery.md).
-This post doesn't soften that qualifier — it's the honest boundary of
-what "verified" claims today.
+`--admit_smt_queries` (Iron Rule #10). The **on-disk** COTTAS reader is
+where the qualifier still bites, though less than it did. As of
+2026-07-06 the **production SPARQL query path** —
+`RDF.Store.Capabilities.Cottas.fst`'s `sc_solve` / `sc_estimate` /
+`sc_count_exact`, the functions [post 15](./15-how-fast-the-performance-story.md)'s
+speed measurements actually run through — was rewired (commits
+`9750eb7`, `9c3d160`) to call F\*-extracted token-direct (`_tok`)
+entry points in `RDF.CottasStore.fst`. Those hot paths no longer go
+through the hand-written OCaml in
+`experimental_ocaml_glue/cottas_ondisk_runtime.sh`.
+
+The glue file (now 928 lines) has **not** been deleted, so the
+qualifier stands: three *non-production* consumers still call the older
+id-based entry points directly — a `tests/unit` buffer-vs-file
+equivalence baseline, the `cottas-ondisk-smoketest` binary, and
+`factoidal-explain`. Iron Rule #11 retirement (zero live callers, then
+patch deletion) is gated on migrating those three to `_tok` first,
+tracked in [#118](https://github.com/danbri/factoidal/issues/118) /
+[#254](https://github.com/danbri/factoidal/issues/254). The precise,
+row-by-row state — which patches are `VIOLATION-SEM` vs already
+retired — lives in
+[`docs/designissues/fstar-ocaml-boundary-audit.md`](https://github.com/danbri/factoidal/blob/claude/main/docs/designissues/fstar-ocaml-boundary-audit.md)
+(the 2026-07-06 ratchet audit), which supersedes the older
+`fstar-purity-unwind.md` inventory. This post doesn't soften that
+qualifier — it's the honest boundary of what "verified" claims today.
 
 ## The skimmable core
 

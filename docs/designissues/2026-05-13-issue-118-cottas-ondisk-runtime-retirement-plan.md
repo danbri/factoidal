@@ -2,7 +2,18 @@
 
 **Date:** 2026-05-13 (scoped during the #200 closeout session).
 **Tracker:** GitHub issue #118 / boundary-audit `cottas_ondisk_runtime.sh`.
-**Status:** scoped, not yet executed.
+**Status:** scoped; partially overtaken by events. **2026-07-06 update:**
+the *production* SPARQL query path was rewired to F\*-extracted `_tok`
+entry points (`9750eb7`/`9c3d160`), so it no longer calls this glue.
+The patch (now 928 lines, not 718) is still present because three
+non-production consumers — a `tests/unit` buffer-vs-file baseline, the
+`cottas-ondisk-smoketest` binary, and `factoidal-explain` — still call
+the id-based entry points. #118 (delete the patch) therefore reduces to
+migrating those three consumers to `_tok`; the perf-parity plan below
+was written for the harder problem of replacing the glue on the hot
+production path, which is no longer the blocker. See
+`fstar-ocaml-boundary-audit.md` (2026-07-06 ratchet audit) for the
+authoritative row-by-row state.
 **Estimated effort:** 2-4 weeks of careful F\* perf engineering +
 **ukparliament-bench** gating at every step.
 
