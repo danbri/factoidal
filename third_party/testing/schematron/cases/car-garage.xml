@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<garage>
+  <car name="ok">
+    <wheel/><wheel/><wheel/><wheel/>
+  </car>
+  <car name="three-wheeler">
+    <wheel/><wheel/><wheel/>
+  </car>
+</garage>

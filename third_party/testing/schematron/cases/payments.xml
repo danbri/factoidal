@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<payments>
+  <payment type="card"><card-number>4111111111111111</card-number></payment>
+  <payment type="card"/>
+  <payment type="cash"/>
+</payments>

@@ -402,14 +402,14 @@ if [[ "$STEP" == "all" || "$STEP" == "extract" ]]; then
     Parser.OWLFunctional.fst
     RDF.Turtle.Serialize.fst
     Parser.NQuads.fst Parser.TriG.fst
-    Parser.XML.fst XML.Wellformedness.fst XML.Namespaces.fst Parser.XPath.fst XPath.Eval.fst XSLT.Transform.fst Parser.RDFXML.fst Parser.RIFXML.fst
+    Parser.XML.fst XML.Wellformedness.fst XML.Namespaces.fst Parser.XPath.fst XPath.Eval.fst XSLT.Transform.fst Schematron.Validate.fst Parser.RDFXML.fst Parser.RIFXML.fst
     Math.Expr.fst Math.Subst.fst Math.Diff.fst Math.Simplify.fst MathML.Content.fst XForms.Bind.fst
     RIF.Core.Builtins.fst RIF.Core.Conformance.fst
     RIF.Core.Eval.fst RIF.Core.Tests.fst
     Parser.SRX.fst Parser.CSVResults.fst
     Parser.JSONResults.fst
     SPARQL.JSON.Escape.fst
-    Parser.JSON.fst JSONLD.Loader.fst JSONLD.Context.fst JSONLD.Expand.fst Parser.JSONLD.fst JSONLD.FromRdf.fst
+    Parser.JSON.fst JSONLD.Loader.fst JSONLD.Context.fst JSONLD.Expand.fst Parser.JSONLD.fst JSONLD.FromRdf.fst JSONSchema.Validate.fst
     ShEx.Schema.fst Parser.ShExC.fst ShEx.SchemaEq.fst ShEx.Validation.fst
     VC.Credential.fst
     VC.Multibase.fst
@@ -790,10 +790,10 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
     RDF_Geo_Types.ml RDF_Geo_BBox.ml Parser_WKT.ml RDF_Geo_Topology.ml RDF_Geo_Functions.ml \
     Parser_OWLFunctional.ml \
     RDF_Turtle_Serialize.ml \
-    Parser_NQuads.ml Parser_TriG.ml Parser_XML.ml XML_Wellformedness.ml XML_Namespaces.ml Parser_XPath.ml XPath_Eval.ml XSLT_Transform.ml Parser_RDFXML.ml Math_Expr.ml Math_Subst.ml Math_Diff.ml Math_Simplify.ml MathML_Content.ml \
+    Parser_NQuads.ml Parser_TriG.ml Parser_XML.ml XML_Wellformedness.ml XML_Namespaces.ml Parser_XPath.ml XPath_Eval.ml XSLT_Transform.ml Schematron_Validate.ml Parser_RDFXML.ml Math_Expr.ml Math_Subst.ml Math_Diff.ml Math_Simplify.ml MathML_Content.ml \
     Parser_SRX.ml Parser_CSVResults.ml Parser_JSONResults.ml \
     SPARQL_JSON_Escape.ml \
-    Parser_JSON.ml JSONLD_Loader.ml JSONLD_Context.ml JSONLD_Expand.ml Parser_JSONLD.ml JSONLD_FromRdf.ml \
+    Parser_JSON.ml JSONLD_Loader.ml JSONLD_Context.ml JSONLD_Expand.ml Parser_JSONLD.ml JSONLD_FromRdf.ml JSONSchema_Validate.ml \
     SPARQL_Eval_TimeBudget.ml \
     SPARQL_Eval_Limits.ml \
     SPARQL_HTTP_Response.ml \
@@ -1193,6 +1193,66 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
     fi
     echo "  Built: bin/${PLATFORM}/mathml_runner ($(wc -c < "$BINDIR/mathml_runner") bytes)"
 
+    # jsonschema_runner — JSON Schema draft-07 conformance runner. Reads the
+    # vendored subset of the official JSON Schema Test Suite under
+    # third_party/testing/jsonschema/tests/draft7/*.json via the F*-extracted
+    # Parser_JSON, calls JSONSchema_Validate.validate on each {schema, data},
+    # and compares its three-valued result to the expected `valid`. All
+    # validation semantics live in formal/fstar/JSONSchema.Validate.fst; this
+    # .ml is I/O + compare only (iron rule #7 / #11).
+    JSONSCHEMA_RUNNER_RC=0
+    run_with_heartbeat "ocamlopt jsonschema_runner" "_ocamlopt_jsonschema_runner.log" -- \
+      ocamlfind ocamlopt -package fstar.lib,str,zarith,sha,digestif.c,unix,uucp -linkpkg -w -8-14-26 \
+      $STATIC_FLAGS \
+      $COMMON_MODULES \
+      $PARQUET_NATIVE_STUBS \
+      $HACL_NATIVE_STUBS \
+      ../../../bin/jsonschema-runner/jsonschema_runner.ml \
+      -o "$BINDIR/jsonschema_runner" || JSONSCHEMA_RUNNER_RC=$?
+    cat _ocamlopt_jsonschema_runner.log
+    if [[ "$JSONSCHEMA_RUNNER_RC" -ne 0 ]]; then
+      echo "  ERROR: jsonschema_runner build failed (ocamlopt rc=$JSONSCHEMA_RUNNER_RC)" >&2
+      echo "  See full log above. Build aborted." >&2
+      exit "$JSONSCHEMA_RUNNER_RC"
+    fi
+    if [[ ! -x "$BINDIR/jsonschema_runner" ]]; then
+      echo "  ERROR: jsonschema_runner ocamlopt returned 0 but $BINDIR/jsonschema_runner is missing or not executable" >&2
+      exit 1
+    fi
+    echo "  Built: bin/${PLATFORM}/jsonschema_runner ($(wc -c < "$BINDIR/jsonschema_runner") bytes)"
+
+    # schematron_runner — ISO/IEC 19757-3 (Schematron) validator runner,
+    # XSLT-1 / XPath-1 query binding. Reads the spec-cited corpus under
+    # third_party/testing/schematron/ (see that dir's README.md for
+    # provenance: the reference repo ships no expected-report triples, so
+    # the corpus is authored from ISO/IEC 19757-3 + the schematron.com
+    # tutorial and cited per case). Parses each schema + instance via the
+    # F*-extracted Parser_XML.parse_xml_document, runs
+    # Schematron_Validate.validate (formal/fstar/Schematron.Validate.fst),
+    # and compares the produced findings (assert-fail / report-hit /
+    # indeterminate) to the manifest's expected multiset. Manifest parsed
+    # via the F*-extracted Parser_JSON. I/O + compare only (iron rule #11).
+    SCHEMATRON_RUNNER_RC=0
+    run_with_heartbeat "ocamlopt schematron_runner" "_ocamlopt_schematron_runner.log" -- \
+      ocamlfind ocamlopt -package fstar.lib,str,zarith,sha,digestif.c,unix,uucp -linkpkg -w -8-14-26 \
+      $STATIC_FLAGS \
+      $COMMON_MODULES \
+      $PARQUET_NATIVE_STUBS \
+      $HACL_NATIVE_STUBS \
+      ../../../bin/schematron-runner/schematron_runner.ml \
+      -o "$BINDIR/schematron_runner" || SCHEMATRON_RUNNER_RC=$?
+    cat _ocamlopt_schematron_runner.log
+    if [[ "$SCHEMATRON_RUNNER_RC" -ne 0 ]]; then
+      echo "  ERROR: schematron_runner build failed (ocamlopt rc=$SCHEMATRON_RUNNER_RC)" >&2
+      echo "  See full log above. Build aborted." >&2
+      exit "$SCHEMATRON_RUNNER_RC"
+    fi
+    if [[ ! -x "$BINDIR/schematron_runner" ]]; then
+      echo "  ERROR: schematron_runner ocamlopt returned 0 but $BINDIR/schematron_runner is missing or not executable" >&2
+      exit 1
+    fi
+    echo "  Built: bin/${PLATFORM}/schematron_runner ($(wc -c < "$BINDIR/schematron_runner") bytes)"
+
     # xslt_runner — XSLT 1.0 transform conformance runner (first wave of
     # the XSLT -> MathML -> XForms program). Reads the curated,
     # W3C-sourced XSLT-1.0-expressible subset vendored under
@@ -1543,10 +1603,10 @@ if [[ "$STEP" == "all" || "$STEP" == "js" ]]; then
     RDF_Geo_Types.ml RDF_Geo_BBox.ml Parser_WKT.ml RDF_Geo_Topology.ml RDF_Geo_Functions.ml
     Parser_OWLFunctional.ml
     RDF_Turtle_Serialize.ml
-    Parser_NQuads.ml Parser_TriG.ml Parser_XML.ml XML_Wellformedness.ml XML_Namespaces.ml Parser_XPath.ml XPath_Eval.ml XSLT_Transform.ml Parser_RDFXML.ml Math_Expr.ml Math_Subst.ml Math_Diff.ml Math_Simplify.ml MathML_Content.ml
+    Parser_NQuads.ml Parser_TriG.ml Parser_XML.ml XML_Wellformedness.ml XML_Namespaces.ml Parser_XPath.ml XPath_Eval.ml XSLT_Transform.ml Schematron_Validate.ml Parser_RDFXML.ml Math_Expr.ml Math_Subst.ml Math_Diff.ml Math_Simplify.ml MathML_Content.ml
     Parser_SRX.ml Parser_CSVResults.ml Parser_JSONResults.ml
     SPARQL_JSON_Escape.ml
-    Parser_JSON.ml JSONLD_Loader.ml JSONLD_Context.ml JSONLD_Expand.ml Parser_JSONLD.ml JSONLD_FromRdf.ml
+    Parser_JSON.ml JSONLD_Loader.ml JSONLD_Context.ml JSONLD_Expand.ml Parser_JSONLD.ml JSONLD_FromRdf.ml JSONSchema_Validate.ml
     SPARQL_Eval_TimeBudget.ml
     SPARQL_Eval_Limits.ml
     SPARQL_HTTP_Response.ml

@@ -1,0 +1,73 @@
+[
+  {
+    "name": "library-cardinality-valid",
+    "category": "cardinality-assert",
+    "schema": "cases/library.sch",
+    "instance": "cases/library-valid.xml",
+    "expect": []
+  },
+  {
+    "name": "library-cardinality-invalid",
+    "category": "cardinality-assert",
+    "schema": "cases/library.sch",
+    "instance": "cases/library-empty.xml",
+    "expect": [
+      { "type": "assert-fail", "context": "library", "test": "count(book) >= 1" }
+    ]
+  },
+  {
+    "name": "car-four-wheels",
+    "category": "cooccurrence-assert",
+    "schema": "cases/car.sch",
+    "instance": "cases/car-garage.xml",
+    "expect": [
+      { "type": "assert-fail", "context": "car", "test": "count(wheel) = 4" }
+    ]
+  },
+  {
+    "name": "book-flags-violation",
+    "category": "forbidden-combination-report",
+    "schema": "cases/book-flags.sch",
+    "instance": "cases/shop.xml",
+    "expect": [
+      { "type": "report-hit", "context": "book", "test": "@discount and @clearance" }
+    ]
+  },
+  {
+    "name": "book-flags-clean",
+    "category": "forbidden-combination-report",
+    "schema": "cases/book-flags.sch",
+    "instance": "cases/shop-clean.xml",
+    "expect": []
+  },
+  {
+    "name": "first-matching-rule",
+    "category": "firing-semantics",
+    "schema": "cases/firstrule.sch",
+    "instance": "cases/firstrule.xml",
+    "expect": [
+      { "type": "assert-fail", "context": "*", "test": "false()" },
+      { "type": "assert-fail", "context": "item", "test": "false()" },
+      { "type": "assert-fail", "context": "*", "test": "false()" }
+    ]
+  },
+  {
+    "name": "payment-conditional-cooccurrence",
+    "category": "cooccurrence-assert",
+    "schema": "cases/payment.sch",
+    "instance": "cases/payments.xml",
+    "expect": [
+      { "type": "assert-fail", "context": "payment", "test": "not(@type = 'card') or card-number" }
+    ]
+  },
+  {
+    "name": "unsupported-axis-indeterminate",
+    "category": "soundness-indeterminate",
+    "schema": "cases/table.sch",
+    "instance": "cases/table.xml",
+    "expect": [
+      { "type": "indeterminate", "context": "row", "test": "count(preceding-sibling::row) < 100" },
+      { "type": "indeterminate", "context": "row", "test": "count(preceding-sibling::row) < 100" }
+    ]
+  }
+]

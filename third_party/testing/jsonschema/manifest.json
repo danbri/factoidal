@@ -1,0 +1,160 @@
+{
+  "suite": "json-schema-org/JSON-Schema-Test-Suite",
+  "provenance_commit": "92acb61eb772a932c077d5ffa634ded719d2d738",
+  "provenance_date": "2026-06-30",
+  "draft": "draft7",
+  "license": "MIT (LICENSE, Copyright (c) 2012 Julian Berman)",
+  "total_tests_vendored": 770,
+  "files": [
+    {
+      "path": "tests/draft7/additionalItems.json",
+      "tests": 19
+    },
+    {
+      "path": "tests/draft7/additionalProperties.json",
+      "tests": 16
+    },
+    {
+      "path": "tests/draft7/allOf.json",
+      "tests": 30
+    },
+    {
+      "path": "tests/draft7/anyOf.json",
+      "tests": 18
+    },
+    {
+      "path": "tests/draft7/boolean_schema.json",
+      "tests": 18
+    },
+    {
+      "path": "tests/draft7/const.json",
+      "tests": 54
+    },
+    {
+      "path": "tests/draft7/contains.json",
+      "tests": 21
+    },
+    {
+      "path": "tests/draft7/default.json",
+      "tests": 7
+    },
+    {
+      "path": "tests/draft7/definitions.json",
+      "tests": 2
+    },
+    {
+      "path": "tests/draft7/dependencies.json",
+      "tests": 36
+    },
+    {
+      "path": "tests/draft7/enum.json",
+      "tests": 45
+    },
+    {
+      "path": "tests/draft7/exclusiveMaximum.json",
+      "tests": 4
+    },
+    {
+      "path": "tests/draft7/exclusiveMinimum.json",
+      "tests": 4
+    },
+    {
+      "path": "tests/draft7/if-then-else.json",
+      "tests": 30
+    },
+    {
+      "path": "tests/draft7/infinite-loop-detection.json",
+      "tests": 2
+    },
+    {
+      "path": "tests/draft7/items.json",
+      "tests": 28
+    },
+    {
+      "path": "tests/draft7/maxItems.json",
+      "tests": 6
+    },
+    {
+      "path": "tests/draft7/maxLength.json",
+      "tests": 7
+    },
+    {
+      "path": "tests/draft7/maxProperties.json",
+      "tests": 10
+    },
+    {
+      "path": "tests/draft7/maximum.json",
+      "tests": 8
+    },
+    {
+      "path": "tests/draft7/minItems.json",
+      "tests": 6
+    },
+    {
+      "path": "tests/draft7/minLength.json",
+      "tests": 7
+    },
+    {
+      "path": "tests/draft7/minProperties.json",
+      "tests": 10
+    },
+    {
+      "path": "tests/draft7/minimum.json",
+      "tests": 11
+    },
+    {
+      "path": "tests/draft7/multipleOf.json",
+      "tests": 11
+    },
+    {
+      "path": "tests/draft7/not.json",
+      "tests": 38
+    },
+    {
+      "path": "tests/draft7/oneOf.json",
+      "tests": 27
+    },
+    {
+      "path": "tests/draft7/properties.json",
+      "tests": 28
+    },
+    {
+      "path": "tests/draft7/propertyNames.json",
+      "tests": 22
+    },
+    {
+      "path": "tests/draft7/ref.json",
+      "tests": 78
+    },
+    {
+      "path": "tests/draft7/required.json",
+      "tests": 18
+    },
+    {
+      "path": "tests/draft7/type.json",
+      "tests": 80
+    },
+    {
+      "path": "tests/draft7/uniqueItems.json",
+      "tests": 69
+    }
+  ],
+  "excluded_from_slice1": [
+    {
+      "file": "pattern.json",
+      "reason": "needs a regex facility; not exposed inside the verified F* boundary"
+    },
+    {
+      "file": "patternProperties.json",
+      "reason": "regex"
+    },
+    {
+      "file": "format.json",
+      "reason": "regex/format; draft7 treats format as annotation, tested as optional assertion"
+    },
+    {
+      "file": "refRemote.json",
+      "reason": "remote $ref resolution across documents; slice-1 resolves only local #-pointers"
+    }
+  ]
+}
