@@ -1,6 +1,6 @@
 ---
 name: workflow-gotchas-debugging
-description: Diagnostic playbook for the dev-loop hazards that recur in this repo. Use when a build mysteriously fails, a fresh clone breaks where local works, an agent's work doesn't appear on its branch, the same uncommitted file keeps coming back after `git checkout`, a secondary compile script poisons shared `.cmi`/`.cmx` files, a `set -e` + cleanup trap eats a failing build's log, or "stop hook fires every turn but I'm not done." Twelve hazards total (see "Lessons from 2026-05-07" below): subagent worktree-leakage, concurrent F* extract races, source-without-build-wiring, stale doc numbers, the build-aware stop-hook gap, the `(* *)` comment trap, worktree garbage, secondary-script `.cmx` poisoning, editing build inputs mid-build, cleanup traps eating diagnostics, old-base cherry-picks silently dropping build-list/consumer entries, and stale js/npm bundles failing hub cells — plus their detection + recovery steps.
+description: Diagnostic playbook for the dev-loop hazards that recur in this repo. Use when a build mysteriously fails, a fresh clone breaks where local works, an agent's work doesn't appear on its branch, the same uncommitted file keeps coming back after `git checkout`, a secondary compile script poisons shared `.cmi`/`.cmx` files, a `set -e` + cleanup trap eats a failing build's log, or "stop hook fires every turn but I'm not done." Fourteen hazards total (see "Lessons from 2026-05-07" below): subagent worktree-leakage, concurrent F* extract races, source-without-build-wiring, stale doc numbers, the build-aware stop-hook gap, the `(* *)` comment trap, worktree garbage, secondary-script `.cmx` poisoning, editing build inputs mid-build, cleanup traps eating diagnostics, old-base cherry-picks silently dropping build-list/consumer entries, stale js/npm bundles failing hub cells, old-base agent branches reverting content fixes you just made, and `>=` test floors on decreasing metrics breaking on progress — plus their detection + recovery steps.
 ---
 
 # Workflow gotchas + debugging
@@ -419,6 +419,65 @@ node --test tests/hub/postNN_test.mjs 2>&1 | grep -A3 'not ok'
   the `node --test tests/hub/postNN` gate green, or the cells ship
   broken. A hub page whose cell exercises a native-built feature can
   still fail in the browser; the bundle is the thing under test.
+
+## 13. Old-base agent branch OVERLAPS a file you just corrected (2026-07-08)
+
+### Symptom
+You land an agent's doc/hub branch by `git checkout <agent-branch> --
+<files>`. The build is green, but a correctness fix you committed an hour
+earlier has silently vanished — e.g. a doc that said "production runs F\*
+`_tok`" is back to the stale "718-line OCaml shadow" wording, or a
+de-timestamped intro has "this week" reinstated.
+
+### Root cause
+The agent branched BEFORE your fix, so its copy of the shared file is the
+pre-fix version. `git checkout <branch> -- file` is wholesale replace,
+not merge — it reverts your fix along with taking the agent's intended
+change. This is hazard #11's cousin, but for **overlapping content edits**
+rather than build-list/consumer drops.
+
+### Detection
+Before landing, `git diff origin/claude/main..<agent-branch> -- <file>`
+for every file the agent touched that you ALSO touched recently. If the
+diff shows your own recent lines being reverted (as `-` on the main side,
+stale text as `+`), it's an overlap.
+
+### Recovery / prevention
+- Split the agent's files into two sets: (a) files you did NOT touch —
+  safe to `git checkout` wholesale; (b) files you DID touch — **3-way
+  merge by hand**. For (b), decide which version is the better BASE
+  (usually the agent's, if it did more work on that file), take it, then
+  **re-apply your fix on top** — the "both, not either" merge. Never pick
+  one and lose the other.
+- A whole-command `git checkout <branch> -- a b c` is **atomic**: if any
+  pathspec doesn't match, it checks out NOTHING and errors. So a stray
+  path (e.g. a doc that only exists uncommitted in the worktree) silently
+  aborts the entire landing — verify with `git status` after, don't
+  assume it took.
+- When an agent's base is old, its regenerated BINARIES/bundle are stale
+  too (hazards #11/#12) — bring only its SOURCE, rebuild artifacts fresh.
+
+## 14. A `>=` test floor on a DECREASING metric breaks on progress (2026-07-08)
+
+### Symptom
+A pinning test fails — `expected >= 151 assume val declarations, found
+142` — but nothing regressed; the tree got BETTER.
+
+### Root cause
+The test asserted a growth floor (`count >= N`) on a metric that
+legitimately shrinks as work lands. `assume val` count goes DOWN every
+time a gap migrates to F\* (the whole point). Module/line counts grow;
+assume-val, TODO, glue-line, skip counts shrink. A `>=` floor on a
+shrinking metric fails on success and trains you to ignore red.
+
+### Detection / prevention
+- Before writing a `>=` (or `<=`) assertion on a measured tree count, ask
+  which DIRECTION progress moves it. Growth metrics (modules, tests
+  passing) take floors; shrink metrics (assume-vals, glue LoC, skips)
+  take ceilings or a loose band (`0 < n <= K`), never a growth floor.
+- If a doc/test pins a specific number, prefer "on the order of N" prose
+  + a self-serve command (`grep -c ...`) over a brittle exact figure —
+  the number is a claim about one moment; the tree moves.
 
 ## Lessons from 2026-05-07
 

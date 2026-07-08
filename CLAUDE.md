@@ -212,6 +212,11 @@ session.
 - [`crypto-policy`](skills/crypto-policy/SKILL.md) — never roll our
   own crypto; HACL\* adoption order for the hash/signature
   `assume val`s (#63), and the wasm compatibility gate.
+- [`node-crypto-haclstar-vc-wasm-build`](skills/node-crypto-haclstar-vc-wasm-build/SKILL.md)
+  — the concrete build: VC Data-Integrity crypto running off-native
+  (Node + browser) via HACL\*'s official wasm (#286). Three realisation
+  paths, the throw-on-uninit safety contract, build-ocaml.sh wiring, npm
+  ABI, provenance/licence, and the land-from-off-main recipe.
 - [`fstar-env`](skills/fstar-env/SKILL.md) — F\* / opam / z3
   setup and repair.
 - [`build-and-test`](skills/build-and-test/SKILL.md) — build,
