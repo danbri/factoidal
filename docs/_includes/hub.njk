@@ -850,8 +850,14 @@ main.variable().define("Factoidal", [], () => Factoidal);
 main.variable().define("fn", [], () => fn);
 main.variable().define("d3", [], () => d3);
 main.variable().define("Plot", [], () => Plot);
-main.variable().define("html", [], () => stdlib.html);
-main.variable().define("md", [], () => stdlib.md);
+// `html`/`md` are NOT bare exports of the Observable stdlib module —
+// they live on a `Library` INSTANCE (`stdlib.html` is undefined, which
+// made `html`... `` throw "undefined is not a function" in cells). Wire
+// them from a Library instance: `library.html` is the tag factory the
+// runtime invokes to yield the htl tag.
+const stdlibLibrary = new stdlib.Library();
+main.variable().define("html", [], stdlibLibrary.html);
+main.variable().define("md", [], stdlibLibrary.md);
 main.variable().define("pretty", [], () => pretty);
 // Leaflet (third_party/leaflet/, vendored, no CDN) -- loaded above as a
 // classic <script> that sets window.L; exposed as the `L` cell binding
