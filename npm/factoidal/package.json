@@ -74,6 +74,8 @@
     "factoidal-npm-entry.js",
     "factoidal-npm-entry.wasm.js",
     "factoidal-npm-entry.wasm.assets/",
+    "hacl-init.js",
+    "hacl-wasm/",
     "version.json",
     "README.md",
     "CHANGELOG.md",

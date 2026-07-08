@@ -39,6 +39,31 @@ import sys
 # `()=>{throw new\nError("X not implemented")}` in the loader.
 IMPLS = {}
 
+# VC Data Integrity crypto (Ed25519 + SHA-256) — the SAME four primitives
+# that hacl_stubs.js realises over HACL*'s wasm build under js_of_ocaml.
+# wasm_of_ocaml does NOT consume the js_of_ocaml-style `//Provides:` JS FFI
+# in hacl_stubs.js, so these land in the missing-primitives set here. We
+# must NOT let the DEFAULT_STUB (identity pass-through) apply to
+# caml_hacl_ed25519_verify: identity would return a truthy value and make
+# `verify` appear to SUCCEED without a signature check — a security hole.
+# Fail SAFE instead: throw, so VC.DataIntegrity's caller (entry_jsoo's
+# `guarded`) surfaces {"ok":false,...} and verify is never a false `true`.
+# Real VC crypto off-native runs on the js_of_ocaml/Node bundle (see
+# skills/crypto-policy/SKILL.md "VC crypto off-native", #286). The
+# wasm_of_ocaml target awaits a wasm-native HACL* FFI binding.
+_HACL_UNAVAILABLE = (
+    '()=>{throw new Error("factoidal VC crypto: HACL* is not wired for the '
+    'wasm_of_ocaml target yet (GitHub #286); js_of_ocaml/Node bundle has it. '
+    'Refusing to run VC crypto without the verified backend.")}'
+)
+for _hacl_prim in (
+    'caml_hacl_sha256',
+    'caml_hacl_ed25519_secret_to_public',
+    'caml_hacl_ed25519_sign',
+    'caml_hacl_ed25519_verify',
+):
+    IMPLS[_hacl_prim] = _HACL_UNAVAILABLE
+
 # Fallback: pass the first argument through unchanged. This keeps
 # Wasm-GC (ref eq) values round-tripping cleanly because V8 sees
 # the exact same reference returned.

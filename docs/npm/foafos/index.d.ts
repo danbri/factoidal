@@ -325,6 +325,55 @@ export function jsonldToRdf(
   options?: JsonLdOptions
 ): Promise<Dataset>;
 
+export interface JsonLdFromRdfOptions {
+  useNativeTypes?: boolean;
+  useRdfType?: boolean;
+  format?: DataFormat;
+}
+
+/**
+ * Serialize an RDF dataset as an expanded-form JSON-LD document -- the
+ * reverse of jsonldToRdf (the verified JSONLD.FromRdf.from_rdf).
+ * Returns the parsed JSON-LD value (an array of node objects). Needs
+ * the npm-entry engine bundle.
+ */
+export function jsonldFromRdf(
+  data: DataInput,
+  options?: JsonLdFromRdfOptions
+): Promise<any>;
+
+/**
+ * did:key resolution: resolve a `did:key:z6Mk...` (Ed25519) to its DID
+ * Document, returned as a Dataset (the verified DID_Key.did_key_document).
+ * Needs the npm-entry engine bundle.
+ */
+export function didKeyResolve(didString: string): Promise<Dataset>;
+
+/**
+ * Test whether an XML document is well-formed (Parser_XML). The
+ * byte-oriented parser has no DOCTYPE/DTD production, so a document
+ * containing a DOCTYPE reports false. Needs the npm-entry engine bundle.
+ */
+export function xmlWellformed(xmlText: string): Promise<boolean>;
+
+/** The value shape returned by {@link xpathEval}. */
+export interface XPathResult {
+  resultType: 'nodeset' | 'string' | 'number' | 'boolean';
+  count?: number;
+  stringValue?: string;
+  nodes?: Array<{ kind: string; name: string; value: string }>;
+  value?: string | number | boolean;
+}
+
+/**
+ * Evaluate an XPath 1.0 expression over an XML document
+ * (XPath_Eval.eval_xpath_from_root). Needs the npm-entry engine bundle.
+ */
+export function xpathEval(
+  xmlText: string,
+  xpathExpr: string
+): Promise<XPathResult>;
+
 /**
  * RIF Core forward-chaining saturation, materialized as a new Dataset
  * (input triples + derived triples, default graph only). Needs the
@@ -337,6 +386,182 @@ export function rifEval(
   rifRulesXml: string,
   options?: { format?: DataFormat }
 ): Promise<Dataset>;
+
+// ---------------------------------------------------------------------
+// Typed engine functions (#74 npm FP surface). Each is a pure,
+// value-in / value-out wrapper over one F*-extracted engine; all need
+// the npm-entry bundle.
+// ---------------------------------------------------------------------
+
+/**
+ * XSLT 1.0 transform (XSLT.Transform.transform): apply `stylesheetXml`
+ * to `sourceXml`, returning the serialized result tree.
+ */
+export function xsltTransform(
+  stylesheetXml: string,
+  sourceXml: string
+): Promise<string>;
+
+/** The exact value a Content MathML expression evaluates to. */
+export type MathValue =
+  | { kind: 'rat'; num: number; den: number }
+  | { kind: 'bool'; value: boolean }
+  | { kind: 'undef'; reason: string };
+
+/**
+ * Evaluate a Content MathML document (MathML.Content.eval_doc_env).
+ * `bindings` maps ci-variable names to value strings; pass {} (or
+ * omit) for a closed expression.
+ */
+export function mathmlEval(
+  contentMathmlXml: string,
+  bindings?: Record<string, string>
+): Promise<MathValue>;
+
+/** One XForms model bind (a subset of the §7 MIPs). */
+export interface XFormsBind {
+  id?: string;
+  target: string;
+  calculate?: string;
+  constraint?: string;
+  relevant?: string;
+  required?: string;
+  readonly?: string;
+  type?:
+    | 'string' | 'boolean' | 'integer'
+    | 'decimal' | 'float' | 'double';
+}
+
+/** Per-node validity from an XForms recalculate. */
+export interface XFormsNodeValidity {
+  target: string;
+  value: string;
+  typeValid: boolean;
+  constraint: boolean;
+  relevant: boolean;
+  required: boolean;
+  readonly: boolean;
+  valid: boolean;
+}
+
+/**
+ * XForms recalculate (XForms.Bind.recalculate): apply the model binds
+ * to `instanceXml`, returning the recomputed instance and a validity
+ * report per bound node.
+ */
+export function xformsRecalc(
+  instanceXml: string,
+  binds: XFormsBind[]
+): Promise<{ instance: string; validity: XFormsNodeValidity[] }>;
+
+/**
+ * JSON Schema (draft-07) validation (JSONSchema.Validate.validate).
+ * The verified validator gives a definite pass/fail/unsupported verdict
+ * rather than a per-keyword error list; `errors` carries a single
+ * reason string when the result is not a definite pass.
+ */
+export function jsonSchemaValidate(
+  schemaJson: string,
+  instanceJson: string
+): Promise<{
+  valid: boolean;
+  result: 'pass' | 'fail' | 'unsupported';
+  errors: string[];
+}>;
+
+/** One Schematron finding. */
+export interface SchematronFinding {
+  type: 'assert-fail' | 'report-hit' | 'indeterminate';
+  context: string;
+  test: string;
+  message: string;
+  path: string;
+  reason?: string;
+}
+
+/**
+ * Schematron validation (Schematron.Validate.validate): every finding
+ * (failed assert, fired report, indeterminate) in pattern-then-document
+ * order.
+ */
+export function schematronValidate(
+  schematronXml: string,
+  instanceXml: string
+): Promise<{ findings: SchematronFinding[] }>;
+
+/**
+ * An exact-arithmetic expression in the TOAN JSON codec, mirroring
+ * Math.Expr.expr (E_Int/E_Rat/E_Bool/E_Sym/E_App).
+ */
+export type ToanExpr =
+  | { int: number }
+  | { rat: [number, number] }
+  | { bool: boolean }
+  | { sym: string }
+  | { app: string; args: ToanExpr[] };
+
+/** Finite summation of `bodyExpr[idx:=lo..hi]`, as Content MathML. */
+export function toanSummation(
+  bodyExpr: ToanExpr,
+  idx: string,
+  lo: number,
+  hi: number
+): Promise<string>;
+
+/** Finite product of `bodyExpr[idx:=lo..hi]`, as Content MathML. */
+export function toanProduct(
+  bodyExpr: ToanExpr,
+  idx: string,
+  lo: number,
+  hi: number
+): Promise<string>;
+
+/** Canonical simplification of `expr`, as Content MathML. */
+export function toanSimplify(expr: ToanExpr): Promise<string>;
+
+/** Derivative of `expr` w.r.t. `variable`, as Content MathML. */
+export function toanDiff(expr: ToanExpr, variable: string): Promise<string>;
+
+/** `expr[variable := value]` simplified, as Content MathML. */
+export function toanSubst(
+  expr: ToanExpr,
+  variable: string,
+  value: ToanExpr
+): Promise<string>;
+
+/** A matrix/vector cell: an integer or an exact [num, den] rational. */
+export type MatrixCell = number | [number, number];
+
+/** The rendered result of a matrix/vector operation. */
+export interface MatrixResult {
+  /** Math.Matrix.mres_to_string of the result ("undef" on failure). */
+  result: string;
+  /** The diagnostic reason when the result is undefined, else "". */
+  reason: string;
+}
+
+/** Exact determinant of a square matrix (Math.Matrix.dyn_determinant). */
+export function matrixDeterminant(
+  matrix: MatrixCell[][]
+): Promise<MatrixResult>;
+
+/** Dot product of two vectors (Math.Matrix.dyn_scalarproduct). */
+export function matrixScalarProduct(
+  a: MatrixCell[],
+  b: MatrixCell[]
+): Promise<MatrixResult>;
+
+/** Cross product of two 3-vectors (Math.Matrix.dyn_vectorproduct). */
+export function matrixVectorProduct(
+  a: MatrixCell[],
+  b: MatrixCell[]
+): Promise<MatrixResult>;
+
+/** Outer product of two vectors (Math.Matrix.dyn_outerproduct). */
+export function matrixOuterProduct(
+  a: MatrixCell[],
+  b: MatrixCell[]
+): Promise<MatrixResult>;
 
 /** Feature probe for the currently available engine bundles. */
 export function capabilities(): Promise<{
@@ -352,7 +577,18 @@ export function capabilities(): Promise<{
   rml: boolean;
   csvw: boolean;
   jsonld: boolean;
+  jsonldFromRdf: boolean;
+  didKey: boolean;
+  xml: boolean;
+  xpath: boolean;
   rif: boolean;
+  xslt: boolean;
+  mathml: boolean;
+  xforms: boolean;
+  jsonSchema: boolean;
+  schematron: boolean;
+  toan: boolean;
+  matrix: boolean;
 }>;
 
 // ---------------------------------------------------------------------
@@ -407,7 +643,25 @@ declare const _default: {
   rmlMap: typeof rmlMap;
   csvwToRdf: typeof csvwToRdf;
   jsonldToRdf: typeof jsonldToRdf;
+  jsonldFromRdf: typeof jsonldFromRdf;
+  didKeyResolve: typeof didKeyResolve;
+  xmlWellformed: typeof xmlWellformed;
+  xpathEval: typeof xpathEval;
   rifEval: typeof rifEval;
+  xsltTransform: typeof xsltTransform;
+  mathmlEval: typeof mathmlEval;
+  xformsRecalc: typeof xformsRecalc;
+  jsonSchemaValidate: typeof jsonSchemaValidate;
+  schematronValidate: typeof schematronValidate;
+  toanSummation: typeof toanSummation;
+  toanProduct: typeof toanProduct;
+  toanSimplify: typeof toanSimplify;
+  toanDiff: typeof toanDiff;
+  toanSubst: typeof toanSubst;
+  matrixDeterminant: typeof matrixDeterminant;
+  matrixScalarProduct: typeof matrixScalarProduct;
+  matrixVectorProduct: typeof matrixVectorProduct;
+  matrixOuterProduct: typeof matrixOuterProduct;
   capabilities: typeof capabilities;
   Dataset: typeof Dataset;
   dataFactory: DataFactory;

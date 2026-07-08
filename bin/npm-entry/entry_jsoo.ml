@@ -848,15 +848,16 @@ let xpath_eval_json (xml_text : string) (xpath_expr : string) : string =
             let node_json it =
               let kind, name =
                 match it with
-                | XPath_Eval.CI_Elem (_, n) ->
+                | XPath_Eval.CI_Elem (_, _, n) ->
                   ("element",
                    (match Parser_XML.element_tag n with
                     | FStar_Pervasives_Native.Some t -> t
                     | FStar_Pervasives_Native.None -> ""))
-                | XPath_Eval.CI_Attr (_, _, a) ->
+                | XPath_Eval.CI_Attr (_, _, _, a) ->
                   ("attribute", a.Parser_XML.attr_name)
-                | XPath_Eval.CI_Text (_, _, _) -> ("text", "")
-                | XPath_Eval.CI_Comment (_, _, _) -> ("comment", "")
+                | XPath_Eval.CI_Text (_, _, _, _) -> ("text", "")
+                | XPath_Eval.CI_Comment (_, _, _, _) -> ("comment", "")
+                | XPath_Eval.CI_PI (_, _, _, target, _) -> ("processing-instruction", target)
               in
               "{\"kind\":" ^ jstr kind ^ ",\"name\":" ^ jstr name
               ^ ",\"value\":" ^ jstr (XPath_Eval.item_string_value it) ^ "}"
@@ -1392,6 +1393,392 @@ let to_cottas (nq : string) : string =
     ^ ",\"quadCount\":" ^ string_of_int (List.length sorted) ^ "}")
 
 (* ---------------------------------------------------------------------
+   VC Data Integrity crypto (eddsa-rdfc-2022) — rule #11 consumer.
+   All crypto delegates to F*-extracted VC_DataIntegrity, whose four
+   crypto assume vals are realised by HACL*: in the browser / Node this
+   is HACL*'s OWN official WebAssembly build (hacl_stubs.js over
+   third_party/hacl-wasm/, loaded by npm/factoidal/hacl-init.js); in the
+   native binary it is the vendored HACL* C. No crypto logic lives here.
+   The wasm backend MUST be initialised first (await initHacl()); until
+   then the primitive throws and `guarded` surfaces {"ok":false,...} —
+   verify NEVER silently succeeds without a real signature check. #286. *)
+
+let vc_sha256_hex (msg : string) : string =
+  guarded (fun () ->
+    "{\"ok\":true,\"sha256\":" ^ jstr (VC_DataIntegrity.hash_sha256_hex msg) ^ "}")
+
+let vc_ed25519_secret_to_public (sk_hex : string) : string =
+  guarded (fun () ->
+    let pk = VC_DataIntegrity.ed25519_secret_to_public sk_hex in
+    if pk = "" then
+      err_json "vcEd25519SecretToPublic: malformed secret key (need 32-byte hex)"
+    else "{\"ok\":true,\"publicKeyHex\":" ^ jstr pk ^ "}")
+
+let vc_ed25519_sign (sk_hex : string) (msg_hex : string) : string =
+  guarded (fun () ->
+    let s = VC_DataIntegrity.ed25519_sign sk_hex msg_hex in
+    if s = "" then
+      err_json "vcEd25519Sign: malformed input (need 32-byte hex key + hex message)"
+    else "{\"ok\":true,\"signatureHex\":" ^ jstr s ^ "}")
+
+let vc_ed25519_verify (pk_hex : string) (msg_hex : string) (sig_hex : string) : string =
+  guarded (fun () ->
+    let ok = VC_DataIntegrity.ed25519_verify pk_hex msg_hex sig_hex in
+    "{\"ok\":true,\"valid\":" ^ (if ok then "true" else "false") ^ "}")
+
+let vc_eddsa_create_from_canonical
+    (sk_hex : string) (canon_doc : string) (canon_cfg : string) : string =
+  guarded (fun () ->
+    match VC_DataIntegrity.eddsa_rdfc_2022_create_from_canonical
+            sk_hex canon_doc canon_cfg with
+    | FStar_Pervasives_Native.None ->
+      err_json "vcEddsaCreateFromCanonical: could not create proof \
+                (malformed key or encoding)"
+    | FStar_Pervasives_Native.Some pv ->
+      "{\"ok\":true,\"proofValue\":" ^ jstr pv ^ "}")
+
+let vc_eddsa_verify_from_canonical
+    (pk_hex : string) (canon_doc : string) (canon_cfg : string)
+    (proof_value : string) : string =
+  guarded (fun () ->
+    let ok = VC_DataIntegrity.eddsa_rdfc_2022_verify_from_canonical
+               pk_hex canon_doc canon_cfg proof_value in
+    "{\"ok\":true,\"verified\":" ^ (if ok then "true" else "false") ^ "}")
+
+(* ---------------------------------------------------------------------
+   Typed engine functions (#74 npm FP surface) -- rule #11 consumer
+   wrappers. Each parses its string inputs with the F* parsers
+   (Parser_XML / Parser_JSON) and serializes the F*-verified engine's
+   result to JSON. No transform / eval / validation / CAS logic lives
+   here; it is all in the extracted F* modules (XSLT.Transform,
+   MathML.Content, XForms.Bind, JSONSchema.Validate, Schematron.Validate,
+   Math.Series / Simplify / Subst / Diff / Matrix, MathML.Present).
+   --------------------------------------------------------------------- *)
+
+let parse_xml_or_fail (who : string) (xml : string) : Parser_XML.xml_node =
+  match Parser_XML.parse_xml_document xml with
+  | FStar_Pervasives_Native.Some n -> n
+  | FStar_Pervasives_Native.None ->
+    failwith (who ^ ": XML document is not well-formed "
+                  ^ "(parse_xml_document returned None)")
+
+let parse_json_or_fail (who : string) (s : string) : Parser_JSON.json_val =
+  match Parser_JSON.parse_json s with
+  | FStar_Pervasives_Native.Some v -> v
+  | FStar_Pervasives_Native.None -> failwith (who ^ ": invalid JSON")
+
+(* Look up a member of a JObject's field list (OCaml option, not F*'s). *)
+let rec json_field (name : string)
+    (fields : (string * Parser_JSON.json_val) list)
+    : Parser_JSON.json_val option =
+  match fields with
+  | [] -> None
+  | (k, v) :: tl -> if k = name then Some v else json_field name tl
+
+(* 1. XSLT ----------------------------------------------------------- *)
+let xslt_transform_json (stylesheet_xml : string) (source_xml : string)
+    : string =
+  guarded (fun () ->
+    let ss = parse_xml_or_fail "xsltTransform (stylesheet)" stylesheet_xml in
+    let src = parse_xml_or_fail "xsltTransform (source)" source_xml in
+    "{\"ok\":true,\"output\":" ^ jstr (XSLT_Transform.transform ss src) ^ "}")
+
+(* 2. MathML content eval -------------------------------------------- *)
+let mvalue_json (v : Math_Expr.mvalue) : string =
+  match v with
+  | Math_Expr.MV_Rat (n, d) ->
+    "{\"kind\":\"rat\",\"num\":" ^ Z.to_string n
+    ^ ",\"den\":" ^ Z.to_string d ^ "}"
+  | Math_Expr.MV_Bool b ->
+    "{\"kind\":\"bool\",\"value\":" ^ (if b then "true" else "false") ^ "}"
+  | Math_Expr.MV_Undef r ->
+    "{\"kind\":\"undef\",\"reason\":" ^ jstr r ^ "}"
+
+(* ci bindings: a JSON object mapping variable name -> lexical value. *)
+let json_pairs_of_object (who : string) (v : Parser_JSON.json_val)
+    : (string * string) list =
+  match v with
+  | Parser_JSON.JObject fields ->
+    List.map (fun (k, jv) ->
+      match jv with
+      | Parser_JSON.JString s -> (k, s)
+      | Parser_JSON.JNumber s -> (k, s)
+      | _ -> failwith (who ^ ": binding values must be strings or numbers"))
+      fields
+  | _ -> failwith (who ^ ": bindings must be a JSON object")
+
+let mathml_eval_json (content_mathml : string) (bindings_json : string)
+    : string =
+  guarded (fun () ->
+    let root = parse_xml_or_fail "mathmlEval" content_mathml in
+    let pairs =
+      json_pairs_of_object "mathmlEval"
+        (parse_json_or_fail "mathmlEval" bindings_json)
+    in
+    let v = MathML_Content.eval_doc_env pairs root in
+    "{\"ok\":true,\"value\":" ^ mvalue_json v ^ "}")
+
+(* 3. XForms recalculate --------------------------------------------- *)
+let opt_string_field (fields : (string * Parser_JSON.json_val) list)
+    (name : string) : string FStar_Pervasives_Native.option =
+  match json_field name fields with
+  | Some (Parser_JSON.JString s) -> FStar_Pervasives_Native.Some s
+  | _ -> FStar_Pervasives_Native.None
+
+let mip_type_of_json_string (s : string) : XForms_Bind.xf_mip_type =
+  match s with
+  | "string"  -> XForms_Bind.MipTypeString
+  | "boolean" -> XForms_Bind.MipTypeBoolean
+  | "integer" -> XForms_Bind.MipTypeInteger
+  | "decimal" -> XForms_Bind.MipTypeDecimal
+  | "float"   -> XForms_Bind.MipTypeFloat
+  | "double"  -> XForms_Bind.MipTypeDouble
+  | ""        -> XForms_Bind.MipTypeNone
+  | _         -> XForms_Bind.MipTypeUnsupported
+
+let xf_bind_of_json (who : string) (v : Parser_JSON.json_val)
+    : XForms_Bind.xf_bind =
+  match v with
+  | Parser_JSON.JObject fields ->
+    let bid =
+      match json_field "id" fields with
+      | Some (Parser_JSON.JString s) -> s
+      | _ -> ""
+    in
+    let btarget =
+      match json_field "target" fields with
+      | Some (Parser_JSON.JString s) -> s
+      | _ -> failwith (who ^ ": each bind needs a string 'target'")
+    in
+    let btype =
+      match json_field "type" fields with
+      | Some (Parser_JSON.JString s) -> mip_type_of_json_string s
+      | _ -> XForms_Bind.MipTypeNone
+    in
+    { XForms_Bind.bind_id = bid;
+      XForms_Bind.bind_target = btarget;
+      XForms_Bind.bind_calculate = opt_string_field fields "calculate";
+      XForms_Bind.bind_constraint = opt_string_field fields "constraint";
+      XForms_Bind.bind_relevant = opt_string_field fields "relevant";
+      XForms_Bind.bind_required = opt_string_field fields "required";
+      XForms_Bind.bind_readonly = opt_string_field fields "readonly";
+      XForms_Bind.bind_type = btype }
+  | _ -> failwith (who ^ ": each bind must be a JSON object")
+
+let node_validity_json (nv : XForms_Bind.node_validity) : string =
+  let b x = if x then "true" else "false" in
+  "{\"target\":" ^ jstr nv.XForms_Bind.nv_target
+  ^ ",\"value\":" ^ jstr nv.XForms_Bind.nv_value
+  ^ ",\"typeValid\":" ^ b nv.XForms_Bind.nv_type_valid
+  ^ ",\"constraint\":" ^ b nv.XForms_Bind.nv_constraint
+  ^ ",\"relevant\":" ^ b nv.XForms_Bind.nv_relevant
+  ^ ",\"required\":" ^ b nv.XForms_Bind.nv_required
+  ^ ",\"readonly\":" ^ b nv.XForms_Bind.nv_readonly
+  ^ ",\"valid\":" ^ b nv.XForms_Bind.nv_valid ^ "}"
+
+let xforms_recalc_json (instance_xml : string) (binds_json : string) : string =
+  guarded (fun () ->
+    let xdoc = parse_xml_or_fail "xformsRecalc" instance_xml in
+    let binds =
+      match parse_json_or_fail "xformsRecalc" binds_json with
+      | Parser_JSON.JArray items ->
+        List.map (xf_bind_of_json "xformsRecalc") items
+      | _ -> failwith "xformsRecalc: binds must be a JSON array"
+    in
+    match XForms_Bind.recalculate binds xdoc with
+    | FStar_Pervasives_Native.None ->
+      err_json ("xformsRecalc: recalculation failed "
+                ^ "(calculate cycle, or a MIP that failed to parse)")
+    | FStar_Pervasives_Native.Some (inst, validity) ->
+      let arr = String.concat "," (List.map node_validity_json validity) in
+      "{\"ok\":true,\"instance\":"
+      ^ jstr (XSLT_Transform.serialize_result inst)
+      ^ ",\"validity\":[" ^ arr ^ "]}")
+
+(* 4. JSON Schema (draft-07) ----------------------------------------- *)
+let json_schema_validate_json (schema_json : string) (instance_json : string)
+    : string =
+  guarded (fun () ->
+    let schema =
+      parse_json_or_fail "jsonSchemaValidate (schema)" schema_json in
+    let inst =
+      parse_json_or_fail "jsonSchemaValidate (instance)" instance_json in
+    match JSONSchema_Validate.validate schema inst with
+    | JSONSchema_Validate.VPass ->
+      "{\"ok\":true,\"valid\":true,\"result\":\"pass\",\"errors\":[]}"
+    | JSONSchema_Validate.VFail ->
+      "{\"ok\":true,\"valid\":false,\"result\":\"fail\",\"errors\":["
+      ^ jstr "instance does not satisfy the schema" ^ "]}"
+    | JSONSchema_Validate.VUnsupported ->
+      "{\"ok\":true,\"valid\":false,\"result\":\"unsupported\",\"errors\":["
+      ^ jstr "schema uses a keyword this validator does not support" ^ "]}")
+
+(* 5. Schematron ----------------------------------------------------- *)
+let schematron_finding_json (f : Schematron_Validate.finding) : string =
+  match f with
+  | Schematron_Validate.Assert_fail (ctx, test, msg, path) ->
+    "{\"type\":\"assert-fail\",\"context\":" ^ jstr ctx
+    ^ ",\"test\":" ^ jstr test ^ ",\"message\":" ^ jstr msg
+    ^ ",\"path\":" ^ jstr path ^ "}"
+  | Schematron_Validate.Report_hit (ctx, test, msg, path) ->
+    "{\"type\":\"report-hit\",\"context\":" ^ jstr ctx
+    ^ ",\"test\":" ^ jstr test ^ ",\"message\":" ^ jstr msg
+    ^ ",\"path\":" ^ jstr path ^ "}"
+  | Schematron_Validate.Indeterminate (ctx, test, msg, path, reason) ->
+    "{\"type\":\"indeterminate\",\"context\":" ^ jstr ctx
+    ^ ",\"test\":" ^ jstr test ^ ",\"message\":" ^ jstr msg
+    ^ ",\"path\":" ^ jstr path ^ ",\"reason\":" ^ jstr reason ^ "}"
+
+let schematron_validate_json (schematron_xml : string) (instance_xml : string)
+    : string =
+  guarded (fun () ->
+    let sch = parse_xml_or_fail "schematronValidate (schema)" schematron_xml in
+    let inst = parse_xml_or_fail "schematronValidate (instance)" instance_xml in
+    let findings = Schematron_Validate.validate sch inst in
+    let arr = String.concat "," (List.map schematron_finding_json findings) in
+    "{\"ok\":true,\"findings\":[" ^ arr ^ "]}")
+
+(* 6. TOAN exact CAS -------------------------------------------------- *)
+(* expr JSON codec (mirrors Math.Expr.expr):
+     {int:n} | {rat:[n,d]} | {bool:b} | {sym:name} | {app:fn,args:[...]}
+   A bare JSON number is E_Int; a bare JSON string is E_Sym. *)
+let rec expr_of_json (who : string) (v : Parser_JSON.json_val)
+    : Math_Expr.expr =
+  match v with
+  | Parser_JSON.JObject fields ->
+    (match json_field "int" fields with
+     | Some (Parser_JSON.JNumber n) -> Math_Expr.E_Int (Z.of_string n)
+     | _ ->
+     (match json_field "rat" fields with
+      | Some (Parser_JSON.JArray
+                [Parser_JSON.JNumber n; Parser_JSON.JNumber d]) ->
+        Math_Expr.E_Rat (Z.of_string n, Z.of_string d)
+      | _ ->
+      (match json_field "bool" fields with
+       | Some (Parser_JSON.JBool bb) -> Math_Expr.E_Bool bb
+       | _ ->
+       (match json_field "sym" fields with
+        | Some (Parser_JSON.JString s) -> Math_Expr.E_Sym s
+        | _ ->
+        (match json_field "app" fields with
+         | Some (Parser_JSON.JString fn) ->
+           let args =
+             (match json_field "args" fields with
+              | Some (Parser_JSON.JArray items) ->
+                List.map (expr_of_json who) items
+              | _ -> [])
+           in
+           Math_Expr.E_App (fn, args)
+         | _ ->
+           failwith (who ^ ": expr object needs one of "
+                         ^ "int / rat / bool / sym / app"))))))
+  | Parser_JSON.JNumber n -> Math_Expr.E_Int (Z.of_string n)
+  | Parser_JSON.JString s -> Math_Expr.E_Sym s
+  | _ -> failwith (who ^ ": not a valid expr JSON")
+
+let toan_mathml_result (e : Math_Expr.expr) : string =
+  "{\"ok\":true,\"mathml\":" ^ jstr (MathML_Present.to_content_mathml e) ^ "}"
+
+let toan_summation_json (body_json : string) (idx : string) (lo : string)
+    (hi : string) : string =
+  guarded (fun () ->
+    let body =
+      expr_of_json "toanSummation" (parse_json_or_fail "toanSummation" body_json)
+    in
+    toan_mathml_result
+      (Math_Series.summation body idx (Z.of_string lo) (Z.of_string hi)))
+
+let toan_product_json (body_json : string) (idx : string) (lo : string)
+    (hi : string) : string =
+  guarded (fun () ->
+    let body =
+      expr_of_json "toanProduct" (parse_json_or_fail "toanProduct" body_json)
+    in
+    toan_mathml_result
+      (Math_Series.finite_product body idx (Z.of_string lo) (Z.of_string hi)))
+
+let toan_simplify_json (expr_json : string) : string =
+  guarded (fun () ->
+    let e = expr_of_json "toanSimplify" (parse_json_or_fail "toanSimplify" expr_json) in
+    toan_mathml_result (Math_Simplify.simplify e))
+
+let toan_diff_json (expr_json : string) (var : string) : string =
+  guarded (fun () ->
+    let e = expr_of_json "toanDiff" (parse_json_or_fail "toanDiff" expr_json) in
+    toan_mathml_result (Math_Diff.diff var e))
+
+let toan_subst_json (expr_json : string) (var : string) (value_json : string)
+    : string =
+  guarded (fun () ->
+    let e = expr_of_json "toanSubst" (parse_json_or_fail "toanSubst" expr_json) in
+    let value =
+      expr_of_json "toanSubst (value)"
+        (parse_json_or_fail "toanSubst (value)" value_json)
+    in
+    toan_mathml_result (Math_Subst.subst var value e))
+
+(* 7. Matrix / vector algebra over exact rationals ------------------- *)
+let mvalue_of_json_cell (who : string) (v : Parser_JSON.json_val)
+    : Math_Expr.mvalue =
+  match v with
+  | Parser_JSON.JNumber n -> Math_Expr.mk_rat (Z.of_string n) (Z.of_int 1)
+  | Parser_JSON.JArray [Parser_JSON.JNumber num; Parser_JSON.JNumber den] ->
+    Math_Expr.mk_rat (Z.of_string num) (Z.of_string den)
+  | _ ->
+    failwith (who ^ ": each cell must be an integer or a [num,den] pair")
+
+let vector_of_json (who : string) (v : Parser_JSON.json_val)
+    : Math_Expr.mvalue list =
+  match v with
+  | Parser_JSON.JArray items -> List.map (mvalue_of_json_cell who) items
+  | _ -> failwith (who ^ ": expected a JSON array (vector)")
+
+let matrix_of_json (who : string) (v : Parser_JSON.json_val)
+    : Math_Expr.mvalue list list =
+  match v with
+  | Parser_JSON.JArray rows -> List.map (vector_of_json who) rows
+  | _ -> failwith (who ^ ": expected a JSON array of rows (matrix)")
+
+let mres_json (r : Math_Matrix.mres) : string =
+  "{\"ok\":true,\"result\":" ^ jstr (Math_Matrix.mres_to_string r)
+  ^ ",\"reason\":" ^ jstr (Math_Matrix.mres_reason r) ^ "}"
+
+let matrix_determinant_json (matrix_json : string) : string =
+  guarded (fun () ->
+    let m =
+      matrix_of_json "matrixDeterminant"
+        (parse_json_or_fail "matrixDeterminant" matrix_json)
+    in
+    mres_json (Math_Matrix.dyn_determinant (Math_Matrix.mk_matrix_res m)))
+
+let matrix_scalarproduct_json (a_json : string) (b_json : string) : string =
+  guarded (fun () ->
+    let a = vector_of_json "matrixScalarProduct"
+              (parse_json_or_fail "matrixScalarProduct" a_json) in
+    let bb = vector_of_json "matrixScalarProduct"
+               (parse_json_or_fail "matrixScalarProduct" b_json) in
+    mres_json (Math_Matrix.dyn_scalarproduct
+                 (Math_Matrix.mk_vector_res a) (Math_Matrix.mk_vector_res bb)))
+
+let matrix_vectorproduct_json (a_json : string) (b_json : string) : string =
+  guarded (fun () ->
+    let a = vector_of_json "matrixVectorProduct"
+              (parse_json_or_fail "matrixVectorProduct" a_json) in
+    let bb = vector_of_json "matrixVectorProduct"
+               (parse_json_or_fail "matrixVectorProduct" b_json) in
+    mres_json (Math_Matrix.dyn_vectorproduct
+                 (Math_Matrix.mk_vector_res a) (Math_Matrix.mk_vector_res bb)))
+
+let matrix_outerproduct_json (a_json : string) (b_json : string) : string =
+  guarded (fun () ->
+    let a = vector_of_json "matrixOuterProduct"
+              (parse_json_or_fail "matrixOuterProduct" a_json) in
+    let bb = vector_of_json "matrixOuterProduct"
+               (parse_json_or_fail "matrixOuterProduct" b_json) in
+    mres_json (Math_Matrix.dyn_outerproduct
+                 (Math_Matrix.mk_vector_res a) (Math_Matrix.mk_vector_res bb)))
+
+(* ---------------------------------------------------------------------
    Js.export — the only js_of_ocaml-specific code. Strings cross the
    boundary via Js.to_string / Js.string (UTF-16 JS <-> UTF-8 OCaml).
    --------------------------------------------------------------------- *)
@@ -1432,6 +1819,26 @@ let () =
           ("canonicalizeToNQuads", s1 canonicalize_to_nquads);
           ("serializeTurtle", s1 serialize_turtle);
           ("didKeyResolve", s1 did_key_resolve);
+          ("vcSha256Hex", s1 vc_sha256_hex);
+          ("vcEd25519SecretToPublic", s1 vc_ed25519_secret_to_public);
+          ("vcEd25519Sign", s2 vc_ed25519_sign);
+          ("vcEd25519Verify", s3 vc_ed25519_verify);
+          ("vcEddsaCreateFromCanonical", s3 vc_eddsa_create_from_canonical);
+          ("vcEddsaVerifyFromCanonical", s4 vc_eddsa_verify_from_canonical);
+          ("xsltTransform", s2 xslt_transform_json);
+          ("mathmlEval", s2 mathml_eval_json);
+          ("xformsRecalc", s2 xforms_recalc_json);
+          ("jsonSchemaValidate", s2 json_schema_validate_json);
+          ("schematronValidate", s2 schematron_validate_json);
+          ("toanSummation", s4 toan_summation_json);
+          ("toanProduct", s4 toan_product_json);
+          ("toanSimplify", s1 toan_simplify_json);
+          ("toanDiff", s2 toan_diff_json);
+          ("toanSubst", s3 toan_subst_json);
+          ("matrixDeterminant", s1 matrix_determinant_json);
+          ("matrixScalarProduct", s2 matrix_scalarproduct_json);
+          ("matrixVectorProduct", s2 matrix_vectorproduct_json);
+          ("matrixOuterProduct", s2 matrix_outerproduct_json);
           ("rifSmoke", s0 rif_smoke_json);
           ("rifEval", s2 rif_eval_json);
           ("jsonldToRdf", s2 jsonld_to_rdf_json);

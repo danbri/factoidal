@@ -10,8 +10,12 @@
 # FFI experimental_ocaml_glue/hacl_stubs.c.
 #
 # There is NO pure-OCaml/F* signature fallback: Ed25519 sign+verify come from
-# HACL* only.  This is NATIVE-ONLY (vendored HACL* C does not link under
-# wasm_of_ocaml; VC.DataIntegrity is excluded from the js/wasm bundle — see #286).
+# HACL* only.  This patch is the NATIVE seam (vendored HACL* C).  The
+# browser/Node (js_of_ocaml) seam realises the SAME four assume vals over
+# HACL*'s OWN official WebAssembly build (third_party/hacl-wasm/) via
+# ocaml-output/hacl_stubs.js + npm/factoidal/hacl-init.js — VC.DataIntegrity
+# is now in the js module list too (see skills/crypto-policy/SKILL.md
+# "VC crypto off-native", #286).  wasm_of_ocaml target: tracked in #286.
 #
 # Replaces F*-extracted failwith stubs for:
 #   - hash_sha256_hex        -> Fstar_hacl_crypto.sha256_hex

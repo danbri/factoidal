@@ -11,6 +11,23 @@ import type {
   EntailRegime,
   NamedNode,
   BlankNode,
+  MathValue,
+  XFormsBind,
+  XFormsNodeValidity,
+  SchematronFinding,
+  ToanExpr,
+  MatrixCell,
+  MatrixResult,
+} from './index';
+
+export type {
+  MathValue,
+  XFormsBind,
+  XFormsNodeValidity,
+  SchematronFinding,
+  ToanExpr,
+  MatrixCell,
+  MatrixResult,
 } from './index';
 
 /**
@@ -232,6 +249,90 @@ export function derive<Args extends unknown[], R>(
   fn: (...args: Args) => R | Promise<R>,
   ...inputCells: { [K in keyof Args]: Cell<Args[K]> }
 ): Derived<R>;
+
+/**
+ * Left-to-right function composition for Observable-style dataflow:
+ * `pipe(f, g, h)(x)` is `h(g(f(x)))`, awaiting any async step. With no
+ * functions it is the identity.
+ */
+export function pipe(): (input: unknown) => Promise<unknown>;
+export function pipe<A, B>(f: (a: A) => B | Promise<B>): (a: A) => Promise<B>;
+export function pipe<A, B, C>(
+  f: (a: A) => B | Promise<B>,
+  g: (b: B) => C | Promise<C>
+): (a: A) => Promise<C>;
+export function pipe<A, B, C, D>(
+  f: (a: A) => B | Promise<B>,
+  g: (b: B) => C | Promise<C>,
+  h: (c: C) => D | Promise<D>
+): (a: A) => Promise<D>;
+export function pipe(
+  ...fns: Array<(x: unknown) => unknown>
+): (input: unknown) => Promise<unknown>;
+
+// ---------------------------------------------------------------------
+// Typed engine functions (#74 FP surface). Re-exported from the JS
+// engine api; full doc comments live in ./index.d.ts.
+// ---------------------------------------------------------------------
+
+export function xsltTransform(
+  stylesheetXml: string,
+  sourceXml: string
+): Promise<string>;
+export function mathmlEval(
+  contentMathmlXml: string,
+  bindings?: Record<string, string>
+): Promise<MathValue>;
+export function xformsRecalc(
+  instanceXml: string,
+  binds: XFormsBind[]
+): Promise<{ instance: string; validity: XFormsNodeValidity[] }>;
+export function jsonSchemaValidate(
+  schemaJson: string,
+  instanceJson: string
+): Promise<{
+  valid: boolean;
+  result: 'pass' | 'fail' | 'unsupported';
+  errors: string[];
+}>;
+export function schematronValidate(
+  schematronXml: string,
+  instanceXml: string
+): Promise<{ findings: SchematronFinding[] }>;
+export function toanSummation(
+  bodyExpr: ToanExpr,
+  idx: string,
+  lo: number,
+  hi: number
+): Promise<string>;
+export function toanProduct(
+  bodyExpr: ToanExpr,
+  idx: string,
+  lo: number,
+  hi: number
+): Promise<string>;
+export function toanSimplify(expr: ToanExpr): Promise<string>;
+export function toanDiff(expr: ToanExpr, variable: string): Promise<string>;
+export function toanSubst(
+  expr: ToanExpr,
+  variable: string,
+  value: ToanExpr
+): Promise<string>;
+export function matrixDeterminant(
+  matrix: MatrixCell[][]
+): Promise<MatrixResult>;
+export function matrixScalarProduct(
+  a: MatrixCell[],
+  b: MatrixCell[]
+): Promise<MatrixResult>;
+export function matrixVectorProduct(
+  a: MatrixCell[],
+  b: MatrixCell[]
+): Promise<MatrixResult>;
+export function matrixOuterProduct(
+  a: MatrixCell[],
+  b: MatrixCell[]
+): Promise<MatrixResult>;
 
 export function capabilities(): Promise<{
   entry: boolean;

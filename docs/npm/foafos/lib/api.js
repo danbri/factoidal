@@ -707,6 +707,350 @@ function buildApi(driver) {
     });
   }
 
+  /**
+   * Serialize an RDF dataset as an expanded-form JSON-LD document --
+   * the reverse of jsonldToRdf (entry_jsoo.ml's jsonldFromRdf export ->
+   * the verified JSONLD.FromRdf.from_rdf). Returns the parsed JSON-LD
+   * value (an array of node objects). Needs the npm-entry bundle.
+   * @param {Dataset|string|Array} data
+   * @param {{useNativeTypes?:boolean,useRdfType?:boolean,format?:string}} [options]
+   * @returns {Promise<any>} the JSON-LD document (JCS-canonical, parsed)
+   */
+  async function jsonldFromRdf(data, options) {
+    const e = await entry();
+    if (!e) throw pendingError('jsonldFromRdf');
+    requireEntryFn(e, 'jsonldFromRdf', 'jsonldFromRdf');
+    const dataNq = docsToEntryNQuads(e, toDocs(data, options), 'jsonldFromRdf(data)');
+    const opts = options || {};
+    const optionsJson = JSON.stringify({
+      ...(opts.useNativeTypes ? { useNativeTypes: true } : {}),
+      ...(opts.useRdfType ? { useRdfType: true } : {}),
+    });
+    const r = entryResult(e.jsonldFromRdf(dataNq, optionsJson), 'jsonldFromRdf');
+    return JSON.parse(r.jsonld);
+  }
+
+  /**
+   * did:key resolution (entry_jsoo.ml's didKeyResolve export -> the
+   * verified DID_Key.did_key_document). Resolves a did:key:z6Mk...
+   * (Ed25519) to its DID Document, returned as a Dataset. Needs the
+   * npm-entry bundle.
+   * @param {string} didString a did:key URI
+   * @returns {Promise<Dataset>} the DID Document as RDF
+   */
+  async function didKeyResolve(didString) {
+    if (typeof didString !== 'string') {
+      throw new TypeError('didKeyResolve: didString must be a string');
+    }
+    const e = await entry();
+    if (!e) throw pendingError('didKeyResolve');
+    requireEntryFn(e, 'didKeyResolve', 'did:key resolution');
+    const r = entryResult(e.didKeyResolve(didString), 'didKeyResolve');
+    return Dataset.fromNQuads(r.nquads, { blankNodePrefix: freshBnodePrefix() });
+  }
+
+  /**
+   * Test whether an XML document is well-formed (entry_jsoo.ml's
+   * xmlWellformed export -> Parser_XML.parse_xml_document, the
+   * accept/reject signal bin/xml-runner drives against W3C xmlconf).
+   * The byte-oriented parser has no DOCTYPE/DTD production, so a
+   * document containing a DOCTYPE reports false. Needs the npm-entry
+   * bundle.
+   * @param {string} xmlText
+   * @returns {Promise<boolean>}
+   */
+  async function xmlWellformed(xmlText) {
+    if (typeof xmlText !== 'string') {
+      throw new TypeError('xmlWellformed: xmlText must be a string');
+    }
+    const e = await entry();
+    if (!e) throw pendingError('xmlWellformed');
+    requireEntryFn(e, 'xmlWellformed', 'XML well-formedness');
+    const r = entryResult(e.xmlWellformed(xmlText), 'xmlWellformed');
+    return !!r.wellformed;
+  }
+
+  /**
+   * Evaluate an XPath 1.0 expression over an XML document (entry_jsoo.ml's
+   * xpathEval export -> XPath_Eval.eval_xpath_from_root). Returns the
+   * result envelope: `resultType` ('nodeset'|'string'|'number'|'boolean')
+   * plus, for a node-set, `count`/`stringValue`/`nodes`, else a scalar
+   * `value`. Needs the npm-entry bundle.
+   * @param {string} xmlText
+   * @param {string} xpathExpr
+   * @returns {Promise<object>}
+   */
+  async function xpathEval(xmlText, xpathExpr) {
+    if (typeof xmlText !== 'string' || typeof xpathExpr !== 'string') {
+      throw new TypeError('xpathEval: xmlText and xpathExpr must be strings');
+    }
+    const e = await entry();
+    if (!e) throw pendingError('xpathEval');
+    requireEntryFn(e, 'xpathEval', 'XPath evaluation');
+    return entryResult(e.xpathEval(xmlText, xpathExpr), 'xpathEval');
+  }
+
+  // -----------------------------------------------------------------
+  // Typed "engine" functions (#74 npm FP surface). Each is a pure,
+  // string/JSON-in, JSON-out wrapper over one F*-extracted engine
+  // exposed by entry_jsoo.ml. No logic lives on the JS side — the
+  // transform/eval/validate/CAS math is all verified F*; these bind
+  // the entry ABI to a typed Promise. All need the npm-entry bundle.
+  // -----------------------------------------------------------------
+
+  /**
+   * XSLT 1.0 transform (entry_jsoo.ml's xsltTransform export ->
+   * XSLT.Transform.transform). Applies `stylesheetXml` to `sourceXml`
+   * and returns the serialized result tree. Needs the npm-entry bundle.
+   * @param {string} stylesheetXml an XSLT stylesheet document
+   * @param {string} sourceXml the source XML document
+   * @returns {Promise<string>} the transform output (serialized XML/text)
+   */
+  async function xsltTransform(stylesheetXml, sourceXml) {
+    if (typeof stylesheetXml !== 'string' || typeof sourceXml !== 'string') {
+      throw new TypeError('xsltTransform: stylesheetXml and sourceXml must be strings');
+    }
+    const e = await entry();
+    if (!e) throw pendingError('xsltTransform');
+    requireEntryFn(e, 'xsltTransform', 'XSLT transform');
+    const r = entryResult(e.xsltTransform(stylesheetXml, sourceXml), 'xsltTransform');
+    return r.output;
+  }
+
+  /**
+   * Evaluate a Content MathML document (entry_jsoo.ml's mathmlEval
+   * export -> MathML.Content.eval_doc_env). `bindings` maps
+   * ci-variable names to value strings; pass {} for a closed
+   * expression. Returns the exact numeric/boolean value or an
+   * `undef` reason (division-by-zero, type error, ...). Needs the
+   * npm-entry bundle.
+   * @param {string} contentMathmlXml
+   * @param {Record<string,string>} [bindings]
+   * @returns {Promise<{kind:'rat',num:number,den:number}|{kind:'bool',value:boolean}|{kind:'undef',reason:string}>}
+   */
+  async function mathmlEval(contentMathmlXml, bindings) {
+    if (typeof contentMathmlXml !== 'string') {
+      throw new TypeError('mathmlEval: contentMathmlXml must be a string');
+    }
+    const b = bindings || {};
+    if (typeof b !== 'object') {
+      throw new TypeError('mathmlEval: bindings must be an object');
+    }
+    const e = await entry();
+    if (!e) throw pendingError('mathmlEval');
+    requireEntryFn(e, 'mathmlEval', 'MathML evaluation');
+    const r = entryResult(
+      e.mathmlEval(contentMathmlXml, JSON.stringify(b)), 'mathmlEval');
+    return r.value;
+  }
+
+  /**
+   * XForms recalculate (entry_jsoo.ml's xformsRecalc export ->
+   * XForms.Bind.recalculate). Applies the model binds (calculate,
+   * constraint, relevant, required, readonly, type MIPs) to the
+   * instance and returns the recomputed instance plus a validity
+   * report per bound node. Needs the npm-entry bundle.
+   * @param {string} instanceXml the XForms instance document
+   * @param {Array<{id?:string,target:string,calculate?:string,constraint?:string,relevant?:string,required?:string,readonly?:string,type?:string}>} binds
+   * @returns {Promise<{instance:string,validity:Array<object>}>}
+   */
+  async function xformsRecalc(instanceXml, binds) {
+    if (typeof instanceXml !== 'string') {
+      throw new TypeError('xformsRecalc: instanceXml must be a string');
+    }
+    if (!Array.isArray(binds)) {
+      throw new TypeError('xformsRecalc: binds must be an array');
+    }
+    const e = await entry();
+    if (!e) throw pendingError('xformsRecalc');
+    requireEntryFn(e, 'xformsRecalc', 'XForms recalculate');
+    const r = entryResult(
+      e.xformsRecalc(instanceXml, JSON.stringify(binds)), 'xformsRecalc');
+    return { instance: r.instance, validity: r.validity };
+  }
+
+  /**
+   * JSON Schema (draft-07) validation (entry_jsoo.ml's
+   * jsonSchemaValidate export -> JSONSchema.Validate.validate).
+   * Returns the verdict — the verified validator gives a definite
+   * pass/fail/unsupported, not a per-keyword error list, so `errors`
+   * carries a single reason string when not a definite pass. Needs
+   * the npm-entry bundle.
+   * @param {string} schemaJson the schema document (JSON text)
+   * @param {string} instanceJson the instance document (JSON text)
+   * @returns {Promise<{valid:boolean,result:'pass'|'fail'|'unsupported',errors:string[]}>}
+   */
+  async function jsonSchemaValidate(schemaJson, instanceJson) {
+    if (typeof schemaJson !== 'string' || typeof instanceJson !== 'string') {
+      throw new TypeError('jsonSchemaValidate: schemaJson and instanceJson must be strings');
+    }
+    const e = await entry();
+    if (!e) throw pendingError('jsonSchemaValidate');
+    requireEntryFn(e, 'jsonSchemaValidate', 'JSON Schema validation');
+    const r = entryResult(
+      e.jsonSchemaValidate(schemaJson, instanceJson), 'jsonSchemaValidate');
+    return { valid: !!r.valid, result: r.result, errors: r.errors || [] };
+  }
+
+  /**
+   * Schematron validation (entry_jsoo.ml's schematronValidate export
+   * -> Schematron.Validate.validate). Returns every finding (failed
+   * assert, fired report, indeterminate) in pattern-then-document
+   * order. Needs the npm-entry bundle.
+   * @param {string} schematronXml the Schematron schema document
+   * @param {string} instanceXml the instance document to check
+   * @returns {Promise<{findings:Array<{type:string,context:string,test:string,message:string,path:string,reason?:string}>}>}
+   */
+  async function schematronValidate(schematronXml, instanceXml) {
+    if (typeof schematronXml !== 'string' || typeof instanceXml !== 'string') {
+      throw new TypeError('schematronValidate: schematronXml and instanceXml must be strings');
+    }
+    const e = await entry();
+    if (!e) throw pendingError('schematronValidate');
+    requireEntryFn(e, 'schematronValidate', 'Schematron validation');
+    const r = entryResult(
+      e.schematronValidate(schematronXml, instanceXml), 'schematronValidate');
+    return { findings: r.findings };
+  }
+
+  // TOAN — a small exact-CAS surface over Math.Expr (E_Int/E_Rat/E_Bool/
+  // E_Sym/E_App). Callers pass an expression as the JSON codec
+  //   {int:n} | {rat:[n,d]} | {bool:b} | {sym:name} | {app:name,args:[...]}
+  // and receive Content MathML for the result (via MathML.Present).
+  async function toanCall(fnName, what, ...args) {
+    const e = await entry();
+    if (!e) throw pendingError(fnName);
+    requireEntryFn(e, fnName, what);
+    const r = entryResult(e[fnName](...args), fnName);
+    return r.mathml;
+  }
+
+  /**
+   * Symbolic finite summation (entry_jsoo.ml's toanSummation ->
+   * Math.Series.summation): sum of `body[idx:=lo..hi]`, simplified,
+   * as Content MathML. Needs the npm-entry bundle.
+   * @param {object} bodyExpr the summand, in the expr JSON codec
+   * @param {string} idx the summation index symbol
+   * @param {number} lo inclusive lower bound
+   * @param {number} hi inclusive upper bound
+   * @returns {Promise<string>} Content MathML
+   */
+  async function toanSummation(bodyExpr, idx, lo, hi) {
+    if (typeof idx !== 'string') throw new TypeError('toanSummation: idx must be a string');
+    return toanCall('toanSummation', 'TOAN summation',
+      JSON.stringify(bodyExpr), idx, String(lo), String(hi));
+  }
+
+  /**
+   * Symbolic finite product (entry_jsoo.ml's toanProduct ->
+   * Math.Series.finite_product). Same shape as {@link toanSummation}.
+   * @param {object} bodyExpr the factor, in the expr JSON codec
+   * @param {string} idx the product index symbol
+   * @param {number} lo inclusive lower bound
+   * @param {number} hi inclusive upper bound
+   * @returns {Promise<string>} Content MathML
+   */
+  async function toanProduct(bodyExpr, idx, lo, hi) {
+    if (typeof idx !== 'string') throw new TypeError('toanProduct: idx must be a string');
+    return toanCall('toanProduct', 'TOAN product',
+      JSON.stringify(bodyExpr), idx, String(lo), String(hi));
+  }
+
+  /**
+   * Canonical simplification (entry_jsoo.ml's toanSimplify ->
+   * Math.Simplify.simplify) of an expression, as Content MathML.
+   * @param {object} expr in the expr JSON codec
+   * @returns {Promise<string>} Content MathML
+   */
+  async function toanSimplify(expr) {
+    return toanCall('toanSimplify', 'TOAN simplify', JSON.stringify(expr));
+  }
+
+  /**
+   * Symbolic differentiation (entry_jsoo.ml's toanDiff ->
+   * Math.Diff.diff) of `expr` w.r.t. `variable`, as Content MathML.
+   * @param {object} expr in the expr JSON codec
+   * @param {string} variable the differentiation variable
+   * @returns {Promise<string>} Content MathML
+   */
+  async function toanDiff(expr, variable) {
+    if (typeof variable !== 'string') throw new TypeError('toanDiff: variable must be a string');
+    return toanCall('toanDiff', 'TOAN diff', JSON.stringify(expr), variable);
+  }
+
+  /**
+   * Substitution (entry_jsoo.ml's toanSubst -> Math.Subst.subst):
+   * `expr[variable := value]`, simplified, as Content MathML.
+   * @param {object} expr in the expr JSON codec
+   * @param {string} variable the symbol to replace
+   * @param {object} value the replacement, in the expr JSON codec
+   * @returns {Promise<string>} Content MathML
+   */
+  async function toanSubst(expr, variable, value) {
+    if (typeof variable !== 'string') throw new TypeError('toanSubst: variable must be a string');
+    return toanCall('toanSubst', 'TOAN subst',
+      JSON.stringify(expr), variable, JSON.stringify(value));
+  }
+
+  // Matrix / vector algebra over exact rationals (Math.Matrix). A
+  // matrix is a JSON array of rows; a vector a JSON array of cells;
+  // a cell is an integer or a [num,den] pair. Results render via
+  // Math.Matrix.mres_to_string ("undef" carries a `reason`).
+  async function matrixCall(fnName, what, ...jsonArgs) {
+    const e = await entry();
+    if (!e) throw pendingError(fnName);
+    requireEntryFn(e, fnName, what);
+    const r = entryResult(e[fnName](...jsonArgs.map((a) => JSON.stringify(a))), fnName);
+    return { result: r.result, reason: r.reason || '' };
+  }
+
+  /**
+   * Determinant of a square matrix (entry_jsoo.ml's matrixDeterminant
+   * -> Math.Matrix.dyn_determinant), exact.
+   * @param {Array<Array<number|[number,number]>>} matrix
+   * @returns {Promise<{result:string,reason:string}>}
+   */
+  async function matrixDeterminant(matrix) {
+    if (!Array.isArray(matrix)) throw new TypeError('matrixDeterminant: matrix must be an array of rows');
+    return matrixCall('matrixDeterminant', 'matrix determinant', matrix);
+  }
+
+  /**
+   * Dot / scalar product of two vectors (entry_jsoo.ml's
+   * matrixScalarProduct -> Math.Matrix.dyn_scalarproduct).
+   * @param {Array<number|[number,number]>} a
+   * @param {Array<number|[number,number]>} b
+   * @returns {Promise<{result:string,reason:string}>}
+   */
+  async function matrixScalarProduct(a, b) {
+    if (!Array.isArray(a) || !Array.isArray(b)) throw new TypeError('matrixScalarProduct: a and b must be arrays');
+    return matrixCall('matrixScalarProduct', 'vector scalar product', a, b);
+  }
+
+  /**
+   * Cross product of two 3-vectors (entry_jsoo.ml's
+   * matrixVectorProduct -> Math.Matrix.dyn_vectorproduct).
+   * @param {Array<number|[number,number]>} a
+   * @param {Array<number|[number,number]>} b
+   * @returns {Promise<{result:string,reason:string}>}
+   */
+  async function matrixVectorProduct(a, b) {
+    if (!Array.isArray(a) || !Array.isArray(b)) throw new TypeError('matrixVectorProduct: a and b must be arrays');
+    return matrixCall('matrixVectorProduct', 'vector cross product', a, b);
+  }
+
+  /**
+   * Outer product of two vectors (entry_jsoo.ml's matrixOuterProduct
+   * -> Math.Matrix.dyn_outerproduct).
+   * @param {Array<number|[number,number]>} a
+   * @param {Array<number|[number,number]>} b
+   * @returns {Promise<{result:string,reason:string}>}
+   */
+  async function matrixOuterProduct(a, b) {
+    if (!Array.isArray(a) || !Array.isArray(b)) throw new TypeError('matrixOuterProduct: a and b must be arrays');
+    return matrixCall('matrixOuterProduct', 'vector outer product', a, b);
+  }
+
   // -----------------------------------------------------------------
   // In-memory COTTAS bytes store (docs/designissues/2026-07-06-
   // inmemory-bytes-store.md, stage 5). Needs the npm-entry bundle
@@ -898,7 +1242,18 @@ function buildApi(driver) {
         rml: typeof e.rmlMap === 'function',
         csvw: typeof e.csvwToRdf === 'function',
         jsonld: typeof e.jsonldToRdf === 'function',
+        jsonldFromRdf: typeof e.jsonldFromRdf === 'function',
+        didKey: typeof e.didKeyResolve === 'function',
+        xml: typeof e.xmlWellformed === 'function',
+        xpath: typeof e.xpathEval === 'function',
         rif: typeof e.rifEval === 'function',
+        xslt: typeof e.xsltTransform === 'function',
+        mathml: typeof e.mathmlEval === 'function',
+        xforms: typeof e.xformsRecalc === 'function',
+        jsonSchema: typeof e.jsonSchemaValidate === 'function',
+        schematron: typeof e.schematronValidate === 'function',
+        toan: typeof e.toanSummation === 'function',
+        matrix: typeof e.matrixDeterminant === 'function',
         cottasBytesStore: typeof e.openCottas === 'function' &&
           typeof e.queryCottas === 'function' && typeof e.toCottas === 'function',
       };
@@ -919,7 +1274,10 @@ function buildApi(driver) {
       entry: false, construct: false, update: false, canonicalize: canon,
       graphs: true, canonicalHash: canon,
       shacl: false, shex: false, owlClosure: false, rml: false,
-      csvw: false, jsonld: false, rif: false, cottasBytesStore: false,
+      csvw: false, jsonld: false, jsonldFromRdf: false, didKey: false,
+      xml: false, xpath: false, rif: false, cottasBytesStore: false,
+      xslt: false, mathml: false, xforms: false, jsonSchema: false,
+      schematron: false, toan: false, matrix: false,
     };
   }
 
@@ -937,7 +1295,25 @@ function buildApi(driver) {
     rmlMap,
     csvwToRdf,
     jsonldToRdf,
+    jsonldFromRdf,
+    didKeyResolve,
+    xmlWellformed,
+    xpathEval,
     rifEval,
+    xsltTransform,
+    mathmlEval,
+    xformsRecalc,
+    jsonSchemaValidate,
+    schematronValidate,
+    toanSummation,
+    toanProduct,
+    toanSimplify,
+    toanDiff,
+    toanSubst,
+    matrixDeterminant,
+    matrixScalarProduct,
+    matrixVectorProduct,
+    matrixOuterProduct,
     openCottas,
     queryCottas,
     closeCottas,

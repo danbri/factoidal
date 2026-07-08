@@ -544,3 +544,18 @@ test('canonicalize: two blank-node relabelings of the same graph canonicalize id
     const canonB = await canonicalize(b);
     assert.equal(canonA, canonB);
   });
+
+test('pipe: composes async and sync steps left-to-right', async () => {
+  const inc = (x) => x + 1;
+  const dbl = async (x) => x * 2;
+  const f = fn.pipe(inc, dbl, inc); // ((x+1)*2)+1
+  assert.equal(await f(3), 9);
+});
+
+test('pipe: with no functions is the identity', async () => {
+  assert.equal(await fn.pipe()(42), 42);
+});
+
+test('pipe: rejects a non-function argument', () => {
+  assert.throws(() => fn.pipe(1), TypeError);
+});

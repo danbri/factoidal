@@ -653,6 +653,54 @@ function derive(fn, ...inputCells) {
   };
 }
 
+/**
+ * Left-to-right function composition for Observable-style dataflow.
+ * `pipe(f, g, h)(x)` is `h(g(f(x)))`, awaiting any step that returns a
+ * Promise, so async engine functions (query, entail, xsltTransform, ...)
+ * compose with sync ones without the caller threading awaits. With no
+ * functions it is the identity. Every step must be a function.
+ * @param {...Function} fns
+ * @returns {(input: any) => Promise<any>}
+ */
+function pipe(...fns) {
+  for (const f of fns) {
+    if (typeof f !== 'function') {
+      throw new TypeError('pipe: every argument must be a function');
+    }
+  }
+  return async (input) => {
+    let value = input;
+    for (const f of fns) {
+      value = await f(value);
+    }
+    return value;
+  };
+}
+
+// -----------------------------------------------------------------
+// Typed engine functions (#74). Re-exported unchanged from the JS
+// engine api — each is already a pure, value-in / value-out function
+// over one F*-extracted engine (XSLT, MathML, XForms, JSON Schema,
+// Schematron, TOAN CAS, matrix algebra), so they belong in the
+// functional surface as-is. See index.d.ts / fn.d.ts for signatures.
+// -----------------------------------------------------------------
+const {
+  xsltTransform,
+  mathmlEval,
+  xformsRecalc,
+  jsonSchemaValidate,
+  schematronValidate,
+  toanSummation,
+  toanProduct,
+  toanSimplify,
+  toanDiff,
+  toanSubst,
+  matrixDeterminant,
+  matrixScalarProduct,
+  matrixVectorProduct,
+  matrixOuterProduct,
+} = engineApi;
+
 module.exports = {
   FnDataset,
   EMPTY,
@@ -680,5 +728,21 @@ module.exports = {
   graphs,
   cell,
   derive,
+  pipe,
+  // Typed engine functions (#74 FP surface).
+  xsltTransform,
+  mathmlEval,
+  xformsRecalc,
+  jsonSchemaValidate,
+  schematronValidate,
+  toanSummation,
+  toanProduct,
+  toanSimplify,
+  toanDiff,
+  toanSubst,
+  matrixDeterminant,
+  matrixScalarProduct,
+  matrixVectorProduct,
+  matrixOuterProduct,
   capabilities: engineApi.capabilities,
 };

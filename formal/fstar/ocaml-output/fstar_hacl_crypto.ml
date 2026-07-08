@@ -7,9 +7,12 @@
    to the vendored HACL* C (declared `external`, implemented in
    experimental_ocaml_glue/hacl_stubs.c).  No cryptographic logic lives here;
    the hex marshalling is in the C stub.  Same role fstar_pure_hashes.ml plays
-   for the SPARQL/RDFC hash assume-vals, except this side is HACL*-C-backed and
-   therefore NATIVE-ONLY (HACL* C does not link under wasm_of_ocaml — VC under
-   wasm is deferred, GitHub #286).
+   for the SPARQL/RDFC hash assume-vals.  On NATIVE the `external caml_hacl_*`
+   below bind to the vendored HACL* C.  Under js_of_ocaml/Node the SAME
+   primitives are realised by ocaml-output/hacl_stubs.js over HACL*'s OWN
+   official WebAssembly build (third_party/hacl-wasm/, loaded by
+   npm/factoidal/hacl-init.js), so VC crypto works off-native too
+   (GitHub #286; wasm_of_ocaml target tracked there).
 
    Boundary: hex strings, lowercase, no 0x prefix.  An empty-string return
    from a keyed operation signals a malformed-length input, never a verdict. *)

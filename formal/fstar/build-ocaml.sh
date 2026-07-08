@@ -1654,6 +1654,8 @@ if [[ "$STEP" == "all" || "$STEP" == "js" ]]; then
     VC_Credential.ml
     VC_Multibase.ml
     DID_Key.ml
+    fstar_hacl_crypto.ml
+    VC_DataIntegrity.ml
     RDF_Store_Columnar_DeltaMerge.ml
     SPARQL_Plan_Streamable.ml RDF_Store_Capabilities.ml RDF_Store_Capabilities_Cottas.ml RDF_Store_Capabilities_Delta.ml
     RML_VirtualSource.ml
@@ -1686,11 +1688,13 @@ if [[ "$STEP" == "all" || "$STEP" == "js" ]]; then
     ../../../bin/factoidal-cli/factoidal_cli.ml
     ../../../bin/npm-entry/entry_jsoo.ml
     parquet_zstd_stubs_jsoo.c
+    hacl_stubs_jsoo.c
     fstar_int_stubs.js
     fstar_hash_stubs.js
     fstar_utf8_output_stubs.js
     vendor/fzstd.umd.js
     parquet_zstd_stubs.js
+    hacl_stubs.js
   )
   JS_NEEDS_REBUILD=0
   for target in "${JS_TARGETS[@]}"; do
@@ -1711,7 +1715,7 @@ if [[ "$STEP" == "all" || "$STEP" == "js" ]]; then
     # actually executed in the JS build path.
     run_with_heartbeat "ocamlc w3c_runner.byte" "_ocamlc_w3c_runner.log" -- \
       ocamlfind ocamlc -package fstar.lib,str,zarith,sha,digestif.c,unix,uucp -linkpkg -w -8-14-26 \
-      -custom parquet_zstd_stubs_jsoo.c \
+      -custom parquet_zstd_stubs_jsoo.c hacl_stubs_jsoo.c \
       "${FSTAR_MODULES[@]}" \
       ../../../bin/w3c-runner/w3c_runner.ml \
       -o w3c_runner.byte
@@ -1737,7 +1741,7 @@ if [[ "$STEP" == "all" || "$STEP" == "js" ]]; then
     FACTOIDAL_BYTE_RC=0
     run_with_heartbeat "ocamlc factoidal.byte" "_ocamlc_factoidal.log" -- \
       ocamlfind ocamlc -package fstar.lib,str,zarith,sha,digestif.c,unix,uucp -linkpkg -w -8-14-26 \
-      -custom parquet_zstd_stubs_jsoo.c \
+      -custom parquet_zstd_stubs_jsoo.c hacl_stubs_jsoo.c \
       -I ../../../bin/factoidal-explain \
       "${FSTAR_MODULES[@]}" \
       ../../../bin/factoidal-explain/factoidal_explain.ml \
@@ -1760,7 +1764,7 @@ if [[ "$STEP" == "all" || "$STEP" == "js" ]]; then
     # js_of_ocaml library for Js.export / Js.wrap_callback.
     run_with_heartbeat "ocamlc npm_entry.byte" "_ocamlc_npm_entry.log" -- \
       ocamlfind ocamlc -package fstar.lib,str,zarith,sha,digestif.c,unix,uucp,js_of_ocaml -linkpkg -w -8-14-26 \
-      -custom parquet_zstd_stubs_jsoo.c \
+      -custom parquet_zstd_stubs_jsoo.c hacl_stubs_jsoo.c \
       "${FSTAR_MODULES[@]}" \
       ../../../bin/npm-entry/entry_jsoo.ml \
       -o npm_entry.byte
@@ -1782,6 +1786,7 @@ if [[ "$STEP" == "all" || "$STEP" == "js" ]]; then
       fstar_utf8_output_stubs.js \
       vendor/fzstd.umd.js \
       parquet_zstd_stubs.js \
+      hacl_stubs.js \
       w3c_runner.byte \
       -o ../../../docs/fstar-extracted/w3c-runner.js
     grep -v "Warning \[deprecated" _jsoo_w3c_runner.log | grep -v "^$" || true
@@ -1795,6 +1800,7 @@ if [[ "$STEP" == "all" || "$STEP" == "js" ]]; then
       fstar_utf8_output_stubs.js \
       vendor/fzstd.umd.js \
       parquet_zstd_stubs.js \
+      hacl_stubs.js \
       factoidal.byte \
       -o ../../../docs/fstar-extracted/factoidal.js
     grep -v "Warning \[deprecated" _jsoo_factoidal.log | grep -v "^$" || true
@@ -1808,6 +1814,7 @@ if [[ "$STEP" == "all" || "$STEP" == "js" ]]; then
       fstar_utf8_output_stubs.js \
       vendor/fzstd.umd.js \
       parquet_zstd_stubs.js \
+      hacl_stubs.js \
       npm_entry.byte \
       -o ../../../docs/fstar-extracted/factoidal-npm-entry.js
     grep -v "Warning \[deprecated" _jsoo_npm_entry.log | grep -v "^$" || true
@@ -1939,6 +1946,7 @@ if [[ "$STEP" == "wasm-factoidal" ]]; then
       wasm_runtime/zarith_runtime.wat \
       wasm_runtime/stdint_uint32_runtime.wat \
       fstar_int_stubs.js \
+      hacl_stubs.js \
       npm_entry.byte \
       -o ../../../docs/fstar-extracted/factoidal-npm-entry.wasm.js
     python3 wasm_stub_shims.py ../../../docs/fstar-extracted/factoidal-npm-entry.wasm.js
