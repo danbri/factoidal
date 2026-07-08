@@ -6,7 +6,7 @@
  * 1. Opens the COTTAS file via the F* on-disk store (cottas_ondisk_open).
  * 2. Reports startup RSS in MB.
  * 3. Runs the universal-bound triple pattern (None, None, None, None) =
- *    SELECT (COUNT-star AS ?n) WHERE { ?s ?p ?o } via cottas_ondisk_estimate.
+ *    SELECT (COUNT-star AS ?n) WHERE { ?s ?p ?o } via cottas_ondisk_estimate_tok.
  * 4. Reports query wall-clock + post-query RSS.
  * 5. Verifies that backend_search through GB_CottasOnDisk returns the
  *    same triple count for an unbound BGP {?s ?p ?o}.
@@ -60,16 +60,24 @@ let main () =
   in
   Printf.printf "  post-open RSS: %.1f MB\n%!" (read_rss_mb ());
 
-  (* 2. Universal count via cottas_ondisk_estimate *)
-  let bound : cottas_bound_qp = {
-    cbqp_s = FStar_Pervasives_Native.None;
-    cbqp_p = FStar_Pervasives_Native.None;
-    cbqp_o = FStar_Pervasives_Native.None;
-    (* issue #267: CGB_Unbound = count every row, default and named. *)
-    cbqp_g = CGB_Unbound;
+  (* 2. Universal count via the production tok estimate entry point
+     (#118 slice 1). The all-None tok bound reproduces the old
+     CGB_Unbound "count every row, default and named" semantics
+     EXACTLY: cottas_ondisk_estimate_tok's all-None branch reads
+     probe_parquet_num_rows (the whole-store row total across every
+     graph), byte-identical to the id-based estimate's CGB_Unbound
+     path. cottas_ondisk_build_bound_qp_tok cannot express this — it
+     always emits a graph token (DEFAULT or a named IRI), restricting
+     the count to one graph — so the bound is constructed directly,
+     the same way this harness already built cottas_bound_qp. *)
+  let bound : cottas_bound_qp_tok = {
+    cbqpt_s = FStar_Pervasives_Native.None;
+    cbqpt_p = FStar_Pervasives_Native.None;
+    cbqpt_o = FStar_Pervasives_Native.None;
+    cbqpt_g = FStar_Pervasives_Native.None;
   } in
-  let n = bench "cottas_ondisk_estimate (?s ?p ?o)" (fun () ->
-    cottas_ondisk_estimate ds bound) in
+  let n = bench "cottas_ondisk_estimate_tok (?s ?p ?o)" (fun () ->
+    cottas_ondisk_estimate_tok ds bound) in
   Printf.printf "  total quads (estimate): %s\n%!" (Z.to_string n);
   Printf.printf "  post-estimate RSS: %.1f MB\n%!" (read_rss_mb ());
 

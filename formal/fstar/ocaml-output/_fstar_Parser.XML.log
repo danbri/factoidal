@@ -1,17 +1,12 @@
-* Warning 349 at Parser.XML.fst(450,2-479,22):
-  - The verification condition succeeded after splitting it to localize
-    potential errors, although the original non-split verification condition
-    failed. If you want to rely on splitting queries for verifying your program
-    please use the '--split_queries always' option rather than relying on it
-    implicitly.
-
-* Warning 349 at Parser.XML.fst(936,2-990,46):
-  - The verification condition succeeded after splitting it to localize
-    potential errors, although the original non-split verification condition
-    failed. If you want to rely on splitting queries for verifying your program
-    please use the '--split_queries always' option rather than relying on it
-    implicitly.
+* Warning 241 at Parser.FastString.fst(0,0-0,0):
+  - Unable to load Parser.FastString.fst.checked since checked file
+    Parser.FastString.fst.checked does not exist; will recheck
+    Parser.FastString.fst (suppressing this warning for further modules)
 
 Extracted module Parser.XML
+* Warning 247 at Parser.XML.fst(0,0-0,0):
+  - Checked file Parser.XML.fst.checked was not written.
+  - Reason: checked file Parser.Combinators.fst.checked does not exist
+
 Verified module: Parser.XML
 All verification conditions discharged successfully

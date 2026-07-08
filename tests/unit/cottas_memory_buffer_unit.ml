@@ -6,8 +6,9 @@
    lets `RDF.CottasStore.cottas_ondisk_open` be handed a SYNTHETIC
    handle backed by an in-memory byte string instead of a real file
    path, and every existing query entry point built on top
-   (`cottas_ondisk_search[_limited]`, `_estimate`, `_count_exact`,
-   `_predicate_present`, `_has_decode_failure`, `_named_graphs`) works
+   (`cottas_ondisk_search[_limited]_tok`, `_estimate_tok`,
+   `_count_exact_tok`, `_predicate_present`, `_has_decode_failure`,
+   `_named_graphs`) works
    identically either way, because the whole reader treats the path
    argument as an opaque cache key (design doc §2.1).
 
@@ -71,33 +72,30 @@ let read_whole_file (path : string) : string =
   close_in ic;
   bytes
 
-let raw_bound_opt cods scope (b : SPARQL11_Algebra.triple_pattern_bound) =
-  RDF_CottasStore.cottas_ondisk_build_bound_qp_opt cods
+(* #118 slice 1: buffer-vs-file equivalence is now validated on the
+   PRODUCTION (tok) entry points — the same ones RDF.Store.Capabilities.
+   Cottas.fst's caps_of_cottas wraps. The tok bound builder serializes
+   the query's terms straight to column tokens (no corpus-wide id
+   round-trip), so it takes no `cods` and never returns None; a term
+   genuinely absent from the corpus still yields zero rows via the tok
+   search's dict-page prune. *)
+let raw_bound_tok scope (b : SPARQL11_Algebra.triple_pattern_bound) =
+  RDF_CottasStore.cottas_ondisk_build_bound_qp_tok
     b.SPARQL11_Algebra.bs b.SPARQL11_Algebra.bp b.SPARQL11_Algebra.bo scope
 
 let raw_solve cods scope b =
-  match raw_bound_opt cods scope b with
-  | FStar_Pervasives_Native.None -> []
-  | FStar_Pervasives_Native.Some bnd ->
-    RDF_CottasStore.cottas_ondisk_rows_tok_to_triples
-      (RDF_CottasStore.cottas_ondisk_search cods bnd)
+  RDF_CottasStore.cottas_ondisk_rows_tok_to_triples
+    (RDF_CottasStore.cottas_ondisk_search_tok cods (raw_bound_tok scope b))
 
 let raw_solve_limited cods scope b n =
-  match raw_bound_opt cods scope b with
-  | FStar_Pervasives_Native.None -> []
-  | FStar_Pervasives_Native.Some bnd ->
-    RDF_CottasStore.cottas_ondisk_rows_tok_to_triples
-      (RDF_CottasStore.cottas_ondisk_search_limited cods bnd n)
+  RDF_CottasStore.cottas_ondisk_rows_tok_to_triples
+    (RDF_CottasStore.cottas_ondisk_search_limited_tok cods (raw_bound_tok scope b) n)
 
 let raw_estimate cods scope b =
-  match raw_bound_opt cods scope b with
-  | FStar_Pervasives_Native.None -> Z.zero
-  | FStar_Pervasives_Native.Some bnd -> RDF_CottasStore.cottas_ondisk_estimate cods bnd
+  RDF_CottasStore.cottas_ondisk_estimate_tok cods (raw_bound_tok scope b)
 
 let raw_count_exact cods scope b =
-  match raw_bound_opt cods scope b with
-  | FStar_Pervasives_Native.None -> Z.zero
-  | FStar_Pervasives_Native.Some bnd -> RDF_CottasStore.cottas_ondisk_count_exact cods bnd
+  RDF_CottasStore.cottas_ondisk_count_exact_tok cods (raw_bound_tok scope b)
 
 (* Compare the file-backed store against the memory-backed store
    across every shape, for one graph scope. *)

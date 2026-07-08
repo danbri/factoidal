@@ -1,27 +1,29 @@
-    RDF.IRI.fst (up to date, skipped -- source unchanged since last extract)
     RDFS.Closure.fst (up to date, skipped -- source unchanged since last extract)
-    RDF.NQuads.Serialize.fst (up to date, skipped -- source unchanged since last extract)
-    RDF.Dataset.Graphs.fst (up to date, skipped -- source unchanged since last extract)
-    OWL.Vocabulary.fst (up to date, skipped -- source unchanged since last extract)
+    RDF.IRI.fst (up to date, skipped -- source unchanged since last extract)
     RDF.Store.Loader.fst (up to date, skipped -- source unchanged since last extract)
+    RDF.Dataset.Graphs.fst (up to date, skipped -- source unchanged since last extract)
+    RDF.NQuads.Serialize.fst (up to date, skipped -- source unchanged since last extract)
+    OWL.Vocabulary.fst (up to date, skipped -- source unchanged since last extract)
     OWL.DirectMapping.Filter.fst (up to date, skipped -- source unchanged since last extract)
     SPARQL11.IRI.Resolve.fst (up to date, skipped -- source unchanged since last extract)
-    RIF.Core.Syntax.fst (up to date, skipped -- source unchanged since last extract)
     SPARQL.FullText.fst (up to date, skipped -- source unchanged since last extract)
+    RIF.Core.Syntax.fst (up to date, skipped -- source unchanged since last extract)
     RDF.Geo.BBox.fst (up to date, skipped -- source unchanged since last extract)
     Parser.Combinators.fst (up to date, skipped -- source unchanged since last extract)
-    Math.Diff.fst (up to date, skipped -- source unchanged since last extract)
-    Math.Subst.fst (up to date, skipped -- source unchanged since last extract)
-    Math.Simplify.fst (up to date, skipped -- source unchanged since last extract)
-    Math.Matrix.fst (up to date, skipped -- source unchanged since last extract)
-    MathML.Present.fst (up to date, skipped -- source unchanged since last extract)
-    DID.Key.fst (up to date, skipped -- source unchanged since last extract)
+    [Math.Diff.fst]
+    [Math.Simplify.fst]
+    [Math.Subst.fst]
+    [Math.Matrix.fst]
+    [Math.Subst.fst] Extracted module Math.Subst
+    [MathML.Present.fst]
+    [Math.Diff.fst] Extracted module Math.Diff
     SPARQL.JSON.Escape.fst (up to date, skipped -- source unchanged since last extract)
+    DID.Key.fst (up to date, skipped -- source unchanged since last extract)
     RML.Mapping.fst (up to date, skipped -- source unchanged since last extract)
     Parser.BallyhooBloom.fst (up to date, skipped -- source unchanged since last extract)
-    RDF.CottasStore.OnDiskIndex.fst (up to date, skipped -- source unchanged since last extract)
-    RDF.CottasStore.ColumnSeq.fst (up to date, skipped -- source unchanged since last extract)
     Parser.BallyhooCOTTAS.fst (up to date, skipped -- source unchanged since last extract)
+    RDF.CottasStore.ColumnSeq.fst (up to date, skipped -- source unchanged since last extract)
+    RDF.CottasStore.OnDiskIndex.fst (up to date, skipped -- source unchanged since last extract)
     RDF.CottasStore.DictWriter.fst (up to date, skipped -- source unchanged since last extract)
     RDF.CottasStore.PresenceWriter.fst (up to date, skipped -- source unchanged since last extract)
     RDF.CottasStore.CompoundPresenceWriter.fst (up to date, skipped -- source unchanged since last extract)
@@ -31,6 +33,9 @@
     RDF.Store.HDTTermCacheRegistry.fst (up to date, skipped -- source unchanged since last extract)
     RDF.Store.Columnar.DeltaLog.fst (up to date, skipped -- source unchanged since last extract)
     RDF.Dataset.Merge.fst (up to date, skipped -- source unchanged since last extract)
+    SPARQL.Protocol.fst (up to date, skipped -- source unchanged since last extract)
     SPARQL.ServiceDescription.fst (up to date, skipped -- source unchanged since last extract)
     SPARQL.GraphStore.fst (up to date, skipped -- source unchanged since last extract)
-    SPARQL.Protocol.fst (up to date, skipped -- source unchanged since last extract)
+    [Math.Simplify.fst] Extracted module Math.Simplify
+    [MathML.Present.fst] Extracted module MathML.Present
+    [Math.Matrix.fst] Extracted module Math.Matrix

@@ -1,14 +1,11 @@
-* Warning 241 at RDF.Graph.Executable.fst(0,0-0,0):
-  - Unable to load RDF.Graph.Executable.fst.checked since checked file
-    RDF.Graph.Executable.fst.checked is stale (dependence hash mismatch, use
-    --debug CheckedFiles for more details); will recheck
-    RDF.Graph.Executable.fst (suppressing this warning for further modules)
+* Warning 241 at RDF.Term.fsti(0,0-0,0):
+  - Unable to load RDF.Term.fsti.checked since checked file
+    RDF.Term.fsti.checked does not exist; will recheck RDF.Term.fsti
+    (suppressing this warning for further modules)
 
 * Warning 247 at RDF.IRI.fsti(0,0-0,0):
   - Checked file RDF.IRI.fsti.checked was not written.
-  - Reason:
-      checked file RDF.Graph.Executable.fst.checked is stale (dependence hash
-      mismatch, use --debug CheckedFiles for more details)
+  - Reason: checked file RDF.Graph.Executable.fst.checked does not exist
 
 Verified i'face (or impl+i'face): RDF.IRI
 All verification conditions discharged successfully

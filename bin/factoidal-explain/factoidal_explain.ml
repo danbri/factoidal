@@ -203,15 +203,17 @@ let bgps_in_query : A.query -> A.bgp list =
 (* Issue #110 retirement (2026-04-29): the OCaml-side
    `estimate_fast_inner` Mem5 bypass was retired with the rest of the
    dead-on-public-path COTTAS shims. Use the F*-extracted public
-   `cottas_ondisk_estimate` for all bound shapes. If a future
-   estimate path turns out to be too slow on 3M-row corpora,
-   speed it up in F*, not by re-introducing an OCaml bypass
-   (rule #11). *)
+   estimate for all bound shapes. If a future estimate path turns out
+   to be too slow on 3M-row corpora, speed it up in F*, not by
+   re-introducing an OCaml bypass (rule #11).
+   #118 slice 1: on the production tok entry point
+   `cottas_ondisk_estimate_tok`, consuming a `cottas_bound_qp_tok`
+   built directly from typed terms (no corpus-wide id round-trip). *)
 let cottas_estimate_quick
     (cods : C.cottas_ondisk_store)
-    (bound : P.cottas_bound_qp)
+    (bound : C.cottas_bound_qp_tok)
   : int =
-  Z.to_int (C.cottas_ondisk_estimate cods bound)
+  Z.to_int (C.cottas_ondisk_estimate_tok cods bound)
 
 (* bound_status type and bs_string renderer live in F* per rule #1
    (formal/fstar/SPARQL.Explain.fst). The re-export below preserves
@@ -229,7 +231,7 @@ let bs_string : bound_status -> string = SPARQL_Explain.bs_string
    - predicate status
    - object status
    - whether the encoded bound succeeded (None → result definitely empty)
-   - the F*-computed estimate via cottas_ondisk_estimate
+   - the F*-computed estimate via cottas_ondisk_estimate_tok
    - whether predicate-presence said the predicate exists
 
    The record type and JSON renderers (`bs_json`, `tpx_json`) live in F* per
@@ -253,65 +255,41 @@ let explain_triple_pattern_against_store
     (label : string)
     (tp : A.triple_pattern)
   : tp_explain =
+  (* #118 slice 1: the id-based dictionary probe (cottas_ondisk_encode_
+     {subject,predicate,object}_ml) is retired along with the rest of the
+     id-based COTTAS glue. The tok estimate path serializes each bound
+     term straight to a column token and lets the row-group dict-page
+     prune decide emptiness at estimate time — there is no separate
+     corpus-dictionary lookup to report a hit/miss from. A bound channel
+     therefore renders as BS_Hit (bound to this term); the "result
+     definitely empty" signal a BS_Miss used to carry is now carried by
+     tpx_estimate = 0 (a term absent from the corpus prunes to zero
+     candidate row-groups, so its estimate is 0). Variables and non-
+     encodable positions (bnode/literal predicate) are unchanged. *)
   (* Subject status *)
   let s_status, s_bound = match tp.A.tp_s with
     | A.PS_Var v -> BS_Var v, None
-    | A.PS_IRI i ->
-      let r = C.cottas_ondisk_encode_subject_ml cods (G.S_IRI i) in
-      (match r with
-       | FStar_Pervasives_Native.Some _ ->
-         BS_Hit (term_short (G.T_IRI i)), Some (G.S_IRI i)
-       | FStar_Pervasives_Native.None ->
-         BS_Miss (term_short (G.T_IRI i)), Some (G.S_IRI i))
-    | A.PS_BNode b ->
-      let r = C.cottas_ondisk_encode_subject_ml cods (G.S_BNode b) in
-      (match r with
-       | FStar_Pervasives_Native.Some _ ->
-         BS_Hit ("_:" ^ b), Some (G.S_BNode b)
-       | FStar_Pervasives_Native.None ->
-         BS_Miss ("_:" ^ b), Some (G.S_BNode b))
+    | A.PS_IRI i -> BS_Hit (term_short (G.T_IRI i)), Some (G.S_IRI i)
+    | A.PS_BNode b -> BS_Hit ("_:" ^ b), Some (G.S_BNode b)
   in
   (* Predicate status *)
   let p_status, p_bound = match tp.A.tp_p with
     | A.PT_Var v -> BS_Var v, None
-    | A.PT_IRI i ->
-      let r = C.cottas_ondisk_encode_predicate_ml cods i in
-      (match r with
-       | FStar_Pervasives_Native.Some _ ->
-         BS_Hit (term_short (G.T_IRI i)), Some i
-       | FStar_Pervasives_Native.None ->
-         BS_Miss (term_short (G.T_IRI i)), Some i)
+    | A.PT_IRI i -> BS_Hit (term_short (G.T_IRI i)), Some i
     | A.PT_BNode _ -> BS_Other "bnode-as-predicate", None
     | A.PT_Literal l -> BS_Other ("literal-as-predicate: " ^ l.G.lexical_form), None
   in
   (* Object status *)
   let o_status, o_bound = match tp.A.tp_o with
     | A.PT_Var v -> BS_Var v, None
-    | A.PT_IRI i ->
-      let r = C.cottas_ondisk_encode_object_ml cods (G.T_IRI i) in
-      (match r with
-       | FStar_Pervasives_Native.Some _ ->
-         BS_Hit (term_short (G.T_IRI i)), Some (G.T_IRI i)
-       | FStar_Pervasives_Native.None ->
-         BS_Miss (term_short (G.T_IRI i)), Some (G.T_IRI i))
-    | A.PT_BNode b ->
-      let r = C.cottas_ondisk_encode_object_ml cods (G.T_BNode b) in
-      (match r with
-       | FStar_Pervasives_Native.Some _ ->
-         BS_Hit ("_:" ^ b), Some (G.T_BNode b)
-       | FStar_Pervasives_Native.None ->
-         BS_Miss ("_:" ^ b), Some (G.T_BNode b))
-    | A.PT_Literal l ->
-      let r = C.cottas_ondisk_encode_object_ml cods (G.T_Literal l) in
-      (match r with
-       | FStar_Pervasives_Native.Some _ ->
-         BS_Hit (term_short (G.T_Literal l)), Some (G.T_Literal l)
-       | FStar_Pervasives_Native.None ->
-         BS_Miss (term_short (G.T_Literal l)), Some (G.T_Literal l))
+    | A.PT_IRI i -> BS_Hit (term_short (G.T_IRI i)), Some (G.T_IRI i)
+    | A.PT_BNode b -> BS_Hit ("_:" ^ b), Some (G.T_BNode b)
+    | A.PT_Literal l -> BS_Hit (term_short (G.T_Literal l)), Some (G.T_Literal l)
   in
-  (* Build the bound (None means definitely empty). *)
-  let bound_opt = C.cottas_ondisk_build_bound_qp_opt
-    cods
+  (* Build the tok bound directly from the typed terms — no dictionary
+     encode. The builder never returns None, so the bound always builds;
+     the estimate below reports 0 for a genuinely-absent term. *)
+  let bound = C.cottas_ondisk_build_bound_qp_tok
     (match s_bound with Some s -> FStar_Pervasives_Native.Some s | None -> FStar_Pervasives_Native.None)
     (match p_bound with Some p -> FStar_Pervasives_Native.Some p | None -> FStar_Pervasives_Native.None)
     (match o_bound with Some o -> FStar_Pervasives_Native.Some o | None -> FStar_Pervasives_Native.None)
@@ -319,13 +297,8 @@ let explain_triple_pattern_against_store
        graph only, matching BGP dataset semantics. *)
     C.COS_DefaultOnly
   in
-  let bound_built, estimate = match bound_opt with
-    | FStar_Pervasives_Native.None -> false, 0
-    | FStar_Pervasives_Native.Some bound ->
-      (* Bypass the slow data-page walk for bound_p + bound_o queries
-         (see cottas_estimate_quick above). *)
-      true, cottas_estimate_quick cods bound
-  in
+  let bound_built = true in
+  let estimate = cottas_estimate_quick cods bound in
   let pred_present = match p_bound with
     | None -> None
     | Some p -> Some (C.cottas_ondisk_predicate_present cods p)
@@ -500,7 +473,7 @@ let explain_query
          is <2s if .s.dict / .p.dict / .o.dict / .g.dict / .p.offsets
          / .*.presence companions already exist next to data.cottas
          (which they do, because the running daemon built them). Without
-         this, the first call to cottas_ondisk_estimate would walk all
+         this, the first call to cottas_ondisk_estimate_tok would walk all
          row groups to populate the dict — minutes of warm-up. *)
       (try C.Cottas_companion_boot.prewarm_via_companions p s.C.cods_handle
        with e ->
