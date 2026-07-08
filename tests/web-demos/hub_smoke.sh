@@ -12,9 +12,9 @@
 #      npm package mirror (docs/npm/foafos/) all same-origin, no CDN.
 #   2. The ` ```observable-js ` fenced-block convention actually
 #      mounts a live cell (docs/_includes/hub.njk's mountCell()).
-#   3. That cell calls Factoidal.query() (the npm module, driving the
-#      real F*-extracted engine compiled to JS) and the Inspector
-#      renders the computed value.
+#   3. That cell calls fn.parse()/fn.query() (the npm module's typed
+#      API, driving the real F*-extracted engine compiled to JS) and
+#      the Inspector renders the computed value.
 #
 # A pass here is evidence the whole chain the hub scaffold depends on
 # works end to end: vendored-Eleventy build -> vendored-Observable
@@ -163,7 +163,7 @@ const cellClass = await page.\$eval('.observable-cell', (el) => el.className);
 console.log('  cell output: ' + cellText);
 
 check('cell did not error', !cellClass.includes('observable-cell-error'));
-check('cell computed the expected value via Factoidal.query()',
+check('cell computed the expected value via fn.query()',
   cellText.includes('hub scaffold smoke test: 1 binding(s), o = 42'));
 
 await browser.close();

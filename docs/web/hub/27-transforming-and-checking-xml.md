@@ -27,10 +27,6 @@ of `<book>` elements into a flat `<catalog>` of one-line `<entry>`
 elements:
 
 ```observable-js
-abi = await Factoidal.loadNpmEntry()
-```
-
-```observable-js
 xsltResult = {
   const stylesheet = `<xsl:stylesheet version="1.0" xmlns:xsl="http://www.w3.org/1999/XSL/Transform">
   <xsl:template match="/library">
@@ -41,9 +37,7 @@ xsltResult = {
   <book id="b1"><title>SPARQL 1.1</title><author>W3C</author></book>
   <book id="b2"><title>RDF Primer</title><author>W3C</author></book>
 </library>`;
-  const raw = JSON.parse(abi.xsltTransform(stylesheet, source));
-  if (!raw.ok) throw new Error(raw.error);
-  return raw.output;
+  return await fn.xsltTransform(stylesheet, source);
 }
 ```
 
@@ -75,8 +69,7 @@ Run it against a document that fails the rule:
 ```observable-js
 schematronBad = {
   const doc = `<person><name>Bob</name></person>`;
-  const raw = JSON.parse(abi.schematronValidate(schematronRules, doc));
-  if (!raw.ok) throw new Error(raw.error);
+  const raw = await fn.schematronValidate(schematronRules, doc);
   return pretty(raw.findings);
 }
 ```
@@ -88,8 +81,7 @@ clears:
 ```observable-js
 schematronGood = {
   const doc = `<person><name>Bob</name><age>30</age></person>`;
-  const raw = JSON.parse(abi.schematronValidate(schematronRules, doc));
-  if (!raw.ok) throw new Error(raw.error);
+  const raw = await fn.schematronValidate(schematronRules, doc);
   return raw.findings;
 }
 ```
@@ -100,9 +92,10 @@ each one, and this time there's nothing to report.
 
 ## Reaching these from the browser
 
-`xsltTransform` and `schematronValidate` aren't (yet) wrapped by the
-browser adapter the way `xmlWellformed`/`xpathEval` are — the cells above
-call `Factoidal.loadNpmEntry()` directly and talk to the same
-`factoidalNpmEntry` ABI object the wrapped calls use underneath, JSON in,
-JSON out. Every live cell above is pinned in
+`xsltTransform` and `schematronValidate` are typed `fn` methods now,
+the same shape `xmlWellformed`/`xpathEval` already had — a cell calls
+`fn.xsltTransform(stylesheetXml, sourceXml)` / `fn.schematronValidate
+(schematronXml, instanceXml)` and gets the unwrapped result directly;
+the `factoidalNpmEntry` ABI lookup and JSON-in/JSON-out envelope live
+inside the adapter, not the cell. Every live cell above is pinned in
 [`tests/hub/post27_test.mjs`](https://github.com/danbri/factoidal/blob/claude/main/tests/hub/post27_test.mjs).

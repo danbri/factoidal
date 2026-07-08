@@ -42,26 +42,17 @@ how many triples are in here?
 
 ```observable-js
 const buf = await (await fetch("../rml-core-ontology.hdt")).arrayBuffer();
-const bytes = new Uint8Array(buf);
-let content = "";
-for (let i = 0; i < bytes.length; i++) content += String.fromCharCode(bytes[i]);
-
-const virtPath = "/tmp/factoidal-hub.hdt";
-const res = await Factoidal.runFactoidalCli(
-  ["--data-hdt", virtPath, "-e", "SELECT (COUNT(*) AS ?n) WHERE { ?s ?p ?o }", "-o", "json"],
-  [{ name: virtPath, content }]
-);
-const json = JSON.parse(res.stdout.slice(res.stdout.indexOf("{"), res.stdout.lastIndexOf("}") + 1));
-return Number(json.results.bindings[0].n.value);
+const rows = await fn.queryHdt(buf, "SELECT (COUNT(*) AS ?n) WHERE { ?s ?p ?o }");
+return Number(rows[0].get("n").value);
 ```
 
-343 triples. The `Factoidal.runFactoidalCli` call is the same raw
-argv+files primitive the [COTTAS on-disk demo](../../fstar-extracted/demo-cottas.html)
-uses for `--data-cottas`: the fetched bytes are registered under a
-virtual path (js_of_ocaml's in-memory filesystem), and the CLI's HDT
-reader opens that path exactly as the native binary opens a real file.
-No `fetch` reaches back out once the bytes are in hand; the SPARQL runs
-entirely against the in-memory HDT structure.
+343 triples. `fn.queryHdt` hides the argv+files primitive the [COTTAS
+on-disk demo](../../fstar-extracted/demo-cottas.html) uses for
+`--data-cottas`: the fetched bytes are registered under a virtual path
+(js_of_ocaml's in-memory filesystem) inside `fn.queryHdt` itself, and
+the CLI's HDT reader opens that path exactly as the native binary opens
+a real file. No `fetch` reaches back out once the bytes are in hand;
+the SPARQL runs entirely against the in-memory HDT structure.
 
 ## The classes it defines
 
@@ -72,24 +63,15 @@ to `Table` to read the id-to-label decode the dictionary made possible:
 
 ```observable-js
 const buf = await (await fetch("../rml-core-ontology.hdt")).arrayBuffer();
-const bytes = new Uint8Array(buf);
-let content = "";
-for (let i = 0; i < bytes.length; i++) content += String.fromCharCode(bytes[i]);
-
-const virtPath = "/tmp/factoidal-hub.hdt";
 const query = `PREFIX owl: <http://www.w3.org/2002/07/owl#>
 PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
 SELECT ?class ?label WHERE {
   ?class a owl:Class ; rdfs:label ?label .
 } ORDER BY ?label`;
-const res = await Factoidal.runFactoidalCli(
-  ["--data-hdt", virtPath, "-e", query, "-o", "json"],
-  [{ name: virtPath, content }]
-);
-const json = JSON.parse(res.stdout.slice(res.stdout.indexOf("{"), res.stdout.lastIndexOf("}") + 1));
-const rows = json.results.bindings.map((b) => ({
-  class: b.class.value.replace(/^.*[#/]/, ""),
-  label: b.label.value,
+const bindings = await fn.queryHdt(buf, query);
+const rows = bindings.map((row) => ({
+  class: row.get("class").value.replace(/^.*[#/]/, ""),
+  label: row.get("label").value,
 }));
 return pretty(rows);
 ```
@@ -110,20 +92,11 @@ that shows up:
 
 ```observable-js
 const buf = await (await fetch("../rml-core-ontology.hdt")).arrayBuffer();
-const bytes = new Uint8Array(buf);
-let content = "";
-for (let i = 0; i < bytes.length; i++) content += String.fromCharCode(bytes[i]);
-
-const virtPath = "/tmp/factoidal-hub.hdt";
 const query = `SELECT ?p (COUNT(*) AS ?n) WHERE { ?s ?p ?o } GROUP BY ?p ORDER BY DESC(?n)`;
-const res = await Factoidal.runFactoidalCli(
-  ["--data-hdt", virtPath, "-e", query, "-o", "json"],
-  [{ name: virtPath, content }]
-);
-const json = JSON.parse(res.stdout.slice(res.stdout.indexOf("{"), res.stdout.lastIndexOf("}") + 1));
-const data = json.results.bindings.slice(0, 8).map((b) => ({
-  predicate: b.p.value.replace(/^.*[#/]/, ""),
-  count: Number(b.n.value),
+const bindings = await fn.queryHdt(buf, query);
+const data = bindings.slice(0, 8).map((row) => ({
+  predicate: row.get("p").value.replace(/^.*[#/]/, ""),
+  count: Number(row.get("n").value),
 }));
 
 return Plot.plot({
@@ -171,5 +144,6 @@ compare on these read paths.
 
 Every live cell above is pinned in
 [`tests/hub/post24_test.mjs`](https://github.com/danbri/factoidal/blob/claude/main/tests/hub/post24_test.mjs) —
-the exact same source, driven through the real `runFactoidalCli` argv
-contract against the native binary instead of the in-browser js bundle.
+the exact same source, driven through a `fn.queryHdt` built on the same
+`--data-hdt` argv contract against the native binary instead of the
+in-browser js bundle.

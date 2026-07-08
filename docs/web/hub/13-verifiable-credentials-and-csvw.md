@@ -106,8 +106,8 @@ ours to prove.
 
 The first two steps are pure transforms with no secret key, so they run
 live here on the same credential dataset the native runner signs below.
-Step 1 is RDFC-1.0 canonicalization — `Factoidal.canonicalize`, the raw
-ABI export [post 08](./08-canonical-graphs-rdfc10.md) introduced:
+Step 1 is RDFC-1.0 canonicalization — `fn.canonicalize`, the same
+typed wrapper [post 08](./08-canonical-graphs-rdfc10.md) introduced:
 
 ```observable-js
 // The unsecured credential, as an RDF dataset -- the exact one the
@@ -118,7 +118,7 @@ const credential = `<urn:credential:1> <https://www.w3.org/2018/credentials#issu
 _:b0 <http://schema.org/name> "Alice" .
 `;
 
-const canonical = await Factoidal.canonicalize(credential, { format: "nquads" });
+const canonical = await fn.canonicalize(credential, { format: "nquads" });
 return { canonical, lines: canonical.trim().split("\n").length };
 ```
 
@@ -141,7 +141,7 @@ async function sha256Hex(text) {
   return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-const canonical = await Factoidal.canonicalize(credential, { format: "nquads" });
+const canonical = await fn.canonicalize(credential, { format: "nquads" });
 const sha256 = await sha256Hex(canonical);
 return { sha256, hashLength: sha256.length };
 ```

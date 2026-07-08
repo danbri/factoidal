@@ -2,7 +2,7 @@
 //
 // The post has four live cells, in document order:
 //   [0] VC Data Integrity step 1 -- RDFC-1.0 canonicalize the credential
-//       dataset (`Factoidal.canonicalize`, the raw ABI export post 08
+//       dataset (`fn.canonicalize`, the same typed wrapper post 08
 //       introduced).
 //   [1] VC Data Integrity step 2 -- SHA-256 of the canonical form, via
 //       Web Crypto's `crypto.subtle.digest` (a browser/Node built-in,
@@ -21,9 +21,10 @@
 // browser `Factoidal` resolves to browser.js, whose csvwToRdf() fetches
 // the npm-entry ABI bundle over the network; Node has no `file://`
 // fetch, so this test calls the same underlying ABI function via
-// `require()` instead. `Factoidal.canonicalize` is the npm-index
-// wrapper over the raw `canonicalizeToNQuads` ABI export, mirroring
-// browser.js's `canonicalize` binding.
+// `require()` instead. `fn.canonicalize` is the real npm/factoidal
+// typed API's `canonicalize`, mirroring `docs/_includes/hub.njk`'s
+// `fn.canonicalize` adapter (which itself wraps browser.js's
+// `canonicalize` binding).
 //
 // The VC *structural* validator still has no browser export (no
 // `vcValidate`, nothing VC-shaped); the "no VC-shaped export" check at
@@ -50,14 +51,13 @@ function loadAbi() {
 }
 
 const abi = loadAbi();
-// The npm-index default export is what browser.js's `canonicalize`
-// binding resolves to; use its wrapper so the cell's
-// `Factoidal.canonicalize(text, { format })` contract is exercised
-// exactly as it runs in-browser.
+// The npm-index default export is the real typed API `fn.canonicalize`
+// resolves to in the browser (via docs/_includes/hub.njk's `fn`
+// adapter, which wraps browser.js's `canonicalize` binding).
 const npmFactoidal = (await import('../../npm/factoidal/index.mjs')).default;
+const fn = { canonicalize: npmFactoidal.canonicalize };
 
 const Factoidal = {
-  canonicalize: npmFactoidal.canonicalize,
   async csvwToRdf(csvText, metadataJson, options) {
     if (typeof abi.csvwToRdf !== 'function') {
       throw new Error('csvwToRdf: the loaded factoidal-npm-entry bundle predates the CSVW export');
@@ -77,7 +77,7 @@ test('post13: post has 4 live cells (2 VC pipeline + 2 CSVW)', () => {
 });
 
 test('post13 cell 1 (VC step 1: RDFC-1.0 canonicalize): 3 lines, bnode canonicalized to _:c14n0', async () => {
-  const result = await runObservableCell(cells[0], { Factoidal });
+  const result = await runObservableCell(cells[0], { fn });
   assert.equal(result.lines, 3);
   assert.match(result.canonical, /_:c14n0/);
   // The credential's own IRIs survive; the arbitrary _:b0 label does not.
@@ -86,7 +86,7 @@ test('post13 cell 1 (VC step 1: RDFC-1.0 canonicalize): 3 lines, bnode canonical
 });
 
 test('post13 cell 2 (VC step 2: SHA-256 of canonical form): 64 hex chars, stable digest', async () => {
-  const result = await runObservableCell(cells[1], { Factoidal });
+  const result = await runObservableCell(cells[1], { fn });
   assert.equal(result.hashLength, 64);
   assert.match(result.sha256, /^[0-9a-f]{64}$/);
   // Deterministic: this is the SHA-256 of the canonical credential
@@ -127,7 +127,6 @@ test('post13 cell 4 (CSVW minimal mode): 8 typed quads, no provenance, template 
 
 test('post13: a CSVW cell degrades gracefully when the ABI lacks csvwToRdf', async () => {
   const brokenFactoidal = {
-    canonicalize: npmFactoidal.canonicalize,
     async csvwToRdf() {
       throw new Error('csvwToRdf: the loaded factoidal-npm-entry bundle predates the CSVW export');
     },

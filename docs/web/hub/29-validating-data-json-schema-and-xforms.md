@@ -23,10 +23,6 @@ order. Both run live below.
 One schema, `required: ["name"]`:
 
 ```observable-js
-abi = await Factoidal.loadNpmEntry()
-```
-
-```observable-js
 personSchema = JSON.stringify({
   type: "object",
   required: ["name"],
@@ -35,22 +31,14 @@ personSchema = JSON.stringify({
 ```
 
 ```observable-js
-schemaAccept = {
-  const raw = JSON.parse(abi.jsonSchemaValidate(personSchema, JSON.stringify({ name: "Alice" })));
-  if (!raw.ok) throw new Error(raw.error);
-  return raw;
-}
+schemaAccept = await fn.jsonSchemaValidate(personSchema, JSON.stringify({ name: "Alice" }))
 ```
 
 `{ valid: true, result: "pass", errors: [] }` — `{name: "Alice"}` has the
 one required property, of the right type. Drop it:
 
 ```observable-js
-schemaReject = {
-  const raw = JSON.parse(abi.jsonSchemaValidate(personSchema, JSON.stringify({})));
-  if (!raw.ok) throw new Error(raw.error);
-  return raw;
-}
+schemaReject = await fn.jsonSchemaValidate(personSchema, JSON.stringify({}))
 ```
 
 `{ valid: false, result: "fail", errors: [...] }` — the empty object is
@@ -69,12 +57,7 @@ xformsInstance = "<data><a>2</a><b>3</b><sum>0</sum></data>"
 ```
 
 ```observable-js
-xformsResult = {
-  const binds = JSON.stringify([{ target: "sum", calculate: "../a + ../b" }]);
-  const raw = JSON.parse(abi.xformsRecalc(xformsInstance, binds));
-  if (!raw.ok) throw new Error(raw.error);
-  return raw;
-}
+xformsResult = await fn.xformsRecalc(xformsInstance, [{ target: "sum", calculate: "../a + ../b" }])
 ```
 
 The recalculated instance carries `<sum>5</sum>` — `../a + ../b`

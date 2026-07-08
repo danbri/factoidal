@@ -1,20 +1,22 @@
 // Pins docs/web/hub/28-verified-math-rendered.md.
 //
-// Like post27, the cells reach mathmlEval/toanSummation/matrixDeterminant
-// via Factoidal.loadNpmEntry() against the raw factoidalNpmEntry ABI, and
-// reference each other ObservableHQ-style (`abi`, then `summationMathml`,
-// then the Content->Presentation cell that reads it) -- exercised via
-// runReactivePost(). `html` has no DOM in Node, so this file supplies a
-// minimal tagged-template stub that mirrors @observablehq/stdlib's
-// template() for plain-string interpolations (see
-// third_party/observable/dist/stdlib.esm.js's `template()`: a
+// Like post27, the cells call the typed `fn` methods now
+// (mathmlEval/toanSummation/matrixDeterminant) rather than reaching
+// for the raw factoidalNpmEntry ABI, and reference each other
+// ObservableHQ-style (`formatMathValue`, then `mathmlDemo`, then
+// `summationMathml`, then the Content->Presentation cell that reads
+// it) -- exercised via runReactivePost(). `fn` here is the real
+// npm/factoidal typed API. `html` has no DOM in Node, so this file
+// supplies a minimal tagged-template stub that mirrors
+// @observablehq/stdlib's template() for plain-string interpolations
+// (see third_party/observable/dist/stdlib.esm.js's `template()`: a
 // non-Node/non-Array interpolated value is concatenated into the source
 // string as-is, unescaped, before the browser parses it as markup) --
 // so the test can assert on the exact markup the real `html` would also
 // receive, without needing a DOM to build it.
 
-import { createRequire } from 'node:module';
 import {
+  NPM_FACTOIDAL_INDEX,
   extractObservableCells,
   runReactivePost,
   pretty,
@@ -23,25 +25,8 @@ import {
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-const require = createRequire(import.meta.url);
 const POST_FILE = '28-verified-math-rendered.md';
-
-function loadAbi() {
-  const bundlePath = process.env.FACTOIDAL_NPM_ENTRY;
-  assert.ok(bundlePath, 'FACTOIDAL_NPM_ENTRY must be set (see ./_helpers.mjs)');
-  const mod = require(bundlePath);
-  const abi = (mod && mod.factoidalNpmEntry) || globalThis.factoidalNpmEntry;
-  assert.ok(abi, 'factoidalNpmEntry ABI object did not register');
-  return abi;
-}
-
-const abi = loadAbi();
-
-const Factoidal = {
-  async loadNpmEntry() {
-    return abi;
-  },
-};
+const fn = (await import(NPM_FACTOIDAL_INDEX)).default;
 
 // Node-side stand-in for @observablehq/stdlib's `html` tagged template.
 // Only string interpolations appear in this post's cells (no DOM Node
@@ -55,18 +40,17 @@ function html(strings, ...values) {
 
 const cells = extractObservableCells(POST_FILE);
 
-test('post28: post ships eight live cells', () => {
-  assert.equal(cells.length, 8, `expected 8 live cells, found ${cells.length}`);
+test('post28: post ships seven live cells', () => {
+  assert.equal(cells.length, 7, `expected 7 live cells, found ${cells.length}`);
 });
 
 test('post28: dependency inference names the cells in order', () => {
-  const post = runReactivePost(cells, { Factoidal, pretty, html });
-  // The one anonymous cell (`pretty(mathmlDemo)`, cell index 3) gets the
-  // runtime's fallback name `cell0` -- the anon counter increments only
-  // over anonymous cells, not the absolute cell index. See
+  const post = runReactivePost(cells, { fn, pretty, html });
+  // The one anonymous cell (`pretty(mathmlDemo)`) gets the runtime's
+  // fallback name `cell0` -- the anon counter increments only over
+  // anonymous cells, not the absolute cell index. See
   // tests/hub/_helpers.mjs's runReactivePost().
   assert.deepEqual(post.names, [
-    'abi',
     'formatMathValue',
     'mathmlDemo',
     'cell0',
@@ -78,7 +62,7 @@ test('post28: dependency inference names the cells in order', () => {
 });
 
 test('post28: mathmlDemo evaluates 2+3 to an exact rational and 1/0 to undef', async () => {
-  const post = runReactivePost(cells, { Factoidal, pretty, html });
+  const post = runReactivePost(cells, { fn, pretty, html });
   const demo = await post.value('mathmlDemo');
   assert.deepEqual(demo, [
     { contentMathml: '<apply><plus/><cn>2</cn><cn>3</cn></apply>', value: '5/1' },
@@ -87,14 +71,14 @@ test('post28: mathmlDemo evaluates 2+3 to an exact rational and 1/0 to undef', a
 });
 
 test('post28: the pretty(mathmlDemo) cell renders a two-row table', async () => {
-  const post = runReactivePost(cells, { Factoidal, pretty, html });
+  const post = runReactivePost(cells, { fn, pretty, html });
   const table = await post.value('cell0');
   assert.equal(table.kind, 'table');
   assert.equal(table.rows.length, 2);
 });
 
 test('post28: summationMathml carries the verified Content MathML for the sum', async () => {
-  const post = runReactivePost(cells, { Factoidal, pretty, html });
+  const post = runReactivePost(cells, { fn, pretty, html });
   const mathml = await post.value('summationMathml');
   assert.equal(
     mathml,
@@ -107,7 +91,7 @@ test('post28: summationMathml carries the verified Content MathML for the sum', 
 });
 
 test('post28: summationPresentation converts to Presentation MathML for display', async () => {
-  const post = runReactivePost(cells, { Factoidal, pretty, html });
+  const post = runReactivePost(cells, { fn, pretty, html });
   const presentation = await post.value('summationPresentation');
   assert.equal(
     presentation,
@@ -122,7 +106,7 @@ test('post28: summationPresentation converts to Presentation MathML for display'
 });
 
 test('post28: determinantPlain is -2, determinantExact is the exact fraction 1/4', async () => {
-  const post = runReactivePost(cells, { Factoidal, pretty, html });
+  const post = runReactivePost(cells, { fn, pretty, html });
   assert.equal(await post.value('determinantPlain'), '-2');
   assert.equal(await post.value('determinantExact'), '1/4');
 });

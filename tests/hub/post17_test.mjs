@@ -1,40 +1,27 @@
 // Pins the live cells in docs/web/hub/17-mutating-and-serving-data.md.
 //
 // node:test, requiring the committed npm/factoidal bundles (no F*
-// toolchain needed). Both live cells reach for `Factoidal.loadNpmEntry()`
-// (the same escape hatch post12_test.mjs already pins) rather than `fn`,
-// since docs/_includes/hub.njk's `fn` adapter has no `update` method yet
-// -- that gap is itself part of what this post's prose documents.
+// toolchain needed). Both live cells go through the typed `fn` adapter
+// now (`fn.parse`/`fn.update`/`fn.query`) -- `fn` here is the real
+// npm/factoidal typed API, which already has `update()`; the adapter
+// gap this post used to document (`docs/_includes/hub.njk`'s `fn` had
+// no `update` method) is closed.
 
-import { createRequire } from 'node:module';
-import fs from 'node:fs';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { extractObservableCells, runObservableCell, pretty } from './_helpers.mjs';
+import { NPM_FACTOIDAL_INDEX, extractObservableCells, runObservableCell, pretty } from './_helpers.mjs';
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { createRequire } from 'node:module';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const require = createRequire(import.meta.url);
 const POST_FILE = '17-mutating-and-serving-data.md';
 const REPO_ROOT = path.join(__dirname, '..', '..');
 
-function loadAbi() {
-  const bundlePath = process.env.FACTOIDAL_NPM_ENTRY;
-  assert.ok(bundlePath, 'FACTOIDAL_NPM_ENTRY must be set (see ./_helpers.mjs)');
-  const mod = require(bundlePath);
-  const abi = (mod && mod.factoidalNpmEntry) || globalThis.factoidalNpmEntry;
-  assert.ok(abi, 'factoidalNpmEntry ABI object did not register');
-  return abi;
-}
-
-const abi = loadAbi();
-const Factoidal = {
-  async loadNpmEntry() {
-    return abi;
-  },
-};
+const factoidal = (await import(NPM_FACTOIDAL_INDEX)).default;
 
 const cells = extractObservableCells(POST_FILE);
 
@@ -43,38 +30,42 @@ test('post17: post has at least 2 live cells', () => {
 });
 
 test('post17 cell 1 (INSERT DATA): Bob appears alongside Alice after the update', async () => {
-  const result = await runObservableCell(cells[0], { Factoidal, pretty });
+  const result = await runObservableCell(cells[0], { fn: factoidal, pretty });
   assert.equal(result.available, true, result.note);
   assert.deepEqual(result.namesBeforeInsertData, ['Alice']);
   assert.deepEqual(result.namesAfterInsertData, ['Alice', 'Bob']);
 });
 
-test('post17 cell 1 degrades gracefully when loadNpmEntry throws', async () => {
-  const brokenFactoidal = {
-    async loadNpmEntry() {
-      throw new Error('factoidal-npm-entry.js fetch failed: 404 Not Found');
+test('post17 cell 1 degrades gracefully when the npm-entry bundle is unavailable', async () => {
+  const brokenFn = {
+    parse: factoidal.parse,
+    async update() {
+      throw new Error('update needs the factoidal-npm-entry bundle, which is not present');
     },
+    query: factoidal.query,
   };
-  const result = await runObservableCell(cells[0], { Factoidal: brokenFactoidal, pretty });
+  const result = await runObservableCell(cells[0], { fn: brokenFn, pretty });
   assert.equal(result.available, false);
-  assert.match(result.note, /fetch failed/);
+  assert.match(result.note, /npm-entry bundle/);
 });
 
 test('post17 cell 2 (DELETE/INSERT WHERE): Bob becomes Bobby, Alice untouched', async () => {
-  const result = await runObservableCell(cells[1], { Factoidal, pretty });
+  const result = await runObservableCell(cells[1], { fn: factoidal, pretty });
   assert.equal(result.available, true, result.note);
   assert.deepEqual(result.namesAfterDeleteInsertWhere, ['Alice', 'Bobby']);
 });
 
-test('post17 cell 2 degrades gracefully when loadNpmEntry throws', async () => {
-  const brokenFactoidal = {
-    async loadNpmEntry() {
-      throw new Error('factoidal-npm-entry.js fetch failed: 404 Not Found');
+test('post17 cell 2 degrades gracefully when the npm-entry bundle is unavailable', async () => {
+  const brokenFn = {
+    parse: factoidal.parse,
+    async update() {
+      throw new Error('update needs the factoidal-npm-entry bundle, which is not present');
     },
+    query: factoidal.query,
   };
-  const result = await runObservableCell(cells[1], { Factoidal: brokenFactoidal, pretty });
+  const result = await runObservableCell(cells[1], { fn: brokenFn, pretty });
   assert.equal(result.available, false);
-  assert.match(result.note, /fetch failed/);
+  assert.match(result.note, /npm-entry bundle/);
 });
 
 // ---------------------------------------------------------------------
@@ -83,11 +74,11 @@ test('post17 cell 2 degrades gracefully when loadNpmEntry throws', async () => {
 // memory.
 // ---------------------------------------------------------------------
 
-test('post17: the fn adapter genuinely has no update() method (grounds the "honest gap" claim)', async () => {
+test('post17: the fn adapter now defines an update() method (grounds this post\'s fn.update cells)', async () => {
   const hubNjk = fs.readFileSync(path.join(REPO_ROOT, 'docs', '_includes', 'hub.njk'), 'utf8');
   const fnBlockMatch = hubNjk.match(/const fn = \{([\s\S]*?)\n\};/);
   assert.ok(fnBlockMatch, 'hub.njk must define a `const fn = { ... }` object');
-  assert.doesNotMatch(fnBlockMatch[1], /\bupdate\s*\(/, 'fn should not (yet) define an update() method');
+  assert.match(fnBlockMatch[1], /\bupdate\s*\(/, 'fn should define an update() method');
 });
 
 test('post17: the W3C SPARQL 1.1 Update suite is 176/176 in the committed dashboard snapshot', () => {

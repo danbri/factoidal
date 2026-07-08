@@ -70,32 +70,13 @@ an `entail: 'OWL-RL'` closure running underneath it.
 
 `npm/factoidal`'s own `capabilities()` (server-side, Node-only) walks
 the loaded ABI object and reports a `typeof entry.X === 'function'`
-check per feature — not exposed directly to a browser cell (it isn't
-part of `browser.js`'s surface), so this cell builds the same check
-by hand against `Factoidal.loadNpmEntry()`'s return value, the actual
-ABI object the page's engine bundle registered:
+check per feature. `fn.capabilities()` is the browser-side mirror
+(`docs/_includes/hub.njk`'s `fn` adapter) — it hides the ABI lookup
+entirely and returns the same shape:
 
 ```observable-js
-const CAPABILITY_FNS = {
-  rif: "rifEval",
-  shacl: "shaclValidate",
-  shex: "shexValidate",
-  owlClosure: "owlClosure",
-  rml: "rmlMap",
-  csvw: "csvwToRdf",
-  jsonld: "jsonldToRdf",
-};
-
-try {
-  const abi = await Factoidal.loadNpmEntry();
-  const caps = {};
-  for (const [name, fnName] of Object.entries(CAPABILITY_FNS)) {
-    caps[name] = typeof abi[fnName] === "function";
-  }
-  return { available: true, caps };
-} catch (err) {
-  return { available: false, note: err.message };
-}
+const caps = await fn.capabilities();
+return { available: caps.entry, caps };
 ```
 
 If every value in `caps` is `true`, the engine bundle this page loaded

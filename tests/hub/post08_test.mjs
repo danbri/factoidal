@@ -10,24 +10,18 @@ const POST_FILE = '08-canonical-graphs-rdfc10.md';
 
 const cells = extractObservableCells(POST_FILE);
 
-// The post's cells call the raw `Factoidal.canonicalize(text, options)`
-// contract directly (no `fn.canonicalize` adapter exists in
-// docs/_includes/hub.njk today). npm/factoidal's typed
-// `canonicalize(data, options) -> Promise<string>` already matches
-// that signature/return shape exactly (it additionally accepts a
-// Dataset or array, which these cells never pass), so this shim is a
-// pure pass-through -- unlike shexValidate/jsonldToRdf, no
-// argument-shape translation is needed here.
-const FactoidalNode = {
-  canonicalize: factoidal.canonicalize,
-};
+// The post's cells call `fn.canonicalize(text, options)`.
+// npm/factoidal's typed `canonicalize(data, options) -> Promise<string>`
+// already matches that signature/return shape exactly (it additionally
+// accepts a Dataset or array, which these cells never pass), so `fn`
+// here is a pure pass-through -- no argument-shape translation needed.
 
 test('post08: post has at least 2 live cells', () => {
   assert.ok(cells.length >= 2, `expected >= 2 live cells, found ${cells.length}`);
 });
 
 test('post08 cell 1 (canonicalize twice, different bnode labels): identical bytes', async () => {
-  const result = await runObservableCell(cells[0], { fn: factoidal, Factoidal: FactoidalNode });
+  const result = await runObservableCell(cells[0], { fn: factoidal });
   assert.equal(result.identical, true);
   assert.match(result.canonicalNQuads, /_:c14n0/);
   const lines = result.canonicalNQuads.trim().split('\n').sort();
@@ -41,7 +35,7 @@ test('post08 cell 1 (canonicalize twice, different bnode labels): identical byte
 });
 
 test('post08 cell 2 (content-addressed hash): same facts hash equal, changed fact hashes differ', async () => {
-  const result = await runObservableCell(cells[1], { fn: factoidal, Factoidal: FactoidalNode });
+  const result = await runObservableCell(cells[1], { fn: factoidal });
   assert.equal(result.sameFactsSameHash, true);
   assert.equal(result.differentFactsDifferentHash, true);
   assert.match(result.urn, /^urn:rdfc:sha256:[0-9a-f]{64}$/);

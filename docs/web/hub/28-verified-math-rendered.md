@@ -32,10 +32,6 @@ layered on top of the verified value, not a replacement for it.
 ## Evaluating: exact rationals, and a clean undef
 
 ```observable-js
-abi = await Factoidal.loadNpmEntry()
-```
-
-```observable-js
 formatMathValue = (v) => {
   if (v.kind === "rat") return `${v.num}/${v.den}`;
   if (v.kind === "bool") return String(v.value);
@@ -45,12 +41,11 @@ formatMathValue = (v) => {
 
 ```observable-js
 mathmlDemo = {
-  const two = JSON.parse(abi.mathmlEval("<apply><plus/><cn>2</cn><cn>3</cn></apply>", "{}"));
-  const zero = JSON.parse(abi.mathmlEval("<apply><divide/><cn>1</cn><cn>0</cn></apply>", "{}"));
-  if (!two.ok || !zero.ok) throw new Error(two.error || zero.error);
+  const two = await fn.mathmlEval("<apply><plus/><cn>2</cn><cn>3</cn></apply>");
+  const zero = await fn.mathmlEval("<apply><divide/><cn>1</cn><cn>0</cn></apply>");
   return [
-    { contentMathml: "<apply><plus/><cn>2</cn><cn>3</cn></apply>", value: formatMathValue(two.value) },
-    { contentMathml: "<apply><divide/><cn>1</cn><cn>0</cn></apply>", value: formatMathValue(zero.value) },
+    { contentMathml: "<apply><plus/><cn>2</cn><cn>3</cn></apply>", value: formatMathValue(two) },
+    { contentMathml: "<apply><divide/><cn>1</cn><cn>0</cn></apply>", value: formatMathValue(zero) },
   ];
 }
 ```
@@ -75,9 +70,7 @@ returns the **verified** Content MathML result — the actual output
 ```observable-js
 summationMathml = {
   const bodyExpr = { app: "plus", args: [{ sym: "x" }, { app: "times", args: [{ sym: "i" }, { sym: "y" }] }] };
-  const raw = JSON.parse(abi.toanSummation(JSON.stringify(bodyExpr), "i", "1", "4"));
-  if (!raw.ok) throw new Error(raw.error);
-  return raw.mathml;
+  return await fn.toanSummation(bodyExpr, "i", 1, 4);
 }
 ```
 
@@ -156,8 +149,7 @@ the same way — exactly, never as a rounded float:
 
 ```observable-js
 determinantPlain = {
-  const raw = JSON.parse(abi.matrixDeterminant(JSON.stringify([[1, 2], [3, 4]])));
-  if (!raw.ok) throw new Error(raw.error);
+  const raw = await fn.matrixDeterminant([[1, 2], [3, 4]]);
   return raw.result;
 }
 ```
@@ -168,8 +160,7 @@ the whole computation, not just the inputs:
 
 ```observable-js
 determinantExact = {
-  const raw = JSON.parse(abi.matrixDeterminant(JSON.stringify([[[1, 2], 0], [0, [1, 2]]])));
-  if (!raw.ok) throw new Error(raw.error);
+  const raw = await fn.matrixDeterminant([[[1, 2], 0], [0, [1, 2]]]);
   return raw.result;
 }
 ```

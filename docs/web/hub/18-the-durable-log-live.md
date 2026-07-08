@@ -30,11 +30,9 @@ code, running against real browser `IndexedDB`.
 
 ## Step 1 of 4: parse and update, in memory
 
-Same escape hatch [post 17](./17-mutating-and-serving-data.md) used —
-the typed `fn` adapter still has no `update()` method (a gap in the
-adapter, not the engine), so this cell reaches for
-`Factoidal.loadNpmEntry()`'s raw ABI directly, capability-checked per
-the [cell contract](./README/)'s try/catch pattern:
+Same `fn.update` [post 17](./17-mutating-and-serving-data.md)
+introduced, capability-checked per the [cell contract](./README/)'s
+try/catch pattern:
 
 ```observable-js
 const ttl = `
@@ -44,24 +42,23 @@ const ttl = `
 `;
 
 try {
-  const abi = await Factoidal.loadNpmEntry();
-  const before = JSON.parse(abi.parseToDatasetJson(ttl, "turtle", ""));
+  const before = await fn.parse(ttl, { format: "turtle" });
 
   const addCarol = `
     PREFIX foaf: <http://xmlns.com/foaf/0.1/>
     INSERT DATA { <http://example.org/carol> foaf:name "Carol" . }
   `;
-  const after = JSON.parse(abi.updateDataset(before.nquads, addCarol));
+  const after = await fn.update(before, addCarol);
 
-  const rows = JSON.parse(abi.queryDataset(
-    after.nquads,
+  const rows = await fn.query(
+    after,
     "PREFIX foaf: <http://xmlns.com/foaf/0.1/> SELECT ?name WHERE { ?s foaf:name ?name } ORDER BY ?name"
-  ));
+  );
 
   return {
     available: true,
     step: "1 of 4 -- apply_update, in memory only (gone the instant this tab closes)",
-    namesAfterInsert: rows.srj.results.bindings.map((b) => b.name.value),
+    namesAfterInsert: rows.map((row) => row.get("name").value),
   };
 } catch (err) {
   return { available: false, note: err.message };

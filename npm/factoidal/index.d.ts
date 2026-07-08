@@ -167,6 +167,18 @@ export function query(
 ): Promise<Bindings[] | boolean | Dataset>;
 
 /**
+ * Run a SPARQL 1.1 query against a read-only HDT (Header-Dictionary-
+ * Triples) artifact's raw bytes (factoidal_cli.ml's `--data-hdt`
+ * backend). No npm-entry engine bundle needed -- CLI-only. Default
+ * graph only, SELECT/ASK only (no CONSTRUCT, no named graphs).
+ * @param hdtBytes whole .hdt file contents
+ */
+export function queryHdt(
+  hdtBytes: Uint8Array | ArrayBuffer | string,
+  sparql: string
+): Promise<Bindings[] | boolean>;
+
+/**
  * Apply a SPARQL 1.1 Update, returning the updated Dataset.
  * Needs the npm-entry engine bundle.
  */
@@ -386,6 +398,38 @@ export function rifEval(
   rifRulesXml: string,
   options?: { format?: DataFormat }
 ): Promise<Dataset>;
+
+// ---------------------------------------------------------------------
+// In-memory COTTAS bytes store (docs/designissues/2026-07-06-inmemory-
+// bytes-store.md). openCottas()'s handle is NOT a Dataset: rows decode
+// lazily as queryCottas() touches them, never materializing the whole
+// corpus onto the heap. Needs the npm-entry engine bundle.
+// ---------------------------------------------------------------------
+
+/** Open a COTTAS/Parquet artifact's raw bytes as a queryable, read-only store. */
+export function openCottas(bytes: Uint8Array | ArrayBuffer | string): Promise<string>;
+
+/**
+ * Run a SPARQL 1.1 query against a store opened by openCottas(). No
+ * `entail` option and no write overlay (read-only) -- see
+ * npm/factoidal/lib/api.js's queryCottas doc comment for the full
+ * divergence list from query().
+ * @param handle from openCottas()
+ */
+export function queryCottas(
+  handle: string,
+  sparql: string
+): Promise<Bindings[] | boolean | Dataset>;
+
+/** Release a store opened by openCottas(). */
+export function closeCottas(handle: string): Promise<void>;
+
+/**
+ * Serialize a dataset to COTTAS/Parquet bytes via the native writer
+ * (RDF.CottasStore.BaseWriter.serialize_cottas_v2). Round-trips into
+ * openCottas().
+ */
+export function toCottas(data: DataInput): Promise<Uint8Array>;
 
 // ---------------------------------------------------------------------
 // Typed engine functions (#74 npm FP surface). Each is a pure,
@@ -632,6 +676,7 @@ export const version: string;
 declare const _default: {
   parse: typeof parse;
   query: typeof query;
+  queryHdt: typeof queryHdt;
   update: typeof update;
   serialize: typeof serialize;
   canonicalize: typeof canonicalize;
@@ -648,6 +693,10 @@ declare const _default: {
   xmlWellformed: typeof xmlWellformed;
   xpathEval: typeof xpathEval;
   rifEval: typeof rifEval;
+  openCottas: typeof openCottas;
+  queryCottas: typeof queryCottas;
+  closeCottas: typeof closeCottas;
+  toCottas: typeof toCottas;
   xsltTransform: typeof xsltTransform;
   mathmlEval: typeof mathmlEval;
   xformsRecalc: typeof xformsRecalc;

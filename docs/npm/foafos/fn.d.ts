@@ -334,6 +334,16 @@ export function matrixOuterProduct(
   b: MatrixCell[]
 ): Promise<MatrixResult>;
 
+/**
+ * Run a SPARQL 1.1 query against a read-only HDT artifact's raw bytes
+ * (factoidal_cli.ml's `--data-hdt` backend). No npm-entry engine
+ * bundle needed -- CLI-only. Default graph only, SELECT/ASK only.
+ */
+export function queryHdt(
+  hdtBytes: Uint8Array | ArrayBuffer | string,
+  sparql: string
+): Promise<Bindings[] | boolean>;
+
 export function capabilities(): Promise<{
   entry: boolean;
   construct: boolean;

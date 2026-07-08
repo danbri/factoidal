@@ -463,6 +463,158 @@ const fn = {
     const result = await Factoidal.shaclValidate(dataNq, shapesNq);
     return { conforms: result.conforms, report: new FnDataset(result.reportNquads) };
   },
+  /**
+   * RDFC-1.0 canonicalization (mirrors npm/factoidal/index.js's
+   * `canonicalize(data, options) -> Promise<string>`): canonical
+   * blank-node labels plus sorted canonical N-Quads text. `data` may
+   * be raw RDF text (parsed with `options.format`, default "turtle")
+   * or an already-parsed FnDataset.
+   */
+  async canonicalize(data, options) {
+    const opts = options || {};
+    if (data && typeof data.toNQuads === "function") {
+      return Factoidal.canonicalize(data.toNQuads(), { format: "nquads" });
+    }
+    return Factoidal.canonicalize(data, { format: opts.format || "turtle" });
+  },
+  /**
+   * Apply a SPARQL 1.1 Update to an FnDataset, returning the updated
+   * FnDataset (mirrors npm/factoidal/index.js's
+   * `update(data, updateText) -> Promise<Dataset>`). Needs the
+   * npm-entry engine bundle -- reaches for `Factoidal.loadNpmEntry()`'s
+   * raw ABI internally so a cell never has to.
+   */
+  async update(dataset, updateText) {
+    const abi = await Factoidal.loadNpmEntry();
+    if (typeof abi.updateDataset !== "function") {
+      throw new Error(
+        "update: the loaded factoidal-npm-entry bundle predates the SPARQL Update export");
+    }
+    const nq = dataset && typeof dataset.toNQuads === "function"
+      ? dataset.toNQuads()
+      : await Factoidal.toRdf(dataset, { format: "turtle" });
+    const r = JSON.parse(abi.updateDataset(nq, updateText));
+    if (!r.ok) throw new Error(r.error || "update failed");
+    return new FnDataset(r.nquads);
+  },
+  /**
+   * Feature probe for the npm-entry engine bundle backing this page
+   * (mirrors npm/factoidal/lib/api.js's `capabilities()` -- a
+   * `typeof entry.X === 'function'` check per feature, not a blanket
+   * version check). Never throws: `entry: false` on any failure to
+   * load the bundle, same as the Node-side capabilities()'s own
+   * try/catch-and-report-false contract.
+   */
+  async capabilities() {
+    const FEATURE_ABI_FN = {
+      shacl: "shaclValidate", shex: "shexValidate", owlClosure: "owlClosure",
+      rml: "rmlMap", csvw: "csvwToRdf", jsonld: "jsonldToRdf", rif: "rifEval",
+      xslt: "xsltTransform", mathml: "mathmlEval", xforms: "xformsRecalc",
+      jsonSchema: "jsonSchemaValidate", schematron: "schematronValidate",
+      toan: "toanSummation", matrix: "matrixDeterminant",
+    };
+    let abi;
+    try {
+      abi = await Factoidal.loadNpmEntry();
+    } catch (err) {
+      return { entry: false };
+    }
+    const caps = { entry: true };
+    for (const [name, fnName] of Object.entries(FEATURE_ABI_FN)) {
+      caps[name] = typeof abi[fnName] === "function";
+    }
+    return caps;
+  },
+  /**
+   * XSLT 1.0 transform (mirrors npm/factoidal/index.js's
+   * `xsltTransform(stylesheetXml, sourceXml) -> Promise<string>`).
+   */
+  async xsltTransform(stylesheetXml, sourceXml) {
+    return Factoidal.xsltTransform(stylesheetXml, sourceXml);
+  },
+  /**
+   * Evaluate a Content MathML document (mirrors npm/factoidal/index.js's
+   * `mathmlEval(contentMathmlXml, bindings) -> Promise<MathValue>`).
+   */
+  async mathmlEval(contentMathmlXml, bindings) {
+    return Factoidal.mathmlEval(contentMathmlXml, bindings);
+  },
+  /**
+   * XForms recalculate (mirrors npm/factoidal/index.js's
+   * `xformsRecalc(instanceXml, binds) -> Promise<{instance, validity}>`).
+   */
+  async xformsRecalc(instanceXml, binds) {
+    return Factoidal.xformsRecalc(instanceXml, binds);
+  },
+  /**
+   * JSON Schema (draft-07) validation (mirrors npm/factoidal/index.js's
+   * `jsonSchemaValidate(schemaJson, instanceJson) -> Promise<{valid, result, errors}>`).
+   */
+  async jsonSchemaValidate(schemaJson, instanceJson) {
+    return Factoidal.jsonSchemaValidate(schemaJson, instanceJson);
+  },
+  /**
+   * Schematron validation (mirrors npm/factoidal/index.js's
+   * `schematronValidate(schematronXml, instanceXml) -> Promise<{findings}>`).
+   */
+  async schematronValidate(schematronXml, instanceXml) {
+    return Factoidal.schematronValidate(schematronXml, instanceXml);
+  },
+  /** Finite summation, as Content MathML (mirrors npm/factoidal/index.js's toanSummation). */
+  async toanSummation(bodyExpr, idx, lo, hi) {
+    return Factoidal.toanSummation(bodyExpr, idx, lo, hi);
+  },
+  /** Finite product, as Content MathML (mirrors npm/factoidal/index.js's toanProduct). */
+  async toanProduct(bodyExpr, idx, lo, hi) {
+    return Factoidal.toanProduct(bodyExpr, idx, lo, hi);
+  },
+  /** Canonical simplification, as Content MathML (mirrors npm/factoidal/index.js's toanSimplify). */
+  async toanSimplify(expr) {
+    return Factoidal.toanSimplify(expr);
+  },
+  /** Derivative w.r.t. `variable`, as Content MathML (mirrors npm/factoidal/index.js's toanDiff). */
+  async toanDiff(expr, variable) {
+    return Factoidal.toanDiff(expr, variable);
+  },
+  /** `expr[variable := value]` simplified, as Content MathML (mirrors npm/factoidal/index.js's toanSubst). */
+  async toanSubst(expr, variable, value) {
+    return Factoidal.toanSubst(expr, variable, value);
+  },
+  /** Exact determinant of a square matrix (mirrors npm/factoidal/index.js's matrixDeterminant). */
+  async matrixDeterminant(matrix) {
+    return Factoidal.matrixDeterminant(matrix);
+  },
+  /** Dot product of two vectors (mirrors npm/factoidal/index.js's matrixScalarProduct). */
+  async matrixScalarProduct(a, b) {
+    return Factoidal.matrixScalarProduct(a, b);
+  },
+  /** Cross product of two 3-vectors (mirrors npm/factoidal/index.js's matrixVectorProduct). */
+  async matrixVectorProduct(a, b) {
+    return Factoidal.matrixVectorProduct(a, b);
+  },
+  /** Outer product of two vectors (mirrors npm/factoidal/index.js's matrixOuterProduct). */
+  async matrixOuterProduct(a, b) {
+    return Factoidal.matrixOuterProduct(a, b);
+  },
+  /**
+   * Run a SPARQL 1.1 query against a read-only HDT artifact's raw
+   * bytes (mirrors npm/factoidal/index.js's
+   * `queryHdt(hdtBytes, sparql) -> Promise<Bindings[] | boolean>`).
+   * Encapsulates the `Factoidal.runFactoidalCli(['--data-hdt', ...])`
+   * shim entirely -- a cell never builds the argv or fake-filesystem
+   * entry itself. Default graph only, SELECT/ASK only.
+   */
+  async queryHdt(hdtBytes, sparql) {
+    const result = await Factoidal.queryHdt(hdtBytes, sparql);
+    if (typeof result === "boolean") return result;
+    if (typeof result.boolean === "boolean") return result.boolean;
+    const rows = (result.results && result.results.bindings) || [];
+    return rows.map((row) => {
+      const map = new Map();
+      for (const [name, term] of Object.entries(row)) map.set(name, srjTermToFn(term));
+      return map;
+    });
+  },
 };
 
 // ---------------------------------------------------------------------

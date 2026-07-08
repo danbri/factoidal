@@ -121,9 +121,10 @@ one of `fn`'s typed methods — it needs the npm-entry ABI bundle the
 same way `shexValidate` and `shaclValidate` do, so the `try`/`catch`
 capability check above is the same pattern
 [post 06](./06-shapes-the-other-dialect-shex.md) used for ShEx.
-`Factoidal.toRdf(text, {format: 'jsonld'})` also parses JSON-LD (the
-common case), but `jsonldToRdf` exists specifically for
-`rdfDirection`/`expandContext`/`processingMode` — options `toRdf`'s
+`fn.parse(text, {format: 'jsonld'})` also parses JSON-LD (the common
+case, and the typed path every earlier post in this series uses), but
+`jsonldToRdf` exists specifically for
+`rdfDirection`/`expandContext`/`processingMode` — options `fn.parse`'s
 generic surface has no room for.
 
 ## Round trip: JSON-LD in, N-Quads out, then query it

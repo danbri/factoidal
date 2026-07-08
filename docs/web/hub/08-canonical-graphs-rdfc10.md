@@ -62,8 +62,8 @@ const DOC_B = `
   _:friend42 a foaf:Person ; foaf:name "Bob" .
 `;
 
-const canonA = await Factoidal.canonicalize(DOC_A, { format: "turtle" });
-const canonB = await Factoidal.canonicalize(DOC_B, { format: "turtle" });
+const canonA = await fn.canonicalize(DOC_A, { format: "turtle" });
+const canonB = await fn.canonicalize(DOC_B, { format: "turtle" });
 
 return { identical: canonA === canonB, canonicalNQuads: canonA };
 ```
@@ -72,13 +72,10 @@ return { identical: canonA === canonB, canonicalNQuads: canonA };
 node label and all (`_:c14n0`, RDFC-1.0's own canonical-label
 convention). Parsing renamed `_:x`/`_:friend42` to whatever
 document-scoped label each parse happened to assign; canonicalization
-erased that difference entirely.
-`Factoidal.canonicalize` is a raw ABI export (see
-[`README.md`](./README.md)'s bindings table) — there's no `fn`
-wrapper for it yet, so cells call it directly the same way
-[post 06](./06-shapes-the-other-dialect-shex.md) and
-[post 07](./07-json-ld-rdf-as-json.md) called `Factoidal.shexValidate`/
-`jsonldToRdf`.
+erased that difference entirely. `fn.canonicalize` wraps the engine's
+RDFC-1.0 export the same way `fn.parse`/`fn.query` wrap the rest of
+this series' calls — string or `FnDataset` in, canonical N-Quads text
+out.
 
 ## Content addressing: a hash of the canonical form
 
@@ -120,9 +117,9 @@ async function sha256Hex(text) {
   return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-const canonA = await Factoidal.canonicalize(DOC_A, { format: "turtle" });
-const canonB = await Factoidal.canonicalize(DOC_B, { format: "turtle" });
-const canonC = await Factoidal.canonicalize(DOC_C, { format: "turtle" });
+const canonA = await fn.canonicalize(DOC_A, { format: "turtle" });
+const canonB = await fn.canonicalize(DOC_B, { format: "turtle" });
+const canonC = await fn.canonicalize(DOC_C, { format: "turtle" });
 
 const hashA = await sha256Hex(canonA);
 const hashB = await sha256Hex(canonB);

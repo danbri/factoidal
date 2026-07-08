@@ -107,12 +107,15 @@ And a bar chart, built from `chartData` with the vendored
 results → chartData → chart`, each step its own cell:
 
 ```observable-js
-Plot.barY(chartData, {
-  x: "name",
-  y: "friends",
-  fill: "#2d6a4f",
-  sort: { x: "-y" },
-}).plot({
+return Plot.plot({
+  marks: [
+    Plot.barY(chartData, {
+      x: "name",
+      y: "friends",
+      fill: "#2d6a4f",
+      sort: { x: "-y" },
+    }),
+  ],
   marginLeft: 40,
   y: { label: "people known", grid: true },
   x: { label: "person" },

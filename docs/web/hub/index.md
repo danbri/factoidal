@@ -33,8 +33,8 @@ name:
 
 | Name | What it is |
 |---|---|
-| `Factoidal` | the raw npm package entry (`../npm/foafos/browser.js`) — `query`, `queryDataset`, `toRdf`, `canonicalize`, etc., running the F\*-extracted engine in-browser. Single-shot: strings in, SPARQL-JSON out. |
-| `fn` | the typed cell-facing API — `fn.parse()` returns a `Dataset` you can iterate and check `.size` on, `fn.query()` returns `Map<string, Term>[]` / `boolean` / another `Dataset` depending on the query form. Most posts below use this. |
+| `Factoidal` | the raw npm package entry (`../npm/foafos/browser.js`) — the primitives `fn` is built on, running the F\*-extracted engine in-browser. Cells call `fn`, not this, directly. |
+| `fn` | the typed cell-facing API — `fn.parse()` returns a `Dataset` you can iterate and check `.size` on, `fn.query()` returns `Map<string, Term>[]` / `boolean` / another `Dataset` depending on the query form. Every post below calls a Factoidal capability through this. |
 | `d3` | vendored `d3` 7.9.0, for hand-rolled charts |
 | `Plot` | vendored `@observablehq/plot` 0.6.17, for declarative charts |
 | `html` | vendored `@observablehq/stdlib`'s tagged-template HTML helper |
@@ -61,12 +61,9 @@ Inspector knows how to display each). Here's a real cell, computing a
 value with the npm module right now:
 
 ```observable-js
-const result = await Factoidal.query(
-  '<http://example.org/a> <http://example.org/b> "42" .',
-  'SELECT ?o WHERE { ?s ?p ?o }'
-);
-const row = result.results.bindings[0];
-return `hub scaffold smoke test: ${result.results.bindings.length} binding(s), o = ${row.o.value}`;
+const graph = await fn.parse('<http://example.org/a> <http://example.org/b> "42" .');
+const rows = await fn.query(graph, 'SELECT ?o WHERE { ?s ?p ?o }');
+return `hub scaffold smoke test: ${rows.length} binding(s), o = ${rows[0].get("o").value}`;
 ```
 
 If the cell's rendered output above ends with `1 binding(s), o = 42`

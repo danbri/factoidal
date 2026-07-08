@@ -213,19 +213,23 @@ itself is the client-side equivalent.
 `npm/factoidal/index.js` (and `fn.js`, the FP dataset wrapper it in
 turn wraps) is CommonJS and uses `node:fs`/`node:crypto`/`require()` —
 none of which exist in a browser. `npm/factoidal/browser.js` is the
-one browser-safe ESM entry point, but it only exposes the raw
-CLI-shaped `query()`/`toRdf()`/`canonicalize()` calls (see the API
-mismatch documented in
-`docs/designissues/2026-07-05-docs-hub-plan.md`'s "Coordination with
-the scaffold" section). Rather than fork the engine, re-mirror a
-browser build of the typed API, or change `npm/factoidal` itself (all
-out of this wave's territory — `npm/factoidal` and `lib/api.js` are
-verified-library-adjacent surfaces with their own test suite), `fn` is
-a small, self-contained reshaping layer defined directly in
-`docs/_includes/hub.njk`: it feeds `Factoidal.toRdf()`/`.query()`
-results through a short N-Quads/SPARQL-JSON parser to produce
-Dataset/Map-shaped values. It does not touch `npm/factoidal`,
-`lib/api.js`, or the `docs/npm/foafos/` mirror.
+one browser-safe ESM entry point; its raw, CLI-shaped calls (`query`,
+`toRdf`, `canonicalize`, and the per-engine wrappers such as
+`xsltTransform`/`queryHdt`) are the primitives `fn` is built on, not
+what a hub cell calls directly. Rather than fork the engine, re-mirror
+a browser build of the whole typed API, or change `npm/factoidal`
+itself wholesale (out of this wave's territory — `npm/factoidal` and
+`lib/api.js` are verified-library-adjacent surfaces with their own
+test suite), `fn` is a small reshaping layer defined directly in
+`docs/_includes/hub.njk`: for `parse`/`query` it feeds the browser
+entry's `toRdf()`/`query()` results through a short N-Quads/SPARQL-JSON
+parser to produce Dataset/Map-shaped values; for the engine wrappers
+(XSLT, MathML, XForms, JSON Schema, Schematron, TOAN, matrix, HDT,
+SHACL, canonicalize, update, capabilities) it delegates straight
+through to the matching browser-entry function, unwrapped. It does not
+import `npm/factoidal`/`lib/api.js` directly — the browser entry
+(`browser.js`/`fn.js`/`index.d.ts` under `npm/factoidal/`, mirrored to
+`docs/npm/foafos/`) is the only shared surface.
 
 ### The `pretty()` rendering option
 

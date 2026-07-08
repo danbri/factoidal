@@ -10,6 +10,7 @@ import cjs from './index.js';
 
 export const parse        = cjs.parse;
 export const query        = cjs.query;
+export const queryHdt     = cjs.queryHdt;
 export const update       = cjs.update;
 export const serialize    = cjs.serialize;
 export const canonicalize = cjs.canonicalize;

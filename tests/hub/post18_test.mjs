@@ -1,9 +1,10 @@
 // Pins the live cells in docs/web/hub/18-the-durable-log-live.md.
 //
 // node:test, requiring the committed npm/factoidal bundles (no F*
-// toolchain needed). Cell 1 mirrors post17_test.mjs's `Factoidal`
-// stub (a `loadNpmEntry()`-only object exposing the raw ABI). Cells
-// 2-4 additionally exercise `Factoidal.deltaLogOpen`/`deltaLogAppend`/
+// toolchain needed). Cell 1 uses the typed `fn` adapter now
+// (`fn.parse`/`fn.update`/`fn.query`, same as post17_test.mjs) --
+// `fn` here is the real npm/factoidal typed API. Cells 2-4
+// additionally exercise `Factoidal.deltaLogOpen`/`deltaLogAppend`/
 // `deltaLogReadAllHex`/`deltaLogMerge`/`deltaLogDestroy`/
 // `_deltaLogCorruptLastForTest` -- but Node has no global `indexedDB`,
 // so this file follows the "direct-ABI" half of npm/factoidal/test/
@@ -22,7 +23,7 @@ import { createRequire } from 'node:module';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { extractObservableCells, runObservableCell, pretty } from './_helpers.mjs';
+import { NPM_FACTOIDAL_INDEX, extractObservableCells, runObservableCell, pretty } from './_helpers.mjs';
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -31,6 +32,8 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const require = createRequire(import.meta.url);
 const POST_FILE = '18-the-durable-log-live.md';
 const REPO_ROOT = path.join(__dirname, '..', '..');
+
+const factoidal = (await import(NPM_FACTOIDAL_INDEX)).default;
 
 function loadAbi() {
   const bundlePath = process.env.FACTOIDAL_NPM_ENTRY;
@@ -109,21 +112,22 @@ test('post18: post has at least 5 live cells (4 lifecycle steps + the runtimes t
 });
 
 test('post18 cell 1 (parse + in-memory UPDATE): Carol appears alongside Alice/Bob', async () => {
-  const Factoidal = makeFactoidalStub();
-  const result = await runObservableCell(cells[0], { Factoidal, pretty });
+  const result = await runObservableCell(cells[0], { fn: factoidal, pretty });
   assert.equal(result.available, true, result.note);
   assert.deepEqual(result.namesAfterInsert, ['Alice', 'Bob', 'Carol']);
 });
 
-test('post18 cell 1 degrades gracefully when loadNpmEntry throws', async () => {
-  const brokenFactoidal = {
-    async loadNpmEntry() {
-      throw new Error('factoidal-npm-entry.js fetch failed: 404 Not Found');
+test('post18 cell 1 degrades gracefully when the npm-entry bundle is unavailable', async () => {
+  const brokenFn = {
+    parse: factoidal.parse,
+    async update() {
+      throw new Error('update needs the factoidal-npm-entry bundle, which is not present');
     },
+    query: factoidal.query,
   };
-  const result = await runObservableCell(cells[0], { Factoidal: brokenFactoidal, pretty });
+  const result = await runObservableCell(cells[0], { fn: brokenFn, pretty });
   assert.equal(result.available, false);
-  assert.match(result.note, /fetch failed/);
+  assert.match(result.note, /npm-entry bundle/);
 });
 
 test('post18 cell 2 (deltaLogAppend): seq starts at 0 in a fresh store, opCount is 1', async () => {

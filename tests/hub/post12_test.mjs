@@ -6,30 +6,8 @@ import { NPM_FACTOIDAL_INDEX, extractObservableCells, runObservableCell } from '
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-const require = createRequire(import.meta.url);
 const factoidal = (await import(NPM_FACTOIDAL_INDEX)).default;
 const POST_FILE = '12-the-api-tour.md';
-
-function loadAbi() {
-  const bundlePath = process.env.FACTOIDAL_NPM_ENTRY;
-  assert.ok(bundlePath, 'FACTOIDAL_NPM_ENTRY must be set (see ./_helpers.mjs)');
-  const mod = require(bundlePath);
-  const abi = (mod && mod.factoidalNpmEntry) || globalThis.factoidalNpmEntry;
-  assert.ok(abi, 'factoidalNpmEntry ABI object did not register');
-  return abi;
-}
-
-const abi = loadAbi();
-
-// Cell 2 calls `Factoidal.loadNpmEntry()` -- the raw browser.js export
-// that fetches (browser) / requires (here) the npm-entry ABI bundle
-// and returns the ABI object itself. Same shape as browser.js's own
-// loadNpmEntry(), just backed by require() instead of fetch().
-const Factoidal = {
-  async loadNpmEntry() {
-    return abi;
-  },
-};
 
 const cells = extractObservableCells(POST_FILE);
 
@@ -43,22 +21,22 @@ test('post12 cell 1 (parse + query, the one door): SELECT returns Alice then Bob
 });
 
 test('post12 cell 2 (capability probe): every RIF/SHACL/ShEx/OWL/RML/CSVW/JSON-LD capability is true against the real bundle', async () => {
-  const result = await runObservableCell(cells[1], { Factoidal });
+  const result = await runObservableCell(cells[1], { fn: factoidal });
   assert.equal(result.available, true);
   for (const key of ['rif', 'shacl', 'shex', 'owlClosure', 'rml', 'csvw', 'jsonld']) {
     assert.equal(result.caps[key], true, `expected caps.${key} to be true against the committed bundle`);
   }
 });
 
-test('post12 cell 2 degrades gracefully when loadNpmEntry throws', async () => {
-  const brokenFactoidal = {
-    async loadNpmEntry() {
-      throw new Error('factoidal-npm-entry.js fetch failed: 404 Not Found');
+test('post12 cell 2 degrades gracefully when the npm-entry bundle is unavailable', async () => {
+  const brokenFn = {
+    async capabilities() {
+      return { entry: false };
     },
   };
-  const result = await runObservableCell(cells[1], { Factoidal: brokenFactoidal });
+  const result = await runObservableCell(cells[1], { fn: brokenFn });
   assert.equal(result.available, false);
-  assert.match(result.note, /fetch failed/);
+  assert.equal(result.caps.entry, false);
 });
 
 // ---------------------------------------------------------------------

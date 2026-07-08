@@ -1052,6 +1052,310 @@ export async function closeCottas(handle) {
   if (!parsed.ok) throw new Error(parsed.error || 'closeCottas failed');
 }
 
+// ---------------------------------------------------------------------
+// Typed engine functions (#74 npm FP surface, browser side). Each is a
+// thin, JSON-in/JSON-out wrapper over one F*-extracted engine exposed
+// by entry_jsoo.ml through loadNpmEntry() -- the same ABI shape
+// npm/factoidal/lib/api.js's Node-side wrappers use (duplicated here
+// deliberately: browser.js is hand-maintained ESM with no access to
+// lib/api.js's CommonJS/node: requires -- see this file's header
+// comment). No logic lives on the JS side; the transform/eval/
+// validate/CAS math is all verified F*. All need the npm-entry bundle.
+// ---------------------------------------------------------------------
+
+/**
+ * XSLT 1.0 transform (entry_jsoo.ml's xsltTransform export ->
+ * XSLT.Transform.transform). Applies `stylesheetXml` to `sourceXml`
+ * and returns the serialized result tree.
+ *
+ * @param {string} stylesheetXml
+ * @param {string} sourceXml
+ * @returns {Promise<string>}
+ */
+export async function xsltTransform(stylesheetXml, sourceXml) {
+  if (typeof stylesheetXml !== 'string' || typeof sourceXml !== 'string') {
+    throw new TypeError('xsltTransform: stylesheetXml and sourceXml must be strings');
+  }
+  const abi = await loadNpmEntry();
+  if (typeof abi.xsltTransform !== 'function') {
+    throw new Error('xsltTransform: the loaded factoidal-npm-entry bundle predates the XSLT export');
+  }
+  const parsed = JSON.parse(abi.xsltTransform(stylesheetXml, sourceXml));
+  if (!parsed.ok) throw new Error(parsed.error || 'xsltTransform failed');
+  return parsed.output;
+}
+
+/**
+ * Evaluate a Content MathML document (entry_jsoo.ml's mathmlEval
+ * export -> MathML.Content.eval_doc_env). `bindings` maps ci-variable
+ * names to value strings; pass {} (or omit) for a closed expression.
+ *
+ * @param {string} contentMathmlXml
+ * @param {Record<string,string>} [bindings]
+ * @returns {Promise<{kind:'rat',num:number,den:number}|{kind:'bool',value:boolean}|{kind:'undef',reason:string}>}
+ */
+export async function mathmlEval(contentMathmlXml, bindings) {
+  if (typeof contentMathmlXml !== 'string') {
+    throw new TypeError('mathmlEval: contentMathmlXml must be a string');
+  }
+  const b = bindings || {};
+  const abi = await loadNpmEntry();
+  if (typeof abi.mathmlEval !== 'function') {
+    throw new Error('mathmlEval: the loaded factoidal-npm-entry bundle predates the mathmlEval export');
+  }
+  const parsed = JSON.parse(abi.mathmlEval(contentMathmlXml, JSON.stringify(b)));
+  if (!parsed.ok) throw new Error(parsed.error || 'mathmlEval failed');
+  return parsed.value;
+}
+
+/**
+ * XForms recalculate (entry_jsoo.ml's xformsRecalc export ->
+ * XForms.Bind.recalculate): apply the model binds to `instanceXml`,
+ * returning the recomputed instance and a validity report per bound
+ * node.
+ *
+ * @param {string} instanceXml
+ * @param {Array<{id?:string,target:string,calculate?:string,constraint?:string,relevant?:string,required?:string,readonly?:string,type?:string}>} binds
+ * @returns {Promise<{instance:string,validity:Array<object>}>}
+ */
+export async function xformsRecalc(instanceXml, binds) {
+  if (typeof instanceXml !== 'string') {
+    throw new TypeError('xformsRecalc: instanceXml must be a string');
+  }
+  if (!Array.isArray(binds)) {
+    throw new TypeError('xformsRecalc: binds must be an array');
+  }
+  const abi = await loadNpmEntry();
+  if (typeof abi.xformsRecalc !== 'function') {
+    throw new Error('xformsRecalc: the loaded factoidal-npm-entry bundle predates the xformsRecalc export');
+  }
+  const parsed = JSON.parse(abi.xformsRecalc(instanceXml, JSON.stringify(binds)));
+  if (!parsed.ok) throw new Error(parsed.error || 'xformsRecalc failed');
+  return { instance: parsed.instance, validity: parsed.validity };
+}
+
+/**
+ * JSON Schema (draft-07) validation (entry_jsoo.ml's
+ * jsonSchemaValidate export -> JSONSchema.Validate.validate). The
+ * verified validator gives a definite pass/fail/unsupported verdict
+ * rather than a per-keyword error list.
+ *
+ * @param {string} schemaJson
+ * @param {string} instanceJson
+ * @returns {Promise<{valid:boolean,result:'pass'|'fail'|'unsupported',errors:string[]}>}
+ */
+export async function jsonSchemaValidate(schemaJson, instanceJson) {
+  if (typeof schemaJson !== 'string' || typeof instanceJson !== 'string') {
+    throw new TypeError('jsonSchemaValidate: schemaJson and instanceJson must be strings');
+  }
+  const abi = await loadNpmEntry();
+  if (typeof abi.jsonSchemaValidate !== 'function') {
+    throw new Error('jsonSchemaValidate: the loaded factoidal-npm-entry bundle predates the jsonSchemaValidate export');
+  }
+  const parsed = JSON.parse(abi.jsonSchemaValidate(schemaJson, instanceJson));
+  if (!parsed.ok) throw new Error(parsed.error || 'jsonSchemaValidate failed');
+  return { valid: !!parsed.valid, result: parsed.result, errors: parsed.errors || [] };
+}
+
+/**
+ * Schematron validation (entry_jsoo.ml's schematronValidate export ->
+ * Schematron.Validate.validate): every finding (failed assert, fired
+ * report, indeterminate) in pattern-then-document order.
+ *
+ * @param {string} schematronXml
+ * @param {string} instanceXml
+ * @returns {Promise<{findings:Array<{type:string,context:string,test:string,message:string,path:string,reason?:string}>}>}
+ */
+export async function schematronValidate(schematronXml, instanceXml) {
+  if (typeof schematronXml !== 'string' || typeof instanceXml !== 'string') {
+    throw new TypeError('schematronValidate: schematronXml and instanceXml must be strings');
+  }
+  const abi = await loadNpmEntry();
+  if (typeof abi.schematronValidate !== 'function') {
+    throw new Error('schematronValidate: the loaded factoidal-npm-entry bundle predates the schematronValidate export');
+  }
+  const parsed = JSON.parse(abi.schematronValidate(schematronXml, instanceXml));
+  if (!parsed.ok) throw new Error(parsed.error || 'schematronValidate failed');
+  return { findings: parsed.findings };
+}
+
+// TOAN -- a small exact-CAS surface over Math.Expr (E_Int/E_Rat/E_Bool/
+// E_Sym/E_App). Callers pass an expression as the JSON codec
+//   {int:n} | {rat:[n,d]} | {bool:b} | {sym:name} | {app:name,args:[...]}
+// and receive Content MathML for the result (via MathML.Present).
+async function toanCall(fnName, what, ...args) {
+  const abi = await loadNpmEntry();
+  if (typeof abi[fnName] !== 'function') {
+    throw new Error(`${fnName}: the loaded factoidal-npm-entry bundle predates the ${what} export`);
+  }
+  const parsed = JSON.parse(abi[fnName](...args));
+  if (!parsed.ok) throw new Error(parsed.error || `${fnName} failed`);
+  return parsed.mathml;
+}
+
+/** Finite summation of `bodyExpr[idx:=lo..hi]`, simplified, as Content MathML. */
+export async function toanSummation(bodyExpr, idx, lo, hi) {
+  if (typeof idx !== 'string') throw new TypeError('toanSummation: idx must be a string');
+  return toanCall('toanSummation', 'TOAN summation',
+    JSON.stringify(bodyExpr), idx, String(lo), String(hi));
+}
+
+/** Finite product of `bodyExpr[idx:=lo..hi]`, simplified, as Content MathML. */
+export async function toanProduct(bodyExpr, idx, lo, hi) {
+  if (typeof idx !== 'string') throw new TypeError('toanProduct: idx must be a string');
+  return toanCall('toanProduct', 'TOAN product',
+    JSON.stringify(bodyExpr), idx, String(lo), String(hi));
+}
+
+/** Canonical simplification of `expr`, as Content MathML. */
+export async function toanSimplify(expr) {
+  return toanCall('toanSimplify', 'TOAN simplify', JSON.stringify(expr));
+}
+
+/** Derivative of `expr` w.r.t. `variable`, as Content MathML. */
+export async function toanDiff(expr, variable) {
+  if (typeof variable !== 'string') throw new TypeError('toanDiff: variable must be a string');
+  return toanCall('toanDiff', 'TOAN diff', JSON.stringify(expr), variable);
+}
+
+/** `expr[variable := value]` simplified, as Content MathML. */
+export async function toanSubst(expr, variable, value) {
+  if (typeof variable !== 'string') throw new TypeError('toanSubst: variable must be a string');
+  return toanCall('toanSubst', 'TOAN subst',
+    JSON.stringify(expr), variable, JSON.stringify(value));
+}
+
+// Matrix / vector algebra over exact rationals (Math.Matrix). A matrix
+// is a JSON array of rows; a vector a JSON array of cells; a cell is
+// an integer or a [num,den] pair. Results render via
+// Math.Matrix.mres_to_string ("undef" carries a `reason`).
+async function matrixCall(fnName, what, ...jsonArgs) {
+  const abi = await loadNpmEntry();
+  if (typeof abi[fnName] !== 'function') {
+    throw new Error(`${fnName}: the loaded factoidal-npm-entry bundle predates the ${what} export`);
+  }
+  const parsed = JSON.parse(abi[fnName](...jsonArgs.map((a) => JSON.stringify(a))));
+  if (!parsed.ok) throw new Error(parsed.error || `${fnName} failed`);
+  return { result: parsed.result, reason: parsed.reason || '' };
+}
+
+/** Exact determinant of a square matrix (Math.Matrix.dyn_determinant). */
+export async function matrixDeterminant(matrix) {
+  if (!Array.isArray(matrix)) throw new TypeError('matrixDeterminant: matrix must be an array of rows');
+  return matrixCall('matrixDeterminant', 'matrix determinant', matrix);
+}
+
+/** Dot product of two vectors (Math.Matrix.dyn_scalarproduct). */
+export async function matrixScalarProduct(a, b) {
+  if (!Array.isArray(a) || !Array.isArray(b)) throw new TypeError('matrixScalarProduct: a and b must be arrays');
+  return matrixCall('matrixScalarProduct', 'vector scalar product', a, b);
+}
+
+/** Cross product of two 3-vectors (Math.Matrix.dyn_vectorproduct). */
+export async function matrixVectorProduct(a, b) {
+  if (!Array.isArray(a) || !Array.isArray(b)) throw new TypeError('matrixVectorProduct: a and b must be arrays');
+  return matrixCall('matrixVectorProduct', 'vector cross product', a, b);
+}
+
+/** Outer product of two vectors (Math.Matrix.dyn_outerproduct). */
+export async function matrixOuterProduct(a, b) {
+  if (!Array.isArray(a) || !Array.isArray(b)) throw new TypeError('matrixOuterProduct: a and b must be arrays');
+  return matrixCall('matrixOuterProduct', 'vector outer product', a, b);
+}
+
+// ---------------------------------------------------------------------
+// HDT (Header-Dictionary-Triples): query a read-only binary RDF
+// artifact's raw bytes via the CLI's `--data-hdt` backend
+// (factoidal_cli.ml, HDT.Triples.fst and the parser modules around
+// it). No npm-entry ABI bundle needed -- this is a CLI-only
+// capability, built on runFactoidalCli() exactly the way query() is,
+// so a hub cell no longer needs to build the --data-hdt argv and fake
+// filesystem entry by hand (see docs/web/hub/24-hdt-header-dictionary-
+// triples.md's earlier revision for what this replaces). Default
+// graph only, SELECT/ASK only (no CONSTRUCT, no named graphs -- HDTQ
+// is a separate, deferred extension; see factoidal_cli.ml's --data-hdt
+// help text).
+// ---------------------------------------------------------------------
+
+let _hdtSeq = 0;
+
+/**
+ * Run a SPARQL 1.1 query against an HDT artifact's raw bytes. Same
+ * output shape as query(): parsed SPARQL Results JSON when
+ * `options.output` is 'json' (default), the raw output string
+ * otherwise.
+ *
+ * @param {Uint8Array|ArrayBuffer|string} hdtBytes whole .hdt file
+ *   contents -- a Uint8Array/ArrayBuffer is packed automatically into
+ *   the fake filesystem's one-char-per-byte convention; a string is
+ *   assumed already packed.
+ * @param {string} sparql a SELECT or ASK query
+ * @param {{output?: 'json'|'table'|'csv'|'ntriples'}} [options]
+ * @returns {Promise<object|string>}
+ */
+export async function queryHdt(hdtBytes, sparql, options) {
+  if (typeof sparql !== 'string') {
+    throw new TypeError('queryHdt: sparql must be a string');
+  }
+  const opts = options || {};
+  const output = opts.output || 'json';
+  if (!OUTPUT_FORMATS.has(output)) {
+    throw new TypeError(`queryHdt: output must be one of ${[...OUTPUT_FORMATS].join(', ')}`);
+  }
+
+  let content;
+  if (typeof hdtBytes === 'string') {
+    content = hdtBytes;
+  } else {
+    const u8 = hdtBytes instanceof Uint8Array ? hdtBytes
+      : hdtBytes instanceof ArrayBuffer ? new Uint8Array(hdtBytes) : null;
+    if (!u8) {
+      throw new TypeError('queryHdt: hdtBytes must be a Uint8Array, ArrayBuffer, or an already-packed string');
+    }
+    let s = '';
+    for (let i = 0; i < u8.length; i += 0x4000) {
+      s += String.fromCharCode.apply(null, u8.subarray(i, Math.min(u8.length, i + 0x4000)));
+    }
+    content = s;
+  }
+
+  const path = '/static/hdt' + (_hdtSeq++) + '.hdt';
+  const { stdout, stderr, exitCode, engineMs } = await runFactoidalCli(
+    ['--data-hdt', path, '-e', encodeTextAsBundleBytes(sparql), '-o', output === 'json' ? 'json' : output],
+    [{ name: path, content }]);
+
+  if (exitCode !== 0) {
+    const msg = (stderr || stdout || `factoidal exited with code ${exitCode}`).trim();
+    const err = new Error('HDT query failed: ' + msg);
+    err.exitCode = exitCode;
+    err.stderr = stderr;
+    err.stdout = stdout;
+    throw err;
+  }
+
+  if (output !== 'json') return stdout;
+
+  const firstBrace = stdout.indexOf('{');
+  const lastBrace = stdout.lastIndexOf('}');
+  if (firstBrace < 0 || lastBrace < firstBrace) {
+    const err = new Error('factoidal did not produce JSON on stdout. Raw output: ' + stdout);
+    err.stdout = stdout;
+    err.stderr = stderr;
+    throw err;
+  }
+  const jsonText = stdout.slice(firstBrace, lastBrace + 1);
+  try {
+    const parsed = JSON.parse(jsonText);
+    Object.defineProperty(parsed, 'engineMs', { value: engineMs, enumerable: false });
+    return parsed;
+  } catch (e) {
+    const err = new Error('factoidal JSON parse failed: ' + e.message + '. Raw output: ' + stdout);
+    err.stdout = stdout;
+    err.stderr = stderr;
+    throw err;
+  }
+}
+
 /**
  * Serialize a dataset-handle N-Quads string to COTTAS/Parquet bytes via
  * the native writer (bin/npm-entry/entry_jsoo.ml's toCottas export;
@@ -1322,4 +1626,8 @@ export default {
   deltaLogOpen, deltaLogAppend, deltaLogReadAllHex, deltaLogMerge,
   deltaLogDestroy, _deltaLogCorruptLastForTest,
   openCottas, queryCottas, closeCottas, toCottas,
+  xsltTransform, mathmlEval, xformsRecalc, jsonSchemaValidate, schematronValidate,
+  toanSummation, toanProduct, toanSimplify, toanDiff, toanSubst,
+  matrixDeterminant, matrixScalarProduct, matrixVectorProduct, matrixOuterProduct,
+  queryHdt,
 };

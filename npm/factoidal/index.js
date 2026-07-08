@@ -4,6 +4,9 @@
 //
 //   parse(text, {format, baseIRI})      -> Promise<Dataset>
 //   query(data, sparql, {entail})       -> Promise<Bindings[] | boolean | Dataset>
+//   queryHdt(hdtBytes, sparql)          -> Promise<Bindings[] | boolean>
+//                                          (read-only HDT artifact, CLI-only,
+//                                          no npm-entry bundle needed)
 //   update(data, updateText)            -> Promise<Dataset>
 //   serialize(data, {format})           -> Promise<string>
 //   canonicalize(data, {format})        -> Promise<string>   (RDFC-1.0)
@@ -159,6 +162,7 @@ module.exports = {
   // Public typed API
   parse: api.parse,
   query: api.query,
+  queryHdt: api.queryHdt,
   update: api.update,
   serialize: api.serialize,
   canonicalize: api.canonicalize,

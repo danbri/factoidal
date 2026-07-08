@@ -1,18 +1,21 @@
 // Pins every live cell in docs/web/hub/24-hdt-header-dictionary-triples.md.
 //
-// The post's three cells fetch the in-repo RML-Core HDT fixture, hand
-// its bytes to `Factoidal.runFactoidalCli(['--data-hdt', ...])`, and
-// render the results (a count, a pretty() class table, an Observable
-// Plot predicate histogram). In the browser `Factoidal` is browser.js's
-// namespace and `runFactoidalCli` drives the js_of_ocaml CLI bundle; a
-// hub cell has no js bundle here, so this test provides a Node-side
-// `Factoidal.runFactoidalCli` that materializes the virtual files to a
-// temp dir and shells out to the SAME CLI via the committed native
-// binary (bin/<platform>/factoidal). `fetch` is stubbed to serve the
-// local fixture bytes (the cell's page-relative URL is ignored). `Plot`
-// is an echo stub capturing marks/data so the histogram cell's derived
-// data can be asserted (same browser-vs-test duality documented for
-// pretty()/Plot in hub/README.md and post23_test.mjs).
+// The post's three cells fetch the in-repo RML-Core HDT fixture and
+// hand its bytes to `fn.queryHdt(bytes, sparql)`, which encapsulates
+// the `--data-hdt` argv+files primitive entirely -- the cell never
+// builds a virtual path or fake-filesystem entry itself. In the
+// browser `fn.queryHdt` (docs/_includes/hub.njk's adapter) is built on
+// `Factoidal.runFactoidalCli` (browser.js), which drives the
+// js_of_ocaml CLI bundle; a hub cell has no js bundle here, so this
+// test provides a Node-side `fn.queryHdt` that materializes the bytes
+// to a temp file and shells out to the SAME CLI via the committed
+// native binary (bin/<platform>/factoidal) -- mirroring the adapter's
+// own logic (byte-pack, run --data-hdt, reshape SRJ bindings into
+// Map<string,Term> rows) one layer down. `fetch` is stubbed to serve
+// the local fixture bytes (the cell's page-relative URL is ignored).
+// `Plot` is an echo stub capturing marks/data so the histogram cell's
+// derived data can be asserted (same browser-vs-test duality
+// documented for pretty()/Plot in hub/README.md and post23_test.mjs).
 
 import { createRequire } from 'node:module';
 import fs from 'node:fs';
@@ -69,7 +72,47 @@ async function runFactoidalCli(args, files) {
   return { stdout, stderr, exitCode };
 }
 
-const Factoidal = { runFactoidalCli };
+// Mirrors docs/_includes/hub.njk's `fn` adapter's srjTermToFn(): SRJ
+// term -> RDF/JS-shaped term ({termType, value, [language], [datatype]}).
+const XSD_STRING = 'http://www.w3.org/2001/XMLSchema#string';
+const RDF_LANGSTRING = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#langString';
+function srjTermToFn(t) {
+  if (t.type === 'uri') return { termType: 'NamedNode', value: t.value };
+  if (t.type === 'bnode') return { termType: 'BlankNode', value: t.value };
+  const language = t['xml:lang'] || '';
+  const datatype = t.datatype || (language ? RDF_LANGSTRING : XSD_STRING);
+  return { termType: 'Literal', value: t.value, language, datatype: { termType: 'NamedNode', value: datatype } };
+}
+
+let _queryHdtSeq = 0;
+
+// Node-side stand-in for docs/_includes/hub.njk's `fn.queryHdt(bytes,
+// sparql)`: byte-pack, drive `--data-hdt` through runFactoidalCli()
+// (the native-binary primitive above), and reshape the SPARQL Results
+// JSON into Bindings[]/boolean -- the exact same two-step the real
+// adapter performs over `Factoidal.queryHdt`/`Factoidal.runFactoidalCli`.
+async function queryHdt(bytes, sparql) {
+  const u8 = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+  let content = '';
+  for (let i = 0; i < u8.length; i++) content += String.fromCharCode(u8[i]);
+  const virtPath = `/static/fn-queryhdt-test-${_queryHdtSeq++}.hdt`;
+  const res = await runFactoidalCli(
+    ['--data-hdt', virtPath, '-e', sparql, '-o', 'json'],
+    [{ name: virtPath, content }]);
+  if (res.exitCode !== 0) {
+    throw new Error('queryHdt failed: ' + (res.stderr || res.stdout));
+  }
+  const json = JSON.parse(res.stdout.slice(res.stdout.indexOf('{'), res.stdout.lastIndexOf('}') + 1));
+  if (typeof json.boolean === 'boolean') return json.boolean;
+  const rows = (json.results && json.results.bindings) || [];
+  return rows.map((row) => {
+    const map = new Map();
+    for (const [name, term] of Object.entries(row)) map.set(name, srjTermToFn(term));
+    return map;
+  });
+}
+
+const fn = { queryHdt };
 
 // Echo stub for the vendored Observable Plot (as in post23_test.mjs).
 const Plot = {
@@ -89,7 +132,7 @@ globalThis.fetch = async () => {
 test.after(() => { globalThis.fetch = realFetch; });
 
 const cells = extractObservableCells(POST_FILE);
-const B = { Factoidal, pretty, Plot };
+const B = { fn, pretty, Plot };
 
 test('post24: post has 3 live cells', () => {
   assert.equal(cells.length, 3, `expected 3 live cells, found ${cells.length}`);

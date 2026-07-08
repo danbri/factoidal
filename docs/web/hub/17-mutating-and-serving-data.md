@@ -35,18 +35,14 @@ fail (out of 176)**, per
 
 ### Try it — INSERT DATA, live
 
-The typed `fn` adapter every other post in this series uses doesn't
-wire up `update` yet (`docs/_includes/hub.njk`'s `fn` object exposes
-`parse`/`query`/`shaclValidate` — no `update` method; that's a gap in
-the adapter, not the engine). But [post 12](./12-the-api-tour.md)'s
-capability probe already established the escape hatch: `Factoidal.
-loadNpmEntry()` returns the raw npm-entry ABI object underneath `fn`,
-and that ABI exports `updateDataset` directly — the js_of_ocaml build
-this whole series' cells run against. So this cell reaches for the ABI
-the same way post 12's capability probe does, wraps it in a try/catch
-per the [cell contract](./README/)'s capability-check pattern (an
-older bundle might predate `updateDataset`), and actually runs an
-INSERT DATA:
+`docs/_includes/hub.njk`'s `fn` adapter now wires up `update` —
+`fn.update(dataset, updateText)` — the same typed shape
+`npm/factoidal/index.js`'s `update(data, updateText) -> Dataset`
+exposes, built on the raw npm-entry ABI's `updateDataset` export
+underneath (the js_of_ocaml build this whole series' cells run
+against). This cell wraps it in a try/catch per the
+[cell contract](./README/)'s capability-check pattern (an older bundle
+might predate the Update export), and actually runs an INSERT DATA:
 
 ```observable-js
 const ttl = `
@@ -55,24 +51,23 @@ const ttl = `
 `;
 
 try {
-  const abi = await Factoidal.loadNpmEntry();
-  const before = JSON.parse(abi.parseToDatasetJson(ttl, "turtle", ""));
+  const before = await fn.parse(ttl, { format: "turtle" });
 
   const insertData = `
     PREFIX foaf: <http://xmlns.com/foaf/0.1/>
     INSERT DATA { <http://example.org/bob> foaf:name "Bob" . }
   `;
-  const after = JSON.parse(abi.updateDataset(before.nquads, insertData));
+  const after = await fn.update(before, insertData);
 
-  const rows = JSON.parse(abi.queryDataset(
-    after.nquads,
+  const rows = await fn.query(
+    after,
     "PREFIX foaf: <http://xmlns.com/foaf/0.1/> SELECT ?name WHERE { ?s foaf:name ?name } ORDER BY ?name"
-  ));
+  );
 
   return {
     available: true,
     namesBeforeInsertData: ["Alice"],
-    namesAfterInsertData: rows.srj.results.bindings.map((b) => b.name.value),
+    namesAfterInsertData: rows.map((row) => row.get("name").value),
   };
 } catch (err) {
   return { available: false, note: err.message };
@@ -87,8 +82,8 @@ now, is already there when the very next query runs.
 
 INSERT DATA/DELETE DATA only ever touch ground triples. The pattern
 most real edits need is DELETE/INSERT WHERE — find whatever matches a
-pattern, then replace it. Same ABI, same engine, correcting Bob's name
-in place rather than deleting and re-inserting by hand:
+pattern, then replace it. Same `fn.update`, same engine, correcting
+Bob's name in place rather than deleting and re-inserting by hand:
 
 ```observable-js
 const ttl2 = `
@@ -98,8 +93,7 @@ const ttl2 = `
 `;
 
 try {
-  const abi = await Factoidal.loadNpmEntry();
-  const before = JSON.parse(abi.parseToDatasetJson(ttl2, "turtle", ""));
+  const before = await fn.parse(ttl2, { format: "turtle" });
 
   const deleteInsertWhere = `
     PREFIX foaf: <http://xmlns.com/foaf/0.1/>
@@ -107,16 +101,16 @@ try {
     INSERT { ?s foaf:name "Bobby" }
     WHERE  { ?s foaf:name "Bob" }
   `;
-  const after = JSON.parse(abi.updateDataset(before.nquads, deleteInsertWhere));
+  const after = await fn.update(before, deleteInsertWhere);
 
-  const rows = JSON.parse(abi.queryDataset(
-    after.nquads,
+  const rows = await fn.query(
+    after,
     "PREFIX foaf: <http://xmlns.com/foaf/0.1/> SELECT ?name WHERE { ?s foaf:name ?name } ORDER BY ?name"
-  ));
+  );
 
   return {
     available: true,
-    namesAfterDeleteInsertWhere: rows.srj.results.bindings.map((b) => b.name.value),
+    namesAfterDeleteInsertWhere: rows.map((row) => row.get("name").value),
   };
 } catch (err) {
   return { available: false, note: err.message };
@@ -265,6 +259,5 @@ browser.
 
 The live cells above are pinned in
 [`tests/hub/post17_test.mjs`](https://github.com/danbri/factoidal/blob/claude/main/tests/hub/post17_test.mjs) —
-the exact same source, executed against the real `npm/factoidal`
-npm-entry ABI bundle instead of the in-browser `Factoidal.loadNpmEntry()`
-adapter.
+the exact same source, executed against the real `npm/factoidal` typed
+API instead of the in-browser `fn` adapter.

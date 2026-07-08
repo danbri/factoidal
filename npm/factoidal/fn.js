@@ -699,6 +699,7 @@ const {
   matrixScalarProduct,
   matrixVectorProduct,
   matrixOuterProduct,
+  queryHdt,
 } = engineApi;
 
 module.exports = {
@@ -744,5 +745,6 @@ module.exports = {
   matrixScalarProduct,
   matrixVectorProduct,
   matrixOuterProduct,
+  queryHdt,
   capabilities: engineApi.capabilities,
 };

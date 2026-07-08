@@ -107,6 +107,30 @@ function sniffQueryForm(sparql) {
   return m ? m[1].toLowerCase() : 'select';
 }
 
+// Pack raw bytes into the one-char-per-byte string js_of_ocaml's fake
+// filesystem (runCli's `files` argument) expects for BINARY content --
+// the same convention browser.js's HDT/COTTAS example cells built by
+// hand before queryHdt() existed (String.fromCharCode per byte).
+// Distinct from bytesToHex below (the npm-entry ABI's string-only wire
+// format for openCottas/toCottas): this is for the CLI's file-based
+// backends (--data-hdt), which read from the CLI bundle's fake
+// filesystem, not the ABI.
+function bytesToLatin1(bytesLike, who) {
+  if (typeof bytesLike === 'string') return bytesLike; // already packed
+  let u8;
+  if (bytesLike instanceof Uint8Array) u8 = bytesLike;
+  else if (bytesLike instanceof ArrayBuffer) u8 = new Uint8Array(bytesLike);
+  else {
+    throw new TypeError(
+      `${who}: expected a Uint8Array, Buffer, ArrayBuffer, or an already-packed string`);
+  }
+  let out = '';
+  for (let i = 0; i < u8.length; i += 0x4000) {
+    out += String.fromCharCode.apply(null, u8.subarray(i, Math.min(u8.length, i + 0x4000)));
+  }
+  return out;
+}
+
 // SRJ bindings -> Array<Map<string, Term>>
 function bindingsFromSrj(srj) {
   const rows = (srj && srj.results && srj.results.bindings) || [];
@@ -317,6 +341,40 @@ function buildApi(driver) {
     const res = await run(args, files);
     if (res.exitCode !== 0) throw engineError('query failed', res);
     const srj = jsonFromStdout(res.stdout, 'query');
+    if (form === 'ask' || typeof srj.boolean === 'boolean') {
+      return !!srj.boolean;
+    }
+    return bindingsFromSrj(srj);
+  }
+
+  /**
+   * Run a SPARQL 1.1 query against a read-only HDT (Header-Dictionary-
+   * Triples) artifact's raw bytes -- factoidal_cli.ml's `--data-hdt`
+   * backend (HDT.Triples.fst and the parser modules around it), driven
+   * through the same CLI bundle every other function in this file
+   * uses. No npm-entry bundle needed -- this is a CLI-only capability.
+   * Default graph only, SELECT/ASK only (no CONSTRUCT, no named graphs
+   * -- see factoidal_cli.ml's --data-hdt help text).
+   * @param {Uint8Array|ArrayBuffer|Buffer|string} hdtBytes whole .hdt
+   *   file contents (a string is assumed already packed one-char-per-
+   *   byte, the fake-filesystem convention runCli's `files` expects)
+   * @param {string} sparql a SELECT or ASK query
+   * @returns {Promise<Array<Map<string, object>>|boolean>}
+   */
+  async function queryHdt(hdtBytes, sparql) {
+    if (typeof sparql !== 'string') {
+      throw new TypeError('queryHdt: sparql must be a string');
+    }
+    const form = sniffQueryForm(sparql);
+    if (form === 'construct' || form === 'describe') {
+      throw new TypeError(
+        `queryHdt: ${form.toUpperCase()} is not supported over --data-hdt (SELECT/ASK only)`);
+    }
+    const content = bytesToLatin1(hdtBytes, 'queryHdt');
+    const name = `/static/hdt${parseCounter++}.hdt`;
+    const res = await run(['--data-hdt', name, '-e', sparql, '-o', 'json'], [{ name, content }]);
+    if (res.exitCode !== 0) throw engineError('queryHdt failed', res);
+    const srj = jsonFromStdout(res.stdout, 'queryHdt');
     if (form === 'ask' || typeof srj.boolean === 'boolean') {
       return !!srj.boolean;
     }
@@ -1284,6 +1342,7 @@ function buildApi(driver) {
   return {
     parse,
     query,
+    queryHdt,
     update,
     serialize,
     canonicalize,
