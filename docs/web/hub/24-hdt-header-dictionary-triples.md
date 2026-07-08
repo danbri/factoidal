@@ -161,9 +161,11 @@ covers, driven from the browser instead of the shell.
 ## What's next
 
 HDT is one of several binary/columnar shapes RDF lands in; the
-[on-disk COTTAS format](../../skills/disk-storage-format/) is
-factoidal's own Parquet-based store with the same "query the bytes, do
-not expand first" property. The
+[on-disk COTTAS format](../../skills/disk-storage-format/) — a
+Parquet-based RDF store from the external `pycottas` project, which
+factoidal reads and now also writes natively — has the same "query the
+bytes, do not expand first" property. Neither format is ours; the
+verified part is the reader (and, for COTTAS, the writer). The
 [performance hub](../perf/) measures how the four extraction targets
 compare on these read paths.
 
