@@ -19,10 +19,14 @@ open XPath.Eval
 //   xsl:template (match-based dispatch, name= for call-template,
 //   mode=, priority= override), xsl:apply-templates (default + select +
 //   mode= + xsl:sort children), xsl:call-template + xsl:with-param,
-//   xsl:param/xsl:variable (select= constant AND element/text body =
-//   result-tree-fragment), xsl:value-of (select), xsl:for-each (select
-//   + xsl:sort children), xsl:sort (select, data-type number|text,
-//   order ascending|descending, stable, NaN-first ascending),
+//   xsl:param/xsl:variable (select= node-set/string/number/boolean AND
+//   element/text body = result-tree-fragment; a node-set variable is
+//   iterable via for-each select="$v"), xsl:value-of (select),
+//   xsl:for-each (select + xsl:sort children), xsl:sort (select,
+//   data-type number|text and order ascending|descending -- both
+//   attribute-value-template-expanded, sort key evaluated with each
+//   node's own position()/last(), stable, NaN-first ascending;
+//   xsl:sort also honored on xsl:apply-templates with no select),
 //   xsl:if (test), xsl:choose/when/otherwise, xsl:element,
 //   xsl:attribute, xsl:text, xsl:comment, xsl:copy, xsl:copy-of
 //   (node-set select AND $rtf-variable), literal result elements with
@@ -36,18 +40,35 @@ open XPath.Eval
 // optional leading "/" (root-anchored) or "//" (any-descendant), and
 // "child::" axis prefixes; plus "@name"/"@*"/node-test alternatives.
 //
+// Node-set order: xsl:for-each and xsl:apply-templates process the
+// selected node-set in DOCUMENT ORDER with duplicates removed (XSLT 1.0
+// §5.4), so reverse-axis selects (preceding::, ancestor::) and
+// descendant (//) selects that would otherwise arrive in proximity
+// order / with repeats are normalised before iteration.
+//
+// Document node: a `match="/"` template's context is the document node;
+// a relative multi-step location path from it (e.g. `doc/num`) resolves
+// against the document element as the document node's only child.
+// Serialization: an element whose content is empty (e.g. an empty
+// xsl:value-of) is written as an empty-element tag `<t/>`.
+//
 // Deliberately OUT of scope (a mismatch here is expected, not a bug):
-//   xsl:number, xsl:key/key(), document(), xsl:import/include,
-//   xsl:apply-imports/next-match, format-number, xsl:sort case-order /
-//   lang collations, namespace-node synthesis / exclude-result-prefixes,
-//   disable-output-escaping, positional pattern predicates (predicates
-//   are evaluated as a plain boolean against the candidate node, so
-//   [1]-style position tests can be wrong), and the
-//   processing-instruction() node test (a gap inherited from
-//   XPath.Eval; PI alternatives are dropped from a union select before
-//   evaluation). call-template recursion is bounded by the shared fuel
-//   parameter: a self-calling template exhausts fuel and yields [], it
-//   cannot diverge.
+//   xsl:number, xsl:key/key(), id() (needs DTD ATTLIST ID typing),
+//   document(), xsl:import/include, xsl:apply-imports/next-match,
+//   format-number, xsl:sort case-order / lang collations, namespace-node
+//   synthesis / exclude-result-prefixes / namespace-prefix rewriting on
+//   copied elements, disable-output-escaping, document-level comments/PIs
+//   around the root element (Parser.XML models the source as the root
+//   element, so a sibling comment/PI of the root is not in the tree),
+//   XPath 2.0 comparison operators (eq/ne/lt/le/gt/ge), positional
+//   predicates INSIDE xsl:template MATCH patterns (a match-pattern
+//   predicate is still evaluated as a plain boolean at position 1 --
+//   positional predicates inside SELECT expressions ARE correct, via
+//   XPath.Eval's position/size-threaded predicate evaluation), and the
+//   processing-instruction() node test (a gap inherited from XPath.Eval;
+//   PI alternatives are dropped from a union select before evaluation).
+//   call-template recursion is bounded by the shared fuel parameter: a
+//   self-calling template exhausts fuel and yields [], it cannot diverge.
 //
 // TOTALITY: the template-dispatch / instantiation cycle can loop
 // (a template applies templates that re-match the same node), so the
@@ -315,6 +336,49 @@ let eval_nodeset (ctx:xctx_item) (pos size:nat) (vars) (sel:string) : list xctx_
   | XV_Nodes items -> items
   | _ -> []
 
+// ---- Document-node aware evaluation -------------------------------
+// This engine models the document node (D_Doc) as the root element for
+// XPath call-outs (dnode_ci). That is exact for absolute paths and ".",
+// but a RELATIVE multi-step location path like `doc/num` evaluated from
+// a `match="/"` template used to resolve child::doc against the root
+// element itself and return the empty set. From the document node,
+// `doc/num` is equivalent to the absolute `/doc/num` (the document
+// node's only child IS the root element, which this engine matches as
+// the first step of an absolute path). `force_abs` flips the top-level
+// (and each union arm's) relative location path to absolute so those
+// selects resolve; predicates and inner filter-paths keep their own
+// (relative) context and are left untouched.
+let rec force_abs (e:xp_expr) : Tot xp_expr (decreases e) =
+  match e with
+  | XE_Path false steps -> XE_Path true steps
+  | XE_Union a b -> XE_Union (force_abs a) (force_abs b)
+  | _ -> e
+
+let eval_val_dn (ctx:dnode) (pos size:nat) (vars:list (string & xp_value)) (expr_text:string)
+  : xp_value =
+  match ctx with
+  | D_Item it -> eval_val it pos size vars expr_text
+  | D_Doc root ->
+    (match parse_xpath expr_text with
+     | None -> XV_Str ""
+     | Some e ->
+       let e2 = force_abs e in
+       let doc_nodes = xml_node_count root in
+       let fuel = initial_eval_fuel e2 doc_nodes in
+       let env = { env_item = CI_Elem [] [] root; env_pos = pos; env_size = size; env_vars = vars } in
+       eval_expr fuel env e2)
+
+let eval_string_dn (ctx:dnode) (pos size:nat) (vars) (expr_text:string) : string =
+  to_string_val (eval_val_dn ctx pos size vars expr_text)
+
+let eval_bool_dn (ctx:dnode) (pos size:nat) (vars) (expr_text:string) : bool =
+  to_bool_val (eval_val_dn ctx pos size vars expr_text)
+
+let eval_nodeset_dn (ctx:dnode) (pos size:nat) (vars) (sel:string) : list xctx_item =
+  match eval_val_dn ctx pos size vars (drop_pi_alts sel) with
+  | XV_Nodes items -> items
+  | _ -> []
+
 // select_nodes is defined after the pattern helpers (it needs
 // is_simple_child_union / select_child_union); see below.
 
@@ -511,7 +575,7 @@ let is_child_union_alt (alt:string) : bool =
   else if starts_with "@" a then
     not (contains_char '/' a || contains_char '[' a || contains_char '(' a)
   else
-    a <> "" && not (starts_with "." a)
+    a <> "" && not (starts_with "." a) && not (starts_with "$" a)
     && not (contains_char '/' a) && not (contains_char '[' a)
     && not (contains_char '(' a) && not (contains_double_colon a)
 
@@ -546,7 +610,7 @@ let select_child_union (nd:dnode) (alts:list string) : list xctx_item =
 let select_nodes (ctx:dnode) (pos size:nat) (vars:list (string & xp_value)) (sel:string)
   : list xctx_item =
   if is_simple_child_union sel then select_child_union ctx (split_on_char '|' sel)
-  else eval_nodeset (dnode_ci ctx) pos size vars sel
+  else eval_nodeset_dn ctx pos size vars sel
 
 // Evaluate a "name[pred]" predicate best-effort as a boolean against
 // the candidate node. Self-fuelled via eval_bool.
@@ -654,8 +718,13 @@ let rec serialize_node (n:xml_node) : Tot string (decreases n) =
   | XPI tg d -> String.concat "" ["<?"; tg; " "; d; "?>"]
   | XElement tag attrs children ->
     let a = serialize_attrs attrs in
-    if Nil? children then String.concat "" ["<"; tag; a; "/>"]
-    else String.concat "" ["<"; tag; a; ">"; serialize_nodes children; "</"; tag; ">"]
+    // XML output method: an element whose content serializes to nothing
+    // (no children, or only empty text nodes produced by e.g. an empty
+    // xsl:value-of) is written as an empty-element tag `<t/>`, matching
+    // the W3C expected outputs (which self-close such elements).
+    let inner = serialize_nodes children in
+    if inner = "" then String.concat "" ["<"; tag; a; "/>"]
+    else String.concat "" ["<"; tag; a; ">"; inner; "</"; tag; ">"]
 
 and serialize_nodes (ns:list xml_node) : Tot string (decreases ns) =
   match ns with
@@ -692,74 +761,104 @@ type sortspec = {
   so_descending : bool;
 }
 
-let parse_sort (pfx:string) (n:xml_node) : option sortspec =
+// The data-type / order attributes of xsl:sort are attribute value
+// templates (XSLT 1.0 §10), so they are AVT-expanded against the
+// context node in scope when the enclosing for-each / apply-templates
+// is instantiated (the `ctx`/`pos`/`size`/`vars` supplied here). The
+// select attribute is a plain XPath expression, NOT an AVT.
+let parse_sort (ctx:xctx_item) (pos size:nat) (vars:list (string & xp_value))
+               (pfx:string) (n:xml_node) : option sortspec =
   match n with
   | XElement tag attrs _ ->
     if is_xsl pfx tag && xsl_instr pfx tag = "sort" then
+      let dt = expand_avt ctx pos size vars (attr_or "data-type" "text" attrs) in
+      let od = expand_avt ctx pos size vars (attr_or "order" "ascending" attrs) in
       Some { so_select = attr_or "select" "." attrs;
-             so_numeric = (attr_or "data-type" "text" attrs = "number");
-             so_descending = (attr_or "order" "ascending" attrs = "descending") }
+             so_numeric = (dt = "number");
+             so_descending = (od = "descending") }
     else None
   | _ -> None
 
-// Leading xsl:sort children (whitespace-only text between them is
-// skipped; the first non-sort content stops the collection).
-let rec collect_sorts (pfx:string) (body:list xml_node) : Tot (list sortspec) (decreases body) =
+// Leading xsl:sort children (whitespace-only text AND comments between
+// them are skipped; the first non-sort content stops the collection).
+let rec collect_sorts (ctx:xctx_item) (pos size:nat) (vars:list (string & xp_value))
+                      (pfx:string) (body:list xml_node) : Tot (list sortspec) (decreases body) =
   match body with
   | [] -> []
   | hd :: tl ->
-    (match parse_sort pfx hd with
-     | Some s -> s :: collect_sorts pfx tl
+    (match parse_sort ctx pos size vars pfx hd with
+     | Some s -> s :: collect_sorts ctx pos size vars pfx tl
      | None ->
        (match hd with
-        | XText t -> if is_all_ws t then collect_sorts pfx tl else []
+        | XText t -> if is_all_ws t then collect_sorts ctx pos size vars pfx tl else []
+        | XComment _ -> collect_sorts ctx pos size vars pfx tl
         | _ -> []))
 
-let rec sort_key_cmp (vars:list (string & xp_value)) (specs:list sortspec) (a b:xctx_item)
-  : Tot int (decreases specs) =
+// The sort key strings for one node, evaluated with the node's OWN
+// proximity position/size in the unsorted node list (so a sort by
+// position() or last() is correct). One string per sort spec.
+let rec eval_sort_keys (specs:list sortspec) (vars:list (string & xp_value))
+                       (it:xctx_item) (pos size:nat)
+  : Tot (list string) (decreases specs) =
   match specs with
-  | [] -> 0
-  | s :: rest ->
-    let sa = eval_string a 1 1 vars s.so_select in
-    let sb = eval_string b 1 1 vars s.so_select in
+  | [] -> []
+  | s :: rest -> eval_string it pos size vars s.so_select :: eval_sort_keys rest vars it pos size
+
+// Annotate each node with its precomputed sort keys, threading the
+// 1-based position through the ORIGINAL (document-order) list.
+let rec annotate_items (specs:list sortspec) (vars:list (string & xp_value))
+                       (items:list xctx_item) (pos size:nat)
+  : Tot (list (xctx_item & list string)) (decreases items) =
+  match items with
+  | [] -> []
+  | it :: tl -> (it, eval_sort_keys specs vars it pos size) :: annotate_items specs vars tl (pos + 1) size
+
+// Compare two nodes by their precomputed key lists, honoring each
+// spec's data-type and order. A NaN key (non-numeric text under
+// data-type="number") sorts before every real number in ascending
+// order, which is what the W3C numeric-sort reference outputs expect.
+let rec cmp_sort_keys (specs:list sortspec) (ka kb:list string)
+  : Tot int (decreases specs) =
+  match specs, ka, kb with
+  | s :: sr, a :: ar, b :: br ->
     let raw =
       if s.so_numeric then
-        (let na = string_to_xn sa in
-         let nb = string_to_xn sb in
+        (let na = string_to_xn a in
+         let nb = string_to_xn b in
          match xn_compare na nb with
          | Some c -> c
          | None ->
-           // A NaN key (non-numeric text under data-type="number") sorts
-           // before every real number in ascending order (so it sorts
-           // last once the descending sign-flip below is applied), which
-           // is what the W3C numeric-sort reference outputs expect.
            let a_nan = (match na with XN_NaN -> true | _ -> false) in
            let b_nan = (match nb with XN_NaN -> true | _ -> false) in
            if a_nan && b_nan then 0 else if a_nan then -1 else 1)
-      else String.compare sa sb in
+      else String.compare a b in
     let signed = if s.so_descending then 0 - raw else raw in
-    if signed <> 0 then signed else sort_key_cmp vars rest a b
+    if signed <> 0 then signed else cmp_sort_keys sr ar br
+  | _, _, _ -> 0
 
 // Stable insertion sort: an element with a key equal to an already-
 // placed one is inserted AFTER it, preserving original document order
 // among equal keys (XSLT 1.0 sorts are stable).
-let rec sort_insert (vars:list (string & xp_value)) (specs:list sortspec) (x:xctx_item) (l:list xctx_item)
-  : Tot (list xctx_item) (decreases l) =
+let rec sort_insert (specs:list sortspec) (x:(xctx_item & list string)) (l:list (xctx_item & list string))
+  : Tot (list (xctx_item & list string)) (decreases l) =
   match l with
   | [] -> [x]
-  | y :: ys -> if sort_key_cmp vars specs x y <= 0 then x :: l else y :: sort_insert vars specs x ys
+  | y :: ys -> if cmp_sort_keys specs (snd x) (snd y) <= 0 then x :: l else y :: sort_insert specs x ys
 
-let rec sort_items (vars:list (string & xp_value)) (specs:list sortspec) (l:list xctx_item)
-  : Tot (list xctx_item) (decreases l) =
+let rec sort_items (specs:list sortspec) (l:list (xctx_item & list string))
+  : Tot (list (xctx_item & list string)) (decreases l) =
   match l with
   | [] -> []
-  | x :: xs -> sort_insert vars specs x (sort_items vars specs xs)
+  | x :: xs -> sort_insert specs x (sort_items specs xs)
 
-let sort_maybe (pfx:string) (vars:list (string & xp_value)) (body:list xml_node) (items:list xctx_item)
+let sort_maybe (ctx:xctx_item) (pos size:nat) (pfx:string)
+               (vars:list (string & xp_value)) (body:list xml_node) (items:list xctx_item)
   : list xctx_item =
-  match collect_sorts pfx body with
+  match collect_sorts ctx pos size vars pfx body with
   | [] -> items
-  | specs -> sort_items vars specs items
+  | specs ->
+    let n = List.Tot.length items in
+    List.Tot.map fst (sort_items specs (annotate_items specs vars items 1 n))
 
 (* ================================================================ *)
 (* Result-tree-fragment variables. A variable/param with element/text  *)
@@ -849,7 +948,7 @@ and instantiate_seq (fuel:nat) (st:xstyle) (ctx:dnode) (pos size:nat)
            else
              (match attr_opt "select" attrs with
               | Some sel ->
-                let v = eval_val (dnode_ci ctx) pos size vars sel in
+                let v = eval_val_dn ctx pos size vars sel in
                 instantiate_seq (fuel - 1) st ctx pos size ((nm, v) :: vars) rtf tl
               | None ->
                 // Result-tree-fragment: instantiate the body, bind its
@@ -882,7 +981,7 @@ and bind_with_params (fuel:nat) (st:xstyle) (ctx:dnode) (pos size:nat)
            let nm = attr_or "name" "" attrs in
            (match attr_opt "select" attrs with
             | Some sel ->
-              let v = eval_val (dnode_ci ctx) pos size vars sel in
+              let v = eval_val_dn ctx pos size vars sel in
               bind_with_params (fuel - 1) st ctx pos size ((nm, v) :: vars) rtf tl
             | None ->
               let frag = instantiate_seq (fuel - 1) st ctx pos size vars rtf pchildren in
@@ -905,31 +1004,42 @@ and instantiate_one (fuel:nat) (st:xstyle) (ctx:dnode) (pos size:nat)
       if is_xsl st.xs_pfx tag then
         let ln = xsl_instr st.xs_pfx tag in
         if ln = "value-of" then
-          [R_Node (XText (eval_string (dnode_ci ctx) pos size vars (attr_or "select" "." attrs)))]
+          [R_Node (XText (eval_string_dn ctx pos size vars (attr_or "select" "." attrs)))]
         else if ln = "text" then
           [R_Node (XText (raw_text children))]
         else if ln = "if" then
-          (if eval_bool (dnode_ci ctx) pos size vars (attr_or "test" "false()" attrs)
+          (if eval_bool_dn ctx pos size vars (attr_or "test" "false()" attrs)
            then instantiate_seq (fuel - 1) st ctx pos size vars rtf children
            else [])
         else if ln = "choose" then
           instantiate_choose (fuel - 1) st ctx pos size vars rtf children
         else if ln = "for-each" then
           let sel = attr_or "select" "." attrs in
-          let items0 = select_nodes ctx pos size vars sel in
-          let items = sort_maybe st.xs_pfx vars children items0 in
+          // XSLT 1.0 §5.4: the current node list is the selected node-set
+          // in DOCUMENT ORDER with duplicates removed (only overridden by
+          // an xsl:sort). doc_sort_dedup fixes reverse-axis proximity
+          // order (preceding::, ancestor::) and de-duplicates descendant
+          // (//) selects before iteration.
+          let items0 = doc_sort_dedup (select_nodes ctx pos size vars sel) in
+          let items = sort_maybe (dnode_ci ctx) pos size st.xs_pfx vars children items0 in
           for_each_items (fuel - 1) st children vars rtf items 1 (List.Tot.length items)
         else if ln = "apply-templates" then
           let amode = attr_or "mode" "" attrs in
           (match attr_opt "select" attrs with
            | Some sel ->
-             let items0 = select_nodes ctx pos size vars sel in
-             let items = sort_maybe st.xs_pfx vars children items0 in
+             let items0 = doc_sort_dedup (select_nodes ctx pos size vars sel) in
+             let items = sort_maybe (dnode_ci ctx) pos size st.xs_pfx vars children items0 in
              let dns = List.Tot.map (fun it -> D_Item it) items in
              apply_list (fuel - 1) st dns 1 (List.Tot.length items) amode
            | None ->
-             let kids = dnode_children ctx in
-             apply_list (fuel - 1) st kids 1 (List.Tot.length kids) amode)
+             // Default node-set = the context node's children; an
+             // xsl:sort child reorders them (apply-templates with no
+             // select still honors xsl:sort).
+             let kids0 = dnode_children ctx in
+             let items0 = List.Tot.map dnode_ci kids0 in
+             let items = sort_maybe (dnode_ci ctx) pos size st.xs_pfx vars children items0 in
+             let dns = List.Tot.map (fun it -> D_Item it) items in
+             apply_list (fuel - 1) st dns 1 (List.Tot.length items) amode)
         else if ln = "call-template" then
           let nm = attr_or "name" "" attrs in
           (match find_named_template st.xs_templates nm with
@@ -989,7 +1099,7 @@ and instantiate_choose (fuel:nat) (st:xstyle) (ctx:dnode) (pos size:nat)
          if is_xsl st.xs_pfx tag then
            let ln = xsl_instr st.xs_pfx tag in
            if ln = "when" then
-             (if eval_bool (dnode_ci ctx) pos size vars (attr_or "test" "false()" attrs)
+             (if eval_bool_dn ctx pos size vars (attr_or "test" "false()" attrs)
               then instantiate_seq (fuel - 1) st ctx pos size vars rtf children
               else instantiate_choose (fuel - 1) st ctx pos size vars rtf tl)
            else if ln = "otherwise" then

@@ -176,6 +176,14 @@ let string_to_xn (s:string) : xpath_number =
   | [] -> XN_NaN
   | hd :: tl ->
     let (neg, digits) = if hd = '-' then (true, tl) else (false, trimmed) in
+    // The XPath 1.0 `Number` production requires at least one digit
+    // (`Digits ('.' Digits?)? | '.' Digits`), so a bare "." (or ".", "-.")
+    // is NOT a number -> NaN. Guard here rather than in the shared literal
+    // parser so expression-literal parsing is untouched.
+    let is_ascii_digit (c:FStar.Char.char) =
+      let k = FStar.Char.int_of_char c in k >= 0x30 && k <= 0x39 in
+    if not (List.Tot.existsb is_ascii_digit digits) then XN_NaN
+    else
     let s' = String.string_of_list digits in
     match Parser.XPath.parse_number_lit s' 0 with
     | Some (v, scale, pos') ->

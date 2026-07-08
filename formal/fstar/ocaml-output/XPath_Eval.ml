@@ -187,17 +187,25 @@ let string_to_xn (s : Prims.string) : xpath_number=
       let uu___ = if hd = 45 then (true, tl) else (false, trimmed) in
       (match uu___ with
        | (neg, digits) ->
-           let s' = FStar_String.string_of_list digits in
-           (match Parser_XPath.parse_number_lit s' Prims.int_zero with
-            | FStar_Pervasives_Native.Some (v, scale, pos') ->
-                if
-                  (pos' = (FStar_String.strlen s')) &&
-                    (pos' > Prims.int_zero)
-                then
-                  XN_Finite
-                    (((if neg then Prims.int_zero - v else v)), scale)
-                else XN_NaN
-            | FStar_Pervasives_Native.None -> XN_NaN))
+           let is_ascii_digit c =
+             let k = FStar_Char.int_of_char c in
+             (k >= (Prims.of_int (0x30))) && (k <= (Prims.of_int (0x39))) in
+           if
+             Prims.op_Negation
+               (FStar_List_Tot_Base.existsb is_ascii_digit digits)
+           then XN_NaN
+           else
+             (let s' = FStar_String.string_of_list digits in
+              match Parser_XPath.parse_number_lit s' Prims.int_zero with
+              | FStar_Pervasives_Native.Some (v, scale, pos') ->
+                  if
+                    (pos' = (FStar_String.strlen s')) &&
+                      (pos' > Prims.int_zero)
+                  then
+                    XN_Finite
+                      (((if neg then Prims.int_zero - v else v)), scale)
+                  else XN_NaN
+              | FStar_Pervasives_Native.None -> XN_NaN))
 let xn_to_string (n : xpath_number) : Prims.string=
   match n with
   | XN_NaN -> "NaN"
