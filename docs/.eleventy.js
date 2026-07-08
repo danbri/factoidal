@@ -137,6 +137,40 @@ module.exports = function(eleventyConfig) {
     );
   });
 
+  // Deep-linkable notebook sections: give every heading a stable slug
+  // `id` and a subtle permalink, so any hub section can be shared by URL
+  // (`…/post/#the-section`). No plugin dependency — a small markdown-it
+  // core rule (this site is no-CDN / offline, and markdown-it-anchor
+  // isn't vendored). Slugs are de-duplicated within a page.
+  eleventyConfig.amendLibrary("md", (md) => {
+    const slugify = (s) =>
+      (s || "").toLowerCase().trim()
+        .replace(/[^\w\s-]/g, "")
+        .replace(/[\s_]+/g, "-")
+        .replace(/-+/g, "-")
+        .replace(/^-+|-+$/g, "") || "section";
+    md.core.ruler.push("heading_anchors", (state) => {
+      const seen = new Map();
+      const toks = state.tokens;
+      for (let i = 0; i < toks.length; i++) {
+        if (toks[i].type !== "heading_open") continue;
+        const inline = toks[i + 1];
+        if (!inline || inline.type !== "inline") continue;
+        let slug = slugify(inline.content);
+        const n = seen.get(slug) || 0;
+        seen.set(slug, n + 1);
+        if (n > 0) slug = `${slug}-${n}`;
+        toks[i].attrSet("id", slug);
+        const link = new state.Token("html_inline", "", 0);
+        link.content =
+          `<a class="heading-anchor" href="#${slug}"` +
+          ` aria-label="Permalink to this section"` +
+          ` style="margin-left:.4em;opacity:.3;text-decoration:none;font-weight:normal">#</a>`;
+        inline.children.push(link);
+      }
+    });
+  });
+
   // Stamp docs/sw.js (already landed in _site/sw.js by the passthrough
   // copy above) with the real BUILD_VERSION and a precache URL list
   // built from what this build actually emitted — never a guessed or
