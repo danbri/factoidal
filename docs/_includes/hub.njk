@@ -1135,5 +1135,26 @@ cellEls.forEach((codeEl, index) => mountCell(codeEl, index));
 
 initUserCells();
 </script>
+<script>
+// Offline support (issue #69). Registered here too — hub posts render
+// with this layout (not base.njk), so a visitor who deep-links straight
+// to a hub page still registers the SW on first load. The SW's scope
+// ("{{ '/' | url }}") is the whole site; base.njk registers the same
+// worker, so whichever page a visitor lands on first, offline works.
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker
+      .register("{{ '/sw.js' | url }}?v={{ buildVersion }}", { scope: "{{ '/' | url }}" })
+      .catch((err) => console.warn("[sw] registration failed", err));
+  });
+
+  let swRefreshing = false;
+  navigator.serviceWorker.addEventListener("controllerchange", () => {
+    if (swRefreshing) return;
+    swRefreshing = true;
+    window.location.reload();
+  });
+}
+</script>
 </body>
 </html>

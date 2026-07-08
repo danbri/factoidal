@@ -1,3 +1,30 @@
+const fs = require("fs");
+const path = require("path");
+const { execSync } = require("child_process");
+
+// Site is served under GitHub Pages at /factoidal/ — kept as one
+// constant so it's never hand-duplicated between the Eleventy config
+// (pathPrefix) and the offline-support precache-URL builder below.
+const PATH_PREFIX = "/factoidal/";
+
+// Stamp a fresh build version on every build so the ServiceWorker's
+// cache name (docs/sw.js: `factoidal-hub-` + BUILD_VERSION) changes on
+// every deploy. That's the load-bearing bit of the offline-support
+// anti-stale-lock design (issue #69): a new cache name means the old
+// one gets purged in the SW's `activate` handler, so users can never
+// get pinned to a stale js/npm bundle. Falls back to a timestamp if
+// git isn't available (e.g. a tarball checkout with no .git).
+function computeBuildVersion() {
+  try {
+    return execSync("git rev-parse --short=12 HEAD", { cwd: __dirname })
+      .toString()
+      .trim();
+  } catch (err) {
+    return "ts" + Date.now();
+  }
+}
+const BUILD_VERSION = computeBuildVersion();
+
 module.exports = function(eleventyConfig) {
   // Pass-through copy: F*-extracted browser artifacts (js_of_ocaml + wasm_of_ocaml).
   // fstar-extracted/ holds w3c-runner.js (pure JS) and the wasm_of_ocaml loader
@@ -37,6 +64,18 @@ module.exports = function(eleventyConfig) {
   // though the file exists in the repo — Eleventy was processing index.html
   // but dropping sibling CSV/JSON.
   eleventyConfig.addPassthroughCopy("test-results");
+
+  // Pass-through the offline-support ServiceWorker (issue #69). The
+  // source file ships with literal `__BUILD_VERSION__` /
+  // `__PRECACHE_URLS__` placeholder tokens; the `eleventy.after` hook
+  // below rewrites the copy that lands in _site/sw.js once the rest of
+  // the build (and therefore the real asset paths it precaches) exists.
+  eleventyConfig.addPassthroughCopy("sw.js");
+
+  // Expose the build version to templates (base.njk uses it to
+  // cache-bust the SW registration URL) so it's computed exactly once
+  // per build, in one place, shared with the sw.js stamping below.
+  eleventyConfig.addGlobalData("buildVersion", BUILD_VERSION);
 
   // HDT hub post (web/hub/24-...) fetches the in-repo RML-Core ontology
   // HDT fixture as raw bytes and runs SPARQL over it via
@@ -98,6 +137,53 @@ module.exports = function(eleventyConfig) {
     );
   });
 
+  // Stamp docs/sw.js (already landed in _site/sw.js by the passthrough
+  // copy above) with the real BUILD_VERSION and a precache URL list
+  // built from what this build actually emitted — never a guessed or
+  // hand-maintained filename list. Runs once after the full build (and
+  // once per rebuild under --serve/--watch), so it always sees the
+  // finished _site tree.
+  eleventyConfig.on("eleventy.after", ({ dir }) => {
+    const outputDir = path.resolve(__dirname, dir.output);
+    const swPath = path.join(outputDir, "sw.js");
+    if (!fs.existsSync(swPath)) return; // sw.js wasn't part of this build (e.g. a filtered rebuild)
+
+    // Candidates are (outputDir-relative path, is this the pretty-URL
+    // shell for a directory?) pairs. Only ones that actually exist in
+    // this build's _site are kept, so a rename anywhere in this list
+    // can never produce a precache entry that 404s.
+    const candidates = [
+      "index.html", // site home — also doubles as the SW's offline fallback shell
+      "web/hub/index.html", // hub landing page
+      "vendor/observable/runtime.esm.js",
+      "vendor/observable/inspector.esm.js",
+      "vendor/observable/d3.esm.js",
+      "vendor/observable/plot.esm.js",
+      "vendor/observable/stdlib.esm.js",
+      "vendor/hub/reactive-cells.mjs",
+      "npm/foafos/browser.js",
+      "npm/foafos/factoidal.js",
+    ];
+
+    const precacheUrls = candidates
+      .filter((rel) => fs.existsSync(path.join(outputDir, rel)))
+      .map((rel) => {
+        if (rel.endsWith("/index.html")) return PATH_PREFIX + rel.slice(0, -"index.html".length);
+        if (rel === "index.html") return PATH_PREFIX;
+        return PATH_PREFIX + rel;
+      });
+
+    if (precacheUrls.length === 0) {
+      console.warn("[sw] no precache candidates found under", outputDir, "— shipping an SW with an empty precache list");
+    }
+
+    const swSource = fs.readFileSync(swPath, "utf8");
+    const stamped = swSource
+      .split("__BUILD_VERSION__").join(BUILD_VERSION)
+      .split("__PRECACHE_URLS__").join(JSON.stringify(precacheUrls));
+    fs.writeFileSync(swPath, stamped);
+  });
+
   return {
     dir: {
       input: ".",
@@ -107,6 +193,6 @@ module.exports = function(eleventyConfig) {
     },
     markdownTemplateEngine: "njk",
     htmlTemplateEngine: false,
-    pathPrefix: "/factoidal/"
+    pathPrefix: PATH_PREFIX
   };
 };

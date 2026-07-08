@@ -48,5 +48,33 @@
 <footer>
 Factoidal — verified RDF/SPARQL from F*.
 </footer>
+<script>
+// Offline support (issue #69). Registered from the site shell so it
+// runs on the very first page load a visitor makes; once active its
+// scope ("{{ '/' | url }}") covers the whole site including hub posts,
+// which use a different layout (hub.njk) and so don't run this script
+// themselves — they don't need to, the SW's fetch handler controls
+// their navigations regardless of which layout rendered the page.
+//
+// Anti-stale-lock: docs/sw.js is network-first for HTML and versions
+// its cache name to this build (see docs/.eleventy.js), so a new
+// deploy is never masked by an old cached bundle. The guarded
+// controllerchange reload below applies that new version to already-
+// open tabs without looping (it fires at most once per page load).
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker
+      .register("{{ '/sw.js' | url }}?v={{ buildVersion }}", { scope: "{{ '/' | url }}" })
+      .catch((err) => console.warn("[sw] registration failed", err));
+  });
+
+  let swRefreshing = false;
+  navigator.serviceWorker.addEventListener("controllerchange", () => {
+    if (swRefreshing) return;
+    swRefreshing = true;
+    window.location.reload();
+  });
+}
+</script>
 </body>
 </html>
