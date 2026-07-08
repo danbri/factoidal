@@ -22,6 +22,15 @@ module.exports = function(eleventyConfig) {
   // this passthrough is the only thing that puts bytes under docs/.
   eleventyConfig.addPassthroughCopy({ "../third_party/observable/dist": "vendor/observable" });
 
+  // Pass-through the project-owned reactive-cell compiler
+  // (docs/web/hub/reactive-cells.mjs) to /vendor/hub/reactive-cells.mjs
+  // so hub.njk can import it same-origin (no CDN). .mjs isn't an
+  // Eleventy template format, so without this passthrough the file would
+  // be dropped from _site. The SAME file is imported by the Node pinning
+  // harness (tests/hub/_helpers.mjs) directly from its source path, so
+  // the browser and the tests share one dependency-inference implementation.
+  eleventyConfig.addPassthroughCopy({ "web/hub/reactive-cells.mjs": "vendor/hub/reactive-cells.mjs" });
+
   // Pass-through the test-results directory so the machine-readable CSV/JSON
   // artifacts and the history/ subdirectory land on GitHub Pages alongside
   // index.html. Without this, /factoidal/test-results/latest.csv 404s even

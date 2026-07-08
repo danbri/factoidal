@@ -105,6 +105,7 @@ headlessly.
   <li><a href="./23-decentralized-identifiers-did-key/">Decentralized Identifiers: did:key</a> — resolving a did:key:z6Mk… Ed25519 identifier to its DID Document as pure, offline, F*-verified function application, rendered live as triples and a node-graph (did)</li>
   <li><a href="./24-hdt-header-dictionary-triples/">HDT: querying a compressed binary RDF file</a> — SPARQL run straight over the RML-Core ontology's Header-Dictionary-Triples binary via --data-hdt, with a live triple count, class table, and predicate histogram; no prior decompression to text (hdt)</li>
   <li><a href="./25-xml-wellformedness-and-xpath/">XML well-formedness and XPath</a> — the generic F* XML parser deciding well-formed vs malformed live, plus XPath 1.0 evaluation returning node-sets, strings, numbers, and booleans over a sample document (xml)</li>
+  <li><a href="./26-reactive-cells-declare-once-use-everywhere/">Reactive cells: declare once, use everywhere</a> — the hub's cells reference each other ObservableHQ-style: <code>ttl = `…`</code> in one cell, <code>graph = parse(ttl)</code> in the next, then a query, then a chart, each its own cell; the vendored runtime orders them by dependency and re-runs dependents on edit (foaf)</li>
 </ul>
 
 See also: the <a href="../perf/">performance hub</a> — measured

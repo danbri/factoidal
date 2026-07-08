@@ -266,6 +266,13 @@ import * as Factoidal from "{{ '/npm/foafos/browser.js' | url }}";
 import * as d3 from "{{ '/vendor/observable/d3.esm.js' | url }}";
 import * as Plot from "{{ '/vendor/observable/plot.esm.js' | url }}";
 import * as stdlib from "{{ '/vendor/observable/stdlib.esm.js' | url }}";
+// Project-owned reactive-cell compiler (NOT vendored third-party) --
+// same-origin, no CDN. Turns `name = expr` cells into named runtime
+// variables and infers each cell's cross-cell inputs. Shared verbatim
+// with the Node pinning harness (tests/hub/_helpers.mjs) so the browser
+// and the tests can never disagree about dependency inference. See
+// docs/web/hub/reactive-cells.mjs for the compiler and its limits.
+import { analyzeCell, cellInputs, makeDefinition } from "{{ '/vendor/hub/reactive-cells.mjs' | url }}";
 
 const runtime = new Runtime();
 const main = runtime.module();
@@ -665,16 +672,43 @@ main.variable().define("html", [], () => stdlib.html);
 main.variable().define("md", [], () => stdlib.md);
 main.variable().define("pretty", [], () => pretty);
 
-// Each cell body is an async function body: write a `return` statement
-// to produce the value the Inspector renders (or mutate the DOM
-// directly via a passed-in element -- Inspector handles DOM-Node
-// return values by inserting them as-is). Shared by the initial mount
-// and every subsequent Run.
+// ---------------------------------------------------------------------
+// Reactive dataflow (ObservableHQ-style).
+//
+// `knownNames` is the set of names a cell may reference to create a
+// reactive dependency: the fixed builtins above, plus every cell's
+// declared name (a cell of the form `name = <expr>`). It's seeded with
+// the builtins here and grows as pinned + reader cells declare names.
+//
+// For each cell, analyzeCell() (docs/web/hub/reactive-cells.mjs) returns
+// its declared name (or null) and its referenced free identifiers;
+// cellInputs() intersects those refs with `knownNames` to get the exact
+// list of runtime inputs to wire. The vendored Observable runtime then
+// computes the topological order and re-runs dependents whenever an
+// input changes -- we never hand-order cells. Names NOT in `knownNames`
+// (Math, JSON, document, ...) stay resolved through ordinary JS scope,
+// so a standalone cell that references only globals + builtins behaves
+// byte-for-byte as it did before reactivity was added.
+//
+// Async is handled by the runtime natively: an input whose value is a
+// Promise (e.g. `graph = fn.parse(ttl)` returning a Promise, or a cell
+// that `await`s) is resolved before any dependent's definition runs, so
+// `query(graph, ...)` always sees a settled Dataset, never a pending
+// Promise.
+// ---------------------------------------------------------------------
+const knownNames = new Set(CELL_BINDINGS);
+
+// Compile one cell's source into a runtime variable definition + the
+// inputs to wire it with. Shared by the initial mount and every Run.
+// `makeDefinition` builds an async function whose parameters are exactly
+// `inputs`, positionally matching how the runtime resolves and passes
+// them; the body is the cell's value expression (with a `return`
+// supplied for the `name = expr` form) or the verbatim body for an
+// anonymous cell.
 function compileCell(source) {
-  return new Function(
-    ...CELL_BINDINGS,
-    "return (async () => {\n" + source + "\n})();"
-  );
+  const info = analyzeCell(source);
+  const inputs = cellInputs(info, knownNames);
+  return { name: info.name, inputs, definition: makeDefinition(inputs, info.body) };
 }
 
 // Output controller: owns a cell's output box + its Observable
@@ -771,6 +805,12 @@ function mountCell(codeEl, index) {
   let currentSource = codeEl.textContent;
   let editing = false;
 
+  // The runtime variable's name is the cell's declared name (so later
+  // cells can reference it) or a stable per-index fallback for an
+  // anonymous cell. It's fixed at mount; editing the body re-runs under
+  // the same name so dependents stay wired.
+  const runtimeName = analyzeCell(currentSource).name || ("hubCell" + index);
+
   // --- Editable source: a textarea seeded from the shipped code,
   // swapped in for the static <pre> by the Edit toggle. A textarea
   // (rather than a contenteditable region) is deliberate: iOS Safari's
@@ -826,8 +866,7 @@ function mountCell(codeEl, index) {
   runBtn.textContent = "Run";
   runBtn.addEventListener("click", runCell);
 
-  const name = "hubCell" + index;
-  const output = createOutput(name);
+  const output = createOutput(runtimeName);
   const container = output.container;
   container.setAttribute("data-hub-cell", String(index));
 
@@ -876,9 +915,11 @@ function mountCell(codeEl, index) {
     const source = editing ? editor.value : currentSource;
     currentSource = source;
     codeEl.textContent = source; // keep the static view in sync for next Edit/toggle
-    let fn;
+    let compiled;
     try {
-      fn = compileCell(source);
+      // Re-analyze the (possibly edited) source: the inputs it references
+      // may have changed, so we recompute them against knownNames.
+      compiled = compileCell(source);
     } catch (err) {
       container.classList.add("observable-cell-error");
       container.textContent = "Cell parse error: " + err.message;
@@ -886,23 +927,23 @@ function mountCell(codeEl, index) {
     }
     try {
       // module.redefine(name, inputs, definition): looks up the
-      // already-defined variable by name and re-runs variable.define
-      // on it, so the SAME Variable (and therefore the SAME attached
-      // Inspector/output node) recomputes with the new function body
-      // -- this is the supported "edit and re-run" path the vendored
-      // runtime exposes (see third_party/observable/dist/runtime.esm.js's
-      // module_redefine, which throws if the name was never defined,
-      // hence the try/define fallback below for the very first mount).
-      main.redefine(name, CELL_BINDINGS, fn);
+      // already-defined variable by its stable runtimeName and re-runs
+      // variable.define on it, so the SAME Variable (and therefore the
+      // SAME attached Inspector/output node) recomputes with the new
+      // inputs + body -- and the runtime re-runs every dependent cell
+      // that references this name. See runtime.esm.js's module_redefine,
+      // which throws if the name was never defined, hence the initial
+      // define below runs first at mount.
+      main.redefine(runtimeName, compiled.inputs, compiled.definition);
     } catch (err) {
       container.classList.add("observable-cell-error");
       container.textContent = "Cell define error: " + err.message;
     }
   }
 
-  let fn0;
+  let mount0;
   try {
-    fn0 = compileCell(currentSource);
+    mount0 = compileCell(currentSource);
   } catch (err) {
     container.classList.add("observable-cell-error");
     container.textContent = "Cell parse error: " + err.message;
@@ -910,7 +951,7 @@ function mountCell(codeEl, index) {
   }
 
   try {
-    main.variable(inspector).define(name, CELL_BINDINGS, fn0);
+    main.variable(inspector).define(runtimeName, mount0.inputs, mount0.definition);
   } catch (err) {
     container.classList.add("observable-cell-error");
     container.textContent = "Cell define error: " + err.message;
@@ -1004,21 +1045,27 @@ function mountUserCell(listEl, initialSource) {
   // One runtime Variable per user cell. First Run creates it; every
   // later Run re-defines the SAME variable in place (the identical path
   // module.redefine takes internally) so the same output box recomputes.
+  // Reader cells are reactive too: a `foo = ...` reader cell registers
+  // `foo` into knownNames, so a later reader cell (or an edited pinned
+  // cell) can reference it; an anonymous reader cell runs under the
+  // stable fallback name and can reference any pinned cell's variable.
   let variable = null;
 
   function runCell() {
     const source = editor.value;
-    let fn;
+    let compiled;
     try {
-      fn = compileCell(source);
+      compiled = compileCell(source);
     } catch (err) {
       container.classList.add("observable-cell-error");
       container.textContent = "Cell parse error: " + err.message;
       return;
     }
+    const runtimeName = compiled.name || name;
     try {
+      if (compiled.name) knownNames.add(compiled.name);
       if (!variable) variable = main.variable(output.inspector);
-      variable.define(name, CELL_BINDINGS, fn);
+      variable.define(runtimeName, compiled.inputs, compiled.definition);
     } catch (err) {
       container.classList.add("observable-cell-error");
       container.textContent = "Cell define error: " + err.message;
@@ -1073,9 +1120,18 @@ function initUserCells() {
   else document.body.appendChild(section);
 }
 
-document
-  .querySelectorAll("pre > code.language-observable-js")
-  .forEach((codeEl, index) => mountCell(codeEl, index));
+// Two passes so cross-cell references resolve regardless of document
+// order. Pass 1: register every cell's declared name into knownNames,
+// so a cell that references another cell's name (whether that cell
+// appears earlier OR later on the page) wires it as a reactive input.
+// Pass 2: mount each cell; the Observable runtime resolves the actual
+// topological order and re-runs dependents itself.
+const cellEls = [...document.querySelectorAll("pre > code.language-observable-js")];
+for (const el of cellEls) {
+  const declaredName = analyzeCell(el.textContent).name;
+  if (declaredName) knownNames.add(declaredName);
+}
+cellEls.forEach((codeEl, index) => mountCell(codeEl, index));
 
 initUserCells();
 </script>

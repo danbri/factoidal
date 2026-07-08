@@ -16,6 +16,17 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+// The SAME vendored Observable runtime the browser hub loads, and the
+// SAME project-owned reactive-cell compiler docs/_includes/hub.njk
+// imports. Node can load both headless: the runtime's window_global
+// falls back to globalThis and its animation-frame scheduler falls back
+// to setImmediate, and the compiler is DOM-free. Importing them here
+// lets a pinning test exercise the REAL reactive dataflow path (declare
+// `ttl` in one cell, reference it from `graph = parse(ttl)` in the next)
+// rather than only the standalone runObservableCell() path below.
+import { Runtime } from '../../third_party/observable/dist/runtime.esm.js';
+import { analyzeCell, cellInputs, makeDefinition } from '../../docs/web/hub/reactive-cells.mjs';
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const require = createRequire(import.meta.url);
 
@@ -65,6 +76,66 @@ export async function runObservableCell(source, bindings) {
     'return (async () => {\n' + source + '\n})();'
   );
   return cellFn(...values);
+}
+
+/**
+ * Build a headless reactive runtime module from a post's cell sequence,
+ * exactly the way docs/_includes/hub.njk wires the browser: each cell
+ * becomes a named Observable-runtime variable, its inputs inferred from
+ * the SAME analyzeCell()/cellInputs() compiler the page uses. This is
+ * the cross-cell path -- a cell `graph = fn.parse(ttl)` references the
+ * `ttl` cell's value, the runtime topologically orders them, and
+ * promise-valued cells resolve before their dependents run.
+ *
+ * `bindings` are the module-scope builtins (e.g. { fn, pretty, Plot }),
+ * defined as named variables so cells can reference them by name.
+ *
+ * Returns `{ names, infos, value }` where `value(name)` resolves to a
+ * named cell's (or an anonymous cell's fallback-named) current value --
+ * `module.value()` computes the transitive dependency graph and awaits
+ * any promise-valued variable, so a `SELECT` that depends on a parsed
+ * graph that depends on Turtle text resolves through the whole chain.
+ *
+ * Anonymous cells (no `name =`) get a stable fallback name `cell<index>`
+ * in document order, so a test can still read one by index if needed.
+ *
+ * @param {string[]} cells   cell bodies, as from extractObservableCells()
+ * @param {Record<string, unknown>} bindings  builtins in scope, by name
+ * @returns {{names: string[], infos: object[], value: (name: string) => Promise<unknown>}}
+ */
+export function runReactivePost(cells, bindings) {
+  const runtime = new Runtime();
+  const main = runtime.module();
+
+  const knownNames = new Set(Object.keys(bindings));
+  for (const [k, v] of Object.entries(bindings)) {
+    main.variable().define(k, [], () => v);
+  }
+
+  const infos = cells.map((src) => analyzeCell(src));
+  for (const info of infos) if (info.name) knownNames.add(info.name);
+
+  let anon = 0;
+  const names = infos.map((info) => {
+    const runtimeName = info.name || `cell${anon++}`;
+    const inputs = cellInputs(info, knownNames);
+    main.variable().define(runtimeName, inputs, makeDefinition(inputs, info.body));
+    return runtimeName;
+  });
+
+  return {
+    names,
+    infos,
+    value: (name) => main.value(name),
+    // Re-define a named cell in place (the Edit+Run path the page takes):
+    // the runtime re-runs it AND every dependent that references its name.
+    // Reading a downstream value afterward proves the propagation.
+    redefine: (name, newSource) => {
+      const info = analyzeCell(newSource);
+      const inputs = cellInputs(info, knownNames);
+      main.redefine(name, inputs, makeDefinition(inputs, info.body));
+    },
+  };
 }
 
 /**

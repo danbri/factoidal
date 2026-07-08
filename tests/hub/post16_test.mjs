@@ -106,6 +106,13 @@ test('post16: the freshly-measured F* module/line/assume-val counts are at least
     if (matches.length > 0) modulesWithAssumeVal++;
   }
   assert.ok(totalLines >= 75573, `expected >= 75573 total lines, found ${totalLines}`);
-  assert.ok(assumeValCount >= 151, `expected >= 151 assume val declarations, found ${assumeValCount}`);
-  assert.ok(modulesWithAssumeVal >= 22, `expected >= 22 modules with assume val, found ${modulesWithAssumeVal}`);
+  // assume-val count is a DECREASING metric: every gap migrated to F*
+  // removes an `assume val`, so a `>=` growth floor is the wrong shape
+  // (it broke when the count fell 151 -> 142 as gaps closed — progress,
+  // not regression). The post no longer claims a specific number. We
+  // keep a loose sanity band instead: some holes remain, but not an
+  // unbounded pile.
+  assert.ok(assumeValCount > 0 && assumeValCount <= 160,
+    `expected assume val count in (0, 160], found ${assumeValCount}`);
+  assert.ok(modulesWithAssumeVal >= 15, `expected >= 15 modules with assume val, found ${modulesWithAssumeVal}`);
 });

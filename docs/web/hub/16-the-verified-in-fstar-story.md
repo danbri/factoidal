@@ -49,30 +49,25 @@ Concretely: the RDF/SPARQL parsers and the query algebra — the code
 paths every post in this series exercised, in-memory, in your browser
 — are F\*, checked under Z3 4.13.3 with no `--lax` and no
 `--admit_smt_queries` (Iron Rule #10). The **on-disk** COTTAS reader is
-where the qualifier still bites, though less than it did. As of
-2026-07-06 the **production SPARQL query path** —
-`RDF.Store.Capabilities.Cottas.fst`'s `sc_solve` / `sc_estimate` /
-`sc_count_exact`, the functions [post 15](./15-how-fast-the-performance-story.md)'s
-speed measurements actually run through — was rewired (commits
-`9750eb7`, `9c3d160`) to call F\*-extracted token-direct (`_tok`)
-entry points in `RDF.CottasStore.fst`. Those hot paths no longer go
-through the hand-written OCaml in
-`experimental_ocaml_glue/cottas_ondisk_runtime.sh`.
-
-The glue file (now 928 lines) has **not** been deleted, so the
-qualifier stands: three *non-production* consumers still call the older
-id-based entry points directly — a `tests/unit` buffer-vs-file
-equivalence baseline, the `cottas-ondisk-smoketest` binary, and
-`factoidal-explain`. Iron Rule #11 retirement (zero live callers, then
-patch deletion) is gated on migrating those three to `_tok` first,
-tracked in [#118](https://github.com/danbri/factoidal/issues/118) /
-[#254](https://github.com/danbri/factoidal/issues/254). The precise,
-row-by-row state — which patches are `VIOLATION-SEM` vs already
-retired — lives in
-[`docs/designissues/fstar-ocaml-boundary-audit.md`](https://github.com/danbri/factoidal/blob/claude/main/docs/designissues/fstar-ocaml-boundary-audit.md)
-(the 2026-07-06 ratchet audit), which supersedes the older
-`fstar-purity-unwind.md` inventory. This post doesn't soften that
-qualifier — it's the honest boundary of what "verified" claims today.
+where the qualifier still bites, though less than it did. The production
+SPARQL query path — `RDF.Store.Capabilities.Cottas.fst`'s `sc_solve` /
+`sc_estimate` / `sc_count_exact`, the functions
+[post 15](./15-how-fast-the-performance-story.md)'s numbers run through
+— was rewired to F\*-extracted token-direct (`_tok`) entry points in
+`RDF.CottasStore.fst`, so those hot paths no longer go through the
+hand-written OCaml in `experimental_ocaml_glue/cottas_ondisk_runtime.sh`.
+That 928-line glue file has **not** been deleted, so the qualifier
+stands: three non-production consumers still call the older id-based
+entry points — a `tests/unit` buffer-vs-file baseline, the
+`cottas-ondisk-smoketest` binary, and `factoidal-explain`. Retirement
+(zero live callers, then patch deletion) is gated on migrating those
+three, tracked in
+[#118](https://github.com/danbri/factoidal/issues/118). The row-by-row
+state lives in
+[`docs/designissues/fstar-ocaml-boundary-audit.md`](https://github.com/danbri/factoidal/blob/claude/main/docs/designissues/fstar-ocaml-boundary-audit.md),
+which supersedes the older `fstar-purity-unwind.md` inventory. This post
+doesn't soften that qualifier — it's the boundary of what "verified"
+claims.
 
 ## The skimmable core
 
@@ -135,20 +130,17 @@ js_of_ocaml build is what every `observable-js` cell in this series has
 been calling; the wasm_of_ocaml build exists but (per
 [post 12](./12-the-api-tour.md)) its capability surface still lags;
 KaRaMeL's C output is a pilot over a KaRaMeL-compatible subset of
-modules, not the whole engine yet — honestly scoped in
+modules, not the whole engine yet — scoped in
 [`docs/designissues/2026-05-07-c-build-and-roaring-plan.md`](https://github.com/danbri/factoidal/blob/claude/main/docs/designissues/2026-05-07-c-build-and-roaring-plan.md)
 rather than rounded up.
 
-## What proofs bought this week
+## What proofs bought
 
-Three concrete events from the same week
-[post 15](./15-how-fast-the-performance-story.md)'s numbers were
-measured — two where the proof discipline paid off directly, one where
-it honestly didn't yet reach:
+Three concrete events — two where the proof discipline paid off
+directly, one where it didn't yet reach:
 
-**1. A proved round-trip lemma for the new delta-log format.** Durable
-UPDATE (still unstarted as a whole feature — [post 5](./05-shapes-that-validate-shacl.md)'s
-neighbor territory) needs a crash-safe on-disk log of pending changes.
+**1. A proved round-trip lemma for the delta-log format.** Durable
+UPDATE needs a crash-safe on-disk log of pending changes.
 Per Iron Rule #11, the byte layout of that log had to be specified in
 F\*, not assembled ad hoc in OCaml — and it was: `RDF.Store.Columnar.DeltaLog.fst`
 states `lemma_term_roundtrip`/`lemma_triple_roundtrip`/a whole-log
@@ -166,9 +158,9 @@ failed loudly ("header verify FAILED") on every boot rather than
 trusting a file that didn't match its own contract, forcing a full
 sidecar rebuild every time (57.3 seconds, per
 [post 15](./15-how-fast-the-performance-story.md)'s table) until the
-one-constant fix landed. Commit
-[`4b9fd72`](https://github.com/danbri/factoidal/commit/4b9fd72),
-2026-07-05 — the failure mode this project's own crypto/hash policy
+one-constant fix corrected it
+([`4b9fd72`](https://github.com/danbri/factoidal/commit/4b9fd72)) — the
+failure mode this project's own crypto/hash policy
 calls out by name: fail loud on a format mismatch, never silently
 trust unverified bytes.
 
@@ -199,36 +191,26 @@ properties someone wrote down as a type or a lemma, and this project's
 own test suites (the ones every other post in this series cites pass
 counts from) are what caught the property nobody had stated yet.
 
-## The scale of the spec, measured today
+## The scale of the spec
 
-`docs/claude-rules/current-state.md`'s own inventory (last refreshed
-2026-07-03) reports 90 F\* modules, 47,517 lines, 141 `assume val`
-declarations across 20 modules — and, checked directly against the
-tree rather than trusted from that doc, it's already stale: this
-project adds and splits modules fast enough that a plain count run
-today (`find formal/fstar -maxdepth 1 -name '*.fst*' | wc -l` and a
-`grep -c '^assume val'` sweep, this session, 2026-07-06) reads
-**139 modules, 75,573 lines, 151 `assume val` declarations across 22
-modules**. Both counts are true — one dated 2026-07-03, one dated
-2026-07-06 — and the gap between them is itself the point: a static
-number in a doc is a claim about the past, not the present, which is
-exactly why every `assume val` carries its own stub patch and named
-open issue (Iron Rule #3) rather than a single trust-me total. The
-full per-module `assume val` breakdown lives in
+The spec is large — on the order of 140 F\* modules and tens of
+thousands of lines, split across the RDF term algebra, the SPARQL
+parser and algebra, the storage layer, and the format codecs. A count
+in any single doc is a claim about the tree at one moment; the tree
+moves, which is why every `assume val` carries its own stub patch and
+named open issue (Iron Rule #3) rather than a single trust-me total. To
+count for yourself: `find formal/fstar -maxdepth 1 -name '*.fst*' | wc
+-l` for modules and a `grep -c '^assume val'` sweep for the gaps. The
+per-module `assume val` breakdown lives in
 [`skills/ocaml-boundary/SKILL.md`](https://github.com/danbri/factoidal/blob/claude/main/skills/ocaml-boundary/SKILL.md)
-and `current-state.md`'s own "assume val inventory" section.
+and `current-state.md`'s "assume val inventory" section.
 
-## What's next
+## Related
 
-This series' last placeholder — "Mutating and serving data" (SPARQL
-Update, Protocol, Graph Store) — named durable UPDATE as the thing
-that would make it real rather than aspirational. The delta-log proof
-story above is stage 1 of exactly that work, and by the time this
-sentence is being read, stages 2 and 3 have landed alongside it:
-[the next post](./17-mutating-and-serving-data.md) covers SPARQL 1.1
-Update live in your browser, the durability work dated commit by
-commit, and an honest look at what `factoidal-http` and the Graph
-Store Protocol do and don't do yet.
+The delta-log proof story above is one piece of the read-write store.
+[The next post](./17-mutating-and-serving-data.md) covers SPARQL 1.1
+Update live in your browser, the durable delta-log write path, and what
+`factoidal-http` and the Graph Store Protocol do and don't do.
 
 The live cell above is pinned in
 [`tests/hub/post16_test.mjs`](https://github.com/danbri/factoidal/blob/claude/main/tests/hub/post16_test.mjs) —
