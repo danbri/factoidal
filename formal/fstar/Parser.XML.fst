@@ -314,7 +314,133 @@ let codepoint_to_string (cp:int) : string =
       (strcat (byte_of_int b2) (byte_of_int b3)))
   else "?"
 
-let parse_reference (input:string) (pos:nat) : parse_result string =
+(* ================================================================ *)
+(* DTD general-entity table + reference expansion (Stage A)          *)
+(*                                                                   *)
+(* A `dtd_entity_table` maps a declared general internal entity's    *)
+(* name to its RAW replacement text (the literal characters between  *)
+(* the EntityValue quotes, un-expanded). It is collected from the    *)
+(* DOCTYPE internal subset (see parse_doctype below) and threaded     *)
+(* into the content/attribute reference parsers so that `&name;`      *)
+(* resolves against it. Stage A is a non-validating (well-formedness) *)
+(* slice: predefined entities first, then the declared table; an      *)
+(* undeclared reference is rejected (WFC "Entity Declared"); a self-  *)
+(* or mutually-recursive entity is rejected (WFC "No Recursion").     *)
+(* Replacement text that itself contains markup ('<') is rejected     *)
+(* rather than spliced as elements -- Stage A does not reparse an     *)
+(* entity's replacement as content, so a markup-bearing entity is an  *)
+(* acknowledged unsupported case (rejected, never wrongly accepted).  *)
+(* Char references and predefined entities inside the replacement are *)
+(* resolved; a nested DECLARED general entity inside the replacement  *)
+(* is expanded through the same path under a visited-set + depth      *)
+(* guard so recursion terminates.                                    *)
+(* ================================================================ *)
+
+let dtd_entity_table = list (string & string)
+
+let rec mem_str (x:string) (xs:list string) : Tot bool (decreases xs) =
+  match xs with
+  | [] -> false
+  | h :: t -> if h = x then true else mem_str x t
+
+let rec lookup_entity (name:string) (ents:dtd_entity_table)
+  : Tot (option string) (decreases ents) =
+  match ents with
+  | [] -> None
+  | (n, v) :: rest -> if n = name then Some v else lookup_entity name rest
+
+let is_predefined_entity (name:string) : bool =
+  name = "amp" || name = "lt" || name = "gt" || name = "quot" || name = "apos"
+
+let predefined_value (name:string) : string =
+  if name = "amp" then "&"
+  else if name = "lt" then "<"
+  else if name = "gt" then ">"
+  else if name = "quot" then "\""
+  else "'"  // apos
+
+// Fully expand a raw entity replacement text `s` into decoded text.
+// `visited` holds the names currently being expanded (direct/indirect
+// recursion -> reject). `depth` bounds how many nested DECLARED-entity
+// expansions may still happen (bounded by the table size at entry, so a
+// non-recursive chain always fits); `budget` bounds the scan of the
+// current string. The lexicographic measure %[depth; budget] is
+// well-founded: diving into a nested entity decrements `depth`;
+// scanning forward within one string decrements `budget`.
+let rec expand_entity_value (ents:dtd_entity_table) (visited:list string)
+                            (s:string) (pos:nat) (depth:nat) (budget:nat) (acc:list string)
+  : Tot (parse_result string) (decreases %[depth; budget]) =
+  if budget = 0 then ParseFail "entity replacement text too long" pos
+  else
+    let len = fs_byte_length s in
+    if pos >= len then ParseOk (String.concat "" (List.Tot.rev acc)) pos
+    else
+      let ch = fs_byte_index s pos in
+      if ch = '<' then
+        // WFC-ish Stage A boundary: an entity whose replacement contains
+        // literal markup would have to be reparsed as content, which this
+        // slice does not do -- reject rather than accept it as text.
+        ParseFail "entity replacement text contains markup ('<'); unsupported in Stage A" pos
+      else if ch = '&' then
+        if pos + 1 < len && fs_byte_index s (pos + 1) = '#' then
+          if pos + 2 >= len then ParseFail "unterminated character reference in entity" pos
+          else
+            let ch2 = fs_byte_index s (pos + 2) in
+            if ch2 = 'x' then
+              let cfuel = len - (pos + 3) + 1 in
+              match parse_ref_digits is_hex_digit_char s (pos + 3) [] cfuel with
+              | ParseOk digits pos' ->
+                let cp = chars_to_hex digits in
+                if is_valid_xml_char cp then
+                  expand_entity_value ents visited s pos' depth (budget - 1)
+                    (codepoint_to_string cp :: acc)
+                else ParseFail "character reference to a non-Char codepoint" pos'
+              | ParseFail msg fpos -> ParseFail msg fpos
+            else
+              let cfuel = len - (pos + 2) + 1 in
+              match parse_ref_digits is_dec_digit_char s (pos + 2) [] cfuel with
+              | ParseOk digits pos' ->
+                let cp = chars_to_dec digits in
+                if is_valid_xml_char cp then
+                  expand_entity_value ents visited s pos' depth (budget - 1)
+                    (codepoint_to_string cp :: acc)
+                else ParseFail "character reference to a non-Char codepoint" pos'
+              | ParseFail msg fpos -> ParseFail msg fpos
+        else
+          match parse_xml_name s (pos + 1) with
+          | ParseFail msg fpos -> ParseFail msg fpos
+          | ParseOk name pos_n ->
+            if pos_n >= len || fs_byte_index s pos_n <> ';' then
+              ParseFail "entity reference not terminated by ';'" pos_n
+            else
+              let pos' = pos_n + 1 in
+              if is_predefined_entity name then
+                expand_entity_value ents visited s pos' depth (budget - 1)
+                  (predefined_value name :: acc)
+              else if mem_str name visited then
+                ParseFail "recursive entity reference (WFC: No Recursion)" pos
+              else begin
+                match lookup_entity name ents with
+                | None -> ParseFail "reference to undeclared entity" pos
+                | Some subval ->
+                  if depth = 0 then ParseFail "entity nesting too deep" pos
+                  else
+                    match expand_entity_value ents (name :: visited) subval 0
+                            (depth - 1) (fs_byte_length subval + 1) [] with
+                    | ParseFail msg fpos -> ParseFail msg fpos
+                    | ParseOk sub _ ->
+                      expand_entity_value ents visited s pos' depth (budget - 1) (sub :: acc)
+              end
+      else
+        expand_entity_value ents visited s (pos + 1) depth (budget - 1)
+          (String.string_of_char ch :: acc)
+
+// Parse a single reference starting at `pos` (which points at the byte
+// AFTER the leading '&'). Returns the decoded replacement string and the
+// position after the terminating ';'. Char references and the five
+// predefined entities resolve directly; any other name is looked up in
+// the DTD general-entity table (`ents`) and its replacement expanded.
+let parse_reference (ents:dtd_entity_table) (input:string) (pos:nat) : parse_result string =
   let len = fs_byte_length input in
   if pos >= len then ParseFail "unterminated reference" pos
   else
@@ -344,29 +470,30 @@ let parse_reference (input:string) (pos:nat) : parse_result string =
             else ParseFail "character reference to a non-Char codepoint" pos'
           | ParseFail msg fpos -> ParseFail msg fpos
     else
-      match pstring "amp;" input pos with
-      | ParseOk _ pos' -> ParseOk "&" pos'
-      | ParseFail _ _ ->
-      match pstring "lt;" input pos with
-      | ParseOk _ pos' -> ParseOk "<" pos'
-      | ParseFail _ _ ->
-      match pstring "gt;" input pos with
-      | ParseOk _ pos' -> ParseOk ">" pos'
-      | ParseFail _ _ ->
-      match pstring "quot;" input pos with
-      | ParseOk _ pos' -> ParseOk "\"" pos'
-      | ParseFail _ _ ->
-      match pstring "apos;" input pos with
-      | ParseOk _ pos' -> ParseOk "'" pos'
-      | ParseFail _ _ ->
-      ParseFail "unknown entity reference" pos
+      match parse_xml_name input pos with
+      | ParseFail msg fpos -> ParseFail msg fpos
+      | ParseOk name pos_n ->
+        if pos_n >= len || fs_byte_index input pos_n <> ';' then
+          ParseFail "entity reference not terminated by ';'" pos_n
+        else
+          let pos' = pos_n + 1 in
+          if is_predefined_entity name then ParseOk (predefined_value name) pos'
+          else
+            match lookup_entity name ents with
+            | None -> ParseFail "reference to undeclared entity" pos
+            | Some subval ->
+              let depth = List.Tot.length ents + 1 in
+              match expand_entity_value ents [name] subval 0 depth
+                      (fs_byte_length subval + 1) [] with
+              | ParseFail msg fpos -> ParseFail msg fpos
+              | ParseOk decoded _ -> ParseOk decoded pos'
 
 
 (* ================================================================ *)
 (* Attribute value parser (with entity decoding)                     *)
 (* ================================================================ *)
 
-let rec parse_attr_value_body (qch:char) (input:string) (pos:nat) (acc:list string) (fuel:nat)
+let rec parse_attr_value_body (ents:dtd_entity_table) (qch:char) (input:string) (pos:nat) (acc:list string) (fuel:nat)
   : Tot (parse_result string) (decreases fuel) =
   if fuel = 0 then ParseFail "attribute value too long" pos
   else
@@ -381,9 +508,9 @@ let rec parse_attr_value_body (qch:char) (input:string) (pos:nat) (acc:list stri
         // §3.1 -- o-p10fail1, not-wf-sa-014).
         ParseFail "attribute values exclude '<'" pos
       else if ch = '&' then
-        match parse_reference input (pos + 1) with
+        match parse_reference ents input (pos + 1) with
         | ParseOk decoded pos' ->
-          parse_attr_value_body qch input pos' (decoded :: acc) (fuel - 1)
+          parse_attr_value_body ents qch input pos' (decoded :: acc) (fuel - 1)
         | ParseFail msg fpos -> ParseFail msg fpos
       else
         match ptake_while_pos (fun c -> c <> qch && c <> '&' && c <> '<') input pos with
@@ -392,20 +519,20 @@ let rec parse_attr_value_body (qch:char) (input:string) (pos:nat) (acc:list stri
             if not (scan_chars_valid input pos pos' (pos' - pos)) then
               ParseFail "invalid character in attribute value" pos
             else
-              parse_attr_value_body qch input pos' (s :: acc) (fuel - 1)
+              parse_attr_value_body ents qch input pos' (s :: acc) (fuel - 1)
           else
-            parse_attr_value_body qch input (pos + 1)
+            parse_attr_value_body ents qch input (pos + 1)
               (String.string_of_char ch :: acc) (fuel - 1)
         | ParseFail msg fpos -> ParseFail msg fpos
 
-let parse_attr_value (input:string) (pos:nat) : parse_result string =
+let parse_attr_value (ents:dtd_entity_table) (input:string) (pos:nat) : parse_result string =
   let len = fs_byte_length input in
   if pos >= len then ParseFail "expected attribute value" pos
   else
     let qch = fs_byte_index input pos in
     if qch = '"' || qch = '\'' then
       let fuel = len - pos in
-      parse_attr_value_body qch input (pos + 1) [] fuel
+      parse_attr_value_body ents qch input (pos + 1) [] fuel
     else ParseFail "expected quote to start attribute value" pos
 
 
@@ -418,7 +545,7 @@ let skip_xml_space (input:string) (pos:nat) : parse_result unit =
   | ParseOk _ pos' -> ParseOk () pos'
   | ParseFail msg fpos -> ParseFail msg fpos
 
-let parse_xml_attribute (input:string) (pos:nat) : parse_result xml_attribute =
+let parse_xml_attribute (ents:dtd_entity_table) (input:string) (pos:nat) : parse_result xml_attribute =
   match parse_xml_name input pos with
   | ParseOk name pos1 ->
     begin match skip_xml_space input pos1 with
@@ -427,7 +554,7 @@ let parse_xml_attribute (input:string) (pos:nat) : parse_result xml_attribute =
       | ParseOk _ pos3 ->
         begin match skip_xml_space input pos3 with
         | ParseOk () pos4 ->
-          begin match parse_attr_value input pos4 with
+          begin match parse_attr_value ents input pos4 with
           | ParseOk value pos5 ->
             ParseOk ({ attr_name = name; attr_value = value }) pos5
           | ParseFail msg fpos -> ParseFail msg fpos
@@ -445,7 +572,7 @@ let rec mem_attr_name (name:string) (attrs:list xml_attribute) : Tot bool (decre
   | [] -> false
   | a :: rest -> if a.attr_name = name then true else mem_attr_name name rest
 
-let rec parse_attributes (input:string) (pos:nat) (fuel:nat)
+let rec parse_attributes (ents:dtd_entity_table) (input:string) (pos:nat) (fuel:nat)
   : Tot (parse_result (list xml_attribute)) (decreases fuel) =
   if fuel = 0 then ParseOk [] pos
   else
@@ -457,9 +584,9 @@ let rec parse_attributes (input:string) (pos:nat) (fuel:nat)
         if pos1 < len then
           let ch = fs_byte_index input pos1 in
           if is_name_start_char ch then
-            match parse_xml_attribute input pos1 with
+            match parse_xml_attribute ents input pos1 with
             | ParseOk attr pos2 ->
-              begin match parse_attributes input pos2 (fuel - 1) with
+              begin match parse_attributes ents input pos2 (fuel - 1) with
               | ParseOk attrs pos3 ->
                 // Attribute uniqueness (XML 1.0 §3.1 [44] / Unique
                 // Att Spec WF constraint): no two attributes on the
@@ -483,7 +610,7 @@ let rec parse_attributes (input:string) (pos:nat) (fuel:nat)
 (* XML text content parser (with entity decoding)                    *)
 (* ================================================================ *)
 
-let rec parse_text_content (input:string) (pos:nat) (acc:list string) (fuel:nat)
+let rec parse_text_content (ents:dtd_entity_table) (input:string) (pos:nat) (acc:list string) (fuel:nat)
   : Tot (parse_result string) (decreases fuel) =
   if fuel = 0 then ParseOk (String.concat "" (List.Tot.rev acc)) pos
   else
@@ -494,9 +621,9 @@ let rec parse_text_content (input:string) (pos:nat) (acc:list string) (fuel:nat)
       if ch = '<' then
         ParseOk (String.concat "" (List.Tot.rev acc)) pos
       else if ch = '&' then
-        match parse_reference input (pos + 1) with
+        match parse_reference ents input (pos + 1) with
         | ParseOk decoded pos' ->
-          parse_text_content input pos' (decoded :: acc) (fuel - 1)
+          parse_text_content ents input pos' (decoded :: acc) (fuel - 1)
         | ParseFail msg fpos -> ParseFail msg fpos
       else
         match ptake_while_pos (fun c -> c <> '<' && c <> '&') input pos with
@@ -509,17 +636,17 @@ let rec parse_text_content (input:string) (pos:nat) (acc:list string) (fuel:nat)
               // §2.4 [14] -- o-p14fail3, not-wf-sa-025/026/029).
               ParseFail "text may not contain a literal ']]>' sequence" pos
             else
-              parse_text_content input pos' (s :: acc) (fuel - 1)
+              parse_text_content ents input pos' (s :: acc) (fuel - 1)
           else
-            parse_text_content input (pos + 1)
+            parse_text_content ents input (pos + 1)
               (String.string_of_char ch :: acc) (fuel - 1)
         | ParseFail msg fpos -> ParseFail msg fpos
 
-let parse_xml_text (input:string) (pos:nat) : parse_result xml_node =
+let parse_xml_text (ents:dtd_entity_table) (input:string) (pos:nat) : parse_result xml_node =
   let len = fs_byte_length input in
   let fuel = len - pos + 1 in
   if fuel >= 0 then
-    match parse_text_content input pos [] fuel with
+    match parse_text_content ents input pos [] fuel with
     | ParseOk text pos' ->
       if fs_byte_length text > 0 then ParseOk (XText text) pos'
       else ParseFail "empty text node" pos
@@ -779,7 +906,7 @@ let try_pseudo_attr (name:string) (input:string) (pos:nat) : option (string & na
           begin match skip_xml_space input pos4 with
           | ParseFail _ _ -> None
           | ParseOk () pos5 ->
-            begin match parse_attr_value input pos5 with
+            begin match parse_attr_value [] input pos5 with
             | ParseFail _ _ -> None
             | ParseOk v pos6 -> Some (v, pos6)
             end
@@ -823,7 +950,7 @@ let parse_xml_declaration (input:string) (pos:nat) : parse_result (list xml_attr
             begin match skip_xml_space input pos4 with
             | ParseFail msg fpos -> ParseFail msg fpos
             | ParseOk () pos5 ->
-              begin match parse_attr_value input pos5 with
+              begin match parse_attr_value [] input pos5 with
               | ParseFail msg fpos -> ParseFail msg fpos
               | ParseOk vernum pos6 ->
                 if not (is_version_num vernum) then
@@ -884,7 +1011,7 @@ let parse_xml_declaration (input:string) (pos:nat) : parse_result (list xml_attr
 // on the same triple count parsed fine, since those parsers are
 // already accumulator-based. `acc` accumulates children in reverse;
 // every ParseOk exit reverses once via List.Tot.rev.
-let rec parse_children (input:string) (pos:nat) (fuel:nat) (acc:list xml_node)
+let rec parse_children (ents:dtd_entity_table) (input:string) (pos:nat) (fuel:nat) (acc:list xml_node)
   : Tot (parse_result (list xml_node)) (decreases fuel) =
   if fuel = 0 then ParseOk (List.Tot.rev acc) pos
   else
@@ -900,11 +1027,11 @@ let rec parse_children (input:string) (pos:nat) (fuel:nat) (acc:list xml_node)
           else if ch2 = '!' then
             begin match parse_xml_comment input pos with
             | ParseOk comment pos' ->
-              parse_children input pos' (fuel - 1) (comment :: acc)
+              parse_children ents input pos' (fuel - 1) (comment :: acc)
             | ParseFail _ _ ->
               begin match parse_xml_cdata input pos with
               | ParseOk cdata pos' ->
-                parse_children input pos' (fuel - 1) (cdata :: acc)
+                parse_children ents input pos' (fuel - 1) (cdata :: acc)
               | ParseFail msg fpos -> ParseFail msg fpos
               end
             end
@@ -913,25 +1040,25 @@ let rec parse_children (input:string) (pos:nat) (fuel:nat) (acc:list xml_node)
                an XPI child so processing-instruction() and XSLT can see
                it. *)
             begin match parse_xml_pi input pos with
-            | ParseOk pi_node pos' -> parse_children input pos' (fuel - 1) (pi_node :: acc)
+            | ParseOk pi_node pos' -> parse_children ents input pos' (fuel - 1) (pi_node :: acc)
             | ParseFail msg fpos -> ParseFail msg fpos
             end
           else
-            begin match parse_xml_element input pos (fuel - 1) with
+            begin match parse_xml_element ents input pos (fuel - 1) with
             | ParseOk elem pos' ->
-              parse_children input pos' (fuel - 1) (elem :: acc)
+              parse_children ents input pos' (fuel - 1) (elem :: acc)
             | ParseFail msg fpos -> ParseFail msg fpos
             end
         else ParseFail "unexpected end after '<'" pos
       else
-        match parse_xml_text input pos with
+        match parse_xml_text ents input pos with
         | ParseOk text_node pos' ->
           if pos' = pos then ParseOk (List.Tot.rev acc) pos
           else
-            parse_children input pos' (fuel - 1) (text_node :: acc)
+            parse_children ents input pos' (fuel - 1) (text_node :: acc)
         | ParseFail _ _ -> ParseOk (List.Tot.rev acc) pos
 
-and parse_xml_element (input:string) (pos:nat) (fuel:nat)
+and parse_xml_element (ents:dtd_entity_table) (input:string) (pos:nat) (fuel:nat)
   : Tot (parse_result xml_node) (decreases fuel) =
   if fuel = 0 then ParseFail "element nesting too deep (out of fuel)" pos
   else
@@ -941,7 +1068,7 @@ and parse_xml_element (input:string) (pos:nat) (fuel:nat)
       | ParseOk tag pos2 ->
         let len = fs_byte_length input in
         let attr_fuel = if pos2 <= len then len - pos2 + 1 else 1 in
-        begin match parse_attributes input pos2 attr_fuel with
+        begin match parse_attributes ents input pos2 attr_fuel with
         | ParseOk attrs pos3 ->
           begin match skip_xml_space input pos3 with
           | ParseOk () pos4 ->
@@ -951,7 +1078,7 @@ and parse_xml_element (input:string) (pos:nat) (fuel:nat)
             | ParseFail _ _ ->
               begin match pchar '>' input pos4 with
               | ParseOk _ pos5 ->
-                begin match parse_children input pos5 (fuel - 1) [] with
+                begin match parse_children ents input pos5 (fuel - 1) [] with
                 | ParseOk children pos6 ->
                   begin match pstring "</" input pos6 with
                   | ParseOk _ pos7 ->
@@ -988,6 +1115,246 @@ and parse_xml_element (input:string) (pos:nat) (fuel:nat)
       | ParseFail msg fpos -> ParseFail msg fpos
       end
     | ParseFail msg fpos -> ParseFail msg fpos
+
+
+(* ================================================================ *)
+(* DOCTYPE / internal-subset parser (Stage A: WF-only)               *)
+(*                                                                   *)
+(* doctypedecl ::= '<!DOCTYPE' S Name (S ExternalID)? S?             *)
+(*                 ('[' intSubset ']' S?)? '>'                       *)
+(*                                                                   *)
+(* We recognise the DOCTYPE, collect `<!ENTITY name "value">` GENERAL *)
+(* internal entity declarations from the internal subset into a       *)
+(* dtd_entity_table, and PARSE-AND-SKIP every other internal-subset   *)
+(* construct (`<!ELEMENT>`, `<!ATTLIST>`, `<!NOTATION>`, parameter    *)
+(* entities `<!ENTITY % ...>`, external `<!ENTITY name SYSTEM/PUBLIC  *)
+(* ...>`, comments, PIs, PEReferences, whitespace) structurally,      *)
+(* without acting on them. An ExternalID on the DOCTYPE itself is     *)
+(* skipped (respecting its quoted literals) but NOT loaded -- this is *)
+(* a non-validating processor that reads nothing external. Validity   *)
+(* (content models, ATTLIST enforcement, ID/IDREF), external-subset   *)
+(* loading, conditional sections, and full parameter-entity semantics *)
+(* are out of scope (Stage B / later).                               *)
+(* ================================================================ *)
+
+// Consume a quoted literal ("..." or '...') whose opening quote has
+// already been consumed; `q` is the quote char. Returns the position
+// after the closing quote.
+let rec skip_quoted_literal (input:string) (pos:nat) (q:char) (fuel:nat)
+  : Tot (parse_result unit) (decreases fuel) =
+  if fuel = 0 then ParseFail "unterminated literal" pos
+  else
+    let len = fs_byte_length input in
+    if pos >= len then ParseFail "unterminated literal" pos
+    else if fs_byte_index input pos = q then ParseOk () (pos + 1)
+    else skip_quoted_literal input (pos + 1) q (fuel - 1)
+
+// Consume bytes up to and including the next top-level '>', treating
+// quoted literals opaquely so a '>' inside a "..."/'...' literal does
+// not terminate the declaration. Used to structurally skip markup
+// declarations we do not interpret.
+let rec skip_decl_to_gt (input:string) (pos:nat) (fuel:nat)
+  : Tot (parse_result unit) (decreases fuel) =
+  if fuel = 0 then ParseFail "unterminated markup declaration" pos
+  else
+    let len = fs_byte_length input in
+    if pos >= len then ParseFail "unterminated markup declaration" pos
+    else
+      let ch = fs_byte_index input pos in
+      if ch = '>' then ParseOk () (pos + 1)
+      else if ch = '"' || ch = '\'' then
+        begin match skip_quoted_literal input (pos + 1) ch (fuel - 1) with
+        | ParseOk () pos' -> skip_decl_to_gt input pos' (fuel - 1)
+        | ParseFail msg fpos -> ParseFail msg fpos
+        end
+      else skip_decl_to_gt input (pos + 1) (fuel - 1)
+
+// Read the raw characters of an EntityValue up to (not including) the
+// closing quote `q`, returning them verbatim (no reference expansion --
+// that happens lazily at the reference site). Advances past the closer.
+let rec read_entity_value_raw (input:string) (pos:nat) (q:char) (acc:list char) (fuel:nat)
+  : Tot (parse_result string) (decreases fuel) =
+  if fuel = 0 then ParseFail "unterminated entity value" pos
+  else
+    let len = fs_byte_length input in
+    if pos >= len then ParseFail "unterminated entity value" pos
+    else
+      let ch = fs_byte_index input pos in
+      if ch = q then ParseOk (String.string_of_list (List.Tot.rev acc)) (pos + 1)
+      else read_entity_value_raw input (pos + 1) q (ch :: acc) (fuel - 1)
+
+// Consume a PEReference '%' Name ';' inside the internal subset (we do
+// not expand it -- Stage A). `pos` points just after the '%'.
+let rec skip_pe_reference (input:string) (pos:nat) (fuel:nat)
+  : Tot (parse_result unit) (decreases fuel) =
+  if fuel = 0 then ParseFail "unterminated parameter-entity reference" pos
+  else
+    let len = fs_byte_length input in
+    if pos >= len then ParseFail "unterminated parameter-entity reference" pos
+    else if fs_byte_index input pos = ';' then ParseOk () (pos + 1)
+    else skip_pe_reference input (pos + 1) (fuel - 1)
+
+// Parse one `<!ENTITY ...>` declaration (the leading "<!ENTITY" is at
+// `pos`). A general internal entity (`<!ENTITY Name "value">`) is added
+// to `ents` (first declaration wins; a later duplicate is ignored, per
+// XML 1.0 §4.2). Parameter entities (`<!ENTITY % ...>`) and external
+// entities (SYSTEM/PUBLIC) are skipped without adding a binding.
+let parse_entity_decl (input:string) (pos:nat) (ents:dtd_entity_table)
+  : parse_result dtd_entity_table =
+  let len = fs_byte_length input in
+  match pstring "<!ENTITY" input pos with
+  | ParseFail msg fpos -> ParseFail msg fpos
+  | ParseOk _ p1 ->
+    begin match ptake_while1_pos is_xml_space input p1 with
+    | ParseFail msg fpos -> ParseFail msg fpos
+    | ParseOk _ p2 ->
+      if p2 < len && fs_byte_index input p2 = '%' then
+        // Parameter entity -- skip structurally.
+        begin match skip_decl_to_gt input p2 (len + 1) with
+        | ParseOk () p' -> ParseOk ents p'
+        | ParseFail msg fpos -> ParseFail msg fpos
+        end
+      else
+        begin match parse_xml_name input p2 with
+        | ParseFail msg fpos -> ParseFail msg fpos
+        | ParseOk name p3 ->
+          begin match ptake_while1_pos is_xml_space input p3 with
+          | ParseFail msg fpos -> ParseFail msg fpos
+          | ParseOk _ p4 ->
+            if p4 < len && (fs_byte_index input p4 = '"' || fs_byte_index input p4 = '\'') then
+              let q = fs_byte_index input p4 in
+              begin match read_entity_value_raw input (p4 + 1) q [] (len + 1) with
+              | ParseFail msg fpos -> ParseFail msg fpos
+              | ParseOk rawval p5 ->
+                begin match skip_decl_to_gt input p5 (len + 1) with
+                | ParseFail msg fpos -> ParseFail msg fpos
+                | ParseOk () p6 ->
+                  let ents' =
+                    match lookup_entity name ents with
+                    | Some _ -> ents
+                    | None -> (name, rawval) :: ents
+                  in
+                  ParseOk ents' p6
+                end
+              end
+            else
+              // External entity (SYSTEM/PUBLIC) or otherwise -- skip.
+              begin match skip_decl_to_gt input p4 (len + 1) with
+              | ParseOk () p' -> ParseOk ents p'
+              | ParseFail msg fpos -> ParseFail msg fpos
+              end
+          end
+        end
+    end
+
+// Parse the internal subset body (from just after '[') up to and
+// including the ']'. Collects general entity declarations; skips the
+// rest structurally.
+let rec parse_int_subset (input:string) (pos:nat) (ents:dtd_entity_table) (fuel:nat)
+  : Tot (parse_result dtd_entity_table) (decreases fuel) =
+  if fuel = 0 then ParseFail "internal subset too long" pos
+  else
+    let len = fs_byte_length input in
+    if pos >= len then ParseFail "unterminated internal subset (missing ']')" pos
+    else
+      let ch = fs_byte_index input pos in
+      if ch = ']' then ParseOk ents (pos + 1)
+      else if is_xml_space ch then parse_int_subset input (pos + 1) ents (fuel - 1)
+      else if ch = '%' then
+        begin match skip_pe_reference input (pos + 1) (len - pos + 1) with
+        | ParseOk () pos' -> parse_int_subset input pos' ents (fuel - 1)
+        | ParseFail msg fpos -> ParseFail msg fpos
+        end
+      else if ch = '<' then
+        begin match pstring "<!--" input pos with
+        | ParseOk _ _ ->
+          begin match parse_xml_comment input pos with
+          | ParseOk _ pos' -> parse_int_subset input pos' ents (fuel - 1)
+          | ParseFail msg fpos -> ParseFail msg fpos
+          end
+        | ParseFail _ _ ->
+          begin match pstring "<!ENTITY" input pos with
+          | ParseOk _ _ ->
+            begin match parse_entity_decl input pos ents with
+            | ParseOk ents' pos' -> parse_int_subset input pos' ents' (fuel - 1)
+            | ParseFail msg fpos -> ParseFail msg fpos
+            end
+          | ParseFail _ _ ->
+            begin match pstring "<?" input pos with
+            | ParseOk _ _ ->
+              begin match parse_xml_pi input pos with
+              | ParseOk _ pos' -> parse_int_subset input pos' ents (fuel - 1)
+              | ParseFail msg fpos -> ParseFail msg fpos
+              end
+            | ParseFail _ _ ->
+              begin match pstring "<!" input pos with
+              | ParseOk _ _ ->
+                // <!ELEMENT ...> / <!ATTLIST ...> / <!NOTATION ...> and
+                // any other markup declaration -- skip structurally.
+                begin match skip_decl_to_gt input pos (len - pos + 1) with
+                | ParseOk () pos' -> parse_int_subset input pos' ents (fuel - 1)
+                | ParseFail msg fpos -> ParseFail msg fpos
+                end
+              | ParseFail _ _ -> ParseFail "malformed internal subset declaration" pos
+              end
+            end
+          end
+        end
+      else ParseFail "unexpected character in internal subset" pos
+
+// Scan (respecting quoted literals) up to the next top-level '[' or '>'
+// without consuming it -- used to step over the DOCTYPE's optional
+// ExternalID (SYSTEM/PUBLIC + literals) and surrounding whitespace.
+let rec skip_to_subset_or_gt (input:string) (pos:nat) (fuel:nat)
+  : Tot (parse_result unit) (decreases fuel) =
+  if fuel = 0 then ParseFail "unterminated DOCTYPE" pos
+  else
+    let len = fs_byte_length input in
+    if pos >= len then ParseFail "unterminated DOCTYPE" pos
+    else
+      let ch = fs_byte_index input pos in
+      if ch = '[' || ch = '>' then ParseOk () pos
+      else if ch = '"' || ch = '\'' then
+        begin match skip_quoted_literal input (pos + 1) ch (fuel - 1) with
+        | ParseOk () pos' -> skip_to_subset_or_gt input pos' (fuel - 1)
+        | ParseFail msg fpos -> ParseFail msg fpos
+        end
+      else skip_to_subset_or_gt input (pos + 1) (fuel - 1)
+
+// doctypedecl. On success returns the collected general-entity table and
+// the position just after the closing '>'. Fails (ParseFail) if there is
+// no '<!DOCTYPE' here, or if the DOCTYPE is structurally malformed.
+let parse_doctype (input:string) (pos:nat) : parse_result dtd_entity_table =
+  let len = fs_byte_length input in
+  match pstring "<!DOCTYPE" input pos with
+  | ParseFail msg fpos -> ParseFail msg fpos
+  | ParseOk _ p1 ->
+    begin match ptake_while1_pos is_xml_space input p1 with
+    | ParseFail msg fpos -> ParseFail msg fpos
+    | ParseOk _ p2 ->
+      begin match parse_xml_name input p2 with
+      | ParseFail msg fpos -> ParseFail msg fpos
+      | ParseOk _root p3 ->
+        begin match skip_to_subset_or_gt input p3 (len + 1) with
+        | ParseFail msg fpos -> ParseFail msg fpos
+        | ParseOk () p4 ->
+          if p4 < len && fs_byte_index input p4 = '[' then
+            begin match parse_int_subset input (p4 + 1) [] (len + 1) with
+            | ParseFail msg fpos -> ParseFail msg fpos
+            | ParseOk ents p5 ->
+              begin match skip_xml_space input p5 with
+              | ParseFail msg fpos -> ParseFail msg fpos
+              | ParseOk () p6 ->
+                if p6 < len && fs_byte_index input p6 = '>' then ParseOk ents (p6 + 1)
+                else ParseFail "DOCTYPE: expected '>' after internal subset" p6
+              end
+            end
+          else if p4 < len && fs_byte_index input p4 = '>' then
+            ParseOk [] (p4 + 1)
+          else ParseFail "DOCTYPE: expected '[' or '>'" p4
+        end
+      end
+    end
 
 
 (* ================================================================ *)
@@ -1076,11 +1443,27 @@ let parse_xml_document (input:string) : option xml_node =
   in
   begin match skip_misc input pos1 fuel with
   | ParseOk () pos2 ->
-    begin match parse_xml_element input pos2 fuel with
-    | ParseOk root pos3 ->
-      begin match skip_epilog_misc input pos3 fuel with
-      | ParseOk () pos4 ->
-        if pos4 >= fs_byte_length input then Some root else None
+    // Prolog ::= XMLDecl? Misc* (doctypedecl Misc*)?. At most one
+    // doctypedecl may appear here, before the root element. If the
+    // DOCTYPE is present and well-formed, collect its general-entity
+    // table; if there is no DOCTYPE, parse_doctype fails fast and we
+    // continue with an empty table. A DOCTYPE that IS present but
+    // structurally malformed leaves pos at the '<!DOCTYPE', where
+    // parse_xml_element rejects it (the document is then not-wf).
+    let (ents, pos_dt) =
+      match parse_doctype input pos2 with
+      | ParseOk e p -> (e, p)
+      | ParseFail _ _ -> ([], pos2)
+    in
+    begin match skip_misc input pos_dt fuel with
+    | ParseOk () pos3 ->
+      begin match parse_xml_element ents input pos3 fuel with
+      | ParseOk root pos4 ->
+        begin match skip_epilog_misc input pos4 fuel with
+        | ParseOk () pos5 ->
+          if pos5 >= fs_byte_length input then Some root else None
+        | ParseFail _ _ -> None
+        end
       | ParseFail _ _ -> None
       end
     | ParseFail _ _ -> None

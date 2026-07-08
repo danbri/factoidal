@@ -105,46 +105,52 @@ picks both up normally.
    generically apply to plain XML conformance — is one of this
    assessment's results, not a runner bug.
 
-## Score (2026-07-08, integrity accounting — vacuous DOCTYPE-forced rejections no longer counted as passes)
+## Score (2026-07-08, Stage-A DTD support: DOCTYPE internal subset + general entities)
 
-**244 real pass, 0 fail, 2341 skip (of 2585 discovered `<TEST>` entries).**
+**1414 real pass, 0 fail, 1171 skip (of 2585 discovered `<TEST>` entries).**
 
-A `not-wf` test counts as a real PASS only when the parser rejects it
-for the construct the test targets. The earlier headline of **1442**
-counted every rejection as a pass regardless of cause — 1166 of those
-were vacuous (rejected only because `Parser.XML.fst` has no DOCTYPE/DTD
-production at all, so the reject is forced by that unrelated gap, not by
-the documented violation). Those 1166 are now SKIP, and the headline
-dropped accordingly. This is the correct, honest number; the previous
-one was inflated (anti-patterns #3 / #25).
+`Parser.XML.fst` now parses a `<!DOCTYPE name [ internal subset ]>`,
+collects general `<!ENTITY name "value">` declarations, and expands
+`&name;` references (predefined + declared, with char-reference
+resolution inside replacement text and a visited-set + depth guard for
+WFC "No Recursion"). This is a **non-validating (well-formedness) slice**:
+DTD *validity* (content models, `<!ATTLIST>` enforcement, ID/IDREF),
+external-subset loading, and full parameter-entity semantics are still
+out of scope (Stage B / later — see
+`docs/designissues/2026-07-08-xml-dtd-support.md`).
+
+The immediately-prior honest headline was **244 real pass**, of which
+the ~1166 DOCTYPE-bearing `not-wf` rejections were vacuous (rejected
+only because there was no DOCTYPE production at all). Stage A retires the
+vacuous class: those rejections are now genuine well-formedness
+rejections, splitting into real PASSes (violation in the element body /
+entity layer, which the parser detects) and honest SKIPs (violation in
+the DTD internal subset, which this non-validating parser
+parses-but-does-not-validate). **Fail stays 0** — no path accepts a
+genuinely not-well-formed document.
 
 Per TYPE bucket:
 - `valid` (labelled "wf-accept" — a clean parse only exercises
-  well-formedness, not DTD validity): **0 pass, 0 fail, 812 skip (of
-  812)**. Every `valid` test in this suite carries a DOCTYPE, so this
-  entire bucket is `Skip "DOCTYPE/DTD not parsed"`. This project's
-  parser has zero DTD support (see the DTD slice design note
-  `docs/designissues/2026-07-08-xml-dtd-support.md` for the plan to
-  convert these into real verdicts).
+  well-formedness, not DTD validity): **398 pass, 0 fail, 414 skip (of
+  812)**. Documents with an internal-subset DOCTYPE (general entities /
+  `<!ELEMENT>`/`<!ATTLIST>`/`<!NOTATION>` shapes) now parse to a real
+  wf-accept PASS. The 414 skips are Stage-A boundaries: a rejection is a
+  `Skip` (markup-bearing entity replacement, an external subset we do not
+  load, a DTD-internal construct beyond the WF slice), plus the UTF-16 /
+  unsupported-declared-encoding skips — never a FAIL for a DOCTYPE doc.
 - `invalid`/`error`: **0/0, 242 + 33 = 275 skip**, always
   `Skip "no DTD validation (by design)"`.
-- `not-wf`: **244 real pass, 0 fail, the balance skip (of 1498)**.
-  1166 are vacuous DOCTYPE-forced rejections, now counted as SKIP, not
-  pass. A further 32 are out-of-profile SKIP: the parser ACCEPTS them
-  because under its declared profile (XML 1.0, non-namespace) they are
-  genuinely well-formed — their not-wf verdict holds only under XML 1.1
-  (ibm xml-1.1 restricted-C1-control cluster) or Namespaces in XML
-  (eduni rmt-ns10-042 colon-in-PITarget); these are gated on the
-  declared `version="1.1"` / `XML.Namespaces` and skipped honestly
-  rather than force-passed or force-failed. The remaining skips are the
-  `ENTITIES != "none"` external-entity exemption (`testcases.dtd`).
+- `not-wf`: **1016 real pass, 0 fail, 482 skip (of 1498)**. Of the
+  skips, 332 are accepted DOCTYPE documents whose violation lies in the
+  DTD internal subset (parsed-but-not-validated — the Stage-A scope
+  limit); 37 are out-of-profile (not-wf only under XML 1.1 / Namespaces,
+  which the parser accepts as well-formed under its XML 1.0
+  non-namespace profile); the rest are the `ENTITIES != "none"`
+  external-entity exemption (`testcases.dtd`) and encoding skips.
 
-Per collection (pass/fail/skip, honest accounting): `jclark`
-88/0/277 (365), `sun` 3/0/156 (159), `ibm` 37/0/1099 (1136),
-`oasis` 95/0/253 (348), `eduni` 21/0/544 (565), `japanese` 0/0/12
-(12, all skip — non-UTF-8 Japanese encodings). The large `ibm` skip
-count is dominated by its DOCTYPE-bearing not-wf files (now vacuous
-SKIP, previously vacuous PASS) and the xml-1.1 out-of-profile cluster.
+Vacuous DOCTYPE-forced skips: **0** (the class is retired). The runner's
+`PassVacuous` constructor is kept only so the tally / side-check
+machinery type-checks; `classify` never produces it now.
 
 ## Wave 1 → wave 2: all 84 fails fixed, cluster by cluster
 

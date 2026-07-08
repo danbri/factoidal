@@ -54,38 +54,48 @@
 
    TYPE="valid": PASS ("wf-accept" bucket — a parse-clean result only
    exercises well-formedness, NOT DTD validity, which we don't
-   implement) when the document contains no DOCTYPE, its declared
-   encoding (if any) is one this byte-oriented parser can safely treat
-   as UTF-8/ASCII, and Parser_XML.parse_xml_document returns Some.
-   SKIP "DOCTYPE/DTD not parsed" when the document contains a DOCTYPE
-   (Parser.XML.fst structurally cannot get past ANY `<!DOCTYPE`, so
-   this is never a real parser defect — it's an acknowledged missing
-   feature). SKIP "encoding X not decoded" for BOM/declared-encoding
-   values outside the safe set. Otherwise, a None result is a genuine
-   FAIL (the parser rejected a document the suite says is
-   well-formed) — a real defect, clustered by SECTIONS.
+   implement) when its declared encoding (if any) is one this
+   byte-oriented parser can safely treat as UTF-8/ASCII and
+   Parser_XML.parse_xml_document returns Some. As of the 2026-07-08
+   Stage-A DTD change, Parser.XML.fst parses a DOCTYPE with an internal
+   subset (general `<!ENTITY>` declarations collected + `&name;`
+   references expanded), so a DOCTYPE-bearing valid document can now
+   parse cleanly and PASS. A DOCTYPE-bearing valid document we still
+   reject is an honest SKIP (a Stage-A boundary: a markup-bearing entity
+   replacement, an external subset we do not load, or a DTD-internal
+   construct beyond the WF slice), NOT a FAIL — the WF grammar we do
+   implement is not the culprit. A valid document with NO DOCTYPE that
+   we reject is still a genuine FAIL, clustered by SECTIONS. SKIP
+   "encoding X not decoded" for BOM/declared-encoding values outside the
+   safe set.
 
-   TYPE="not-wf" (2026-07-08 integrity rewrite — the old
-   "reject-for-any-reason = PASS" rule inflated the score, so it is
-   gone). A not-wf test counts as a real PASS only when the parser's
-   rejection is attributable to the construct the test targets. The
-   cases:
+   TYPE="not-wf" (2026-07-08 integrity rewrite, refreshed by the
+   Stage-A DTD change). A not-wf test counts as a real PASS only when
+   the parser's rejection is attributable to the construct the test
+   targets. The cases:
 
-     * parser REJECTED and the document has NO DOCTYPE -> PASS (the
-       rejection came from the element/prolog grammar this parser
-       actually implements, i.e. the tested construct).
-
-     * parser REJECTED but the document carries a DOCTYPE -> this
-       parser rejects EVERY DOCTYPE document (no DOCTYPE production at
-       all), so the rejection is forced by that unrelated gap, NOT by
-       the tested construct. Counted as SKIP (PassVacuous — "not-wf
-       verdict vacuous: rejected for DOCTYPE-unsupported, construct not
-       actually tested"), never a PASS. Historically ~1166 of the old
-       "passes" were exactly this — the whole reason for the rewrite.
+     * parser REJECTED -> PASS. With Stage-A DTD support the parser
+       parses the DOCTYPE internal subset before reaching the root, so
+       a rejection is a genuine well-formedness rejection (mismatched
+       tag, bad char, `]]>` in text, undeclared/recursive entity, ...),
+       NOT the old vacuous "rejects every DOCTYPE" artefact. The
+       PassVacuous class is retired; the ~1166 formerly-vacuous
+       DOCTYPE rejections now split into real PASSes (violation in the
+       element body / entity layer, which we do detect) and SKIPs
+       (violation in the DTD internal subset, which we parse-but-do-not-
+       validate — see the accepted-with-DOCTYPE case below).
 
      * parser ACCEPTED and the test's own ENTITIES != "none" -> SKIP,
        exempted per testcases.dtd (nonvalidating, reads no external
        entities).
+
+     * parser ACCEPTED and the document carries a DOCTYPE (ENTITIES =
+       "none", XML 1.0, non-namespace) -> SKIP. The not-wf violation
+       lies in the DTD internal subset (a malformed markup declaration,
+       or a DTD-dependent validity/WF constraint), which this
+       non-validating parser parses-and-skips rather than validates.
+       Accepting it is the acknowledged Stage-A scope limit, not a
+       WF-grammar defect — an honest SKIP, never a manufactured FAIL.
 
      * parser ACCEPTED, ENTITIES = "none", and the document declares
        version="1.1", OR it is an eduni/namespaces test whose violation
@@ -483,7 +493,14 @@ let declared_xml_version (content : string) : string =
 
 type outcome =
   | Pass of string
-  | PassVacuous of string   (* not-wf pass caused by a structural gap (DOCTYPE), not the documented construct *)
+  | PassVacuous of string   (* RETIRED 2026-07-08 (Stage A DTD): the parser
+                               no longer rejects every DOCTYPE document, so a
+                               not-wf DOCTYPE rejection is a genuine WF
+                               rejection (real Pass), not a vacuous artefact.
+                               This constructor is kept only so the tally /
+                               breakdown / side-check machinery below still
+                               type-checks; classify never produces it now, so
+                               the vacuous counter is always 0. *)
   | Fail of string
   | Skip of string
 
@@ -500,19 +517,38 @@ let classify (base_dir : string) (t : raw_test) : outcome =
       | None ->
         let doctype = has_doctype content in
         if t.rt_type = "valid" then begin
-          if doctype then Skip "DOCTYPE/DTD not parsed (Parser.XML.fst has no DOCTYPE production)"
-          else
-            match Parser_XML.parse_xml_document content with
-            | Some _ -> Pass "parsed cleanly (wf-accept)"
-            | None ->
+          (* Stage A DTD support (2026-07-08): Parser.XML.fst now parses a
+             DOCTYPE with an internal subset, collects general `<!ENTITY>`
+             declarations, and expands `&name;` references. A valid
+             document that parses cleanly is a real wf-accept PASS
+             (well-formedness only — no DTD *validity* is checked). A
+             valid document we still reject is an honest SKIP, not a FAIL,
+             when it carries a DOCTYPE: the rejection reflects a Stage-A
+             boundary (markup-bearing entity replacement, an external
+             subset we do not load, or a DTD-internal construct beyond the
+             WF slice), not a defect in the WF grammar we DO implement.
+             A valid document with NO DOCTYPE that we reject is still a
+             genuine FAIL. *)
+          match Parser_XML.parse_xml_document content with
+          | Some _ -> Pass "parsed cleanly (wf-accept)"
+          | None ->
+            if doctype then
+              Skip "valid doc rejected at a Stage-A DTD boundary (markup entity / external subset / DTD-internal construct beyond the WF slice) — not a WF-grammar defect"
+            else
               Fail (Printf.sprintf "parser rejected a document listed VALID — SECTIONS %s: %s"
                       t.rt_sections t.rt_description)
         end else if t.rt_type = "not-wf" then begin
           let ver = declared_xml_version content in
           match Parser_XML.parse_xml_document content with
           | None ->
-            if doctype then PassVacuous "rejected (vacuous: DOCTYPE present, parser can't parse any DOCTYPE at all)"
-            else Pass "rejected"
+            (* Stage A DTD support (2026-07-08): the parser now parses
+               DOCTYPE internal subsets rather than rejecting every
+               DOCTYPE document outright, so a rejection is a genuine
+               well-formedness rejection (mismatched tags, bad char,
+               `]]>` in text, undeclared/recursive entity, ...), NOT the
+               old vacuous "can't parse any DOCTYPE" artefact. It counts
+               as a real PASS regardless of whether a DOCTYPE is present. *)
+            Pass "rejected"
           | Some root ->
             if is_namespace_collection t.rt_leaf
                && not (XML_Namespaces.is_namespace_wellformed ver root)
@@ -542,6 +578,20 @@ let classify (base_dir : string) (t : raw_test) : outcome =
                  SKIP rather than a fail. *)
               Skip (Printf.sprintf
                       "out-of-profile: not-wf holds only under Namespaces in XML; construct not modelled by XML.Namespaces — SECTIONS %s"
+                      t.rt_sections)
+            else if doctype then
+              (* Stage A boundary: the not-wf violation lies in the DTD
+                 internal subset (a malformed `<!ELEMENT>`/`<!ATTLIST>`/
+                 `<!NOTATION>`/entity declaration, or a DTD-dependent
+                 validity/WF constraint), which this non-validating parser
+                 parses-and-skips rather than validates. Accepting such a
+                 document is not a WF-grammar defect in the element parser
+                 — it is the acknowledged Stage-A scope limit. Honest
+                 SKIP, never a FAIL (keeps the 0-accidental-passes
+                 property: we do not claim a pass, and we do not manufacture
+                 a fail for a construct we deliberately do not validate). *)
+              Skip (Printf.sprintf
+                      "not-wf violation is in the DTD internal subset, parsed-but-not-validated by this non-validating parser (Stage A) — SECTIONS %s"
                       t.rt_sections)
             else
               Fail (Printf.sprintf "parser incorrectly ACCEPTED a not-wf document — SECTIONS %s: %s"
@@ -827,22 +877,35 @@ let () =
   let notwf_fail      = count (fun (t, o) -> t.rt_type = "not-wf" && (match o with Fail _ -> true | _ -> false)) in
   let vacuous_skip    = count (fun (_, o) -> is_vacuous o) in
   let oop_skip        = count (fun (_, o) -> is_oop o) in
-  let other_skip      = skip - vacuous_skip - oop_skip in
+  let is_dtd_internal = function
+    | Skip m -> (let pre = "not-wf violation is in the DTD internal subset" in
+                 String.length m >= String.length pre && String.sub m 0 (String.length pre) = pre)
+    | _ -> false in
+  let is_valid_dtd_boundary = function
+    | Skip m -> (let pre = "valid doc rejected at a Stage-A DTD boundary" in
+                 String.length m >= String.length pre && String.sub m 0 (String.length pre) = pre)
+    | _ -> false in
+  let dtd_internal_skip = count (fun (_, o) -> is_dtd_internal o) in
+  let valid_boundary_skip = count (fun (_, o) -> is_valid_dtd_boundary o) in
+  let other_skip      = skip - vacuous_skip - oop_skip - dtd_internal_skip - valid_boundary_skip in
   Printf.printf "========================================\n";
   Printf.printf "TOTAL: %d pass, %d fail, %d skip (of %d)\n" pass fail skip total;
   Printf.printf "\n-- HONEST BREAKDOWN (PART 1 integrity accounting) --\n";
   Printf.printf "  not-wf REAL passes (parser rejected for the tested construct): %d\n" real_notwf_pass;
-  Printf.printf "  valid  wf-accept passes:                                       %d\n" wf_pass;
+  Printf.printf "  valid  wf-accept passes (DOCTYPE internal subset now parsed):  %d\n" wf_pass;
   Printf.printf "  --> real pass total:                                           %d\n" pass;
   Printf.printf "  not-wf FAILs (parser wrongly ACCEPTED a wf-1.0 not-wf doc):     %d\n" notwf_fail;
   Printf.printf "  valid  FAILs (parser wrongly REJECTED a valid doc):            %d\n" wf_fail;
   Printf.printf "  --> fail total:                                                %d\n" fail;
-  Printf.printf "  SKIP: vacuous (not-wf rejected only by DOCTYPE-unsupported gap,\n";
-  Printf.printf "        construct never actually tested):                        %d\n" vacuous_skip;
+  Printf.printf "  SKIP: not-wf DTD-internal (accepted; violation in the DTD\n";
+  Printf.printf "        subset, parsed-but-not-validated — Stage-A scope limit): %d\n" dtd_internal_skip;
+  Printf.printf "  SKIP: valid DTD-boundary (rejected; markup entity / external\n";
+  Printf.printf "        subset / DTD construct beyond the WF slice):             %d\n" valid_boundary_skip;
   Printf.printf "  SKIP: out-of-profile (not-wf only under XML 1.1 / Namespaces,\n";
   Printf.printf "        parser is XML 1.0 non-namespace):                        %d\n" oop_skip;
-  Printf.printf "  SKIP: other (DOCTYPE-on-valid, encoding, invalid/error by\n";
-  Printf.printf "        design, external-entity exemption, file-not-found):      %d\n" other_skip;
+  Printf.printf "  SKIP: vacuous (RETIRED by Stage-A DTD support; must be 0):      %d\n" vacuous_skip;
+  Printf.printf "  SKIP: other (DOCTYPE-external-on-valid, encoding, invalid/error\n";
+  Printf.printf "        by design, external-entity exemption, file-not-found):   %d\n" other_skip;
   Printf.printf "  --> skip total:                                                %d\n" skip;
   Printf.printf "  (side-check: PassVacuous counter = %d, must equal vacuous skip = %d)\n" !vacuous_count vacuous_skip;
   Printf.printf

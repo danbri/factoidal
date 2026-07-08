@@ -308,8 +308,159 @@ let codepoint_to_string (cp : Prims.int) : Prims.string=
                (Prims.strcat (byte_of_int b1)
                   (Prims.strcat (byte_of_int b2) (byte_of_int b3))))
           else "?"
-let parse_reference (input : Prims.string) (pos : Prims.nat) :
+type dtd_entity_table = (Prims.string * Prims.string) Prims.list
+let rec mem_str (x : Prims.string) (xs : Prims.string Prims.list) :
+  Prims.bool=
+  match xs with | [] -> false | h::t -> if h = x then true else mem_str x t
+let rec lookup_entity (name : Prims.string) (ents : dtd_entity_table) :
+  Prims.string FStar_Pervasives_Native.option=
+  match ents with
+  | [] -> FStar_Pervasives_Native.None
+  | (n, v)::rest ->
+      if n = name
+      then FStar_Pervasives_Native.Some v
+      else lookup_entity name rest
+let is_predefined_entity (name : Prims.string) : Prims.bool=
+  ((((name = "amp") || (name = "lt")) || (name = "gt")) || (name = "quot"))
+    || (name = "apos")
+let predefined_value (name : Prims.string) : Prims.string=
+  if name = "amp"
+  then "&"
+  else
+    if name = "lt"
+    then "<"
+    else if name = "gt" then ">" else if name = "quot" then "\"" else "'"
+let rec expand_entity_value (ents : dtd_entity_table)
+  (visited : Prims.string Prims.list) (s : Prims.string) (pos : Prims.nat)
+  (depth : Prims.nat) (budget : Prims.nat) (acc : Prims.string Prims.list) :
   Prims.string Parser_Combinators.parse_result=
+  if budget = Prims.int_zero
+  then Parser_Combinators.ParseFail ("entity replacement text too long", pos)
+  else
+    (let len = Parser_FastString.fs_byte_length s in
+     if pos >= len
+     then
+       Parser_Combinators.ParseOk
+         ((FStar_String.concat "" (FStar_List_Tot_Base.rev acc)), pos)
+     else
+       (let ch = Parser_FastString.fs_byte_index s pos in
+        if ch = 60
+        then
+          Parser_Combinators.ParseFail
+            ("entity replacement text contains markup ('<'); unsupported in Stage A",
+              pos)
+        else
+          if ch = 38
+          then
+            (if
+               ((pos + Prims.int_one) < len) &&
+                 ((Parser_FastString.fs_byte_index s (pos + Prims.int_one)) =
+                    35)
+             then
+               (if (pos + (Prims.of_int (2))) >= len
+                then
+                  Parser_Combinators.ParseFail
+                    ("unterminated character reference in entity", pos)
+                else
+                  (let ch2 =
+                     Parser_FastString.fs_byte_index s
+                       (pos + (Prims.of_int (2))) in
+                   if ch2 = 120
+                   then
+                     let cfuel =
+                       (len - (pos + (Prims.of_int (3)))) + Prims.int_one in
+                     match parse_ref_digits is_hex_digit_char s
+                             (pos + (Prims.of_int (3))) [] cfuel
+                     with
+                     | Parser_Combinators.ParseOk (digits, pos') ->
+                         let cp = chars_to_hex digits in
+                         (if is_valid_xml_char cp
+                          then
+                            expand_entity_value ents visited s pos' depth
+                              (budget - Prims.int_one)
+                              ((codepoint_to_string cp) :: acc)
+                          else
+                            Parser_Combinators.ParseFail
+                              ("character reference to a non-Char codepoint",
+                                pos'))
+                     | Parser_Combinators.ParseFail (msg, fpos) ->
+                         Parser_Combinators.ParseFail (msg, fpos)
+                   else
+                     (let cfuel =
+                        (len - (pos + (Prims.of_int (2)))) + Prims.int_one in
+                      match parse_ref_digits is_dec_digit_char s
+                              (pos + (Prims.of_int (2))) [] cfuel
+                      with
+                      | Parser_Combinators.ParseOk (digits, pos') ->
+                          let cp = chars_to_dec digits in
+                          if is_valid_xml_char cp
+                          then
+                            expand_entity_value ents visited s pos' depth
+                              (budget - Prims.int_one)
+                              ((codepoint_to_string cp) :: acc)
+                          else
+                            Parser_Combinators.ParseFail
+                              ("character reference to a non-Char codepoint",
+                                pos')
+                      | Parser_Combinators.ParseFail (msg, fpos) ->
+                          Parser_Combinators.ParseFail (msg, fpos))))
+             else
+               (match parse_xml_name s (pos + Prims.int_one) with
+                | Parser_Combinators.ParseFail (msg, fpos) ->
+                    Parser_Combinators.ParseFail (msg, fpos)
+                | Parser_Combinators.ParseOk (name, pos_n) ->
+                    if
+                      (pos_n >= len) ||
+                        ((Parser_FastString.fs_byte_index s pos_n) <> 59)
+                    then
+                      Parser_Combinators.ParseFail
+                        ("entity reference not terminated by ';'", pos_n)
+                    else
+                      (let pos' = pos_n + Prims.int_one in
+                       if is_predefined_entity name
+                       then
+                         expand_entity_value ents visited s pos' depth
+                           (budget - Prims.int_one) ((predefined_value name)
+                           :: acc)
+                       else
+                         if mem_str name visited
+                         then
+                           Parser_Combinators.ParseFail
+                             ("recursive entity reference (WFC: No Recursion)",
+                               pos)
+                         else
+                           (match lookup_entity name ents with
+                            | FStar_Pervasives_Native.None ->
+                                Parser_Combinators.ParseFail
+                                  ("reference to undeclared entity", pos)
+                            | FStar_Pervasives_Native.Some subval ->
+                                if depth = Prims.int_zero
+                                then
+                                  Parser_Combinators.ParseFail
+                                    ("entity nesting too deep", pos)
+                                else
+                                  (match expand_entity_value ents (name ::
+                                           visited) subval Prims.int_zero
+                                           (depth - Prims.int_one)
+                                           ((Parser_FastString.fs_byte_length
+                                               subval)
+                                              + Prims.int_one) []
+                                   with
+                                   | Parser_Combinators.ParseFail (msg, fpos)
+                                       ->
+                                       Parser_Combinators.ParseFail
+                                         (msg, fpos)
+                                   | Parser_Combinators.ParseOk (sub, uu___8)
+                                       ->
+                                       expand_entity_value ents visited s
+                                         pos' depth (budget - Prims.int_one)
+                                         (sub :: acc))))))
+          else
+            expand_entity_value ents visited s (pos + Prims.int_one) depth
+              (budget - Prims.int_one) ((FStar_String.string_of_char ch) ::
+              acc)))
+let parse_reference (ents : dtd_entity_table) (input : Prims.string)
+  (pos : Prims.nat) : Prims.string Parser_Combinators.parse_result=
   let len = Parser_FastString.fs_byte_length input in
   if pos >= len
   then Parser_Combinators.ParseFail ("unterminated reference", pos)
@@ -358,34 +509,41 @@ let parse_reference (input : Prims.string) (pos : Prims.nat) :
               | Parser_Combinators.ParseFail (msg, fpos) ->
                   Parser_Combinators.ParseFail (msg, fpos))))
      else
-       (match Parser_Combinators.pstring "amp;" input pos with
-        | Parser_Combinators.ParseOk (uu___2, pos') ->
-            Parser_Combinators.ParseOk ("&", pos')
-        | Parser_Combinators.ParseFail (uu___2, uu___3) ->
-            (match Parser_Combinators.pstring "lt;" input pos with
-             | Parser_Combinators.ParseOk (uu___4, pos') ->
-                 Parser_Combinators.ParseOk ("<", pos')
-             | Parser_Combinators.ParseFail (uu___4, uu___5) ->
-                 (match Parser_Combinators.pstring "gt;" input pos with
-                  | Parser_Combinators.ParseOk (uu___6, pos') ->
-                      Parser_Combinators.ParseOk (">", pos')
-                  | Parser_Combinators.ParseFail (uu___6, uu___7) ->
-                      (match Parser_Combinators.pstring "quot;" input pos
+       (match parse_xml_name input pos with
+        | Parser_Combinators.ParseFail (msg, fpos) ->
+            Parser_Combinators.ParseFail (msg, fpos)
+        | Parser_Combinators.ParseOk (name, pos_n) ->
+            if
+              (pos_n >= len) ||
+                ((Parser_FastString.fs_byte_index input pos_n) <> 59)
+            then
+              Parser_Combinators.ParseFail
+                ("entity reference not terminated by ';'", pos_n)
+            else
+              (let pos' = pos_n + Prims.int_one in
+               if is_predefined_entity name
+               then
+                 Parser_Combinators.ParseOk ((predefined_value name), pos')
+               else
+                 (match lookup_entity name ents with
+                  | FStar_Pervasives_Native.None ->
+                      Parser_Combinators.ParseFail
+                        ("reference to undeclared entity", pos)
+                  | FStar_Pervasives_Native.Some subval ->
+                      let depth =
+                        (FStar_List_Tot_Base.length ents) + Prims.int_one in
+                      (match expand_entity_value ents [name] subval
+                               Prims.int_zero depth
+                               ((Parser_FastString.fs_byte_length subval) +
+                                  Prims.int_one) []
                        with
-                       | Parser_Combinators.ParseOk (uu___8, pos') ->
-                           Parser_Combinators.ParseOk ("\"", pos')
-                       | Parser_Combinators.ParseFail (uu___8, uu___9) ->
-                           (match Parser_Combinators.pstring "apos;" input
-                                    pos
-                            with
-                            | Parser_Combinators.ParseOk (uu___10, pos') ->
-                                Parser_Combinators.ParseOk ("'", pos')
-                            | Parser_Combinators.ParseFail (uu___10, uu___11)
-                                ->
-                                Parser_Combinators.ParseFail
-                                  ("unknown entity reference", pos)))))))
-let rec parse_attr_value_body (qch : FStar_Char.char) (input : Prims.string)
-  (pos : Prims.nat) (acc : Prims.string Prims.list) (fuel : Prims.nat) :
+                       | Parser_Combinators.ParseFail (msg, fpos) ->
+                           Parser_Combinators.ParseFail (msg, fpos)
+                       | Parser_Combinators.ParseOk (decoded, uu___4) ->
+                           Parser_Combinators.ParseOk (decoded, pos'))))))
+let rec parse_attr_value_body (ents : dtd_entity_table)
+  (qch : FStar_Char.char) (input : Prims.string) (pos : Prims.nat)
+  (acc : Prims.string Prims.list) (fuel : Prims.nat) :
   Prims.string Parser_Combinators.parse_result=
   if fuel = Prims.int_zero
   then Parser_Combinators.ParseFail ("attribute value too long", pos)
@@ -408,9 +566,9 @@ let rec parse_attr_value_body (qch : FStar_Char.char) (input : Prims.string)
           else
             if ch = 38
             then
-              (match parse_reference input (pos + Prims.int_one) with
+              (match parse_reference ents input (pos + Prims.int_one) with
                | Parser_Combinators.ParseOk (decoded, pos') ->
-                   parse_attr_value_body qch input pos' (decoded :: acc)
+                   parse_attr_value_body ents qch input pos' (decoded :: acc)
                      (fuel - Prims.int_one)
                | Parser_Combinators.ParseFail (msg, fpos) ->
                    Parser_Combinators.ParseFail (msg, fpos))
@@ -429,16 +587,17 @@ let rec parse_attr_value_body (qch : FStar_Char.char) (input : Prims.string)
                         Parser_Combinators.ParseFail
                           ("invalid character in attribute value", pos)
                       else
-                        parse_attr_value_body qch input pos' (s :: acc)
+                        parse_attr_value_body ents qch input pos' (s :: acc)
                           (fuel - Prims.int_one))
                    else
-                     parse_attr_value_body qch input (pos + Prims.int_one)
+                     parse_attr_value_body ents qch input
+                       (pos + Prims.int_one)
                        ((FStar_String.string_of_char ch) :: acc)
                        (fuel - Prims.int_one)
                | Parser_Combinators.ParseFail (msg, fpos) ->
                    Parser_Combinators.ParseFail (msg, fpos))))
-let parse_attr_value (input : Prims.string) (pos : Prims.nat) :
-  Prims.string Parser_Combinators.parse_result=
+let parse_attr_value (ents : dtd_entity_table) (input : Prims.string)
+  (pos : Prims.nat) : Prims.string Parser_Combinators.parse_result=
   let len = Parser_FastString.fs_byte_length input in
   if pos >= len
   then Parser_Combinators.ParseFail ("expected attribute value", pos)
@@ -447,7 +606,7 @@ let parse_attr_value (input : Prims.string) (pos : Prims.nat) :
      if (qch = 34) || (qch = 39)
      then
        let fuel = len - pos in
-       parse_attr_value_body qch input (pos + Prims.int_one) [] fuel
+       parse_attr_value_body ents qch input (pos + Prims.int_one) [] fuel
      else
        Parser_Combinators.ParseFail
          ("expected quote to start attribute value", pos))
@@ -458,8 +617,8 @@ let skip_xml_space (input : Prims.string) (pos : Prims.nat) :
       Parser_Combinators.ParseOk ((), pos')
   | Parser_Combinators.ParseFail (msg, fpos) ->
       Parser_Combinators.ParseFail (msg, fpos)
-let parse_xml_attribute (input : Prims.string) (pos : Prims.nat) :
-  xml_attribute Parser_Combinators.parse_result=
+let parse_xml_attribute (ents : dtd_entity_table) (input : Prims.string)
+  (pos : Prims.nat) : xml_attribute Parser_Combinators.parse_result=
   match parse_xml_name input pos with
   | Parser_Combinators.ParseOk (name, pos1) ->
       (match skip_xml_space input pos1 with
@@ -468,7 +627,7 @@ let parse_xml_attribute (input : Prims.string) (pos : Prims.nat) :
             | Parser_Combinators.ParseOk (uu___, pos3) ->
                 (match skip_xml_space input pos3 with
                  | Parser_Combinators.ParseOk ((), pos4) ->
-                     (match parse_attr_value input pos4 with
+                     (match parse_attr_value ents input pos4 with
                       | Parser_Combinators.ParseOk (value, pos5) ->
                           Parser_Combinators.ParseOk
                             ({ attr_name = name; attr_value = value }, pos5)
@@ -487,8 +646,8 @@ let rec mem_attr_name (name : Prims.string)
   match attrs with
   | [] -> false
   | a::rest -> if a.attr_name = name then true else mem_attr_name name rest
-let rec parse_attributes (input : Prims.string) (pos : Prims.nat)
-  (fuel : Prims.nat) :
+let rec parse_attributes (ents : dtd_entity_table) (input : Prims.string)
+  (pos : Prims.nat) (fuel : Prims.nat) :
   xml_attribute Prims.list Parser_Combinators.parse_result=
   if fuel = Prims.int_zero
   then Parser_Combinators.ParseOk ([], pos)
@@ -504,9 +663,9 @@ let rec parse_attributes (input : Prims.string) (pos : Prims.nat)
               let ch = Parser_FastString.fs_byte_index input pos1 in
               (if is_name_start_char ch
                then
-                 match parse_xml_attribute input pos1 with
+                 match parse_xml_attribute ents input pos1 with
                  | Parser_Combinators.ParseOk (attr, pos2) ->
-                     (match parse_attributes input pos2
+                     (match parse_attributes ents input pos2
                               (fuel - Prims.int_one)
                       with
                       | Parser_Combinators.ParseOk (attrs, pos3) ->
@@ -525,8 +684,8 @@ let rec parse_attributes (input : Prims.string) (pos : Prims.nat)
             else Parser_Combinators.ParseOk ([], pos1)
         | Parser_Combinators.ParseFail (uu___2, uu___3) ->
             Parser_Combinators.ParseOk ([], pos)))
-let rec parse_text_content (input : Prims.string) (pos : Prims.nat)
-  (acc : Prims.string Prims.list) (fuel : Prims.nat) :
+let rec parse_text_content (ents : dtd_entity_table) (input : Prims.string)
+  (pos : Prims.nat) (acc : Prims.string Prims.list) (fuel : Prims.nat) :
   Prims.string Parser_Combinators.parse_result=
   if fuel = Prims.int_zero
   then
@@ -547,9 +706,9 @@ let rec parse_text_content (input : Prims.string) (pos : Prims.nat)
         else
           if ch = 38
           then
-            (match parse_reference input (pos + Prims.int_one) with
+            (match parse_reference ents input (pos + Prims.int_one) with
              | Parser_Combinators.ParseOk (decoded, pos') ->
-                 parse_text_content input pos' (decoded :: acc)
+                 parse_text_content ents input pos' (decoded :: acc)
                    (fuel - Prims.int_one)
              | Parser_Combinators.ParseFail (msg, fpos) ->
                  Parser_Combinators.ParseFail (msg, fpos))
@@ -573,21 +732,21 @@ let rec parse_text_content (input : Prims.string) (pos : Prims.nat)
                           ("text may not contain a literal ']]>' sequence",
                             pos)
                       else
-                        parse_text_content input pos' (s :: acc)
+                        parse_text_content ents input pos' (s :: acc)
                           (fuel - Prims.int_one))
                  else
-                   parse_text_content input (pos + Prims.int_one)
+                   parse_text_content ents input (pos + Prims.int_one)
                      ((FStar_String.string_of_char ch) :: acc)
                      (fuel - Prims.int_one)
              | Parser_Combinators.ParseFail (msg, fpos) ->
                  Parser_Combinators.ParseFail (msg, fpos))))
-let parse_xml_text (input : Prims.string) (pos : Prims.nat) :
-  xml_node Parser_Combinators.parse_result=
+let parse_xml_text (ents : dtd_entity_table) (input : Prims.string)
+  (pos : Prims.nat) : xml_node Parser_Combinators.parse_result=
   let len = Parser_FastString.fs_byte_length input in
   let fuel = (len - pos) + Prims.int_one in
   if fuel >= Prims.int_zero
   then
-    match parse_text_content input pos [] fuel with
+    match parse_text_content ents input pos [] fuel with
     | Parser_Combinators.ParseOk (text, pos') ->
         (if (Parser_FastString.fs_byte_length text) > Prims.int_zero
          then Parser_Combinators.ParseOk ((XText text), pos')
@@ -877,7 +1036,7 @@ let try_pseudo_attr (name : Prims.string) (input : Prims.string)
                       | Parser_Combinators.ParseFail (uu___3, uu___4) ->
                           FStar_Pervasives_Native.None
                       | Parser_Combinators.ParseOk ((), pos5) ->
-                          (match parse_attr_value input pos5 with
+                          (match parse_attr_value [] input pos5 with
                            | Parser_Combinators.ParseFail (uu___3, uu___4) ->
                                FStar_Pervasives_Native.None
                            | Parser_Combinators.ParseOk (v, pos6) ->
@@ -920,7 +1079,7 @@ let parse_xml_declaration (input : Prims.string) (pos : Prims.nat) :
                            | Parser_Combinators.ParseFail (msg, fpos) ->
                                Parser_Combinators.ParseFail (msg, fpos)
                            | Parser_Combinators.ParseOk ((), pos5) ->
-                               (match parse_attr_value input pos5 with
+                               (match parse_attr_value [] input pos5 with
                                 | Parser_Combinators.ParseFail (msg, fpos) ->
                                     Parser_Combinators.ParseFail (msg, fpos)
                                 | Parser_Combinators.ParseOk (vernum, pos6)
@@ -1007,8 +1166,8 @@ let parse_xml_declaration (input : Prims.string) (pos : Prims.nat) :
                                             | FStar_Pervasives_Native.None ->
                                                 finish_xml_decl input pos6
                                                   [version_attr]))))))))
-let rec parse_children (input : Prims.string) (pos : Prims.nat)
-  (fuel : Prims.nat) (acc : xml_node Prims.list) :
+let rec parse_children (ents : dtd_entity_table) (input : Prims.string)
+  (pos : Prims.nat) (fuel : Prims.nat) (acc : xml_node Prims.list) :
   xml_node Prims.list Parser_Combinators.parse_result=
   if fuel = Prims.int_zero
   then Parser_Combinators.ParseOk ((FStar_List_Tot_Base.rev acc), pos)
@@ -1033,13 +1192,13 @@ let rec parse_children (input : Prims.string) (pos : Prims.nat)
                 then
                   (match parse_xml_comment input pos with
                    | Parser_Combinators.ParseOk (comment, pos') ->
-                       parse_children input pos' (fuel - Prims.int_one)
+                       parse_children ents input pos' (fuel - Prims.int_one)
                          (comment :: acc)
                    | Parser_Combinators.ParseFail (uu___3, uu___4) ->
                        (match parse_xml_cdata input pos with
                         | Parser_Combinators.ParseOk (cdata, pos') ->
-                            parse_children input pos' (fuel - Prims.int_one)
-                              (cdata :: acc)
+                            parse_children ents input pos'
+                              (fuel - Prims.int_one) (cdata :: acc)
                         | Parser_Combinators.ParseFail (msg, fpos) ->
                             Parser_Combinators.ParseFail (msg, fpos)))
                 else
@@ -1047,35 +1206,37 @@ let rec parse_children (input : Prims.string) (pos : Prims.nat)
                   then
                     (match parse_xml_pi input pos with
                      | Parser_Combinators.ParseOk (pi_node, pos') ->
-                         parse_children input pos' (fuel - Prims.int_one)
-                           (pi_node :: acc)
+                         parse_children ents input pos'
+                           (fuel - Prims.int_one) (pi_node :: acc)
                      | Parser_Combinators.ParseFail (msg, fpos) ->
                          Parser_Combinators.ParseFail (msg, fpos))
                   else
-                    (match parse_xml_element input pos (fuel - Prims.int_one)
+                    (match parse_xml_element ents input pos
+                             (fuel - Prims.int_one)
                      with
                      | Parser_Combinators.ParseOk (elem, pos') ->
-                         parse_children input pos' (fuel - Prims.int_one)
-                           (elem :: acc)
+                         parse_children ents input pos'
+                           (fuel - Prims.int_one) (elem :: acc)
                      | Parser_Combinators.ParseFail (msg, fpos) ->
                          Parser_Combinators.ParseFail (msg, fpos)))
            else
              Parser_Combinators.ParseFail ("unexpected end after '<'", pos))
         else
-          (match parse_xml_text input pos with
+          (match parse_xml_text ents input pos with
            | Parser_Combinators.ParseOk (text_node, pos') ->
                if pos' = pos
                then
                  Parser_Combinators.ParseOk
                    ((FStar_List_Tot_Base.rev acc), pos)
                else
-                 parse_children input pos' (fuel - Prims.int_one) (text_node
-                   :: acc)
+                 parse_children ents input pos' (fuel - Prims.int_one)
+                   (text_node :: acc)
            | Parser_Combinators.ParseFail (uu___3, uu___4) ->
                Parser_Combinators.ParseOk
                  ((FStar_List_Tot_Base.rev acc), pos))))
-and parse_xml_element (input : Prims.string) (pos : Prims.nat)
-  (fuel : Prims.nat) : xml_node Parser_Combinators.parse_result=
+and parse_xml_element (ents : dtd_entity_table) (input : Prims.string)
+  (pos : Prims.nat) (fuel : Prims.nat) :
+  xml_node Parser_Combinators.parse_result=
   if fuel = Prims.int_zero
   then
     Parser_Combinators.ParseFail
@@ -1090,7 +1251,7 @@ and parse_xml_element (input : Prims.string) (pos : Prims.nat)
                 if pos2 <= len
                 then (len - pos2) + Prims.int_one
                 else Prims.int_one in
-              (match parse_attributes input pos2 attr_fuel with
+              (match parse_attributes ents input pos2 attr_fuel with
                | Parser_Combinators.ParseOk (attrs, pos3) ->
                    (match skip_xml_space input pos3 with
                     | Parser_Combinators.ParseOk ((), pos4) ->
@@ -1103,7 +1264,7 @@ and parse_xml_element (input : Prims.string) (pos : Prims.nat)
                              (match Parser_Combinators.pchar 62 input pos4
                               with
                               | Parser_Combinators.ParseOk (uu___4, pos5) ->
-                                  (match parse_children input pos5
+                                  (match parse_children ents input pos5
                                            (fuel - Prims.int_one) []
                                    with
                                    | Parser_Combinators.ParseOk
@@ -1175,6 +1336,318 @@ and parse_xml_element (input : Prims.string) (pos : Prims.nat)
               Parser_Combinators.ParseFail (msg, fpos))
      | Parser_Combinators.ParseFail (msg, fpos) ->
          Parser_Combinators.ParseFail (msg, fpos))
+let rec skip_quoted_literal (input : Prims.string) (pos : Prims.nat)
+  (q : FStar_Char.char) (fuel : Prims.nat) :
+  unit Parser_Combinators.parse_result=
+  if fuel = Prims.int_zero
+  then Parser_Combinators.ParseFail ("unterminated literal", pos)
+  else
+    (let len = Parser_FastString.fs_byte_length input in
+     if pos >= len
+     then Parser_Combinators.ParseFail ("unterminated literal", pos)
+     else
+       if (Parser_FastString.fs_byte_index input pos) = q
+       then Parser_Combinators.ParseOk ((), (pos + Prims.int_one))
+       else
+         skip_quoted_literal input (pos + Prims.int_one) q
+           (fuel - Prims.int_one))
+let rec skip_decl_to_gt (input : Prims.string) (pos : Prims.nat)
+  (fuel : Prims.nat) : unit Parser_Combinators.parse_result=
+  if fuel = Prims.int_zero
+  then Parser_Combinators.ParseFail ("unterminated markup declaration", pos)
+  else
+    (let len = Parser_FastString.fs_byte_length input in
+     if pos >= len
+     then
+       Parser_Combinators.ParseFail ("unterminated markup declaration", pos)
+     else
+       (let ch = Parser_FastString.fs_byte_index input pos in
+        if ch = 62
+        then Parser_Combinators.ParseOk ((), (pos + Prims.int_one))
+        else
+          if (ch = 34) || (ch = 39)
+          then
+            (match skip_quoted_literal input (pos + Prims.int_one) ch
+                     (fuel - Prims.int_one)
+             with
+             | Parser_Combinators.ParseOk ((), pos') ->
+                 skip_decl_to_gt input pos' (fuel - Prims.int_one)
+             | Parser_Combinators.ParseFail (msg, fpos) ->
+                 Parser_Combinators.ParseFail (msg, fpos))
+          else
+            skip_decl_to_gt input (pos + Prims.int_one)
+              (fuel - Prims.int_one)))
+let rec read_entity_value_raw (input : Prims.string) (pos : Prims.nat)
+  (q : FStar_Char.char) (acc : FStar_Char.char Prims.list) (fuel : Prims.nat)
+  : Prims.string Parser_Combinators.parse_result=
+  if fuel = Prims.int_zero
+  then Parser_Combinators.ParseFail ("unterminated entity value", pos)
+  else
+    (let len = Parser_FastString.fs_byte_length input in
+     if pos >= len
+     then Parser_Combinators.ParseFail ("unterminated entity value", pos)
+     else
+       (let ch = Parser_FastString.fs_byte_index input pos in
+        if ch = q
+        then
+          Parser_Combinators.ParseOk
+            ((FStar_String.string_of_list (FStar_List_Tot_Base.rev acc)),
+              (pos + Prims.int_one))
+        else
+          read_entity_value_raw input (pos + Prims.int_one) q (ch :: acc)
+            (fuel - Prims.int_one)))
+let rec skip_pe_reference (input : Prims.string) (pos : Prims.nat)
+  (fuel : Prims.nat) : unit Parser_Combinators.parse_result=
+  if fuel = Prims.int_zero
+  then
+    Parser_Combinators.ParseFail
+      ("unterminated parameter-entity reference", pos)
+  else
+    (let len = Parser_FastString.fs_byte_length input in
+     if pos >= len
+     then
+       Parser_Combinators.ParseFail
+         ("unterminated parameter-entity reference", pos)
+     else
+       if (Parser_FastString.fs_byte_index input pos) = 59
+       then Parser_Combinators.ParseOk ((), (pos + Prims.int_one))
+       else
+         skip_pe_reference input (pos + Prims.int_one) (fuel - Prims.int_one))
+let parse_entity_decl (input : Prims.string) (pos : Prims.nat)
+  (ents : dtd_entity_table) :
+  dtd_entity_table Parser_Combinators.parse_result=
+  let len = Parser_FastString.fs_byte_length input in
+  match Parser_Combinators.pstring "<!ENTITY" input pos with
+  | Parser_Combinators.ParseFail (msg, fpos) ->
+      Parser_Combinators.ParseFail (msg, fpos)
+  | Parser_Combinators.ParseOk (uu___, p1) ->
+      (match Parser_Combinators.ptake_while1_pos is_xml_space input p1 with
+       | Parser_Combinators.ParseFail (msg, fpos) ->
+           Parser_Combinators.ParseFail (msg, fpos)
+       | Parser_Combinators.ParseOk (uu___1, p2) ->
+           if (p2 < len) && ((Parser_FastString.fs_byte_index input p2) = 37)
+           then
+             (match skip_decl_to_gt input p2 (len + Prims.int_one) with
+              | Parser_Combinators.ParseOk ((), p') ->
+                  Parser_Combinators.ParseOk (ents, p')
+              | Parser_Combinators.ParseFail (msg, fpos) ->
+                  Parser_Combinators.ParseFail (msg, fpos))
+           else
+             (match parse_xml_name input p2 with
+              | Parser_Combinators.ParseFail (msg, fpos) ->
+                  Parser_Combinators.ParseFail (msg, fpos)
+              | Parser_Combinators.ParseOk (name, p3) ->
+                  (match Parser_Combinators.ptake_while1_pos is_xml_space
+                           input p3
+                   with
+                   | Parser_Combinators.ParseFail (msg, fpos) ->
+                       Parser_Combinators.ParseFail (msg, fpos)
+                   | Parser_Combinators.ParseOk (uu___3, p4) ->
+                       if
+                         (p4 < len) &&
+                           (((Parser_FastString.fs_byte_index input p4) = 34)
+                              ||
+                              ((Parser_FastString.fs_byte_index input p4) =
+                                 39))
+                       then
+                         let q = Parser_FastString.fs_byte_index input p4 in
+                         (match read_entity_value_raw input
+                                  (p4 + Prims.int_one) q []
+                                  (len + Prims.int_one)
+                          with
+                          | Parser_Combinators.ParseFail (msg, fpos) ->
+                              Parser_Combinators.ParseFail (msg, fpos)
+                          | Parser_Combinators.ParseOk (rawval, p5) ->
+                              (match skip_decl_to_gt input p5
+                                       (len + Prims.int_one)
+                               with
+                               | Parser_Combinators.ParseFail (msg, fpos) ->
+                                   Parser_Combinators.ParseFail (msg, fpos)
+                               | Parser_Combinators.ParseOk ((), p6) ->
+                                   let ents' =
+                                     match lookup_entity name ents with
+                                     | FStar_Pervasives_Native.Some uu___4 ->
+                                         ents
+                                     | FStar_Pervasives_Native.None ->
+                                         (name, rawval) :: ents in
+                                   Parser_Combinators.ParseOk (ents', p6)))
+                       else
+                         (match skip_decl_to_gt input p4
+                                  (len + Prims.int_one)
+                          with
+                          | Parser_Combinators.ParseOk ((), p') ->
+                              Parser_Combinators.ParseOk (ents, p')
+                          | Parser_Combinators.ParseFail (msg, fpos) ->
+                              Parser_Combinators.ParseFail (msg, fpos)))))
+let rec parse_int_subset (input : Prims.string) (pos : Prims.nat)
+  (ents : dtd_entity_table) (fuel : Prims.nat) :
+  dtd_entity_table Parser_Combinators.parse_result=
+  if fuel = Prims.int_zero
+  then Parser_Combinators.ParseFail ("internal subset too long", pos)
+  else
+    (let len = Parser_FastString.fs_byte_length input in
+     if pos >= len
+     then
+       Parser_Combinators.ParseFail
+         ("unterminated internal subset (missing ']')", pos)
+     else
+       (let ch = Parser_FastString.fs_byte_index input pos in
+        if ch = 93
+        then Parser_Combinators.ParseOk (ents, (pos + Prims.int_one))
+        else
+          if is_xml_space ch
+          then
+            parse_int_subset input (pos + Prims.int_one) ents
+              (fuel - Prims.int_one)
+          else
+            if ch = 37
+            then
+              (match skip_pe_reference input (pos + Prims.int_one)
+                       ((len - pos) + Prims.int_one)
+               with
+               | Parser_Combinators.ParseOk ((), pos') ->
+                   parse_int_subset input pos' ents (fuel - Prims.int_one)
+               | Parser_Combinators.ParseFail (msg, fpos) ->
+                   Parser_Combinators.ParseFail (msg, fpos))
+            else
+              if ch = 60
+              then
+                (match Parser_Combinators.pstring "<!--" input pos with
+                 | Parser_Combinators.ParseOk (uu___5, uu___6) ->
+                     (match parse_xml_comment input pos with
+                      | Parser_Combinators.ParseOk (uu___7, pos') ->
+                          parse_int_subset input pos' ents
+                            (fuel - Prims.int_one)
+                      | Parser_Combinators.ParseFail (msg, fpos) ->
+                          Parser_Combinators.ParseFail (msg, fpos))
+                 | Parser_Combinators.ParseFail (uu___5, uu___6) ->
+                     (match Parser_Combinators.pstring "<!ENTITY" input pos
+                      with
+                      | Parser_Combinators.ParseOk (uu___7, uu___8) ->
+                          (match parse_entity_decl input pos ents with
+                           | Parser_Combinators.ParseOk (ents', pos') ->
+                               parse_int_subset input pos' ents'
+                                 (fuel - Prims.int_one)
+                           | Parser_Combinators.ParseFail (msg, fpos) ->
+                               Parser_Combinators.ParseFail (msg, fpos))
+                      | Parser_Combinators.ParseFail (uu___7, uu___8) ->
+                          (match Parser_Combinators.pstring "<?" input pos
+                           with
+                           | Parser_Combinators.ParseOk (uu___9, uu___10) ->
+                               (match parse_xml_pi input pos with
+                                | Parser_Combinators.ParseOk (uu___11, pos')
+                                    ->
+                                    parse_int_subset input pos' ents
+                                      (fuel - Prims.int_one)
+                                | Parser_Combinators.ParseFail (msg, fpos) ->
+                                    Parser_Combinators.ParseFail (msg, fpos))
+                           | Parser_Combinators.ParseFail (uu___9, uu___10)
+                               ->
+                               (match Parser_Combinators.pstring "<!" input
+                                        pos
+                                with
+                                | Parser_Combinators.ParseOk
+                                    (uu___11, uu___12) ->
+                                    (match skip_decl_to_gt input pos
+                                             ((len - pos) + Prims.int_one)
+                                     with
+                                     | Parser_Combinators.ParseOk ((), pos')
+                                         ->
+                                         parse_int_subset input pos' ents
+                                           (fuel - Prims.int_one)
+                                     | Parser_Combinators.ParseFail
+                                         (msg, fpos) ->
+                                         Parser_Combinators.ParseFail
+                                           (msg, fpos))
+                                | Parser_Combinators.ParseFail
+                                    (uu___11, uu___12) ->
+                                    Parser_Combinators.ParseFail
+                                      ("malformed internal subset declaration",
+                                        pos)))))
+              else
+                Parser_Combinators.ParseFail
+                  ("unexpected character in internal subset", pos)))
+let rec skip_to_subset_or_gt (input : Prims.string) (pos : Prims.nat)
+  (fuel : Prims.nat) : unit Parser_Combinators.parse_result=
+  if fuel = Prims.int_zero
+  then Parser_Combinators.ParseFail ("unterminated DOCTYPE", pos)
+  else
+    (let len = Parser_FastString.fs_byte_length input in
+     if pos >= len
+     then Parser_Combinators.ParseFail ("unterminated DOCTYPE", pos)
+     else
+       (let ch = Parser_FastString.fs_byte_index input pos in
+        if (ch = 91) || (ch = 62)
+        then Parser_Combinators.ParseOk ((), pos)
+        else
+          if (ch = 34) || (ch = 39)
+          then
+            (match skip_quoted_literal input (pos + Prims.int_one) ch
+                     (fuel - Prims.int_one)
+             with
+             | Parser_Combinators.ParseOk ((), pos') ->
+                 skip_to_subset_or_gt input pos' (fuel - Prims.int_one)
+             | Parser_Combinators.ParseFail (msg, fpos) ->
+                 Parser_Combinators.ParseFail (msg, fpos))
+          else
+            skip_to_subset_or_gt input (pos + Prims.int_one)
+              (fuel - Prims.int_one)))
+let parse_doctype (input : Prims.string) (pos : Prims.nat) :
+  dtd_entity_table Parser_Combinators.parse_result=
+  let len = Parser_FastString.fs_byte_length input in
+  match Parser_Combinators.pstring "<!DOCTYPE" input pos with
+  | Parser_Combinators.ParseFail (msg, fpos) ->
+      Parser_Combinators.ParseFail (msg, fpos)
+  | Parser_Combinators.ParseOk (uu___, p1) ->
+      (match Parser_Combinators.ptake_while1_pos is_xml_space input p1 with
+       | Parser_Combinators.ParseFail (msg, fpos) ->
+           Parser_Combinators.ParseFail (msg, fpos)
+       | Parser_Combinators.ParseOk (uu___1, p2) ->
+           (match parse_xml_name input p2 with
+            | Parser_Combinators.ParseFail (msg, fpos) ->
+                Parser_Combinators.ParseFail (msg, fpos)
+            | Parser_Combinators.ParseOk (_root, p3) ->
+                (match skip_to_subset_or_gt input p3 (len + Prims.int_one)
+                 with
+                 | Parser_Combinators.ParseFail (msg, fpos) ->
+                     Parser_Combinators.ParseFail (msg, fpos)
+                 | Parser_Combinators.ParseOk ((), p4) ->
+                     if
+                       (p4 < len) &&
+                         ((Parser_FastString.fs_byte_index input p4) = 91)
+                     then
+                       (match parse_int_subset input (p4 + Prims.int_one) []
+                                (len + Prims.int_one)
+                        with
+                        | Parser_Combinators.ParseFail (msg, fpos) ->
+                            Parser_Combinators.ParseFail (msg, fpos)
+                        | Parser_Combinators.ParseOk (ents, p5) ->
+                            (match skip_xml_space input p5 with
+                             | Parser_Combinators.ParseFail (msg, fpos) ->
+                                 Parser_Combinators.ParseFail (msg, fpos)
+                             | Parser_Combinators.ParseOk ((), p6) ->
+                                 if
+                                   (p6 < len) &&
+                                     ((Parser_FastString.fs_byte_index input
+                                         p6)
+                                        = 62)
+                                 then
+                                   Parser_Combinators.ParseOk
+                                     (ents, (p6 + Prims.int_one))
+                                 else
+                                   Parser_Combinators.ParseFail
+                                     ("DOCTYPE: expected '>' after internal subset",
+                                       p6)))
+                     else
+                       if
+                         (p4 < len) &&
+                           ((Parser_FastString.fs_byte_index input p4) = 62)
+                       then
+                         Parser_Combinators.ParseOk
+                           ([], (p4 + Prims.int_one))
+                       else
+                         Parser_Combinators.ParseFail
+                           ("DOCTYPE: expected '[' or '>'", p4))))
 let rec skip_misc (input : Prims.string) (pos : Prims.nat) (fuel : Prims.nat)
   : unit Parser_Combinators.parse_result=
   if fuel = Prims.int_zero
@@ -1221,17 +1694,27 @@ let parse_xml_document (input : Prims.string) :
     | Parser_Combinators.ParseFail (uu___, uu___1) -> Prims.int_zero in
   match skip_misc input pos1 fuel with
   | Parser_Combinators.ParseOk ((), pos2) ->
-      (match parse_xml_element input pos2 fuel with
-       | Parser_Combinators.ParseOk (root, pos3) ->
-           (match skip_epilog_misc input pos3 fuel with
-            | Parser_Combinators.ParseOk ((), pos4) ->
-                if pos4 >= (Parser_FastString.fs_byte_length input)
-                then FStar_Pervasives_Native.Some root
-                else FStar_Pervasives_Native.None
-            | Parser_Combinators.ParseFail (uu___, uu___1) ->
-                FStar_Pervasives_Native.None)
-       | Parser_Combinators.ParseFail (uu___, uu___1) ->
-           FStar_Pervasives_Native.None)
+      let uu___ =
+        match parse_doctype input pos2 with
+        | Parser_Combinators.ParseOk (e, p) -> (e, p)
+        | Parser_Combinators.ParseFail (uu___1, uu___2) -> ([], pos2) in
+      (match uu___ with
+       | (ents, pos_dt) ->
+           (match skip_misc input pos_dt fuel with
+            | Parser_Combinators.ParseOk ((), pos3) ->
+                (match parse_xml_element ents input pos3 fuel with
+                 | Parser_Combinators.ParseOk (root, pos4) ->
+                     (match skip_epilog_misc input pos4 fuel with
+                      | Parser_Combinators.ParseOk ((), pos5) ->
+                          if pos5 >= (Parser_FastString.fs_byte_length input)
+                          then FStar_Pervasives_Native.Some root
+                          else FStar_Pervasives_Native.None
+                      | Parser_Combinators.ParseFail (uu___1, uu___2) ->
+                          FStar_Pervasives_Native.None)
+                 | Parser_Combinators.ParseFail (uu___1, uu___2) ->
+                     FStar_Pervasives_Native.None)
+            | Parser_Combinators.ParseFail (uu___1, uu___2) ->
+                FStar_Pervasives_Native.None))
   | Parser_Combinators.ParseFail (uu___, uu___1) ->
       FStar_Pervasives_Native.None
 let element_tag (node : xml_node) :
