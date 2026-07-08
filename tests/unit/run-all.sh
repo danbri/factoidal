@@ -90,6 +90,7 @@ COMMON_MODULES=(
   Math_Subst
   Math_Diff
   Math_Simplify
+  Math_Matrix
   MathML_Content
   Math_Series
   MathML_Present
