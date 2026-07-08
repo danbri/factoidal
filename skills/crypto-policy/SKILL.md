@@ -66,6 +66,31 @@ the npm-entry layer; or a pure-OCaml fallback digest for the wasm
 target only, clearly labelled as the non-HACL* exception with its own
 issue. A realisation that only works native is not done.
 
+### Self-hosting the `hacl-wasm` bytes (reproduction status, 2026-07-08)
+
+The wasm crypto path uses HACL\*'s official WebAssembly build. Today we
+vendor the **prebuilt** `hacl-wasm@1.4.0` `.wasm` (companion commit
+`3c303a8`) — verified sha256-identical to the npm tarball. A spike to
+rebuild those bytes ourselves via `krml -backend wasm` landed a recipe,
+not a self-built binary:
+
+- Byte-identical rebuild is **blocked on the pinned toolchain**.
+  `hacl-wasm@1.4.0`'s own `INFO.txt` pins F\* `e617752`, KaRaMeL
+  `2cf2974`, Vale `0.3.19`. This env has KaRaMeL `11bb8e1` + F\*
+  `2025.12.15` (both newer); KaRaMeL's wasm codegen is not byte-stable
+  across versions (proven: a `WasmSupport.wasm` built here is 1131 B vs
+  upstream 1135 B, identical through offset 394 then divergent).
+- The `krml -backend wasm` **pipeline works with our tools** end to end
+  (emits `*.wasm` + `loader.js` + `shell.js` + `layouts.json`). The
+  missing input is HACL\*'s crypto `.krml` (an F\* extraction output,
+  not shipped upstream, needing a multi-hour verified build).
+- Recipe + full write-up:
+  [`third_party/hacl/wasm/reproduce-hacl-wasm.sh`](../../third_party/hacl/wasm/reproduce-hacl-wasm.sh),
+  [`docs/designissues/2026-07-08-self-hosted-hacl-wasm.md`](../../docs/designissues/2026-07-08-self-hosted-hacl-wasm.md).
+- Keep the vendored binary as the shipping artifact until a run with the
+  pinned toolchain produces a self-built `.wasm` to swap in and repoint
+  the npm-entry. Relates to #63 / #286.
+
 ## Rules of engagement
 
 - Never implement a primitive (digest, curve, signature, RNG) in F*
