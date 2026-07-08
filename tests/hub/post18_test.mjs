@@ -282,13 +282,16 @@ test('post18: browser.js exports the delta-log persistence surface this post\'s 
   }
 });
 
-test('post18: entry_jsoo.ml exports deltaBatchToHex/deltaMergeApplyBrowser but NOT a BaseWriter/serializeCottas wrapper (grounds the "no BaseWriter in the browser" honesty section)', () => {
+test('post18: entry_jsoo.ml exports the delta-log ABI AND the toCottas BaseWriter write path (grounds the "base-store write path reaches the browser too" section)', () => {
   const entry = fs.readFileSync(
     path.join(REPO_ROOT, 'bin', 'npm-entry', 'entry_jsoo.ml'), 'utf8');
   assert.match(entry, /"deltaBatchToHex"/);
   assert.match(entry, /"deltaMergeApplyBrowser"/);
-  assert.doesNotMatch(entry, /BaseWriter|serializeCottas|serialize_cottas/i,
-    'entry_jsoo.ml should not (yet) export a BaseWriter/serialize_cottas wrapper');
+  // toCottas was added since an earlier version of this post claimed
+  // no BaseWriter existed in the browser. It now does: the export wraps
+  // the same pure-Tot serializer the native CLI uses.
+  assert.match(entry, /"toCottas"/);
+  assert.match(entry, /RDF_CottasStore_BaseWriter\.serialize_cottas_v2/);
 });
 
 test('post18: RDF.CottasStore.BaseWriter.fst exists and is the module the zero-Python claim cites', () => {

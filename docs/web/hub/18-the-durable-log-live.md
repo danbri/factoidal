@@ -294,29 +294,33 @@ KaRaMeL stratification blocker (reproduced there: over 10 minutes and
 delta-entry framing/checksum layer, not the whole read path — the same
 distinction the table above draws between "proves" and "not yet."
 
-### What the browser demo above does *not* do: no `BaseWriter` in the browser
+### The base-store write path: `BaseWriter` reaches the browser too
 
-One residual worth naming directly, since it's easy to
-conflate: this page's persistence story is the **delta log**
-(append-only, small updates), not the **base store**. The native
+This page's persistence story above is the **delta log**
+(append-only, small updates). The complementary half is the **base
+store** — writing a whole `.cottas` (Parquet) base file — and that path
+now reaches the browser as well. The native
 `factoidal import`/`compact --native-writer` path
 (`RDF.CottasStore.BaseWriter.fst`'s `serialize_cottas`, commit
 [`4f8fc95`](https://github.com/danbri/factoidal/commit/4f8fc95)) writes
-the actual `.cottas` (Parquet) base file with zero Python — DuckDB's
-own `parquet_scan` verdict was **accepted, byte-exact, on 5-quad,
-6,780-quad, and 888,949-quad corpora: 0 missing, 0 extra vs source**.
-That module is registered in `build-ocaml.sh`'s `FSTAR_MODULES` array,
-but grepping `bin/npm-entry/entry_jsoo.ml`'s export list — `parseToDatasetJson`,
-`queryDataset`, `updateDataset`, `deltaBatchToHex`,
-`deltaMergeApplyBrowser`, and a dozen others, checked directly against
-the file rather than assumed — turns up no `BaseWriter`/`serializeCottas`
-export at all. **The "create a store" story in a browser today is the
-delta log you just ran above, not a browser-written `.cottas` base
-file.** That's a scope boundary, not a bug: nothing requires a
-browser to write its own base file yet, and the delta-log path is
-sufficient for the durable-UPDATE story this post and post 17 cover.
-Wiring `BaseWriter` into the npm-entry ABI, if ever wanted, is
-unstarted work with no tracking issue as of this writing.
+the actual base file with zero Python — DuckDB's own `parquet_scan`
+verdict was **accepted, byte-exact, on 5-quad, 6,780-quad, and
+888,949-quad corpora: 0 missing, 0 extra vs source**.
+
+The npm-entry ABI now exposes the same writer to the browser as
+`toCottas(nquads) -> { ok, cottasHex, quadCount }`
+(`bin/npm-entry/entry_jsoo.ml`). It sorts the quads `(s,p,o,g)` and
+encodes them through the identical pure-`Tot` F\* serializer
+`RDF.CottasStore.BaseWriter.serialize_cottas_v2` that `factoidal
+compact --native-writer` calls, so a browser-produced `.cottas` is
+byte-for-byte the same writer's output — not a parallel encoder. The
+hex result is the caller's to persist (IndexedDB / OPFS / a browser
+download) and feed straight back into `openCottas`, which round-trips
+through the same reader/writer pair the native CLI uses. So the "create
+a store" story in a browser is now **both** paths: the delta log you
+ran above for incremental updates, and `toCottas` for writing a fresh
+base file. (This corrects an earlier version of this post, which said
+no `BaseWriter` export existed in the browser — it does now.)
 
 ## Zero Python, restated with a link
 
