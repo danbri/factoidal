@@ -44,8 +44,24 @@ open FStar.Mul
 open FStar.List.Tot
 open RDF.Graph.Executable
 
-module U32 = FStar.UInt32
 module PF  = Parquet.Footer
+
+// ---------------------------------------------------------------------------
+// Bitwise XOR over unbounded naturals, LSB-first, bounded by `fuel`
+// bit positions. For operands below 2^fuel this is the exact bitwise
+// xor. Used only by the CRC helpers below (16/32-bit operands, so
+// fuel 32 is always exact). Kept in plain nat arithmetic on purpose:
+// it extracts to OCaml integer ops (division/mod/mul), which the
+// js_of_ocaml + zarith_stubs_js bundle realises natively — unlike
+// FStar.UInt32, whose stdint externals (uint32_xor, ...) have no JS
+// realisation and abort the in-browser HDT reader. See the CRC note.
+// ---------------------------------------------------------------------------
+
+let rec nat_xor (a:nat) (b:nat) (fuel:nat) : Tot nat (decreases fuel) =
+  if fuel = 0 then 0
+  else
+    let low = (if a % 2 = b % 2 then 0 else 1) in
+    low + 2 * nat_xor (a / 2) (b / 2) (fuel - 1)
 
 // ---------------------------------------------------------------------------
 // Hex-encoded byte access. Offsets are in BYTES; the backing string
@@ -64,22 +80,26 @@ let hex_len_bytes (s:string) : nat = String.length s / 2
 // CRC-16/ANSI ("ARC"): poly 0x8005 reflected (0xA001), init 0x0000,
 // xorout 0x0000 — the parameters printed in hdt-cpp's crc16.h header
 // and used for every control-information block. Bitwise reflected
-// form; small inputs, so no table needed.
+// form; small inputs, so no table needed. Values are kept as plain
+// naturals masked to 16 bits (logand 0xFFFF == mod 65536, shift_right
+// == /2, logand ...1 == mod 2) so the code extracts to js_of_ocaml-
+// friendly integer arithmetic rather than the unrealised stdint
+// Uint32 externals.
 // ---------------------------------------------------------------------------
 
-let crc16_step (c:U32.t) : U32.t =
-  if U32.v (U32.logand c 1ul) = 1
-  then U32.logxor (U32.shift_right c 1ul) 0xA001ul
-  else U32.shift_right c 1ul
+let crc16_step (c:nat) : nat =
+  if c % 2 = 1
+  then nat_xor (c / 2) 0xA001 32
+  else c / 2
 
-let crc16_byte (crc:U32.t) (b:nat{b < 256}) : U32.t =
-  let c0 = U32.logand (U32.logxor crc (U32.uint_to_t b)) 0xFFFFul in
+let crc16_byte (crc:nat) (b:nat{b < 256}) : nat =
+  let c0 = (nat_xor crc b 32) % 65536 in
   crc16_step (crc16_step (crc16_step (crc16_step
     (crc16_step (crc16_step (crc16_step (crc16_step c0)))))))
 
 // CRC16 over the byte range [pos, pos+count) of hex string s.
-let rec crc16_range (s:string) (pos:nat) (count:nat) (crc:U32.t)
-  : Tot (option U32.t) (decreases count) =
+let rec crc16_range (s:string) (pos:nat) (count:nat) (crc:nat)
+  : Tot (option nat) (decreases count) =
   if count = 0 then Some crc
   else
     match hex_byte s pos with
@@ -249,7 +269,7 @@ let parse_control_info (s:string) (pos:nat) : option hdt_control_info =
              (match bytes_to_string s (pos + 5) (fmt_nul - (pos + 5)),
                     bytes_to_string s (fmt_nul + 1) (props_nul - (fmt_nul + 1)) with
               | Some fmt, Some raw ->
-                (match crc16_range s pos (props_nul + 1 - pos) 0ul with
+                (match crc16_range s pos (props_nul + 1 - pos) 0 with
                  | None -> None
                  | Some crc ->
                    (match hex_byte s (props_nul + 1), hex_byte s (props_nul + 2) with
@@ -262,8 +282,8 @@ let parse_control_info (s:string) (pos:nat) : option hdt_control_info =
                         hci_props = parse_properties raw;
                         hci_props_raw = raw;
                         hci_crc_stored = stored;
-                        hci_crc_computed = U32.v crc;
-                        hci_crc_ok = (U32.v crc = stored);
+                        hci_crc_computed = crc;
+                        hci_crc_ok = (crc = stored);
                         hci_end = props_nul + 3;
                       }
                     | _, _ -> None))

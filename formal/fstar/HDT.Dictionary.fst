@@ -72,27 +72,31 @@ open RDF.Graph.Executable
 open Parser.Combinators
 open Parser.NTriples
 
-module U32 = FStar.UInt32
 module HC  = HDT.Container
 module NQ  = RDF.NQuads.Serialize
 
 // ---------------------------------------------------------------------------
 // CRC8: poly 0x07, init 0x00, unreflected (MSB-first). Used for every
-// PFC-section preamble and every log-array preamble.
+// PFC-section preamble and every log-array preamble. Values are kept
+// as plain naturals with the mod/div/mul identities (logand 0xFF ==
+// mod 256, logand 0x80 <> 0 == (c/128) mod 2 = 1, shift_left == *2)
+// and XOR via HC.nat_xor, so this extracts to js_of_ocaml-friendly
+// integer arithmetic instead of the unrealised stdint Uint32
+// externals that abort the in-browser HDT reader.
 // ---------------------------------------------------------------------------
 
-let crc8_step (c:U32.t) : U32.t =
-  if U32.v (U32.logand c 0x80ul) <> 0
-  then U32.logand (U32.logxor (U32.shift_left c 1ul) 0x07ul) 0xFFul
-  else U32.logand (U32.shift_left c 1ul) 0xFFul
+let crc8_step (c:nat) : nat =
+  if (c / 128) % 2 = 1
+  then (HC.nat_xor (c * 2) 0x07 32) % 256
+  else (c * 2) % 256
 
-let crc8_byte (crc:U32.t) (b:nat{b < 256}) : U32.t =
-  let c0 = U32.logxor crc (U32.uint_to_t b) in
+let crc8_byte (crc:nat) (b:nat{b < 256}) : nat =
+  let c0 = HC.nat_xor crc b 32 in
   crc8_step (crc8_step (crc8_step (crc8_step
     (crc8_step (crc8_step (crc8_step (crc8_step c0)))))))
 
-let rec crc8_range (s:string) (pos:nat) (count:nat) (crc:U32.t)
-  : Tot (option U32.t) (decreases count) =
+let rec crc8_range (s:string) (pos:nat) (count:nat) (crc:nat)
+  : Tot (option nat) (decreases count) =
   if count = 0 then Some crc
   else
     match HC.hex_byte s pos with
@@ -102,31 +106,33 @@ let rec crc8_range (s:string) (pos:nat) (count:nat) (crc:U32.t)
 // ---------------------------------------------------------------------------
 // CRC32C (Castagnoli): poly 0x1EDC6F41, reflected form 0x82F63B78,
 // init 0xFFFFFFFF, final xor 0xFFFFFFFF. Used for every log-array
-// data payload and every PFC packed-string-block payload.
+// data payload and every PFC packed-string-block payload. Same
+// nat-arithmetic representation as CRC8/CRC16 (shift_right == /2,
+// logand ...1 == mod 2) for js_of_ocaml compatibility.
 // ---------------------------------------------------------------------------
 
-let crc32c_step (c:U32.t) : U32.t =
-  if U32.v (U32.logand c 1ul) = 1
-  then U32.logxor (U32.shift_right c 1ul) 0x82F63B78ul
-  else U32.shift_right c 1ul
+let crc32c_step (c:nat) : nat =
+  if c % 2 = 1
+  then HC.nat_xor (c / 2) 0x82F63B78 32
+  else c / 2
 
-let crc32c_byte (crc:U32.t) (b:nat{b < 256}) : U32.t =
-  let c0 = U32.logxor crc (U32.uint_to_t b) in
+let crc32c_byte (crc:nat) (b:nat{b < 256}) : nat =
+  let c0 = HC.nat_xor crc b 32 in
   crc32c_step (crc32c_step (crc32c_step (crc32c_step
     (crc32c_step (crc32c_step (crc32c_step (crc32c_step c0)))))))
 
-let rec crc32c_range (s:string) (pos:nat) (count:nat) (crc:U32.t)
-  : Tot (option U32.t) (decreases count) =
+let rec crc32c_range (s:string) (pos:nat) (count:nat) (crc:nat)
+  : Tot (option nat) (decreases count) =
   if count = 0 then Some crc
   else
     match HC.hex_byte s pos with
     | None -> None
     | Some b -> crc32c_range s (pos + 1) (count - 1) (crc32c_byte crc b)
 
-let crc32c_of_range (s:string) (pos:nat) (count:nat) : option U32.t =
-  match crc32c_range s pos count 0xFFFFFFFFul with
+let crc32c_of_range (s:string) (pos:nat) (count:nat) : option nat =
+  match crc32c_range s pos count 0xFFFFFFFF with
   | None -> None
-  | Some c -> Some (U32.logxor c 0xFFFFFFFFul)
+  | Some c -> Some (HC.nat_xor c 0xFFFFFFFF 32)
 
 // ---------------------------------------------------------------------------
 // Small readers for stored CRC values.
@@ -166,15 +172,15 @@ let la_crc32_pos (la:HC.hdt_log_array_info) : nat =
   nat_sub la.HC.la_end 4
 
 let la_preamble_crc8_ok (s:string) (la:HC.hdt_log_array_info) : bool =
-  match crc8_range s la.HC.la_start (la_preamble_len la) 0ul,
+  match crc8_range s la.HC.la_start (la_preamble_len la) 0,
         read_u8 s (la_preamble_crc8_pos la) with
-  | Some c, Some stored -> U32.v c = stored
+  | Some c, Some stored -> c = stored
   | _, _ -> false
 
 let la_data_crc32_ok (s:string) (la:HC.hdt_log_array_info) : bool =
   match crc32c_of_range s la.HC.la_data_start la.HC.la_data_bytes,
         read_u32_le s (la_crc32_pos la) with
-  | Some c, Some stored -> U32.v c = stored
+  | Some c, Some stored -> c = stored
   | _, _ -> false
 
 let pfc_preamble_len (sec:HC.hdt_pfc_section) : nat =
@@ -184,15 +190,15 @@ let pfc_preamble_crc8_pos (sec:HC.hdt_pfc_section) : nat =
   nat_sub sec.HC.pfc_blocks.HC.la_start 1
 
 let pfc_preamble_crc8_ok (s:string) (sec:HC.hdt_pfc_section) : bool =
-  match crc8_range s sec.HC.pfc_start (pfc_preamble_len sec) 0ul,
+  match crc8_range s sec.HC.pfc_start (pfc_preamble_len sec) 0,
         read_u8 s (pfc_preamble_crc8_pos sec) with
-  | Some c, Some stored -> U32.v c = stored
+  | Some c, Some stored -> c = stored
   | _, _ -> false
 
 let pfc_packed_crc32_ok (s:string) (sec:HC.hdt_pfc_section) : bool =
   match crc32c_of_range s sec.HC.pfc_packed_start sec.HC.pfc_packed_bytes,
         read_u32_le s (nat_sub sec.HC.pfc_end 4) with
-  | Some c, Some stored -> U32.v c = stored
+  | Some c, Some stored -> c = stored
   | _, _ -> false
 
 // All four CRC checks a PFC section carries: its own preamble (CRC8),

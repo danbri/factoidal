@@ -59,11 +59,11 @@ let bm_preamble_crc8_pos (bm : HDT_Container.hdt_bitmap_info) : Prims.nat=
 let bm_preamble_crc8_ok (s : Prims.string)
   (bm : HDT_Container.hdt_bitmap_info) : Prims.bool=
   match ((HDT_Dictionary.crc8_range s bm.HDT_Container.bm_start
-            (bm_preamble_len bm) Stdint.Uint32.zero),
+            (bm_preamble_len bm) Prims.int_zero),
           (HDT_Dictionary.read_u8 s (bm_preamble_crc8_pos bm)))
   with
   | (FStar_Pervasives_Native.Some c, FStar_Pervasives_Native.Some stored) ->
-      (FStar_UInt32.v c) = stored
+      c = stored
   | (uu___, uu___1) -> false
 let bm_data_crc32_ok (s : Prims.string) (bm : HDT_Container.hdt_bitmap_info)
   : Prims.bool=
@@ -74,7 +74,7 @@ let bm_data_crc32_ok (s : Prims.string) (bm : HDT_Container.hdt_bitmap_info)
                 (Prims.of_int (4)))))
   with
   | (FStar_Pervasives_Native.Some c, FStar_Pervasives_Native.Some stored) ->
-      (FStar_UInt32.v c) = stored
+      c = stored
   | (uu___, uu___1) -> false
 let bitmap_crc_ok (s : Prims.string) (bm : HDT_Container.hdt_bitmap_info) :
   Prims.bool= (bm_preamble_crc8_ok s bm) && (bm_data_crc32_ok s bm)

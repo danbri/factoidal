@@ -123,3 +123,39 @@ test('post24 cell 3 (predicate histogram): rdf:type bar at 84', async () => {
   // Bars are sorted descending, so rdf:type is the tallest (first).
   assert.equal(bar.data[0].predicate, 'type');
 });
+
+// Coverage gap this closes: the three cell tests above shell out to the
+// committed NATIVE binary (runFactoidalCli -> execFileSync). The browser
+// hub runs the js_of_ocaml BUNDLE instead, and the bundle diverges from
+// native exactly where an F* value extracts through stdint's Uint32,
+// whose C externals (uint32_xor, ...) have no js_of_ocaml realisation.
+// HDT.Container's CRC16 (and HDT.Dictionary's CRC8/CRC32C) used
+// FStar.UInt32, so opening any HDT file aborted in-browser with
+// Failure("uint32_xor not implemented") -> empty stdout -> the cell's
+// JSON.parse threw "Unexpected EOF", while every native test stayed
+// green. This case drives the ACTUAL bundle the way browser.js does
+// (engine-js.js runCli over the '/static/' fake device) so a
+// native-only regression can never hide here again.
+test('post24: HDT count is 343 through the js_of_ocaml bundle (not just native)', () => {
+  const ejs = require(
+    path.join(REPO_ROOT, 'npm', 'factoidal', 'lib', 'engine-js.js'));
+  const buf = fs.readFileSync(HDT_FIXTURE);
+  // Bundle fake-filesystem content is a byte-per-charCode string (latin1),
+  // matching how browser.js hands fetched bytes to runFactoidalCli.
+  let content = '';
+  for (let i = 0; i < buf.length; i++) content += String.fromCharCode(buf[i]);
+
+  const res = ejs.runCli(
+    ['--data-hdt', '/static/h.hdt',
+     '-e', 'SELECT (COUNT(*) AS ?n) WHERE { ?s ?p ?o }',
+     '-o', 'json'],
+    [{ name: '/static/h.hdt', content }]);
+
+  assert.equal(res.exitCode, 0,
+    `bundle HDT query failed (exit ${res.exitCode}): ${res.stdout}${res.stderr}`);
+  // Regression pin: the pre-fix bundle emitted "uint32_xor not implemented".
+  assert.ok(!/not implemented/.test(res.stdout + res.stderr),
+    `bundle hit an unrealised external: ${res.stdout}${res.stderr}`);
+  const json = JSON.parse(res.stdout);
+  assert.equal(json.results.bindings[0].n.value, '343');
+});

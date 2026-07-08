@@ -64,7 +64,6 @@ module HDT.Triples
 open FStar.Mul
 open FStar.List.Tot
 
-module U32 = FStar.UInt32
 module HC  = HDT.Container
 module HD  = HDT.Dictionary
 
@@ -124,15 +123,15 @@ let bm_preamble_crc8_pos (bm:HC.hdt_bitmap_info) : nat =
   HD.nat_sub bm.HC.bm_data_start 1
 
 let bm_preamble_crc8_ok (s:string) (bm:HC.hdt_bitmap_info) : bool =
-  match HD.crc8_range s bm.HC.bm_start (bm_preamble_len bm) 0ul,
+  match HD.crc8_range s bm.HC.bm_start (bm_preamble_len bm) 0,
         HD.read_u8 s (bm_preamble_crc8_pos bm) with
-  | Some c, Some stored -> U32.v c = stored
+  | Some c, Some stored -> c = stored
   | _, _ -> false
 
 let bm_data_crc32_ok (s:string) (bm:HC.hdt_bitmap_info) : bool =
   match HD.crc32c_of_range s bm.HC.bm_data_start bm.HC.bm_data_bytes,
         HD.read_u32_le s (HD.nat_sub bm.HC.bm_end 4) with
-  | Some c, Some stored -> U32.v c = stored
+  | Some c, Some stored -> c = stored
   | _, _ -> false
 
 let bitmap_crc_ok (s:string) (bm:HC.hdt_bitmap_info) : bool =

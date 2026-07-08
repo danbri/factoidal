@@ -1,23 +1,19 @@
 open Prims
-let crc8_step (c : FStar_UInt32.t) : FStar_UInt32.t=
-  if
-    (FStar_UInt32.v (FStar_UInt32.logand c (Stdint.Uint32.of_int (0x80)))) <>
-      Prims.int_zero
+let crc8_step (c : Prims.nat) : Prims.nat=
+  if ((mod) (c / (Prims.of_int (128))) (Prims.of_int (2))) = Prims.int_one
   then
-    FStar_UInt32.logand
-      (FStar_UInt32.logxor (FStar_UInt32.shift_left c Stdint.Uint32.one)
-         (Stdint.Uint32.of_int (0x07))) (Stdint.Uint32.of_int (0xFF))
-  else
-    FStar_UInt32.logand (FStar_UInt32.shift_left c Stdint.Uint32.one)
-      (Stdint.Uint32.of_int (0xFF))
-let crc8_byte (crc : FStar_UInt32.t) (b : Prims.nat) : FStar_UInt32.t=
-  let c0 = FStar_UInt32.logxor crc (FStar_UInt32.uint_to_t b) in
+    (mod)
+      (HDT_Container.nat_xor (c * (Prims.of_int (2))) (Prims.of_int (0x07))
+         (Prims.of_int (32))) (Prims.of_int (256))
+  else (mod) (c * (Prims.of_int (2))) (Prims.of_int (256))
+let crc8_byte (crc : Prims.nat) (b : Prims.nat) : Prims.nat=
+  let c0 = HDT_Container.nat_xor crc b (Prims.of_int (32)) in
   crc8_step
     (crc8_step
        (crc8_step
           (crc8_step (crc8_step (crc8_step (crc8_step (crc8_step c0)))))))
 let rec crc8_range (s : Prims.string) (pos : Prims.nat) (count : Prims.nat)
-  (crc : FStar_UInt32.t) : FStar_UInt32.t FStar_Pervasives_Native.option=
+  (crc : Prims.nat) : Prims.nat FStar_Pervasives_Native.option=
   if count = Prims.int_zero
   then FStar_Pervasives_Native.Some crc
   else
@@ -26,23 +22,21 @@ let rec crc8_range (s : Prims.string) (pos : Prims.nat) (count : Prims.nat)
      | FStar_Pervasives_Native.Some b ->
          crc8_range s (pos + Prims.int_one) (count - Prims.int_one)
            (crc8_byte crc b))
-let crc32c_step (c : FStar_UInt32.t) : FStar_UInt32.t=
-  if
-    (FStar_UInt32.v (FStar_UInt32.logand c Stdint.Uint32.one)) =
-      Prims.int_one
+let crc32c_step (c : Prims.nat) : Prims.nat=
+  if ((mod) c (Prims.of_int (2))) = Prims.int_one
   then
-    FStar_UInt32.logxor (FStar_UInt32.shift_right c Stdint.Uint32.one)
-      (Stdint.Uint32.of_string "0x82F63B78")
-  else FStar_UInt32.shift_right c Stdint.Uint32.one
-let crc32c_byte (crc : FStar_UInt32.t) (b : Prims.nat) : FStar_UInt32.t=
-  let c0 = FStar_UInt32.logxor crc (FStar_UInt32.uint_to_t b) in
+    HDT_Container.nat_xor (c / (Prims.of_int (2)))
+      (Prims.parse_int "0x82F63B78") (Prims.of_int (32))
+  else c / (Prims.of_int (2))
+let crc32c_byte (crc : Prims.nat) (b : Prims.nat) : Prims.nat=
+  let c0 = HDT_Container.nat_xor crc b (Prims.of_int (32)) in
   crc32c_step
     (crc32c_step
        (crc32c_step
           (crc32c_step
              (crc32c_step (crc32c_step (crc32c_step (crc32c_step c0)))))))
 let rec crc32c_range (s : Prims.string) (pos : Prims.nat) (count : Prims.nat)
-  (crc : FStar_UInt32.t) : FStar_UInt32.t FStar_Pervasives_Native.option=
+  (crc : Prims.nat) : Prims.nat FStar_Pervasives_Native.option=
   if count = Prims.int_zero
   then FStar_Pervasives_Native.Some crc
   else
@@ -52,12 +46,13 @@ let rec crc32c_range (s : Prims.string) (pos : Prims.nat) (count : Prims.nat)
          crc32c_range s (pos + Prims.int_one) (count - Prims.int_one)
            (crc32c_byte crc b))
 let crc32c_of_range (s : Prims.string) (pos : Prims.nat) (count : Prims.nat)
-  : FStar_UInt32.t FStar_Pervasives_Native.option=
-  match crc32c_range s pos count (Stdint.Uint32.of_string "0xFFFFFFFF") with
+  : Prims.nat FStar_Pervasives_Native.option=
+  match crc32c_range s pos count (Prims.parse_int "0xFFFFFFFF") with
   | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
   | FStar_Pervasives_Native.Some c ->
       FStar_Pervasives_Native.Some
-        (FStar_UInt32.logxor c (Stdint.Uint32.of_string "0xFFFFFFFF"))
+        (HDT_Container.nat_xor c (Prims.parse_int "0xFFFFFFFF")
+           (Prims.of_int (32)))
 let read_u8 (s : Prims.string) (pos : Prims.nat) :
   Prims.nat FStar_Pervasives_Native.option=
   match HDT_Container.hex_byte s pos with
@@ -89,10 +84,10 @@ let la_crc32_pos (la : HDT_Container.hdt_log_array_info) : Prims.nat=
 let la_preamble_crc8_ok (s : Prims.string)
   (la : HDT_Container.hdt_log_array_info) : Prims.bool=
   match ((crc8_range s la.HDT_Container.la_start (la_preamble_len la)
-            Stdint.Uint32.zero), (read_u8 s (la_preamble_crc8_pos la)))
+            Prims.int_zero), (read_u8 s (la_preamble_crc8_pos la)))
   with
   | (FStar_Pervasives_Native.Some c, FStar_Pervasives_Native.Some stored) ->
-      (FStar_UInt32.v c) = stored
+      c = stored
   | (uu___, uu___1) -> false
 let la_data_crc32_ok (s : Prims.string)
   (la : HDT_Container.hdt_log_array_info) : Prims.bool=
@@ -101,7 +96,7 @@ let la_data_crc32_ok (s : Prims.string)
           (read_u32_le s (la_crc32_pos la)))
   with
   | (FStar_Pervasives_Native.Some c, FStar_Pervasives_Native.Some stored) ->
-      (FStar_UInt32.v c) = stored
+      c = stored
   | (uu___, uu___1) -> false
 let pfc_preamble_len (sec : HDT_Container.hdt_pfc_section) : Prims.nat=
   nat_sub
@@ -112,10 +107,10 @@ let pfc_preamble_crc8_pos (sec : HDT_Container.hdt_pfc_section) : Prims.nat=
 let pfc_preamble_crc8_ok (s : Prims.string)
   (sec : HDT_Container.hdt_pfc_section) : Prims.bool=
   match ((crc8_range s sec.HDT_Container.pfc_start (pfc_preamble_len sec)
-            Stdint.Uint32.zero), (read_u8 s (pfc_preamble_crc8_pos sec)))
+            Prims.int_zero), (read_u8 s (pfc_preamble_crc8_pos sec)))
   with
   | (FStar_Pervasives_Native.Some c, FStar_Pervasives_Native.Some stored) ->
-      (FStar_UInt32.v c) = stored
+      c = stored
   | (uu___, uu___1) -> false
 let pfc_packed_crc32_ok (s : Prims.string)
   (sec : HDT_Container.hdt_pfc_section) : Prims.bool=
@@ -125,7 +120,7 @@ let pfc_packed_crc32_ok (s : Prims.string)
              (nat_sub sec.HDT_Container.pfc_end (Prims.of_int (4)))))
   with
   | (FStar_Pervasives_Native.Some c, FStar_Pervasives_Native.Some stored) ->
-      (FStar_UInt32.v c) = stored
+      c = stored
   | (uu___, uu___1) -> false
 let pfc_section_crc_ok (s : Prims.string)
   (sec : HDT_Container.hdt_pfc_section) : Prims.bool=

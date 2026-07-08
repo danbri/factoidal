@@ -1,4 +1,17 @@
 open Prims
+let rec nat_xor (a : Prims.nat) (b : Prims.nat) (fuel : Prims.nat) :
+  Prims.nat=
+  if fuel = Prims.int_zero
+  then Prims.int_zero
+  else
+    (let low =
+       if ((mod) a (Prims.of_int (2))) = ((mod) b (Prims.of_int (2)))
+       then Prims.int_zero
+       else Prims.int_one in
+     low +
+       ((Prims.of_int (2)) *
+          (nat_xor (a / (Prims.of_int (2))) (b / (Prims.of_int (2)))
+             (fuel - Prims.int_one))))
 let hex_byte (s : Prims.string) (i : Prims.nat) :
   Prims.nat FStar_Pervasives_Native.option=
   if (((Prims.of_int (2)) * i) + Prims.int_one) < (FStar_String.strlen s)
@@ -6,24 +19,21 @@ let hex_byte (s : Prims.string) (i : Prims.nat) :
   else FStar_Pervasives_Native.None
 let hex_len_bytes (s : Prims.string) : Prims.nat=
   (FStar_String.strlen s) / (Prims.of_int (2))
-let crc16_step (c : FStar_UInt32.t) : FStar_UInt32.t=
-  if
-    (FStar_UInt32.v (FStar_UInt32.logand c Stdint.Uint32.one)) =
-      Prims.int_one
+let crc16_step (c : Prims.nat) : Prims.nat=
+  if ((mod) c (Prims.of_int (2))) = Prims.int_one
   then
-    FStar_UInt32.logxor (FStar_UInt32.shift_right c Stdint.Uint32.one)
-      (Stdint.Uint32.of_int (0xA001))
-  else FStar_UInt32.shift_right c Stdint.Uint32.one
-let crc16_byte (crc : FStar_UInt32.t) (b : Prims.nat) : FStar_UInt32.t=
+    nat_xor (c / (Prims.of_int (2))) (Prims.of_int (0xA001))
+      (Prims.of_int (32))
+  else c / (Prims.of_int (2))
+let crc16_byte (crc : Prims.nat) (b : Prims.nat) : Prims.nat=
   let c0 =
-    FStar_UInt32.logand (FStar_UInt32.logxor crc (FStar_UInt32.uint_to_t b))
-      (Stdint.Uint32.of_string "0xFFFF") in
+    (mod) (nat_xor crc b (Prims.of_int (32))) (Prims.parse_int "65536") in
   crc16_step
     (crc16_step
        (crc16_step
           (crc16_step (crc16_step (crc16_step (crc16_step (crc16_step c0)))))))
 let rec crc16_range (s : Prims.string) (pos : Prims.nat) (count : Prims.nat)
-  (crc : FStar_UInt32.t) : FStar_UInt32.t FStar_Pervasives_Native.option=
+  (crc : Prims.nat) : Prims.nat FStar_Pervasives_Native.option=
   if count = Prims.int_zero
   then FStar_Pervasives_Native.Some crc
   else
@@ -267,7 +277,7 @@ let parse_control_info (s : Prims.string) (pos : Prims.nat) :
                            FStar_Pervasives_Native.Some raw) ->
                             (match crc16_range s pos
                                      ((props_nul + Prims.int_one) - pos)
-                                     Stdint.Uint32.zero
+                                     Prims.int_zero
                              with
                              | FStar_Pervasives_Native.None ->
                                  FStar_Pervasives_Native.None
@@ -289,10 +299,8 @@ let parse_control_info (s : Prims.string) (pos : Prims.nat) :
                                           hci_props = (parse_properties raw);
                                           hci_props_raw = raw;
                                           hci_crc_stored = stored;
-                                          hci_crc_computed =
-                                            (FStar_UInt32.v crc);
-                                          hci_crc_ok =
-                                            ((FStar_UInt32.v crc) = stored);
+                                          hci_crc_computed = crc;
+                                          hci_crc_ok = (crc = stored);
                                           hci_end =
                                             (props_nul + (Prims.of_int (3)))
                                         }
