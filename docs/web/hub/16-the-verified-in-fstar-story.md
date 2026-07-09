@@ -45,10 +45,17 @@ Iron Rule #11:
 > unverified OCaml-side optimization layers being migrated back to F\*
 > (see fstar-purity-unwind.md)
 
-Concretely: the RDF/SPARQL parsers and the query algebra — the code
+Concretely: the RDF format parsers and the query algebra — the code
 paths every post in this series exercised, in-memory, in your browser
-— are F\*, checked under Z3 4.13.3 with no `--lax` and no
-`--admit_smt_queries` (Iron Rule #10). The **on-disk** COTTAS reader is
+— are F\*, checked under Z3 4.13.3 with no `--lax` and zero `admit()`
+(Iron Rule #10). One carve-out inside that boundary, stated rather than
+hidden: `SPARQL11.Parser.fst`'s mutually-recursive expression and
+UPDATE parser blocks (~64% of that one file) carry
+`--admit_smt_queries true` — they type-check, but their SMT
+obligations (termination, `wf_iri` refinements) are admitted, so for
+those blocks correctness rests on the 631/0 W3C suite rather than
+proofs. Shrinking that region is a tracked standing priority. The
+**on-disk** COTTAS reader is
 where the qualifier still bites, though less than it did. The production
 SPARQL query path — `RDF.Store.Capabilities.Cottas.fst`'s `sc_solve` /
 `sc_estimate` / `sc_count_exact`, the functions

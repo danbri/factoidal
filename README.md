@@ -1,24 +1,47 @@
 # Factoidal
 
-A formally verified RDF/SPARQL implementation written in F\*, with
-verified code extracted to OCaml for execution. The F\* specifications
-are the product — executable code is obtained by extraction, not by
-hand-writing implementations.
+An RDF/SPARQL implementation specified in F\* and extracted to OCaml
+(and JS/wasm/C) for execution. The F\* specifications are the product —
+executable code is obtained by extraction, not by hand-writing
+implementations.
 
-Status: work in progress. The W3C-runnable suites pass in full (see the
-live dashboard below), and the once-glacial Turtle path now parses about
-100,000 triples/second with near-linear scaling (1M triples in ~10s,
-measured 2026-07-03 on the committed linux-x86_64 binary). The
-compliant engine is the **in-memory** one; it now scales linearly
-(1M quads: ~41s end-to-end, ~1.2 GB RAM, measured 2026-07-03) but
-holds everything in RAM at ~1.2 KB/quad, which caps practical corpus
-size well below what the on-disk path targets. The **on-disk** store (COTTAS — Parquet-backed quads;
-~3.1M quads behind the [UK Parliament demo](https://danbri.github.io/factoidal/web/demos/ukparliament/))
-works but is not yet good: its fast paths are unverified OCaml
-optimization layers being migrated back to F\* (see
-`docs/designissues/fstar-purity-unwind.md` and issue #118). Qualifier:
-parser and algebra spec verified in F\*; on-disk backend unverified in
-the sense above.
+**What "verified" means here — three rings.** Claims differ by layer,
+and the boundary matters more than the headline:
+
+1. **Proved core.** The RDF term/graph algebra, the SPARQL algebra and
+   evaluator, the RDF format parsers, and most of the ~170 F\* modules
+   verify fully under Z3 4.13.3 — no `--lax`, zero `admit()`. What
+   these modules state, Z3 checked.
+2. **Tested extracted implementation.** Two honest carve-outs. (a)
+   `SPARQL11.Parser.fst` verifies ~36% of its definitions fully; the
+   mutually-recursive expression/UPDATE parser blocks (~64% of the
+   file) are type-checked but their SMT obligations are admitted
+   (`--admit_smt_queries true` in two pragma regions) — for those,
+   correctness rests on the 631/0 W3C suite, not proofs. (b) Every
+   `assume val` (I/O, host regex, crypto) is realised by audited
+   OCaml/HACL\* glue, catalogued with an open issue each. This ring is
+   *tested* like ordinary good software, not proved.
+3. **Experimental extensions.** The wider semantic-platform surface —
+   OWL/SHACL/ShEx/JSON-LD/RIF/RML engines, XSLT/XML/Schematron/MathML,
+   the COTTAS on-disk store, browser/wasm/C targets — is F\*-first and
+   suite-measured, at per-suite completeness levels the live dashboard
+   reports.
+
+Status: work in progress. The W3C SPARQL 1.1 + RDF 1.1 runnable suites
+pass in full (see the dashboard). The Turtle path parses ~100k
+triples/second with near-linear scaling (1M triples in ~10s, measured
+2026-07-03 on the committed linux-x86_64 binary). The compliant engine
+is the **in-memory** one (1M quads: ~41s end-to-end, ~1.2 GB RAM —
+RAM-bound at ~1.2 KB/quad). The **on-disk** store (COTTAS —
+Parquet-backed quads; ~3.1M quads behind the
+[UK Parliament demo](https://danbri.github.io/factoidal/web/demos/ukparliament/))
+runs its production query path through F\*-extracted token-direct entry
+points (since 2026-07-06); the remaining hand-written OCaml
+optimization glue has zero production callers and is pending deletion
+(issue #118; row-by-row state in
+`docs/designissues/fstar-ocaml-boundary-audit.md`). Standing qualifier:
+parser and algebra spec verified in F\* (ring-2 caveats above); on-disk
+backend still carries that glue until #118 completes.
 
 **[Live W3C test results](https://danbri.github.io/factoidal/test-results/)**
 
@@ -337,11 +360,16 @@ cd formal/fstar
 make verify    # requires z3
 ```
 
-This type-checks all F\* modules against the SMT solver. The RDF graph and
-SPARQL algebra modules are fully verified (0 admit in RDF, 4 admit in proof
-lemmas for SPARQL). The SPARQL parser uses `--admit_smt_queries true` for
-~65% of its mutually recursive functions — it type-checks but SMT proofs
-are not fully discharged. See [CLAUDE.md](CLAUDE.md) for details.
+This type-checks all F\* modules against the SMT solver. The RDF graph
+and SPARQL algebra modules are fully verified — zero `admit()` anywhere
+in the F\* source (the 4 SPARQL proof-lemma admits an earlier README
+disclosed have since been eliminated). The remaining ring-2 caveat is
+`SPARQL11.Parser.fst`: two `#push-options "--admit_smt_queries true"`
+regions cover its mutually-recursive expression and UPDATE parser
+blocks (119 of 233 definitions, ~64% of the file) — those type-check
+but their SMT obligations (termination, `wf_iri` refinements) are
+admitted, not discharged. Shrinking this is a standing priority
+(`docs/claude-rules/current-state.md`). See [CLAUDE.md](CLAUDE.md).
 
 ### Run W3C conformance tests
 
@@ -384,12 +412,15 @@ Live, per-suite numbers: **[test-results dashboard](https://danbri.github.io/fac
 (regenerated by CI on every push; machine-readable at
 `docs/test-results/latest.json`).
 
-As of 2026-07-03: SPARQL 1.1 suites 631 pass, 0 fail; RDF 1.1 parsing +
-model-theory suites 1031 pass, 0 fail — 1662 of 1662 runnable tests.
-OWL 2 RL profile positive-entailment: 20 pass, 10 fail (out of 30).
-Caveats that apply to these scores (ASK boolean comparison, lenient
-blank-node matching, parts of the SPARQL parser admitted rather than
-proved) are catalogued in
+SPARQL 1.1 suites: 631 pass, 0 fail; RDF 1.1 parsing + model-theory
+suites: 1031 pass, 0 fail — 1662 of 1662 runnable tests. The dashboard
+carries 21 suites total (OWL, RDFC-1.0, SHACL, ShEx, JSON-LD, RML, RIF,
+VC, XSLT, XML conformance, MathML, JSON Schema, Schematron, CSVW, DID,
+HDT parity, and the browser-bundle/npm JS suites), each with labelled
+pass/fail/skip — prefer those live numbers to anything frozen in this
+file. Caveats that apply to scores (ASK boolean comparison, lenient
+blank-node matching, the SPARQL-parser admitted regions above) are
+catalogued in
 [`docs/claude-rules/current-state.md`](docs/claude-rules/current-state.md).
 
 ## Browser / Node builds
