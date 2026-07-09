@@ -44,6 +44,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Full submodules: several parity fixtures + hub/npm tests read
+          # third_party/testing/* -- an absent submodule surfaces as
+          # phantom ENOENT failures, not a clear error (hazard #15,
+          # skills/workflow-gotchas-debugging).
+          submodules: recursive
+
+      - name: Verify test fixtures (fail loudly, never 0/0)
+        run: tools/ensure-test-env.sh --check
 
       - uses: actions/setup-node@v4
         with:

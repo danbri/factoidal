@@ -109,6 +109,36 @@ jobs:
           echo "=== latest.json head ==="
           head -50 ../../docs/test-results/latest.json 2>/dev/null || true
 
+      - name: Gate against lying rows (0 pass + 0 fail with a nonzero universe)
+        run: |
+          # A suite whose committed log was produced in a fixture-less
+          # environment renders as 0/0 and, without this gate, gets
+          # PUBLISHED (shacl/shex shipped that way once). Surface every
+          # such row loudly; fail the publish if any core suite is 0/0.
+          python3 - <<'EOF'
+          import json, sys
+          d = json.load(open('docs/test-results/latest.json'))
+          s = d.get('suites', {})
+          items = s.items() if isinstance(s, dict) else [(x.get('name'), x) for x in s]
+          CORE = {'sparql', 'rdf'}
+          bad_core, zero_rows = [], []
+          for name, v in items:
+              if isinstance(v, list):   # sparql/rdf carry sub-suite lists
+                  p = sum(x.get('pass', 0) for x in v); f = sum(x.get('fail', 0) for x in v)
+              else:
+                  p, f = v.get('pass', 0), v.get('fail', 0)
+              if p == 0 and f == 0:
+                  zero_rows.append(name)
+                  if name in CORE: bad_core.append(name)
+          for n in zero_rows:
+              print(f"::warning::suite '{n}' publishes 0 pass / 0 fail — stale or fixture-less log; "
+                    f"run tools/ensure-test-env.sh then ./w3c-tests.sh and commit fresh logs")
+          if bad_core:
+              print(f"::error::core suite(s) {bad_core} are 0/0 — refusing to publish a lying dashboard")
+              sys.exit(1)
+          print(f"row gate ok: {len(zero_rows)} zero-row warning(s), no core-suite zeros")
+          EOF
+
       - name: Commit + push refreshed dashboard
         if: github.ref == 'refs/heads/claude/main' || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
         run: |

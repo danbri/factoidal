@@ -278,6 +278,9 @@ jobs:
         with:
           submodules: recursive
 
+      - name: Verify test fixtures (fail loudly, never 0/0)
+        run: tools/ensure-test-env.sh --check
+
       - name: Cache opam
         uses: actions/cache@v4
         with:
@@ -530,6 +533,9 @@ jobs:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
+
+      - name: Verify test fixtures (fail loudly, never 0/0)
+        run: tools/ensure-test-env.sh --check
 
       - name: Cache opam
         uses: actions/cache@v4
