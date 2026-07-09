@@ -1,0 +1,282 @@
+=== CSVW csv2rdf Test Runner ===
+manifest: ../../../third_party/testing/csvw/tests/manifest-rdf.ttl
+
+270 test entries (of 270 in manifest)
+
+PASS ToRdfTest  file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test001
+PASS ToRdfTest  file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test005
+PASS ToRdfTest  file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test006
+PASS ToRdfTest  file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test007
+PASS ToRdfTest  file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test008
+PASS ToRdfTest  file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test009
+PASS ToRdfTest  file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test010
+FAIL ToRdfTest  file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test011 — canonical N-Quads differ
+FAIL ToRdfTest  file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test012 — canonical N-Quads differ
+FAIL ToRdfTest  file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test013 — canonical N-Quads differ
+FAIL ToRdfTest  file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test014 — canonical N-Quads differ
+FAIL ToRdfTest  file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test015 — canonical N-Quads differ
+FAIL ToRdfTest  file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test016 — canonical N-Quads differ
+FAIL ToRdfTest  file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test017 — canonical N-Quads differ
+FAIL ToRdfTest  file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test018 — canonical N-Quads differ
+FAIL ToRdfTest  file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test023 — canonical N-Quads differ
+FAIL ToRdfTest  file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test027 — canonical N-Quads differ
+PASS ToRdfTest  file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test028
+PASS ToRdfTest  file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test029
+PASS ToRdfTest  file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test030
+PASS ToRdfTest  file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test031
+FAIL ToRdfTest  file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test032 — canonical N-Quads differ
+FAIL ToRdfTest  file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test033 — canonical N-Quads differ
+FAIL ToRdfTest  file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test034 — canonical N-Quads differ
+FAIL ToRdfTest  file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test035 — canonical N-Quads differ
+FAIL ToRdfTest  file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test036 — canonical N-Quads differ
+FAIL ToRdfTest  file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test037 — canonical N-Quads differ
+FAIL ToRdfTest  file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test038 — canonical N-Quads differ
+FAIL ToRdfTest  file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test039 — canonical N-Quads differ
+PASS ToRdfTestWithWarnings file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test040
+PASS ToRdfTestWithWarnings file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test041
+PASS ToRdfTestWithWarnings file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test042
+PASS ToRdfTestWithWarnings file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test043
+PASS ToRdfTestWithWarnings file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test044
+PASS ToRdfTestWithWarnings file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test045
+PASS ToRdfTestWithWarnings file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test046
+FAIL ToRdfTestWithWarnings file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test047 — canonical N-Quads differ
+FAIL ToRdfTestWithWarnings file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test048 — canonical N-Quads differ
+FAIL ToRdfTestWithWarnings file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test049 — canonical N-Quads differ
+FAIL ToRdfTestWithWarnings file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test059 — canonical N-Quads differ
+FAIL ToRdfTestWithWarnings file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test060 — canonical N-Quads differ
+FAIL ToRdfTestWithWarnings file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test061 — canonical N-Quads differ
+FAIL ToRdfTestWithWarnings file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test062 — canonical N-Quads differ
+FAIL ToRdfTestWithWarnings file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test063 — canonical N-Quads differ
+FAIL ToRdfTestWithWarnings file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test065 — canonical N-Quads differ
+FAIL ToRdfTestWithWarnings file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test066 — canonical N-Quads differ
+FAIL ToRdfTestWithWarnings file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test067 — canonical N-Quads differ
+FAIL ToRdfTestWithWarnings file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test068 — canonical N-Quads differ
+FAIL ToRdfTestWithWarnings file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test069 — canonical N-Quads differ
+FAIL ToRdfTestWithWarnings file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test070 — canonical N-Quads differ
+FAIL ToRdfTestWithWarnings file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test071 — canonical N-Quads differ
+FAIL ToRdfTestWithWarnings file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test072 — canonical N-Quads differ
+FAIL ToRdfTestWithWarnings file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test073 — canonical N-Quads differ
+FAIL NegativeRdfTest file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test074 — expected no output (NegativeRdfTest) but got:
+FAIL ToRdfTestWithWarnings file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test075 — canonical N-Quads differ
+FAIL ToRdfTestWithWarnings file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test076 — canonical N-Quads differ
+FAIL NegativeRdfTest file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test077 — expected no output (NegativeRdfTest) but got:
+FAIL NegativeRdfTest file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test078 — expected no output (NegativeRdfTest) but got:
+FAIL NegativeRdfTest file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test079 — expected no output (NegativeRdfTest) but got:
+FAIL NegativeRdfTest file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test080 — expected no output (NegativeRdfTest) but got:
+FAIL NegativeRdfTest file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test081 — expected no output (NegativeRdfTest) but got:
+FAIL NegativeRdfTest file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test082 — expected no output (NegativeRdfTest) but got:
+FAIL NegativeRdfTest file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test083 — expected no output (NegativeRdfTest) but got:
+FAIL NegativeRdfTest file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test084 — expected no output (NegativeRdfTest) but got:
+FAIL NegativeRdfTest file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test085 — expected no output (NegativeRdfTest) but got:
+FAIL NegativeRdfTest file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test086 — expected no output (NegativeRdfTest) but got:
+FAIL NegativeRdfTest file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test087 — expected no output (NegativeRdfTest) but got:
+FAIL NegativeRdfTest file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test088 — expected no output (NegativeRdfTest) but got:
+FAIL NegativeRdfTest file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test089 — expected no output (NegativeRdfTest) but got:
+FAIL NegativeRdfTest file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test090 — expected no output (NegativeRdfTest) but got:
+PASS ToRdfTestWithWarnings file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test093
+FAIL ToRdfTestWithWarnings file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test095 — canonical N-Quads differ
+FAIL ToRdfTestWithWarnings file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test097 — canonical N-Quads differ
+FAIL NegativeRdfTest file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test098 — expected no output (NegativeRdfTest) but got:
+FAIL ToRdfTestWithWarnings file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test099 — canonical N-Quads differ
+FAIL ToRdfTestWithWarnings file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test100 — canonical N-Quads differ
+FAIL ToRdfTestWithWarnings file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test101 — canonical N-Quads differ
+FAIL ToRdfTestWithWarnings file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test102 — canonical N-Quads differ
+FAIL NegativeRdfTest file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test103 — expected no output (NegativeRdfTest) but got:
+FAIL NegativeRdfTest file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test104 — expected no output (NegativeRdfTest) but got:
+PASS ToRdfTestWithWarnings file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test105
+PASS ToRdfTestWithWarnings file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test106
+FAIL ToRdfTestWithWarnings file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test107 — canonical N-Quads differ
+FAIL NegativeRdfTest file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test108 — expected no output (NegativeRdfTest) but got:
+PASS ToRdfTestWithWarnings file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test109
+PASS ToRdfTestWithWarnings file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test110
+PASS ToRdfTestWithWarnings file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test111
+PASS ToRdfTestWithWarnings file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test112
+PASS ToRdfTestWithWarnings file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test113
+PASS ToRdfTestWithWarnings file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test114
+PASS ToRdfTestWithWarnings file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test115
+FAIL ToRdfTest  file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test116 — canonical N-Quads differ
+PASS ToRdfTestWithWarnings file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test117
+FAIL ToRdfTest  file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test118 — canonical N-Quads differ
+PASS ToRdfTestWithWarnings file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test119
+PASS ToRdfTestWithWarnings file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test120
+FAIL ToRdfTest  file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test121 — canonical N-Quads differ
+FAIL ToRdfTestWithWarnings file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test122 — canonical N-Quads differ
+FAIL ToRdfTestWithWarnings file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test123 — canonical N-Quads differ
+PASS ToRdfTest  file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test124
+FAIL ToRdfTestWithWarnings file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test125 — canonical N-Quads differ
+FAIL ToRdfTestWithWarnings file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test126 — canonical N-Quads differ
+FAIL ToRdfTestWithWarnings file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test127 — canonical N-Quads differ
+FAIL NegativeRdfTest file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test128 — expected no output (NegativeRdfTest) but got:
+PASS ToRdfTestWithWarnings file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test129
+FAIL ToRdfTestWithWarnings file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test130 — canonical N-Quads differ
+FAIL ToRdfTestWithWarnings file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test131 — canonical N-Quads differ
+PASS ToRdfTest  file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test132
+FAIL NegativeRdfTest file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test133 — expected no output (NegativeRdfTest) but got:
+FAIL NegativeRdfTest file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test134 — expected no output (NegativeRdfTest) but got:
+FAIL NegativeRdfTest file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test135 — expected no output (NegativeRdfTest) but got:
+FAIL NegativeRdfTest file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test136 — expected no output (NegativeRdfTest) but got:
+FAIL NegativeRdfTest file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test137 — expected no output (NegativeRdfTest) but got:
+FAIL NegativeRdfTest file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test138 — expected no output (NegativeRdfTest) but got:
+FAIL NegativeRdfTest file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test139 — expected no output (NegativeRdfTest) but got:
+FAIL NegativeRdfTest file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test140 — expected no output (NegativeRdfTest) but got:
+FAIL NegativeRdfTest file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test141 — expected no output (NegativeRdfTest) but got:
+FAIL NegativeRdfTest file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test142 — expected no output (NegativeRdfTest) but got:
+FAIL NegativeRdfTest file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test143 — expected no output (NegativeRdfTest) but got:
+FAIL NegativeRdfTest file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test144 — expected no output (NegativeRdfTest) but got:
+FAIL NegativeRdfTest file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test146 — expected no output (NegativeRdfTest) but got:
+PASS ToRdfTestWithWarnings file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test147
+FAIL ToRdfTestWithWarnings file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test148 — canonical N-Quads differ
+FAIL ToRdfTest  file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test149 — canonical N-Quads differ
+FAIL ToRdfTestWithWarnings file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test150 — canonical N-Quads differ
+FAIL ToRdfTestWithWarnings file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test151 — canonical N-Quads differ
+PASS ToRdfTest  file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test152
+PASS ToRdfTestWithWarnings file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test153
+PASS ToRdfTestWithWarnings file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test154
+PASS ToRdfTest  file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test155
+PASS ToRdfTestWithWarnings file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test156
+FAIL ToRdfTestWithWarnings file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test157 — canonical N-Quads differ
+FAIL ToRdfTest  file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test158 — canonical N-Quads differ
+PASS ToRdfTestWithWarnings file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test159
+FAIL ToRdfTestWithWarnings file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test160 — canonical N-Quads differ
+PASS ToRdfTestWithWarnings file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test161
+PASS ToRdfTestWithWarnings file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test162
+PASS ToRdfTestWithWarnings file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test163
+PASS ToRdfTestWithWarnings file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test164
+PASS ToRdfTestWithWarnings file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test165
+PASS ToRdfTestWithWarnings file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test166
+PASS ToRdfTestWithWarnings file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test167
+FAIL ToRdfTest  file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test168 — canonical N-Quads differ
+PASS ToRdfTestWithWarnings file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test169
+FAIL ToRdfTest  file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test170 — canonical N-Quads differ
+FAIL ToRdfTest  file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test171 — canonical N-Quads differ
+PASS ToRdfTestWithWarnings file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test172
+PASS ToRdfTestWithWarnings file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test173
+PASS ToRdfTestWithWarnings file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test174
+PASS ToRdfTestWithWarnings file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test175
+PASS ToRdfTestWithWarnings file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test176
+PASS ToRdfTestWithWarnings file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test177
+PASS ToRdfTestWithWarnings file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test178
+PASS ToRdfTestWithWarnings file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test179
+PASS ToRdfTestWithWarnings file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test180
+PASS ToRdfTestWithWarnings file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test181
+PASS ToRdfTestWithWarnings file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test182
+FAIL ToRdfTest  file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test183 — canonical N-Quads differ
+PASS ToRdfTestWithWarnings file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test184
+FAIL ToRdfTestWithWarnings file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test185 — canonical N-Quads differ
+PASS ToRdfTestWithWarnings file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test186
+PASS ToRdfTest  file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test187
+FAIL ToRdfTest  file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test188 — canonical N-Quads differ
+FAIL ToRdfTest  file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test189 — canonical N-Quads differ
+FAIL ToRdfTest  file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test190 — canonical N-Quads differ
+FAIL ToRdfTestWithWarnings file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test191 — canonical N-Quads differ
+FAIL ToRdfTestWithWarnings file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test192 — canonical N-Quads differ
+PASS ToRdfTest  file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test193
+FAIL ToRdfTestWithWarnings file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test194 — canonical N-Quads differ
+PASS ToRdfTest  file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test195
+FAIL ToRdfTestWithWarnings file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test196 — canonical N-Quads differ
+FAIL ToRdfTestWithWarnings file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test197 — canonical N-Quads differ
+FAIL ToRdfTestWithWarnings file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test198 — canonical N-Quads differ
+FAIL NegativeRdfTest file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test199 — expected no output (NegativeRdfTest) but got:
+FAIL NegativeRdfTest file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test200 — expected no output (NegativeRdfTest) but got:
+FAIL NegativeRdfTest file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test201 — expected no output (NegativeRdfTest) but got:
+PASS ToRdfTest  file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test202
+FAIL ToRdfTestWithWarnings file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test203 — canonical N-Quads differ
+FAIL ToRdfTestWithWarnings file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test204 — canonical N-Quads differ
+FAIL ToRdfTestWithWarnings file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test205 — canonical N-Quads differ
+FAIL ToRdfTestWithWarnings file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test206 — canonical N-Quads differ
+FAIL ToRdfTestWithWarnings file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test207 — canonical N-Quads differ
+FAIL ToRdfTestWithWarnings file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test208 — canonical N-Quads differ
+PASS ToRdfTest  file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test209
+FAIL ToRdfTestWithWarnings file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test210 — canonical N-Quads differ
+FAIL ToRdfTestWithWarnings file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test211 — canonical N-Quads differ
+FAIL ToRdfTestWithWarnings file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test212 — canonical N-Quads differ
+FAIL ToRdfTestWithWarnings file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test213 — canonical N-Quads differ
+FAIL ToRdfTestWithWarnings file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test214 — canonical N-Quads differ
+FAIL ToRdfTestWithWarnings file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test215 — canonical N-Quads differ
+FAIL NegativeRdfTest file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test216 — expected no output (NegativeRdfTest) but got:
+FAIL NegativeRdfTest file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test217 — expected no output (NegativeRdfTest) but got:
+FAIL NegativeRdfTest file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test218 — expected no output (NegativeRdfTest) but got:
+FAIL NegativeRdfTest file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test219 — expected no output (NegativeRdfTest) but got:
+FAIL NegativeRdfTest file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test220 — expected no output (NegativeRdfTest) but got:
+FAIL NegativeRdfTest file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test221 — expected no output (NegativeRdfTest) but got:
+FAIL NegativeRdfTest file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test222 — expected no output (NegativeRdfTest) but got:
+FAIL NegativeRdfTest file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test223 — expected no output (NegativeRdfTest) but got:
+FAIL NegativeRdfTest file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test224 — expected no output (NegativeRdfTest) but got:
+FAIL NegativeRdfTest file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test225 — expected no output (NegativeRdfTest) but got:
+FAIL NegativeRdfTest file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test226 — expected no output (NegativeRdfTest) but got:
+FAIL NegativeRdfTest file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test227 — expected no output (NegativeRdfTest) but got:
+FAIL ToRdfTest  file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test228 — canonical N-Quads differ
+FAIL ToRdfTest  file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test229 — canonical N-Quads differ
+FAIL ToRdfTestWithWarnings file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test230 — canonical N-Quads differ
+PASS ToRdfTest  file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test231
+PASS ToRdfTest  file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test232
+PASS ToRdfTest  file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test233
+PASS ToRdfTest  file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test234
+FAIL ToRdfTest  file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test235 — canonical N-Quads differ
+FAIL ToRdfTest  file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test236 — canonical N-Quads differ
+PASS ToRdfTest  file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test237
+FAIL ToRdfTestWithWarnings file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test238 — canonical N-Quads differ
+FAIL ToRdfTest  file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test242 — canonical N-Quads differ
+FAIL NegativeRdfTest file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test243 — expected no output (NegativeRdfTest) but got:
+FAIL NegativeRdfTest file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test244 — expected no output (NegativeRdfTest) but got:
+PASS ToRdfTest  file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test245
+FAIL ToRdfTest  file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test246 — canonical N-Quads differ
+FAIL ToRdfTestWithWarnings file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test247 — canonical N-Quads differ
+PASS ToRdfTest  file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test248
+FAIL NegativeRdfTest file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test251 — expected no output (NegativeRdfTest) but got:
+FAIL NegativeRdfTest file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test252 — expected no output (NegativeRdfTest) but got:
+FAIL NegativeRdfTest file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test253 — expected no output (NegativeRdfTest) but got:
+FAIL ToRdfTest  file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test259 — canonical N-Quads differ
+FAIL ToRdfTest  file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test260 — canonical N-Quads differ
+FAIL NegativeRdfTest file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test261 — expected no output (NegativeRdfTest) but got:
+FAIL ToRdfTest  file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test263 — canonical N-Quads differ
+FAIL ToRdfTest  file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test264 — canonical N-Quads differ
+FAIL ToRdfTestWithWarnings file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test266 — canonical N-Quads differ
+FAIL NegativeRdfTest file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test267 — expected no output (NegativeRdfTest) but got:
+FAIL ToRdfTest  file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test268 — canonical N-Quads differ
+FAIL ToRdfTestWithWarnings file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test269 — canonical N-Quads differ
+FAIL ToRdfTestWithWarnings file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test270 — canonical N-Quads differ
+FAIL NegativeRdfTest file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test271 — expected no output (NegativeRdfTest) but got:
+FAIL NegativeRdfTest file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test272 — expected no output (NegativeRdfTest) but got:
+FAIL ToRdfTest  file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test273 — canonical N-Quads differ
+FAIL NegativeRdfTest file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test274 — expected no output (NegativeRdfTest) but got:
+FAIL ToRdfTestWithWarnings file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test275 — canonical N-Quads differ
+FAIL ToRdfTestWithWarnings file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test276 — canonical N-Quads differ
+FAIL ToRdfTestWithWarnings file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test277 — canonical N-Quads differ
+FAIL ToRdfTestWithWarnings file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test278 — canonical N-Quads differ
+FAIL ToRdfTestWithWarnings file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test279 — canonical N-Quads differ
+FAIL ToRdfTestWithWarnings file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test280 — canonical N-Quads differ
+FAIL ToRdfTestWithWarnings file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test281 — canonical N-Quads differ
+FAIL ToRdfTest  file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test282 — canonical N-Quads differ
+FAIL ToRdfTest  file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test283 — canonical N-Quads differ
+FAIL ToRdfTest  file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test284 — canonical N-Quads differ
+FAIL ToRdfTest  file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test285 — canonical N-Quads differ
+FAIL ToRdfTestWithWarnings file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test286 — canonical N-Quads differ
+FAIL ToRdfTestWithWarnings file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test287 — canonical N-Quads differ
+FAIL ToRdfTestWithWarnings file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test288 — canonical N-Quads differ
+FAIL ToRdfTestWithWarnings file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test289 — canonical N-Quads differ
+FAIL ToRdfTestWithWarnings file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test290 — canonical N-Quads differ
+FAIL ToRdfTestWithWarnings file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test291 — canonical N-Quads differ
+FAIL ToRdfTestWithWarnings file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test292 — canonical N-Quads differ
+FAIL ToRdfTestWithWarnings file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test293 — canonical N-Quads differ
+FAIL ToRdfTestWithWarnings file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test294 — canonical N-Quads differ
+FAIL ToRdfTestWithWarnings file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test295 — canonical N-Quads differ
+FAIL ToRdfTestWithWarnings file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test296 — canonical N-Quads differ
+FAIL ToRdfTestWithWarnings file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test297 — canonical N-Quads differ
+FAIL ToRdfTestWithWarnings file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test298 — canonical N-Quads differ
+FAIL ToRdfTestWithWarnings file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test299 — canonical N-Quads differ
+FAIL ToRdfTestWithWarnings file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test300 — canonical N-Quads differ
+FAIL ToRdfTestWithWarnings file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test301 — canonical N-Quads differ
+FAIL ToRdfTestWithWarnings file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test302 — canonical N-Quads differ
+FAIL ToRdfTestWithWarnings file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test303 — canonical N-Quads differ
+FAIL ToRdfTestWithWarnings file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test304 — canonical N-Quads differ
+FAIL ToRdfTest  file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test305 — canonical N-Quads differ
+FAIL ToRdfTest  file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test306 — canonical N-Quads differ
+FAIL ToRdfTest  file:///home/user/factoidal/third_party/testing/csvw/tests/manifest-rdf#test307 — canonical N-Quads differ
+
+========================================
+csv2rdf: 74 pass, 196 fail (out of 270)
+  fail bucket NegativeRdfTest          58
+  fail bucket ToRdfTest                49
+  fail bucket ToRdfTestWithWarnings    89
+========================================

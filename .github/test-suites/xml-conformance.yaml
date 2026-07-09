@@ -1,0 +1,20 @@
+name: XML 1.0 conformance (OASIS/W3C xmlconf)
+spec: https://www.w3.org/TR/xml/
+runner: bin/linux-x86_64/xml_runner
+runner_args:
+  - third_party/testing/xml/xmlconf
+manifest: third_party/testing/xml/xmlconf
+log_path: formal/fstar/ocaml-output/xml_conformance_results.log
+result_path: docs/test-results/by-suite/xml-conformance.json
+domain: XML
+foundational: false
+
+# ~2585 fixtures. The runner reports pass/fail/skip plus an honest
+# integrity breakdown (real not-wf rejects vs DTD-boundary skips vs
+# out-of-XML-1.0-profile skips) surfaced in the dashboard.
+triggers:
+  paths:
+    - bin/xml-runner/**
+    - third_party/testing/xml/**
+    - formal/fstar/XML_Wellformedness.fst
+  excludes: []

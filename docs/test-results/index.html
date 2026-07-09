@@ -279,11 +279,11 @@
 <header>
   <div class="inner">
     <div class="rendered-pill" title="Rendered = when this page was last regenerated. Tests = when the *_results.log files inside the repository were last updated. Both UTC.">
-      <span class="row"><span class="label">Rendered</span><strong>2026-07-09 18:40 UTC</strong></span>
+      <span class="row"><span class="label">Rendered</span><strong>2026-07-09 19:23 UTC</strong></span>
       <span class="row"><span class="label">Tests</span><strong class="tests">2026-07-07 15:39 UTC</strong></span>
     </div>
     <h1>W3C test results</h1>
-    <p>Pass/fail/skip counts against every standards suite this project measures: RDF 1.1, SPARQL 1.1, RDFS/OWL 2, SHACL, ShEx, RIF Core, RML, JSON-LD 1.1, and Verifiable Credentials 2.0.</p>
+    <p>Pass/fail/skip counts against every standards suite this project measures: RDF 1.1, SPARQL 1.1, RDFS/OWL 2, SHACL, ShEx, RIF Core, RML, CSVW, JSON-LD 1.1, Verifiable Credentials 2.0, XSLT 1.0, XML 1.0, MathML 3, ISO Schematron, JSON Schema, DID — plus HDT backend parity and the browser/npm bundle suites.</p>
     <nav>
       <a href="/factoidal/">Home</a>
       <a href="/factoidal/fstar-extracted/">Demos</a>
@@ -1051,7 +1051,7 @@
         <div class="meter"><div class="seg seg-pass" style="width:68.00%"></div><div class="seg seg-fail" style="width:8.00%"></div><div class="seg seg-skip" style="width:24.00%"></div></div>
         <div class="suite-numbers"><small>34 pass, 4 fail, 12 skip (of 50)</small></div>
       </div>
-      <p class="suite-prov">Runner: <code>bin/rif-runner</code> (<code>bin/linux-x86_64/rif_runner</code>) &middot; Suites: <code>third_party/testing/rif/tc/</code> + <code>third_party/testing/rif-core-suite/</code> &middot; <a href="https://github.com/danbri/factoidal/blob/claude/main/bin/rif-runner/README.md" target="_blank" rel="noopener">diagnosis: 1 corpus data defect (malformed xsd:string IRI in the official W3C zip) + 3 labelled engine KNOWN-GAPs, see bin/rif-runner/README.md</a></p>
+      <p class="suite-prov">Runner: <code>bin/rif-runner</code> (<code>bin/linux-x86_64/rif_runner</code>) &middot; Suites: <code>third_party/testing/rif/tc/</code> + <code>third_party/testing/rif-core-suite/</code> &middot; <a href="https://github.com/danbri/factoidal/blob/worktree-agent-a5de26b2ee90c95fd/bin/rif-runner/README.md" target="_blank" rel="noopener">diagnosis: 1 corpus data defect (malformed xsd:string IRI in the official W3C zip) + 3 labelled engine KNOWN-GAPs, see bin/rif-runner/README.md</a></p>
       <div class="suite-row green">
         <div class="suite-name">RIF Core — Part 1 (4 vendored SPARQL-manifest cases)</div>
         <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
@@ -1063,15 +1063,15 @@
         <div class="meter"><div class="seg seg-pass" style="width:65.22%"></div><div class="seg seg-fail" style="width:8.70%"></div><div class="seg seg-skip" style="width:26.09%"></div></div>
         <div class="suite-numbers"><small>30 pass, 4 fail, 12 skip (of 46)</small></div>
       </div>
-      <p class="suite-prov">Runner: <code>bin/rif-runner</code> &middot; Suite: <code>third_party/testing/rif-core-suite/Core_v1.22/Approved/</code> &middot; <a href="https://github.com/danbri/factoidal/blob/claude/main/docs/claude-rules/scope.md" target="_blank" rel="noopener">diagnosis: docs/claude-rules/scope.md RIF section — every skip names the exact missing builtin/feature</a></p>
+      <p class="suite-prov">Runner: <code>bin/rif-runner</code> &middot; Suite: <code>third_party/testing/rif-core-suite/Core_v1.22/Approved/</code> &middot; <a href="https://github.com/danbri/factoidal/blob/worktree-agent-a5de26b2ee90c95fd/docs/claude-rules/scope.md" target="_blank" rel="noopener">diagnosis: docs/claude-rules/scope.md RIF section — every skip names the exact missing builtin/feature</a></p>
     </div>
   </details>
   
 </section>
 
-<section class="family green" id="mapping">
+<section class="family amber" id="mapping">
   <h2>Mapping: RML / CSVW</h2>
-  <p class="fam-headline green">76 pass, 0 fail, 0 skip (of 76) on RML rml-core; CSVW has an early csv2rdf runner (csvw_runner, ~19/270 on the W3C csv2rdf corpus) not yet wired into this dashboard.</p>
+  <p class="fam-headline amber">150 pass, 196 fail, 0 skip (of 346) across RML rml-core and CSVW csv2rdf.</p>
   <details open>
     <summary>Suites in this family (tap to collapse)</summary>
     <div class="suites">
@@ -1081,21 +1081,12 @@
         <div class="suite-numbers"><small>76 pass, 0 fail, 0 skip (of 76)</small></div>
       </div>
       <p class="suite-prov">Runner: <code>bin/rml-runner</code> (<code>bin/linux-x86_64/rml_runner</code>) &middot; Suite: <code>third_party/testing/rml-modules/rml-core/</code></p>
-      <div class="suite-row grey">
-        <div class="suite-name">CSVW (Stage 1 metadata decode)</div>
-        <div class="meter"><div class="seg seg-skip" style="width:100%"></div></div>
-        <div class="suite-numbers"><small>in progress &mdash; not wired into this dashboard</small></div>
+      <div class="suite-row amber">
+        <div class="suite-name">CSVW csv2rdf</div>
+        <div class="meter"><div class="seg seg-pass" style="width:27.41%"></div><div class="seg seg-fail" style="width:72.59%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+        <div class="suite-numbers"><small>74 pass, 196 fail, 0 skip (of 270)</small></div>
       </div>
-      <p class="suite-prov">
-        No committed runner or <code>*_results.log</code> yet, so this row is not
-        scored. A scratch driver over <code>third_party/testing/csvw/tests</code>
-        decodes 286 of 293 metadata documents to structured metadata (the other 7
-        are 3 correctly-rejected malformed fixtures, 1 out-of-scope empty-table-group
-        edge case, 2 out-of-scope schema-by-reference fixtures needing HTTP fetch,
-        and 1 genuine decoder gap) — see
-        <a href="https://github.com/danbri/factoidal/blob/claude/main/docs/designissues/2026-07-05-csvw-program-plan.md" target="_blank" rel="noopener">the CSVW program plan</a>
-        for the staged roadmap.
-      </p>
+      <p class="suite-prov">Runner: <code>bin/csvw-runner</code> (<code>bin/linux-x86_64/csvw_runner</code>) &middot; Suite: vendored W3C csv2rdf corpus (ToRdf / ToRdfWithWarnings / NegativeRdf) &middot; <a href="https://github.com/danbri/factoidal/blob/worktree-agent-a5de26b2ee90c95fd/docs/designissues/2026-07-05-csvw-program-plan.md" target="_blank" rel="noopener">diagnosis: burn-down in progress — the CSVW program plan tracks the ToRdf / warnings / negative buckets; residual fails need full @context / metadata-merge processing</a></p>
     </div>
   </details>
   
@@ -1103,7 +1094,7 @@
 
 <section class="family amber" id="jsonld11">
   <h2>JSON-LD 1.1</h2>
-  <p class="fam-headline amber">449 pass, 12 fail, 6 skip (of 467) against the W3C JSON-LD 1.1 toRdf manifest.</p>
+  <p class="fam-headline amber">498 pass, 17 fail, 6 skip (of 521) across the W3C JSON-LD 1.1 toRdf and fromRdf manifests.</p>
   <details open>
     <summary>Suites in this family (tap to collapse)</summary>
     <div class="suites">
@@ -1112,7 +1103,13 @@
         <div class="meter"><div class="seg seg-pass" style="width:96.15%"></div><div class="seg seg-fail" style="width:2.57%"></div><div class="seg seg-skip" style="width:1.28%"></div></div>
         <div class="suite-numbers"><small>449 pass, 12 fail, 6 skip (of 467)</small></div>
       </div>
-      <p class="suite-prov">Runner: <code>bin/jsonld-runner</code> (<code>bin/linux-x86_64/jsonld_runner</code>) &middot; Suite: <code>third_party/testing/json-ld/</code> (toRdf manifest) &middot; <a href="https://github.com/danbri/factoidal/blob/claude/main/docs/designissues/2026-07-05-docs-hub-plan.md" target="_blank" rel="noopener">diagnosis: the 1 fail is the documented Ryu-class float-formatting case; the 6 skips are JSON-LD 1.0-only fixtures, out of scope for this 1.1 program</a></p>
+      <p class="suite-prov">Runner: <code>bin/jsonld-runner</code> (<code>bin/linux-x86_64/jsonld_runner</code>) &middot; Suite: <code>third_party/testing/json-ld/</code> (toRdf manifest) &middot; <a href="https://github.com/danbri/factoidal/blob/worktree-agent-a5de26b2ee90c95fd/docs/designissues/2026-07-05-docs-hub-plan.md" target="_blank" rel="noopener">diagnosis: the 1 fail is the documented Ryu-class float-formatting case; the 6 skips are JSON-LD 1.0-only fixtures, out of scope for this 1.1 program</a></p>
+      <div class="suite-row amber">
+        <div class="suite-name">JSON-LD 1.1 fromRdf</div>
+        <div class="meter"><div class="seg seg-pass" style="width:90.74%"></div><div class="seg seg-fail" style="width:9.26%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+        <div class="suite-numbers"><small>49 pass, 5 fail, 0 skip (of 54)</small></div>
+      </div>
+      <p class="suite-prov">Runner: <code>bin/jsonld-fromrdf-runner</code> (<code>bin/linux-x86_64/jsonld_fromrdf_runner</code>) &middot; Suite: W3C JSON-LD 1.1 fromRdf manifest (Serialize RDF as JSON-LD) &middot; <a href="https://github.com/danbri/factoidal/blob/worktree-agent-a5de26b2ee90c95fd/.github/test-suites/jsonld-fromrdf.yaml" target="_blank" rel="noopener">diagnosis: residual fails are the documented @native/list-container serialisation gaps — see the suite manifest</a></p>
     </div>
   </details>
   
@@ -1129,10 +1126,137 @@
         <div class="meter"><div class="seg seg-pass" style="width:90.83%"></div><div class="seg seg-fail" style="width:4.17%"></div><div class="seg seg-skip" style="width:5.00%"></div></div>
         <div class="suite-numbers"><small>109 pass, 5 fail, 6 skip (of 120)</small></div>
       </div>
-      <p class="suite-prov">Runner: <code>bin/vc-runner</code> (<code>bin/linux-x86_64/vc_runner</code>) &middot; Suite: <code>third_party/testing/vc/tests/input/</code> (structural fixtures, filename-encoded verdicts) &middot; <a href="https://github.com/danbri/factoidal/blob/claude/main/docs/designissues/2026-07-05-vc-program-plan.md" target="_blank" rel="noopener">diagnosis: all 34 fails are documented Stage 2 deferrals (issuer shape, validFrom/validUntil ordering, credentialStatus/credentialSchema/etc. inner shapes) — see the VC program plan</a></p>
+      <p class="suite-prov">Runner: <code>bin/vc-runner</code> (<code>bin/linux-x86_64/vc_runner</code>) &middot; Suite: <code>third_party/testing/vc/tests/input/</code> (structural fixtures, filename-encoded verdicts) &middot; <a href="https://github.com/danbri/factoidal/blob/worktree-agent-a5de26b2ee90c95fd/docs/designissues/2026-07-05-vc-program-plan.md" target="_blank" rel="noopener">diagnosis: all 34 fails are documented Stage 2 deferrals (issuer shape, validFrom/validUntil ordering, credentialStatus/credentialSchema/etc. inner shapes) — see the VC program plan</a></p>
     </div>
   </details>
   
+</section>
+
+<section class="family amber" id="xml-family">
+  <h2>XML-family standards: XSLT / XML / MathML / Schematron</h2>
+  <p class="fam-headline amber">1565 pass, 26 fail, 1171 skip (of 2762) across XSLT 1.0 transforms, XML 1.0 well-formedness conformance, MathML 3 content evaluation, and ISO Schematron.</p>
+  <details open>
+    <summary>Suites in this family (tap to collapse)</summary>
+    <div class="suites">
+      <div class="suite-row amber">
+        <div class="suite-name">XSLT 1.0</div>
+        <div class="meter"><div class="seg seg-pass" style="width:70.45%"></div><div class="seg seg-fail" style="width:29.55%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+        <div class="suite-numbers"><small>62 pass, 26 fail, 0 skip (of 88)</small></div>
+      </div>
+      <p class="suite-prov">Runner: <code>bin/xslt-runner</code> (<code>bin/linux-x86_64/xslt_runner</code>) &middot; Suite: <code>third_party/testing/xslt/manifest.json</code> &middot; <a href="https://github.com/danbri/factoidal/blob/worktree-agent-a5de26b2ee90c95fd/.github/test-suites/xslt.yaml" target="_blank" rel="noopener">diagnosis: residual fails are the documented XSLT 1.0 constructs not yet in the transform engine — see the suite manifest</a></p>
+      <div class="suite-row green">
+        <div class="suite-name">XML 1.0 conformance</div>
+        <div class="meter"><div class="seg seg-pass" style="width:54.70%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:45.30%"></div></div>
+        <div class="suite-numbers"><small>1414 pass, 0 fail, 1171 skip (of 2585)</small></div>
+      </div>
+      <p class="suite-prov">Runner: <code>bin/xml-runner</code> (<code>bin/linux-x86_64/xml_runner</code>) &middot; Suite: <code>third_party/testing/xml/xmlconf</code> (OASIS/W3C XML conformance) &middot; skips are DTD-boundary / out-of-XML-1.0-profile fixtures, decomposed in the breakdown below</p>
+      <details class="failure-detail">
+        <summary>XML conformance — integrity breakdown (real rejects vs skips)</summary>
+        <pre>-- HONEST BREAKDOWN (PART 1 integrity accounting) --
+  not-wf REAL passes (parser rejected for the tested construct): 1016
+  valid  wf-accept passes (DOCTYPE internal subset now parsed):  398
+  --&gt; real pass total:                                           1414
+  not-wf FAILs (parser wrongly ACCEPTED a wf-1.0 not-wf doc):     0
+  valid  FAILs (parser wrongly REJECTED a valid doc):            0
+  --&gt; fail total:                                                0
+  SKIP: not-wf DTD-internal (accepted; violation in the DTD
+        subset, parsed-but-not-validated — Stage-A scope limit): 332
+  SKIP: valid DTD-boundary (rejected; markup entity / external
+        subset / DTD construct beyond the WF slice):             386
+  SKIP: out-of-profile (not-wf only under XML 1.1 / Namespaces,
+        parser is XML 1.0 non-namespace):                        37
+  SKIP: vacuous (RETIRED by Stage-A DTD support; must be 0):      0
+  SKIP: other (DOCTYPE-external-on-valid, encoding, invalid/error
+        by design, external-entity exemption, file-not-found):   416
+  --&gt; skip total:                                                1171
+  (side-check: PassVacuous counter = 0, must equal vacuous skip = 0)
+XML_Wellformedness.is_valid_ncname (informational only, see module comment):
+  checked 741 element tags across accepted documents; 8 would have been
+  rejected by the NCName production (expected — it excludes ':' from Name
+  start/continue characters, which is an RDF/XML-domain rule, not generic
+  XML conformance; plain XML 1.0 legally allows ':' in Names).
+========================================</pre>
+      </details>      <div class="suite-row green">
+        <div class="suite-name">MathML 3 content</div>
+        <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+        <div class="suite-numbers"><small>81 pass, 0 fail, 0 skip (of 81)</small></div>
+      </div>
+      <p class="suite-prov">Runner: <code>bin/mathml-runner</code> (<code>bin/linux-x86_64/mathml_runner</code>) &middot; Suite: <code>third_party/testing/mathml/manifest.json</code> (Content MathML evaluation)</p>
+      <div class="suite-row green">
+        <div class="suite-name">ISO Schematron</div>
+        <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+        <div class="suite-numbers"><small>8 pass, 0 fail, 0 skip (of 8)</small></div>
+      </div>
+      <p class="suite-prov">Runner: <code>bin/schematron-runner</code> (<code>bin/linux-x86_64/schematron_runner</code>) &middot; Suite: <code>third_party/testing/schematron/</code> (rule-based assertion cases)</p>
+    </div>
+  </details>
+  
+</section>
+
+<section class="family green" id="schemas-ids">
+  <h2>Data schemas &amp; identifiers: JSON Schema / DID</h2>
+  <p class="fam-headline green">720 pass, 0 fail, 58 skip (of 778) across JSON Schema draft-07 and DID did:key resolution.</p>
+  <details open>
+    <summary>Suites in this family (tap to collapse)</summary>
+    <div class="suites">
+      <div class="suite-row green">
+        <div class="suite-name">JSON Schema draft-07</div>
+        <div class="meter"><div class="seg seg-pass" style="width:92.47%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:7.53%"></div></div>
+        <div class="suite-numbers"><small>712 pass, 0 fail, 58 skip (of 770)</small></div>
+      </div>
+      <p class="suite-prov">Runner: <code>bin/jsonschema-runner</code> (<code>bin/linux-x86_64/jsonschema_runner</code>) &middot; Suite: <code>third_party/testing/jsonschema/</code> (JSON-Schema-Test-Suite draft7) &middot; skips are optional/format vocabularies out of scope for the core validator</p>
+      <div class="suite-row green">
+        <div class="suite-name">DID did:key</div>
+        <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+        <div class="suite-numbers"><small>8 pass, 0 fail, 0 skip (of 8)</small></div>
+      </div>
+      <p class="suite-prov">Runner: <code>bin/did-runner</code> (<code>bin/linux-x86_64/did_runner</code>) &middot; Suite: did:key resolution + multibase/multicodec accept/reject cases</p>
+    </div>
+  </details>
+  
+</section>
+
+<section class="family amber" id="runtime-parity">
+  <h2>Storage backend &amp; JS runtime: HDT parity / hub / npm</h2>
+  <p class="fam-headline amber">350 pass, 3 fail, 1 skip (of 354) across HDT backend parity and the browser/npm bundle suites (node --test).</p>
+  <details open>
+    <summary>Suites in this family (tap to collapse)</summary>
+    <div class="suites">
+      <div class="suite-row green">
+        <div class="suite-name">HDT stage-4 backend parity</div>
+        <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+        <div class="suite-numbers"><small>6 pass, 0 fail, 0 skip (of 6)</small></div>
+      </div>
+      <p class="suite-prov">Runner: <code>tests/local/hdt_stage4_parity.sh</code> &middot; Fixture: <code>third_party/testing/hdt/rml-core-ontology.hdt</code> vs ground-truth <code>.nt</code> (unbound/bound-S/P/O/ASK/COUNT, byte-identical)</p>
+      <div class="suite-row amber">
+        <div class="suite-name">hub browser-bundle cells</div>
+        <div class="meter"><div class="seg seg-pass" style="width:98.53%"></div><div class="seg seg-fail" style="width:1.47%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+        <div class="suite-numbers"><small>201 pass, 3 fail, 0 skip (of 204)</small></div>
+      </div>
+      <p class="suite-prov">Runner: <code>node --test tests/hub/*.mjs</code> &middot; live cells for every docs-hub post, run against the JS/wasm bundle &middot; <a href="https://github.com/danbri/factoidal/blob/worktree-agent-a5de26b2ee90c95fd/tests/hub/" target="_blank" rel="noopener">diagnosis: any residual fails are fixtures/build-artifacts absent in this checkout (uninitialised submodule or unbuilt C demo), not engine regressions</a></p>
+      <div class="suite-row green">
+        <div class="suite-name">npm package suite</div>
+        <div class="meter"><div class="seg seg-pass" style="width:99.31%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.69%"></div></div>
+        <div class="suite-numbers"><small>143 pass, 0 fail, 1 skip (of 144)</small></div>
+      </div>
+      <p class="suite-prov">Runner: <code>node --test npm/factoidal/test/*.test.js</code> &middot; the 7 engine FP APIs, HDT-in-bundle, delta-log, VC crypto (HACL* wasm)</p>
+    </div>
+  </details>
+  
+</section>
+
+<section class="family grey" id="xforms-note">
+  <h2>XForms model engine</h2>
+  <p class="fam-headline grey">Not yet wired as a scored suite.</p>
+  <p class="suite-prov" style="margin-top:0.4em">
+    The F&#42; XForms model engine has a unit harness
+    (<code>tests/unit/xforms_tests.ml</code>, ~29 bind/recalc cases) gated
+    behind <code>tests/unit/run-all.sh</code>, currently broken
+    (<a href="https://github.com/danbri/factoidal/issues/82" target="_blank" rel="noopener">#82</a>);
+    no fabricated number is shown here. The browser-facing XForms API is
+    exercised live under the npm suite (<code>xforms.test.js</code>) and the
+    hub bundle (post29), both counted in the runtime family above.
+  </p>
 </section>
 
 
@@ -1223,9 +1347,9 @@ vc-stage1:    109 pass, 5 fail, 6 skip (of 120) — present=1</pre>
 </main>
 
 <footer>
-  Generated <strong>2026-07-09 18:40 UTC</strong> from commit
-  <code><a href="https://github.com/danbri/factoidal/commit/7727c914aeaa8b874c3a02038aa2681b4a4df1fb">7727c914</a></code>
-  on branch <code>claude/main</code> — &ldquo;XSLT 1.0: sort, doc-order node lists, document-node paths, node-set vars (42/88 -> 62/88)&rdquo;.
+  Generated <strong>2026-07-09 19:23 UTC</strong> from commit
+  <code><a href="https://github.com/danbri/factoidal/commit/1f45940bb4ee83910186dd9f80957d40fffe7c5f">1f45940</a></code>
+  on branch <code>worktree-agent-a5de26b2ee90c95fd</code> — &ldquo;ci: refresh dashboard&rdquo;.
   Re-run locally: <code>cd formal/fstar &amp;&amp; ./generate-report.sh --run</code>.
 </footer>
 

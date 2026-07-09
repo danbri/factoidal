@@ -1,0 +1,18 @@
+name: JSON-LD 1.1 fromRdf (Serialize RDF as JSON-LD)
+spec: https://www.w3.org/TR/json-ld11-api/#serialize-rdf-as-json-ld-algorithm
+runner: bin/linux-x86_64/jsonld_fromrdf_runner
+runner_args: []
+manifest: third_party/testing/json-ld/tests/fromRdf-manifest.jsonld
+log_path: formal/fstar/ocaml-output/jsonld_fromrdf_results.log
+result_path: docs/test-results/by-suite/jsonld-fromrdf.json
+domain: RDF
+foundational: false
+
+# Reverse direction of jsonld-tordf. Residual fails are the documented
+# @native / list-container serialisation gaps.
+triggers:
+  paths:
+    - bin/jsonld-fromrdf-runner/**
+    - formal/fstar/Parser.JSONLD.fst
+    - third_party/testing/json-ld/**
+  excludes: []

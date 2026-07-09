@@ -1,0 +1,18 @@
+name: JSON Schema draft-07
+spec: https://json-schema.org/draft-07/schema
+runner: bin/linux-x86_64/jsonschema_runner
+runner_args: []
+manifest: third_party/testing/jsonschema/manifest.json
+log_path: formal/fstar/ocaml-output/jsonschema_results.log
+result_path: docs/test-results/by-suite/jsonschema.json
+domain: JSON
+foundational: false
+
+# JSON-Schema-Test-Suite (draft7). Skips are optional/format vocabularies
+# out of scope for the core validator.
+triggers:
+  paths:
+    - bin/jsonschema-runner/**
+    - third_party/testing/jsonschema/**
+    - formal/fstar/Parser.JSON.fst
+  excludes: []

@@ -1,0 +1,15 @@
+name: MathML 3 content evaluation
+spec: https://www.w3.org/TR/MathML3/
+runner: bin/linux-x86_64/mathml_runner
+runner_args: []
+manifest: third_party/testing/mathml/manifest.json
+log_path: formal/fstar/ocaml-output/mathml_results.log
+result_path: docs/test-results/by-suite/mathml.json
+domain: XML
+foundational: false
+
+triggers:
+  paths:
+    - bin/mathml-runner/**
+    - third_party/testing/mathml/**
+  excludes: []

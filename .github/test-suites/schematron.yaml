@@ -1,0 +1,15 @@
+name: ISO Schematron
+spec: https://www.iso.org/standard/74515.html
+runner: bin/linux-x86_64/schematron_runner
+runner_args: []
+manifest: third_party/testing/schematron/manifest.json
+log_path: formal/fstar/ocaml-output/schematron_results.log
+result_path: docs/test-results/by-suite/schematron.json
+domain: XML
+foundational: false
+
+triggers:
+  paths:
+    - bin/schematron-runner/**
+    - third_party/testing/schematron/**
+  excludes: []

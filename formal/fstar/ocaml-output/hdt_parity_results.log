@@ -1,0 +1,9 @@
+--- HDT stage 4 backend parity: rml-core-ontology.hdt vs ontology.nt ---
+  ok    unbound scan
+  ok    bound-S
+  ok    bound-P
+  ok    bound-O
+  ok    ASK
+  ok    COUNT
+============================================================
+hdt-stage4 parity: 6 pass, 0 fail (out of 6)

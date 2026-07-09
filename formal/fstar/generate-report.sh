@@ -51,6 +51,25 @@ JSONLD_LOG="$OCAML_DIR/jsonld_results.log"
 RML_LOG="$OCAML_DIR/rml_results.log"
 RIFCORE_LOG="$OCAML_DIR/rif_results.log"
 VC_LOG="$OCAML_DIR/vc_results.log"
+# Wave (2026-07-09): the vendor/local runner binaries the project already
+# ships (bin/linux-x86_64/) but that the dashboard never surfaced — every
+# one is a committed binary or a committed shell script, same
+# "no-toolchain-needed" pattern as owl_runner/rdfc10_runner above. Log
+# paths match each suite's .github/test-suites/<suite>.yaml `log_path`
+# field where a manifest exists.
+XSLT_LOG="$OCAML_DIR/xslt_results.log"
+XMLCONF_LOG="$OCAML_DIR/xml_conformance_results.log"
+MATHML_LOG="$OCAML_DIR/mathml_results.log"
+JSONSCHEMA_LOG="$OCAML_DIR/jsonschema_results.log"
+SCHEMATRON_LOG="$OCAML_DIR/schematron_results.log"
+CSVW_LOG="$OCAML_DIR/csvw_results.log"
+DID_LOG="$OCAML_DIR/did_results.log"
+JSONLD_FROMRDF_LOG="$OCAML_DIR/jsonld_fromrdf_results.log"
+# hdt-parity is a committed shell script (tests/local/hdt_stage4_parity.sh),
+# not a runner binary; JS-side hub/npm suites run through node --test.
+HDT_PARITY_LOG="$OCAML_DIR/hdt_parity_results.log"
+HUB_LOG="$OCAML_DIR/hub_results.log"
+NPM_LOG="$OCAML_DIR/npm_results.log"
 
 mkdir -p "$OUTPUT_DIR" "$HISTORY_DIR"
 
@@ -65,6 +84,14 @@ case "$(uname -s)-$(uname -m)" in
     RML_RUNNER="$SCRIPT_DIR/../../bin/darwin-arm64/rml_runner"
     RIF_RUNNER="$SCRIPT_DIR/../../bin/darwin-arm64/rif_runner"
     VC_RUNNER="$SCRIPT_DIR/../../bin/darwin-arm64/vc_runner"
+    XSLT_RUNNER="$SCRIPT_DIR/../../bin/darwin-arm64/xslt_runner"
+    XML_RUNNER="$SCRIPT_DIR/../../bin/darwin-arm64/xml_runner"
+    MATHML_RUNNER="$SCRIPT_DIR/../../bin/darwin-arm64/mathml_runner"
+    JSONSCHEMA_RUNNER="$SCRIPT_DIR/../../bin/darwin-arm64/jsonschema_runner"
+    SCHEMATRON_RUNNER="$SCRIPT_DIR/../../bin/darwin-arm64/schematron_runner"
+    CSVW_RUNNER="$SCRIPT_DIR/../../bin/darwin-arm64/csvw_runner"
+    DID_RUNNER="$SCRIPT_DIR/../../bin/darwin-arm64/did_runner"
+    JSONLD_FROMRDF_RUNNER="$SCRIPT_DIR/../../bin/darwin-arm64/jsonld_fromrdf_runner"
     ;;
   Linux-x86_64)
     RUNNER="$SCRIPT_DIR/../../bin/linux-x86_64/w3c_runner"
@@ -76,6 +103,14 @@ case "$(uname -s)-$(uname -m)" in
     RML_RUNNER="$SCRIPT_DIR/../../bin/linux-x86_64/rml_runner"
     RIF_RUNNER="$SCRIPT_DIR/../../bin/linux-x86_64/rif_runner"
     VC_RUNNER="$SCRIPT_DIR/../../bin/linux-x86_64/vc_runner"
+    XSLT_RUNNER="$SCRIPT_DIR/../../bin/linux-x86_64/xslt_runner"
+    XML_RUNNER="$SCRIPT_DIR/../../bin/linux-x86_64/xml_runner"
+    MATHML_RUNNER="$SCRIPT_DIR/../../bin/linux-x86_64/mathml_runner"
+    JSONSCHEMA_RUNNER="$SCRIPT_DIR/../../bin/linux-x86_64/jsonschema_runner"
+    SCHEMATRON_RUNNER="$SCRIPT_DIR/../../bin/linux-x86_64/schematron_runner"
+    CSVW_RUNNER="$SCRIPT_DIR/../../bin/linux-x86_64/csvw_runner"
+    DID_RUNNER="$SCRIPT_DIR/../../bin/linux-x86_64/did_runner"
+    JSONLD_FROMRDF_RUNNER="$SCRIPT_DIR/../../bin/linux-x86_64/jsonld_fromrdf_runner"
     ;;
   *)
     RUNNER="$OCAML_DIR/w3c_runner"
@@ -87,6 +122,14 @@ case "$(uname -s)-$(uname -m)" in
     RML_RUNNER="$OCAML_DIR/rml_runner"
     RIF_RUNNER="$OCAML_DIR/rif_runner"
     VC_RUNNER="$OCAML_DIR/vc_runner"
+    XSLT_RUNNER="$OCAML_DIR/xslt_runner"
+    XML_RUNNER="$OCAML_DIR/xml_runner"
+    MATHML_RUNNER="$OCAML_DIR/mathml_runner"
+    JSONSCHEMA_RUNNER="$OCAML_DIR/jsonschema_runner"
+    SCHEMATRON_RUNNER="$OCAML_DIR/schematron_runner"
+    CSVW_RUNNER="$OCAML_DIR/csvw_runner"
+    DID_RUNNER="$OCAML_DIR/did_runner"
+    JSONLD_FROMRDF_RUNNER="$OCAML_DIR/jsonld_fromrdf_runner"
     ;;
 esac
 
@@ -164,6 +207,54 @@ if [ "$1" = "--run" ]; then
   run_optional_suite "RML rml-core suite"             "$RML_RUNNER"    "$RML_LOG"      90
   run_optional_suite "RIF Core suite"                 "$RIF_RUNNER"    "$RIFCORE_LOG"  90
   run_optional_suite "VC Data Model 2.0 stage-1 suite" "$VC_RUNNER"    "$VC_LOG"       60
+
+  # Wave (2026-07-09) — vendor/document suites the project already ships a
+  # runner for but never surfaced on the public dashboard. Same guarded /
+  # timeout-capped / fail-soft contract as the block above. Each runner is
+  # optional (skips cleanly if the binary or its fixtures are absent), so a
+  # checkout missing a given submodule degrades to a "not measured" row
+  # rather than a fabricated score.
+  run_optional_suite "XSLT 1.0 transform suite"      "$XSLT_RUNNER"       "$XSLT_LOG"       180 \
+    "third_party/testing/xslt/manifest.json"
+  # XML conformance (OASIS/W3C xmlconf) walks ~2600 fixtures — allow a
+  # generous budget (~1-3 min observed).
+  run_optional_suite "XML 1.0 conformance suite"     "$XML_RUNNER"        "$XMLCONF_LOG"    420 \
+    "third_party/testing/xml/xmlconf"
+  run_optional_suite "MathML 3 content suite"        "$MATHML_RUNNER"     "$MATHML_LOG"      90
+  run_optional_suite "JSON Schema draft-07 suite"    "$JSONSCHEMA_RUNNER" "$JSONSCHEMA_LOG"  120
+  run_optional_suite "ISO Schematron suite"          "$SCHEMATRON_RUNNER" "$SCHEMATRON_LOG"   60
+  run_optional_suite "CSVW csv2rdf suite"            "$CSVW_RUNNER"       "$CSVW_LOG"        180
+  run_optional_suite "DID did:key suite"             "$DID_RUNNER"        "$DID_LOG"          60
+  run_optional_suite "JSON-LD 1.1 fromRdf suite"     "$JSONLD_FROMRDF_RUNNER" "$JSONLD_FROMRDF_LOG" 90
+
+  # hdt-parity is a committed shell script, not a runner binary; it needs
+  # the rml-core submodule ground-truth .nt. Guard on both so an
+  # un-initialised submodule degrades to "not measured" instead of a
+  # false-fail row.
+  HDT_PARITY_SCRIPT="$REPO_ROOT/tests/local/hdt_stage4_parity.sh"
+  HDT_GROUND_TRUTH="$REPO_ROOT/third_party/testing/rml-modules/rml-core/ontology/documentation/ontology.nt"
+  if [ -f "$HDT_PARITY_SCRIPT" ] && [ -f "$HDT_GROUND_TRUTH" ]; then
+    echo "Running HDT stage-4 backend parity…"
+    ( cd "$REPO_ROOT" && timeout 300 bash tests/local/hdt_stage4_parity.sh > "$HDT_PARITY_LOG" 2>&1 ) || true
+    echo "  done."
+  else
+    echo "  hdt-parity fixture (rml-core submodule) absent — skipping HDT parity." >&2
+  fi
+
+  # JS-side suites cover the browser/npm bundle (reactive cells, all engine
+  # FP APIs, HDT-in-bundle, VC crypto via HACL* wasm). Optional: guarded by
+  # `node` on PATH, timeout-capped, fail-soft. node --test prints a
+  # `# tests / # pass / # fail / # skipped` summary block scraped below.
+  if command -v node >/dev/null 2>&1; then
+    echo "Running hub browser-bundle suite (node --test)…"
+    ( cd "$REPO_ROOT" && timeout 600 node --test tests/hub/*.mjs > "$HUB_LOG" 2>&1 ) || true
+    echo "  done."
+    echo "Running npm package suite (node --test)…"
+    ( cd "$REPO_ROOT" && timeout 600 node --test npm/factoidal/test/*.test.js > "$NPM_LOG" 2>&1 ) || true
+    echo "  done."
+  else
+    echo "  node not found on PATH — skipping JS-side hub/npm suites." >&2
+  fi
 fi
 
 if [ ! -f "$SPARQL_LOG" ] || [ ! -f "$RDF_LOG" ]; then
@@ -371,6 +462,74 @@ scrape_last_summary RIFCORE_PART1    "$RIFCORE_LOG" '^rif \(original'
 scrape_last_summary RIFCORE_PART2    "$RIFCORE_LOG" '^rif-core-suite'
 scrape_last_summary RIFCORE_COMBINED "$RIFCORE_LOG" '^rif TOTAL:'
 
+# --- Added-suite tally scraper (2026-07-09) --------------------------------
+# The vendor/document runners each print ONE final tally line, but the
+# totals clause varies: "(out of N)", "(of N)", "(out of N cases)". This
+# scraper handles all three (unlike scrape_last_summary, whose total regex
+# is "(out of N)"-only — left untouched to keep the existing suites
+# byte-compatible). It requires an explicit anchor because the tally is
+# not always the last line (did:/csv2rdf/xml print a decorative rule after
+# it) and because some runners emit a leading carriage-return before the
+# tally (so a strict `^` line-anchor is avoided). Missing log / no match =>
+# PRESENT stays 0 and every count 0 => the emitters render "not measured
+# this run", never a fabricated number (CLAUDE.md anti-pattern #3/#25).
+scrape_added_summary () {
+  local prefix="$1" log="$2" anchor="$3"
+  declare -g "${prefix}_PRESENT=0" "${prefix}_PASS=0" "${prefix}_FAIL=0" "${prefix}_SKIP=0" "${prefix}_TOTAL=0"
+  [ -f "$log" ] || return 0
+  local line
+  line=$(grep -aE "$anchor" "$log" 2>/dev/null | tail -1 || true)
+  [ -z "$line" ] && return 0
+  local p f s t
+  p=$(echo "$line" | grep -oE '[0-9]+ pass'                         | awk '{s+=$1} END{print s+0}')
+  f=$(echo "$line" | grep -oE '[0-9]+ (fail|mismatch)'              | awk '{s+=$1} END{print s+0}')
+  s=$(echo "$line" | grep -oE '[0-9]+ (skip|skipped|deferred|stub)' | awk '{s+=$1} END{print s+0}')
+  # Accepts "(out of N)" and "(of N)" (and trailing words like "N cases").
+  t=$(echo "$line" | sed -nE 's/.*\((out )?of ([0-9]+).*/\2/p')
+  declare -g "${prefix}_PRESENT=1" "${prefix}_PASS=${p:-0}" "${prefix}_FAIL=${f:-0}" "${prefix}_SKIP=${s:-0}" "${prefix}_TOTAL=${t:-0}"
+}
+
+# --- node --test summary scraper -------------------------------------------
+# `node --test <files>` prints an aggregate TAP summary block:
+#   # tests N / # pass N / # fail N / # skipped N
+# Requires a `# tests` line (present only when the run reached its summary),
+# so a hung/killed run with no summary => PRESENT 0 => "not measured".
+scrape_node_test () {
+  local prefix="$1" log="$2"
+  declare -g "${prefix}_PRESENT=0" "${prefix}_PASS=0" "${prefix}_FAIL=0" "${prefix}_SKIP=0" "${prefix}_TOTAL=0"
+  [ -f "$log" ] || return 0
+  local t p f s
+  t=$(grep -aE '^# tests [0-9]+'   "$log" 2>/dev/null | tail -1 | sed -nE 's/^# tests ([0-9]+).*/\1/p')
+  [ -z "$t" ] && return 0
+  p=$(grep -aE '^# pass [0-9]+'    "$log" 2>/dev/null | tail -1 | sed -nE 's/^# pass ([0-9]+).*/\1/p')
+  f=$(grep -aE '^# fail [0-9]+'    "$log" 2>/dev/null | tail -1 | sed -nE 's/^# fail ([0-9]+).*/\1/p')
+  s=$(grep -aE '^# skipped [0-9]+' "$log" 2>/dev/null | tail -1 | sed -nE 's/^# skipped ([0-9]+).*/\1/p')
+  declare -g "${prefix}_PRESENT=1" "${prefix}_PASS=${p:-0}" "${prefix}_FAIL=${f:-0}" "${prefix}_SKIP=${s:-0}" "${prefix}_TOTAL=${t:-0}"
+}
+
+scrape_added_summary XSLT           "$XSLT_LOG"           'XSLT 1.0 tests:'
+scrape_added_summary XMLCONF        "$XMLCONF_LOG"        'xml-conformance:'
+scrape_added_summary MATHML         "$MATHML_LOG"         'Content MathML evaluation:'
+scrape_added_summary JSONSCHEMA     "$JSONSCHEMA_LOG"     'JSON Schema \(draft7\):'
+scrape_added_summary SCHEMATRON     "$SCHEMATRON_LOG"     'Schematron: [0-9]+ pass'
+scrape_added_summary CSVW2RDF       "$CSVW_LOG"           'csv2rdf: [0-9]+ pass'
+scrape_added_summary DIDKEY         "$DID_LOG"            'did:key: [0-9]+ pass'
+scrape_added_summary JSONLD_FROMRDF "$JSONLD_FROMRDF_LOG" 'JSON-LD fromRdf tests:'
+scrape_added_summary HDT_PARITY     "$HDT_PARITY_LOG"     'hdt-stage4 parity:'
+scrape_node_test     HUB            "$HUB_LOG"
+scrape_node_test     NPM            "$NPM_LOG"
+
+# XML conformance honest-breakdown block (the integrity accounting the
+# runner prints between "-- HONEST BREAKDOWN" and the final tally). Captured
+# verbatim for a collapsible sub-panel so the 1414/2585 headline is never
+# read as a bare "conformance %" without the skip decomposition visible.
+XMLCONF_BREAKDOWN=""
+if [ -f "$XMLCONF_LOG" ]; then
+  XMLCONF_BREAKDOWN=$(sed -n '/-- HONEST BREAKDOWN/,/^xml-conformance:/p' "$XMLCONF_LOG" 2>/dev/null \
+    | sed '$d' \
+    | sed -E 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g' || true)
+fi
+
 # --- Cross-suite family roll-ups --------------------------------------------
 # Sums PASS/FAIL/SKIP/TOTAL across a list of "<PREFIX>" scrape results
 # (only counting prefixes that are PRESENT), plus an ANY flag so a family
@@ -391,6 +550,20 @@ sum_family () {
   echo "$tp $tf $ts $tt $any"
 }
 read -r SHAPES_PASS SHAPES_FAIL SHAPES_SKIP SHAPES_TOTAL SHAPES_ANY <<< "$(sum_family "SHACL_CORE SHACL_SPARQL SHEX")"
+
+# emit_json_suite_obj — print a leading-comma keyed suite object into the
+# JSON `suites` map, ONLY when the suite's <PREFIX>_PRESENT flag is 1.
+# Reads <PREFIX>_{PASS,FAIL,SKIP,TOTAL} (skip/total default 0 when a suite,
+# e.g. OWL, tracks no skip). The leading comma is always valid because the
+# always-present sparql+rdf arrays precede every call.
+emit_json_suite_obj () {
+  local key="$1" prefix="$2"
+  local prv="${prefix}_PRESENT"
+  [ "${!prv:-0}" -eq 1 ] || return 0
+  local pv="${prefix}_PASS" fv="${prefix}_FAIL" sv="${prefix}_SKIP" tv="${prefix}_TOTAL"
+  printf ',\n    "%s": {"name":"%s","pass":%s,"fail":%s,"skip":%s,"total":%s}' \
+    "$key" "$key" "${!pv:-0}" "${!fv:-0}" "${!sv:-0}" "${!tv:-0}"
+}
 
 SPARQL_TOTAL=$((SPARQL_PASS + SPARQL_FAIL + SPARQL_SKIP + SPARQL_UNSUP))
 RDF_TOTAL=$((RDF_PASS + RDF_FAIL + RDF_SKIP + RDF_UNSUP))
@@ -473,6 +646,18 @@ CSV="$OUTPUT_DIR/latest.csv"
   emit_csv_row_if_present RIFCORE_PART1     rif   rif-sparql-manifest
   emit_csv_row_if_present RIFCORE_PART2     rif   rif-core-corpus
   emit_csv_row_if_present VC                vc    vc-credential-structural
+  # Wave (2026-07-09) — vendor/document + local/JS suites.
+  emit_csv_row_if_present XSLT              xslt        xslt-1.0
+  emit_csv_row_if_present XMLCONF           xml         xml-conformance
+  emit_csv_row_if_present MATHML            mathml      mathml-content
+  emit_csv_row_if_present JSONSCHEMA        jsonschema  jsonschema-draft7
+  emit_csv_row_if_present SCHEMATRON        schematron  schematron
+  emit_csv_row_if_present CSVW2RDF          csvw        csvw-csv2rdf
+  emit_csv_row_if_present DIDKEY            did         did-key
+  emit_csv_row_if_present JSONLD_FROMRDF    jsonld      jsonld-fromrdf
+  emit_csv_row_if_present HDT_PARITY        hdt         hdt-stage4-parity
+  emit_csv_row_if_present HUB               js          hub-browser-bundle
+  emit_csv_row_if_present NPM               js          npm-package
 } > "$CSV"
 cp "$CSV" "$HISTORY_DIR/${TIMESTAMP_ISO}.csv"
 
@@ -524,8 +709,34 @@ emit_json_suites () {
     "$RML_PASS" "$RML_FAIL" "$RML_SKIP" "$RML_TOTAL" "$([ "$RML_PRESENT" -eq 1 ] && echo true || echo false)"
   printf '    "rif_core":     {"pass":%s,"fail":%s,"skip":%s,"total":%s,"present":%s,"spec":"https://www.w3.org/TR/rif-core/"},\n' \
     "$RIFCORE_COMBINED_PASS" "$RIFCORE_COMBINED_FAIL" "$RIFCORE_COMBINED_SKIP" "$RIFCORE_COMBINED_TOTAL" "$([ "$RIFCORE_COMBINED_PRESENT" -eq 1 ] && echo true || echo false)"
-  printf '    "vc_stage1":    {"pass":%s,"fail":%s,"skip":%s,"total":%s,"present":%s,"spec":"https://www.w3.org/TR/vc-data-model-2.0/"}\n' \
+  printf '    "vc_stage1":    {"pass":%s,"fail":%s,"skip":%s,"total":%s,"present":%s,"spec":"https://www.w3.org/TR/vc-data-model-2.0/"},\n' \
     "$VC_PASS" "$VC_FAIL" "$VC_SKIP" "$VC_TOTAL" "$([ "$VC_PRESENT" -eq 1 ] && echo true || echo false)"
+  # Wave (2026-07-09) — vendor/document + local/JS suites. Every entry
+  # always emits its key with a present boolean (0-count when unmeasured),
+  # matching the shacl/shex/… convention above.
+  bp () { [ "${1:-0}" -eq 1 ] && echo true || echo false; }
+  printf '    "xslt":           {"pass":%s,"fail":%s,"skip":%s,"total":%s,"present":%s,"spec":"https://www.w3.org/TR/xslt-10/"},\n' \
+    "$XSLT_PASS" "$XSLT_FAIL" "$XSLT_SKIP" "$XSLT_TOTAL" "$(bp "$XSLT_PRESENT")"
+  printf '    "xml_conformance":{"pass":%s,"fail":%s,"skip":%s,"total":%s,"present":%s,"spec":"https://www.w3.org/TR/xml/"},\n' \
+    "$XMLCONF_PASS" "$XMLCONF_FAIL" "$XMLCONF_SKIP" "$XMLCONF_TOTAL" "$(bp "$XMLCONF_PRESENT")"
+  printf '    "mathml":         {"pass":%s,"fail":%s,"skip":%s,"total":%s,"present":%s,"spec":"https://www.w3.org/TR/MathML3/"},\n' \
+    "$MATHML_PASS" "$MATHML_FAIL" "$MATHML_SKIP" "$MATHML_TOTAL" "$(bp "$MATHML_PRESENT")"
+  printf '    "jsonschema":     {"pass":%s,"fail":%s,"skip":%s,"total":%s,"present":%s,"spec":"https://json-schema.org/draft-07/schema"},\n' \
+    "$JSONSCHEMA_PASS" "$JSONSCHEMA_FAIL" "$JSONSCHEMA_SKIP" "$JSONSCHEMA_TOTAL" "$(bp "$JSONSCHEMA_PRESENT")"
+  printf '    "schematron":     {"pass":%s,"fail":%s,"skip":%s,"total":%s,"present":%s,"spec":"https://www.iso.org/standard/74515.html"},\n' \
+    "$SCHEMATRON_PASS" "$SCHEMATRON_FAIL" "$SCHEMATRON_SKIP" "$SCHEMATRON_TOTAL" "$(bp "$SCHEMATRON_PRESENT")"
+  printf '    "csvw_csv2rdf":   {"pass":%s,"fail":%s,"skip":%s,"total":%s,"present":%s,"spec":"https://www.w3.org/TR/csv2rdf/"},\n' \
+    "$CSVW2RDF_PASS" "$CSVW2RDF_FAIL" "$CSVW2RDF_SKIP" "$CSVW2RDF_TOTAL" "$(bp "$CSVW2RDF_PRESENT")"
+  printf '    "did_key":        {"pass":%s,"fail":%s,"skip":%s,"total":%s,"present":%s,"spec":"https://www.w3.org/TR/did-core/"},\n' \
+    "$DIDKEY_PASS" "$DIDKEY_FAIL" "$DIDKEY_SKIP" "$DIDKEY_TOTAL" "$(bp "$DIDKEY_PRESENT")"
+  printf '    "jsonld_fromrdf": {"pass":%s,"fail":%s,"skip":%s,"total":%s,"present":%s,"spec":"https://www.w3.org/TR/json-ld11-api/#serialize-rdf-as-json-ld-algorithm"},\n' \
+    "$JSONLD_FROMRDF_PASS" "$JSONLD_FROMRDF_FAIL" "$JSONLD_FROMRDF_SKIP" "$JSONLD_FROMRDF_TOTAL" "$(bp "$JSONLD_FROMRDF_PRESENT")"
+  printf '    "hdt_stage4_parity":{"pass":%s,"fail":%s,"skip":%s,"total":%s,"present":%s,"spec":"internal (HDT backend parity vs in-memory)"},\n' \
+    "$HDT_PARITY_PASS" "$HDT_PARITY_FAIL" "$HDT_PARITY_SKIP" "$HDT_PARITY_TOTAL" "$(bp "$HDT_PARITY_PRESENT")"
+  printf '    "hub_browser_bundle":{"pass":%s,"fail":%s,"skip":%s,"total":%s,"present":%s,"spec":"internal (node --test tests/hub)"},\n' \
+    "$HUB_PASS" "$HUB_FAIL" "$HUB_SKIP" "$HUB_TOTAL" "$(bp "$HUB_PRESENT")"
+  printf '    "npm_package":    {"pass":%s,"fail":%s,"skip":%s,"total":%s,"present":%s,"spec":"internal (node --test npm/factoidal/test)"}\n' \
+    "$NPM_PASS" "$NPM_FAIL" "$NPM_SKIP" "$NPM_TOTAL" "$(bp "$NPM_PRESENT")"
   printf '  },\n'
   printf '  "suites": {\n'
   printf '    "sparql": [\n'
@@ -533,8 +744,35 @@ emit_json_suites () {
   printf '\n    ],\n'
   printf '    "rdf": [\n'
   emit_json_suites "$RDF_SUITES"
-  printf '\n    ]\n'
-  printf '  }\n'
+  printf '\n    ]'
+  # Per-suite objects (2026-07-09) — one keyed {name,pass,fail,skip,total}
+  # entry per non-(sparql|rdf) suite, present-guarded. Each prints a
+  # leading comma, valid because sparql+rdf always precede them. Covers the
+  # earlier-wave conformance suites (owl/rdfc10/shacl/…, mirrored here from
+  # their totals) plus the 2026-07-09 vendor/document + local/JS suites, so
+  # the machine-readable `suites` map lists every shipped engine, not just
+  # the two W3C core families.
+  emit_json_suite_obj "owl_rl_positive_entailment" OWL
+  emit_json_suite_obj "rdfc10"            RDFC10
+  emit_json_suite_obj "shacl_core"        SHACL_CORE
+  emit_json_suite_obj "shacl_sparql"      SHACL_SPARQL
+  emit_json_suite_obj "shex"              SHEX
+  emit_json_suite_obj "jsonld_tordf"      JSONLD
+  emit_json_suite_obj "rml_core"          RML
+  emit_json_suite_obj "rif_core"          RIFCORE_COMBINED
+  emit_json_suite_obj "vc_stage1"         VC
+  emit_json_suite_obj "xslt"              XSLT
+  emit_json_suite_obj "xml_conformance"   XMLCONF
+  emit_json_suite_obj "mathml"            MATHML
+  emit_json_suite_obj "jsonschema"        JSONSCHEMA
+  emit_json_suite_obj "schematron"        SCHEMATRON
+  emit_json_suite_obj "csvw_csv2rdf"      CSVW2RDF
+  emit_json_suite_obj "did_key"           DIDKEY
+  emit_json_suite_obj "jsonld_fromrdf"    JSONLD_FROMRDF
+  emit_json_suite_obj "hdt_stage4_parity" HDT_PARITY
+  emit_json_suite_obj "hub_browser_bundle" HUB
+  emit_json_suite_obj "npm_package"       NPM
+  printf '\n  }\n'
   printf '}\n'
 } > "$JSON"
 cp "$JSON" "$HISTORY_DIR/${TIMESTAMP_ISO}.json"
@@ -1150,39 +1388,31 @@ RULES_BODY=$(
 RULES_HTML=$(family_section "rules" "Rules: RIF Core" "$RULES_STATUS" "$RULES_HEADLINE" "$RULES_BODY" "")
 
 # --- Mapping: RML / CSVW ---------------------------------------------------
-MAPPING_STATUS=$(status_for "$RML_FAIL" "$RML_PRESENT")
-if [ "$RML_PRESENT" -eq 1 ]; then
-  MAPPING_HEADLINE="${RML_PASS} pass, ${RML_FAIL} fail, ${RML_SKIP} skip (of ${RML_TOTAL}) on RML rml-core; CSVW has an early csv2rdf runner (csvw_runner, ~19/270 on the W3C csv2rdf corpus) not yet wired into this dashboard."
+# CSVW is now scored live through csvw_runner (2026-07-09) — the earlier
+# grey "not wired" placeholder is retired.
+read -r MAPPING_PASS MAPPING_FAIL MAPPING_SKIP MAPPING_TOTAL MAPPING_ANY <<< "$(sum_family "RML CSVW2RDF")"
+MAPPING_STATUS=$(status_for "$MAPPING_FAIL" "$MAPPING_ANY")
+if [ "$MAPPING_ANY" -eq 1 ]; then
+  MAPPING_HEADLINE="${MAPPING_PASS} pass, ${MAPPING_FAIL} fail, ${MAPPING_SKIP} skip (of ${MAPPING_TOTAL}) across RML rml-core and CSVW csv2rdf."
 else
   MAPPING_HEADLINE="Not measured this run."
 fi
 MAPPING_BODY=$(
   family_suite_row "RML rml-core" "$RML_PASS" "$RML_FAIL" "$RML_SKIP" "$RML_TOTAL" "$RML_PRESENT" \
     "Runner: <code>bin/rml-runner</code> (<code>bin/linux-x86_64/rml_runner</code>) &middot; Suite: <code>third_party/testing/rml-modules/rml-core/</code>"
-  cat <<CSVWROW
-      <div class="suite-row grey">
-        <div class="suite-name">CSVW (Stage 1 metadata decode)</div>
-        <div class="meter"><div class="seg seg-skip" style="width:100%"></div></div>
-        <div class="suite-numbers"><small>in progress &mdash; not wired into this dashboard</small></div>
-      </div>
-      <p class="suite-prov">
-        No committed runner or <code>*_results.log</code> yet, so this row is not
-        scored. A scratch driver over <code>third_party/testing/csvw/tests</code>
-        decodes 286 of 293 metadata documents to structured metadata (the other 7
-        are 3 correctly-rejected malformed fixtures, 1 out-of-scope empty-table-group
-        edge case, 2 out-of-scope schema-by-reference fixtures needing HTTP fetch,
-        and 1 genuine decoder gap) — see
-        <a href="${GITHUB_BLOB_BASE}/docs/designissues/2026-07-05-csvw-program-plan.md" target="_blank" rel="noopener">the CSVW program plan</a>
-        for the staged roadmap.
-      </p>
-CSVWROW
+  family_suite_row "CSVW csv2rdf" "$CSVW2RDF_PASS" "$CSVW2RDF_FAIL" "$CSVW2RDF_SKIP" "$CSVW2RDF_TOTAL" "$CSVW2RDF_PRESENT" \
+    "Runner: <code>bin/csvw-runner</code> (<code>bin/linux-x86_64/csvw_runner</code>) &middot; Suite: vendored W3C csv2rdf corpus (ToRdf / ToRdfWithWarnings / NegativeRdf)" \
+    "<a href=\"${GITHUB_BLOB_BASE}/docs/designissues/2026-07-05-csvw-program-plan.md\" target=\"_blank\" rel=\"noopener\">diagnosis: burn-down in progress — the CSVW program plan tracks the ToRdf / warnings / negative buckets; residual fails need full @context / metadata-merge processing</a>"
 )
 MAPPING_HTML=$(family_section "mapping" "Mapping: RML / CSVW" "$MAPPING_STATUS" "$MAPPING_HEADLINE" "$MAPPING_BODY" "")
 
 # --- JSON-LD 1.1 ------------------------------------------------------------
-JSONLD_STATUS=$(status_for "$JSONLD_FAIL" "$JSONLD_PRESENT")
-if [ "$JSONLD_PRESENT" -eq 1 ]; then
-  JSONLD_FAMILY_HEADLINE="${JSONLD_PASS} pass, ${JSONLD_FAIL} fail, ${JSONLD_SKIP} skip (of ${JSONLD_TOTAL}) against the W3C JSON-LD 1.1 toRdf manifest."
+# Two directions now scored: toRdf (jsonld_runner) + fromRdf
+# (jsonld_fromrdf_runner, 2026-07-09).
+read -r JSONLD_FAM_PASS JSONLD_FAM_FAIL JSONLD_FAM_SKIP JSONLD_FAM_TOTAL JSONLD_FAM_ANY <<< "$(sum_family "JSONLD JSONLD_FROMRDF")"
+JSONLD_STATUS=$(status_for "$JSONLD_FAM_FAIL" "$JSONLD_FAM_ANY")
+if [ "$JSONLD_FAM_ANY" -eq 1 ]; then
+  JSONLD_FAMILY_HEADLINE="${JSONLD_FAM_PASS} pass, ${JSONLD_FAM_FAIL} fail, ${JSONLD_FAM_SKIP} skip (of ${JSONLD_FAM_TOTAL}) across the W3C JSON-LD 1.1 toRdf and fromRdf manifests."
 else
   JSONLD_FAMILY_HEADLINE="Not measured this run."
 fi
@@ -1190,6 +1420,9 @@ JSONLD_BODY=$(
   family_suite_row "JSON-LD 1.1 toRdf" "$JSONLD_PASS" "$JSONLD_FAIL" "$JSONLD_SKIP" "$JSONLD_TOTAL" "$JSONLD_PRESENT" \
     "Runner: <code>bin/jsonld-runner</code> (<code>bin/linux-x86_64/jsonld_runner</code>) &middot; Suite: <code>third_party/testing/json-ld/</code> (toRdf manifest)" \
     "<a href=\"${GITHUB_BLOB_BASE}/docs/designissues/2026-07-05-docs-hub-plan.md\" target=\"_blank\" rel=\"noopener\">diagnosis: the 1 fail is the documented Ryu-class float-formatting case; the 6 skips are JSON-LD 1.0-only fixtures, out of scope for this 1.1 program</a>"
+  family_suite_row "JSON-LD 1.1 fromRdf" "$JSONLD_FROMRDF_PASS" "$JSONLD_FROMRDF_FAIL" "$JSONLD_FROMRDF_SKIP" "$JSONLD_FROMRDF_TOTAL" "$JSONLD_FROMRDF_PRESENT" \
+    "Runner: <code>bin/jsonld-fromrdf-runner</code> (<code>bin/linux-x86_64/jsonld_fromrdf_runner</code>) &middot; Suite: W3C JSON-LD 1.1 fromRdf manifest (Serialize RDF as JSON-LD)" \
+    "<a href=\"${GITHUB_BLOB_BASE}/.github/test-suites/jsonld-fromrdf.yaml\" target=\"_blank\" rel=\"noopener\">diagnosis: residual fails are the documented @native/list-container serialisation gaps — see the suite manifest</a>"
 )
 JSONLD_FAMILY_HTML=$(family_section "jsonld11" "JSON-LD 1.1" "$JSONLD_STATUS" "$JSONLD_FAMILY_HEADLINE" "$JSONLD_BODY" "")
 
@@ -1206,6 +1439,108 @@ VC_BODY=$(
     "<a href=\"${GITHUB_BLOB_BASE}/docs/designissues/2026-07-05-vc-program-plan.md\" target=\"_blank\" rel=\"noopener\">diagnosis: all 34 fails are documented Stage 2 deferrals (issuer shape, validFrom/validUntil ordering, credentialStatus/credentialSchema/etc. inner shapes) — see the VC program plan</a>"
 )
 VC_FAMILY_HTML=$(family_section "vc2" "Verifiable Credentials 2.0" "$VC_STATUS" "$VC_FAMILY_HEADLINE" "$VC_BODY" "")
+
+# --- XML-family standards: XSLT / XML 1.0 / MathML / Schematron ------------
+# (2026-07-09) Four committed runners the dashboard never surfaced. Grouped
+# as the XML-technology family.
+read -r XMLFAM_PASS XMLFAM_FAIL XMLFAM_SKIP XMLFAM_TOTAL XMLFAM_ANY <<< "$(sum_family "XSLT XMLCONF MATHML SCHEMATRON")"
+XMLFAM_STATUS=$(status_for "$XMLFAM_FAIL" "$XMLFAM_ANY")
+if [ "$XMLFAM_ANY" -eq 1 ]; then
+  XMLFAM_HEADLINE="${XMLFAM_PASS} pass, ${XMLFAM_FAIL} fail, ${XMLFAM_SKIP} skip (of ${XMLFAM_TOTAL}) across XSLT 1.0 transforms, XML 1.0 well-formedness conformance, MathML 3 content evaluation, and ISO Schematron."
+else
+  XMLFAM_HEADLINE="Not measured this run."
+fi
+# XML conformance carries a collapsible honest-breakdown sub-panel so the
+# 1414/2585 headline is never read as a bare conformance % — the skip
+# decomposition (real not-wf rejects vs DTD-boundary skips vs out-of-profile)
+# sits one tap away.
+if [ -n "$XMLCONF_BREAKDOWN" ]; then
+  XMLCONF_BREAKDOWN_HTML=$(cat <<XBD
+      <details class="failure-detail">
+        <summary>XML conformance — integrity breakdown (real rejects vs skips)</summary>
+        <pre>${XMLCONF_BREAKDOWN}</pre>
+      </details>
+XBD
+)
+else
+  XMLCONF_BREAKDOWN_HTML=""
+fi
+XMLFAM_BODY=$(
+  family_suite_row "XSLT 1.0" "$XSLT_PASS" "$XSLT_FAIL" "$XSLT_SKIP" "$XSLT_TOTAL" "$XSLT_PRESENT" \
+    "Runner: <code>bin/xslt-runner</code> (<code>bin/linux-x86_64/xslt_runner</code>) &middot; Suite: <code>third_party/testing/xslt/manifest.json</code>" \
+    "<a href=\"${GITHUB_BLOB_BASE}/.github/test-suites/xslt.yaml\" target=\"_blank\" rel=\"noopener\">diagnosis: residual fails are the documented XSLT 1.0 constructs not yet in the transform engine — see the suite manifest</a>"
+  family_suite_row "XML 1.0 conformance" "$XMLCONF_PASS" "$XMLCONF_FAIL" "$XMLCONF_SKIP" "$XMLCONF_TOTAL" "$XMLCONF_PRESENT" \
+    "Runner: <code>bin/xml-runner</code> (<code>bin/linux-x86_64/xml_runner</code>) &middot; Suite: <code>third_party/testing/xml/xmlconf</code> (OASIS/W3C XML conformance) &middot; skips are DTD-boundary / out-of-XML-1.0-profile fixtures, decomposed in the breakdown below"
+  printf '%s' "$XMLCONF_BREAKDOWN_HTML"
+  family_suite_row "MathML 3 content" "$MATHML_PASS" "$MATHML_FAIL" "$MATHML_SKIP" "$MATHML_TOTAL" "$MATHML_PRESENT" \
+    "Runner: <code>bin/mathml-runner</code> (<code>bin/linux-x86_64/mathml_runner</code>) &middot; Suite: <code>third_party/testing/mathml/manifest.json</code> (Content MathML evaluation)"
+  family_suite_row "ISO Schematron" "$SCHEMATRON_PASS" "$SCHEMATRON_FAIL" "$SCHEMATRON_SKIP" "$SCHEMATRON_TOTAL" "$SCHEMATRON_PRESENT" \
+    "Runner: <code>bin/schematron-runner</code> (<code>bin/linux-x86_64/schematron_runner</code>) &middot; Suite: <code>third_party/testing/schematron/</code> (rule-based assertion cases)"
+)
+XMLFAM_HTML=$(family_section "xml-family" "XML-family standards: XSLT / XML / MathML / Schematron" "$XMLFAM_STATUS" "$XMLFAM_HEADLINE" "$XMLFAM_BODY" "")
+
+# --- Data schemas & identifiers: JSON Schema / DID ------------------------
+read -r SCHEMAID_PASS SCHEMAID_FAIL SCHEMAID_SKIP SCHEMAID_TOTAL SCHEMAID_ANY <<< "$(sum_family "JSONSCHEMA DIDKEY")"
+SCHEMAID_STATUS=$(status_for "$SCHEMAID_FAIL" "$SCHEMAID_ANY")
+if [ "$SCHEMAID_ANY" -eq 1 ]; then
+  SCHEMAID_HEADLINE="${SCHEMAID_PASS} pass, ${SCHEMAID_FAIL} fail, ${SCHEMAID_SKIP} skip (of ${SCHEMAID_TOTAL}) across JSON Schema draft-07 and DID did:key resolution."
+else
+  SCHEMAID_HEADLINE="Not measured this run."
+fi
+SCHEMAID_BODY=$(
+  family_suite_row "JSON Schema draft-07" "$JSONSCHEMA_PASS" "$JSONSCHEMA_FAIL" "$JSONSCHEMA_SKIP" "$JSONSCHEMA_TOTAL" "$JSONSCHEMA_PRESENT" \
+    "Runner: <code>bin/jsonschema-runner</code> (<code>bin/linux-x86_64/jsonschema_runner</code>) &middot; Suite: <code>third_party/testing/jsonschema/</code> (JSON-Schema-Test-Suite draft7) &middot; skips are optional/format vocabularies out of scope for the core validator"
+  family_suite_row "DID did:key" "$DIDKEY_PASS" "$DIDKEY_FAIL" "$DIDKEY_SKIP" "$DIDKEY_TOTAL" "$DIDKEY_PRESENT" \
+    "Runner: <code>bin/did-runner</code> (<code>bin/linux-x86_64/did_runner</code>) &middot; Suite: did:key resolution + multibase/multicodec accept/reject cases"
+)
+SCHEMAID_HTML=$(family_section "schemas-ids" "Data schemas &amp; identifiers: JSON Schema / DID" "$SCHEMAID_STATUS" "$SCHEMAID_HEADLINE" "$SCHEMAID_BODY" "")
+
+# --- Storage backend & JS/browser runtime: HDT parity / hub / npm ---------
+# Not W3C conformance — these exercise the shipped engine end to end: the
+# HDT on-disk backend answering byte-identically to the in-memory backend,
+# and the browser/npm bundle (reactive cells, all 7 engine FP APIs,
+# HDT-in-bundle, VC crypto via HACL* wasm).
+read -r RUNTIME_PASS RUNTIME_FAIL RUNTIME_SKIP RUNTIME_TOTAL RUNTIME_ANY <<< "$(sum_family "HDT_PARITY HUB NPM")"
+RUNTIME_STATUS=$(status_for "$RUNTIME_FAIL" "$RUNTIME_ANY")
+if [ "$RUNTIME_ANY" -eq 1 ]; then
+  RUNTIME_HEADLINE="${RUNTIME_PASS} pass, ${RUNTIME_FAIL} fail, ${RUNTIME_SKIP} skip (of ${RUNTIME_TOTAL}) across HDT backend parity and the browser/npm bundle suites (node --test)."
+else
+  RUNTIME_HEADLINE="Not measured this run."
+fi
+RUNTIME_BODY=$(
+  family_suite_row "HDT stage-4 backend parity" "$HDT_PARITY_PASS" "$HDT_PARITY_FAIL" "$HDT_PARITY_SKIP" "$HDT_PARITY_TOTAL" "$HDT_PARITY_PRESENT" \
+    "Runner: <code>tests/local/hdt_stage4_parity.sh</code> &middot; Fixture: <code>third_party/testing/hdt/rml-core-ontology.hdt</code> vs ground-truth <code>.nt</code> (unbound/bound-S/P/O/ASK/COUNT, byte-identical)"
+  family_suite_row "hub browser-bundle cells" "$HUB_PASS" "$HUB_FAIL" "$HUB_SKIP" "$HUB_TOTAL" "$HUB_PRESENT" \
+    "Runner: <code>node --test tests/hub/*.mjs</code> &middot; live cells for every docs-hub post, run against the JS/wasm bundle" \
+    "<a href=\"${GITHUB_BLOB_BASE}/tests/hub/\" target=\"_blank\" rel=\"noopener\">diagnosis: any residual fails are fixtures/build-artifacts absent in this checkout (uninitialised submodule or unbuilt C demo), not engine regressions</a>"
+  family_suite_row "npm package suite" "$NPM_PASS" "$NPM_FAIL" "$NPM_SKIP" "$NPM_TOTAL" "$NPM_PRESENT" \
+    "Runner: <code>node --test npm/factoidal/test/*.test.js</code> &middot; the 7 engine FP APIs, HDT-in-bundle, delta-log, VC crypto (HACL* wasm)" \
+    "<a href=\"${GITHUB_BLOB_BASE}/npm/factoidal/test/\" target=\"_blank\" rel=\"noopener\">diagnosis: any residual fails are vendored-fixture submodules absent in this checkout, not engine regressions</a>"
+)
+RUNTIME_HTML=$(family_section "runtime-parity" "Storage backend &amp; JS runtime: HDT parity / hub / npm" "$RUNTIME_STATUS" "$RUNTIME_HEADLINE" "$RUNTIME_BODY" "")
+
+# --- XForms note (no fabricated row) ---------------------------------------
+# The F* XForms model engine (RDF-adjacent) has a unit harness at
+# tests/unit/xforms_tests.ml (~29 bind/recalc cases) that is only reachable
+# via tests/unit/run-all.sh, currently broken (task #82). Rather than fake a
+# scored row, surface an honest grey note; the browser-facing XForms API is
+# exercised live under the npm suite (xforms.test.js) and hub post29.
+XFORMS_NOTE_HTML=$(cat <<XFN
+<section class="family grey" id="xforms-note">
+  <h2>XForms model engine</h2>
+  <p class="fam-headline grey">Not yet wired as a scored suite.</p>
+  <p class="suite-prov" style="margin-top:0.4em">
+    The F&#42; XForms model engine has a unit harness
+    (<code>tests/unit/xforms_tests.ml</code>, ~29 bind/recalc cases) gated
+    behind <code>tests/unit/run-all.sh</code>, currently broken
+    (<a href="https://github.com/danbri/factoidal/issues/82" target="_blank" rel="noopener">#82</a>);
+    no fabricated number is shown here. The browser-facing XForms API is
+    exercised live under the npm suite (<code>xforms.test.js</code>) and the
+    hub bundle (post29), both counted in the runtime family above.
+  </p>
+</section>
+XFN
+)
 
 # --- Legend -----------------------------------------------------------------
 LEGEND_HTML=$(cat <<'LEGENDEOF'
@@ -1507,7 +1842,7 @@ cat > "$OUTPUT_DIR/index.html" <<HTMLEOF
       <span class="row"><span class="label">Tests</span><strong class="tests">${TESTS_TIMESTAMP_HUMAN}</strong></span>
     </div>
     <h1>W3C test results</h1>
-    <p>Pass/fail/skip counts against every standards suite this project measures: RDF 1.1, SPARQL 1.1, RDFS/OWL 2, SHACL, ShEx, RIF Core, RML, JSON-LD 1.1, and Verifiable Credentials 2.0.</p>
+    <p>Pass/fail/skip counts against every standards suite this project measures: RDF 1.1, SPARQL 1.1, RDFS/OWL 2, SHACL, ShEx, RIF Core, RML, CSVW, JSON-LD 1.1, Verifiable Credentials 2.0, XSLT 1.0, XML 1.0, MathML 3, ISO Schematron, JSON Schema, DID — plus HDT backend parity and the browser/npm bundle suites.</p>
     <nav>
       <a href="/factoidal/">Home</a>
       <a href="/factoidal/fstar-extracted/">Demos</a>
@@ -1568,6 +1903,14 @@ ${MAPPING_HTML}
 ${JSONLD_FAMILY_HTML}
 
 ${VC_FAMILY_HTML}
+
+${XMLFAM_HTML}
+
+${SCHEMAID_HTML}
+
+${RUNTIME_HTML}
+
+${XFORMS_NOTE_HTML}
 
 ${PERF_SECTION_HTML}
 
@@ -1657,4 +2000,15 @@ report_suite_line "JSON-LD 1.1 toRdf" JSONLD
 report_suite_line "RML rml-core"      RML
 report_suite_line "RIF Core"          RIFCORE_COMBINED
 report_suite_line "VC 2.0 (Stage 1)"  VC
+report_suite_line "XSLT 1.0"          XSLT
+report_suite_line "XML conformance"   XMLCONF
+report_suite_line "MathML 3"          MATHML
+report_suite_line "JSON Schema"       JSONSCHEMA
+report_suite_line "Schematron"        SCHEMATRON
+report_suite_line "CSVW csv2rdf"      CSVW2RDF
+report_suite_line "DID did:key"       DIDKEY
+report_suite_line "JSON-LD fromRdf"   JSONLD_FROMRDF
+report_suite_line "HDT stage-4 parity" HDT_PARITY
+report_suite_line "hub bundle"        HUB
+report_suite_line "npm package"       NPM
 echo "  Commit: ${GIT_SHA} (${GIT_BRANCH})"

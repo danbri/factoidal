@@ -1,0 +1,19 @@
+name: XSLT 1.0 transforms
+spec: https://www.w3.org/TR/xslt-10/
+runner: bin/linux-x86_64/xslt_runner
+runner_args:
+  - third_party/testing/xslt/manifest.json
+manifest: third_party/testing/xslt/manifest.json
+log_path: formal/fstar/ocaml-output/xslt_results.log
+result_path: docs/test-results/by-suite/xslt.json
+domain: XML
+foundational: false
+
+# Committed binary; the runner walks the vendored XSLT 1.0 conformance
+# manifest and compares transform output. Residual fails are XSLT 1.0
+# constructs not yet in the transform engine.
+triggers:
+  paths:
+    - bin/xslt-runner/**
+    - third_party/testing/xslt/**
+  excludes: []

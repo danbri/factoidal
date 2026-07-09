@@ -1,0 +1,16 @@
+name: DID did:key
+spec: https://www.w3.org/TR/did-core/
+runner: bin/linux-x86_64/did_runner
+runner_args: []
+manifest: internal
+log_path: formal/fstar/ocaml-output/did_results.log
+result_path: docs/test-results/by-suite/did.json
+domain: RDF
+foundational: false
+
+# did:key resolution + multibase/multicodec accept/reject cases.
+triggers:
+  paths:
+    - bin/did-runner/**
+    - third_party/testing/did/**
+  excludes: []
