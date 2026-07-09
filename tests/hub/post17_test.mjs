@@ -86,6 +86,10 @@ test('post17: the W3C SPARQL 1.1 Update suite is 176/176 in the committed dashbo
     fs.readFileSync(path.join(REPO_ROOT, 'docs', 'test-results', 'latest.json'), 'utf8'));
   const byName = {};
   for (const group of Object.values(latest.suites)) {
+    // The dashboard's suites map mixes array groups (sparql/rdf carry
+    // per-sub-suite lists) with single-record objects (the 2026-07-09
+    // beyond-W3C rows); only the arrays hold the Update sub-suites.
+    if (!Array.isArray(group)) continue;
     for (const s of group) byName[s.name] = s;
   }
   const updateSuites = [
