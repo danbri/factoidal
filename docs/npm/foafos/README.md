@@ -276,7 +276,7 @@ fixtures.
 | `parse` | `(text, {format?, baseIRI?}) => Dataset` | `factoidal dump-nq -d FILE` (or `dump`/`dump-turtle`) | formats: `turtle`, `ntriples`, `nquads`, `trig`, `rdfxml`, `jsonld`\* — auto-detected where possible. Each call is one document: blank-node labels are scoped per RDF 1.1 |
 | `query` | `(Dataset \| string, sparql, {entail?}) => Bindings[] \| boolean \| Dataset` | `factoidal query -d FILE -e 'SPARQL' [--entail RDFS\|OWL-RL]` | SELECT → array of `Map<var, Term>`; ASK → boolean; CONSTRUCT → Dataset\*\*; `entail: "RDFS" \| "OWL-RL"` |
 | `update` | `(Dataset, sparqlUpdate) => Dataset` | `factoidal update -d FILE -e 'SPARQL update'` | \*\* in-memory; no persistence. (Durable UPDATE against a COTTAS store is a separate path: `factoidal serve --rw --delta-log ...` / `factoidal compact`.) |
-| `serialize` | `(Dataset, {format}) => string` | `factoidal dump-nq FILE` (nquads) / `factoidal dump FILE` (ntriples) | `nquads`, `ntriples` (sorted); prettier Turtle output is staged work |
+| `serialize` | `(Dataset, {format}) => string` | `factoidal dump-nq FILE` (nquads) / `factoidal dump FILE` (ntriples) / `factoidal dump-turtle FILE` | `nquads`, `ntriples` (sorted); `turtle`\*\* (prefix-compacted, subject-grouped — needs the entry bundle, flattens named graphs into the default graph) |
 | `canonicalize` | `(Dataset \| string) => string` | `factoidal canonicalize FILE` | RDFC-1.0 canonical N-Quads\*\* |
 | `graphs` | `(Dataset) => Array<[iri, Dataset]>` | `factoidal graphs list FILE` | enumerate named graphs (default graph excluded); pure enumeration, no engine round-trip |
 | `canonicalHash` | `(Dataset) => string` | `factoidal graphs hash FILE IRI` | RDFC-1.0 canonical hash of one graph\*\*; graph-scoped sibling of `canonicalize` — typically called with one entry of `graphs()`'s output |
@@ -344,6 +344,87 @@ The browser entries mirror this: `browser.js`'s `openCottas`/
 `queryCottas`/`closeCottas`/`toCottas` drive the js_of_ocaml npm-entry
 ABI over `fetch()`; `browser-wasm.js` exposes the same four functions
 against the wasm_of_ocaml npm-entry ABI (`factoidal-npm-entry.wasm.js`).
+
+## Capability matrix
+
+Every public function, where it runs, and what it needs. "Node" is the
+`require('factoidal')` / `import 'factoidal'` entry (`index.js` /
+`index.mjs`); "Browser" is `import 'factoidal/browser'` (`browser.js`);
+"Wasm" is `require('factoidal/wasm')`. **Needs** legend: *CLI bundle* =
+the fresh-eval `factoidal.js` bundle (always present); *entry* = the
+persistent `factoidal-npm-entry.js` ABI bundle (probe with
+`capabilities()`); *HACL\* init* = the wasm crypto backend must be
+initialised (auto on Node, explicit in the browser — see below);
+*IndexedDB* = a browser storage layer.
+
+| Function(s) | Node | Browser | Wasm | Needs |
+|---|---|---|---|---|
+| `parse`, `query` (SELECT/ASK), `serialize` (nquads/ntriples), `canonicalize`, `graphs`, `canonicalHash`, `queryHdt`, `queryRaw` | ✓ | ✓\* | ✓ | CLI bundle |
+| `query` (CONSTRUCT), `update`, `serialize` (turtle) | ✓ | ✓\* | ✓ | entry |
+| `shaclValidate`, `shexValidate`, `owlClosure`, `rmlMap`, `csvwToRdf`, `jsonldToRdf`, `jsonldFromRdf`, `didKeyResolve`, `xmlWellformed`, `xpathEval`, `rifEval` | ✓ | ✓ | partial† | entry |
+| `xsltTransform`, `mathmlEval`, `xformsRecalc`, `jsonSchemaValidate`, `schematronValidate`, `toan*`, `matrix*` | ✓ | ✓ | partial† | entry |
+| `openCottas`, `queryCottas`, `closeCottas`, `toCottas` | ✓ | ✓ | ✓ | entry |
+| `vcSha256Hex`, `vcEd25519SecretToPublic`, `vcEd25519Sign`, `vcEd25519Verify`, `vcEddsaCreateFromCanonical`, `vcEddsaVerifyFromCanonical` | ✓ | ✓ | ✓ | entry + HACL\* init |
+| `deltaLogOpen`/`Append`/`ReadAllHex`/`Merge`/`Destroy` | ✗ | ✓ | ✗ | entry + IndexedDB |
+| `dataFactory`, `Dataset`, `fn.*` combinators (`union`/`difference`/`filter`/`mapQuads`/`equals`/`hash`/`builder`/`cell`/`derive`/`pipe`) | ✓ | — | ✓ | none (pure JS) |
+| `capabilities` | ✓ | — | ✓ | none (probe) |
+
+\* In the browser the same capability is reached through `browser.js`'s
+own function names, which differ from the Node API: SELECT/ASK is
+`query(dataString, sparql, {output})` (returns SPARQL-Results JSON, not
+`Bindings[]`); parse-to-N-Quads is `toRdf()`; multi-graph queries use
+`queryDataset()`. CONSTRUCT/UPDATE/Turtle ride the same `entry` bundle,
+fetched over the network on first use.
+† Wasm (`require('factoidal/wasm')`) today re-exports the core +
+validation/inference/COTTAS set (`parse`/`query`/`update`/`serialize`/
+`canonicalize`/`shaclValidate`/`shexValidate`/`owlClosure`/`rmlMap`/
+`csvwToRdf`/`jsonldToRdf`/`rifEval`/`openCottas`…/`capabilities`); the
+typed-engine `#74` functions and the `vc*`/`did`/`xml`/`xpath` wrappers
+are exposed on the js and browser entries. The underlying wasm ABI
+carries them — the `/wasm` re-export surface is being brought to parity.
+
+### VC crypto: the init story
+
+The `vc*` functions run the F\*-extracted VC Data Integrity pipeline
+over HACL\*'s official WebAssembly build, so the wasm backend has to be
+initialised before the first call (a verify against an uninitialised
+backend **throws** — it never silently returns `true`; issue #286).
+
+- **Node** (`index.js`/`index.mjs`, `/wasm`, `fn`): the typed wrappers
+  **auto-await `initHacl()` on first call** — a caller writes
+  `await vcEd25519Verify(pk, msg, sig)` and never touches init.
+- **Browser** (`browser.js`): **explicit init required** — the
+  `hacl-wasm` URL is page-specific. Serve `hacl-wasm/` next to the page
+  and `await initHacl({ apiUrl })` from `hacl-init.js` once, then call
+  the `vc*` wrappers. (Auto-init isn't possible without a URL to fetch.)
+
+### Native-CLI-only capabilities (not on the npm surface, by design)
+
+These live only in `bin/factoidal-cli` (the native `factoidal` binary),
+not in the JS package — they are I/O- or process-shaped, not pure
+value transforms:
+
+- **SPARQL endpoint / federation.** `factoidal serve` (HTTP endpoint),
+  `SERVICE` federation and `--data-cottas`/`--data-hdt` *file-path*
+  backends read the filesystem/network at query time. The npm
+  `queryHdt`/`openCottas` take *bytes* in-process instead.
+- **Durable UPDATE against on-disk COTTAS.** `factoidal serve --rw
+  --delta-log …` + `factoidal compact` — the npm `update()` is
+  in-memory only; the browser `deltaLog*` family is the closest
+  in-package durable path (IndexedDB, browser-only).
+- **Internal primitives.** `runFactoidalCli` / `loadNpmEntry` (browser)
+  are exported but are the low-level bundle drivers, not the intended
+  API; the `_*` functions (e.g. `_deltaLogCorruptLastForTest`) are
+  test-only and intentionally left untyped.
+
+### GeoSPARQL
+
+There is no separate GeoSPARQL function: the `geof:` functions
+(`geof:sfWithin`, `geof:sfDisjoint`, `geof:distance`, `geof:envelope`,
+…) are built into the SPARQL engine and work through ordinary
+`query()` / `fn.query()` — e.g.
+`query(data, 'PREFIX geof: <http://www.opengis.net/def/function/geosparql/> SELECT ?a ?b WHERE { … FILTER(geof:sfWithin(?a, ?b)) }')`.
+Nothing to import; nothing "missing".
 
 ## Limits (deliberate, documented)
 

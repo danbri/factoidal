@@ -699,6 +699,12 @@ const {
   matrixScalarProduct,
   matrixVectorProduct,
   matrixOuterProduct,
+  vcSha256Hex,
+  vcEd25519SecretToPublic,
+  vcEd25519Sign,
+  vcEd25519Verify,
+  vcEddsaCreateFromCanonical,
+  vcEddsaVerifyFromCanonical,
   queryHdt,
 } = engineApi;
 
@@ -745,6 +751,12 @@ module.exports = {
   matrixScalarProduct,
   matrixVectorProduct,
   matrixOuterProduct,
+  vcSha256Hex,
+  vcEd25519SecretToPublic,
+  vcEd25519Sign,
+  vcEd25519Verify,
+  vcEddsaCreateFromCanonical,
+  vcEddsaVerifyFromCanonical,
   queryHdt,
   capabilities: engineApi.capabilities,
 };

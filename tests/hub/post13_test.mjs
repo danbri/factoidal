@@ -27,8 +27,10 @@
 // `canonicalize` binding).
 //
 // The VC *structural* validator still has no browser export (no
-// `vcValidate`, nothing VC-shaped); the "no VC-shaped export" check at
-// the bottom grounds that claim.
+// `vcValidate`); the eddsa-rdfc-2022 *crypto* primitives, by contrast,
+// ARE now exposed as `vc*` (#286 landed — VC Data Integrity runs
+// off-native over HACL*'s wasm build). The check at the bottom grounds
+// both halves of that.
 
 import { createRequire } from 'node:module';
 import { extractObservableCells, runObservableCell, HUB_POST_DIR } from './_helpers.mjs';
@@ -166,8 +168,19 @@ test('post13: the vendored validVc.json fixture is the exact JSON shown statical
   assert.ok(fixture.credentialSubject && typeof fixture.credentialSubject.id === 'string');
 });
 
-test('post13: npm/factoidal has no VC-shaped export (grounds the "structural validation has no browser export" claim)', async () => {
+test('post13: npm/factoidal exposes the vc* crypto primitives but no VC structural validator', async () => {
   const factoidal = (await import(path.join(REPO_ROOT, 'npm', 'factoidal', 'index.mjs'))).default;
-  const vcLikeKeys = Object.keys(factoidal).filter((k) => /vc|credential/i.test(k));
-  assert.deepEqual(vcLikeKeys, []);
+  const keys = Object.keys(factoidal);
+  // The eddsa-rdfc-2022 crypto primitives ARE exposed now (#286 landed:
+  // VC Data Integrity runs off-native over HACL*'s wasm build).
+  for (const fn of ['vcSha256Hex', 'vcEd25519SecretToPublic', 'vcEd25519Sign',
+    'vcEd25519Verify', 'vcEddsaCreateFromCanonical', 'vcEddsaVerifyFromCanonical']) {
+    assert.equal(typeof factoidal[fn], 'function', `expected VC crypto export ${fn}`);
+  }
+  // But there is still NO VC Data Model *structural validator* export --
+  // that check runs in the native/Node runner, grounding the post's
+  // "structural validator has no browser export" claim.
+  const validatorLike = keys.filter(
+    (k) => /^(vcValidate|validateVc|credentialValidate|vcStructural)/i.test(k));
+  assert.deepEqual(validatorLike, [], 'no VC structural-validator export');
 });

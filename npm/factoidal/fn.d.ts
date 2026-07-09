@@ -334,6 +334,69 @@ export function matrixOuterProduct(
   b: MatrixCell[]
 ): Promise<MatrixResult>;
 
+// ---------------------------------------------------------------------
+// VC Data Integrity crypto (eddsa-rdfc-2022, HACL* wasm backend).
+// Re-exported unchanged from the JS engine api; full doc comments +
+// the init story live in ./index.d.ts.
+// ---------------------------------------------------------------------
+
+export function vcSha256Hex(message: string): Promise<string>;
+export function vcEd25519SecretToPublic(secretKeyHex: string): Promise<string>;
+export function vcEd25519Sign(
+  secretKeyHex: string,
+  messageHex: string
+): Promise<string>;
+export function vcEd25519Verify(
+  publicKeyHex: string,
+  messageHex: string,
+  signatureHex: string
+): Promise<boolean>;
+export function vcEddsaCreateFromCanonical(
+  secretKeyHex: string,
+  canonicalDocument: string,
+  canonicalConfig: string
+): Promise<string>;
+export function vcEddsaVerifyFromCanonical(
+  publicKeyHex: string,
+  canonicalDocument: string,
+  canonicalConfig: string,
+  proofValue: string
+): Promise<boolean>;
+
+// ---------------------------------------------------------------------
+// In-memory COTTAS/Parquet bytes store. Unlike every other constructor
+// here, openCottas() does NOT return an FnDataset: rows decode lazily
+// as query() touches them (see fn.js's doc comment and
+// docs/designissues/2026-07-06-inmemory-bytes-store.md). Needs the
+// npm-entry engine bundle.
+// ---------------------------------------------------------------------
+
+/** A read-only, lazily-decoding COTTAS store handle (see openCottas). */
+export interface CottasStore {
+  /** The opaque handle string the underlying engine registry uses. */
+  readonly handle: string;
+  /**
+   * SPARQL over the store. SELECT -> Bindings[]; ASK -> boolean;
+   * CONSTRUCT -> FnDataset (materialized once). No `entail` option, no
+   * write overlay (read-only) — see fn.js's openCottas doc comment for
+   * the full divergence list from query(). Throws after close().
+   */
+  query(sparql: string): Promise<Bindings[] | boolean | FnDataset>;
+  /** Release the store. Idempotent. */
+  close(): Promise<void>;
+}
+
+/** Open a COTTAS/Parquet artifact's raw bytes as a read-only store. */
+export function openCottas(
+  bytes: Uint8Array | ArrayBuffer | string
+): Promise<CottasStore>;
+
+/**
+ * Serialize an FnDataset to COTTAS/Parquet bytes via the native writer
+ * (round-trips back into openCottas()). Needs the npm-entry bundle.
+ */
+export function toCottas(ds: FnDataset): Promise<Uint8Array>;
+
 /**
  * Run a SPARQL 1.1 query against a read-only HDT artifact's raw bytes
  * (factoidal_cli.ml's `--data-hdt` backend). No npm-entry engine
@@ -344,17 +407,9 @@ export function queryHdt(
   sparql: string
 ): Promise<Bindings[] | boolean>;
 
-export function capabilities(): Promise<{
-  entry: boolean;
-  construct: boolean;
-  update: boolean;
-  canonicalize: boolean;
-  graphs: boolean;
-  canonicalHash: boolean;
-  shacl: boolean;
-  shex: boolean;
-  owlClosure: boolean;
-  rml: boolean;
-  jsonld: boolean;
-  rif: boolean;
-}>;
+/**
+ * Feature probe — the SAME shape index.js's capabilities() returns
+ * (fn.js re-exports it unchanged). Referenced off ./index so the two
+ * declarations can never drift.
+ */
+export function capabilities(): ReturnType<typeof import('./index').capabilities>;

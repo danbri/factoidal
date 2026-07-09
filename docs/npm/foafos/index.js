@@ -91,6 +91,10 @@ const api = buildApi({
   engineName: 'js',
   runCli: engine.runCli,
   loadEntry,
+  // VC crypto init hook: the typed vc* wrappers auto-await this once,
+  // on the first VC call, so a Node caller never has to remember the
+  // HACL* wasm init step. initHacl() is idempotent + memoized.
+  initCrypto: () => require('./hacl-init.js').initHacl(),
 });
 
 // ---------------------------------------------------------------------
@@ -193,6 +197,12 @@ module.exports = {
   matrixScalarProduct: api.matrixScalarProduct,
   matrixVectorProduct: api.matrixVectorProduct,
   matrixOuterProduct: api.matrixOuterProduct,
+  vcSha256Hex: api.vcSha256Hex,
+  vcEd25519SecretToPublic: api.vcEd25519SecretToPublic,
+  vcEd25519Sign: api.vcEd25519Sign,
+  vcEd25519Verify: api.vcEd25519Verify,
+  vcEddsaCreateFromCanonical: api.vcEddsaCreateFromCanonical,
+  vcEddsaVerifyFromCanonical: api.vcEddsaVerifyFromCanonical,
   openCottas: api.openCottas,
   queryCottas: api.queryCottas,
   closeCottas: api.closeCottas,

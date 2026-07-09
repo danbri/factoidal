@@ -49,12 +49,14 @@ structurally identical and any offline check that catches the
 plain-verdict fixtures is the measured ceiling for a structural
 validator with no live substitution step.
 
-**Structural validation has no browser export.** `npm/factoidal`'s
-browser entry (`browser.js`) exports no VC structural-validation
-function — no `vcValidate`, nothing VC-shaped — so that particular
-check runs in the native/Node runner, not live on this page. Below is
-one of the vendored test fixtures the validator checks, shown
-statically (not executed):
+**The structural validator has no browser export.** `npm/factoidal`'s
+browser entry (`browser.js`) exports no VC Data Model
+structural-validation function — no `vcValidate` — so that particular
+check runs in the native/Node runner, not live on this page. (The
+eddsa-rdfc-2022 *crypto* primitives are a separate matter: they are now
+exposed as the `vc*` functions on both the Node and browser entries —
+see the Data Integrity section below.) Below is one of the vendored
+test fixtures the validator checks, shown statically (not executed):
 
 ```json
 {
@@ -153,15 +155,17 @@ That 32-byte digest (64 hex characters) is the input the signature
 covers. Everything up to this line runs in the browser; the step that
 needs a secret key — Ed25519 sign, and its verify — does not.
 
-### Steps 3–5 run natively: the real roundtrip
+### Steps 3–5: the real roundtrip
 
-Ed25519 sign and verify go through the vendored HACL\* C, which does
-**not** link under `wasm_of_ocaml` today, so there is no live
-browser/wasm cell for the signature itself — that gap is tracked in
-[#286](https://github.com/danbri/factoidal/issues/286). The right form
-for a native-only step is its actual transcript. Here is
-`./bin/linux-x86_64/vc_runner --crypto`, run against the vendored
-HACL\* build, verbatim:
+The transcript below is `./bin/linux-x86_64/vc_runner --crypto`, run
+against the vendored HACL\* **C** build, verbatim. The same
+F\*-extracted eddsa-rdfc-2022 pipeline now also runs *off*-native — in
+Node and the browser — over HACL\*'s own official **WebAssembly** build,
+exposed as the `vc*` functions on `npm/factoidal`
+([#286](https://github.com/danbri/factoidal/issues/286) landed). It is
+not wired as a live cell on this page (the browser `vc*` path needs an
+explicit HACL\* wasm init step this demo does not set up), so the
+authoritative signed roundtrip here stays the native transcript:
 
 ```text
 === VC Data Integrity eddsa-rdfc-2022 roundtrip (crypto mode) ===
@@ -191,8 +195,9 @@ signed document, with an untouched proof, returns `true`. That trio —
 wrong key, wrong document, tampered proof, all rejected — is what a
 Data Integrity proof buys you.
 
-Because Ed25519 is native-only, this roundtrip is not one of the live
-browser cells above; it is pinned instead by the `vc_runner --crypto`
+This roundtrip is shown as the native transcript rather than a live
+browser cell (the in-page cells don't wire the HACL\* wasm init the
+`vc*` path needs); it is pinned instead by the `vc_runner --crypto`
 self-test itself, whose real output is the transcript above (8 pass, 0
 fail). That self-test derives a keypair, signs the credential dataset,
 verifies it, runs each negative case, and confirms the

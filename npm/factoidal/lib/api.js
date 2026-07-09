@@ -413,18 +413,31 @@ function buildApi(driver) {
   /**
    * Serialize a dataset (engine-produced bytes, sorted N-Quads order).
    * @param {Dataset|string|Array} data
-   * @param {{format?: 'nquads'|'ntriples', inputFormat?: string}} [options]
+   * @param {{format?: 'nquads'|'ntriples'|'turtle', inputFormat?: string}} [options]
    * @returns {Promise<string>}
+   *   'turtle' (prefix-compacted, subject-grouped — entry_jsoo.ml's
+   *   serializeTurtle -> RDF_Turtle_Serialize.turtle_of_graph_auto)
+   *   needs the npm-entry bundle and flattens every named graph into
+   *   the default graph (Turtle has no named-graph notion); use
+   *   'nquads' when graph names must survive.
    */
   async function serialize(data, options) {
     const opts = options || {};
-    const outFormat = String(opts.format || 'nquads').toLowerCase();
-    if (outFormat !== 'nquads' && outFormat !== 'ntriples') {
+    const rawOut = String(opts.format || 'nquads').toLowerCase();
+    const outFormat = rawOut === 'ttl' ? 'turtle' : rawOut;
+    if (outFormat !== 'nquads' && outFormat !== 'ntriples' && outFormat !== 'turtle') {
       throw new TypeError(
-        "serialize: format must be 'nquads' or 'ntriples' " +
-        '(turtle output is pending npm-entry build)');
+        "serialize: format must be 'nquads', 'ntriples', or 'turtle'");
     }
     const docs = toDocs(data, { format: opts.inputFormat });
+
+    if (outFormat === 'turtle') {
+      const e = await entry();
+      if (!e) throw pendingError('Turtle serialization');
+      requireEntryFn(e, 'serializeTurtle', 'Turtle serialization');
+      const nq = docsToEntryNQuads(e, docs, 'serialize(turtle)');
+      return entryResult(e.serializeTurtle(nq), 'serialize').turtle;
+    }
 
     if (outFormat === 'nquads') {
       const e = await entry();
@@ -846,6 +859,159 @@ function buildApi(driver) {
     if (!e) throw pendingError('xpathEval');
     requireEntryFn(e, 'xpathEval', 'XPath evaluation');
     return entryResult(e.xpathEval(xmlText, xpathExpr), 'xpathEval');
+  }
+
+  // -----------------------------------------------------------------
+  // VC Data Integrity crypto (eddsa-rdfc-2022) — HACL* wasm backend.
+  // entry_jsoo.ml's vc* exports realise VC_DataIntegrity's four crypto
+  // assume vals via HACL*'s OWN official WebAssembly build. The wasm
+  // backend MUST be initialised before the first primitive runs, or
+  // the assume-val stub throws and `guarded` returns {ok:false} — a
+  // verify NEVER silently succeeds uninitialised (#286, the
+  // throw-on-uninit contract, which entryResult() preserves by
+  // throwing on {ok:false}).
+  //
+  // Init story (Node js + wasm engines): these wrappers AUTO-AWAIT
+  // initHacl() on the first VC call, via the optional driver.initCrypto
+  // hook (idempotent + memoized) — a caller never has to remember the
+  // init step. If the driver supplies no initCrypto hook (or init
+  // rejects), the primitive's own honest {ok:false} error surfaces
+  // rather than a false "valid". Browsers can't auto-init (the
+  // hacl-wasm URL is page-specific) — browser.js documents explicit
+  // init there. See skills/node-crypto-haclstar-vc-wasm-build.
+  // -----------------------------------------------------------------
+
+  let cryptoInitPromise;
+  async function ensureCrypto() {
+    if (typeof driver.initCrypto !== 'function') return;
+    if (!cryptoInitPromise) {
+      cryptoInitPromise = Promise.resolve()
+        .then(() => driver.initCrypto())
+        .catch((err) => { cryptoInitPromise = undefined; throw err; });
+    }
+    await cryptoInitPromise;
+  }
+
+  async function vcEntry(fnName, what) {
+    const e = await entry();
+    if (!e) throw pendingError(what);
+    requireEntryFn(e, fnName, what);
+    await ensureCrypto();
+    return e;
+  }
+
+  /**
+   * SHA-256 of a message string's bytes, as a lowercase hex digest
+   * (entry_jsoo.ml's vcSha256Hex -> VC_DataIntegrity.hash_sha256_hex,
+   * HACL* SHA-2). Needs the npm-entry bundle + the HACL* wasm backend
+   * (auto-initialised).
+   * @param {string} message the message whose bytes are hashed
+   * @returns {Promise<string>} 64-char hex digest
+   */
+  async function vcSha256Hex(message) {
+    if (typeof message !== 'string') {
+      throw new TypeError('vcSha256Hex: message must be a string');
+    }
+    const e = await vcEntry('vcSha256Hex', 'VC SHA-256');
+    return entryResult(e.vcSha256Hex(message), 'vcSha256Hex').sha256;
+  }
+
+  /**
+   * Derive the Ed25519 public key from a 32-byte secret key
+   * (entry_jsoo.ml's vcEd25519SecretToPublic -> HACL* Ed25519).
+   * @param {string} secretKeyHex 32-byte secret key, hex
+   * @returns {Promise<string>} 32-byte public key, hex
+   */
+  async function vcEd25519SecretToPublic(secretKeyHex) {
+    if (typeof secretKeyHex !== 'string') {
+      throw new TypeError('vcEd25519SecretToPublic: secretKeyHex must be a string');
+    }
+    const e = await vcEntry('vcEd25519SecretToPublic', 'VC Ed25519 key derivation');
+    return entryResult(
+      e.vcEd25519SecretToPublic(secretKeyHex), 'vcEd25519SecretToPublic').publicKeyHex;
+  }
+
+  /**
+   * Ed25519 signature over a hex-encoded message (entry_jsoo.ml's
+   * vcEd25519Sign -> HACL* Ed25519).
+   * @param {string} secretKeyHex 32-byte secret key, hex
+   * @param {string} messageHex the message to sign, hex
+   * @returns {Promise<string>} 64-byte signature, hex
+   */
+  async function vcEd25519Sign(secretKeyHex, messageHex) {
+    if (typeof secretKeyHex !== 'string' || typeof messageHex !== 'string') {
+      throw new TypeError('vcEd25519Sign: secretKeyHex and messageHex must be strings');
+    }
+    const e = await vcEntry('vcEd25519Sign', 'VC Ed25519 sign');
+    return entryResult(e.vcEd25519Sign(secretKeyHex, messageHex), 'vcEd25519Sign').signatureHex;
+  }
+
+  /**
+   * Ed25519 verification (entry_jsoo.ml's vcEd25519Verify -> HACL*
+   * Ed25519). A wrong key, tampered signature, altered message, or a
+   * malformed-length input all return false — never an
+   * exception-hidden true.
+   * @param {string} publicKeyHex 32-byte public key, hex
+   * @param {string} messageHex the message, hex
+   * @param {string} signatureHex the 64-byte signature, hex
+   * @returns {Promise<boolean>}
+   */
+  async function vcEd25519Verify(publicKeyHex, messageHex, signatureHex) {
+    if (typeof publicKeyHex !== 'string' || typeof messageHex !== 'string' ||
+        typeof signatureHex !== 'string') {
+      throw new TypeError(
+        'vcEd25519Verify: publicKeyHex, messageHex and signatureHex must be strings');
+    }
+    const e = await vcEntry('vcEd25519Verify', 'VC Ed25519 verify');
+    return !!entryResult(
+      e.vcEd25519Verify(publicKeyHex, messageHex, signatureHex), 'vcEd25519Verify').valid;
+  }
+
+  /**
+   * Create an eddsa-rdfc-2022 Data Integrity proofValue over an
+   * already-canonicalized document + proof config (entry_jsoo.ml's
+   * vcEddsaCreateFromCanonical -> VC_DataIntegrity.eddsa_rdfc_2022_
+   * create_from_canonical). The two canonical inputs are RDFC-1.0
+   * canonical N-Quads (see canonicalize()).
+   * @param {string} secretKeyHex 32-byte secret key, hex
+   * @param {string} canonicalDocument canonical N-Quads of the document
+   * @param {string} canonicalConfig canonical N-Quads of the proof config
+   * @returns {Promise<string>} the multibase-z (base58btc) proofValue
+   */
+  async function vcEddsaCreateFromCanonical(secretKeyHex, canonicalDocument, canonicalConfig) {
+    if (typeof secretKeyHex !== 'string' || typeof canonicalDocument !== 'string' ||
+        typeof canonicalConfig !== 'string') {
+      throw new TypeError(
+        'vcEddsaCreateFromCanonical: secretKeyHex, canonicalDocument and canonicalConfig must be strings');
+    }
+    const e = await vcEntry('vcEddsaCreateFromCanonical', 'VC eddsa-rdfc-2022 proof creation');
+    return entryResult(
+      e.vcEddsaCreateFromCanonical(secretKeyHex, canonicalDocument, canonicalConfig),
+      'vcEddsaCreateFromCanonical').proofValue;
+  }
+
+  /**
+   * Verify an eddsa-rdfc-2022 proofValue against canonical inputs
+   * (entry_jsoo.ml's vcEddsaVerifyFromCanonical ->
+   * VC_DataIntegrity.eddsa_rdfc_2022_verify_from_canonical). Wrong
+   * key, tampered document/config, or tampered proofValue all return
+   * false.
+   * @param {string} publicKeyHex 32-byte public key, hex
+   * @param {string} canonicalDocument canonical N-Quads of the document
+   * @param {string} canonicalConfig canonical N-Quads of the proof config
+   * @param {string} proofValue the multibase-z proofValue to check
+   * @returns {Promise<boolean>}
+   */
+  async function vcEddsaVerifyFromCanonical(publicKeyHex, canonicalDocument, canonicalConfig, proofValue) {
+    if (typeof publicKeyHex !== 'string' || typeof canonicalDocument !== 'string' ||
+        typeof canonicalConfig !== 'string' || typeof proofValue !== 'string') {
+      throw new TypeError(
+        'vcEddsaVerifyFromCanonical: publicKeyHex, canonicalDocument, canonicalConfig and proofValue must be strings');
+    }
+    const e = await vcEntry('vcEddsaVerifyFromCanonical', 'VC eddsa-rdfc-2022 proof verification');
+    return !!entryResult(
+      e.vcEddsaVerifyFromCanonical(publicKeyHex, canonicalDocument, canonicalConfig, proofValue),
+      'vcEddsaVerifyFromCanonical').verified;
   }
 
   // -----------------------------------------------------------------
@@ -1314,6 +1480,12 @@ function buildApi(driver) {
         matrix: typeof e.matrixDeterminant === 'function',
         cottasBytesStore: typeof e.openCottas === 'function' &&
           typeof e.queryCottas === 'function' && typeof e.toCottas === 'function',
+        // VC Data Integrity crypto surface (probed, not blanket-true --
+        // an older bundle predates the vc* exports). The HACL* wasm
+        // backend still has to be initialised at call time; this flag
+        // only reports that the ABI exports exist.
+        vcCrypto: typeof e.vcEd25519Verify === 'function' &&
+          typeof e.vcEddsaVerifyFromCanonical === 'function',
       };
     }
     // Probe --canonicalize support on the CLI bundle with a 1-quad doc.
@@ -1335,7 +1507,7 @@ function buildApi(driver) {
       csvw: false, jsonld: false, jsonldFromRdf: false, didKey: false,
       xml: false, xpath: false, rif: false, cottasBytesStore: false,
       xslt: false, mathml: false, xforms: false, jsonSchema: false,
-      schematron: false, toan: false, matrix: false,
+      schematron: false, toan: false, matrix: false, vcCrypto: false,
     };
   }
 
@@ -1373,6 +1545,12 @@ function buildApi(driver) {
     matrixScalarProduct,
     matrixVectorProduct,
     matrixOuterProduct,
+    vcSha256Hex,
+    vcEd25519SecretToPublic,
+    vcEd25519Sign,
+    vcEd25519Verify,
+    vcEddsaCreateFromCanonical,
+    vcEddsaVerifyFromCanonical,
     openCottas,
     queryCottas,
     closeCottas,

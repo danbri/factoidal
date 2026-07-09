@@ -189,8 +189,13 @@ export function update(
 ): Promise<Dataset>;
 
 export interface SerializeOptions {
-  /** Output format. Default: 'nquads'. */
-  format?: 'nquads' | 'ntriples';
+  /**
+   * Output format. Default: 'nquads'. 'turtle' (prefix-compacted,
+   * subject-grouped) needs the npm-entry bundle and flattens every
+   * named graph into the default graph — use 'nquads' when graph names
+   * must survive.
+   */
+  format?: 'nquads' | 'ntriples' | 'turtle' | 'ttl';
   /** Format tag for string data inputs. Default: 'turtle'. */
   inputFormat?: DataFormat;
 }
@@ -607,6 +612,70 @@ export function matrixOuterProduct(
   b: MatrixCell[]
 ): Promise<MatrixResult>;
 
+// ---------------------------------------------------------------------
+// VC Data Integrity crypto (eddsa-rdfc-2022) — the F*-extracted
+// VC_DataIntegrity pipeline, its four crypto assume vals realised by
+// HACL*'s OWN official WebAssembly build (hacl-wasm). All need the
+// npm-entry bundle AND the HACL* wasm backend.
+//
+// Init story: on the Node entries (index.js/index.mjs and the /wasm
+// entry) these typed wrappers AUTO-AWAIT initHacl() on the first VC
+// call — a caller never has to remember the init step. In the browser
+// (browser.js) the page must initialise HACL* itself first (the
+// hacl-wasm URL is page-specific); see browser.js's VC section. Either
+// way, an uninitialised backend makes verify THROW, never silently
+// return true (#286, the throw-on-uninit contract).
+// ---------------------------------------------------------------------
+
+/**
+ * SHA-256 of a message string's bytes, as a lowercase hex digest
+ * (VC_DataIntegrity.hash_sha256_hex, HACL* SHA-2).
+ */
+export function vcSha256Hex(message: string): Promise<string>;
+
+/** Derive the Ed25519 public key (hex) from a 32-byte secret key (hex). */
+export function vcEd25519SecretToPublic(secretKeyHex: string): Promise<string>;
+
+/** Ed25519 signature (hex) over a hex-encoded message. */
+export function vcEd25519Sign(
+  secretKeyHex: string,
+  messageHex: string
+): Promise<string>;
+
+/**
+ * Ed25519 verification. Wrong key, tampered signature, altered
+ * message, or a malformed-length input all resolve to false — never an
+ * exception-hidden true.
+ */
+export function vcEd25519Verify(
+  publicKeyHex: string,
+  messageHex: string,
+  signatureHex: string
+): Promise<boolean>;
+
+/**
+ * Create an eddsa-rdfc-2022 Data Integrity proofValue (multibase-z,
+ * base58btc) over already-canonicalized inputs — RDFC-1.0 canonical
+ * N-Quads of the document and of the proof config (see canonicalize()).
+ */
+export function vcEddsaCreateFromCanonical(
+  secretKeyHex: string,
+  canonicalDocument: string,
+  canonicalConfig: string
+): Promise<string>;
+
+/**
+ * Verify an eddsa-rdfc-2022 proofValue against canonical inputs. Wrong
+ * key, tampered document/config, or tampered proofValue all resolve to
+ * false.
+ */
+export function vcEddsaVerifyFromCanonical(
+  publicKeyHex: string,
+  canonicalDocument: string,
+  canonicalConfig: string,
+  proofValue: string
+): Promise<boolean>;
+
 /** Feature probe for the currently available engine bundles. */
 export function capabilities(): Promise<{
   entry: boolean;
@@ -633,6 +702,14 @@ export function capabilities(): Promise<{
   schematron: boolean;
   toan: boolean;
   matrix: boolean;
+  /**
+   * The VC Data Integrity crypto ABI exports are present. Note: the
+   * HACL* wasm backend is still initialised at call time — this flag
+   * reports export availability, not that init has run.
+   */
+  vcCrypto: boolean;
+  /** The in-memory COTTAS bytes store exports are present. */
+  cottasBytesStore: boolean;
 }>;
 
 // ---------------------------------------------------------------------
@@ -711,6 +788,12 @@ declare const _default: {
   matrixScalarProduct: typeof matrixScalarProduct;
   matrixVectorProduct: typeof matrixVectorProduct;
   matrixOuterProduct: typeof matrixOuterProduct;
+  vcSha256Hex: typeof vcSha256Hex;
+  vcEd25519SecretToPublic: typeof vcEd25519SecretToPublic;
+  vcEd25519Sign: typeof vcEd25519Sign;
+  vcEd25519Verify: typeof vcEd25519Verify;
+  vcEddsaCreateFromCanonical: typeof vcEddsaCreateFromCanonical;
+  vcEddsaVerifyFromCanonical: typeof vcEddsaVerifyFromCanonical;
   capabilities: typeof capabilities;
   Dataset: typeof Dataset;
   dataFactory: DataFactory;

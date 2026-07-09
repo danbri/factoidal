@@ -46,7 +46,10 @@
       "types": "./fn.d.ts",
       "default": "./fn.js"
     },
-    "./browser": "./browser.js",
+    "./browser": {
+      "types": "./browser.d.ts",
+      "default": "./browser.js"
+    },
     "./browser-wasm": {
       "browser": "./browser-wasm.js",
       "default": "./browser-wasm.js"
@@ -67,6 +70,7 @@
     "fn.d.ts",
     "lib/",
     "browser.js",
+    "browser.d.ts",
     "browser-wasm.js",
     "factoidal.js",
     "factoidal.wasm.js",

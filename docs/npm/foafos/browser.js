@@ -737,6 +737,149 @@ export async function shexValidate(dataNQuads, schemaJson, focus, shapeLabel) {
   return parsed;
 }
 
+// ---------------------------------------------------------------------
+// VC Data Integrity crypto (eddsa-rdfc-2022) — bin/npm-entry/
+// entry_jsoo.ml's vc* exports, realising VC_DataIntegrity's four crypto
+// assume vals via HACL*'s OWN official WebAssembly build.
+//
+// INIT (browser): unlike the Node entry (which auto-awaits initHacl()),
+// a browser page MUST initialise the HACL* wasm backend itself before
+// the first VC call — the hacl-wasm URL is page-specific. Serve the
+// `hacl-wasm/` directory next to your page and, from hacl-init.js,
+// `await initHacl({ apiUrl: '/path/to/hacl-wasm/api.js' })` once; that
+// stashes the ready backend on globalThis.__factoidalHacl, which the
+// bundle's synchronous stubs read. If the backend is NOT initialised,
+// the F* assume-val stub throws, `guarded` returns {ok:false}, and
+// these wrappers throw — a verify NEVER silently succeeds
+// uninitialised (#286, the throw-on-uninit contract). See
+// skills/node-crypto-haclstar-vc-wasm-build.
+// ---------------------------------------------------------------------
+
+/**
+ * SHA-256 of a message string's bytes, as a lowercase hex digest
+ * (VC_DataIntegrity.hash_sha256_hex, HACL* SHA-2).
+ * @param {string} message
+ * @returns {Promise<{ok:true, sha256:string}>}
+ */
+export async function vcSha256Hex(message) {
+  if (typeof message !== 'string') {
+    throw new TypeError('vcSha256Hex: message must be a string');
+  }
+  const abi = await loadNpmEntry();
+  if (typeof abi.vcSha256Hex !== 'function') {
+    throw new Error('vcSha256Hex: the loaded factoidal-npm-entry bundle predates the VC crypto exports');
+  }
+  const parsed = JSON.parse(abi.vcSha256Hex(message));
+  if (!parsed.ok) throw new Error(parsed.error || 'vcSha256Hex failed');
+  return parsed;
+}
+
+/**
+ * Derive the Ed25519 public key from a 32-byte secret key (hex).
+ * @param {string} secretKeyHex
+ * @returns {Promise<{ok:true, publicKeyHex:string}>}
+ */
+export async function vcEd25519SecretToPublic(secretKeyHex) {
+  if (typeof secretKeyHex !== 'string') {
+    throw new TypeError('vcEd25519SecretToPublic: secretKeyHex must be a string');
+  }
+  const abi = await loadNpmEntry();
+  if (typeof abi.vcEd25519SecretToPublic !== 'function') {
+    throw new Error('vcEd25519SecretToPublic: the loaded factoidal-npm-entry bundle predates the VC crypto exports');
+  }
+  const parsed = JSON.parse(abi.vcEd25519SecretToPublic(secretKeyHex));
+  if (!parsed.ok) throw new Error(parsed.error || 'vcEd25519SecretToPublic failed');
+  return parsed;
+}
+
+/**
+ * Ed25519 signature over a hex-encoded message.
+ * @param {string} secretKeyHex 32-byte secret key, hex
+ * @param {string} messageHex the message to sign, hex
+ * @returns {Promise<{ok:true, signatureHex:string}>}
+ */
+export async function vcEd25519Sign(secretKeyHex, messageHex) {
+  if (typeof secretKeyHex !== 'string' || typeof messageHex !== 'string') {
+    throw new TypeError('vcEd25519Sign: secretKeyHex and messageHex must be strings');
+  }
+  const abi = await loadNpmEntry();
+  if (typeof abi.vcEd25519Sign !== 'function') {
+    throw new Error('vcEd25519Sign: the loaded factoidal-npm-entry bundle predates the VC crypto exports');
+  }
+  const parsed = JSON.parse(abi.vcEd25519Sign(secretKeyHex, messageHex));
+  if (!parsed.ok) throw new Error(parsed.error || 'vcEd25519Sign failed');
+  return parsed;
+}
+
+/**
+ * Ed25519 verification. Wrong key, tampered signature, altered
+ * message, or a malformed-length input all report valid:false — never
+ * an exception-hidden true.
+ * @param {string} publicKeyHex
+ * @param {string} messageHex
+ * @param {string} signatureHex
+ * @returns {Promise<{ok:true, valid:boolean}>}
+ */
+export async function vcEd25519Verify(publicKeyHex, messageHex, signatureHex) {
+  if (typeof publicKeyHex !== 'string' || typeof messageHex !== 'string' ||
+      typeof signatureHex !== 'string') {
+    throw new TypeError('vcEd25519Verify: publicKeyHex, messageHex and signatureHex must be strings');
+  }
+  const abi = await loadNpmEntry();
+  if (typeof abi.vcEd25519Verify !== 'function') {
+    throw new Error('vcEd25519Verify: the loaded factoidal-npm-entry bundle predates the VC crypto exports');
+  }
+  const parsed = JSON.parse(abi.vcEd25519Verify(publicKeyHex, messageHex, signatureHex));
+  if (!parsed.ok) throw new Error(parsed.error || 'vcEd25519Verify failed');
+  return parsed;
+}
+
+/**
+ * Create an eddsa-rdfc-2022 Data Integrity proofValue over
+ * already-canonicalized inputs (RDFC-1.0 canonical N-Quads).
+ * @param {string} secretKeyHex
+ * @param {string} canonicalDocument canonical N-Quads of the document
+ * @param {string} canonicalConfig canonical N-Quads of the proof config
+ * @returns {Promise<{ok:true, proofValue:string}>} multibase-z (base58btc)
+ */
+export async function vcEddsaCreateFromCanonical(secretKeyHex, canonicalDocument, canonicalConfig) {
+  if (typeof secretKeyHex !== 'string' || typeof canonicalDocument !== 'string' ||
+      typeof canonicalConfig !== 'string') {
+    throw new TypeError('vcEddsaCreateFromCanonical: all three arguments must be strings');
+  }
+  const abi = await loadNpmEntry();
+  if (typeof abi.vcEddsaCreateFromCanonical !== 'function') {
+    throw new Error('vcEddsaCreateFromCanonical: the loaded factoidal-npm-entry bundle predates the VC crypto exports');
+  }
+  const parsed = JSON.parse(abi.vcEddsaCreateFromCanonical(secretKeyHex, canonicalDocument, canonicalConfig));
+  if (!parsed.ok) throw new Error(parsed.error || 'vcEddsaCreateFromCanonical failed');
+  return parsed;
+}
+
+/**
+ * Verify an eddsa-rdfc-2022 proofValue against canonical inputs. Wrong
+ * key, tampered document/config, or tampered proofValue all report
+ * verified:false.
+ * @param {string} publicKeyHex
+ * @param {string} canonicalDocument canonical N-Quads of the document
+ * @param {string} canonicalConfig canonical N-Quads of the proof config
+ * @param {string} proofValue the multibase-z proofValue to check
+ * @returns {Promise<{ok:true, verified:boolean}>}
+ */
+export async function vcEddsaVerifyFromCanonical(publicKeyHex, canonicalDocument, canonicalConfig, proofValue) {
+  if (typeof publicKeyHex !== 'string' || typeof canonicalDocument !== 'string' ||
+      typeof canonicalConfig !== 'string' || typeof proofValue !== 'string') {
+    throw new TypeError('vcEddsaVerifyFromCanonical: all four arguments must be strings');
+  }
+  const abi = await loadNpmEntry();
+  if (typeof abi.vcEddsaVerifyFromCanonical !== 'function') {
+    throw new Error('vcEddsaVerifyFromCanonical: the loaded factoidal-npm-entry bundle predates the VC crypto exports');
+  }
+  const parsed = JSON.parse(abi.vcEddsaVerifyFromCanonical(publicKeyHex, canonicalDocument, canonicalConfig, proofValue));
+  if (!parsed.ok) throw new Error(parsed.error || 'vcEddsaVerifyFromCanonical failed');
+  return parsed;
+}
+
 /**
  * Resolve a `did:key:z6Mk...` identifier to its DID Document as RDF
  * (bin/npm-entry/entry_jsoo.ml's didKeyResolve export -> the verified
@@ -1629,5 +1772,7 @@ export default {
   xsltTransform, mathmlEval, xformsRecalc, jsonSchemaValidate, schematronValidate,
   toanSummation, toanProduct, toanSimplify, toanDiff, toanSubst,
   matrixDeterminant, matrixScalarProduct, matrixVectorProduct, matrixOuterProduct,
+  vcSha256Hex, vcEd25519SecretToPublic, vcEd25519Sign, vcEd25519Verify,
+  vcEddsaCreateFromCanonical, vcEddsaVerifyFromCanonical,
   queryHdt,
 };
