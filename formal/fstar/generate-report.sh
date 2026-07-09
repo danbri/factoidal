@@ -1602,7 +1602,7 @@ fi
 VC_BODY=$(
   family_suite_row "VC Data Model 2.0 — structural (Stage 1)" "$VC_PASS" "$VC_FAIL" "$VC_SKIP" "$VC_TOTAL" "$VC_PRESENT" \
     "Runner: <code>bin/vc-runner</code> (<code>bin/linux-x86_64/vc_runner</code>) &middot; Suite: <code>third_party/testing/vc/tests/input/</code> (structural fixtures, filename-encoded verdicts)" \
-    "<a href=\"${GITHUB_BLOB_BASE}/docs/designissues/2026-07-05-vc-program-plan.md\" target=\"_blank\" rel=\"noopener\">diagnosis: the ${VC_FAIL} remaining fails are documented residuals — a type-redefinition cluster needing JSON-LD context/term resolution, plus one corpus template-substitution artifact (validFrom/validUntil sentinel strings) — the measured ceiling for a purely structural checker; see the VC program plan</a>"
+    "<a href=\"${GITHUB_BLOB_BASE}/docs/designissues/2026-07-05-vc-program-plan.md\" target=\"_blank\" rel=\"noopener\">diagnosis: the ${VC_FAIL} remaining fail is a documented corpus template-substitution artifact — the validFrom/validUntil sentinel strings the upstream suite rewrites at issue time, invisible to an offline reader — the measured ceiling for an offline checker; the type-resolution cluster (protected-term redefinition, non-URL-mapped and @vocab-nullified unmapped type terms) is now handled by the VC.Context term-resolution walker; see the VC program plan</a>"
 )
 VC_FAMILY_HTML=$(family_section "vc2" "Verifiable Credentials 2.0" "$VC_STATUS" "$VC_FAMILY_HEADLINE" "$VC_BODY" "")
 

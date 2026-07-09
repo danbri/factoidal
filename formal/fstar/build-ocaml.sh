@@ -411,6 +411,7 @@ if [[ "$STEP" == "all" || "$STEP" == "extract" ]]; then
     SPARQL.JSON.Escape.fst
     Parser.JSON.fst JSONLD.Loader.fst JSONLD.Context.fst JSONLD.Expand.fst Parser.JSONLD.fst JSONLD.FromRdf.fst JSONSchema.Validate.fst
     ShEx.Schema.fst Parser.ShExC.fst ShEx.SchemaEq.fst ShEx.Validation.fst
+    VC.Context.fst
     VC.Credential.fst
     VC.Multibase.fst
     DID.Key.fst
@@ -834,6 +835,7 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
     service_wrap_hook.ml \
     SPARQL_FullText.ml SPARQL11_Algebra.ml XSD_Datatypes.ml XForms_Bind.ml RDF_Pretty.ml OWL_QueryRewrite.ml OWL_QueryEval.ml OWL_Tests_Manifest.ml RIF_Core_Syntax.ml Parser_RIFXML.ml RIF_Core_Translation.ml RIF_Core_Builtins.ml RIF_Core_Conformance.ml RIF_Core_Eval.ml RIF_Core_Tests.ml SPARQL11_Parser.ml SHACL_Validation.ml \
     ShEx_Schema.ml Parser_ShExC.ml ShEx_SchemaEq.ml ShEx_Validation.ml \
+    VC_Context.ml \
     VC_Credential.ml \
     VC_Multibase.ml \
     DID_Key.ml \
@@ -1292,10 +1294,14 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
     # the upstream mocha suite assumes a live HTTP issue/verify
     # endpoint this offline runner does not have), calls the
     # F*-extracted VC_Credential.vc_check_from_string (required-
-    # property + type-membership checks over Parser_JSON, plus a fixed
-    # @context sentinel check — see VC.Credential.fst's header for the
-    # exact rule set and what's deferred to Stage 2), and scores the
-    # result against each filename's own -ok/-fail suffix.
+    # property + type-membership checks over Parser_JSON, the @context
+    # sentinel check, plus VC_Context JSON-LD type-value resolution —
+    # protected-term redefinition, non-URL-mapped and @vocab-nullified
+    # unmapped type terms — see VC.Credential.fst's + VC.Context.fst's
+    # headers for the exact rule set), and scores the result against
+    # each filename's own -ok/-fail suffix. The runner parses the
+    # vendored third_party/contexts/credentials-v2.jsonld once (I/O glue,
+    # rule #11) and passes it into the pure F* checker as v2ctx.
     VC_RUNNER_RC=0
     run_with_heartbeat "ocamlopt vc_runner" "_ocamlopt_vc_runner.log" -- \
       ocamlfind ocamlopt -package fstar.lib,str,zarith,sha,digestif.c,unix,uucp -linkpkg -w -8-14-26 \
@@ -1651,6 +1657,7 @@ if [[ "$STEP" == "all" || "$STEP" == "js" ]]; then
     ShEx_Schema.ml Parser_ShExC.ml ShEx_SchemaEq.ml ShEx_Validation.ml
     RML_Mapping.ml RML_Sources.ml RML_Eval.ml
     CSVW_Metadata.ml CSVW_URITemplate.ml CSVW_Conversion.ml
+    VC_Context.ml
     VC_Credential.ml
     VC_Multibase.ml
     DID_Key.ml

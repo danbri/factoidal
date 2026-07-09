@@ -1138,16 +1138,16 @@
 
 <section class="family amber" id="vc2">
   <h2>Verifiable Credentials 2.0</h2>
-  <p class="fam-headline amber">109 pass, 5 fail, 6 skip (of 120) on the structural Stage 1 suite; the Data Integrity eddsa-rdfc-2022 sign/verify layer (RDFC-1.0 + SHA-256 + Ed25519 via vendored HACL* C) is implemented separately (vc_runner --crypto roundtrip, native-only, wasm tracked in #286); full W3C VC-DI conformance (JSON-LD proof-options expansion) is still pending.</p>
+  <p class="fam-headline amber">113 pass, 1 fail, 6 skip (of 120) on the structural Stage 1 suite; the Data Integrity eddsa-rdfc-2022 sign/verify layer (RDFC-1.0 + SHA-256 + Ed25519 via vendored HACL* C) is implemented separately (vc_runner --crypto roundtrip, native-only, wasm tracked in #286); full W3C VC-DI conformance (JSON-LD proof-options expansion) is still pending.</p>
   <details open>
     <summary>Suites in this family (tap to collapse)</summary>
     <div class="suites">
       <div class="suite-row amber">
         <div class="suite-name">VC Data Model 2.0 — structural (Stage 1)</div>
-        <div class="meter"><div class="seg seg-pass" style="width:90.83%"></div><div class="seg seg-fail" style="width:4.17%"></div><div class="seg seg-skip" style="width:5.00%"></div></div>
-        <div class="suite-numbers"><small>109 pass, 5 fail, 6 skip (of 120)</small></div>
+        <div class="meter"><div class="seg seg-pass" style="width:94.17%"></div><div class="seg seg-fail" style="width:0.83%"></div><div class="seg seg-skip" style="width:5.00%"></div></div>
+        <div class="suite-numbers"><small>113 pass, 1 fail, 6 skip (of 120)</small></div>
       </div>
-      <p class="suite-prov">Runner: <code>bin/vc-runner</code> (<code>bin/linux-x86_64/vc_runner</code>) &middot; Suite: <code>third_party/testing/vc/tests/input/</code> (structural fixtures, filename-encoded verdicts) &middot; <a href="https://github.com/danbri/factoidal/blob/claude/main/docs/designissues/2026-07-05-vc-program-plan.md" target="_blank" rel="noopener">diagnosis: the 5 remaining fails are documented residuals — a type-redefinition cluster needing JSON-LD context/term resolution, plus one corpus template-substitution artifact (validFrom/validUntil sentinel strings) — the measured ceiling for a purely structural checker; see the VC program plan</a></p>
+      <p class="suite-prov">Runner: <code>bin/vc-runner</code> (<code>bin/linux-x86_64/vc_runner</code>) &middot; Suite: <code>third_party/testing/vc/tests/input/</code> (structural fixtures, filename-encoded verdicts) &middot; <a href="https://github.com/danbri/factoidal/blob/claude/main/docs/designissues/2026-07-05-vc-program-plan.md" target="_blank" rel="noopener">diagnosis: the 1 remaining fail is a documented corpus template-substitution artifact — the validFrom/validUntil sentinel strings the upstream suite rewrites at issue time, invisible to an offline reader — the measured ceiling for an offline checker; the type-resolution cluster (protected-term redefinition, non-URL-mapped and @vocab-nullified unmapped type terms) is now handled by the VC.Context term-resolution walker; see the VC program plan</a></p>
     </div>
   </details>
   
@@ -1377,7 +1377,7 @@ shex:         0 pass, 0 fail, 0 skip (of 0) — present=0
 jsonld-tordf: 449 pass, 12 fail, 6 skip (of 467) — present=1
 rml-core:     76 pass, 0 fail, 0 skip (of 76) — present=1
 rif-core:     34 pass, 4 fail, 12 skip (of 50) — present=1
-vc-stage1:    109 pass, 5 fail, 6 skip (of 120) — present=1</pre>
+vc-stage1:    113 pass, 1 fail, 6 skip (of 120) — present=1</pre>
 </details>
 
 <details>

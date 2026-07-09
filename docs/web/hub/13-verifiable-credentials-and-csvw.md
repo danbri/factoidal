@@ -32,22 +32,24 @@ rules the VC Data Model 2.0 spec lays out: `@context` presence,
 credentialStatus/credentialSchema/termsOfUse/evidence/refreshService/
 proof inner shapes, `validFrom`/`validUntil` well-formedness and
 ordering, holder shape, and closed language-map validation on names
-and descriptions.
+and descriptions. `VC.Context.fst` adds an offline JSON-LD `type`-value
+resolution pass over the document's own `@context` array — catching a
+protected-term redefinition, a type term mapped to a non-URL, and an
+unmapped type term whose `@vocab` fallback was nullified — reading the
+vendored W3C VCDM v2 base context so no network fetch is needed.
 
 Measured against the vendored W3C `vc-data-model-2.0-test-suite`
-fixtures: **109 pass, 5 fail, 6 skip (of 120)** — see
+fixtures: **113 pass, 1 fail, 6 skip (of 120)** — see
 [the test-results dashboard]({{ '/test-results/' | url }}) for the
-current run. The 5 fails are diagnosed, not swept under a skip: 4 are
-a single JSON-LD type-redefinition cluster that needs a
-context-processing module (a later stage, not yet built); 1 is a
+current run. The 1 fail is diagnosed, not swept under a skip: it is a
 suite artifact — the fixture pair in question has one file whose
 `validFrom`/`validUntil` fields are literal placeholder strings
 (`'PAST DATE'`/`'FUTURE DATE'`) that the upstream test suite's own
 JavaScript substitutes at run time, so the two raw fixtures are
 structurally identical and any offline check that catches the
-`-fail` case would also wrongly fail its `-ok` sibling. 109 of 114
-plain-verdict fixtures is the measured ceiling for a structural
-validator with no live substitution step.
+`-fail` case would also wrongly fail its `-ok` sibling. 113 of 114
+plain-verdict fixtures is the measured ceiling for an offline
+checker with no live substitution step.
 
 **The structural validator has no browser export.** `npm/factoidal`'s
 browser entry (`browser.js`) exports no VC Data Model

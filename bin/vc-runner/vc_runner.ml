@@ -128,11 +128,48 @@ let expected_label = function
   | Expect_Ambiguous -> "ambiguous"
 
 (* ------------------------------------------------------------------ *)
+(* Vendored VCDM v2 base context loader.
+
+   The F*-extracted VC_Credential.vc_check_from_string is PURE: it does
+   no I/O and carries no assume val. The VCDM v2 base context it needs
+   for type-value resolution (protected-term redefinition detection,
+   non-URL-mapped type terms, @vocab-nullified unmapped terms — see
+   VC.Context.fst) is therefore parsed HERE, once, from the vendored
+   third_party/contexts/credentials-v2.jsonld, and passed in as an
+   already-decoded Parser_JSON.json_val. This is I/O + parse GLUE only —
+   all resolution logic lives in VC.Context.fst (iron rule #11). *)
+
+let v2_context_path_candidates () =
+  let repo_root = find_repo_root () in
+  [ Filename.concat repo_root "third_party/contexts/credentials-v2.jsonld";
+    "third_party/contexts/credentials-v2.jsonld";
+    "../../third_party/contexts/credentials-v2.jsonld";
+    "../../../third_party/contexts/credentials-v2.jsonld" ]
+
+let load_v2_context () =
+  let path =
+    try List.find Sys.file_exists (v2_context_path_candidates ())
+    with Not_found ->
+      Printf.eprintf
+        "vc_runner: vendored VCDM v2 context not found (third_party/contexts/credentials-v2.jsonld)\n";
+      exit 2
+  in
+  match read_file path with
+  | None ->
+    Printf.eprintf "vc_runner: could not read vendored v2 context at %s\n" path; exit 2
+  | Some txt ->
+    (match Parser_JSON.parse_json txt with
+     | Some v -> v
+     | None ->
+       Printf.eprintf "vc_runner: vendored v2 context at %s is not well-formed JSON\n" path;
+       exit 2)
+
+(* ------------------------------------------------------------------ *)
 (* Outcome + per-fixture execution. *)
 
 type outcome = Pass | Fail of string | Skip of string
 
-let run_fixture path =
+let run_fixture v2ctx path =
   match classify_path path with
   | Expect_Ambiguous ->
     Skip "filename has neither -ok nor -fail suffix (fail-or-inject or \
@@ -141,7 +178,7 @@ let run_fixture path =
     (match read_file path with
      | None -> Fail "could not read file"
      | Some content ->
-       (match VC_Credential.vc_check_from_string content with
+       (match VC_Credential.vc_check_from_string v2ctx content with
         | VC_Credential.VC_Pass ->
           (match expected with
            | Expect_Pass -> Pass
@@ -175,6 +212,7 @@ let run_suite ~verbose ~list_only fixture_dir =
            (Filename.basename path))
       files
   else begin
+    let v2ctx = load_v2_context () in
     let n = ref 0 in
     let results =
       List.map
@@ -182,7 +220,7 @@ let run_suite ~verbose ~list_only fixture_dir =
            incr n;
            let name = Filename.basename path in
            Printf.eprintf "  [%d/%d] %s%!" !n total name;
-           let o = run_fixture path in
+           let o = run_fixture v2ctx path in
            let tag = match o with Pass -> "ok" | Fail _ -> "FAIL" | Skip _ -> "skip" in
            Printf.eprintf " %s\n%!" tag;
            (path, o))

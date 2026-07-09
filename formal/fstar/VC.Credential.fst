@@ -89,18 +89,19 @@ module VC.Credential
 //     property (`credential-name-extra-prop-en-fail.json`'s stray "url"
 //     key), OR an array of such objects.
 //
-// Known residuals (5 of 120 fixtures, both documented, neither a
-// silent guess):
-//   - context-driven type redefinition/mapping (`credential-redef-
-//     type-fail.json`, `credential-redef-type2-fail.json`,
-//     `credential-type-mapped-nonurl-fail.json`,
-//     `credential-type-unmapped-fail.json` — 4 fixtures): needs real
-//     JSON-LD term resolution (does a `type` string expand to an IRI
-//     under the document's own @context, is a term redefinition
-//     illegal under `@protected`, does `{"@vocab": null}` leave an
-//     unmapped term un-expandable) — a categorically different,
-//     larger piece of work than structural shape-checking. Out of
-//     scope until a JSON-LD context-processing module exists.
+// Context-driven type resolution (`credential-redef-type-fail.json`,
+// `credential-redef-type2-fail.json`,
+// `credential-type-mapped-nonurl-fail.json`,
+// `credential-type-unmapped-fail.json` — 4 fixtures) is now handled by
+// the `VC.Context` leaf module: a minimal, offline, pure JSON-LD
+// term-resolution walker over the document's own @context array
+// (protected-term redefinition, non-URL-mapped type term,
+// @vocab-nullified unmapped type term). It reads the vendored VCDM v2
+// base context (parsed by the consumer and passed in as `v2ctx` —
+// keeps this side pure) to build the base term/protected map. Its
+// verdict is folded into VC_Fail in vc_check_document below.
+//
+// Known residual (1 of 120 fixtures, documented, not a silent guess):
 //   - `credential-validUntil-validFrom-fail.json` (1 fixture): its
 //     `-ok` sibling's raw bytes carry literal placeholder text
 //     ("PAST DATE"/"FUTURE DATE") that the vendored corpus's own
@@ -126,6 +127,12 @@ module VC.Credential
 open FStar.String
 open FStar.List.Tot
 open Parser.JSON
+// VC.Context: the offline JSON-LD context term-resolution walker used
+// by the type-value checks below (protected-term redefinition,
+// non-URL-mapped type term, @vocab-nullified unmapped type term). It is
+// a leaf module compiled before this one; its vcx_* names do not clash
+// with this module's vc_* names.
+open VC.Context
 
 // XSD.Datatypes carries the xsd:dateTime lexical parser + comparison
 // (dt_parse_ms / dt_cmp, both operating directly on raw lexical
@@ -619,23 +626,32 @@ let vc_check_embedded_credentials (v : json_val) : vc_verdict =
 // the same document — the checks are independent, matching the
 // corpus's own type-list-driven dispatch rather than an exclusive
 // either/or).
-let vc_check_document (v : json_val) : vc_verdict =
+// `v2ctx` is the ALREADY-PARSED vendored VCDM v2 base context
+// (Parser.JSON.parse_json of third_party/contexts/credentials-v2.jsonld),
+// supplied by the consumer — this keeps the check pure (no I/O, no
+// assume val). The context type-resolution gate runs only after the
+// structural checks pass, so it sees a well-formed @context array and
+// type list; it maps a VC.Context violation onto VC_Fail.
+let vc_check_document (v2ctx : json_val) (v : json_val) : vc_verdict =
   match vc_check_credential_shaped v with
   | VC_Fail r -> VC_Fail r
   | VC_Pass ->
-    let types = vc_decode_type_list v in
-    if List.Tot.mem vc_presentation_type types
-    then vc_check_embedded_credentials v
-    else VC_Pass
+    (match vcx_check_types v2ctx v (vc_decode_type_list v) with
+     | VcxViolation r -> VC_Fail r
+     | VcxOk ->
+       let types = vc_decode_type_list v in
+       if List.Tot.mem vc_presentation_type types
+       then vc_check_embedded_credentials v
+       else VC_Pass)
 
 // Convenience: parse raw JSON text and check it in one call. None on
 // unparseable JSON or a non-object top level (a VC/VP document is
 // always a JSON object per VCDM 2.0 §4.1) is folded into VC_Fail so
 // callers get one verdict type rather than an option-of-verdict.
-let vc_check_from_string (input : string) : vc_verdict =
+let vc_check_from_string (v2ctx : json_val) (input : string) : vc_verdict =
   match parse_json input with
   | None -> VC_Fail "input is not well-formed JSON"
   | Some v ->
     (match v with
-     | JObject _ -> vc_check_document v
+     | JObject _ -> vc_check_document v2ctx v
      | _ -> VC_Fail "top-level JSON value must be an object")

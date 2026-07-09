@@ -392,18 +392,23 @@ let vc_check_embedded_credentials (v : Parser_JSON.json_val) : vc_verdict=
        | uu___ ->
            VC_Fail
              "verifiableCredential must be an object or an array of objects")
-let vc_check_document (v : Parser_JSON.json_val) : vc_verdict=
+let vc_check_document (v2ctx : Parser_JSON.json_val)
+  (v : Parser_JSON.json_val) : vc_verdict=
   match vc_check_credential_shaped v with
   | VC_Fail r -> VC_Fail r
   | VC_Pass ->
-      let types = vc_decode_type_list v in
-      if FStar_List_Tot_Base.mem vc_presentation_type types
-      then vc_check_embedded_credentials v
-      else VC_Pass
-let vc_check_from_string (input : Prims.string) : vc_verdict=
+      (match VC_Context.vcx_check_types v2ctx v (vc_decode_type_list v) with
+       | VC_Context.VcxViolation r -> VC_Fail r
+       | VC_Context.VcxOk ->
+           let types = vc_decode_type_list v in
+           if FStar_List_Tot_Base.mem vc_presentation_type types
+           then vc_check_embedded_credentials v
+           else VC_Pass)
+let vc_check_from_string (v2ctx : Parser_JSON.json_val)
+  (input : Prims.string) : vc_verdict=
   match Parser_JSON.parse_json input with
   | FStar_Pervasives_Native.None -> VC_Fail "input is not well-formed JSON"
   | FStar_Pervasives_Native.Some v ->
       (match v with
-       | Parser_JSON.JObject uu___ -> vc_check_document v
+       | Parser_JSON.JObject uu___ -> vc_check_document v2ctx v
        | uu___ -> VC_Fail "top-level JSON value must be an object")
