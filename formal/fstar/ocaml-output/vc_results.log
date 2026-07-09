@@ -27,8 +27,8 @@
   [27/120] credential-optional-type-ok.json ok
   [28/120] credential-proof-missing-type-fail.json ok
   [29/120] credential-proof-ok.json ok
-  [30/120] credential-redef-type-fail.json FAIL
-  [31/120] credential-redef-type2-fail.json FAIL
+  [30/120] credential-redef-type-fail.json ok
+  [31/120] credential-redef-type2-fail.json ok
   [32/120] credential-refresh-no-type-fail.json ok
   [33/120] credential-refresh-ok.json ok
   [34/120] credential-refresh-type-ok.json ok
@@ -53,9 +53,9 @@
   [53/120] credential-termsofuse-no-type-fail.json ok
   [54/120] credential-termsofuse-ok.json ok
   [55/120] credential-termsofuses-ok.json ok
-  [56/120] credential-type-mapped-nonurl-fail.json FAIL
+  [56/120] credential-type-mapped-nonurl-fail.json ok
   [57/120] credential-type-mapped-url-ok.json ok
-  [58/120] credential-type-unmapped-fail.json FAIL
+  [58/120] credential-type-unmapped-fail.json ok
   [59/120] credential-type-url-ok.json ok
   [60/120] credential-type-urls-order-1-ok.json ok
   [61/120] credential-type-urls-order-2-ok.json ok
@@ -119,7 +119,7 @@
   [119/120] presentation-vc-missing-required-type-fail.json ok
   [120/120] presentation-vc-ok.json ok
 === VC Data Model 2.0 Structural Fixture Runner (Stage 1) ===
-Fixture dir: ../../../third_party/testing/vc/tests/input
+Fixture dir: /home/user/factoidal/third_party/testing/vc/tests/input
 
 Totals: 120 fixture files
 
@@ -150,8 +150,8 @@ Totals: 120 fixture files
   PASS: credential-optional-type-ok.json
   PASS: credential-proof-missing-type-fail.json
   PASS: credential-proof-ok.json
-  FAIL: credential-redef-type-fail.json — expected a structural FAIL, got Pass
-  FAIL: credential-redef-type2-fail.json — expected a structural FAIL, got Pass
+  PASS: credential-redef-type-fail.json
+  PASS: credential-redef-type2-fail.json
   PASS: credential-refresh-no-type-fail.json
   PASS: credential-refresh-ok.json
   PASS: credential-refresh-type-ok.json
@@ -176,9 +176,9 @@ Totals: 120 fixture files
   PASS: credential-termsofuse-no-type-fail.json
   PASS: credential-termsofuse-ok.json
   PASS: credential-termsofuses-ok.json
-  FAIL: credential-type-mapped-nonurl-fail.json — expected a structural FAIL, got Pass
+  PASS: credential-type-mapped-nonurl-fail.json
   PASS: credential-type-mapped-url-ok.json
-  FAIL: credential-type-unmapped-fail.json — expected a structural FAIL, got Pass
+  PASS: credential-type-unmapped-fail.json
   PASS: credential-type-url-ok.json
   PASS: credential-type-urls-order-1-ok.json
   PASS: credential-type-urls-order-2-ok.json
@@ -239,6 +239,6 @@ Totals: 120 fixture files
   PASS: presentation-vc-ok.json
 
 ========================================
-TOTAL: 109 pass, 5 fail, 6 skip (out of 120)
+TOTAL: 113 pass, 1 fail, 6 skip (out of 120)
 ========================================
-vc-credential-structural: 109 pass, 5 fail, 6 skip (out of 120)
+vc-credential-structural: 113 pass, 1 fail, 6 skip (out of 120)

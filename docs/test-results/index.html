@@ -279,7 +279,7 @@
 <header>
   <div class="inner">
     <div class="rendered-pill" title="Rendered = when this page was last regenerated. Tests = when the *_results.log files inside the repository were last updated. Both UTC.">
-      <span class="row"><span class="label">Rendered</span><strong>2026-07-09 22:45 UTC</strong></span>
+      <span class="row"><span class="label">Rendered</span><strong>2026-07-09 22:49 UTC</strong></span>
       <span class="row"><span class="label">Tests</span><strong class="tests">2026-07-09 22:38 UTC</strong></span>
     </div>
     <h1>W3C test results</h1>
@@ -1086,7 +1086,7 @@
 
 <section class="family amber" id="mapping">
   <h2>Mapping: RML / CSVW</h2>
-  <p class="fam-headline amber">167 pass, 211 fail, 41 skip (of 419) across RML rml-core, RML rml-io source-tests, and CSVW csv2rdf.</p>
+  <p class="fam-headline amber">239 pass, 139 fail, 41 skip (of 419) across RML rml-core, RML rml-io source-tests, and CSVW csv2rdf.</p>
   <details open>
     <summary>Suites in this family (tap to collapse)</summary>
     <div class="suites">
@@ -1104,8 +1104,8 @@
       <p class="suite-prov">Runner: <code>bin/linux-x86_64/rml_runner --io</code> &middot; Suite: <code>third_party/testing/rml-modules/rml-io/</code> (RMLSTC0* source tests) &middot; rml-cc (content-container) has no row: the committed runner exposes no <code>--cc</code> mode yet (tracked with the rml program plan) &middot; <a href="https://github.com/danbri/factoidal/blob/claude/main/docs/designissues/2026-07-05-rml-program-plan.md" target="_blank" rel="noopener">diagnosis: the fails/skips are rml-io logical-target (RMLTTC0*) and unsupported-source fixtures out of scope for the source-tests section — see the rml program plan</a></p>
       <div class="suite-row amber">
         <div class="suite-name">CSVW csv2rdf</div>
-        <div class="meter"><div class="seg seg-pass" style="width:27.41%"></div><div class="seg seg-fail" style="width:72.59%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
-        <div class="suite-numbers"><small>74 pass, 196 fail, 0 skip (of 270)</small></div>
+        <div class="meter"><div class="seg seg-pass" style="width:54.07%"></div><div class="seg seg-fail" style="width:45.93%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+        <div class="suite-numbers"><small>146 pass, 124 fail, 0 skip (of 270)</small></div>
       </div>
       <p class="suite-prov">Runner: <code>bin/csvw-runner</code> (<code>bin/linux-x86_64/csvw_runner</code>) &middot; Suite: vendored W3C csv2rdf corpus (ToRdf / ToRdfWithWarnings / NegativeRdf) &middot; <a href="https://github.com/danbri/factoidal/blob/claude/main/docs/designissues/2026-07-05-csvw-program-plan.md" target="_blank" rel="noopener">diagnosis: burn-down in progress — the CSVW program plan tracks the ToRdf / warnings / negative buckets; residual fails need full @context / metadata-merge processing</a></p>
     </div>
@@ -1395,9 +1395,9 @@ vc-stage1:    113 pass, 1 fail, 6 skip (of 120) — present=1</pre>
 </main>
 
 <footer>
-  Generated <strong>2026-07-09 22:45 UTC</strong> from commit
-  <code><a href="https://github.com/danbri/factoidal/commit/84b27dff9d358f143c700c575a2757bc6f1f47a5">84b27dff</a></code>
-  on branch <code>claude/main</code> — &ldquo;dashboard: regenerate with Tableau named row + merged count-free prose&rdquo;.
+  Generated <strong>2026-07-09 22:49 UTC</strong> from commit
+  <code><a href="https://github.com/danbri/factoidal/commit/84cc3f9372910c77bdebe46a9e96379b5760bd45">84cc3f9</a></code>
+  on branch <code>claude/main</code> — &ldquo;VC Data Model 2.0: JSON-LD type-resolution closes the redefinition cluster (vc 109 -> 113 of 120)&rdquo;.
   Re-run locally: <code>cd formal/fstar &amp;&amp; ./generate-report.sh --run</code>.
 </footer>
 
