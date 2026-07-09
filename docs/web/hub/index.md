@@ -91,7 +91,7 @@ headlessly.
   <li><a href="./10-rules-rif-core/">Rules over RDF: RIF Core</a> — RIF frame/BGP rules forward-chained live</li>
   <li><a href="./14-the-rdfjs-api/">The RDF/JS API</a> — DataFactory, Quad terms, .equals() vs === (foaf)</li>
   <li><a href="./12-the-api-tour/">The API tour</a> — npm/factoidal's full function surface + a live capabilities probe (foaf)</li>
-  <li><a href="./13-verifiable-credentials-and-csvw/">Verifiable Credentials and CSVW</a> — VC structural validation (no crypto yet) + CSVW csv2rdf live (schema.org)</li>
+  <li><a href="./13-verifiable-credentials-and-csvw/">Verifiable Credentials and CSVW</a> — VC structural validation + eddsa-rdfc-2022 Data Integrity signatures (Ed25519/SHA-256 via HACL*, browser + Node via wasm) + CSVW csv2rdf live (schema.org)</li>
   <li><a href="./15-how-fast-the-performance-story/">How fast: the performance story</a> — dated, commit-linked throughput and on-disk reader numbers, one live in-browser timing illustration (wikidata)</li>
   <li><a href="./16-the-verified-in-fstar-story/">The verified-in-F* story</a> — why F*, the standing verification qualifier, the skimmable RDF.Term.fsti core, one source to four extraction targets</li>
   <li><a href="./18-the-durable-log-live/">The durable log, live: update, persist, reload, corrupt</a> — the full durable-UPDATE lifecycle running in your browser via IndexedDB across a real page reload, a live checksum-rejection demo, and the same delta-log module proven running natively, as KaRaMeL C, and as wasm (foaf)</li>

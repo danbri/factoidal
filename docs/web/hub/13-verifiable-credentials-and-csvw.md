@@ -17,7 +17,10 @@ Credentials** — structural validation *and* `eddsa-rdfc-2022` Data
 Integrity signatures — and **CSVW** (CSV on the Web) csv2rdf
 conversion. The point of this post is to say exactly how far each one
 goes, and to draw the line between the pipeline steps that run live in
-your browser and the signature step that runs natively.
+your browser and those this page still demonstrates natively. (The
+signature primitives themselves now run everywhere -- browser and Node
+included -- via HACL*'s WebAssembly build; the npm `vc*` functions
+expose them.)
 
 ## Verifiable Credentials: structural validation
 
