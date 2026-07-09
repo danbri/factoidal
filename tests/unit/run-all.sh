@@ -37,13 +37,27 @@ if [[ ! -d "$OCAML_OUT" ]]; then
   exit 2
 fi
 
+# Start from a clean scratch dir. Stale objects here (e.g. a $name.cmi from
+# an earlier run against a different committed .cmx set) are a classic source
+# of spurious "inconsistent assumptions" link errors, so we wipe rather than
+# reuse.
+rm -rf "$BUILD_DIR"
 mkdir -p "$BUILD_DIR"
 
-# COMMON_MODULES matches formal/fstar/build-ocaml.sh's list for the
-# native binaries. If that list drifts, this one must drift with it.
-# Keep them in the same order — some modules (e.g. fstar_pure_hashes
-# before SPARQL11_Algebra) have link-order constraints encoded in
-# the build script.
+# COMMON_MODULES is the canonical link order taken verbatim from
+# formal/fstar/build-ocaml.sh's $COMMON_MODULES (its native-binary
+# compile step). Keep this list byte-for-byte in step with that one:
+# regenerate with
+#   sed -n '/^  COMMON_MODULES="/,/service_wrap_http.ml"/p' \
+#     ../../formal/fstar/build-ocaml.sh | grep -oE '[A-Za-z0-9_]+\.ml' \
+#     | sed 's/\.ml$//'
+# Link order is a valid topological order for the full module set; any
+# subsequence of it (after the present-.cmx filter below) is therefore
+# still correctly ordered. Do NOT hand-curate a shorter list here — that
+# drift (missing Math_Matrix/OWL_DirectMapping_Filter/Parser_OWLFunctional/
+# RDF_Turtle_Serialize/... and wrong Parser_Turtle/SPARQL11_IRI_Resolve
+# positions) is exactly what broke every link with "inconsistent
+# assumptions over interface" / "Cannot find file *.cmx" (#82).
 COMMON_MODULES=(
   Util_Log
   RDF_Format
@@ -61,30 +75,36 @@ COMMON_MODULES=(
   RDF_Store_Loader
   Parquet_Footer
   OWL_Vocabulary
+  OWL_DirectMapping_Filter
   Tableau
   Parser_FastString
   RDF_IRI
-  RDF_NQuads_Serialize
+  SPARQL11_IRI_Resolve
   Parser_IRI
+  RDF_NQuads_Serialize
   Parser_Combinators
   Parser_TurtleScanner
   Parser_NTriples
+  Parser_Turtle
+  HDT_Container
+  HDT_Dictionary
+  HDT_Triples
   RDF_Geo_Types
   RDF_Geo_BBox
   Parser_WKT
   RDF_Geo_Topology
   RDF_Geo_Functions
-  HDT_Container
-  HDT_Dictionary
-  HDT_Triples
-  Parser_Turtle
+  Parser_OWLFunctional
+  RDF_Turtle_Serialize
   Parser_NQuads
   Parser_TriG
   Parser_XML
-  Parser_XPath
-  XPath_Eval
   XML_Wellformedness
   XML_Namespaces
+  Parser_XPath
+  XPath_Eval
+  XSLT_Transform
+  Schematron_Validate
   Parser_RDFXML
   Math_Expr
   Math_Subst
@@ -97,13 +117,14 @@ COMMON_MODULES=(
   Parser_SRX
   Parser_CSVResults
   Parser_JSONResults
-  Parser_JSON
-  SPARQL11_IRI_Resolve
   SPARQL_JSON_Escape
+  Parser_JSON
   JSONLD_Loader
   JSONLD_Context
   JSONLD_Expand
   Parser_JSONLD
+  JSONLD_FromRdf
+  JSONSchema_Validate
   SPARQL_Eval_TimeBudget
   SPARQL_Eval_Limits
   SPARQL_HTTP_Response
@@ -142,6 +163,7 @@ COMMON_MODULES=(
   RDF_CottasStore_OnDiskRuntime
   RDF_CottasInMem
   fstar_pure_hashes
+  RDF_Dataset_Graphs
   RDF_Canonical
   RDF_Canonical_Manifest
   service_wrap_hook
@@ -155,19 +177,22 @@ COMMON_MODULES=(
   OWL_Tests_Manifest
   RIF_Core_Syntax
   Parser_RIFXML
-  RIF_Core_Builtins
   RIF_Core_Translation
+  RIF_Core_Builtins
+  RIF_Core_Conformance
   RIF_Core_Eval
   RIF_Core_Tests
-  RIF_Core_Conformance
   SPARQL11_Parser
   SHACL_Validation
   ShEx_Schema
   Parser_ShExC
   ShEx_SchemaEq
+  ShEx_Validation
   VC_Credential
   VC_Multibase
   DID_Key
+  fstar_hacl_crypto
+  VC_DataIntegrity
   RML_Mapping
   RML_Sources
   RML_Eval
@@ -182,6 +207,7 @@ COMMON_MODULES=(
   RML_VirtualSource
   SPARQL11_Store
   RDF_Store_Combine
+  RDF_Dataset_Merge
   SPARQL_Protocol
   SPARQL_HTTP_RunQuery
   SPARQL_Update_Sandbox
@@ -199,13 +225,89 @@ COMMON_MODULES=(
   service_wrap_http
 )
 
-# Build the list of .cmx paths + the C stub object (needed to resolve
-# caml_parquet_zstd_decompress_hex from Parquet_Footer).
-CMX_LIST=()
-for m in "${COMMON_MODULES[@]}"; do
-  CMX_LIST+=("$OCAML_OUT/$m.cmx")
-done
+# Per-test dependency-closure linking.
+#
+# We do NOT link the whole module universe into every test. Two reasons:
+#   1. The committed ocaml-output .cmx are snapshotted across several build
+#      epochs (git shows SPARQL11_Algebra.cmx and RML_Eval.cmx landing in
+#      different commits). A partial .cmx commit can leave a *dependent*
+#      (RML_Eval) referencing an older *implementation* digest of a
+#      dependency (SPARQL11_Algebra) than the one now on disk. Linking both
+#      into one binary then dies with "make inconsistent assumptions over
+#      implementation SPARQL11_Algebra" — even for a test (geosparql) that
+#      needs neither. Linking only each test's own transitive closure keeps
+#      such stale, unrelated modules out of the link line.
+#   2. Some canonical modules (Math_* / MathML_* / XForms_Bind / VC_* / the
+#      XSLT/Schematron consumers) have no committed .cmx in this checkout.
+#      A test that genuinely needs one fails at build with an honest
+#      "Unbound module"; a test that does not is unaffected.
+#
+# The closure is computed with ocamlfind ocamldep over the committed .ml
+# sources, then ordered by the canonical COMMON_MODULES order above (a valid
+# global topological order, so any subsequence is correctly ordered too).
+# We never recompile into $OCAML_OUT (hazard #8): committed .cmx are linked
+# read-only; test objects and all scratch land in $BUILD_DIR.
 PARQUET_STUB_OBJ="$OCAML_OUT/parquet_zstd_stubs.o"
+
+# Which canonical modules actually have a committed .cmx on disk.
+PRESENT_MODULES=()
+ABSENT_MODULES=()
+for m in "${COMMON_MODULES[@]}"; do
+  if [[ -f "$OCAML_OUT/$m.cmx" ]]; then
+    PRESENT_MODULES+=("$m")
+  else
+    ABSENT_MODULES+=("$m")
+  fi
+done
+if [[ ${#ABSENT_MODULES[@]} -gt 0 ]]; then
+  echo "note: ${#ABSENT_MODULES[@]} canonical module(s) have no committed .cmx in this checkout;" >&2
+  echo "      a test whose closure needs one will fail with an honest Unbound-module build error:" >&2
+  echo "      ${ABSENT_MODULES[*]}" >&2
+  echo >&2
+fi
+
+# Canonical order + native dependency graph, materialised in $BUILD_DIR for
+# the closure helper. ocamldep is run over the present .ml sources only.
+printf '%s\n' "${COMMON_MODULES[@]}" > "$BUILD_DIR/canon.txt"
+ocamlfind ocamldep -native -I "$OCAML_OUT" "$OCAML_OUT"/*.ml \
+  > "$BUILD_DIR/dep.graph" 2>/dev/null
+
+# closure.py: given a test .ml's ocamldep line(s) on stdin, print the
+# canonical-ordered transitive closure of ocaml-output modules it needs.
+cat > "$BUILD_DIR/closure.py" <<'PYCLOSURE'
+import sys, os
+build = sys.argv[1]
+# graph: module -> set(deps)
+graph = {}
+raw = open(os.path.join(build, "dep.graph")).read().replace("\\\n", " ")
+for line in raw.splitlines():
+    if ':' not in line:
+        continue
+    lhs, rhs = line.split(':', 1)
+    lm = os.path.basename(lhs.strip())
+    if not lm.endswith('.cmx'):
+        continue
+    lm = lm[:-4]
+    graph.setdefault(lm, set()).update(
+        os.path.basename(x)[:-4] for x in rhs.split() if x.endswith('.cmx'))
+# test's direct deps come in on stdin (its own ocamldep output)
+direct = set()
+tin = sys.stdin.read().replace("\\\n", " ")
+for line in tin.splitlines():
+    if ':' in line:
+        for x in line.split(':', 1)[1].split():
+            if x.endswith('.cmx'):
+                direct.add(os.path.basename(x)[:-4])
+seen = set(); stack = list(direct)
+while stack:
+    m = stack.pop()
+    if m in seen:
+        continue
+    seen.add(m)
+    stack.extend(graph.get(m, ()))
+canon = [l.strip() for l in open(os.path.join(build, "canon.txt")) if l.strip()]
+print(' '.join(m for m in canon if m in seen))
+PYCLOSURE
 
 # Detect libzstd on the host so we can pass -cclib -lzstd if present.
 # If zstd is unavailable we still try, since the parquet_zstd_stubs
@@ -252,17 +354,34 @@ for name in "${ALL_TESTS[@]}"; do
 
   echo "--- $name ---"
 
+  # Compute this test's transitive module closure (its own ocamldep piped
+  # through closure.py against the precomputed graph), then map to present
+  # .cmx paths in canonical order. Modules whose .cmx is absent are dropped
+  # here so the link line only carries files that exist; the resulting
+  # "Unbound module" at compile is the honest signal that the test needs a
+  # module not committed to this checkout.
+  CLOSURE_MODS=$(ocamlfind ocamldep -native -I "$OCAML_OUT" "$ml_file" 2>/dev/null \
+    | python3 "$BUILD_DIR/closure.py" "$BUILD_DIR")
+  TEST_CMX=()
+  for m in $CLOSURE_MODS; do
+    [[ -f "$OCAML_OUT/$m.cmx" ]] && TEST_CMX+=("$OCAML_OUT/$m.cmx")
+  done
+
   # Compile. We use the same ocamlfind + package list as build-ocaml.sh's
-  # native binaries. -I $OCAML_OUT so .cmi files are discoverable.
+  # native binaries. -I $OCAML_OUT so .cmi files are discoverable. Test
+  # objects are written into $BUILD_DIR (never $OCAML_OUT): we copy the
+  # source in and compile from there so the emitted .cmi/.cmx/.o land beside
+  # the binary, leaving both tests/unit/ and ocaml-output/ untouched.
+  cp "$ml_file" "$BUILD_DIR/$name.ml"
   BUILD_RC=0
-  BUILD_OUT=$(ocamlfind ocamlopt \
+  BUILD_OUT=$(cd "$BUILD_DIR" && ocamlfind ocamlopt \
     -package fstar.lib,str,zarith,sha,digestif.c,unix,uucp \
     -linkpkg -w -8-14-26 \
     -I "$OCAML_OUT" \
-    "${CMX_LIST[@]}" \
+    "${TEST_CMX[@]}" \
     "$PARQUET_STUB_OBJ" \
     "${ZSTD_LIB_FLAGS[@]}" \
-    "$ml_file" \
+    "$BUILD_DIR/$name.ml" \
     -o "$bin_file" 2>&1) || BUILD_RC=$?
 
   if [[ $BUILD_RC -ne 0 ]]; then

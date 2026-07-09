@@ -1,0 +1,1651 @@
+note: 17 canonical module(s) have no committed .cmx in this checkout;
+      a test whose closure needs one will fail with an honest Unbound-module build error:
+      XSLT_Transform Schematron_Validate Math_Expr Math_Subst Math_Diff Math_Simplify Math_Matrix MathML_Content Math_Series MathML_Present JSONLD_FromRdf JSONSchema_Validate XForms_Bind VC_Multibase DID_Key fstar_hacl_crypto VC_DataIntegrity
+
+tests/unit runner: 41 file(s) under /home/user/factoidal/.claude/worktrees/agent-a8a3c7dbcf17f1b69/tests/unit
+                   ocaml-output at /home/user/factoidal/.claude/worktrees/agent-a8a3c7dbcf17f1b69/formal/fstar/ocaml-output
+
+--- cas_tests ---
+  BUILD FAILED (rc=2)
+    findlib: [WARNING] Interface big_int.cmi occurs in several directories: /root/.opam/fstar/lib/num, /root/.opam/fstar/lib/ocaml
+    findlib: [WARNING] Interface nat.cmi occurs in several directories: /root/.opam/fstar/lib/num, /root/.opam/fstar/lib/ocaml
+    findlib: [WARNING] Interface arith_status.cmi occurs in several directories: /root/.opam/fstar/lib/num, /root/.opam/fstar/lib/ocaml
+    findlib: [WARNING] Interface digestif.cmi occurs in several directories: /root/.opam/fstar/lib/digestif/c, /root/.opam/fstar/lib/digestif
+    findlib: [WARNING] Interface ratio.cmi occurs in several directories: /root/.opam/fstar/lib/num, /root/.opam/fstar/lib/ocaml
+    findlib: [WARNING] Interface num.cmi occurs in several directories: /root/.opam/fstar/lib/num, /root/.opam/fstar/lib/ocaml
+    ocamlfind: [WARNING] Package `threads': Linking problems may arise because of the missing -thread or -vmthread switch
+    File "/home/user/factoidal/.claude/worktrees/agent-a8a3c7dbcf17f1b69/tests/unit/_build/cas_tests.ml", line 37, characters 11-20:
+    37 | module E = Math_Expr
+                    ^^^^^^^^^
+    Error: Unbound module Math_Expr
+cas_tests: FAIL (build)
+
+--- compound_presence_writer_roundtrip ---
+== compound_presence_writer_roundtrip ==
+  HASH  empty sha256=42282876f447080fc15bceb20937c388bb61977d69c765fbdd82e02a2a6f086c len=28
+  PASS  empty [hash]
+  PASS  empty [parse]
+  PASS  empty [rgs]
+  PASS  empty [pred]
+  PASS  empty [obj]
+  PASS  empty [offsets]
+  PASS  empty [pairs]
+  HASH  singleton sha256=a6c5b8fd4900cd372543f68b18a1b548931030354d7bebc9fc1ec8b1fa3fd527 len=44
+  PASS  singleton [hash]
+  PASS  singleton [parse]
+  PASS  singleton [rgs]
+  PASS  singleton [pred]
+  PASS  singleton [obj]
+  PASS  singleton [offsets]
+  PASS  singleton [pairs]
+  HASH  2x3x4-mixed sha256=7804392f35d9005ca228894d199cf610960d8f3270e841c1dba60184003c2e3a len=84
+  PASS  2x3x4-mixed [hash]
+  PASS  2x3x4-mixed [parse]
+  PASS  2x3x4-mixed [rgs]
+  PASS  2x3x4-mixed [pred]
+  PASS  2x3x4-mixed [obj]
+  PASS  2x3x4-mixed [offsets]
+  PASS  2x3x4-mixed [pairs]
+  HASH  4-sparse sha256=9c96f62ba26d77237b06eb22ba092a4a33a0bb96b252652904cd70fc8b839aa1 len=92
+  PASS  4-sparse [hash]
+  PASS  4-sparse [parse]
+  PASS  4-sparse [rgs]
+  PASS  4-sparse [pred]
+  PASS  4-sparse [obj]
+  PASS  4-sparse [offsets]
+  PASS  4-sparse [pairs]
+== summary: 28 pass, 0 fail (out of 28) ==
+compound_presence_writer_roundtrip: PASS
+
+--- cottas_base_writer_roundtrip ---
+cottas_base_writer_roundtrip:
+  HASH  sample sha256=bc87889359a8cf9f71626f208b9736055dbbb37c4759171f9f5e61dd8f6fb30a len=858
+  PASS  sample [byte hash pin]
+  PASS  footer magic PAR1
+  PASS  num_rows = 5
+  PASS  row_groups = 1
+  PASS  column 0 name = s
+  PASS  column 1 name = p
+  PASS  column 2 name = o
+  PASS  column 3 name = g
+  PASS  column 0 codec UNCOMPRESSED
+  PASS  column 0 encoding DLBA
+  PASS  column 1 codec UNCOMPRESSED
+  PASS  column 1 encoding DLBA
+  PASS  column 2 codec UNCOMPRESSED
+  PASS  column 2 encoding DLBA
+  PASS  column 3 codec UNCOMPRESSED
+  PASS  column 3 encoding DLBA
+  PASS  column 0 decode matches
+  PASS  column 1 decode matches
+  PASS  column 2 decode matches
+  PASS  column 3 decode matches
+  PASS  chunk_rows cap=2 -> 3 groups
+  PASS  chunk_rows flatten preserves rows
+  HASH  v2 sample sha256=e74e99dfe06c2a4b76b4fd1636f8ecf549252dd69f6ccfa4e81cfc4db32b04fa len=787 (v1 len=858)
+  PASS  v2 sample [byte hash pin]
+  PASS  v2 smaller than v1 on this fixture
+  PASS  v2 column 0 (s) codec UNCOMPRESSED
+  PASS  v2 column 0 (s) encoding RLE_DICTIONARY
+  PASS  v2 column 1 (p) codec UNCOMPRESSED
+  PASS  v2 column 1 (p) encoding RLE_DICTIONARY
+  PASS  v2 column 2 (o) codec UNCOMPRESSED
+  PASS  v2 column 2 (o) encoding DELTA_LENGTH_BYTE_ARRAY
+  PASS  v2 column 3 (g) codec UNCOMPRESSED
+  PASS  v2 column 3 (g) encoding RLE_DICTIONARY
+  PASS  v2 column 0 decode matches
+  PASS  v2 column 1 decode matches
+  PASS  v2 column 2 decode matches
+  PASS  v2 column 3 decode matches
+cottas_base_writer_roundtrip: 36 pass, 0 fail
+cottas_base_writer_roundtrip: PASS
+
+--- cottas_memory_buffer_unit ---
+[qof3-trace] cottas_ondisk_open path=tests/unit/fixtures/store_capabilities_sample.cottas
+[qof3-trace] load_handle path=tests/unit/fixtures/store_capabilities_sample.cottas
+[bet7-trace] build_handle path=tests/unit/fixtures/store_capabilities_sample.cottas (lazy open: defer all 4 columns)
+[qof3-trace] build_handle: distinct s=0 p=0 o=0 g=0 total_rows=5
+[qof3-trace] cottas_ondisk_open: handle ready
+[qof3-trace] cottas_ondisk_open path=mem:cottas_memory_buffer_unit
+[qof3-trace] load_handle path=mem:cottas_memory_buffer_unit
+[bet7-trace] build_handle path=mem:cottas_memory_buffer_unit (lazy open: defer all 4 columns)
+[qof3-trace] build_handle: distinct s=0 p=0 o=0 g=0 total_rows=5
+[qof3-trace] cottas_ondisk_open: handle ready
+[bet7-trace] ensure_graphs_loaded: lazy populate path=tests/unit/fixtures/store_capabilities_sample.cottas
+[qof3-trace] collect_distinct_graph col=3 path=tests/unit/fixtures/store_capabilities_sample.cottas
+[qof3-trace] collect_distinct_graph col=3 named_graphs=2 rows=5
+[bet7-trace] ensure_graphs_loaded: 2 distinct graphs
+[bet7-trace] ensure_graphs_loaded: lazy populate path=mem:cottas_memory_buffer_unit
+[qof3-trace] collect_distinct_graph col=3 path=mem:cottas_memory_buffer_unit
+[qof3-trace] collect_distinct_graph col=3 named_graphs=2 rows=5
+[bet7-trace] ensure_graphs_loaded: 2 distinct graphs
+[pagecache-global-trace] hits=28 misses=4 entries=4 cap=256
+[dictcache-global-trace] hits=0 misses=32 entries=0 cap=1024
+[pagecache-global-trace] hits=60 misses=4 entries=4 cap=256
+[pagecache-global-trace] hits=92 misses=4 entries=4 cap=256
+[dictcache-global-trace] hits=0 misses=64 entries=0 cap=1024
+[pagecache-global-trace] hits=124 misses=4 entries=4 cap=256
+[dictcache-global-trace] hits=0 misses=96 entries=0 cap=1024
+[pagecache-global-trace] hits=156 misses=4 entries=4 cap=256
+[bet7-trace] ensure_predicates_loaded: lazy populate path=mem:cottas_memory_buffer_unit
+[qof3-trace] collect_distinct col=1 path=mem:cottas_memory_buffer_unit
+[qof3-trace] collect_distinct col=1 distinct=4 rows=5
+[bet7-trace] ensure_predicates_loaded: 4 distinct predicates
+[bet7-trace] ensure_predicates_loaded: lazy populate path=tests/unit/fixtures/store_capabilities_sample.cottas
+[qof3-trace] collect_distinct col=1 path=tests/unit/fixtures/store_capabilities_sample.cottas
+[qof3-trace] collect_distinct col=1 distinct=4 rows=5
+[bet7-trace] ensure_predicates_loaded: 4 distinct predicates
+[pagecache-global-trace] hits=188 misses=4 entries=4 cap=256
+[dictcache-global-trace] hits=0 misses=128 entries=0 cap=1024
+[pagecache-global-trace] hits=220 misses=4 entries=4 cap=256
+[dictcache-global-trace] hits=0 misses=160 entries=0 cap=1024
+[pagecache-global-trace] hits=252 misses=4 entries=4 cap=256
+[pagecache-global-trace] hits=284 misses=4 entries=4 cap=256
+[dictcache-global-trace] hits=0 misses=192 entries=0 cap=1024
+[pagecache-global-trace] hits=316 misses=4 entries=4 cap=256
+[dictcache-global-trace] hits=0 misses=224 entries=0 cap=1024
+[qof3-trace] cottas_ondisk_open path=mem:cottas_memory_buffer_unit
+[qof3-trace] load_handle path=mem:cottas_memory_buffer_unit
+[qof3-trace] load_handle: cache hit
+[qof3-trace] cottas_ondisk_open: handle ready
+[pagecache-global-trace] hits=348 misses=4 entries=4 cap=256
+== cottas_memory_buffer_unit ==
+  PASS  synthetic handle is not a real file
+  PASS  named_graphs agree (file vs memory)
+  PASS  default/unbound/solve
+  PASS  default/unbound/solve_limited(1)
+  PASS  default/unbound/estimate
+  PASS  default/unbound/count_exact
+  PASS  default/bound-s/solve
+  PASS  default/bound-s/solve_limited(1)
+  PASS  default/bound-s/estimate
+  PASS  default/bound-s/count_exact
+  PASS  default/bound-p/solve
+  PASS  default/bound-p/solve_limited(1)
+  PASS  default/bound-p/estimate
+  PASS  default/bound-p/count_exact
+  PASS  default/bound-o/solve
+  PASS  default/bound-o/solve_limited(1)
+  PASS  default/bound-o/estimate
+  PASS  default/bound-o/count_exact
+  PASS  default/bound-sp/solve
+  PASS  default/bound-sp/solve_limited(1)
+  PASS  default/bound-sp/estimate
+  PASS  default/bound-sp/count_exact
+  PASS  default/bound-po/solve
+  PASS  default/bound-po/solve_limited(1)
+  PASS  default/bound-po/estimate
+  PASS  default/bound-po/count_exact
+  PASS  default/bound-so/solve
+  PASS  default/bound-so/solve_limited(1)
+  PASS  default/bound-so/estimate
+  PASS  default/bound-so/count_exact
+  PASS  default/bound-spo/solve
+  PASS  default/bound-spo/solve_limited(1)
+  PASS  default/bound-spo/estimate
+  PASS  default/bound-spo/count_exact
+  PASS  default/predicate_present/known
+  PASS  default/predicate_present/absent
+  PASS  default/decode_failure
+  PASS  named-graph(people)/unbound/solve
+  PASS  named-graph(people)/unbound/solve_limited(1)
+  PASS  named-graph(people)/unbound/estimate
+  PASS  named-graph(people)/unbound/count_exact
+  PASS  named-graph(people)/bound-s/solve
+  PASS  named-graph(people)/bound-s/solve_limited(1)
+  PASS  named-graph(people)/bound-s/estimate
+  PASS  named-graph(people)/bound-s/count_exact
+  PASS  named-graph(people)/bound-p/solve
+  PASS  named-graph(people)/bound-p/solve_limited(1)
+  PASS  named-graph(people)/bound-p/estimate
+  PASS  named-graph(people)/bound-p/count_exact
+  PASS  named-graph(people)/bound-o/solve
+  PASS  named-graph(people)/bound-o/solve_limited(1)
+  PASS  named-graph(people)/bound-o/estimate
+  PASS  named-graph(people)/bound-o/count_exact
+  PASS  named-graph(people)/bound-sp/solve
+  PASS  named-graph(people)/bound-sp/solve_limited(1)
+  PASS  named-graph(people)/bound-sp/estimate
+  PASS  named-graph(people)/bound-sp/count_exact
+  PASS  named-graph(people)/bound-po/solve
+  PASS  named-graph(people)/bound-po/solve_limited(1)
+  PASS  named-graph(people)/bound-po/estimate
+  PASS  named-graph(people)/bound-po/count_exact
+  PASS  named-graph(people)/bound-so/solve
+  PASS  named-graph(people)/bound-so/solve_limited(1)
+  PASS  named-graph(people)/bound-so/estimate
+  PASS  named-graph(people)/bound-so/count_exact
+  PASS  named-graph(people)/bound-spo/solve
+  PASS  named-graph(people)/bound-spo/solve_limited(1)
+  PASS  named-graph(people)/bound-spo/estimate
+  PASS  named-graph(people)/bound-spo/count_exact
+  PASS  named-graph(people)/predicate_present/known
+  PASS  named-graph(people)/predicate_present/absent
+  PASS  named-graph(people)/decode_failure
+  PASS  re-registered handle: solve(unbound) unchanged
+== summary: 73 pass, 0 fail (out of 73) ==
+cottas_memory_buffer_unit: PASS
+
+--- delta_log_roundtrip ---
+== delta_log_roundtrip ==
+  PASS  add.iri-iri.no-graph [DE_Add, parse]
+  PASS  add.iri-iri.no-graph [DE_Add, value]
+  PASS  add.iri-iri.no-graph [DE_Add, remainder]
+  PASS  add.bnode-bnode.some-graph [DE_Add, parse]
+  PASS  add.bnode-bnode.some-graph [DE_Add, value]
+  PASS  add.bnode-bnode.some-graph [DE_Add, remainder]
+  PASS  add.plain-literal [DE_Add, parse]
+  PASS  add.plain-literal [DE_Add, value]
+  PASS  add.plain-literal [DE_Add, remainder]
+  PASS  add.lang-literal [DE_Add, parse]
+  PASS  add.lang-literal [DE_Add, value]
+  PASS  add.lang-literal [DE_Add, remainder]
+  PASS  remove.iri-iri.no-graph [DE_Remove, parse]
+  PASS  remove.iri-iri.no-graph [DE_Remove, value]
+  PASS  remove.iri-iri.no-graph [DE_Remove, remainder]
+  PASS  remove.lang-literal.some-graph [DE_Remove, parse]
+  PASS  remove.lang-literal.some-graph [DE_Remove, value]
+  PASS  remove.lang-literal.some-graph [DE_Remove, remainder]
+  PASS  clear.default-graph [DE_Clear, parse]
+  PASS  clear.default-graph [DE_Clear, value]
+  PASS  clear.default-graph [DE_Clear, remainder]
+  PASS  clear.named-graph [DE_Clear, parse]
+  PASS  clear.named-graph [DE_Clear, value]
+  PASS  clear.named-graph [DE_Clear, remainder]
+  PASS  drop.named-graph [DE_Drop, parse]
+  PASS  drop.named-graph [DE_Drop, value]
+  PASS  drop.named-graph [DE_Drop, remainder]
+  PASS  create.named-graph [DE_Create, parse]
+  PASS  create.named-graph [DE_Create, value]
+  PASS  create.named-graph [DE_Create, remainder]
+  PASS  empty.bnode-subject-and-object [DE_Add, parse]
+  PASS  empty.bnode-subject-and-object [DE_Add, value]
+  PASS  empty.bnode-subject-and-object [DE_Add, remainder]
+  PASS  empty.lexical-form [DE_Add, parse]
+  PASS  empty.lexical-form [DE_Add, value]
+  PASS  empty.lexical-form [DE_Add, remainder]
+  PASS  empty.lang-tag-value-nonempty-required [DE_Add, parse]
+  PASS  empty.lang-tag-value-nonempty-required [DE_Add, value]
+  PASS  empty.lang-tag-value-nonempty-required [DE_Add, remainder]
+  PASS  empty.graph-name-in-drop [DE_Drop, parse]
+  PASS  empty.graph-name-in-drop [DE_Drop, value]
+  PASS  empty.graph-name-in-drop [DE_Drop, remainder]
+  PASS  utf8.iri-object [DE_Add, parse]
+  PASS  utf8.iri-object [DE_Add, value]
+  PASS  utf8.iri-object [DE_Add, remainder]
+  PASS  utf8.bnode-label [DE_Add, parse]
+  PASS  utf8.bnode-label [DE_Add, value]
+  PASS  utf8.bnode-label [DE_Add, remainder]
+  PASS  utf8.literal-with-lang [DE_Add, parse]
+  PASS  utf8.literal-with-lang [DE_Add, value]
+  PASS  utf8.literal-with-lang [DE_Add, remainder]
+  PASS  utf8.astral-emoji [DE_Add, parse]
+  PASS  utf8.astral-emoji [DE_Add, value]
+  PASS  utf8.astral-emoji [DE_Add, remainder]
+  PASS  long-literal [DE_Add, parse]
+  PASS  long-literal [DE_Add, value]
+  PASS  long-literal [DE_Add, remainder]
+  PASS  lang-tag.region-subtag [DE_Add, parse]
+  PASS  lang-tag.region-subtag [DE_Add, value]
+  PASS  lang-tag.region-subtag [DE_Add, remainder]
+  PASS  streaming.tail-bytes-preserved [DE_Create, parse]
+  PASS  streaming.tail-bytes-preserved [DE_Create, value]
+  PASS  streaming.tail-bytes-preserved [DE_Create, remainder]
+  PASS  multi-entry-stream.decoded-matches
+  PASS  multi-entry-stream.leftover-empty
+  PASS  corrupt.empty-input
+  PASS  corrupt.truncated-header
+  PASS  corrupt.truncated-mid-payload
+  PASS  corrupt.truncated-last-byte
+  PASS  corrupt.bad-magic
+  PASS  corrupt.bad-version
+  PASS  corrupt.bad-checksum-field
+  PASS  corrupt.bad-payload-byte
+  PASS  corrupt.control-still-decodes
+  PASS  batch.empty-ops [parse]
+  PASS  batch.empty-ops [value]
+  PASS  batch.empty-ops [remainder-empty]
+  PASS  batch.single-op [parse]
+  PASS  batch.single-op [value]
+  PASS  batch.single-op [remainder-empty]
+  PASS  batch.multi-op [parse]
+  PASS  batch.multi-op [value]
+  PASS  batch.multi-op [remainder-empty]
+  PASS  batch.large-seq-epoch [parse]
+  PASS  batch.large-seq-epoch [value]
+  PASS  batch.large-seq-epoch [remainder-empty]
+  PASS  batch.streaming.value
+  PASS  batch.streaming.remainder
+  PASS  batch.corrupt.empty
+  PASS  batch.corrupt.truncated-header
+  PASS  batch.corrupt.truncated-tail
+  PASS  batch.corrupt.bad-magic
+  PASS  batch.corrupt.bad-version
+  PASS  batch.corrupt.bad-checksum
+  PASS  batch.corrupt.bad-body-byte
+  PASS  batch.corrupt.control-still-decodes
+  PASS  log.roundtrip.value
+  PASS  log.corrupt.bad-header
+  PASS  log.torn-tail.recovers-complete-prefix
+  PASS  log.torn-tail.leftover-is-undecoded-suffix
+  PASS  expected_digest_bytes.matches-serialize
+== summary: 101 pass, 0 fail (out of 101) ==
+delta_log_roundtrip: PASS
+
+--- dict_writer_roundtrip ---
+== dict_writer_roundtrip ==
+  HASH  empty sha256=486401ad3679ae7b4daf49a768ad655bb9d642287b1dfa0b41c54f4ca62eca87 len=40
+  PASS  empty [hash]
+  PASS  empty [parse]
+  PASS  empty [round-trip]
+  HASH  singleton sha256=92ae5967933fd9d17749f04c7e519f5ddb4652e8ef0d188b988bb53885a2f919 len=57
+  PASS  singleton [hash]
+  PASS  singleton [parse]
+  PASS  singleton [round-trip]
+  HASH  three-tokens sha256=33eb82007018dc8c745ceea06e7ade30698c37497a05f29ae1dc02d90279ce40 len=90
+  PASS  three-tokens [hash]
+  PASS  three-tokens [parse]
+  PASS  three-tokens [round-trip]
+  HASH  ten-tokens sha256=8d6a7366e328729db17776a78f6701d3a2046874f9b4ad07bd226f8c4c36dd82 len=170
+  PASS  ten-tokens [hash]
+  PASS  ten-tokens [parse]
+  PASS  ten-tokens [round-trip]
+== summary: 12 pass, 0 fail (out of 12) ==
+dict_writer_roundtrip: PASS
+
+--- fulltext_slice1_unit ---
+  BUILD FAILED (rc=2)
+    findlib: [WARNING] Interface big_int.cmi occurs in several directories: /root/.opam/fstar/lib/num, /root/.opam/fstar/lib/ocaml
+    findlib: [WARNING] Interface nat.cmi occurs in several directories: /root/.opam/fstar/lib/num, /root/.opam/fstar/lib/ocaml
+    findlib: [WARNING] Interface arith_status.cmi occurs in several directories: /root/.opam/fstar/lib/num, /root/.opam/fstar/lib/ocaml
+    findlib: [WARNING] Interface digestif.cmi occurs in several directories: /root/.opam/fstar/lib/digestif/c, /root/.opam/fstar/lib/digestif
+    findlib: [WARNING] Interface ratio.cmi occurs in several directories: /root/.opam/fstar/lib/num, /root/.opam/fstar/lib/ocaml
+    findlib: [WARNING] Interface num.cmi occurs in several directories: /root/.opam/fstar/lib/num, /root/.opam/fstar/lib/ocaml
+    ocamlfind: [WARNING] Package `threads': Linking problems may arise because of the missing -thread or -vmthread switch
+    File "/home/user/factoidal/.claude/worktrees/agent-a8a3c7dbcf17f1b69/tests/unit/_build/fulltext_slice1_unit.ml", line 1:
+    Error: Files /home/user/factoidal/.claude/worktrees/agent-a8a3c7dbcf17f1b69/formal/fstar/ocaml-output/RML_Eval.cmx
+           and /home/user/factoidal/.claude/worktrees/agent-a8a3c7dbcf17f1b69/formal/fstar/ocaml-output/SPARQL11_Algebra.cmx
+           make inconsistent assumptions over implementation SPARQL11_Algebra
+fulltext_slice1_unit: FAIL (build)
+
+--- geosparql_v0_unit ---
+
+=== A. WKT parser round-trip ===
+  PASS  POINT(1 2) parses to G_Point
+  PASS  POINT(1 2) round-trips through serialize
+  PASS  POINT(51.5074 -0.1278) x mantissa exact
+  PASS  POINT(51.5074 -0.1278) y mantissa exact
+  PASS  LINESTRING has 3 points
+  PASS  POLYGON exterior has 5 points
+  PASS  POLYGON has 1 hole
+  PASS  MULTIPOINT parenthesized form has 2 points
+  PASS  MULTIPOINT bare form has 2 points
+  PASS  POINT EMPTY
+  PASS  GEOMETRYCOLLECTION EMPTY
+  PASS  CRS prefix captured verbatim
+  PASS  CRS-prefixed coordinates unchanged (no transform)
+  PASS  POINT Z (3 numbers) is rejected, not silently truncated
+  PASS  GEOMETRYCOLLECTION has 2 members
+
+=== B. Simple Features predicates (hand-computed) ===
+  PASS  sfEquals(POINT(1 1), POINT(1 1)) = true
+  PASS  sfDisjoint(POINT(1 1), POINT(2 2)) = true
+  PASS  sfTouches(POINT(5 0), square) = true (exactly on edge)
+  PASS  sfWithin(POINT(5 0), square) = false (boundary, not interior)
+  PASS  sfWithin(POINT(5 5), square) = true (strictly interior)
+  PASS  sfDisjoint(POINT(20 20), square) = true
+  PASS  sfIntersects(POINT(5 0), square) = true (on boundary counts)
+  PASS  sfDisjoint(POINT(5 5), square-with-hole) = true (5,5 is in the hole)
+  PASS  sfWithin(POINT(1 1), square-with-hole) = true (outside the hole)
+  PASS  sfWithin(POINT(5 5), diagonal line) = true (interior of open line)
+  PASS  sfTouches(POINT(0 0), diagonal line) = true (open-line endpoint)
+  PASS  sfDisjoint(POINT(1 2), diagonal line) = true (off the line)
+  PASS  sfIntersects(diagonal /, diagonal \) = true (cross at (5,5))
+  PASS  sfDisjoint(diagonal /, parallel line far away) = true
+  PASS  sfIntersects(square A, overlapping square B) = true
+  PASS  sfDisjoint(square A, far-away square C) = true
+  PASS  sfWithin(inner square, square A) = true (strictly inside, no boundary contact)
+  PASS  sfContains(square A, inner square) = true (flip of within)
+  PASS  sfOverlaps(POINT, LINESTRING) = false (differing dims, SFA convention)
+
+=== C. geof:distance / geof:envelope ===
+  PASS  distance((0,0),(3,4)) ~= 5 (3-4-5 triangle, exact sqrt)
+  PASS  distance(point, linestring) is refused (None) in v0
+  PASS  envelope(square B) exterior ring has 5 points (closed rectangle)
+
+geosparql_v0_unit: 37 passed, 0 failed
+geosparql_v0_unit: PASS
+
+--- iri_resolve_unit ---
+  PASS  5.4.1 g:h
+  PASS  5.4.1 g
+  PASS  5.4.1 ./g
+  PASS  5.4.1 g/
+  PASS  5.4.1 /g
+  PASS  5.4.1 //g
+  PASS  5.4.1 ?y
+  PASS  5.4.1 g?y
+  PASS  5.4.1 #s
+  PASS  5.4.1 g#s
+  PASS  5.4.1 ;x
+  PASS  5.4.1 g;x
+  PASS  5.4.1 (empty)
+  PASS  5.4.1 .
+  PASS  5.4.1 ./
+  PASS  5.4.1 ..
+  PASS  5.4.1 ../
+  PASS  5.4.1 ../g
+  PASS  5.4.1 ../..
+  PASS  5.4.1 ../../
+  PASS  5.4.1 ../../g
+  PASS  5.4.2 ../../../g
+  PASS  5.4.2 ../../../../g
+  PASS  5.4.2 /./g
+  PASS  5.4.2 /../g
+  PASS  5.4.2 g.
+  PASS  5.4.2 .g
+  PASS  5.4.2 g..
+  PASS  5.4.2 ..g
+  PASS  5.4.2 ./../g
+  PASS  5.4.2 ./g/.
+  PASS  5.4.2 g/./h
+  PASS  5.4.2 g/../h
+  PASS  5.4.2 g;x=1/./y
+  PASS  5.4.2 g;x=1/../y
+  PASS  5.4.2 g?y/./x
+  PASS  5.4.2 g?y/../x
+  PASS  5.4.2 g#s/./x
+  PASS  5.4.2 g#s/../x
+  PASS  5.4.2 http:g
+  PASS  0122 ?y (dotted base, query-only ref)
+  PASS  0122 #s (dotted base, fragment-only ref)
+  PASS  0122 (empty) (dotted base, empty ref)
+  PASS  0122 g (dotted base, non-empty ref merges+normalizes)
+  PASS  0125 g (base path ends in .., merge truncates before it)
+  PASS  0125 ?y (empty-path ref keeps base's trailing .. verbatim)
+iri_resolve_unit: 46 pass, 0 fail (out of 46)
+iri_resolve_unit: PASS
+
+--- jld_jcs_and_list_unit ---
+  PASS  jcs 1E30 -> 1e+30 (large magnitude, exponential, explicit +)
+  PASS  jcs 4.50 -> 4.5 (general trailing-zero strip, not just all-zero)
+  PASS  jcs 2e-3 -> 0.002 (small-magnitude exponential collapses to fixed)
+  PASS  jcs 0.000...001 (27 zeros) -> 1e-27 (below -6 threshold, exponential)
+  PASS  jcs 0 -> 0
+  PASS  jcs -0 -> 0 (JCS negative-zero rule)
+  PASS  jcs 100 -> 100 (k<=n<=21 fixed, zero-padded, no dot)
+  PASS  jcs 123.456 -> 123.456 (already-shortest passthrough)
+  PASS  jcs 1e21 -> 1e+21 (n=22 exceeds fixed-notation ceiling)
+  PASS  jcs 1e20 -> 100000000000000000000 (n=21, still fixed)
+  PASS  jcs 1e-6 -> 0.000001 (n=-5, still fixed, just inside -6<n<=0)
+  PASS  jcs 1e-7 -> 1e-7 (n=-6, crosses to exponential)
+  PASS  list-gap: cell count (2 triples: foo:bar link + rdf:rest, not a nil collapse)
+  PASS  list-gap: no rdf:first triple for the dropped item
+  PASS  bnode-predicate (e068-style): only the @type triple survives
+  PASS  bnode-predicate (e068-style): no <_: pseudo-IRI predicate emitted
+  PASS  bnode-predicate (e075-style): both properties dropped (zero triples)
+  PASS  double-fragment predicate (e111-style): only the well-formed property survives
+  PASS  double-fragment predicate (e111-style): no doubly-fragmented predicate emitted
+  PASS  compound-literal no-language (di11-style): 3 triples (link + value + direction)
+  PASS  compound-literal no-language (di11-style): rdf:value present
+  PASS  compound-literal no-language (di11-style): rdf:direction present
+  PASS  compound-literal no-language (di11-style): no rdf:language triple
+  PASS  compound-literal with-language (di12-style): 4 triples
+  PASS  compound-literal with-language (di12-style): rdf:value keeps original casing
+  PASS  compound-literal with-language (di12-style): rdf:language is lowercased
+jld_jcs_and_list_unit: 26 pass, 0 fail (out of 26)
+jld_jcs_and_list_unit: PASS
+
+--- json_escape_unit ---
+  PASS  plain passthrough
+  PASS  quote
+  PASS  backslash
+  PASS  newline
+  PASS  cr-tab
+  PASS  backspace-formfeed
+  PASS  u-escape 0x01
+  PASS  u-escape 0x1f
+  PASS  utf8 passthrough
+  PASS  mixed
+json_escape_unit: 10 pass, 0 fail (out of 10)
+json_escape_unit: PASS
+
+--- lateral_unit ---
+-- lateral_substitute --
+  PASS  (a) BGP: bound ?s -> constant subject, ?label untouched
+  PASS  (b) empty mu: BGP substitution is a no-op
+  PASS  (c) FILTER: expr untouched, nested pattern substituted
+  PASS  (d) BIND: expr untouched, target var untouched, nested pattern substituted
+  PASS  (e) nested GP_Lateral: substitution recurses into both sides
+  PASS  (f) sub-SELECT projecting only ?label: outer ?s is masked, inner BGP unsubstituted
+  PASS  (g) sub-SELECT * : outer ?s is visible, inner BGP IS substituted
+  PASS  (h) sub-SELECT that reassigns ?s: outer ?s is shadowed from that subtree
+-- lateral_assignable_vars --
+  PASS  GP_Bind contributes its target var
+  PASS  GP_Values contributes every var it lists
+  PASS  GP_BGP assigns nothing (matching, not assigning)
+  PASS  GP_PropertyPath assigns nothing
+  PASS  GP_Empty assigns nothing
+  PASS  sub-SELECT: SI_Var ("SELECT ?s") is NOT assignable
+  PASS  sub-SELECT: SI_Expr ("SELECT (1 AS ?s)") IS assignable
+  PASS  sub-SELECT: mixed SELECT list only reports the AS-aliased names
+  PASS  sub-SELECT Select_All recurses into its own pattern's assignable vars
+  PASS  sub-SELECT non-SELECT form (e.g. ASK) assigns nothing
+  PASS  GP_Join unions both sides' assignable vars
+  PASS  GP_Union unions both sides' assignable vars
+  PASS  GP_LeftJoin unions both sides' assignable vars
+  PASS  GP_Lateral unions both sides' assignable vars
+  PASS  GP_Filter passes through its nested pattern's assignable vars
+  PASS  GP_Graph passes through its nested pattern's assignable vars
+  PASS  GP_Minus only reports its LEFT operand (RHS never surfaces bindings)
+  PASS  GP_Service passes through its nested pattern's assignable vars
+  PASS  GP_ServiceVar passes through its nested pattern's assignable vars
+-- lateral_subselect_visible_vars --
+  PASS  Select_Vars: exactly the listed names, both SI_Var and SI_Expr
+  PASS  Select_Vars empty list: nothing visible
+  PASS  Select_All: no restriction (None)
+  PASS  non-SELECT form (ASK): nothing visible
+-- illegal-reassignment detection (parser-primitive level) --
+  PASS  BIND reassigning an already-bound LHS var IS flagged
+  PASS  BIND assigning a FRESH var is NOT flagged
+  PASS  VALUES reassigning an already-bound LHS var IS flagged
+  PASS  VALUES on a fresh var is NOT flagged
+  PASS  sub-SELECT AS-aliasing an already-bound LHS var IS flagged
+  PASS  sub-SELECT plain SI_Var pass-through projection of the SAME name is NOT flagged (Jena-confirmed: `LATERAL { SELECT ?s WHERE {...} }` runs without error)
+  PASS  plain correlated BGP (no BIND/VALUES/sub-SELECT) never flags anything
+-- illegal-reassignment detection (end-to-end parser) --
+  PASS  end-to-end: LATERAL { BIND(1 AS ?s) } after ?s rdf:type :Person is rejected
+  PASS  end-to-end: LATERAL { VALUES ?s {...} } after ?s rdf:type :Person is rejected
+  PASS  end-to-end: LATERAL { SELECT (1 AS ?s) ... } after ?s rdf:type :Person is rejected
+  PASS  end-to-end: plain correlated BGP inside LATERAL parses fine
+  PASS  end-to-end: LATERAL { SELECT ?label {...} } (no AS on ?s) parses fine
+-- end-to-end correlated evaluation (eval_pattern) --
+  PASS  (a) plain BGP LATERAL: 2 rows, each subject paired with its own label
+  PASS  (b) sub-SELECT ?label only: masked/uncorrelated -- 4 rows (2 outer x 2 inner)
+  PASS  (c) sub-SELECT *: visible/correlated -- back to 2 rows, each subject's own label
+  PASS  (d) empty LHS: 0 rows, RHS never evaluated for a nonexistent outer row
+  PASS  (e) LATERAL is inner-join-shaped: a labelless Person contributes 0 rows, not a null row
+lateral_unit: 48 pass, 0 fail (out of 48)
+lateral_unit: PASS
+
+--- lifesci_closure_timing ---
+=== lifesci_closure_timing: RDFS closure fixed-overhead probe ===
+
+  [parse chromosome                        ]    0.114s
+  chromosome: 9227 triples
+  [parse sequence_variant                  ]    0.082s
+  sequence_variant: 6455 triples
+  [parse disease                           ]    0.340s
+  disease: 27421 triples
+
+-- sequence_variant (6455 triples): single rdfs_closure_step phase breakdown --
+  [build_indexed (6 sortWith passes)       ]    0.030s
+  [rdfs_rule_subPropertyOf                 ]    0.000s
+  [rdfs_rule_domain                        ]    0.000s
+  [rdfs_rule_range                         ]    0.000s
+  [rdfs_rule_subClassOf                    ]    0.000s
+  [rdfs_rule_container_membership          ]    0.000s
+  [rdfs_rule_subClassOf_trans              ]    0.000s
+  [rdfs_rule_subPropertyOf_trans           ]    0.000s
+  [graph_dedup_sort                        ]    0.023s
+  final: 6455 -> 6465 triples
+
+-- chromosome (9227 triples): single rdfs_closure_step phase breakdown --
+  [build_indexed (6 sortWith passes)       ]    0.038s
+  [rdfs_rule_subPropertyOf                 ]    0.000s
+  [rdfs_rule_domain                        ]    0.000s
+  [rdfs_rule_range                         ]    0.000s
+  [rdfs_rule_subClassOf                    ]    0.000s
+  [rdfs_rule_container_membership          ]    0.000s
+  [rdfs_rule_subClassOf_trans              ]    0.000s
+  [rdfs_rule_subPropertyOf_trans           ]    0.000s
+  [graph_dedup_sort                        ]    0.023s
+  final: 9227 -> 9237 triples
+
+-- disease (27421 triples): single rdfs_closure_step phase breakdown --
+  [build_indexed (6 sortWith passes)       ]    0.198s
+  [rdfs_rule_subPropertyOf                 ]    0.000s
+  [rdfs_rule_domain                        ]    0.000s
+  [rdfs_rule_range                         ]    0.000s
+  [rdfs_rule_subClassOf                    ]    0.001s
+  [rdfs_rule_container_membership          ]    0.000s
+  [rdfs_rule_subClassOf_trans              ]    0.000s
+  [rdfs_rule_subPropertyOf_trans           ]    0.000s
+  [graph_dedup_sort                        ]    0.128s
+  final: 27421 -> 27431 triples
+
+-- sequence_variant: manual rdfs_closure_step loop (cap 6 iters) --
+  [iter  1 rdfs_closure_step               ]    0.047s
+      iter  1: len 6455 -> 6465 (delta +10) in 0.047s
+  [iter  2 rdfs_closure_step               ]    0.049s
+      iter  2: len 6465 -> 6465 (delta +0) in 0.049s
+  converged after 2 iteration(s)
+
+-- disease: manual rdfs_closure_step loop (cap 6 iters) --
+  [iter  1 rdfs_closure_step               ]    0.280s
+      iter  1: len 27421 -> 27431 (delta +10) in 0.280s
+  [iter  2 rdfs_closure_step               ]    0.281s
+      iter  2: len 27431 -> 27431 (delta +0) in 0.281s
+  converged after 2 iteration(s)
+
+  [rdfs_closure_with_reflexivity(disease, fuel=100)]    0.808s
+  disease: 27421 -> 27437 triples in 0.808s
+
+summary: probe complete (no pass/fail assertions — instrumentation only)
+lifesci_closure_timing: PASS
+
+--- lifesci_owlrl_loop_timing ---
+Input g0 (sequence_variant): 6455 triples
+rdfs_closed: 6471 triples (0.136s)
+  iter  1: len 6471 -> 8908 (delta +2437)  owl_step=0.242s  rdfs_step=0.068s  total=0.309s  elapsed=0.3s
+  iter  2: len 8908 -> 8953 (delta +45)  owl_step=0.249s  rdfs_step=0.066s  total=0.315s  elapsed=0.6s
+  iter  3: len 8953 -> 8989 (delta +36)  owl_step=0.238s  rdfs_step=0.073s  total=0.311s  elapsed=0.9s
+  iter  4: len 8989 -> 8998 (delta +9)  owl_step=0.251s  rdfs_step=0.067s  total=0.318s  elapsed=1.3s
+  iter  5: len 8998 -> 8998 (delta +0)  owl_step=0.230s  rdfs_step=0.065s  total=0.294s  elapsed=1.5s
+
+converged after 5 iteration(s), final len=8998, wall=1.5s
+lifesci_owlrl_loop_timing: PASS
+
+--- lifesci_owlrl_rule_reorder_check ---
+=== lifesci_owlrl_rule_reorder_check: task #36 before/after + equivalence ===
+
+chromosome: 9227 triples
+  [rdfs_closure_with_reflexivity                 ]    0.173s
+  [one owl_step+rdfs_step round (grow)           ]    1.062s
+grown graph: 18480 triples
+
+  [BEFORE owl_rule_reflexive_property            ]    0.000s
+  [AFTER  owl_rule_reflexive_property            ]    0.000s
+    reflexive_property           EQUIVALENT (18480 triples both sides)
+  [BEFORE owl_rule_property_chain_n              ]    0.000s
+  [AFTER  owl_rule_property_chain_n              ]    0.000s
+    property_chain_n             EQUIVALENT (18480 triples both sides)
+
+summary: probe complete
+lifesci_owlrl_rule_reorder_check: PASS
+
+--- lifesci_owlrl_rule_timing ---
+Input g0 (sequence_variant): 6455 triples
+g1a = rdfs_closure_with_reflexivity(g0, fuel=100): 6471 triples (0.134s)
+
+Per-rule timing on g1 (6471 triples, cap=20s each):
+  build_indexed: 0.024s
+
+  testing equivalent_class                             ... PASS    6471 triples  (  0.000s)
+  testing equivalent_property                          ... PASS    6471 triples  (  0.000s)
+  testing scm_eqc2                                     ... PASS    6471 triples  (  0.000s)
+  testing scm_eqp2                                     ... PASS    6471 triples  (  0.000s)
+  testing inverse_of                                   ... PASS    6471 triples  (  0.000s)
+  testing disjoint_with_propagation                    ... PASS    6471 triples  (  0.000s)
+  testing inverseOf_domain_range_flip                  ... PASS    6471 triples  (  0.000s)
+  testing symmetric_property                           ... PASS    6471 triples  (  0.000s)
+  testing transitive_property                          ... PASS    6471 triples  (  0.000s)
+  testing named_equivClass_to_sameAs                   ... PASS    6471 triples  (  0.000s)
+  testing sameAs_reflexivity                           ... PASS    8906 triples  (  0.083s)
+  testing sameAs_symmetry                              ... PASS    6471 triples  (  0.000s)
+  testing differentFrom_symmetry                       ... PASS    6471 triples  (  0.000s)
+  testing sameAs_transitivity                          ... PASS    6471 triples  (  0.000s)
+  testing sameAs_replace_subject                       ... PASS    6471 triples  (  0.000s)
+  testing sameAs_replace_object                        ... PASS    6471 triples  (  0.000s)
+  testing sameAs_replace_predicate                     ... PASS    6471 triples  (  0.000s)
+  testing functional                                   ... PASS    6471 triples  (  0.000s)
+  testing inverse_functional                           ... PASS    6471 triples  (  0.000s)
+  testing pdw_to_differentFrom                         ... PASS    6471 triples  (  0.000s)
+  testing fp_diff_to_diff                              ... PASS    6471 triples  (  0.000s)
+  testing ifp_diff_to_diff                             ... PASS    6471 triples  (  0.000s)
+  testing minc1_bridge                                 ... PASS    6471 triples  (  0.000s)
+  testing svf2_existential_witness                     ... PASS    6471 triples  (  0.000s)
+  testing cls_svf2_qualified                           ... PASS    6471 triples  (  0.014s)
+  testing cls_minc_qual1                               ... PASS    6471 triples  (  0.014s)
+  testing cls_maxqc1                                   ... PASS    6471 triples  (  0.014s)
+  testing cls_exactqc1                                 ... PASS    6471 triples  (  0.014s)
+  testing cls_maxc2                                    ... PASS    6471 triples  (  0.000s)
+  testing cls_avf1                                     ... PASS    6471 triples  (  0.000s)
+  testing reflexive_property                           ... PASS    6471 triples  (  0.000s)
+  testing scm_cls_restriction                          ... PASS    6471 triples  (  0.000s)
+  testing property_chain_2                             ... PASS    6471 triples  (  0.000s)
+  testing property_chain_n                             ... PASS    6471 triples  (  0.000s)
+  testing chain_to_transitive                          ... PASS    6471 triples  (  0.000s)
+  testing named_sameAs_to_equivClass                   ... PASS    6471 triples  (  0.000s)
+  testing prp_key                                      ... PASS    6471 triples  (  0.000s)
+  testing xsd_datatype_axioms                          ... PASS    6471 triples  (  0.030s)
+  testing scm_dom2                                     ... PASS    6471 triples  (  0.000s)
+  testing scm_rng2                                     ... PASS    6471 triples  (  0.000s)
+
+summary: 40 pass, 0 expected-fail (suspect rule(s)) (out of 40)
+lifesci_owlrl_rule_timing: PASS
+
+--- lifesci_rdfs_rule_reorder_check ---
+=== lifesci_rdfs_rule_reorder_check: task #36 before/after + equivalence ===
+
+-- sequence_variant (6455 triples) --
+  [build_indexed                                 ]    0.029s
+  [BEFORE rdfs_rule_subPropertyOf                ]    0.000s
+  [AFTER  rdfs_rule_subPropertyOf                ]    0.000s
+  [BEFORE rdfs_rule_domain                       ]    0.000s
+  [AFTER  rdfs_rule_domain                       ]    0.000s
+  [BEFORE rdfs_rule_range                        ]    0.000s
+  [AFTER  rdfs_rule_range                        ]    0.000s
+    subPropertyOf                EQUIVALENT (6455 triples both sides)
+    domain                       EQUIVALENT (6455 triples both sides)
+    range                        EQUIVALENT (6455 triples both sides)
+
+-- chromosome (9227 triples) --
+  [build_indexed                                 ]    0.035s
+  [BEFORE rdfs_rule_subPropertyOf                ]    0.000s
+  [AFTER  rdfs_rule_subPropertyOf                ]    0.000s
+  [BEFORE rdfs_rule_domain                       ]    0.000s
+  [AFTER  rdfs_rule_domain                       ]    0.000s
+  [BEFORE rdfs_rule_range                        ]    0.000s
+  [AFTER  rdfs_rule_range                        ]    0.000s
+    subPropertyOf                EQUIVALENT (9227 triples both sides)
+    domain                       EQUIVALENT (9227 triples both sides)
+    range                        EQUIVALENT (9227 triples both sides)
+
+-- disease (27421 triples) --
+  [build_indexed                                 ]    0.161s
+  [BEFORE rdfs_rule_subPropertyOf                ]    0.000s
+  [AFTER  rdfs_rule_subPropertyOf                ]    0.000s
+  [BEFORE rdfs_rule_domain                       ]    0.000s
+  [AFTER  rdfs_rule_domain                       ]    0.000s
+  [BEFORE rdfs_rule_range                        ]    0.000s
+  [AFTER  rdfs_rule_range                        ]    0.000s
+    subPropertyOf                EQUIVALENT (27421 triples both sides)
+    domain                       EQUIVALENT (27421 triples both sides)
+    range                        EQUIVALENT (27421 triples both sides)
+
+summary: probe complete (see EQUIVALENT/MISMATCH lines above for correctness; timings above for speedup)
+lifesci_rdfs_rule_reorder_check: PASS
+
+--- offsets_writer_roundtrip ---
+== offsets_writer_roundtrip ==
+  HASH  empty sha256=622d6bd71bb898ecfb1347b6ff254d670df048ca32fc575945980df8e843af99 len=24
+  PASS  empty [hash]
+  PASS  empty [parse]
+  PASS  empty [rgs]
+  PASS  empty [preds]
+  PASS  empty [offsets]
+  PASS  empty [subjs]
+  HASH  singleton sha256=9ef8d841d0a988f29f3d013ce33454540f8d815b337b2b9d711b12596c599b3d len=36
+  PASS  singleton [hash]
+  PASS  singleton [parse]
+  PASS  singleton [rgs]
+  PASS  singleton [preds]
+  PASS  singleton [offsets]
+  PASS  singleton [subjs]
+  HASH  2x3-mixed sha256=4bed0db9a36b0f44ccbedf1a76b9bb7480c89256e5726ad049603e8b46f3c23e len=100
+  PASS  2x3-mixed [hash]
+  PASS  2x3-mixed [parse]
+  PASS  2x3-mixed [rgs]
+  PASS  2x3-mixed [preds]
+  PASS  2x3-mixed [offsets]
+  PASS  2x3-mixed [subjs]
+  HASH  3x2-sparse sha256=c094e6661688ef48f77efbfadfb2c4a2da42d2ce5fd656f69865f5fc04b5da49 len=84
+  PASS  3x2-sparse [hash]
+  PASS  3x2-sparse [parse]
+  PASS  3x2-sparse [rgs]
+  PASS  3x2-sparse [preds]
+  PASS  3x2-sparse [offsets]
+  PASS  3x2-sparse [subjs]
+== summary: 24 pass, 0 fail (out of 24) ==
+offsets_writer_roundtrip: PASS
+
+--- owl_direct_pipeline_timing ---
+Loaded third_party/testing/w3c/sparql/sparql11/entailment/simple.ttl (448 bytes)
+  parsed: 16 triples
+  [owl_rl_closure fuel=1           ] 0.004s
+PASS  owl_rl_closure fuel=1 (cap=5s) -> 207 triples
+  [owl_rl_closure fuel=2           ] 0.007s
+PASS  owl_rl_closure fuel=2 (cap=5s) -> 280 triples
+summary: 2 pass, 0 expected-fail, 0 unexpected fail
+owl_direct_pipeline_timing: PASS
+
+--- owl_rl_bisect ---
+Input g0: 16 triples
+g1 = closure(g0, fuel=1): 207 triples
+
+Per-rule timing on g1 (cap=10s each):
+  testing equivalent_class                             ... PASS    207 triples  (0.000s)
+  testing equivalent_property                          ... PASS    207 triples  (0.000s)
+  testing scm_eqc2                                     ... PASS    207 triples  (0.000s)
+  testing scm_eqp2                                     ... PASS    207 triples  (0.000s)
+  testing inverse_of                                   ... PASS    207 triples  (0.000s)
+  testing disjoint_with_propagation                    ... PASS    207 triples  (0.000s)
+  testing inverseOf_domain_range_flip                  ... PASS    207 triples  (0.000s)
+  testing symmetric_property                           ... PASS    207 triples  (0.000s)
+  testing transitive_property                          ... PASS    207 triples  (0.000s)
+  testing named_equivClass_to_sameAs                   ... PASS    207 triples  (0.000s)
+  testing sameAs_reflexivity                           ... PASS    248 triples  (0.000s)
+  testing sameAs_symmetry                              ... PASS    207 triples  (0.000s)
+  testing differentFrom_symmetry                       ... PASS    207 triples  (0.000s)
+  testing sameAs_transitivity                          ... PASS    207 triples  (0.000s)
+  testing sameAs_replace_subject                       ... PASS    207 triples  (0.000s)
+  testing sameAs_replace_object                        ... PASS    207 triples  (0.000s)
+  testing sameAs_replace_predicate                     ... PASS    207 triples  (0.000s)
+  testing functional                                   ... PASS    207 triples  (0.000s)
+  testing inverse_functional                           ... PASS    207 triples  (0.000s)
+  testing pdw_to_differentFrom                         ... PASS    207 triples  (0.000s)
+  testing fp_diff_to_diff                              ... PASS    207 triples  (0.000s)
+  testing ifp_diff_to_diff                             ... PASS    207 triples  (0.000s)
+  testing minc1_bridge                                 ... PASS    207 triples  (0.000s)
+  testing svf2_existential_witness                     ... PASS    207 triples  (0.000s)
+  testing cls_svf2_qualified                           ... PASS    227 triples  (0.000s)
+  testing cls_minc_qual1                               ... PASS    232 triples  (0.000s)
+  testing cls_maxqc1                                   ... PASS    232 triples  (0.000s)
+  testing cls_exactqc1                                 ... PASS    232 triples  (0.000s)
+  testing cls_maxc2                                    ... PASS    207 triples  (0.000s)
+  testing cls_avf1                                     ... PASS    207 triples  (0.000s)
+  testing reflexive_property                           ... PASS    207 triples  (0.000s)
+  testing scm_cls_restriction                          ... PASS    219 triples  (0.000s)
+  testing property_chain_2                             ... PASS    207 triples  (0.000s)
+  testing property_chain_n                             ... PASS    207 triples  (0.000s)
+  testing chain_to_transitive                          ... PASS    207 triples  (0.000s)
+  testing named_sameAs_to_equivClass                   ... PASS    207 triples  (0.000s)
+  testing prp_key                                      ... PASS    207 triples  (0.000s)
+  testing xsd_datatype_axioms                          ... PASS    236 triples  (0.001s)
+  testing scm_dom2                                     ... PASS    207 triples  (0.000s)
+  testing scm_rng2                                     ... PASS    207 triples  (0.000s)
+
+summary: 40 pass, 0 expected-fail (suspect rule(s))
+owl_rl_bisect: PASS
+
+--- owl_rl_closure_diff ---
+Loaded third_party/testing/w3c/sparql/sparql11/entailment/simple.ttl (448 bytes)
+Step 0 (input): 16 triples
+  sample input:
+    _:simple <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2002/07/owl#Ontology> .
+    <http://example.org/test#A> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2002/07/owl#Class> .
+    <http://example.org/test#B> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2002/07/owl#Class> .
+    <http://example.org/test#C> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2002/07/owl#Class> .
+    <http://example.org/test#p> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2002/07/owl#ObjectProperty> .
+    <http://example.org/test#p> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2002/07/owl#FunctionalProperty> .
+    <http://example.org/test#a> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://example.org/test#A> .
+    <http://example.org/test#a> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://example.org/test#B> .
+    <http://example.org/test#a> <http://example.org/test#p> <http://example.org/test#b> .
+    <http://example.org/test#b> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://example.org/test#B> .
+    <http://example.org/test#b> <http://example.org/test#p> <http://example.org/test#c> .
+    <http://example.org/test#c> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://example.org/test#C> .
+    <http://example.org/test#c> <http://example.org/test#p> <http://example.org/test#d> .
+    <http://example.org/test#d> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://example.org/test#A> .
+    <http://example.org/test#d> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://example.org/test#B> .
+    <http://example.org/test#d> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://example.org/test#C> .
+
+Step 1 (fuel=1): 207 triples (+191 new) in 0.004s
+  new-triple predicates (top 10):
+       91  <http://www.w3.org/1999/02/22-rdf-syntax-ns#type>
+       25  <http://www.w3.org/2002/07/owl#sameAs>
+       12  <http://www.w3.org/2000/01/rdf-schema#subPropertyOf>
+       12  <http://www.w3.org/2002/07/owl#onProperty>
+       10  <http://www.w3.org/2000/01/rdf-schema#subClassOf>
+       10  <http://www.w3.org/2000/01/rdf-schema#range>
+       10  <http://www.w3.org/2000/01/rdf-schema#domain>
+        9  <http://www.w3.org/2002/07/owl#onClass>
+        3  <http://www.w3.org/2002/07/owl#maxQualifiedCardinality>
+        3  <http://www.w3.org/2002/07/owl#someValuesFrom>
+  first 5 new triples:
+    _:__rl_exactqc1_http://example.org/test#p__on__http://example.org/test#A <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2002/07/owl#Class> .
+    _:__rl_exactqc1_http://example.org/test#p__on__http://example.org/test#A <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2002/07/owl#Restriction> .
+    _:__rl_exactqc1_http://example.org/test#p__on__http://example.org/test#A <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2002/07/owl#Thing> .
+    _:__rl_exactqc1_http://example.org/test#p__on__http://example.org/test#A <http://www.w3.org/2002/07/owl#onClass> <http://example.org/test#A> .
+    _:__rl_exactqc1_http://example.org/test#p__on__http://example.org/test#A <http://www.w3.org/2002/07/owl#onProperty> <http://example.org/test#p> .
+
+Attempting one more closure step from g1 (cap=60s)...
+step-2 returned in 0.002s
+
+Step 2 (one step from g1): 252 triples (+45 new) in 0.002s
+  new-triple predicates (top 10):
+       16  <http://www.w3.org/2002/07/owl#sameAs>
+       15  <http://www.w3.org/1999/02/22-rdf-syntax-ns#type>
+       14  <http://www.w3.org/2000/01/rdf-schema#subClassOf>
+  first 5 new triples:
+    _:__rl_exactqc1_http://example.org/test#p__on__http://example.org/test#A <http://www.w3.org/2002/07/owl#sameAs> _:__rl_exactqc1_http://example.org/test#p__on__http://example.org/test#A .
+    _:__rl_exactqc1_http://example.org/test#p__on__http://example.org/test#B <http://www.w3.org/2002/07/owl#sameAs> _:__rl_exactqc1_http://example.org/test#p__on__http://example.org/test#B .
+    _:__rl_exactqc1_http://example.org/test#p__on__http://example.org/test#C <http://www.w3.org/2002/07/owl#sameAs> _:__rl_exactqc1_http://example.org/test#p__on__http://example.org/test#C .
+    _:__rl_maxqc1_http://example.org/test#p__on__http://example.org/test#A <http://www.w3.org/2002/07/owl#sameAs> _:__rl_maxqc1_http://example.org/test#p__on__http://example.org/test#A .
+    _:__rl_maxqc1_http://example.org/test#p__on__http://example.org/test#B <http://www.w3.org/2002/07/owl#sameAs> _:__rl_maxqc1_http://example.org/test#p__on__http://example.org/test#B .
+
+summary: 2 pass, 0 expected-fail, 0 unexpected fail
+owl_rl_closure_diff: PASS
+
+--- owl_rl_sequenced ---
+Input g0: 16 triples
+g1 = closure(g0, fuel=1): 207 triples
+
+Sequenced timing through owl_rl_closure_step's 28 rules (cap=10s each):
+  step equivalent_class                 (in=207) 0.000s -> 207 [unchanged]
+  step equivalent_property              (in=207) 0.000s -> 207 [unchanged]
+  step scm_eqc2                         (in=207) 0.000s -> 207 [unchanged]
+  step scm_eqp2                         (in=207) 0.000s -> 207 [unchanged]
+  step inverse_of                       (in=207) 0.000s -> 207 [unchanged]
+  step disjoint_with_propagation        (in=207) 0.000s -> 207 [unchanged]
+  step inverseOf_domain_range_flip      (in=207) 0.000s -> 207 [unchanged]
+  step symmetric_property               (in=207) 0.000s -> 207 [unchanged]
+  step transitive_property              (in=207) 0.000s -> 207 [unchanged]
+  step named_equivClass_to_sameAs       (in=207) 0.000s -> 207 [unchanged]
+  step sameAs_reflexivity               (in=207) 0.000s -> 248 [+41]
+  step sameAs_symmetry                  (in=248) 0.001s -> 248 [unchanged]
+  step differentFrom_symmetry           (in=248) 0.000s -> 248 [unchanged]
+  step sameAs_transitivity              (in=248) 0.000s -> 248 [unchanged]
+  step sameAs_replace_subject           (in=248) 0.000s -> 248 [unchanged]
+  step sameAs_replace_object            (in=248) 0.000s -> 248 [unchanged]
+  step sameAs_replace_predicate         (in=248) 0.000s -> 248 [unchanged]
+  step functional                       (in=248) 0.000s -> 248 [unchanged]
+  step inverse_functional               (in=248) 0.000s -> 248 [unchanged]
+  step pdw_to_differentFrom             (in=248) 0.000s -> 248 [unchanged]
+  step fp_diff_to_diff                  (in=248) 0.000s -> 248 [unchanged]
+  step ifp_diff_to_diff                 (in=248) 0.000s -> 248 [unchanged]
+  step minc1_bridge                     (in=248) 0.000s -> 248 [unchanged]
+  step svf2_existential_witness         (in=248) 0.000s -> 248 [unchanged]
+  step cls_svf2_qualified               (in=248) 0.001s -> 268 [+20]
+  step cls_minc_qual1                   (in=268) 0.000s -> 293 [+25]
+  step cls_maxqc1                       (in=293) 0.000s -> 318 [+25]
+  step cls_exactqc1                     (in=318) 0.001s -> 343 [+25]
+  step cls_maxc2                        (in=343) 0.001s -> 343 [unchanged]
+  step cls_avf1                         (in=343) 0.001s -> 343 [unchanged]
+  step reflexive_property               (in=343) 0.000s -> 343 [unchanged]
+  step scm_cls_restriction              (in=343) 0.000s -> 375 [+32]
+  step property_chain_2                 (in=375) 0.001s -> 375 [unchanged]
+  step property_chain_n                 (in=375) 0.001s -> 375 [unchanged]
+  step chain_to_transitive              (in=375) 0.001s -> 375 [unchanged]
+  step named_sameAs_to_equivClass       (in=375) 0.001s -> 375 [unchanged]
+  step prp_key                          (in=375) 0.001s -> 375 [unchanged]
+  step xsd_datatype_axioms              (in=375) 0.001s -> 404 [+29]
+  step scm_dom2                         (in=404) 0.001s -> 404 [unchanged]
+  step scm_rng2                         (in=404) 0.001s -> 404 [unchanged]
+
+summary: 40 pass, 0 capped
+owl_rl_sequenced: PASS
+
+--- parquet_rle_dictionary_multi_row_group ---
+== parquet_rle_dictionary_multi_row_group ==
+  fixture: tests/unit/fixtures/parquet_rle_dictionary_multi_rg.cottas
+  PASS  row_group_count = 3
+  PASS  s column row count
+  PASS  p column row count
+  PASS  o column row count
+  PASS  g column row count
+  PASS  row 0 s
+  PASS  row 0 p
+  PASS  row 0 o
+  PASS  row 0 g
+  PASS  row 1 s
+  PASS  row 1 p
+  PASS  row 1 o
+  PASS  row 1 g
+  PASS  row 2 s
+  PASS  row 2 p
+  PASS  row 2 o
+  PASS  row 2 g
+  PASS  row 2047 s
+  PASS  row 2047 p
+  PASS  row 2047 o
+  PASS  row 2047 g
+  PASS  row 2048 s
+  PASS  row 2048 p
+  PASS  row 2048 o
+  PASS  row 2048 g
+  PASS  row 2049 s
+  PASS  row 2049 p
+  PASS  row 2049 o
+  PASS  row 2049 g
+  PASS  row 4095 s
+  PASS  row 4095 p
+  PASS  row 4095 o
+  PASS  row 4095 g
+  PASS  row 4096 s
+  PASS  row 4096 p
+  PASS  row 4096 o
+  PASS  row 4096 g
+  PASS  row 4098 s
+  PASS  row 4098 p
+  PASS  row 4098 o
+  PASS  row 4098 g
+  PASS  row 4099 s
+  PASS  row 4099 p
+  PASS  row 4099 o
+  PASS  row 4099 g
+  PASS  p distinct = 3
+  PASS  g distinct = 3
+  PASS  s distinct = 4
+  PASS  o distinct = 4100 (all unique)
+  PASS  truncated file: g column decode fails loudly (None)
+  PASS  ng row_group_count = 1
+  PASS  ng g column row count = 818 (not silently 0)
+  PASS  ng g distinct = 2
+  PASS  ng row 0 g
+  PASS  ng row 1 g
+  PASS  ng row 2 g
+  PASS  ng row 3 g
+  PASS  ng row 408 g
+  PASS  ng row 409 g
+  PASS  ng row 816 g
+  PASS  ng row 817 g
+  PASS  offset table has 3 row-group starts
+  PASS  table-indexed decode == path-based decode (rg=0, col=0)
+  PASS  table-indexed decode == path-based decode (rg=0, col=1)
+  PASS  table-indexed decode == path-based decode (rg=0, col=2)
+  PASS  table-indexed decode == path-based decode (rg=0, col=3)
+  PASS  table-indexed decode == path-based decode (rg=1, col=0)
+  PASS  table-indexed decode == path-based decode (rg=1, col=1)
+  PASS  table-indexed decode == path-based decode (rg=1, col=2)
+  PASS  table-indexed decode == path-based decode (rg=1, col=3)
+  PASS  table-indexed decode == path-based decode (rg=2, col=0)
+  PASS  table-indexed decode == path-based decode (rg=2, col=1)
+  PASS  table-indexed decode == path-based decode (rg=2, col=2)
+  PASS  table-indexed decode == path-based decode (rg=2, col=3)
+  PASS  table-indexed dict == path-based dict (rg=0, col=1)
+  PASS  table-indexed dict == path-based dict (rg=0, col=3)
+  PASS  table-indexed dict == path-based dict (rg=1, col=1)
+  PASS  table-indexed dict == path-based dict (rg=1, col=3)
+  PASS  table-indexed dict == path-based dict (rg=2, col=1)
+  PASS  table-indexed dict == path-based dict (rg=2, col=3)
+  PASS  global dict cache miss == path-based dict (rg=0, col=1)
+  PASS  global dict cache hit == path-based dict (rg=0, col=1)
+  PASS  global dict cache miss == path-based dict (rg=0, col=3)
+  PASS  global dict cache hit == path-based dict (rg=0, col=3)
+  PASS  global dict cache miss == path-based dict (rg=1, col=1)
+  PASS  global dict cache hit == path-based dict (rg=1, col=1)
+  PASS  global dict cache miss == path-based dict (rg=1, col=3)
+  PASS  global dict cache hit == path-based dict (rg=1, col=3)
+  PASS  global dict cache miss == path-based dict (rg=2, col=1)
+  PASS  global dict cache hit == path-based dict (rg=2, col=1)
+  PASS  global dict cache miss == path-based dict (rg=2, col=3)
+  PASS  global dict cache hit == path-based dict (rg=2, col=3)
+  PASS  dpcache_get returns stored dict
+  PASS  dpcache_put evicts LRU entry at capacity
+  PASS  dpcache_put keeps recently-used + new entries
+  PASS  dpcache capacity 0 stores nothing
+
+== selective-column exact count (roadmap item 4) ==
+  PASS  selective count bound-p-only (expected 1367, got 1367)
+  PASS  selective count bound-p-and-o (expected 1, got 1)
+  PASS  selective count bound-s-only (expected 1025, got 1025)
+  PASS  selective count bound-g-only (expected 1367, got 1367)
+  PASS  selective count all-four-bound (expected 1, got 1)
+  PASS  selective count no-bounds-at-all (expected 4100, got 4100)
+
+== direct token -> term parsing (selective SEARCH, 2026-07-06) ==
+  PASS  token_to_subject <iri>
+  PASS  token_to_subject _:bnode
+  PASS  token_to_predicate <iri>
+  PASS  token_to_object <iri>
+  PASS  token_to_object _:bnode
+  PASS  token_to_object bare literal (xsd:string)
+  PASS  token_to_object language-tagged literal
+  PASS  token_to_object typed literal
+  PASS  token_to_graph_name <iri>
+  PASS  token_to_subject malformed token -> sentinel, not a crash
+  PASS  token_to_object malformed token -> sentinel, not a crash
+  PASS  row_tok_to_quad: DEFAULT graph token -> None
+  PASS  row_tok_to_quad: triple fields parsed correctly
+  PASS  row_tok_to_quad: named graph token -> Some iri
+== summary: 116 pass, 0 fail (out of 116) ==
+parquet_rle_dictionary_multi_row_group: PASS
+
+--- parser_fast_string_byte_semantics ---
+== parser_fast_string_byte_semantics ==
+  PASS  fs_byte_length "ä" = 2 (UTF-8 byte length, not 1 codepoint)
+  PASS  fs_byte_at "ä" 0 = 0xC3 (UTF-8 leading byte)
+  PASS  fs_byte_at "ä" 1 = 0xA4 (UTF-8 continuation byte)
+  PASS  fs_byte_sub "äb" 0 1 = "\xC3" (invalid UTF-8, byte-level by design)
+  PASS  fs_find_byte "abc:def" 0x3A 0 = 3 (locate ':' as a byte)
+  PASS  fs_find_byte "abc:def" 0x21 0 = 7 (absent = length)
+  PASS  fs_find_byte over "Müller" for ':' = length (no false positive on 0xC3)
+summary: 7 pass, 0 expected-fail, 0 unexpected fail
+parser_fast_string_byte_semantics: PASS
+
+--- parser_fast_string_codepoint_semantics ---
+== parser_fast_string_codepoint_semantics ==
+  PASS  fs_cp_at "a" 0 = (0x61, 1)
+  PASS  fs_cp_at "ä" 0 = (0xE4, 2)
+  PASS  fs_cp_at "日" 0 = (0x65E5, 3)
+  PASS  fs_cp_at "🎵" 0 = (0x1F3B5, 4)
+  PASS  fs_cp_at "" 0 = (0xFFFD, 1) (empty input fallback)
+  PASS  fs_cp_at "\xC0" 0 = (0xFFFD, 1) (invalid leading byte)
+  PASS  fs_cp_at "\xC3" 0 = (0xFFFD, 1) (truncated two-byte)
+  PASS  fs_cp_at "\xED\xA0\x80" 0 = (0xFFFD, 1) (UTF-16 surrogate rejected)
+  PASS  fs_cp_len "ä" 0 = 2
+  PASS  fs_cp_len "🎵" 0 = 4
+  PASS  fs_cp_at "ä" 1 = (0xFFFD, 1) (starting on a continuation byte)
+summary: 11 pass, 0 expected-fail, 0 unexpected fail
+parser_fast_string_codepoint_semantics: PASS
+
+--- presence_writer_roundtrip ---
+== presence_writer_roundtrip ==
+  HASH  empty sha256=2a81f78f8dc918586126c51f2a3e0bb3095a221626502dffe247875c4a0c8514 len=16
+  PASS  empty [hash]
+  PASS  empty [parse]
+  PASS  empty [round-trip rgs]
+  PASS  empty [round-trip toks]
+  PASS  empty [round-trip bitmap]
+  HASH  singleton-set sha256=1d3a0db8b65799b89fee3430734be4ea515ccc688d7a5c7414d831295dd56177 len=17
+  PASS  singleton-set [hash]
+  PASS  singleton-set [parse]
+  PASS  singleton-set [round-trip rgs]
+  PASS  singleton-set [round-trip toks]
+  PASS  singleton-set [round-trip bitmap]
+  HASH  singleton-clear sha256=c650a40f2d76fe880bc5dcfdf6864aca0456e4c5b051ae5cdeb8bb110f13396a len=17
+  PASS  singleton-clear [hash]
+  PASS  singleton-clear [parse]
+  PASS  singleton-clear [round-trip rgs]
+  PASS  singleton-clear [round-trip toks]
+  PASS  singleton-clear [round-trip bitmap]
+  HASH  4x8-diagonal sha256=5aeabfba78443fe86ce9baab139680ba0905d1fccbfd534e7404a8950655fbb8 len=20
+  PASS  4x8-diagonal [hash]
+  PASS  4x8-diagonal [parse]
+  PASS  4x8-diagonal [round-trip rgs]
+  PASS  4x8-diagonal [round-trip toks]
+  PASS  4x8-diagonal [round-trip bitmap]
+  HASH  3x17-alternating sha256=e68665d4649cd408822f8b0556c0e5d45b480e6cb7cb9bec9c4add08463e7e3c len=23
+  PASS  3x17-alternating [hash]
+  PASS  3x17-alternating [parse]
+  PASS  3x17-alternating [round-trip rgs]
+  PASS  3x17-alternating [round-trip toks]
+  PASS  3x17-alternating [round-trip bitmap]
+== summary: 25 pass, 0 fail (out of 25) ==
+presence_writer_roundtrip: PASS
+
+--- rdfxml_parser_perf ---
+Loaded third_party/testing/owl/profile-EL.rdf (244108 bytes)
+header: 376 bytes
+
+Per-size timing on profile-EL prefixes:
+  size=   926 bytes  ... PASS  0 triples (0.000s, 5349.8 bytes/ms)
+  size=  1434 bytes  ... PASS  0 triples (0.000s, 5558.8 bytes/ms)
+  size=  2413 bytes  ... PASS  0 triples (0.000s, 6454.6 bytes/ms)
+  size=  4403 bytes  ... PASS  0 triples (0.001s, 6945.3 bytes/ms)
+  size=  8433 bytes  ... PASS  0 triples (0.001s, 7535.3 bytes/ms)
+  size= 12443 bytes  ... PASS  0 triples (0.002s, 6908.9 bytes/ms)
+  size= 16588 bytes  ... PASS  0 triples (0.002s, 7752.1 bytes/ms)
+  size= 24430 bytes  ... PASS  0 triples (0.003s, 8111.0 bytes/ms)
+  size= 32535 bytes  ... PASS  0 triples (0.004s, 7918.2 bytes/ms)
+  size= 48439 bytes  ... PASS  0 triples (0.006s, 8348.5 bytes/ms)
+  size= 64411 bytes  ... PASS  0 triples (0.008s, 8377.0 bytes/ms)
+  size= 96477 bytes  ... PASS  0 triples (0.012s, 8164.3 bytes/ms)
+  size=128499 bytes  ... PASS  0 triples (0.015s, 8603.3 bytes/ms)
+
+summary: 13 pass, 0 expected-fail (perf cap exceeded)
+rdfxml_parser_perf: PASS
+
+--- rdfxml_profile_repro ---
+Loaded third_party/testing/owl/profile-RL.rdf (260221 bytes)
+
+Step A: strip DOCTYPE
+  stripped to 259976 bytes in 0.000s
+
+Step B: expand catalog entities (Str.global_replace x 5)
+  expanded to 298759 bytes in 0.003s
+
+Step C: Parser_XML.parse_xml_document on expanded
+  PASS  parsed (0.035s)
+
+Step D: Parser_RDFXML.parse_rdfxml_with_base on expanded
+  PASS  1896 triples (0.057s)
+
+summary: 2 pass, 0 expected-fail
+rdfxml_profile_repro: PASS
+
+--- rdfxml_stack_regression ---
+rdfxml_stack_regression: generated 50000-triple fixture (6577910 bytes)
+  parsed 50000 triples in 1.364s
+  PASS  triple count
+  PASS  first triple subject is s0
+  PASS  last triple subject is s(n-1)
+rdfxml_stack_regression: 3 pass, 0 fail (out of 3)
+rdfxml_stack_regression: PASS
+
+--- regex_match_unit ---
+  PASS  #276 reproducer: http vs https?
+  PASS  https matches https?
+  PASS  httpsx anchored miss
+  PASS  ? after literal, present
+  PASS  ? after literal, absent
+  PASS  ? after literal, doubled (no match)
+  PASS  colour/color via ?
+  PASS  colour/color via ? (long form)
+  PASS  ? after group, present
+  PASS  ? after group, absent
+  PASS  + one-or-more, matches
+  PASS  + one-or-more, empty fails
+  PASS  * zero-or-more, empty matches
+  PASS  * zero-or-more, many matches
+  PASS  alternation left
+  PASS  alternation right
+  PASS  alternation miss
+  PASS  anchored exact match
+  PASS  anchored prefix junk fails
+  PASS  anchored suffix junk fails
+  PASS  character class
+  PASS  escaped dot, literal match
+  PASS  escaped dot rejects wildcard use
+  PASS  escaped ? is literal
+  PASS  escaped ? does not become optional
+  PASS  escaped + is literal
+  PASS  escaped + does not become quantifier
+  PASS  escaped * is literal
+  PASS  escaped * does not become quantifier
+  PASS  non-ASCII literal substring (byte-level)
+  PASS  case-insensitive with optional quantifier
+  PASS  case-insensitive full match
+  PASS  case-sensitive default rejects case mismatch
+  PASS  {n,m} below range
+  PASS  {n,m} at minimum
+  PASS  {n,m} at maximum
+  PASS  {n,m} below minimum with suffix
+  PASS  {1,m} optional-extra works
+  PASS  {0,m} atom, absent (min=0 makes it optional)
+  PASS  {0,m} atom, present once
+  PASS  {0,m} atom, present at max
+  PASS  {0,m} atom, over max fails
+  PASS  {0,m} group, absent
+  PASS  {0,m} group, present once
+  PASS  {0,m} group, present at max
+  PASS  {0,m} group, over max fails
+  PASS  {0,1} absent, same as ?
+  PASS  {0,1} present, same as ?
+  PASS  {0,1} rejects doubled, same as ?
+  PASS  ? absent (cross-check against {0,1})
+  PASS  ? present (cross-check against {0,1})
+  PASS  {0,0} forces absence
+  PASS  {0,0} rejects a single occurrence
+  PASS  {0} exact-count forces absence
+  PASS  {0} exact-count rejects a single occurrence
+  PASS  {0,m} prefix position, absent
+  PASS  {0,m} prefix position, at max
+  PASS  {0,m} prefix position, over max fails
+  PASS  {0,m} suffix position, absent
+  PASS  {0,m} suffix position, at max
+  PASS  {0,m} suffix position, over max fails
+  PASS  outside-BMP literal astral char matches byte-for-byte
+  PASS  outside-BMP literal astral char rejects extra suffix
+  PASS  \t escape matches an actual TAB byte
+  PASS  \t escape rejects the literal letter t
+  PASS  \n escape matches an actual LF byte
+  PASS  \n escape rejects the literal letter n
+  PASS  \r escape matches an actual CR byte
+  PASS  \r escape rejects the literal letter r
+  PASS  ShEx REGEXP_escapes fixture: control escapes + astral char
+  PASS  ShEx REGEXP_escapes fixture: rejects the _999 suffix variant
+regex_match_unit: 71 pass, 0 fail (out of 71)
+regex_match_unit: PASS
+
+--- shexc_parser_unit ---
+  PASS  PREFIX + BASE directives, named prefix (parsed)
+  PASS  PREFIX directive, DEFAULT (empty) prefix (parsed)
+  PASS  case-insensitive directive keywords (BaSe / prefix) (parsed)
+  PASS  IMPORT directive (parsed)
+  PASS  bare 3-way AND flattens to one ShapeAnd
+  PASS  parenthesized AND stays nested, does not flatten with outer AND
+  PASS  NOT . reifies the wildcard as an empty Shape, not an empty NodeConstraint
+  PASS  bare (uncombined) . omits valueExpr entirely
+  PASS  IRI {} implicit-AND flattens with a following explicit AND
+  PASS  bare facet (LENGTH) + shapeDefinition suffix
+  PASS  cardinality {2,*} (explicit-star unbounded)
+  PASS  cardinality {2,} (comma-then-brace unbounded)
+  PASS  cardinality ? on a bracketed group carries onto the group itself
+  PASS  IRI stem (no exclusions) decodes to IriStem, not an empty-exclusion IriStemRange
+  PASS  IRI stem range with exclusions
+  PASS  wildcard stem range ('.' + typed exclusions)
+  PASS  numeric_lexeme_eq: 5.5E0 == 5.5
+  PASS  numeric_lexeme_eq: 0E0 == 0.0
+  PASS  numeric_lexeme_eq: distinguishes genuinely different values
+  PASS  EXTRA with multiple predicates + CLOSED
+  PASS  EXTENDS (shapeExprRef target)
+  PASS  bare 'a' predicate shorthand for rdf:type
+  PASS  inverse '^' senseFlags
+  PASS  OneOf ('|') grouping
+  PASS  '@ ex:Label' (whitespace between '@' and the shapeRef label)
+  PASS  START = shapeExpression (parsed)
+  PASS  line comment (#) and block comment (/* */) (parsed)
+  PASS  annotation (// pred obj)
+  PASS  semAct with code body (%iri{ code %}) (parsed)
+  PASS  semAct with no code (bare %iri%) (parsed)
+  PASS  EXTERNAL shape (parsed)
+  PASS  ABSTRACT shape (parsed)
+shexc_parser_unit: 32 pass, 0 fail (out of 32)
+shexc_parser_unit: PASS
+
+--- sparql_protocol_client_unit ---
+  PASS  pct_encode: ASCII unreserved set unchanged
+  PASS  pct_encode: empty string
+  PASS  pct_encode: space -> %20
+  PASS  pct_encode: colon -> %3A
+  PASS  pct_encode: braces in a SPARQL query
+  PASS  pct_encode: ampersand/equals encoded (query-string safety)
+  PASS  pct_encode: percent sign itself encoded
+  PASS  pct_encode: 2-byte UTF-8 codepoint (e-acute)
+  PASS  pct_encode: 3-byte UTF-8 codepoint (CJK)
+  PASS  pct_encode: 4-byte UTF-8 codepoint (emoji)
+  PASS  encode_pairs: single pair
+  PASS  encode_pairs: multiple pairs joined with &
+  PASS  encode_pairs: empty list
+  PASS  sniff: bare SELECT
+  PASS  sniff: bare ASK
+  PASS  sniff: bare CONSTRUCT
+  PASS  sniff: bare DESCRIBE
+  PASS  sniff: CONSTRUCT after a PREFIX prologue
+  PASS  sniff: DESCRIBE after a BASE prologue
+  PASS  sniff: multiple PREFIX decls before SELECT
+  PASS  sniff: lower-case keyword still recognized
+  PASS  sniff: unrecognizable text defaults to Select
+  PASS  accept header: SELECT/ASK share the same ordering
+  PASS  accept header: CONSTRUCT/DESCRIBE share the same ordering
+  PASS  accept header: SELECT ordering leads with sparql-results+json
+  PASS  accept header: CONSTRUCT ordering leads with text/turtle
+  PASS  accept header: every media type present regardless of kind
+  PASS  build_get_request: method is GET
+  PASS  build_get_request: path preserved
+  PASS  build_get_request: query string is query=<encoded>
+  PASS  build_get_request: empty body
+  PASS  build_get_request: Accept header set
+  PASS  build_get_request: no Content-Type header (GET has no body)
+  PASS  build_get_request: default-graph-uri/named-graph-uri appended
+  PASS  build_post_direct_request: method is POST
+  PASS  build_post_direct_request: body IS the raw query text
+  PASS  build_post_direct_request: no query-string params (none given)
+  PASS  build_post_direct_request: Content-Type is application/sparql-query
+  PASS  build_post_direct_request: Accept header still set
+  PASS  build_post_direct_request: graph URIs travel as query-string params
+  PASS  build_post_form_request: method is POST
+  PASS  build_post_form_request: no query string (everything in body)
+  PASS  build_post_form_request: body is query=<encoded>
+  PASS  build_post_form_request: Content-Type is x-www-form-urlencoded
+  PASS  build_post_form_request: graph URIs travel in the form body
+  PASS  build_query_request: CDM_Get produces a GET
+  PASS  build_query_request: sniffed SELECT biases Accept toward json
+  PASS  build_query_request: CDM_PostDirect produces a direct POST
+  PASS  build_query_request: sniffed CONSTRUCT biases Accept toward turtle
+  PASS  build_query_request: CDM_PostForm produces a form POST
+  PASS  dispatch_body RF_Json: boolean result
+  PASS  dispatch_body RF_Json: bindings result
+  PASS  dispatch_body RF_Json: malformed body -> parse error
+  PASS  dispatch_body RF_Xml: boolean result
+  PASS  dispatch_body RF_Csv: bindings result
+  PASS  dispatch_body RF_Tsv: bindings result
+  PASS  dispatch_body RF_Turtle: graph result
+  PASS  dispatch_body RF_NTriples: graph result (2 triples)
+  PASS  dispatch_body RF_Text: never a valid SPARQL result
+  PASS  handle_http_response: 200 + application/sparql-results+json -> Boolean
+  PASS  handle_http_response: 200 + text/turtle; charset=utf-8 -> Graph
+  PASS  handle_http_response: 400 -> HttpError, body preserved
+  PASS  handle_http_response: 500 -> HttpError
+  PASS  handle_http_response: 200 but no Content-Type header -> UnknownContentType
+  PASS  handle_http_response: 200 + unrecognized Content-Type -> UnknownContentType
+  PASS  handle_http_response: 201 (2xx boundary) still dispatches
+  PASS  handle_http_response: 299 (2xx upper boundary) still dispatches
+  PASS  handle_http_response: 300 (just above 2xx) -> HttpError
+  PASS  handle_http_response: mixed-case header key is NOT matched (pins the pre-lowercased-key contract)
+sparql_protocol_client_unit: 69 pass, 0 fail (out of 69)
+sparql_protocol_client_unit: PASS
+
+--- sparql_service_wrap_unit ---
+  BUILD FAILED (rc=2)
+    findlib: [WARNING] Interface big_int.cmi occurs in several directories: /root/.opam/fstar/lib/num, /root/.opam/fstar/lib/ocaml
+    findlib: [WARNING] Interface nat.cmi occurs in several directories: /root/.opam/fstar/lib/num, /root/.opam/fstar/lib/ocaml
+    findlib: [WARNING] Interface arith_status.cmi occurs in several directories: /root/.opam/fstar/lib/num, /root/.opam/fstar/lib/ocaml
+    findlib: [WARNING] Interface digestif.cmi occurs in several directories: /root/.opam/fstar/lib/digestif/c, /root/.opam/fstar/lib/digestif
+    findlib: [WARNING] Interface ratio.cmi occurs in several directories: /root/.opam/fstar/lib/num, /root/.opam/fstar/lib/ocaml
+    findlib: [WARNING] Interface num.cmi occurs in several directories: /root/.opam/fstar/lib/num, /root/.opam/fstar/lib/ocaml
+    ocamlfind: [WARNING] Package `threads': Linking problems may arise because of the missing -thread or -vmthread switch
+    File "/home/user/factoidal/.claude/worktrees/agent-a8a3c7dbcf17f1b69/tests/unit/_build/sparql_service_wrap_unit.ml", line 1:
+    Error: Files /home/user/factoidal/.claude/worktrees/agent-a8a3c7dbcf17f1b69/formal/fstar/ocaml-output/RML_Eval.cmx
+           and /home/user/factoidal/.claude/worktrees/agent-a8a3c7dbcf17f1b69/formal/fstar/ocaml-output/SPARQL11_Algebra.cmx
+           make inconsistent assumptions over implementation SPARQL11_Algebra
+sparql_service_wrap_unit: FAIL (build)
+
+--- store_capabilities_unit ---
+  BUILD FAILED (rc=2)
+    findlib: [WARNING] Interface big_int.cmi occurs in several directories: /root/.opam/fstar/lib/num, /root/.opam/fstar/lib/ocaml
+    findlib: [WARNING] Interface nat.cmi occurs in several directories: /root/.opam/fstar/lib/num, /root/.opam/fstar/lib/ocaml
+    findlib: [WARNING] Interface arith_status.cmi occurs in several directories: /root/.opam/fstar/lib/num, /root/.opam/fstar/lib/ocaml
+    findlib: [WARNING] Interface digestif.cmi occurs in several directories: /root/.opam/fstar/lib/digestif/c, /root/.opam/fstar/lib/digestif
+    findlib: [WARNING] Interface ratio.cmi occurs in several directories: /root/.opam/fstar/lib/num, /root/.opam/fstar/lib/ocaml
+    findlib: [WARNING] Interface num.cmi occurs in several directories: /root/.opam/fstar/lib/num, /root/.opam/fstar/lib/ocaml
+    ocamlfind: [WARNING] Package `threads': Linking problems may arise because of the missing -thread or -vmthread switch
+    File "/home/user/factoidal/.claude/worktrees/agent-a8a3c7dbcf17f1b69/tests/unit/_build/store_capabilities_unit.ml", line 1:
+    Error: Files /home/user/factoidal/.claude/worktrees/agent-a8a3c7dbcf17f1b69/formal/fstar/ocaml-output/RML_Eval.cmx
+           and /home/user/factoidal/.claude/worktrees/agent-a8a3c7dbcf17f1b69/formal/fstar/ocaml-output/SPARQL11_Algebra.cmx
+           make inconsistent assumptions over implementation SPARQL11_Algebra
+store_capabilities_unit: FAIL (build)
+
+--- streamable_fastpath_unit ---
+-- streamable_shape: positive shapes --
+  PASS  (a) COUNT(*) over ?s ?p ?o
+  PASS  (b) COUNT(*) over GRAPH ?g wildcard
+  PASS  (c) ASK { ?s ?p ?o }
+  PASS  (d) COUNT(*) with bound predicate
+  PASS  (d) ASK with bound predicate
+-- streamable_shape: non-streamable shapes (must fall through) --
+  PASS  multi-pattern BGP falls through
+  PASS  FILTER-wrapped pattern falls through
+  PASS  GROUP BY falls through
+  PASS  DISTINCT falls through
+  PASS  VALUES-on-ASK falls through
+  PASS  GRAPH ?g reused inside BGP falls through
+-- stream_step / stream_stop --
+  PASS  COUNT(*) over 3 triples = 3
+  PASS  COUNT(*) bound predicate p1 = 2
+  PASS  ASK finds a match
+  PASS  ASK stops after a match
+  PASS  ASK does not stop before any match
+  PASS  COUNT never signals stop
+  PASS  default-graph plan accepts unlabelled quad
+  PASS  default-graph plan rejects labelled quad
+  PASS  any-named-graph plan rejects unlabelled quad
+  PASS  any-named-graph plan accepts labelled quad
+-- generic parser folds vs. known-correct parsers --
+  PASS  Turtle fold matches parse_turtle
+  PASS  NTriples fold matches parse_ntriples
+  PASS  NQuads fold produces (triple, graph label) pairs in order
+  PASS  NQuads fold's unlabelled quad matches parse_nquads default graph
+  PASS  NQuads fold's labelled quad matches parse_nquads named graph
+streamable_fastpath_unit: 26 pass, 0 fail (out of 26)
+streamable_fastpath_unit: PASS
+
+--- toan_tests ---
+  BUILD FAILED (rc=2)
+    findlib: [WARNING] Interface big_int.cmi occurs in several directories: /root/.opam/fstar/lib/num, /root/.opam/fstar/lib/ocaml
+    findlib: [WARNING] Interface nat.cmi occurs in several directories: /root/.opam/fstar/lib/num, /root/.opam/fstar/lib/ocaml
+    findlib: [WARNING] Interface arith_status.cmi occurs in several directories: /root/.opam/fstar/lib/num, /root/.opam/fstar/lib/ocaml
+    findlib: [WARNING] Interface digestif.cmi occurs in several directories: /root/.opam/fstar/lib/digestif/c, /root/.opam/fstar/lib/digestif
+    findlib: [WARNING] Interface ratio.cmi occurs in several directories: /root/.opam/fstar/lib/num, /root/.opam/fstar/lib/ocaml
+    findlib: [WARNING] Interface num.cmi occurs in several directories: /root/.opam/fstar/lib/num, /root/.opam/fstar/lib/ocaml
+    ocamlfind: [WARNING] Package `threads': Linking problems may arise because of the missing -thread or -vmthread switch
+    File "/home/user/factoidal/.claude/worktrees/agent-a8a3c7dbcf17f1b69/tests/unit/_build/toan_tests.ml", line 24, characters 11-20:
+    24 | module E = Math_Expr
+                    ^^^^^^^^^
+    Error: Unbound module Math_Expr
+toan_tests: FAIL (build)
+
+--- ucase_lcase_unicode ---
+== ucase_lcase_unicode ==
+  PASS  ucase ascii 'hello' -> 'HELLO'
+  PASS  lcase ascii 'HELLO' -> 'hello'
+  PASS  ucase 'Eve Müller' -> 'EVE MÜLLER' (ü -> Ü)
+  PASS  lcase 'Eve Müller' -> 'eve müller' (ü stays ü)
+  PASS  ucase 'straße' -> 'STRASSE' (ß -> SS, the hard case)
+  PASS  lcase 'STRASSE' -> 'strasse' (no reverse ß-folding — correct, not a bug)
+  PASS  ucase 'étude' -> 'ÉTUDE' (é -> É)
+  PASS  lcase 'ÉTUDE' -> 'étude' (É -> é)
+  PASS  lcase 'Σ' -> 'σ' (regular sigma; NOT context-sensitive final ς — documented limitation)
+  PASS  lcase 'Σ' does not produce final sigma ς (would mean context-sensitive folding appeared)
+  PASS  ucase 'Σοφία' -> 'ΣΟΦΊΑ' (Greek multi-codepoint upper)
+summary: 11 pass, 0 fail
+ucase_lcase_unicode: PASS
+
+--- utf8_roundtrip ---
+== utf8_roundtrip ==
+  PASS  umlaut-de [lexical-bytes-roundtrip]
+  PASS  umlaut-de [bytes-in-json-output]
+  PASS  french-grave [lexical-bytes-roundtrip]
+  PASS  french-grave [bytes-in-json-output]
+  PASS  umlaut-bare [lexical-bytes-roundtrip]
+  PASS  umlaut-bare [bytes-in-json-output]
+  PASS  umlaut-mixed [lexical-bytes-roundtrip]
+  PASS  umlaut-mixed [bytes-in-json-output]
+  PASS  cjk [lexical-bytes-roundtrip]
+  PASS  cjk [bytes-in-json-output]
+  PASS  emoji-music [lexical-bytes-roundtrip]
+  PASS  emoji-music [bytes-in-json-output]
+  PASS  bnode-ascii [bnode-label-bytes]
+  PASS  bnode-cjk [bnode-label-bytes]
+  PASS  bnode-umlaut [bnode-label-bytes]
+  PASS  bnode-cjk-only [bnode-label-bytes]
+summary: 16 pass, 0 expected-fail, 0 unexpected fail
+utf8_roundtrip: PASS
+
+--- xforms_tests ---
+  BUILD FAILED (rc=2)
+    findlib: [WARNING] Interface big_int.cmi occurs in several directories: /root/.opam/fstar/lib/num, /root/.opam/fstar/lib/ocaml
+    findlib: [WARNING] Interface nat.cmi occurs in several directories: /root/.opam/fstar/lib/num, /root/.opam/fstar/lib/ocaml
+    findlib: [WARNING] Interface arith_status.cmi occurs in several directories: /root/.opam/fstar/lib/num, /root/.opam/fstar/lib/ocaml
+    findlib: [WARNING] Interface digestif.cmi occurs in several directories: /root/.opam/fstar/lib/digestif/c, /root/.opam/fstar/lib/digestif
+    findlib: [WARNING] Interface ratio.cmi occurs in several directories: /root/.opam/fstar/lib/num, /root/.opam/fstar/lib/ocaml
+    findlib: [WARNING] Interface num.cmi occurs in several directories: /root/.opam/fstar/lib/num, /root/.opam/fstar/lib/ocaml
+    ocamlfind: [WARNING] Package `threads': Linking problems may arise because of the missing -thread or -vmthread switch
+    File "/home/user/factoidal/.claude/worktrees/agent-a8a3c7dbcf17f1b69/tests/unit/_build/xforms_tests.ml", line 17, characters 12-23:
+    17 | module XB = XForms_Bind
+                     ^^^^^^^^^^^
+    Error: Unbound module XForms_Bind
+xforms_tests: FAIL (build)
+
+--- xpath_tests ---
+  PASS  §2.2 child axis count
+  PASS  §2.2 attribute value via '='
+  PASS  §2.3 child::* matches every element, any prefix
+  PASS  §2.3 attribute::* count
+  PASS  §2.3 prefix wildcard 'ns:*'
+  PASS  §2.3 full axis syntax child::child
+  PASS  §2.3 self axis via full syntax
+  PASS  §2.3 attribute axis via full syntax
+  PASS  §2.5 '//' abbreviation matches explicit desugaring
+  PASS  §2.5 '//child' count
+  PASS  §2.3 text() node test
+  PASS  §2.3 comment() node test (non-empty)
+  PASS  §2.3 node() matches text+comment siblings
+  PASS  §2.4 position()=2 predicate
+  PASS  §2.4 [2] numeric-predicate shorthand
+  PASS  §2.4 last() predicate
+  PASS  §2.4 count() built-in
+  PASS  §2.3 ancestor axis nearest-first [1]
+  PASS  §2.3 ancestor axis nearest-first [2]
+  PASS  §2.3 ancestor axis nearest-first [3]
+  PASS  §2.3 ancestor axis count
+  PASS  §2.3 ancestor-or-self axis count
+  PASS  §2.3 parent axis
+  PASS  §2.3 descendant axis depth
+  PASS  §2.3 descendant-or-self axis depth
+  PASS  §2.3 '.' self abbreviation in a predicate
+  PASS  §2.3 '..' parent abbreviation
+  PASS  §2.6 union of disjoint node-sets
+  PASS  §3.4 node-set = string
+  PASS  §3.4 number = node-set comparison
+  PASS  §3.4 node-set != number
+  PASS  §3.4 boolean(node-set) on empty set
+  PASS  §3.4 boolean(node-set) on non-empty set
+  PASS  §3.4 relational op coerces node-set to number
+  PASS  §4.4 sum() + string(number) integer formatting (no trailing .0)
+  PASS  §4.4 string(number) decimal formatting
+  PASS  §4.4 string(number) integer formatting
+  PASS  §3.4 'div' produces a decimal
+  PASS  §3.4 'mod'
+  PASS  §3.4 unary minus
+  PASS  §3.4 unary minus binds looser than union (per UnaryExpr ::= '-' UnaryExpr | UnionExpr)
+  PASS  §4.4 round(2.5) rounds toward +Infinity
+  PASS  §4.4 round(-2.5) rounds toward +Infinity (not away from zero)
+  PASS  §4.4 floor(2.7)
+  PASS  §4.4 ceiling(2.1)
+  PASS  §4.3 not()
+  PASS  §4.3 true() and false()
+  PASS  §4.2 boolean('') is false
+  PASS  §4.2 boolean(non-empty string) is true
+  PASS  §4.2 concat() with 3 args
+  PASS  §4.2 contains()
+  PASS  §4.2 starts-with()
+  PASS  §4.2 substring-before()
+  PASS  §4.2 substring-after()
+  PASS  §4.2 string-length()
+  PASS  §4.2 normalize-space()
+  PASS  §4.2 substring("12345",1.5,2.6) = "234"
+  PASS  §4.2 substring("12345",0,3) = "12"
+  PASS  §4.2 substring("12345", 0 div 0, 3) = "" (NaN start)
+  PASS  §4.2 substring("12345", 1, 0 div 0) = "" (NaN length)
+  PASS  §4.2 substring("12345", -42, 1 div 0) = "12345" (+Infinity length)
+  PASS  §4.2 substring("12345", -1 div 0, 1 div 0) = "" (-Inf + Inf = NaN)
+  PASS  §2.3 name() on a prefixed element (opaque QName string)
+  PASS  §2.3 local-name() strips the prefix
+  PASS  §2.3 local-name() with no prefix equals name()
+  PASS  §3.7 VariableReference in an arithmetic expression
+  PASS  §2.2 following-sibling axis count
+  PASS  §2.2 following-sibling::child[1] is c2
+  PASS  §2.2 preceding-sibling count of the last child
+  PASS  §2.2 preceding-sibling is a reverse axis (nearest first)
+  PASS  §2.2 following axis excludes descendants, counts later elements
+  PASS  §2.2 preceding axis excludes ancestors, counts earlier elements
+  PASS  §2.2 following-sibling of the last child is empty
+  PASS  §2.3 processing-instruction() counts both PIs
+  PASS  §2.3 processing-instruction('target') filters by target
+  PASS  §5 PI string-value is its data
+  PASS  §2.3 name() of a PI is its target
+  PASS  §2.3 node() sees PIs + element (2 PIs + 1 element = 3)
+  PASS  §2.3 '*' does NOT match PIs (principal node type)
+  PASS  §3.3 union of overlapping node-sets removes duplicates
+  PASS  §3.3 self-union removes all duplicates
+  PASS  §3.3 union result is in document order, not concatenation order
+  PASS  §3.4 string < string (lexicographic)
+  PASS  §3.4 string > string
+  PASS  §3.4 number < number
+  PASS  §3.4 number >= number (equal)
+  PASS  §3.4 node-set = node-set (some equal pair)
+  PASS  §3.4 node-set != node-set (distinct string values)
+  PASS  §3.4 relational node-set coercion (>=)
+  PASS  namespace axis is deferred: clean parse failure
+  PASS  'id("x")' (unknown function) does not crash the parser
+xpath_tests: 91 pass, 0 fail (out of 91)
+xpath_tests: PASS
+
+--- xsd_datatypes_unit ---
+  PASS  float--1 well-formed (pass)
+  PASS  float-0 well-formed (pass)
+  PASS  float-1 well-formed (pass)
+  PASS  float-+1 well-formed (pass)
+  PASS  float--1.0 well-formed (pass)
+  PASS  float-+1.0 well-formed (pass)
+  PASS  float-1e0 well-formed (pass)
+  PASS  float-1E0 well-formed (pass)
+  PASS  float-NaN well-formed (pass)
+  PASS  float-INF well-formed (pass)
+  PASS  float--INF well-formed (pass)
+  PASS  float- ill-formed (fail)
+  PASS  float-+INF ill-formed (fail)
+  PASS  double--1 well-formed (pass)
+  PASS  double-0 well-formed (pass)
+  PASS  double-1 well-formed (pass)
+  PASS  double-+1 well-formed (pass)
+  PASS  double--1.0 well-formed (pass)
+  PASS  double-+1.0 well-formed (pass)
+  PASS  double-1e0 well-formed (pass)
+  PASS  double-1E0 well-formed (pass)
+  PASS  double-NaN well-formed (pass)
+  PASS  double-INF well-formed (pass)
+  PASS  double--INF well-formed (pass)
+  PASS  double- ill-formed (fail)
+  PASS  double-+INF ill-formed (fail)
+  PASS  xsd:decimal is decimal-derived
+  PASS  xsd:integer is decimal-derived
+  PASS  xsd:byte is decimal-derived
+  PASS  xsd:float is NOT decimal-derived
+  PASS  xsd:double is NOT decimal-derived
+  PASS  xsd:boolean is NOT decimal-derived
+  PASS  "1.23ab"^^xsd:decimal is ill-formed
+  PASS  "1.2345ab"^^xsd:decimal is ill-formed
+  PASS  "1.2345"^^xsd:integer is ill-formed (integer forbids '.')
+  PASS  "1.2345"^^xsd:decimal is well-formed
+  PASS  "12345"^^xsd:integer is well-formed
+  PASS  "012345"^^xsd:integer (leading zero) is well-formed
+
+xsd_datatypes_unit: 38 passed, 0 failed
+xsd_datatypes_unit: PASS
+
+============================================================
+tests/unit summary: 35 file(s) pass, 6 file(s) fail (out of 41)

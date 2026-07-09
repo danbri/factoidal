@@ -1,0 +1,23 @@
+name: F* unit regressions (tests/unit)
+spec: internal
+runner: tests/unit/run-all.sh
+runner_args: []
+manifest: internal
+log_path: formal/fstar/ocaml-output/tests_unit_results.log
+result_path: docs/test-results/by-suite/tests-unit.json
+domain: RDF
+foundational: false
+
+# The native F* unit-regression harness: every tests/unit/*.ml file compiled
+# against the committed ocaml-output .cmx and run. As of #82, each test is
+# relinked against ONLY its own dependency closure (computed by ocamldep), so
+# a stale/unrelated committed .cmx can no longer break an unrelated test's
+# link. The row reports files-passing / files-failing across all 41 files.
+# Failing files either need a module with no committed .cmx (Math_* /
+# MathML_* / XForms_Bind engines) or hit a committed-.cmx epoch mismatch
+# (RML_Eval vs SPARQL11_Algebra committed in different builds) — an
+# artifact-staleness gap, not a harness bug.
+triggers:
+  paths:
+    - tests/unit/**
+  excludes: []

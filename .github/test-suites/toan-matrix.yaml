@@ -1,0 +1,25 @@
+name: TOAN CAS + Math.Matrix engines
+spec: internal
+runner: node
+runner_args:
+  - --test
+  - npm/factoidal/test/toan.test.js
+  - npm/factoidal/test/matrix.test.js
+manifest: internal
+log_path: formal/fstar/ocaml-output/toan_matrix_results.log
+result_path: docs/test-results/by-suite/toan-matrix.json
+domain: RDF
+foundational: false
+
+# The F* CAS (summation / product / simplify / diff / subst — TOAN) and the
+# exact-rational Math.Matrix engine, exercised through the JS bundle via
+# node --test. The wider npm package suite additionally covers xslt, mathml,
+# xforms, jsonschema, schematron, hdt, and vc-crypto — each a shipped engine
+# with its own npm test file.
+triggers:
+  paths:
+    - npm/factoidal/test/toan.test.js
+    - npm/factoidal/test/matrix.test.js
+    - formal/fstar/Math.*
+    - formal/fstar/MathML.*
+  excludes: []

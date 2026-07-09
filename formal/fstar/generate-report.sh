@@ -70,6 +70,17 @@ JSONLD_FROMRDF_LOG="$OCAML_DIR/jsonld_fromrdf_results.log"
 HDT_PARITY_LOG="$OCAML_DIR/hdt_parity_results.log"
 HUB_LOG="$OCAML_DIR/hub_results.log"
 NPM_LOG="$OCAML_DIR/npm_results.log"
+# Wave (2026-07-09b, #82) — the F* native unit-regression harness
+# (tests/unit/run-all.sh, now relinked per-test against the committed .cmx)
+# plus two engine views the dashboard never surfaced: rml-io (the
+# rml_runner --io source-tests section) and the npm-side toan/matrix +
+# xforms engine tests. tests_unit_results.log carries the whole 41-file run;
+# geosparql (37 assertions) and xpath (91) are scraped from that same log
+# rather than re-run, so one harness pass feeds three rows.
+TESTS_UNIT_LOG="$OCAML_DIR/tests_unit_results.log"
+RML_IO_LOG="$OCAML_DIR/rml_io_results.log"
+XFORMS_NPM_LOG="$OCAML_DIR/xforms_npm_results.log"
+TOAN_MATRIX_LOG="$OCAML_DIR/toan_matrix_results.log"
 
 mkdir -p "$OUTPUT_DIR" "$HISTORY_DIR"
 
@@ -252,8 +263,32 @@ if [ "$1" = "--run" ]; then
     echo "Running npm package suite (node --test)…"
     ( cd "$REPO_ROOT" && timeout 600 node --test npm/factoidal/test/*.test.js > "$NPM_LOG" 2>&1 ) || true
     echo "  done."
+    # Engine views scraped separately from the aggregate so each shows its
+    # own row: toan+matrix (the F* CAS + Math.Matrix engines) and xforms
+    # (the F* XForms bind/recalc model), both exercised through the JS bundle.
+    echo "Running npm engine views (toan/matrix, xforms)…"
+    ( cd "$REPO_ROOT" && timeout 300 node --test npm/factoidal/test/toan.test.js npm/factoidal/test/matrix.test.js > "$TOAN_MATRIX_LOG" 2>&1 ) || true
+    ( cd "$REPO_ROOT" && timeout 300 node --test npm/factoidal/test/xforms.test.js > "$XFORMS_NPM_LOG" 2>&1 ) || true
+    echo "  done."
   else
     echo "  node not found on PATH — skipping JS-side hub/npm suites." >&2
+  fi
+
+  # rml-io (rml_runner --io) — the RMLSTC0* source-tests section, a secondary
+  # rml conformance view distinct from rml-core. Same guarded/fail-soft
+  # contract as the runners above.
+  run_optional_suite "RML rml-io source-tests" "$RML_RUNNER" "$RML_IO_LOG" 120 --io
+
+  # F* native unit regressions (tests/unit/run-all.sh). Needs ocamlfind +
+  # the committed .cmx; guard on ocamlfind so a checkout without the F* opam
+  # switch degrades to a "not measured" row rather than a hard error. The run
+  # relinks each test against its own dependency closure (see run-all.sh).
+  if command -v ocamlfind >/dev/null 2>&1; then
+    echo "Running F* unit regressions (tests/unit/run-all.sh)…"
+    ( cd "$REPO_ROOT" && timeout 900 bash tests/unit/run-all.sh > "$TESTS_UNIT_LOG" 2>&1 ) || true
+    echo "  done."
+  else
+    echo "  ocamlfind not on PATH — skipping F* unit regressions (activate the fstar opam switch to score them)." >&2
   fi
 fi
 
@@ -519,6 +554,44 @@ scrape_added_summary HDT_PARITY     "$HDT_PARITY_LOG"     'hdt-stage4 parity:'
 scrape_node_test     HUB            "$HUB_LOG"
 scrape_node_test     NPM            "$NPM_LOG"
 
+# Wave (2026-07-09b, #82) — F* unit-harness-derived rows + rml-io + npm
+# engine views. xpath / rml-io print an "(out of N)" tally, so the generic
+# scrape_added_summary handles them. geosparql and the tests/unit file-level
+# summary use bespoke line shapes ("N passed, M failed"; "N file(s) pass,
+# M file(s) fail"), so each gets an explicit scrape that also derives TOTAL
+# (never left 0 when pass>0, so the row can't render as a lying 0/0).
+scrape_added_summary XPATH_UNIT "$TESTS_UNIT_LOG" 'xpath_tests: [0-9]+ pass'
+scrape_added_summary RML_IO     "$RML_IO_LOG"     'rml-io: +[0-9]+ pass'
+scrape_node_test     XFORMS_NPM  "$XFORMS_NPM_LOG"
+scrape_node_test     TOAN_MATRIX "$TOAN_MATRIX_LOG"
+
+# geosparql: one line "geosparql_v0_unit: <p> passed, <f> failed".
+GEOSPARQL_PRESENT=0; GEOSPARQL_PASS=0; GEOSPARQL_FAIL=0; GEOSPARQL_SKIP=0; GEOSPARQL_TOTAL=0
+if [ -f "$TESTS_UNIT_LOG" ]; then
+  _gline=$(grep -aE 'geosparql_v0_unit: [0-9]+ passed' "$TESTS_UNIT_LOG" 2>/dev/null | tail -1 || true)
+  if [ -n "$_gline" ]; then
+    GEOSPARQL_PASS=$(echo "$_gline" | grep -oE '[0-9]+ passed' | awk '{s+=$1}END{print s+0}')
+    GEOSPARQL_FAIL=$(echo "$_gline" | grep -oE '[0-9]+ failed' | awk '{s+=$1}END{print s+0}')
+    GEOSPARQL_TOTAL=$((GEOSPARQL_PASS + GEOSPARQL_FAIL))
+    GEOSPARQL_PRESENT=1
+  fi
+fi
+
+# tests/unit file-level aggregate: "tests/unit summary: N file(s) pass,
+# M file(s) fail (out of T)".
+TESTS_UNIT_PRESENT=0; TESTS_UNIT_PASS=0; TESTS_UNIT_FAIL=0; TESTS_UNIT_SKIP=0; TESTS_UNIT_TOTAL=0
+if [ -f "$TESTS_UNIT_LOG" ]; then
+  _uline=$(grep -aE 'tests/unit summary:' "$TESTS_UNIT_LOG" 2>/dev/null | tail -1 || true)
+  if [ -n "$_uline" ]; then
+    TESTS_UNIT_PASS=$(echo "$_uline" | grep -oE '[0-9]+ file\(s\) pass' | grep -oE '[0-9]+' | head -1)
+    TESTS_UNIT_FAIL=$(echo "$_uline" | grep -oE '[0-9]+ file\(s\) fail' | grep -oE '[0-9]+' | head -1)
+    TESTS_UNIT_TOTAL=$(echo "$_uline" | sed -nE 's/.*\(out of ([0-9]+)\).*/\1/p')
+    TESTS_UNIT_PASS=${TESTS_UNIT_PASS:-0}; TESTS_UNIT_FAIL=${TESTS_UNIT_FAIL:-0}
+    TESTS_UNIT_TOTAL=${TESTS_UNIT_TOTAL:-$((TESTS_UNIT_PASS + TESTS_UNIT_FAIL))}
+    TESTS_UNIT_PRESENT=1
+  fi
+fi
+
 # XML conformance honest-breakdown block (the integrity accounting the
 # runner prints between "-- HONEST BREAKDOWN" and the final tally). Captured
 # verbatim for a collapsible sub-panel so the 1414/2585 headline is never
@@ -658,6 +731,13 @@ CSV="$OUTPUT_DIR/latest.csv"
   emit_csv_row_if_present HDT_PARITY        hdt         hdt-stage4-parity
   emit_csv_row_if_present HUB               js          hub-browser-bundle
   emit_csv_row_if_present NPM               js          npm-package
+  # Wave (2026-07-09b, #82).
+  emit_csv_row_if_present GEOSPARQL         geosparql   geosparql-v0
+  emit_csv_row_if_present XPATH_UNIT        xpath       xpath-1.0-unit
+  emit_csv_row_if_present TESTS_UNIT        fstar-unit  tests-unit-files
+  emit_csv_row_if_present RML_IO            rml         rml-io
+  emit_csv_row_if_present TOAN_MATRIX       engines     toan-matrix
+  emit_csv_row_if_present XFORMS_NPM        engines     xforms-npm
 } > "$CSV"
 cp "$CSV" "$HISTORY_DIR/${TIMESTAMP_ISO}.csv"
 
@@ -715,6 +795,19 @@ emit_json_suites () {
   # always emits its key with a present boolean (0-count when unmeasured),
   # matching the shacl/shex/… convention above.
   bp () { [ "${1:-0}" -eq 1 ] && echo true || echo false; }
+  # Wave (2026-07-09b, #82) — F* unit-harness rows + rml-io + npm engine views.
+  printf '    "geosparql":      {"pass":%s,"fail":%s,"skip":%s,"total":%s,"present":%s,"spec":"https://www.ogc.org/standard/geosparql/"},\n' \
+    "$GEOSPARQL_PASS" "$GEOSPARQL_FAIL" "$GEOSPARQL_SKIP" "$GEOSPARQL_TOTAL" "$(bp "$GEOSPARQL_PRESENT")"
+  printf '    "xpath_unit":     {"pass":%s,"fail":%s,"skip":%s,"total":%s,"present":%s,"spec":"https://www.w3.org/TR/xpath-10/"},\n' \
+    "$XPATH_UNIT_PASS" "$XPATH_UNIT_FAIL" "$XPATH_UNIT_SKIP" "$XPATH_UNIT_TOTAL" "$(bp "$XPATH_UNIT_PRESENT")"
+  printf '    "tests_unit":     {"pass":%s,"fail":%s,"skip":%s,"total":%s,"present":%s,"spec":"internal (F* native unit regressions, tests/unit/run-all.sh; files-passing/files-failing)"},\n' \
+    "$TESTS_UNIT_PASS" "$TESTS_UNIT_FAIL" "$TESTS_UNIT_SKIP" "$TESTS_UNIT_TOTAL" "$(bp "$TESTS_UNIT_PRESENT")"
+  printf '    "rml_io":         {"pass":%s,"fail":%s,"skip":%s,"total":%s,"present":%s,"spec":"https://kg-construct.github.io/rml-io/spec/"},\n' \
+    "$RML_IO_PASS" "$RML_IO_FAIL" "$RML_IO_SKIP" "$RML_IO_TOTAL" "$(bp "$RML_IO_PRESENT")"
+  printf '    "toan_matrix":    {"pass":%s,"fail":%s,"skip":%s,"total":%s,"present":%s,"spec":"internal (TOAN CAS + Math.Matrix engines, npm node --test)"},\n' \
+    "$TOAN_MATRIX_PASS" "$TOAN_MATRIX_FAIL" "$TOAN_MATRIX_SKIP" "$TOAN_MATRIX_TOTAL" "$(bp "$TOAN_MATRIX_PRESENT")"
+  printf '    "xforms":         {"pass":%s,"fail":%s,"skip":%s,"total":%s,"present":%s,"spec":"https://www.w3.org/TR/xforms/"},\n' \
+    "$XFORMS_NPM_PASS" "$XFORMS_NPM_FAIL" "$XFORMS_NPM_SKIP" "$XFORMS_NPM_TOTAL" "$(bp "$XFORMS_NPM_PRESENT")"
   printf '    "xslt":           {"pass":%s,"fail":%s,"skip":%s,"total":%s,"present":%s,"spec":"https://www.w3.org/TR/xslt-10/"},\n' \
     "$XSLT_PASS" "$XSLT_FAIL" "$XSLT_SKIP" "$XSLT_TOTAL" "$(bp "$XSLT_PRESENT")"
   printf '    "xml_conformance":{"pass":%s,"fail":%s,"skip":%s,"total":%s,"present":%s,"spec":"https://www.w3.org/TR/xml/"},\n' \
@@ -772,6 +865,13 @@ emit_json_suites () {
   emit_json_suite_obj "hdt_stage4_parity" HDT_PARITY
   emit_json_suite_obj "hub_browser_bundle" HUB
   emit_json_suite_obj "npm_package"       NPM
+  # Wave (2026-07-09b, #82).
+  emit_json_suite_obj "geosparql"         GEOSPARQL
+  emit_json_suite_obj "xpath_unit"        XPATH_UNIT
+  emit_json_suite_obj "tests_unit"        TESTS_UNIT
+  emit_json_suite_obj "rml_io"            RML_IO
+  emit_json_suite_obj "toan_matrix"       TOAN_MATRIX
+  emit_json_suite_obj "xforms"            XFORMS_NPM
   printf '\n  }\n'
   printf '}\n'
 } > "$JSON"
@@ -1193,8 +1293,8 @@ OWL_HTML=$(cat <<OWLEOF
   <code>assume val</code>, 0 <code>--lax</code>) is also on the
   SPARQL entailment regime codepath via <code>w3c_runner.ml</code>:
   parent4/5/6/7, simple7/8, sparqldl-01…12, etc. — the
-  <strong>SPARQL 1.1 Entailment Regimes row above (70/70)</strong>
-  passes because Tableau drives the membership check. The owl_runner
+  <strong>SPARQL 1.1 Entailment Regimes row above</strong>
+  passes (see its live score) because Tableau drives the membership check. The owl_runner
   catalogs below currently score under the RL closure path; wiring
   Tableau into owl_runner via <code>--regime dl</code> is Phase 2.3d.
 </p>
@@ -1390,16 +1490,19 @@ RULES_HTML=$(family_section "rules" "Rules: RIF Core" "$RULES_STATUS" "$RULES_HE
 # --- Mapping: RML / CSVW ---------------------------------------------------
 # CSVW is now scored live through csvw_runner (2026-07-09) — the earlier
 # grey "not wired" placeholder is retired.
-read -r MAPPING_PASS MAPPING_FAIL MAPPING_SKIP MAPPING_TOTAL MAPPING_ANY <<< "$(sum_family "RML CSVW2RDF")"
+read -r MAPPING_PASS MAPPING_FAIL MAPPING_SKIP MAPPING_TOTAL MAPPING_ANY <<< "$(sum_family "RML RML_IO CSVW2RDF")"
 MAPPING_STATUS=$(status_for "$MAPPING_FAIL" "$MAPPING_ANY")
 if [ "$MAPPING_ANY" -eq 1 ]; then
-  MAPPING_HEADLINE="${MAPPING_PASS} pass, ${MAPPING_FAIL} fail, ${MAPPING_SKIP} skip (of ${MAPPING_TOTAL}) across RML rml-core and CSVW csv2rdf."
+  MAPPING_HEADLINE="${MAPPING_PASS} pass, ${MAPPING_FAIL} fail, ${MAPPING_SKIP} skip (of ${MAPPING_TOTAL}) across RML rml-core, RML rml-io source-tests, and CSVW csv2rdf."
 else
   MAPPING_HEADLINE="Not measured this run."
 fi
 MAPPING_BODY=$(
   family_suite_row "RML rml-core" "$RML_PASS" "$RML_FAIL" "$RML_SKIP" "$RML_TOTAL" "$RML_PRESENT" \
     "Runner: <code>bin/rml-runner</code> (<code>bin/linux-x86_64/rml_runner</code>) &middot; Suite: <code>third_party/testing/rml-modules/rml-core/</code>"
+  family_suite_row "RML rml-io (source-tests)" "$RML_IO_PASS" "$RML_IO_FAIL" "$RML_IO_SKIP" "$RML_IO_TOTAL" "$RML_IO_PRESENT" \
+    "Runner: <code>bin/linux-x86_64/rml_runner --io</code> &middot; Suite: <code>third_party/testing/rml-modules/rml-io/</code> (RMLSTC0* source tests) &middot; rml-cc (content-container) has no row: the committed runner exposes no <code>--cc</code> mode yet (tracked with the rml program plan)" \
+    "<a href=\"${GITHUB_BLOB_BASE}/docs/designissues/2026-07-05-rml-program-plan.md\" target=\"_blank\" rel=\"noopener\">diagnosis: the fails/skips are rml-io logical-target (RMLTTC0*) and unsupported-source fixtures out of scope for the source-tests section — see the rml program plan</a>"
   family_suite_row "CSVW csv2rdf" "$CSVW2RDF_PASS" "$CSVW2RDF_FAIL" "$CSVW2RDF_SKIP" "$CSVW2RDF_TOTAL" "$CSVW2RDF_PRESENT" \
     "Runner: <code>bin/csvw-runner</code> (<code>bin/linux-x86_64/csvw_runner</code>) &middot; Suite: vendored W3C csv2rdf corpus (ToRdf / ToRdfWithWarnings / NegativeRdf)" \
     "<a href=\"${GITHUB_BLOB_BASE}/docs/designissues/2026-07-05-csvw-program-plan.md\" target=\"_blank\" rel=\"noopener\">diagnosis: burn-down in progress — the CSVW program plan tracks the ToRdf / warnings / negative buckets; residual fails need full @context / metadata-merge processing</a>"
@@ -1436,7 +1539,7 @@ fi
 VC_BODY=$(
   family_suite_row "VC Data Model 2.0 — structural (Stage 1)" "$VC_PASS" "$VC_FAIL" "$VC_SKIP" "$VC_TOTAL" "$VC_PRESENT" \
     "Runner: <code>bin/vc-runner</code> (<code>bin/linux-x86_64/vc_runner</code>) &middot; Suite: <code>third_party/testing/vc/tests/input/</code> (structural fixtures, filename-encoded verdicts)" \
-    "<a href=\"${GITHUB_BLOB_BASE}/docs/designissues/2026-07-05-vc-program-plan.md\" target=\"_blank\" rel=\"noopener\">diagnosis: all 34 fails are documented Stage 2 deferrals (issuer shape, validFrom/validUntil ordering, credentialStatus/credentialSchema/etc. inner shapes) — see the VC program plan</a>"
+    "<a href=\"${GITHUB_BLOB_BASE}/docs/designissues/2026-07-05-vc-program-plan.md\" target=\"_blank\" rel=\"noopener\">diagnosis: the ${VC_FAIL} remaining fails are documented residuals — a type-redefinition cluster needing JSON-LD context/term resolution, plus one corpus template-substitution artifact (validFrom/validUntil sentinel strings) — the measured ceiling for a purely structural checker; see the VC program plan</a>"
 )
 VC_FAMILY_HTML=$(family_section "vc2" "Verifiable Credentials 2.0" "$VC_STATUS" "$VC_FAMILY_HEADLINE" "$VC_BODY" "")
 
@@ -1519,28 +1622,37 @@ RUNTIME_BODY=$(
 )
 RUNTIME_HTML=$(family_section "runtime-parity" "Storage backend &amp; JS runtime: HDT parity / hub / npm" "$RUNTIME_STATUS" "$RUNTIME_HEADLINE" "$RUNTIME_BODY" "")
 
-# --- XForms note (no fabricated row) ---------------------------------------
-# The F* XForms model engine (RDF-adjacent) has a unit harness at
-# tests/unit/xforms_tests.ml (~29 bind/recalc cases) that is only reachable
-# via tests/unit/run-all.sh, currently broken (task #82). Rather than fake a
-# scored row, surface an honest grey note; the browser-facing XForms API is
-# exercised live under the npm suite (xforms.test.js) and hub post29.
-XFORMS_NOTE_HTML=$(cat <<XFN
-<section class="family grey" id="xforms-note">
-  <h2>XForms model engine</h2>
-  <p class="fam-headline grey">Not yet wired as a scored suite.</p>
-  <p class="suite-prov" style="margin-top:0.4em">
-    The F&#42; XForms model engine has a unit harness
-    (<code>tests/unit/xforms_tests.ml</code>, ~29 bind/recalc cases) gated
-    behind <code>tests/unit/run-all.sh</code>, currently broken
-    (<a href="https://github.com/danbri/factoidal/issues/82" target="_blank" rel="noopener">#82</a>);
-    no fabricated number is shown here. The browser-facing XForms API is
-    exercised live under the npm suite (<code>xforms.test.js</code>) and the
-    hub bundle (post29), both counted in the runtime family above.
-  </p>
-</section>
-XFN
+# --- F* unit regressions & adjacent engines (#82) --------------------------
+# The tests/unit native harness (run-all.sh) is now relinked per-test against
+# the committed .cmx — each test carries only its own dependency closure, so
+# a stale/unrelated module can't break an unrelated test's link (#82). That
+# unhid several shipped F* engines: geosparql (WKT geometry + geof: topology)
+# and xpath-1.0 come straight out of the harness; the TOAN/Matrix CAS engines
+# and the XForms bind/recalc model are scored through the JS bundle
+# (node --test). The aggregate row shows files-passing / files-failing across
+# all 41 native unit files. This replaces the earlier grey "XForms not yet
+# wired (#82)" note with real rows + an honest native-XForms status.
+read -r ENGINES_PASS ENGINES_FAIL ENGINES_SKIP ENGINES_TOTAL ENGINES_ANY <<< "$(sum_family "GEOSPARQL XPATH_UNIT TOAN_MATRIX XFORMS_NPM")"
+ENGINES_CARD_FAIL=$((ENGINES_FAIL + ${TESTS_UNIT_FAIL:-0}))
+ENGINES_STATUS=$(status_for "$ENGINES_CARD_FAIL" "$ENGINES_ANY")
+if [ "$ENGINES_ANY" -eq 1 ]; then
+  ENGINES_HEADLINE="${ENGINES_PASS} pass, ${ENGINES_FAIL} fail, ${ENGINES_SKIP} skip (of ${ENGINES_TOTAL}) across GeoSPARQL v0, XPath 1.0, the TOAN/Matrix CAS engines, and the XForms model — shipped F* engines now surfaced from the native unit harness or the JS bundle; the aggregate row below reports how many of the 41 native unit files link and pass in this checkout."
+else
+  ENGINES_HEADLINE="Not measured this run."
+fi
+ENGINES_BODY=$(
+  family_suite_row "GeoSPARQL (geof: topology + WKT)" "$GEOSPARQL_PASS" "$GEOSPARQL_FAIL" "$GEOSPARQL_SKIP" "$GEOSPARQL_TOTAL" "$GEOSPARQL_PRESENT" \
+    "Runner: <code>tests/unit/run-all.sh geosparql_v0_unit</code> &middot; F* <code>RDF.Geo.*</code> — exact-rational WKT geometry + Simple-Features topology + geof: distance/envelope. Hub post21 pins 12 more assertions live against the browser bundle (counted in the npm/hub runtime family)."
+  family_suite_row "XPath 1.0 (unit)" "$XPATH_UNIT_PASS" "$XPATH_UNIT_FAIL" "$XPATH_UNIT_SKIP" "$XPATH_UNIT_TOTAL" "$XPATH_UNIT_PRESENT" \
+    "Runner: <code>tests/unit/run-all.sh xpath_tests</code> &middot; the F* XPath 1.0 evaluator over location-step / predicate / node-set / function-library cases."
+  family_suite_row "TOAN CAS + Math.Matrix engines" "$TOAN_MATRIX_PASS" "$TOAN_MATRIX_FAIL" "$TOAN_MATRIX_SKIP" "$TOAN_MATRIX_TOTAL" "$TOAN_MATRIX_PRESENT" \
+    "Runner: <code>node --test npm/factoidal/test/{toan,matrix}.test.js</code> &middot; the F* CAS (summation / product / simplify / diff / subst) + exact-rational matrix engines via the JS bundle. The npm package suite (runtime family above) additionally exercises xslt, mathml, xforms, jsonschema, schematron, hdt, and vc-crypto — each a shipped engine with its own test file."
+  family_suite_row "XForms model (bind/recalc)" "$XFORMS_NPM_PASS" "$XFORMS_NPM_FAIL" "$XFORMS_NPM_SKIP" "$XFORMS_NPM_TOTAL" "$XFORMS_NPM_PRESENT" \
+    "Runner: <code>node --test npm/factoidal/test/xforms.test.js</code> &middot; the F* XForms bind/recalc model via the JS bundle. The larger native suite (<code>tests/unit/xforms_tests.ml</code>, ~29 bind/recalc cases) can't link in this checkout — its <code>XForms_Bind.cmx</code> is not in the committed artifact set — so the harness fix (<a href=\"https://github.com/danbri/factoidal/issues/82\" target=\"_blank\" rel=\"noopener\">#82</a>) is landed but that suite awaits a committed build; no fabricated 29/29 is shown."
+  family_suite_row "F* unit regressions (tests/unit)" "$TESTS_UNIT_PASS" "$TESTS_UNIT_FAIL" "$TESTS_UNIT_SKIP" "$TESTS_UNIT_TOTAL" "$TESTS_UNIT_PRESENT" \
+    "Runner: <code>tests/unit/run-all.sh</code> &middot; files-passing / files-failing across all 41 native unit files, each relinked against its own committed-.cmx dependency closure. The ${TESTS_UNIT_FAIL:-0} failing files either need a module with no committed .cmx (Math_* / MathML_* / XForms_Bind engines) or hit a committed-.cmx epoch mismatch (RML_Eval vs SPARQL11_Algebra committed in different builds) — an artifact-staleness gap, not a harness bug."
 )
+ENGINES_HTML=$(family_section "fstar-engines" "F&#42; unit regressions &amp; adjacent engines: GeoSPARQL / XPath / TOAN / XForms" "$ENGINES_STATUS" "$ENGINES_HEADLINE" "$ENGINES_BODY" "")
 
 # --- Legend -----------------------------------------------------------------
 LEGEND_HTML=$(cat <<'LEGENDEOF'
@@ -1910,7 +2022,7 @@ ${SCHEMAID_HTML}
 
 ${RUNTIME_HTML}
 
-${XFORMS_NOTE_HTML}
+${ENGINES_HTML}
 
 ${PERF_SECTION_HTML}
 

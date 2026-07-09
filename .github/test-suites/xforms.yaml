@@ -1,0 +1,25 @@
+name: XForms model (bind/recalc)
+spec: https://www.w3.org/TR/xforms/
+runner: node
+runner_args:
+  - --test
+  - npm/factoidal/test/xforms.test.js
+manifest: internal
+log_path: formal/fstar/ocaml-output/xforms_npm_results.log
+result_path: docs/test-results/by-suite/xforms.json
+domain: XML
+foundational: false
+
+# The F* XForms bind/recalc model, exercised through the JS bundle via
+# node --test. The larger native suite (tests/unit/xforms_tests.ml,
+# ~29 bind/recalc cases) is now un-gated by the #82 run-all fix but cannot
+# link in a stock checkout — its XForms_Bind.cmx is not in the committed
+# artifact set — so this npm view is what is scored; no fabricated 29/29 is
+# shown. Once XForms_Bind.cmx is committed, tests/unit/run-all.sh
+# xforms_tests scores the native suite directly.
+triggers:
+  paths:
+    - npm/factoidal/test/xforms.test.js
+    - formal/fstar/XForms.Bind.fst
+    - tests/unit/xforms_tests.ml
+  excludes: []

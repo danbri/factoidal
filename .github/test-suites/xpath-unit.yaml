@@ -1,0 +1,21 @@
+name: XPath 1.0 (unit)
+spec: https://www.w3.org/TR/xpath-10/
+runner: tests/unit/run-all.sh
+runner_args:
+  - xpath_tests
+manifest: internal
+log_path: formal/fstar/ocaml-output/tests_unit_results.log
+result_path: docs/test-results/by-suite/xpath-unit.json
+domain: XML
+foundational: false
+
+# F* XPath 1.0 evaluator (Parser.XPath + XPath.Eval), exercised by the
+# native unit harness tests/unit/xpath_tests.ml over location-step /
+# predicate / node-set / function-library cases. Scraped from the shared
+# tests_unit log.
+triggers:
+  paths:
+    - formal/fstar/Parser.XPath.fst
+    - formal/fstar/XPath.Eval.fst
+    - tests/unit/xpath_tests.ml
+  excludes: []

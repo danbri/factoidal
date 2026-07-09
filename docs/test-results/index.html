@@ -279,7 +279,7 @@
 <header>
   <div class="inner">
     <div class="rendered-pill" title="Rendered = when this page was last regenerated. Tests = when the *_results.log files inside the repository were last updated. Both UTC.">
-      <span class="row"><span class="label">Rendered</span><strong>2026-07-09 21:18 UTC</strong></span>
+      <span class="row"><span class="label">Rendered</span><strong>2026-07-09 21:34 UTC</strong></span>
       <span class="row"><span class="label">Tests</span><strong class="tests">2026-07-07 15:39 UTC</strong></span>
     </div>
     <h1>W3C test results</h1>
@@ -761,8 +761,8 @@
   <code>assume val</code>, 0 <code>--lax</code>) is also on the
   SPARQL entailment regime codepath via <code>w3c_runner.ml</code>:
   parent4/5/6/7, simple7/8, sparqldl-01…12, etc. — the
-  <strong>SPARQL 1.1 Entailment Regimes row above (70/70)</strong>
-  passes because Tableau drives the membership check. The owl_runner
+  <strong>SPARQL 1.1 Entailment Regimes row above</strong>
+  passes (see its live score) because Tableau drives the membership check. The owl_runner
   catalogs below currently score under the RL closure path; wiring
   Tableau into owl_runner via <code>--regime dl</code> is Phase 2.3d.
 </p>
@@ -1013,20 +1013,20 @@
 
 <section class="family green" id="shapes">
   <h2>Shapes: SHACL / ShEx</h2>
-  <p class="fam-headline green">0 pass, 0 fail, 0 skip (of 0) across SHACL Core, SHACL SPARQL-based Constraints, and ShEx validation.</p>
+  <p class="fam-headline green">120 pass, 0 fail, 0 skip (of 120) across SHACL Core, SHACL SPARQL-based Constraints, and ShEx validation.</p>
   <details open>
     <summary>Suites in this family (tap to collapse)</summary>
     <div class="suites">
-      <div class="suite-row grey">
+      <div class="suite-row green">
         <div class="suite-name">SHACL Core</div>
-        <div class="meter"><div class="seg seg-skip" style="width:100%"></div></div>
-        <div class="suite-numbers"><small>not measured this run</small></div>
+        <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+        <div class="suite-numbers"><small>98 pass, 0 fail, 0 skip (of 98)</small></div>
       </div>
       <p class="suite-prov">Runner: <code>bin/shacl-runner</code> (<code>bin/linux-x86_64/shacl_runner</code>) &middot; Suite: <code>third_party/testing/shacl/data-shapes-test-suite/tests/core/</code></p>
-      <div class="suite-row grey">
+      <div class="suite-row green">
         <div class="suite-name">SHACL SPARQL-based Constraints</div>
-        <div class="meter"><div class="seg seg-skip" style="width:100%"></div></div>
-        <div class="suite-numbers"><small>not measured this run</small></div>
+        <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+        <div class="suite-numbers"><small>22 pass, 0 fail, 0 skip (of 22)</small></div>
       </div>
       <p class="suite-prov">Runner: <code>bin/shacl-runner</code> (<code>bin/linux-x86_64/shacl_runner tests/sparql/manifest.ttl</code>) &middot; Suite: <code>third_party/testing/shacl/data-shapes-test-suite/tests/sparql/</code></p>
       <div class="suite-row grey">
@@ -1051,7 +1051,7 @@
         <div class="meter"><div class="seg seg-pass" style="width:68.00%"></div><div class="seg seg-fail" style="width:8.00%"></div><div class="seg seg-skip" style="width:24.00%"></div></div>
         <div class="suite-numbers"><small>34 pass, 4 fail, 12 skip (of 50)</small></div>
       </div>
-      <p class="suite-prov">Runner: <code>bin/rif-runner</code> (<code>bin/linux-x86_64/rif_runner</code>) &middot; Suites: <code>third_party/testing/rif/tc/</code> + <code>third_party/testing/rif-core-suite/</code> &middot; <a href="https://github.com/danbri/factoidal/blob/claude/main/bin/rif-runner/README.md" target="_blank" rel="noopener">diagnosis: 1 corpus data defect (malformed xsd:string IRI in the official W3C zip) + 3 labelled engine KNOWN-GAPs, see bin/rif-runner/README.md</a></p>
+      <p class="suite-prov">Runner: <code>bin/rif-runner</code> (<code>bin/linux-x86_64/rif_runner</code>) &middot; Suites: <code>third_party/testing/rif/tc/</code> + <code>third_party/testing/rif-core-suite/</code> &middot; <a href="https://github.com/danbri/factoidal/blob/worktree-agent-a8a3c7dbcf17f1b69/bin/rif-runner/README.md" target="_blank" rel="noopener">diagnosis: 1 corpus data defect (malformed xsd:string IRI in the official W3C zip) + 3 labelled engine KNOWN-GAPs, see bin/rif-runner/README.md</a></p>
       <div class="suite-row green">
         <div class="suite-name">RIF Core — Part 1 (4 vendored SPARQL-manifest cases)</div>
         <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
@@ -1063,7 +1063,7 @@
         <div class="meter"><div class="seg seg-pass" style="width:65.22%"></div><div class="seg seg-fail" style="width:8.70%"></div><div class="seg seg-skip" style="width:26.09%"></div></div>
         <div class="suite-numbers"><small>30 pass, 4 fail, 12 skip (of 46)</small></div>
       </div>
-      <p class="suite-prov">Runner: <code>bin/rif-runner</code> &middot; Suite: <code>third_party/testing/rif-core-suite/Core_v1.22/Approved/</code> &middot; <a href="https://github.com/danbri/factoidal/blob/claude/main/docs/claude-rules/scope.md" target="_blank" rel="noopener">diagnosis: docs/claude-rules/scope.md RIF section — every skip names the exact missing builtin/feature</a></p>
+      <p class="suite-prov">Runner: <code>bin/rif-runner</code> &middot; Suite: <code>third_party/testing/rif-core-suite/Core_v1.22/Approved/</code> &middot; <a href="https://github.com/danbri/factoidal/blob/worktree-agent-a8a3c7dbcf17f1b69/docs/claude-rules/scope.md" target="_blank" rel="noopener">diagnosis: docs/claude-rules/scope.md RIF section — every skip names the exact missing builtin/feature</a></p>
     </div>
   </details>
   
@@ -1071,7 +1071,7 @@
 
 <section class="family amber" id="mapping">
   <h2>Mapping: RML / CSVW</h2>
-  <p class="fam-headline amber">150 pass, 196 fail, 0 skip (of 346) across RML rml-core and CSVW csv2rdf.</p>
+  <p class="fam-headline amber">167 pass, 211 fail, 41 skip (of 419) across RML rml-core, RML rml-io source-tests, and CSVW csv2rdf.</p>
   <details open>
     <summary>Suites in this family (tap to collapse)</summary>
     <div class="suites">
@@ -1082,11 +1082,17 @@
       </div>
       <p class="suite-prov">Runner: <code>bin/rml-runner</code> (<code>bin/linux-x86_64/rml_runner</code>) &middot; Suite: <code>third_party/testing/rml-modules/rml-core/</code></p>
       <div class="suite-row amber">
+        <div class="suite-name">RML rml-io (source-tests)</div>
+        <div class="meter"><div class="seg seg-pass" style="width:23.29%"></div><div class="seg seg-fail" style="width:20.55%"></div><div class="seg seg-skip" style="width:56.16%"></div></div>
+        <div class="suite-numbers"><small>17 pass, 15 fail, 41 skip (of 73)</small></div>
+      </div>
+      <p class="suite-prov">Runner: <code>bin/linux-x86_64/rml_runner --io</code> &middot; Suite: <code>third_party/testing/rml-modules/rml-io/</code> (RMLSTC0* source tests) &middot; rml-cc (content-container) has no row: the committed runner exposes no <code>--cc</code> mode yet (tracked with the rml program plan) &middot; <a href="https://github.com/danbri/factoidal/blob/worktree-agent-a8a3c7dbcf17f1b69/docs/designissues/2026-07-05-rml-program-plan.md" target="_blank" rel="noopener">diagnosis: the fails/skips are rml-io logical-target (RMLTTC0*) and unsupported-source fixtures out of scope for the source-tests section — see the rml program plan</a></p>
+      <div class="suite-row amber">
         <div class="suite-name">CSVW csv2rdf</div>
         <div class="meter"><div class="seg seg-pass" style="width:27.41%"></div><div class="seg seg-fail" style="width:72.59%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
         <div class="suite-numbers"><small>74 pass, 196 fail, 0 skip (of 270)</small></div>
       </div>
-      <p class="suite-prov">Runner: <code>bin/csvw-runner</code> (<code>bin/linux-x86_64/csvw_runner</code>) &middot; Suite: vendored W3C csv2rdf corpus (ToRdf / ToRdfWithWarnings / NegativeRdf) &middot; <a href="https://github.com/danbri/factoidal/blob/claude/main/docs/designissues/2026-07-05-csvw-program-plan.md" target="_blank" rel="noopener">diagnosis: burn-down in progress — the CSVW program plan tracks the ToRdf / warnings / negative buckets; residual fails need full @context / metadata-merge processing</a></p>
+      <p class="suite-prov">Runner: <code>bin/csvw-runner</code> (<code>bin/linux-x86_64/csvw_runner</code>) &middot; Suite: vendored W3C csv2rdf corpus (ToRdf / ToRdfWithWarnings / NegativeRdf) &middot; <a href="https://github.com/danbri/factoidal/blob/worktree-agent-a8a3c7dbcf17f1b69/docs/designissues/2026-07-05-csvw-program-plan.md" target="_blank" rel="noopener">diagnosis: burn-down in progress — the CSVW program plan tracks the ToRdf / warnings / negative buckets; residual fails need full @context / metadata-merge processing</a></p>
     </div>
   </details>
   
@@ -1103,13 +1109,13 @@
         <div class="meter"><div class="seg seg-pass" style="width:96.15%"></div><div class="seg seg-fail" style="width:2.57%"></div><div class="seg seg-skip" style="width:1.28%"></div></div>
         <div class="suite-numbers"><small>449 pass, 12 fail, 6 skip (of 467)</small></div>
       </div>
-      <p class="suite-prov">Runner: <code>bin/jsonld-runner</code> (<code>bin/linux-x86_64/jsonld_runner</code>) &middot; Suite: <code>third_party/testing/json-ld/</code> (toRdf manifest) &middot; <a href="https://github.com/danbri/factoidal/blob/claude/main/docs/designissues/2026-07-05-docs-hub-plan.md" target="_blank" rel="noopener">diagnosis: the 1 fail is the documented Ryu-class float-formatting case; the 6 skips are JSON-LD 1.0-only fixtures, out of scope for this 1.1 program</a></p>
+      <p class="suite-prov">Runner: <code>bin/jsonld-runner</code> (<code>bin/linux-x86_64/jsonld_runner</code>) &middot; Suite: <code>third_party/testing/json-ld/</code> (toRdf manifest) &middot; <a href="https://github.com/danbri/factoidal/blob/worktree-agent-a8a3c7dbcf17f1b69/docs/designissues/2026-07-05-docs-hub-plan.md" target="_blank" rel="noopener">diagnosis: the 1 fail is the documented Ryu-class float-formatting case; the 6 skips are JSON-LD 1.0-only fixtures, out of scope for this 1.1 program</a></p>
       <div class="suite-row amber">
         <div class="suite-name">JSON-LD 1.1 fromRdf</div>
         <div class="meter"><div class="seg seg-pass" style="width:90.74%"></div><div class="seg seg-fail" style="width:9.26%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
         <div class="suite-numbers"><small>49 pass, 5 fail, 0 skip (of 54)</small></div>
       </div>
-      <p class="suite-prov">Runner: <code>bin/jsonld-fromrdf-runner</code> (<code>bin/linux-x86_64/jsonld_fromrdf_runner</code>) &middot; Suite: W3C JSON-LD 1.1 fromRdf manifest (Serialize RDF as JSON-LD) &middot; <a href="https://github.com/danbri/factoidal/blob/claude/main/.github/test-suites/jsonld-fromrdf.yaml" target="_blank" rel="noopener">diagnosis: residual fails are the documented @native/list-container serialisation gaps — see the suite manifest</a></p>
+      <p class="suite-prov">Runner: <code>bin/jsonld-fromrdf-runner</code> (<code>bin/linux-x86_64/jsonld_fromrdf_runner</code>) &middot; Suite: W3C JSON-LD 1.1 fromRdf manifest (Serialize RDF as JSON-LD) &middot; <a href="https://github.com/danbri/factoidal/blob/worktree-agent-a8a3c7dbcf17f1b69/.github/test-suites/jsonld-fromrdf.yaml" target="_blank" rel="noopener">diagnosis: residual fails are the documented @native/list-container serialisation gaps — see the suite manifest</a></p>
     </div>
   </details>
   
@@ -1126,7 +1132,7 @@
         <div class="meter"><div class="seg seg-pass" style="width:90.83%"></div><div class="seg seg-fail" style="width:4.17%"></div><div class="seg seg-skip" style="width:5.00%"></div></div>
         <div class="suite-numbers"><small>109 pass, 5 fail, 6 skip (of 120)</small></div>
       </div>
-      <p class="suite-prov">Runner: <code>bin/vc-runner</code> (<code>bin/linux-x86_64/vc_runner</code>) &middot; Suite: <code>third_party/testing/vc/tests/input/</code> (structural fixtures, filename-encoded verdicts) &middot; <a href="https://github.com/danbri/factoidal/blob/claude/main/docs/designissues/2026-07-05-vc-program-plan.md" target="_blank" rel="noopener">diagnosis: all 34 fails are documented Stage 2 deferrals (issuer shape, validFrom/validUntil ordering, credentialStatus/credentialSchema/etc. inner shapes) — see the VC program plan</a></p>
+      <p class="suite-prov">Runner: <code>bin/vc-runner</code> (<code>bin/linux-x86_64/vc_runner</code>) &middot; Suite: <code>third_party/testing/vc/tests/input/</code> (structural fixtures, filename-encoded verdicts) &middot; <a href="https://github.com/danbri/factoidal/blob/worktree-agent-a8a3c7dbcf17f1b69/docs/designissues/2026-07-05-vc-program-plan.md" target="_blank" rel="noopener">diagnosis: the 5 remaining fails are documented residuals — a type-redefinition cluster needing JSON-LD context/term resolution, plus one corpus template-substitution artifact (validFrom/validUntil sentinel strings) — the measured ceiling for a purely structural checker; see the VC program plan</a></p>
     </div>
   </details>
   
@@ -1143,7 +1149,7 @@
         <div class="meter"><div class="seg seg-pass" style="width:70.45%"></div><div class="seg seg-fail" style="width:29.55%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
         <div class="suite-numbers"><small>62 pass, 26 fail, 0 skip (of 88)</small></div>
       </div>
-      <p class="suite-prov">Runner: <code>bin/xslt-runner</code> (<code>bin/linux-x86_64/xslt_runner</code>) &middot; Suite: <code>third_party/testing/xslt/manifest.json</code> &middot; <a href="https://github.com/danbri/factoidal/blob/claude/main/.github/test-suites/xslt.yaml" target="_blank" rel="noopener">diagnosis: residual fails are the documented XSLT 1.0 constructs not yet in the transform engine — see the suite manifest</a></p>
+      <p class="suite-prov">Runner: <code>bin/xslt-runner</code> (<code>bin/linux-x86_64/xslt_runner</code>) &middot; Suite: <code>third_party/testing/xslt/manifest.json</code> &middot; <a href="https://github.com/danbri/factoidal/blob/worktree-agent-a8a3c7dbcf17f1b69/.github/test-suites/xslt.yaml" target="_blank" rel="noopener">diagnosis: residual fails are the documented XSLT 1.0 constructs not yet in the transform engine — see the suite manifest</a></p>
       <div class="suite-row green">
         <div class="suite-name">XML 1.0 conformance</div>
         <div class="meter"><div class="seg seg-pass" style="width:54.70%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:45.30%"></div></div>
@@ -1233,7 +1239,7 @@ XML_Wellformedness.is_valid_ncname (informational only, see module comment):
         <div class="meter"><div class="seg seg-pass" style="width:98.53%"></div><div class="seg seg-fail" style="width:1.47%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
         <div class="suite-numbers"><small>201 pass, 3 fail, 0 skip (of 204)</small></div>
       </div>
-      <p class="suite-prov">Runner: <code>node --test tests/hub/*.mjs</code> &middot; live cells for every docs-hub post, run against the JS/wasm bundle &middot; <a href="https://github.com/danbri/factoidal/blob/claude/main/tests/hub/" target="_blank" rel="noopener">diagnosis: any residual fails are fixtures/build-artifacts absent in this checkout (uninitialised submodule or unbuilt C demo), not engine regressions</a></p>
+      <p class="suite-prov">Runner: <code>node --test tests/hub/*.mjs</code> &middot; live cells for every docs-hub post, run against the JS/wasm bundle &middot; <a href="https://github.com/danbri/factoidal/blob/worktree-agent-a8a3c7dbcf17f1b69/tests/hub/" target="_blank" rel="noopener">diagnosis: any residual fails are fixtures/build-artifacts absent in this checkout (uninitialised submodule or unbuilt C demo), not engine regressions</a></p>
       <div class="suite-row green">
         <div class="suite-name">npm package suite</div>
         <div class="meter"><div class="seg seg-pass" style="width:99.31%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.69%"></div></div>
@@ -1245,18 +1251,45 @@ XML_Wellformedness.is_valid_ncname (informational only, see module comment):
   
 </section>
 
-<section class="family grey" id="xforms-note">
-  <h2>XForms model engine</h2>
-  <p class="fam-headline grey">Not yet wired as a scored suite.</p>
-  <p class="suite-prov" style="margin-top:0.4em">
-    The F&#42; XForms model engine has a unit harness
-    (<code>tests/unit/xforms_tests.ml</code>, ~29 bind/recalc cases) gated
-    behind <code>tests/unit/run-all.sh</code>, currently broken
-    (<a href="https://github.com/danbri/factoidal/issues/82" target="_blank" rel="noopener">#82</a>);
-    no fabricated number is shown here. The browser-facing XForms API is
-    exercised live under the npm suite (<code>xforms.test.js</code>) and the
-    hub bundle (post29), both counted in the runtime family above.
-  </p>
+<section class="family amber" id="fstar-engines">
+  <h2>F&#42; unit regressions &amp; adjacent engines: GeoSPARQL / XPath / TOAN / XForms</h2>
+  <p class="fam-headline amber">141 pass, 0 fail, 0 skip (of 141) across GeoSPARQL v0, XPath 1.0, the TOAN/Matrix CAS engines, and the XForms model — shipped F* engines now surfaced from the native unit harness or the JS bundle; the aggregate row below reports how many of the 41 native unit files link and pass in this checkout.</p>
+  <details open>
+    <summary>Suites in this family (tap to collapse)</summary>
+    <div class="suites">
+      <div class="suite-row green">
+        <div class="suite-name">GeoSPARQL (geof: topology + WKT)</div>
+        <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+        <div class="suite-numbers"><small>37 pass, 0 fail, 0 skip (of 37)</small></div>
+      </div>
+      <p class="suite-prov">Runner: <code>tests/unit/run-all.sh geosparql_v0_unit</code> &middot; F* <code>RDF.Geo.*</code> — exact-rational WKT geometry + Simple-Features topology + geof: distance/envelope. Hub post21 pins 12 more assertions live against the browser bundle (counted in the npm/hub runtime family).</p>
+      <div class="suite-row green">
+        <div class="suite-name">XPath 1.0 (unit)</div>
+        <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+        <div class="suite-numbers"><small>91 pass, 0 fail, 0 skip (of 91)</small></div>
+      </div>
+      <p class="suite-prov">Runner: <code>tests/unit/run-all.sh xpath_tests</code> &middot; the F* XPath 1.0 evaluator over location-step / predicate / node-set / function-library cases.</p>
+      <div class="suite-row green">
+        <div class="suite-name">TOAN CAS + Math.Matrix engines</div>
+        <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+        <div class="suite-numbers"><small>11 pass, 0 fail, 0 skip (of 11)</small></div>
+      </div>
+      <p class="suite-prov">Runner: <code>node --test npm/factoidal/test/{toan,matrix}.test.js</code> &middot; the F* CAS (summation / product / simplify / diff / subst) + exact-rational matrix engines via the JS bundle. The npm package suite (runtime family above) additionally exercises xslt, mathml, xforms, jsonschema, schematron, hdt, and vc-crypto — each a shipped engine with its own test file.</p>
+      <div class="suite-row green">
+        <div class="suite-name">XForms model (bind/recalc)</div>
+        <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+        <div class="suite-numbers"><small>2 pass, 0 fail, 0 skip (of 2)</small></div>
+      </div>
+      <p class="suite-prov">Runner: <code>node --test npm/factoidal/test/xforms.test.js</code> &middot; the F* XForms bind/recalc model via the JS bundle. The larger native suite (<code>tests/unit/xforms_tests.ml</code>, ~29 bind/recalc cases) can't link in this checkout — its <code>XForms_Bind.cmx</code> is not in the committed artifact set — so the harness fix (<a href="https://github.com/danbri/factoidal/issues/82" target="_blank" rel="noopener">#82</a>) is landed but that suite awaits a committed build; no fabricated 29/29 is shown.</p>
+      <div class="suite-row amber">
+        <div class="suite-name">F* unit regressions (tests/unit)</div>
+        <div class="meter"><div class="seg seg-pass" style="width:85.37%"></div><div class="seg seg-fail" style="width:14.63%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+        <div class="suite-numbers"><small>35 pass, 6 fail, 0 skip (of 41)</small></div>
+      </div>
+      <p class="suite-prov">Runner: <code>tests/unit/run-all.sh</code> &middot; files-passing / files-failing across all 41 native unit files, each relinked against its own committed-.cmx dependency closure. The 6 failing files either need a module with no committed .cmx (Math_* / MathML_* / XForms_Bind engines) or hit a committed-.cmx epoch mismatch (RML_Eval vs SPARQL11_Algebra committed in different builds) — an artifact-staleness gap, not a harness bug.</p>
+    </div>
+  </details>
+  
 </section>
 
 
@@ -1323,8 +1356,8 @@ XML_Wellformedness.is_valid_ncname (informational only, see module comment):
   rdf-turtle                          pass:313 fail:0 skip:0 unsupported:0
   rdf-xml                             pass:166 fail:0 skip:0 unsupported:0</pre>
   <h3 style="font-size: 0.95em; margin: 0.8em 0 0.3em;">Shapes / Rules / Mapping / JSON-LD / VC</h3>
-  <pre>shacl-core:   0 pass, 0 fail, 0 skip (of 0) — present=1
-shacl-sparql: 0 pass, 0 fail, 0 skip (of 0) — present=1
+  <pre>shacl-core:   98 pass, 0 fail, 0 skip (of 98) — present=1
+shacl-sparql: 22 pass, 0 fail, 0 skip (of 22) — present=1
 shex:         0 pass, 0 fail, 0 skip (of 0) — present=0
 jsonld-tordf: 449 pass, 12 fail, 6 skip (of 467) — present=1
 rml-core:     76 pass, 0 fail, 0 skip (of 76) — present=1
@@ -1347,9 +1380,9 @@ vc-stage1:    109 pass, 5 fail, 6 skip (of 120) — present=1</pre>
 </main>
 
 <footer>
-  Generated <strong>2026-07-09 21:18 UTC</strong> from commit
-  <code><a href="https://github.com/danbri/factoidal/commit/3aecb5b991264a74617ccee79211166780c07ab4">3aecb5b9</a></code>
-  on branch <code>claude/main</code> — &ldquo;skills: dashboard prose must derive counts from scraped vars, never hardcode&rdquo;.
+  Generated <strong>2026-07-09 21:34 UTC</strong> from commit
+  <code><a href="https://github.com/danbri/factoidal/commit/3dbc70aa43691e646780df8f82bfed092c97fc7a">3dbc70a</a></code>
+  on branch <code>worktree-agent-a8a3c7dbcf17f1b69</code> — &ldquo;ci: fixture setup + lying-row gate for cloud runs&rdquo;.
   Re-run locally: <code>cd formal/fstar &amp;&amp; ./generate-report.sh --run</code>.
 </footer>
 

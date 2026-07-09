@@ -1,0 +1,22 @@
+name: RML rml-io (source-tests)
+spec: https://kg-construct.github.io/rml-io/spec/
+runner: bin/linux-x86_64/rml_runner
+runner_args:
+  - --io
+manifest: third_party/testing/rml-modules/rml-io/test-cases
+log_path: formal/fstar/ocaml-output/rml_io_results.log
+result_path: docs/test-results/by-suite/rml-io.json
+domain: RDF
+foundational: false
+
+# The rml-io RMLSTC0* source-tests section (rml_runner --io), a secondary
+# RML conformance view distinct from rml-core. Fails/skips are the rml-io
+# logical-target (RMLTTC0*) and unsupported-source fixtures out of scope for
+# the source-tests section — see the 2026-07-05 rml program plan.
+# rml-cc (content-container) has no row yet: the committed runner exposes no
+# --cc mode.
+triggers:
+  paths:
+    - bin/rml-runner/**
+    - third_party/testing/rml-modules/rml-io/**
+  excludes: []

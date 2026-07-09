@@ -1,0 +1,22 @@
+name: GeoSPARQL (geof: topology + WKT)
+spec: https://www.ogc.org/standard/geosparql/
+runner: tests/unit/run-all.sh
+runner_args:
+  - geosparql_v0_unit
+manifest: internal
+log_path: formal/fstar/ocaml-output/tests_unit_results.log
+result_path: docs/test-results/by-suite/geosparql.json
+domain: RDF
+foundational: false
+
+# F* RDF.Geo.* engine (exact-rational WKT geometry + Simple-Features
+# topology + geof: distance/envelope), exercised by the native unit harness
+# tests/unit/geosparql_v0_unit.ml. Scraped from the shared tests_unit log.
+# Hub post21 pins 12 more assertions live against the browser bundle (counted
+# in the npm/hub runtime family). OGC W3C-suite runner pending — see #239.
+triggers:
+  paths:
+    - formal/fstar/RDF.Geo.*
+    - formal/fstar/Parser.WKT.fst
+    - tests/unit/geosparql_v0_unit.ml
+  excludes: []
