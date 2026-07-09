@@ -56,6 +56,23 @@ with $WORKTREE_PATH, STOP and translate it.
 
 ### Rule 2 — post-condition self-check before pushing
 
+## Step 0 in every worktree brief (MANDATORY): restore test fixtures
+
+`git worktree add` populates ZERO of the 14 `third_party/testing/*`
+submodules, so a fresh agent worktree cannot run most suites — scores
+read 0/0 and hub/npm tests fail with fixture ENOENT that agents misread
+as engine regressions (hazard #15 in `workflow-gotchas-debugging`).
+Every worktree-agent brief must include, before any build or test step:
+
+    tools/ensure-test-env.sh    # idempotent: inits all testing
+                                # submodules + verifies per-suite
+                                # sentinels; exit 1 = scores will lie
+
+If the worktree is offline and init fails, the fallback is copying the
+named fixture dirs from the main checkout — but the agent must say so
+in its report; never present a result from a checkout where the script
+exits 1.
+
 Every agent prompt MUST end with this block:
 
 ```

@@ -18,7 +18,7 @@ in remote sandboxes on every session start, all steps idempotent:
 
 | Restored | From | Cold cost | Warm cost |
 |---|---|---|---|
-| Test submodules (w3c, rdf-canon) | git | ~1 min | no-op |
+| Test fixtures — ALL 14 `third_party/testing/*` submodules + per-suite sentinel verification (`tools/ensure-test-env.sh`; worktrees must run it themselves) | git | ~2-4 min (~500 MB) | no-op |
 | Committed binaries check + `ocaml-output/` symlinks | `bin/<platform>/` | instant | instant |
 | pycottas venv (`_tmp.junk/pycottas-venv`) | PyPI | ~1 min | no-op |
 | **Skill discovery symlinks** `.claude/skills/<n>` | regenerated fresh from `skills/*/` | instant | instant |

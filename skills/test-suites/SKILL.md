@@ -54,6 +54,19 @@ by design, not a bug in the tool.
 must still run the complete suite (`./w3c-tests.sh`) before those.
 `affected-tests.sh` is a fast local signal, not a substitute.
 
+## Step 0: verify fixtures exist (or every score below lies)
+
+```bash
+tools/ensure-test-env.sh          # init all 14 testing submodules + verify (idempotent)
+tools/ensure-test-env.sh --check  # verify only, no network
+```
+
+Fixtures live in git submodules that fresh containers, git worktrees,
+and CI runners do NOT populate automatically. A missing suite does not
+error loudly — it shows up as a 0/0 dashboard row, a "0 tests" run, or
+fixture-ENOENT test failures that look like engine regressions. Exit 1
+from the script means: fix the environment before trusting any number.
+
 ## The one command
 
 ```bash

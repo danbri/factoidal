@@ -128,6 +128,12 @@ dispatching against the COTTAS backend or evaluator, the agent prompt
 MUST forbid additions to `experimental_ocaml_glue/` other than the
 rule-#11 acceptable forms.
 
+**Worktree agents start with `tools/ensure-test-env.sh`** — worktrees
+inherit zero test submodules, and absent fixtures produce lying 0/0
+scores and phantom ENOENT failures (hazard #15,
+`skills/workflow-gotchas-debugging`). Never trust a suite number from
+a checkout where that script exits 1.
+
 ## Anti-patterns (one-line summaries)
 
 Full text + war stories: [`docs/claude-rules/anti-patterns.md`](docs/claude-rules/anti-patterns.md).

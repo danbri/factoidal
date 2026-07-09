@@ -45,14 +45,16 @@ fi
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
-# 0a. Test-data submodules (idempotent: fast no-op when populated).
-#     Only the two the runners need; the other five (shex/csvw/vc/
-#     did/rml) are unwired and stay lazy.
-if [[ ! -e "$REPO_ROOT/third_party/testing/w3c/README.md" ]]; then
-  echo "session-start: initialising W3C test submodules (first run on this container)..." >&2
-  git -C "$REPO_ROOT" submodule update --init \
-    third_party/testing/w3c third_party/testing/rdf-canon >&2 \
-    || echo "session-start: submodule init FAILED — test runners will report zero tests; do not trust a 0/0 run" >&2
+# 0a. Test-data submodules + fixture verification (idempotent: fast
+#     no-op when populated). ALL testing submodules, not a lazy subset —
+#     every suite is now wired into a runner and the public dashboard,
+#     and an absent one lies (a 0/0 row, a "0 tests" run, or hub-test
+#     ENOENT misread as a regression). tools/ensure-test-env.sh is the
+#     single source of truth for what "test-ready" means; run it by
+#     hand in any git worktree too (worktrees inherit NO submodules).
+TESTENV_STATUS="ok"
+if ! "$REPO_ROOT/tools/ensure-test-env.sh" >/dev/null 2>&1; then
+  TESTENV_STATUS="GAPS — run tools/ensure-test-env.sh and read its table; do not trust 0/0 scores"
 fi
 
 # 0b. Committed-binary smoke check (never blocks; report only).
@@ -180,7 +182,7 @@ command -v fstar.exe >/dev/null 2>&1 && FSTAR_STATUS="fstar.exe on PATH"
 cat <<ORIENT
 factoidal session bootstrap:
 - ${BIN_STATUS}
-- test submodules: $([ -e "$REPO_ROOT/third_party/testing/w3c/README.md" ] && echo present || echo "MISSING (0/0 runs will lie)")
+- test fixtures (all suites): ${TESTENV_STATUS} (tools/ensure-test-env.sh)
 - F* toolchain: ${FSTAR_STATUS}
 - ${MCP_STATUS}
 - git: ${GIT_FRESHNESS}

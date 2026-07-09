@@ -1,6 +1,6 @@
 ---
 name: workflow-gotchas-debugging
-description: Diagnostic playbook for the dev-loop hazards that recur in this repo. Use when a build mysteriously fails, a fresh clone breaks where local works, an agent's work doesn't appear on its branch, the same uncommitted file keeps coming back after `git checkout`, a secondary compile script poisons shared `.cmi`/`.cmx` files, a `set -e` + cleanup trap eats a failing build's log, or "stop hook fires every turn but I'm not done." Fourteen hazards total (see "Lessons from 2026-05-07" below): subagent worktree-leakage, concurrent F* extract races, source-without-build-wiring, stale doc numbers, the build-aware stop-hook gap, the `(* *)` comment trap, worktree garbage, secondary-script `.cmx` poisoning, editing build inputs mid-build, cleanup traps eating diagnostics, old-base cherry-picks silently dropping build-list/consumer entries, stale js/npm bundles failing hub cells, old-base agent branches reverting content fixes you just made, and `>=` test floors on decreasing metrics breaking on progress — plus their detection + recovery steps.
+description: Diagnostic playbook for the dev-loop hazards that recur in this repo. Use when a build mysteriously fails, a fresh clone breaks where local works, an agent's work doesn't appear on its branch, the same uncommitted file keeps coming back after `git checkout`, a secondary compile script poisons shared `.cmi`/`.cmx` files, a `set -e` + cleanup trap eats a failing build's log, or "stop hook fires every turn but I'm not done." Fifteen hazards total (see "Lessons from 2026-05-07" below): subagent worktree-leakage, concurrent F* extract races, source-without-build-wiring, stale doc numbers, the build-aware stop-hook gap, the `(* *)` comment trap, worktree garbage, secondary-script `.cmx` poisoning, editing build inputs mid-build, cleanup traps eating diagnostics, old-base cherry-picks silently dropping build-list/consumer entries, stale js/npm bundles failing hub cells, old-base agent branches reverting content fixes you just made, `>=` test floors on decreasing metrics breaking on progress, and missing test submodules in worktrees/fresh containers producing lying 0/0 scores and phantom ENOENT failures (fix: tools/ensure-test-env.sh) — plus their detection + recovery steps.
 ---
 
 # Workflow gotchas + debugging
@@ -478,6 +478,38 @@ shrinking metric fails on success and trains you to ignore red.
 - If a doc/test pins a specific number, prefer "on the order of N" prose
   + a self-serve command (`grep -c ...`) over a brittle exact figure —
   the number is a claim about one moment; the tree moves.
+
+## 15. Missing test submodules: worktrees + fresh containers silently lose fixtures (2026-07-09)
+
+### Symptom
+Three disguises of one cause: (a) a dashboard row reads **0 pass / 0
+fail** (SHACL/ShEx shipped that way publicly); (b) a runner reports "0
+tests" and a naive reader logs it as a pass; (c) hub/npm tests fail
+with ENOENT on fixture paths and the failures get misread as engine
+regressions (post09/13/18 all did this to multiple agents in one day).
+
+### Root cause
+Test fixtures live in 14 `third_party/testing/*` git submodules.
+`git worktree add` populates NONE of them, and a fresh container
+populates none until something inits them. The old bootstrap only
+initialised two (w3c, rdf-canon) — every other suite depended on luck.
+Each worktree subagent then improvised (hand-init, copying from the
+main checkout), wasting tokens and occasionally shipping stale-fixture
+results.
+
+### Detection / recovery / prevention
+- **`tools/ensure-test-env.sh`** is the single source of truth: inits
+  all testing submodules (idempotent, worktree-safe — resolves the
+  checkout via `git rev-parse --show-toplevel`) and verifies a
+  per-suite sentinel path, printing a labelled table naming what each
+  gap breaks. `--check` verifies without network. Exit 1 = do NOT
+  trust any suite score from that checkout.
+- The SessionStart hook runs it on the main checkout; **worktrees must
+  run it themselves** — every worktree-subagent brief includes it as
+  step 0 (see `subagent-prompting`).
+- Before diagnosing any 0/0 row, "0 tests" run, or fixture-ENOENT test
+  failure: run `tools/ensure-test-env.sh --check` FIRST. If it exits 1,
+  the score is an environment artifact, not an engine result.
 
 ## Lessons from 2026-05-07
 
