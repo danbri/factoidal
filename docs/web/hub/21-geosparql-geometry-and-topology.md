@@ -231,31 +231,52 @@ try {
     withinRows.map((r) => [r.get("cityName").value, r.get("areaName").value])
   );
 
+  // Parse every WKT geometry up front so the map's view can be set
+  // BEFORE any vector layer is added. Leaflet defers a layer's onAdd
+  // until the map has a view; flushing that queue from a later
+  // fitBounds runs the path code before the renderer has computed its
+  // pixel bounds, and throws "Cannot read properties of undefined
+  // (reading 'min')" from _clipPoints (stock 1.9.4 behavior).
+  const areas = areaRows.map((row) => ({
+    name: row.get("areaName").value,
+    geom: wktParse(row.get("ageom").value),
+  }));
+  const cities = cityRows.map((row) => ({
+    name: row.get("cityName").value,
+    geom: wktParse(row.get("cgeom").value),
+  }));
+  const allLatLngs = [];
+  for (const { geom } of areas)
+    for (const [lon, lat] of geom.ring) allLatLngs.push([lat, lon]);
+  for (const { geom } of cities) allLatLngs.push([geom.lat, geom.lon]);
+
   const container = document.createElement("div");
   container.className = "hub-leaflet-map";
 
   const map = L.map(container, { zoomControl: true, attributionControl: false });
-  const allLatLngs = [];
+  // Set an explicit center+zoom (no size-dependent math) so the map
+  // is "loaded" before layers are added. fitBounds here would divide
+  // by the detached container's zero size and poison the view with
+  // NaN; the real fit happens in the post-attach frame below.
+  const centroid = [
+    allLatLngs.reduce((s, ll) => s + ll[0], 0) / allLatLngs.length,
+    allLatLngs.reduce((s, ll) => s + ll[1], 0) / allLatLngs.length,
+  ];
+  map.setView(centroid, 5);
 
-  for (const row of areaRows) {
-    const name = row.get("areaName").value;
-    const geom = wktParse(row.get("ageom").value);
+  for (const { name, geom } of areas) {
     const geojson = { type: "Polygon", coordinates: [geom.ring] };
     L.geoJSON(geojson, {
       style: { color: "#2d6a4f", weight: 1, fillColor: "#2d6a4f", fillOpacity: 0.08 },
     })
       .bindTooltip(name)
       .addTo(map);
-    for (const [lon, lat] of geom.ring) allLatLngs.push([lat, lon]);
   }
 
-  for (const row of cityRows) {
-    const name = row.get("cityName").value;
-    const geom = wktParse(row.get("cgeom").value);
+  for (const { name, geom } of cities) {
     const area = withinArea.get(name);
     const isWithin = area !== undefined;
-    const latlng = [geom.lat, geom.lon];
-    const marker = L.circleMarker(latlng, {
+    const marker = L.circleMarker([geom.lat, geom.lon], {
       radius: name === "London" ? 10 : 7,
       color: "#1a1e23",
       weight: name === "London" ? 2 : 1,
@@ -266,18 +287,19 @@ try {
       ? name + " — geof:sfWithin " + area
       : name + " — not sfWithin any area shown";
     marker.bindTooltip(label, name === "London" ? { permanent: true, direction: "top" } : {});
-    allLatLngs.push(latlng);
   }
 
-  map.fitBounds(allLatLngs, { padding: [16, 16] });
-
   // Leaflet needs its container sized AND attached to the document
-  // before it can lay out tiles/panes correctly; the runtime attaches
-  // this cell's returned node to the page only after this function
-  // returns, so invalidateSize() has to run on a later frame.
-  const invalidate = () => map.invalidateSize();
-  if (typeof requestAnimationFrame === "function") requestAnimationFrame(invalidate);
-  else setTimeout(invalidate, 0);
+  // before it can lay out panes or compute a bounds-fitting zoom; the
+  // runtime attaches this cell's returned node only after this
+  // function returns, so both the size refresh and the real
+  // fitBounds run on a later frame, once the container has a size.
+  const settle = () => {
+    map.invalidateSize();
+    map.fitBounds(allLatLngs, { padding: [16, 16] });
+  };
+  if (typeof requestAnimationFrame === "function") requestAnimationFrame(settle);
+  else setTimeout(settle, 0);
 
   return container;
 } catch (err) {
