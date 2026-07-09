@@ -35,6 +35,14 @@ open XPath.Eval
 //   text/attribute -> copy string value, comment/PI -> no output).
 // Output methods: "xml" (default) and "text".
 //
+// Namespace nodes (XSLT 1.0 §7.5): literal result elements copy the
+// in-scope namespace declarations of the stylesheet element onto the
+// result tree (stripped of the XSLT namespace and of the stylesheet's
+// exclude-result-prefixes); xsl:copy and xsl:copy-of copy an element's
+// in-scope namespace nodes (own + ancestor-inherited) onto the copied
+// element. The serializer threads output scope and suppresses redundant
+// declarations, and xsl:-namespaced attributes on LREs are not written.
+//
 // Match patterns: a general right-to-left location-path matcher over
 // name/"*" steps with "/" (child) and "//" (descendant) separators,
 // optional leading "/" (root-anchored) or "//" (any-descendant), and
@@ -55,11 +63,14 @@ open XPath.Eval
 // Deliberately OUT of scope (a mismatch here is expected, not a bug):
 //   xsl:number, xsl:key/key(), id() (needs DTD ATTLIST ID typing),
 //   document(), xsl:import/include, xsl:apply-imports/next-match,
-//   format-number, xsl:sort case-order / lang collations, namespace-node
-//   synthesis / exclude-result-prefixes / namespace-prefix rewriting on
-//   copied elements, disable-output-escaping, document-level comments/PIs
-//   around the root element (Parser.XML models the source as the root
-//   element, so a sibling comment/PI of the root is not in the tree),
+//   format-number, xsl:sort case-order / lang collations, the
+//   `namespace::` axis and namespace-node counting (XPath.Eval models no
+//   namespace-node kind), namespace-uri()/prefix-aware match patterns,
+//   xsl:element/@namespace with default-namespace reset, xsl:namespace-
+//   alias, copy-namespaces="no" (XSLT 2.0), disable-output-escaping,
+//   document-level comments/PIs around the root element (Parser.XML
+//   models the source as the root element, so a sibling comment/PI of
+//   the root is not in the tree),
 //   XPath 2.0 comparison operators (eq/ne/lt/le/gt/ge), positional
 //   predicates INSIDE xsl:template MATCH patterns (a match-pattern
 //   predicate is still evaluated as a plain boolean at position 1 --
@@ -155,6 +166,79 @@ let local_name (tag:string) : string =
   match split_on_char ':' tag with
   | _ :: local :: _ -> local
   | _ -> tag
+
+let rec drop_prefix_chars (cs:list char) (n:nat) : Tot (list char) (decreases n) =
+  if n = 0 then cs
+  else match cs with
+       | [] -> []
+       | _ :: rest -> drop_prefix_chars rest (n - 1)
+
+// Prefix of a QName tag ("" when unprefixed).
+let name_prefix (tag:string) : string =
+  match split_on_char ':' tag with
+  | pfx :: _ :: _ -> pfx
+  | _ -> ""
+
+(* ================================================================ *)
+(* Namespace declarations (XSLT 1.0 §7.5).                             *)
+(*                                                                     *)
+(* The XML parser keeps `xmlns`/`xmlns:prefix` declarations as ordinary *)
+(* attributes on the element. A namespace node is therefore recovered  *)
+(* from such an attribute: `xmlns` declares the default namespace       *)
+(* (prefix ""), `xmlns:p` declares prefix "p".                          *)
+(* ================================================================ *)
+
+let ns_decl_prefix (name:string) : option string =
+  if name = "xmlns" then Some ""
+  else if starts_with "xmlns:" name then Some (str_of_chars (drop_prefix_chars (chars_of name) 6))
+  else None
+
+let is_ns_decl (a:xml_attribute) : bool = Some? (ns_decl_prefix a.attr_name)
+
+let rec mem_str (x:string) (xs:list string) : Tot bool (decreases xs) =
+  match xs with
+  | [] -> false
+  | h :: t -> if h = x then true else mem_str x t
+
+// Accumulate the namespace declarations of one element's attribute
+// list, keeping only prefixes not already bound nearer (`seen`).
+let rec ns_add (acc:list xml_attribute) (seen:list string) (attrs:list xml_attribute)
+  : Tot (list xml_attribute & list string) (decreases attrs) =
+  match attrs with
+  | [] -> (acc, seen)
+  | a :: rest ->
+    (match ns_decl_prefix a.attr_name with
+     | Some pfx -> if mem_str pfx seen then ns_add acc seen rest
+                   else ns_add (acc @ [a]) (pfx :: seen) rest
+     | None -> ns_add acc seen rest)
+
+// In-scope namespace nodes of a node: its own declarations plus those
+// inherited from its ancestors (nearest-first), each prefix bound by
+// the nearest declaration. Used by xsl:copy to copy an element's
+// namespace nodes onto the result element (XSLT §7.5).
+let rec inscope_ns (acc:list xml_attribute) (seen:list string) (nodes:list xml_node)
+  : Tot (list xml_attribute) (decreases nodes) =
+  match nodes with
+  | [] -> acc
+  | n :: rest ->
+    let (acc', seen') = ns_add acc seen (element_attrs n) in
+    inscope_ns acc' seen' rest
+
+// Lexicographic (codepoint) order on strings, used to sort namespace
+// declarations by prefix so the emission order is stable and matches
+// the sorted-by-prefix order compliant serializers produce.
+let rec char_list_cmp (a b:list char) : Tot int (decreases a) =
+  match a, b with
+  | [], [] -> 0
+  | [], _ -> -1
+  | _, [] -> 1
+  | x :: xs, y :: ys ->
+    let cx = FStar.Char.int_of_char x in
+    let cy = FStar.Char.int_of_char y in
+    if cx < cy then -1 else if cx > cy then 1 else char_list_cmp xs ys
+
+let attr_name_cmp (a b:xml_attribute) : int =
+  char_list_cmp (chars_of a.attr_name) (chars_of b.attr_name)
 
 (* ================================================================ *)
 (* Result nodes: an instantiated instruction produces a sequence of   *)
@@ -261,18 +345,33 @@ noeq type xstyle = {
   xs_templates : list template;
   xs_method : string;
   xs_globals : list (string & xp_value);
+  // In-scope namespace declarations from the stylesheet element that
+  // literal result elements copy onto the result tree (XSLT §7.5),
+  // already stripped of the XSLT namespace and of any prefix named in
+  // the stylesheet's exclude-result-prefixes. The serializer dedups
+  // these against output ancestors so each appears once.
+  xs_nsscope : list xml_attribute;
 }
 
 let xslt_ns : string = "http://www.w3.org/1999/XSL/Transform"
 
+// xsl:copy-of / identity copy of an element copies its namespace nodes
+// (XSLT §11.3 / §7.5): the element's in-scope namespaces, including
+// those inherited from source ancestors, are attached to the copied
+// element (the serializer dedups against output ancestors). Non-element
+// items copy verbatim.
+let copy_of_item (it:xctx_item) : rnode =
+  match it with
+  | CI_Elem _ anc (XElement t attrs kids) ->
+    let (_, own_seen) = ns_add [] [] attrs in
+    let inherited =
+      List.Tot.filter (fun (a:xml_attribute) -> a.attr_value <> xslt_ns)
+        (inscope_ns [] own_seen anc) in
+    R_Node (XElement t (List.Tot.append inherited attrs) kids)
+  | _ -> item_to_rnode it
+
 // Detect the prefix bound to the XSLT namespace on the stylesheet
 // element's own xmlns:* declarations; default "xsl".
-let rec drop_prefix_chars (cs:list char) (n:nat) : Tot (list char) (decreases n) =
-  if n = 0 then cs
-  else match cs with
-       | [] -> []
-       | _ :: rest -> drop_prefix_chars rest (n - 1)
-
 let rec find_xsl_prefix (attrs:list xml_attribute) : Tot (option string) (decreases attrs) =
   match attrs with
   | [] -> None
@@ -710,28 +809,57 @@ let rec serialize_attrs (attrs:list xml_attribute) : Tot string (decreases attrs
   | [] -> ""
   | a :: rest -> strcat (serialize_attr a) (serialize_attrs rest)
 
-let rec serialize_node (n:xml_node) : Tot string (decreases n) =
+// Nearest-first lookup of the URI a prefix is bound to in the output
+// scope accumulated from ancestor elements.
+let rec lookup_ns (scope:list (string & string)) (pfx:string) : Tot (option string) (decreases scope) =
+  match scope with
+  | [] -> None
+  | (p, u) :: rest -> if p = pfx then Some u else lookup_ns rest pfx
+
+// Emit an element's namespace declarations, suppressing any that are
+// already in scope with the same URI (XSLT §7.5 / XML serialization:
+// no redundant declarations). Returns the serialized xmlns attributes
+// plus the scope extended with every declaration this element makes.
+let rec emit_ns_decls (scope:list (string & string)) (decls:list xml_attribute)
+  : Tot (string & list (string & string)) (decreases decls) =
+  match decls with
+  | [] -> ("", scope)
+  | a :: rest ->
+    (match ns_decl_prefix a.attr_name with
+     | None -> emit_ns_decls scope rest
+     | Some pfx ->
+       let redundant = (lookup_ns scope pfx = Some a.attr_value) in
+       let scope' = if redundant then scope else (pfx, a.attr_value) :: scope in
+       let (s_rest, scope'') = emit_ns_decls scope' rest in
+       let here = if redundant then "" else serialize_attr a in
+       (strcat here s_rest, scope''))
+
+let rec serialize_node (scope:list (string & string)) (n:xml_node) : Tot string (decreases n) =
   match n with
   | XText t -> escape_text t
   | XCDATA t -> escape_text t
   | XComment t -> String.concat "" ["<!--"; t; "-->"]
   | XPI tg d -> String.concat "" ["<?"; tg; " "; d; "?>"]
   | XElement tag attrs children ->
-    let a = serialize_attrs attrs in
+    // Namespace declarations serialize first (deduped against ancestors);
+    // then the ordinary attributes.
+    let (decls, normal) = List.Tot.partition is_ns_decl attrs in
+    let (ns_str, scope') = emit_ns_decls scope decls in
+    let a = strcat ns_str (serialize_attrs normal) in
     // XML output method: an element whose content serializes to nothing
     // (no children, or only empty text nodes produced by e.g. an empty
     // xsl:value-of) is written as an empty-element tag `<t/>`, matching
     // the W3C expected outputs (which self-close such elements).
-    let inner = serialize_nodes children in
+    let inner = serialize_nodes scope' children in
     if inner = "" then String.concat "" ["<"; tag; a; "/>"]
     else String.concat "" ["<"; tag; a; ">"; inner; "</"; tag; ">"]
 
-and serialize_nodes (ns:list xml_node) : Tot string (decreases ns) =
+and serialize_nodes (scope:list (string & string)) (ns:list xml_node) : Tot string (decreases ns) =
   match ns with
   | [] -> ""
-  | hd :: tl -> strcat (serialize_node hd) (serialize_nodes tl)
+  | hd :: tl -> strcat (serialize_node scope hd) (serialize_nodes scope tl)
 
-let serialize_result (n:xml_node) : string = serialize_node n
+let serialize_result (n:xml_node) : string = serialize_node [] n
 
 // method="text": concatenate the string-value of every result text
 // node (elements contribute their descendant text).
@@ -1058,8 +1186,8 @@ and instantiate_one (fuel:nat) (st:xstyle) (ctx:dnode) (pos size:nat)
            | Some nm ->
              (match rtf_find rtf nm with
               | Some frag -> frag
-              | None -> List.Tot.map item_to_rnode (select_nodes ctx pos size vars sel))
-           | None -> List.Tot.map item_to_rnode (select_nodes ctx pos size vars sel))
+              | None -> List.Tot.map copy_of_item (select_nodes ctx pos size vars sel))
+           | None -> List.Tot.map copy_of_item (select_nodes ctx pos size vars sel))
         else if ln = "copy" then
           instantiate_copy (fuel - 1) st ctx pos size vars rtf children
         else if ln = "element" then
@@ -1078,13 +1206,24 @@ and instantiate_one (fuel:nat) (st:xstyle) (ctx:dnode) (pos size:nat)
       else
         // literal result element: copy tag, AVT-expand its attributes,
         // instantiate its content; xsl:attribute children fold in.
+        // XSLT §7.5: xsl:-namespaced attributes (xsl:exclude-result-
+        // prefixes, xsl:use-attribute-sets, …) and any declaration of
+        // the XSLT namespace itself are NOT written to the result tree.
+        let kept =
+          List.Tot.filter
+            (fun (a:xml_attribute) ->
+               not (starts_with (strcat st.xs_pfx ":") a.attr_name) &&
+               not (is_ns_decl a && a.attr_value = xslt_ns))
+            attrs in
         let out_attrs =
           List.Tot.map
             (fun (a:xml_attribute) ->
                { attr_name = a.attr_name; attr_value = expand_avt (dnode_ci ctx) pos size vars a.attr_value })
-            attrs in
+            kept in
         let body = instantiate_seq (fuel - 1) st ctx pos size vars rtf children in
-        [R_Node (build_element tag out_attrs body)]
+        // Copy the in-scope stylesheet namespace nodes onto the result
+        // element (deduped later by the serializer).
+        [R_Node (build_element tag (st.xs_nsscope @ out_attrs) body)]
 
 and instantiate_choose (fuel:nat) (st:xstyle) (ctx:dnode) (pos size:nat)
                        (vars:list (string & xp_value)) (rtf:list (string & list rnode)) (branches:list xml_node)
@@ -1115,11 +1254,17 @@ and instantiate_copy (fuel:nat) (st:xstyle) (ctx:dnode) (pos size:nat)
   else
     match ctx with
     | D_Doc _ -> instantiate_seq (fuel - 1) st ctx pos size vars rtf children
-    | D_Item (CI_Elem _ _ n) ->
+    | D_Item (CI_Elem _ anc n) ->
       (match n with
        | XElement t _ _ ->
          let body = instantiate_seq (fuel - 1) st ctx pos size vars rtf children in
-         [R_Node (build_element t [] body)]
+         // xsl:copy copies the element's namespace nodes (its in-scope
+         // declarations), but not its attributes or content; the
+         // serializer dedups against output ancestors.
+         let nsnodes =
+           List.Tot.filter (fun (a:xml_attribute) -> a.attr_value <> xslt_ns)
+             (inscope_ns [] [] (n :: anc)) in
+         [R_Node (build_element t nsnodes body)]
        | _ -> instantiate_seq (fuel - 1) st ctx pos size vars rtf children)
     | D_Item (CI_Text _ _ _ t) -> [R_Node (XText t)]
     | D_Item (CI_Comment _ _ _ t) -> [R_Node (XComment t)]
@@ -1207,25 +1352,49 @@ let rec collect_globals (pfx:string) (children:list xml_node) (source:xml_node)
        else collect_globals pfx tl source
      | _ -> collect_globals pfx tl source)
 
+// Parse a whitespace-separated prefix list (exclude-result-prefixes).
+// "#default" designates the default namespace (prefix "").
+let parse_prefix_list (s:string) : list string =
+  List.Tot.map (fun p -> if p = "#default" then "" else p)
+    (List.Tot.filter (fun p -> p <> "")
+       (List.Tot.map trim_str (split_on_char ' ' s)))
+
+// In-scope namespace declarations of the stylesheet element that
+// literal result elements must copy: every xmlns declaration EXCEPT
+// the XSLT namespace and any prefix named in exclude-result-prefixes.
+let build_nsscope (attrs:list xml_attribute) : list xml_attribute =
+  let excluded = parse_prefix_list (attr_or "exclude-result-prefixes" "" attrs) in
+  List.Tot.sortWith attr_name_cmp
+    (List.Tot.filter
+      (fun (a:xml_attribute) ->
+         match ns_decl_prefix a.attr_name with
+         | None -> false
+         | Some pfx -> a.attr_value <> xslt_ns && not (mem_str pfx excluded))
+      attrs)
+
 let build_style (stylesheet:xml_node) (source:xml_node) : xstyle =
   match stylesheet with
-  | XElement tag _ children ->
+  | XElement tag attrs children ->
     let pfx = xsl_prefix_of stylesheet in
     if is_xsl pfx tag &&
        (let ln = xsl_instr pfx tag in ln = "stylesheet" || ln = "transform") then
       { xs_pfx = pfx;
         xs_templates = collect_templates pfx children;
         xs_method = find_output_method pfx children;
-        xs_globals = collect_globals pfx children source }
+        xs_globals = collect_globals pfx children source;
+        xs_nsscope = build_nsscope attrs }
     else
       // Simplified stylesheet: the literal result element IS the body
-      // of a single template matching the document root.
+      // of a single template matching the document root. Its own
+      // namespace declarations are on the element itself, so no
+      // inherited scope is threaded.
       { xs_pfx = pfx;
         xs_templates = [ { tpl_match = "/"; tpl_name = ""; tpl_mode = ""; tpl_prio = None; tpl_body = [stylesheet] } ];
         xs_method = "xml";
-        xs_globals = [] }
+        xs_globals = [];
+        xs_nsscope = [] }
   | _ ->
-    { xs_pfx = "xsl"; xs_templates = []; xs_method = "xml"; xs_globals = [] }
+    { xs_pfx = "xsl"; xs_templates = []; xs_method = "xml"; xs_globals = []; xs_nsscope = [] }
 
 (* ================================================================ *)
 (* Entry point.                                                       *)
@@ -1240,4 +1409,4 @@ let transform (stylesheet:xml_node) (source:xml_node) : string =
   let result = dispatch fuel st (D_Doc source) 1 1 "" in
   let nodes = only_nodes result in
   if st.xs_method = "text" then text_value_nodes nodes
-  else serialize_nodes nodes
+  else serialize_nodes [] nodes

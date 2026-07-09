@@ -880,6 +880,21 @@ let initial_eval_fuel (e:xp_expr) (doc_nodes:nat) : nat =
   op_Multiply (xp_expr_size e + 1) (op_Multiply (doc_nodes + 1) 24) + 4096
 
 
+// XSLT 1.0 function-available(): true for the XPath 1.0 core function
+// library and XSLT-added functions this evaluator implements; false
+// for everything else (including all XPath 2.0 / fn:* names). A bare
+// name only — namespaced names (containing ':') that are not one of
+// these are not available.
+let is_supported_xpath_function (nm:string) : bool =
+  nm = "position" || nm = "last" || nm = "count" ||
+  nm = "name" || nm = "local-name" || nm = "namespace-uri" ||
+  nm = "current" || nm = "string" || nm = "concat" ||
+  nm = "contains" || nm = "starts-with" ||
+  nm = "substring-before" || nm = "substring-after" || nm = "substring" ||
+  nm = "string-length" || nm = "normalize-space" ||
+  nm = "not" || nm = "true" || nm = "false" || nm = "boolean" ||
+  nm = "number" || nm = "sum" || nm = "floor" || nm = "ceiling" || nm = "round"
+
 (* ================================================================ *)
 (* The evaluator — fuel-threaded, one call = one fuel unit, always.   *)
 (* ================================================================ *)
@@ -1126,6 +1141,16 @@ and eval_funcall (fuel:nat) (env:xp_env) (name:string) (args:list xp_expr)
       (match args with [a] -> XV_Num (xn_ceiling (to_number_val (eval_expr (fuel - 1) env a))) | _ -> XV_Num XN_NaN)
     else if name = "round" then
       (match args with [a] -> XV_Num (xn_round (to_number_val (eval_expr (fuel - 1) env a))) | _ -> XV_Num XN_NaN)
+    else if name = "function-available" then
+      (match args with
+       | [a] -> XV_Bool (is_supported_xpath_function (to_string_val (eval_expr (fuel - 1) env a)))
+       | _ -> XV_Bool false)
+    else if name = "element-available" then
+      // We construct result nodes structurally; no extension elements
+      // are available. The XSLT built-in instruction set is handled by
+      // the transform engine, not via this XPath predicate, so report
+      // false for the XPath-visible element-availability probe.
+      XV_Bool false
     else XV_Str "" // unknown function name: Stage 1 scope, no crash
 
 

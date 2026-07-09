@@ -1,11 +1,2 @@
-* Warning 241 at RDF.Vocabulary.fsti(0,0-0,0):
-  - Unable to load RDF.Vocabulary.fsti.checked since checked file
-    RDF.Vocabulary.fsti.checked does not exist; will recheck RDF.Vocabulary.fsti
-    (suppressing this warning for further modules)
-
-* Warning 247 at OWL.Closure.fsti(0,0-0,0):
-  - Checked file OWL.Closure.fsti.checked was not written.
-  - Reason: checked file RDF.Graph.fsti.checked does not exist
-
 Verified i'face (or impl+i'face): OWL.Closure
 All verification conditions discharged successfully

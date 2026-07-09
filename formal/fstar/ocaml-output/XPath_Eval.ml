@@ -996,6 +996,31 @@ let initial_eval_fuel (e : Parser_XPath.xp_expr) (doc_nodes : Prims.nat) :
   (((xp_expr_size e) + Prims.int_one) *
      ((doc_nodes + Prims.int_one) * (Prims.of_int (24))))
     + (Prims.of_int (4096))
+let is_supported_xpath_function (nm : Prims.string) : Prims.bool=
+  ((((((((((((((((((((((((nm = "position") || (nm = "last")) ||
+                          (nm = "count"))
+                         || (nm = "name"))
+                        || (nm = "local-name"))
+                       || (nm = "namespace-uri"))
+                      || (nm = "current"))
+                     || (nm = "string"))
+                    || (nm = "concat"))
+                   || (nm = "contains"))
+                  || (nm = "starts-with"))
+                 || (nm = "substring-before"))
+                || (nm = "substring-after"))
+               || (nm = "substring"))
+              || (nm = "string-length"))
+             || (nm = "normalize-space"))
+            || (nm = "not"))
+           || (nm = "true"))
+          || (nm = "false"))
+         || (nm = "boolean"))
+        || (nm = "number"))
+       || (nm = "sum"))
+      || (nm = "floor"))
+     || (nm = "ceiling"))
+    || (nm = "round")
 let rec eval_expr (fuel : Prims.nat) (env : xp_env)
   (e : Parser_XPath.xp_expr) : xp_value=
   if fuel = Prims.int_zero
@@ -1439,7 +1464,29 @@ and eval_funcall (fuel : Prims.nat) (env : xp_env) (name : Prims.string)
                                                                     Prims.int_one)
                                                                   env a)))
                                                    | uu___23 -> XV_Num XN_NaN)
-                                                else XV_Str ""
+                                                else
+                                                  if
+                                                    name =
+                                                      "function-available"
+                                                  then
+                                                    (match args with
+                                                     | a::[] ->
+                                                         XV_Bool
+                                                           (is_supported_xpath_function
+                                                              (to_string_val
+                                                                 (eval_expr
+                                                                    (
+                                                                    fuel -
+                                                                    Prims.int_one)
+                                                                    env a)))
+                                                     | uu___24 ->
+                                                         XV_Bool false)
+                                                  else
+                                                    if
+                                                      name =
+                                                        "element-available"
+                                                    then XV_Bool false
+                                                    else XV_Str ""
 let rec find_child_index (nodes : Parser_XML.xml_node Prims.list)
   (target : Parser_XML.xml_node) (i : Prims.nat) : Prims.nat=
   match nodes with
