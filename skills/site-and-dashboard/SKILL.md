@@ -177,6 +177,22 @@ how "379 pass" survived in the README months after the engine hit
   prose for `[0-9]+ (fails|passes|skips)` before committing. The owner
   reads these pages to track progress -- a self-contradicting row costs
   more trust than a missing one.
+- **Aged IOUs on public pages are lies** (owner trust escalation
+  2026-07-09: "we have been working on owl tableau for WEEKS. No stats
+  yet feels like I was gaslit"). A public "not yet implemented" /
+  "planned" / "coming" note older than ~2 weeks must be either done or
+  deleted -- and the inverse rot is just as real: prose can UNDERSTATE
+  landed work (post 17 said delta-log compaction "is not yet
+  implemented" months after `factoidal compact` shipped). When touching
+  a hub post or site page, grep it for `not yet|planned|coming|will be`
+  and check each hit against the CLI/`--help`/dashboard before leaving
+  it standing. Related-log discipline: the committed
+  `*_results.log` is the source of truth the dashboard regenerates
+  from -- a "surgical" edit to `latest.json`/`index.html` without
+  refreshing the log WILL be silently reverted by the next CI
+  dashboard-refresh (this happened with vc 113 -> 109 and csvw 146 ->
+  74 on 2026-07-09). Landing a score change means committing the fresh
+  log, never just the rendered artifacts.
 
 ## What this skill does NOT cover
 

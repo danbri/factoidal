@@ -177,11 +177,15 @@ shapes. The fuller lemma over real SPARQL `update_op` values (what
 translator, which is pinned by acceptance test rather than by proof.
 That gap is written into the module itself as a residual.
 
-**What the delta log does not yet do:**
+**Compaction** — folding an accumulated delta back into a fresh
+`.cottas` base so the log doesn't grow without bound — has since
+landed as `factoidal compact` (durable-UPDATE stage 4): each
+compaction writes a full new artifact set under a versioned directory
+and repoints a `current` symlink, so older epochs stay queryable and
+a crash mid-compaction never corrupts the live store.
 
-- **Compaction**: folding an accumulated delta back into a fresh
-  `.cottas` base via the existing `corpus_pipeline.py` writer, so the
-  delta log doesn't grow without bound, is not yet implemented.
+**What the delta log still does not have:**
+
 - **Parliament-scale validation**: the delta-penalty measurement
   (empty-delta query cost must match the base-file baseline; a
   realistic-size delta must add a small, bounded cost, not scale with
@@ -192,8 +196,8 @@ That gap is written into the module itself as a residual.
   numbers carry.
 
 Every claim above carries its own commit rather than a blanket "durable
-UPDATE shipped" — the write path is real and measured, the two items
-above are not.
+UPDATE shipped" — the write path and compaction are real and measured;
+the Parliament-scale run is not.
 
 ## Serving: the SPARQL Protocol, observability, and the Graph Store gap
 
