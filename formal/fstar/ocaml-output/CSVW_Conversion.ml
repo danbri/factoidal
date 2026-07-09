@@ -41,10 +41,161 @@ let csvw_datatype_iri
   | FStar_Pervasives_Native.Some (CSVW_Metadata.CSVW_DT_Named n) ->
       csvw_base_name_to_iri n
   | FStar_Pervasives_Native.Some (CSVW_Metadata.CSVW_DT_Object
-      (base_opt, uu___, uu___1, uu___2, uu___3)) ->
-      (match base_opt with
-       | FStar_Pervasives_Native.Some n -> csvw_base_name_to_iri n
-       | FStar_Pervasives_Native.None -> RDF_Term.xsd_string)
+      (base_opt, uu___, uu___1, uu___2, uu___3, dtid, uu___4, uu___5, uu___6,
+       uu___7, uu___8, uu___9, uu___10, uu___11, uu___12))
+      ->
+      let from_base =
+        match base_opt with
+        | FStar_Pervasives_Native.Some n -> csvw_base_name_to_iri n
+        | FStar_Pervasives_Native.None -> RDF_Term.xsd_string in
+      (match dtid with
+       | FStar_Pervasives_Native.Some idurl ->
+           if RDF_Term.string_contains_colon idurl then idurl else from_base
+       | FStar_Pervasives_Native.None -> from_base)
+let csvw_dt_base_name_of
+  (dt : CSVW_Metadata.csvw_datatype FStar_Pervasives_Native.option) :
+  Prims.string=
+  match dt with
+  | FStar_Pervasives_Native.Some (CSVW_Metadata.CSVW_DT_Named n) -> n
+  | FStar_Pervasives_Native.Some (CSVW_Metadata.CSVW_DT_Object
+      (bo, uu___, uu___1, uu___2, uu___3, uu___4, uu___5, uu___6, uu___7,
+       uu___8, uu___9, uu___10, uu___11, uu___12, uu___13))
+      ->
+      (match bo with
+       | FStar_Pervasives_Native.Some n -> n
+       | FStar_Pervasives_Native.None -> "string")
+  | FStar_Pervasives_Native.None -> "string"
+let csvw_dt_value_facets
+  (dt : CSVW_Metadata.csvw_datatype FStar_Pervasives_Native.option) :
+  (Prims.int FStar_Pervasives_Native.option * Prims.int
+    FStar_Pervasives_Native.option * Prims.int FStar_Pervasives_Native.option
+    * Prims.string FStar_Pervasives_Native.option * Prims.string
+    FStar_Pervasives_Native.option * Prims.string
+    FStar_Pervasives_Native.option * Prims.string
+    FStar_Pervasives_Native.option * Prims.string
+    FStar_Pervasives_Native.option * Prims.string
+    FStar_Pervasives_Native.option)=
+  match dt with
+  | FStar_Pervasives_Native.Some (CSVW_Metadata.CSVW_DT_Object
+      (uu___, uu___1, uu___2, uu___3, uu___4, uu___5, len, minl, maxl, mn,
+       mx, mni, mxi, mne, mxe))
+      -> (len, minl, maxl, mn, mx, mni, mxi, mne, mxe)
+  | uu___ ->
+      (FStar_Pervasives_Native.None, FStar_Pervasives_Native.None,
+        FStar_Pervasives_Native.None, FStar_Pervasives_Native.None,
+        FStar_Pervasives_Native.None, FStar_Pervasives_Native.None,
+        FStar_Pervasives_Native.None, FStar_Pervasives_Native.None,
+        FStar_Pervasives_Native.None)
+let csvw_is_binary_base (n : Prims.string) : Prims.bool=
+  ((n = "base64Binary") || (n = "hexBinary")) || (n = "binary")
+let csvw_is_numeric_base (n : Prims.string) : Prims.bool=
+  ((((((((((((((((n = "number") || (n = "decimal")) || (n = "integer")) ||
+                 (n = "long"))
+                || (n = "int"))
+               || (n = "short"))
+              || (n = "byte"))
+             || (n = "nonNegativeInteger"))
+            || (n = "positiveInteger"))
+           || (n = "nonPositiveInteger"))
+          || (n = "negativeInteger"))
+         || (n = "unsignedLong"))
+        || (n = "unsignedInt"))
+       || (n = "unsignedShort"))
+      || (n = "unsignedByte"))
+     || (n = "double"))
+    || (n = "float")
+let rec csvw_conv_chars_cmp (a : FStar_Char.char Prims.list)
+  (b : FStar_Char.char Prims.list) : Prims.int=
+  match (a, b) with
+  | ([], []) -> Prims.int_zero
+  | ([], uu___) -> (Prims.of_int (-1))
+  | (uu___, []) -> Prims.int_one
+  | (x::xs, y::ys) ->
+      let ix = FStar_Char.int_of_char x in
+      let iy = FStar_Char.int_of_char y in
+      if ix < iy
+      then (Prims.of_int (-1))
+      else if ix > iy then Prims.int_one else csvw_conv_chars_cmp xs ys
+let csvw_conv_str_cmp (a : Prims.string) (b : Prims.string) : Prims.int=
+  csvw_conv_chars_cmp (FStar_String.list_of_string a)
+    (FStar_String.list_of_string b)
+let csvw_num_cmp (a : Prims.string) (b : Prims.string) :
+  Prims.int FStar_Pervasives_Native.option=
+  let pa =
+    match XSD_Datatypes.parse_double_to_scaled a with
+    | FStar_Pervasives_Native.Some s -> FStar_Pervasives_Native.Some s
+    | FStar_Pervasives_Native.None -> XSD_Datatypes.parse_to_scaled a in
+  let pb =
+    match XSD_Datatypes.parse_double_to_scaled b with
+    | FStar_Pervasives_Native.Some s -> FStar_Pervasives_Native.Some s
+    | FStar_Pervasives_Native.None -> XSD_Datatypes.parse_to_scaled b in
+  match (pa, pb) with
+  | (FStar_Pervasives_Native.Some sa, FStar_Pervasives_Native.Some sb) ->
+      FStar_Pervasives_Native.Some (XSD_Datatypes.scaled_cmp sa sb)
+  | uu___ -> FStar_Pervasives_Native.None
+let csvw_cell_cmp (numeric : Prims.bool) (a : Prims.string)
+  (b : Prims.string) : Prims.int FStar_Pervasives_Native.option=
+  if numeric
+  then csvw_num_cmp a b
+  else FStar_Pervasives_Native.Some (csvw_conv_str_cmp a b)
+let csvw_value_satisfies (base_name : Prims.string) (text : Prims.string)
+  (dt : CSVW_Metadata.csvw_datatype FStar_Pervasives_Native.option) :
+  Prims.bool=
+  let uu___ = csvw_dt_value_facets dt in
+  match uu___ with
+  | (len, minl, maxl, mn, mx, mni, mxi, mne, mxe) ->
+      let n = FStar_String.strlen text in
+      let len_ok =
+        if csvw_is_binary_base base_name
+        then true
+        else
+          ((match len with
+            | FStar_Pervasives_Native.Some l -> n = l
+            | FStar_Pervasives_Native.None -> true) &&
+             (match minl with
+              | FStar_Pervasives_Native.Some l -> n >= l
+              | FStar_Pervasives_Native.None -> true))
+            &&
+            ((match maxl with
+              | FStar_Pervasives_Native.Some l -> n <= l
+              | FStar_Pervasives_Native.None -> true)) in
+      let numeric = csvw_is_numeric_base base_name in
+      let eff_min_incl =
+        match mni with
+        | FStar_Pervasives_Native.Some x -> FStar_Pervasives_Native.Some x
+        | FStar_Pervasives_Native.None -> mn in
+      let eff_max_incl =
+        match mxi with
+        | FStar_Pervasives_Native.Some x -> FStar_Pervasives_Native.Some x
+        | FStar_Pervasives_Native.None -> mx in
+      let vc_ok =
+        (((match eff_min_incl with
+           | FStar_Pervasives_Native.Some c ->
+               (match csvw_cell_cmp numeric text c with
+                | FStar_Pervasives_Native.Some r -> r >= Prims.int_zero
+                | FStar_Pervasives_Native.None -> true)
+           | FStar_Pervasives_Native.None -> true) &&
+            (match eff_max_incl with
+             | FStar_Pervasives_Native.Some c ->
+                 (match csvw_cell_cmp numeric text c with
+                  | FStar_Pervasives_Native.Some r -> r <= Prims.int_zero
+                  | FStar_Pervasives_Native.None -> true)
+             | FStar_Pervasives_Native.None -> true))
+           &&
+           (match mne with
+            | FStar_Pervasives_Native.Some c ->
+                (match csvw_cell_cmp numeric text c with
+                 | FStar_Pervasives_Native.Some r -> r > Prims.int_zero
+                 | FStar_Pervasives_Native.None -> true)
+            | FStar_Pervasives_Native.None -> true))
+          &&
+          (match mxe with
+           | FStar_Pervasives_Native.Some c ->
+               (match csvw_cell_cmp numeric text c with
+                | FStar_Pervasives_Native.Some r -> r < Prims.int_zero
+                | FStar_Pervasives_Native.None -> true)
+           | FStar_Pervasives_Native.None -> true) in
+      len_ok && vc_ok
 let csvw_build_literal (lex : Prims.string) (dt : Prims.string) :
   RDF_Term.rdf_term FStar_Pervasives_Native.option=
   if RDF_Term.is_iri dt
@@ -250,10 +401,12 @@ let csvw_cell_object (table_url_resolved : Prims.string)
               match dt_wf with
               | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
               | FStar_Pervasives_Native.Some d ->
-                  let eff =
-                    if XSD_Datatypes.literal_ill_formed d txt
-                    then RDF_Term.xsd_string
-                    else d in
+                  let base_name = csvw_dt_base_name_of spec.cs_datatype in
+                  let violate =
+                    (XSD_Datatypes.literal_ill_formed d txt) ||
+                      (Prims.op_Negation
+                         (csvw_value_satisfies base_name txt spec.cs_datatype)) in
+                  let eff = if violate then RDF_Term.xsd_string else d in
                   csvw_build_literal txt eff))
 let csvw_process_cell (table_url_resolved : Prims.string)
   (lookup : Prims.string -> Prims.string FStar_Pervasives_Native.option)

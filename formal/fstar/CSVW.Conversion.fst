@@ -130,12 +130,102 @@ let csvw_base_name_to_iri (n : string) : string =
   else if string_contains_colon n then n
   else "http://www.w3.org/2001/XMLSchema#" ^ n
 
+// The datatype's own @id (object form) is the RDF datatype IRI when it
+// is present and IRI-shaped (test242); otherwise the base facet's name
+// maps through csvw_base_name_to_iri, defaulting to xsd:string.
 let csvw_datatype_iri (dt : option csvw_datatype) : string =
   match dt with
   | None -> xsd_string
   | Some (CSVW_DT_Named n) -> csvw_base_name_to_iri n
-  | Some (CSVW_DT_Object base_opt _ _ _ _) ->
-    (match base_opt with Some n -> csvw_base_name_to_iri n | None -> xsd_string)
+  | Some (CSVW_DT_Object base_opt _ _ _ _ dtid _ _ _ _ _ _ _ _ _) ->
+    let from_base = (match base_opt with Some n -> csvw_base_name_to_iri n | None -> xsd_string) in
+    (match dtid with
+     | Some idurl -> if string_contains_colon idurl then idurl else from_base
+     | None -> from_base)
+
+// Base-name of a datatype (object or shorthand), defaulting to "string".
+let csvw_dt_base_name_of (dt : option csvw_datatype) : string =
+  match dt with
+  | Some (CSVW_DT_Named n) -> n
+  | Some (CSVW_DT_Object bo _ _ _ _ _ _ _ _ _ _ _ _ _ _) ->
+    (match bo with Some n -> n | None -> "string")
+  | None -> "string"
+
+// The length + value constraint facets of a datatype, as a tuple:
+// (length, minLength, maxLength, minimum, maximum, minInclusive,
+//  maxInclusive, minExclusive, maxExclusive).
+let csvw_dt_value_facets (dt : option csvw_datatype)
+  : (option int & option int & option int & option string & option string &
+     option string & option string & option string & option string) =
+  match dt with
+  | Some (CSVW_DT_Object _ _ _ _ _ _ len minl maxl mn mx mni mxi mne mxe) ->
+    (len, minl, maxl, mn, mx, mni, mxi, mne, mxe)
+  | _ -> (None, None, None, None, None, None, None, None, None)
+
+// Length constraints on binary base types (base64Binary/hexBinary)
+// count DECODED bytes, not lexical characters (tabular-metadata 4.6.1);
+// decoding is out of scope here, so the char-length check is skipped for
+// binary bases (fail open — keep the datatype) rather than mis-measured
+// (test195: a 28-char base64 lexeme decodes to the constrained 19 bytes).
+let csvw_is_binary_base (n : string) : bool =
+  n = "base64Binary" || n = "hexBinary" || n = "binary"
+
+let csvw_is_numeric_base (n : string) : bool =
+  n = "number" || n = "decimal" || n = "integer" || n = "long" || n = "int" ||
+  n = "short" || n = "byte" || n = "nonNegativeInteger" || n = "positiveInteger" ||
+  n = "nonPositiveInteger" || n = "negativeInteger" || n = "unsignedLong" ||
+  n = "unsignedInt" || n = "unsignedShort" || n = "unsignedByte" ||
+  n = "double" || n = "float"
+
+let rec csvw_conv_chars_cmp (a b : list FStar.Char.char) : Tot int (decreases a) =
+  match a, b with
+  | [], [] -> 0
+  | [], _ -> -1
+  | _, [] -> 1
+  | x :: xs, y :: ys ->
+    let ix = FStar.Char.int_of_char x in
+    let iy = FStar.Char.int_of_char y in
+    if ix < iy then -1 else if ix > iy then 1 else csvw_conv_chars_cmp xs ys
+
+let csvw_conv_str_cmp (a b : string) : int =
+  csvw_conv_chars_cmp (String.list_of_string a) (String.list_of_string b)
+
+// Double-aware then plain scaled parse (rule #8) for numeric constraint
+// comparison; None when either side is not a parseable number.
+let csvw_num_cmp (a b : string) : option int =
+  let pa = (match XSD.Datatypes.parse_double_to_scaled a with Some s -> Some s | None -> XSD.Datatypes.parse_to_scaled a) in
+  let pb = (match XSD.Datatypes.parse_double_to_scaled b with Some s -> Some s | None -> XSD.Datatypes.parse_to_scaled b) in
+  match pa, pb with
+  | Some sa, Some sb -> Some (XSD.Datatypes.scaled_cmp sa sb)
+  | _ -> None
+
+// Numeric compare for numeric base types; equal-width ISO date/time
+// strings order correctly under lexicographic compare.
+let csvw_cell_cmp (numeric : bool) (a b : string) : option int =
+  if numeric then csvw_num_cmp a b else Some (csvw_conv_str_cmp a b)
+
+// Does the cell text satisfy the datatype's length and value constraints
+// (minimum aliases minInclusive; maximum aliases maxInclusive)? An
+// unparseable / incomparable value fails open (treated as satisfying) so
+// a comparison gap never silently drops an otherwise-valid literal.
+let csvw_value_satisfies (base_name : string) (text : string) (dt : option csvw_datatype) : bool =
+  let (len, minl, maxl, mn, mx, mni, mxi, mne, mxe) = csvw_dt_value_facets dt in
+  let n = String.length text in
+  let len_ok =
+    if csvw_is_binary_base base_name then true
+    else
+      (match len with Some l -> n = l | None -> true) &&
+      (match minl with Some l -> n >= l | None -> true) &&
+      (match maxl with Some l -> n <= l | None -> true) in
+  let numeric = csvw_is_numeric_base base_name in
+  let eff_min_incl = (match mni with Some x -> Some x | None -> mn) in
+  let eff_max_incl = (match mxi with Some x -> Some x | None -> mx) in
+  let vc_ok =
+    (match eff_min_incl with Some c -> (match csvw_cell_cmp numeric text c with Some r -> r >= 0 | None -> true) | None -> true) &&
+    (match eff_max_incl with Some c -> (match csvw_cell_cmp numeric text c with Some r -> r <= 0 | None -> true) | None -> true) &&
+    (match mne with Some c -> (match csvw_cell_cmp numeric text c with Some r -> r > 0 | None -> true) | None -> true) &&
+    (match mxe with Some c -> (match csvw_cell_cmp numeric text c with Some r -> r < 0 | None -> true) | None -> true) in
+  len_ok && vc_ok
 
 // Build a literal term, guarding the dynamically-computed datatype IRI
 // with `is_iri` the same way RML.Eval.fst's build_literal_opt does —
@@ -325,7 +415,15 @@ let csvw_cell_object
          (match dt_wf with
           | None -> None
           | Some d ->
-            let eff : wf_iri = if XSD.Datatypes.literal_ill_formed d txt then xsd_string else d in
+            // A value that is ill-formed for its datatype OR violates a
+            // length / value constraint keeps its lexical form but drops
+            // to a plain string literal (tabular-data-model 6.4.2;
+            // test172-182 for ill-formed, test196-198/test203-215 for
+            // constraint violations).
+            let base_name = csvw_dt_base_name_of spec.cs_datatype in
+            let violate = XSD.Datatypes.literal_ill_formed d txt
+                       || not (csvw_value_satisfies base_name txt spec.cs_datatype) in
+            let eff : wf_iri = if violate then xsd_string else d in
             csvw_build_literal txt eff))
 
 let csvw_process_cell

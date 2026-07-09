@@ -113,6 +113,14 @@ let json_get_int (key:string) (obj:json_val) : option int =
   | Some s -> csvw_parse_int_string s
   | None -> None
 
+// A value-constraint facet lexeme is a number (numeric datatypes) or a
+// string (ISO date/time datatypes) — kept verbatim either way.
+let json_get_num_or_str (key:string) (obj:json_val) : option string =
+  match json_get_field key obj with
+  | Some (JString s) -> Some s
+  | Some (JNumber s) -> Some s
+  | _ -> None
+
 // The dialect "trim" property is documented as a string enum
 // ("true"/"false"/"start"/"end") but the corpus also carries plain
 // JSON booleans (test-suite shorthand seen in the survey: "trim":
@@ -137,6 +145,14 @@ let json_get_string_or_bool_as_string (key:string) (obj:json_val) : option strin
 // (anti-pattern #8: don't parse_to_scaled before parse_double_to_
 // scaled). Interpreting "base"/"format" against XSD.Datatypes is
 // Stage 4's job, not this decoder's.
+// The object form additionally carries the datatype's @id (used as the
+// RDF datatype IRI when present, test242) and the length + value
+// constraint facets (length/minLength/maxLength; minimum/maximum and
+// min|maxInclusive/min|maxExclusive) that the conversion layer checks a
+// cell value against — a violating value keeps its lexical form but is
+// emitted as a plain string (test196-198/test203-215). Length facets are
+// kept as ints; value-constraint facets keep their verbatim lexeme
+// (a number or an ISO date/time string).
 type csvw_datatype =
   | CSVW_DT_Named  : string -> csvw_datatype
   | CSVW_DT_Object :
@@ -145,6 +161,16 @@ type csvw_datatype =
       pattern:option string ->
       group_char:option string ->
       decimal_char:option string ->
+      dt_id:option string ->
+      dt_length:option int ->
+      dt_min_length:option int ->
+      dt_max_length:option int ->
+      dt_minimum:option string ->
+      dt_maximum:option string ->
+      dt_min_inclusive:option string ->
+      dt_max_inclusive:option string ->
+      dt_min_exclusive:option string ->
+      dt_max_exclusive:option string ->
       csvw_datatype
 
 type csvw_column = {
@@ -265,7 +291,17 @@ let csvw_decode_datatype (v:json_val) : option csvw_datatype =
             (json_get_string "format" v)
             (json_get_string "pattern" v)
             (json_get_string "groupChar" v)
-            (json_get_string "decimalChar" v))
+            (json_get_string "decimalChar" v)
+            (json_get_string "@id" v)
+            (json_get_int "length" v)
+            (json_get_int "minLength" v)
+            (json_get_int "maxLength" v)
+            (json_get_num_or_str "minimum" v)
+            (json_get_num_or_str "maximum" v)
+            (json_get_num_or_str "minInclusive" v)
+            (json_get_num_or_str "maxInclusive" v)
+            (json_get_num_or_str "minExclusive" v)
+            (json_get_num_or_str "maxExclusive" v))
   | _ -> None
 
 // ================================================================
@@ -416,6 +452,406 @@ let rec csvw_decode_table_list (items:list json_val)
         | Some rest -> Some (t :: rest)))
 
 // ================================================================
+// Metadata validation (NegativeRdfTest support). The Metadata
+// Vocabulary spec lists consistency conditions a conforming processor
+// MUST reject; the csv2rdf suite's NegativeRdfTest fixtures each quote
+// the exact condition in their rdfs:comment. This is a pure validation
+// pass over the raw json_val tree (returning false => the decoder
+// yields None => the runner records "no RDF produced", the negative
+// tests' PASS criterion). Kept separate from the AST decoders above so
+// the decoded AST and CSVW.Conversion stay untouched. Cited tests are
+// third_party/testing/csvw/tests/manifest-rdf entries.
+// ================================================================
+
+let csvw_str_starts_with (pfx s : string) : bool =
+  let lp = String.length pfx in
+  String.length s >= lp && String.sub s 0 lp = pfx
+
+let csvw_is_bnode_ref (s : string) : bool = csvw_str_starts_with "_:" s
+
+let csvw_char_is_ws (c : FStar.Char.char) : bool =
+  let n = FStar.Char.int_of_char c in
+  n = 0x20 || n = 0x09 || n = 0x0A || n = 0x0D
+
+let csvw_has_ws (s : string) : bool =
+  List.Tot.existsb csvw_char_is_ws (String.list_of_string s)
+
+// Lexicographic char-list compare (-1 / 0 / 1).
+let rec csvw_chars_cmp (a b : list FStar.Char.char) : Tot int (decreases a) =
+  match a, b with
+  | [], [] -> 0
+  | [], _ -> -1
+  | _, [] -> 1
+  | x :: xs, y :: ys ->
+    let ix = FStar.Char.int_of_char x in
+    let iy = FStar.Char.int_of_char y in
+    if ix < iy then -1 else if ix > iy then 1 else csvw_chars_cmp xs ys
+
+let csvw_str_cmp (a b : string) : int =
+  csvw_chars_cmp (String.list_of_string a) (String.list_of_string b)
+
+// Compare two constraint lexemes: numeric when both are integer lexemes,
+// else lexicographic (equal-width ISO date/time strings order correctly
+// this way, which every date-range fixture in the suite uses).
+let csvw_lex_cmp (a b : string) : int =
+  match csvw_parse_int_string a, csvw_parse_int_string b with
+  | Some x, Some y -> if x < y then -1 else if x > y then 1 else 0
+  | _ -> csvw_str_cmp a b
+
+// A datatype @id MUST NOT be the URL of a built-in datatype (test244)
+// nor a blank node (test243/test267).
+let csvw_is_builtin_dt_url (s : string) : bool =
+  csvw_str_starts_with "http://www.w3.org/2001/XMLSchema#" s ||
+  s = "http://www.w3.org/1999/02/22-rdf-syntax-ns#HTML" ||
+  s = "http://www.w3.org/1999/02/22-rdf-syntax-ns#XMLLiteral" ||
+  s = "http://www.w3.org/ns/csvw#JSON"
+
+// length / minLength / maxLength apply only to string- or binary-derived
+// base datatypes (test201: length on date => reject).
+let csvw_is_string_like_base (n : string) : bool =
+  n = "string" || n = "normalizedString" || n = "token" || n = "language" ||
+  n = "Name" || n = "NMTOKEN" || n = "NMTOKENS" || n = "xml" || n = "html" ||
+  n = "json" || n = "anyAtomicType" || n = "base64Binary" || n = "hexBinary" ||
+  n = "binary" || n = "anyURI" || n = "QName" || n = "ENTITY" || n = "ID" ||
+  n = "IDREF" || n = "NOTATION"
+
+// minimum / maximum / min|maxInclusive / min|maxExclusive apply only to
+// numeric, date/time, or duration base datatypes (test222-227: such a
+// constraint on the string base => reject).
+let csvw_is_ordered_base (n : string) : bool =
+  n = "number" || n = "decimal" || n = "integer" || n = "long" || n = "int" ||
+  n = "short" || n = "byte" || n = "nonNegativeInteger" || n = "positiveInteger" ||
+  n = "nonPositiveInteger" || n = "negativeInteger" || n = "unsignedLong" ||
+  n = "unsignedInt" || n = "unsignedShort" || n = "unsignedByte" || n = "double" ||
+  n = "float" ||
+  n = "date" || n = "dateTime" || n = "datetime" || n = "time" ||
+  n = "dateTimeStamp" || n = "gYear" || n = "gYearMonth" || n = "gMonth" ||
+  n = "gMonthDay" || n = "gDay" ||
+  n = "duration" || n = "dayTimeDuration" || n = "yearMonthDuration"
+
+// A valid @id / @type token inside a common-property value object: a
+// string that is neither a blank-node reference nor whitespace-bearing
+// (tests 137-141). A non-string @type/@id (e.g. an integer, test140) is
+// rejected by the caller before reaching here.
+let csvw_valid_iri_token (s : string) : bool =
+  not (csvw_is_bnode_ref s) && not (csvw_has_ws s)
+
+let csvw_key_is_at (k : string) : bool =
+  String.length k >= 1 && String.sub k 0 1 = "@"
+
+let csvw_reserved_at_key (k : string) : bool =
+  k = "@value" || k = "@type" || k = "@language" || k = "@id"
+
+// List-only helpers (structural recursion on their own argument, no
+// call back into the value walker, so kept out of the fuel-threaded
+// mutual group below).
+let rec csvw_fields_no_bad_at (fields : list (string & json_val)) : Tot bool (decreases fields) =
+  match fields with
+  | [] -> true
+  | (k, _) :: tl -> (not (csvw_key_is_at k) || csvw_reserved_at_key k) && csvw_fields_no_bad_at tl
+
+let rec csvw_fields_value_keys_ok (fields : list (string & json_val)) : Tot bool (decreases fields) =
+  match fields with
+  | [] -> true
+  | (k, _) :: tl -> (k = "@value" || k = "@type" || k = "@language") && csvw_fields_value_keys_ok tl
+
+let rec csvw_all_type_tokens_ok (ts : list json_val) : Tot bool (decreases ts) =
+  match ts with
+  | [] -> true
+  | (JString t) :: tl -> csvw_valid_iri_token t && csvw_all_type_tokens_ok tl
+  | _ -> false
+
+// Recursive JSON-LD value-object validation for common-property values
+// (tabular-metadata section 5.8 + section 6 note on value objects).
+// Rejects: @-prefixed keys other than @value/@type/@language/@id
+// (test146 @faux, test134 @context, test135 @list, test136 @set); a
+// @value object carrying anything but @type/@language, or both @type and
+// @language, or a non-scalar @value (test142/test143); a @language with
+// no @value (test144); a blank-node or malformed @id/@type (test137-141).
+let rec csvw_common_value_valid (fuel:nat) (v:json_val) : Tot bool (decreases fuel) =
+  if fuel = 0 then true
+  else match v with
+       | JObject fields ->
+         let no_bad_at =
+           csvw_fields_no_bad_at fields in
+         if not no_bad_at then false
+         else
+           (match json_get_field "@value" v with
+            | Some valv ->
+              let has_type = Some? (json_get_field "@type" v) in
+              let has_lang = Some? (json_get_field "@language" v) in
+              let only_allowed = csvw_fields_value_keys_ok fields in
+              let scalar_ok = (match valv with JString _ | JNumber _ | JBool _ -> true | _ -> false) in
+              let type_ok = (match json_get_field "@type" v with
+                             | Some (JString t) -> csvw_valid_iri_token t
+                             | Some _ -> false
+                             | None -> true) in
+              let lang_ok = (match json_get_field "@language" v with
+                             | Some (JString _) -> true | Some _ -> false | None -> true) in
+              only_allowed && not (has_type && has_lang) && scalar_ok && type_ok && lang_ok
+            | None ->
+              let no_lang = None? (json_get_field "@language" v) in
+              let id_ok = (match json_get_field "@id" v with
+                           | Some (JString s) -> not (csvw_is_bnode_ref s)
+                           | Some _ -> false | None -> true) in
+              let type_ok = (match json_get_field "@type" v with
+                             | Some (JString t) -> csvw_valid_iri_token t
+                             | Some (JArray ts) -> csvw_all_type_tokens_ok ts
+                             | Some _ -> false | None -> true) in
+              no_lang && id_ok && type_ok && csvw_fields_valid (fuel - 1) fields)
+       | JArray items -> csvw_items_valid (fuel - 1) items
+       | _ -> true
+
+and csvw_fields_valid (fuel:nat) (fields : list (string & json_val)) : Tot bool (decreases fuel) =
+  if fuel = 0 then true
+  else match fields with
+       | [] -> true
+       | (k, vv) :: tl ->
+         (if csvw_key_is_at k then true else csvw_common_value_valid (fuel - 1) vv)
+         && csvw_fields_valid (fuel - 1) tl
+
+and csvw_items_valid (fuel:nat) (items : list json_val) : Tot bool (decreases fuel) =
+  if fuel = 0 then true
+  else match items with
+       | [] -> true
+       | hd :: tl -> csvw_common_value_valid (fuel - 1) hd && csvw_items_valid (fuel - 1) tl
+
+// Validate every common-property member (a top-level key containing ':')
+// of an object as a JSON-LD value.
+let rec csvw_common_props_valid_list (fields : list (string & json_val)) : Tot bool (decreases fields) =
+  match fields with
+  | [] -> true
+  | (k, vv) :: tl ->
+    (if csvw_key_is_common k then csvw_common_value_valid (json_size vv) vv else true)
+    && csvw_common_props_valid_list tl
+
+let csvw_common_props_valid (v:json_val) : bool =
+  match v with
+  | JObject fields -> csvw_common_props_valid_list fields
+  | _ -> true
+
+// --- structural @id / @type checks (blank-node @id => reject, test077-
+//     082/141; wrong structural @type => reject, test083-088) ---
+
+let csvw_obj_id_ok (v:json_val) : bool =
+  match json_get_field "@id" v with
+  | Some (JString s) -> not (csvw_is_bnode_ref s)
+  | Some _ -> false
+  | None -> true
+
+let csvw_obj_type_ok (v:json_val) (expected:string) : bool =
+  match json_get_field "@type" v with
+  | Some (JString t) -> t = expected
+  | Some _ -> false
+  | None -> true
+
+// --- datatype consistency (test199-201, test216-227, test243/244/261/267) ---
+
+let csvw_dt_base_name (dt:json_val) : string =
+  match json_get_field "base" dt with Some (JString b) -> b | _ -> "string"
+
+let csvw_dt_has (dt:json_val) (k:string) : bool = Some? (json_get_field k dt)
+
+let csvw_dt_lex (dt:json_val) (k:string) : option string =
+  match json_get_field k dt with Some (JString s) -> Some s | Some (JNumber s) -> Some s | _ -> None
+
+let csvw_datatype_valid (dt:json_val) : bool =
+  match dt with
+  | JObject _ ->
+    let idok = (match json_get_field "@id" dt with
+                | Some (JString s) -> not (csvw_is_bnode_ref s) && not (csvw_is_builtin_dt_url s)
+                | Some _ -> false | None -> true) in
+    let base = csvw_dt_base_name dt in
+    let strlike = csvw_is_string_like_base base in
+    let ordered = csvw_is_ordered_base base in
+    let has_len = csvw_dt_has dt "length" || csvw_dt_has dt "minLength" || csvw_dt_has dt "maxLength" in
+    let has_ord = csvw_dt_has dt "minimum" || csvw_dt_has dt "maximum" ||
+                  csvw_dt_has dt "minInclusive" || csvw_dt_has dt "maxInclusive" ||
+                  csvw_dt_has dt "minExclusive" || csvw_dt_has dt "maxExclusive" in
+    let type_ok = (not has_len || strlike) && (not has_ord || ordered) in
+    let excl_ok = not (csvw_dt_has dt "minInclusive" && csvw_dt_has dt "minExclusive")
+               && not (csvw_dt_has dt "maxInclusive" && csvw_dt_has dt "maxExclusive") in
+    let len_ok =
+      (match json_get_int "length" dt, json_get_int "minLength" dt with
+       | Some l, Some ml -> l >= ml | _ -> true) &&
+      (match json_get_int "length" dt, json_get_int "maxLength" dt with
+       | Some l, Some xl -> l <= xl | _ -> true) &&
+      (match json_get_int "minLength" dt, json_get_int "maxLength" dt with
+       | Some ml, Some xl -> ml <= xl | _ -> true) in
+    let minI = csvw_dt_lex dt "minInclusive" in
+    let minE = csvw_dt_lex dt "minExclusive" in
+    let maxI = csvw_dt_lex dt "maxInclusive" in
+    let maxE = csvw_dt_lex dt "maxExclusive" in
+    let range_ok =
+      (match maxI, minI with Some a, Some b -> csvw_lex_cmp a b >= 0 | _ -> true) &&
+      (match maxI, minE with Some a, Some b -> csvw_lex_cmp a b > 0 | _ -> true) &&
+      (match maxE, minE with Some a, Some b -> csvw_lex_cmp a b > 0 | _ -> true) &&
+      (match maxE, minI with Some a, Some b -> csvw_lex_cmp a b > 0 | _ -> true) in
+    idok && type_ok && excl_ok && len_ok && range_ok
+  | _ -> true
+
+// --- column list: unique names (test128), virtual-after-nonvirtual
+//     (test133), per-column @id/@type/datatype ---
+
+let csvw_col_name_of (c:json_val) : option string = json_get_string "name" c
+let csvw_col_is_virtual (c:json_val) : bool =
+  match json_get_bool "virtual" c with Some true -> true | _ -> false
+
+let rec csvw_names_unique (seen : list string) (cols : list json_val) : Tot bool (decreases cols) =
+  match cols with
+  | [] -> true
+  | c :: tl ->
+    (match csvw_col_name_of c with
+     | Some n -> if List.Tot.mem n seen then false else csvw_names_unique (n :: seen) tl
+     | None -> csvw_names_unique seen tl)
+
+let rec csvw_virtual_order_ok (seen_virtual : bool) (cols : list json_val) : Tot bool (decreases cols) =
+  match cols with
+  | [] -> true
+  | c :: tl ->
+    let v = csvw_col_is_virtual c in
+    if seen_virtual && not v then false else csvw_virtual_order_ok (seen_virtual || v) tl
+
+let rec csvw_columns_meta_ok (cols : list json_val) : Tot bool (decreases cols) =
+  match cols with
+  | [] -> true
+  | c :: tl ->
+    csvw_obj_id_ok c && csvw_obj_type_ok c "Column" &&
+    (match json_get_field "datatype" c with Some dt -> csvw_datatype_valid dt | None -> true) &&
+    csvw_common_props_valid c &&
+    csvw_columns_meta_ok tl
+
+let csvw_dialect_valid (v:json_val) : bool =
+  match v with
+  | JObject _ -> csvw_obj_id_ok v && csvw_obj_type_ok v "Dialect"
+  | _ -> true
+
+// --- transformations: blank-node @id => reject (test082); a
+//     transformation's @type, if present, MUST be "Template" (test088) ---
+
+let csvw_transformation_valid (v:json_val) : bool =
+  match v with
+  | JObject _ -> csvw_obj_id_ok v && csvw_obj_type_ok v "Template"
+  | _ -> true
+
+let rec csvw_transformations_all_valid (items:list json_val) : Tot bool (decreases items) =
+  match items with
+  | [] -> true
+  | t :: tl -> csvw_transformation_valid t && csvw_transformations_all_valid tl
+
+let csvw_transformations_ok (v:json_val) : bool =
+  match json_get_array "transformations" v with
+  | None -> true
+  | Some items -> csvw_transformations_all_valid items
+
+// --- foreign keys: a foreign key definition contains ONLY
+//     columnReference + reference (test271); its reference contains ONLY
+//     resource|schemaReference + columnReference and MUST be an object
+//     (test108/test272); and its (local) columnReference MUST name an
+//     existing column (test104). ---
+
+let rec csvw_column_names (cols:list json_val) : Tot (list string) (decreases cols) =
+  match cols with
+  | [] -> []
+  | c :: tl ->
+    (match json_get_string "name" c with
+     | Some n -> n :: csvw_column_names tl
+     | None -> csvw_column_names tl)
+
+let csvw_colref_ok (names:list string) (v:json_val) : bool =
+  if Nil? names then true   // columns inferred from header: no name set to check against
+  else match v with
+       | JString s -> List.Tot.mem s names
+       | JArray items ->
+         List.Tot.for_all (fun (x:json_val) -> match x with JString s -> List.Tot.mem s names | _ -> false) items
+       | _ -> false
+
+let csvw_fk_valid (names:list string) (fk:json_val) : bool =
+  match fk with
+  | JObject fields ->
+    List.Tot.for_all
+      (fun (kv:(string&json_val)) -> let k = fst kv in k = "columnReference" || k = "reference") fields &&
+    (match json_get_field "columnReference" fk with Some cr -> csvw_colref_ok names cr | None -> false) &&
+    (match json_get_field "reference" fk with
+     | Some (JObject rfields) ->
+       List.Tot.for_all
+         (fun (kv:(string&json_val)) -> let k = fst kv in
+            k = "resource" || k = "schemaReference" || k = "columnReference") rfields
+       && Some? (json_get_field "columnReference" (JObject rfields))
+     | Some _ -> false
+     | None -> false)
+  | _ -> false
+
+let rec csvw_fks_all_valid (names:list string) (fks:list json_val) : Tot bool (decreases fks) =
+  match fks with
+  | [] -> true
+  | fk :: tl -> csvw_fk_valid names fk && csvw_fks_all_valid names tl
+
+let csvw_schema_valid (v:json_val) : bool =
+  match v with
+  | JObject _ ->
+    let names = (match json_get_array "columns" v with Some cols -> csvw_column_names cols | None -> []) in
+    csvw_obj_id_ok v && csvw_obj_type_ok v "Schema" &&
+    (match json_get_array "columns" v with
+     | None -> true
+     | Some cols ->
+       csvw_names_unique [] cols && csvw_virtual_order_ok false cols && csvw_columns_meta_ok cols) &&
+    (match json_get_array "foreignKeys" v with
+     | None -> true
+     | Some fks -> csvw_fks_all_valid names fks)
+  | _ -> true
+
+// `in_group` = this table is an element of a table group's "tables"
+// array, where url is mandatory (test090). A url present but non-string
+// is always invalid (test103).
+let csvw_table_valid (in_group:bool) (v:json_val) : bool =
+  match v with
+  | JObject _ ->
+    csvw_obj_id_ok v &&
+    csvw_obj_type_ok v "Table" &&
+    (match json_get_field "url" v with
+     | Some (JString _) -> true
+     | Some _ -> false
+     | None -> not in_group) &&
+    (match json_get_field "dialect" v with Some d -> csvw_dialect_valid d | None -> true) &&
+    (match json_get_field "tableSchema" v with Some s -> csvw_schema_valid s | None -> true) &&
+    csvw_transformations_ok v &&
+    csvw_common_props_valid v
+  | _ -> false
+
+let rec csvw_tables_all_valid (items : list json_val) : Tot bool (decreases items) =
+  match items with
+  | [] -> true
+  | t :: tl -> csvw_table_valid true t && csvw_tables_all_valid tl
+
+// @context (if present in the array form) restricted to a string sentinel
+// followed by an object holding only @base / @language (test274).
+let csvw_context_valid (v:json_val) : bool =
+  match json_get_field "@context" v with
+  | Some (JArray [_; JObject fields]) ->
+    List.Tot.for_all
+      (fun (kv:(string & json_val)) -> let k = fst kv in k = "@base" || k = "@language")
+      fields
+  | _ -> true
+
+// Whole-document consistency gate. A "tables" member that is an empty
+// array (test074) or not an array at all (test098) is rejected; a
+// present "tables" makes the top object a table group whose @type, if
+// given, MUST be "TableGroup" (test083).
+let csvw_metadata_valid (v:json_val) : bool =
+  csvw_context_valid v &&
+  csvw_obj_id_ok v &&
+  (match json_get_field "tables" v with
+   | Some (JArray items) ->
+     Cons? items &&
+     csvw_obj_type_ok v "TableGroup" &&
+     csvw_transformations_ok v &&
+     csvw_common_props_valid v &&
+     csvw_tables_all_valid items
+   | Some _ -> false
+   | None -> csvw_table_valid false v)
+
+// ================================================================
 // Top level
 // ================================================================
 
@@ -423,8 +859,11 @@ let rec csvw_decode_table_list (items:list json_val)
 // array at the top level means a table group (decoded via
 // csvw_decode_table_list); otherwise the whole document is decoded as
 // a single table (csvw_decode_table). Returns None on any structural
-// mismatch — an honest parse failure, never a silently-dropped field.
+// mismatch — an honest parse failure, never a silently-dropped field —
+// or when csvw_metadata_valid rejects a spec consistency condition.
 let csvw_decode_metadata (v:json_val) : option csvw_metadata =
+  if not (csvw_metadata_valid v) then None
+  else
   match json_get_array "tables" v with
   | Some items ->
     (match csvw_decode_table_list items with
