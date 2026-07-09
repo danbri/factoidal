@@ -283,6 +283,33 @@ export function owlClosure(
 ): Promise<Dataset>;
 
 /**
+ * OWL tableau materialisation (formal/fstar/Tableau.fst's
+ * `tableau_materialise`): add `i rdf:type <ClassExpression>` for every
+ * individual the model-construction reasoner proves is a member of an
+ * OWL class expression (someValuesFrom / hasValue / unionOf /
+ * intersectionOf, and the named class an equivalentClass restriction
+ * defines). Needs the npm-entry engine bundle. Default graph only.
+ * `dataset` is input + tableau-derived triples; `addedCount` is how
+ * many triples the tableau added.
+ */
+export function tableauMaterialise(
+  data: DataInput,
+  options?: { format?: DataFormat }
+): Promise<{ dataset: Dataset; addedCount: number }>;
+
+/**
+ * OWL DL inconsistency verdict (bin/owl-runner's DL pipeline: OWL-RL
+ * closure -> tableau materialise -> OWL-RL closure -> is_inconsistent).
+ * `rlAlone` is the plain OWL-RL verdict on the same input, so a caller
+ * can see the cases the tableau adds. Needs the npm-entry engine
+ * bundle. Default graph only.
+ */
+export function tableauDlInconsistent(
+  data: DataInput,
+  options?: { format?: DataFormat }
+): Promise<{ inconsistent: boolean; rlAlone: boolean }>;
+
+/**
  * Evaluate an RML mapping graph against one logical source's raw data,
  * returning the generated triples as a Dataset. Needs the npm-entry
  * engine bundle. Every triples map in `mapping` reads the SAME
@@ -687,6 +714,7 @@ export function capabilities(): Promise<{
   shacl: boolean;
   shex: boolean;
   owlClosure: boolean;
+  tableau: boolean;
   rml: boolean;
   csvw: boolean;
   jsonld: boolean;
@@ -762,6 +790,8 @@ declare const _default: {
   shaclValidate: typeof shaclValidate;
   shexValidate: typeof shexValidate;
   owlClosure: typeof owlClosure;
+  tableauMaterialise: typeof tableauMaterialise;
+  tableauDlInconsistent: typeof tableauDlInconsistent;
   rmlMap: typeof rmlMap;
   csvwToRdf: typeof csvwToRdf;
   jsonldToRdf: typeof jsonldToRdf;

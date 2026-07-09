@@ -653,6 +653,54 @@ function buildApi(driver) {
   }
 
   /**
+   * OWL tableau materialisation (formal/fstar/Tableau.fst's
+   * `tableau_materialise`): add `i rdf:type <ClassExpression>` for
+   * every individual the model-construction reasoner can prove is a
+   * member of an OWL class expression (someValuesFrom / hasValue /
+   * unionOf / intersectionOf, and the named class an equivalentClass
+   * restriction defines). This is the same F* function the SPARQL 1.1
+   * entailment-regime suite runs under the DL regime. Needs the
+   * npm-entry bundle. Default graph only (same scope cut as owlClosure).
+   * @param {Dataset|string|Array} data
+   * @param {{format?: string}} [options]
+   * @returns {Promise<{dataset: Dataset, addedCount: number}>}
+   *   dataset is input + tableau-derived triples; addedCount is how many
+   *   the tableau added.
+   */
+  async function tableauMaterialise(data, options) {
+    const e = await entry();
+    if (!e) throw pendingError('OWL tableau materialisation');
+    requireEntryFn(e, 'tableauMaterialise', 'OWL tableau materialisation');
+    const dataNq = docsToEntryNQuads(e, toDocs(data, options), 'tableauMaterialise(data)');
+    const r = entryResult(e.tableauMaterialise(dataNq), 'tableauMaterialise');
+    return {
+      dataset: Dataset.fromNQuads(r.nquads, { blankNodePrefix: freshBnodePrefix() }),
+      addedCount: r.addedCount,
+    };
+  }
+
+  /**
+   * OWL DL inconsistency verdict. Replays bin/owl-runner's DL pipeline
+   * (OWL-RL closure -> Tableau.tableau_materialise -> OWL-RL closure ->
+   * is_inconsistent). `rlAlone` is the plain OWL-RL verdict on the same
+   * input, so a caller can see the DL>=RL cases the tableau adds: a
+   * disjointness clash reached only after the tableau materialises a
+   * restriction membership the Datalog closure never derives. Needs the
+   * npm-entry bundle. Default graph only.
+   * @param {Dataset|string|Array} data
+   * @param {{format?: string}} [options]
+   * @returns {Promise<{inconsistent: boolean, rlAlone: boolean}>}
+   */
+  async function tableauDlInconsistent(data, options) {
+    const e = await entry();
+    if (!e) throw pendingError('OWL tableau DL inconsistency check');
+    requireEntryFn(e, 'tableauDlInconsistent', 'OWL tableau DL inconsistency check');
+    const dataNq = docsToEntryNQuads(e, toDocs(data, options), 'tableauDlInconsistent(data)');
+    const r = entryResult(e.tableauDlInconsistent(dataNq), 'tableauDlInconsistent');
+    return { inconsistent: r.inconsistent, rlAlone: r.rlAlone };
+  }
+
+  /**
    * Evaluate an RML mapping graph against one logical source's raw
    * data, returning the generated triples as a Dataset. Needs the
    * npm-entry bundle. Scope cut (documented, not silent): every
@@ -1463,6 +1511,8 @@ function buildApi(driver) {
         shacl: typeof e.shaclValidate === 'function',
         shex: typeof e.shexValidate === 'function',
         owlClosure: typeof e.owlClosure === 'function',
+        tableau: typeof e.tableauMaterialise === 'function' &&
+          typeof e.tableauDlInconsistent === 'function',
         rml: typeof e.rmlMap === 'function',
         csvw: typeof e.csvwToRdf === 'function',
         jsonld: typeof e.jsonldToRdf === 'function',
@@ -1503,7 +1553,7 @@ function buildApi(driver) {
     return {
       entry: false, construct: false, update: false, canonicalize: canon,
       graphs: true, canonicalHash: canon,
-      shacl: false, shex: false, owlClosure: false, rml: false,
+      shacl: false, shex: false, owlClosure: false, tableau: false, rml: false,
       csvw: false, jsonld: false, jsonldFromRdf: false, didKey: false,
       xml: false, xpath: false, rif: false, cottasBytesStore: false,
       xslt: false, mathml: false, xforms: false, jsonSchema: false,
@@ -1523,6 +1573,8 @@ function buildApi(driver) {
     shaclValidate,
     shexValidate,
     owlClosure,
+    tableauMaterialise,
+    tableauDlInconsistent,
     rmlMap,
     csvwToRdf,
     jsonldToRdf,

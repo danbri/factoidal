@@ -934,6 +934,51 @@ export async function owlClosure(dataNQuads, mode) {
 }
 
 /**
+ * OWL tableau materialisation (bin/npm-entry/entry_jsoo.ml's
+ * tableauMaterialise export -> formal/fstar/Tableau.fst's
+ * tableau_materialise). Default graph only.
+ *
+ * @param {string} dataNQuads
+ * @returns {Promise<{ok:true,nquads:string,addedCount:number}>}
+ */
+export async function tableauMaterialise(dataNQuads) {
+  if (typeof dataNQuads !== 'string') {
+    throw new TypeError('tableauMaterialise: dataNQuads must be a string');
+  }
+  const abi = await loadNpmEntry();
+  if (typeof abi.tableauMaterialise !== 'function') {
+    throw new Error(
+      'tableauMaterialise: the loaded factoidal-npm-entry bundle predates the tableauMaterialise export');
+  }
+  const parsed = JSON.parse(abi.tableauMaterialise(dataNQuads));
+  if (!parsed.ok) throw new Error(parsed.error || 'tableauMaterialise failed');
+  return parsed;
+}
+
+/**
+ * OWL DL inconsistency verdict (bin/npm-entry/entry_jsoo.ml's
+ * tableauDlInconsistent export): the RL -> tableau -> RL ->
+ * is_inconsistent DL pipeline, with `rlAlone` the plain OWL-RL verdict
+ * on the same input for comparison. Default graph only.
+ *
+ * @param {string} dataNQuads
+ * @returns {Promise<{ok:true,inconsistent:boolean,rlAlone:boolean}>}
+ */
+export async function tableauDlInconsistent(dataNQuads) {
+  if (typeof dataNQuads !== 'string') {
+    throw new TypeError('tableauDlInconsistent: dataNQuads must be a string');
+  }
+  const abi = await loadNpmEntry();
+  if (typeof abi.tableauDlInconsistent !== 'function') {
+    throw new Error(
+      'tableauDlInconsistent: the loaded factoidal-npm-entry bundle predates the tableauDlInconsistent export');
+  }
+  const parsed = JSON.parse(abi.tableauDlInconsistent(dataNQuads));
+  if (!parsed.ok) throw new Error(parsed.error || 'tableauDlInconsistent failed');
+  return parsed;
+}
+
+/**
  * Evaluate an RML mapping graph against one logical source's raw data
  * (bin/npm-entry/entry_jsoo.ml's rmlMap export). Every triples map in
  * `mappingNQuads` reads the SAME `sourceData` -- joins across two
@@ -1764,7 +1809,8 @@ export default {
   query, toRdf, canonicalize, runFactoidalCli, setFactoidalUrl, getFactoidalUrl,
   encodeTextAsBundleBytes, queryDataset, version,
   loadNpmEntry, setFactoidalNpmEntryUrl, rifSmoke, rifEval,
-  shaclValidate, shexValidate, didKeyResolve, owlClosure, rmlMap, jsonldToRdf,
+  shaclValidate, shexValidate, didKeyResolve, owlClosure,
+  tableauMaterialise, tableauDlInconsistent, rmlMap, jsonldToRdf,
   jsonldFromRdf, xmlWellformed, xpathEval,
   deltaLogOpen, deltaLogAppend, deltaLogReadAllHex, deltaLogMerge,
   deltaLogDestroy, _deltaLogCorruptLastForTest,

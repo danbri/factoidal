@@ -984,6 +984,51 @@ let owl_closure_json (data_nquads : string) (mode : string) : string =
         "owlClosure: unknown mode '%s' (expected 'RDFS' or 'OWL-RL')" mode))
 
 (* ---------------------------------------------------------------------
+   OWL tableau reasoner (rule #11 consumer -- exports only). The
+   model-construction reasoner is formal/fstar/Tableau.fst
+   (Tableau.tableau_materialise, which adds `i rdf:type <CE>` for every
+   individual provably in a class expression; 0 assume val, verified).
+   That is the same function bin/w3c-runner drives for the SPARQL 1.1
+   entailment-regime suite (parent/paper-sparqldl/simple/bind) and that
+   bin/owl-runner runs under --regime dl. tableauDlInconsistent below
+   replays owl_runner's exact DL pipeline: RL closure -> tableau
+   materialise -> RL closure -> is_inconsistent (see its apply_closure
+   DL branch). All F* functions; this only composes them for the
+   npm/browser boundary. --------------------------------------------- *)
+
+(* Materialise class-expression memberships. dataNQuads is a dataset
+   handle; only the default graph is materialised (same scope choice as
+   owlClosure / shaclValidate above). addedCount is the number of
+   triples the tableau derived beyond the input. *)
+let tableau_materialise_json (data_nquads : string) : string =
+  guarded (fun () ->
+    let graph = (dataset_of_nquads data_nquads).ds_default in
+    let materialised = Tableau.tableau_materialise graph in
+    let added = List.length materialised - List.length graph in
+    let added = if added < 0 then 0 else added in
+    "{\"ok\":true,\"nquads\":"
+    ^ jstr (construct_triples_to_ntriples materialised)
+    ^ ",\"addedCount\":" ^ string_of_int added ^ "}")
+
+(* DL-regime inconsistency verdict. `inconsistent` is the DL answer
+   (RL -> tableau -> RL -> is_inconsistent); `rlAlone` is the plain
+   OWL-RL answer on the same input, so a caller can see the DL>=RL
+   flips the tableau accounts for (a disjointness clash reached only
+   after the tableau materialises a restriction membership the Datalog
+   closure never derives). *)
+let tableau_dl_inconsistent_json (data_nquads : string) : string =
+  guarded (fun () ->
+    let graph = (dataset_of_nquads data_nquads).ds_default in
+    let fuel = Z.of_int 100 in
+    let rl_only = RDF_Graph_Executable.owl_rl_closure_with_reflexivity graph fuel in
+    let g_rl = RDF_Graph_Executable.owl_rl_closure_with_reflexivity graph fuel in
+    let g_tab = Tableau.tableau_materialise g_rl in
+    let g_dl = RDF_Graph_Executable.owl_rl_closure_with_reflexivity g_tab fuel in
+    Printf.sprintf "{\"ok\":true,\"inconsistent\":%b,\"rlAlone\":%b}"
+      (RDF_Graph_Executable.is_inconsistent g_dl)
+      (RDF_Graph_Executable.is_inconsistent rl_only))
+
+(* ---------------------------------------------------------------------
    RML (rule #11 consumer -- exports only). Mapping-document decoding
    lives in formal/fstar/RML.Mapping.fst, logical-source iteration in
    formal/fstar/RML.Sources.fst, term-map/triples-map evaluation in
@@ -1848,6 +1893,8 @@ let () =
           ("shaclValidate", s2 shacl_validate_json);
           ("shexValidate", s4 shex_validate_json);
           ("owlClosure", s2 owl_closure_json);
+          ("tableauMaterialise", s1 tableau_materialise_json);
+          ("tableauDlInconsistent", s1 tableau_dl_inconsistent_json);
           ("rmlMap", s3 rml_map_json);
           ("csvwToRdf", s3 csvw_to_rdf_json);
           ("deltaBatchToHex", s3 delta_batch_to_hex);

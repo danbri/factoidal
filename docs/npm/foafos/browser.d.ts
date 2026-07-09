@@ -185,6 +185,17 @@ export function owlClosure(
   mode: 'RDFS' | 'OWL-RL'
 ): Promise<{ ok: true; nquads: string }>;
 
+/** OWL tableau class-expression materialisation (default graph only). */
+export function tableauMaterialise(
+  dataNQuads: string
+): Promise<{ ok: true; nquads: string; addedCount: number }>;
+
+/** OWL DL inconsistency verdict (RL -> tableau -> RL -> is_inconsistent);
+ * `rlAlone` is the plain OWL-RL verdict on the same input. */
+export function tableauDlInconsistent(
+  dataNQuads: string
+): Promise<{ ok: true; inconsistent: boolean; rlAlone: boolean }>;
+
 /** RML mapping evaluation against one logical source. */
 export function rmlMap(
   mappingNQuads: string,
@@ -391,6 +402,8 @@ declare const _default: {
   shexValidate: typeof shexValidate;
   didKeyResolve: typeof didKeyResolve;
   owlClosure: typeof owlClosure;
+  tableauMaterialise: typeof tableauMaterialise;
+  tableauDlInconsistent: typeof tableauDlInconsistent;
   rmlMap: typeof rmlMap;
   jsonldToRdf: typeof jsonldToRdf;
   jsonldFromRdf: typeof jsonldFromRdf;

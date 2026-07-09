@@ -206,6 +206,28 @@ export function fromCsvw(
  */
 export function rif(ds: FnDataset, rules: string): Promise<FnDataset>;
 
+/**
+ * OWL tableau materialisation (formal/fstar/Tableau.fst's
+ * `tableau_materialise`): add `i rdf:type <ClassExpression>` for every
+ * individual the model-construction reasoner proves is a member of an
+ * OWL class expression. Needs the npm-entry engine bundle. Default
+ * graph only. `dataset` is input + tableau-derived triples;
+ * `addedCount` is how many triples the tableau added.
+ */
+export function tableauMaterialise(
+  ds: FnDataset
+): Promise<{ dataset: FnDataset; addedCount: number }>;
+
+/**
+ * OWL DL inconsistency verdict (bin/owl-runner's DL pipeline: OWL-RL
+ * closure -> tableau materialise -> OWL-RL closure -> is_inconsistent).
+ * `rlAlone` is the plain OWL-RL verdict on the same input. Needs the
+ * npm-entry engine bundle. Default graph only.
+ */
+export function tableauDlInconsistent(
+  ds: FnDataset
+): Promise<{ inconsistent: boolean; rlAlone: boolean }>;
+
 /** RDFC-1.0 canonical N-Quads text. Needs the npm-entry engine bundle. */
 export function canonicalize(ds: FnDataset): Promise<string>;
 

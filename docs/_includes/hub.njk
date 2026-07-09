@@ -494,6 +494,44 @@ const fn = {
     return { conforms: result.conforms, report: new FnDataset(result.reportNquads) };
   },
   /**
+   * OWL tableau materialisation (mirrors npm/factoidal/index.js's
+   * `tableauMaterialise(data, options) -> {dataset, addedCount}`):
+   * formal/fstar/Tableau.fst's tableau_materialise adds
+   * `i rdf:type <ClassExpression>` for every individual it proves is a
+   * member of an OWL class expression. `data` may be raw RDF text
+   * (parsed with `options.format`, default "turtle") or an FnDataset.
+   */
+  async tableauMaterialise(data, options) {
+    const opts = options || {};
+    if (typeof Factoidal.tableauMaterialise !== "function") {
+      throw new Error(
+        "tableauMaterialise: the loaded factoidal-npm-entry bundle predates the tableauMaterialise export");
+    }
+    const dataNq = data && typeof data.toNQuads === "function"
+      ? data.toNQuads()
+      : await Factoidal.toRdf(data, { format: opts.format || "turtle" });
+    const parsed = await Factoidal.tableauMaterialise(dataNq);
+    return { dataset: new FnDataset(parsed.nquads), addedCount: parsed.addedCount };
+  },
+  /**
+   * OWL DL inconsistency verdict (mirrors npm/factoidal/index.js's
+   * `tableauDlInconsistent(data, options) -> {inconsistent, rlAlone}`):
+   * the OWL-RL -> tableau -> OWL-RL -> is_inconsistent DL pipeline, with
+   * `rlAlone` the plain OWL-RL verdict on the same input for comparison.
+   */
+  async tableauDlInconsistent(data, options) {
+    const opts = options || {};
+    if (typeof Factoidal.tableauDlInconsistent !== "function") {
+      throw new Error(
+        "tableauDlInconsistent: the loaded factoidal-npm-entry bundle predates the tableauDlInconsistent export");
+    }
+    const dataNq = data && typeof data.toNQuads === "function"
+      ? data.toNQuads()
+      : await Factoidal.toRdf(data, { format: opts.format || "turtle" });
+    const parsed = await Factoidal.tableauDlInconsistent(dataNq);
+    return { inconsistent: parsed.inconsistent, rlAlone: parsed.rlAlone };
+  },
+  /**
    * RDFC-1.0 canonicalization (mirrors npm/factoidal/index.js's
    * `canonicalize(data, options) -> Promise<string>`): canonical
    * blank-node labels plus sorted canonical N-Quads text. `data` may

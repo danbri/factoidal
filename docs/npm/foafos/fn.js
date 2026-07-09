@@ -441,6 +441,40 @@ async function rif(ds, rules) {
 }
 
 /**
+ * OWL tableau materialisation (formal/fstar/Tableau.fst's
+ * `tableau_materialise`): add `i rdf:type <ClassExpression>` for every
+ * individual the model-construction reasoner proves is a member of an
+ * OWL class expression (someValuesFrom / hasValue / unionOf /
+ * intersectionOf, and the named class an equivalentClass restriction
+ * defines). Needs the npm-entry engine bundle. Default graph only.
+ *
+ * @param {FnDataset} ds the ontology + ABox graph
+ * @returns {Promise<{dataset: FnDataset, addedCount: number}>} dataset
+ *   is input + tableau-derived triples; addedCount is how many the
+ *   tableau added.
+ */
+async function tableauMaterialise(ds) {
+  assertFnDataset(ds, 'tableauMaterialise');
+  const r = await engineApi.tableauMaterialise(toDataset(ds));
+  return { dataset: fromDataset(r.dataset), addedCount: r.addedCount };
+}
+
+/**
+ * OWL DL inconsistency verdict (bin/owl-runner's DL pipeline: OWL-RL
+ * closure -> tableau materialise -> OWL-RL closure -> is_inconsistent).
+ * `rlAlone` is the plain OWL-RL verdict on the same input, so a caller
+ * can see the cases the tableau adds. Needs the npm-entry engine
+ * bundle. Default graph only.
+ *
+ * @param {FnDataset} ds the ontology + ABox graph
+ * @returns {Promise<{inconsistent: boolean, rlAlone: boolean}>}
+ */
+async function tableauDlInconsistent(ds) {
+  assertFnDataset(ds, 'tableauDlInconsistent');
+  return engineApi.tableauDlInconsistent(toDataset(ds));
+}
+
+/**
  * RDFC-1.0 canonicalization: canonical N-Quads text. Needs the
  * npm-entry bundle (same gating as index.js's canonicalize()).
  */
@@ -727,6 +761,8 @@ module.exports = {
   fromMapping,
   fromCsvw,
   rif,
+  tableauMaterialise,
+  tableauDlInconsistent,
   canonicalize,
   hash,
   equals,
