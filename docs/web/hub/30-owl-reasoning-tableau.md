@@ -192,11 +192,14 @@ as its RL lower bound rather than its true DL answer.
 `owl:maxCardinality` path uses an anchor-triple rewrite that, in the
 words of the project's own standing note,
 
-> is sound for the SPARQL 1.1 entailment regime suite (70/70) but
 > silently drops vacuous-truth individuals (zero `P`-edges satisfy
-> max-1) and OWL Full punned class-individuals.
+> max-1) and OWL Full punned class-individuals
 
-It is tracked in issue
+— and the strict runner-integrity comparison added a second entry to
+its charge sheet: the rewrite leaks internal `?_mc_`/`?_mxqc1_`
+variables into result rows, which now fails two entailment-regime
+tests that lenient comparison used to wave through (see the live
+dashboard for the suite's current score). It is tracked in issue
 [#236](https://github.com/danbri/factoidal/issues/236); generalising it
 from an anchor to a `UNION` is the documented fix before relying on it
 for OWL DL outside the entailment-regime suite.

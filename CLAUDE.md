@@ -108,12 +108,14 @@ The two that corrupt files silently:
 
 `OWL.QueryRewrite.fst` — N=1 qualified `CE_MaxCardinality` rewrite
 emits an anchor triple `?subj P ?_mxqc1_anchor_<k>` to make parent7
-pass. The anchor is sound for the SPARQL 1.1 entailment regime suite
-(70/70) but silently drops vacuous-truth individuals (zero `P`-edges
-satisfy max-1) and OWL Full punned class-individuals. Tracked in
-**#236**. Generalise from anchor → UNION as documented there before
-relying on this rewrite for OWL DL outside the entailment regime
-suite.
+pass. The anchor silently drops vacuous-truth individuals (zero
+`P`-edges satisfy max-1) and OWL Full punned class-individuals, and
+the 2026-07-09 strict-runner comparison exposed a leak the lenient
+runner hid: internal `?_mc_`/`?_mxqc1_` variables appear in result
+rows, failing 2 entailment-regime tests (suite 66/70; the old 70/70
+was partly leniency). Tracked in **#236**. Generalise from anchor →
+UNION as documented there before relying on this rewrite for OWL DL
+outside the entailment regime suite.
 
 ## Agent Work Strategy
 

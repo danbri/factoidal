@@ -1257,17 +1257,17 @@ emit_owl_skip_row () {
 ROW
 }
 
-# Note (2026-05-08): the W3C SPARQL 1.1 entailment-regime suite (70/70
-# pass, see SPARQL section above) is the **live testbed for Tableau
-# materialisation**. parent4/5/6/7 + simple7/8 + sparqldl-01..12 +
-# many-others are OWL-DL queries; they pass because Tableau is on
-# the codepath. The "semantics-direct" row below points at the
-# vendored W3C OWL-DL conformance test catalog (separate, larger);
-# it isn't wired through owl_runner yet, but the underlying engine
-# (Tableau.tableau_materialise + has_disjoint_witness +
-# materialise_for_ce + tableau_introduce_witnesses) is sound, on the
-# codepath, and contributing to the wins above. The "blocked" labels
-# below are about *runner wiring*, not engine readiness.
+# Note (2026-05-08, updated 2026-07-09): the W3C SPARQL 1.1
+# entailment-regime suite (live score in the SPARQL section above)
+# is the **live testbed for Tableau materialisation**.
+# parent4/5/6/7 + simple7/8 + sparqldl-01..12 + many-others are
+# OWL-DL queries on the Tableau codepath. Under the 2026-07-09
+# strict runner-integrity comparison the suite reads 66/70: the 4
+# fails are the #236 anchor-rewrite variable leak (2) and
+# ASK-boolean inference gaps (2) that lenient comparison used to
+# hide — engine-side bugs now visible, not a Tableau regression.
+# The "semantics-direct" catalog below IS wired through owl_runner
+# (--regime dl, Phase 2.3d).
 OWL_SKIP_ROWS=""
 # Most catalog skip-rows above (profile-EL, profile-QL,
 # semantics-direct, type-*) were retired 2026-05-08 when their
