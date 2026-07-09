@@ -455,6 +455,113 @@ let eval_term_map (role : map_role) (tm : term_map) (row : source_row) (row_seed
     List.Tot.concatMap (fun s -> finalize_value tt tm row base_iri (RV_String s)) strs
 
 // ------------------------------------------------------------------
+// 4b. RML-CC gather-map evaluation (rml:gather / rml:gatherAs). A
+//     gather object map collects its member term maps' values into an
+//     RDF collection (rdf:List cons chain, or an rdf:Bag/Seq/Alt with
+//     rdf:type + rdf:_N membership triples) and links the enclosing
+//     subject to the collection head. Member values are appended in
+//     order (rml:strategy rml:append, the default — rml:cartesianProduct
+//     is decoded but not evaluated this pass; those fixtures fail
+//     honestly). Empty-result behaviour follows
+//     rml:allowEmptyListAndContainer: default emits no triple, true
+//     emits rdf:nil (List) or a bare typed container (Bag/Seq/Alt) —
+//     verified against RMLTC-CC-0001/0002/0003/0005-App/0009 fixtures.
+// ------------------------------------------------------------------
+
+let rdf_nil_iri : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/1999/02/22-rdf-syntax-ns#nil");
+  "http://www.w3.org/1999/02/22-rdf-syntax-ns#nil"
+
+let rdf_Bag_iri : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/1999/02/22-rdf-syntax-ns#Bag");
+  "http://www.w3.org/1999/02/22-rdf-syntax-ns#Bag"
+
+let rdf_Seq_iri : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/1999/02/22-rdf-syntax-ns#Seq");
+  "http://www.w3.org/1999/02/22-rdf-syntax-ns#Seq"
+
+let rdf_Alt_iri : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/1999/02/22-rdf-syntax-ns#Alt");
+  "http://www.w3.org/1999/02/22-rdf-syntax-ns#Alt"
+
+let rdf_type_iri : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/1999/02/22-rdf-syntax-ns#type");
+  "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
+
+// Container-membership predicate rdf:_N built at runtime. The prefix
+// guarantees is_iri (non-empty + colon), so the None branch is dead;
+// returning [] there keeps the function total without an assume.
+let mk_wf_iri (s : string) : option wf_iri = if is_iri s then Some s else None
+
+let rdf_member_pred (i : nat) : option wf_iri =
+  mk_wf_iri ("http://www.w3.org/1999/02/22-rdf-syntax-ns#_" ^ string_of_int i)
+
+// Every gather member's value list, appended in order (append strategy).
+let gather_member_values (gm : gather_map) (row : source_row) (seed : string) (base : option string)
+  : list rdf_term =
+  List.Tot.concatMap (fun tm -> eval_term_map MR_Object tm row seed base) gm.gm_members
+
+// Collection head node(s): a fresh per-iteration blank node when the
+// map node carries no own constant/reference/template form (RMLTC-CC-
+// 0001-*), otherwise the IRI/bnode its form generates (RMLTC-CC-0002-*'s
+// rml:template "c/{$.id}").
+let gather_heads (gm : gather_map) (row : source_row) (seed : string) (base : option string)
+  : list subject =
+  match gm.gm_head.tmap_form with
+  | TMF_Unknown -> [S_BNode (seed ^ "h")]
+  | _ ->
+    List.Tot.concatMap
+      (fun t -> match t with
+                | T_IRI i   -> [S_IRI i]
+                | T_BNode b -> [S_BNode b]
+                | T_Literal _ -> [])
+      (eval_term_map MR_Object gm.gm_head row seed base)
+
+// rdf:List cons chain: the first cons cell IS the head node (bnode or
+// named IRI — RMLTC-CC-0002/0003-EL-Named), subsequent cells are fresh
+// bnodes, terminated by rdf:nil.
+let rec build_list_struct (headsubj : subject) (members : list rdf_term) (seed : string) (k : nat)
+  : Tot (list triple) (decreases members) =
+  match members with
+  | [] -> []
+  | [m] ->
+    [ { s = headsubj; p = rdf_first_iri; o = m };
+      { s = headsubj; p = rdf_rest_iri;  o = T_IRI rdf_nil_iri } ]
+  | m :: rest ->
+    let next = S_BNode (seed ^ "c" ^ string_of_int k) in
+    { s = headsubj; p = rdf_first_iri; o = m } ::
+    { s = headsubj; p = rdf_rest_iri;  o = subject_to_term next } ::
+    build_list_struct next rest seed (k + 1)
+
+// rdf:Bag/Seq/Alt membership: head rdf:_1 m1, head rdf:_2 m2, ...
+let rec build_container_members (headsubj : subject) (members : list rdf_term) (i : nat)
+  : Tot (list triple) (decreases members) =
+  match members with
+  | [] -> []
+  | m :: rest ->
+    (match rdf_member_pred i with
+     | Some p -> { s = headsubj; p = p; o = m } :: build_container_members headsubj rest (i + 1)
+     | None -> build_container_members headsubj rest (i + 1))
+
+// The object term to link (subj pred obj) plus the collection's own
+// structural triples, for one (head, members) instance.
+let collection_triples
+    (kind : gather_as) (allow_empty : bool) (headsubj : subject) (members : list rdf_term) (seed : string)
+  : (option rdf_term & list triple) =
+  match kind with
+  | GA_List ->
+    (match members with
+     | [] -> if allow_empty then (Some (T_IRI rdf_nil_iri), []) else (None, [])
+     | _  -> (Some (subject_to_term headsubj), build_list_struct headsubj members seed 1))
+  | GA_Bag | GA_Seq | GA_Alt ->
+    let tyiri = (match kind with GA_Bag -> rdf_Bag_iri | GA_Seq -> rdf_Seq_iri | _ -> rdf_Alt_iri) in
+    let type_t = { s = headsubj; p = rdf_type_iri; o = T_IRI tyiri } in
+    (match members with
+     | [] -> if allow_empty then (Some (subject_to_term headsubj), [ type_t ]) else (None, [])
+     | _  -> (Some (subject_to_term headsubj), type_t :: build_container_members headsubj members 1))
+  | GA_Other _ -> (None, [])
+
+// ------------------------------------------------------------------
 // 5. Triples-map evaluation (spec 12.1, non-join subset). Joins
 //    (referencing object maps, Stage 5) are decoded (OB_Join) but
 //    contribute no triples here.
@@ -514,10 +621,40 @@ let eval_pom (row : source_row) (row_seed : string) (base_iri : option string) (
       (fun ob ->
          match ob with
          | OB_TermMap tm -> eval_term_map MR_Object tm row row_seed base_iri
-         | OB_Join _ -> [])  // Stage 5
+         | OB_Join _ -> []      // Stage 5
+         | OB_Gather _ -> [])   // handled by gather_placed_triples (section 4b)
       pom.pom_objects in
   let graphs = eval_graphs pom.pom_graphs row row_seed base_iri in
   (predicates, objects, graphs)
+
+// One gather object binding's placed triples: for each collection head,
+// the (subj pred head)/(subj pred rdf:nil) link triples across every
+// predicate, plus the collection's own structural triples — all routed
+// to the same target graphs as the enclosing predicate-object map.
+let gather_placed_triples
+    (subj : subject) (target : list string) (drop : bool) (predicates : list rdf_term)
+    (gm : gather_map) (row : source_row) (seed : string) (base : option string)
+  : list placed_triple =
+  let members = gather_member_values gm row seed base in
+  let heads = gather_heads gm row seed base in
+  List.Tot.concatMap
+    (fun (hidx, headsubj) ->
+       let (obj_opt, struct_ts) =
+         collection_triples gm.gm_as gm.gm_allow_empty headsubj members (seed ^ "_" ^ string_of_int hidx) in
+       match obj_opt with
+       | None -> []
+       | Some obj ->
+         let link_pts =
+           List.Tot.concatMap
+             (fun p -> match p with
+                       | T_IRI pi -> [ { pt_triple = { s = subj; p = pi; o = obj };
+                                         pt_graphs = target; pt_drop = drop } ]
+                       | _ -> [])
+             predicates in
+         let struct_pts =
+           List.Tot.map (fun t -> { pt_triple = t; pt_graphs = target; pt_drop = drop }) struct_ts in
+         List.Tot.append link_pts struct_pts)
+    (List.Tot.mapi (fun i h -> (i, h)) heads)
 
 let placed_triples_for_pom
     (subj : subject) (subject_graphs : list string) (has_sgm : bool)
@@ -527,15 +664,26 @@ let placed_triples_for_pom
   let has_pogm = list_nonempty pom.pom_graphs in
   let target = if (not has_sgm) && (not has_pogm) then [] else subject_graphs @ pog in
   let drop = (has_sgm || has_pogm) && target = [] in
-  List.Tot.concatMap
-    (fun p ->
-       match p with
-       | T_IRI pi ->
-         List.Tot.concatMap
-           (fun o -> [{ pt_triple = { s = subj; p = pi; o = o }; pt_graphs = target; pt_drop = drop }])
-           objects
-       | _ -> [])  // predicate maps must generate IRIs (spec 8.4) — non-IRI predicate is a data error
-    predicates
+  let plain_pts =
+    List.Tot.concatMap
+      (fun p ->
+         match p with
+         | T_IRI pi ->
+           List.Tot.concatMap
+             (fun o -> [{ pt_triple = { s = subj; p = pi; o = o }; pt_graphs = target; pt_drop = drop }])
+             objects
+         | _ -> [])  // predicate maps must generate IRIs (spec 8.4) — non-IRI predicate is a data error
+      predicates in
+  let gather_pts =
+    List.Tot.concatMap
+      (fun (gidx, ob) ->
+         match ob with
+         | OB_Gather gm ->
+           gather_placed_triples subj target drop predicates gm row
+             (row_seed ^ "#g" ^ string_of_int gidx) base_iri
+         | _ -> [])
+      (List.Tot.mapi (fun i ob -> (i, ob)) pom.pom_objects) in
+  List.Tot.append plain_pts gather_pts
 
 let class_placed_triples (subj : subject) (subject_graphs : list string) (has_sgm : bool) (classes : list wf_iri)
   : list placed_triple =
@@ -711,6 +859,7 @@ let eval_join_pom
     (fun ob ->
        match ob with
        | OB_TermMap _ -> []  // handled by the non-join pass (eval_pom above)
+       | OB_Gather _ -> []   // gather members handled in the non-join pass (section 4b)
        | OB_Join rom ->
          (match lookup_parent rom.rom_parent_triples_map with
           | None -> []

@@ -266,6 +266,53 @@ let rml_languageMap : wf_iri =
   assert_norm (is_iri "http://w3id.org/rml/languageMap");
   "http://w3id.org/rml/languageMap"
 
+// RML-CC (collections/containers) vocabulary. `rml:gather` points at an
+// RDF collection ( ... ) of member term maps; `rml:gatherAs` selects the
+// output collection kind (rdf:List / rdf:Bag / rdf:Seq / rdf:Alt);
+// `rml:strategy` (rml:append default, rml:cartesianProduct) controls how
+// several gather-member value lists are combined; and
+// `rml:allowEmptyListAndContainer` flips the empty-result behaviour
+// (default: emit no triple; true: emit rdf:nil for a List, or a bare
+// typed container for a Bag/Seq/Alt). Surveyed directly from the
+// vendored rml-cc suite (third_party/testing/rml-modules/rml-cc/
+// test-cases/*/mapping.ttl).
+let rml_gather : wf_iri =
+  assert_norm (is_iri "http://w3id.org/rml/gather");
+  "http://w3id.org/rml/gather"
+
+let rml_gatherAs : wf_iri =
+  assert_norm (is_iri "http://w3id.org/rml/gatherAs");
+  "http://w3id.org/rml/gatherAs"
+
+let rml_strategy : wf_iri =
+  assert_norm (is_iri "http://w3id.org/rml/strategy");
+  "http://w3id.org/rml/strategy"
+
+let rml_allowEmptyListAndContainer : wf_iri =
+  assert_norm (is_iri "http://w3id.org/rml/allowEmptyListAndContainer");
+  "http://w3id.org/rml/allowEmptyListAndContainer"
+
+let rml_cartesianProduct : wf_iri =
+  assert_norm (is_iri "http://w3id.org/rml/cartesianProduct");
+  "http://w3id.org/rml/cartesianProduct"
+
+// rdf: vocabulary needed to *walk* the gather collection and to compare
+// gatherAs kinds. Defined locally (literal-based assert_norm) rather
+// than relying on which of RDF.Vocabulary's names transitively reach
+// this module through include.
+let rdf_first_iri : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/1999/02/22-rdf-syntax-ns#first");
+  "http://www.w3.org/1999/02/22-rdf-syntax-ns#first"
+
+let rdf_rest_iri : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest");
+  "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest"
+
+let rdf_List_str  : string = "http://www.w3.org/1999/02/22-rdf-syntax-ns#List"
+let rdf_Bag_str   : string = "http://www.w3.org/1999/02/22-rdf-syntax-ns#Bag"
+let rdf_Seq_str   : string = "http://www.w3.org/1999/02/22-rdf-syntax-ns#Seq"
+let rdf_Alt_str   : string = "http://www.w3.org/1999/02/22-rdf-syntax-ns#Alt"
+
 // ------------------------------------------------------------------
 // 2. Template-string segments: split "http://ex.org/{$.ID}/{$.Name}"
 //    into [Literal "http://ex.org/"; Reference "$.ID"; Literal "/";
@@ -604,9 +651,101 @@ let decode_join_conditions (g : rdf_graph) (s : subject) (fuel : nat) : list joi
 //    rml:parentTriplesMap being present on the objectMap's node.
 // ------------------------------------------------------------------
 
+// ------------------------------------------------------------------
+// 8a. RML-CC gather maps. An object map (or, in tests not covered this
+//     pass, a subject map) carrying rml:gather collects the values of
+//     one or more member term maps into an RDF collection whose kind is
+//     given by rml:gatherAs. The map node's OWN constant/reference/
+//     template form (gm_head) names the collection head when present
+//     (RMLTC-CC-0002-* use rml:template "c/{$.id}"); absent, a fresh
+//     blank node per iteration is used (RMLTC-CC-0001-*).
+// ------------------------------------------------------------------
+
+type gather_as =
+  | GA_List
+  | GA_Bag
+  | GA_Seq
+  | GA_Alt
+  | GA_Other : string -> gather_as
+
+type gather_strategy =
+  | GS_Append           // default: concatenate every member's value list
+  | GS_CartesianProduct // rml:cartesianProduct (RMLTC-CC-0005-Car*) — decoded, not evaluated this pass
+
+noeq type gather_map = {
+  gm_head        : term_map;        // the map node's own form; TMF_Unknown => fresh bnode head
+  gm_members     : list term_map;   // the rml:gather ( ... ) member term maps, in order
+  gm_as          : gather_as;
+  gm_strategy    : gather_strategy;
+  gm_allow_empty : bool;
+}
+
+let decode_gather_as (l : list rdf_term) : gather_as =
+  match l with
+  | (T_IRI i) :: _ ->
+    if i = rdf_List_str then GA_List
+    else if i = rdf_Bag_str then GA_Bag
+    else if i = rdf_Seq_str then GA_Seq
+    else if i = rdf_Alt_str then GA_Alt
+    else GA_Other i
+  | _ -> GA_List  // rml:gather with no rml:gatherAs defaults to an rdf:List
+
+let decode_gather_strategy (l : list rdf_term) : gather_strategy =
+  match l with
+  | (T_IRI i) :: _ -> if i = rml_cartesianProduct then GS_CartesianProduct else GS_Append
+  | _ -> GS_Append
+
+// rml:allowEmptyListAndContainer defaults false; only the literal
+// "true" (xsd:boolean lexical) flips it on.
+let decode_allow_empty (l : list rdf_term) : bool =
+  match l with
+  | (T_Literal lit) :: _ -> lit.lexical_form = "true"
+  | _ -> false
+
+// Walk an RDF collection (rdf:first/rdf:rest chain) starting at `head`,
+// collecting the subject of each rdf:first object (the member term-map
+// node). fuel bounds the walk; graph_len g + 1 always suffices since
+// each step consumes at least one rdf:rest edge of the graph. Stops at
+// rdf:nil (which carries no rdf:first) via the empty-find_objects base.
+let rec collect_gather_members
+    (g : rdf_graph) (head : subject) (fuel : nat) (acc : list subject)
+  : Tot (list subject) (decreases fuel) =
+  if fuel = 0 then List.Tot.rev acc
+  else
+    match find_objects g head rdf_first_iri with
+    | [] -> List.Tot.rev acc
+    | (m :: _) ->
+      let acc' = (match term_to_subject m with Some ms -> ms :: acc | None -> acc) in
+      (match find_objects g head rdf_rest_iri with
+       | (r :: _) ->
+         (match term_to_subject r with
+          | Some rs -> collect_gather_members g rs (fuel - 1) acc'
+          | None -> List.Tot.rev acc')
+       | [] -> List.Tot.rev acc')
+
+let decode_gather_map (g : rdf_graph) (om_subj : subject) (fuel : nat) : gather_map =
+  let member_subjs =
+    (match find_objects g om_subj rml_gather with
+     | (h :: _) ->
+       (match term_to_subject h with
+        | Some hs -> collect_gather_members g hs (graph_len g + 1) []
+        | None -> [])
+     | [] -> []) in
+  { gm_head        = decode_term_map_from_subject g om_subj fuel;
+    gm_members     = List.Tot.map (fun ms -> decode_term_map_from_subject g ms fuel) member_subjs;
+    gm_as          = decode_gather_as (find_objects g om_subj rml_gatherAs);
+    gm_strategy    = decode_gather_strategy (find_objects g om_subj rml_strategy);
+    gm_allow_empty = decode_allow_empty (find_objects g om_subj rml_allowEmptyListAndContainer) }
+
+let has_gather (g : rdf_graph) (s : subject) : bool =
+  match find_objects g s rml_gather with
+  | [] -> false
+  | _ -> true
+
 noeq type object_binding =
   | OB_TermMap : term_map -> object_binding
   | OB_Join    : ref_object_map -> object_binding
+  | OB_Gather  : gather_map -> object_binding
 
 noeq type predicate_object_map = {
   pom_predicates : list term_map;
@@ -643,6 +782,9 @@ let decode_object_bindings (g : rdf_graph) (s : subject) (fuel : nat) : list obj
          match term_to_subject t with
          | None -> []
          | Some om_subj ->
+           if has_gather g om_subj then
+             [OB_Gather (decode_gather_map g om_subj fuel)]
+           else
            (match find_objects g om_subj rml_parentTriplesMap with
             | (ptm :: _) ->
               let parent_ref = (match term_to_node_ref ptm with Some r -> r | None -> "") in

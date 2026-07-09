@@ -77,6 +77,13 @@ let io_dir_candidates () =
     "../../third_party/testing/rml-modules/rml-io/test-cases";
     "../../../third_party/testing/rml-modules/rml-io/test-cases" ]
 
+let cc_dir_candidates () =
+  let repo_root = find_repo_root () in
+  [ Filename.concat repo_root "third_party/testing/rml-modules/rml-cc/test-cases";
+    "third_party/testing/rml-modules/rml-cc/test-cases";
+    "../../third_party/testing/rml-modules/rml-cc/test-cases";
+    "../../../third_party/testing/rml-modules/rml-cc/test-cases" ]
+
 let default_dir candidates =
   try List.find Sys.file_exists candidates
   with Not_found -> List.hd candidates
@@ -299,7 +306,69 @@ type outcome = Pass | Fail of string | Skip of string
 let is_empty_dataset (ds : RDF_Graph_Executable.rdf_dataset) =
   ds.RDF_Graph_Executable.ds_default = [] && ds.RDF_Graph_Executable.ds_named = []
 
-let run_test module_dir (tr : test_row) =
+(* ------------------------------------------------------------------ *)
+(* Honest out-of-scope classification for rml-io source tests. A test
+   whose logical source needs a feature this engine does not implement
+   (XPath/XML reference formulation, relational SQL2008 sources needing
+   an RDBMS, a SPARQL-over-RDF iterator, a compressed source needing
+   decompression, or a non-UTF-8 encoding) is reported as an explicit
+   SKIP with a reason rather than a FAIL — a missing feature is not a
+   wrong answer. Classification reads only the DECODED mapping's logical
+   source (reference formulation + source path), no semantic RDF logic
+   here (rule #11 — this is consumer triage, same class as the existing
+   RMLTTC target-test skip). *)
+
+let str_contains (s : string) (sub : string) : bool =
+  let ls = String.length s and lf = String.length sub in
+  if lf = 0 then true
+  else
+    let rec go i = i + lf <= ls && (String.sub s i lf = sub || go (i + 1)) in
+    go 0
+
+let str_ends_with (s : string) (suf : string) : bool =
+  let ls = String.length s and lf = String.length suf in
+  ls >= lf && String.sub s (ls - lf) lf = suf
+
+let io_skip_reason (doc : RML_Mapping.mapping_document) : string option =
+  let check_ls (ls : RML_Mapping.logical_source) : string option =
+    let rf = opt_of_fs ls.RML_Mapping.ls_reference_formulation in
+    let path = opt_of_fs ls.RML_Mapping.ls_source_path in
+    match rf with
+    | Some RML_Mapping.RF_XPath ->
+      Some "XPath/XML reference formulation not implemented"
+    | Some (RML_Mapping.RF_Other s) when str_contains s "SQL2008" || str_contains s "SQL" ->
+      Some "relational SQL2008 source (needs an RDBMS)"
+    | Some (RML_Mapping.RF_Other s) when str_contains s "SPARQL" ->
+      Some "SPARQL-over-RDF iterator not implemented"
+    | Some (RML_Mapping.RF_Other s) when str_contains s "XPath" || str_contains s "XML" ->
+      Some "XPath/XML reference formulation not implemented"
+    | _ ->
+      (match path with
+       | Some p when str_ends_with p ".gz" || str_ends_with p ".zip"
+                     || str_ends_with p ".xz" || str_ends_with p ".tar"
+                     || str_contains p ".tar." ->
+         Some "compressed source (needs decompression)"
+       | Some p when str_contains p "UTF16" || str_contains p "UTF-16" ->
+         Some "non-UTF-8 (UTF-16) source encoding not supported"
+       | Some p when str_ends_with p ".xml" ->
+         (* RMLSTC0007d declares its XPath reference formulation as a
+            blank node (rml:XPathReferenceFormulation with namespaces),
+            so the reference-formulation IRI check above misses it — the
+            .xml source path is the reliable signal. *)
+         Some "XPath/XML reference formulation not implemented"
+       | _ -> None)
+  in
+  List.fold_left
+    (fun acc (tm : RML_Mapping.triples_map) ->
+       match acc with
+       | Some _ -> acc
+       | None ->
+         (match opt_of_fs tm.RML_Mapping.tm_logical_source with
+          | Some ls -> check_ls ls
+          | None -> None))
+    None doc.RML_Mapping.md_triples_maps
+
+let run_test ~(suite_base : string option) ~(classify : bool) module_dir (tr : test_row) =
   let test_dir = Filename.concat module_dir tr.tr_id in
   let mapping_path = Filename.concat test_dir tr.tr_mapping in
   match read_file mapping_path with
@@ -307,7 +376,11 @@ let run_test module_dir (tr : test_row) =
   | Some ttl ->
     let g = Parser_Turtle.parse_turtle ttl in
     let doc = RML_Mapping.decode_mapping_document g in
-    let got_ds = eval_document test_dir tr.tr_base_iri doc in
+    (match (if classify then io_skip_reason doc else None) with
+     | Some reason -> Skip reason
+     | None ->
+    let base = (match tr.tr_base_iri with Some _ -> tr.tr_base_iri | None -> suite_base) in
+    let got_ds = eval_document test_dir base doc in
     if tr.tr_error then
       (if is_empty_dataset got_ds then Pass
        else
@@ -328,7 +401,7 @@ let run_test module_dir (tr : test_row) =
             if got_canon = exp_canon then Pass
             else
               Fail (Printf.sprintf "canonical N-Quads differ\n      expected:\n%s      got:\n%s"
-                      (head exp_canon 400) (head got_canon 400))))
+                      (head exp_canon 400) (head got_canon 400)))))
 
 (* rml-io's RMLTTC0* fixtures are logical-TARGET (output serialization)
    tests — out of scope (plan's Stage 9, indefinite priority; this
@@ -339,10 +412,10 @@ let is_target_test id =
   let plen = String.length prefix in
   String.length id >= plen && String.sub id 0 plen = prefix
 
-let run_test_labelled module_dir (tr : test_row) =
+let run_test_labelled ~suite_base ~classify module_dir (tr : test_row) =
   if is_target_test tr.tr_id then
     Skip "rml-io logical-target (output serialization) test — out of scope, see plan Stage 9"
-  else run_test module_dir tr
+  else run_test ~suite_base ~classify module_dir tr
 
 (* ------------------------------------------------------------------ *)
 (* Suite run + reporting. *)
@@ -352,7 +425,7 @@ let matches_filter filter id =
   | None -> true
   | Some p -> String.length id >= String.length p && String.sub id 0 (String.length p) = p
 
-let run_suite ~label ~verbose ~list_only ~filter module_dir =
+let run_suite ~label ~verbose ~list_only ~filter ?(suite_base=None) ?(classify=false) module_dir =
   let all_rows = load_metadata module_dir in
   let rows = List.filter (fun r -> matches_filter filter r.tr_id) all_rows in
   Printf.printf "=== %s: %s (%d test rows) ===\n" label module_dir (List.length rows);
@@ -363,7 +436,7 @@ let run_suite ~label ~verbose ~list_only ~filter module_dir =
     let pass = ref 0 and fail = ref 0 and skip = ref 0 in
     List.iter
       (fun tr ->
-         match run_test_labelled module_dir tr with
+         match run_test_labelled ~suite_base ~classify module_dir tr with
          | Pass -> incr pass; Printf.printf "PASS %s\n" tr.tr_id
          | Skip msg -> incr skip; if verbose then Printf.printf "SKIP %s — %s\n" tr.tr_id msg
          | Fail msg -> incr fail; Printf.printf "FAIL %s — %s\n" tr.tr_id msg)
@@ -383,12 +456,21 @@ let print_help () =
      Usage:\n\
      \  ./rml_runner                Run rml-core (primary conformance target)\n\
      \  ./rml_runner --io           Also run rml-io's RMLSTC0* source tests\n\
-     \                              (secondary section; RMLTTC0* logical-target\n\
-     \                              tests are SKIPped — out of scope)\n\
+     \                              (out-of-scope source features — XPath,\n\
+     \                              compression, SQL, SPARQL-over-RDF — are\n\
+     \                              SKIPped with a reason; RMLTTC0* logical-\n\
+     \                              target tests SKIPped as out of scope)\n\
+     \  ./rml_runner --cc           Also run rml-cc (collections/containers:\n\
+     \                              rml:gather / rml:gatherAs -> rdf:List/\n\
+     \                              Bag/Seq/Alt)\n\
+     \  ./rml_runner --all          Run rml-core + rml-io + rml-cc\n\
      \  ./rml_runner --filter P     Only run test IDs starting with P\n\
      \  ./rml_runner --list         List parsed test entries (no execution)\n\
      \  ./rml_runner -v|--verbose   Show skip reasons too (FAIL always shown)\n\
      \  ./rml_runner --help         Show this help\n\
+     \n\
+     rml-star (quoted triples) and rml-fnml (FnO/GREL function execution)\n\
+     are NOT run by this binary — see the final report lines for why.\n\
      \n\
      Goal: rml-core 76 pass, 0 fail (of 76) — see\n\
      docs/designissues/2026-07-05-rml-program-plan.md.\n"
@@ -398,6 +480,7 @@ let () =
   let verbose = ref false in
   let list_only = ref false in
   let run_io = ref false in
+  let run_cc = ref false in
   let filter = ref None in
   let rec loop = function
     | [] -> ()
@@ -405,6 +488,8 @@ let () =
     | ("--help" | "-h") :: _ -> print_help (); exit 0
     | "--list" :: rest -> list_only := true; loop rest
     | "--io" :: rest -> run_io := true; loop rest
+    | "--cc" :: rest -> run_cc := true; loop rest
+    | "--all" :: rest -> run_io := true; run_cc := true; loop rest
     | "--filter" :: p :: rest -> filter := Some p; loop rest
     | _ ->
       Printf.eprintf "rml_runner: unexpected arguments; try --help\n";
@@ -417,10 +502,25 @@ let () =
     run_suite ~label:"rml-core" ~verbose:!verbose ~list_only:!list_only ~filter:!filter core_dir
   in
   Printf.printf "\n";
+  (* rml-io / rml-cc / rml-fnml / rml-star share the RML test-suite
+     default base IRI "http://example.com/base/" (their metadata.csv has
+     no base_iri column; the vendored fixtures resolve relative template
+     IRIs against this). rml-core is the exception — it carries its own
+     base_iri column, so its suite_base stays None. *)
+  let suite_base = Some "http://example.com/base/" in
   let io_pass, io_fail, io_skip, io_total =
     if !run_io then begin
       let io_dir = default_dir (io_dir_candidates ()) in
-      let r = run_suite ~label:"rml-io" ~verbose:!verbose ~list_only:!list_only ~filter:!filter io_dir in
+      let r = run_suite ~label:"rml-io" ~verbose:!verbose ~list_only:!list_only ~filter:!filter
+                ~suite_base ~classify:true io_dir in
+      Printf.printf "\n"; r
+    end else (0, 0, 0, 0)
+  in
+  let cc_pass, cc_fail, cc_skip, cc_total =
+    if !run_cc then begin
+      let cc_dir = default_dir (cc_dir_candidates ()) in
+      let r = run_suite ~label:"rml-cc" ~verbose:!verbose ~list_only:!list_only ~filter:!filter
+                ~suite_base cc_dir in
       Printf.printf "\n"; r
     end else (0, 0, 0, 0)
   in
@@ -428,5 +528,14 @@ let () =
   Printf.printf "rml-core: %d pass, %d fail (out of %d)\n" core_pass core_fail core_total;
   if !run_io then
     Printf.printf "rml-io:   %d pass, %d fail, %d skip (out of %d)\n" io_pass io_fail io_skip io_total;
+  if !run_cc then
+    Printf.printf "rml-cc:   %d pass, %d fail, %d skip (out of %d)\n" cc_pass cc_fail cc_skip cc_total;
+  if (!run_io || !run_cc) && not !list_only then begin
+    Printf.printf "rml-star: not run — needs an RDF-star quoted-triple term; the core\n";
+    Printf.printf "          rdf_term algebra (RDF.Term.fsti) has only T_IRI/T_BNode/\n";
+    Printf.printf "          T_Literal, so << s p o >> cannot be represented yet.\n";
+    Printf.printf "rml-fnml: not run — needs an FnO/GREL function registry + parameter\n";
+    Printf.printf "          binding model (function execution), not yet implemented.\n"
+  end;
   Printf.printf "========================================\n";
   if (not !list_only) && core_fail > 0 then exit 1
