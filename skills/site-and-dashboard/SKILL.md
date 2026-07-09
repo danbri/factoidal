@@ -166,6 +166,17 @@ how "379 pass" survived in the README months after the engine hit
   Performance table is the pattern: what / measured value / date +
   linked SHA. A perf claim without provenance is treated as stale on
   sight.
+- **Prose beside a live-scraped score must never hardcode a count the
+  scraper derives** (owner-reported bug 2026-07-09: the VC row rendered
+  a live "109 pass, 5 fail" next to frozen prose saying "all 34 fails
+  are..." -- Stage-1 text beside a Stage-2 number). In
+  `generate-report.sh`, diagnosis/provenance strings interpolate the
+  scraped variable (`${VC_FAIL}` etc.) or carry no number at all;
+  cluster explanations stay qualitative ("a type-redefinition cluster
+  ...") so they age gracefully. When adding a suite row, grep your
+  prose for `[0-9]+ (fails|passes|skips)` before committing. The owner
+  reads these pages to track progress -- a self-contradicting row costs
+  more trust than a missing one.
 
 ## What this skill does NOT cover
 
