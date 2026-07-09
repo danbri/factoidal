@@ -279,8 +279,8 @@
 <header>
   <div class="inner">
     <div class="rendered-pill" title="Rendered = when this page was last regenerated. Tests = when the *_results.log files inside the repository were last updated. Both UTC.">
-      <span class="row"><span class="label">Rendered</span><strong>2026-07-09 22:27 UTC</strong></span>
-      <span class="row"><span class="label">Tests</span><strong class="tests">2026-07-07 15:39 UTC</strong></span>
+      <span class="row"><span class="label">Rendered</span><strong>2026-07-09 22:40 UTC</strong></span>
+      <span class="row"><span class="label">Tests</span><strong class="tests">2026-07-09 22:38 UTC</strong></span>
     </div>
     <h1>W3C test results</h1>
     <p>Pass/fail/skip counts against every standards suite this project measures: RDF 1.1, SPARQL 1.1, RDFS/OWL 2, SHACL, ShEx, RIF Core, RML, CSVW, JSON-LD 1.1, Verifiable Credentials 2.0, XSLT 1.0, XML 1.0, MathML 3, ISO Schematron, JSON Schema, DID — plus HDT backend parity and the browser/npm bundle suites.</p>
@@ -757,27 +757,42 @@
 </p>
 <p style="margin: 0.3em 0 0.6em; color: var(--muted); font-size: 0.85em;">
   <strong>Tableau on the live codepath.</strong> The F\*
-  <code>Tableau.tableau_materialise</code> module (1167 LoC, 0
-  <code>assume val</code>, 0 <code>--lax</code>) is also on the
-  SPARQL entailment regime codepath via <code>w3c_runner.ml</code>:
+  <code>Tableau.tableau_materialise</code> module (0
+  <code>assume val</code>, 0 <code>--lax</code>) drives the SPARQL
+  entailment regime codepath via <code>w3c_runner.ml</code>:
   parent4/5/6/7, simple7/8, sparqldl-01…12, etc. — the
   <strong>SPARQL 1.1 Entailment Regimes row above</strong>
-  passes (see its live score) because Tableau drives the membership check. The owl_runner
-  catalogs below currently score under the RL closure path; wiring
-  Tableau into owl_runner via <code>--regime dl</code> is Phase 2.3d.
+  passes (see its live score) because Tableau drives the membership
+  check. Phase 2.3d (2026-07-09) wires the same Tableau
+  materialisation into <code>owl_runner</code> via
+  <code>--regime dl</code>: each DL catalog row below is tagged
+  <code>[DL]</code> (Tableau) or <code>[RL]</code> (Datalog closure)
+  so the two regimes are never silently mixed. DL runs RL-closure
+  &rarr; <code>tableau_materialise</code> &rarr; RL-closure, falling
+  back to the RL closure on a per-test cap-trip, so every DL row
+  scores &ge; its RL baseline. Tableau is positive-sound, so the
+  RL&rarr;DL flips it produces are gains (type-inconsistency and
+  positive-entailment rows moved up), never wrong answers.
 </p>
 <p style="margin: 0.3em 0 0.6em; color: var(--muted); font-size: 0.85em;">
-  <strong>Pass-rate context.</strong> Across the seven scored
-  catalogs, the bulk of failures fall into two known categories:
+  <strong>Pass-rate context.</strong> Across the scored catalogs,
+  the bulk of remaining failures fall into two categories:
   (1) tests that use OWL Functional-Style Syntax (not RDF/XML)
-  trigger <code>FAIL/no-premise</code> — these need an FSS parser
-  before scoring is meaningful; (2) Inconsistency-Test failures
-  (notably the type-Inc 8% rate) are RL-closure incompleteness —
-  RL doesn't derive every DL contradiction. Lifting requires
-  either extending <code>is_inconsistent</code> or running
-  Tableau (Phase 2.3d).
+  trigger <code>FAIL/no-premise</code> — these need fuller FSS parser
+  coverage before scoring is meaningful; (2) Inconsistency /
+  entailment failures that neither RL closure nor the positive-sound
+  Tableau subset derive — closing these needs the negative
+  (refutation) side of the tableau, not just materialisation.
 </p>
 <div class="suites">
+  <div class="suite-row green">
+    <div class="suite-name">OWL DL entailment — Tableau <small style="font-weight:normal;color:var(--muted)">(<code>Tableau.fst</code> · <code>tableau_materialise</code>, live in <code>w3c_runner</code> — SPARQL 1.1 entailment-regimes suite)</small></div>
+    <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+    <div class="suite-numbers">
+      <span class="p">70 pass</span>, <span class="f">0 fail</span>
+      <small>(of 70)</small>
+    </div>
+  </div>
   <div class="suite-row amber">
     <div class="suite-name">profile-RL PosEnt</div>
     <div class="meter"><div class="seg seg-pass" style="width:93.33%"></div><div class="seg seg-fail" style="width:6.67%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
@@ -811,157 +826,157 @@
     </div>
   </div>
   <div class="suite-row amber">
-    <div class="suite-name">type-PosEnt PE</div>
-    <div class="meter"><div class="seg seg-pass" style="width:45.10%"></div><div class="seg seg-fail" style="width:54.90%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+    <div class="suite-name">type-PosEnt PE [DL]</div>
+    <div class="meter"><div class="seg seg-pass" style="width:50.49%"></div><div class="seg seg-fail" style="width:49.51%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
     <div class="suite-numbers">
-      <span class="p">92 pass</span>, <span class="f">112 fail</span>
+      <span class="p">103 pass</span>, <span class="f">101 fail</span>
       <small>(of 204)</small>
     </div>
   </div><div class="suite-row amber">
-    <div class="suite-name">type-PosEnt Cons</div>
-    <div class="meter"><div class="seg seg-pass" style="width:91.18%"></div><div class="seg seg-fail" style="width:8.82%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+    <div class="suite-name">type-PosEnt Cons [DL]</div>
+    <div class="meter"><div class="seg seg-pass" style="width:92.16%"></div><div class="seg seg-fail" style="width:7.84%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
     <div class="suite-numbers">
-      <span class="p">186 pass</span>, <span class="f">18 fail</span>
+      <span class="p">188 pass</span>, <span class="f">16 fail</span>
       <small>(of 204)</small>
     </div>
   </div><div class="suite-row grey">
-    <div class="suite-name">type-NegEnt PE</div>
+    <div class="suite-name">type-NegEnt PE [DL]</div>
     <div class="meter"><div class="seg seg-pass" style="width:0%"></div><div class="seg seg-fail" style="width:0%"></div><div class="seg seg-skip" style="width:0%"></div></div>
     <div class="suite-numbers">
       <span class="p">0 pass</span>, <span class="f">0 fail</span>
       <small>(of 0)</small>
     </div>
   </div><div class="suite-row amber">
-    <div class="suite-name">type-NegEnt NE</div>
+    <div class="suite-name">type-NegEnt NE [DL]</div>
     <div class="meter"><div class="seg seg-pass" style="width:95.65%"></div><div class="seg seg-fail" style="width:4.35%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
     <div class="suite-numbers">
       <span class="p">22 pass</span>, <span class="f">1 fail</span>
       <small>(of 23)</small>
     </div>
   </div><div class="suite-row green">
-    <div class="suite-name">type-NegEnt Cons</div>
+    <div class="suite-name">type-NegEnt Cons [DL]</div>
     <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
     <div class="suite-numbers">
       <span class="p">23 pass</span>, <span class="f">0 fail</span>
       <small>(of 23)</small>
     </div>
   </div><div class="suite-row amber">
-    <div class="suite-name">type-Cons PE</div>
-    <div class="meter"><div class="seg seg-pass" style="width:45.10%"></div><div class="seg seg-fail" style="width:54.90%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+    <div class="suite-name">type-Cons PE [DL]</div>
+    <div class="meter"><div class="seg seg-pass" style="width:50.49%"></div><div class="seg seg-fail" style="width:49.51%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
     <div class="suite-numbers">
-      <span class="p">92 pass</span>, <span class="f">112 fail</span>
+      <span class="p">103 pass</span>, <span class="f">101 fail</span>
       <small>(of 204)</small>
     </div>
   </div><div class="suite-row amber">
-    <div class="suite-name">type-Cons NE</div>
+    <div class="suite-name">type-Cons NE [DL]</div>
     <div class="meter"><div class="seg seg-pass" style="width:95.65%"></div><div class="seg seg-fail" style="width:4.35%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
     <div class="suite-numbers">
       <span class="p">22 pass</span>, <span class="f">1 fail</span>
       <small>(of 23)</small>
     </div>
   </div><div class="suite-row amber">
-    <div class="suite-name">type-Cons Cons</div>
-    <div class="meter"><div class="seg seg-pass" style="width:93.64%"></div><div class="seg seg-fail" style="width:6.36%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+    <div class="suite-name">type-Cons Cons [DL]</div>
+    <div class="meter"><div class="seg seg-pass" style="width:94.80%"></div><div class="seg seg-fail" style="width:5.20%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
     <div class="suite-numbers">
-      <span class="p">324 pass</span>, <span class="f">22 fail</span>
+      <span class="p">328 pass</span>, <span class="f">18 fail</span>
       <small>(of 346)</small>
     </div>
   </div><div class="suite-row grey">
-    <div class="suite-name">type-Inc PE</div>
+    <div class="suite-name">type-Inc PE [DL]</div>
     <div class="meter"><div class="seg seg-pass" style="width:0%"></div><div class="seg seg-fail" style="width:0%"></div><div class="seg seg-skip" style="width:0%"></div></div>
     <div class="suite-numbers">
       <span class="p">0 pass</span>, <span class="f">0 fail</span>
       <small>(of 0)</small>
     </div>
   </div><div class="suite-row amber">
-    <div class="suite-name">type-Inc Inc</div>
-    <div class="meter"><div class="seg seg-pass" style="width:29.06%"></div><div class="seg seg-fail" style="width:70.94%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+    <div class="suite-name">type-Inc Inc [DL]</div>
+    <div class="meter"><div class="seg seg-pass" style="width:30.77%"></div><div class="seg seg-fail" style="width:69.23%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
     <div class="suite-numbers">
-      <span class="p">34 pass</span>, <span class="f">83 fail</span>
+      <span class="p">36 pass</span>, <span class="f">81 fail</span>
       <small>(of 117)</small>
     </div>
   </div><div class="suite-row amber">
-    <div class="suite-name">profile-EL PE</div>
+    <div class="suite-name">profile-EL PE [RL]</div>
     <div class="meter"><div class="seg seg-pass" style="width:72.41%"></div><div class="seg seg-fail" style="width:27.59%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
     <div class="suite-numbers">
       <span class="p">21 pass</span>, <span class="f">8 fail</span>
       <small>(of 29)</small>
     </div>
   </div><div class="suite-row green">
-    <div class="suite-name">profile-EL NE</div>
+    <div class="suite-name">profile-EL NE [RL]</div>
     <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
     <div class="suite-numbers">
       <span class="p">6 pass</span>, <span class="f">0 fail</span>
       <small>(of 6)</small>
     </div>
   </div><div class="suite-row green">
-    <div class="suite-name">profile-EL Cons</div>
+    <div class="suite-name">profile-EL Cons [RL]</div>
     <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
     <div class="suite-numbers">
       <span class="p">72 pass</span>, <span class="f">0 fail</span>
       <small>(of 72)</small>
     </div>
   </div><div class="suite-row amber">
-    <div class="suite-name">profile-EL Inc</div>
+    <div class="suite-name">profile-EL Inc [RL]</div>
     <div class="meter"><div class="seg seg-pass" style="width:64.29%"></div><div class="seg seg-fail" style="width:35.71%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
     <div class="suite-numbers">
       <span class="p">9 pass</span>, <span class="f">5 fail</span>
       <small>(of 14)</small>
     </div>
   </div><div class="suite-row amber">
-    <div class="suite-name">profile-QL PE</div>
+    <div class="suite-name">profile-QL PE [RL]</div>
     <div class="meter"><div class="seg seg-pass" style="width:80.00%"></div><div class="seg seg-fail" style="width:20.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
     <div class="suite-numbers">
       <span class="p">16 pass</span>, <span class="f">4 fail</span>
       <small>(of 20)</small>
     </div>
   </div><div class="suite-row green">
-    <div class="suite-name">profile-QL NE</div>
+    <div class="suite-name">profile-QL NE [RL]</div>
     <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
     <div class="suite-numbers">
       <span class="p">3 pass</span>, <span class="f">0 fail</span>
       <small>(of 3)</small>
     </div>
   </div><div class="suite-row green">
-    <div class="suite-name">profile-QL Cons</div>
+    <div class="suite-name">profile-QL Cons [RL]</div>
     <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
     <div class="suite-numbers">
       <span class="p">58 pass</span>, <span class="f">0 fail</span>
       <small>(of 58)</small>
     </div>
   </div><div class="suite-row green">
-    <div class="suite-name">profile-QL Inc</div>
+    <div class="suite-name">profile-QL Inc [RL]</div>
     <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
     <div class="suite-numbers">
       <span class="p">6 pass</span>, <span class="f">0 fail</span>
       <small>(of 6)</small>
     </div>
   </div><div class="suite-row amber">
-    <div class="suite-name">sem-Direct PE</div>
-    <div class="meter"><div class="seg seg-pass" style="width:45.10%"></div><div class="seg seg-fail" style="width:54.90%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+    <div class="suite-name">sem-Direct PE [DL]</div>
+    <div class="meter"><div class="seg seg-pass" style="width:50.49%"></div><div class="seg seg-fail" style="width:49.51%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
     <div class="suite-numbers">
-      <span class="p">92 pass</span>, <span class="f">112 fail</span>
+      <span class="p">103 pass</span>, <span class="f">101 fail</span>
       <small>(of 204)</small>
     </div>
   </div><div class="suite-row amber">
-    <div class="suite-name">sem-Direct NE</div>
+    <div class="suite-name">sem-Direct NE [DL]</div>
     <div class="meter"><div class="seg seg-pass" style="width:95.65%"></div><div class="seg seg-fail" style="width:4.35%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
     <div class="suite-numbers">
       <span class="p">22 pass</span>, <span class="f">1 fail</span>
       <small>(of 23)</small>
     </div>
   </div><div class="suite-row amber">
-    <div class="suite-name">sem-Direct Cons</div>
-    <div class="meter"><div class="seg seg-pass" style="width:93.62%"></div><div class="seg seg-fail" style="width:6.38%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+    <div class="suite-name">sem-Direct Cons [DL]</div>
+    <div class="meter"><div class="seg seg-pass" style="width:94.78%"></div><div class="seg seg-fail" style="width:5.22%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
     <div class="suite-numbers">
-      <span class="p">323 pass</span>, <span class="f">22 fail</span>
+      <span class="p">327 pass</span>, <span class="f">18 fail</span>
       <small>(of 345)</small>
     </div>
   </div><div class="suite-row amber">
-    <div class="suite-name">sem-Direct Inc</div>
-    <div class="meter"><div class="seg seg-pass" style="width:29.06%"></div><div class="seg seg-fail" style="width:70.94%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+    <div class="suite-name">sem-Direct Inc [DL]</div>
+    <div class="meter"><div class="seg seg-pass" style="width:30.77%"></div><div class="seg seg-fail" style="width:69.23%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
     <div class="suite-numbers">
-      <span class="p">34 pass</span>, <span class="f">83 fail</span>
+      <span class="p">36 pass</span>, <span class="f">81 fail</span>
       <small>(of 117)</small>
     </div>
   </div>
@@ -1380,9 +1395,9 @@ vc-stage1:    109 pass, 5 fail, 6 skip (of 120) — present=1</pre>
 </main>
 
 <footer>
-  Generated <strong>2026-07-09 22:27 UTC</strong> from commit
-  <code><a href="https://github.com/danbri/factoidal/commit/fef57a4cfc2e825c130e2a54ce7fe0af58eea75a">fef57a4c</a></code>
-  on branch <code>claude/main</code> — &ldquo;goal: W3C completeness ledger — full implementation of every touched semweb spec&rdquo;.
+  Generated <strong>2026-07-09 22:40 UTC</strong> from commit
+  <code><a href="https://github.com/danbri/factoidal/commit/a8794e733f177f225e0bb488bb22ff878ba8bf7f">a8794e7</a></code>
+  on branch <code>claude/main</code> — &ldquo;OWL 2 catalogs: wire Tableau reasoner into owl_runner via --regime dl (Phase 2.3d)&rdquo;.
   Re-run locally: <code>cd formal/fstar &amp;&amp; ./generate-report.sh --run</code>.
 </footer>
 
