@@ -532,7 +532,20 @@ let with_owl_cap (f : unit -> 'a) : 'a =
    DL agrees with RL; a few RL non-entailments may flip to DL
    entailments (NegativeEntailmentTest scores can drop slightly). For
    the type-* DL catalogs (semantics-direct.rdf, type-positive-
-   entailment.rdf, etc.), DL is the right regime. *)
+   entailment.rdf, etc.), DL is the right regime.
+
+   Timeout fallback (2026-07-09): the DL path computes the RL closure
+   FIRST, under its own SIGALRM cap, then attempts Tableau +
+   re-closure under a second cap. On a Tableau cap-trip the fallback
+   is the already-computed RL closure — NOT the raw un-closed graph —
+   so a DL cap-trip can never score below the RL regime (DL result >=
+   RL result on every non-capped-RL test). Before this change a hard
+   test that capped under DL fell back to the raw premise and could
+   flip an RL PASS to a DL FAIL (observed on WebOnt-someValuesFrom-003
+   in type-positive-entailment.rdf) — a timeout artifact, not a
+   Tableau (un)soundness disagreement. This is dispatch/fallback
+   plumbing only; every closure it calls is F*-extracted (rule #15
+   boundary respected). *)
 type closure_regime = Regime_RL | Regime_DL
 
 let regime : closure_regime ref = ref Regime_RL
@@ -554,16 +567,28 @@ let apply_closure (g : RDF_Graph_Executable.rdf_graph)
        g
      | _ -> g)
   | Regime_DL ->
+    (* Compute the RL closure first, under its own cap; this is exactly
+       the Regime_RL result and is the DL timeout fallback so a Tableau
+       cap-trip never scores below RL (DL result >= RL result). *)
+    let g_rl =
+      (try with_owl_cap (fun () ->
+         RDF_Graph_Executable.owl_rl_closure_with_reflexivity g fuel_100)
+       with
+       | Owl_closure_timeout ->
+         Printf.eprintf "  [owl_closure_timeout] DL RL-base closure exceeded %.0fs cap; falling back to un-closed graph\n%!"
+           owl_closure_cap_seconds;
+         g
+       | _ -> g)
+    in
     (try with_owl_cap (fun () ->
-       let g1 = RDF_Graph_Executable.owl_rl_closure_with_reflexivity g fuel_100 in
-       let g2 = Tableau.tableau_materialise g1 in
+       let g2 = Tableau.tableau_materialise g_rl in
        RDF_Graph_Executable.owl_rl_closure_with_reflexivity g2 fuel_100)
      with
      | Owl_closure_timeout ->
-       Printf.eprintf "  [owl_closure_timeout] DL closure exceeded %.0fs cap; falling back to un-closed graph\n%!"
+       Printf.eprintf "  [owl_closure_timeout] DL tableau closure exceeded %.0fs cap; falling back to RL closure\n%!"
          owl_closure_cap_seconds;
-       g
-     | _ -> g)
+       g_rl
+     | _ -> g_rl)
 
 (* test:semantics dispatch (2026-07-05) — see the constant definitions
    above and RDF.Graph.Executable.fst's owl_rule_named_equivClass_to_
@@ -596,16 +621,27 @@ let apply_closure_with_semantics
        g
      | _ -> g)
   | Regime_DL ->
+    (* Mode-aware sibling of apply_closure's DL branch: RL-mode closure
+       first (the timeout fallback), then Tableau + RL-mode re-closure. *)
+    let g_rl =
+      (try with_owl_cap (fun () ->
+         RDF_Graph_Executable.owl_rl_closure_with_reflexivity_mode g fuel_100 mode)
+       with
+       | Owl_closure_timeout ->
+         Printf.eprintf "  [owl_closure_timeout] DL RL-base closure exceeded %.0fs cap; falling back to un-closed graph\n%!"
+           owl_closure_cap_seconds;
+         g
+       | _ -> g)
+    in
     (try with_owl_cap (fun () ->
-       let g1 = RDF_Graph_Executable.owl_rl_closure_with_reflexivity_mode g fuel_100 mode in
-       let g2 = Tableau.tableau_materialise g1 in
+       let g2 = Tableau.tableau_materialise g_rl in
        RDF_Graph_Executable.owl_rl_closure_with_reflexivity_mode g2 fuel_100 mode)
      with
      | Owl_closure_timeout ->
-       Printf.eprintf "  [owl_closure_timeout] DL closure exceeded %.0fs cap; falling back to un-closed graph\n%!"
+       Printf.eprintf "  [owl_closure_timeout] DL tableau closure exceeded %.0fs cap; falling back to RL closure\n%!"
          owl_closure_cap_seconds;
-       g
-     | _ -> g)
+       g_rl
+     | _ -> g_rl)
 
 (* Parse and merge imported-ontology literals into the premise graph
    before closure. Each imports_lookup hit gives us an RDF/XML literal

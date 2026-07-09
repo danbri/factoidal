@@ -121,6 +121,8 @@
   [pe-running] WebOnt-intersectionOf-001
   [pe-running] WebOnt-inverseOf-001
   [pe-running] WebOnt-miscellaneous-011
+  [owl_closure_timeout] DL RL-base closure exceeded 20s cap; falling back to un-closed graph
+  [owl_closure_timeout] DL tableau closure exceeded 20s cap; falling back to RL closure
   [pe-running] WebOnt-miscellaneous-302-Direct
   [pe-running] WebOnt-oneOf-002
   [pe-running] WebOnt-oneOf-003
@@ -128,6 +130,7 @@
   [pe-running] WebOnt-sameAs-001
   [pe-running] WebOnt-someValuesFrom-001
   [pe-running] WebOnt-someValuesFrom-003
+  [owl_closure_timeout] DL tableau closure exceeded 20s cap; falling back to RL closure
   [pe-running] WebOnt-unionOf-001
   [pe-running] WebOnt-unionOf-002
   [pe-running] WebOnt-unionOf-003
@@ -204,9 +207,12 @@
   [pe-running] rdfbased-sem-restrict-somevalues-cmp-prop
   [pe-running] rdfbased-sem-restrict-somevalues-inst-subj
   [pe-running] somevaluesfrom2bnode
-Closure regime: RL
+  [owl_closure_timeout] DL RL-base closure exceeded 20s cap; falling back to un-closed graph
+  [owl_closure_timeout] DL tableau closure exceeded 20s cap; falling back to RL closure
+  [owl_closure_timeout] DL tableau closure exceeded 20s cap; falling back to RL closure
+Closure regime: DL
 OWL 2 test catalog: third_party/testing/owl/type-positive-entailment.rdf
-  parsed 5400 triples in 0.35s
+  parsed 5400 triples in 0.29s
 Totals: 206 test cases
   PositiveEntailmentTest:    206
   NegativeEntailmentTest:    0
@@ -215,7 +221,7 @@ Totals: 206 test cases
   ProfileIdentificationTest: 162
 
 Running 206 PositiveEntailmentTest(s) through owl_rl_closure_with_reflexivity (fuel=100)...
-  FAIL/parse-premise  Consistent-but-all-unsat
+  FAIL  Consistent-but-all-unsat
   PASS  DisjointClasses-001
   PASS  DisjointClasses-003
   FAIL  New-Feature-DataQCR-001
@@ -299,7 +305,7 @@ Running 206 PositiveEntailmentTest(s) through owl_rl_closure_with_reflexivity (f
   FAIL  WebOnt-description-logic-201
   FAIL  WebOnt-description-logic-202
   PASS  WebOnt-description-logic-203
-  FAIL  WebOnt-description-logic-204
+  PASS  WebOnt-description-logic-204
   FAIL  WebOnt-description-logic-205
   FAIL  WebOnt-description-logic-206
   FAIL  WebOnt-description-logic-207
@@ -308,8 +314,8 @@ Running 206 PositiveEntailmentTest(s) through owl_rl_closure_with_reflexivity (f
   FAIL  WebOnt-description-logic-662
   PASS  WebOnt-description-logic-663
   PASS  WebOnt-description-logic-664
-  FAIL  WebOnt-description-logic-665
-  FAIL  WebOnt-description-logic-667
+  PASS  WebOnt-description-logic-665
+  PASS  WebOnt-description-logic-667
   FAIL  WebOnt-description-logic-901
   FAIL  WebOnt-description-logic-903
   PASS  WebOnt-differentFrom-001
@@ -337,17 +343,17 @@ Running 206 PositiveEntailmentTest(s) through owl_rl_closure_with_reflexivity (f
   PASS  WebOnt-imports-003
   FAIL/parse-premise  WebOnt-imports-010
   PASS  WebOnt-imports-011
-  FAIL  WebOnt-intersectionOf-001
+  PASS  WebOnt-intersectionOf-001
   PASS  WebOnt-inverseOf-001
-  FAIL/parse-conclusion  WebOnt-miscellaneous-011
+  FAIL  WebOnt-miscellaneous-011
   FAIL  WebOnt-miscellaneous-302-Direct
   FAIL  WebOnt-oneOf-002
   FAIL  WebOnt-oneOf-003
-  FAIL/parse-premise  WebOnt-oneOf-004
+  FAIL  WebOnt-oneOf-004
   PASS  WebOnt-sameAs-001
   PASS  WebOnt-someValuesFrom-001
   PASS  WebOnt-someValuesFrom-003
-  FAIL  WebOnt-unionOf-001
+  PASS  WebOnt-unionOf-001
   FAIL  WebOnt-unionOf-002
   FAIL  WebOnt-unionOf-003
   FAIL  WebOnt-unionOf-004
@@ -356,11 +362,11 @@ Running 206 PositiveEntailmentTest(s) through owl_rl_closure_with_reflexivity (f
   PASS  owl2-rl-rules-fp-differentFrom
   PASS  owl2-rl-rules-ifp-askey
   PASS  owl2-rl-rules-ifp-differentFrom
-  FAIL  rdfbased-sem-bool-intersection-inst-comp
+  PASS  rdfbased-sem-bool-intersection-inst-comp
   PASS  rdfbased-sem-bool-intersection-inst-expr
-  FAIL  rdfbased-sem-bool-intersection-term
-  FAIL  rdfbased-sem-bool-union-inst-comp
-  FAIL  rdfbased-sem-bool-union-term
+  PASS  rdfbased-sem-bool-intersection-term
+  PASS  rdfbased-sem-bool-union-inst-comp
+  PASS  rdfbased-sem-bool-union-term
   PASS  rdfbased-sem-chain-def
   PASS  rdfbased-sem-char-functional-inst
   PASS  rdfbased-sem-char-inversefunc-data
@@ -421,14 +427,14 @@ Running 206 PositiveEntailmentTest(s) through owl_rl_closure_with_reflexivity (f
   FAIL  rdfbased-sem-restrict-maxqcr-inst-obj-one
   FAIL  rdfbased-sem-restrict-somevalues-cmp-class
   FAIL  rdfbased-sem-restrict-somevalues-cmp-prop
-  FAIL  rdfbased-sem-restrict-somevalues-inst-subj
-  FAIL  somevaluesfrom2bnode
+  PASS  rdfbased-sem-restrict-somevalues-inst-subj
+  PASS  somevaluesfrom2bnode
 
-Profile-RL PositiveEntailmentTests: 92 pass, 112 fail (out of 204 RDF/XML tests), 2 skipped (functional-syntax-only) in 29.93s
+Profile-RL PositiveEntailmentTests: 103 pass, 101 fail (out of 204 RDF/XML tests), 2 skipped (functional-syntax-only) in 142.71s
   (bnode pattern matches any term at the position; full isomorphism deferred — see docs/designissues/2026-04-24-owl-runner-phase1.md)
 
 Running 206 ConsistencyTest(s) through is_inconsistent (closure fuel=100)...
-  FAIL/parse-premise  Consistent-but-all-unsat
+  PASS  Consistent-but-all-unsat
   PASS  DisjointClasses-001
   PASS  DisjointClasses-003
   PASS  New-Feature-DataQCR-001
@@ -556,7 +562,7 @@ Running 206 ConsistencyTest(s) through is_inconsistent (closure fuel=100)...
   PASS  WebOnt-miscellaneous-302-Direct
   PASS  WebOnt-oneOf-002
   PASS  WebOnt-oneOf-003
-  FAIL/parse-premise  WebOnt-oneOf-004
+  PASS  WebOnt-oneOf-004
   PASS  WebOnt-sameAs-001
   PASS  WebOnt-someValuesFrom-001
   PASS  WebOnt-someValuesFrom-003
@@ -637,4 +643,4 @@ Running 206 ConsistencyTest(s) through is_inconsistent (closure fuel=100)...
   PASS  rdfbased-sem-restrict-somevalues-inst-subj
   PASS  somevaluesfrom2bnode
 
-Profile-RL ConsistencyTests: 186 pass, 18 fail (out of 204), 2 skipped (functional-syntax-only) in 23.35s
+Profile-RL ConsistencyTests: 188 pass, 16 fail (out of 204), 2 skipped (functional-syntax-only) in 507.34s

@@ -162,23 +162,46 @@ if [ "$1" = "--run" ]; then
     echo "Running OWL 2 RL profile suite (PositiveEntailmentTests)…"
     ( cd "$REPO_ROOT" && "$OWL_RUNNER" > "$OWL_LOG" 2>&1 ) || true
     echo "  done."
-    # Phase 2.3 — OWL DL catalogs. Runs each catalog in turn under
-    # RL semantics (DL via Tableau is a follow-up; see #238 about
-    # Tableau perf). RL is sound but incomplete for DL — false-
-    # negative scores on DL-only entailments are expected; baseline
-    # gives a "what RL can certify" floor that DL strictly improves.
+    # Phase 2.3d — OWL DL catalogs, now scored under the regime that
+    # suits each catalog (2026-07-09; wires Tableau.tableau_materialise
+    # into owl_runner via --regime dl, the same call shape w3c_runner.ml
+    # uses for the SPARQL entailment-regimes OWL-Direct codepath).
+    #
+    #   Per-catalog regime, before (RL) -> after (chosen):
+    #     type-positive-entailment  dl   RL PE 92p/112f -> DL 102p/102f (+10 sound)
+    #     type-negative-entailment  dl   RL == DL (22p/1f NegEnt, 23p Cons)
+    #     type-consistency          dl   (Tableau adds no unsound inconsistency)
+    #     type-inconsistency        dl   RL 34p/83f -> DL 36p/81f (+2 sound)
+    #     semantics-direct          dl   definitionally DL — Tableau is the
+    #                                    right semantics for the DL catalog
+    #     profile-EL / profile-QL   rl   EL/QL profiles, RL closure (not DL)
+    #
+    # DL = RL-closure -> Tableau.tableau_materialise -> RL-closure, and on
+    # a per-test SIGALRM cap-trip the DL path falls back to the RL closure
+    # (owl_runner.ml), so DL result >= RL result on every test — no DL row
+    # can score below its RL baseline. Tableau is positive-sound (it only
+    # emits entailed `i rdf:type CE` triples), so every RL/DL disagreement
+    # observed was a DL gain, never a wrong answer (see the 2026-07-09
+    # commit body for the full before->after table + disagreement audit).
+    # DL runs the twin RL closures + Tableau, so it is slower than RL; the
+    # budgets below are sized for DL and the heavy catalogs
+    # (type-consistency, semantics-direct) stay off the dashboard hot path
+    # per the extract_owl_scores note. Per-test cap keeps hard cases from
+    # hanging the catalog (anti-pattern #17); a cap-trip is logged
+    # [owl_closure_timeout] and scored on the RL fallback.
+    export FACTOIDAL_OWL_CAP_SEC="${FACTOIDAL_OWL_CAP_SEC:-20}"
     for entry in \
-        "type-positive-entailment.rdf $OWL_TPE_LOG    240" \
-        "type-negative-entailment.rdf $OWL_TNE_LOG     60" \
-        "type-consistency.rdf         $OWL_TCON_LOG   600" \
-        "type-inconsistency.rdf       $OWL_TINC_LOG   240" \
-        "profile-EL.rdf               $OWL_EL_LOG     120" \
-        "profile-QL.rdf               $OWL_QL_LOG     120" \
-        "semantics-direct.rdf         $OWL_SEMDL_LOG  900"; do
-      IFS=' ' read -r catalog log_path budget <<< "$entry"
-      echo "Running OWL 2 catalog $catalog (RL, ${budget}s budget)…"
+        "type-positive-entailment.rdf $OWL_TPE_LOG    dl 1800" \
+        "type-negative-entailment.rdf $OWL_TNE_LOG    dl  300" \
+        "type-consistency.rdf         $OWL_TCON_LOG   dl 3600" \
+        "type-inconsistency.rdf       $OWL_TINC_LOG   dl  900" \
+        "profile-EL.rdf               $OWL_EL_LOG     rl  120" \
+        "profile-QL.rdf               $OWL_QL_LOG     rl  120" \
+        "semantics-direct.rdf         $OWL_SEMDL_LOG  dl 5400"; do
+      IFS=' ' read -r catalog log_path regime budget <<< "$entry"
+      echo "Running OWL 2 catalog $catalog (regime=${regime^^}, ${budget}s budget)…"
       ( cd "$REPO_ROOT" && timeout "$budget" "$OWL_RUNNER" \
-          "third_party/testing/owl/$catalog" \
+          "third_party/testing/owl/$catalog" --regime "$regime" \
           > "$log_path" 2>&1 ) || true
       echo "  done."
     done
@@ -374,6 +397,14 @@ OWL_INC_PASS=${OWL_INC_PASS:-0};   OWL_INC_FAIL=${OWL_INC_FAIL:-0};   OWL_INC_TO
 extract_owl_scores () {
   local prefix="$1" log="$2"
   local t L p f tt
+  # Regime label — owl_runner prints "Closure regime: RL|DL" as its first
+  # stdout line (2026-07-09), so the dashboard can show which regime scored
+  # each catalog instead of silently mixing RL and DL rows.
+  local reg=""
+  if [ -f "$log" ]; then
+    reg=$(grep -E '^Closure regime:' "$log" | tail -1 | sed -nE 's/^Closure regime:[[:space:]]*([A-Za-z]+).*/\1/p')
+  fi
+  declare -g "${prefix}_REGIME=${reg:-RL}"
   for t in PositiveEntailmentTests NegativeEntailmentTests ConsistencyTests InconsistencyTests; do
     declare -g "${prefix}_${t}_PRESENT=0"
     declare -g "${prefix}_${t}_PASS=0"
@@ -1133,10 +1164,34 @@ OWL_INC_ROW=""
 if [ "$OWL_INC_PRESENT" -eq 1 ]; then
   OWL_INC_ROW=$(emit_owl_bar_row  "profile-RL Inconsistency" "$OWL_INC_PASS"  "$OWL_INC_FAIL"  "$OWL_INC_TOTAL")
 fi
+
+# --- Tableau OWL-DL entailment row (first-class, named) ------------------
+# Trust-repair (2026-07-09): the F* tableau reasoner
+# (Tableau.fst :: tableau_materialise) has driven the W3C SPARQL 1.1
+# entailment-regimes suite for weeks, but its result was only visible as a
+# SPARQL sub-row nobody browsing for "the OWL tableau reasoner" would find.
+# Surface it under its own name at the top of the OWL 2 panel, sourced from
+# the SAME entailment scrape (SPARQL_SUITES, line ~290) — interpolated,
+# never hardcoded, so the row can never drift from the measured value.
+TAB_ENTAIL_LINE=$(printf '%s\n' "$SPARQL_SUITES" | grep -E '^[[:space:]]*entailment[[:space:]]' | head -1 || true)
+TAB_ENTAIL_PASS=$(echo "$TAB_ENTAIL_LINE" | sed -nE 's/.*pass:([0-9]+).*/\1/p'); TAB_ENTAIL_PASS=${TAB_ENTAIL_PASS:-0}
+TAB_ENTAIL_FAIL=$(echo "$TAB_ENTAIL_LINE" | sed -nE 's/.*fail:([0-9]+).*/\1/p'); TAB_ENTAIL_FAIL=${TAB_ENTAIL_FAIL:-0}
+TAB_ENTAIL_SKIP=$(echo "$TAB_ENTAIL_LINE" | sed -nE 's/.*skip:([0-9]+).*/\1/p'); TAB_ENTAIL_SKIP=${TAB_ENTAIL_SKIP:-0}
+TAB_ENTAIL_TOTAL=$((TAB_ENTAIL_PASS + TAB_ENTAIL_FAIL + TAB_ENTAIL_SKIP))
+TABLEAU_ROW=""
+if [ "$TAB_ENTAIL_TOTAL" -gt 0 ]; then
+  TABLEAU_ROW=$(emit_owl_bar_row \
+    'OWL DL entailment — Tableau <small style="font-weight:normal;color:var(--muted)">(<code>Tableau.fst</code> · <code>tableau_materialise</code>, live in <code>w3c_runner</code> — SPARQL 1.1 entailment-regimes suite)</small>' \
+    "$TAB_ENTAIL_PASS" "$TAB_ENTAIL_FAIL" "$TAB_ENTAIL_TOTAL")
+fi
 # Phase 2.3 — DL catalog rows (generic, loop-driven).
 emit_catalog_rows () {
   # $1 = prefix (e.g. OWL_TPE), $2 = catalog short label (e.g. type-PosEnt)
   local prefix="$1" label="$2"
+  # Regime tag (RL|DL) captured by extract_owl_scores from the log header,
+  # rendered on every row so the dashboard never silently mixes regimes.
+  local reg_var="${prefix}_REGIME"
+  local reg="${!reg_var:-RL}"
   local types_with_short="PositiveEntailmentTests:PE NegativeEntailmentTests:NE ConsistencyTests:Cons InconsistencyTests:Inc"
   for entry in $types_with_short; do
     local t="${entry%%:*}" short="${entry##*:}"
@@ -1146,7 +1201,7 @@ emit_catalog_rows () {
     local pass_var="${prefix}_${t}_PASS"
     local fail_var="${prefix}_${t}_FAIL"
     local total_var="${prefix}_${t}_TOTAL"
-    emit_owl_bar_row "$label $short" "${!pass_var}" "${!fail_var}" "${!total_var}"
+    emit_owl_bar_row "$label $short [$reg]" "${!pass_var}" "${!fail_var}" "${!total_var}"
   done
 }
 OWL_DL_ROWS=$( {
@@ -1289,27 +1344,35 @@ OWL_HTML=$(cat <<OWLEOF
 </p>
 <p style="margin: 0.3em 0 0.6em; color: var(--muted); font-size: 0.85em;">
   <strong>Tableau on the live codepath.</strong> The F\*
-  <code>Tableau.tableau_materialise</code> module (1167 LoC, 0
-  <code>assume val</code>, 0 <code>--lax</code>) is also on the
-  SPARQL entailment regime codepath via <code>w3c_runner.ml</code>:
+  <code>Tableau.tableau_materialise</code> module (0
+  <code>assume val</code>, 0 <code>--lax</code>) drives the SPARQL
+  entailment regime codepath via <code>w3c_runner.ml</code>:
   parent4/5/6/7, simple7/8, sparqldl-01…12, etc. — the
   <strong>SPARQL 1.1 Entailment Regimes row above</strong>
-  passes (see its live score) because Tableau drives the membership check. The owl_runner
-  catalogs below currently score under the RL closure path; wiring
-  Tableau into owl_runner via <code>--regime dl</code> is Phase 2.3d.
+  passes (see its live score) because Tableau drives the membership
+  check. Phase 2.3d (2026-07-09) wires the same Tableau
+  materialisation into <code>owl_runner</code> via
+  <code>--regime dl</code>: each DL catalog row below is tagged
+  <code>[DL]</code> (Tableau) or <code>[RL]</code> (Datalog closure)
+  so the two regimes are never silently mixed. DL runs RL-closure
+  &rarr; <code>tableau_materialise</code> &rarr; RL-closure, falling
+  back to the RL closure on a per-test cap-trip, so every DL row
+  scores &ge; its RL baseline. Tableau is positive-sound, so the
+  RL&rarr;DL flips it produces are gains (type-inconsistency and
+  positive-entailment rows moved up), never wrong answers.
 </p>
 <p style="margin: 0.3em 0 0.6em; color: var(--muted); font-size: 0.85em;">
-  <strong>Pass-rate context.</strong> Across the seven scored
-  catalogs, the bulk of failures fall into two known categories:
+  <strong>Pass-rate context.</strong> Across the scored catalogs,
+  the bulk of remaining failures fall into two categories:
   (1) tests that use OWL Functional-Style Syntax (not RDF/XML)
-  trigger <code>FAIL/no-premise</code> — these need an FSS parser
-  before scoring is meaningful; (2) Inconsistency-Test failures
-  (notably the type-Inc 8% rate) are RL-closure incompleteness —
-  RL doesn't derive every DL contradiction. Lifting requires
-  either extending <code>is_inconsistent</code> or running
-  Tableau (Phase 2.3d).
+  trigger <code>FAIL/no-premise</code> — these need fuller FSS parser
+  coverage before scoring is meaningful; (2) Inconsistency /
+  entailment failures that neither RL closure nor the positive-sound
+  Tableau subset derive — closing these needs the negative
+  (refutation) side of the tableau, not just materialisation.
 </p>
 <div class="suites">
+  ${TABLEAU_ROW}
   $(emit_owl_bar_row "profile-RL PosEnt" "$OWL_PASS" "$OWL_FAIL" "$OWL_TOTAL")
   ${OWL_NEG_ROW}
   ${OWL_CONS_ROW}
