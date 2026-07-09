@@ -141,11 +141,17 @@ This file is a **periodic refresh doc** — it goes stale within a week.
 Update after material progress (suite-score movements, new F\* modules,
 resolved `assume val`s).
 
-## Standing priorities (as of 2026-07-06)
+## Standing priorities (as of 2026-07-09)
 
-Toward the goal in CLAUDE.md (performant, compliant RDF/S + OWL +
-SHACL + RDFC + SPARQL engine). Re-rank when one lands; a dashboard
-red always jumps the queue.
+**Active /goal (owner, 2026-07-09):** Exemplary and FULL implementation
+of every official W3C RDF/semweb spec we touch (RDF 1.2/star parked;
+protocols deprioritized). Anything short of full is a FAILURE, tracked
+in [`w3c-completeness-ledger.md`](w3c-completeness-ledger.md) -- that
+ledger is the priority queue now. 100% real coverage is the FOUNDATION
+FOR AUTOMATED PERF RESEARCH: the per-engine perf program starts on
+suites the ledger shows complete. Every capability gets an npm API +
+Hub page. Re-rank when one lands; a dashboard red always jumps the
+queue.
 
 Landed 2026-07-05/06 database program (the read-write DB goal):
 **Durable SPARQL UPDATE stages 1-4 + 8** — append-only delta log
