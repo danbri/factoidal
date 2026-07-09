@@ -386,6 +386,7 @@ if [[ "$STEP" == "all" || "$STEP" == "extract" ]]; then
     RDF.Dataset.Graphs.fst
     RDF.Canonical.fst
     RDF.Canonical.Manifest.fst
+    RDF.GraphIsomorphism.fst
     OWL.Vocabulary.fst
     OWL.DirectMapping.Filter.fst
     Tableau.fst SPARQL11.IRI.Resolve.fst SPARQL.FullText.fst SPARQL11.Algebra.fst
@@ -832,6 +833,7 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
     RDF_Dataset_Graphs.ml \
     RDF_Canonical.ml \
     RDF_Canonical_Manifest.ml \
+    RDF_GraphIsomorphism.ml \
     service_wrap_hook.ml \
     SPARQL_FullText.ml SPARQL11_Algebra.ml XSD_Datatypes.ml XForms_Bind.ml RDF_Pretty.ml OWL_QueryRewrite.ml OWL_QueryEval.ml OWL_Tests_Manifest.ml RIF_Core_Syntax.ml Parser_RIFXML.ml RIF_Core_Translation.ml RIF_Core_Builtins.ml RIF_Core_Conformance.ml RIF_Core_Eval.ml RIF_Core_Tests.ml SPARQL11_Parser.ml SHACL_Validation.ml \
     ShEx_Schema.ml Parser_ShExC.ml ShEx_SchemaEq.ml ShEx_Validation.ml \
@@ -1652,6 +1654,7 @@ if [[ "$STEP" == "all" || "$STEP" == "js" ]]; then
     RDF_Dataset_Graphs.ml
     RDF_Canonical.ml
     RDF_Canonical_Manifest.ml
+    RDF_GraphIsomorphism.ml
     service_wrap_hook.ml
     SPARQL_FullText.ml SPARQL11_Algebra.ml XSD_Datatypes.ml XForms_Bind.ml RDF_Pretty.ml OWL_QueryRewrite.ml OWL_QueryEval.ml OWL_Tests_Manifest.ml RIF_Core_Syntax.ml Parser_RIFXML.ml RIF_Core_Translation.ml RIF_Core_Builtins.ml RIF_Core_Conformance.ml RIF_Core_Eval.ml RIF_Core_Tests.ml SPARQL11_Parser.ml SHACL_Validation.ml
     ShEx_Schema.ml Parser_ShExC.ml ShEx_SchemaEq.ml ShEx_Validation.ml

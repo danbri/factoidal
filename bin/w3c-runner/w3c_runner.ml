@@ -647,6 +647,89 @@ let results_match expected_rows actual_rows =
     ) expected_rows
 
 (* ============================================================================
+   Strict graph / result-set comparison (I/O glue over F* semantics)
+
+   The comparison SEMANTICS live in the F*-extracted RDF.GraphIsomorphism
+   module: graph equality is RDFC-1.0 canonicalization + byte-compare of
+   canonical N-Quads (rdflib's isomorphism-via-canonicalization), and
+   SELECT result equality with blank nodes is Jena-style row reification
+   fed into the same canonicalizer. Everything below is glue: it dispatches
+   to those functions, threads the ORDER-BY flag and bnode presence, and
+   handles the RDFC-1.0 work-budget escape by logging a countable marker
+   and falling back to the previous lenient bnode-collapsing comparison.
+   No comparison logic is decided here.
+   ============================================================================ *)
+
+(* bnode-agnostic multiset equality — the OLD lenient behaviour, retained
+   ONLY as the fallback path when RDFC-1.0 aborts on a pathological
+   blank-node graph (Iso_BudgetExceeded). Expected to be unreached on the
+   W3C suites (their graphs are tiny). *)
+let graph_lenient_multiset_eq (expected : triple list) (actual : triple list) =
+  if List.length expected <> List.length actual then false
+  else
+    let key (t : triple) =
+      let s = match t.RDF_Graph_Executable.s with
+        | S_IRI i -> "I:" ^ i | S_BNode _ -> "B" in
+      let o = match t.RDF_Graph_Executable.o with
+        | T_IRI i -> "I:" ^ i
+        | T_BNode _ -> "B"
+        | T_Literal l ->
+          "L:" ^ l.RDF_Graph_Executable.lexical_form ^ "^^" ^
+          l.RDF_Graph_Executable.datatype ^
+          (match l.RDF_Graph_Executable.lang_tag with Some g -> "@" ^ g | None -> "") in
+      Printf.sprintf "%s|%s|%s" s t.RDF_Graph_Executable.p o in
+    List.sort compare (List.map key expected) = List.sort compare (List.map key actual)
+
+(* Strict graph equality. `test_iri` is used only to label the budget
+   fallback marker so fallbacks are countable. *)
+let graphs_equal_strict test_iri (expected : triple list) (actual : triple list) =
+  match RDF_GraphIsomorphism.graphs_isomorphic_outcome expected actual with
+  | RDF_GraphIsomorphism.Iso_Equal -> true
+  | RDF_GraphIsomorphism.Iso_NotEqual -> false
+  | RDF_GraphIsomorphism.Iso_BudgetExceeded ->
+    Printf.eprintf "[isomorphism_budget_fallback] %s\n" test_iri;
+    graph_lenient_multiset_eq expected actual
+
+(* Strict dataset equality (default + named graphs, quad granularity) via
+   the same F* canonicalizer; used for TriG / N-Quads eval so named-graph
+   placement is not flattened away. *)
+let datasets_equal_strict test_iri (expected : RDF_Graph_Executable.rdf_dataset)
+                          (actual : RDF_Graph_Executable.rdf_dataset) =
+  match RDF_GraphIsomorphism.datasets_isomorphic_outcome expected actual with
+  | RDF_GraphIsomorphism.Iso_Equal -> true
+  | RDF_GraphIsomorphism.Iso_NotEqual -> false
+  | RDF_GraphIsomorphism.Iso_BudgetExceeded ->
+    Printf.eprintf "[isomorphism_budget_fallback] %s\n" test_iri;
+    let flat (ds : RDF_Graph_Executable.rdf_dataset) =
+      ds.RDF_Graph_Executable.ds_default @
+      List.concat_map (fun ng -> ng.RDF_Graph_Executable.ng_graph)
+        ds.RDF_Graph_Executable.ds_named in
+    graph_lenient_multiset_eq (flat expected) (flat actual)
+
+(* Does any solution row bind a variable to a blank node? Only then do we
+   need the reification+canonicalization bijection; bnode-free result sets
+   use the value-aware term comparison (numeric/lang value equality). *)
+let row_has_bnode (row : (string * RDF_Graph_Executable.rdf_term) list) =
+  List.exists (fun (_, t) ->
+    match t with RDF_Graph_Executable.T_BNode _ -> true | _ -> false) row
+
+let rows_have_bnode rows = List.exists row_has_bnode rows
+
+(* Strict SELECT comparison. When either side carries blank nodes, use the
+   F* reification/canonicalization bijection (order-sensitive iff the query
+   has ORDER BY). Otherwise defer to the caller's value-aware comparator. *)
+let select_results_equal_strict test_iri ~ordered ~value_cmp expected_rows actual_rows =
+  if rows_have_bnode expected_rows || rows_have_bnode actual_rows then
+    match RDF_GraphIsomorphism.solutions_isomorphic_outcome ordered expected_rows actual_rows with
+    | RDF_GraphIsomorphism.Iso_Equal -> true
+    | RDF_GraphIsomorphism.Iso_NotEqual -> false
+    | RDF_GraphIsomorphism.Iso_BudgetExceeded ->
+      Printf.eprintf "[isomorphism_budget_fallback] %s\n" test_iri;
+      results_match_with value_cmp expected_rows actual_rows
+  else
+    results_match_with value_cmp expected_rows actual_rows
+
+(* ============================================================================
    Test runner
    ============================================================================ *)
 
@@ -1067,6 +1150,15 @@ let run_query_eval_test tc =
     if is_construct then OWL_QueryEval.eval_construct_query_owl query graph dataset else [] in
   let actual_results =
     if is_construct then [] else OWL_QueryEval.eval_select_query_owl query graph dataset in
+  let is_ask = match query.q_form with QF_Ask -> true | _ -> false in
+  (* Evaluate the ASK boolean via the F* evaluator so it can be compared
+     against the expected .srx/.srj boolean (ledger: ASK was unchecked). *)
+  let actual_ask =
+    if is_ask then OWL_QueryEval.eval_ask_query_owl query graph dataset else false in
+  (* ORDER BY makes the expected result order significant; the strict
+     SELECT comparison pins the bnode bijection to row position when set. *)
+  let is_ordered =
+    match query.q_modifier.sm_order_by with Some _ -> true | None -> false in
 
   (* Load and compare expected results *)
   match tc.result_file with
@@ -1176,7 +1268,8 @@ let run_query_eval_test tc =
                | _ -> None)
                bindings)
              solutions in
-         if results_match_with term_equal expected_rows actual_results then Pass
+         if select_results_equal_strict tc.name ~ordered:is_ordered ~value_cmp:term_equal
+              expected_rows actual_results then Pass
          else begin
            if !verbose_mode then begin
              Printf.eprintf "    EXPECTED (%d rs:ResultSet rows):\n" (List.length expected_rows);
@@ -1209,15 +1302,16 @@ let run_query_eval_test tc =
       t.RDF_Graph_Executable.p
       (term_key_obj t.RDF_Graph_Executable.o) in
     let canon xs = List.map canon_key xs |> List.sort compare in
-    let exp_keys = canon expected_triples in
-    let act_keys = canon actual_triples in
-    if exp_keys = act_keys then Pass
+    (* Strict CONSTRUCT-graph equality via RDFC-1.0 canonicalization
+       (F* RDF.GraphIsomorphism); the canon_key strings are kept only for
+       the -v diagnostic dump. *)
+    if graphs_equal_strict tc.name expected_triples actual_triples then Pass
     else begin
       if !verbose_mode then begin
         Printf.eprintf "    EXPECTED (%d triples):\n" (List.length expected_triples);
-        List.iter (fun k -> Printf.eprintf "      %s\n" k) exp_keys;
+        List.iter (fun k -> Printf.eprintf "      %s\n" k) (canon expected_triples);
         Printf.eprintf "    ACTUAL (%d triples):\n" (List.length actual_triples);
-        List.iter (fun k -> Printf.eprintf "      %s\n" k) act_keys;
+        List.iter (fun k -> Printf.eprintf "      %s\n" k) (canon actual_triples);
       end;
       Fail (Printf.sprintf "Triples mismatch: expected %d, got %d"
               (List.length expected_triples) (List.length actual_triples))
@@ -1239,11 +1333,25 @@ let run_query_eval_test tc =
     let is_csv_result = Filename.check_suffix rf ".csv" in
     let cmp_fn = if is_csv_result then term_equal_csv_lenient else term_equal in
     begin match parsed_result with
-      | `SRX_Boolean _expected_bool ->
-        (* ASK query — just check we got here without error *)
-        Pass
+      | `SRX_Boolean expected_bool ->
+        (* ASK query — compare the evaluated boolean against the expected
+           .srx/.srj boolean (ledger: previously unchecked). *)
+        if RDF_GraphIsomorphism.ask_results_match expected_bool actual_ask then Pass
+        else Fail (Printf.sprintf "ASK boolean mismatch: expected %b, got %b"
+                     expected_bool actual_ask)
       | `SRX_Bindings (_vars, expected_rows) ->
-        if results_match_with cmp_fn expected_rows actual_results then Pass
+        (* CSV is a lossy result format: blank-node labels are not stable and
+           every value is written as xsd:string (type information is gone), so
+           strict bnode-bijection + byte-exact typing (the reification path) is
+           not meaningful for CSV — keep the value-lenient set comparison.
+           TSV/SRX/SRJ carry full typed terms, so they get the strict path. *)
+        let matched =
+          if is_csv_result then
+            results_match_with cmp_fn expected_rows actual_results
+          else
+            select_results_equal_strict tc.name ~ordered:is_ordered ~value_cmp:cmp_fn
+              expected_rows actual_results in
+        if matched then Pass
         else begin
           (* Compute unmatched rows *)
           let actual_remaining = ref actual_results in
@@ -2068,62 +2176,23 @@ let run_test tc =
              RDF_Graph_Executable.({ ng_name = iri; ng_graph = load_triples path })
            ) tc.update_result_named_files in
 
-           (* Compare: default graph via triple_sets_match (lex-key-based,
-              bnode-label-agnostic but NOT a full isomorphism); each named
-              graph compared under the same weak key. Expected-but-missing
-              and extra-named-graphs both trigger a fail.
-              CAVEAT: triple_sets_match compares canonical keys that fold
-              all bnodes to "_:b". Two graphs with the same number of
-              triples and the same non-bnode structure will match even if
-              the bnode *wiring* is different. For the four INSERT DATA
-              tests in basic-update this is adequate — they have 0 or 1
-              bnode positions. A later stage should use the existing
-              simple_entails_regime "simple" for proper bnode-aware
-              isomorphism. *)
-           let sort_named ngs =
-             List.sort (fun a b ->
-               compare a.RDF_Graph_Executable.ng_name b.RDF_Graph_Executable.ng_name) ngs in
-           let result_named = sort_named result_ds.RDF_Graph_Executable.ds_named in
-           let expected_named_sorted = sort_named expected_named in
-           let names_match =
-             List.length result_named = List.length expected_named_sorted &&
-             List.for_all2 (fun a b ->
-               a.RDF_Graph_Executable.ng_name = b.RDF_Graph_Executable.ng_name
-             ) result_named expected_named_sorted in
-           (* Local triple-set comparison. Mirrors the later `triple_sets_match`
-              helper (defined lower in the file) but inlined here because
-              run_test is defined earlier. Same lex-key-based comparison,
-              same bnode-label-agnostic caveat. *)
-           let triple_to_key t =
-             let open RDF_Graph_Executable in
-             let s_str = match t.s with
-               | S_IRI i -> "<" ^ i ^ ">"
-               | S_BNode _ -> "_:b" in
-             let o_str = match t.o with
-               | T_IRI i -> "<" ^ i ^ ">"
-               | T_BNode _ -> "_:b"
-               | T_Literal l ->
-                 let dt = if l.datatype <> "" then "^^<" ^ l.datatype ^ ">" else "" in
-                 let lg = match l.lang_tag with Some t -> "@" ^ t | None -> "" in
-                 "\"" ^ l.lexical_form ^ "\"" ^ dt ^ lg in
-             (s_str, t.p, o_str) in
-           let triples_equal expected actual =
-             if List.length expected <> List.length actual then false
-             else
-               let canon xs = List.map triple_to_key xs |> List.sort compare in
-               canon expected = canon actual in
-           let default_match =
-             triples_equal expected_default
-               result_ds.RDF_Graph_Executable.ds_default in
-           let named_match =
-             names_match &&
-             List.for_all2 (fun a b ->
-               triples_equal
-                 a.RDF_Graph_Executable.ng_graph
-                 b.RDF_Graph_Executable.ng_graph
-             ) result_named expected_named_sorted in
-           if default_match && named_match then Pass
+           (* Strict quad-level comparison of the post-update dataset
+              (default + named graphs) via RDFC-1.0 canonicalization in F*
+              (RDF.GraphIsomorphism.datasets_isomorphic). This enforces a
+              proper bnode-consistent bijection across the whole dataset;
+              the previous local comparator folded every bnode to "_:b" and
+              matched on triple counts + non-bnode structure only. *)
+           let expected_ds = RDF_Graph_Executable.({
+             ds_default = expected_default;
+             ds_named = expected_named;
+           }) in
+           if datasets_equal_strict tc.name expected_ds result_ds then Pass
            else begin
+             let sort_named ngs =
+               List.sort (fun a b ->
+                 compare a.RDF_Graph_Executable.ng_name b.RDF_Graph_Executable.ng_name) ngs in
+             let result_named = sort_named result_ds.RDF_Graph_Executable.ds_named in
+             let expected_named_sorted = sort_named expected_named in
              let msg = Printf.sprintf
                "UPDATE result mismatch: default=%d/%d triples, named=%d/%d graphs"
                (List.length result_ds.RDF_Graph_Executable.ds_default)
@@ -2508,7 +2577,7 @@ let run_rdf_test assumed_base tc =
             let base = make_turtle_base_tc assumed_base tc.manifest_dir tc.query_file in
             let actual = parse_turtle_fstar input (Some base) in
             let expected = parse_ntriples_fstar expected_content in
-            if triple_sets_match expected actual then Pass
+            if graphs_equal_strict tc.name expected actual then Pass
             else
               Fail (Printf.sprintf "Triples mismatch: expected %d, got %d"
                       (List.length expected) (List.length actual))
@@ -2586,12 +2655,13 @@ let run_rdf_test assumed_base tc =
             let base = make_turtle_base_tc assumed_base tc.manifest_dir tc.query_file in
             let actual_ds = parse_trig_fstar input (Some base) in
             let expected_ds = parse_nquads_fstar expected_content in
-            (* Compare default graphs and named graphs *)
+            (* Strict quad-level comparison (default + named graphs) via
+               RDFC-1.0 canonicalization; named-graph placement preserved. *)
             let actual_all = actual_ds.ds_default @
               List.concat_map (fun ng -> ng.ng_graph) actual_ds.ds_named in
             let expected_all = expected_ds.ds_default @
               List.concat_map (fun ng -> ng.ng_graph) expected_ds.ds_named in
-            if triple_sets_match expected_all actual_all then Pass
+            if datasets_equal_strict tc.name expected_ds actual_ds then Pass
             else
               Fail (Printf.sprintf "Triples mismatch: expected %d, got %d"
                       (List.length expected_all) (List.length actual_all))
@@ -2625,7 +2695,7 @@ let run_rdf_test assumed_base tc =
             let base = make_turtle_base_tc assumed_base tc.manifest_dir tc.query_file in
             let actual = parse_rdfxml_fstar input (Some base) in
             let expected = parse_ntriples_fstar expected_content in
-            if triple_sets_match expected actual then Pass
+            if graphs_equal_strict tc.name expected actual then Pass
             else
               Fail (Printf.sprintf "Triples mismatch: expected %d, got %d"
                       (List.length expected) (List.length actual))
