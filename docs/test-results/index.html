@@ -279,7 +279,7 @@
 <header>
   <div class="inner">
     <div class="rendered-pill" title="Rendered = when this page was last regenerated. Tests = when the *_results.log files inside the repository were last updated. Both UTC.">
-      <span class="row"><span class="label">Rendered</span><strong>2026-07-10 03:34 UTC</strong></span>
+      <span class="row"><span class="label">Rendered</span><strong>2026-07-10 03:44 UTC</strong></span>
       <span class="row"><span class="label">Tests</span><strong class="tests">2026-07-10 01:56 UTC</strong></span>
     </div>
     <h1>W3C test results</h1>
@@ -1115,7 +1115,7 @@
 
 <section class="family green" id="jsonld11">
   <h2>JSON-LD 1.1</h2>
-  <p class="fam-headline green">514 pass, 0 fail, 7 skip (of 521) across the W3C JSON-LD 1.1 toRdf and fromRdf manifests.</p>
+  <p class="fam-headline green">893 pass, 0 fail, 13 skip (of 906) across the W3C JSON-LD 1.1 toRdf, fromRdf and expand manifests.</p>
   <details open>
     <summary>Suites in this family (tap to collapse)</summary>
     <div class="suites">
@@ -1131,6 +1131,12 @@
         <div class="suite-numbers"><small>53 pass, 0 fail, 1 skip (of 54)</small></div>
       </div>
       <p class="suite-prov">Runner: <code>bin/jsonld-fromrdf-runner</code> (<code>bin/linux-x86_64/jsonld_fromrdf_runner</code>) &middot; Suite: W3C JSON-LD 1.1 fromRdf manifest (Serialize RDF as JSON-LD)</p>
+      <div class="suite-row green">
+        <div class="suite-name">JSON-LD 1.1 expand</div>
+        <div class="meter"><div class="seg seg-pass" style="width:98.44%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:1.56%"></div></div>
+        <div class="suite-numbers"><small>379 pass, 0 fail, 6 skip (of 385)</small></div>
+      </div>
+      <p class="suite-prov">Runner: <code>bin/jsonld-expand-runner</code> (<code>bin/linux-x86_64/jsonld_expand_runner</code>) &middot; Suite: W3C JSON-LD 1.1 expand manifest (Expansion Algorithm)</p>
     </div>
   </details>
   
@@ -1395,9 +1401,9 @@ vc-stage1:    113 pass, 1 fail, 6 skip (of 120) — present=1</pre>
 </main>
 
 <footer>
-  Generated <strong>2026-07-10 03:34 UTC</strong> from commit
-  <code><a href="https://github.com/danbri/factoidal/commit/71b50531ded9f54b6c5351345f51c6d829dc922d">71b50531</a></code>
-  on branch <code>claude/main</code> — &ldquo;HDT js-bundle query performance: O(1) decoded-byte representation (task #102)&rdquo;.
+  Generated <strong>2026-07-10 03:44 UTC</strong> from commit
+  <code><a href="https://github.com/danbri/factoidal/commit/7f0ad90b2bb92d802bab0fb487b75da7998b9109">7f0ad90</a></code>
+  on branch <code>claude/main</code> — &ldquo;JSON-LD expand suite: NOT-RUN -> 379 pass, 0 fail, 6 skip (of 385)&rdquo;.
   Re-run locally: <code>cd formal/fstar &amp;&amp; ./generate-report.sh --run</code>.
 </footer>
 
