@@ -398,7 +398,7 @@
 <header>
   <div class="inner">
     <div class="rendered-pill" title="Rendered = when this page was last regenerated. Tests = when the *_results.log files inside the repository were last updated. Both UTC.">
-      <span class="row"><span class="label">Rendered</span><strong>2026-07-10 16:49 UTC</strong></span>
+      <span class="row"><span class="label">Rendered</span><strong>2026-07-10 17:52 UTC</strong></span>
       <span class="row"><span class="label">Tests</span><strong class="tests">2026-07-10 01:56 UTC</strong></span>
     </div>
     <h1>W3C test results</h1>
@@ -1224,7 +1224,7 @@
   <summary>
     <span class="fam-name">Verifiable Credentials 2.0</span>
     <span class="fam-score">117/0/0 of 117</span>
-    <span class="gap-badge">2 gaps</span>
+    <span class="gap-badge">3 gaps</span>
     <span class="dot green"></span>
   </summary>
   <div class="family-body">
@@ -1239,13 +1239,53 @@
           
         </div>
       </details>
+      <details class="suite-node amber">
+        <summary><span class="suite-name">Data Integrity eddsa-rdfc-2022 (W3C vc-di-eddsa-test-suite, via shim)</span><span class="suite-numbers">26/5/0 of 31</span><span class="dot amber"></span></summary>
+        <div class="suite-body">
+          <div class="meter"><div class="seg seg-pass" style="width:83.87%"></div><div class="seg seg-fail" style="width:16.13%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+          <p class="suite-numbers-full">26 pass, 5 fail, 0 skip (out of 31)</p>
+          <p class="suite-prov">Runner: <code>tests/vc-di-eddsa/run.sh</code> &middot; Suite: <code>third_party/testing/vc-di-eddsa/tests/{05-di-rdfc-create,15-di-rdfc-verify}.js</code> against <code>bin/vc-api-shim/server.mjs</code></p>
+          <p class="suite-diag">Remaining 5 failures: 3 are missing DATA_LOSS_DETECTION_ERROR detection (a JSON-LD term silently dropped by expansion is not caught and rejected), 2 are multi-proof / <code>proof.previousProof</code> chaining (not supported — the shim checks exactly one proof). Community comparison on the identical 31-test scope (canivc.com's &ldquo;eddsa-rdfc-2022 issuers&rdquo; + &ldquo;verifiers&rdquo; matrices): scores range 0% to 100% among registered implementations, median 41.9%; 83.9% here places Factoidal above the median, close behind Trential (93.5%) and SpruceID (96.8%), behind Grotto Networking (100%). <a href="https://github.com/danbri/factoidal/blob/claude/main/.github/test-suites/vc-di-eddsa.yaml" target="_blank" rel="noopener">suite manifest</a> &middot; <a href="https://github.com/danbri/factoidal/blob/claude/main/docs/designissues/2026-07-10-canivc-community-compat.md" target="_blank" rel="noopener">canivc.com scoping doc</a></p>
+        </div>
+      </details>
+      <details class="suite-node amber">
+        <summary><span class="suite-name">VC Data Model 2.0 — issuer/verifier HTTP suite (via shim)</span><span class="suite-numbers">22/37/0 of 59</span><span class="dot amber"></span></summary>
+        <div class="suite-body">
+          <div class="meter"><div class="seg seg-pass" style="width:37.29%"></div><div class="seg seg-fail" style="width:62.71%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+          <p class="suite-numbers-full">22 pass, 37 fail, 0 skip (out of 59)</p>
+          <p class="suite-prov">Runner: <code>tests/vc20-api/run.sh</code> &middot; Suite: <code>third_party/testing/vc/tests/{1.03-conformance,4.03-contexts,...,7-algorithms}.js</code> (14 files) against <code>bin/vc-api-shim/server.mjs</code></p>
+          <p class="suite-diag">Single dominant cause for nearly all 37 failures: the shim has no VC Data Model 2.0 structural validator of its own (it only implements Data Integrity signing/verifying) — almost every failure is a missing-rejection-of-malformed-input test (bad <code>credentialStatus</code>/<code>refreshService</code>/<code>credentialSchema</code>/<code>termsOfUse</code>/<code>evidence</code> shape, <code>validUntil</code> before <code>validFrom</code>, missing <code>type</code>/<code>@context</code>, malformed Verifiable Presentation). Full breakdown: <code>docs/test-results/by-suite/vc20-api.json</code>. <a href="https://github.com/danbri/factoidal/blob/claude/main/.github/test-suites/vc20-api.yaml" target="_blank" rel="noopener">suite manifest</a></p>
+        </div>
+      </details>
+      <details class="suite-node grey">
+        <summary><span class="suite-name">VC community compatibility (canivc.com)</span><span class="suite-numbers">snapshot 2026-07-10</span><span class="dot grey"></span></summary>
+        <div class="suite-body">
+          <p class="suite-numbers-full">Digital Bazaar's <a href="https://canivc.com" target="_blank" rel="noopener">canivc.com</a> aggregates the same official W3C/CCG test-suite reports across ~20 implementations. Per-suite comparison (community min/median/max % across registered implementations, from a snapshot vendored at <code>third_party/testing/canivc-snapshot/</code>; full scoping + gap rationale in <a href="https://github.com/danbri/factoidal/blob/claude/main/docs/designissues/2026-07-10-canivc-community-compat.md" target="_blank" rel="noopener">the canivc.com integration doc</a>):</p>
+          <table class="canivc-compat">
+            <thead><tr><th>suite</th><th>Factoidal</th><th>community min / median / max</th><th>status</th></tr></thead>
+            <tbody>
+              <tr><td>eddsa-rdfc-2022 (create+verify, 31 tests)</td><td>83.9% (26/31)</td><td>0% / 41.9% / 100%</td><td>measured — above median</td></tr>
+              <tr><td>VC Data Model 2.0 (issuer/verifier HTTP)</td><td>37.3% (22/59)</td><td>22.0% / 54.7% / 96.6%</td><td>measured — below median (structural validation gap, see row above)</td></tr>
+              <tr><td>did:key</td><td>not measured via HTTP resolver</td><td>25.0% / 25.0% / 87.5%</td><td>assessed, not implemented — see scoping doc</td></tr>
+              <tr><td>Data Integrity ECDSA</td><td>not implemented</td><td>0% / 90.0% / 100%</td><td>out of scope — no ECDSA cryptosuite wired (HACL&#42; has P-256 source, not adopted)</td></tr>
+              <tr><td>Ed25519Signature2020</td><td>not implemented</td><td>0% / 78.6% / 100%</td><td>out of scope — legacy cryptosuite, assessed distance from eddsa-rdfc-2022, not attempted</td></tr>
+              <tr><td>Data Integrity BBS</td><td>not implemented</td><td>2.3% / 78.5% / 100%</td><td>out of scope — no BBS signature scheme anywhere in the codebase</td></tr>
+              <tr><td>VC JOSE/COSE</td><td>not implemented</td><td>68.6% / 100% / 100%</td><td>out of scope — different (JWT/CWT) securing stack</td></tr>
+              <tr><td>VC Bitstring Status List</td><td>not implemented</td><td>3.8% / 32.7% / 96.2%</td><td>out of scope — credentialStatus processing not implemented</td></tr>
+              <tr><td>VC-API Issuer (full)</td><td>not implemented</td><td>0% / 42.9% / 96.4%</td><td>out of scope — full VC-API surface far beyond issue/verify</td></tr>
+              <tr><td>VC-API Verifier (full)</td><td>not implemented</td><td>0% / 55.6% / 97.2%</td><td>out of scope — same reason</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </details>
     </div>
     
     <div class="remaining">
       <p class="remaining-title">Remaining work</p>
       <ul>
         <li>context-driven type redefinition is not checked — it needs real JSON-LD term resolution this stage does not implement</li>
-        <li>full W3C VC Data Integrity conformance — signing and verifying credentials against the official proof-options test suite, including inside the browser/JS bundle — is not yet run; the eddsa-rdfc-2022 machinery passes an 8-check local sign/verify/tamper roundtrip but has not been measured against the official corpus</li>
+        <li>full W3C VC Data Integrity conformance against the official corpus is now measured (task #88, 2026-07-10): eddsa-rdfc-2022 create+verify scores 26 pass, 5 fail (out of 31) via a new HTTP shim (bin/vc-api-shim) — see .github/test-suites/vc-di-eddsa.yaml and docs/designissues/2026-07-10-canivc-community-compat.md. Not yet measured: inside the browser/JS bundle specifically (the shim runs under Node only), and eddsa-jcs-2022 (JCS canonicalization is a different transform path, not implemented)</li>
+        <li>the VC Data Model 2.0 suite's own issuer/verifier HTTP tests (distinct from this suite's structural-fixture check) now also run against the shim: 22 pass, 37 fail (out of 59), see .github/test-suites/vc20-api.yaml — the shim has no structural validator of its own, so almost every failure is a missing-rejection-of-malformed-input test</li>
       </ul>
     </div>
   </div>
@@ -1254,7 +1294,7 @@
   <summary>
     <span class="fam-name">DID (Decentralized Identifiers)</span>
     <span class="fam-score">8/0/0 of 8</span>
-    <span class="gap-badge">2 gaps</span>
+    <span class="gap-badge">3 gaps</span>
     <span class="dot green"></span>
   </summary>
   <div class="family-body">
@@ -1276,6 +1316,7 @@
       <ul>
         <li>this suite covers only did:key — did:web (or any other DID method) is not implemented</li>
         <li>DID resolution metadata is not produced — a full DID Core conformance target still needs to be enumerated, not just did:key vectors</li>
+        <li>assessed against the official w3c-ccg/did-key-test-suite (task #88, 2026-07-10) and not implemented: it is a resolver-conformance suite (GET /didResolvers/&lt;did&gt; returning a full DID Resolution Result envelope with didDocument/didDocumentMetadata/didResolutionMetadata and structured error codes) rather than the vector-accept/reject shape this suite covers; didKeyResolve's npm export returns bare RDF, not that envelope. See docs/designissues/2026-07-10-canivc-community-compat.md's did:key section for the specific gap.</li>
       </ul>
     </div>
   </div>
@@ -1927,9 +1968,9 @@ vc-stage1:    117 pass, 0 fail, 0 skip (of 117) — present=1</pre>
 </main>
 
 <footer>
-  Generated <strong>2026-07-10 16:49 UTC</strong> from commit
-  <code><a href="https://github.com/danbri/factoidal/commit/aaeef13043b58c5594ea0d62b89bf594c5549fa3">aaeef130</a></code>
-  on branch <code>claude/main</code> — &ldquo;hub: GeoSPARQL borough choropleth + vendored vector basemap + fullscreen; live-mode hub twin with relaxed CSP (task #105)&rdquo;.
+  Generated <strong>2026-07-10 17:52 UTC</strong> from commit
+  <code><a href="https://github.com/danbri/factoidal/commit/12cd438c69ba572fcbe34192a03670634690317e">12cd438c</a></code>
+  on branch <code>claude/main</code> — &ldquo;vc: canivc.com community-compatibility integration (task #88)&rdquo;.
   Re-run locally: <code>cd formal/fstar &amp;&amp; ./generate-report.sh --run</code>.
 </footer>
 
