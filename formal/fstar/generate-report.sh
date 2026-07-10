@@ -668,7 +668,6 @@ sum_family () {
   done
   echo "$tp $tf $ts $tt $any"
 }
-read -r SHAPES_PASS SHAPES_FAIL SHAPES_SKIP SHAPES_TOTAL SHAPES_ANY <<< "$(sum_family "SHACL_CORE SHACL_SPARQL SHEX")"
 
 # emit_json_suite_obj — print a leading-comma keyed suite object into the
 # JSON `suites` map, ONLY when the suite's <PREFIX>_PRESENT flag is 1.
@@ -930,6 +929,19 @@ emit_json_suites () {
 cp "$JSON" "$HISTORY_DIR/${TIMESTAMP_ISO}.json"
 
 # --- HTML suite rows ---------------------------------------------------------
+# status_for — green/amber/grey classifier shared by every suite-node
+# emitter below (moved up from the family-section block further down so
+# emit_suite_rows can use it too). "any" is a 0/1 flag: 0 means "not
+# measured this run" regardless of fail count, so an empty suite never
+# renders as a false green.
+status_for () {
+  local fail="$1" any="$2"
+  if [ "${any:-0}" -ne 1 ]; then echo grey
+  elif [ "$fail" -eq 0 ]; then echo green
+  else echo amber
+  fi
+}
+
 # meter_segments — the shared 3-segment pass/fail/skip stacked-bar
 # markup. One definition, reused by every row emitter on the page (this
 # function, emit_owl_bar_row, emit_owl_skip_row, and the new
@@ -949,11 +961,16 @@ meter_segments () {
     "$pp" "$fp" "$sp"
 }
 
+# emit_suite_rows — one collapsible <details class="suite-node"> per
+# suite (owner directive 2026-07-10: "one collapsible node per checkable
+# suite", default-collapsed, summary shows name + labelled pass/fail/skip
+# + a status dot). unsupported tests are folded into the displayed skip
+# count (the raw fields stay separate in latest.csv/latest.json).
 emit_suite_rows () {
   local blob="$1"
   while IFS= read -r line; do
     [ -z "$line" ] && continue
-    local name pass fail skip unsup total row_class extra meter
+    local name pass fail skip unsup total cls meter name_html numbers skip_disp
     name=$(echo  "$line" | awk '{print $1}')
     pass=$(echo  "$line" | sed -nE 's/.*pass:([0-9]+).*/\1/p')
     fail=$(echo  "$line" | sed -nE 's/.*fail:([0-9]+).*/\1/p')
@@ -962,13 +979,8 @@ emit_suite_rows () {
     pass=${pass:-0}; fail=${fail:-0}; skip=${skip:-0}; unsup=${unsup:-0}
     total=$((pass + fail + skip + unsup))
     if [ "$total" -eq 0 ]; then continue; fi
-    if [ "$fail" -eq 0 ] && [ "$pass" -gt 0 ]; then      row_class="green"
-    elif [ "$pass" -eq 0 ] && [ "$fail" -eq 0 ]; then    row_class="grey"
-    else                                                  row_class="amber"
-    fi
-    extra=""
-    [ "$skip" -gt 0 ]  && extra="skip ${skip}"
-    [ "$unsup" -gt 0 ] && extra="${extra} unsup ${unsup}"
+    skip_disp=$((skip + unsup))
+    cls=$(status_for "$fail" 1)
     # Inline scope hint for the SPARQL "entailment" suite — it's a
     # narrow regime suite, NOT OWL conformance, and the name alone
     # invites confusion. The OWL panel below is the larger, separate
@@ -977,19 +989,16 @@ emit_suite_rows () {
     if [ "$name" = "entailment" ]; then
       name_html='entailment <small style="font-weight:normal;color:var(--muted)">(SPARQL 1.1 regime — RDFS / D-entailment, 70 tests)</small>'
     fi
-    meter=$(meter_segments "$pass" "$fail" "$skip" "$total")
-    # Labelled numbers, never a bare ratio (CLAUDE.md anti-pattern #25):
-    # "N pass, N fail" plus an extra clause for skip/unsupported counts
-    # when present.
+    meter=$(meter_segments "$pass" "$fail" "$skip_disp" "$total")
+    # Labelled numbers, never a bare ratio (CLAUDE.md anti-pattern #25).
+    numbers="${pass} pass, ${fail} fail, ${skip_disp} skip (out of ${total})"
     cat <<ROW
-      <div class="suite-row ${row_class}">
-        <div class="suite-name">${name_html}</div>
-        ${meter}
-        <div class="suite-numbers">
-          <span class="p">${pass} pass</span>, <span class="f">${fail} fail</span>
-          <small>${extra}</small>
+      <details class="suite-node ${cls}">
+        <summary><span class="dot ${cls}"></span><span class="suite-name">${name_html}</span><span class="suite-numbers">${numbers}</span></summary>
+        <div class="suite-body">
+          ${meter}
         </div>
-      </div>
+      </details>
 ROW
   done <<<"$blob"
 }
@@ -1089,6 +1098,13 @@ RDF_ROWS_HTML=$(
 # clicks "1 fail" lands on the actual failure description, not a
 # dead-end count.
 # ---------------------------------------------------------------------
+# emit_failure_detail — owner directive 2026-07-10: never render a
+# clickable failures/skips disclosure that turns out to be empty only
+# after the reader clicks it. Each of the two <details> blocks below is
+# emitted ONLY when its list is non-empty; when a log has zero FAILs (or
+# zero skips) that block is omitted entirely — the suite's own summary
+# line already shows "0 fail" / "0 skip", so there is nothing to expand
+# into. Applies uniformly to every caller of this function.
 emit_failure_detail () {
   local log="$1"
   local id_prefix="$2"
@@ -1114,21 +1130,27 @@ emit_failure_detail () {
                | sed -E 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g' \
                | awk '{ printf "<li>%s</li>\n", $0 }' || true)
 
-  cat <<HTML
+  if [ -n "$fail_block" ]; then
+    cat <<HTML
 <details id="${id_prefix}-failures" class="failure-detail">
   <summary>${label} failures (click to expand)</summary>
   <ul>
-${fail_block:-<li>(none)</li>}
-  </ul>
-</details>
-
-<details id="${id_prefix}-skips" class="failure-detail">
-  <summary>${label} skips (click to expand)</summary>
-  <ul>
-${skip_block:-<li>(none)</li>}
+${fail_block}
   </ul>
 </details>
 HTML
+  fi
+
+  if [ -n "$skip_block" ]; then
+    cat <<HTML
+<details id="${id_prefix}-skips" class="failure-detail">
+  <summary>${label} skips (click to expand)</summary>
+  <ul>
+${skip_block}
+  </ul>
+</details>
+HTML
+  fi
 }
 
 SPARQL_FAILURE_DETAIL_HTML=$(emit_failure_detail "$SPARQL_LOG" "sparql" "SPARQL 1.1")
@@ -1158,20 +1180,18 @@ emit_owl_bar_row () {
   local label="$1" pass="$2" fail="$3" total="$4"
   local skip=$((total - pass - fail))
   [ "$skip" -lt 0 ] && skip=0
-  local cls meter
-  if [ "$fail" -eq 0 ] && [ "$pass" -gt 0 ]; then     cls="green"
-  elif [ "$pass" -eq 0 ] && [ "$fail" -eq 0 ]; then    cls="grey"
-  else                                                  cls="amber"
-  fi
+  local any=1
+  [ "$total" -eq 0 ] && any=0
+  local cls meter numbers
+  cls=$(status_for "$fail" "$any")
   meter=$(meter_segments "$pass" "$fail" "$skip" "$total")
-  printf '<div class="suite-row %s">
-    <div class="suite-name">%s</div>
-    %s
-    <div class="suite-numbers">
-      <span class="p">%s pass</span>, <span class="f">%s fail</span>
-      <small>(of %s)</small>
+  numbers="${pass} pass, ${fail} fail, ${skip} skip (out of ${total})"
+  printf '<details class="suite-node %s">
+    <summary><span class="dot %s"></span><span class="suite-name">%s</span><span class="suite-numbers">%s</span></summary>
+    <div class="suite-body">
+      %s
     </div>
-  </div>' "$cls" "$label" "$meter" "$pass" "$fail" "$total"
+  </details>' "$cls" "$cls" "$label" "$numbers" "$meter"
 }
 OWL_NEG_ROW=""
 if [ "$OWL_NEG_PRESENT" -eq 1 ]; then
@@ -1199,6 +1219,8 @@ TAB_ENTAIL_PASS=$(echo "$TAB_ENTAIL_LINE" | sed -nE 's/.*pass:([0-9]+).*/\1/p');
 TAB_ENTAIL_FAIL=$(echo "$TAB_ENTAIL_LINE" | sed -nE 's/.*fail:([0-9]+).*/\1/p'); TAB_ENTAIL_FAIL=${TAB_ENTAIL_FAIL:-0}
 TAB_ENTAIL_SKIP=$(echo "$TAB_ENTAIL_LINE" | sed -nE 's/.*skip:([0-9]+).*/\1/p'); TAB_ENTAIL_SKIP=${TAB_ENTAIL_SKIP:-0}
 TAB_ENTAIL_TOTAL=$((TAB_ENTAIL_PASS + TAB_ENTAIL_FAIL + TAB_ENTAIL_SKIP))
+TAB_ENTAIL_PRESENT=0
+[ "$TAB_ENTAIL_TOTAL" -gt 0 ] && TAB_ENTAIL_PRESENT=1
 TABLEAU_ROW=""
 if [ "$TAB_ENTAIL_TOTAL" -gt 0 ]; then
   TABLEAU_ROW=$(emit_owl_bar_row \
@@ -1267,14 +1289,13 @@ emit_owl_skip_row () {
   local name="$1" count="$2" reason="$3"
   local css_class="${4:-grey}"
   cat <<ROW
-  <div class="suite-row ${css_class}">
-    <div class="suite-name">${name}</div>
-    <div class="meter"><div class="seg seg-skip" style="width:100%"></div></div>
-    <div class="suite-numbers">
-      <span style="color:var(--muted)">&mdash;</span>
-      <small>${count} tests &middot; ${reason}</small>
+  <details class="suite-node ${css_class}">
+    <summary><span class="dot ${css_class}"></span><span class="suite-name">${name}</span><span class="suite-numbers">not run &mdash; ${count} tests</span></summary>
+    <div class="suite-body">
+      <div class="meter"><div class="seg seg-skip" style="width:100%"></div></div>
+      <p class="suite-prov">${reason}</p>
     </div>
-  </div>
+  </details>
 ROW
 }
 
@@ -1302,15 +1323,13 @@ OWL_SKIP_ROWS+="$(emit_owl_skip_row "syntax-dl" "$OWL_SYNDL_N" "runner not wired
 # all.rdf (an aggregator) are intentionally skipped — they're not
 # independent test sets.
 #
-# OGC GeoSPARQL — Tier C, separate spec stack. Roadmap in #239.
-OWL_SKIP_ROWS+="$(emit_owl_skip_row "GeoSPARQL"  "v0"           "v0 implemented (RDF.Geo.* — exact-rational WKT geometry + Simple-Features topology + geof: functions, 11 local tests); OGC W3C-suite runner pending (see <a href='https://github.com/danbri/factoidal/issues/239'>#239</a>)")"$'\n'
-# 2026-07-05 wave: ShEx, JSON-LD 1.1, VC 2.0, and RML now have their own
-# runners and live dashboard families below (Shapes, JSON-LD 1.1, VC,
-# Mapping) — retired from this roadmap list so the same suite doesn't
-# appear both as "runner pending" here AND scored elsewhere.
-#
-# CSVW, DID — still vendored at third_party/testing/ with no runner.
-OWL_SKIP_ROWS+="$(emit_owl_skip_row "DID"        "?"            "vendored at third_party/testing/did; runner pending")"$'\n'
+# GeoSPARQL and DID used to have placeholder "roadmap" rows here. Both
+# now have live scored suite nodes elsewhere on the page (GeoSPARQL
+# under "SPARQL extras" and the F* engines family; DID under its own
+# W3C Recommendations node) — this OWL panel is OWL 2 only, per the
+# owner's 2026-07-10 directive that it stop listing non-OWL suites.
+# CSVW, ShEx, JSON-LD 1.1, VC 2.0, and RML are likewise scored in their
+# own families, not here.
 
 # --- RDFC-1.0 subsection (folded into the RDF 1.1 core family) ----------
 # RDFC-1.0 (W3C RDF Dataset Canonicalization 1.0) is a separate W3C
@@ -1413,9 +1432,10 @@ ${OWL_SKIP_ROWS}</div>
   the closure (relaxed bnode match); for consistency tests it consults
   <code>RDF_Graph_Executable.is_inconsistent</code> against the same
   closure. <code>syntax-dl.rdf</code> is the remaining unwired catalog
-  (DL syntactic-profile checker pending). The roadmap rows below
-  point at adjacent W3C/OGC suites we want to add: GeoSPARQL (#239),
-  JSON-LD 1.1, CSVW, ShEx, DID, VC, RML.
+  (DL syntactic-profile checker pending; see the roadmap row below).
+  Other suites once listed here as roadmap items — GeoSPARQL, JSON-LD 1.1,
+  CSVW, ShEx, DID, VC, RML — now have live scored suite nodes of their
+  own elsewhere on this page.
 </p>
 OWLEOF
 )
@@ -1450,62 +1470,76 @@ fi
 # =============================================================================
 GITHUB_BLOB_BASE="https://github.com/danbri/factoidal/blob/${GIT_BRANCH}"
 
-status_for () {
-  # $1 = fail count, $2 = "any measured?" flag (0/1)
-  local fail="$1" any="$2"
-  if [ "${any:-0}" -ne 1 ]; then echo grey
-  elif [ "$fail" -eq 0 ]; then echo green
-  else echo amber
-  fi
-}
-
 # family_suite_row — shared row renderer for the newer suites (SHACL, ShEx,
-# JSON-LD, RML, RIF Core, VC). Mirrors emit_owl_bar_row's green/amber/grey
-# convention, additionally handling present=0 as an explicit "not measured
-# this run" grey row (never a fabricated 0-pass number), and carries a
-# one-line <p class="suite-prov"> underneath with the runner + vendored
-# suite dir, plus an optional diagnosis link shown only on amber rows.
+# JSON-LD, RML, RIF Core, VC, ...). Renders as one collapsible
+# <details class="suite-node"> (owner directive 2026-07-10: one
+# collapsible node per checkable suite, default-collapsed, summary shows
+# name + labelled pass/fail/skip + a status dot). Handles present=0 as an
+# explicit "not measured this run" grey row (never a fabricated 0-pass
+# number), and carries a one-line <p class="suite-prov"> in the body with
+# the runner + vendored suite dir, plus an optional diagnosis line shown
+# only when the suite has a fail.
 family_suite_row () {
-  local name="$1" pass="$2" fail="$3" skip="$4" total="$5" present="$6" prov="$7" diag="${8:-}"
+  local name="$1" pass="$2" fail="$3" skip="$4" total="$5" present="$6" prov="$7" diag="${8:-}" notmeasured="${9:-not measured this run}"
   local cls numbers meter diag_html=""
   if [ "$present" -ne 1 ] || [ "$total" -eq 0 ]; then
     cls="grey"
-    numbers="not measured this run"
+    numbers="$notmeasured"
     meter='<div class="meter"><div class="seg seg-skip" style="width:100%"></div></div>'
   else
-    numbers="${pass} pass, ${fail} fail, ${skip} skip (of ${total})"
+    numbers="${pass} pass, ${fail} fail, ${skip} skip (out of ${total})"
     meter=$(meter_segments "$pass" "$fail" "$skip" "$total")
     cls=$(status_for "$fail" 1)
-    if [ "$fail" -gt 0 ] && [ -n "$diag" ]; then diag_html=" &middot; ${diag}"; fi
+    if [ "$fail" -gt 0 ] && [ -n "$diag" ]; then diag_html="<p class=\"suite-diag\">${diag}</p>"; fi
   fi
   cat <<ROW
-      <div class="suite-row ${cls}">
-        <div class="suite-name">${name}</div>
-        ${meter}
-        <div class="suite-numbers"><small>${numbers}</small></div>
-      </div>
-      <p class="suite-prov">${prov}${diag_html}</p>
+      <details class="suite-node ${cls}">
+        <summary><span class="dot ${cls}"></span><span class="suite-name">${name}</span><span class="suite-numbers">${numbers}</span></summary>
+        <div class="suite-body">
+          ${meter}
+          <p class="suite-prov">${prov}</p>
+          ${diag_html}
+        </div>
+      </details>
 ROW
 }
 
-# family_section — the outer card. $6 (footnote) is optional extra prose
-# rendered below the collapsible suite list (used by the OWL family, which
-# already carries rich inline scope prose worth preserving).
+# family_section — the outer card for one spec/suite family. Each suite
+# inside it is already its own collapsible <details class="suite-node">
+# (family_suite_row / emit_suite_rows / emit_owl_bar_row above), so this
+# wrapper no longer adds a second layer of collapsing around the whole
+# list — it did until 2026-07-10, when the page moved to "one collapsible
+# node per suite" and the outer "Suites in this family (tap to collapse)"
+# toggle became redundant nesting. $6 (footnote) is optional extra prose
+# rendered below the suite list (used by the OWL family's rich inline
+# scope prose, and by the SHACL/ShEx cross-reference lines).
 family_section () {
   local id="$1" title="$2" fstatus="$3" headline="$4" body="$5" footnote="${6:-}"
   cat <<SEC
 <section class="family ${fstatus}" id="${id}">
   <h2>${title}</h2>
   <p class="fam-headline ${fstatus}">${headline}</p>
-  <details open>
-    <summary>Suites in this family (tap to collapse)</summary>
-    <div class="suites">
+  <div class="suites">
 ${body}
-    </div>
-  </details>
+  </div>
   ${footnote}
 </section>
 SEC
+}
+
+# group_section — top-level standards-status grouping (owner directive
+# 2026-07-10): one collapsible node per group, open by default, wrapping
+# a fixed-order list of family_section cards.
+group_section () {
+  local id="$1" title="$2" body="$3"
+  cat <<GRP
+<details class="group-section" id="${id}" open>
+  <summary class="group-summary">${title}</summary>
+  <div class="group-body">
+${body}
+  </div>
+</details>
+GRP
 }
 
 # --- RDF 1.1 core: syntaxes + semantics + canonicalization -------------------
@@ -1534,24 +1568,43 @@ OWL_FAMILY_STATUS=$(status_for "$OWL_FAIL" "$OWL_PRESENT")
 OWL_FAMILY_HEADLINE="profile-RL PositiveEntailmentTests: ${OWL_PASS} pass, ${OWL_FAIL} fail (of ${OWL_TOTAL}); six further OWL 2 catalogs (NegEnt/Cons/Inc + 4 DL catalogs) scored below, RIF Core scored in its own family."
 OWL_FAMILY_HTML=$(family_section "owl2" "Reasoning: RDFS / OWL 2" "$OWL_FAMILY_STATUS" "$OWL_FAMILY_HEADLINE" "$OWL_HTML" "")
 
-# --- Shapes: SHACL / ShEx -------------------------------------------------
-read -r SHAPES_PASS SHAPES_FAIL SHAPES_SKIP SHAPES_TOTAL SHAPES_ANY <<< "$(sum_family "SHACL_CORE SHACL_SPARQL SHEX")"
-SHAPES_STATUS=$(status_for "$SHAPES_FAIL" "$SHAPES_ANY")
-if [ "$SHAPES_ANY" -eq 1 ]; then
-  SHAPES_HEADLINE="${SHAPES_PASS} pass, ${SHAPES_FAIL} fail, ${SHAPES_SKIP} skip (of ${SHAPES_TOTAL}) across SHACL Core, SHACL SPARQL-based Constraints, and ShEx validation."
+# --- Shapes: SHACL (W3C Recommendation) and ShEx (W3C CG spec) ------------
+# Soft rivals, kept as separate-but-adjacent nodes (owner directive
+# 2026-07-10) rather than one combined family: SHACL is a Recommendation
+# (W3C Recommendations group), ShEx is a Community Group specification
+# (CG/Notes/Submissions group), so a strict standards-status tree puts
+# them in different top-level groups. Each node's body carries a
+# cross-reference line pointing at the other, so a reader browsing one
+# still finds its rival.
+read -r SHACL_FAM_PASS SHACL_FAM_FAIL SHACL_FAM_SKIP SHACL_FAM_TOTAL SHACL_FAM_ANY <<< "$(sum_family "SHACL_CORE SHACL_SPARQL")"
+SHACL_STATUS=$(status_for "$SHACL_FAM_FAIL" "$SHACL_FAM_ANY")
+if [ "$SHACL_FAM_ANY" -eq 1 ]; then
+  SHACL_HEADLINE="${SHACL_FAM_PASS} pass, ${SHACL_FAM_FAIL} fail, ${SHACL_FAM_SKIP} skip (out of ${SHACL_FAM_TOTAL}) across SHACL Core and SHACL SPARQL-based Constraints."
 else
-  SHAPES_HEADLINE="Not measured this run."
+  SHACL_HEADLINE="Not measured this run."
 fi
-SHAPES_BODY=$(
+SHACL_BODY=$(
   family_suite_row "SHACL Core" "$SHACL_CORE_PASS" "$SHACL_CORE_FAIL" "$SHACL_CORE_SKIP" "$SHACL_CORE_TOTAL" "$SHACL_CORE_PRESENT" \
     "Runner: <code>bin/shacl-runner</code> (<code>bin/linux-x86_64/shacl_runner</code>) &middot; Suite: <code>third_party/testing/shacl/data-shapes-test-suite/tests/core/</code>"
   family_suite_row "SHACL SPARQL-based Constraints" "$SHACL_SPARQL_PASS" "$SHACL_SPARQL_FAIL" "$SHACL_SPARQL_SKIP" "$SHACL_SPARQL_TOTAL" "$SHACL_SPARQL_PRESENT" \
     "Runner: <code>bin/shacl-runner</code> (<code>bin/linux-x86_64/shacl_runner tests/sparql/manifest.ttl</code>) &middot; Suite: <code>third_party/testing/shacl/data-shapes-test-suite/tests/sparql/</code>"
+)
+SHACL_CROSSREF='<p style="margin: 0.3em 0 0.6em; color: var(--muted); font-size: 0.85em;">See also <a href="#shex">ShEx</a>, the other shapes-constraint language for RDF — a W3C Community Group specification, not a Recommendation.</p>'
+SHACL_HTML=$(family_section "shacl" "SHACL (Shapes Constraint Language)" "$SHACL_STATUS" "$SHACL_HEADLINE" "$SHACL_BODY" "$SHACL_CROSSREF")
+
+SHEX_STATUS=$(status_for "$SHEX_FAIL" "$SHEX_PRESENT")
+if [ "$SHEX_PRESENT" -eq 1 ]; then
+  SHEX_HEADLINE="${SHEX_PASS} pass, ${SHEX_FAIL} fail, ${SHEX_SKIP} skip (out of ${SHEX_TOTAL}) on the shexSpec/shexTest validation manifest."
+else
+  SHEX_HEADLINE="Not measured this run."
+fi
+SHEX_BODY=$(
   family_suite_row "ShEx Validation" "$SHEX_PASS" "$SHEX_FAIL" "$SHEX_SKIP" "$SHEX_TOTAL" "$SHEX_PRESENT" \
     "Runner: <code>bin/shex-runner</code> (<code>bin/linux-x86_64/shex_runner</code>) &middot; Suite: <code>third_party/testing/shex/</code> (shexSpec/shexTest, ShExJ-first)" \
-    "<a href=\"${GITHUB_BLOB_BASE}/.github/test-suites/shex.yaml\" target=\"_blank\" rel=\"noopener\">diagnosis: the 1 mismatch is an upstream fixture defect (start2RefS2.json p1/p2), not an engine bug</a>"
+    "<a href=\"${GITHUB_BLOB_BASE}/.github/test-suites/shex.yaml\" target=\"_blank\" rel=\"noopener\">diagnosis: the 1 mismatch is an upstream fixture defect (start2RefS2.json has predicate p1 where the canonical ShExC schema has p2), not an engine bug</a>"
 )
-SHAPES_HTML=$(family_section "shapes" "Shapes: SHACL / ShEx" "$SHAPES_STATUS" "$SHAPES_HEADLINE" "$SHAPES_BODY" "")
+SHEX_CROSSREF='<p style="margin: 0.3em 0 0.6em; color: var(--muted); font-size: 0.85em;">See also <a href="#shacl">SHACL</a>, the other shapes-constraint language for RDF — a W3C Recommendation.</p>'
+SHEX_HTML=$(family_section "shex" "ShEx (Shape Expressions)" "$SHEX_STATUS" "$SHEX_HEADLINE" "$SHEX_BODY" "$SHEX_CROSSREF")
 
 # --- Rules: RIF Core -------------------------------------------------------
 RULES_STATUS=$(status_for "$RIFCORE_COMBINED_FAIL" "$RIFCORE_COMBINED_PRESENT")
@@ -1572,27 +1625,55 @@ RULES_BODY=$(
 )
 RULES_HTML=$(family_section "rules" "Rules: RIF Core" "$RULES_STATUS" "$RULES_HEADLINE" "$RULES_BODY" "")
 
-# --- Mapping: RML / CSVW ---------------------------------------------------
-# CSVW is now scored live through csvw_runner (2026-07-09) — the earlier
-# grey "not wired" placeholder is retired.
-read -r MAPPING_PASS MAPPING_FAIL MAPPING_SKIP MAPPING_TOTAL MAPPING_ANY <<< "$(sum_family "RML RML_IO CSVW2RDF")"
-MAPPING_STATUS=$(status_for "$MAPPING_FAIL" "$MAPPING_ANY")
-if [ "$MAPPING_ANY" -eq 1 ]; then
-  MAPPING_HEADLINE="${MAPPING_PASS} pass, ${MAPPING_FAIL} fail, ${MAPPING_SKIP} skip (of ${MAPPING_TOTAL}) across RML rml-core, RML rml-io source-tests, and CSVW csv2rdf."
+# --- GRDDL (W3C Recommendation) --------------------------------------------
+# Scraped and reported in latest.json/latest.csv since the 2026-07-05 wave
+# but never rendered as a page section — added here (owner directive
+# 2026-07-10) so a measured suite is never invisible on the page.
+GRDDL_STATUS=$(status_for "$GRDDL_FAIL" "$GRDDL_PRESENT")
+if [ "$GRDDL_PRESENT" -eq 1 ]; then
+  GRDDL_HEADLINE="${GRDDL_PASS} pass, ${GRDDL_FAIL} fail, ${GRDDL_SKIP} skip (out of ${GRDDL_TOTAL}) on the local GRDDL Stage 1 subset."
 else
-  MAPPING_HEADLINE="Not measured this run."
+  GRDDL_HEADLINE="Not measured this run."
 fi
-MAPPING_BODY=$(
+GRDDL_BODY=$(
+  family_suite_row "GRDDL Stage 1 (local subset)" "$GRDDL_PASS" "$GRDDL_FAIL" "$GRDDL_SKIP" "$GRDDL_TOTAL" "$GRDDL_PRESENT" \
+    "Runner: <code>bin/grddl-runner</code> (<code>bin/linux-x86_64/grddl_runner</code>) &middot; Suite: local subset of the GRDDL Test Cases" \
+    "the fails are graph-mismatch cases in the local subset; the skips are fixtures that need a live network fetch of a transformation profile, out of scope for an offline conformance run"
+)
+GRDDL_HTML=$(family_section "grddl" "GRDDL" "$GRDDL_STATUS" "$GRDDL_HEADLINE" "$GRDDL_BODY" "")
+
+# --- Mapping: RML (W3C Community Group) and CSVW (W3C Recommendation) -----
+# Split into two families (owner directive 2026-07-10): CSVW csv2rdf is a
+# W3C Recommendation, RML is a Knowledge Graph Construction Community
+# Group specification — different standards-status groups on the tree.
+read -r RML_FAM_PASS RML_FAM_FAIL RML_FAM_SKIP RML_FAM_TOTAL RML_FAM_ANY <<< "$(sum_family "RML RML_IO")"
+RML_STATUS=$(status_for "$RML_FAM_FAIL" "$RML_FAM_ANY")
+if [ "$RML_FAM_ANY" -eq 1 ]; then
+  RML_HEADLINE="${RML_FAM_PASS} pass, ${RML_FAM_FAIL} fail, ${RML_FAM_SKIP} skip (out of ${RML_FAM_TOTAL}) across RML rml-core and RML rml-io source-tests."
+else
+  RML_HEADLINE="Not measured this run."
+fi
+RML_BODY=$(
   family_suite_row "RML rml-core" "$RML_PASS" "$RML_FAIL" "$RML_SKIP" "$RML_TOTAL" "$RML_PRESENT" \
     "Runner: <code>bin/rml-runner</code> (<code>bin/linux-x86_64/rml_runner</code>) &middot; Suite: <code>third_party/testing/rml-modules/rml-core/</code>"
   family_suite_row "RML rml-io (source-tests)" "$RML_IO_PASS" "$RML_IO_FAIL" "$RML_IO_SKIP" "$RML_IO_TOTAL" "$RML_IO_PRESENT" \
     "Runner: <code>bin/linux-x86_64/rml_runner --io</code> &middot; Suite: <code>third_party/testing/rml-modules/rml-io/</code> (RMLSTC0* source tests) &middot; rml-cc (content-container) has no row: the committed runner exposes no <code>--cc</code> mode yet (tracked with the rml program plan)" \
     "<a href=\"${GITHUB_BLOB_BASE}/docs/designissues/2026-07-05-rml-program-plan.md\" target=\"_blank\" rel=\"noopener\">diagnosis: the fails/skips are rml-io logical-target (RMLTTC0*) and unsupported-source fixtures out of scope for the source-tests section — see the rml program plan</a>"
+)
+RML_HTML=$(family_section "mapping-rml" "RML (rml-core / rml-io)" "$RML_STATUS" "$RML_HEADLINE" "$RML_BODY" "")
+
+CSVW_STATUS=$(status_for "$CSVW2RDF_FAIL" "$CSVW2RDF_PRESENT")
+if [ "$CSVW2RDF_PRESENT" -eq 1 ]; then
+  CSVW_HEADLINE="${CSVW2RDF_PASS} pass, ${CSVW2RDF_FAIL} fail, ${CSVW2RDF_SKIP} skip (out of ${CSVW2RDF_TOTAL}) on the vendored csv2rdf corpus."
+else
+  CSVW_HEADLINE="Not measured this run."
+fi
+CSVW_BODY=$(
   family_suite_row "CSVW csv2rdf" "$CSVW2RDF_PASS" "$CSVW2RDF_FAIL" "$CSVW2RDF_SKIP" "$CSVW2RDF_TOTAL" "$CSVW2RDF_PRESENT" \
     "Runner: <code>bin/csvw-runner</code> (<code>bin/linux-x86_64/csvw_runner</code>) &middot; Suite: vendored W3C csv2rdf corpus (ToRdf / ToRdfWithWarnings / NegativeRdf)" \
     "<a href=\"${GITHUB_BLOB_BASE}/docs/designissues/2026-07-05-csvw-program-plan.md\" target=\"_blank\" rel=\"noopener\">diagnosis: burn-down in progress — the CSVW program plan tracks the ToRdf / warnings / negative buckets; residual fails need full @context / metadata-merge processing</a>"
 )
-MAPPING_HTML=$(family_section "mapping" "Mapping: RML / CSVW" "$MAPPING_STATUS" "$MAPPING_HEADLINE" "$MAPPING_BODY" "")
+CSVW_HTML=$(family_section "csvw" "CSVW (CSV on the Web)" "$CSVW_STATUS" "$CSVW_HEADLINE" "$CSVW_BODY" "")
 
 # --- JSON-LD 1.1 ------------------------------------------------------------
 # Three directions now scored: toRdf (jsonld_runner) + fromRdf
@@ -1619,26 +1700,33 @@ JSONLD_BODY=$(
 JSONLD_FAMILY_HTML=$(family_section "jsonld11" "JSON-LD 1.1" "$JSONLD_STATUS" "$JSONLD_FAMILY_HEADLINE" "$JSONLD_BODY" "")
 
 # --- Verifiable Credentials 2.0 --------------------------------------------
+# Prose rewritten in plain language (owner directive 2026-07-10): explain
+# what the remaining fail and skips actually are, in ordinary words, with
+# no internal shorthand or bare issue numbers.
 VC_STATUS=$(status_for "$VC_FAIL" "$VC_PRESENT")
 if [ "$VC_PRESENT" -eq 1 ]; then
-  VC_FAMILY_HEADLINE="${VC_PASS} pass, ${VC_FAIL} fail, ${VC_SKIP} skip (of ${VC_TOTAL}) on the structural Stage 1 suite; the Data Integrity eddsa-rdfc-2022 sign/verify layer (RDFC-1.0 + SHA-256 + Ed25519 via vendored HACL* C) is implemented separately (vc_runner --crypto roundtrip, native-only, wasm tracked in #286); full W3C VC-DI conformance (JSON-LD proof-options expansion) is still pending."
+  VC_FAMILY_HEADLINE="${VC_PASS} pass, ${VC_FAIL} fail, ${VC_SKIP} skip (out of ${VC_TOTAL}) on the structural Stage 1 suite. Signing and verifying credentials (the Data Integrity eddsa-rdfc-2022 proof, using RDFC-1.0 canonicalization + SHA-256 + Ed25519) works separately today outside the browser; it does not yet run inside the JS/wasm bundle, and full conformance testing of that signing layer against the official W3C test suite is still pending."
 else
   VC_FAMILY_HEADLINE="Not measured this run."
 fi
+VC_DIAG="The 1 remaining fail (<code>credential-validUntil-validFrom-fail.json</code>) is a template artifact, not a real bug: the official test suite fills in real date values when it runs the test live, but the copy of the fixture file we check still has the placeholder text (&ldquo;PAST DATE&rdquo; / &ldquo;FUTURE DATE&rdquo;) baked in, so reading the file offline can't reproduce the failure the live test expects. The 6 skips are fixtures this offline, shape-only checker cannot fairly score: 3 of them let the official test either reject the document or silently patch it before re-checking, a choice this checker has no way to referee from a static file; the other 3 test whether the person presenting a credential is the same person named as its holder, which requires verifying a cryptographic signature rather than just checking the document's shape — that is a later stage of this work, described in the program plan linked below."
 VC_BODY=$(
   family_suite_row "VC Data Model 2.0 — structural (Stage 1)" "$VC_PASS" "$VC_FAIL" "$VC_SKIP" "$VC_TOTAL" "$VC_PRESENT" \
     "Runner: <code>bin/vc-runner</code> (<code>bin/linux-x86_64/vc_runner</code>) &middot; Suite: <code>third_party/testing/vc/tests/input/</code> (structural fixtures, filename-encoded verdicts)" \
-    "<a href=\"${GITHUB_BLOB_BASE}/docs/designissues/2026-07-05-vc-program-plan.md\" target=\"_blank\" rel=\"noopener\">diagnosis: the ${VC_FAIL} remaining fail is a documented corpus template-substitution artifact — the validFrom/validUntil sentinel strings the upstream suite rewrites at issue time, invisible to an offline reader — the measured ceiling for an offline checker; the type-resolution cluster (protected-term redefinition, non-URL-mapped and @vocab-nullified unmapped type terms) is now handled by the VC.Context term-resolution walker; see the VC program plan</a>"
+    "${VC_DIAG} <a href=\"${GITHUB_BLOB_BASE}/docs/designissues/2026-07-05-vc-program-plan.md\" target=\"_blank\" rel=\"noopener\">VC program plan</a>"
 )
 VC_FAMILY_HTML=$(family_section "vc2" "Verifiable Credentials 2.0" "$VC_STATUS" "$VC_FAMILY_HEADLINE" "$VC_BODY" "")
 
-# --- XML-family standards: XSLT / XML 1.0 / MathML / Schematron ------------
-# (2026-07-09) Four committed runners the dashboard never surfaced. Grouped
-# as the XML-technology family.
-read -r XMLFAM_PASS XMLFAM_FAIL XMLFAM_SKIP XMLFAM_TOTAL XMLFAM_ANY <<< "$(sum_family "XSLT XMLCONF MATHML SCHEMATRON")"
+# --- XML-family W3C Recommendations: XSLT 1.0 / XML 1.0 / MathML 3 --------
+# (2026-07-09) Committed runners the dashboard never surfaced. XSLT 1.0,
+# XML 1.0, and MathML 3 are each their own W3C Recommendation, grouped here
+# as one family node; ISO Schematron is NOT a W3C spec (it's an ISO
+# standard) and moved to the open-source-comparison/internal group below
+# (owner directive 2026-07-10).
+read -r XMLFAM_PASS XMLFAM_FAIL XMLFAM_SKIP XMLFAM_TOTAL XMLFAM_ANY <<< "$(sum_family "XSLT XMLCONF MATHML")"
 XMLFAM_STATUS=$(status_for "$XMLFAM_FAIL" "$XMLFAM_ANY")
 if [ "$XMLFAM_ANY" -eq 1 ]; then
-  XMLFAM_HEADLINE="${XMLFAM_PASS} pass, ${XMLFAM_FAIL} fail, ${XMLFAM_SKIP} skip (of ${XMLFAM_TOTAL}) across XSLT 1.0 transforms, XML 1.0 well-formedness conformance, MathML 3 content evaluation, and ISO Schematron."
+  XMLFAM_HEADLINE="${XMLFAM_PASS} pass, ${XMLFAM_FAIL} fail, ${XMLFAM_SKIP} skip (out of ${XMLFAM_TOTAL}) across XSLT 1.0 transforms, XML 1.0 well-formedness conformance, and MathML 3 content evaluation."
 else
   XMLFAM_HEADLINE="Not measured this run."
 fi
@@ -1666,26 +1754,42 @@ XMLFAM_BODY=$(
   printf '%s' "$XMLCONF_BREAKDOWN_HTML"
   family_suite_row "MathML 3 content" "$MATHML_PASS" "$MATHML_FAIL" "$MATHML_SKIP" "$MATHML_TOTAL" "$MATHML_PRESENT" \
     "Runner: <code>bin/mathml-runner</code> (<code>bin/linux-x86_64/mathml_runner</code>) &middot; Suite: <code>third_party/testing/mathml/manifest.json</code> (Content MathML evaluation)"
-  family_suite_row "ISO Schematron" "$SCHEMATRON_PASS" "$SCHEMATRON_FAIL" "$SCHEMATRON_SKIP" "$SCHEMATRON_TOTAL" "$SCHEMATRON_PRESENT" \
-    "Runner: <code>bin/schematron-runner</code> (<code>bin/linux-x86_64/schematron_runner</code>) &middot; Suite: <code>third_party/testing/schematron/</code> (rule-based assertion cases)"
 )
-XMLFAM_HTML=$(family_section "xml-family" "XML-family standards: XSLT / XML / MathML / Schematron" "$XMLFAM_STATUS" "$XMLFAM_HEADLINE" "$XMLFAM_BODY" "")
+XMLFAM_HTML=$(family_section "xml-family" "XSLT 1.0 / XML 1.0 / MathML 3" "$XMLFAM_STATUS" "$XMLFAM_HEADLINE" "$XMLFAM_BODY" "")
 
-# --- Data schemas & identifiers: JSON Schema / DID ------------------------
-read -r SCHEMAID_PASS SCHEMAID_FAIL SCHEMAID_SKIP SCHEMAID_TOTAL SCHEMAID_ANY <<< "$(sum_family "JSONSCHEMA DIDKEY")"
-SCHEMAID_STATUS=$(status_for "$SCHEMAID_FAIL" "$SCHEMAID_ANY")
-if [ "$SCHEMAID_ANY" -eq 1 ]; then
-  SCHEMAID_HEADLINE="${SCHEMAID_PASS} pass, ${SCHEMAID_FAIL} fail, ${SCHEMAID_SKIP} skip (of ${SCHEMAID_TOTAL}) across JSON Schema draft-07 and DID did:key resolution."
+# --- DID (W3C Recommendation) ----------------------------------------------
+# Split out from the old combined "JSON Schema / DID" family (owner
+# directive 2026-07-10): DID Core reached W3C Recommendation status, so it
+# gets its own node in the W3C Recommendations group. JSON Schema is not a
+# W3C specification at all and moves to the open-source-comparison/
+# internal group below, alongside ISO Schematron.
+DID_STATUS=$(status_for "$DIDKEY_FAIL" "$DIDKEY_PRESENT")
+if [ "$DIDKEY_PRESENT" -eq 1 ]; then
+  DID_HEADLINE="${DIDKEY_PASS} pass, ${DIDKEY_FAIL} fail, ${DIDKEY_SKIP} skip (out of ${DIDKEY_TOTAL}) on did:key resolution."
 else
-  SCHEMAID_HEADLINE="Not measured this run."
+  DID_HEADLINE="Not measured this run."
 fi
-SCHEMAID_BODY=$(
-  family_suite_row "JSON Schema draft-07" "$JSONSCHEMA_PASS" "$JSONSCHEMA_FAIL" "$JSONSCHEMA_SKIP" "$JSONSCHEMA_TOTAL" "$JSONSCHEMA_PRESENT" \
-    "Runner: <code>bin/jsonschema-runner</code> (<code>bin/linux-x86_64/jsonschema_runner</code>) &middot; Suite: <code>third_party/testing/jsonschema/</code> (JSON-Schema-Test-Suite draft7) &middot; skips are optional/format vocabularies out of scope for the core validator"
+DID_BODY=$(
   family_suite_row "DID did:key" "$DIDKEY_PASS" "$DIDKEY_FAIL" "$DIDKEY_SKIP" "$DIDKEY_TOTAL" "$DIDKEY_PRESENT" \
     "Runner: <code>bin/did-runner</code> (<code>bin/linux-x86_64/did_runner</code>) &middot; Suite: did:key resolution + multibase/multicodec accept/reject cases"
 )
-SCHEMAID_HTML=$(family_section "schemas-ids" "Data schemas &amp; identifiers: JSON Schema / DID" "$SCHEMAID_STATUS" "$SCHEMAID_HEADLINE" "$SCHEMAID_BODY" "")
+DID_HTML=$(family_section "did" "DID (Decentralized Identifiers)" "$DID_STATUS" "$DID_HEADLINE" "$DID_BODY" "")
+
+# --- Other conformance suites (not W3C): JSON Schema / ISO Schematron -----
+read -r OTHERSPEC_PASS OTHERSPEC_FAIL OTHERSPEC_SKIP OTHERSPEC_TOTAL OTHERSPEC_ANY <<< "$(sum_family "JSONSCHEMA SCHEMATRON")"
+OTHERSPEC_STATUS=$(status_for "$OTHERSPEC_FAIL" "$OTHERSPEC_ANY")
+if [ "$OTHERSPEC_ANY" -eq 1 ]; then
+  OTHERSPEC_HEADLINE="${OTHERSPEC_PASS} pass, ${OTHERSPEC_FAIL} fail, ${OTHERSPEC_SKIP} skip (out of ${OTHERSPEC_TOTAL}) across JSON Schema draft-07 and ISO Schematron — independent specifications, not W3C Recommendations or Community Group work."
+else
+  OTHERSPEC_HEADLINE="Not measured this run."
+fi
+OTHERSPEC_BODY=$(
+  family_suite_row "JSON Schema draft-07" "$JSONSCHEMA_PASS" "$JSONSCHEMA_FAIL" "$JSONSCHEMA_SKIP" "$JSONSCHEMA_TOTAL" "$JSONSCHEMA_PRESENT" \
+    "Runner: <code>bin/jsonschema-runner</code> (<code>bin/linux-x86_64/jsonschema_runner</code>) &middot; Suite: <code>third_party/testing/jsonschema/</code> (JSON-Schema-Test-Suite draft7) &middot; skips are optional/format vocabularies out of scope for the core validator"
+  family_suite_row "ISO Schematron" "$SCHEMATRON_PASS" "$SCHEMATRON_FAIL" "$SCHEMATRON_SKIP" "$SCHEMATRON_TOTAL" "$SCHEMATRON_PRESENT" \
+    "Runner: <code>bin/schematron-runner</code> (<code>bin/linux-x86_64/schematron_runner</code>) &middot; Suite: <code>third_party/testing/schematron/</code> (rule-based assertion cases) &middot; ISO standard, not a W3C specification"
+)
+OTHERSPEC_HTML=$(family_section "other-specs" "JSON Schema / ISO Schematron" "$OTHERSPEC_STATUS" "$OTHERSPEC_HEADLINE" "$OTHERSPEC_BODY" "")
 
 # --- Storage backend & JS/browser runtime: HDT parity / hub / npm ---------
 # Not W3C conformance — these exercise the shipped engine end to end: the
@@ -1742,6 +1846,81 @@ ENGINES_BODY=$(
     "Runner: <code>tests/unit/run-all.sh</code> &middot; files-passing / files-failing across all 41 native unit files, each relinked against its own committed-.cmx dependency closure. The ${TESTS_UNIT_FAIL:-0} failing files either need a module with no committed .cmx (Math_* / MathML_* / XForms_Bind engines) or hit a committed-.cmx epoch mismatch (RML_Eval vs SPARQL11_Algebra committed in different builds) — an artifact-staleness gap, not a harness bug."
 )
 ENGINES_HTML=$(family_section "fstar-engines" "F&#42; unit regressions &amp; adjacent engines: GeoSPARQL / XPath / TOAN / XForms" "$ENGINES_STATUS" "$ENGINES_HEADLINE" "$ENGINES_BODY" "")
+
+# --- SPARQL extras: entailment regimes / GeoSPARQL / Jena rdf:text --------
+# Owner directive (2026-07-10): the OWL 2 panel used to list GeoSPARQL and
+# DID as roadmap items, which don't belong there — OWL 2 is a W3C
+# Recommendation family and neither of those is OWL. This node collects
+# SPARQL-adjacent extensions that are NOT themselves W3C Recommendations:
+# the SPARQL 1.1 Entailment Regimes score is surfaced again here for
+# convenience (its JSON/CSV data stays where it already lives, under the
+# sparql family — this is presentation only), alongside GeoSPARQL (an OGC
+# standard, not W3C) and Jena's rdf:text full-text search extension (not a
+# standard at all — a vendor magic-property convention this project also
+# implements). None of the three change the SPARQL 1.1 Recommendation
+# family's own numbers.
+SPARQLEXTRAS_ANY=0
+[ "$TAB_ENTAIL_PRESENT" -eq 1 ] && SPARQLEXTRAS_ANY=1
+[ "$GEOSPARQL_PRESENT" -eq 1 ]  && SPARQLEXTRAS_ANY=1
+SPARQLEXTRAS_FAIL=$((TAB_ENTAIL_FAIL + GEOSPARQL_FAIL))
+SPARQLEXTRAS_STATUS=$(status_for "$SPARQLEXTRAS_FAIL" "$SPARQLEXTRAS_ANY")
+if [ "$SPARQLEXTRAS_ANY" -eq 1 ]; then
+  SPARQLEXTRAS_HEADLINE="Non-Recommendation SPARQL extensions and a duplicate presentation of the entailment-regimes score above; see each entry for its own numbers. Jena rdf:text has no vendored test data, so it is not scored."
+else
+  SPARQLEXTRAS_HEADLINE="Not measured this run."
+fi
+JENA_TEXT_BODY="This project implements the jena-text <code>text:query</code> magic property (Slice 1: exact/token AND-match, no BM25 ranking) in <code>formal/fstar/SPARQL.FullText.fst</code>, exercised by hand-written local fixtures (<code>tests/local/fulltext_slice1.sh</code>, hub post 20) rather than an official conformance suite &mdash; Apache Jena does not publish a vendorable rdf:text/full-text-search test corpus, and none is checked into this repository. No pass/fail score is reported here because there is nothing to check it against."
+SPARQLEXTRAS_BODY=$(
+  family_suite_row "SPARQL 1.1 Entailment Regimes" "$TAB_ENTAIL_PASS" "$TAB_ENTAIL_FAIL" "$TAB_ENTAIL_SKIP" "$TAB_ENTAIL_TOTAL" "$TAB_ENTAIL_PRESENT" \
+    "Same measurement as the SPARQL 1.1 family's Entailment Regimes row &middot; driven by <code>Tableau.fst</code>'s <code>tableau_materialise</code> via <code>w3c_runner</code>"
+  family_suite_row "GeoSPARQL (geof: topology + WKT)" "$GEOSPARQL_PASS" "$GEOSPARQL_FAIL" "$GEOSPARQL_SKIP" "$GEOSPARQL_TOTAL" "$GEOSPARQL_PRESENT" \
+    "OGC standard (not a W3C Recommendation) &middot; same measurement as the F&#42; engines family's GeoSPARQL row &middot; Runner: <code>tests/unit/run-all.sh geosparql_v0_unit</code>"
+  family_suite_row "Jena rdf:text (full-text search)" 0 0 0 0 0 "$JENA_TEXT_BODY" "" "no test data vendored"
+)
+SPARQLEXTRAS_HTML=$(family_section "sparql-extras" "SPARQL extras" "$SPARQLEXTRAS_STATUS" "$SPARQLEXTRAS_HEADLINE" "$SPARQLEXTRAS_BODY" "")
+
+# --- HDT (W3C Member Submission) -------------------------------------------
+# There is no external HDT conformance test suite vendored in this repo —
+# HDT correctness is exercised indirectly by the stage-4 backend parity
+# check (in the storage-backend/JS-runtime family below), which compares
+# the HDT-backed engine against the in-memory engine byte-for-byte rather
+# than against an HDT-specific corpus. This node exists so HDT (named
+# explicitly in the owner's 2026-07-10 grouping directive) has a place in
+# the W3C Community Group / Notes / Submissions group, honest about what
+# is and isn't measured against the submission itself.
+HDT_BODY="No HDT-specific conformance suite is vendored in this repository (the HDT Member Submission publishes a binary format spec, not a test suite). Correctness of this project's HDT backend is instead checked by the <a href=\"#runtime-parity\">HDT stage-4 backend parity</a> check below, which compares HDT-backed query results against the in-memory backend byte-for-byte on unbound/bound-S/P/O/ASK/COUNT queries."
+HDT_ROW=$(family_suite_row "HDT (binary RDF format)" 0 0 0 0 0 "$HDT_BODY" "" "no format-conformance suite vendored")
+HDT_HTML=$(family_section "hdt" "HDT" "grey" "No format-conformance suite to measure; see the backend parity check below." "$HDT_ROW")
+
+# =============================================================================
+# Top-level standards-status tree (owner directive 2026-07-10) ---------------
+# Every family above is placed into exactly one of three groups, each its
+# own collapsible node, open by default, in a fixed order within the group:
+#   1. W3C Recommendations
+#   2. W3C Community Group / Notes / Submissions
+#   3. Apache / open-source comparison + internal
+# REC status was checked per spec (not assumed from "it's on this page"):
+# RDF 1.1 (incl. RDF/XML, RDFC-1.0), SPARQL 1.1, OWL 2, SHACL, CSVW,
+# JSON-LD 1.1, VC 2.0 + Data Integrity, DID, RIF Core, GRDDL, XSLT 1.0,
+# XML 1.0, and MathML 3 are all W3C Recommendations. ShEx is a W3C
+# Community Group specification (not on the Recommendation track); HDT is
+# a W3C Member Submission; RML is a Knowledge Graph Construction Community
+# Group specification. JSON Schema and ISO Schematron are not W3C
+# specifications at all. GeoSPARQL is an OGC standard, not W3C. Jena
+# rdf:text is a vendor convention, not a standard.
+# =============================================================================
+GROUP1_BODY=$(printf '%s\n' \
+  "$RDFCORE_HTML" "$SPARQL_FAMILY_HTML" "$OWL_FAMILY_HTML" "$SHACL_HTML" \
+  "$CSVW_HTML" "$JSONLD_FAMILY_HTML" "$VC_FAMILY_HTML" "$DID_HTML" \
+  "$RULES_HTML" "$GRDDL_HTML" "$XMLFAM_HTML")
+GROUP1_HTML=$(group_section "group-w3c-rec" "W3C Recommendations" "$GROUP1_BODY")
+
+GROUP2_BODY=$(printf '%s\n' "$SHEX_HTML" "$HDT_HTML" "$RML_HTML")
+GROUP2_HTML=$(group_section "group-w3c-cg" "W3C Community Group / Notes / Submissions" "$GROUP2_BODY")
+
+GROUP3_BODY=$(printf '%s\n' \
+  "$SPARQLEXTRAS_HTML" "$OTHERSPEC_HTML" "$RUNTIME_HTML" "$ENGINES_HTML")
+GROUP3_HTML=$(group_section "group-other" "Apache / open-source comparison &amp; internal" "$GROUP3_BODY")
 
 # --- Legend -----------------------------------------------------------------
 LEGEND_HTML=$(cat <<'LEGENDEOF'
@@ -1877,6 +2056,32 @@ cat > "$OUTPUT_DIR/index.html" <<HTMLEOF
   .dot.amber { background: var(--warn); }
   .dot.grey  { background: var(--skip); }
 
+  /* --- Top-level standards-status groups (2026-07-10 tree redesign) ---- */
+  /* One collapsible node per group (W3C Recommendations / W3C Community
+     Group-Notes-Submissions / Apache &amp; open-source comparison +
+     internal), open by default, each wrapping a fixed-order list of
+     family cards. */
+  details.group-section {
+    border: 1px solid var(--border); border-radius: 10px;
+    padding: 0.3em 0.9em 0.9em; margin: 0 0 1.4em;
+    background: var(--bg);
+  }
+  details.group-section > summary.group-summary {
+    cursor: pointer; list-style: none;
+    font-size: 1.15rem; font-weight: 700; color: var(--brand-dark);
+    padding: 0.6em 0.2em; min-height: 44px; display: flex; align-items: center;
+  }
+  details.group-section > summary.group-summary::-webkit-details-marker { display: none; }
+  details.group-section > summary.group-summary::marker { content: ""; }
+  details.group-section > summary.group-summary::before {
+    content: "\25BE"; display: inline-block; margin-right: 0.4em;
+    transition: transform 0.15s ease;
+  }
+  details.group-section:not([open]) > summary.group-summary::before {
+    transform: rotate(-90deg);
+  }
+  details.group-section .group-body { margin-top: 0.3em; }
+
   /* --- Family section cards ------------------------------------------- */
   .family {
     border: 1px solid var(--border); border-left-width: 5px;
@@ -1935,29 +2140,37 @@ cat > "$OUTPUT_DIR/index.html" <<HTMLEOF
   }
   .failure-detail li { margin: 0.3em 0; line-height: 1.4; overflow-wrap: anywhere; }
 
-  /* --- Suite rows: mobile-first single column, meter always full-width - */
+  /* --- Suite nodes: one collapsible <details> per checkable suite ------- */
+  /* Mobile-first single column; the summary line is name + labelled
+     numbers + a status dot, collapsed by default. Body (meter,
+     provenance, diagnosis) only renders once tapped open. */
   .suites { display: flex; flex-direction: column; gap: 0.5em; margin: 0 0 0.6em; }
-  .suite-row {
-    display: flex; flex-direction: column; gap: 0.35em;
-    padding: 0.55em 0.7em;
-    border-radius: 6px;
-    background: var(--surface);
-    font-size: 0.95rem;
+  details.suite-node {
+    margin: 0; border: none; border-radius: 6px;
+    background: var(--surface); padding: 0;
   }
-  .suite-row .suite-name {
+  details.suite-node > summary {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 0.5em;
+    cursor: pointer; list-style: none;
+    padding: 0.55em 0.7em; min-height: 44px; font-size: 0.95rem;
+    color: var(--fg); font-weight: 400;
+  }
+  details.suite-node > summary::-webkit-details-marker { display: none; }
+  details.suite-node > summary::marker { content: ""; }
+  details.suite-node .suite-name {
     font-family: ui-monospace, Menlo, Consolas, monospace;
     font-size: 0.92rem; font-weight: 600; overflow-wrap: anywhere;
+    flex: 1 1 auto;
   }
-  .suite-row .suite-numbers {
+  details.suite-node .suite-numbers {
     font-family: ui-monospace, Menlo, Consolas, monospace;
     font-size: 0.85rem; color: var(--muted);
   }
-  .suite-row .suite-numbers .p { color: var(--ok); font-weight: 600; }
-  .suite-row .suite-numbers .f { color: var(--err); font-weight: 600; }
-  .suite-row .suite-numbers small { color: var(--muted); font-weight: 400; }
-  .suite-row.green { background: var(--ok-tint); }
-  .suite-row.amber { background: var(--warn-tint); }
-  .suite-row.grey  { background: var(--skip-tint); }
+  details.suite-node .suite-body { padding: 0 0.7em 0.7em; display: flex; flex-direction: column; gap: 0.35em; }
+  details.suite-node.green { background: var(--ok-tint); }
+  details.suite-node.amber { background: var(--warn-tint); }
+  details.suite-node.grey  { background: var(--skip-tint); }
+  .suite-diag { margin: 0; font-size: 0.8rem; color: var(--muted); }
 
   /* Stacked pass/fail/skip meter — one definition, used by every suite
      row on the page. Always full-width of its row. */
@@ -2014,13 +2227,16 @@ cat > "$OUTPUT_DIR/index.html" <<HTMLEOF
     main { padding: 1.5em 1em; }
     header { padding: 1.2em 1em; }
     .family { padding: 1em 1.2em; }
-    .suite-row {
+    details.suite-node > summary {
       display: grid;
-      grid-template-columns: 15em 1fr 9em;
+      grid-template-columns: 1.2em 15em 1fr;
       align-items: center; gap: 0.8em;
     }
-    .suite-row .suite-numbers { text-align: right; }
-    .suite-prov { margin: -0.3em 0 0.3em 0.2em; }
+    details.suite-node .suite-numbers { text-align: right; }
+    .suite-prov { margin: 0; }
+  }
+  @media (min-width: 800px) {
+    details.group-section .group-body { padding-left: 0.2em; }
   }
   @media (min-width: 760px) {
     header { position: relative; }
@@ -2089,29 +2305,11 @@ cat > "$OUTPUT_DIR/index.html" <<HTMLEOF
 
 ${LEGEND_HTML}
 
-${SPARQL_FAMILY_HTML}
+${GROUP1_HTML}
 
-${RDFCORE_HTML}
+${GROUP2_HTML}
 
-${OWL_FAMILY_HTML}
-
-${SHAPES_HTML}
-
-${RULES_HTML}
-
-${MAPPING_HTML}
-
-${JSONLD_FAMILY_HTML}
-
-${VC_FAMILY_HTML}
-
-${XMLFAM_HTML}
-
-${SCHEMAID_HTML}
-
-${RUNTIME_HTML}
-
-${ENGINES_HTML}
+${GROUP3_HTML}
 
 ${PERF_SECTION_HTML}
 
