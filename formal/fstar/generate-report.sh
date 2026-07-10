@@ -37,6 +37,9 @@ OWL_TINC_LOG="$OCAML_DIR/owl_type_inconsistency_results.log"
 OWL_EL_LOG="$OCAML_DIR/owl_profile_el_results.log"
 OWL_QL_LOG="$OCAML_DIR/owl_profile_ql_results.log"
 OWL_SEMDL_LOG="$OCAML_DIR/owl_semantics_direct_results.log"
+# syntax-dl species-identification log (2026-07-10) — scored by the
+# F*-extracted OWL2_SyntaxDL checker via `owl_runner --species`.
+OWL_SYNDL_LOG="$OCAML_DIR/owl_syntax_dl_results.log"
 RDFC10_LOG="$OCAML_DIR/rdfc10_results.log"
 GRDDL_LOG="$OCAML_DIR/grddl_results.log"
 # Wave (2026-07-05): SHACL / ShEx / JSON-LD / RML / RIF Core / VC —
@@ -225,6 +228,14 @@ if [ "$1" = "--run" ]; then
           > "$log_path" 2>&1 ) || true
       echo "  done."
     done
+    # syntax-dl species identification (2026-07-10): DL-vs-FULL species
+    # verdict per test case via the F*-extracted OWL2_SyntaxDL checker.
+    # Purely syntactic (no closure, no tableau), so the budget is small.
+    echo "Running OWL 2 catalog syntax-dl.rdf (species identification, 300s budget)…"
+    ( cd "$REPO_ROOT" && timeout 300 "$OWL_RUNNER" \
+        "third_party/testing/owl/syntax-dl.rdf" --species \
+        > "$OWL_SYNDL_LOG" 2>&1 ) || true
+    echo "  done."
   else
     echo "  owl_runner not found at $OWL_RUNNER — skipping OWL 2 RL suite." >&2
   fi
@@ -462,6 +473,23 @@ extract_owl_scores OWL_QL    "$OWL_QL_LOG"
 # semantics-direct.rdf — heaviest catalog (1127 tests). Runs in a
 # separate scheduled workflow, not in the dashboard-refresh hot path.
 extract_owl_scores OWL_SEMDL "$OWL_SEMDL_LOG"
+
+# syntax-dl species scores. Score-line shape (owl_runner --species):
+#   OWL2-DL SpeciesTests: N pass, M fail (out of K), S skipped (functional-syntax-only) in Ts
+OWL_SYNDL_PRESENT=0; OWL_SYNDL_PASS=0; OWL_SYNDL_FAIL=0; OWL_SYNDL_SKIP=0; OWL_SYNDL_TOTAL=0
+if [ -f "$OWL_SYNDL_LOG" ]; then
+  OWL_SYNDL_LINE=$(grep -E '^OWL2-DL SpeciesTests:' "$OWL_SYNDL_LOG" | tail -1 || true)
+  if [ -n "$OWL_SYNDL_LINE" ]; then
+    OWL_SYNDL_PRESENT=1
+    OWL_SYNDL_PASS=$(echo "$OWL_SYNDL_LINE" | sed -nE 's/.* ([0-9]+) pass.*/\1/p')
+    OWL_SYNDL_FAIL=$(echo "$OWL_SYNDL_LINE" | sed -nE 's/.* ([0-9]+) fail.*/\1/p')
+    OWL_SYNDL_SKIP=$(echo "$OWL_SYNDL_LINE" | sed -nE 's/.* ([0-9]+) skipped.*/\1/p')
+    OWL_SYNDL_PASS=${OWL_SYNDL_PASS:-0}
+    OWL_SYNDL_FAIL=${OWL_SYNDL_FAIL:-0}
+    OWL_SYNDL_SKIP=${OWL_SYNDL_SKIP:-0}
+    OWL_SYNDL_TOTAL=$((OWL_SYNDL_PASS + OWL_SYNDL_FAIL + OWL_SYNDL_SKIP))
+  fi
+fi
 
 # RIF Core scoring derived from sparql_results.log (the SPARQL
 # entailment runner already executes RIF tests as part of the
@@ -784,6 +812,7 @@ CSV="$OUTPUT_DIR/latest.csv"
     local pv="${prefix}_PASS" fv="${prefix}_FAIL" sv="${prefix}_SKIP"
     echo "${TIMESTAMP_HUMAN},${GIT_SHA_FULL},${GIT_BRANCH},${category},${name},${!pv},${!fv},${!sv},0"
   }
+  emit_csv_row_if_present OWL_SYNDL         owl   owl-syntax-dl-species
   emit_csv_row_if_present SHACL_CORE        shacl shacl-core
   emit_csv_row_if_present SHACL_SPARQL      shacl shacl-sparql
   emit_csv_row_if_present SHEX              shex  shex-validation
@@ -854,6 +883,8 @@ emit_json_suites () {
     "$COMBINED_PASS" "$COMBINED_FAIL" "$COMBINED_SKIP" "$COMBINED_UNSUP" "$COMBINED_TOTAL" "$COMBINED_PCT"
   printf '    "owl_rl_positive_entailment": {"pass":%s,"fail":%s,"total":%s,"catalog":"third_party/testing/owl/profile-RL.rdf"},\n' \
     "$OWL_PASS" "$OWL_FAIL" "$OWL_TOTAL"
+  printf '    "owl_syntax_dl_species": {"pass":%s,"fail":%s,"skip":%s,"total":%s,"present":%s,"catalog":"third_party/testing/owl/syntax-dl.rdf"},\n' \
+    "$OWL_SYNDL_PASS" "$OWL_SYNDL_FAIL" "$OWL_SYNDL_SKIP" "$OWL_SYNDL_TOTAL" "$([ "$OWL_SYNDL_PRESENT" -eq 1 ] && echo true || echo false)"
   printf '    "rdfc10": {"pass":%s,"fail":%s,"skip":%s,"total":%s,"spec":"https://www.w3.org/TR/rdf-canon/"},\n' \
     "$RDFC10_PASS" "$RDFC10_FAIL" "$RDFC10_SKIP" "$RDFC10_TOTAL"
   printf '    "shacl_core":   {"pass":%s,"fail":%s,"skip":%s,"total":%s,"present":%s,"spec":"https://www.w3.org/TR/shacl/"},\n' \
@@ -931,6 +962,7 @@ emit_json_suites () {
   # the machine-readable `suites` map lists every shipped engine, not just
   # the two W3C core families.
   emit_json_suite_obj "owl_rl_positive_entailment" OWL
+  emit_json_suite_obj "owl_syntax_dl_species" OWL_SYNDL
   emit_json_suite_obj "rdfc10"            RDFC10
   emit_json_suite_obj "shacl_core"        SHACL_CORE
   emit_json_suite_obj "shacl_sparql"      SHACL_SPARQL
@@ -1357,6 +1389,13 @@ OWL_DL_ROWS=$( {
   emit_catalog_rows OWL_EL    "profile-EL"
   emit_catalog_rows OWL_QL    "profile-QL"
   emit_catalog_rows OWL_SEMDL "sem-Direct"
+  # syntax-dl species identification (2026-07-10): its score line has its
+  # own shape (SpeciesTests, not the four entailment/consistency types),
+  # so it is scraped separately above rather than via extract_owl_scores.
+  if [ "$OWL_SYNDL_PRESENT" -eq 1 ]; then
+    emit_owl_bar_row "syntax-dl species DL-vs-FULL [syntactic]" \
+      "$OWL_SYNDL_PASS" "$OWL_SYNDL_FAIL" "$OWL_SYNDL_TOTAL"
+  fi
 } )
 
 # RIF Core dedicated row (Phase 2.3c).
@@ -1419,8 +1458,10 @@ OWL_SKIP_ROWS=""
 # runner wiring landed (Phase 2.1-2.3). The catalogs now have live
 # scored bars in the OWL panel.
 #
-# Remaining catalog still needing wiring:
-OWL_SKIP_ROWS+="$(emit_owl_skip_row "syntax-dl" "$OWL_SYNDL_N" "runner not wired (engine: DL syntactic-profile checker pending)")"$'\n'
+# The last catalog skip-row (syntax-dl) was retired 2026-07-10 when the
+# OWL2_SyntaxDL species checker landed — syntax-dl now has a live scored
+# bar in the OWL panel (see OWL_DL_ROWS above). emit_owl_skip_row stays
+# for the next unwired suite.
 # RL-RDF-rules-tests.rdf (the per-rule attribution catalog) and
 # all.rdf (an aggregator) are intentionally skipped — they're not
 # independent test sets.
@@ -1469,7 +1510,7 @@ else
 fi
 
 OWL_HTML=$(cat <<OWLEOF
-<p class="fam-subhead">OWL 2 <span class="inline-numbers">${OWL_PASS}+ pass via owl_runner across 7 catalogs (profile-RL/EL/QL + 4 DL) &middot; live scoring</span></p>
+<p class="fam-subhead">OWL 2 <span class="inline-numbers">${OWL_PASS}+ pass via owl_runner across 8 catalogs (profile-RL/EL/QL + 4 DL + syntax-dl species) &middot; live scoring</span></p>
 <p style="margin: 0.3em 0 0.6em; color: var(--muted); font-size: 0.85em;">
   <strong>Scope.</strong> The OWL 2 W3C Test Cases catalog (~${OWL_TOTAL_UNIVERSE}
   <code>test:TestCase</code> entries across 9 categories) is vendored
@@ -1527,14 +1568,16 @@ ${OWL_SKIP_ROWS}</div>
   We vendor the full W3C OWL 2 Test Cases at
   <code>third_party/testing/owl/</code> (10 catalog files, ~2500
   <code>test:TestCase</code> entries after overlap). After Phase 2.3
-  (2026-05-08), 7 of 8 main catalogs run live through
-  <code>owl_runner</code> with PE/NE/Cons/Inc scoring. The runner
-  applies <code>owl_rl_closure_with_reflexivity</code> (fuel 100) and
-  for entailment tests checks the conclusion&rsquo;s triples against
-  the closure (relaxed bnode match); for consistency tests it consults
-  <code>RDF_Graph_Executable.is_inconsistent</code> against the same
-  closure. <code>syntax-dl.rdf</code> is the remaining unwired catalog
-  (DL syntactic-profile checker pending; see the roadmap row below).
+  (2026-05-08), all 8 main catalogs run live through
+  <code>owl_runner</code>: 7 with PE/NE/Cons/Inc scoring, plus (as of
+  2026-07-10) <code>syntax-dl.rdf</code> with species identification.
+  The runner applies <code>owl_rl_closure_with_reflexivity</code>
+  (fuel 100) and for entailment tests checks the conclusion&rsquo;s
+  triples against the closure (relaxed bnode match); for consistency
+  tests it consults <code>RDF_Graph_Executable.is_inconsistent</code>
+  against the same closure; for species identification it consults the
+  syntax-directed F&#42; checker <code>OWL2.SyntaxDL.species_is_dl</code>
+  (no reasoning) over premise + conclusion documents.
   Other suites once listed here as roadmap items — GeoSPARQL, JSON-LD 1.1,
   CSVW, ShEx, DID, VC, RML — now have live scored suite nodes of their
   own elsewhere on this page.

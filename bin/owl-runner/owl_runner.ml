@@ -166,6 +166,12 @@ let inconsistency_iri  = test_ns ^ "InconsistencyTest"
 let test_semantics = test_ns ^ "semantics"
 let test_semantics_direct_iri = test_ns ^ "DIRECT"
 let test_semantics_rdf_based_iri = test_ns ^ "RDF-BASED"
+(* test:species — OWL 2 DL/Full species facet (2026-07-10). Values
+   &test;DL and &test;FULL; a case annotated with both is within DL
+   (every DL ontology is also a Full ontology). Scored by the
+   --species mode below via the F*-extracted OWL2_SyntaxDL checker. *)
+let test_species = test_ns ^ "species"
+let test_species_dl_iri = test_ns ^ "DL"
 
 let subject_iri_opt (s : subject) : string option =
   match s with
@@ -222,6 +228,8 @@ type test_case_info = {
                                        &test;FUNCTIONAL / &test;RDFXML *)
   semantics   : StrSet.t;          (* test:semantics objects, e.g.
                                        &test;DIRECT / &test;RDF-BASED *)
+  species     : StrSet.t;          (* test:species objects, i.e.
+                                       &test;DL / &test;FULL *)
   imports     : StrSet.t;          (* test:importedOntology link IRIs (catalog
                                        node IRIs that carry test:rdfXmlInputOntology
                                        literals); resolved at run time *)
@@ -238,6 +246,7 @@ let empty_info iri = {
   fs_conclusion = None;
   normative_syntax = StrSet.empty;
   semantics = StrSet.empty;
+  species = StrSet.empty;
   imports = StrSet.empty;
 }
 
@@ -295,6 +304,12 @@ let build_index (graph : triple list) : test_case_info list * (string, string) H
              let info = { info with semantics = StrSet.add obj info.semantics } in
              Hashtbl.replace tbl subj info
            | None -> ()
+         end else if t.p = test_species then begin
+           match object_iri_opt t.o with
+           | Some obj ->
+             let info = { info with species = StrSet.add obj info.species } in
+             Hashtbl.replace tbl subj info
+           | None -> ()
          end else if t.p = test_premise then begin
            match object_literal_opt t.o with
            | Some lex ->
@@ -341,11 +356,15 @@ let build_index (graph : triple list) : test_case_info list * (string, string) H
            | None -> ()
          end)
     graph;
-  (* Keep only subjects that actually carry a test-type. *)
+  (* Keep only subjects that actually carry a test-type — or, for the
+     species facet (2026-07-10), a test:species annotation: the four
+     WebOnt-imports-005..008 cases in syntax-dl.rdf carry species +
+     rdfXmlInputOntology but none of the five entailment test-types. *)
   let cases =
     Hashtbl.fold
       (fun _ info acc ->
-         if StrSet.is_empty info.types then acc else info :: acc)
+         if StrSet.is_empty info.types && StrSet.is_empty info.species
+         then acc else info :: acc)
       tbl []
   in
   (cases, imports_lookup)
@@ -549,6 +568,11 @@ let with_owl_cap (f : unit -> 'a) : 'a =
 type closure_regime = Regime_RL | Regime_DL
 
 let regime : closure_regime ref = ref Regime_RL
+
+(* --species: score the test:species facet (OWL 2 DL vs FULL) via the
+   F*-extracted OWL2_SyntaxDL checker instead of the entailment /
+   consistency phases. *)
+let species_mode : bool ref = ref false
 
 let regime_label () = match !regime with
   | Regime_RL -> "RL"
@@ -969,6 +993,252 @@ let print_outcome verbose info outcome =
   end
 
 (* ------------------------------------------------------------------ *)
+(* Species mode (--species, 2026-07-10): OWL 2 DL vs FULL species
+   identification for the syntax-dl catalog (and any catalog carrying
+   test:species annotations). The verdict comes entirely from the
+   F*-extracted OWL2_SyntaxDL.species_is_dl; this section is I/O glue
+   per rule #11 — literal decoding, DOCTYPE entity expansion (textual,
+   same pattern as expand_catalog_entities above), owl:imports
+   resolution against the catalog-provided input documents, and score
+   printing.
+
+   Species covers ALL documents of a test case: two premise-identical
+   cases (WebOnt-I5.5-005 DL vs WebOnt-I5.5-006 FULL) differ only in
+   their conclusion documents, so the premise AND the conclusion (or
+   non-conclusion) graphs are handed to the checker. *)
+
+(* Some premise literals carry their own DOCTYPE with custom entities
+   (&vin;, &food; in WebOnt-miscellaneous-001). Expand any locally
+   declared <!ENTITY name "value"> before stripping the DOCTYPE —
+   pure textual substitution, no RDF semantics. *)
+let expand_local_entities (s : string) : string =
+  let ent_re =
+    Str.regexp "<!ENTITY[ \t\r\n]+\\([A-Za-z_][A-Za-z0-9_.-]*\\)[ \t\r\n]+[\"']\\([^\"']*\\)[\"']" in
+  let rec collect start acc =
+    match find_opt ent_re s start with
+    | None -> acc
+    | Some i ->
+      let name = Str.matched_group 1 s in
+      let value = Str.matched_group 2 s in
+      collect (i + 1) ((("&" ^ name ^ ";"), value) :: acc)
+  in
+  let ents = collect 0 [] in
+  List.fold_left
+    (fun acc (ent, repl) ->
+       Str.global_replace (Str.regexp_string ent) repl acc)
+    s ents
+
+(* Parse one ontology-document literal. Returns Some triples on a
+   successful parse (an EMPTY document is a legitimate parse — several
+   rdfbased-sem-* premises are just <rdf:RDF/>), None if the parser
+   raises. *)
+let parse_doc_literal (base : string) (lex : string) : triple list option =
+  let src = expand_catalog_entities lex in
+  let src = expand_local_entities src in
+  let src = strip_doctype src in
+  try Some (Parser_RDFXML.parse_rdfxml_with_base base src)
+  with _ -> None
+
+(* Registry of catalog-provided imported documents, keyed by every IRI
+   they advertise: IRI subjects typed owl:Ontology, plus the xml:base
+   attribute (scraped textually — imported documents such as
+   imports013 have an xml:base but no header). owl:imports objects are
+   resolved against these keys. *)
+let owl_ontology_iri = "http://www.w3.org/2002/07/owl#Ontology"
+let owl_imports_iri  = "http://www.w3.org/2002/07/owl#imports"
+
+let xml_base_of (lex : string) : string option =
+  let re = Str.regexp "xml:base[ \t\r\n]*=[ \t\r\n]*[\"']\\([^\"']*\\)[\"']" in
+  match find_opt re lex 0 with
+  | None -> None
+  | Some _ -> Some (Str.matched_group 1 lex)
+
+(* Each document is parsed independently, so the parser's generated
+   bnode ids (rdfxml_b0, ...) collide across documents; a union of two
+   docs then has e.g. two rdf:first triples on "one" list node — a
+   spurious malformed-list verdict. Rename each doc's bnodes with a
+   doc-unique prefix (F*-extracted rename_triple_bnodes) before any
+   union. *)
+let rename_doc_bnodes (prefix : string) (g : triple list) : triple list =
+  List.map (RDF_Graph_Executable.rename_triple_bnodes prefix) g
+
+let species_input_registry
+    (imports_lookup : (string, string) Hashtbl.t)
+  : (string, triple list) Hashtbl.t =
+  let reg : (string, triple list) Hashtbl.t = Hashtbl.create 32 in
+  let doc_n = ref 0 in
+  Hashtbl.iter
+    (fun node_iri lex ->
+       match parse_doc_literal node_iri lex with
+       | None -> ()
+       | Some g0 ->
+         incr doc_n;
+         let g = rename_doc_bnodes (Printf.sprintf "imp%d_" !doc_n) g0 in
+         let keys = ref [node_iri] in
+         List.iter
+           (fun (t : triple) ->
+              if t.p = rdf_type_iri
+                 && (match t.o with
+                     | RDF_Graph_Executable.T_IRI i -> i = owl_ontology_iri
+                     | _ -> false)
+              then (match t.s with
+                    | RDF_Graph_Executable.S_IRI i -> keys := i :: !keys
+                    | _ -> ()))
+           g;
+         (match xml_base_of lex with
+          | Some b -> keys := b :: !keys
+          | None -> ());
+         List.iter (fun k -> Hashtbl.replace reg k g) !keys)
+    imports_lookup;
+  reg
+
+(* Transitively merge the owl:imports closure of g, resolving each
+   import IRI against the registry. Cycle-safe via the seen set. *)
+let rec resolve_species_imports
+    (reg : (string, triple list) Hashtbl.t)
+    (g : triple list) (seen : StrSet.t) : triple list =
+  let targets =
+    List.filter_map
+      (fun (t : triple) ->
+         if t.p = owl_imports_iri then
+           (match t.o with
+            | RDF_Graph_Executable.T_IRI i
+              when (not (StrSet.mem i seen)) && Hashtbl.mem reg i -> Some i
+            | _ -> None)
+         else None)
+      g
+    |> List.sort_uniq compare
+  in
+  match targets with
+  | [] -> g
+  | _ ->
+    let seen = List.fold_left (fun s i -> StrSet.add i s) seen targets in
+    let g = List.fold_left (fun acc i -> acc @ Hashtbl.find reg i) g targets in
+    resolve_species_imports reg g seen
+
+type species_outcome =
+  | Sp_scored of bool * bool * string list
+      (* verdict_is_dl, expected_is_dl, violations (for the log) *)
+  | Sp_fail_parse of bool  (* expected_is_dl; premise/conclusion unparseable *)
+  | Sp_skip_functional     (* functional-syntax-only, outside the FS subset *)
+
+let run_species_case
+    (info : test_case_info)
+    (reg : (string, triple list) Hashtbl.t) : species_outcome =
+  let expected_dl = StrSet.mem test_species_dl_iri info.species in
+  let premise_graph =
+    match info.premise with
+    | Some lex -> parse_doc_literal info.iri lex
+    | None ->
+      (* imports-005..013 style: the case's own document arrives as
+         test:rdfXmlInputOntology (keyed by the case IRI in the
+         imports lookup used to build reg). *)
+      Hashtbl.find_opt reg info.iri
+  in
+  match premise_graph with
+  | None when info.premise <> None ->
+    (* An RDF/XML premise EXISTS but the parser raised on it — an
+       honest FAIL, never masked as a functional-syntax skip
+       (anti-pattern #3). *)
+    Sp_fail_parse expected_dl
+  | None ->
+    (* No RDF/XML premise: try the Functional Syntax path. *)
+    (match info.fs_premise with
+     | Some fs_lex ->
+       (match (try Parser_OWLFunctional.parse_functional_syntax fs_lex
+               with _ -> None) with
+        | Some g_p ->
+          let (has_c, g_u) =
+            (match info.fs_conclusion with
+             | Some fs_c ->
+               (match (try Parser_OWLFunctional.parse_functional_syntax fs_c
+                       with _ -> None) with
+                | Some g_c -> (true, g_p @ rename_doc_bnodes "c_" g_c)
+                | None -> (false, []))
+             | None -> (false, []))
+          in
+          let verdict = OWL2_SyntaxDL.species_is_dl_functional g_p has_c g_u in
+          let viols =
+            if verdict then []
+            else OWL2_SyntaxDL.species_violations_functional g_p has_c g_u in
+          Sp_scored (verdict, expected_dl, viols)
+        | None ->
+          if StrSet.mem test_syntax_functional info.normative_syntax
+          then Sp_skip_functional
+          else Sp_fail_parse expected_dl)
+     | None -> Sp_fail_parse expected_dl)
+  | Some p_doc ->
+    let p_merged = resolve_species_imports reg p_doc StrSet.empty in
+    let (has_c, c_doc) =
+      match info.conclusion with
+      | None -> (false, [])
+      | Some c_lex ->
+        (match parse_doc_literal info.iri c_lex with
+         (* Doc-unique bnode prefix so the P∪C union can't conflate
+            premise and conclusion bnodes (see rename_doc_bnodes). *)
+         | Some g -> (true, rename_doc_bnodes "c_" g)
+         | None -> (false, []))
+    in
+    let u_merged =
+      if has_c
+      then resolve_species_imports reg (p_doc @ c_doc) StrSet.empty
+      else p_merged
+    in
+    let verdict =
+      OWL2_SyntaxDL.species_is_dl p_doc p_merged has_c c_doc u_merged in
+    let viols =
+      if verdict then []
+      else OWL2_SyntaxDL.species_violations p_doc p_merged has_c c_doc u_merged in
+    Sp_scored (verdict, expected_dl, viols)
+
+let species_label (is_dl : bool) = if is_dl then "DL" else "FULL"
+
+let run_species_catalog (tests : test_case_info list)
+    (imports_lookup : (string, string) Hashtbl.t) : unit =
+  let sp_tests =
+    List.filter (fun info -> not (StrSet.is_empty info.species)) tests in
+  let k = List.length sp_tests in
+  Printf.printf
+    "Running %d species-annotated test case(s) through OWL2_SyntaxDL.species_is_dl (F*-extracted)...\n" k;
+  let reg = species_input_registry imports_lookup in
+  let t0 = Unix.gettimeofday () in
+  let outcomes =
+    List.map (fun info -> (info, run_species_case info reg)) sp_tests in
+  let t1 = Unix.gettimeofday () in
+  let passes = ref 0 and fails = ref 0 and skips = ref 0 in
+  List.iter
+    (fun (info, o) ->
+       let id = identifier_display info in
+       match o with
+       | Sp_scored (verdict, expected, viols) ->
+         if verdict = expected then begin
+           incr passes;
+           Printf.printf "  PASS: %s [species] verdict=%s expected=%s\n"
+             id (species_label verdict) (species_label expected)
+         end else begin
+           incr fails;
+           Printf.printf "  FAIL: %s [species] verdict=%s expected=%s\n"
+             id (species_label verdict) (species_label expected);
+           List.iteri
+             (fun i v -> if i < 5 then Printf.printf "      violation: %s\n" v)
+             viols
+         end
+       | Sp_fail_parse expected ->
+         incr fails;
+         Printf.printf
+           "  FAIL: %s [species] verdict=(premise/conclusion parse failure) expected=%s\n"
+           id (species_label expected)
+       | Sp_skip_functional ->
+         incr skips;
+         Printf.printf "  SKIP: %s [species] functional-syntax-only premise outside Parser_OWLFunctional's subset\n"
+           id)
+    outcomes;
+  Printf.printf "\n";
+  Printf.printf
+    "OWL2-DL SpeciesTests: %d pass, %d fail (out of %d), %d skipped (functional-syntax-only) in %.2fs\n"
+    !passes !fails (!passes + !fails) !skips (t1 -. t0)
+
+(* ------------------------------------------------------------------ *)
 (* Repo-root resolution (so `./owl_runner` from any cwd works). *)
 
 let find_repo_root () =
@@ -1016,6 +1286,9 @@ let print_help () =
      \  ./owl_runner                  Read third_party/testing/owl/profile-RL.rdf\n\
      \  ./owl_runner <catalog.rdf>    Read the given RDF/XML catalog\n\
      \  ./owl_runner --list           List catalog files in third_party/testing/owl/\n\
+     \  ./owl_runner <catalog.rdf> --species\n\
+     \                                Score the test:species facet (OWL 2 DL vs FULL)\n\
+     \                                via the F*-extracted OWL2_SyntaxDL checker\n\
      \  ./owl_runner --help           Show this help\n\
      \n\
      Status: Phase 0 skeleton — reads manifest, prints per-test identifier\n\
@@ -1052,6 +1325,13 @@ let run_catalog ?(verbose=false) path =
   Printf.printf "  InconsistencyTest:         %d\n" (tally "InconsistencyTest");
   Printf.printf "  ProfileIdentificationTest: %d\n" (tally "ProfileIdentificationTest");
   Printf.printf "\n";
+
+  (* Species mode: score test:species (DL vs FULL) via the F*-extracted
+     OWL2_SyntaxDL checker and nothing else — no closure, no
+     entailment. Selected with --species. *)
+  if !species_mode then
+    run_species_catalog tests imports_lookup
+  else begin
 
   (* Phase 1: score every PositiveEntailmentTest. *)
   let pe_tests =
@@ -1168,6 +1448,7 @@ let run_catalog ?(verbose=false) path =
     Printf.printf "Profile-RL InconsistencyTests: %d pass, %d fail (out of %d), %d skipped (functional-syntax-only) in %.2fs\n"
       i_passes i_fails i_scored i_skips (t_inc1 -. t_inc0)
   end
+  end (* not species_mode *)
 
 let () =
   let args = Array.to_list Sys.argv |> List.tl in
@@ -1178,6 +1459,7 @@ let () =
     | ("-v" | "--verbose") :: rest -> verbose := true; loop rest
     | ("--help" | "-h") :: _ -> print_help (); exit 0
     | "--list" :: _ -> list_catalogs (); exit 0
+    | "--species" :: rest -> species_mode := true; loop rest
     | "--regime" :: r :: rest ->
       (match String.lowercase_ascii r with
        | "rl" -> regime := Regime_RL

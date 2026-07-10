@@ -31,6 +31,5 @@ triggers:
 # the other catalogs scored alongside it on the dashboard), not just
 # this one manifest.
 remaining:
-  - "the DL entailment catalogs (EL, QL, and the general DL profile) are only partially wired to the tableau reasoner — some fail because the parser doesn't yet cover OWL Functional-Style Syntax fixtures, and some fail because the reasoner materialises entailments but doesn't yet refute the negative (inconsistency) side"
-  - "the syntax-dl structural checker (validating that an ontology stays inside the OWL 2 DL syntactic profile) is not implemented, so that catalog is not scored at all"
+  - "the DL entailment catalogs (EL, QL, and the general DL profile) are wired through the tableau reasoner (DL regime = RL closure -> tableau_materialise -> RL closure, landed 2026-07-09) but still carry fails — some because the parser doesn't yet cover OWL Functional-Style Syntax fixtures, and some because the reasoner materialises entailments but doesn't yet refute the negative (inconsistency) side"
   - "large graphs using owl:sameAs extensively can hit a performance blowup during closure computation — a known scaling gap, not a correctness gap"

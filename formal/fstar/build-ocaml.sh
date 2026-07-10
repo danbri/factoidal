@@ -393,7 +393,7 @@ if [[ "$STEP" == "all" || "$STEP" == "extract" ]]; then
     XSD.Datatypes.fst
     RDF.Pretty.fst
     OWL.QueryRewrite.fst OWL.QueryEval.fst
-    OWL.Tests.Manifest.fst
+    OWL.Tests.Manifest.fst OWL2.SyntaxDL.fst
     RIF.Core.Syntax.fst RIF.Core.Translation.fst
     SHACL.Validation.fst
     RDF.Geo.Types.fst RDF.Geo.BBox.fst RDF.Geo.Topology.fst RDF.Geo.Functions.fst
@@ -837,7 +837,7 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
     RDF_GraphIsomorphism.ml \
     GRDDL_Discovery.ml \
     service_wrap_hook.ml \
-    SPARQL_FullText.ml SPARQL11_Algebra.ml XSD_Datatypes.ml XForms_Bind.ml RDF_Pretty.ml OWL_QueryRewrite.ml OWL_QueryEval.ml OWL_Tests_Manifest.ml RIF_Core_Syntax.ml Parser_RIFXML.ml RIF_Core_Translation.ml RIF_Core_Builtins.ml RIF_Core_Conformance.ml RIF_Core_Eval.ml RIF_Core_Tests.ml SPARQL11_Parser.ml SHACL_Validation.ml \
+    SPARQL_FullText.ml SPARQL11_Algebra.ml XSD_Datatypes.ml XForms_Bind.ml RDF_Pretty.ml OWL_QueryRewrite.ml OWL_QueryEval.ml OWL_Tests_Manifest.ml OWL2_SyntaxDL.ml RIF_Core_Syntax.ml Parser_RIFXML.ml RIF_Core_Translation.ml RIF_Core_Builtins.ml RIF_Core_Conformance.ml RIF_Core_Eval.ml RIF_Core_Tests.ml SPARQL11_Parser.ml SHACL_Validation.ml \
     ShEx_Schema.ml Parser_ShExC.ml ShEx_SchemaEq.ml ShEx_Validation.ml \
     VC_Context.ml \
     VC_Credential.ml \
@@ -1856,7 +1856,7 @@ if [[ "$STEP" == "all" || "$STEP" == "js" ]]; then
     RDF_GraphIsomorphism.ml
     GRDDL_Discovery.ml
     service_wrap_hook.ml
-    SPARQL_FullText.ml SPARQL11_Algebra.ml XSD_Datatypes.ml XForms_Bind.ml RDF_Pretty.ml OWL_QueryRewrite.ml OWL_QueryEval.ml OWL_Tests_Manifest.ml RIF_Core_Syntax.ml Parser_RIFXML.ml RIF_Core_Translation.ml RIF_Core_Builtins.ml RIF_Core_Conformance.ml RIF_Core_Eval.ml RIF_Core_Tests.ml SPARQL11_Parser.ml SHACL_Validation.ml
+    SPARQL_FullText.ml SPARQL11_Algebra.ml XSD_Datatypes.ml XForms_Bind.ml RDF_Pretty.ml OWL_QueryRewrite.ml OWL_QueryEval.ml OWL_Tests_Manifest.ml OWL2_SyntaxDL.ml RIF_Core_Syntax.ml Parser_RIFXML.ml RIF_Core_Translation.ml RIF_Core_Builtins.ml RIF_Core_Conformance.ml RIF_Core_Eval.ml RIF_Core_Tests.ml SPARQL11_Parser.ml SHACL_Validation.ml
     ShEx_Schema.ml Parser_ShExC.ml ShEx_SchemaEq.ml ShEx_Validation.ml
     RML_Mapping.ml RML_Sources.ml RML_Eval.ml
     CSVW_Metadata.ml CSVW_URITemplate.ml CSVW_Formats.ml CSVW_Conversion.ml

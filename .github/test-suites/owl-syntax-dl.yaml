@@ -1,0 +1,39 @@
+name: OWL 2 DL Species Identification (syntax-dl)
+spec: https://www.w3.org/TR/owl2-syntax/#Ontologies
+runner: bin/linux-x86_64/owl_runner
+runner_args:
+  - third_party/testing/owl/syntax-dl.rdf
+  - --species
+log_path: formal/fstar/ocaml-output/owl_syntax_dl_results.log
+result_path: docs/test-results/by-suite/owl-syntax-dl.json
+domain: OWL
+foundational: false
+
+# OWL 2 DL species identification over the W3C syntax-dl catalog: per
+# test case, the F*-extracted OWL2_SyntaxDL checker decides whether the
+# case's ontology documents (premise AND conclusion — the species facet
+# covers both) are within OWL 2 DL or only OWL 2 Full, and the verdict
+# is scored against the catalog's test:species annotation. Purely
+# syntax-directed (header discipline, typed-entity discipline, reserved
+# vocabulary, punning, list well-formedness, sec-11 global
+# restrictions) — no reasoning.
+
+triggers:
+  paths:
+    # The species checker itself.
+    - formal/fstar/OWL2.SyntaxDL.fst
+    # Catalog + document parser (RDF/XML).
+    - formal/fstar/Parser.RDFXML.fst
+    - formal/fstar/Parser.XML.fst
+    # Functional-syntax premise path.
+    - formal/fstar/Parser.OWLFunctional.fst
+    # The runner.
+    - bin/owl-runner/**
+
+  excludes: []
+
+# What's left, in plain language (source: docs/claude-rules/w3c-completeness-ledger.md,
+# OWL 2 row, 2026-07-10).
+remaining:
+  - "residual species mis-verdicts are enumerated per-ID in the results log — the corpus mixes OWL 1-era WebOnt species judgments with OWL 2 WG re-annotations, and a small tail of cases (import-resolution edge cases like WebOnt-imports-014's mismatched import IRI) is not decidable from the graphs the harness can reconstruct"
+  - "functional-syntax-only premises outside Parser_OWLFunctional's narrow subset are skipped, not scored — extending the FS parser shrinks the skip column"
