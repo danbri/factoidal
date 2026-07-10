@@ -2113,6 +2113,88 @@ let hash_sha384 (s : Prims.string) : Prims.string=
   Fstar_pure_hashes.sha384 s
 let hash_sha512 (s : Prims.string) : Prims.string=
   Fstar_pure_hashes.sha512 s
+let fx_now_cache : Prims.string ref = ref ""
+let fx_current_datetime (uu___ : unit) : Prims.string=
+  let open Stdlib in
+  if !fx_now_cache <> "" then !fx_now_cache
+  else begin
+    let t = Unix.gmtime (Unix.gettimeofday ()) in
+    let s = Printf.sprintf "%04d-%02d-%02dT%02d:%02d:%02dZ"
+      (t.Unix.tm_year + 1900) (t.Unix.tm_mon + 1) t.Unix.tm_mday
+      t.Unix.tm_hour t.Unix.tm_min t.Unix.tm_sec in
+    fx_now_cache := s; s
+  end
+let fx_key_row : Prims.string=
+  Prims.strcat
+    (FStar_String.string_of_list [FStar_Char.char_of_int Prims.int_one])
+    "fx_row"
+let fx_key_occ : Prims.string=
+  Prims.strcat
+    (FStar_String.string_of_list [FStar_Char.char_of_int Prims.int_one])
+    "fx_occ"
+let fx_ctx_get (key : Prims.string)
+  (mu : RDF_Graph_Executable.solution_mapping) :
+  Prims.string FStar_Pervasives_Native.option=
+  match RDF_List_Helpers.assoc_tr key mu with
+  | FStar_Pervasives_Native.Some (RDF_Term.T_Literal l) ->
+      FStar_Pervasives_Native.Some (l.RDF_Term.lexical_form)
+  | uu___ -> FStar_Pervasives_Native.None
+let fx_ctx_put (row : Prims.string) (occ : Prims.string)
+  (mu : RDF_Graph_Executable.solution_mapping) :
+  RDF_Graph_Executable.solution_mapping=
+  (fx_key_row,
+    (RDF_Term.T_Literal
+       {
+         RDF_Term.lexical_form = row;
+         RDF_Term.datatype = RDF_Term.xsd_string;
+         RDF_Term.lang_tag = FStar_Pervasives_Native.None
+       }))
+  ::
+  (fx_key_occ,
+    (RDF_Term.T_Literal
+       {
+         RDF_Term.lexical_form = occ;
+         RDF_Term.datatype = RDF_Term.xsd_string;
+         RDF_Term.lang_tag = FStar_Pervasives_Native.None
+       }))
+  :: mu
+let rec fx_take_pad (n : Prims.nat) (l : FStar_Char.char Prims.list) :
+  FStar_Char.char Prims.list=
+  if n = Prims.int_zero
+  then []
+  else
+    (match l with
+     | [] -> (FStar_Char.char_of_int (Prims.of_int (48))) ::
+         (fx_take_pad (n - Prims.int_one) [])
+     | c::cs -> c :: (fx_take_pad (n - Prims.int_one) cs))
+let rec fx_ldrop (n : Prims.nat) (l : FStar_Char.char Prims.list) :
+  FStar_Char.char Prims.list=
+  if n = Prims.int_zero
+  then l
+  else
+    (match l with | [] -> [] | uu___1::cs -> fx_ldrop (n - Prims.int_one) cs)
+let fx_uuid_of_seed (seed : Prims.string) : Prims.string=
+  let cs =
+    fx_take_pad (Prims.of_int (32))
+      (FStar_String.list_of_string (hash_sha256 seed)) in
+  let s l = FStar_String.string_of_list l in
+  let g1 = s (fx_take_pad (Prims.of_int (8)) cs) in
+  let r1 = fx_ldrop (Prims.of_int (8)) cs in
+  let g2 = s (fx_take_pad (Prims.of_int (4)) r1) in
+  let r2 = fx_ldrop (Prims.of_int (4)) r1 in
+  let g3 = s (fx_take_pad (Prims.of_int (4)) r2) in
+  let r3 = fx_ldrop (Prims.of_int (4)) r2 in
+  let g4 = s (fx_take_pad (Prims.of_int (4)) r3) in
+  let r4 = fx_ldrop (Prims.of_int (4)) r3 in
+  let g5 = s (fx_take_pad (Prims.of_int (12)) r4) in
+  Prims.strcat g1
+    (Prims.strcat "-"
+       (Prims.strcat g2
+          (Prims.strcat "-"
+             (Prims.strcat g3
+                (Prims.strcat "-" (Prims.strcat g4 (Prims.strcat "-" g5)))))))
+let fx_bnode_of_seed (seed : Prims.string) : Prims.string=
+  Prims.strcat "_:fxbn" (hash_sha256 seed)
 let int_abs (n : Prims.int) : Prims.int=
   if n >= Prims.int_zero then n else Prims.int_zero - n
 let char_to_digit (c : FStar_Char.char) :
@@ -3715,6 +3797,21 @@ let minus (omega1 : solution_sequence) (omega2 : solution_sequence) :
                (sm_compatible mu1 mu2) &&
                  (Prims.op_Negation (domains_disjoint mu1 mu2))) omega2))
     omega1
+let rec fx_bind_rows (base : RDF_Term.wf_iri FStar_Pervasives_Native.option)
+  (e : expr) (v : var_name) (omega : solution_sequence) (i : Prims.nat) :
+  solution_sequence=
+  match omega with
+  | [] -> []
+  | mu::rest ->
+      let mu_ctx = fx_ctx_put (Prims.string_of_int i) v mu in
+      let row =
+        match er_to_term (eval_expr_fwd base e mu_ctx) with
+        | FStar_Pervasives_Native.Some t ->
+            (match sm_lookup v mu with
+             | FStar_Pervasives_Native.Some uu___ -> mu
+             | FStar_Pervasives_Native.None -> sm_bind v t mu)
+        | FStar_Pervasives_Native.None -> mu in
+      row :: (fx_bind_rows base e v rest (i + Prims.int_one))
 let rec eval_pattern_store
   (base : RDF_Term.wf_iri FStar_Pervasives_Native.option)
   (p : group_graph_pattern) (gs : graph_store) (dss : rdf_dataset_store) :
@@ -3796,14 +3893,7 @@ let rec eval_pattern_store
   | GP_Empty -> [sm_empty]
   | GP_Bind (e, v, p') ->
       let omega = eval_pattern_store base p' gs dss in
-      FStar_List_Tot_Base.map
-        (fun mu ->
-           match er_to_term (eval_expr_fwd base e mu) with
-           | FStar_Pervasives_Native.Some t ->
-               (match sm_lookup v mu with
-                | FStar_Pervasives_Native.Some uu___ -> mu
-                | FStar_Pervasives_Native.None -> sm_bind v t mu)
-           | FStar_Pervasives_Native.None -> mu) omega
+      fx_bind_rows base e v omega Prims.int_zero
   | GP_Values (vars, rows) -> eval_values vars rows
   | GP_Graph (gt, p') ->
       (match gt with
@@ -4677,7 +4767,14 @@ let rec eval_expr_with_base
       (match er_to_string (eval_expr_with_base base e1 mu) with
        | FStar_Pervasives_Native.Some s -> er_string (hash_sha512 s)
        | FStar_Pervasives_Native.None -> ER_Error)
-  | E_Now -> ER_Error
+  | E_Now ->
+      ER_Term
+        (RDF_Term.T_Literal
+           {
+             RDF_Term.lexical_form = (fx_current_datetime ());
+             RDF_Term.datatype = xsd_dateTime;
+             RDF_Term.lang_tag = FStar_Pervasives_Native.None
+           })
   | E_Year e1 ->
       (match er_to_datetime_lex (eval_expr_with_base base e1 mu) with
        | FStar_Pervasives_Native.Some s ->
@@ -4775,23 +4872,64 @@ let rec eval_expr_with_base
         else
           if iri_s = "http://www.w3.org/2005/xpath-functions#uuid"
           then
-            (let uuid_iri = "urn:uuid:00000000-0000-0000-0000-000000000000" in
+            (let row =
+               match fx_ctx_get fx_key_row mu with
+               | FStar_Pervasives_Native.Some r -> r
+               | FStar_Pervasives_Native.None -> "" in
+             let occ =
+               match fx_ctx_get fx_key_occ mu with
+               | FStar_Pervasives_Native.Some o -> o
+               | FStar_Pervasives_Native.None -> "" in
+             let uuid_iri =
+               Prims.strcat "urn:uuid:"
+                 (fx_uuid_of_seed
+                    (Prims.strcat "u|"
+                       (Prims.strcat row (Prims.strcat "|" occ)))) in
              if RDF_Term.is_iri uuid_iri
              then ER_Term (RDF_Term.T_IRI uuid_iri)
              else ER_Error)
           else
             if iri_s = "http://www.w3.org/2005/xpath-functions#struuid"
-            then er_string "00000000-0000-0000-0000-000000000000"
+            then
+              (let row =
+                 match fx_ctx_get fx_key_row mu with
+                 | FStar_Pervasives_Native.Some r -> r
+                 | FStar_Pervasives_Native.None -> "" in
+               let occ =
+                 match fx_ctx_get fx_key_occ mu with
+                 | FStar_Pervasives_Native.Some o -> o
+                 | FStar_Pervasives_Native.None -> "" in
+               er_string
+                 (fx_uuid_of_seed
+                    (Prims.strcat "u|"
+                       (Prims.strcat row (Prims.strcat "|" occ)))))
             else
               if iri_s = "http://www.w3.org/2005/xpath-functions#bnode"
               then
-                (match args with
-                 | [] -> ER_Term (RDF_Term.T_BNode "_:b0")
+                (let row =
+                   match fx_ctx_get fx_key_row mu with
+                   | FStar_Pervasives_Native.Some r -> r
+                   | FStar_Pervasives_Native.None -> "" in
+                 match args with
+                 | [] ->
+                     let occ =
+                       match fx_ctx_get fx_key_occ mu with
+                       | FStar_Pervasives_Native.Some o -> o
+                       | FStar_Pervasives_Native.None -> "" in
+                     ER_Term
+                       (RDF_Term.T_BNode
+                          (fx_bnode_of_seed
+                             (Prims.strcat "n|"
+                                (Prims.strcat row (Prims.strcat "|" occ)))))
                  | e1::[] ->
                      (match er_to_string (eval_expr_with_base base e1 mu)
                       with
                       | FStar_Pervasives_Native.Some s ->
-                          ER_Term (RDF_Term.T_BNode (Prims.strcat "_:b" s))
+                          ER_Term
+                            (RDF_Term.T_BNode
+                               (fx_bnode_of_seed
+                                  (Prims.strcat "s|"
+                                     (Prims.strcat row (Prims.strcat "|" s)))))
                       | FStar_Pervasives_Native.None -> ER_Error)
                  | uu___4 -> ER_Error)
               else
@@ -5518,22 +5656,40 @@ let project_solutions (vars : var_name Prims.list)
   (omega : solution_sequence) : solution_sequence=
   FStar_List_Tot_Base.rev (project_solutions_acc vars omega [])
 let eval_select_item (base : RDF_Term.wf_iri FStar_Pervasives_Native.option)
-  (item : select_item) (mu : RDF_Graph_Executable.solution_mapping)
-  (g : RDF_Graph.rdf_graph) : RDF_Graph_Executable.solution_mapping=
+  (row : Prims.string) (occ : Prims.string) (item : select_item)
+  (mu : RDF_Graph_Executable.solution_mapping) (g : RDF_Graph.rdf_graph) :
+  RDF_Graph_Executable.solution_mapping=
   match item with
   | SI_Var uu___ -> mu
   | SI_Expr (e, v) ->
-      let r = eval_expr_with_base base e mu in
+      let r = eval_expr_with_base base e (fx_ctx_put row occ mu) in
       (match er_to_term r with
        | FStar_Pervasives_Native.Some t -> sm_bind v t mu
        | FStar_Pervasives_Native.None -> mu)
+let rec eval_select_items_row
+  (base : RDF_Term.wf_iri FStar_Pervasives_Native.option)
+  (row : Prims.string) (i : Prims.nat) (items : select_item Prims.list)
+  (mu : RDF_Graph_Executable.solution_mapping) (g : RDF_Graph.rdf_graph) :
+  RDF_Graph_Executable.solution_mapping=
+  match items with
+  | [] -> mu
+  | item::rest ->
+      let mu' = eval_select_item base row (Prims.string_of_int i) item mu g in
+      eval_select_items_row base row (i + Prims.int_one) rest mu' g
+let rec eval_select_items_rows
+  (base : RDF_Term.wf_iri FStar_Pervasives_Native.option) (r : Prims.nat)
+  (omega : solution_sequence) (items : select_item Prims.list)
+  (g : RDF_Graph.rdf_graph) : solution_sequence=
+  match omega with
+  | [] -> []
+  | mu::rest ->
+      (eval_select_items_row base (Prims.string_of_int r) Prims.int_zero
+         items mu g)
+      :: (eval_select_items_rows base (r + Prims.int_one) rest items g)
 let eval_select_items (base : RDF_Term.wf_iri FStar_Pervasives_Native.option)
   (items : select_item Prims.list) (omega : solution_sequence)
   (g : RDF_Graph.rdf_graph) : solution_sequence=
-  FStar_List_Tot_Base.map
-    (fun mu ->
-       FStar_List_Tot_Base.fold_left
-         (fun acc item -> eval_select_item base item acc g) mu items) omega
+  eval_select_items_rows base Prims.int_zero omega items g
 let select_item_vars (items : select_item Prims.list) : var_name Prims.list=
   FStar_List_Tot_Base.map
     (fun item -> match item with | SI_Var v -> v | SI_Expr (uu___, v) -> v)
@@ -5618,6 +5774,23 @@ let rec rewrite_query_bnodes_pattern (p : group_graph_pattern) :
   | uu___ -> p
 let is_synthetic_bnode_var (v : var_name) : Prims.bool=
   string_starts_with v "_bnode_"
+let is_rewrite_internal_var (v : var_name) : Prims.bool=
+  ((((((string_starts_with v "_sv_") || (string_starts_with v "_av_")) ||
+        (string_starts_with v "_mc_"))
+       || (string_starts_with v "_mxc_"))
+      || (string_starts_with v "_mxqc1_"))
+     || (string_starts_with v "_exc_"))
+    || (string_starts_with v "_co_")
+let strip_rewrite_internal_vars_mu
+  (mu : RDF_Graph_Executable.solution_mapping) :
+  RDF_Graph_Executable.solution_mapping=
+  FStar_List_Tot_Base.filter
+    (fun uu___ ->
+       match uu___ with
+       | (v, uu___1) -> Prims.op_Negation (is_rewrite_internal_var v)) mu
+let strip_rewrite_internal_vars (omega : solution_sequence) :
+  solution_sequence=
+  FStar_List_Tot_Base.map strip_rewrite_internal_vars_mu omega
 let strip_synthetic_bnode_vars_mu
   (mu : RDF_Graph_Executable.solution_mapping) :
   RDF_Graph_Executable.solution_mapping=

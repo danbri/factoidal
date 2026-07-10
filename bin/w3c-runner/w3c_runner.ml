@@ -968,8 +968,19 @@ let run_query_eval_test tc =
          let g2 = Tableau.tableau_materialise g1 in
          RDF_Graph_Executable.owl_rl_closure_with_reflexivity g2 (Z.of_int 100)
        with _ -> graph)
-    | "RDFS" | "RDF" ->
+    | "RDFS" ->
       (try RDF_Graph_Executable.rdfs_closure_with_reflexivity graph (Z.of_int 100)
+       with _ -> graph)
+    | "RDF" ->
+      (* Pure RDF regime: RDFS closure PLUS the rdfD2 axiom (every
+         predicate is an rdf:Property) — F* RDF_Graph_Executable.
+         rdf_property_axiom_closure. rdfD2 is kept out of the shared
+         rdfs_closure_step so it cannot perturb RDFS / OWL-RL tests;
+         it is applied here only for ent:RDF (rdf01 "RDF inference
+         test"). Regime dispatch, not semantic logic (rule #15). *)
+      (try
+         let g1 = RDF_Graph_Executable.rdfs_closure_with_reflexivity graph (Z.of_int 100) in
+         RDF_Graph_Executable.rdf_property_axiom_closure g1
        with _ -> graph)
     | "RIF" ->
       (* RIF Core forward-chaining saturation. The vendored

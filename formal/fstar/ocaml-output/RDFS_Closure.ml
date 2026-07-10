@@ -263,3 +263,13 @@ let rdfs_closure_with_reflexivity (g : RDF_Graph.rdf_graph)
   let refl_axioms = rdfs_reflexivity_axioms closed in
   let with_refl = RDF_Graph.add_triples_if_new closed refl_axioms in
   rdfs_closure with_refl fuel
+let rdf_property_axiom_of_triple (t : RDF_Triple.triple) : RDF_Triple.triple=
+  {
+    RDF_Triple.s = (RDF_Term.S_IRI (t.RDF_Triple.p));
+    RDF_Triple.p = rdf_type;
+    RDF_Triple.o = (RDF_Term.T_IRI rdf_Property)
+  }
+let rdf_property_axiom_closure (g : RDF_Graph.rdf_graph) :
+  RDF_Graph.rdf_graph=
+  let axioms = FStar_List_Tot_Base.map rdf_property_axiom_of_triple g in
+  RDF_Graph.graph_dedup_sort (RDF_Graph.add_triples_if_new g axioms)

@@ -109,13 +109,19 @@ The two that corrupt files silently:
 `OWL.QueryRewrite.fst` — N=1 qualified `CE_MaxCardinality` rewrite
 emits an anchor triple `?subj P ?_mxqc1_anchor_<k>` to make parent7
 pass. The anchor silently drops vacuous-truth individuals (zero
-`P`-edges satisfy max-1) and OWL Full punned class-individuals, and
-the 2026-07-09 strict-runner comparison exposed a leak the lenient
-runner hid: internal `?_mc_`/`?_mxqc1_` variables appear in result
-rows, failing 2 entailment-regime tests (suite 66/70; the old 70/70
-was partly leniency). Tracked in **#236**. Generalise from anchor →
-UNION as documented there before relying on this rewrite for OWL DL
-outside the entailment regime suite.
+`P`-edges satisfy max-1) and OWL Full punned class-individuals — that
+narrowness remains. The internal-variable LEAK the 2026-07-09 strict
+runner exposed (`?_sv_`/`?_mc_`/`?_mxqc1_` vars appearing in `SELECT *`
+result rows) is FIXED (task #100): `OWL.QueryEval.eval_select_query_owl`
+strips rewrite-internal vars from the FINAL user projection only, via
+`SPARQL11.Algebra.strip_rewrite_internal_vars`. It must stay at the
+top level — inner `wrap_distinct_over_ggp` Select_All sub-selects
+deliberately re-expose the anchor var so the enclosing pattern can JOIN
+on it (simple5), so stripping inside them decorrelates the join. The
+regime suite is now 69/70. Tracked in **#236**. Generalise from anchor
+→ UNION as documented there before relying on this rewrite for OWL DL
+outside the entailment regime suite (the anchor still MULTIPLIES rows
+per P-edge and drops vacuous-truth individuals).
 
 ## Agent Work Strategy
 

@@ -32,9 +32,14 @@ open SPARQL11.Algebra
 open OWL.QueryRewrite
 
 // SELECT evaluator with OWL-DL flat-CE rewriting applied first.
+// The rewrite introduces internal anchor/surrogate variables
+// (OWL.QueryRewrite.fst: _sv_/_av_/_mc_/_mxqc1_/...). Inner Select_All
+// sub-selects deliberately re-expose them for correlation; only the
+// FINAL user-facing projection strips them (#236 leak — parent3 min-1,
+// parent7 max-1 Female — exposed by the strict runner).
 let eval_select_query_owl (q : query) (g : rdf_graph) (ds : rdf_dataset)
   : solution_sequence =
-  eval_select_query (rewrite_query q) g ds
+  strip_rewrite_internal_vars (eval_select_query (rewrite_query q) g ds)
 
 // ASK evaluator with OWL-DL flat-CE rewriting applied first.
 let eval_ask_query_owl (q : query) (g : rdf_graph) (ds : rdf_dataset) : bool =

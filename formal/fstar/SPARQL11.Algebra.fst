@@ -1187,6 +1187,81 @@ assume val hash_sha256 : string -> string
 assume val hash_sha384 : string -> string
 assume val hash_sha512 : string -> string
 
+(* ------------------------------------------------------------------ *)
+(* Dynamic SPARQL functions: NOW() / BNODE() / BNODE(str) / UUID() /   *)
+(* STRUUID() (§17.4.2.9, §17.4.5.1).                                   *)
+(*                                                                     *)
+(* Wall-clock read for NOW(). This is the ONLY boundary I/O for date/  *)
+(* time: it returns the current xsd:dateTime lexical form (e.g.        *)
+(* "2026-07-09T12:34:56Z"). Realised by the OCaml glue as a process-   *)
+(* fixed timestamp captured at first use (so it is referentially       *)
+(* transparent within a process, matching NOW()'s "same value          *)
+(* throughout one query execution" requirement). Rule #11(a): a        *)
+(* wall-clock read is observable I/O. Issue #287.                      *)
+(* (glue: 287_fx_current_datetime.sh realises this via memoised Unix)   *)
+assume val fx_current_datetime : unit -> string
+
+(* Per-solution / per-call-site freshness context for BNODE()/UUID()/  *)
+(* STRUUID(). Threaded PURELY (no host randomness): the caller         *)
+(* (SELECT-projection and BIND) injects a row index and a call-site    *)
+(* tag as reserved solution-mapping entries; the dynamic-function      *)
+(* branches derive a deterministic-but-distinct value from them via    *)
+(* sha256. The leading control byte keeps the reserved keys disjoint   *)
+(* from every parser-produced SPARQL variable name (VARNAME cannot     *)
+(* contain a control character), and callers bind results into the     *)
+(* PRISTINE mapping so these keys never surface in a solution sequence.*)
+let fx_key_row : string = FStar.String.string_of_list [FStar.Char.char_of_int 1] ^ "fx_row"
+let fx_key_occ : string = FStar.String.string_of_list [FStar.Char.char_of_int 1] ^ "fx_occ"
+
+let fx_ctx_get (key : string) (mu : solution_mapping) : option string =
+  match Lh.assoc_tr key mu with
+  | Some (T_Literal l) -> Some l.lexical_form
+  | _ -> None
+
+(* Augment a mapping with the freshness context for ONE expression
+   evaluation (used transiently — never stored into results). *)
+let fx_ctx_put (row : string) (occ : string) (mu : solution_mapping)
+  : solution_mapping =
+  (fx_key_row, T_Literal ({ lexical_form = row; datatype = xsd_string; lang_tag = None }))
+  :: (fx_key_occ, T_Literal ({ lexical_form = occ; datatype = xsd_string; lang_tag = None }))
+  :: mu
+
+(* Total take/pad and drop over a char list (avoids String.sub bounds
+   obligations on the sha256 output, whose length F* cannot see). *)
+let rec fx_take_pad (n : nat) (l : list FStar.Char.char)
+  : Tot (list FStar.Char.char) (decreases n) =
+  if n = 0 then []
+  else match l with
+       | [] -> FStar.Char.char_of_int 48 (* char 48 = '0' *) :: fx_take_pad (n - 1) []
+       | c :: cs -> c :: fx_take_pad (n - 1) cs
+let rec fx_ldrop (n : nat) (l : list FStar.Char.char)
+  : Tot (list FStar.Char.char) (decreases n) =
+  if n = 0 then l
+  else match l with
+       | [] -> []
+       | _ :: cs -> fx_ldrop (n - 1) cs
+
+(* Format a 32-hex-digit prefix of sha256(seed) as an 8-4-4-4-12 UUID
+   string (lower-case hex; the SPARQL UUID tests match case-insensitively). *)
+let fx_uuid_of_seed (seed : string) : string =
+  let cs = fx_take_pad 32 (FStar.String.list_of_string (hash_sha256 seed)) in
+  let s (l : list FStar.Char.char) : string = FStar.String.string_of_list l in
+  let g1 = s (fx_take_pad 8 cs) in
+  let r1 = fx_ldrop 8 cs in
+  let g2 = s (fx_take_pad 4 r1) in
+  let r2 = fx_ldrop 4 r1 in
+  let g3 = s (fx_take_pad 4 r2) in
+  let r3 = fx_ldrop 4 r2 in
+  let g4 = s (fx_take_pad 4 r3) in
+  let r4 = fx_ldrop 4 r3 in
+  let g5 = s (fx_take_pad 12 r4) in
+  g1 ^ "-" ^ g2 ^ "-" ^ g3 ^ "-" ^ g4 ^ "-" ^ g5
+
+(* Fresh blank-node label for BNODE. The "_:fxbn" prefix keeps these
+   disjoint from data blank nodes and from INSERT-freshened bnodes. *)
+let fx_bnode_of_seed (seed : string) : string =
+  "_:fxbn" ^ hash_sha256 seed
+
 (* Integer math helpers *)
 let int_abs (n : int) : int = if n >= 0 then n else 0 - n
 
@@ -2721,6 +2796,27 @@ let minus (omega1 omega2 : solution_sequence) : solution_sequence =
 
 (** 7.4 Graph pattern evaluation (§18.6) — CONCRETE **)
 
+(* BIND row evaluator with per-row / per-call-site freshness context.
+   `i` indexes the row (=> cross-solution freshness for BNODE()/UUID());
+   the bound variable name is the call-site tag (=> two BINDs of UUID()
+   in one row differ). The context is used only for evaluation and is
+   never stored: the result binds into the PRISTINE mapping `mu`. *)
+let rec fx_bind_rows (base : option wf_iri) (e : expr) (v : var_name)
+  (omega : solution_sequence) (i : nat)
+  : Tot solution_sequence (decreases omega) =
+  match omega with
+  | [] -> []
+  | mu :: rest ->
+    let mu_ctx = fx_ctx_put (string_of_int i) v mu in
+    let row =
+      (match er_to_term (eval_expr_fwd base e mu_ctx) with
+       | Some t ->
+         (match sm_lookup v mu with
+          | Some _ -> mu
+          | None -> sm_bind v t mu)
+       | None -> mu) in
+    row :: fx_bind_rows base e v rest (i + 1)
+
 (* Evaluate a group graph pattern against a graph store and dataset store.
    #65 Step 2c (2026-05-10): threads BASE IRI for IRI() resolution in
    FILTER / BIND sub-expressions and through sub-SELECT evaluation. *)
@@ -2818,15 +2914,7 @@ let rec eval_pattern_store (base : option wf_iri) (p : group_graph_pattern) (gs 
 
   | GP_Bind e v p' ->
     let omega = eval_pattern_store base p' gs dss in
-    List.Tot.map
-      (fun mu ->
-        match er_to_term (eval_expr_fwd base e mu) with
-        | Some t ->
-          (match sm_lookup v mu with
-           | Some _ -> mu
-           | None -> sm_bind v t mu)
-        | None -> mu)
-      omega
+    fx_bind_rows base e v omega 0
 
   | GP_Values vars rows ->
     eval_values vars rows
@@ -3541,7 +3629,12 @@ let rec eval_expr_with_base (base : option wf_iri) (e : expr) (mu : solution_map
      | None -> ER_Error)
 
   (* Date/time functions *)
-  | E_Now -> ER_Error  (* requires runtime context *)
+  | E_Now ->
+    (* §17.4.5.1: NOW() is an xsd:dateTime, the same instant throughout
+       one query execution. The lexical form is read at the boundary
+       (process-fixed) via fx_current_datetime. *)
+    ER_Term (T_Literal ({ lexical_form = fx_current_datetime ();
+                          datatype = xsd_dateTime; lang_tag = None }))
   | E_Year e1 ->
     (match er_to_datetime_lex (eval_expr_with_base base e1 mu) with
      | Some s -> (match dt_year s with Some n -> ER_Num n | None -> ER_Error)
@@ -3610,18 +3703,35 @@ let rec eval_expr_with_base (base : option wf_iri) (e : expr) (mu : solution_map
      else if iri_s = "http://www.w3.org/2005/xpath-functions#rand" then
        ER_Dbl "0.5"  (* deterministic stub for testing *)
      else if iri_s = "http://www.w3.org/2005/xpath-functions#uuid" then
-       let uuid_iri = "urn:uuid:00000000-0000-0000-0000-000000000000" in
-       if is_iri uuid_iri then ER_Term (T_IRI uuid_iri) else ER_Error
+       (* §17.4.2.12: UUID() returns a FRESH IRI per call. The freshness
+          seed is (row, call-site) injected by the caller (BIND / SELECT
+          projection); see fx_ctx_put. *)
+       (let row = (match fx_ctx_get fx_key_row mu with Some r -> r | None -> "") in
+        let occ = (match fx_ctx_get fx_key_occ mu with Some o -> o | None -> "") in
+        let uuid_iri = "urn:uuid:" ^ fx_uuid_of_seed ("u|" ^ row ^ "|" ^ occ) in
+        if is_iri uuid_iri then ER_Term (T_IRI uuid_iri) else ER_Error)
      else if iri_s = "http://www.w3.org/2005/xpath-functions#struuid" then
-       er_string "00000000-0000-0000-0000-000000000000"
+       (* §17.4.2.13: STRUUID() returns a FRESH simple-literal UUID string. *)
+       (let row = (match fx_ctx_get fx_key_row mu with Some r -> r | None -> "") in
+        let occ = (match fx_ctx_get fx_key_occ mu with Some o -> o | None -> "") in
+        er_string (fx_uuid_of_seed ("u|" ^ row ^ "|" ^ occ)))
      else if iri_s = "http://www.w3.org/2005/xpath-functions#bnode" then
-       match args with
-       | [] -> ER_Term (T_BNode "_:b0")
-       | [e1] ->
-         (match er_to_string (eval_expr_with_base base e1 mu) with
-          | Some s -> ER_Term (T_BNode ("_:b" ^ s))
-          | None -> ER_Error)
-       | _ -> ER_Error
+       (* §17.4.2.9: BNODE() is a fresh bnode distinct across solutions
+          AND across each occurrence within a solution; BNODE(str) is
+          stable for identical str within one solution but distinct
+          across solutions. Row seed => cross-solution freshness; the
+          call-site seed => per-occurrence freshness for BNODE(); the
+          str payload => per-argument identity for BNODE(str). *)
+       (let row = (match fx_ctx_get fx_key_row mu with Some r -> r | None -> "") in
+        match args with
+        | [] ->
+          let occ = (match fx_ctx_get fx_key_occ mu with Some o -> o | None -> "") in
+          ER_Term (T_BNode (fx_bnode_of_seed ("n|" ^ row ^ "|" ^ occ)))
+        | [e1] ->
+          (match er_to_string (eval_expr_with_base base e1 mu) with
+           | Some s -> ER_Term (T_BNode (fx_bnode_of_seed ("s|" ^ row ^ "|" ^ s)))
+           | None -> ER_Error)
+        | _ -> ER_Error)
      // GeoSPARQL v0 geof: function calls (Simple Features predicates,
      // geof:distance, geof:envelope) — see eval_geof_call above.
      else if String.length iri_s > String.length Geo.geof_ns &&
@@ -4309,21 +4419,47 @@ let project_solutions (vars : list var_name) (omega : solution_sequence)
 
 (* Evaluate a single SELECT expression item against a solution mapping.
    For SI_Var, the mapping is unchanged.
-   For SI_Expr e v, evaluate e and bind the result to v. — CONCRETE *)
-let eval_select_item (base : option wf_iri) (item : select_item) (mu : solution_mapping) (g : rdf_graph)
+   For SI_Expr e v, evaluate e and bind the result to v. — CONCRETE
+   `row`/`occ` carry the per-row / per-call-site freshness context for
+   BNODE()/UUID()/STRUUID(); the context is used only for evaluation
+   (mu_ctx) and never stored into the returned mapping. *)
+let eval_select_item (base : option wf_iri) (row : string) (occ : string)
+  (item : select_item) (mu : solution_mapping) (g : rdf_graph)
   : solution_mapping =
   match item with
   | SI_Var _ -> mu  (* variable already in mapping from WHERE *)
   | SI_Expr e v ->
-    let r = eval_expr_with_base base e mu in
+    let r = eval_expr_with_base base e (fx_ctx_put row occ mu) in
     match er_to_term r with
     | Some t -> sm_bind v t mu
     | None -> mu  (* expression error — leave unbound *)
 
+(* Fold the SELECT items over one row, tagging each item with its
+   position so distinct BNODE()/UUID() calls in the same row differ. *)
+let rec eval_select_items_row (base : option wf_iri) (row : string) (i : nat)
+  (items : list select_item) (mu : solution_mapping) (g : rdf_graph)
+  : Tot solution_mapping (decreases items) =
+  match items with
+  | [] -> mu
+  | item :: rest ->
+    let mu' = eval_select_item base row (string_of_int i) item mu g in
+    eval_select_items_row base row (i + 1) rest mu' g
+
+(* Map the item-fold over every row, tagging each row with its index so
+   the same expression yields a distinct fresh bnode/uuid per solution. *)
+let rec eval_select_items_rows (base : option wf_iri) (r : nat)
+  (omega : solution_sequence) (items : list select_item) (g : rdf_graph)
+  : Tot solution_sequence (decreases omega) =
+  match omega with
+  | [] -> []
+  | mu :: rest ->
+    eval_select_items_row base (string_of_int r) 0 items mu g
+    :: eval_select_items_rows base (r + 1) rest items g
+
 (* Apply SELECT expression items to each solution mapping — CONCRETE *)
 let eval_select_items (base : option wf_iri) (items : list select_item) (omega : solution_sequence) (g : rdf_graph)
   : solution_sequence =
-  List.Tot.map (fun mu -> List.Tot.fold_left (fun acc item -> eval_select_item base item acc g) mu items) omega
+  eval_select_items_rows base 0 omega items g
 
 (* Extract variable names from select items — CONCRETE *)
 let select_item_vars (items : list select_item) : list var_name =
@@ -4407,6 +4543,37 @@ let rec rewrite_query_bnodes_pattern (p : group_graph_pattern)
    docs/designissues/2026-04-25-tav2-parent7-finish.md). *)
 let is_synthetic_bnode_var (v : var_name) : bool =
   string_starts_with v "_bnode_"
+
+(* #236: OWL query-rewrite internal variables (OWL.QueryRewrite.fst)
+   are existential anchors / surrogates, NOT user-scope variables, and
+   must never surface in a SELECT * result row. The 2026-07-09 strict
+   runner exposed the leak (parent3 min-1, parent7 max-1 Female). These
+   prefixes match the fresh-name generators there: _sv_, _av_anchor_,
+   _av_bad_, _mc_, _mxc_, _mxqc1_r_, _mxqc1_anchor_, _exc_, _co_.
+
+   These vars must be stripped ONLY from the FINAL user-facing
+   projection (`strip_rewrite_internal_vars`, called from
+   OWL.QueryEval.eval_select_query_owl) — NOT from inner Select_All
+   sub-selects. `wrap_distinct_over_ggp` deliberately re-exposes the
+   anchor var via Select_All so the enclosing pattern can JOIN on it
+   (simple5: `?x :p ?_sv` correlated with `{?_sv a A} UNION {?_sv a B}`);
+   stripping it there decorrelates the join and admits spurious rows.
+   NOTE: this projects out the leaked columns only; the residual #236
+   narrowness (vacuous-truth drop, punning, and per-edge row
+   MULTIPLICATION when a subject has multiple P-edges) is unchanged and
+   still tracked in #236 pending the anchor -> UNION generalisation. *)
+let is_rewrite_internal_var (v : var_name) : bool =
+  string_starts_with v "_sv_"  || string_starts_with v "_av_" ||
+  string_starts_with v "_mc_"  || string_starts_with v "_mxc_" ||
+  string_starts_with v "_mxqc1_" || string_starts_with v "_exc_" ||
+  string_starts_with v "_co_"
+
+let strip_rewrite_internal_vars_mu (mu : solution_mapping) : solution_mapping =
+  List.Tot.filter (fun (v, _) -> not (is_rewrite_internal_var v)) mu
+
+(* Drop OWL-rewrite internal vars from the FINAL projection only. *)
+let strip_rewrite_internal_vars (omega : solution_sequence) : solution_sequence =
+  List.Tot.map strip_rewrite_internal_vars_mu omega
 
 let strip_synthetic_bnode_vars_mu (mu : solution_mapping) : solution_mapping =
   List.Tot.filter (fun (v, _) -> not (is_synthetic_bnode_var v)) mu

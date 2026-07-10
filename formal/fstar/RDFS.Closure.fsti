@@ -533,3 +533,16 @@ let rdfs_closure_with_reflexivity (g : rdf_graph) (fuel : nat) : Tot rdf_graph =
   let refl_axioms = rdfs_reflexivity_axioms closed in
   let with_refl = add_triples_if_new closed refl_axioms in
   rdfs_closure with_refl fuel
+
+(* RDF entailment rule rdfD2 (https://www.w3.org/TR/rdf11-mt/ §"RDF
+   entailment rules"): from any triple `sss ppp ooo`, infer
+   `ppp rdf:type rdf:Property`. Applied ONLY under the pure `ent:RDF`
+   regime (the runner's "RDF" branch) — kept OUT of rdfs_closure_step so
+   it does not perturb the shared RDFS / OWL-RL closure driver. Needed by
+   the SPARQL 1.1 entailment test rdf01 ("RDF inference test"). *)
+let rdf_property_axiom_of_triple (t : triple) : triple =
+  { s = S_IRI t.p; p = rdf_type; o = T_IRI rdf_Property }
+
+let rdf_property_axiom_closure (g : rdf_graph) : Tot rdf_graph =
+  let axioms : rdf_graph = List.Tot.map rdf_property_axiom_of_triple g in
+  graph_dedup_sort (add_triples_if_new g axioms)
