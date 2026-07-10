@@ -556,7 +556,16 @@ let parse_atom_element (n : xml_node) : option Syn.rif_atom =
            | [] -> Some (Syn.RIF_Uniterm pred [])
            | [Some a] -> Some (Syn.RIF_Uniterm pred [a])
            | [Some s; Some o] -> Some (Syn.RIF_Triple s pred o)
-           | _ -> None)))
+           | many ->
+             // Arity >= 3 (e.g. EBusiness_Contract's
+             // cpt:delivered(?item ?date ?store)): the generic
+             // RIF_Uniterm carries the full argument list;
+             // RIF.Core.Translation/Eval give it the n-ary
+             // reification encoding (Translation §1c). A single
+             // failed argument still fails the whole atom.
+             (match list_collect_some many with
+              | Some args_ok -> Some (Syn.RIF_Uniterm pred args_ok)
+              | None -> None))))
   | _ -> None
 
 // <Frame>
@@ -893,6 +902,21 @@ let rec parse_sentence_content (n : xml_node) (fuel : nat)
         (match child_elements_only children with
          | [] -> None
          | first :: _ -> parse_sentence_content first (fuel - 1))
+      else if tag_is "Exists" tag then
+        // Existentially quantified sentence — the corpus's
+        // `-conclusion.rif` documents for IRI_from_RDF_Literal /
+        // RDF_Combination_Blank_Node are a bare
+        // `<Exists><declare><Var>x</Var></declare><formula>F</formula></Exists>`
+        // root. The declared variables stay FREE in the parsed
+        // fact's atom(s); the entailment ASK the runner builds over
+        // the resulting BGP treats free variables existentially
+        // (">= 1 solution"), which is exactly RIF's semantics for an
+        // existential conclusion. Not accepted in rule-BODY position
+        // (parse_body_node is unchanged) — no vendored premise uses
+        // body-Exists.
+        (match first_child_with_local_name "formula" children with
+         | None -> None
+         | Some f_node -> parse_sentence_content f_node (fuel - 1))
       else if tag_is "sentence" tag then
         (match child_elements_only children with
          | [] -> None
@@ -1234,3 +1258,92 @@ let parse_rif_program_with_import_profiles (input : string)
     (match parse_rif_document root with
      | None -> None
      | Some prog -> Some (extract_document_imports_with_profiles root, prog))
+
+// ------------------------------------------------------------------
+// 12. rif:local document scoping (2026-07-10).
+//
+// RIF Core's semantics (RIF-BLD §3.3 symbol spaces) scope a
+// rif:local constant to the DOCUMENT it appears in: the same lexical
+// local constant in two separate documents denotes two DIFFERENT,
+// unrelated individuals (the corpus's Local_Constant /
+// Local_Predicate NegativeEntailmentTests exist precisely to check
+// this). local_to_iri above maps every local to the same
+// "urn:rif-local:<lex>" synthetic IRI regardless of source document,
+// which conflates them. scope_local_constants renames every such IRI
+// in an already-parsed program to "urn:rif-local:<scope>:<lex>";
+// callers evaluating an entailment pass a DIFFERENT scope for the
+// premise and the conclusion document, restoring the per-document
+// separation. Locals WITHIN one document keep joining (same scope).
+// ------------------------------------------------------------------
+
+let rif_local_prefix : string = "urn:rif-local:"
+
+let scope_local_iri (scope : string) (i : wf_iri) : wf_iri =
+  let plen = String.length rif_local_prefix in
+  if String.length i > plen && String.sub i 0 plen = rif_local_prefix then
+    let rest = String.sub i plen (String.length i - plen) in
+    let scoped = String.concat "" [rif_local_prefix; scope; ":"; rest] in
+    // scope strings are caller-fixed short ASCII words ("premise",
+    // "conclusion"), so the is_iri gate always passes in practice; a
+    // pathological scope falls back to the unscoped IRI rather than
+    // violating the wf_iri refinement.
+    if is_iri scoped then scoped else i
+  else i
+
+let rec scope_term (scope : string) (t : Syn.rif_term)
+  : Tot Syn.rif_term (decreases t) =
+  match t with
+  | Syn.RIF_Const (T_IRI i) -> Syn.RIF_Const (T_IRI (scope_local_iri scope i))
+  | Syn.RIF_Const _ -> t
+  | Syn.RIF_Var _ -> t
+  | Syn.RIF_TermExternal op args ->
+    // op is a builtin IRI (never a local); only the arguments scope.
+    Syn.RIF_TermExternal op (scope_terms scope args)
+
+and scope_terms (scope : string) (ts : list Syn.rif_term)
+  : Tot (list Syn.rif_term) (decreases ts) =
+  match ts with
+  | [] -> []
+  | t :: rest -> scope_term scope t :: scope_terms scope rest
+
+let scope_atom (scope : string) (a : Syn.rif_atom) : Syn.rif_atom =
+  match a with
+  | Syn.RIF_Triple s p o ->
+    Syn.RIF_Triple (scope_term scope s) (scope_term scope p) (scope_term scope o)
+  | Syn.RIF_Frame o p v ->
+    Syn.RIF_Frame (scope_term scope o) (scope_term scope p) (scope_term scope v)
+  | Syn.RIF_Member o c ->
+    Syn.RIF_Member (scope_term scope o) (scope_term scope c)
+  | Syn.RIF_Sub sub sup_ ->
+    Syn.RIF_Sub (scope_term scope sub) (scope_term scope sup_)
+  | Syn.RIF_Uniterm pred args ->
+    Syn.RIF_Uniterm (scope_term scope pred) (scope_terms scope args)
+
+let rec scope_body (scope : string) (b : Syn.rif_body)
+  : Tot Syn.rif_body (decreases b) =
+  match b with
+  | Syn.RIF_BodyAtom a -> Syn.RIF_BodyAtom (scope_atom scope a)
+  | Syn.RIF_BodyAnd bs -> Syn.RIF_BodyAnd (scope_bodies scope bs)
+  | Syn.RIF_BodyExternal op args -> Syn.RIF_BodyExternal op (scope_terms scope args)
+  | Syn.RIF_BodyEqual l r -> Syn.RIF_BodyEqual (scope_term scope l) (scope_term scope r)
+
+and scope_bodies (scope : string) (bs : list Syn.rif_body)
+  : Tot (list Syn.rif_body) (decreases bs) =
+  match bs with
+  | [] -> []
+  | b :: rest -> scope_body scope b :: scope_bodies scope rest
+
+let scope_rule (scope : string) (r : Syn.rif_rule) : Syn.rif_rule =
+  Syn.mk_rule (scope_atom scope r.head) (scope_body scope r.body)
+
+let scope_local_constants (scope : string) (p : Syn.rif_program) : Syn.rif_program =
+  Syn.program_of_rules
+    (List.Tot.map (scope_rule scope) p.rules)
+
+// Scoped variant of parse_rif_program_with_imports: parse, then
+// rename every rif:local-derived IRI into the given document scope.
+let parse_rif_program_with_imports_scoped (scope : string) (input : string)
+  : option (list string * Syn.rif_program) =
+  match parse_rif_program_with_imports input with
+  | None -> None
+  | Some (imports, prog) -> Some (imports, scope_local_constants scope prog)

@@ -398,7 +398,7 @@
 <header>
   <div class="inner">
     <div class="rendered-pill" title="Rendered = when this page was last regenerated. Tests = when the *_results.log files inside the repository were last updated. Both UTC.">
-      <span class="row"><span class="label">Rendered</span><strong>2026-07-10 16:49 UTC</strong></span>
+      <span class="row"><span class="label">Rendered</span><strong>2026-07-10 17:41 UTC</strong></span>
       <span class="row"><span class="label">Tests</span><strong class="tests">2026-07-10 01:56 UTC</strong></span>
     </div>
     <h1>W3C test results</h1>
@@ -1134,7 +1134,7 @@
           <div class="meter"><div class="seg seg-pass" style="width:80.74%"></div><div class="seg seg-fail" style="width:19.26%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
           <p class="suite-numbers-full">218 pass, 52 fail, 0 skip (out of 270)</p>
           <p class="suite-prov">Runner: <code>bin/csvw-runner</code> (<code>bin/linux-x86_64/csvw_runner</code>) &middot; Suite: vendored W3C csv2rdf corpus (ToRdf / ToRdfWithWarnings / NegativeRdf)</p>
-          <p class="suite-diag"><a href="https://github.com/danbri/factoidal/blob/claude/main/docs/designissues/2026-07-05-csvw-program-plan.md" target="_blank" rel="noopener">diagnosis: burn-down in progress — the CSVW program plan tracks the ToRdf / warnings / negative buckets; residual fails need full @context / metadata-merge processing</a></p>
+          <p class="suite-diag"><a href="https://github.com/danbri/factoidal/blob/rif-landing/docs/designissues/2026-07-05-csvw-program-plan.md" target="_blank" rel="noopener">diagnosis: burn-down in progress — the CSVW program plan tracks the ToRdf / warnings / negative buckets; residual fails need full @context / metadata-merge processing</a></p>
         </div>
       </details>
     </div>
@@ -1283,20 +1283,20 @@
 <details class="family-node amber" id="rules">
   <summary>
     <span class="fam-name">Rules: RIF Core</span>
-    <span class="fam-score">34/4/12 of 50</span>
+    <span class="fam-score">46/1/3 of 50</span>
     <span class="gap-badge">7 gaps</span>
     <span class="dot amber"></span>
   </summary>
   <div class="family-body">
-    <p class="fam-headline amber">34 pass, 4 fail, 12 skip (of 50) — Part 1 (4 vendored SPARQL-manifest cases) + Part 2 (46-test W3C RIF Core dialect corpus).</p>
+    <p class="fam-headline amber">46 pass, 1 fail, 3 skip (of 50) — Part 1 (4 vendored SPARQL-manifest cases) + Part 2 (46-test W3C RIF Core dialect corpus).</p>
     <div class="suites">
       <details class="suite-node amber">
-        <summary><span class="suite-name">RIF Core — combined (Part 1 + Part 2)</span><span class="suite-numbers">34/4/12 of 50</span><span class="dot amber"></span></summary>
+        <summary><span class="suite-name">RIF Core — combined (Part 1 + Part 2)</span><span class="suite-numbers">46/1/3 of 50</span><span class="dot amber"></span></summary>
         <div class="suite-body">
-          <div class="meter"><div class="seg seg-pass" style="width:68.00%"></div><div class="seg seg-fail" style="width:8.00%"></div><div class="seg seg-skip" style="width:24.00%"></div></div>
-          <p class="suite-numbers-full">34 pass, 4 fail, 12 skip (out of 50)</p>
+          <div class="meter"><div class="seg seg-pass" style="width:92.00%"></div><div class="seg seg-fail" style="width:2.00%"></div><div class="seg seg-skip" style="width:6.00%"></div></div>
+          <p class="suite-numbers-full">46 pass, 1 fail, 3 skip (out of 50)</p>
           <p class="suite-prov">Runner: <code>bin/rif-runner</code> (<code>bin/linux-x86_64/rif_runner</code>) &middot; Suites: <code>third_party/testing/rif/tc/</code> + <code>third_party/testing/rif-core-suite/</code></p>
-          <p class="suite-diag"><a href="https://github.com/danbri/factoidal/blob/claude/main/bin/rif-runner/README.md" target="_blank" rel="noopener">diagnosis: 1 corpus data defect (malformed xsd:string IRI in the official W3C zip) + 3 labelled engine KNOWN-GAPs, see bin/rif-runner/README.md</a></p>
+          <p class="suite-diag"><a href="https://github.com/danbri/factoidal/blob/rif-landing/bin/rif-runner/README.md" target="_blank" rel="noopener">diagnosis: 1 corpus data defect (malformed xsd:string IRI in the official W3C zip) + 3 labelled engine KNOWN-GAPs, see bin/rif-runner/README.md</a></p>
         </div>
       </details>
       <details class="suite-node green">
@@ -1309,12 +1309,12 @@
         </div>
       </details>
       <details class="suite-node amber">
-        <summary><span class="suite-name">RIF Core — Part 2 (W3C Core_v1.22 corpus)</span><span class="suite-numbers">30/4/12 of 46</span><span class="dot amber"></span></summary>
+        <summary><span class="suite-name">RIF Core — Part 2 (W3C Core_v1.22 corpus)</span><span class="suite-numbers">42/1/3 of 46</span><span class="dot amber"></span></summary>
         <div class="suite-body">
-          <div class="meter"><div class="seg seg-pass" style="width:65.22%"></div><div class="seg seg-fail" style="width:8.70%"></div><div class="seg seg-skip" style="width:26.09%"></div></div>
-          <p class="suite-numbers-full">30 pass, 4 fail, 12 skip (out of 46)</p>
+          <div class="meter"><div class="seg seg-pass" style="width:91.30%"></div><div class="seg seg-fail" style="width:2.17%"></div><div class="seg seg-skip" style="width:6.52%"></div></div>
+          <p class="suite-numbers-full">42 pass, 1 fail, 3 skip (out of 46)</p>
           <p class="suite-prov">Runner: <code>bin/rif-runner</code> &middot; Suite: <code>third_party/testing/rif-core-suite/Core_v1.22/Approved/</code></p>
-          <p class="suite-diag"><a href="https://github.com/danbri/factoidal/blob/claude/main/docs/claude-rules/scope.md" target="_blank" rel="noopener">diagnosis: docs/claude-rules/scope.md RIF section — every skip names the exact missing builtin/feature</a></p>
+          <p class="suite-diag"><a href="https://github.com/danbri/factoidal/blob/rif-landing/docs/claude-rules/scope.md" target="_blank" rel="noopener">diagnosis: docs/claude-rules/scope.md RIF section — every skip names the exact missing builtin/feature</a></p>
         </div>
       </details>
     </div>
@@ -1381,7 +1381,7 @@
           <div class="meter"><div class="seg seg-pass" style="width:78.41%"></div><div class="seg seg-fail" style="width:21.59%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
           <p class="suite-numbers-full">69 pass, 19 fail, 0 skip (out of 88)</p>
           <p class="suite-prov">Runner: <code>bin/xslt-runner</code> (<code>bin/linux-x86_64/xslt_runner</code>) &middot; Suite: <code>third_party/testing/xslt/manifest.json</code></p>
-          <p class="suite-diag"><a href="https://github.com/danbri/factoidal/blob/claude/main/.github/test-suites/xslt.yaml" target="_blank" rel="noopener">diagnosis: residual fails are the documented XSLT 1.0 constructs not yet in the transform engine — see the suite manifest</a></p>
+          <p class="suite-diag"><a href="https://github.com/danbri/factoidal/blob/rif-landing/.github/test-suites/xslt.yaml" target="_blank" rel="noopener">diagnosis: residual fails are the documented XSLT 1.0 constructs not yet in the transform engine — see the suite manifest</a></p>
         </div>
       </details>
     </div>
@@ -1486,7 +1486,7 @@ XML_Wellformedness.is_valid_ncname (informational only, see module comment):
           <div class="meter"><div class="seg seg-pass" style="width:99.92%"></div><div class="seg seg-fail" style="width:0.08%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
           <p class="suite-numbers-full">1181 pass, 1 fail, 0 skip (out of 1182)</p>
           <p class="suite-prov">Runner: <code>bin/shex-runner</code> (<code>bin/linux-x86_64/shex_runner</code>) &middot; Suite: <code>third_party/testing/shex/</code> (shexSpec/shexTest, ShExJ-first)</p>
-          <p class="suite-diag"><a href="https://github.com/danbri/factoidal/blob/claude/main/.github/test-suites/shex.yaml" target="_blank" rel="noopener">diagnosis: the 1 mismatch is an upstream fixture defect (start2RefS2.json has predicate p1 where the canonical ShExC schema has p2), not an engine bug</a></p>
+          <p class="suite-diag"><a href="https://github.com/danbri/factoidal/blob/rif-landing/.github/test-suites/shex.yaml" target="_blank" rel="noopener">diagnosis: the 1 mismatch is an upstream fixture defect (start2RefS2.json has predicate p1 where the canonical ShExC schema has p2), not an engine bug</a></p>
         </div>
       </details>
       <details class="suite-node green">
@@ -1552,7 +1552,7 @@ XML_Wellformedness.is_valid_ncname (informational only, see module comment):
           <div class="meter"><div class="seg seg-pass" style="width:23.29%"></div><div class="seg seg-fail" style="width:20.55%"></div><div class="seg seg-skip" style="width:56.16%"></div></div>
           <p class="suite-numbers-full">17 pass, 15 fail, 41 skip (out of 73)</p>
           <p class="suite-prov">Runner: <code>bin/linux-x86_64/rml_runner --io</code> &middot; Suite: <code>third_party/testing/rml-modules/rml-io/</code> (RMLSTC0* source tests) &middot; rml-cc (content-container) has no row: the committed runner exposes no <code>--cc</code> mode yet (tracked with the rml program plan)</p>
-          <p class="suite-diag"><a href="https://github.com/danbri/factoidal/blob/claude/main/docs/designissues/2026-07-05-rml-program-plan.md" target="_blank" rel="noopener">diagnosis: the fails/skips are rml-io logical-target (RMLTTC0*) and unsupported-source fixtures out of scope for the source-tests section — see the rml program plan</a></p>
+          <p class="suite-diag"><a href="https://github.com/danbri/factoidal/blob/rif-landing/docs/designissues/2026-07-05-rml-program-plan.md" target="_blank" rel="noopener">diagnosis: the fails/skips are rml-io logical-target (RMLTTC0*) and unsupported-source fixtures out of scope for the source-tests section — see the rml program plan</a></p>
         </div>
       </details>
     </div>
@@ -1758,7 +1758,7 @@ XML_Wellformedness.is_valid_ncname (informational only, see module comment):
           <div class="meter"><div class="seg seg-pass" style="width:98.53%"></div><div class="seg seg-fail" style="width:1.47%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
           <p class="suite-numbers-full">201 pass, 3 fail, 0 skip (out of 204)</p>
           <p class="suite-prov">Runner: <code>node --test tests/hub/*.mjs</code> &middot; live cells for every docs-hub post, run against the JS/wasm bundle</p>
-          <p class="suite-diag"><a href="https://github.com/danbri/factoidal/blob/claude/main/tests/hub/" target="_blank" rel="noopener">diagnosis: any residual fails are fixtures/build-artifacts absent in this checkout (uninitialised submodule or unbuilt C demo), not engine regressions</a></p>
+          <p class="suite-diag"><a href="https://github.com/danbri/factoidal/blob/rif-landing/tests/hub/" target="_blank" rel="noopener">diagnosis: any residual fails are fixtures/build-artifacts absent in this checkout (uninitialised submodule or unbuilt C demo), not engine regressions</a></p>
         </div>
       </details>
       <details class="suite-node green">
@@ -1908,7 +1908,7 @@ shex:         1181 pass, 1 fail, 0 skip (of 1182) — present=1
 shex-negative-syntax: 100 pass, 0 fail (of 100) — present=1
 jsonld-tordf: 461 pass, 0 fail, 6 skip (of 467) — present=1
 rml-core:     76 pass, 0 fail, 0 skip (of 76) — present=1
-rif-core:     34 pass, 4 fail, 12 skip (of 50) — present=1
+rif-core:     46 pass, 1 fail, 3 skip (of 50) — present=1
 vc-stage1:    117 pass, 0 fail, 0 skip (of 117) — present=1</pre>
 </details>
 
@@ -1927,9 +1927,9 @@ vc-stage1:    117 pass, 0 fail, 0 skip (of 117) — present=1</pre>
 </main>
 
 <footer>
-  Generated <strong>2026-07-10 16:49 UTC</strong> from commit
-  <code><a href="https://github.com/danbri/factoidal/commit/aaeef13043b58c5594ea0d62b89bf594c5549fa3">aaeef130</a></code>
-  on branch <code>claude/main</code> — &ldquo;hub: GeoSPARQL borough choropleth + vendored vector basemap + fullscreen; live-mode hub twin with relaxed CSP (task #105)&rdquo;.
+  Generated <strong>2026-07-10 17:41 UTC</strong> from commit
+  <code><a href="https://github.com/danbri/factoidal/commit/b46091493fd5ab3e1c93923e8d649f92ee85ac23">b460914</a></code>
+  on branch <code>rif-landing</code> — &ldquo;RIF Core tail burndown: 46 pass, 1 fail, 3 skip (of 50) — was 34/4/12&rdquo;.
   Re-run locally: <code>cd formal/fstar &amp;&amp; ./generate-report.sh --run</code>.
 </footer>
 

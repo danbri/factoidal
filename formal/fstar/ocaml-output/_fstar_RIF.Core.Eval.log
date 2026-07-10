@@ -1,13 +1,17 @@
-* Warning 241 at XSD.Datatypes.fst(0,0-0,0):
-  - Unable to load XSD.Datatypes.fst.checked since checked file
-    XSD.Datatypes.fst.checked is stale (digest mismatch for XSD.Datatypes.fst);
-    will recheck XSD.Datatypes.fst (suppressing this warning for further
-    modules)
+* Warning 241 at RDF.Indexed.fsti(0,0-0,0):
+  - Unable to load RDF.Indexed.fsti.checked since checked file
+    RDF.Indexed.fsti.checked is stale (digest mismatch for RDF.Indexed.fsti);
+    will recheck RDF.Indexed.fsti (suppressing this warning for further modules)
+
+* Warning 361 at SPARQL11.Algebra.fst(6682,0-6683,40):
+  - Some #push-options have not been popped. Current depth is 1.
 
 Extracted module RIF.Core.Eval
 * Warning 247 at RIF.Core.Eval.fst(0,0-0,0):
   - Checked file RIF.Core.Eval.fst.checked was not written.
-  - Reason: checked file RIF.Core.Builtins.fst.checked does not exist
+  - Reason:
+      checked file RDF.Graph.Executable.fst.checked is stale (digest mismatch
+      for RDF.Graph.Executable.fst)
 
 Verified module: RIF.Core.Eval
 All verification conditions discharged successfully

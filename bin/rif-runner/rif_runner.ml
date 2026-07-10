@@ -531,7 +531,13 @@ type corpus_outcome = CPass | CFail of string | CSkip of string
    name separately. *)
 let unsupported_construct_markers : (string * string) list = [
   "<List",     "List (RIF list terms)";
-  "<Exists",   "Exists (existential quantification in rule body/conclusion)";
+  (* <Exists> is no longer a blanket skip (2026-07-10):
+     Parser_RIFXML.parse_sentence_content accepts an existentially
+     quantified CONCLUSION (its declared variables stay free in the
+     parsed fact atoms and the entailment ASK treats free variables
+     existentially, matching RIF's semantics for an existential
+     conclusion). A premise-BODY Exists would still fail to parse
+     and reports a parse-shape skip -- no vendored premise uses it. *)
   "<Or>",      "Or (disjunction in rule body)";
   "<Naf",      "Naf (negation as failure)";
   "<Neg",      "Neg (classical negation)";
@@ -583,6 +589,25 @@ let supported_builtin_locals : string list = [
   "positiveInteger"; "unsignedLong"; "unsignedInt"; "unsignedShort";
   "unsignedByte"; "hexBinary"; "base64Binary"; "anyURI"; "boolean";
   "XMLLiteral";
+  (* string family (2026-07-10): value-space is-literal-<T> for the
+     xsd:string-derived datatypes + the fn: string functions and
+     predicates RIF_Core_Builtins now dispatches *)
+  "string"; "normalizedString"; "token"; "language"; "Name"; "NCName";
+  "NMTOKEN";
+  "compare"; "concat"; "string-join"; "substring"; "string-length";
+  "upper-case"; "lower-case"; "encode-for-uri"; "iri-to-uri";
+  "escape-html-uri"; "substring-before"; "substring-after"; "replace";
+  "contains"; "starts-with"; "ends-with"; "matches";
+  (* pred:iri-string -- ground filter (RIF_Core_Builtins) AND
+     binding-pattern execution (RIF_Core_Eval.apply_iri_string_binding) *)
+  "iri-string";
+  (* rdf:PlainLiteral family, operating on the decoded
+     xsd:string/rdf:langString form *)
+  "PlainLiteral"; "PlainLiteral-from-string-lang";
+  "string-from-PlainLiteral"; "lang-from-PlainLiteral";
+  "PlainLiteral-compare"; "matches-language-range";
+  (* dateTime slice (EBusiness_Contract) *)
+  "dateTime"; "date"; "subtract-dateTimes"; "days-from-duration";
 ]
 
 let is_supported_is_literal_local (local : string) : bool =
@@ -708,32 +733,17 @@ let ensure_group_present (raw : string) : string =
          "<payload><Group></Group></payload></Document>" raw
   else raw
 
-let parse_rif_program_lenient (raw : string)
+(* scope: the rif:local DOCUMENT scope (Parser_RIFXML.
+   parse_rif_program_with_imports_scoped) -- RIF Core scopes a
+   rif:local constant to the document it appears in, so the premise
+   and the conclusion/nonconclusion documents of one test must parse
+   under DIFFERENT scopes (Local_Constant / Local_Predicate exist to
+   check exactly this). Locals within one document keep joining. *)
+let parse_rif_program_lenient (scope : string) (raw : string)
   : (string list * RIF_Core_Syntax.rif_program) FStar_Pervasives_Native.option =
   let raw1 = if is_document_or_group_root raw then raw else wrap_bare_fact_in_group raw in
   let raw2 = ensure_group_present raw1 in
-  Parser_RIFXML.parse_rif_program_with_imports raw2
-
-(* Translate every conclusion "fact" rule's head atom into a triple
-   pattern; None (propagated) if any atom is ill-typed for
-   translate_atom (e.g. a literal-subject atom). Reuses
-   RIF_Core_Translation.translate_atom -- the same F*-extracted
-   function RIF_Core_Eval.fst calls for rule-BODY translation -- on
-   the HEAD position of each fact "rule" a conclusion document parses
-   to. No new RIF/SPARQL semantics: translate_atom's signature
-   (rif_atom -> option triple_pattern) does not care which position
-   its argument came from. *)
-let translate_conclusion_facts (rules : RIF_Core_Syntax.rif_rule list)
-  : SPARQL11_Algebra.triple_pattern list option =
-  List.fold_left
-    (fun acc (r : RIF_Core_Syntax.rif_rule) ->
-       match acc with
-       | None -> None
-       | Some tps ->
-         (match RIF_Core_Translation.translate_atom r.RIF_Core_Syntax.head with
-          | FStar_Pervasives_Native.None -> None
-          | FStar_Pervasives_Native.Some tp -> Some (tp :: tps)))
-    (Some []) rules
+  Parser_RIFXML.parse_rif_program_with_imports_scoped scope raw2
 
 let mk_ask_bgp_query (bgp : SPARQL11_Algebra.bgp) : SPARQL11_Algebra.query =
   { SPARQL11_Algebra.q_base = FStar_Pervasives_Native.None;
@@ -756,6 +766,20 @@ let mk_ask_bgp_query (bgp : SPARQL11_Algebra.bgp) : SPARQL11_Algebra.query =
    correct across this many sequential decision points. *)
 exception Corpus_skip of string
 exception Corpus_fail of string
+(* Early PASS from a dispatch branch that fully decided the test
+   (the Equal-rooted-conclusion inconsistency path). *)
+exception Corpus_pass_now
+
+(* The two conclusion shapes the corpus uses: a RIF-XML condition
+   document (the normal case), or an RDF GRAPH (RDF_Combination_
+   Constant_Equivalence_Graph_Entailment, whose conclusion is Turtle
+   -- vendored from the archived W3C wiki, see the PROVENANCE.md next
+   to it; the official zip never contained a -conclusion.rif because
+   none exists: the wiki's repository link to one 404'd already in
+   the earliest Wayback captures). *)
+type conclusion_source =
+  | Rif_conclusion of string        (* preprocessed RIF-XML text *)
+  | Graph_conclusion of triple list (* parsed conclusion RDF graph *)
 
 let run_corpus_entailment_test
     (verbose : bool) (positive : bool) (name : string) (dir : string)
@@ -764,30 +788,37 @@ let run_corpus_entailment_test
     let premise_path = Filename.concat dir (name ^ "-premise.rif") in
     let concl_suffix = if positive then "-conclusion.rif" else "-nonconclusion.rif" in
     let concl_path = Filename.concat dir (name ^ concl_suffix) in
+    let concl_ttl_path = Filename.concat dir (name ^ "-conclusion.ttl") in
     let premise_raw =
       match read_rif_preprocessed premise_path with
       | Some s -> s
       | None ->
         raise (Corpus_skip (Printf.sprintf "premise file not in vendored corpus: %s" premise_path))
     in
-    let concl_raw =
+    let concl_source =
       match read_rif_preprocessed concl_path with
-      | Some s -> s
+      | Some s -> Rif_conclusion s
       | None ->
-        raise (Corpus_skip
-                 (Printf.sprintf "%s not in vendored corpus (packaging gap in the official Core_v1.22 zip)"
-                    (Filename.basename concl_path)))
+        if positive && Sys.file_exists concl_ttl_path
+        then Graph_conclusion (load_data_file concl_ttl_path)
+        else
+          raise (Corpus_skip
+                   (Printf.sprintf "%s not in vendored corpus (packaging gap in the official Core_v1.22 zip)"
+                      (Filename.basename concl_path)))
     in
     (match detect_unsupported_construct premise_raw with
      | Some c -> raise (Corpus_skip c)
      | None -> ());
-    (match detect_unsupported_construct concl_raw with
-     | Some c -> raise (Corpus_skip c)
-     | None -> ());
+    (match concl_source with
+     | Rif_conclusion concl_raw ->
+       (match detect_unsupported_construct concl_raw with
+        | Some c -> raise (Corpus_skip c)
+        | None -> ());
+       (match find_unsupported_builtin concl_raw with
+        | Some c -> raise (Corpus_skip c)
+        | None -> ())
+     | Graph_conclusion _ -> ());
     (match find_unsupported_builtin premise_raw with
-     | Some c -> raise (Corpus_skip c)
-     | None -> ());
-    (match find_unsupported_builtin concl_raw with
      | Some c -> raise (Corpus_skip c)
      | None -> ());
     let profile = find_import_profile premise_raw in
@@ -800,7 +831,7 @@ let run_corpus_entailment_test
                     (match profile with Some p -> p | None -> "?")))
     in
     let imports, premise_program =
-      match parse_rif_program_lenient premise_raw with
+      match parse_rif_program_lenient "premise" premise_raw with
       | FStar_Pervasives_Native.Some (imports, program) -> (imports, program)
       | FStar_Pervasives_Native.None ->
         raise (Corpus_skip
@@ -809,24 +840,67 @@ let run_corpus_entailment_test
     (* An <Equal>-rooted conclusion (OWL_Combination_Vocabulary_
        Separation_Inconsistency_1/_2: conclusion `"a" = "b"` between
        two DISTINCT constants) is only entailed via an INCONSISTENT
-       premise combination — those two fixtures' premises violate
+       premise combination: both fixtures' premises violate
        OWL-Direct's individual/data-value vocabulary separation, and
-       an inconsistent combination entails everything. Detecting that
-       inconsistency (a per-constant role analysis of the RIF document
-       against the imported OWL ontology's typing) is a reasoning
-       feature this engine does not implement; precise skip rather
-       than a vague parse-failure message. *)
-    (try
-       let _ = Str.search_forward (Str.regexp "<Equal[ \t\r\n>]") concl_raw 0 in
-       raise (Corpus_skip
-                "Equal conclusion between distinct constants -- entailed only via an inconsistent premise combination (OWL-Direct individual/data-value vocabulary-separation violation); combination-inconsistency detection not implemented")
-     with Not_found -> ());
-    let concl_program =
-      match parse_rif_program_lenient concl_raw with
-      | FStar_Pervasives_Native.Some (_concl_imports, program) -> program
-      | FStar_Pervasives_Native.None ->
-        raise (Corpus_skip
-                 "Parser_RIFXML could not parse the conclusion (RIF-XML shape not yet modelled -- see bin/rif-runner/README.md)")
+       an inconsistent combination entails everything. Dispatched to
+       RIF_Core_Conformance.owl_direct_separation_inconsistent (the
+       narrow, per-direction violation detector -- see that module's
+       section 6 for its documented scope) over the premise's ground
+       frame facts and the RAW imported graph (the ObjectProperty
+       declaration is asserted directly; no closure needed). *)
+    let concl_is_equal_rooted =
+      match concl_source with
+      | Rif_conclusion concl_raw ->
+        (try let _ = Str.search_forward (Str.regexp "<Equal[ \t\r\n>]") concl_raw 0 in true
+         with Not_found -> false)
+      | Graph_conclusion _ -> false
+    in
+    if concl_is_equal_rooted then begin
+      let import_triples_raw =
+        List.concat_map
+          (fun url ->
+             match resolve_import_local_path dir url with
+             | None -> []
+             | Some path -> load_data_file path)
+          imports
+      in
+      let inconsistent =
+        profile = Some "http://www.w3.org/ns/entailment/OWL-Direct"
+        && RIF_Core_Conformance.owl_direct_separation_inconsistent
+             premise_program.RIF_Core_Syntax.rules import_triples_raw
+      in
+      if verbose then
+        Printf.eprintf "[%s] Equal-conclusion path: combination inconsistent=%b (expect %b)\n"
+          name inconsistent positive;
+      if inconsistent = positive then raise Corpus_pass_now
+      else raise (Corpus_fail
+                    (Printf.sprintf
+                       "Equal conclusion between distinct constants requires an inconsistent premise combination; separation-violation detector returned %b, expected %b"
+                       inconsistent positive))
+    end;
+    let bgp_of_conclusion () =
+      match concl_source with
+      | Graph_conclusion g ->
+        if g = [] then
+          raise (Corpus_fail "conclusion .ttl parsed to an empty graph (vendoring problem, not an engine result)")
+        else RIF_Core_Translation.graph_to_bgp g
+      | Rif_conclusion concl_raw ->
+        let concl_program =
+          match parse_rif_program_lenient "conclusion" concl_raw with
+          | FStar_Pervasives_Native.Some (_concl_imports, program) -> program
+          | FStar_Pervasives_Native.None ->
+            raise (Corpus_skip
+                     "Parser_RIFXML could not parse the conclusion (RIF-XML shape not yet modelled -- see bin/rif-runner/README.md)")
+        in
+        let head_atoms =
+          List.map (fun (r : RIF_Core_Syntax.rif_rule) -> r.RIF_Core_Syntax.head)
+            concl_program.RIF_Core_Syntax.rules
+        in
+        (match RIF_Core_Translation.translate_atoms_bgp head_atoms with
+         | FStar_Pervasives_Native.Some tps -> tps
+         | FStar_Pervasives_Native.None ->
+           raise (Corpus_skip
+                    "conclusion contains an atom translate_atom_bgp cannot express as triple patterns (e.g. a literal-subject Frame atom)"))
     in
     let import_triples =
       List.concat_map
@@ -838,13 +912,7 @@ let run_corpus_entailment_test
     in
     let fuel = Z.of_int 100 in
     let saturated = RIF_Core_Eval.fixpoint import_triples premise_program fuel in
-    let bgp =
-      match translate_conclusion_facts concl_program.RIF_Core_Syntax.rules with
-      | Some tps -> tps
-      | None ->
-        raise (Corpus_skip
-                 "conclusion contains an atom translate_atom cannot express as a triple pattern (e.g. a literal-subject atom)")
-    in
+    let bgp = bgp_of_conclusion () in
     if bgp = [] then
       (* Vacuous conclusion/nonconclusion (no facts named) -- a
          NegativeEntailmentTest with no facts to reject is a test-data
@@ -862,6 +930,7 @@ let run_corpus_entailment_test
       else CFail (Printf.sprintf "expected entailed=%b, got %b" positive entailed)
     end
   with
+  | Corpus_pass_now -> CPass
   | Corpus_skip reason -> CSkip reason
   | Corpus_fail msg -> CFail msg
   | exn -> CFail (Printf.sprintf "exception: %s" (Printexc.to_string exn))
@@ -898,11 +967,7 @@ let bump (tbl : bucket_tally) (label : string) : unit =
    the full diagnosis. *)
 let known_corpus_defect_note (name : string) : string option =
   if name = "RDF_Combination_Constant_Equivalence_4"
-  then Some "KNOWN-DEFECT: malformed xsd:string datatype IRI in the official W3C Core_v1.22.zip corpus itself (see bin/rif-runner/README.md Score section) -- not an engine gap"
-  else if name = "Factorial_Forward_Chaining"
-  then Some "KNOWN-GAP: an arity-2 Uniterm relation (ex:factorial) used in a rule BODY re-binds its first argument through this project's internal Uniterm-fact triple encoding; that encoding is only value-preserving for GROUND assert/query use (Positional_Arguments), not for re-binding a literal-valued argument as a genuine arithmetic operand across fixpoint rounds -- a correct fix needs real n-ary-relation reification (a join over two satellite triples sharing a fresh anchor), not the single-triple bookkeeping used elsewhere; not attempted this pass (see bin/rif-runner/README.md Score section)"
-  else if name = "Local_Constant" || name = "Local_Predicate"
-  then Some "KNOWN-GAP: rif:local constants are not scoped per-document (RIF Core requires the SAME lexical rif:local constant occurring in two SEPARATE documents to denote DIFFERENT, non-equal individuals -- this engine currently resolves rif:local to the same synthetic IRI regardless of which document/parse call it came from); not attempted this pass (see bin/rif-runner/README.md Score section)"
+  then Some "KNOWN-DEFECT: malformed xsd:string datatype IRI in the official W3C corpus itself (both the Core_v1.22.zip files and the archived authoritative wiki source at https://www.w3.org/2005/rules/wiki/RDF_Combination_Constant_Equivalence_4 carry the scheme-less prefix, checked 2026-07-10; see bin/rif-runner/README.md Score section) -- not an engine gap"
   else None
 
 (* ------------------------------------------------------------------ *)
@@ -963,7 +1028,7 @@ let load_all_imports (raw : string) (dir : string) : string list * triple list l
      here rather than calling Parser_RIFXML.parse_rif_program_with_imports
      directly, which would return None (no rules to report) and drop
      the imports along with it. *)
-  match parse_rif_program_lenient raw with
+  match parse_rif_program_lenient "input" raw with
   | FStar_Pervasives_Native.None -> ([], [])
   | FStar_Pervasives_Native.Some (imports, _program) ->
     (imports,
@@ -1018,9 +1083,36 @@ let run_corpus_import_rejection_test (verbose : bool) (name : string) (dir : str
         (* No defined ordering between two declared profiles -> no
            highest profile -> reject. *)
         RIF_Core_Conformance.has_incomparable_profile_pair profiles
+      else if name = "Multiple_Context_Error" then begin
+        (* A non-rif:local constant used in more than one syntactic
+           role (Uniterm predicate vs. frame slot property) across the
+           imports closure. Both the importing document and its
+           imported document are RIF-XML; the role analysis runs over
+           the RAW XML trees (RIF_Core_Conformance.
+           multiple_context_violation_xml) because the imported
+           document's multi-slot-frame rule HEAD is not a shape
+           Parser_RIFXML's single-atom-head rule parse accepts -- the
+           conformance check must not depend on the rule being
+           evaluable. *)
+        let imported_roots =
+          List.concat_map
+            (fun url ->
+               match resolve_import_local_path dir url with
+               | Some path when Filename.check_suffix path ".rif" ->
+                 (match read_rif_preprocessed path with
+                  | Some imp_raw ->
+                    (match Parser_XML.parse_xml_document imp_raw with
+                     | FStar_Pervasives_Native.Some r -> [r]
+                     | FStar_Pervasives_Native.None -> [])
+                  | None -> [])
+               | _ -> [])
+            _imports
+        in
+        RIF_Core_Conformance.multiple_context_violation_xml (root :: imported_roots)
+      end
       else
         raise (Corpus_skip
-                 "constant/vocabulary-separation tracking across the imports closure not implemented (Multiple_Context_Error)")
+                 (Printf.sprintf "no import-rejection dispatch for fixture %s" name))
     in
     if verbose then
       Printf.eprintf "[%s] profiles=%s should_reject=%b\n" name (String.concat "," profiles) should_reject;

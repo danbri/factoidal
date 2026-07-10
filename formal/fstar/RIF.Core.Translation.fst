@@ -150,6 +150,87 @@ let rif_term_to_uniterm_subject (t : Syn.rif_term) : option pattern_subject =
   | Syn.RIF_TermExternal _ _  -> None
 
 // ------------------------------------------------------------------
+// 1c. Uniterm ARGUMENT-VALUE satellites and n-ary (arity >= 3)
+// reification (2026-07-10, closing the Factorial_Forward_Chaining /
+// EBusiness_Contract KNOWN-GAPs).
+//
+// The single-triple arity-2 encoding above is value-preserving for
+// GROUND assert/query use but loses a literal-valued FIRST argument
+// when a rule body re-binds it through a variable (the variable binds
+// the bookkeeping blank node, not the literal — the Factorial gap).
+// Fix: alongside the classic triple (enc(a1), p, a2), the assertion
+// side (RIF.Core.Eval.instantiate_atom_all) also emits an
+// ARGUMENT-VALUE SATELLITE
+//     (enc(a1), urn:rif-uniterm:arg1, a1)
+// whose object carries a1's genuine value (enc(iri) = the iri itself,
+// enc(literal) = literal_subject_bnode_label — deterministic in the
+// VALUE, so equal values share the anchor). A body atom p(?v, X) then
+// translates to the two-pattern join
+//     (?anchor, p, X') . (?anchor, urn:rif-uniterm:arg1, ?v)
+// binding ?v to the genuine value. The anchor variable name is a
+// deterministic function of the RIF variable name ('$' cannot occur
+// in a RIF <Var> name, so no collision), which is CORRECT — not just
+// convenient — because the anchor itself is a function of the value.
+//
+// Arity >= 3 (EBusiness_Contract's cpt:delivered(?item ?date ?store))
+// has no classic triple at all; a ground fact p(a1 ... an) reifies as
+//     (anchor, p, "true"^^xsd:boolean)
+//     (anchor, urn:rif-uniterm:arg<i>, ai)      for each i
+// with anchor a blank node whose label is a deterministic
+// serialisation of (p, a1 ... an) — same fact, same anchor; distinct
+// facts, distinct anchors. A body atom of arity >= 3 translates to
+// the corresponding (n+1)-pattern join over a per-atom-occurrence
+// anchor variable (indexed by the atom's position in the body, so two
+// distinct atom occurrences never share an anchor variable).
+//
+// All of this is internal bookkeeping shared by exactly two sites —
+// RIF.Core.Eval.instantiate_atom_all (assert) and translate_atom_bgp
+// (query) — never exposed to any external RDF-semantics check.
+// ------------------------------------------------------------------
+
+let rif_uniterm_arg_pred (i : nat) : wf_iri =
+  let s = String.concat "" ["urn:rif-uniterm:arg"; string_of_int i] in
+  // string_of_int of a nat is digits only, so s is always a valid
+  // "urn:..." IRI — the fallback is unreachable but keeps the
+  // refinement total without a per-i normalization proof.
+  if is_iri s then s else rif_uniterm_nullary_subject
+
+let uniterm_subject_anchor_var (v : string) : string =
+  String.concat "" ["$$uniterm-subj$"; v]
+
+let uniterm_anchor_var (idx : nat) : string =
+  String.concat "" ["$$uniterm-anchor$"; string_of_int idx]
+
+// Deterministic serialisation of a RESOLVED term for the n-ary fact
+// anchor label. The kind prefixes keep IRIs/bnodes/literals disjoint;
+// a literal lexical form containing the joiner could in principle
+// collide two argument LISTS, which is acceptable for this internal
+// bookkeeping (no vendored fixture exercises adversarial lexical
+// forms, and a collision only ever MERGES two facts' anchors —
+// detected immediately by the corpus's ground conclusions).
+let rif_term_anchor_fragment (t : rdf_term) : string =
+  match t with
+  | T_IRI i -> String.concat "" ["i:"; i]
+  | T_BNode b -> String.concat "" ["b:"; b]
+  | T_Literal l ->
+    String.concat "" [
+      "l:"; l.datatype; ":";
+      (match l.lang_tag with Some tg -> tg | None -> ""); ":";
+      l.lexical_form
+    ]
+
+let rec anchor_fragments (ts : list rdf_term) : Tot (list string) (decreases ts) =
+  match ts with
+  | [] -> []
+  | t :: rest -> rif_term_anchor_fragment t :: anchor_fragments rest
+
+let nary_fact_anchor_label (p : wf_iri) (args : list rdf_term) : bnode_id =
+  String.concat "" [
+    "rif-uniterm-fact:"; p; "|";
+    String.concat "|" (anchor_fragments args)
+  ]
+
+// ------------------------------------------------------------------
 // 2. Atom-level translation.
 //
 // Each atom maps to exactly one triple_pattern. The Member and Sub
@@ -321,18 +402,91 @@ and split_body_list (bs : list Syn.rif_body)
 // split_body/split_body_list produces) to a BGP — same all-or-nothing
 // failure propagation as translate_body_list, just without the And
 // tree-walking (the tree shape was already flattened by split_body).
-let rec translate_atoms_bgp (atoms : list Syn.rif_atom)
+// Per-argument satellite patterns for an arity >= 3 body atom: one
+// (?anchor, urn:rif-uniterm:arg<i>, arg_i) pattern per argument.
+let rec nary_arg_patterns (anchor : string) (args : list Syn.rif_term) (i : nat)
+  : Tot (list triple_pattern) (decreases args)
+  =
+  match args with
+  | [] -> []
+  | a :: rest ->
+    { tp_s = PS_Var anchor;
+      tp_p = PT_IRI (rif_uniterm_arg_pred i);
+      tp_o = rif_term_to_pattern a }
+    :: nary_arg_patterns anchor rest (i + 1)
+
+// Atom -> list of triple patterns, satellite-aware (see section 1c).
+// idx identifies this atom's occurrence position within its body so
+// distinct arity >= 3 atom occurrences get distinct anchor variables.
+let translate_atom_bgp (idx : nat) (a : Syn.rif_atom) : option bgp =
+  match a with
+  | Syn.RIF_Triple (Syn.RIF_Var v) p o ->
+    // Variable first argument of an arity-2 Uniterm: join through the
+    // argument-value satellite so v binds the GENUINE value (literal
+    // or IRI), not the bookkeeping subject encoding.
+    let anchor = uniterm_subject_anchor_var v.var_name in
+    Some [ { tp_s = PS_Var anchor;
+             tp_p = rif_term_to_pattern p;
+             tp_o = rif_term_to_pattern o };
+           { tp_s = PS_Var anchor;
+             tp_p = PT_IRI (rif_uniterm_arg_pred 1);
+             tp_o = PT_Var v.var_name } ]
+  | Syn.RIF_Uniterm (Syn.RIF_Const (T_IRI pi)) args ->
+    if List.Tot.length args >= 3 then
+      let anchor = uniterm_anchor_var idx in
+      Some ({ tp_s = PS_Var anchor;
+              tp_p = PT_IRI pi;
+              tp_o = rif_term_to_pattern (Syn.RIF_Const rif_uniterm_true_marker) }
+            :: nary_arg_patterns anchor args 1)
+    else
+      (match translate_atom a with
+       | None -> None
+       | Some tp -> Some [tp])
+  | _ ->
+    (match translate_atom a with
+     | None -> None
+     | Some tp -> Some [tp])
+
+// Satellite-aware via translate_atom_bgp; the zero-index public
+// wrapper below keeps every existing call site source-compatible.
+let rec translate_atoms_bgp_idx (atoms : list Syn.rif_atom) (idx : nat)
   : Tot (option bgp) (decreases atoms)
   =
   match atoms with
   | [] -> Some []
   | a :: rest ->
-    (match translate_atom a with
+    (match translate_atom_bgp idx a with
      | None -> None
-     | Some tp ->
-       (match translate_atoms_bgp rest with
+     | Some tps ->
+       (match translate_atoms_bgp_idx rest (idx + 1) with
         | None -> None
-        | Some tps -> Some (tp :: tps)))
+        | Some more -> Some (List.Tot.append tps more)))
+
+let translate_atoms_bgp (atoms : list Syn.rif_atom) : option bgp =
+  translate_atoms_bgp_idx atoms 0
+
+// ------------------------------------------------------------------
+// 3c. RDF-graph conclusions (RDF_Combination_Constant_Equivalence_
+// Graph_Entailment): a RIF-RDF combination test whose CONCLUSION is
+// an RDF graph rather than a RIF condition — the combination entails
+// the conclusion graph iff each of its triples holds (blank nodes
+// existentially, which eval_ask_query's bnode-to-variable rewrite
+// already provides). The embedding of a ground triple as a BGP
+// pattern is 1:1.
+// ------------------------------------------------------------------
+
+let triple_to_pattern (t : triple) : triple_pattern =
+  { tp_s = (match t.s with
+            | S_IRI i -> PS_IRI i
+            | S_BNode b -> PS_BNode b);
+    tp_p = PT_IRI t.p;
+    tp_o = (match t.o with
+            | T_IRI i -> PT_IRI i
+            | T_BNode b -> PT_BNode b
+            | T_Literal l -> PT_Literal l) }
+
+let graph_to_bgp (g : rdf_graph) : bgp =
+  List.Tot.map triple_to_pattern g
 
 // ------------------------------------------------------------------
 // 4. Head translation.

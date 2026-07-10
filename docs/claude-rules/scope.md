@@ -42,16 +42,26 @@ being forgotten.
 
 ### RIF Core (Rule Interchange Format) — supported subset only
 
-RIF Core is a full production-rule language; factoidal implements only
-the fragment the 4 vendored W3C RIF test cases exercise: `Forall` /
+RIF Core is a full production-rule language; factoidal implements the
+fragment the W3C RIF Core test distribution exercises: `Forall` /
 `Frame` / `And` / `Implies` rule bodies translated to SPARQL BGPs
-(`RIF.Core.Translation.fst`), forward-chaining fixpoint saturation
-(`RIF.Core.Eval.fst`), and single `<Import>` companion-graph
-resolution (with OWL-Direct closure applied first when the import's
-own `<profile>` declares it — see `bin/rif-runner/rif_runner.ml`'s
-`apply_import_closure`). General RIF-BLD (built-ins, list terms,
-`External` function calls) and RIF-PRD (production rules, actions,
-retraction) are **not implemented** and not planned.
+(`RIF.Core.Translation.fst`, including Uniterm argument-value
+satellites and n-ary >= 3 reification since 2026-07-10),
+forward-chaining fixpoint saturation (`RIF.Core.Eval.fst`),
+`External(...)`/`Equal` body conditions over the RIF-DTB builtin
+subset in `RIF.Core.Builtins.fst` (numeric, string, rdf:PlainLiteral
+families; a dateTime slice; `pred:iri-string` with binding-pattern
+execution), `Exists`-quantified conclusions, per-document `rif:local`
+scoping, dialect conformance checking (`RIF.Core.Conformance.fst`:
+safeness, free variables, import rejection, cross-document
+constant-role tracking, OWL-Direct vocabulary-separation
+inconsistency), and single `<Import>` companion-graph resolution
+(with OWL-Direct closure applied first when the import's own
+`<profile>` declares it — see `bin/rif-runner/rif_runner.ml`'s
+`apply_import_closure`). RIF **List terms**, the **full
+date/time/duration builtin family** (only the EBusiness slice is
+implemented), and RIF-PRD (production rules, actions, retraction)
+are **not implemented**; RIF-PRD is not planned.
 
 **Concretely:** the 4 RIF tests under
 `third_party/testing/w3c/sparql/sparql11/entailment/` (manifest IRIs
@@ -73,29 +83,22 @@ frame/BGP + single-`<Import>` shape above is out of scope; a runner
 encountering one should report an honest FAIL/SKIP with a diagnosis,
 not force a PASS.
 
-**Full Core dialect corpus (2026-07-05):** `bin/rif-runner/rif_runner.ml`
+**Full Core dialect corpus (2026-07-10):** `bin/rif-runner/rif_runner.ml`
 also walks the complete official W3C RIF Core dialect test
 distribution vendored at `third_party/testing/rif-core-suite/`
 (46 tests — see that directory's `README.md` for source/license/
 inventory, and `bin/rif-runner/README.md` for the full pipeline,
-score, and skip-bucket table). Measured: **7 pass, 3 fail, 36 skip
-(out of 46)**; combined with the 4 tests above, **11 pass, 3 fail,
-36 skip (out of 50)**. The skips are almost entirely RIF-BLD
-built-ins (`External`, 16 tests) and the genuine RIF Core constructs
-this project does not implement (`Equal`, `Exists`, `List` — 4
-tests combined) plus the syntax-safeness/import-rejection test
-categories (12 tests, no dialect-conformance validator exists). The
-3 FAILs are diagnosed, not swept under a SKIP: 2 are real
-construct/semantics gaps (`rdf:PlainLiteral` language-tag decoding
-in `Parser.RIFXML.fst`'s `const_from_type`; OWL-Direct semantics has
-no ontology-annotation-triple exclusion step before RIF rule bodies
-evaluate against an imported graph) and 1 is a data defect in the
-official `Core_v1.22.zip` distribution itself (a malformed
-`xsd:string` datatype IRI in `RDF_Combination_Constant_Equivalence_4`'s
-vendored import files, present since the test was authored in 2010).
-None of the 3 are fixed here — all three need F\* edits, out of
-scope for the PR that added the corpus walker; see
-`bin/rif-runner/README.md` for the per-test detail.
+score, and per-test disposition table). Measured 2026-07-10:
+**42 pass, 1 fail, 3 skip (out of 46)**; combined with the 4 tests
+above, **46 pass, 1 fail, 3 skip (out of 50)** — up from 34 pass,
+4 fail, 12 skip on 2026-07-05 and 11 pass, 3 fail, 36 skip at the
+corpus walker's first landing. The 1 FAIL is a data defect in the
+official corpus itself (`RDF_Combination_Constant_Equivalence_4`'s
+malformed `xsd:string` datatype IRI — present in both the
+`Core_v1.22.zip` files and the archived authoritative wiki source,
+checked 2026-07-10); the 3 skips each name their gap (RIF List
+terms ×2; the full date/time/duration builtin family, where only
+the EBusiness_Contract slice is implemented).
 
 ### Full OWL DL tableau classifier
 

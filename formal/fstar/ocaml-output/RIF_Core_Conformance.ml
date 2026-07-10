@@ -216,7 +216,7 @@ let external_op_and_args (external_node : Parser_XML.xml_node) :
                                 with
                                 | FStar_Pervasives_Native.Some
                                     (RIF_Core_Syntax.RIF_Const
-                                    (RDF_Graph_Executable.T_IRI pi)) ->
+                                    (RDF_Term.T_IRI pi)) ->
                                     let args_n =
                                       Parser_RIFXML.first_child_with_local_name
                                         "args" ichildren in
@@ -517,20 +517,17 @@ and has_variable_frame_property_list
      | c::rest ->
          (has_variable_frame_property c (fuel - Prims.int_one)) ||
            (has_variable_frame_property_list rest (fuel - Prims.int_one)))
-let rif_iri_datatype : RDF_Graph_Executable.wf_iri=
-  "http://www.w3.org/2007/rif#iri"
-let rdf_plainliteral_datatype : RDF_Graph_Executable.wf_iri=
+let rif_iri_datatype : RDF_Term.wf_iri= "http://www.w3.org/2007/rif#iri"
+let rdf_plainliteral_datatype : RDF_Term.wf_iri=
   "http://www.w3.org/1999/02/22-rdf-syntax-ns#PlainLiteral"
-let triple_has_forbidden_datatype (t : RDF_Graph_Executable.triple) :
-  Prims.bool=
-  match t.RDF_Graph_Executable.o with
-  | RDF_Graph_Executable.T_Literal l ->
-      (l.RDF_Graph_Executable.datatype = rif_iri_datatype) ||
-        (l.RDF_Graph_Executable.datatype = rdf_plainliteral_datatype)
+let triple_has_forbidden_datatype (t : RDF_Triple.triple) : Prims.bool=
+  match t.RDF_Triple.o with
+  | RDF_Term.T_Literal l ->
+      (l.RDF_Term.datatype = rif_iri_datatype) ||
+        (l.RDF_Term.datatype = rdf_plainliteral_datatype)
   | uu___ -> false
-let graph_has_forbidden_rif_datatype
-  (g : RDF_Graph_Executable.triple Prims.list) : Prims.bool=
-  FStar_List_Tot_Base.existsb triple_has_forbidden_datatype g
+let graph_has_forbidden_rif_datatype (g : RDF_Triple.triple Prims.list) :
+  Prims.bool= FStar_List_Tot_Base.existsb triple_has_forbidden_datatype g
 let profile_rank (p : Prims.string) :
   Prims.nat FStar_Pervasives_Native.option=
   if p = "http://www.w3.org/ns/entailment/Simple"
@@ -558,5 +555,161 @@ let rec has_incomparable_profile_pair (profiles : Prims.string Prims.list) :
       (FStar_List_Tot_Base.existsb
          (fun q -> Prims.op_Negation (profiles_comparable p q)) rest)
         || (has_incomparable_profile_pair rest)
-let imported_graph_is_empty (g : RDF_Graph_Executable.triple Prims.list) :
-  Prims.bool= Prims.uu___is_Nil g
+let imported_graph_is_empty (g : RDF_Triple.triple Prims.list) : Prims.bool=
+  Prims.uu___is_Nil g
+let const_iri_text (n : Parser_XML.xml_node) :
+  Prims.string FStar_Pervasives_Native.option=
+  match n with
+  | Parser_XML.XElement (tag, attrs, children) ->
+      if Parser_RIFXML.tag_is "Const" tag
+      then
+        (match Parser_XML.find_attr "type" attrs with
+         | FStar_Pervasives_Native.Some ty ->
+             if Parser_RIFXML.is_iri_type_marker ty
+             then
+               FStar_Pervasives_Native.Some
+                 (Parser_RIFXML.trim_ws
+                    (Parser_RIFXML.collect_leaf_text children))
+             else FStar_Pervasives_Native.None
+         | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None)
+      else FStar_Pervasives_Native.None
+  | uu___ -> FStar_Pervasives_Native.None
+let host_first_const_iri (host : Parser_XML.xml_node) :
+  Prims.string Prims.list=
+  match host with
+  | Parser_XML.XElement (uu___, uu___1, children) ->
+      (match Parser_RIFXML.child_elements_only children with
+       | first::uu___2 ->
+           (match const_iri_text first with
+            | FStar_Pervasives_Native.Some i -> [i]
+            | FStar_Pervasives_Native.None -> [])
+       | [] -> [])
+  | uu___ -> []
+let rec collect_atom_op_iris (n : Parser_XML.xml_node) (fuel : Prims.nat) :
+  Prims.string Prims.list=
+  if fuel = Prims.int_zero
+  then []
+  else
+    (match n with
+     | Parser_XML.XElement (tag, uu___1, children) ->
+         let here =
+           if Parser_RIFXML.tag_is "Atom" tag
+           then
+             match Parser_RIFXML.first_child_with_local_name "op" children
+             with
+             | FStar_Pervasives_Native.Some op_node ->
+                 host_first_const_iri op_node
+             | FStar_Pervasives_Native.None -> []
+           else [] in
+         FStar_List_Tot_Base.append here
+           (collect_atom_op_iris_list children (fuel - Prims.int_one))
+     | uu___1 -> [])
+and collect_atom_op_iris_list (children : Parser_XML.xml_node Prims.list)
+  (fuel : Prims.nat) : Prims.string Prims.list=
+  if fuel = Prims.int_zero
+  then []
+  else
+    (match children with
+     | [] -> []
+     | c::rest ->
+         FStar_List_Tot_Base.append
+           (collect_atom_op_iris c (fuel - Prims.int_one))
+           (collect_atom_op_iris_list rest (fuel - Prims.int_one)))
+let rec collect_frame_property_iris (n : Parser_XML.xml_node)
+  (fuel : Prims.nat) : Prims.string Prims.list=
+  if fuel = Prims.int_zero
+  then []
+  else
+    (match n with
+     | Parser_XML.XElement (tag, uu___1, children) ->
+         let here =
+           if Parser_RIFXML.tag_is "slot" tag
+           then host_first_const_iri n
+           else [] in
+         FStar_List_Tot_Base.append here
+           (collect_frame_property_iris_list children (fuel - Prims.int_one))
+     | uu___1 -> [])
+and collect_frame_property_iris_list
+  (children : Parser_XML.xml_node Prims.list) (fuel : Prims.nat) :
+  Prims.string Prims.list=
+  if fuel = Prims.int_zero
+  then []
+  else
+    (match children with
+     | [] -> []
+     | c::rest ->
+         FStar_List_Tot_Base.append
+           (collect_frame_property_iris c (fuel - Prims.int_one))
+           (collect_frame_property_iris_list rest (fuel - Prims.int_one)))
+let rec collect_over_roots
+  (f : Parser_XML.xml_node -> Prims.string Prims.list)
+  (roots : Parser_XML.xml_node Prims.list) : Prims.string Prims.list=
+  match roots with
+  | [] -> []
+  | r::rest -> FStar_List_Tot_Base.append (f r) (collect_over_roots f rest)
+let multiple_context_violation_xml (roots : Parser_XML.xml_node Prims.list) :
+  Prims.bool=
+  let preds =
+    collect_over_roots (fun r -> collect_atom_op_iris r conformance_fuel)
+      roots in
+  let props =
+    collect_over_roots
+      (fun r -> collect_frame_property_iris r conformance_fuel) roots in
+  FStar_List_Tot_Base.existsb (fun i -> FStar_List_Tot_Base.mem i props)
+    preds
+let rec body_atoms_of (b : RIF_Core_Syntax.rif_body) :
+  RIF_Core_Syntax.rif_atom Prims.list=
+  match b with
+  | RIF_Core_Syntax.RIF_BodyAtom a -> [a]
+  | RIF_Core_Syntax.RIF_BodyAnd bs -> body_atoms_of_list bs
+  | RIF_Core_Syntax.RIF_BodyExternal (uu___, uu___1) -> []
+  | RIF_Core_Syntax.RIF_BodyEqual (uu___, uu___1) -> []
+and body_atoms_of_list (bs : RIF_Core_Syntax.rif_body Prims.list) :
+  RIF_Core_Syntax.rif_atom Prims.list=
+  match bs with
+  | [] -> []
+  | b::rest ->
+      FStar_List_Tot_Base.append (body_atoms_of b) (body_atoms_of_list rest)
+let rule_atoms (r : RIF_Core_Syntax.rif_rule) :
+  RIF_Core_Syntax.rif_atom Prims.list= (r.RIF_Core_Syntax.head) ::
+  (body_atoms_of r.RIF_Core_Syntax.body)
+let rec rules_atoms (rs : RIF_Core_Syntax.rif_rule Prims.list) :
+  RIF_Core_Syntax.rif_atom Prims.list=
+  match rs with
+  | [] -> []
+  | r::rest -> FStar_List_Tot_Base.append (rule_atoms r) (rules_atoms rest)
+let owl_object_property_iri : RDF_Term.wf_iri=
+  "http://www.w3.org/2002/07/owl#ObjectProperty"
+let iri_has_xsd_prefix (i : RDF_Term.wf_iri) : Prims.bool=
+  let plen = FStar_String.strlen OWL_Closure.xsd_ns_prefix in
+  ((FStar_String.strlen i) > plen) &&
+    ((FStar_String.sub i Prims.int_zero plen) = OWL_Closure.xsd_ns_prefix)
+let graph_declares_object_property (g : RDF_Triple.triple Prims.list)
+  (p : RDF_Term.wf_iri) : Prims.bool=
+  FStar_List_Tot_Base.existsb
+    (fun t ->
+       ((match t.RDF_Triple.s with
+         | RDF_Term.S_IRI si -> si = p
+         | uu___ -> false) && (t.RDF_Triple.p = RDFS_Closure.rdf_type)) &&
+         (match t.RDF_Triple.o with
+          | RDF_Term.T_IRI oi -> oi = owl_object_property_iri
+          | uu___ -> false)) g
+let frame_fact_separation_violation (imported : RDF_Triple.triple Prims.list)
+  (a : RIF_Core_Syntax.rif_atom) : Prims.bool=
+  match a with
+  | RIF_Core_Syntax.RIF_Frame
+      (RIF_Core_Syntax.RIF_Const (RDF_Term.T_IRI uu___),
+       RIF_Core_Syntax.RIF_Const (RDF_Term.T_IRI p), v)
+      ->
+      (match v with
+       | RIF_Core_Syntax.RIF_Const (RDF_Term.T_IRI vi) ->
+           (p = RDFS_Closure.rdf_type) && (iri_has_xsd_prefix vi)
+       | RIF_Core_Syntax.RIF_Const (RDF_Term.T_Literal uu___1) ->
+           graph_declares_object_property imported p
+       | uu___1 -> false)
+  | uu___ -> false
+let owl_direct_separation_inconsistent
+  (rules : RIF_Core_Syntax.rif_rule Prims.list)
+  (imported : RDF_Triple.triple Prims.list) : Prims.bool=
+  FStar_List_Tot_Base.existsb (frame_fact_separation_violation imported)
+    (rules_atoms rules)
