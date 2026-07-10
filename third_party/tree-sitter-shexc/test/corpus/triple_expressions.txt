@@ -1,0 +1,39 @@
+==================
+Triple constraint cardinalities (plus and repeat range)
+==================
+
+<#S> {
+  <p> xsd:string+;
+  <q> IRI{2,5}
+}
+
+---
+
+(shex_doc
+  (shape_expr_decl
+    label: (shape_expr_label
+      (irireference))
+    shape_expr: (shape_atom
+      shape_expr: (shape_definition
+        (inline_shape_definition
+          expression: (triple_expression
+            (group_triple_expr
+              element: (triple_constraint
+                predicate: (predicate
+                  (irireference))
+                value_expr: (inline_shape_expression
+                  (inline_shape_atom
+                    datatype: (node_constraint
+                      (prefixed_name
+                        (pname_ln)))))
+                cardinality: (cardinality
+                  (card_plus)))
+              element: (triple_constraint
+                predicate: (predicate
+                  (irireference))
+                value_expr: (inline_shape_expression
+                  (inline_shape_atom
+                    node_kind: (node_constraint
+                      (kw_iri))))
+                cardinality: (cardinality
+                  (repeat_range))))))))))

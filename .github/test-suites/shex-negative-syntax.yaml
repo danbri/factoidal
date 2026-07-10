@@ -1,0 +1,46 @@
+name: ShEx negativeSyntax (ShExC grammar-reject)
+spec: https://shex.io/shex-semantics/#shexc
+runner: bin/linux-x86_64/shex_runner
+runner_args: ["--negative-syntax"]
+manifest: third_party/testing/shex/negativeSyntax/manifest.ttl
+log_path: formal/fstar/ocaml-output/shex_negative_syntax_results.log
+result_path: docs/test-results/by-suite/shex-negative-syntax.json
+domain: SHEX
+foundational: false
+
+# 100 sht:NegativeSyntax fixtures, each a ShExC document that MUST FAIL
+# to parse. PASS = the F*-extracted Parser.ShExC (Parser.ShExC.fst,
+# Stage 9 of docs/designissues/2026-07-05-shex-program-plan.md) rejects
+# the fixture (returns None); FAIL = it wrongly accepts. First scored
+# 2026-07-10: 85 pass, 15 fail initially; the 15 permissiveness bugs
+# were fixed in Parser.ShExC.fst in the same landing (buckets: bare-`a`
+# outside predicate position; duplicate xsFacets; litNodeConstraint +
+# shapeRef juxtaposition; numeric facet on non-numeric/unknown datatype;
+# blank nodes in value sets / predicate position; REGEXP escape
+# whitelist; LANGTAG validation; empty language-tag exclusions).
+# Current: 100 pass, 0 fail (out of 100). The positive-side guard
+# against over-tightening is `shex_runner --differential` (433 of 433
+# schemas/ pairs structurally equal to their ShExJ twins), re-run green
+# after every tightening.
+#
+# The advisory three-way probe against the vendored tree-sitter-shexc
+# grammar lives at tests/shexc-treesitter/run.sh (not a dashboard row);
+# grammar-coverage audit:
+# docs/designissues/2026-07-10-shexc-treesitter-grammar-audit.md.
+
+triggers:
+  paths:
+    # The ShExC grammar itself.
+    - formal/fstar/Parser.ShExC.fst
+    # Shared AST the parser targets.
+    - formal/fstar/ShEx.Schema.fst
+    # Shared Turtle/SPARQL terminal scanners (IRIREF/PNAME/STRING/NUMBER).
+    - formal/fstar/Parser.TurtleScanner.fst
+    - formal/fstar/Parser.NTriples.fst
+    - formal/fstar/Parser.Turtle.fst
+    # The runner (manifest walk + PASS/FAIL classification).
+    - bin/shex-runner/**
+    # The fixtures.
+    - third_party/testing/shex/**
+
+  excludes: []

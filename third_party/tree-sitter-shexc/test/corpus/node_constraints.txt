@@ -1,0 +1,29 @@
+==================
+Value set node constraint with IRI stem ranges
+==================
+
+<#S> {
+  <p> [<a> <b>]
+}
+
+---
+
+(shex_doc
+  (shape_expr_decl
+    label: (shape_expr_label
+      (irireference))
+    shape_expr: (shape_atom
+      shape_expr: (shape_definition
+        (inline_shape_definition
+          expression: (triple_expression
+            (group_triple_expr
+              element: (triple_constraint
+                predicate: (predicate
+                  (irireference))
+                value_expr: (inline_shape_expression
+                  (inline_shape_atom
+                    values: (node_constraint
+                      (iri_stem_range
+                        stem: (irireference))
+                      (iri_stem_range
+                        stem: (irireference)))))))))))))

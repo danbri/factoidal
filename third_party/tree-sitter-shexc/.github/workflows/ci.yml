@@ -1,0 +1,31 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  # src/parser.c is intentionally pinned to ABI 14 (LANGUAGE_VERSION 14),
+  # compatible with Emacs 29.1+ and Emacs 30+.  Modern tree-sitter-cli
+  # generates ABI 15, so we do not regenerate parser.c in CI — it is
+  # maintained manually via `make generate-abi14` (see the Makefile).
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 20
+
+      - name: Install tree-sitter CLI
+        run: npm install --no-save tree-sitter-cli@0.26.9
+
+      - name: Run corpus tests
+        run: npx tree-sitter test
+
+  cargo-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - run: cargo test

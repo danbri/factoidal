@@ -88,11 +88,25 @@ module Parser.ShExC
 // Known NOT supported (parse-and-reject-loudly, never a silent wrong
 // answer): SemAct CODE-body escaping beyond `\%`/`\\`/UCHAR (untested
 // past what the one vendored fixture exercising it, 1dotCodeWithEscapes1,
-// covers). No other gap is known against the schemas/ corpus as of the
-// 433/433 differential result above; `negativeSyntax/`'s 100 ShExC-
-// grammar-rejection fixtures and `negativeStructure/`'s 14 fixtures
-// (ShExC-only by construction, no ShExJ twin to differential-check
-// against) are NOT exercised by this parser's acceptance gate.
+// covers); ShEx 2.1-extension RESTRICTS; `&`-spelled EXTENDS and
+// non-ref EXTENDS targets; `,` as a triple-expression separator (see
+// docs/designissues/2026-07-10-shexc-treesitter-grammar-audit.md for
+// the full coverage audit against a third-party grammar).
+//
+// Grammar-REJECT coverage: `negativeSyntax/`'s 100 ShExC-grammar-
+// rejection fixtures are scored by `bin/shex-runner --negative-syntax`
+// (2026-07-10: 100 pass, 0 fail out of 100 -- PASS = this parser
+// rejects). The first run (85 pass, 15 fail) exposed permissiveness
+// bugs fixed here the same day: bare-`a` accepted outside predicate
+// position (TK_A token), duplicate xsFacets, litNodeConstraint +
+// shapeRef juxtaposition (nc_is_non_literal gate), numeric facets on
+// non-numeric datatypes / non-literal kinds (nc_facets_wellformed),
+// blank nodes in value sets and predicate positions, REGEXP escapes
+// outside the terminal's whitelist (sc_regex_escapable), malformed
+// LANGTAGs (sc_is_valid_langtag), and empty language-tag exclusions.
+// `negativeStructure/`'s 14 fixtures (post-parse structural checks)
+// remain outside this parser's scope. The over-tightening guard for
+// every reject-side fix is the 433/433 positive differential above.
 // ============================================================================
 
 open FStar.String
@@ -125,6 +139,7 @@ type shexc_term =
 
 type shexc_token =
   | TK_TERM        : shexc_term -> shexc_token
+  | TK_A                                          // bare `a` (rdf:type shorthand, predicate position ONLY)
   | TK_AT_TERM     : shexc_term -> shexc_token   // '@' fused directly onto a term (shapeRef)
   | TK_LANGTAG     : string -> shexc_token        // '@' fused onto langtag chars (possibly empty, `@~`)
   | TK_STRING      : string -> shexc_token
@@ -243,6 +258,30 @@ let shexc_ws (input: string) (pos: nat) : nat =
    differs from `\/` (an escaped terminator, doesn't end the regex). *)
 (* ================================================================ *)
 
+// The REGEXP terminal's escape whitelist (shex.io/shex-semantics
+// #term-REGEXP): a backslash inside a `/.../ ` regex body may only
+// escape one of  n r t \ | . ? * + ( ) { } $ - [ ] ^ /  or introduce a
+// UCHAR (`\uXXXX`/`\UXXXXXXXX`). Anything else (`\1`, `\b`, `\f`, ...)
+// is a syntax error, per the negativeSyntax fixtures
+// 1literalPattern_with_ECHAR_escape_{1,b,f}.
+let sc_regex_escapable (code: int) : bool =
+  code = 0x6E || code = 0x72 || code = 0x74 ||               // n r t
+  code = 0x5C || code = 0x7C || code = 0x2E ||               // \ | .
+  code = 0x3F || code = 0x2A || code = 0x2B ||               // ? * +
+  code = 0x28 || code = 0x29 || code = 0x7B || code = 0x7D || // ( ) { }
+  code = 0x24 || code = 0x2D || code = 0x5B || code = 0x5D || // $ - [ ]
+  code = 0x5E || code = 0x2F                                  // ^ /
+
+let sc_is_hex_char (c: char) : bool =
+  let x = int_of_char c in
+  (x >= 0x30 && x <= 0x39) || (x >= 0x41 && x <= 0x46) || (x >= 0x61 && x <= 0x66)
+
+// All `count` bytes starting at `pos` are hex digits (and in bounds).
+let rec sc_hex_run_ok (input: string) (pos: nat) (count: nat) : Tot bool (decreases count) =
+  if count = 0 then true
+  else if pos >= fs_byte_length input then false
+  else sc_is_hex_char (fs_byte_index input pos) && sc_hex_run_ok input (pos + 1) (count - 1)
+
 let rec sc_count_backslash_run (input: string) (pos: nat) (fuel: nat) : Tot nat (decreases fuel) =
   if fuel = 0 then 0
   else
@@ -276,12 +315,23 @@ let rec sc_scan_regex_body (input: string) (pos: nat) (acc: list char) (fuel: na
           else
             let nc = int_of_char (fs_byte_index input run_end) in
             if nc = 0x2F then Some 0x2F
-            else if nc = 0x75 && run_end + 5 <= len then Some 0x75
-            else if nc = 0x55 && run_end + 9 <= len then Some 0x55
+            else if nc = 0x75 && run_end + 5 <= len && sc_hex_run_ok input (run_end + 1) 4 then Some 0x75
+            else if nc = 0x55 && run_end + 9 <= len && sc_hex_run_ok input (run_end + 1) 8 then Some 0x55
             else None
         in
         let escape_applies = Some? escape_kind && run_len % 2 = 1 in
-        if escape_applies then
+        // An ODD run whose final backslash does NOT trigger a decoding
+        // escape must still escape a whitelisted regex metacharacter
+        // (kept verbatim, backslash and all) -- any other target
+        // (`\1`, `\b`, `\f`, `\u` with bad/short hex, trailing `\`) is
+        // outside the REGEXP terminal and rejected loudly.
+        let escape_valid =
+          run_len % 2 = 0 ||
+          Some? escape_kind ||
+          (run_end < len && sc_regex_escapable (int_of_char (fs_byte_index input run_end)))
+        in
+        if not escape_valid then ParseFail "invalid escape in regex literal" pos
+        else if escape_applies then
           let kind = (match escape_kind with Some k -> k | None -> 0) in
           let acc1 = sc_emit_n_backslashes (run_len - 1) acc in
           if kind = 0x2F then
@@ -423,6 +473,28 @@ let rec sc_lower_acc (chars: list char) : Tot (list char) (decreases chars) =
 
 let sc_lower (s: string) : string =
   String.string_of_list (sc_lower_acc (String.list_of_string s))
+
+// LANGTAG body validation (chars after the '@'): `[a-zA-Z]+ ('-'
+// [a-zA-Z0-9]+)*` per the shared Turtle/SPARQL/ShExC terminal. The
+// word scanner accepts a letters/digits/hyphens superset, so a scanned
+// candidate must be validated before it becomes a TK_LANGTAG --
+// `@1` (STRING_LITERAL2-bad-LANGTAG) is a syntax error, not a tag.
+// `subtag_len` counts the current subtag's chars; `first_subtag`
+// selects the letters-only rule for the primary subtag.
+let rec sc_langtag_tail_ok (cs: list char) (subtag_len: nat) (first_subtag: bool)
+  : Tot bool (decreases cs) =
+  match cs with
+  | [] -> subtag_len > 0
+  | c :: rest ->
+    if int_of_char c = 0x2D (* - *) then
+      (if subtag_len = 0 then false else sc_langtag_tail_ok rest 0 false)
+    else if first_subtag then
+      (if sc_is_alpha c then sc_langtag_tail_ok rest (subtag_len + 1) true else false)
+    else
+      (if sc_is_alpha c || sc_is_digit c then sc_langtag_tail_ok rest (subtag_len + 1) false else false)
+
+let sc_is_valid_langtag (s: string) : bool =
+  sc_langtag_tail_ok (String.list_of_string s) 0 true
 
 (* ================================================================ *)
 (* Single-token scan                                                  *)
@@ -604,13 +676,22 @@ let shexc_next_token (input: string) (pos: nat) : (shexc_token & nat) =
           | ParseOk (ns, local) pos' -> (TK_AT_TERM (ST_PName ns local), pos')
           | ParseFail _ _ ->
             let end_pos = sc_scan_langtag_end input (pos + 1) in
-            (TK_LANGTAG (sc_lower (fs_byte_sub input (pos + 1) (end_pos - pos - 1))), end_pos))
+            let raw_tag = fs_byte_sub input (pos + 1) (end_pos - pos - 1) in
+            // The word scanner's charset is a superset of LANGTAG --
+            // validate before accepting (`@f9`, `@fr-` are errors).
+            if sc_is_valid_langtag raw_tag
+            then (TK_LANGTAG (sc_lower raw_tag), end_pos)
+            else (TK_INVALID "malformed language tag", end_pos))
        else if pos + 1 < len && sc_is_ws_char (fs_byte_index input (pos + 1)) then
          (TK_AT, pos + 1)
+       else if pos + 1 < len && int_of_char (fs_byte_index input (pos + 1)) = 0x7E (* ~ *) then
+         // `@~` -- the EMPTY language stem (languageRange's '@' '~'
+         // form). Only a following tilde legitimizes an empty tag:
+         // any other non-identifier after '@' (e.g. `@1`) is an error,
+         // per STRING_LITERAL2-bad-LANGTAG.
+         (TK_LANGTAG "", pos + 1)
        else
-         // '@' followed by non-identifier (e.g. `@~`) -- empty langtag,
-         // the tilde is tokenized separately right after.
-         (TK_LANGTAG "", pos + 1))
+         (TK_INVALID "malformed language tag", pos + 1))
     else if code = 0x25 (* % *) then
       (match sc_scan_term input (pos + 1) with
        | ParseFail msg fpos -> (TK_INVALID msg, fpos)
@@ -645,7 +726,14 @@ let shexc_next_token (input: string) (pos: nat) : (shexc_token & nat) =
          // lowercase only -- distinct from the case-INSENSITIVE keyword
          // table below; corpus: 1Adot.shex's bare `a` decodes to
          // rdf:type). Checked against the raw (non-uppercased) word.
-         if raw_word = "a" then (TK_TERM (ST_Iri rdf_type_iri true), end_pos)
+         // Emitted as its own token (NOT a TK_TERM) because the
+         // shorthand is legal at PREDICATE positions only -- as a shape
+         // label (shapename-a), a datatype/value expr (1dotAnnot_
+         // AIRIREF), or a value-set member (1valA) it is a syntax
+         // error, while an explicit <...rdf-syntax-ns#type> IRIREF is
+         // fine at all of those, so the distinction must survive
+         // tokenization.
+         if raw_word = "a" then (TK_A, end_pos)
          else
            let w = sc_upper raw_word in
            if sc_is_keyword w then (TK_KW w, end_pos)
@@ -712,7 +800,19 @@ let rec parse_predicate_list1 (st: turtle_state) (ts: shexc_tokens) (fuel: nat)
   if fuel = 0 then SErr "EXTRA predicate list too long"
   else
     match ts with
+    | TK_A :: rest ->
+      // `a` = rdf:type is a legal predicate (grammar: predicate ::=
+      // iri | RDF_TYPE), in EXTRA lists like anywhere predicates go.
+      (match parse_predicate_list1 st rest (fuel - 1) with
+       | SOk more rest' -> SOk (rdf_type_iri :: more) rest'
+       | SErr _ -> SOk [rdf_type_iri] rest)
     | TK_TERM t :: rest ->
+      // Predicates are IRIs only -- a blank node ends the list (it can
+      // never be a predicate; if nothing valid precedes it the empty-
+      // list error below fires, and if something does, the leftover
+      // bnode token fails the enclosing production).
+      if ST_BNode? t then SErr "expected at least one predicate after EXTRA"
+      else
       (match resolve_shexc_term st t with
        | None -> SErr "unresolvable predicate in EXTRA"
        | Some s ->
@@ -750,6 +850,10 @@ let parse_object_value (st: turtle_state) (ts: shexc_tokens) : sresult shex_obje
   | TK_KW "TRUE" :: rest -> SOk (ShexOV_Literal "true" None (Some xsd_boolean)) rest
   | TK_KW "FALSE" :: rest -> SOk (ShexOV_Literal "false" None (Some xsd_boolean)) rest
   | TK_TERM t :: rest ->
+    // objectValue ::= iri | literal -- a blank node is not an
+    // annotation object (mirrors the grammar's choice(_iri, literal)).
+    if ST_BNode? t then SErr "annotation object must be an IRI or literal"
+    else
     (match resolve_shexc_term st t with
      | Some iri -> SOk (ShexOV_Iri iri) rest
      | None -> SErr "unresolvable IRI value")
@@ -760,7 +864,18 @@ let rec parse_annotations (st: turtle_state) (ts: shexc_tokens) (fuel: nat)
   if fuel = 0 then SOk [] ts
   else
     match ts with
+    | TK_SLASH_ANNOT :: TK_A :: rest ->
+      // `// a <obj>` -- annotation predicate can be the rdf:type
+      // shorthand (corpus: 1dotShapeAnnotAIRIREF.shex).
+      (match parse_object_value st rest with
+       | SErr m -> SErr m
+       | SOk obj rest1 ->
+         (match parse_annotations st rest1 (fuel - 1) with
+          | SErr m -> SErr m
+          | SOk more rest2 -> SOk ({ an_predicate = rdf_type_iri; an_object = obj } :: more) rest2))
     | TK_SLASH_ANNOT :: TK_TERM predt :: rest ->
+      if ST_BNode? predt then SErr "annotation predicate must be an IRI"
+      else
       (match resolve_shexc_term st predt with
        | None -> SErr "unresolvable annotation predicate"
        | Some pred ->
@@ -784,17 +899,30 @@ let parse_exclusion (st: turtle_state) (kind: shex_vsv_kind) (ts: shexc_tokens)
     let bare_of (s: string) : shex_value_set_value = decode_bare_vsv_string kind s in
     (match kind, rest with
      | VSVK_Iri, TK_TERM t :: TK_TILDE :: rest' ->
+       if ST_BNode? t then SErr "blank node cannot appear in a value set"
+       else
        (match resolve_shexc_term st t with
         | Some s -> SOk (VSV_IriStem (ShexStemPlain s)) rest'
         | None -> SErr "unresolvable iri exclusion")
      | VSVK_Iri, TK_TERM t :: rest' ->
+       if ST_BNode? t then SErr "blank node cannot appear in a value set"
+       else
        (match resolve_shexc_term st t with
         | Some s -> SOk (bare_of s) rest'
         | None -> SErr "unresolvable iri exclusion")
      | VSVK_Literal, TK_STRING s :: TK_TILDE :: rest' -> SOk (VSV_LiteralStem (ShexStemPlain s)) rest'
      | VSVK_Literal, TK_STRING s :: rest' -> SOk (bare_of s) rest'
-     | VSVK_Language, TK_LANGTAG s :: TK_TILDE :: rest' -> SOk (VSV_LanguageStem (ShexStemPlain s)) rest'
-     | VSVK_Language, TK_LANGTAG s :: rest' -> SOk (bare_of s) rest'
+     // A language EXCLUSION's tag must be non-empty (languageExclusion
+     // ::= '-' LANGTAG '~'?, and LANGTAG has letters) -- the empty stem
+     // `@~` is only ever an ENTRY head, so `[@~ - @~]`
+     // (emptylanguageStem-Minus-emptylanguageStem) and `[. - @~]`
+     // (Dot-Minus-emptylanguageStem) are syntax errors.
+     | VSVK_Language, TK_LANGTAG s :: TK_TILDE :: rest' ->
+       if s = "" then SErr "empty language tag in exclusion"
+       else SOk (VSV_LanguageStem (ShexStemPlain s)) rest'
+     | VSVK_Language, TK_LANGTAG s :: rest' ->
+       if s = "" then SErr "empty language tag in exclusion"
+       else SOk (bare_of s) rest'
      | _ -> SErr "malformed exclusion in value-set stem range")
   | _ -> SErr "expected '-' exclusion"
 
@@ -840,6 +968,8 @@ let parse_value_set_value (st: turtle_state) (ts: shexc_tokens) : sresult shex_v
                | VSVK_Literal -> VSV_LiteralStemRange stem excl
                | VSVK_Language -> VSV_LanguageStemRange stem excl) rest'))
   | TK_TERM t :: TK_TILDE :: rest ->
+    if ST_BNode? t then SErr "blank node cannot appear in a value set"
+    else
     (match resolve_shexc_term st t with
      | None -> SErr "unresolvable iri stem"
      | Some s ->
@@ -848,6 +978,11 @@ let parse_value_set_value (st: turtle_state) (ts: shexc_tokens) : sresult shex_v
         | SOk [] rest' -> SOk (VSV_IriStem (ShexStemPlain s)) rest'
         | SOk excl rest' -> SOk (VSV_IriStemRange (ShexStemPlain s) excl) rest'))
   | TK_TERM t :: rest ->
+    // valueSetValue heads are iri/literal/language forms only -- a
+    // blank node (1val1bnode) is a syntax error (the bare-`a` shorthand
+    // is likewise excluded, as TK_A simply has no branch here; 1valA).
+    if ST_BNode? t then SErr "blank node cannot appear in a value set"
+    else
     (match resolve_shexc_term st t with
      | Some s -> SOk (VSV_Value (ShexOV_Iri s)) rest
      | None -> SErr "unresolvable iri value")
@@ -932,47 +1067,117 @@ let empty_shape : shex_shape = {
 
 // Parses zero-or-more xsFacet entries onto an accumulating node
 // constraint. Order-independent, matching the grammar's `xsFacet*`.
+// Each facet may appear AT MOST ONCE per node constraint (spec: "a
+// syntax error if a facet is repeated"; negativeSyntax 1iriLength2 /
+// 1literalLength2) -- every branch rejects when its slot is already
+// Some.
 let rec parse_facets (st: turtle_state) (nc: shex_node_constraint) (ts: shexc_tokens) (fuel: nat)
   : Tot (sresult shex_node_constraint) (decreases fuel) =
   if fuel = 0 then SOk nc ts
   else
     match ts with
     | TK_KW "LENGTH" :: TK_NUMBER n _ :: rest ->
+      if Some? nc.nc_length then SErr "duplicate LENGTH facet"
+      else
       (match shex_parse_int_string n with
        | Some i -> parse_facets st ({ nc with nc_length = Some i }) rest (fuel - 1)
        | None -> SErr "LENGTH expects an integer")
     | TK_KW "MINLENGTH" :: TK_NUMBER n _ :: rest ->
+      if Some? nc.nc_minlength then SErr "duplicate MINLENGTH facet"
+      else
       (match shex_parse_int_string n with
        | Some i -> parse_facets st ({ nc with nc_minlength = Some i }) rest (fuel - 1)
        | None -> SErr "MINLENGTH expects an integer")
     | TK_KW "MAXLENGTH" :: TK_NUMBER n _ :: rest ->
+      if Some? nc.nc_maxlength then SErr "duplicate MAXLENGTH facet"
+      else
       (match shex_parse_int_string n with
        | Some i -> parse_facets st ({ nc with nc_maxlength = Some i }) rest (fuel - 1)
        | None -> SErr "MAXLENGTH expects an integer")
     | TK_KW "TOTALDIGITS" :: TK_NUMBER n _ :: rest ->
+      if Some? nc.nc_totaldigits then SErr "duplicate TOTALDIGITS facet"
+      else
       (match shex_parse_int_string n with
        | Some i -> parse_facets st ({ nc with nc_totaldigits = Some i }) rest (fuel - 1)
        | None -> SErr "TOTALDIGITS expects an integer")
     | TK_KW "FRACTIONDIGITS" :: TK_NUMBER n _ :: rest ->
+      if Some? nc.nc_fractiondigits then SErr "duplicate FRACTIONDIGITS facet"
+      else
       (match shex_parse_int_string n with
        | Some i -> parse_facets st ({ nc with nc_fractiondigits = Some i }) rest (fuel - 1)
        | None -> SErr "FRACTIONDIGITS expects an integer")
     | TK_KW "MININCLUSIVE" :: TK_NUMBER n _ :: rest ->
-      parse_facets st ({ nc with nc_mininclusive = Some n }) rest (fuel - 1)
+      if Some? nc.nc_mininclusive then SErr "duplicate MININCLUSIVE facet"
+      else parse_facets st ({ nc with nc_mininclusive = Some n }) rest (fuel - 1)
     | TK_KW "MAXINCLUSIVE" :: TK_NUMBER n _ :: rest ->
-      parse_facets st ({ nc with nc_maxinclusive = Some n }) rest (fuel - 1)
+      if Some? nc.nc_maxinclusive then SErr "duplicate MAXINCLUSIVE facet"
+      else parse_facets st ({ nc with nc_maxinclusive = Some n }) rest (fuel - 1)
     | TK_KW "MINEXCLUSIVE" :: TK_NUMBER n _ :: rest ->
-      parse_facets st ({ nc with nc_minexclusive = Some n }) rest (fuel - 1)
+      if Some? nc.nc_minexclusive then SErr "duplicate MINEXCLUSIVE facet"
+      else parse_facets st ({ nc with nc_minexclusive = Some n }) rest (fuel - 1)
     | TK_KW "MAXEXCLUSIVE" :: TK_NUMBER n _ :: rest ->
-      parse_facets st ({ nc with nc_maxexclusive = Some n }) rest (fuel - 1)
+      if Some? nc.nc_maxexclusive then SErr "duplicate MAXEXCLUSIVE facet"
+      else parse_facets st ({ nc with nc_maxexclusive = Some n }) rest (fuel - 1)
     | TK_KW "PATTERN" :: TK_STRING s :: rest ->
       // Optional trailing flags identifier (e.g. PATTERN "re" i) --
       // not exercised by the corpus's PATTERN-keyword-form fixtures, so
       // flags stay None unless a bare keyword-shaped flags word follows.
-      parse_facets st ({ nc with nc_pattern = Some s }) rest (fuel - 1)
+      if Some? nc.nc_pattern then SErr "duplicate PATTERN facet"
+      else parse_facets st ({ nc with nc_pattern = Some s }) rest (fuel - 1)
     | TK_REGEX pat flags :: rest ->
-      parse_facets st ({ nc with nc_pattern = Some pat; nc_flags = (if flags = "" then None else Some flags) }) rest (fuel - 1)
+      if Some? nc.nc_pattern then SErr "duplicate PATTERN facet"
+      else parse_facets st ({ nc with nc_pattern = Some pat; nc_flags = (if flags = "" then None else Some flags) }) rest (fuel - 1)
     | _ -> SOk nc ts
+
+// True when any numeric facet slot is populated.
+let nc_has_numeric_facet (nc: shex_node_constraint) : bool =
+  Some? nc.nc_mininclusive || Some? nc.nc_maxinclusive ||
+  Some? nc.nc_minexclusive || Some? nc.nc_maxexclusive ||
+  Some? nc.nc_totaldigits || Some? nc.nc_fractiondigits
+
+// The XSD numeric datatypes a numeric facet may accompany (xsd:decimal
+// and its derivation chain, plus float/double). A numeric facet on any
+// OTHER explicit datatype is a syntax error per the shexTest suite
+// (1unknowndatatypeMaxInclusive) and shex.js's own parser behavior
+// ("MAXINCLUSIVE appropriate only for numeric datatypes").
+let xsd_ns_prefix : string = "http://www.w3.org/2001/XMLSchema#"
+let xsd_numeric_datatype (dt: string) : bool =
+  dt = xsd_ns_prefix ^ "integer" || dt = xsd_ns_prefix ^ "decimal" ||
+  dt = xsd_ns_prefix ^ "float" || dt = xsd_ns_prefix ^ "double" ||
+  dt = xsd_ns_prefix ^ "long" || dt = xsd_ns_prefix ^ "int" ||
+  dt = xsd_ns_prefix ^ "short" || dt = xsd_ns_prefix ^ "byte" ||
+  dt = xsd_ns_prefix ^ "nonNegativeInteger" || dt = xsd_ns_prefix ^ "nonPositiveInteger" ||
+  dt = xsd_ns_prefix ^ "negativeInteger" || dt = xsd_ns_prefix ^ "positiveInteger" ||
+  dt = xsd_ns_prefix ^ "unsignedLong" || dt = xsd_ns_prefix ^ "unsignedInt" ||
+  dt = xsd_ns_prefix ^ "unsignedShort" || dt = xsd_ns_prefix ^ "unsignedByte"
+
+// Facet-flavor wellformedness (the grammar's litNodeConstraint /
+// nonLitNodeConstraint split, shex.io/shex-semantics #prod-
+// nonLitNodeConstraint): numeric facets belong to LITERAL-flavored
+// constraints only -- never alongside nodeKind IRI/BNODE/NONLITERAL
+// (1iriMaxinclusive family), and only with a numeric datatype when an
+// explicit datatype is present.
+let nc_facets_wellformed (nc: shex_node_constraint) : bool =
+  if nc_has_numeric_facet nc then
+    (match nc.nc_node_kind with
+     | Some ShexNK_Iri | Some ShexNK_BNode | Some ShexNK_NonLiteral -> false
+     | _ ->
+       (match nc.nc_datatype with
+        | Some dt -> xsd_numeric_datatype dt
+        | None -> true))
+  else true
+
+// True for the grammar's nonLitNodeConstraint family (nodeKind IRI/
+// BNODE/NONLITERAL and/or string facets only) -- the ONLY node-
+// constraint flavor allowed to juxtapose with a shapeOrRef as an
+// implicit AND (`IRI @<S>`); a literal-flavored constraint (datatype,
+// value set, LITERAL kind, numeric facets) stands alone
+// (negativeSyntax 1datatypeRef1).
+let nc_is_non_literal (nc: shex_node_constraint) : bool =
+  None? nc.nc_datatype &&
+  Nil? nc.nc_values &&
+  (match nc.nc_node_kind with Some ShexNK_Literal -> false | _ -> true) &&
+  not (nc_has_numeric_facet nc)
 
 (* ================================================================ *)
 (* shapeExpr / shape / tripleExpr — mutually recursive descent.       *)
@@ -1000,7 +1205,8 @@ let shexc_grammar_fuel : nat = 2000000
 // group below (it never calls into it): a plain leaf predicate.
 let peek_starts_unary (ts: shexc_tokens) : bool =
   match ts with
-  | TK_DOLLAR :: _ | TK_AMP :: _ | TK_LPAREN :: _ | TK_CARET :: _ | TK_TERM _ :: _ -> true
+  | TK_DOLLAR :: _ | TK_AMP :: _ | TK_LPAREN :: _ | TK_CARET :: _ | TK_TERM _ :: _
+  | TK_A :: _ -> true
   | _ -> false
 
 // Optional cardinality suffix (`*` / `+` / `?` / `{m,n}` / `{m,}`). Also a
@@ -1153,10 +1359,18 @@ and parse_node_constraint_or_shape (st: turtle_state) (ts: shexc_tokens) (fuel: 
     (match parse_node_constraint_only st ts (fuel - 1) with
      | SErr m -> SErr m
      | SOk nc rest ->
+       if not (nc_facets_wellformed nc) then
+         SErr "numeric facet on a non-literal node constraint or non-numeric datatype"
+       else
        (match parse_optional_shape_or_ref_suffix st rest (fuel - 1) with
         | SErr m -> SErr m
         | SOk None rest' -> SOk [SE_NodeConstraint nc] rest'
-        | SOk (Some se) rest' -> SOk [SE_NodeConstraint nc; se] rest'))
+        | SOk (Some se) rest' ->
+          // Only a nonLitNodeConstraint may juxtapose with a shape/ref
+          // (grammar's shapeAtom split; negativeSyntax 1datatypeRef1).
+          if nc_is_non_literal nc
+          then SOk [SE_NodeConstraint nc; se] rest'
+          else SErr "literal node constraint cannot combine with a shape or shapeRef"))
 
 and parse_node_constraint_only (st: turtle_state) (ts: shexc_tokens) (fuel: nat)
   : Tot (sresult shex_node_constraint) (decreases fuel) =
@@ -1388,11 +1602,23 @@ and parse_triple_constraint (st: turtle_state) (label: option string) (ts: shexc
   if fuel = 0 then SErr "tripleConstraint recursion limit"
   else
     let (inverse, ts1) = opt_consume (fun t -> t = TK_CARET) ts in
-    match ts1 with
-    | TK_TERM t :: rest ->
-      (match resolve_shexc_term st t with
-       | None -> SErr "unresolvable predicate"
-       | Some pred ->
+    // Predicate position: an IRI/prefixed name, or the bare `a` =
+    // rdf:type shorthand (its ONLY legal position). Blank nodes are
+    // not predicates (negativeSyntax predicate-BLANK_NODE_LABEL).
+    let pred_result : sresult string =
+      (match ts1 with
+       | TK_A :: rest -> SOk rdf_type_iri rest
+       | TK_TERM t :: rest ->
+         if ST_BNode? t then SErr "blank node cannot be a predicate"
+         else
+         (match resolve_shexc_term st t with
+          | None -> SErr "unresolvable predicate"
+          | Some pred -> SOk pred rest)
+       | _ -> SErr "expected a predicate")
+    in
+    match pred_result with
+    | SErr m -> SErr m
+    | SOk pred rest ->
          (match parse_triple_constraint_value_expr st rest (fuel - 1) with
           | SErr m -> SErr m
           | SOk value_expr_opt rest1 ->
@@ -1407,8 +1633,7 @@ and parse_triple_constraint (st: turtle_state) (label: option string) (ts: shexc
                          tc_value_expr = value_expr_opt;
                          tc_min = (match card_min with Some m -> m | None -> 1);
                          tc_max = (match card_max with Some m -> m | None -> 1);
-                         tc_semacts = semacts; tc_annotations = annots }) rest4))))
-    | _ -> SErr "expected a predicate"
+                         tc_semacts = semacts; tc_annotations = annots }) rest4)))
 
 // A tripleConstraint's value: an inlineShapeExpression, EXCEPT that a
 // bare, uncombined wildcard `.` (nothing ANDed/ORed onto it) omits

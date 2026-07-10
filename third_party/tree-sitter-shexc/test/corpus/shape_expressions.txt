@@ -1,0 +1,76 @@
+==================
+Shape OR with EXTRA property set
+==================
+
+<#S> EXTRA <p> {
+  <p> .
+} OR {
+  <q> .
+}
+
+---
+
+(shex_doc
+  (shape_expr_decl
+    label: (shape_expr_label
+      (irireference))
+    shape_expr: (shape_or
+      left: (shape_atom
+        shape_expr: (shape_definition
+          (inline_shape_definition
+            (extra_property_set
+              (kw_extra)
+              predicate: (predicate
+                (irireference)))
+            expression: (triple_expression
+              (group_triple_expr
+                element: (triple_constraint
+                  predicate: (predicate
+                    (irireference))
+                  value_expr: (inline_shape_expression
+                    (inline_shape_atom
+                      (shape_any)))))))))
+      (kw_or)
+      right: (shape_atom
+        shape_expr: (shape_definition
+          (inline_shape_definition
+            expression: (triple_expression
+              (group_triple_expr
+                element: (triple_constraint
+                  predicate: (predicate
+                    (irireference))
+                  value_expr: (inline_shape_expression
+                    (inline_shape_atom
+                      (shape_any))))))))))))
+
+==================
+EXTENDS a referenced shape
+==================
+
+<#S> EXTENDS @<#T> {
+  <p> .
+}
+
+---
+
+(shex_doc
+  (shape_expr_decl
+    label: (shape_expr_label
+      (irireference))
+    shape_expr: (shape_atom
+      shape_expr: (shape_definition
+        (inline_shape_definition
+          (extension
+            (kw_extends)
+            shape_expr: (inline_shape_atom
+              shape_expr: (shape_ref
+                label: (shape_expr_label
+                  (irireference)))))
+          expression: (triple_expression
+            (group_triple_expr
+              element: (triple_constraint
+                predicate: (predicate
+                  (irireference))
+                value_expr: (inline_shape_expression
+                  (inline_shape_atom
+                    (shape_any)))))))))))

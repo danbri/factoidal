@@ -21,6 +21,7 @@ let __proj__ST_BNode__item___0 (projectee : shexc_term) : Prims.string=
   match projectee with | ST_BNode _0 -> _0
 type shexc_token =
   | TK_TERM of shexc_term 
+  | TK_A 
   | TK_AT_TERM of shexc_term 
   | TK_LANGTAG of Prims.string 
   | TK_STRING of Prims.string 
@@ -56,6 +57,8 @@ let uu___is_TK_TERM (projectee : shexc_token) : Prims.bool=
   match projectee with | TK_TERM _0 -> true | uu___ -> false
 let __proj__TK_TERM__item___0 (projectee : shexc_token) : shexc_term=
   match projectee with | TK_TERM _0 -> _0
+let uu___is_TK_A (projectee : shexc_token) : Prims.bool=
+  match projectee with | TK_A -> true | uu___ -> false
 let uu___is_TK_AT_TERM (projectee : shexc_token) : Prims.bool=
   match projectee with | TK_AT_TERM _0 -> true | uu___ -> false
 let __proj__TK_AT_TERM__item___0 (projectee : shexc_token) : shexc_term=
@@ -224,6 +227,41 @@ let shexc_ws (input : Prims.string) (pos : Prims.nat) : Prims.nat=
   if pos > len
   then pos
   else sc_skip_ws_comments input pos ((len - pos) + Prims.int_one)
+let sc_regex_escapable (code : Prims.int) : Prims.bool=
+  ((((((((((((((((((code = (Prims.of_int (0x6E))) ||
+                     (code = (Prims.of_int (0x72))))
+                    || (code = (Prims.of_int (0x74))))
+                   || (code = (Prims.of_int (0x5C))))
+                  || (code = (Prims.of_int (0x7C))))
+                 || (code = (Prims.of_int (0x2E))))
+                || (code = (Prims.of_int (0x3F))))
+               || (code = (Prims.of_int (0x2A))))
+              || (code = (Prims.of_int (0x2B))))
+             || (code = (Prims.of_int (0x28))))
+            || (code = (Prims.of_int (0x29))))
+           || (code = (Prims.of_int (0x7B))))
+          || (code = (Prims.of_int (0x7D))))
+         || (code = (Prims.of_int (0x24))))
+        || (code = (Prims.of_int (0x2D))))
+       || (code = (Prims.of_int (0x5B))))
+      || (code = (Prims.of_int (0x5D))))
+     || (code = (Prims.of_int (0x5E))))
+    || (code = (Prims.of_int (0x2F)))
+let sc_is_hex_char (c : FStar_Char.char) : Prims.bool=
+  let x = FStar_Char.int_of_char c in
+  (((x >= (Prims.of_int (0x30))) && (x <= (Prims.of_int (0x39)))) ||
+     ((x >= (Prims.of_int (0x41))) && (x <= (Prims.of_int (0x46)))))
+    || ((x >= (Prims.of_int (0x61))) && (x <= (Prims.of_int (0x66))))
+let rec sc_hex_run_ok (input : Prims.string) (pos : Prims.nat)
+  (count : Prims.nat) : Prims.bool=
+  if count = Prims.int_zero
+  then true
+  else
+    if pos >= (Parser_FastString.fs_byte_length input)
+    then false
+    else
+      (sc_is_hex_char (Parser_FastString.fs_byte_index input pos)) &&
+        (sc_hex_run_ok input (pos + Prims.int_one) (count - Prims.int_one))
 let rec sc_count_backslash_run (input : Prims.string) (pos : Prims.nat)
   (fuel : Prims.nat) : Prims.nat=
   if fuel = Prims.int_zero
@@ -280,105 +318,128 @@ let rec sc_scan_regex_body (input : Prims.string) (pos : Prims.nat)
                   then FStar_Pervasives_Native.Some (Prims.of_int (0x2F))
                   else
                     if
-                      (nc = (Prims.of_int (0x75))) &&
-                        ((run_end + (Prims.of_int (5))) <= len)
+                      ((nc = (Prims.of_int (0x75))) &&
+                         ((run_end + (Prims.of_int (5))) <= len))
+                        &&
+                        (sc_hex_run_ok input (run_end + Prims.int_one)
+                           (Prims.of_int (4)))
                     then FStar_Pervasives_Native.Some (Prims.of_int (0x75))
                     else
                       if
-                        (nc = (Prims.of_int (0x55))) &&
-                          ((run_end + (Prims.of_int (9))) <= len)
+                        ((nc = (Prims.of_int (0x55))) &&
+                           ((run_end + (Prims.of_int (9))) <= len))
+                          &&
+                          (sc_hex_run_ok input (run_end + Prims.int_one)
+                             (Prims.of_int (8)))
                       then FStar_Pervasives_Native.Some (Prims.of_int (0x55))
                       else FStar_Pervasives_Native.None) in
              let escape_applies =
                (FStar_Pervasives_Native.uu___is_Some escape_kind) &&
                  (((mod) run_len (Prims.of_int (2))) = Prims.int_one) in
-             if escape_applies
+             let escape_valid =
+               ((((mod) run_len (Prims.of_int (2))) = Prims.int_zero) ||
+                  (FStar_Pervasives_Native.uu___is_Some escape_kind))
+                 ||
+                 ((run_end < len) &&
+                    (sc_regex_escapable
+                       (FStar_Char.int_of_char
+                          (Parser_FastString.fs_byte_index input run_end)))) in
+             if Prims.op_Negation escape_valid
              then
-               let kind =
-                 match escape_kind with
-                 | FStar_Pervasives_Native.Some k -> k
-                 | FStar_Pervasives_Native.None -> Prims.int_zero in
-               let acc1 = sc_emit_n_backslashes (run_len - Prims.int_one) acc in
-               (if kind = (Prims.of_int (0x2F))
-                then
-                  sc_scan_regex_body input (run_end + Prims.int_one)
-                    ((FStar_Char.char_of_int (Prims.of_int (0x2F))) :: acc1)
-                    (fuel - Prims.int_one)
-                else
-                  if kind = (Prims.of_int (0x75))
-                  then
-                    (let h0 =
-                       Parser_NTriples.hex_val
-                         (Parser_FastString.fs_byte_index input
-                            (run_end + Prims.int_one)) in
-                     let h1 =
-                       Parser_NTriples.hex_val
-                         (Parser_FastString.fs_byte_index input
-                            (run_end + (Prims.of_int (2)))) in
-                     let h2 =
-                       Parser_NTriples.hex_val
-                         (Parser_FastString.fs_byte_index input
-                            (run_end + (Prims.of_int (3)))) in
-                     let h3 =
-                       Parser_NTriples.hex_val
-                         (Parser_FastString.fs_byte_index input
-                            (run_end + (Prims.of_int (4)))) in
-                     let cp =
-                       (((h0 * (Prims.of_int (4096))) +
-                           (h1 * (Prims.of_int (256))))
-                          + (h2 * (Prims.of_int (16))))
-                         + h3 in
-                     sc_scan_regex_body input (run_end + (Prims.of_int (5)))
-                       ((Parser_NTriples.safe_char_of_int cp) :: acc1)
-                       (fuel - Prims.int_one))
-                  else
-                    (let h0 =
-                       Parser_NTriples.hex_val
-                         (Parser_FastString.fs_byte_index input
-                            (run_end + Prims.int_one)) in
-                     let h1 =
-                       Parser_NTriples.hex_val
-                         (Parser_FastString.fs_byte_index input
-                            (run_end + (Prims.of_int (2)))) in
-                     let h2 =
-                       Parser_NTriples.hex_val
-                         (Parser_FastString.fs_byte_index input
-                            (run_end + (Prims.of_int (3)))) in
-                     let h3 =
-                       Parser_NTriples.hex_val
-                         (Parser_FastString.fs_byte_index input
-                            (run_end + (Prims.of_int (4)))) in
-                     let h4 =
-                       Parser_NTriples.hex_val
-                         (Parser_FastString.fs_byte_index input
-                            (run_end + (Prims.of_int (5)))) in
-                     let h5 =
-                       Parser_NTriples.hex_val
-                         (Parser_FastString.fs_byte_index input
-                            (run_end + (Prims.of_int (6)))) in
-                     let h6 =
-                       Parser_NTriples.hex_val
-                         (Parser_FastString.fs_byte_index input
-                            (run_end + (Prims.of_int (7)))) in
-                     let h7 =
-                       Parser_NTriples.hex_val
-                         (Parser_FastString.fs_byte_index input
-                            (run_end + (Prims.of_int (8)))) in
-                     let cp =
-                       (((((((h0 * (Prims.parse_int "268435456")) +
-                               (h1 * (Prims.parse_int "16777216")))
-                              + (h2 * (Prims.parse_int "1048576")))
-                             + (h3 * (Prims.parse_int "65536")))
-                            + (h4 * (Prims.of_int (4096))))
-                           + (h5 * (Prims.of_int (256))))
-                          + (h6 * (Prims.of_int (16))))
-                         + h7 in
-                     sc_scan_regex_body input (run_end + (Prims.of_int (9)))
-                       ((Parser_NTriples.safe_char_of_int cp) :: acc1)
-                       (fuel - Prims.int_one)))
+               Parser_Combinators.ParseFail
+                 ("invalid escape in regex literal", pos)
              else
-               (let acc1 = sc_emit_n_backslashes run_len acc in
-                sc_scan_regex_body input run_end acc1 (fuel - Prims.int_one)))
+               if escape_applies
+               then
+                 (let kind =
+                    match escape_kind with
+                    | FStar_Pervasives_Native.Some k -> k
+                    | FStar_Pervasives_Native.None -> Prims.int_zero in
+                  let acc1 =
+                    sc_emit_n_backslashes (run_len - Prims.int_one) acc in
+                  if kind = (Prims.of_int (0x2F))
+                  then
+                    sc_scan_regex_body input (run_end + Prims.int_one)
+                      ((FStar_Char.char_of_int (Prims.of_int (0x2F))) ::
+                      acc1) (fuel - Prims.int_one)
+                  else
+                    if kind = (Prims.of_int (0x75))
+                    then
+                      (let h0 =
+                         Parser_NTriples.hex_val
+                           (Parser_FastString.fs_byte_index input
+                              (run_end + Prims.int_one)) in
+                       let h1 =
+                         Parser_NTriples.hex_val
+                           (Parser_FastString.fs_byte_index input
+                              (run_end + (Prims.of_int (2)))) in
+                       let h2 =
+                         Parser_NTriples.hex_val
+                           (Parser_FastString.fs_byte_index input
+                              (run_end + (Prims.of_int (3)))) in
+                       let h3 =
+                         Parser_NTriples.hex_val
+                           (Parser_FastString.fs_byte_index input
+                              (run_end + (Prims.of_int (4)))) in
+                       let cp =
+                         (((h0 * (Prims.of_int (4096))) +
+                             (h1 * (Prims.of_int (256))))
+                            + (h2 * (Prims.of_int (16))))
+                           + h3 in
+                       sc_scan_regex_body input
+                         (run_end + (Prims.of_int (5)))
+                         ((Parser_NTriples.safe_char_of_int cp) :: acc1)
+                         (fuel - Prims.int_one))
+                    else
+                      (let h0 =
+                         Parser_NTriples.hex_val
+                           (Parser_FastString.fs_byte_index input
+                              (run_end + Prims.int_one)) in
+                       let h1 =
+                         Parser_NTriples.hex_val
+                           (Parser_FastString.fs_byte_index input
+                              (run_end + (Prims.of_int (2)))) in
+                       let h2 =
+                         Parser_NTriples.hex_val
+                           (Parser_FastString.fs_byte_index input
+                              (run_end + (Prims.of_int (3)))) in
+                       let h3 =
+                         Parser_NTriples.hex_val
+                           (Parser_FastString.fs_byte_index input
+                              (run_end + (Prims.of_int (4)))) in
+                       let h4 =
+                         Parser_NTriples.hex_val
+                           (Parser_FastString.fs_byte_index input
+                              (run_end + (Prims.of_int (5)))) in
+                       let h5 =
+                         Parser_NTriples.hex_val
+                           (Parser_FastString.fs_byte_index input
+                              (run_end + (Prims.of_int (6)))) in
+                       let h6 =
+                         Parser_NTriples.hex_val
+                           (Parser_FastString.fs_byte_index input
+                              (run_end + (Prims.of_int (7)))) in
+                       let h7 =
+                         Parser_NTriples.hex_val
+                           (Parser_FastString.fs_byte_index input
+                              (run_end + (Prims.of_int (8)))) in
+                       let cp =
+                         (((((((h0 * (Prims.parse_int "268435456")) +
+                                 (h1 * (Prims.parse_int "16777216")))
+                                + (h2 * (Prims.parse_int "1048576")))
+                               + (h3 * (Prims.parse_int "65536")))
+                              + (h4 * (Prims.of_int (4096))))
+                             + (h5 * (Prims.of_int (256))))
+                            + (h6 * (Prims.of_int (16))))
+                           + h7 in
+                       sc_scan_regex_body input
+                         (run_end + (Prims.of_int (9)))
+                         ((Parser_NTriples.safe_char_of_int cp) :: acc1)
+                         (fuel - Prims.int_one)))
+               else
+                 (let acc1 = sc_emit_n_backslashes run_len acc in
+                  sc_scan_regex_body input run_end acc1
+                    (fuel - Prims.int_one)))
           else
             if code < (Prims.of_int (0x80))
             then
@@ -582,6 +643,28 @@ let rec sc_lower_acc (chars : FStar_Char.char Prims.list) :
   | c::rest -> (sc_lower_char c) :: (sc_lower_acc rest)
 let sc_lower (s : Prims.string) : Prims.string=
   FStar_String.string_of_list (sc_lower_acc (FStar_String.list_of_string s))
+let rec sc_langtag_tail_ok (cs : FStar_Char.char Prims.list)
+  (subtag_len : Prims.nat) (first_subtag : Prims.bool) : Prims.bool=
+  match cs with
+  | [] -> subtag_len > Prims.int_zero
+  | c::rest ->
+      if (FStar_Char.int_of_char c) = (Prims.of_int (0x2D))
+      then
+        (if subtag_len = Prims.int_zero
+         then false
+         else sc_langtag_tail_ok rest Prims.int_zero false)
+      else
+        if first_subtag
+        then
+          (if sc_is_alpha c
+           then sc_langtag_tail_ok rest (subtag_len + Prims.int_one) true
+           else false)
+        else
+          if (sc_is_alpha c) || (sc_is_digit c)
+          then sc_langtag_tail_ok rest (subtag_len + Prims.int_one) false
+          else false
+let sc_is_valid_langtag (s : Prims.string) : Prims.bool=
+  sc_langtag_tail_ok (FStar_String.list_of_string s) Prims.int_zero true
 let rec sc_scan_word_end (input : Prims.string) (pos : Prims.nat)
   (fuel : Prims.nat) : Prims.nat=
   if fuel = Prims.int_zero
@@ -1047,16 +1130,26 @@ let shexc_next_token (input : Prims.string) (pos : Prims.nat) :
                                                                    input
                                                                    (pos +
                                                                     Prims.int_one) in
-                                                               ((TK_LANGTAG
-                                                                   (sc_lower
-                                                                    (Parser_FastString.fs_byte_sub
-                                                                    input
-                                                                    (pos +
+                                                               let raw_tag =
+                                                                 Parser_FastString.fs_byte_sub
+                                                                   input
+                                                                   (pos +
                                                                     Prims.int_one)
-                                                                    ((end_pos
+                                                                   ((end_pos
                                                                     - pos) -
-                                                                    Prims.int_one)))),
-                                                                 end_pos))
+                                                                    Prims.int_one) in
+                                                               if
+                                                                 sc_is_valid_langtag
+                                                                   raw_tag
+                                                               then
+                                                                 ((TK_LANGTAG
+                                                                    (sc_lower
+                                                                    raw_tag)),
+                                                                   end_pos)
+                                                               else
+                                                                 ((TK_INVALID
+                                                                    "malformed language tag"),
+                                                                   end_pos))
                                                         else
                                                           if
                                                             ((pos +
@@ -1074,9 +1167,28 @@ let shexc_next_token (input : Prims.string) (pos : Prims.nat) :
                                                               (pos +
                                                                  Prims.int_one))
                                                           else
-                                                            ((TK_LANGTAG ""),
-                                                              (pos +
-                                                                 Prims.int_one)))
+                                                            if
+                                                              ((pos +
+                                                                  Prims.int_one)
+                                                                 < len)
+                                                                &&
+                                                                ((FStar_Char.int_of_char
+                                                                    (
+                                                                    Parser_FastString.fs_byte_index
+                                                                    input
+                                                                    (pos +
+                                                                    Prims.int_one)))
+                                                                   =
+                                                                   (Prims.of_int (0x7E)))
+                                                            then
+                                                              ((TK_LANGTAG ""),
+                                                                (pos +
+                                                                   Prims.int_one))
+                                                            else
+                                                              ((TK_INVALID
+                                                                  "malformed language tag"),
+                                                                (pos +
+                                                                   Prims.int_one)))
                                                  else
                                                    if
                                                      code =
@@ -1222,10 +1334,7 @@ let shexc_next_token (input : Prims.string) (pos : Prims.nat) :
                                                                   raw_word =
                                                                     "a"
                                                                 then
-                                                                  ((TK_TERM
-                                                                    (ST_Iri
-                                                                    (Parser_Turtle.rdf_type_iri,
-                                                                    true))),
+                                                                  (TK_A,
                                                                     end_pos)
                                                                 else
                                                                   (let w =
@@ -1320,15 +1429,23 @@ let rec parse_predicate_list1 (st : Parser_Turtle.turtle_state)
   then SErr "EXTRA predicate list too long"
   else
     (match ts with
+     | (TK_A)::rest ->
+         (match parse_predicate_list1 st rest (fuel - Prims.int_one) with
+          | SOk (more, rest') ->
+              SOk ((Parser_Turtle.rdf_type_iri :: more), rest')
+          | SErr uu___1 -> SOk ([Parser_Turtle.rdf_type_iri], rest))
      | (TK_TERM t)::rest ->
-         (match resolve_shexc_term st t with
-          | FStar_Pervasives_Native.None ->
-              SErr "unresolvable predicate in EXTRA"
-          | FStar_Pervasives_Native.Some s ->
-              (match parse_predicate_list1 st rest (fuel - Prims.int_one)
-               with
-               | SOk (more, rest') -> SOk ((s :: more), rest')
-               | SErr uu___1 -> SOk ([s], rest)))
+         if uu___is_ST_BNode t
+         then SErr "expected at least one predicate after EXTRA"
+         else
+           (match resolve_shexc_term st t with
+            | FStar_Pervasives_Native.None ->
+                SErr "unresolvable predicate in EXTRA"
+            | FStar_Pervasives_Native.Some s ->
+                (match parse_predicate_list1 st rest (fuel - Prims.int_one)
+                 with
+                 | SOk (more, rest') -> SOk ((s :: more), rest')
+                 | SErr uu___2 -> SOk ([s], rest)))
      | uu___1 -> SErr "expected at least one predicate after EXTRA")
 let rec parse_semacts (st : Parser_Turtle.turtle_state) (ts : shexc_tokens)
   (fuel : Prims.nat) : ShEx_Schema.shex_sem_act Prims.list sresult=
@@ -1385,10 +1502,13 @@ let parse_object_value (st : Parser_Turtle.turtle_state) (ts : shexc_tokens)
             ("false", FStar_Pervasives_Native.None,
               (FStar_Pervasives_Native.Some RDF_Term.xsd_boolean))), rest)
   | (TK_TERM t)::rest ->
-      (match resolve_shexc_term st t with
-       | FStar_Pervasives_Native.Some iri ->
-           SOk ((ShEx_Schema.ShexOV_Iri iri), rest)
-       | FStar_Pervasives_Native.None -> SErr "unresolvable IRI value")
+      if uu___is_ST_BNode t
+      then SErr "annotation object must be an IRI or literal"
+      else
+        (match resolve_shexc_term st t with
+         | FStar_Pervasives_Native.Some iri ->
+             SOk ((ShEx_Schema.ShexOV_Iri iri), rest)
+         | FStar_Pervasives_Native.None -> SErr "unresolvable IRI value")
   | uu___ -> SErr "expected a value (IRI, literal, or number)"
 let rec parse_annotations (st : Parser_Turtle.turtle_state)
   (ts : shexc_tokens) (fuel : Prims.nat) :
@@ -1397,23 +1517,39 @@ let rec parse_annotations (st : Parser_Turtle.turtle_state)
   then SOk ([], ts)
   else
     (match ts with
-     | (TK_SLASH_ANNOT)::(TK_TERM predt)::rest ->
-         (match resolve_shexc_term st predt with
-          | FStar_Pervasives_Native.None ->
-              SErr "unresolvable annotation predicate"
-          | FStar_Pervasives_Native.Some pred ->
-              (match parse_object_value st rest with
+     | (TK_SLASH_ANNOT)::(TK_A)::rest ->
+         (match parse_object_value st rest with
+          | SErr m -> SErr m
+          | SOk (obj, rest1) ->
+              (match parse_annotations st rest1 (fuel - Prims.int_one) with
                | SErr m -> SErr m
-               | SOk (obj, rest1) ->
-                   (match parse_annotations st rest1 (fuel - Prims.int_one)
-                    with
-                    | SErr m -> SErr m
-                    | SOk (more, rest2) ->
-                        SOk
-                          (({
-                              ShEx_Schema.an_predicate = pred;
-                              ShEx_Schema.an_object = obj
-                            } :: more), rest2))))
+               | SOk (more, rest2) ->
+                   SOk
+                     (({
+                         ShEx_Schema.an_predicate =
+                           Parser_Turtle.rdf_type_iri;
+                         ShEx_Schema.an_object = obj
+                       } :: more), rest2)))
+     | (TK_SLASH_ANNOT)::(TK_TERM predt)::rest ->
+         if uu___is_ST_BNode predt
+         then SErr "annotation predicate must be an IRI"
+         else
+           (match resolve_shexc_term st predt with
+            | FStar_Pervasives_Native.None ->
+                SErr "unresolvable annotation predicate"
+            | FStar_Pervasives_Native.Some pred ->
+                (match parse_object_value st rest with
+                 | SErr m -> SErr m
+                 | SOk (obj, rest1) ->
+                     (match parse_annotations st rest1 (fuel - Prims.int_one)
+                      with
+                      | SErr m -> SErr m
+                      | SOk (more, rest2) ->
+                          SOk
+                            (({
+                                ShEx_Schema.an_predicate = pred;
+                                ShEx_Schema.an_object = obj
+                              } :: more), rest2))))
      | uu___1 -> SOk ([], ts))
 let parse_exclusion (st : Parser_Turtle.turtle_state)
   (kind : ShEx_Schema.shex_vsv_kind) (ts : shexc_tokens) :
@@ -1423,18 +1559,24 @@ let parse_exclusion (st : Parser_Turtle.turtle_state)
       let bare_of s = ShEx_Schema.decode_bare_vsv_string kind s in
       (match (kind, rest) with
        | (ShEx_Schema.VSVK_Iri, (TK_TERM t)::(TK_TILDE)::rest') ->
-           (match resolve_shexc_term st t with
-            | FStar_Pervasives_Native.Some s ->
-                SOk
-                  ((ShEx_Schema.VSV_IriStem (ShEx_Schema.ShexStemPlain s)),
-                    rest')
-            | FStar_Pervasives_Native.None ->
-                SErr "unresolvable iri exclusion")
+           if uu___is_ST_BNode t
+           then SErr "blank node cannot appear in a value set"
+           else
+             (match resolve_shexc_term st t with
+              | FStar_Pervasives_Native.Some s ->
+                  SOk
+                    ((ShEx_Schema.VSV_IriStem (ShEx_Schema.ShexStemPlain s)),
+                      rest')
+              | FStar_Pervasives_Native.None ->
+                  SErr "unresolvable iri exclusion")
        | (ShEx_Schema.VSVK_Iri, (TK_TERM t)::rest') ->
-           (match resolve_shexc_term st t with
-            | FStar_Pervasives_Native.Some s -> SOk ((bare_of s), rest')
-            | FStar_Pervasives_Native.None ->
-                SErr "unresolvable iri exclusion")
+           if uu___is_ST_BNode t
+           then SErr "blank node cannot appear in a value set"
+           else
+             (match resolve_shexc_term st t with
+              | FStar_Pervasives_Native.Some s -> SOk ((bare_of s), rest')
+              | FStar_Pervasives_Native.None ->
+                  SErr "unresolvable iri exclusion")
        | (ShEx_Schema.VSVK_Literal, (TK_STRING s)::(TK_TILDE)::rest') ->
            SOk
              ((ShEx_Schema.VSV_LiteralStem (ShEx_Schema.ShexStemPlain s)),
@@ -1442,11 +1584,16 @@ let parse_exclusion (st : Parser_Turtle.turtle_state)
        | (ShEx_Schema.VSVK_Literal, (TK_STRING s)::rest') ->
            SOk ((bare_of s), rest')
        | (ShEx_Schema.VSVK_Language, (TK_LANGTAG s)::(TK_TILDE)::rest') ->
-           SOk
-             ((ShEx_Schema.VSV_LanguageStem (ShEx_Schema.ShexStemPlain s)),
-               rest')
+           if s = ""
+           then SErr "empty language tag in exclusion"
+           else
+             SOk
+               ((ShEx_Schema.VSV_LanguageStem (ShEx_Schema.ShexStemPlain s)),
+                 rest')
        | (ShEx_Schema.VSVK_Language, (TK_LANGTAG s)::rest') ->
-           SOk ((bare_of s), rest')
+           if s = ""
+           then SErr "empty language tag in exclusion"
+           else SOk ((bare_of s), rest')
        | uu___ -> SErr "malformed exclusion in value-set stem range")
   | uu___ -> SErr "expected '-' exclusion"
 let rec parse_exclusions (st : Parser_Turtle.turtle_state)
@@ -1494,26 +1641,32 @@ let parse_value_set_value (st : Parser_Turtle.turtle_state)
                          ShEx_Schema.VSV_LanguageStemRange (stem, excl))),
                     rest')))
   | (TK_TERM t)::(TK_TILDE)::rest ->
-      (match resolve_shexc_term st t with
-       | FStar_Pervasives_Native.None -> SErr "unresolvable iri stem"
-       | FStar_Pervasives_Native.Some s ->
-           (match parse_exclusions st ShEx_Schema.VSVK_Iri rest
-                    ((FStar_List_Tot_Base.length rest) + Prims.int_one)
-            with
-            | SErr m -> SErr m
-            | SOk ([], rest') ->
-                SOk
-                  ((ShEx_Schema.VSV_IriStem (ShEx_Schema.ShexStemPlain s)),
-                    rest')
-            | SOk (excl, rest') ->
-                SOk
-                  ((ShEx_Schema.VSV_IriStemRange
-                      ((ShEx_Schema.ShexStemPlain s), excl)), rest')))
+      if uu___is_ST_BNode t
+      then SErr "blank node cannot appear in a value set"
+      else
+        (match resolve_shexc_term st t with
+         | FStar_Pervasives_Native.None -> SErr "unresolvable iri stem"
+         | FStar_Pervasives_Native.Some s ->
+             (match parse_exclusions st ShEx_Schema.VSVK_Iri rest
+                      ((FStar_List_Tot_Base.length rest) + Prims.int_one)
+              with
+              | SErr m -> SErr m
+              | SOk ([], rest') ->
+                  SOk
+                    ((ShEx_Schema.VSV_IriStem (ShEx_Schema.ShexStemPlain s)),
+                      rest')
+              | SOk (excl, rest') ->
+                  SOk
+                    ((ShEx_Schema.VSV_IriStemRange
+                        ((ShEx_Schema.ShexStemPlain s), excl)), rest')))
   | (TK_TERM t)::rest ->
-      (match resolve_shexc_term st t with
-       | FStar_Pervasives_Native.Some s ->
-           SOk ((ShEx_Schema.VSV_Value (ShEx_Schema.ShexOV_Iri s)), rest)
-       | FStar_Pervasives_Native.None -> SErr "unresolvable iri value")
+      if uu___is_ST_BNode t
+      then SErr "blank node cannot appear in a value set"
+      else
+        (match resolve_shexc_term st t with
+         | FStar_Pervasives_Native.Some s ->
+             SOk ((ShEx_Schema.VSV_Value (ShEx_Schema.ShexOV_Iri s)), rest)
+         | FStar_Pervasives_Native.None -> SErr "unresolvable iri value")
   | (TK_STRING s)::(TK_HATHAT)::(TK_TERM t)::(TK_TILDE)::rest ->
       (match resolve_shexc_term st t with
        | FStar_Pervasives_Native.Some uu___ ->
@@ -1653,262 +1806,360 @@ let rec parse_facets (st : Parser_Turtle.turtle_state)
   else
     (match ts with
      | (TK_KW "LENGTH")::(TK_NUMBER (n, uu___1))::rest ->
-         (match ShEx_Schema.shex_parse_int_string n with
-          | FStar_Pervasives_Native.Some i ->
-              parse_facets st
-                {
-                  ShEx_Schema.nc_node_kind = (nc.ShEx_Schema.nc_node_kind);
-                  ShEx_Schema.nc_datatype = (nc.ShEx_Schema.nc_datatype);
-                  ShEx_Schema.nc_values = (nc.ShEx_Schema.nc_values);
-                  ShEx_Schema.nc_length = (FStar_Pervasives_Native.Some i);
-                  ShEx_Schema.nc_minlength = (nc.ShEx_Schema.nc_minlength);
-                  ShEx_Schema.nc_maxlength = (nc.ShEx_Schema.nc_maxlength);
-                  ShEx_Schema.nc_pattern = (nc.ShEx_Schema.nc_pattern);
-                  ShEx_Schema.nc_flags = (nc.ShEx_Schema.nc_flags);
-                  ShEx_Schema.nc_mininclusive =
-                    (nc.ShEx_Schema.nc_mininclusive);
-                  ShEx_Schema.nc_maxinclusive =
-                    (nc.ShEx_Schema.nc_maxinclusive);
-                  ShEx_Schema.nc_minexclusive =
-                    (nc.ShEx_Schema.nc_minexclusive);
-                  ShEx_Schema.nc_maxexclusive =
-                    (nc.ShEx_Schema.nc_maxexclusive);
-                  ShEx_Schema.nc_totaldigits =
-                    (nc.ShEx_Schema.nc_totaldigits);
-                  ShEx_Schema.nc_fractiondigits =
-                    (nc.ShEx_Schema.nc_fractiondigits)
-                } rest (fuel - Prims.int_one)
-          | FStar_Pervasives_Native.None -> SErr "LENGTH expects an integer")
+         if FStar_Pervasives_Native.uu___is_Some nc.ShEx_Schema.nc_length
+         then SErr "duplicate LENGTH facet"
+         else
+           (match ShEx_Schema.shex_parse_int_string n with
+            | FStar_Pervasives_Native.Some i ->
+                parse_facets st
+                  {
+                    ShEx_Schema.nc_node_kind = (nc.ShEx_Schema.nc_node_kind);
+                    ShEx_Schema.nc_datatype = (nc.ShEx_Schema.nc_datatype);
+                    ShEx_Schema.nc_values = (nc.ShEx_Schema.nc_values);
+                    ShEx_Schema.nc_length = (FStar_Pervasives_Native.Some i);
+                    ShEx_Schema.nc_minlength = (nc.ShEx_Schema.nc_minlength);
+                    ShEx_Schema.nc_maxlength = (nc.ShEx_Schema.nc_maxlength);
+                    ShEx_Schema.nc_pattern = (nc.ShEx_Schema.nc_pattern);
+                    ShEx_Schema.nc_flags = (nc.ShEx_Schema.nc_flags);
+                    ShEx_Schema.nc_mininclusive =
+                      (nc.ShEx_Schema.nc_mininclusive);
+                    ShEx_Schema.nc_maxinclusive =
+                      (nc.ShEx_Schema.nc_maxinclusive);
+                    ShEx_Schema.nc_minexclusive =
+                      (nc.ShEx_Schema.nc_minexclusive);
+                    ShEx_Schema.nc_maxexclusive =
+                      (nc.ShEx_Schema.nc_maxexclusive);
+                    ShEx_Schema.nc_totaldigits =
+                      (nc.ShEx_Schema.nc_totaldigits);
+                    ShEx_Schema.nc_fractiondigits =
+                      (nc.ShEx_Schema.nc_fractiondigits)
+                  } rest (fuel - Prims.int_one)
+            | FStar_Pervasives_Native.None ->
+                SErr "LENGTH expects an integer")
      | (TK_KW "MINLENGTH")::(TK_NUMBER (n, uu___1))::rest ->
-         (match ShEx_Schema.shex_parse_int_string n with
-          | FStar_Pervasives_Native.Some i ->
-              parse_facets st
-                {
-                  ShEx_Schema.nc_node_kind = (nc.ShEx_Schema.nc_node_kind);
-                  ShEx_Schema.nc_datatype = (nc.ShEx_Schema.nc_datatype);
-                  ShEx_Schema.nc_values = (nc.ShEx_Schema.nc_values);
-                  ShEx_Schema.nc_length = (nc.ShEx_Schema.nc_length);
-                  ShEx_Schema.nc_minlength = (FStar_Pervasives_Native.Some i);
-                  ShEx_Schema.nc_maxlength = (nc.ShEx_Schema.nc_maxlength);
-                  ShEx_Schema.nc_pattern = (nc.ShEx_Schema.nc_pattern);
-                  ShEx_Schema.nc_flags = (nc.ShEx_Schema.nc_flags);
-                  ShEx_Schema.nc_mininclusive =
-                    (nc.ShEx_Schema.nc_mininclusive);
-                  ShEx_Schema.nc_maxinclusive =
-                    (nc.ShEx_Schema.nc_maxinclusive);
-                  ShEx_Schema.nc_minexclusive =
-                    (nc.ShEx_Schema.nc_minexclusive);
-                  ShEx_Schema.nc_maxexclusive =
-                    (nc.ShEx_Schema.nc_maxexclusive);
-                  ShEx_Schema.nc_totaldigits =
-                    (nc.ShEx_Schema.nc_totaldigits);
-                  ShEx_Schema.nc_fractiondigits =
-                    (nc.ShEx_Schema.nc_fractiondigits)
-                } rest (fuel - Prims.int_one)
-          | FStar_Pervasives_Native.None ->
-              SErr "MINLENGTH expects an integer")
+         if FStar_Pervasives_Native.uu___is_Some nc.ShEx_Schema.nc_minlength
+         then SErr "duplicate MINLENGTH facet"
+         else
+           (match ShEx_Schema.shex_parse_int_string n with
+            | FStar_Pervasives_Native.Some i ->
+                parse_facets st
+                  {
+                    ShEx_Schema.nc_node_kind = (nc.ShEx_Schema.nc_node_kind);
+                    ShEx_Schema.nc_datatype = (nc.ShEx_Schema.nc_datatype);
+                    ShEx_Schema.nc_values = (nc.ShEx_Schema.nc_values);
+                    ShEx_Schema.nc_length = (nc.ShEx_Schema.nc_length);
+                    ShEx_Schema.nc_minlength =
+                      (FStar_Pervasives_Native.Some i);
+                    ShEx_Schema.nc_maxlength = (nc.ShEx_Schema.nc_maxlength);
+                    ShEx_Schema.nc_pattern = (nc.ShEx_Schema.nc_pattern);
+                    ShEx_Schema.nc_flags = (nc.ShEx_Schema.nc_flags);
+                    ShEx_Schema.nc_mininclusive =
+                      (nc.ShEx_Schema.nc_mininclusive);
+                    ShEx_Schema.nc_maxinclusive =
+                      (nc.ShEx_Schema.nc_maxinclusive);
+                    ShEx_Schema.nc_minexclusive =
+                      (nc.ShEx_Schema.nc_minexclusive);
+                    ShEx_Schema.nc_maxexclusive =
+                      (nc.ShEx_Schema.nc_maxexclusive);
+                    ShEx_Schema.nc_totaldigits =
+                      (nc.ShEx_Schema.nc_totaldigits);
+                    ShEx_Schema.nc_fractiondigits =
+                      (nc.ShEx_Schema.nc_fractiondigits)
+                  } rest (fuel - Prims.int_one)
+            | FStar_Pervasives_Native.None ->
+                SErr "MINLENGTH expects an integer")
      | (TK_KW "MAXLENGTH")::(TK_NUMBER (n, uu___1))::rest ->
-         (match ShEx_Schema.shex_parse_int_string n with
-          | FStar_Pervasives_Native.Some i ->
-              parse_facets st
-                {
-                  ShEx_Schema.nc_node_kind = (nc.ShEx_Schema.nc_node_kind);
-                  ShEx_Schema.nc_datatype = (nc.ShEx_Schema.nc_datatype);
-                  ShEx_Schema.nc_values = (nc.ShEx_Schema.nc_values);
-                  ShEx_Schema.nc_length = (nc.ShEx_Schema.nc_length);
-                  ShEx_Schema.nc_minlength = (nc.ShEx_Schema.nc_minlength);
-                  ShEx_Schema.nc_maxlength = (FStar_Pervasives_Native.Some i);
-                  ShEx_Schema.nc_pattern = (nc.ShEx_Schema.nc_pattern);
-                  ShEx_Schema.nc_flags = (nc.ShEx_Schema.nc_flags);
-                  ShEx_Schema.nc_mininclusive =
-                    (nc.ShEx_Schema.nc_mininclusive);
-                  ShEx_Schema.nc_maxinclusive =
-                    (nc.ShEx_Schema.nc_maxinclusive);
-                  ShEx_Schema.nc_minexclusive =
-                    (nc.ShEx_Schema.nc_minexclusive);
-                  ShEx_Schema.nc_maxexclusive =
-                    (nc.ShEx_Schema.nc_maxexclusive);
-                  ShEx_Schema.nc_totaldigits =
-                    (nc.ShEx_Schema.nc_totaldigits);
-                  ShEx_Schema.nc_fractiondigits =
-                    (nc.ShEx_Schema.nc_fractiondigits)
-                } rest (fuel - Prims.int_one)
-          | FStar_Pervasives_Native.None ->
-              SErr "MAXLENGTH expects an integer")
+         if FStar_Pervasives_Native.uu___is_Some nc.ShEx_Schema.nc_maxlength
+         then SErr "duplicate MAXLENGTH facet"
+         else
+           (match ShEx_Schema.shex_parse_int_string n with
+            | FStar_Pervasives_Native.Some i ->
+                parse_facets st
+                  {
+                    ShEx_Schema.nc_node_kind = (nc.ShEx_Schema.nc_node_kind);
+                    ShEx_Schema.nc_datatype = (nc.ShEx_Schema.nc_datatype);
+                    ShEx_Schema.nc_values = (nc.ShEx_Schema.nc_values);
+                    ShEx_Schema.nc_length = (nc.ShEx_Schema.nc_length);
+                    ShEx_Schema.nc_minlength = (nc.ShEx_Schema.nc_minlength);
+                    ShEx_Schema.nc_maxlength =
+                      (FStar_Pervasives_Native.Some i);
+                    ShEx_Schema.nc_pattern = (nc.ShEx_Schema.nc_pattern);
+                    ShEx_Schema.nc_flags = (nc.ShEx_Schema.nc_flags);
+                    ShEx_Schema.nc_mininclusive =
+                      (nc.ShEx_Schema.nc_mininclusive);
+                    ShEx_Schema.nc_maxinclusive =
+                      (nc.ShEx_Schema.nc_maxinclusive);
+                    ShEx_Schema.nc_minexclusive =
+                      (nc.ShEx_Schema.nc_minexclusive);
+                    ShEx_Schema.nc_maxexclusive =
+                      (nc.ShEx_Schema.nc_maxexclusive);
+                    ShEx_Schema.nc_totaldigits =
+                      (nc.ShEx_Schema.nc_totaldigits);
+                    ShEx_Schema.nc_fractiondigits =
+                      (nc.ShEx_Schema.nc_fractiondigits)
+                  } rest (fuel - Prims.int_one)
+            | FStar_Pervasives_Native.None ->
+                SErr "MAXLENGTH expects an integer")
      | (TK_KW "TOTALDIGITS")::(TK_NUMBER (n, uu___1))::rest ->
-         (match ShEx_Schema.shex_parse_int_string n with
-          | FStar_Pervasives_Native.Some i ->
-              parse_facets st
-                {
-                  ShEx_Schema.nc_node_kind = (nc.ShEx_Schema.nc_node_kind);
-                  ShEx_Schema.nc_datatype = (nc.ShEx_Schema.nc_datatype);
-                  ShEx_Schema.nc_values = (nc.ShEx_Schema.nc_values);
-                  ShEx_Schema.nc_length = (nc.ShEx_Schema.nc_length);
-                  ShEx_Schema.nc_minlength = (nc.ShEx_Schema.nc_minlength);
-                  ShEx_Schema.nc_maxlength = (nc.ShEx_Schema.nc_maxlength);
-                  ShEx_Schema.nc_pattern = (nc.ShEx_Schema.nc_pattern);
-                  ShEx_Schema.nc_flags = (nc.ShEx_Schema.nc_flags);
-                  ShEx_Schema.nc_mininclusive =
-                    (nc.ShEx_Schema.nc_mininclusive);
-                  ShEx_Schema.nc_maxinclusive =
-                    (nc.ShEx_Schema.nc_maxinclusive);
-                  ShEx_Schema.nc_minexclusive =
-                    (nc.ShEx_Schema.nc_minexclusive);
-                  ShEx_Schema.nc_maxexclusive =
-                    (nc.ShEx_Schema.nc_maxexclusive);
-                  ShEx_Schema.nc_totaldigits =
-                    (FStar_Pervasives_Native.Some i);
-                  ShEx_Schema.nc_fractiondigits =
-                    (nc.ShEx_Schema.nc_fractiondigits)
-                } rest (fuel - Prims.int_one)
-          | FStar_Pervasives_Native.None ->
-              SErr "TOTALDIGITS expects an integer")
+         if
+           FStar_Pervasives_Native.uu___is_Some nc.ShEx_Schema.nc_totaldigits
+         then SErr "duplicate TOTALDIGITS facet"
+         else
+           (match ShEx_Schema.shex_parse_int_string n with
+            | FStar_Pervasives_Native.Some i ->
+                parse_facets st
+                  {
+                    ShEx_Schema.nc_node_kind = (nc.ShEx_Schema.nc_node_kind);
+                    ShEx_Schema.nc_datatype = (nc.ShEx_Schema.nc_datatype);
+                    ShEx_Schema.nc_values = (nc.ShEx_Schema.nc_values);
+                    ShEx_Schema.nc_length = (nc.ShEx_Schema.nc_length);
+                    ShEx_Schema.nc_minlength = (nc.ShEx_Schema.nc_minlength);
+                    ShEx_Schema.nc_maxlength = (nc.ShEx_Schema.nc_maxlength);
+                    ShEx_Schema.nc_pattern = (nc.ShEx_Schema.nc_pattern);
+                    ShEx_Schema.nc_flags = (nc.ShEx_Schema.nc_flags);
+                    ShEx_Schema.nc_mininclusive =
+                      (nc.ShEx_Schema.nc_mininclusive);
+                    ShEx_Schema.nc_maxinclusive =
+                      (nc.ShEx_Schema.nc_maxinclusive);
+                    ShEx_Schema.nc_minexclusive =
+                      (nc.ShEx_Schema.nc_minexclusive);
+                    ShEx_Schema.nc_maxexclusive =
+                      (nc.ShEx_Schema.nc_maxexclusive);
+                    ShEx_Schema.nc_totaldigits =
+                      (FStar_Pervasives_Native.Some i);
+                    ShEx_Schema.nc_fractiondigits =
+                      (nc.ShEx_Schema.nc_fractiondigits)
+                  } rest (fuel - Prims.int_one)
+            | FStar_Pervasives_Native.None ->
+                SErr "TOTALDIGITS expects an integer")
      | (TK_KW "FRACTIONDIGITS")::(TK_NUMBER (n, uu___1))::rest ->
-         (match ShEx_Schema.shex_parse_int_string n with
-          | FStar_Pervasives_Native.Some i ->
-              parse_facets st
-                {
-                  ShEx_Schema.nc_node_kind = (nc.ShEx_Schema.nc_node_kind);
-                  ShEx_Schema.nc_datatype = (nc.ShEx_Schema.nc_datatype);
-                  ShEx_Schema.nc_values = (nc.ShEx_Schema.nc_values);
-                  ShEx_Schema.nc_length = (nc.ShEx_Schema.nc_length);
-                  ShEx_Schema.nc_minlength = (nc.ShEx_Schema.nc_minlength);
-                  ShEx_Schema.nc_maxlength = (nc.ShEx_Schema.nc_maxlength);
-                  ShEx_Schema.nc_pattern = (nc.ShEx_Schema.nc_pattern);
-                  ShEx_Schema.nc_flags = (nc.ShEx_Schema.nc_flags);
-                  ShEx_Schema.nc_mininclusive =
-                    (nc.ShEx_Schema.nc_mininclusive);
-                  ShEx_Schema.nc_maxinclusive =
-                    (nc.ShEx_Schema.nc_maxinclusive);
-                  ShEx_Schema.nc_minexclusive =
-                    (nc.ShEx_Schema.nc_minexclusive);
-                  ShEx_Schema.nc_maxexclusive =
-                    (nc.ShEx_Schema.nc_maxexclusive);
-                  ShEx_Schema.nc_totaldigits =
-                    (nc.ShEx_Schema.nc_totaldigits);
-                  ShEx_Schema.nc_fractiondigits =
-                    (FStar_Pervasives_Native.Some i)
-                } rest (fuel - Prims.int_one)
-          | FStar_Pervasives_Native.None ->
-              SErr "FRACTIONDIGITS expects an integer")
+         if
+           FStar_Pervasives_Native.uu___is_Some
+             nc.ShEx_Schema.nc_fractiondigits
+         then SErr "duplicate FRACTIONDIGITS facet"
+         else
+           (match ShEx_Schema.shex_parse_int_string n with
+            | FStar_Pervasives_Native.Some i ->
+                parse_facets st
+                  {
+                    ShEx_Schema.nc_node_kind = (nc.ShEx_Schema.nc_node_kind);
+                    ShEx_Schema.nc_datatype = (nc.ShEx_Schema.nc_datatype);
+                    ShEx_Schema.nc_values = (nc.ShEx_Schema.nc_values);
+                    ShEx_Schema.nc_length = (nc.ShEx_Schema.nc_length);
+                    ShEx_Schema.nc_minlength = (nc.ShEx_Schema.nc_minlength);
+                    ShEx_Schema.nc_maxlength = (nc.ShEx_Schema.nc_maxlength);
+                    ShEx_Schema.nc_pattern = (nc.ShEx_Schema.nc_pattern);
+                    ShEx_Schema.nc_flags = (nc.ShEx_Schema.nc_flags);
+                    ShEx_Schema.nc_mininclusive =
+                      (nc.ShEx_Schema.nc_mininclusive);
+                    ShEx_Schema.nc_maxinclusive =
+                      (nc.ShEx_Schema.nc_maxinclusive);
+                    ShEx_Schema.nc_minexclusive =
+                      (nc.ShEx_Schema.nc_minexclusive);
+                    ShEx_Schema.nc_maxexclusive =
+                      (nc.ShEx_Schema.nc_maxexclusive);
+                    ShEx_Schema.nc_totaldigits =
+                      (nc.ShEx_Schema.nc_totaldigits);
+                    ShEx_Schema.nc_fractiondigits =
+                      (FStar_Pervasives_Native.Some i)
+                  } rest (fuel - Prims.int_one)
+            | FStar_Pervasives_Native.None ->
+                SErr "FRACTIONDIGITS expects an integer")
      | (TK_KW "MININCLUSIVE")::(TK_NUMBER (n, uu___1))::rest ->
-         parse_facets st
-           {
-             ShEx_Schema.nc_node_kind = (nc.ShEx_Schema.nc_node_kind);
-             ShEx_Schema.nc_datatype = (nc.ShEx_Schema.nc_datatype);
-             ShEx_Schema.nc_values = (nc.ShEx_Schema.nc_values);
-             ShEx_Schema.nc_length = (nc.ShEx_Schema.nc_length);
-             ShEx_Schema.nc_minlength = (nc.ShEx_Schema.nc_minlength);
-             ShEx_Schema.nc_maxlength = (nc.ShEx_Schema.nc_maxlength);
-             ShEx_Schema.nc_pattern = (nc.ShEx_Schema.nc_pattern);
-             ShEx_Schema.nc_flags = (nc.ShEx_Schema.nc_flags);
-             ShEx_Schema.nc_mininclusive = (FStar_Pervasives_Native.Some n);
-             ShEx_Schema.nc_maxinclusive = (nc.ShEx_Schema.nc_maxinclusive);
-             ShEx_Schema.nc_minexclusive = (nc.ShEx_Schema.nc_minexclusive);
-             ShEx_Schema.nc_maxexclusive = (nc.ShEx_Schema.nc_maxexclusive);
-             ShEx_Schema.nc_totaldigits = (nc.ShEx_Schema.nc_totaldigits);
-             ShEx_Schema.nc_fractiondigits =
-               (nc.ShEx_Schema.nc_fractiondigits)
-           } rest (fuel - Prims.int_one)
+         if
+           FStar_Pervasives_Native.uu___is_Some
+             nc.ShEx_Schema.nc_mininclusive
+         then SErr "duplicate MININCLUSIVE facet"
+         else
+           parse_facets st
+             {
+               ShEx_Schema.nc_node_kind = (nc.ShEx_Schema.nc_node_kind);
+               ShEx_Schema.nc_datatype = (nc.ShEx_Schema.nc_datatype);
+               ShEx_Schema.nc_values = (nc.ShEx_Schema.nc_values);
+               ShEx_Schema.nc_length = (nc.ShEx_Schema.nc_length);
+               ShEx_Schema.nc_minlength = (nc.ShEx_Schema.nc_minlength);
+               ShEx_Schema.nc_maxlength = (nc.ShEx_Schema.nc_maxlength);
+               ShEx_Schema.nc_pattern = (nc.ShEx_Schema.nc_pattern);
+               ShEx_Schema.nc_flags = (nc.ShEx_Schema.nc_flags);
+               ShEx_Schema.nc_mininclusive = (FStar_Pervasives_Native.Some n);
+               ShEx_Schema.nc_maxinclusive = (nc.ShEx_Schema.nc_maxinclusive);
+               ShEx_Schema.nc_minexclusive = (nc.ShEx_Schema.nc_minexclusive);
+               ShEx_Schema.nc_maxexclusive = (nc.ShEx_Schema.nc_maxexclusive);
+               ShEx_Schema.nc_totaldigits = (nc.ShEx_Schema.nc_totaldigits);
+               ShEx_Schema.nc_fractiondigits =
+                 (nc.ShEx_Schema.nc_fractiondigits)
+             } rest (fuel - Prims.int_one)
      | (TK_KW "MAXINCLUSIVE")::(TK_NUMBER (n, uu___1))::rest ->
-         parse_facets st
-           {
-             ShEx_Schema.nc_node_kind = (nc.ShEx_Schema.nc_node_kind);
-             ShEx_Schema.nc_datatype = (nc.ShEx_Schema.nc_datatype);
-             ShEx_Schema.nc_values = (nc.ShEx_Schema.nc_values);
-             ShEx_Schema.nc_length = (nc.ShEx_Schema.nc_length);
-             ShEx_Schema.nc_minlength = (nc.ShEx_Schema.nc_minlength);
-             ShEx_Schema.nc_maxlength = (nc.ShEx_Schema.nc_maxlength);
-             ShEx_Schema.nc_pattern = (nc.ShEx_Schema.nc_pattern);
-             ShEx_Schema.nc_flags = (nc.ShEx_Schema.nc_flags);
-             ShEx_Schema.nc_mininclusive = (nc.ShEx_Schema.nc_mininclusive);
-             ShEx_Schema.nc_maxinclusive = (FStar_Pervasives_Native.Some n);
-             ShEx_Schema.nc_minexclusive = (nc.ShEx_Schema.nc_minexclusive);
-             ShEx_Schema.nc_maxexclusive = (nc.ShEx_Schema.nc_maxexclusive);
-             ShEx_Schema.nc_totaldigits = (nc.ShEx_Schema.nc_totaldigits);
-             ShEx_Schema.nc_fractiondigits =
-               (nc.ShEx_Schema.nc_fractiondigits)
-           } rest (fuel - Prims.int_one)
+         if
+           FStar_Pervasives_Native.uu___is_Some
+             nc.ShEx_Schema.nc_maxinclusive
+         then SErr "duplicate MAXINCLUSIVE facet"
+         else
+           parse_facets st
+             {
+               ShEx_Schema.nc_node_kind = (nc.ShEx_Schema.nc_node_kind);
+               ShEx_Schema.nc_datatype = (nc.ShEx_Schema.nc_datatype);
+               ShEx_Schema.nc_values = (nc.ShEx_Schema.nc_values);
+               ShEx_Schema.nc_length = (nc.ShEx_Schema.nc_length);
+               ShEx_Schema.nc_minlength = (nc.ShEx_Schema.nc_minlength);
+               ShEx_Schema.nc_maxlength = (nc.ShEx_Schema.nc_maxlength);
+               ShEx_Schema.nc_pattern = (nc.ShEx_Schema.nc_pattern);
+               ShEx_Schema.nc_flags = (nc.ShEx_Schema.nc_flags);
+               ShEx_Schema.nc_mininclusive = (nc.ShEx_Schema.nc_mininclusive);
+               ShEx_Schema.nc_maxinclusive = (FStar_Pervasives_Native.Some n);
+               ShEx_Schema.nc_minexclusive = (nc.ShEx_Schema.nc_minexclusive);
+               ShEx_Schema.nc_maxexclusive = (nc.ShEx_Schema.nc_maxexclusive);
+               ShEx_Schema.nc_totaldigits = (nc.ShEx_Schema.nc_totaldigits);
+               ShEx_Schema.nc_fractiondigits =
+                 (nc.ShEx_Schema.nc_fractiondigits)
+             } rest (fuel - Prims.int_one)
      | (TK_KW "MINEXCLUSIVE")::(TK_NUMBER (n, uu___1))::rest ->
-         parse_facets st
-           {
-             ShEx_Schema.nc_node_kind = (nc.ShEx_Schema.nc_node_kind);
-             ShEx_Schema.nc_datatype = (nc.ShEx_Schema.nc_datatype);
-             ShEx_Schema.nc_values = (nc.ShEx_Schema.nc_values);
-             ShEx_Schema.nc_length = (nc.ShEx_Schema.nc_length);
-             ShEx_Schema.nc_minlength = (nc.ShEx_Schema.nc_minlength);
-             ShEx_Schema.nc_maxlength = (nc.ShEx_Schema.nc_maxlength);
-             ShEx_Schema.nc_pattern = (nc.ShEx_Schema.nc_pattern);
-             ShEx_Schema.nc_flags = (nc.ShEx_Schema.nc_flags);
-             ShEx_Schema.nc_mininclusive = (nc.ShEx_Schema.nc_mininclusive);
-             ShEx_Schema.nc_maxinclusive = (nc.ShEx_Schema.nc_maxinclusive);
-             ShEx_Schema.nc_minexclusive = (FStar_Pervasives_Native.Some n);
-             ShEx_Schema.nc_maxexclusive = (nc.ShEx_Schema.nc_maxexclusive);
-             ShEx_Schema.nc_totaldigits = (nc.ShEx_Schema.nc_totaldigits);
-             ShEx_Schema.nc_fractiondigits =
-               (nc.ShEx_Schema.nc_fractiondigits)
-           } rest (fuel - Prims.int_one)
+         if
+           FStar_Pervasives_Native.uu___is_Some
+             nc.ShEx_Schema.nc_minexclusive
+         then SErr "duplicate MINEXCLUSIVE facet"
+         else
+           parse_facets st
+             {
+               ShEx_Schema.nc_node_kind = (nc.ShEx_Schema.nc_node_kind);
+               ShEx_Schema.nc_datatype = (nc.ShEx_Schema.nc_datatype);
+               ShEx_Schema.nc_values = (nc.ShEx_Schema.nc_values);
+               ShEx_Schema.nc_length = (nc.ShEx_Schema.nc_length);
+               ShEx_Schema.nc_minlength = (nc.ShEx_Schema.nc_minlength);
+               ShEx_Schema.nc_maxlength = (nc.ShEx_Schema.nc_maxlength);
+               ShEx_Schema.nc_pattern = (nc.ShEx_Schema.nc_pattern);
+               ShEx_Schema.nc_flags = (nc.ShEx_Schema.nc_flags);
+               ShEx_Schema.nc_mininclusive = (nc.ShEx_Schema.nc_mininclusive);
+               ShEx_Schema.nc_maxinclusive = (nc.ShEx_Schema.nc_maxinclusive);
+               ShEx_Schema.nc_minexclusive = (FStar_Pervasives_Native.Some n);
+               ShEx_Schema.nc_maxexclusive = (nc.ShEx_Schema.nc_maxexclusive);
+               ShEx_Schema.nc_totaldigits = (nc.ShEx_Schema.nc_totaldigits);
+               ShEx_Schema.nc_fractiondigits =
+                 (nc.ShEx_Schema.nc_fractiondigits)
+             } rest (fuel - Prims.int_one)
      | (TK_KW "MAXEXCLUSIVE")::(TK_NUMBER (n, uu___1))::rest ->
-         parse_facets st
-           {
-             ShEx_Schema.nc_node_kind = (nc.ShEx_Schema.nc_node_kind);
-             ShEx_Schema.nc_datatype = (nc.ShEx_Schema.nc_datatype);
-             ShEx_Schema.nc_values = (nc.ShEx_Schema.nc_values);
-             ShEx_Schema.nc_length = (nc.ShEx_Schema.nc_length);
-             ShEx_Schema.nc_minlength = (nc.ShEx_Schema.nc_minlength);
-             ShEx_Schema.nc_maxlength = (nc.ShEx_Schema.nc_maxlength);
-             ShEx_Schema.nc_pattern = (nc.ShEx_Schema.nc_pattern);
-             ShEx_Schema.nc_flags = (nc.ShEx_Schema.nc_flags);
-             ShEx_Schema.nc_mininclusive = (nc.ShEx_Schema.nc_mininclusive);
-             ShEx_Schema.nc_maxinclusive = (nc.ShEx_Schema.nc_maxinclusive);
-             ShEx_Schema.nc_minexclusive = (nc.ShEx_Schema.nc_minexclusive);
-             ShEx_Schema.nc_maxexclusive = (FStar_Pervasives_Native.Some n);
-             ShEx_Schema.nc_totaldigits = (nc.ShEx_Schema.nc_totaldigits);
-             ShEx_Schema.nc_fractiondigits =
-               (nc.ShEx_Schema.nc_fractiondigits)
-           } rest (fuel - Prims.int_one)
+         if
+           FStar_Pervasives_Native.uu___is_Some
+             nc.ShEx_Schema.nc_maxexclusive
+         then SErr "duplicate MAXEXCLUSIVE facet"
+         else
+           parse_facets st
+             {
+               ShEx_Schema.nc_node_kind = (nc.ShEx_Schema.nc_node_kind);
+               ShEx_Schema.nc_datatype = (nc.ShEx_Schema.nc_datatype);
+               ShEx_Schema.nc_values = (nc.ShEx_Schema.nc_values);
+               ShEx_Schema.nc_length = (nc.ShEx_Schema.nc_length);
+               ShEx_Schema.nc_minlength = (nc.ShEx_Schema.nc_minlength);
+               ShEx_Schema.nc_maxlength = (nc.ShEx_Schema.nc_maxlength);
+               ShEx_Schema.nc_pattern = (nc.ShEx_Schema.nc_pattern);
+               ShEx_Schema.nc_flags = (nc.ShEx_Schema.nc_flags);
+               ShEx_Schema.nc_mininclusive = (nc.ShEx_Schema.nc_mininclusive);
+               ShEx_Schema.nc_maxinclusive = (nc.ShEx_Schema.nc_maxinclusive);
+               ShEx_Schema.nc_minexclusive = (nc.ShEx_Schema.nc_minexclusive);
+               ShEx_Schema.nc_maxexclusive = (FStar_Pervasives_Native.Some n);
+               ShEx_Schema.nc_totaldigits = (nc.ShEx_Schema.nc_totaldigits);
+               ShEx_Schema.nc_fractiondigits =
+                 (nc.ShEx_Schema.nc_fractiondigits)
+             } rest (fuel - Prims.int_one)
      | (TK_KW "PATTERN")::(TK_STRING s)::rest ->
-         parse_facets st
-           {
-             ShEx_Schema.nc_node_kind = (nc.ShEx_Schema.nc_node_kind);
-             ShEx_Schema.nc_datatype = (nc.ShEx_Schema.nc_datatype);
-             ShEx_Schema.nc_values = (nc.ShEx_Schema.nc_values);
-             ShEx_Schema.nc_length = (nc.ShEx_Schema.nc_length);
-             ShEx_Schema.nc_minlength = (nc.ShEx_Schema.nc_minlength);
-             ShEx_Schema.nc_maxlength = (nc.ShEx_Schema.nc_maxlength);
-             ShEx_Schema.nc_pattern = (FStar_Pervasives_Native.Some s);
-             ShEx_Schema.nc_flags = (nc.ShEx_Schema.nc_flags);
-             ShEx_Schema.nc_mininclusive = (nc.ShEx_Schema.nc_mininclusive);
-             ShEx_Schema.nc_maxinclusive = (nc.ShEx_Schema.nc_maxinclusive);
-             ShEx_Schema.nc_minexclusive = (nc.ShEx_Schema.nc_minexclusive);
-             ShEx_Schema.nc_maxexclusive = (nc.ShEx_Schema.nc_maxexclusive);
-             ShEx_Schema.nc_totaldigits = (nc.ShEx_Schema.nc_totaldigits);
-             ShEx_Schema.nc_fractiondigits =
-               (nc.ShEx_Schema.nc_fractiondigits)
-           } rest (fuel - Prims.int_one)
+         if FStar_Pervasives_Native.uu___is_Some nc.ShEx_Schema.nc_pattern
+         then SErr "duplicate PATTERN facet"
+         else
+           parse_facets st
+             {
+               ShEx_Schema.nc_node_kind = (nc.ShEx_Schema.nc_node_kind);
+               ShEx_Schema.nc_datatype = (nc.ShEx_Schema.nc_datatype);
+               ShEx_Schema.nc_values = (nc.ShEx_Schema.nc_values);
+               ShEx_Schema.nc_length = (nc.ShEx_Schema.nc_length);
+               ShEx_Schema.nc_minlength = (nc.ShEx_Schema.nc_minlength);
+               ShEx_Schema.nc_maxlength = (nc.ShEx_Schema.nc_maxlength);
+               ShEx_Schema.nc_pattern = (FStar_Pervasives_Native.Some s);
+               ShEx_Schema.nc_flags = (nc.ShEx_Schema.nc_flags);
+               ShEx_Schema.nc_mininclusive = (nc.ShEx_Schema.nc_mininclusive);
+               ShEx_Schema.nc_maxinclusive = (nc.ShEx_Schema.nc_maxinclusive);
+               ShEx_Schema.nc_minexclusive = (nc.ShEx_Schema.nc_minexclusive);
+               ShEx_Schema.nc_maxexclusive = (nc.ShEx_Schema.nc_maxexclusive);
+               ShEx_Schema.nc_totaldigits = (nc.ShEx_Schema.nc_totaldigits);
+               ShEx_Schema.nc_fractiondigits =
+                 (nc.ShEx_Schema.nc_fractiondigits)
+             } rest (fuel - Prims.int_one)
      | (TK_REGEX (pat, flags))::rest ->
-         parse_facets st
-           {
-             ShEx_Schema.nc_node_kind = (nc.ShEx_Schema.nc_node_kind);
-             ShEx_Schema.nc_datatype = (nc.ShEx_Schema.nc_datatype);
-             ShEx_Schema.nc_values = (nc.ShEx_Schema.nc_values);
-             ShEx_Schema.nc_length = (nc.ShEx_Schema.nc_length);
-             ShEx_Schema.nc_minlength = (nc.ShEx_Schema.nc_minlength);
-             ShEx_Schema.nc_maxlength = (nc.ShEx_Schema.nc_maxlength);
-             ShEx_Schema.nc_pattern = (FStar_Pervasives_Native.Some pat);
-             ShEx_Schema.nc_flags =
-               (if flags = ""
-                then FStar_Pervasives_Native.None
-                else FStar_Pervasives_Native.Some flags);
-             ShEx_Schema.nc_mininclusive = (nc.ShEx_Schema.nc_mininclusive);
-             ShEx_Schema.nc_maxinclusive = (nc.ShEx_Schema.nc_maxinclusive);
-             ShEx_Schema.nc_minexclusive = (nc.ShEx_Schema.nc_minexclusive);
-             ShEx_Schema.nc_maxexclusive = (nc.ShEx_Schema.nc_maxexclusive);
-             ShEx_Schema.nc_totaldigits = (nc.ShEx_Schema.nc_totaldigits);
-             ShEx_Schema.nc_fractiondigits =
-               (nc.ShEx_Schema.nc_fractiondigits)
-           } rest (fuel - Prims.int_one)
+         if FStar_Pervasives_Native.uu___is_Some nc.ShEx_Schema.nc_pattern
+         then SErr "duplicate PATTERN facet"
+         else
+           parse_facets st
+             {
+               ShEx_Schema.nc_node_kind = (nc.ShEx_Schema.nc_node_kind);
+               ShEx_Schema.nc_datatype = (nc.ShEx_Schema.nc_datatype);
+               ShEx_Schema.nc_values = (nc.ShEx_Schema.nc_values);
+               ShEx_Schema.nc_length = (nc.ShEx_Schema.nc_length);
+               ShEx_Schema.nc_minlength = (nc.ShEx_Schema.nc_minlength);
+               ShEx_Schema.nc_maxlength = (nc.ShEx_Schema.nc_maxlength);
+               ShEx_Schema.nc_pattern = (FStar_Pervasives_Native.Some pat);
+               ShEx_Schema.nc_flags =
+                 (if flags = ""
+                  then FStar_Pervasives_Native.None
+                  else FStar_Pervasives_Native.Some flags);
+               ShEx_Schema.nc_mininclusive = (nc.ShEx_Schema.nc_mininclusive);
+               ShEx_Schema.nc_maxinclusive = (nc.ShEx_Schema.nc_maxinclusive);
+               ShEx_Schema.nc_minexclusive = (nc.ShEx_Schema.nc_minexclusive);
+               ShEx_Schema.nc_maxexclusive = (nc.ShEx_Schema.nc_maxexclusive);
+               ShEx_Schema.nc_totaldigits = (nc.ShEx_Schema.nc_totaldigits);
+               ShEx_Schema.nc_fractiondigits =
+                 (nc.ShEx_Schema.nc_fractiondigits)
+             } rest (fuel - Prims.int_one)
      | uu___1 -> SOk (nc, ts))
+let nc_has_numeric_facet (nc : ShEx_Schema.shex_node_constraint) :
+  Prims.bool=
+  (((((FStar_Pervasives_Native.uu___is_Some nc.ShEx_Schema.nc_mininclusive)
+        ||
+        (FStar_Pervasives_Native.uu___is_Some nc.ShEx_Schema.nc_maxinclusive))
+       ||
+       (FStar_Pervasives_Native.uu___is_Some nc.ShEx_Schema.nc_minexclusive))
+      ||
+      (FStar_Pervasives_Native.uu___is_Some nc.ShEx_Schema.nc_maxexclusive))
+     || (FStar_Pervasives_Native.uu___is_Some nc.ShEx_Schema.nc_totaldigits))
+    ||
+    (FStar_Pervasives_Native.uu___is_Some nc.ShEx_Schema.nc_fractiondigits)
+let xsd_ns_prefix : Prims.string= "http://www.w3.org/2001/XMLSchema#"
+let xsd_numeric_datatype (dt : Prims.string) : Prims.bool=
+  (((((((((((((((dt = (Prims.strcat xsd_ns_prefix "integer")) ||
+                  (dt = (Prims.strcat xsd_ns_prefix "decimal")))
+                 || (dt = (Prims.strcat xsd_ns_prefix "float")))
+                || (dt = (Prims.strcat xsd_ns_prefix "double")))
+               || (dt = (Prims.strcat xsd_ns_prefix "long")))
+              || (dt = (Prims.strcat xsd_ns_prefix "int")))
+             || (dt = (Prims.strcat xsd_ns_prefix "short")))
+            || (dt = (Prims.strcat xsd_ns_prefix "byte")))
+           || (dt = (Prims.strcat xsd_ns_prefix "nonNegativeInteger")))
+          || (dt = (Prims.strcat xsd_ns_prefix "nonPositiveInteger")))
+         || (dt = (Prims.strcat xsd_ns_prefix "negativeInteger")))
+        || (dt = (Prims.strcat xsd_ns_prefix "positiveInteger")))
+       || (dt = (Prims.strcat xsd_ns_prefix "unsignedLong")))
+      || (dt = (Prims.strcat xsd_ns_prefix "unsignedInt")))
+     || (dt = (Prims.strcat xsd_ns_prefix "unsignedShort")))
+    || (dt = (Prims.strcat xsd_ns_prefix "unsignedByte"))
+let nc_facets_wellformed (nc : ShEx_Schema.shex_node_constraint) :
+  Prims.bool=
+  if nc_has_numeric_facet nc
+  then
+    match nc.ShEx_Schema.nc_node_kind with
+    | FStar_Pervasives_Native.Some (ShEx_Schema.ShexNK_Iri) -> false
+    | FStar_Pervasives_Native.Some (ShEx_Schema.ShexNK_BNode) -> false
+    | FStar_Pervasives_Native.Some (ShEx_Schema.ShexNK_NonLiteral) -> false
+    | uu___ ->
+        (match nc.ShEx_Schema.nc_datatype with
+         | FStar_Pervasives_Native.Some dt -> xsd_numeric_datatype dt
+         | FStar_Pervasives_Native.None -> true)
+  else true
+let nc_is_non_literal (nc : ShEx_Schema.shex_node_constraint) : Prims.bool=
+  (((FStar_Pervasives_Native.uu___is_None nc.ShEx_Schema.nc_datatype) &&
+      (Prims.uu___is_Nil nc.ShEx_Schema.nc_values))
+     &&
+     (match nc.ShEx_Schema.nc_node_kind with
+      | FStar_Pervasives_Native.Some (ShEx_Schema.ShexNK_Literal) -> false
+      | uu___ -> true))
+    && (Prims.op_Negation (nc_has_numeric_facet nc))
 let shexc_grammar_fuel : Prims.nat= (Prims.parse_int "2000000")
 let peek_starts_unary (ts : shexc_tokens) : Prims.bool=
   match ts with
@@ -1917,6 +2168,7 @@ let peek_starts_unary (ts : shexc_tokens) : Prims.bool=
   | (TK_LPAREN)::uu___ -> true
   | (TK_CARET)::uu___ -> true
   | (TK_TERM uu___)::uu___1 -> true
+  | (TK_A)::uu___ -> true
   | uu___ -> false
 let parse_optional_cardinality (ts : shexc_tokens) :
   (Prims.int FStar_Pervasives_Native.option * Prims.int
@@ -2100,14 +2352,23 @@ and parse_node_constraint_or_shape (st : Parser_Turtle.turtle_state)
     (match parse_node_constraint_only st ts (fuel - Prims.int_one) with
      | SErr m -> SErr m
      | SOk (nc, rest) ->
-         (match parse_optional_shape_or_ref_suffix st rest
-                  (fuel - Prims.int_one)
-          with
-          | SErr m -> SErr m
-          | SOk (FStar_Pervasives_Native.None, rest') ->
-              SOk ([ShEx_Schema.SE_NodeConstraint nc], rest')
-          | SOk (FStar_Pervasives_Native.Some se, rest') ->
-              SOk ([ShEx_Schema.SE_NodeConstraint nc; se], rest')))
+         if Prims.op_Negation (nc_facets_wellformed nc)
+         then
+           SErr
+             "numeric facet on a non-literal node constraint or non-numeric datatype"
+         else
+           (match parse_optional_shape_or_ref_suffix st rest
+                    (fuel - Prims.int_one)
+            with
+            | SErr m -> SErr m
+            | SOk (FStar_Pervasives_Native.None, rest') ->
+                SOk ([ShEx_Schema.SE_NodeConstraint nc], rest')
+            | SOk (FStar_Pervasives_Native.Some se, rest') ->
+                if nc_is_non_literal nc
+                then SOk ([ShEx_Schema.SE_NodeConstraint nc; se], rest')
+                else
+                  SErr
+                    "literal node constraint cannot combine with a shape or shapeRef"))
 and parse_node_constraint_only (st : Parser_Turtle.turtle_state)
   (ts : shexc_tokens) (fuel : Prims.nat) :
   ShEx_Schema.shex_node_constraint sresult=
@@ -2716,56 +2977,63 @@ and parse_triple_constraint (st : Parser_Turtle.turtle_state)
     (let uu___1 = opt_consume (fun t -> t = TK_CARET) ts in
      match uu___1 with
      | (inverse, ts1) ->
-         (match ts1 with
-          | (TK_TERM t)::rest ->
-              (match resolve_shexc_term st t with
-               | FStar_Pervasives_Native.None ->
-                   SErr "unresolvable predicate"
-               | FStar_Pervasives_Native.Some pred ->
-                   (match parse_triple_constraint_value_expr st rest
-                            (fuel - Prims.int_one)
-                    with
-                    | SErr m -> SErr m
-                    | SOk (value_expr_opt, rest1) ->
-                        let uu___2 = parse_optional_cardinality rest1 in
-                        (match uu___2 with
-                         | (card_min, card_max, rest2) ->
-                             (match parse_annotations st rest2
-                                      ((FStar_List_Tot_Base.length rest2) +
+         let pred_result =
+           match ts1 with
+           | (TK_A)::rest -> SOk (Parser_Turtle.rdf_type_iri, rest)
+           | (TK_TERM t)::rest ->
+               if uu___is_ST_BNode t
+               then SErr "blank node cannot be a predicate"
+               else
+                 (match resolve_shexc_term st t with
+                  | FStar_Pervasives_Native.None ->
+                      SErr "unresolvable predicate"
+                  | FStar_Pervasives_Native.Some pred -> SOk (pred, rest))
+           | uu___2 -> SErr "expected a predicate" in
+         (match pred_result with
+          | SErr m -> SErr m
+          | SOk (pred, rest) ->
+              (match parse_triple_constraint_value_expr st rest
+                       (fuel - Prims.int_one)
+               with
+               | SErr m -> SErr m
+               | SOk (value_expr_opt, rest1) ->
+                   let uu___2 = parse_optional_cardinality rest1 in
+                   (match uu___2 with
+                    | (card_min, card_max, rest2) ->
+                        (match parse_annotations st rest2
+                                 ((FStar_List_Tot_Base.length rest2) +
+                                    Prims.int_one)
+                         with
+                         | SErr m -> SErr m
+                         | SOk (annots, rest3) ->
+                             (match parse_semacts st rest3
+                                      ((FStar_List_Tot_Base.length rest3) +
                                          Prims.int_one)
                               with
                               | SErr m -> SErr m
-                              | SOk (annots, rest3) ->
-                                  (match parse_semacts st rest3
-                                           ((FStar_List_Tot_Base.length rest3)
-                                              + Prims.int_one)
-                                   with
-                                   | SErr m -> SErr m
-                                   | SOk (semacts, rest4) ->
-                                       SOk
-                                         ({
-                                            ShEx_Schema.tc_id = label;
-                                            ShEx_Schema.tc_inverse = inverse;
-                                            ShEx_Schema.tc_predicate = pred;
-                                            ShEx_Schema.tc_value_expr =
-                                              value_expr_opt;
-                                            ShEx_Schema.tc_min =
-                                              ((match card_min with
-                                                | FStar_Pervasives_Native.Some
-                                                    m -> m
-                                                | FStar_Pervasives_Native.None
-                                                    -> Prims.int_one));
-                                            ShEx_Schema.tc_max =
-                                              ((match card_max with
-                                                | FStar_Pervasives_Native.Some
-                                                    m -> m
-                                                | FStar_Pervasives_Native.None
-                                                    -> Prims.int_one));
-                                            ShEx_Schema.tc_semacts = semacts;
-                                            ShEx_Schema.tc_annotations =
-                                              annots
-                                          }, rest4))))))
-          | uu___2 -> SErr "expected a predicate"))
+                              | SOk (semacts, rest4) ->
+                                  SOk
+                                    ({
+                                       ShEx_Schema.tc_id = label;
+                                       ShEx_Schema.tc_inverse = inverse;
+                                       ShEx_Schema.tc_predicate = pred;
+                                       ShEx_Schema.tc_value_expr =
+                                         value_expr_opt;
+                                       ShEx_Schema.tc_min =
+                                         ((match card_min with
+                                           | FStar_Pervasives_Native.Some m
+                                               -> m
+                                           | FStar_Pervasives_Native.None ->
+                                               Prims.int_one));
+                                       ShEx_Schema.tc_max =
+                                         ((match card_max with
+                                           | FStar_Pervasives_Native.Some m
+                                               -> m
+                                           | FStar_Pervasives_Native.None ->
+                                               Prims.int_one));
+                                       ShEx_Schema.tc_semacts = semacts;
+                                       ShEx_Schema.tc_annotations = annots
+                                     }, rest4)))))))
 and parse_triple_constraint_value_expr (st : Parser_Turtle.turtle_state)
   (ts : shexc_tokens) (fuel : Prims.nat) :
   ShEx_Schema.shex_shape_expr FStar_Pervasives_Native.option sresult=

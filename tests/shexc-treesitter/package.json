@@ -1,0 +1,16 @@
+{
+  "name": "shexc-treesitter-probe",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Advisory three-way ShExC probe: Parser.ShExC vs vendored tree-sitter-shexc vs shexTest expected verdicts. See run.sh.",
+  "license": "MIT",
+  "scripts": {
+    "probe": "./run.sh"
+  },
+  "dependencies": {
+    "node-addon-api": "^8.9.0",
+    "node-gyp": "^13.0.1",
+    "node-gyp-build": "^4.8.4",
+    "tree-sitter": "^0.25.0"
+  }
+}

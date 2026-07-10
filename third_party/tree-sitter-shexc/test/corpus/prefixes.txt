@@ -1,0 +1,34 @@
+==================
+PREFIX declaration and a prefixed-name shape
+==================
+
+PREFIX ex: <http://example.org/>
+ex:S {
+  ex:p ex:o
+}
+
+---
+
+(shex_doc
+  (prefix_decl
+    (kw_prefix)
+    name: (pname_ns)
+    iri: (irireference))
+  (shape_expr_decl
+    label: (shape_expr_label
+      (prefixed_name
+        (pname_ln)))
+    shape_expr: (shape_atom
+      shape_expr: (shape_definition
+        (inline_shape_definition
+          expression: (triple_expression
+            (group_triple_expr
+              element: (triple_constraint
+                predicate: (predicate
+                  (prefixed_name
+                    (pname_ln)))
+                value_expr: (inline_shape_expression
+                  (inline_shape_atom
+                    datatype: (node_constraint
+                      (prefixed_name
+                        (pname_ln)))))))))))))

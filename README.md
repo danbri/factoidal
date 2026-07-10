@@ -412,9 +412,10 @@ Live, per-suite numbers: **[test-results dashboard](https://danbri.github.io/fac
 
 SPARQL 1.1 suites: 631 pass, 0 fail; RDF 1.1 parsing + model-theory
 suites: 1031 pass, 0 fail — 1662 of 1662 runnable tests. The dashboard
-carries 21 suites total (OWL, RDFC-1.0, SHACL, ShEx, JSON-LD, RML, RIF,
-VC, XSLT, XML conformance, MathML, JSON Schema, Schematron, CSVW, DID,
-HDT parity, and the browser-bundle/npm JS suites), each with labelled
+carries every scored suite (OWL, RDFC-1.0, SHACL, ShEx validation +
+ShEx negativeSyntax, JSON-LD, RML, RIF, VC, XSLT, XML conformance,
+MathML, JSON Schema, Schematron, CSVW, DID, HDT parity, and the
+browser-bundle/npm JS suites — 30+ rows), each with labelled
 pass/fail/skip — prefer those live numbers to anything frozen in this
 file. Caveats that apply to scores (ASK boolean comparison, lenient
 blank-node matching, the SPARQL-parser admitted regions above) are

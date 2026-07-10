@@ -1,0 +1,10 @@
+=== ShEx negativeSyntax suite (Parser.ShExC grammar-reject) ===
+Manifest: /home/user/factoidal/.claude/worktrees/agent-af9cf8fbd13724706/third_party/testing/shex/negativeSyntax/manifest.ttl
+
+Totals: 100 sht:NegativeSyntax entries
+
+
+========================================
+TOTAL: 100 pass (100 clean reject + 0 exception reject), 0 fail (wrongly accepted), 0 skipped (out of 100)
+========================================
+shex-negative-syntax: 100 pass, 0 fail (out of 100)

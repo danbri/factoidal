@@ -73,11 +73,15 @@ equal against the existing ShExJ decoder, `bin/shex-runner
 explicitly require ShExC↔ShExJ conversion in both directions; the
 differential run above covers the ShExC→AST direction (the direction
 this project's validator actually needs — it consumes schema text, it
-never re-serializes ShExJ back to ShExC), so `negativeSyntax`'s 100
-grammar-rejection tests and `negativeStructure`'s 14 tests are the
-remaining unexercised part of this stage's original scope (not run by
-this landing; the differential oracle only walks `schemas/`, the
-positive-parse corpus).
+never re-serializes ShExJ back to ShExC). `negativeSyntax`'s 100
+grammar-rejection tests are SCORED as of 2026-07-10 (`shex_runner
+--negative-syntax`: initial 85 pass, 15 fail; the 15 Parser.ShExC
+permissiveness bugs were fixed the same landing → 100 pass, 0 fail
+(out of 100), with the 433/433 differential re-run green as the
+over-tightening guard). `negativeStructure`'s 14 tests remain the
+unexercised part of this stage's original scope (they test structural
+constraints past grammar acceptance — a schema-wellformedness checker
+concern, not a parser one).
 
 ## Latest draft status
 
@@ -154,10 +158,14 @@ ShExJ's AST shapes differ from SHACL's RDF-graph-encoded shapes):**
    reaches 1186/1190 validation entries and all 14 `negativeStructure`
    entries; a ShExC grammar is a program of its own size (comparable
    to Turtle's, per iron rule #4: new parsers are F\*-first), so it
-   waited until the ShExJ-reachable 99.7% was done. Still open even
-   with the parser landed: `negativeSyntax` (100 ShExC-grammar-only
-   reject tests) and `schemas/` `RepresentationTest` (441 round-trip
-   conversions) are not yet scored suites.
+   waited until the ShExJ-reachable 99.7% was done. `negativeSyntax`
+   (100 ShExC-grammar-only reject tests) is scored as of 2026-07-10 —
+   100 pass, 0 fail (out of 100) via `shex_runner --negative-syntax`,
+   after fixing the 15 permissiveness bugs the first run exposed.
+   Still open: `schemas/` `RepresentationTest` (441 round-trip
+   conversions) is not yet a scored suite (the ShExC→AST direction is
+   covered by the differential; the AST→ShExC serialization direction
+   has no consumer yet).
 2. **Logic-conformant only.** Boolean pass/fail; no
    `ValidationResult`/error-report structure matching (the suite's own
    README calls those tiers experimental).
@@ -338,8 +346,8 @@ semantics undefined and never had to make this call.
   as-is (label domain, fuel style) but the algorithm shape transfers.
 - `negativeStructure`'s 14 tests are ShExC-only fixtures (`sx:shex`,
   no `sx:json`) even though the errors they test (cycle-negation) are
-  schema-structural, not grammar-level — Stage 5 will need either a
-  minimal hand run of the reference `bin/genJSON.js` converter (not
-  something we write ourselves; it is the suite's own tooling) or to
-  accept these 14 tests stay unreachable until Stage 9's ShExC parser
-  exists. Note this rather than silently skip it.
+  schema-structural, not grammar-level. Stage 9's ShExC parser now
+  makes them REACHABLE (parse the `.shex` directly, no `genJSON.js`
+  conversion needed); what is still missing is the structural
+  wellformedness checker itself (negation-cycle detection over the
+  parsed schema) — they remain an unscored suite until that lands.

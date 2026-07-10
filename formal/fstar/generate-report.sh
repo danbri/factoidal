@@ -51,6 +51,9 @@ GRDDL_LOG="$OCAML_DIR/grddl_results.log"
 SHACL_CORE_LOG="$OCAML_DIR/shacl_results.log"
 SHACL_SPARQL_LOG="$OCAML_DIR/shacl_sparql_results.log"
 SHEX_LOG="$OCAML_DIR/shex_results.log"
+# ShEx negativeSyntax (grammar-reject) suite — Parser.ShExC must REJECT
+# every fixture; scored by `shex_runner --negative-syntax` (2026-07-10).
+SHEXNEG_LOG="$OCAML_DIR/shex_negative_syntax_results.log"
 JSONLD_LOG="$OCAML_DIR/jsonld_results.log"
 RML_LOG="$OCAML_DIR/rml_results.log"
 RIFCORE_LOG="$OCAML_DIR/rif_results.log"
@@ -575,6 +578,10 @@ scrape_last_summary () {
 scrape_last_summary SHACL_CORE   "$SHACL_CORE_LOG"
 scrape_last_summary SHACL_SPARQL "$SHACL_SPARQL_LOG"
 scrape_last_summary SHEX         "$SHEX_LOG"
+# ShEx negativeSyntax: shex_runner --negative-syntax prints a TOTAL line
+# and then a labelled "shex-negative-syntax: N pass, M fail (out of K)"
+# line — anchor the labelled one explicitly.
+scrape_last_summary SHEXNEG      "$SHEXNEG_LOG" '^shex-negative-syntax:'
 scrape_last_summary JSONLD       "$JSONLD_LOG"
 scrape_last_summary RML          "$RML_LOG"
 scrape_last_summary VC           "$VC_LOG"
@@ -816,6 +823,7 @@ CSV="$OUTPUT_DIR/latest.csv"
   emit_csv_row_if_present SHACL_CORE        shacl shacl-core
   emit_csv_row_if_present SHACL_SPARQL      shacl shacl-sparql
   emit_csv_row_if_present SHEX              shex  shex-validation
+  emit_csv_row_if_present SHEXNEG           shex  shex-negative-syntax
   emit_csv_row_if_present JSONLD            jsonld jsonld-tordf
   emit_csv_row_if_present RML               rml   rml-core
   emit_csv_row_if_present RIFCORE_PART1     rif   rif-sparql-manifest
@@ -893,6 +901,8 @@ emit_json_suites () {
     "$SHACL_SPARQL_PASS" "$SHACL_SPARQL_FAIL" "$SHACL_SPARQL_SKIP" "$SHACL_SPARQL_TOTAL" "$([ "$SHACL_SPARQL_PRESENT" -eq 1 ] && echo true || echo false)"
   printf '    "shex":         {"pass":%s,"fail":%s,"skip":%s,"total":%s,"present":%s,"spec":"https://shex.io/shex-semantics/"},\n' \
     "$SHEX_PASS" "$SHEX_FAIL" "$SHEX_SKIP" "$SHEX_TOTAL" "$([ "$SHEX_PRESENT" -eq 1 ] && echo true || echo false)"
+  printf '    "shex_negative_syntax": {"pass":%s,"fail":%s,"skip":%s,"total":%s,"present":%s,"spec":"https://shex.io/shex-semantics/#shexc"},\n' \
+    "$SHEXNEG_PASS" "$SHEXNEG_FAIL" "$SHEXNEG_SKIP" "$SHEXNEG_TOTAL" "$([ "$SHEXNEG_PRESENT" -eq 1 ] && echo true || echo false)"
   printf '    "jsonld_tordf": {"pass":%s,"fail":%s,"skip":%s,"total":%s,"present":%s,"spec":"https://www.w3.org/TR/json-ld11-api/#deserialize-json-ld-to-rdf-algorithm"},\n' \
     "$JSONLD_PASS" "$JSONLD_FAIL" "$JSONLD_SKIP" "$JSONLD_TOTAL" "$([ "$JSONLD_PRESENT" -eq 1 ] && echo true || echo false)"
   printf '    "rml_core":     {"pass":%s,"fail":%s,"skip":%s,"total":%s,"present":%s,"spec":"https://kg-construct.github.io/rml-core/spec/"},\n' \
@@ -967,6 +977,7 @@ emit_json_suites () {
   emit_json_suite_obj "shacl_core"        SHACL_CORE
   emit_json_suite_obj "shacl_sparql"      SHACL_SPARQL
   emit_json_suite_obj "shex"              SHEX
+  emit_json_suite_obj "shex_negative_syntax" SHEXNEG
   emit_json_suite_obj "jsonld_tordf"      JSONLD
   emit_json_suite_obj "rml_core"          RML
   emit_json_suite_obj "rif_core"          RIFCORE_COMBINED
@@ -1816,8 +1827,17 @@ SHACL_CROSSREF='<p style="margin: 0.3em 0 0.6em; color: var(--muted); font-size:
 SHACL_HTML=$(family_section "shacl" "SHACL (Shapes Constraint Language)" "$SHACL_STATUS" "$SHACL_HEADLINE" "$SHACL_BODY" "$SHACL_CROSSREF" \
   "$SHACL_FAM_PASS" "$SHACL_FAM_FAIL" "$SHACL_FAM_SKIP" "$SHACL_FAM_TOTAL" "" "$(family_remaining shacl-core shacl-sparql)")
 
-SHEX_STATUS=$(status_for "$SHEX_FAIL" "$SHEX_PRESENT")
-if [ "$SHEX_PRESENT" -eq 1 ]; then
+# ShEx family = validation manifest + negativeSyntax (ShExC grammar-
+# reject) suites; family counts are their sum.
+SHEX_FAM_PASS=$(( SHEX_PASS + SHEXNEG_PASS ))
+SHEX_FAM_FAIL=$(( SHEX_FAIL + SHEXNEG_FAIL ))
+SHEX_FAM_SKIP=$(( SHEX_SKIP + SHEXNEG_SKIP ))
+SHEX_FAM_TOTAL=$(( SHEX_TOTAL + SHEXNEG_TOTAL ))
+SHEX_FAM_PRESENT=$(( SHEX_PRESENT | SHEXNEG_PRESENT ))
+SHEX_STATUS=$(status_for "$SHEX_FAM_FAIL" "$SHEX_FAM_PRESENT")
+if [ "$SHEX_PRESENT" -eq 1 ] && [ "$SHEXNEG_PRESENT" -eq 1 ]; then
+  SHEX_HEADLINE="Validation: ${SHEX_PASS} pass, ${SHEX_FAIL} fail, ${SHEX_SKIP} skip (out of ${SHEX_TOTAL}); negativeSyntax (ShExC grammar-reject): ${SHEXNEG_PASS} pass, ${SHEXNEG_FAIL} fail (out of ${SHEXNEG_TOTAL})."
+elif [ "$SHEX_PRESENT" -eq 1 ]; then
   SHEX_HEADLINE="${SHEX_PASS} pass, ${SHEX_FAIL} fail, ${SHEX_SKIP} skip (out of ${SHEX_TOTAL}) on the shexSpec/shexTest validation manifest."
 else
   SHEX_HEADLINE="Not measured this run."
@@ -1826,10 +1846,12 @@ SHEX_BODY=$(
   family_suite_row "ShEx Validation" "$SHEX_PASS" "$SHEX_FAIL" "$SHEX_SKIP" "$SHEX_TOTAL" "$SHEX_PRESENT" \
     "Runner: <code>bin/shex-runner</code> (<code>bin/linux-x86_64/shex_runner</code>) &middot; Suite: <code>third_party/testing/shex/</code> (shexSpec/shexTest, ShExJ-first)" \
     "<a href=\"${GITHUB_BLOB_BASE}/.github/test-suites/shex.yaml\" target=\"_blank\" rel=\"noopener\">diagnosis: the 1 mismatch is an upstream fixture defect (start2RefS2.json has predicate p1 where the canonical ShExC schema has p2), not an engine bug</a>"
+  family_suite_row "ShEx negativeSyntax (ShExC grammar-reject)" "$SHEXNEG_PASS" "$SHEXNEG_FAIL" "$SHEXNEG_SKIP" "$SHEXNEG_TOTAL" "$SHEXNEG_PRESENT" \
+    "Runner: <code>bin/shex-runner --negative-syntax</code> &middot; Suite: <code>third_party/testing/shex/negativeSyntax/</code> — every fixture MUST fail to parse; pass = <code>Parser.ShExC</code> (F*) rejects it"
 )
 SHEX_CROSSREF='<p style="margin: 0.3em 0 0.6em; color: var(--muted); font-size: 0.85em;">See also <a href="#shacl">SHACL</a>, the other shapes-constraint language for RDF — a W3C Recommendation.</p>'
 SHEX_HTML=$(family_section "shex" "ShEx (Shape Expressions)" "$SHEX_STATUS" "$SHEX_HEADLINE" "$SHEX_BODY" "$SHEX_CROSSREF" \
-  "$SHEX_PASS" "$SHEX_FAIL" "$SHEX_SKIP" "$SHEX_TOTAL" "" "$(family_remaining shex)")
+  "$SHEX_FAM_PASS" "$SHEX_FAM_FAIL" "$SHEX_FAM_SKIP" "$SHEX_FAM_TOTAL" "" "$(family_remaining shex shex-negative-syntax)")
 
 # --- Rules: RIF Core -------------------------------------------------------
 RULES_STATUS=$(status_for "$RIFCORE_COMBINED_FAIL" "$RIFCORE_COMBINED_PRESENT")
@@ -2756,6 +2778,7 @@ ${RDF_SUITES}</pre>
   <pre>shacl-core:   ${SHACL_CORE_PASS} pass, ${SHACL_CORE_FAIL} fail, ${SHACL_CORE_SKIP} skip (of ${SHACL_CORE_TOTAL}) — present=${SHACL_CORE_PRESENT}
 shacl-sparql: ${SHACL_SPARQL_PASS} pass, ${SHACL_SPARQL_FAIL} fail, ${SHACL_SPARQL_SKIP} skip (of ${SHACL_SPARQL_TOTAL}) — present=${SHACL_SPARQL_PRESENT}
 shex:         ${SHEX_PASS} pass, ${SHEX_FAIL} fail, ${SHEX_SKIP} skip (of ${SHEX_TOTAL}) — present=${SHEX_PRESENT}
+shex-negative-syntax: ${SHEXNEG_PASS} pass, ${SHEXNEG_FAIL} fail (of ${SHEXNEG_TOTAL}) — present=${SHEXNEG_PRESENT}
 jsonld-tordf: ${JSONLD_PASS} pass, ${JSONLD_FAIL} fail, ${JSONLD_SKIP} skip (of ${JSONLD_TOTAL}) — present=${JSONLD_PRESENT}
 rml-core:     ${RML_PASS} pass, ${RML_FAIL} fail, ${RML_SKIP} skip (of ${RML_TOTAL}) — present=${RML_PRESENT}
 rif-core:     ${RIFCORE_COMBINED_PASS} pass, ${RIFCORE_COMBINED_FAIL} fail, ${RIFCORE_COMBINED_SKIP} skip (of ${RIFCORE_COMBINED_TOTAL}) — present=${RIFCORE_COMBINED_PRESENT}

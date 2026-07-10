@@ -799,6 +799,99 @@ let run_differential () =
   if !mismatch_n > 0 then exit 1
 
 (* ------------------------------------------------------------------ *)
+(* --negative-syntax: the shexTest negativeSyntax suite (grammar-reject
+   tests). Each manifest entry (`a sht:NegativeSyntax`, fixture named by
+   `sx:shex`) is a ShExC document that MUST FAIL to parse: the runner
+   feeds the fixture's raw text to the F*-extracted
+   Parser_ShExC.parse_shexc_schema and scores
+
+     PASS      -- the parser rejected (returned None): correct.
+     PASS(exc) -- the parser rejected via an OCaml runtime exception
+                  rather than a clean None. Counted as a pass (the text
+                  was not accepted) but reported separately: extracted
+                  F-star Tot code should not throw, so a non-empty
+                  bucket here is extraction-boundary debt worth a look.
+     FAIL      -- the parser ACCEPTED (returned Some): a real
+                  permissiveness bug in Parser.ShExC.fst.
+     SKIP      -- fixture missing on disk / unmappable IRI.
+
+   Same I/O-glue-only boundary as the rest of this file: all grammar
+   judgment lives in formal/fstar/Parser.ShExC.fst; this mode is
+   manifest walking + file reading + outcome counting. *)
+
+let sx_ns = "https://shexspec.github.io/shexTest/ns#"
+let sht_NegativeSyntax = sht_ns ^ "NegativeSyntax"
+let sx_shex = sx_ns ^ "shex"
+
+type neg_outcome = NegPass | NegPassExc of string | NegFail | NegSkip of string
+
+let default_negative_manifest () =
+  Filename.concat (find_repo_root ())
+    "third_party/testing/shex/negativeSyntax/manifest.ttl"
+
+let run_negative_syntax ~verbose manifest_path =
+  let repo_root = find_repo_root () in
+  Printf.printf "=== ShEx negativeSyntax suite (Parser.ShExC grammar-reject) ===\n";
+  Printf.printf "Manifest: %s\n\n" manifest_path;
+  match parse_ttl_file manifest_path with
+  | None ->
+    Printf.eprintf "shex_runner: cannot read %s\n" manifest_path;
+    exit 2
+  | Some g ->
+    let entries = subjects_typed g sht_NegativeSyntax in
+    let total = List.length entries in
+    Printf.printf "Totals: %d sht:NegativeSyntax entries\n\n" total;
+    let outcomes =
+      List.map
+        (fun t ->
+           let name =
+             match string_of_lit (obj1_of g t mf_name) with
+             | Some n -> n
+             | None -> (match t with T_IRI i -> i | T_BNode b -> "_:" ^ b | _ -> "<test>")
+           in
+           let o =
+             match (match obj1_of g t sx_shex with Some tm -> iri_str tm | None -> None) with
+             | None -> NegSkip "no sx:shex fixture IRI on manifest entry"
+             | Some fixture_iri ->
+               (match resolved_iri_to_local_path repo_root fixture_iri with
+                | None -> NegSkip (Printf.sprintf "cannot map sx:shex IRI %s to a local path" fixture_iri)
+                | Some path ->
+                  (match read_file path with
+                   | None -> NegSkip (Printf.sprintf "fixture missing on disk: %s" path)
+                   | Some text ->
+                     (try
+                        match Parser_ShExC.parse_shexc_schema text fixture_iri with
+                        | FStar_Pervasives_Native.None -> NegPass
+                        | FStar_Pervasives_Native.Some _ -> NegFail
+                      with e -> NegPassExc (Printexc.to_string e))))
+           in
+           (match o with
+            | NegPass -> if verbose then Printf.printf "  PASS (rejected): %s\n" name
+            | NegPassExc msg -> Printf.printf "  PASS-EXC (rejected via exception %s): %s\n" msg name
+            | NegFail -> Printf.printf "  FAIL (wrongly accepted): %s\n" name
+            | NegSkip msg -> Printf.printf "  skip: %s — %s\n" name msg);
+           o)
+        entries
+    in
+    let pass, pass_exc, fail, skip =
+      List.fold_left
+        (fun (p, pe, f, s) o ->
+           match o with
+           | NegPass -> (p + 1, pe, f, s)
+           | NegPassExc _ -> (p, pe + 1, f, s)
+           | NegFail -> (p, pe, f + 1, s)
+           | NegSkip _ -> (p, pe, f, s + 1))
+        (0, 0, 0, 0) outcomes
+    in
+    Printf.printf "\n========================================\n";
+    Printf.printf "TOTAL: %d pass (%d clean reject + %d exception reject), %d fail (wrongly accepted), %d skipped (out of %d)\n"
+      (pass + pass_exc) pass pass_exc fail skip total;
+    Printf.printf "========================================\n";
+    Printf.printf "shex-negative-syntax: %d pass, %d fail (out of %d)\n"
+      (pass + pass_exc) fail total;
+    if fail > 0 then exit 1
+
+(* ------------------------------------------------------------------ *)
 (* Main. *)
 
 let print_help () =
@@ -811,6 +904,9 @@ let print_help () =
      \  ./shex_runner --list           List discovered test entries (no execution)\n\
      \  ./shex_runner -v|--verbose     Show mismatch/deferred/skip reasons\n\
      \  ./shex_runner --differential   ShExC-vs-ShExJ differential oracle (Stage 9)\n\
+     \  ./shex_runner --negative-syntax [manifest.ttl]\n\
+     \                                 negativeSyntax grammar-reject suite: PASS =\n\
+     \                                 Parser.ShExC rejects the fixture, FAIL = accepts\n\
      \  ./shex_runner --help           Show this help\n\
      \n\
      See formal/fstar/ShEx.Validation.fst's file header for what Stage 3\n\
@@ -822,6 +918,7 @@ let () =
   let verbose = ref false in
   let list_only = ref false in
   let differential = ref false in
+  let negative_syntax = ref false in
   let path = ref None in
   let rec loop = function
     | [] -> ()
@@ -829,6 +926,7 @@ let () =
     | ("--help" | "-h") :: _ -> print_help (); exit 0
     | "--list" :: rest -> list_only := true; loop rest
     | "--differential" :: rest -> differential := true; loop rest
+    | "--negative-syntax" :: rest -> negative_syntax := true; loop rest
     | p :: rest when !path = None -> path := Some p; loop rest
     | _ ->
       Printf.eprintf "shex_runner: unexpected arguments; try --help\n";
@@ -836,6 +934,9 @@ let () =
   in
   loop args;
   if !differential then run_differential ()
+  else if !negative_syntax then
+    let manifest = match !path with Some p -> p | None -> default_negative_manifest () in
+    run_negative_syntax ~verbose:!verbose manifest
   else
     let manifest = match !path with Some p -> p | None -> default_manifest () in
     run_manifest ~verbose:!verbose ~list_only:!list_only manifest

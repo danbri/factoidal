@@ -1,0 +1,35 @@
+==================
+Semantic actions on a triple constraint and a shape
+==================
+
+<#S> {
+  <p> . %ex:test{ code %}
+} %ex:start{ start %}
+
+---
+
+(shex_doc
+  (shape_expr_decl
+    label: (shape_expr_label
+      (irireference))
+    shape_expr: (shape_atom
+      shape_expr: (shape_definition
+        (inline_shape_definition
+          expression: (triple_expression
+            (group_triple_expr
+              element: (triple_constraint
+                predicate: (predicate
+                  (irireference))
+                value_expr: (inline_shape_expression
+                  (inline_shape_atom
+                    (shape_any)))
+                (semantic_actions
+                  (code_decl
+                    name: (prefixed_name
+                      (pname_ln))
+                    code: (code)))))))
+        (semantic_actions
+          (code_decl
+            name: (prefixed_name
+              (pname_ln))
+            code: (code)))))))
