@@ -578,18 +578,113 @@ let regime_label () = match !regime with
   | Regime_RL -> "RL"
   | Regime_DL -> "DL"
 
-let apply_closure (g : RDF_Graph_Executable.rdf_graph)
-  : RDF_Graph_Executable.rdf_graph =
+(* Tableau refutation fuel (threaded budget inside the F*-extracted
+   Tableau_Refute.tableau_consistent — total work is linear in it).
+   Override via FACTOIDAL_OWL_REFUTE_FUEL. Plumbing only: the fuel
+   value bounds work, it never changes a verdict's soundness (fuel
+   exhaustion returns None = indeterminate). *)
+let refute_fuel : Prims.nat =
+  match Sys.getenv_opt "FACTOIDAL_OWL_REFUTE_FUEL" with
+  | Some s -> (try Z.of_int (int_of_string s) with _ -> Z.of_int 20000)
+  | None -> Z.of_int 20000
+
+(* Refuter-specific SIGALRM cap, SMALLER than the closure cap: measured
+   on type-inconsistency.rdf, every refutation the tableau finds at a
+   20s cap it also finds at a 10s cap (clashes close fast; only
+   searches that will END indeterminate grind on), while CONSISTENT
+   tests pay the full cap as pure overhead — 346 ConsistencyTests x
+   20s nearly tripled the type-consistency catalog wall time. Override
+   via FACTOIDAL_OWL_REFUTE_CAP_SEC. *)
+let refute_cap_seconds : float =
+  match Sys.getenv_opt "FACTOIDAL_OWL_REFUTE_CAP_SEC" with
+  | Some s -> (try float_of_string s with _ -> 5.0)
+  | None -> 5.0
+
+let with_refute_cap (f : unit -> 'a) : 'a =
+  let prev =
+    Sys.signal Sys.sigalrm (Sys.Signal_handle (fun _ -> raise Owl_closure_timeout))
+  in
+  let restore () =
+    let _ = Unix.setitimer Unix.ITIMER_REAL { Unix.it_interval = 0.0; it_value = 0.0 } in
+    Sys.set_signal Sys.sigalrm prev
+  in
+  let _ = Unix.setitimer Unix.ITIMER_REAL
+            { Unix.it_interval = 0.0; it_value = refute_cap_seconds }
+  in
+  match f () with
+  | v -> restore (); v
+  | exception e -> restore (); raise e
+
+(* DL-regime refutation check (2026-07-10): consult the F*-extracted
+   clash-detecting tableau (Tableau_Refute.tableau_consistent) over the
+   closed graph. `true` ONLY on `Some false` — a genuine clash on every
+   branch (soundness argument per rule in Tableau.Refute.fst). Runs
+   under its own (smaller) SIGALRM cap; a cap-trip or fuel exhaustion
+   falls back to `false`, i.e. exactly the pre-existing RL
+   `is_inconsistent` verdict — the DL result can never score below
+   the RL baseline. RL regime: never consulted (RL scoring unchanged).
+   Dispatch/fallback plumbing only — the satisfiability logic is
+   F*-extracted (rule #15 boundary respected). *)
+let dl_refutes (closure : RDF_Graph_Executable.rdf_graph) : bool =
+  match !regime with
+  | Regime_RL -> false
+  | Regime_DL ->
+    (try with_refute_cap (fun () ->
+       match Tableau_Refute.tableau_consistent closure refute_fuel with
+       | Some false -> true
+       | _ -> false)
+     with _ -> false)
+
+(* is_inconsistent under the per-test cap (2026-07-10). The F* marker
+   scan is worst-case cubic in closure size (its own header says so);
+   with the Collection parser fix + DL materialisation the closures on
+   a few WebOnt-description-logic consistency premises grew enough
+   that the UNCAPPED scan ground for minutes and took the whole
+   catalog down with it (observed on dl-661 in
+   type-positive-entailment.rdf) — exactly the failure mode the
+   per-test cap exists for (issue #263 / anti-pattern #17). On a
+   cap-trip we report "no inconsistency detected": for a
+   ConsistencyTest that is the expected verdict; for an
+   InconsistencyTest it scores an honest FAIL (detection did not
+   complete) rather than hanging. The SHORT (refute) cap is used: on
+   every baseline-sized closure the marker scan completes in well
+   under a second, so a scan still running at 5s is one of the
+   blown-up closures that would not finish at 20s either — and the
+   short cap keeps the heavy consistency premises from tripling the
+   catalog wall time. Outcome plumbing only. *)
+let capped_is_inconsistent (closure : RDF_Graph_Executable.rdf_graph) : bool =
+  try with_refute_cap (fun () -> RDF_Graph_Executable.is_inconsistent closure)
+  with _ -> false
+
+(* apply_closure_stages returns BOTH the RL-base closure and the final
+   (regime-dependent) closure. The split matters for SOUNDNESS of the
+   refutation check (2026-07-10): Tableau.tableau_materialise's
+   emissions are sound for the corpus's bnode-existential CONCLUSION
+   MATCHING but not all are model-theoretically entailed — e.g. its
+   is_member answers `Some true` for `max-0 P` when no P-successor is
+   KNOWN (its own header documents the k=0 vacuous case), a
+   closed-world reading, and it also mints existential witness EDGES.
+   Feeding those into the clash-detecting refuter manufactured
+   refutations of CONSISTENT premises (WebOnt-description-logic-662/
+   665/667: a materialised max-0 membership meeting a real or witness
+   successor). The refuter therefore consumes g_rl — author triples +
+   RL-sound derivations only — while entailment/consistency marker
+   scoring keeps the full DL closure exactly as before. *)
+let apply_closure_stages (g : RDF_Graph_Executable.rdf_graph)
+  : RDF_Graph_Executable.rdf_graph * RDF_Graph_Executable.rdf_graph =
   match !regime with
   | Regime_RL ->
-    (try with_owl_cap (fun () ->
-       RDF_Graph_Executable.owl_rl_closure_with_reflexivity g fuel_100)
-     with
-     | Owl_closure_timeout ->
-       Printf.eprintf "  [owl_closure_timeout] RL closure exceeded %.0fs cap; falling back to un-closed graph\n%!"
-         owl_closure_cap_seconds;
-       g
-     | _ -> g)
+    let c =
+      (try with_owl_cap (fun () ->
+         RDF_Graph_Executable.owl_rl_closure_with_reflexivity g fuel_100)
+       with
+       | Owl_closure_timeout ->
+         Printf.eprintf "  [owl_closure_timeout] RL closure exceeded %.0fs cap; falling back to un-closed graph\n%!"
+           owl_closure_cap_seconds;
+         g
+       | _ -> g)
+    in
+    (c, c)
   | Regime_DL ->
     (* Compute the RL closure first, under its own cap; this is exactly
        the Regime_RL result and is the DL timeout fallback so a Tableau
@@ -604,15 +699,22 @@ let apply_closure (g : RDF_Graph_Executable.rdf_graph)
          g
        | _ -> g)
     in
-    (try with_owl_cap (fun () ->
-       let g2 = Tableau.tableau_materialise g_rl in
-       RDF_Graph_Executable.owl_rl_closure_with_reflexivity g2 fuel_100)
-     with
-     | Owl_closure_timeout ->
-       Printf.eprintf "  [owl_closure_timeout] DL tableau closure exceeded %.0fs cap; falling back to RL closure\n%!"
-         owl_closure_cap_seconds;
-       g_rl
-     | _ -> g_rl)
+    let g_dl =
+      (try with_owl_cap (fun () ->
+         let g2 = Tableau.tableau_materialise g_rl in
+         RDF_Graph_Executable.owl_rl_closure_with_reflexivity g2 fuel_100)
+       with
+       | Owl_closure_timeout ->
+         Printf.eprintf "  [owl_closure_timeout] DL tableau closure exceeded %.0fs cap; falling back to RL closure\n%!"
+           owl_closure_cap_seconds;
+         g_rl
+       | _ -> g_rl)
+    in
+    (g_rl, g_dl)
+
+let apply_closure (g : RDF_Graph_Executable.rdf_graph)
+  : RDF_Graph_Executable.rdf_graph =
+  snd (apply_closure_stages g)
 
 (* test:semantics dispatch (2026-07-05) — see the constant definitions
    above and RDF.Graph.Executable.fst's owl_rule_named_equivClass_to_
@@ -671,7 +773,48 @@ let apply_closure_with_semantics
    before closure. Each imports_lookup hit gives us an RDF/XML literal
    whose triples should be added to g_p, so the closure sees the union
    of declared + imported axioms (the test-harness analogue of
-   owl:imports resolution; we never dereference URLs). *)
+   owl:imports resolution; we never dereference URLs).
+
+   Bnode renaming (2026-07-10): each imported document is parsed
+   INDEPENDENTLY, so the parser's generated bnode ids (rdfxml_b0, ...)
+   collide across documents — the union then carries chimera bnodes
+   merging unrelated structures (WebOnt-miscellaneous-011: one bnode
+   with consistent001's owl:minCardinality AND consistent002's
+   owl:cardinality — a garbage restriction the refutation tableau then
+   correctly finds inconsistent). Same defect + fix as the species
+   registry's rename_doc_bnodes (see that comment); the renaming is
+   F*-extracted (RDF_Graph_Executable.rename_triple_bnodes), this is
+   plumbing. Prefix is per-import ordinal, so import docs can't
+   collide with each other or with the authored premise. *)
+(* Parsed-import memo (2026-07-10): the same imported document (e.g.
+   the wine/food pair) is referenced by many tests, and each test's PE
+   and Consistency phases both merged it — re-running the RDF/XML
+   parse of a multi-thousand-triple literal EVERY time dominated the
+   catalog wall time (minutes per import-bearing test). Parse each
+   import IRI once per process; the bnode-rename prefix is derived
+   from a stable per-IRI ordinal at first parse, so distinct imports
+   never collide and repeat users get identical (correctly namespaced)
+   triples. Pure I/O caching — no semantics. *)
+let parsed_imports_cache : (string, triple list) Hashtbl.t = Hashtbl.create 64
+let parsed_imports_count = ref 0
+
+let parse_import_cached (import_iri : string) (lit : string) : triple list =
+  match Hashtbl.find_opt parsed_imports_cache import_iri with
+  | Some g -> g
+  | None ->
+    let src = expand_catalog_entities lit in
+    (* Use the import-link IRI as the parser base. The imported
+       document typically declares its own xml:base which overrides
+       this; the fallback only matters when it does not. *)
+    let g0 =
+      (try Parser_RDFXML.parse_rdfxml_with_base import_iri src
+       with _ -> []) in
+    incr parsed_imports_count;
+    let prefix = Printf.sprintf "impm%d_" !parsed_imports_count in
+    let g = List.map (RDF_Graph_Executable.rename_triple_bnodes prefix) g0 in
+    Hashtbl.replace parsed_imports_cache import_iri g;
+    g
+
 let load_imports_into_premise
       (info : test_case_info)
       (imports_lookup : (string, string) Hashtbl.t)
@@ -680,15 +823,7 @@ let load_imports_into_premise
     (fun import_iri acc ->
        match Hashtbl.find_opt imports_lookup import_iri with
        | None -> acc
-       | Some lit ->
-         let src = expand_catalog_entities lit in
-         (* Use the import-link IRI as the parser base. The imported
-            document typically declares its own xml:base which
-            overrides this; the fallback only matters when it does
-            not. *)
-         let base = import_iri in
-         (try Parser_RDFXML.parse_rdfxml_with_base base src
-          with _ -> []) @ acc)
+       | Some lit -> parse_import_cached import_iri lit @ acc)
     info.imports
     g_p
 
@@ -852,14 +987,19 @@ let run_consistency_test_functional_syntax (fs_p_lex : string) : outcome option 
   match (try Parser_OWLFunctional.parse_functional_syntax fs_p_lex with _ -> None) with
   | None -> None
   | Some g_p ->
-    let closure = try apply_closure g_p with _ -> g_p in
-    if RDF_Graph_Executable.is_inconsistent closure
+    let (closure_rl, closure) = try apply_closure_stages g_p with _ -> (g_p, g_p) in
+    if capped_is_inconsistent closure || dl_refutes closure_rl
     then Some Fail_unexpected_inconsistency
     else Some Pass
 
 let run_consistency_test
       (info : test_case_info)
       (imports_lookup : (string, string) Hashtbl.t) : outcome =
+  (* Flushed progress marker (same pattern as [pe-running]): keeps the
+     log live under block-buffered stdout redirection so a wall-clock
+     kill doesn't lose the whole phase's output. *)
+  Printf.eprintf "  [cons-running] %s\n%!"
+    (match info.identifier with Some id -> id | None -> info.iri);
   match info.premise with
   | None ->
     (match info.fs_premise with
@@ -883,10 +1023,17 @@ let run_consistency_test
     let g_p = load_imports_into_premise info imports_lookup g_p_authored in
     if g_p = [] then Fail_parse_premise
     else begin
-      let closure =
-        try apply_closure g_p
-        with _ -> g_p in
-      if RDF_Graph_Executable.is_inconsistent closure
+      let (closure_rl, closure) =
+        try apply_closure_stages g_p
+        with _ -> (g_p, g_p) in
+      (* DL regime additionally consults the clash-detecting tableau —
+         the soundness gate for the whole refutation feature: a
+         `Some false` here on a test asserted CONSISTENT is a soundness
+         bug in Tableau.Refute.fst, never something to paper over. The
+         refuter reads the RL-BASE closure (see apply_closure_stages'
+         banner) — materialise's corpus-oriented emissions are not all
+         model-theoretically entailed and must not feed a refutation. *)
+      if capped_is_inconsistent closure || dl_refutes closure_rl
       then Fail_unexpected_inconsistency
       else Pass
     end
@@ -901,8 +1048,8 @@ let run_inconsistency_test_functional_syntax (fs_p_lex : string) : outcome optio
   match (try Parser_OWLFunctional.parse_functional_syntax fs_p_lex with _ -> None) with
   | None -> None
   | Some g_p ->
-    let closure = try apply_closure g_p with _ -> g_p in
-    if RDF_Graph_Executable.is_inconsistent closure
+    let (closure_rl, closure) = try apply_closure_stages g_p with _ -> (g_p, g_p) in
+    if capped_is_inconsistent closure || dl_refutes closure_rl
     then Some Pass
     else Some Fail_unexpected_consistency
 
@@ -918,6 +1065,8 @@ let run_inconsistency_test_functional_syntax (fs_p_lex : string) : outcome optio
 let run_inconsistency_test
       (info : test_case_info)
       (imports_lookup : (string, string) Hashtbl.t) : outcome =
+  Printf.eprintf "  [inc-running] %s\n%!"
+    (match info.identifier with Some id -> id | None -> info.iri);
   match info.premise with
   | None ->
     (match info.fs_premise with
@@ -941,11 +1090,18 @@ let run_inconsistency_test
     let g_p = load_imports_into_premise info imports_lookup g_p_authored in
     if g_p = [] then Fail_parse_premise
     else begin
-      let closure =
-        try apply_closure g_p
-        with _ -> g_p in
+      let (closure_rl, closure) =
+        try apply_closure_stages g_p
+        with _ -> (g_p, g_p) in
       debug_dump_closure info closure;
-      if RDF_Graph_Executable.is_inconsistent closure
+      (* DL regime: RL inconsistency markers first (cheap), then the
+         F*-extracted clash-detecting tableau (Tableau_Refute) for the
+         constructs Datalog closure cannot refute — complement/
+         disjunction/cardinality clashes. RL regime is unchanged. The
+         refuter reads the RL-BASE closure (apply_closure_stages'
+         banner: materialise emissions are conclusion-matching-sound,
+         not all entailment-sound, and must not feed a refutation). *)
+      if capped_is_inconsistent closure || dl_refutes closure_rl
       then Pass
       else Fail_unexpected_consistency
     end

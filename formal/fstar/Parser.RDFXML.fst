@@ -1052,9 +1052,23 @@ and build_collection_list (st : rdfxml_state) (subj : subject) (pred_iri : strin
       let item_result = process_node_element st2 item (fuel - 1) in
       (* Determine the item's subject to use as rdf:first value.
          Read-only variant — rdf:ID was already registered by the
-         inner call. *)
-      let item_st = update_state_from_attrs item_result.pr_state (element_attrs item) in
-      let (item_subj, st3) = determine_subject_readonly item_st (element_attrs item) in
+         inner call. Determined from st2 (the PRE-item state), exactly
+         like the no-parseType child-element path: an ANONYMOUS item
+         mints its bnode from the fresh-counter position the child
+         parse itself started at, so both derivations agree. The old
+         code determined from item_result.pr_state (post-item state,
+         counter already advanced), so every anonymous collection
+         member produced an ORPHAN rdf:first target — a fresh bnode
+         carrying none of the member's own triples. Named (rdf:about)
+         items were unaffected, which is why the RDF/XML suite never
+         caught it; OWL class expressions like unionOf over anonymous
+         intersections (WebOnt-description-logic-001 etc.) hit it on
+         every list entry. The determine result's state is discarded
+         (its counter bump duplicates the child's own); the rest of
+         the list threads the child's real post-state. *)
+      let pre_item_st = update_state_from_attrs st2 (element_attrs item) in
+      let (item_subj, _) = determine_subject_readonly pre_item_st (element_attrs item) in
+      let st3 = item_result.pr_state in
       let item_term =
         match item_subj with
         | S_IRI i -> T_IRI i

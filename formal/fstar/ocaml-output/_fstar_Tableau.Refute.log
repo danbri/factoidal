@@ -1,0 +1,15 @@
+* Warning 241 at OWL.Closure.fsti(0,0-0,0):
+  - Unable to load OWL.Closure.fsti.checked since checked file
+    OWL.Closure.fsti.checked is stale (dependence hash mismatch, use --debug
+    CheckedFiles for more details); will recheck OWL.Closure.fsti (suppressing
+    this warning for further modules)
+
+Extracted module Tableau.Refute
+* Warning 247 at Tableau.Refute.fst(0,0-0,0):
+  - Checked file Tableau.Refute.fst.checked was not written.
+  - Reason:
+      checked file OWL.Closure.fsti.checked is stale (dependence hash mismatch,
+      use --debug CheckedFiles for more details)
+
+Verified module: Tableau.Refute
+All verification conditions discharged successfully

@@ -27,13 +27,18 @@ module Tableau
        here — absence of known successors does not preclude unseen ones.
      - max-N: Only returns Some true when k=0 AND there are no known
        successors (or, for qualified, no successor is provably in C).
-       True max-N refutation requires sameAs aggregation / UNA — deferred.
+       True max-N refutation over k>=1 lives in Tableau.Refute.fst
+       (differentFrom-based provable distinctness); this module still
+       never refutes here.
      - exactly-N: Same k=0 restriction as max-N.
 
-   WHAT REMAINS DEFERRED TO LATER STAGES:
-     - No full classical-negation dual-branch search — stage (d).
-     - No fresh-individual skolemisation for ∃ — stage (e).
-     - Stage (c) max/exact over k>=1 requires differentFrom tracking — stage (f).
+   STAGES (d)/(e)/(f) LIVE IN THE SIBLING MODULE Tableau.Refute.fst
+   (2026-07-10): classical negation via NNF + complement clash with
+   disjunction branch search (d), fresh-individual ∃-witnesses (e),
+   and max/exact refutation over k>=1 via differentFrom-based provable
+   distinctness (f) — as a REFUTATION calculus (tableau_consistent);
+   this module's materialisation entry points remain positive-sound
+   only, exactly as before.
 
    The contract of `owl_tableau_entails` is unchanged from stage (a):
      Some true  = provably entailed
@@ -66,9 +71,9 @@ open OWL.Vocabulary
    2. Class expression AST.
    ------------------------------------------------------------------- *)
 
-(* A class expression. We intentionally keep the AST small for stage (b).
-   Later stages will extend this with cardinality (CE_MinCard etc.) and
-   enumerated classes (CE_OneOf).
+(* A class expression. We intentionally keep the AST small. Stage (c)
+   added cardinality (CE_MinCard etc.); enumerated classes (CE_OneOf)
+   remain future work (nominals).
 
    The recursive constructors are bounded at parse time by a fuel
    parameter so F* can discharge termination with a decreases clause. *)

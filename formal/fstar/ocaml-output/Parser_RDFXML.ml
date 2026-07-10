@@ -1230,14 +1230,14 @@ and build_collection_list (st : rdfxml_state) (subj : RDF_Term.subject)
                 let link_reif = reif_for link_obj in
                 let item_result =
                   process_node_element st2 item (fuel - Prims.int_one) in
-                let item_st =
-                  update_state_from_attrs item_result.pr_state
-                    (Parser_XML.element_attrs item) in
+                let pre_item_st =
+                  update_state_from_attrs st2 (Parser_XML.element_attrs item) in
                 let uu___3 =
-                  determine_subject_readonly item_st
+                  determine_subject_readonly pre_item_st
                     (Parser_XML.element_attrs item) in
                 (match uu___3 with
-                 | (item_subj, st3) ->
+                 | (item_subj, uu___4) ->
+                     let st3 = item_result.pr_state in
                      let item_term =
                        match item_subj with
                        | RDF_Term.S_IRI i -> RDF_Term.T_IRI i
