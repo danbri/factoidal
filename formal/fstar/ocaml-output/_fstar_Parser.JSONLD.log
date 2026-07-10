@@ -1,15 +1,12 @@
-* Warning 241 at RDF.Graph.Executable.fst(0,0-0,0):
-  - Unable to load RDF.Graph.Executable.fst.checked since checked file
-    RDF.Graph.Executable.fst.checked is stale (dependence hash mismatch, use
-    --debug CheckedFiles for more details); will recheck
-    RDF.Graph.Executable.fst (suppressing this warning for further modules)
+* Warning 241 at JSONLD.Loader.fst(0,0-0,0):
+  - Unable to load JSONLD.Loader.fst.checked since checked file
+    JSONLD.Loader.fst.checked does not exist; will recheck JSONLD.Loader.fst
+    (suppressing this warning for further modules)
 
 Extracted module Parser.JSONLD
 * Warning 247 at Parser.JSONLD.fst(0,0-0,0):
   - Checked file Parser.JSONLD.fst.checked was not written.
-  - Reason:
-      checked file RDF.Graph.Executable.fst.checked is stale (dependence hash
-      mismatch, use --debug CheckedFiles for more details)
+  - Reason: checked file JSONLD.Context.fst.checked does not exist
 
 Verified module: Parser.JSONLD
 All verification conditions discharged successfully

@@ -1,3 +1,15 @@
+* Warning 241 at RDF.Indexed.fsti(0,0-0,0):
+  - Unable to load RDF.Indexed.fsti.checked since checked file
+    RDF.Indexed.fsti.checked does not exist; will recheck RDF.Indexed.fsti
+    (suppressing this warning for further modules)
+
+* Warning 361 at SPARQL11.Algebra.fst(6682,0-6683,40):
+  - Some #push-options have not been popped. Current depth is 1.
+
 Extracted module OWL.QueryEval
+* Warning 247 at OWL.QueryEval.fst(0,0-0,0):
+  - Checked file OWL.QueryEval.fst.checked was not written.
+  - Reason: checked file OWL.QueryRewrite.fst.checked does not exist
+
 Verified module: OWL.QueryEval
 All verification conditions discharged successfully

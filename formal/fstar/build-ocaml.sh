@@ -962,6 +962,7 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
     "$BINDIR/grddl_runner"
     "$BINDIR/jsonld_runner"
     "$BINDIR/jsonld_fromrdf_runner"
+    "$BINDIR/jsonld_expand_runner"
     "$BINDIR/shacl_runner"
     "$BINDIR/rml_runner"
     "$BINDIR/csvw_runner"
@@ -984,6 +985,7 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
     ../../../bin/grddl-runner/grddl_runner.ml
     ../../../bin/jsonld-runner/jsonld_runner.ml
     ../../../bin/jsonld-fromrdf-runner/jsonld_fromrdf_runner.ml
+    ../../../bin/jsonld-expand-runner/jsonld_expand_runner.ml
     ../../../bin/rml-runner/rml_runner.ml
     ../../../bin/csvw-runner/csvw_runner.ml
     ../../../bin/vc-runner/vc_runner.ml
@@ -1203,6 +1205,36 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
       exit 1
     fi
     echo "  Built: bin/${PLATFORM}/jsonld_fromrdf_runner ($(wc -c < "$BINDIR/jsonld_fromrdf_runner") bytes)"
+
+    # jsonld_expand_runner — JSON-LD 1.1 Expansion Algorithm manifest
+    # runner. Reads
+    # third_party/testing/json-ld/tests/expand-manifest.jsonld via the
+    # F*-extracted Parser_JSON, calls Parser_JSONLD.expand_document (the
+    # Expansion Algorithm, stopping before RDF conversion), and compares
+    # the expanded JSON against the expected -out.jsonld via
+    # Parser_JSONLD.jsonld_expanded_equal (JCS-canonical structural
+    # equality). Semantics live in JSONLD.Expand/JSONLD.Context/
+    # Parser.JSONLD; this .ml is I/O + compare only (iron rule #7 / #11).
+    JSONLD_EXPAND_RUNNER_RC=0
+    run_with_heartbeat "ocamlopt jsonld_expand_runner" "_ocamlopt_jsonld_expand_runner.log" -- \
+      ocamlfind ocamlopt -package fstar.lib,str,zarith,sha,digestif.c,unix,uucp -linkpkg -w -8-14-26 \
+      $STATIC_FLAGS \
+      $COMMON_MODULES \
+      $PARQUET_NATIVE_STUBS \
+      $HACL_NATIVE_STUBS \
+      ../../../bin/jsonld-expand-runner/jsonld_expand_runner.ml \
+      -o "$BINDIR/jsonld_expand_runner" || JSONLD_EXPAND_RUNNER_RC=$?
+    cat _ocamlopt_jsonld_expand_runner.log
+    if [[ "$JSONLD_EXPAND_RUNNER_RC" -ne 0 ]]; then
+      echo "  ERROR: jsonld_expand_runner build failed (ocamlopt rc=$JSONLD_EXPAND_RUNNER_RC)" >&2
+      echo "  See full log above. Build aborted." >&2
+      exit "$JSONLD_EXPAND_RUNNER_RC"
+    fi
+    if [[ ! -x "$BINDIR/jsonld_expand_runner" ]]; then
+      echo "  ERROR: jsonld_expand_runner ocamlopt returned 0 but $BINDIR/jsonld_expand_runner is missing or not executable" >&2
+      exit 1
+    fi
+    echo "  Built: bin/${PLATFORM}/jsonld_expand_runner ($(wc -c < "$BINDIR/jsonld_expand_runner") bytes)"
 
     # mathml_runner — Content MathML evaluation corpus runner. Reads
     # third_party/testing/mathml/manifest.json via the F*-extracted

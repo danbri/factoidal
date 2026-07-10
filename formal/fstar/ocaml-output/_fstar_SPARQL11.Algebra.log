@@ -1,18 +1,15 @@
-* Warning 241 at SPARQL11.IRI.Resolve.fst(0,0-0,0):
-  - Unable to load SPARQL11.IRI.Resolve.fst.checked since checked file
-    SPARQL11.IRI.Resolve.fst.checked is stale (dependence hash mismatch, use
-    --debug CheckedFiles for more details); will recheck
-    SPARQL11.IRI.Resolve.fst (suppressing this warning for further modules)
+* Warning 241 at RDF.Indexed.fsti(0,0-0,0):
+  - Unable to load RDF.Indexed.fsti.checked since checked file
+    RDF.Indexed.fsti.checked does not exist; will recheck RDF.Indexed.fsti
+    (suppressing this warning for further modules)
 
-* Warning 361 at SPARQL11.Algebra.fst(6515,0-6516,40):
+* Warning 361 at SPARQL11.Algebra.fst(6682,0-6683,40):
   - Some #push-options have not been popped. Current depth is 1.
 
 Extracted module SPARQL11.Algebra
 * Warning 247 at SPARQL11.Algebra.fst(0,0-0,0):
   - Checked file SPARQL11.Algebra.fst.checked was not written.
-  - Reason:
-      checked file SPARQL11.IRI.Resolve.fst.checked is stale (dependence hash
-      mismatch, use --debug CheckedFiles for more details)
+  - Reason: checked file Parser.WKT.fst.checked does not exist
 
 Verified module: SPARQL11.Algebra
 All verification conditions discharged successfully

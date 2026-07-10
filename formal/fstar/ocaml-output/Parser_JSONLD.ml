@@ -1250,3 +1250,50 @@ let parse_jsonld (input : Prims.string)
               | FStar_Pervasives_Native.Some expanded ->
                   jld_dataset_of_json rdir expanded))
       else jld_dataset_of_json rdir root
+let expand_document (input : Prims.string)
+  (base : Prims.string FStar_Pervasives_Native.option)
+  (expand_context : Prims.string FStar_Pervasives_Native.option)
+  (processing_mode : Prims.string FStar_Pervasives_Native.option) :
+  Parser_JSON.json_val FStar_Pervasives_Native.option=
+  let mode10 =
+    match processing_mode with
+    | FStar_Pervasives_Native.Some "json-ld-1.0" -> true
+    | uu___ -> false in
+  match Parser_JSON.parse_json input with
+  | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+  | FStar_Pervasives_Native.Some root ->
+      let ac_seed =
+        {
+          JSONLD_Context.ac_terms =
+            (JSONLD_Context.empty_active_context.JSONLD_Context.ac_terms);
+          JSONLD_Context.ac_vocab =
+            (JSONLD_Context.empty_active_context.JSONLD_Context.ac_vocab);
+          JSONLD_Context.ac_base = base;
+          JSONLD_Context.ac_language =
+            (JSONLD_Context.empty_active_context.JSONLD_Context.ac_language);
+          JSONLD_Context.ac_direction =
+            (JSONLD_Context.empty_active_context.JSONLD_Context.ac_direction);
+          JSONLD_Context.ac_previous =
+            (JSONLD_Context.empty_active_context.JSONLD_Context.ac_previous);
+          JSONLD_Context.ac_mode10 = mode10;
+          JSONLD_Context.ac_doc_url =
+            (JSONLD_Context.empty_active_context.JSONLD_Context.ac_doc_url);
+          JSONLD_Context.ac_original_base =
+            (JSONLD_Context.empty_active_context.JSONLD_Context.ac_original_base);
+          JSONLD_Context.ac_suppress_pop =
+            (JSONLD_Context.empty_active_context.JSONLD_Context.ac_suppress_pop)
+        } in
+      let ac0_opt =
+        match expand_context with
+        | FStar_Pervasives_Native.None ->
+            FStar_Pervasives_Native.Some ac_seed
+        | FStar_Pervasives_Native.Some ctxref ->
+            JSONLD_Context.context_process ac_seed
+              (Parser_JSON.JString ctxref) false
+              JSONLD_Context.jld_remote_context_fuel [] in
+      (match ac0_opt with
+       | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+       | FStar_Pervasives_Native.Some ac0 -> JSONLD_Expand.expand ac0 root)
+let jsonld_expanded_equal (a : Parser_JSON.json_val)
+  (b : Parser_JSON.json_val) : Prims.bool=
+  (jcanon_document a) = (jcanon_document b)

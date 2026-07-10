@@ -1379,3 +1379,62 @@ let parse_jsonld (input:string) (base:option string) (rdf_direction:option strin
           | None -> None
           | Some expanded -> jld_dataset_of_json rdir expanded))
     else jld_dataset_of_json rdir root
+
+// ================================================================
+// JSON-LD 1.1 API Expansion Algorithm entry point (expand-manifest).
+//
+// parse_jsonld above runs the SAME pipeline (seed active context from
+// base + processing mode, optionally pre-apply an expandContext, then
+// JSONLD.Expand.expand) but its LAST step converts the expanded json_val
+// to an RDF dataset (jld_dataset_of_json). The expand test suite compares
+// the EXPANDED JSON itself, so this entry point stops one step earlier
+// and returns that json_val. The setup is byte-for-byte the same as
+// parse_jsonld's context-bearing branch — nothing new semantically, it
+// just does not throw the expanded form away.
+//
+// `base`: the document's own base IRI (the manifest's `option.base`, or
+// the baseIri-plus-input convention the consumer computes). `expand_
+// context`: the manifest's `option.expandContext` — an ALREADY-ABSOLUTE
+// IRI naming a context to apply before the document's inline @context
+// (same treatment as parse_jsonld). `processing_mode`: the manifest's
+// `option.processingMode` / `option.specVersion` raw string; only the
+// exact string "json-ld-1.0" seeds ac_mode10 = true. None on invalid
+// RFC 8259 JSON or an out-of-scope expansion feature (JSONLD.Expand
+// module banner) — exactly the None a NegativeEvaluationTest expects.
+//
+// Unlike parse_jsonld, expansion runs UNCONDITIONALLY (no "has inline
+// @context" pre-check): the expand suite feeds plenty of context-free
+// documents (free-floating nodes, coercion-free literals) that must
+// still be run through the expansion algorithm to drop unmapped
+// properties, wrap values in arrays, etc.
+let expand_document (input:string) (base:option string)
+                    (expand_context:option string) (processing_mode:option string)
+  : option json_val =
+  let mode10 = (match processing_mode with Some "json-ld-1.0" -> true | _ -> false) in
+  match parse_json input with
+  | None -> None
+  | Some root ->
+    let ac_seed = { empty_active_context with ac_base = base; ac_mode10 = mode10 } in
+    let ac0_opt =
+      (match expand_context with
+       | None -> Some ac_seed
+       | Some ctxref -> context_process ac_seed (JString ctxref) false jld_remote_context_fuel []) in
+    (match ac0_opt with
+     | None -> None
+     | Some ac0 -> expand ac0 root)
+
+// Structural equality of two expanded-form JSON-LD documents, as the
+// expand test suite compares them: object member order is INSIGNIFICANT
+// (jcanon_sort_fields sorts keys), array element order IS significant
+// (jcanon_serialize preserves it — expanded property-value arrays are
+// ordered lists), and numbers compare by their JCS/RFC 8785 canonical
+// value (jcanon_number: "4" == "4.0E0"-shaped-value-4, trailing-zero and
+// exponent differences collapse) rather than by lexeme. Realised by
+// canonicalizing BOTH sides to the one JCS string and comparing — the
+// semantic normalization lives here in F*; the consumer only compares
+// two strings. (A future refinement toward jsonld.js's order-INDEPENDENT
+// node-array matching would replace this with a recursive multiset
+// compare; the order-sensitive form under-counts — false FAIL, never
+// false PASS — so it is the safe first measurement, per anti-pattern #3.)
+let jsonld_expanded_equal (a b:json_val) : bool =
+  jcanon_document a = jcanon_document b

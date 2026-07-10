@@ -315,25 +315,32 @@ let jexp_expand_value_object (ac:active_context) (fields:list (string & json_val
          | Some (_, JNull) -> Some None
          | Some (_, JString d) -> if d = "ltr" || d = "rtl" then Some (Some d) else None
          | Some _ -> None) in
+      // Expanded value objects RETAIN their own "@index" member (expand
+      // suite 0036/0044 — toRdf-neutral, the dataset conversion ignores
+      // it); validated string-shaped above.
+      let idx : list (string & json_val) =
+        (match jexp_find_aliased_field ac "@index" fields with
+         | Some (_, JString s) -> [("@index", JString s)]
+         | _ -> []) in
       (match dir, typ with
        | None, _ -> None
        | Some (Some d), _ ->
          if Some? typ then None
          else
            (match lang with
-            | Some lg -> Some (JObject [("@value", v); ("@language", JString lg); ("@direction", JString d)])
-            | None -> Some (JObject [("@value", v); ("@direction", JString d)]))
+            | Some lg -> Some (JObject (("@value", v) :: ("@language", JString lg) :: ("@direction", JString d) :: idx))
+            | None -> Some (JObject (("@value", v) :: ("@direction", JString d) :: idx)))
        | Some None, _ ->
          (match (lang, typ) with
           | (Some _, Some _) -> None
-          | (Some lg, None) -> Some (JObject [("@value", v); ("@language", JString lg)])
+          | (Some lg, None) -> Some (JObject (("@value", v) :: ("@language", JString lg) :: idx))
           | (None, Some t) ->
             (match expand_iri ac t true with
              | None -> None
              | Some iri ->
                if jexp_string_has_space iri 0 (fs_byte_length iri + 1) then None
-               else Some (JObject [("@value", v); ("@type", JString iri)]))
-          | (None, None) -> Some (JObject [("@value", v)])))
+               else Some (JObject (("@value", v) :: ("@type", JString iri) :: idx)))
+          | (None, None) -> Some (JObject (("@value", v) :: idx))))
 
 // Split a node object's members into its (at most one) @context value and
 // the rest, so the caller can re-run context_process before expanding the
@@ -412,7 +419,17 @@ let rec jexp_expand_type_items (ac:active_context) (items:list json_val)
      | None ->
        (match expand_iri ac t false with
         | Some iri -> JString iri :: jexp_expand_type_items ac rest
-        | None -> jexp_expand_type_items ac rest))
+        | None ->
+          // expand/0060 "only @base is cleared": a relative @type that
+          // resolves against NEITHER vocab NOR base stays in expanded
+          // form as its literal string (the IRI Expansion algorithm's
+          // final "return value as is") — EXCEPT a keyword lookalike
+          // ("@ignoreMe"), which is dropped with a warning like every
+          // other lookalike. Downstream triple generation already
+          // filters non-IRI @type entries (jld_type_prepend), so this
+          // stays toRdf-neutral.
+          if jldctx_keyword_lookalike t then jexp_expand_type_items ac rest
+          else JString t :: jexp_expand_type_items ac rest))
   | _ :: rest -> jexp_expand_type_items ac rest
 
 let expand_type_values (ac:active_context) (value:json_val) : list json_val =
@@ -552,24 +569,31 @@ let rec jexp_flatten_map_entries (entries:list (string & json_val))
 // string "@none" (toRdf/m010: "none": "@none" in the context, used as
 // a language-map key). `key` is still used verbatim as the @language
 // TAG in the non-"@none" case (it IS the language tag, e.g. "de").
-let jexp_language_map_item (key:string) (is_none:bool) (v:json_val) : option json_val =
+// `dir`: the effective direction for this language map's items (the
+// term's own @direction override when present, else the active
+// context's default — expand suite di04-di06): a Some d stamps
+// "@direction" onto every non-@none item.
+let jexp_language_map_item (key:string) (is_none:bool) (dir:option string) (v:json_val) : option json_val =
   match v with
   | JString s ->
     if is_none
     then Some (JObject [("@value", JString s)])
-    else Some (JObject [("@value", JString s); ("@language", JString key)])
+    else
+      (match dir with
+       | Some d -> Some (JObject [("@value", JString s); ("@language", JString key); ("@direction", JString d)])
+       | None -> Some (JObject [("@value", JString s); ("@language", JString key)]))
   | _ -> None
 
-let rec jexp_language_map_entry_items (key:string) (is_none:bool) (items:list json_val)
+let rec jexp_language_map_entry_items (key:string) (is_none:bool) (dir:option string) (items:list json_val)
   : Tot (list json_val) (decreases items) =
   match items with
   | [] -> []
   | v :: rest ->
-    (match jexp_language_map_item key is_none v with
-     | Some it -> it :: jexp_language_map_entry_items key is_none rest
-     | None -> jexp_language_map_entry_items key is_none rest)
+    (match jexp_language_map_item key is_none dir v with
+     | Some it -> it :: jexp_language_map_entry_items key is_none dir rest
+     | None -> jexp_language_map_entry_items key is_none dir rest)
 
-let rec jexp_expand_language_map (ac:active_context) (entries:list (string & json_val))
+let rec jexp_expand_language_map (ac:active_context) (dir:option string) (entries:list (string & json_val))
   : Tot (list json_val) (decreases entries) =
   match entries with
   | [] -> []
@@ -578,8 +602,8 @@ let rec jexp_expand_language_map (ac:active_context) (entries:list (string & jso
     // "@none" (its expanded form, via expand_iri) counts as "@none"
     // even when the raw JSON key text isn't literally "@none".
     let is_none = (k = "@none") || (match expand_iri ac k true with Some "@none" -> true | _ -> false) in
-    List.Tot.append (jexp_language_map_entry_items k is_none (jexp_as_array v))
-                     (jexp_expand_language_map ac rest)
+    List.Tot.append (jexp_language_map_entry_items k is_none dir (jexp_as_array v))
+                     (jexp_expand_language_map ac dir rest)
 
 // @id / @type map post-processing: inject the map key (already IRI-
 // expanded by the caller) into an already-expanded item.
@@ -591,11 +615,27 @@ let jexp_set_id_if_absent (iri:string) (item:json_val) : json_val =
     else JObject (("@id", JString iri) :: fields)
   | _ -> item
 
+// expand/m004 "Prepends @type in object already having an @type": when
+// the (already-expanded) item carries its own "@type" array, the map
+// key PREPENDS into that array rather than adding a duplicate field.
+let rec jexp_prepend_type_existing (kiri:string) (fields:list (string & json_val))
+  : Tot (option (list (string & json_val))) (decreases fields) =
+  match fields with
+  | [] -> None
+  | ("@type", JArray ts) :: rest -> Some (("@type", JArray (JString kiri :: ts)) :: rest)
+  | kv :: rest ->
+    (match jexp_prepend_type_existing kiri rest with
+     | None -> None
+     | Some r -> Some (kv :: r))
+
 let jexp_add_type_to_item (kiri:string) (item:json_val) : json_val =
   match item with
   | JObject fields ->
     if jexp_has_field "@value" fields then item
-    else JObject (("@type", JArray [JString kiri]) :: fields)
+    else
+      (match jexp_prepend_type_existing kiri fields with
+       | Some fields1 -> JObject fields1
+       | None -> JObject (("@type", JArray [JString kiri]) :: fields))
   | _ -> item
 
 // A container-map key, resolved to either "no override" (the literal
@@ -658,7 +698,12 @@ let jexp_inject_index_field (index_iri:string) (keyval:json_val) (item:json_val)
   match item with
   | JObject fields ->
     if jexp_has_field "@value" fields then None
-    else Some (JObject (List.Tot.append fields [(index_iri, JArray [keyval])]))
+    // PREPENDED, not appended: the JSON-LD 1.1 API's property-valued
+    // index step adds the index value BEFORE any existing values of the
+    // same property (expand suite pi07/pi09 — the caller's
+    // jexp_merge_item_fields then folds a duplicate key so the injected
+    // value leads the merged array). Order-invisible to toRdf.
+    else Some (JObject ((index_iri, JArray [keyval]) :: fields))
   | _ -> None
 
 let rec jexp_inject_index_items (index_iri:string) (keyval:json_val) (items:list json_val)
@@ -760,6 +805,197 @@ let rec jexp_has_dup_string (xs:list string) : Tot bool (decreases xs) =
 let jexp_has_colliding_keywords (ac:active_context) (fields:list (string & json_val)) : bool =
   jexp_has_dup_string (jexp_keyword_aliases_of ac fields)
 
+// ================================================================
+// Expand-suite conformance helpers (2026-07-10, expand manifest
+// measurement): container-map key ordering, duplicate-expanded-key
+// merging, and the free-floating drop. Each realises a step of the
+// JSON-LD 1.1 API Expansion Algorithm that the toRdf path never
+// OBSERVABLY needed (a free-floating node yields no triples; duplicate
+// expanded keys yield the same triple set as one merged key; map-entry
+// processing order washes out in an unordered RDF graph) but that the
+// expand suite's expanded-JSON comparison pins exactly.
+// ================================================================
+
+// Container-map entries are processed "ordered lexicographically by
+// key" (JSON-LD 1.1 API Expansion / Container Mapping steps — the
+// suite's fixtures are generated with the API's `ordered: true`, e.g.
+// expand/0030's language map expects de < en). Plain insertion sort,
+// stable for equal keys.
+let rec jexp_map_entry_insert (kv:(string & json_val)) (xs:list (string & json_val))
+  : Tot (list (string & json_val)) (decreases xs) =
+  match xs with
+  | [] -> [kv]
+  | y :: rest ->
+    if RDF.Graph.Executable.string_lt (fst kv) (fst y) then kv :: xs
+    else y :: jexp_map_entry_insert kv rest
+
+let rec jexp_sort_map_entries (xs:list (string & json_val))
+  : Tot (list (string & json_val)) (decreases xs) =
+  match xs with
+  | [] -> []
+  | kv :: rest -> jexp_map_entry_insert kv (jexp_sort_map_entries rest)
+
+// The MAIN node-object loop also processes members "ordered
+// lexicographically by key" (Expansion algorithm step 13 — expand/0035
+// pins it: the literal-IRI key sorts before the "label" term, so its
+// values come FIRST in the merged property array), and every @nest
+// member (or alias of @nest) is DEFERRED to after all ordinary members
+// (step 14's nests list — expand/n003: base "p2" value precedes the
+// nested one even though "nest" sorts first). Sort, then stable-
+// partition nest keys to the back.
+let rec jexp_partition_nest (ac:active_context) (fields:list (string & json_val))
+  : Tot (list (string & json_val) & list (string & json_val)) (decreases fields) =
+  match fields with
+  | [] -> ([], [])
+  | (k, v) :: rest ->
+    let (others, nests) = jexp_partition_nest ac rest in
+    let is_nest = (k = "@nest") ||
+                  (match expand_iri ac k true with Some "@nest" -> true | _ -> false) in
+    if is_nest then (others, (k, v) :: nests) else ((k, v) :: others, nests)
+
+let jexp_order_node_fields (ac:active_context) (fields:list (string & json_val))
+  : list (string & json_val) =
+  let sorted = jexp_sort_map_entries fields in
+  let (others, nests) = jexp_partition_nest ac sorted in
+  List.Tot.append others nests
+
+// Plain @index containers (expand suite 0036/0044): the map key is NOT
+// dropped as metadata in expanded form — every item of the entry's
+// value gains an "@index": <key> member unless it already carries its
+// own @index (0036's "this overrides the 'A' index") or the key
+// expands to @none. (toRdf-neutral: the dataset conversion ignores
+// @index members — they never make triples.)
+let jexp_add_index_to_item (k:string) (item:json_val) : json_val =
+  match item with
+  | JObject fields ->
+    if jexp_has_field "@index" fields then item
+    else JObject (("@index", JString k) :: fields)
+  | _ -> item
+
+let rec jexp_add_index_items (k:string) (items:list json_val)
+  : Tot (list json_val) (decreases items) =
+  match items with
+  | [] -> []
+  | it :: rest -> jexp_add_index_to_item k it :: jexp_add_index_items k rest
+
+// Duplicate expanded keys (two DIFFERENT raw keys expanding to the SAME
+// IRI — expand/0034's colliding terms — or several keys folding into
+// "@reverse"/"@type"/"@included") merge into ONE entry whose values are
+// appended in first-occurrence order (Expansion algorithm's "add value
+// to the entry ... using the add value helper"). Collect every later
+// value of the head key, append array-shaped values pairwise (object-
+// shaped for the "@reverse" wrapper, whose INNER per-property lists are
+// then merged by the same rule one level down); a non-array duplicate
+// (e.g. a JString "@id" — unreachable for valid input, since colliding
+// keyword aliases already failed in jexp_has_colliding_keywords) keeps
+// its first value.
+let rec jexp_collect_dup_key (k:string) (fields:list (string & json_val))
+  : Tot (list json_val & list (string & json_val)) (decreases fields) =
+  match fields with
+  | [] -> ([], [])
+  | (k2, v) :: rest ->
+    let (vs, others) = jexp_collect_dup_key k rest in
+    if k2 = k then (v :: vs, others) else (vs, (k2, v) :: others)
+
+let rec jexp_merge_dup_values (v:json_val) (vs:list json_val) : Tot json_val (decreases vs) =
+  match vs with
+  | [] -> v
+  | v2 :: rest ->
+    let m = (match v, v2 with
+             | JArray xs, JArray ys -> JArray (List.Tot.append xs ys)
+             | JObject xs, JObject ys -> JObject (List.Tot.append xs ys)
+             | _, _ -> v) in
+    jexp_merge_dup_values m rest
+
+let rec jexp_merge_dup_fields (fields:list (string & json_val)) (fuel:nat)
+  : Tot (list (string & json_val)) (decreases fuel) =
+  if fuel = 0 then fields
+  else
+    match fields with
+    | [] -> []
+    | (k, v) :: rest ->
+      let (vs, others) = jexp_collect_dup_key k rest in
+      let merged = jexp_merge_dup_values v vs in
+      // "@reverse" merges as an OBJECT of per-property arrays; after the
+      // shallow object append above, the same reverse property appearing
+      // in BOTH duplicates leaves duplicate inner keys — merge them by
+      // this very rule one level down.
+      let merged1 = (match merged with
+                     | JObject inner ->
+                       if k = "@reverse" then JObject (jexp_merge_dup_fields inner (fuel - 1))
+                       else merged
+                     | _ -> merged) in
+      (k, merged1) :: jexp_merge_dup_fields others (fuel - 1)
+
+// Merge duplicate keys INSIDE each already-expanded item — used by the
+// property-valued index injection (expand suite pi07/pi09: the injected
+// index property must APPEND to an existing property of the same IRI,
+// not sit alongside it as a duplicate key).
+let rec jexp_merge_item_fields (items:list json_val) : Tot (list json_val) (decreases items) =
+  match items with
+  | [] -> []
+  | JObject fs :: rest ->
+    JObject (jexp_merge_dup_fields fs (json_size (JObject fs) + 8)) :: jexp_merge_item_fields rest
+  | v :: rest -> v :: jexp_merge_item_fields rest
+
+// The Expansion algorithm's free-floating drop (active property null or
+// "@graph"): a result map that is empty, carries "@value" or "@list", or
+// whose ONLY entry is "@id", becomes null (dropped). Applied to
+// POST-EXPANSION items, so the keys are literal keywords (aliases
+// already resolved).
+let jexp_free_floating (v:json_val) : bool =
+  match v with
+  | JObject [] -> true
+  | JObject fields ->
+    jexp_has_field "@value" fields || jexp_has_field "@list" fields ||
+    (match fields with
+     | [(k, _)] -> k = "@id"
+     | _ -> false)
+  | _ -> false
+
+// Walk an expanded document dropping free-floating entries wherever the
+// active property was null or "@graph": the top-level item list (the
+// caller passes it here directly) and the value array of every "@graph"
+// key at any depth. Items under ORDINARY property keys are walked only
+// to find nested "@graph" keys — they are never dropped themselves.
+let rec jexp_drop_ff_items (items:list json_val) (fuel:nat)
+  : Tot (list json_val) (decreases fuel) =
+  if fuel = 0 then items
+  else
+    match items with
+    | [] -> []
+    | v :: rest ->
+      let v1 = jexp_drop_ff_node v (fuel - 1) in
+      if jexp_free_floating v1 then jexp_drop_ff_items rest (fuel - 1)
+      else v1 :: jexp_drop_ff_items rest (fuel - 1)
+
+and jexp_drop_ff_node (v:json_val) (fuel:nat) : Tot json_val (decreases fuel) =
+  if fuel = 0 then v
+  else
+    match v with
+    | JObject fields -> JObject (jexp_drop_ff_fields fields (fuel - 1))
+    | _ -> v
+
+and jexp_drop_ff_fields (fields:list (string & json_val)) (fuel:nat)
+  : Tot (list (string & json_val)) (decreases fuel) =
+  if fuel = 0 then fields
+  else
+    match fields with
+    | [] -> []
+    | (k, JArray items) :: rest ->
+      if k = "@graph"
+      then (k, JArray (jexp_drop_ff_items items (fuel - 1))) :: jexp_drop_ff_fields rest (fuel - 1)
+      else (k, JArray (jexp_drop_ff_walk_items items (fuel - 1))) :: jexp_drop_ff_fields rest (fuel - 1)
+    | kv :: rest -> kv :: jexp_drop_ff_fields rest (fuel - 1)
+
+and jexp_drop_ff_walk_items (items:list json_val) (fuel:nat)
+  : Tot (list json_val) (decreases fuel) =
+  if fuel = 0 then items
+  else
+    match items with
+    | [] -> []
+    | v :: rest -> jexp_drop_ff_node v (fuel - 1) :: jexp_drop_ff_walk_items rest (fuel - 1)
+
 let rec expand_node (ac:active_context) (v:json_val) (fuel:nat)
   : Tot (option json_val) (decreases fuel) =
   if fuel = 0 then None
@@ -805,9 +1041,10 @@ let rec expand_node (ac:active_context) (v:json_val) (fuel:nat)
             // handled shape, out of scope here).
             if jexp_has_colliding_keywords ac_typed fields1 then None
             else
-            (match expand_fields_list ac_typed ac0 fields1 (fuel - 1) with
+            (match expand_fields_list ac_typed ac0 (jexp_order_node_fields ac_typed fields1) (fuel - 1) with
              | None -> None
-             | Some outfields -> Some (JObject outfields))))
+             | Some outfields ->
+               Some (JObject (jexp_merge_dup_fields outfields (json_size (JObject outfields) + 8))))))
     | _ -> None
 
 // toRdf/c013 (fromMap): a @container:@type (or @id) map's flattened
@@ -851,9 +1088,10 @@ and expand_node_from_map (ac:active_context) (v:json_val) (fuel:nat)
             // toRdf/er26: see expand_node's own identical check.
             if jexp_has_colliding_keywords ac_typed fields1 then None
             else
-            (match expand_fields_list ac_typed ac0 fields1 (fuel - 1) with
+            (match expand_fields_list ac_typed ac0 (jexp_order_node_fields ac_typed fields1) (fuel - 1) with
              | None -> None
-             | Some outfields -> Some (JObject outfields))))
+             | Some outfields ->
+               Some (JObject (jexp_merge_dup_fields outfields (json_size (JObject outfields) + 8))))))
     | _ -> None
 
 // ac0: this node's FIXED pre-type-scope active context (the JSON-LD 1.1
@@ -918,6 +1156,14 @@ and expand_one_field (ac:active_context) (ac0:active_context) (key:string) (valu
        // same "keep it, let downstream filter" pattern this function
        // already uses for a keyword-lookalike @id (see this branch's
        // sibling case a few lines below / toRdf/e122's comment).
+       // expand/0122 "Ignore some IRIs when that start with @": an @id
+       // VALUE that is a keyword lookalike ("@ignoreMe") expands to
+       // null — retained literally as {"@id": null} in expanded form
+       // (the fixture pins exactly that shape). The dataset conversion
+       // treats a null @id the same as the unresolvable-string case it
+       // already handles: no valid subject, no triples.
+       if jldctx_keyword_lookalike s then Some (Some [("@id", JNull)])
+       else
        (match expand_iri ac s false with
         | None -> Some (Some [("@id", JString s)])
         | Some iri -> Some (Some [("@id", JString iri)]))
@@ -946,7 +1192,14 @@ and expand_one_field (ac:active_context) (ac0:active_context) (key:string) (valu
           Some (Some (List.Tot.append ord_entries
                         (if rev_entries = [] then [] else [("@reverse", JObject rev_entries)]))))
      | _ -> None)
-  else if key = "@index" then Some None
+  else if key = "@index" then
+    // Expanded node objects RETAIN their own "@index" member (expand
+    // suite 0036 — the container key does NOT override it; toRdf-
+    // neutral, no triple ever comes from @index). A non-string value is
+    // the spec's "invalid @index value".
+    (match value with
+     | JString s -> Some (Some [("@index", JString s)])
+     | _ -> None)
   else if key = "@included" then
     // Unlike @graph's lenient drop-non-conforming policy, an @included
     // entry that is NOT a node object (a bare string, a value object,
@@ -958,9 +1211,12 @@ and expand_one_field (ac:active_context) (ac0:active_context) (key:string) (valu
      | None -> None
      | Some items -> Some (Some [("@included", JArray items)]))
   else if key = "@nest" then
+    // Nested members expand in the same lexicographic-with-nests-last
+    // order as a node object's own members (jexp_order_node_fields —
+    // expand suite n003-n007).
     (match value with
      | JObject nfields ->
-       (match expand_fields_list ac ac0 nfields (fuel - 1) with
+       (match expand_fields_list ac ac0 (jexp_order_node_fields ac nfields) (fuel - 1) with
         | None -> None
         | Some outs -> Some (Some outs))
      | JArray items ->
@@ -1006,7 +1262,7 @@ and expand_nest_array (ac:active_context) (ac0:active_context) (items:list json_
     match items with
     | [] -> Some []
     | JObject nfields :: rest ->
-      (match expand_fields_list ac ac0 nfields (fuel - 1) with
+      (match expand_fields_list ac ac0 (jexp_order_node_fields ac nfields) (fuel - 1) with
        | None -> None
        | Some outs ->
          (match expand_nest_array ac ac0 rest (fuel - 1) with
@@ -1037,10 +1293,29 @@ and expand_ordinary_property (ac:active_context) (term_opt:option term_def) (pro
       let already_list_obj = (match value with
                                | JObject fs -> jexp_has_aliased_field ac_eff "@list" fs
                                | _ -> false) in
+      // Expansion algorithm "If expanded value is null, continue with the
+      // next entry" (before any list-container wrapping): a value that is
+      // JSON null, or a SINGLE (non-array, non-@set, non-container-map)
+      // object that expanded away entirely — {"@value": null} (expand/
+      // 0019), {"@language": "en"} with no @value (expand/0008) — drops
+      // the whole KEY. An array (or explicit @set / container map) whose
+      // items all dropped instead keeps an EMPTY array (expand/0004
+      // "optimize @set, keep empty arrays").
+      let is_map_ck = (match term_opt with
+                       | Some td -> (match td.td_container with
+                                     | CK_Index | CK_Language | CK_Id | CK_Type
+                                     | CK_GraphId | CK_GraphIndex -> true
+                                     | _ -> false)
+                       | None -> false) in
+      let value_nullish = (match value with
+                           | JNull -> true
+                           | JObject fs -> not (jexp_has_aliased_field ac_eff "@set" fs) && not is_map_ck
+                           | _ -> false) in
       (match expand_property_items ac_eff term_opt value (fuel - 1) with
        | None -> None
        | Some items ->
-         if is_list && not already_list_obj
+         if items = [] && value_nullish then Some None
+         else if is_list && not already_list_obj
          then Some (Some [(prop_iri, JArray [JObject [("@list", JArray items)]])])
          else Some (Some [(prop_iri, JArray items)]))
 
@@ -1058,12 +1333,18 @@ and expand_reverse_property (ac:active_context) (term_opt:option term_def) (prop
     match apply_property_scoped_context ac term_opt with
     | None -> None
     | Some ac_eff ->
+      // Same null-value key drop as expand_ordinary_property above.
+      let value_nullish = (match value with
+                           | JNull -> true
+                           | JObject fs -> not (jexp_has_aliased_field ac_eff "@set" fs)
+                           | _ -> false) in
       (match expand_property_items ac_eff term_opt value (fuel - 1) with
        | None -> None
        | Some items ->
          // toRdf/er36: a value/list object under a reverse term is an
          // "invalid reverse property value".
-         if jexp_items_all_node_like items
+         if items = [] && value_nullish then Some None
+         else if jexp_items_all_node_like items
          then Some (Some [("@reverse", JObject [(prop_iri, JArray items)])])
          else None)
 
@@ -1151,8 +1432,13 @@ and expand_property_items (ac:active_context) (term_opt:option term_def) (value:
     if type_map = Some "@json" then
       Some [JObject [("@value", value); ("@type", JString "@json")]]
     else
+    // Container-map entries process in lexicographic key order
+    // (jexp_sort_map_entries — the expand suite's fixtures pin the
+    // API's `ordered: true` behaviour, e.g. expand/0030; order washes
+    // out for toRdf, where the triple set is compared unordered).
     match ck, value with
-    | CK_Index, JObject entries ->
+    | CK_Index, JObject entries0 ->
+      let entries = jexp_sort_map_entries entries0 in
       (match idx_prop with
        // Property-valued index (a term's own "@index": "<name>" alongside
        // "@container": "@index" — see td_index's doc comment): each map
@@ -1160,20 +1446,26 @@ and expand_property_items (ac:active_context) (term_opt:option term_def) (value:
        // (jexp_expand_property_index_map), instead of being dropped as
        // pure metadata.
        | Some name -> jexp_expand_property_index_map ac name type_map lang_ovr dir_ovr entries (fuel - 1)
-       | None -> expand_property ac type_map lang_ovr dir_ovr false (jexp_flatten_map_entries entries) (fuel - 1))
-    | CK_Language, JObject entries ->
+       | None -> jexp_expand_plain_index_map ac type_map lang_ovr dir_ovr entries (fuel - 1))
+    | CK_Language, JObject entries0 ->
+      let entries = jexp_sort_map_entries entries0 in
+      // The term's own @direction override (dir_ovr, tri-state) wins
+      // over the active context's default direction (expand suite
+      // di04-di06).
+      let eff_dir = (match dir_ovr with Some d -> d | None -> ac.ac_direction) in
       // toRdf/er35: a non-string entry value in a language map is an
       // "invalid language map value".
-      if jexp_language_map_valid entries then Some (jexp_expand_language_map ac entries) else None
-    | CK_Id, JObject entries -> jexp_expand_id_map ac entries (fuel - 1)
-    | CK_Type, JObject entries -> jexp_expand_type_map ac type_map entries (fuel - 1)
+      if jexp_language_map_valid entries then Some (jexp_expand_language_map ac eff_dir entries) else None
+    | CK_Id, JObject entries -> jexp_expand_id_map ac (jexp_sort_map_entries entries) (fuel - 1)
+    | CK_Type, JObject entries -> jexp_expand_type_map ac type_map (jexp_sort_map_entries entries) (fuel - 1)
     | CK_Graph, _ -> Some (expand_graph_container_items_plain ac (jexp_as_array value) (fuel - 1))
-    | CK_GraphIndex, JObject entries ->
+    | CK_GraphIndex, JObject entries0 ->
+      let entries = jexp_sort_map_entries entries0 in
       (match idx_prop with
        | Some name -> jexp_expand_graph_index_map ac name entries (fuel - 1)
-       | None -> Some (expand_graph_container_items ac (jexp_flatten_map_entries entries) (fuel - 1)))
+       | None -> Some (jexp_expand_graph_index_kw_map ac entries (fuel - 1)))
     | CK_GraphIndex, _ -> Some (expand_graph_container_items ac (jexp_as_array value) (fuel - 1))
-    | CK_GraphId, JObject entries -> Some (expand_graph_id_map ac entries (fuel - 1))
+    | CK_GraphId, JObject entries -> Some (expand_graph_id_map ac (jexp_sort_map_entries entries) (fuel - 1))
     | CK_GraphId, _ -> Some (expand_graph_container_items ac (jexp_as_array value) (fuel - 1))
     | _, _ ->
       // in_list = ck_is_list ck: this arm only ever matches CK_List or
@@ -1244,7 +1536,54 @@ and jexp_expand_property_index_map (ac:active_context) (index_name:string)
                | Some (index_iri, keyval) ->
                  (match jexp_inject_index_items index_iri keyval items with
                   | None -> None
-                  | Some items1 -> Some (List.Tot.append items1 restout)))))
+                  // expand suite pi07/pi09: the injected index property
+                  // APPENDS to an existing property of the same IRI
+                  // (jexp_merge_item_fields), instead of duplicating the
+                  // key.
+                  | Some items1 -> Some (List.Tot.append (jexp_merge_item_fields items1) restout)))))
+
+// Plain @index containers (no property-valued index): each entry's items
+// gain "@index": <key> in expanded form unless the key expands to @none
+// or the item carries its own @index — see jexp_add_index_to_item's
+// banner (expand suite 0036/0044; toRdf-neutral).
+and jexp_expand_plain_index_map (ac:active_context)
+                                 (type_map:option string) (lang_ovr:option (option string))
+                                 (dir_ovr:option (option string))
+                                 (entries:list (string & json_val)) (fuel:nat)
+  : Tot (option (list json_val)) (decreases fuel) =
+  if fuel = 0 then None
+  else
+    match entries with
+    | [] -> Some []
+    | (k, v) :: rest ->
+      (match expand_property ac type_map lang_ovr dir_ovr false (jexp_as_array v) (fuel - 1) with
+       | None -> None
+       | Some items ->
+         let is_none = (k = "@none") ||
+                       (match expand_iri ac k true with Some "@none" -> true | _ -> false) in
+         let items1 = if is_none then items else jexp_add_index_items k items in
+         (match jexp_expand_plain_index_map ac type_map lang_ovr dir_ovr rest (fuel - 1) with
+          | None -> None
+          | Some restout -> Some (List.Tot.append items1 restout)))
+
+// Plain "@graph"+"@index" containers (no property-valued index): each
+// entry's values wrap as graph objects (expand_graph_container_items —
+// which already leaves an ALREADY-graph-shaped value unwrapped), and
+// the WRAPPER object gains "@index": <key> unless the key expands to
+// @none (expand suite 0082/0083/0096/0097/0107).
+and jexp_expand_graph_index_kw_map (ac:active_context)
+                                    (entries:list (string & json_val)) (fuel:nat)
+  : Tot (list json_val) (decreases fuel) =
+  if fuel = 0 then []
+  else
+    match entries with
+    | [] -> []
+    | (k, v) :: rest ->
+      let items = expand_graph_container_items ac (jexp_as_array v) (fuel - 1) in
+      let is_none = (k = "@none") ||
+                    (match expand_iri ac k true with Some "@none" -> true | _ -> false) in
+      let items1 = if is_none then items else jexp_add_index_items k items in
+      List.Tot.append items1 (jexp_expand_graph_index_kw_map ac rest (fuel - 1))
 
 // "@graph"+"@index" containers with a property-valued index (toRdf/pi11):
 // each entry's values are wrapped as graph objects exactly like the
@@ -1809,12 +2148,19 @@ let expand (ac:active_context) (doc:json_val) : Tot (option json_val) =
      | None -> None
      | Some (JObject []) -> Some (JArray [])
      | Some (JObject fields1) ->
+       // Free-floating drop (jexp_drop_ff_items — see its banner): the
+       // top level and every "@graph" value array shed empty maps,
+       // @value/@list carriers, and @id-only node references (expand/
+       // 0001/0046/0047; a no-op triple-wise, so toRdf is unaffected).
+       // (fuel is sized from the INPUT document; expansion can grow the
+       // tree by a small constant factor, so over-provision the walk —
+       // fuel exhaustion degrades to "no drop", never to failure.)
        if jexp_only_graph_keys fields1
-       then Some (JArray (jexp_collect_graph_values fields1))
-       else Some (JArray [JObject fields1])
-     | Some nodeobj -> Some (JArray [nodeobj]))
+       then Some (JArray (jexp_drop_ff_items (jexp_collect_graph_values fields1) (op_Multiply 4 fuel)))
+       else Some (JArray (jexp_drop_ff_items [JObject fields1] (op_Multiply 4 fuel)))
+     | Some nodeobj -> Some (JArray (jexp_drop_ff_items [nodeobj] (op_Multiply 4 fuel))))
   | JArray items ->
     (match expand_top_items ac items fuel with
      | None -> None
-     | Some outs -> Some (JArray outs))
+     | Some outs -> Some (JArray (jexp_drop_ff_items outs (op_Multiply 4 fuel))))
   | _ -> None

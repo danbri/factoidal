@@ -1,0 +1,23 @@
+name: JSON-LD 1.1 expand (Expansion Algorithm)
+spec: https://www.w3.org/TR/json-ld11-api/#expansion-algorithm
+runner: bin/linux-x86_64/jsonld_expand_runner
+runner_args: []
+manifest: third_party/testing/json-ld/tests/expand-manifest.jsonld
+log_path: formal/fstar/ocaml-output/jsonld_expand_results.log
+result_path: docs/test-results/by-suite/jsonld-expand.json
+domain: RDF
+foundational: false
+
+# Expanded-JSON comparison (Parser.JSONLD.jsonld_expanded_equal — JCS
+# canonical structural equality) over the same expansion pipeline the
+# toRdf suite exercises. Residual fails are enumerated algorithm/option
+# gaps; skips are the per-ID JSON-LD-1.0-only fixtures documented in
+# bin/jsonld-expand-runner/jsonld_expand_runner.ml.
+triggers:
+  paths:
+    - bin/jsonld-expand-runner/**
+    - formal/fstar/Parser.JSONLD.fst
+    - formal/fstar/JSONLD.Expand.fst
+    - formal/fstar/JSONLD.Context.fst
+    - third_party/testing/json-ld/**
+  excludes: []

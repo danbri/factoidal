@@ -1,0 +1,393 @@
+=== JSON-LD 1.1 Expansion Test Runner ===
+Manifest: /home/user/factoidal/.claude/worktrees/agent-a0ed4f9b3bac7f536/third_party/testing/json-ld/tests/expand-manifest.jsonld
+
+Totals: 385 test entries
+
+  PASS: drop free-floating nodes
+  PASS: basic
+  PASS: drop null and unmapped properties
+  PASS: optimize @set, keep empty arrays
+  PASS: do not expand aliased @id/@type
+  PASS: alias keywords
+  PASS: date type-coercion
+  PASS: @value with @language
+  PASS: @graph with terms
+  PASS: native types
+  PASS: coerced @id
+  PASS: @graph with embed
+  PASS: expand already expanded
+  PASS: @set of @value objects with keyword aliases
+  PASS: collapse set of sets, keep empty lists
+  PASS: context reset
+  PASS: @graph and @id aliased
+  PASS: override default @language
+  PASS: remove @value = null
+  PASS: do not remove @graph if not at top-level
+  PASS: do not remove @graph at top-level if not only property
+  PASS: expand value with default language
+  PASS: Expanding list/set with coercion
+  PASS: Multiple contexts
+  PASS: Problematic IRI expansion tests
+  PASS: Term definition with @id: @type
+  PASS: Duplicate values in @list and @set
+  PASS: Use @vocab in properties and @type but not in @id
+  PASS: Relative IRIs
+  PASS: Language maps
+  PASS: type-coercion of native types
+  PASS: Null term and @vocab
+  PASS: Using @vocab with with type-coercion
+  PASS: Multiple properties expanding to the same IRI
+  PASS: Language maps with @vocab, default language, and colliding property
+  PASS: Expanding @index
+  PASS: Expanding @reverse
+  PASS: Using terms in a reverse-maps
+  PASS: language and index expansion on non-objects
+  PASS: @language: null
+  PASS: Reverse properties
+  PASS: Using reverse properties inside a @reverse-container
+  PASS: Index maps with language mappings
+  PASS: Top-level value objects
+  PASS: Free-floating nodes
+  PASS: Free-floating values in sets and free-floating lists
+  PASS: Terms are ignored in @id
+  PASS: String values of reverse properties
+  PASS: Term definitions with prefix separate from prefix definitions
+  PASS: Expansion of keyword aliases in term definitions
+  PASS: @vocab-relative IRIs in term definitions
+  PASS: Expand absolute IRI with @type: @vocab
+  PASS: Expand term with @type: @vocab
+  PASS: Expand @vocab-relative term with @type: @vocab
+  PASS: Use terms with @type: @vocab but not with @type: @id
+  PASS: Expand relative IRI with @type: @vocab
+  PASS: Expand compact IRI with @type: @vocab
+  PASS: Reset @vocab by setting it to null
+  PASS: Overwrite document base with @base and reset it again
+  PASS: Coercing native types to arbitrary datatypes
+  PASS: Various relative IRIs with with @base
+  PASS: Reverse property and index container
+  PASS: bnode values of reverse properties
+  PASS: Drop unmapped keys in reverse map
+  PASS: Reverse-map keys with @vocab
+  PASS: prefix://suffix not a compact IRI
+  PASS: _:suffix values are not a compact IRI
+  PASS: Compact IRI as term with type mapping
+  PASS: Compact IRI as term defined using equivalent compact IRI
+  PASS: Redefine term using @vocab, not itself
+  PASS: @context not first property
+  PASS: @id not first property
+  PASS: @vocab as blank node identifier
+  PASS: base option overrides document location
+  PASS: expandContext option
+  PASS: multiple reverse properties
+  PASS: expand @graph container
+  PASS: expand [@graph, @set] container
+  PASS: Creates an @graph container if value is a graph
+  PASS: expand [@graph, @index] container
+  PASS: expand [@graph, @index, @set] container
+  PASS: Do not expand [@graph, @index] container if value is a graph
+  PASS: expand [@graph, @id] container
+  PASS: expand [@graph, @id, @set] container
+  PASS: Do not expand [@graph, @id] container if value is a graph
+  PASS: Do not expand native values to IRIs
+  PASS: empty @base applied to the base option
+  PASS: relative @base overrides base option and document location
+  PASS: relative and absolute @base overrides base option and document location
+  PASS: Various relative IRIs as properties with with @vocab: ''
+  PASS: expand @graph container (multiple objects)
+  PASS: expand [@graph, @set] container (multiple objects)
+  PASS: Creates an @graph container if value is a graph (multiple objects)
+  PASS: expand [@graph, @index] container (multiple indexed objects)
+  PASS: expand [@graph, @index, @set] container (multiple objects)
+  PASS: Do not expand [@graph, @index] container if value is a graph (multiple objects)
+  PASS: expand [@graph, @id] container (multiple objects)
+  PASS: expand [@graph, @id, @set] container (multiple objects)
+  PASS: Do not expand [@graph, @id] container if value is a graph (multiple objects)
+  PASS: Expand @graph container if value is a graph (multiple objects)
+  PASS: Expand @graph container if value is a graph (multiple graphs)
+  PASS: Creates an @graph container if value is a graph (mixed graph and object)
+  PASS: Do not expand [@graph, @index] container if value is a graph (mixed graph and object)
+  PASS: Do not expand [@graph, @id] container if value is a graph (mixed graph and object)
+  PASS: expand [@graph, @index] container (indexes with multiple objects)
+  PASS: expand [@graph, @id] container (multiple ids and objects)
+  PASS: IRI expansion of fragments including ':'
+  PASS: Various relative IRIs as properties with with relative @vocab
+  PASS: Various relative IRIs as properties with with relative @vocab itself relative to an existing vocabulary base
+  PASS: Various relative IRIs as properties with with relative @vocab relative to another relative vocabulary base
+  PASS: context with JavaScript Object property names
+  PASS: Expansion allows multiple properties expanding to @type
+  PASS: A term starting with a colon can expand to a different IRI
+  PASS: Expanding a value staring with a colon does not treat that value as an IRI
+  PASS: Ignore some terms with @, allow others.
+  PASS: Ignore some values of @id with @, allow others.
+  PASS: Ignore some values of @reverse with @, allow others.
+  PASS: Ignore some IRIs when that start with @ when expanding.
+  PASS: Value objects including invalid literal datatype IRIs are rejected
+  PASS: compact IRI as @vocab
+  PASS: term as @vocab
+  PASS: A scoped context may include itself recursively (direct)
+  PASS: A scoped context may include itself recursively (indirect)
+  PASS: Two scoped context may include a shared context
+  PASS: Base without trailing slash, without path
+  PASS: Base without trailing slash, with path
+  PASS: Reverse term with property based indexed container
+  PASS: adding new term
+  PASS: overriding a term
+  PASS: property and value with different terms mapping to the same expanded property
+  PASS: deep @context affects nested nodes
+  PASS: scoped context layers on intemediate contexts
+  PASS: adding new term
+  PASS: overriding a term
+  PASS: alias of @type
+  PASS: deep @type-scoped @context does NOT affect nested nodes
+  PASS: scoped context layers on intemediate contexts
+  PASS: orders @type terms when applying scoped contexts
+  PASS: deep property-term scoped @context in @type-scoped @context affects nested nodes
+  PASS: type maps use scoped context from type index and not scoped context from containing
+  PASS: type-scoped context nullification
+  PASS: type-scoped base
+  PASS: type-scoped vocab
+  PASS: multiple type-scoped contexts are properly reverted
+  PASS: multiple type-scoped types resolved against previous context
+  PASS: type-scoped context with multiple property scoped terms
+  PASS: type-scoped value
+  PASS: type-scoped value mix
+  PASS: type-scoped property-scoped contexts including @type:@vocab
+  PASS: composed type-scoped property-scoped contexts including @type:@vocab
+  PASS: type-scoped + property-scoped + values evaluates against previous context
+  PASS: type-scoped + graph container
+  PASS: @propagate: true on type-scoped context
+  PASS: @propagate: false on property-scoped context
+  PASS: @propagate: false on embedded context
+  PASS: @propagate is invalid in 1.0
+  PASS: @propagate must be boolean valued
+  PASS: @context resolutions respects relative URLs.
+  PASS: Unused embedded context with error.
+  PASS: Unused context with an embedded context error.
+  PASS: Remote scoped context.
+  PASS: Term scoping with embedded contexts.
+  PASS: Expansion with empty property-scoped context.
+  PASS: property-scoped contexts which are alias of @nest
+  PASS: Bibframe example (poor-mans inferrence)
+  PASS: Expand string using default and term directions
+  PASS: Expand string using default and term directions and languages
+  PASS: expand list values with @direction
+  PASS: simple language map with term direction
+  PASS: simple language mapwith overriding term direction
+  PASS: simple language mapwith overriding null direction
+  PASS: simple language map with mismatching term direction
+  PASS: @direction must be one of ltr or rtl
+  PASS: @direction is incompatible with @type
+  PASS: Invalid keyword in term definition
+  PASS: Term definition on @type with empty map
+  PASS: Invalid container mapping
+  PASS: @nest MUST NOT have a string value
+  PASS: @nest MUST NOT have a boolen value
+  PASS: @nest MUST NOT have a numeric value
+  PASS: @nest MUST NOT have a value object value
+  PASS: does not allow a keyword other than @nest for the value of @nest
+  PASS: does not allow @nest with @reverse
+  PASS: processingMode json-ld-1.0 conflicts with @version: 1.1
+  PASS: @version must be 1.1
+  PASS: Keywords cannot be aliased to other keywords
+  PASS: A context may not include itself recursively (direct)
+  PASS: A context may not include itself recursively (indirect)
+  PASS: Error dereferencing a remote context
+  PASS: Invalid remote context
+  PASS: Invalid local context
+  PASS: Invalid base IRI
+  PASS: Invalid vocab mapping
+  PASS: Invalid default language
+  PASS: Cyclic IRI mapping
+  PASS: Invalid term definition
+  PASS: Invalid type mapping (not a string)
+  PASS: Invalid type mapping (not absolute IRI)
+  PASS: Invalid reverse property (contains @id)
+  PASS: Invalid IRI mapping (@reverse not a string)
+  PASS: Invalid reverse property (invalid @container)
+  PASS: Invalid IRI mapping (@id not a string)
+  PASS: Invalid keyword alias (@context)
+  PASS: Invalid IRI mapping (no vocab mapping)
+  PASS: Invalid container mapping
+  PASS: Invalid language mapping
+  PASS: Invalid IRI mapping (relative IRI in @type)
+  PASS: Invalid reverse property map
+  PASS: Colliding keywords
+  PASS: Invalid @id value
+  PASS: Invalid type value
+  PASS: Invalid value object value
+  PASS: Invalid language-tagged string
+  PASS: Invalid @index value
+  PASS: Invalid @reverse value
+  PASS: Invalid reverse property value (in @reverse)
+  PASS: Invalid language map value
+  PASS: Invalid reverse property value (through coercion)
+  PASS: Invalid value object (unexpected keyword)
+  PASS: Invalid value object (@type and @language)
+  PASS: Invalid language-tagged value
+  PASS: Invalid typed value
+  PASS: Invalid set or list object
+  PASS: Keywords may not be redefined in 1.0
+  PASS: Term definition with @id: @type
+  PASS: Redefine terms looking like compact IRIs
+  PASS: Invalid term as relative IRI
+  PASS: A relative IRI cannot be used as a prefix
+  PASS: Invalid reverse id
+  PASS: Invalid value object value using a value alias
+  PASS: Definition for the empty term
+  PASS: Invalid prefix value
+  PASS: Invalid value object, multiple values for @type.
+  PASS: Invalid term definition, multiple values for @type.
+  PASS: Invalid redefinition of @context keyword.
+  PASS: Using an array value for @context is illegal in JSON-LD 1.0
+  PASS: Mapping @container: [@list, @set] is invalid
+  PASS: Basic Included array
+  PASS: Basic Included object
+  PASS: Multiple properties mapping to @included are folded together
+  PASS: Included containing @included
+  PASS: Property value with @included
+  PASS: json.api example
+  PASS: Error if @included value is a string
+  PASS: Error if @included value is a value object
+  PASS: Error if @included value is a list object
+  PASS: Expand JSON literal (boolean true)
+  PASS: Expand JSON literal (boolean false)
+  PASS: Expand JSON literal (double)
+  PASS: Expand JSON literal (double-zero)
+  PASS: Expand JSON literal (integer)
+  PASS: Expand JSON literal (object)
+  PASS: Expand JSON literal (array)
+  PASS: Expand JSON literal with array canonicalization
+  PASS: Transform JSON literal with string canonicalization
+  PASS: Expand JSON literal with structural canonicalization
+  PASS: Expand JSON literal with unicode canonicalization
+  PASS: Expand JSON literal with value canonicalization
+  PASS: Expand JSON literal with wierd canonicalization
+  PASS: Expand JSON literal without expanding contents
+  PASS: Expand JSON literal aleady in expanded form
+  PASS: Expand JSON literal aleady in expanded form with aliased keys
+  PASS: Expand JSON literal (string)
+  PASS: Expand JSON literal (null)
+  PASS: Expand JSON literal with aliased @type
+  PASS: Expand JSON literal with aliased @value
+  PASS: Expand JSON literal with @context
+  PASS: Expand JSON literal (null) aleady in expanded form.
+  PASS: Expand JSON literal (empty array).
+  PASS: Language map with null value
+  PASS: @list containing @list
+  PASS: @list containing empty @list
+  PASS: @list containing @list (with coercion)
+  PASS: @list containing empty @list (with coercion)
+  PASS: coerced @list containing an array
+  PASS: coerced @list containing an empty array
+  PASS: coerced @list containing deep arrays
+  PASS: coerced @list containing deep empty arrays
+  PASS: coerced @list containing multiple lists
+  PASS: coerced @list containing mixed list values
+  PASS: Adds @id to object not having an @id
+  PASS: Retains @id in object already having an @id
+  PASS: Adds @type to object not having an @type
+  PASS: Prepends @type in object already having an @type
+  PASS: Adds expanded @id to object
+  PASS: Adds vocabulary expanded @type to object
+  PASS: Adds document expanded @type to object
+  PASS: When type is in a type map
+  PASS: language map with @none
+  PASS: language map with alias of @none
+  PASS: id map with @none
+  PASS: type map with alias of @none
+  PASS: graph index map with @none
+  PASS: graph index map with alias @none
+  PASS: graph id index map with aliased @none
+  PASS: graph id index map with aliased @none
+  PASS: string value of type map expands to node reference
+  PASS: string value of type map expands to node reference with @type: @id
+  PASS: string value of type map expands to node reference with @type: @vocab
+  PASS: string value of type map must not be a literal
+  PASS: Expands input using @nest
+  PASS: Expands input using aliased @nest
+  PASS: Appends nested values when property at base and nested
+  PASS: Appends nested values from all @nest aliases
+  PASS: Nested nested containers
+  PASS: Arrays of nested values
+  PASS: A nest of arrays
+  PASS: Multiple keys may mapping to @type when nesting
+  PASS: @version may be specified after first context
+  PASS: @version setting [1.0, 1.1, 1.0]
+  PASS: @version setting [1.1, 1.0]
+  PASS: @version setting [1.1, 1.0, 1.1]
+  PASS: error if @version is json-ld-1.0 for property-valued index
+  PASS: error if @container does not include @index for property-valued index
+  PASS: error if @index is a keyword for property-valued index
+  PASS: error if @index is not a string for property-valued index
+  PASS: error if attempting to add property to value object for property-valued index
+  PASS: property-valued index expands to property value, instead of @index (value)
+  PASS: property-valued index appends to property value, instead of @index (value)
+  PASS: property-valued index expands to property value, instead of @index (node)
+  PASS: property-valued index appends to property value, instead of @index (node)
+  PASS: property-valued index does not output property for @none
+  PASS: property-valued index adds property to graph object
+  PASS: Protect a term
+  PASS: Set a term to not be protected
+  PASS: Protect all terms in context
+  PASS: Do not protect term with @protected: false
+  PASS: Clear active context with protected terms from an embedded context
+  PASS: Clear active context of protected terms from a term.
+  PASS: Term with protected scoped context.
+  PASS: Attempt to redefine term in other protected context.
+  PASS: Simple protected and unprotected terms.
+  PASS: Fail to override protected term.
+  PASS: Scoped context fail to override protected term.
+  PASS: Override unprotected term.
+  PASS: Clear protection with null context.
+  PASS: Clear protection with array with null context
+  PASS: Override protected terms after null.
+  PASS: Fail to override protected terms with type.
+  PASS: Fail to override protected terms with type+null+ctx.
+  PASS: Mix of protected and unprotected terms.
+  PASS: Fail with mix of protected and unprotected terms with type+null+ctx.
+  PASS: Fail with mix of protected and unprotected terms with type+null.
+  PASS: Check legal overriding of type-scoped protected term from nested node.
+  PASS: Allows redefinition of protected alias term with same definition.
+  PASS: Allows redefinition of protected prefix term with same definition.
+  PASS: Allows redefinition of terms with scoped contexts using same definitions.
+  PASS: Fails on redefinition of terms with scoped contexts using different definitions.
+  PASS: Allows redefinition of protected alias term with same definition modulo protected flag.
+  PASS: Fails if trying to redefine a protected null term.
+  PASS: Does not expand a Compact IRI using a non-prefix term.
+  PASS: Keywords may be protected.
+  PASS: Protected keyword aliases cannot be overridden.
+  PASS: Protected @type cannot be overridden.
+  PASS: Fails if trying to declare a keyword alias as prefix.
+  PASS: Ignores a non-keyword term starting with '@'
+  PASS: Ignores a non-keyword term starting with '@' (with @vocab)
+  PASS: Ignores a term mapping to a value in the form of a keyword.
+  PASS: Ignores a term mapping to a value in the form of a keyword (with @vocab).
+  PASS: Ignores a term mapping to a value in the form of a keyword (@reverse).
+  PASS: Ignores a term mapping to a value in the form of a keyword (@reverse with @vocab).
+  PASS: Protected terms and property-scoped contexts
+  PASS: Allows protected redefinition of equivalent id terms
+  PASS: Fail if protected flag not retained during redefinition
+  PASS: Clear protection in @graph @container with null context.
+  PASS: @import is invalid in 1.0.
+  PASS: @import must be a string
+  PASS: @import overflow
+  PASS: @propagate: true on type-scoped context with @import
+  PASS: @propagate: false on property-scoped context with @import
+  PASS: Protect all terms in sourced context
+  PASS: Override term defined in sourced context
+  PASS: Override @vocab defined in sourced context
+  PASS: Protect terms in sourced context
+  PASS: Override protected terms in sourced context
+  PASS: @import may not be used in an imported context.
+  PASS: @import can only reference a single context
+  PASS: @type: @none is illegal in 1.0.
+  PASS: @type: @none expands strings as value objects
+
+========================================
+Suite Results:
+  expand-Positive      pass:274 fail:0 skip:2
+  expand-Negative      pass:105 fail:0 skip:4
+========================================
+TOTAL: 379 pass, 0 fail, 6 skip (out of 385)
+========================================
+jsonld-expand: 379 pass, 0 fail, 6 skip (out of 385)
