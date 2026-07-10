@@ -1,0 +1,17 @@
+# BROKEN: a homogeneous array whose declared element datatype
+# (datatype:BOOLEAN, whose qudt:rdfsDatatype is xsd:boolean in QUDT
+# v3.4.0) does not match its actual values (xsd:decimal list members).
+# The user ruleset's qudt:AllValuesMustHaveSameDataTypeShape
+# (sh:sparql, severity sh:Violation, comparing datatype(?value)
+# against qudt:datatype/qudt:rdfsDatatype) must flag ex:MixedUpArray.
+@prefix qudt: <http://qudt.org/schema/qudt/> .
+@prefix datatype: <http://qudt.org/vocab/datatype/> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+@prefix ex: <http://example.org/qudt-fixture#> .
+
+ex:MixedUpArray
+  a qudt:HomogeneousArray ;
+  qudt:datatype datatype:BOOLEAN ;
+  qudt:dimensionality 1 ;
+  qudt:dimensions ( 2 ) ;
+  qudt:value ( 1.5 2.5 ) .

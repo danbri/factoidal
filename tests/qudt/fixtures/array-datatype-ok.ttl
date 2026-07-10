@@ -1,0 +1,15 @@
+# Valid homogeneous array: declared element datatype datatype:BOOLEAN
+# (qudt:rdfsDatatype xsd:boolean in QUDT v3.4.0) matches the actual
+# xsd:boolean list members, so qudt:AllValuesMustHaveSameDataTypeShape
+# finds nothing new.
+@prefix qudt: <http://qudt.org/schema/qudt/> .
+@prefix datatype: <http://qudt.org/vocab/datatype/> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+@prefix ex: <http://example.org/qudt-fixture#> .
+
+ex:FlagArray
+  a qudt:HomogeneousArray ;
+  qudt:datatype datatype:BOOLEAN ;
+  qudt:dimensionality 1 ;
+  qudt:dimensions ( 2 ) ;
+  qudt:value ( true false ) .

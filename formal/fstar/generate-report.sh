@@ -63,6 +63,7 @@ XMLCONF_LOG="$OCAML_DIR/xml_conformance_results.log"
 MATHML_LOG="$OCAML_DIR/mathml_results.log"
 JSONSCHEMA_LOG="$OCAML_DIR/jsonschema_results.log"
 SCHEMATRON_LOG="$OCAML_DIR/schematron_results.log"
+QUDT_LOG="$OCAML_DIR/qudt_results.log"
 CSVW_LOG="$OCAML_DIR/csvw_results.log"
 DID_LOG="$OCAML_DIR/did_results.log"
 JSONLD_FROMRDF_LOG="$OCAML_DIR/jsonld_fromrdf_results.log"
@@ -105,6 +106,7 @@ case "$(uname -s)-$(uname -m)" in
     MATHML_RUNNER="$SCRIPT_DIR/../../bin/darwin-arm64/mathml_runner"
     JSONSCHEMA_RUNNER="$SCRIPT_DIR/../../bin/darwin-arm64/jsonschema_runner"
     SCHEMATRON_RUNNER="$SCRIPT_DIR/../../bin/darwin-arm64/schematron_runner"
+    QUDT_RUNNER="$SCRIPT_DIR/../../bin/darwin-arm64/qudt_runner"
     CSVW_RUNNER="$SCRIPT_DIR/../../bin/darwin-arm64/csvw_runner"
     DID_RUNNER="$SCRIPT_DIR/../../bin/darwin-arm64/did_runner"
     JSONLD_FROMRDF_RUNNER="$SCRIPT_DIR/../../bin/darwin-arm64/jsonld_fromrdf_runner"
@@ -128,6 +130,7 @@ case "$(uname -s)-$(uname -m)" in
     MATHML_RUNNER="$SCRIPT_DIR/../../bin/linux-x86_64/mathml_runner"
     JSONSCHEMA_RUNNER="$SCRIPT_DIR/../../bin/linux-x86_64/jsonschema_runner"
     SCHEMATRON_RUNNER="$SCRIPT_DIR/../../bin/linux-x86_64/schematron_runner"
+    QUDT_RUNNER="$SCRIPT_DIR/../../bin/linux-x86_64/qudt_runner"
     CSVW_RUNNER="$SCRIPT_DIR/../../bin/linux-x86_64/csvw_runner"
     DID_RUNNER="$SCRIPT_DIR/../../bin/linux-x86_64/did_runner"
     JSONLD_FROMRDF_RUNNER="$SCRIPT_DIR/../../bin/linux-x86_64/jsonld_fromrdf_runner"
@@ -151,6 +154,7 @@ case "$(uname -s)-$(uname -m)" in
     MATHML_RUNNER="$OCAML_DIR/mathml_runner"
     JSONSCHEMA_RUNNER="$OCAML_DIR/jsonschema_runner"
     SCHEMATRON_RUNNER="$OCAML_DIR/schematron_runner"
+    QUDT_RUNNER="$OCAML_DIR/qudt_runner"
     CSVW_RUNNER="$OCAML_DIR/csvw_runner"
     DID_RUNNER="$OCAML_DIR/did_runner"
     JSONLD_FROMRDF_RUNNER="$OCAML_DIR/jsonld_fromrdf_runner"
@@ -273,6 +277,12 @@ if [ "$1" = "--run" ]; then
   run_optional_suite "MathML 3 content suite"        "$MATHML_RUNNER"     "$MATHML_LOG"      90
   run_optional_suite "JSON Schema draft-07 suite"    "$JSONSCHEMA_RUNNER" "$JSONSCHEMA_LOG"  120
   run_optional_suite "ISO Schematron suite"          "$SCHEMATRON_RUNNER" "$SCHEMATRON_LOG"   60
+  # QUDT: the integrity half validates the 131k-triple all-in-one
+  # distribution shape-by-shape under the runner's own wall-clock
+  # budget (default 420s), so the outer cap is the anti-pattern-#17
+  # ceiling, not the expected runtime. A budget trip inside the runner
+  # is a labelled skip + standing perf finding, not a hang.
+  run_optional_suite "QUDT v3.4.0 SHACL suites"      "$QUDT_RUNNER"       "$QUDT_LOG"        600
   run_optional_suite "CSVW csv2rdf suite"            "$CSVW_RUNNER"       "$CSVW_LOG"        180
   run_optional_suite "DID did:key suite"             "$DID_RUNNER"        "$DID_LOG"          60
   run_optional_suite "JSON-LD 1.1 fromRdf suite"     "$JSONLD_FROMRDF_RUNNER" "$JSONLD_FROMRDF_LOG" 90
@@ -609,6 +619,8 @@ scrape_added_summary XMLCONF        "$XMLCONF_LOG"        'xml-conformance:'
 scrape_added_summary MATHML         "$MATHML_LOG"         'Content MathML evaluation:'
 scrape_added_summary JSONSCHEMA     "$JSONSCHEMA_LOG"     'JSON Schema \(draft7\):'
 scrape_added_summary SCHEMATRON     "$SCHEMATRON_LOG"     'Schematron: [0-9]+ pass'
+scrape_added_summary QUDT_INTEGRITY "$QUDT_LOG"           'qudt-integrity: [0-9]+ pass'
+scrape_added_summary QUDT_USER      "$QUDT_LOG"           'qudt-user-shapes: [0-9]+ pass'
 scrape_added_summary CSVW2RDF       "$CSVW_LOG"           'csv2rdf: [0-9]+ pass'
 scrape_added_summary DIDKEY         "$DID_LOG"            'did:key: [0-9]+ pass'
 scrape_added_summary JSONLD_FROMRDF "$JSONLD_FROMRDF_LOG" 'JSON-LD fromRdf tests:'
@@ -786,6 +798,8 @@ CSV="$OUTPUT_DIR/latest.csv"
   emit_csv_row_if_present MATHML            mathml      mathml-content
   emit_csv_row_if_present JSONSCHEMA        jsonschema  jsonschema-draft7
   emit_csv_row_if_present SCHEMATRON        schematron  schematron
+  emit_csv_row_if_present QUDT_INTEGRITY    qudt        qudt-integrity
+  emit_csv_row_if_present QUDT_USER         qudt        qudt-user-shapes
   emit_csv_row_if_present CSVW2RDF          csvw        csvw-csv2rdf
   emit_csv_row_if_present DIDKEY            did         did-key
   emit_csv_row_if_present JSONLD_FROMRDF    jsonld      jsonld-fromrdf
@@ -930,6 +944,8 @@ emit_json_suites () {
   emit_json_suite_obj "mathml"            MATHML
   emit_json_suite_obj "jsonschema"        JSONSCHEMA
   emit_json_suite_obj "schematron"        SCHEMATRON
+  emit_json_suite_obj "qudt_integrity"    QUDT_INTEGRITY
+  emit_json_suite_obj "qudt_user_shapes"  QUDT_USER
   emit_json_suite_obj "csvw_csv2rdf"      CSVW2RDF
   emit_json_suite_obj "did_key"           DIDKEY
   emit_json_suite_obj "jsonld_fromrdf"    JSONLD_FROMRDF
@@ -2004,6 +2020,33 @@ SCHEMATRON_BODY=$(
 SCHEMATRON_HTML=$(family_section "schematron" "ISO Schematron" "$SCHEMATRON_STATUS" "$SCHEMATRON_HEADLINE" "$SCHEMATRON_BODY" "" \
   "$SCHEMATRON_PASS" "$SCHEMATRON_FAIL" "$SCHEMATRON_SKIP" "$SCHEMATRON_TOTAL")
 
+# --- QUDT (independent ontology suite, qudt.org — not a W3C spec) ----------
+# QUDT (Quantities, Units, Dimensions and data Types) is the de-facto RDF
+# vocabulary for units of measure, published by QUDT.org. It has NO official
+# conformance suite; the two rows below are the Layer-A targets defined in
+# docs/designissues/2026-07-10-qudt-scoping.md: our verified SHACL validator
+# running QUDT's own shipped rulesets — the contributor integrity ruleset
+# against the vendored v3.4.0 all-in-one distribution (one scored entry per
+# ruleset shape), and the user-facing deprecation/consistency ruleset
+# against authored fixtures. Layers B (exact-rational unit conversion +
+# dimension-vector algebra in F*) and C (qudtf: SPARQL extension functions)
+# are the remaining follow-ups.
+read -r QUDT_FAM_PASS QUDT_FAM_FAIL QUDT_FAM_SKIP QUDT_FAM_TOTAL QUDT_FAM_ANY <<< "$(sum_family "QUDT_INTEGRITY QUDT_USER")"
+QUDT_STATUS=$(status_for "$QUDT_FAM_FAIL" "$QUDT_FAM_ANY")
+if [ "$QUDT_FAM_ANY" -eq 1 ]; then
+  QUDT_HEADLINE="${QUDT_FAM_PASS} pass, ${QUDT_FAM_FAIL} fail, ${QUDT_FAM_SKIP} skip (out of ${QUDT_FAM_TOTAL}) across QUDT's own shipped SHACL rulesets (v3.4.0). An independent ontology suite (qudt.org), not W3C — no official conformance suite exists, so these are the scoping doc's Layer-A targets."
+else
+  QUDT_HEADLINE="Not measured this run."
+fi
+QUDT_BODY=$(
+  family_suite_row "QUDT integrity (contributor ruleset vs distribution)" "$QUDT_INTEGRITY_PASS" "$QUDT_INTEGRITY_FAIL" "$QUDT_INTEGRITY_SKIP" "$QUDT_INTEGRITY_TOTAL" "$QUDT_INTEGRITY_PRESENT" \
+    "Runner: <code>bin/qudt-runner</code> (<code>bin/linux-x86_64/qudt_runner --integrity</code>) &middot; Data: <code>third_party/qudt/QUDT-all-in-one-SHACL.ttl</code> (131k triples) vs <code>COLLECTION_QUDT_QA_TESTS_ALL.ttl</code>; one entry per ruleset shape; upstream data findings annotated in <code>tests/qudt/dispositions.tsv</code>, never patched"
+  family_suite_row "QUDT user shapes (deprecation + consistency fixtures)" "$QUDT_USER_PASS" "$QUDT_USER_FAIL" "$QUDT_USER_SKIP" "$QUDT_USER_TOTAL" "$QUDT_USER_PRESENT" \
+    "Runner: <code>bin/qudt-runner</code> (<code>bin/linux-x86_64/qudt_runner --fixtures</code>) &middot; Fixtures: <code>tests/qudt/fixtures/</code> (-ok/-viol verdicts) vs <code>COLLECTION_QUDT_USER_TESTS.ttl</code> &middot; remaining: Layer B exact-rational conversion + dimension algebra in F*, Layer C qudtf: SPARQL functions"
+)
+QUDT_HTML=$(family_section "qudt" "QUDT (units of measure)" "$QUDT_STATUS" "$QUDT_HEADLINE" "$QUDT_BODY" "" \
+  "$QUDT_FAM_PASS" "$QUDT_FAM_FAIL" "$QUDT_FAM_SKIP" "$QUDT_FAM_TOTAL")
+
 # --- Storage backend & JS/browser runtime: HDT parity / hub / npm ---------
 # Not W3C conformance — these exercise the shipped engine end to end: the
 # HDT on-disk backend answering byte-identically to the in-memory backend,
@@ -2147,8 +2190,10 @@ HDT_HTML=$(family_section "hdt" "HDT" "grey" "No format-conformance suite to mea
 # Community Group specification (not on the Recommendation track); HDT is
 # a W3C Member Submission; RML is a Knowledge Graph Construction Community
 # Group specification. JSON Schema and ISO Schematron are not W3C
-# specifications at all. GeoSPARQL is an OGC standard, not W3C. Jena
-# rdf:text is a vendor convention, not a standard.
+# specifications at all. GeoSPARQL is an OGC standard, not W3C. QUDT is
+# an independent ontology suite (qudt.org, a W3C member org, but QUDT is
+# not on any W3C track). Jena rdf:text is a vendor convention, not a
+# standard.
 # =============================================================================
 GROUP1_BODY=$(printf '%s\n' \
   "$RDFCORE_HTML" "$RDFC10FAM_HTML" "$SPARQL_FAMILY_HTML" "$OWL_FAMILY_HTML" "$SHACL_HTML" \
@@ -2160,7 +2205,7 @@ GROUP2_BODY=$(printf '%s\n' "$SHEX_HTML" "$HDT_HTML" "$RML_HTML")
 GROUP2_HTML=$(group_section "group-w3c-cg" "W3C Community Group / Notes / Submissions" "$GROUP2_BODY")
 
 GROUP3_BODY=$(printf '%s\n' \
-  "$GEOSPARQLFAM_HTML" "$SPARQLEXTRAS_HTML" "$JENATEXTFAM_HTML" "$JSONSCHEMA_HTML" "$SCHEMATRON_HTML")
+  "$GEOSPARQLFAM_HTML" "$SPARQLEXTRAS_HTML" "$JENATEXTFAM_HTML" "$QUDT_HTML" "$JSONSCHEMA_HTML" "$SCHEMATRON_HTML")
 GROUP3_HTML=$(group_section "group-other-standards" "Other standards (OGC / ISO / independent)" "$GROUP3_BODY")
 
 GROUP4_BODY=$(printf '%s\n' "$RUNTIME_HTML" "$ENGINES_HTML")
@@ -2585,7 +2630,7 @@ cat > "$OUTPUT_DIR/index.html" <<HTMLEOF
       <span class="row"><span class="label">Tests</span><strong class="tests">${TESTS_TIMESTAMP_HUMAN}</strong></span>
     </div>
     <h1>W3C test results</h1>
-    <p>Pass/fail/skip counts against every standards suite this project measures: RDF 1.1, SPARQL 1.1, RDFS/OWL 2, SHACL, ShEx, RIF Core, RML, CSVW, JSON-LD 1.1, Verifiable Credentials 2.0, XSLT 1.0, XML 1.0, MathML 3, ISO Schematron, JSON Schema, DID — plus HDT backend parity and the browser/npm bundle suites.</p>
+    <p>Pass/fail/skip counts against every standards suite this project measures: RDF 1.1, SPARQL 1.1, RDFS/OWL 2, SHACL, ShEx, RIF Core, RML, CSVW, JSON-LD 1.1, Verifiable Credentials 2.0, XSLT 1.0, XML 1.0, MathML 3, ISO Schematron, JSON Schema, QUDT, DID — plus HDT backend parity and the browser/npm bundle suites.</p>
     <nav>
       <a href="/factoidal/">Home</a>
       <a href="/factoidal/fstar-extracted/">Demos</a>

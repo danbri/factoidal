@@ -2,10 +2,17 @@
 
 ## Status
 
-Research + scoping only (owner directive 2026-07-09: "scoping out a
-QUDT implementation"). Written to answer: what does "implementing
-QUDT" mean for an engine like ours, what is measurable, and what is
-the F\* shape.
+Originally research + scoping only (owner directive 2026-07-09:
+"scoping out a QUDT implementation"). **Layer A landed 2026-07-10**:
+QUDT v3.4.0 vendored at `third_party/qudt/` (PROVENANCE.md, CC BY 4.0
+verified), `bin/qudt-runner/` drives the verified SHACL validator over
+QUDT's own shipped rulesets, dashboard rows `qudt-integrity` /
+`qudt-user-shapes` (`.github/test-suites/qudt.yaml`). The scale risk
+below materialised as measured fact: per-focus-node sh:sparql
+evaluation over the 131k-triple all-in-one exceeds the 10-minute cap
+for wide-target shapes — a standing perf-program finding recorded in
+the qudt.yaml `remaining:` block. Layers B and C remain scoped, not
+started.
 
 ## What QUDT is
 
@@ -108,8 +115,9 @@ Dashboard-row shaped, per rule #25:
   themselves rounded decimals of irrational definitions. We are exact
   w.r.t. the ONTOLOGY'S published multiplier — state that boundary in
   the module banner; do not claim exactness w.r.t. physics.
-- **Licence**: record LICENSE.md terms in PROVENANCE.md at vendoring
-  time (CC-BY-family expected; verify then).
+- **Licence**: verified at vendoring (2026-07-10) — CC BY 4.0 with
+  attribution to QUDT.org, upstream LICENSE.md quoted verbatim in
+  `third_party/qudt/PROVENANCE.md`.
 - RDF 1.1 datatype interplay (`qudt:numericValue` as xsd:decimal vs
   double) hits anti-pattern #8's double-aware parsing — reuse the
   existing promoted-type discipline.

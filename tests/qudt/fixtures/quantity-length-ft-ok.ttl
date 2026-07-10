@@ -1,0 +1,19 @@
+# Valid quantity: foot is a length unit — quantitykind:Length and
+# unit:FT share dimension vector qkdv:A0E0L1I0M0H0T0D0 in QUDT v3.4.0,
+# and neither is deprecated. The user ruleset must report nothing new.
+@prefix qudt: <http://qudt.org/schema/qudt/> .
+@prefix quantitykind: <http://qudt.org/vocab/quantitykind/> .
+@prefix unit: <http://qudt.org/vocab/unit/> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+@prefix ex: <http://example.org/qudt-fixture#> .
+
+ex:BridgeSpan
+  a qudt:Quantity ;
+  qudt:hasQuantityKind quantitykind:Length ;
+  qudt:hasUnit unit:FT ;
+  qudt:quantityValue ex:BridgeSpanValue .
+
+ex:BridgeSpanValue
+  a qudt:QuantityValue ;
+  qudt:numericValue "25.9"^^xsd:decimal ;
+  qudt:unit unit:FT .

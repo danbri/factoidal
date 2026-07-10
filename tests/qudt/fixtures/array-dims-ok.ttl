@@ -1,0 +1,13 @@
+# Valid array: qudt:dimensionality 1, qudt:dimensions (3), and the
+# value list really has 3 entries, so the user ruleset's
+# qudt:DimensionalityShape (sh:sparql comparing the declared dimensions
+# entry against COUNT of qudt:value list members) finds nothing new.
+@prefix qudt: <http://qudt.org/schema/qudt/> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+@prefix ex: <http://example.org/qudt-fixture#> .
+
+ex:TemperatureSeries
+  a qudt:Array ;
+  qudt:dimensionality 1 ;
+  qudt:dimensions ( 3 ) ;
+  qudt:value ( 21.5 22.0 21.8 ) .

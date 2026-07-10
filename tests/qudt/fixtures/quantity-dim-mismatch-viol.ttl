@@ -1,0 +1,22 @@
+# BROKEN: a mass quantity kind measured in feet. quantitykind:Mass has
+# dimension vector qkdv:A0E0L0I0M1H0T0D0 and unit:FT has
+# qkdv:A0E0L1I0M0H0T0D0 in QUDT v3.4.0, so the user ruleset's
+# qudt:ConsistentDimensionVectorConstraint (sh:sparql, comparing
+# hasQuantityKind/hasDimensionVector against hasUnit/hasDimensionVector)
+# must flag ex:ConfusedMass.
+@prefix qudt: <http://qudt.org/schema/qudt/> .
+@prefix quantitykind: <http://qudt.org/vocab/quantitykind/> .
+@prefix unit: <http://qudt.org/vocab/unit/> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+@prefix ex: <http://example.org/qudt-fixture#> .
+
+ex:ConfusedMass
+  a qudt:Quantity ;
+  qudt:hasQuantityKind quantitykind:Mass ;
+  qudt:hasUnit unit:FT ;
+  qudt:quantityValue ex:ConfusedMassValue .
+
+ex:ConfusedMassValue
+  a qudt:QuantityValue ;
+  qudt:numericValue "12.0"^^xsd:decimal ;
+  qudt:unit unit:FT .

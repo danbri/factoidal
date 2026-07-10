@@ -1,0 +1,14 @@
+# BROKEN: the array declares qudt:dimensions (3) but its qudt:value
+# list carries only 2 entries. The user ruleset's
+# qudt:DimensionalityShape (sh:sparql, severity sh:Warning, COUNT of
+# value-list members vs the declared dimensions entry) must flag
+# ex:TruncatedSeries.
+@prefix qudt: <http://qudt.org/schema/qudt/> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+@prefix ex: <http://example.org/qudt-fixture#> .
+
+ex:TruncatedSeries
+  a qudt:Array ;
+  qudt:dimensionality 1 ;
+  qudt:dimensions ( 3 ) ;
+  qudt:value ( 21.5 22.0 ) .

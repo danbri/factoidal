@@ -1,0 +1,19 @@
+# Valid quantity: kilogram measures mass — quantitykind:Mass and
+# unit:KiloGM share dimension vector qkdv:A0E0L0I0M1H0T0D0 in QUDT
+# v3.4.0, and neither is deprecated. Nothing new to flag.
+@prefix qudt: <http://qudt.org/schema/qudt/> .
+@prefix quantitykind: <http://qudt.org/vocab/quantitykind/> .
+@prefix unit: <http://qudt.org/vocab/unit/> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+@prefix ex: <http://example.org/qudt-fixture#> .
+
+ex:PayloadMass
+  a qudt:Quantity ;
+  qudt:hasQuantityKind quantitykind:Mass ;
+  qudt:hasUnit unit:KiloGM ;
+  qudt:quantityValue ex:PayloadMassValue .
+
+ex:PayloadMassValue
+  a qudt:QuantityValue ;
+  qudt:numericValue "451.3"^^xsd:decimal ;
+  qudt:unit unit:KiloGM .

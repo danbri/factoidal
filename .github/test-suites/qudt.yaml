@@ -1,0 +1,57 @@
+name: QUDT v3.4.0 SHACL suites
+spec: https://qudt.org/
+runner: bin/linux-x86_64/qudt_runner
+runner_args: []
+manifest: third_party/qudt/COLLECTION_QUDT_QA_TESTS_ALL.ttl
+log_path: formal/fstar/ocaml-output/qudt_results.log
+result_path: docs/test-results/by-suite/qudt.json
+domain: RDF
+foundational: false
+
+# QUDT (Quantities, Units, Dimensions and data Types, qudt.org) is an
+# independent ontology suite — NOT a W3C spec, and it publishes no
+# official conformance suite. The measured targets are the Layer-A
+# definitions from docs/designissues/2026-07-10-qudt-scoping.md:
+#
+#   qudt-integrity   — our verified SHACL validator runs QUDT's own
+#                      contributor integrity ruleset
+#                      (third_party/qudt/COLLECTION_QUDT_QA_TESTS_ALL.ttl)
+#                      against the vendored v3.4.0 all-in-one SHACL
+#                      distribution; one scored entry per ruleset shape.
+#                      Upstream data findings are annotated in
+#                      tests/qudt/dispositions.tsv, never patched.
+#   qudt-user-shapes — QUDT's user-facing ruleset
+#                      (COLLECTION_QUDT_USER_TESTS.ttl: deprecation
+#                      flagging, dimension-vector consistency, array
+#                      homogeneity/dimensionality) against authored
+#                      fixtures in tests/qudt/fixtures/ with -ok/-viol
+#                      verdicts encoded in filenames.
+#
+# Vendored at release tag v3.4.0 (commit 11372056), CC BY 4.0 with
+# attribution to QUDT.org — see third_party/qudt/PROVENANCE.md.
+#
+# remaining:
+#   - Layer B: exact-rational unit conversion + dimension-vector algebra
+#     as F* modules (QUDT.Dimension / QUDT.Convert over Math.* rationals;
+#     provable round-trip identity relative to the pinned v3.4.0
+#     multipliers) with a qudt-convert / qudt-dimension derived test set.
+#   - Layer C: qudtf: SPARQL extension functions (convert /
+#     commensurable) in the geof:-style dispatch pattern.
+#   - Perf finding (standing): per-focus-node sh:sparql evaluation over
+#     the 131k-triple distribution exceeds the 10-minute cap for the
+#     wide-target shapes (measured 2026-07-10: user ruleset over the
+#     full distribution tripped timeout 570; the integrity section runs
+#     shape-by-shape under a wall-clock budget and skips the expensive
+#     tail with a labelled reason). A corpus-scale SPARQL-constraints
+#     path (indexed matching instead of list scans) is a perf-program
+#     work item.
+#   - sh:SPARQLTarget shapes are skipped (the one acknowledged SHACL
+#     gap, issue #181).
+
+triggers:
+  paths:
+    - bin/qudt-runner/**
+    - third_party/qudt/**
+    - tests/qudt/**
+    - formal/fstar/SHACL.Validation.fst
+  excludes: []

@@ -1,0 +1,14 @@
+# qudt-integrity triage annotations (read by bin/qudt-runner/qudt_runner.ml).
+# One line per triaged ruleset shape, tab-separated:
+#   <shape-iri> TAB <upstream|our-bug> TAB <note>
+# "upstream" = the finding is a real data issue in the vendored QUDT
+# distribution — annotated here (and a candidate upstream issue), never
+# patched into third_party/qudt/ (skills/test-suites discipline).
+# "our-bug" = triage showed our validator produced a wrong finding; the
+# shape scores FAIL until the engine fix lands.
+# A shape with findings but NO line here scores FAIL as "untriaged".
+#
+# 2026-07-10: no entries yet — no integrity shape has produced findings
+# to triage, because per-shape validation of the 131k-triple all-in-one
+# distribution exceeds the wall-clock budget (standing perf finding; see
+# .github/test-suites/qudt.yaml "remaining" and the results log).

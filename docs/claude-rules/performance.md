@@ -48,6 +48,34 @@ The current-walls summary lives in
 [`skills/perf-benchmarking/SKILL.md`](../../skills/perf-benchmarking/SKILL.md)
 § "Scaling status".
 
+## Corpus: QUDT v3.4.0 all-in-one (SHACL-at-scale, measured 2026-07-10)
+
+`third_party/qudt/QUDT-all-in-one-SHACL.ttl` (6,791,181 bytes,
+131,169 triples) is the project's first real-ontology-scale SHACL
+corpus (vendored for the `qudt` suite —
+`docs/designissues/2026-07-10-qudt-scoping.md` Layer A). Committed
+`bin/linux-x86_64` binaries, cloud container, single runs:
+
+| Operation | Time |
+|-----------|------|
+| Parse + count (`factoidal count`) | 1.8 s (~74k triples/s) |
+| `SHACL_Validation.validate`, empty shapes graph (fixed cost: class closure + distinct-subjects + report plumbing) | 20 s |
+| Cheapest `sh:sparql` ruleset shape (176 focus nodes via `sh:targetSubjectsOf qudt:currencyNumber`) | >419 s (cap trip ⇒ >2.4 s/focus) |
+| QUDT user ruleset (5 sh:sparql shapes) over the full distribution | >570 s (cap trip) |
+
+`qudt:Concept`-targeting shapes have 11,510 SHACL instances after
+subclass closure; every shape in the contributor ruleset targets
+≥176 focus nodes, so none completes within the 10-minute cap.
+The wall is per-focus-node SPARQL-constraint evaluation:
+`SHACL.Validation.fst` re-parses and re-evaluates each `sh:sparql`
+query per focus node over the list-represented data graph, so a
+wide-target shape costs (foci × query-eval-over-131k-triples). This is
+the standing perf finding behind the `qudt-integrity` suite's
+budget-skips (`.github/test-suites/qudt.yaml` `remaining:`); an
+indexed/pre-compiled evaluation path for SPARQL constraints is a
+perf-program work item. Correctness is unaffected (shacl-sparql
+22 pass, 0 fail).
+
 ## History: the slow-Turtle era (2026-04, fixed)
 
 Measured 2026-04-17, same fixtures: 1,000 triples took 25 s

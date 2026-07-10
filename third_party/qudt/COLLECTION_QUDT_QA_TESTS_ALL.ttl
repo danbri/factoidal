@@ -1,0 +1,1079 @@
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix qfn: <http://qudt.org/shacl/functions#> .
+@prefix qudt: <http://qudt.org/schema/qudt/> .
+@prefix sh: <http://www.w3.org/ns/shacl#> .
+
+<http://qudt.org/$$QUDT_VERSION$$/collection/qa/all>
+  a owl:Ontology ;
+  owl:imports <http://qudt.org/$$QUDT_VERSION$$/collection/usertest> ;
+  owl:imports <http://qudt.org/$$QUDT_VERSION$$/vocab/constant> ;
+  owl:imports <http://qudt.org/$$QUDT_VERSION$$/vocab/soqk> ;
+  owl:imports qfn: ;
+  rdfs:isDefinedBy <http://qudt.org/$$QUDT_VERSION$$/collection/qa/all> ;
+  rdfs:label "QUDT Collection - QA TESTS - ALL - v $$QUDT_VERSION$$" .
+
+<http://qudt.org/$$QUDT_VERSION$$/collection/qa/allPrefixes>
+  sh:declare [
+    a sh:PrefixDeclaration ;
+    sh:namespace "http://purl.org/dc/terms/"^^xsd:anyURI ;
+    sh:prefix "dcterms" ;
+  ] ;
+  sh:declare [
+    a sh:PrefixDeclaration ;
+    sh:namespace "http://qudt.org/schema/qudt/"^^xsd:anyURI ;
+    sh:prefix "qudt" ;
+  ] ;
+  sh:declare [
+    a sh:PrefixDeclaration ;
+    sh:namespace "http://qudt.org/vocab/dimensionvector/"^^xsd:anyURI ;
+    sh:prefix "qkdv" ;
+  ] ;
+  sh:declare [
+    a sh:PrefixDeclaration ;
+    sh:namespace "http://qudt.org/vocab/quantitykind/"^^xsd:anyURI ;
+    sh:prefix "quantitykind" ;
+  ] ;
+  sh:declare [
+    a sh:PrefixDeclaration ;
+    sh:namespace "http://qudt.org/vocab/unit/"^^xsd:anyURI ;
+    sh:prefix "unit" ;
+  ] ;
+  sh:declare [
+    a sh:PrefixDeclaration ;
+    sh:namespace "http://www.w3.org/1999/02/22-rdf-syntax-ns#"^^xsd:anyURI ;
+    sh:prefix "rdf" ;
+  ] ;
+  sh:declare [
+    a sh:PrefixDeclaration ;
+    sh:namespace "http://www.w3.org/2000/01/rdf-schema#"^^xsd:anyURI ;
+    sh:prefix "rdfs" ;
+  ] ;
+  sh:declare [
+    a sh:PrefixDeclaration ;
+    sh:namespace "http://www.w3.org/2001/XMLSchema#"^^xsd:anyURI ;
+    sh:prefix "xsd" ;
+  ] ;
+  sh:declare [
+    a sh:PrefixDeclaration ;
+    sh:namespace "http://www.w3.org/2002/07/owl#"^^xsd:anyURI ;
+    sh:prefix "owl" ;
+  ] ;
+  sh:declare [
+    a sh:PrefixDeclaration ;
+    sh:namespace "http://www.w3.org/2004/02/skos/core#"^^xsd:anyURI ;
+    sh:prefix "skos" ;
+  ] ;
+  sh:declare [
+    a sh:PrefixDeclaration ;
+    sh:namespace "http://www.w3.org/ns/shacl#"^^xsd:anyURI ;
+    sh:prefix "sh" ;
+  ] ;
+  sh:declare [
+    a sh:PrefixDeclaration ;
+    sh:namespace "http://qudt.org/shacl/functions#"^^xsd:anyURI ;
+    sh:prefix "qfn" ;
+  ] ;
+  sh:declare [
+    a sh:PrefixDeclaration ;
+    sh:namespace "http://qudt.org/vocab/extendeddimensionvector/"^^xsd:anyURI ;
+    sh:prefix "edv" ;
+  ] .
+
+qudt:ClosedWorldShape
+  a sh:NodeShape ;
+  rdfs:isDefinedBy <http://qudt.org/$$QUDT_VERSION$$/collection/qa/all> ;
+  sh:sparql [
+    a sh:SPARQLConstraint ;
+    rdfs:comment "Ensure that all instances of a class use only the properties defined for that class." ;
+    sh:message "Predicate {?p} is not defined for instance {$this}." ;
+    sh:prefixes <http://qudt.org/$$QUDT_VERSION$$/collection/qa/allPrefixes> ;
+    sh:select """
+SELECT $this ?p ?o
+WHERE {
+$this a/rdfs:subClassOf* qudt:Concept .
+FILTER NOT EXISTS {$this qudt:deprecated true}
+$this ?p ?o .
+FILTER(STRSTARTS (str(?p), 'http://qudt.org/schema/qudt'))
+FILTER NOT EXISTS {$this a sh:NodeShape}
+FILTER NOT EXISTS {$this a/rdfs:subClassOf* ?class .
+?class sh:property/sh:path ?p .
+}
+FILTER NOT EXISTS {$this a/rdfs:subClassOf* ?class .
+?class sh:xone/rdf:rest*/rdf:first/sh:property/sh:path ?p .
+}
+FILTER NOT EXISTS {$this a/rdfs:subClassOf* ?class .
+?class sh:or/rdf:rest*/rdf:first/sh:property/sh:path ?p .
+}
+}
+""" ;
+  ] ;
+  sh:targetClass qudt:Concept .
+
+qudt:Concept-label-IRI-Shape
+  a sh:PropertyShape ;
+  rdfs:isDefinedBy <http://qudt.org/$$QUDT_VERSION$$/schema/shacl/qudt> ;
+  sh:message "An rdfs:label is required." ;
+  sh:minCount 1 ;
+  sh:path rdfs:label ;
+  sh:target [
+    a sh:SPARQLTarget ;
+    sh:select """
+      PREFIX rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX qudt: <http://qudt.org/schema/qudt/>
+      SELECT $this WHERE {
+        $this rdf:type/rdfs:subClassOf* qudt:Concept .
+        FILTER(!isBlank($this))
+      }
+    """ ;
+  ] .
+
+qudt:ConvertibleDerivedUnitOfInconvertibleBase
+  a sh:NodeShape ;
+  rdfs:isDefinedBy <http://qudt.org/$$QUDT_VERSION$$/collection/usertest> ;
+  rdfs:label "Ensures all inconvertible units (conversionMultiplier of 0.0) have only inconvertible derived and scaled units" ;
+  sh:severity sh:Violation ;
+  sh:sparql [
+    a sh:SPARQLConstraint ;
+    rdfs:comment "Ensures all inconvertible units (conversionMultiplier of 0.0) have only inconvertible derived and scaled units" ;
+    sh:message "{$this} is convertible (nonzero conversion multiplier {?cm}), but it derived via {?rel} from {?base}, which is inconvertible (conversion multiplier 0.0)" ;
+    sh:prefixes <http://qudt.org/$$QUDT_VERSION$$/collection/qa/allPrefixes> ;
+    sh:select """
+    SELECT $this ?base ?cm ?rel
+    WHERE {
+        {
+            $this
+                qudt:conversionMultiplier ?cm .
+            FILTER(?cm != 0.0)
+            {
+                $this qudt:scalingOf ?base .
+                BIND(qudt:scalingOf as ?rel)
+            } UNION {
+                $this qudt:hasFactorUnit/qudt:hasUnit ?base .
+                BIND(qudt:hasFactorUnit as ?rel)
+            }
+            ?base qudt:conversionMultiplier ?baseCm .
+            FILTER (?baseCm = 0.0)
+        }
+    }
+    """ ;
+  ] ;
+  sh:targetClass qudt:Unit .
+
+qudt:CurencyNumberShape
+  a sh:NodeShape ;
+  sh:property [
+    sh:datatype xsd:string ;
+    sh:maxCount 1 ;
+    sh:message "qudt:currencyNumber must have a string-typed value that contains exactly three digits." ;
+    sh:minCount 1 ;
+    sh:path qudt:currencyNumber ;
+    sh:pattern "^\\d{3}$" ;
+  ] ;
+  sh:targetSubjectsOf qudt:currencyNumber .
+
+qudt:DefinedByConstraint
+  a sh:NodeShape ;
+  rdfs:isDefinedBy <http://qudt.org/$$QUDT_VERSION$$/collection/qa/all> ;
+  rdfs:label "Target class must be have a rdfs:isDefinedBy property" ;
+  sh:sparql [
+    a sh:SPARQLConstraint ;
+    rdfs:comment "Target class must be have a rdfs:isDefinedBy property" ;
+    sh:message "Resource '{$this}' lacks an rdfs:isDefinedBy property." ;
+    sh:prefixes <http://qudt.org/$$QUDT_VERSION$$/collection/qa/allPrefixes> ;
+    sh:select """SELECT $this
+WHERE {
+FILTER NOT EXISTS {$this rdfs:isDefinedBy ?y}
+FILTER NOT EXISTS {$this qudt:deprecated true}
+FILTER(!isBlank($this))
+}""" ;
+  ] ;
+  sh:targetClass qudt:Concept .
+
+qudt:DefinedByStringConstraint
+  a sh:NodeShape ;
+  rdfs:isDefinedBy <http://qudt.org/$$QUDT_VERSION$$/collection/qa/all> ;
+  rdfs:label "Target class must be have a rdfs:isDefinedBy property containing the string '$$QUDT_VERSION$$'" ;
+  sh:sparql [
+    a sh:SPARQLConstraint ;
+    rdfs:comment "Target class must be have a rdfs:isDefinedBy property containing the string '$$QUDT_VERSION$$'" ;
+    sh:message "Resource '{$this}' lacks an rdfs:isDefinedBy property containing the string '$$QUDT_VERSION$$'." ;
+    sh:prefixes <http://qudt.org/$$QUDT_VERSION$$/collection/qa/allPrefixes> ;
+    sh:select """SELECT $this
+WHERE {
+$this rdfs:isDefinedBy ?graph .
+BIND (STR(?graph) AS ?graphstring) .
+FILTER (REGEX(STR(?graphstring), "^(http://qudt.org/v|http://qudt.org/s)"))
+FILTER NOT EXISTS {$this qudt:deprecated true}
+}""" ;
+  ] ;
+  sh:targetClass qudt:Concept .
+
+qudt:DeprecatedConceptInfoShape
+  a sh:NodeShape ;
+  rdfs:isDefinedBy <http://qudt.org/$$QUDT_VERSION$$/collection/usertest> ;
+  rdfs:label "Informs about presence of a deprecated QUDT resource" ;
+  sh:severity sh:Info ;
+  sh:sparql [
+    a sh:SPARQLConstraint ;
+    rdfs:comment "Informs if a deprecated QUDT resource is present" ;
+    sh:message "Deprecated resource '{$this}' is present, which will be removed in the next major version of QUDT {?replacementMessage}" ;
+    sh:prefixes <http://qudt.org/$$QUDT_VERSION$$/collection/qa/allPrefixes> ;
+    sh:select """
+    SELECT ?s $this ?replacementMessage
+    WHERE {
+        $this qudt:deprecated true .
+        OPTIONAL {
+            $this dcterms:isReplacedBy ?replacement .
+        }
+        BIND(IF(
+                BOUND(?replacement),
+                CONCAT("as it has been replaced by ", STR(?replacement)),
+                "without replacement.")
+            AS ?replacementMessage)
+    }
+    """ ;
+  ] ;
+  sh:targetClass qudt:Concept .
+
+qudt:DeprecatedPropertyInfoShape
+  a sh:NodeShape ;
+  rdfs:isDefinedBy <http://qudt.org/$$QUDT_VERSION$$/collection/usertest> ;
+  rdfs:label "Info about presence of a deprecated QUDT property" ;
+  sh:severity sh:Info ;
+  sh:sparql [
+    a sh:SPARQLConstraint ;
+    rdfs:comment "Informs if a deprecated QUDT property is present" ;
+    sh:message "Deprecated property '{$this}' is present, which will be removed in the next major version of QUDT {?replacementMessage}" ;
+    sh:prefixes <http://qudt.org/$$QUDT_VERSION$$/collection/qa/allPrefixes> ;
+    sh:select """
+    SELECT ?s $this ?replacementMessage
+        WHERE {
+        $this qudt:deprecated true .
+        OPTIONAL {
+            $this dcterms:isReplacedBy ?replacement .
+        }
+        BIND(IF(
+            BOUND(?replacement),
+            CONCAT("as it has been replaced by ", STR(?replacement)),
+            "without replacement")
+        AS ?replacementMessage)
+    }""" ;
+  ] ;
+  sh:targetClass rdf:Property .
+
+qudt:DeprecatedTripleMissing
+  a sh:NodeShape ;
+  rdfs:isDefinedBy <http://qudt.org/$$QUDT_VERSION$$/collection/usertest> ;
+  rdfs:label "Ensures that objects depending on deprecated objects are themselves also deprecated" ;
+  sh:severity sh:Violation ;
+  sh:sparql [
+    a sh:SPARQLConstraint ;
+    rdfs:comment "Informs whether a resource that depends on a deprecated resource is itself not deprecated." ;
+    sh:message "Resource {$this} depends on deprecated resource {?dep} and must therefore also be deprecated or be changed to depend on a different resource" ;
+    sh:prefixes <http://qudt.org/$$QUDT_VERSION$$/collection/qa/allPrefixes> ;
+    sh:select """
+    SELECT $this ?dep ?replacementMessage
+    WHERE {
+        ?dep qudt:deprecated true .
+        {
+            $this ( ( qudt:hasFactorUnit/qudt:hasUnit ) | qudt:scalingOf | qudt:hasQuantityKind ) + ?dep .
+            FILTER NOT EXISTS {
+                $this qudt:deprecated true
+            }
+        }
+    }
+    """ ;
+  ] ;
+  sh:targetClass qudt:Concept .
+
+qudt:DerivableDimensionVectorMissing
+  a sh:NodeShape ;
+  rdfs:isDefinedBy <http://qudt.org/$$QUDT_VERSION$$/collection/usertest> ;
+  rdfs:label "Ensures that no derivable dimension vectors are omitted" ;
+  sh:severity sh:Violation ;
+  sh:sparql [
+    a sh:SPARQLConstraint ;
+    rdfs:comment "Ensures that no derivable dimension vectors are omitted" ;
+    sh:message """{$this}: dimension vector is missing but can be derived to be
+    {?calculatedDimVec}""" ;
+    sh:prefixes <http://qudt.org/$$QUDT_VERSION$$/collection/qa/allPrefixes> ;
+    sh:select """
+    SELECT $this ?calculatedDimVec
+    WHERE {
+        {
+            FILTER NOT EXISTS {
+                $this qudt:deprecated true
+            }
+            FILTER NOT EXISTS {
+                $this qudt:hasDimensionVector ?actualDimVec
+            }
+        }
+        BIND(qfn:unit.dimVec.calculate($this) AS ?calculatedDimVec)
+        FILTER(qfn:bound(?calculatedDimVec))
+    }
+    """ ;
+  ] ;
+  sh:targetClass qudt:Unit .
+
+qudt:ExactMatchGoesBothWaysConstraint
+  a sh:NodeShape ;
+  rdfs:isDefinedBy <http://qudt.org/$$QUDT_VERSION$$/collection/qa/all> ;
+  sh:severity sh:Warning ;
+  sh:sparql [
+    a sh:SPARQLConstraint ;
+    rdfs:comment "Ensure that if A qudt:exactMatch B then B qudt:exactMatch A" ;
+    sh:message "Missing triple: {$t} qudt:exactMatch {$this} ." ;
+    sh:prefixes <http://qudt.org/$$QUDT_VERSION$$/collection/qa/allPrefixes> ;
+    sh:select """
+SELECT $this ?t
+WHERE {
+$this qudt:exactMatch ?t .
+FILTER NOT EXISTS {$this qudt:deprecated true} .
+FILTER NOT EXISTS {?t qudt:exactMatch $this } .
+}
+""" ;
+  ] ;
+  sh:targetClass qudt:Concept .
+
+qudt:FactorUnitShape
+  a sh:NodeShape ;
+  rdfs:isDefinedBy <http://qudt.org/$$QUDT_VERSION$$/collection/qa/all> ;
+  rdfs:label "Only check for valid factor units on non-deprecated units" ;
+  sh:sparql [
+    a sh:SPARQLConstraint ;
+    rdfs:comment "Only check for valid factor units on non-deprecated units" ;
+    sh:message "{$this} has an undefined factor unit {?factorUnit}." ;
+    sh:prefixes <http://qudt.org/$$QUDT_VERSION$$/collection/qa/allPrefixes> ;
+    sh:select """
+            SELECT $this ?factorUnit
+            WHERE {
+                FILTER NOT EXISTS {$this qudt:deprecated true} .
+                $this qudt:hasFactorUnit ?reifiedFactor .
+                ?reifiedFactor qudt:hasUnit ?factorUnit .
+                  {
+                  FILTER NOT EXISTS {?factorUnit a qudt:Unit .} .
+                  }
+                UNION 
+                  {
+                  ?factorUnit qudt:deprecated true .
+                  }
+                }
+        """ ;
+  ] ;
+  sh:targetClass qudt:Unit .
+
+qudt:InconsistentDimensionVector
+  a sh:NodeShape ;
+  rdfs:isDefinedBy <http://qudt.org/$$QUDT_VERSION$$/collection/usertest> ;
+  rdfs:label "Ensures that dimension vectors of derived units are consistent with their factors" ;
+  sh:severity sh:Violation ;
+  sh:sparql [
+    a sh:SPARQLConstraint ;
+    rdfs:comment "Ensures that dimension vectors of derived units are consistent with their factors" ;
+    sh:message """{$this}: dimension vector 
+    {?actualDimVec} is inconsistent with the dimension vector calculated from its factor units
+    {?calculatedDimVec}""" ;
+    sh:prefixes <http://qudt.org/$$QUDT_VERSION$$/collection/qa/allPrefixes> ;
+    sh:select """
+    SELECT $this ?calculatedDimVec ?actualDimVec
+    WHERE {
+# Don't process units that contain "dot" in their IRI
+        FILTER( !CONTAINS(STR($this), "dot") )
+        $this qudt:hasDimensionVector ?actualDimVec
+        BIND(qfn:unit.dimVec.calculate($this) AS ?calculatedDimVec)
+        FILTER(qfn:bound(?calculatedDimVec))
+        FILTER(?actualDimVec != ?calculatedDimVec)
+        FILTER NOT EXISTS {
+            $this qudt:deprecated true
+        }
+    }
+    """ ;
+  ] ;
+  sh:targetClass qudt:Unit .
+
+qudt:InconsistentDimensionVectorInSKOSHierarchyConstraint
+  a sh:NodeShape ;
+  rdfs:isDefinedBy <http://qudt.org/$$QUDT_VERSION$$/collection/qa/all> ;
+  sh:sparql [
+    a sh:SPARQLConstraint ;
+    rdfs:comment "Checks that a QuantityKind has the same dimension vector as any skos:broader QuantityKind" ;
+    sh:message "Unit {$this} has dimension vector {$udv} which is not the same as the dimension vector of its skos:broader, {$qk} with dimension vector {$qdv}" ;
+    sh:prefixes <http://qudt.org/$$QUDT_VERSION$$/collection/qa/allPrefixes> ;
+    sh:select """
+SELECT $this ?udv ?qk ?qdv
+WHERE {
+FILTER NOT EXISTS {$this qudt:deprecated true} .
+$this qudt:hasDimensionVector  ?udv .
+$this skos:broader* ?qk .
+?qk qudt:hasDimensionVector ?qdv .
+FILTER (?udv != ?qdv) .
+}
+""" ;
+  ] ;
+  sh:targetClass qudt:QuantityKind .
+
+qudt:InconsistentDimensionVectorOfDeprecationConstraint
+  a sh:NodeShape ;
+  rdfs:isDefinedBy <http://qudt.org/$$QUDT_VERSION$$/collection/qa/all> ;
+  sh:sparql [
+    a sh:SPARQLConstraint ;
+    rdfs:comment "Checks that a deprecated entity has the same dimension vector as its replacement" ;
+    sh:message "Entity {$this} has dimension vector {$udv} which is not the same as the dimension vector of its replacement, {$qk} with dimension vector {$qdv}" ;
+    sh:prefixes <http://qudt.org/$$QUDT_VERSION$$/collection/qa/allPrefixes> ;
+    sh:select """
+SELECT $this ?udv ?qk ?qdv
+WHERE {
+$this dcterms:isReplacedBy ?qk .
+$this qudt:hasDimensionVector  ?udv .
+?qk qudt:hasDimensionVector ?qdv .
+FILTER (?udv != ?qdv) .
+}
+""" ;
+  ] ;
+  sh:targetClass qudt:QuantityKind ;
+  sh:targetClass qudt:Unit .
+
+qudt:InconsistentUnitAndDimensionVectorConstraint
+  a sh:NodeShape ;
+  rdfs:isDefinedBy <http://qudt.org/$$QUDT_VERSION$$/collection/qa/all> ;
+  sh:sparql [
+    a sh:SPARQLConstraint ;
+    rdfs:comment "Checks that a Unit and its QuantityKind have the same dimension vector" ;
+    sh:message "Unit {$this} has dimension vector {$udv} which is not the same as the dimension vector of its quantity kind {$qk} with dimension vector {$qdv}" ;
+    sh:prefixes <http://qudt.org/$$QUDT_VERSION$$/collection/qa/allPrefixes> ;
+    sh:select """
+SELECT $this ?udv ?qk ?qdv
+WHERE {
+FILTER NOT EXISTS {$this qudt:deprecated true} .
+$this qudt:hasDimensionVector  ?udv .
+$this qudt:hasQuantityKind ?qk .
+?qk qudt:hasDimensionVector ?qdv .
+FILTER (?udv != qkdv:NotApplicable) .
+FILTER (?qdv != qkdv:NotApplicable) .
+FILTER (?udv != ?qdv) .
+}
+""" ;
+  ] ;
+  sh:targetClass qudt:Unit .
+
+qudt:MissingBaseForNonBaseUnit
+  a sh:NodeShape ;
+  rdfs:isDefinedBy <http://qudt.org/$$QUDT_VERSION$$/collection/usertest> ;
+  rdfs:label "Ensures any unit with a conversion multiplier other than 0.0 and 1.0 defines either qudt:factorUnit or qudt:scalingOf" ;
+  sh:severity sh:Violation ;
+  sh:sparql [
+    a sh:SPARQLConstraint ;
+    rdfs:comment "Ensures any unit with a conversion multiplier other than 0.0 and 1.0 defines either qudt:factorUnit or qudt:scalingOf" ;
+    sh:message "{$this}: conversionMultiplier is neither 0.0 nor 1.0 but neither qudt:factorUnit nor qudt:scalingOf triples are defined or implied that explain its conversion multiplier of {?cm}" ;
+    sh:prefixes <http://qudt.org/$$QUDT_VERSION$$/collection/qa/allPrefixes> ;
+    sh:select """
+    SELECT $this ?cm
+    WHERE {
+        {
+            $this
+                qudt:conversionMultiplier ?cm .
+            FILTER(?cm != 0.0 && ?cm != 1.0)
+        }
+        FILTER NOT EXISTS {
+            {
+                $this qudt:scalingOf ?base .
+            } UNION {
+                $this qudt:hasFactorUnit ?factor .
+            }
+        }
+    }
+    """ ;
+  ] ;
+  sh:targetClass qudt:Unit .
+
+qudt:MultipleDescriptionsConstraint
+  a sh:NodeShape ;
+  rdfs:isDefinedBy <http://qudt.org/$$QUDT_VERSION$$/collection/qa/all> ;
+  rdfs:label "Warning about use of multiple descriptions with the same language tag" ;
+  sh:sparql [
+    a sh:SPARQLConstraint ;
+    rdfs:comment "Ensures each qudt:Concept instance doesn't have multiple dcterms:description values with the same language tag." ;
+    sh:message "{$this} has {?count} dcterms:description triples with language tag @{?langTag}." ;
+    sh:prefixes <http://qudt.org/$$QUDT_VERSION$$/collection/qa/allPrefixes> ;
+    sh:select """
+            SELECT $this (COUNT(?label) AS ?count) ?langTag
+            WHERE {
+                FILTER NOT EXISTS {$this qudt:deprecated true} .
+                $this dcterms:description ?label .
+                FILTER(langMatches(lang(?label), ?langTag))
+                BIND(lang(?label) AS ?langTag)
+            }
+            GROUP BY $this ?langTag
+            HAVING(?count > 1)
+        """ ;
+  ] ;
+  sh:targetClass qudt:Concept .
+
+qudt:MultipleLabelsConstraint
+  a sh:NodeShape ;
+  rdfs:isDefinedBy <http://qudt.org/$$QUDT_VERSION$$/collection/qa/all> ;
+  rdfs:label "Warning about use of multiple labels with the same language tag" ;
+  sh:sparql [
+    a sh:SPARQLConstraint ;
+    rdfs:comment "Ensures each qudt:Concept instance doesn't have multiple rdfs:labels with the same language tag." ;
+    sh:message "{$this} has {?count} rdfs:label triples with language tag @{?langTag}." ;
+    sh:prefixes <http://qudt.org/$$QUDT_VERSION$$/collection/qa/allPrefixes> ;
+    sh:select """
+            SELECT $this (COUNT(?label) AS ?count) ?langTag
+            WHERE {
+                FILTER NOT EXISTS {$this qudt:deprecated true} .
+                $this rdfs:label ?label .
+                FILTER(langMatches(lang(?label), ?langTag))
+                BIND(lang(?label) AS ?langTag)
+            }
+            GROUP BY $this ?langTag
+            HAVING(?count > 1)
+        """ ;
+  ] ;
+  sh:targetClass qudt:Concept .
+
+qudt:OrganizedUnderSameDimensionShape
+  a sh:NodeShape ;
+  rdfs:isDefinedBy <http://qudt.org/$$QUDT_VERSION$$/collection/qa/all> ;
+  rdfs:label "Warning when qudt:organizedUnder links quantity kinds of different dimension" ;
+  sh:severity sh:Warning ;
+  sh:sparql [
+    a sh:SPARQLConstraint ;
+    sh:message "{$this} qudt:organizedUnder {?parent}, but they have different dimension vectors ({?dvThis} vs {?dvParent}). qudt:organizedUnder is an organizational/unit-applicability grouping within a single dimension; it should not cross dimensions." ;
+    sh:prefixes <http://qudt.org/$$QUDT_VERSION$$/collection/qa/allPrefixes> ;
+    sh:select """
+        SELECT $this ?parent ?dvThis ?dvParent
+        WHERE {
+          $this qudt:organizedUnder ?parent .
+          $this qudt:hasDimensionVector ?dvThis .
+          ?parent qudt:hasDimensionVector ?dvParent .
+          FILTER ( ?dvThis != ?dvParent )
+        }
+      """ ;
+  ] ;
+  sh:targetClass qudt:QuantityKind .
+
+qudt:QuantityKindShape
+  rdfs:isDefinedBy <http://qudt.org/$$QUDT_VERSION$$/collection/qa/all> ;
+  sh:property [
+    rdfs:comment "Check for inconsistent qudt:exactMatch vs skos:broader triples" ;
+    sh:path qudt:exactMatch ;
+    sh:sparql [
+      a sh:SPARQLConstraint ;
+      sh:message "{$this} is skos:broader and qudt:exactMatch with {?qk}." ;
+      sh:prefixes <http://qudt.org/$$QUDT_VERSION$$/collection/qa/allPrefixes> ;
+      sh:select """
+                SELECT DISTINCT $this ?qk
+                WHERE {
+                FILTER NOT EXISTS {$this qudt:deprecated true} .
+                $this
+                    skos:broader ?qk ;
+                    qudt:exactMatch ?qk .
+                }
+              """ ;
+    ] ;
+  ] ;
+  sh:targetClass qudt:QuantityKind .
+
+qudt:RdfsLabelInTitleCaseShapeInfo
+  a sh:NodeShape ;
+  rdfs:isDefinedBy <http://qudt.org/$$QUDT_VERSION$$/collection/qa/all> ;
+  rdfs:label "Informational notices for non-English labels that are not in title case" ;
+  sh:severity sh:Info ;
+  sh:sparql [
+    a sh:SPARQLConstraint ;
+    sh:message """{$this}: The value of rdfs:label, {?langValue}, is not in title case.
+            - each word must start with an uppercase letter
+            - no uppercase letters allowed directly after a lowercase letter (no CamelCase)
+            - articles and prepositions must be lowercase
+        """ ;
+    sh:prefixes <http://qudt.org/$$QUDT_VERSION$$/collection/qa/allPrefixes> ;
+    sh:select """
+        SELECT $this ?langValue ?value
+        WHERE {
+          $this rdfs:label ?value .
+          FILTER NOT EXISTS {
+            $this qudt:deprecated true .
+          }
+          BIND(LANG(?value) as ?lang)
+          # non-English languages only
+          FILTER ( ?lang IN ("bg", "cs", "de", "el", "es", "fr", "it", "la", "ms", "nl", "pl", "pt", "ro", "ru", "sl", "tr") )
+          # title case check
+          FILTER ( !REGEX(STR(?value), "^\\\\p{Lu}( (al|ανά|на|je|na|par|pe|per|por|pro|za|in|for) |[^\\\\p{Lu}]|[^\\\\p{Ll}]\\\\p{Lu})*$") )
+          BIND( CONCAT("'",STR(?value),"'", IF (?lang = "", "", CONCAT("@", ?lang))) AS ?langValue)
+        }
+      """ ;
+  ] ;
+  sh:targetClass qudt:ConstantValue ;
+  sh:targetClass qudt:PhysicalConstant ;
+  sh:targetClass qudt:Prefix ;
+  sh:targetClass qudt:QuantityKind .
+
+qudt:RdfsLabelInTitleCaseShapeViolation
+  a sh:NodeShape ;
+  rdfs:isDefinedBy <http://qudt.org/$$QUDT_VERSION$$/collection/qa/all> ;
+  rdfs:label "Warnings for labels that are not in title case (units)" ;
+  sh:severity sh:Warning ;
+  sh:sparql [
+    a sh:SPARQLConstraint ;
+    sh:message """{$this}: The value of rdfs:label, {?langValue}, is not in title case.
+            - each word must start with an uppercase letter
+            - no uppercase letters allowed directly after a lowercase letter (no CamelCase)
+            - articles and prepositions must be lowercase
+        """ ;
+    sh:prefixes <http://qudt.org/$$QUDT_VERSION$$/collection/qa/allPrefixes> ;
+    sh:select """
+        SELECT $this ?langValue ?value
+        WHERE {
+          $this rdfs:label ?value .
+          FILTER NOT EXISTS {
+              $this qudt:deprecated true .
+          }
+          BIND(LANG(?value) as ?lang)
+          # languages to check (not all languages can be in title case)
+          FILTER ( ?lang IN ("", "bg", "cs", "de", "el", "en", "en-US", "es", "fr", "it", "la", "ms", "nl", "pl", "pt", "ro", "ru", "sl", "tr" ) )
+          # title case check
+          FILTER ( !REGEX(STR(?value), "^\\\\p{Lu}( (al|ανά|на|je|na|par|pe|per|por|pro|za|of|de|del) |[^\\\\p{Lu}]|[^\\\\p{Ll}]\\\\p{Lu})*$") )
+          BIND( CONCAT("'",STR(?value),"'", IF (?lang = "", "", CONCAT("@", ?lang))) AS ?langValue)
+        }
+      """ ;
+  ] ;
+  sh:targetClass qudt:Unit .
+
+qudt:RdfsLabelInTitleCaseShapeWarning
+  a sh:NodeShape ;
+  rdfs:isDefinedBy <http://qudt.org/$$QUDT_VERSION$$/collection/qa/all> ;
+  rdfs:label "Warnings for labels that are not in title case" ;
+  sh:severity sh:Warning ;
+  sh:sparql [
+    a sh:SPARQLConstraint ;
+    sh:message """{$this}: The value of rdfs:label, {?langValue}, is not in title case.
+            - each word must start with an uppercase letter
+            - no uppercase letters allowed directly after a lowercase letter (no CamelCase)
+            - articles and prepositions must be lowercase
+        """ ;
+    sh:prefixes <http://qudt.org/$$QUDT_VERSION$$/collection/qa/allPrefixes> ;
+    sh:select """
+        SELECT $this ?langValue ?value
+        WHERE {
+          $this rdfs:label ?value .
+          FILTER NOT EXISTS {
+            $this qudt:deprecated true .
+          }
+          BIND(LANG(?value) as ?lang)
+          # English labels only; non-English title-case issues reported at sh:Info level
+          FILTER ( ?lang IN ("", "en", "en-US", "en-UK") )
+          # title case check
+          # The second condition explicitly catches capitalized exception words (e.g. "Of", "And")
+          # that the first regex cannot reject due to a known limitation with uppercase word starts.
+          FILTER (
+            (
+              !REGEX(STR(?value), "^\\\\p{Lu}( (al|ανά|на|je|na|par|pe|per|por|pro|za|in|for) |[^\\\\p{Lu}]|[^\\\\p{Ll}]\\\\p{Lu}|\\\\p{Lu})*$")
+              || REGEX(STR(?value), "(?<= )(And|An|Of|Per|In|For|To|By|As|The|At)(?= |$)|(?<= )A(?= )")
+            )
+            && !REGEX(STR(?value), "^\\\\p{Ll}-")
+          )
+          BIND( CONCAT("'",STR(?value),"'", IF (?lang = "", "", CONCAT("@", ?lang))) AS ?langValue)
+        }
+      """ ;
+  ] ;
+  sh:targetClass qudt:Prefix ;
+  sh:targetClass qudt:QuantityKind .
+
+qudt:ScalingOfAndFactorUnitsPresent
+  a sh:NodeShape ;
+  rdfs:isDefinedBy <http://qudt.org/$$QUDT_VERSION$$/collection/usertest> ;
+  rdfs:label "Ensures that no unit has both qudt:scalingOf and qudt:hasFactorUnits" ;
+  sh:severity sh:Violation ;
+  sh:sparql [
+    a sh:SPARQLConstraint ;
+    rdfs:comment "Ensures that no unit has both qudt:scalingOf and qudt:hasFactorUnits" ;
+    sh:message "{$this} has factor units {?factorUnits} as well as scalingOf {?scalingOf} - that's not allowed" ;
+    sh:prefixes <http://qudt.org/$$QUDT_VERSION$$/collection/qa/allPrefixes> ;
+    sh:select """
+      SELECT $this ?factorUnits ?scalingOf
+      WHERE {
+          $this qudt:scalingOf ?scalingOf
+          {
+            SELECT $this (GROUP_CONCAT(?fuString; separator=", ") AS ?factorUnits)
+            WHERE {
+                $this qudt:hasFactorUnit ?fun .
+                ?fun qudt:hasUnit ?fu ;
+                     qudt:exponent ?exp .
+                BIND(CONCAT(qfn:localname(?fu),"^",STR(?exp)) AS ?fuString)
+            }
+            GROUP BY $this
+          }
+          FILTER(STRLEN(?factorUnits) > 0)
+          FILTER NOT EXISTS {
+              $this qudt:deprecated true
+          }
+      }
+      """ ;
+  ] ;
+  sh:targetClass qudt:Concept .
+
+qudt:SpecializationOfAndOrganizedUnderDisjointShape
+  a sh:NodeShape ;
+  rdfs:isDefinedBy <http://qudt.org/$$QUDT_VERSION$$/collection/qa/all> ;
+  rdfs:label "Violation when a quantity kind has both outgoing qudt:specializationOf and qudt:organizedUnder" ;
+  sh:severity sh:Violation ;
+  sh:sparql [
+    a sh:SPARQLConstraint ;
+    sh:message "{$this} has both qudt:specializationOf {?specializationParent} and qudt:organizedUnder {?organizationParent}. A quantity kind must use at most one outgoing relation type: specializationOf asserts commensurability with the parent family; organizedUnder is a non-commensurate categorical grouping. Using both is contradictory." ;
+    sh:prefixes <http://qudt.org/$$QUDT_VERSION$$/collection/qa/allPrefixes> ;
+    sh:select """
+        SELECT $this ?specializationParent ?organizationParent
+        WHERE {
+          $this qudt:specializationOf ?specializationParent .
+          $this qudt:organizedUnder ?organizationParent .
+          FILTER NOT EXISTS { $this qudt:deprecated true }
+        }
+      """ ;
+  ] ;
+  sh:targetClass qudt:QuantityKind .
+
+qudt:SpecializationOfSameDimensionShape
+  a sh:NodeShape ;
+  rdfs:isDefinedBy <http://qudt.org/$$QUDT_VERSION$$/collection/qa/all> ;
+  rdfs:label "Violation when qudt:specializationOf links quantity kinds of different dimension" ;
+  sh:severity sh:Violation ;
+  sh:sparql [
+    a sh:SPARQLConstraint ;
+    sh:message "{$this} qudt:specializationOf {?parent}, but they have different dimension vectors ({?dvThis} vs {?dvParent}). A specialization must be commensurable with its parent, so it must share the same dimension; use qudt:organizedUnder for a grouping that does not assert commensurability." ;
+    sh:prefixes <http://qudt.org/$$QUDT_VERSION$$/collection/qa/allPrefixes> ;
+    sh:select """
+        SELECT $this ?parent ?dvThis ?dvParent
+        WHERE {
+          $this qudt:specializationOf ?parent .
+          $this qudt:hasDimensionVector ?dvThis .
+          ?parent qudt:hasDimensionVector ?dvParent .
+          FILTER ( ?dvThis != ?dvParent )
+        }
+      """ ;
+  ] ;
+  sh:targetClass qudt:QuantityKind .
+
+qudt:UniqueSymbolTypeRestrictedPropertyConstraint
+  a sh:NodeShape ;
+  rdfs:isDefinedBy <http://qudt.org/$$QUDT_VERSION$$/collection/qa/all> ;
+  rdfs:label "Unique symbol type restricted property constraint" ;
+  sh:deactivated true ;
+  sh:severity sh:Warning ;
+  sh:sparql [
+    a sh:SPARQLConstraint ;
+    rdfs:comment "Checks that a resource has a unique symbol within its type hierarchy below qudt:Concept" ;
+    sh:message "Resource, '{$this}' of type '{?myType}', has non-unique symbol, '{?symbol}', that conflicts with '{?another}' of type '{?anotherType}'" ;
+    sh:prefixes <http://qudt.org/$$QUDT_VERSION$$/collection/qa/allPrefixes> ;
+    sh:select """SELECT DISTINCT $this ?symbol ?another ?myType ?anotherType
+WHERE {{
+\t$this qudt:symbol ?symbol .
+     ?another qudt:symbol ?symbol .
+    FILTER (?another != $this)
+   }
+   FILTER NOT EXISTS {$this qudt:deprecated true} .
+    $this a ?myType .
+    ?myType <http://www.w3.org/2000/01/rdf-schema#subClassOf>+ qudt:Concept .
+    ?another a ?anotherType .
+    ?anotherType <http://www.w3.org/2000/01/rdf-schema#subClassOf>+ qudt:Concept .
+   FILTER (?myType = ?anotherType)
+}""" ;
+  ] ;
+  sh:targetClass qudt:Unit .
+
+qudt:UnitPointsToAllExactMatchQuantityKindsConstraint
+  a sh:NodeShape ;
+  rdfs:isDefinedBy <http://qudt.org/$$QUDT_VERSION$$/collection/qa/all> ;
+  sh:sparql [
+    a sh:SPARQLConstraint ;
+    rdfs:comment "Ensure that if a Unit hasQuantityKind A, and A qudt:exactMatch B, then the Unit hasQuantityKind B " ;
+    sh:message "Missing triple: {$this} qudt:hasQuantityKind {?qk2}, because {?qk} qudt:exactMatch {?qk2}" ;
+    sh:prefixes <http://qudt.org/$$QUDT_VERSION$$/collection/qa/allPrefixes> ;
+    sh:select """
+SELECT $this ?qk ?qk2
+WHERE {
+FILTER NOT EXISTS {$this qudt:deprecated true} .
+$this qudt:hasQuantityKind ?qk .
+?qk qudt:exactMatch ?qk2 .
+FILTER NOT EXISTS {$this qudt:hasQuantityKind ?qk2}
+}
+""" ;
+  ] ;
+  sh:targetClass qudt:Unit .
+
+qudt:UnitShape
+  rdfs:isDefinedBy <http://qudt.org/$$QUDT_VERSION$$/collection/qa/all> ;
+  sh:property [
+    rdfs:comment "Check for inconsistent dimensionvectors from units and quantitykinds" ;
+    sh:path qudt:hasDimensionVector ;
+    sh:sparql [
+      a sh:SPARQLConstraint ;
+      sh:message "{$this} has a dimension vector that is inconsistent with its quantity kind, {?qk}" ;
+      sh:prefixes <http://qudt.org/$$QUDT_VERSION$$/collection/qa/allPrefixes> ;
+      sh:select """
+SELECT $this ?qk
+WHERE {
+FILTER NOT EXISTS {$this qudt:deprecated true} .
+$this qudt:hasDimensionVector  ?udv .
+$this qudt:hasQuantityKind ?qk .
+FILTER (?qk != quantitykind:Unknown) .
+?qk qudt:hasDimensionVector ?qdv .
+FILTER (?udv != ?qdv) .
+}
+""" ;
+    ] ;
+  ] ;
+  sh:targetClass qudt:Unit .
+
+qudt:UnitsHaveRdfClassQudtUnitTriple
+  a sh:NodeShape ;
+  rdfs:isDefinedBy <http://qudt.org/$$QUDT_VERSION$$/validation/units-without-schema> ;
+  rdfs:label "Ensures that all units have `rdf:type qudt:Unit` explicitly (not only through inference)" ;
+  sh:severity sh:Violation ;
+  sh:sparql [
+    a sh:SPARQLConstraint ;
+    rdfs:comment "Ensures that all units have `rdf:type qudt:Unit`" ;
+    sh:message "{$this}: Found a unit that lacks the `rdf:type qudt:Unit` triple" ;
+    sh:prefixes <http://qudt.org/$$QUDT_VERSION$$/collection/qa/allPrefixes> ;
+    sh:select """
+        SELECT DISTINCT $this
+        WHERE {
+            $this a ?type .
+            FILTER NOT EXISTS {
+                $this a qudt:Unit .
+            }
+        }
+        """ ;
+  ] ;
+  sh:target [
+    a sh:SPARQLTarget ;
+    sh:prefixes <http://qudt.org/$$QUDT_VERSION$$/collection/qa/allPrefixes> ;
+    sh:select """
+        SELECT DISTINCT $this
+        WHERE {
+              $this a ?type
+              FILTER(STRSTARTS(STR($this), "http://qudt.org/vocab/unit/"))
+            }
+        """ ;
+  ] .
+
+qudt:conversionMultiplierSnShape
+  rdfs:comment "qudt:conversionMultiplier must match qudt:conversionMultiplierSN if present" ;
+  sh:sparql [
+    a sh:SPARQLConstraint ;
+    sh:message "{$this} qudt:conversionMultiplier is {?valueDecimalNoTrailingZeros}, which does not match the value of qudt:conversionMultiplierSN, {?valueSN}, converted to decimal notation, {?valueSNStringValue} .  " ;
+    sh:prefixes <http://qudt.org/$$QUDT_VERSION$$/collection/qa/allPrefixes> ;
+    sh:select """
+            SELECT $this ?valueDecimal ?valueDecimalNoTrailingZeros ?valueSN ?m ?e ?exponent ?mNoDot ?mDigitCount ?valueSNStringValue ?onePos ?lastMantissaDigit ?leftStart ?leftEnd ?rightStart ?rightEnd ?result
+                        WHERE {
+                        FILTER NOT EXISTS {$this qudt:deprecated true} .
+                            # select both values
+                            $this
+                                qudt:conversionMultiplier ?valueDecimal ;
+                                qudt:conversionMultiplierSN ?valueSN .
+                            BIND(REPLACE(STR(?valueDecimal), "(\\\\.\\\\d)(\\\\d*[1-9])?0*$", "$1$2") as ?valueDecimalNoTrailingZeros)      # remove trailing zeros from valueDecimal (string)
+                            BIND(REPLACE(STR(?valueSN), "[eE]-?\\\\d+$", "") as ?m)                                           # extract the mantissa (string)
+                            BIND(REPLACE(STR(?valueSN), "^\\\\d(\\\\.\\\\d+)?[eE]", "") as ?e)                                    # extract the exponent (string)
+                            BIND(REPLACE(STR(?m),"(\\\\.|0+$)","") AS ?mNoDot)                                                # remove the comma and trailing zeros from the mantissa
+                            BIND(STRLEN(?mNoDot) as ?mDigitCount)                                                           # count the mantissa's characters
+                            BIND(xsd:integer(?e) as  ?exponent)                                                             # cast e to an integer, called exponent
+                            # prepare a string with 200 zeros padding left and right, mantissa in the middle
+                            BIND(CONCAT(
+                                                "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+                                                ?mNoDot,
+                                                "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000") as ?baseStr)
+                            # first char has index 1 !!!
+                            BIND(201 + ?exponent as ?onePos)
+                            BIND(200 + ?mDigitCount  as ?lastMantissaDigit)
+                            BIND(IF(?onePos > 201, 201, ?onePos) as ?leftStart)
+                            BIND(?onePos+1 as ?leftEnd)
+                            BIND(?onePos+1 as ?rightStart)
+                            BIND(IF(?lastMantissaDigit+1 > ?onePos+2, ?lastMantissaDigit+1, ?onePos+2)  as ?rightEnd)
+                            # determine the expected string
+                            BIND(CONCAT(SUBSTR(?baseStr, ?leftStart, ?leftEnd-?leftStart), ".", SUBSTR(?baseStr, ?rightStart, ?rightEnd - ?rightStart)) as  ?valueSNStringValue)
+                            # compare with actual decimal value
+                            BIND(IF(?valueSNStringValue = STR(?valueDecimalNoTrailingZeros), "match!", "no match!") as ?result)
+                            # only generate message if no match (useful during development)
+                            FILTER(?result != "match!")
+                        }
+        """ ;
+  ] ;
+  sh:targetClass qudt:Unit .
+
+qudt:conversionOffsetSnShape
+  rdfs:comment "qudt:conversionOffset must match qudt:conversionOffsetSN if present" ;
+  sh:sparql [
+    a sh:SPARQLConstraint ;
+    sh:message "{$this} qudt:conversionOffset is {?valueDecimalNoTrailingZeros}, which does not match the value of qudt:conversionOffsetSN, {?valueSN}, converted to decimal notation, {?valueSNStringValue} .  " ;
+    sh:prefixes <http://qudt.org/$$QUDT_VERSION$$/collection/qa/allPrefixes> ;
+    sh:select """
+            SELECT $this ?valueDecimal ?valueDecimalNoTrailingZeros ?valueSN ?m ?e ?exponent ?mNoDot ?mDigitCount ?valueSNStringValue ?onePos ?lastMantissaDigit ?leftStart ?leftEnd ?rightStart ?rightEnd ?result
+                        WHERE {
+                        FILTER NOT EXISTS {$this qudt:deprecated true} .
+                            # select both values
+                            $this
+                                qudt:conversionOffset ?valueDecimal ;
+                                qudt:conversionOffsetSN ?valueSN .
+                            BIND(REPLACE(STR(?valueDecimal), "(\\\\.\\\\d)(\\\\d*[1-9])?0*$", "$1$2") as ?valueDecimalNoTrailingZeros)      # remove trailing zeros from valueDecimal (string)
+                            BIND(REPLACE(STR(?valueSN), "[eE]-?\\\\d+$", "") as ?m)                                           # extract the mantissa (string)
+                            BIND(REPLACE(STR(?valueSN), "^\\\\d(\\\\.\\\\d+)?[eE]", "") as ?e)                                    # extract the exponent (string)
+                            BIND(REPLACE(STR(?m),"(\\\\.|0+$)","") AS ?mNoDot)                                                # remove the comma and trailing zeros from the mantissa
+                            BIND(STRLEN(?mNoDot) as ?mDigitCount)                                                           # count the mantissa's characters
+                            BIND(xsd:integer(?e) as  ?exponent)                                                             # cast e to an integer, called exponent
+                            # prepare a string with 200 zeros padding left and right, mantissa in the middle
+                            BIND(CONCAT(
+                                                "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+                                                ?mNoDot,
+                                                "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000") as ?baseStr)
+                            # first char has index 1 !!!
+                            BIND(201 + ?exponent as ?onePos)
+                            BIND(200 + ?mDigitCount  as ?lastMantissaDigit)
+                            BIND(IF(?onePos > 201, 201, ?onePos) as ?leftStart)
+                            BIND(?onePos+1 as ?leftEnd)
+                            BIND(?onePos+1 as ?rightStart)
+                            BIND(IF(?lastMantissaDigit+1 > ?onePos+2, ?lastMantissaDigit+1, ?onePos+2)  as ?rightEnd)
+                            # determine the expected string
+                            BIND(CONCAT(SUBSTR(?baseStr, ?leftStart, ?leftEnd-?leftStart), ".", SUBSTR(?baseStr, ?rightStart, ?rightEnd - ?rightStart)) as  ?valueSNStringValue)
+                            # compare with actual decimal value
+                            BIND(IF(?valueSNStringValue = STR(?valueDecimalNoTrailingZeros), "match!", "no match!") as ?result)
+                            # only generate message if no match (useful during development)
+                            FILTER(?result != "match!")
+                        }
+        """ ;
+  ] ;
+  sh:targetClass qudt:Unit .
+
+qudt:prefixMultiplierSnShape
+  rdfs:comment "qudt:prefixMultiplier must match qudt:prefixMultiplierSN if present" ;
+  sh:sparql [
+    a sh:SPARQLConstraint ;
+    sh:message "{$this} qudt:prefixMultiplier is {?valueDecimalNoTrailingZeros}, which does not match the value of qudt:prefixMultiplierSN, {?valueSN}, converted to decimal notation, {?valueSNStringValue} .  " ;
+    sh:prefixes <http://qudt.org/$$QUDT_VERSION$$/collection/qa/allPrefixes> ;
+    sh:select """
+            SELECT $this ?valueDecimal ?valueDecimalNoTrailingZeros ?valueSN ?m ?e ?exponent ?mNoDot ?mDigitCount ?valueSNStringValue ?onePos ?lastMantissaDigit ?leftStart ?leftEnd ?rightStart ?rightEnd ?result
+                        WHERE {
+                        FILTER NOT EXISTS {$this qudt:deprecated true} .
+                            # select both values
+                            $this
+                                qudt:prefixMultiplier ?valueDecimal ;
+                                qudt:prefixMultiplierSN ?valueSN .
+                            BIND(REPLACE(STR(?valueDecimal), "(\\\\.\\\\d)(\\\\d*[1-9])?0*$", "$1$2") as ?valueDecimalNoTrailingZeros)      # remove trailing zeros from valueDecimal (string)
+                            BIND(REPLACE(STR(?valueSN), "[eE]-?\\\\d+$", "") as ?m)                                           # extract the mantissa (string)
+                            BIND(REPLACE(STR(?valueSN), "^\\\\d(\\\\.\\\\d+)?[eE]", "") as ?e)                                    # extract the exponent (string)
+                            BIND(REPLACE(STR(?m),"(\\\\.|0+$)","") AS ?mNoDot)                                                # remove the comma and trailing zeros from the mantissa
+                            BIND(STRLEN(?mNoDot) as ?mDigitCount)                                                           # count the mantissa's characters
+                            BIND(xsd:integer(?e) as  ?exponent)                                                             # cast e to an integer, called exponent
+                            # prepare a string with 200 zeros padding left and right, mantissa in the middle
+                            BIND(CONCAT(
+                                                "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+                                                ?mNoDot,
+                                                "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000") as ?baseStr)
+                            # first char has index 1 !!!
+                            BIND(201 + ?exponent as ?onePos)
+                            BIND(200 + ?mDigitCount  as ?lastMantissaDigit)
+                            BIND(IF(?onePos > 201, 201, ?onePos) as ?leftStart)
+                            BIND(?onePos+1 as ?leftEnd)
+                            BIND(?onePos+1 as ?rightStart)
+                            BIND(IF(?lastMantissaDigit+1 > ?onePos+2, ?lastMantissaDigit+1, ?onePos+2)  as ?rightEnd)
+                            # determine the expected string
+                            BIND(CONCAT(SUBSTR(?baseStr, ?leftStart, ?leftEnd-?leftStart), ".", SUBSTR(?baseStr, ?rightStart, ?rightEnd - ?rightStart)) as  ?valueSNStringValue)
+                            # compare with actual decimal value
+                            BIND(IF(?valueSNStringValue = STR(?valueDecimalNoTrailingZeros), "match!", "no match!") as ?result)
+                            # only generate message if no match (useful during development)
+                            FILTER(?result != "match!")
+                        }
+        """ ;
+  ] ;
+  sh:targetClass qudt:Prefix .
+
+qudt:standardUncertaintySnShape
+  rdfs:comment "qudt:standardUncertainty must match qudt:standardUncertaintySN if present" ;
+  sh:sparql [
+    a sh:SPARQLConstraint ;
+    sh:message "{$this} qudt:standardUncertainty is {?valueDecimalNoTrailingZeros}, which does not match the value of qudt:standardUncertaintySN, {?valueSN}, converted to decimal notation, {?valueSNStringValue} .  " ;
+    sh:prefixes <http://qudt.org/$$QUDT_VERSION$$/collection/qa/allPrefixes> ;
+    sh:select """
+            SELECT $this ?valueDecimal ?valueDecimalNoTrailingZeros ?valueSN ?m ?e ?exponent ?mNoDot ?mDigitCount ?valueSNStringValue ?onePos ?lastMantissaDigit ?leftStart ?leftEnd ?rightStart ?rightEnd ?result
+                        WHERE {
+                        FILTER NOT EXISTS {$this qudt:deprecated true} .
+                            # select both values
+                            $this
+                                qudt:standardUncertainty ?valueDecimal ;
+                                qudt:standardUncertaintySN ?valueSN .
+                            BIND(REPLACE(STR(?valueDecimal), "(\\\\.\\\\d)(\\\\d*[1-9])?0*$", "$1$2") as ?valueDecimalNoTrailingZeros)      # remove trailing zeros from valueDecimal (string)
+                            BIND(REPLACE(STR(?valueSN), "[eE]-?\\\\d+$", "") as ?m)                                           # extract the mantissa (string)
+                            BIND(REPLACE(STR(?valueSN), "^\\\\d(\\\\.\\\\d+)?[eE]", "") as ?e)                                    # extract the exponent (string)
+                            BIND(REPLACE(STR(?m),"(\\\\.|0+$)","") AS ?mNoDot)                                                # remove the comma and trailing zeros from the mantissa
+                            BIND(STRLEN(?mNoDot) as ?mDigitCount)                                                           # count the mantissa's characters
+                            BIND(xsd:integer(?e) as  ?exponent)                                                             # cast e to an integer, called exponent
+                            # prepare a string with 200 zeros padding left and right, mantissa in the middle
+                            BIND(CONCAT(
+                                                "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+                                                ?mNoDot,
+                                                "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000") as ?baseStr)
+                            # first char has index 1 !!!
+                            BIND(201 + ?exponent as ?onePos)
+                            BIND(200 + ?mDigitCount  as ?lastMantissaDigit)
+                            BIND(IF(?onePos > 201, 201, ?onePos) as ?leftStart)
+                            BIND(?onePos+1 as ?leftEnd)
+                            BIND(?onePos+1 as ?rightStart)
+                            BIND(IF(?lastMantissaDigit+1 > ?onePos+2, ?lastMantissaDigit+1, ?onePos+2)  as ?rightEnd)
+                            # determine the expected string
+                            BIND(CONCAT(SUBSTR(?baseStr, ?leftStart, ?leftEnd-?leftStart), ".", SUBSTR(?baseStr, ?rightStart, ?rightEnd - ?rightStart)) as  ?valueSNStringValue)
+                            # compare with actual decimal value
+                            BIND(IF(?valueSNStringValue = STR(?valueDecimalNoTrailingZeros), "match!", "no match!") as ?result)
+                            # only generate message if no match (useful during development)
+                            FILTER(?result != "match!")
+                        }
+        """ ;
+  ] ;
+  sh:targetClass qudt:ConstantValue .
+
+qudt:valueSnShape
+  rdfs:comment "qudt:value must match qudt:valueSN if present" ;
+  sh:sparql [
+    a sh:SPARQLConstraint ;
+    sh:message "{$this} qudt:value is {?valueDecimalNoTrailingZeros}, which does not match the value of qudt:valueSN, {?valueSN}, converted to decimal notation, {?valueSNStringValue} .  " ;
+    sh:prefixes <http://qudt.org/$$QUDT_VERSION$$/collection/qa/allPrefixes> ;
+    sh:select """
+            SELECT $this ?valueDecimal ?valueDecimalNoTrailingZeros ?valueSN ?m ?e ?exponent ?mNoDot ?mDigitCount ?valueSNStringValue ?onePos ?lastMantissaDigit ?leftStart ?leftEnd ?rightStart ?rightEnd ?result
+                        WHERE {
+                        FILTER NOT EXISTS {$this qudt:deprecated true} .
+                            # select both values
+                            $this
+                                qudt:value ?valueDecimal ;
+                                qudt:valueSN ?valueSN .
+                            BIND(REPLACE(STR(?valueDecimal), "(\\\\.\\\\d)(\\\\d*[1-9])?0*$", "$1$2") as ?valueDecimalNoTrailingZeros)     # remove trailing zeros from valueDecimal (string)
+                            BIND(REPLACE(STR(?valueSN), "[eE]-?\\\\d+$", "") as ?m)                                           # extract the mantissa (string)
+                            BIND(REPLACE(STR(?valueSN), "^\\\\d(\\\\.\\\\d+)?[eE]", "") as ?e)                                    # extract the exponent (string)
+                            BIND(REPLACE(STR(?m),"(\\\\.|0+$)","") AS ?mNoDot)                                                # remove the comma and trailing zeros from the mantissa
+                            BIND(STRLEN(?mNoDot) as ?mDigitCount)                                                           # count the mantissa's characters
+                            BIND(xsd:integer(?e) as  ?exponent)                                                             # cast e to an integer, called exponent
+                            # prepare a string with 200 zeros padding left and right, mantissa in the middle
+                            BIND(CONCAT(
+                                                "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+                                                ?mNoDot,
+                                                "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000") as ?baseStr)
+                            # first char has index 1 !!!
+                            BIND(201 + ?exponent as ?onePos)
+                            BIND(200 + ?mDigitCount  as ?lastMantissaDigit)
+                            BIND(IF(?onePos > 201, 201, ?onePos) as ?leftStart)
+                            BIND(?onePos+1 as ?leftEnd)
+                            BIND(?onePos+1 as ?rightStart)
+                            BIND(IF(?lastMantissaDigit+1 > ?onePos+2, ?lastMantissaDigit+1, ?onePos+2)  as ?rightEnd)
+                            # determine the expected string
+                            BIND(CONCAT(SUBSTR(?baseStr, ?leftStart, ?leftEnd-?leftStart), ".", SUBSTR(?baseStr, ?rightStart, ?rightEnd - ?rightStart)) as  ?valueSNStringValue)
+                            # compare with actual decimal value
+                            BIND(IF(?valueSNStringValue = STR(?valueDecimalNoTrailingZeros), "match!", "no match!") as ?result)
+                            # only generate message if no match (useful during development)
+                            FILTER(?result != "match!")
+                        }
+        """ ;
+  ] ;
+  sh:targetClass qudt:ConstantValue .
+
+

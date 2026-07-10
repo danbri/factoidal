@@ -1,0 +1,23 @@
+# BROKEN: references unit:Da, which QUDT v3.4.0 marks
+# `qudt:deprecated true` (deprecated in 3.1.0, replaced by unit:DA).
+# The user ruleset's qudt:DontReferToDeprecatedConceptConstraint
+# (sh:sparql over sh:targetClass qudt:Concept, severity sh:Warning)
+# must flag the reference and recommend unit:DA via
+# dcterms:isReplacedBy. Dimensions are consistent on purpose — the
+# deprecation warning is the only expected new finding.
+@prefix qudt: <http://qudt.org/schema/qudt/> .
+@prefix quantitykind: <http://qudt.org/vocab/quantitykind/> .
+@prefix unit: <http://qudt.org/vocab/unit/> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+@prefix ex: <http://example.org/qudt-fixture#> .
+
+ex:ProteinMass
+  a qudt:Quantity ;
+  qudt:hasQuantityKind quantitykind:MolecularMass ;
+  qudt:hasUnit unit:Da ;
+  qudt:quantityValue ex:ProteinMassValue .
+
+ex:ProteinMassValue
+  a qudt:QuantityValue ;
+  qudt:numericValue "66430.0"^^xsd:decimal ;
+  qudt:unit unit:Da .

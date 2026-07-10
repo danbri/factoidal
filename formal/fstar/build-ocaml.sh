@@ -966,6 +966,7 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
     "$BINDIR/jsonld_compact_runner"
     "$BINDIR/jsonld_flatten_runner"
     "$BINDIR/shacl_runner"
+    "$BINDIR/qudt_runner"
     "$BINDIR/rml_runner"
     "$BINDIR/csvw_runner"
     "$BINDIR/vc_runner"
@@ -983,6 +984,7 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
     ../../../bin/factoidal-http/factoidal_http_main.ml
     ../../../bin/owl-runner/owl_runner.ml
     ../../../bin/shacl-runner/shacl_runner.ml
+    ../../../bin/qudt-runner/qudt_runner.ml
     ../../../bin/rdfc10-runner/rdfc10_runner.ml
     ../../../bin/grddl-runner/grddl_runner.ml
     ../../../bin/jsonld-runner/jsonld_runner.ml
@@ -1520,6 +1522,36 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
       exit 1
     fi
     echo "  Built: bin/${PLATFORM}/shacl_runner ($(wc -c < "$BINDIR/shacl_runner") bytes)"
+
+    # qudt_runner — QUDT v3.4.0 SHACL suite runner (Layer A of
+    # docs/designissues/2026-07-10-qudt-scoping.md). Runs QUDT's own
+    # shipped SHACL rulesets (third_party/qudt/) through the
+    # F*-extracted SHACL_Validation entry points: the contributor
+    # integrity ruleset against the vendored all-in-one distribution
+    # (one scored entry per ruleset shape, wall-clock budgeted) and
+    # the user-facing deprecation/consistency ruleset against the
+    # authored fixtures in tests/qudt/fixtures/. I/O + slicing +
+    # score-printing glue only (iron rule #11) — see the .ml header.
+    QUDT_RUNNER_RC=0
+    run_with_heartbeat "ocamlopt qudt_runner" "_ocamlopt_qudt_runner.log" -- \
+      ocamlfind ocamlopt -package fstar.lib,str,zarith,sha,digestif.c,unix,uucp -linkpkg -w -8-14-26 \
+      $STATIC_FLAGS \
+      $COMMON_MODULES \
+      $PARQUET_NATIVE_STUBS \
+      $HACL_NATIVE_STUBS \
+      ../../../bin/qudt-runner/qudt_runner.ml \
+      -o "$BINDIR/qudt_runner" || QUDT_RUNNER_RC=$?
+    cat _ocamlopt_qudt_runner.log
+    if [[ "$QUDT_RUNNER_RC" -ne 0 ]]; then
+      echo "  ERROR: qudt_runner build failed (ocamlopt rc=$QUDT_RUNNER_RC)" >&2
+      echo "  See full log above. Build aborted." >&2
+      exit "$QUDT_RUNNER_RC"
+    fi
+    if [[ ! -x "$BINDIR/qudt_runner" ]]; then
+      echo "  ERROR: qudt_runner ocamlopt returned 0 but $BINDIR/qudt_runner is missing or not executable" >&2
+      exit 1
+    fi
+    echo "  Built: bin/${PLATFORM}/qudt_runner ($(wc -c < "$BINDIR/qudt_runner") bytes)"
 
     # rml_runner — RML (RDF Mapping Language) rml-core/rml-io test-suite
     # runner, Stage 8 of the RML program

@@ -1,0 +1,25 @@
+# BROKEN: uses a property the data itself declares deprecated. QUDT
+# v3.4.0 ships no deprecated rdf:Property of its own (checked — the
+# only `qudt:deprecated true` blocks are units, quantity kinds,
+# dimension vectors and constants), so this fixture carries its own
+# tiny deprecated property to exercise the mechanics of the user
+# ruleset's qudt:DontUseDeprecatedPropertyConstraint (sh:sparql over
+# sh:targetClass rdf:Property: `$this qudt:deprecated true . ?s $this
+# ?o`). ex:legacyCalibration must be flagged because ex:Sensor7 still
+# uses it.
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix dcterms: <http://purl.org/dc/terms/> .
+@prefix qudt: <http://qudt.org/schema/qudt/> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+@prefix ex: <http://example.org/qudt-fixture#> .
+
+ex:legacyCalibration
+  a rdf:Property ;
+  qudt:deprecated true ;
+  dcterms:isReplacedBy ex:calibration .
+
+ex:calibration
+  a rdf:Property .
+
+ex:Sensor7
+  ex:legacyCalibration "2019-03-01"^^xsd:date .
