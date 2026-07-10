@@ -1,14 +1,14 @@
-* Warning 241 at RDFS.Closure.fsti(0,0-0,0):
-  - Unable to load RDFS.Closure.fsti.checked since checked file
-    RDFS.Closure.fsti.checked is stale (digest mismatch for RDFS.Closure.fsti);
-    will recheck RDFS.Closure.fsti (suppressing this warning for further
-    modules)
+* Warning 241 at RDF.Graph.Executable.fst(0,0-0,0):
+  - Unable to load RDF.Graph.Executable.fst.checked since checked file
+    RDF.Graph.Executable.fst.checked is stale (dependence hash mismatch, use
+    --debug CheckedFiles for more details); will recheck
+    RDF.Graph.Executable.fst (suppressing this warning for further modules)
 
 * Warning 247 at RDF.IRI.fsti(0,0-0,0):
   - Checked file RDF.IRI.fsti.checked was not written.
   - Reason:
-      checked file RDFS.Closure.fsti.checked is stale (digest mismatch for
-      RDFS.Closure.fsti)
+      checked file RDF.Graph.Executable.fst.checked is stale (dependence hash
+      mismatch, use --debug CheckedFiles for more details)
 
 Verified i'face (or impl+i'face): RDF.IRI
 All verification conditions discharged successfully
