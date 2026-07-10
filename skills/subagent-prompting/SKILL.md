@@ -73,6 +73,23 @@ named fixture dirs from the main checkout — but the agent must say so
 in its report; never present a result from a checkout where the script
 exits 1.
 
+## Iteration-loop briefs (MANDATORY): ship the fast loop, not the full pipeline
+
+Any brief whose task is an edit-verify-test **loop** (suite burn-down,
+proof repair, feature with fixture iteration) MUST include the fast-loop
+recipe from [fast-verify-extract](../fast-verify-extract/SKILL.md) and
+this rule: **iterate with targeted verify + targeted extract +
+`./ocaml-patches.sh` + linking ONLY the binary under test; run the full
+`./build-ocaml.sh extract && compile` exactly once, on the final pass,
+before floors + commit.** `compile` relinks all ~23 binaries (~700 s
+measured 2026-07-10) because shared modules front every binary — paying
+that per iteration turns a 2-3 min loop into a 15 min loop and a
+2-hour task into an all-day one. Learned the slow way on the JSON-LD
+compact dispatch (2026-07-10): the dispatcher read the skill when
+writing it, then briefed an agent without it. The brief is where the
+knowledge has to live — agents don't browse skills they weren't
+pointed at.
+
 Every agent prompt MUST end with this block:
 
 ```
