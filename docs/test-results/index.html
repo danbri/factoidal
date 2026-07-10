@@ -316,7 +316,7 @@
 <header>
   <div class="inner">
     <div class="rendered-pill" title="Rendered = when this page was last regenerated. Tests = when the *_results.log files inside the repository were last updated. Both UTC.">
-      <span class="row"><span class="label">Rendered</span><strong>2026-07-10 10:13 UTC</strong></span>
+      <span class="row"><span class="label">Rendered</span><strong>2026-07-10 10:12 UTC</strong></span>
       <span class="row"><span class="label">Tests</span><strong class="tests">2026-07-10 01:56 UTC</strong></span>
     </div>
     <h1>W3C test results</h1>
@@ -918,7 +918,7 @@
 </section>
 <section class="family green" id="jsonld11">
   <h2>JSON-LD 1.1</h2>
-  <p class="fam-headline green">893 pass, 0 fail, 13 skip (of 906) across the W3C JSON-LD 1.1 toRdf, fromRdf and expand manifests.</p>
+  <p class="fam-headline green">1137 pass, 0 fail, 15 skip (of 1152) across the W3C JSON-LD 1.1 toRdf, fromRdf, expand and compact manifests.</p>
   <div class="suites">
       <details class="suite-node green">
         <summary><span class="dot green"></span><span class="suite-name">JSON-LD 1.1 toRdf</span><span class="suite-numbers">461 pass, 0 fail, 6 skip (out of 467)</span></summary>
@@ -941,6 +941,14 @@
         <div class="suite-body">
           <div class="meter"><div class="seg seg-pass" style="width:98.44%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:1.56%"></div></div>
           <p class="suite-prov">Runner: <code>bin/jsonld-expand-runner</code> (<code>bin/linux-x86_64/jsonld_expand_runner</code>) &middot; Suite: W3C JSON-LD 1.1 expand manifest (Expansion Algorithm)</p>
+          
+        </div>
+      </details>
+      <details class="suite-node green">
+        <summary><span class="dot green"></span><span class="suite-name">JSON-LD 1.1 compact</span><span class="suite-numbers">244 pass, 0 fail, 2 skip (out of 246)</span></summary>
+        <div class="suite-body">
+          <div class="meter"><div class="seg seg-pass" style="width:99.19%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.81%"></div></div>
+          <p class="suite-prov">Runner: <code>bin/jsonld-compact-runner</code> (<code>bin/linux-x86_64/jsonld_compact_runner</code>) &middot; Suite: W3C JSON-LD 1.1 compact manifest (Compaction Algorithm)</p>
           
         </div>
       </details>
@@ -1368,9 +1376,9 @@ vc-stage1:    113 pass, 1 fail, 6 skip (of 120) — present=1</pre>
 </main>
 
 <footer>
-  Generated <strong>2026-07-10 10:13 UTC</strong> from commit
-  <code><a href="https://github.com/danbri/factoidal/commit/25063093bf890bea16c9db2dcdcfb97ec32b0778">25063093</a></code>
-  on branch <code>claude/main</code> — &ldquo;skills: subagent briefs for iteration loops MUST carry the fast-loop recipe&rdquo;.
+  Generated <strong>2026-07-10 10:12 UTC</strong> from commit
+  <code><a href="https://github.com/danbri/factoidal/commit/e4912bacb20b84b9b6e4b139a8de801907c98f71">e4912ba</a></code>
+  on branch <code>claude/main</code> — &ldquo;jsonld: JSON-LD 1.1 Compaction API in F* — compact suite from NOT-RUN to 244 pass, 0 fail, 2 skip (out of 246)&rdquo;.
   Re-run locally: <code>cd formal/fstar &amp;&amp; ./generate-report.sh --run</code>.
 </footer>
 
