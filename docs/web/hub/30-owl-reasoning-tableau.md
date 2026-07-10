@@ -195,11 +195,14 @@ words of the project's own standing note,
 > silently drops vacuous-truth individuals (zero `P`-edges satisfy
 > max-1) and OWL Full punned class-individuals
 
-— and the strict runner-integrity comparison added a second entry to
-its charge sheet: the rewrite leaks internal `?_mc_`/`?_mxqc1_`
-variables into result rows, which now fails two entailment-regime
-tests that lenient comparison used to wave through (see the live
-dashboard for the suite's current score). It is tracked in issue
+— and the strict runner-integrity comparison briefly added a second
+entry to its charge sheet: the rewrite leaked internal
+`?_mc_`/`?_mxqc1_` variables into result rows, failing two
+entailment-regime tests that lenient comparison had waved through.
+That leak is fixed (internal variables are stripped at the final
+user-facing projection; see the live dashboard for the suite's
+current score) — the vacuous-truth narrowness quoted above remains.
+It is tracked in issue
 [#236](https://github.com/danbri/factoidal/issues/236); generalising it
 from an anchor to a `UNION` is the documented fix before relying on it
 for OWL DL outside the entailment-regime suite.

@@ -1265,15 +1265,16 @@ emit_owl_skip_row () {
 ROW
 }
 
-# Note (2026-05-08, updated 2026-07-09): the W3C SPARQL 1.1
-# entailment-regime suite (live score in the SPARQL section above)
-# is the **live testbed for Tableau materialisation**.
+# Note (2026-05-08, updated 2026-07-10): the W3C SPARQL 1.1
+# entailment-regime suite (live score in the SPARQL section above —
+# never hardcode it here, it has gone stale in this very comment
+# twice) is the **live testbed for Tableau materialisation**.
 # parent4/5/6/7 + simple7/8 + sparqldl-01..12 + many-others are
-# OWL-DL queries on the Tableau codepath. Under the 2026-07-09
-# strict runner-integrity comparison the suite reads 66/70: the 4
-# fails are the #236 anchor-rewrite variable leak (2) and
-# ASK-boolean inference gaps (2) that lenient comparison used to
-# hide — engine-side bugs now visible, not a Tableau regression.
+# OWL-DL queries on the Tableau codepath. The 2026-07-09 strict
+# runner-integrity comparison exposed engine-side bugs lenient
+# comparison had hidden (#236 variable leak, ASK-boolean gaps);
+# task #100 fixed all but the RIF import-profile materialisation
+# gap (rif04, see the ledger's SPARQL row for what remains).
 # The "semantics-direct" catalog below IS wired through owl_runner
 # (--regime dl, Phase 2.3d).
 OWL_SKIP_ROWS=""

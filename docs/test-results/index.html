@@ -279,8 +279,8 @@
 <header>
   <div class="inner">
     <div class="rendered-pill" title="Rendered = when this page was last regenerated. Tests = when the *_results.log files inside the repository were last updated. Both UTC.">
-      <span class="row"><span class="label">Rendered</span><strong>2026-07-10 00:32 UTC</strong></span>
-      <span class="row"><span class="label">Tests</span><strong class="tests">2026-07-09 23:34 UTC</strong></span>
+      <span class="row"><span class="label">Rendered</span><strong>2026-07-10 01:13 UTC</strong></span>
+      <span class="row"><span class="label">Tests</span><strong class="tests">2026-07-10 01:10 UTC</strong></span>
     </div>
     <h1>W3C test results</h1>
     <p>Pass/fail/skip counts against every standards suite this project measures: RDF 1.1, SPARQL 1.1, RDFS/OWL 2, SHACL, ShEx, RIF Core, RML, CSVW, JSON-LD 1.1, Verifiable Credentials 2.0, XSLT 1.0, XML 1.0, MathML 3, ISO Schematron, JSON Schema, DID — plus HDT backend parity and the browser/npm bundle suites.</p>
@@ -297,11 +297,11 @@
 <div class="summary">
   <div class="tile ok">
     <div class="label">Pass</div>
-    <div class="value">1654</div>
+    <div class="value">1661</div>
   </div>
   <div class="tile err">
     <div class="label">Fail</div>
-    <div class="value">8</div>
+    <div class="value">1</div>
   </div>
   <div class="tile warn">
     <div class="label">Skipped</div>
@@ -309,7 +309,7 @@
   </div>
   <div class="tile">
     <div class="label">Pass / runnable</div>
-    <div class="value">99.5%<small> of 1662</small></div>
+    <div class="value">99.9%<small> of 1662</small></div>
   </div>
   <div class="tile">
     <div class="label">Total in suites</div>
@@ -339,7 +339,7 @@
 
 <section class="family amber" id="sparql11">
   <h2>SPARQL 1.1</h2>
-  <p class="fam-headline amber">623 pass, 8 fail, 0 skip (of 631) across Query, Update, Protocol, Federated Query, Service Description, and Entailment Regimes.</p>
+  <p class="fam-headline amber">630 pass, 1 fail, 0 skip (of 631) across Query, Update, Protocol, Federated Query, Service Description, and Entailment Regimes.</p>
   <details open>
     <summary>Suites in this family (tap to collapse)</summary>
     <div class="suites">
@@ -400,11 +400,11 @@
           <small></small>
         </div>
       </div>
-      <div class="suite-row amber">
+      <div class="suite-row green">
         <div class="suite-name">functions</div>
-        <div class="meter"><div class="seg seg-pass" style="width:94.67%"></div><div class="seg seg-fail" style="width:5.33%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+        <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
         <div class="suite-numbers">
-          <span class="p">71 pass</span>, <span class="f">4 fail</span>
+          <span class="p">75 pass</span>, <span class="f">0 fail</span>
           <small></small>
         </div>
       </div>
@@ -615,9 +615,9 @@
   <h3 class="rec-subhead"><a href="https://www.w3.org/TR/sparql11-entailment/" target="_blank" rel="noopener">SPARQL 1.1 Entailment Regimes</a></h3>
       <div class="suite-row amber">
         <div class="suite-name">entailment <small style="font-weight:normal;color:var(--muted)">(SPARQL 1.1 regime — RDFS / D-entailment, 70 tests)</small></div>
-        <div class="meter"><div class="seg seg-pass" style="width:94.29%"></div><div class="seg seg-fail" style="width:5.71%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+        <div class="meter"><div class="seg seg-pass" style="width:98.57%"></div><div class="seg seg-fail" style="width:1.43%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
         <div class="suite-numbers">
-          <span class="p">66 pass</span>, <span class="f">4 fail</span>
+          <span class="p">69 pass</span>, <span class="f">1 fail</span>
           <small></small>
         </div>
       </div>
@@ -626,14 +626,7 @@
   <details id="sparql-failures" class="failure-detail">
   <summary>SPARQL 1.1 failures (click to expand)</summary>
   <ul>
-<li>FAIL: parent query with (hasChild min 1) restriction — Results mismatch: expected 3 rows, got 3 (122ms)</li>
-<li>FAIL: parent query with (hasChild max 1 Female) restriction — Results mismatch: expected 1 rows, got 1 (132ms)</li>
-<li>FAIL: RDF inference test — ASK boolean mismatch: expected true, got false</li>
 <li>FAIL: RIF Core WG tests: Modeling Brain Anatomy — ASK boolean mismatch: expected true, got false</li>
-<li>FAIL: BNODE(str) — Results mismatch: expected 4 rows, got 4 (11ms)</li>
-<li>FAIL: BNODE() — Results mismatch: expected 1 rows, got 1</li>
-<li>FAIL: NOW() — ASK boolean mismatch: expected true, got false</li>
-<li>FAIL: UUID() per binding — ASK boolean mismatch: expected true, got false</li>
   </ul>
 </details>
 
@@ -794,9 +787,9 @@
 <div class="suites">
   <div class="suite-row amber">
     <div class="suite-name">OWL DL entailment — Tableau <small style="font-weight:normal;color:var(--muted)">(<code>Tableau.fst</code> · <code>tableau_materialise</code>, live in <code>w3c_runner</code> — SPARQL 1.1 entailment-regimes suite)</small></div>
-    <div class="meter"><div class="seg seg-pass" style="width:94.29%"></div><div class="seg seg-fail" style="width:5.71%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+    <div class="meter"><div class="seg seg-pass" style="width:98.57%"></div><div class="seg seg-fail" style="width:1.43%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
     <div class="suite-numbers">
-      <span class="p">66 pass</span>, <span class="f">4 fail</span>
+      <span class="p">69 pass</span>, <span class="f">1 fail</span>
       <small>(of 70)</small>
     </div>
   </div>
@@ -1334,7 +1327,7 @@ XML_Wellformedness.is_valid_ncname (informational only, see module comment):
 <details>
   <summary>Raw per-suite numbers</summary>
   <h3 style="font-size: 0.95em; margin: 0.8em 0 0.3em;">SPARQL 1.1</h3>
-  <pre>631 total: 623 pass, 8 fail, 0 skip, 0 unsupported
+  <pre>631 total: 630 pass, 1 fail, 0 skip, 0 unsupported
   add                                 pass:8 fail:0 skip:0 unsupported:0
   aggregates                          pass:47 fail:0 skip:0 unsupported:0
   basic-update                        pass:13 fail:0 skip:0 unsupported:0
@@ -1350,9 +1343,9 @@ XML_Wellformedness.is_valid_ncname (informational only, see module comment):
   delete-insert                       pass:17 fail:0 skip:0 unsupported:0
   delete-where                        pass:6 fail:0 skip:0 unsupported:0
   drop                                pass:4 fail:0 skip:0 unsupported:0
-  entailment                          pass:66 fail:4 skip:0 unsupported:0
+  entailment                          pass:69 fail:1 skip:0 unsupported:0
   exists                              pass:6 fail:0 skip:0 unsupported:0
-  functions                           pass:71 fail:4 skip:0 unsupported:0
+  functions                           pass:75 fail:0 skip:0 unsupported:0
   grouping                            pass:6 fail:0 skip:0 unsupported:0
   http-rdf-update                     pass:19 fail:0 skip:0 unsupported:0
   json-res                            pass:4 fail:0 skip:0 unsupported:0
@@ -1402,9 +1395,9 @@ vc-stage1:    113 pass, 1 fail, 6 skip (of 120) — present=1</pre>
 </main>
 
 <footer>
-  Generated <strong>2026-07-10 00:32 UTC</strong> from commit
-  <code><a href="https://github.com/danbri/factoidal/commit/8bfe58ffa15a2bfc373f35d7723de307e47eb3da">8bfe58ff</a></code>
-  on branch <code>claude/main</code> — &ldquo;dashboard: publish GRDDL Stage 1 row — 3 pass, 14 fail, 51 skip (out of 68)&rdquo;.
+  Generated <strong>2026-07-10 01:13 UTC</strong> from commit
+  <code><a href="https://github.com/danbri/factoidal/commit/a41821cc0e632e07f759902f6c9e2f498af2d5f1">a41821c</a></code>
+  on branch <code>claude/main</code> — &ldquo;SPARQL evaluator: fix 7 of 8 strict-runner failures (task #100)&rdquo;.
   Re-run locally: <code>cd formal/fstar &amp;&amp; ./generate-report.sh --run</code>.
 </footer>
 
