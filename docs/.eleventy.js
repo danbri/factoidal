@@ -56,6 +56,14 @@ module.exports = function(eleventyConfig) {
   // passthrough above.
   eleventyConfig.addPassthroughCopy({ "../third_party/leaflet": "vendor/leaflet" });
 
+  // Pass-through the vendored vector basemap (task #105) -- the
+  // London-borough + Thames GeoJSON the GeoSPARQL hub post's map cell
+  // fetches same-origin (see docs/web/hub/assets/geo/PROVENANCE.md for
+  // source/licence). Kept alongside the post that uses it rather than
+  // under third_party/, since it's project-derived (clipped,
+  // simplified, re-keyed) rather than an unmodified vendored file.
+  eleventyConfig.addPassthroughCopy("web/hub/assets/geo");
+
   // Pass-through the project-owned reactive-cell compiler
   // (docs/web/hub/reactive-cells.mjs) to /vendor/hub/reactive-cells.mjs
   // so hub.njk can import it same-origin (no CDN). .mjs isn't an
@@ -83,6 +91,20 @@ module.exports = function(eleventyConfig) {
   // cache-bust the SW registration URL) so it's computed exactly once
   // per build, in one place, shared with the sw.js stamping below.
   eleventyConfig.addGlobalData("buildVersion", BUILD_VERSION);
+
+  // The numbered hub posts (web/hub/NN-*.md), excluding the hub index
+  // and its README, as a collection -- the "least duplication"
+  // mechanism task #105 asked for: web/hub-live.11ty.js paginates over
+  // this collection to auto-generate one relaxed-CSP "live mode" twin
+  // per post at /web/hub-live/<slug>/, reusing each post's already-
+  // rendered `templateContent` rather than re-authoring or copying any
+  // post's markdown. Matched on the input path's basename (`NN-slug`)
+  // rather than front matter, so a post never needs to opt in by hand.
+  eleventyConfig.addCollection("hubPosts", (collectionApi) =>
+    collectionApi
+      .getFilteredByGlob("web/hub/*.md")
+      .filter((item) => /\/web\/hub\/\d+-[^/]+\.md$/.test(item.inputPath))
+  );
 
   // HDT hub post (web/hub/24-...) fetches the in-repo RML-Core ontology
   // HDT fixture as raw bytes and runs SPARQL over it via

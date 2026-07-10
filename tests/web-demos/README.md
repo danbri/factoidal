@@ -118,6 +118,38 @@ plus a final `hub-browser: X pass, Y fail (out of N posts)` summary.
 Exit 0 iff Y=0. Total wall-clock is capped at 15 minutes; a full run
 currently takes about a minute.
 
+### `hub_post21_geo_check.sh`
+
+Dedicated headless-Chromium checks for the GeoSPARQL post's Leaflet
+choropleth map (task #105) — the assertions the two broader hub
+harnesses above don't make. Builds the site, serves it under
+`/factoidal/`, and drives Playwright over BOTH the strict page
+(`web/hub/21-geosparql-geometry-and-topology/`) and its auto-generated
+live-mode twin (`web/hub-live/21-.../`, produced by
+`docs/web/hub-live.11ty.js`).
+
+Strict page: zero pageerror/console.error, zero rejected cells, more
+than 20 SVG paths inside `.hub-leaflet-map` (the 33-borough choropleth
++ Thames line actually rendered from the vendored GeoJSON under
+`docs/web/hub/assets/geo/`), the custom fullscreen control present,
+and — via Playwright request interception, so it can't pass just
+because the sandbox happens to be offline — zero requests to any
+non-localhost host across the whole page lifecycle.
+
+Live twin: page loads with zero pageerrors, the "Live mode" banner is
+present, `data-hub-mode="live"` is on `<body>`, and the cell's
+live-only branch created its `L.tileLayer` object
+(`window.__hubLiveTileLayer`) — deliberately WITHOUT asserting any
+tile was fetched (CI has no network guarantee; non-local requests are
+intercepted and answered with an empty 204).
+
+```sh
+tests/web-demos/hub_post21_geo_check.sh
+HUB_POST21_GEO_CHECK_PORT=8942 tests/web-demos/hub_post21_geo_check.sh
+```
+
+Exit 0 iff all 12 checks pass. Wall-clock capped at 10 minutes.
+
 ## Adding a demo
 
 When you add or change a demo under `docs/fstar-extracted/*.html`:

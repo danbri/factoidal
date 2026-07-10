@@ -3,7 +3,73 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{{ title }} — Factoidal</title>
+<!--
+  Content-Security-Policy (task #105). A `<meta http-equiv>` CSP is
+  the only enforcement mechanism available on static GitHub Pages
+  hosting (no per-request server, so no response header) -- this is
+  the FIRST time this repo has stated the hub's CSP explicitly rather
+  than relying on the informal "we just don't load anything external"
+  convention (see third_party/leaflet/PROVENANCE.md, third_party/
+  observable/README.md). Two variants, selected by the `hubMode` page
+  variable (default "strict"; set to "live" only by web/hub-live.11ty.js's
+  generated twins):
+
+    strict (every ordinary hub post, e.g. /web/hub/21-.../) --
+      img-src/connect-src are 'self' only: no tile host, no remote
+      SPARQL endpoint, no network request of any kind can succeed.
+      This is WHY post 21's map has no raster basemap -- not a bug,
+      the policy this page states out loud.
+
+    live (the /web/hub-live/<slug>/ twin -- see the banner below) --
+      img-src and connect-src are additionally allowed `https:`, so a
+      cell MAY load OSM tiles or query a remote SPARQL endpoint (e.g.
+      the Fly.io demo). script-src and style-src are UNCHANGED between
+      modes: no third-party *code* can execute in either mode, only
+      third-party *data* (images, fetch responses) in live mode. That
+      distinction is the whole supply-chain point of the split.
+
+  Both variants carry 'unsafe-inline' and 'unsafe-eval' on script-src
+  and 'unsafe-inline' on style-src -- pre-existing architectural
+  requirements of this page, not something live mode introduces or
+  strict mode could drop: the runtime script a few hundred lines below
+  is itself an inline `<script type="module">` block (no per-request
+  nonce is possible on static hosting), and web/hub/reactive-cells.mjs's
+  makeDefinition() compiles every ```observable-js cell through `new
+  Function(...)` at runtime (the whole reactive-cell mechanism this
+  entire hub is built on). Every script SOURCE is still same-origin
+  only in both modes -- no external <script src="https://..."> host is
+  ever allowed, live mode or strict.
+
+  `frame-ancestors` is deliberately NOT in the policy below: the CSP
+  spec requires it be delivered as a real HTTP response header --
+  every browser ignores it (with a console warning) when set via
+  `<meta http-equiv>`. Including a directive the browser can't honor
+  would just be console noise on every hub page for no enforcement
+  gained.
+-->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data:{% if hubMode == 'live' %} https:{% endif %}; connect-src 'self'{% if hubMode == 'live' %} https:{% endif %}; font-src 'self'; object-src 'none'; base-uri {% if hubMode == 'live' %}'self'{% else %}'none'{% endif %}">
+<title>{{ title }}{% if hubMode == 'live' %} (live mode){% endif %} — Factoidal</title>
+{% if hubMode == 'live' %}
+<!--
+  Live twins reuse the strict post's rendered HTML verbatim (see
+  web/hub-live.11ty.js), so every RELATIVE URL in that content -- the
+  post's prose links (../README/, ./24-hdt-.../) AND, more
+  load-bearing, any page-relative fetch() a cell makes at runtime
+  (post 24 fetches "../rml-core-ontology.hdt") -- was authored against
+  the strict post's /web/hub/<slug>/ directory. This <base> makes all
+  of them resolve there instead of against /web/hub-live/<slug>/,
+  where they would 404. It's also why live mode's CSP above says
+  base-uri 'self' where strict says 'none': strict pages have no
+  <base> and ban the element outright; live pages need exactly this
+  one, same-origin. Absolute paths (every `| url`-filtered asset in
+  this layout) are unaffected. Known tradeoff: in-page fragment links
+  (#section, the heading-anchor permalinks) also resolve against the
+  base, so clicking one from a live twin lands on the strict page's
+  section -- same content, strict capabilities; acceptable for a
+  secondary view of the same post.
+-->
+<base href="{{ ('/web/hub/' + livePostSlug + '/') | url }}">
+{% endif %}
 <!--
   Vendored Leaflet (third_party/leaflet/, BSD-2-Clause, see its
   PROVENANCE.md) — same-origin, no CDN, passthrough-copied to
@@ -86,8 +152,10 @@
   /* Leaflet map cells (docs/web/hub/21-geosparql-geometry-and-topology.md):
      an explicit, non-collapsing height is required -- Leaflet lays out
      its panes against the container's own box, and a height:0 div
-     renders nothing. Vector-only usage (no tile layer), so the plain
-     background below IS the map background, not a loading flash. */
+     renders nothing. The plain background below is the vendored vector
+     basemap's own background (docs/web/hub/assets/geo/), not a loading
+     flash -- strict mode never shows a raster tile layer; live mode
+     (data-hub-mode="live" on <body>) may add one on top of it. */
   .hub-leaflet-map {
     height: 420px;
     width: 100%;
@@ -97,6 +165,71 @@
   }
   @media (prefers-color-scheme: dark) {
     .hub-leaflet-map { background: #1a1e23; }
+  }
+  /* The Fullscreen API target is the map container itself (task #105) --
+     Leaflet needs a real box size, not the UA's default fullscreen
+     sizing, which for a `div` is "as big as its content" (still
+     420px). :fullscreen / the vendor-prefixed variants restore full
+     viewport sizing while active; the custom control's own JS calls
+     map.invalidateSize() on the fullscreenchange event so Leaflet's
+     panes catch up in the same frame. */
+  .hub-leaflet-map:fullscreen,
+  .hub-leaflet-map:-webkit-full-screen {
+    height: 100vh;
+    max-width: 100vw;
+    border-radius: 0;
+  }
+  .leaflet-control-hub-fullscreen a {
+    font-size: 1.1em;
+    line-height: 26px;
+    text-align: center;
+  }
+  /* The Leaflet layers control (live mode's OSM-tile toggle -- see the
+     map cell's data-hub-mode="live" branch in post 21) styles its
+     collapsed toggle with background-image: url(images/layers.png) in
+     stock leaflet.css -- a PNG third_party/leaflet/PROVENANCE.md
+     deliberately does NOT vendor. Replace it with a text glyph so the
+     control never requests an image (same reasoning as the map's
+     circleMarker-instead-of-default-icon choice: zero image assets).
+     Equal specificity to leaflet.css's rule, but this <style> block
+     comes after that <link>, so source order wins the cascade. */
+  .leaflet-control-layers-toggle,
+  .leaflet-retina .leaflet-control-layers-toggle {
+    background-image: none;
+  }
+  .leaflet-control-layers-toggle::after {
+    content: "\1F5FA"; /* world-map glyph */
+    display: block;
+    font-size: 20px;
+    line-height: 36px;
+    text-align: center;
+  }
+  .leaflet-touch .leaflet-control-layers-toggle::after {
+    line-height: 44px;
+  }
+
+  /* Live-mode banner (task #105) -- present on every hub-live/<slug>/
+     twin (loud, amber) and, in a quieter neutral form, on every
+     ordinary strict post linking forward to its twin. Never shown on
+     the hub index/README (no series_order), which have no twin. */
+  .hub-live-banner {
+    margin: 0 0 1.2em;
+    padding: 0.7em 1em;
+    border-radius: 4px;
+    font-size: 0.92em;
+    background: #fff3cd;
+    border: 1px solid #f0d78c;
+    color: #6b5613;
+  }
+  .hub-live-banner a { color: inherit; text-decoration: underline; }
+  .hub-live-banner-strict {
+    background: #eef6f1;
+    border-color: #cfe4d7;
+    color: inherit;
+  }
+  @media (prefers-color-scheme: dark) {
+    .hub-live-banner { background: #3a3016; border-color: #5c4a1e; color: #f0d78c; }
+    .hub-live-banner-strict { background: #16201a; border-color: #2d4738; color: #d6dbe1; }
   }
 
   /* `pretty()` cell-output tables (see hub.njk's module script) --
@@ -267,7 +400,7 @@
   }
 </style>
 </head>
-<body>
+<body data-hub-mode="{{ hubMode | default('strict') }}">
 <nav>
   <a href="{{ '/' | url }}">Home</a>
   <a href="{{ '/web/hub/' | url }}">Hub</a>
@@ -275,11 +408,29 @@
   <a href="{{ '/test-results/' | url }}">Test Results</a>
   <a href="https://github.com/danbri/factoidal">GitHub</a>
 </nav>
+{% if hubMode == 'live' %}
+<div class="hub-live-banner" role="note">
+  <strong>Live mode</strong> — this page may load external map tiles
+  and query remote endpoints; the
+  <a href="{{ ('/web/hub/' + livePostSlug + '/') | url }}">standard hub</a>
+  is fully self-contained (same cells, no network).
+</div>
+{% elif series_order is defined %}
+<div class="hub-live-banner hub-live-banner-strict" role="note">
+  This page is fully self-contained: no external network request is
+  possible (see the Content-Security-Policy above). A
+  <a href="{{ ('/web/hub-live/' + page.fileSlug + '/') | url }}">live mode</a>
+  twin of this same post can load map tiles and remote SPARQL
+  endpoints.
+</div>
+{% endif %}
 {{ content | safe }}
 <footer>
 Factoidal — verified RDF/SPARQL from F*. Interactive cells on this
 page run entirely in your browser via the F*-extracted engine and a
-vendored Observable runtime — no server, no CDN.
+vendored Observable runtime — no server, no CDN{% if hubMode == 'live' %}
+for any code; in live mode a cell may additionally load external map
+tiles or query remote SPARQL endpoints (data, never scripts){% endif %}.
 </footer>
 
 <!--

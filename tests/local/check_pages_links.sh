@@ -31,6 +31,12 @@ site_root, path_prefix, tmp = sys.argv[1], sys.argv[2], sys.argv[3]
 site_root = os.path.abspath(site_root)
 skip_schemes = ("http:", "https:", "mailto:", "data:", "ftp:", "//", "javascript:")
 link_re = re.compile(r'(?:href|src)="([^"#?]+)', re.IGNORECASE)
+# A page may declare <base href="..."> (the /web/hub-live/ twins do --
+# docs/_includes/hub.njk sets it so the twin's relative URLs resolve
+# against the strict post's directory, exactly like the browser does).
+# Honor it here the same way, or every relative link on every live
+# twin would be reported against the wrong directory.
+base_re = re.compile(r'<base\s+href="([^"#?]+)"', re.IGNORECASE)
 
 total = 0
 broken = []
@@ -44,6 +50,21 @@ for dirpath, _dirs, files in os.walk(site_root):
         page = os.path.join(dirpath, f)
         with open(page, "r", encoding="utf-8", errors="replace") as fh:
             content = fh.read()
+        # Resolve the page's effective base directory (browser
+        # semantics: a <base href> replaces the document URL as the
+        # base for every relative URL on the page; absolute and
+        # path_prefix'd hrefs are unaffected either way).
+        base_dir = dirpath
+        m = base_re.search(content)
+        if m:
+            base_url = m.group(1)
+            if base_url.startswith(path_prefix):
+                base_dir = os.path.join(site_root, base_url[len(path_prefix):])
+            elif base_url.startswith("/"):
+                base_dir = os.path.join(site_root, base_url.lstrip("/"))
+            elif not base_url.startswith(skip_schemes):
+                base_dir = os.path.join(dirpath, base_url)
+            base_dir = os.path.normpath(base_dir)
         for url in link_re.findall(content):
             if not url or url.startswith(skip_schemes):
                 continue
@@ -52,7 +73,7 @@ for dirpath, _dirs, files in os.walk(site_root):
             elif url.startswith("/"):
                 target = os.path.join(site_root, url.lstrip("/"))
             else:
-                target = os.path.join(dirpath, url)
+                target = os.path.join(base_dir, url)
             if target.endswith("/"):
                 target = os.path.join(target, "index.html")
             target = os.path.normpath(target)

@@ -143,7 +143,7 @@ post needs a new binding.
 | `html` | vendored `@observablehq/stdlib`'s tagged-template HTML helper. |
 | `md` | vendored `@observablehq/stdlib`'s tagged-template Markdown helper. |
 | `pretty` | opt-in prettier rendering for a cell's return value — see "The `pretty()` rendering option" below. Returns a DOM node in the browser; nothing else in the contract changes if a cell never calls it. |
-| `L` | vendored Leaflet 1.9.4 (`third_party/leaflet/`, BSD-2-Clause, no CDN) — `window.L` as set by the classic `<script>` load in `hub.njk`'s head. Use `L.map()`/`L.circleMarker()`/`L.geoJSON()` for vector-only map cells (no default marker-icon PNGs are vendored, so `L.marker()` with the stock icon will 404 — use `L.circleMarker` instead). |
+| `L` | vendored Leaflet 1.9.4 (`third_party/leaflet/`, BSD-2-Clause, no CDN) — `window.L` as set by the classic `<script>` load in `hub.njk`'s head. Use `L.map()`/`L.circleMarker()`/`L.geoJSON()` for vector map cells (no default marker-icon PNGs are vendored, so `L.marker()` with the stock icon will 404 — use `L.circleMarker` instead; a vendored GeoJSON basemap lives under `web/hub/assets/geo/`). `L.tileLayer()` against an external tile host is live-mode only (task #105): gate it on `data-hub-mode === "live"` — the strict page's CSP blocks the tile request, and `hub.njk` styles the layers-control toggle with a text glyph so the un-vendored `images/layers.png` is never requested either. |
 
 ### The `fn` typed surface in full
 
@@ -326,9 +326,21 @@ toolbar/editor chrome added by this change.
 
 ## Constraints every cell must respect
 
-- **Same-origin only.** Every import in `hub.njk` is a same-origin
-  Pages path (`{{ '...' | url }}`) — never a CDN URL. Cell bodies
-  inherit this: don't `fetch()` an external URL from inside a cell.
+- **Same-origin only (strict pages).** Every import in `hub.njk` is a
+  same-origin Pages path (`{{ '...' | url }}`) — never a CDN URL. Cell
+  bodies inherit this: don't `fetch()` an external URL from inside a
+  cell — the strict hub's Content-Security-Policy (`img-src`/
+  `connect-src 'self'`, stated in `hub.njk`'s `<meta http-equiv>` tag)
+  blocks it anyway. **Live-mode caveat (task #105):** every post also
+  gets an auto-generated twin at `/web/hub-live/<slug>/`
+  (`docs/web/hub-live.11ty.js`) whose CSP additionally allows
+  `https:` on `img-src`/`connect-src` only — external *data* (map
+  tiles, remote SPARQL endpoints), never external *scripts*. A cell
+  that wants live-only behavior must feature-detect via the
+  `data-hub-mode` attribute `hub.njk` sets on `<body>` (`"strict"` or
+  `"live"`) and degrade cleanly when it reads `"strict"` — the same
+  cell source runs on both pages. See post 21's map cell for the
+  worked example.
 - **js engine only.** The wasm_of_ocaml build
   (`docs/npm/foafos/browser-wasm.js`) is stale for newer CLI
   surfaces cells rely on (`--dump-nq` byte-for-byte parity, etc.);

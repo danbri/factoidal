@@ -21,13 +21,22 @@ copied byte-for-byte from the package's `dist/` directory.
 **Deliberately NOT vendored:** `dist/images/*.png` (the default
 marker icon, its 2x variant, the shadow, and the layers-control
 icons). The hub's map cell uses vector-only markers
-(`L.circleMarker` / `L.geoJSON` with a `style`) and no layers
-control, so nothing on the page ever requests those images — see
-the "No marker-image dependencies" note in the hub post's map cell
-for why (Leaflet's default marker PNGs 404 unless `L.Icon.Default`'s
-`imagePath` is configured, and configuring it just to serve
-unused images was judged not worth it for an image-free, offline-
-clean page).
+(`L.circleMarker` / `L.geoJSON` with a `style`), so nothing requests
+the marker PNGs (Leaflet's default marker icons 404 unless
+`L.Icon.Default`'s `imagePath` is configured, and configuring it
+just to serve unused images was judged not worth it for an
+image-free page). Since task #105 the map's LIVE-mode twin
+(`/web/hub-live/21-.../`, see `docs/web/hub-live.11ty.js`) does add
+an `L.control.layers` toggle for its optional OSM raster layer —
+whose collapsed-toggle icon stock `leaflet.css` styles with
+`url(images/layers.png)` — but `docs/_includes/hub.njk` overrides
+that rule with a text glyph
+(`.leaflet-control-layers-toggle::after`), so the layers PNGs stay
+un-vendored and un-requested in both modes. The map's basemap on
+the strict page is vendored vector GeoJSON
+(`docs/web/hub/assets/geo/`, see its own PROVENANCE.md), never
+raster tiles; only the live twin may fetch tiles, per its relaxed
+`img-src https:` CSP.
 
 ## Versions and integrity
 

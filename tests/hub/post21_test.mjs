@@ -8,25 +8,41 @@
 // REAL npm/factoidal typed API; `pretty` is the shared node-side stub
 // from _helpers.mjs (same shape dispatch as hub.njk's DOM pretty()).
 //
-// Cell 3 (index 2) is the Leaflet map cell: it renders geof:sfWithin's
-// result rather than computing anything new, so what's pinned here is
-// (a) the pure WKT-parsing and color-selection logic -- duplicated
-// below from the cell's own inline copy, since cell bodies can't
-// `import` (see docs/web/hub/README.md's "cell bindings" section) --
-// tested directly with plain assertions, no DOM involved, and (b) that
-// the cell's actual shipped source runs to completion without throwing
-// when given a minimal `document`/`L` stub standing in for the
-// browser's real DOM and the real Leaflet library. Node has no layout
-// engine, so a full visual render is NOT asserted here -- that's
-// pending the headless-Chrome harness (issue #84).
+// Cell 3 (index 2) is the Leaflet choropleth cell (task #105): it
+// fetches the two vendored GeoJSON files (docs/web/hub/assets/geo/),
+// converts every borough/landmark/river geometry to WKT, runs the
+// live geof:sfWithin (landmark-in-borough) and geof:sfIntersects
+// (Thames-through-borough) queries, and renders their results -- it
+// does not recompute geometry itself. What's pinned here is (a) the
+// pure GeoJSON->WKT serialization logic -- duplicated below from the
+// cell's own inline copy, since cell bodies can't `import` (see
+// docs/web/hub/README.md's "cell bindings" section) -- tested directly
+// with plain assertions, no DOM involved, and (b) that the cell's
+// actual shipped source runs to completion without throwing when given
+// a minimal `document`/`L`/`fetch` stub standing in for the browser's
+// real DOM, the real Leaflet library, and the real vendored GeoJSON
+// fetch. Node has no layout engine, so a full visual render (borough
+// fill colors, the fullscreen control, live-mode's OSM layer) is NOT
+// asserted here -- that's tests/web-demos/hub_post21_geo_check.sh
+// (headless Chromium, both the strict page and its live-mode twin).
 
-import { NPM_FACTOIDAL_INDEX, extractObservableCells, runObservableCell, pretty } from './_helpers.mjs';
+import { NPM_FACTOIDAL_INDEX, extractObservableCells, runObservableCell, pretty, HUB_POST_DIR } from './_helpers.mjs';
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
 
 const factoidal = (await import(NPM_FACTOIDAL_INDEX)).default;
 const POST_FILE = '21-geosparql-geometry-and-topology.md';
+
+// The two vendored GeoJSON files the map cell fetches (task #105) --
+// read once, from the same files docs/.eleventy.js passthrough-copies
+// to the built site, so the Node stub below serves byte-identical
+// content to what the browser would fetch.
+const GEO_DIR = path.join(HUB_POST_DIR, 'assets', 'geo');
+const BOROUGHS_GEOJSON = JSON.parse(fs.readFileSync(path.join(GEO_DIR, 'london-boroughs.geojson'), 'utf8'));
+const THAMES_GEOJSON = JSON.parse(fs.readFileSync(path.join(GEO_DIR, 'thames.geojson'), 'utf8'));
 
 const cells = extractObservableCells(POST_FILE);
 const B = { fn: factoidal, pretty };
@@ -52,126 +68,189 @@ test('post21 cell 2 (geof:sfWithin): the two inside pairs, ordered', async () =>
   });
 });
 
-// --- Cell 3 (index 2): the Leaflet map cell -------------------------
+// --- Cell 3 (index 2): the Leaflet choropleth cell -------------------
 
-// Mirrors the map cell's own inline `wktParse` -- see the header
-// comment above for why this is a duplicate rather than a shared
-// import. Keep in sync by hand with the copy in
-// docs/web/hub/21-geosparql-geometry-and-topology.md if either changes.
-function wktParse(wkt) {
-  const s = wkt.trim();
-  let m = /^POINT\s*\(\s*([+-]?[\d.]+)\s+([+-]?[\d.]+)\s*\)$/i.exec(s);
-  if (m) return { type: 'Point', lon: Number(m[1]), lat: Number(m[2]) };
-  m = /^POLYGON\s*\(\s*\(([^)]*)\)\s*\)$/i.exec(s);
-  if (m) {
-    const ring = m[1].split(',').map((pair) => {
-      const parts = pair.trim().split(/\s+/).map(Number);
-      return [parts[0], parts[1]]; // [lon, lat]
-    });
-    return { type: 'Polygon', ring };
-  }
-  throw new Error('wktParse: unrecognized WKT: ' + wkt);
+// Mirrors the map cell's own inline `geomToWkt`/`ringToWkt`/
+// `polygonCoordsToWkt` -- see the header comment above for why this is
+// a duplicate rather than a shared import. Keep in sync by hand with
+// the copy in docs/web/hub/21-geosparql-geometry-and-topology.md if
+// either changes.
+function ringToWkt(ring) {
+  return '(' + ring.map(([lon, lat]) => lon + ' ' + lat).join(', ') + ')';
+}
+function polygonCoordsToWkt(coordinates) {
+  return '(' + coordinates.map(ringToWkt).join(', ') + ')';
+}
+function geomToWkt(geom) {
+  if (geom.type === 'Polygon') return 'POLYGON' + polygonCoordsToWkt(geom.coordinates);
+  if (geom.type === 'MultiPolygon')
+    return 'MULTIPOLYGON(' + geom.coordinates.map(polygonCoordsToWkt).join(', ') + ')';
+  if (geom.type === 'LineString')
+    return 'LINESTRING(' + geom.coordinates.map(([lon, lat]) => lon + ' ' + lat).join(', ') + ')';
+  throw new Error('geomToWkt: unsupported geometry type ' + geom.type);
 }
 
-// Mirrors the map cell's own inline `colorForWithin`.
-function colorForWithin(isWithin) {
-  return isWithin ? '#2d6a4f' : '#8a8f98';
-}
-
-test('post21 map cell helper: wktParse reads POINT lon/lat in WKT order', () => {
-  assert.deepEqual(wktParse('POINT(-0.1278 51.5074)'), {
-    type: 'Point', lon: -0.1278, lat: 51.5074,
-  });
-});
-
-test('post21 map cell helper: wktParse reads a POLYGON ring as [lon, lat] pairs', () => {
-  const result = wktParse(
-    'POLYGON((-0.5 51.3, 0.3 51.3, 0.3 51.7, -0.5 51.7, -0.5 51.3))'
-  );
-  assert.deepEqual(result, {
+test('post21 map cell helper: geomToWkt serializes a simple Polygon', () => {
+  const wkt = geomToWkt({
     type: 'Polygon',
-    ring: [[-0.5, 51.3], [0.3, 51.3], [0.3, 51.7], [-0.5, 51.7], [-0.5, 51.3]],
+    coordinates: [[[-0.5, 51.3], [0.3, 51.3], [0.3, 51.7], [-0.5, 51.3]]],
   });
+  assert.equal(wkt, 'POLYGON((-0.5 51.3, 0.3 51.3, 0.3 51.7, -0.5 51.3))');
 });
 
-test('post21 map cell helper: colorForWithin maps the engine boolean to green/grey', () => {
-  assert.equal(colorForWithin(true), '#2d6a4f');
-  assert.equal(colorForWithin(false), '#8a8f98');
+test('post21 map cell helper: geomToWkt serializes a MultiPolygon with the OGC triple-paren nesting', () => {
+  const wkt = geomToWkt({
+    type: 'MultiPolygon',
+    coordinates: [
+      [[[0, 0], [1, 0], [1, 1], [0, 0]]],
+      [[[2, 2], [3, 2], [3, 3], [2, 2]]],
+    ],
+  });
+  assert.equal(wkt, 'MULTIPOLYGON(((0 0, 1 0, 1 1, 0 0)), ((2 2, 3 2, 3 3, 2 2)))');
+  // Round-trips through the real engine (Parser.WKT.fst) -- proves the
+  // nesting matches what SPARQL11.Algebra's geof: dispatch expects,
+  // not just what looks right by eye.
+  return factoidal
+    .parse(`@prefix ex: <http://example.org/> .\n@prefix geo: <http://www.opengis.net/ont/geosparql#> .\nex:s ex:hasGeom "${wkt}"^^geo:wktLiteral .`)
+    .then((ds) => assert.equal(ds.size, 1));
 });
 
-test('post21 map cell color logic: London green/inside, Manchester + Edinburgh grey, for Greater London', async () => {
-  // The exact sfWithin(?cgeom, GreaterLondonArea) relation the map cell
-  // reads to decide the Greater-London-box color -- run against the
-  // REAL npm/factoidal engine, not a hand-simulated result, so this
-  // pins what the F* engine actually decides.
+test('post21 map cell helper: geomToWkt serializes a LineString', () => {
+  const wkt = geomToWkt({ type: 'LineString', coordinates: [[-0.5, 51.4], [-0.4, 51.45]] });
+  assert.equal(wkt, 'LINESTRING(-0.5 51.4, -0.4 51.45)');
+});
+
+test('post21 choropleth query: landmark-in-borough sfWithin counts, run against the REAL engine', async () => {
+  // The exact same query construction the map cell runs, over the
+  // REAL vendored GeoJSON files and a small fixed landmark list --
+  // pins what the F* engine actually decides for the real fixture
+  // data (not a hand-simulated result), independent of any DOM/Leaflet
+  // concern this test doesn't touch.
+  const boroughTriples = BOROUGHS_GEOJSON.features
+    .map((f, i) => `ex:borough${i} a ex:Borough ; ex:name "${f.properties.name}" ; ex:hasGeom "${geomToWkt(f.geometry)}"^^geo:wktLiteral .`)
+    .join('\n');
+  const LANDMARKS = [
+    ['Big Ben', -0.1246, 51.5007],
+    ['Buckingham Palace', -0.1419, 51.5014],
+    ['Kew Gardens', -0.2955, 51.4787],
+    ['Hampton Court Palace', -0.3367, 51.4035],
+    ['Twickenham Stadium', -0.3419, 51.4560],
+  ];
+  const landmarkTriples = LANDMARKS
+    .map(([name, lon, lat], i) => `ex:landmark${i} a ex:Landmark ; ex:name "${name}" ; ex:hasGeom "POINT(${lon} ${lat})"^^geo:wktLiteral .`)
+    .join('\n');
   const dataset = await factoidal.parse(`
     @prefix ex:  <http://example.org/> .
     @prefix geo: <http://www.opengis.net/ont/geosparql#> .
-    ex:London a ex:City ; ex:name "London" ;
-      ex:hasGeom "POINT(-0.1278 51.5074)"^^geo:wktLiteral .
-    ex:Manchester a ex:City ; ex:name "Manchester" ;
-      ex:hasGeom "POINT(-2.2426 53.4808)"^^geo:wktLiteral .
-    ex:Edinburgh a ex:City ; ex:name "Edinburgh" ;
-      ex:hasGeom "POINT(-3.1883 55.9533)"^^geo:wktLiteral .
-    ex:GreaterLondonArea a ex:Area ; ex:name "Greater London (toy box)" ;
-      ex:hasGeom "POLYGON((-0.5 51.3, 0.3 51.3, 0.3 51.7, -0.5 51.7, -0.5 51.3))"^^geo:wktLiteral .
+    ${boroughTriples}
+    ${landmarkTriples}
   `);
   const rows = await factoidal.query(dataset, `
     PREFIX ex:   <http://example.org/>
     PREFIX geof: <http://www.opengis.net/def/function/geosparql/>
-    SELECT ?cityName WHERE {
-      ?city a ex:City ; ex:name ?cityName ; ex:hasGeom ?cgeom .
-      ex:GreaterLondonArea ex:hasGeom ?ageom .
-      FILTER(geof:sfWithin(?cgeom, ?ageom))
-    } ORDER BY ?cityName`);
-  const withinGreaterLondon = new Set(rows.map((r) => r.get('cityName').value));
-  const colorFor = (name) => colorForWithin(withinGreaterLondon.has(name));
-
-  assert.equal(colorFor('London'), '#2d6a4f', 'London is sfWithin Greater London -- green');
-  assert.equal(colorFor('Manchester'), '#8a8f98', 'Manchester is not sfWithin Greater London -- grey');
-  assert.equal(colorFor('Edinburgh'), '#8a8f98', 'Edinburgh is not sfWithin Greater London (it is within Scotland instead) -- grey');
+    SELECT ?boroughName ?landmarkName WHERE {
+      ?borough  a ex:Borough  ; ex:name ?boroughName  ; ex:hasGeom ?bgeom .
+      ?landmark a ex:Landmark ; ex:name ?landmarkName ; ex:hasGeom ?lgeom .
+      FILTER(geof:sfWithin(?lgeom, ?bgeom))
+    } ORDER BY ?boroughName ?landmarkName`);
+  const byBorough = new Map();
+  for (const row of rows) {
+    const b = row.get('boroughName').value;
+    if (!byBorough.has(b)) byBorough.set(b, []);
+    byBorough.get(b).push(row.get('landmarkName').value);
+  }
+  assert.deepEqual(byBorough.get('Westminster'), ['Big Ben', 'Buckingham Palace']);
+  assert.deepEqual(byBorough.get('Richmond upon Thames'), ['Hampton Court Palace', 'Kew Gardens', 'Twickenham Stadium']);
+  // Every row's borough must be a real borough name from the vendored
+  // file, and every row's landmark must be one of the five above --
+  // catches a query that silently cross-joined onto the wrong subjects.
+  const boroughNames = new Set(BOROUGHS_GEOJSON.features.map((f) => f.properties.name));
+  const landmarkNames = new Set(LANDMARKS.map(([name]) => name));
+  for (const row of rows) {
+    assert.ok(boroughNames.has(row.get('boroughName').value));
+    assert.ok(landmarkNames.has(row.get('landmarkName').value));
+  }
 });
 
-test('post21 map cell (cell 3): runs to completion with a minimal document/L stub, no throw', async () => {
+test('post21 map cell (cell 3): runs to completion with a minimal document/L/fetch stub, no throw', async () => {
   // A chainable stub layer standing in for a real Leaflet Path/Layer:
-  // .addTo()/.bindTooltip()/.setStyle() all return the SAME object so
-  // the cell's `L.geoJSON(...).bindTooltip(name).addTo(map)` and
-  // `L.circleMarker(...).addTo(map)` chains resolve exactly the way
-  // real Leaflet's chaining API does.
+  // .addTo()/.bindTooltip()/.bindPopup()/.setStyle() all return the
+  // SAME object so the cell's `L.geoJSON(...).addTo(map)` and
+  // `L.circleMarker(...).bindTooltip(name).addTo(map)` chains resolve
+  // exactly the way real Leaflet's chaining API does.
   function stubLayer() {
     const layer = {};
     layer.addTo = () => layer;
     layer.bindTooltip = () => layer;
+    layer.bindPopup = () => layer;
     layer.setStyle = () => layer;
+    layer.getBounds = () => ({});
     return layer;
   }
   const stubL = {
-    map: () => ({ fitBounds() {}, invalidateSize() {} }),
-    geoJSON: () => stubLayer(),
+    map: () => ({ setView() {}, addControl() {}, fitBounds() {}, invalidateSize() {}, getContainer: () => ({}) }),
+    // Actually invokes style()/onEachFeature() per feature (real
+    // borough/river data, from BOROUGHS_GEOJSON/THAMES_GEOJSON below)
+    // so a typo in either callback -- e.g. a wrong `feature.properties`
+    // key -- fails this test instead of silently never running.
+    // Real Leaflet's `style` option accepts EITHER a per-feature
+    // function (the borough choropleth layer) OR a plain style object
+    // (the Thames layer) -- only call it when it's actually a
+    // function, matching that same real Leaflet contract.
+    geoJSON: (geojson, options) => {
+      for (const f of (geojson && geojson.features) || []) {
+        if (typeof options?.style === 'function') options.style(f);
+        options?.onEachFeature?.(f, stubLayer());
+      }
+      return stubLayer();
+    },
     circleMarker: () => stubLayer(),
+    control: { layers: () => stubLayer() },
+    tileLayer: () => stubLayer(),
+    Control: { extend: (proto) => function StubControl() { Object.assign(this, proto); } },
+    DomUtil: { create: () => ({ setAttribute() {} }) },
+    DomEvent: { on() {}, off() {}, stopPropagation() {}, preventDefault() {} },
   };
-  // The cell calls `document.createElement("div")` directly (an
-  // ambient global in the browser, per reactive-cells.mjs's own header
-  // comment: "globals like Math/JSON/console/document ... stay
-  // resolved through ordinary JS scope"). Node has no `document`, so
-  // this test supplies the minimal stub the cell's own DOM usage
-  // needs, then removes it -- this is a test-only global, never
-  // touched by production code.
+  // The cell calls `document.createElement`/`addEventListener` and
+  // reads `document.body` directly (ambient globals in the browser,
+  // per reactive-cells.mjs's own header comment: "globals like Math/
+  // JSON/console/document ... stay resolved through ordinary JS
+  // scope"). Node has no `document`, so this test supplies the minimal
+  // stub the cell's own DOM usage needs, then removes it -- this is a
+  // test-only global, never touched by production code. `document.body`
+  // is deliberately omitted (undefined): the cell's `document.body?.
+  // getAttribute(...)` optional-chains past that, matching a page
+  // where `hubMode` is unset (strict) -- this test never exercises the
+  // live-mode OSM-tile branch, which is instead covered by
+  // tests/web-demos/hub_post21_geo_check.sh's live-mode smoke.
   const previousDocument = globalThis.document;
+  const previousFetch = globalThis.fetch;
   globalThis.document = {
     createElement: () => ({ className: '', style: {} }),
+    addEventListener: () => {},
+  };
+  // Serve the real vendored GeoJSON files for the cell's page-relative
+  // fetch() calls -- same pattern as tests/hub/post24_test.mjs's HDT
+  // fixture stub. The URL argument is only suffix-matched (this cell's
+  // own `geoAssetsBase` computation matters in a real browser, where
+  // `location` exists; here `typeof location === "undefined"` so the
+  // cell takes its Node-safe fallback path and this stub answers
+  // whichever of the two files was asked for).
+  globalThis.fetch = async (url) => {
+    const body = String(url).includes('thames') ? THAMES_GEOJSON : BOROUGHS_GEOJSON;
+    return { ok: true, async json() { return body; } };
   };
   try {
     const result = await runObservableCell(cells[2], { fn: factoidal, pretty, L: stubL });
     // Success path returns the container object the stub
     // `document.createElement` produced (not a `map unavailable`
-    // fallback), proving fn.parse/fn.query/wktParse/colorForWithin/L
-    // all ran without throwing.
+    // fallback), proving fn.parse/fn.query/geomToWkt/landmarkColor/L/
+    // fetch all ran without throwing.
     assert.ok(result && typeof result === 'object', 'map cell should return the map container object');
     assert.equal(result.className, 'hub-leaflet-map');
   } finally {
-    if (previousDocument === undefined) delete globalThis.document;
-    else globalThis.document = previousDocument;
+    if (previousDocument === undefined) delete globalThis.document; else globalThis.document = previousDocument;
+    if (previousFetch === undefined) delete globalThis.fetch; else globalThis.fetch = previousFetch;
   }
 });
 

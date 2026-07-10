@@ -140,153 +140,320 @@ neither, so it produces no row. Swapping the argument order and using
 `geof:sfContains` — "which area box *contains* London" — is the same
 relation read the other way and would return the Greater London box.
 
-### `sfWithin` on a map
+### `sfWithin` at borough scale: a live choropleth
 
-A table of `(cityName, areaName)` pairs is the query result; a map of
-colored points is the same query result, read visually. The cell below
-runs the identical `geof:sfWithin` cross-product query, then hands
-every city and area geometry to [Leaflet](https://leafletjs.com/)
-(vendored, no CDN — see
-[`third_party/leaflet/`](https://github.com/danbri/factoidal/blob/claude/main/third_party/leaflet/PROVENANCE.md))
-purely to draw the shapes: **the marker colors are the engine's
-`sfWithin` answer**, not a recomputation in JavaScript. Green means the
-F\* engine decided that city's point is `sfWithin` one of the two area
-polygons; grey means it decided the opposite. London gets a bigger
-marker and a fixed label, since it's the pairing the prose above
-walked through by hand. There is no tile layer — the two toy boxes and
-three city points are drawn as plain vector shapes on a blank
-background, so the map needs no network access to render.
+The three-city, two-toy-box example above proves the mechanism; this
+one scales it up to something that reads as a real place. The
+dataset is the real 33 London boroughs (32 boroughs + the City of
+London) and the River Thames, vendored as GeoJSON under
+[`docs/web/hub/assets/geo/`](https://github.com/danbri/factoidal/blob/claude/main/docs/web/hub/assets/geo/PROVENANCE.md)
+(ONS Open Geography boundaries, OGL v3; a Natural Earth river line,
+public domain — see that directory's `PROVENANCE.md` for the exact
+services, licences, and the Douglas-Peucker simplification that keeps
+the total under 70 KB), plus sixteen well-known London landmarks
+written directly into this cell as WKT points. The cell converts every
+borough polygon and every landmark point to a `geo:wktLiteral`,
+`fn.parse`s the result, and runs **one** SPARQL query:
+
+```sparql
+SELECT ?boroughName ?landmarkName WHERE {
+  ?borough   a ex:Borough  ; ex:name ?boroughName  ; ex:hasGeom ?bgeom .
+  ?landmark  a ex:Landmark ; ex:name ?landmarkName ; ex:hasGeom ?lgeom .
+  FILTER(geof:sfWithin(?lgeom, ?bgeom))
+}
+```
+
+— "which landmark points are `sfWithin` which borough polygon", the
+same point/polygon `sfWithin` relation the three-city example used,
+just run over 33 × 16 candidate pairs instead of 3 × 2. **Every
+borough's fill color is that query's row count for that borough** (0
+landmarks = the palette's lightest shade, 3+ = its darkest — the scale
+`landmarkColor()` below defines); **clicking a borough opens a popup
+listing exactly the `?landmarkName` rows this query returned for it**,
+plus a second, equally live fact — whether `geof:sfIntersects` decided
+the Thames' `LineString` crosses that borough's polygon — read from a
+second small query. Nothing about a borough's appearance or popup
+content is computed by re-deriving geometry in JavaScript; both come
+straight out of query results. `sfWithin` and `sfIntersects` are both
+fully decided (never refused) for every pair this cell asks about —
+point/polygon `sfWithin` is decided unconditionally, and multi-polygon
+component decomposition (several boroughs are OGC `MultiPolygon`s,
+not simple `Polygon`s) falls back to `None` only when no component
+settles the question, which never happens for a point that is
+genuinely inside or outside every part — see
+[`RDF.Geo.Topology.fst`](https://github.com/danbri/factoidal/blob/claude/main/formal/fstar/RDF.Geo.Topology.fst)'s
+decided-vs-refused table, also summarized in the
+["Scope"](#scope-what-is-decided-what-is-refused) section below.
+
+The map itself has three layers, same-origin only:
+
+1. **Boroughs** (`L.geoJSON`, the vendored polygon file) — fill color
+   from the choropleth query above, a thin outline, a click handler
+   that builds the popup from that borough's rows.
+2. **The Thames** (`L.geoJSON`, the vendored line file) — a plain blue
+   line, drawn for orientation ("this reads as London"), not itself a
+   query result.
+3. **Landmarks** (`L.circleMarker`, one per named point) — small dark
+   dots with a name tooltip; the *input* the choropleth query ran
+   over, not its output.
+
+No raster tile layer, no CDN — the strict page's
+Content-Security-Policy (visible in this page's `<head>`, task #105)
+sets `img-src`/`connect-src` to `'self'` only, so a tile request
+literally cannot succeed here, and every marker uses `L.circleMarker`/
+`L.geoJSON` rather than Leaflet's default `L.Icon` (whose PNG assets
+are deliberately not vendored — see
+[`third_party/leaflet/PROVENANCE.md`](https://github.com/danbri/factoidal/blob/claude/main/third_party/leaflet/PROVENANCE.md)).
+A **fullscreen** control (top-right, native
+[Fullscreen API](https://developer.mozilla.org/en-US/docs/Web/API/Fullscreen_API),
+no plugin) makes the choropleth easier to read on a small viewport. On
+this page's [live-mode twin](../../hub-live/21-geosparql-geometry-and-topology/)
+— same cell source, `data-hub-mode="live"` on `<body>` instead of
+`"strict"` — a fourth, non-CDN-restricted layer becomes available: a
+real OpenStreetMap raster basemap underneath the vector layers above,
+toggleable via a layer control, with its own required attribution
+line. The strict page you're reading now never adds it.
 
 ```observable-js
-const GEO_MAP_TTL = `
-  @prefix ex:  <http://example.org/> .
-  @prefix geo: <http://www.opengis.net/ont/geosparql#> .
+// Sixteen well-known London landmarks, hand-picked to land in several
+// different boroughs (Westminster and Greenwich get two each; Richmond
+// upon Thames gets three) so the choropleth below actually has a
+// range of counts to show, not just "0 or 1". These are the cell's
+// INPUT data, same status as the three cities/two toy boxes in the
+// examples above -- ordinary asserted facts, not a query result. A
+// landmark deliberately placed near a borough boundary can land on
+// either side of it after this post's Douglas-Peucker simplification
+// of the borough polygons (see assets/geo/PROVENANCE.md) -- that is
+// the engine reporting exactly what the (simplified) vendored geometry
+// says, not a bug; none of the sixteen below are boundary-adjacent
+// enough for that to matter.
+const LANDMARKS = [
+  ["Big Ben", -0.1246, 51.5007],
+  ["Buckingham Palace", -0.1419, 51.5014],
+  ["Canary Wharf", -0.0235, 51.5054],
+  ["The Shard", -0.0865, 51.5045],
+  ["Greenwich Observatory", -0.0005, 51.4769],
+  ["The O2", 0.0032, 51.5030],
+  ["Wembley Stadium", -0.2795, 51.5560],
+  ["Emirates Stadium", -0.1084, 51.5549],
+  ["Kew Gardens", -0.2955, 51.4787],
+  ["Hampton Court Palace", -0.3367, 51.4035],
+  ["Twickenham Stadium", -0.3419, 51.4560],
+  ["Alexandra Palace", -0.1310, 51.5941],
+  ["Heathrow Airport", -0.4543, 51.4700],
+  ["Kensington Palace", -0.1877, 51.5052],
+  ["Battersea Power Station", -0.1439, 51.4816],
+  ["Camden Market", -0.1461, 51.5416],
+];
 
-  ex:London a ex:City ; ex:name "London" ;
-    ex:hasGeom "POINT(-0.1278 51.5074)"^^geo:wktLiteral .
-  ex:Manchester a ex:City ; ex:name "Manchester" ;
-    ex:hasGeom "POINT(-2.2426 53.4808)"^^geo:wktLiteral .
-  ex:Edinburgh a ex:City ; ex:name "Edinburgh" ;
-    ex:hasGeom "POINT(-3.1883 55.9533)"^^geo:wktLiteral .
-
-  ex:GreaterLondonArea a ex:Area ; ex:name "Greater London (toy box)" ;
-    ex:hasGeom "POLYGON((-0.5 51.3, 0.3 51.3, 0.3 51.7, -0.5 51.7, -0.5 51.3))"^^geo:wktLiteral .
-  ex:ScotlandArea a ex:Area ; ex:name "Scotland (toy box)" ;
-    ex:hasGeom "POLYGON((-8 54.5, -1 54.5, -1 60.9, -8 60.9, -8 54.5))"^^geo:wktLiteral .
-`;
-
-// Tiny WKT -> coordinate parser: POINT and POLYGON only, no full WKT
-// library (this post's dataset never uses anything else). Positions
-// come out in WKT's own (and GeoJSON's) [lon, lat] order, so a
-// POLYGON ring can feed L.geoJSON's coordinates array directly;
-// callers that need Leaflet's [lat, lon] point order (L.circleMarker,
-// L.latLng, fitBounds) swap explicitly at the call site below.
-function wktParse(wkt) {
-  const s = wkt.trim();
-  let m = /^POINT\s*\(\s*([+-]?[\d.]+)\s+([+-]?[\d.]+)\s*\)$/i.exec(s);
-  if (m) return { type: "Point", lon: Number(m[1]), lat: Number(m[2]) };
-  m = /^POLYGON\s*\(\s*\(([^)]*)\)\s*\)$/i.exec(s);
-  if (m) {
-    const ring = m[1].split(",").map((pair) => {
-      const parts = pair.trim().split(/\s+/).map(Number);
-      return [parts[0], parts[1]]; // [lon, lat]
-    });
-    return { type: "Polygon", ring };
-  }
-  throw new Error("wktParse: unrecognized WKT: " + wkt);
+// GeoJSON -> WKT, one direction only (no round trip needed -- Leaflet
+// renders the fetched GeoJSON objects directly; WKT is only for the
+// SPARQL literals this cell constructs). Matches Parser.WKT.fst's
+// nesting exactly: a ring is "(x y, x y, ...)"; a polygon body is
+// "(ring, hole, ...)"; MULTIPOLYGON wraps a comma list of polygon
+// bodies in one more pair of parens.
+function ringToWkt(ring) {
+  return "(" + ring.map(([lon, lat]) => lon + " " + lat).join(", ") + ")";
+}
+function polygonCoordsToWkt(coordinates) {
+  return "(" + coordinates.map(ringToWkt).join(", ") + ")";
+}
+function geomToWkt(geom) {
+  if (geom.type === "Polygon") return "POLYGON" + polygonCoordsToWkt(geom.coordinates);
+  if (geom.type === "MultiPolygon")
+    return "MULTIPOLYGON(" + geom.coordinates.map(polygonCoordsToWkt).join(", ") + ")";
+  if (geom.type === "LineString")
+    return "LINESTRING(" + geom.coordinates.map(([lon, lat]) => lon + " " + lat).join(", ") + ")";
+  throw new Error("geomToWkt: unsupported geometry type " + geom.type);
 }
 
-// The ONLY thing that decides a marker's color: the sfWithin boolean
-// the F* engine already computed. No geometry math happens in this
-// function or anywhere else in this cell.
-function colorForWithin(isWithin) {
-  return isWithin ? "#2d6a4f" : "#8a8f98";
+// Choropleth color scale: landmark COUNT -> fill color, four discrete
+// steps (0..3+). The ONLY input is the query row count computed below
+// -- no geometry math here, just a lookup table.
+const CHOROPLETH_SCALE = ["#eef3ef", "#a8cdb4", "#5a9c79", "#1b4332"];
+function landmarkColor(count) {
+  return CHOROPLETH_SCALE[Math.min(count, CHOROPLETH_SCALE.length - 1)];
 }
+
+// Same-origin base path for this cell's two fetch()es, independent of
+// whether this notebook is running on the strict page (.../web/hub/21-.../)
+// or its live-mode twin (.../web/hub-live/21-.../) -- both serve the
+// SAME vendored files from .../web/hub/assets/geo/. `location` is a
+// browser global (see reactive-cells.mjs's header on globals resolving
+// through ordinary JS scope); the Node pinning test stubs `fetch`
+// directly and never reads the computed URL, so the `typeof location
+// === "undefined"` branch only matters there.
+const geoAssetsBase =
+  typeof location === "undefined"
+    ? "../assets/geo/"
+    : (/^(.*\/web\/)hub(?:-live)?\/[^/]+\/?$/.exec(location.pathname) || [, "../"])[1] + "hub/assets/geo/";
 
 try {
-  const dataset = await fn.parse(GEO_MAP_TTL);
+  const [boroughsGeoJSON, thamesGeoJSON] = await Promise.all([
+    fetch(geoAssetsBase + "london-boroughs.geojson").then((r) => r.json()),
+    fetch(geoAssetsBase + "thames.geojson").then((r) => r.json()),
+  ]);
 
-  const areaRows = await fn.query(dataset, `
-    PREFIX ex: <http://example.org/>
-    SELECT ?areaName ?ageom WHERE {
-      ?area a ex:Area ; ex:name ?areaName ; ex:hasGeom ?ageom .
-    } ORDER BY ?areaName`);
-  const cityRows = await fn.query(dataset, `
-    PREFIX ex: <http://example.org/>
-    SELECT ?cityName ?cgeom WHERE {
-      ?city a ex:City ; ex:name ?cityName ; ex:hasGeom ?cgeom .
-    } ORDER BY ?cityName`);
-  // The exact sfWithin cross-product query from the cell above --
-  // this Map of cityName -> areaName IS the query result the map
-  // renders; every marker color below is read straight out of it.
+  const boroughTriples = boroughsGeoJSON.features
+    .map((f, i) => {
+      const id = "ex:borough" + i;
+      const wkt = geomToWkt(f.geometry).replace(/"/g, "");
+      return `${id} a ex:Borough ; ex:name "${f.properties.name}" ; ex:hasGeom "${wkt}"^^geo:wktLiteral .`;
+    })
+    .join("\n  ");
+  const landmarkTriples = LANDMARKS.map(([name, lon, lat], i) => {
+    return `ex:landmark${i} a ex:Landmark ; ex:name "${name}" ; ex:hasGeom "POINT(${lon} ${lat})"^^geo:wktLiteral .`;
+  }).join("\n  ");
+  const thamesWkt = geomToWkt(thamesGeoJSON.features[0].geometry).replace(/"/g, "");
+
+  const CHOROPLETH_TTL = `
+  @prefix ex:  <http://example.org/> .
+  @prefix geo: <http://www.opengis.net/ont/geosparql#> .
+  ex:Thames a ex:River ; ex:hasGeom "${thamesWkt}"^^geo:wktLiteral .
+  ${boroughTriples}
+  ${landmarkTriples}
+`;
+  const dataset = await fn.parse(CHOROPLETH_TTL);
+
+  // The ONE query this whole choropleth reads from: every
+  // (boroughName, landmarkName) pair the engine decided sfWithin. A
+  // borough with zero rows here just never appears as a key below --
+  // groupBy defaults its count to 0, not a re-derivation of anything.
   const withinRows = await fn.query(dataset, `
     PREFIX ex:   <http://example.org/>
     PREFIX geof: <http://www.opengis.net/def/function/geosparql/>
-    SELECT ?cityName ?areaName WHERE {
-      ?city a ex:City ; ex:name ?cityName ; ex:hasGeom ?cgeom .
-      ?area a ex:Area ; ex:name ?areaName ; ex:hasGeom ?ageom .
-      FILTER(geof:sfWithin(?cgeom, ?ageom))
-    } ORDER BY ?cityName`);
-  const withinArea = new Map(
-    withinRows.map((r) => [r.get("cityName").value, r.get("areaName").value])
-  );
+    SELECT ?boroughName ?landmarkName WHERE {
+      ?borough  a ex:Borough  ; ex:name ?boroughName  ; ex:hasGeom ?bgeom .
+      ?landmark a ex:Landmark ; ex:name ?landmarkName ; ex:hasGeom ?lgeom .
+      FILTER(geof:sfWithin(?lgeom, ?bgeom))
+    } ORDER BY ?boroughName ?landmarkName`);
+  const landmarksByBorough = new Map();
+  for (const row of withinRows) {
+    const b = row.get("boroughName").value;
+    const l = row.get("landmarkName").value;
+    if (!landmarksByBorough.has(b)) landmarksByBorough.set(b, []);
+    landmarksByBorough.get(b).push(l);
+  }
 
-  // Parse every WKT geometry up front so the map's view can be set
-  // BEFORE any vector layer is added. Leaflet defers a layer's onAdd
-  // until the map has a view; flushing that queue from a later
-  // fitBounds runs the path code before the renderer has computed its
-  // pixel bounds, and throws "Cannot read properties of undefined
-  // (reading 'min')" from _clipPoints (stock 1.9.4 behavior).
-  const areas = areaRows.map((row) => ({
-    name: row.get("areaName").value,
-    geom: wktParse(row.get("ageom").value),
-  }));
-  const cities = cityRows.map((row) => ({
-    name: row.get("cityName").value,
-    geom: wktParse(row.get("cgeom").value),
-  }));
-  const allLatLngs = [];
-  for (const { geom } of areas)
-    for (const [lon, lat] of geom.ring) allLatLngs.push([lat, lon]);
-  for (const { geom } of cities) allLatLngs.push([geom.lat, geom.lon]);
+  // A second, independent decided predicate over the SAME dataset --
+  // linestring/multipolygon sfIntersects, decomposed component-wise
+  // exactly like point/multipolygon sfWithin above. Folded into the
+  // popup as a bonus fact, not into the fill color.
+  const thamesRows = await fn.query(dataset, `
+    PREFIX ex:   <http://example.org/>
+    PREFIX geof: <http://www.opengis.net/def/function/geosparql/>
+    SELECT ?boroughName WHERE {
+      ex:Thames ex:hasGeom ?rgeom .
+      ?borough a ex:Borough ; ex:name ?boroughName ; ex:hasGeom ?bgeom .
+      FILTER(geof:sfIntersects(?rgeom, ?bgeom))
+    }`);
+  const thamesBoroughs = new Set(thamesRows.map((r) => r.get("boroughName").value));
 
   const container = document.createElement("div");
   container.className = "hub-leaflet-map";
 
   const map = L.map(container, { zoomControl: true, attributionControl: false });
-  // Set an explicit center+zoom (no size-dependent math) so the map
-  // is "loaded" before layers are added. fitBounds here would divide
-  // by the detached container's zero size and poison the view with
-  // NaN; the real fit happens in the post-attach frame below.
-  const centroid = [
-    allLatLngs.reduce((s, ll) => s + ll[0], 0) / allLatLngs.length,
-    allLatLngs.reduce((s, ll) => s + ll[1], 0) / allLatLngs.length,
-  ];
-  map.setView(centroid, 5);
+  // Fixed center+zoom before any layer is added -- a detached
+  // container has zero size, and fitBounds against it poisons the
+  // view with NaN. Greater London's rough centroid/zoom, refined by
+  // the real fitBounds once layers mount (post-attach frame below).
+  map.setView([51.5, -0.12], 10);
 
-  for (const { name, geom } of areas) {
-    const geojson = { type: "Polygon", coordinates: [geom.ring] };
-    L.geoJSON(geojson, {
-      style: { color: "#2d6a4f", weight: 1, fillColor: "#2d6a4f", fillOpacity: 0.08 },
+  L.geoJSON(boroughsGeoJSON, {
+    style: (feature) => {
+      const count = (landmarksByBorough.get(feature.properties.name) || []).length;
+      return { color: "#1a1e23", weight: 1, fillColor: landmarkColor(count), fillOpacity: 0.75 };
+    },
+    onEachFeature: (feature, layer) => {
+      const name = feature.properties.name;
+      const names = landmarksByBorough.get(name) || [];
+      const crossed = thamesBoroughs.has(name);
+      const list = names.length
+        ? "<ul>" + names.map((n) => `<li>${n}</li>`).join("") + "</ul>"
+        : "<p>(no landmark from this list)</p>";
+      layer.bindPopup(
+        `<strong>${name}</strong><br>` +
+        `geof:sfWithin landmarks (${names.length}): ${list}` +
+        `geof:sfIntersects the Thames: <strong>${crossed}</strong>`
+      );
+    },
+  }).addTo(map);
+
+  L.geoJSON(thamesGeoJSON, {
+    style: { color: "#1a6fa8", weight: 3, opacity: 0.85 },
+  }).addTo(map);
+
+  for (const [name, lon, lat] of LANDMARKS) {
+    L.circleMarker([lat, lon], {
+      radius: 4,
+      color: "#10130f",
+      weight: 1,
+      fillColor: "#f4b942",
+      fillOpacity: 1,
     })
       .bindTooltip(name)
       .addTo(map);
   }
 
-  for (const { name, geom } of cities) {
-    const area = withinArea.get(name);
-    const isWithin = area !== undefined;
-    const marker = L.circleMarker([geom.lat, geom.lon], {
-      radius: name === "London" ? 10 : 7,
-      color: "#1a1e23",
-      weight: name === "London" ? 2 : 1,
-      fillColor: colorForWithin(isWithin),
-      fillOpacity: 0.9,
-    }).addTo(map);
-    const label = isWithin
-      ? name + " — geof:sfWithin " + area
-      : name + " — not sfWithin any area shown";
-    marker.bindTooltip(label, name === "London" ? { permanent: true, direction: "top" } : {});
+  // Fullscreen control (task #105): no plugin -- the native Fullscreen
+  // API on the map's own container, with the still-common webkit
+  // prefix as a fallback. invalidateSize() on the change event is
+  // required: Leaflet computed its panes against the pre-fullscreen
+  // box, and a size that changed outside Leaflet's own resize
+  // observer (the browser doing it, not a CSS transition Leaflet
+  // triggered) does not repaint on its own.
+  const FullscreenControl = L.Control.extend({
+    options: { position: "topright" },
+    onAdd() {
+      const el = L.DomUtil.create("div", "leaflet-bar leaflet-control leaflet-control-hub-fullscreen");
+      const a = L.DomUtil.create("a", "", el);
+      a.href = "#";
+      a.title = "Toggle fullscreen";
+      a.setAttribute("role", "button");
+      a.setAttribute("aria-label", "Toggle fullscreen");
+      a.textContent = "⤢";
+      L.DomEvent.on(a, "click", (e) => {
+        L.DomEvent.stopPropagation(e);
+        L.DomEvent.preventDefault(e);
+        const el2 = map.getContainer();
+        const isFs = document.fullscreenElement || document.webkitFullscreenElement;
+        if (!isFs) {
+          (el2.requestFullscreen || el2.webkitRequestFullscreen)?.call(el2);
+        } else {
+          (document.exitFullscreen || document.webkitExitFullscreen)?.call(document);
+        }
+      });
+      return el;
+    },
+  });
+  map.addControl(new FullscreenControl());
+  const onFullscreenChange = () => {
+    map.invalidateSize();
+    const isFs = document.fullscreenElement || document.webkitFullscreenElement;
+    map.getContainer().classList.toggle("hub-leaflet-map-fs-active", !!isFs);
+  };
+  document.addEventListener("fullscreenchange", onFullscreenChange);
+  document.addEventListener("webkitfullscreenchange", onFullscreenChange);
+
+  // Live mode ONLY (task #105): data-hub-mode="live" is set on <body>
+  // by docs/_includes/hub.njk exclusively for pages generated by
+  // web/hub-live.11ty.js. Same cell source either way -- this branch
+  // is the ONE place the notebook's behavior differs by capability,
+  // not by content. The strict page this section's prose describes
+  // never executes this branch, so it never attempts a network
+  // request -- consistent with the page's own CSP (img-src 'self'
+  // only in strict mode, which would block this fetch anyway).
+  if (typeof document !== "undefined" && document.body?.getAttribute("data-hub-mode") === "live") {
+    const osm = L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: 19,
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+    });
+    L.control.layers({ "OpenStreetMap (live)": osm }, {}, { position: "bottomleft" }).addTo(map);
+    // Test hook only (tests/web-demos/hub_post21_geo_check.sh) -- proves
+    // the tile layer OBJECT was created without asserting any tile was
+    // actually fetched (CI has no network guarantee, per that script's
+    // own header).
+    if (typeof window !== "undefined") window.__hubLiveTileLayer = osm;
   }
 
   // Leaflet needs its container sized AND attached to the document
@@ -296,7 +463,7 @@ try {
   // fitBounds run on a later frame, once the container has a size.
   const settle = () => {
     map.invalidateSize();
-    map.fitBounds(allLatLngs, { padding: [16, 16] });
+    map.fitBounds(L.geoJSON(boroughsGeoJSON).getBounds(), { padding: [16, 16] });
   };
   if (typeof requestAnimationFrame === "function") requestAnimationFrame(settle);
   else setTimeout(settle, 0);
@@ -307,14 +474,18 @@ try {
 }
 ```
 
-Every color on this map came out of the same `FILTER(geof:sfWithin(...))`
-call the table above ran: London and Edinburgh render green because
-their `(cityName, areaName)` pair is in the engine's result set;
-Manchester renders grey because it isn't in either area box. The map
-draws the query's answer — it does not re-derive point-in-polygon
-membership in JavaScript, and the two toy polygons and three points
-are the same WKT literals from the dataset at the top of this post,
-run through the tiny parser above rather than a general WKT library.
+Every fill color on this choropleth came out of the same
+`FILTER(geof:sfWithin(?lgeom, ?bgeom))` query the prose above named:
+Westminster and Greenwich are among the darkest boroughs shown (two
+landmarks each from this post's fixed list), Richmond upon Thames is
+darker still (three), and every borough with none of the sixteen
+landmarks stays the palette's lightest shade — read that directly off
+the map, not off a hardcoded claim here, since which exact boroughs
+land where depends on the vendored, independently-simplified polygon
+each landmark point happens to fall inside (see `assets/geo/
+PROVENANCE.md`). Click any borough for its own popup, built the same
+way: the `?landmarkName` rows this query returned for that one
+borough, plus the separate `sfIntersects`-against-the-Thames fact.
 
 `geof:sfDisjoint` is the complement of `sfIntersects`: two geometries
 that share nothing. "Which cities lie *outside* the Greater London

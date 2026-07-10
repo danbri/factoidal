@@ -52,6 +52,25 @@ function isImmutableAsset(url) {
   );
 }
 
+// task #105: the /web/hub-live/<slug>/ twins are deliberately
+// network-dependent (map tiles, remote SPARQL endpoints) and this SW
+// must not paper over that with an offline/cached copy — a cached live
+// page would silently start behaving like the strict page (no live
+// tiles/queries actually running), defeating the point of the split,
+// or worse, serve a stale cached response for a page whose whole
+// reason to exist is "hits the live network". Simplest correct fix
+// per task #105 (rather than a second SW registration + scope, which
+// this single-SW-at-"/" design doesn't otherwise need): recognise the
+// path prefix and fall through to the browser's normal (uncached)
+// fetch for anything under it, matching the existing cross-origin
+// early-return in the fetch handler below. Same-origin-relative check
+// (`includes`, not an anchored regex) so it's correct under any
+// pathPrefix (GitHub Pages' "/factoidal/", a local `--serve`, or a
+// bare "/").
+function isLiveModePage(url) {
+  return url.pathname.includes("/web/hub-live/");
+}
+
 self.addEventListener("install", (event) => {
   self.skipWaiting();
   event.waitUntil(
@@ -143,6 +162,7 @@ self.addEventListener("fetch", (event) => {
 
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return; // cross-origin: network only, no caching
+  if (isLiveModePage(url)) return; // live-mode twin: network only, no caching (see isLiveModePage above)
 
   if (request.mode === "navigate") {
     event.respondWith(networkFirst(request));
