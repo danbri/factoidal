@@ -782,9 +782,18 @@ let jsonld_from_rdf_json (nquads_text : string) (options_json : string) : string
          | FStar_Pervasives_Native.Some (Parser_JSON.JBool b) -> b
          | _ -> false)
     in
+    let str_field key =
+      match root_opt with
+      | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+      | FStar_Pervasives_Native.Some root ->
+        (match Parser_JSON.json_get_field key root with
+         | FStar_Pervasives_Native.Some (Parser_JSON.JString s) -> FStar_Pervasives_Native.Some s
+         | _ -> FStar_Pervasives_Native.None)
+    in
     let opts =
       { JSONLD_FromRdf.use_native_types = bool_field "useNativeTypes";
-        JSONLD_FromRdf.use_rdf_type = bool_field "useRdfType" } in
+        JSONLD_FromRdf.use_rdf_type = bool_field "useRdfType";
+        JSONLD_FromRdf.rdf_direction = str_field "rdfDirection" } in
     let ds = Parser_NQuads.parse_nquads nquads_text in
     match JSONLD_FromRdf.from_rdf ds opts with
     | FStar_Pervasives_Native.None ->

@@ -123,6 +123,11 @@ let opt_bool entry key =
   | Some opt_obj -> (match bool_field key opt_obj with Some b -> b | None -> false)
   | None -> false
 
+let opt_str entry key =
+  match field "option" entry with
+  | Some opt_obj -> str_field key opt_obj
+  | None -> None
+
 (* ------------------------------------------------------------------ *)
 (* Per-test record. *)
 
@@ -134,6 +139,8 @@ type test_case = {
   expect : string option;
   use_native_types : bool;
   use_rdf_type : bool;
+  spec_version : string option;
+  rdf_direction : string option;
   manifest_dir : string;
 }
 
@@ -153,6 +160,8 @@ let build_test_cases manifest_dir root =
              expect = str_field "expect" e;
              use_native_types = opt_bool e "useNativeTypes";
              use_rdf_type = opt_bool e "useRdfType";
+             spec_version = opt_str e "specVersion";
+             rdf_direction = opt_str e "rdfDirection";
              manifest_dir;
            }
          | _ -> None)
@@ -165,12 +174,41 @@ type outcome = Pass | Fail of string | Skip of string
 
 let run_from_rdf tc content =
   let ds = Parser_NQuads.parse_nquads content in
+  let fs_rdf_direction =
+    match tc.rdf_direction with
+    | Some d -> FStar_Pervasives_Native.Some d
+    | None -> FStar_Pervasives_Native.None in
   let opts =
     { JSONLD_FromRdf.use_native_types = tc.use_native_types;
-      JSONLD_FromRdf.use_rdf_type = tc.use_rdf_type } in
+      JSONLD_FromRdf.use_rdf_type = tc.use_rdf_type;
+      JSONLD_FromRdf.rdf_direction = fs_rdf_direction } in
   opt_of_fs (JSONLD_FromRdf.from_rdf ds opts)
 
+(* The sole specVersion=json-ld-1.0 fromRdf fixture (t0008, "List
+   conversion"). The JSON-LD 1.0 "RDF collection -> @list" step converted
+   lists node-by-node against triples that are only PARTIALLY ORDERED on
+   purpose (see the manifest `purpose`), yielding the specific
+   partially-collapsed shape 0008-out.jsonld pins. JSONLD.FromRdf
+   implements the JSON-LD 1.1 "Serialize RDF as JSON-LD" list conversion
+   (a single order-independent referenced-once/list-shape pass — see that
+   module's banner), which fully collapses the same input and so does NOT
+   reproduce the 1.0-only partial shape. This is the SAME 1.0-vs-1.1 gap
+   the toRdf runner records as an honest specVersion skip (jld_runner's
+   jld_1_0_still_skip), classified here as skip rather than fail. *)
+let from_rdf_1_0_still_skip tc =
+  if tc.spec_version = Some "json-ld-1.0" then
+    Some (Printf.sprintf
+            "option.specVersion=json-ld-1.0 — %s: 1.0's partially-ordered \
+             RDF-collection-to-@list conversion; this engine implements the \
+             1.1 fully-collapsing algorithm (see toRdf jld_1_0_still_skip \
+             for the matching honest 1.0-version skip policy)."
+            tc.name)
+  else None
+
 let run_test tc =
+  match from_rdf_1_0_still_skip tc with
+  | Some reason -> Skip reason
+  | None ->
   let input_path = Filename.concat tc.manifest_dir tc.input in
   match read_file input_path with
   | None -> Fail (Printf.sprintf "input file not found: %s" input_path)

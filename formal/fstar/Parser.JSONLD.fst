@@ -170,39 +170,22 @@ let rdf_language_iri : wf_iri =
 // U+10000+, against a BMP character in U+E000..U+FFFF, which no
 // toRdf/js* fixture exercises).
 //
-// NOT exact: a lexeme with MORE significant digits than distinguish
-// between adjacent binary64 doubles (toRdf/js12's
-// "333333333.33333329", 17 significant digits — every OTHER number in
-// this same fixture, "1E30"/"4.50"/"2e-3"/"1e-27", has 1-2 significant
-// digits and is unaffected) needs the actual
-// nearest-binary64-then-shortest-round-trip computation — a Ryu/Grisu-
-// class algorithm operating on the true IEEE 754 value — to know WHICH
-// digits the shortest form keeps; jcanon_number does not attempt that
-// (this codebase represents JSON numbers as validated lexeme strings,
-// Parser.JSON.JNumber, not floats, and implementing binary64 rounding
-// from scratch is out of scope for this phase). Such a lexeme's own
-// digit string passes through the ECMAScript notation rules unchanged,
-// which is an HONEST gap (the N-Quads comparison fails visibly,
-// toRdf/js12 stays FAIL on this account) rather than a silently wrong
-// literal.
-//
-// 2026-07-05 revisit (goal-wave JSON-LD pass): confirmed this is a
-// REAL float-arithmetic gap, not a missing-but-easy string tweak —
-// there is no way to decide "does this shorter decimal round-trip to
-// the SAME nearest binary64 double" using only this codebase's exact-
-// decimal (digit-string) model; it needs an actual IEEE 754 parse
-// (float_of_string) plus a bounded "try precision 1..17, format,
-// parse back, compare bit-pattern" search, i.e. the SAME `assume val`
-// host-engine-call-out taxonomy as `regex_match` (SPARQL11.Algebra.fst)
-// — a genuinely new capability this codebase doesn't have anywhere
-// else, requiring a stub patch under
-// minimal_regrettable_glue_code_each_with_an_open_issue/ plus a fresh
-// tracking issue (CLAUDE.md rule #3). Left undone this pass rather
-// than wiring a new assume val without one. If picked up: gate the
-// call at jcanon_number's `k` (post-trailing-zero-strip significant
-// digit count) `> 15` — every OTHER toRdf/js* fixture's numbers have
-// 1-2 significant digits (see above) and must not go anywhere near
-// the new code path.
+// >15-significant-digit lexemes (toRdf/js12's "333333333.33333329",
+// 17 digits — every OTHER number in that fixture has 1-2 significant
+// digits and never leaves the fast path): such a lexeme carries more
+// digits than distinguish adjacent binary64 doubles, so its canonical
+// form is the shortest decimal of its NEAREST double, not a notation
+// conversion of its own digits. The 2026-07-05 note that stood here
+// argued this needed a host float via a new `assume val` (the
+// regex_match taxonomy); that turned out to be unnecessary — the
+// nearest-binary64 rounding and the Steele-&-White shortest-form
+// search are both exact rational arithmetic, which F*'s unbounded
+// int/nat (extracted to Zarith) does natively. The dtoa_* section
+// below (dtoa_to_double / dtoa_round_to_p / dtoa_shortest) implements
+// exactly the bounded "round to p = 1..17 digits, map back, compare"
+// search in pure F*, no assume val, no float type; jcanon_number
+// gates it on significant-digit count > 15 so ordinary fixtures never
+// enter the slow path. This closed toRdf/js12 (2026-07-09).
 // ================================================================
 
 let rec jcanon_find_dot (s:string) (pos:nat) (fuel:nat)
@@ -302,6 +285,147 @@ let rec jld_first_nonzero_pos (s:string) (pos:nat) (fuel:nat) : Tot nat (decreas
 let rec jld_zeros (k:nat) : Tot string (decreases k) =
   if k = 0 then "" else String.concat "" ["0"; jld_zeros (k - 1)]
 
+// ================================================================
+// Shortest-round-trip binary64 formatting for JCS numbers (RFC 8785
+// 3.2.2.3 / ECMAScript Number::toString) — a PURE F* exact-integer
+// implementation. No float type, no host call-out, no assume val.
+//
+// Used ONLY for a JSON-literal (@type:@json) number whose significant-
+// digit count exceeds 15 (toRdf/js12's "333333333.33333329"): such a
+// lexeme carries MORE digits than distinguish adjacent binary64 doubles,
+// so its canonical form is the shortest decimal of its NEAREST double,
+// not a notation conversion of its own digits. Numbers with <=15
+// significant digits are already their own shortest round-trip form for
+// this suite and take jcanon_number_fmt's fast path unchanged.
+//
+// Method (Steele & White free-format, linear-search variant):
+//   1. dtoa_to_double: decimal (a * 10^pdec) -> nearest binary64
+//      (m * 2^q), round-half-to-even, by exact big-integer arithmetic
+//      (F* int/nat extract to arbitrary-precision OCaml Zarith).
+//   2. dtoa_shortest: for p = 1..17 correctly round that double to p
+//      significant decimal digits (dtoa_round_to_p) and test whether the
+//      p-digit value maps BACK to the same (m, q); the first p that
+//      round-trips is the shortest. Correct because the shortest
+//      round-tripping decimal, rounded to its own digit count, is the
+//      nearest p-digit decimal to the double and therefore also round-
+//      trips, while no shorter one does.
+// The winning (sign, integer significand, decimal exponent) is emitted
+// as an ordinary lexeme ("<c>e<dexp>") and handed to jcanon_number_fmt,
+// reusing its ECMAScript layout rules.
+//
+// SCOPE: binary64 normal range (every finite RFC-8259 number the JCS
+// path receives in this suite is well inside it); subnormal/overflow
+// corner rounding is not separately modelled and the >15-digit gate
+// keeps ordinary fixtures out of this path entirely.
+// ================================================================
+
+let rec dtoa_pow2 (k:nat) : Tot pos (decreases k) =
+  if k = 0 then 1 else op_Multiply 2 (dtoa_pow2 (k - 1))
+
+let rec dtoa_pow10 (k:nat) : Tot pos (decreases k) =
+  if k = 0 then 1 else op_Multiply 10 (dtoa_pow10 (k - 1))
+
+let rec dtoa_bitlen (n:nat) : Tot nat (decreases n) =
+  if n = 0 then 0 else 1 + dtoa_bitlen (n / 2)
+
+// round-half-to-even of numr/denr.
+let dtoa_round_he (numr:nat) (denr:pos) : nat =
+  let f = numr / denr in
+  let r = numr % denr in
+  let twice = op_Multiply 2 r in
+  if twice < denr then f
+  else if twice > denr then f + 1
+  else (if f % 2 = 0 then f else f + 1)
+
+// 2^e2 * den <= num, for any integer e2.
+let dtoa_pow2_le (e2:int) (den:pos) (num:nat) : bool =
+  if e2 >= 0 then op_Multiply (dtoa_pow2 e2) den <= num
+  else den <= op_Multiply num (dtoa_pow2 (- e2))
+
+// 10^b * den <= num, for any integer b.
+let dtoa_pow10_le (b:int) (den:pos) (num:nat) : bool =
+  if b >= 0 then op_Multiply (dtoa_pow10 b) den <= num
+  else den <= op_Multiply num (dtoa_pow10 (- b))
+
+// Lower e2 while 2^e2 > value (fuel-bounded; the bit-length guess is
+// within one or two of floor(log2 value)).
+let rec dtoa_adj2_down (e2:int) (den:pos) (num:nat) (fuel:nat) : Tot int (decreases fuel) =
+  if fuel = 0 then e2
+  else if dtoa_pow2_le e2 den num then e2
+  else dtoa_adj2_down (e2 - 1) den num (fuel - 1)
+
+// Raise e2 while 2^(e2+1) <= value.
+let rec dtoa_adj2_up (e2:int) (den:pos) (num:nat) (fuel:nat) : Tot int (decreases fuel) =
+  if fuel = 0 then e2
+  else if dtoa_pow2_le (e2 + 1) den num then dtoa_adj2_up (e2 + 1) den num (fuel - 1)
+  else e2
+
+// Lower b while 10^b > value.
+let rec dtoa_adj10_down (b:int) (den:pos) (num:nat) (fuel:nat) : Tot int (decreases fuel) =
+  if fuel = 0 then b
+  else if dtoa_pow10_le b den num then b
+  else dtoa_adj10_down (b - 1) den num (fuel - 1)
+
+// Raise b while 10^(b+1) <= value.
+let rec dtoa_adj10_up (b:int) (den:pos) (num:nat) (fuel:nat) : Tot int (decreases fuel) =
+  if fuel = 0 then b
+  else if dtoa_pow10_le (b + 1) den num then dtoa_adj10_up (b + 1) den num (fuel - 1)
+  else b
+
+// value = a * 10^pdec  ->  nearest binary64 as (m, q) with value ~= m*2^q,
+// m in [2^52, 2^53) (round-half-to-even). a = 0 yields (0, 0).
+let dtoa_to_double (a:nat) (pdec:int) : (nat & int) =
+  if a = 0 then (0, 0)
+  else
+    let num : nat = if pdec >= 0 then op_Multiply a (dtoa_pow10 pdec) else a in
+    let den : pos = if pdec >= 0 then 1 else dtoa_pow10 (- pdec) in
+    let guess = dtoa_bitlen num - dtoa_bitlen den in
+    let e2a = dtoa_adj2_up guess den num 8 in
+    let e2  = dtoa_adj2_down e2a den num 8 in
+    let shift = 52 - e2 in
+    let pnum : nat = if shift >= 0 then op_Multiply num (dtoa_pow2 shift) else num in
+    let pden : pos = if shift >= 0 then den else op_Multiply den (dtoa_pow2 (- shift)) in
+    let m = dtoa_round_he pnum pden in
+    if m >= dtoa_pow2 53 then (dtoa_pow2 52, e2 + 1 - 52)
+    else (m, e2 - 52)
+
+// Round the double m*2^q to p significant decimal digits, returning
+// (c, dexp) with value ~= c * 10^dexp and c in [10^(p-1), 10^p).
+let dtoa_round_to_p (m:nat) (q:int) (p:pos) : (nat & int) =
+  let numd : nat = if q >= 0 then op_Multiply m (dtoa_pow2 q) else m in
+  let dend : pos = if q >= 0 then 1 else dtoa_pow2 (- q) in
+  let g10 = (op_Multiply (dtoa_bitlen numd - dtoa_bitlen dend) 3) / 10 in
+  let b0 = dtoa_adj10_down g10 dend numd 40 in
+  let flog10 = dtoa_adj10_up b0 dend numd 40 in
+  let bexp = flog10 + 1 in
+  let kk = bexp - p in
+  let rnum : nat = if kk >= 0 then numd else op_Multiply numd (dtoa_pow10 (- kk)) in
+  let rden : pos = if kk >= 0 then op_Multiply dend (dtoa_pow10 kk) else dend in
+  let c = dtoa_round_he rnum rden in
+  if c = dtoa_pow10 p then (c / 10, kk + 1)
+  else (c, kk)
+
+let dtoa_mk_lexeme (neg:bool) (c:nat) (dexp:int) : string =
+  String.concat "" [(if neg then "-" else ""); string_of_int c; "e"; string_of_int dexp]
+
+// Search p = 1..17 for the shortest p-digit rounding of (m,q) that reads
+// back to the same double.
+let rec dtoa_try (neg:bool) (m:nat) (q:int) (p:pos) (fuel:nat) : Tot string (decreases fuel) =
+  match fuel with
+  | 0 ->
+    let (c, dexp) = dtoa_round_to_p m q p in dtoa_mk_lexeme neg c dexp
+  | _ ->
+    let fuel' : nat = fuel - 1 in
+    let (c, dexp) = dtoa_round_to_p m q p in
+    let (m2, q2) = dtoa_to_double c dexp in
+    if m2 = m && q2 = q then dtoa_mk_lexeme neg c dexp
+    else dtoa_try neg m q (p + 1) fuel'
+
+// (sign, significand a, decimal exponent pdec) -> shortest lexeme.
+let dtoa_shortest (neg:bool) (a:nat) (pdec:int) : string =
+  let (m, q) = dtoa_to_double a pdec in
+  dtoa_try neg m q 1 20
+
 // RFC 8785 (JCS) number serialization — ECMAScript Number::toString
 // applied to the JSON number's value (JCS §3.2.2.3). Normalizes the
 // lexeme to (sign, significant-digit string `digits` with no leading or
@@ -319,7 +443,14 @@ let rec jld_zeros (k:nat) : Tot string (decreases k) =
 //     |n - 1|.
 // See this section's banner for the honest gap (lexemes needing real
 // binary64 rounding, not just notation conversion).
-let jcanon_number (lexeme:string) : string =
+//
+// jcanon_number_fmt applies the ECMAScript layout rules to WHATEVER
+// (sign, significant-digit, decimal-exponent) a lexeme already carries.
+// The public jcanon_number below decides — on significant-digit count —
+// whether to feed it the original lexeme (<=15 digits: already shortest
+// for this suite) or the shortest-round-trip lexeme dtoa_shortest
+// computes (>15 digits: needs true binary64 rounding, toRdf/js12).
+let jcanon_number_fmt (lexeme:string) : string =
   let (neg, int_start, int_len, frac_start, frac_len, exp) = jld_number_parts lexeme in
   let combined = String.concat "" [fs_byte_sub lexeme int_start int_len; fs_byte_sub lexeme frac_start frac_len] in
   let clen = fs_byte_length combined in
@@ -353,6 +484,30 @@ let jcanon_number (lexeme:string) : string =
       let e = n - 1 in
       let exp_str = (if e >= 0 then String.concat "" ["+"; string_of_int e] else string_of_int e) in
       String.concat "" [sign_str; mantissa; "e"; exp_str]
+
+// Public JCS number canonicalizer. Computes the significant-digit count
+// k; a lexeme with k <= 15 is already its own shortest round-trip form
+// for this suite (formatted directly), while k > 15 needs the actual
+// nearest-binary64 shortest decimal (dtoa_shortest) — the honest gap the
+// banner above used to leave open, now closed in pure F* (toRdf/js12).
+let jcanon_number (lexeme:string) : string =
+  let (neg, int_start, int_len, frac_start, frac_len, exp) = jld_number_parts lexeme in
+  let combined = String.concat "" [fs_byte_sub lexeme int_start int_len; fs_byte_sub lexeme frac_start frac_len] in
+  let clen = fs_byte_length combined in
+  let lead = jld_first_nonzero_pos combined 0 (clen + 1) in
+  if lead >= clen then "0"
+  else
+    let after_lead = fs_byte_sub combined lead (clen - lead) in
+    let exp_total = exp - frac_len in
+    let keep = jld_last_nonzero_len after_lead 0 0 (fs_byte_length after_lead + 1) in
+    let digits = fs_byte_sub after_lead 0 keep in
+    let tz = fs_byte_length after_lead - keep in
+    let exp_total1 = exp_total + tz in
+    let k = fs_byte_length digits in
+    if k <= 15 then jcanon_number_fmt lexeme
+    else
+      let a = jld_digits_to_nat digits 0 (fs_byte_length digits) 0 (fs_byte_length digits + 1) in
+      jcanon_number_fmt (dtoa_shortest neg a exp_total1)
 
 // JCS string: double-quoted, JSON-escaped per SPARQL.JSON.Escape's rule
 // (identical to RFC 8785 §3.2.2.2's mandatory escape set).

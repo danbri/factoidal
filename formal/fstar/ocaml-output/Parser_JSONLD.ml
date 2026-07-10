@@ -1,19 +1,19 @@
 open Prims
-let rdf_type_iri : RDF_Graph_Executable.wf_iri=
+let rdf_type_iri : RDF_Term.wf_iri=
   "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
-let rdf_first_iri : RDF_Graph_Executable.wf_iri=
+let rdf_first_iri : RDF_Term.wf_iri=
   "http://www.w3.org/1999/02/22-rdf-syntax-ns#first"
-let rdf_rest_iri : RDF_Graph_Executable.wf_iri=
+let rdf_rest_iri : RDF_Term.wf_iri=
   "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest"
-let rdf_nil_iri : RDF_Graph_Executable.wf_iri=
+let rdf_nil_iri : RDF_Term.wf_iri=
   "http://www.w3.org/1999/02/22-rdf-syntax-ns#nil"
-let rdf_json_iri : RDF_Graph_Executable.wf_iri=
+let rdf_json_iri : RDF_Term.wf_iri=
   "http://www.w3.org/1999/02/22-rdf-syntax-ns#JSON"
-let rdf_value_iri : RDF_Graph_Executable.wf_iri=
+let rdf_value_iri : RDF_Term.wf_iri=
   "http://www.w3.org/1999/02/22-rdf-syntax-ns#value"
-let rdf_direction_iri : RDF_Graph_Executable.wf_iri=
+let rdf_direction_iri : RDF_Term.wf_iri=
   "http://www.w3.org/1999/02/22-rdf-syntax-ns#direction"
-let rdf_language_iri : RDF_Graph_Executable.wf_iri=
+let rdf_language_iri : RDF_Term.wf_iri=
   "http://www.w3.org/1999/02/22-rdf-syntax-ns#language"
 let rec jcanon_find_dot (s : Prims.string) (pos : Prims.nat)
   (fuel : Prims.nat) : Prims.nat FStar_Pervasives_Native.option=
@@ -144,7 +144,143 @@ let rec jld_zeros (k : Prims.nat) : Prims.string=
   if k = Prims.int_zero
   then ""
   else FStar_String.concat "" ["0"; jld_zeros (k - Prims.int_one)]
-let jcanon_number (lexeme : Prims.string) : Prims.string=
+let rec dtoa_pow2 (k : Prims.nat) : Prims.pos=
+  if k = Prims.int_zero
+  then Prims.int_one
+  else (Prims.of_int (2)) * (dtoa_pow2 (k - Prims.int_one))
+let rec dtoa_pow10 (k : Prims.nat) : Prims.pos=
+  if k = Prims.int_zero
+  then Prims.int_one
+  else (Prims.of_int (10)) * (dtoa_pow10 (k - Prims.int_one))
+let rec dtoa_bitlen (n : Prims.nat) : Prims.nat=
+  if n = Prims.int_zero
+  then Prims.int_zero
+  else Prims.int_one + (dtoa_bitlen (n / (Prims.of_int (2))))
+let dtoa_round_he (numr : Prims.nat) (denr : Prims.pos) : Prims.nat=
+  let f = numr / denr in
+  let r = (mod) numr denr in
+  let twice = (Prims.of_int (2)) * r in
+  if twice < denr
+  then f
+  else
+    if twice > denr
+    then f + Prims.int_one
+    else
+      if ((mod) f (Prims.of_int (2))) = Prims.int_zero
+      then f
+      else f + Prims.int_one
+let dtoa_pow2_le (e2 : Prims.int) (den : Prims.pos) (num : Prims.nat) :
+  Prims.bool=
+  if e2 >= Prims.int_zero
+  then ((dtoa_pow2 e2) * den) <= num
+  else den <= (num * (dtoa_pow2 (- e2)))
+let dtoa_pow10_le (b : Prims.int) (den : Prims.pos) (num : Prims.nat) :
+  Prims.bool=
+  if b >= Prims.int_zero
+  then ((dtoa_pow10 b) * den) <= num
+  else den <= (num * (dtoa_pow10 (- b)))
+let rec dtoa_adj2_down (e2 : Prims.int) (den : Prims.pos) (num : Prims.nat)
+  (fuel : Prims.nat) : Prims.int=
+  if fuel = Prims.int_zero
+  then e2
+  else
+    if dtoa_pow2_le e2 den num
+    then e2
+    else dtoa_adj2_down (e2 - Prims.int_one) den num (fuel - Prims.int_one)
+let rec dtoa_adj2_up (e2 : Prims.int) (den : Prims.pos) (num : Prims.nat)
+  (fuel : Prims.nat) : Prims.int=
+  if fuel = Prims.int_zero
+  then e2
+  else
+    if dtoa_pow2_le (e2 + Prims.int_one) den num
+    then dtoa_adj2_up (e2 + Prims.int_one) den num (fuel - Prims.int_one)
+    else e2
+let rec dtoa_adj10_down (b : Prims.int) (den : Prims.pos) (num : Prims.nat)
+  (fuel : Prims.nat) : Prims.int=
+  if fuel = Prims.int_zero
+  then b
+  else
+    if dtoa_pow10_le b den num
+    then b
+    else dtoa_adj10_down (b - Prims.int_one) den num (fuel - Prims.int_one)
+let rec dtoa_adj10_up (b : Prims.int) (den : Prims.pos) (num : Prims.nat)
+  (fuel : Prims.nat) : Prims.int=
+  if fuel = Prims.int_zero
+  then b
+  else
+    if dtoa_pow10_le (b + Prims.int_one) den num
+    then dtoa_adj10_up (b + Prims.int_one) den num (fuel - Prims.int_one)
+    else b
+let dtoa_to_double (a : Prims.nat) (pdec : Prims.int) :
+  (Prims.nat * Prims.int)=
+  if a = Prims.int_zero
+  then (Prims.int_zero, Prims.int_zero)
+  else
+    (let num = if pdec >= Prims.int_zero then a * (dtoa_pow10 pdec) else a in
+     let den =
+       if pdec >= Prims.int_zero then Prims.int_one else dtoa_pow10 (- pdec) in
+     let guess = (dtoa_bitlen num) - (dtoa_bitlen den) in
+     let e2a = dtoa_adj2_up guess den num (Prims.of_int (8)) in
+     let e2 = dtoa_adj2_down e2a den num (Prims.of_int (8)) in
+     let shift = (Prims.of_int (52)) - e2 in
+     let pnum =
+       if shift >= Prims.int_zero then num * (dtoa_pow2 shift) else num in
+     let pden =
+       if shift >= Prims.int_zero then den else den * (dtoa_pow2 (- shift)) in
+     let m = dtoa_round_he pnum pden in
+     if m >= (dtoa_pow2 (Prims.of_int (53)))
+     then
+       ((dtoa_pow2 (Prims.of_int (52))),
+         ((e2 + Prims.int_one) - (Prims.of_int (52))))
+     else (m, (e2 - (Prims.of_int (52)))))
+let dtoa_round_to_p (m : Prims.nat) (q : Prims.int) (p : Prims.pos) :
+  (Prims.nat * Prims.int)=
+  let numd = if q >= Prims.int_zero then m * (dtoa_pow2 q) else m in
+  let dend = if q >= Prims.int_zero then Prims.int_one else dtoa_pow2 (- q) in
+  let g10 =
+    (((dtoa_bitlen numd) - (dtoa_bitlen dend)) * (Prims.of_int (3))) /
+      (Prims.of_int (10)) in
+  let b0 = dtoa_adj10_down g10 dend numd (Prims.of_int (40)) in
+  let flog10 = dtoa_adj10_up b0 dend numd (Prims.of_int (40)) in
+  let bexp = flog10 + Prims.int_one in
+  let kk = bexp - p in
+  let rnum =
+    if kk >= Prims.int_zero then numd else numd * (dtoa_pow10 (- kk)) in
+  let rden = if kk >= Prims.int_zero then dend * (dtoa_pow10 kk) else dend in
+  let c = dtoa_round_he rnum rden in
+  if c = (dtoa_pow10 p)
+  then ((c / (Prims.of_int (10))), (kk + Prims.int_one))
+  else (c, kk)
+let dtoa_mk_lexeme (neg : Prims.bool) (c : Prims.nat) (dexp : Prims.int) :
+  Prims.string=
+  FStar_String.concat ""
+    [if neg then "-" else "";
+    Prims.string_of_int c;
+    "e";
+    Prims.string_of_int dexp]
+let rec dtoa_try (neg : Prims.bool) (m : Prims.nat) (q : Prims.int)
+  (p : Prims.pos) (fuel : Prims.nat) : Prims.string=
+  match fuel with
+  | uu___ when uu___ = Prims.int_zero ->
+      let uu___1 = dtoa_round_to_p m q p in
+      (match uu___1 with | (c, dexp) -> dtoa_mk_lexeme neg c dexp)
+  | uu___ ->
+      let fuel' = fuel - Prims.int_one in
+      let uu___1 = dtoa_round_to_p m q p in
+      (match uu___1 with
+       | (c, dexp) ->
+           let uu___2 = dtoa_to_double c dexp in
+           (match uu___2 with
+            | (m2, q2) ->
+                if (m2 = m) && (q2 = q)
+                then dtoa_mk_lexeme neg c dexp
+                else dtoa_try neg m q (p + Prims.int_one) fuel'))
+let dtoa_shortest (neg : Prims.bool) (a : Prims.nat) (pdec : Prims.int) :
+  Prims.string=
+  let uu___ = dtoa_to_double a pdec in
+  match uu___ with
+  | (m, q) -> dtoa_try neg m q Prims.int_one (Prims.of_int (20))
+let jcanon_number_fmt (lexeme : Prims.string) : Prims.string=
   let uu___ = jld_number_parts lexeme in
   match uu___ with
   | (neg, int_start, int_len, frac_start, frac_len, exp) ->
@@ -204,6 +340,39 @@ let jcanon_number (lexeme : Prims.string) : Prims.string=
                   then FStar_String.concat "" ["+"; Prims.string_of_int e]
                   else Prims.string_of_int e in
                 FStar_String.concat "" [sign_str; mantissa; "e"; exp_str]))
+let jcanon_number (lexeme : Prims.string) : Prims.string=
+  let uu___ = jld_number_parts lexeme in
+  match uu___ with
+  | (neg, int_start, int_len, frac_start, frac_len, exp) ->
+      let combined =
+        FStar_String.concat ""
+          [Parser_FastString.fs_byte_sub lexeme int_start int_len;
+          Parser_FastString.fs_byte_sub lexeme frac_start frac_len] in
+      let clen = Parser_FastString.fs_byte_length combined in
+      let lead =
+        jld_first_nonzero_pos combined Prims.int_zero (clen + Prims.int_one) in
+      if lead >= clen
+      then "0"
+      else
+        (let after_lead =
+           Parser_FastString.fs_byte_sub combined lead (clen - lead) in
+         let exp_total = exp - frac_len in
+         let keep =
+           jld_last_nonzero_len after_lead Prims.int_zero Prims.int_zero
+             ((Parser_FastString.fs_byte_length after_lead) + Prims.int_one) in
+         let digits =
+           Parser_FastString.fs_byte_sub after_lead Prims.int_zero keep in
+         let tz = (Parser_FastString.fs_byte_length after_lead) - keep in
+         let exp_total1 = exp_total + tz in
+         let k = Parser_FastString.fs_byte_length digits in
+         if k <= (Prims.of_int (15))
+         then jcanon_number_fmt lexeme
+         else
+           (let a =
+              jld_digits_to_nat digits Prims.int_zero
+                (Parser_FastString.fs_byte_length digits) Prims.int_zero
+                ((Parser_FastString.fs_byte_length digits) + Prims.int_one) in
+            jcanon_number_fmt (dtoa_shortest neg a exp_total1)))
 let jcanon_string (s : Prims.string) : Prims.string=
   FStar_String.concat "" ["\""; SPARQL_JSON_Escape.json_escape s; "\""]
 let rec jcanon_insert_sorted (kv : (Prims.string * Parser_JSON.json_val))
@@ -342,8 +511,7 @@ let uu___is_RDM_I18nDatatype (projectee : rdf_direction_mode) : Prims.bool=
 let uu___is_RDM_CompoundLiteral (projectee : rdf_direction_mode) :
   Prims.bool=
   match projectee with | RDM_CompoundLiteral -> true | uu___ -> false
-let jld_fresh_bnode (ctr : Prims.nat) :
-  (RDF_Graph_Executable.bnode_id * Prims.nat)=
+let jld_fresh_bnode (ctr : Prims.nat) : (RDF_Term.bnode_id * Prims.nat)=
   ((FStar_String.concat "" ["_jld_anon"; Prims.string_of_int ctr]),
     (ctr + Prims.int_one))
 let jld_is_bnode_label (s : Prims.string) : Prims.bool=
@@ -398,7 +566,7 @@ let jld_at_most_one_fragment (s : Prims.string) : Prims.bool=
      ((Parser_FastString.fs_byte_length s) + Prims.int_one))
     <= Prims.int_one
 let jld_iri_wf (s : Prims.string) : Prims.bool=
-  ((RDF_Graph_Executable.is_iri s) &&
+  ((RDF_Term.is_iri s) &&
      (jld_scan_wf s Prims.int_zero
         ((Parser_FastString.fs_byte_length s) + Prims.int_one)))
     && (jld_at_most_one_fragment s)
@@ -408,14 +576,14 @@ let jld_lang_tag_wf (s : Prims.string) : Prims.bool=
 let jld_predicate_iri_wf (s : Prims.string) : Prims.bool=
   (jld_iri_wf s) && (Prims.op_Negation (jld_is_bnode_label s))
 let jld_id_to_subject (s : Prims.string) :
-  RDF_Graph_Executable.subject FStar_Pervasives_Native.option=
+  RDF_Term.subject FStar_Pervasives_Native.option=
   if jld_is_bnode_label s
   then
     FStar_Pervasives_Native.Some
-      (RDF_Graph_Executable.S_BNode (jld_strip_bnode_prefix s))
+      (RDF_Term.S_BNode (jld_strip_bnode_prefix s))
   else
     if jld_iri_wf s
-    then FStar_Pervasives_Native.Some (RDF_Graph_Executable.S_IRI s)
+    then FStar_Pervasives_Native.Some (RDF_Term.S_IRI s)
     else FStar_Pervasives_Native.None
 let jld_is_keyword (k : Prims.string) : Prims.bool=
   (Parser_JSON.jbyte_at k Prims.int_zero) = (Prims.of_int (0x40))
@@ -424,7 +592,7 @@ let jld_as_array (v : Parser_JSON.json_val) :
   match v with | Parser_JSON.JArray items -> items | uu___ -> [v]
 let jld_make_literal (lexical : Prims.string) (dt : Prims.string)
   (lang : Prims.string FStar_Pervasives_Native.option) :
-  RDF_Graph_Executable.rdf_term FStar_Pervasives_Native.option=
+  RDF_Term.rdf_term FStar_Pervasives_Native.option=
   if
     (jld_iri_wf dt) &&
       (match lang with
@@ -433,31 +601,28 @@ let jld_make_literal (lexical : Prims.string) (dt : Prims.string)
   then
     let lit =
       {
-        RDF_Graph_Executable.lexical_form = lexical;
-        RDF_Graph_Executable.datatype = dt;
-        RDF_Graph_Executable.lang_tag = lang
+        RDF_Term.lexical_form = lexical;
+        RDF_Term.datatype = dt;
+        RDF_Term.lang_tag = lang
       } in
-    (if RDF_Graph_Executable.literal_wf lit
-     then FStar_Pervasives_Native.Some (RDF_Graph_Executable.T_Literal lit)
+    (if RDF_Term.literal_wf lit
+     then FStar_Pervasives_Native.Some (RDF_Term.T_Literal lit)
      else FStar_Pervasives_Native.None)
   else FStar_Pervasives_Native.None
 let jld_scalar_to_term (v : Parser_JSON.json_val) :
-  RDF_Graph_Executable.rdf_term FStar_Pervasives_Native.option=
+  RDF_Term.rdf_term FStar_Pervasives_Native.option=
   match v with
   | Parser_JSON.JString str ->
-      jld_make_literal str RDF_Graph_Executable.xsd_string
-        FStar_Pervasives_Native.None
+      jld_make_literal str RDF_Term.xsd_string FStar_Pervasives_Native.None
   | Parser_JSON.JBool b ->
-      jld_make_literal (if b then "true" else "false")
-        RDF_Graph_Executable.xsd_boolean FStar_Pervasives_Native.None
+      jld_make_literal (if b then "true" else "false") RDF_Term.xsd_boolean
+        FStar_Pervasives_Native.None
   | Parser_JSON.JNumber n ->
       let uu___ = jld_number_canonicalize n false in
       (match uu___ with
        | (lex, is_double) ->
            jld_make_literal lex
-             (if is_double
-              then RDF_Graph_Executable.xsd_double
-              else RDF_Graph_Executable.xsd_integer)
+             (if is_double then RDF_Term.xsd_double else RDF_Term.xsd_integer)
              FStar_Pervasives_Native.None)
   | uu___ -> FStar_Pervasives_Native.None
 let jld_i18n_direction_iri
@@ -470,7 +635,7 @@ let jld_i18n_direction_iri
   FStar_String.concat "" ["https://www.w3.org/ns/i18n#"; langpart; "_"; dir]
 let jld_value_object_to_term (rdir : rdf_direction_mode)
   (obj : Parser_JSON.json_val) :
-  RDF_Graph_Executable.rdf_term FStar_Pervasives_Native.option=
+  RDF_Term.rdf_term FStar_Pervasives_Native.option=
   match Parser_JSON.json_get_field "@value" obj with
   | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
   | FStar_Pervasives_Native.Some v ->
@@ -487,11 +652,10 @@ let jld_value_object_to_term (rdir : rdf_direction_mode)
                  | Parser_JSON.JString s ->
                      (match lang with
                       | FStar_Pervasives_Native.Some lg ->
-                          jld_make_literal s
-                            RDF_Graph_Executable.rdf_lang_string
+                          jld_make_literal s RDF_Term.rdf_lang_string
                             (FStar_Pervasives_Native.Some lg)
                       | FStar_Pervasives_Native.None ->
-                          jld_make_literal s RDF_Graph_Executable.xsd_string
+                          jld_make_literal s RDF_Term.xsd_string
                             FStar_Pervasives_Native.None)
                  | uu___ -> FStar_Pervasives_Native.None)
             | RDM_I18nDatatype ->
@@ -515,8 +679,7 @@ let jld_value_object_to_term (rdir : rdf_direction_mode)
                     FStar_Pervasives_Native.None
               | Parser_JSON.JNumber n ->
                   let uu___1 =
-                    jld_number_canonicalize n
-                      (d = RDF_Graph_Executable.xsd_double) in
+                    jld_number_canonicalize n (d = RDF_Term.xsd_double) in
                   (match uu___1 with
                    | (lex, uu___2) ->
                        jld_make_literal lex d FStar_Pervasives_Native.None)
@@ -526,24 +689,23 @@ let jld_value_object_to_term (rdir : rdf_direction_mode)
             | FStar_Pervasives_Native.Some lg ->
                 (match v with
                  | Parser_JSON.JString s ->
-                     jld_make_literal s RDF_Graph_Executable.rdf_lang_string
+                     jld_make_literal s RDF_Term.rdf_lang_string
                        (FStar_Pervasives_Native.Some lg)
                  | uu___ -> FStar_Pervasives_Native.None)
             | FStar_Pervasives_Native.None -> jld_scalar_to_term v))
 let jld_type_term (t : Prims.string) :
-  RDF_Graph_Executable.rdf_term FStar_Pervasives_Native.option=
+  RDF_Term.rdf_term FStar_Pervasives_Native.option=
   if jld_is_bnode_label t
   then
     FStar_Pervasives_Native.Some
-      (RDF_Graph_Executable.T_BNode (jld_strip_bnode_prefix t))
+      (RDF_Term.T_BNode (jld_strip_bnode_prefix t))
   else
     if jld_iri_wf t
-    then FStar_Pervasives_Native.Some (RDF_Graph_Executable.T_IRI t)
+    then FStar_Pervasives_Native.Some (RDF_Term.T_IRI t)
     else FStar_Pervasives_Native.None
-let rec jld_type_prepend_items (subj : RDF_Graph_Executable.subject)
+let rec jld_type_prepend_items (subj : RDF_Term.subject)
   (items : Parser_JSON.json_val Prims.list)
-  (acc : RDF_Graph_Executable.triple Prims.list) :
-  RDF_Graph_Executable.triple Prims.list=
+  (acc : RDF_Triple.triple Prims.list) : RDF_Triple.triple Prims.list=
   match items with
   | [] -> acc
   | (Parser_JSON.JString t)::rest ->
@@ -551,78 +713,72 @@ let rec jld_type_prepend_items (subj : RDF_Graph_Executable.subject)
        | FStar_Pervasives_Native.Some tm ->
            jld_type_prepend_items subj rest
              ({
-                RDF_Graph_Executable.s = subj;
-                RDF_Graph_Executable.p = rdf_type_iri;
-                RDF_Graph_Executable.o = tm
+                RDF_Triple.s = subj;
+                RDF_Triple.p = rdf_type_iri;
+                RDF_Triple.o = tm
               } :: acc)
        | FStar_Pervasives_Native.None -> jld_type_prepend_items subj rest acc)
   | uu___::rest -> jld_type_prepend_items subj rest acc
-let jld_type_prepend (subj : RDF_Graph_Executable.subject)
-  (v : Parser_JSON.json_val) (acc : RDF_Graph_Executable.triple Prims.list) :
-  RDF_Graph_Executable.triple Prims.list=
+let jld_type_prepend (subj : RDF_Term.subject) (v : Parser_JSON.json_val)
+  (acc : RDF_Triple.triple Prims.list) : RDF_Triple.triple Prims.list=
   jld_type_prepend_items subj (jld_as_array v) acc
-let jld_graph_name_of_subject (s : RDF_Graph_Executable.subject) :
-  RDF_Graph_Executable.iri=
+let jld_graph_name_of_subject (s : RDF_Term.subject) : RDF_Term.iri=
   match s with
-  | RDF_Graph_Executable.S_IRI i -> i
-  | RDF_Graph_Executable.S_BNode b -> FStar_String.concat "" ["_:"; b]
+  | RDF_Term.S_IRI i -> i
+  | RDF_Term.S_BNode b -> FStar_String.concat "" ["_:"; b]
 let jld_compound_literal_term (lex : Prims.string)
   (lang : Prims.string FStar_Pervasives_Native.option) (dir : Prims.string)
-  (ctr : Prims.nat) (acc : RDF_Graph_Executable.triple Prims.list) :
-  (RDF_Graph_Executable.rdf_term * RDF_Graph_Executable.triple Prims.list *
-    Prims.nat)=
+  (ctr : Prims.nat) (acc : RDF_Triple.triple Prims.list) :
+  (RDF_Term.rdf_term * RDF_Triple.triple Prims.list * Prims.nat)=
   let uu___ = jld_fresh_bnode ctr in
   match uu___ with
   | (b, ctr1) ->
-      let bsubj = RDF_Graph_Executable.S_BNode b in
+      let bsubj = RDF_Term.S_BNode b in
       let value_lit =
         {
-          RDF_Graph_Executable.lexical_form = lex;
-          RDF_Graph_Executable.datatype = RDF_Graph_Executable.xsd_string;
-          RDF_Graph_Executable.lang_tag = FStar_Pervasives_Native.None
+          RDF_Term.lexical_form = lex;
+          RDF_Term.datatype = RDF_Term.xsd_string;
+          RDF_Term.lang_tag = FStar_Pervasives_Native.None
         } in
       let dir_lit =
         {
-          RDF_Graph_Executable.lexical_form = dir;
-          RDF_Graph_Executable.datatype = RDF_Graph_Executable.xsd_string;
-          RDF_Graph_Executable.lang_tag = FStar_Pervasives_Native.None
+          RDF_Term.lexical_form = dir;
+          RDF_Term.datatype = RDF_Term.xsd_string;
+          RDF_Term.lang_tag = FStar_Pervasives_Native.None
         } in
       let acc1 =
         {
-          RDF_Graph_Executable.s = bsubj;
-          RDF_Graph_Executable.p = rdf_value_iri;
-          RDF_Graph_Executable.o = (RDF_Graph_Executable.T_Literal value_lit)
+          RDF_Triple.s = bsubj;
+          RDF_Triple.p = rdf_value_iri;
+          RDF_Triple.o = (RDF_Term.T_Literal value_lit)
         } :: acc in
       let acc2 =
         {
-          RDF_Graph_Executable.s = bsubj;
-          RDF_Graph_Executable.p = rdf_direction_iri;
-          RDF_Graph_Executable.o = (RDF_Graph_Executable.T_Literal dir_lit)
+          RDF_Triple.s = bsubj;
+          RDF_Triple.p = rdf_direction_iri;
+          RDF_Triple.o = (RDF_Term.T_Literal dir_lit)
         } :: acc1 in
       let acc3 =
         match lang with
         | FStar_Pervasives_Native.Some lg ->
             let lang_lit =
               {
-                RDF_Graph_Executable.lexical_form =
-                  (FStar_String.lowercase lg);
-                RDF_Graph_Executable.datatype =
-                  RDF_Graph_Executable.xsd_string;
-                RDF_Graph_Executable.lang_tag = FStar_Pervasives_Native.None
+                RDF_Term.lexical_form = (FStar_String.lowercase lg);
+                RDF_Term.datatype = RDF_Term.xsd_string;
+                RDF_Term.lang_tag = FStar_Pervasives_Native.None
               } in
             {
-              RDF_Graph_Executable.s = bsubj;
-              RDF_Graph_Executable.p = rdf_language_iri;
-              RDF_Graph_Executable.o =
-                (RDF_Graph_Executable.T_Literal lang_lit)
+              RDF_Triple.s = bsubj;
+              RDF_Triple.p = rdf_language_iri;
+              RDF_Triple.o = (RDF_Term.T_Literal lang_lit)
             } :: acc2
         | FStar_Pervasives_Native.None -> acc2 in
-      ((RDF_Graph_Executable.T_BNode b), acc3, ctr1)
+      ((RDF_Term.T_BNode b), acc3, ctr1)
 let jld_value_object_step (rdir : rdf_direction_mode)
   (obj : Parser_JSON.json_val) (ctr : Prims.nat)
-  (acc : RDF_Graph_Executable.triple Prims.list) :
-  (RDF_Graph_Executable.rdf_term FStar_Pervasives_Native.option *
-    RDF_Graph_Executable.triple Prims.list * Prims.nat)=
+  (acc : RDF_Triple.triple Prims.list) :
+  (RDF_Term.rdf_term FStar_Pervasives_Native.option * RDF_Triple.triple
+    Prims.list * Prims.nat)=
   match (rdir, (Parser_JSON.json_get_string "@direction" obj),
           (Parser_JSON.json_get_string "@type" obj),
           (Parser_JSON.json_get_field "@value" obj))
@@ -637,11 +793,10 @@ let jld_value_object_step (rdir : rdf_direction_mode)
   | uu___ -> ((jld_value_object_to_term rdir obj), acc, ctr)
 let rec jld_expand_value (rdir : rdf_direction_mode)
   (v : Parser_JSON.json_val) (ctr : Prims.nat)
-  (acc : RDF_Graph_Executable.triple Prims.list)
-  (named : RDF_Graph_Executable.named_graph Prims.list) (fuel : Prims.nat) :
-  (RDF_Graph_Executable.rdf_term FStar_Pervasives_Native.option *
-    RDF_Graph_Executable.triple Prims.list * RDF_Graph_Executable.named_graph
-    Prims.list * Prims.nat)=
+  (acc : RDF_Triple.triple Prims.list)
+  (named : RDF_Graph.named_graph Prims.list) (fuel : Prims.nat) :
+  (RDF_Term.rdf_term FStar_Pervasives_Native.option * RDF_Triple.triple
+    Prims.list * RDF_Graph.named_graph Prims.list * Prims.nat)=
   if fuel = Prims.int_zero
   then (FStar_Pervasives_Native.None, acc, named, ctr)
   else
@@ -670,23 +825,23 @@ let rec jld_expand_value (rdir : rdf_direction_mode)
                         (match osubj with
                          | FStar_Pervasives_Native.Some subj ->
                              ((FStar_Pervasives_Native.Some
-                                 (RDF_Graph_Executable.subject_to_term subj)),
-                               acc1, named1, ctr1)
+                                 (RDF_Graph.subject_to_term subj)), acc1,
+                               named1, ctr1)
                          | FStar_Pervasives_Native.None ->
                              (FStar_Pervasives_Native.None, acc1, named1,
                                ctr1)))))
      | uu___1 -> ((jld_scalar_to_term v), acc, named, ctr))
 and jld_expand_list (rdir : rdf_direction_mode)
   (items : Parser_JSON.json_val Prims.list) (ctr : Prims.nat)
-  (acc : RDF_Graph_Executable.triple Prims.list)
-  (named : RDF_Graph_Executable.named_graph Prims.list) (fuel : Prims.nat) :
-  (RDF_Graph_Executable.rdf_term * RDF_Graph_Executable.triple Prims.list *
-    RDF_Graph_Executable.named_graph Prims.list * Prims.nat)=
+  (acc : RDF_Triple.triple Prims.list)
+  (named : RDF_Graph.named_graph Prims.list) (fuel : Prims.nat) :
+  (RDF_Term.rdf_term * RDF_Triple.triple Prims.list * RDF_Graph.named_graph
+    Prims.list * Prims.nat)=
   if fuel = Prims.int_zero
-  then ((RDF_Graph_Executable.T_IRI rdf_nil_iri), acc, named, ctr)
+  then ((RDF_Term.T_IRI rdf_nil_iri), acc, named, ctr)
   else
     (match items with
-     | [] -> ((RDF_Graph_Executable.T_IRI rdf_nil_iri), acc, named, ctr)
+     | [] -> ((RDF_Term.T_IRI rdf_nil_iri), acc, named, ctr)
      | item::rest ->
          let uu___1 =
            jld_expand_value rdir item ctr acc named (fuel - Prims.int_one) in
@@ -700,30 +855,28 @@ and jld_expand_list (rdir : rdf_direction_mode)
                        (fuel - Prims.int_one) in
                    (match uu___3 with
                     | (rest_term, acc2, named2, ctr3) ->
-                        let cell_subj = RDF_Graph_Executable.S_BNode cell in
+                        let cell_subj = RDF_Term.S_BNode cell in
                         let acc3 =
                           {
-                            RDF_Graph_Executable.s = cell_subj;
-                            RDF_Graph_Executable.p = rdf_rest_iri;
-                            RDF_Graph_Executable.o = rest_term
+                            RDF_Triple.s = cell_subj;
+                            RDF_Triple.p = rdf_rest_iri;
+                            RDF_Triple.o = rest_term
                           } :: acc2 in
                         let acc4 =
                           match oterm with
                           | FStar_Pervasives_Native.Some t ->
                               {
-                                RDF_Graph_Executable.s = cell_subj;
-                                RDF_Graph_Executable.p = rdf_first_iri;
-                                RDF_Graph_Executable.o = t
+                                RDF_Triple.s = cell_subj;
+                                RDF_Triple.p = rdf_first_iri;
+                                RDF_Triple.o = t
                               } :: acc3
                           | FStar_Pervasives_Native.None -> acc3 in
-                        ((RDF_Graph_Executable.T_BNode cell), acc4, named2,
-                          ctr3)))))
+                        ((RDF_Term.T_BNode cell), acc4, named2, ctr3)))))
 and jld_expand_node (rdir : rdf_direction_mode) (v : Parser_JSON.json_val)
-  (ctr : Prims.nat) (acc : RDF_Graph_Executable.triple Prims.list)
-  (named : RDF_Graph_Executable.named_graph Prims.list) (fuel : Prims.nat) :
-  (RDF_Graph_Executable.subject FStar_Pervasives_Native.option *
-    RDF_Graph_Executable.triple Prims.list * RDF_Graph_Executable.named_graph
-    Prims.list * Prims.nat)=
+  (ctr : Prims.nat) (acc : RDF_Triple.triple Prims.list)
+  (named : RDF_Graph.named_graph Prims.list) (fuel : Prims.nat) :
+  (RDF_Term.subject FStar_Pervasives_Native.option * RDF_Triple.triple
+    Prims.list * RDF_Graph.named_graph Prims.list * Prims.nat)=
   if fuel = Prims.int_zero
   then (FStar_Pervasives_Native.None, acc, named, ctr)
   else
@@ -739,8 +892,8 @@ and jld_expand_node (rdir : rdf_direction_mode) (v : Parser_JSON.json_val)
                let uu___2 = jld_fresh_bnode ctr in
                (match uu___2 with
                 | (b, ctr') ->
-                    ((FStar_Pervasives_Native.Some
-                        (RDF_Graph_Executable.S_BNode b)), ctr')) in
+                    ((FStar_Pervasives_Native.Some (RDF_Term.S_BNode b)),
+                      ctr')) in
          (match uu___1 with
           | (subj_opt, ctr1) ->
               (match subj_opt with
@@ -756,9 +909,9 @@ and jld_expand_node (rdir : rdf_direction_mode) (v : Parser_JSON.json_val)
                          | (gtris, named1, ctr2) ->
                              let ng =
                                {
-                                 RDF_Graph_Executable.ng_name =
+                                 RDF_Graph.ng_name =
                                    (jld_graph_name_of_subject subj);
-                                 RDF_Graph_Executable.ng_graph = gtris
+                                 RDF_Graph.ng_graph = gtris
                                } in
                              let uu___3 =
                                jld_expand_fields rdir subj fields ctr2 acc
@@ -776,13 +929,12 @@ and jld_expand_node (rdir : rdf_direction_mode) (v : Parser_JSON.json_val)
                              ((FStar_Pervasives_Native.Some subj), acc1,
                                named1, ctr2)))))
      | uu___1 -> (FStar_Pervasives_Native.None, acc, named, ctr))
-and jld_expand_fields (rdir : rdf_direction_mode)
-  (subj : RDF_Graph_Executable.subject)
+and jld_expand_fields (rdir : rdf_direction_mode) (subj : RDF_Term.subject)
   (fields : (Prims.string * Parser_JSON.json_val) Prims.list)
-  (ctr : Prims.nat) (acc : RDF_Graph_Executable.triple Prims.list)
-  (named : RDF_Graph_Executable.named_graph Prims.list) (fuel : Prims.nat) :
-  (RDF_Graph_Executable.triple Prims.list * RDF_Graph_Executable.named_graph
-    Prims.list * Prims.nat)=
+  (ctr : Prims.nat) (acc : RDF_Triple.triple Prims.list)
+  (named : RDF_Graph.named_graph Prims.list) (fuel : Prims.nat) :
+  (RDF_Triple.triple Prims.list * RDF_Graph.named_graph Prims.list *
+    Prims.nat)=
   if fuel = Prims.int_zero
   then (acc, named, ctr)
   else
@@ -816,11 +968,11 @@ and jld_expand_fields (rdir : rdf_direction_mode)
               jld_expand_fields rdir subj rest ctr1 acc1 named1
                 (fuel - Prims.int_one)))
 and jld_expand_reverse_map (rdir : rdf_direction_mode)
-  (subj : RDF_Graph_Executable.subject) (v : Parser_JSON.json_val)
-  (ctr : Prims.nat) (acc : RDF_Graph_Executable.triple Prims.list)
-  (named : RDF_Graph_Executable.named_graph Prims.list) (fuel : Prims.nat) :
-  (RDF_Graph_Executable.triple Prims.list * RDF_Graph_Executable.named_graph
-    Prims.list * Prims.nat)=
+  (subj : RDF_Term.subject) (v : Parser_JSON.json_val) (ctr : Prims.nat)
+  (acc : RDF_Triple.triple Prims.list)
+  (named : RDF_Graph.named_graph Prims.list) (fuel : Prims.nat) :
+  (RDF_Triple.triple Prims.list * RDF_Graph.named_graph Prims.list *
+    Prims.nat)=
   if fuel = Prims.int_zero
   then (acc, named, ctr)
   else
@@ -830,12 +982,12 @@ and jld_expand_reverse_map (rdir : rdf_direction_mode)
            (fuel - Prims.int_one)
      | uu___1 -> (acc, named, ctr))
 and jld_expand_reverse_entries (rdir : rdf_direction_mode)
-  (subj : RDF_Graph_Executable.subject)
+  (subj : RDF_Term.subject)
   (entries : (Prims.string * Parser_JSON.json_val) Prims.list)
-  (ctr : Prims.nat) (acc : RDF_Graph_Executable.triple Prims.list)
-  (named : RDF_Graph_Executable.named_graph Prims.list) (fuel : Prims.nat) :
-  (RDF_Graph_Executable.triple Prims.list * RDF_Graph_Executable.named_graph
-    Prims.list * Prims.nat)=
+  (ctr : Prims.nat) (acc : RDF_Triple.triple Prims.list)
+  (named : RDF_Graph.named_graph Prims.list) (fuel : Prims.nat) :
+  (RDF_Triple.triple Prims.list * RDF_Graph.named_graph Prims.list *
+    Prims.nat)=
   if fuel = Prims.int_zero
   then (acc, named, ctr)
   else
@@ -853,12 +1005,12 @@ and jld_expand_reverse_entries (rdir : rdf_direction_mode)
               jld_expand_reverse_entries rdir subj rest ctr1 acc1 named1
                 (fuel - Prims.int_one)))
 and jld_expand_reverse_prop (rdir : rdf_direction_mode)
-  (subj : RDF_Graph_Executable.subject) (prop : RDF_Graph_Executable.wf_iri)
+  (subj : RDF_Term.subject) (prop : RDF_Term.wf_iri)
   (vals : Parser_JSON.json_val Prims.list) (ctr : Prims.nat)
-  (acc : RDF_Graph_Executable.triple Prims.list)
-  (named : RDF_Graph_Executable.named_graph Prims.list) (fuel : Prims.nat) :
-  (RDF_Graph_Executable.triple Prims.list * RDF_Graph_Executable.named_graph
-    Prims.list * Prims.nat)=
+  (acc : RDF_Triple.triple Prims.list)
+  (named : RDF_Graph.named_graph Prims.list) (fuel : Prims.nat) :
+  (RDF_Triple.triple Prims.list * RDF_Graph.named_graph Prims.list *
+    Prims.nat)=
   if fuel = Prims.int_zero
   then (acc, named, ctr)
   else
@@ -873,21 +1025,19 @@ and jld_expand_reverse_prop (rdir : rdf_direction_mode)
                 match osubj with
                 | FStar_Pervasives_Native.Some vsubj ->
                     {
-                      RDF_Graph_Executable.s = vsubj;
-                      RDF_Graph_Executable.p = prop;
-                      RDF_Graph_Executable.o =
-                        (RDF_Graph_Executable.subject_to_term subj)
+                      RDF_Triple.s = vsubj;
+                      RDF_Triple.p = prop;
+                      RDF_Triple.o = (RDF_Graph.subject_to_term subj)
                     } :: acc1
                 | FStar_Pervasives_Native.None -> acc1 in
               jld_expand_reverse_prop rdir subj prop rest ctr1 acc2 named1
                 (fuel - Prims.int_one)))
-and jld_expand_property (rdir : rdf_direction_mode)
-  (subj : RDF_Graph_Executable.subject) (prop : RDF_Graph_Executable.wf_iri)
-  (vals : Parser_JSON.json_val Prims.list) (ctr : Prims.nat)
-  (acc : RDF_Graph_Executable.triple Prims.list)
-  (named : RDF_Graph_Executable.named_graph Prims.list) (fuel : Prims.nat) :
-  (RDF_Graph_Executable.triple Prims.list * RDF_Graph_Executable.named_graph
-    Prims.list * Prims.nat)=
+and jld_expand_property (rdir : rdf_direction_mode) (subj : RDF_Term.subject)
+  (prop : RDF_Term.wf_iri) (vals : Parser_JSON.json_val Prims.list)
+  (ctr : Prims.nat) (acc : RDF_Triple.triple Prims.list)
+  (named : RDF_Graph.named_graph Prims.list) (fuel : Prims.nat) :
+  (RDF_Triple.triple Prims.list * RDF_Graph.named_graph Prims.list *
+    Prims.nat)=
   if fuel = Prims.int_zero
   then (acc, named, ctr)
   else
@@ -902,19 +1052,19 @@ and jld_expand_property (rdir : rdf_direction_mode)
                 match oterm with
                 | FStar_Pervasives_Native.Some t ->
                     {
-                      RDF_Graph_Executable.s = subj;
-                      RDF_Graph_Executable.p = prop;
-                      RDF_Graph_Executable.o = t
+                      RDF_Triple.s = subj;
+                      RDF_Triple.p = prop;
+                      RDF_Triple.o = t
                     } :: acc1
                 | FStar_Pervasives_Native.None -> acc1 in
               jld_expand_property rdir subj prop rest ctr1 acc2 named1
                 (fuel - Prims.int_one)))
 and jld_expand_graph_nodes (rdir : rdf_direction_mode)
   (nodes : Parser_JSON.json_val Prims.list) (ctr : Prims.nat)
-  (acc : RDF_Graph_Executable.triple Prims.list)
-  (named : RDF_Graph_Executable.named_graph Prims.list) (fuel : Prims.nat) :
-  (RDF_Graph_Executable.triple Prims.list * RDF_Graph_Executable.named_graph
-    Prims.list * Prims.nat)=
+  (acc : RDF_Triple.triple Prims.list)
+  (named : RDF_Graph.named_graph Prims.list) (fuel : Prims.nat) :
+  (RDF_Triple.triple Prims.list * RDF_Graph.named_graph Prims.list *
+    Prims.nat)=
   if fuel = Prims.int_zero
   then (acc, named, ctr)
   else
@@ -928,11 +1078,11 @@ and jld_expand_graph_nodes (rdir : rdf_direction_mode)
               jld_expand_graph_nodes rdir rest ctr1 acc1 named1
                 (fuel - Prims.int_one)))
 let jld_expand_top (rdir : rdf_direction_mode) (v : Parser_JSON.json_val)
-  (dflt : RDF_Graph_Executable.triple Prims.list)
-  (named : RDF_Graph_Executable.named_graph Prims.list) (ctr : Prims.nat)
+  (dflt : RDF_Triple.triple Prims.list)
+  (named : RDF_Graph.named_graph Prims.list) (ctr : Prims.nat)
   (fuel : Prims.nat) :
-  (RDF_Graph_Executable.triple Prims.list * RDF_Graph_Executable.named_graph
-    Prims.list * Prims.nat)=
+  (RDF_Triple.triple Prims.list * RDF_Graph.named_graph Prims.list *
+    Prims.nat)=
   match v with
   | Parser_JSON.JObject fields ->
       (match Parser_JSON.json_get_field "@graph" v with
@@ -947,8 +1097,8 @@ let jld_expand_top (rdir : rdf_direction_mode) (v : Parser_JSON.json_val)
                  let uu___1 = jld_fresh_bnode ctr in
                  (match uu___1 with
                   | (b, ctr') ->
-                      ((FStar_Pervasives_Native.Some
-                          (RDF_Graph_Executable.S_BNode b)), ctr')) in
+                      ((FStar_Pervasives_Native.Some (RDF_Term.S_BNode b)),
+                        ctr')) in
            (match uu___ with
             | (subj_opt, ctr1) ->
                 (match subj_opt with
@@ -966,9 +1116,9 @@ let jld_expand_top (rdir : rdf_direction_mode) (v : Parser_JSON.json_val)
                            | (dflt1, named2, ctr3) ->
                                let ng =
                                  {
-                                   RDF_Graph_Executable.ng_name =
+                                   RDF_Graph.ng_name =
                                      (jld_graph_name_of_subject gsubj);
-                                   RDF_Graph_Executable.ng_graph = gtris
+                                   RDF_Graph.ng_graph = gtris
                                  } in
                                (dflt1, (ng :: named2), ctr3)))))
        | FStar_Pervasives_Native.None ->
@@ -978,11 +1128,11 @@ let jld_expand_top (rdir : rdf_direction_mode) (v : Parser_JSON.json_val)
   | uu___ -> (dflt, named, ctr)
 let rec jld_expand_tops (rdir : rdf_direction_mode)
   (vs : Parser_JSON.json_val Prims.list)
-  (dflt : RDF_Graph_Executable.triple Prims.list)
-  (named : RDF_Graph_Executable.named_graph Prims.list) (ctr : Prims.nat)
+  (dflt : RDF_Triple.triple Prims.list)
+  (named : RDF_Graph.named_graph Prims.list) (ctr : Prims.nat)
   (fuel : Prims.nat) :
-  (RDF_Graph_Executable.triple Prims.list * RDF_Graph_Executable.named_graph
-    Prims.list * Prims.nat)=
+  (RDF_Triple.triple Prims.list * RDF_Graph.named_graph Prims.list *
+    Prims.nat)=
   if fuel = Prims.int_zero
   then (dflt, named, ctr)
   else
@@ -1000,7 +1150,7 @@ let rec jld_only_graph_keys
   | (k, uu___)::rest -> (k = "@graph") && (jld_only_graph_keys rest)
 let jld_dataset_of_json (rdir : rdf_direction_mode)
   (root : Parser_JSON.json_val) :
-  RDF_Graph_Executable.rdf_dataset FStar_Pervasives_Native.option=
+  RDF_Graph.rdf_dataset FStar_Pervasives_Native.option=
   let fuel = (Parser_JSON.json_size root) + Prims.int_one in
   match root with
   | Parser_JSON.JArray tops ->
@@ -1010,8 +1160,8 @@ let jld_dataset_of_json (rdir : rdf_direction_mode)
            FStar_Pervasives_Native.Some
              (RDF_Graph_Executable.dataset_finalise
                 {
-                  RDF_Graph_Executable.ds_default = d;
-                  RDF_Graph_Executable.ds_named = (FStar_List_Tot_Base.rev n)
+                  RDF_Graph.ds_default = d;
+                  RDF_Graph.ds_named = (FStar_List_Tot_Base.rev n)
                 }))
   | Parser_JSON.JObject fields ->
       let tops =
@@ -1027,8 +1177,8 @@ let jld_dataset_of_json (rdir : rdf_direction_mode)
            FStar_Pervasives_Native.Some
              (RDF_Graph_Executable.dataset_finalise
                 {
-                  RDF_Graph_Executable.ds_default = d;
-                  RDF_Graph_Executable.ds_named = (FStar_List_Tot_Base.rev n)
+                  RDF_Graph.ds_default = d;
+                  RDF_Graph.ds_named = (FStar_List_Tot_Base.rev n)
                 }))
   | uu___ -> FStar_Pervasives_Native.None
 let jld_has_inline_context (root : Parser_JSON.json_val) : Prims.bool=
@@ -1049,7 +1199,7 @@ let parse_jsonld (input : Prims.string)
   (rdf_direction : Prims.string FStar_Pervasives_Native.option)
   (expand_context : Prims.string FStar_Pervasives_Native.option)
   (processing_mode : Prims.string FStar_Pervasives_Native.option) :
-  RDF_Graph_Executable.rdf_dataset FStar_Pervasives_Native.option=
+  RDF_Graph.rdf_dataset FStar_Pervasives_Native.option=
   let rdir = rdf_direction_mode_of_option rdf_direction in
   let mode10 =
     match processing_mode with
