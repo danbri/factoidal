@@ -1,5 +1,5 @@
 === XSLT 1.0 Transform Runner ===
-suite dir: /home/user/factoidal/.claude/worktrees/agent-a5de26b2ee90c95fd/third_party/testing/xslt
+suite dir: /home/user/factoidal/third_party/testing/xslt
 
 Manifest entries: 88
 
@@ -10,11 +10,11 @@ Manifest entries: 88
   boolean            exact:0   loose:0   fail:2   skip:0   (of 2)
   bug                exact:3   loose:0   fail:0   skip:0   (of 3)
   construct-node     exact:0   loose:0   fail:1   skip:0   (of 1)
-  copy               exact:9   loose:0   fail:7   skip:0   (of 16)
+  copy               exact:14  loose:0   fail:2   skip:0   (of 16)
   expression         exact:1   loose:0   fail:0   skip:0   (of 1)
-  function-available exact:0   loose:0   fail:1   skip:0   (of 1)
+  function-available exact:1   loose:0   fail:0   skip:0   (of 1)
   id                 exact:0   loose:0   fail:1   skip:0   (of 1)
-  lre                exact:0   loose:0   fail:1   skip:0   (of 1)
+  lre                exact:1   loose:0   fail:0   skip:0   (of 1)
   match              exact:4   loose:0   fail:1   skip:0   (of 5)
   math               exact:1   loose:0   fail:0   skip:0   (of 1)
   namespace          exact:1   loose:0   fail:4   skip:0   (of 5)
@@ -24,9 +24,9 @@ Manifest entries: 88
   sort               exact:23  loose:0   fail:1   skip:0   (of 24)
   variable           exact:1   loose:0   fail:0   skip:0   (of 1)
 
--- FAIL clusters (26 total) --
+-- FAIL clusters (19 total) --
   [1] apply-templates
-        conflict-resolution-1301: got "<fo:root><fo:layout-master-set><fo:simple-page-master page-height=\"11in\" page-width=\"8.5in\226\128\166" vs want "<fo:root xmlns:fo=\"http://www.w3.org/1999/XSL/Format\" xmlns=\"http://www.w3.org/1999/xhtml\"\226\128\166"
+        conflict-resolution-1301: got "<fo:root xmlns=\"http://www.w3.org/1999/xhtml\" xmlns:fo=\"http://www.w3.org/1999/XSL/Format\"\226\128\166" vs want "<fo:root xmlns:fo=\"http://www.w3.org/1999/XSL/Format\" xmlns=\"http://www.w3.org/1999/xhtml\"\226\128\166"
   [3] axes
         axes-047: got "<out>111121314151617182131415161718191a1b1c1d1e1f1g1h1i1j1k1l1m1n1o1p1; 111121314151617182\226\128\166" vs want "<out>111121314151617182131415161718191a1b1c1d1e1f1g1h1i1j1k1l1m1n1o1p1; 111121314151617182\226\128\166"
         axes-090: got "<out> DS 1. AC: north DS 2. AD: DS 3. BC: north DS 4. BD: near-north NDS 5. CC: north NDS \226\128\166" vs want "<out> DS 1. AC: north DS 2. AD: near-north DS 3. BC: north DS 4. BD: near-north NDS 5. CC:\226\128\166"
@@ -35,22 +35,17 @@ Manifest entries: 88
         boolean-026: got "<out><true value=\"\"/><true value=\"\"/><true value=\"\"/><true value=\"\"/><true value=\"\"/><true\226\128\166" vs want "<out><true value=\"true\"/><true value=\"true\"/><true value=\"true\"/><true value=\"true\"/><true\226\128\166"
         boolean-027: got "<out><t01 value=\"\"/><t02 value=\"\"/><t03 value=\"\"/><f04 value=\"\"/><t05 value=\"\"/><f06 value\226\128\166" vs want "<out><t01 value=\"true\"/><t02 value=\"true\"/><t03 value=\"true\"/><f04 value=\"false\"/><t05 val\226\128\166"
   [1] construct-node
-        construct-node-026: got "<out> <p xmlns:xsl=\"http://www.w3.org/1999/XSL/Transform\">Everything is about xslt</p> </o\226\128\166" vs want "<out> <stylesheet>href=\"mine.css\" type=\"text/css\"</stylesheet> <p>Everything is about xslt\226\128\166"
-  [7] copy
+        construct-node-026: got "<out> <p>Everything is about xslt</p> </out>" vs want "<out> <stylesheet>href=\"mine.css\" type=\"text/css\"</stylesheet> <p>Everything is about xslt\226\128\166"
+  [2] copy
         copy-0601: got "<output><with-namespaces><pink xmlns:rose=\"http://www.rose.com\"> <green xmlns:grass=\"http:\226\128\166" vs want "<output><with-namespaces><pink xmlns:rose=\"http://www.rose.com\"> <green xmlns:grass=\"http:\226\128\166"
         copy-2601: got "<OUTLINE xmlns:xlink=\"http://www.w3.org/1999/xlink\"><NODE type=\"book\" xlink:href=\"hello.ht\226\128\166" vs want "<!-- Leave line-breaks as-is --><OUTLINE xmlns:xlink=\"http://www.w3.org/1999/xlink\"><NODE \226\128\166"
-        copy-3101: got "<out><union> <bar xmlns:yow=\"http://yow.test.com\">18 Generic Ave.</bar><bar xmlns:huh=\"htt\226\128\166" vs want "<out xmlns:foo=\"http://foo.test.com\" xmlns:joes=\"http://joes.com\"><union> <bar xmlns:yow=\"\226\128\166"
-  [1] function-available
-        function-available-1006: got "<out>; ; ; ; ; </out>" vs want "<out xmlns:fn=\"http://www.w3.org/2003/05/xpath-functions\">; false; false; false; false; </\226\128\166"
   [1] id
         id-016: got "<out> Test for id selection and pattern matching... Next line should read: -*id17*- -*id17\226\128\166" vs want "<out> Test for id selection and pattern matching... Next line should read: -*id17*- -*id17\226\128\166"
-  [1] lre
-        lre-004: got "<out x=\"by the corner\"> <sits x=\"little jack horner\" xsl:exclude-result-prefixes=\"jad\"/> <\226\128\166" vs want "<out xmlns:bdd=\"http://buster.com\" xmlns:jad=\"http://administrator.com\" x=\"by the corner\">\226\128\166"
   [1] match
         match-045: got "<root xmlns:xhtml=\"http://www.w3.org/1999/xhtml\"> <test> <xhtml:html> <xhtml:form xhtml:id\226\128\166" vs want "<root xmlns:xhtml=\"http://www.w3.org/1999/xhtml\"> <test> <html> <form id=\"test\"> <a> <br/>\226\128\166"
   [4] namespace
-        namespace-1701: got "<out> Correct output: 8 lines, saying \"value is n\" where n is 1..8 value is 1 value is 2 v\226\128\166" vs want "<out xmlns=\"http://www.w3.org/TR/REC-html40\"> Correct output: 8 lines, saying \"value is n\"\226\128\166"
-        namespace-4101: got "Hello" vs want "<out> 0 http://xsl.lotus.com/ns2: 1 http://xsl.lotus.com/ns1: 2 http://xsl.lotus.com/ns1: \226\128\166"
+        namespace-1701: got "<out xmlns=\"http://www.w3.org/TR/REC-html40\"> Correct output: 8 lines, saying \"value is n\"\226\128\166" vs want "<out xmlns=\"http://www.w3.org/TR/REC-html40\"> Correct output: 8 lines, saying \"value is n\"\226\128\166"
+        namespace-4101: got "<out> 0 : 1 : 2 : 3 : 4 : 5 : 6 : 7 : </out>" vs want "<out> 0 http://xsl.lotus.com/ns2: 1 http://xsl.lotus.com/ns1: 2 http://xsl.lotus.com/ns1: \226\128\166"
         namespace-4501: got "<out> <literalName> <hello1/><hello2><hiya/></hello2> <hello3><yo1/><yo2/></hello3> <hello\226\128\166" vs want "<out> <literalName xmlns=\"http://literalURI\"> <hello1 xmlns=\"\"/><hello2><hiya xmlns=\"\"/></\226\128\166"
   [2] node
         node-1102: got "<out>topN-content: , N-named:a-pi..., N-content: , N-content: This is the 1st comment , N-\226\128\166" vs want "<out>A:att N-content: , N-named:a-pi..., N-content: , N-content: This is the 1st comment ,\226\128\166"
@@ -61,7 +56,7 @@ Manifest entries: 88
         sort-043: got "<out><item>Namespaces</item> <item>URI</item> <item>XML</item> <item>XSLT</item> <item>XSL\226\128\166" vs want "<out><item>document</item> <item>elements</item> <item>mechanism</item> <item>must</item> \226\128\166"
 
 ========================================
-  pass-exact: 62
+  pass-exact: 69
   pass-loose (whitespace-collapsed): 0
 ========================================
-XSLT 1.0 tests: 62 pass, 26 fail, 0 skip (out of 88)
+XSLT 1.0 tests: 69 pass, 19 fail, 0 skip (out of 88)
