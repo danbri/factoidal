@@ -146,15 +146,18 @@ ShExJ's AST shapes differ from SHACL's RDF-graph-encoded shapes):**
 
 ## Scope cuts
 
-1. **ShExJ-first; ShExC deferred indefinitely.** Loses
-   `negativeSyntax` (100 tests, by construction ShExC-grammar-only),
-   `schemas/`'s `RepresentationTest` (441, requires round-trip
-   conversion), and 4 of 346 validation schemas lacking a `.json`
-   twin. Everything else — 1186/1190 validation entries, all 14
-   `negativeStructure` entries — reachable via ShExJ alone. A ShExC
-   grammar is a program of its own size (comparable to Turtle's, per
-   iron rule #4: new parsers are F\*-first) and is not justified until
-   the ShExJ-reachable 99.7% is done.
+1. **ShExJ-first; ShExC as Stage 9.** *(Original cut: "deferred
+   indefinitely". SUPERSEDED — Stage 9 landed: `Parser.ShExC.fst`
+   parses compact syntax into the shared AST, differentially checked
+   against the ShExJ twins via `shex_runner --differential`, 433 of
+   433 structurally equal.)* The original rationale: ShExJ alone
+   reaches 1186/1190 validation entries and all 14 `negativeStructure`
+   entries; a ShExC grammar is a program of its own size (comparable
+   to Turtle's, per iron rule #4: new parsers are F\*-first), so it
+   waited until the ShExJ-reachable 99.7% was done. Still open even
+   with the parser landed: `negativeSyntax` (100 ShExC-grammar-only
+   reject tests) and `schemas/` `RepresentationTest` (441 round-trip
+   conversions) are not yet scored suites.
 2. **Logic-conformant only.** Boolean pass/fail; no
    `ValidationResult`/error-report structure matching (the suite's own
    README calls those tiers experimental).

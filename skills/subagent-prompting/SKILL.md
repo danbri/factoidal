@@ -90,6 +90,18 @@ writing it, then briefed an agent without it. The brief is where the
 knowledge has to live — agents don't browse skills they weren't
 pointed at.
 
+## Feature-landing briefs (MANDATORY): the obsolescence sweep
+
+Any brief that lands new capability or moves a score MUST instruct the
+agent, before its single commit: run
+`tools/obsolescence-sweep.sh <feature keywords>` and correct every
+statement the landing falsifies (docs, hub posts, skills, .fst header
+comments, `.github/test-suites/*.yaml` gap lists, ledger, dashboard
+prose) in the same commit. Full procedure + lexicon:
+[obsolescence-sweep](../obsolescence-sweep/SKILL.md). Born of
+2026-07-10: three stale "we don't have X" claims shipped on the public
+dashboard while X sat in the tree.
+
 Every agent prompt MUST end with this block:
 
 ```
