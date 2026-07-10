@@ -230,16 +230,14 @@ let str_contains s m =
 let text_has_gap texts =
   List.exists (fun s -> List.exists (str_contains s) xslt_gap_markers) texts
 
-(* The XSLT engine's name tests are prefix-string based, not
-   namespace-URI aware -- XSLT.Transform.fst lists "prefix-aware match
-   patterns" as deliberately out of scope. GRDDL stylesheets bind a
-   namespace prefix (html:, h:, ...) to the SOURCE's namespace and use
-   it in XPath; when the source puts those elements in the DEFAULT
-   namespace (an `xmlns="..."` declaration), a prefixed name test never
-   matches, so the transform returns empty selections. Detect that
-   documented-gap condition on the source. *)
-let source_has_default_ns input =
-  str_contains input "xmlns=\"" || str_contains input "xmlns='"
+(* Namespace-URI-aware XPath name tests are now implemented in the XSLT
+   engine (XPath.Eval.matches_node_test / XSLT.Transform.pstep_ok): a
+   PREFIXED name test resolves its prefix via the stylesheet's in-scope
+   namespaces and the source element's name via its own (default xmlns
+   included), then compares (namespace-URI, local-name) pairs. The former
+   `fail-known-gap-xslt-nametest` bucket (source in a default namespace
+   that prefixed tests could not match) is therefore retired; any
+   remaining graph mismatch is bucketed by the real reason below. *)
 
 (* Run one Stage-1 test: discover, transform, compare. *)
 let run_local (t : gtest) : outcome =
@@ -297,7 +295,6 @@ let run_local (t : gtest) : outcome =
                  (GRDDL_Discovery.graph_to_canonical_nquads expected)
              | _ -> ());
             if GRDDL_Discovery.graphs_isomorphic result expected then Pass
-            else if source_has_default_ns input then Fail "fail-known-gap-xslt-nametest"
             else if text_has_gap sty_srcs then Fail "fail-known-gap-xslt-feature"
             else Fail "fail-graph-mismatch"
         end

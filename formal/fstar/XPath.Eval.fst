@@ -485,7 +485,142 @@ let string_starts_with (s prefix:string) : bool =
   let lp = String.length prefix in
   String.length s >= lp && String.sub s 0 lp = prefix
 
-let matches_node_test (test:xp_nodetest) (it:xctx_item) : bool =
+(* ================================================================ *)
+(* Namespace-URI-aware name tests (XPath 1.0 §2.3).                    *)
+(*                                                                     *)
+(* A PREFIXED name test (`p:local`) resolves its prefix against the    *)
+(* EXPRESSION's in-scope namespace context `nsctx` (a prefix -> URI    *)
+(* map the host threads in -- for XSLT this is the stylesheet          *)
+(* element's xmlns:* declarations). The candidate element's own name   *)
+(* resolves against the SOURCE tree's in-scope namespaces (its own     *)
+(* xmlns:*/xmlns attributes plus those inherited from its ancestors).  *)
+(* The test matches iff the local-names are equal AND the namespace    *)
+(* URIs are equal. This is what lets a stylesheet that binds           *)
+(* `html:`/`h:` to the XHTML namespace match source elements placed in *)
+(* that namespace via a DEFAULT `xmlns="..."` declaration.             *)
+(*                                                                     *)
+(* An UNprefixed name test has namespace-URI = null and therefore      *)
+(* matches ONLY null-namespace elements -- NOT default-namespaced ones *)
+(* (that would be XPath 2.0 default-element-namespace behaviour, wrong *)
+(* for XSLT 1.0). Attributes are never in the default namespace.       *)
+(*                                                                     *)
+(* When a prefix cannot be resolved in `nsctx` (a consumer that        *)
+(* threads no context -- Schematron/MathML pass []; or a genuinely     *)
+(* foreign prefix) the test falls back to the legacy textual           *)
+(* (qname-string) comparison so pre-namespace-aware callers keep their *)
+(* behaviour unchanged.                                                *)
+(* ================================================================ *)
+
+let rec find_char_from (s:string) (c:FStar.Char.char) (pos:nat) (len:nat{len = String.length s})
+  : Tot (option (n:nat{n < String.length s})) (decreases (if len > pos then len - pos else 0)) =
+  if pos >= len then None
+  else if String.index s pos = c then Some pos
+  else find_char_from s c (pos + 1) len
+
+let local_name_of (qn:string) : string =
+  match find_char_from qn ':' 0 (String.length qn) with
+  | Some i -> String.sub qn (i + 1) (String.length qn - i - 1)
+  | None -> qn
+
+// The "xml" prefix is bound to this URI in every document (Namespaces
+// in XML §3), independent of any declaration.
+let xpath_xml_ns_uri : string = "http://www.w3.org/XML/1998/namespace"
+
+// Prefix of a QName ("" when unprefixed).
+let prefix_of (qn:string) : string =
+  match find_char_from qn ':' 0 (String.length qn) with
+  | Some i -> String.sub qn 0 i
+  | None -> ""
+
+// If attribute `a` declares namespace prefix `pfx` (pfx="" = default
+// xmlns), the declared URI ("" for an explicit unbind); else None.
+let ns_decl_for (pfx:string) (a:xml_attribute) : option string =
+  if pfx = "" then (if a.attr_name = "xmlns" then Some a.attr_value else None)
+  else if a.attr_name = String.concat "" ["xmlns:"; pfx] then Some a.attr_value
+  else None
+
+let rec find_ns_in_attrs (pfx:string) (attrs:list xml_attribute)
+  : Tot (option string) (decreases attrs) =
+  match attrs with
+  | [] -> None
+  | a :: rest -> (match ns_decl_for pfx a with Some u -> Some u | None -> find_ns_in_attrs pfx rest)
+
+// Resolve `pfx` against a source element's own attributes then its
+// ancestors (nearest-first). None = not bound (so the default prefix ""
+// with no declaration means null namespace). An explicit unbind
+// (xmlns:pfx="" / xmlns="") normalises to None (null namespace).
+let rec resolve_ns_anc (pfx:string) (anc:list xml_node) : Tot (option string) (decreases anc) =
+  match anc with
+  | [] -> if pfx = "xml" then Some xpath_xml_ns_uri else None
+  | e :: rest ->
+    (match find_ns_in_attrs pfx (element_attrs e) with
+     | Some u -> if u = "" then None else Some u
+     | None -> resolve_ns_anc pfx rest)
+
+let resolve_ns_uri (pfx:string) (own_attrs:list xml_attribute) (anc:list xml_node) : option string =
+  match find_ns_in_attrs pfx own_attrs with
+  | Some u -> if u = "" then None else Some u
+  | None -> resolve_ns_anc pfx anc
+
+// Namespace URI of a source element given its tag, own attributes, and
+// ancestors (None = null namespace).
+let elem_ns_uri (tag:string) (own_attrs:list xml_attribute) (anc:list xml_node) : option string =
+  resolve_ns_uri (prefix_of tag) own_attrs anc
+
+let rec lookup_nsctx (nsctx:list (string & string)) (pfx:string)
+  : Tot (option string) (decreases nsctx) =
+  match nsctx with
+  | [] -> None
+  | (p, u) :: rest -> if p = pfx then Some u else lookup_nsctx rest pfx
+
+// Do two optional namespace URIs denote the same namespace? A test URI
+// of "" (empty in nsctx) denotes the null namespace, equal to None.
+let ns_uri_eq (a b:option string) : bool =
+  match a, b with
+  | None, None -> true
+  | Some x, Some y -> x = y
+  | Some x, None | None, Some x -> x = ""
+
+// Element name test: `nm` (the test QName) against a source element.
+let name_test_matches_elem (nsctx:list (string & string)) (nm:string)
+                           (own_attrs:list xml_attribute) (anc:list xml_node) (tag:string) : bool =
+  let tpfx = prefix_of nm in
+  let tlocal = local_name_of nm in
+  let elocal = local_name_of tag in
+  if tpfx = "" then
+    // unprefixed: null namespace, local-name must match a null-namespace element
+    elocal = tlocal && None? (elem_ns_uri tag own_attrs anc)
+  else
+    (match lookup_nsctx nsctx tpfx with
+     | None -> tag = nm   // prefix not in context: legacy textual fallback
+     | Some turi ->
+       elocal = tlocal && ns_uri_eq (elem_ns_uri tag own_attrs anc) (Some turi))
+
+// prefix:* wildcard element test.
+let prefix_test_matches_elem (nsctx:list (string & string)) (pfx:string)
+                             (own_attrs:list xml_attribute) (anc:list xml_node) (tag:string) : bool =
+  match lookup_nsctx nsctx pfx with
+  | None -> string_starts_with tag (pfx ^ ":")   // legacy textual fallback
+  | Some turi -> ns_uri_eq (elem_ns_uri tag own_attrs anc) (Some turi)
+
+// Attribute name test. Attributes are never in the default namespace,
+// so an unprefixed test matches only unprefixed attributes; a prefixed
+// test resolves the attribute's own prefix against its owner element.
+let attr_name_test (nsctx:list (string & string)) (nm:string)
+                   (anc:list xml_node) (owner:xml_node) (a:xml_attribute) : bool =
+  let tpfx = prefix_of nm in
+  if tpfx = "" then
+    prefix_of a.attr_name = "" && local_name_of a.attr_name = local_name_of nm
+  else
+    (match lookup_nsctx nsctx tpfx with
+     | None -> a.attr_name = nm   // legacy textual fallback
+     | Some turi ->
+       let apfx = prefix_of a.attr_name in
+       apfx <> "" &&
+       local_name_of a.attr_name = local_name_of nm &&
+       ns_uri_eq (resolve_ns_uri apfx (element_attrs owner) anc) (Some turi))
+
+let matches_node_test (nsctx:list (string & string)) (test:xp_nodetest) (it:xctx_item) : bool =
   match test, it with
   | NT_Node, _ -> true
   | NT_Text, CI_Text _ _ _ _ -> true
@@ -498,16 +633,17 @@ let matches_node_test (test:xp_nodetest) (it:xctx_item) : bool =
   | NT_Any, CI_Elem _ _ _ -> true
   | NT_Any, CI_Attr _ _ _ _ -> true
   | NT_Any, _ -> false
-  | NT_Name nm, CI_Elem _ _ n -> (match element_tag n with Some t -> t = nm | None -> false)
-  | NT_Name nm, CI_Attr _ _ _ a -> a.attr_name = nm
+  | NT_Name nm, CI_Elem _ anc n ->
+    (match element_tag n with Some t -> name_test_matches_elem nsctx nm (element_attrs n) anc t | None -> false)
+  | NT_Name nm, CI_Attr _ anc owner a -> attr_name_test nsctx nm anc owner a
   | NT_Name _, _ -> false
-  | NT_Prefix pfx, CI_Elem _ _ n ->
-    (match element_tag n with Some t -> string_starts_with t (pfx ^ ":") | None -> false)
+  | NT_Prefix pfx, CI_Elem _ anc n ->
+    (match element_tag n with Some t -> prefix_test_matches_elem nsctx pfx (element_attrs n) anc t | None -> false)
   | NT_Prefix pfx, CI_Attr _ _ _ a -> string_starts_with a.attr_name (pfx ^ ":")
   | NT_Prefix _, _ -> false
 
-let filter_by_node_test (test:xp_nodetest) (items:list xctx_item) : list xctx_item =
-  List.Tot.filter (matches_node_test test) items
+let filter_by_node_test (nsctx:list (string & string)) (test:xp_nodetest) (items:list xctx_item) : list xctx_item =
+  List.Tot.filter (matches_node_test nsctx test) items
 
 let rec list_last_or (default_val:xml_node) (l:list xml_node) : Tot xml_node (decreases l) =
   match l with
@@ -584,6 +720,10 @@ noeq type xp_env = {
   env_pos  : nat;
   env_size : nat;
   env_vars : list (string & xp_value);
+  // In-scope namespace context (prefix -> URI) for resolving PREFIXED
+  // name tests in this expression (XPath 1.0 §2.3). [] = no context
+  // (name tests fall back to legacy textual comparison).
+  env_nsctx : list (string & string);
 }
 
 let lookup_var (vars:list (string & xp_value)) (name:string) : option xp_value =
@@ -789,17 +929,6 @@ let item_qname (it:xctx_item) : string =
   | CI_PI _ _ _ tg _ -> tg   // name()/local-name() of a PI is its target
   | _ -> ""
 
-let rec find_char_from (s:string) (c:FStar.Char.char) (pos:nat) (len:nat{len = String.length s})
-  : Tot (option (n:nat{n < String.length s})) (decreases (if len > pos then len - pos else 0)) =
-  if pos >= len then None
-  else if String.index s pos = c then Some pos
-  else find_char_from s c (pos + 1) len
-
-let local_name_of (qn:string) : string =
-  match find_char_from qn ':' 0 (String.length qn) with
-  | Some i -> String.sub qn (i + 1) (String.length qn - i - 1)
-  | None -> qn
-
 let rec sum_items (items:list xctx_item) : Tot xpath_number (decreases items) =
   match items with
   | [] -> XN_Finite 0 0
@@ -928,14 +1057,14 @@ let rec eval_expr (fuel:nat) (env:xp_env) (e:xp_expr) : Tot xp_value (decreases 
        | _, _ -> XV_Nodes [])
     | XE_FunCall name args -> eval_funcall (fuel - 1) env name args
     | XE_Path absolute steps ->
-      if absolute then XV_Nodes (eval_absolute_steps (fuel - 1) env.env_vars (root_of_item env.env_item) steps)
-      else XV_Nodes (eval_steps (fuel - 1) env.env_vars [env.env_item] steps)
+      if absolute then XV_Nodes (eval_absolute_steps (fuel - 1) env.env_vars env.env_nsctx (root_of_item env.env_item) steps)
+      else XV_Nodes (eval_steps (fuel - 1) env.env_vars env.env_nsctx [env.env_item] steps)
     | XE_FilterPath primary preds steps ->
       let pv = eval_expr (fuel - 1) env primary in
       (match pv with
        | XV_Nodes items0 ->
-         let items1 = filter_items_by_preds (fuel - 1) env.env_vars items0 preds in
-         XV_Nodes (eval_steps (fuel - 1) env.env_vars items1 steps)
+         let items1 = filter_items_by_preds (fuel - 1) env.env_vars env.env_nsctx items0 preds in
+         XV_Nodes (eval_steps (fuel - 1) env.env_vars env.env_nsctx items1 steps)
        | other -> if Nil? preds && Nil? steps then other else XV_Nodes [])
 
 // Absolute-path bootstrap (see the program plan's "bare '/'" note):
@@ -946,7 +1075,7 @@ let rec eval_expr (fuel:nat) (env:xp_env) (e:xp_expr) : Tot xp_value (decreases 
 // practically-useful reading of `/tagName`, at the cost of `name(/)`
 // returning the root's own tag rather than strict XPath 1.0's empty
 // document-node name (disclosed divergence).
-and eval_absolute_steps (fuel:nat) (vars:list (string & xp_value)) (root_node:xml_node) (steps:list xp_step)
+and eval_absolute_steps (fuel:nat) (vars:list (string & xp_value)) (nsctx:list (string & string)) (root_node:xml_node) (steps:list xp_step)
   : Tot (list xctx_item) (decreases fuel) =
   if fuel = 0 then []
   else
@@ -956,25 +1085,25 @@ and eval_absolute_steps (fuel:nat) (vars:list (string & xp_value)) (root_node:xm
     | s :: rest ->
       let expansion =
         match s.step_axis with
-        | Ax_Child -> filter_by_node_test s.step_test [root_item]
-        | Ax_Self -> filter_by_node_test s.step_test [root_item]
-        | Ax_DescendantOrSelf -> filter_by_node_test s.step_test (root_item :: descendant_items [] [] root_node)
+        | Ax_Child -> filter_by_node_test nsctx s.step_test [root_item]
+        | Ax_Self -> filter_by_node_test nsctx s.step_test [root_item]
+        | Ax_DescendantOrSelf -> filter_by_node_test nsctx s.step_test (root_item :: descendant_items [] [] root_node)
         | _ -> []
       in
-      let kept = filter_items_by_preds (fuel - 1) vars expansion s.step_preds in
-      eval_steps (fuel - 1) vars kept rest
+      let kept = filter_items_by_preds (fuel - 1) vars nsctx expansion s.step_preds in
+      eval_steps (fuel - 1) vars nsctx kept rest
 
-and eval_steps (fuel:nat) (vars:list (string & xp_value)) (items:list xctx_item) (steps:list xp_step)
+and eval_steps (fuel:nat) (vars:list (string & xp_value)) (nsctx:list (string & string)) (items:list xctx_item) (steps:list xp_step)
   : Tot (list xctx_item) (decreases fuel) =
   if fuel = 0 then items
   else
     match steps with
     | [] -> items
     | s :: rest ->
-      let expanded = expand_step_over_items (fuel - 1) vars s items in
-      eval_steps (fuel - 1) vars expanded rest
+      let expanded = expand_step_over_items (fuel - 1) vars nsctx s items in
+      eval_steps (fuel - 1) vars nsctx expanded rest
 
-and expand_step_over_items (fuel:nat) (vars:list (string & xp_value)) (s:xp_step) (items:list xctx_item)
+and expand_step_over_items (fuel:nat) (vars:list (string & xp_value)) (nsctx:list (string & string)) (s:xp_step) (items:list xctx_item)
   : Tot (list xctx_item) (decreases fuel) =
   if fuel = 0 then []
   else
@@ -982,16 +1111,16 @@ and expand_step_over_items (fuel:nat) (vars:list (string & xp_value)) (s:xp_step
     | [] -> []
     | it :: rest ->
       let raw = apply_axis s.step_axis it in
-      let tested = filter_by_node_test s.step_test raw in
-      let kept = filter_items_by_preds (fuel - 1) vars tested s.step_preds in
-      kept @ expand_step_over_items (fuel - 1) vars s rest
+      let tested = filter_by_node_test nsctx s.step_test raw in
+      let kept = filter_items_by_preds (fuel - 1) vars nsctx tested s.step_preds in
+      kept @ expand_step_over_items (fuel - 1) vars nsctx s rest
 
 // Predicates apply in sequence; each predicate's position()/last()
 // are recomputed against the SURVIVING list from the previous
 // predicate (spec-correct chained-predicate renumbering — e.g.
 // `foo[@bar][2]` means "2nd of the @bar-holding foo's", not "2nd foo
 // overall, if it also has @bar").
-and filter_items_by_preds (fuel:nat) (vars:list (string & xp_value)) (items:list xctx_item) (preds:list xp_expr)
+and filter_items_by_preds (fuel:nat) (vars:list (string & xp_value)) (nsctx:list (string & string)) (items:list xctx_item) (preds:list xp_expr)
   : Tot (list xctx_item) (decreases fuel) =
   if fuel = 0 then items
   else
@@ -999,8 +1128,8 @@ and filter_items_by_preds (fuel:nat) (vars:list (string & xp_value)) (items:list
     | [] -> items
     | p :: rest ->
       let size = List.Tot.length items in
-      let kept = filter_one_pred (fuel - 1) vars p items size 1 in
-      filter_items_by_preds (fuel - 1) vars kept rest
+      let kept = filter_one_pred (fuel - 1) vars nsctx p items size 1 in
+      filter_items_by_preds (fuel - 1) vars nsctx kept rest
 
 // Numeric predicate shorthand (§2.4): `[N]` keeps the node whose
 // proximity position equals N; any other value is boolean()-converted
@@ -1011,21 +1140,21 @@ and filter_items_by_preds (fuel:nat) (vars:list (string & xp_value)) (items:list
 // numeric expression like `[1+1]`, which XPath 1.0 also treats as the
 // SAME positional shorthand since §2.4 keys off the predicate
 // EXPRESSION's result type being number, not off its AST shape).
-and filter_one_pred (fuel:nat) (vars:list (string & xp_value)) (p:xp_expr) (items:list xctx_item) (size:nat) (pos:nat)
+and filter_one_pred (fuel:nat) (vars:list (string & xp_value)) (nsctx:list (string & string)) (p:xp_expr) (items:list xctx_item) (size:nat) (pos:nat)
   : Tot (list xctx_item) (decreases fuel) =
   if fuel = 0 then [] // fuel exhaustion: fail closed (empty), never silently include
   else
     match items with
     | [] -> []
     | it :: rest ->
-      let e = { env_item = it; env_pos = pos; env_size = size; env_vars = vars } in
+      let e = { env_item = it; env_pos = pos; env_size = size; env_vars = vars; env_nsctx = nsctx } in
       let v = eval_expr (fuel - 1) e p in
       let keep =
         match v with
         | XV_Num n -> (match xn_finite_int (xn_round n) with Some k -> k = pos | None -> false)
         | _ -> to_bool_val v
       in
-      let tail = filter_one_pred (fuel - 1) vars p rest size (pos + 1) in
+      let tail = filter_one_pred (fuel - 1) vars nsctx p rest size (pos + 1) in
       if keep then it :: tail else tail
 
 and eval_concat_args (fuel:nat) (env:xp_env) (args:list xp_expr) : Tot string (decreases fuel) =
@@ -1194,7 +1323,7 @@ let eval_xpath_from_root (root_node:xml_node) (vars:list (string & xp_value)) (e
   | None -> None
   | Some e ->
     let fuel = initial_eval_fuel e (xml_node_count root_node) in
-    let env = { env_item = CI_Elem [] [] root_node; env_pos = 1; env_size = 1; env_vars = vars } in
+    let env = { env_item = CI_Elem [] [] root_node; env_pos = 1; env_size = 1; env_vars = vars; env_nsctx = [] } in
     Some (eval_expr fuel env e)
 
 // Evaluate with an arbitrary context node deeper in the document,
@@ -1209,5 +1338,5 @@ let eval_xpath_from_item (ancestors:list xml_node) (context_node:xml_node) (vars
     let doc_nodes = xml_node_count context_node + xml_nodes_count ancestors in
     let fuel = initial_eval_fuel e doc_nodes in
     let env = { env_item = CI_Elem (compute_ctx_path ancestors context_node) ancestors context_node;
-                env_pos = 1; env_size = 1; env_vars = vars } in
+                env_pos = 1; env_size = 1; env_vars = vars; env_nsctx = [] } in
     Some (eval_expr fuel env e)

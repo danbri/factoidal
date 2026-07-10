@@ -1,30 +1,30 @@
 === GRDDL Stage 1 Runner (local subset, no network) ===
-suite dir: /home/user/factoidal/.claude/worktrees/agent-a47677b7171a0318b/third_party/testing/grddl
-manifest:  /home/user/factoidal/.claude/worktrees/agent-a47677b7171a0318b/third_party/testing/grddl/grddl-tests-normative.rdf
+suite dir: /home/user/factoidal/.claude/worktrees/agent-af65ad3db00026d98/third_party/testing/grddl
+manifest:  /home/user/factoidal/.claude/worktrees/agent-af65ad3db00026d98/third_party/testing/grddl/grddl-tests-normative.rdf
 
 manifest triples: 528
 test entries: 68
 
--- PASS (3) --
+-- PASS (9) --
+  base-param
   grddlonrdf
   grddlonrdf-xmlmediatype
+  inline
   rdfXMLDoc
+  xhtmlWithGrddlProfile
+  xhtmlWithGrddlTransformationInBody
+  xmlWithGrddlAttribute
+  xmlWithGrddlAttributeAndNonXMLNamespaceDocument
 
--- FAIL (14) --
-  base-param                               fail-known-gap-xslt-nametest
-  hl7-to-owl                               fail-known-gap-xslt-nametest
-  inline                                   fail-known-gap-xslt-nametest
-  noxinclude                               fail-known-gap-xslt-nametest
+-- FAIL (8) --
+  hl7-to-owl                               fail-graph-mismatch
+  noxinclude                               fail-graph-mismatch
   projectsSpreadsheet                      fail-graph-mismatch
-  rdfa1                                    fail-known-gap-xslt-nametest
-  title_author                             fail-known-gap-xslt-nametest
-  xhtmlWithGrddlProfile                    fail-known-gap-xslt-nametest
-  xhtmlWithGrddlTransformationInBody       fail-known-gap-xslt-nametest
-  xhtmlWithMoreThanOneGrddlTransformation  fail-known-gap-xslt-nametest
-  xhtmlWithMoreThanOneProfile              fail-known-gap-xslt-nametest
-  xinclude                                 fail-known-gap-xslt-nametest
-  xmlWithGrddlAttribute                    fail-known-gap-xslt-nametest
-  xmlWithGrddlAttributeAndNonXMLNamespaceDocument fail-known-gap-xslt-nametest
+  rdfa1                                    fail-graph-mismatch
+  title_author                             fail-graph-mismatch
+  xhtmlWithMoreThanOneGrddlTransformation  fail-graph-mismatch
+  xhtmlWithMoreThanOneProfile              fail-graph-mismatch
+  xinclude                                 fail-graph-mismatch
 
 -- SKIP (51) --
   card5n                                   skip-network
@@ -80,10 +80,9 @@ test entries: 68
   xmlbase4                                 skip-network
 
 -- reason buckets --
-  fail-graph-mismatch                    1
-  fail-known-gap-xslt-nametest           13
+  fail-graph-mismatch                    8
   skip-network                           49
   skip-stage2-ns-or-profile-document     2
 
 ========================================
-grddl: 3 pass, 14 fail, 51 skip (out of 68)
+grddl: 9 pass, 8 fail, 51 skip (out of 68)

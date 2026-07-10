@@ -351,6 +351,13 @@ noeq type xstyle = {
   // the stylesheet's exclude-result-prefixes. The serializer dedups
   // these against output ancestors so each appears once.
   xs_nsscope : list xml_attribute;
+  // The stylesheet element's FULL namespace context (prefix -> URI),
+  // UNfiltered by exclude-result-prefixes -- used to resolve prefixed
+  // name tests in select/test/match XPath (XPath.Eval.matches_node_test,
+  // pstep_ok). A prefix like `html` that is excluded from the RESULT
+  // tree still names a namespace for pattern matching, so this must NOT
+  // apply the exclude-result-prefixes filter that xs_nsscope does.
+  xs_nsctx : list (string & string);
 }
 
 let xslt_ns : string = "http://www.w3.org/1999/XSL/Transform"
@@ -403,21 +410,26 @@ let attr_or (name:string) (dflt:string) (attrs:list xml_attribute) : string =
 (* NOT part of the transform's own fuel-threaded recursion.            *)
 (* ================================================================ *)
 
-let eval_val (ctx:xctx_item) (pos:nat) (size:nat) (vars:list (string & xp_value)) (expr_text:string)
+// `nsctx` is the stylesheet's in-scope namespace context (prefix -> URI)
+// threaded to XPath.Eval so PREFIXED name tests in select/test/match
+// XPath resolve to (namespace-URI, local-name) pairs -- see
+// XPath.Eval.matches_node_test. It is constant for a whole transform
+// (built from the stylesheet element's xmlns:* declarations).
+let eval_val (ctx:xctx_item) (pos:nat) (size:nat) (vars:list (string & xp_value)) (nsctx:list (string & string)) (expr_text:string)
   : xp_value =
   match parse_xpath expr_text with
   | None -> XV_Str ""
   | Some e ->
     let doc_nodes = xml_node_count (root_of_item ctx) in
     let fuel = initial_eval_fuel e doc_nodes in
-    let env = { env_item = ctx; env_pos = pos; env_size = size; env_vars = vars } in
+    let env = { env_item = ctx; env_pos = pos; env_size = size; env_vars = vars; env_nsctx = nsctx } in
     eval_expr fuel env e
 
-let eval_string (ctx:xctx_item) (pos size:nat) (vars) (expr_text:string) : string =
-  to_string_val (eval_val ctx pos size vars expr_text)
+let eval_string (ctx:xctx_item) (pos size:nat) (vars) (nsctx:list (string & string)) (expr_text:string) : string =
+  to_string_val (eval_val ctx pos size vars nsctx expr_text)
 
-let eval_bool (ctx:xctx_item) (pos size:nat) (vars) (expr_text:string) : bool =
-  to_bool_val (eval_val ctx pos size vars expr_text)
+let eval_bool (ctx:xctx_item) (pos size:nat) (vars) (nsctx:list (string & string)) (expr_text:string) : bool =
+  to_bool_val (eval_val ctx pos size vars nsctx expr_text)
 
 // Drop `processing-instruction()` alternatives from a union select
 // before handing it to XPath.Eval (which has no PI node test).
@@ -430,8 +442,8 @@ let drop_pi_alts (sel:string) : string =
   | [] -> "self::processing-instruction()"   // whole thing was PI -> empty node set
   | _ -> String.concat "|" kept
 
-let eval_nodeset (ctx:xctx_item) (pos size:nat) (vars) (sel:string) : list xctx_item =
-  match eval_val ctx pos size vars (drop_pi_alts sel) with
+let eval_nodeset (ctx:xctx_item) (pos size:nat) (vars) (nsctx:list (string & string)) (sel:string) : list xctx_item =
+  match eval_val ctx pos size vars nsctx (drop_pi_alts sel) with
   | XV_Nodes items -> items
   | _ -> []
 
@@ -453,10 +465,10 @@ let rec force_abs (e:xp_expr) : Tot xp_expr (decreases e) =
   | XE_Union a b -> XE_Union (force_abs a) (force_abs b)
   | _ -> e
 
-let eval_val_dn (ctx:dnode) (pos size:nat) (vars:list (string & xp_value)) (expr_text:string)
+let eval_val_dn (ctx:dnode) (pos size:nat) (vars:list (string & xp_value)) (nsctx:list (string & string)) (expr_text:string)
   : xp_value =
   match ctx with
-  | D_Item it -> eval_val it pos size vars expr_text
+  | D_Item it -> eval_val it pos size vars nsctx expr_text
   | D_Doc root ->
     (match parse_xpath expr_text with
      | None -> XV_Str ""
@@ -464,17 +476,17 @@ let eval_val_dn (ctx:dnode) (pos size:nat) (vars:list (string & xp_value)) (expr
        let e2 = force_abs e in
        let doc_nodes = xml_node_count root in
        let fuel = initial_eval_fuel e2 doc_nodes in
-       let env = { env_item = CI_Elem [] [] root; env_pos = pos; env_size = size; env_vars = vars } in
+       let env = { env_item = CI_Elem [] [] root; env_pos = pos; env_size = size; env_vars = vars; env_nsctx = nsctx } in
        eval_expr fuel env e2)
 
-let eval_string_dn (ctx:dnode) (pos size:nat) (vars) (expr_text:string) : string =
-  to_string_val (eval_val_dn ctx pos size vars expr_text)
+let eval_string_dn (ctx:dnode) (pos size:nat) (vars) (nsctx:list (string & string)) (expr_text:string) : string =
+  to_string_val (eval_val_dn ctx pos size vars nsctx expr_text)
 
-let eval_bool_dn (ctx:dnode) (pos size:nat) (vars) (expr_text:string) : bool =
-  to_bool_val (eval_val_dn ctx pos size vars expr_text)
+let eval_bool_dn (ctx:dnode) (pos size:nat) (vars) (nsctx:list (string & string)) (expr_text:string) : bool =
+  to_bool_val (eval_val_dn ctx pos size vars nsctx expr_text)
 
-let eval_nodeset_dn (ctx:dnode) (pos size:nat) (vars) (sel:string) : list xctx_item =
-  match eval_val_dn ctx pos size vars (drop_pi_alts sel) with
+let eval_nodeset_dn (ctx:dnode) (pos size:nat) (vars) (nsctx:list (string & string)) (sel:string) : list xctx_item =
+  match eval_val_dn ctx pos size vars nsctx (drop_pi_alts sel) with
   | XV_Nodes items -> items
   | _ -> []
 
@@ -493,25 +505,25 @@ let rec read_until_brace (cs:list char) (acc:list char)
   | '}' :: rest -> (List.Tot.rev acc, rest)
   | c :: rest -> read_until_brace rest (c :: acc)
 
-let rec expand_avt_chars (ctx:xctx_item) (pos size:nat) (vars:list (string & xp_value))
+let rec expand_avt_chars (ctx:xctx_item) (pos size:nat) (vars:list (string & xp_value)) (nsctx:list (string & string))
                          (cs:list char) (fuel:nat)
   : Tot string (decreases fuel) =
   if fuel = 0 then ""
   else
     match cs with
     | [] -> ""
-    | '{' :: '{' :: rest -> strcat "{" (expand_avt_chars ctx pos size vars rest (fuel - 1))
-    | '}' :: '}' :: rest -> strcat "}" (expand_avt_chars ctx pos size vars rest (fuel - 1))
+    | '{' :: '{' :: rest -> strcat "{" (expand_avt_chars ctx pos size vars nsctx rest (fuel - 1))
+    | '}' :: '}' :: rest -> strcat "}" (expand_avt_chars ctx pos size vars nsctx rest (fuel - 1))
     | '{' :: rest ->
       let (expr_cs, after) = read_until_brace rest [] in
-      let v = eval_string ctx pos size vars (str_of_chars expr_cs) in
-      strcat v (expand_avt_chars ctx pos size vars after (fuel - 1))
+      let v = eval_string ctx pos size vars nsctx (str_of_chars expr_cs) in
+      strcat v (expand_avt_chars ctx pos size vars nsctx after (fuel - 1))
     | c :: rest ->
-      strcat (soc c) (expand_avt_chars ctx pos size vars rest (fuel - 1))
+      strcat (soc c) (expand_avt_chars ctx pos size vars nsctx rest (fuel - 1))
 
-let expand_avt (ctx:xctx_item) (pos size:nat) (vars) (s:string) : string =
+let expand_avt (ctx:xctx_item) (pos size:nat) (vars) (nsctx:list (string & string)) (s:string) : string =
   let cs = chars_of s in
-  if contains_char '{' s then expand_avt_chars ctx pos size vars cs (List.Tot.length cs + 1)
+  if contains_char '{' s then expand_avt_chars ctx pos size vars nsctx cs (List.Tot.length cs + 1)
   else s
 
 (* ================================================================ *)
@@ -556,6 +568,19 @@ let split_predicate (alt:string) : (string & option string) =
 let ancestor_tags_of (it:xctx_item) : list string =
   List.Tot.choose (fun (m:xml_node) -> element_tag m) (item_ancestors it)
 
+// Namespace-aware element name test for a MATCH-PATTERN step: the step
+// name `nm` ("*" = any element) against element node `n` whose in-scope
+// namespaces are its own attributes plus `anc` (its ancestors,
+// nearest-first). Prefixes in `nm` resolve via the stylesheet's `nsctx`
+// exactly as in XPath.Eval, so `h:title` matches a default-namespaced
+// <title> in the XHTML namespace (the GRDDL case).
+let pstep_ok (nsctx:list (string & string)) (nm:string) (n:xml_node) (anc:list xml_node) : bool =
+  let nm' = trim_str nm in
+  if nm' = "*" then true
+  else match element_tag n with
+       | Some tag -> name_test_matches_elem nsctx nm' (element_attrs n) anc tag
+       | None -> false
+
 // General location-path pattern matcher for element nodes: a chain of
 // name/"*" steps separated by "/" (child) or "//" (descendant), with an
 // optional leading "/" (root-anchored) or "//" (any-descendant), and
@@ -571,8 +596,6 @@ let norm_pstep (s:string) : string =
   let s0 = trim_str s in
   if starts_with "child::" s0 then str_of_chars (drop_prefix_chars (chars_of s0) 7)
   else s0
-
-let pname_ok (nm:string) (tag:string) : bool = nm = "*" || nm = tag
 
 let rec build_psteps (toks:list string) (pending:pconn) : Tot (list (pconn & string)) (decreases toks) =
   match toks with
@@ -594,7 +617,10 @@ let parse_psteps (a:string) : (bool & list (pconn & string)) =
 
 // rsteps: remaining steps most-specific-first (excluding the node step).
 // childconn: how the more-specific step below connects to rsteps' head.
-let rec match_up (anchored:bool) (rsteps:list (pconn & string)) (childconn:pconn) (anc:list string)
+// `anc` is the ancestor CHAIN as element nodes (nearest-first): each
+// step name resolves against the node's own attributes plus the tail of
+// the chain above it, so prefixed steps are namespace-URI aware.
+let rec match_up (nsctx:list (string & string)) (anchored:bool) (rsteps:list (pconn & string)) (childconn:pconn) (anc:list xml_node)
   : Tot bool (decreases (List.Tot.length rsteps + List.Tot.length anc)) =
   match rsteps with
   | [] -> if anchored then Nil? anc else true
@@ -603,25 +629,25 @@ let rec match_up (anchored:bool) (rsteps:list (pconn & string)) (childconn:pconn
      | PC_Child ->
        (match anc with
         | [] -> false
-        | a :: az -> pname_ok nm a && match_up anchored rest c az)
-     | PC_Desc -> match_desc anchored nm rest c anc)
+        | a :: az -> pstep_ok nsctx nm a az && match_up nsctx anchored rest c az)
+     | PC_Desc -> match_desc nsctx anchored nm rest c anc)
 
-and match_desc (anchored:bool) (nm:string) (rest:list (pconn & string)) (c:pconn) (anc:list string)
+and match_desc (nsctx:list (string & string)) (anchored:bool) (nm:string) (rest:list (pconn & string)) (c:pconn) (anc:list xml_node)
   : Tot bool (decreases (List.Tot.length rest + List.Tot.length anc)) =
   match anc with
   | [] -> false
   | a :: az ->
-    (pname_ok nm a && match_up anchored rest c az) || match_desc anchored nm rest c az
+    (pstep_ok nsctx nm a az && match_up nsctx anchored rest c az) || match_desc nsctx anchored nm rest c az
 
-let alt_matches_elem (a:string) (it:xctx_item) (tag:string) : bool =
+let alt_matches_elem (nsctx:list (string & string)) (a:string) (n:xml_node) (anc:list xml_node) : bool =
   let (anchored, steps) = parse_psteps a in
   match List.Tot.rev steps with
   | [] -> false
   | (ck, nk) :: rrest ->
-    if not (pname_ok nk tag) then false
-    else match_up anchored rrest ck (ancestor_tags_of it)
+    if not (pstep_ok nsctx nk n anc) then false
+    else match_up nsctx anchored rrest ck anc
 
-let alt_matches_core (alt:string) (nd:dnode) : bool =
+let alt_matches_core (nsctx:list (string & string)) (alt:string) (nd:dnode) : bool =
   let a = trim_str alt in
   if a = "/" then (match nd with D_Doc _ -> true | _ -> false)
   else if a = "*" then (match nd with D_Item (CI_Elem _ _ _) -> true | _ -> false)
@@ -643,10 +669,7 @@ let alt_matches_core (alt:string) (nd:dnode) : bool =
      | _ -> false)
   else
     (match nd with
-     | D_Item (CI_Elem _ _ n) ->
-       (match element_tag n with
-        | Some tag -> alt_matches_elem a (dnode_ci nd) tag
-        | None -> false)
+     | D_Item (CI_Elem _ anc n) -> alt_matches_elem nsctx a n anc
      | _ -> false)
 
 // A union select alternative that names only a forward child-axis node
@@ -687,17 +710,17 @@ let is_simple_child_union (sel:string) : bool =
   let alts = split_on_char '|' sel in
   match alts with [] -> false | _ -> all_child_union_alts alts
 
-let rec any_core_matches (alts:list string) (it:xctx_item) : Tot bool (decreases alts) =
+let rec any_core_matches (nsctx:list (string & string)) (alts:list string) (it:xctx_item) : Tot bool (decreases alts) =
   match alts with
   | [] -> false
-  | a :: rest -> if alt_matches_core a (D_Item it) then true else any_core_matches rest it
+  | a :: rest -> if alt_matches_core nsctx a (D_Item it) then true else any_core_matches nsctx rest it
 
 // Document-ordered node-set for a simple child union: attributes (if
 // the union selects them) first, then child nodes in document order.
-let select_child_union (nd:dnode) (alts:list string) : list xctx_item =
+let select_child_union (nsctx:list (string & string)) (nd:dnode) (alts:list string) : list xctx_item =
   let (attrs, kids) = dnode_attrs_and_kids nd in
-  let sel_attrs = List.Tot.filter (fun it -> any_core_matches alts it) attrs in
-  let sel_kids = List.Tot.filter (fun it -> any_core_matches alts it) kids in
+  let sel_attrs = List.Tot.filter (fun it -> any_core_matches nsctx alts it) attrs in
+  let sel_kids = List.Tot.filter (fun it -> any_core_matches nsctx alts it) kids in
   sel_attrs @ sel_kids
 
 // Node-set for a select expression on the current context node. A
@@ -706,30 +729,30 @@ let select_child_union (nd:dnode) (alts:list string) : list xctx_item =
 // a bare child name) is resolved directly in document order; anything
 // else (paths, predicates, axes, functions, ".") goes through the full
 // XPath.Eval engine.
-let select_nodes (ctx:dnode) (pos size:nat) (vars:list (string & xp_value)) (sel:string)
+let select_nodes (ctx:dnode) (pos size:nat) (vars:list (string & xp_value)) (nsctx:list (string & string)) (sel:string)
   : list xctx_item =
-  if is_simple_child_union sel then select_child_union ctx (split_on_char '|' sel)
-  else eval_nodeset_dn ctx pos size vars sel
+  if is_simple_child_union sel then select_child_union nsctx ctx (split_on_char '|' sel)
+  else eval_nodeset_dn ctx pos size vars nsctx sel
 
 // Evaluate a "name[pred]" predicate best-effort as a boolean against
 // the candidate node. Self-fuelled via eval_bool.
-let alt_matches (vars:list (string & xp_value)) (alt:string) (nd:dnode) : bool =
+let alt_matches (vars:list (string & xp_value)) (nsctx:list (string & string)) (alt:string) (nd:dnode) : bool =
   let (namepart, predopt) = split_predicate alt in
   match predopt with
-  | None -> alt_matches_core alt nd
+  | None -> alt_matches_core nsctx alt nd
   | Some pred ->
-    if not (alt_matches_core namepart nd) then false
-    else eval_bool (dnode_ci nd) 1 1 vars pred
+    if not (alt_matches_core nsctx namepart nd) then false
+    else eval_bool (dnode_ci nd) 1 1 vars nsctx pred
 
-let rec any_alt_matches (vars:list (string & xp_value)) (alts:list string) (nd:dnode)
+let rec any_alt_matches (vars:list (string & xp_value)) (nsctx:list (string & string)) (alts:list string) (nd:dnode)
   : Tot bool (decreases alts) =
   match alts with
   | [] -> false
-  | a :: rest -> if alt_matches vars a nd then true else any_alt_matches vars rest nd
+  | a :: rest -> if alt_matches vars nsctx a nd then true else any_alt_matches vars nsctx rest nd
 
-let template_matches (vars:list (string & xp_value)) (tpl:template) (nd:dnode) : bool =
+let template_matches (vars:list (string & xp_value)) (nsctx:list (string & string)) (tpl:template) (nd:dnode) : bool =
   if tpl.tpl_match = "" then false
-  else any_alt_matches vars (split_on_char '|' tpl.tpl_match) nd
+  else any_alt_matches vars nsctx (split_on_char '|' tpl.tpl_match) nd
 
 // Default priority of a single alternative (x10 to keep integers).
 let alt_priority (alt:string) : int =
@@ -755,19 +778,19 @@ let template_priority (tpl:template) : int =
 // Highest-priority template that both matches `nd` AND is declared in
 // the active `mode` (default mode = ""); ties resolved to the LAST in
 // document order (XSLT 1.0 conflict resolution, minus the error).
-let rec pick_template (vars) (mode:string) (tpls:list template) (nd:dnode) (best:option template)
+let rec pick_template (vars) (nsctx:list (string & string)) (mode:string) (tpls:list template) (nd:dnode) (best:option template)
   : Tot (option template) (decreases tpls) =
   match tpls with
   | [] -> best
   | t :: rest ->
     let best' =
-      if t.tpl_mode = mode && template_matches vars t nd then
+      if t.tpl_mode = mode && template_matches vars nsctx t nd then
         (match best with
          | None -> Some t
          | Some b -> if template_priority t >= template_priority b then Some t else best)
       else best
     in
-    pick_template vars mode rest nd best'
+    pick_template vars nsctx mode rest nd best'
 
 // Look up a named template (xsl:call-template target); first match wins.
 let rec find_named_template (tpls:list template) (nm:string) : Tot (option template) (decreases tpls) =
@@ -894,13 +917,13 @@ type sortspec = {
 // context node in scope when the enclosing for-each / apply-templates
 // is instantiated (the `ctx`/`pos`/`size`/`vars` supplied here). The
 // select attribute is a plain XPath expression, NOT an AVT.
-let parse_sort (ctx:xctx_item) (pos size:nat) (vars:list (string & xp_value))
+let parse_sort (ctx:xctx_item) (pos size:nat) (vars:list (string & xp_value)) (nsctx:list (string & string))
                (pfx:string) (n:xml_node) : option sortspec =
   match n with
   | XElement tag attrs _ ->
     if is_xsl pfx tag && xsl_instr pfx tag = "sort" then
-      let dt = expand_avt ctx pos size vars (attr_or "data-type" "text" attrs) in
-      let od = expand_avt ctx pos size vars (attr_or "order" "ascending" attrs) in
+      let dt = expand_avt ctx pos size vars nsctx (attr_or "data-type" "text" attrs) in
+      let od = expand_avt ctx pos size vars nsctx (attr_or "order" "ascending" attrs) in
       Some { so_select = attr_or "select" "." attrs;
              so_numeric = (dt = "number");
              so_descending = (od = "descending") }
@@ -909,37 +932,37 @@ let parse_sort (ctx:xctx_item) (pos size:nat) (vars:list (string & xp_value))
 
 // Leading xsl:sort children (whitespace-only text AND comments between
 // them are skipped; the first non-sort content stops the collection).
-let rec collect_sorts (ctx:xctx_item) (pos size:nat) (vars:list (string & xp_value))
+let rec collect_sorts (ctx:xctx_item) (pos size:nat) (vars:list (string & xp_value)) (nsctx:list (string & string))
                       (pfx:string) (body:list xml_node) : Tot (list sortspec) (decreases body) =
   match body with
   | [] -> []
   | hd :: tl ->
-    (match parse_sort ctx pos size vars pfx hd with
-     | Some s -> s :: collect_sorts ctx pos size vars pfx tl
+    (match parse_sort ctx pos size vars nsctx pfx hd with
+     | Some s -> s :: collect_sorts ctx pos size vars nsctx pfx tl
      | None ->
        (match hd with
-        | XText t -> if is_all_ws t then collect_sorts ctx pos size vars pfx tl else []
-        | XComment _ -> collect_sorts ctx pos size vars pfx tl
+        | XText t -> if is_all_ws t then collect_sorts ctx pos size vars nsctx pfx tl else []
+        | XComment _ -> collect_sorts ctx pos size vars nsctx pfx tl
         | _ -> []))
 
 // The sort key strings for one node, evaluated with the node's OWN
 // proximity position/size in the unsorted node list (so a sort by
 // position() or last() is correct). One string per sort spec.
-let rec eval_sort_keys (specs:list sortspec) (vars:list (string & xp_value))
+let rec eval_sort_keys (specs:list sortspec) (vars:list (string & xp_value)) (nsctx:list (string & string))
                        (it:xctx_item) (pos size:nat)
   : Tot (list string) (decreases specs) =
   match specs with
   | [] -> []
-  | s :: rest -> eval_string it pos size vars s.so_select :: eval_sort_keys rest vars it pos size
+  | s :: rest -> eval_string it pos size vars nsctx s.so_select :: eval_sort_keys rest vars nsctx it pos size
 
 // Annotate each node with its precomputed sort keys, threading the
 // 1-based position through the ORIGINAL (document-order) list.
-let rec annotate_items (specs:list sortspec) (vars:list (string & xp_value))
+let rec annotate_items (specs:list sortspec) (vars:list (string & xp_value)) (nsctx:list (string & string))
                        (items:list xctx_item) (pos size:nat)
   : Tot (list (xctx_item & list string)) (decreases items) =
   match items with
   | [] -> []
-  | it :: tl -> (it, eval_sort_keys specs vars it pos size) :: annotate_items specs vars tl (pos + 1) size
+  | it :: tl -> (it, eval_sort_keys specs vars nsctx it pos size) :: annotate_items specs vars nsctx tl (pos + 1) size
 
 // Compare two nodes by their precomputed key lists, honoring each
 // spec's data-type and order. A NaN key (non-numeric text under
@@ -980,13 +1003,13 @@ let rec sort_items (specs:list sortspec) (l:list (xctx_item & list string))
   | x :: xs -> sort_insert specs x (sort_items specs xs)
 
 let sort_maybe (ctx:xctx_item) (pos size:nat) (pfx:string)
-               (vars:list (string & xp_value)) (body:list xml_node) (items:list xctx_item)
+               (vars:list (string & xp_value)) (nsctx:list (string & string)) (body:list xml_node) (items:list xctx_item)
   : list xctx_item =
-  match collect_sorts ctx pos size vars pfx body with
+  match collect_sorts ctx pos size vars nsctx pfx body with
   | [] -> items
   | specs ->
     let n = List.Tot.length items in
-    List.Tot.map fst (sort_items specs (annotate_items specs vars items 1 n))
+    List.Tot.map fst (sort_items specs (annotate_items specs vars nsctx items 1 n))
 
 (* ================================================================ *)
 (* Result-tree-fragment variables. A variable/param with element/text  *)
@@ -1021,7 +1044,7 @@ let rec dispatch (fuel:nat) (st:xstyle) (nd:dnode) (pos size:nat) (mode:string)
   : Tot (list rnode) (decreases fuel) =
   if fuel = 0 then []
   else
-    match pick_template st.xs_globals mode st.xs_templates nd None with
+    match pick_template st.xs_globals st.xs_nsctx mode st.xs_templates nd None with
     | Some tpl -> instantiate_seq (fuel - 1) st nd pos size st.xs_globals [] tpl.tpl_body
     | None -> builtin_rule (fuel - 1) st nd mode
 
@@ -1076,7 +1099,7 @@ and instantiate_seq (fuel:nat) (st:xstyle) (ctx:dnode) (pos size:nat)
            else
              (match attr_opt "select" attrs with
               | Some sel ->
-                let v = eval_val_dn ctx pos size vars sel in
+                let v = eval_val_dn ctx pos size vars st.xs_nsctx sel in
                 instantiate_seq (fuel - 1) st ctx pos size ((nm, v) :: vars) rtf tl
               | None ->
                 // Result-tree-fragment: instantiate the body, bind its
@@ -1109,7 +1132,7 @@ and bind_with_params (fuel:nat) (st:xstyle) (ctx:dnode) (pos size:nat)
            let nm = attr_or "name" "" attrs in
            (match attr_opt "select" attrs with
             | Some sel ->
-              let v = eval_val_dn ctx pos size vars sel in
+              let v = eval_val_dn ctx pos size vars st.xs_nsctx sel in
               bind_with_params (fuel - 1) st ctx pos size ((nm, v) :: vars) rtf tl
             | None ->
               let frag = instantiate_seq (fuel - 1) st ctx pos size vars rtf pchildren in
@@ -1132,11 +1155,11 @@ and instantiate_one (fuel:nat) (st:xstyle) (ctx:dnode) (pos size:nat)
       if is_xsl st.xs_pfx tag then
         let ln = xsl_instr st.xs_pfx tag in
         if ln = "value-of" then
-          [R_Node (XText (eval_string_dn ctx pos size vars (attr_or "select" "." attrs)))]
+          [R_Node (XText (eval_string_dn ctx pos size vars st.xs_nsctx (attr_or "select" "." attrs)))]
         else if ln = "text" then
           [R_Node (XText (raw_text children))]
         else if ln = "if" then
-          (if eval_bool_dn ctx pos size vars (attr_or "test" "false()" attrs)
+          (if eval_bool_dn ctx pos size vars st.xs_nsctx (attr_or "test" "false()" attrs)
            then instantiate_seq (fuel - 1) st ctx pos size vars rtf children
            else [])
         else if ln = "choose" then
@@ -1148,15 +1171,15 @@ and instantiate_one (fuel:nat) (st:xstyle) (ctx:dnode) (pos size:nat)
           // an xsl:sort). doc_sort_dedup fixes reverse-axis proximity
           // order (preceding::, ancestor::) and de-duplicates descendant
           // (//) selects before iteration.
-          let items0 = doc_sort_dedup (select_nodes ctx pos size vars sel) in
-          let items = sort_maybe (dnode_ci ctx) pos size st.xs_pfx vars children items0 in
+          let items0 = doc_sort_dedup (select_nodes ctx pos size vars st.xs_nsctx sel) in
+          let items = sort_maybe (dnode_ci ctx) pos size st.xs_pfx vars st.xs_nsctx children items0 in
           for_each_items (fuel - 1) st children vars rtf items 1 (List.Tot.length items)
         else if ln = "apply-templates" then
           let amode = attr_or "mode" "" attrs in
           (match attr_opt "select" attrs with
            | Some sel ->
-             let items0 = doc_sort_dedup (select_nodes ctx pos size vars sel) in
-             let items = sort_maybe (dnode_ci ctx) pos size st.xs_pfx vars children items0 in
+             let items0 = doc_sort_dedup (select_nodes ctx pos size vars st.xs_nsctx sel) in
+             let items = sort_maybe (dnode_ci ctx) pos size st.xs_pfx vars st.xs_nsctx children items0 in
              let dns = List.Tot.map (fun it -> D_Item it) items in
              apply_list (fuel - 1) st dns 1 (List.Tot.length items) amode
            | None ->
@@ -1165,7 +1188,7 @@ and instantiate_one (fuel:nat) (st:xstyle) (ctx:dnode) (pos size:nat)
              // select still honors xsl:sort).
              let kids0 = dnode_children ctx in
              let items0 = List.Tot.map dnode_ci kids0 in
-             let items = sort_maybe (dnode_ci ctx) pos size st.xs_pfx vars children items0 in
+             let items = sort_maybe (dnode_ci ctx) pos size st.xs_pfx vars st.xs_nsctx children items0 in
              let dns = List.Tot.map (fun it -> D_Item it) items in
              apply_list (fuel - 1) st dns 1 (List.Tot.length items) amode)
         else if ln = "call-template" then
@@ -1186,16 +1209,16 @@ and instantiate_one (fuel:nat) (st:xstyle) (ctx:dnode) (pos size:nat)
            | Some nm ->
              (match rtf_find rtf nm with
               | Some frag -> frag
-              | None -> List.Tot.map copy_of_item (select_nodes ctx pos size vars sel))
-           | None -> List.Tot.map copy_of_item (select_nodes ctx pos size vars sel))
+              | None -> List.Tot.map copy_of_item (select_nodes ctx pos size vars st.xs_nsctx sel))
+           | None -> List.Tot.map copy_of_item (select_nodes ctx pos size vars st.xs_nsctx sel))
         else if ln = "copy" then
           instantiate_copy (fuel - 1) st ctx pos size vars rtf children
         else if ln = "element" then
-          let nm = expand_avt (dnode_ci ctx) pos size vars (attr_or "name" "" attrs) in
+          let nm = expand_avt (dnode_ci ctx) pos size vars st.xs_nsctx (attr_or "name" "" attrs) in
           let body = instantiate_seq (fuel - 1) st ctx pos size vars rtf children in
           [R_Node (build_element nm [] body)]
         else if ln = "attribute" then
-          let nm = expand_avt (dnode_ci ctx) pos size vars (attr_or "name" "" attrs) in
+          let nm = expand_avt (dnode_ci ctx) pos size vars st.xs_nsctx (attr_or "name" "" attrs) in
           let body = instantiate_seq (fuel - 1) st ctx pos size vars rtf children in
           [R_Attr ({ attr_name = nm; attr_value = rnodes_text body })]
         else if ln = "comment" then
@@ -1218,7 +1241,7 @@ and instantiate_one (fuel:nat) (st:xstyle) (ctx:dnode) (pos size:nat)
         let out_attrs =
           List.Tot.map
             (fun (a:xml_attribute) ->
-               { attr_name = a.attr_name; attr_value = expand_avt (dnode_ci ctx) pos size vars a.attr_value })
+               { attr_name = a.attr_name; attr_value = expand_avt (dnode_ci ctx) pos size vars st.xs_nsctx a.attr_value })
             kept in
         let body = instantiate_seq (fuel - 1) st ctx pos size vars rtf children in
         // Copy the in-scope stylesheet namespace nodes onto the result
@@ -1238,7 +1261,7 @@ and instantiate_choose (fuel:nat) (st:xstyle) (ctx:dnode) (pos size:nat)
          if is_xsl st.xs_pfx tag then
            let ln = xsl_instr st.xs_pfx tag in
            if ln = "when" then
-             (if eval_bool_dn ctx pos size vars (attr_or "test" "false()" attrs)
+             (if eval_bool_dn ctx pos size vars st.xs_nsctx (attr_or "test" "false()" attrs)
               then instantiate_seq (fuel - 1) st ctx pos size vars rtf children
               else instantiate_choose (fuel - 1) st ctx pos size vars rtf tl)
            else if ln = "otherwise" then
@@ -1333,9 +1356,19 @@ let rec find_output_method (pfx:string) (children:list xml_node) : Tot string (d
        else find_output_method pfx tl
      | _ -> find_output_method pfx tl)
 
+// The stylesheet element's full namespace context (prefix -> URI),
+// UNfiltered by exclude-result-prefixes -- see the xs_nsctx field.
+let rec build_nsctx (attrs:list xml_attribute) : Tot (list (string & string)) (decreases attrs) =
+  match attrs with
+  | [] -> []
+  | a :: rest ->
+    (match ns_decl_prefix a.attr_name with
+     | Some pfx -> (pfx, a.attr_value) :: build_nsctx rest
+     | None -> build_nsctx rest)
+
 // Top-level xsl:variable / xsl:param with a select= expression,
 // evaluated once against the source document root.
-let rec collect_globals (pfx:string) (children:list xml_node) (source:xml_node)
+let rec collect_globals (pfx:string) (nsctx:list (string & string)) (children:list xml_node) (source:xml_node)
   : Tot (list (string & xp_value)) (decreases children) =
   match children with
   | [] -> []
@@ -1346,11 +1379,11 @@ let rec collect_globals (pfx:string) (children:list xml_node) (source:xml_node)
           (let ln = xsl_instr pfx tag in ln = "variable" || ln = "param") then
          (match attr_opt "select" attrs, attr_opt "name" attrs with
           | Some sel, Some nm ->
-            let v = eval_val (CI_Elem [] [] source) 1 1 [] sel in
-            (nm, v) :: collect_globals pfx tl source
-          | _, _ -> collect_globals pfx tl source)
-       else collect_globals pfx tl source
-     | _ -> collect_globals pfx tl source)
+            let v = eval_val (CI_Elem [] [] source) 1 1 [] nsctx sel in
+            (nm, v) :: collect_globals pfx nsctx tl source
+          | _, _ -> collect_globals pfx nsctx tl source)
+       else collect_globals pfx nsctx tl source
+     | _ -> collect_globals pfx nsctx tl source)
 
 // Parse a whitespace-separated prefix list (exclude-result-prefixes).
 // "#default" designates the default namespace (prefix "").
@@ -1378,11 +1411,13 @@ let build_style (stylesheet:xml_node) (source:xml_node) : xstyle =
     let pfx = xsl_prefix_of stylesheet in
     if is_xsl pfx tag &&
        (let ln = xsl_instr pfx tag in ln = "stylesheet" || ln = "transform") then
+      let nsctx = build_nsctx attrs in
       { xs_pfx = pfx;
         xs_templates = collect_templates pfx children;
         xs_method = find_output_method pfx children;
-        xs_globals = collect_globals pfx children source;
-        xs_nsscope = build_nsscope attrs }
+        xs_globals = collect_globals pfx nsctx children source;
+        xs_nsscope = build_nsscope attrs;
+        xs_nsctx = nsctx }
     else
       // Simplified stylesheet: the literal result element IS the body
       // of a single template matching the document root. Its own
@@ -1392,9 +1427,10 @@ let build_style (stylesheet:xml_node) (source:xml_node) : xstyle =
         xs_templates = [ { tpl_match = "/"; tpl_name = ""; tpl_mode = ""; tpl_prio = None; tpl_body = [stylesheet] } ];
         xs_method = "xml";
         xs_globals = [];
-        xs_nsscope = [] }
+        xs_nsscope = [];
+        xs_nsctx = build_nsctx attrs }
   | _ ->
-    { xs_pfx = "xsl"; xs_templates = []; xs_method = "xml"; xs_globals = []; xs_nsscope = [] }
+    { xs_pfx = "xsl"; xs_templates = []; xs_method = "xml"; xs_globals = []; xs_nsscope = []; xs_nsctx = [] }
 
 (* ================================================================ *)
 (* Entry point.                                                       *)

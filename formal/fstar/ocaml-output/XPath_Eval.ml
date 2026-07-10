@@ -584,8 +584,139 @@ let string_starts_with (s : Prims.string) (prefix : Prims.string) :
   let lp = FStar_String.strlen prefix in
   ((FStar_String.strlen s) >= lp) &&
     ((FStar_String.sub s Prims.int_zero lp) = prefix)
-let matches_node_test (test : Parser_XPath.xp_nodetest) (it : xctx_item) :
-  Prims.bool=
+let rec find_char_from (s : Prims.string) (c : FStar_Char.char)
+  (pos : Prims.nat) (len : Prims.nat) :
+  Prims.nat FStar_Pervasives_Native.option=
+  if pos >= len
+  then FStar_Pervasives_Native.None
+  else
+    if (FStar_String.index s pos) = c
+    then FStar_Pervasives_Native.Some pos
+    else find_char_from s c (pos + Prims.int_one) len
+let local_name_of (qn : Prims.string) : Prims.string=
+  match find_char_from qn 58 Prims.int_zero (FStar_String.strlen qn) with
+  | FStar_Pervasives_Native.Some i ->
+      FStar_String.sub qn (i + Prims.int_one)
+        (((FStar_String.strlen qn) - i) - Prims.int_one)
+  | FStar_Pervasives_Native.None -> qn
+let xpath_xml_ns_uri : Prims.string= "http://www.w3.org/XML/1998/namespace"
+let prefix_of (qn : Prims.string) : Prims.string=
+  match find_char_from qn 58 Prims.int_zero (FStar_String.strlen qn) with
+  | FStar_Pervasives_Native.Some i -> FStar_String.sub qn Prims.int_zero i
+  | FStar_Pervasives_Native.None -> ""
+let ns_decl_for (pfx : Prims.string) (a : Parser_XML.xml_attribute) :
+  Prims.string FStar_Pervasives_Native.option=
+  if pfx = ""
+  then
+    (if a.Parser_XML.attr_name = "xmlns"
+     then FStar_Pervasives_Native.Some (a.Parser_XML.attr_value)
+     else FStar_Pervasives_Native.None)
+  else
+    if a.Parser_XML.attr_name = (FStar_String.concat "" ["xmlns:"; pfx])
+    then FStar_Pervasives_Native.Some (a.Parser_XML.attr_value)
+    else FStar_Pervasives_Native.None
+let rec find_ns_in_attrs (pfx : Prims.string)
+  (attrs : Parser_XML.xml_attribute Prims.list) :
+  Prims.string FStar_Pervasives_Native.option=
+  match attrs with
+  | [] -> FStar_Pervasives_Native.None
+  | a::rest ->
+      (match ns_decl_for pfx a with
+       | FStar_Pervasives_Native.Some u -> FStar_Pervasives_Native.Some u
+       | FStar_Pervasives_Native.None -> find_ns_in_attrs pfx rest)
+let rec resolve_ns_anc (pfx : Prims.string)
+  (anc : Parser_XML.xml_node Prims.list) :
+  Prims.string FStar_Pervasives_Native.option=
+  match anc with
+  | [] ->
+      if pfx = "xml"
+      then FStar_Pervasives_Native.Some xpath_xml_ns_uri
+      else FStar_Pervasives_Native.None
+  | e::rest ->
+      (match find_ns_in_attrs pfx (Parser_XML.element_attrs e) with
+       | FStar_Pervasives_Native.Some u ->
+           if u = ""
+           then FStar_Pervasives_Native.None
+           else FStar_Pervasives_Native.Some u
+       | FStar_Pervasives_Native.None -> resolve_ns_anc pfx rest)
+let resolve_ns_uri (pfx : Prims.string)
+  (own_attrs : Parser_XML.xml_attribute Prims.list)
+  (anc : Parser_XML.xml_node Prims.list) :
+  Prims.string FStar_Pervasives_Native.option=
+  match find_ns_in_attrs pfx own_attrs with
+  | FStar_Pervasives_Native.Some u ->
+      if u = ""
+      then FStar_Pervasives_Native.None
+      else FStar_Pervasives_Native.Some u
+  | FStar_Pervasives_Native.None -> resolve_ns_anc pfx anc
+let elem_ns_uri (tag : Prims.string)
+  (own_attrs : Parser_XML.xml_attribute Prims.list)
+  (anc : Parser_XML.xml_node Prims.list) :
+  Prims.string FStar_Pervasives_Native.option=
+  resolve_ns_uri (prefix_of tag) own_attrs anc
+let rec lookup_nsctx (nsctx : (Prims.string * Prims.string) Prims.list)
+  (pfx : Prims.string) : Prims.string FStar_Pervasives_Native.option=
+  match nsctx with
+  | [] -> FStar_Pervasives_Native.None
+  | (p, u)::rest ->
+      if p = pfx
+      then FStar_Pervasives_Native.Some u
+      else lookup_nsctx rest pfx
+let ns_uri_eq (a : Prims.string FStar_Pervasives_Native.option)
+  (b : Prims.string FStar_Pervasives_Native.option) : Prims.bool=
+  match (a, b) with
+  | (FStar_Pervasives_Native.None, FStar_Pervasives_Native.None) -> true
+  | (FStar_Pervasives_Native.Some x, FStar_Pervasives_Native.Some y) -> x = y
+  | (FStar_Pervasives_Native.Some x, FStar_Pervasives_Native.None) -> x = ""
+  | (FStar_Pervasives_Native.None, FStar_Pervasives_Native.Some x) -> x = ""
+let name_test_matches_elem (nsctx : (Prims.string * Prims.string) Prims.list)
+  (nm : Prims.string) (own_attrs : Parser_XML.xml_attribute Prims.list)
+  (anc : Parser_XML.xml_node Prims.list) (tag : Prims.string) : Prims.bool=
+  let tpfx = prefix_of nm in
+  let tlocal = local_name_of nm in
+  let elocal = local_name_of tag in
+  if tpfx = ""
+  then
+    (elocal = tlocal) &&
+      (FStar_Pervasives_Native.uu___is_None (elem_ns_uri tag own_attrs anc))
+  else
+    (match lookup_nsctx nsctx tpfx with
+     | FStar_Pervasives_Native.None -> tag = nm
+     | FStar_Pervasives_Native.Some turi ->
+         (elocal = tlocal) &&
+           (ns_uri_eq (elem_ns_uri tag own_attrs anc)
+              (FStar_Pervasives_Native.Some turi)))
+let prefix_test_matches_elem
+  (nsctx : (Prims.string * Prims.string) Prims.list) (pfx : Prims.string)
+  (own_attrs : Parser_XML.xml_attribute Prims.list)
+  (anc : Parser_XML.xml_node Prims.list) (tag : Prims.string) : Prims.bool=
+  match lookup_nsctx nsctx pfx with
+  | FStar_Pervasives_Native.None ->
+      string_starts_with tag (Prims.strcat pfx ":")
+  | FStar_Pervasives_Native.Some turi ->
+      ns_uri_eq (elem_ns_uri tag own_attrs anc)
+        (FStar_Pervasives_Native.Some turi)
+let attr_name_test (nsctx : (Prims.string * Prims.string) Prims.list)
+  (nm : Prims.string) (anc : Parser_XML.xml_node Prims.list)
+  (owner : Parser_XML.xml_node) (a : Parser_XML.xml_attribute) : Prims.bool=
+  let tpfx = prefix_of nm in
+  if tpfx = ""
+  then
+    ((prefix_of a.Parser_XML.attr_name) = "") &&
+      ((local_name_of a.Parser_XML.attr_name) = (local_name_of nm))
+  else
+    (match lookup_nsctx nsctx tpfx with
+     | FStar_Pervasives_Native.None -> a.Parser_XML.attr_name = nm
+     | FStar_Pervasives_Native.Some turi ->
+         let apfx = prefix_of a.Parser_XML.attr_name in
+         ((apfx <> "") &&
+            ((local_name_of a.Parser_XML.attr_name) = (local_name_of nm)))
+           &&
+           (ns_uri_eq
+              (resolve_ns_uri apfx (Parser_XML.element_attrs owner) anc)
+              (FStar_Pervasives_Native.Some turi)))
+let matches_node_test (nsctx : (Prims.string * Prims.string) Prims.list)
+  (test : Parser_XPath.xp_nodetest) (it : xctx_item) : Prims.bool=
   match (test, it) with
   | (Parser_XPath.NT_Node, uu___) -> true
   | (Parser_XPath.NT_Text, CI_Text (uu___, uu___1, uu___2, uu___3)) -> true
@@ -601,24 +732,27 @@ let matches_node_test (test : Parser_XPath.xp_nodetest) (it : xctx_item) :
   | (Parser_XPath.NT_Any, CI_Elem (uu___, uu___1, uu___2)) -> true
   | (Parser_XPath.NT_Any, CI_Attr (uu___, uu___1, uu___2, uu___3)) -> true
   | (Parser_XPath.NT_Any, uu___) -> false
-  | (Parser_XPath.NT_Name nm, CI_Elem (uu___, uu___1, n)) ->
-      (match Parser_XML.element_tag n with
-       | FStar_Pervasives_Native.Some t -> t = nm
-       | FStar_Pervasives_Native.None -> false)
-  | (Parser_XPath.NT_Name nm, CI_Attr (uu___, uu___1, uu___2, a)) ->
-      a.Parser_XML.attr_name = nm
-  | (Parser_XPath.NT_Name uu___, uu___1) -> false
-  | (Parser_XPath.NT_Prefix pfx, CI_Elem (uu___, uu___1, n)) ->
+  | (Parser_XPath.NT_Name nm, CI_Elem (uu___, anc, n)) ->
       (match Parser_XML.element_tag n with
        | FStar_Pervasives_Native.Some t ->
-           string_starts_with t (Prims.strcat pfx ":")
+           name_test_matches_elem nsctx nm (Parser_XML.element_attrs n) anc t
+       | FStar_Pervasives_Native.None -> false)
+  | (Parser_XPath.NT_Name nm, CI_Attr (uu___, anc, owner, a)) ->
+      attr_name_test nsctx nm anc owner a
+  | (Parser_XPath.NT_Name uu___, uu___1) -> false
+  | (Parser_XPath.NT_Prefix pfx, CI_Elem (uu___, anc, n)) ->
+      (match Parser_XML.element_tag n with
+       | FStar_Pervasives_Native.Some t ->
+           prefix_test_matches_elem nsctx pfx (Parser_XML.element_attrs n)
+             anc t
        | FStar_Pervasives_Native.None -> false)
   | (Parser_XPath.NT_Prefix pfx, CI_Attr (uu___, uu___1, uu___2, a)) ->
       string_starts_with a.Parser_XML.attr_name (Prims.strcat pfx ":")
   | (Parser_XPath.NT_Prefix uu___, uu___1) -> false
-let filter_by_node_test (test : Parser_XPath.xp_nodetest)
-  (items : xctx_item Prims.list) : xctx_item Prims.list=
-  FStar_List_Tot_Base.filter (matches_node_test test) items
+let filter_by_node_test (nsctx : (Prims.string * Prims.string) Prims.list)
+  (test : Parser_XPath.xp_nodetest) (items : xctx_item Prims.list) :
+  xctx_item Prims.list=
+  FStar_List_Tot_Base.filter (matches_node_test nsctx test) items
 let rec list_last_or (default_val : Parser_XML.xml_node)
   (l : Parser_XML.xml_node Prims.list) : Parser_XML.xml_node=
   match l with
@@ -693,20 +827,25 @@ type xp_env =
   env_item: xctx_item ;
   env_pos: Prims.nat ;
   env_size: Prims.nat ;
-  env_vars: (Prims.string * xp_value) Prims.list }
+  env_vars: (Prims.string * xp_value) Prims.list ;
+  env_nsctx: (Prims.string * Prims.string) Prims.list }
 let __proj__Mkxp_env__item__env_item (projectee : xp_env) : xctx_item=
   match projectee with
-  | { env_item; env_pos; env_size; env_vars;_} -> env_item
+  | { env_item; env_pos; env_size; env_vars; env_nsctx;_} -> env_item
 let __proj__Mkxp_env__item__env_pos (projectee : xp_env) : Prims.nat=
   match projectee with
-  | { env_item; env_pos; env_size; env_vars;_} -> env_pos
+  | { env_item; env_pos; env_size; env_vars; env_nsctx;_} -> env_pos
 let __proj__Mkxp_env__item__env_size (projectee : xp_env) : Prims.nat=
   match projectee with
-  | { env_item; env_pos; env_size; env_vars;_} -> env_size
+  | { env_item; env_pos; env_size; env_vars; env_nsctx;_} -> env_size
 let __proj__Mkxp_env__item__env_vars (projectee : xp_env) :
   (Prims.string * xp_value) Prims.list=
   match projectee with
-  | { env_item; env_pos; env_size; env_vars;_} -> env_vars
+  | { env_item; env_pos; env_size; env_vars; env_nsctx;_} -> env_vars
+let __proj__Mkxp_env__item__env_nsctx (projectee : xp_env) :
+  (Prims.string * Prims.string) Prims.list=
+  match projectee with
+  | { env_item; env_pos; env_size; env_vars; env_nsctx;_} -> env_nsctx
 let lookup_var (vars : (Prims.string * xp_value) Prims.list)
   (name : Prims.string) : xp_value FStar_Pervasives_Native.option=
   match FStar_List_Tot_Base.find
@@ -917,21 +1056,6 @@ let item_qname (it : xctx_item) : Prims.string=
   | CI_Attr (uu___, uu___1, uu___2, a) -> a.Parser_XML.attr_name
   | CI_PI (uu___, uu___1, uu___2, tg, uu___3) -> tg
   | uu___ -> ""
-let rec find_char_from (s : Prims.string) (c : FStar_Char.char)
-  (pos : Prims.nat) (len : Prims.nat) :
-  Prims.nat FStar_Pervasives_Native.option=
-  if pos >= len
-  then FStar_Pervasives_Native.None
-  else
-    if (FStar_String.index s pos) = c
-    then FStar_Pervasives_Native.Some pos
-    else find_char_from s c (pos + Prims.int_one) len
-let local_name_of (qn : Prims.string) : Prims.string=
-  match find_char_from qn 58 Prims.int_zero (FStar_String.strlen qn) with
-  | FStar_Pervasives_Native.Some i ->
-      FStar_String.sub qn (i + Prims.int_one)
-        (((FStar_String.strlen qn) - i) - Prims.int_one)
-  | FStar_Pervasives_Native.None -> qn
 let rec sum_items (items : xctx_item Prims.list) : xpath_number=
   match items with
   | [] -> XN_Finite (Prims.int_zero, Prims.int_zero)
@@ -1069,26 +1193,28 @@ let rec eval_expr (fuel : Prims.nat) (env : xp_env)
          then
            XV_Nodes
              (eval_absolute_steps (fuel - Prims.int_one) env.env_vars
-                (root_of_item env.env_item) steps)
+                env.env_nsctx (root_of_item env.env_item) steps)
          else
            XV_Nodes
-             (eval_steps (fuel - Prims.int_one) env.env_vars [env.env_item]
-                steps)
+             (eval_steps (fuel - Prims.int_one) env.env_vars env.env_nsctx
+                [env.env_item] steps)
      | Parser_XPath.XE_FilterPath (primary, preds, steps) ->
          let pv = eval_expr (fuel - Prims.int_one) env primary in
          (match pv with
           | XV_Nodes items0 ->
               let items1 =
                 filter_items_by_preds (fuel - Prims.int_one) env.env_vars
-                  items0 preds in
+                  env.env_nsctx items0 preds in
               XV_Nodes
-                (eval_steps (fuel - Prims.int_one) env.env_vars items1 steps)
+                (eval_steps (fuel - Prims.int_one) env.env_vars env.env_nsctx
+                   items1 steps)
           | other ->
               if (Prims.uu___is_Nil preds) && (Prims.uu___is_Nil steps)
               then other
               else XV_Nodes []))
 and eval_absolute_steps (fuel : Prims.nat)
   (vars : (Prims.string * xp_value) Prims.list)
+  (nsctx : (Prims.string * Prims.string) Prims.list)
   (root_node : Parser_XML.xml_node) (steps : Parser_XPath.xp_step Prims.list)
   : xctx_item Prims.list=
   if fuel = Prims.int_zero
@@ -1101,19 +1227,20 @@ and eval_absolute_steps (fuel : Prims.nat)
          let expansion =
            match s.Parser_XPath.step_axis with
            | Parser_XPath.Ax_Child ->
-               filter_by_node_test s.Parser_XPath.step_test [root_item]
+               filter_by_node_test nsctx s.Parser_XPath.step_test [root_item]
            | Parser_XPath.Ax_Self ->
-               filter_by_node_test s.Parser_XPath.step_test [root_item]
+               filter_by_node_test nsctx s.Parser_XPath.step_test [root_item]
            | Parser_XPath.Ax_DescendantOrSelf ->
-               filter_by_node_test s.Parser_XPath.step_test (root_item ::
-                 (descendant_items [] [] root_node))
+               filter_by_node_test nsctx s.Parser_XPath.step_test (root_item
+                 :: (descendant_items [] [] root_node))
            | uu___1 -> [] in
          let kept =
-           filter_items_by_preds (fuel - Prims.int_one) vars expansion
+           filter_items_by_preds (fuel - Prims.int_one) vars nsctx expansion
              s.Parser_XPath.step_preds in
-         eval_steps (fuel - Prims.int_one) vars kept rest)
+         eval_steps (fuel - Prims.int_one) vars nsctx kept rest)
 and eval_steps (fuel : Prims.nat)
   (vars : (Prims.string * xp_value) Prims.list)
+  (nsctx : (Prims.string * Prims.string) Prims.list)
   (items : xctx_item Prims.list) (steps : Parser_XPath.xp_step Prims.list) :
   xctx_item Prims.list=
   if fuel = Prims.int_zero
@@ -1123,11 +1250,13 @@ and eval_steps (fuel : Prims.nat)
      | [] -> items
      | s::rest ->
          let expanded =
-           expand_step_over_items (fuel - Prims.int_one) vars s items in
-         eval_steps (fuel - Prims.int_one) vars expanded rest)
+           expand_step_over_items (fuel - Prims.int_one) vars nsctx s items in
+         eval_steps (fuel - Prims.int_one) vars nsctx expanded rest)
 and expand_step_over_items (fuel : Prims.nat)
-  (vars : (Prims.string * xp_value) Prims.list) (s : Parser_XPath.xp_step)
-  (items : xctx_item Prims.list) : xctx_item Prims.list=
+  (vars : (Prims.string * xp_value) Prims.list)
+  (nsctx : (Prims.string * Prims.string) Prims.list)
+  (s : Parser_XPath.xp_step) (items : xctx_item Prims.list) :
+  xctx_item Prims.list=
   if fuel = Prims.int_zero
   then []
   else
@@ -1135,14 +1264,15 @@ and expand_step_over_items (fuel : Prims.nat)
      | [] -> []
      | it::rest ->
          let raw = apply_axis s.Parser_XPath.step_axis it in
-         let tested = filter_by_node_test s.Parser_XPath.step_test raw in
+         let tested = filter_by_node_test nsctx s.Parser_XPath.step_test raw in
          let kept =
-           filter_items_by_preds (fuel - Prims.int_one) vars tested
+           filter_items_by_preds (fuel - Prims.int_one) vars nsctx tested
              s.Parser_XPath.step_preds in
          FStar_List_Tot_Base.op_At kept
-           (expand_step_over_items (fuel - Prims.int_one) vars s rest))
+           (expand_step_over_items (fuel - Prims.int_one) vars nsctx s rest))
 and filter_items_by_preds (fuel : Prims.nat)
   (vars : (Prims.string * xp_value) Prims.list)
+  (nsctx : (Prims.string * Prims.string) Prims.list)
   (items : xctx_item Prims.list) (preds : Parser_XPath.xp_expr Prims.list) :
   xctx_item Prims.list=
   if fuel = Prims.int_zero
@@ -1153,13 +1283,14 @@ and filter_items_by_preds (fuel : Prims.nat)
      | p::rest ->
          let size = FStar_List_Tot_Base.length items in
          let kept =
-           filter_one_pred (fuel - Prims.int_one) vars p items size
+           filter_one_pred (fuel - Prims.int_one) vars nsctx p items size
              Prims.int_one in
-         filter_items_by_preds (fuel - Prims.int_one) vars kept rest)
+         filter_items_by_preds (fuel - Prims.int_one) vars nsctx kept rest)
 and filter_one_pred (fuel : Prims.nat)
-  (vars : (Prims.string * xp_value) Prims.list) (p : Parser_XPath.xp_expr)
-  (items : xctx_item Prims.list) (size : Prims.nat) (pos : Prims.nat) :
-  xctx_item Prims.list=
+  (vars : (Prims.string * xp_value) Prims.list)
+  (nsctx : (Prims.string * Prims.string) Prims.list)
+  (p : Parser_XPath.xp_expr) (items : xctx_item Prims.list)
+  (size : Prims.nat) (pos : Prims.nat) : xctx_item Prims.list=
   if fuel = Prims.int_zero
   then []
   else
@@ -1167,7 +1298,13 @@ and filter_one_pred (fuel : Prims.nat)
      | [] -> []
      | it::rest ->
          let e =
-           { env_item = it; env_pos = pos; env_size = size; env_vars = vars } in
+           {
+             env_item = it;
+             env_pos = pos;
+             env_size = size;
+             env_vars = vars;
+             env_nsctx = nsctx
+           } in
          let v = eval_expr (fuel - Prims.int_one) e p in
          let keep =
            match v with
@@ -1177,7 +1314,7 @@ and filter_one_pred (fuel : Prims.nat)
                 | FStar_Pervasives_Native.None -> false)
            | uu___1 -> to_bool_val v in
          let tail =
-           filter_one_pred (fuel - Prims.int_one) vars p rest size
+           filter_one_pred (fuel - Prims.int_one) vars nsctx p rest size
              (pos + Prims.int_one) in
          if keep then it :: tail else tail)
 and eval_concat_args (fuel : Prims.nat) (env : xp_env)
@@ -1524,7 +1661,8 @@ let eval_xpath_from_root (root_node : Parser_XML.xml_node)
           env_item = (CI_Elem ([], [], root_node));
           env_pos = Prims.int_one;
           env_size = Prims.int_one;
-          env_vars = vars
+          env_vars = vars;
+          env_nsctx = []
         } in
       FStar_Pervasives_Native.Some (eval_expr fuel env e)
 let eval_xpath_from_item (ancestors : Parser_XML.xml_node Prims.list)
@@ -1545,6 +1683,7 @@ let eval_xpath_from_item (ancestors : Parser_XML.xml_node Prims.list)
                  context_node));
           env_pos = Prims.int_one;
           env_size = Prims.int_one;
-          env_vars = vars
+          env_vars = vars;
+          env_nsctx = []
         } in
       FStar_Pervasives_Native.Some (eval_expr fuel env e)
