@@ -419,7 +419,7 @@ if [[ "$STEP" == "all" || "$STEP" == "extract" ]]; then
     DID.Key.fst
     VC.DataIntegrity.fst
     RML.Mapping.fst RML.Sources.fst RML.Eval.fst
-    CSVW.Metadata.fst CSVW.URITemplate.fst CSVW.Conversion.fst
+    CSVW.Metadata.fst CSVW.URITemplate.fst CSVW.Formats.fst CSVW.Conversion.fst
     SPARQL.Eval.TimeBudget.fst
     SPARQL.Eval.Limits.fst
     SPARQL.HTTP.Response.fst
@@ -846,7 +846,7 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
     fstar_hacl_crypto.ml \
     VC_DataIntegrity.ml \
     RML_Mapping.ml RML_Sources.ml RML_Eval.ml \
-    CSVW_Metadata.ml CSVW_URITemplate.ml CSVW_Conversion.ml \
+    CSVW_Metadata.ml CSVW_URITemplate.ml CSVW_Formats.ml CSVW_Conversion.ml \
     RDF_Store_Columnar_DeltaMerge.ml \
     SPARQL_Plan_Streamable.ml RDF_Store_Capabilities.ml RDF_Store_Capabilities_Cottas.ml RDF_Store_Capabilities_Delta.ml \
     RML_VirtualSource.ml \
@@ -964,6 +964,7 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
     "$BINDIR/jsonld_fromrdf_runner"
     "$BINDIR/shacl_runner"
     "$BINDIR/rml_runner"
+    "$BINDIR/csvw_runner"
     "$BINDIR/vc_runner"
     "$BINDIR/did_runner"
     "$BINDIR/cottas_ondisk_smoketest"
@@ -984,6 +985,7 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
     ../../../bin/jsonld-runner/jsonld_runner.ml
     ../../../bin/jsonld-fromrdf-runner/jsonld_fromrdf_runner.ml
     ../../../bin/rml-runner/rml_runner.ml
+    ../../../bin/csvw-runner/csvw_runner.ml
     ../../../bin/vc-runner/vc_runner.ml
     ../../../bin/did-runner/did_runner.ml
     ../../../bin/cottas-ondisk-smoketest/cottas_ondisk_smoketest.ml
@@ -1453,6 +1455,37 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
     fi
     echo "  Built: bin/${PLATFORM}/rml_runner ($(wc -c < "$BINDIR/rml_runner") bytes)"
 
+    # csvw_runner — CSVW (CSV on the Web) csv2rdf manifest runner, Stage
+    # 10 of the CSVW program (docs/designissues/2026-07-05-csvw-program-
+    # plan.md). Walks third_party/testing/csvw/tests/manifest-rdf.ttl via
+    # the F*-extracted Parser_Turtle, loads each test's metadata document
+    # via CSVW_Metadata.csvw_decode_metadata_text, reads the referenced
+    # CSV via RML_Sources.csv_parse_rows, runs CSVW_Conversion.
+    # csvw_convert_document_{standard,minimal}, and compares against each
+    # fixture's expected .ttl via RDF_Canonical.canonicalize_to_nquads.
+    # See bin/csvw-runner/csvw_runner.ml's header for the I/O-glue-only
+    # boundary (rule #11 / anti-pattern #15).
+    CSVW_RUNNER_RC=0
+    run_with_heartbeat "ocamlopt csvw_runner" "_ocamlopt_csvw_runner.log" -- \
+      ocamlfind ocamlopt -package fstar.lib,str,zarith,sha,digestif.c,unix,uucp -linkpkg -w -8-14-26 \
+      $STATIC_FLAGS \
+      $COMMON_MODULES \
+      $PARQUET_NATIVE_STUBS \
+      $HACL_NATIVE_STUBS \
+      ../../../bin/csvw-runner/csvw_runner.ml \
+      -o "$BINDIR/csvw_runner" || CSVW_RUNNER_RC=$?
+    cat _ocamlopt_csvw_runner.log
+    if [[ "$CSVW_RUNNER_RC" -ne 0 ]]; then
+      echo "  ERROR: csvw_runner build failed (ocamlopt rc=$CSVW_RUNNER_RC)" >&2
+      echo "  See full log above. Build aborted." >&2
+      exit "$CSVW_RUNNER_RC"
+    fi
+    if [[ ! -x "$BINDIR/csvw_runner" ]]; then
+      echo "  ERROR: csvw_runner ocamlopt returned 0 but $BINDIR/csvw_runner is missing or not executable" >&2
+      exit 1
+    fi
+    echo "  Built: bin/${PLATFORM}/csvw_runner ($(wc -c < "$BINDIR/csvw_runner") bytes)"
+
     # shex_runner — ShEx (Shape Expressions) validation manifest runner,
     # stage 8 of the ShEx program
     # (docs/designissues/2026-07-05-shex-program-plan.md). Walks
@@ -1695,7 +1728,7 @@ if [[ "$STEP" == "all" || "$STEP" == "js" ]]; then
     SPARQL_FullText.ml SPARQL11_Algebra.ml XSD_Datatypes.ml XForms_Bind.ml RDF_Pretty.ml OWL_QueryRewrite.ml OWL_QueryEval.ml OWL_Tests_Manifest.ml RIF_Core_Syntax.ml Parser_RIFXML.ml RIF_Core_Translation.ml RIF_Core_Builtins.ml RIF_Core_Conformance.ml RIF_Core_Eval.ml RIF_Core_Tests.ml SPARQL11_Parser.ml SHACL_Validation.ml
     ShEx_Schema.ml Parser_ShExC.ml ShEx_SchemaEq.ml ShEx_Validation.ml
     RML_Mapping.ml RML_Sources.ml RML_Eval.ml
-    CSVW_Metadata.ml CSVW_URITemplate.ml CSVW_Conversion.ml
+    CSVW_Metadata.ml CSVW_URITemplate.ml CSVW_Formats.ml CSVW_Conversion.ml
     VC_Context.ml
     VC_Credential.ml
     VC_Multibase.ml

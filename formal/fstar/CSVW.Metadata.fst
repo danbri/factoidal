@@ -189,6 +189,10 @@ type csvw_column = {
   col_about_url        : option string;   // template string, unresolved (Stage 3)
   col_property_url     : option string;   // template string, unresolved (Stage 3)
   col_value_url        : option string;   // template string, unresolved (Stage 3)
+  // `separator`: when present, the cell is a LIST value — split on this
+  // string, each element converted + emitted as its own triple
+  // (tabular-metadata section "separator"; test228-230).
+  col_separator        : option string;
 }
 
 type csvw_dialect = {
@@ -286,12 +290,24 @@ let csvw_decode_datatype (v:json_val) : option csvw_datatype =
   match v with
   | JString s -> Some (CSVW_DT_Named s)
   | JObject _ ->
+    // `format` is either a bare string (date pattern, boolean
+    // trueVal|falseVal, or a number pattern given as a string) or an
+    // object carrying `pattern`/`groupChar`/`decimalChar` (numeric
+    // types). Read the string form and, when it is an object, pull the
+    // nested numeric-format members from IT rather than the datatype
+    // object's top level (tabular-metadata section "Formats for numeric
+    // types").
+    let fmt_field = json_get_field "format" v in
+    let fmt_str = (match fmt_field with Some (JString s) -> Some s | _ -> None) in
+    let fmt_obj = (match fmt_field with Some (JObject _) -> fmt_field | _ -> None) in
+    let get_in_fmt (key:string) : option string =
+      (match fmt_obj with Some o -> json_get_string key o | None -> None) in
     Some (CSVW_DT_Object
             (json_get_string "base" v)
-            (json_get_string "format" v)
-            (json_get_string "pattern" v)
-            (json_get_string "groupChar" v)
-            (json_get_string "decimalChar" v)
+            fmt_str
+            (get_in_fmt "pattern")
+            (get_in_fmt "groupChar")
+            (get_in_fmt "decimalChar")
             (json_get_string "@id" v)
             (json_get_int "length" v)
             (json_get_int "minLength" v)
@@ -329,6 +345,7 @@ let csvw_decode_column (v:json_val) : option csvw_column =
       col_about_url        = json_get_string "aboutUrl" v;
       col_property_url     = json_get_string "propertyUrl" v;
       col_value_url        = json_get_string "valueUrl" v;
+      col_separator        = json_get_string "separator" v;
     })
   | _ -> None
 

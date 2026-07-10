@@ -347,37 +347,32 @@ different tools.
 
 ### How far csv2rdf goes today
 
-This example converts cleanly, but it stays inside the features that
-are fully built. Measured against the full vendored W3C CSVW test
-suite (`manifest-rdf.jsonld`, 270 entries, compared via RDFC-1.0
-canonicalization the same way this project's other W3C runners
-compare): **74 pass (of 270)** — 27 of 76 `ToRdfTest`, 47 of 136
-`ToRdfTestWithWarnings`, 0 of 58 `NegativeRdfTest`. Three conversion
-fixes account for that count: the built-in datatype aliases (`number`→`xsd:double`,
-`binary`→`xsd:base64Binary`, `datetime`→`xsd:dateTime`,
-`any`→`xsd:anyAtomicType`) with an invalid-lexical-form fallback to a
-plain string, RFC 6570 fragment URI templates — the `#`-prefixed
-variable form, where previously the leading `#` was dropped so every
-fragment `aboutUrl`/`valueUrl` came out wrong — and emitting a table's
-common properties (`dc:title`,
-`rdfs:comment`, …) as RDF triples on the table node. The fail buckets
-that remain are named, not hidden behind one number:
+This example converts cleanly, and most of the vendored W3C CSVW test
+suite (`manifest-rdf.jsonld`, compared via RDFC-1.0 canonicalization
+the same way this project's other W3C runners compare) now converts
+with it — the datatype layer covers the built-in datatype aliases
+(`number`→`xsd:double`, `binary`→`xsd:base64Binary`,
+`datetime`→`xsd:dateTime`, `any`→`xsd:anyAtomicType`) with an
+invalid-lexical-form fallback to a plain string, the UAX-35 `format`
+facets (custom date/time patterns like `M/d/yyyy`, number patterns
+like `#,##0.##` with groupChar/decimalChar/percent/per-mille, `Y|N`
+booleans, duration lexical checking) via the F\*-verified
+`CSVW.Formats` engine, length/value constraints, the
+`separator`/list-valued-cell facet, RFC 6570 fragment URI templates,
+and common-property emission. For the live score see
+[the test-results dashboard]({{ '/test-results/' | url }}). The fail
+buckets that remain are named, not hidden behind one number:
 
-- **58 `NegativeRdfTest`** — fixtures that should be *rejected*; there
-  is still no CSVW validation layer (a later stage).
-- **Format-facet fixtures** — the `datatype.format` facet (custom
-  date patterns like `M/d/yyyy`, `#,##0` number patterns, `Y`/`N`
-  booleans) is the largest remaining positive cluster; the value's
-  raw text is used verbatim rather than reformatted, so any fixture
-  whose expected output depends on format-driven reformatting still
-  differs.
-- **Value constraints** (`minLength`/`maxLength`/`minInclusive`/… and
-  the `separator`/list-valued-cell facet), plus per-column `lang` and
-  `@context`-level `@language` tagging of cell and common-property
-  strings — all decoded-or-partial, not yet applied.
-- **The remainder** span full multi-level `aboutUrl`/`propertyUrl`/
-  `valueUrl` inheritance, foreign-key and `primaryKey`-uniqueness
-  checking, and metadata-discovery edge cases (`/.well-known/csvm`).
+- **Metadata discovery** — fixtures that locate their metadata via
+  Link headers, directory metadata, or `/.well-known/csvm`
+  (protocol-level discovery, parked).
+- **Metadata normalization warnings** — inconsistent array/object
+  values, properties on the wrong description level, `@base`/`@type`
+  edge cases in the `@context`.
+- **Schema compatibility + validation** — `rowTitles`, title-language
+  intersection checks, required/null interaction, foreign-key
+  NegativeRdf fixtures, inherited-property propagation combinatorics,
+  and the regex-valued duration `format` facet.
 
 Metadata decoding — parsing a CSVW metadata document at all, separate
 from doing the conversion — is further along: **286 of 293** vendored

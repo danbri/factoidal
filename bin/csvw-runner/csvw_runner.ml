@@ -94,6 +94,44 @@ let head s n =
 let abs_path p =
   if Filename.is_relative p then Filename.concat (Sys.getcwd ()) p else p
 
+(* The CSVW test suite's canonical expected outputs (test*.ttl) were
+   generated against the suite's published location,
+   http://www.w3.org/2013/csvw/tests/ — some fixtures embed that base
+   as ABSOLUTE IRIs (test263-304: number-format / datatype fixtures),
+   while most embed only relative references (test001.csv#... ). A
+   local file:// base makes every base-dependent subject/predicate IRI
+   (table URLs, cell propertyUrls) come out as file://... , which
+   matches the relative-ref fixtures but NEVER the absolute-ref ones.
+   Presenting the local checkout under its canonical web base is
+   standard CSVW-harness configuration (map local dir -> published
+   URL): it is NOT conversion logic (the pure conversion in
+   CSVW.Conversion is a function of whatever base_iri it is handed).
+   Both the conversion output AND the expected-ttl parse use the same
+   base here, so relative-ref fixtures keep matching and absolute-ref
+   fixtures start matching. *)
+let csvw_web_base = "http://www.w3.org/2013/csvw/tests"
+let csvw_tests_marker = "third_party/testing/csvw/tests"
+
+(* Return the index just AFTER the first occurrence of [needle] in
+   [hay], or None. *)
+let substr_end_index hay needle =
+  let hl = String.length hay and nl = String.length needle in
+  let rec go i =
+    if i + nl > hl then None
+    else if String.sub hay i nl = needle then Some (i + nl)
+    else go (i + 1)
+  in
+  go 0
+
+(* Map an absolute local directory under .../third_party/testing/csvw/tests
+   to its canonical web base (with trailing slash), keeping any
+   per-test subdirectory suffix (test032/, test116/, ...). Falls back
+   to a file:// base if the marker is absent (out-of-tree run). *)
+let web_base_of_dir file_dir =
+  match substr_end_index file_dir csvw_tests_marker with
+  | Some i -> csvw_web_base ^ String.sub file_dir i (String.length file_dir - i) ^ "/"
+  | None -> "file://" ^ file_dir ^ "/"
+
 (* ------------------------------------------------------------------ *)
 (* csvt:/mf: vocabulary IRIs, resolved against the manifest's own
    namespace (`@prefix csvt: <http://www.w3.org/2013/csvw/tests/vocab#>`,
@@ -331,7 +369,7 @@ let discover_metadata (test_dir : string) (action_path : string) =
 let run_test (te : test_entry) =
   let action_path = file_iri_to_path te.te_action in
   let test_dir = Filename.dirname action_path in
-  let base_iri = "file://" ^ abs_path test_dir ^ "/" in
+  let base_iri = web_base_of_dir (abs_path test_dir) in
   let explicit_metadata_path =
     match te.te_metadata_override with
     | Some m -> Some (file_iri_to_path m)

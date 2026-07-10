@@ -76,6 +76,7 @@ open RDF.Graph.Executable   // triple/subject/rdf_term/literal, rdf_type, xsd_st
 open RDF.IRI                // resolve_iri_v2
 open CSVW.Metadata
 open CSVW.URITemplate
+open CSVW.Formats             // UAX-35 number / date-time / boolean format engines
 open SPARQL11.Algebra       // string_encode_uri (default propertyUrl's column-name encoding)
 open Parser.JSON            // json_val + accessors, for common-property emission
 
@@ -150,6 +151,17 @@ let csvw_dt_base_name_of (dt : option csvw_datatype) : string =
   | Some (CSVW_DT_Object bo _ _ _ _ _ _ _ _ _ _ _ _ _ _) ->
     (match bo with Some n -> n | None -> "string")
   | None -> "string"
+
+// The UAX-35 format facets of a datatype, as a tuple:
+// (format-string, number-pattern, groupChar, decimalChar). The
+// string-form `format` (dates, boolean trueVal|falseVal, string-form
+// number pattern) and the object-form numeric members are threaded into
+// CSVW.Formats.csvw_format_convert by csvw_cell_object.
+let csvw_dt_format_facets (dt : option csvw_datatype)
+  : (option string & option string & option string & option string) =
+  match dt with
+  | Some (CSVW_DT_Object _ fmt pat grp dec _ _ _ _ _ _ _ _ _ _) -> (fmt, pat, grp, dec)
+  | _ -> (None, None, None, None)
 
 // The length + value constraint facets of a datatype, as a tuple:
 // (length, minLength, maxLength, minimum, maximum, minInclusive,
@@ -253,6 +265,7 @@ noeq type csvw_col_spec = {
   cs_about_url    : option string;
   cs_property_url : option string;
   cs_value_url    : option string;
+  cs_separator    : option string;   // list-valued cell separator (test228-230)
 }
 
 let csvw_opt_bool (o : option bool) : bool = match o with Some b -> b | None -> false
@@ -267,6 +280,7 @@ let csvw_col_spec_of_column (ts : csvw_table_schema) (c : csvw_column) : csvw_co
   cs_about_url = (match c.col_about_url with Some a -> Some a | None -> ts.ts_about_url);
   cs_property_url = (match c.col_property_url with Some p -> Some p | None -> ts.ts_property_url);
   cs_value_url = (match c.col_value_url with Some v -> Some v | None -> ts.ts_value_url);
+  cs_separator = c.col_separator;
 }
 
 // Positional default column name when neither a schema nor a header
@@ -284,6 +298,7 @@ let csvw_col_specs_from_header (header_cells : list string) : list csvw_col_spec
        cs_name = (if h = "" then csvw_positional_name i else h);
        cs_virtual = false; cs_suppress = false; cs_datatype = None;
        cs_about_url = None; cs_property_url = None; cs_value_url = None;
+       cs_separator = None;
      })
     header_cells
 
@@ -421,10 +436,50 @@ let csvw_cell_object
             // test172-182 for ill-formed, test196-198/test203-215 for
             // constraint violations).
             let base_name = csvw_dt_base_name_of spec.cs_datatype in
-            let violate = XSD.Datatypes.literal_ill_formed d txt
-                       || not (csvw_value_satisfies base_name txt spec.cs_datatype) in
-            let eff : wf_iri = if violate then xsd_string else d in
-            csvw_build_literal txt eff))
+            // UAX-35 format facets first: a `format`/`pattern` (numbers,
+            // dates) or a boolean base converts the raw cell to a
+            // canonical lexical, or rejects it (keeping the raw string).
+            let (fmt_str, pat, grp, dec) = csvw_dt_format_facets spec.cs_datatype in
+            let lex, dt_eff =
+              (match csvw_format_convert base_name fmt_str pat grp dec txt with
+               | FO_Invalid -> txt, xsd_string
+               | FO_Valid canonical -> canonical, d
+               | FO_NoFormat -> txt, d) in
+            // Re-check the (possibly reformatted) lexical against the
+            // datatype's own lexical space + length/value constraints;
+            // a still-ill-formed value falls back to a plain string.
+            let violate = XSD.Datatypes.literal_ill_formed dt_eff lex
+                       || not (csvw_value_satisfies base_name lex spec.cs_datatype) in
+            let eff : wf_iri = if violate then xsd_string else dt_eff in
+            csvw_build_literal lex eff))
+
+// Default-propertyUrl column-name encoding. csv2rdf builds a column's
+// default propertyUrl as `<tableUrl>#<name>` where the name is the
+// column's percent-encoded title. SPARQL11.Algebra.string_encode_uri
+// uses the RFC 3986 UNRESERVED set (which keeps `-` `.` `_` `~`), but
+// the CSVW corpus's canonical output percent-encodes `-` too (test188
+// `M-d-yyyy` -> `M%2Dd%2Dyyyy`) while STILL keeping `.` (`M.d.yyyy`
+// stays). Post-encode any surviving `-` as %2D — a literal `-` in
+// string_encode_uri's output can only come from an input `-` (every
+// other reserved char is already percent-escaped), so this is a safe
+// targeted fixup rather than a re-implementation of the encoder.
+let csvw_encode_name (s : string) : string =
+  String.string_of_list
+    (List.Tot.concatMap
+       (fun (c : FStar.Char.char) ->
+          if FStar.Char.int_of_char c = 45  // '-'
+          then [FStar.Char.char_of_int 37; FStar.Char.char_of_int 50; FStar.Char.char_of_int 68]  // %2D
+          else [c])
+       (String.list_of_string (string_encode_uri s)))
+
+// Split a list-valued cell (tabular-metadata `separator`) on the first
+// character of the separator string. Empty elements survive so the
+// caller's "" -> no triple rule drops them (matches the null-value
+// handling in csvw_cell_object).
+let csvw_split_list_cell (sep : string) (s : string) : list string =
+  match String.list_of_string sep with
+  | sepc :: _ -> List.Tot.map String.string_of_list (split_all sepc (String.list_of_string s))
+  | [] -> [s]
 
 let csvw_process_cell
     (table_url_resolved : string)
@@ -453,15 +508,25 @@ let csvw_process_cell
     let raw : string =
       match spec.cs_property_url with
       | Some tmpl -> resolve_iri_v2 table_url_resolved (csvw_expand_template cur_lookup tmpl)
-      | None -> table_url_resolved ^ "#" ^ string_encode_uri spec.cs_name
+      | None -> table_url_resolved ^ "#" ^ csvw_encode_name spec.cs_name
     in
     let pred_valid : option wf_iri = if is_iri raw then Some raw else None in
     match pred_valid with
     | None -> (subj, [])
     | Some pred_str ->
-      (match csvw_cell_object table_url_resolved spec cell_text cur_lookup with
-       | None -> (subj, [])
-       | Some obj -> (subj, [ { s = subj; p = pred_str; o = obj } ]))
+      (match spec.cs_separator, cell_text with
+       | Some sep, Some txt ->
+         // List-valued cell: one triple per element, each converted
+         // through the same datatype / format / constraint logic.
+         let parts = csvw_split_list_cell sep txt in
+         let objs = List.Tot.choose
+           (fun (part : string) -> csvw_cell_object table_url_resolved spec (Some part) cur_lookup)
+           parts in
+         (subj, List.Tot.map (fun (o : rdf_term) -> ({ s = subj; p = pred_str; o = o } <: triple)) objs)
+       | _ ->
+         (match csvw_cell_object table_url_resolved spec cell_text cur_lookup with
+          | None -> (subj, [])
+          | Some obj -> (subj, [ { s = subj; p = pred_str; o = obj } ])))
 
 // One row's every processed (non-suppressed-at-the-suppress-check)
 // column: physical columns zipped positionally against the row's
