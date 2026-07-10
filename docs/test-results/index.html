@@ -398,7 +398,7 @@
 <header>
   <div class="inner">
     <div class="rendered-pill" title="Rendered = when this page was last regenerated. Tests = when the *_results.log files inside the repository were last updated. Both UTC.">
-      <span class="row"><span class="label">Rendered</span><strong>2026-07-10 11:25 UTC</strong></span>
+      <span class="row"><span class="label">Rendered</span><strong>2026-07-10 11:32 UTC</strong></span>
       <span class="row"><span class="label">Tests</span><strong class="tests">2026-07-10 01:56 UTC</strong></span>
     </div>
     <h1>W3C test results</h1>
@@ -1518,8 +1518,8 @@ XML_Wellformedness.is_valid_ncname (informational only, see module comment):
   </div>
 </details>
 
-<details class="group-section" id="group-other" open>
-  <summary class="group-summary">Apache / open-source comparison &amp; internal</summary>
+<details class="group-section" id="group-other-standards" open>
+  <summary class="group-summary">Other standards (OGC / ISO / independent)</summary>
   <div class="group-body">
 <details class="family-node green" id="sparql-extras">
   <summary>
@@ -1563,15 +1563,15 @@ XML_Wellformedness.is_valid_ncname (informational only, see module comment):
     <p class="remaining-complete">Complete against the vendored suites.</p>
   </div>
 </details>
-<details class="family-node green" id="other-specs">
+<details class="family-node green" id="json-schema">
   <summary>
-    <span class="fam-name">JSON Schema / ISO Schematron</span>
-    <span class="fam-score">720/0/58 of 778</span>
+    <span class="fam-name">JSON Schema</span>
+    <span class="fam-score">712/0/58 of 770</span>
     
     <span class="dot green"></span>
   </summary>
   <div class="family-body">
-    <p class="fam-headline green">720 pass, 0 fail, 58 skip (out of 778) across JSON Schema draft-07 and ISO Schematron — independent specifications, not W3C Recommendations or Community Group work.</p>
+    <p class="fam-headline green">712 pass, 0 fail, 58 skip (out of 770) on the JSON-Schema-Test-Suite draft-07 battery. An independent specification (json-schema.org), not W3C.</p>
     <div class="suites">
       <details class="suite-node green">
         <summary><span class="suite-name">JSON Schema draft-07</span><span class="suite-numbers">712/0/58 of 770</span><span class="dot green"></span></summary>
@@ -1582,12 +1582,27 @@ XML_Wellformedness.is_valid_ncname (informational only, see module comment):
           
         </div>
       </details>
+    </div>
+    
+    <p class="remaining-complete">Complete against the vendored suites.</p>
+  </div>
+</details>
+<details class="family-node green" id="schematron">
+  <summary>
+    <span class="fam-name">ISO Schematron</span>
+    <span class="fam-score">8/0/0 of 8</span>
+    
+    <span class="dot green"></span>
+  </summary>
+  <div class="family-body">
+    <p class="fam-headline green">8 pass, 0 fail, 0 skip (out of 8) on rule-based assertion cases. An ISO standard (ISO/IEC 19757-3), not a W3C specification.</p>
+    <div class="suites">
       <details class="suite-node green">
         <summary><span class="suite-name">ISO Schematron</span><span class="suite-numbers">8/0/0 of 8</span><span class="dot green"></span></summary>
         <div class="suite-body">
           <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
           <p class="suite-numbers-full">8 pass, 0 fail, 0 skip (out of 8)</p>
-          <p class="suite-prov">Runner: <code>bin/schematron-runner</code> (<code>bin/linux-x86_64/schematron_runner</code>) &middot; Suite: <code>third_party/testing/schematron/</code> (rule-based assertion cases) &middot; ISO standard, not a W3C specification</p>
+          <p class="suite-prov">Runner: <code>bin/schematron-runner</code> (<code>bin/linux-x86_64/schematron_runner</code>) &middot; Suite: <code>third_party/testing/schematron/</code> (rule-based assertion cases)</p>
           
         </div>
       </details>
@@ -1596,6 +1611,12 @@ XML_Wellformedness.is_valid_ncname (informational only, see module comment):
     <p class="remaining-complete">Complete against the vendored suites.</p>
   </div>
 </details>
+  </div>
+</details>
+
+<details class="group-section" id="group-internal" open>
+  <summary class="group-summary">Factoidal internal suites (engine end-to-end, parity, regressions)</summary>
+  <div class="group-body">
 <details class="family-node amber" id="runtime-parity">
   <summary>
     <span class="fam-name">Storage backend &amp; JS runtime: HDT parity / hub / npm</span>
@@ -1789,8 +1810,8 @@ vc-stage1:    113 pass, 1 fail, 6 skip (of 120) — present=1</pre>
 </main>
 
 <footer>
-  Generated <strong>2026-07-10 11:25 UTC</strong> from commit
-  <code><a href="https://github.com/danbri/factoidal/commit/fefd8d2817c415a114566d6738660d353a20743d">fefd8d28</a></code>
+  Generated <strong>2026-07-10 11:32 UTC</strong> from commit
+  <code><a href="https://github.com/danbri/factoidal/commit/fefd8d2817c415a114566d6738660d353a20743d">fefd8d2</a></code>
   on branch <code>claude/main</code> — &ldquo;jsonld flatten landing: dashboard fraction derived from present suites; family gap list updated&rdquo;.
   Re-run locally: <code>cd formal/fstar &amp;&amp; ./generate-report.sh --run</code>.
 </footer>

@@ -1950,21 +1950,31 @@ DID_HTML=$(family_section "did" "DID (Decentralized Identifiers)" "$DID_STATUS" 
   "$DIDKEY_PASS" "$DIDKEY_FAIL" "$DIDKEY_SKIP" "$DIDKEY_TOTAL" "" "$(family_remaining did)")
 
 # --- Other conformance suites (not W3C): JSON Schema / ISO Schematron -----
-read -r OTHERSPEC_PASS OTHERSPEC_FAIL OTHERSPEC_SKIP OTHERSPEC_TOTAL OTHERSPEC_ANY <<< "$(sum_family "JSONSCHEMA SCHEMATRON")"
-OTHERSPEC_STATUS=$(status_for "$OTHERSPEC_FAIL" "$OTHERSPEC_ANY")
-if [ "$OTHERSPEC_ANY" -eq 1 ]; then
-  OTHERSPEC_HEADLINE="${OTHERSPEC_PASS} pass, ${OTHERSPEC_FAIL} fail, ${OTHERSPEC_SKIP} skip (out of ${OTHERSPEC_TOTAL}) across JSON Schema draft-07 and ISO Schematron — independent specifications, not W3C Recommendations or Community Group work."
+JSONSCHEMA_STATUS=$(status_for "$JSONSCHEMA_FAIL" "$JSONSCHEMA_PRESENT")
+if [ "$JSONSCHEMA_PRESENT" -eq 1 ]; then
+  JSONSCHEMA_HEADLINE="${JSONSCHEMA_PASS} pass, ${JSONSCHEMA_FAIL} fail, ${JSONSCHEMA_SKIP} skip (out of ${JSONSCHEMA_TOTAL}) on the JSON-Schema-Test-Suite draft-07 battery. An independent specification (json-schema.org), not W3C."
 else
-  OTHERSPEC_HEADLINE="Not measured this run."
+  JSONSCHEMA_HEADLINE="Not measured this run."
 fi
-OTHERSPEC_BODY=$(
+JSONSCHEMA_BODY=$(
   family_suite_row "JSON Schema draft-07" "$JSONSCHEMA_PASS" "$JSONSCHEMA_FAIL" "$JSONSCHEMA_SKIP" "$JSONSCHEMA_TOTAL" "$JSONSCHEMA_PRESENT" \
     "Runner: <code>bin/jsonschema-runner</code> (<code>bin/linux-x86_64/jsonschema_runner</code>) &middot; Suite: <code>third_party/testing/jsonschema/</code> (JSON-Schema-Test-Suite draft7) &middot; skips are optional/format vocabularies out of scope for the core validator"
-  family_suite_row "ISO Schematron" "$SCHEMATRON_PASS" "$SCHEMATRON_FAIL" "$SCHEMATRON_SKIP" "$SCHEMATRON_TOTAL" "$SCHEMATRON_PRESENT" \
-    "Runner: <code>bin/schematron-runner</code> (<code>bin/linux-x86_64/schematron_runner</code>) &middot; Suite: <code>third_party/testing/schematron/</code> (rule-based assertion cases) &middot; ISO standard, not a W3C specification"
 )
-OTHERSPEC_HTML=$(family_section "other-specs" "JSON Schema / ISO Schematron" "$OTHERSPEC_STATUS" "$OTHERSPEC_HEADLINE" "$OTHERSPEC_BODY" "" \
-  "$OTHERSPEC_PASS" "$OTHERSPEC_FAIL" "$OTHERSPEC_SKIP" "$OTHERSPEC_TOTAL")
+JSONSCHEMA_HTML=$(family_section "json-schema" "JSON Schema" "$JSONSCHEMA_STATUS" "$JSONSCHEMA_HEADLINE" "$JSONSCHEMA_BODY" "" \
+  "$JSONSCHEMA_PASS" "$JSONSCHEMA_FAIL" "$JSONSCHEMA_SKIP" "$JSONSCHEMA_TOTAL")
+
+SCHEMATRON_STATUS=$(status_for "$SCHEMATRON_FAIL" "$SCHEMATRON_PRESENT")
+if [ "$SCHEMATRON_PRESENT" -eq 1 ]; then
+  SCHEMATRON_HEADLINE="${SCHEMATRON_PASS} pass, ${SCHEMATRON_FAIL} fail, ${SCHEMATRON_SKIP} skip (out of ${SCHEMATRON_TOTAL}) on rule-based assertion cases. An ISO standard (ISO/IEC 19757-3), not a W3C specification."
+else
+  SCHEMATRON_HEADLINE="Not measured this run."
+fi
+SCHEMATRON_BODY=$(
+  family_suite_row "ISO Schematron" "$SCHEMATRON_PASS" "$SCHEMATRON_FAIL" "$SCHEMATRON_SKIP" "$SCHEMATRON_TOTAL" "$SCHEMATRON_PRESENT" \
+    "Runner: <code>bin/schematron-runner</code> (<code>bin/linux-x86_64/schematron_runner</code>) &middot; Suite: <code>third_party/testing/schematron/</code> (rule-based assertion cases)"
+)
+SCHEMATRON_HTML=$(family_section "schematron" "ISO Schematron" "$SCHEMATRON_STATUS" "$SCHEMATRON_HEADLINE" "$SCHEMATRON_BODY" "" \
+  "$SCHEMATRON_PASS" "$SCHEMATRON_FAIL" "$SCHEMATRON_SKIP" "$SCHEMATRON_TOTAL")
 
 # --- Storage backend & JS/browser runtime: HDT parity / hub / npm ---------
 # Not W3C conformance — these exercise the shipped engine end to end: the
@@ -2110,8 +2120,11 @@ GROUP2_BODY=$(printf '%s\n' "$SHEX_HTML" "$HDT_HTML" "$RML_HTML")
 GROUP2_HTML=$(group_section "group-w3c-cg" "W3C Community Group / Notes / Submissions" "$GROUP2_BODY")
 
 GROUP3_BODY=$(printf '%s\n' \
-  "$SPARQLEXTRAS_HTML" "$OTHERSPEC_HTML" "$RUNTIME_HTML" "$ENGINES_HTML")
-GROUP3_HTML=$(group_section "group-other" "Apache / open-source comparison &amp; internal" "$GROUP3_BODY")
+  "$SPARQLEXTRAS_HTML" "$JSONSCHEMA_HTML" "$SCHEMATRON_HTML")
+GROUP3_HTML=$(group_section "group-other-standards" "Other standards (OGC / ISO / independent)" "$GROUP3_BODY")
+
+GROUP4_BODY=$(printf '%s\n' "$RUNTIME_HTML" "$ENGINES_HTML")
+GROUP4_HTML=$(group_section "group-internal" "Factoidal internal suites (engine end-to-end, parity, regressions)" "$GROUP4_BODY")
 
 # --- Legend -----------------------------------------------------------------
 LEGEND_HTML=$(cat <<'LEGENDEOF'
@@ -2583,6 +2596,8 @@ ${GROUP1_HTML}
 ${GROUP2_HTML}
 
 ${GROUP3_HTML}
+
+${GROUP4_HTML}
 
 ${PERF_SECTION_HTML}
 
