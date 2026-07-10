@@ -398,7 +398,7 @@
 <header>
   <div class="inner">
     <div class="rendered-pill" title="Rendered = when this page was last regenerated. Tests = when the *_results.log files inside the repository were last updated. Both UTC.">
-      <span class="row"><span class="label">Rendered</span><strong>2026-07-10 13:49 UTC</strong></span>
+      <span class="row"><span class="label">Rendered</span><strong>2026-07-10 13:53 UTC</strong></span>
       <span class="row"><span class="label">Tests</span><strong class="tests">2026-07-10 01:56 UTC</strong></span>
     </div>
     <h1>W3C test results</h1>
@@ -1473,12 +1473,12 @@ XML_Wellformedness.is_valid_ncname (informational only, see module comment):
 <details class="family-node amber" id="shex">
   <summary>
     <span class="fam-name">ShEx (Shape Expressions)</span>
-    <span class="fam-score">1181/1/0 of 1182</span>
+    <span class="fam-score">1281/1/0 of 1282</span>
     
     <span class="dot amber"></span>
   </summary>
   <div class="family-body">
-    <p class="fam-headline amber">1181 pass, 1 fail, 0 skip (out of 1182) on the shexSpec/shexTest validation manifest.</p>
+    <p class="fam-headline amber">Validation: 1181 pass, 1 fail, 0 skip (out of 1182); negativeSyntax (ShExC grammar-reject): 100 pass, 0 fail (out of 100).</p>
     <div class="suites">
       <details class="suite-node amber">
         <summary><span class="suite-name">ShEx Validation</span><span class="suite-numbers">1181/1/0 of 1182</span><span class="dot amber"></span></summary>
@@ -1487,6 +1487,15 @@ XML_Wellformedness.is_valid_ncname (informational only, see module comment):
           <p class="suite-numbers-full">1181 pass, 1 fail, 0 skip (out of 1182)</p>
           <p class="suite-prov">Runner: <code>bin/shex-runner</code> (<code>bin/linux-x86_64/shex_runner</code>) &middot; Suite: <code>third_party/testing/shex/</code> (shexSpec/shexTest, ShExJ-first)</p>
           <p class="suite-diag"><a href="https://github.com/danbri/factoidal/blob/claude/main/.github/test-suites/shex.yaml" target="_blank" rel="noopener">diagnosis: the 1 mismatch is an upstream fixture defect (start2RefS2.json has predicate p1 where the canonical ShExC schema has p2), not an engine bug</a></p>
+        </div>
+      </details>
+      <details class="suite-node green">
+        <summary><span class="suite-name">ShEx negativeSyntax (ShExC grammar-reject)</span><span class="suite-numbers">100/0/0 of 100</span><span class="dot green"></span></summary>
+        <div class="suite-body">
+          <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+          <p class="suite-numbers-full">100 pass, 0 fail, 0 skip (out of 100)</p>
+          <p class="suite-prov">Runner: <code>bin/shex-runner --negative-syntax</code> &middot; Suite: <code>third_party/testing/shex/negativeSyntax/</code> — every fixture MUST fail to parse; pass = <code>Parser.ShExC</code> (F*) rejects it</p>
+          
         </div>
       </details>
     </div>
@@ -1896,6 +1905,7 @@ XML_Wellformedness.is_valid_ncname (informational only, see module comment):
   <pre>shacl-core:   98 pass, 0 fail, 0 skip (of 98) — present=1
 shacl-sparql: 22 pass, 0 fail, 0 skip (of 22) — present=1
 shex:         1181 pass, 1 fail, 0 skip (of 1182) — present=1
+shex-negative-syntax: 100 pass, 0 fail (of 100) — present=1
 jsonld-tordf: 461 pass, 0 fail, 6 skip (of 467) — present=1
 rml-core:     76 pass, 0 fail, 0 skip (of 76) — present=1
 rif-core:     34 pass, 4 fail, 12 skip (of 50) — present=1
@@ -1917,9 +1927,9 @@ vc-stage1:    117 pass, 0 fail, 0 skip (of 117) — present=1</pre>
 </main>
 
 <footer>
-  Generated <strong>2026-07-10 13:49 UTC</strong> from commit
-  <code><a href="https://github.com/danbri/factoidal/commit/b616f81f362788caa00be192ec4cef68ba7ce4dd">b616f81</a></code>
-  on branch <code>claude/main</code> — &ldquo;owl2: syntax-dl species checker in F* — the catalog moves from unscored to 302 pass, 2 fail (out of 304 scored), 19 skipped (out of 323)&rdquo;.
+  Generated <strong>2026-07-10 13:53 UTC</strong> from commit
+  <code><a href="https://github.com/danbri/factoidal/commit/0ecf7ad629bae8b4d10973e78f8e36e9e715f3a3">0ecf7ad</a></code>
+  on branch <code>claude/main</code> — &ldquo;shex: score negativeSyntax — 100 pass, 0 fail (of 100) after fixing 15 Parser.ShExC permissiveness bugs; vendor tree-sitter-shexc probe + grammar audit&rdquo;.
   Re-run locally: <code>cd formal/fstar &amp;&amp; ./generate-report.sh --run</code>.
 </footer>
 
