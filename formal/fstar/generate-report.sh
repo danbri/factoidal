@@ -658,6 +658,27 @@ scrape_added_summary QUDT_INTEGRITY "$QUDT_LOG"           'qudt-integrity: [0-9]
 scrape_added_summary QUDT_USER      "$QUDT_LOG"           'qudt-user-shapes: [0-9]+ pass'
 scrape_added_summary CSVW2RDF       "$CSVW_LOG"           'csv2rdf: [0-9]+ pass'
 scrape_added_summary DIDKEY         "$DID_LOG"            'did:key: [0-9]+ pass'
+
+# Task #88 (canivc.com community-compatibility integration): these two
+# suites are driven by tests/vc-di-eddsa/run.sh and tests/vc20-api/run.sh
+# (mocha over bin/vc-api-shim/server.mjs), which write a small flat JSON
+# result file directly rather than a TAP log — read pass/fail/skip/total
+# straight out of it (no jq dependency, same grep/sed style as the rest
+# of this script).
+scrape_json_result() {
+  local prefix="$1" json="$2"
+  declare -g "${prefix}_PRESENT=0" "${prefix}_PASS=0" "${prefix}_FAIL=0" "${prefix}_SKIP=0" "${prefix}_TOTAL=0"
+  [ -f "$json" ] || return 0
+  local p f s t
+  p=$(grep -E '"pass":'  "$json" 2>/dev/null | head -1 | sed -E 's/.*"pass": *([0-9]+).*/\1/')
+  f=$(grep -E '"fail":'  "$json" 2>/dev/null | head -1 | sed -E 's/.*"fail": *([0-9]+).*/\1/')
+  s=$(grep -E '"skip":'  "$json" 2>/dev/null | head -1 | sed -E 's/.*"skip": *([0-9]+).*/\1/')
+  t=$(grep -E '"total":' "$json" 2>/dev/null | head -1 | sed -E 's/.*"total": *([0-9]+).*/\1/')
+  [ -z "$t" ] && return 0
+  declare -g "${prefix}_PRESENT=1" "${prefix}_PASS=${p:-0}" "${prefix}_FAIL=${f:-0}" "${prefix}_SKIP=${s:-0}" "${prefix}_TOTAL=${t:-0}"
+}
+scrape_json_result VCDIEDDSA "$OUTPUT_DIR/by-suite/vc-di-eddsa.json"
+scrape_json_result VC20API   "$OUTPUT_DIR/by-suite/vc20-api.json"
 scrape_added_summary JSONLD_FROMRDF "$JSONLD_FROMRDF_LOG" 'JSON-LD fromRdf tests:'
 scrape_added_summary HDT_PARITY     "$HDT_PARITY_LOG"     'hdt-stage4 parity:'
 scrape_node_test     HUB            "$HUB_LOG"
@@ -942,6 +963,10 @@ emit_json_suites () {
     "$CSVW2RDF_PASS" "$CSVW2RDF_FAIL" "$CSVW2RDF_SKIP" "$CSVW2RDF_TOTAL" "$(bp "$CSVW2RDF_PRESENT")"
   printf '    "did_key":        {"pass":%s,"fail":%s,"skip":%s,"total":%s,"present":%s,"spec":"https://www.w3.org/TR/did-core/"},\n' \
     "$DIDKEY_PASS" "$DIDKEY_FAIL" "$DIDKEY_SKIP" "$DIDKEY_TOTAL" "$(bp "$DIDKEY_PRESENT")"
+  printf '    "vc_di_eddsa":    {"pass":%s,"fail":%s,"skip":%s,"total":%s,"present":%s,"spec":"https://w3c.github.io/vc-di-eddsa-test-suite/"},\n' \
+    "$VCDIEDDSA_PASS" "$VCDIEDDSA_FAIL" "$VCDIEDDSA_SKIP" "$VCDIEDDSA_TOTAL" "$(bp "$VCDIEDDSA_PRESENT")"
+  printf '    "vc20_api":       {"pass":%s,"fail":%s,"skip":%s,"total":%s,"present":%s,"spec":"https://w3c.github.io/vc-data-model-2.0-test-suite/"},\n' \
+    "$VC20API_PASS" "$VC20API_FAIL" "$VC20API_SKIP" "$VC20API_TOTAL" "$(bp "$VC20API_PRESENT")"
   printf '    "jsonld_fromrdf": {"pass":%s,"fail":%s,"skip":%s,"total":%s,"present":%s,"spec":"https://www.w3.org/TR/json-ld11-api/#serialize-rdf-as-json-ld-algorithm"},\n' \
     "$JSONLD_FROMRDF_PASS" "$JSONLD_FROMRDF_FAIL" "$JSONLD_FROMRDF_SKIP" "$JSONLD_FROMRDF_TOTAL" "$(bp "$JSONLD_FROMRDF_PRESENT")"
   printf '    "jsonld_expand":  {"pass":%s,"fail":%s,"skip":%s,"total":%s,"present":%s,"spec":"https://www.w3.org/TR/json-ld11-api/#expansion-algorithm"},\n' \
@@ -991,6 +1016,8 @@ emit_json_suites () {
   emit_json_suite_obj "qudt_user_shapes"  QUDT_USER
   emit_json_suite_obj "csvw_csv2rdf"      CSVW2RDF
   emit_json_suite_obj "did_key"           DIDKEY
+  emit_json_suite_obj "vc_di_eddsa"       VCDIEDDSA
+  emit_json_suite_obj "vc20_api"          VC20API
   emit_json_suite_obj "jsonld_fromrdf"    JSONLD_FROMRDF
   emit_json_suite_obj "jsonld_expand"     JSONLD_EXPAND
   emit_json_suite_obj "jsonld_compact"    JSONLD_COMPACT
@@ -1971,10 +1998,51 @@ else
   VC_FAMILY_HEADLINE="Not measured this run."
 fi
 VC_DIAG="All 117 scorable fixtures pass. The two validity-period fixtures are scored for real: the official test suite fills in concrete dates at run time, and this runner now does the same substitution before checking, so the engine's own validFrom/validUntil ordering check decides the verdict. The three &ldquo;reject-or-patch&rdquo; fixtures are scored as must-reject: the official suite lets an issuer either repair a missing @context or reject the document, and since this engine validates rather than issues, rejecting is the compliant behavior. Three vendored fixtures are marked <strong>withdrawn upstream</strong> and excluded from the scorable set: unsigned template files for holder-binding tests the official test suite removed as unsound in February 2025 &mdash; they contain no signature to verify, the official suite does not run them, and they are nobody's work to do (a skip would wrongly suggest otherwise). Signature cryptography is implemented and in use, not pending: eddsa-rdfc-2022 Data Integrity proofs (RDFC-1.0 canonicalization, SHA-256, Ed25519 via the formally verified HACL&#42; library) sign and verify in this same binary &mdash; <code>vc_runner --crypto</code> runs an 8-check create/verify/tamper roundtrip, 8 pass, 0 fail."
+# Task #88 (canivc.com community-compatibility integration, 2026-07-10):
+# two more measurements against the same VC family, each with its OWN
+# denominator — deliberately NOT folded into VC_PASS/VC_FAIL/VC_TOTAL
+# above (anti-pattern #25: different suites, different scope, never
+# add the numerators together). vc-di-eddsa is the official W3C Data
+# Integrity eddsa-rdfc-2022 signing/verifying suite run against a new
+# HTTP shim (bin/vc-api-shim); vc20-api is the ALREADY-vendored VC Data
+# Model 2.0 suite's own issuer/verifier HTTP tests, run against the
+# same shim — complementary to, not a replacement for, the Stage 1
+# structural-fixture row above.
+VCDIEDDSA_DIAG="Remaining 5 failures: 3 are missing DATA_LOSS_DETECTION_ERROR detection (a JSON-LD term silently dropped by expansion is not caught and rejected), 2 are multi-proof / <code>proof.previousProof</code> chaining (not supported — the shim checks exactly one proof). Community comparison on the identical 31-test scope (canivc.com's &ldquo;eddsa-rdfc-2022 issuers&rdquo; + &ldquo;verifiers&rdquo; matrices): scores range 0% to 100% among registered implementations, median 41.9%; 83.9% here places Factoidal above the median, close behind Trential (93.5%) and SpruceID (96.8%), behind Grotto Networking (100%)."
+VC20API_DIAG="Single dominant cause for nearly all 37 failures: the shim has no VC Data Model 2.0 structural validator of its own (it only implements Data Integrity signing/verifying) — almost every failure is a missing-rejection-of-malformed-input test (bad <code>credentialStatus</code>/<code>refreshService</code>/<code>credentialSchema</code>/<code>termsOfUse</code>/<code>evidence</code> shape, <code>validUntil</code> before <code>validFrom</code>, missing <code>type</code>/<code>@context</code>, malformed Verifiable Presentation). Full breakdown: <code>docs/test-results/by-suite/vc20-api.json</code>."
 VC_BODY=$(
   family_suite_row "VC Data Model 2.0 — structural (Stage 1)" "$VC_PASS" "$VC_FAIL" "$VC_SKIP" "$VC_TOTAL" "$VC_PRESENT" \
     "Runner: <code>bin/vc-runner</code> (<code>bin/linux-x86_64/vc_runner</code>) &middot; Suite: <code>third_party/testing/vc/tests/input/</code> (structural fixtures, filename-encoded verdicts)" \
     "${VC_DIAG} <a href=\"${GITHUB_BLOB_BASE}/docs/designissues/2026-07-05-vc-program-plan.md\" target=\"_blank\" rel=\"noopener\">VC program plan</a>"
+  family_suite_row "Data Integrity eddsa-rdfc-2022 (W3C vc-di-eddsa-test-suite, via shim)" "$VCDIEDDSA_PASS" "$VCDIEDDSA_FAIL" "$VCDIEDDSA_SKIP" "$VCDIEDDSA_TOTAL" "$VCDIEDDSA_PRESENT" \
+    "Runner: <code>tests/vc-di-eddsa/run.sh</code> &middot; Suite: <code>third_party/testing/vc-di-eddsa/tests/{05-di-rdfc-create,15-di-rdfc-verify}.js</code> against <code>bin/vc-api-shim/server.mjs</code>" \
+    "${VCDIEDDSA_DIAG} <a href=\"${GITHUB_BLOB_BASE}/.github/test-suites/vc-di-eddsa.yaml\" target=\"_blank\" rel=\"noopener\">suite manifest</a> &middot; <a href=\"${GITHUB_BLOB_BASE}/docs/designissues/2026-07-10-canivc-community-compat.md\" target=\"_blank\" rel=\"noopener\">canivc.com scoping doc</a>"
+  family_suite_row "VC Data Model 2.0 — issuer/verifier HTTP suite (via shim)" "$VC20API_PASS" "$VC20API_FAIL" "$VC20API_SKIP" "$VC20API_TOTAL" "$VC20API_PRESENT" \
+    "Runner: <code>tests/vc20-api/run.sh</code> &middot; Suite: <code>third_party/testing/vc/tests/{1.03-conformance,4.03-contexts,...,7-algorithms}.js</code> (14 files) against <code>bin/vc-api-shim/server.mjs</code>" \
+    "${VC20API_DIAG} <a href=\"${GITHUB_BLOB_BASE}/.github/test-suites/vc20-api.yaml\" target=\"_blank\" rel=\"noopener\">suite manifest</a>"
+  cat <<CANIVC
+      <details class="suite-node grey">
+        <summary><span class="suite-name">VC community compatibility (canivc.com)</span><span class="suite-numbers">snapshot 2026-07-10</span><span class="dot grey"></span></summary>
+        <div class="suite-body">
+          <p class="suite-numbers-full">Digital Bazaar's <a href="https://canivc.com" target="_blank" rel="noopener">canivc.com</a> aggregates the same official W3C/CCG test-suite reports across ~20 implementations. Per-suite comparison (community min/median/max % across registered implementations, from a snapshot vendored at <code>third_party/testing/canivc-snapshot/</code>; full scoping + gap rationale in <a href="${GITHUB_BLOB_BASE}/docs/designissues/2026-07-10-canivc-community-compat.md" target="_blank" rel="noopener">the canivc.com integration doc</a>):</p>
+          <table class="canivc-compat">
+            <thead><tr><th>suite</th><th>Factoidal</th><th>community min / median / max</th><th>status</th></tr></thead>
+            <tbody>
+              <tr><td>eddsa-rdfc-2022 (create+verify, 31 tests)</td><td>83.9% (26/31)</td><td>0% / 41.9% / 100%</td><td>measured — above median</td></tr>
+              <tr><td>VC Data Model 2.0 (issuer/verifier HTTP)</td><td>37.3% (22/59)</td><td>22.0% / 54.7% / 96.6%</td><td>measured — below median (structural validation gap, see row above)</td></tr>
+              <tr><td>did:key</td><td>not measured via HTTP resolver</td><td>25.0% / 25.0% / 87.5%</td><td>assessed, not implemented — see scoping doc</td></tr>
+              <tr><td>Data Integrity ECDSA</td><td>not implemented</td><td>0% / 90.0% / 100%</td><td>out of scope — no ECDSA cryptosuite wired (HACL&#42; has P-256 source, not adopted)</td></tr>
+              <tr><td>Ed25519Signature2020</td><td>not implemented</td><td>0% / 78.6% / 100%</td><td>out of scope — legacy cryptosuite, assessed distance from eddsa-rdfc-2022, not attempted</td></tr>
+              <tr><td>Data Integrity BBS</td><td>not implemented</td><td>2.3% / 78.5% / 100%</td><td>out of scope — no BBS signature scheme anywhere in the codebase</td></tr>
+              <tr><td>VC JOSE/COSE</td><td>not implemented</td><td>68.6% / 100% / 100%</td><td>out of scope — different (JWT/CWT) securing stack</td></tr>
+              <tr><td>VC Bitstring Status List</td><td>not implemented</td><td>3.8% / 32.7% / 96.2%</td><td>out of scope — credentialStatus processing not implemented</td></tr>
+              <tr><td>VC-API Issuer (full)</td><td>not implemented</td><td>0% / 42.9% / 96.4%</td><td>out of scope — full VC-API surface far beyond issue/verify</td></tr>
+              <tr><td>VC-API Verifier (full)</td><td>not implemented</td><td>0% / 55.6% / 97.2%</td><td>out of scope — same reason</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </details>
+CANIVC
 )
 VC_FAMILY_HTML=$(family_section "vc2" "Verifiable Credentials 2.0" "$VC_STATUS" "$VC_FAMILY_HEADLINE" "$VC_BODY" "" \
   "$VC_PASS" "$VC_FAIL" "$VC_SKIP" "$VC_TOTAL" "" "$(family_remaining vc)")

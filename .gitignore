@@ -63,3 +63,13 @@ data/logs/
 # byproducts are not — they recur on every docs build and otherwise trip
 # the untracked-files stop hook.
 third_party/eleventy/npm-cache/_logs/
+
+# Vendored external mocha test suites' installed dependency trees
+# (task #88, canivc.com integration) — installed at run time via
+# `npm install`, never committed; see each suite's PROVENANCE.md.
+third_party/testing/vc-di-eddsa/node_modules/
+third_party/testing/vc/node_modules/
+third_party/testing/vc-di-eddsa/localConfig.cjs
+third_party/testing/vc-di-eddsa/reports/*.json
+third_party/testing/vc-di-eddsa/suite.log
+third_party/testing/vc/localConfig.cjs

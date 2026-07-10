@@ -1,0 +1,1221 @@
+{
+  "retrieved_at": "2026-07-10T00:00:00Z",
+  "source": "https://canivc.com/reports/ (Digital Bazaar's canivc.com dashboard) and each suite's published index.json",
+  "licence": "canivc.com site content: BSD-3-Clause / W3C Software and Document licence per its repo (digitalbazaar/canivc, LICENSE.md); individual test-suite reports carry the reporting implementation's own submitted data, aggregated by W3C/CCG working groups",
+  "suites": [
+    {
+      "key": "vc2",
+      "name": "VC v2.0 Interoperability Report",
+      "canivc_url": "https://canivc.com/vc2-0-test-suite",
+      "report_json_url": "https://w3c.github.io/vc-data-model-2.0-test-suite/index.json",
+      "aggregate": {
+        "n_implementations": 10,
+        "min_pct": 22.0,
+        "median_pct": 54.7,
+        "max_pct": 96.6,
+        "top3": [
+          "Kataru Content VC",
+          "Trential",
+          "SpruceID"
+        ]
+      },
+      "implementations": [
+        {
+          "implementation": "Kataru Content VC",
+          "pass_count": 57,
+          "fail_count": 2,
+          "pending_count": 0,
+          "total": 59,
+          "pct": 96.6
+        },
+        {
+          "implementation": "Trential",
+          "pass_count": 57,
+          "fail_count": 2,
+          "pending_count": 0,
+          "total": 59,
+          "pct": 96.6
+        },
+        {
+          "implementation": "SpruceID",
+          "pass_count": 54,
+          "fail_count": 5,
+          "pending_count": 0,
+          "total": 59,
+          "pct": 91.5
+        },
+        {
+          "implementation": "VC Issuer Mock",
+          "pass_count": 45,
+          "fail_count": 14,
+          "pending_count": 0,
+          "total": 59,
+          "pct": 76.3
+        },
+        {
+          "implementation": "OpSecId",
+          "pass_count": 37,
+          "fail_count": 28,
+          "pending_count": 0,
+          "total": 65,
+          "pct": 56.9
+        },
+        {
+          "implementation": "apicatalog.com",
+          "pass_count": 31,
+          "fail_count": 28,
+          "pending_count": 0,
+          "total": 59,
+          "pct": 52.5
+        },
+        {
+          "implementation": "MakoLab",
+          "pass_count": 28,
+          "fail_count": 31,
+          "pending_count": 0,
+          "total": 59,
+          "pct": 47.5
+        },
+        {
+          "implementation": "Digital Bazaar, Inc.",
+          "pass_count": 24,
+          "fail_count": 41,
+          "pending_count": 0,
+          "total": 65,
+          "pct": 36.9
+        },
+        {
+          "implementation": "Gen Digital",
+          "pass_count": 13,
+          "fail_count": 46,
+          "pending_count": 0,
+          "total": 59,
+          "pct": 22.0
+        },
+        {
+          "implementation": "Procivis One Core",
+          "pass_count": 13,
+          "fail_count": 46,
+          "pending_count": 0,
+          "total": 59,
+          "pct": 22.0
+        }
+      ]
+    },
+    {
+      "key": "ecdsa",
+      "name": "Data Integrity ECDSA Cryptosuites Interoperability Report",
+      "canivc_url": "https://canivc.com/vc-di-ecdsa-test-suite",
+      "report_json_url": "https://w3c.github.io/vc-di-ecdsa-test-suite/index.json",
+      "aggregate": {
+        "n_implementations": 27,
+        "min_pct": 0.0,
+        "median_pct": 90.0,
+        "max_pct": 100.0,
+        "top3": [
+          "Grotto Networking: P-256",
+          "MakoLab: P-256",
+          "SpruceID: P-256"
+        ]
+      },
+      "implementations": [
+        {
+          "implementation": "Grotto Networking: P-256",
+          "pass_count": 72,
+          "fail_count": 0,
+          "pending_count": 0,
+          "total": 72,
+          "pct": 100.0
+        },
+        {
+          "implementation": "MakoLab: P-256",
+          "pass_count": 72,
+          "fail_count": 0,
+          "pending_count": 0,
+          "total": 72,
+          "pct": 100.0
+        },
+        {
+          "implementation": "SpruceID: P-256",
+          "pass_count": 72,
+          "fail_count": 0,
+          "pending_count": 0,
+          "total": 72,
+          "pct": 100.0
+        },
+        {
+          "implementation": "SpruceID: P-384",
+          "pass_count": 32,
+          "fail_count": 0,
+          "pending_count": 0,
+          "total": 32,
+          "pct": 100.0
+        },
+        {
+          "implementation": "Trential: P-256",
+          "pass_count": 72,
+          "fail_count": 0,
+          "pending_count": 0,
+          "total": 72,
+          "pct": 100.0
+        },
+        {
+          "implementation": "Trential: P-384",
+          "pass_count": 16,
+          "fail_count": 0,
+          "pending_count": 0,
+          "total": 16,
+          "pct": 100.0
+        },
+        {
+          "implementation": "Grotto Networking",
+          "pass_count": 42,
+          "fail_count": 0,
+          "pending_count": 0,
+          "total": 42,
+          "pct": 100.0
+        },
+        {
+          "implementation": "Trential",
+          "pass_count": 31,
+          "fail_count": 0,
+          "pending_count": 0,
+          "total": 31,
+          "pct": 100.0
+        },
+        {
+          "implementation": "apicatalog.com",
+          "pass_count": 41,
+          "fail_count": 1,
+          "pending_count": 0,
+          "total": 42,
+          "pct": 97.6
+        },
+        {
+          "implementation": "MakoLab",
+          "pass_count": 30,
+          "fail_count": 1,
+          "pending_count": 0,
+          "total": 31,
+          "pct": 96.8
+        },
+        {
+          "implementation": "SpruceID",
+          "pass_count": 30,
+          "fail_count": 1,
+          "pending_count": 0,
+          "total": 31,
+          "pct": 96.8
+        },
+        {
+          "implementation": "apicatalog.com: P-256",
+          "pass_count": 68,
+          "fail_count": 4,
+          "pending_count": 0,
+          "total": 72,
+          "pct": 94.4
+        },
+        {
+          "implementation": "apicatalog.com: P-384",
+          "pass_count": 30,
+          "fail_count": 2,
+          "pending_count": 0,
+          "total": 32,
+          "pct": 93.8
+        },
+        {
+          "implementation": "Netis: P-256",
+          "pass_count": 36,
+          "fail_count": 4,
+          "pending_count": 0,
+          "total": 40,
+          "pct": 90.0
+        },
+        {
+          "implementation": "Procivis One Core: P-256",
+          "pass_count": 20,
+          "fail_count": 0,
+          "pending_count": 16,
+          "total": 36,
+          "pct": 55.6
+        },
+        {
+          "implementation": "Digital Bazaar, Inc.: P-256",
+          "pass_count": 4,
+          "fail_count": 36,
+          "pending_count": 32,
+          "total": 72,
+          "pct": 5.6
+        },
+        {
+          "implementation": "Digital Bazaar, Inc.",
+          "pass_count": 2,
+          "fail_count": 40,
+          "pending_count": 0,
+          "total": 42,
+          "pct": 4.8
+        },
+        {
+          "implementation": "Digital Bazaar, Inc.: P-384",
+          "pass_count": 0,
+          "fail_count": 0,
+          "pending_count": 16,
+          "total": 16,
+          "pct": 0.0
+        },
+        {
+          "implementation": "Gen Digital: P-384",
+          "pass_count": 0,
+          "fail_count": 0,
+          "pending_count": 16,
+          "total": 16,
+          "pct": 0.0
+        },
+        {
+          "implementation": "bovine: P-256",
+          "pass_count": 0,
+          "fail_count": 10,
+          "pending_count": 16,
+          "total": 26,
+          "pct": 0.0
+        },
+        {
+          "implementation": "CredenceID: P-256",
+          "pass_count": 0,
+          "fail_count": 10,
+          "pending_count": 0,
+          "total": 10,
+          "pct": 0.0
+        },
+        {
+          "implementation": "Gen Digital: P-256",
+          "pass_count": 0,
+          "fail_count": 10,
+          "pending_count": 0,
+          "total": 10,
+          "pct": 0.0
+        },
+        {
+          "implementation": "Gen Digital",
+          "pass_count": 0,
+          "fail_count": 15,
+          "pending_count": 0,
+          "total": 15,
+          "pct": 0.0
+        },
+        {
+          "implementation": "Procivis One Core",
+          "pass_count": 0,
+          "fail_count": 15,
+          "pending_count": 0,
+          "total": 15,
+          "pct": 0.0
+        },
+        {
+          "implementation": "bovine",
+          "pass_count": 0,
+          "fail_count": 26,
+          "pending_count": 0,
+          "total": 26,
+          "pct": 0.0
+        },
+        {
+          "implementation": "CredenceID",
+          "pass_count": 0,
+          "fail_count": 1,
+          "pending_count": 0,
+          "total": 1,
+          "pct": 0.0
+        },
+        {
+          "implementation": "Netis",
+          "pass_count": 0,
+          "fail_count": 2,
+          "pending_count": 0,
+          "total": 2,
+          "pct": 0.0
+        }
+      ]
+    },
+    {
+      "key": "ed25519signature2020",
+      "name": "Ed25519Signature 2020 Interoperability Report 1.0",
+      "canivc_url": "https://canivc.com/di-ed25519signature2020-test-suite",
+      "report_json_url": "https://w3c.github.io/vc-di-ed25519signature2020-test-suite/index.json",
+      "aggregate": {
+        "n_implementations": 11,
+        "min_pct": 0.0,
+        "median_pct": 78.6,
+        "max_pct": 100.0,
+        "top3": [
+          "SpruceID",
+          "Trential",
+          "apicatalog.com"
+        ]
+      },
+      "implementations": [
+        {
+          "implementation": "SpruceID",
+          "pass_count": 29,
+          "fail_count": 0,
+          "pending_count": 0,
+          "total": 29,
+          "pct": 100.0
+        },
+        {
+          "implementation": "Trential",
+          "pass_count": 29,
+          "fail_count": 0,
+          "pending_count": 0,
+          "total": 29,
+          "pct": 100.0
+        },
+        {
+          "implementation": "apicatalog.com",
+          "pass_count": 28,
+          "fail_count": 1,
+          "pending_count": 0,
+          "total": 29,
+          "pct": 96.6
+        },
+        {
+          "implementation": "Danube Tech",
+          "pass_count": 27,
+          "fail_count": 2,
+          "pending_count": 0,
+          "total": 29,
+          "pct": 93.1
+        },
+        {
+          "implementation": "LearnCard",
+          "pass_count": 26,
+          "fail_count": 3,
+          "pending_count": 0,
+          "total": 29,
+          "pct": 89.7
+        },
+        {
+          "implementation": "Netis",
+          "pass_count": 11,
+          "fail_count": 3,
+          "pending_count": 0,
+          "total": 14,
+          "pct": 78.6
+        },
+        {
+          "implementation": "Procivis One Core",
+          "pass_count": 13,
+          "fail_count": 1,
+          "pending_count": 15,
+          "total": 29,
+          "pct": 44.8
+        },
+        {
+          "implementation": "Digital Bazaar, Inc.",
+          "pass_count": 1,
+          "fail_count": 13,
+          "pending_count": 15,
+          "total": 29,
+          "pct": 3.4
+        },
+        {
+          "implementation": "EWF",
+          "pass_count": 0,
+          "fail_count": 14,
+          "pending_count": 15,
+          "total": 29,
+          "pct": 0.0
+        },
+        {
+          "implementation": "Gen Digital",
+          "pass_count": 0,
+          "fail_count": 14,
+          "pending_count": 15,
+          "total": 29,
+          "pct": 0.0
+        },
+        {
+          "implementation": "Trinsic",
+          "pass_count": 0,
+          "fail_count": 14,
+          "pending_count": 15,
+          "total": 29,
+          "pct": 0.0
+        }
+      ]
+    },
+    {
+      "key": "vc-di-eddsa",
+      "name": "Data Integrity eddsa 2022 Interoperability Report 1.0",
+      "canivc_url": "https://canivc.com/vc-di-eddsa-test-suite",
+      "report_json_url": "https://w3c.github.io/vc-di-eddsa-test-suite/index.json",
+      "aggregate": {
+        "n_implementations": 10,
+        "min_pct": 0.0,
+        "median_pct": 62.8,
+        "max_pct": 100.0,
+        "top3": [
+          "Grotto Networking",
+          "SpruceID",
+          "Trential"
+        ]
+      },
+      "implementations": [
+        {
+          "implementation": "Grotto Networking",
+          "pass_count": 55,
+          "fail_count": 0,
+          "pending_count": 0,
+          "total": 55,
+          "pct": 100.0
+        },
+        {
+          "implementation": "SpruceID",
+          "pass_count": 42,
+          "fail_count": 1,
+          "pending_count": 0,
+          "total": 43,
+          "pct": 97.7
+        },
+        {
+          "implementation": "Trential",
+          "pass_count": 41,
+          "fail_count": 2,
+          "pending_count": 0,
+          "total": 43,
+          "pct": 95.3
+        },
+        {
+          "implementation": "Netis",
+          "pass_count": 13,
+          "fail_count": 2,
+          "pending_count": 0,
+          "total": 15,
+          "pct": 86.7
+        },
+        {
+          "implementation": "apicatalog.com",
+          "pass_count": 37,
+          "fail_count": 2,
+          "pending_count": 16,
+          "total": 55,
+          "pct": 67.3
+        },
+        {
+          "implementation": "OpSecId",
+          "pass_count": 7,
+          "fail_count": 5,
+          "pending_count": 0,
+          "total": 12,
+          "pct": 58.3
+        },
+        {
+          "implementation": "Procivis One Core",
+          "pass_count": 13,
+          "fail_count": 14,
+          "pending_count": 16,
+          "total": 43,
+          "pct": 30.2
+        },
+        {
+          "implementation": "Digital Bazaar, Inc.",
+          "pass_count": 2,
+          "fail_count": 37,
+          "pending_count": 16,
+          "total": 55,
+          "pct": 3.6
+        },
+        {
+          "implementation": "bovine",
+          "pass_count": 1,
+          "fail_count": 38,
+          "pending_count": 16,
+          "total": 55,
+          "pct": 1.8
+        },
+        {
+          "implementation": "Trinsic",
+          "pass_count": 0,
+          "fail_count": 27,
+          "pending_count": 16,
+          "total": 43,
+          "pct": 0.0
+        }
+      ],
+      "breakdowns": {
+        "eddsa-rdfc-2022-issuers": {
+          "aggregate": {
+            "n_implementations": 8,
+            "min_pct": 0.0,
+            "median_pct": 0.0,
+            "max_pct": 100.0,
+            "top3": [
+              "Grotto Networking",
+              "SpruceID",
+              "Trential"
+            ]
+          },
+          "implementations": [
+            {
+              "implementation": "Grotto Networking",
+              "pass_count": 16,
+              "fail_count": 0,
+              "pending_count": 0,
+              "total": 16,
+              "pct": 100.0
+            },
+            {
+              "implementation": "SpruceID",
+              "pass_count": 16,
+              "fail_count": 0,
+              "pending_count": 0,
+              "total": 16,
+              "pct": 100.0
+            },
+            {
+              "implementation": "Trential",
+              "pass_count": 16,
+              "fail_count": 0,
+              "pending_count": 0,
+              "total": 16,
+              "pct": 100.0
+            },
+            {
+              "implementation": "apicatalog.com",
+              "pass_count": 0,
+              "fail_count": 0,
+              "pending_count": 16,
+              "total": 16,
+              "pct": 0.0
+            },
+            {
+              "implementation": "Digital Bazaar, Inc.",
+              "pass_count": 0,
+              "fail_count": 0,
+              "pending_count": 16,
+              "total": 16,
+              "pct": 0.0
+            },
+            {
+              "implementation": "Procivis One Core",
+              "pass_count": 0,
+              "fail_count": 0,
+              "pending_count": 16,
+              "total": 16,
+              "pct": 0.0
+            },
+            {
+              "implementation": "Trinsic",
+              "pass_count": 0,
+              "fail_count": 0,
+              "pending_count": 16,
+              "total": 16,
+              "pct": 0.0
+            },
+            {
+              "implementation": "bovine",
+              "pass_count": 0,
+              "fail_count": 0,
+              "pending_count": 16,
+              "total": 16,
+              "pct": 0.0
+            }
+          ]
+        },
+        "eddsa-rdfc-2022-verifiers": {
+          "aggregate": {
+            "n_implementations": 9,
+            "min_pct": 0.0,
+            "median_pct": 86.7,
+            "max_pct": 100.0,
+            "top3": [
+              "Grotto Networking",
+              "SpruceID",
+              "apicatalog.com"
+            ]
+          },
+          "implementations": [
+            {
+              "implementation": "Grotto Networking",
+              "pass_count": 15,
+              "fail_count": 0,
+              "pending_count": 0,
+              "total": 15,
+              "pct": 100.0
+            },
+            {
+              "implementation": "SpruceID",
+              "pass_count": 14,
+              "fail_count": 1,
+              "pending_count": 0,
+              "total": 15,
+              "pct": 93.3
+            },
+            {
+              "implementation": "apicatalog.com",
+              "pass_count": 13,
+              "fail_count": 2,
+              "pending_count": 0,
+              "total": 15,
+              "pct": 86.7
+            },
+            {
+              "implementation": "Netis",
+              "pass_count": 13,
+              "fail_count": 2,
+              "pending_count": 0,
+              "total": 15,
+              "pct": 86.7
+            },
+            {
+              "implementation": "Procivis One Core",
+              "pass_count": 13,
+              "fail_count": 2,
+              "pending_count": 0,
+              "total": 15,
+              "pct": 86.7
+            },
+            {
+              "implementation": "Trential",
+              "pass_count": 13,
+              "fail_count": 2,
+              "pending_count": 0,
+              "total": 15,
+              "pct": 86.7
+            },
+            {
+              "implementation": "Digital Bazaar, Inc.",
+              "pass_count": 1,
+              "fail_count": 14,
+              "pending_count": 0,
+              "total": 15,
+              "pct": 6.7
+            },
+            {
+              "implementation": "Trinsic",
+              "pass_count": 0,
+              "fail_count": 15,
+              "pending_count": 0,
+              "total": 15,
+              "pct": 0.0
+            },
+            {
+              "implementation": "bovine",
+              "pass_count": 0,
+              "fail_count": 15,
+              "pending_count": 0,
+              "total": 15,
+              "pct": 0.0
+            }
+          ]
+        }
+      }
+    },
+    {
+      "key": "vc-di-bbs",
+      "name": "Data Integrity BBS Interoperability Report 1.0",
+      "canivc_url": "https://canivc.com/vc-di-bbs-test-suite",
+      "report_json_url": "https://w3c.github.io/vc-di-bbs-test-suite/index.json",
+      "aggregate": {
+        "n_implementations": 6,
+        "min_pct": 2.3,
+        "median_pct": 78.5,
+        "max_pct": 100.0,
+        "top3": [
+          "Netis",
+          "Trential",
+          "SpruceID"
+        ]
+      },
+      "implementations": [
+        {
+          "implementation": "Netis",
+          "pass_count": 40,
+          "fail_count": 0,
+          "pending_count": 0,
+          "total": 40,
+          "pct": 100.0
+        },
+        {
+          "implementation": "Trential",
+          "pass_count": 80,
+          "fail_count": 0,
+          "pending_count": 6,
+          "total": 86,
+          "pct": 93.0
+        },
+        {
+          "implementation": "SpruceID",
+          "pass_count": 79,
+          "fail_count": 1,
+          "pending_count": 6,
+          "total": 86,
+          "pct": 91.9
+        },
+        {
+          "implementation": "Grotto Networking",
+          "pass_count": 56,
+          "fail_count": 0,
+          "pending_count": 30,
+          "total": 86,
+          "pct": 65.1
+        },
+        {
+          "implementation": "Procivis One Core",
+          "pass_count": 40,
+          "fail_count": 0,
+          "pending_count": 46,
+          "total": 86,
+          "pct": 46.5
+        },
+        {
+          "implementation": "Digital Bazaar, Inc.",
+          "pass_count": 2,
+          "fail_count": 38,
+          "pending_count": 46,
+          "total": 86,
+          "pct": 2.3
+        }
+      ]
+    },
+    {
+      "key": "did-key",
+      "name": "did:key Method Interoperability Report 1.0",
+      "canivc_url": "https://canivc.com/did-key-test-suite",
+      "report_json_url": "https://w3c-ccg.github.io/did-key-test-suite/index.json",
+      "aggregate": {
+        "n_implementations": 4,
+        "min_pct": 25.0,
+        "median_pct": 25.0,
+        "max_pct": 87.5,
+        "top3": [
+          "Digital Bazaar, Inc.",
+          "DIF",
+          "Procivis One Core"
+        ]
+      },
+      "implementations": [
+        {
+          "implementation": "Digital Bazaar, Inc.",
+          "pass_count": 14,
+          "fail_count": 1,
+          "pending_count": 1,
+          "total": 16,
+          "pct": 87.5
+        },
+        {
+          "implementation": "DIF",
+          "pass_count": 4,
+          "fail_count": 11,
+          "pending_count": 1,
+          "total": 16,
+          "pct": 25.0
+        },
+        {
+          "implementation": "Procivis One Core",
+          "pass_count": 4,
+          "fail_count": 11,
+          "pending_count": 1,
+          "total": 16,
+          "pct": 25.0
+        },
+        {
+          "implementation": "SpruceID",
+          "pass_count": 4,
+          "fail_count": 11,
+          "pending_count": 1,
+          "total": 16,
+          "pct": 25.0
+        }
+      ]
+    },
+    {
+      "key": "vc-api-issuer",
+      "name": "VC API Issuer Interoperability Report 1.0",
+      "canivc_url": "https://canivc.com/vc-api-issuer-test-suite",
+      "report_json_url": "https://w3c-ccg.github.io/vc-api-issuer-test-suite/index.json",
+      "aggregate": {
+        "n_implementations": 15,
+        "min_pct": 0.0,
+        "median_pct": 42.9,
+        "max_pct": 96.4,
+        "top3": [
+          "SpruceID",
+          "Trential",
+          "LearnCard"
+        ]
+      },
+      "implementations": [
+        {
+          "implementation": "SpruceID",
+          "pass_count": 27,
+          "fail_count": 0,
+          "pending_count": 1,
+          "total": 28,
+          "pct": 96.4
+        },
+        {
+          "implementation": "Trential",
+          "pass_count": 27,
+          "fail_count": 0,
+          "pending_count": 1,
+          "total": 28,
+          "pct": 96.4
+        },
+        {
+          "implementation": "LearnCard",
+          "pass_count": 13,
+          "fail_count": 0,
+          "pending_count": 1,
+          "total": 14,
+          "pct": 92.9
+        },
+        {
+          "implementation": "OWF",
+          "pass_count": 13,
+          "fail_count": 0,
+          "pending_count": 1,
+          "total": 14,
+          "pct": 92.9
+        },
+        {
+          "implementation": "Procivis One Core",
+          "pass_count": 11,
+          "fail_count": 2,
+          "pending_count": 1,
+          "total": 14,
+          "pct": 78.6
+        },
+        {
+          "implementation": "ACA-py",
+          "pass_count": 10,
+          "fail_count": 3,
+          "pending_count": 1,
+          "total": 14,
+          "pct": 71.4
+        },
+        {
+          "implementation": "Danube Tech",
+          "pass_count": 10,
+          "fail_count": 3,
+          "pending_count": 1,
+          "total": 14,
+          "pct": 71.4
+        },
+        {
+          "implementation": "Digital Bazaar, Inc.",
+          "pass_count": 6,
+          "fail_count": 7,
+          "pending_count": 1,
+          "total": 14,
+          "pct": 42.9
+        },
+        {
+          "implementation": "apicatalog.com",
+          "pass_count": 0,
+          "fail_count": 13,
+          "pending_count": 1,
+          "total": 14,
+          "pct": 0.0
+        },
+        {
+          "implementation": "Digital Credentials Consortium",
+          "pass_count": 0,
+          "fail_count": 13,
+          "pending_count": 1,
+          "total": 14,
+          "pct": 0.0
+        },
+        {
+          "implementation": "EWF",
+          "pass_count": 0,
+          "fail_count": 13,
+          "pending_count": 1,
+          "total": 14,
+          "pct": 0.0
+        },
+        {
+          "implementation": "GS1 US",
+          "pass_count": 0,
+          "fail_count": 13,
+          "pending_count": 1,
+          "total": 14,
+          "pct": 0.0
+        },
+        {
+          "implementation": "Gen Digital",
+          "pass_count": 0,
+          "fail_count": 13,
+          "pending_count": 1,
+          "total": 14,
+          "pct": 0.0
+        },
+        {
+          "implementation": "Mavennet",
+          "pass_count": 0,
+          "fail_count": 13,
+          "pending_count": 1,
+          "total": 14,
+          "pct": 0.0
+        },
+        {
+          "implementation": "Trinsic",
+          "pass_count": 0,
+          "fail_count": 13,
+          "pending_count": 1,
+          "total": 14,
+          "pct": 0.0
+        }
+      ]
+    },
+    {
+      "key": "vc-api-verifier",
+      "name": "VC API Verifier Interoperability Report 1.0",
+      "canivc_url": "https://canivc.com/vc-api-verifier-test-suite",
+      "report_json_url": "https://w3c-ccg.github.io/vc-api-verifier-test-suite/index.json",
+      "aggregate": {
+        "n_implementations": 13,
+        "min_pct": 0.0,
+        "median_pct": 55.6,
+        "max_pct": 97.2,
+        "top3": [
+          "SpruceID",
+          "Trential",
+          "LearnCard"
+        ]
+      },
+      "implementations": [
+        {
+          "implementation": "SpruceID",
+          "pass_count": 35,
+          "fail_count": 1,
+          "pending_count": 0,
+          "total": 36,
+          "pct": 97.2
+        },
+        {
+          "implementation": "Trential",
+          "pass_count": 35,
+          "fail_count": 1,
+          "pending_count": 0,
+          "total": 36,
+          "pct": 97.2
+        },
+        {
+          "implementation": "LearnCard",
+          "pass_count": 17,
+          "fail_count": 1,
+          "pending_count": 0,
+          "total": 18,
+          "pct": 94.4
+        },
+        {
+          "implementation": "Mavennet",
+          "pass_count": 17,
+          "fail_count": 1,
+          "pending_count": 0,
+          "total": 18,
+          "pct": 94.4
+        },
+        {
+          "implementation": "Procivis One Core",
+          "pass_count": 17,
+          "fail_count": 1,
+          "pending_count": 0,
+          "total": 18,
+          "pct": 94.4
+        },
+        {
+          "implementation": "Danube Tech",
+          "pass_count": 15,
+          "fail_count": 3,
+          "pending_count": 0,
+          "total": 18,
+          "pct": 83.3
+        },
+        {
+          "implementation": "Digital Bazaar, Inc.",
+          "pass_count": 10,
+          "fail_count": 8,
+          "pending_count": 0,
+          "total": 18,
+          "pct": 55.6
+        },
+        {
+          "implementation": "ACA-py",
+          "pass_count": 0,
+          "fail_count": 18,
+          "pending_count": 0,
+          "total": 18,
+          "pct": 0.0
+        },
+        {
+          "implementation": "apicatalog.com",
+          "pass_count": 0,
+          "fail_count": 18,
+          "pending_count": 0,
+          "total": 18,
+          "pct": 0.0
+        },
+        {
+          "implementation": "Digital Credentials Consortium",
+          "pass_count": 0,
+          "fail_count": 18,
+          "pending_count": 0,
+          "total": 18,
+          "pct": 0.0
+        },
+        {
+          "implementation": "EWF",
+          "pass_count": 0,
+          "fail_count": 18,
+          "pending_count": 0,
+          "total": 18,
+          "pct": 0.0
+        },
+        {
+          "implementation": "Gen Digital",
+          "pass_count": 0,
+          "fail_count": 18,
+          "pending_count": 0,
+          "total": 18,
+          "pct": 0.0
+        },
+        {
+          "implementation": "Trinsic",
+          "pass_count": 0,
+          "fail_count": 18,
+          "pending_count": 0,
+          "total": 18,
+          "pct": 0.0
+        }
+      ]
+    },
+    {
+      "key": "vc-bitstring-status-list",
+      "name": "VC Bitstring Status List Interoperability Report 1.0",
+      "canivc_url": "https://canivc.com/vc-bitstring-status-list-test-suite",
+      "report_json_url": "https://w3c.github.io/vc-bitstring-status-list-test-suite/index.json",
+      "aggregate": {
+        "n_implementations": 8,
+        "min_pct": 3.8,
+        "median_pct": 32.7,
+        "max_pct": 96.2,
+        "top3": [
+          "SpruceID",
+          "Trential",
+          "Digital Bazaar, Inc."
+        ]
+      },
+      "implementations": [
+        {
+          "implementation": "SpruceID",
+          "pass_count": 25,
+          "fail_count": 0,
+          "pending_count": 1,
+          "total": 26,
+          "pct": 96.2
+        },
+        {
+          "implementation": "Trential",
+          "pass_count": 17,
+          "fail_count": 0,
+          "pending_count": 9,
+          "total": 26,
+          "pct": 65.4
+        },
+        {
+          "implementation": "Digital Bazaar, Inc.",
+          "pass_count": 16,
+          "fail_count": 2,
+          "pending_count": 8,
+          "total": 26,
+          "pct": 61.5
+        },
+        {
+          "implementation": "apicatalog.com",
+          "pass_count": 9,
+          "fail_count": 2,
+          "pending_count": 15,
+          "total": 26,
+          "pct": 34.6
+        },
+        {
+          "implementation": "OpSecId",
+          "pass_count": 8,
+          "fail_count": 2,
+          "pending_count": 16,
+          "total": 26,
+          "pct": 30.8
+        },
+        {
+          "implementation": "Gen Digital",
+          "pass_count": 1,
+          "fail_count": 2,
+          "pending_count": 23,
+          "total": 26,
+          "pct": 3.8
+        },
+        {
+          "implementation": "Mavennet",
+          "pass_count": 1,
+          "fail_count": 2,
+          "pending_count": 23,
+          "total": 26,
+          "pct": 3.8
+        },
+        {
+          "implementation": "Procivis One Core",
+          "pass_count": 1,
+          "fail_count": 2,
+          "pending_count": 23,
+          "total": 26,
+          "pct": 3.8
+        }
+      ]
+    },
+    {
+      "key": "vc-jose-cose",
+      "name": "VC JOSE COSE Test Suite",
+      "canivc_url": "https://canivc.com/vc-jose-cose-test-suite",
+      "report_json_url": "https://w3c.github.io/vc-jose-cose-test-suite/index.json",
+      "aggregate": {
+        "n_implementations": 3,
+        "min_pct": 68.6,
+        "median_pct": 100.0,
+        "max_pct": 100.0,
+        "top3": [
+          "Tradeverifyd",
+          "decentralgabe",
+          "Mavennet"
+        ]
+      },
+      "implementations": [
+        {
+          "implementation": "Tradeverifyd",
+          "pass_count": 35,
+          "fail_count": 0,
+          "pending_count": 0,
+          "total": 35,
+          "pct": 100.0
+        },
+        {
+          "implementation": "decentralgabe",
+          "pass_count": 35,
+          "fail_count": 0,
+          "pending_count": 0,
+          "total": 35,
+          "pct": 100.0
+        },
+        {
+          "implementation": "Mavennet",
+          "pass_count": 24,
+          "fail_count": 1,
+          "pending_count": 10,
+          "total": 35,
+          "pct": 68.6
+        }
+      ]
+    }
+  ]
+}

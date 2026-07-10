@@ -20,3 +20,4 @@ triggers:
 remaining:
   - "this suite covers only did:key — did:web (or any other DID method) is not implemented"
   - "DID resolution metadata is not produced — a full DID Core conformance target still needs to be enumerated, not just did:key vectors"
+  - "assessed against the official w3c-ccg/did-key-test-suite (task #88, 2026-07-10) and not implemented: it is a resolver-conformance suite (GET /didResolvers/<did> returning a full DID Resolution Result envelope with didDocument/didDocumentMetadata/didResolutionMetadata and structured error codes) rather than the vector-accept/reject shape this suite covers; didKeyResolve's npm export returns bare RDF, not that envelope. See docs/designissues/2026-07-10-canivc-community-compat.md's did:key section for the specific gap."

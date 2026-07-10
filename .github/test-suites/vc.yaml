@@ -69,4 +69,5 @@ triggers:
 # VC 2.0 + Data Integrity row, 2026-07-10).
 remaining:
   - "context-driven type redefinition is not checked — it needs real JSON-LD term resolution this stage does not implement"
-  - "full W3C VC Data Integrity conformance — signing and verifying credentials against the official proof-options test suite, including inside the browser/JS bundle — is not yet run; the eddsa-rdfc-2022 machinery passes an 8-check local sign/verify/tamper roundtrip but has not been measured against the official corpus"
+  - "full W3C VC Data Integrity conformance against the official corpus is now measured (task #88, 2026-07-10): eddsa-rdfc-2022 create+verify scores 26 pass, 5 fail (out of 31) via a new HTTP shim (bin/vc-api-shim) — see .github/test-suites/vc-di-eddsa.yaml and docs/designissues/2026-07-10-canivc-community-compat.md. Not yet measured: inside the browser/JS bundle specifically (the shim runs under Node only), and eddsa-jcs-2022 (JCS canonicalization is a different transform path, not implemented)"
+  - "the VC Data Model 2.0 suite's own issuer/verifier HTTP tests (distinct from this suite's structural-fixture check) now also run against the shim: 22 pass, 37 fail (out of 59), see .github/test-suites/vc20-api.yaml — the shim has no structural validator of its own, so almost every failure is a missing-rejection-of-malformed-input test"

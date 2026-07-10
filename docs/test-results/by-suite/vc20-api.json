@@ -1,0 +1,162 @@
+{
+  "spec": "https://w3c.github.io/vc-data-model-2.0-test-suite/",
+  "suite": "vc-data-model-2.0 (issuer/verifier HTTP suite, via shim)",
+  "runner": "tests/vc20-api/run.sh",
+  "retrieved_at": "2026-07-10T17:38:03Z",
+  "pass": 22,
+  "fail": 37,
+  "skip": 0,
+  "total": 59,
+  "present": true,
+  "gap_summary": "the shim performs no VC Data Model 2.0 structural validation (it only implements Data Integrity eddsa-rdfc-2022 signing/verifying) -- nearly every failure is a 'missing expected rejection of malformed input' test (bad credentialStatus/refreshService/credentialSchema/termsOfUse/evidence shape, validUntil-before-validFrom, missing type/context, malformed VP). This is a separate, complementary measurement from vc_stage1 (.github/test-suites/vc.yaml), which runs the SAME vendored fixtures directly through VC.Credential.fst's structural checker, no HTTP.",
+  "failures": [
+    {
+      "title": "Basic Conformance Factoidal A conforming verifier implementation MUST produce errors when non-conforming documents are detected.",
+      "message": "Missing expected rejection: Failed to reject malformed VP."
+    },
+    {
+      "title": "Contexts Factoidal Verifiable credentials MUST include a @context property.",
+      "message": "Missing expected rejection: Failed to reject a VC without a missing or incomplete `@context`."
+    },
+    {
+      "title": "Contexts Factoidal Verifiable presentations MUST include a @context property.",
+      "message": "Missing expected rejection: Failed to reject a VP with a missing @context."
+    },
+    {
+      "title": "Contexts Factoidal Verifiable credentials: The value of the @context property MUST be an ordered set where the first item is a URL with the value https://www.w3.org/ns/credentials/v2.",
+      "message": "Missing expected rejection: Failed to reject a VC without a missing or incomplete `@context`."
+    },
+    {
+      "title": "Contexts Factoidal Verifiable presentations: The value of the @context property MUST be an ordered set where the first item is a URL with the value https://www.w3.org/ns/credentials/v2.",
+      "message": "Missing expected rejection: Failed to reject a VP that has the wrong context order."
+    },
+    {
+      "title": "Contexts Factoidal Verifiable Presentation `@context`: \"Subsequent items in the ordered set MUST be composed of any combination of URLs and/or objects where each is processable as a JSON-LD Context.\"",
+      "message": "Missing expected rejection: Failed to reject a VP with an invalid `@context` URL."
+    },
+    {
+      "title": "Identifiers Factoidal If present, the value of the id property MUST be a single URL, which MAY be dereferenceable.",
+      "message": "Missing expected rejection: Failed to reject a credential with an invalid identifier."
+    },
+    {
+      "title": "Types Factoidal Verifiable credentials MUST contain a type property with an associated value.",
+      "message": "Missing expected rejection: Failed to reject a VC without a type."
+    },
+    {
+      "title": "Types Factoidal Verifiable presentations MUST contain a type property with an associated value.",
+      "message": "Missing expected rejection: Failed to reject a VP without a type."
+    },
+    {
+      "title": "Types Factoidal The value of the type property MUST be one or more terms and/or absolute URL strings.",
+      "message": "Missing expected rejection: Failed to reject a VC with an unmapped (via `@context`) type."
+    },
+    {
+      "title": "Types Factoidal Verifiable Credential objects MUST have a type specified.",
+      "message": "Missing expected rejection: Failed to reject a VC missing the `VerifiableCredential` type."
+    },
+    {
+      "title": "Types Factoidal Verifiable Presentation objects MUST have a type specified.",
+      "message": "Missing expected rejection: Failed to reject VP missing `VerifiableCredential` type."
+    },
+    {
+      "title": "Types Factoidal `credentialStatus` objects MUST have a type specified.",
+      "message": "Missing expected rejection: Failed to reject a VC with `credentialStatus` without a `type`."
+    },
+    {
+      "title": "Types Factoidal `termsOfUse` objects MUST have a type specified.",
+      "message": "Missing expected rejection: Failed to reject a VC with `termsOfUse` without a `type`."
+    },
+    {
+      "title": "Types Factoidal `evidence` objects MUST have a type specified.",
+      "message": "Missing expected rejection: Failed to reject a VC with `evidence` without a `type`."
+    },
+    {
+      "title": "Types Factoidal `refreshService` objects MUST have a type specified.",
+      "message": "Missing expected rejection: Failed to reject a VC with `refreshService` without a `type`."
+    },
+    {
+      "title": "Types Factoidal `credentialSchema` objects MUST have a type specified.",
+      "message": "Missing expected rejection: Failed to reject `credentialSchema` without a `type`."
+    },
+    {
+      "title": "Issuer Factoidal The value of the issuer property MUST be either a URL or an object containing an id property whose value is a URL; in either case, the issuer selects this URL to identify itself in a globally unambiguous way.",
+      "message": "Missing expected rejection: Failed to reject an issuer identifier that was not a URL."
+    },
+    {
+      "title": "Credential Subject Factoidal A verifiable credential MUST contain a credentialSubject property.",
+      "message": "Missing expected rejection: Failed to rejet a VC without a `credentialSubject`."
+    },
+    {
+      "title": "Credential Subject Factoidal The value of the credentialSubject property is a set of objects where each object MUST be the subject of one or more claims, which MUST be serialized inside the credentialSubject property.",
+      "message": "Missing expected rejection: Failed to reject a VC with an empty `credentialSubject`."
+    },
+    {
+      "title": "Validity Period Factoidal If present, the value of the validFrom property MUST be an [XMLSCHEMA11-2] dateTimeStamp string value representing the date and time the credential becomes valid, which could be a date and time in the future or in the past.",
+      "message": "Missing expected rejection: Failed to reject a VC using an incorrect `validFrom` date-time format."
+    },
+    {
+      "title": "Validity Period Factoidal If present, the value of the validUntil property MUST be an [XMLSCHEMA11-2] dateTimeStamp string value representing the date and time the credential ceases to be valid, which could be a date and time in the past or in the future.",
+      "message": "Missing expected rejection: Failed to reject a VC using an inccorect `validUntil` date-time format."
+    },
+    {
+      "title": "Validity Period Factoidal If a validUntil value also exists, the validFrom value MUST express a datetime that is temporally the same or earlier than the datetime expressed by the validUntil value.",
+      "message": "Missing expected rejection: Failed to reject a VC with a `validUntil` before its `validFrom`.`"
+    },
+    {
+      "title": "Validity Period Factoidal If a validFrom value also exists, the validUntil value MUST express a datetime that is temporally the same or later than the datetime expressed by the validFrom value.",
+      "message": "Missing expected rejection: Failed to reject a VC with a `validUntil` before its `validFrom`.`"
+    },
+    {
+      "title": "Status Factoidal The type property is REQUIRED.",
+      "message": "Missing expected rejection: Failed to reject a VC with `credentialStatus` without a `type`."
+    },
+    {
+      "title": "Status Factoidal The related normative guidance in Section 4.5 Types MUST be followed.",
+      "message": "Missing expected rejection: Failed to reject a VC with `credentialStatus` without a `type`."
+    },
+    {
+      "title": "Status Factoidal If present (credentialStatus.id), the normative guidance in Section 4.4 Identifiers MUST be followed.",
+      "message": "Missing expected rejection: Failed to reject a VC with a non-URL `credentialStatus.id`."
+    },
+    {
+      "title": "Status Factoidal (If a credentialStatus property is present), The type property is REQUIRED. It is used to express the type of status information expressed by the object. The related normative guidance in Section 4.5 Types MUST be followed.",
+      "message": "Missing expected rejection: Failed to reject a VC missing `credentialStatus.type`."
+    },
+    {
+      "title": "Data Schemas Factoidal Each credentialSchema MUST specify its type (for example, JsonSchema), and an id property that MUST be a URL identifying the schema file.",
+      "message": "Missing expected rejection: Failed to reject `credentialSchema` without a `type`."
+    },
+    {
+      "title": "Advanced Concepts Factoidal The value of the relatedResource property MUST be one or more objects of the following form:",
+      "message": "Missing expected rejection: Failed to reject a VC with a relatedResource as array of strings."
+    },
+    {
+      "title": "Advanced Concepts Factoidal The identifier for the resource is REQUIRED and conforms to the format defined in Section 4.4 Identifiers.",
+      "message": "Missing expected rejection: Failed to reject a VC with a relatedResource with no `id` field."
+    },
+    {
+      "title": "Advanced Concepts Factoidal The value MUST be unique among the list of related resource objects.",
+      "message": "Missing expected rejection: Failed to reject a VC with a relatedResource with a duplicate `id` field."
+    },
+    {
+      "title": "Advanced Concepts Factoidal Each object associated with relatedResource MUST contain at least a digestSRI or a digestMultibase value.",
+      "message": "Missing expected rejection: Failed to reject a VC with a relatedResource with no digest info."
+    },
+    {
+      "title": "Advanced Concepts Factoidal If the digest provided by the issuer does not match the digest computed for the retrieved resource, the conforming verifier implementation MUST produce an error.",
+      "message": "Missing expected rejection: Failed to reject a VC with a relatedResource with wrong digest."
+    },
+    {
+      "title": "Advanced Concepts Factoidal Each refreshService value MUST specify its type.",
+      "message": "Missing expected rejection: Failed to reject a VC with `refreshService` without a `type`."
+    },
+    {
+      "title": "Advanced Concepts Factoidal Each termsOfUse value MUST specify its type, for example, IssuerPolicy, and MAY specify its instance id.",
+      "message": "Missing expected rejection."
+    },
+    {
+      "title": "Algorithms Factoidal This section contains an algorithm that conforming verifier implementations MUST run when verifying a verifiable credential or a verifiable presentation.",
+      "message": "Missing expected rejection: Failed to reject an invalid VP."
+    }
+  ]
+}

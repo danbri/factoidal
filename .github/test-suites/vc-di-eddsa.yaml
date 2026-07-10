@@ -1,0 +1,51 @@
+name: VC Data Integrity eddsa-rdfc-2022 (W3C vc-di-eddsa-test-suite, via shim)
+spec: https://w3c.github.io/vc-di-eddsa-test-suite/
+runner: tests/vc-di-eddsa/run.sh
+runner_args: []
+manifest: third_party/testing/vc-di-eddsa
+result_path: docs/test-results/by-suite/vc-di-eddsa.json
+domain: VC
+foundational: false
+
+# Task #88 (canivc.com community-compatibility integration). Runs the
+# vendored W3C vc-di-eddsa-test-suite's mocha create+verify test files
+# (tests/05-di-rdfc-create.js, tests/15-di-rdfc-verify.js) against
+# bin/vc-api-shim/server.mjs, a plain-Node HTTP adapter over the npm
+# engine bundle's public API (parse/canonicalize/vcEddsaCreateFrom
+# Canonical/vcEddsaVerifyFromCanonical/vcEd25519SecretToPublic — the
+# same functions npm/factoidal/test/vc-crypto*.test.js exercises). The
+# shim contains no VC/RDF semantic judgment of its own: a `verified`
+# outcome is exactly what the engine's vcEddsaVerifyFromCanonical
+# returned.
+#
+# Baseline (2026-07-10): 26 pass, 5 fail (out of 31). Community
+# comparison + scoping rationale:
+# docs/designissues/2026-07-10-canivc-community-compat.md.
+#
+# Not run (see tests/vc-di-eddsa/run.sh header + PROVENANCE.md):
+# 30-rdfc-interop.js, 70-data-model.js, 80-algorithms.js crash at
+# module-load time in the vendored suite's own
+# tests/vc-generator/contexts.js (Node structuredClone DataCloneError
+# — an upstream/environment bug, not attributable to the shim).
+# 60-jcs-interop.js is out of scope: eddsa-jcs-2022 (JCS canonicalization
+# of proof options, instead of RDFC-1.0) is not implemented.
+
+triggers:
+  paths:
+    - bin/vc-api-shim/**
+    - third_party/testing/vc-di-eddsa/**
+    - third_party/contexts/**
+    - tests/vc-di-eddsa/**
+    - formal/fstar/VC.DataIntegrity.fst
+    - formal/fstar/VC.Multibase.fst
+    - npm/factoidal/index.js
+    - npm/factoidal/lib/api.js
+
+  excludes: []
+
+# What's left, in plain language.
+remaining:
+  - "the shim does not detect JSON-LD 'data loss' (an undefined term silently dropped during expansion) and reject issuance/verification the way a fully conformant Data Integrity implementation MUST (DATA_LOSS_DETECTION_ERROR) — 3 of the 5 failures"
+  - "multi-proof documents (an array of proofs, proof.previousProof chaining) are not supported — the shim only checks a single proof — 2 of the 5 failures"
+  - "eddsa-jcs-2022 (JCS canonicalization instead of RDFC-1.0) is not implemented; only eddsa-rdfc-2022 is scored"
+  - "cross-implementation interop tests (30-rdfc-interop.js) are not run — they need the other ~8 registered implementations' live endpoints, out of scope for an offline-reproducible local run"

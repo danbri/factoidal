@@ -1,0 +1,53 @@
+name: VC Data Model 2.0 issuer/verifier HTTP suite (W3C vc-data-model-2.0-test-suite, via shim)
+spec: https://w3c.github.io/vc-data-model-2.0-test-suite/
+runner: tests/vc20-api/run.sh
+runner_args: []
+manifest: third_party/testing/vc
+result_path: docs/test-results/by-suite/vc20-api.json
+domain: VC
+foundational: false
+
+# Task #88 (canivc.com community-compatibility integration). Runs the
+# ALREADY-vendored w3c/vc-data-model-2.0-test-suite's own mocha
+# issuer/verifier test files against bin/vc-api-shim/server.mjs. This
+# is a SEPARATE, complementary measurement from vc.yaml's vc_stage1
+# suite: vc_stage1 runs the SAME vendored tests/input/*.json fixtures
+# directly through VC.Credential.fst's structural checker (bin/vc-runner,
+# no HTTP, no signing — 117 pass, 0 fail of 117 scorable). This suite
+# instead drives the suite's own conformance/contexts/identifiers/types/
+# issuer/credential-subject/validity-period/status/data-schemas/
+# verifiable-presentations/envelopes/advanced-concepts/algorithms test
+# files as real HTTP issue+verify round trips against the shim.
+#
+# Baseline (2026-07-10): 22 pass, 37 fail (out of 59). Single dominant
+# cause (see gap_summary in the result JSON and the scoping doc): the
+# shim performs NO VC Data Model 2.0 structural validation of its own —
+# it only implements Data Integrity eddsa-rdfc-2022 signing/verifying —
+# so nearly every failure is a "missing expected rejection of malformed
+# input" test (bad credentialStatus/refreshService/credentialSchema/
+# termsOfUse/evidence shape, validUntil-before-validFrom, missing
+# type/context, malformed VP). The shim deliberately does not
+# reimplement VC.Credential.fst's checks in hand-written JS (that would
+# be exactly the "no semantic logic in test runners" anti-pattern #15);
+# closing this gap needs a new npm ABI export wired to
+# VC_Credential.vc_check_from_string, which is out of scope for this
+# task (see the scoping doc's WP2/WP3 sections).
+
+triggers:
+  paths:
+    - bin/vc-api-shim/**
+    - third_party/testing/vc/**
+    - third_party/contexts/**
+    - tests/vc20-api/**
+    - formal/fstar/VC.DataIntegrity.fst
+    - formal/fstar/VC.Credential.fst
+    - npm/factoidal/index.js
+    - npm/factoidal/lib/api.js
+
+  excludes: []
+
+# What's left, in plain language.
+remaining:
+  - "the shim has no VC Data Model 2.0 structural validator wired via HTTP — it signs/verifies whatever JSON-LD it is given; almost all 37 failures are missing-rejection-of-malformed-input tests (see gap_summary in docs/test-results/by-suite/vc20-api.json)"
+  - "Verifiable Presentation (VP) verification is not implemented — no /presentations/verify route exists"
+  - "closing this gap requires either a new npm ABI export for VC.Credential.fst's structural checker, or hand-written structural checks in the shim (the latter is explicitly out of scope per anti-pattern #15 — no semantic logic in test runners/consumer tools)"

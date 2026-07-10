@@ -1,0 +1,5 @@
+{
+  "_comment": "TEST KEY ONLY. Not for production use, not a secret. Deterministically derived (sha256 of the seed string below) so the shim's issuer identity is reproducible across runs and machines. See bin/vc-api-shim/server.mjs and docs/designissues/2026-07-10-canivc-community-compat.md (task #88).",
+  "seed": "factoidal-vc-api-shim-test-issuer-seed-v1",
+  "secretKeyHex": "3350592759c6cc4abd00351470bca21540ee2d25245189bfd844b6ed3ec106d6"
+}

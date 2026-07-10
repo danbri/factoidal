@@ -39,3 +39,57 @@ copy is byte-identical to the upstream document; it is reproduced here
 unmodified solely to let the offline verified checker resolve the base
 context without a network fetch. No warranty; see the W3C licences for
 terms.
+
+## `credentials-examples-v2.jsonld` — VCDM examples vocabulary context
+
+- **Term IRI:** `https://www.w3.org/ns/credentials/examples/v2`
+- **Retrieved:** 2026-07-10 (`curl -sSL -H 'Accept: application/ld+json'`)
+- **SHA-256:** `57393fbc69d6efb9b9b5dc9cb6b9880b0944360abfe2eaf459c9e58cf2279d7c`
+- **Bytes:** 84
+
+A single `@vocab` mapping to `https://www.w3.org/ns/credentials/examples#`
+used by many W3C VC test-suite fixtures for informal properties like
+`alumniOf`. Used by `bin/vc-api-shim/server.mjs`'s local context
+registry (task #88) alongside `credentials-v2.jsonld` so JSON-LD
+documents from the vendored test suites can be parsed offline (see
+"Licence" above — same W3C terms).
+
+## `security-data-integrity-v2.jsonld` — Data Integrity security context
+
+- **Term IRI:** `https://w3id.org/security/data-integrity/v2` (redirects
+  to the W3C-published context)
+- **Retrieved:** 2026-07-10 (`curl -sSL -H 'Accept: application/ld+json'`)
+- **SHA-256:** `67f21e6e33a6c14e5ccfd2fc7865f7474fb71a04af7e94136cb399dfac8ae8f4`
+- **Bytes:** 2609
+
+Defines `DataIntegrityProof`, `proof`, `cryptosuite`, `proofValue`,
+`verificationMethod`, `proofPurpose` etc. for documents that reference
+this context explicitly rather than relying on the (also-sufficient)
+scoped definitions bundled inside `credentials-v2.jsonld`. Same licence
+terms as above.
+
+## `security-multikey-v1.jsonld` — Multikey verification-method context
+
+- **Term IRI:** `https://w3id.org/security/multikey/v1` (redirects to
+  the W3C-published context)
+- **Retrieved:** 2026-07-10 (`curl -sSL -H 'Accept: application/ld+json'`)
+- **SHA-256:** `ba2c182de2d92f7e47184bcca8fcf0beaee6d3986c527bf664c195bbc7c58597`
+- **Bytes:** 1010
+
+Defines the `Multikey` verification-method type and
+`publicKeyMultibase` — referenced by did:key DID Documents and some VC
+test fixtures. Same licence terms as above.
+
+## `credentials-v1.jsonld` — VCDM 1.1 base context
+
+- **Term IRI:** `https://www.w3.org/2018/credentials/v1`
+- **Retrieved:** 2026-07-10 (`curl -sSL -H 'Accept: application/ld+json'`)
+- **SHA-256:** `ab4ddd9a531758807a79a5b450510d61ae8d147eab966cc9a200c07095b0cdcc`
+- **Bytes:** 7687
+
+The VC Data Model 1.1 base context — `data-integrity-test-suite-assertion`'s
+default fixture (`validVc.json`, vendored inside
+`third_party/testing/vc-di-eddsa/node_modules/`) uses this context, not
+the v2 one, so the shim's local context registry needs both. Unlike
+`credentials-v2.jsonld`, `proof` and `credentialSubject` are top-level
+(unscoped) terms here. Same licence terms as above.
