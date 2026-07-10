@@ -1,146 +1,41 @@
-* Warning 328 at SPARQL11.Parser.fst(2226,6-2226,19):
+* Warning 241 at OWL.Closure.fsti(0,0-0,0):
+  - Unable to load OWL.Closure.fsti.checked since checked file
+    OWL.Closure.fsti.checked is stale (dependence hash mismatch, use --debug
+    CheckedFiles for more details); will recheck OWL.Closure.fsti (suppressing
+    this warning for further modules)
+
+* Warning 361 at SPARQL11.Algebra.fst(6682,0-6683,40):
+  - Some #push-options have not been popped. Current depth is 1.
+
+* Warning 328 at SPARQL11.Parser.fst(2342,6-2342,19):
   - Global binding
         'SPARQL11.Parser.parse_subject'
     is recursive but not used in its body
 
-* Warning 328 at SPARQL11.Parser.fst(2512,4-2512,16):
+* Warning 328 at SPARQL11.Parser.fst(2608,4-2608,16):
   - Global binding
         'SPARQL11.Parser.parse_object'
     is recursive but not used in its body
 
-* Warning 328 at SPARQL11.Parser.fst(3419,8-3419,25):
+* Warning 328 at SPARQL11.Parser.fst(3476,8-3476,25):
   - Global binding
         'SPARQL11.Parser.string_add_unique'
     is recursive but not used in its body
 
-* Warning 328 at SPARQL11.Parser.fst(3882,8-3882,30):
+* Warning 328 at SPARQL11.Parser.fst(3939,8-3939,30):
   - Global binding
         'SPARQL11.Parser.parse_single_update_op'
     is recursive but not used in its body
 
-* Warning 290 at SPARQL11.Parser.fst(2557,16-2557,19):
-  - In the decreases clause for this function, the SMT solver may not be able to
-    prove that the types of
-      acc (bound in SPARQL11.Parser.fst(2557,16-2557,19))
-    and x (bound in SPARQL11.Parser.fst(1724,29-1724,30))
-    are equal.
-  - The type of the first term is: SPARQL11.Algebra.group_graph_pattern
-  - The type of the second term is: Prims.string
-  - If the proof fails, try annotating these with the same type.
-
-* Warning 290 at SPARQL11.Parser.fst(2551,20-2551,23):
-  - In the decreases clause for this function, the SMT solver may not be able to
-    prove that the types of
-      acc (bound in SPARQL11.Parser.fst(2551,20-2551,23))
-    and x (bound in SPARQL11.Parser.fst(1724,29-1724,30))
-    are equal.
-  - The type of the first term is: SPARQL11.Algebra.group_graph_pattern
-  - The type of the second term is: Prims.string
-  - If the proof fails, try annotating these with the same type.
-
-* Warning 290 at SPARQL11.Parser.fst(2547,14-2547,15):
-  - In the decreases clause for this function, the SMT solver may not be able to
-    prove that the types of
-      a (bound in SPARQL11.Parser.fst(2547,14-2547,15))
-    and x (bound in SPARQL11.Parser.fst(1724,29-1724,30))
-    are equal.
-  - The type of the first term is: SPARQL11.Algebra.group_graph_pattern
-  - The type of the second term is: Prims.string
-  - If the proof fails, try annotating these with the same type.
-
-* Warning 290 at SPARQL11.Parser.fst(2557,16-2557,19):
-  - In the decreases clause for this function, the SMT solver may not be able to
-    prove that the types of
-      acc (bound in SPARQL11.Parser.fst(2557,16-2557,19))
-    and sign (bound in SPARQL11.Parser.fst(2395,37-2395,41))
-    are equal.
-  - The type of the first term is: SPARQL11.Algebra.group_graph_pattern
-  - The type of the second term is: Prims.string
-  - If the proof fails, try annotating these with the same type.
-
-* Warning 290 at SPARQL11.Parser.fst(2551,20-2551,23):
-  - In the decreases clause for this function, the SMT solver may not be able to
-    prove that the types of
-      acc (bound in SPARQL11.Parser.fst(2551,20-2551,23))
-    and sign (bound in SPARQL11.Parser.fst(2395,37-2395,41))
-    are equal.
-  - The type of the first term is: SPARQL11.Algebra.group_graph_pattern
-  - The type of the second term is: Prims.string
-  - If the proof fails, try annotating these with the same type.
-
-* Warning 290 at SPARQL11.Parser.fst(2547,14-2547,15):
-  - In the decreases clause for this function, the SMT solver may not be able to
-    prove that the types of
-      a (bound in SPARQL11.Parser.fst(2547,14-2547,15))
-    and sign (bound in SPARQL11.Parser.fst(2395,37-2395,41))
-    are equal.
-  - The type of the first term is: SPARQL11.Algebra.group_graph_pattern
-  - The type of the second term is: Prims.string
-  - If the proof fails, try annotating these with the same type.
-
-* Warning 290 at SPARQL11.Parser.fst(2395,37-2395,41):
-  - In the decreases clause for this function, the SMT solver may not be able to
-    prove that the types of
-      sign (bound in SPARQL11.Parser.fst(2395,37-2395,41))
-    and a (bound in SPARQL11.Parser.fst(2547,14-2547,15))
-    are equal.
-  - The type of the first term is: Prims.string
-  - The type of the second term is: SPARQL11.Algebra.group_graph_pattern
-  - If the proof fails, try annotating these with the same type.
-
-* Warning 290 at SPARQL11.Parser.fst(1724,29-1724,30):
-  - In the decreases clause for this function, the SMT solver may not be able to
-    prove that the types of
-      x (bound in SPARQL11.Parser.fst(1724,29-1724,30))
-    and a (bound in SPARQL11.Parser.fst(2547,14-2547,15))
-    are equal.
-  - The type of the first term is: Prims.string
-  - The type of the second term is: SPARQL11.Algebra.group_graph_pattern
-  - If the proof fails, try annotating these with the same type.
-
-* Warning 290 at SPARQL11.Parser.fst(2395,37-2395,41):
-  - In the decreases clause for this function, the SMT solver may not be able to
-    prove that the types of
-      sign (bound in SPARQL11.Parser.fst(2395,37-2395,41))
-    and acc (bound in SPARQL11.Parser.fst(2551,20-2551,23))
-    are equal.
-  - The type of the first term is: Prims.string
-  - The type of the second term is: SPARQL11.Algebra.group_graph_pattern
-  - If the proof fails, try annotating these with the same type.
-
-* Warning 290 at SPARQL11.Parser.fst(1724,29-1724,30):
-  - In the decreases clause for this function, the SMT solver may not be able to
-    prove that the types of
-      x (bound in SPARQL11.Parser.fst(1724,29-1724,30))
-    and acc (bound in SPARQL11.Parser.fst(2551,20-2551,23))
-    are equal.
-  - The type of the first term is: Prims.string
-  - The type of the second term is: SPARQL11.Algebra.group_graph_pattern
-  - If the proof fails, try annotating these with the same type.
-
-* Warning 290 at SPARQL11.Parser.fst(2395,37-2395,41):
-  - In the decreases clause for this function, the SMT solver may not be able to
-    prove that the types of
-      sign (bound in SPARQL11.Parser.fst(2395,37-2395,41))
-    and acc (bound in SPARQL11.Parser.fst(2557,16-2557,19))
-    are equal.
-  - The type of the first term is: Prims.string
-  - The type of the second term is: SPARQL11.Algebra.group_graph_pattern
-  - If the proof fails, try annotating these with the same type.
-
-* Warning 290 at SPARQL11.Parser.fst(1724,29-1724,30):
-  - In the decreases clause for this function, the SMT solver may not be able to
-    prove that the types of
-      x (bound in SPARQL11.Parser.fst(1724,29-1724,30))
-    and acc (bound in SPARQL11.Parser.fst(2557,16-2557,19))
-    are equal.
-  - The type of the first term is: Prims.string
-  - The type of the second term is: SPARQL11.Algebra.group_graph_pattern
-  - If the proof fails, try annotating these with the same type.
-
-* Warning 361 at SPARQL11.Parser.fst(4311,0-4465,40):
+* Warning 361 at SPARQL11.Parser.fst(4368,0-4522,40):
   - Some #push-options have not been popped. Current depth is 1.
 
 Extracted module SPARQL11.Parser
+* Warning 247 at SPARQL11.Parser.fst(0,0-0,0):
+  - Checked file SPARQL11.Parser.fst.checked was not written.
+  - Reason:
+      checked file OWL.Closure.fsti.checked is stale (dependence hash mismatch,
+      use --debug CheckedFiles for more details)
+
 Verified module: SPARQL11.Parser
 All verification conditions discharged successfully

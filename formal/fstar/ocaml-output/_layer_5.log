@@ -1,16 +1,15 @@
-    [Schematron.Validate.fst]
     HDT.Triples.fst (up to date, skipped -- source unchanged since last extract)
-    [OWL.QueryEval.fst]
+    OWL.QueryEval.fst (up to date, skipped -- source unchanged since last extract)
+    [Schematron.Validate.fst]
     SHACL.Validation.fst (up to date, skipped -- source unchanged since last extract)
-    [GRDDL.Discovery.fst]
-    [XForms.Bind.fst]
-    [Schematron.Validate.fst] Extracted module Schematron.Validate
+    GRDDL.Discovery.fst (up to date, skipped -- source unchanged since last extract)
     RIF.Core.Builtins.fst (up to date, skipped -- source unchanged since last extract)
+    [XForms.Bind.fst]
     [Parser.JSONLD.fst]
-    [OWL.QueryEval.fst] Extracted module OWL.QueryEval
     ShEx.Validation.fst (up to date, skipped -- source unchanged since last extract)
     VC.Credential.fst (up to date, skipped -- source unchanged since last extract)
-    CSVW.Conversion.fst (up to date, skipped -- source unchanged since last extract)
+    [CSVW.Conversion.fst]
+    [Schematron.Validate.fst] Extracted module Schematron.Validate
     SPARQL.Plan.AccessPath.fst (up to date, skipped -- source unchanged since last extract)
     RDF.CottasStore.OnDiskRuntime.fst (up to date, skipped -- source unchanged since last extract)
     RDF.Store.Capabilities.Cottas.fst (up to date, skipped -- source unchanged since last extract)
@@ -19,6 +18,6 @@
     RML.VirtualSource.fst (up to date, skipped -- source unchanged since last extract)
     SPARQL.Explain.fst (up to date, skipped -- source unchanged since last extract)
     SPARQL.Service.Wrap.fst (up to date, skipped -- source unchanged since last extract)
-    [GRDDL.Discovery.fst] Extracted module GRDDL.Discovery
-    [XForms.Bind.fst] Extracted module XForms.Bind
     [Parser.JSONLD.fst] Extracted module Parser.JSONLD
+    [CSVW.Conversion.fst] Extracted module CSVW.Conversion
+    [XForms.Bind.fst] Extracted module XForms.Bind

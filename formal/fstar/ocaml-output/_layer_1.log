@@ -1,23 +1,23 @@
-    [RDFS.Closure.fst]
+    RDF.IRI.fst (up to date, skipped -- source unchanged since last extract)
+    RDFS.Closure.fst (up to date, skipped -- source unchanged since last extract)
     RDF.NQuads.Serialize.fst (up to date, skipped -- source unchanged since last extract)
     RDF.Store.Loader.fst (up to date, skipped -- source unchanged since last extract)
-    RDF.IRI.fst (up to date, skipped -- source unchanged since last extract)
     OWL.Vocabulary.fst (up to date, skipped -- source unchanged since last extract)
     OWL.DirectMapping.Filter.fst (up to date, skipped -- source unchanged since last extract)
     RDF.Dataset.Graphs.fst (up to date, skipped -- source unchanged since last extract)
     SPARQL11.IRI.Resolve.fst (up to date, skipped -- source unchanged since last extract)
     SPARQL.FullText.fst (up to date, skipped -- source unchanged since last extract)
     RIF.Core.Syntax.fst (up to date, skipped -- source unchanged since last extract)
-    RDF.Geo.BBox.fst (up to date, skipped -- source unchanged since last extract)
-    [Math.Subst.fst]
     Parser.Combinators.fst (up to date, skipped -- source unchanged since last extract)
+    RDF.Geo.BBox.fst (up to date, skipped -- source unchanged since last extract)
     [Math.Diff.fst]
     [Math.Simplify.fst]
-    [Math.Subst.fst] Extracted module Math.Subst
     [Math.Matrix.fst]
-    [Math.Diff.fst] Extracted module Math.Diff
-    [MathML.Present.fst]
+    [Math.Subst.fst]
     [Math.Simplify.fst] Extracted module Math.Simplify
+    [MathML.Present.fst]
+    [Math.Matrix.fst] Extracted module Math.Matrix
+    [Math.Subst.fst] Extracted module Math.Subst
     SPARQL.JSON.Escape.fst (up to date, skipped -- source unchanged since last extract)
     DID.Key.fst (up to date, skipped -- source unchanged since last extract)
     RML.Mapping.fst (up to date, skipped -- source unchanged since last extract)
@@ -37,6 +37,5 @@
     SPARQL.Protocol.fst (up to date, skipped -- source unchanged since last extract)
     SPARQL.ServiceDescription.fst (up to date, skipped -- source unchanged since last extract)
     SPARQL.GraphStore.fst (up to date, skipped -- source unchanged since last extract)
+    [Math.Diff.fst] Extracted module Math.Diff
     [MathML.Present.fst] Extracted module MathML.Present
-    [RDFS.Closure.fst] Extracted module RDFS.Closure
-    [Math.Matrix.fst] Extracted module Math.Matrix

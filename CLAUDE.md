@@ -65,13 +65,10 @@ The two that corrupt files silently:
    tests without an F\* toolchain. `ocaml-output/` symlinks point at
    the current platform's `bin/` dir. Do not gitignore binaries.
 10. **No `--lax`.** All F\* must verify under z3 4.13.3 with no `--lax`,
-    no `--admit_smt_queries`, no escape-hatch flags. ONE tracked
-    legacy exception: `SPARQL11.Parser.fst` carries two
-    `--admit_smt_queries true` pragma regions (~64% of that file;
-    disclosed in README + current-state.md §Verification Gaps;
-    shrinking it is standing priority #3). Never add another, and
-    never cite Rule #10 as a global no-admit claim without that
-    disclosure.
+    no `--admit_smt_queries`, no escape-hatch flags. The last legacy
+    exception (`SPARQL11.Parser.fst`'s two `--admit_smt_queries true`
+    pragma regions, 119 definitions) was eliminated 2026-07-10; the
+    rule now holds with no carve-outs. Never add a new one.
 11. **Inside the verified library boundary, OCaml is `assume val`
     realisations only.** Hand-written `.ml` in
     `formal/fstar/ocaml-output/*.ml` and patches in

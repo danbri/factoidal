@@ -113,8 +113,9 @@ In priority order, consult:
    `docs/claude-rules/current-state.md` § Standing priorities
    (kept current; update it when priorities shift).
 3. **Open recovery plans** — #118 COTTAS runtime retirement, the
-   stratification roadmap in `fstar-module-style`, the
-   `--admit_smt_queries` shrink in `SPARQL11.Parser.fst`.
+   stratification roadmap in `fstar-module-style`. (The
+   `SPARQL11.Parser.fst` `--admit_smt_queries` shrink completed
+   2026-07-10 — zero admits remain.)
 4. **Issue tracker** hygiene sweeps (`issue-hygiene` skill).
 
 Never invent parallel infrastructure to avoid a hard F\* problem —

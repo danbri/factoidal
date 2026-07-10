@@ -9,15 +9,14 @@ implementations.
 and the boundary matters more than the headline:
 
 1. **Proved core.** The RDF term/graph algebra, the SPARQL algebra and
-   evaluator, the RDF format parsers, and most of the ~170 F\* modules
-   verify fully under Z3 4.13.3 — no `--lax`, zero `admit()`. What
-   these modules state, Z3 checked.
-2. **Tested extracted implementation.** Two honest carve-outs. (a)
-   `SPARQL11.Parser.fst` verifies ~36% of its definitions fully; the
-   mutually-recursive expression/UPDATE parser blocks (~64% of the
-   file) are type-checked but their SMT obligations are admitted
-   (`--admit_smt_queries true` in two pragma regions) — for those,
-   correctness rests on the 631/0 W3C suite, not proofs. (b) Every
+   evaluator, the SPARQL 1.1 query/UPDATE parser, the RDF format
+   parsers, and most of the ~170 F\* modules verify fully under
+   Z3 4.13.3 — no `--lax`, no `--admit_smt_queries`, zero `admit()`.
+   What these modules state, Z3 checked. (`SPARQL11.Parser.fst`
+   formerly admitted the SMT obligations for 119 of its definitions in
+   two pragma regions; those obligations are discharged as of
+   2026-07-10.)
+2. **Tested extracted implementation.** One carve-out: every
    `assume val` (I/O, host regex, crypto) is realised by audited
    OCaml/HACL\* glue, catalogued with an open issue each. This ring is
    *tested* like ordinary good software, not proved.
@@ -363,13 +362,12 @@ make verify    # requires z3
 This type-checks all F\* modules against the SMT solver. The RDF graph
 and SPARQL algebra modules are fully verified — zero `admit()` anywhere
 in the F\* source (the 4 SPARQL proof-lemma admits an earlier README
-disclosed have since been eliminated). The remaining ring-2 caveat is
-`SPARQL11.Parser.fst`: two `#push-options "--admit_smt_queries true"`
-regions cover its mutually-recursive expression and UPDATE parser
-blocks (119 of 233 definitions, ~64% of the file) — those type-check
-but their SMT obligations (termination, `wf_iri` refinements) are
-admitted, not discharged. Shrinking this is a standing priority
-(`docs/claude-rules/current-state.md`). See [CLAUDE.md](CLAUDE.md).
+disclosed have since been eliminated). `SPARQL11.Parser.fst` is now in
+the same state: the two `#push-options "--admit_smt_queries true"`
+regions that used to cover its mutually-recursive expression and
+UPDATE parser blocks (119 of 233 definitions) were removed on
+2026-07-10 — the whole file verifies under Z3 4.13.3 with no `--lax`
+and no admitted obligations. See [CLAUDE.md](CLAUDE.md).
 
 ### Run W3C conformance tests
 

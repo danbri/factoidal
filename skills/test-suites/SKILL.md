@@ -284,8 +284,9 @@ refinements from 2026-07-04:
   quoting scores in public prose (from
   `docs/claude-rules/current-state.md`): ASK comparison does not check
   the expected boolean; blank-node comparison is
-  any-bnode-matches-any, not graph isomorphism;
-  `SPARQL11.Parser.fst` is ~65% under `--admit_smt_queries true`.
+  any-bnode-matches-any, not graph isomorphism. (The former
+  `SPARQL11.Parser.fst` `--admit_smt_queries` caveat is gone —
+  since 2026-07-10 the parser verifies with zero admits.)
 - Scope changes (a test becoming a permanent SKIP, or un-skipped) must
   update `docs/claude-rules/scope.md` **in the same commit**.
 - Cap ad-hoc runs at 10 minutes (`timeout 600`, anti-pattern #17); log

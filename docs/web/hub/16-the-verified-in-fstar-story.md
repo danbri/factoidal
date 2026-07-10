@@ -48,13 +48,13 @@ Iron Rule #11:
 Concretely: the RDF format parsers and the query algebra — the code
 paths every post in this series exercised, in-memory, in your browser
 — are F\*, checked under Z3 4.13.3 with no `--lax` and zero `admit()`
-(Iron Rule #10). One carve-out inside that boundary, stated rather than
-hidden: `SPARQL11.Parser.fst`'s mutually-recursive expression and
-UPDATE parser blocks (~64% of that one file) carry
-`--admit_smt_queries true` — they type-check, but their SMT
-obligations (termination, `wf_iri` refinements) are admitted, so for
-those blocks correctness rests on the 631/0 W3C suite rather than
-proofs. Shrinking that region is a tracked standing priority. The
+(Iron Rule #10). This post originally disclosed one carve-out inside
+that boundary: `SPARQL11.Parser.fst`'s mutually-recursive expression
+and UPDATE parser blocks (~64% of that one file) carried
+`--admit_smt_queries true`, so their SMT obligations (termination,
+`wf_iri` refinements) went undischarged. That carve-out ended
+2026-07-10 — both admit regions are gone and the whole file verifies
+under Z3 4.13.3 with no `--lax` and zero admitted obligations. The
 **on-disk** COTTAS reader is
 where the qualifier still bites, though less than it did. The production
 SPARQL query path — `RDF.Store.Capabilities.Cottas.fst`'s `sc_solve` /

@@ -539,3 +539,10 @@
       /root/.opam/fstar/lib/fstar/ulib.checked/FStar.List.fst.checked
     instead of /root/.opam/fstar/lib/fstar/ulib/FStar.List.fst.checked
 
+* Warning 321:
+  - Did not expect module FStar.ImmutableArray.Base to be already checked.
+  - Found it in an unexpected location:
+      /root/.opam/fstar/lib/fstar/ulib.checked/FStar.ImmutableArray.Base.fsti.checked
+    instead of
+      /root/.opam/fstar/lib/fstar/ulib/FStar.ImmutableArray.Base.fsti.checked
+

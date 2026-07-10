@@ -1,6 +1,6 @@
 ---
 name: fstar-module-style
-description: How Factoidal's F* source is organized and written — the semantic-core vs implementation-pragmatics split, module naming, the planned stratification of RDF.Graph.Executable and SPARQL11.Algebra, interface-file (.fsti) policy, verification requirements (no --lax, z3 4.13.3, --admit_smt_queries disclosure), F* syntax traps (comment nesting, reserved words), extraction-semantics traps (F*-verified totality is NOT OCaml totality — List.Tot.splitAt, split-brained string primitives, fixed fuel constants, accumulator order), and KaRaMeL-compatible style. Use when creating or reorganizing .fst modules, when an F* "Syntax error" makes no sense, when a function that verifies as Tot crashes at runtime after extraction, when deciding where a definition belongs, or when writing F* that should later extract to C.
+description: How Factoidal's F* source is organized and written — the semantic-core vs implementation-pragmatics split, module naming, the planned stratification of RDF.Graph.Executable and SPARQL11.Algebra, interface-file (.fsti) policy, verification requirements (no --lax, no --admit_smt_queries, z3 4.13.3), F* syntax traps (comment nesting, reserved words), extraction-semantics traps (F*-verified totality is NOT OCaml totality — List.Tot.splitAt, split-brained string primitives, fixed fuel constants, accumulator order), and KaRaMeL-compatible style. Use when creating or reorganizing .fst modules, when an F* "Syntax error" makes no sense, when a function that verifies as Tot crashes at runtime after extraction, when deciding where a definition belongs, or when writing F* that should later extract to C.
 ---
 
 # F\* module organization and style
@@ -189,10 +189,10 @@ inside one `.fsti` file):
 
 ## Verification requirements
 
-- **No `--lax`, no `--admit_smt_queries`** for new work (Iron Rule
-  #10). One legacy exception exists: `SPARQL11.Parser.fst` is ~65%
-  under `--admit_smt_queries true` — disclose this whenever claiming
-  "verified", and shrink it when touching that file.
+- **No `--lax`, no `--admit_smt_queries`** (Iron Rule #10). The one
+  legacy exception — `SPARQL11.Parser.fst`'s two admit regions — was
+  eliminated 2026-07-10; the whole tree verifies with zero admitted
+  obligations. Do not introduce new admit regions.
 - z3 must be exactly **4.13.3**; the Makefile and `build-ocaml.sh`
   pass `--z3version 4.13.3`.
 - `make verify` covers only the short `MODULES` list (5 core modules).

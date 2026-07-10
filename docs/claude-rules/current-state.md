@@ -276,8 +276,10 @@ in item 4 is where that class of bug goes to die.
    Jena graph probe 9 of 11, was 11 of 11). Bnode labels are
    document-scoped per RDF 1.1; decide loader-namespacing vs F\*
    dataset-merge fix.
-3. **Shrink `--admit_smt_queries` in `SPARQL11.Parser.fst`** (~65% of
-   the file admitted; the biggest verification caveat we disclose).
+3. **[DONE 2026-07-10]** Shrink `--admit_smt_queries` in
+   `SPARQL11.Parser.fst` — both pragma regions removed (119 admitted
+   definitions → 0); the file verifies in full under z3 4.13.3 with no
+   `--lax`.
 4. **Stratification + reusable foundations** — split
    `RDF.Graph.Executable` and `SPARQL11.Algebra` per the roadmap in
    `skills/fstar-module-style/SKILL.md`; commit-sized slices, suites
@@ -364,8 +366,7 @@ formal/fstar/
 
 Core (RDF/SPARQL evaluation):
   SPARQL11.Algebra.fst            5777 lines, 13 assume val (query evaluator)
-  SPARQL11.Parser.fst             4343 lines
-                                  ⚠ ~65% uses --admit_smt_queries true (see below)
+  SPARQL11.Parser.fst             4522 lines (fully verified, zero admits since 2026-07-10)
   RDF.Graph.Executable.fst        4152 lines
 
 Query planning (on-disk backend infrastructure):
@@ -419,12 +420,15 @@ Inventory summary: 90 modules, 47517 lines total, 141 assume val declarations.
 
 ## ⚠ Verification Gaps — Be Honest About These
 
-**SPARQL11.Parser.fst** uses `--admit_smt_queries true` from approximately
-line 802 to line 2722 (~1920 lines, ~65% of the file). This means Z3 does
-NOT verify the proof obligations for the parser's mutually recursive
-functions. The parser type-checks but the SMT proofs are not discharged.
-This is a significant gap in the formal verification story and must be
-disclosed when claiming "verified."
+**SPARQL11.Parser.fst** — CLOSED 2026-07-10. The file formerly carried
+two `--admit_smt_queries true` pragma regions covering 119 definitions
+(the mutually recursive expression and UPDATE parser blocks). Both
+regions are gone: structural helpers were hoisted out of the fuel-based
+mutual recursion with their own decreases metrics, prefix-map entries
+now carry `wf_iri` by type, fixed vocabulary IRIs are proven well-formed
+by `assert_norm`, and LIMIT/OFFSET results are ascribed to `nat`. The
+whole file verifies under z3 4.13.3 with no `--lax` and no admitted
+obligations.
 
 **ASK query comparison in w3c_runner.ml** does not check the expected
 boolean value — ASK tests always pass regardless of the query result. This

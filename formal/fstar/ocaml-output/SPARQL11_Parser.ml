@@ -2021,7 +2021,7 @@ let parse_expect (tok : token) (ts : token_stream) : unit parse_result=
       then ParseOk ((), rest)
       else ParseErr "unexpected token"
   | [] -> ParseErr "unexpected end of input"
-type prefix_map = (Prims.string * Prims.string) Prims.list
+type prefix_map = (Prims.string * RDF_Term.wf_iri) Prims.list
 let rec lookup_prefix (prefix : Prims.string) (pm : prefix_map) :
   Prims.string FStar_Pervasives_Native.option=
   match pm with
@@ -2133,6 +2133,188 @@ let make_lang_literal (lex : Prims.string) (lang : Prims.string) :
   }
 let rdf_type_iri_str : RDF_Term.wf_iri=
   "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
+let fn_langmatches_iri_str : RDF_Term.wf_iri=
+  "http://www.w3.org/2005/xpath-functions#langMatches"
+let fn_rand_iri_str : RDF_Term.wf_iri=
+  "http://www.w3.org/2005/xpath-functions#rand"
+let fn_uuid_iri_str : RDF_Term.wf_iri=
+  "http://www.w3.org/2005/xpath-functions#uuid"
+let fn_struuid_iri_str : RDF_Term.wf_iri=
+  "http://www.w3.org/2005/xpath-functions#struuid"
+let fn_bnode_iri_str : RDF_Term.wf_iri=
+  "http://www.w3.org/2005/xpath-functions#bnode"
+let rdf_nil_iri_str : RDF_Term.wf_iri=
+  "http://www.w3.org/1999/02/22-rdf-syntax-ns#nil"
+let rdf_first_iri_str : RDF_Term.wf_iri=
+  "http://www.w3.org/1999/02/22-rdf-syntax-ns#first"
+let rdf_rest_iri_str : RDF_Term.wf_iri=
+  "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest"
+let is_local_labeled_bnode_id (b : Prims.string) : Prims.bool=
+  let prefix = "_:bnode_" in
+  let plen = FStar_String.strlen prefix in
+  let blen = FStar_String.strlen b in
+  if blen < plen
+  then true
+  else Prims.op_Negation (streq (substring b Prims.int_zero plen) prefix)
+let rec local_string_mem (x : Prims.string) (xs : Prims.string Prims.list) :
+  Prims.bool=
+  match xs with
+  | [] -> false
+  | y::ys -> (streq x y) || (local_string_mem x ys)
+let local_string_add_unique (x : Prims.string) (xs : Prims.string Prims.list)
+  : Prims.string Prims.list= if local_string_mem x xs then xs else x :: xs
+let rec local_string_union (xs : Prims.string Prims.list)
+  (ys : Prims.string Prims.list) : Prims.string Prims.list=
+  match xs with
+  | [] -> ys
+  | x::rest -> local_string_union rest (local_string_add_unique x ys)
+let rec local_string_overlaps (xs : Prims.string Prims.list)
+  (ys : Prims.string Prims.list) : Prims.bool=
+  match xs with
+  | [] -> false
+  | x::rest -> (local_string_mem x ys) || (local_string_overlaps rest ys)
+let local_bnodes_in_pattern_subject (ps : SPARQL11_Algebra.pattern_subject) :
+  Prims.string Prims.list=
+  match ps with
+  | SPARQL11_Algebra.PS_BNode b ->
+      if is_local_labeled_bnode_id b then [b] else []
+  | uu___ -> []
+let local_bnodes_in_pattern_term (pt : SPARQL11_Algebra.pattern_term) :
+  Prims.string Prims.list=
+  match pt with
+  | SPARQL11_Algebra.PT_BNode b ->
+      if is_local_labeled_bnode_id b then [b] else []
+  | uu___ -> []
+let local_bnodes_in_triple_pattern (tp : SPARQL11_Algebra.triple_pattern) :
+  Prims.string Prims.list=
+  local_string_union
+    (local_bnodes_in_pattern_subject tp.SPARQL11_Algebra.tp_s)
+    (local_string_union
+       (local_bnodes_in_pattern_term tp.SPARQL11_Algebra.tp_p)
+       (local_bnodes_in_pattern_term tp.SPARQL11_Algebra.tp_o))
+let rec local_bnodes_in_bgp (bgp : SPARQL11_Algebra.bgp) :
+  Prims.string Prims.list=
+  match bgp with
+  | [] -> []
+  | tp::rest ->
+      local_string_union (local_bnodes_in_triple_pattern tp)
+        (local_bnodes_in_bgp rest)
+let rec ggp_labeled_bnodes (g : SPARQL11_Algebra.group_graph_pattern) :
+  Prims.string Prims.list=
+  match g with
+  | SPARQL11_Algebra.GP_BGP bgp -> local_bnodes_in_bgp bgp
+  | SPARQL11_Algebra.GP_PropertyPath (ps, uu___, pt) ->
+      local_string_union (local_bnodes_in_pattern_subject ps)
+        (local_bnodes_in_pattern_term pt)
+  | SPARQL11_Algebra.GP_Join (g1, g2) ->
+      local_string_union (ggp_labeled_bnodes g1) (ggp_labeled_bnodes g2)
+  | SPARQL11_Algebra.GP_Union (g1, g2) ->
+      local_string_union (ggp_labeled_bnodes g1) (ggp_labeled_bnodes g2)
+  | SPARQL11_Algebra.GP_Minus (g1, g2) ->
+      local_string_union (ggp_labeled_bnodes g1) (ggp_labeled_bnodes g2)
+  | SPARQL11_Algebra.GP_LeftJoin (g1, g2, uu___) ->
+      local_string_union (ggp_labeled_bnodes g1) (ggp_labeled_bnodes g2)
+  | SPARQL11_Algebra.GP_Lateral (g1, g2) ->
+      local_string_union (ggp_labeled_bnodes g1) (ggp_labeled_bnodes g2)
+  | SPARQL11_Algebra.GP_Filter (uu___, g1) -> ggp_labeled_bnodes g1
+  | SPARQL11_Algebra.GP_Graph (uu___, g1) -> ggp_labeled_bnodes g1
+  | SPARQL11_Algebra.GP_Bind (uu___, uu___1, g1) -> ggp_labeled_bnodes g1
+  | SPARQL11_Algebra.GP_Service (uu___, g1, uu___1) -> ggp_labeled_bnodes g1
+  | SPARQL11_Algebra.GP_ServiceVar (uu___, g1, uu___1) ->
+      ggp_labeled_bnodes g1
+  | SPARQL11_Algebra.GP_SubSelect q ->
+      ggp_labeled_bnodes q.SPARQL11_Algebra.q_pattern
+  | SPARQL11_Algebra.GP_Values (uu___, uu___1) -> []
+  | SPARQL11_Algebra.GP_Empty -> []
+let fresh_bnode_id (ts : token_stream) : Prims.string=
+  Prims.strcat "_:bnode_"
+    (Prims.string_of_int (FStar_List_Tot_Base.length ts))
+let parse_signed_numeric_literal_pt (sign : Prims.string) (ts : token_stream)
+  : SPARQL11_Algebra.pattern_term parse_result=
+  match parse_peek ts with
+  | Tok_INTEGER n ->
+      (match make_typed_literal (Prims.strcat sign n)
+               "http://www.w3.org/2001/XMLSchema#integer"
+       with
+       | FStar_Pervasives_Native.Some lit ->
+           ParseOk ((SPARQL11_Algebra.PT_Literal lit), (parse_advance ts))
+       | FStar_Pervasives_Native.None -> ParseErr "invalid integer literal")
+  | Tok_DECIMAL d ->
+      (match make_typed_literal (Prims.strcat sign d)
+               "http://www.w3.org/2001/XMLSchema#decimal"
+       with
+       | FStar_Pervasives_Native.Some lit ->
+           ParseOk ((SPARQL11_Algebra.PT_Literal lit), (parse_advance ts))
+       | FStar_Pervasives_Native.None -> ParseErr "invalid decimal literal")
+  | Tok_DOUBLE d ->
+      (match make_typed_literal (Prims.strcat sign d)
+               "http://www.w3.org/2001/XMLSchema#double"
+       with
+       | FStar_Pervasives_Native.Some lit ->
+           ParseOk ((SPARQL11_Algebra.PT_Literal lit), (parse_advance ts))
+       | FStar_Pervasives_Native.None -> ParseErr "invalid double literal")
+  | uu___ -> ParseErr "expected signed numeric literal"
+let ggp_join (a : SPARQL11_Algebra.group_graph_pattern)
+  (b : SPARQL11_Algebra.group_graph_pattern) :
+  SPARQL11_Algebra.group_graph_pattern=
+  match a with
+  | SPARQL11_Algebra.GP_Empty -> b
+  | uu___ ->
+      (match b with
+       | SPARQL11_Algebra.GP_Empty -> a
+       | uu___1 -> SPARQL11_Algebra.GP_Join (a, b))
+let ggp_add_triple (acc : SPARQL11_Algebra.group_graph_pattern)
+  (tp : SPARQL11_Algebra.triple_pattern) :
+  SPARQL11_Algebra.group_graph_pattern=
+  match acc with
+  | SPARQL11_Algebra.GP_BGP ts ->
+      SPARQL11_Algebra.GP_BGP (FStar_List_Tot_Base.op_At ts [tp])
+  | SPARQL11_Algebra.GP_Empty -> SPARQL11_Algebra.GP_BGP [tp]
+  | uu___ -> SPARQL11_Algebra.GP_Join (acc, (SPARQL11_Algebra.GP_BGP [tp]))
+let ggp_add_pp (acc : SPARQL11_Algebra.group_graph_pattern)
+  (s : SPARQL11_Algebra.pattern_subject)
+  (pp : SPARQL11_Algebra.property_path) (o : SPARQL11_Algebra.pattern_term) :
+  SPARQL11_Algebra.group_graph_pattern=
+  ggp_join acc (SPARQL11_Algebra.GP_PropertyPath (s, pp, o))
+let rec is_basic_pattern (p : SPARQL11_Algebra.group_graph_pattern) :
+  Prims.bool=
+  match p with
+  | SPARQL11_Algebra.GP_BGP uu___ -> true
+  | SPARQL11_Algebra.GP_Empty -> true
+  | SPARQL11_Algebra.GP_PropertyPath (uu___, uu___1, uu___2) -> true
+  | SPARQL11_Algebra.GP_Join (p1, p2) ->
+      (is_basic_pattern p1) && (is_basic_pattern p2)
+  | uu___ -> false
+let rec collect_template_triples (p : SPARQL11_Algebra.group_graph_pattern) :
+  SPARQL11_Algebra.triple_pattern Prims.list=
+  match p with
+  | SPARQL11_Algebra.GP_BGP bgp -> bgp
+  | SPARQL11_Algebra.GP_Empty -> []
+  | SPARQL11_Algebra.GP_Join (p1, p2) ->
+      FStar_List_Tot_Base.append (collect_template_triples p1)
+        (collect_template_triples p2)
+  | uu___ -> []
+let pattern_term_to_subject (pt : SPARQL11_Algebra.pattern_term) :
+  SPARQL11_Algebra.pattern_subject FStar_Pervasives_Native.option=
+  match pt with
+  | SPARQL11_Algebra.PT_Var v ->
+      FStar_Pervasives_Native.Some (SPARQL11_Algebra.PS_Var v)
+  | SPARQL11_Algebra.PT_IRI i ->
+      FStar_Pervasives_Native.Some (SPARQL11_Algebra.PS_IRI i)
+  | SPARQL11_Algebra.PT_BNode b ->
+      FStar_Pervasives_Native.Some (SPARQL11_Algebra.PS_BNode b)
+  | SPARQL11_Algebra.PT_Literal uu___ -> FStar_Pervasives_Native.None
+let select_item_var (item : SPARQL11_Algebra.select_item) :
+  SPARQL11_Algebra.var_name=
+  match item with
+  | SPARQL11_Algebra.SI_Var v -> v
+  | SPARQL11_Algebra.SI_Expr (uu___, v) -> v
+let rec select_items_has_var (v : SPARQL11_Algebra.var_name)
+  (items : SPARQL11_Algebra.select_item Prims.list) : Prims.bool=
+  match items with
+  | [] -> false
+  | item::rest ->
+      (streq (select_item_var item) v) || (select_items_has_var v rest)
 let rec parse_expr (pm : prefix_map) (fuel : Prims.nat) (ts : token_stream) :
   SPARQL11_Algebra.expr parse_result=
   if fuel = Prims.int_zero
@@ -2552,8 +2734,8 @@ and parse_primary_expr (pm : prefix_map) (fuel : Prims.nat)
                               | ParseOk ((), ts5) ->
                                   ParseOk
                                     ((SPARQL11_Algebra.E_FunctionCall
-                                        ("http://www.w3.org/2005/xpath-functions#langMatches",
-                                          [e1; e2])), ts5))))))
+                                        (fn_langmatches_iri_str, [e1; e2])),
+                                      ts5))))))
      | Tok_SAMETERM ->
          parse_b2 pm (fuel - Prims.int_one)
            (fun uu___1 uu___2 -> SPARQL11_Algebra.E_SameTerm (uu___1, uu___2))
@@ -2613,8 +2795,7 @@ and parse_primary_expr (pm : prefix_map) (fuel : Prims.nat)
                | ParseErr uu___1 -> ParseErr "expected ')' after RAND("
                | ParseOk ((), ts''') ->
                    ParseOk
-                     ((SPARQL11_Algebra.E_FunctionCall
-                         ("http://www.w3.org/2005/xpath-functions#rand", [])),
+                     ((SPARQL11_Algebra.E_FunctionCall (fn_rand_iri_str, [])),
                        ts''')))
      | Tok_UUID ->
          let ts' = parse_advance ts in
@@ -2625,8 +2806,7 @@ and parse_primary_expr (pm : prefix_map) (fuel : Prims.nat)
                | ParseErr uu___1 -> ParseErr "expected ')' after UUID("
                | ParseOk ((), ts''') ->
                    ParseOk
-                     ((SPARQL11_Algebra.E_FunctionCall
-                         ("http://www.w3.org/2005/xpath-functions#uuid", [])),
+                     ((SPARQL11_Algebra.E_FunctionCall (fn_uuid_iri_str, [])),
                        ts''')))
      | Tok_STRUUID ->
          let ts' = parse_advance ts in
@@ -2638,8 +2818,7 @@ and parse_primary_expr (pm : prefix_map) (fuel : Prims.nat)
                | ParseOk ((), ts''') ->
                    ParseOk
                      ((SPARQL11_Algebra.E_FunctionCall
-                         ("http://www.w3.org/2005/xpath-functions#struuid",
-                           [])), ts''')))
+                         (fn_struuid_iri_str, [])), ts''')))
      | Tok_BNODE_KW ->
          let ts' = parse_advance ts in
          (match parse_expect Tok_LPAREN ts' with
@@ -2649,8 +2828,7 @@ and parse_primary_expr (pm : prefix_map) (fuel : Prims.nat)
                | Tok_RPAREN ->
                    let ts''' = parse_advance ts'' in
                    ParseOk
-                     ((SPARQL11_Algebra.E_FunctionCall
-                         ("http://www.w3.org/2005/xpath-functions#bnode", [])),
+                     ((SPARQL11_Algebra.E_FunctionCall (fn_bnode_iri_str, [])),
                        ts''')
                | uu___1 ->
                    (match parse_expr pm (fuel - Prims.int_one) ts'' with
@@ -2662,8 +2840,7 @@ and parse_primary_expr (pm : prefix_map) (fuel : Prims.nat)
                          | ParseOk ((), ts4) ->
                              ParseOk
                                ((SPARQL11_Algebra.E_FunctionCall
-                                   ("http://www.w3.org/2005/xpath-functions#bnode",
-                                     [arg])), ts4)))))
+                                   (fn_bnode_iri_str, [arg])), ts4)))))
      | Tok_REGEX -> parse_regex pm (fuel - Prims.int_one) (parse_advance ts)
      | Tok_REPLACE ->
          parse_replace pm (fuel - Prims.int_one) (parse_advance ts)
@@ -3136,83 +3313,6 @@ and parse_group_graph_pattern (pm : prefix_map) (fuel : Prims.nat)
                    (match parse_expect Tok_RBRACE ts'' with
                     | ParseErr m -> ParseErr m
                     | ParseOk ((), ts''') -> ParseOk (g, ts''')))))
-and is_local_labeled_bnode_id (b : Prims.string) : Prims.bool=
-  let prefix = "_:bnode_" in
-  let plen = FStar_String.strlen prefix in
-  let blen = FStar_String.strlen b in
-  if blen < plen
-  then true
-  else Prims.op_Negation (streq (substring b Prims.int_zero plen) prefix)
-and local_string_mem (x : Prims.string) (xs : Prims.string Prims.list) :
-  Prims.bool=
-  match xs with
-  | [] -> false
-  | y::ys -> (streq x y) || (local_string_mem x ys)
-and local_string_add_unique (x : Prims.string) (xs : Prims.string Prims.list)
-  : Prims.string Prims.list= if local_string_mem x xs then xs else x :: xs
-and local_string_union (xs : Prims.string Prims.list)
-  (ys : Prims.string Prims.list) : Prims.string Prims.list=
-  match xs with
-  | [] -> ys
-  | x::rest -> local_string_union rest (local_string_add_unique x ys)
-and local_string_overlaps (xs : Prims.string Prims.list)
-  (ys : Prims.string Prims.list) : Prims.bool=
-  match xs with
-  | [] -> false
-  | x::rest -> (local_string_mem x ys) || (local_string_overlaps rest ys)
-and local_bnodes_in_pattern_subject (ps : SPARQL11_Algebra.pattern_subject) :
-  Prims.string Prims.list=
-  match ps with
-  | SPARQL11_Algebra.PS_BNode b ->
-      if is_local_labeled_bnode_id b then [b] else []
-  | uu___ -> []
-and local_bnodes_in_pattern_term (pt : SPARQL11_Algebra.pattern_term) :
-  Prims.string Prims.list=
-  match pt with
-  | SPARQL11_Algebra.PT_BNode b ->
-      if is_local_labeled_bnode_id b then [b] else []
-  | uu___ -> []
-and local_bnodes_in_triple_pattern (tp : SPARQL11_Algebra.triple_pattern) :
-  Prims.string Prims.list=
-  local_string_union
-    (local_bnodes_in_pattern_subject tp.SPARQL11_Algebra.tp_s)
-    (local_string_union
-       (local_bnodes_in_pattern_term tp.SPARQL11_Algebra.tp_p)
-       (local_bnodes_in_pattern_term tp.SPARQL11_Algebra.tp_o))
-and local_bnodes_in_bgp (bgp : SPARQL11_Algebra.bgp) :
-  Prims.string Prims.list=
-  match bgp with
-  | [] -> []
-  | tp::rest ->
-      local_string_union (local_bnodes_in_triple_pattern tp)
-        (local_bnodes_in_bgp rest)
-and ggp_labeled_bnodes (g : SPARQL11_Algebra.group_graph_pattern) :
-  Prims.string Prims.list=
-  match g with
-  | SPARQL11_Algebra.GP_BGP bgp -> local_bnodes_in_bgp bgp
-  | SPARQL11_Algebra.GP_PropertyPath (ps, uu___, pt) ->
-      local_string_union (local_bnodes_in_pattern_subject ps)
-        (local_bnodes_in_pattern_term pt)
-  | SPARQL11_Algebra.GP_Join (g1, g2) ->
-      local_string_union (ggp_labeled_bnodes g1) (ggp_labeled_bnodes g2)
-  | SPARQL11_Algebra.GP_Union (g1, g2) ->
-      local_string_union (ggp_labeled_bnodes g1) (ggp_labeled_bnodes g2)
-  | SPARQL11_Algebra.GP_Minus (g1, g2) ->
-      local_string_union (ggp_labeled_bnodes g1) (ggp_labeled_bnodes g2)
-  | SPARQL11_Algebra.GP_LeftJoin (g1, g2, uu___) ->
-      local_string_union (ggp_labeled_bnodes g1) (ggp_labeled_bnodes g2)
-  | SPARQL11_Algebra.GP_Lateral (g1, g2) ->
-      local_string_union (ggp_labeled_bnodes g1) (ggp_labeled_bnodes g2)
-  | SPARQL11_Algebra.GP_Filter (uu___, g1) -> ggp_labeled_bnodes g1
-  | SPARQL11_Algebra.GP_Graph (uu___, g1) -> ggp_labeled_bnodes g1
-  | SPARQL11_Algebra.GP_Bind (uu___, uu___1, g1) -> ggp_labeled_bnodes g1
-  | SPARQL11_Algebra.GP_Service (uu___, g1, uu___1) -> ggp_labeled_bnodes g1
-  | SPARQL11_Algebra.GP_ServiceVar (uu___, g1, uu___1) ->
-      ggp_labeled_bnodes g1
-  | SPARQL11_Algebra.GP_SubSelect q ->
-      ggp_labeled_bnodes q.SPARQL11_Algebra.q_pattern
-  | SPARQL11_Algebra.GP_Values (uu___, uu___1) -> []
-  | SPARQL11_Algebra.GP_Empty -> []
 and parse_ggp_body (pm : prefix_map) (fuel : Prims.nat)
   (acc : SPARQL11_Algebra.group_graph_pattern)
   (filters : SPARQL11_Algebra.expr Prims.list) (cross_scope : Prims.bool)
@@ -4015,16 +4115,6 @@ and parse_single_var_values (pm : prefix_map) (fuel : Prims.nat)
           | ParseOk (v, ts') ->
               parse_single_var_values pm (fuel - Prims.int_one) (v :: acc)
                 ts'))
-and pattern_term_to_subject (pt : SPARQL11_Algebra.pattern_term) :
-  SPARQL11_Algebra.pattern_subject FStar_Pervasives_Native.option=
-  match pt with
-  | SPARQL11_Algebra.PT_Var v ->
-      FStar_Pervasives_Native.Some (SPARQL11_Algebra.PS_Var v)
-  | SPARQL11_Algebra.PT_IRI i ->
-      FStar_Pervasives_Native.Some (SPARQL11_Algebra.PS_IRI i)
-  | SPARQL11_Algebra.PT_BNode b ->
-      FStar_Pervasives_Native.Some (SPARQL11_Algebra.PS_BNode b)
-  | SPARQL11_Algebra.PT_Literal uu___ -> FStar_Pervasives_Native.None
 and parse_subject_with_extras (pm : prefix_map) (fuel : Prims.nat)
   (ts : token_stream) :
   (SPARQL11_Algebra.pattern_subject * SPARQL11_Algebra.group_graph_pattern *
@@ -4319,34 +4409,6 @@ and parse_verb (pm : prefix_map) (fuel : Prims.nat) (ts : token_stream) :
                | SPARQL11_Algebra.PP_IRI iri ->
                    ParseOk ((VSimple (SPARQL11_Algebra.PT_IRI iri)), ts')
                | uu___2 -> ParseOk ((VPath pp), ts'))))
-and fresh_bnode_id (ts : token_stream) : Prims.string=
-  Prims.strcat "_:bnode_"
-    (Prims.string_of_int (FStar_List_Tot_Base.length ts))
-and parse_signed_numeric_literal_pt (sign : Prims.string) (ts : token_stream)
-  : SPARQL11_Algebra.pattern_term parse_result=
-  match parse_peek ts with
-  | Tok_INTEGER n ->
-      (match make_typed_literal (Prims.strcat sign n)
-               "http://www.w3.org/2001/XMLSchema#integer"
-       with
-       | FStar_Pervasives_Native.Some lit ->
-           ParseOk ((SPARQL11_Algebra.PT_Literal lit), (parse_advance ts))
-       | FStar_Pervasives_Native.None -> ParseErr "invalid integer literal")
-  | Tok_DECIMAL d ->
-      (match make_typed_literal (Prims.strcat sign d)
-               "http://www.w3.org/2001/XMLSchema#decimal"
-       with
-       | FStar_Pervasives_Native.Some lit ->
-           ParseOk ((SPARQL11_Algebra.PT_Literal lit), (parse_advance ts))
-       | FStar_Pervasives_Native.None -> ParseErr "invalid decimal literal")
-  | Tok_DOUBLE d ->
-      (match make_typed_literal (Prims.strcat sign d)
-               "http://www.w3.org/2001/XMLSchema#double"
-       with
-       | FStar_Pervasives_Native.Some lit ->
-           ParseOk ((SPARQL11_Algebra.PT_Literal lit), (parse_advance ts))
-       | FStar_Pervasives_Native.None -> ParseErr "invalid double literal")
-  | uu___ -> ParseErr "expected signed numeric literal"
 and parse_object_with_extras (pm : prefix_map) (fuel : Prims.nat)
   (ts : token_stream) :
   (SPARQL11_Algebra.pattern_term * SPARQL11_Algebra.group_graph_pattern)
@@ -4486,8 +4548,7 @@ and parse_collection (pm : prefix_map) (fuel : Prims.nat) (ts : token_stream)
     (match parse_peek ts with
      | Tok_RPAREN ->
          ParseOk
-           (((SPARQL11_Algebra.PT_IRI
-                "http://www.w3.org/1999/02/22-rdf-syntax-ns#nil"),
+           (((SPARQL11_Algebra.PT_IRI rdf_nil_iri_str),
               SPARQL11_Algebra.GP_Empty), (parse_advance ts))
      | uu___1 ->
          (match parse_object_with_extras pm (fuel - Prims.int_one) ts with
@@ -4502,16 +4563,14 @@ and parse_collection (pm : prefix_map) (fuel : Prims.nat) (ts : token_stream)
                      {
                        SPARQL11_Algebra.tp_s = bnode_subj;
                        SPARQL11_Algebra.tp_p =
-                         (SPARQL11_Algebra.PT_IRI
-                            "http://www.w3.org/1999/02/22-rdf-syntax-ns#first");
+                         (SPARQL11_Algebra.PT_IRI rdf_first_iri_str);
                        SPARQL11_Algebra.tp_o = item
                      } in
                    let rest_triple =
                      {
                        SPARQL11_Algebra.tp_s = bnode_subj;
                        SPARQL11_Algebra.tp_p =
-                         (SPARQL11_Algebra.PT_IRI
-                            "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest");
+                         (SPARQL11_Algebra.PT_IRI rdf_rest_iri_str);
                        SPARQL11_Algebra.tp_o = rest_term
                      } in
                    let triples =
@@ -4571,28 +4630,6 @@ and parse_rdf_literal_pt (pm : prefix_map) (fuel : Prims.nat)
              (parse_advance ts))
      | uu___1 ->
          ParseOk ((SPARQL11_Algebra.PT_Literal (make_plain_literal s)), ts))
-and ggp_join (a : SPARQL11_Algebra.group_graph_pattern)
-  (b : SPARQL11_Algebra.group_graph_pattern) :
-  SPARQL11_Algebra.group_graph_pattern=
-  match a with
-  | SPARQL11_Algebra.GP_Empty -> b
-  | uu___ ->
-      (match b with
-       | SPARQL11_Algebra.GP_Empty -> a
-       | uu___1 -> SPARQL11_Algebra.GP_Join (a, b))
-and ggp_add_triple (acc : SPARQL11_Algebra.group_graph_pattern)
-  (tp : SPARQL11_Algebra.triple_pattern) :
-  SPARQL11_Algebra.group_graph_pattern=
-  match acc with
-  | SPARQL11_Algebra.GP_BGP ts ->
-      SPARQL11_Algebra.GP_BGP (FStar_List_Tot_Base.op_At ts [tp])
-  | SPARQL11_Algebra.GP_Empty -> SPARQL11_Algebra.GP_BGP [tp]
-  | uu___ -> SPARQL11_Algebra.GP_Join (acc, (SPARQL11_Algebra.GP_BGP [tp]))
-and ggp_add_pp (acc : SPARQL11_Algebra.group_graph_pattern)
-  (s : SPARQL11_Algebra.pattern_subject)
-  (pp : SPARQL11_Algebra.property_path) (o : SPARQL11_Algebra.pattern_term) :
-  SPARQL11_Algebra.group_graph_pattern=
-  ggp_join acc (SPARQL11_Algebra.GP_PropertyPath (s, pp, o))
 and parse_object_list_simple (pm : prefix_map) (fuel : Prims.nat)
   (subj : SPARQL11_Algebra.pattern_subject)
   (pred : SPARQL11_Algebra.pattern_term)
@@ -5154,23 +5191,6 @@ and parse_ask_body (pm : prefix_map) (fuel : Prims.nat)
                    SPARQL11_Algebra.q_modifier = default_modifier;
                    SPARQL11_Algebra.q_values = FStar_Pervasives_Native.None
                  }, ts3)))
-and is_basic_pattern (p : SPARQL11_Algebra.group_graph_pattern) : Prims.bool=
-  match p with
-  | SPARQL11_Algebra.GP_BGP uu___ -> true
-  | SPARQL11_Algebra.GP_Empty -> true
-  | SPARQL11_Algebra.GP_PropertyPath (uu___, uu___1, uu___2) -> true
-  | SPARQL11_Algebra.GP_Join (p1, p2) ->
-      (is_basic_pattern p1) && (is_basic_pattern p2)
-  | uu___ -> false
-and collect_template_triples (p : SPARQL11_Algebra.group_graph_pattern) :
-  SPARQL11_Algebra.triple_pattern Prims.list=
-  match p with
-  | SPARQL11_Algebra.GP_BGP bgp -> bgp
-  | SPARQL11_Algebra.GP_Empty -> []
-  | SPARQL11_Algebra.GP_Join (p1, p2) ->
-      FStar_List_Tot_Base.append (collect_template_triples p1)
-        (collect_template_triples p2)
-  | uu___ -> []
 and parse_construct_body (pm : prefix_map) (fuel : Prims.nat)
   (base : RDF_Term.wf_iri FStar_Pervasives_Native.option) (ts : token_stream)
   : SPARQL11_Algebra.query parse_result=
@@ -5441,17 +5461,6 @@ and parse_select_vars (pm : prefix_map) (fuel : Prims.nat)
               if (FStar_List_Tot_Base.length items) = Prims.int_zero
               then ParseErr "expected select variables"
               else ParseOk ((SPARQL11_Algebra.Select_Vars items), ts')))
-and select_item_var (item : SPARQL11_Algebra.select_item) :
-  SPARQL11_Algebra.var_name=
-  match item with
-  | SPARQL11_Algebra.SI_Var v -> v
-  | SPARQL11_Algebra.SI_Expr (uu___, v) -> v
-and select_items_has_var (v : SPARQL11_Algebra.var_name)
-  (items : SPARQL11_Algebra.select_item Prims.list) : Prims.bool=
-  match items with
-  | [] -> false
-  | item::rest ->
-      (streq (select_item_var item) v) || (select_items_has_var v rest)
 and parse_select_items (pm : prefix_map) (fuel : Prims.nat)
   (acc : SPARQL11_Algebra.select_item Prims.list) (ts : token_stream) :
   SPARQL11_Algebra.select_item Prims.list parse_result=
@@ -6109,8 +6118,11 @@ and parse_solution_modifier (pm : prefix_map) (fuel : Prims.nat)
                           | Tok_INTEGER n ->
                               (match parse_int_str n with
                                | FStar_Pervasives_Native.Some i ->
-                                   ((FStar_Pervasives_Native.Some i),
-                                     (parse_advance ts'))
+                                   if i >= Prims.int_zero
+                                   then
+                                     ((FStar_Pervasives_Native.Some i),
+                                       (parse_advance ts'))
+                                   else (FStar_Pervasives_Native.None, ts')
                                | FStar_Pervasives_Native.None ->
                                    (FStar_Pervasives_Native.None, ts'))
                           | uu___4 -> (FStar_Pervasives_Native.None, ts'))
@@ -6123,8 +6135,11 @@ and parse_solution_modifier (pm : prefix_map) (fuel : Prims.nat)
                           | Tok_INTEGER n ->
                               (match parse_int_str n with
                                | FStar_Pervasives_Native.Some i ->
-                                   ((FStar_Pervasives_Native.Some i),
-                                     (parse_advance ts'))
+                                   if i >= Prims.int_zero
+                                   then
+                                     ((FStar_Pervasives_Native.Some i),
+                                       (parse_advance ts'))
+                                   else (FStar_Pervasives_Native.None, ts')
                                | FStar_Pervasives_Native.None ->
                                    (FStar_Pervasives_Native.None, ts'))
                           | uu___4 -> (FStar_Pervasives_Native.None, ts'))

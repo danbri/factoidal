@@ -933,7 +933,11 @@ let parse_expect (tok : token) (ts : token_stream) : parse_result unit =
 (** Part 6: Parser — Prefix Resolution                                      **)
 (** ====================================================================== **)
 
-type prefix_map = list (string & string)
+(* Entries carry `wf_iri` values (not plain strings): the map's values
+   flow into the `q_prefixes`/`u_prefixes` fields, whose type is
+   `list (string & wf_iri)`, and parse_prologue only ever inserts
+   is_iri-checked / base-resolved IRIs anyway. *)
+type prefix_map = list (string & wf_iri)
 
 (* Look up a prefix in the map *)
 let rec lookup_prefix (prefix : string) (pm : prefix_map) : option string =
@@ -1030,7 +1034,194 @@ let rdf_type_iri_str : wf_iri =
   assert_norm (is_iri "http://www.w3.org/1999/02/22-rdf-syntax-ns#type");
   "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
 
-#push-options "--z3rlimit 200 --fuel 2 --ifuel 2 --admit_smt_queries true"
+(* ---- Fixed vocabulary IRIs used by the parser below ----
+   Each constant is proven well-formed by computation (assert_norm),
+   the same pattern as rdf_type_iri_str above. *)
+
+let fn_langmatches_iri_str : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2005/xpath-functions#langMatches");
+  "http://www.w3.org/2005/xpath-functions#langMatches"
+
+let fn_rand_iri_str : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2005/xpath-functions#rand");
+  "http://www.w3.org/2005/xpath-functions#rand"
+
+let fn_uuid_iri_str : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2005/xpath-functions#uuid");
+  "http://www.w3.org/2005/xpath-functions#uuid"
+
+let fn_struuid_iri_str : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2005/xpath-functions#struuid");
+  "http://www.w3.org/2005/xpath-functions#struuid"
+
+let fn_bnode_iri_str : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2005/xpath-functions#bnode");
+  "http://www.w3.org/2005/xpath-functions#bnode"
+
+let rdf_nil_iri_str : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/1999/02/22-rdf-syntax-ns#nil");
+  "http://www.w3.org/1999/02/22-rdf-syntax-ns#nil"
+
+let rdf_first_iri_str : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/1999/02/22-rdf-syntax-ns#first");
+  "http://www.w3.org/1999/02/22-rdf-syntax-ns#first"
+
+let rdf_rest_iri_str : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest");
+  "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest"
+
+#push-options "--z3rlimit 200 --fuel 2 --ifuel 2"
+
+(* ---- Helpers hoisted out of the mutually recursive parser block ----
+   Each of these used to be an `and` member of the parser recursion
+   below, but recurses (if at all) on its own structural metric — a
+   string list, a bgp, a group_graph_pattern — never on the parser's
+   fuel. Inside the mutual group F-star could not relate those metrics
+   to the fuel-based decreases ordering; as top-level functions each
+   carries its own explicit decreases clause and verifies directly.
+   Pure relocation: bodies are unchanged. *)
+
+// A bnode id is "local labeled" iff it is NOT parser-generated
+// (parser-generated ids come from fresh_bnode_id below: "_:bnode_<n>").
+let is_local_labeled_bnode_id (b : string) : bool =
+  let prefix = "_:bnode_" in
+  let plen = String.length prefix in
+  let blen = String.length b in
+  if blen < plen then true
+  else not (streq (substring b 0 plen) prefix)
+
+let rec local_string_mem (x : string) (xs : list string) : Tot bool (decreases xs) =
+  match xs with
+  | [] -> false
+  | y :: ys -> streq x y || local_string_mem x ys
+
+let local_string_add_unique (x : string) (xs : list string) : list string =
+  if local_string_mem x xs then xs else x :: xs
+
+let rec local_string_union (xs ys : list string) : Tot (list string) (decreases xs) =
+  match xs with
+  | [] -> ys
+  | x :: rest -> local_string_union rest (local_string_add_unique x ys)
+
+let rec local_string_overlaps (xs ys : list string) : Tot bool (decreases xs) =
+  match xs with
+  | [] -> false
+  | x :: rest -> local_string_mem x ys || local_string_overlaps rest ys
+
+let local_bnodes_in_pattern_subject (ps : pattern_subject) : list string =
+  match ps with
+  | PS_BNode b -> if is_local_labeled_bnode_id b then [b] else []
+  | _ -> []
+
+let local_bnodes_in_pattern_term (pt : pattern_term) : list string =
+  match pt with
+  | PT_BNode b -> if is_local_labeled_bnode_id b then [b] else []
+  | _ -> []
+
+let local_bnodes_in_triple_pattern (tp : triple_pattern) : list string =
+  local_string_union (local_bnodes_in_pattern_subject tp.tp_s)
+    (local_string_union (local_bnodes_in_pattern_term tp.tp_p) (local_bnodes_in_pattern_term tp.tp_o))
+
+let rec local_bnodes_in_bgp (bgp : bgp) : Tot (list string) (decreases bgp) =
+  match bgp with
+  | [] -> []
+  | tp :: rest -> local_string_union (local_bnodes_in_triple_pattern tp) (local_bnodes_in_bgp rest)
+
+let rec ggp_labeled_bnodes (g : group_graph_pattern) : Tot (list string) (decreases g) =
+  match g with
+  | GP_BGP bgp -> local_bnodes_in_bgp bgp
+  | GP_PropertyPath ps _ pt ->
+    local_string_union (local_bnodes_in_pattern_subject ps) (local_bnodes_in_pattern_term pt)
+  | GP_Join g1 g2
+  | GP_Union g1 g2
+  | GP_Minus g1 g2 ->
+    local_string_union (ggp_labeled_bnodes g1) (ggp_labeled_bnodes g2)
+  | GP_LeftJoin g1 g2 _ ->
+    local_string_union (ggp_labeled_bnodes g1) (ggp_labeled_bnodes g2)
+  | GP_Lateral g1 g2 ->
+    local_string_union (ggp_labeled_bnodes g1) (ggp_labeled_bnodes g2)
+  | GP_Filter _ g1
+  | GP_Graph _ g1
+  | GP_Bind _ _ g1
+  | GP_Service _ g1 _
+  | GP_ServiceVar _ g1 _ ->
+    ggp_labeled_bnodes g1
+  | GP_SubSelect q ->
+    ggp_labeled_bnodes q.q_pattern
+  | GP_Values _ _ -> []
+  | GP_Empty -> []
+
+let fresh_bnode_id (ts : token_stream) : string =
+  "_:bnode_" ^ string_of_int (List.Tot.length ts)
+
+let parse_signed_numeric_literal_pt (sign:string) (ts:token_stream)
+  : parse_result pattern_term =
+  match parse_peek ts with
+  | Tok_INTEGER n ->
+    (match make_typed_literal (sign ^ n) "http://www.w3.org/2001/XMLSchema#integer" with
+     | Some lit -> ParseOk (PT_Literal lit) (parse_advance ts)
+     | None -> ParseErr "invalid integer literal")
+  | Tok_DECIMAL d ->
+    (match make_typed_literal (sign ^ d) "http://www.w3.org/2001/XMLSchema#decimal" with
+     | Some lit -> ParseOk (PT_Literal lit) (parse_advance ts)
+     | None -> ParseErr "invalid decimal literal")
+  | Tok_DOUBLE d ->
+    (match make_typed_literal (sign ^ d) "http://www.w3.org/2001/XMLSchema#double" with
+     | Some lit -> ParseOk (PT_Literal lit) (parse_advance ts)
+     | None -> ParseErr "invalid double literal")
+  | _ -> ParseErr "expected signed numeric literal"
+
+let ggp_join (a b : group_graph_pattern) : group_graph_pattern =
+  match a with GP_Empty -> b | _ -> match b with GP_Empty -> a | _ -> GP_Join a b
+
+// Helper: add a triple or path pattern to a GGP accumulator
+let ggp_add_triple (acc : group_graph_pattern) (tp : triple_pattern) : group_graph_pattern =
+  match acc with
+  | GP_BGP ts -> GP_BGP (ts @ [tp])
+  | GP_Empty -> GP_BGP [tp]
+  | _ -> GP_Join acc (GP_BGP [tp])
+
+let ggp_add_pp (acc : group_graph_pattern) (s : pattern_subject) (pp : property_path) (o : pattern_term) : group_graph_pattern =
+  ggp_join acc (GP_PropertyPath s pp o)
+
+// Check if a pattern is a basic graph pattern (only BGP, Join, PropertyPath, Empty)
+// CONSTRUCT WHERE short form only allows these — no FILTER, GRAPH, OPTIONAL, etc.
+let rec is_basic_pattern (p : group_graph_pattern) : Tot bool (decreases p) =
+  match p with
+  | GP_BGP _ -> true
+  | GP_Empty -> true
+  | GP_PropertyPath _ _ _ -> true
+  | GP_Join p1 p2 -> is_basic_pattern p1 && is_basic_pattern p2
+  | _ -> false
+
+// Collect every triple_pattern reachable through a pattern — used
+// to build a CONSTRUCT template when the grammar only gave us the
+// parsed BGP. Property paths and non-BGP constructs are skipped:
+// CONSTRUCT templates in SPARQL 1.1 may only contain triple patterns.
+let rec collect_template_triples (p : group_graph_pattern) : Tot (list triple_pattern) (decreases p) =
+  match p with
+  | GP_BGP bgp -> bgp
+  | GP_Empty -> []
+  | GP_Join p1 p2 ->
+    List.Tot.append (collect_template_triples p1) (collect_template_triples p2)
+  | _ -> []
+
+let pattern_term_to_subject (pt : pattern_term) : Tot (option pattern_subject) =
+  match pt with
+  | PT_Var v -> Some (PS_Var v)
+  | PT_IRI i -> Some (PS_IRI i)
+  | PT_BNode b -> Some (PS_BNode b)
+  | PT_Literal _ -> None
+
+let select_item_var (item : select_item) : var_name =
+  match item with
+  | SI_Var v -> v
+  | SI_Expr _ v -> v
+
+let rec select_items_has_var (v : var_name) (items : list select_item) : Tot bool (decreases items) =
+  match items with
+  | [] -> false
+  | item :: rest -> streq (select_item_var item) v || select_items_has_var v rest
 
 (* ---- Mutually recursive parser block ---- *)
 
@@ -1281,7 +1472,7 @@ and parse_primary_expr (pm : prefix_map) (fuel : nat) (ts : token_stream)
        begin match parse_expect Tok_COMMA ts2 with | ParseErr m -> ParseErr m | ParseOk () ts3 ->
        begin match parse_expr pm (fuel-1) ts3 with | ParseErr m -> ParseErr m | ParseOk e2 ts4 ->
        begin match parse_expect Tok_RPAREN ts4 with | ParseErr m -> ParseErr m | ParseOk () ts5 ->
-       ParseOk (E_FunctionCall "http://www.w3.org/2005/xpath-functions#langMatches" [e1; e2]) ts5
+       ParseOk (E_FunctionCall fn_langmatches_iri_str [e1; e2]) ts5
        end end end end)
   | Tok_SAMETERM -> parse_b2 pm (fuel-1) E_SameTerm (parse_advance ts)
   | Tok_STRSTARTS -> parse_b2 pm (fuel-1) E_StrStarts (parse_advance ts)
@@ -1315,7 +1506,7 @@ and parse_primary_expr (pm : prefix_map) (fuel : nat) (ts : token_stream)
        match parse_expect Tok_RPAREN ts'' with
        | ParseErr _ -> ParseErr "expected ')' after RAND("
        | ParseOk () ts''' ->
-         ParseOk (E_FunctionCall "http://www.w3.org/2005/xpath-functions#rand" []) ts''')
+         ParseOk (E_FunctionCall fn_rand_iri_str []) ts''')
   | Tok_UUID ->
     let ts' = parse_advance ts in
     (match parse_expect Tok_LPAREN ts' with
@@ -1324,7 +1515,7 @@ and parse_primary_expr (pm : prefix_map) (fuel : nat) (ts : token_stream)
        match parse_expect Tok_RPAREN ts'' with
        | ParseErr _ -> ParseErr "expected ')' after UUID("
        | ParseOk () ts''' ->
-         ParseOk (E_FunctionCall "http://www.w3.org/2005/xpath-functions#uuid" []) ts''')
+         ParseOk (E_FunctionCall fn_uuid_iri_str []) ts''')
   | Tok_STRUUID ->
     let ts' = parse_advance ts in
     (match parse_expect Tok_LPAREN ts' with
@@ -1333,7 +1524,7 @@ and parse_primary_expr (pm : prefix_map) (fuel : nat) (ts : token_stream)
        match parse_expect Tok_RPAREN ts'' with
        | ParseErr _ -> ParseErr "expected ')' after STRUUID("
        | ParseOk () ts''' ->
-         ParseOk (E_FunctionCall "http://www.w3.org/2005/xpath-functions#struuid" []) ts''')
+         ParseOk (E_FunctionCall fn_struuid_iri_str []) ts''')
   | Tok_BNODE_KW ->
     // BNODE() or BNODE(expr)
     let ts' = parse_advance ts in
@@ -1344,7 +1535,7 @@ and parse_primary_expr (pm : prefix_map) (fuel : nat) (ts : token_stream)
        | Tok_RPAREN ->
          // BNODE() - no args
          let ts''' = parse_advance ts'' in
-         ParseOk (E_FunctionCall "http://www.w3.org/2005/xpath-functions#bnode" []) ts'''
+         ParseOk (E_FunctionCall fn_bnode_iri_str []) ts'''
        | _ ->
          // BNODE(expr)
          match parse_expr pm (fuel-1) ts'' with
@@ -1353,7 +1544,7 @@ and parse_primary_expr (pm : prefix_map) (fuel : nat) (ts : token_stream)
            match parse_expect Tok_RPAREN ts''' with
            | ParseErr _ -> ParseErr "expected ')' after BNODE(expr"
            | ParseOk () ts4 ->
-             ParseOk (E_FunctionCall "http://www.w3.org/2005/xpath-functions#bnode" [arg]) ts4)
+             ParseOk (E_FunctionCall fn_bnode_iri_str [arg]) ts4)
   | Tok_REGEX -> parse_regex pm (fuel-1) (parse_advance ts)
   | Tok_REPLACE -> parse_replace pm (fuel-1) (parse_advance ts)
   | Tok_SUBSTR -> parse_substr pm (fuel-1) (parse_advance ts)
@@ -1708,74 +1899,6 @@ and parse_group_graph_pattern (pm : prefix_map) (fuel : nat) (ts : token_stream)
         | ParseOk () ts''' -> ParseOk g ts'''
         end end
     end
-
-and is_local_labeled_bnode_id (b : string) : bool =
-  let prefix = "_:bnode_" in
-  let plen = String.length prefix in
-  let blen = String.length b in
-  if blen < plen then true
-  else not (streq (substring b 0 plen) prefix)
-
-and local_string_mem (x : string) (xs : list string) : Tot bool (decreases xs) =
-  match xs with
-  | [] -> false
-  | y :: ys -> streq x y || local_string_mem x ys
-
-and local_string_add_unique (x : string) (xs : list string) : list string =
-  if local_string_mem x xs then xs else x :: xs
-
-and local_string_union (xs ys : list string) : Tot (list string) (decreases xs) =
-  match xs with
-  | [] -> ys
-  | x :: rest -> local_string_union rest (local_string_add_unique x ys)
-
-and local_string_overlaps (xs ys : list string) : Tot bool (decreases xs) =
-  match xs with
-  | [] -> false
-  | x :: rest -> local_string_mem x ys || local_string_overlaps rest ys
-
-and local_bnodes_in_pattern_subject (ps : pattern_subject) : list string =
-  match ps with
-  | PS_BNode b -> if is_local_labeled_bnode_id b then [b] else []
-  | _ -> []
-
-and local_bnodes_in_pattern_term (pt : pattern_term) : list string =
-  match pt with
-  | PT_BNode b -> if is_local_labeled_bnode_id b then [b] else []
-  | _ -> []
-
-and local_bnodes_in_triple_pattern (tp : triple_pattern) : list string =
-  local_string_union (local_bnodes_in_pattern_subject tp.tp_s)
-    (local_string_union (local_bnodes_in_pattern_term tp.tp_p) (local_bnodes_in_pattern_term tp.tp_o))
-
-and local_bnodes_in_bgp (bgp : bgp) : Tot (list string) (decreases bgp) =
-  match bgp with
-  | [] -> []
-  | tp :: rest -> local_string_union (local_bnodes_in_triple_pattern tp) (local_bnodes_in_bgp rest)
-
-and ggp_labeled_bnodes (g : group_graph_pattern) : Tot (list string) (decreases g) =
-  match g with
-  | GP_BGP bgp -> local_bnodes_in_bgp bgp
-  | GP_PropertyPath ps _ pt ->
-    local_string_union (local_bnodes_in_pattern_subject ps) (local_bnodes_in_pattern_term pt)
-  | GP_Join g1 g2
-  | GP_Union g1 g2
-  | GP_Minus g1 g2 ->
-    local_string_union (ggp_labeled_bnodes g1) (ggp_labeled_bnodes g2)
-  | GP_LeftJoin g1 g2 _ ->
-    local_string_union (ggp_labeled_bnodes g1) (ggp_labeled_bnodes g2)
-  | GP_Lateral g1 g2 ->
-    local_string_union (ggp_labeled_bnodes g1) (ggp_labeled_bnodes g2)
-  | GP_Filter _ g1
-  | GP_Graph _ g1
-  | GP_Bind _ _ g1
-  | GP_Service _ g1 _
-  | GP_ServiceVar _ g1 _ ->
-    ggp_labeled_bnodes g1
-  | GP_SubSelect q ->
-    ggp_labeled_bnodes q.q_pattern
-  | GP_Values _ _ -> []
-  | GP_Empty -> []
 
 // Parse the body of a GGP: triples blocks interleaved with graph pattern elements.
 // FILTERs are collected in `filters` and wrapped around the result at the end,
@@ -2176,13 +2299,6 @@ and parse_single_var_values (pm : prefix_map) (fuel : nat)
 
 (* ---- Triples block parsing ---- *)
 
-and pattern_term_to_subject (pt : pattern_term) : Tot (option pattern_subject) =
-  match pt with
-  | PT_Var v -> Some (PS_Var v)
-  | PT_IRI i -> Some (PS_IRI i)
-  | PT_BNode b -> Some (PS_BNode b)
-  | PT_Literal _ -> None
-
 (* Parse a subject as (pattern_subject, extra_triples, outer_predicate_list_optional) *)
 and parse_subject_with_extras (pm : prefix_map) (fuel : nat) (ts : token_stream)
   : Tot (parse_result (pattern_subject & group_graph_pattern & bool)) (decreases fuel) =
@@ -2389,26 +2505,6 @@ and parse_verb (pm : prefix_map) (fuel : nat) (ts : token_stream)
         | _ -> ParseOk (VPath pp) ts'))
 
 // Generate a fresh blank node ID based on token stream position
-and fresh_bnode_id (ts : token_stream) : string =
-  "_:bnode_" ^ string_of_int (List.Tot.length ts)
-
-and parse_signed_numeric_literal_pt (sign:string) (ts:token_stream)
-  : parse_result pattern_term =
-  match parse_peek ts with
-  | Tok_INTEGER n ->
-    (match make_typed_literal (sign ^ n) "http://www.w3.org/2001/XMLSchema#integer" with
-     | Some lit -> ParseOk (PT_Literal lit) (parse_advance ts)
-     | None -> ParseErr "invalid integer literal")
-  | Tok_DECIMAL d ->
-    (match make_typed_literal (sign ^ d) "http://www.w3.org/2001/XMLSchema#decimal" with
-     | Some lit -> ParseOk (PT_Literal lit) (parse_advance ts)
-     | None -> ParseErr "invalid decimal literal")
-  | Tok_DOUBLE d ->
-    (match make_typed_literal (sign ^ d) "http://www.w3.org/2001/XMLSchema#double" with
-     | Some lit -> ParseOk (PT_Literal lit) (parse_advance ts)
-     | None -> ParseErr "invalid double literal")
-  | _ -> ParseErr "expected signed numeric literal"
-
 // Parse an object as (pattern_term, extra_triples)
 // The extra_triples GGP contains triples generated by blank node property lists or collections
 and parse_object_with_extras (pm : prefix_map) (fuel : nat) (ts : token_stream)
@@ -2485,7 +2581,7 @@ and parse_collection (pm : prefix_map) (fuel : nat) (ts : token_stream)
   else match parse_peek ts with
   | Tok_RPAREN ->
     // Empty collection = rdf:nil
-    ParseOk (PT_IRI "http://www.w3.org/1999/02/22-rdf-syntax-ns#nil", GP_Empty) (parse_advance ts)
+    ParseOk (PT_IRI rdf_nil_iri_str, GP_Empty) (parse_advance ts)
   | _ ->
     // Parse first item
     (match parse_object_with_extras pm (fuel-1) ts with
@@ -2499,10 +2595,10 @@ and parse_collection (pm : prefix_map) (fuel : nat) (ts : token_stream)
         | ParseOk (rest_term, rest_extras) ts'' ->
           // Build triples: _:b rdf:first item . _:b rdf:rest rest .
           let first_triple = { tp_s = bnode_subj;
-                               tp_p = PT_IRI "http://www.w3.org/1999/02/22-rdf-syntax-ns#first";
+                               tp_p = PT_IRI rdf_first_iri_str;
                                tp_o = item } in
           let rest_triple = { tp_s = bnode_subj;
-                              tp_p = PT_IRI "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest";
+                              tp_p = PT_IRI rdf_rest_iri_str;
                               tp_o = rest_term } in
           let triples = GP_BGP [first_triple; rest_triple] in
           let all_extras = ggp_join (ggp_join triples item_extras) rest_extras in
@@ -2544,19 +2640,6 @@ and parse_rdf_literal_pt (pm : prefix_map) (fuel : nat) (s : string) (ts : token
   | _ -> ParseOk (PT_Literal (make_plain_literal s)) ts
 
 // Helper: join two group_graph_patterns
-and ggp_join (a b : group_graph_pattern) : group_graph_pattern =
-  match a with GP_Empty -> b | _ -> match b with GP_Empty -> a | _ -> GP_Join a b
-
-// Helper: add a triple or path pattern to a GGP accumulator
-and ggp_add_triple (acc : group_graph_pattern) (tp : triple_pattern) : group_graph_pattern =
-  match acc with
-  | GP_BGP ts -> GP_BGP (ts @ [tp])
-  | GP_Empty -> GP_BGP [tp]
-  | _ -> GP_Join acc (GP_BGP [tp])
-
-and ggp_add_pp (acc : group_graph_pattern) (s : pattern_subject) (pp : property_path) (o : pattern_term) : group_graph_pattern =
-  ggp_join acc (GP_PropertyPath s pp o)
-
 // Parse object list for simple predicates: obj1, obj2, obj3
 and parse_object_list_simple (pm : prefix_map) (fuel : nat) (subj : pattern_subject)
   (pred : pattern_term) (acc : group_graph_pattern) (ts : token_stream)
@@ -2901,28 +2984,6 @@ and parse_ask_body (pm : prefix_map) (fuel : nat) (base : option wf_iri) (ts : t
       end end end
 
 // Parse CONSTRUCT body
-// Check if a pattern is a basic graph pattern (only BGP, Join, PropertyPath, Empty)
-// CONSTRUCT WHERE short form only allows these — no FILTER, GRAPH, OPTIONAL, etc.
-and is_basic_pattern (p : group_graph_pattern) : Tot bool (decreases p) =
-  match p with
-  | GP_BGP _ -> true
-  | GP_Empty -> true
-  | GP_PropertyPath _ _ _ -> true
-  | GP_Join p1 p2 -> is_basic_pattern p1 && is_basic_pattern p2
-  | _ -> false
-
-// Collect every triple_pattern reachable through a pattern — used
-// to build a CONSTRUCT template when the grammar only gave us the
-// parsed BGP. Property paths and non-BGP constructs are skipped:
-// CONSTRUCT templates in SPARQL 1.1 may only contain triple patterns.
-and collect_template_triples (p : group_graph_pattern) : Tot (list triple_pattern) (decreases p) =
-  match p with
-  | GP_BGP bgp -> bgp
-  | GP_Empty -> []
-  | GP_Join p1 p2 ->
-    List.Tot.append (collect_template_triples p1) (collect_template_triples p2)
-  | _ -> []
-
 and parse_construct_body (pm : prefix_map) (fuel : nat) (base : option wf_iri) (ts : token_stream)
   : Tot (parse_result query) (decreases fuel) =
   if fuel = 0 then ParseErr "recursion limit"
@@ -3096,16 +3157,6 @@ and parse_select_vars (pm : prefix_map) (fuel : nat) (ts : token_stream)
       if List.Tot.length items = 0 then ParseErr "expected select variables"
       else ParseOk (Select_Vars items) ts'
     end
-
-and select_item_var (item : select_item) : var_name =
-  match item with
-  | SI_Var v -> v
-  | SI_Expr _ v -> v
-
-and select_items_has_var (v : var_name) (items : list select_item) : Tot bool (decreases items) =
-  match items with
-  | [] -> false
-  | item :: rest -> streq (select_item_var item) v || select_items_has_var v rest
 
 and parse_select_items (pm : prefix_map) (fuel : nat) (acc : list select_item) (ts : token_stream)
   : Tot (parse_result (list select_item)) (decreases fuel) =
@@ -3359,23 +3410,29 @@ and parse_solution_modifier (pm : prefix_map) (fuel : nat) (ts : token_stream)
     // allows either order (LimitClause OffsetClause? | OffsetClause LimitClause?).
     // Try LIMIT first, then OFFSET, then (if LIMIT wasn't found before the
     // OFFSET) try LIMIT again after it, so both orders parse.
-    let try_limit_clause (ts : token_stream) = begin match parse_peek ts with
+    // The solution_modifier fields sm_limit/sm_offset are option nat;
+    // parse_int_str returns option int, so ascribe to nat under an
+    // explicit non-negativity guard (Tok_INTEGER carries unsigned
+    // digits, so the negative branch is unreachable in practice).
+    let try_limit_clause (ts : token_stream) : (option nat & token_stream) =
+      begin match parse_peek ts with
       | Tok_LIMIT ->
         let ts' = parse_advance ts in
         (match parse_peek ts' with
          | Tok_INTEGER n ->
            (match parse_int_str n with
-            | Some i -> (Some i, parse_advance ts')
+            | Some i -> if i >= 0 then (Some (i <: nat), parse_advance ts') else (None, ts')
             | None -> (None, ts'))
          | _ -> (None, ts'))
       | _ -> (None, ts) end in
-    let try_offset_clause (ts : token_stream) = begin match parse_peek ts with
+    let try_offset_clause (ts : token_stream) : (option nat & token_stream) =
+      begin match parse_peek ts with
       | Tok_OFFSET ->
         let ts' = parse_advance ts in
         (match parse_peek ts' with
          | Tok_INTEGER n ->
            (match parse_int_str n with
-            | Some i -> (Some i, parse_advance ts')
+            | Some i -> if i >= 0 then (Some (i <: nat), parse_advance ts') else (None, ts')
             | None -> (None, ts'))
          | _ -> (None, ts'))
       | _ -> (None, ts) end in
@@ -3652,7 +3709,7 @@ let parse_sparql (input : string) : parse_result query =
 (** Designed to pass syntax-update-1 and syntax-update-2 W3C tests.         **)
 (** ====================================================================== **)
 
-#push-options "--z3rlimit 200 --fuel 2 --ifuel 2 --admit_smt_queries true"
+#push-options "--z3rlimit 200 --fuel 2 --ifuel 2"
 
 // Parse a single IRI / prefixed name, returning the absolute IRI string.
 // Note: BASE resolution for bare Tok_IRI is injected by ocaml-patches.sh
@@ -4193,10 +4250,10 @@ let rec parse_update_seq (pm : prefix_map) (base : option wf_iri) (acc : list up
        | ParseOk op ts' ->
          parse_update_seq pm base (op :: acc) true (fuel-1) ts')
 
-// Narrow (string, string) prefix entries to (string, wf_iri) for the AST
-// field type. Entries whose IRI is not well-formed are dropped. In practice
-// this is a no-op: the parser only inserts entries via parse_prologue, which
-// checks is_iri and resolve_query_iri.
+// Historically narrowed (string, string) prefix entries to
+// (string, wf_iri) for the AST field type. Now that prefix_map entries
+// carry wf_iri by type, this is an identity pass (the is_iri test is
+// always true); kept so the extracted call sites stay unchanged.
 let rec prefix_map_to_wf (pm : prefix_map)
   : Tot (list (string * wf_iri)) (decreases pm) =
   match pm with
