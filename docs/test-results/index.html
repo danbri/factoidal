@@ -279,8 +279,8 @@
 <header>
   <div class="inner">
     <div class="rendered-pill" title="Rendered = when this page was last regenerated. Tests = when the *_results.log files inside the repository were last updated. Both UTC.">
-      <span class="row"><span class="label">Rendered</span><strong>2026-07-10 01:44 UTC</strong></span>
-      <span class="row"><span class="label">Tests</span><strong class="tests">2026-07-10 01:10 UTC</strong></span>
+      <span class="row"><span class="label">Rendered</span><strong>2026-07-10 01:58 UTC</strong></span>
+      <span class="row"><span class="label">Tests</span><strong class="tests">2026-07-10 01:56 UTC</strong></span>
     </div>
     <h1>W3C test results</h1>
     <p>Pass/fail/skip counts against every standards suite this project measures: RDF 1.1, SPARQL 1.1, RDFS/OWL 2, SHACL, ShEx, RIF Core, RML, CSVW, JSON-LD 1.1, Verifiable Credentials 2.0, XSLT 1.0, XML 1.0, MathML 3, ISO Schematron, JSON Schema, DID — plus HDT backend parity and the browser/npm bundle suites.</p>
@@ -297,11 +297,11 @@
 <div class="summary">
   <div class="tile ok">
     <div class="label">Pass</div>
-    <div class="value">1661</div>
+    <div class="value">1662</div>
   </div>
   <div class="tile err">
     <div class="label">Fail</div>
-    <div class="value">1</div>
+    <div class="value">0</div>
   </div>
   <div class="tile warn">
     <div class="label">Skipped</div>
@@ -309,7 +309,7 @@
   </div>
   <div class="tile">
     <div class="label">Pass / runnable</div>
-    <div class="value">99.9%<small> of 1662</small></div>
+    <div class="value">100.0%<small> of 1662</small></div>
   </div>
   <div class="tile">
     <div class="label">Total in suites</div>
@@ -337,9 +337,9 @@
   <p class="legend-note">Each suite row shows a stacked meter: the green segment is the pass proportion, red is fail, grey is skip — all measured against that suite's own total, so proportions are comparable across suites of very different sizes.</p>
 </div>
 
-<section class="family amber" id="sparql11">
+<section class="family green" id="sparql11">
   <h2>SPARQL 1.1</h2>
-  <p class="fam-headline amber">630 pass, 1 fail, 0 skip (of 631) across Query, Update, Protocol, Federated Query, Service Description, and Entailment Regimes.</p>
+  <p class="fam-headline green">631 pass, 0 fail, 0 skip (of 631) across Query, Update, Protocol, Federated Query, Service Description, and Entailment Regimes.</p>
   <details open>
     <summary>Suites in this family (tap to collapse)</summary>
     <div class="suites">
@@ -613,11 +613,11 @@
         </div>
       </div>
   <h3 class="rec-subhead"><a href="https://www.w3.org/TR/sparql11-entailment/" target="_blank" rel="noopener">SPARQL 1.1 Entailment Regimes</a></h3>
-      <div class="suite-row amber">
+      <div class="suite-row green">
         <div class="suite-name">entailment <small style="font-weight:normal;color:var(--muted)">(SPARQL 1.1 regime — RDFS / D-entailment, 70 tests)</small></div>
-        <div class="meter"><div class="seg seg-pass" style="width:98.57%"></div><div class="seg seg-fail" style="width:1.43%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+        <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
         <div class="suite-numbers">
-          <span class="p">69 pass</span>, <span class="f">1 fail</span>
+          <span class="p">70 pass</span>, <span class="f">0 fail</span>
           <small></small>
         </div>
       </div>
@@ -626,7 +626,7 @@
   <details id="sparql-failures" class="failure-detail">
   <summary>SPARQL 1.1 failures (click to expand)</summary>
   <ul>
-<li>FAIL: RIF Core WG tests: Modeling Brain Anatomy — ASK boolean mismatch: expected true, got false</li>
+<li>(none)</li>
   </ul>
 </details>
 
@@ -785,11 +785,11 @@
   (refutation) side of the tableau, not just materialisation.
 </p>
 <div class="suites">
-  <div class="suite-row amber">
+  <div class="suite-row green">
     <div class="suite-name">OWL DL entailment — Tableau <small style="font-weight:normal;color:var(--muted)">(<code>Tableau.fst</code> · <code>tableau_materialise</code>, live in <code>w3c_runner</code> — SPARQL 1.1 entailment-regimes suite)</small></div>
-    <div class="meter"><div class="seg seg-pass" style="width:98.57%"></div><div class="seg seg-fail" style="width:1.43%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+    <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
     <div class="suite-numbers">
-      <span class="p">69 pass</span>, <span class="f">1 fail</span>
+      <span class="p">70 pass</span>, <span class="f">0 fail</span>
       <small>(of 70)</small>
     </div>
   </div>
@@ -1327,7 +1327,7 @@ XML_Wellformedness.is_valid_ncname (informational only, see module comment):
 <details>
   <summary>Raw per-suite numbers</summary>
   <h3 style="font-size: 0.95em; margin: 0.8em 0 0.3em;">SPARQL 1.1</h3>
-  <pre>631 total: 630 pass, 1 fail, 0 skip, 0 unsupported
+  <pre>631 total: 631 pass, 0 fail, 0 skip, 0 unsupported
   add                                 pass:8 fail:0 skip:0 unsupported:0
   aggregates                          pass:47 fail:0 skip:0 unsupported:0
   basic-update                        pass:13 fail:0 skip:0 unsupported:0
@@ -1343,7 +1343,7 @@ XML_Wellformedness.is_valid_ncname (informational only, see module comment):
   delete-insert                       pass:17 fail:0 skip:0 unsupported:0
   delete-where                        pass:6 fail:0 skip:0 unsupported:0
   drop                                pass:4 fail:0 skip:0 unsupported:0
-  entailment                          pass:69 fail:1 skip:0 unsupported:0
+  entailment                          pass:70 fail:0 skip:0 unsupported:0
   exists                              pass:6 fail:0 skip:0 unsupported:0
   functions                           pass:75 fail:0 skip:0 unsupported:0
   grouping                            pass:6 fail:0 skip:0 unsupported:0
@@ -1395,9 +1395,9 @@ vc-stage1:    113 pass, 1 fail, 6 skip (of 120) — present=1</pre>
 </main>
 
 <footer>
-  Generated <strong>2026-07-10 01:44 UTC</strong> from commit
-  <code><a href="https://github.com/danbri/factoidal/commit/9e4580d4e38ff562d371303a6055302e08be1051">9e4580d4</a></code>
-  on branch <code>claude/main</code> — &ldquo;ledger: JSON-LD row — toRdf/fromRdf complete, API suites remain the failure&rdquo;.
+  Generated <strong>2026-07-10 01:58 UTC</strong> from commit
+  <code><a href="https://github.com/danbri/factoidal/commit/29753ed4834e40f2032ccfe6f9ac70bc71551c76">29753ed</a></code>
+  on branch <code>claude/main</code> — &ldquo;RIF import-profile materialisation: rif04 passes, SPARQL 631/0 (task #101)&rdquo;.
   Re-run locally: <code>cd formal/fstar &amp;&amp; ./generate-report.sh --run</code>.
 </footer>
 
