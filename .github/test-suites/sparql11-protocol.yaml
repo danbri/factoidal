@@ -37,4 +37,5 @@ triggers:
 # What's left, in plain language (source: docs/claude-rules/w3c-completeness-ledger.md,
 # SPARQL 1.1 row, 2026-07-10).
 remaining:
-  - "SPARQL 1.1 Protocol and the Graph Store HTTP Protocol are parked — deprioritized behind conformance-depth work on Query/Update/Entailment, by owner directive; not implemented against the W3C test suite yet"
+  - "wire-level replay: the 53 W3C Protocol + Graph Store tests pass by dispatching each test's HTTP request through the verified protocol modules in-process; replaying the same suite against a live factoidal-http socket (which already serves query/update and, with --rw plus a delta log, Graph Store writes) needs a small harness and is not yet automated"
+  - "Graph Store writes over HTTP require the explicit --rw + --delta-log durable mode; the read-only default answers PUT/DELETE with 405 by design — document-and-test coverage for both modes belongs in the wire harness above"

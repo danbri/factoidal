@@ -398,7 +398,7 @@
 <header>
   <div class="inner">
     <div class="rendered-pill" title="Rendered = when this page was last regenerated. Tests = when the *_results.log files inside the repository were last updated. Both UTC.">
-      <span class="row"><span class="label">Rendered</span><strong>2026-07-10 11:47 UTC</strong></span>
+      <span class="row"><span class="label">Rendered</span><strong>2026-07-10 11:53 UTC</strong></span>
       <span class="row"><span class="label">Tests</span><strong class="tests">2026-07-10 01:56 UTC</strong></span>
     </div>
     <h1>W3C test results</h1>
@@ -563,7 +563,7 @@
   <summary>
     <span class="fam-name">SPARQL 1.1</span>
     <span class="fam-score">631/0/0 of 631</span>
-    <span class="gap-badge">1 gap</span>
+    <span class="gap-badge">2 gaps</span>
     <span class="dot green"></span>
   </summary>
   <div class="family-body">
@@ -818,7 +818,8 @@
     <div class="remaining">
       <p class="remaining-title">Remaining work</p>
       <ul>
-        <li>SPARQL 1.1 Protocol and the Graph Store HTTP Protocol are parked — deprioritized behind conformance-depth work on Query/Update/Entailment, by owner directive; not implemented against the W3C test suite yet</li>
+        <li>wire-level replay: the 53 W3C Protocol + Graph Store tests pass by dispatching each test's HTTP request through the verified protocol modules in-process; replaying the same suite against a live factoidal-http socket (which already serves query/update and, with --rw plus a delta log, Graph Store writes) needs a small harness and is not yet automated</li>
+        <li>Graph Store writes over HTTP require the explicit --rw + --delta-log durable mode; the read-only default answers PUT/DELETE with 405 by design — document-and-test coverage for both modes belongs in the wire harness above</li>
       </ul>
     </div>
   </div>
@@ -1884,8 +1885,8 @@ vc-stage1:    117 pass, 0 fail, 3 skip (of 120) — present=1</pre>
 </main>
 
 <footer>
-  Generated <strong>2026-07-10 11:47 UTC</strong> from commit
-  <code><a href="https://github.com/danbri/factoidal/commit/a1d66be0f22869fa3ebb25426ee162dbc9347ff9">a1d66be0</a></code>
+  Generated <strong>2026-07-10 11:53 UTC</strong> from commit
+  <code><a href="https://github.com/danbri/factoidal/commit/a1d66be0f22869fa3ebb25426ee162dbc9347ff9">a1d66be</a></code>
   on branch <code>claude/main</code> — &ldquo;vc: land the two scoring-gap fixes + truthful public prose&rdquo;.
   Re-run locally: <code>cd formal/fstar &amp;&amp; ./generate-report.sh --run</code>.
 </footer>
