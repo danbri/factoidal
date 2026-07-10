@@ -1,0 +1,31 @@
+name: JSON-LD 1.1 flatten (Node Map Generation + Flattening Algorithm)
+spec: https://www.w3.org/TR/json-ld11-api/#flattening-algorithm
+runner: bin/linux-x86_64/jsonld_flatten_runner
+runner_args: []
+manifest: third_party/testing/json-ld/tests/flatten-manifest.jsonld
+log_path: formal/fstar/ocaml-output/jsonld_flatten_results.log
+result_path: docs/test-results/by-suite/jsonld-flatten.json
+domain: RDF
+foundational: false
+
+# Flattened-JSON comparison (Parser.JSONLD.jsonld_expanded_equal — JCS
+# canonical structural equality) over the full flatten() pipeline: expand
+# the input (Parser.JSONLD.expand_document), run Node Map Generation
+# (JSONLD.Flatten.fst: per-graph node maps, blank-node relabelling to
+# _:b0/_:b1/... in spec issue order) and the Flattening Algorithm
+# (named-graph folding under @graph, code-point ordering by node id,
+# @id-only node dropping), then — for entries that supply a `context` —
+# compact the flattened array via the JSONLD.Compact machinery with a
+# pinned top-level @graph. NegativeEvaluationTests pass iff
+# flatten_document returns None (option-based error model, same
+# convention as the toRdf/expand/compact runners).
+triggers:
+  paths:
+    - bin/jsonld-flatten-runner/**
+    - formal/fstar/JSONLD.Flatten.fst
+    - formal/fstar/JSONLD.Compact.fst
+    - formal/fstar/Parser.JSONLD.fst
+    - formal/fstar/JSONLD.Expand.fst
+    - formal/fstar/JSONLD.Context.fst
+    - third_party/testing/json-ld/**
+  excludes: []

@@ -1,0 +1,70 @@
+=== JSON-LD 1.1 Flattening Test Runner ===
+Manifest: /home/user/factoidal/.claude/worktrees/agent-aaebe636e3f4155ad/third_party/testing/json-ld/tests/flatten-manifest.jsonld
+
+Totals: 58 test entries
+
+  PASS: drop free-floating nodes
+  PASS: basic
+  PASS: drop null and unmapped properties
+  PASS: optimize @set, keep empty arrays
+  PASS: do not expand aliased @id/@type
+  PASS: alias keywords
+  PASS: date type-coercion
+  PASS: @value with @language
+  PASS: @graph with terms
+  PASS: native types
+  PASS: coerced @id
+  PASS: @graph with embed
+  PASS: flatten already expanded
+  PASS: collapse set of sets, keep empty lists
+  PASS: context reset
+  PASS: @graph and @id aliased
+  PASS: override default @language
+  PASS: remove @value = null
+  PASS: do not remove @graph if not at top-level
+  PASS: do not remove @graph at top-level if not only property
+  PASS: flatten value with default language
+  PASS: Flattening list/set with coercion
+  PASS: Multiple contexts
+  PASS: Problematic IRI flattening tests
+  PASS: Term definition with @id: @type
+  PASS: Duplicate values in @list and @set
+  PASS: Use @vocab in properties and @type but not in @id
+  PASS: Language maps
+  PASS: type-coercion of native types
+  PASS: Null term and @vocab
+  PASS: Using @vocab with with type-coercion
+  PASS: Multiple properties expanding to the same IRI
+  PASS: Language maps with @vocab, default language, and colliding property
+  PASS: Flattening @index
+  PASS: Flattening reverse properties
+  PASS: Using terms in a reverse-maps
+  PASS: language and index expansion on non-objects
+  PASS: Free-floating sets and lists
+  PASS: List objects not equivalent
+  PASS: Sample test manifest extract
+  PASS: compactArrays option
+  PASS: Blank nodes with reverse properties
+  PASS: Empty string as identifier
+  PASS: Flatten using relative fragment identifier properly joins to base
+  PASS: @list with embedded object
+  PASS: context with JavaScript Object property names
+  PASS: Conflicting indexes
+  PASS: Basic Included array
+  PASS: Basic Included object
+  PASS: Multiple properties mapping to @included are folded together
+  PASS: Included containing @included
+  PASS: Property value with @included
+  PASS: json.api example
+  PASS: @list containing an deep list
+  PASS: @list containing empty @list
+  PASS: @list containing mixed list values
+
+========================================
+Suite Results:
+  flatten-Positive     pass:55 fail:0 skip:2
+  flatten-Negative     pass:1 fail:0 skip:0
+========================================
+TOTAL: 56 pass, 0 fail, 2 skip (out of 58)
+========================================
+jsonld-flatten: 56 pass, 0 fail, 2 skip (out of 58)
