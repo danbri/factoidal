@@ -93,6 +93,12 @@ natively — they are not optional decoration.
 2. **Never let opam choose the F\* version.** Pin to CI's
    (`build-info.json`); a mismatched version verifies fine and then
    churns every extracted `.ml` — we paid the full compile twice.
+   **Same for z3: check `z3 --version` says 4.13.3 after every
+   restore.** A 2026-07-10 container shipped z3 4.16.0 first on PATH
+   (both `/usr/local/bin/z3` and the opam switch's `z3`) with 4.13.3
+   sitting unused at `/usr/local/bin/z3-4.13.3`. Fix:
+   `ln -sf /usr/local/bin/z3-4.13.3 /root/.opam/fstar/bin/z3` (and the
+   same for `/usr/local/bin/z3`).
 3. **Never conclude "unreachable" from one 403.** Probe: git protocol
    reaches ANY GitHub repo (incl. clones into /tmp);
    `api.github.com` + release assets are blocked; PyPI/npm/crates are
