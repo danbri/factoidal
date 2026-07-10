@@ -282,11 +282,22 @@ refinements from 2026-07-04:
   before committing. Run the affected suites before AND after.
 - Disclose the standing caveats whenever claiming "verified" or
   quoting scores in public prose (from
-  `docs/claude-rules/current-state.md`): ASK comparison does not check
-  the expected boolean; blank-node comparison is
-  any-bnode-matches-any, not graph isomorphism. (The former
-  `SPARQL11.Parser.fst` `--admit_smt_queries` caveat is gone —
-  since 2026-07-10 the parser verifies with zero admits.)
+  `docs/claude-rules/current-state.md`). (Two former caveats are gone:
+  since 2026-07-09 graph/result comparison is strict — RDFC-1.0
+  canonicalization + byte-compare, ASK booleans evaluated, SELECT
+  bnodes via canonicalized row reification; and since 2026-07-10
+  `SPARQL11.Parser.fst` verifies with zero admits.)
+- **Disposition taxonomy (owner directive 2026-07-10): a SKIP is
+  actionable debt — something we intend to run one day.** Tests the
+  upstream suite has WITHDRAWN (removed/deprecated as unsound) are a
+  separate disposition, "withdrawn-upstream": excluded from the
+  scorable denominator, never counted as skips, each carrying the
+  upstream commit/date that removed it. Calling them skips pollutes
+  the gap lists that direct work. Similarly keep "upstream fixture
+  defect" fails annotated as such (e.g. the ShEx start2RefS2 twin
+  mismatch) rather than silently patching around them. Precedent:
+  vc_runner's `Withdrawn` outcome (3 fixtures, 117-scorable
+  denominator, 2026-07-10).
 - Scope changes (a test becoming a permanent SKIP, or un-skipped) must
   update `docs/claude-rules/scope.md` **in the same commit**.
 - Cap ad-hoc runs at 10 minutes (`timeout 600`, anti-pattern #17); log

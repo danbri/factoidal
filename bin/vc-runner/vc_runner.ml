@@ -228,7 +228,7 @@ let load_v2_context () =
 (* ------------------------------------------------------------------ *)
 (* Outcome + per-fixture execution. *)
 
-type outcome = Pass | Fail of string | Skip of string
+type outcome = Pass | Fail of string | Skip of string | Withdrawn of string
 
 (* Fixture preparation: replicate the upstream harness's
    testTemporality placeholder substitution (tests/assertions.js) with
@@ -244,7 +244,7 @@ let substitute_placeholders content =
 
 let run_fixture v2ctx path =
   match skip_reason_for path with
-  | Some reason -> Skip reason
+  | Some reason -> Withdrawn reason
   | None ->
     (match classify_path path with
      | Expect_Ambiguous ->
@@ -298,7 +298,7 @@ let run_suite ~verbose ~list_only fixture_dir =
            let name = Filename.basename path in
            Printf.eprintf "  [%d/%d] %s%!" !n total name;
            let o = run_fixture v2ctx path in
-           let tag = match o with Pass -> "ok" | Fail _ -> "FAIL" | Skip _ -> "skip" in
+           let tag = match o with Pass -> "ok" | Fail _ -> "FAIL" | Skip _ -> "skip" | Withdrawn _ -> "withdrawn" in
            Printf.eprintf " %s\n%!" tag;
            (path, o))
         files
@@ -309,25 +309,34 @@ let run_suite ~verbose ~list_only fixture_dir =
          match o with
          | Pass -> Printf.printf "  PASS: %s\n" name
          | Fail msg -> Printf.printf "  FAIL: %s — %s\n" name msg
-         | Skip msg -> if verbose then Printf.printf "  skip: %s — %s\n" name msg)
+         | Skip msg -> if verbose then Printf.printf "  skip: %s — %s\n" name msg
+         | Withdrawn msg -> if verbose then Printf.printf "  withdrawn-upstream: %s — %s\n" name msg)
       results;
     Printf.printf "\n========================================\n";
-    let pass, fail, skip =
+    let pass, fail, skip, wd =
       List.fold_left
-        (fun (p, f, s) (_, o) ->
+        (fun (p, f, s, w) (_, o) ->
            match o with
-           | Pass -> (p + 1, f, s)
-           | Fail _ -> (p, f + 1, s)
-           | Skip _ -> (p, f, s + 1))
-        (0, 0, 0) results
+           | Pass -> (p + 1, f, s, w)
+           | Fail _ -> (p, f + 1, s, w)
+           | Skip _ -> (p, f, s + 1, w)
+           | Withdrawn _ -> (p, f, s, w + 1))
+        (0, 0, 0, 0) results
     in
-    Printf.printf "TOTAL: %d pass, %d fail, %d skip (out of %d)\n" pass fail skip total;
+    let scorable = total - wd in
+    if wd > 0 then
+      Printf.printf
+        "withdrawn-upstream: %d vendored fixture(s) excluded from the scorable set (removed as unsound in w3c/vc-data-model-2.0-test-suite@52b25a8; run with -v for per-fixture detail)\n"
+        wd;
+    Printf.printf "TOTAL: %d pass, %d fail, %d skip (out of %d scorable)\n" pass fail skip scorable;
     Printf.printf "========================================\n";
     (* Exact final-line format for generate-report.sh's generic "N pass,
        M fail (out of K)" score-line regex, mirroring jsonld_runner's
-       own tagged final line. *)
+       own tagged final line. Withdrawn-upstream fixtures are NOT skips:
+       a skip is actionable debt, a withdrawn test is nobody's debt —
+       they are excluded from the scorable denominator entirely. *)
     Printf.printf "vc-credential-structural: %d pass, %d fail, %d skip (out of %d)\n"
-      pass fail skip total;
+      pass fail skip scorable;
     if fail > 0 then exit 1
   end
 

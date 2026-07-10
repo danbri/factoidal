@@ -28,12 +28,13 @@ foundational: false
 # "manifest" field above names the fixture directory, not a manifest
 # file — there is none), classifies each fixture by its filename suffix,
 # and scores the F*-extracted VC_Credential.vc_check_from_string result
-# against it. 6 fixtures carry neither a -ok nor a -fail suffix (3
-# "-fail-or-inject" — the endpoint may inject a missing property instead
-# of rejecting, an intentionally ambiguous verdict — and 3 unsuffixed
-# "presentation-self-asserted-vc-*" identity cross-checks that need
-# signature verification, not JSON shape) and are SKIPped, never folded
-# into the pass/fail denominator (CLAUDE.md anti-pattern #3/#25).
+# against it. Of the 6 fixtures with neither suffix: the 3
+# "-fail-or-inject" are scored expect-FAIL (a validator that never
+# injects must reject), and the 3 unsuffixed
+# "presentation-self-asserted-vc-*" are WITHDRAWN-UPSTREAM (removed as
+# unsound in w3c/vc-data-model-2.0-test-suite@52b25a8, 2025-02-09) and
+# excluded from the scorable denominator — a withdrawn test is nobody's
+# work to do, so it is not a skip (owner directive 2026-07-10).
 #
 # Stage 1 scope (see formal/fstar/VC.Credential.fst's header comment
 # for the full rule set and what's deferred): @context fixed-sentinel
@@ -68,5 +69,4 @@ triggers:
 # VC 2.0 + Data Integrity row, 2026-07-10).
 remaining:
   - "context-driven type redefinition is not checked — it needs real JSON-LD term resolution this stage does not implement"
-  - "3 fixtures stay skipped: unsigned holder-binding templates the official test suite withdrew as unsound in February 2025 (nothing to verify offline; the official suite does not run them either)"
   - "full W3C VC Data Integrity conformance — signing and verifying credentials against the official proof-options test suite, including inside the browser/JS bundle — is not yet run; the eddsa-rdfc-2022 machinery passes an 8-check local sign/verify/tamper roundtrip but has not been measured against the official corpus"

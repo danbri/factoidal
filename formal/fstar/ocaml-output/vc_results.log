@@ -111,15 +111,15 @@
   [111/120] presentation-no-type-fail.json ok
   [112/120] presentation-ok.json ok
   [113/120] presentation-optional-type-ok.json ok
-  [114/120] presentation-self-asserted-vc-holder-mismatch.json skip
-  [115/120] presentation-self-asserted-vc-issuer-mismatch.json skip
-  [116/120] presentation-self-asserted-vc-no-holder.json skip
+  [114/120] presentation-self-asserted-vc-holder-mismatch.json withdrawn
+  [115/120] presentation-self-asserted-vc-issuer-mismatch.json withdrawn
+  [116/120] presentation-self-asserted-vc-no-holder.json withdrawn
   [117/120] presentation-self-asserted-vc-ok.json ok
   [118/120] presentation-vc-as-string-fail.json ok
   [119/120] presentation-vc-missing-required-type-fail.json ok
   [120/120] presentation-vc-ok.json ok
 === VC Data Model 2.0 Structural Fixture Runner (Stage 1) ===
-Fixture dir: /home/user/factoidal/.claude/worktrees/agent-a5f3f893f7fdda888/third_party/testing/vc/tests/input
+Fixture dir: /home/user/factoidal/third_party/testing/vc/tests/input
 
 Totals: 120 fixture files
 
@@ -242,6 +242,7 @@ Totals: 120 fixture files
   PASS: presentation-vc-ok.json
 
 ========================================
-TOTAL: 117 pass, 0 fail, 3 skip (out of 120)
+withdrawn-upstream: 3 vendored fixture(s) excluded from the scorable set (removed as unsound in w3c/vc-data-model-2.0-test-suite@52b25a8; run with -v for per-fixture detail)
+TOTAL: 117 pass, 0 fail, 0 skip (out of 117 scorable)
 ========================================
-vc-credential-structural: 117 pass, 0 fail, 3 skip (out of 120)
+vc-credential-structural: 117 pass, 0 fail, 0 skip (out of 117)

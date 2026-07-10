@@ -398,7 +398,7 @@
 <header>
   <div class="inner">
     <div class="rendered-pill" title="Rendered = when this page was last regenerated. Tests = when the *_results.log files inside the repository were last updated. Both UTC.">
-      <span class="row"><span class="label">Rendered</span><strong>2026-07-10 11:57 UTC</strong></span>
+      <span class="row"><span class="label">Rendered</span><strong>2026-07-10 12:28 UTC</strong></span>
       <span class="row"><span class="label">Tests</span><strong class="tests">2026-07-10 01:56 UTC</strong></span>
     </div>
     <h1>W3C test results</h1>
@@ -1223,18 +1223,18 @@
 <details class="family-node green" id="vc2">
   <summary>
     <span class="fam-name">Verifiable Credentials 2.0</span>
-    <span class="fam-score">117/0/3 of 120</span>
-    <span class="gap-badge">3 gaps</span>
+    <span class="fam-score">117/0/0 of 117</span>
+    <span class="gap-badge">2 gaps</span>
     <span class="dot green"></span>
   </summary>
   <div class="family-body">
-    <p class="fam-headline green">117 pass, 0 fail, 3 skip (out of 120) on the structural Stage 1 suite. Signing and verifying credentials (the Data Integrity eddsa-rdfc-2022 proof, using RDFC-1.0 canonicalization + SHA-256 + Ed25519) works separately today outside the browser; it does not yet run inside the JS/wasm bundle, and full conformance testing of that signing layer against the official W3C test suite is still pending.</p>
+    <p class="fam-headline green">117 pass, 0 fail, 0 skip (out of 117) on the structural Stage 1 suite. Signing and verifying credentials (the Data Integrity eddsa-rdfc-2022 proof: RDFC-1.0 canonicalization + SHA-256 + Ed25519 via HACL*) runs in the native binary, Node, and the browser bundle; full conformance testing of that signing layer against the official W3C proof-options test suite is still pending.</p>
     <div class="suites">
       <details class="suite-node green">
-        <summary><span class="suite-name">VC Data Model 2.0 — structural (Stage 1)</span><span class="suite-numbers">117/0/3 of 120</span><span class="dot green"></span></summary>
+        <summary><span class="suite-name">VC Data Model 2.0 — structural (Stage 1)</span><span class="suite-numbers">117/0/0 of 117</span><span class="dot green"></span></summary>
         <div class="suite-body">
-          <div class="meter"><div class="seg seg-pass" style="width:97.50%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:2.50%"></div></div>
-          <p class="suite-numbers-full">117 pass, 0 fail, 3 skip (out of 120)</p>
+          <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+          <p class="suite-numbers-full">117 pass, 0 fail, 0 skip (out of 117)</p>
           <p class="suite-prov">Runner: <code>bin/vc-runner</code> (<code>bin/linux-x86_64/vc_runner</code>) &middot; Suite: <code>third_party/testing/vc/tests/input/</code> (structural fixtures, filename-encoded verdicts)</p>
           
         </div>
@@ -1245,7 +1245,6 @@
       <p class="remaining-title">Remaining work</p>
       <ul>
         <li>context-driven type redefinition is not checked — it needs real JSON-LD term resolution this stage does not implement</li>
-        <li>3 fixtures stay skipped: unsigned holder-binding templates the official test suite withdrew as unsound in February 2025 (nothing to verify offline; the official suite does not run them either)</li>
         <li>full W3C VC Data Integrity conformance — signing and verifying credentials against the official proof-options test suite, including inside the browser/JS bundle — is not yet run; the eddsa-rdfc-2022 machinery passes an 8-check local sign/verify/tamper roundtrip but has not been measured against the official corpus</li>
       </ul>
     </div>
@@ -1867,7 +1866,7 @@ shex:         1181 pass, 1 fail, 0 skip (of 1182) — present=1
 jsonld-tordf: 461 pass, 0 fail, 6 skip (of 467) — present=1
 rml-core:     76 pass, 0 fail, 0 skip (of 76) — present=1
 rif-core:     34 pass, 4 fail, 12 skip (of 50) — present=1
-vc-stage1:    117 pass, 0 fail, 3 skip (of 120) — present=1</pre>
+vc-stage1:    117 pass, 0 fail, 0 skip (of 117) — present=1</pre>
 </details>
 
 <details>
@@ -1885,8 +1884,8 @@ vc-stage1:    117 pass, 0 fail, 3 skip (of 120) — present=1</pre>
 </main>
 
 <footer>
-  Generated <strong>2026-07-10 11:57 UTC</strong> from commit
-  <code><a href="https://github.com/danbri/factoidal/commit/faedcdc10d43ad117594987ecca2a7799514345f">faedcdc1</a></code>
+  Generated <strong>2026-07-10 12:28 UTC</strong> from commit
+  <code><a href="https://github.com/danbri/factoidal/commit/faedcdc10d43ad117594987ecca2a7799514345f">faedcdc</a></code>
   on branch <code>claude/main</code> — &ldquo;protocol/GSP: correct the false 'parked / not implemented' gap texts&rdquo;.
   Re-run locally: <code>cd formal/fstar &amp;&amp; ./generate-report.sh --run</code>.
 </footer>

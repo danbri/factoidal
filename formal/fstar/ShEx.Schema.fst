@@ -9,8 +9,11 @@ module ShEx.Schema
 // stages layered on top of this AST (ShEx.Validation.fst).
 //
 // Scope (mirrors the plan doc's "Scope cuts"):
-//   - ShExJ only. ShExC (the human-readable concrete syntax) is out of scope
-//     indefinitely (Stage 9) — this module never sees ShExC text.
+//   - This module decodes ShExJ only — it never sees ShExC text. (The
+//     Stage 9 ShExC parser LANDED: Parser.ShExC.fst parses compact-syntax
+//     text into this same AST; shex_runner --differential checks it
+//     against the ShExJ twins, 433 of 433 structurally equal. This
+//     header's original "out of scope indefinitely" note is obsolete.)
 //   - The full ShExJ grammar's STRUCTURAL shape is decoded (Schema,
 //     ShapeDecl, all shapeExpr variants, all tripleExpr variants, the full
 //     NodeConstraint facet set, the full valueSetValue variant set,
