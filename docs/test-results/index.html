@@ -398,11 +398,11 @@
 <header>
   <div class="inner">
     <div class="rendered-pill" title="Rendered = when this page was last regenerated. Tests = when the *_results.log files inside the repository were last updated. Both UTC.">
-      <span class="row"><span class="label">Rendered</span><strong>2026-07-10 13:21 UTC</strong></span>
+      <span class="row"><span class="label">Rendered</span><strong>2026-07-10 13:46 UTC</strong></span>
       <span class="row"><span class="label">Tests</span><strong class="tests">2026-07-10 01:56 UTC</strong></span>
     </div>
     <h1>W3C test results</h1>
-    <p>Pass/fail/skip counts against every standards suite this project measures: RDF 1.1, SPARQL 1.1, RDFS/OWL 2, SHACL, ShEx, RIF Core, RML, CSVW, JSON-LD 1.1, Verifiable Credentials 2.0, XSLT 1.0, XML 1.0, MathML 3, ISO Schematron, JSON Schema, DID — plus HDT backend parity and the browser/npm bundle suites.</p>
+    <p>Pass/fail/skip counts against every standards suite this project measures: RDF 1.1, SPARQL 1.1, RDFS/OWL 2, SHACL, ShEx, RIF Core, RML, CSVW, JSON-LD 1.1, Verifiable Credentials 2.0, XSLT 1.0, XML 1.0, MathML 3, ISO Schematron, JSON Schema, QUDT, DID — plus HDT backend parity and the browser/npm bundle suites.</p>
     <nav>
       <a href="/factoidal/">Home</a>
       <a href="/factoidal/fstar-extracted/">Demos</a>
@@ -1637,6 +1637,39 @@ XML_Wellformedness.is_valid_ncname (informational only, see module comment):
 
   </div>
 </details>
+<details class="family-node green" id="qudt">
+  <summary>
+    <span class="fam-name">QUDT (units of measure)</span>
+    <span class="fam-score">9/0/29 of 38</span>
+    
+    <span class="dot green"></span>
+  </summary>
+  <div class="family-body">
+    <p class="fam-headline green">9 pass, 0 fail, 29 skip (out of 38) across QUDT's own shipped SHACL rulesets (v3.4.0). An independent ontology suite (qudt.org), not W3C — no official conformance suite exists, so these are the scoping doc's Layer-A targets.</p>
+    <div class="suites">
+      <details class="suite-node green">
+        <summary><span class="suite-name">QUDT integrity (contributor ruleset vs distribution)</span><span class="suite-numbers">0/0/29 of 29</span><span class="dot green"></span></summary>
+        <div class="suite-body">
+          <div class="meter"><div class="seg seg-pass" style="width:0.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:100.00%"></div></div>
+          <p class="suite-numbers-full">0 pass, 0 fail, 29 skip (out of 29)</p>
+          <p class="suite-prov">Runner: <code>bin/qudt-runner</code> (<code>bin/linux-x86_64/qudt_runner --integrity</code>) &middot; Data: <code>third_party/qudt/QUDT-all-in-one-SHACL.ttl</code> (131k triples) vs <code>COLLECTION_QUDT_QA_TESTS_ALL.ttl</code>; one entry per ruleset shape; upstream data findings annotated in <code>tests/qudt/dispositions.tsv</code>, never patched</p>
+          
+        </div>
+      </details>
+      <details class="suite-node green">
+        <summary><span class="suite-name">QUDT user shapes (deprecation + consistency fixtures)</span><span class="suite-numbers">9/0/0 of 9</span><span class="dot green"></span></summary>
+        <div class="suite-body">
+          <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+          <p class="suite-numbers-full">9 pass, 0 fail, 0 skip (out of 9)</p>
+          <p class="suite-prov">Runner: <code>bin/qudt-runner</code> (<code>bin/linux-x86_64/qudt_runner --fixtures</code>) &middot; Fixtures: <code>tests/qudt/fixtures/</code> (-ok/-viol verdicts) vs <code>COLLECTION_QUDT_USER_TESTS.ttl</code> &middot; remaining: Layer B exact-rational conversion + dimension algebra in F*, Layer C qudtf: SPARQL functions</p>
+          
+        </div>
+      </details>
+    </div>
+    
+    <p class="remaining-complete">Complete against the vendored suites.</p>
+  </div>
+</details>
 <details class="family-node green" id="json-schema">
   <summary>
     <span class="fam-name">JSON Schema</span>
@@ -1884,9 +1917,9 @@ vc-stage1:    117 pass, 0 fail, 0 skip (of 117) — present=1</pre>
 </main>
 
 <footer>
-  Generated <strong>2026-07-10 13:21 UTC</strong> from commit
-  <code><a href="https://github.com/danbri/factoidal/commit/8e3777d0996b2e832a935eb999ce277913078877">8e3777d0</a></code>
-  on branch <code>claude/main</code> — &ldquo;docs: in-flight handoff checkpoint — seven agents, landing recipe, queue, cautions&rdquo;.
+  Generated <strong>2026-07-10 13:46 UTC</strong> from commit
+  <code><a href="https://github.com/danbri/factoidal/commit/3171b741a224c30b0c35098da73aba382eb3fdba">3171b74</a></code>
+  on branch <code>claude/main</code> — &ldquo;qudt: Layer A — vendor QUDT v3.4.0, score the verified SHACL validator against QUDT's own rulesets&rdquo;.
   Re-run locally: <code>cd formal/fstar &amp;&amp; ./generate-report.sh --run</code>.
 </footer>
 
