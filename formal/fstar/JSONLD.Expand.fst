@@ -1942,7 +1942,16 @@ and expand_item (ac:active_context) (type_map:option string) (lang_ovr:option (o
          | Some (_, lstval) ->
            (match expand_property ac type_map lang_ovr dir_ovr true (jexp_as_array lstval) (fuel - 1) with
             | None -> None
-            | Some items -> Some (Some (JObject [("@list", JArray items)]))))
+            | Some items ->
+              // An @index sibling on the list object is RETAINED in the
+              // expanded list object (JSON-LD 1.1 API Expansion: value of
+              // @index "is retained" — compact/0041/0042 re-fold or keep
+              // it; dataset conversion ignores it, so toRdf is unmoved).
+              let idx_fields =
+                (match jexp_find_aliased_field ac "@index" fields with
+                 | Some (_, JString ix) -> [("@index", JString ix)]
+                 | _ -> []) in
+              Some (Some (JObject (("@list", JArray items) :: idx_fields)))))
       else if jexp_has_aliased_field ac "@reverse" fields then None
       else if jexp_has_aliased_field ac "@language" fields then
         // toRdf/e008's "drop-lang-only" case: an object carrying

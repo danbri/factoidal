@@ -1,0 +1,258 @@
+=== JSON-LD 1.1 Compaction Test Runner ===
+Manifest: /home/user/factoidal/.claude/worktrees/agent-a9a7d954464e5990d/third_party/testing/json-ld/tests/compact-manifest.jsonld
+
+Totals: 246 test entries
+
+  PASS: drop free-floating nodes
+  PASS: basic
+  PASS: drop null and unmapped properties
+  PASS: optimize @set, keep empty arrays
+  PASS: @type and prefix compaction
+  PASS: keep expanded object format if @type doesn't match
+  PASS: add context
+  PASS: alias keywords
+  PASS: compact @id
+  PASS: array to @graph
+  PASS: compact date
+  PASS: native types
+  PASS: @value with @language
+  PASS: array to aliased @graph
+  PASS: best match compaction
+  PASS: recursive named graphs
+  PASS: A term mapping to null removes the mapping
+  PASS: best matching term for lists
+  PASS: Keep duplicate values in @list and @set
+  PASS: Compact @id that is a property IRI when @container is @list
+  PASS: Compact properties and types using @vocab
+  PASS: @list compaction of nested properties
+  PASS: prefer @vocab over compacted IRIs
+  PASS: most specific term matching in @list.
+  PASS: Language maps
+  PASS: Language map term selection with complications
+  PASS: @container: @set with multiple values
+  PASS: Alias keywords and use @vocab
+  PASS: Simple @index map
+  PASS: non-matching @container: @index
+  PASS: Compact @reverse
+  PASS: Compact keys in reverse-maps
+  PASS: Compact reverse-map to reverse property
+  PASS: Skip property with @reverse if no match
+  PASS: Compact @reverse node references using strings
+  PASS: Compact reverse properties using index containers
+  PASS: Compact keys in @reverse using @vocab
+  PASS: Index map round-tripping
+  PASS: @graph is array
+  PASS: @list is array
+  PASS: index rejects term having @list
+  PASS: @list keyword aliasing
+  PASS: select term over @vocab
+  PASS: @type: @vocab in reverse-map
+  PASS: @id value uses relative IRI, not term
+  PASS: multiple objects without @context use @graph
+  PASS: Round-trip relative URLs
+  PASS: term with @language: null
+  PASS: Round tripping of lists that contain just IRIs
+  PASS: Reverse properties require @type: @id to use string values
+  PASS: Round tripping @list with scalar
+  PASS: Round tripping @list with scalar and @graph alias
+  PASS: Use @type: @vocab if no @type: @id
+  PASS: Compact to @type: @vocab and compact @id to term
+  PASS: Round tripping @type: @vocab
+  PASS: Prefer @type: @vocab over @type: @id for terms
+  PASS: Complex round tripping @type: @vocab and @type: @id
+  PASS: Prefer @type: @id over @type: @vocab for non-terms
+  PASS: Term with @type: @vocab if no @type: @id
+  PASS: Term with @type: @id if no @type: @vocab and term value
+  PASS: @type: @vocab/@id with values matching either
+  PASS: @type: @vocab and relative IRIs
+  PASS: Compact IRI round-tripping with @type: @vocab
+  PASS: Compact language-tagged and indexed strings to index-map
+  PASS: Language-tagged and indexed strings with language-map
+  PASS: Relative IRIs
+  PASS: Reverse properties with blank nodes
+  PASS: Single value reverse properties
+  PASS: Single value reverse properties with @set
+  PASS: compactArrays option
+  PASS: Input has multiple @contexts, output has one
+  PASS: Default language and unmapped properties
+  PASS: Mapped @id and @type
+  PASS: Container as a list with type of @id
+  PASS: Compact using relative fragment identifier
+  PASS: Compacting IRI equivalent to base
+  PASS: Compact a @graph container
+  PASS: Compact a [@graph, @set] container
+  PASS: Compact a @graph container having @index
+  PASS: Do not compact a graph having @id with a term having an @graph container
+  PASS: Compact a [@graph, @index] container
+  PASS: Compact a [@graph, @index, @set] container
+  PASS: [@graph, @index] does not compact graph with @id
+  PASS: Compact a simple graph with a [@graph, @id] container
+  PASS: Compact a named graph with a [@graph, @id] container
+  PASS: Compact a simple graph with a [@graph, @id, @set] container
+  PASS: Compact a named graph with a [@graph, @id, @set] container
+  PASS: Compact a graph with @index using a [@graph, @id] container
+  PASS: Language map term selection with complications
+  PASS: Compact input with @graph container to output without @graph container
+  PASS: Compact input with @graph container to output without @graph container with compactArrays unset
+  PASS: Compact input with [@graph, @set] container to output without [@graph, @set] container
+  PASS: Compact input with [@graph, @set] container to output without [@graph, @set] container with compactArrays unset
+  PASS: Compact input with [@graph, @set] container to output without [@graph, @set] container
+  PASS: Relative propererty IRIs with @vocab: ''
+  PASS: Compact @graph container (multiple graphs)
+  PASS: Compact [@graph, @set] container (multiple graphs)
+  PASS: Compact [@graph, @index] container (multiple indexed objects)
+  PASS: Compact [@graph, @index, @set] container (multiple indexed objects)
+  PASS: Compact [@graph, @id] container (multiple indexed objects)
+  PASS: Compact [@graph, @id, @set] container (multiple indexed objects)
+  PASS: Compact [@graph, @index] container (multiple indexes and objects)
+  PASS: Compact [@graph, @id] container (multiple ids and objects)
+  PASS: Compact @type with @container: @set
+  PASS: Compact @type with @container: @set using an alias of @type
+  PASS: Do not compact @type with @container: @set to an array using an alias of @type
+  PASS: Relative propererty IRIs with @vocab: ''
+  PASS: context with JavaScript Object property names
+  PASS: Compact @graph container (multiple objects)
+  PASS: Compact [@graph, @set] container (multiple objects)
+  PASS: Keyword-like relative IRIs
+  PASS: Compact property index using Compact IRI index
+  PASS: Compact property index using Absolute IRI index
+  PASS: Reverse term with property based indexed container
+  PASS: adding new term
+  PASS: overriding a term
+  PASS: property and value with different terms mapping to the same expanded property
+  PASS: deep @context affects nested nodes
+  PASS: scoped context layers on intemediate contexts
+  PASS: adding new term
+  PASS: overriding a term
+  PASS: alias of @type
+  PASS: deep @type-scoped @context does NOT affect nested nodes
+  PASS: scoped context layers on intemediate contexts
+  PASS: applies context for all values
+  PASS: orders @type terms when applying scoped contexts
+  PASS: deep property-term scoped @context in @type-scoped @context affects nested nodes
+  PASS: type-scoped context nullification
+  PASS: type-scoped base
+  PASS: type-scoped vocab
+  PASS: multiple type-scoped contexts are properly reverted
+  PASS: multiple type-scoped types resolved against previous context
+  PASS: type-scoped context with multiple property scoped terms
+  PASS: type-scoped value
+  PASS: type-scoped value mix
+  PASS: type-scoped property-scoped contexts including @type:@vocab
+  PASS: composed type-scoped property-scoped contexts including @type:@vocab
+  PASS: type-scoped + property-scoped + values evaluates against previous context
+  PASS: type-scoped + graph container
+  PASS: @propagate: true on type-scoped context
+  PASS: @propagate: false on property-scoped context
+  PASS: Empty-property scoped context does not affect term selection.
+  PASS: term direction null
+  PASS: use alias of @direction
+  PASS: term selection with lists and direction
+  PASS: simple language map with term direction
+  PASS: simple language map with overriding term direction
+  PASS: simple language map with overriding null direction
+  PASS: simple language map with mismatching term direction
+  PASS: Absolute IRI confused with Compact IRI
+  PASS: Nest term not defined
+  PASS: processingMode json-ld-1.0 conflicts with @version: 1.1
+  PASS: @version must be 1.1
+  PASS: @prefix is not allowed in 1.0
+  PASS: @prefix must be a boolean
+  PASS: @prefix not allowed on compact IRI term
+  PASS: @nest is not allowed in 1.0
+  PASS: @context is not allowed in 1.0
+  PASS: @container may not be an array in 1.0
+  PASS: @container may not be @id in 1.0
+  PASS: @container may not be @type in 1.0
+  PASS: @container may not be @graph in 1.0
+  PASS: Basic Included array
+  PASS: Basic Included object
+  PASS: Multiple properties mapping to @included are folded together
+  PASS: Included containing @included
+  PASS: Property value with @included
+  PASS: Compact JSON literal (boolean true)
+  PASS: Compact JSON literal (boolean false)
+  PASS: Compact JSON literal (double)
+  PASS: Compact JSON literal (double-zero)
+  PASS: Compact JSON literal (integer)
+  PASS: Compact JSON literal (object)
+  PASS: Compact JSON literal (array)
+  PASS: Compact already expanded JSON literal
+  PASS: Compact already expanded JSON literal with aliased keys
+  PASS: Compact JSON literal (string)
+  PASS: Compact JSON literal (null)
+  PASS: most specific term matching in @list.
+  PASS: coerced @list containing an empty list
+  PASS: coerced @list containing a list
+  PASS: coerced @list containing an deep list
+  PASS: coerced @list containing multiple lists
+  PASS: coerced @list containing mixed list values
+  PASS: Indexes to object not having an @id
+  PASS: Indexes to object already having an @id
+  PASS: Indexes to object not having an @type
+  PASS: Indexes to object already having an @type
+  PASS: Indexes to object using compact IRI @id
+  PASS: Indexes using compacted @type
+  PASS: When type is in a type map
+  PASS: @index map with @none node definition
+  PASS: @index map with @none value
+  PASS: @index map with @none value using alias of @none
+  PASS: @language map with no @language
+  PASS: language map with no @language using alias of @none
+  PASS: id map using @none
+  PASS: id map using @none with alias
+  PASS: type map using @none with alias
+  PASS: type map using @none with alias
+  PASS: graph index map using @none
+  PASS: graph id map using @none
+  PASS: graph id map using alias of @none
+  PASS: node reference compacts to string value of type map
+  PASS: node reference compacts to string value of type map with @type: @id
+  PASS: node reference compacts to string value of type map with @type: @vocab
+  PASS: compact IRI with container: @type
+  PASS: Indexes to @nest for property with @nest
+  PASS: Indexes to @nest for all properties with @nest
+  PASS: Nests using alias of @nest
+  PASS: Arrays of nested values
+  PASS: Nested @container: @list
+  PASS: Nested @container: @index
+  PASS: Nested @container: @language
+  PASS: Nested @container: @type
+  PASS: Nested @container: @id
+  PASS: Multiple nest aliases
+  PASS: Nests using alias of @nest (defined with @id)
+  PASS: Compact IRI will not use an expanded term definition in 1.0
+  PASS: Compact IRI does not use expanded term definition in 1.1
+  PASS: Compact IRI does not use simple term that does not end with a gen-delim
+  PASS: Compact IRIs using simple terms ending with gen-delim
+  PASS: Compact IRI uses term with definition including @prefix: true
+  PASS: Compact IRI uses term with definition including @prefix: true
+  PASS: Compact IRI not used as prefix
+  PASS: Compact IRI does not use term with definition including @prefix: false
+  PASS: property-valued index indexes property value, instead of property (value)
+  PASS: property-valued index indexes property value, instead of property (multiple values)
+  PASS: property-valued index indexes property value, instead of property (node)
+  PASS: property-valued index indexes property value, instead of property (multiple nodes)
+  PASS: property-valued index indexes using @none if no property value exists
+  PASS: property-valued index indexes using @none if no property value does not compact to string
+  PASS: Check illegal clearing of context with protected terms
+  PASS: Check illegal overriding of protected term
+  PASS: Check illegal overriding of protected term from type-scoped context
+  PASS: Check legal overriding of protected term from property-scoped context
+  PASS: Check legal overriding of type-scoped protected term from nested node
+  PASS: Expands and compacts to document base by default
+  PASS: Expands and does not compact to document base with compactToRelative false
+  PASS: @context with single array values
+  PASS: @context with array including @set uses array values
+  PASS: @type: @none does not compact values
+  PASS: @type: @none does not use arrays by default
+  PASS: @type: @none uses arrays with @container: @set
+
+========================================
+Suite Results:
+  compact-Positive     pass:228 fail:0 skip:1
+  compact-Negative     pass:16 fail:0 skip:1
+========================================
+TOTAL: 244 pass, 0 fail, 2 skip (out of 246)
+========================================
+jsonld-compact: 244 pass, 0 fail, 2 skip (out of 246)

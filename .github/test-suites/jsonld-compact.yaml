@@ -1,0 +1,27 @@
+name: JSON-LD 1.1 compact (Compaction Algorithm)
+spec: https://www.w3.org/TR/json-ld11-api/#compaction-algorithm
+runner: bin/linux-x86_64/jsonld_compact_runner
+runner_args: []
+manifest: third_party/testing/json-ld/tests/compact-manifest.jsonld
+log_path: formal/fstar/ocaml-output/jsonld_compact_results.log
+result_path: docs/test-results/by-suite/jsonld-compact.json
+domain: RDF
+foundational: false
+
+# Compacted-JSON comparison (Parser.JSONLD.jsonld_expanded_equal — JCS
+# canonical structural equality) over the full compact() pipeline: expand
+# the input (Parser.JSONLD.expand_document), process the supplied context
+# (JSONLD.Context.context_process), run the Compaction Algorithm
+# (JSONLD.Compact.fst: inverse context, IRI/value compaction, container
+# re-folding), re-attach the original context. NegativeEvaluationTests
+# pass iff compact_document returns None (option-based error model, same
+# convention as the toRdf/expand runners).
+triggers:
+  paths:
+    - bin/jsonld-compact-runner/**
+    - formal/fstar/JSONLD.Compact.fst
+    - formal/fstar/Parser.JSONLD.fst
+    - formal/fstar/JSONLD.Expand.fst
+    - formal/fstar/JSONLD.Context.fst
+    - third_party/testing/json-ld/**
+  excludes: []

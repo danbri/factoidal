@@ -1880,10 +1880,18 @@ and expand_item (ac : JSONLD_Context.active_context)
                       | FStar_Pervasives_Native.None ->
                           FStar_Pervasives_Native.None
                       | FStar_Pervasives_Native.Some items ->
+                          let idx_fields =
+                            match jexp_find_aliased_field ac "@index" fields
+                            with
+                            | FStar_Pervasives_Native.Some
+                                (uu___4, Parser_JSON.JString ix) ->
+                                [("@index", (Parser_JSON.JString ix))]
+                            | uu___4 -> [] in
                           FStar_Pervasives_Native.Some
                             (FStar_Pervasives_Native.Some
                                (Parser_JSON.JObject
-                                  [("@list", (Parser_JSON.JArray items))])))))
+                                  (("@list", (Parser_JSON.JArray items)) ::
+                                  idx_fields))))))
            else
              if jexp_has_aliased_field ac "@reverse" fields
              then FStar_Pervasives_Native.None

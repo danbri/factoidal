@@ -1,15 +1,15 @@
-* Warning 241 at OWL.Closure.fsti(0,0-0,0):
-  - Unable to load OWL.Closure.fsti.checked since checked file
-    OWL.Closure.fsti.checked is stale (dependence hash mismatch, use --debug
-    CheckedFiles for more details); will recheck OWL.Closure.fsti (suppressing
-    this warning for further modules)
+* Warning 241 at RDF.Graph.Executable.fst(0,0-0,0):
+  - Unable to load RDF.Graph.Executable.fst.checked since checked file
+    RDF.Graph.Executable.fst.checked is stale (dependence hash mismatch, use
+    --debug CheckedFiles for more details); will recheck
+    RDF.Graph.Executable.fst (suppressing this warning for further modules)
 
 Extracted module JSONLD.Expand
 * Warning 247 at JSONLD.Expand.fst(0,0-0,0):
   - Checked file JSONLD.Expand.fst.checked was not written.
   - Reason:
-      checked file OWL.Closure.fsti.checked is stale (dependence hash mismatch,
-      use --debug CheckedFiles for more details)
+      checked file JSONLD.Context.fst.checked is stale (digest mismatch for
+      JSONLD.Context.fst)
 
 Verified module: JSONLD.Expand
 All verification conditions discharged successfully

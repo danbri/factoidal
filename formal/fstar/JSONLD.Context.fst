@@ -188,6 +188,23 @@ type term_def = {
   // e125, and the "Does not expand a Compact IRI using a non-prefix
   // term" fixture).
   td_prefix         : bool;
+  // Whether the term's "@container" mapping included "@set". Irrelevant
+  // to EXPANSION (array-vs-single leniency is handled uniformly there —
+  // see container_kind's doc comment), but COMPACTION (JSONLD.Compact)
+  // needs it three ways: the inverse-context container key ("@set" vs
+  // "@none", "@graph@id@set" vs "@graph@id", ...), the "keep this value
+  // as an array even when singleton" rule, and @type-alias array
+  // preservation.
+  td_set            : bool;
+  // The term's "@nest" member (JSON-LD 1.1 API Create Term Definition,
+  // the @nest step): the name of the nest property this term's entries
+  // live under when COMPACTING ("@nest" itself, or a term whose own
+  // expansion is the @nest keyword). Stored RAW; validated at
+  // definition time (must be a string that is either "@nest" or not an
+  // actual keyword; 1.1-only; illegal on @reverse terms — expand/en05,
+  // en06). Expansion needs no further wiring: nested input keys are
+  // transparent there regardless (JSONLD.Expand's banner).
+  td_nest           : option string;
 }
 
 // ac_previous: Some ac0 marks THIS active context as the result of a
@@ -412,7 +429,7 @@ let term_defs_compatible (a b:term_def) : bool =
   a.td_container = b.td_container && a.td_reverse = b.td_reverse &&
   a.td_language = b.td_language && a.td_direction = b.td_direction &&
   a.td_index = b.td_index && a.td_scoped_context = b.td_scoped_context &&
-  a.td_prefix = b.td_prefix
+  a.td_prefix = b.td_prefix && a.td_set = b.td_set && a.td_nest = b.td_nest
 
 // Any byte of `s` is a slash — used (with jldctx_find_colon) to reject
 // an explicit "@prefix" member on a term name that cannot be a prefix
@@ -734,22 +751,31 @@ let jldctx_container_kind_of_string (s:string) : option container_kind =
 // (3b's approach) cannot express "@graph"+"@id" as a THIRD distinct kind,
 // which PHASE 4's graph containers need.
 let rec jldctx_container_flags (items:list json_val)
-    (has_graph has_id has_index has_lang has_type:bool)
-  : Tot (option (bool & bool & bool & bool & bool)) (decreases items) =
+    (has_graph has_id has_index has_lang has_type has_list:bool)
+  : Tot (option (bool & bool & bool & bool & bool & bool)) (decreases items) =
   match items with
-  | [] -> Some (has_graph, has_id, has_index, has_lang, has_type)
+  | [] -> Some (has_graph, has_id, has_index, has_lang, has_type, has_list)
   | JString s :: rest ->
-    if s = "@set" then jldctx_container_flags rest has_graph has_id has_index has_lang has_type
-    else if s = "@graph" then jldctx_container_flags rest true has_id has_index has_lang has_type
-    else if s = "@id" then jldctx_container_flags rest has_graph true has_index has_lang has_type
-    else if s = "@index" then jldctx_container_flags rest has_graph has_id true has_lang has_type
-    else if s = "@language" then jldctx_container_flags rest has_graph has_id has_index true has_type
-    else if s = "@type" then jldctx_container_flags rest has_graph has_id has_index has_lang true
+    if s = "@set" then jldctx_container_flags rest has_graph has_id has_index has_lang has_type has_list
+    else if s = "@graph" then jldctx_container_flags rest true has_id has_index has_lang has_type has_list
+    else if s = "@id" then jldctx_container_flags rest has_graph true has_index has_lang has_type has_list
+    else if s = "@index" then jldctx_container_flags rest has_graph has_id true has_lang has_type has_list
+    else if s = "@language" then jldctx_container_flags rest has_graph has_id has_index true has_type has_list
+    else if s = "@type" then jldctx_container_flags rest has_graph has_id has_index has_lang true has_list
+    // Array-form "@list" (compact/s001: "@container": ["@list"]) — legal
+    // in 1.1 only when it is the SOLE non-@set member, checked by
+    // jldctx_container_kind_of_flags below.
+    else if s = "@list" then jldctx_container_flags rest has_graph has_id has_index has_lang has_type true
     else None
   | _ -> None
 
-let jldctx_container_kind_of_flags (has_graph has_id has_index has_lang has_type:bool) : option container_kind =
-  if has_graph then
+let jldctx_container_kind_of_flags (has_graph has_id has_index has_lang has_type has_list:bool) : option container_kind =
+  // "@list" may not be combined with any other container keyword
+  // (JSON-LD 1.1 API Create Term Definition's @container validation).
+  if has_list then
+    (if has_graph || has_id || has_index || has_lang || has_type then None
+     else Some CK_List)
+  else if has_graph then
     (if has_id then Some CK_GraphId
      else if has_index then Some CK_GraphIndex
      else Some CK_Graph)
@@ -760,9 +786,17 @@ let jldctx_container_kind_of_flags (has_graph has_id has_index has_lang has_type
   else Some CK_None
 
 let jldctx_container_kind_of_items (items:list json_val) : option container_kind =
-  match jldctx_container_flags items false false false false false with
+  match jldctx_container_flags items false false false false false false with
   | None -> None
-  | Some (g, i, ix, lg, ty) -> jldctx_container_kind_of_flags g i ix lg ty
+  | Some (g, i, ix, lg, ty, ls) ->
+    // "@set" is transparent to the KIND (td_set carries it), but it still
+    // participates in @list's may-not-combine rule: ["@list", "@set"] is
+    // an invalid container mapping (expand/ter33-family negative).
+    if ls && List.Tot.existsb
+               (fun (it:json_val) -> match it with | JString s -> s = "@set" | _ -> false)
+               items
+    then None
+    else jldctx_container_kind_of_flags g i ix lg ty ls
 
 // ================================================================
 // Expanded (object-form) term definitions
@@ -910,14 +944,35 @@ let rec jldctx_term_obj_fields
        | JBool b -> jldctx_term_obj_fields ac idf revf typef contk langf dirf idxf ctxf (Some b) rest
        | _ -> None)
     else if k = "@prefix" then
-      // Validated here (must be a boolean), CONSUMED by
+      // Validated here (must be a boolean, and 1.1-only — Create Term
+      // Definition: "If value contains the entry @prefix ... and
+      // processing mode is json-ld-1.0, an invalid term definition has
+      // been detected", compact/ep07), CONSUMED by
       // process_term_def_obj's separate jldctx_scan_bool_key pass —
       // keeps this accumulator tuple from growing an eleventh slot.
-      (match v with
+      (if ac.ac_mode10 then None
+       else match v with
        | JBool _ -> jldctx_term_obj_fields ac idf revf typef contk langf dirf idxf ctxf protf rest
        | _ -> None)
+    else if k = "@nest" then
+      // Validated here (JSON-LD 1.1 API Create Term Definition, the
+      // @nest step: "If nest value is not a string, or is a keyword
+      // other than @nest, an invalid @nest value error has been
+      // detected" — expand/en05's "@nest": "@id"), CONSUMED by
+      // process_term_def_obj's separate jldctx_scan_nest pass — same
+      // shape as the "@prefix" member above, keeping this accumulator
+      // tuple from growing another slot. 1.1-only (Create Term
+      // Definition: "If processing mode is json-ld-1.0, an invalid
+      // term definition has been detected").
+      (if ac.ac_mode10 then None
+       else match v with
+       | JString s ->
+         if s = "@nest" || not (jldctx_actual_keyword s)
+         then jldctx_term_obj_fields ac idf revf typef contk langf dirf idxf ctxf protf rest
+         else None
+       | _ -> None)
     else
-      // @nest or any other unrecognized member: OUT of scope.
+      // Any other unrecognized member: OUT of scope.
       None
 
 // Pair a term's raw scoped-@context value (if any) with the document URL
@@ -930,6 +985,26 @@ let jldctx_wrap_scoped (ac:active_context) (ctxf:option json_val) : option (json
   match ctxf with
   | Some c -> Some (c, ac.ac_doc_url)
   | None -> None
+
+// Did the term's "@container" member include "@set"? (td_set's doc
+// comment.) Scanned separately from jldctx_term_obj_fields' container-
+// kind accumulator — same keep-the-tuple-small rationale as "@prefix".
+let jldctx_container_includes_set (fields:list (string & json_val)) : bool =
+  match List.Tot.find (fun (kv:(string & json_val)) -> fst kv = "@container") fields with
+  | Some (_, JString s) -> s = "@set"
+  | Some (_, JArray items) ->
+    List.Tot.existsb
+      (fun (it:json_val) -> match it with | JString s -> s = "@set" | _ -> false)
+      items
+  | _ -> false
+
+// The term's raw "@nest" member value, already validated (string,
+// "@nest" or non-keyword) by jldctx_term_obj_fields' own "@nest"
+// branch before this scan ever runs.
+let jldctx_scan_nest (fields:list (string & json_val)) : option string =
+  match List.Tot.find (fun (kv:(string & json_val)) -> fst kv = "@nest") fields with
+  | Some (_, JString s) -> Some s
+  | _ -> None
 
 let process_term_def_obj (ac:active_context) (key:string) (fields:list (string & json_val))
                           (default_protected:bool) (override_protected:bool)
@@ -962,6 +1037,8 @@ let process_term_def_obj (ac:active_context) (key:string) (fields:list (string &
     // "literal" on a "@container": "@type" term).
     else if contk = CK_Type && Some? typef && typef <> Some "@id" && typef <> Some "@vocab" then None
     else
+    let set_flag = jldctx_container_includes_set fields in
+    let nest_val = jldctx_scan_nest fields in
     let protected = (match protf with Some b -> b | None -> default_protected) in
     // Object-form definitions are compact-IRI prefixes only on explicit
     // request (td_prefix's doc comment). An EXPLICIT @prefix member is
@@ -1002,7 +1079,8 @@ let process_term_def_obj (ac:active_context) (key:string) (fields:list (string &
        else
        let td = { td_iri = iri; td_type_mapping = typef; td_container = contk;
                   td_reverse = false; td_language = langf; td_direction = dirf; td_index = idxf;
-                  td_scoped_context = jldctx_wrap_scoped ac ctxf; td_protected = protected; td_prefix = prefix_flag } in
+                  td_scoped_context = jldctx_wrap_scoped ac ctxf; td_protected = protected;
+                  td_prefix = prefix_flag; td_set = set_flag; td_nest = nest_val } in
        (match jldctx_resolve_redefine ac key td override_protected with
         | Some final_td -> Some ({ ac with ac_terms = (key, final_td) :: ac.ac_terms })
         | None -> None)
@@ -1014,10 +1092,17 @@ let process_term_def_obj (ac:active_context) (key:string) (fields:list (string &
        // a "@reverse" is an invalid reverse property (toRdf/er17: a
        // @reverse term declaring "@container": "@list").
        if not (contk = CK_None || contk = CK_Index) then None
+       // A reverse property may not carry an "@nest" member (JSON-LD
+       // 1.1 API Create Term Definition's @reverse step accepts only
+       // @id/@reverse/@type/@language/@container members — expand/en06's
+       // {"@reverse": ..., "@nest": "@nest"} is an invalid reverse
+       // property).
+       else if Some? nest_val then None
        else
        let td = { td_iri = iri; td_type_mapping = typef; td_container = contk;
                   td_reverse = true; td_language = langf; td_direction = dirf; td_index = idxf;
-                  td_scoped_context = jldctx_wrap_scoped ac ctxf; td_protected = protected; td_prefix = prefix_flag } in
+                  td_scoped_context = jldctx_wrap_scoped ac ctxf; td_protected = protected;
+                  td_prefix = prefix_flag; td_set = set_flag; td_nest = nest_val } in
        (match jldctx_resolve_redefine ac key td override_protected with
         | Some final_td -> Some ({ ac with ac_terms = (key, final_td) :: ac.ac_terms })
         | None -> None)
@@ -1036,7 +1121,8 @@ let process_term_def_obj (ac:active_context) (key:string) (fields:list (string &
         | Some iri ->
           let td = { td_iri = iri; td_type_mapping = typef; td_container = contk;
                      td_reverse = false; td_language = langf; td_direction = dirf; td_index = idxf;
-                     td_scoped_context = jldctx_wrap_scoped ac ctxf; td_protected = protected; td_prefix = prefix_flag } in
+                     td_scoped_context = jldctx_wrap_scoped ac ctxf; td_protected = protected;
+                  td_prefix = prefix_flag; td_set = set_flag; td_nest = nest_val } in
           (match jldctx_resolve_redefine ac key td override_protected with
            | Some final_td -> Some ({ ac with ac_terms = (key, final_td) :: ac.ac_terms })
            | None -> None)))
@@ -1136,7 +1222,8 @@ let rec jldctx_preview_prefixes (ac:active_context) (fields:list (string & json_
            let td = { td_iri = iri; td_type_mapping = None; td_container = CK_None;
                       td_reverse = false; td_language = None; td_direction = None; td_index = None;
                       td_scoped_context = None; td_protected = false;
-                      td_prefix = jldctx_ends_gen_delim iri } in
+                      td_prefix = jldctx_ends_gen_delim iri;
+                      td_set = false; td_nest = None } in
            jldctx_preview_prefixes ({ ac with ac_terms = (k, td) :: ac.ac_terms }) rest)
   | _ :: rest -> jldctx_preview_prefixes ac rest
 
@@ -1424,7 +1511,8 @@ and context_process_one_field (ac:active_context) (key:string) (value:json_val)
                       td_container = (if has_set then CK_Type else CK_None);
                       td_reverse = false; td_language = None; td_direction = None;
                       td_index = None; td_scoped_context = None;
-                      td_protected = protected; td_prefix = false } in
+                      td_protected = protected; td_prefix = false;
+                      td_set = has_set; td_nest = None } in
            (match jldctx_resolve_redefine ac "@type" td override_protected with
             | None -> None
             | Some final_td -> Some ({ ac with ac_terms = ("@type", final_td) :: ac.ac_terms }))
@@ -1463,12 +1551,14 @@ and context_process_one_field (ac:active_context) (key:string) (value:json_val)
             // term is rejected as a protected-term redefinition).
             let td = { td_iri = "@null"; td_type_mapping = None; td_container = CK_None;
                        td_reverse = false; td_language = None; td_direction = None; td_index = None;
-                       td_scoped_context = None; td_protected = default_protected; td_prefix = false } in
+                       td_scoped_context = None; td_protected = default_protected;
+                       td_prefix = false; td_set = false; td_nest = None } in
             Some ({ ac with ac_terms = (key, td) :: jldctx_remove_term ac.ac_terms key })
         | None ->
           let td = { td_iri = "@null"; td_type_mapping = None; td_container = CK_None;
                      td_reverse = false; td_language = None; td_direction = None; td_index = None;
-                     td_scoped_context = None; td_protected = default_protected; td_prefix = false } in
+                     td_scoped_context = None; td_protected = default_protected;
+                     td_prefix = false; td_set = false; td_nest = None } in
           Some ({ ac with ac_terms = (key, td) :: ac.ac_terms }))
      | JString s ->
        // A simple-form definition whose VALUE looks like (but is not) a
@@ -1510,7 +1600,8 @@ and context_process_one_field (ac:active_context) (key:string) (value:json_val)
           let td = { td_iri = iri; td_type_mapping = None; td_container = CK_None;
                      td_reverse = false; td_language = None; td_direction = None; td_index = None;
                      td_scoped_context = None; td_protected = default_protected;
-                     td_prefix = jldctx_ends_gen_delim iri } in
+                     td_prefix = jldctx_ends_gen_delim iri;
+                     td_set = false; td_nest = None } in
           (match jldctx_resolve_redefine ac key td override_protected with
            | Some final_td -> Some ({ ac with ac_terms = (key, final_td) :: ac.ac_terms })
            | None -> None))
@@ -1545,12 +1636,14 @@ and context_process_one_field (ac:active_context) (key:string) (value:json_val)
             else
               let td = { td_iri = "@null"; td_type_mapping = None; td_container = CK_None;
                          td_reverse = false; td_language = None; td_direction = None; td_index = None;
-                         td_scoped_context = None; td_protected = default_protected; td_prefix = false } in
+                         td_scoped_context = None; td_protected = default_protected;
+                       td_prefix = false; td_set = false; td_nest = None } in
               Some ({ ac with ac_terms = (key, td) :: jldctx_remove_term ac.ac_terms key })
           | None ->
             let td = { td_iri = "@null"; td_type_mapping = None; td_container = CK_None;
                        td_reverse = false; td_language = None; td_direction = None; td_index = None;
-                       td_scoped_context = None; td_protected = default_protected; td_prefix = false } in
+                       td_scoped_context = None; td_protected = default_protected;
+                       td_prefix = false; td_set = false; td_nest = None } in
             Some ({ ac with ac_terms = (key, td) :: ac.ac_terms }))
        else
          // toRdf/tc033 "Unused context with an embedded context error":

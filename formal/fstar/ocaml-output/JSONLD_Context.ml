@@ -51,65 +51,78 @@ type term_def =
       FStar_Pervasives_Native.option
     ;
   td_protected: Prims.bool ;
-  td_prefix: Prims.bool }
+  td_prefix: Prims.bool ;
+  td_set: Prims.bool ;
+  td_nest: Prims.string FStar_Pervasives_Native.option }
 let __proj__Mkterm_def__item__td_iri (projectee : term_def) : Prims.string=
   match projectee with
   | { td_iri; td_type_mapping; td_container; td_reverse; td_language;
-      td_direction; td_index; td_scoped_context; td_protected; td_prefix;_}
-      -> td_iri
+      td_direction; td_index; td_scoped_context; td_protected; td_prefix;
+      td_set; td_nest;_} -> td_iri
 let __proj__Mkterm_def__item__td_type_mapping (projectee : term_def) :
   Prims.string FStar_Pervasives_Native.option=
   match projectee with
   | { td_iri; td_type_mapping; td_container; td_reverse; td_language;
-      td_direction; td_index; td_scoped_context; td_protected; td_prefix;_}
-      -> td_type_mapping
+      td_direction; td_index; td_scoped_context; td_protected; td_prefix;
+      td_set; td_nest;_} -> td_type_mapping
 let __proj__Mkterm_def__item__td_container (projectee : term_def) :
   container_kind=
   match projectee with
   | { td_iri; td_type_mapping; td_container; td_reverse; td_language;
-      td_direction; td_index; td_scoped_context; td_protected; td_prefix;_}
-      -> td_container
+      td_direction; td_index; td_scoped_context; td_protected; td_prefix;
+      td_set; td_nest;_} -> td_container
 let __proj__Mkterm_def__item__td_reverse (projectee : term_def) : Prims.bool=
   match projectee with
   | { td_iri; td_type_mapping; td_container; td_reverse; td_language;
-      td_direction; td_index; td_scoped_context; td_protected; td_prefix;_}
-      -> td_reverse
+      td_direction; td_index; td_scoped_context; td_protected; td_prefix;
+      td_set; td_nest;_} -> td_reverse
 let __proj__Mkterm_def__item__td_language (projectee : term_def) :
   Prims.string FStar_Pervasives_Native.option FStar_Pervasives_Native.option=
   match projectee with
   | { td_iri; td_type_mapping; td_container; td_reverse; td_language;
-      td_direction; td_index; td_scoped_context; td_protected; td_prefix;_}
-      -> td_language
+      td_direction; td_index; td_scoped_context; td_protected; td_prefix;
+      td_set; td_nest;_} -> td_language
 let __proj__Mkterm_def__item__td_direction (projectee : term_def) :
   Prims.string FStar_Pervasives_Native.option FStar_Pervasives_Native.option=
   match projectee with
   | { td_iri; td_type_mapping; td_container; td_reverse; td_language;
-      td_direction; td_index; td_scoped_context; td_protected; td_prefix;_}
-      -> td_direction
+      td_direction; td_index; td_scoped_context; td_protected; td_prefix;
+      td_set; td_nest;_} -> td_direction
 let __proj__Mkterm_def__item__td_index (projectee : term_def) :
   Prims.string FStar_Pervasives_Native.option=
   match projectee with
   | { td_iri; td_type_mapping; td_container; td_reverse; td_language;
-      td_direction; td_index; td_scoped_context; td_protected; td_prefix;_}
-      -> td_index
+      td_direction; td_index; td_scoped_context; td_protected; td_prefix;
+      td_set; td_nest;_} -> td_index
 let __proj__Mkterm_def__item__td_scoped_context (projectee : term_def) :
   (Parser_JSON.json_val * Prims.string FStar_Pervasives_Native.option)
     FStar_Pervasives_Native.option=
   match projectee with
   | { td_iri; td_type_mapping; td_container; td_reverse; td_language;
-      td_direction; td_index; td_scoped_context; td_protected; td_prefix;_}
-      -> td_scoped_context
+      td_direction; td_index; td_scoped_context; td_protected; td_prefix;
+      td_set; td_nest;_} -> td_scoped_context
 let __proj__Mkterm_def__item__td_protected (projectee : term_def) :
   Prims.bool=
   match projectee with
   | { td_iri; td_type_mapping; td_container; td_reverse; td_language;
-      td_direction; td_index; td_scoped_context; td_protected; td_prefix;_}
-      -> td_protected
+      td_direction; td_index; td_scoped_context; td_protected; td_prefix;
+      td_set; td_nest;_} -> td_protected
 let __proj__Mkterm_def__item__td_prefix (projectee : term_def) : Prims.bool=
   match projectee with
   | { td_iri; td_type_mapping; td_container; td_reverse; td_language;
-      td_direction; td_index; td_scoped_context; td_protected; td_prefix;_}
-      -> td_prefix
+      td_direction; td_index; td_scoped_context; td_protected; td_prefix;
+      td_set; td_nest;_} -> td_prefix
+let __proj__Mkterm_def__item__td_set (projectee : term_def) : Prims.bool=
+  match projectee with
+  | { td_iri; td_type_mapping; td_container; td_reverse; td_language;
+      td_direction; td_index; td_scoped_context; td_protected; td_prefix;
+      td_set; td_nest;_} -> td_set
+let __proj__Mkterm_def__item__td_nest (projectee : term_def) :
+  Prims.string FStar_Pervasives_Native.option=
+  match projectee with
+  | { td_iri; td_type_mapping; td_container; td_reverse; td_language;
+      td_direction; td_index; td_scoped_context; td_protected; td_prefix;
+      td_set; td_nest;_} -> td_nest
 type active_context =
   {
   ac_terms: (Prims.string * term_def) Prims.list ;
@@ -305,14 +318,16 @@ and jldctx_scan_propagate_items (items : Parser_JSON.json_val Prims.list)
   | [] -> dflt
   | hd::tl -> jldctx_scan_propagate_items tl (jldctx_scan_propagate hd dflt)
 let term_defs_compatible (a : term_def) (b : term_def) : Prims.bool=
-  ((((((((a.td_iri = b.td_iri) && (a.td_type_mapping = b.td_type_mapping)) &&
-          (a.td_container = b.td_container))
-         && (a.td_reverse = b.td_reverse))
-        && (a.td_language = b.td_language))
-       && (a.td_direction = b.td_direction))
-      && (a.td_index = b.td_index))
-     && (a.td_scoped_context = b.td_scoped_context))
-    && (a.td_prefix = b.td_prefix)
+  ((((((((((a.td_iri = b.td_iri) && (a.td_type_mapping = b.td_type_mapping))
+            && (a.td_container = b.td_container))
+           && (a.td_reverse = b.td_reverse))
+          && (a.td_language = b.td_language))
+         && (a.td_direction = b.td_direction))
+        && (a.td_index = b.td_index))
+       && (a.td_scoped_context = b.td_scoped_context))
+      && (a.td_prefix = b.td_prefix))
+     && (a.td_set = b.td_set))
+    && (a.td_nest = b.td_nest)
 let rec jldctx_slash_from (s : Prims.string) (pos : Prims.nat)
   (fuel : Prims.nat) : Prims.bool=
   if fuel = Prims.int_zero
@@ -397,7 +412,7 @@ let jldctx_self_cyclic (ac : active_context) (key : Prims.string)
   | FStar_Pervasives_Native.None -> false
 let jldctx_resolve (base : Prims.string) (relative : Prims.string) :
   Prims.string=
-  if RDF_Graph_Executable.is_iri base
+  if RDF_Term.is_iri base
   then SPARQL11_IRI_Resolve.resolve_iri base relative
   else base
 let jld_remote_context_fuel : Prims.nat= (Prims.of_int (32))
@@ -411,7 +426,7 @@ let jldctx_resolve_context_iri (ac : active_context) (raw : Prims.string) :
        | FStar_Pervasives_Native.Some b ->
            FStar_Pervasives_Native.Some (jldctx_resolve b raw)
        | FStar_Pervasives_Native.None ->
-           if RDF_Graph_Executable.is_iri raw
+           if RDF_Term.is_iri raw
            then FStar_Pervasives_Native.Some raw
            else FStar_Pervasives_Native.None)
 let jldctx_extract_import
@@ -554,74 +569,95 @@ let jldctx_container_kind_of_string (s : Prims.string) :
               else FStar_Pervasives_Native.None
 let rec jldctx_container_flags (items : Parser_JSON.json_val Prims.list)
   (has_graph : Prims.bool) (has_id : Prims.bool) (has_index : Prims.bool)
-  (has_lang : Prims.bool) (has_type : Prims.bool) :
-  (Prims.bool * Prims.bool * Prims.bool * Prims.bool * Prims.bool)
-    FStar_Pervasives_Native.option=
+  (has_lang : Prims.bool) (has_type : Prims.bool) (has_list : Prims.bool) :
+  (Prims.bool * Prims.bool * Prims.bool * Prims.bool * Prims.bool *
+    Prims.bool) FStar_Pervasives_Native.option=
   match items with
   | [] ->
       FStar_Pervasives_Native.Some
-        (has_graph, has_id, has_index, has_lang, has_type)
+        (has_graph, has_id, has_index, has_lang, has_type, has_list)
   | (Parser_JSON.JString s)::rest ->
       if s = "@set"
       then
         jldctx_container_flags rest has_graph has_id has_index has_lang
-          has_type
+          has_type has_list
       else
         if s = "@graph"
         then
           jldctx_container_flags rest true has_id has_index has_lang has_type
+            has_list
         else
           if s = "@id"
           then
             jldctx_container_flags rest has_graph true has_index has_lang
-              has_type
+              has_type has_list
           else
             if s = "@index"
             then
               jldctx_container_flags rest has_graph has_id true has_lang
-                has_type
+                has_type has_list
             else
               if s = "@language"
               then
                 jldctx_container_flags rest has_graph has_id has_index true
-                  has_type
+                  has_type has_list
               else
                 if s = "@type"
                 then
                   jldctx_container_flags rest has_graph has_id has_index
-                    has_lang true
-                else FStar_Pervasives_Native.None
+                    has_lang true has_list
+                else
+                  if s = "@list"
+                  then
+                    jldctx_container_flags rest has_graph has_id has_index
+                      has_lang has_type true
+                  else FStar_Pervasives_Native.None
   | uu___ -> FStar_Pervasives_Native.None
 let jldctx_container_kind_of_flags (has_graph : Prims.bool)
   (has_id : Prims.bool) (has_index : Prims.bool) (has_lang : Prims.bool)
-  (has_type : Prims.bool) : container_kind FStar_Pervasives_Native.option=
-  if has_graph
+  (has_type : Prims.bool) (has_list : Prims.bool) :
+  container_kind FStar_Pervasives_Native.option=
+  if has_list
   then
-    (if has_id
-     then FStar_Pervasives_Native.Some CK_GraphId
-     else
-       if has_index
-       then FStar_Pervasives_Native.Some CK_GraphIndex
-       else FStar_Pervasives_Native.Some CK_Graph)
+    (if (((has_graph || has_id) || has_index) || has_lang) || has_type
+     then FStar_Pervasives_Native.None
+     else FStar_Pervasives_Native.Some CK_List)
   else
-    if has_id
-    then FStar_Pervasives_Native.Some CK_Id
+    if has_graph
+    then
+      (if has_id
+       then FStar_Pervasives_Native.Some CK_GraphId
+       else
+         if has_index
+         then FStar_Pervasives_Native.Some CK_GraphIndex
+         else FStar_Pervasives_Native.Some CK_Graph)
     else
-      if has_index
-      then FStar_Pervasives_Native.Some CK_Index
+      if has_id
+      then FStar_Pervasives_Native.Some CK_Id
       else
-        if has_lang
-        then FStar_Pervasives_Native.Some CK_Language
+        if has_index
+        then FStar_Pervasives_Native.Some CK_Index
         else
-          if has_type
-          then FStar_Pervasives_Native.Some CK_Type
-          else FStar_Pervasives_Native.Some CK_None
+          if has_lang
+          then FStar_Pervasives_Native.Some CK_Language
+          else
+            if has_type
+            then FStar_Pervasives_Native.Some CK_Type
+            else FStar_Pervasives_Native.Some CK_None
 let jldctx_container_kind_of_items (items : Parser_JSON.json_val Prims.list)
   : container_kind FStar_Pervasives_Native.option=
-  match jldctx_container_flags items false false false false false with
+  match jldctx_container_flags items false false false false false false with
   | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
-  | FStar_Pervasives_Native.Some (g, i, ix, lg, ty) ->
-      jldctx_container_kind_of_flags g i ix lg ty
+  | FStar_Pervasives_Native.Some (g, i, ix, lg, ty, ls) ->
+      if
+        ls &&
+          (FStar_List_Tot_Base.existsb
+             (fun it ->
+                match it with
+                | Parser_JSON.JString s -> s = "@set"
+                | uu___ -> false) items)
+      then FStar_Pervasives_Native.None
+      else jldctx_container_kind_of_flags g i ix lg ty ls
 let rec jldctx_term_obj_fields (ac : active_context)
   (idf : Prims.string FStar_Pervasives_Native.option)
   (revf : Prims.string FStar_Pervasives_Native.option)
@@ -811,12 +847,33 @@ let rec jldctx_term_obj_fields (ac : active_context)
                       else
                         if k = "@prefix"
                         then
-                          (match v with
-                           | Parser_JSON.JBool uu___9 ->
-                               jldctx_term_obj_fields ac idf revf typef contk
-                                 langf dirf idxf ctxf protf rest
-                           | uu___9 -> FStar_Pervasives_Native.None)
-                        else FStar_Pervasives_Native.None
+                          (if ac.ac_mode10
+                           then FStar_Pervasives_Native.None
+                           else
+                             (match v with
+                              | Parser_JSON.JBool uu___10 ->
+                                  jldctx_term_obj_fields ac idf revf typef
+                                    contk langf dirf idxf ctxf protf rest
+                              | uu___10 -> FStar_Pervasives_Native.None))
+                        else
+                          if k = "@nest"
+                          then
+                            (if ac.ac_mode10
+                             then FStar_Pervasives_Native.None
+                             else
+                               (match v with
+                                | Parser_JSON.JString s ->
+                                    if
+                                      (s = "@nest") ||
+                                        (Prims.op_Negation
+                                           (jldctx_actual_keyword s))
+                                    then
+                                      jldctx_term_obj_fields ac idf revf
+                                        typef contk langf dirf idxf ctxf
+                                        protf rest
+                                    else FStar_Pervasives_Native.None
+                                | uu___11 -> FStar_Pervasives_Native.None))
+                          else FStar_Pervasives_Native.None
 let jldctx_wrap_scoped (ac : active_context)
   (ctxf : Parser_JSON.json_val FStar_Pervasives_Native.option) :
   (Parser_JSON.json_val * Prims.string FStar_Pervasives_Native.option)
@@ -825,6 +882,28 @@ let jldctx_wrap_scoped (ac : active_context)
   | FStar_Pervasives_Native.Some c ->
       FStar_Pervasives_Native.Some (c, (ac.ac_doc_url))
   | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+let jldctx_container_includes_set
+  (fields : (Prims.string * Parser_JSON.json_val) Prims.list) : Prims.bool=
+  match FStar_List_Tot_Base.find
+          (fun kv -> (FStar_Pervasives_Native.fst kv) = "@container") fields
+  with
+  | FStar_Pervasives_Native.Some (uu___, Parser_JSON.JString s) -> s = "@set"
+  | FStar_Pervasives_Native.Some (uu___, Parser_JSON.JArray items) ->
+      FStar_List_Tot_Base.existsb
+        (fun it ->
+           match it with
+           | Parser_JSON.JString s -> s = "@set"
+           | uu___1 -> false) items
+  | uu___ -> false
+let jldctx_scan_nest
+  (fields : (Prims.string * Parser_JSON.json_val) Prims.list) :
+  Prims.string FStar_Pervasives_Native.option=
+  match FStar_List_Tot_Base.find
+          (fun kv -> (FStar_Pervasives_Native.fst kv) = "@nest") fields
+  with
+  | FStar_Pervasives_Native.Some (uu___, Parser_JSON.JString s) ->
+      FStar_Pervasives_Native.Some s
+  | uu___ -> FStar_Pervasives_Native.None
 let process_term_def_obj (ac : active_context) (key : Prims.string)
   (fields : (Prims.string * Parser_JSON.json_val) Prims.list)
   (default_protected : Prims.bool) (override_protected : Prims.bool) :
@@ -868,7 +947,9 @@ let process_term_def_obj (ac : active_context) (key : Prims.string)
                && (typef <> (FStar_Pervasives_Native.Some "@vocab"))
            then FStar_Pervasives_Native.None
            else
-             (let protected =
+             (let set_flag = jldctx_container_includes_set fields in
+              let nest_val = jldctx_scan_nest fields in
+              let protected =
                 match protf with
                 | FStar_Pervasives_Native.Some b -> b
                 | FStar_Pervasives_Native.None -> default_protected in
@@ -930,7 +1011,9 @@ let process_term_def_obj (ac : active_context) (key : Prims.string)
                                 td_scoped_context =
                                   (jldctx_wrap_scoped ac ctxf);
                                 td_protected = protected;
-                                td_prefix = prefix_flag
+                                td_prefix = prefix_flag;
+                                td_set = set_flag;
+                                td_nest = nest_val
                               } in
                             match jldctx_resolve_redefine ac key td
                                     override_protected
@@ -959,40 +1042,45 @@ let process_term_def_obj (ac : active_context) (key : Prims.string)
                            ((contk = CK_None) || (contk = CK_Index))
                        then FStar_Pervasives_Native.None
                        else
-                         (let td =
-                            {
-                              td_iri = iri;
-                              td_type_mapping = typef;
-                              td_container = contk;
-                              td_reverse = true;
-                              td_language = langf;
-                              td_direction = dirf;
-                              td_index = idxf;
-                              td_scoped_context =
-                                (jldctx_wrap_scoped ac ctxf);
-                              td_protected = protected;
-                              td_prefix = prefix_flag
-                            } in
-                          match jldctx_resolve_redefine ac key td
-                                  override_protected
-                          with
-                          | FStar_Pervasives_Native.Some final_td ->
-                              FStar_Pervasives_Native.Some
-                                {
-                                  ac_terms = ((key, final_td) ::
-                                    (ac.ac_terms));
-                                  ac_vocab = (ac.ac_vocab);
-                                  ac_base = (ac.ac_base);
-                                  ac_language = (ac.ac_language);
-                                  ac_direction = (ac.ac_direction);
-                                  ac_previous = (ac.ac_previous);
-                                  ac_mode10 = (ac.ac_mode10);
-                                  ac_doc_url = (ac.ac_doc_url);
-                                  ac_original_base = (ac.ac_original_base);
-                                  ac_suppress_pop = (ac.ac_suppress_pop)
-                                }
-                          | FStar_Pervasives_Native.None ->
-                              FStar_Pervasives_Native.None)
+                         if FStar_Pervasives_Native.uu___is_Some nest_val
+                         then FStar_Pervasives_Native.None
+                         else
+                           (let td =
+                              {
+                                td_iri = iri;
+                                td_type_mapping = typef;
+                                td_container = contk;
+                                td_reverse = true;
+                                td_language = langf;
+                                td_direction = dirf;
+                                td_index = idxf;
+                                td_scoped_context =
+                                  (jldctx_wrap_scoped ac ctxf);
+                                td_protected = protected;
+                                td_prefix = prefix_flag;
+                                td_set = set_flag;
+                                td_nest = nest_val
+                              } in
+                            match jldctx_resolve_redefine ac key td
+                                    override_protected
+                            with
+                            | FStar_Pervasives_Native.Some final_td ->
+                                FStar_Pervasives_Native.Some
+                                  {
+                                    ac_terms = ((key, final_td) ::
+                                      (ac.ac_terms));
+                                    ac_vocab = (ac.ac_vocab);
+                                    ac_base = (ac.ac_base);
+                                    ac_language = (ac.ac_language);
+                                    ac_direction = (ac.ac_direction);
+                                    ac_previous = (ac.ac_previous);
+                                    ac_mode10 = (ac.ac_mode10);
+                                    ac_doc_url = (ac.ac_doc_url);
+                                    ac_original_base = (ac.ac_original_base);
+                                    ac_suppress_pop = (ac.ac_suppress_pop)
+                                  }
+                            | FStar_Pervasives_Native.None ->
+                                FStar_Pervasives_Native.None)
                    | (FStar_Pervasives_Native.None,
                       FStar_Pervasives_Native.None) ->
                        (match jldctx_expand_iri_ctx
@@ -1025,7 +1113,9 @@ let process_term_def_obj (ac : active_context) (key : Prims.string)
                                 td_scoped_context =
                                   (jldctx_wrap_scoped ac ctxf);
                                 td_protected = protected;
-                                td_prefix = prefix_flag
+                                td_prefix = prefix_flag;
+                                td_set = set_flag;
+                                td_nest = nest_val
                               } in
                             (match jldctx_resolve_redefine ac key td
                                      override_protected
@@ -1110,7 +1200,9 @@ let rec jldctx_preview_prefixes (ac : active_context)
                     td_index = FStar_Pervasives_Native.None;
                     td_scoped_context = FStar_Pervasives_Native.None;
                     td_protected = false;
-                    td_prefix = (jldctx_ends_gen_delim iri)
+                    td_prefix = (jldctx_ends_gen_delim iri);
+                    td_set = false;
+                    td_nest = FStar_Pervasives_Native.None
                   } in
                 jldctx_preview_prefixes
                   {
@@ -1289,7 +1381,7 @@ and context_process_one_field (ac : active_context) (key : Prims.string)
     match value with
     | Parser_JSON.JString s ->
         let resolved =
-          if RDF_Graph_Executable.is_iri s
+          if RDF_Term.is_iri s
           then s
           else
             (match ac.ac_base with
@@ -1527,7 +1619,9 @@ and context_process_one_field (ac : active_context) (key : Prims.string)
                                  td_scoped_context =
                                    FStar_Pervasives_Native.None;
                                  td_protected = protected;
-                                 td_prefix = false
+                                 td_prefix = false;
+                                 td_set = has_set;
+                                 td_nest = FStar_Pervasives_Native.None
                                } in
                              match jldctx_resolve_redefine ac "@type" td
                                      override_protected
@@ -1585,7 +1679,10 @@ and context_process_one_field (ac : active_context) (key : Prims.string)
                                          td_scoped_context =
                                            FStar_Pervasives_Native.None;
                                          td_protected = default_protected;
-                                         td_prefix = false
+                                         td_prefix = false;
+                                         td_set = false;
+                                         td_nest =
+                                           FStar_Pervasives_Native.None
                                        } in
                                      FStar_Pervasives_Native.Some
                                        {
@@ -1620,7 +1717,9 @@ and context_process_one_field (ac : active_context) (key : Prims.string)
                                       td_scoped_context =
                                         FStar_Pervasives_Native.None;
                                       td_protected = default_protected;
-                                      td_prefix = false
+                                      td_prefix = false;
+                                      td_set = false;
+                                      td_nest = FStar_Pervasives_Native.None
                                     } in
                                   FStar_Pervasives_Native.Some
                                     {
@@ -1714,7 +1813,10 @@ and context_process_one_field (ac : active_context) (key : Prims.string)
                                                FStar_Pervasives_Native.None;
                                              td_protected = default_protected;
                                              td_prefix =
-                                               (jldctx_ends_gen_delim iri)
+                                               (jldctx_ends_gen_delim iri);
+                                             td_set = false;
+                                             td_nest =
+                                               FStar_Pervasives_Native.None
                                            } in
                                          match jldctx_resolve_redefine ac key
                                                  td override_protected
@@ -1791,7 +1893,10 @@ and context_process_one_field (ac : active_context) (key : Prims.string)
                                              td_scoped_context =
                                                FStar_Pervasives_Native.None;
                                              td_protected = default_protected;
-                                             td_prefix = false
+                                             td_prefix = false;
+                                             td_set = false;
+                                             td_nest =
+                                               FStar_Pervasives_Native.None
                                            } in
                                          FStar_Pervasives_Native.Some
                                            {
@@ -1827,7 +1932,10 @@ and context_process_one_field (ac : active_context) (key : Prims.string)
                                           td_scoped_context =
                                             FStar_Pervasives_Native.None;
                                           td_protected = default_protected;
-                                          td_prefix = false
+                                          td_prefix = false;
+                                          td_set = false;
+                                          td_nest =
+                                            FStar_Pervasives_Native.None
                                         } in
                                       FStar_Pervasives_Native.Some
                                         {

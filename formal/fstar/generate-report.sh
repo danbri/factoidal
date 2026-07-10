@@ -67,6 +67,7 @@ CSVW_LOG="$OCAML_DIR/csvw_results.log"
 DID_LOG="$OCAML_DIR/did_results.log"
 JSONLD_FROMRDF_LOG="$OCAML_DIR/jsonld_fromrdf_results.log"
 JSONLD_EXPAND_LOG="$OCAML_DIR/jsonld_expand_results.log"
+JSONLD_COMPACT_LOG="$OCAML_DIR/jsonld_compact_results.log"
 # hdt-parity is a committed shell script (tests/local/hdt_stage4_parity.sh),
 # not a runner binary; JS-side hub/npm suites run through node --test.
 HDT_PARITY_LOG="$OCAML_DIR/hdt_parity_results.log"
@@ -107,6 +108,7 @@ case "$(uname -s)-$(uname -m)" in
     DID_RUNNER="$SCRIPT_DIR/../../bin/darwin-arm64/did_runner"
     JSONLD_FROMRDF_RUNNER="$SCRIPT_DIR/../../bin/darwin-arm64/jsonld_fromrdf_runner"
     JSONLD_EXPAND_RUNNER="$SCRIPT_DIR/../../bin/darwin-arm64/jsonld_expand_runner"
+    JSONLD_COMPACT_RUNNER="$SCRIPT_DIR/../../bin/darwin-arm64/jsonld_compact_runner"
     ;;
   Linux-x86_64)
     RUNNER="$SCRIPT_DIR/../../bin/linux-x86_64/w3c_runner"
@@ -128,6 +130,7 @@ case "$(uname -s)-$(uname -m)" in
     DID_RUNNER="$SCRIPT_DIR/../../bin/linux-x86_64/did_runner"
     JSONLD_FROMRDF_RUNNER="$SCRIPT_DIR/../../bin/linux-x86_64/jsonld_fromrdf_runner"
     JSONLD_EXPAND_RUNNER="$SCRIPT_DIR/../../bin/linux-x86_64/jsonld_expand_runner"
+    JSONLD_COMPACT_RUNNER="$SCRIPT_DIR/../../bin/linux-x86_64/jsonld_compact_runner"
     ;;
   *)
     RUNNER="$OCAML_DIR/w3c_runner"
@@ -149,6 +152,7 @@ case "$(uname -s)-$(uname -m)" in
     DID_RUNNER="$OCAML_DIR/did_runner"
     JSONLD_FROMRDF_RUNNER="$OCAML_DIR/jsonld_fromrdf_runner"
     JSONLD_EXPAND_RUNNER="$OCAML_DIR/jsonld_expand_runner"
+    JSONLD_COMPACT_RUNNER="$OCAML_DIR/jsonld_compact_runner"
     ;;
 esac
 
@@ -269,6 +273,7 @@ if [ "$1" = "--run" ]; then
   run_optional_suite "DID did:key suite"             "$DID_RUNNER"        "$DID_LOG"          60
   run_optional_suite "JSON-LD 1.1 fromRdf suite"     "$JSONLD_FROMRDF_RUNNER" "$JSONLD_FROMRDF_LOG" 90
   run_optional_suite "JSON-LD 1.1 expand suite"      "$JSONLD_EXPAND_RUNNER"  "$JSONLD_EXPAND_LOG"  120
+  run_optional_suite "JSON-LD 1.1 compact suite"     "$JSONLD_COMPACT_RUNNER" "$JSONLD_COMPACT_LOG" 120
   run_optional_suite "GRDDL Stage 1 (local subset)"  "$GRDDL_RUNNER"      "$GRDDL_LOG"       120
 
   # hdt-parity is a committed shell script, not a runner binary; it needs
@@ -535,6 +540,9 @@ scrape_last_summary GRDDL        "$GRDDL_LOG"
 # pass, M fail, K skip (out of T)" line ending in "(out of T)", handled by
 # the generic scrape_last_summary total regex (same as JSONLD toRdf above).
 scrape_last_summary JSONLD_EXPAND "$JSONLD_EXPAND_LOG"
+# JSON-LD compact: jsonld_compact_runner prints the same "(out of T)"
+# final-line shape ("jsonld-compact: N pass, M fail, K skip (out of T)").
+scrape_last_summary JSONLD_COMPACT "$JSONLD_COMPACT_LOG"
 # RIF Core: rif_runner prints THREE summary lines in one log (Part 1 —
 # the 4 vendored SPARQL-manifest cases; Part 2 — the 46-test W3C
 # Core_v1.22 corpus walk; and a combined total) — anchor each explicitly
@@ -774,6 +782,7 @@ CSV="$OUTPUT_DIR/latest.csv"
   emit_csv_row_if_present DIDKEY            did         did-key
   emit_csv_row_if_present JSONLD_FROMRDF    jsonld      jsonld-fromrdf
   emit_csv_row_if_present JSONLD_EXPAND     jsonld      jsonld-expand
+  emit_csv_row_if_present JSONLD_COMPACT    jsonld      jsonld-compact
   emit_csv_row_if_present GRDDL             grddl       grddl-stage1-local
   emit_csv_row_if_present HDT_PARITY        hdt         hdt-stage4-parity
   emit_csv_row_if_present HUB               js          hub-browser-bundle
@@ -873,6 +882,8 @@ emit_json_suites () {
     "$JSONLD_FROMRDF_PASS" "$JSONLD_FROMRDF_FAIL" "$JSONLD_FROMRDF_SKIP" "$JSONLD_FROMRDF_TOTAL" "$(bp "$JSONLD_FROMRDF_PRESENT")"
   printf '    "jsonld_expand":  {"pass":%s,"fail":%s,"skip":%s,"total":%s,"present":%s,"spec":"https://www.w3.org/TR/json-ld11-api/#expansion-algorithm"},\n' \
     "$JSONLD_EXPAND_PASS" "$JSONLD_EXPAND_FAIL" "$JSONLD_EXPAND_SKIP" "$JSONLD_EXPAND_TOTAL" "$(bp "$JSONLD_EXPAND_PRESENT")"
+  printf '    "jsonld_compact": {"pass":%s,"fail":%s,"skip":%s,"total":%s,"present":%s,"spec":"https://www.w3.org/TR/json-ld11-api/#compaction-algorithm"},\n' \
+    "$JSONLD_COMPACT_PASS" "$JSONLD_COMPACT_FAIL" "$JSONLD_COMPACT_SKIP" "$JSONLD_COMPACT_TOTAL" "$(bp "$JSONLD_COMPACT_PRESENT")"
   printf '    "hdt_stage4_parity":{"pass":%s,"fail":%s,"skip":%s,"total":%s,"present":%s,"spec":"internal (HDT backend parity vs in-memory)"},\n' \
     "$HDT_PARITY_PASS" "$HDT_PARITY_FAIL" "$HDT_PARITY_SKIP" "$HDT_PARITY_TOTAL" "$(bp "$HDT_PARITY_PRESENT")"
   printf '    "hub_browser_bundle":{"pass":%s,"fail":%s,"skip":%s,"total":%s,"present":%s,"spec":"internal (node --test tests/hub)"},\n' \
@@ -912,6 +923,7 @@ emit_json_suites () {
   emit_json_suite_obj "did_key"           DIDKEY
   emit_json_suite_obj "jsonld_fromrdf"    JSONLD_FROMRDF
   emit_json_suite_obj "jsonld_expand"     JSONLD_EXPAND
+  emit_json_suite_obj "jsonld_compact"    JSONLD_COMPACT
   emit_json_suite_obj "grddl_stage1"      GRDDL
   emit_json_suite_obj "hdt_stage4_parity" HDT_PARITY
   emit_json_suite_obj "hub_browser_bundle" HUB
@@ -1676,13 +1688,13 @@ CSVW_BODY=$(
 CSVW_HTML=$(family_section "csvw" "CSVW (CSV on the Web)" "$CSVW_STATUS" "$CSVW_HEADLINE" "$CSVW_BODY" "")
 
 # --- JSON-LD 1.1 ------------------------------------------------------------
-# Three directions now scored: toRdf (jsonld_runner) + fromRdf
+# Four directions now scored: toRdf (jsonld_runner) + fromRdf
 # (jsonld_fromrdf_runner, 2026-07-09) + expand (jsonld_expand_runner,
-# 2026-07-10).
-read -r JSONLD_FAM_PASS JSONLD_FAM_FAIL JSONLD_FAM_SKIP JSONLD_FAM_TOTAL JSONLD_FAM_ANY <<< "$(sum_family "JSONLD JSONLD_FROMRDF JSONLD_EXPAND")"
+# 2026-07-10) + compact (jsonld_compact_runner, 2026-07-10).
+read -r JSONLD_FAM_PASS JSONLD_FAM_FAIL JSONLD_FAM_SKIP JSONLD_FAM_TOTAL JSONLD_FAM_ANY <<< "$(sum_family "JSONLD JSONLD_FROMRDF JSONLD_EXPAND JSONLD_COMPACT")"
 JSONLD_STATUS=$(status_for "$JSONLD_FAM_FAIL" "$JSONLD_FAM_ANY")
 if [ "$JSONLD_FAM_ANY" -eq 1 ]; then
-  JSONLD_FAMILY_HEADLINE="${JSONLD_FAM_PASS} pass, ${JSONLD_FAM_FAIL} fail, ${JSONLD_FAM_SKIP} skip (of ${JSONLD_FAM_TOTAL}) across the W3C JSON-LD 1.1 toRdf, fromRdf and expand manifests."
+  JSONLD_FAMILY_HEADLINE="${JSONLD_FAM_PASS} pass, ${JSONLD_FAM_FAIL} fail, ${JSONLD_FAM_SKIP} skip (of ${JSONLD_FAM_TOTAL}) across the W3C JSON-LD 1.1 toRdf, fromRdf, expand and compact manifests."
 else
   JSONLD_FAMILY_HEADLINE="Not measured this run."
 fi
@@ -1696,6 +1708,9 @@ JSONLD_BODY=$(
   family_suite_row "JSON-LD 1.1 expand" "$JSONLD_EXPAND_PASS" "$JSONLD_EXPAND_FAIL" "$JSONLD_EXPAND_SKIP" "$JSONLD_EXPAND_TOTAL" "$JSONLD_EXPAND_PRESENT" \
     "Runner: <code>bin/jsonld-expand-runner</code> (<code>bin/linux-x86_64/jsonld_expand_runner</code>) &middot; Suite: W3C JSON-LD 1.1 expand manifest (Expansion Algorithm)" \
     "<a href=\"${GITHUB_BLOB_BASE}/third_party/testing/json-ld/tests/expand-manifest.jsonld\" target=\"_blank\" rel=\"noopener\">diagnosis: residual fails are enumerated algorithm/option gaps (scoped @context, @container edge cases, error-code negatives) plus the JSON-LD 1.0-only skips — see the commit for the per-bucket breakdown</a>"
+  family_suite_row "JSON-LD 1.1 compact" "$JSONLD_COMPACT_PASS" "$JSONLD_COMPACT_FAIL" "$JSONLD_COMPACT_SKIP" "$JSONLD_COMPACT_TOTAL" "$JSONLD_COMPACT_PRESENT" \
+    "Runner: <code>bin/jsonld-compact-runner</code> (<code>bin/linux-x86_64/jsonld_compact_runner</code>) &middot; Suite: W3C JSON-LD 1.1 compact manifest (Compaction Algorithm)" \
+    "<a href=\"${GITHUB_BLOB_BASE}/.github/test-suites/jsonld-compact.yaml\" target=\"_blank\" rel=\"noopener\">diagnosis: residual fails are enumerated Compaction-Algorithm gaps — see the suite manifest and the landing commit for the per-bucket breakdown</a>"
 )
 JSONLD_FAMILY_HTML=$(family_section "jsonld11" "JSON-LD 1.1" "$JSONLD_STATUS" "$JSONLD_FAMILY_HEADLINE" "$JSONLD_BODY" "")
 
@@ -2408,6 +2423,7 @@ report_suite_line "CSVW csv2rdf"      CSVW2RDF
 report_suite_line "DID did:key"       DIDKEY
 report_suite_line "JSON-LD fromRdf"   JSONLD_FROMRDF
 report_suite_line "JSON-LD expand"    JSONLD_EXPAND
+report_suite_line "JSON-LD compact"   JSONLD_COMPACT
 report_suite_line "HDT stage-4 parity" HDT_PARITY
 report_suite_line "hub bundle"        HUB
 report_suite_line "npm package"       NPM
