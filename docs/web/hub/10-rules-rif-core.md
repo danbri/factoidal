@@ -26,23 +26,24 @@ basic graph patterns, forward-chaining fixpoint saturation, and
 single-`<Import>` companion-graph resolution — see
 [`docs/claude-rules/scope.md`](https://github.com/danbri/factoidal/blob/claude/main/docs/claude-rules/scope.md)'s
 RIF Core section for the exact boundary, including what's explicitly
-**not** implemented (RIF-BLD built-ins beyond a numeric/string core,
-list terms, RIF-PRD production actions). That honesty matters here
+**not** implemented (RIF list terms, the full date/time/duration
+builtin family, RIF-PRD production actions). That honesty matters here
 more than most posts: RIF is a big spec, and this is a real subset of
 it, not the whole thing.
 
 Measured against the full W3C RIF Core distribution (the original 4
 vendored SPARQL-manifest cases plus the 46-test Core dialect corpus,
-50 tests total): **34 pass, 4 labelled fails, 12 precise skips (of
+50 tests total): **46 pass, 1 labelled fail, 3 precise skips (of
 50)** — see
 [the test-results dashboard]({{ '/test-results/' | url }}) for the
 current run and
 [`bin/rif-runner/README.md`](https://github.com/danbri/factoidal/blob/claude/main/bin/rif-runner/README.md)
-for what each of the 4 fails and 12 skips actually is (every skip
-names the specific unimplemented builtin or construct — no blanket
-"unsupported" lines). The subset in scope for the rest of this post —
-frame/BGP rule bodies over ground facts — is squarely inside the 34
-that pass.
+for the per-test disposition table (the 1 fail is a data defect in
+the official corpus itself, confirmed against the archived W3C wiki
+source; each of the 3 skips names its specific unimplemented builtin
+or construct — no blanket "unsupported" lines). The subset in scope
+for the rest of this post — frame/BGP rule bodies over ground facts —
+is squarely inside the 46 that pass.
 
 ## A frame rule, read as prose
 

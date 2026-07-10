@@ -103,24 +103,22 @@ let is_local_type_marker (ty : Prims.string) : Prims.bool=
 let local_to_iri (lex : Prims.string) :
   RIF_Core_Syntax.rif_term FStar_Pervasives_Native.option=
   let urn_iri = FStar_String.concat "" ["urn:rif-local:"; lex] in
-  if RDF_Graph_Executable.is_iri urn_iri
+  if RDF_Term.is_iri urn_iri
   then
     FStar_Pervasives_Native.Some
-      (RIF_Core_Syntax.mk_const (RDF_Graph_Executable.T_IRI urn_iri))
+      (RIF_Core_Syntax.mk_const (RDF_Term.T_IRI urn_iri))
   else FStar_Pervasives_Native.None
 let typed_literal_const (ty : Prims.string) (lex : Prims.string) :
   RIF_Core_Syntax.rif_term FStar_Pervasives_Native.option=
-  if
-    (RDF_Graph_Executable.is_iri ty) &&
-      (ty <> RDF_Graph_Executable.rdf_lang_string)
+  if (RDF_Term.is_iri ty) && (ty <> RDF_Term.rdf_lang_string)
   then
     FStar_Pervasives_Native.Some
       (RIF_Core_Syntax.mk_const
-         (RDF_Graph_Executable.T_Literal
+         (RDF_Term.T_Literal
             {
-              RDF_Graph_Executable.lexical_form = lex;
-              RDF_Graph_Executable.datatype = ty;
-              RDF_Graph_Executable.lang_tag = FStar_Pervasives_Native.None
+              RDF_Term.lexical_form = lex;
+              RDF_Term.datatype = ty;
+              RDF_Term.lang_tag = FStar_Pervasives_Native.None
             }))
   else FStar_Pervasives_Native.None
 let is_plain_literal_type_marker (ty : Prims.string) : Prims.bool=
@@ -159,33 +157,29 @@ let plain_literal_const (lex : Prims.string) :
          then
            FStar_Pervasives_Native.Some
              (RIF_Core_Syntax.mk_const
-                (RDF_Graph_Executable.T_Literal
+                (RDF_Term.T_Literal
                    {
-                     RDF_Graph_Executable.lexical_form = text;
-                     RDF_Graph_Executable.datatype =
-                       RDF_Graph_Executable.xsd_string;
-                     RDF_Graph_Executable.lang_tag =
-                       FStar_Pervasives_Native.None
+                     RDF_Term.lexical_form = text;
+                     RDF_Term.datatype = RDF_Term.xsd_string;
+                     RDF_Term.lang_tag = FStar_Pervasives_Native.None
                    }))
          else
            FStar_Pervasives_Native.Some
              (RIF_Core_Syntax.mk_const
-                (RDF_Graph_Executable.T_Literal
+                (RDF_Term.T_Literal
                    {
-                     RDF_Graph_Executable.lexical_form = text;
-                     RDF_Graph_Executable.datatype =
-                       RDF_Graph_Executable.rdf_lang_string;
-                     RDF_Graph_Executable.lang_tag =
-                       (FStar_Pervasives_Native.Some lang)
+                     RDF_Term.lexical_form = text;
+                     RDF_Term.datatype = RDF_Term.rdf_lang_string;
+                     RDF_Term.lang_tag = (FStar_Pervasives_Native.Some lang)
                    })))
 let const_from_type (ty : Prims.string) (lex : Prims.string) :
   RIF_Core_Syntax.rif_term FStar_Pervasives_Native.option=
   if is_iri_type_marker ty
   then
-    (if RDF_Graph_Executable.is_iri lex
+    (if RDF_Term.is_iri lex
      then
        FStar_Pervasives_Native.Some
-         (RIF_Core_Syntax.mk_const (RDF_Graph_Executable.T_IRI lex))
+         (RIF_Core_Syntax.mk_const (RDF_Term.T_IRI lex))
      else FStar_Pervasives_Native.None)
   else
     if is_local_type_marker ty
@@ -205,13 +199,11 @@ let parse_const (n : Parser_XML.xml_node) :
        | FStar_Pervasives_Native.None ->
            FStar_Pervasives_Native.Some
              (RIF_Core_Syntax.mk_const
-                (RDF_Graph_Executable.T_Literal
+                (RDF_Term.T_Literal
                    {
-                     RDF_Graph_Executable.lexical_form = lex;
-                     RDF_Graph_Executable.datatype =
-                       RDF_Graph_Executable.xsd_string;
-                     RDF_Graph_Executable.lang_tag =
-                       FStar_Pervasives_Native.None
+                     RDF_Term.lexical_form = lex;
+                     RDF_Term.datatype = RDF_Term.xsd_string;
+                     RDF_Term.lang_tag = FStar_Pervasives_Native.None
                    })))
   | uu___ -> FStar_Pervasives_Native.None
 let parse_var (n : Parser_XML.xml_node) :
@@ -282,7 +274,7 @@ let rec parse_term_fuel (n : Parser_XML.xml_node) (fuel : Prims.nat) :
              else FStar_Pervasives_Native.None
      | uu___1 -> FStar_Pervasives_Native.None)
 and parse_op_and_args_fuel (n : Parser_XML.xml_node) (fuel : Prims.nat) :
-  (RDF_Graph_Executable.wf_iri * RIF_Core_Syntax.rif_term Prims.list)
+  (RDF_Term.wf_iri * RIF_Core_Syntax.rif_term Prims.list)
     FStar_Pervasives_Native.option=
   if fuel = Prims.int_zero
   then FStar_Pervasives_Native.None
@@ -296,7 +288,7 @@ and parse_op_and_args_fuel (n : Parser_XML.xml_node) (fuel : Prims.nat) :
           | FStar_Pervasives_Native.Some op_node ->
               (match parse_term_host_fuel op_node (fuel - Prims.int_one) with
                | FStar_Pervasives_Native.Some (RIF_Core_Syntax.RIF_Const
-                   (RDF_Graph_Executable.T_IRI pi)) ->
+                   (RDF_Term.T_IRI pi)) ->
                    let arg_terms =
                      match args_n with
                      | FStar_Pervasives_Native.None -> []
@@ -373,7 +365,13 @@ let parse_atom_element (n : Parser_XML.xml_node) :
                      s)::(FStar_Pervasives_Native.Some o)::[] ->
                      FStar_Pervasives_Native.Some
                        (RIF_Core_Syntax.RIF_Triple (s, pred, o))
-                 | uu___2 -> FStar_Pervasives_Native.None)))
+                 | many ->
+                     (match list_collect_some many with
+                      | FStar_Pervasives_Native.Some args_ok ->
+                          FStar_Pervasives_Native.Some
+                            (RIF_Core_Syntax.RIF_Uniterm (pred, args_ok))
+                      | FStar_Pervasives_Native.None ->
+                          FStar_Pervasives_Native.None))))
   | uu___ -> FStar_Pervasives_Native.None
 let parse_slot_pair (slot : Parser_XML.xml_node)
   (obj : RIF_Core_Syntax.rif_term) :
@@ -680,34 +678,42 @@ let rec parse_sentence_content (n : Parser_XML.xml_node) (fuel : Prims.nat) :
                 | first::uu___4 ->
                     parse_sentence_content first (fuel - Prims.int_one))
              else
-               if tag_is "sentence" tag
+               if tag_is "Exists" tag
                then
-                 (match child_elements_only children with
-                  | [] -> FStar_Pervasives_Native.None
-                  | first::uu___5 ->
-                      parse_sentence_content first (fuel - Prims.int_one))
+                 (match first_child_with_local_name "formula" children with
+                  | FStar_Pervasives_Native.None ->
+                      FStar_Pervasives_Native.None
+                  | FStar_Pervasives_Native.Some f_node ->
+                      parse_sentence_content f_node (fuel - Prims.int_one))
                else
-                 if tag_is "And" tag
+                 if tag_is "sentence" tag
                  then
-                   parse_sentence_conjuncts (child_elements_only children)
-                     (fuel - Prims.int_one)
+                   (match child_elements_only children with
+                    | [] -> FStar_Pervasives_Native.None
+                    | first::uu___6 ->
+                        parse_sentence_content first (fuel - Prims.int_one))
                  else
-                   if is_atom_tag tag
+                   if tag_is "And" tag
                    then
-                     (match parse_atom_node n with
-                      | FStar_Pervasives_Native.None ->
-                          FStar_Pervasives_Native.None
-                      | FStar_Pervasives_Native.Some (a::[]) ->
-                          FStar_Pervasives_Native.Some
-                            [RIF_Core_Syntax.mk_rule a
-                               (RIF_Core_Syntax.RIF_BodyAnd [])]
-                      | FStar_Pervasives_Native.Some atoms ->
-                          FStar_Pervasives_Native.Some
-                            (FStar_List_Tot_Base.map
-                               (fun a ->
-                                  RIF_Core_Syntax.mk_rule a
-                                    (RIF_Core_Syntax.RIF_BodyAnd [])) atoms))
-                   else FStar_Pervasives_Native.None
+                     parse_sentence_conjuncts (child_elements_only children)
+                       (fuel - Prims.int_one)
+                   else
+                     if is_atom_tag tag
+                     then
+                       (match parse_atom_node n with
+                        | FStar_Pervasives_Native.None ->
+                            FStar_Pervasives_Native.None
+                        | FStar_Pervasives_Native.Some (a::[]) ->
+                            FStar_Pervasives_Native.Some
+                              [RIF_Core_Syntax.mk_rule a
+                                 (RIF_Core_Syntax.RIF_BodyAnd [])]
+                        | FStar_Pervasives_Native.Some atoms ->
+                            FStar_Pervasives_Native.Some
+                              (FStar_List_Tot_Base.map
+                                 (fun a ->
+                                    RIF_Core_Syntax.mk_rule a
+                                      (RIF_Core_Syntax.RIF_BodyAnd [])) atoms))
+                     else FStar_Pervasives_Native.None
      | uu___1 -> FStar_Pervasives_Native.None)
 and parse_sentence_conjuncts (xs : Parser_XML.xml_node Prims.list)
   (fuel : Prims.nat) :
@@ -902,3 +908,82 @@ let parse_rif_program_with_imports (input : Prims.string) :
        | FStar_Pervasives_Native.Some prog ->
            FStar_Pervasives_Native.Some
              ((extract_document_imports root), prog))
+let rif_local_prefix : Prims.string= "urn:rif-local:"
+let scope_local_iri (scope : Prims.string) (i : RDF_Term.wf_iri) :
+  RDF_Term.wf_iri=
+  let plen = FStar_String.strlen rif_local_prefix in
+  if
+    ((FStar_String.strlen i) > plen) &&
+      ((FStar_String.sub i Prims.int_zero plen) = rif_local_prefix)
+  then
+    let rest = FStar_String.sub i plen ((FStar_String.strlen i) - plen) in
+    let scoped = FStar_String.concat "" [rif_local_prefix; scope; ":"; rest] in
+    (if RDF_Term.is_iri scoped then scoped else i)
+  else i
+let rec scope_term (scope : Prims.string) (t : RIF_Core_Syntax.rif_term) :
+  RIF_Core_Syntax.rif_term=
+  match t with
+  | RIF_Core_Syntax.RIF_Const (RDF_Term.T_IRI i) ->
+      RIF_Core_Syntax.RIF_Const (RDF_Term.T_IRI (scope_local_iri scope i))
+  | RIF_Core_Syntax.RIF_Const uu___ -> t
+  | RIF_Core_Syntax.RIF_Var uu___ -> t
+  | RIF_Core_Syntax.RIF_TermExternal (op, args) ->
+      RIF_Core_Syntax.RIF_TermExternal (op, (scope_terms scope args))
+and scope_terms (scope : Prims.string)
+  (ts : RIF_Core_Syntax.rif_term Prims.list) :
+  RIF_Core_Syntax.rif_term Prims.list=
+  match ts with
+  | [] -> []
+  | t::rest -> (scope_term scope t) :: (scope_terms scope rest)
+let scope_atom (scope : Prims.string) (a : RIF_Core_Syntax.rif_atom) :
+  RIF_Core_Syntax.rif_atom=
+  match a with
+  | RIF_Core_Syntax.RIF_Triple (s, p, o) ->
+      RIF_Core_Syntax.RIF_Triple
+        ((scope_term scope s), (scope_term scope p), (scope_term scope o))
+  | RIF_Core_Syntax.RIF_Frame (o, p, v) ->
+      RIF_Core_Syntax.RIF_Frame
+        ((scope_term scope o), (scope_term scope p), (scope_term scope v))
+  | RIF_Core_Syntax.RIF_Member (o, c) ->
+      RIF_Core_Syntax.RIF_Member ((scope_term scope o), (scope_term scope c))
+  | RIF_Core_Syntax.RIF_Sub (sub, sup_) ->
+      RIF_Core_Syntax.RIF_Sub
+        ((scope_term scope sub), (scope_term scope sup_))
+  | RIF_Core_Syntax.RIF_Uniterm (pred, args) ->
+      RIF_Core_Syntax.RIF_Uniterm
+        ((scope_term scope pred), (scope_terms scope args))
+let rec scope_body (scope : Prims.string) (b : RIF_Core_Syntax.rif_body) :
+  RIF_Core_Syntax.rif_body=
+  match b with
+  | RIF_Core_Syntax.RIF_BodyAtom a ->
+      RIF_Core_Syntax.RIF_BodyAtom (scope_atom scope a)
+  | RIF_Core_Syntax.RIF_BodyAnd bs ->
+      RIF_Core_Syntax.RIF_BodyAnd (scope_bodies scope bs)
+  | RIF_Core_Syntax.RIF_BodyExternal (op, args) ->
+      RIF_Core_Syntax.RIF_BodyExternal (op, (scope_terms scope args))
+  | RIF_Core_Syntax.RIF_BodyEqual (l, r) ->
+      RIF_Core_Syntax.RIF_BodyEqual
+        ((scope_term scope l), (scope_term scope r))
+and scope_bodies (scope : Prims.string)
+  (bs : RIF_Core_Syntax.rif_body Prims.list) :
+  RIF_Core_Syntax.rif_body Prims.list=
+  match bs with
+  | [] -> []
+  | b::rest -> (scope_body scope b) :: (scope_bodies scope rest)
+let scope_rule (scope : Prims.string) (r : RIF_Core_Syntax.rif_rule) :
+  RIF_Core_Syntax.rif_rule=
+  RIF_Core_Syntax.mk_rule (scope_atom scope r.RIF_Core_Syntax.head)
+    (scope_body scope r.RIF_Core_Syntax.body)
+let scope_local_constants (scope : Prims.string)
+  (p : RIF_Core_Syntax.rif_program) : RIF_Core_Syntax.rif_program=
+  RIF_Core_Syntax.program_of_rules
+    (FStar_List_Tot_Base.map (scope_rule scope) p.RIF_Core_Syntax.rules)
+let parse_rif_program_with_imports_scoped (scope : Prims.string)
+  (input : Prims.string) :
+  (Prims.string Prims.list * RIF_Core_Syntax.rif_program)
+    FStar_Pervasives_Native.option=
+  match parse_rif_program_with_imports input with
+  | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+  | FStar_Pervasives_Native.Some (imports, prog) ->
+      FStar_Pervasives_Native.Some
+        (imports, (scope_local_constants scope prog))

@@ -178,6 +178,60 @@ let instantiate_atom (mu : solution_mapping) (a : Syn.rif_atom)
      | _, _ -> None)
 
 // ------------------------------------------------------------------
+// 1b. Satellite-aware instantiation (RIF.Core.Translation §1c).
+//
+// instantiate_atom above produces the CLASSIC (single) triple; the
+// satellite-aware form below additionally emits:
+//   - arity-2 Uniterm (RIF_Triple): the argument-value satellite
+//     (enc(a1), urn:rif-uniterm:arg1, a1) alongside the classic
+//     triple, so a body variable in first-argument position can
+//     re-bind the genuine value via translate_atom_bgp's two-pattern
+//     join (the Factorial_Forward_Chaining shape);
+//   - arity >= 3 Uniterm: the full n-ary reification
+//     (anchor, p, true) plus one argument satellite per position
+//     (the EBusiness_Contract cpt:delivered/3 shape).
+// Every triple instantiate_atom would produce is still produced
+// (head of the list), so all classic queries keep matching.
+// ------------------------------------------------------------------
+
+let rec arg_value_satellites (anchor : subject) (vals : list rdf_term) (i : nat)
+  : Tot (list triple) (decreases vals) =
+  match vals with
+  | [] -> []
+  | v :: rest ->
+    { s = anchor; p = Tx.rif_uniterm_arg_pred i; o = v }
+    :: arg_value_satellites anchor rest (i + 1)
+
+let instantiate_atom_all (mu : solution_mapping) (a : Syn.rif_atom)
+  : list triple
+  =
+  match a with
+  | Syn.RIF_Triple s _ _ ->
+    (match instantiate_atom mu a with
+     | None -> []
+     | Some t ->
+       (match resolve_uniterm_subject mu s, resolve_term mu s with
+        | Some subj, Some sval ->
+          [t; { s = subj; p = Tx.rif_uniterm_arg_pred 1; o = sval }]
+        | _, _ -> [t]))
+  | Syn.RIF_Uniterm pred args ->
+    if List.Tot.length args >= 3 then
+      (match resolve_predicate mu pred, eval_rif_term_list mu args with
+       | Some p, Some vals ->
+         let anchor = S_BNode (Tx.nary_fact_anchor_label p vals) in
+         { s = anchor; p = p; o = Tx.rif_uniterm_true_marker }
+         :: arg_value_satellites anchor vals 1
+       | _, _ -> [])
+    else
+      (match instantiate_atom mu a with
+       | None -> []
+       | Some t -> [t])
+  | _ ->
+    (match instantiate_atom mu a with
+     | None -> []
+     | Some t -> [t])
+
+// ------------------------------------------------------------------
 // 2. Per-binding head firing.
 //
 // `add_one_triple_tracking g t` adds t to g (set semantics) and
@@ -198,6 +252,15 @@ let add_one_triple_tracking (g : rdf_graph) (t : triple) (changed : bool)
   then (g, changed)
   else (g @ [t], true)
 
+let rec add_triples_tracking (g : rdf_graph) (ts : list triple) (changed : bool)
+  : Tot (rdf_graph & bool) (decreases ts)
+  =
+  match ts with
+  | [] -> (g, changed)
+  | t :: rest ->
+    let g', c' = add_one_triple_tracking g t changed in
+    add_triples_tracking g' rest c'
+
 let rec fire_head_per_bindings
   (head : Syn.rif_atom)
   (bindings : solution_sequence)
@@ -208,11 +271,7 @@ let rec fire_head_per_bindings
   match bindings with
   | [] -> (g, changed)
   | mu :: rest ->
-    let g', changed' =
-      match instantiate_atom mu head with
-      | None   -> (g, changed)
-      | Some t -> add_one_triple_tracking g t changed
-    in
+    let g', changed' = add_triples_tracking g (instantiate_atom_all mu head) changed in
     fire_head_per_bindings head rest g' changed'
 
 // ------------------------------------------------------------------
@@ -248,13 +307,59 @@ let rec fire_head_per_bindings
 let rif_equal_values (a b : rdf_term) : bool =
   match B.numeric_predicate CmpEq a b with
   | Some r -> r
-  | None   -> rdf_term_eq a b
+  | None ->
+    // Cross-datatype STRING value equality (RIF-DTB compares by
+    // value: "en"^^xs:lang = "en"^^xs:string, both denoting the
+    // string "en") — falls back to structural identity when neither
+    // side is string-valued.
+    (match B.string_family_value_equal a b with
+     | Some r -> r
+     | None -> rdf_term_eq a b)
+
+// pred:iri-string's alternate BINDING-PATTERN execution
+// (Core_Safeness_3 / IRI_from_RDF_Literal): iri-string(?I, S) with S
+// bound to a string produces ?I := the IRI with that string;
+// iri-string(I, ?S) with I bound produces ?S := I's string. The
+// all-ground form falls through to the ordinary eval_predicate
+// filter dispatch.
+let apply_iri_string_binding
+  (mu : solution_mapping) (a1 a2 : Syn.rif_term)
+  : option solution_mapping
+  =
+  match eval_rif_term mu a1, eval_rif_term mu a2 with
+  | Some v1, Some v2 ->
+    (match B.eval_predicate B.rif_pred_iri_string [v1; v2] with
+     | Some true -> Some mu
+     | _ -> None)
+  | None, Some v2 ->
+    (match a1 with
+     | Syn.RIF_Var v ->
+       (match v2 with
+        | T_Literal l ->
+          if (B.is_string_family_dt l.datatype) && is_iri l.lexical_form
+          then Some (sm_bind v.var_name (T_IRI l.lexical_form) mu)
+          else None
+        | _ -> None)
+     | _ -> None)
+  | Some v1, None ->
+    (match a2 with
+     | Syn.RIF_Var v ->
+       (match v1 with
+        | T_IRI i -> Some (sm_bind v.var_name (B.mk_string_literal i) mu)
+        | _ -> None)
+     | _ -> None)
+  | None, None -> None
 
 let apply_extra_condition (mu : solution_mapping) (ec : Tx.rif_extra_condition)
   : option solution_mapping
   =
   match ec with
   | Tx.EC_External op args ->
+    if op = B.rif_pred_iri_string then
+      (match args with
+       | [a1; a2] -> apply_iri_string_binding mu a1 a2
+       | _ -> None)
+    else
     (match eval_rif_term_list mu args with
      | None -> None
      | Some vals ->
@@ -426,6 +531,19 @@ let lemma_add_one_triple_tracking_preserves
   then ()
   else lemma_mem_triple_append_left t g u
 
+let rec lemma_add_triples_tracking_preserves
+  (g : rdf_graph) (us : list triple) (changed : bool) (t : triple)
+  : Lemma (requires mem_triple t g)
+          (ensures  mem_triple t (fst (add_triples_tracking g us changed)))
+          (decreases us)
+  =
+  match us with
+  | [] -> ()
+  | u :: rest ->
+    lemma_add_one_triple_tracking_preserves g u changed t;
+    let g', c' = add_one_triple_tracking g u changed in
+    lemma_add_triples_tracking_preserves g' rest c' t
+
 let rec lemma_fire_head_per_bindings_preserves
   (head : Syn.rif_atom)
   (bindings : solution_sequence)
@@ -440,13 +558,10 @@ let rec lemma_fire_head_per_bindings_preserves
   match bindings with
   | [] -> ()
   | mu :: rest ->
-    (match instantiate_atom mu head with
-     | None ->
-       lemma_fire_head_per_bindings_preserves head rest g changed t
-     | Some u ->
-       lemma_add_one_triple_tracking_preserves g u changed t;
-       let g', c' = add_one_triple_tracking g u changed in
-       lemma_fire_head_per_bindings_preserves head rest g' c' t)
+    let us = instantiate_atom_all mu head in
+    lemma_add_triples_tracking_preserves g us changed t;
+    let g', c' = add_triples_tracking g us changed in
+    lemma_fire_head_per_bindings_preserves head rest g' c' t
 
 let lemma_fire_rule_preserves (g : rdf_graph) (r : Syn.rif_rule) (t : triple)
   : Lemma (requires mem_triple t g)
@@ -518,9 +633,15 @@ let lemma_fixpoint_extends
 // A two-rule RIF Core program over a tiny graph:
 //
 //   Rule 1: ?x rdfs:subClassOf ?y, ?y rdfs:subClassOf ?z |- ?x rdfs:subClassOf ?z
-//           (transitive closure of subClassOf — encoded via RIF_Triple
+//           (transitive closure of subClassOf — encoded via RIF_Frame
 //            with concrete predicate IRIs so we exercise the
-//            IRI-binding paths in resolve_term.)
+//            IRI-binding paths in resolve_term. RIF_Frame, not
+//            RIF_Triple: since 2026-07-10 a variable-first-argument
+//            RIF_Triple is the arity-2 UNITERM shape and joins
+//            through its argument-value satellite — see section 1b —
+//            whereas matching RAW RDF triples, as this smoke graph
+//            requires, is the FRAME shape, matching the RIF-RDF
+//            combination spec's frame <-> triple correspondence.)
 //
 //   Rule 2: ?o # ?c, ?c rdfs:subClassOf ?d |- ?o # ?d
 //           (rdf:type propagation up the class hierarchy.)
@@ -563,10 +684,10 @@ let pred_subclassof : Syn.rif_term = Syn.mk_const_iri rdfs_subClassOf
 // Rule 1: subClassOf transitivity.
 let rule_subclassof_trans : Syn.rif_rule =
   Syn.mk_rule
-    (Syn.RIF_Triple v_x pred_subclassof v_z)
+    (Syn.RIF_Frame v_x pred_subclassof v_z)
     (Syn.RIF_BodyAnd
-      [ Syn.RIF_BodyAtom (Syn.RIF_Triple v_x pred_subclassof v_y);
-        Syn.RIF_BodyAtom (Syn.RIF_Triple v_y pred_subclassof v_z); ])
+      [ Syn.RIF_BodyAtom (Syn.RIF_Frame v_x pred_subclassof v_y);
+        Syn.RIF_BodyAtom (Syn.RIF_Frame v_y pred_subclassof v_z); ])
 
 // Rule 2: rdf:type propagation.
 let rule_type_prop : Syn.rif_rule =
@@ -574,7 +695,7 @@ let rule_type_prop : Syn.rif_rule =
     (Syn.RIF_Member v_o v_d)
     (Syn.RIF_BodyAnd
       [ Syn.RIF_BodyAtom (Syn.RIF_Member v_o v_c);
-        Syn.RIF_BodyAtom (Syn.RIF_Triple v_c pred_subclassof v_d); ])
+        Syn.RIF_BodyAtom (Syn.RIF_Frame v_c pred_subclassof v_d); ])
 
 let smoke_program : Syn.rif_program =
   Syn.program_of_rules [rule_subclassof_trans; rule_type_prop]

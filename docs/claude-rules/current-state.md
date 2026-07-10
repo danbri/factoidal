@@ -1,6 +1,23 @@
 # Current State (Honest Assessment)
 
-Last refreshed: 2026-07-05 (goal wave: **ShEx 1181 pass, 1 mismatch
+Last refreshed: 2026-07-10 (RIF tail burndown: **RIF 46 pass, 1
+fail, 3 skip (of 50)** — up from 34/4/12 on 2026-07-05. The 2026-07-10
+wave added the RIF-DTB string + rdf:PlainLiteral builtin families,
+the EBusiness dateTime slice, pred:iri-string binding-pattern
+execution, Exists-quantified conclusions, Uniterm argument-value
+satellites + n-ary reification (retired the Factorial KNOWN-GAP),
+per-document rif:local scoping (retired the Local_Constant/
+Local_Predicate KNOWN-GAPs), OWL-Direct vocabulary-separation
+inconsistency detection, cross-document constant-role tracking for
+Multiple_Context_Error, and a wiki-vendored RDF-graph conclusion for
+Constant_Equivalence_Graph_Entailment. The 1 remaining fail is the
+RDF_Combination_Constant_Equivalence_4 corpus data defect (present in
+the archived authoritative wiki source too); the 3 skips are List
+terms (2) + the full date/time/duration builtin family (1), each
+named. Floors held: SPARQL 631 pass, 0 fail; RDF 1031 pass, 0 fail.
+See bin/rif-runner/README.md's disposition table.)
+
+Previous (2026-07-05 goal wave: **ShEx 1181 pass, 1 mismatch
 (upstream fixture defect), 0 deferred, 0 skipped (of 1182)** —
 descendant-witness semantics from the inheritance paper, verified by
 differential probe against @shexjs/validator. **RML rml-core 76
