@@ -1,3 +1,26 @@
+  [cons-running] New-Feature-Keys-004
+  [cons-running] New-Feature-Keys-007
+  [cons-running] New-Feature-ObjectPropertyChain-BJP-004
+  [cons-running] WebOnt-Class-004
+  [cons-running] WebOnt-Class-005
+  [cons-running] WebOnt-I4.6-004
+  [cons-running] WebOnt-I4.6-005
+  [cons-running] WebOnt-I5.5-006
+  [cons-running] WebOnt-I5.5-007
+  [cons-running] WebOnt-I5.8-005
+  [cons-running] WebOnt-I5.8-007
+  [cons-running] WebOnt-Ontology-003
+  [cons-running] WebOnt-Restriction-005
+  [cons-running] WebOnt-allValuesFrom-002
+  [cons-running] WebOnt-description-logic-209
+  [cons-running] WebOnt-description-logic-902
+  [cons-running] WebOnt-description-logic-904
+  [cons-running] WebOnt-equivalentClass-005
+  [cons-running] WebOnt-equivalentClass-008
+  [cons-running] WebOnt-imports-002
+  [cons-running] WebOnt-miscellaneous-301
+  [cons-running] WebOnt-miscellaneous-302
+  [cons-running] WebOnt-someValuesFrom-002
 Closure regime: DL
 OWL 2 test catalog: third_party/testing/owl/type-negative-entailment.rdf
   parsed 594 triples in 0.04s
@@ -38,7 +61,7 @@ Running 23 NegativeEntailmentTest(s) through owl_rl_closure_with_reflexivity (fu
   PASS  WebOnt-miscellaneous-302
   PASS  WebOnt-someValuesFrom-002
 
-Profile-RL NegativeEntailmentTests: 22 pass, 1 fail (out of 23) in 7.78s
+Profile-RL NegativeEntailmentTests: 22 pass, 1 fail (out of 23) in 9.15s
 
 Running 23 ConsistencyTest(s) through is_inconsistent (closure fuel=100)...
   PASS  New-Feature-Keys-004
@@ -65,4 +88,4 @@ Running 23 ConsistencyTest(s) through is_inconsistent (closure fuel=100)...
   PASS  WebOnt-miscellaneous-302
   PASS  WebOnt-someValuesFrom-002
 
-Profile-RL ConsistencyTests: 23 pass, 0 fail (out of 23), 0 skipped (functional-syntax-only) in 33.52s
+Profile-RL ConsistencyTests: 23 pass, 0 fail (out of 23), 0 skipped (functional-syntax-only) in 17.92s

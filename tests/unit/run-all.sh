@@ -77,6 +77,7 @@ COMMON_MODULES=(
   OWL_Vocabulary
   OWL_DirectMapping_Filter
   Tableau
+  Tableau_Refute
   Parser_FastString
   RDF_IRI
   SPARQL11_IRI_Resolve

@@ -115,7 +115,7 @@ strips rewrite-internal vars from the FINAL user projection only, via
 top level — inner `wrap_distinct_over_ggp` Select_All sub-selects
 deliberately re-expose the anchor var so the enclosing pattern can JOIN
 on it (simple5), so stripping inside them decorrelates the join. The
-regime suite is now 69/70. Tracked in **#236**. Generalise from anchor
+regime suite is at 70 pass, 0 fail (out of 70; re-measured 2026-07-10). Tracked in **#236**. Generalise from anchor
 → UNION as documented there before relying on this rewrite for OWL DL
 outside the entailment regime suite (the anchor still MULTIPLIES rows
 per P-edge and drops vacuous-truth individuals).

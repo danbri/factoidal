@@ -207,12 +207,218 @@
   [pe-running] rdfbased-sem-restrict-somevalues-cmp-prop
   [pe-running] rdfbased-sem-restrict-somevalues-inst-subj
   [pe-running] somevaluesfrom2bnode
+  [cons-running] Consistent-but-all-unsat
+  [cons-running] DisjointClasses-001
+  [cons-running] DisjointClasses-003
+  [cons-running] New-Feature-DataQCR-001
+  [cons-running] New-Feature-DisjointDataProperties-002
+  [cons-running] New-Feature-DisjointObjectProperties-001
+  [cons-running] New-Feature-DisjointObjectProperties-002
+  [cons-running] New-Feature-DisjointUnion-001
+  [cons-running] New-Feature-Keys-001
+  [cons-running] New-Feature-Keys-003
+  [cons-running] New-Feature-ObjectPropertyChain-001
+  [cons-running] New-Feature-ObjectPropertyChain-BJP-002
+  [cons-running] New-Feature-ObjectPropertyChain-BJP-003
+  [cons-running] New-Feature-ObjectQCR-001
+  [cons-running] New-Feature-ObjectQCR-002
+  [cons-running] New-Feature-ReflexiveProperty-001
+  [cons-running] New-Feature-SelfRestriction-001
+  [cons-running] New-Feature-SelfRestriction-002
+  [cons-running] Qualified-cardinality-boolean
+  [cons-running] Qualified-cardinality-restricted-int
+  [cons-running] WebOnt-AllDifferent-001
+  [cons-running] WebOnt-AnnotationProperty-002
+  [cons-running] WebOnt-Class-001
+  [cons-running] WebOnt-Class-002
+  [cons-running] WebOnt-Class-003
+  [cons-running] WebOnt-Class-005-direct
+  [cons-running] WebOnt-Class-006
+  [cons-running] WebOnt-FunctionalProperty-001
+  [cons-running] WebOnt-FunctionalProperty-002
+  [cons-running] WebOnt-FunctionalProperty-003
+  [cons-running] WebOnt-FunctionalProperty-004
+  [cons-running] WebOnt-FunctionalProperty-005
+  [cons-running] WebOnt-I4.5-001
+  [cons-running] WebOnt-I4.6-003
+  [cons-running] WebOnt-I4.6-005-Direct
+  [cons-running] WebOnt-I5.1-001
+  [cons-running] WebOnt-I5.2-002
+  [cons-running] WebOnt-I5.2-004
+  [cons-running] WebOnt-I5.2-006
+  [cons-running] WebOnt-I5.21-002
+  [cons-running] WebOnt-I5.24-001
+  [cons-running] WebOnt-I5.24-002
+  [cons-running] WebOnt-I5.24-003
+  [cons-running] WebOnt-I5.24-004
+  [cons-running] WebOnt-I5.26-009
+  [cons-running] WebOnt-I5.26-010
+  [cons-running] WebOnt-I5.3-014
+  [cons-running] WebOnt-I5.3-015
+  [cons-running] WebOnt-I5.5-001
+  [cons-running] WebOnt-I5.5-002
+  [cons-running] WebOnt-I5.5-005
+  [cons-running] WebOnt-I5.8-004
+  [cons-running] WebOnt-I5.8-006
+  [cons-running] WebOnt-I5.8-008
+  [cons-running] WebOnt-I5.8-009
+  [cons-running] WebOnt-I5.8-010
+  [cons-running] WebOnt-I5.8-011
+  [cons-running] WebOnt-I5.8-017
+  [cons-running] WebOnt-InverseFunctionalProperty-001
+  [cons-running] WebOnt-InverseFunctionalProperty-002
+  [cons-running] WebOnt-InverseFunctionalProperty-003
+  [cons-running] WebOnt-InverseFunctionalProperty-004
+  [cons-running] WebOnt-Nothing-002
+  [cons-running] WebOnt-Ontology-001
+  [cons-running] WebOnt-Ontology-004
+  [cons-running] WebOnt-Restriction-005-direct
+  [cons-running] WebOnt-Restriction-006
+  [cons-running] WebOnt-SymmetricProperty-001
+  [cons-running] WebOnt-SymmetricProperty-002
+  [cons-running] WebOnt-SymmetricProperty-003
+  [cons-running] WebOnt-TransitiveProperty-001
+  [cons-running] WebOnt-TransitiveProperty-002
+  [cons-running] WebOnt-allValuesFrom-001
+  [cons-running] WebOnt-cardinality-001
+  [cons-running] WebOnt-cardinality-002
+  [cons-running] WebOnt-cardinality-003
+  [cons-running] WebOnt-cardinality-004
+  [cons-running] WebOnt-cardinality-006
+  [cons-running] WebOnt-complementOf-001
+  [cons-running] WebOnt-description-logic-201
+  [cons-running] WebOnt-description-logic-202
+  [cons-running] WebOnt-description-logic-203
+  [cons-running] WebOnt-description-logic-204
+  [cons-running] WebOnt-description-logic-205
+  [cons-running] WebOnt-description-logic-206
+  [cons-running] WebOnt-description-logic-207
+  [cons-running] WebOnt-description-logic-208
+  [cons-running] WebOnt-description-logic-661
+  [cons-running] WebOnt-description-logic-662
+  [cons-running] WebOnt-description-logic-663
+  [cons-running] WebOnt-description-logic-664
+  [cons-running] WebOnt-description-logic-665
+  [cons-running] WebOnt-description-logic-667
+  [cons-running] WebOnt-description-logic-901
+  [cons-running] WebOnt-description-logic-903
+  [cons-running] WebOnt-differentFrom-001
+  [cons-running] WebOnt-differentFrom-002
+  [cons-running] WebOnt-disjointWith-001
+  [cons-running] WebOnt-disjointWith-002
+  [cons-running] WebOnt-distinctMembers-001
+  [cons-running] WebOnt-equivalentClass-001
+  [cons-running] WebOnt-equivalentClass-002
+  [cons-running] WebOnt-equivalentClass-003
+  [cons-running] WebOnt-equivalentClass-004
+  [cons-running] WebOnt-equivalentClass-006
+  [cons-running] WebOnt-equivalentClass-007
+  [cons-running] WebOnt-equivalentClass-008-Direct
+  [cons-running] WebOnt-equivalentProperty-001
+  [cons-running] WebOnt-equivalentProperty-002
+  [cons-running] WebOnt-equivalentProperty-003
+  [cons-running] WebOnt-equivalentProperty-004
+  [cons-running] WebOnt-equivalentProperty-005
+  [cons-running] WebOnt-equivalentProperty-006
+  [cons-running] WebOnt-extra-credit-002
+  [cons-running] WebOnt-extra-credit-003
+  [cons-running] WebOnt-extra-credit-004
+  [cons-running] WebOnt-imports-001
+  [cons-running] WebOnt-imports-003
+  [cons-running] WebOnt-imports-010
+  [cons-running] WebOnt-imports-011
+  [cons-running] WebOnt-intersectionOf-001
+  [cons-running] WebOnt-inverseOf-001
+  [cons-running] WebOnt-miscellaneous-011
   [owl_closure_timeout] DL RL-base closure exceeded 20s cap; falling back to un-closed graph
   [owl_closure_timeout] DL tableau closure exceeded 20s cap; falling back to RL closure
+  [cons-running] WebOnt-miscellaneous-302-Direct
+  [cons-running] WebOnt-oneOf-002
+  [cons-running] WebOnt-oneOf-003
+  [cons-running] WebOnt-oneOf-004
+  [cons-running] WebOnt-sameAs-001
+  [cons-running] WebOnt-someValuesFrom-001
+  [cons-running] WebOnt-someValuesFrom-003
   [owl_closure_timeout] DL tableau closure exceeded 20s cap; falling back to RL closure
+  [cons-running] WebOnt-unionOf-001
+  [cons-running] WebOnt-unionOf-002
+  [cons-running] WebOnt-unionOf-003
+  [cons-running] WebOnt-unionOf-004
+  [cons-running] bnode2somevaluesfrom
+  [cons-running] chain2trans1
+  [cons-running] owl2-rl-rules-fp-differentFrom
+  [cons-running] owl2-rl-rules-ifp-askey
+  [cons-running] owl2-rl-rules-ifp-differentFrom
+  [cons-running] rdfbased-sem-bool-intersection-inst-comp
+  [cons-running] rdfbased-sem-bool-intersection-inst-expr
+  [cons-running] rdfbased-sem-bool-intersection-term
+  [cons-running] rdfbased-sem-bool-union-inst-comp
+  [cons-running] rdfbased-sem-bool-union-term
+  [cons-running] rdfbased-sem-chain-def
+  [cons-running] rdfbased-sem-char-functional-inst
+  [cons-running] rdfbased-sem-char-inversefunc-data
+  [cons-running] rdfbased-sem-char-inversefunc-inst
+  [cons-running] rdfbased-sem-char-symmetric-inst
+  [cons-running] rdfbased-sem-char-transitive-inst
+  [cons-running] rdfbased-sem-class-nothing-term
+  [cons-running] rdfbased-sem-class-nothing-type
+  [cons-running] rdfbased-sem-class-thing-term
+  [cons-running] rdfbased-sem-class-thing-type
+  [cons-running] rdfbased-sem-enum-inst-included
+  [cons-running] rdfbased-sem-eqdis-eqclass-inst
+  [cons-running] rdfbased-sem-eqdis-eqclass-rflxv
+  [cons-running] rdfbased-sem-eqdis-eqclass-subclass-1
+  [cons-running] rdfbased-sem-eqdis-eqclass-subclass-2
+  [cons-running] rdfbased-sem-eqdis-eqclass-subst
+  [cons-running] rdfbased-sem-eqdis-eqclass-sym
+  [cons-running] rdfbased-sem-eqdis-eqclass-trans
+  [cons-running] rdfbased-sem-eqdis-eqprop-inst
+  [cons-running] rdfbased-sem-eqdis-eqprop-rflxv
+  [cons-running] rdfbased-sem-eqdis-eqprop-subprop-1
+  [cons-running] rdfbased-sem-eqdis-eqprop-subprop-2
+  [cons-running] rdfbased-sem-eqdis-eqprop-subst
+  [cons-running] rdfbased-sem-eqdis-eqprop-sym
+  [cons-running] rdfbased-sem-eqdis-eqprop-trans
+  [cons-running] rdfbased-sem-eqdis-sameas-rflxv
+  [cons-running] rdfbased-sem-eqdis-sameas-subst
+  [cons-running] rdfbased-sem-eqdis-sameas-sym
+  [cons-running] rdfbased-sem-eqdis-sameas-trans
+  [cons-running] rdfbased-sem-inv-inst
+  [cons-running] rdfbased-sem-key-def
+  [cons-running] rdfbased-sem-prop-backwardcompatiblewith-type-annot
+  [cons-running] rdfbased-sem-prop-comment-type
+  [cons-running] rdfbased-sem-prop-deprecated-type
+  [cons-running] rdfbased-sem-prop-incompatiblewith-type-annot
+  [cons-running] rdfbased-sem-prop-isdefinedby-type
+  [cons-running] rdfbased-sem-prop-label-type
+  [cons-running] rdfbased-sem-prop-priorversion-type-annot
+  [cons-running] rdfbased-sem-prop-seealso-type
+  [cons-running] rdfbased-sem-prop-versioninfo-type
+  [cons-running] rdfbased-sem-rdfs-domain-cond
+  [cons-running] rdfbased-sem-rdfs-range-cond
+  [cons-running] rdfbased-sem-rdfs-subclass-cond
+  [cons-running] rdfbased-sem-rdfs-subclass-trans
+  [cons-running] rdfbased-sem-rdfs-subprop-cond
+  [cons-running] rdfbased-sem-rdfs-subprop-trans
+  [cons-running] rdfbased-sem-rdfsext-domain-subprop
+  [cons-running] rdfbased-sem-rdfsext-domain-superclass
+  [cons-running] rdfbased-sem-rdfsext-range-subprop
+  [cons-running] rdfbased-sem-rdfsext-range-superclass
+  [cons-running] rdfbased-sem-restrict-allvalues-cmp-class
+  [cons-running] rdfbased-sem-restrict-allvalues-cmp-prop
+  [cons-running] rdfbased-sem-restrict-allvalues-inst-obj
+  [cons-running] rdfbased-sem-restrict-hasvalue-cmp-prop
+  [cons-running] rdfbased-sem-restrict-hasvalue-inst-obj
+  [cons-running] rdfbased-sem-restrict-hasvalue-inst-subj
+  [cons-running] rdfbased-sem-restrict-maxcard-inst-obj-one
+  [cons-running] rdfbased-sem-restrict-maxqcr-inst-obj-one
+  [cons-running] rdfbased-sem-restrict-somevalues-cmp-class
+  [cons-running] rdfbased-sem-restrict-somevalues-cmp-prop
+  [cons-running] rdfbased-sem-restrict-somevalues-inst-subj
+  [cons-running] somevaluesfrom2bnode
 Closure regime: DL
 OWL 2 test catalog: third_party/testing/owl/type-positive-entailment.rdf
-  parsed 5400 triples in 0.29s
+  parsed 5400 triples in 0.37s
 Totals: 206 test cases
   PositiveEntailmentTest:    206
   NegativeEntailmentTest:    0
@@ -430,7 +636,7 @@ Running 206 PositiveEntailmentTest(s) through owl_rl_closure_with_reflexivity (f
   PASS  rdfbased-sem-restrict-somevalues-inst-subj
   PASS  somevaluesfrom2bnode
 
-Profile-RL PositiveEntailmentTests: 103 pass, 101 fail (out of 204 RDF/XML tests), 2 skipped (functional-syntax-only) in 142.71s
+Profile-RL PositiveEntailmentTests: 103 pass, 101 fail (out of 204 RDF/XML tests), 2 skipped (functional-syntax-only) in 149.00s
   (bnode pattern matches any term at the position; full isomorphism deferred — see docs/designissues/2026-04-24-owl-runner-phase1.md)
 
 Running 206 ConsistencyTest(s) through is_inconsistent (closure fuel=100)...
@@ -643,4 +849,4 @@ Running 206 ConsistencyTest(s) through is_inconsistent (closure fuel=100)...
   PASS  rdfbased-sem-restrict-somevalues-inst-subj
   PASS  somevaluesfrom2bnode
 
-Profile-RL ConsistencyTests: 188 pass, 16 fail (out of 204), 2 skipped (functional-syntax-only) in 507.34s
+Profile-RL ConsistencyTests: 188 pass, 16 fail (out of 204), 2 skipped (functional-syntax-only) in 207.72s

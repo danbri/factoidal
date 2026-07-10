@@ -210,20 +210,20 @@ if [ "$1" = "--run" ]; then
     # observed was a DL gain, never a wrong answer (see the 2026-07-09
     # commit body for the full before->after table + disagreement audit).
     # DL runs the twin RL closures + Tableau, so it is slower than RL; the
-    # budgets below are sized for DL and the heavy catalogs
+    # budgets below are sized for DL incl. the Tableau.Refute satisfiability search (2026-07-10) and the heavy catalogs
     # (type-consistency, semantics-direct) stay off the dashboard hot path
     # per the extract_owl_scores note. Per-test cap keeps hard cases from
     # hanging the catalog (anti-pattern #17); a cap-trip is logged
     # [owl_closure_timeout] and scored on the RL fallback.
     export FACTOIDAL_OWL_CAP_SEC="${FACTOIDAL_OWL_CAP_SEC:-20}"
     for entry in \
-        "type-positive-entailment.rdf $OWL_TPE_LOG    dl 1800" \
+        "type-positive-entailment.rdf $OWL_TPE_LOG    dl 3600" \
         "type-negative-entailment.rdf $OWL_TNE_LOG    dl  300" \
-        "type-consistency.rdf         $OWL_TCON_LOG   dl 3600" \
+        "type-consistency.rdf         $OWL_TCON_LOG   dl 7200" \
         "type-inconsistency.rdf       $OWL_TINC_LOG   dl  900" \
         "profile-EL.rdf               $OWL_EL_LOG     rl  120" \
         "profile-QL.rdf               $OWL_QL_LOG     rl  120" \
-        "semantics-direct.rdf         $OWL_SEMDL_LOG  dl 5400"; do
+        "semantics-direct.rdf         $OWL_SEMDL_LOG  dl 9000"; do
       IFS=' ' read -r catalog log_path regime budget <<< "$entry"
       echo "Running OWL 2 catalog $catalog (regime=${regime^^}, ${budget}s budget)…"
       ( cd "$REPO_ROOT" && timeout "$budget" "$OWL_RUNNER" \
@@ -1533,9 +1533,9 @@ OWL_HTML=$(cat <<OWLEOF
   <code>type-positive-entailment.rdf</code>,
   <code>type-negative-entailment.rdf</code>,
   <code>type-consistency.rdf</code>, <code>type-inconsistency.rdf</code>,
-  and <code>semantics-direct.rdf</code>. The remaining catalog
-  (<code>syntax-dl.rdf</code>) needs a DL syntactic-profile checker
-  before it can score.
+  and <code>semantics-direct.rdf</code>. The ninth catalog
+  (<code>syntax-dl.rdf</code>) scores through the F\*
+  <code>OWL2.SyntaxDL</code> species checker (its row appears above).
 </p>
 <p style="margin: 0.3em 0 0.6em; color: var(--muted); font-size: 0.85em;">
   <strong>Tableau on the live codepath.</strong> The F\*
@@ -1562,9 +1562,17 @@ OWL_HTML=$(cat <<OWLEOF
   (1) tests that use OWL Functional-Style Syntax (not RDF/XML)
   trigger <code>FAIL/no-premise</code> — these need fuller FSS parser
   coverage before scoring is meaningful; (2) Inconsistency /
-  entailment failures that neither RL closure nor the positive-sound
-  Tableau subset derive — closing these needs the negative
-  (refutation) side of the tableau, not just materialisation.
+  entailment failures beyond the tableau's decided fragment. The
+  refutation side landed 2026-07-10 (<code>Tableau.Refute.fst</code>:
+  NNF, lazy TBox unfolding, disjunction branching, ∃-witnesses,
+  complement / min-max / counting / bottom-property clashes — each
+  <code>Some false</code> carries a per-rule Direct Semantics
+  soundness argument, and the DL rows below score it), so what
+  remains on the inconsistency side is the undecided residue:
+  nominals (<code>owl:oneOf</code>), datatype facets, inverse-role
+  interaction, and searches that exhaust the refuter's linear work
+  budget (deep propositional encodings) — indeterminate results fall
+  back to the RL verdict, never below it.
 </p>
 <div class="suites">
   ${TABLEAU_ROW}

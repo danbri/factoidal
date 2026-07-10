@@ -27,9 +27,95 @@
   [pe-running] bnode2somevaluesfrom
   [pe-running] chain2trans1
   [pe-running] somevaluesfrom2bnode
+  [cons-running] FS2RDF-different-individuals-2-annotation-ar
+  [cons-running] FS2RDF-different-individuals-2-ar
+  [cons-running] FS2RDF-different-individuals-3-annotation-ar
+  [cons-running] FS2RDF-different-individuals-3-ar
+  [cons-running] FS2RDF-disjoint-classes-2-annotation-ar
+  [cons-running] FS2RDF-disjoint-classes-2-ar
+  [cons-running] FS2RDF-disjoint-classes-3-annotation-ar
+  [cons-running] FS2RDF-disjoint-classes-3-ar
+  [cons-running] FS2RDF-domain-range-simple-ar
+  [cons-running] FS2RDF-equivalent-classes-2-annotation-ar
+  [cons-running] FS2RDF-equivalent-classes-2-ar
+  [cons-running] FS2RDF-equivalent-classes-3-annotation-ar
+  [cons-running] FS2RDF-equivalent-classes-3-ar
+  [cons-running] FS2RDF-no-builtin-prefixes-ar
+  [cons-running] FS2RDF-ontology-annotation-annotation-ar
+  [cons-running] FS2RDF-propertychain-2-annotated-ar
+  [cons-running] FS2RDF-propertychain-2-ar
+  [cons-running] FS2RDF-same-individual-2-ar
+  [cons-running] New-Feature-AnnotationAnnotations-001
+  [cons-running] New-Feature-AxiomAnnotations-001
+  [cons-running] New-Feature-Keys-001
+  [cons-running] New-Feature-Keys-003
+  [cons-running] New-Feature-Keys-004
+  [cons-running] New-Feature-Keys-005
+  [cons-running] New-Feature-Keys-007
+  [cons-running] New-Feature-ObjectPropertyChain-001
+  [cons-running] New-Feature-ObjectPropertyChain-BJP-002
+  [cons-running] New-Feature-ObjectPropertyChain-BJP-003
+  [cons-running] New-Feature-ObjectPropertyChain-BJP-004
+  [cons-running] New-Feature-ReflexiveProperty-001
+  [cons-running] New-Feature-SelfRestriction-001
+  [cons-running] New-Feature-SelfRestriction-002
+  [cons-running] WebOnt-AnnotationProperty-003
+  [cons-running] WebOnt-AnnotationProperty-004
+  [cons-running] WebOnt-I4.6-005
+  [cons-running] WebOnt-I4.6-005-Direct
+  [cons-running] WebOnt-I5.26-001
+  [cons-running] WebOnt-I5.26-002
+  [cons-running] WebOnt-I5.26-005
+  [cons-running] WebOnt-I5.26-010
+  [cons-running] WebOnt-I5.5-005
+  [cons-running] WebOnt-I5.8-011
+  [cons-running] WebOnt-Ontology-001
+  [cons-running] WebOnt-Thing-004
+  [cons-running] WebOnt-backwardCompatibleWith-002
+  [cons-running] WebOnt-differentFrom-001
+  [cons-running] WebOnt-disjointWith-001
+  [cons-running] WebOnt-disjointWith-003
+  [cons-running] WebOnt-disjointWith-004
+  [cons-running] WebOnt-disjointWith-005
+  [cons-running] WebOnt-disjointWith-006
+  [cons-running] WebOnt-disjointWith-007
+  [cons-running] WebOnt-disjointWith-008
+  [cons-running] WebOnt-disjointWith-009
+  [cons-running] WebOnt-equivalentClass-001
+  [cons-running] WebOnt-equivalentClass-002
+  [cons-running] WebOnt-equivalentClass-003
+  [cons-running] WebOnt-equivalentClass-008
+  [cons-running] WebOnt-equivalentClass-008-Direct
+  [cons-running] WebOnt-equivalentProperty-001
+  [cons-running] WebOnt-equivalentProperty-002
+  [cons-running] WebOnt-equivalentProperty-003
+  [cons-running] WebOnt-imports-011
+  [cons-running] WebOnt-miscellaneous-302
+  [cons-running] WebOnt-miscellaneous-302-Direct
+  [cons-running] WebOnt-miscellaneous-303
+  [cons-running] WebOnt-sameAs-001
+  [cons-running] WebOnt-someValuesFrom-003
+  [cons-running] bnode2somevaluesfrom
+  [cons-running] chain2trans1
+  [cons-running] owl2-rl-invalid-rightside-somevaluesfrom
+  [cons-running] somevaluesfrom2bnode
+  [inc-running] DisjointClasses-002
+  [inc-running] New-Feature-BottomDataProperty-001
+  [inc-running] New-Feature-BottomObjectProperty-001
+  [inc-running] New-Feature-Keys-002
+  [inc-running] New-Feature-Keys-006
+  [inc-running] New-Feature-NegativeDataPropertyAssertion-001
+  [inc-running] New-Feature-NegativeObjectPropertyAssertion-001
+  [inc-running] Plus and Minus Zero are Distinct
+  [inc-running] WebOnt-Nothing-001
+  [inc-running] WebOnt-Restriction-001
+  [inc-running] WebOnt-Restriction-002
+  [inc-running] WebOnt-Thing-003
+  [inc-running] WebOnt-Thing-005
+  [inc-running] string-integer-clash
 Closure regime: RL
 OWL 2 test catalog: third_party/testing/owl/profile-EL.rdf
-  parsed 1809 triples in 0.06s
+  parsed 1809 triples in 0.07s
 Totals: 87 test cases
   PositiveEntailmentTest:    29
   NegativeEntailmentTest:    6
@@ -68,7 +154,7 @@ Running 29 PositiveEntailmentTest(s) through owl_rl_closure_with_reflexivity (fu
   PASS  chain2trans1
   FAIL  somevaluesfrom2bnode
 
-Profile-RL PositiveEntailmentTests: 21 pass, 8 fail (out of 29 RDF/XML tests), 0 skipped (functional-syntax-only) in 13.50s
+Profile-RL PositiveEntailmentTests: 21 pass, 8 fail (out of 29 RDF/XML tests), 0 skipped (functional-syntax-only) in 9.83s
   (bnode pattern matches any term at the position; full isomorphism deferred — see docs/designissues/2026-04-24-owl-runner-phase1.md)
 
 Running 6 NegativeEntailmentTest(s) through owl_rl_closure_with_reflexivity (fuel=100)...
@@ -79,7 +165,7 @@ Running 6 NegativeEntailmentTest(s) through owl_rl_closure_with_reflexivity (fue
   PASS  WebOnt-equivalentClass-008
   PASS  WebOnt-miscellaneous-302
 
-Profile-RL NegativeEntailmentTests: 6 pass, 0 fail (out of 6) in 0.08s
+Profile-RL NegativeEntailmentTests: 6 pass, 0 fail (out of 6) in 0.10s
 
 Running 72 ConsistencyTest(s) through is_inconsistent (closure fuel=100)...
   PASS  FS2RDF-different-individuals-2-annotation-ar
@@ -155,7 +241,7 @@ Running 72 ConsistencyTest(s) through is_inconsistent (closure fuel=100)...
   PASS  owl2-rl-invalid-rightside-somevaluesfrom
   PASS  somevaluesfrom2bnode
 
-Profile-RL ConsistencyTests: 72 pass, 0 fail (out of 72), 0 skipped (functional-syntax-only) in 11.00s
+Profile-RL ConsistencyTests: 72 pass, 0 fail (out of 72), 0 skipped (functional-syntax-only) in 10.50s
 
 Running 14 InconsistencyTest(s) through is_inconsistent (closure fuel=100)...
   PASS  DisjointClasses-002
@@ -173,4 +259,4 @@ Running 14 InconsistencyTest(s) through is_inconsistent (closure fuel=100)...
   FAIL/unexpected-consistency  WebOnt-Thing-005
   PASS  string-integer-clash
 
-Profile-RL InconsistencyTests: 9 pass, 5 fail (out of 14), 0 skipped (functional-syntax-only) in 0.17s
+Profile-RL InconsistencyTests: 9 pass, 5 fail (out of 14), 0 skipped (functional-syntax-only) in 0.20s

@@ -48,10 +48,14 @@ attribution. When one reports, LAND IT (recipe below). Agent → goal:
 
 ## Queue after landings (in order)
 
-- OWL tableau refutation (#98) — AFTER syntax-dl (same modules). The
-  deepest remaining work: clash detection, disjunction branching,
-  existential witnesses, cardinality merges, nominals. Target:
-  inconsistency 36/81 of 117.
+- OWL tableau refutation (#98) — LANDED 2026-07-10
+  (`Tableau.Refute.fst` + `owl_runner --regime dl` wiring + the
+  Parser.RDFXML parseType="Collection" anonymous-item fix it exposed).
+  Clash detection, disjunction branching, existential witnesses and
+  differentFrom-based cardinality counting shipped; nominals
+  (owl:oneOf), datatype facets and finite-model counting remain the
+  enumerated residue (see the commit's bucket table and
+  owl_type_inconsistency_results.log).
 - GRDDL Tracks 2+3 — AFTER XSLT; re-measure the 8 fails first.
   Scoping: 2026-07-10-xslt-grddl-completion-scoping.md.
 - GeoSPARQL map fix + fullscreen (#105) — post 21 has no basemap (CSP

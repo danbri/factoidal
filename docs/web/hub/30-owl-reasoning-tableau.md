@@ -172,10 +172,18 @@ conformance catalogs (positive-entailment, inconsistency,
 negative-entailment) each carry a large remaining fail count. The DL
 regime *raised* the pass counts over RL — the tableau flips a set of
 `FAIL → PASS` with zero disagreements (every RL≠DL difference is
-sound) — but it does not clear the catalogs. The clusters that remain
-need constructs the tableau does not yet decide: full cardinality
-refutation, nominal (`owl:oneOf`) enumeration reasoning, and classical
-negation with dual-branch search. The live per-catalog numbers are the
+sound) — but it does not clear the catalogs. The refutation side
+landed 2026-07-10 as `Tableau.Refute.fst`: a clash-detecting
+satisfiability check (NNF, lazy TBox unfolding, disjunction branching
+with a threaded work budget, existential witnesses, and complement /
+min-max / counting / bottom-property clash rules, each with a written
+Direct Semantics soundness argument) now scores the DL-regime
+inconsistency and consistency rows. The clusters that remain need
+constructs the calculus still does not decide: nominal (`owl:oneOf`)
+enumeration reasoning, datatype-facet contradictions, inverse-role
+interaction, and propositional encodings deep enough to exhaust the
+refuter's linear budget (indeterminate results fall back to the RL
+verdict, never below it). The live per-catalog numbers are the
 OWL rows on the [test-results dashboard]({{ '/test-results/' | url }});
 they are not reproduced here so they cannot go stale.
 
@@ -207,15 +215,20 @@ It is tracked in issue
 from an anchor to a `UNION` is the documented fix before relying on it
 for OWL DL outside the entailment-regime suite.
 
-**Constructs the module excludes by design.** `Tableau.fst`'s own
-banner enumerates its class-expression grammar and marks the deferred
-stages: no fresh-individual skolemisation for `∃` beyond the ABox's own
-successors, no full classical-negation branch search, and
-`owl:maxCardinality` / `owl:cardinality` refutation only at `k = 0`
-(true `max-N` and `exactly-N` refutation needs `owl:differentFrom`
-tracking under the no-unique-name assumption). Membership it cannot
-justify model-theoretically it returns as *unknown*, and the caller
-falls back to the Datalog closure — returning unknown is always sound.
+**The materialise/refute split.** `Tableau.fst`'s materialisation
+stays positive-sound by design: membership it cannot justify
+model-theoretically it returns as *unknown*, and the caller falls back
+to the Datalog closure — returning unknown is always sound. The
+formerly deferred negative side lives in its sibling
+`Tableau.Refute.fst` (2026-07-10): fresh-individual `∃`-witnesses
+(uncounted, so no-UNA merging can never be contradicted), classical
+negation as NNF plus complement-clash with disjunction branch search,
+and `max-N` refutation past `k = 0` — counting only successors that
+are *pairwise provably distinct* (`owl:differentFrom`, or same-datatype
+literal values), exactly the no-unique-name discipline the old banner
+said it was waiting for. Where the refuter runs out of budget or meets
+a construct outside its fragment it reports *indeterminate*, and the
+runner keeps the RL verdict.
 
 Every live cell above is pinned in
 [`tests/hub/post30_test.mjs`](https://github.com/danbri/factoidal/blob/claude/main/tests/hub/post30_test.mjs).
