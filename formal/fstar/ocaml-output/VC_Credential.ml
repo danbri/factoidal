@@ -6,16 +6,6 @@ let rec vc_chars_contain (cs : FStar_Char.char Prims.list)
   | c::tl -> (c = target) || (vc_chars_contain tl target)
 let vc_string_contains_char (s : Prims.string) (target : FStar_Char.char) :
   Prims.bool= vc_chars_contain (FStar_String.list_of_string s) target
-let rec vc_chars_contain_digit (cs : FStar_Char.char Prims.list) :
-  Prims.bool=
-  match cs with
-  | [] -> false
-  | c::tl ->
-      (let n = FStar_Char.int_of_char c in
-       (n >= (Prims.of_int (48))) && (n <= (Prims.of_int (57)))) ||
-        (vc_chars_contain_digit tl)
-let vc_looks_like_date_attempt (s : Prims.string) : Prims.bool=
-  vc_chars_contain_digit (FStar_String.list_of_string s)
 let vc_looks_like_iri (s : Prims.string) : Prims.bool=
   (vc_string_contains_char s (FStar_Char.char_of_int (Prims.of_int (0x3A))))
     &&
@@ -270,15 +260,12 @@ let vc_check_temporal_lexical (field_name : Prims.string)
   match Parser_JSON.json_get_field field_name v with
   | FStar_Pervasives_Native.None -> VC_Pass
   | FStar_Pervasives_Native.Some (Parser_JSON.JString s) ->
-      if vc_looks_like_date_attempt s
-      then
-        (match XSD_Datatypes.dt_parse_ms s with
-         | FStar_Pervasives_Native.Some uu___ -> VC_Pass
-         | FStar_Pervasives_Native.None ->
-             VC_Fail
-               (Prims.strcat field_name
-                  " is not a well-formed xsd:dateTime lexical form"))
-      else VC_Pass
+      (match XSD_Datatypes.dt_parse_ms s with
+       | FStar_Pervasives_Native.Some uu___ -> VC_Pass
+       | FStar_Pervasives_Native.None ->
+           VC_Fail
+             (Prims.strcat field_name
+                " is not a well-formed xsd:dateTime lexical form"))
   | FStar_Pervasives_Native.Some uu___ ->
       VC_Fail (Prims.strcat field_name " must be a string")
 let vc_check_temporal_ordering (v : Parser_JSON.json_val) : vc_verdict=
@@ -287,15 +274,12 @@ let vc_check_temporal_ordering (v : Parser_JSON.json_val) : vc_verdict=
   with
   | (FStar_Pervasives_Native.Some (Parser_JSON.JString sf),
      FStar_Pervasives_Native.Some (Parser_JSON.JString su)) ->
-      if (vc_looks_like_date_attempt sf) && (vc_looks_like_date_attempt su)
-      then
-        (match XSD_Datatypes.dt_cmp sf su with
-         | FStar_Pervasives_Native.Some c ->
-             if c <= Prims.int_zero
-             then VC_Pass
-             else VC_Fail "validFrom must not be after validUntil"
-         | FStar_Pervasives_Native.None -> VC_Pass)
-      else VC_Pass
+      (match XSD_Datatypes.dt_cmp sf su with
+       | FStar_Pervasives_Native.Some c ->
+           if c <= Prims.int_zero
+           then VC_Pass
+           else VC_Fail "validFrom must not be after validUntil"
+       | FStar_Pervasives_Native.None -> VC_Pass)
   | (uu___, uu___1) -> VC_Pass
 let vc_check_validity_period (v : Parser_JSON.json_val) : vc_verdict=
   vc_then (vc_check_temporal_lexical "validFrom" v)

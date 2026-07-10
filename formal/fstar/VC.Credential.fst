@@ -80,9 +80,12 @@ module VC.Credential
 //   - validFrom/validUntil (VCDM 2.0 §4.9): well-formed xsd:dateTime
 //     lexical form when present (reuses `XSD.Datatypes.dt_parse_ms`),
 //     and validFrom <= validUntil when both are present and both parse
-//     (`XSD.Datatypes.dt_cmp`) — see `vc_looks_like_date_attempt`'s
-//     comment and "Known residuals" below for why this does NOT catch
-//     `credential-validUntil-validFrom-fail.json`.
+//     (`XSD.Datatypes.dt_cmp`). The two temporality fixtures'
+//     placeholder text ("PAST DATE"/"FUTURE DATE") is substituted with
+//     concrete timestamps by the RUNNER's fixture-preparation step
+//     (mirroring the upstream harness's own `testTemporality`
+//     substitution) before the bytes reach this module — so both the
+//     lexical and the ordering check apply unconditionally here.
 //   - name/description (document-level, and issuer.name/
 //     issuer.description): a plain string, OR a language-map object
 //     `{"@value": <string>, "@language"?, "@direction"?}` with NO other
@@ -101,27 +104,23 @@ module VC.Credential
 // keeps this side pure) to build the base term/protected map. Its
 // verdict is folded into VC_Fail in vc_check_document below.
 //
-// Known residual (1 of 120 fixtures, documented, not a silent guess):
-//   - `credential-validUntil-validFrom-fail.json` (1 fixture): its
-//     `-ok` sibling's raw bytes carry literal placeholder text
-//     ("PAST DATE"/"FUTURE DATE") that the vendored corpus's own
-//     `tests/assertions.js` `testTemporality()` helper overwrites with
-//     real computed timestamps before ever issuing them — this offline
-//     reader only ever sees the un-substituted sentinel text, which is
-//     structurally identical between the `-ok` and `-fail` file (same
-//     shape, swapped). See `vc_check_temporal_lexical`'s comment for
-//     the full reasoning; the short version is the hard constraint
-//     (zero false-fails on `-ok` fixtures) rules out any check that
-//     would catch this `-fail` fixture without also flagging its `-ok`
-//     sibling.
+// The former "known residual" on `credential-validUntil-validFrom-
+// fail.json` is CLOSED: the runner now performs the same placeholder
+// substitution the upstream harness's `testTemporality()` helper does
+// ("PAST DATE"/"FUTURE DATE" -> concrete xsd:dateTime values) as
+// fixture preparation, so this module sees real timestamps and the
+// §4.9 ordering check below scores both temporality fixtures on
+// engine behavior.
 //
 // Reference: VC Data Model 2.0, W3C Recommendation 2025-05-15
 // (https://www.w3.org/TR/vc-data-model-2.0/). Corpus:
 // third_party/testing/vc (w3c/vc-data-model-2.0-test-suite),
 // tests/input/*.json (120 fixtures, `-ok`/`-fail` filename-suffixed;
-// a handful of exceptions — `-fail-or-inject` and unsuffixed
-// self-asserted-vc fixtures — are ambiguous verdicts the runner skips,
-// see that file's header comment).
+// `-fail-or-inject` fixtures are scored as expect-FAIL — a verifier
+// that cannot inject MUST reject, per the upstream `injectOrReject`
+// assertion — and the 3 unsuffixed self-asserted-vc fixtures stay
+// skipped, see the runner's header comment for the per-fixture
+// reasons).
 // ============================================================================
 
 open FStar.String
@@ -158,20 +157,6 @@ let rec vc_chars_contain (cs : list FStar.Char.char) (target : FStar.Char.char)
 
 let vc_string_contains_char (s : string) (target : FStar.Char.char) : bool =
   vc_chars_contain (String.list_of_string s) target
-
-// Does `s` contain at least one ASCII digit? Used by the validFrom/
-// validUntil check below to distinguish an attempted-but-malformed
-// dateTime lexical form (which MUST be rejected) from the vendored
-// corpus's own templated placeholder text ("PAST DATE"/"FUTURE DATE"
-// — see that check's comment for why).
-let rec vc_chars_contain_digit (cs : list FStar.Char.char) : Tot bool (decreases cs) =
-  match cs with
-  | [] -> false
-  | c :: tl ->
-    (let n = FStar.Char.int_of_char c in n >= 48 && n <= 57) || vc_chars_contain_digit tl
-
-let vc_looks_like_date_attempt (s : string) : bool =
-  vc_chars_contain_digit (String.list_of_string s)
 
 // A string "looks like an IRI reference" for this module's cheap
 // well-formedness purposes: it contains a ':' (scheme/URN/DID
@@ -492,48 +477,36 @@ let vc_check_proof (v : json_val) : vc_verdict =
 // validUntil. Reuses XSD.Datatypes.dt_parse_ms/dt_cmp (moved there
 // from SHACL.Validation.fst) rather than re-deriving dateTime parsing.
 //
-// KNOWN RESIDUAL — credential-validUntil-validFrom-{ok,fail}.json:
-// the vendored corpus's own tests/assertions.js `testTemporality`
-// helper loads these two fixtures and OVERWRITES their validFrom/
-// validUntil fields with real computed timestamps (`createTimeStamp`)
-// before ever issuing them — the raw vendored JSON bytes this offline
-// runner reads still carry the un-substituted placeholder text
-// ("PAST DATE"/"FUTURE DATE" — grep tests/assertions.js:110-124 in
-// third_party/testing/vc for the substitution). Those two placeholder
-// strings contain no digit, so vc_looks_like_date_attempt below
-// intentionally treats them as "not a date-shaped value" and skips
-// well-formedness/ordering enforcement on both — the alternative
-// (validating them as literal dateTime lexical forms) would flag the
-// -ok fixture as a false FAIL, which the hard constraint (zero false
-// fails on -ok fixtures) rules out. Net effect: the -ok sibling is
-// scored correctly; the -fail sibling remains a known, documented miss
-// for the SAME underlying reason as the context-driven type-
-// redefinition cluster below — this offline structural reader lacks
-// information (here: runtime-substituted values; there: resolved
-// JSON-LD term mappings) the upstream mocha harness has access to.
+// The temporality fixtures credential-validUntil-validFrom-{ok,fail}
+// .json reach this module with REAL timestamps: the vendored corpus's
+// own tests/assertions.js `testTemporality` helper overwrites their
+// validFrom/validUntil placeholder text ("PAST DATE"/"FUTURE DATE")
+// with computed timestamps (`createTimeStamp`, now -/+ 1 year) before
+// issuing, and our offline runner replicates that substitution in its
+// fixture-preparation step (bin/vc-runner/vc_runner.ml, deterministic
+// values instead of now()-relative ones). Both checks below therefore
+// apply unconditionally — any non-dateTime string in validFrom/
+// validUntil is rejected, per §4.9's "MUST be a [XMLSCHEMA11-2]
+// dateTimeStamp string value".
 // ================================================================
 
 let vc_check_temporal_lexical (field_name : string) (v : json_val) : vc_verdict =
   match json_get_field field_name v with
   | None -> VC_Pass
   | Some (JString s) ->
-    if vc_looks_like_date_attempt s then
-      (match XSD.dt_parse_ms s with
-       | Some _ -> VC_Pass
-       | None -> VC_Fail (field_name ^ " is not a well-formed xsd:dateTime lexical form"))
-    else VC_Pass
+    (match XSD.dt_parse_ms s with
+     | Some _ -> VC_Pass
+     | None -> VC_Fail (field_name ^ " is not a well-formed xsd:dateTime lexical form"))
   | Some _ -> VC_Fail (field_name ^ " must be a string")
 
 let vc_check_temporal_ordering (v : json_val) : vc_verdict =
   match json_get_field "validFrom" v, json_get_field "validUntil" v with
   | Some (JString sf), Some (JString su) ->
-    if vc_looks_like_date_attempt sf && vc_looks_like_date_attempt su then
-      (match XSD.dt_cmp sf su with
-       | Some c -> if c <= 0 then VC_Pass else VC_Fail "validFrom must not be after validUntil"
-       | None -> VC_Pass (* incomparable (mixed tz/naive) or already-unparseable — the
-                             lexical check above is the one that flags an unparseable
-                             value; don't double-report it here *))
-    else VC_Pass
+    (match XSD.dt_cmp sf su with
+     | Some c -> if c <= 0 then VC_Pass else VC_Fail "validFrom must not be after validUntil"
+     | None -> VC_Pass (* incomparable (mixed tz/naive) or already-unparseable — the
+                           lexical check above is the one that flags an unparseable
+                           value; don't double-report it here *))
   | _, _ -> VC_Pass
 
 let vc_check_validity_period (v : json_val) : vc_verdict =

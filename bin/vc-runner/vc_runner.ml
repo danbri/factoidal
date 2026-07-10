@@ -21,15 +21,45 @@
    which structural checks Stage 1 implements):
      - "*-ok.json"   -> expect a PASS (VC_Pass).
      - "*-fail.json" -> expect a FAIL (VC_Fail _), any reason.
-     - anything else (6 fixtures in the vendored corpus: 3 carry
-       "-fail-or-inject" — the endpoint may inject the missing
-       property instead of rejecting the document, an intentionally
-       AMBIGUOUS verdict this offline runner cannot resolve — and 3
-       "presentation-self-asserted-vc-*" fixtures carry no -ok/-fail
-       suffix at all, since they test a holder/issuer identity
-       cross-check the upstream suite exercises via signature
-       verification, not raw JSON shape) -> SKIP, scored separately,
-       never folded into the pass/fail denominator.
+     - "*-fail-or-inject.json" (3 fixtures) -> expect a FAIL. The
+       upstream `injectOrReject` assertion (tests/assertions.js)
+       gives an ISSUER endpoint two compliant behaviors: inject the
+       missing/incomplete @context and return a repaired VC, or
+       reject. Factoidal's checker is a validator — it has no issue()
+       operation and never injects — so for this implementation the
+       upstream assertion reduces to: MUST reject. Scored, not
+       skipped.
+     - the 3 "presentation-self-asserted-vc-*" fixtures without a
+       suffix -> SKIP, each with a per-fixture reason (see
+       skip_reason_for below). Short version: they are UNSIGNED
+       templates for the holder-claims tests that upstream REMOVED as
+       unsound (w3c/vc-data-model-2.0-test-suite commit 52b25a8,
+       2025-02-09 "Remove self asserted claims (holder claims) vp
+       statements" — present in the vendored submodule's history;
+       the vendored checkout is a descendant, so the official suite
+       does not exercise these fixtures at all). They cannot be
+       refereed offline: the mismatch fixtures are shape-identical to
+       `presentation-holder-ok.json` (embedded VC without its own
+       proof, holder <> issuer), which MUST pass — only the upstream
+       harness's runtime signing step (`createLocalVp`) distinguished
+       them, and that step itself overwrites the fixture's issuer
+       (`_signCredentials`), which is why upstream withdrew the tests.
+       Skips are scored separately, never folded into the pass/fail
+       denominator.
+
+   Fixture preparation (string-level, before the engine sees bytes —
+   rule-#11 glue, no validation semantics): the two temporality
+   fixtures carry literal placeholder text ("PAST DATE"/"FUTURE DATE")
+   that the upstream harness's `testTemporality` helper
+   (tests/assertions.js) overwrites with computed timestamps
+   (`createTimeStamp`, now -/+ 1 year) before issuing. This runner
+   replicates that substitution with DETERMINISTIC values
+   (2020-01-01T00:00:00Z / 2099-01-01T00:00:00Z) so the F* checker
+   sees the same shape the official harness produces: the `-ok`
+   fixture gets validFrom in the past + validUntil in the future, the
+   `-fail` fixture the swapped (validFrom AFTER validUntil) pair its
+   filename verdict requires. Applied uniformly to every fixture read
+   (only those two files carry the placeholders today).
 
    !! THIS IS I/O GLUE — NO VC STRUCTURAL-VALIDATION LOGIC !! Every
    check (the @context sentinel, type membership, credentialSubject
@@ -120,7 +150,38 @@ let classify_path path =
   let base = Filename.remove_extension (Filename.basename path) in
   if strip_suffix ~suffix:"-ok" base then Expect_Pass
   else if strip_suffix ~suffix:"-fail" base then Expect_Fail
+  else if strip_suffix ~suffix:"-fail-or-inject" base then
+    (* Upstream injectOrReject: an issuer may inject the missing
+       @context or reject. A validator that never injects MUST
+       reject — scored as expect-FAIL for this implementation. *)
+    Expect_Fail
   else Expect_Ambiguous
+
+(* Per-fixture skip reasons for the 3 unsuffixed fixtures. These are
+   precise statements of what is missing, not a deferral: the eddsa-
+   rdfc-2022 verify stage EXISTS (VC.DataIntegrity.fst, exercised by
+   --crypto below), but these fixtures carry nothing it could verify. *)
+let skip_reason_for path =
+  match Filename.basename path with
+  | "presentation-self-asserted-vc-no-holder.json" ->
+    Some "unsigned template (no proof anywhere in the fixture) for the \
+          upstream holder-claims test removed as unsound in \
+          w3c/vc-data-model-2.0-test-suite@52b25a8 (2025-02-09); the \
+          raw shape (VP embedding a proof-less VC, no holder) is \
+          identical to presentation-multiple-vc-ok.json / \
+          presentation-vc-ok.json, which MUST pass — only the removed \
+          harness's runtime signing step distinguished them"
+  | "presentation-self-asserted-vc-holder-mismatch.json"
+  | "presentation-self-asserted-vc-issuer-mismatch.json" ->
+    Some "unsigned template (no proof anywhere in the fixture) for the \
+          upstream holder-claims test removed as unsound in \
+          w3c/vc-data-model-2.0-test-suite@52b25a8 (2025-02-09); the \
+          raw shape (holder <> embedded proof-less VC's issuer) is \
+          identical to presentation-holder-ok.json, which MUST pass — \
+          and the removed harness's own preparation (_signCredentials) \
+          overwrote the fixture's issuer, destroying the mismatch \
+          under test, which is why upstream withdrew the test"
+  | _ -> None
 
 let expected_label = function
   | Expect_Pass -> "ok"
@@ -169,15 +230,31 @@ let load_v2_context () =
 
 type outcome = Pass | Fail of string | Skip of string
 
+(* Fixture preparation: replicate the upstream harness's
+   testTemporality placeholder substitution (tests/assertions.js) with
+   deterministic timestamps. String-level glue applied before the
+   engine sees the bytes; the validity-period semantics live in
+   VC.Credential.fst (rule #11). *)
+let substitute_placeholders content =
+  let sub placeholder value s =
+    Str.global_replace (Str.regexp_string placeholder) value s in
+  content
+  |> sub "PAST DATE" "2020-01-01T00:00:00Z"
+  |> sub "FUTURE DATE" "2099-01-01T00:00:00Z"
+
 let run_fixture v2ctx path =
-  match classify_path path with
-  | Expect_Ambiguous ->
-    Skip "filename has neither -ok nor -fail suffix (fail-or-inject or \
-          identity-cross-check fixture — not a plain structural verdict)"
-  | expected ->
+  match skip_reason_for path with
+  | Some reason -> Skip reason
+  | None ->
+    (match classify_path path with
+     | Expect_Ambiguous ->
+       Skip "filename has neither -ok nor -fail suffix and no recorded \
+             per-fixture disposition — refusing to guess a verdict"
+     | expected ->
     (match read_file path with
      | None -> Fail "could not read file"
-     | Some content ->
+     | Some raw ->
+       let content = substitute_placeholders raw in
        (match VC_Credential.vc_check_from_string v2ctx content with
         | VC_Credential.VC_Pass ->
           (match expected with
@@ -188,7 +265,7 @@ let run_fixture v2ctx path =
           (match expected with
            | Expect_Fail -> Pass
            | Expect_Pass -> Fail (Printf.sprintf "expected Pass, got FAIL — %s" reason)
-           | Expect_Ambiguous -> assert false)))
+           | Expect_Ambiguous -> assert false))))
 
 (* ------------------------------------------------------------------ *)
 (* Suite run. *)
@@ -378,11 +455,15 @@ let print_help () =
      \  ./vc_runner -v|--verbose   Show SKIP reasons too (FAIL always shown)\n\
      \  ./vc_runner --help         Show this help\n\
      \n\
-     Status: Stage 1 (required-property + type-membership checks only —\n\
-     see formal/fstar/VC.Credential.fst's header for the exact rule set\n\
-     and what is deferred to Stage 2). Scored against the 120 vendored\n\
-     tests/input/*.json fixtures from w3c/vc-data-model-2.0-test-suite;\n\
-     6 fixtures without a plain -ok/-fail suffix are SKIPped, not guessed.\n"
+     Status: structural checks (see formal/fstar/VC.Credential.fst's\n\
+     header for the exact rule set). Scored against the 120 vendored\n\
+     tests/input/*.json fixtures from w3c/vc-data-model-2.0-test-suite.\n\
+     -fail-or-inject fixtures are scored as expect-FAIL (a validator\n\
+     that cannot inject MUST reject); the two temporality fixtures'\n\
+     placeholders are substituted with concrete dates before checking,\n\
+     as the upstream harness does; the 3 unsigned self-asserted-vc\n\
+     fixtures (holder-claims tests upstream removed as unsound) are\n\
+     SKIPped with per-fixture reasons, not guessed.\n"
 
 let () =
   let args = Array.to_list Sys.argv |> List.tl in
