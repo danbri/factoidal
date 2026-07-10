@@ -26,6 +26,5 @@ triggers:
 # JSON-LD 1.1 row, 2026-07-10). Counted as failing until measured, per
 # the project's completeness ledger — not softened to "skipped".
 remaining:
-  - "flatten suite (Flattening Algorithm): not yet run — no runner exists"
   - "frame suite (Framing Algorithm): not yet run — no runner exists"
   - "html suite (HTML to RDF, JSON-LD embedded in HTML documents): not yet run — no runner exists"

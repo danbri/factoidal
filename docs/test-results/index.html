@@ -398,7 +398,7 @@
 <header>
   <div class="inner">
     <div class="rendered-pill" title="Rendered = when this page was last regenerated. Tests = when the *_results.log files inside the repository were last updated. Both UTC.">
-      <span class="row"><span class="label">Rendered</span><strong>2026-07-10 11:18 UTC</strong></span>
+      <span class="row"><span class="label">Rendered</span><strong>2026-07-10 11:19 UTC</strong></span>
       <span class="row"><span class="label">Tests</span><strong class="tests">2026-07-10 01:56 UTC</strong></span>
     </div>
     <h1>W3C test results</h1>
@@ -1141,12 +1141,12 @@
 <details class="family-node green" id="jsonld11">
   <summary>
     <span class="fam-name">JSON-LD 1.1</span>
-    <span class="fam-score">1137/0/15 of 1152 &middot; 4 of 7 suites</span>
-    <span class="gap-badge">3 gaps</span>
+    <span class="fam-score">1193/0/17 of 1210 &middot; 5 of 7 suites</span>
+    <span class="gap-badge">2 gaps</span>
     <span class="dot green"></span>
   </summary>
   <div class="family-body">
-    <p class="fam-headline green">1137 pass, 0 fail, 15 skip (of 1152) across the W3C JSON-LD 1.1 toRdf, fromRdf, expand and compact manifests.</p>
+    <p class="fam-headline green">1193 pass, 0 fail, 17 skip (of 1210) across the W3C JSON-LD 1.1 toRdf, fromRdf, expand, compact and flatten manifests.</p>
     <div class="suites">
       <details class="suite-node green">
         <summary><span class="suite-name">JSON-LD 1.1 toRdf</span><span class="suite-numbers">461/0/6 of 467</span><span class="dot green"></span></summary>
@@ -1184,12 +1184,20 @@
           
         </div>
       </details>
+      <details class="suite-node green">
+        <summary><span class="suite-name">JSON-LD 1.1 flatten</span><span class="suite-numbers">56/0/2 of 58</span><span class="dot green"></span></summary>
+        <div class="suite-body">
+          <div class="meter"><div class="seg seg-pass" style="width:96.55%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:3.45%"></div></div>
+          <p class="suite-numbers-full">56 pass, 0 fail, 2 skip (out of 58)</p>
+          <p class="suite-prov">Runner: <code>bin/jsonld-flatten-runner</code> (<code>bin/linux-x86_64/jsonld_flatten_runner</code>) &middot; Suite: W3C JSON-LD 1.1 flatten manifest (Node Map Generation + Flattening Algorithm)</p>
+          
+        </div>
+      </details>
     </div>
     
     <div class="remaining">
       <p class="remaining-title">Remaining work</p>
       <ul>
-        <li>flatten suite (Flattening Algorithm): not yet run — no runner exists</li>
         <li>frame suite (Framing Algorithm): not yet run — no runner exists</li>
         <li>html suite (HTML to RDF, JSON-LD embedded in HTML documents): not yet run — no runner exists</li>
       </ul>
@@ -1781,9 +1789,9 @@ vc-stage1:    113 pass, 1 fail, 6 skip (of 120) — present=1</pre>
 </main>
 
 <footer>
-  Generated <strong>2026-07-10 11:18 UTC</strong> from commit
-  <code><a href="https://github.com/danbri/factoidal/commit/0fe1654f17215e0f6cffe1a49fe5bd1c2d028b3d">0fe1654f</a></code>
-  on branch <code>claude/main</code> — &ldquo;dashboard: regenerate after tree v2 on main&rdquo;.
+  Generated <strong>2026-07-10 11:19 UTC</strong> from commit
+  <code><a href="https://github.com/danbri/factoidal/commit/080789216235f190ad603cdda6f61a22e15a6ffb">0807892</a></code>
+  on branch <code>claude/main</code> — &ldquo;jsonld: JSON-LD 1.1 Flattening API in F* — flatten suite from NOT-RUN to 56 pass, 0 fail, 2 skip (out of 58)&rdquo;.
   Re-run locally: <code>cd formal/fstar &amp;&amp; ./generate-report.sh --run</code>.
 </footer>
 

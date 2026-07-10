@@ -1865,8 +1865,9 @@ JSONLD_BODY=$(
     "Runner: <code>bin/jsonld-flatten-runner</code> (<code>bin/linux-x86_64/jsonld_flatten_runner</code>) &middot; Suite: W3C JSON-LD 1.1 flatten manifest (Node Map Generation + Flattening Algorithm)" \
     "<a href=\"${GITHUB_BLOB_BASE}/.github/test-suites/jsonld-flatten.yaml\" target=\"_blank\" rel=\"noopener\">diagnosis: residual fails are enumerated Flattening-Algorithm gaps — see the suite manifest and the landing commit for the per-bucket breakdown</a>"
 )
+JSONLD_SUITES_RUN=$(( JSONLD_PRESENT + JSONLD_FROMRDF_PRESENT + JSONLD_EXPAND_PRESENT + JSONLD_COMPACT_PRESENT + JSONLD_FLATTEN_PRESENT ))
 JSONLD_FAMILY_HTML=$(family_section "jsonld11" "JSON-LD 1.1" "$JSONLD_STATUS" "$JSONLD_FAMILY_HEADLINE" "$JSONLD_BODY" "" \
-  "$JSONLD_FAM_PASS" "$JSONLD_FAM_FAIL" "$JSONLD_FAM_SKIP" "$JSONLD_FAM_TOTAL" "4 of 7" \
+  "$JSONLD_FAM_PASS" "$JSONLD_FAM_FAIL" "$JSONLD_FAM_SKIP" "$JSONLD_FAM_TOTAL" "${JSONLD_SUITES_RUN} of 7" \
   "$(family_remaining _jsonld-family)")
 
 # --- Verifiable Credentials 2.0 --------------------------------------------
