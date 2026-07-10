@@ -907,15 +907,29 @@ let rif_resolve_import_local_path tc url =
    existing local file are silently skipped — the test will then
    fail at the SPARQL evaluation step rather than raise. *)
 let rif_load_imports tc rif_xml =
+  (* Each import carries its (URL, profile) pair. profile = "" when the
+     Import declared none. The profile IRI selects the entailment closure
+     the imported document is read under; the DISPATCH is F*
+     (RIF_Core_Tests.materialise_import_graph) so no semantic logic lives
+     in the runner (rule #15) — the runner only resolves the URL to a
+     local path and loads its triples (consumer-side I/O, rule #11), then
+     hands (profile, triples) to F* for closure. Without materialisation
+     the rdfs:subClassOf- / rdfs:domain-derived rdf:type triples the RIF
+     rule bodies mention never exist and saturation produces nothing
+     (rif04 "Modeling Brain Anatomy"). *)
   let imports =
-    match RIF_Core_Tests.parse_rif_imports rif_xml with
+    match RIF_Core_Tests.parse_rif_import_profiles rif_xml with
     | None -> []
-    | Some urls -> urls
+    | Some pairs -> pairs
   in
-  let result = List.fold_left (fun acc url ->
+  let result = List.fold_left (fun acc (url, profile) ->
     match rif_resolve_import_local_path tc url with
     | None -> acc
-    | Some path -> acc @ load_triples path
+    | Some path ->
+      let raw_triples = load_triples path in
+      let materialised =
+        RIF_Core_Tests.materialise_import_graph profile raw_triples in
+      acc @ materialised
   ) [] imports in
   (* Optional diagnostic — gated on FACTOIDAL_RIF_IMPORT_DEBUG so the
      normal test runs are silent. Useful when debugging why a RIF
@@ -923,7 +937,8 @@ let rif_load_imports tc rif_xml =
   if Sys.getenv_opt "FACTOIDAL_RIF_IMPORT_DEBUG" <> None then begin
     Printf.eprintf "[rif-import] tc=%s imports=%d resolved-triples=%d\n"
       tc.name (List.length imports) (List.length result);
-    List.iter (fun u -> Printf.eprintf "[rif-import]   url=%s\n" u) imports
+    List.iter (fun (u, p) ->
+      Printf.eprintf "[rif-import]   url=%s profile=%s\n" u p) imports
   end;
   result
 

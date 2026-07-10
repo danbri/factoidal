@@ -103,24 +103,22 @@ let is_local_type_marker (ty : Prims.string) : Prims.bool=
 let local_to_iri (lex : Prims.string) :
   RIF_Core_Syntax.rif_term FStar_Pervasives_Native.option=
   let urn_iri = FStar_String.concat "" ["urn:rif-local:"; lex] in
-  if RDF_Graph_Executable.is_iri urn_iri
+  if RDF_Term.is_iri urn_iri
   then
     FStar_Pervasives_Native.Some
-      (RIF_Core_Syntax.mk_const (RDF_Graph_Executable.T_IRI urn_iri))
+      (RIF_Core_Syntax.mk_const (RDF_Term.T_IRI urn_iri))
   else FStar_Pervasives_Native.None
 let typed_literal_const (ty : Prims.string) (lex : Prims.string) :
   RIF_Core_Syntax.rif_term FStar_Pervasives_Native.option=
-  if
-    (RDF_Graph_Executable.is_iri ty) &&
-      (ty <> RDF_Graph_Executable.rdf_lang_string)
+  if (RDF_Term.is_iri ty) && (ty <> RDF_Term.rdf_lang_string)
   then
     FStar_Pervasives_Native.Some
       (RIF_Core_Syntax.mk_const
-         (RDF_Graph_Executable.T_Literal
+         (RDF_Term.T_Literal
             {
-              RDF_Graph_Executable.lexical_form = lex;
-              RDF_Graph_Executable.datatype = ty;
-              RDF_Graph_Executable.lang_tag = FStar_Pervasives_Native.None
+              RDF_Term.lexical_form = lex;
+              RDF_Term.datatype = ty;
+              RDF_Term.lang_tag = FStar_Pervasives_Native.None
             }))
   else FStar_Pervasives_Native.None
 let is_plain_literal_type_marker (ty : Prims.string) : Prims.bool=
@@ -159,33 +157,29 @@ let plain_literal_const (lex : Prims.string) :
          then
            FStar_Pervasives_Native.Some
              (RIF_Core_Syntax.mk_const
-                (RDF_Graph_Executable.T_Literal
+                (RDF_Term.T_Literal
                    {
-                     RDF_Graph_Executable.lexical_form = text;
-                     RDF_Graph_Executable.datatype =
-                       RDF_Graph_Executable.xsd_string;
-                     RDF_Graph_Executable.lang_tag =
-                       FStar_Pervasives_Native.None
+                     RDF_Term.lexical_form = text;
+                     RDF_Term.datatype = RDF_Term.xsd_string;
+                     RDF_Term.lang_tag = FStar_Pervasives_Native.None
                    }))
          else
            FStar_Pervasives_Native.Some
              (RIF_Core_Syntax.mk_const
-                (RDF_Graph_Executable.T_Literal
+                (RDF_Term.T_Literal
                    {
-                     RDF_Graph_Executable.lexical_form = text;
-                     RDF_Graph_Executable.datatype =
-                       RDF_Graph_Executable.rdf_lang_string;
-                     RDF_Graph_Executable.lang_tag =
-                       (FStar_Pervasives_Native.Some lang)
+                     RDF_Term.lexical_form = text;
+                     RDF_Term.datatype = RDF_Term.rdf_lang_string;
+                     RDF_Term.lang_tag = (FStar_Pervasives_Native.Some lang)
                    })))
 let const_from_type (ty : Prims.string) (lex : Prims.string) :
   RIF_Core_Syntax.rif_term FStar_Pervasives_Native.option=
   if is_iri_type_marker ty
   then
-    (if RDF_Graph_Executable.is_iri lex
+    (if RDF_Term.is_iri lex
      then
        FStar_Pervasives_Native.Some
-         (RIF_Core_Syntax.mk_const (RDF_Graph_Executable.T_IRI lex))
+         (RIF_Core_Syntax.mk_const (RDF_Term.T_IRI lex))
      else FStar_Pervasives_Native.None)
   else
     if is_local_type_marker ty
@@ -205,13 +199,11 @@ let parse_const (n : Parser_XML.xml_node) :
        | FStar_Pervasives_Native.None ->
            FStar_Pervasives_Native.Some
              (RIF_Core_Syntax.mk_const
-                (RDF_Graph_Executable.T_Literal
+                (RDF_Term.T_Literal
                    {
-                     RDF_Graph_Executable.lexical_form = lex;
-                     RDF_Graph_Executable.datatype =
-                       RDF_Graph_Executable.xsd_string;
-                     RDF_Graph_Executable.lang_tag =
-                       FStar_Pervasives_Native.None
+                     RDF_Term.lexical_form = lex;
+                     RDF_Term.datatype = RDF_Term.xsd_string;
+                     RDF_Term.lang_tag = FStar_Pervasives_Native.None
                    })))
   | uu___ -> FStar_Pervasives_Native.None
 let parse_var (n : Parser_XML.xml_node) :
@@ -282,7 +274,7 @@ let rec parse_term_fuel (n : Parser_XML.xml_node) (fuel : Prims.nat) :
              else FStar_Pervasives_Native.None
      | uu___1 -> FStar_Pervasives_Native.None)
 and parse_op_and_args_fuel (n : Parser_XML.xml_node) (fuel : Prims.nat) :
-  (RDF_Graph_Executable.wf_iri * RIF_Core_Syntax.rif_term Prims.list)
+  (RDF_Term.wf_iri * RIF_Core_Syntax.rif_term Prims.list)
     FStar_Pervasives_Native.option=
   if fuel = Prims.int_zero
   then FStar_Pervasives_Native.None
@@ -296,7 +288,7 @@ and parse_op_and_args_fuel (n : Parser_XML.xml_node) (fuel : Prims.nat) :
           | FStar_Pervasives_Native.Some op_node ->
               (match parse_term_host_fuel op_node (fuel - Prims.int_one) with
                | FStar_Pervasives_Native.Some (RIF_Core_Syntax.RIF_Const
-                   (RDF_Graph_Executable.T_IRI pi)) ->
+                   (RDF_Term.T_IRI pi)) ->
                    let arg_terms =
                      match args_n with
                      | FStar_Pervasives_Native.None -> []
@@ -858,6 +850,14 @@ let parse_import_location (import_node : Parser_XML.xml_node) :
            then FStar_Pervasives_Native.None
            else FStar_Pervasives_Native.Some raw)
   | uu___ -> FStar_Pervasives_Native.None
+let parse_import_profile (import_node : Parser_XML.xml_node) : Prims.string=
+  match import_node with
+  | Parser_XML.XElement (uu___, uu___1, children) ->
+      (match first_child_with_local_name "profile" children with
+       | FStar_Pervasives_Native.None -> ""
+       | FStar_Pervasives_Native.Some prof_node ->
+           trim_ws (element_text prof_node))
+  | uu___ -> ""
 let parse_directive_import (directive_node : Parser_XML.xml_node) :
   Prims.string FStar_Pervasives_Native.option=
   match directive_node with
@@ -902,3 +902,53 @@ let parse_rif_program_with_imports (input : Prims.string) :
        | FStar_Pervasives_Native.Some prog ->
            FStar_Pervasives_Native.Some
              ((extract_document_imports root), prog))
+let parse_directive_import_with_profile
+  (directive_node : Parser_XML.xml_node) :
+  (Prims.string * Prims.string) FStar_Pervasives_Native.option=
+  match directive_node with
+  | Parser_XML.XElement (uu___, uu___1, children) ->
+      (match first_child_with_local_name "Import" children with
+       | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+       | FStar_Pervasives_Native.Some imp_node ->
+           (match parse_import_location imp_node with
+            | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+            | FStar_Pervasives_Native.Some url ->
+                FStar_Pervasives_Native.Some
+                  (url, (parse_import_profile imp_node))))
+  | uu___ -> FStar_Pervasives_Native.None
+let rec extract_imports_from_directives_with_profiles
+  (children : Parser_XML.xml_node Prims.list) :
+  (Prims.string * Prims.string) Prims.list=
+  match children with
+  | [] -> []
+  | hd::rest ->
+      (match hd with
+       | Parser_XML.XElement (t, uu___, uu___1) ->
+           if tag_is "directive" t
+           then
+             (match parse_directive_import_with_profile hd with
+              | FStar_Pervasives_Native.None ->
+                  extract_imports_from_directives_with_profiles rest
+              | FStar_Pervasives_Native.Some pair -> pair ::
+                  (extract_imports_from_directives_with_profiles rest))
+           else extract_imports_from_directives_with_profiles rest
+       | uu___ -> extract_imports_from_directives_with_profiles rest)
+let extract_document_imports_with_profiles (root : Parser_XML.xml_node) :
+  (Prims.string * Prims.string) Prims.list=
+  match root with
+  | Parser_XML.XElement (tag, uu___, children) ->
+      if tag_is "Document" tag
+      then extract_imports_from_directives_with_profiles children
+      else []
+  | uu___ -> []
+let parse_rif_program_with_import_profiles (input : Prims.string) :
+  ((Prims.string * Prims.string) Prims.list * RIF_Core_Syntax.rif_program)
+    FStar_Pervasives_Native.option=
+  match Parser_XML.parse_xml_document input with
+  | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+  | FStar_Pervasives_Native.Some root ->
+      (match parse_rif_document root with
+       | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+       | FStar_Pervasives_Native.Some prog ->
+           FStar_Pervasives_Native.Some
+             ((extract_document_imports_with_profiles root), prog))

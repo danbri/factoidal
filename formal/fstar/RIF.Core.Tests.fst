@@ -116,6 +116,61 @@ let parse_rif_imports (rif_xml : string)
   | Some (imports, _) -> Some imports
 
 // ------------------------------------------------------------------
+// 2c. Import-profile materialisation.
+//
+// A RIF `Import(<doc> <profile>)` directive says the imported document
+// must be read under `profile`'s entailment regime BEFORE the RIF rules
+// see it. Loading the import as plain triples (no closure) leaves the
+// rdfs:subClassOf- / rdfs:domain-derived rdf:type triples unmaterialised,
+// so any rule body that mentions a derived type never fires (this is the
+// rif04 "Modeling Brain Anatomy" failure: the rule needs
+// `g1 rdf:type MaterialAnatomicalEntity`, derived from
+// `Gyrus rdfs:subClassOf MaterialAnatomicalEntity`).
+//
+// The dispatch reuses the closures the SPARQL entailment regimes already
+// ship (rule #1 — one spec, many callers), keyed on the entailment-
+// namespace profile IRI (http://www.w3.org/ns/entailment/<Name>):
+//
+//   Simple / "" (none)         -> no closure (plain imported triples)
+//   RDF / RDFS                 -> rdfs_closure_with_reflexivity
+//   OWL-Direct / OWL-RDF-Based -> owl_rl_closure_with_reflexivity
+//
+// OWL-RL subsumes the RDFS subClassOf (cax-sco) and domain (prp-dom)
+// rules the entailment-regime suite exercises, so the OWL profiles start
+// at the cheapest closure that makes the entailment hold; escalation to
+// Tableau.tableau_materialise is only needed for DL-only class
+// expressions, which this suite does not import. `parse_import_profile`
+// yields "" for an Import with no <profile> child, which falls through to
+// the plain (Simple) branch. Fuel is `default_fuel` (100), shared with
+// saturation, so the closure is bounded and terminates.
+// ------------------------------------------------------------------
+
+let ent_ns : string = "http://www.w3.org/ns/entailment/"
+
+let materialise_import_graph (profile : string) (imported : rdf_graph)
+  : rdf_graph
+  =
+  if profile = ent_ns ^ "OWL-Direct"
+     || profile = ent_ns ^ "OWL-RDF-Based"
+     || profile = ent_ns ^ "OWL"
+  then owl_rl_closure_with_reflexivity imported default_fuel
+  else if profile = ent_ns ^ "RDF"
+          || profile = ent_ns ^ "RDFS"
+  then rdfs_closure_with_reflexivity imported default_fuel
+  else imported
+
+// Re-export the profile-aware import list so the consumer-side runner
+// glue can resolve each (URL, profile) pair: load the URL's triples
+// (I/O, consumer-side per rule #11) then call materialise_import_graph
+// above to apply the profile's closure before merging into the premise.
+let parse_rif_import_profiles (rif_xml : string)
+  : option (list (string * string))
+  =
+  match Pr.parse_rif_program_with_import_profiles rif_xml with
+  | None -> None
+  | Some (imports, _) -> Some imports
+
+// ------------------------------------------------------------------
 // 3. ASK-style runner: triple membership in the saturated graph.
 //
 // W3C SPARQL ASK queries with a fully-ground triple pattern (or a

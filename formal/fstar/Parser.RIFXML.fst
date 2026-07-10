@@ -1099,10 +1099,14 @@ let parse_rif_program (input : string) : option Syn.rif_program =
 // merging the triples into the premise graph before saturation.
 // Resolution is consumer-side I/O (rule #11), not in F*.
 //
-// Optional <profile> children are read but ignored: RIF Core's
-// entailment-profile selection is out of scope for this PR; the
-// four target SPARQL tests only ever use Simple / RDF profiles
-// which the saturation engine already subsumes.
+// The optional <profile> child names the entailment regime under which
+// the imported document must be read (RIF Import(<loc> <profile>)). It is
+// surfaced alongside the location by parse_directive_import_with_profile /
+// extract_document_imports_with_profiles below; the RIF.Core.Tests shim
+// dispatches the profile IRI to the matching closure (Simple / RDF / RDFS
+// / OWL) so rdfs:domain- and rdfs:subClassOf-derived types exist before
+// the RIF rule bodies match. The location-only helpers above remain for
+// callers that do not need the profile.
 // ------------------------------------------------------------------
 
 // Decoded text inside an <Import><location>...</location> child.
@@ -1115,6 +1119,17 @@ let parse_import_location (import_node : xml_node) : option string =
        let raw = trim_ws (element_text loc_node) in
        if String.length raw = 0 then None else Some raw)
   | _ -> None
+
+// Decoded IRI inside an <Import><profile>...</profile> child; "" if the
+// Import declares no profile. The empty string means "Simple / no
+// closure" downstream.
+let parse_import_profile (import_node : xml_node) : string =
+  match import_node with
+  | XElement _ _ children ->
+    (match first_child_with_local_name "profile" children with
+     | None -> ""
+     | Some prof_node -> trim_ws (element_text prof_node))
+  | _ -> ""
 
 // Walk one <directive> element, returning the import URL if it
 // contains an <Import><location>...</location>; None otherwise.
@@ -1169,3 +1184,53 @@ let parse_rif_program_with_imports (input : string)
     (match parse_rif_document root with
      | None -> None
      | Some prog -> Some (extract_document_imports root, prog))
+
+// Profile-aware variants: same walk as above but each import carries
+// its (location, profile) pair. profile = "" when the Import declared
+// none. Order is preserved.
+let parse_directive_import_with_profile (directive_node : xml_node)
+  : option (string * string) =
+  match directive_node with
+  | XElement _ _ children ->
+    (match first_child_with_local_name "Import" children with
+     | None -> None
+     | Some imp_node ->
+       (match parse_import_location imp_node with
+        | None -> None
+        | Some url -> Some (url, parse_import_profile imp_node)))
+  | _ -> None
+
+let rec extract_imports_from_directives_with_profiles (children : list xml_node)
+  : Tot (list (string * string)) (decreases children) =
+  match children with
+  | [] -> []
+  | hd :: rest ->
+    (match hd with
+     | XElement t _ _ ->
+       if tag_is "directive" t then
+         (match parse_directive_import_with_profile hd with
+          | None -> extract_imports_from_directives_with_profiles rest
+          | Some pair -> pair :: extract_imports_from_directives_with_profiles rest)
+       else
+         extract_imports_from_directives_with_profiles rest
+     | _ -> extract_imports_from_directives_with_profiles rest)
+
+let extract_document_imports_with_profiles (root : xml_node)
+  : list (string * string) =
+  match root with
+  | XElement tag _ children ->
+    if tag_is "Document" tag
+    then extract_imports_from_directives_with_profiles children
+    else []
+  | _ -> []
+
+// Public entry: parse the RIF-XML, returning each import's
+// (location, profile) pair and the program in one pass.
+let parse_rif_program_with_import_profiles (input : string)
+  : option (list (string * string) * Syn.rif_program) =
+  match parse_xml_document input with
+  | None -> None
+  | Some root ->
+    (match parse_rif_document root with
+     | None -> None
+     | Some prog -> Some (extract_document_imports_with_profiles root, prog))
