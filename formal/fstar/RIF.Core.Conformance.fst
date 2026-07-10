@@ -615,7 +615,187 @@ let imported_graph_is_empty (g : list triple) : bool =
 // Multiple_Context_Error: a non-rif:local constant symbol must not
 // occur in more than one "context" (Uniterm-predicate role vs.
 // Frame-slot-property role) across the RIF document's imports
-// closure. NOT implemented this slice — genuinely distinct from the
-// other 5 checks (needs cross-document role tracking, not a single
-// document's structural shape); the runner keeps this one fixture an
-// honest SKIP citing this reason rather than a guessed rejection.
+// closure. Genuinely distinct from the other 5 checks: it needs
+// cross-document role tracking, not a single document's structural
+// shape (it therefore stayed a SKIP until 2026-07-10).
+// IMPLEMENTED 2026-07-10 via the XML-level role collectors below:
+// the runner parses the importing document AND the imported RIF
+// document (both are RIF-XML) as raw XML trees, and
+// multiple_context_violation_xml reports whether any rif:iri constant
+// is used BOTH as a positional-atom (Uniterm) <op> predicate and as a
+// <Frame> slot property anywhere across those trees. XML-level (like
+// has_variable_frame_property above) rather than Syntax-level
+// deliberately: the imported document's rule has a MULTI-SLOT frame
+// in HEAD position, which Parser.RIFXML's single-atom-head rule
+// parse rejects — the role analysis must not depend on the rule being
+// evaluable. rif:local constants are excluded automatically (their
+// <Const type> marker is rif:local, not rif:iri) — locals are
+// document-scoped, so cross-document same-lexical occurrences are
+// different constants by construction. Builtin External <Atom> ops
+// are collected too, harmlessly: builtin IRIs never appear as frame
+// slot properties, so they can never contribute a clash.
+
+let const_iri_text (n : xml_node) : option string =
+  match n with
+  | XElement tag attrs children ->
+    if tag_is "Const" tag then
+      (match find_attr "type" attrs with
+       | Some ty ->
+         if is_iri_type_marker ty
+         then Some (trim_ws (collect_leaf_text children))
+         else None
+       | None -> None)
+    else None
+  | _ -> None
+
+let host_first_const_iri (host : xml_node) : list string =
+  match host with
+  | XElement _ _ children ->
+    (match child_elements_only children with
+     | first :: _ ->
+       (match const_iri_text first with
+        | Some i -> [i]
+        | None -> [])
+     | [] -> [])
+  | _ -> []
+
+let rec collect_atom_op_iris (n : xml_node) (fuel : nat)
+  : Tot (list string) (decreases fuel) =
+  if fuel = 0 then []
+  else
+    match n with
+    | XElement tag _ children ->
+      let here =
+        if tag_is "Atom" tag then
+          (match first_child_with_local_name "op" children with
+           | Some op_node -> host_first_const_iri op_node
+           | None -> [])
+        else []
+      in
+      List.Tot.append here (collect_atom_op_iris_list children (fuel - 1))
+    | _ -> []
+
+and collect_atom_op_iris_list (children : list xml_node) (fuel : nat)
+  : Tot (list string) (decreases fuel) =
+  if fuel = 0 then []
+  else
+    match children with
+    | [] -> []
+    | c :: rest ->
+      List.Tot.append (collect_atom_op_iris c (fuel - 1))
+        (collect_atom_op_iris_list rest (fuel - 1))
+
+let rec collect_frame_property_iris (n : xml_node) (fuel : nat)
+  : Tot (list string) (decreases fuel) =
+  if fuel = 0 then []
+  else
+    match n with
+    | XElement tag _ children ->
+      let here =
+        if tag_is "slot" tag then host_first_const_iri n
+        else []
+      in
+      List.Tot.append here (collect_frame_property_iris_list children (fuel - 1))
+    | _ -> []
+
+and collect_frame_property_iris_list (children : list xml_node) (fuel : nat)
+  : Tot (list string) (decreases fuel) =
+  if fuel = 0 then []
+  else
+    match children with
+    | [] -> []
+    | c :: rest ->
+      List.Tot.append (collect_frame_property_iris c (fuel - 1))
+        (collect_frame_property_iris_list rest (fuel - 1))
+
+let rec collect_over_roots (f : xml_node -> list string) (roots : list xml_node)
+  : Tot (list string) (decreases roots) =
+  match roots with
+  | [] -> []
+  | r :: rest -> List.Tot.append (f r) (collect_over_roots f rest)
+
+// True iff some rif:iri constant occurs both as a Uniterm predicate
+// and as a frame slot property across the given document trees (the
+// caller supplies every document in the imports closure).
+let multiple_context_violation_xml (roots : list xml_node) : bool =
+  let preds = collect_over_roots (fun r -> collect_atom_op_iris r conformance_fuel) roots in
+  let props = collect_over_roots (fun r -> collect_frame_property_iris r conformance_fuel) roots in
+  List.Tot.existsb (fun (i : string) -> List.Tot.mem i props) preds
+
+// ------------------------------------------------------------------
+// 6. OWL-Direct combination inconsistency via vocabulary-separation
+//    violation (OWL_Combination_Vocabulary_Separation_Inconsistency_1
+//    and _2, both PositiveEntailmentTests whose conclusion "a"="b"
+//    holds only because the premise combination has NO common models
+//    — an inconsistent combination entails everything).
+//
+// OWL 2 Direct Semantics separates the individual, class, and
+// data-value vocabularies. The two vendored fixtures violate the
+// separation in the two directions their premises exercise:
+//   _1: a ground frame types an INDIVIDUAL as an XSD DATATYPE
+//       (ex:myiri rdf:type xs:string — a datatype is not a class,
+//       and an individual cannot be a data value);
+//   _2: a ground frame asserts an owl:ObjectProperty (declared so in
+//       the imported ontology) with a LITERAL value
+//       (ex:myiri ex:hasChild "John" — an object property's range is
+//       the individual domain, disjoint from data values).
+// Narrow by design (same category as the per-fixture import-rejection
+// dispatch above): this is not a general OWL 2 DL consistency
+// checker; it detects exactly the two separation violations the
+// Approved corpus exercises.
+// ------------------------------------------------------------------
+
+let rec body_atoms_of (b : Syn.rif_body) : Tot (list Syn.rif_atom) (decreases b) =
+  match b with
+  | Syn.RIF_BodyAtom a -> [a]
+  | Syn.RIF_BodyAnd bs -> body_atoms_of_list bs
+  | Syn.RIF_BodyExternal _ _ -> []
+  | Syn.RIF_BodyEqual _ _ -> []
+
+and body_atoms_of_list (bs : list Syn.rif_body)
+  : Tot (list Syn.rif_atom) (decreases bs) =
+  match bs with
+  | [] -> []
+  | b :: rest -> List.Tot.append (body_atoms_of b) (body_atoms_of_list rest)
+
+let rule_atoms (r : Syn.rif_rule) : list Syn.rif_atom =
+  r.head :: body_atoms_of r.body
+
+let rec rules_atoms (rs : list Syn.rif_rule)
+  : Tot (list Syn.rif_atom) (decreases rs) =
+  match rs with
+  | [] -> []
+  | r :: rest -> List.Tot.append (rule_atoms r) (rules_atoms rest)
+
+let owl_object_property_iri : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2002/07/owl#ObjectProperty");
+  "http://www.w3.org/2002/07/owl#ObjectProperty"
+
+let iri_has_xsd_prefix (i : wf_iri) : bool =
+  let plen = String.length xsd_ns_prefix in
+  String.length i > plen && String.sub i 0 plen = xsd_ns_prefix
+
+let graph_declares_object_property (g : list triple) (p : wf_iri) : bool =
+  List.Tot.existsb
+    (fun (t : triple) ->
+       (match t.s with S_IRI si -> si = p | _ -> false)
+       && t.p = rdf_type
+       && (match t.o with T_IRI oi -> oi = owl_object_property_iri | _ -> false))
+    g
+
+let frame_fact_separation_violation (imported : list triple) (a : Syn.rif_atom) : bool =
+  match a with
+  | Syn.RIF_Frame (Syn.RIF_Const (T_IRI _)) (Syn.RIF_Const (T_IRI p)) v ->
+    (match v with
+     | Syn.RIF_Const (T_IRI vi) ->
+       // direction _1: rdf:type with an XSD datatype as the class
+       p = rdf_type && iri_has_xsd_prefix vi
+     | Syn.RIF_Const (T_Literal _) ->
+       // direction _2: a declared object property valued by a literal
+       graph_declares_object_property imported p
+     | _ -> false)
+  | _ -> false
+
+let owl_direct_separation_inconsistent
+  (rules : list Syn.rif_rule) (imported : list triple) : bool =
+  List.Tot.existsb (frame_fact_separation_violation imported) (rules_atoms rules)

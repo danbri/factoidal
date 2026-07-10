@@ -1,12 +1,14 @@
-* Warning 241 at RDF.Indexed.fsti(0,0-0,0):
-  - Unable to load RDF.Indexed.fsti.checked since checked file
-    RDF.Indexed.fsti.checked does not exist; will recheck RDF.Indexed.fsti
-    (suppressing this warning for further modules)
+* Warning 241 at RDF.Graph.fsti(0,0-0,0):
+  - Unable to load RDF.Graph.fsti.checked since checked file
+    RDF.Graph.fsti.checked is stale (digest mismatch for RDF.Graph.fsti); will
+    recheck RDF.Graph.fsti (suppressing this warning for further modules)
 
 Extracted module Parser.RIFXML
 * Warning 247 at Parser.RIFXML.fst(0,0-0,0):
   - Checked file Parser.RIFXML.fst.checked was not written.
-  - Reason: checked file Parser.XML.fst.checked does not exist
+  - Reason:
+      checked file Parser.XML.fst.checked is stale (digest mismatch for
+      Parser.XML.fst)
 
 Verified module: Parser.RIFXML
 All verification conditions discharged successfully

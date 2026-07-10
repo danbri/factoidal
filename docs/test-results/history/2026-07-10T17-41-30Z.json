@@ -1,7 +1,7 @@
 {
-  "timestamp": "2026-07-10 18:04 UTC",
-  "commit": "732c1dfc0567627d5b1e02ad2d9c2ca613502dec",
-  "branch": "claude/main",
+  "timestamp": "2026-07-10 17:41 UTC",
+  "commit": "b46091493fd5ab3e1c93923e8d649f92ee85ac23",
+  "branch": "rif-landing",
   "totals": {
     "sparql":   {"pass":631,"fail":0,"skip":0,"unsupported":0,"total":631},
     "rdf":      {"pass":1031,"fail":0,"skip":0,"unsupported":0,"total":1031},
@@ -30,8 +30,6 @@
     "schematron":     {"pass":8,"fail":0,"skip":0,"total":8,"present":true,"spec":"https://www.iso.org/standard/74515.html"},
     "csvw_csv2rdf":   {"pass":218,"fail":52,"skip":0,"total":270,"present":true,"spec":"https://www.w3.org/TR/csv2rdf/"},
     "did_key":        {"pass":8,"fail":0,"skip":0,"total":8,"present":true,"spec":"https://www.w3.org/TR/did-core/"},
-    "vc_di_eddsa":    {"pass":26,"fail":5,"skip":0,"total":31,"present":true,"spec":"https://w3c.github.io/vc-di-eddsa-test-suite/"},
-    "vc20_api":       {"pass":22,"fail":37,"skip":0,"total":59,"present":true,"spec":"https://w3c.github.io/vc-data-model-2.0-test-suite/"},
     "jsonld_fromrdf": {"pass":53,"fail":0,"skip":1,"total":54,"present":true,"spec":"https://www.w3.org/TR/json-ld11-api/#serialize-rdf-as-json-ld-algorithm"},
     "jsonld_expand":  {"pass":379,"fail":0,"skip":6,"total":385,"present":true,"spec":"https://www.w3.org/TR/json-ld11-api/#expansion-algorithm"},
     "jsonld_compact": {"pass":244,"fail":0,"skip":2,"total":246,"present":true,"spec":"https://www.w3.org/TR/json-ld11-api/#compaction-algorithm"},
@@ -105,8 +103,6 @@
     "qudt_user_shapes": {"name":"qudt_user_shapes","pass":9,"fail":0,"skip":0,"total":9},
     "csvw_csv2rdf": {"name":"csvw_csv2rdf","pass":218,"fail":52,"skip":0,"total":270},
     "did_key": {"name":"did_key","pass":8,"fail":0,"skip":0,"total":8},
-    "vc_di_eddsa": {"name":"vc_di_eddsa","pass":26,"fail":5,"skip":0,"total":31},
-    "vc20_api": {"name":"vc20_api","pass":22,"fail":37,"skip":0,"total":59},
     "jsonld_fromrdf": {"name":"jsonld_fromrdf","pass":53,"fail":0,"skip":1,"total":54},
     "jsonld_expand": {"name":"jsonld_expand","pass":379,"fail":0,"skip":6,"total":385},
     "jsonld_compact": {"name":"jsonld_compact","pass":244,"fail":0,"skip":2,"total":246},
