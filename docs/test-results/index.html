@@ -398,7 +398,7 @@
 <header>
   <div class="inner">
     <div class="rendered-pill" title="Rendered = when this page was last regenerated. Tests = when the *_results.log files inside the repository were last updated. Both UTC.">
-      <span class="row"><span class="label">Rendered</span><strong>2026-07-10 11:39 UTC</strong></span>
+      <span class="row"><span class="label">Rendered</span><strong>2026-07-10 11:43 UTC</strong></span>
       <span class="row"><span class="label">Tests</span><strong class="tests">2026-07-10 01:56 UTC</strong></span>
     </div>
     <h1>W3C test results</h1>
@@ -1219,23 +1219,23 @@
     </div>
   </div>
 </details>
-<details class="family-node amber" id="vc2">
+<details class="family-node green" id="vc2">
   <summary>
     <span class="fam-name">Verifiable Credentials 2.0</span>
-    <span class="fam-score">113/1/6 of 120</span>
-    <span class="gap-badge">5 gaps</span>
-    <span class="dot amber"></span>
+    <span class="fam-score">117/0/3 of 120</span>
+    <span class="gap-badge">3 gaps</span>
+    <span class="dot green"></span>
   </summary>
   <div class="family-body">
-    <p class="fam-headline amber">113 pass, 1 fail, 6 skip (out of 120) on the structural Stage 1 suite. Signing and verifying credentials (the Data Integrity eddsa-rdfc-2022 proof, using RDFC-1.0 canonicalization + SHA-256 + Ed25519) works separately today outside the browser; it does not yet run inside the JS/wasm bundle, and full conformance testing of that signing layer against the official W3C test suite is still pending.</p>
+    <p class="fam-headline green">117 pass, 0 fail, 3 skip (out of 120) on the structural Stage 1 suite. Signing and verifying credentials (the Data Integrity eddsa-rdfc-2022 proof, using RDFC-1.0 canonicalization + SHA-256 + Ed25519) works separately today outside the browser; it does not yet run inside the JS/wasm bundle, and full conformance testing of that signing layer against the official W3C test suite is still pending.</p>
     <div class="suites">
-      <details class="suite-node amber">
-        <summary><span class="suite-name">VC Data Model 2.0 — structural (Stage 1)</span><span class="suite-numbers">113/1/6 of 120</span><span class="dot amber"></span></summary>
+      <details class="suite-node green">
+        <summary><span class="suite-name">VC Data Model 2.0 — structural (Stage 1)</span><span class="suite-numbers">117/0/3 of 120</span><span class="dot green"></span></summary>
         <div class="suite-body">
-          <div class="meter"><div class="seg seg-pass" style="width:94.17%"></div><div class="seg seg-fail" style="width:0.83%"></div><div class="seg seg-skip" style="width:5.00%"></div></div>
-          <p class="suite-numbers-full">113 pass, 1 fail, 6 skip (out of 120)</p>
+          <div class="meter"><div class="seg seg-pass" style="width:97.50%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:2.50%"></div></div>
+          <p class="suite-numbers-full">117 pass, 0 fail, 3 skip (out of 120)</p>
           <p class="suite-prov">Runner: <code>bin/vc-runner</code> (<code>bin/linux-x86_64/vc_runner</code>) &middot; Suite: <code>third_party/testing/vc/tests/input/</code> (structural fixtures, filename-encoded verdicts)</p>
-          <p class="suite-diag">The 1 remaining fail (<code>credential-validUntil-validFrom-fail.json</code>) is a template artifact, not a real bug: the official test suite fills in real date values when it runs the test live, but the copy of the fixture file we check still has the placeholder text (&ldquo;PAST DATE&rdquo; / &ldquo;FUTURE DATE&rdquo;) baked in, so reading the file offline can't reproduce the failure the live test expects. The 6 skips are fixtures this offline, shape-only checker cannot fairly score: 3 of them let the official test either reject the document or silently patch it before re-checking, a choice this checker has no way to referee from a static file; the other 3 test whether the person presenting a credential is the same person named as its holder, which requires verifying a cryptographic signature rather than just checking the document's shape — that is a later stage of this work, described in the program plan linked below. <a href="https://github.com/danbri/factoidal/blob/claude/main/docs/designissues/2026-07-05-vc-program-plan.md" target="_blank" rel="noopener">VC program plan</a></p>
+          
         </div>
       </details>
     </div>
@@ -1243,11 +1243,9 @@
     <div class="remaining">
       <p class="remaining-title">Remaining work</p>
       <ul>
-        <li>issuer presence/shape, validFrom/validUntil ordering, and the credentialStatus/credentialSchema/termsOfUse/evidence/refreshService inner-shape checks are deferred to a later stage</li>
         <li>context-driven type redefinition is not checked — it needs real JSON-LD term resolution this stage does not implement</li>
-        <li>the 1 remaining fail is a known test-fixture template artifact (placeholder dates baked into the offline copy), not an engine bug</li>
-        <li>6 fixtures are skipped: 3 need a live endpoint's own reject-or-patch decision this offline checker can't referee, and 3 need verifying a cryptographic holder-binding signature, not just the document's shape</li>
-        <li>full W3C VC Data Integrity conformance — signing and verifying credentials against the official test suite, including inside the browser/JS bundle — is not yet run; the underlying eddsa-rdfc-2022 proof machinery works outside the browser today but has not been measured against the official corpus</li>
+        <li>3 fixtures stay skipped: unsigned holder-binding templates the official test suite withdrew as unsound in February 2025 (nothing to verify offline; the official suite does not run them either)</li>
+        <li>full W3C VC Data Integrity conformance — signing and verifying credentials against the official proof-options test suite, including inside the browser/JS bundle — is not yet run; the eddsa-rdfc-2022 machinery passes an 8-check local sign/verify/tamper roundtrip but has not been measured against the official corpus</li>
       </ul>
     </div>
   </div>
@@ -1868,7 +1866,7 @@ shex:         1181 pass, 1 fail, 0 skip (of 1182) — present=1
 jsonld-tordf: 461 pass, 0 fail, 6 skip (of 467) — present=1
 rml-core:     76 pass, 0 fail, 0 skip (of 76) — present=1
 rif-core:     34 pass, 4 fail, 12 skip (of 50) — present=1
-vc-stage1:    113 pass, 1 fail, 6 skip (of 120) — present=1</pre>
+vc-stage1:    117 pass, 0 fail, 3 skip (of 120) — present=1</pre>
 </details>
 
 <details>
@@ -1886,9 +1884,9 @@ vc-stage1:    113 pass, 1 fail, 6 skip (of 120) — present=1</pre>
 </main>
 
 <footer>
-  Generated <strong>2026-07-10 11:39 UTC</strong> from commit
-  <code><a href="https://github.com/danbri/factoidal/commit/b531b72b72f202d8703f867f8c9fa987a92474bd">b531b72</a></code>
-  on branch <code>claude/main</code> — &ldquo;dashboard: four top-level groups — internal suites get their own section; JSON Schema and ISO Schematron split into separate family nodes&rdquo;.
+  Generated <strong>2026-07-10 11:43 UTC</strong> from commit
+  <code><a href="https://github.com/danbri/factoidal/commit/cad4e3825e799b17a7a1fc31bb9de422ea67d37a">cad4e38</a></code>
+  on branch <code>claude/main</code> — &ldquo;vc: close two scoring gaps in the VC suite — 113 pass, 1 fail, 6 skip -> 117 pass, 0 fail, 3 skip (out of 120)&rdquo;.
   Re-run locally: <code>cd formal/fstar &amp;&amp; ./generate-report.sh --run</code>.
 </footer>
 
