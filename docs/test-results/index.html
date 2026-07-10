@@ -398,7 +398,7 @@
 <header>
   <div class="inner">
     <div class="rendered-pill" title="Rendered = when this page was last regenerated. Tests = when the *_results.log files inside the repository were last updated. Both UTC.">
-      <span class="row"><span class="label">Rendered</span><strong>2026-07-10 13:46 UTC</strong></span>
+      <span class="row"><span class="label">Rendered</span><strong>2026-07-10 13:49 UTC</strong></span>
       <span class="row"><span class="label">Tests</span><strong class="tests">2026-07-10 01:56 UTC</strong></span>
     </div>
     <h1>W3C test results</h1>
@@ -828,13 +828,13 @@
   <summary>
     <span class="fam-name">OWL 2</span>
     <span class="fam-score">28/2/0 of 30</span>
-    <span class="gap-badge">3 gaps</span>
+    <span class="gap-badge">2 gaps</span>
     <span class="dot amber"></span>
   </summary>
   <div class="family-body">
     <p class="fam-headline amber">profile-RL PositiveEntailmentTests: 28 pass, 2 fail (of 30); six further OWL 2 catalogs (NegEnt/Cons/Inc + 4 DL catalogs) scored below, RIF Core scored in its own family.</p>
     <div class="suites">
-<p class="fam-subhead">OWL 2 <span class="inline-numbers">28+ pass via owl_runner across 7 catalogs (profile-RL/EL/QL + 4 DL) &middot; live scoring</span></p>
+<p class="fam-subhead">OWL 2 <span class="inline-numbers">28+ pass via owl_runner across 8 catalogs (profile-RL/EL/QL + 4 DL + syntax-dl species) &middot; live scoring</span></p>
 <p style="margin: 0.3em 0 0.6em; color: var(--muted); font-size: 0.85em;">
   <strong>Scope.</strong> The OWL 2 W3C Test Cases catalog (~3378
   <code>test:TestCase</code> entries across 9 categories) is vendored
@@ -1047,12 +1047,11 @@
       <div class="meter"><div class="seg seg-pass" style="width:30.77%"></div><div class="seg seg-fail" style="width:69.23%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
       <p class="suite-numbers-full">36 pass, 81 fail, 0 skip (out of 117)</p>
     </div>
-  </details>
-  <details class="suite-node grey">
-    <summary><span class="suite-name">syntax-dl</span><span class="suite-numbers">not run &mdash; 646 tests</span><span class="dot grey"></span></summary>
+  </details><details class="suite-node amber">
+    <summary><span class="suite-name">syntax-dl species DL-vs-FULL [syntactic]</span><span class="suite-numbers">302/2/19 of 323</span><span class="dot amber"></span></summary>
     <div class="suite-body">
-      <div class="meter"><div class="seg seg-skip" style="width:100%"></div></div>
-      <p class="suite-prov">runner not wired (engine: DL syntactic-profile checker pending)</p>
+      <div class="meter"><div class="seg seg-pass" style="width:93.50%"></div><div class="seg seg-fail" style="width:0.62%"></div><div class="seg seg-skip" style="width:5.88%"></div></div>
+      <p class="suite-numbers-full">302 pass, 2 fail, 19 skip (out of 323)</p>
     </div>
   </details>
 </div>
@@ -1061,14 +1060,16 @@
   We vendor the full W3C OWL 2 Test Cases at
   <code>third_party/testing/owl/</code> (10 catalog files, ~2500
   <code>test:TestCase</code> entries after overlap). After Phase 2.3
-  (2026-05-08), 7 of 8 main catalogs run live through
-  <code>owl_runner</code> with PE/NE/Cons/Inc scoring. The runner
-  applies <code>owl_rl_closure_with_reflexivity</code> (fuel 100) and
-  for entailment tests checks the conclusion&rsquo;s triples against
-  the closure (relaxed bnode match); for consistency tests it consults
-  <code>RDF_Graph_Executable.is_inconsistent</code> against the same
-  closure. <code>syntax-dl.rdf</code> is the remaining unwired catalog
-  (DL syntactic-profile checker pending; see the roadmap row below).
+  (2026-05-08), all 8 main catalogs run live through
+  <code>owl_runner</code>: 7 with PE/NE/Cons/Inc scoring, plus (as of
+  2026-07-10) <code>syntax-dl.rdf</code> with species identification.
+  The runner applies <code>owl_rl_closure_with_reflexivity</code>
+  (fuel 100) and for entailment tests checks the conclusion&rsquo;s
+  triples against the closure (relaxed bnode match); for consistency
+  tests it consults <code>RDF_Graph_Executable.is_inconsistent</code>
+  against the same closure; for species identification it consults the
+  syntax-directed F&#42; checker <code>OWL2.SyntaxDL.species_is_dl</code>
+  (no reasoning) over premise + conclusion documents.
   Other suites once listed here as roadmap items — GeoSPARQL, JSON-LD 1.1,
   CSVW, ShEx, DID, VC, RML — now have live scored suite nodes of their
   own elsewhere on this page.
@@ -1078,8 +1079,7 @@
     <div class="remaining">
       <p class="remaining-title">Remaining work</p>
       <ul>
-        <li>the DL entailment catalogs (EL, QL, and the general DL profile) are only partially wired to the tableau reasoner — some fail because the parser doesn't yet cover OWL Functional-Style Syntax fixtures, and some fail because the reasoner materialises entailments but doesn't yet refute the negative (inconsistency) side</li>
-        <li>the syntax-dl structural checker (validating that an ontology stays inside the OWL 2 DL syntactic profile) is not implemented, so that catalog is not scored at all</li>
+        <li>the DL entailment catalogs (EL, QL, and the general DL profile) are wired through the tableau reasoner (DL regime = RL closure -&gt; tableau_materialise -&gt; RL closure, landed 2026-07-09) but still carry fails — some because the parser doesn't yet cover OWL Functional-Style Syntax fixtures, and some because the reasoner materialises entailments but doesn't yet refute the negative (inconsistency) side</li>
         <li>large graphs using owl:sameAs extensively can hit a performance blowup during closure computation — a known scaling gap, not a correctness gap</li>
       </ul>
     </div>
@@ -1917,9 +1917,9 @@ vc-stage1:    117 pass, 0 fail, 0 skip (of 117) — present=1</pre>
 </main>
 
 <footer>
-  Generated <strong>2026-07-10 13:46 UTC</strong> from commit
-  <code><a href="https://github.com/danbri/factoidal/commit/3171b741a224c30b0c35098da73aba382eb3fdba">3171b74</a></code>
-  on branch <code>claude/main</code> — &ldquo;qudt: Layer A — vendor QUDT v3.4.0, score the verified SHACL validator against QUDT's own rulesets&rdquo;.
+  Generated <strong>2026-07-10 13:49 UTC</strong> from commit
+  <code><a href="https://github.com/danbri/factoidal/commit/b616f81f362788caa00be192ec4cef68ba7ce4dd">b616f81</a></code>
+  on branch <code>claude/main</code> — &ldquo;owl2: syntax-dl species checker in F* — the catalog moves from unscored to 302 pass, 2 fail (out of 304 scored), 19 skipped (out of 323)&rdquo;.
   Re-run locally: <code>cd formal/fstar &amp;&amp; ./generate-report.sh --run</code>.
 </footer>
 
