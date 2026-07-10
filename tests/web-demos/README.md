@@ -49,6 +49,75 @@ two WASM queries currently error with stack overflows — the non-tail-rec
 cross-graph BGP + UNION + GROUP BY combinations blow v8's default stack.
 Tracked under `known_failures`; native parity still verified.
 
+### `hub_browser_all.sh`
+
+Headless-Chromium regression harness for EVERY documentation-hub post
+(`docs/web/hub/NN-*.md`, 30 of them as of this writing) -- distinct from
+the two demo-page harnesses above, this one covers the docs hub
+(`docs/web/hub/`), whose `observable-js` cells run the F*-extracted
+engine in-browser and where a cell regression is often invisible to
+any node-side test (it depends on real DOM/layout/GC/browser-tab
+behavior). Sibling to `hub_smoke.sh` (the hub scaffold's own smoke
+cell) and `hub_posts_smoke.sh` (posts 01-18, mounted-cell + mobile-
+viewport checks); this one is broader (every post, enumerated from the
+built site rather than hardcoded) but shallower (pageerror/REJECTED-
+cell detection only, no interaction/viewport checks).
+
+```sh
+tests/web-demos/hub_browser_all.sh
+HUB_BROWSER_ALL_PORT=8940 tests/web-demos/hub_browser_all.sh   # different port
+```
+
+Builds the site, serves it under `/factoidal/`, and drives ONE headless
+Chromium instance (a fresh page per post) over every post, checking for
+`pageerror` events and cells left in the vendored Observable Inspector's
+own REJECTED state (`observablehq--error`, the class
+`third_party/observable/dist/inspector.esm.js`'s `Inspector.rejected()`
+adds to the cell's container node -- see `docs/_includes/hub.njk`'s
+`createOutput()`, which mirrors it as `observable-cell-error` on the
+same node). A page with zero live cells (e.g. post 22) passes trivially.
+
+**Allowlist policy**: some pages may legitimately end a cell in a
+rejected state (an intentional demo of the engine correctly rejecting
+something) or carry an already-diagnosed bug out of this script's scope
+(test-infra only -- it must not touch F\*/npm-package internals). Both
+cases go through the same per-post `ALLOWLIST` object inside the Node
+driver (`grep -n ALLOWLIST tests/web-demos/hub_browser_all.sh`), each
+entry with an explicit, non-generic reason -- never a blanket
+suppression. An allowlisted page still fails on any pageerror or
+rejected cell the entry doesn't specifically cover. As of this writing
+a full survey of all 30 posts found no cell that intentionally ends up
+REJECTED (post 18's IndexedDB torn-write demo, post 21's WKT parser,
+and post 28's MathML-to-Presentation converter all wrap their throwing
+code in the cell's own try/catch and return a normal value describing
+the failure), so the allowlist carries exactly one entry: post 24
+(`24-hdt-header-dictionary-triples`), `KNOWN-BUG` -- `fn.queryHdt()` in
+the js_of_ocaml bundle takes several seconds per call even against its
+tiny 9KB/343-triple HDT fixture (measured directly against the npm
+package's own JS-engine path: ~5.7s/20.5s/17.2s for the post's three
+queries), which fully blocks the tab's main thread long enough that
+headless Chromium can kill the unresponsive renderer -- a genuine,
+reproducible performance bug in the HDT reader's js_of_ocaml path, not
+a flake, and not something a test-infra-only change can fix. Needs an
+HDT reader performance fix in F\* (`HDT.Triples.fst` /
+`HDT.Dictionary.fst`).
+
+Playwright's own `{timeout}` option on `waitForFunction`/`evaluate` is
+NOT reliable once a page's JS main thread is fully blocked by a long
+synchronous computation (confirmed empirically against post 24 -- a
+declared 30000ms timeout didn't actually reject until ~44s of real
+wall-clock time). The driver instead races every such call against its
+own plain `setTimeout` deadline (`ownRace()` in the driver) so control
+always comes back on schedule and the page can be force-closed cleanly
+before anything at the browser-process level goes wrong -- verified
+that a force-close mid-computation doesn't affect the SAME browser
+instance's ability to serve subsequent posts.
+
+Output is one `PASS <slug>` / `FAIL <slug>: <reason>` line per post
+plus a final `hub-browser: X pass, Y fail (out of N posts)` summary.
+Exit 0 iff Y=0. Total wall-clock is capped at 15 minutes; a full run
+currently takes about a minute.
+
 ## Adding a demo
 
 When you add or change a demo under `docs/fstar-extracted/*.html`:

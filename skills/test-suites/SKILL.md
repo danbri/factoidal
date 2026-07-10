@@ -191,7 +191,11 @@ when 1.1 exists (Iron Rule #5).
   js-of-ocaml-under-Node via `tests/beyond-w3c/bin/run-parity.py`. Any non-zero exit is an engine crash unless the
   manifest declares a `known_failures` entry **pointing at an open
   GitHub issue**. CI: `.github/workflows/beyond-w3c.yml` (per-PR).
-- `tests/web-demos/` — demo-specific checks (`lifesci_parity.sh`).
+- `tests/web-demos/` — demo-specific checks (`lifesci_parity.sh`);
+  `hub_browser_all.sh` drives headless Chromium over every docs-hub
+  post (`docs/web/hub/NN-*.md`) to catch browser-only `observable-js`
+  cell regressions node-side tests can't see — see
+  `tests/web-demos/README.md`.
 
 ## Comparison probes against other engines
 
