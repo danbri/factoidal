@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-07-10 01:40 UTC",
+  "timestamp": "2026-07-10 01:39 UTC",
   "commit": "1483e863e74fbe1f10f449f6d2bb45aa75a5159c",
   "branch": "claude/main",
   "totals": {
@@ -11,7 +11,7 @@
     "shacl_core":   {"pass":98,"fail":0,"skip":0,"total":98,"present":true,"spec":"https://www.w3.org/TR/shacl/"},
     "shacl_sparql": {"pass":22,"fail":0,"skip":0,"total":22,"present":true,"spec":"https://www.w3.org/TR/shacl/#sparql-constraints"},
     "shex":         {"pass":0,"fail":0,"skip":0,"total":0,"present":false,"spec":"https://shex.io/shex-semantics/"},
-    "jsonld_tordf": {"pass":461,"fail":0,"skip":6,"total":467,"present":true,"spec":"https://www.w3.org/TR/json-ld11-api/#deserialize-json-ld-to-rdf-algorithm"},
+    "jsonld_tordf": {"pass":449,"fail":12,"skip":6,"total":467,"present":true,"spec":"https://www.w3.org/TR/json-ld11-api/#deserialize-json-ld-to-rdf-algorithm"},
     "rml_core":     {"pass":76,"fail":0,"skip":0,"total":76,"present":true,"spec":"https://kg-construct.github.io/rml-core/spec/"},
     "rif_core":     {"pass":34,"fail":4,"skip":12,"total":50,"present":true,"spec":"https://www.w3.org/TR/rif-core/"},
     "vc_stage1":    {"pass":113,"fail":1,"skip":6,"total":120,"present":true,"spec":"https://www.w3.org/TR/vc-data-model-2.0/"},
@@ -28,7 +28,7 @@
     "schematron":     {"pass":8,"fail":0,"skip":0,"total":8,"present":true,"spec":"https://www.iso.org/standard/74515.html"},
     "csvw_csv2rdf":   {"pass":146,"fail":124,"skip":0,"total":270,"present":true,"spec":"https://www.w3.org/TR/csv2rdf/"},
     "did_key":        {"pass":8,"fail":0,"skip":0,"total":8,"present":true,"spec":"https://www.w3.org/TR/did-core/"},
-    "jsonld_fromrdf": {"pass":53,"fail":0,"skip":1,"total":54,"present":true,"spec":"https://www.w3.org/TR/json-ld11-api/#serialize-rdf-as-json-ld-algorithm"},
+    "jsonld_fromrdf": {"pass":49,"fail":5,"skip":0,"total":54,"present":true,"spec":"https://www.w3.org/TR/json-ld11-api/#serialize-rdf-as-json-ld-algorithm"},
     "hdt_stage4_parity":{"pass":6,"fail":0,"skip":0,"total":6,"present":true,"spec":"internal (HDT backend parity vs in-memory)"},
     "hub_browser_bundle":{"pass":201,"fail":3,"skip":0,"total":204,"present":true,"spec":"internal (node --test tests/hub)"},
     "npm_package":    {"pass":143,"fail":0,"skip":1,"total":144,"present":true,"spec":"internal (node --test npm/factoidal/test)"}
@@ -82,7 +82,7 @@
     "rdfc10": {"name":"rdfc10","pass":86,"fail":0,"skip":0,"total":86},
     "shacl_core": {"name":"shacl_core","pass":98,"fail":0,"skip":0,"total":98},
     "shacl_sparql": {"name":"shacl_sparql","pass":22,"fail":0,"skip":0,"total":22},
-    "jsonld_tordf": {"name":"jsonld_tordf","pass":461,"fail":0,"skip":6,"total":467},
+    "jsonld_tordf": {"name":"jsonld_tordf","pass":449,"fail":12,"skip":6,"total":467},
     "rml_core": {"name":"rml_core","pass":76,"fail":0,"skip":0,"total":76},
     "rif_core": {"name":"rif_core","pass":34,"fail":4,"skip":12,"total":50},
     "vc_stage1": {"name":"vc_stage1","pass":113,"fail":1,"skip":6,"total":120},
@@ -93,7 +93,7 @@
     "schematron": {"name":"schematron","pass":8,"fail":0,"skip":0,"total":8},
     "csvw_csv2rdf": {"name":"csvw_csv2rdf","pass":146,"fail":124,"skip":0,"total":270},
     "did_key": {"name":"did_key","pass":8,"fail":0,"skip":0,"total":8},
-    "jsonld_fromrdf": {"name":"jsonld_fromrdf","pass":53,"fail":0,"skip":1,"total":54},
+    "jsonld_fromrdf": {"name":"jsonld_fromrdf","pass":49,"fail":5,"skip":0,"total":54},
     "grddl_stage1": {"name":"grddl_stage1","pass":3,"fail":14,"skip":51,"total":68},
     "hdt_stage4_parity": {"name":"hdt_stage4_parity","pass":6,"fail":0,"skip":0,"total":6},
     "hub_browser_bundle": {"name":"hub_browser_bundle","pass":201,"fail":3,"skip":0,"total":204},

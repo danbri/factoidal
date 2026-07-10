@@ -279,7 +279,7 @@
 <header>
   <div class="inner">
     <div class="rendered-pill" title="Rendered = when this page was last regenerated. Tests = when the *_results.log files inside the repository were last updated. Both UTC.">
-      <span class="row"><span class="label">Rendered</span><strong>2026-07-10 01:36 UTC</strong></span>
+      <span class="row"><span class="label">Rendered</span><strong>2026-07-10 01:40 UTC</strong></span>
       <span class="row"><span class="label">Tests</span><strong class="tests">2026-07-10 01:10 UTC</strong></span>
     </div>
     <h1>W3C test results</h1>
@@ -1113,24 +1113,24 @@
   
 </section>
 
-<section class="family amber" id="jsonld11">
+<section class="family green" id="jsonld11">
   <h2>JSON-LD 1.1</h2>
-  <p class="fam-headline amber">498 pass, 17 fail, 6 skip (of 521) across the W3C JSON-LD 1.1 toRdf and fromRdf manifests.</p>
+  <p class="fam-headline green">514 pass, 0 fail, 7 skip (of 521) across the W3C JSON-LD 1.1 toRdf and fromRdf manifests.</p>
   <details open>
     <summary>Suites in this family (tap to collapse)</summary>
     <div class="suites">
-      <div class="suite-row amber">
+      <div class="suite-row green">
         <div class="suite-name">JSON-LD 1.1 toRdf</div>
-        <div class="meter"><div class="seg seg-pass" style="width:96.15%"></div><div class="seg seg-fail" style="width:2.57%"></div><div class="seg seg-skip" style="width:1.28%"></div></div>
-        <div class="suite-numbers"><small>449 pass, 12 fail, 6 skip (of 467)</small></div>
+        <div class="meter"><div class="seg seg-pass" style="width:98.72%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:1.28%"></div></div>
+        <div class="suite-numbers"><small>461 pass, 0 fail, 6 skip (of 467)</small></div>
       </div>
-      <p class="suite-prov">Runner: <code>bin/jsonld-runner</code> (<code>bin/linux-x86_64/jsonld_runner</code>) &middot; Suite: <code>third_party/testing/json-ld/</code> (toRdf manifest) &middot; <a href="https://github.com/danbri/factoidal/blob/claude/main/docs/designissues/2026-07-05-docs-hub-plan.md" target="_blank" rel="noopener">diagnosis: the 1 fail is the documented Ryu-class float-formatting case; the 6 skips are JSON-LD 1.0-only fixtures, out of scope for this 1.1 program</a></p>
-      <div class="suite-row amber">
+      <p class="suite-prov">Runner: <code>bin/jsonld-runner</code> (<code>bin/linux-x86_64/jsonld_runner</code>) &middot; Suite: <code>third_party/testing/json-ld/</code> (toRdf manifest)</p>
+      <div class="suite-row green">
         <div class="suite-name">JSON-LD 1.1 fromRdf</div>
-        <div class="meter"><div class="seg seg-pass" style="width:90.74%"></div><div class="seg seg-fail" style="width:9.26%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
-        <div class="suite-numbers"><small>49 pass, 5 fail, 0 skip (of 54)</small></div>
+        <div class="meter"><div class="seg seg-pass" style="width:98.15%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:1.85%"></div></div>
+        <div class="suite-numbers"><small>53 pass, 0 fail, 1 skip (of 54)</small></div>
       </div>
-      <p class="suite-prov">Runner: <code>bin/jsonld-fromrdf-runner</code> (<code>bin/linux-x86_64/jsonld_fromrdf_runner</code>) &middot; Suite: W3C JSON-LD 1.1 fromRdf manifest (Serialize RDF as JSON-LD) &middot; <a href="https://github.com/danbri/factoidal/blob/claude/main/.github/test-suites/jsonld-fromrdf.yaml" target="_blank" rel="noopener">diagnosis: residual fails are the documented @native/list-container serialisation gaps — see the suite manifest</a></p>
+      <p class="suite-prov">Runner: <code>bin/jsonld-fromrdf-runner</code> (<code>bin/linux-x86_64/jsonld_fromrdf_runner</code>) &middot; Suite: W3C JSON-LD 1.1 fromRdf manifest (Serialize RDF as JSON-LD)</p>
     </div>
   </details>
   
@@ -1374,7 +1374,7 @@ XML_Wellformedness.is_valid_ncname (informational only, see module comment):
   <pre>shacl-core:   98 pass, 0 fail, 0 skip (of 98) — present=1
 shacl-sparql: 22 pass, 0 fail, 0 skip (of 22) — present=1
 shex:         0 pass, 0 fail, 0 skip (of 0) — present=0
-jsonld-tordf: 449 pass, 12 fail, 6 skip (of 467) — present=1
+jsonld-tordf: 461 pass, 0 fail, 6 skip (of 467) — present=1
 rml-core:     76 pass, 0 fail, 0 skip (of 76) — present=1
 rif-core:     34 pass, 4 fail, 12 skip (of 50) — present=1
 vc-stage1:    113 pass, 1 fail, 6 skip (of 120) — present=1</pre>
@@ -1395,9 +1395,9 @@ vc-stage1:    113 pass, 1 fail, 6 skip (of 120) — present=1</pre>
 </main>
 
 <footer>
-  Generated <strong>2026-07-10 01:36 UTC</strong> from commit
-  <code><a href="https://github.com/danbri/factoidal/commit/3b95106db7b37709e08b1502bbda48ccd6a3b7ff">3b95106d</a></code>
-  on branch <code>claude/main</code> — &ldquo;designissues: QUDT scoping — three layers, measured targets, exact-rational angle&rdquo;.
+  Generated <strong>2026-07-10 01:40 UTC</strong> from commit
+  <code><a href="https://github.com/danbri/factoidal/commit/1483e863e74fbe1f10f449f6d2bb45aa75a5159c">1483e86</a></code>
+  on branch <code>claude/main</code> — &ldquo;jsonld: close out both conformance suites — toRdf 461 pass, 0 fail, 6 skip (of 467); fromRdf 53 pass, 0 fail, 1 skip (of 54)&rdquo;.
   Re-run locally: <code>cd formal/fstar &amp;&amp; ./generate-report.sh --run</code>.
 </footer>
 

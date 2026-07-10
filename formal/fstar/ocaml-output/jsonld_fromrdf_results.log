@@ -5,7 +5,7 @@
   PASS  #t0005   Document with list [fromRdf-Positive]
   PASS  #t0006   Two graphs having same subject but different values [fromRdf-Positive]
   PASS  #t0007   Graph with multiple named graphs [fromRdf-Positive]
-  FAIL  #t0008   List conversion [fromRdf-Positive]
+  SKIP  #t0008   List conversion — option.specVersion=json-ld-1.0 — List conversion: 1.0's partially-ordered RDF-collection-to-@list conversion; this engine implements the 1.1 fully-collapsing algorithm (see toRdf jld_1_0_still_skip for the matching honest 1.0-version skip policy).
   PASS  #t0009   List conversion with IRI nodes [fromRdf-Positive]
   PASS  #t0010   List pattern without rdf:nil [fromRdf-Positive]
   PASS  #t0011   List pattern with extra properties [fromRdf-Positive]
@@ -30,14 +30,14 @@
   PASS  #tdi02   rdfDirection: null with i18n literal with direction and language [fromRdf-Positive]
   PASS  #tdi03   rdfDirection: null with compound literal with direction and no language [fromRdf-Positive]
   PASS  #tdi04   rdfDirection: null with compound literal with direction and language [fromRdf-Positive]
-  FAIL  #tdi05   rdfDirection: i18n-datatype with i18n literal with direction and no language [fromRdf-Positive]
-  FAIL  #tdi06   rdfDirection: i18n-datatype with i18n literal with direction and language [fromRdf-Positive]
+  PASS  #tdi05   rdfDirection: i18n-datatype with i18n literal with direction and no language [fromRdf-Positive]
+  PASS  #tdi06   rdfDirection: i18n-datatype with i18n literal with direction and language [fromRdf-Positive]
   PASS  #tdi07   rdfDirection: i18n-datatype with compound literal with direction and no language [fromRdf-Positive]
   PASS  #tdi08   rdfDirection: i18n-datatype with compound literal with direction and language [fromRdf-Positive]
   PASS  #tdi09   rdfDirection: compound-literal with i18n literal with direction and no language [fromRdf-Positive]
   PASS  #tdi10   rdfDirection: compound-literal with i18n literal with direction and language [fromRdf-Positive]
-  FAIL  #tdi11   rdfDirection: compound-literal with compound literal with direction and no language [fromRdf-Positive]
-  FAIL  #tdi12   rdfDirection: compound-literal with compound literal with direction and language [fromRdf-Positive]
+  PASS  #tdi11   rdfDirection: compound-literal with compound literal with direction and no language [fromRdf-Positive]
+  PASS  #tdi12   rdfDirection: compound-literal with compound literal with direction and language [fromRdf-Positive]
   PASS  #tjs01   JSON literal (boolean true) [fromRdf-Positive]
   PASS  #tjs02   JSON literal (boolean false) [fromRdf-Positive]
   PASS  #tjs03   JSON literal (double) [fromRdf-Positive]
@@ -53,4 +53,4 @@
   PASS  #tli02   @list containing multiple lists [fromRdf-Positive]
   PASS  #tli03   t0008 as interpreted for 1.1.  [fromRdf-Positive]
 
-^JSON-LD fromRdf tests: 49 pass, 5 fail (out of 54)
+^JSON-LD fromRdf tests: 53 pass, 0 fail, 1 skip (out of 54)
