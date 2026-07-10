@@ -12,8 +12,10 @@
 # examples that motivated this harness (task #84, tracks issue #245):
 # post 21's Leaflet map threw "Cannot read properties of undefined
 # (reading 'min')" from an async fitBounds call, and post 24's HDT
-# reader turned out to make the tab unresponsive (see the allowlist
-# below) -- neither shows up under `node --test`.
+# reader turned out to make the tab unresponsive (fixed in F* by task
+# #102's O(1) decoded-byte representation in HDT.Container; the
+# allowlist entry it carried is gone) -- neither shows up under
+# `node --test`.
 #
 # Sibling to tests/web-demos/hub_smoke.sh (the scaffold's own smoke
 # cell) and tests/web-demos/hub_posts_smoke.sh (posts 01-18, mounted
@@ -45,11 +47,12 @@
 # them wraps its throwing code in the cell's own try/catch and returns
 # a normal (non-rejected) value describing the failure -- so as of this
 # writing there are NO posts with a live intentionally-REJECTED
-# Observable cell, and the allowlist below carries exactly one entry:
-# post 24, a genuine KNOWN-BUG (see the Node driver's ALLOWLIST
-# comment for the measured numbers). If a future post adds a real
-# intentionally-rejected cell, add an `allowedCellIndices` entry for
-# it there, with its own reason comment.
+# Observable cell, and the allowlist below is EMPTY. (Its one
+# historical entry -- post 24, whose fn.queryHdt() calls took 5.7-20.5s
+# each through the js bundle and got the tab killed -- was fixed in F*
+# by HDT.Container's O(1) decoded-byte representation, task #102.) If
+# a future post adds a real intentionally-rejected cell, add an
+# `allowedCellIndices` entry for it there, with its own reason comment.
 #
 # Usage:
 #   tests/web-demos/hub_browser_all.sh
@@ -237,32 +240,7 @@ const CELL_SETTLE_TIMEOUT_MS = Number(process.env.HUB_BROWSER_ALL_CELL_TIMEOUT_M
 // does NOT match pageerrorAllow, and on any rejected cell whose index
 // is NOT in allowedCellIndices -- the allowlist narrows exactly the
 // known condition, nothing broader.
-const ALLOWLIST = {
-  '24-hdt-header-dictionary-triples': {
-    reason:
-      "fn.queryHdt() in the js_of_ocaml bundle " +
-      "(docs/npm/foafos/factoidal.js, the SAME bundle every hub post's " +
-      "cells run against) takes multiple seconds PER CALL against this " +
-      "post's tiny 9KB/343-triple rml-core-ontology.hdt fixture -- " +
-      "measured directly via the npm package's own JS-engine path " +
-      "(factoidal.queryHdt(), not the native binary): COUNT(*) 5.7s, " +
-      "the owl:Class+rdfs:label query 20.5s, the predicate-histogram " +
-      "query 17.2s (~43s total for the page's 3 cells). That fully " +
-      "blocks the tab's JS main thread long enough that headless " +
-      "Chromium eventually kills the unresponsive renderer -- confirmed " +
-      "reproducible in isolation, independent of this harness. " +
-      "tests/hub/post24_test.mjs does not catch this because it drives " +
-      "the NATIVE binary (per its own doc comment), never the js " +
-      "bundle -- this is exactly the class of browser-only regression " +
-      "this harness exists to catch (task #84 / issue #245). Needs an " +
-      "HDT reader performance fix in F* (HDT.Triples.fst / " +
-      "HDT.Dictionary.fst under formal/fstar/); out of scope here per " +
-      "this task's own instructions (must not touch F*/npm-package " +
-      "internals). Tracked for a follow-up issue -- see this harness " +
-      "landing's commit/report for the numbers above.",
-    allowTimeout: true,
-  },
-};
+const ALLOWLIST = {};
 
 function allowlistFor(slug) {
   const entry = ALLOWLIST[slug];

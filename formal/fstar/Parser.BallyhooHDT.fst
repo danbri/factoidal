@@ -100,16 +100,17 @@ noeq type hdt_tp_row = {
   hrow_o : option hdt_term_ref;
 }
 
-// The graph store's physical state: the hex-encoded file bytes plus
-// the stage-1 container inventory and stage-3 triples-section
-// inventory, both parsed once at open time. Every encode/decode/
-// search call below is a pure function of this record — no mutable
-// state, no external handle.
+// The graph store's physical state: the decoded file bytes (O(1)-
+// indexed `HC.hdt_bytes`, built once at open time from the hex the I/O
+// boundary returns) plus the stage-1 container inventory and stage-3
+// triples-section inventory, both parsed once at open time. Every
+// encode/decode/search call below is a pure function of this record —
+// no mutable state, no external handle.
 noeq type hdt_graph_store = {
   hgs_graph_name : option iri;
   hgs_artifact_path : string;
   hgs_summary : option hdt_artifact_summary;
-  hgs_hex : string;
+  hgs_bytes : HC.hdt_bytes;
   hgs_inventory : HC.hdt_inventory;
   hgs_triples : HT.hdt_triples_info;
 }
@@ -130,15 +131,15 @@ let hdt_open_graph_store
   : Tot (option hdt_graph_store) =
   match HC.hdt_read_inventory artifact_path with
   | None -> None
-  | Some (hex, inv) ->
-    (match HT.hdt_read_triples hex inv with
+  | Some (bytes, inv) ->
+    (match HT.hdt_read_triples bytes inv with
      | None -> None
      | Some triples ->
        Some {
          hgs_graph_name = graph_name;
          hgs_artifact_path = artifact_path;
          hgs_summary = summary;
-         hgs_hex = hex;
+         hgs_bytes = bytes;
          hgs_inventory = inv;
          hgs_triples = triples;
        })
@@ -171,13 +172,13 @@ let opt_pos_to_ref (o : option pos) : Tot (option hdt_term_ref) =
   | Some (id : pos) -> Some (id <: hdt_term_ref)
 
 let hdt_encode_subject (gs : hdt_graph_store) (subj : subject) : Tot (option hdt_term_ref) =
-  opt_pos_to_ref (HD.hdt_term_to_id gs.hgs_hex gs.hgs_inventory HD.Role_Subject (subject_to_term subj))
+  opt_pos_to_ref (HD.hdt_term_to_id gs.hgs_bytes gs.hgs_inventory HD.Role_Subject (subject_to_term subj))
 
 let hdt_encode_predicate (gs : hdt_graph_store) (p : wf_iri) : Tot (option hdt_term_ref) =
-  opt_pos_to_ref (HD.hdt_term_to_id gs.hgs_hex gs.hgs_inventory HD.Role_Predicate (T_IRI p))
+  opt_pos_to_ref (HD.hdt_term_to_id gs.hgs_bytes gs.hgs_inventory HD.Role_Predicate (T_IRI p))
 
 let hdt_encode_object (gs : hdt_graph_store) (o : rdf_term) : Tot (option hdt_term_ref) =
-  opt_pos_to_ref (HD.hdt_term_to_id gs.hgs_hex gs.hgs_inventory HD.Role_Object o)
+  opt_pos_to_ref (HD.hdt_term_to_id gs.hgs_bytes gs.hgs_inventory HD.Role_Object o)
 
 // ---------------------------------------------------------------------------
 // Physical-to-logical decoding — forward dictionary lookup
@@ -202,7 +203,7 @@ let hdt_decode_error_object : rdf_term = T_BNode "hdt-decode-error"
 let hdt_decode_term (gs : hdt_graph_store) (role : HD.hdt_role) (id : hdt_term_ref)
   : option rdf_term =
   if id = 0 then None
-  else HD.hdt_id_to_term gs.hgs_hex gs.hgs_inventory role id
+  else HD.hdt_id_to_term gs.hgs_bytes gs.hgs_inventory role id
 
 let hdt_decode_subject (gs : hdt_graph_store) (id : hdt_term_ref) : Tot subject =
   match hdt_decode_term gs HD.Role_Subject id with
@@ -248,9 +249,9 @@ let hdt_choose_access_path (bound : hdt_bound_tp) : Tot hdt_access_path =
 let hdt_resolve_access_path (gs : hdt_graph_store) (path : hdt_access_path)
   : Tot (option (list HT.hdt_id_triple)) =
   match path with
-  | HAP_FullScan -> HT.hdt_enumerate_all gs.hgs_hex gs.hgs_triples
+  | HAP_FullScan -> HT.hdt_enumerate_all gs.hgs_bytes gs.hgs_triples
   | HAP_BoundSubject sid ->
-    (match HT.hdt_triples_for_subject gs.hgs_hex gs.hgs_triples sid with
+    (match HT.hdt_triples_for_subject gs.hgs_bytes gs.hgs_triples sid with
      | None -> None
      | Some pairs ->
        Some (List.Tot.map

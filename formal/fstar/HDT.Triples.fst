@@ -29,13 +29,13 @@ module HDT.Triples
 //     already-proven-correct log-array CRC checks for ArrayY/ArrayZ
 //     (they are ordinary `hdt_log_array_info` values, no new CRC code
 //     needed for them).
-//   - Naive rank1/select1 over a decoded bitmap: `rank1 s bm i` is the
+//   - Naive rank1/select1 over a decoded bitmap: `rank1 a bm i` is the
 //     count of 1-bits in bit positions `[0, i]` inclusive (linear
-//     scan, no auxiliary index); `select1 s bm k` is the bit position
+//     scan, no auxiliary index); `select1 a bm k` is the bit position
 //     of the `(k+1)`-th 1-bit for 0-based `k` (linear scan, stops at
 //     the target). This choice of indexing gives the identity this
 //     module's regression pins check on both fixtures:
-//     `rank1 s bm (select1 s bm k) = Some (k + 1)`.
+//     `rank1 a bm (select1 a bm k) = Some (k + 1)`.
 //   - The stage-5 swap seam: every caller above this line reaches a
 //     bitmap ONLY through `rank1`/`select1`/`children_range` — never
 //     through `bit_at` or the raw byte offsets directly except inside
@@ -75,22 +75,22 @@ module HD  = HDT.Dictionary
 
 type hdt_triples_info = {
   tri_bitmap_y : HC.hdt_bitmap_info;      // BitmapY: last-predicate-of-subject markers
-  tri_bitmap_z : HC.hdt_bitmap_info;      // BitmapZ: last-object-of-(s,p) markers
-  tri_array_y  : HC.hdt_log_array_info;   // ArrayY: predicate IDs, one per (s,p) pair
+  tri_bitmap_z : HC.hdt_bitmap_info;      // BitmapZ: last-object-of-(a,p) markers
+  tri_array_y  : HC.hdt_log_array_info;   // ArrayY: predicate IDs, one per (a,p) pair
   tri_array_z  : HC.hdt_log_array_info;   // ArrayZ: object IDs, one per triple
 }
 
-let parse_triples_info (s:string) (pos:nat) : option hdt_triples_info =
-  match HC.parse_bitmap_info s pos with
+let parse_triples_info (a:HC.hdt_bytes) (pos:nat) : option hdt_triples_info =
+  match HC.parse_bitmap_info a pos with
   | None -> None
   | Some bmy ->
-    (match HC.parse_bitmap_info s bmy.HC.bm_end with
+    (match HC.parse_bitmap_info a bmy.HC.bm_end with
      | None -> None
      | Some bmz ->
-       (match HC.parse_log_array_info s bmz.HC.bm_end with
+       (match HC.parse_log_array_info a bmz.HC.bm_end with
         | None -> None
         | Some lay ->
-          (match HC.parse_log_array_info s lay.HC.la_end with
+          (match HC.parse_log_array_info a lay.HC.la_end with
            | None -> None
            | Some laz ->
              Some {
@@ -106,8 +106,8 @@ let parse_triples_info (s:string) (pos:nat) : option hdt_triples_info =
 // is already validated (CRC16) by `HC.hdt_parse_inventory_hex`, so a
 // truncated file that still has a valid CI but a cut-off payload
 // fails HERE rather than at the whole-inventory stage.
-let hdt_read_triples (s:string) (inv:HC.hdt_inventory) : option hdt_triples_info =
-  parse_triples_info s inv.HC.inv_triples_data_start
+let hdt_read_triples (a:HC.hdt_bytes) (inv:HC.hdt_inventory) : option hdt_triples_info =
+  parse_triples_info a inv.HC.inv_triples_data_start
 
 // ---------------------------------------------------------------------------
 // CRC validation: bitmap preamble CRC8 + payload CRC32C (the two
@@ -122,30 +122,30 @@ let bm_preamble_len (bm:HC.hdt_bitmap_info) : nat =
 let bm_preamble_crc8_pos (bm:HC.hdt_bitmap_info) : nat =
   HD.nat_sub bm.HC.bm_data_start 1
 
-let bm_preamble_crc8_ok (s:string) (bm:HC.hdt_bitmap_info) : bool =
-  match HD.crc8_range s bm.HC.bm_start (bm_preamble_len bm) 0,
-        HD.read_u8 s (bm_preamble_crc8_pos bm) with
+let bm_preamble_crc8_ok (a:HC.hdt_bytes) (bm:HC.hdt_bitmap_info) : bool =
+  match HD.crc8_range a bm.HC.bm_start (bm_preamble_len bm) 0,
+        HD.read_u8 a (bm_preamble_crc8_pos bm) with
   | Some c, Some stored -> c = stored
   | _, _ -> false
 
-let bm_data_crc32_ok (s:string) (bm:HC.hdt_bitmap_info) : bool =
-  match HD.crc32c_of_range s bm.HC.bm_data_start bm.HC.bm_data_bytes,
-        HD.read_u32_le s (HD.nat_sub bm.HC.bm_end 4) with
+let bm_data_crc32_ok (a:HC.hdt_bytes) (bm:HC.hdt_bitmap_info) : bool =
+  match HD.crc32c_of_range a bm.HC.bm_data_start bm.HC.bm_data_bytes,
+        HD.read_u32_le a (HD.nat_sub bm.HC.bm_end 4) with
   | Some c, Some stored -> c = stored
   | _, _ -> false
 
-let bitmap_crc_ok (s:string) (bm:HC.hdt_bitmap_info) : bool =
-  bm_preamble_crc8_ok s bm && bm_data_crc32_ok s bm
+let bitmap_crc_ok (a:HC.hdt_bytes) (bm:HC.hdt_bitmap_info) : bool =
+  bm_preamble_crc8_ok a bm && bm_data_crc32_ok a bm
 
 // All six CRC checks the Triples section carries: both bitmaps' own
 // preamble+payload, both log-arrays' preamble+payload.
-let triples_crc_ok (s:string) (t:hdt_triples_info) : bool =
-  bitmap_crc_ok s t.tri_bitmap_y &&
-  bitmap_crc_ok s t.tri_bitmap_z &&
-  HD.la_preamble_crc8_ok s t.tri_array_y &&
-  HD.la_data_crc32_ok s t.tri_array_y &&
-  HD.la_preamble_crc8_ok s t.tri_array_z &&
-  HD.la_data_crc32_ok s t.tri_array_z
+let triples_crc_ok (a:HC.hdt_bytes) (t:hdt_triples_info) : bool =
+  bitmap_crc_ok a t.tri_bitmap_y &&
+  bitmap_crc_ok a t.tri_bitmap_z &&
+  HD.la_preamble_crc8_ok a t.tri_array_y &&
+  HD.la_data_crc32_ok a t.tri_array_y &&
+  HD.la_preamble_crc8_ok a t.tri_array_z &&
+  HD.la_data_crc32_ok a t.tri_array_z
 
 // ---------------------------------------------------------------------------
 // Bit access + naive rank1/select1 — the stage-5 swap seam (see the
@@ -157,54 +157,54 @@ let triples_crc_ok (s:string) (t:hdt_triples_info) : bool =
 // byte-level bit convention in hdt-cpp).
 // ---------------------------------------------------------------------------
 
-let bit_at (s:string) (bm:HC.hdt_bitmap_info) (i:nat) : option bool =
+let bit_at (a:HC.hdt_bytes) (bm:HC.hdt_bitmap_info) (i:nat) : option bool =
   if i >= bm.HC.bm_numbits then None
   else
-    match HD.la_bits_acc s bm.HC.bm_data_start i 1 1 0 with
+    match HD.la_bits_acc a bm.HC.bm_data_start i 1 1 0 with
     | None -> None
     | Some v -> Some (v = 1)
 
-// rank1_upto s bm pos fuel acc: count of 1-bits among positions
-// [pos, pos+fuel) added to `acc`. `rank1 s bm i` calls this with
+// rank1_upto a bm pos fuel acc: count of 1-bits among positions
+// [pos, pos+fuel) added to `acc`. `rank1 a bm i` calls this with
 // pos=0, fuel=i+1 so it counts bit positions [0, i] inclusive.
-let rec rank1_upto (s:string) (bm:HC.hdt_bitmap_info) (pos:nat) (fuel:nat) (acc:nat)
+let rec rank1_upto (a:HC.hdt_bytes) (bm:HC.hdt_bitmap_info) (pos:nat) (fuel:nat) (acc:nat)
   : Tot (option nat) (decreases fuel) =
   if fuel = 0 then Some acc
   else
-    match bit_at s bm pos with
+    match bit_at a bm pos with
     | None -> None
-    | Some b -> rank1_upto s bm (pos + 1) (fuel - 1) (if b then acc + 1 else acc)
+    | Some b -> rank1_upto a bm (pos + 1) (fuel - 1) (if b then acc + 1 else acc)
 
-let rank1 (s:string) (bm:HC.hdt_bitmap_info) (i:nat) : option nat =
+let rank1 (a:HC.hdt_bytes) (bm:HC.hdt_bitmap_info) (i:nat) : option nat =
   if i >= bm.HC.bm_numbits then None
-  else rank1_upto s bm 0 (i + 1) 0
+  else rank1_upto a bm 0 (i + 1) 0
 
-// select1_scan s bm pos fuel target seen: linear scan starting at
+// select1_scan a bm pos fuel target seen: linear scan starting at
 // `pos` with `fuel` remaining positions and `seen` ones already
 // counted before `pos`; returns the position of the bit that brings
 // the running count to `target`.
-let rec select1_scan (s:string) (bm:HC.hdt_bitmap_info) (pos:nat) (fuel:nat)
+let rec select1_scan (a:HC.hdt_bytes) (bm:HC.hdt_bitmap_info) (pos:nat) (fuel:nat)
   (target:nat) (seen:nat)
   : Tot (option nat) (decreases fuel) =
   if fuel = 0 then None
   else
-    match bit_at s bm pos with
+    match bit_at a bm pos with
     | None -> None
     | Some b ->
       let seen' = if b then seen + 1 else seen in
       if b && seen' = target then Some pos
-      else select1_scan s bm (pos + 1) (fuel - 1) target seen'
+      else select1_scan a bm (pos + 1) (fuel - 1) target seen'
 
-// select1 s bm k: position of the (k+1)-th 1-bit, 0-based k — chosen
-// so `rank1 s bm (select1 s bm k) = Some (k + 1)` (checked as a
+// select1 a bm k: position of the (k+1)-th 1-bit, 0-based k — chosen
+// so `rank1 a bm (select1 a bm k) = Some (k + 1)` (checked as a
 // regression pin over every valid k of both fixture bitmaps in
 // bin/hdt-probe/check.sh, rather than as a from-scratch universal
 // proof — the naive scan's correctness is exercised exhaustively
 // against real data at this stage; stage 5's indexed replacement is
 // where a from-scratch proof pays for itself, over a structure that
 // no longer degenerates to "re-scan everything").
-let select1 (s:string) (bm:HC.hdt_bitmap_info) (k:nat) : option nat =
-  select1_scan s bm 0 bm.HC.bm_numbits (k + 1) 0
+let select1 (a:HC.hdt_bytes) (bm:HC.hdt_bitmap_info) (k:nat) : option nat =
+  select1_scan a bm 0 bm.HC.bm_numbits (k + 1) 0
 
 // ---------------------------------------------------------------------------
 // SPO forest navigation. `children_range` is the one range-decoding
@@ -216,65 +216,65 @@ let select1 (s:string) (bm:HC.hdt_bitmap_info) (k:nat) : option nat =
 // fixtures' full SPO trees and reproduced their exact triple sets).
 // ---------------------------------------------------------------------------
 
-let children_range (s:string) (bm:HC.hdt_bitmap_info) (idx:nat) : option (nat & nat) =
-  match select1 s bm idx with
+let children_range (a:HC.hdt_bytes) (bm:HC.hdt_bitmap_info) (idx:nat) : option (nat & nat) =
+  match select1 a bm idx with
   | None -> None
   | Some hi ->
     if idx = 0 then Some (0, hi)
     else
-      match select1 s bm (idx - 1) with
+      match select1 a bm (idx - 1) with
       | None -> None
       | Some prev -> Some (prev + 1, hi)
 
 // Read `count` consecutive entries of a log-array starting at
 // `pos` (0-based), in order. Generic over ArrayY/ArrayZ.
-let rec collect_range (s:string) (la:HC.hdt_log_array_info) (pos:nat) (count:nat)
+let rec collect_range (a:HC.hdt_bytes) (la:HC.hdt_log_array_info) (pos:nat) (count:nat)
   (acc:list nat)
   : Tot (option (list nat)) (decreases count) =
   if count = 0 then Some (List.Tot.rev acc)
   else
-    match HD.la_entry s la pos with
+    match HD.la_entry a la pos with
     | None -> None
-    | Some v -> collect_range s la (pos + 1) (count - 1) (v :: acc)
+    | Some v -> collect_range a la (pos + 1) (count - 1) (v :: acc)
 
 let range_count (lo:nat) (hi:nat) : nat = if hi >= lo then hi - lo + 1 else 0
 
 // Walk `count` consecutive Y-positions starting at `y`, emitting one
 // (predicate, object) pair per object in each position's Z-range, in
 // order.
-let rec walk_y_positions (s:string) (t:hdt_triples_info) (y:nat) (count:nat)
+let rec walk_y_positions (a:HC.hdt_bytes) (t:hdt_triples_info) (y:nat) (count:nat)
   (acc:list (nat & nat))
   : Tot (option (list (nat & nat))) (decreases count) =
   if count = 0 then Some acc
   else
-    match HD.la_entry s t.tri_array_y y with
+    match HD.la_entry a t.tri_array_y y with
     | None -> None
     | Some p ->
-      (match children_range s t.tri_bitmap_z y with
+      (match children_range a t.tri_bitmap_z y with
        | None -> None
        | Some (zlo, zhi) ->
-         (match collect_range s t.tri_array_z zlo (range_count zlo zhi) [] with
+         (match collect_range a t.tri_array_z zlo (range_count zlo zhi) [] with
           | None -> None
           | Some objs ->
             let pairs = List.Tot.map (fun o -> (p, o)) objs in
-            walk_y_positions s t (y + 1) (count - 1) (acc @ pairs)))
+            walk_y_positions a t (y + 1) (count - 1) (acc @ pairs)))
 
 // The first pattern resolver: subject ID -> its (predicate, object)
 // ID pairs, in the file's own (subject, predicate, object) order.
 // `subj` is a 1-based ID in the dictionary's subject-role ID space
 // (`HDT.Dictionary.Role_Subject`).
-let hdt_triples_for_subject (s:string) (t:hdt_triples_info) (subj:pos)
+let hdt_triples_for_subject (a:HC.hdt_bytes) (t:hdt_triples_info) (subj:pos)
   : option (list (nat & nat)) =
-  match children_range s t.tri_bitmap_y (subj - 1) with
+  match children_range a t.tri_bitmap_y (subj - 1) with
   | None -> None
-  | Some (ylo, yhi) -> walk_y_positions s t ylo (range_count ylo yhi) []
+  | Some (ylo, yhi) -> walk_y_positions a t ylo (range_count ylo yhi) []
 
 // ---------------------------------------------------------------------------
 // Whole-container enumeration.
 // ---------------------------------------------------------------------------
 
 // Total number of triples: ArrayZ carries exactly one entry per
-// triple (its 1-bits mark the last object of each (s,p) pair, but
+// triple (its 1-bits mark the last object of each (a,p) pair, but
 // EVERY entry — 1-bit or not — is one object of one triple).
 let hdt_triple_count (t:hdt_triples_info) : nat = t.tri_array_z.HC.la_numentries
 
@@ -284,10 +284,10 @@ let hdt_triple_count (t:hdt_triples_info) : nat = t.tri_array_z.HC.la_numentries
 // bin/hdt-probe/check.sh against `HDT.Dictionary.hdt_role_max_id`
 // (Role_Subject), an independent count from the dictionary section
 // sizes.
-let hdt_num_subjects (s:string) (t:hdt_triples_info) : option nat =
+let hdt_num_subjects (a:HC.hdt_bytes) (t:hdt_triples_info) : option nat =
   let bm = t.tri_bitmap_y in
   if bm.HC.bm_numbits = 0 then Some 0
-  else rank1 s bm (bm.HC.bm_numbits - 1)
+  else rank1 a bm (bm.HC.bm_numbits - 1)
 
 type hdt_id_triple = {
   it_s : nat;
@@ -295,22 +295,22 @@ type hdt_id_triple = {
   it_o : nat;
 }
 
-let rec hdt_enumerate_subjects (s:string) (t:hdt_triples_info) (subj:pos) (fuel:nat)
+let rec hdt_enumerate_subjects (a:HC.hdt_bytes) (t:hdt_triples_info) (subj:pos) (fuel:nat)
   (acc:list hdt_id_triple)
   : Tot (option (list hdt_id_triple)) (decreases fuel) =
   if fuel = 0 then Some acc
   else
-    match hdt_triples_for_subject s t subj with
+    match hdt_triples_for_subject a t subj with
     | None -> None
     | Some pairs ->
       let new_triples =
         List.Tot.map (fun (p, o) -> { it_s = subj; it_p = p; it_o = o }) pairs in
-      hdt_enumerate_subjects s t (subj + 1) (fuel - 1) (acc @ new_triples)
+      hdt_enumerate_subjects a t (subj + 1) (fuel - 1) (acc @ new_triples)
 
 // Full dump as id-triples, in (subject, Y-position, Z-position) file
 // order — i.e. subject-major, then predicate, then object.
-let hdt_enumerate_all (s:string) (t:hdt_triples_info) : option (list hdt_id_triple) =
-  match hdt_num_subjects s t with
+let hdt_enumerate_all (a:HC.hdt_bytes) (t:hdt_triples_info) : option (list hdt_id_triple) =
+  match hdt_num_subjects a t with
   | None -> None
   | Some 0 -> Some []
-  | Some n -> hdt_enumerate_subjects s t 1 n []
+  | Some n -> hdt_enumerate_subjects a t 1 n []

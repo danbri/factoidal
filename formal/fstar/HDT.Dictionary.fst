@@ -95,13 +95,13 @@ let crc8_byte (crc:nat) (b:nat{b < 256}) : nat =
   crc8_step (crc8_step (crc8_step (crc8_step
     (crc8_step (crc8_step (crc8_step (crc8_step c0)))))))
 
-let rec crc8_range (s:string) (pos:nat) (count:nat) (crc:nat)
+let rec crc8_range (a:HC.hdt_bytes) (pos:nat) (count:nat) (crc:nat)
   : Tot (option nat) (decreases count) =
   if count = 0 then Some crc
   else
-    match HC.hex_byte s pos with
+    match HC.byte_get a pos with
     | None -> None
-    | Some b -> crc8_range s (pos + 1) (count - 1) (crc8_byte crc b)
+    | Some b -> crc8_range a (pos + 1) (count - 1) (crc8_byte crc b)
 
 // ---------------------------------------------------------------------------
 // CRC32C (Castagnoli): poly 0x1EDC6F41, reflected form 0x82F63B78,
@@ -121,16 +121,16 @@ let crc32c_byte (crc:nat) (b:nat{b < 256}) : nat =
   crc32c_step (crc32c_step (crc32c_step (crc32c_step
     (crc32c_step (crc32c_step (crc32c_step (crc32c_step c0)))))))
 
-let rec crc32c_range (s:string) (pos:nat) (count:nat) (crc:nat)
+let rec crc32c_range (a:HC.hdt_bytes) (pos:nat) (count:nat) (crc:nat)
   : Tot (option nat) (decreases count) =
   if count = 0 then Some crc
   else
-    match HC.hex_byte s pos with
+    match HC.byte_get a pos with
     | None -> None
-    | Some b -> crc32c_range s (pos + 1) (count - 1) (crc32c_byte crc b)
+    | Some b -> crc32c_range a (pos + 1) (count - 1) (crc32c_byte crc b)
 
-let crc32c_of_range (s:string) (pos:nat) (count:nat) : option nat =
-  match crc32c_range s pos count 0xFFFFFFFF with
+let crc32c_of_range (a:HC.hdt_bytes) (pos:nat) (count:nat) : option nat =
+  match crc32c_range a pos count 0xFFFFFFFF with
   | None -> None
   | Some c -> Some (HC.nat_xor c 0xFFFFFFFF 32)
 
@@ -138,14 +138,14 @@ let crc32c_of_range (s:string) (pos:nat) (count:nat) : option nat =
 // Small readers for stored CRC values.
 // ---------------------------------------------------------------------------
 
-let read_u8 (s:string) (pos:nat) : option nat =
-  match HC.hex_byte s pos with
+let read_u8 (a:HC.hdt_bytes) (pos:nat) : option nat =
+  match HC.byte_get a pos with
   | None -> None
   | Some b -> Some (b <: nat)
 
-let read_u32_le (s:string) (pos:nat) : option nat =
-  match HC.hex_byte s pos, HC.hex_byte s (pos + 1),
-        HC.hex_byte s (pos + 2), HC.hex_byte s (pos + 3) with
+let read_u32_le (a:HC.hdt_bytes) (pos:nat) : option nat =
+  match HC.byte_get a pos, HC.byte_get a (pos + 1),
+        HC.byte_get a (pos + 2), HC.byte_get a (pos + 3) with
   | Some b0, Some b1, Some b2, Some b3 ->
     Some (b0 + 256 * b1 + 65536 * b2 + 16777216 * b3)
   | _ -> None
@@ -171,15 +171,15 @@ let la_preamble_crc8_pos (la:HC.hdt_log_array_info) : nat =
 let la_crc32_pos (la:HC.hdt_log_array_info) : nat =
   nat_sub la.HC.la_end 4
 
-let la_preamble_crc8_ok (s:string) (la:HC.hdt_log_array_info) : bool =
-  match crc8_range s la.HC.la_start (la_preamble_len la) 0,
-        read_u8 s (la_preamble_crc8_pos la) with
+let la_preamble_crc8_ok (a:HC.hdt_bytes) (la:HC.hdt_log_array_info) : bool =
+  match crc8_range a la.HC.la_start (la_preamble_len la) 0,
+        read_u8 a (la_preamble_crc8_pos la) with
   | Some c, Some stored -> c = stored
   | _, _ -> false
 
-let la_data_crc32_ok (s:string) (la:HC.hdt_log_array_info) : bool =
-  match crc32c_of_range s la.HC.la_data_start la.HC.la_data_bytes,
-        read_u32_le s (la_crc32_pos la) with
+let la_data_crc32_ok (a:HC.hdt_bytes) (la:HC.hdt_log_array_info) : bool =
+  match crc32c_of_range a la.HC.la_data_start la.HC.la_data_bytes,
+        read_u32_le a (la_crc32_pos la) with
   | Some c, Some stored -> c = stored
   | _, _ -> false
 
@@ -189,26 +189,26 @@ let pfc_preamble_len (sec:HC.hdt_pfc_section) : nat =
 let pfc_preamble_crc8_pos (sec:HC.hdt_pfc_section) : nat =
   nat_sub sec.HC.pfc_blocks.HC.la_start 1
 
-let pfc_preamble_crc8_ok (s:string) (sec:HC.hdt_pfc_section) : bool =
-  match crc8_range s sec.HC.pfc_start (pfc_preamble_len sec) 0,
-        read_u8 s (pfc_preamble_crc8_pos sec) with
+let pfc_preamble_crc8_ok (a:HC.hdt_bytes) (sec:HC.hdt_pfc_section) : bool =
+  match crc8_range a sec.HC.pfc_start (pfc_preamble_len sec) 0,
+        read_u8 a (pfc_preamble_crc8_pos sec) with
   | Some c, Some stored -> c = stored
   | _, _ -> false
 
-let pfc_packed_crc32_ok (s:string) (sec:HC.hdt_pfc_section) : bool =
-  match crc32c_of_range s sec.HC.pfc_packed_start sec.HC.pfc_packed_bytes,
-        read_u32_le s (nat_sub sec.HC.pfc_end 4) with
+let pfc_packed_crc32_ok (a:HC.hdt_bytes) (sec:HC.hdt_pfc_section) : bool =
+  match crc32c_of_range a sec.HC.pfc_packed_start sec.HC.pfc_packed_bytes,
+        read_u32_le a (nat_sub sec.HC.pfc_end 4) with
   | Some c, Some stored -> c = stored
   | _, _ -> false
 
 // All four CRC checks a PFC section carries: its own preamble (CRC8),
 // its block-start log-array's preamble (CRC8) and data (CRC32C), and
 // its packed string bytes (CRC32C).
-let pfc_section_crc_ok (s:string) (sec:HC.hdt_pfc_section) : bool =
-  pfc_preamble_crc8_ok s sec &&
-  la_preamble_crc8_ok s sec.HC.pfc_blocks &&
-  la_data_crc32_ok s sec.HC.pfc_blocks &&
-  pfc_packed_crc32_ok s sec
+let pfc_section_crc_ok (a:HC.hdt_bytes) (sec:HC.hdt_pfc_section) : bool =
+  pfc_preamble_crc8_ok a sec &&
+  la_preamble_crc8_ok a sec.HC.pfc_blocks &&
+  la_data_crc32_ok a sec.HC.pfc_blocks &&
+  pfc_packed_crc32_ok a sec
 
 // ---------------------------------------------------------------------------
 // Log-array integer unpacking: entry `idx` is `numbits` bits starting
@@ -227,23 +227,23 @@ let bit_divisor (b:nat{b < 8}) : pos =
   else if b = 6 then 64
   else 128
 
-let rec la_bits_acc (s:string) (data_start:nat) (bitpos:nat) (nbits:nat)
+let rec la_bits_acc (a:HC.hdt_bytes) (data_start:nat) (bitpos:nat) (nbits:nat)
   (mult:pos) (acc:nat)
   : Tot (option nat) (decreases nbits) =
   if nbits = 0 then Some acc
   else
     let byte_idx = data_start + bitpos / 8 in
     let shift = bitpos % 8 in
-    match HC.hex_byte s byte_idx with
+    match HC.byte_get a byte_idx with
     | None -> None
     | Some b ->
       let bitval = (b / bit_divisor shift) % 2 in
-      la_bits_acc s data_start (bitpos + 1) (nbits - 1) (mult * 2)
+      la_bits_acc a data_start (bitpos + 1) (nbits - 1) (mult * 2)
         (acc + bitval * mult)
 
 // Entry `idx` (0-based) of a log-array, or None past end of data.
-let la_entry (s:string) (la:HC.hdt_log_array_info) (idx:nat) : option nat =
-  la_bits_acc s la.HC.la_data_start (idx * la.HC.la_numbits) la.HC.la_numbits 1 0
+let la_entry (a:HC.hdt_bytes) (la:HC.hdt_log_array_info) (idx:nat) : option nat =
+  la_bits_acc a la.HC.la_data_start (idx * la.HC.la_numbits) la.HC.la_numbits 1 0
 
 // Number of PFC blocks: the block-start log-array carries one entry
 // per block plus a trailing sentinel (= total packed-byte count).
@@ -252,8 +252,8 @@ let hdt_pfc_num_blocks (sec:HC.hdt_pfc_section) : nat =
   else sec.HC.pfc_blocks.HC.la_numentries - 1
 
 // Absolute byte offset (into the hex-encoded file) of PFC block `b`.
-let pfc_block_abs_start (s:string) (sec:HC.hdt_pfc_section) (b:nat) : option nat =
-  match la_entry s sec.HC.pfc_blocks b with
+let pfc_block_abs_start (a:HC.hdt_bytes) (sec:HC.hdt_pfc_section) (b:nat) : option nat =
+  match la_entry a sec.HC.pfc_blocks b with
   | None -> None
   | Some rel -> Some (sec.HC.pfc_packed_start + rel)
 
@@ -262,25 +262,25 @@ let pfc_block_abs_start (s:string) (sec:HC.hdt_pfc_section) (b:nat) : option nat
 // ---------------------------------------------------------------------------
 
 // The first (whole, NUL-terminated) string of a block.
-let pfc_read_first (s:string) (pos:nat) : option (string & nat) =
-  match HC.scan_nul s pos (String.length s) with
+let pfc_read_first (a:HC.hdt_bytes) (pos:nat) : option (string & nat) =
+  match HC.scan_nul a pos (HC.byte_len a) with
   | None -> None
   | Some nul_pos ->
-    match HC.bytes_to_string s pos (nul_pos - pos) with
+    match HC.bytes_to_string a pos (nul_pos - pos) with
     | None -> None
     | Some str -> Some (str, nul_pos + 1)
 
 // A front-coded suffix entry: vbyte(common-prefix-length) suffix NUL.
-let pfc_read_suffix (s:string) (pos:nat) (prev:string) : option (string & nat) =
-  match HC.vbyte_decode s pos with
+let pfc_read_suffix (a:HC.hdt_bytes) (pos:nat) (prev:string) : option (string & nat) =
+  match HC.vbyte_decode a pos with
   | None -> None
   | Some (plen, p1) ->
     if plen > String.length prev then None
     else
-      match HC.scan_nul s p1 (String.length s) with
+      match HC.scan_nul a p1 (HC.byte_len a) with
       | None -> None
       | Some nul_pos ->
-        match HC.bytes_to_string s p1 (nul_pos - p1) with
+        match HC.bytes_to_string a p1 (nul_pos - p1) with
         | None -> None
         | Some suffix ->
           let prefix = FStar.String.sub prev 0 plen in
@@ -288,35 +288,35 @@ let pfc_read_suffix (s:string) (pos:nat) (prev:string) : option (string & nat) =
 
 // Walk `remaining` suffix entries starting at `pos` (with `prev` the
 // most recently decoded string), returning the LAST one decoded.
-let rec pfc_walk_suffixes (s:string) (at:nat) (prev:string) (remaining:pos)
+let rec pfc_walk_suffixes (a:HC.hdt_bytes) (at:nat) (prev:string) (remaining:pos)
   : Tot (option string) (decreases remaining) =
-  match pfc_read_suffix s at prev with
+  match pfc_read_suffix a at prev with
   | None -> None
   | Some (str, at') ->
     if remaining = 1 then Some str
-    else pfc_walk_suffixes s at' str (remaining - 1)
+    else pfc_walk_suffixes a at' str (remaining - 1)
 
 // ---------------------------------------------------------------------------
 // Whole-block decode (first string + up to blocksize-1 suffixes).
 // ---------------------------------------------------------------------------
 
-let rec decode_block_acc (s:string) (pos:nat) (prev:string) (remaining:nat)
+let rec decode_block_acc (a:HC.hdt_bytes) (pos:nat) (prev:string) (remaining:nat)
   (acc:list string)
   : Tot (option (list string)) (decreases remaining) =
   if remaining = 0 then Some (List.Tot.rev acc)
   else
-    match pfc_read_suffix s pos prev with
+    match pfc_read_suffix a pos prev with
     | None -> None
-    | Some (str, pos') -> decode_block_acc s pos' str (remaining - 1) (str :: acc)
+    | Some (str, pos') -> decode_block_acc a pos' str (remaining - 1) (str :: acc)
 
 // Decode `count` strings (>= 1) of a single block starting at its
 // absolute byte offset.
-let decode_block (s:string) (block_start:nat) (count:nat) : option (list string) =
+let decode_block (a:HC.hdt_bytes) (block_start:nat) (count:nat) : option (list string) =
   if count = 0 then None
   else
-    match pfc_read_first s block_start with
+    match pfc_read_first a block_start with
     | None -> None
-    | Some (first, pos1) -> decode_block_acc s pos1 first (count - 1) [first]
+    | Some (first, pos1) -> decode_block_acc a pos1 first (count - 1) [first]
 
 // ---------------------------------------------------------------------------
 // Full-section decode (dump every string in ID order — used for
@@ -328,43 +328,43 @@ let block_string_count (sec:HC.hdt_pfc_section) (numblocks:nat) (b:nat) : nat =
   then nat_sub sec.HC.pfc_numstrings (b * sec.HC.pfc_blocksize)
   else sec.HC.pfc_blocksize
 
-let rec decode_section_acc (s:string) (sec:HC.hdt_pfc_section) (block_idx:nat)
+let rec decode_section_acc (a:HC.hdt_bytes) (sec:HC.hdt_pfc_section) (block_idx:nat)
   (numblocks:nat) (acc:list string)
   : Tot (option (list string)) (decreases (numblocks - block_idx)) =
   if block_idx >= numblocks then Some acc
   else
-    match pfc_block_abs_start s sec block_idx with
+    match pfc_block_abs_start a sec block_idx with
     | None -> None
     | Some bstart ->
       let count = block_string_count sec numblocks block_idx in
-      match decode_block s bstart count with
+      match decode_block a bstart count with
       | None -> None
-      | Some strs -> decode_section_acc s sec (block_idx + 1) numblocks (acc @ strs)
+      | Some strs -> decode_section_acc a sec (block_idx + 1) numblocks (acc @ strs)
 
 // Dump the whole section's strings in ID order (ID `i` = 1-based
 // index into this list, i.e. `List.Tot.nth` at `i - 1`).
-let decode_section (s:string) (sec:HC.hdt_pfc_section) : option (list string) =
+let decode_section (a:HC.hdt_bytes) (sec:HC.hdt_pfc_section) : option (list string) =
   if sec.HC.pfc_numstrings = 0 then Some []
-  else decode_section_acc s sec 0 (hdt_pfc_num_blocks sec) []
+  else decode_section_acc a sec 0 (hdt_pfc_num_blocks sec) []
 
 // ---------------------------------------------------------------------------
 // Locate-by-ID: the real single-lookup API. IDs are 1-based.
 // ---------------------------------------------------------------------------
 
-let pfc_extract (s:string) (sec:HC.hdt_pfc_section) (id:pos) : option string =
+let pfc_extract (a:HC.hdt_bytes) (sec:HC.hdt_pfc_section) (id:pos) : option string =
   if id > sec.HC.pfc_numstrings || sec.HC.pfc_blocksize = 0 then None
   else
     let rank = id - 1 in
     let block_idx = rank / sec.HC.pfc_blocksize in
     let offset = rank % sec.HC.pfc_blocksize in
-    match pfc_block_abs_start s sec block_idx with
+    match pfc_block_abs_start a sec block_idx with
     | None -> None
     | Some bstart ->
-      match pfc_read_first s bstart with
+      match pfc_read_first a bstart with
       | None -> None
       | Some (first, pos1) ->
         if offset = 0 then Some first
-        else pfc_walk_suffixes s pos1 first offset
+        else pfc_walk_suffixes a pos1 first offset
 
 // ---------------------------------------------------------------------------
 // Locate-by-term (reverse lookup): binary search over block-head
@@ -372,12 +372,12 @@ let pfc_extract (s:string) (sec:HC.hdt_pfc_section) (id:pos) : option string =
 // then a linear scan within the located block.
 // ---------------------------------------------------------------------------
 
-let pfc_block_first_string (s:string) (sec:HC.hdt_pfc_section) (block_idx:nat)
+let pfc_block_first_string (a:HC.hdt_bytes) (sec:HC.hdt_pfc_section) (block_idx:nat)
   : option string =
-  match pfc_block_abs_start s sec block_idx with
+  match pfc_block_abs_start a sec block_idx with
   | None -> None
   | Some bstart ->
-    match pfc_read_first s bstart with
+    match pfc_read_first a bstart with
     | None -> None
     | Some (first, _) -> Some first
 
@@ -389,31 +389,31 @@ let rec pfc_index_of (target:string) (strs:list string) (idx:nat)
 
 // Largest block index `k` in `[lo, hi]` whose first string is <=
 // `target` (predecessor search over the sorted block heads).
-let rec pfc_find_block (s:string) (sec:HC.hdt_pfc_section) (target:string)
+let rec pfc_find_block (a:HC.hdt_bytes) (sec:HC.hdt_pfc_section) (target:string)
   (lo:nat) (hi:nat{hi >= lo})
   : Tot (option nat) (decreases (hi - lo)) =
   if lo >= hi then Some lo
   else
     let mid = (lo + hi + 1) / 2 in
-    match pfc_block_first_string s sec mid with
+    match pfc_block_first_string a sec mid with
     | None -> None
     | Some head ->
       if head = target || string_lt head target
-      then pfc_find_block s sec target mid hi
-      else pfc_find_block s sec target lo (mid - 1)
+      then pfc_find_block a sec target mid hi
+      else pfc_find_block a sec target lo (mid - 1)
 
-let pfc_locate (s:string) (sec:HC.hdt_pfc_section) (target:string) : option pos =
+let pfc_locate (a:HC.hdt_bytes) (sec:HC.hdt_pfc_section) (target:string) : option pos =
   let numblocks = hdt_pfc_num_blocks sec in
   if numblocks = 0 then None
   else
-    match pfc_find_block s sec target 0 (numblocks - 1) with
+    match pfc_find_block a sec target 0 (numblocks - 1) with
     | None -> None
     | Some block_idx ->
       let count = block_string_count sec numblocks block_idx in
-      match pfc_block_abs_start s sec block_idx with
+      match pfc_block_abs_start a sec block_idx with
       | None -> None
       | Some bstart ->
-        match decode_block s bstart count with
+        match decode_block a bstart count with
         | None -> None
         | Some strs ->
           match pfc_index_of target strs 0 with
@@ -428,23 +428,23 @@ let pfc_locate (s:string) (sec:HC.hdt_pfc_section) (target:string) : option pos 
 // and `RDF.Graph.Executable.is_iri` rather than re-deriving it.
 // ---------------------------------------------------------------------------
 
-let hdt_term_of_string (s:string) : option rdf_term =
-  let len = String.length s in
+let hdt_term_of_string (dstr:string) : option rdf_term =
+  let len = String.length dstr in
   if len = 0 then None
   else
-    let c0 = String.index s 0 in
+    let c0 = String.index dstr 0 in
     if FStar.Char.int_of_char c0 = 0x5F && len > 1 &&
-       FStar.Char.int_of_char (String.index s 1) = 0x3A
+       FStar.Char.int_of_char (String.index dstr 1) = 0x3A
     then
-      match parse_bnode s 0 with
+      match parse_bnode dstr 0 with
       | ParseOk b pos -> if pos = len then Some (T_BNode b) else None
       | ParseFail _ _ -> None
     else if FStar.Char.int_of_char c0 = 0x22
     then
-      match parse_literal s 0 with
+      match parse_literal dstr 0 with
       | ParseOk l pos -> if pos = len then Some (T_Literal l) else None
       | ParseFail _ _ -> None
-    else if is_iri s then Some (T_IRI s)
+    else if is_iri dstr then Some (T_IRI dstr)
     else None
 
 // Inverse of `hdt_term_of_string`: the dictionary surface form of a
@@ -471,41 +471,41 @@ type hdt_role =
   | Role_Predicate
   | Role_Object
 
-let hdt_id_to_term (s:string) (inv:HC.hdt_inventory) (role:hdt_role) (id:pos)
+let hdt_id_to_term (a:HC.hdt_bytes) (inv:HC.hdt_inventory) (role:hdt_role) (id:pos)
   : option rdf_term =
   let nshared = inv.HC.inv_dict_shared.HC.pfc_numstrings in
   let extracted =
     match role with
-    | Role_Predicate -> pfc_extract s inv.HC.inv_dict_predicates id
+    | Role_Predicate -> pfc_extract a inv.HC.inv_dict_predicates id
     | Role_Subject ->
-      if id <= nshared then pfc_extract s inv.HC.inv_dict_shared id
-      else pfc_extract s inv.HC.inv_dict_subjects (id - nshared)
+      if id <= nshared then pfc_extract a inv.HC.inv_dict_shared id
+      else pfc_extract a inv.HC.inv_dict_subjects (id - nshared)
     | Role_Object ->
-      if id <= nshared then pfc_extract s inv.HC.inv_dict_shared id
-      else pfc_extract s inv.HC.inv_dict_objects (id - nshared)
+      if id <= nshared then pfc_extract a inv.HC.inv_dict_shared id
+      else pfc_extract a inv.HC.inv_dict_objects (id - nshared)
   in
   match extracted with
   | None -> None
   | Some str -> hdt_term_of_string str
 
-let hdt_term_to_id (s:string) (inv:HC.hdt_inventory) (role:hdt_role) (term:rdf_term)
+let hdt_term_to_id (a:HC.hdt_bytes) (inv:HC.hdt_inventory) (role:hdt_role) (term:rdf_term)
   : option pos =
   let dstr = hdt_string_of_term term in
   let nshared = inv.HC.inv_dict_shared.HC.pfc_numstrings in
   match role with
-  | Role_Predicate -> pfc_locate s inv.HC.inv_dict_predicates dstr
+  | Role_Predicate -> pfc_locate a inv.HC.inv_dict_predicates dstr
   | Role_Subject ->
-    (match pfc_locate s inv.HC.inv_dict_shared dstr with
+    (match pfc_locate a inv.HC.inv_dict_shared dstr with
      | Some id -> Some id
      | None ->
-       match pfc_locate s inv.HC.inv_dict_subjects dstr with
+       match pfc_locate a inv.HC.inv_dict_subjects dstr with
        | None -> None
        | Some id -> Some (nshared + id))
   | Role_Object ->
-    (match pfc_locate s inv.HC.inv_dict_shared dstr with
+    (match pfc_locate a inv.HC.inv_dict_shared dstr with
      | Some id -> Some id
      | None ->
-       match pfc_locate s inv.HC.inv_dict_objects dstr with
+       match pfc_locate a inv.HC.inv_dict_objects dstr with
        | None -> None
        | Some id -> Some (nshared + id))
 

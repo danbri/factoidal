@@ -45,6 +45,7 @@ open FStar.List.Tot
 open RDF.Graph.Executable
 
 module PF  = Parquet.Footer
+module IA  = FStar.ImmutableArray.Base
 
 // ---------------------------------------------------------------------------
 // Bitwise XOR over unbounded naturals, LSB-first, bounded by `fuel`
@@ -64,17 +65,44 @@ let rec nat_xor (a:nat) (b:nat) (fuel:nat) : Tot nat (decreases fuel) =
     low + 2 * nat_xor (a / 2) (b / 2) (fuel - 1)
 
 // ---------------------------------------------------------------------------
-// Hex-encoded byte access. Offsets are in BYTES; the backing string
-// is the hex encoding (2 chars per byte), same representation as
-// Parquet.Footer.
+// Decoded file bytes with O(1) random access. Every byte access used
+// to call `FStar.String.length` (BatUTF8 codepoint count, O(n)) and
+// `FStar.String.index` per lookup; over a whole-container enumeration
+// that is quadratic, and the js_of_ocaml BatUTF8 constant made an HDT
+// query take seconds in the browser (task #102). `hdt_bytes` decodes
+// the hex file into an immutable array ONCE — native OCaml `array`,
+// O(1) `index`/`length`, and js_of_ocaml-safe (no FStar.UInt32 / stdint
+// externals) — so every downstream byte access is a single array read
+// and no per-access bignum hex-nibble arithmetic is done.
 // ---------------------------------------------------------------------------
 
-let hex_byte (s:string) (i:nat) : option (b:nat{b < 256}) =
-  if 2 * i + 1 < String.length s then PF.byte_at_hex s (2 * i)
-  else None
+type hdt_bytes = IA.t (b:nat{b < 256})
 
-// Total number of whole bytes representable by the hex string.
-let hex_len_bytes (s:string) : nat = String.length s / 2
+let byte_len (a:hdt_bytes) : nat = IA.length a
+
+let byte_get (a:hdt_bytes) (i:nat) : option (b:nat{b < 256}) =
+  if i < IA.length a then Some (IA.index a i) else None
+
+// Collect the file's whole bytes, in order, from the hex string. One
+// forward pass. `len` is computed ONCE by the caller: `FStar.String`'s
+// OCaml realisation counts UTF-8 codepoints on every `String.length`
+// call (O(n) in the string size), so a per-byte bounds guard that
+// re-computes it (as an earlier `hex_byte_str`-per-byte version of
+// this loop did) makes the whole decode quadratic — measured at
+// ~0.9 s/call of the js bundle's remaining HDT time before this
+// hoist. The `len <= String.length s` refinement keeps
+// `byte_at_hex`'s bounds proof while paying for the count once.
+let rec collect_bytes (s:string) (len:nat{len <= String.length s}) (i:nat)
+  (acc:list (b:nat{b < 256}))
+  : Tot (list (b:nat{b < 256})) (decreases (if 2 * i + 1 < len then len - 2 * i else 0)) =
+  if 2 * i + 1 < len then
+    match PF.byte_at_hex s (2 * i) with
+    | None -> List.Tot.rev acc
+    | Some b -> collect_bytes s len (i + 1) (b :: acc)
+  else List.Tot.rev acc
+
+let hdt_bytes_of_hex (s:string) : hdt_bytes =
+  IA.of_list (collect_bytes s (String.length s) 0 [])
 
 // ---------------------------------------------------------------------------
 // CRC-16/ANSI ("ARC"): poly 0x8005 reflected (0xA001), init 0x0000,
@@ -97,14 +125,14 @@ let crc16_byte (crc:nat) (b:nat{b < 256}) : nat =
   crc16_step (crc16_step (crc16_step (crc16_step
     (crc16_step (crc16_step (crc16_step (crc16_step c0)))))))
 
-// CRC16 over the byte range [pos, pos+count) of hex string s.
-let rec crc16_range (s:string) (pos:nat) (count:nat) (crc:nat)
+// CRC16 over the byte range [pos, pos+count) of the decoded file bytes.
+let rec crc16_range (a:hdt_bytes) (pos:nat) (count:nat) (crc:nat)
   : Tot (option nat) (decreases count) =
   if count = 0 then Some crc
   else
-    match hex_byte s pos with
+    match byte_get a pos with
     | None -> None
-    | Some b -> crc16_range s (pos + 1) (count - 1) (crc16_byte crc b)
+    | Some b -> crc16_range a (pos + 1) (count - 1) (crc16_byte crc b)
 
 // ---------------------------------------------------------------------------
 // VByte, HDT flavour (hdt-cpp libdcs/VByte.cpp): little-endian 7-bit
@@ -113,34 +141,34 @@ let rec crc16_range (s:string) (pos:nat) (count:nat) (crc:nat)
 // varint convention. Returns (value, offset-after).
 // ---------------------------------------------------------------------------
 
-let rec vbyte_decode_acc (s:string) (pos:nat) (fuel:nat) (mult:Prims.pos) (acc:nat)
+let rec vbyte_decode_acc (a:hdt_bytes) (pos:nat) (fuel:nat) (mult:Prims.pos) (acc:nat)
   : Tot (option (nat & nat)) (decreases fuel) =
   if fuel = 0 then None
   else
-    match hex_byte s pos with
+    match byte_get a pos with
     | None -> None
     | Some b ->
       if b >= 128 then Some (acc + (b - 128) * mult, pos + 1)
-      else vbyte_decode_acc s (pos + 1) (fuel - 1) (mult * 128) (acc + b * mult)
+      else vbyte_decode_acc a (pos + 1) (fuel - 1) (mult * 128) (acc + b * mult)
 
 // 10 groups cover any u64.
-let vbyte_decode (s:string) (pos:nat) : option (nat & nat) =
-  vbyte_decode_acc s pos 10 1 0
+let vbyte_decode (a:hdt_bytes) (pos:nat) : option (nat & nat) =
+  vbyte_decode_acc a pos 10 1 0
 
 // ---------------------------------------------------------------------------
 // Small string utilities over decoded bytes.
 // ---------------------------------------------------------------------------
 
 // Offset of the next NUL byte at or after pos (fuel-bounded scan).
-let rec scan_nul (s:string) (pos:nat) (fuel:nat)
+let rec scan_nul (a:hdt_bytes) (pos:nat) (fuel:nat)
   : Tot (option (n:nat{n >= pos})) (decreases fuel) =
   if fuel = 0 then None
   else
-    match hex_byte s pos with
+    match byte_get a pos with
     | None -> None
     | Some 0 -> Some pos
     | Some _ ->
-      (match scan_nul s (pos + 1) (fuel - 1) with
+      (match scan_nul a (pos + 1) (fuel - 1) with
        | None -> None
        | Some n -> Some n)
 
@@ -148,19 +176,19 @@ let rec scan_nul (s:string) (pos:nat) (fuel:nat)
 // byte (Latin-1-style; ASCII in practice for control blocks, and the
 // header N-Triples text carries UTF-8 bytes exactly as the file-based
 // parser path does).
-let rec bytes_to_string_acc (s:string) (pos:nat) (count:nat)
+let rec bytes_to_string_acc (a:hdt_bytes) (pos:nat) (count:nat)
   (acc:list FStar.Char.char)
   : Tot (option string) (decreases count) =
   if count = 0 then Some (FStar.String.string_of_list (List.Tot.rev acc))
   else
-    match hex_byte s pos with
+    match byte_get a pos with
     | None -> None
     | Some b ->
-      bytes_to_string_acc s (pos + 1) (count - 1)
+      bytes_to_string_acc a (pos + 1) (count - 1)
         (Parser.NTriples.safe_char_of_int b :: acc)
 
-let bytes_to_string (s:string) (pos:nat) (count:nat) : option string =
-  bytes_to_string_acc s pos count []
+let bytes_to_string (a:hdt_bytes) (pos:nat) (count:nat) : option string =
+  bytes_to_string_acc a pos count []
 
 // Split a decoded properties string "k1=v1;k2=v2;" into pairs.
 let rec split_on_semi (cs:list FStar.Char.char) (cur:list FStar.Char.char)
@@ -250,29 +278,29 @@ type hdt_control_info = {
   hci_end : nat;                         // offset just past the CRC16
 }
 
-let parse_control_info (s:string) (pos:nat) : option hdt_control_info =
-  match hex_byte s pos, hex_byte s (pos + 1),
-        hex_byte s (pos + 2), hex_byte s (pos + 3) with
+let parse_control_info (a:hdt_bytes) (pos:nat) : option hdt_control_info =
+  match byte_get a pos, byte_get a (pos + 1),
+        byte_get a (pos + 2), byte_get a (pos + 3) with
   | Some b0, Some b1, Some b2, Some b3 ->
     if not (b0 = 0x24 && b1 = 0x48 && b2 = 0x44 && b3 = 0x54) // "$HDT"
     then None
     else
-    (match hex_byte s (pos + 4) with
+    (match byte_get a (pos + 4) with
      | None -> None
      | Some ty ->
-       (match scan_nul s (pos + 5) (String.length s) with
+       (match scan_nul a (pos + 5) (byte_len a) with
         | None -> None
         | Some fmt_nul ->
-          (match scan_nul s (fmt_nul + 1) (String.length s) with
+          (match scan_nul a (fmt_nul + 1) (byte_len a) with
            | None -> None
            | Some props_nul ->
-             (match bytes_to_string s (pos + 5) (fmt_nul - (pos + 5)),
-                    bytes_to_string s (fmt_nul + 1) (props_nul - (fmt_nul + 1)) with
+             (match bytes_to_string a (pos + 5) (fmt_nul - (pos + 5)),
+                    bytes_to_string a (fmt_nul + 1) (props_nul - (fmt_nul + 1)) with
               | Some fmt, Some raw ->
-                (match crc16_range s pos (props_nul + 1 - pos) 0 with
+                (match crc16_range a pos (props_nul + 1 - pos) 0 with
                  | None -> None
                  | Some crc ->
-                   (match hex_byte s (props_nul + 1), hex_byte s (props_nul + 2) with
+                   (match byte_get a (props_nul + 1), byte_get a (props_nul + 2) with
                     | Some lo, Some hi ->
                       let stored : nat = lo + 256 * hi in
                       Some {
@@ -318,13 +346,13 @@ type hdt_log_array_info = {
   la_end : nat;
 }
 
-let parse_log_array_info (s:string) (pos:nat) : option hdt_log_array_info =
-  match hex_byte s pos with
+let parse_log_array_info (a:hdt_bytes) (pos:nat) : option hdt_log_array_info =
+  match byte_get a pos with
   | Some 1 ->
-    (match hex_byte s (pos + 1) with
+    (match byte_get a (pos + 1) with
      | None -> None
      | Some numbits ->
-       (match vbyte_decode s (pos + 2) with
+       (match vbyte_decode a (pos + 2) with
         | None -> None
         | Some (numentries, p_crc8) ->
           let data_start = p_crc8 + 1 in
@@ -347,10 +375,10 @@ type hdt_bitmap_info = {
   bm_end : nat;
 }
 
-let parse_bitmap_info (s:string) (pos:nat) : option hdt_bitmap_info =
-  match hex_byte s pos with
+let parse_bitmap_info (a:hdt_bytes) (pos:nat) : option hdt_bitmap_info =
+  match byte_get a pos with
   | Some 1 ->
-    (match vbyte_decode s (pos + 1) with
+    (match vbyte_decode a (pos + 1) with
      | None -> None
      | Some (numbits, p_crc8) ->
        let data_start = p_crc8 + 1 in
@@ -375,20 +403,20 @@ type hdt_pfc_section = {
   pfc_end : nat;
 }
 
-let parse_pfc_section (s:string) (pos:nat) : option hdt_pfc_section =
-  match hex_byte s pos with
+let parse_pfc_section (a:hdt_bytes) (pos:nat) : option hdt_pfc_section =
+  match byte_get a pos with
   | Some 2 ->
-    (match vbyte_decode s (pos + 1) with
+    (match vbyte_decode a (pos + 1) with
      | None -> None
      | Some (numstrings, p1) ->
-       (match vbyte_decode s p1 with
+       (match vbyte_decode a p1 with
         | None -> None
         | Some (packed_bytes, p2) ->
-          (match vbyte_decode s p2 with
+          (match vbyte_decode a p2 with
            | None -> None
            | Some (blocksize, p3) ->
              // p3 points at the CRC8 of the preamble; blocks follow it.
-             (match parse_log_array_info s (p3 + 1) with
+             (match parse_log_array_info a (p3 + 1) with
               | None -> None
               | Some la ->
                 Some {
@@ -425,13 +453,13 @@ type hdt_inventory = {
 // file. Loud None on: wrong cookie, wrong section type byte, any CI
 // CRC16 mismatch, missing header `length` property, non-PFC
 // dictionary section type (stage 2 will widen), or truncation.
-let hdt_parse_inventory_hex (s:string) : option hdt_inventory =
-  match parse_control_info s 0 with
+let hdt_parse_inventory_hex (a:hdt_bytes) : option hdt_inventory =
+  match parse_control_info a 0 with
   | None -> None
   | Some g ->
     if not (CI_Global? g.hci_type && g.hci_crc_ok) then None
     else
-      (match parse_control_info s g.hci_end with
+      (match parse_control_info a g.hci_end with
        | None -> None
        | Some h ->
          if not (CI_Header? h.hci_type && h.hci_crc_ok) then None
@@ -440,24 +468,24 @@ let hdt_parse_inventory_hex (s:string) : option hdt_inventory =
             | None -> None
             | Some hlen ->
               let hdata = h.hci_end in
-              (match parse_control_info s (hdata + hlen) with
+              (match parse_control_info a (hdata + hlen) with
                | None -> None
                | Some d ->
                  if not (CI_Dictionary? d.hci_type && d.hci_crc_ok) then None
                  else
-                   (match parse_pfc_section s d.hci_end with
+                   (match parse_pfc_section a d.hci_end with
                     | None -> None
                     | Some sec_sh ->
-                      (match parse_pfc_section s sec_sh.pfc_end with
+                      (match parse_pfc_section a sec_sh.pfc_end with
                        | None -> None
                        | Some sec_su ->
-                         (match parse_pfc_section s sec_su.pfc_end with
+                         (match parse_pfc_section a sec_su.pfc_end with
                           | None -> None
                           | Some sec_pr ->
-                            (match parse_pfc_section s sec_pr.pfc_end with
+                            (match parse_pfc_section a sec_pr.pfc_end with
                              | None -> None
                              | Some sec_ob ->
-                               (match parse_control_info s sec_ob.pfc_end with
+                               (match parse_control_info a sec_ob.pfc_end with
                                 | None -> None
                                 | Some t ->
                                   if not (CI_Triples? t.hci_type && t.hci_crc_ok)
@@ -478,12 +506,12 @@ let hdt_parse_inventory_hex (s:string) : option hdt_inventory =
                                     }))))))))
 
 // Header metadata, decoded as N-Triples through the verified parser.
-let hdt_header_text_hex (s:string) (inv:hdt_inventory) : option string =
-  bytes_to_string s inv.inv_header_data_start inv.inv_header_data_len
+let hdt_header_text_hex (a:hdt_bytes) (inv:hdt_inventory) : option string =
+  bytes_to_string a inv.inv_header_data_start inv.inv_header_data_len
 
-let hdt_header_triples_hex (s:string) (inv:hdt_inventory)
+let hdt_header_triples_hex (a:hdt_bytes) (inv:hdt_inventory)
   : option (list triple) =
-  match hdt_header_text_hex s inv with
+  match hdt_header_text_hex a inv with
   | None -> None
   | Some text -> Some (Parser.NTriples.parse_ntriples text)
 
@@ -530,12 +558,15 @@ let hdt_read_file_hex (path:string) : option string =
   | None -> None
   | Some sz -> PF.parquet_read_range_hex path 0 sz
 
-// Open + inventory. Returns the hex bytes too so callers (probe,
-// stage-2 lookups) decode further sections without re-reading.
-let hdt_read_inventory (path:string) : option (string & hdt_inventory) =
+// Open + inventory. Returns the decoded file bytes too so callers
+// (probe, stage-2 lookups) decode further sections without re-reading
+// or re-decoding the hex. The hex string is decoded to the O(1)-indexed
+// `hdt_bytes` exactly once, here.
+let hdt_read_inventory (path:string) : option (hdt_bytes & hdt_inventory) =
   match hdt_read_file_hex path with
   | None -> None
   | Some hex ->
-    (match hdt_parse_inventory_hex hex with
+    let a = hdt_bytes_of_hex hex in
+    (match hdt_parse_inventory_hex a with
      | None -> None
-     | Some inv -> Some (hex, inv))
+     | Some inv -> Some (a, inv))

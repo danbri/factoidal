@@ -12,13 +12,25 @@ let rec nat_xor (a : Prims.nat) (b : Prims.nat) (fuel : Prims.nat) :
        ((Prims.of_int (2)) *
           (nat_xor (a / (Prims.of_int (2))) (b / (Prims.of_int (2)))
              (fuel - Prims.int_one))))
-let hex_byte (s : Prims.string) (i : Prims.nat) :
+type hdt_bytes = Prims.nat FStar_ImmutableArray_Base.t
+let byte_len (a : hdt_bytes) : Prims.nat= FStar_ImmutableArray_Base.length a
+let byte_get (a : hdt_bytes) (i : Prims.nat) :
   Prims.nat FStar_Pervasives_Native.option=
-  if (((Prims.of_int (2)) * i) + Prims.int_one) < (FStar_String.strlen s)
-  then Parquet_Footer.byte_at_hex s ((Prims.of_int (2)) * i)
+  if i < (FStar_ImmutableArray_Base.length a)
+  then FStar_Pervasives_Native.Some (FStar_ImmutableArray_Base.index a i)
   else FStar_Pervasives_Native.None
-let hex_len_bytes (s : Prims.string) : Prims.nat=
-  (FStar_String.strlen s) / (Prims.of_int (2))
+let rec collect_bytes (s : Prims.string) (len : Prims.nat) (i : Prims.nat)
+  (acc : Prims.nat Prims.list) : Prims.nat Prims.list=
+  if (((Prims.of_int (2)) * i) + Prims.int_one) < len
+  then
+    match Parquet_Footer.byte_at_hex s ((Prims.of_int (2)) * i) with
+    | FStar_Pervasives_Native.None -> FStar_List_Tot_Base.rev acc
+    | FStar_Pervasives_Native.Some b ->
+        collect_bytes s len (i + Prims.int_one) (b :: acc)
+  else FStar_List_Tot_Base.rev acc
+let hdt_bytes_of_hex (s : Prims.string) : hdt_bytes=
+  FStar_ImmutableArray_Base.of_list
+    (collect_bytes s (FStar_String.strlen s) Prims.int_zero [])
 let crc16_step (c : Prims.nat) : Prims.nat=
   if ((mod) c (Prims.of_int (2))) = Prims.int_one
   then
@@ -32,23 +44,23 @@ let crc16_byte (crc : Prims.nat) (b : Prims.nat) : Prims.nat=
     (crc16_step
        (crc16_step
           (crc16_step (crc16_step (crc16_step (crc16_step (crc16_step c0)))))))
-let rec crc16_range (s : Prims.string) (pos : Prims.nat) (count : Prims.nat)
+let rec crc16_range (a : hdt_bytes) (pos : Prims.nat) (count : Prims.nat)
   (crc : Prims.nat) : Prims.nat FStar_Pervasives_Native.option=
   if count = Prims.int_zero
   then FStar_Pervasives_Native.Some crc
   else
-    (match hex_byte s pos with
+    (match byte_get a pos with
      | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
      | FStar_Pervasives_Native.Some b ->
-         crc16_range s (pos + Prims.int_one) (count - Prims.int_one)
+         crc16_range a (pos + Prims.int_one) (count - Prims.int_one)
            (crc16_byte crc b))
-let rec vbyte_decode_acc (s : Prims.string) (pos : Prims.nat)
-  (fuel : Prims.nat) (mult : Prims.pos) (acc : Prims.nat) :
+let rec vbyte_decode_acc (a : hdt_bytes) (pos : Prims.nat) (fuel : Prims.nat)
+  (mult : Prims.pos) (acc : Prims.nat) :
   (Prims.nat * Prims.nat) FStar_Pervasives_Native.option=
   if fuel = Prims.int_zero
   then FStar_Pervasives_Native.None
   else
-    (match hex_byte s pos with
+    (match byte_get a pos with
      | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
      | FStar_Pervasives_Native.Some b ->
          if b >= (Prims.of_int (128))
@@ -57,25 +69,25 @@ let rec vbyte_decode_acc (s : Prims.string) (pos : Prims.nat)
              ((acc + ((b - (Prims.of_int (128))) * mult)),
                (pos + Prims.int_one))
          else
-           vbyte_decode_acc s (pos + Prims.int_one) (fuel - Prims.int_one)
+           vbyte_decode_acc a (pos + Prims.int_one) (fuel - Prims.int_one)
              (mult * (Prims.of_int (128))) (acc + (b * mult)))
-let vbyte_decode (s : Prims.string) (pos : Prims.nat) :
+let vbyte_decode (a : hdt_bytes) (pos : Prims.nat) :
   (Prims.nat * Prims.nat) FStar_Pervasives_Native.option=
-  vbyte_decode_acc s pos (Prims.of_int (10)) Prims.int_one Prims.int_zero
-let rec scan_nul (s : Prims.string) (pos : Prims.nat) (fuel : Prims.nat) :
+  vbyte_decode_acc a pos (Prims.of_int (10)) Prims.int_one Prims.int_zero
+let rec scan_nul (a : hdt_bytes) (pos : Prims.nat) (fuel : Prims.nat) :
   Prims.nat FStar_Pervasives_Native.option=
   if fuel = Prims.int_zero
   then FStar_Pervasives_Native.None
   else
-    (match hex_byte s pos with
+    (match byte_get a pos with
      | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
      | FStar_Pervasives_Native.Some uu___1 when uu___1 = Prims.int_zero ->
          FStar_Pervasives_Native.Some pos
      | FStar_Pervasives_Native.Some uu___1 ->
-         (match scan_nul s (pos + Prims.int_one) (fuel - Prims.int_one) with
+         (match scan_nul a (pos + Prims.int_one) (fuel - Prims.int_one) with
           | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
           | FStar_Pervasives_Native.Some n -> FStar_Pervasives_Native.Some n))
-let rec bytes_to_string_acc (s : Prims.string) (pos : Prims.nat)
+let rec bytes_to_string_acc (a : hdt_bytes) (pos : Prims.nat)
   (count : Prims.nat) (acc : FStar_Char.char Prims.list) :
   Prims.string FStar_Pervasives_Native.option=
   if count = Prims.int_zero
@@ -83,14 +95,14 @@ let rec bytes_to_string_acc (s : Prims.string) (pos : Prims.nat)
     FStar_Pervasives_Native.Some
       (FStar_String.string_of_list (FStar_List_Tot_Base.rev acc))
   else
-    (match hex_byte s pos with
+    (match byte_get a pos with
      | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
      | FStar_Pervasives_Native.Some b ->
-         bytes_to_string_acc s (pos + Prims.int_one) (count - Prims.int_one)
+         bytes_to_string_acc a (pos + Prims.int_one) (count - Prims.int_one)
            ((Parser_NTriples.safe_char_of_int b) :: acc))
-let bytes_to_string (s : Prims.string) (pos : Prims.nat) (count : Prims.nat)
-  : Prims.string FStar_Pervasives_Native.option=
-  bytes_to_string_acc s pos count []
+let bytes_to_string (a : hdt_bytes) (pos : Prims.nat) (count : Prims.nat) :
+  Prims.string FStar_Pervasives_Native.option=
+  bytes_to_string_acc a pos count []
 let rec split_on_semi (cs : FStar_Char.char Prims.list)
   (cur : FStar_Char.char Prims.list) : FStar_Char.char Prims.list Prims.list=
   match cs with
@@ -239,11 +251,11 @@ let __proj__Mkhdt_control_info__item__hci_end (projectee : hdt_control_info)
   match projectee with
   | { hci_start; hci_type; hci_format; hci_props; hci_props_raw;
       hci_crc_stored; hci_crc_computed; hci_crc_ok; hci_end;_} -> hci_end
-let parse_control_info (s : Prims.string) (pos : Prims.nat) :
+let parse_control_info (a : hdt_bytes) (pos : Prims.nat) :
   hdt_control_info FStar_Pervasives_Native.option=
-  match ((hex_byte s pos), (hex_byte s (pos + Prims.int_one)),
-          (hex_byte s (pos + (Prims.of_int (2)))),
-          (hex_byte s (pos + (Prims.of_int (3)))))
+  match ((byte_get a pos), (byte_get a (pos + Prims.int_one)),
+          (byte_get a (pos + (Prims.of_int (2)))),
+          (byte_get a (pos + (Prims.of_int (3)))))
   with
   | (FStar_Pervasives_Native.Some b0, FStar_Pervasives_Native.Some b1,
      FStar_Pervasives_Native.Some b2, FStar_Pervasives_Native.Some b3) ->
@@ -254,37 +266,34 @@ let parse_control_info (s : Prims.string) (pos : Prims.nat) :
              && (b3 = (Prims.of_int (0x54))))
       then FStar_Pervasives_Native.None
       else
-        (match hex_byte s (pos + (Prims.of_int (4))) with
+        (match byte_get a (pos + (Prims.of_int (4))) with
          | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
          | FStar_Pervasives_Native.Some ty ->
-             (match scan_nul s (pos + (Prims.of_int (5)))
-                      (FStar_String.strlen s)
-              with
+             (match scan_nul a (pos + (Prims.of_int (5))) (byte_len a) with
               | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
               | FStar_Pervasives_Native.Some fmt_nul ->
-                  (match scan_nul s (fmt_nul + Prims.int_one)
-                           (FStar_String.strlen s)
+                  (match scan_nul a (fmt_nul + Prims.int_one) (byte_len a)
                    with
                    | FStar_Pervasives_Native.None ->
                        FStar_Pervasives_Native.None
                    | FStar_Pervasives_Native.Some props_nul ->
-                       (match ((bytes_to_string s (pos + (Prims.of_int (5)))
+                       (match ((bytes_to_string a (pos + (Prims.of_int (5)))
                                   (fmt_nul - (pos + (Prims.of_int (5))))),
-                                (bytes_to_string s (fmt_nul + Prims.int_one)
+                                (bytes_to_string a (fmt_nul + Prims.int_one)
                                    (props_nul - (fmt_nul + Prims.int_one))))
                         with
                         | (FStar_Pervasives_Native.Some fmt,
                            FStar_Pervasives_Native.Some raw) ->
-                            (match crc16_range s pos
+                            (match crc16_range a pos
                                      ((props_nul + Prims.int_one) - pos)
                                      Prims.int_zero
                              with
                              | FStar_Pervasives_Native.None ->
                                  FStar_Pervasives_Native.None
                              | FStar_Pervasives_Native.Some crc ->
-                                 (match ((hex_byte s
+                                 (match ((byte_get a
                                             (props_nul + Prims.int_one)),
-                                          (hex_byte s
+                                          (byte_get a
                                              (props_nul + (Prims.of_int (2)))))
                                   with
                                   | (FStar_Pervasives_Native.Some lo,
@@ -346,14 +355,14 @@ let __proj__Mkhdt_log_array_info__item__la_end
   match projectee with
   | { la_start; la_numbits; la_numentries; la_data_start; la_data_bytes;
       la_end;_} -> la_end
-let parse_log_array_info (s : Prims.string) (pos : Prims.nat) :
+let parse_log_array_info (a : hdt_bytes) (pos : Prims.nat) :
   hdt_log_array_info FStar_Pervasives_Native.option=
-  match hex_byte s pos with
+  match byte_get a pos with
   | FStar_Pervasives_Native.Some uu___ when uu___ = Prims.int_one ->
-      (match hex_byte s (pos + Prims.int_one) with
+      (match byte_get a (pos + Prims.int_one) with
        | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
        | FStar_Pervasives_Native.Some numbits ->
-           (match vbyte_decode s (pos + (Prims.of_int (2))) with
+           (match vbyte_decode a (pos + (Prims.of_int (2))) with
             | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
             | FStar_Pervasives_Native.Some (numentries, p_crc8) ->
                 let data_start = p_crc8 + Prims.int_one in
@@ -401,11 +410,11 @@ let __proj__Mkhdt_bitmap_info__item__bm_end (projectee : hdt_bitmap_info) :
   Prims.nat=
   match projectee with
   | { bm_start; bm_numbits; bm_data_start; bm_data_bytes; bm_end;_} -> bm_end
-let parse_bitmap_info (s : Prims.string) (pos : Prims.nat) :
+let parse_bitmap_info (a : hdt_bytes) (pos : Prims.nat) :
   hdt_bitmap_info FStar_Pervasives_Native.option=
-  match hex_byte s pos with
+  match byte_get a pos with
   | FStar_Pervasives_Native.Some uu___ when uu___ = Prims.int_one ->
-      (match vbyte_decode s (pos + Prims.int_one) with
+      (match vbyte_decode a (pos + Prims.int_one) with
        | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
        | FStar_Pervasives_Native.Some (numbits, p_crc8) ->
            let data_start = p_crc8 + Prims.int_one in
@@ -474,21 +483,21 @@ let __proj__Mkhdt_pfc_section__item__pfc_end (projectee : hdt_pfc_section) :
   match projectee with
   | { pfc_start; pfc_type; pfc_numstrings; pfc_packed_bytes; pfc_blocksize;
       pfc_blocks; pfc_packed_start; pfc_end;_} -> pfc_end
-let parse_pfc_section (s : Prims.string) (pos : Prims.nat) :
+let parse_pfc_section (a : hdt_bytes) (pos : Prims.nat) :
   hdt_pfc_section FStar_Pervasives_Native.option=
-  match hex_byte s pos with
+  match byte_get a pos with
   | FStar_Pervasives_Native.Some uu___ when uu___ = (Prims.of_int (2)) ->
-      (match vbyte_decode s (pos + Prims.int_one) with
+      (match vbyte_decode a (pos + Prims.int_one) with
        | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
        | FStar_Pervasives_Native.Some (numstrings, p1) ->
-           (match vbyte_decode s p1 with
+           (match vbyte_decode a p1 with
             | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
             | FStar_Pervasives_Native.Some (packed_bytes, p2) ->
-                (match vbyte_decode s p2 with
+                (match vbyte_decode a p2 with
                  | FStar_Pervasives_Native.None ->
                      FStar_Pervasives_Native.None
                  | FStar_Pervasives_Native.Some (blocksize, p3) ->
-                     (match parse_log_array_info s (p3 + Prims.int_one) with
+                     (match parse_log_array_info a (p3 + Prims.int_one) with
                       | FStar_Pervasives_Native.None ->
                           FStar_Pervasives_Native.None
                       | FStar_Pervasives_Native.Some la ->
@@ -596,15 +605,15 @@ let __proj__Mkhdt_inventory__item__inv_triples_data_start
       inv_dict_ci; inv_dict_shared; inv_dict_subjects; inv_dict_predicates;
       inv_dict_objects; inv_triples_ci; inv_triples_data_start;_} ->
       inv_triples_data_start
-let hdt_parse_inventory_hex (s : Prims.string) :
+let hdt_parse_inventory_hex (a : hdt_bytes) :
   hdt_inventory FStar_Pervasives_Native.option=
-  match parse_control_info s Prims.int_zero with
+  match parse_control_info a Prims.int_zero with
   | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
   | FStar_Pervasives_Native.Some g ->
       if Prims.op_Negation ((uu___is_CI_Global g.hci_type) && g.hci_crc_ok)
       then FStar_Pervasives_Native.None
       else
-        (match parse_control_info s g.hci_end with
+        (match parse_control_info a g.hci_end with
          | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
          | FStar_Pervasives_Native.Some h ->
              if
@@ -617,7 +626,7 @@ let hdt_parse_inventory_hex (s : Prims.string) :
                     FStar_Pervasives_Native.None
                 | FStar_Pervasives_Native.Some hlen ->
                     let hdata = h.hci_end in
-                    (match parse_control_info s (hdata + hlen) with
+                    (match parse_control_info a (hdata + hlen) with
                      | FStar_Pervasives_Native.None ->
                          FStar_Pervasives_Native.None
                      | FStar_Pervasives_Native.Some d ->
@@ -627,30 +636,30 @@ let hdt_parse_inventory_hex (s : Prims.string) :
                                 d.hci_crc_ok)
                          then FStar_Pervasives_Native.None
                          else
-                           (match parse_pfc_section s d.hci_end with
+                           (match parse_pfc_section a d.hci_end with
                             | FStar_Pervasives_Native.None ->
                                 FStar_Pervasives_Native.None
                             | FStar_Pervasives_Native.Some sec_sh ->
-                                (match parse_pfc_section s sec_sh.pfc_end
+                                (match parse_pfc_section a sec_sh.pfc_end
                                  with
                                  | FStar_Pervasives_Native.None ->
                                      FStar_Pervasives_Native.None
                                  | FStar_Pervasives_Native.Some sec_su ->
-                                     (match parse_pfc_section s
+                                     (match parse_pfc_section a
                                               sec_su.pfc_end
                                       with
                                       | FStar_Pervasives_Native.None ->
                                           FStar_Pervasives_Native.None
                                       | FStar_Pervasives_Native.Some sec_pr
                                           ->
-                                          (match parse_pfc_section s
+                                          (match parse_pfc_section a
                                                    sec_pr.pfc_end
                                            with
                                            | FStar_Pervasives_Native.None ->
                                                FStar_Pervasives_Native.None
                                            | FStar_Pervasives_Native.Some
                                                sec_ob ->
-                                               (match parse_control_info s
+                                               (match parse_control_info a
                                                         sec_ob.pfc_end
                                                 with
                                                 | FStar_Pervasives_Native.None
@@ -687,12 +696,12 @@ let hdt_parse_inventory_hex (s : Prims.string) :
                                                           inv_triples_data_start
                                                             = (t.hci_end)
                                                         }))))))))
-let hdt_header_text_hex (s : Prims.string) (inv : hdt_inventory) :
+let hdt_header_text_hex (a : hdt_bytes) (inv : hdt_inventory) :
   Prims.string FStar_Pervasives_Native.option=
-  bytes_to_string s inv.inv_header_data_start inv.inv_header_data_len
-let hdt_header_triples_hex (s : Prims.string) (inv : hdt_inventory) :
+  bytes_to_string a inv.inv_header_data_start inv.inv_header_data_len
+let hdt_header_triples_hex (a : hdt_bytes) (inv : hdt_inventory) :
   RDF_Triple.triple Prims.list FStar_Pervasives_Native.option=
-  match hdt_header_text_hex s inv with
+  match hdt_header_text_hex a inv with
   | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
   | FStar_Pervasives_Native.Some text ->
       FStar_Pervasives_Native.Some (Parser_NTriples.parse_ntriples text)
@@ -741,11 +750,12 @@ let hdt_read_file_hex (path : Prims.string) :
   | FStar_Pervasives_Native.Some sz ->
       Parquet_Footer.parquet_read_range_hex path Prims.int_zero sz
 let hdt_read_inventory (path : Prims.string) :
-  (Prims.string * hdt_inventory) FStar_Pervasives_Native.option=
+  (hdt_bytes * hdt_inventory) FStar_Pervasives_Native.option=
   match hdt_read_file_hex path with
   | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
   | FStar_Pervasives_Native.Some hex ->
-      (match hdt_parse_inventory_hex hex with
+      let a = hdt_bytes_of_hex hex in
+      (match hdt_parse_inventory_hex a with
        | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
        | FStar_Pervasives_Native.Some inv ->
-           FStar_Pervasives_Native.Some (hex, inv))
+           FStar_Pervasives_Native.Some (a, inv))

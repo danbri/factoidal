@@ -161,41 +161,41 @@ type hdt_graph_store =
   hgs_graph_name: RDF_Term.iri FStar_Pervasives_Native.option ;
   hgs_artifact_path: Prims.string ;
   hgs_summary: hdt_artifact_summary FStar_Pervasives_Native.option ;
-  hgs_hex: Prims.string ;
+  hgs_bytes: HDT_Container.hdt_bytes ;
   hgs_inventory: HDT_Container.hdt_inventory ;
   hgs_triples: HDT_Triples.hdt_triples_info }
 let __proj__Mkhdt_graph_store__item__hgs_graph_name
   (projectee : hdt_graph_store) :
   RDF_Term.iri FStar_Pervasives_Native.option=
   match projectee with
-  | { hgs_graph_name; hgs_artifact_path; hgs_summary; hgs_hex; hgs_inventory;
-      hgs_triples;_} -> hgs_graph_name
+  | { hgs_graph_name; hgs_artifact_path; hgs_summary; hgs_bytes;
+      hgs_inventory; hgs_triples;_} -> hgs_graph_name
 let __proj__Mkhdt_graph_store__item__hgs_artifact_path
   (projectee : hdt_graph_store) : Prims.string=
   match projectee with
-  | { hgs_graph_name; hgs_artifact_path; hgs_summary; hgs_hex; hgs_inventory;
-      hgs_triples;_} -> hgs_artifact_path
+  | { hgs_graph_name; hgs_artifact_path; hgs_summary; hgs_bytes;
+      hgs_inventory; hgs_triples;_} -> hgs_artifact_path
 let __proj__Mkhdt_graph_store__item__hgs_summary
   (projectee : hdt_graph_store) :
   hdt_artifact_summary FStar_Pervasives_Native.option=
   match projectee with
-  | { hgs_graph_name; hgs_artifact_path; hgs_summary; hgs_hex; hgs_inventory;
-      hgs_triples;_} -> hgs_summary
-let __proj__Mkhdt_graph_store__item__hgs_hex (projectee : hdt_graph_store) :
-  Prims.string=
+  | { hgs_graph_name; hgs_artifact_path; hgs_summary; hgs_bytes;
+      hgs_inventory; hgs_triples;_} -> hgs_summary
+let __proj__Mkhdt_graph_store__item__hgs_bytes (projectee : hdt_graph_store)
+  : HDT_Container.hdt_bytes=
   match projectee with
-  | { hgs_graph_name; hgs_artifact_path; hgs_summary; hgs_hex; hgs_inventory;
-      hgs_triples;_} -> hgs_hex
+  | { hgs_graph_name; hgs_artifact_path; hgs_summary; hgs_bytes;
+      hgs_inventory; hgs_triples;_} -> hgs_bytes
 let __proj__Mkhdt_graph_store__item__hgs_inventory
   (projectee : hdt_graph_store) : HDT_Container.hdt_inventory=
   match projectee with
-  | { hgs_graph_name; hgs_artifact_path; hgs_summary; hgs_hex; hgs_inventory;
-      hgs_triples;_} -> hgs_inventory
+  | { hgs_graph_name; hgs_artifact_path; hgs_summary; hgs_bytes;
+      hgs_inventory; hgs_triples;_} -> hgs_inventory
 let __proj__Mkhdt_graph_store__item__hgs_triples
   (projectee : hdt_graph_store) : HDT_Triples.hdt_triples_info=
   match projectee with
-  | { hgs_graph_name; hgs_artifact_path; hgs_summary; hgs_hex; hgs_inventory;
-      hgs_triples;_} -> hgs_triples
+  | { hgs_graph_name; hgs_artifact_path; hgs_summary; hgs_bytes;
+      hgs_inventory; hgs_triples;_} -> hgs_triples
 let hdt_open_graph_store
   (graph_name : RDF_Term.iri FStar_Pervasives_Native.option)
   (artifact_path : Prims.string)
@@ -203,8 +203,8 @@ let hdt_open_graph_store
   hdt_graph_store FStar_Pervasives_Native.option=
   match HDT_Container.hdt_read_inventory artifact_path with
   | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
-  | FStar_Pervasives_Native.Some (hex, inv) ->
-      (match HDT_Triples.hdt_read_triples hex inv with
+  | FStar_Pervasives_Native.Some (bytes, inv) ->
+      (match HDT_Triples.hdt_read_triples bytes inv with
        | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
        | FStar_Pervasives_Native.Some triples ->
            FStar_Pervasives_Native.Some
@@ -212,7 +212,7 @@ let hdt_open_graph_store
                hgs_graph_name = graph_name;
                hgs_artifact_path = artifact_path;
                hgs_summary = summary;
-               hgs_hex = hex;
+               hgs_bytes = bytes;
                hgs_inventory = inv;
                hgs_triples = triples
              })
@@ -227,17 +227,17 @@ let opt_pos_to_ref (o : Prims.pos FStar_Pervasives_Native.option) :
 let hdt_encode_subject (gs : hdt_graph_store) (subj : RDF_Term.subject) :
   hdt_term_ref FStar_Pervasives_Native.option=
   opt_pos_to_ref
-    (HDT_Dictionary.hdt_term_to_id gs.hgs_hex gs.hgs_inventory
+    (HDT_Dictionary.hdt_term_to_id gs.hgs_bytes gs.hgs_inventory
        HDT_Dictionary.Role_Subject (RDF_Graph.subject_to_term subj))
 let hdt_encode_predicate (gs : hdt_graph_store) (p : RDF_Term.wf_iri) :
   hdt_term_ref FStar_Pervasives_Native.option=
   opt_pos_to_ref
-    (HDT_Dictionary.hdt_term_to_id gs.hgs_hex gs.hgs_inventory
+    (HDT_Dictionary.hdt_term_to_id gs.hgs_bytes gs.hgs_inventory
        HDT_Dictionary.Role_Predicate (RDF_Term.T_IRI p))
 let hdt_encode_object (gs : hdt_graph_store) (o : RDF_Term.rdf_term) :
   hdt_term_ref FStar_Pervasives_Native.option=
   opt_pos_to_ref
-    (HDT_Dictionary.hdt_term_to_id gs.hgs_hex gs.hgs_inventory
+    (HDT_Dictionary.hdt_term_to_id gs.hgs_bytes gs.hgs_inventory
        HDT_Dictionary.Role_Object o)
 let hdt_decode_error_iri : RDF_Term.wf_iri= "urn:factoidal:hdt-decode-error"
 let hdt_decode_error_subject : RDF_Term.subject=
@@ -248,7 +248,7 @@ let hdt_decode_term (gs : hdt_graph_store) (role : HDT_Dictionary.hdt_role)
   (id : hdt_term_ref) : RDF_Term.rdf_term FStar_Pervasives_Native.option=
   if id = Prims.int_zero
   then FStar_Pervasives_Native.None
-  else HDT_Dictionary.hdt_id_to_term gs.hgs_hex gs.hgs_inventory role id
+  else HDT_Dictionary.hdt_id_to_term gs.hgs_bytes gs.hgs_inventory role id
 let hdt_decode_subject (gs : hdt_graph_store) (id : hdt_term_ref) :
   RDF_Term.subject=
   match hdt_decode_term gs HDT_Dictionary.Role_Subject id with
@@ -284,9 +284,9 @@ let hdt_choose_access_path (bound : hdt_bound_tp) : hdt_access_path=
 let hdt_resolve_access_path (gs : hdt_graph_store) (path : hdt_access_path) :
   HDT_Triples.hdt_id_triple Prims.list FStar_Pervasives_Native.option=
   match path with
-  | HAP_FullScan -> HDT_Triples.hdt_enumerate_all gs.hgs_hex gs.hgs_triples
+  | HAP_FullScan -> HDT_Triples.hdt_enumerate_all gs.hgs_bytes gs.hgs_triples
   | HAP_BoundSubject sid ->
-      (match HDT_Triples.hdt_triples_for_subject gs.hgs_hex gs.hgs_triples
+      (match HDT_Triples.hdt_triples_for_subject gs.hgs_bytes gs.hgs_triples
                sid
        with
        | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
