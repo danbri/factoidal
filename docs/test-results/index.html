@@ -143,16 +143,56 @@
   }
   details.group-section .group-body { margin-top: 0.3em; }
 
-  /* --- Family section cards ------------------------------------------- */
-  .family {
-    border: 1px solid var(--border); border-left-width: 5px;
-    border-radius: 8px; padding: 0.9em 1em; margin: 0 0 1.2em;
-    background: var(--bg);
+  /* --- Family nodes: one collapsible <details> per spec family --------- */
+  /* Second pass (2026-07-10): families used to be always-open cards — a
+     name line, then a full prose score paragraph below, at ~1rem+ font —
+     which is what read as "stacked padded cards" rather than a tree on a
+     phone. Now a collapsible node, same chevron/dot/condensed-score
+     pattern as a suite row, nested one level deeper (see
+     .family-body .suites below for the indentation guide-line). */
+  details.family-node {
+    border: 1px solid var(--border); border-left-width: 4px;
+    border-radius: 8px; margin: 0 0 0.6em; background: var(--bg);
   }
-  .family.green { border-left-color: var(--ok); }
-  .family.amber { border-left-color: var(--warn); }
-  .family.grey  { border-left-color: var(--skip); }
-  .family h2 { margin: 0 0 0.35em; font-size: 1.08rem; color: var(--brand-dark); }
+  details.family-node.green { border-left-color: var(--ok); }
+  details.family-node.amber { border-left-color: var(--warn); }
+  details.family-node.grey  { border-left-color: var(--skip); }
+  details.family-node > summary {
+    cursor: pointer; list-style: none;
+    display: flex; flex-wrap: wrap; align-items: center; gap: 0.2em 0.6em;
+    padding: 0.55em 0.7em; min-height: 2.5rem;
+  }
+  details.family-node > summary::-webkit-details-marker { display: none; }
+  details.family-node > summary::marker { content: ""; }
+  details.family-node > summary::before {
+    content: "\25B8"; flex: none; color: var(--muted);
+    transition: transform 0.15s ease;
+  }
+  details.family-node[open] > summary::before { transform: rotate(90deg); }
+  details.family-node .fam-name {
+    font-weight: 600; color: var(--brand-dark); font-size: 0.98rem;
+    flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere;
+  }
+  details.family-node .fam-score {
+    font-family: ui-monospace, Menlo, Consolas, monospace;
+    font-size: 0.8rem; color: var(--muted);
+    flex: 1 1 100%; /* own line on a narrow phone; see 640px override */
+  }
+  details.family-node .gap-badge {
+    flex: none; font-size: 0.72rem; font-weight: 600;
+    background: var(--warn-tint); color: var(--warn);
+    border-radius: 10px; padding: 0.1em 0.6em;
+  }
+  details.family-node > summary .dot { flex: none; }
+  details.family-node .family-body { padding: 0 0.8em 0.8em; }
+  /* Indentation guide-line: a family's own suite list sits visibly
+     nested under its summary, and (one level up) under the group it
+     belongs to — the "real visual hierarchy by indentation" the tree
+     needs. */
+  details.family-node .family-body .suites {
+    padding-left: 0.7em; margin-left: 0.15em;
+    border-left: 2px solid var(--border);
+  }
   .fam-headline {
     margin: 0 0 0.7em; font-size: 0.92rem; color: var(--muted);
     padding-left: 0.9em; border-left: 3px solid var(--border);
@@ -161,14 +201,42 @@
   .fam-headline.amber { border-left-color: var(--warn); }
   .fam-headline.grey  { border-left-color: var(--skip); }
 
-  h2 .inline-numbers {
+  /* "Remaining work" -- what's incomplete, sourced from each suite
+     manifest's "remaining:" YAML field (see read_yaml_remaining /
+     family_remaining in generate-report.sh). Only one of these two
+     renders per family: the list, or the completeness line -- never
+     both, and never a fabricated completeness claim when a family has
+     fails but no populated "remaining:" yet (family_section renders
+     neither in that case). */
+  .remaining {
+    margin: 0.6em 0 0; padding: 0.6em 0.8em;
+    border-left: 4px solid var(--warn); background: var(--warn-tint);
+    border-radius: 0 4px 4px 0; font-size: 0.85rem;
+  }
+  .remaining-title { margin: 0 0 0.3em; font-weight: 600; color: var(--warn); }
+  .remaining ul { margin: 0; padding-left: 1.2em; }
+  .remaining li { margin: 0.25em 0; overflow-wrap: anywhere; }
+  .remaining-complete {
+    margin: 0.6em 0 0; font-size: 0.85rem; color: var(--ok);
+  }
+
+  /* .fam-subhead — a sub-heading inside an expanded family body (e.g.
+     the OWL 2 panel's catalog-scope line). Not a real <h2>: it lives
+     inside a collapsed-by-default <details>, so a search-engine/
+     accessibility-tree heading here would outrank the page's real
+     section structure while being invisible by default. */
+  .fam-subhead {
+    margin: 0 0 0.35em; font-size: 1.02rem; font-weight: 700;
+    color: var(--brand-dark);
+  }
+  h2 .inline-numbers, .fam-subhead .inline-numbers {
     display: block; font-weight: 400; color: var(--muted); font-size: 0.85rem;
     margin: 0.2em 0 0;
   }
-  h2 .inline-numbers a {
+  h2 .inline-numbers a, .fam-subhead .inline-numbers a {
     color: inherit; text-decoration: underline; text-decoration-style: dotted;
   }
-  h2 .inline-numbers a:hover { color: var(--brand-dark); }
+  h2 .inline-numbers a:hover, .fam-subhead .inline-numbers a:hover { color: var(--brand-dark); }
 
   /* Per-REC subsection headings inside SPARQL 1.1 / RDF 1.1 families */
   h3.rec-subhead {
@@ -202,36 +270,49 @@
   .failure-detail li { margin: 0.3em 0; line-height: 1.4; overflow-wrap: anywhere; }
 
   /* --- Suite nodes: one collapsible <details> per checkable suite ------- */
-  /* Mobile-first single column; the summary line is name + labelled
-     numbers + a status dot, collapsed by default. Body (meter,
-     provenance, diagnosis) only renders once tapped open. */
-  .suites { display: flex; flex-direction: column; gap: 0.5em; margin: 0 0 0.6em; }
+  /* Second pass (2026-07-10): one COMPACT line when collapsed —
+     "chevron  name  P/F/S of T  dot" — targeting <=2.5rem row height on
+     a phone, not a padded card. flex-wrap:nowrap + ellipsis on the name
+     keeps it to one row at any width down to ~320px; the fully-labelled
+     "P pass, F fail, S skip (out of T)" sentence and the meter bar only
+     render once the row is tapped open (suite-body). */
+  .suites { display: flex; flex-direction: column; gap: 0.3em; margin: 0 0 0.4em; }
   details.suite-node {
     margin: 0; border: none; border-radius: 6px;
     background: var(--surface); padding: 0;
   }
   details.suite-node > summary {
-    display: flex; flex-wrap: wrap; align-items: center; gap: 0.5em;
+    display: flex; flex-wrap: nowrap; align-items: center; gap: 0.5em;
     cursor: pointer; list-style: none;
-    padding: 0.55em 0.7em; min-height: 44px; font-size: 0.95rem;
+    padding: 0.35em 0.6em; min-height: 2.5rem; font-size: 0.9rem;
     color: var(--fg); font-weight: 400;
   }
   details.suite-node > summary::-webkit-details-marker { display: none; }
   details.suite-node > summary::marker { content: ""; }
+  details.suite-node > summary::before {
+    content: "\25B8"; flex: none; color: var(--muted);
+    transition: transform 0.15s ease;
+  }
+  details.suite-node[open] > summary::before { transform: rotate(90deg); }
   details.suite-node .suite-name {
     font-family: ui-monospace, Menlo, Consolas, monospace;
-    font-size: 0.92rem; font-weight: 600; overflow-wrap: anywhere;
-    flex: 1 1 auto;
+    font-size: 0.85rem; font-weight: 600;
+    flex: 1 1 auto; min-width: 0;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
   details.suite-node .suite-numbers {
     font-family: ui-monospace, Menlo, Consolas, monospace;
-    font-size: 0.85rem; color: var(--muted);
+    font-size: 0.78rem; color: var(--muted); flex: none; white-space: nowrap;
   }
   details.suite-node .suite-body { padding: 0 0.7em 0.7em; display: flex; flex-direction: column; gap: 0.35em; }
   details.suite-node.green { background: var(--ok-tint); }
   details.suite-node.amber { background: var(--warn-tint); }
   details.suite-node.grey  { background: var(--skip-tint); }
   .suite-diag { margin: 0; font-size: 0.8rem; color: var(--muted); }
+  /* Fully-labelled "P pass, F fail, S skip (out of T)" — the expanded
+     counterpart to the condensed summary line, so the labelled form
+     (CLAUDE.md anti-pattern #25) is always one tap away. */
+  .suite-numbers-full { margin: -0.2em 0 0; font-size: 0.82rem; color: var(--muted); }
 
   /* Stacked pass/fail/skip meter — one definition, used by every suite
      row on the page. Always full-width of its row. */
@@ -284,16 +365,17 @@
   footer code { background: var(--surface); padding: 0.1em 0.4em; border-radius: 3px; }
 
   /* --- Widen past phone width ------------------------------------------ */
+  /* The suite/family summary rows are flex-nowrap + ellipsis from the
+     base (mobile) rule already, so they stay one compact line at every
+     width — no grid re-layout needed past 640px, just more breathing
+     room and letting the family score sit inline instead of wrapping to
+     its own row. */
   @media (min-width: 640px) {
     main { padding: 1.5em 1em; }
     header { padding: 1.2em 1em; }
-    .family { padding: 1em 1.2em; }
-    details.suite-node > summary {
-      display: grid;
-      grid-template-columns: 1.2em 15em 1fr;
-      align-items: center; gap: 0.8em;
-    }
-    details.suite-node .suite-numbers { text-align: right; }
+    details.suite-node > summary { padding: 0.4em 0.8em; }
+    details.family-node > summary { padding: 0.6em 0.9em; }
+    details.family-node .fam-score { flex: 0 1 auto; }
     .suite-prov { margin: 0; }
   }
   @media (min-width: 800px) {
@@ -307,7 +389,7 @@
       white-space: nowrap;
       box-shadow: 0 1px 2px rgba(0,0,0,0.08);
     }
-    h2 .inline-numbers { display: inline; margin-left: 0.5em; }
+    h2 .inline-numbers, .fam-subhead .inline-numbers { display: inline; margin-left: 0.5em; }
   }
 </style>
 </head>
@@ -316,7 +398,7 @@
 <header>
   <div class="inner">
     <div class="rendered-pill" title="Rendered = when this page was last regenerated. Tests = when the *_results.log files inside the repository were last updated. Both UTC.">
-      <span class="row"><span class="label">Rendered</span><strong>2026-07-10 10:18 UTC</strong></span>
+      <span class="row"><span class="label">Rendered</span><strong>2026-07-10 11:12 UTC</strong></span>
       <span class="row"><span class="label">Tests</span><strong class="tests">2026-07-10 01:56 UTC</strong></span>
     </div>
     <h1>W3C test results</h1>
@@ -371,63 +453,76 @@
     <li><span class="dot amber"></span><strong>Amber</strong> — partial: at least one fail, but every residual fail is diagnosed in writing (a link sits next to the row).</li>
     <li><span class="dot grey"></span><strong>Grey</strong> — not measured this run, or out of scope for this suite (e.g. skipped fixtures, a roadmap item with no runner yet).</li>
   </ul>
-  <p class="legend-note">Each suite row shows a stacked meter: the green segment is the pass proportion, red is fail, grey is skip — all measured against that suite's own total, so proportions are comparable across suites of very different sizes.</p>
+  <p class="legend-note">Collapsed rows show a condensed score in <strong>pass/fail/skip of total</strong> order (e.g. &ldquo;461/0/6 of 467&rdquo; means 461 pass, 0 fail, 6 skip out of 467) — tap a row to expand it for the fully-labelled sentence and a stacked pass/fail/skip meter, measured against that suite's own total so proportions are comparable across suites of very different sizes. A family row with an amber <strong>N gaps</strong> badge has a &ldquo;Remaining work&rdquo; list inside it; an expanded family with no badge and no fails is marked complete against the vendored suites.</p>
 </div>
 
 <details class="group-section" id="group-w3c-rec" open>
   <summary class="group-summary">W3C Recommendations</summary>
   <div class="group-body">
-<section class="family green" id="rdf-core">
-  <h2>RDF 1.1 core</h2>
-  <p class="fam-headline green">1117 pass, 0 fail, 0 skip (of 1117) across N-Triples, Turtle, N-Quads, TriG, RDF/XML, RDF 1.1 Semantics (rdf-mt), and RDFC-1.0 canonicalization.</p>
-  <div class="suites">
+<details class="family-node green" id="rdf-core">
+  <summary>
+    <span class="fam-name">RDF 1.1 core</span>
+    <span class="fam-score">1117/0/0 of 1117</span>
+    <span class="gap-badge">1 gap</span>
+    <span class="dot green"></span>
+  </summary>
+  <div class="family-body">
+    <p class="fam-headline green">1117 pass, 0 fail, 0 skip (of 1117) across N-Triples, Turtle, N-Quads, TriG, RDF/XML, RDF 1.1 Semantics (rdf-mt), and RDFC-1.0 canonicalization.</p>
+    <div class="suites">
   <h3 class="rec-subhead"><a href="https://www.w3.org/TR/n-triples/" target="_blank" rel="noopener">RDF 1.1 N-Triples</a></h3>
       <details class="suite-node green">
-        <summary><span class="dot green"></span><span class="suite-name">rdf-n-triples</span><span class="suite-numbers">70 pass, 0 fail, 0 skip (out of 70)</span></summary>
+        <summary><span class="suite-name">rdf-n-triples</span><span class="suite-numbers">70/0/0 of 70</span><span class="dot green"></span></summary>
         <div class="suite-body">
           <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+          <p class="suite-numbers-full">70 pass, 0 fail, 0 skip (out of 70)</p>
         </div>
       </details>
   <h3 class="rec-subhead"><a href="https://www.w3.org/TR/turtle/" target="_blank" rel="noopener">RDF 1.1 Turtle</a></h3>
       <details class="suite-node green">
-        <summary><span class="dot green"></span><span class="suite-name">rdf-turtle</span><span class="suite-numbers">313 pass, 0 fail, 0 skip (out of 313)</span></summary>
+        <summary><span class="suite-name">rdf-turtle</span><span class="suite-numbers">313/0/0 of 313</span><span class="dot green"></span></summary>
         <div class="suite-body">
           <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+          <p class="suite-numbers-full">313 pass, 0 fail, 0 skip (out of 313)</p>
         </div>
       </details>
   <h3 class="rec-subhead"><a href="https://www.w3.org/TR/n-quads/" target="_blank" rel="noopener">RDF 1.1 N-Quads</a></h3>
       <details class="suite-node green">
-        <summary><span class="dot green"></span><span class="suite-name">rdf-n-quads</span><span class="suite-numbers">87 pass, 0 fail, 0 skip (out of 87)</span></summary>
+        <summary><span class="suite-name">rdf-n-quads</span><span class="suite-numbers">87/0/0 of 87</span><span class="dot green"></span></summary>
         <div class="suite-body">
           <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+          <p class="suite-numbers-full">87 pass, 0 fail, 0 skip (out of 87)</p>
         </div>
       </details>
   <h3 class="rec-subhead"><a href="https://www.w3.org/TR/trig/" target="_blank" rel="noopener">RDF 1.1 TriG</a></h3>
       <details class="suite-node green">
-        <summary><span class="dot green"></span><span class="suite-name">rdf-trig</span><span class="suite-numbers">356 pass, 0 fail, 0 skip (out of 356)</span></summary>
+        <summary><span class="suite-name">rdf-trig</span><span class="suite-numbers">356/0/0 of 356</span><span class="dot green"></span></summary>
         <div class="suite-body">
           <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+          <p class="suite-numbers-full">356 pass, 0 fail, 0 skip (out of 356)</p>
         </div>
       </details>
   <h3 class="rec-subhead"><a href="https://www.w3.org/TR/rdf-syntax-grammar/" target="_blank" rel="noopener">RDF 1.1 RDF/XML</a></h3>
       <details class="suite-node green">
-        <summary><span class="dot green"></span><span class="suite-name">rdf-xml</span><span class="suite-numbers">166 pass, 0 fail, 0 skip (out of 166)</span></summary>
+        <summary><span class="suite-name">rdf-xml</span><span class="suite-numbers">166/0/0 of 166</span><span class="dot green"></span></summary>
         <div class="suite-body">
           <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+          <p class="suite-numbers-full">166 pass, 0 fail, 0 skip (out of 166)</p>
         </div>
       </details>
   <h3 class="rec-subhead"><a href="https://www.w3.org/TR/rdf11-mt/" target="_blank" rel="noopener">RDF 1.1 Semantics</a></h3>
       <details class="suite-node green">
-        <summary><span class="dot green"></span><span class="suite-name">rdf-mt</span><span class="suite-numbers">39 pass, 0 fail, 0 skip (out of 39)</span></summary>
+        <summary><span class="suite-name">rdf-mt</span><span class="suite-numbers">39/0/0 of 39</span><span class="dot green"></span></summary>
         <div class="suite-body">
           <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+          <p class="suite-numbers-full">39 pass, 0 fail, 0 skip (out of 39)</p>
         </div>
       </details>
   <h3 class="rec-subhead"><a href="https://www.w3.org/TR/rdf-canon/" target="_blank" rel="noopener">RDF Dataset Canonicalization (RDFC-1.0)</a></h3>
 <details class="suite-node green">
-    <summary><span class="dot green"></span><span class="suite-name">RDFC-1.0 (eval + Map + NegEval)</span><span class="suite-numbers">86 pass, 0 fail, 0 skip (out of 86)</span></summary>
+    <summary><span class="suite-name">RDFC-1.0 (eval + Map + NegEval)</span><span class="suite-numbers">86/0/0 of 86</span><span class="dot green"></span></summary>
     <div class="suite-body">
       <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+      <p class="suite-numbers-full">86 pass, 0 fail, 0 skip (out of 86)</p>
     </div>
   </details>
   <p class="suite-prov">
@@ -439,231 +534,291 @@
     canonical N-Quads form bytewise; Map tests compare the bnode&rarr;canonical-id
     mapping structurally; NegEval tests are bounded by an HNDQ work budget.
   </p>
+    </div>
+    
+    <div class="remaining">
+      <p class="remaining-title">Remaining work</p>
+      <ul>
+        <li>some very deeply nested RDF/XML documents can overflow the parser — a parser-depth gap, not a semantics gap</li>
+      </ul>
+    </div>
   </div>
-  
-</section>
-<section class="family green" id="sparql11">
-  <h2>SPARQL 1.1</h2>
-  <p class="fam-headline green">631 pass, 0 fail, 0 skip (of 631) across Query, Update, Protocol, Federated Query, Service Description, and Entailment Regimes.</p>
-  <div class="suites">
+</details>
+<details class="family-node green" id="sparql11">
+  <summary>
+    <span class="fam-name">SPARQL 1.1</span>
+    <span class="fam-score">631/0/0 of 631</span>
+    <span class="gap-badge">1 gap</span>
+    <span class="dot green"></span>
+  </summary>
+  <div class="family-body">
+    <p class="fam-headline green">631 pass, 0 fail, 0 skip (of 631) across Query, Update, Protocol, Federated Query, Service Description, and Entailment Regimes.</p>
+    <div class="suites">
   <h3 class="rec-subhead"><a href="https://www.w3.org/TR/sparql11-query/" target="_blank" rel="noopener">SPARQL 1.1 Query Language</a></h3>
       <details class="suite-node green">
-        <summary><span class="dot green"></span><span class="suite-name">aggregates</span><span class="suite-numbers">47 pass, 0 fail, 0 skip (out of 47)</span></summary>
+        <summary><span class="suite-name">aggregates</span><span class="suite-numbers">47/0/0 of 47</span><span class="dot green"></span></summary>
         <div class="suite-body">
           <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+          <p class="suite-numbers-full">47 pass, 0 fail, 0 skip (out of 47)</p>
         </div>
       </details>
       <details class="suite-node green">
-        <summary><span class="dot green"></span><span class="suite-name">bind</span><span class="suite-numbers">10 pass, 0 fail, 0 skip (out of 10)</span></summary>
+        <summary><span class="suite-name">bind</span><span class="suite-numbers">10/0/0 of 10</span><span class="dot green"></span></summary>
         <div class="suite-body">
           <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+          <p class="suite-numbers-full">10 pass, 0 fail, 0 skip (out of 10)</p>
         </div>
       </details>
       <details class="suite-node green">
-        <summary><span class="dot green"></span><span class="suite-name">bindings</span><span class="suite-numbers">11 pass, 0 fail, 0 skip (out of 11)</span></summary>
+        <summary><span class="suite-name">bindings</span><span class="suite-numbers">11/0/0 of 11</span><span class="dot green"></span></summary>
         <div class="suite-body">
           <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+          <p class="suite-numbers-full">11 pass, 0 fail, 0 skip (out of 11)</p>
         </div>
       </details>
       <details class="suite-node green">
-        <summary><span class="dot green"></span><span class="suite-name">cast</span><span class="suite-numbers">6 pass, 0 fail, 0 skip (out of 6)</span></summary>
+        <summary><span class="suite-name">cast</span><span class="suite-numbers">6/0/0 of 6</span><span class="dot green"></span></summary>
         <div class="suite-body">
           <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+          <p class="suite-numbers-full">6 pass, 0 fail, 0 skip (out of 6)</p>
         </div>
       </details>
       <details class="suite-node green">
-        <summary><span class="dot green"></span><span class="suite-name">construct</span><span class="suite-numbers">7 pass, 0 fail, 0 skip (out of 7)</span></summary>
+        <summary><span class="suite-name">construct</span><span class="suite-numbers">7/0/0 of 7</span><span class="dot green"></span></summary>
         <div class="suite-body">
           <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+          <p class="suite-numbers-full">7 pass, 0 fail, 0 skip (out of 7)</p>
         </div>
       </details>
       <details class="suite-node green">
-        <summary><span class="dot green"></span><span class="suite-name">csv-tsv-res</span><span class="suite-numbers">6 pass, 0 fail, 0 skip (out of 6)</span></summary>
+        <summary><span class="suite-name">csv-tsv-res</span><span class="suite-numbers">6/0/0 of 6</span><span class="dot green"></span></summary>
         <div class="suite-body">
           <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+          <p class="suite-numbers-full">6 pass, 0 fail, 0 skip (out of 6)</p>
         </div>
       </details>
       <details class="suite-node green">
-        <summary><span class="dot green"></span><span class="suite-name">exists</span><span class="suite-numbers">6 pass, 0 fail, 0 skip (out of 6)</span></summary>
+        <summary><span class="suite-name">exists</span><span class="suite-numbers">6/0/0 of 6</span><span class="dot green"></span></summary>
         <div class="suite-body">
           <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+          <p class="suite-numbers-full">6 pass, 0 fail, 0 skip (out of 6)</p>
         </div>
       </details>
       <details class="suite-node green">
-        <summary><span class="dot green"></span><span class="suite-name">functions</span><span class="suite-numbers">75 pass, 0 fail, 0 skip (out of 75)</span></summary>
+        <summary><span class="suite-name">functions</span><span class="suite-numbers">75/0/0 of 75</span><span class="dot green"></span></summary>
         <div class="suite-body">
           <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+          <p class="suite-numbers-full">75 pass, 0 fail, 0 skip (out of 75)</p>
         </div>
       </details>
       <details class="suite-node green">
-        <summary><span class="dot green"></span><span class="suite-name">grouping</span><span class="suite-numbers">6 pass, 0 fail, 0 skip (out of 6)</span></summary>
+        <summary><span class="suite-name">grouping</span><span class="suite-numbers">6/0/0 of 6</span><span class="dot green"></span></summary>
         <div class="suite-body">
           <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+          <p class="suite-numbers-full">6 pass, 0 fail, 0 skip (out of 6)</p>
         </div>
       </details>
       <details class="suite-node green">
-        <summary><span class="dot green"></span><span class="suite-name">json-res</span><span class="suite-numbers">4 pass, 0 fail, 0 skip (out of 4)</span></summary>
+        <summary><span class="suite-name">json-res</span><span class="suite-numbers">4/0/0 of 4</span><span class="dot green"></span></summary>
         <div class="suite-body">
           <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+          <p class="suite-numbers-full">4 pass, 0 fail, 0 skip (out of 4)</p>
         </div>
       </details>
       <details class="suite-node green">
-        <summary><span class="dot green"></span><span class="suite-name">negation</span><span class="suite-numbers">12 pass, 0 fail, 0 skip (out of 12)</span></summary>
+        <summary><span class="suite-name">negation</span><span class="suite-numbers">12/0/0 of 12</span><span class="dot green"></span></summary>
         <div class="suite-body">
           <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+          <p class="suite-numbers-full">12 pass, 0 fail, 0 skip (out of 12)</p>
         </div>
       </details>
       <details class="suite-node green">
-        <summary><span class="dot green"></span><span class="suite-name">project-expression</span><span class="suite-numbers">7 pass, 0 fail, 0 skip (out of 7)</span></summary>
+        <summary><span class="suite-name">project-expression</span><span class="suite-numbers">7/0/0 of 7</span><span class="dot green"></span></summary>
         <div class="suite-body">
           <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+          <p class="suite-numbers-full">7 pass, 0 fail, 0 skip (out of 7)</p>
         </div>
       </details>
       <details class="suite-node green">
-        <summary><span class="dot green"></span><span class="suite-name">property-path</span><span class="suite-numbers">33 pass, 0 fail, 0 skip (out of 33)</span></summary>
+        <summary><span class="suite-name">property-path</span><span class="suite-numbers">33/0/0 of 33</span><span class="dot green"></span></summary>
         <div class="suite-body">
           <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+          <p class="suite-numbers-full">33 pass, 0 fail, 0 skip (out of 33)</p>
         </div>
       </details>
       <details class="suite-node green">
-        <summary><span class="dot green"></span><span class="suite-name">subquery</span><span class="suite-numbers">14 pass, 0 fail, 0 skip (out of 14)</span></summary>
+        <summary><span class="suite-name">subquery</span><span class="suite-numbers">14/0/0 of 14</span><span class="dot green"></span></summary>
         <div class="suite-body">
           <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+          <p class="suite-numbers-full">14 pass, 0 fail, 0 skip (out of 14)</p>
         </div>
       </details>
       <details class="suite-node green">
-        <summary><span class="dot green"></span><span class="suite-name">syntax-query</span><span class="suite-numbers">94 pass, 0 fail, 0 skip (out of 94)</span></summary>
+        <summary><span class="suite-name">syntax-query</span><span class="suite-numbers">94/0/0 of 94</span><span class="dot green"></span></summary>
         <div class="suite-body">
           <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+          <p class="suite-numbers-full">94 pass, 0 fail, 0 skip (out of 94)</p>
         </div>
       </details>
   <h3 class="rec-subhead"><a href="https://www.w3.org/TR/sparql11-update/" target="_blank" rel="noopener">SPARQL 1.1 Update</a></h3>
       <details class="suite-node green">
-        <summary><span class="dot green"></span><span class="suite-name">add</span><span class="suite-numbers">8 pass, 0 fail, 0 skip (out of 8)</span></summary>
+        <summary><span class="suite-name">add</span><span class="suite-numbers">8/0/0 of 8</span><span class="dot green"></span></summary>
         <div class="suite-body">
           <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+          <p class="suite-numbers-full">8 pass, 0 fail, 0 skip (out of 8)</p>
         </div>
       </details>
       <details class="suite-node green">
-        <summary><span class="dot green"></span><span class="suite-name">basic-update</span><span class="suite-numbers">13 pass, 0 fail, 0 skip (out of 13)</span></summary>
+        <summary><span class="suite-name">basic-update</span><span class="suite-numbers">13/0/0 of 13</span><span class="dot green"></span></summary>
         <div class="suite-body">
           <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+          <p class="suite-numbers-full">13 pass, 0 fail, 0 skip (out of 13)</p>
         </div>
       </details>
       <details class="suite-node green">
-        <summary><span class="dot green"></span><span class="suite-name">clear</span><span class="suite-numbers">4 pass, 0 fail, 0 skip (out of 4)</span></summary>
+        <summary><span class="suite-name">clear</span><span class="suite-numbers">4/0/0 of 4</span><span class="dot green"></span></summary>
         <div class="suite-body">
           <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+          <p class="suite-numbers-full">4 pass, 0 fail, 0 skip (out of 4)</p>
         </div>
       </details>
       <details class="suite-node green">
-        <summary><span class="dot green"></span><span class="suite-name">copy</span><span class="suite-numbers">6 pass, 0 fail, 0 skip (out of 6)</span></summary>
+        <summary><span class="suite-name">copy</span><span class="suite-numbers">6/0/0 of 6</span><span class="dot green"></span></summary>
         <div class="suite-body">
           <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+          <p class="suite-numbers-full">6 pass, 0 fail, 0 skip (out of 6)</p>
         </div>
       </details>
       <details class="suite-node green">
-        <summary><span class="dot green"></span><span class="suite-name">delete</span><span class="suite-numbers">19 pass, 0 fail, 0 skip (out of 19)</span></summary>
+        <summary><span class="suite-name">delete</span><span class="suite-numbers">19/0/0 of 19</span><span class="dot green"></span></summary>
         <div class="suite-body">
           <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+          <p class="suite-numbers-full">19 pass, 0 fail, 0 skip (out of 19)</p>
         </div>
       </details>
       <details class="suite-node green">
-        <summary><span class="dot green"></span><span class="suite-name">delete-data</span><span class="suite-numbers">6 pass, 0 fail, 0 skip (out of 6)</span></summary>
+        <summary><span class="suite-name">delete-data</span><span class="suite-numbers">6/0/0 of 6</span><span class="dot green"></span></summary>
         <div class="suite-body">
           <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+          <p class="suite-numbers-full">6 pass, 0 fail, 0 skip (out of 6)</p>
         </div>
       </details>
       <details class="suite-node green">
-        <summary><span class="dot green"></span><span class="suite-name">delete-insert</span><span class="suite-numbers">17 pass, 0 fail, 0 skip (out of 17)</span></summary>
+        <summary><span class="suite-name">delete-insert</span><span class="suite-numbers">17/0/0 of 17</span><span class="dot green"></span></summary>
         <div class="suite-body">
           <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+          <p class="suite-numbers-full">17 pass, 0 fail, 0 skip (out of 17)</p>
         </div>
       </details>
       <details class="suite-node green">
-        <summary><span class="dot green"></span><span class="suite-name">delete-where</span><span class="suite-numbers">6 pass, 0 fail, 0 skip (out of 6)</span></summary>
+        <summary><span class="suite-name">delete-where</span><span class="suite-numbers">6/0/0 of 6</span><span class="dot green"></span></summary>
         <div class="suite-body">
           <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+          <p class="suite-numbers-full">6 pass, 0 fail, 0 skip (out of 6)</p>
         </div>
       </details>
       <details class="suite-node green">
-        <summary><span class="dot green"></span><span class="suite-name">drop</span><span class="suite-numbers">4 pass, 0 fail, 0 skip (out of 4)</span></summary>
+        <summary><span class="suite-name">drop</span><span class="suite-numbers">4/0/0 of 4</span><span class="dot green"></span></summary>
         <div class="suite-body">
           <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+          <p class="suite-numbers-full">4 pass, 0 fail, 0 skip (out of 4)</p>
         </div>
       </details>
       <details class="suite-node green">
-        <summary><span class="dot green"></span><span class="suite-name">move</span><span class="suite-numbers">6 pass, 0 fail, 0 skip (out of 6)</span></summary>
+        <summary><span class="suite-name">move</span><span class="suite-numbers">6/0/0 of 6</span><span class="dot green"></span></summary>
         <div class="suite-body">
           <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+          <p class="suite-numbers-full">6 pass, 0 fail, 0 skip (out of 6)</p>
         </div>
       </details>
       <details class="suite-node green">
-        <summary><span class="dot green"></span><span class="suite-name">syntax-update-1</span><span class="suite-numbers">54 pass, 0 fail, 0 skip (out of 54)</span></summary>
+        <summary><span class="suite-name">syntax-update-1</span><span class="suite-numbers">54/0/0 of 54</span><span class="dot green"></span></summary>
         <div class="suite-body">
           <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+          <p class="suite-numbers-full">54 pass, 0 fail, 0 skip (out of 54)</p>
         </div>
       </details>
       <details class="suite-node green">
-        <summary><span class="dot green"></span><span class="suite-name">syntax-update-2</span><span class="suite-numbers">1 pass, 0 fail, 0 skip (out of 1)</span></summary>
+        <summary><span class="suite-name">syntax-update-2</span><span class="suite-numbers">1/0/0 of 1</span><span class="dot green"></span></summary>
         <div class="suite-body">
           <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+          <p class="suite-numbers-full">1 pass, 0 fail, 0 skip (out of 1)</p>
         </div>
       </details>
       <details class="suite-node green">
-        <summary><span class="dot green"></span><span class="suite-name">update-silent</span><span class="suite-numbers">13 pass, 0 fail, 0 skip (out of 13)</span></summary>
+        <summary><span class="suite-name">update-silent</span><span class="suite-numbers">13/0/0 of 13</span><span class="dot green"></span></summary>
         <div class="suite-body">
           <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+          <p class="suite-numbers-full">13 pass, 0 fail, 0 skip (out of 13)</p>
         </div>
       </details>
   <h3 class="rec-subhead"><a href="https://www.w3.org/TR/sparql11-protocol/" target="_blank" rel="noopener">SPARQL 1.1 Protocol</a></h3>
       <details class="suite-node green">
-        <summary><span class="dot green"></span><span class="suite-name">http-rdf-update</span><span class="suite-numbers">19 pass, 0 fail, 0 skip (out of 19)</span></summary>
+        <summary><span class="suite-name">http-rdf-update</span><span class="suite-numbers">19/0/0 of 19</span><span class="dot green"></span></summary>
         <div class="suite-body">
           <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+          <p class="suite-numbers-full">19 pass, 0 fail, 0 skip (out of 19)</p>
         </div>
       </details>
       <details class="suite-node green">
-        <summary><span class="dot green"></span><span class="suite-name">protocol</span><span class="suite-numbers">34 pass, 0 fail, 0 skip (out of 34)</span></summary>
+        <summary><span class="suite-name">protocol</span><span class="suite-numbers">34/0/0 of 34</span><span class="dot green"></span></summary>
         <div class="suite-body">
           <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+          <p class="suite-numbers-full">34 pass, 0 fail, 0 skip (out of 34)</p>
         </div>
       </details>
   <h3 class="rec-subhead"><a href="https://www.w3.org/TR/sparql11-federated-query/" target="_blank" rel="noopener">SPARQL 1.1 Federated Query</a></h3>
       <details class="suite-node green">
-        <summary><span class="dot green"></span><span class="suite-name">service</span><span class="suite-numbers">7 pass, 0 fail, 0 skip (out of 7)</span></summary>
+        <summary><span class="suite-name">service</span><span class="suite-numbers">7/0/0 of 7</span><span class="dot green"></span></summary>
         <div class="suite-body">
           <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+          <p class="suite-numbers-full">7 pass, 0 fail, 0 skip (out of 7)</p>
         </div>
       </details>
       <details class="suite-node green">
-        <summary><span class="dot green"></span><span class="suite-name">syntax-fed</span><span class="suite-numbers">3 pass, 0 fail, 0 skip (out of 3)</span></summary>
+        <summary><span class="suite-name">syntax-fed</span><span class="suite-numbers">3/0/0 of 3</span><span class="dot green"></span></summary>
         <div class="suite-body">
           <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+          <p class="suite-numbers-full">3 pass, 0 fail, 0 skip (out of 3)</p>
         </div>
       </details>
   <h3 class="rec-subhead"><a href="https://www.w3.org/TR/sparql11-service-description/" target="_blank" rel="noopener">SPARQL 1.1 Service Description</a></h3>
       <details class="suite-node green">
-        <summary><span class="dot green"></span><span class="suite-name">service-description</span><span class="suite-numbers">3 pass, 0 fail, 0 skip (out of 3)</span></summary>
+        <summary><span class="suite-name">service-description</span><span class="suite-numbers">3/0/0 of 3</span><span class="dot green"></span></summary>
         <div class="suite-body">
           <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+          <p class="suite-numbers-full">3 pass, 0 fail, 0 skip (out of 3)</p>
         </div>
       </details>
   <h3 class="rec-subhead"><a href="https://www.w3.org/TR/sparql11-entailment/" target="_blank" rel="noopener">SPARQL 1.1 Entailment Regimes</a></h3>
       <details class="suite-node green">
-        <summary><span class="dot green"></span><span class="suite-name">entailment <small style="font-weight:normal;color:var(--muted)">(SPARQL 1.1 regime — RDFS / D-entailment, 70 tests)</small></span><span class="suite-numbers">70 pass, 0 fail, 0 skip (out of 70)</span></summary>
+        <summary><span class="suite-name">entailment <small style="font-weight:normal;color:var(--muted)">(SPARQL 1.1 regime — RDFS / D-entailment, 70 tests)</small></span><span class="suite-numbers">70/0/0 of 70</span><span class="dot green"></span></summary>
         <div class="suite-body">
           <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+          <p class="suite-numbers-full">70 pass, 0 fail, 0 skip (out of 70)</p>
         </div>
       </details>
+    </div>
+    
+    <div class="remaining">
+      <p class="remaining-title">Remaining work</p>
+      <ul>
+        <li>SPARQL 1.1 Protocol and the Graph Store HTTP Protocol are parked — deprioritized behind conformance-depth work on Query/Update/Entailment, by owner directive; not implemented against the W3C test suite yet</li>
+      </ul>
+    </div>
   </div>
-  
-</section>
-<section class="family amber" id="owl2">
-  <h2>Reasoning: RDFS / OWL 2</h2>
-  <p class="fam-headline amber">profile-RL PositiveEntailmentTests: 28 pass, 2 fail (of 30); six further OWL 2 catalogs (NegEnt/Cons/Inc + 4 DL catalogs) scored below, RIF Core scored in its own family.</p>
-  <div class="suites">
-<h2>OWL 2 <span class="inline-numbers">28+ pass via owl_runner across 7 catalogs (profile-RL/EL/QL + 4 DL) &middot; live scoring</span></h2>
+</details>
+<details class="family-node amber" id="owl2">
+  <summary>
+    <span class="fam-name">Reasoning: RDFS / OWL 2</span>
+    <span class="fam-score">28/2/0 of 30</span>
+    <span class="gap-badge">3 gaps</span>
+    <span class="dot amber"></span>
+  </summary>
+  <div class="family-body">
+    <p class="fam-headline amber">profile-RL PositiveEntailmentTests: 28 pass, 2 fail (of 30); six further OWL 2 catalogs (NegEnt/Cons/Inc + 4 DL catalogs) scored below, RIF Core scored in its own family.</p>
+    <div class="suites">
+<p class="fam-subhead">OWL 2 <span class="inline-numbers">28+ pass via owl_runner across 7 catalogs (profile-RL/EL/QL + 4 DL) &middot; live scoring</span></p>
 <p style="margin: 0.3em 0 0.6em; color: var(--muted); font-size: 0.85em;">
   <strong>Scope.</strong> The OWL 2 W3C Test Cases catalog (~3378
   <code>test:TestCase</code> entries across 9 categories) is vendored
@@ -710,148 +865,175 @@
 </p>
 <div class="suites">
   <details class="suite-node green">
-    <summary><span class="dot green"></span><span class="suite-name">OWL DL entailment — Tableau <small style="font-weight:normal;color:var(--muted)">(<code>Tableau.fst</code> · <code>tableau_materialise</code>, live in <code>w3c_runner</code> — SPARQL 1.1 entailment-regimes suite)</small></span><span class="suite-numbers">70 pass, 0 fail, 0 skip (out of 70)</span></summary>
+    <summary><span class="suite-name">OWL DL entailment — Tableau <small style="font-weight:normal;color:var(--muted)">(<code>Tableau.fst</code> · <code>tableau_materialise</code>, live in <code>w3c_runner</code> — SPARQL 1.1 entailment-regimes suite)</small></span><span class="suite-numbers">70/0/0 of 70</span><span class="dot green"></span></summary>
     <div class="suite-body">
       <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+      <p class="suite-numbers-full">70 pass, 0 fail, 0 skip (out of 70)</p>
     </div>
   </details>
   <details class="suite-node amber">
-    <summary><span class="dot amber"></span><span class="suite-name">profile-RL PosEnt</span><span class="suite-numbers">28 pass, 2 fail, 0 skip (out of 30)</span></summary>
+    <summary><span class="suite-name">profile-RL PosEnt</span><span class="suite-numbers">28/2/0 of 30</span><span class="dot amber"></span></summary>
     <div class="suite-body">
       <div class="meter"><div class="seg seg-pass" style="width:93.33%"></div><div class="seg seg-fail" style="width:6.67%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+      <p class="suite-numbers-full">28 pass, 2 fail, 0 skip (out of 30)</p>
     </div>
   </details>
   <details class="suite-node green">
-    <summary><span class="dot green"></span><span class="suite-name">profile-RL NegEnt</span><span class="suite-numbers">6 pass, 0 fail, 0 skip (out of 6)</span></summary>
+    <summary><span class="suite-name">profile-RL NegEnt</span><span class="suite-numbers">6/0/0 of 6</span><span class="dot green"></span></summary>
     <div class="suite-body">
       <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+      <p class="suite-numbers-full">6 pass, 0 fail, 0 skip (out of 6)</p>
     </div>
   </details>
   <details class="suite-node green">
-    <summary><span class="dot green"></span><span class="suite-name">profile-RL Consistency</span><span class="suite-numbers">76 pass, 0 fail, 0 skip (out of 76)</span></summary>
+    <summary><span class="suite-name">profile-RL Consistency</span><span class="suite-numbers">76/0/0 of 76</span><span class="dot green"></span></summary>
     <div class="suite-body">
       <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+      <p class="suite-numbers-full">76 pass, 0 fail, 0 skip (out of 76)</p>
     </div>
   </details>
   <details class="suite-node green">
-    <summary><span class="dot green"></span><span class="suite-name">profile-RL Inconsistency</span><span class="suite-numbers">14 pass, 0 fail, 0 skip (out of 14)</span></summary>
+    <summary><span class="suite-name">profile-RL Inconsistency</span><span class="suite-numbers">14/0/0 of 14</span><span class="dot green"></span></summary>
     <div class="suite-body">
       <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+      <p class="suite-numbers-full">14 pass, 0 fail, 0 skip (out of 14)</p>
     </div>
   </details>
   <details class="suite-node amber">
-    <summary><span class="dot amber"></span><span class="suite-name">type-PosEnt PE [DL]</span><span class="suite-numbers">103 pass, 101 fail, 0 skip (out of 204)</span></summary>
+    <summary><span class="suite-name">type-PosEnt PE [DL]</span><span class="suite-numbers">103/101/0 of 204</span><span class="dot amber"></span></summary>
     <div class="suite-body">
       <div class="meter"><div class="seg seg-pass" style="width:50.49%"></div><div class="seg seg-fail" style="width:49.51%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+      <p class="suite-numbers-full">103 pass, 101 fail, 0 skip (out of 204)</p>
     </div>
   </details><details class="suite-node amber">
-    <summary><span class="dot amber"></span><span class="suite-name">type-PosEnt Cons [DL]</span><span class="suite-numbers">188 pass, 16 fail, 0 skip (out of 204)</span></summary>
+    <summary><span class="suite-name">type-PosEnt Cons [DL]</span><span class="suite-numbers">188/16/0 of 204</span><span class="dot amber"></span></summary>
     <div class="suite-body">
       <div class="meter"><div class="seg seg-pass" style="width:92.16%"></div><div class="seg seg-fail" style="width:7.84%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+      <p class="suite-numbers-full">188 pass, 16 fail, 0 skip (out of 204)</p>
     </div>
   </details><details class="suite-node grey">
-    <summary><span class="dot grey"></span><span class="suite-name">type-NegEnt PE [DL]</span><span class="suite-numbers">0 pass, 0 fail, 0 skip (out of 0)</span></summary>
+    <summary><span class="suite-name">type-NegEnt PE [DL]</span><span class="suite-numbers">0/0/0 of 0</span><span class="dot grey"></span></summary>
     <div class="suite-body">
       <div class="meter"><div class="seg seg-pass" style="width:0%"></div><div class="seg seg-fail" style="width:0%"></div><div class="seg seg-skip" style="width:0%"></div></div>
+      <p class="suite-numbers-full">0 pass, 0 fail, 0 skip (out of 0)</p>
     </div>
   </details><details class="suite-node amber">
-    <summary><span class="dot amber"></span><span class="suite-name">type-NegEnt NE [DL]</span><span class="suite-numbers">22 pass, 1 fail, 0 skip (out of 23)</span></summary>
+    <summary><span class="suite-name">type-NegEnt NE [DL]</span><span class="suite-numbers">22/1/0 of 23</span><span class="dot amber"></span></summary>
     <div class="suite-body">
       <div class="meter"><div class="seg seg-pass" style="width:95.65%"></div><div class="seg seg-fail" style="width:4.35%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+      <p class="suite-numbers-full">22 pass, 1 fail, 0 skip (out of 23)</p>
     </div>
   </details><details class="suite-node green">
-    <summary><span class="dot green"></span><span class="suite-name">type-NegEnt Cons [DL]</span><span class="suite-numbers">23 pass, 0 fail, 0 skip (out of 23)</span></summary>
+    <summary><span class="suite-name">type-NegEnt Cons [DL]</span><span class="suite-numbers">23/0/0 of 23</span><span class="dot green"></span></summary>
     <div class="suite-body">
       <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+      <p class="suite-numbers-full">23 pass, 0 fail, 0 skip (out of 23)</p>
     </div>
   </details><details class="suite-node amber">
-    <summary><span class="dot amber"></span><span class="suite-name">type-Cons PE [DL]</span><span class="suite-numbers">103 pass, 101 fail, 0 skip (out of 204)</span></summary>
+    <summary><span class="suite-name">type-Cons PE [DL]</span><span class="suite-numbers">103/101/0 of 204</span><span class="dot amber"></span></summary>
     <div class="suite-body">
       <div class="meter"><div class="seg seg-pass" style="width:50.49%"></div><div class="seg seg-fail" style="width:49.51%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+      <p class="suite-numbers-full">103 pass, 101 fail, 0 skip (out of 204)</p>
     </div>
   </details><details class="suite-node amber">
-    <summary><span class="dot amber"></span><span class="suite-name">type-Cons NE [DL]</span><span class="suite-numbers">22 pass, 1 fail, 0 skip (out of 23)</span></summary>
+    <summary><span class="suite-name">type-Cons NE [DL]</span><span class="suite-numbers">22/1/0 of 23</span><span class="dot amber"></span></summary>
     <div class="suite-body">
       <div class="meter"><div class="seg seg-pass" style="width:95.65%"></div><div class="seg seg-fail" style="width:4.35%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+      <p class="suite-numbers-full">22 pass, 1 fail, 0 skip (out of 23)</p>
     </div>
   </details><details class="suite-node amber">
-    <summary><span class="dot amber"></span><span class="suite-name">type-Cons Cons [DL]</span><span class="suite-numbers">328 pass, 18 fail, 0 skip (out of 346)</span></summary>
+    <summary><span class="suite-name">type-Cons Cons [DL]</span><span class="suite-numbers">328/18/0 of 346</span><span class="dot amber"></span></summary>
     <div class="suite-body">
       <div class="meter"><div class="seg seg-pass" style="width:94.80%"></div><div class="seg seg-fail" style="width:5.20%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+      <p class="suite-numbers-full">328 pass, 18 fail, 0 skip (out of 346)</p>
     </div>
   </details><details class="suite-node grey">
-    <summary><span class="dot grey"></span><span class="suite-name">type-Inc PE [DL]</span><span class="suite-numbers">0 pass, 0 fail, 0 skip (out of 0)</span></summary>
+    <summary><span class="suite-name">type-Inc PE [DL]</span><span class="suite-numbers">0/0/0 of 0</span><span class="dot grey"></span></summary>
     <div class="suite-body">
       <div class="meter"><div class="seg seg-pass" style="width:0%"></div><div class="seg seg-fail" style="width:0%"></div><div class="seg seg-skip" style="width:0%"></div></div>
+      <p class="suite-numbers-full">0 pass, 0 fail, 0 skip (out of 0)</p>
     </div>
   </details><details class="suite-node amber">
-    <summary><span class="dot amber"></span><span class="suite-name">type-Inc Inc [DL]</span><span class="suite-numbers">36 pass, 81 fail, 0 skip (out of 117)</span></summary>
+    <summary><span class="suite-name">type-Inc Inc [DL]</span><span class="suite-numbers">36/81/0 of 117</span><span class="dot amber"></span></summary>
     <div class="suite-body">
       <div class="meter"><div class="seg seg-pass" style="width:30.77%"></div><div class="seg seg-fail" style="width:69.23%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+      <p class="suite-numbers-full">36 pass, 81 fail, 0 skip (out of 117)</p>
     </div>
   </details><details class="suite-node amber">
-    <summary><span class="dot amber"></span><span class="suite-name">profile-EL PE [RL]</span><span class="suite-numbers">21 pass, 8 fail, 0 skip (out of 29)</span></summary>
+    <summary><span class="suite-name">profile-EL PE [RL]</span><span class="suite-numbers">21/8/0 of 29</span><span class="dot amber"></span></summary>
     <div class="suite-body">
       <div class="meter"><div class="seg seg-pass" style="width:72.41%"></div><div class="seg seg-fail" style="width:27.59%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+      <p class="suite-numbers-full">21 pass, 8 fail, 0 skip (out of 29)</p>
     </div>
   </details><details class="suite-node green">
-    <summary><span class="dot green"></span><span class="suite-name">profile-EL NE [RL]</span><span class="suite-numbers">6 pass, 0 fail, 0 skip (out of 6)</span></summary>
+    <summary><span class="suite-name">profile-EL NE [RL]</span><span class="suite-numbers">6/0/0 of 6</span><span class="dot green"></span></summary>
     <div class="suite-body">
       <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+      <p class="suite-numbers-full">6 pass, 0 fail, 0 skip (out of 6)</p>
     </div>
   </details><details class="suite-node green">
-    <summary><span class="dot green"></span><span class="suite-name">profile-EL Cons [RL]</span><span class="suite-numbers">72 pass, 0 fail, 0 skip (out of 72)</span></summary>
+    <summary><span class="suite-name">profile-EL Cons [RL]</span><span class="suite-numbers">72/0/0 of 72</span><span class="dot green"></span></summary>
     <div class="suite-body">
       <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+      <p class="suite-numbers-full">72 pass, 0 fail, 0 skip (out of 72)</p>
     </div>
   </details><details class="suite-node amber">
-    <summary><span class="dot amber"></span><span class="suite-name">profile-EL Inc [RL]</span><span class="suite-numbers">9 pass, 5 fail, 0 skip (out of 14)</span></summary>
+    <summary><span class="suite-name">profile-EL Inc [RL]</span><span class="suite-numbers">9/5/0 of 14</span><span class="dot amber"></span></summary>
     <div class="suite-body">
       <div class="meter"><div class="seg seg-pass" style="width:64.29%"></div><div class="seg seg-fail" style="width:35.71%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+      <p class="suite-numbers-full">9 pass, 5 fail, 0 skip (out of 14)</p>
     </div>
   </details><details class="suite-node amber">
-    <summary><span class="dot amber"></span><span class="suite-name">profile-QL PE [RL]</span><span class="suite-numbers">16 pass, 4 fail, 0 skip (out of 20)</span></summary>
+    <summary><span class="suite-name">profile-QL PE [RL]</span><span class="suite-numbers">16/4/0 of 20</span><span class="dot amber"></span></summary>
     <div class="suite-body">
       <div class="meter"><div class="seg seg-pass" style="width:80.00%"></div><div class="seg seg-fail" style="width:20.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+      <p class="suite-numbers-full">16 pass, 4 fail, 0 skip (out of 20)</p>
     </div>
   </details><details class="suite-node green">
-    <summary><span class="dot green"></span><span class="suite-name">profile-QL NE [RL]</span><span class="suite-numbers">3 pass, 0 fail, 0 skip (out of 3)</span></summary>
+    <summary><span class="suite-name">profile-QL NE [RL]</span><span class="suite-numbers">3/0/0 of 3</span><span class="dot green"></span></summary>
     <div class="suite-body">
       <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+      <p class="suite-numbers-full">3 pass, 0 fail, 0 skip (out of 3)</p>
     </div>
   </details><details class="suite-node green">
-    <summary><span class="dot green"></span><span class="suite-name">profile-QL Cons [RL]</span><span class="suite-numbers">58 pass, 0 fail, 0 skip (out of 58)</span></summary>
+    <summary><span class="suite-name">profile-QL Cons [RL]</span><span class="suite-numbers">58/0/0 of 58</span><span class="dot green"></span></summary>
     <div class="suite-body">
       <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+      <p class="suite-numbers-full">58 pass, 0 fail, 0 skip (out of 58)</p>
     </div>
   </details><details class="suite-node green">
-    <summary><span class="dot green"></span><span class="suite-name">profile-QL Inc [RL]</span><span class="suite-numbers">6 pass, 0 fail, 0 skip (out of 6)</span></summary>
+    <summary><span class="suite-name">profile-QL Inc [RL]</span><span class="suite-numbers">6/0/0 of 6</span><span class="dot green"></span></summary>
     <div class="suite-body">
       <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+      <p class="suite-numbers-full">6 pass, 0 fail, 0 skip (out of 6)</p>
     </div>
   </details><details class="suite-node amber">
-    <summary><span class="dot amber"></span><span class="suite-name">sem-Direct PE [DL]</span><span class="suite-numbers">103 pass, 101 fail, 0 skip (out of 204)</span></summary>
+    <summary><span class="suite-name">sem-Direct PE [DL]</span><span class="suite-numbers">103/101/0 of 204</span><span class="dot amber"></span></summary>
     <div class="suite-body">
       <div class="meter"><div class="seg seg-pass" style="width:50.49%"></div><div class="seg seg-fail" style="width:49.51%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+      <p class="suite-numbers-full">103 pass, 101 fail, 0 skip (out of 204)</p>
     </div>
   </details><details class="suite-node amber">
-    <summary><span class="dot amber"></span><span class="suite-name">sem-Direct NE [DL]</span><span class="suite-numbers">22 pass, 1 fail, 0 skip (out of 23)</span></summary>
+    <summary><span class="suite-name">sem-Direct NE [DL]</span><span class="suite-numbers">22/1/0 of 23</span><span class="dot amber"></span></summary>
     <div class="suite-body">
       <div class="meter"><div class="seg seg-pass" style="width:95.65%"></div><div class="seg seg-fail" style="width:4.35%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+      <p class="suite-numbers-full">22 pass, 1 fail, 0 skip (out of 23)</p>
     </div>
   </details><details class="suite-node amber">
-    <summary><span class="dot amber"></span><span class="suite-name">sem-Direct Cons [DL]</span><span class="suite-numbers">327 pass, 18 fail, 0 skip (out of 345)</span></summary>
+    <summary><span class="suite-name">sem-Direct Cons [DL]</span><span class="suite-numbers">327/18/0 of 345</span><span class="dot amber"></span></summary>
     <div class="suite-body">
       <div class="meter"><div class="seg seg-pass" style="width:94.78%"></div><div class="seg seg-fail" style="width:5.22%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+      <p class="suite-numbers-full">327 pass, 18 fail, 0 skip (out of 345)</p>
     </div>
   </details><details class="suite-node amber">
-    <summary><span class="dot amber"></span><span class="suite-name">sem-Direct Inc [DL]</span><span class="suite-numbers">36 pass, 81 fail, 0 skip (out of 117)</span></summary>
+    <summary><span class="suite-name">sem-Direct Inc [DL]</span><span class="suite-numbers">36/81/0 of 117</span><span class="dot amber"></span></summary>
     <div class="suite-body">
       <div class="meter"><div class="seg seg-pass" style="width:30.77%"></div><div class="seg seg-fail" style="width:69.23%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+      <p class="suite-numbers-full">36 pass, 81 fail, 0 skip (out of 117)</p>
     </div>
   </details>
   <details class="suite-node grey">
-    <summary><span class="dot grey"></span><span class="suite-name">syntax-dl</span><span class="suite-numbers">not run &mdash; 646 tests</span></summary>
+    <summary><span class="suite-name">syntax-dl</span><span class="suite-numbers">not run &mdash; 646 tests</span><span class="dot grey"></span></summary>
     <div class="suite-body">
       <div class="meter"><div class="seg seg-skip" style="width:100%"></div></div>
       <p class="suite-prov">runner not wired (engine: DL syntactic-profile checker pending)</p>
@@ -875,178 +1057,317 @@
   CSVW, ShEx, DID, VC, RML — now have live scored suite nodes of their
   own elsewhere on this page.
 </p>
+    </div>
+    
+    <div class="remaining">
+      <p class="remaining-title">Remaining work</p>
+      <ul>
+        <li>the DL entailment catalogs (EL, QL, and the general DL profile) are only partially wired to the tableau reasoner — some fail because the parser doesn't yet cover OWL Functional-Style Syntax fixtures, and some fail because the reasoner materialises entailments but doesn't yet refute the negative (inconsistency) side</li>
+        <li>the syntax-dl structural checker (validating that an ontology stays inside the OWL 2 DL syntactic profile) is not implemented, so that catalog is not scored at all</li>
+        <li>large graphs using owl:sameAs extensively can hit a performance blowup during closure computation — a known scaling gap, not a correctness gap</li>
+      </ul>
+    </div>
   </div>
-  
-</section>
-<section class="family green" id="shacl">
-  <h2>SHACL (Shapes Constraint Language)</h2>
-  <p class="fam-headline green">120 pass, 0 fail, 0 skip (out of 120) across SHACL Core and SHACL SPARQL-based Constraints.</p>
-  <div class="suites">
+</details>
+<details class="family-node green" id="shacl">
+  <summary>
+    <span class="fam-name">SHACL (Shapes Constraint Language)</span>
+    <span class="fam-score">120/0/0 of 120</span>
+    
+    <span class="dot green"></span>
+  </summary>
+  <div class="family-body">
+    <p class="fam-headline green">120 pass, 0 fail, 0 skip (out of 120) across SHACL Core and SHACL SPARQL-based Constraints.</p>
+    <div class="suites">
       <details class="suite-node green">
-        <summary><span class="dot green"></span><span class="suite-name">SHACL Core</span><span class="suite-numbers">98 pass, 0 fail, 0 skip (out of 98)</span></summary>
+        <summary><span class="suite-name">SHACL Core</span><span class="suite-numbers">98/0/0 of 98</span><span class="dot green"></span></summary>
         <div class="suite-body">
           <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+          <p class="suite-numbers-full">98 pass, 0 fail, 0 skip (out of 98)</p>
           <p class="suite-prov">Runner: <code>bin/shacl-runner</code> (<code>bin/linux-x86_64/shacl_runner</code>) &middot; Suite: <code>third_party/testing/shacl/data-shapes-test-suite/tests/core/</code></p>
           
         </div>
       </details>
       <details class="suite-node green">
-        <summary><span class="dot green"></span><span class="suite-name">SHACL SPARQL-based Constraints</span><span class="suite-numbers">22 pass, 0 fail, 0 skip (out of 22)</span></summary>
+        <summary><span class="suite-name">SHACL SPARQL-based Constraints</span><span class="suite-numbers">22/0/0 of 22</span><span class="dot green"></span></summary>
         <div class="suite-body">
           <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+          <p class="suite-numbers-full">22 pass, 0 fail, 0 skip (out of 22)</p>
           <p class="suite-prov">Runner: <code>bin/shacl-runner</code> (<code>bin/linux-x86_64/shacl_runner tests/sparql/manifest.ttl</code>) &middot; Suite: <code>third_party/testing/shacl/data-shapes-test-suite/tests/sparql/</code></p>
           
         </div>
       </details>
+    </div>
+    <p style="margin: 0.3em 0 0.6em; color: var(--muted); font-size: 0.85em;">See also <a href="#shex">ShEx</a>, the other shapes-constraint language for RDF — a W3C Community Group specification, not a Recommendation.</p>
+    <p class="remaining-complete">Complete against the vendored suites.</p>
   </div>
-  <p style="margin: 0.3em 0 0.6em; color: var(--muted); font-size: 0.85em;">See also <a href="#shex">ShEx</a>, the other shapes-constraint language for RDF — a W3C Community Group specification, not a Recommendation.</p>
-</section>
-<section class="family amber" id="csvw">
-  <h2>CSVW (CSV on the Web)</h2>
-  <p class="fam-headline amber">218 pass, 52 fail, 0 skip (out of 270) on the vendored csv2rdf corpus.</p>
-  <div class="suites">
+</details>
+<details class="family-node amber" id="csvw">
+  <summary>
+    <span class="fam-name">CSVW (CSV on the Web)</span>
+    <span class="fam-score">218/52/0 of 270</span>
+    <span class="gap-badge">8 gaps</span>
+    <span class="dot amber"></span>
+  </summary>
+  <div class="family-body">
+    <p class="fam-headline amber">218 pass, 52 fail, 0 skip (out of 270) on the vendored csv2rdf corpus.</p>
+    <div class="suites">
       <details class="suite-node amber">
-        <summary><span class="dot amber"></span><span class="suite-name">CSVW csv2rdf</span><span class="suite-numbers">218 pass, 52 fail, 0 skip (out of 270)</span></summary>
+        <summary><span class="suite-name">CSVW csv2rdf</span><span class="suite-numbers">218/52/0 of 270</span><span class="dot amber"></span></summary>
         <div class="suite-body">
           <div class="meter"><div class="seg seg-pass" style="width:80.74%"></div><div class="seg seg-fail" style="width:19.26%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+          <p class="suite-numbers-full">218 pass, 52 fail, 0 skip (out of 270)</p>
           <p class="suite-prov">Runner: <code>bin/csvw-runner</code> (<code>bin/linux-x86_64/csvw_runner</code>) &middot; Suite: vendored W3C csv2rdf corpus (ToRdf / ToRdfWithWarnings / NegativeRdf)</p>
-          <p class="suite-diag"><a href="https://github.com/danbri/factoidal/blob/claude/main/docs/designissues/2026-07-05-csvw-program-plan.md" target="_blank" rel="noopener">diagnosis: burn-down in progress — the CSVW program plan tracks the ToRdf / warnings / negative buckets; residual fails need full @context / metadata-merge processing</a></p>
+          <p class="suite-diag"><a href="https://github.com/danbri/factoidal/blob/worktree-agent-a6fdc7ca0dcbf72ba/docs/designissues/2026-07-05-csvw-program-plan.md" target="_blank" rel="noopener">diagnosis: burn-down in progress — the CSVW program plan tracks the ToRdf / warnings / negative buckets; residual fails need full @context / metadata-merge processing</a></p>
         </div>
       </details>
+    </div>
+    
+    <div class="remaining">
+      <p class="remaining-title">Remaining work</p>
+      <ul>
+        <li>metadata discovery over HTTP (Link headers, a metadata directory, the /.well-known/csvm well-known path) is not implemented — this is a networked-protocol feature, parked by owner directive alongside SPARQL Protocol</li>
+        <li>some metadata-normalization warnings are not produced: pruning of invalid properties, and @base/@type context edge cases</li>
+        <li>schema compatibility and validation gaps: the header=false option, required/null column handling, column-name restriction checks, and title-language intersection checks</li>
+        <li>complex fixtures combining virtual columns, multiple subjects per row, referenced schemas, and inherited-property combinations are not fully handled</li>
+        <li>rowTitles is not implemented</li>
+        <li>table-level separator handling and ordered-list values are not implemented</li>
+        <li>the duration format pattern needs a regex engine this checker doesn't yet call out to</li>
+        <li>2 cross-table foreign-key validation tests (NegativeRdf) are not handled</li>
+      </ul>
+    </div>
   </div>
-  
-</section>
-<section class="family green" id="jsonld11">
-  <h2>JSON-LD 1.1</h2>
-  <p class="fam-headline green">1137 pass, 0 fail, 15 skip (of 1152) across the W3C JSON-LD 1.1 toRdf, fromRdf, expand and compact manifests.</p>
-  <div class="suites">
+</details>
+<details class="family-node green" id="jsonld11">
+  <summary>
+    <span class="fam-name">JSON-LD 1.1</span>
+    <span class="fam-score">1137/0/15 of 1152 &middot; 4 of 7 suites</span>
+    <span class="gap-badge">3 gaps</span>
+    <span class="dot green"></span>
+  </summary>
+  <div class="family-body">
+    <p class="fam-headline green">1137 pass, 0 fail, 15 skip (of 1152) across the W3C JSON-LD 1.1 toRdf, fromRdf, expand and compact manifests.</p>
+    <div class="suites">
       <details class="suite-node green">
-        <summary><span class="dot green"></span><span class="suite-name">JSON-LD 1.1 toRdf</span><span class="suite-numbers">461 pass, 0 fail, 6 skip (out of 467)</span></summary>
+        <summary><span class="suite-name">JSON-LD 1.1 toRdf</span><span class="suite-numbers">461/0/6 of 467</span><span class="dot green"></span></summary>
         <div class="suite-body">
           <div class="meter"><div class="seg seg-pass" style="width:98.72%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:1.28%"></div></div>
+          <p class="suite-numbers-full">461 pass, 0 fail, 6 skip (out of 467)</p>
           <p class="suite-prov">Runner: <code>bin/jsonld-runner</code> (<code>bin/linux-x86_64/jsonld_runner</code>) &middot; Suite: <code>third_party/testing/json-ld/</code> (toRdf manifest)</p>
           
         </div>
       </details>
       <details class="suite-node green">
-        <summary><span class="dot green"></span><span class="suite-name">JSON-LD 1.1 fromRdf</span><span class="suite-numbers">53 pass, 0 fail, 1 skip (out of 54)</span></summary>
+        <summary><span class="suite-name">JSON-LD 1.1 fromRdf</span><span class="suite-numbers">53/0/1 of 54</span><span class="dot green"></span></summary>
         <div class="suite-body">
           <div class="meter"><div class="seg seg-pass" style="width:98.15%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:1.85%"></div></div>
+          <p class="suite-numbers-full">53 pass, 0 fail, 1 skip (out of 54)</p>
           <p class="suite-prov">Runner: <code>bin/jsonld-fromrdf-runner</code> (<code>bin/linux-x86_64/jsonld_fromrdf_runner</code>) &middot; Suite: W3C JSON-LD 1.1 fromRdf manifest (Serialize RDF as JSON-LD)</p>
           
         </div>
       </details>
       <details class="suite-node green">
-        <summary><span class="dot green"></span><span class="suite-name">JSON-LD 1.1 expand</span><span class="suite-numbers">379 pass, 0 fail, 6 skip (out of 385)</span></summary>
+        <summary><span class="suite-name">JSON-LD 1.1 expand</span><span class="suite-numbers">379/0/6 of 385</span><span class="dot green"></span></summary>
         <div class="suite-body">
           <div class="meter"><div class="seg seg-pass" style="width:98.44%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:1.56%"></div></div>
+          <p class="suite-numbers-full">379 pass, 0 fail, 6 skip (out of 385)</p>
           <p class="suite-prov">Runner: <code>bin/jsonld-expand-runner</code> (<code>bin/linux-x86_64/jsonld_expand_runner</code>) &middot; Suite: W3C JSON-LD 1.1 expand manifest (Expansion Algorithm)</p>
           
         </div>
       </details>
       <details class="suite-node green">
-        <summary><span class="dot green"></span><span class="suite-name">JSON-LD 1.1 compact</span><span class="suite-numbers">244 pass, 0 fail, 2 skip (out of 246)</span></summary>
+        <summary><span class="suite-name">JSON-LD 1.1 compact</span><span class="suite-numbers">244/0/2 of 246</span><span class="dot green"></span></summary>
         <div class="suite-body">
           <div class="meter"><div class="seg seg-pass" style="width:99.19%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.81%"></div></div>
+          <p class="suite-numbers-full">244 pass, 0 fail, 2 skip (out of 246)</p>
           <p class="suite-prov">Runner: <code>bin/jsonld-compact-runner</code> (<code>bin/linux-x86_64/jsonld_compact_runner</code>) &middot; Suite: W3C JSON-LD 1.1 compact manifest (Compaction Algorithm)</p>
           
         </div>
       </details>
+    </div>
+    
+    <div class="remaining">
+      <p class="remaining-title">Remaining work</p>
+      <ul>
+        <li>flatten suite (Flattening Algorithm): not yet run — no runner exists</li>
+        <li>frame suite (Framing Algorithm): not yet run — no runner exists</li>
+        <li>html suite (HTML to RDF, JSON-LD embedded in HTML documents): not yet run — no runner exists</li>
+      </ul>
+    </div>
   </div>
-  
-</section>
-<section class="family amber" id="vc2">
-  <h2>Verifiable Credentials 2.0</h2>
-  <p class="fam-headline amber">113 pass, 1 fail, 6 skip (out of 120) on the structural Stage 1 suite. Signing and verifying credentials (the Data Integrity eddsa-rdfc-2022 proof, using RDFC-1.0 canonicalization + SHA-256 + Ed25519) works separately today outside the browser; it does not yet run inside the JS/wasm bundle, and full conformance testing of that signing layer against the official W3C test suite is still pending.</p>
-  <div class="suites">
+</details>
+<details class="family-node amber" id="vc2">
+  <summary>
+    <span class="fam-name">Verifiable Credentials 2.0</span>
+    <span class="fam-score">113/1/6 of 120</span>
+    <span class="gap-badge">5 gaps</span>
+    <span class="dot amber"></span>
+  </summary>
+  <div class="family-body">
+    <p class="fam-headline amber">113 pass, 1 fail, 6 skip (out of 120) on the structural Stage 1 suite. Signing and verifying credentials (the Data Integrity eddsa-rdfc-2022 proof, using RDFC-1.0 canonicalization + SHA-256 + Ed25519) works separately today outside the browser; it does not yet run inside the JS/wasm bundle, and full conformance testing of that signing layer against the official W3C test suite is still pending.</p>
+    <div class="suites">
       <details class="suite-node amber">
-        <summary><span class="dot amber"></span><span class="suite-name">VC Data Model 2.0 — structural (Stage 1)</span><span class="suite-numbers">113 pass, 1 fail, 6 skip (out of 120)</span></summary>
+        <summary><span class="suite-name">VC Data Model 2.0 — structural (Stage 1)</span><span class="suite-numbers">113/1/6 of 120</span><span class="dot amber"></span></summary>
         <div class="suite-body">
           <div class="meter"><div class="seg seg-pass" style="width:94.17%"></div><div class="seg seg-fail" style="width:0.83%"></div><div class="seg seg-skip" style="width:5.00%"></div></div>
+          <p class="suite-numbers-full">113 pass, 1 fail, 6 skip (out of 120)</p>
           <p class="suite-prov">Runner: <code>bin/vc-runner</code> (<code>bin/linux-x86_64/vc_runner</code>) &middot; Suite: <code>third_party/testing/vc/tests/input/</code> (structural fixtures, filename-encoded verdicts)</p>
-          <p class="suite-diag">The 1 remaining fail (<code>credential-validUntil-validFrom-fail.json</code>) is a template artifact, not a real bug: the official test suite fills in real date values when it runs the test live, but the copy of the fixture file we check still has the placeholder text (&ldquo;PAST DATE&rdquo; / &ldquo;FUTURE DATE&rdquo;) baked in, so reading the file offline can't reproduce the failure the live test expects. The 6 skips are fixtures this offline, shape-only checker cannot fairly score: 3 of them let the official test either reject the document or silently patch it before re-checking, a choice this checker has no way to referee from a static file; the other 3 test whether the person presenting a credential is the same person named as its holder, which requires verifying a cryptographic signature rather than just checking the document's shape — that is a later stage of this work, described in the program plan linked below. <a href="https://github.com/danbri/factoidal/blob/claude/main/docs/designissues/2026-07-05-vc-program-plan.md" target="_blank" rel="noopener">VC program plan</a></p>
+          <p class="suite-diag">The 1 remaining fail (<code>credential-validUntil-validFrom-fail.json</code>) is a template artifact, not a real bug: the official test suite fills in real date values when it runs the test live, but the copy of the fixture file we check still has the placeholder text (&ldquo;PAST DATE&rdquo; / &ldquo;FUTURE DATE&rdquo;) baked in, so reading the file offline can't reproduce the failure the live test expects. The 6 skips are fixtures this offline, shape-only checker cannot fairly score: 3 of them let the official test either reject the document or silently patch it before re-checking, a choice this checker has no way to referee from a static file; the other 3 test whether the person presenting a credential is the same person named as its holder, which requires verifying a cryptographic signature rather than just checking the document's shape — that is a later stage of this work, described in the program plan linked below. <a href="https://github.com/danbri/factoidal/blob/worktree-agent-a6fdc7ca0dcbf72ba/docs/designissues/2026-07-05-vc-program-plan.md" target="_blank" rel="noopener">VC program plan</a></p>
         </div>
       </details>
+    </div>
+    
+    <div class="remaining">
+      <p class="remaining-title">Remaining work</p>
+      <ul>
+        <li>issuer presence/shape, validFrom/validUntil ordering, and the credentialStatus/credentialSchema/termsOfUse/evidence/refreshService inner-shape checks are deferred to a later stage</li>
+        <li>context-driven type redefinition is not checked — it needs real JSON-LD term resolution this stage does not implement</li>
+        <li>the 1 remaining fail is a known test-fixture template artifact (placeholder dates baked into the offline copy), not an engine bug</li>
+        <li>6 fixtures are skipped: 3 need a live endpoint's own reject-or-patch decision this offline checker can't referee, and 3 need verifying a cryptographic holder-binding signature, not just the document's shape</li>
+        <li>full W3C VC Data Integrity conformance — signing and verifying credentials against the official test suite, including inside the browser/JS bundle — is not yet run; the underlying eddsa-rdfc-2022 proof machinery works outside the browser today but has not been measured against the official corpus</li>
+      </ul>
+    </div>
   </div>
-  
-</section>
-<section class="family green" id="did">
-  <h2>DID (Decentralized Identifiers)</h2>
-  <p class="fam-headline green">8 pass, 0 fail, 0 skip (out of 8) on did:key resolution.</p>
-  <div class="suites">
+</details>
+<details class="family-node green" id="did">
+  <summary>
+    <span class="fam-name">DID (Decentralized Identifiers)</span>
+    <span class="fam-score">8/0/0 of 8</span>
+    <span class="gap-badge">2 gaps</span>
+    <span class="dot green"></span>
+  </summary>
+  <div class="family-body">
+    <p class="fam-headline green">8 pass, 0 fail, 0 skip (out of 8) on did:key resolution.</p>
+    <div class="suites">
       <details class="suite-node green">
-        <summary><span class="dot green"></span><span class="suite-name">DID did:key</span><span class="suite-numbers">8 pass, 0 fail, 0 skip (out of 8)</span></summary>
+        <summary><span class="suite-name">DID did:key</span><span class="suite-numbers">8/0/0 of 8</span><span class="dot green"></span></summary>
         <div class="suite-body">
           <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+          <p class="suite-numbers-full">8 pass, 0 fail, 0 skip (out of 8)</p>
           <p class="suite-prov">Runner: <code>bin/did-runner</code> (<code>bin/linux-x86_64/did_runner</code>) &middot; Suite: did:key resolution + multibase/multicodec accept/reject cases</p>
           
         </div>
       </details>
+    </div>
+    
+    <div class="remaining">
+      <p class="remaining-title">Remaining work</p>
+      <ul>
+        <li>this suite covers only did:key — did:web (or any other DID method) is not implemented</li>
+        <li>DID resolution metadata is not produced — a full DID Core conformance target still needs to be enumerated, not just did:key vectors</li>
+      </ul>
+    </div>
   </div>
-  
-</section>
-<section class="family amber" id="rules">
-  <h2>Rules: RIF Core</h2>
-  <p class="fam-headline amber">34 pass, 4 fail, 12 skip (of 50) — Part 1 (4 vendored SPARQL-manifest cases) + Part 2 (46-test W3C RIF Core dialect corpus).</p>
-  <div class="suites">
+</details>
+<details class="family-node amber" id="rules">
+  <summary>
+    <span class="fam-name">Rules: RIF Core</span>
+    <span class="fam-score">34/4/12 of 50</span>
+    <span class="gap-badge">7 gaps</span>
+    <span class="dot amber"></span>
+  </summary>
+  <div class="family-body">
+    <p class="fam-headline amber">34 pass, 4 fail, 12 skip (of 50) — Part 1 (4 vendored SPARQL-manifest cases) + Part 2 (46-test W3C RIF Core dialect corpus).</p>
+    <div class="suites">
       <details class="suite-node amber">
-        <summary><span class="dot amber"></span><span class="suite-name">RIF Core — combined (Part 1 + Part 2)</span><span class="suite-numbers">34 pass, 4 fail, 12 skip (out of 50)</span></summary>
+        <summary><span class="suite-name">RIF Core — combined (Part 1 + Part 2)</span><span class="suite-numbers">34/4/12 of 50</span><span class="dot amber"></span></summary>
         <div class="suite-body">
           <div class="meter"><div class="seg seg-pass" style="width:68.00%"></div><div class="seg seg-fail" style="width:8.00%"></div><div class="seg seg-skip" style="width:24.00%"></div></div>
+          <p class="suite-numbers-full">34 pass, 4 fail, 12 skip (out of 50)</p>
           <p class="suite-prov">Runner: <code>bin/rif-runner</code> (<code>bin/linux-x86_64/rif_runner</code>) &middot; Suites: <code>third_party/testing/rif/tc/</code> + <code>third_party/testing/rif-core-suite/</code></p>
-          <p class="suite-diag"><a href="https://github.com/danbri/factoidal/blob/claude/main/bin/rif-runner/README.md" target="_blank" rel="noopener">diagnosis: 1 corpus data defect (malformed xsd:string IRI in the official W3C zip) + 3 labelled engine KNOWN-GAPs, see bin/rif-runner/README.md</a></p>
+          <p class="suite-diag"><a href="https://github.com/danbri/factoidal/blob/worktree-agent-a6fdc7ca0dcbf72ba/bin/rif-runner/README.md" target="_blank" rel="noopener">diagnosis: 1 corpus data defect (malformed xsd:string IRI in the official W3C zip) + 3 labelled engine KNOWN-GAPs, see bin/rif-runner/README.md</a></p>
         </div>
       </details>
       <details class="suite-node green">
-        <summary><span class="dot green"></span><span class="suite-name">RIF Core — Part 1 (4 vendored SPARQL-manifest cases)</span><span class="suite-numbers">4 pass, 0 fail, 0 skip (out of 4)</span></summary>
+        <summary><span class="suite-name">RIF Core — Part 1 (4 vendored SPARQL-manifest cases)</span><span class="suite-numbers">4/0/0 of 4</span><span class="dot green"></span></summary>
         <div class="suite-body">
           <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+          <p class="suite-numbers-full">4 pass, 0 fail, 0 skip (out of 4)</p>
           <p class="suite-prov">Runner: <code>bin/rif-runner</code> &middot; Suite: <code>third_party/testing/rif/tc/</code> (the same 4 cases are also scored independently as the &ldquo;RIF Core&rdquo; row under SPARQL 1.1 Entailment Regimes above, via <code>w3c_runner</code>'s entailment dispatch — both pipelines agree)</p>
           
         </div>
       </details>
       <details class="suite-node amber">
-        <summary><span class="dot amber"></span><span class="suite-name">RIF Core — Part 2 (W3C Core_v1.22 corpus)</span><span class="suite-numbers">30 pass, 4 fail, 12 skip (out of 46)</span></summary>
+        <summary><span class="suite-name">RIF Core — Part 2 (W3C Core_v1.22 corpus)</span><span class="suite-numbers">30/4/12 of 46</span><span class="dot amber"></span></summary>
         <div class="suite-body">
           <div class="meter"><div class="seg seg-pass" style="width:65.22%"></div><div class="seg seg-fail" style="width:8.70%"></div><div class="seg seg-skip" style="width:26.09%"></div></div>
+          <p class="suite-numbers-full">30 pass, 4 fail, 12 skip (out of 46)</p>
           <p class="suite-prov">Runner: <code>bin/rif-runner</code> &middot; Suite: <code>third_party/testing/rif-core-suite/Core_v1.22/Approved/</code></p>
-          <p class="suite-diag"><a href="https://github.com/danbri/factoidal/blob/claude/main/docs/claude-rules/scope.md" target="_blank" rel="noopener">diagnosis: docs/claude-rules/scope.md RIF section — every skip names the exact missing builtin/feature</a></p>
+          <p class="suite-diag"><a href="https://github.com/danbri/factoidal/blob/worktree-agent-a6fdc7ca0dcbf72ba/docs/claude-rules/scope.md" target="_blank" rel="noopener">diagnosis: docs/claude-rules/scope.md RIF section — every skip names the exact missing builtin/feature</a></p>
         </div>
       </details>
+    </div>
+    
+    <div class="remaining">
+      <p class="remaining-title">Remaining work</p>
+      <ul>
+        <li>1 known-gap fail: a rule whose body re-binds an arity-2 predicate needs real n-ary reification, not attempted</li>
+        <li>2 known-gap fails: rif:local constants are not scoped per-document in this engine</li>
+        <li>1 fail is a defect in the vendored corpus data itself (a malformed xsd:string IRI), not an engine bug</li>
+        <li>6 skips: the String, Time+dateTime, and PlainLiteral builtin families, plus List-term builtins, are not implemented</li>
+        <li>2 skips: Exists-quantified rule bodies (existential variables in RIF Core) are not implemented</li>
+        <li>1 skip: detecting that a premise combination is internally inconsistent (needed for one vocabulary-separation fixture) is not implemented</li>
+        <li>1 skip: cross-document constant-role tracking for one import-rejection fixture (Multiple_Context_Error) is not implemented</li>
+      </ul>
+    </div>
   </div>
-  
-</section>
-<section class="family amber" id="grddl">
-  <h2>GRDDL</h2>
-  <p class="fam-headline amber">9 pass, 8 fail, 51 skip (out of 68) on the local GRDDL Stage 1 subset.</p>
-  <div class="suites">
+</details>
+<details class="family-node amber" id="grddl">
+  <summary>
+    <span class="fam-name">GRDDL</span>
+    <span class="fam-score">9/8/51 of 68</span>
+    <span class="gap-badge">4 gaps</span>
+    <span class="dot amber"></span>
+  </summary>
+  <div class="family-body">
+    <p class="fam-headline amber">9 pass, 8 fail, 51 skip (out of 68) on the local GRDDL Stage 1 subset.</p>
+    <div class="suites">
       <details class="suite-node amber">
-        <summary><span class="dot amber"></span><span class="suite-name">GRDDL Stage 1 (local subset)</span><span class="suite-numbers">9 pass, 8 fail, 51 skip (out of 68)</span></summary>
+        <summary><span class="suite-name">GRDDL Stage 1 (local subset)</span><span class="suite-numbers">9/8/51 of 68</span><span class="dot amber"></span></summary>
         <div class="suite-body">
           <div class="meter"><div class="seg seg-pass" style="width:13.24%"></div><div class="seg seg-fail" style="width:11.76%"></div><div class="seg seg-skip" style="width:75.00%"></div></div>
+          <p class="suite-numbers-full">9 pass, 8 fail, 51 skip (out of 68)</p>
           <p class="suite-prov">Runner: <code>bin/grddl-runner</code> (<code>bin/linux-x86_64/grddl_runner</code>) &middot; Suite: local subset of the GRDDL Test Cases</p>
           <p class="suite-diag">the fails are graph-mismatch cases in the local subset; the skips are fixtures that need a live network fetch of a transformation profile, out of scope for an offline conformance run</p>
         </div>
       </details>
+    </div>
+    
+    <div class="remaining">
+      <p class="remaining-title">Remaining work</p>
+      <ul>
+        <li>8 local-subset tests fail on deeper per-stylesheet fidelity gaps (e.g. a Gnumeric-generated transform sheet the engine doesn't fully replicate) — each is a distinct stylesheet-feature gap, not one shared bug</li>
+        <li>Stage 2 (namespace/profile-document transformation paths, plus the hCard family of transforms) is not implemented — it needs a live document-fetch hook this offline runner doesn't have</li>
+        <li>Stage 3 (HTML tag-soup input, as opposed to well-formed XML/XHTML) is not implemented</li>
+        <li>49 tests are skipped because they require a live network fetch, which this offline conformance run does not perform</li>
+      </ul>
+    </div>
   </div>
-  
-</section>
-<section class="family amber" id="xml-family">
-  <h2>XSLT 1.0 / XML 1.0 / MathML 3</h2>
-  <p class="fam-headline amber">1564 pass, 19 fail, 1171 skip (out of 2754) across XSLT 1.0 transforms, XML 1.0 well-formedness conformance, and MathML 3 content evaluation.</p>
-  <div class="suites">
+</details>
+<details class="family-node amber" id="xml-family">
+  <summary>
+    <span class="fam-name">XSLT 1.0 / XML 1.0 / MathML 3</span>
+    <span class="fam-score">1564/19/1171 of 2754</span>
+    
+    <span class="dot amber"></span>
+  </summary>
+  <div class="family-body">
+    <p class="fam-headline amber">1564 pass, 19 fail, 1171 skip (out of 2754) across XSLT 1.0 transforms, XML 1.0 well-formedness conformance, and MathML 3 content evaluation.</p>
+    <div class="suites">
       <details class="suite-node amber">
-        <summary><span class="dot amber"></span><span class="suite-name">XSLT 1.0</span><span class="suite-numbers">69 pass, 19 fail, 0 skip (out of 88)</span></summary>
+        <summary><span class="suite-name">XSLT 1.0</span><span class="suite-numbers">69/19/0 of 88</span><span class="dot amber"></span></summary>
         <div class="suite-body">
           <div class="meter"><div class="seg seg-pass" style="width:78.41%"></div><div class="seg seg-fail" style="width:21.59%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+          <p class="suite-numbers-full">69 pass, 19 fail, 0 skip (out of 88)</p>
           <p class="suite-prov">Runner: <code>bin/xslt-runner</code> (<code>bin/linux-x86_64/xslt_runner</code>) &middot; Suite: <code>third_party/testing/xslt/manifest.json</code></p>
-          <p class="suite-diag"><a href="https://github.com/danbri/factoidal/blob/claude/main/.github/test-suites/xslt.yaml" target="_blank" rel="noopener">diagnosis: residual fails are the documented XSLT 1.0 constructs not yet in the transform engine — see the suite manifest</a></p>
+          <p class="suite-diag"><a href="https://github.com/danbri/factoidal/blob/worktree-agent-a6fdc7ca0dcbf72ba/.github/test-suites/xslt.yaml" target="_blank" rel="noopener">diagnosis: residual fails are the documented XSLT 1.0 constructs not yet in the transform engine — see the suite manifest</a></p>
         </div>
       </details>
       <details class="suite-node green">
-        <summary><span class="dot green"></span><span class="suite-name">XML 1.0 conformance</span><span class="suite-numbers">1414 pass, 0 fail, 1171 skip (out of 2585)</span></summary>
+        <summary><span class="suite-name">XML 1.0 conformance</span><span class="suite-numbers">1414/0/1171 of 2585</span><span class="dot green"></span></summary>
         <div class="suite-body">
           <div class="meter"><div class="seg seg-pass" style="width:54.70%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:45.30%"></div></div>
+          <p class="suite-numbers-full">1414 pass, 0 fail, 1171 skip (out of 2585)</p>
           <p class="suite-prov">Runner: <code>bin/xml-runner</code> (<code>bin/linux-x86_64/xml_runner</code>) &middot; Suite: <code>third_party/testing/xml/xmlconf</code> (OASIS/W3C XML conformance) &middot; skips are DTD-boundary / out-of-XML-1.0-profile fixtures, decomposed in the breakdown below</p>
           
         </div>
@@ -1078,213 +1399,297 @@ XML_Wellformedness.is_valid_ncname (informational only, see module comment):
   XML conformance; plain XML 1.0 legally allows ':' in Names).
 ========================================</pre>
       </details>      <details class="suite-node green">
-        <summary><span class="dot green"></span><span class="suite-name">MathML 3 content</span><span class="suite-numbers">81 pass, 0 fail, 0 skip (out of 81)</span></summary>
+        <summary><span class="suite-name">MathML 3 content</span><span class="suite-numbers">81/0/0 of 81</span><span class="dot green"></span></summary>
         <div class="suite-body">
           <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+          <p class="suite-numbers-full">81 pass, 0 fail, 0 skip (out of 81)</p>
           <p class="suite-prov">Runner: <code>bin/mathml-runner</code> (<code>bin/linux-x86_64/mathml_runner</code>) &middot; Suite: <code>third_party/testing/mathml/manifest.json</code> (Content MathML evaluation)</p>
           
         </div>
       </details>
+    </div>
+    
+
   </div>
-  
-</section>
+</details>
   </div>
 </details>
 
 <details class="group-section" id="group-w3c-cg" open>
   <summary class="group-summary">W3C Community Group / Notes / Submissions</summary>
   <div class="group-body">
-<section class="family amber" id="shex">
-  <h2>ShEx (Shape Expressions)</h2>
-  <p class="fam-headline amber">1181 pass, 1 fail, 0 skip (out of 1182) on the shexSpec/shexTest validation manifest.</p>
-  <div class="suites">
+<details class="family-node amber" id="shex">
+  <summary>
+    <span class="fam-name">ShEx (Shape Expressions)</span>
+    <span class="fam-score">1181/1/0 of 1182</span>
+    
+    <span class="dot amber"></span>
+  </summary>
+  <div class="family-body">
+    <p class="fam-headline amber">1181 pass, 1 fail, 0 skip (out of 1182) on the shexSpec/shexTest validation manifest.</p>
+    <div class="suites">
       <details class="suite-node amber">
-        <summary><span class="dot amber"></span><span class="suite-name">ShEx Validation</span><span class="suite-numbers">1181 pass, 1 fail, 0 skip (out of 1182)</span></summary>
+        <summary><span class="suite-name">ShEx Validation</span><span class="suite-numbers">1181/1/0 of 1182</span><span class="dot amber"></span></summary>
         <div class="suite-body">
           <div class="meter"><div class="seg seg-pass" style="width:99.92%"></div><div class="seg seg-fail" style="width:0.08%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+          <p class="suite-numbers-full">1181 pass, 1 fail, 0 skip (out of 1182)</p>
           <p class="suite-prov">Runner: <code>bin/shex-runner</code> (<code>bin/linux-x86_64/shex_runner</code>) &middot; Suite: <code>third_party/testing/shex/</code> (shexSpec/shexTest, ShExJ-first)</p>
-          <p class="suite-diag"><a href="https://github.com/danbri/factoidal/blob/claude/main/.github/test-suites/shex.yaml" target="_blank" rel="noopener">diagnosis: the 1 mismatch is an upstream fixture defect (start2RefS2.json has predicate p1 where the canonical ShExC schema has p2), not an engine bug</a></p>
+          <p class="suite-diag"><a href="https://github.com/danbri/factoidal/blob/worktree-agent-a6fdc7ca0dcbf72ba/.github/test-suites/shex.yaml" target="_blank" rel="noopener">diagnosis: the 1 mismatch is an upstream fixture defect (start2RefS2.json has predicate p1 where the canonical ShExC schema has p2), not an engine bug</a></p>
         </div>
       </details>
+    </div>
+    <p style="margin: 0.3em 0 0.6em; color: var(--muted); font-size: 0.85em;">See also <a href="#shacl">SHACL</a>, the other shapes-constraint language for RDF — a W3C Recommendation.</p>
+
   </div>
-  <p style="margin: 0.3em 0 0.6em; color: var(--muted); font-size: 0.85em;">See also <a href="#shacl">SHACL</a>, the other shapes-constraint language for RDF — a W3C Recommendation.</p>
-</section>
-<section class="family grey" id="hdt">
-  <h2>HDT</h2>
-  <p class="fam-headline grey">No format-conformance suite to measure; see the backend parity check below.</p>
-  <div class="suites">
+</details>
+<details class="family-node grey" id="hdt">
+  <summary>
+    <span class="fam-name">HDT</span>
+    <span class="fam-score">not measured this run</span>
+    
+    <span class="dot grey"></span>
+  </summary>
+  <div class="family-body">
+    <p class="fam-headline grey">No format-conformance suite to measure; see the backend parity check below.</p>
+    <div class="suites">
       <details class="suite-node grey">
-        <summary><span class="dot grey"></span><span class="suite-name">HDT (binary RDF format)</span><span class="suite-numbers">no format-conformance suite vendored</span></summary>
+        <summary><span class="suite-name">HDT (binary RDF format)</span><span class="suite-numbers">no format-conformance suite vendored</span><span class="dot grey"></span></summary>
         <div class="suite-body">
           <div class="meter"><div class="seg seg-skip" style="width:100%"></div></div>
+          <p class="suite-numbers-full">no format-conformance suite vendored</p>
           <p class="suite-prov">No HDT-specific conformance suite is vendored in this repository (the HDT Member Submission publishes a binary format spec, not a test suite). Correctness of this project's HDT backend is instead checked by the <a href="#runtime-parity">HDT stage-4 backend parity</a> check below, which compares HDT-backed query results against the in-memory backend byte-for-byte on unbound/bound-S/P/O/ASK/COUNT queries.</p>
           
         </div>
       </details>
+    </div>
+    
+
   </div>
-  
-</section>
-<section class="family amber" id="mapping-rml">
-  <h2>RML (rml-core / rml-io)</h2>
-  <p class="fam-headline amber">93 pass, 15 fail, 41 skip (out of 149) across RML rml-core and RML rml-io source-tests.</p>
-  <div class="suites">
+</details>
+<details class="family-node amber" id="mapping-rml">
+  <summary>
+    <span class="fam-name">RML (rml-core / rml-io)</span>
+    <span class="fam-score">93/15/41 of 149</span>
+    <span class="gap-badge">4 gaps</span>
+    <span class="dot amber"></span>
+  </summary>
+  <div class="family-body">
+    <p class="fam-headline amber">93 pass, 15 fail, 41 skip (out of 149) across RML rml-core and RML rml-io source-tests.</p>
+    <div class="suites">
       <details class="suite-node green">
-        <summary><span class="dot green"></span><span class="suite-name">RML rml-core</span><span class="suite-numbers">76 pass, 0 fail, 0 skip (out of 76)</span></summary>
+        <summary><span class="suite-name">RML rml-core</span><span class="suite-numbers">76/0/0 of 76</span><span class="dot green"></span></summary>
         <div class="suite-body">
           <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+          <p class="suite-numbers-full">76 pass, 0 fail, 0 skip (out of 76)</p>
           <p class="suite-prov">Runner: <code>bin/rml-runner</code> (<code>bin/linux-x86_64/rml_runner</code>) &middot; Suite: <code>third_party/testing/rml-modules/rml-core/</code></p>
           
         </div>
       </details>
       <details class="suite-node amber">
-        <summary><span class="dot amber"></span><span class="suite-name">RML rml-io (source-tests)</span><span class="suite-numbers">17 pass, 15 fail, 41 skip (out of 73)</span></summary>
+        <summary><span class="suite-name">RML rml-io (source-tests)</span><span class="suite-numbers">17/15/41 of 73</span><span class="dot amber"></span></summary>
         <div class="suite-body">
           <div class="meter"><div class="seg seg-pass" style="width:23.29%"></div><div class="seg seg-fail" style="width:20.55%"></div><div class="seg seg-skip" style="width:56.16%"></div></div>
+          <p class="suite-numbers-full">17 pass, 15 fail, 41 skip (out of 73)</p>
           <p class="suite-prov">Runner: <code>bin/linux-x86_64/rml_runner --io</code> &middot; Suite: <code>third_party/testing/rml-modules/rml-io/</code> (RMLSTC0* source tests) &middot; rml-cc (content-container) has no row: the committed runner exposes no <code>--cc</code> mode yet (tracked with the rml program plan)</p>
-          <p class="suite-diag"><a href="https://github.com/danbri/factoidal/blob/claude/main/docs/designissues/2026-07-05-rml-program-plan.md" target="_blank" rel="noopener">diagnosis: the fails/skips are rml-io logical-target (RMLTTC0*) and unsupported-source fixtures out of scope for the source-tests section — see the rml program plan</a></p>
+          <p class="suite-diag"><a href="https://github.com/danbri/factoidal/blob/worktree-agent-a6fdc7ca0dcbf72ba/docs/designissues/2026-07-05-rml-program-plan.md" target="_blank" rel="noopener">diagnosis: the fails/skips are rml-io logical-target (RMLTTC0*) and unsupported-source fixtures out of scope for the source-tests section — see the rml program plan</a></p>
         </div>
       </details>
+    </div>
+    
+    <div class="remaining">
+      <p class="remaining-title">Remaining work</p>
+      <ul>
+        <li>rml-io's logical-target section (writing to a target RDF dataset, RMLTTC0* fixtures) is not scored — only the source-tests section is measured</li>
+        <li>rml-cc (content-container: gather/gatherAs) has no test row — the committed runner doesn't expose a --cc mode yet</li>
+        <li>rml-fnml (function-map dispatch) and rml-star (quoted-triple mapping) are vendored but not wired to any runner</li>
+        <li>relational/SQL logical sources are out of scope for this stage — only JSON and CSV logical sources are evaluated</li>
+      </ul>
+    </div>
   </div>
-  
-</section>
+</details>
   </div>
 </details>
 
 <details class="group-section" id="group-other" open>
   <summary class="group-summary">Apache / open-source comparison &amp; internal</summary>
   <div class="group-body">
-<section class="family green" id="sparql-extras">
-  <h2>SPARQL extras</h2>
-  <p class="fam-headline green">Non-Recommendation SPARQL extensions and a duplicate presentation of the entailment-regimes score above; see each entry for its own numbers. Jena rdf:text has no vendored test data, so it is not scored.</p>
-  <div class="suites">
+<details class="family-node green" id="sparql-extras">
+  <summary>
+    <span class="fam-name">SPARQL extras</span>
+    <span class="fam-score">107/0/0 of 107</span>
+    
+    <span class="dot green"></span>
+  </summary>
+  <div class="family-body">
+    <p class="fam-headline green">Non-Recommendation SPARQL extensions and a duplicate presentation of the entailment-regimes score above; see each entry for its own numbers. Jena rdf:text has no vendored test data, so it is not scored.</p>
+    <div class="suites">
       <details class="suite-node green">
-        <summary><span class="dot green"></span><span class="suite-name">SPARQL 1.1 Entailment Regimes</span><span class="suite-numbers">70 pass, 0 fail, 0 skip (out of 70)</span></summary>
+        <summary><span class="suite-name">SPARQL 1.1 Entailment Regimes</span><span class="suite-numbers">70/0/0 of 70</span><span class="dot green"></span></summary>
         <div class="suite-body">
           <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+          <p class="suite-numbers-full">70 pass, 0 fail, 0 skip (out of 70)</p>
           <p class="suite-prov">Same measurement as the SPARQL 1.1 family's Entailment Regimes row &middot; driven by <code>Tableau.fst</code>'s <code>tableau_materialise</code> via <code>w3c_runner</code></p>
           
         </div>
       </details>
       <details class="suite-node green">
-        <summary><span class="dot green"></span><span class="suite-name">GeoSPARQL (geof: topology + WKT)</span><span class="suite-numbers">37 pass, 0 fail, 0 skip (out of 37)</span></summary>
+        <summary><span class="suite-name">GeoSPARQL (geof: topology + WKT)</span><span class="suite-numbers">37/0/0 of 37</span><span class="dot green"></span></summary>
         <div class="suite-body">
           <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+          <p class="suite-numbers-full">37 pass, 0 fail, 0 skip (out of 37)</p>
           <p class="suite-prov">OGC standard (not a W3C Recommendation) &middot; same measurement as the F&#42; engines family's GeoSPARQL row &middot; Runner: <code>tests/unit/run-all.sh geosparql_v0_unit</code></p>
           
         </div>
       </details>
       <details class="suite-node grey">
-        <summary><span class="dot grey"></span><span class="suite-name">Jena rdf:text (full-text search)</span><span class="suite-numbers">no test data vendored</span></summary>
+        <summary><span class="suite-name">Jena rdf:text (full-text search)</span><span class="suite-numbers">no test data vendored</span><span class="dot grey"></span></summary>
         <div class="suite-body">
           <div class="meter"><div class="seg seg-skip" style="width:100%"></div></div>
+          <p class="suite-numbers-full">no test data vendored</p>
           <p class="suite-prov">This project implements the jena-text <code>text:query</code> magic property (Slice 1: exact/token AND-match, no BM25 ranking) in <code>formal/fstar/SPARQL.FullText.fst</code>, exercised by hand-written local fixtures (<code>tests/local/fulltext_slice1.sh</code>, hub post 20) rather than an official conformance suite &mdash; Apache Jena does not publish a vendorable rdf:text/full-text-search test corpus, and none is checked into this repository. No pass/fail score is reported here because there is nothing to check it against.</p>
           
         </div>
       </details>
+    </div>
+    
+    <p class="remaining-complete">Complete against the vendored suites.</p>
   </div>
-  
-</section>
-<section class="family green" id="other-specs">
-  <h2>JSON Schema / ISO Schematron</h2>
-  <p class="fam-headline green">720 pass, 0 fail, 58 skip (out of 778) across JSON Schema draft-07 and ISO Schematron — independent specifications, not W3C Recommendations or Community Group work.</p>
-  <div class="suites">
+</details>
+<details class="family-node green" id="other-specs">
+  <summary>
+    <span class="fam-name">JSON Schema / ISO Schematron</span>
+    <span class="fam-score">720/0/58 of 778</span>
+    
+    <span class="dot green"></span>
+  </summary>
+  <div class="family-body">
+    <p class="fam-headline green">720 pass, 0 fail, 58 skip (out of 778) across JSON Schema draft-07 and ISO Schematron — independent specifications, not W3C Recommendations or Community Group work.</p>
+    <div class="suites">
       <details class="suite-node green">
-        <summary><span class="dot green"></span><span class="suite-name">JSON Schema draft-07</span><span class="suite-numbers">712 pass, 0 fail, 58 skip (out of 770)</span></summary>
+        <summary><span class="suite-name">JSON Schema draft-07</span><span class="suite-numbers">712/0/58 of 770</span><span class="dot green"></span></summary>
         <div class="suite-body">
           <div class="meter"><div class="seg seg-pass" style="width:92.47%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:7.53%"></div></div>
+          <p class="suite-numbers-full">712 pass, 0 fail, 58 skip (out of 770)</p>
           <p class="suite-prov">Runner: <code>bin/jsonschema-runner</code> (<code>bin/linux-x86_64/jsonschema_runner</code>) &middot; Suite: <code>third_party/testing/jsonschema/</code> (JSON-Schema-Test-Suite draft7) &middot; skips are optional/format vocabularies out of scope for the core validator</p>
           
         </div>
       </details>
       <details class="suite-node green">
-        <summary><span class="dot green"></span><span class="suite-name">ISO Schematron</span><span class="suite-numbers">8 pass, 0 fail, 0 skip (out of 8)</span></summary>
+        <summary><span class="suite-name">ISO Schematron</span><span class="suite-numbers">8/0/0 of 8</span><span class="dot green"></span></summary>
         <div class="suite-body">
           <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+          <p class="suite-numbers-full">8 pass, 0 fail, 0 skip (out of 8)</p>
           <p class="suite-prov">Runner: <code>bin/schematron-runner</code> (<code>bin/linux-x86_64/schematron_runner</code>) &middot; Suite: <code>third_party/testing/schematron/</code> (rule-based assertion cases) &middot; ISO standard, not a W3C specification</p>
           
         </div>
       </details>
+    </div>
+    
+    <p class="remaining-complete">Complete against the vendored suites.</p>
   </div>
-  
-</section>
-<section class="family amber" id="runtime-parity">
-  <h2>Storage backend &amp; JS runtime: HDT parity / hub / npm</h2>
-  <p class="fam-headline amber">350 pass, 3 fail, 1 skip (of 354) across HDT backend parity and the browser/npm bundle suites (node --test).</p>
-  <div class="suites">
+</details>
+<details class="family-node amber" id="runtime-parity">
+  <summary>
+    <span class="fam-name">Storage backend &amp; JS runtime: HDT parity / hub / npm</span>
+    <span class="fam-score">350/3/1 of 354</span>
+    
+    <span class="dot amber"></span>
+  </summary>
+  <div class="family-body">
+    <p class="fam-headline amber">350 pass, 3 fail, 1 skip (of 354) across HDT backend parity and the browser/npm bundle suites (node --test).</p>
+    <div class="suites">
       <details class="suite-node green">
-        <summary><span class="dot green"></span><span class="suite-name">HDT stage-4 backend parity</span><span class="suite-numbers">6 pass, 0 fail, 0 skip (out of 6)</span></summary>
+        <summary><span class="suite-name">HDT stage-4 backend parity</span><span class="suite-numbers">6/0/0 of 6</span><span class="dot green"></span></summary>
         <div class="suite-body">
           <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+          <p class="suite-numbers-full">6 pass, 0 fail, 0 skip (out of 6)</p>
           <p class="suite-prov">Runner: <code>tests/local/hdt_stage4_parity.sh</code> &middot; Fixture: <code>third_party/testing/hdt/rml-core-ontology.hdt</code> vs ground-truth <code>.nt</code> (unbound/bound-S/P/O/ASK/COUNT, byte-identical)</p>
           
         </div>
       </details>
       <details class="suite-node amber">
-        <summary><span class="dot amber"></span><span class="suite-name">hub browser-bundle cells</span><span class="suite-numbers">201 pass, 3 fail, 0 skip (out of 204)</span></summary>
+        <summary><span class="suite-name">hub browser-bundle cells</span><span class="suite-numbers">201/3/0 of 204</span><span class="dot amber"></span></summary>
         <div class="suite-body">
           <div class="meter"><div class="seg seg-pass" style="width:98.53%"></div><div class="seg seg-fail" style="width:1.47%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+          <p class="suite-numbers-full">201 pass, 3 fail, 0 skip (out of 204)</p>
           <p class="suite-prov">Runner: <code>node --test tests/hub/*.mjs</code> &middot; live cells for every docs-hub post, run against the JS/wasm bundle</p>
-          <p class="suite-diag"><a href="https://github.com/danbri/factoidal/blob/claude/main/tests/hub/" target="_blank" rel="noopener">diagnosis: any residual fails are fixtures/build-artifacts absent in this checkout (uninitialised submodule or unbuilt C demo), not engine regressions</a></p>
+          <p class="suite-diag"><a href="https://github.com/danbri/factoidal/blob/worktree-agent-a6fdc7ca0dcbf72ba/tests/hub/" target="_blank" rel="noopener">diagnosis: any residual fails are fixtures/build-artifacts absent in this checkout (uninitialised submodule or unbuilt C demo), not engine regressions</a></p>
         </div>
       </details>
       <details class="suite-node green">
-        <summary><span class="dot green"></span><span class="suite-name">npm package suite</span><span class="suite-numbers">143 pass, 0 fail, 1 skip (out of 144)</span></summary>
+        <summary><span class="suite-name">npm package suite</span><span class="suite-numbers">143/0/1 of 144</span><span class="dot green"></span></summary>
         <div class="suite-body">
           <div class="meter"><div class="seg seg-pass" style="width:99.31%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.69%"></div></div>
+          <p class="suite-numbers-full">143 pass, 0 fail, 1 skip (out of 144)</p>
           <p class="suite-prov">Runner: <code>node --test npm/factoidal/test/*.test.js</code> &middot; the 7 engine FP APIs, HDT-in-bundle, delta-log, VC crypto (HACL* wasm)</p>
           
         </div>
       </details>
+    </div>
+    
+
   </div>
-  
-</section>
-<section class="family amber" id="fstar-engines">
-  <h2>F&#42; unit regressions &amp; adjacent engines: GeoSPARQL / XPath / TOAN / XForms</h2>
-  <p class="fam-headline amber">141 pass, 0 fail, 0 skip (of 141) across GeoSPARQL v0, XPath 1.0, the TOAN/Matrix CAS engines, and the XForms model — shipped F* engines now surfaced from the native unit harness or the JS bundle; the aggregate row below reports how many of the 41 native unit files link and pass in this checkout.</p>
-  <div class="suites">
+</details>
+<details class="family-node amber" id="fstar-engines">
+  <summary>
+    <span class="fam-name">F&#42; unit regressions &amp; adjacent engines: GeoSPARQL / XPath / TOAN / XForms</span>
+    <span class="fam-score">176/6/0 of 182</span>
+    
+    <span class="dot amber"></span>
+  </summary>
+  <div class="family-body">
+    <p class="fam-headline amber">141 pass, 0 fail, 0 skip (of 141) across GeoSPARQL v0, XPath 1.0, the TOAN/Matrix CAS engines, and the XForms model — shipped F* engines now surfaced from the native unit harness or the JS bundle; the aggregate row below reports how many of the 41 native unit files link and pass in this checkout.</p>
+    <div class="suites">
       <details class="suite-node green">
-        <summary><span class="dot green"></span><span class="suite-name">GeoSPARQL (geof: topology + WKT)</span><span class="suite-numbers">37 pass, 0 fail, 0 skip (out of 37)</span></summary>
+        <summary><span class="suite-name">GeoSPARQL (geof: topology + WKT)</span><span class="suite-numbers">37/0/0 of 37</span><span class="dot green"></span></summary>
         <div class="suite-body">
           <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+          <p class="suite-numbers-full">37 pass, 0 fail, 0 skip (out of 37)</p>
           <p class="suite-prov">Runner: <code>tests/unit/run-all.sh geosparql_v0_unit</code> &middot; F* <code>RDF.Geo.*</code> — exact-rational WKT geometry + Simple-Features topology + geof: distance/envelope. Hub post21 pins 12 more assertions live against the browser bundle (counted in the npm/hub runtime family).</p>
           
         </div>
       </details>
       <details class="suite-node green">
-        <summary><span class="dot green"></span><span class="suite-name">XPath 1.0 (unit)</span><span class="suite-numbers">91 pass, 0 fail, 0 skip (out of 91)</span></summary>
+        <summary><span class="suite-name">XPath 1.0 (unit)</span><span class="suite-numbers">91/0/0 of 91</span><span class="dot green"></span></summary>
         <div class="suite-body">
           <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+          <p class="suite-numbers-full">91 pass, 0 fail, 0 skip (out of 91)</p>
           <p class="suite-prov">Runner: <code>tests/unit/run-all.sh xpath_tests</code> &middot; the F* XPath 1.0 evaluator over location-step / predicate / node-set / function-library cases.</p>
           
         </div>
       </details>
       <details class="suite-node green">
-        <summary><span class="dot green"></span><span class="suite-name">TOAN CAS + Math.Matrix engines</span><span class="suite-numbers">11 pass, 0 fail, 0 skip (out of 11)</span></summary>
+        <summary><span class="suite-name">TOAN CAS + Math.Matrix engines</span><span class="suite-numbers">11/0/0 of 11</span><span class="dot green"></span></summary>
         <div class="suite-body">
           <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+          <p class="suite-numbers-full">11 pass, 0 fail, 0 skip (out of 11)</p>
           <p class="suite-prov">Runner: <code>node --test npm/factoidal/test/{toan,matrix}.test.js</code> &middot; the F* CAS (summation / product / simplify / diff / subst) + exact-rational matrix engines via the JS bundle. The npm package suite (runtime family above) additionally exercises xslt, mathml, xforms, jsonschema, schematron, hdt, and vc-crypto — each a shipped engine with its own test file.</p>
           
         </div>
       </details>
       <details class="suite-node green">
-        <summary><span class="dot green"></span><span class="suite-name">XForms model (bind/recalc)</span><span class="suite-numbers">2 pass, 0 fail, 0 skip (out of 2)</span></summary>
+        <summary><span class="suite-name">XForms model (bind/recalc)</span><span class="suite-numbers">2/0/0 of 2</span><span class="dot green"></span></summary>
         <div class="suite-body">
           <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+          <p class="suite-numbers-full">2 pass, 0 fail, 0 skip (out of 2)</p>
           <p class="suite-prov">Runner: <code>node --test npm/factoidal/test/xforms.test.js</code> &middot; the F* XForms bind/recalc model via the JS bundle. The larger native suite (<code>tests/unit/xforms_tests.ml</code>, ~29 bind/recalc cases) can't link in this checkout — its <code>XForms_Bind.cmx</code> is not in the committed artifact set — so the harness fix (<a href="https://github.com/danbri/factoidal/issues/82" target="_blank" rel="noopener">#82</a>) is landed but that suite awaits a committed build; no fabricated 29/29 is shown.</p>
           
         </div>
       </details>
       <details class="suite-node amber">
-        <summary><span class="dot amber"></span><span class="suite-name">F* unit regressions (tests/unit)</span><span class="suite-numbers">35 pass, 6 fail, 0 skip (out of 41)</span></summary>
+        <summary><span class="suite-name">F* unit regressions (tests/unit)</span><span class="suite-numbers">35/6/0 of 41</span><span class="dot amber"></span></summary>
         <div class="suite-body">
           <div class="meter"><div class="seg seg-pass" style="width:85.37%"></div><div class="seg seg-fail" style="width:14.63%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+          <p class="suite-numbers-full">35 pass, 6 fail, 0 skip (out of 41)</p>
           <p class="suite-prov">Runner: <code>tests/unit/run-all.sh</code> &middot; files-passing / files-failing across all 41 native unit files, each relinked against its own committed-.cmx dependency closure. The 6 failing files either need a module with no committed .cmx (Math_* / MathML_* / XForms_Bind engines) or hit a committed-.cmx epoch mismatch (RML_Eval vs SPARQL11_Algebra committed in different builds) — an artifact-staleness gap, not a harness bug.</p>
           
         </div>
       </details>
+    </div>
+    
+
   </div>
-  
-</section>
+</details>
   </div>
 </details>
 
@@ -1376,9 +1781,9 @@ vc-stage1:    113 pass, 1 fail, 6 skip (of 120) — present=1</pre>
 </main>
 
 <footer>
-  Generated <strong>2026-07-10 10:18 UTC</strong> from commit
-  <code><a href="https://github.com/danbri/factoidal/commit/bf28a3ebd4a8a67fb15aed5f5959d68cb3f34e10">bf28a3eb</a></code>
-  on branch <code>claude/main</code> — &ldquo;dashboard: JSON-LD compact suite measured — 244 pass, 0 fail, 2 skip (out of 246)&rdquo;.
+  Generated <strong>2026-07-10 11:12 UTC</strong> from commit
+  <code><a href="https://github.com/danbri/factoidal/commit/bf28a3ebd4a8a67fb15aed5f5959d68cb3f34e10">bf28a3e</a></code>
+  on branch <code>worktree-agent-a6fdc7ca0dcbf72ba</code> — &ldquo;dashboard: JSON-LD compact suite measured — 244 pass, 0 fail, 2 skip (out of 246)&rdquo;.
   Re-run locally: <code>cd formal/fstar &amp;&amp; ./generate-report.sh --run</code>.
 </footer>
 

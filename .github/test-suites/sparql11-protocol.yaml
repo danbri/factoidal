@@ -33,3 +33,8 @@ triggers:
     - bin/w3c-runner/**
 
   excludes: []
+
+# What's left, in plain language (source: docs/claude-rules/w3c-completeness-ledger.md,
+# SPARQL 1.1 row, 2026-07-10).
+remaining:
+  - "SPARQL 1.1 Protocol and the Graph Store HTTP Protocol are parked — deprioritized behind conformance-depth work on Query/Update/Entailment, by owner directive; not implemented against the W3C test suite yet"

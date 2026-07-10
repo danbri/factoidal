@@ -14,3 +14,9 @@ triggers:
     - bin/did-runner/**
     - third_party/testing/did/**
   excludes: []
+
+# What's left, in plain language (source: docs/claude-rules/w3c-completeness-ledger.md,
+# DID row, 2026-07-10).
+remaining:
+  - "this suite covers only did:key — did:web (or any other DID method) is not implemented"
+  - "DID resolution metadata is not produced — a full DID Core conformance target still needs to be enumerated, not just did:key vectors"

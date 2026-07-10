@@ -16,3 +16,15 @@ triggers:
     - bin/csvw-runner/**
     - third_party/testing/csvw/**
   excludes: []
+
+# What's left, in plain language (source: docs/claude-rules/w3c-completeness-ledger.md,
+# CSVW row, 2026-07-10). Grouped by cause, not by individual test ID.
+remaining:
+  - "metadata discovery over HTTP (Link headers, a metadata directory, the /.well-known/csvm well-known path) is not implemented — this is a networked-protocol feature, parked by owner directive alongside SPARQL Protocol"
+  - "some metadata-normalization warnings are not produced: pruning of invalid properties, and @base/@type context edge cases"
+  - "schema compatibility and validation gaps: the header=false option, required/null column handling, column-name restriction checks, and title-language intersection checks"
+  - "complex fixtures combining virtual columns, multiple subjects per row, referenced schemas, and inherited-property combinations are not fully handled"
+  - "rowTitles is not implemented"
+  - "table-level separator handling and ordered-list values are not implemented"
+  - "the duration format pattern needs a regex engine this checker doesn't yet call out to"
+  - "2 cross-table foreign-key validation tests (NegativeRdf) are not handled"

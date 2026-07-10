@@ -973,6 +973,61 @@ meter_segments () {
     "$pp" "$fp" "$sp"
 }
 
+# condensed_numbers — the compact "P/F/S of T" score used in a collapsed
+# suite/family summary line, where a fully-labelled sentence doesn't fit
+# on one row. Never the ONLY place the numbers appear: every caller also
+# renders the fully-labelled "P pass, F fail, S skip (out of T)" form
+# somewhere in the expanded body, and the page-top legend explains the
+# P/F/S order once — so this is a documented abbreviation, not a bare
+# unlabelled score (CLAUDE.md anti-pattern #25 governs prose/reports;
+# this is a UI element with its key stated once, up front).
+condensed_numbers () {
+  local pass="$1" fail="$2" skip="$3" total="$4"
+  printf '%s/%s/%s of %s' "$pass" "$fail" "$skip" "$total"
+}
+
+# --- Per-suite YAML "remaining:" reader --------------------------------
+# The .github/test-suites/<suite>.yaml manifests (schema documented in
+# that dir's README) can carry an optional `remaining:` block: a list of
+# short, plain-language "what's still incomplete" items, sourced from
+# docs/claude-rules/w3c-completeness-ledger.md and translated out of
+# internal shorthand. Reuses the exact same block-list YAML shape (and
+# the same tiny grep/sed-free awk parse) as
+# tools/dispatch_test_suites.sh's read_paths_block, so a human editing
+# either file only has to learn one list syntax.
+TEST_SUITES_DIR="$SCRIPT_DIR/../../.github/test-suites"
+read_yaml_remaining () {
+  local file="$1"
+  [ -f "$file" ] || return 0
+  awk '
+    BEGIN { in_block = 0 }
+    /^[A-Za-z_][A-Za-z0-9_.]*:[[:space:]]*$/ {
+      key = $0; sub(/:.*$/, "", key); gsub(/^[[:space:]]+/, "", key)
+      if (key == "remaining") { in_block = 1; next } else { in_block = 0 }
+    }
+    in_block && /^[[:space:]]+-[[:space:]]+/ {
+      val = $0
+      sub(/^[[:space:]]+-[[:space:]]+/, "", val)
+      sub(/^"/, "", val); sub(/"[[:space:]]*$/, "", val)
+      sub(/^'\''/, "", val); sub(/'\''[[:space:]]*$/, "", val)
+      if (val != "") print val
+    }
+    !/^[[:space:]]/ && !/^$/ && in_block { in_block = 0 }
+  ' "$file"
+}
+
+# family_remaining <suite-basename>... — union of read_yaml_remaining
+# across one or more .github/test-suites/<name>.yaml manifests (a family
+# on the page can span several suite manifests, e.g. JSON-LD 1.1's four
+# runnable suites plus its family-level bookkeeping file). Basenames
+# only, no .yaml suffix, no path.
+family_remaining () {
+  local base
+  for base in "$@"; do
+    read_yaml_remaining "$TEST_SUITES_DIR/${base}.yaml"
+  done
+}
+
 # emit_suite_rows — one collapsible <details class="suite-node"> per
 # suite (owner directive 2026-07-10: "one collapsible node per checkable
 # suite", default-collapsed, summary shows name + labelled pass/fail/skip
@@ -1002,13 +1057,18 @@ emit_suite_rows () {
       name_html='entailment <small style="font-weight:normal;color:var(--muted)">(SPARQL 1.1 regime — RDFS / D-entailment, 70 tests)</small>'
     fi
     meter=$(meter_segments "$pass" "$fail" "$skip_disp" "$total")
-    # Labelled numbers, never a bare ratio (CLAUDE.md anti-pattern #25).
+    local condensed; condensed=$(condensed_numbers "$pass" "$fail" "$skip_disp" "$total")
+    # Fully-labelled numbers, never a bare ratio (CLAUDE.md anti-pattern
+    # #25) — rendered in the body, once expanded. The summary line uses
+    # the condensed P/F/S form (legend at the top of the page explains
+    # it) so one suite fits one compact row on a phone.
     numbers="${pass} pass, ${fail} fail, ${skip_disp} skip (out of ${total})"
     cat <<ROW
       <details class="suite-node ${cls}">
-        <summary><span class="dot ${cls}"></span><span class="suite-name">${name_html}</span><span class="suite-numbers">${numbers}</span></summary>
+        <summary><span class="suite-name">${name_html}</span><span class="suite-numbers">${condensed}</span><span class="dot ${cls}"></span></summary>
         <div class="suite-body">
           ${meter}
+          <p class="suite-numbers-full">${numbers}</p>
         </div>
       </details>
 ROW
@@ -1194,16 +1254,18 @@ emit_owl_bar_row () {
   [ "$skip" -lt 0 ] && skip=0
   local any=1
   [ "$total" -eq 0 ] && any=0
-  local cls meter numbers
+  local cls meter numbers condensed
   cls=$(status_for "$fail" "$any")
   meter=$(meter_segments "$pass" "$fail" "$skip" "$total")
   numbers="${pass} pass, ${fail} fail, ${skip} skip (out of ${total})"
+  condensed=$(condensed_numbers "$pass" "$fail" "$skip" "$total")
   printf '<details class="suite-node %s">
-    <summary><span class="dot %s"></span><span class="suite-name">%s</span><span class="suite-numbers">%s</span></summary>
+    <summary><span class="suite-name">%s</span><span class="suite-numbers">%s</span><span class="dot %s"></span></summary>
     <div class="suite-body">
       %s
+      <p class="suite-numbers-full">%s</p>
     </div>
-  </details>' "$cls" "$cls" "$label" "$numbers" "$meter"
+  </details>' "$cls" "$label" "$condensed" "$cls" "$meter" "$numbers"
 }
 OWL_NEG_ROW=""
 if [ "$OWL_NEG_PRESENT" -eq 1 ]; then
@@ -1302,7 +1364,7 @@ emit_owl_skip_row () {
   local css_class="${4:-grey}"
   cat <<ROW
   <details class="suite-node ${css_class}">
-    <summary><span class="dot ${css_class}"></span><span class="suite-name">${name}</span><span class="suite-numbers">not run &mdash; ${count} tests</span></summary>
+    <summary><span class="suite-name">${name}</span><span class="suite-numbers">not run &mdash; ${count} tests</span><span class="dot ${css_class}"></span></summary>
     <div class="suite-body">
       <div class="meter"><div class="seg seg-skip" style="width:100%"></div></div>
       <p class="suite-prov">${reason}</p>
@@ -1379,7 +1441,7 @@ else
 fi
 
 OWL_HTML=$(cat <<OWLEOF
-<h2>OWL 2 <span class="inline-numbers">${OWL_PASS}+ pass via owl_runner across 7 catalogs (profile-RL/EL/QL + 4 DL) &middot; live scoring</span></h2>
+<p class="fam-subhead">OWL 2 <span class="inline-numbers">${OWL_PASS}+ pass via owl_runner across 7 catalogs (profile-RL/EL/QL + 4 DL) &middot; live scoring</span></p>
 <p style="margin: 0.3em 0 0.6em; color: var(--muted); font-size: 0.85em;">
   <strong>Scope.</strong> The OWL 2 W3C Test Cases catalog (~${OWL_TOTAL_UNIVERSE}
   <code>test:TestCase</code> entries across 9 categories) is vendored
@@ -1493,22 +1555,25 @@ GITHUB_BLOB_BASE="https://github.com/danbri/factoidal/blob/${GIT_BRANCH}"
 # only when the suite has a fail.
 family_suite_row () {
   local name="$1" pass="$2" fail="$3" skip="$4" total="$5" present="$6" prov="$7" diag="${8:-}" notmeasured="${9:-not measured this run}"
-  local cls numbers meter diag_html=""
+  local cls numbers meter diag_html="" condensed
   if [ "$present" -ne 1 ] || [ "$total" -eq 0 ]; then
     cls="grey"
     numbers="$notmeasured"
+    condensed="$notmeasured"
     meter='<div class="meter"><div class="seg seg-skip" style="width:100%"></div></div>'
   else
     numbers="${pass} pass, ${fail} fail, ${skip} skip (out of ${total})"
+    condensed=$(condensed_numbers "$pass" "$fail" "$skip" "$total")
     meter=$(meter_segments "$pass" "$fail" "$skip" "$total")
     cls=$(status_for "$fail" 1)
     if [ "$fail" -gt 0 ] && [ -n "$diag" ]; then diag_html="<p class=\"suite-diag\">${diag}</p>"; fi
   fi
   cat <<ROW
       <details class="suite-node ${cls}">
-        <summary><span class="dot ${cls}"></span><span class="suite-name">${name}</span><span class="suite-numbers">${numbers}</span></summary>
+        <summary><span class="suite-name">${name}</span><span class="suite-numbers">${condensed}</span><span class="dot ${cls}"></span></summary>
         <div class="suite-body">
           ${meter}
+          <p class="suite-numbers-full">${numbers}</p>
           <p class="suite-prov">${prov}</p>
           ${diag_html}
         </div>
@@ -1516,26 +1581,84 @@ family_suite_row () {
 ROW
 }
 
-# family_section — the outer card for one spec/suite family. Each suite
-# inside it is already its own collapsible <details class="suite-node">
-# (family_suite_row / emit_suite_rows / emit_owl_bar_row above), so this
-# wrapper no longer adds a second layer of collapsing around the whole
-# list — it did until 2026-07-10, when the page moved to "one collapsible
-# node per suite" and the outer "Suites in this family (tap to collapse)"
-# toggle became redundant nesting. $6 (footnote) is optional extra prose
-# rendered below the suite list (used by the OWL family's rich inline
-# scope prose, and by the SHACL/ShEx cross-reference lines).
+# family_section — the outer card for one spec/suite family, now itself a
+# collapsible <details class="family-node"> (2026-07-10 second pass: the
+# first pass left families as always-open cards, which is what read as
+# "stacked padded cards" rather than a tree on a phone). Collapsed by
+# default; the summary line carries the family name, a condensed
+# pass/fail/skip score, an optional "N of M suites" fraction (the
+# denominator M counts suites the spec family DEFINES, run or not — see
+# $11), an optional gap-count badge, and a status dot. Expanding it
+# reveals the full prose headline, the per-suite rows (already their own
+# collapsible <details class="suite-node">, from family_suite_row /
+# emit_suite_rows / emit_owl_bar_row above), any extra footnote prose,
+# and a "Remaining work" list sourced from the suite manifests'
+# `remaining:` YAML field ($12) — or, when that list is empty AND the
+# aggregate has zero fails, a "complete against the vendored suites"
+# line. A family with fails but no populated `remaining:` yet renders
+# neither claim, rather than fabricate either one.
+#
+# Args: id title status headline body [footnote] [agg_pass agg_fail
+#       agg_skip agg_total] [suite_fraction] [remaining_lines]
 family_section () {
   local id="$1" title="$2" fstatus="$3" headline="$4" body="$5" footnote="${6:-}"
+  local agg_pass="${7:-0}" agg_fail="${8:-0}" agg_skip="${9:-0}" agg_total="${10:-0}"
+  local suite_fraction="${11:-}" remaining_lines="${12:-}"
+
+  local score_html
+  if [ "$agg_total" -gt 0 ] 2>/dev/null; then
+    score_html=$(condensed_numbers "$agg_pass" "$agg_fail" "$agg_skip" "$agg_total")
+  else
+    score_html="not measured this run"
+  fi
+  [ -n "$suite_fraction" ] && score_html="${score_html} &middot; ${suite_fraction} suites"
+
+  local gap_count=0 remaining_html=""
+  local trimmed; trimmed=$(printf '%s' "$remaining_lines" | tr -d '[:space:]')
+  if [ -n "$trimmed" ]; then
+    local items="" rline esc
+    while IFS= read -r rline; do
+      [ -z "$rline" ] && continue
+      gap_count=$((gap_count + 1))
+      esc=$(printf '%s' "$rline" | sed -E 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g')
+      items+="        <li>${esc}</li>"$'\n'
+    done <<<"$remaining_lines"
+    remaining_html=$(cat <<REM
+    <div class="remaining">
+      <p class="remaining-title">Remaining work</p>
+      <ul>
+${items}      </ul>
+    </div>
+REM
+)
+  elif [ "$agg_total" -gt 0 ] 2>/dev/null && [ "$agg_fail" -eq 0 ] 2>/dev/null; then
+    remaining_html='    <p class="remaining-complete">Complete against the vendored suites.</p>'
+  fi
+
+  local badge_html=""
+  if [ "$gap_count" -gt 0 ]; then
+    local gap_word="gaps"
+    [ "$gap_count" -eq 1 ] && gap_word="gap"
+    badge_html="<span class=\"gap-badge\">${gap_count} ${gap_word}</span>"
+  fi
+
   cat <<SEC
-<section class="family ${fstatus}" id="${id}">
-  <h2>${title}</h2>
-  <p class="fam-headline ${fstatus}">${headline}</p>
-  <div class="suites">
+<details class="family-node ${fstatus}" id="${id}">
+  <summary>
+    <span class="fam-name">${title}</span>
+    <span class="fam-score">${score_html}</span>
+    ${badge_html}
+    <span class="dot ${fstatus}"></span>
+  </summary>
+  <div class="family-body">
+    <p class="fam-headline ${fstatus}">${headline}</p>
+    <div class="suites">
 ${body}
+    </div>
+    ${footnote}
+${remaining_html}
   </div>
-  ${footnote}
-</section>
+</details>
 SEC
 }
 
@@ -1562,12 +1685,16 @@ RDFCORE_TOTAL=$((RDF_TOTAL + RDFC10_TOTAL))
 RDFCORE_STATUS=$(status_for "$RDFCORE_FAIL" 1)
 RDFCORE_HEADLINE="${RDFCORE_PASS} pass, ${RDFCORE_FAIL} fail, ${RDFCORE_SKIP} skip (of ${RDFCORE_TOTAL}) across N-Triples, Turtle, N-Quads, TriG, RDF/XML, RDF 1.1 Semantics (rdf-mt), and RDFC-1.0 canonicalization."
 RDFCORE_BODY=$(printf '%s\n%s\n' "$RDF_ROWS_HTML" "$RDFC10_HTML")
-RDFCORE_HTML=$(family_section "rdf-core" "RDF 1.1 core" "$RDFCORE_STATUS" "$RDFCORE_HEADLINE" "$RDFCORE_BODY" "$RDF_FAILURE_DETAIL_HTML")
+RDFCORE_REMAINING=$(family_remaining rdf-xml)
+RDFCORE_HTML=$(family_section "rdf-core" "RDF 1.1 core" "$RDFCORE_STATUS" "$RDFCORE_HEADLINE" "$RDFCORE_BODY" "$RDF_FAILURE_DETAIL_HTML" \
+  "$RDFCORE_PASS" "$RDFCORE_FAIL" "$RDFCORE_SKIP" "$RDFCORE_TOTAL" "" "$RDFCORE_REMAINING")
 
 # --- SPARQL 1.1 ---------------------------------------------------------
 SPARQL_STATUS=$(status_for "$SPARQL_FAIL" 1)
 SPARQL_HEADLINE="${SPARQL_PASS} pass, ${SPARQL_FAIL} fail, ${SPARQL_SKIP} skip (of ${SPARQL_TOTAL}) across Query, Update, Protocol, Federated Query, Service Description, and Entailment Regimes."
-SPARQL_FAMILY_HTML=$(family_section "sparql11" "SPARQL 1.1" "$SPARQL_STATUS" "$SPARQL_HEADLINE" "$SPARQL_ROWS_HTML" "$SPARQL_FAILURE_DETAIL_HTML")
+SPARQL_REMAINING=$(family_remaining sparql11-protocol)
+SPARQL_FAMILY_HTML=$(family_section "sparql11" "SPARQL 1.1" "$SPARQL_STATUS" "$SPARQL_HEADLINE" "$SPARQL_ROWS_HTML" "$SPARQL_FAILURE_DETAIL_HTML" \
+  "$SPARQL_PASS" "$SPARQL_FAIL" "$SPARQL_SKIP" "$SPARQL_TOTAL" "" "$SPARQL_REMAINING")
 
 # --- Reasoning: RDFS / OWL 2 ---------------------------------------------
 # OWL_HTML already carries its own rich prose (scope + pass-rate context)
@@ -1578,7 +1705,11 @@ SPARQL_FAMILY_HTML=$(family_section "sparql11" "SPARQL 1.1" "$SPARQL_STATUS" "$S
 # newer suites are.
 OWL_FAMILY_STATUS=$(status_for "$OWL_FAIL" "$OWL_PRESENT")
 OWL_FAMILY_HEADLINE="profile-RL PositiveEntailmentTests: ${OWL_PASS} pass, ${OWL_FAIL} fail (of ${OWL_TOTAL}); six further OWL 2 catalogs (NegEnt/Cons/Inc + 4 DL catalogs) scored below, RIF Core scored in its own family."
-OWL_FAMILY_HTML=$(family_section "owl2" "Reasoning: RDFS / OWL 2" "$OWL_FAMILY_STATUS" "$OWL_FAMILY_HEADLINE" "$OWL_HTML" "")
+OWL_SKIP_FOR_SCORE=$((OWL_TOTAL - OWL_PASS - OWL_FAIL))
+[ "$OWL_SKIP_FOR_SCORE" -lt 0 ] && OWL_SKIP_FOR_SCORE=0
+OWL_REMAINING=$(family_remaining owl-profile-rl)
+OWL_FAMILY_HTML=$(family_section "owl2" "Reasoning: RDFS / OWL 2" "$OWL_FAMILY_STATUS" "$OWL_FAMILY_HEADLINE" "$OWL_HTML" "" \
+  "$OWL_PASS" "$OWL_FAIL" "$OWL_SKIP_FOR_SCORE" "$OWL_TOTAL" "" "$OWL_REMAINING")
 
 # --- Shapes: SHACL (W3C Recommendation) and ShEx (W3C CG spec) ------------
 # Soft rivals, kept as separate-but-adjacent nodes (owner directive
@@ -1602,7 +1733,8 @@ SHACL_BODY=$(
     "Runner: <code>bin/shacl-runner</code> (<code>bin/linux-x86_64/shacl_runner tests/sparql/manifest.ttl</code>) &middot; Suite: <code>third_party/testing/shacl/data-shapes-test-suite/tests/sparql/</code>"
 )
 SHACL_CROSSREF='<p style="margin: 0.3em 0 0.6em; color: var(--muted); font-size: 0.85em;">See also <a href="#shex">ShEx</a>, the other shapes-constraint language for RDF — a W3C Community Group specification, not a Recommendation.</p>'
-SHACL_HTML=$(family_section "shacl" "SHACL (Shapes Constraint Language)" "$SHACL_STATUS" "$SHACL_HEADLINE" "$SHACL_BODY" "$SHACL_CROSSREF")
+SHACL_HTML=$(family_section "shacl" "SHACL (Shapes Constraint Language)" "$SHACL_STATUS" "$SHACL_HEADLINE" "$SHACL_BODY" "$SHACL_CROSSREF" \
+  "$SHACL_FAM_PASS" "$SHACL_FAM_FAIL" "$SHACL_FAM_SKIP" "$SHACL_FAM_TOTAL" "" "$(family_remaining shacl-core shacl-sparql)")
 
 SHEX_STATUS=$(status_for "$SHEX_FAIL" "$SHEX_PRESENT")
 if [ "$SHEX_PRESENT" -eq 1 ]; then
@@ -1616,7 +1748,8 @@ SHEX_BODY=$(
     "<a href=\"${GITHUB_BLOB_BASE}/.github/test-suites/shex.yaml\" target=\"_blank\" rel=\"noopener\">diagnosis: the 1 mismatch is an upstream fixture defect (start2RefS2.json has predicate p1 where the canonical ShExC schema has p2), not an engine bug</a>"
 )
 SHEX_CROSSREF='<p style="margin: 0.3em 0 0.6em; color: var(--muted); font-size: 0.85em;">See also <a href="#shacl">SHACL</a>, the other shapes-constraint language for RDF — a W3C Recommendation.</p>'
-SHEX_HTML=$(family_section "shex" "ShEx (Shape Expressions)" "$SHEX_STATUS" "$SHEX_HEADLINE" "$SHEX_BODY" "$SHEX_CROSSREF")
+SHEX_HTML=$(family_section "shex" "ShEx (Shape Expressions)" "$SHEX_STATUS" "$SHEX_HEADLINE" "$SHEX_BODY" "$SHEX_CROSSREF" \
+  "$SHEX_PASS" "$SHEX_FAIL" "$SHEX_SKIP" "$SHEX_TOTAL" "" "$(family_remaining shex)")
 
 # --- Rules: RIF Core -------------------------------------------------------
 RULES_STATUS=$(status_for "$RIFCORE_COMBINED_FAIL" "$RIFCORE_COMBINED_PRESENT")
@@ -1635,7 +1768,8 @@ RULES_BODY=$(
     "Runner: <code>bin/rif-runner</code> &middot; Suite: <code>third_party/testing/rif-core-suite/Core_v1.22/Approved/</code>" \
     "<a href=\"${GITHUB_BLOB_BASE}/docs/claude-rules/scope.md\" target=\"_blank\" rel=\"noopener\">diagnosis: docs/claude-rules/scope.md RIF section — every skip names the exact missing builtin/feature</a>"
 )
-RULES_HTML=$(family_section "rules" "Rules: RIF Core" "$RULES_STATUS" "$RULES_HEADLINE" "$RULES_BODY" "")
+RULES_HTML=$(family_section "rules" "Rules: RIF Core" "$RULES_STATUS" "$RULES_HEADLINE" "$RULES_BODY" "" \
+  "$RIFCORE_COMBINED_PASS" "$RIFCORE_COMBINED_FAIL" "$RIFCORE_COMBINED_SKIP" "$RIFCORE_COMBINED_TOTAL" "" "$(family_remaining rif)")
 
 # --- GRDDL (W3C Recommendation) --------------------------------------------
 # Scraped and reported in latest.json/latest.csv since the 2026-07-05 wave
@@ -1652,7 +1786,8 @@ GRDDL_BODY=$(
     "Runner: <code>bin/grddl-runner</code> (<code>bin/linux-x86_64/grddl_runner</code>) &middot; Suite: local subset of the GRDDL Test Cases" \
     "the fails are graph-mismatch cases in the local subset; the skips are fixtures that need a live network fetch of a transformation profile, out of scope for an offline conformance run"
 )
-GRDDL_HTML=$(family_section "grddl" "GRDDL" "$GRDDL_STATUS" "$GRDDL_HEADLINE" "$GRDDL_BODY" "")
+GRDDL_HTML=$(family_section "grddl" "GRDDL" "$GRDDL_STATUS" "$GRDDL_HEADLINE" "$GRDDL_BODY" "" \
+  "$GRDDL_PASS" "$GRDDL_FAIL" "$GRDDL_SKIP" "$GRDDL_TOTAL" "" "$(family_remaining grddl)")
 
 # --- Mapping: RML (W3C Community Group) and CSVW (W3C Recommendation) -----
 # Split into two families (owner directive 2026-07-10): CSVW csv2rdf is a
@@ -1672,7 +1807,8 @@ RML_BODY=$(
     "Runner: <code>bin/linux-x86_64/rml_runner --io</code> &middot; Suite: <code>third_party/testing/rml-modules/rml-io/</code> (RMLSTC0* source tests) &middot; rml-cc (content-container) has no row: the committed runner exposes no <code>--cc</code> mode yet (tracked with the rml program plan)" \
     "<a href=\"${GITHUB_BLOB_BASE}/docs/designissues/2026-07-05-rml-program-plan.md\" target=\"_blank\" rel=\"noopener\">diagnosis: the fails/skips are rml-io logical-target (RMLTTC0*) and unsupported-source fixtures out of scope for the source-tests section — see the rml program plan</a>"
 )
-RML_HTML=$(family_section "mapping-rml" "RML (rml-core / rml-io)" "$RML_STATUS" "$RML_HEADLINE" "$RML_BODY" "")
+RML_HTML=$(family_section "mapping-rml" "RML (rml-core / rml-io)" "$RML_STATUS" "$RML_HEADLINE" "$RML_BODY" "" \
+  "$RML_FAM_PASS" "$RML_FAM_FAIL" "$RML_FAM_SKIP" "$RML_FAM_TOTAL" "" "$(family_remaining rml)")
 
 CSVW_STATUS=$(status_for "$CSVW2RDF_FAIL" "$CSVW2RDF_PRESENT")
 if [ "$CSVW2RDF_PRESENT" -eq 1 ]; then
@@ -1685,7 +1821,8 @@ CSVW_BODY=$(
     "Runner: <code>bin/csvw-runner</code> (<code>bin/linux-x86_64/csvw_runner</code>) &middot; Suite: vendored W3C csv2rdf corpus (ToRdf / ToRdfWithWarnings / NegativeRdf)" \
     "<a href=\"${GITHUB_BLOB_BASE}/docs/designissues/2026-07-05-csvw-program-plan.md\" target=\"_blank\" rel=\"noopener\">diagnosis: burn-down in progress — the CSVW program plan tracks the ToRdf / warnings / negative buckets; residual fails need full @context / metadata-merge processing</a>"
 )
-CSVW_HTML=$(family_section "csvw" "CSVW (CSV on the Web)" "$CSVW_STATUS" "$CSVW_HEADLINE" "$CSVW_BODY" "")
+CSVW_HTML=$(family_section "csvw" "CSVW (CSV on the Web)" "$CSVW_STATUS" "$CSVW_HEADLINE" "$CSVW_BODY" "" \
+  "$CSVW2RDF_PASS" "$CSVW2RDF_FAIL" "$CSVW2RDF_SKIP" "$CSVW2RDF_TOTAL" "" "$(family_remaining csvw)")
 
 # --- JSON-LD 1.1 ------------------------------------------------------------
 # Four directions now scored: toRdf (jsonld_runner) + fromRdf
@@ -1712,7 +1849,9 @@ JSONLD_BODY=$(
     "Runner: <code>bin/jsonld-compact-runner</code> (<code>bin/linux-x86_64/jsonld_compact_runner</code>) &middot; Suite: W3C JSON-LD 1.1 compact manifest (Compaction Algorithm)" \
     "<a href=\"${GITHUB_BLOB_BASE}/.github/test-suites/jsonld-compact.yaml\" target=\"_blank\" rel=\"noopener\">diagnosis: residual fails are enumerated Compaction-Algorithm gaps — see the suite manifest and the landing commit for the per-bucket breakdown</a>"
 )
-JSONLD_FAMILY_HTML=$(family_section "jsonld11" "JSON-LD 1.1" "$JSONLD_STATUS" "$JSONLD_FAMILY_HEADLINE" "$JSONLD_BODY" "")
+JSONLD_FAMILY_HTML=$(family_section "jsonld11" "JSON-LD 1.1" "$JSONLD_STATUS" "$JSONLD_FAMILY_HEADLINE" "$JSONLD_BODY" "" \
+  "$JSONLD_FAM_PASS" "$JSONLD_FAM_FAIL" "$JSONLD_FAM_SKIP" "$JSONLD_FAM_TOTAL" "4 of 7" \
+  "$(family_remaining _jsonld-family)")
 
 # --- Verifiable Credentials 2.0 --------------------------------------------
 # Prose rewritten in plain language (owner directive 2026-07-10): explain
@@ -1730,7 +1869,8 @@ VC_BODY=$(
     "Runner: <code>bin/vc-runner</code> (<code>bin/linux-x86_64/vc_runner</code>) &middot; Suite: <code>third_party/testing/vc/tests/input/</code> (structural fixtures, filename-encoded verdicts)" \
     "${VC_DIAG} <a href=\"${GITHUB_BLOB_BASE}/docs/designissues/2026-07-05-vc-program-plan.md\" target=\"_blank\" rel=\"noopener\">VC program plan</a>"
 )
-VC_FAMILY_HTML=$(family_section "vc2" "Verifiable Credentials 2.0" "$VC_STATUS" "$VC_FAMILY_HEADLINE" "$VC_BODY" "")
+VC_FAMILY_HTML=$(family_section "vc2" "Verifiable Credentials 2.0" "$VC_STATUS" "$VC_FAMILY_HEADLINE" "$VC_BODY" "" \
+  "$VC_PASS" "$VC_FAIL" "$VC_SKIP" "$VC_TOTAL" "" "$(family_remaining vc)")
 
 # --- XML-family W3C Recommendations: XSLT 1.0 / XML 1.0 / MathML 3 --------
 # (2026-07-09) Committed runners the dashboard never surfaced. XSLT 1.0,
@@ -1770,7 +1910,8 @@ XMLFAM_BODY=$(
   family_suite_row "MathML 3 content" "$MATHML_PASS" "$MATHML_FAIL" "$MATHML_SKIP" "$MATHML_TOTAL" "$MATHML_PRESENT" \
     "Runner: <code>bin/mathml-runner</code> (<code>bin/linux-x86_64/mathml_runner</code>) &middot; Suite: <code>third_party/testing/mathml/manifest.json</code> (Content MathML evaluation)"
 )
-XMLFAM_HTML=$(family_section "xml-family" "XSLT 1.0 / XML 1.0 / MathML 3" "$XMLFAM_STATUS" "$XMLFAM_HEADLINE" "$XMLFAM_BODY" "")
+XMLFAM_HTML=$(family_section "xml-family" "XSLT 1.0 / XML 1.0 / MathML 3" "$XMLFAM_STATUS" "$XMLFAM_HEADLINE" "$XMLFAM_BODY" "" \
+  "$XMLFAM_PASS" "$XMLFAM_FAIL" "$XMLFAM_SKIP" "$XMLFAM_TOTAL")
 
 # --- DID (W3C Recommendation) ----------------------------------------------
 # Split out from the old combined "JSON Schema / DID" family (owner
@@ -1788,7 +1929,8 @@ DID_BODY=$(
   family_suite_row "DID did:key" "$DIDKEY_PASS" "$DIDKEY_FAIL" "$DIDKEY_SKIP" "$DIDKEY_TOTAL" "$DIDKEY_PRESENT" \
     "Runner: <code>bin/did-runner</code> (<code>bin/linux-x86_64/did_runner</code>) &middot; Suite: did:key resolution + multibase/multicodec accept/reject cases"
 )
-DID_HTML=$(family_section "did" "DID (Decentralized Identifiers)" "$DID_STATUS" "$DID_HEADLINE" "$DID_BODY" "")
+DID_HTML=$(family_section "did" "DID (Decentralized Identifiers)" "$DID_STATUS" "$DID_HEADLINE" "$DID_BODY" "" \
+  "$DIDKEY_PASS" "$DIDKEY_FAIL" "$DIDKEY_SKIP" "$DIDKEY_TOTAL" "" "$(family_remaining did)")
 
 # --- Other conformance suites (not W3C): JSON Schema / ISO Schematron -----
 read -r OTHERSPEC_PASS OTHERSPEC_FAIL OTHERSPEC_SKIP OTHERSPEC_TOTAL OTHERSPEC_ANY <<< "$(sum_family "JSONSCHEMA SCHEMATRON")"
@@ -1804,7 +1946,8 @@ OTHERSPEC_BODY=$(
   family_suite_row "ISO Schematron" "$SCHEMATRON_PASS" "$SCHEMATRON_FAIL" "$SCHEMATRON_SKIP" "$SCHEMATRON_TOTAL" "$SCHEMATRON_PRESENT" \
     "Runner: <code>bin/schematron-runner</code> (<code>bin/linux-x86_64/schematron_runner</code>) &middot; Suite: <code>third_party/testing/schematron/</code> (rule-based assertion cases) &middot; ISO standard, not a W3C specification"
 )
-OTHERSPEC_HTML=$(family_section "other-specs" "JSON Schema / ISO Schematron" "$OTHERSPEC_STATUS" "$OTHERSPEC_HEADLINE" "$OTHERSPEC_BODY" "")
+OTHERSPEC_HTML=$(family_section "other-specs" "JSON Schema / ISO Schematron" "$OTHERSPEC_STATUS" "$OTHERSPEC_HEADLINE" "$OTHERSPEC_BODY" "" \
+  "$OTHERSPEC_PASS" "$OTHERSPEC_FAIL" "$OTHERSPEC_SKIP" "$OTHERSPEC_TOTAL")
 
 # --- Storage backend & JS/browser runtime: HDT parity / hub / npm ---------
 # Not W3C conformance — these exercise the shipped engine end to end: the
@@ -1828,7 +1971,8 @@ RUNTIME_BODY=$(
     "Runner: <code>node --test npm/factoidal/test/*.test.js</code> &middot; the 7 engine FP APIs, HDT-in-bundle, delta-log, VC crypto (HACL* wasm)" \
     "<a href=\"${GITHUB_BLOB_BASE}/npm/factoidal/test/\" target=\"_blank\" rel=\"noopener\">diagnosis: any residual fails are vendored-fixture submodules absent in this checkout, not engine regressions</a>"
 )
-RUNTIME_HTML=$(family_section "runtime-parity" "Storage backend &amp; JS runtime: HDT parity / hub / npm" "$RUNTIME_STATUS" "$RUNTIME_HEADLINE" "$RUNTIME_BODY" "")
+RUNTIME_HTML=$(family_section "runtime-parity" "Storage backend &amp; JS runtime: HDT parity / hub / npm" "$RUNTIME_STATUS" "$RUNTIME_HEADLINE" "$RUNTIME_BODY" "" \
+  "$RUNTIME_PASS" "$RUNTIME_FAIL" "$RUNTIME_SKIP" "$RUNTIME_TOTAL")
 
 # --- F* unit regressions & adjacent engines (#82) --------------------------
 # The tests/unit native harness (run-all.sh) is now relinked per-test against
@@ -1860,7 +2004,17 @@ ENGINES_BODY=$(
   family_suite_row "F* unit regressions (tests/unit)" "$TESTS_UNIT_PASS" "$TESTS_UNIT_FAIL" "$TESTS_UNIT_SKIP" "$TESTS_UNIT_TOTAL" "$TESTS_UNIT_PRESENT" \
     "Runner: <code>tests/unit/run-all.sh</code> &middot; files-passing / files-failing across all 41 native unit files, each relinked against its own committed-.cmx dependency closure. The ${TESTS_UNIT_FAIL:-0} failing files either need a module with no committed .cmx (Math_* / MathML_* / XForms_Bind engines) or hit a committed-.cmx epoch mismatch (RML_Eval vs SPARQL11_Algebra committed in different builds) — an artifact-staleness gap, not a harness bug."
 )
-ENGINES_HTML=$(family_section "fstar-engines" "F&#42; unit regressions &amp; adjacent engines: GeoSPARQL / XPath / TOAN / XForms" "$ENGINES_STATUS" "$ENGINES_HEADLINE" "$ENGINES_BODY" "")
+# The condensed family-level score must sum to its own total (unlike
+# ENGINES_CARD_FAIL, which folds in tests_unit's fail count for STATUS
+# colour purposes only) — so build a separate, self-consistent
+# pass+fail+skip=total aggregate across all five rows in this family,
+# tests_unit included, for the collapsed summary line.
+ENGINES_AGG_PASS=$((ENGINES_PASS + TESTS_UNIT_PASS))
+ENGINES_AGG_FAIL=$((ENGINES_FAIL + TESTS_UNIT_FAIL))
+ENGINES_AGG_SKIP=$((ENGINES_SKIP + TESTS_UNIT_SKIP))
+ENGINES_AGG_TOTAL=$((ENGINES_TOTAL + TESTS_UNIT_TOTAL))
+ENGINES_HTML=$(family_section "fstar-engines" "F&#42; unit regressions &amp; adjacent engines: GeoSPARQL / XPath / TOAN / XForms" "$ENGINES_STATUS" "$ENGINES_HEADLINE" "$ENGINES_BODY" "" \
+  "$ENGINES_AGG_PASS" "$ENGINES_AGG_FAIL" "$ENGINES_AGG_SKIP" "$ENGINES_AGG_TOTAL")
 
 # --- SPARQL extras: entailment regimes / GeoSPARQL / Jena rdf:text --------
 # Owner directive (2026-07-10): the OWL 2 panel used to list GeoSPARQL and
@@ -1892,7 +2046,11 @@ SPARQLEXTRAS_BODY=$(
     "OGC standard (not a W3C Recommendation) &middot; same measurement as the F&#42; engines family's GeoSPARQL row &middot; Runner: <code>tests/unit/run-all.sh geosparql_v0_unit</code>"
   family_suite_row "Jena rdf:text (full-text search)" 0 0 0 0 0 "$JENA_TEXT_BODY" "" "no test data vendored"
 )
-SPARQLEXTRAS_HTML=$(family_section "sparql-extras" "SPARQL extras" "$SPARQLEXTRAS_STATUS" "$SPARQLEXTRAS_HEADLINE" "$SPARQLEXTRAS_BODY" "")
+SPARQLEXTRAS_PASS=$((TAB_ENTAIL_PASS + GEOSPARQL_PASS))
+SPARQLEXTRAS_SKIP=$((TAB_ENTAIL_SKIP + GEOSPARQL_SKIP))
+SPARQLEXTRAS_TOTAL=$((TAB_ENTAIL_TOTAL + GEOSPARQL_TOTAL))
+SPARQLEXTRAS_HTML=$(family_section "sparql-extras" "SPARQL extras" "$SPARQLEXTRAS_STATUS" "$SPARQLEXTRAS_HEADLINE" "$SPARQLEXTRAS_BODY" "" \
+  "$SPARQLEXTRAS_PASS" "$SPARQLEXTRAS_FAIL" "$SPARQLEXTRAS_SKIP" "$SPARQLEXTRAS_TOTAL")
 
 # --- HDT (W3C Member Submission) -------------------------------------------
 # There is no external HDT conformance test suite vendored in this repo —
@@ -1906,6 +2064,7 @@ SPARQLEXTRAS_HTML=$(family_section "sparql-extras" "SPARQL extras" "$SPARQLEXTRA
 HDT_BODY="No HDT-specific conformance suite is vendored in this repository (the HDT Member Submission publishes a binary format spec, not a test suite). Correctness of this project's HDT backend is instead checked by the <a href=\"#runtime-parity\">HDT stage-4 backend parity</a> check below, which compares HDT-backed query results against the in-memory backend byte-for-byte on unbound/bound-S/P/O/ASK/COUNT queries."
 HDT_ROW=$(family_suite_row "HDT (binary RDF format)" 0 0 0 0 0 "$HDT_BODY" "" "no format-conformance suite vendored")
 HDT_HTML=$(family_section "hdt" "HDT" "grey" "No format-conformance suite to measure; see the backend parity check below." "$HDT_ROW")
+# (no aggregate numbers — nothing to measure — falls back to grey "not measured this run")
 
 # =============================================================================
 # Top-level standards-status tree (owner directive 2026-07-10) ---------------
@@ -1946,7 +2105,7 @@ LEGEND_HTML=$(cat <<'LEGENDEOF'
     <li><span class="dot amber"></span><strong>Amber</strong> — partial: at least one fail, but every residual fail is diagnosed in writing (a link sits next to the row).</li>
     <li><span class="dot grey"></span><strong>Grey</strong> — not measured this run, or out of scope for this suite (e.g. skipped fixtures, a roadmap item with no runner yet).</li>
   </ul>
-  <p class="legend-note">Each suite row shows a stacked meter: the green segment is the pass proportion, red is fail, grey is skip — all measured against that suite's own total, so proportions are comparable across suites of very different sizes.</p>
+  <p class="legend-note">Collapsed rows show a condensed score in <strong>pass/fail/skip of total</strong> order (e.g. &ldquo;461/0/6 of 467&rdquo; means 461 pass, 0 fail, 6 skip out of 467) — tap a row to expand it for the fully-labelled sentence and a stacked pass/fail/skip meter, measured against that suite's own total so proportions are comparable across suites of very different sizes. A family row with an amber <strong>N gaps</strong> badge has a &ldquo;Remaining work&rdquo; list inside it; an expanded family with no badge and no fails is marked complete against the vendored suites.</p>
 </div>
 LEGENDEOF
 )
@@ -2097,16 +2256,56 @@ cat > "$OUTPUT_DIR/index.html" <<HTMLEOF
   }
   details.group-section .group-body { margin-top: 0.3em; }
 
-  /* --- Family section cards ------------------------------------------- */
-  .family {
-    border: 1px solid var(--border); border-left-width: 5px;
-    border-radius: 8px; padding: 0.9em 1em; margin: 0 0 1.2em;
-    background: var(--bg);
+  /* --- Family nodes: one collapsible <details> per spec family --------- */
+  /* Second pass (2026-07-10): families used to be always-open cards — a
+     name line, then a full prose score paragraph below, at ~1rem+ font —
+     which is what read as "stacked padded cards" rather than a tree on a
+     phone. Now a collapsible node, same chevron/dot/condensed-score
+     pattern as a suite row, nested one level deeper (see
+     .family-body .suites below for the indentation guide-line). */
+  details.family-node {
+    border: 1px solid var(--border); border-left-width: 4px;
+    border-radius: 8px; margin: 0 0 0.6em; background: var(--bg);
   }
-  .family.green { border-left-color: var(--ok); }
-  .family.amber { border-left-color: var(--warn); }
-  .family.grey  { border-left-color: var(--skip); }
-  .family h2 { margin: 0 0 0.35em; font-size: 1.08rem; color: var(--brand-dark); }
+  details.family-node.green { border-left-color: var(--ok); }
+  details.family-node.amber { border-left-color: var(--warn); }
+  details.family-node.grey  { border-left-color: var(--skip); }
+  details.family-node > summary {
+    cursor: pointer; list-style: none;
+    display: flex; flex-wrap: wrap; align-items: center; gap: 0.2em 0.6em;
+    padding: 0.55em 0.7em; min-height: 2.5rem;
+  }
+  details.family-node > summary::-webkit-details-marker { display: none; }
+  details.family-node > summary::marker { content: ""; }
+  details.family-node > summary::before {
+    content: "\25B8"; flex: none; color: var(--muted);
+    transition: transform 0.15s ease;
+  }
+  details.family-node[open] > summary::before { transform: rotate(90deg); }
+  details.family-node .fam-name {
+    font-weight: 600; color: var(--brand-dark); font-size: 0.98rem;
+    flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere;
+  }
+  details.family-node .fam-score {
+    font-family: ui-monospace, Menlo, Consolas, monospace;
+    font-size: 0.8rem; color: var(--muted);
+    flex: 1 1 100%; /* own line on a narrow phone; see 640px override */
+  }
+  details.family-node .gap-badge {
+    flex: none; font-size: 0.72rem; font-weight: 600;
+    background: var(--warn-tint); color: var(--warn);
+    border-radius: 10px; padding: 0.1em 0.6em;
+  }
+  details.family-node > summary .dot { flex: none; }
+  details.family-node .family-body { padding: 0 0.8em 0.8em; }
+  /* Indentation guide-line: a family's own suite list sits visibly
+     nested under its summary, and (one level up) under the group it
+     belongs to — the "real visual hierarchy by indentation" the tree
+     needs. */
+  details.family-node .family-body .suites {
+    padding-left: 0.7em; margin-left: 0.15em;
+    border-left: 2px solid var(--border);
+  }
   .fam-headline {
     margin: 0 0 0.7em; font-size: 0.92rem; color: var(--muted);
     padding-left: 0.9em; border-left: 3px solid var(--border);
@@ -2115,14 +2314,42 @@ cat > "$OUTPUT_DIR/index.html" <<HTMLEOF
   .fam-headline.amber { border-left-color: var(--warn); }
   .fam-headline.grey  { border-left-color: var(--skip); }
 
-  h2 .inline-numbers {
+  /* "Remaining work" -- what's incomplete, sourced from each suite
+     manifest's "remaining:" YAML field (see read_yaml_remaining /
+     family_remaining in generate-report.sh). Only one of these two
+     renders per family: the list, or the completeness line -- never
+     both, and never a fabricated completeness claim when a family has
+     fails but no populated "remaining:" yet (family_section renders
+     neither in that case). */
+  .remaining {
+    margin: 0.6em 0 0; padding: 0.6em 0.8em;
+    border-left: 4px solid var(--warn); background: var(--warn-tint);
+    border-radius: 0 4px 4px 0; font-size: 0.85rem;
+  }
+  .remaining-title { margin: 0 0 0.3em; font-weight: 600; color: var(--warn); }
+  .remaining ul { margin: 0; padding-left: 1.2em; }
+  .remaining li { margin: 0.25em 0; overflow-wrap: anywhere; }
+  .remaining-complete {
+    margin: 0.6em 0 0; font-size: 0.85rem; color: var(--ok);
+  }
+
+  /* .fam-subhead — a sub-heading inside an expanded family body (e.g.
+     the OWL 2 panel's catalog-scope line). Not a real <h2>: it lives
+     inside a collapsed-by-default <details>, so a search-engine/
+     accessibility-tree heading here would outrank the page's real
+     section structure while being invisible by default. */
+  .fam-subhead {
+    margin: 0 0 0.35em; font-size: 1.02rem; font-weight: 700;
+    color: var(--brand-dark);
+  }
+  h2 .inline-numbers, .fam-subhead .inline-numbers {
     display: block; font-weight: 400; color: var(--muted); font-size: 0.85rem;
     margin: 0.2em 0 0;
   }
-  h2 .inline-numbers a {
+  h2 .inline-numbers a, .fam-subhead .inline-numbers a {
     color: inherit; text-decoration: underline; text-decoration-style: dotted;
   }
-  h2 .inline-numbers a:hover { color: var(--brand-dark); }
+  h2 .inline-numbers a:hover, .fam-subhead .inline-numbers a:hover { color: var(--brand-dark); }
 
   /* Per-REC subsection headings inside SPARQL 1.1 / RDF 1.1 families */
   h3.rec-subhead {
@@ -2156,36 +2383,49 @@ cat > "$OUTPUT_DIR/index.html" <<HTMLEOF
   .failure-detail li { margin: 0.3em 0; line-height: 1.4; overflow-wrap: anywhere; }
 
   /* --- Suite nodes: one collapsible <details> per checkable suite ------- */
-  /* Mobile-first single column; the summary line is name + labelled
-     numbers + a status dot, collapsed by default. Body (meter,
-     provenance, diagnosis) only renders once tapped open. */
-  .suites { display: flex; flex-direction: column; gap: 0.5em; margin: 0 0 0.6em; }
+  /* Second pass (2026-07-10): one COMPACT line when collapsed —
+     "chevron  name  P/F/S of T  dot" — targeting <=2.5rem row height on
+     a phone, not a padded card. flex-wrap:nowrap + ellipsis on the name
+     keeps it to one row at any width down to ~320px; the fully-labelled
+     "P pass, F fail, S skip (out of T)" sentence and the meter bar only
+     render once the row is tapped open (suite-body). */
+  .suites { display: flex; flex-direction: column; gap: 0.3em; margin: 0 0 0.4em; }
   details.suite-node {
     margin: 0; border: none; border-radius: 6px;
     background: var(--surface); padding: 0;
   }
   details.suite-node > summary {
-    display: flex; flex-wrap: wrap; align-items: center; gap: 0.5em;
+    display: flex; flex-wrap: nowrap; align-items: center; gap: 0.5em;
     cursor: pointer; list-style: none;
-    padding: 0.55em 0.7em; min-height: 44px; font-size: 0.95rem;
+    padding: 0.35em 0.6em; min-height: 2.5rem; font-size: 0.9rem;
     color: var(--fg); font-weight: 400;
   }
   details.suite-node > summary::-webkit-details-marker { display: none; }
   details.suite-node > summary::marker { content: ""; }
+  details.suite-node > summary::before {
+    content: "\25B8"; flex: none; color: var(--muted);
+    transition: transform 0.15s ease;
+  }
+  details.suite-node[open] > summary::before { transform: rotate(90deg); }
   details.suite-node .suite-name {
     font-family: ui-monospace, Menlo, Consolas, monospace;
-    font-size: 0.92rem; font-weight: 600; overflow-wrap: anywhere;
-    flex: 1 1 auto;
+    font-size: 0.85rem; font-weight: 600;
+    flex: 1 1 auto; min-width: 0;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
   details.suite-node .suite-numbers {
     font-family: ui-monospace, Menlo, Consolas, monospace;
-    font-size: 0.85rem; color: var(--muted);
+    font-size: 0.78rem; color: var(--muted); flex: none; white-space: nowrap;
   }
   details.suite-node .suite-body { padding: 0 0.7em 0.7em; display: flex; flex-direction: column; gap: 0.35em; }
   details.suite-node.green { background: var(--ok-tint); }
   details.suite-node.amber { background: var(--warn-tint); }
   details.suite-node.grey  { background: var(--skip-tint); }
   .suite-diag { margin: 0; font-size: 0.8rem; color: var(--muted); }
+  /* Fully-labelled "P pass, F fail, S skip (out of T)" — the expanded
+     counterpart to the condensed summary line, so the labelled form
+     (CLAUDE.md anti-pattern #25) is always one tap away. */
+  .suite-numbers-full { margin: -0.2em 0 0; font-size: 0.82rem; color: var(--muted); }
 
   /* Stacked pass/fail/skip meter — one definition, used by every suite
      row on the page. Always full-width of its row. */
@@ -2238,16 +2478,17 @@ cat > "$OUTPUT_DIR/index.html" <<HTMLEOF
   footer code { background: var(--surface); padding: 0.1em 0.4em; border-radius: 3px; }
 
   /* --- Widen past phone width ------------------------------------------ */
+  /* The suite/family summary rows are flex-nowrap + ellipsis from the
+     base (mobile) rule already, so they stay one compact line at every
+     width — no grid re-layout needed past 640px, just more breathing
+     room and letting the family score sit inline instead of wrapping to
+     its own row. */
   @media (min-width: 640px) {
     main { padding: 1.5em 1em; }
     header { padding: 1.2em 1em; }
-    .family { padding: 1em 1.2em; }
-    details.suite-node > summary {
-      display: grid;
-      grid-template-columns: 1.2em 15em 1fr;
-      align-items: center; gap: 0.8em;
-    }
-    details.suite-node .suite-numbers { text-align: right; }
+    details.suite-node > summary { padding: 0.4em 0.8em; }
+    details.family-node > summary { padding: 0.6em 0.9em; }
+    details.family-node .fam-score { flex: 0 1 auto; }
     .suite-prov { margin: 0; }
   }
   @media (min-width: 800px) {
@@ -2261,7 +2502,7 @@ cat > "$OUTPUT_DIR/index.html" <<HTMLEOF
       white-space: nowrap;
       box-shadow: 0 1px 2px rgba(0,0,0,0.08);
     }
-    h2 .inline-numbers { display: inline; margin-left: 0.5em; }
+    h2 .inline-numbers, .fam-subhead .inline-numbers { display: inline; margin-left: 0.5em; }
   }
 </style>
 </head>

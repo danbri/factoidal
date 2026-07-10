@@ -55,3 +55,10 @@ triggers:
     - third_party/testing/rml-modules/**
 
   excludes: []
+
+# What's left, in plain language.
+remaining:
+  - "rml-io's logical-target section (writing to a target RDF dataset, RMLTTC0* fixtures) is not scored — only the source-tests section is measured"
+  - "rml-cc (content-container: gather/gatherAs) has no test row — the committed runner doesn't expose a --cc mode yet"
+  - "rml-fnml (function-map dispatch) and rml-star (quoted-triple mapping) are vendored but not wired to any runner"
+  - "relational/SQL logical sources are out of scope for this stage — only JSON and CSV logical sources are evaluated"

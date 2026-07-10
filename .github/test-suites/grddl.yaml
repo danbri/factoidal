@@ -1,0 +1,30 @@
+name: GRDDL Stage 1 (local subset)
+spec: https://www.w3.org/TR/grddl/
+runner: bin/linux-x86_64/grddl_runner
+runner_args: []
+manifest: internal
+log_path: formal/fstar/ocaml-output/grddl_results.log
+result_path: docs/test-results/by-suite/grddl.json
+domain: RDF
+foundational: false
+
+# Stage 1 of the GRDDL program (docs/designissues/2026-07-08-grddl-scoping.md):
+# the RDF/XML-source (rdfxbase) tests plus the XSLT-transform tests that
+# don't need a live network fetch. See generate-report.sh's GRDDL family
+# section for the current pass/fail/skip counts.
+triggers:
+  paths:
+    - formal/fstar/GRDDL.Discovery.fst
+    - formal/fstar/XSLT.Transform.fst
+    - formal/fstar/XPath.Eval.fst
+    - bin/grddl-runner/**
+    - third_party/testing/grddl/**
+  excludes: []
+
+# What's left, in plain language (source: docs/claude-rules/w3c-completeness-ledger.md,
+# GRDDL row, 2026-07-10).
+remaining:
+  - "8 local-subset tests fail on deeper per-stylesheet fidelity gaps (e.g. a Gnumeric-generated transform sheet the engine doesn't fully replicate) — each is a distinct stylesheet-feature gap, not one shared bug"
+  - "Stage 2 (namespace/profile-document transformation paths, plus the hCard family of transforms) is not implemented — it needs a live document-fetch hook this offline runner doesn't have"
+  - "Stage 3 (HTML tag-soup input, as opposed to well-formed XML/XHTML) is not implemented"
+  - "49 tests are skipped because they require a live network fetch, which this offline conformance run does not perform"

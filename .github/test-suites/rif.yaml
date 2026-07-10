@@ -141,3 +141,14 @@ triggers:
     - third_party/testing/rif-core-suite/**
 
   excludes: []
+
+# What's left, in plain language (source: docs/claude-rules/w3c-completeness-ledger.md,
+# RIF Core row, 2026-07-10; and bin/rif-runner/README.md's Score section).
+remaining:
+  - "1 known-gap fail: a rule whose body re-binds an arity-2 predicate needs real n-ary reification, not attempted"
+  - "2 known-gap fails: rif:local constants are not scoped per-document in this engine"
+  - "1 fail is a defect in the vendored corpus data itself (a malformed xsd:string IRI), not an engine bug"
+  - "6 skips: the String, Time+dateTime, and PlainLiteral builtin families, plus List-term builtins, are not implemented"
+  - "2 skips: Exists-quantified rule bodies (existential variables in RIF Core) are not implemented"
+  - "1 skip: detecting that a premise combination is internally inconsistent (needed for one vocabulary-separation fixture) is not implemented"
+  - "1 skip: cross-document constant-role tracking for one import-rejection fixture (Multiple_Context_Error) is not implemented"

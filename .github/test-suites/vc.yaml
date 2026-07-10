@@ -63,3 +63,12 @@ triggers:
     - third_party/testing/vc/**
 
   excludes: []
+
+# What's left, in plain language (source: docs/claude-rules/w3c-completeness-ledger.md,
+# VC 2.0 + Data Integrity row, 2026-07-10).
+remaining:
+  - "issuer presence/shape, validFrom/validUntil ordering, and the credentialStatus/credentialSchema/termsOfUse/evidence/refreshService inner-shape checks are deferred to a later stage"
+  - "context-driven type redefinition is not checked — it needs real JSON-LD term resolution this stage does not implement"
+  - "the 1 remaining fail is a known test-fixture template artifact (placeholder dates baked into the offline copy), not an engine bug"
+  - "6 fixtures are skipped: 3 need a live endpoint's own reject-or-patch decision this offline checker can't referee, and 3 need verifying a cryptographic holder-binding signature, not just the document's shape"
+  - "full W3C VC Data Integrity conformance — signing and verifying credentials against the official test suite, including inside the browser/JS bundle — is not yet run; the underlying eddsa-rdfc-2022 proof machinery works outside the browser today but has not been measured against the official corpus"

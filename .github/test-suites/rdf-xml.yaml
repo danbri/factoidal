@@ -19,3 +19,8 @@ triggers:
     - bin/w3c-runner/**
 
   excludes: []
+
+# What's left, in plain language (source: docs/claude-rules/w3c-completeness-ledger.md,
+# RDF 1.1 row, 2026-07-10).
+remaining:
+  - "some very deeply nested RDF/XML documents can overflow the parser — a parser-depth gap, not a semantics gap"
