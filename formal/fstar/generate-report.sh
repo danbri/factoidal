@@ -1689,17 +1689,26 @@ ${body}
 GRP
 }
 
-# --- RDF 1.1 core: syntaxes + semantics + canonicalization -------------------
-RDFCORE_PASS=$((RDF_PASS + RDFC10_PASS))
-RDFCORE_FAIL=$((RDF_FAIL + RDFC10_FAIL))
-RDFCORE_SKIP=$((RDF_SKIP + RDFC10_SKIP))
-RDFCORE_TOTAL=$((RDF_TOTAL + RDFC10_TOTAL))
+# --- RDF 1.1 core: syntaxes + semantics --------------------------------------
+# rdf-mt carries the RDFS entailment tests (RDF Schema 1.1 shares the RDF
+# 1.1 Semantics suite). RDFC-1.0 is a separate 2024 Recommendation and
+# renders as its own family below (owner directive 2026-07-10).
+RDFCORE_PASS=$RDF_PASS
+RDFCORE_FAIL=$RDF_FAIL
+RDFCORE_SKIP=$RDF_SKIP
+RDFCORE_TOTAL=$RDF_TOTAL
 RDFCORE_STATUS=$(status_for "$RDFCORE_FAIL" 1)
-RDFCORE_HEADLINE="${RDFCORE_PASS} pass, ${RDFCORE_FAIL} fail, ${RDFCORE_SKIP} skip (of ${RDFCORE_TOTAL}) across N-Triples, Turtle, N-Quads, TriG, RDF/XML, RDF 1.1 Semantics (rdf-mt), and RDFC-1.0 canonicalization."
-RDFCORE_BODY=$(printf '%s\n%s\n' "$RDF_ROWS_HTML" "$RDFC10_HTML")
+RDFCORE_HEADLINE="${RDFCORE_PASS} pass, ${RDFCORE_FAIL} fail, ${RDFCORE_SKIP} skip (of ${RDFCORE_TOTAL}) across N-Triples, Turtle, N-Quads, TriG, RDF/XML, and RDF 1.1 Semantics (rdf-mt, which carries the RDFS entailment tests)."
+RDFCORE_BODY=$(printf '%s\n' "$RDF_ROWS_HTML")
 RDFCORE_REMAINING=$(family_remaining rdf-xml)
 RDFCORE_HTML=$(family_section "rdf-core" "RDF 1.1 core" "$RDFCORE_STATUS" "$RDFCORE_HEADLINE" "$RDFCORE_BODY" "$RDF_FAILURE_DETAIL_HTML" \
   "$RDFCORE_PASS" "$RDFCORE_FAIL" "$RDFCORE_SKIP" "$RDFCORE_TOTAL" "" "$RDFCORE_REMAINING")
+
+# --- RDFC-1.0 (RDF Dataset Canonicalization, W3C Recommendation 2024) -------
+RDFC10FAM_STATUS=$(status_for "$RDFC10_FAIL" 1)
+RDFC10FAM_HEADLINE="${RDFC10_PASS} pass, ${RDFC10_FAIL} fail, ${RDFC10_SKIP} skip (of ${RDFC10_TOTAL}) on the W3C rdf-canon suite."
+RDFC10FAM_HTML=$(family_section "rdfc10" "RDF Dataset Canonicalization (RDFC-1.0)" "$RDFC10FAM_STATUS" "$RDFC10FAM_HEADLINE" "$RDFC10_HTML" "" \
+  "$RDFC10_PASS" "$RDFC10_FAIL" "$RDFC10_SKIP" "$RDFC10_TOTAL")
 
 # --- SPARQL 1.1 ---------------------------------------------------------
 SPARQL_STATUS=$(status_for "$SPARQL_FAIL" 1)
@@ -1720,7 +1729,7 @@ OWL_FAMILY_HEADLINE="profile-RL PositiveEntailmentTests: ${OWL_PASS} pass, ${OWL
 OWL_SKIP_FOR_SCORE=$((OWL_TOTAL - OWL_PASS - OWL_FAIL))
 [ "$OWL_SKIP_FOR_SCORE" -lt 0 ] && OWL_SKIP_FOR_SCORE=0
 OWL_REMAINING=$(family_remaining owl-profile-rl)
-OWL_FAMILY_HTML=$(family_section "owl2" "Reasoning: RDFS / OWL 2" "$OWL_FAMILY_STATUS" "$OWL_FAMILY_HEADLINE" "$OWL_HTML" "" \
+OWL_FAMILY_HTML=$(family_section "owl2" "OWL 2" "$OWL_FAMILY_STATUS" "$OWL_FAMILY_HEADLINE" "$OWL_HTML" "" \
   "$OWL_PASS" "$OWL_FAIL" "$OWL_SKIP_FOR_SCORE" "$OWL_TOTAL" "" "$OWL_REMAINING")
 
 # --- Shapes: SHACL (W3C Recommendation) and ShEx (W3C CG spec) ------------
@@ -1890,22 +1899,27 @@ VC_FAMILY_HTML=$(family_section "vc2" "Verifiable Credentials 2.0" "$VC_STATUS" 
   "$VC_PASS" "$VC_FAIL" "$VC_SKIP" "$VC_TOTAL" "" "$(family_remaining vc)")
 
 # --- XML-family W3C Recommendations: XSLT 1.0 / XML 1.0 / MathML 3 --------
-# (2026-07-09) Committed runners the dashboard never surfaced. XSLT 1.0,
-# XML 1.0, and MathML 3 are each their own W3C Recommendation, grouped here
-# as one family node; ISO Schematron is NOT a W3C spec (it's an ISO
-# standard) and moved to the open-source-comparison/internal group below
-# (owner directive 2026-07-10).
-read -r XMLFAM_PASS XMLFAM_FAIL XMLFAM_SKIP XMLFAM_TOTAL XMLFAM_ANY <<< "$(sum_family "XSLT XMLCONF MATHML")"
-XMLFAM_STATUS=$(status_for "$XMLFAM_FAIL" "$XMLFAM_ANY")
-if [ "$XMLFAM_ANY" -eq 1 ]; then
-  XMLFAM_HEADLINE="${XMLFAM_PASS} pass, ${XMLFAM_FAIL} fail, ${XMLFAM_SKIP} skip (out of ${XMLFAM_TOTAL}) across XSLT 1.0 transforms, XML 1.0 well-formedness conformance, and MathML 3 content evaluation."
+# XSLT 1.0, XML 1.0, and MathML 3 are each their own W3C Recommendation
+# and each renders as its own family node (owner directive 2026-07-10 —
+# independent items are not treated as a single component).
+XSLTFAM_STATUS=$(status_for "$XSLT_FAIL" "$XSLT_PRESENT")
+if [ "$XSLT_PRESENT" -eq 1 ]; then
+  XSLTFAM_HEADLINE="${XSLT_PASS} pass, ${XSLT_FAIL} fail, ${XSLT_SKIP} skip (out of ${XSLT_TOTAL}) on XSLT 1.0 transform conformance."
 else
-  XMLFAM_HEADLINE="Not measured this run."
+  XSLTFAM_HEADLINE="Not measured this run."
 fi
+XSLTFAM_BODY=$(
+  family_suite_row "XSLT 1.0" "$XSLT_PASS" "$XSLT_FAIL" "$XSLT_SKIP" "$XSLT_TOTAL" "$XSLT_PRESENT" \
+    "Runner: <code>bin/xslt-runner</code> (<code>bin/linux-x86_64/xslt_runner</code>) &middot; Suite: <code>third_party/testing/xslt/manifest.json</code>" \
+    "<a href=\"${GITHUB_BLOB_BASE}/.github/test-suites/xslt.yaml\" target=\"_blank\" rel=\"noopener\">diagnosis: residual fails are the documented XSLT 1.0 constructs not yet in the transform engine — see the suite manifest</a>"
+)
+XSLTFAM_HTML=$(family_section "xslt10" "XSLT 1.0" "$XSLTFAM_STATUS" "$XSLTFAM_HEADLINE" "$XSLTFAM_BODY" "" \
+  "$XSLT_PASS" "$XSLT_FAIL" "$XSLT_SKIP" "$XSLT_TOTAL")
+
 # XML conformance carries a collapsible honest-breakdown sub-panel so the
-# 1414/2585 headline is never read as a bare conformance % — the skip
-# decomposition (real not-wf rejects vs DTD-boundary skips vs out-of-profile)
-# sits one tap away.
+# headline is never read as a bare conformance % — the skip decomposition
+# (real not-wf rejects vs DTD-boundary skips vs out-of-profile) sits one
+# tap away.
 if [ -n "$XMLCONF_BREAKDOWN" ]; then
   XMLCONF_BREAKDOWN_HTML=$(cat <<XBD
       <details class="failure-detail">
@@ -1917,18 +1931,32 @@ XBD
 else
   XMLCONF_BREAKDOWN_HTML=""
 fi
-XMLFAM_BODY=$(
-  family_suite_row "XSLT 1.0" "$XSLT_PASS" "$XSLT_FAIL" "$XSLT_SKIP" "$XSLT_TOTAL" "$XSLT_PRESENT" \
-    "Runner: <code>bin/xslt-runner</code> (<code>bin/linux-x86_64/xslt_runner</code>) &middot; Suite: <code>third_party/testing/xslt/manifest.json</code>" \
-    "<a href=\"${GITHUB_BLOB_BASE}/.github/test-suites/xslt.yaml\" target=\"_blank\" rel=\"noopener\">diagnosis: residual fails are the documented XSLT 1.0 constructs not yet in the transform engine — see the suite manifest</a>"
+XMLCONFFAM_STATUS=$(status_for "$XMLCONF_FAIL" "$XMLCONF_PRESENT")
+if [ "$XMLCONF_PRESENT" -eq 1 ]; then
+  XMLCONFFAM_HEADLINE="${XMLCONF_PASS} pass, ${XMLCONF_FAIL} fail, ${XMLCONF_SKIP} skip (out of ${XMLCONF_TOTAL}) on XML 1.0 well-formedness conformance."
+else
+  XMLCONFFAM_HEADLINE="Not measured this run."
+fi
+XMLCONFFAM_BODY=$(
   family_suite_row "XML 1.0 conformance" "$XMLCONF_PASS" "$XMLCONF_FAIL" "$XMLCONF_SKIP" "$XMLCONF_TOTAL" "$XMLCONF_PRESENT" \
     "Runner: <code>bin/xml-runner</code> (<code>bin/linux-x86_64/xml_runner</code>) &middot; Suite: <code>third_party/testing/xml/xmlconf</code> (OASIS/W3C XML conformance) &middot; skips are DTD-boundary / out-of-XML-1.0-profile fixtures, decomposed in the breakdown below"
   printf '%s' "$XMLCONF_BREAKDOWN_HTML"
+)
+XMLCONFFAM_HTML=$(family_section "xml10" "XML 1.0" "$XMLCONFFAM_STATUS" "$XMLCONFFAM_HEADLINE" "$XMLCONFFAM_BODY" "" \
+  "$XMLCONF_PASS" "$XMLCONF_FAIL" "$XMLCONF_SKIP" "$XMLCONF_TOTAL")
+
+MATHMLFAM_STATUS=$(status_for "$MATHML_FAIL" "$MATHML_PRESENT")
+if [ "$MATHML_PRESENT" -eq 1 ]; then
+  MATHMLFAM_HEADLINE="${MATHML_PASS} pass, ${MATHML_FAIL} fail, ${MATHML_SKIP} skip (out of ${MATHML_TOTAL}) on Content MathML evaluation."
+else
+  MATHMLFAM_HEADLINE="Not measured this run."
+fi
+MATHMLFAM_BODY=$(
   family_suite_row "MathML 3 content" "$MATHML_PASS" "$MATHML_FAIL" "$MATHML_SKIP" "$MATHML_TOTAL" "$MATHML_PRESENT" \
     "Runner: <code>bin/mathml-runner</code> (<code>bin/linux-x86_64/mathml_runner</code>) &middot; Suite: <code>third_party/testing/mathml/manifest.json</code> (Content MathML evaluation)"
 )
-XMLFAM_HTML=$(family_section "xml-family" "XSLT 1.0 / XML 1.0 / MathML 3" "$XMLFAM_STATUS" "$XMLFAM_HEADLINE" "$XMLFAM_BODY" "" \
-  "$XMLFAM_PASS" "$XMLFAM_FAIL" "$XMLFAM_SKIP" "$XMLFAM_TOTAL")
+MATHMLFAM_HTML=$(family_section "mathml3" "MathML 3" "$MATHMLFAM_STATUS" "$MATHMLFAM_HEADLINE" "$MATHMLFAM_BODY" "" \
+  "$MATHML_PASS" "$MATHML_FAIL" "$MATHML_SKIP" "$MATHML_TOTAL")
 
 # --- DID (W3C Recommendation) ----------------------------------------------
 # Split out from the old combined "JSON Schema / DID" family (owner
@@ -2055,29 +2083,41 @@ ENGINES_HTML=$(family_section "fstar-engines" "F&#42; unit regressions &amp; adj
 # standard at all — a vendor magic-property convention this project also
 # implements). None of the three change the SPARQL 1.1 Recommendation
 # family's own numbers.
-SPARQLEXTRAS_ANY=0
-[ "$TAB_ENTAIL_PRESENT" -eq 1 ] && SPARQLEXTRAS_ANY=1
-[ "$GEOSPARQL_PRESENT" -eq 1 ]  && SPARQLEXTRAS_ANY=1
-SPARQLEXTRAS_FAIL=$((TAB_ENTAIL_FAIL + GEOSPARQL_FAIL))
-SPARQLEXTRAS_STATUS=$(status_for "$SPARQLEXTRAS_FAIL" "$SPARQLEXTRAS_ANY")
-if [ "$SPARQLEXTRAS_ANY" -eq 1 ]; then
-  SPARQLEXTRAS_HEADLINE="Non-Recommendation SPARQL extensions and a duplicate presentation of the entailment-regimes score above; see each entry for its own numbers. Jena rdf:text has no vendored test data, so it is not scored."
+# GeoSPARQL and Jena rdf:text are each their own family node (owner
+# directive 2026-07-10 — promoted out of the old "SPARQL extras"
+# umbrella). The extras node keeps only the entailment-regimes duplicate
+# presentation.
+SPARQLEXTRAS_STATUS=$(status_for "$TAB_ENTAIL_FAIL" "$TAB_ENTAIL_PRESENT")
+if [ "$TAB_ENTAIL_PRESENT" -eq 1 ]; then
+  SPARQLEXTRAS_HEADLINE="A duplicate presentation of the SPARQL 1.1 Entailment Regimes score, surfaced here for readers looking for reasoning-adjacent SPARQL capability."
 else
   SPARQLEXTRAS_HEADLINE="Not measured this run."
 fi
-JENA_TEXT_BODY="This project implements the jena-text <code>text:query</code> magic property (Slice 1: exact/token AND-match, no BM25 ranking) in <code>formal/fstar/SPARQL.FullText.fst</code>, exercised by hand-written local fixtures (<code>tests/local/fulltext_slice1.sh</code>, hub post 20) rather than an official conformance suite &mdash; Apache Jena does not publish a vendorable rdf:text/full-text-search test corpus, and none is checked into this repository. No pass/fail score is reported here because there is nothing to check it against."
 SPARQLEXTRAS_BODY=$(
   family_suite_row "SPARQL 1.1 Entailment Regimes" "$TAB_ENTAIL_PASS" "$TAB_ENTAIL_FAIL" "$TAB_ENTAIL_SKIP" "$TAB_ENTAIL_TOTAL" "$TAB_ENTAIL_PRESENT" \
     "Same measurement as the SPARQL 1.1 family's Entailment Regimes row &middot; driven by <code>Tableau.fst</code>'s <code>tableau_materialise</code> via <code>w3c_runner</code>"
-  family_suite_row "GeoSPARQL (geof: topology + WKT)" "$GEOSPARQL_PASS" "$GEOSPARQL_FAIL" "$GEOSPARQL_SKIP" "$GEOSPARQL_TOTAL" "$GEOSPARQL_PRESENT" \
-    "OGC standard (not a W3C Recommendation) &middot; same measurement as the F&#42; engines family's GeoSPARQL row &middot; Runner: <code>tests/unit/run-all.sh geosparql_v0_unit</code>"
-  family_suite_row "Jena rdf:text (full-text search)" 0 0 0 0 0 "$JENA_TEXT_BODY" "" "no test data vendored"
 )
-SPARQLEXTRAS_PASS=$((TAB_ENTAIL_PASS + GEOSPARQL_PASS))
-SPARQLEXTRAS_SKIP=$((TAB_ENTAIL_SKIP + GEOSPARQL_SKIP))
-SPARQLEXTRAS_TOTAL=$((TAB_ENTAIL_TOTAL + GEOSPARQL_TOTAL))
-SPARQLEXTRAS_HTML=$(family_section "sparql-extras" "SPARQL extras" "$SPARQLEXTRAS_STATUS" "$SPARQLEXTRAS_HEADLINE" "$SPARQLEXTRAS_BODY" "" \
-  "$SPARQLEXTRAS_PASS" "$SPARQLEXTRAS_FAIL" "$SPARQLEXTRAS_SKIP" "$SPARQLEXTRAS_TOTAL")
+SPARQLEXTRAS_HTML=$(family_section "sparql-extras" "SPARQL extras: entailment regimes" "$SPARQLEXTRAS_STATUS" "$SPARQLEXTRAS_HEADLINE" "$SPARQLEXTRAS_BODY" "" \
+  "$TAB_ENTAIL_PASS" "$TAB_ENTAIL_FAIL" "$TAB_ENTAIL_SKIP" "$TAB_ENTAIL_TOTAL")
+
+# --- GeoSPARQL (OGC standard) -----------------------------------------------
+GEOFAM_STATUS=$(status_for "$GEOSPARQL_FAIL" "$GEOSPARQL_PRESENT")
+if [ "$GEOSPARQL_PRESENT" -eq 1 ]; then
+  GEOFAM_HEADLINE="${GEOSPARQL_PASS} pass, ${GEOSPARQL_FAIL} fail, ${GEOSPARQL_SKIP} skip (out of ${GEOSPARQL_TOTAL}) on geof: topology + WKT unit fixtures."
+else
+  GEOFAM_HEADLINE="Not measured this run."
+fi
+GEOFAM_BODY=$(
+  family_suite_row "GeoSPARQL (geof: topology + WKT)" "$GEOSPARQL_PASS" "$GEOSPARQL_FAIL" "$GEOSPARQL_SKIP" "$GEOSPARQL_TOTAL" "$GEOSPARQL_PRESENT" \
+    "OGC standard (not a W3C Recommendation) &middot; Runner: <code>tests/unit/run-all.sh geosparql_v0_unit</code> &middot; local fixtures, not the OGC compliance suite"
+)
+GEOSPARQLFAM_HTML=$(family_section "geosparql" "GeoSPARQL (OGC)" "$GEOFAM_STATUS" "$GEOFAM_HEADLINE" "$GEOFAM_BODY" "" \
+  "$GEOSPARQL_PASS" "$GEOSPARQL_FAIL" "$GEOSPARQL_SKIP" "$GEOSPARQL_TOTAL")
+
+# --- Jena rdf:text full-text search (vendor convention) ---------------------
+JENA_TEXT_BODY="This project implements the jena-text <code>text:query</code> magic property (Slice 1: exact/token AND-match, no BM25 ranking) in <code>formal/fstar/SPARQL.FullText.fst</code>, exercised by hand-written local fixtures (<code>tests/local/fulltext_slice1.sh</code>, hub post 20) rather than an official conformance suite &mdash; Apache Jena does not publish a vendorable rdf:text/full-text-search test corpus, and none is checked into this repository. No pass/fail score is reported here because there is nothing to check it against."
+JENATEXT_ROW=$(family_suite_row "Jena rdf:text (full-text search)" 0 0 0 0 0 "$JENA_TEXT_BODY" "" "no test data vendored")
+JENATEXTFAM_HTML=$(family_section "jena-text" "SPARQL full-text search (jena-text convention)" "grey" "Implemented (text:query magic property); no vendorable conformance corpus exists, so no score is claimed." "$JENATEXT_ROW")
 
 # --- HDT (W3C Member Submission) -------------------------------------------
 # There is no external HDT conformance test suite vendored in this repo —
@@ -2111,16 +2151,16 @@ HDT_HTML=$(family_section "hdt" "HDT" "grey" "No format-conformance suite to mea
 # rdf:text is a vendor convention, not a standard.
 # =============================================================================
 GROUP1_BODY=$(printf '%s\n' \
-  "$RDFCORE_HTML" "$SPARQL_FAMILY_HTML" "$OWL_FAMILY_HTML" "$SHACL_HTML" \
+  "$RDFCORE_HTML" "$RDFC10FAM_HTML" "$SPARQL_FAMILY_HTML" "$OWL_FAMILY_HTML" "$SHACL_HTML" \
   "$CSVW_HTML" "$JSONLD_FAMILY_HTML" "$VC_FAMILY_HTML" "$DID_HTML" \
-  "$RULES_HTML" "$GRDDL_HTML" "$XMLFAM_HTML")
+  "$RULES_HTML" "$GRDDL_HTML" "$XSLTFAM_HTML" "$XMLCONFFAM_HTML" "$MATHMLFAM_HTML")
 GROUP1_HTML=$(group_section "group-w3c-rec" "W3C Recommendations" "$GROUP1_BODY")
 
 GROUP2_BODY=$(printf '%s\n' "$SHEX_HTML" "$HDT_HTML" "$RML_HTML")
 GROUP2_HTML=$(group_section "group-w3c-cg" "W3C Community Group / Notes / Submissions" "$GROUP2_BODY")
 
 GROUP3_BODY=$(printf '%s\n' \
-  "$SPARQLEXTRAS_HTML" "$JSONSCHEMA_HTML" "$SCHEMATRON_HTML")
+  "$GEOSPARQLFAM_HTML" "$SPARQLEXTRAS_HTML" "$JENATEXTFAM_HTML" "$JSONSCHEMA_HTML" "$SCHEMATRON_HTML")
 GROUP3_HTML=$(group_section "group-other-standards" "Other standards (OGC / ISO / independent)" "$GROUP3_BODY")
 
 GROUP4_BODY=$(printf '%s\n' "$RUNTIME_HTML" "$ENGINES_HTML")

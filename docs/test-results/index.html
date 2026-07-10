@@ -398,7 +398,7 @@
 <header>
   <div class="inner">
     <div class="rendered-pill" title="Rendered = when this page was last regenerated. Tests = when the *_results.log files inside the repository were last updated. Both UTC.">
-      <span class="row"><span class="label">Rendered</span><strong>2026-07-10 11:37 UTC</strong></span>
+      <span class="row"><span class="label">Rendered</span><strong>2026-07-10 11:39 UTC</strong></span>
       <span class="row"><span class="label">Tests</span><strong class="tests">2026-07-10 01:56 UTC</strong></span>
     </div>
     <h1>W3C test results</h1>
@@ -462,12 +462,12 @@
 <details class="family-node green" id="rdf-core">
   <summary>
     <span class="fam-name">RDF 1.1 core</span>
-    <span class="fam-score">1117/0/0 of 1117</span>
+    <span class="fam-score">1031/0/0 of 1031</span>
     <span class="gap-badge">1 gap</span>
     <span class="dot green"></span>
   </summary>
   <div class="family-body">
-    <p class="fam-headline green">1117 pass, 0 fail, 0 skip (of 1117) across N-Triples, Turtle, N-Quads, TriG, RDF/XML, RDF 1.1 Semantics (rdf-mt), and RDFC-1.0 canonicalization.</p>
+    <p class="fam-headline green">1031 pass, 0 fail, 0 skip (of 1031) across N-Triples, Turtle, N-Quads, TriG, RDF/XML, and RDF 1.1 Semantics (rdf-mt, which carries the RDFS entailment tests).</p>
     <div class="suites">
   <h3 class="rec-subhead"><a href="https://www.w3.org/TR/n-triples/" target="_blank" rel="noopener">RDF 1.1 N-Triples</a></h3>
       <details class="suite-node green">
@@ -517,6 +517,26 @@
           <p class="suite-numbers-full">39 pass, 0 fail, 0 skip (out of 39)</p>
         </div>
       </details>
+    </div>
+    
+    <div class="remaining">
+      <p class="remaining-title">Remaining work</p>
+      <ul>
+        <li>some very deeply nested RDF/XML documents can overflow the parser — a parser-depth gap, not a semantics gap</li>
+      </ul>
+    </div>
+  </div>
+</details>
+<details class="family-node green" id="rdfc10">
+  <summary>
+    <span class="fam-name">RDF Dataset Canonicalization (RDFC-1.0)</span>
+    <span class="fam-score">86/0/0 of 86</span>
+    
+    <span class="dot green"></span>
+  </summary>
+  <div class="family-body">
+    <p class="fam-headline green">86 pass, 0 fail, 0 skip (of 86) on the W3C rdf-canon suite.</p>
+    <div class="suites">
   <h3 class="rec-subhead"><a href="https://www.w3.org/TR/rdf-canon/" target="_blank" rel="noopener">RDF Dataset Canonicalization (RDFC-1.0)</a></h3>
 <details class="suite-node green">
     <summary><span class="suite-name">RDFC-1.0 (eval + Map + NegEval)</span><span class="suite-numbers">86/0/0 of 86</span><span class="dot green"></span></summary>
@@ -536,12 +556,7 @@
   </p>
     </div>
     
-    <div class="remaining">
-      <p class="remaining-title">Remaining work</p>
-      <ul>
-        <li>some very deeply nested RDF/XML documents can overflow the parser — a parser-depth gap, not a semantics gap</li>
-      </ul>
-    </div>
+    <p class="remaining-complete">Complete against the vendored suites.</p>
   </div>
 </details>
 <details class="family-node green" id="sparql11">
@@ -810,7 +825,7 @@
 </details>
 <details class="family-node amber" id="owl2">
   <summary>
-    <span class="fam-name">Reasoning: RDFS / OWL 2</span>
+    <span class="fam-name">OWL 2</span>
     <span class="fam-score">28/2/0 of 30</span>
     <span class="gap-badge">3 gaps</span>
     <span class="dot amber"></span>
@@ -1352,15 +1367,15 @@
     </div>
   </div>
 </details>
-<details class="family-node amber" id="xml-family">
+<details class="family-node amber" id="xslt10">
   <summary>
-    <span class="fam-name">XSLT 1.0 / XML 1.0 / MathML 3</span>
-    <span class="fam-score">1564/19/1171 of 2754</span>
+    <span class="fam-name">XSLT 1.0</span>
+    <span class="fam-score">69/19/0 of 88</span>
     
     <span class="dot amber"></span>
   </summary>
   <div class="family-body">
-    <p class="fam-headline amber">1564 pass, 19 fail, 1171 skip (out of 2754) across XSLT 1.0 transforms, XML 1.0 well-formedness conformance, and MathML 3 content evaluation.</p>
+    <p class="fam-headline amber">69 pass, 19 fail, 0 skip (out of 88) on XSLT 1.0 transform conformance.</p>
     <div class="suites">
       <details class="suite-node amber">
         <summary><span class="suite-name">XSLT 1.0</span><span class="suite-numbers">69/19/0 of 88</span><span class="dot amber"></span></summary>
@@ -1371,6 +1386,21 @@
           <p class="suite-diag"><a href="https://github.com/danbri/factoidal/blob/claude/main/.github/test-suites/xslt.yaml" target="_blank" rel="noopener">diagnosis: residual fails are the documented XSLT 1.0 constructs not yet in the transform engine — see the suite manifest</a></p>
         </div>
       </details>
+    </div>
+    
+
+  </div>
+</details>
+<details class="family-node green" id="xml10">
+  <summary>
+    <span class="fam-name">XML 1.0</span>
+    <span class="fam-score">1414/0/1171 of 2585</span>
+    
+    <span class="dot green"></span>
+  </summary>
+  <div class="family-body">
+    <p class="fam-headline green">1414 pass, 0 fail, 1171 skip (out of 2585) on XML 1.0 well-formedness conformance.</p>
+    <div class="suites">
       <details class="suite-node green">
         <summary><span class="suite-name">XML 1.0 conformance</span><span class="suite-numbers">1414/0/1171 of 2585</span><span class="dot green"></span></summary>
         <div class="suite-body">
@@ -1406,7 +1436,23 @@ XML_Wellformedness.is_valid_ncname (informational only, see module comment):
   start/continue characters, which is an RDF/XML-domain rule, not generic
   XML conformance; plain XML 1.0 legally allows ':' in Names).
 ========================================</pre>
-      </details>      <details class="suite-node green">
+      </details>
+    </div>
+    
+    <p class="remaining-complete">Complete against the vendored suites.</p>
+  </div>
+</details>
+<details class="family-node green" id="mathml3">
+  <summary>
+    <span class="fam-name">MathML 3</span>
+    <span class="fam-score">81/0/0 of 81</span>
+    
+    <span class="dot green"></span>
+  </summary>
+  <div class="family-body">
+    <p class="fam-headline green">81 pass, 0 fail, 0 skip (out of 81) on Content MathML evaluation.</p>
+    <div class="suites">
+      <details class="suite-node green">
         <summary><span class="suite-name">MathML 3 content</span><span class="suite-numbers">81/0/0 of 81</span><span class="dot green"></span></summary>
         <div class="suite-body">
           <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
@@ -1417,7 +1463,7 @@ XML_Wellformedness.is_valid_ncname (informational only, see module comment):
       </details>
     </div>
     
-
+    <p class="remaining-complete">Complete against the vendored suites.</p>
   </div>
 </details>
   </div>
@@ -1521,15 +1567,39 @@ XML_Wellformedness.is_valid_ncname (informational only, see module comment):
 <details class="group-section" id="group-other-standards" open>
   <summary class="group-summary">Other standards (OGC / ISO / independent)</summary>
   <div class="group-body">
-<details class="family-node green" id="sparql-extras">
+<details class="family-node green" id="geosparql">
   <summary>
-    <span class="fam-name">SPARQL extras</span>
-    <span class="fam-score">107/0/0 of 107</span>
+    <span class="fam-name">GeoSPARQL (OGC)</span>
+    <span class="fam-score">37/0/0 of 37</span>
     
     <span class="dot green"></span>
   </summary>
   <div class="family-body">
-    <p class="fam-headline green">Non-Recommendation SPARQL extensions and a duplicate presentation of the entailment-regimes score above; see each entry for its own numbers. Jena rdf:text has no vendored test data, so it is not scored.</p>
+    <p class="fam-headline green">37 pass, 0 fail, 0 skip (out of 37) on geof: topology + WKT unit fixtures.</p>
+    <div class="suites">
+      <details class="suite-node green">
+        <summary><span class="suite-name">GeoSPARQL (geof: topology + WKT)</span><span class="suite-numbers">37/0/0 of 37</span><span class="dot green"></span></summary>
+        <div class="suite-body">
+          <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+          <p class="suite-numbers-full">37 pass, 0 fail, 0 skip (out of 37)</p>
+          <p class="suite-prov">OGC standard (not a W3C Recommendation) &middot; Runner: <code>tests/unit/run-all.sh geosparql_v0_unit</code> &middot; local fixtures, not the OGC compliance suite</p>
+          
+        </div>
+      </details>
+    </div>
+    
+    <p class="remaining-complete">Complete against the vendored suites.</p>
+  </div>
+</details>
+<details class="family-node green" id="sparql-extras">
+  <summary>
+    <span class="fam-name">SPARQL extras: entailment regimes</span>
+    <span class="fam-score">70/0/0 of 70</span>
+    
+    <span class="dot green"></span>
+  </summary>
+  <div class="family-body">
+    <p class="fam-headline green">A duplicate presentation of the SPARQL 1.1 Entailment Regimes score, surfaced here for readers looking for reasoning-adjacent SPARQL capability.</p>
     <div class="suites">
       <details class="suite-node green">
         <summary><span class="suite-name">SPARQL 1.1 Entailment Regimes</span><span class="suite-numbers">70/0/0 of 70</span><span class="dot green"></span></summary>
@@ -1540,15 +1610,21 @@ XML_Wellformedness.is_valid_ncname (informational only, see module comment):
           
         </div>
       </details>
-      <details class="suite-node green">
-        <summary><span class="suite-name">GeoSPARQL (geof: topology + WKT)</span><span class="suite-numbers">37/0/0 of 37</span><span class="dot green"></span></summary>
-        <div class="suite-body">
-          <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
-          <p class="suite-numbers-full">37 pass, 0 fail, 0 skip (out of 37)</p>
-          <p class="suite-prov">OGC standard (not a W3C Recommendation) &middot; same measurement as the F&#42; engines family's GeoSPARQL row &middot; Runner: <code>tests/unit/run-all.sh geosparql_v0_unit</code></p>
-          
-        </div>
-      </details>
+    </div>
+    
+    <p class="remaining-complete">Complete against the vendored suites.</p>
+  </div>
+</details>
+<details class="family-node grey" id="jena-text">
+  <summary>
+    <span class="fam-name">SPARQL full-text search (jena-text convention)</span>
+    <span class="fam-score">not measured this run</span>
+    
+    <span class="dot grey"></span>
+  </summary>
+  <div class="family-body">
+    <p class="fam-headline grey">Implemented (text:query magic property); no vendorable conformance corpus exists, so no score is claimed.</p>
+    <div class="suites">
       <details class="suite-node grey">
         <summary><span class="suite-name">Jena rdf:text (full-text search)</span><span class="suite-numbers">no test data vendored</span><span class="dot grey"></span></summary>
         <div class="suite-body">
@@ -1560,7 +1636,7 @@ XML_Wellformedness.is_valid_ncname (informational only, see module comment):
       </details>
     </div>
     
-    <p class="remaining-complete">Complete against the vendored suites.</p>
+
   </div>
 </details>
 <details class="family-node green" id="json-schema">
@@ -1810,8 +1886,8 @@ vc-stage1:    113 pass, 1 fail, 6 skip (of 120) — present=1</pre>
 </main>
 
 <footer>
-  Generated <strong>2026-07-10 11:37 UTC</strong> from commit
-  <code><a href="https://github.com/danbri/factoidal/commit/b531b72b72f202d8703f867f8c9fa987a92474bd">b531b72b</a></code>
+  Generated <strong>2026-07-10 11:39 UTC</strong> from commit
+  <code><a href="https://github.com/danbri/factoidal/commit/b531b72b72f202d8703f867f8c9fa987a92474bd">b531b72</a></code>
   on branch <code>claude/main</code> — &ldquo;dashboard: four top-level groups — internal suites get their own section; JSON Schema and ISO Schematron split into separate family nodes&rdquo;.
   Re-run locally: <code>cd formal/fstar &amp;&amp; ./generate-report.sh --run</code>.
 </footer>
