@@ -1,0 +1,33 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head profile="http://www.w3.org/2003/g/data-view">
+  <title>HTML Input for Multiple Representations Test Case</title>
+  <link rel="transformation" href="multipleRepresentationsHtml.xsl"/>
+</head>
+<body>
+
+<h1>Multiple Represenations</h1>
+
+<p>This test case illustrates that transformations are associated
+with <em>representations</em> of information resources.</p>
+
+<p>This <a href="multipleRepresentations.html">HTML page</a> is an HTML
+represenation of a <a href="multipleRepresentation">information resource</a>.
+There is also an <a href="multipleRepresenations.svg">SVG represenation</a>
+of that information resource.  Transforms associated with the HTML
+representation should not be run on the svg representation unless they
+are specifically indicated to apply to that representation as well.</p>
+
+<p class="copyright">Copyright &#169; 2005 <a href="https://www.w3.org/">World Wide Web Consortium</a>, (<a
+href="http://www.csail.mit.edu/"><acronym title="Massachusetts Institute of
+Technology">M.I.T.</acronym></a>, <a
+href="http://www.ercim.org/"><acronym
+title="European Research Consortium for Informatics and Mathematics">ERCIM</acronym></a>, <a
+href="http://www.keio.ac.jp/">Keio University</a>). All Rights
+    Reserved. http://www.w3.org/Consortium/Legal/. W3C <a href="https://www.w3.org/Consortium/Legal/copyright-software">software licensing</a> rules apply.</p>
+
+<p><small>$Revision: 1.6 $</small></p>
+
+</body>
+</html>
+

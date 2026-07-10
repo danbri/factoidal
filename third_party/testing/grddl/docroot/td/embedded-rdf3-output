@@ -1,0 +1,9 @@
+<!--
+Edge-case test for embeddedRDF transform.
+-->
+
+<r:RDF 
+   xmlns:eg="http://example.org/one#"
+   xmlns:r="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+   <r:Description r:about="" eg:value="one"/>
+</r:RDF>

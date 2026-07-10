@@ -1,0 +1,10 @@
+<loop xmlns="http://www.w3.org/2001/sw/grddl-wg/td/loop-ns-b"
+   xmlns:data-view="http://www.w3.org/2003/g/data-view#" 
+   data-view:transformation="http://www.w3.org/2003/g/embeddedRDF.xsl">
+      <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+	<rdf:Description rdf:about="">
+	  <data-view:namespaceTransformation
+	      rdf:resource="sq1t.xsl" />
+	</rdf:Description>
+      </rdf:RDF>
+</loop>

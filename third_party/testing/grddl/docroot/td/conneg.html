@@ -1,0 +1,32 @@
+<?xml version="1.0"?>
+<?php if(! isset($chosenlang)) {setcookie("lang", "en", time()+60*60*24*30, "/"); $chosenlang="en";} ?>
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:xi="http://www.w3.org/2001/XInclude" 
+xmlns:grddl="http://www.w3.org/2003/g/data-view#" 
+grddl:transformation="glean_title.xsl" lang="en" 
+xml:lang="en">
+<head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+<title>Are You Experienced?</title>
+<link rel="alternate" href="https://musicbrainz.org/mm-2.1/album/6b050dcf-7ab1-456d-9e1b-c3c41c18eed2" />
+</head>
+<body>
+
+<h1>Are You Experienced?</h1>
+
+
+<address xmlns:html="http://www.w3.org/1999/xhtml">by <html:a href="http://musicbrainz.org/mm-2.1/artist/33b3c323-77c2-417c-a5b4-af7e6a111cc9" rel="maker">The Jimi Hendrix Experience</html:a> <html:br></html:br>
+</address>
+
+<blockquote>
+<p>Test for content negotiation concerning language.</p>
+
+<p>This document is served as language "en" and has an English title.</p>
+
+<p>This document has an attribute on the root element
+that refers to a GRDDL transformations:
+<a href="glean_title.xsl">glean_title.xsl</a>.</p>
+
+
+</blockquote>
+
+</body>
+</html>

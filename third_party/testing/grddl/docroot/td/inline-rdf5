@@ -1,0 +1,15 @@
+<!--
+Simple test for embeddedRDF transform with xml:base
+-->
+
+<embedded  
+   xml:base="http://example.org/"
+   xmlns:data-view="http://www.w3.org/2003/g/data-view#" 
+   data-view:transformation="http://www.w3.org/2003/g/inline-rdf.xsl">
+    <a>
+      <b/>
+      <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+	    <rdf:Description rdf:about="" rdf:value="one"/>
+      </rdf:RDF>
+    </a>
+</embedded>

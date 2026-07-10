@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<html xmlns="http://www.w3.org/1999/xhtml"
+   xmlns:g="http://www.w3.org/2003/g/data-view#"
+   g:transformation="two" >
+  <head profile="http://www.w3.org/2003/g/data-view">
+    <title>HTML Doc with grddl:transformation Attribute</title>
+  </head>
+  
+  <body>
+    <h1>HTML Doc with grddl:transformation Attribute</h1>
+
+    
+    <p>GRDDL results for this entry come both from this inline 
+      <a rel="GRDDL
+      transformation" href="one">one</a>,
+      and the transformation on the root element.</p>
+  </body>
+</html>

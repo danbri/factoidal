@@ -1,0 +1,10 @@
+<r:RDF
+    xmlns:r="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+    xmlns:eg="http://example.org/two#"
+    xmlns:data-view="http://www.w3.org/2003/g/data-view#"
+    xmlns:j.0="http://example.org/one#">
+  <r:Description r:about="">
+    <eg:value xml:lang="en">two</eg:value>
+    <j.0:value  xml:lang="en-US">one</j.0:value>
+  </r:Description>
+</r:RDF>

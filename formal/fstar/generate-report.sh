@@ -38,6 +38,7 @@ OWL_EL_LOG="$OCAML_DIR/owl_profile_el_results.log"
 OWL_QL_LOG="$OCAML_DIR/owl_profile_ql_results.log"
 OWL_SEMDL_LOG="$OCAML_DIR/owl_semantics_direct_results.log"
 RDFC10_LOG="$OCAML_DIR/rdfc10_results.log"
+GRDDL_LOG="$OCAML_DIR/grddl_results.log"
 # Wave (2026-07-05): SHACL / ShEx / JSON-LD / RML / RIF Core / VC —
 # same "committed binary, no toolchain needed" pattern as owl_runner /
 # rdfc10_runner above. Log paths match each suite's
@@ -89,6 +90,7 @@ case "$(uname -s)-$(uname -m)" in
     RUNNER="$SCRIPT_DIR/../../bin/darwin-arm64/w3c_runner"
     OWL_RUNNER="$SCRIPT_DIR/../../bin/darwin-arm64/owl_runner"
     RDFC10_RUNNER="$SCRIPT_DIR/../../bin/darwin-arm64/rdfc10_runner"
+    GRDDL_RUNNER="$SCRIPT_DIR/../../bin/darwin-arm64/grddl_runner"
     SHACL_RUNNER="$SCRIPT_DIR/../../bin/darwin-arm64/shacl_runner"
     SHEX_RUNNER="$SCRIPT_DIR/../../bin/darwin-arm64/shex_runner"
     JSONLD_RUNNER="$SCRIPT_DIR/../../bin/darwin-arm64/jsonld_runner"
@@ -108,6 +110,7 @@ case "$(uname -s)-$(uname -m)" in
     RUNNER="$SCRIPT_DIR/../../bin/linux-x86_64/w3c_runner"
     OWL_RUNNER="$SCRIPT_DIR/../../bin/linux-x86_64/owl_runner"
     RDFC10_RUNNER="$SCRIPT_DIR/../../bin/linux-x86_64/rdfc10_runner"
+    GRDDL_RUNNER="$SCRIPT_DIR/../../bin/linux-x86_64/grddl_runner"
     SHACL_RUNNER="$SCRIPT_DIR/../../bin/linux-x86_64/shacl_runner"
     SHEX_RUNNER="$SCRIPT_DIR/../../bin/linux-x86_64/shex_runner"
     JSONLD_RUNNER="$SCRIPT_DIR/../../bin/linux-x86_64/jsonld_runner"
@@ -127,6 +130,7 @@ case "$(uname -s)-$(uname -m)" in
     RUNNER="$OCAML_DIR/w3c_runner"
     OWL_RUNNER="$OCAML_DIR/owl_runner"
     RDFC10_RUNNER="$OCAML_DIR/rdfc10_runner"
+    GRDDL_RUNNER="$OCAML_DIR/grddl_runner"
     SHACL_RUNNER="$OCAML_DIR/shacl_runner"
     SHEX_RUNNER="$OCAML_DIR/shex_runner"
     JSONLD_RUNNER="$OCAML_DIR/jsonld_runner"
@@ -260,6 +264,7 @@ if [ "$1" = "--run" ]; then
   run_optional_suite "CSVW csv2rdf suite"            "$CSVW_RUNNER"       "$CSVW_LOG"        180
   run_optional_suite "DID did:key suite"             "$DID_RUNNER"        "$DID_LOG"          60
   run_optional_suite "JSON-LD 1.1 fromRdf suite"     "$JSONLD_FROMRDF_RUNNER" "$JSONLD_FROMRDF_LOG" 90
+  run_optional_suite "GRDDL Stage 1 (local subset)"  "$GRDDL_RUNNER"      "$GRDDL_LOG"       120
 
   # hdt-parity is a committed shell script, not a runner binary; it needs
   # the rml-core submodule ground-truth .nt. Guard on both so an
@@ -520,6 +525,7 @@ scrape_last_summary SHEX         "$SHEX_LOG"
 scrape_last_summary JSONLD       "$JSONLD_LOG"
 scrape_last_summary RML          "$RML_LOG"
 scrape_last_summary VC           "$VC_LOG"
+scrape_last_summary GRDDL        "$GRDDL_LOG"
 # RIF Core: rif_runner prints THREE summary lines in one log (Part 1 —
 # the 4 vendored SPARQL-manifest cases; Part 2 — the 46-test W3C
 # Core_v1.22 corpus walk; and a combined total) — anchor each explicitly
@@ -759,6 +765,7 @@ CSV="$OUTPUT_DIR/latest.csv"
   emit_csv_row_if_present CSVW2RDF          csvw        csvw-csv2rdf
   emit_csv_row_if_present DIDKEY            did         did-key
   emit_csv_row_if_present JSONLD_FROMRDF    jsonld      jsonld-fromrdf
+  emit_csv_row_if_present GRDDL             grddl       grddl-stage1-local
   emit_csv_row_if_present HDT_PARITY        hdt         hdt-stage4-parity
   emit_csv_row_if_present HUB               js          hub-browser-bundle
   emit_csv_row_if_present NPM               js          npm-package
@@ -893,6 +900,7 @@ emit_json_suites () {
   emit_json_suite_obj "csvw_csv2rdf"      CSVW2RDF
   emit_json_suite_obj "did_key"           DIDKEY
   emit_json_suite_obj "jsonld_fromrdf"    JSONLD_FROMRDF
+  emit_json_suite_obj "grddl_stage1"      GRDDL
   emit_json_suite_obj "hdt_stage4_parity" HDT_PARITY
   emit_json_suite_obj "hub_browser_bundle" HUB
   emit_json_suite_obj "npm_package"       NPM

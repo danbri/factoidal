@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rdf:RDF
+   xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+   xmlns:v="http://www.w3.org/2006/vcard/ns#"
+>
+  <rdf:Description rdf:nodeID="EsAVHkUx6">
+    <v:fax rdf:resource="tel:+1-111-111-1234"/>
+    <rdf:type rdf:resource="http://www.w3.org/2006/vcard/ns#VCard"/>
+    <v:fn>
+    Cory B. Casanave</v:fn>
+    <v:adr rdf:nodeID="EsAVHkUx9"/>
+    <v:org rdf:nodeID="EsAVHkUx7"/>
+    <v:title>President &amp; CEO</v:title>
+    <v:n rdf:nodeID="EsAVHkUx8"/>
+    <v:email rdf:resource="mailto:cory@example"/>
+    <v:tel rdf:resource="tel:+1-123-456-7890"/>
+    <v:tel rdf:resource="tel:+1-111-555-7890"/>
+  </rdf:Description>
+  <rdf:Description rdf:nodeID="EsAVHkUx8">
+    <v:additional-name>B.</v:additional-name>
+    <v:given-name>Cory</v:given-name>
+    <rdf:type rdf:resource="http://www.w3.org/2006/vcard/ns#Name"/>
+    <v:family-name>Casanave</v:family-name>
+  </rdf:Description>
+  <rdf:Description rdf:nodeID="EsAVHkUx9">
+    <v:country-name>USA</v:country-name>
+    <v:street-address>8605 Westwood Center Drive</v:street-address>
+    <rdf:type rdf:resource="http://www.w3.org/2006/vcard/ns#Address"/>
+    <v:region>VA</v:region>
+    <v:postal-code>22182</v:postal-code>
+    <v:extended-address>Suite 505</v:extended-address>
+    <v:locality>Vienna</v:locality>
+  </rdf:Description>
+  <rdf:Description rdf:nodeID="EsAVHkUx7">
+    <v:organization-name>Data Access Technologies</v:organization-name>
+    <rdf:type rdf:resource="http://www.w3.org/2006/vcard/ns#Organization"/>
+  </rdf:Description>
+</rdf:RDF>
+

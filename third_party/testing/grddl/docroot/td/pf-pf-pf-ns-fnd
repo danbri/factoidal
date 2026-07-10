@@ -1,0 +1,95 @@
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+       "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head profile='pf-pf-ns-fnd'>
+  <title>Layering Test Profile</title>
+</head>
+<body>
+<p>
+This is an HTML document, whose 
+<a href='pf-pf-ns-fnd'>profile</a> is set
+via a server side include, to be
+<a href='pf-pf-ns-fnd'>
+pf-pf-ns-fnd</a>.
+It is intended itself to be used as a profile or
+namespace document.
+Rewrite rules in the .htaccess file set the
+environment variable <code>arg</code>,
+(i.e. <code>REDIRECT_arg</code>) which is used
+as the profile.
+REDIRECT_SCRIPT_URL=/2001/sw/grddl-wg/td/pf-pf-pf-ns-fnd
+REDIRECT_SCRIPT_URI=https://www.w3.org/2001/sw/grddl-wg/td/pf-pf-pf-ns-fnd
+REDIRECT_PROT=https
+REDIRECT__proto_=https
+REDIRECT_arg=pf-pf-ns-fnd
+REDIRECT_HTTPS=on
+REDIRECT_STATUS=200
+SCRIPT_URL=/2001/sw/grddl-wg/td/pf-pf-pf-ns-fnd
+SCRIPT_URI=https://www.w3.org/2001/sw/grddl-wg/td/pf-pf-pf-ns-fnd
+PROT=https
+_proto_=https
+HTTPS=on
+HTTP_HOST=www.w3.org
+HTTP_SEC_FETCH_USER=?1
+HTTP_SEC_FETCH_DEST=document
+HTTP_PRIORITY=u=0, i
+HTTP_CF_RAY=a16d4bb41ef5265c-IAD
+HTTP_ACCEPT_ENCODING=gzip, br
+HTTP_PRAGMA=no-cache
+HTTP_CACHE_CONTROL=no-cache
+HTTP_ACCEPT=text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7
+HTTP_USER_AGENT=amazon-Quick-on-behalf-of-9aa8ce28
+HTTP_SEC_CH_UA=&quot;Chromium&quot;;v=&quot;148&quot;, &quot;HeadlessChrome&quot;;v=&quot;148&quot;, &quot;Not/A)Brand&quot;;v=&quot;99&quot;
+HTTP_SEC_CH_UA_ARCH=&quot;x86&quot;
+HTTP_SEC_CH_UA_BITNESS=&quot;64&quot;
+HTTP_SEC_CH_UA_FULL_VERSION=&quot;148.0.7778.258&quot;
+HTTP_SEC_CH_UA_FULL_VERSION_LIST=&quot;Chromium&quot;;v=&quot;148.0.7778.258&quot;, &quot;HeadlessChrome&quot;;v=&quot;148.0.7778.258&quot;, &quot;Not/A)Brand&quot;;v=&quot;99.0.0.0&quot;
+HTTP_SEC_CH_UA_MOBILE=?0
+HTTP_SEC_CH_UA_MODEL=&quot;&quot;
+HTTP_SEC_CH_UA_PLATFORM=&quot;Windows&quot;
+HTTP_SEC_CH_UA_PLATFORM_VERSION=&quot;&quot;
+HTTP_SEC_FETCH_SITE=none
+HTTP_SEC_FETCH_MODE=navigate
+HTTP_CDN_LOOP=cloudflare; loops=1
+HTTP_CF_CONNECTING_IP=52.23.63.231
+HTTP_CF_IPCOUNTRY=US
+HTTP_CF_VISITOR={&quot;scheme&quot;:&quot;https&quot;}
+HTTP_X_ASN=14618
+HTTP_COOKIE=Able-Player={%22preferences%22:{%22prefAltKey%22:1%2C%22prefCtrlKey%22:1%2C%22prefShiftKey%22:0%2C%22prefTranscript%22:0%2C%22prefHighlight%22:1%2C%22prefAutoScrollTranscript%22:1%2C%22prefTabbable%22:0%2C%22prefCaptions%22:1%2C%22prefCaptionsPosition%22:%22below%22%2C%22prefCaptionsFont%22:%22sans-serif%22%2C%22prefCaptionsSize%22:%22100%25%22%2C%22prefCaptionsColor%22:%22white%22%2C%22prefCaptionsBGColor%22:%22black%22%2C%22prefCaptionsOpacity%22:%22100%25%22%2C%22prefDesc%22:0%2C%22prefDescMethod%22:%22video%22%2C%22prefDescVoice%22:null%2C%22prefDescPitch%22:1%2C%22prefDescRate%22:1%2C%22prefDescVolume%22:1%2C%22prefDescPause%22:1%2C%22prefDescVisible%22:0%2C%22prefSign%22:0}%2C%22sign%22:{}%2C%22transcript%22:{}%2C%22voices%22:[]}; __cf_bm=ZxqTQkNqfCaOiK0shWnyktZvnLmGHNM4c7UaQsF4aVs-1783326935.9587572-1.0.1.1-3orSKAp5SyyjczDY1QnwGzvsLLKVLM4P0iMb8RXbRghlBannCla5pAOE3SluRut8TqFWbe5RY7wu1htc9Ktx_wYMYfGFVzurzodzKUufQDEwYbgThOIvQkXzcVT4R3T8
+HTTP_X_SSL=1
+HTTP_X_FORWARDED_PROTO=https
+HTTP_X_FORWARDED_PORT=443
+HTTP_X_REQUEST_ID=a16d4bb41ef5265c
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+SERVER_SIGNATURE=
+SERVER_SOFTWARE=Apache/2
+SERVER_NAME=www.w3.org
+SERVER_ADDR=10.0.1.113
+SERVER_PORT=443
+REMOTE_ADDR=52.23.63.231
+DOCUMENT_ROOT=/afs/w3.org/pub/WWW
+REQUEST_SCHEME=https
+CONTEXT_PREFIX=
+CONTEXT_DOCUMENT_ROOT=/afs/w3.org/pub/WWW
+SERVER_ADMIN=webreq@w3.org
+SCRIPT_FILENAME=/afs/w3.org/pub/WWW/2001/sw/grddl-wg/td/pf.shtml
+REMOTE_PORT=46382
+REDIRECT_URL=/2001/sw/grddl-wg/td/pf-pf-pf-ns-fnd
+GATEWAY_INTERFACE=CGI/1.1
+SERVER_PROTOCOL=HTTP/1.1
+REQUEST_METHOD=GET
+QUERY_STRING=
+REQUEST_URI=/2001/sw/grddl-wg/td/pf-pf-pf-ns-fnd
+SCRIPT_NAME=/2001/sw/grddl-wg/td/pf.shtml
+DATE_LOCAL=Monday, 06-Jul-2026 08:38:52 UTC
+DATE_GMT=Monday, 06-Jul-2026 08:38:52 GMT
+LAST_MODIFIED=Tuesday, 27-Mar-2007 14:36:15 UTC
+DOCUMENT_URI=/2001/sw/grddl-wg/td/pf.shtml
+DOCUMENT_ARGS=
+USER_NAME=mirror
+DOCUMENT_NAME=pf.shtml
+
+</p>
+</body>
+</html>

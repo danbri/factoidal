@@ -1,0 +1,40 @@
+<?xml version="1.0"?>
+<r:RDF xmlns:r="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+  <r:Description r:about="projects.xml">
+    <dc:title xmlns:dc="http://purl.org/dc/elements/1.1/">A few Semantic Web Tools</dc:title>
+  </r:Description>
+  <r:Property r:about="http://purl.org/dc/elements/1.1/title">
+    <s:label xmlns:s="http://www.w3.org/2000/01/rdf-schema#">title</s:label>
+  </r:Property>
+  <r:Property r:about="http://purl.org/dc/elements/1.1/identifier">
+    <s:label xmlns:s="http://www.w3.org/2000/01/rdf-schema#">identifier</s:label>
+  </r:Property>
+  <r:Property r:about="http://purl.org/dc/elements/1.1/description">
+    <s:label xmlns:s="http://www.w3.org/2000/01/rdf-schema#">description</s:label>
+  </r:Property>
+  <r:Description>
+    <dc:title xmlns:dc="http://purl.org/dc/elements/1.1/">AutoSemantix</dc:title>
+    <dc:identifier xmlns:dc="http://purl.org/dc/elements/1.1/">http://autosemantix.sourceforge.net/</dc:identifier>
+    <dc:description xmlns:dc="http://purl.org/dc/elements/1.1/">AutoSemantix is a round-trip code generation tool designed to streamline the creation of Semantic Web applications for the Java platform</dc:description>
+  </r:Description>
+  <r:Description>
+    <dc:title xmlns:dc="http://purl.org/dc/elements/1.1/">BBN OWL Validator</dc:title>
+    <dc:identifier xmlns:dc="http://purl.org/dc/elements/1.1/">http://owl.bbn.com/validator/</dc:identifier>
+    <dc:description xmlns:dc="http://purl.org/dc/elements/1.1/">BBN OWL Validator</dc:description>
+  </r:Description>
+  <r:Description>
+    <dc:title xmlns:dc="http://purl.org/dc/elements/1.1/">Beagle++</dc:title>
+    <dc:identifier xmlns:dc="http://purl.org/dc/elements/1.1/">http://beagle.kbs.uni-hannover.de/index.html</dc:identifier>
+    <dc:description xmlns:dc="http://purl.org/dc/elements/1.1/">Beagle++ is an extensions to the Beagle search tool for the personal information space. Beagle++ now makes that search semantic, moving towards a visious of the Semantic Desktop</dc:description>
+  </r:Description>
+  <r:Description>
+    <dc:title xmlns:dc="http://purl.org/dc/elements/1.1/">Bibster</dc:title>
+    <dc:identifier xmlns:dc="http://purl.org/dc/elements/1.1/">http://bibster.semanticweb.org/</dc:identifier>
+    <dc:description xmlns:dc="http://purl.org/dc/elements/1.1/">A semantics-based bibliographic peer-to-peer system</dc:description>
+  </r:Description>
+  <r:Description>
+    <dc:title xmlns:dc="http://purl.org/dc/elements/1.1/">Bossam</dc:title>
+    <dc:identifier xmlns:dc="http://purl.org/dc/elements/1.1/">http://mknows.etri.re.kr/bossam/</dc:identifier>
+    <dc:description xmlns:dc="http://purl.org/dc/elements/1.1/">Bossam, a rule-based OWL reasoner (free, well-documented, closed-source)</dc:description>
+  </r:Description>
+</r:RDF>

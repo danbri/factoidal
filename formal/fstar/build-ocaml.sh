@@ -404,6 +404,7 @@ if [[ "$STEP" == "all" || "$STEP" == "extract" ]]; then
     RDF.Turtle.Serialize.fst
     Parser.NQuads.fst Parser.TriG.fst
     Parser.XML.fst XML.Wellformedness.fst XML.Namespaces.fst Parser.XPath.fst XPath.Eval.fst XSLT.Transform.fst Schematron.Validate.fst Parser.RDFXML.fst Parser.RIFXML.fst
+    GRDDL.Discovery.fst
     Math.Expr.fst Math.Subst.fst Math.Diff.fst Math.Simplify.fst Math.Matrix.fst MathML.Content.fst Math.Series.fst MathML.Present.fst XForms.Bind.fst
     RIF.Core.Builtins.fst RIF.Core.Conformance.fst
     RIF.Core.Eval.fst RIF.Core.Tests.fst
@@ -834,6 +835,7 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
     RDF_Canonical.ml \
     RDF_Canonical_Manifest.ml \
     RDF_GraphIsomorphism.ml \
+    GRDDL_Discovery.ml \
     service_wrap_hook.ml \
     SPARQL_FullText.ml SPARQL11_Algebra.ml XSD_Datatypes.ml XForms_Bind.ml RDF_Pretty.ml OWL_QueryRewrite.ml OWL_QueryEval.ml OWL_Tests_Manifest.ml RIF_Core_Syntax.ml Parser_RIFXML.ml RIF_Core_Translation.ml RIF_Core_Builtins.ml RIF_Core_Conformance.ml RIF_Core_Eval.ml RIF_Core_Tests.ml SPARQL11_Parser.ml SHACL_Validation.ml \
     ShEx_Schema.ml Parser_ShExC.ml ShEx_SchemaEq.ml ShEx_Validation.ml \
@@ -957,6 +959,7 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
     "$BINDIR/factoidal-http"
     "$BINDIR/owl_runner"
     "$BINDIR/rdfc10_runner"
+    "$BINDIR/grddl_runner"
     "$BINDIR/jsonld_runner"
     "$BINDIR/jsonld_fromrdf_runner"
     "$BINDIR/shacl_runner"
@@ -977,6 +980,7 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
     ../../../bin/owl-runner/owl_runner.ml
     ../../../bin/shacl-runner/shacl_runner.ml
     ../../../bin/rdfc10-runner/rdfc10_runner.ml
+    ../../../bin/grddl-runner/grddl_runner.ml
     ../../../bin/jsonld-runner/jsonld_runner.ml
     ../../../bin/jsonld-fromrdf-runner/jsonld_fromrdf_runner.ml
     ../../../bin/rml-runner/rml_runner.ml
@@ -1111,6 +1115,36 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
       exit 1
     fi
     echo "  Built: bin/${PLATFORM}/rdfc10_runner ($(wc -c < "$BINDIR/rdfc10_runner") bytes)"
+
+    # grddl_runner — GRDDL Stage 1 (local subset, no network) runner.
+    # Reads third_party/testing/grddl/grddl-tests-normative.rdf (RDF/XML)
+    # via Parser_RDFXML, discovers same-document transformation refs with
+    # the F*-extracted GRDDL_Discovery (paths a+b), applies XSLT_Transform
+    # + re-parses via Parser_RDFXML, and compares result graphs with
+    # GRDDL_Discovery.graphs_isomorphic (RDFC-1.0 canonicalization). All
+    # discovery/transform/compare logic is in F*
+    # (formal/fstar/GRDDL.Discovery.fst); the runner is I/O glue only
+    # (rule #11). See docs/designissues/2026-07-08-grddl-scoping.md.
+    GRDDL_RC=0
+    run_with_heartbeat "ocamlopt grddl_runner" "_ocamlopt_grddl_runner.log" -- \
+      ocamlfind ocamlopt -package fstar.lib,str,zarith,sha,digestif.c,unix,uucp -linkpkg -w -8-14-26 \
+      $STATIC_FLAGS \
+      $COMMON_MODULES \
+      $PARQUET_NATIVE_STUBS \
+      $HACL_NATIVE_STUBS \
+      ../../../bin/grddl-runner/grddl_runner.ml \
+      -o "$BINDIR/grddl_runner" || GRDDL_RC=$?
+    cat _ocamlopt_grddl_runner.log
+    if [[ "$GRDDL_RC" -ne 0 ]]; then
+      echo "  ERROR: grddl_runner build failed (ocamlopt rc=$GRDDL_RC)" >&2
+      echo "  See full log above. Build aborted." >&2
+      exit "$GRDDL_RC"
+    fi
+    if [[ ! -x "$BINDIR/grddl_runner" ]]; then
+      echo "  ERROR: grddl_runner ocamlopt returned 0 but $BINDIR/grddl_runner is missing or not executable" >&2
+      exit 1
+    fi
+    echo "  Built: bin/${PLATFORM}/grddl_runner ($(wc -c < "$BINDIR/grddl_runner") bytes)"
 
     # jsonld_runner — JSON-LD 1.1 toRdf manifest runner (Phase 2 of
     # the JSON-LD program). Reads
@@ -1547,6 +1581,7 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
   ln -sf "../../../bin/${PLATFORM}/factoidal-http" factoidal-http
   ln -sf "../../../bin/${PLATFORM}/owl_runner" owl_runner
   ln -sf "../../../bin/${PLATFORM}/rdfc10_runner" rdfc10_runner
+  ln -sf "../../../bin/${PLATFORM}/grddl_runner" grddl_runner
   if [[ -x "$BINDIR/parquet_probe" ]]; then
     ln -sf "../../../bin/${PLATFORM}/parquet_probe" parquet_probe
   fi
@@ -1655,6 +1690,7 @@ if [[ "$STEP" == "all" || "$STEP" == "js" ]]; then
     RDF_Canonical.ml
     RDF_Canonical_Manifest.ml
     RDF_GraphIsomorphism.ml
+    GRDDL_Discovery.ml
     service_wrap_hook.ml
     SPARQL_FullText.ml SPARQL11_Algebra.ml XSD_Datatypes.ml XForms_Bind.ml RDF_Pretty.ml OWL_QueryRewrite.ml OWL_QueryEval.ml OWL_Tests_Manifest.ml RIF_Core_Syntax.ml Parser_RIFXML.ml RIF_Core_Translation.ml RIF_Core_Builtins.ml RIF_Core_Conformance.ml RIF_Core_Eval.ml RIF_Core_Tests.ml SPARQL11_Parser.ml SHACL_Validation.ml
     ShEx_Schema.ml Parser_ShExC.ml ShEx_SchemaEq.ml ShEx_Validation.ml

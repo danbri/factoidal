@@ -1,0 +1,8 @@
+<!--
+Harder test for embeddedRDF transform.
+Two blocks of RDF.
+-->
+<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+   <rdf:Description xmlns:eg="http://example.org/one#" eg:value="one"/>
+   <rdf:Description xmlns:eg="http://example.org/two#" eg:value="two"/>
+</rdf:RDF>

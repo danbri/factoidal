@@ -1,0 +1,18 @@
+<RDF
+    xmlns="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+    xmlns:eg="http://example.org/two#"
+    xmlns:data-view="http://www.w3.org/2003/g/data-view#"
+    xmlns:j.0="http://example.org/one#">
+  <Description 
+  xml:base="http://www.example.org/a"
+  xmlns:j.cook.up="http://www.w3.org/1999/02/22-rdf-syntax-ns#" 
+  j.cook.up:about="">
+    <j.0:value>one</j.0:value>
+  </Description>
+  <Description 
+  xmlns:j.cook.up="http://www.w3.org/1999/02/22-rdf-syntax-ns#" 
+  j.cook.up:about=""
+  xml:base="http://www.example.org/b">
+    <eg:value>two</eg:value>
+  </Description>
+</RDF>

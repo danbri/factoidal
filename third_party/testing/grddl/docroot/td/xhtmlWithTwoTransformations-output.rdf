@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+  <rdf:Description rdf:about="">
+    <ns0:title xmlns:ns0="http://purl.org/dc/elements/1.1/">XHTML document testing the GRDDL profile used along with other profiles</ns0:title>
+  </rdf:Description>
+  <rdf:Description rdf:nodeID="r1107341391r1">
+    <ns0:homepage xmlns:ns0="http://xmlns.com/foaf/0.1/" rdf:resource="http://www.w3.org/People/Dom/"/>
+  </rdf:Description>
+  <rdf:Description rdf:about="">
+    <ns0:creator xmlns:ns0="http://purl.org/dc/elements/1.1/" rdf:nodeID="r1107341391r1"/>
+  </rdf:Description>
+</rdf:RDF>

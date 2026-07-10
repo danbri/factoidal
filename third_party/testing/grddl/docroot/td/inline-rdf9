@@ -1,0 +1,20 @@
+<!--
+Harder test for embeddedRDF transform with two different xml:lang's
+Two blocks of RDF.
+-->
+
+<embedded  
+   xmlns:eg="http://example.org/two#"
+   xmlns:r="http://www.w3.org/1999/02/22-rdf-syntax-ns#" 
+   xmlns:data-view="http://www.w3.org/2003/g/data-view#" 
+   data-view:transformation="http://www.w3.org/2003/g/inline-rdf.xsl">
+    <a xmlns:eg="http://example.org/one#">
+      <b/>
+      <r:RDF xml:lang="en-US">
+	    <r:Description r:about="" eg:value="one"/>
+      </r:RDF>
+    </a>
+    <RDF xmlns="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+	    <Description r:about="" eg:value="two"  xml:lang="en"/>
+    </RDF>
+</embedded>

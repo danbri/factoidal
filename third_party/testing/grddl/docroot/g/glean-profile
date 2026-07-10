@@ -1,0 +1,128 @@
+<?xml-stylesheet href="http://www.w3.org/StyleSheets/base.css" type="text/css"?>
+<?xml-stylesheet href="http://www.w3.org/2002/02/style-xsl.css" type="text/css"?>
+
+
+<xsl:stylesheet version="1.0"
+  xmlns:xsl="http://www.w3.org/1999/XSL/Transform"
+  xmlns:html="http://www.w3.org/1999/xhtml"
+  xmlns:rdf  ="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+  xmlns:dataview="http://www.w3.org/2003/g/data-view#"
+  exclude-result-prefixes="html">
+
+ 
+  <xsl:output method="xml" encoding="utf-8" indent="yes"/>
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <link rel="stylesheet" href="http://www.w3.org/StyleSheets/base"/>
+    <title>Extracting GRDDL Profile Transformers from XHTML Profile documents</title>
+  </head>
+  <body>
+    <div class='head'><a href="/"><img src="/Icons/w3c_home" alt="W3C"/></a></div>
+    <h1>glean-profile.xsl &#8212; Extracting GRDDL Profile Transformers</h1>
+
+
+<p>This is a <a href="http://www.w3.org/TR/grddl">GRDDL</a>
+transformation that produces a list of 
+<a href="http://www.w3.org/TR/grddl/#profile-bind">GRDDL profile transformations</a> 
+from XHTML. 
+Each link (<code>link</code> or 
+<code>a</code>) with a <code>rel</code> 
+attribute whose value includes 
+<code>profileTransformation</code> is 
+used to identify a transformation
+associated to the 
+profile identified by the URI of the given document.
+</p>
+
+<p>In the following example, written in XHTML, the <code>a</code>
+element is a link by HTML conventions and profile transformation
+assertion by GRDDL convention:</p>
+
+<pre class="example">&lt;!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN"
+       "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"&gt;
+&lt;html xmlns="http://www.w3.org/1999/xhtml"&gt;
+ &lt;head profile="http://www.w3.org/2003/g/data-view"&gt;
+  &lt;link rel="transformation"
+    href="http://www.w3.org/2003/g/glean-profile" />
+...
+&lt;p&gt;This is a profile transformation link: 
+&lt;a rel="profileTransformation"
+   href="http://example.org/BIZ/calendar/extract-rdf.xsl"&gt;extract-rdf.xsl&lt;/a&gt;
+</pre>
+
+<p>
+Some profiles may be usable with multiple IRIs, e.g.
+if there is a redirect.
+For such cases additional profile IRIs can be specified with
+the idiom:
+</p>
+<pre>
+&lt;a rel="profile"
+   href="http://example.org/alternate-URL"&gt;alternate-URL&lt;/a&gt;
+</pre>
+
+<p>
+In addition to those produced using the base-URI of the document,
+additional <code>profileTransformation</code> triples are produced for every pair
+of <code>profile</code> and <code>profileTransformation</code> 
+links in the document.
+</p>
+
+<p>This is part of the <a href="http://www.w3.org/2001/sw/grddl-wg/library">standard library</a> of GRDDL transforms.</p>
+
+<p>
+This transform is copyright, 2005-2007, W3C.
+It is available for use under the terms of the
+<a href="http://www.w3.org/Consortium/Legal/2002/copyright-software-20021231">W3C Software License</a>
+</p>
+
+<p>
+<small>$Id: glean-profile.xsl,v 1.6 2007/06/14 09:02:13 jcarroll Exp $</small>
+</p>
+  </body>
+</html>
+
+<xsl:template match="/">
+  <rdf:RDF>
+  <rdf:Description rdf:about="">
+    <xsl:call-template name="triples"/>
+  </rdf:Description>
+    <xsl:for-each select="/html:html//html:*//
+               html:* 
+               [self::html:a or self::html:link]    
+               [@href and
+                 (  normalize-space(@rel)='profile'
+                 or starts-with(normalize-space(@rel),'profile ')
+                 or contains(normalize-space(@rel),' profile ')
+                 or substring( normalize-space(@rel),
+                      1+string-length(normalize-space(@rel))-string-length(' profile')
+                    ) = ' profile'                             
+                 )
+                ]">
+      <rdf:Description rdf:about='{@href}'>
+         <xsl:call-template name="triples"/>
+      </rdf:Description>
+    </xsl:for-each>
+  </rdf:RDF>
+</xsl:template>
+
+
+<xsl:template name="triples">
+    <xsl:for-each select="/html:html//html:*//
+               html:* 
+               [self::html:a or self::html:link]    
+               [@href and
+                 (  normalize-space(@rel)='profileTransformation'
+                 or starts-with(normalize-space(@rel),'profileTransformation ')
+                 or contains(normalize-space(@rel),' profileTransformation ')
+                 or substring( normalize-space(@rel),
+                      1+string-length(normalize-space(@rel))-string-length(' profileTransformation')
+                    ) = ' profileTransformation'                             
+                 )
+                ]">
+      <dataview:profileTransformation rdf:resource='{@href}'/>
+    </xsl:for-each>
+</xsl:template>
+
+</xsl:stylesheet>

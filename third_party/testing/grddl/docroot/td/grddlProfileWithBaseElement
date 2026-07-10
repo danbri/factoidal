@@ -1,0 +1,22 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN"
+       "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head  profile="http://www.w3.org/2003/g/data-view">
+<base href="https://www.w3.org/2001/sw/grddl-wg/td/grddlProfileWithBaseElement" />
+<title>A GRDDL-enabled profile for XHTML with base element </title>
+<link type="text/css" rel="stylesheet" href="/StyleSheets/base.css" />
+  <link rel="transformation" href="https://www.w3.org/2003/g/glean-profile" />
+</head>
+
+<body>
+<div class="head"><a href="/" title="W3C Home"><img
+height="48" width="72" alt="W3C" src="/Icons/w3c_home" /></a></div>
+<h1>A GRDDL-enabled profile for XHTML with base element</h1>
+
+<p>A document refering to this profile can be interpreted by transforming it in RDF/XML using 
+the <a href="whichdir" rel="profileTransformation">whichdir</a>  style sheet.</p>
+
+
+</body>
+</html>
+

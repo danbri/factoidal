@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rdf:RDF
+    xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+    xmlns:v="http://www.w3.org/2006/vcard/ns#"
+    xmlns:rdfs="http://www.w3.org/2000/01/rdf-schema#">
+  <v:VCard>
+    <v:title>minister of foreign affairs</v:title>
+    <v:sort-string>Mierlo, H.A.F.M.O, van</v:sort-string>
+    <v:nickname>Hafmo</v:nickname>
+    <v:fn>Dr. H. A. F. M. O van Mierlo</v:fn>
+  </v:VCard>
+</rdf:RDF>

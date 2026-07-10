@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<r:RDF xmlns:h="http://www.w3.org/1999/xhtml" xmlns:r="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:dc="http://purl.org/dc/elements/1.1/">
+  <r:Description r:about="">
+    <dc:title>My Title Here</dc:title>
+  </r:Description>
+</r:RDF>

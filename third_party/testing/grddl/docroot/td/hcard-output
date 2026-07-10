@@ -1,0 +1,212 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rdf:RDF
+    xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+    xmlns:dataview="http://www.w3.org/2003/g/data-view#"
+    xmlns:rdfs="http://www.w3.org/2000/01/rdf-schema#">
+  <rdf:Description rdf:about="">
+    <dataview:profileTransformation rdf:resource="hcard2rdf.xsl"/>
+  </rdf:Description>
+  <rdf:Property rdf:ID="locality">
+    <rdfs:comment>See "locality" in section 3.2.1 of RFC 2426.</rdfs:comment>
+    <rdfs:label>locality</rdfs:label>
+  </rdf:Property>
+  <rdf:Property rdf:ID="mailer">
+    <rdfs:comment>See section 3.3.3 of RFC 2426.</rdfs:comment>
+    <rdfs:label>mailer</rdfs:label>
+  </rdf:Property>
+  <rdf:Property rdf:ID="title">
+    <rdfs:comment>See section 3.5.1 of RFC 2426.</rdfs:comment>
+    <rdfs:label>title</rdfs:label>
+  </rdf:Property>
+  <rdf:Property rdf:ID="type">
+    <rdfs:comment>See "type" in the various sections of RFC 2426.</rdfs:comment>
+    <rdfs:label>type</rdfs:label>
+  </rdf:Property>
+  <rdf:Property rdf:ID="country-name">
+    <rdfs:comment>See "country name" in section 3.2.1 of RFC 2426.</rdfs:comment>
+    <rdfs:label>country-name</rdfs:label>
+  </rdf:Property>
+  <rdf:Property rdf:ID="fn">
+    <rdfs:comment>See section 3.1.1 of RFC 2426.</rdfs:comment>
+    <rdfs:label>fn</rdfs:label>
+  </rdf:Property>
+  <rdf:Property rdf:ID="class">
+    <rdfs:comment>See section 3.7.1 of RFC 2426.</rdfs:comment>
+    <rdfs:label>class</rdfs:label>
+  </rdf:Property>
+  <rdf:Property rdf:ID="street-address">
+    <rdfs:comment>See "street address" in section 3.2.1 of RFC 2426.</rdfs:comment>
+    <rdfs:label>street-address</rdfs:label>
+  </rdf:Property>
+  <rdf:Property rdf:ID="sound">
+    <rdfs:comment>See section 3.6.6 of RFC 2426. Typically used with either an &lt;a&gt;
+     or &lt;object&gt; tag. Use the 'data:' URI scheme for binary values.</rdfs:comment>
+    <rdfs:label>sound</rdfs:label>
+  </rdf:Property>
+  <rdf:Property rdf:ID="post-office-box">
+    <rdfs:comment>See "post office box" in section 3.2.1 of RFC 2426.</rdfs:comment>
+    <rdfs:label>post-office-box</rdfs:label>
+  </rdf:Property>
+  <rdf:Property rdf:ID="photo">
+    <rdfs:comment>See section 3.1.4 of RFC 2426. Typically used with an &lt;img&gt; tag.
+     Use the 'src' attribute for URI values. Use the 'data:' URI scheme for
+     binary values.</rdfs:comment>
+    <rdfs:label>photo</rdfs:label>
+  </rdf:Property>
+  <rdf:Property rdf:ID="category">
+    <rdfs:comment>See section 3.6.1 of RFC 2426.</rdfs:comment>
+    <rdfs:label>category</rdfs:label>
+  </rdf:Property>
+  <rdf:Property rdf:ID="sort-string">
+    <rdfs:comment>See section 3.6.5 of RFC 2426.</rdfs:comment>
+    <rdfs:label>sort-string</rdfs:label>
+  </rdf:Property>
+  <rdf:Property rdf:ID="org">
+    <rdfs:comment>See section 3.5.5 of RFC 2426.</rdfs:comment>
+    <rdfs:label>org</rdfs:label>
+  </rdf:Property>
+  <rdf:Property rdf:ID="additional-name">
+    <rdfs:comment>See "Additional Names" in section 3.1.2 of RFC 2426.</rdfs:comment>
+    <rdfs:label>additional-name</rdfs:label>
+  </rdf:Property>
+  <rdf:Property rdf:ID="agent">
+    <rdfs:comment>See section 3.5.4 of RFC 2426. If the value is a vCard, then 
+    use a nest hCard.  For simplicity in that case, the same element that 
+    has the class name of "agent" should use the class name of "vcard".</rdfs:comment>
+    <rdfs:label>agent</rdfs:label>
+  </rdf:Property>
+  <rdf:Property rdf:ID="key">
+    <rdfs:comment>See section 3.7.2 of RFC 2426. Typically used with an &lt;abbr&gt; tag 
+     with the 'title' attribute for the key value, and a human readable key
+     equivalent inside the element.</rdfs:comment>
+    <rdfs:label>key</rdfs:label>
+  </rdf:Property>
+  <rdf:Property rdf:ID="bday">
+    <rdfs:comment>See section 3.1.5 of RFC 2426. Typically used with an &lt;abbr&gt; tag 
+     with the 'title' attribute for the date value, and a human readable date
+     inside the element.</rdfs:comment>
+    <rdfs:label>bday</rdfs:label>
+  </rdf:Property>
+  <rdf:Property rdf:ID="n">
+    <rdfs:comment>See section 3.1.2 of RFC 2426. May be inferred per 
+      Implied "N" Optimization.</rdfs:comment>
+    <rdfs:label>n</rdfs:label>
+  </rdf:Property>
+  <rdf:Property rdf:ID="note">
+    <rdfs:comment>See section 3.6.2 of RFC 2426.</rdfs:comment>
+    <rdfs:label>note</rdfs:label>
+  </rdf:Property>
+  <rdf:Property rdf:ID="organization-unit">
+    <rdfs:comment>See "Organization Unit" in section 3.5.5 of RFC 2426.</rdfs:comment>
+    <rdfs:label>organization-unit</rdfs:label>
+  </rdf:Property>
+  <rdf:Property rdf:ID="email">
+    <rdfs:comment>See section 3.3.2 of RFC 2426.</rdfs:comment>
+    <rdfs:label>email</rdfs:label>
+  </rdf:Property>
+  <rdf:Property rdf:ID="longitude">
+    <rdfs:comment>See "longitude" in section 3.4.2 of RFC 2426.</rdfs:comment>
+    <rdfs:label>longitude</rdfs:label>
+  </rdf:Property>
+  <rdf:Property rdf:ID="nickname">
+    <rdfs:comment>See section 3.1.3 of RFC 2426.</rdfs:comment>
+    <rdfs:label>nickname</rdfs:label>
+  </rdf:Property>
+  <rdf:Property rdf:ID="rev">
+    <rdfs:comment>See section 3.6.4 of RFC 2426. Typically used with an &lt;abbr&gt; tag 
+     with the 'title' attribute for the date value, and a human readable date
+     inside the element.</rdfs:comment>
+    <rdfs:label>rev</rdfs:label>
+  </rdf:Property>
+  <rdf:Property rdf:ID="postal-code">
+    <rdfs:comment>See "postal code" in section 3.2.1 of RFC 2426.</rdfs:comment>
+    <rdfs:label>postal-code</rdfs:label>
+  </rdf:Property>
+  <rdf:Property rdf:ID="logo">
+    <rdfs:comment>See section 3.5.3 of RFC 2426. Typically used with an &lt;img&gt; tag.
+     Use the 'src' attribute for URI values. Use the 'data:' URI scheme for
+     binary values.</rdfs:comment>
+    <rdfs:label>logo</rdfs:label>
+  </rdf:Property>
+  <rdf:Property rdf:ID="value">
+    <rdfs:comment>This class name is used to distinguish the actual value
+     of a property from any other cruft that may be in 
+     the element representing the property.</rdfs:comment>
+    <rdfs:label>value</rdfs:label>
+  </rdf:Property>
+  <rdf:Property rdf:ID="honorific-prefix">
+    <rdfs:comment>See "Honorific Prefixes" in section 3.1.2 of RFC 2426.</rdfs:comment>
+    <rdfs:label>honorific-prefix</rdfs:label>
+  </rdf:Property>
+  <rdf:Property rdf:ID="vcard">
+    <rdfs:comment>A container for the rest of the class names defined in this XMDP profile.
+     See section 1. of RFC 2426.
+    </rdfs:comment>
+    <rdfs:label>vcard</rdfs:label>
+  </rdf:Property>
+  <rdf:Property rdf:ID="url">
+    <rdfs:comment>See section 3.6.8 of RFC 2426. Typically used with an &lt;a&gt; tag.
+    </rdfs:comment>
+    <rdfs:label>url</rdfs:label>
+  </rdf:Property>
+  <rdf:Property rdf:ID="region">
+    <rdfs:comment>See "region" in section 3.2.1 of RFC 2426.</rdfs:comment>
+    <rdfs:label>region</rdfs:label>
+  </rdf:Property>
+  <rdf:Property rdf:ID="honorific-suffix">
+    <rdfs:comment>See "Honorific Suffixes" in section 3.1.2 of RFC 2426.</rdfs:comment>
+    <rdfs:label>honorific-suffix</rdfs:label>
+  </rdf:Property>
+  <rdf:Property rdf:ID="given-name">
+    <rdfs:comment>See "Given Name" in section 3.1.2 of RFC 2426.</rdfs:comment>
+    <rdfs:label>given-name</rdfs:label>
+  </rdf:Property>
+  <rdf:Property rdf:ID="tel">
+    <rdfs:comment>See section 3.3.1 of RFC 2426.</rdfs:comment>
+    <rdfs:label>tel</rdfs:label>
+  </rdf:Property>
+  <rdf:Property rdf:ID="adr">
+    <rdfs:comment>See section 3.2.1 of RFC 2426.</rdfs:comment>
+    <rdfs:label>adr</rdfs:label>
+  </rdf:Property>
+  <rdf:Property rdf:ID="label">
+    <rdfs:comment>See section 3.2.2 of RFC 2426.</rdfs:comment>
+    <rdfs:label>label</rdfs:label>
+  </rdf:Property>
+  <rdf:Property rdf:ID="geo">
+    <rdfs:comment>See section 3.4.2 of RFC 2426.</rdfs:comment>
+    <rdfs:label>geo</rdfs:label>
+  </rdf:Property>
+  <rdf:Property rdf:ID="organization-name">
+    <rdfs:comment>See "Organization Name" in section 3.5.5 of RFC 2426. 
+      May be inferred per Implied "organization-name" Optimization.</rdfs:comment>
+    <rdfs:label>organization-name</rdfs:label>
+  </rdf:Property>
+  <rdf:Property rdf:ID="role">
+    <rdfs:comment>See section 3.5.2 of RFC 2426.</rdfs:comment>
+    <rdfs:label>role</rdfs:label>
+  </rdf:Property>
+  <rdf:Property rdf:ID="latitude">
+    <rdfs:comment>See "latitude" in section 3.4.2 of RFC 2426.</rdfs:comment>
+    <rdfs:label>latitude</rdfs:label>
+  </rdf:Property>
+  <rdf:Property rdf:ID="family-name">
+    <rdfs:comment>See "Family Name" in section 3.1.2 of RFC 2426.</rdfs:comment>
+    <rdfs:label>family-name</rdfs:label>
+  </rdf:Property>
+  <rdf:Property rdf:ID="tz">
+    <rdfs:comment>See section 3.4.1 of RFC 2426. Typically used with an &lt;abbr&gt; tag 
+     with the 'title' attribute for the tz value, and a human readable time zone
+     inside the element.</rdfs:comment>
+    <rdfs:label>tz</rdfs:label>
+  </rdf:Property>
+  <rdf:Property rdf:ID="extended-address">
+    <rdfs:comment>See "extended address" in section 3.2.1 of RFC 2426.</rdfs:comment>
+    <rdfs:label>extended-address</rdfs:label>
+  </rdf:Property>
+  <rdf:Property rdf:ID="uid">
+    <rdfs:comment>See section 3.6.7 of RFC 2426.</rdfs:comment>
+    <rdfs:label>uid</rdfs:label>
+  </rdf:Property>
+</rdf:RDF>
+

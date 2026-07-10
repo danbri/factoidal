@@ -1,0 +1,20 @@
+<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:h="http://www.w3.org/1999/xhtml">
+  <rdf:Description rdf:about="">
+    <transformation xmlns="http://www.w3.org/1999/xhtml" rdf:resource="RDFa2RDFXML.xsl"/>
+  </rdf:Description>
+  <rdf:Description rdf:about="http://www.w3.org/TR/2004/REC-rdf-mt-20040210/">
+    <dc:title xmlns:dc="http://purl.org/dc/elements/1.1/">RDF Semantics - W3C Recommendation 10 February 2004</dc:title>
+  </rdf:Description>
+  <rdf:Description rdf:about="http://www.w3.org/TR/2004/REC-rdf-mt-20040210/">
+    <dc:creator xmlns:dc="http://purl.org/dc/elements/1.1/" rdf:resource="#a1"/>
+  </rdf:Description>
+  <rdf:Description rdf:about="#a1">
+    <rdf:type rdf:resource="http://xmlns.com/foaf/0.1/Person"/>
+  </rdf:Description>
+  <rdf:Description rdf:about="#a1">
+    <foaf:name xmlns:foaf="http://xmlns.com/foaf/0.1/">Patrick Hayes</foaf:name>
+  </rdf:Description>
+  <rdf:Description rdf:about="#a1">
+    <foaf:homepage xmlns:foaf="http://xmlns.com/foaf/0.1/" rdf:resource="http://www.ihmc.us/users/user.php?UserID=42"/>
+  </rdf:Description>
+</rdf:RDF>

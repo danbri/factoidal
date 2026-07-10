@@ -1,0 +1,660 @@
+<?xml version="1.0" encoding="utf-8"?>
+<rdf:RDF
+  xmlns:rdf='http://www.w3.org/1999/02/22-rdf-syntax-ns#'
+  xmlns:t='http://www.w3.org/2000/10/rdf-tests/rdfcore/testSchema#'
+  xmlns:g='http://www.w3.org/2001/sw/grddl-wg/td/grddl-test-vocabulary#'
+  xmlns:dc='http://purl.org/dc/elements/1.1/'
+>
+  <t:Test rdf:about="http://www.w3.org/2001/sw/grddl-wg/td/grddl-tests#inline">
+    <t:outputDocument rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/inline.rdf"/>
+    <t:approval rdf:resource="http://www.w3.org/2007/04/11-grddl-wg-minutes.html#item03"/>
+    <dc:title>Inline transformation reference</dc:title>
+    <g:exercisesRule rdf:resource="http://www.w3.org/TR/grddl/#rule_tlrel"/>
+    <t:inputDocument rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/inline.html"/>
+  </t:Test>
+  <g:NetworkedTest rdf:about="http://www.w3.org/2001/sw/grddl-wg/td/grddl-tests#grddlProfileBase1">
+    <t:outputDocument rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/grddlProfileWithBaseElement-output"/>
+    <t:approval rdf:resource="http://www.w3.org/2007/04/25-grddl-wg-minutes.html#item08"/>
+    <rdf:type rdf:resource="http://www.w3.org/2000/10/rdf-tests/rdfcore/testSchema#Test"/>
+    <dc:title>An XHTML profile
+      using a base element</dc:title>
+    <g:exercisesRule rdf:resource="http://www.w3.org/TR/grddl/#rule_tlrel"/>
+    <t:inputDocument rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/base/grddlProfileWithBaseElement"/>
+  </g:NetworkedTest>
+  <t:Test rdf:about="http://www.w3.org/2001/sw/grddl-wg/td/grddl-tests#xmlWithGrddlAttribute">
+    <t:outputDocument rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/xmlWithGrddlAttribute-output.rdf"/>
+    <t:approval rdf:resource="http://www.w3.org/2007/04/11-grddl-wg-minutes.html#action06"/>
+    <dc:title></dc:title>
+    <g:exercisesRule rdf:resource="http://www.w3.org/TR/grddl/#rule_GRDDL_transformation"/>
+    <t:inputDocument rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/xmlWithGrddlAttribute.xml"/>
+  </t:Test>
+  <g:NetworkedTest rdf:about="http://www.w3.org/2001/sw/grddl-wg/td/grddl-tests#xmlbase3">
+    <t:outputDocument rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/xmlWithBase-output"/>
+    <t:approval rdf:resource="http://lists.w3.org/Archives/Public/public-grddl-wg/2007Apr/0248.html"/>
+    <rdf:type rdf:resource="http://www.w3.org/2000/10/rdf-tests/rdfcore/testSchema#Test"/>
+    <dc:title>A redirected xml document
+        with an xml:base attribute</dc:title>
+    <g:exercisesRule rdf:resource="http://www.w3.org/TR/grddl/#rule_GRDDL_transformation"/>
+    <t:inputDocument rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/xmlWithBase"/>
+  </g:NetworkedTest>
+  <g:NetworkedTest rdf:about="http://www.w3.org/2001/sw/grddl-wg/td/grddl-tests#four-transforms">
+    <t:outputDocument rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/four-transforms-output"/>
+    <t:approval rdf:resource="http://lists.w3.org/Archives/Public/public-grddl-wg/2007Apr/att-0091/18-grddl-wg-minutes.html#item09"/>
+    <rdf:type rdf:resource="http://www.w3.org/2000/10/rdf-tests/rdfcore/testSchema#Test"/>
+    <dc:title>An XML document with
+      two namespace transformations and two transforms on the root
+      element</dc:title>
+    <g:exercisesRule rdf:resource="http://www.w3.org/TR/grddl/#rule_GRDDL_transformation"/>
+    <g:exercisesRule rdf:resource="http://www.w3.org/TR/grddl/#rule_nstx"/>
+    <g:exercisesRule rdf:resource="http://www.w3.org/TR/grddl/#rule_merge"/>
+    <t:inputDocument rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/four-transforms"/>
+  </g:NetworkedTest>
+  <t:Test rdf:about="http://www.w3.org/2001/sw/grddl-wg/td/grddl-tests#xhtmlWithGrddlProfile">
+    <t:outputDocument rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/xhtmlWithGrddlProfile-output.rdf"/>
+    <t:approval rdf:resource="http://lists.w3.org/Archives/Public/public-grddl-wg/2007Apr/att-0091/18-grddl-wg-minutes.html#item09"/>
+    <dc:title>One transform linked from the head of
+      a document with only the GRDDL profile</dc:title>
+    <g:exercisesRule rdf:resource="http://www.w3.org/TR/grddl/#rule_tlrel"/>
+    <t:inputDocument rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/xhtmlWithGrddlProfile.html"/>
+  </t:Test>
+  <g:NetworkedTest rdf:about="http://www.w3.org/2001/sw/grddl-wg/td/grddl-tests#htmlbase4">
+    <t:outputDocument rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/xhtmlWithoutBaseElement-output"/>
+    <t:approval rdf:resource="http://www.w3.org/2007/04/25-grddl-wg-minutes.html#item08"/>
+    <rdf:type rdf:resource="http://www.w3.org/2000/10/rdf-tests/rdfcore/testSchema#Test"/>
+    <dc:title>A similar redirected html
+        document without a base element</dc:title>
+    <g:exercisesRule rdf:resource="http://www.w3.org/TR/grddl/#rule_tlrel"/>
+    <t:inputDocument rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/xhtmlWithoutBaseElement"/>
+  </g:NetworkedTest>
+  <g:NetworkedTest rdf:about="http://www.w3.org/2001/sw/grddl-wg/td/grddl-tests#htmlbase1">
+    <t:outputDocument rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/xhtmlWithBaseElement-output"/>
+    <t:approval rdf:resource="http://www.w3.org/2007/04/25-grddl-wg-minutes.html#item08"/>
+    <rdf:type rdf:resource="http://www.w3.org/2000/10/rdf-tests/rdfcore/testSchema#Test"/>
+    <dc:title>An html document with a
+        base element</dc:title>
+    <g:exercisesRule rdf:resource="http://www.w3.org/TR/grddl/#rule_tlrel"/>
+    <t:inputDocument rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/base/xhtmlWithBaseElement"/>
+  </g:NetworkedTest>
+  <g:NetworkedTest rdf:about="http://www.w3.org/2001/sw/grddl-wg/td/grddl-tests#two-transforms">
+    <t:outputDocument rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/two-transforms-output"/>
+    <t:approval rdf:resource="http://lists.w3.org/Archives/Public/public-grddl-wg/2007Apr/att-0091/18-grddl-wg-minutes.html#item09"/>
+    <rdf:type rdf:resource="http://www.w3.org/2000/10/rdf-tests/rdfcore/testSchema#Test"/>
+    <dc:title>An XML document with
+      two namespace transformations</dc:title>
+    <g:exercisesRule rdf:resource="http://www.w3.org/TR/grddl/#rule_nstx"/>
+    <g:exercisesRule rdf:resource="http://www.w3.org/TR/grddl/#rule_merge"/>
+    <t:inputDocument rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/two-transforms"/>
+  </g:NetworkedTest>
+  <g:NetworkedTest rdf:about="http://www.w3.org/2001/sw/grddl-wg/td/grddl-tests#ns-ns-pf-pf">
+    <t:outputDocument rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/fnd-ns-ns-pf-pf-output"/>
+    <t:approval rdf:resource="http://lists.w3.org/Archives/Public/public-grddl-wg/2007Apr/att-0091/18-grddl-wg-minutes.html#item09"/>
+    <rdf:type rdf:resource="http://www.w3.org/2000/10/rdf-tests/rdfcore/testSchema#Test"/>
+    <dc:title>Recursion 2</dc:title>
+    <g:exercisesRule rdf:resource="http://www.w3.org/TR/grddl/#rule_nstx"/>
+    <g:exercisesRule rdf:resource="http://www.w3.org/TR/grddl/#rule_merge"/>
+    <g:exercisesRule rdf:resource="http://www.w3.org/TR/grddl/#rule_rdfxbase"/>
+    <g:exercisesRule rdf:resource="http://www.w3.org/TR/grddl/#rule_profiletrans"/>
+    <t:inputDocument rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/ns-ns-pf-pf-fnd"/>
+  </g:NetworkedTest>
+  <g:NetworkedTest rdf:about="http://www.w3.org/2001/sw/grddl-wg/td/grddl-tests#inline-rdf3">
+    <t:outputDocument rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/embedded-rdf3-output"/>
+    <t:approval rdf:resource="http://www.w3.org/2007/06/27-grddl-wg-minutes.html#item02"/>
+    <rdf:type rdf:resource="http://www.w3.org/2000/10/rdf-tests/rdfcore/testSchema#Test"/>
+    <dc:title>Embedded RDF3</dc:title>
+    <g:exercisesRule rdf:resource="http://www.w3.org/TR/grddl/#rule_GRDDL_transformation"/>
+    <g:exercisesRule rdf:resource="http://www.w3.org/TR/grddl/#rule_rdfxbase"/>
+    <t:inputDocument rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/inline-rdf3"/>
+  </g:NetworkedTest>
+  <g:NetworkedTest rdf:about="http://www.w3.org/2001/sw/grddl-wg/td/grddl-tests#three-transforms">
+    <t:outputDocument rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/three-transforms-output"/>
+    <t:approval rdf:resource="http://lists.w3.org/Archives/Public/public-grddl-wg/2007Apr/0224.html"/>
+    <rdf:type rdf:resource="http://www.w3.org/2000/10/rdf-tests/rdfcore/testSchema#Test"/>
+    <dc:title>An XML document with
+      two namespace transformations and a transform on the root element</dc:title>
+    <g:exercisesRule rdf:resource="http://www.w3.org/TR/grddl/#rule_GRDDL_transformation"/>
+    <g:exercisesRule rdf:resource="http://www.w3.org/TR/grddl/#rule_nstx"/>
+    <g:exercisesRule rdf:resource="http://www.w3.org/TR/grddl/#rule_merge"/>
+    <t:inputDocument rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/three-transforms"/>
+  </g:NetworkedTest>
+  <g:NetworkedTest rdf:about="http://www.w3.org/2001/sw/grddl-wg/td/grddl-tests#grddlProfileBase3">
+    <t:outputDocument rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/xhtmlProfileBase1-output"/>
+    <t:approval rdf:resource="http://www.w3.org/2007/04/25-grddl-wg-minutes.html#item08"/>
+    <rdf:type rdf:resource="http://www.w3.org/2000/10/rdf-tests/rdfcore/testSchema#Test"/>
+    <dc:title>XHTML with an XHTML
+      profile using a base element</dc:title>
+    <g:exercisesRule rdf:resource="http://www.w3.org/TR/grddl/#rule_tlrel"/>
+    <g:exercisesRule rdf:resource="http://www.w3.org/TR/grddl/#rule_profiletrans"/>
+    <t:inputDocument rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/xhtmlProfileBase1"/>
+  </g:NetworkedTest>
+  <t:Test rdf:about="http://www.w3.org/2001/sw/grddl-wg/td/grddl-tests#rdfa1">
+    <t:outputDocument rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/rdf_sem-output.rdf"/>
+    <t:approval rdf:resource="http://www.w3.org/2007/04/11-grddl-wg-minutes.html#item03"/>
+    <dc:title>RDFa example</dc:title>
+    <g:exercisesRule rdf:resource="http://www.w3.org/TR/grddl/#rule_tlrel"/>
+    <t:inputDocument rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/rdf_sem.html"/>
+  </t:Test>
+  <g:NetworkedTest rdf:about="http://www.w3.org/2001/sw/grddl-wg/td/grddl-tests#pf-pf-pf-ns">
+    <t:outputDocument rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/fnd-pf-pf-pf-ns-output"/>
+    <t:approval rdf:resource="http://lists.w3.org/Archives/Public/public-grddl-wg/2007Apr/att-0091/18-grddl-wg-minutes.html#item09"/>
+    <rdf:type rdf:resource="http://www.w3.org/2000/10/rdf-tests/rdfcore/testSchema#Test"/>
+    <dc:title>Recursion 1</dc:title>
+    <g:exercisesRule rdf:resource="http://www.w3.org/TR/grddl/#rule_nstx"/>
+    <g:exercisesRule rdf:resource="http://www.w3.org/TR/grddl/#rule_merge"/>
+    <g:exercisesRule rdf:resource="http://www.w3.org/TR/grddl/#rule_rdfxbase"/>
+    <g:exercisesRule rdf:resource="http://www.w3.org/TR/grddl/#rule_profiletrans"/>
+    <t:inputDocument rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/pf-pf-pf-ns-fnd"/>
+  </g:NetworkedTest>
+  <g:NetworkedTest rdf:about="http://www.w3.org/2001/sw/grddl-wg/td/grddl-tests#xmlbase4">
+    <t:outputDocument rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/xmlWithoutBase-output"/>
+    <t:approval rdf:resource="http://lists.w3.org/Archives/Public/public-grddl-wg/2007Apr/0248.html"/>
+    <rdf:type rdf:resource="http://www.w3.org/2000/10/rdf-tests/rdfcore/testSchema#Test"/>
+    <dc:title>A similar redirected xml
+        document without an xml:base attribute</dc:title>
+    <g:exercisesRule rdf:resource="http://www.w3.org/TR/grddl/#rule_GRDDL_transformation"/>
+    <t:inputDocument rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/xmlWithoutBase"/>
+  </g:NetworkedTest>
+  <t:Test rdf:about="http://www.w3.org/2001/sw/grddl-wg/td/grddl-tests#title_author">
+    <t:outputDocument rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/titleauthor-output.rdf"/>
+    <t:approval rdf:resource="http://www.w3.org/2007/04/11-grddl-wg-minutes.html#item03"/>
+    <dc:title>Title / Author (from specification)</dc:title>
+    <g:exercisesRule rdf:resource="http://www.w3.org/TR/grddl/#rule_GRDDL_transformation"/>
+    <t:inputDocument rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/titleauthor.html"/>
+  </t:Test>
+  <t:Test rdf:about="http://www.w3.org/2001/sw/grddl-wg/td/grddl-tests#grddlonrdf">
+    <t:outputDocument rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/grddlonrdf-output3.rdf"/>
+    <t:approval rdf:resource="http://www.w3.org/2007/04/25-grddl-wg-minutes.html#item08"/>
+    <dc:title>Testing GRDDL attributes on RDF documents</dc:title>
+    <g:exercisesRule rdf:resource="http://www.w3.org/TR/grddl/#rule_GRDDL_transformation"/>
+    <g:exercisesRule rdf:resource="http://www.w3.org/TR/grddl/#rule_merge"/>
+    <g:exercisesRule rdf:resource="http://www.w3.org/TR/grddl/#rule_rdfxbase"/>
+    <t:inputDocument rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/grddlonrdf.rdf"/>
+  </t:Test>
+  <g:NetworkedTest rdf:about="http://www.w3.org/2001/sw/grddl-wg/td/grddl-tests#hcarda">
+    <t:outputDocument rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/hcard-output"/>
+    <t:approval rdf:resource="http://www.w3.org/2007/04/25-grddl-wg-minutes.html#item08"/>
+    <rdf:type rdf:resource="http://www.w3.org/2000/10/rdf-tests/rdfcore/testSchema#Test"/>
+    <dc:title>A variant of the hcard
+      profile</dc:title>
+    <g:exercisesRule rdf:resource="http://www.w3.org/TR/grddl/#rule_merge"/>
+    <g:exercisesRule rdf:resource="http://www.w3.org/TR/grddl/#rule_profiletrans"/>
+    <t:inputDocument rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/hcarda"/>
+  </g:NetworkedTest>
+  <g:NetworkedTest rdf:about="http://www.w3.org/2001/sw/grddl-wg/td/grddl-tests#hcard1">
+    <t:outputDocument rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/card-output.rdf"/>
+    <t:approval rdf:resource="http://www.w3.org/2007/04/25-grddl-wg-minutes.html#item08"/>
+    <rdf:type rdf:resource="http://www.w3.org/2000/10/rdf-tests/rdfcore/testSchema#Test"/>
+    <dc:title>An hcard profile</dc:title>
+    <g:exercisesRule rdf:resource="http://www.w3.org/TR/grddl/#rule_tlrel"/>
+    <g:exercisesRule rdf:resource="http://www.w3.org/TR/grddl/#rule_merge"/>
+    <g:exercisesRule rdf:resource="http://www.w3.org/TR/grddl/#rule_profiletrans"/>
+    <t:inputDocument rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/card.html"/>
+  </g:NetworkedTest>
+  <t:Test rdf:about="http://www.w3.org/2001/sw/grddl-wg/td/grddl-tests#base-param">
+    <t:outputDocument rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/baseURI.rdf"/>
+    <t:approval rdf:resource="http://www.w3.org/2007/04/11-grddl-wg-minutes.html#item03"/>
+    <dc:title>Base URI: Same document reference</dc:title>
+    <g:exercisesRule rdf:resource="http://www.w3.org/TR/grddl/#rule_GRDDL_transformation"/>
+    <t:inputDocument rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/baseURI.html"/>
+  </t:Test>
+  <g:NetworkedTest rdf:about="http://www.w3.org/2001/sw/grddl-wg/td/grddl-tests#xhtmlWithGrddlEnabledProfile">
+    <t:outputDocument rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/xhtmlWithGrddlEnabledProfile-output.rdf"/>
+    <t:approval rdf:resource="http://www.w3.org/2007/04/25-grddl-wg-minutes.html#item08"/>
+    <rdf:type rdf:resource="http://www.w3.org/2000/10/rdf-tests/rdfcore/testSchema#Test"/>
+    <dc:title>Document
+      linking to its transformer through a GRDDL-enabled profile</dc:title>
+    <g:exercisesRule rdf:resource="http://www.w3.org/TR/grddl/#rule_tlrel"/>
+    <g:exercisesRule rdf:resource="http://www.w3.org/TR/grddl/#rule_profiletrans"/>
+    <t:inputDocument rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/xhtmlWithGrddlEnabledProfile.html"/>
+  </g:NetworkedTest>
+  <g:NetworkedTest rdf:about="http://www.w3.org/2001/sw/grddl-wg/td/grddl-tests#inline-rdf2">
+    <t:outputDocument rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/embedded-rdf2-output"/>
+    <t:approval rdf:resource="http://www.w3.org/2007/06/27-grddl-wg-minutes.html#item02"/>
+    <rdf:type rdf:resource="http://www.w3.org/2000/10/rdf-tests/rdfcore/testSchema#Test"/>
+    <dc:title>Embedded RDF2</dc:title>
+    <g:exercisesRule rdf:resource="http://www.w3.org/TR/grddl/#rule_GRDDL_transformation"/>
+    <t:inputDocument rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/inline-rdf2"/>
+  </g:NetworkedTest>
+  <g:NetworkedTest rdf:about="http://www.w3.org/2001/sw/grddl-wg/td/grddl-tests#sq2">
+    <t:outputDocument rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/sq2-output.rdf"/>
+    <t:approval rdf:resource="http://lists.w3.org/Archives/Public/public-grddl-wg/2007Apr/att-0091/18-grddl-wg-minutes.html#item09"/>
+    <rdf:type rdf:resource="http://www.w3.org/2000/10/rdf-tests/rdfcore/testSchema#Test"/>
+    <dc:title>Namespace documents and media
+      types 2</dc:title>
+    <g:exercisesRule rdf:resource="http://www.w3.org/TR/grddl/#rule_nstx"/>
+    <g:exercisesRule rdf:resource="http://www.w3.org/TR/grddl/#rule_rdfxbase"/>
+    <t:inputDocument rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/sq2.xml"/>
+  </g:NetworkedTest>
+  <g:NetworkedTest rdf:about="http://www.w3.org/2001/sw/grddl-wg/td/grddl-tests#multipleRepresentations3">
+    <g:subsumes>
+      <g:NetworkedTest rdf:about="http://www.w3.org/2001/sw/grddl-wg/td/grddl-tests#multipleRepresentations">
+        <t:approval rdf:resource="http://www.w3.org/2007/04/25-grddl-wg-minutes.html#item08"/>
+        <rdf:type rdf:resource="http://www.w3.org/2000/10/rdf-tests/rdfcore/testSchema#Test"/>
+        <dc:title>Multiple
+        Representations (HTML)</dc:title>
+        <g:alternative rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/grddl-tests#multipleRepresentations2"/>
+        <g:exercisesRule rdf:resource="http://www.w3.org/TR/grddl/#rule_tlrel"/>
+        <t:outputDocument rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/multipleRepresentationsHtml-output"/>
+        <t:inputDocument rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/multipleRepresentations"/>
+      </g:NetworkedTest>
+    </g:subsumes>
+    <g:subsumes>
+      <g:NetworkedTest rdf:about="http://www.w3.org/2001/sw/grddl-wg/td/grddl-tests#multipleRepresentations2">
+        <t:approval rdf:resource="http://www.w3.org/2007/04/25-grddl-wg-minutes.html#item08"/>
+        <rdf:type rdf:resource="http://www.w3.org/2000/10/rdf-tests/rdfcore/testSchema#Test"/>
+        <dc:title>Multiple
+        Representations (SVG)</dc:title>
+        <g:alternative rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/grddl-tests#multipleRepresentations"/>
+        <g:exercisesRule rdf:resource="http://www.w3.org/TR/grddl/#rule_GRDDL_transformation"/>
+        <t:outputDocument rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/multipleRepresentationsSvg-output"/>
+        <t:inputDocument rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/multipleRepresentations"/>
+      </g:NetworkedTest>
+    </g:subsumes>
+    <t:approval rdf:resource="http://www.w3.org/2007/04/25-grddl-wg-minutes.html#item08"/>
+    <rdf:type rdf:resource="http://www.w3.org/2000/10/rdf-tests/rdfcore/testSchema#Test"/>
+    <dc:title>Multiple
+        Representations (both)</dc:title>
+    <g:exercisesRule rdf:resource="http://www.w3.org/TR/grddl/#rule_GRDDL_transformation"/>
+    <g:exercisesRule rdf:resource="http://www.w3.org/TR/grddl/#rule_tlrel"/>
+    <g:exercisesRule rdf:resource="http://www.w3.org/TR/grddl/#rule_merge"/>
+    <t:outputDocument rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/multipleRepresentationsBoth-output"/>
+    <t:inputDocument rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/multipleRepresentations"/>
+  </g:NetworkedTest>
+  <g:NetworkedTest rdf:about="http://www.w3.org/2001/sw/grddl-wg/td/grddl-tests#langconneg3">
+    <g:subsumes>
+      <g:NetworkedTest rdf:about="http://www.w3.org/2001/sw/grddl-wg/td/grddl-tests#langconneg1">
+        <t:approval rdf:resource="http://www.w3.org/2007/04/25-grddl-wg-minutes.html#item08"/>
+        <rdf:type rdf:resource="http://www.w3.org/2000/10/rdf-tests/rdfcore/testSchema#Test"/>
+        <dc:title>Content Negotiation with
+        GRDDL (1 of 2)</dc:title>
+        <g:alternative rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/grddl-tests#langconneg2"/>
+        <g:exercisesRule rdf:resource="http://www.w3.org/TR/grddl/#rule_GRDDL_transformation"/>
+        <t:outputDocument rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/conneg-en.rdf"/>
+        <t:inputDocument rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/conneg.html"/>
+      </g:NetworkedTest>
+    </g:subsumes>
+    <g:subsumes>
+      <g:NetworkedTest rdf:about="http://www.w3.org/2001/sw/grddl-wg/td/grddl-tests#langconneg2">
+        <t:approval rdf:resource="http://www.w3.org/2007/04/25-grddl-wg-minutes.html#item08"/>
+        <rdf:type rdf:resource="http://www.w3.org/2000/10/rdf-tests/rdfcore/testSchema#Test"/>
+        <dc:title>Content Negotiation with
+        GRDDL (2 of 2)</dc:title>
+        <g:alternative rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/grddl-tests#langconneg1"/>
+        <g:exercisesRule rdf:resource="http://www.w3.org/TR/grddl/#rule_GRDDL_transformation"/>
+        <t:outputDocument rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/conneg-de.rdf"/>
+        <t:inputDocument rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/conneg.html"/>
+      </g:NetworkedTest>
+    </g:subsumes>
+    <t:approval rdf:resource="http://www.w3.org/2007/04/25-grddl-wg-minutes.html#item08"/>
+    <rdf:type rdf:resource="http://www.w3.org/2000/10/rdf-tests/rdfcore/testSchema#Test"/>
+    <dc:title>Content Negotation with
+        GRDDL (3 of 3)</dc:title>
+    <g:exercisesRule rdf:resource="http://www.w3.org/TR/grddl/#rule_GRDDL_transformation"/>
+    <g:exercisesRule rdf:resource="http://www.w3.org/TR/grddl/#rule_merge"/>
+    <t:outputDocument rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/conneg-output"/>
+    <t:inputDocument rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/conneg.html"/>
+  </g:NetworkedTest>
+  <g:NetworkedTest rdf:about="http://www.w3.org/2001/sw/grddl-wg/td/grddl-tests#html-and-transformation-attr">
+    <t:outputDocument rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/two-transforms-output"/>
+    <t:approval rdf:resource="http://www.w3.org/2007/04/25-grddl-wg-minutes.html#item08"/>
+    <rdf:type rdf:resource="http://www.w3.org/2000/10/rdf-tests/rdfcore/testSchema#Test"/>
+    <dc:title>HTML
+        document with transformation attribute on root</dc:title>
+    <g:exercisesRule rdf:resource="http://www.w3.org/TR/grddl/#rule_GRDDL_transformation"/>
+    <g:exercisesRule rdf:resource="http://www.w3.org/TR/grddl/#rule_tlrel"/>
+    <t:inputDocument rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/html-and-grddl-xform-attr"/>
+  </g:NetworkedTest>
+  <g:NetworkedTest rdf:about="http://www.w3.org/2001/sw/grddl-wg/td/grddl-tests#xmlbase1">
+    <t:outputDocument rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/xmlWithBase-output"/>
+    <t:approval rdf:resource="http://lists.w3.org/Archives/Public/public-grddl-wg/2007Apr/0248.html"/>
+    <rdf:type rdf:resource="http://www.w3.org/2000/10/rdf-tests/rdfcore/testSchema#Test"/>
+    <dc:title>An xml document with an
+        xml:base attribute</dc:title>
+    <g:exercisesRule rdf:resource="http://www.w3.org/TR/grddl/#rule_GRDDL_transformation"/>
+    <t:inputDocument rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/base/xmlWithBase"/>
+  </g:NetworkedTest>
+  <g:NetworkedTest rdf:about="http://www.w3.org/2001/sw/grddl-wg/td/grddl-tests#inline-rdf1">
+    <t:outputDocument rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/embedded-rdf1-output"/>
+    <t:approval rdf:resource="http://www.w3.org/2007/06/27-grddl-wg-minutes.html#item02"/>
+    <rdf:type rdf:resource="http://www.w3.org/2000/10/rdf-tests/rdfcore/testSchema#Test"/>
+    <dc:title>Embedded RDF1</dc:title>
+    <g:exercisesRule rdf:resource="http://www.w3.org/TR/grddl/#rule_GRDDL_transformation"/>
+    <t:inputDocument rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/inline-rdf1"/>
+  </g:NetworkedTest>
+  <t:Test rdf:about="http://www.w3.org/2001/sw/grddl-wg/td/grddl-tests#grddlonrdf-xmlmediatype">
+    <t:outputDocument rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/grddlonrdf-xmlmediatype-output3.rdf"/>
+    <t:approval rdf:resource="http://lists.w3.org/Archives/Public/public-grddl-wg/2007Apr/att-0091/18-grddl-wg-minutes.html#item09"/>
+    <dc:title>Testing GRDDL attributes on RDF
+        documents with XML media type</dc:title>
+    <g:exercisesRule rdf:resource="http://www.w3.org/TR/grddl/#rule_GRDDL_transformation"/>
+    <g:exercisesRule rdf:resource="http://www.w3.org/TR/grddl/#rule_merge"/>
+    <g:exercisesRule rdf:resource="http://www.w3.org/TR/grddl/#rule_rdfxbase"/>
+    <t:inputDocument rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/grddlonrdf-xmlmediatype.rdf"/>
+  </t:Test>
+  <t:Test rdf:about="http://www.w3.org/2001/sw/grddl-wg/td/grddl-tests#xhtmlWithGrddlEnabledProfileAndInBodyTransform">
+    <t:outputDocument rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/xhtmlWithGrddlEnabledProfileAndInBodyTransform-output.rdf"/>
+    <t:approval rdf:resource="http://www.w3.org/2007/04/25-grddl-wg-minutes.html#item08"/>
+    <dc:title>Document
+        linking to its transformer through a GRDDL-enabled profile, and with
+        in-line transformation</dc:title>
+    <g:exercisesRule rdf:resource="http://www.w3.org/TR/grddl/#rule_tlrel"/>
+    <g:exercisesRule rdf:resource="http://www.w3.org/TR/grddl/#rule_merge"/>
+    <g:exercisesRule rdf:resource="http://www.w3.org/TR/grddl/#rule_profiletrans"/>
+    <t:inputDocument rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/xhtmlWithGrddlEnabledProfileAndInBodyTransform.html"/>
+  </t:Test>
+  <t:Test rdf:about="http://www.w3.org/2001/sw/grddl-wg/td/grddl-tests#xhtmlWithMoreThanOneProfile">
+    <t:outputDocument rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/xhtmlWithTwoTransformations-output.rdf"/>
+    <t:approval rdf:resource="http://www.w3.org/2007/04/25-grddl-wg-minutes.html#item08"/>
+    <dc:title>One transform linked from the
+      head of a document with several profiles, including the GRDDL
+      profile</dc:title>
+    <g:exercisesRule rdf:resource="http://www.w3.org/TR/grddl/#rule_tlrel"/>
+    <t:inputDocument rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/xhtmlWithMoreThanOneProfile.html"/>
+  </t:Test>
+  <g:NetworkedTest rdf:about="http://www.w3.org/2001/sw/grddl-wg/td/grddl-tests#ns-pf-ns-pf-ns">
+    <t:outputDocument rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/fnd-ns-pf-ns-pf-ns-output"/>
+    <t:approval rdf:resource="http://lists.w3.org/Archives/Public/public-grddl-wg/2007Apr/att-0091/18-grddl-wg-minutes.html#item09"/>
+    <rdf:type rdf:resource="http://www.w3.org/2000/10/rdf-tests/rdfcore/testSchema#Test"/>
+    <dc:title>Recursion 3</dc:title>
+    <g:exercisesRule rdf:resource="http://www.w3.org/TR/grddl/#rule_nstx"/>
+    <g:exercisesRule rdf:resource="http://www.w3.org/TR/grddl/#rule_merge"/>
+    <g:exercisesRule rdf:resource="http://www.w3.org/TR/grddl/#rule_rdfxbase"/>
+    <g:exercisesRule rdf:resource="http://www.w3.org/TR/grddl/#rule_profiletrans"/>
+    <t:inputDocument rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/ns-pf-ns-pf-ns-fnd"/>
+  </g:NetworkedTest>
+  <t:Test rdf:about="http://www.w3.org/2001/sw/grddl-wg/td/grddl-tests#xhtmlWithGrddlEnabledProfileAndADisabledInBodyTransform">
+    <t:outputDocument rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/xhtmlWithGrddlEnabledProfileAndADisabledInBodyTransform-output.rdf"/>
+    <t:approval rdf:resource="http://www.w3.org/2007/04/25-grddl-wg-minutes.html#item08"/>
+    <dc:title>Document
+        linking to its transformer through a GRDDL-enabled profile, and with
+        in-line transformation</dc:title>
+    <g:exercisesRule rdf:resource="http://www.w3.org/TR/grddl/#rule_tlrel"/>
+    <g:exercisesRule rdf:resource="http://www.w3.org/TR/grddl/#rule_profiletrans"/>
+    <t:inputDocument rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/xhtmlWithGrddlEnabledProfileAndADisabledInBodyTransform.html"/>
+  </t:Test>
+  <t:Test rdf:about="http://www.w3.org/2001/sw/grddl-wg/td/grddl-tests#projectsSpreadsheet">
+    <t:outputDocument rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/projects.rdf"/>
+    <t:approval rdf:resource="http://www.w3.org/2007/04/11-grddl-wg-minutes.html#action06"/>
+    <dc:title>Get RDF from a spreadsheet</dc:title>
+    <g:exercisesRule rdf:resource="http://www.w3.org/TR/grddl/#rule_GRDDL_transformation"/>
+    <t:inputDocument rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/projects.xml"/>
+  </t:Test>
+  <g:NetworkedTest rdf:about="http://www.w3.org/2001/sw/grddl-wg/td/grddl-tests#inline-rdf4">
+    <t:outputDocument rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/embedded-rdf4-output"/>
+    <t:approval rdf:resource="http://www.w3.org/2007/06/27-grddl-wg-minutes.html#item02"/>
+    <rdf:type rdf:resource="http://www.w3.org/2000/10/rdf-tests/rdfcore/testSchema#Test"/>
+    <dc:title>Embedded RDF using a
+      relative xml:base</dc:title>
+    <g:exercisesRule rdf:resource="http://www.w3.org/TR/grddl/#rule_GRDDL_transformation"/>
+    <t:inputDocument rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/inline-rdf4"/>
+  </g:NetworkedTest>
+  <g:NetworkedTest rdf:about="http://www.w3.org/2001/sw/grddl-wg/td/grddl-tests#multiprofile">
+    <t:outputDocument rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/multiprofile-output.rdf"/>
+    <t:approval rdf:resource="http://lists.w3.org/Archives/Public/public-grddl-wg/2007Apr/0224.html"/>
+    <rdf:type rdf:resource="http://www.w3.org/2000/10/rdf-tests/rdfcore/testSchema#Test"/>
+    <dc:title>2 profiles: eRDF and
+      hCard</dc:title>
+    <g:exercisesRule rdf:resource="http://www.w3.org/TR/grddl/#rule_tlrel"/>
+    <g:exercisesRule rdf:resource="http://www.w3.org/TR/grddl/#rule_merge"/>
+    <g:exercisesRule rdf:resource="http://www.w3.org/TR/grddl/#rule_profiletrans"/>
+    <t:inputDocument rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/multiprofile.html"/>
+  </g:NetworkedTest>
+  <g:NetworkedTest rdf:about="http://www.w3.org/2001/sw/grddl-wg/td/grddl-tests#inline-rdf8">
+    <t:outputDocument rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/embedded-rdf8-output"/>
+    <t:approval rdf:resource="http://www.w3.org/2007/06/27-grddl-wg-minutes.html#item02"/>
+    <rdf:type rdf:resource="http://www.w3.org/2000/10/rdf-tests/rdfcore/testSchema#Test"/>
+    <dc:title>Embedded RDF using two
+      different xml:base on two different blocks of RDF</dc:title>
+    <g:exercisesRule rdf:resource="http://www.w3.org/TR/grddl/#rule_GRDDL_transformation"/>
+    <t:inputDocument rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/inline-rdf8"/>
+  </g:NetworkedTest>
+  <g:NetworkedTest rdf:about="http://www.w3.org/2001/sw/grddl-wg/td/grddl-tests#spaces-in-rel">
+    <t:outputDocument rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/spaces-in-rel-output.rdf"/>
+    <t:approval rdf:resource="http://www.w3.org/2007/04/25-grddl-wg-minutes.html#item08"/>
+    <rdf:type rdf:resource="http://www.w3.org/2000/10/rdf-tests/rdfcore/testSchema#Test"/>
+    <dc:title>Spaces in rel
+        attribute</dc:title>
+    <g:exercisesRule rdf:resource="http://www.w3.org/TR/grddl/#rule_tlrel"/>
+    <t:inputDocument rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/spaces-in-rel.html"/>
+  </g:NetworkedTest>
+  <t:Test rdf:about="http://www.w3.org/2001/sw/grddl-wg/td/grddl-tests#rdfXMLDoc">
+    <t:outputDocument rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/projects.rdf"/>
+    <t:approval rdf:resource="http://lists.w3.org/Archives/Public/public-grddl-wg/2007Apr/att-0091/18-grddl-wg-minutes.html#item09"/>
+    <dc:title>RDF/XML document</dc:title>
+    <g:exercisesRule rdf:resource="http://www.w3.org/TR/grddl/#rule_rdfxbase"/>
+    <t:inputDocument rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/projects.rdf"/>
+  </t:Test>
+  <g:NetworkedTest rdf:about="http://www.w3.org/2001/sw/grddl-wg/td/grddl-tests#grddlProfileBase2">
+    <t:outputDocument rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/grddlProfileWithBaseElement-output"/>
+    <t:approval rdf:resource="http://www.w3.org/2007/04/25-grddl-wg-minutes.html#item08"/>
+    <rdf:type rdf:resource="http://www.w3.org/2000/10/rdf-tests/rdfcore/testSchema#Test"/>
+    <dc:title>An XHTML profile
+      using a base element</dc:title>
+    <g:exercisesRule rdf:resource="http://www.w3.org/TR/grddl/#rule_tlrel"/>
+    <t:inputDocument rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/grddlProfileWithBaseElement"/>
+  </g:NetworkedTest>
+  <g:NetworkedTest rdf:about="http://www.w3.org/2001/sw/grddl-wg/td/grddl-tests#htmlbase2">
+    <t:outputDocument rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/xhtmlWithoutBaseElement-output"/>
+    <t:approval rdf:resource="http://www.w3.org/2007/04/25-grddl-wg-minutes.html#item08"/>
+    <rdf:type rdf:resource="http://www.w3.org/2000/10/rdf-tests/rdfcore/testSchema#Test"/>
+    <dc:title>A similar html document
+        without a base element</dc:title>
+    <g:exercisesRule rdf:resource="http://www.w3.org/TR/grddl/#rule_tlrel"/>
+    <t:inputDocument rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/base/xhtmlWithoutBaseElement"/>
+  </g:NetworkedTest>
+  <g:NetworkedTest rdf:about="http://www.w3.org/2001/sw/grddl-wg/td/grddl-tests#card5na">
+    <t:outputDocument rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/card5n-output"/>
+    <t:approval rdf:resource="http://www.w3.org/2007/04/25-grddl-wg-minutes.html#item08"/>
+    <rdf:type rdf:resource="http://www.w3.org/2000/10/rdf-tests/rdfcore/testSchema#Test"/>
+    <dc:title>A variant of the card5n test</dc:title>
+    <g:exercisesRule rdf:resource="http://www.w3.org/TR/grddl/#rule_merge"/>
+    <g:exercisesRule rdf:resource="http://www.w3.org/TR/grddl/#rule_profiletrans"/>
+    <t:inputDocument rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/card5na"/>
+  </g:NetworkedTest>
+  <t:Test rdf:about="http://www.w3.org/2001/sw/grddl-wg/td/grddl-tests#xhtmlWithGrddlTransformationInBody">
+    <t:outputDocument rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/xhtmlWithGrddlTransformationInBody-output.rdf"/>
+    <t:approval rdf:resource="http://lists.w3.org/Archives/Public/public-grddl-wg/2007Apr/att-0091/18-grddl-wg-minutes.html#item09"/>
+    <dc:title>One transform linked from
+      the body of a document with only the GRDDL profile</dc:title>
+    <g:exercisesRule rdf:resource="http://www.w3.org/TR/grddl/#rule_tlrel"/>
+    <t:inputDocument rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/xhtmlWithGrddlTransformationInBody.html"/>
+  </t:Test>
+  <g:NetworkedTest rdf:about="http://www.w3.org/2001/sw/grddl-wg/td/grddl-tests#inline-rdf6">
+    <t:outputDocument rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/embedded-rdf6-output"/>
+    <t:approval rdf:resource="http://www.w3.org/2007/06/27-grddl-wg-minutes.html#item02"/>
+    <rdf:type rdf:resource="http://www.w3.org/2000/10/rdf-tests/rdfcore/testSchema#Test"/>
+    <dc:title>Embedded RDF using two
+      nested absolute xml:base</dc:title>
+    <g:exercisesRule rdf:resource="http://www.w3.org/TR/grddl/#rule_GRDDL_transformation"/>
+    <t:inputDocument rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/inline-rdf6"/>
+  </g:NetworkedTest>
+  <t:Test rdf:about="http://www.w3.org/2001/sw/grddl-wg/td/grddl-tests#hl7-to-owl">
+    <t:outputDocument rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/hl7-rim-pomr.rdf"/>
+    <t:approval rdf:resource="http://lists.w3.org/Archives/Public/public-grddl-wg/2007Apr/att-0091/18-grddl-wg-minutes.html#item09"/>
+    <dc:title>XML Documents in Health Care (HL7 3.0)</dc:title>
+    <g:exercisesRule rdf:resource="http://www.w3.org/TR/grddl/#rule_GRDDL_transformation"/>
+    <t:inputDocument rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/hl7-sample.xml"/>
+  </t:Test>
+  <g:NetworkedTest rdf:about="http://www.w3.org/2001/sw/grddl-wg/td/grddl-tests#inline-rdf10">
+    <t:outputDocument rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/embedded-rdf10-output"/>
+    <t:approval rdf:resource="http://www.w3.org/2007/06/27-grddl-wg-minutes.html#item02"/>
+    <rdf:type rdf:resource="http://www.w3.org/2000/10/rdf-tests/rdfcore/testSchema#Test"/>
+    <dc:title>Embedded RDF using two
+      different inherited xml:lang on two different blocks of RDF</dc:title>
+    <g:exercisesRule rdf:resource="http://www.w3.org/TR/grddl/#rule_GRDDL_transformation"/>
+    <t:inputDocument rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/inline-rdf10"/>
+  </g:NetworkedTest>
+  <t:Test rdf:about="http://www.w3.org/2001/sw/grddl-wg/td/grddl-tests#xmlWithGrddlAttributeAndNonXMLNamespaceDocument">
+    <t:outputDocument rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/xmlWithGrddlAttributeAndNonXMLNamespaceDocument-output.rdf"/>
+    <t:approval rdf:resource="http://lists.w3.org/Archives/Public/public-grddl-wg/2007Apr/att-0091/18-grddl-wg-minutes.html#item09"/>
+    <dc:title>XML document
+      linking to its transformer through the GRDDL attribute</dc:title>
+    <g:exercisesRule rdf:resource="http://www.w3.org/TR/grddl/#rule_GRDDL_transformation"/>
+    <t:inputDocument rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/xmlWithGrddlAttributeAndNonXMLNamespaceDocument.xml"/>
+  </t:Test>
+  <g:NetworkedTest rdf:about="http://www.w3.org/2001/sw/grddl-wg/td/grddl-tests#hcard">
+    <t:outputDocument rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/hcard-output"/>
+    <t:approval rdf:resource="http://www.w3.org/2007/04/25-grddl-wg-minutes.html#item08"/>
+    <rdf:type rdf:resource="http://www.w3.org/2000/10/rdf-tests/rdfcore/testSchema#Test"/>
+    <dc:title>A copy of the hcard profile</dc:title>
+    <g:exercisesRule rdf:resource="http://www.w3.org/TR/grddl/#rule_tlrel"/>
+    <g:exercisesRule rdf:resource="http://www.w3.org/TR/grddl/#rule_merge"/>
+    <t:inputDocument rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/hcard"/>
+  </g:NetworkedTest>
+  <g:NetworkedTest rdf:about="http://www.w3.org/2001/sw/grddl-wg/td/grddl-tests#loop">
+    <t:outputDocument rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/loop-output.rdf"/>
+    <t:approval rdf:resource="http://www.w3.org/2007/04/25-grddl-wg-minutes.html#item08"/>
+    <rdf:type rdf:resource="http://www.w3.org/2000/10/rdf-tests/rdfcore/testSchema#Test"/>
+    <dc:title>Namepace Loop</dc:title>
+    <g:exercisesRule rdf:resource="http://www.w3.org/TR/grddl/#rule_GRDDL_transformation"/>
+    <g:exercisesRule rdf:resource="http://www.w3.org/TR/grddl/#rule_nstx"/>
+    <g:exercisesRule rdf:resource="http://www.w3.org/TR/grddl/#rule_merge"/>
+    <t:inputDocument rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/loop"/>
+  </g:NetworkedTest>
+  <g:NetworkedTest rdf:about="http://www.w3.org/2001/sw/grddl-wg/td/grddl-tests#inline-rdf5">
+    <t:outputDocument rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/embedded-rdf5-output"/>
+    <t:approval rdf:resource="http://www.w3.org/2007/06/27-grddl-wg-minutes.html#item02"/>
+    <rdf:type rdf:resource="http://www.w3.org/2000/10/rdf-tests/rdfcore/testSchema#Test"/>
+    <dc:title>Embedded RDF using an
+      absolute xml:base</dc:title>
+    <g:exercisesRule rdf:resource="http://www.w3.org/TR/grddl/#rule_GRDDL_transformation"/>
+    <t:inputDocument rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/inline-rdf5"/>
+  </g:NetworkedTest>
+  <g:NetworkedTest rdf:about="http://www.w3.org/2001/sw/grddl-wg/td/grddl-tests#inline-rdf9">
+    <t:outputDocument rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/embedded-rdf9-output"/>
+    <t:approval rdf:resource="http://www.w3.org/2007/06/27-grddl-wg-minutes.html#item02"/>
+    <rdf:type rdf:resource="http://www.w3.org/2000/10/rdf-tests/rdfcore/testSchema#Test"/>
+    <dc:title>Embedded RDF using two
+      different xml:lang on two different blocks of RDF</dc:title>
+    <g:exercisesRule rdf:resource="http://www.w3.org/TR/grddl/#rule_GRDDL_transformation"/>
+    <t:inputDocument rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/inline-rdf9"/>
+  </g:NetworkedTest>
+  <g:NetworkedTest rdf:about="http://www.w3.org/2001/sw/grddl-wg/td/grddl-tests#htmlbase3">
+    <t:outputDocument rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/xhtmlWithBaseElement-output"/>
+    <t:approval rdf:resource="http://www.w3.org/2007/04/25-grddl-wg-minutes.html#item08"/>
+    <rdf:type rdf:resource="http://www.w3.org/2000/10/rdf-tests/rdfcore/testSchema#Test"/>
+    <dc:title>A redirected html document
+        with a base element</dc:title>
+    <g:exercisesRule rdf:resource="http://www.w3.org/TR/grddl/#rule_tlrel"/>
+    <t:inputDocument rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/xhtmlWithBaseElement"/>
+  </g:NetworkedTest>
+  <g:NetworkedTest rdf:about="http://www.w3.org/2001/sw/grddl-wg/td/grddl-tests#loopx">
+    <g:subsumes>
+      <g:NetworkedTest rdf:about="http://www.w3.org/2001/sw/grddl-wg/td/grddl-tests#loopx1">
+        <t:approval rdf:resource="http://lists.w3.org/Archives/Public/public-grddl-wg/2007Apr/0220.html"/>
+        <rdf:type rdf:resource="http://www.w3.org/2000/10/rdf-tests/rdfcore/testSchema#Test"/>
+        <dc:title>Namespace loop</dc:title>
+        <g:alternative rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/grddl-tests#loopx3"/>
+        <g:alternative rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/grddl-tests#loopx2"/>
+        <g:exercisesRule rdf:resource="http://www.w3.org/TR/grddl/#rule_GRDDL_transformation"/>
+        <g:exercisesRule rdf:resource="http://www.w3.org/TR/grddl/#rule_nstx"/>
+        <g:exercisesRule rdf:resource="http://www.w3.org/TR/grddl/#rule_merge"/>
+        <t:outputDocument rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/loopx-output1"/>
+        <t:inputDocument rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/loopx"/>
+      </g:NetworkedTest>
+    </g:subsumes>
+    <g:subsumes>
+      <g:NetworkedTest rdf:about="http://www.w3.org/2001/sw/grddl-wg/td/grddl-tests#loopx2">
+        <t:approval rdf:resource="http://lists.w3.org/Archives/Public/public-grddl-wg/2007Apr/0220.html"/>
+        <rdf:type rdf:resource="http://www.w3.org/2000/10/rdf-tests/rdfcore/testSchema#Test"/>
+        <dc:title>Namespace loop</dc:title>
+        <g:alternative rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/grddl-tests#loopx1"/>
+        <g:alternative rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/grddl-tests#loopx3"/>
+        <g:exercisesRule rdf:resource="http://www.w3.org/TR/grddl/#rule_GRDDL_transformation"/>
+        <g:exercisesRule rdf:resource="http://www.w3.org/TR/grddl/#rule_nstx"/>
+        <g:exercisesRule rdf:resource="http://www.w3.org/TR/grddl/#rule_merge"/>
+        <t:outputDocument rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/loopx-output2"/>
+        <t:inputDocument rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/loopx"/>
+      </g:NetworkedTest>
+    </g:subsumes>
+    <g:subsumes>
+      <g:NetworkedTest rdf:about="http://www.w3.org/2001/sw/grddl-wg/td/grddl-tests#loopx3">
+        <t:approval rdf:resource="http://lists.w3.org/Archives/Public/public-grddl-wg/2007Apr/0220.html"/>
+        <rdf:type rdf:resource="http://www.w3.org/2000/10/rdf-tests/rdfcore/testSchema#Test"/>
+        <dc:title>Namespace loop</dc:title>
+        <g:alternative rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/grddl-tests#loopx1"/>
+        <g:alternative rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/grddl-tests#loopx2"/>
+        <g:exercisesRule rdf:resource="http://www.w3.org/TR/grddl/#rule_GRDDL_transformation"/>
+        <g:exercisesRule rdf:resource="http://www.w3.org/TR/grddl/#rule_nstx"/>
+        <g:exercisesRule rdf:resource="http://www.w3.org/TR/grddl/#rule_merge"/>
+        <t:outputDocument rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/loopx-output3"/>
+        <t:inputDocument rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/loopx"/>
+      </g:NetworkedTest>
+    </g:subsumes>
+    <t:approval rdf:resource="http://lists.w3.org/Archives/Public/public-grddl-wg/2007Apr/0220.html"/>
+    <rdf:type rdf:resource="http://www.w3.org/2000/10/rdf-tests/rdfcore/testSchema#Test"/>
+    <dc:title>Namespace loop</dc:title>
+    <g:exercisesRule rdf:resource="http://www.w3.org/TR/grddl/#rule_GRDDL_transformation"/>
+    <g:exercisesRule rdf:resource="http://www.w3.org/TR/grddl/#rule_nstx"/>
+    <g:exercisesRule rdf:resource="http://www.w3.org/TR/grddl/#rule_rdfxbase"/>
+    <t:outputDocument rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/loopx-output"/>
+    <t:inputDocument rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/loopx"/>
+  </g:NetworkedTest>
+  <t:Test rdf:about="http://www.w3.org/2001/sw/grddl-wg/td/grddl-tests#xhtmlWithMoreThanOneGrddlTransformation">
+    <t:outputDocument rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/xhtmlWithTwoTransformations-output.rdf"/>
+    <t:approval rdf:resource="http://www.w3.org/2007/04/25-grddl-wg-minutes.html#item08"/>
+    <dc:title>Two transformations
+      linked from the body of a document with the GRDDL profile</dc:title>
+    <g:exercisesRule rdf:resource="http://www.w3.org/TR/grddl/#rule_tlrel"/>
+    <g:exercisesRule rdf:resource="http://www.w3.org/TR/grddl/#rule_merge"/>
+    <t:inputDocument rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/xhtmlWithMoreThanOneGrddlTransformation.html"/>
+  </t:Test>
+  <g:NetworkedTest rdf:about="http://www.w3.org/2001/sw/grddl-wg/td/grddl-tests#xmlbase2">
+    <t:outputDocument rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/xmlWithoutBase-output"/>
+    <t:approval rdf:resource="http://lists.w3.org/Archives/Public/public-grddl-wg/2007Apr/0248.html"/>
+    <rdf:type rdf:resource="http://www.w3.org/2000/10/rdf-tests/rdfcore/testSchema#Test"/>
+    <dc:title>A similar xml document
+        without an xml:base attribute</dc:title>
+    <g:exercisesRule rdf:resource="http://www.w3.org/TR/grddl/#rule_GRDDL_transformation"/>
+    <t:inputDocument rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/base/xmlWithoutBase"/>
+  </g:NetworkedTest>
+  <g:NetworkedTest rdf:about="http://www.w3.org/2001/sw/grddl-wg/td/grddl-tests#card5n">
+    <t:outputDocument rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/card5n-output"/>
+    <t:approval rdf:resource="http://www.w3.org/2007/04/25-grddl-wg-minutes.html#item08"/>
+    <rdf:type rdf:resource="http://www.w3.org/2000/10/rdf-tests/rdfcore/testSchema#Test"/>
+    <dc:title>hcard from a 1998 review
+      comment on P3P</dc:title>
+    <g:exercisesRule rdf:resource="http://www.w3.org/TR/grddl/#rule_tlrel"/>
+    <g:exercisesRule rdf:resource="http://www.w3.org/TR/grddl/#rule_merge"/>
+    <g:exercisesRule rdf:resource="http://www.w3.org/TR/grddl/#rule_profiletrans"/>
+    <t:inputDocument rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/card5n"/>
+  </g:NetworkedTest>
+  <g:NetworkedTest rdf:about="http://www.w3.org/2001/sw/grddl-wg/td/grddl-tests#glean-profile">
+    <t:outputDocument rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/profile-with-spaces-in-rel-output"/>
+    <t:approval rdf:resource="http://www.w3.org/2007/04/25-grddl-wg-minutes.html#item08"/>
+    <rdf:type rdf:resource="http://www.w3.org/2000/10/rdf-tests/rdfcore/testSchema#Test"/>
+    <dc:title>Glean Profile</dc:title>
+    <g:exercisesRule rdf:resource="http://www.w3.org/TR/grddl/#rule_tlrel"/>
+    <t:inputDocument rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/profile-with-spaces-in-rel"/>
+  </g:NetworkedTest>
+  <g:NetworkedTest rdf:about="http://www.w3.org/2001/sw/grddl-wg/td/grddl-tests#sq1">
+    <t:outputDocument rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/sq1-output.rdf"/>
+    <t:approval rdf:resource="http://www.w3.org/2007/04/25-grddl-wg-minutes.html#item08"/>
+    <rdf:type rdf:resource="http://www.w3.org/2000/10/rdf-tests/rdfcore/testSchema#Test"/>
+    <dc:title>Namespace documents and media
+      types 1</dc:title>
+    <g:exercisesRule rdf:resource="http://www.w3.org/TR/grddl/#rule_nstx"/>
+    <g:exercisesRule rdf:resource="http://www.w3.org/TR/grddl/#rule_rdfxbase"/>
+    <t:inputDocument rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/sq1.xml"/>
+  </g:NetworkedTest>
+  <t:Test rdf:about="http://www.w3.org/2001/sw/grddl-wg/td/grddl-tests#xinclude">
+    <t:approval rdf:resource="http://lists.w3.org/Archives/Public/public-grddl-wg/2007Jun/att-0046/SV_MEETING_TITLE_--_6_Jun_2007.htm#item04"/>
+    <dc:title>Testing GRDDL when XInclude processing is
+        enabled</dc:title>
+    <g:alternative>
+      <t:Test rdf:about="http://www.w3.org/2001/sw/grddl-wg/td/grddl-tests#noxinclude">
+        <t:approval rdf:resource="http://lists.w3.org/Archives/Public/public-grddl-wg/2007Jun/att-0046/SV_MEETING_TITLE_--_6_Jun_2007.htm#item04"/>
+        <dc:title>Testing GRDDL when XInclude processing is
+        disabled</dc:title>
+        <g:alternative rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/grddl-tests#xinclude"/>
+        <g:exercisesRule rdf:resource="http://www.w3.org/TR/grddl/#rule_GRDDL_transformation"/>
+        <g:exercisesRule rdf:resource="http://www.w3.org/TR/grddl/#rule_merge"/>
+        <t:outputDocument rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/noxinclude1.rdf"/>
+        <t:inputDocument rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/xinclude1.html"/>
+      </t:Test>
+    </g:alternative>
+    <g:exercisesRule rdf:resource="http://www.w3.org/TR/grddl/#rule_GRDDL_transformation"/>
+    <g:exercisesRule rdf:resource="http://www.w3.org/TR/grddl/#rule_merge"/>
+    <t:outputDocument rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/xinclude1.rdf"/>
+    <t:inputDocument rdf:resource="http://www.w3.org/2001/sw/grddl-wg/td/xinclude1.html"/>
+  </t:Test>
+</rdf:RDF>

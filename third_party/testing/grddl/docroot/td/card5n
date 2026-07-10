@@ -1,0 +1,28 @@
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head profile="hcard">
+  <title>complex name case: hCard/GRDDL Test case</title>
+</head>
+<body>
+<div class="vcard">
+<span class="fn"
+>Dr. H. A. F. M. O van Mierlo</span>
+(<span class="nickname">Hafmo</span>),
+<span style='display: none' class="sort-string">Mierlo, H.A.F.M.O, van</span>
+<span class="title">minister of foreign affairs</span>
+</div>
+
+ <hr />
+
+<p>This is an <a href="http://microformats.org/wiki/hcard">hCard</a>;
+it comes from a 1998 review comment on P3P:</p>
+
+<blockquote>
+The proposed breakdown of a person's name doesn't fit everybody. For
+example, the previous Dutch minister of foreign affairs is called
+Dr. H.A.F.M.O van Mierlo: his title is "Dr.", he's known as "Hans",
+his last name is "Mierlo", prefix is "van", he has 5 first names, and
+no middle one. His most common nickname is "Hafmo".
+</blockquote>
+
+</body>
+</html>

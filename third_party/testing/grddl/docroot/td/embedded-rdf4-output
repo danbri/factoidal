@@ -1,0 +1,8 @@
+<rdf:RDF
+    xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+    xmlns:data-view="http://www.w3.org/2003/g/data-view#">
+  <rdf:Description rdf:about="" 
+   xml:base="../..">
+    <rdf:value>one</rdf:value>
+  </rdf:Description>
+</rdf:RDF>

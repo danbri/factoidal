@@ -1,0 +1,228 @@
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head profile="hcarda-prof">
+<title>hCard Profile [EXPERIMENTAL]</title>
+<style type="text/css">
+.status {background-color: #E1E1E1; color: #000000}
+</style>
+</head>
+<body>
+<h1>hCard Profile</h1>
+
+    <blockquote class="status">
+    
+<p><strong>Note:</strong>
+      This is a copy of  a document from
+ <a href="https://www.w3.org/2006/03/hcard">http://www.w3.org/2006/03/hcard</a>,
+ made on 28th March 2007. The changes are: (a) this additional paragraph
+ (b) changing references needed for GRDDL, to ones local
+ to the GRDDL test directory, and copying those files too
+ (c) changed profile, to include link profileTransformations in <a href="hcards-prof">new profile</a>,
+ and deleted old transformation links.
+</p>
+      <p><strong>Note:</strong>
+      This is an <em>experimental</em> <a
+href="http://gmpg.org/xmdp/">XMDP</a> profile for the <a
+href="http://www.microformats.org/wiki/hcard">hCard</a>
+specification. Another profile,
+<a href="https://www.w3.org/2006/vcard/ns">http://www.w3.org/2006/vcard/ns</a>
+is in development an may obsolete this one.
+</p>
+
+    </blockquote>
+
+<p>Use of this profile licenses RDF data extracted by <a
+rel="profileTransformation"
+href="hcard2rdf.xsl">hcard2rdf.xsl</a> from
+<a href="https://www.w3.org/2006/vcard/ns">the 2006 vCard/RDF work</a>.</p>
+
+
+<dl class="profile">
+ <dt>class</dt>
+ <dd><p>
+
+  <a rel="help" href="https://www.w3.org/TR/html401/struct/global.html#adef-class">
+   HTML4 definition of the 'class' attribute.</a>
+  This meta data profile defines some 'class' attribute values (class names) 
+  and their meanings as suggested by a 
+  <a href="https://www.w3.org/TR/WD-htmllink-970328#profile">
+   draft of "Hypertext Links in HTML"</a>.
+  All values are defined according to the semantics defined in the 
+  <a href="http://microformats.org/wiki/hcard">
+   hCard specification</a> 
+  and thus in 
+  <a href="http://www.ietf.org/rfc/rfc2426.txt">RFC 2426</a>.</p>
+
+  <dl>
+   <dt id="vcard">vcard</dt>
+    <dd>A container for the rest of the class names defined in this XMDP profile.
+     See <a href="../../2002/12/cal/rfc2426#sec1.">section 1. of RFC 2426</a>.
+    </dd>
+
+   <dt id="fn">fn</dt>
+    <dd>See <a href="../../2002/12/cal/rfc2426#sec3.1.1">section 3.1.1 of RFC 2426</a>.</dd>
+
+   <dt id="n">n</dt>
+    <dd>See <a href="../../2002/12/cal/rfc2426#sec3.1.2">section 3.1.2 of RFC 2426</a>. May be inferred per 
+      Implied "N" Optimization.</dd>
+
+   <dt id="family-name">family-name</dt>
+    <dd>See "Family Name" in <a href="../../2002/12/cal/rfc2426#sec3.1.2">section 3.1.2 of RFC 2426</a>.</dd>
+
+   <dt id="given-name">given-name</dt>
+    <dd>See "Given Name" in <a href="../../2002/12/cal/rfc2426#sec3.1.2">section 3.1.2 of RFC 2426</a>.</dd>
+
+   <dt id="additional-name">additional-name</dt>
+    <dd>See "Additional Names" in <a href="../../2002/12/cal/rfc2426#sec3.1.2">section 3.1.2 of RFC 2426</a>.</dd>
+
+   <dt id="honorific-prefix">honorific-prefix</dt>
+    <dd>See "Honorific Prefixes" in <a href="../../2002/12/cal/rfc2426#sec3.1.2">section 3.1.2 of RFC 2426</a>.</dd>
+
+   <dt id="honorific-suffix">honorific-suffix</dt>
+    <dd>See "Honorific Suffixes" in <a href="../../2002/12/cal/rfc2426#sec3.1.2">section 3.1.2 of RFC 2426</a>.</dd>
+
+   
+   <dt id="nickname">nickname</dt>
+    <dd>See <a href="../../2002/12/cal/rfc2426#sec3.1.3">section 3.1.3 of RFC 2426</a>.</dd>
+
+   <dt id="photo">photo</dt>
+    <dd>See <a href="../../2002/12/cal/rfc2426#sec3.1.4">section 3.1.4 of RFC 2426</a>. Typically used with an &lt;img> tag.
+     Use the 'src' attribute for URI values. Use the 'data:' URI scheme for
+     binary values.</dd>
+
+   <dt id="bday">bday</dt>
+    <dd>See <a href="../../2002/12/cal/rfc2426#sec3.1.5">section 3.1.5 of RFC 2426</a>. Typically used with an &lt;abbr> tag 
+     with the 'title' attribute for the date value, and a human readable date
+     inside the element.</dd>
+ 
+   <dt id="adr">adr</dt>
+    <dd>See <a href="../../2002/12/cal/rfc2426#sec3.2.1">section 3.2.1 of RFC 2426</a>.</dd>
+
+   <dt id="post-office-box">post-office-box</dt>
+    <dd>See "post office box" in <a href="../../2002/12/cal/rfc2426#sec3.2.1">section 3.2.1 of RFC 2426</a>.</dd>
+
+   <dt id="extended-address">extended-address</dt>
+    <dd>See "extended address" in <a href="../../2002/12/cal/rfc2426#sec3.2.1">section 3.2.1 of RFC 2426</a>.</dd>
+
+   <dt id="street-address">street-address</dt>
+    <dd>See "street address" in <a href="../../2002/12/cal/rfc2426#sec3.2.1">section 3.2.1 of RFC 2426</a>.</dd>
+
+   <dt id="locality">locality</dt>
+    <dd>See "locality" in <a href="../../2002/12/cal/rfc2426#sec3.2.1">section 3.2.1 of RFC 2426</a>.</dd>
+
+   <dt id="region">region</dt>
+    <dd>See "region" in <a href="../../2002/12/cal/rfc2426#sec3.2.1">section 3.2.1 of RFC 2426</a>.</dd>
+
+   <dt id="postal-code">postal-code</dt>
+    <dd>See "postal code" in <a href="../../2002/12/cal/rfc2426#sec3.2.1">section 3.2.1 of RFC 2426</a>.</dd>
+
+   <dt id="country-name">country-name</dt>
+    <dd>See "country name" in <a href="../../2002/12/cal/rfc2426#sec3.2.1">section 3.2.1 of RFC 2426</a>.</dd>
+
+   <dt id="type">type</dt>
+    <dd>See "type" in the various sections of RFC 2426.</dd>
+
+   <dt id="value">value</dt>
+    <dd>This class name is used to distinguish the actual <strong>value</strong>
+     of a property from any other cruft that may be in 
+     the element representing the property.</dd>
+
+   <dt id="label">label</dt>
+    <dd>See <a href="../../2002/12/cal/rfc2426#sec3.2.2">section 3.2.2 of RFC 2426</a>.</dd>
+
+   <dt id="tel">tel</dt>
+    <dd>See <a href="../../2002/12/cal/rfc2426#sec3.3.1">section 3.3.1 of RFC 2426</a>.</dd>
+
+   <dt id="email">email</dt>
+    <dd>See <a href="../../2002/12/cal/rfc2426#sec3.3.2">section 3.3.2 of RFC 2426</a>.</dd>
+
+   <dt id="mailer">mailer</dt>
+    <dd>See <a href="../../2002/12/cal/rfc2426#sec3.3.3">section 3.3.3 of RFC 2426</a>.</dd>
+
+   <dt id="tz">tz</dt>
+    <dd>See <a href="../../2002/12/cal/rfc2426#sec3.4.1">section 3.4.1 of RFC 2426</a>. Typically used with an &lt;abbr> tag 
+     with the 'title' attribute for the tz value, and a human readable time zone
+     inside the element.</dd>
+
+   <dt id="geo">geo</dt>
+    <dd>See <a href="../../2002/12/cal/rfc2426#sec3.4.2">section 3.4.2 of RFC 2426</a>.</dd>
+
+   <dt id="latitude">latitude</dt>
+    <dd>See "latitude" in <a href="../../2002/12/cal/rfc2426#sec3.4.2">section 3.4.2 of RFC 2426</a>.</dd>
+
+   <dt id="longitude">longitude</dt>
+    <dd>See "longitude" in <a href="../../2002/12/cal/rfc2426#sec3.4.2">section 3.4.2 of RFC 2426</a>.</dd>
+
+   <dt id="title">title</dt>
+    <dd>See <a href="../../2002/12/cal/rfc2426#sec3.5.1">section 3.5.1 of RFC 2426</a>.</dd>
+
+   <dt id="role">role</dt>
+    <dd>See <a href="../../2002/12/cal/rfc2426#sec3.5.2">section 3.5.2 of RFC 2426</a>.</dd>
+
+   <dt id="logo">logo</dt>
+    <dd>See <a href="../../2002/12/cal/rfc2426#sec3.5.3">section 3.5.3 of RFC 2426</a>. Typically used with an &lt;img> tag.
+     Use the 'src' attribute for URI values. Use the 'data:' URI scheme for
+     binary values.</dd>
+
+   <dt id="agent">agent</dt>
+    <dd>See <a href="../../2002/12/cal/rfc2426#sec3.5.4">section 3.5.4 of RFC 2426</a>. If the value is a vCard, then 
+    use a nest hCard.  For simplicity in that case, the same element that 
+    has the class name of "agent" should use the class name of "vcard".</dd>
+
+   <dt id="org">org</dt>
+    <dd>See <a href="../../2002/12/cal/rfc2426#sec3.5.5">section 3.5.5 of RFC 2426</a>.</dd>
+
+   <dt id="organization-name">organization-name</dt>
+    <dd>See "Organization Name" in <a href="../../2002/12/cal/rfc2426#sec3.5.5">section 3.5.5 of RFC 2426</a>. 
+      May be inferred per Implied "organization-name" Optimization.</dd>
+
+   <dt id="organization-unit">organization-unit</dt>
+    <dd>See "Organization Unit" in <a href="../../2002/12/cal/rfc2426#sec3.5.5">section 3.5.5 of RFC 2426</a>.</dd>    
+
+   <dt id="category">category</dt>
+
+    <dd>See <a href="../../2002/12/cal/rfc2426#sec3.6.1">section 3.6.1 of RFC 2426</a>.</dd>
+
+   <dt id="note">note</dt>
+    <dd>See <a href="../../2002/12/cal/rfc2426#sec3.6.2">section 3.6.2 of RFC 2426</a>.</dd>
+
+   <dt id="rev">rev</dt>
+
+    <dd>See <a href="../../2002/12/cal/rfc2426#sec3.6.4">section 3.6.4 of RFC 2426</a>. Typically used with an &lt;abbr> tag 
+     with the 'title' attribute for the date value, and a human readable date
+     inside the element.</dd>
+
+   <dt id="sort-string">sort-string</dt>
+    <dd>See <a href="../../2002/12/cal/rfc2426#sec3.6.5">section 3.6.5 of RFC 2426</a>.</dd>
+
+   <dt id="sound">sound</dt>
+
+    <dd>See <a href="../../2002/12/cal/rfc2426#sec3.6.6">section 3.6.6 of RFC 2426</a>. Typically used with either an &lt;a>
+     or &lt;object> tag. Use the 'data:' URI scheme for binary values.</dd>
+
+   <dt id="uid">uid</dt>
+    <dd>See <a href="../../2002/12/cal/rfc2426#sec3.6.7">section 3.6.7 of RFC 2426</a>.</dd>
+
+   <dt id="url">url</dt>
+    <dd>See <a href="../../2002/12/cal/rfc2426#sec3.6.8">section 3.6.8 of RFC 2426</a>. Typically used with an &lt;a> tag.
+    </dd>
+
+   <dt id="class">class</dt>
+    <dd>See <a href="../../2002/12/cal/rfc2426#sec3.7.1">section 3.7.1 of RFC 2426</a>.</dd>
+
+   <dt id="key">key</dt>
+    <dd>See <a href="../../2002/12/cal/rfc2426#sec3.7.2">section 3.7.2 of RFC 2426</a>. Typically used with an &lt;abbr> tag 
+     with the 'title' attribute for the key value, and a human readable key
+     equivalent inside the element.</dd>
+     
+  </dl>
+ </dd>
+</dl>
+<hr />
+<address>
+
+  <a href="https://www.w3.org/People/Connolly/">Dan Connolly</a>, March 2006
+  <br />
+  <small>$Revision: 1.1 $ of $Date: 2007/03/28 11:57:19 $</small>
+</address>
+</body>
+</html>

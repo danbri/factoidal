@@ -1,0 +1,23 @@
+<!--
+Harder test for embeddedRDF transform with two different xml:base's
+Two blocks of RDF.
+-->
+
+<embedded  
+   xmlns:eg="http://example.org/two#"
+        xml:base="http://www.example.org/c"
+   xmlns:data-view="http://www.w3.org/2003/g/data-view#" 
+   data-view:transformation="http://www.w3.org/2003/g/inline-rdf.xsl">
+    <a xmlns:eg="http://example.org/one#"
+        xml:base="http://www.example.org/a">
+      <b/>
+      <r:RDF xmlns:r="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+	    <r:Description r:about="" eg:value="one"/>
+      </r:RDF>
+    </a>
+    <RDF xmlns="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+        xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+        xml:base="http://www.example.org/b">
+	    <Description rdf:about="" eg:value="two"/>
+    </RDF>
+</embedded>

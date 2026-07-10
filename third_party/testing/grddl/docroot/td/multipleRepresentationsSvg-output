@@ -1,0 +1,10 @@
+<rdf:RDF  
+  xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+  xmlns:ex="http://example.org/test#">
+              
+  <rdf:Description>
+    <dc:title xmlns:dc="http://purl.org/dc/elements/1.1/">SVG Input for multipleRepresentations Test Case</dc:title>
+     <ex:mimetype>image/svg+xml</ex:mimetype>
+  </rdf:Description>
+
+</rdf:RDF>

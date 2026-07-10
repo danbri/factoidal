@@ -1,0 +1,13 @@
+<!-- A GRDDL aware agent that never considers
+  GRDDL results of IR, when computing the
+  GRDDL results for IR, may produce this 
+  output.
+-->
+<rdf:RDF 
+  xmlns:data-view="http://www.w3.org/2003/g/data-view#" 
+  xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+  <rdf:Description rdf:about="">
+	  <data-view:namespaceTransformation
+	      rdf:resource="loopx.xsl" />
+  </rdf:Description>
+</rdf:RDF>

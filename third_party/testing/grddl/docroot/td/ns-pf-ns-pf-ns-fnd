@@ -1,0 +1,12 @@
+
+<!-- This file is a simple XML file
+     whose namespace is set from a 
+     server side include. 
+     It is intended to be used as a namespace
+     or profile document itself.
+-->
+     
+     
+<doc xmlns='http://www.w3.org/2001/sw/grddl-wg/td/pf-ns-pf-ns-fnd'>
+The namespace is http://www.w3.org/2001/sw/grddl-wg/td/pf-ns-pf-ns-fnd
+</doc>

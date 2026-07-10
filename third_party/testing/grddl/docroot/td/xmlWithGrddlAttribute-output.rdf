@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+  <rdf:Description rdf:nodeID="r1108136297r1">
+    <ns0:P3Pv1max-age xmlns:ns0="http://www.w3.org/2002/01/">604800</ns0:P3Pv1max-age>
+  </rdf:Description>
+  <rdf:Description rdf:about="">
+    <ns0:P3Pv1expiry xmlns:ns0="http://www.w3.org/2002/01/" rdf:nodeID="r1108136297r1"/>
+  </rdf:Description>
+  <rdf:Description rdf:about="#public">
+    <rdf:type rdf:resource="http://www.w3.org/2002/01/P3Pv1Policy"/>
+  </rdf:Description>
+  <rdf:Description rdf:about="#public">
+    <ns0:P3Pv1discuri xmlns:ns0="http://www.w3.org/2002/01/" rdf:resource="http://www.w3.org/Consortium/Legal/privacy-statement#Public"/>
+  </rdf:Description>
+</rdf:RDF>

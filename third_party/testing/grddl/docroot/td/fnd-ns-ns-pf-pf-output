@@ -1,0 +1,40 @@
+<!--
+This file is the output for the layering tests.
+It is a server side include file.
+-->
+
+<rdf:RDF
+    xmlns:ex="http://example.org/test#"
+    xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+    xmlns:g="http://www.w3.org/2003/g/data-view#">
+  <rdf:Description rdf:about="">
+    <ex:applied rdf:parseType="Collection">
+
+    <rdf:Description rdf:about="layering-profile?"/>
+
+
+
+    <rdf:Description rdf:about="layering-profile?p"/>
+
+
+
+    <rdf:Description rdf:about="layering-namespace?pp"/>
+
+
+
+    <rdf:Description rdf:about="layering-namespace?ppn"/>
+
+
+
+
+
+
+
+     </ex:applied>
+    <g:profileTransformation rdf:resource="layering-profile?ppnn"/>
+    <g:namespaceTransformation rdf:resource="layering-namespace?ppnn"/>
+  </rdf:Description>
+</rdf:RDF>
+
+
+

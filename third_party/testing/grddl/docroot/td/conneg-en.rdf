@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+<rdf:Description rdf:about="http://musicbrainz.org/mm-2.1/album/6b050dcf-7ab1-456d-9e1b-c3c41c18eed2">
+<dc:title xmlns:dc="http://purl.org/dc/elements/1.1/">Are You Experienced?</dc:title>
+</rdf:Description>
+</rdf:RDF>

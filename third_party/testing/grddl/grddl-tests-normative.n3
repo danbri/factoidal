@@ -1,0 +1,661 @@
+
+@prefix _10: <http://www.w3.org/TR/grddl/#>.
+@prefix _11: <http://www.w3.org/2001/sw/grddl-wg/td/>.
+@prefix _12: <http://lists.w3.org/Archives/Public/public-grddl-wg/2007Apr/0224.>.
+@prefix _13: <http://lists.w3.org/Archives/Public/public-grddl-wg/2007Apr/0220.>.
+@prefix _14: <http://www.w3.org/2007/04/25-grddl-wg-minutes.html#>.
+@prefix _15: <http://www.w3.org/2007/04/11-grddl-wg-minutes.html#>.
+@prefix _16: <http://www.w3.org/2007/06/27-grddl-wg-minutes.html#>.
+@prefix _17: <http://lists.w3.org/Archives/Public/public-grddl-wg/2007Apr/att-0091/18-grddl-wg-minutes.html#>.
+@prefix _18: <http://lists.w3.org/Archives/Public/public-grddl-wg/2007Jun/att-0046/SV_MEETING_TITLE_--_6_Jun_2007.htm#>.
+@prefix _7: <http://www.w3.org/2001/sw/grddl-wg/td/grddl-tests#>.
+@prefix _8: <http://www.w3.org/2001/sw/grddl-wg/td/base/>.
+@prefix _9: <http://lists.w3.org/Archives/Public/public-grddl-wg/2007Apr/0248.>.
+@prefix dc: <http://purl.org/dc/elements/1.1/>.
+@prefix g: <http://www.w3.org/2001/sw/grddl-wg/td/grddl-test-vocabulary#>.
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>.
+@prefix t: <http://www.w3.org/2000/10/rdf-tests/rdfcore/testSchema#>.
+
+ _7:base-param a t:Test;
+     dc:title "Base URI: Same document reference";
+     t:approval _15:item03;
+     t:inputDocument <http://www.w3.org/2001/sw/grddl-wg/td/baseURI.html>;
+     t:outputDocument <http://www.w3.org/2001/sw/grddl-wg/td/baseURI.rdf>;
+     g:exercisesRule _10:rule_GRDDL_transformation. 
+
+ _7:card5n a t:Test,
+         g:NetworkedTest;
+     dc:title """hcard from a 1998 review
+      comment on P3P""";
+     t:approval _14:item08;
+     t:inputDocument _11:card5n;
+     t:outputDocument _11:card5n-output;
+     g:exercisesRule _10:rule_merge,
+         _10:rule_profiletrans,
+         _10:rule_tlrel. 
+
+ _7:card5na a t:Test,
+         g:NetworkedTest;
+     dc:title "A variant of the card5n test";
+     t:approval _14:item08;
+     t:inputDocument _11:card5na;
+     t:outputDocument _11:card5n-output;
+     g:exercisesRule _10:rule_merge,
+         _10:rule_profiletrans. 
+
+ _7:four-transforms a t:Test,
+         g:NetworkedTest;
+     dc:title """An XML document with
+      two namespace transformations and two transforms on the root
+      element""";
+     t:approval _17:item09;
+     t:inputDocument _11:four-transforms;
+     t:outputDocument _11:four-transforms-output;
+     g:exercisesRule _10:rule_GRDDL_transformation,
+         _10:rule_merge,
+         _10:rule_nstx. 
+
+ _7:glean-profile a t:Test,
+         g:NetworkedTest;
+     dc:title "Glean Profile";
+     t:approval _14:item08;
+     t:inputDocument _11:profile-with-spaces-in-rel;
+     t:outputDocument _11:profile-with-spaces-in-rel-output;
+     g:exercisesRule _10:rule_tlrel. 
+
+ _7:grddlProfileBase1 a t:Test,
+         g:NetworkedTest;
+     dc:title """An XHTML profile
+      using a base element""";
+     t:approval _14:item08;
+     t:inputDocument _8:grddlProfileWithBaseElement;
+     t:outputDocument _11:grddlProfileWithBaseElement-output;
+     g:exercisesRule _10:rule_tlrel. 
+
+ _7:grddlProfileBase2 a t:Test,
+         g:NetworkedTest;
+     dc:title """An XHTML profile
+      using a base element""";
+     t:approval _14:item08;
+     t:inputDocument _11:grddlProfileWithBaseElement;
+     t:outputDocument _11:grddlProfileWithBaseElement-output;
+     g:exercisesRule _10:rule_tlrel. 
+
+ _7:grddlProfileBase3 a t:Test,
+         g:NetworkedTest;
+     dc:title """XHTML with an XHTML
+      profile using a base element""";
+     t:approval _14:item08;
+     t:inputDocument _11:xhtmlProfileBase1;
+     t:outputDocument _11:xhtmlProfileBase1-output;
+     g:exercisesRule _10:rule_profiletrans,
+         _10:rule_tlrel. 
+
+ _7:grddlonrdf a t:Test;
+     dc:title "Testing GRDDL attributes on RDF documents";
+     t:approval _14:item08;
+     t:inputDocument <http://www.w3.org/2001/sw/grddl-wg/td/grddlonrdf.rdf>;
+     t:outputDocument <http://www.w3.org/2001/sw/grddl-wg/td/grddlonrdf-output3.rdf>;
+     g:exercisesRule _10:rule_GRDDL_transformation,
+         _10:rule_merge,
+         _10:rule_rdfxbase. 
+
+ _7:grddlonrdf-xmlmediatype a t:Test;
+     dc:title """Testing GRDDL attributes on RDF
+        documents with XML media type""";
+     t:approval _17:item09;
+     t:inputDocument <http://www.w3.org/2001/sw/grddl-wg/td/grddlonrdf-xmlmediatype.rdf>;
+     t:outputDocument <http://www.w3.org/2001/sw/grddl-wg/td/grddlonrdf-xmlmediatype-output3.rdf>;
+     g:exercisesRule _10:rule_GRDDL_transformation,
+         _10:rule_merge,
+         _10:rule_rdfxbase. 
+
+ _7:hcard a t:Test,
+         g:NetworkedTest;
+     dc:title "A copy of the hcard profile";
+     t:approval _14:item08;
+     t:inputDocument _11:hcard;
+     t:outputDocument _11:hcard-output;
+     g:exercisesRule _10:rule_merge,
+         _10:rule_tlrel. 
+
+ _7:hcard1 a t:Test,
+         g:NetworkedTest;
+     dc:title "An hcard profile";
+     t:approval _14:item08;
+     t:inputDocument <http://www.w3.org/2001/sw/grddl-wg/td/card.html>;
+     t:outputDocument <http://www.w3.org/2001/sw/grddl-wg/td/card-output.rdf>;
+     g:exercisesRule _10:rule_merge,
+         _10:rule_profiletrans,
+         _10:rule_tlrel. 
+
+ _7:hcarda a t:Test,
+         g:NetworkedTest;
+     dc:title """A variant of the hcard
+      profile""";
+     t:approval _14:item08;
+     t:inputDocument _11:hcarda;
+     t:outputDocument _11:hcard-output;
+     g:exercisesRule _10:rule_merge,
+         _10:rule_profiletrans. 
+
+ _7:hl7-to-owl a t:Test;
+     dc:title "XML Documents in Health Care (HL7 3.0)";
+     t:approval _17:item09;
+     t:inputDocument <http://www.w3.org/2001/sw/grddl-wg/td/hl7-sample.xml>;
+     t:outputDocument <http://www.w3.org/2001/sw/grddl-wg/td/hl7-rim-pomr.rdf>;
+     g:exercisesRule _10:rule_GRDDL_transformation. 
+
+ _7:html-and-transformation-attr a t:Test,
+         g:NetworkedTest;
+     dc:title """HTML
+        document with transformation attribute on root""";
+     t:approval _14:item08;
+     t:inputDocument _11:html-and-grddl-xform-attr;
+     t:outputDocument _11:two-transforms-output;
+     g:exercisesRule _10:rule_GRDDL_transformation,
+         _10:rule_tlrel. 
+
+ _7:htmlbase1 a t:Test,
+         g:NetworkedTest;
+     dc:title """An html document with a
+        base element""";
+     t:approval _14:item08;
+     t:inputDocument _8:xhtmlWithBaseElement;
+     t:outputDocument _11:xhtmlWithBaseElement-output;
+     g:exercisesRule _10:rule_tlrel. 
+
+ _7:htmlbase2 a t:Test,
+         g:NetworkedTest;
+     dc:title """A similar html document
+        without a base element""";
+     t:approval _14:item08;
+     t:inputDocument _8:xhtmlWithoutBaseElement;
+     t:outputDocument _11:xhtmlWithoutBaseElement-output;
+     g:exercisesRule _10:rule_tlrel. 
+
+ _7:htmlbase3 a t:Test,
+         g:NetworkedTest;
+     dc:title """A redirected html document
+        with a base element""";
+     t:approval _14:item08;
+     t:inputDocument _11:xhtmlWithBaseElement;
+     t:outputDocument _11:xhtmlWithBaseElement-output;
+     g:exercisesRule _10:rule_tlrel. 
+
+ _7:htmlbase4 a t:Test,
+         g:NetworkedTest;
+     dc:title """A similar redirected html
+        document without a base element""";
+     t:approval _14:item08;
+     t:inputDocument _11:xhtmlWithoutBaseElement;
+     t:outputDocument _11:xhtmlWithoutBaseElement-output;
+     g:exercisesRule _10:rule_tlrel. 
+
+ _7:inline a t:Test;
+     dc:title "Inline transformation reference";
+     t:approval _15:item03;
+     t:inputDocument <http://www.w3.org/2001/sw/grddl-wg/td/inline.html>;
+     t:outputDocument <http://www.w3.org/2001/sw/grddl-wg/td/inline.rdf>;
+     g:exercisesRule _10:rule_tlrel. 
+
+ _7:inline-rdf1 a t:Test,
+         g:NetworkedTest;
+     dc:title "Embedded RDF1";
+     t:approval _16:item02;
+     t:inputDocument _11:inline-rdf1;
+     t:outputDocument _11:embedded-rdf1-output;
+     g:exercisesRule _10:rule_GRDDL_transformation. 
+
+ _7:inline-rdf10 a t:Test,
+         g:NetworkedTest;
+     dc:title """Embedded RDF using two
+      different inherited xml:lang on two different blocks of RDF""";
+     t:approval _16:item02;
+     t:inputDocument _11:inline-rdf10;
+     t:outputDocument _11:embedded-rdf10-output;
+     g:exercisesRule _10:rule_GRDDL_transformation. 
+
+ _7:inline-rdf2 a t:Test,
+         g:NetworkedTest;
+     dc:title "Embedded RDF2";
+     t:approval _16:item02;
+     t:inputDocument _11:inline-rdf2;
+     t:outputDocument _11:embedded-rdf2-output;
+     g:exercisesRule _10:rule_GRDDL_transformation. 
+
+ _7:inline-rdf3 a t:Test,
+         g:NetworkedTest;
+     dc:title "Embedded RDF3";
+     t:approval _16:item02;
+     t:inputDocument _11:inline-rdf3;
+     t:outputDocument _11:embedded-rdf3-output;
+     g:exercisesRule _10:rule_GRDDL_transformation,
+         _10:rule_rdfxbase. 
+
+ _7:inline-rdf4 a t:Test,
+         g:NetworkedTest;
+     dc:title """Embedded RDF using a
+      relative xml:base""";
+     t:approval _16:item02;
+     t:inputDocument _11:inline-rdf4;
+     t:outputDocument _11:embedded-rdf4-output;
+     g:exercisesRule _10:rule_GRDDL_transformation. 
+
+ _7:inline-rdf5 a t:Test,
+         g:NetworkedTest;
+     dc:title """Embedded RDF using an
+      absolute xml:base""";
+     t:approval _16:item02;
+     t:inputDocument _11:inline-rdf5;
+     t:outputDocument _11:embedded-rdf5-output;
+     g:exercisesRule _10:rule_GRDDL_transformation. 
+
+ _7:inline-rdf6 a t:Test,
+         g:NetworkedTest;
+     dc:title """Embedded RDF using two
+      nested absolute xml:base""";
+     t:approval _16:item02;
+     t:inputDocument _11:inline-rdf6;
+     t:outputDocument _11:embedded-rdf6-output;
+     g:exercisesRule _10:rule_GRDDL_transformation. 
+
+ _7:inline-rdf8 a t:Test,
+         g:NetworkedTest;
+     dc:title """Embedded RDF using two
+      different xml:base on two different blocks of RDF""";
+     t:approval _16:item02;
+     t:inputDocument _11:inline-rdf8;
+     t:outputDocument _11:embedded-rdf8-output;
+     g:exercisesRule _10:rule_GRDDL_transformation. 
+
+ _7:inline-rdf9 a t:Test,
+         g:NetworkedTest;
+     dc:title """Embedded RDF using two
+      different xml:lang on two different blocks of RDF""";
+     t:approval _16:item02;
+     t:inputDocument _11:inline-rdf9;
+     t:outputDocument _11:embedded-rdf9-output;
+     g:exercisesRule _10:rule_GRDDL_transformation. 
+
+ _7:langconneg3 a t:Test,
+         g:NetworkedTest;
+     dc:title """Content Negotation with
+        GRDDL (3 of 3)""";
+     t:approval _14:item08;
+     t:inputDocument <http://www.w3.org/2001/sw/grddl-wg/td/conneg.html>;
+     t:outputDocument _11:conneg-output;
+     g:exercisesRule _10:rule_GRDDL_transformation,
+         _10:rule_merge;
+     g:subsumes _7:langconneg1,
+         _7:langconneg2. 
+
+ _7:loop a t:Test,
+         g:NetworkedTest;
+     dc:title "Namepace Loop";
+     t:approval _14:item08;
+     t:inputDocument _11:loop;
+     t:outputDocument <http://www.w3.org/2001/sw/grddl-wg/td/loop-output.rdf>;
+     g:exercisesRule _10:rule_GRDDL_transformation,
+         _10:rule_merge,
+         _10:rule_nstx. 
+
+ _7:loopx a t:Test,
+         g:NetworkedTest;
+     dc:title "Namespace loop";
+     t:approval _13:html;
+     t:inputDocument _11:loopx;
+     t:outputDocument _11:loopx-output;
+     g:exercisesRule _10:rule_GRDDL_transformation,
+         _10:rule_nstx,
+         _10:rule_rdfxbase;
+     g:subsumes _7:loopx1,
+         _7:loopx2,
+         _7:loopx3. 
+
+ _7:multipleRepresentations3 a t:Test,
+         g:NetworkedTest;
+     dc:title """Multiple
+        Representations (both)""";
+     t:approval _14:item08;
+     t:inputDocument _11:multipleRepresentations;
+     t:outputDocument _11:multipleRepresentationsBoth-output;
+     g:exercisesRule _10:rule_GRDDL_transformation,
+         _10:rule_merge,
+         _10:rule_tlrel;
+     g:subsumes _7:multipleRepresentations,
+         _7:multipleRepresentations2. 
+
+ _7:multiprofile a t:Test,
+         g:NetworkedTest;
+     dc:title """2 profiles: eRDF and
+      hCard""";
+     t:approval _12:html;
+     t:inputDocument <http://www.w3.org/2001/sw/grddl-wg/td/multiprofile.html>;
+     t:outputDocument <http://www.w3.org/2001/sw/grddl-wg/td/multiprofile-output.rdf>;
+     g:exercisesRule _10:rule_merge,
+         _10:rule_profiletrans,
+         _10:rule_tlrel. 
+
+ _7:ns-ns-pf-pf a t:Test,
+         g:NetworkedTest;
+     dc:title "Recursion 2";
+     t:approval _17:item09;
+     t:inputDocument _11:ns-ns-pf-pf-fnd;
+     t:outputDocument _11:fnd-ns-ns-pf-pf-output;
+     g:exercisesRule _10:rule_merge,
+         _10:rule_nstx,
+         _10:rule_profiletrans,
+         _10:rule_rdfxbase. 
+
+ _7:ns-pf-ns-pf-ns a t:Test,
+         g:NetworkedTest;
+     dc:title "Recursion 3";
+     t:approval _17:item09;
+     t:inputDocument _11:ns-pf-ns-pf-ns-fnd;
+     t:outputDocument _11:fnd-ns-pf-ns-pf-ns-output;
+     g:exercisesRule _10:rule_merge,
+         _10:rule_nstx,
+         _10:rule_profiletrans,
+         _10:rule_rdfxbase. 
+
+ _7:pf-pf-pf-ns a t:Test,
+         g:NetworkedTest;
+     dc:title "Recursion 1";
+     t:approval _17:item09;
+     t:inputDocument _11:pf-pf-pf-ns-fnd;
+     t:outputDocument _11:fnd-pf-pf-pf-ns-output;
+     g:exercisesRule _10:rule_merge,
+         _10:rule_nstx,
+         _10:rule_profiletrans,
+         _10:rule_rdfxbase. 
+
+ _7:projectsSpreadsheet a t:Test;
+     dc:title "Get RDF from a spreadsheet";
+     t:approval _15:action06;
+     t:inputDocument <http://www.w3.org/2001/sw/grddl-wg/td/projects.xml>;
+     t:outputDocument <http://www.w3.org/2001/sw/grddl-wg/td/projects.rdf>;
+     g:exercisesRule _10:rule_GRDDL_transformation. 
+
+ _7:rdfXMLDoc a t:Test;
+     dc:title "RDF/XML document";
+     t:approval _17:item09;
+     t:inputDocument <http://www.w3.org/2001/sw/grddl-wg/td/projects.rdf>;
+     t:outputDocument <http://www.w3.org/2001/sw/grddl-wg/td/projects.rdf>;
+     g:exercisesRule _10:rule_rdfxbase. 
+
+ _7:rdfa1 a t:Test;
+     dc:title "RDFa example";
+     t:approval _15:item03;
+     t:inputDocument <http://www.w3.org/2001/sw/grddl-wg/td/rdf_sem.html>;
+     t:outputDocument <http://www.w3.org/2001/sw/grddl-wg/td/rdf_sem-output.rdf>;
+     g:exercisesRule _10:rule_tlrel. 
+
+ _7:spaces-in-rel a t:Test,
+         g:NetworkedTest;
+     dc:title """Spaces in rel
+        attribute""";
+     t:approval _14:item08;
+     t:inputDocument <http://www.w3.org/2001/sw/grddl-wg/td/spaces-in-rel.html>;
+     t:outputDocument <http://www.w3.org/2001/sw/grddl-wg/td/spaces-in-rel-output.rdf>;
+     g:exercisesRule _10:rule_tlrel. 
+
+ _7:sq1 a t:Test,
+         g:NetworkedTest;
+     dc:title """Namespace documents and media
+      types 1""";
+     t:approval _14:item08;
+     t:inputDocument <http://www.w3.org/2001/sw/grddl-wg/td/sq1.xml>;
+     t:outputDocument <http://www.w3.org/2001/sw/grddl-wg/td/sq1-output.rdf>;
+     g:exercisesRule _10:rule_nstx,
+         _10:rule_rdfxbase. 
+
+ _7:sq2 a t:Test,
+         g:NetworkedTest;
+     dc:title """Namespace documents and media
+      types 2""";
+     t:approval _17:item09;
+     t:inputDocument <http://www.w3.org/2001/sw/grddl-wg/td/sq2.xml>;
+     t:outputDocument <http://www.w3.org/2001/sw/grddl-wg/td/sq2-output.rdf>;
+     g:exercisesRule _10:rule_nstx,
+         _10:rule_rdfxbase. 
+
+ _7:three-transforms a t:Test,
+         g:NetworkedTest;
+     dc:title """An XML document with
+      two namespace transformations and a transform on the root element""";
+     t:approval _12:html;
+     t:inputDocument _11:three-transforms;
+     t:outputDocument _11:three-transforms-output;
+     g:exercisesRule _10:rule_GRDDL_transformation,
+         _10:rule_merge,
+         _10:rule_nstx. 
+
+ _7:title_author a t:Test;
+     dc:title "Title / Author (from specification)";
+     t:approval _15:item03;
+     t:inputDocument <http://www.w3.org/2001/sw/grddl-wg/td/titleauthor.html>;
+     t:outputDocument <http://www.w3.org/2001/sw/grddl-wg/td/titleauthor-output.rdf>;
+     g:exercisesRule _10:rule_GRDDL_transformation. 
+
+ _7:two-transforms a t:Test,
+         g:NetworkedTest;
+     dc:title """An XML document with
+      two namespace transformations""";
+     t:approval _17:item09;
+     t:inputDocument _11:two-transforms;
+     t:outputDocument _11:two-transforms-output;
+     g:exercisesRule _10:rule_merge,
+         _10:rule_nstx. 
+
+ _7:xhtmlWithGrddlEnabledProfile a t:Test,
+         g:NetworkedTest;
+     dc:title """Document
+      linking to its transformer through a GRDDL-enabled profile""";
+     t:approval _14:item08;
+     t:inputDocument <http://www.w3.org/2001/sw/grddl-wg/td/xhtmlWithGrddlEnabledProfile.html>;
+     t:outputDocument <http://www.w3.org/2001/sw/grddl-wg/td/xhtmlWithGrddlEnabledProfile-output.rdf>;
+     g:exercisesRule _10:rule_profiletrans,
+         _10:rule_tlrel. 
+
+ _7:xhtmlWithGrddlEnabledProfileAndADisabledInBodyTransform a t:Test;
+     dc:title """Document
+        linking to its transformer through a GRDDL-enabled profile, and with
+        in-line transformation""";
+     t:approval _14:item08;
+     t:inputDocument <http://www.w3.org/2001/sw/grddl-wg/td/xhtmlWithGrddlEnabledProfileAndADisabledInBodyTransform.html>;
+     t:outputDocument <http://www.w3.org/2001/sw/grddl-wg/td/xhtmlWithGrddlEnabledProfileAndADisabledInBodyTransform-output.rdf>;
+     g:exercisesRule _10:rule_profiletrans,
+         _10:rule_tlrel. 
+
+ _7:xhtmlWithGrddlEnabledProfileAndInBodyTransform a t:Test;
+     dc:title """Document
+        linking to its transformer through a GRDDL-enabled profile, and with
+        in-line transformation""";
+     t:approval _14:item08;
+     t:inputDocument <http://www.w3.org/2001/sw/grddl-wg/td/xhtmlWithGrddlEnabledProfileAndInBodyTransform.html>;
+     t:outputDocument <http://www.w3.org/2001/sw/grddl-wg/td/xhtmlWithGrddlEnabledProfileAndInBodyTransform-output.rdf>;
+     g:exercisesRule _10:rule_merge,
+         _10:rule_profiletrans,
+         _10:rule_tlrel. 
+
+ _7:xhtmlWithGrddlProfile a t:Test;
+     dc:title """One transform linked from the head of
+      a document with only the GRDDL profile""";
+     t:approval _17:item09;
+     t:inputDocument <http://www.w3.org/2001/sw/grddl-wg/td/xhtmlWithGrddlProfile.html>;
+     t:outputDocument <http://www.w3.org/2001/sw/grddl-wg/td/xhtmlWithGrddlProfile-output.rdf>;
+     g:exercisesRule _10:rule_tlrel. 
+
+ _7:xhtmlWithGrddlTransformationInBody a t:Test;
+     dc:title """One transform linked from
+      the body of a document with only the GRDDL profile""";
+     t:approval _17:item09;
+     t:inputDocument <http://www.w3.org/2001/sw/grddl-wg/td/xhtmlWithGrddlTransformationInBody.html>;
+     t:outputDocument <http://www.w3.org/2001/sw/grddl-wg/td/xhtmlWithGrddlTransformationInBody-output.rdf>;
+     g:exercisesRule _10:rule_tlrel. 
+
+ _7:xhtmlWithMoreThanOneGrddlTransformation a t:Test;
+     dc:title """Two transformations
+      linked from the body of a document with the GRDDL profile""";
+     t:approval _14:item08;
+     t:inputDocument <http://www.w3.org/2001/sw/grddl-wg/td/xhtmlWithMoreThanOneGrddlTransformation.html>;
+     t:outputDocument <http://www.w3.org/2001/sw/grddl-wg/td/xhtmlWithTwoTransformations-output.rdf>;
+     g:exercisesRule _10:rule_merge,
+         _10:rule_tlrel. 
+
+ _7:xhtmlWithMoreThanOneProfile a t:Test;
+     dc:title """One transform linked from the
+      head of a document with several profiles, including the GRDDL
+      profile""";
+     t:approval _14:item08;
+     t:inputDocument <http://www.w3.org/2001/sw/grddl-wg/td/xhtmlWithMoreThanOneProfile.html>;
+     t:outputDocument <http://www.w3.org/2001/sw/grddl-wg/td/xhtmlWithTwoTransformations-output.rdf>;
+     g:exercisesRule _10:rule_tlrel. 
+
+ _7:xmlWithGrddlAttribute a t:Test;
+     dc:title "";
+     t:approval _15:action06;
+     t:inputDocument <http://www.w3.org/2001/sw/grddl-wg/td/xmlWithGrddlAttribute.xml>;
+     t:outputDocument <http://www.w3.org/2001/sw/grddl-wg/td/xmlWithGrddlAttribute-output.rdf>;
+     g:exercisesRule _10:rule_GRDDL_transformation. 
+
+ _7:xmlWithGrddlAttributeAndNonXMLNamespaceDocument a t:Test;
+     dc:title """XML document
+      linking to its transformer through the GRDDL attribute""";
+     t:approval _17:item09;
+     t:inputDocument <http://www.w3.org/2001/sw/grddl-wg/td/xmlWithGrddlAttributeAndNonXMLNamespaceDocument.xml>;
+     t:outputDocument <http://www.w3.org/2001/sw/grddl-wg/td/xmlWithGrddlAttributeAndNonXMLNamespaceDocument-output.rdf>;
+     g:exercisesRule _10:rule_GRDDL_transformation. 
+
+ _7:xmlbase1 a t:Test,
+         g:NetworkedTest;
+     dc:title """An xml document with an
+        xml:base attribute""";
+     t:approval _9:html;
+     t:inputDocument _8:xmlWithBase;
+     t:outputDocument _11:xmlWithBase-output;
+     g:exercisesRule _10:rule_GRDDL_transformation. 
+
+ _7:xmlbase2 a t:Test,
+         g:NetworkedTest;
+     dc:title """A similar xml document
+        without an xml:base attribute""";
+     t:approval _9:html;
+     t:inputDocument _8:xmlWithoutBase;
+     t:outputDocument _11:xmlWithoutBase-output;
+     g:exercisesRule _10:rule_GRDDL_transformation. 
+
+ _7:xmlbase3 a t:Test,
+         g:NetworkedTest;
+     dc:title """A redirected xml document
+        with an xml:base attribute""";
+     t:approval _9:html;
+     t:inputDocument _11:xmlWithBase;
+     t:outputDocument _11:xmlWithBase-output;
+     g:exercisesRule _10:rule_GRDDL_transformation. 
+
+ _7:xmlbase4 a t:Test,
+         g:NetworkedTest;
+     dc:title """A similar redirected xml
+        document without an xml:base attribute""";
+     t:approval _9:html;
+     t:inputDocument _11:xmlWithoutBase;
+     t:outputDocument _11:xmlWithoutBase-output;
+     g:exercisesRule _10:rule_GRDDL_transformation. 
+
+ _7:noxinclude a t:Test;
+     dc:title """Testing GRDDL when XInclude processing is
+        disabled""";
+     t:approval _18:item04;
+     t:inputDocument <http://www.w3.org/2001/sw/grddl-wg/td/xinclude1.html>;
+     t:outputDocument <http://www.w3.org/2001/sw/grddl-wg/td/noxinclude1.rdf>;
+     g:alternative _7:xinclude;
+     g:exercisesRule _10:rule_GRDDL_transformation,
+         _10:rule_merge. 
+
+ _7:xinclude a t:Test;
+     dc:title """Testing GRDDL when XInclude processing is
+        enabled""";
+     t:approval _18:item04;
+     t:inputDocument <http://www.w3.org/2001/sw/grddl-wg/td/xinclude1.html>;
+     t:outputDocument <http://www.w3.org/2001/sw/grddl-wg/td/xinclude1.rdf>;
+     g:alternative _7:noxinclude;
+     g:exercisesRule _10:rule_GRDDL_transformation,
+         _10:rule_merge. 
+
+ _7:langconneg1 a t:Test,
+         g:NetworkedTest;
+     dc:title """Content Negotiation with
+        GRDDL (1 of 2)""";
+     t:approval _14:item08;
+     t:inputDocument <http://www.w3.org/2001/sw/grddl-wg/td/conneg.html>;
+     t:outputDocument <http://www.w3.org/2001/sw/grddl-wg/td/conneg-en.rdf>;
+     g:alternative _7:langconneg2;
+     g:exercisesRule _10:rule_GRDDL_transformation. 
+
+ _7:langconneg2 a t:Test,
+         g:NetworkedTest;
+     dc:title """Content Negotiation with
+        GRDDL (2 of 2)""";
+     t:approval _14:item08;
+     t:inputDocument <http://www.w3.org/2001/sw/grddl-wg/td/conneg.html>;
+     t:outputDocument <http://www.w3.org/2001/sw/grddl-wg/td/conneg-de.rdf>;
+     g:alternative _7:langconneg1;
+     g:exercisesRule _10:rule_GRDDL_transformation. 
+
+ _7:multipleRepresentations a t:Test,
+         g:NetworkedTest;
+     dc:title """Multiple
+        Representations (HTML)""";
+     t:approval _14:item08;
+     t:inputDocument _11:multipleRepresentations;
+     t:outputDocument _11:multipleRepresentationsHtml-output;
+     g:alternative _7:multipleRepresentations2;
+     g:exercisesRule _10:rule_tlrel. 
+
+ _7:multipleRepresentations2 a t:Test,
+         g:NetworkedTest;
+     dc:title """Multiple
+        Representations (SVG)""";
+     t:approval _14:item08;
+     t:inputDocument _11:multipleRepresentations;
+     t:outputDocument _11:multipleRepresentationsSvg-output;
+     g:alternative _7:multipleRepresentations;
+     g:exercisesRule _10:rule_GRDDL_transformation. 
+
+ _7:loopx1 a t:Test,
+         g:NetworkedTest;
+     dc:title "Namespace loop";
+     t:approval _13:html;
+     t:inputDocument _11:loopx;
+     t:outputDocument _11:loopx-output1;
+     g:alternative _7:loopx2,
+         _7:loopx3;
+     g:exercisesRule _10:rule_GRDDL_transformation,
+         _10:rule_merge,
+         _10:rule_nstx. 
+
+ _7:loopx2 a t:Test,
+         g:NetworkedTest;
+     dc:title "Namespace loop";
+     t:approval _13:html;
+     t:inputDocument _11:loopx;
+     t:outputDocument _11:loopx-output2;
+     g:alternative _7:loopx1,
+         _7:loopx3;
+     g:exercisesRule _10:rule_GRDDL_transformation,
+         _10:rule_merge,
+         _10:rule_nstx. 
+
+ _7:loopx3 a t:Test,
+         g:NetworkedTest;
+     dc:title "Namespace loop";
+     t:approval _13:html;
+     t:inputDocument _11:loopx;
+     t:outputDocument _11:loopx-output3;
+     g:alternative _7:loopx1,
+         _7:loopx2;
+     g:exercisesRule _10:rule_GRDDL_transformation,
+         _10:rule_merge,
+         _10:rule_nstx. 

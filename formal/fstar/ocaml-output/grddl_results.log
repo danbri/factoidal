@@ -1,0 +1,89 @@
+=== GRDDL Stage 1 Runner (local subset, no network) ===
+suite dir: /home/user/factoidal/.claude/worktrees/agent-a47677b7171a0318b/third_party/testing/grddl
+manifest:  /home/user/factoidal/.claude/worktrees/agent-a47677b7171a0318b/third_party/testing/grddl/grddl-tests-normative.rdf
+
+manifest triples: 528
+test entries: 68
+
+-- PASS (3) --
+  grddlonrdf
+  grddlonrdf-xmlmediatype
+  rdfXMLDoc
+
+-- FAIL (14) --
+  base-param                               fail-known-gap-xslt-nametest
+  hl7-to-owl                               fail-known-gap-xslt-nametest
+  inline                                   fail-known-gap-xslt-nametest
+  noxinclude                               fail-known-gap-xslt-nametest
+  projectsSpreadsheet                      fail-graph-mismatch
+  rdfa1                                    fail-known-gap-xslt-nametest
+  title_author                             fail-known-gap-xslt-nametest
+  xhtmlWithGrddlProfile                    fail-known-gap-xslt-nametest
+  xhtmlWithGrddlTransformationInBody       fail-known-gap-xslt-nametest
+  xhtmlWithMoreThanOneGrddlTransformation  fail-known-gap-xslt-nametest
+  xhtmlWithMoreThanOneProfile              fail-known-gap-xslt-nametest
+  xinclude                                 fail-known-gap-xslt-nametest
+  xmlWithGrddlAttribute                    fail-known-gap-xslt-nametest
+  xmlWithGrddlAttributeAndNonXMLNamespaceDocument fail-known-gap-xslt-nametest
+
+-- SKIP (51) --
+  card5n                                   skip-network
+  card5na                                  skip-network
+  four-transforms                          skip-network
+  glean-profile                            skip-network
+  grddlProfileBase1                        skip-network
+  grddlProfileBase2                        skip-network
+  grddlProfileBase3                        skip-network
+  hcard                                    skip-network
+  hcard1                                   skip-network
+  hcarda                                   skip-network
+  html-and-transformation-attr             skip-network
+  htmlbase1                                skip-network
+  htmlbase2                                skip-network
+  htmlbase3                                skip-network
+  htmlbase4                                skip-network
+  inline-rdf1                              skip-network
+  inline-rdf10                             skip-network
+  inline-rdf2                              skip-network
+  inline-rdf3                              skip-network
+  inline-rdf4                              skip-network
+  inline-rdf5                              skip-network
+  inline-rdf6                              skip-network
+  inline-rdf8                              skip-network
+  inline-rdf9                              skip-network
+  langconneg1                              skip-network
+  langconneg2                              skip-network
+  langconneg3                              skip-network
+  loop                                     skip-network
+  loopx                                    skip-network
+  loopx1                                   skip-network
+  loopx2                                   skip-network
+  loopx3                                   skip-network
+  multipleRepresentations                  skip-network
+  multipleRepresentations2                 skip-network
+  multipleRepresentations3                 skip-network
+  multiprofile                             skip-network
+  ns-ns-pf-pf                              skip-network
+  ns-pf-ns-pf-ns                           skip-network
+  pf-pf-pf-ns                              skip-network
+  spaces-in-rel                            skip-network
+  sq1                                      skip-network
+  sq2                                      skip-network
+  three-transforms                         skip-network
+  two-transforms                           skip-network
+  xhtmlWithGrddlEnabledProfile             skip-network
+  xhtmlWithGrddlEnabledProfileAndADisabledInBodyTransform skip-stage2-ns-or-profile-document
+  xhtmlWithGrddlEnabledProfileAndInBodyTransform skip-stage2-ns-or-profile-document
+  xmlbase1                                 skip-network
+  xmlbase2                                 skip-network
+  xmlbase3                                 skip-network
+  xmlbase4                                 skip-network
+
+-- reason buckets --
+  fail-graph-mismatch                    1
+  fail-known-gap-xslt-nametest           13
+  skip-network                           49
+  skip-stage2-ns-or-profile-document     2
+
+========================================
+grddl: 3 pass, 14 fail, 51 skip (out of 68)

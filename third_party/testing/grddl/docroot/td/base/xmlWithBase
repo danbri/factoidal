@@ -1,0 +1,6 @@
+
+<foo xmlns="http://www.example.org"
+xml:base="http://www.w3.org/2001/sw/grddl-wg/td/xmlWithBase"
+xmlns:g="http://www.w3.org/2003/g/data-view#"
+g:transformation="whichdir.xsl"
+/>

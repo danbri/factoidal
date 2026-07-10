@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rdf:RDF
+   xmlns="http://www.w3.org/2003/01/geo/wgs84_pos#"
+   xmlns:admin="http://webns.net/mvcb/"
+   xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+   xmlns:v="http://www.w3.org/2006/vcard/ns#"
+>
+  <rdf:Description rdf:nodeID="obKMlycH8">
+    <v:fn>Kansas City International Airport</v:fn>
+    <rdf:type rdf:resource="http://www.w3.org/2006/vcard/ns#VCard"/>
+    <v:org rdf:nodeID="obKMlycH9"/>
+  </rdf:Description>
+  <rdf:Description rdf:about="multiprofile.html">
+    <admin:generatorAgent rdf:resource="http://purl.org/NET/erdf/extract"/>
+  </rdf:Description>
+  <rdf:Description rdf:about="multiprofile.html#mci">
+    <lat>39.2975</lat>
+    <long>-94.7139</long>
+  </rdf:Description>
+  <rdf:Description rdf:nodeID="obKMlycH9">
+    <rdf:type rdf:resource="http://www.w3.org/2006/vcard/ns#Organization"/>
+    <v:organization-name>Kansas City International Airport</v:organization-name>
+  </rdf:Description>
+</rdf:RDF>
+
