@@ -125,6 +125,21 @@ natively — they are not optional decoration.
    → unzip → `tar --zstd` → copy `bin/*` + `lib/*` to `/usr/local`.
    `tools/install-toolchain-cache.sh` step 5b does this automatically;
    also needs apt `zstd` for the inner tarball.
+7. **The binary-untar of F\* bypasses opam dependency resolution**
+   (2026-07-11). Because the `toolchain-cache` branch drops `fstar.exe`
+   + `lib/fstar` as a tarball rather than via `opam install fstar`,
+   `fstar.lib`'s own runtime requires (`batteries pprint ppx_deriving
+   ppx_deriving_yojson yojson stdint`) and `uucp` are never pulled — a
+   fresh container's FIRST `./build-ocaml.sh` then dies one missing
+   package at a time at the ocamlopt link step. `install-toolchain-cache.sh`
+   step 5 now installs the full set, retries on a flaky network, and
+   writes `.claude-runs/toolchain-deps.ok` on success (check it before
+   building). Two more install-robustness fixes landed the same day:
+   `apt-get update` runs tolerantly so a broken **third-party** PPA
+   (`ondrej/php` changed its Label) can't abort the whole install over a
+   repo we don't use; and z3 4.13.3 is symlinked into the switch bin
+   (`$SWITCH_PREFIX/bin/z3`), not just `/usr/local/bin`, so a
+   PATH-shadowing newer z3 can't reach a bare `fstar.exe`.
 
 ## Manual restoration (non-hook harnesses, local dev)
 

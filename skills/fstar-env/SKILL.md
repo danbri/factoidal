@@ -90,13 +90,27 @@ tools/install-toolchain-cache.sh
 ```
 
 apt ocaml (system 4.14.1 = CI's) + opam switch on the system compiler
-+ pip-wheel z3 4.13.3 + untar F\* — verification-ready immediately;
-the small opam deps for compile/js (`zarith`, `sha`, `digestif`,
-`js_of_ocaml*`) install in the background
-(`.claude-runs/toolchain-deps.log`). The session bootstrap hook runs
-this automatically in remote sandboxes. When the pinned F\* version
-changes (see `fstar_version` in `bin/ci-linux-x86_64/build-info.json`),
-rebuild the chunks per the README on the `toolchain-cache` branch.
++ pip-wheel z3 4.13.3 (pinned into the switch bin too) + untar F\* —
+verification-ready immediately; the opam deps for compile/js install in
+the background (`.claude-runs/toolchain-deps.log`). The session
+bootstrap hook runs this automatically in remote sandboxes. When the
+pinned F\* version changes (see `fstar_version` in
+`bin/ci-linux-x86_64/build-info.json`), rebuild the chunks per the
+README on the `toolchain-cache` branch.
+
+**The background opam deps are the full compile set**, not just the
+runtime helpers: `zarith sha digestif js_of_ocaml*` **plus** `fstar.lib`'s
+own runtime requires (`batteries pprint ppx_deriving ppx_deriving_yojson
+yojson stdint`) **plus** `uucp` (build-ocaml.sh's ocamlopt link line).
+The binary-untar of F\* bypasses opam's dependency resolution, so those
+`fstar.lib` deps are NOT pulled automatically — omit them and the first
+`./build-ocaml.sh` dies at the link step with ``Package `batteries' not
+found - required by `fstar.lib'`` (whack-a-mole, one package per rebuild;
+learned 2026-07-11). The install retries on a flaky network and writes
+`.claude-runs/toolchain-deps.ok` on success — **check that sentinel
+exists before a build**; if it is missing the deps are still installing
+or failed, and re-running `tools/install-toolchain-cache.sh` is a safe
+idempotent no-op that finishes them.
 
 **Source-build path (fallback / new versions).** First-time only:
 
@@ -295,6 +309,8 @@ without re-extracting. **Important: `compile` does not apply
 | `make verify` hangs > 5 min on one module | z3 timeout / wrong solver | Check z3 version, then look for a deep proof obligation |
 | Mysterious "Syntax error" far from real issue | Reserved word (`total`, `in_mem`, …) or `*)` inside a comment | Check the line *above* the reported one; grep for parens-stars in comments |
 | `./build-ocaml.sh` fails with linking error | OCaml stdlib mismatch from old switch | `opam reinstall fstar.lib zarith` |
+| Compile dies: ``Package `batteries'/`uucp'/`pprint' not found`` | Binary-untar F\* bypassed opam dep resolution; the background deps didn't finish (or predate the fix) | Re-run `tools/install-toolchain-cache.sh` (idempotent); wait for `.claude-runs/toolchain-deps.ok`. See §2. |
+| `apt-get`/toolchain install aborts with `APT FAILED` | A broken third-party PPA (e.g. `ondrej/php`) made `apt-get update` non-zero | The installer now runs `update` tolerantly and gates only on the install; if it still fails, disable the offending repo in `/etc/apt/sources.list.d/` and re-run |
 | Extracted code calls `failwith "Not yet implemented"` | An `assume val` wasn't patched | Check `ocaml-patches.sh` ran; cross-reference glue files in `minimal_regrettable_glue_code_each_with_an_open_issue/` |
 
 ## §9. CI / Claude Code on the web
