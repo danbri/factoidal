@@ -1,15 +1,14 @@
-* Warning 241 at OWL.Closure.fsti(0,0-0,0):
-  - Unable to load OWL.Closure.fsti.checked since checked file
-    OWL.Closure.fsti.checked is stale (dependence hash mismatch, use --debug
-    CheckedFiles for more details); will recheck OWL.Closure.fsti (suppressing
-    this warning for further modules)
+* Warning 241 at RDF.Indexed.fsti(0,0-0,0):
+  - Unable to load RDF.Indexed.fsti.checked since checked file
+    RDF.Indexed.fsti.checked is stale (digest mismatch for RDF.Indexed.fsti);
+    will recheck RDF.Indexed.fsti (suppressing this warning for further modules)
 
 Extracted module Tableau
 * Warning 247 at Tableau.fst(0,0-0,0):
   - Checked file Tableau.fst.checked was not written.
   - Reason:
-      checked file OWL.Closure.fsti.checked is stale (dependence hash mismatch,
-      use --debug CheckedFiles for more details)
+      checked file RDF.Graph.Executable.fst.checked is stale (digest mismatch
+      for RDF.Graph.Executable.fst)
 
 Verified module: Tableau
 All verification conditions discharged successfully
