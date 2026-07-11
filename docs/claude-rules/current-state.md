@@ -158,17 +158,62 @@ This file is a **periodic refresh doc** — it goes stale within a week.
 Update after material progress (suite-score movements, new F\* modules,
 resolved `assume val`s).
 
-## Standing priorities (as of 2026-07-09)
+## Standing priorities (as of 2026-07-11)
 
-**Active /goal (owner, 2026-07-09):** Exemplary and FULL implementation
-of every official W3C RDF/semweb spec we touch (RDF 1.2/star parked;
-protocols deprioritized). Anything short of full is a FAILURE, tracked
-in [`w3c-completeness-ledger.md`](w3c-completeness-ledger.md) -- that
-ledger is the priority queue now. 100% real coverage is the FOUNDATION
-FOR AUTOMATED PERF RESEARCH: the per-engine perf program starts on
-suites the ledger shows complete. Every capability gets an npm API +
-Hub page. Re-rank when one lands; a dashboard red always jumps the
-queue.
+**Active /goal (owner, 2026-07-11):** the north star is unchanged —
+exemplary and FULL implementation of every official W3C RDF/semweb spec
+we touch (RDF 1.2/star parked; protocols deprioritized), tracked in
+[`w3c-completeness-ledger.md`](w3c-completeness-ledger.md), with full
+coverage as the FOUNDATION FOR AUTOMATED PERF RESEARCH and every
+capability getting an npm API + Hub page. Re-rank when one lands; a
+dashboard red always jumps the queue. Three named thrusts carry it now:
+
+1. **OWL2 DL to full coverage** (epic #209). The staged wave program is
+   [`2026-07-10-owl2-dl-completion-program.md`](../designissues/2026-07-10-owl2-dl-completion-program.md)
+   (Waves A nominals · B datatype facets · C FP/IFP + finite-model · D
+   PE-via-refutation + FS-only unskip · E budget/heuristics). Baseline:
+   DL type-inconsistency 66 pass, 51 fail (of 117, 11 skip); soundness =
+   exactly one `unexpected-inconsistency` (WebOnt-202, #236). **A first
+   Wave-A probe was built, verified, and measured, then NOT landed**: a
+   `CE_OneOf` nominal AST + `owl:oneOf` parsing + a sound
+   `differentFrom`-all clash rule verified clean and held the soundness
+   gate (exactly one `unexpected-inconsistency`), but scored 66/51
+   UNCHANGED — the bare-O-rule clash fires on no corpus test — so it was
+   reverted rather than land a zero-movement scaffold. The refuted
+   hypothesis sharpens the real target: the corpus's nominal
+   inconsistencies come through **counting over a nominal filler class**
+   (`≥n P.{m nominals}`, n>m), not the bare O-rule, so the next attempt
+   must build nominals together with nominal-aware cardinality and the
+   lazy-merge/union-find machinery (Wave A proper + a bite of Wave C),
+   landing only when it moves the number. Every wave holds the floors and
+   the one-WebOnt-202 soundness exception.
+2. **VC/DID conformance against the new interop environments** (epic
+   #288) — plan in
+   [`2026-07-11-vc-canivc-eecc-plan.md`](../designissues/2026-07-11-vc-canivc-eecc-plan.md).
+   canivc.com (we run 3 of 10 suites) + EECC (Apache-2.0 fixtures to
+   vendor; AGPL verifier as an HTTP interop target, never vendored).
+   Tracks A2→A1→A3→B1→B2→B3→C. A2 first, biggest jump / no new crypto:
+   wire `VC.Credential`'s structural checker (already 117 pass, 0 fail)
+   into the vc-api-shim HTTP verify/issue path — the shim does zero
+   structural validation today, the single root cause of vc20_api 22
+   pass, 37 fail (of 59). Then the vc-di-eddsa gaps (26/5), a DID
+   Resolution Result envelope, BitstringStatusList, ECDSA/P-256 (stretch,
+   HACL\*-closure + wasm-gated). No hand-rolled crypto; shim stays
+   zero-semantic-logic (rule #11).
+3. **Verified-and-fast on-disk indexes + query optimization** — this is
+   the perf-research foundation made concrete; deep dive in
+   [`2026-07-11-ondisk-indexes-query-optimization-deep-dive.md`](../designissues/2026-07-11-ondisk-indexes-query-optimization-deep-dive.md).
+   Ranked next-phase, toward dropping the rule-#11 qualifier: (1) a
+   subject/object row-offset sidecar to close the bound-lookup gap
+   (COTTAS 2.17s point / 4.07s join vs Jena TDB2 1.16–3.88s, same
+   corpus); (2) Roaring Phase E as the shared rank/select core for that
+   sidecar + HDT stage 5; (3) KaRaMeL-stratify `SPARQL11.Algebra`/`Store`
+   (unblocks 16 C/wasm modules incl. the join executor); (4) finish the
+   rule-#11 caveat-drop — storage companion writers Option-B→A, query
+   retire #118/#254; (5) real cardinality estimation off the on-disk
+   dictionaries (wire the unwired `SPARQL.Plan.Estimate/Pruning/
+   AccessPath`); (6) zstd/RLE_DICTIONARY-v2 in the native writer to close
+   its 12× size gap.
 
 Landed 2026-07-05/06 database program (the read-write DB goal):
 **Durable SPARQL UPDATE stages 1-4 + 8** — append-only delta log
