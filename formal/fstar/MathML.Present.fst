@@ -19,6 +19,20 @@ module MathML.Present
 //
 // Pure F*, total, structural recursion on the expression (no fuel).
 // XML special characters in symbol / function names are escaped.
+//
+// Findings recorded here rather than re-discovered per session:
+//   (a) Math.Series' summation / finite_product are EVALUATE-ONLY: they
+//       fold via Math.Subst + Math.Simplify into a flat plus/times expr
+//       (see Math.Series.fst). No symbolic sum/product expr head ever
+//       reaches this serializer, so there is nothing to render for
+//       "sum" / "product" notation — out of scope for this module.
+//   (b) <matrix>/<vector> Content MathML elements never reach
+//       Math.Expr.expr at all: MathML.Content has a separate
+//       eval_mres path that parses them straight into Math.Matrix.mres.
+//       No E_App "matrix" node exists in this AST, so there is nothing
+//       for to_presentation_mathml / to_content_mathml to serialize.
+// Both (a) and (b) are pre-existing decoder / core-type facts, not
+// serializer gaps — noted so a future session does not re-derive them.
 
 open FStar.String
 open FStar.List.Tot
@@ -58,14 +72,23 @@ let render_rat (n:int) (d:int) : string =
 
 (* ================================================================ *)
 (* Precedence (higher binds tighter). Drives minimal fencing.        *)
+(*   0 : relation       (eq, neq, lt, gt, leq, geq) — loosest of all *)
 (*   1 : additive        (plus, binary minus)                        *)
 (*   2 : multiplicative  (times, unary minus)                        *)
 (*   3 : power                                                        *)
 (*   4 : atomic          (symbol, non-negative number, fraction,     *)
-(*                        divide-as-fraction, root, function apply)   *)
+(*                        divide-as-fraction, root, function apply,   *)
+(*                        abs, factorial, exp)                        *)
 (* A negative number leaf is additive-ish (1) so it is fenced where  *)
 (* a bare number would not need to be.                                *)
+(* Relations sit below additive so a relation used as an operand of  *)
+(* plus/times/etc. never happens in practice, but a relation nested  *)
+(* inside another relation operand position (fenced 1 ...) IS fenced *)
+(* since its precedence 0 is below the minimum 1 required there.      *)
 (* ================================================================ *)
+
+let is_relation (fn:string) : bool =
+  fn = "eq" || fn = "neq" || fn = "lt" || fn = "gt" || fn = "leq" || fn = "geq"
 
 let prec (e:expr) : int =
   match e with
@@ -79,10 +102,22 @@ let prec (e:expr) : int =
     else if fn = "times" then 2
     else if fn = "power" then 3
     else if fn = "divide" then 4
+    else if is_relation fn then 0
     else 4
 
 let fence (s:string) : string =
   String.concat "" ["<mrow><mo>(</mo>"; s; "<mo>)</mo></mrow>"]
+
+// Infix token for each relation head. eq/neq/lt/gt/leq/geq are the only
+// heads this is ever called on (guarded by is_relation at the call
+// site); geq is the catch-all arm.
+let relation_token (fn:string) : string =
+  if fn = "eq" then "<mo>=</mo>"
+  else if fn = "neq" then "<mo>&#x2260;</mo>"
+  else if fn = "lt" then "<mo>&lt;</mo>"
+  else if fn = "gt" then "<mo>&gt;</mo>"
+  else if fn = "leq" then "<mo>&#x2264;</mo>"
+  else "<mo>&#x2265;</mo>"
 
 (* ================================================================ *)
 (* Presentation MathML                                              *)
@@ -150,6 +185,32 @@ let rec pres (e:expr) : Tot string (decreases %[expr_size e; 0]) =
        | [d; a] ->
          String.concat "" ["<mroot><mrow>"; pres a; "</mrow><mrow>"; pres d; "</mrow></mroot>"]
        | _ -> pres_apply fn args)
+    else if is_relation fn then
+      // Infix chain a1 REL a2 REL a3 .. ; each operand is fenced only
+      // when it is itself a (looser-precedence) relation.
+      (match args with
+       | a :: rest -> String.concat "" [fenced 1 (prec a) (pres a); pres_rel_rest fn rest]
+       | [] -> pres_apply fn args)
+    else if fn = "abs" then
+      // |x| : atomic, no internal fencing (the bars already delimit it).
+      (match args with
+       | [a] -> String.concat "" ["<mrow><mo>|</mo>"; pres a; "<mo>|</mo></mrow>"]
+       | _ -> pres_apply fn args)
+    else if fn = "factorial" then
+      // n! : atomic; the operand is fenced if it binds looser than atomic.
+      (match args with
+       | [a] -> String.concat "" [fenced 4 (prec a) (pres a); "<mo>!</mo>"]
+       | _ -> pres_apply fn args)
+    else if fn = "exp" then
+      // e^x rendered as a superscript, matching power's visual form.
+      (match args with
+       | [a] -> String.concat "" ["<msup><mi>e</mi><mrow>"; pres a; "</mrow></msup>"]
+       | _ -> pres_apply fn args)
+    else if fn = "diff_unsupported" then
+      // Math.Diff's explicit "no rule" sentinel (see Math.Diff.fst):
+      // surface it as a visible error box instead of leaking as a
+      // generic function-application render.
+      "<merror><mtext>unsupported derivative</mtext></merror>"
     else pres_apply fn args
 
 // Remaining summands, each preceded by its own sign operator.
@@ -165,6 +226,13 @@ and pres_times_rest (es:list expr) : Tot string (decreases %[exprs_size es; 1]) 
   | [] -> ""
   | a :: rest ->
     String.concat "" ["<mo>&#x2062;</mo>"; fenced 2 (prec a) (pres a); pres_times_rest rest]
+
+// Remaining relation operands, each preceded by fn's infix token.
+and pres_rel_rest (fn:string) (es:list expr) : Tot string (decreases %[exprs_size es; 1]) =
+  match es with
+  | [] -> ""
+  | a :: rest ->
+    String.concat "" [relation_token fn; fenced 1 (prec a) (pres a); pres_rel_rest fn rest]
 
 // Function application f(a, b, ..): atomic, args comma-separated.
 and pres_apply (fn:string) (args:list expr) : Tot string (decreases %[exprs_size args; 2]) =
@@ -194,7 +262,7 @@ let known_content_op (fn:string) : bool =
   fn = "power" || fn = "root" || fn = "abs" || fn = "quotient" ||
   fn = "rem" || fn = "factorial" || fn = "gcd" || fn = "max" ||
   fn = "min" || fn = "eq" || fn = "neq" || fn = "lt" || fn = "gt" ||
-  fn = "leq" || fn = "geq"
+  fn = "leq" || fn = "geq" || fn = "exp"
 
 let content_op (fn:string) : string =
   if known_content_op fn then String.concat "" ["<"; fn; "/>"]
