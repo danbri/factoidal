@@ -100,8 +100,16 @@ fi
 #    does not need them)
 mkdir -p "$(dirname "$DEPS_LOG")"
 if ! ocamlfind list 2>/dev/null | grep -q zarith; then
-  log "opam deps (zarith sha digestif js_of_ocaml ...) installing in background -> $DEPS_LOG"
+  log "opam deps (zarith sha digestif js_of_ocaml + fstar.lib runtime deps + uucp) installing in background -> $DEPS_LOG"
+  # F* is dropped here as a binary untar (step 4), which bypasses opam's
+  # dependency resolution — so fstar.lib's own runtime requires
+  # (batteries, pprint, ppx_deriving[_yojson], yojson, stdint) are never
+  # pulled and the compile step fails with "Package `batteries' not found -
+  # required by `fstar.lib'". uucp is needed directly by build-ocaml.sh's
+  # ocamlopt link line. Install all of them here so the first full build
+  # on a fresh container succeeds.
   nohup opam install -y zarith sha digestif js_of_ocaml js_of_ocaml-compiler zarith_stubs_js ocamlfind \
+    uucp batteries stdint pprint ppx_deriving ppx_deriving_yojson yojson \
     > "$DEPS_LOG" 2>&1 &
 fi
 
