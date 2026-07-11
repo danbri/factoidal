@@ -22,6 +22,16 @@ module Math.Diff
 //   * root [k;a] (const k>0): d/dx = (1/k) a^((1-k)/k) a'
 //   * sin, cos, exp, ln, tan: chain rule
 // Everything else -> diff_unsupported marker.
+//
+// MathML.Present.fst now renders the diff_unsupported marker as a
+// visible <merror><mtext>unsupported derivative</mtext></merror> box
+// rather than leaking it through the generic function-apply case, so a
+// caller serializing a diff() result sees an explicit error instead of
+// a bogus-looking "diff_unsupported(...)" function call. A proper
+// derivative-notation expr node (e.g. a dedicated E_Diff / d/dx head
+// with its own presentation form) is future work — this module is not
+// being redesigned here, only the downstream rendering of its existing
+// sentinel.
 
 open Math.Expr
 open FStar.List.Tot

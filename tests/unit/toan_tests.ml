@@ -27,6 +27,7 @@ module Se = Math_Series
 module Pr = MathML_Present
 module Mc = MathML_Content
 module Px = Parser_XML
+module Md = Math_Diff
 
 let passed = ref 0
 let failed = ref 0
@@ -62,7 +63,9 @@ let emul a b = app "times" [a; b]
 let emuln xs = app "times" xs
 let epow a b = app "power" [a; b]
 let ediv a b = app "divide" [a; b]
+let eminus a b = app "minus" [a; b]
 let fapp1 fn a = app fn [a]
+let erel fn a b = app fn [a; b]
 
 let mv_rat n d : E.mvalue = E.MV_Rat (Z.of_int n, Z.of_int d)
 
@@ -312,6 +315,140 @@ let () =
     "product(0..5)",   Se.finite_product body "i" (zi 0) (zi 5);
   ] in
   List.iter (fun (nm, e) -> content_roundtrip ~name:("content round-trip: " ^ nm) e) es
+
+(* ------------------------------------------------------------------ *)
+(* 7. Relations / abs / factorial / exp / diff_unsupported rendering  *)
+(*                                                                     *)
+(* MathML.Present.fst grew five new pres cases (relations, abs,       *)
+(* factorial, exp, the Math.Diff "diff_unsupported" sentinel) plus an  *)
+(* addition to known_content_op (exp is a genuine MathML3 content      *)
+(* element, <exp/>). Every case below is an exact-expected-string      *)
+(* assertion — no `contains` fuzzing — so a precedence/fencing         *)
+(* regression trips immediately. *)
+(* ------------------------------------------------------------------ *)
+
+let mathml_doc s = "<math xmlns=\"http://www.w3.org/1998/Math/MathML\">" ^ s ^ "</math>"
+
+let check_pres ~name e expected_inner =
+  check ~cat:"present-new-ops" ~name (mathml_doc expected_inner) (Pr.to_presentation_mathml e)
+
+let () =
+  (* --- relations: each of the six heads, exact infix token --- *)
+  check_pres ~name:"eq(x,y)"
+    (erel "eq" x y) "<mi>x</mi><mo>=</mo><mi>y</mi>";
+  check_pres ~name:"neq(x,y)"
+    (erel "neq" x y) "<mi>x</mi><mo>&#x2260;</mo><mi>y</mi>";
+  check_pres ~name:"lt(x,y)"
+    (erel "lt" x y) "<mi>x</mi><mo>&lt;</mo><mi>y</mi>";
+  check_pres ~name:"gt(x,y)"
+    (erel "gt" x y) "<mi>x</mi><mo>&gt;</mo><mi>y</mi>";
+  check_pres ~name:"leq(x,y)"
+    (erel "leq" x y) "<mi>x</mi><mo>&#x2264;</mo><mi>y</mi>";
+  check_pres ~name:"geq(x,y)"
+    (erel "geq" x y) "<mi>x</mi><mo>&#x2265;</mo><mi>y</mi>";
+  (* compound operand on the right, no fencing (plus binds tighter) *)
+  check_pres ~name:"eq(x, plus(y,1))"
+    (erel "eq" x (eadd y (ei 1))) "<mi>x</mi><mo>=</mo><mi>y</mi><mo>+</mo><mn>1</mn>";
+  (* nested relation operand: precedence 0 < minp 1 -> fenced *)
+  check_pres ~name:"geq(eq(x,y), z) fences the nested relation"
+    (erel "geq" (erel "eq" x y) z)
+    "<mrow><mo>(</mo><mi>x</mi><mo>=</mo><mi>y</mi><mo>)</mo></mrow><mo>&#x2265;</mo><mi>z</mi>";
+  (* non-relation (plus, prec 1) operand under a relation: NOT fenced *)
+  check_pres ~name:"lt(plus(x,y), z) does not fence the sum"
+    (erel "lt" (eadd x y) z) "<mi>x</mi><mo>+</mo><mi>y</mi><mo>&lt;</mo><mi>z</mi>";
+
+  (* --- abs: atomic box, no internal fencing --- *)
+  check_pres ~name:"abs(x)"
+    (fapp1 "abs" x) "<mrow><mo>|</mo><mi>x</mi><mo>|</mo></mrow>";
+  check_pres ~name:"abs(plus(x,y)) does not fence the sum inside the bars"
+    (fapp1 "abs" (eadd x y)) "<mrow><mo>|</mo><mi>x</mi><mo>+</mo><mi>y</mi><mo>|</mo></mrow>";
+  check_pres ~name:"abs(-3) carries the sign inside the bars unfenced"
+    (fapp1 "abs" (ei (-3))) "<mrow><mo>|</mo><mn>-3</mn><mo>|</mo></mrow>";
+
+  (* --- factorial: atomic; operand fenced only if it binds looser --- *)
+  check_pres ~name:"factorial(n)"
+    (fapp1 "factorial" (sym "n")) "<mi>n</mi><mo>!</mo>";
+  check_pres ~name:"factorial(plus(x,y)) fences the sum"
+    (fapp1 "factorial" (eadd x y)) "<mrow><mo>(</mo><mi>x</mi><mo>+</mo><mi>y</mi><mo>)</mo></mrow><mo>!</mo>";
+  check_pres ~name:"factorial(abs(x)) does not re-fence an already-atomic operand"
+    (fapp1 "factorial" (fapp1 "abs" x)) "<mrow><mo>|</mo><mi>x</mi><mo>|</mo></mrow><mo>!</mo>";
+
+  (* --- exp: e^x as a superscript, matching power's visual form --- *)
+  check_pres ~name:"exp(x)"
+    (fapp1 "exp" x) "<msup><mi>e</mi><mrow><mi>x</mi></mrow></msup>";
+  check_pres ~name:"exp(plus(x,y)) puts the sum in the exponent unfenced"
+    (fapp1 "exp" (eadd x y)) "<msup><mi>e</mi><mrow><mi>x</mi><mo>+</mo><mi>y</mi></mrow></msup>";
+
+  (* --- diff_unsupported: Math.Diff's "no rule" sentinel renders as a  *)
+  (* visible error box, ignoring the wrapped (unrenderable) argument.  *)
+  check_pres ~name:"diff_unsupported(x) direct construction"
+    (app "diff_unsupported" [x]) "<merror><mtext>unsupported derivative</mtext></merror>";
+  check_pres ~name:"diff x (coth x) has no rule -> diff_unsupported -> merror"
+    (Md.diff "x" (fapp1 "coth" x)) "<merror><mtext>unsupported derivative</mtext></merror>";
+  check_pres ~name:"plus(x, diff_unsupported(y)) embeds the error box atomically"
+    (eadd x (app "diff_unsupported" [y]))
+    "<mi>x</mi><mo>+</mo><merror><mtext>unsupported derivative</mtext></merror>"
+
+(* ------------------------------------------------------------------ *)
+(* 7b. Well-formedness self-check for the new cases (same pattern as   *)
+(* section 6's `shapes` loop): every serialized <math> parses via our  *)
+(* own Parser.XML.                                                     *)
+(* ------------------------------------------------------------------ *)
+
+let () =
+  let new_shapes : (string * E.expr) list = [
+    "eq(x,y)",              erel "eq" x y;
+    "geq(eq(x,y), z)",      erel "geq" (erel "eq" x y) z;
+    "abs(minus(x,y))",      fapp1 "abs" (eminus x y);
+    "factorial(plus(x,1))", fapp1 "factorial" (eadd x (ei 1));
+    "exp(power(x,2))",      fapp1 "exp" (epow x (ei 2));
+    "diff_unsupported(x)",  app "diff_unsupported" [x];
+    "eq(x, abs(y))",        erel "eq" x (fapp1 "abs" y);
+  ] in
+  List.iter (fun (nm, e) ->
+    let m = Pr.to_presentation_mathml e in
+    check_true ~cat:"present-new-ops-wellformed"
+      ~name:(Printf.sprintf "to_presentation_mathml(%s) starts with <math" nm)
+      (contains ~needle:"<math" m && contains ~needle:"</math>" m);
+    check_true ~cat:"present-new-ops-wellformed"
+      ~name:(Printf.sprintf "Parser.XML accepts to_presentation_mathml(%s)" nm)
+      (xml_parses m)
+  ) new_shapes
+
+(* ------------------------------------------------------------------ *)
+(* 7c. Content-MathML round-trip for the new ops, including <exp/>     *)
+(* (which known_content_op now names as a real element rather than a   *)
+(* <csymbol> fallback).                                                *)
+(* ------------------------------------------------------------------ *)
+
+let () =
+  let es : (string * E.expr) list = [
+    "eq(x,y)",         erel "eq" x y;
+    "neq(x,y)",        erel "neq" x y;
+    "lt(x,y)",         erel "lt" x y;
+    "gt(x,y)",         erel "gt" x y;
+    "leq(x,y)",        erel "leq" x y;
+    "geq(x,y)",        erel "geq" x y;
+    "abs(x)",          fapp1 "abs" x;
+    "factorial(n)",    fapp1 "factorial" (sym "n");
+    "exp(x)",          fapp1 "exp" x;
+  ] in
+  List.iter (fun (nm, e) -> content_roundtrip ~name:("content round-trip: " ^ nm) e) es;
+
+  (* exp is emitted as the genuine content element <exp/>, not a
+     <csymbol>exp</csymbol> fallback. *)
+  check_true ~cat:"content-new-ops"
+    ~name:"to_content_mathml(exp(x)) uses <exp/> not <csymbol>"
+    (contains ~needle:"<exp/>" (Pr.to_content_mathml (fapp1 "exp" x)));
+  check_true ~cat:"content-new-ops"
+    ~name:"to_content_mathml(abs(x)) uses <abs/>"
+    (contains ~needle:"<abs/>" (Pr.to_content_mathml (fapp1 "abs" x)));
+  check_true ~cat:"content-new-ops"
+    ~name:"to_content_mathml(factorial(n)) uses <factorial/>"
+    (contains ~needle:"<factorial/>" (Pr.to_content_mathml (fapp1 "factorial" (sym "n"))));
+  check_true ~cat:"content-new-ops"
+    ~name:"to_content_mathml(eq(x,y)) uses <eq/>"
+    (contains ~needle:"<eq/>" (Pr.to_content_mathml (erel "eq" x y)))
 
 (* ------------------------------------------------------------------ *)
 (* Summary                                                            *)
