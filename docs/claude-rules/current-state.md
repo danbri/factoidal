@@ -158,9 +158,40 @@ This file is a **periodic refresh doc** — it goes stale within a week.
 Update after material progress (suite-score movements, new F\* modules,
 resolved `assume val`s).
 
-## Standing priorities (as of 2026-07-11)
+## Standing priorities (as of 2026-07-12)
 
-**Active /goal (owner, 2026-07-11):** the north star is unchanged —
+**Active /goal (owner, 2026-07-12):** three named deliverables, on top
+of the standing directives below:
+
+1. **OWL2 efficiently implemented, including the QL and DL/tableau
+   flavours.** DL runs through `Tableau.Refute.fst` (wave program below);
+   QL currently scores profile-QL Inc 6 pass, 0 fail and needs a
+   dedicated efficiency + coverage pass (EL sits at 9 pass, 5 fail);
+   "efficiently" means measured suite wall-time, not just pass counts.
+2. **A solid XSLT, as comprehensive as possible without needing PSVI —
+   ditto XPath.** XSLT 1.0 at 69 pass, 19 fail (of 88) with an active
+   burndown (axes, match patterns, namespace order); the remaining fails
+   are triaged into in-scope essentials vs PSVI/XPath-2.0-dependent
+   (schema-aware) items, which stay out of scope by owner decision.
+3. **Notebook cell cross-references everywhere.** The hub's reactive
+   named-cell machinery (`reactive-cells.mjs`, posts 26–30) becomes the
+   norm: all ~25 older posts (01–25, index, README) convert from
+   anonymous redeclare-per-cell style to declare-once named cells so
+   every doc supports referencing earlier cells' variables; gated per
+   post by `tests/hub/postNN` (anti-pattern #28 applies).
+
+**Standing directive (owner, 2026-07-11): on-disk SPARQL backend to
+industry-mainstream perf** — inserts, reliability, query speed, disk
+usage — holding 100% standards compatibility. Measured baseline
+2026-07-12 (gene 889k quads, docs/test-results/competitive-bench.json):
+disk usage WON (COTTAS 992K vs Jena TDB2 105M, ~108x); answers agree
+with Jena+pyoxigraph on all 6 queries; remaining gaps ranked by
+measurement: GROUP BY 23.49s vs 1.79s (13x, worst), OPTIONAL/FILTER
+8.83s vs 2.07s (4.3x), point lookup 2.35s vs 0.93s (2.5x); we beat
+TDB2 on full-scan aggregates. Priority order now: GROUP BY execution,
+then OPTIONAL/FILTER, then the S/O offset sidecar.
+
+**Prior /goal (owner, 2026-07-11), still standing:** the north star —
 exemplary and FULL implementation of every official W3C RDF/semweb spec
 we touch (RDF 1.2/star parked; protocols deprioritized), tracked in
 [`w3c-completeness-ledger.md`](w3c-completeness-ledger.md), with full
