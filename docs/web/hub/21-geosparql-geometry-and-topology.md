@@ -57,10 +57,12 @@ with a scale of 4, so no precision is lost at the door.
 Here is the dataset the topological cells below run against — three UK
 city points and two toy "constituency-ish" bounding-box polygons,
 hand-picked so exactly one city sits inside each box and Manchester
-sits inside neither:
+sits inside neither. It is named once, below, and every cell in this
+section that needs it references `GEO_TTL` by name instead of
+repeating it:
 
 ```observable-js
-const GEO_TTL = `
+GEO_TTL = `
   @prefix ex:  <http://example.org/> .
   @prefix geo: <http://www.opengis.net/ont/geosparql#> .
 
@@ -75,7 +77,10 @@ const GEO_TTL = `
     ex:hasGeom "POLYGON((-0.5 51.3, 0.3 51.3, 0.3 51.7, -0.5 51.7, -0.5 51.3))"^^geo:wktLiteral .
   ex:ScotlandArea a ex:Area ; ex:name "Scotland (toy box)" ;
     ex:hasGeom "POLYGON((-8 54.5, -1 54.5, -1 60.9, -8 60.9, -8 54.5))"^^geo:wktLiteral .
-`;
+`
+```
+
+```observable-js
 const dataset = await fn.parse(GEO_TTL);
 return dataset.size;
 ```
@@ -106,22 +111,6 @@ Because they return booleans, they sit naturally inside a `FILTER`.
 cross-product of cities and areas:
 
 ```observable-js
-const GEO_TTL = `
-  @prefix ex:  <http://example.org/> .
-  @prefix geo: <http://www.opengis.net/ont/geosparql#> .
-
-  ex:London a ex:City ; ex:name "London" ;
-    ex:hasGeom "POINT(-0.1278 51.5074)"^^geo:wktLiteral .
-  ex:Manchester a ex:City ; ex:name "Manchester" ;
-    ex:hasGeom "POINT(-2.2426 53.4808)"^^geo:wktLiteral .
-  ex:Edinburgh a ex:City ; ex:name "Edinburgh" ;
-    ex:hasGeom "POINT(-3.1883 55.9533)"^^geo:wktLiteral .
-
-  ex:GreaterLondonArea a ex:Area ; ex:name "Greater London (toy box)" ;
-    ex:hasGeom "POLYGON((-0.5 51.3, 0.3 51.3, 0.3 51.7, -0.5 51.7, -0.5 51.3))"^^geo:wktLiteral .
-  ex:ScotlandArea a ex:Area ; ex:name "Scotland (toy box)" ;
-    ex:hasGeom "POLYGON((-8 54.5, -1 54.5, -1 60.9, -8 60.9, -8 54.5))"^^geo:wktLiteral .
-`;
 const dataset = await fn.parse(GEO_TTL);
 const rows = await fn.query(dataset, `
   PREFIX ex:   <http://example.org/>
@@ -492,22 +481,6 @@ that share nothing. "Which cities lie *outside* the Greater London
 box":
 
 ```observable-js
-const GEO_TTL = `
-  @prefix ex:  <http://example.org/> .
-  @prefix geo: <http://www.opengis.net/ont/geosparql#> .
-
-  ex:London a ex:City ; ex:name "London" ;
-    ex:hasGeom "POINT(-0.1278 51.5074)"^^geo:wktLiteral .
-  ex:Manchester a ex:City ; ex:name "Manchester" ;
-    ex:hasGeom "POINT(-2.2426 53.4808)"^^geo:wktLiteral .
-  ex:Edinburgh a ex:City ; ex:name "Edinburgh" ;
-    ex:hasGeom "POINT(-3.1883 55.9533)"^^geo:wktLiteral .
-
-  ex:GreaterLondonArea a ex:Area ; ex:name "Greater London (toy box)" ;
-    ex:hasGeom "POLYGON((-0.5 51.3, 0.3 51.3, 0.3 51.7, -0.5 51.7, -0.5 51.3))"^^geo:wktLiteral .
-  ex:ScotlandArea a ex:Area ; ex:name "Scotland (toy box)" ;
-    ex:hasGeom "POLYGON((-8 54.5, -1 54.5, -1 60.9, -8 60.9, -8 54.5))"^^geo:wktLiteral .
-`;
 const dataset = await fn.parse(GEO_TTL);
 const rows = await fn.query(dataset, `
   PREFIX ex:   <http://example.org/>
@@ -545,22 +518,6 @@ Ordering the cities by distance from London puts London itself first,
 at exactly zero:
 
 ```observable-js
-const GEO_TTL = `
-  @prefix ex:  <http://example.org/> .
-  @prefix geo: <http://www.opengis.net/ont/geosparql#> .
-
-  ex:London a ex:City ; ex:name "London" ;
-    ex:hasGeom "POINT(-0.1278 51.5074)"^^geo:wktLiteral .
-  ex:Manchester a ex:City ; ex:name "Manchester" ;
-    ex:hasGeom "POINT(-2.2426 53.4808)"^^geo:wktLiteral .
-  ex:Edinburgh a ex:City ; ex:name "Edinburgh" ;
-    ex:hasGeom "POINT(-3.1883 55.9533)"^^geo:wktLiteral .
-
-  ex:GreaterLondonArea a ex:Area ; ex:name "Greater London (toy box)" ;
-    ex:hasGeom "POLYGON((-0.5 51.3, 0.3 51.3, 0.3 51.7, -0.5 51.7, -0.5 51.3))"^^geo:wktLiteral .
-  ex:ScotlandArea a ex:Area ; ex:name "Scotland (toy box)" ;
-    ex:hasGeom "POLYGON((-8 54.5, -1 54.5, -1 60.9, -8 60.9, -8 54.5))"^^geo:wktLiteral .
-`;
 const dataset = await fn.parse(GEO_TTL);
 const rows = await fn.query(dataset, `
   PREFIX ex:   <http://example.org/>
@@ -588,7 +545,7 @@ the axis-aligned bounding box of its argument, as a rectangular
 just the min/max of the input coordinates, all exact:
 
 ```observable-js
-const GEO_TTL = `
+const ENVELOPE_TTL = `
   @prefix ex:  <http://example.org/> .
   @prefix geo: <http://www.opengis.net/ont/geosparql#> .
   ex:London a ex:City ; ex:name "London" ;
@@ -596,7 +553,7 @@ const GEO_TTL = `
   ex:GreaterLondonArea a ex:Area ; ex:name "Greater London (toy box)" ;
     ex:hasGeom "POLYGON((-0.5 51.3, 0.3 51.3, 0.3 51.7, -0.5 51.7, -0.5 51.3))"^^geo:wktLiteral .
 `;
-const dataset = await fn.parse(GEO_TTL);
+const dataset = await fn.parse(ENVELOPE_TTL);
 const rows = await fn.query(dataset, `
   PREFIX ex:   <http://example.org/>
   PREFIX geof: <http://www.opengis.net/def/function/geosparql/>

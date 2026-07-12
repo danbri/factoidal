@@ -64,11 +64,11 @@ ex:PetsCollection a skos:Collection ;
 One scheme, four concepts (`Animal`, `Mammal`, `Cat`, `Dog`), and one
 `skos:Collection` — this exact fixture comes from
 [`skills/skos-integrity/sample-vocab.ttl`](https://github.com/danbri/factoidal/blob/claude/main/skills/skos-integrity/sample-vocab.ttl),
-built for this project's SKOS-checking skill. Parse it and pull out
-each concept's English label:
+built for this project's SKOS-checking skill. Every cell below reuses
+this same fixture, so it's named once here:
 
 ```observable-js
-const SKOS_VALID_TTL = `
+SKOS_VALID_TTL = `
   @prefix skos: <http://www.w3.org/2004/02/skos/core#> .
   @prefix ex:   <http://example.org/skos-integrity/animals#> .
   @prefix ext:  <http://example.org/skos-integrity/external#> .
@@ -106,10 +106,18 @@ const SKOS_VALID_TTL = `
       skos:prefLabel "Pets"@en ;
       skos:member ex:Cat ;
       skos:member ex:Dog .
-`;
+`
+```
 
-const dataset = await fn.parse(SKOS_VALID_TTL);
+Parse it once and share the result:
 
+```observable-js
+dataset = fn.parse(SKOS_VALID_TTL)
+```
+
+Pull out each concept's English label:
+
+```observable-js
 const rows = await fn.query(dataset, `
   PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
   SELECT ?concept ?label WHERE {
@@ -137,48 +145,6 @@ broader than Dog, at any distance" is exactly the property-path
 introduced:
 
 ```observable-js
-const SKOS_VALID_TTL = `
-  @prefix skos: <http://www.w3.org/2004/02/skos/core#> .
-  @prefix ex:   <http://example.org/skos-integrity/animals#> .
-  @prefix ext:  <http://example.org/skos-integrity/external#> .
-
-  ex:scheme a skos:ConceptScheme ;
-      skos:prefLabel "Animals"@en ;
-      skos:hasTopConcept ex:Animal .
-
-  ex:Animal a skos:Concept ;
-      skos:inScheme ex:scheme ;
-      skos:topConceptOf ex:scheme ;
-      skos:prefLabel "Animal"@en ;
-      skos:prefLabel "Animal"@en-GB .
-
-  ex:Mammal a skos:Concept ;
-      skos:inScheme ex:scheme ;
-      skos:prefLabel "Mammal"@en ;
-      skos:broader ex:Animal .
-
-  ex:Cat a skos:Concept ;
-      skos:inScheme ex:scheme ;
-      skos:prefLabel "Cat"@en ;
-      skos:altLabel "Feline"@en ;
-      skos:hiddenLabel "Kat"@en ;
-      skos:broader ex:Mammal ;
-      skos:exactMatch ext:Cat .
-
-  ex:Dog a skos:Concept ;
-      skos:inScheme ex:scheme ;
-      skos:prefLabel "Dog"@en ;
-      skos:broader ex:Mammal ;
-      skos:related ex:Cat .
-
-  ex:PetsCollection a skos:Collection ;
-      skos:prefLabel "Pets"@en ;
-      skos:member ex:Cat ;
-      skos:member ex:Dog .
-`;
-
-const dataset = await fn.parse(SKOS_VALID_TTL);
-
 const ancestors = await fn.query(dataset, `
   PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
   PREFIX ex:   <http://example.org/skos-integrity/animals#>
@@ -260,51 +226,11 @@ ex:PetsCollection a skos:Collection ;
     skos:prefLabel "Pets"@en .
 ```
 
-Run all six SPARQL checks against both the valid scheme and this
-broken one:
+That broken fixture gets its own named cell too, shared by the checks
+below and by the SHACL section further down:
 
 ```observable-js
-const SKOS_VALID_TTL = `
-  @prefix skos: <http://www.w3.org/2004/02/skos/core#> .
-  @prefix ex:   <http://example.org/skos-integrity/animals#> .
-  @prefix ext:  <http://example.org/skos-integrity/external#> .
-
-  ex:scheme a skos:ConceptScheme ;
-      skos:prefLabel "Animals"@en ;
-      skos:hasTopConcept ex:Animal .
-
-  ex:Animal a skos:Concept ;
-      skos:inScheme ex:scheme ;
-      skos:topConceptOf ex:scheme ;
-      skos:prefLabel "Animal"@en ;
-      skos:prefLabel "Animal"@en-GB .
-
-  ex:Mammal a skos:Concept ;
-      skos:inScheme ex:scheme ;
-      skos:prefLabel "Mammal"@en ;
-      skos:broader ex:Animal .
-
-  ex:Cat a skos:Concept ;
-      skos:inScheme ex:scheme ;
-      skos:prefLabel "Cat"@en ;
-      skos:altLabel "Feline"@en ;
-      skos:hiddenLabel "Kat"@en ;
-      skos:broader ex:Mammal ;
-      skos:exactMatch ext:Cat .
-
-  ex:Dog a skos:Concept ;
-      skos:inScheme ex:scheme ;
-      skos:prefLabel "Dog"@en ;
-      skos:broader ex:Mammal ;
-      skos:related ex:Cat .
-
-  ex:PetsCollection a skos:Collection ;
-      skos:prefLabel "Pets"@en ;
-      skos:member ex:Cat ;
-      skos:member ex:Dog .
-`;
-
-const SKOS_BROKEN_TTL = `
+SKOS_BROKEN_TTL = `
   @prefix skos: <http://www.w3.org/2004/02/skos/core#> .
   @prefix ex:   <http://example.org/skos-integrity/animals#> .
   @prefix ext:  <http://example.org/skos-integrity/external#> .
@@ -348,8 +274,13 @@ const SKOS_BROKEN_TTL = `
       skos:prefLabel "Pets"@en ;
       skos:member ex:Cat ;
       skos:member ex:Dog .
-`;
+`
+```
 
+Run all six SPARQL checks against both the valid scheme and this
+broken one:
+
+```observable-js
 const PREFIX = "PREFIX skos: <http://www.w3.org/2004/02/skos/core#>\n";
 const QUERIES = {
   S9: PREFIX + "ASK { ?x a skos:ConceptScheme , skos:Concept . }",
@@ -410,92 +341,6 @@ fixtures — checked and degraded gracefully if the loaded engine build
 doesn't expose it:
 
 ```observable-js
-const SKOS_VALID_TTL = `
-  @prefix skos: <http://www.w3.org/2004/02/skos/core#> .
-  @prefix ex:   <http://example.org/skos-integrity/animals#> .
-  @prefix ext:  <http://example.org/skos-integrity/external#> .
-
-  ex:scheme a skos:ConceptScheme ;
-      skos:prefLabel "Animals"@en ;
-      skos:hasTopConcept ex:Animal .
-
-  ex:Animal a skos:Concept ;
-      skos:inScheme ex:scheme ;
-      skos:topConceptOf ex:scheme ;
-      skos:prefLabel "Animal"@en ;
-      skos:prefLabel "Animal"@en-GB .
-
-  ex:Mammal a skos:Concept ;
-      skos:inScheme ex:scheme ;
-      skos:prefLabel "Mammal"@en ;
-      skos:broader ex:Animal .
-
-  ex:Cat a skos:Concept ;
-      skos:inScheme ex:scheme ;
-      skos:prefLabel "Cat"@en ;
-      skos:altLabel "Feline"@en ;
-      skos:hiddenLabel "Kat"@en ;
-      skos:broader ex:Mammal ;
-      skos:exactMatch ext:Cat .
-
-  ex:Dog a skos:Concept ;
-      skos:inScheme ex:scheme ;
-      skos:prefLabel "Dog"@en ;
-      skos:broader ex:Mammal ;
-      skos:related ex:Cat .
-
-  ex:PetsCollection a skos:Collection ;
-      skos:prefLabel "Pets"@en ;
-      skos:member ex:Cat ;
-      skos:member ex:Dog .
-`;
-
-const SKOS_BROKEN_TTL = `
-  @prefix skos: <http://www.w3.org/2004/02/skos/core#> .
-  @prefix ex:   <http://example.org/skos-integrity/animals#> .
-  @prefix ext:  <http://example.org/skos-integrity/external#> .
-
-  ex:scheme a skos:ConceptScheme ;
-      a skos:Concept ;
-      skos:prefLabel "Animals"@en ;
-      skos:hasTopConcept ex:Animal .
-
-  ex:Animal a skos:Concept ;
-      skos:inScheme ex:scheme ;
-      skos:topConceptOf ex:scheme ;
-      skos:prefLabel "Animal"@en ;
-      skos:prefLabel "Creature"@en ;
-      skos:prefLabel "Animal"@en-GB .
-
-  ex:Mammal a skos:Concept ;
-      skos:inScheme ex:scheme ;
-      skos:prefLabel "Mammal"@en ;
-      skos:broader ex:Animal .
-
-  ex:Cat a skos:Concept ;
-      skos:inScheme ex:scheme ;
-      skos:prefLabel "Cat"@en ;
-      skos:altLabel "Feline"@en ;
-      skos:hiddenLabel "Kat"@en ;
-      skos:broader ex:Mammal ;
-      skos:exactMatch ext:Cat ;
-      skos:broadMatch ext:Cat .
-
-  ex:Dog a skos:Concept ;
-      skos:inScheme ex:scheme ;
-      skos:prefLabel "Dog"@en ;
-      skos:altLabel "Dog"@en ;
-      skos:broader ex:Mammal ;
-      skos:broader ex:Cat ;
-      skos:related ex:Cat .
-
-  ex:PetsCollection a skos:Collection ;
-      a skos:Concept ;
-      skos:prefLabel "Pets"@en ;
-      skos:member ex:Cat ;
-      skos:member ex:Dog .
-`;
-
 const SKOS_SHAPES_TTL = `
   @prefix sh:   <http://www.w3.org/ns/shacl#> .
   @prefix skos: <http://www.w3.org/2004/02/skos/core#> .

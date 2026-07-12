@@ -76,11 +76,11 @@ expand that CURIE. `@type` is a keyword (like `@id`), and its value
 `"Person"` is looked up in the same context to become
 `schema:Person`. There's no inference here, no natural-language
 understanding — expansion is a mechanical string-substitution pass
-over the JSON tree, term by term. Run the same call as above, now with
-a context in place:
+over the JSON tree, term by term. The same document, now with a
+context attached:
 
 ```observable-js
-const ALICE_JSONLD = JSON.stringify({
+ALICE_JSONLD = JSON.stringify({
   "@context": {
     "schema": "http://schema.org/",
     "name": "schema:name",
@@ -92,7 +92,11 @@ const ALICE_JSONLD = JSON.stringify({
   "name": "Alice",
   "jobTitle": "Engineer",
 });
+```
 
+Run the same call as above, now with a context in place:
+
+```observable-js
 async function tryJsonldToRdf(jsonldText) {
   try {
     if (typeof Factoidal.jsonldToRdf !== "function") {
@@ -131,22 +135,10 @@ generic surface has no room for.
 
 The three triples above are ordinary RDF the moment they exist — query
 them with the same SPARQL every other post in this series uses, no
-JSON-LD-specific query language required:
+JSON-LD-specific query language required, starting from the same
+`ALICE_JSONLD` document above:
 
 ```observable-js
-const ALICE_JSONLD = JSON.stringify({
-  "@context": {
-    "schema": "http://schema.org/",
-    "name": "schema:name",
-    "jobTitle": "schema:jobTitle",
-    "Person": "schema:Person",
-  },
-  "@id": "http://example.org/alice",
-  "@type": "Person",
-  "name": "Alice",
-  "jobTitle": "Engineer",
-});
-
 const result = await Factoidal.jsonldToRdf(ALICE_JSONLD);
 const nquads = result.nquads;
 

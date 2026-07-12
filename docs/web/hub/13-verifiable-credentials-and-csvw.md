@@ -114,17 +114,20 @@ ours to prove.
 The first two steps are pure transforms with no secret key, so they run
 live here on the same credential dataset the native runner signs below.
 Step 1 is RDFC-1.0 canonicalization — `fn.canonicalize`, the same
-typed wrapper [post 08](./08-canonical-graphs-rdfc10.md) introduced:
+typed wrapper [post 08](./08-canonical-graphs-rdfc10.md) introduced.
+The unsecured credential — the exact RDF dataset the native
+`vc_runner` signs further down, with a blank node `_:b0` so
+canonicalization does real work rather than a no-op — is used by both
+cells below, so it's declared once as a shared named cell:
 
 ```observable-js
-// The unsecured credential, as an RDF dataset -- the exact one the
-// native vc_runner signs further down. The blank node _:b0 makes
-// canonicalization do real work rather than a no-op.
-const credential = `<urn:credential:1> <https://www.w3.org/2018/credentials#issuer> <urn:issuer:acme> .
+credential = `<urn:credential:1> <https://www.w3.org/2018/credentials#issuer> <urn:issuer:acme> .
 <urn:credential:1> <http://schema.org/credentialSubject> _:b0 .
 _:b0 <http://schema.org/name> "Alice" .
-`;
+`
+```
 
+```observable-js
 const canonical = await fn.canonicalize(credential, { format: "nquads" });
 return { canonical, lines: canonical.trim().split("\n").length };
 ```
@@ -137,11 +140,6 @@ the browser's own SHA-256, which computes bit-for-bit the same digest
 the native pipeline gets from HACL\*:
 
 ```observable-js
-const credential = `<urn:credential:1> <https://www.w3.org/2018/credentials#issuer> <urn:issuer:acme> .
-<urn:credential:1> <http://schema.org/credentialSubject> _:b0 .
-_:b0 <http://schema.org/name> "Alice" .
-`;
-
 async function sha256Hex(text) {
   const bytes = new TextEncoder().encode(text);
   const digest = await crypto.subtle.digest("SHA-256", bytes);
@@ -252,15 +250,19 @@ from also emitting a plain triple. `datatype: "number"` is a CSVW
 built-in that maps to `xsd:double`; `datatype: "integer"` maps to
 `xsd:integer`. **Standard mode** — the default — emits the row data
 plus CSVW's own provenance triples (`csvw:TableGroup`/`csvw:Table`/
-`csvw:Row`, recording which row each subject came from):
+`csvw:Row`, recording which row each subject came from). The CSV text
+and its metadata document are shared by both modes below, so each is
+declared once as a named cell:
 
 ```observable-js
-const csvText = `code,name,latitude,longitude,population
+csvText = `code,name,latitude,longitude,population
 BRS,Bristol City Hall,51.4545,-2.5879,459300
 BTH,Bath Guildhall,51.3811,-2.359,94782
-`;
+`
+```
 
-const metadataJson = JSON.stringify({
+```observable-js
+metadataJson = JSON.stringify({
   "@context": "http://www.w3.org/ns/csvw",
   "url": "sites.csv",
   "tableSchema": {
@@ -274,8 +276,10 @@ const metadataJson = JSON.stringify({
     "aboutUrl": "http://example.org/sites{#code}",
     "primaryKey": "code"
   }
-});
+})
+```
 
+```observable-js
 try {
   const result = await Factoidal.csvwToRdf(csvText, metadataJson, { base: "http://example.org/" });
   const lines = result.nquads.trim().split("\n");
@@ -300,27 +304,6 @@ work: `<…/sites#BRS> <http://schema.org/latitude> "51.4545"^^…double`,
 provenance layer and emits only the typed row data:
 
 ```observable-js
-const csvText = `code,name,latitude,longitude,population
-BRS,Bristol City Hall,51.4545,-2.5879,459300
-BTH,Bath Guildhall,51.3811,-2.359,94782
-`;
-
-const metadataJson = JSON.stringify({
-  "@context": "http://www.w3.org/ns/csvw",
-  "url": "sites.csv",
-  "tableSchema": {
-    "columns": [
-      { "name": "code", "titles": "code", "datatype": "string", "suppressOutput": true },
-      { "name": "name", "titles": "name", "datatype": "string", "propertyUrl": "http://schema.org/name" },
-      { "name": "latitude", "titles": "latitude", "datatype": "number", "propertyUrl": "http://schema.org/latitude" },
-      { "name": "longitude", "titles": "longitude", "datatype": "number", "propertyUrl": "http://schema.org/longitude" },
-      { "name": "population", "titles": "population", "datatype": "integer", "propertyUrl": "http://schema.org/population" }
-    ],
-    "aboutUrl": "http://example.org/sites{#code}",
-    "primaryKey": "code"
-  }
-});
-
 try {
   const result = await Factoidal.csvwToRdf(csvText, metadataJson, { base: "http://example.org/", mode: "minimal" });
   const lines = result.nquads.trim().split("\n");

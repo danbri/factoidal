@@ -24,14 +24,19 @@ running live.
 XML well-formedness is a structural property: tags nest and match,
 attributes are quoted, there is one root element. It is decided entirely
 by whether the parser accepts the byte string — there is no separate
-"validator" pass. This first cell hands the parser a document that
-nests and matches:
+"validator" pass. The document below is named once and reused by every
+cell that needs it well-formed:
 
 ```observable-js
-const XML = `<library>
+XML = `<library>
   <book id="b1"><title>SPARQL 1.1</title></book>
   <book id="b2"><title>RDF Primer</title></book>
-</library>`;
+</library>`
+```
+
+This first cell hands the parser that document:
+
+```observable-js
 return await Factoidal.xmlWellformed(XML);
 ```
 
@@ -60,10 +65,6 @@ kind, name, and string-value. Here `//book/title` selects both title
 elements:
 
 ```observable-js
-const XML = `<library>
-  <book id="b1"><title>SPARQL 1.1</title></book>
-  <book id="b2"><title>RDF Primer</title></book>
-</library>`;
 const res = await Factoidal.xpathEval(XML, "//book/title");
 return pretty(res.nodes.map((n) => ({ kind: n.kind, name: n.name, value: n.value })));
 ```
@@ -81,10 +82,6 @@ comparison returns a boolean. This cell runs one of each and tabulates
 the `resultType` the engine assigned alongside the value:
 
 ```observable-js
-const XML = `<library>
-  <book id="b1"><title>SPARQL 1.1</title></book>
-  <book id="b2"><title>RDF Primer</title></book>
-</library>`;
 const exprs = [
   "count(//book)",
   "//book[1]/title/text()",

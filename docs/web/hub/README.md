@@ -127,6 +127,71 @@ Only convert a code sample to a live cell when it actually computes
 something a reader benefits from seeing run (a parse, a query, an
 entailment closure) — not every fenced block needs to be live.
 
+## Named cells: declare once, reference everywhere
+
+This is the default authoring style for every post in the series, not
+an optional extra. A cell of the form `name = <expression>` or `name =
+{ ...statements...; return v; }` declares a **named** reactive
+variable; any later cell that mentions `name` becomes a dependent, and
+the vendored [Observable runtime](https://github.com/observablehq/runtime)
+topologically orders the cells and re-runs whatever needs re-running
+when an upstream value changes. A cell without a leading `name =`
+(starting with `const`, `return`, a bare expression, …) stays
+**anonymous**, exactly as before — naming is additive, not a
+requirement on every cell.
+
+The rule this replaces: earlier drafts of several posts had each live
+cell redeclare its own copy of the same Turtle/JSON text (`const ttl =
+\`…\`` pasted into every cell that needed it), so editing the data
+meant editing it N times and no cell could build on another's parsed
+result. That redundancy is the defect, not a style choice — when two or
+more cells in a post need the *same* data (byte-identical, not just
+similar), declare it once in a named cell — usually the first cell
+that introduces it, or a small dedicated cell right where the data
+first appears in the prose — and have every other cell reference the
+bare name instead of repeating the literal. Name an intermediate
+computed value (a parsed `Dataset`, a shared helper function) the same
+way, but only where a later cell actually reuses it — don't introduce a
+name nobody reads. Where two cells' data genuinely differs (even if
+structurally similar), leave them independent; forcing a shared name
+onto deliberately-different examples is the wrong direction.
+
+[Post 26](./26-reactive-cells-declare-once-use-everywhere/) is the
+worked example of the whole chain: `ttl = \`…\`` names the source text,
+`graph = fn.parse(ttl)` names the parsed dataset (a promise-valued
+cell — the runtime awaits it before any dependent reads it), `results
+= fn.query(graph, …)` names the query result, `table = pretty(results)`
+and a final anonymous chart cell both read `results`/further-derived
+names. Tap **Edit** on the `ttl` cell there and change the data: only
+the cells that actually depend on it re-run, not the whole page.
+
+The compiler that infers each cell's name and its cross-cell inputs is
+[`reactive-cells.mjs`](./reactive-cells.mjs) — shared, byte-for-byte,
+between `docs/_includes/hub.njk` (the browser) and
+`tests/hub/_helpers.mjs`'s `runReactivePost()` (the Node pinning
+harness), so a post's tests exercise the identical dependency inference
+the page runs. Read its header comment before writing a named cell —
+it documents the exact traps:
+
+- **`name = { … }` is a block body**, not an object literal — write
+  `return` inside it. Use `name = ({ … })` (parens around the braces)
+  when the value actually is an object.
+- **A cell must never shadow a KNOWN name** — a builtin (`fn`,
+  `Factoidal`, `Plot`, `d3`, `html`, `md`, `pretty`) or another cell's
+  declared name. Local-binding detection is coarse (regex-based, not a
+  real scope analysis), so a shadowed name can resolve unpredictably.
+- **A `return /regex/` right after a keyword can misparse** as
+  division — assign the regex to a `const` first, where detection is
+  reliable.
+
+A post's `tests/hub/postNN_test.mjs` pins the cross-cell wiring
+directly: `runReactivePost(cells, bindings)` builds the same headless
+Observable-runtime module the browser builds, and
+`post.value(post.names[i])` reads a named (or anonymously-indexed)
+cell's resolved value through its full dependency chain — proving the
+references actually resolve, not merely that each cell happens to run
+in isolation.
+
 ## Cell bindings (`CELL_BINDINGS`)
 
 Every live cell's function body receives these bindings by parameter
@@ -298,12 +363,21 @@ their browser and disappears on reload.
 Every live cell's source must also be pinned in that post's test file
 under `tests/hub/postNN_test.mjs`. The pinning tests extract the exact
 fenced source out of the shipped post file
-(`extractObservableCells()` in `tests/hub/_helpers.mjs`) and execute it
-via `runObservableCell()` — the same `new Function(...CELL_BINDINGS,
-body)` construction `hub.njk`'s `mountCell()` uses — so the test runs
-the literal string that ships on the page, not a hand-copied
-approximation that can drift. The Node-side `fn` binding used in tests
-is the *real* `npm/factoidal` typed API (imported the same way
+(`extractObservableCells()` in `tests/hub/_helpers.mjs`) and execute it.
+A post whose cells are all anonymous (no cross-cell references) can
+run each cell standalone via `runObservableCell()` — the same `new
+Function(...CELL_BINDINGS, body)` construction `hub.njk`'s
+`mountCell()` uses. A post with named, cross-referencing cells (the
+norm — see "Named cells" above) instead uses `runReactivePost(cells,
+bindings)`, which builds the same headless Observable-runtime module
+`hub.njk` builds in the browser, wiring each cell's inputs through the
+identical `reactive-cells.mjs` compiler; `post.value(post.names[i])`
+then reads a cell's resolved value through its full dependency chain,
+so the test proves the cross-cell references actually resolve rather
+than merely that each cell runs alone. Either way, the test runs the
+literal string that ships on the page, not a hand-copied approximation
+that can drift. The Node-side `fn` binding used in tests is the *real*
+`npm/factoidal` typed API (imported the same way
 `npm/factoidal/test/*.js` does), not the browser adapter — since both
 implementations satisfy the same external contract above, one cell
 source works correctly executed against either.

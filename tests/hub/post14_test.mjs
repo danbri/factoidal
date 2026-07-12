@@ -3,7 +3,7 @@
 // node:test, requiring the committed npm/factoidal bundles (no F*
 // toolchain needed) — mirrors npm/factoidal/test's own harness style.
 
-import { NPM_FACTOIDAL_INDEX, extractObservableCells, runObservableCell, pretty } from './_helpers.mjs';
+import { NPM_FACTOIDAL_INDEX, extractObservableCells, runReactivePost, pretty } from './_helpers.mjs';
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -49,19 +49,29 @@ test('post14: dataFactory-built quads round-trip through N-Quads text', async ()
 
 const cells = extractObservableCells(POST_FILE);
 
-test('post14: post has at least 2 live cells', () => {
-  assert.ok(cells.length >= 2, `expected >= 2 live cells, found ${cells.length}`);
+test('post14: post has 3 live cells (namedNode hoisted into its own named cell)', () => {
+  assert.equal(cells.length, 3, `expected 3 live cells, found ${cells.length}`);
 });
 
-test('post14 cell 1 (dataFactory-built quads, parsed and queried): SELECT returns Alice then Bob', async () => {
-  const result = await runObservableCell(cells[0], { fn: factoidal, pretty });
+test('post14: dependency inference wires both consuming cells to the named namedNode cell', () => {
+  const post = runReactivePost(cells, { fn: factoidal, pretty });
+  assert.equal(post.names[0], 'namedNode');
+  for (const i of [1, 2]) {
+    assert.ok(post.infos[i].refs.includes('namedNode'), `cell ${i + 1} references namedNode`);
+  }
+});
+
+test('post14 cell 2 (dataFactory-built quads, parsed and queried): SELECT returns Alice then Bob', async () => {
+  const post = runReactivePost(cells, { fn: factoidal, pretty });
+  const result = await post.value(post.names[1]);
   assert.equal(result.kind, 'table');
   assert.deepEqual(result.columns, ['name']);
   assert.deepEqual(result.rows, [['"Alice"'], ['"Bob"']]);
 });
 
-test('post14 cell 2 (.equals() vs ===): identity differs, value-equality agrees, and a real query term has .equals()', async () => {
-  const result = await runObservableCell(cells[1], { fn: factoidal, pretty });
+test('post14 cell 3 (.equals() vs ===): identity differs, value-equality agrees, and a real query term has .equals()', async () => {
+  const post = runReactivePost(cells, { fn: factoidal, pretty });
+  const result = await post.value(post.names[2]);
   assert.equal(result.kind, 'table');
   const asObject = Object.fromEntries(result.rows);
   assert.equal(asObject.sameReferenceAB, false, 'two NamedNodes built separately are distinct objects');

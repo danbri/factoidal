@@ -115,10 +115,11 @@ label — the same real, well-attested Wikidata IRIs
 [post 02](./02-asking-questions-sparql.md) used. `wd:Q5` itself has a
 label but, being the class rather than an instance of it, no `wdt:P31`
 triple of its own — a deliberate non-conforming case, not a mistake.
-Parse it and check the triple count:
+Every cell on this page validates against the same dataset, so the
+Turtle text and its parse are each named once, below:
 
 ```observable-js
-const WD_TTL = `
+WD_TTL = `
   @prefix wd:   <http://www.wikidata.org/entity/> .
   @prefix wdt:  <http://www.wikidata.org/prop/direct/> .
   @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
@@ -127,9 +128,16 @@ const WD_TTL = `
          rdfs:label "Douglas Adams"@en .
 
   wd:Q5  rdfs:label "human"@en .
-`;
+`
+```
 
-const dataset = await fn.parse(WD_TTL);
+```observable-js
+dataset = fn.parse(WD_TTL)
+```
+
+Parse it and check the triple count:
+
+```observable-js
 return dataset.size;
 ```
 
@@ -141,21 +149,14 @@ Three triples: `Q42`'s `P31` and `label`, `Q5`'s `label`.
 [`fn.shaclValidate`](./04-concept-schemes-skos.md) does — it's built on
 the same npm-entry ABI bundle, so a stale build might not expose it.
 Wrap the call and degrade to an explanatory value rather than a hard
-`.observable-cell-error`:
+`.observable-cell-error`. The ShExJ schema and the wrapper function are
+each used by every cell in this section and the next, so they're named
+once here too — the wrapper takes the schema text as a parameter so
+the same one function serves both the ShExJ cells below and the ShExC
+cells further down the page:
 
 ```observable-js
-const WD_TTL = `
-  @prefix wd:   <http://www.wikidata.org/entity/> .
-  @prefix wdt:  <http://www.wikidata.org/prop/direct/> .
-  @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
-
-  wd:Q42 wdt:P31   wd:Q5 ;
-         rdfs:label "Douglas Adams"@en .
-
-  wd:Q5  rdfs:label "human"@en .
-`;
-
-const HUMAN_SHAPE_SCHEMA = JSON.stringify({
+HUMAN_SHAPE_SCHEMA = JSON.stringify({
   type: "Schema",
   shapes: [{
     type: "ShapeDecl",
@@ -179,23 +180,26 @@ const HUMAN_SHAPE_SCHEMA = JSON.stringify({
       },
     },
   }],
-});
+})
+```
 
-async function tryShexValidate(dataNQuads, focus) {
+```observable-js
+tryShexValidate = async function(dataNQuads, schemaText, focus) {
   try {
     if (typeof Factoidal.shexValidate !== "function") {
       throw new Error("Factoidal.shexValidate is not exposed by this build");
     }
     const result = await Factoidal.shexValidate(
-      dataNQuads, HUMAN_SHAPE_SCHEMA, focus, "http://example.org/HumanShape");
+      dataNQuads, schemaText, focus, "http://example.org/HumanShape");
     return { available: true, verdict: result.verdict, deferred: result.deferred };
   } catch (err) {
     return { available: false, note: err.message };
   }
 }
+```
 
-const dataset = await fn.parse(WD_TTL);
-return tryShexValidate(dataset.toNQuads(), "http://www.wikidata.org/entity/Q42");
+```observable-js
+return tryShexValidate(dataset.toNQuads(), HUMAN_SHAPE_SCHEMA, "http://www.wikidata.org/entity/Q42");
 ```
 
 `verdict: true` — `wd:Q42` has both triples the shape requires.
@@ -208,58 +212,7 @@ Same schema, same dataset, different focus node — `wd:Q5` has a label
 but no `wdt:P31` triple of its own:
 
 ```observable-js
-const WD_TTL = `
-  @prefix wd:   <http://www.wikidata.org/entity/> .
-  @prefix wdt:  <http://www.wikidata.org/prop/direct/> .
-  @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
-
-  wd:Q42 wdt:P31   wd:Q5 ;
-         rdfs:label "Douglas Adams"@en .
-
-  wd:Q5  rdfs:label "human"@en .
-`;
-
-const HUMAN_SHAPE_SCHEMA = JSON.stringify({
-  type: "Schema",
-  shapes: [{
-    type: "ShapeDecl",
-    id: "http://example.org/HumanShape",
-    shapeExpr: {
-      type: "Shape",
-      expression: {
-        type: "EachOf",
-        expressions: [
-          {
-            type: "TripleConstraint",
-            predicate: "http://www.wikidata.org/prop/direct/P31",
-            valueExpr: { type: "NodeConstraint", values: ["http://www.wikidata.org/entity/Q5"] },
-          },
-          {
-            type: "TripleConstraint",
-            predicate: "http://www.w3.org/2000/01/rdf-schema#label",
-            valueExpr: { type: "NodeConstraint", nodeKind: "literal" },
-          },
-        ],
-      },
-    },
-  }],
-});
-
-async function tryShexValidate(dataNQuads, focus) {
-  try {
-    if (typeof Factoidal.shexValidate !== "function") {
-      throw new Error("Factoidal.shexValidate is not exposed by this build");
-    }
-    const result = await Factoidal.shexValidate(
-      dataNQuads, HUMAN_SHAPE_SCHEMA, focus, "http://example.org/HumanShape");
-    return { available: true, verdict: result.verdict, deferred: result.deferred };
-  } catch (err) {
-    return { available: false, note: err.message };
-  }
-}
-
-const dataset = await fn.parse(WD_TTL);
-return tryShexValidate(dataset.toNQuads(), "http://www.wikidata.org/entity/Q5");
+return tryShexValidate(dataset.toNQuads(), HUMAN_SHAPE_SCHEMA, "http://www.wikidata.org/entity/Q5");
 ```
 
 `verdict: false` — the `wdt:P31` triple constraint has nothing to
@@ -275,21 +228,12 @@ also accepts the ShExC text from
 ["A schema, in the syntax people read"](#a-schema-in-the-syntax-people-read)
 directly (via `Parser.ShExC.fst`) — no translation step, no separate entry point, just the
 same `shexValidate(dataNQuads, schemaText, focus, shapeLabel)` call
-with a ShExC string instead of a JSON one:
+with a ShExC string instead of a JSON one. The ShExC text is named once
+too, and both cells below reuse the `tryShexValidate` wrapper from the
+previous section:
 
 ```observable-js
-const WD_TTL = `
-  @prefix wd:   <http://www.wikidata.org/entity/> .
-  @prefix wdt:  <http://www.wikidata.org/prop/direct/> .
-  @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
-
-  wd:Q42 wdt:P31   wd:Q5 ;
-         rdfs:label "Douglas Adams"@en .
-
-  wd:Q5  rdfs:label "human"@en .
-`;
-
-const HUMAN_SHAPE_SHEXC = `
+HUMAN_SHAPE_SHEXC = `
   PREFIX wd:   <http://www.wikidata.org/entity/>
   PREFIX wdt:  <http://www.wikidata.org/prop/direct/>
   PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
@@ -298,23 +242,11 @@ const HUMAN_SHAPE_SHEXC = `
     wdt:P31    [wd:Q5] ;
     rdfs:label LITERAL
   }
-`;
+`
+```
 
-async function tryShexValidate(dataNQuads, focus) {
-  try {
-    if (typeof Factoidal.shexValidate !== "function") {
-      throw new Error("Factoidal.shexValidate is not exposed by this build");
-    }
-    const result = await Factoidal.shexValidate(
-      dataNQuads, HUMAN_SHAPE_SHEXC, focus, "http://example.org/HumanShape");
-    return { available: true, verdict: result.verdict, deferred: result.deferred };
-  } catch (err) {
-    return { available: false, note: err.message };
-  }
-}
-
-const dataset = await fn.parse(WD_TTL);
-return tryShexValidate(dataset.toNQuads(), "http://www.wikidata.org/entity/Q42");
+```observable-js
+return tryShexValidate(dataset.toNQuads(), HUMAN_SHAPE_SHEXC, "http://www.wikidata.org/entity/Q42");
 ```
 
 `verdict: true` — same conforming node, same shape, no JSON in sight.
@@ -322,43 +254,7 @@ And the non-conforming node still comes back `false` through the exact
 same ShExC schema text:
 
 ```observable-js
-const WD_TTL = `
-  @prefix wd:   <http://www.wikidata.org/entity/> .
-  @prefix wdt:  <http://www.wikidata.org/prop/direct/> .
-  @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
-
-  wd:Q42 wdt:P31   wd:Q5 ;
-         rdfs:label "Douglas Adams"@en .
-
-  wd:Q5  rdfs:label "human"@en .
-`;
-
-const HUMAN_SHAPE_SHEXC = `
-  PREFIX wd:   <http://www.wikidata.org/entity/>
-  PREFIX wdt:  <http://www.wikidata.org/prop/direct/>
-  PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-
-  <http://example.org/HumanShape> {
-    wdt:P31    [wd:Q5] ;
-    rdfs:label LITERAL
-  }
-`;
-
-async function tryShexValidate(dataNQuads, focus) {
-  try {
-    if (typeof Factoidal.shexValidate !== "function") {
-      throw new Error("Factoidal.shexValidate is not exposed by this build");
-    }
-    const result = await Factoidal.shexValidate(
-      dataNQuads, HUMAN_SHAPE_SHEXC, focus, "http://example.org/HumanShape");
-    return { available: true, verdict: result.verdict, deferred: result.deferred };
-  } catch (err) {
-    return { available: false, note: err.message };
-  }
-}
-
-const dataset = await fn.parse(WD_TTL);
-return tryShexValidate(dataset.toNQuads(), "http://www.wikidata.org/entity/Q5");
+return tryShexValidate(dataset.toNQuads(), HUMAN_SHAPE_SHEXC, "http://www.wikidata.org/entity/Q5");
 ```
 
 `verdict: false` — `wd:Q5` still has no `wdt:P31` triple of its own,

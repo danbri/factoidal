@@ -63,19 +63,7 @@ independently of the others.
 Alice and Bob, unchanged from post 01, against the shape above:
 
 ```observable-js
-const PEOPLE_TTL = `
-  @prefix foaf: <http://xmlns.com/foaf/0.1/> .
-  @prefix ex:   <http://example.org/> .
-
-  ex:alice a foaf:Person ;
-    foaf:name  "Alice" ;
-    foaf:knows ex:bob .
-
-  ex:bob a foaf:Person ;
-    foaf:name "Bob" .
-`;
-
-const PERSON_SHAPE_TTL = `
+PERSON_SHAPE_TTL = `
   @prefix sh:   <http://www.w3.org/ns/shacl#> .
   @prefix foaf: <http://xmlns.com/foaf/0.1/> .
   @prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
@@ -99,6 +87,23 @@ const PERSON_SHAPE_TTL = `
           sh:class foaf:Person ;
           sh:message "foaf:knows must point to another foaf:Person" ;
       ] .
+`
+```
+
+The shape is named once, above, and every cell below references
+`PERSON_SHAPE_TTL` by name rather than repeating it:
+
+```observable-js
+const PEOPLE_TTL = `
+  @prefix foaf: <http://xmlns.com/foaf/0.1/> .
+  @prefix ex:   <http://example.org/> .
+
+  ex:alice a foaf:Person ;
+    foaf:name  "Alice" ;
+    foaf:knows ex:bob .
+
+  ex:bob a foaf:Person ;
+    foaf:name "Bob" .
 `;
 
 const result = await fn.shaclValidate(PEOPLE_TTL, PERSON_SHAPE_TTL);
@@ -125,32 +130,6 @@ const NO_NAME_TTL = `
     foaf:knows ex:bob .
 
   ex:bob a foaf:Person .
-`;
-
-const PERSON_SHAPE_TTL = `
-  @prefix sh:   <http://www.w3.org/ns/shacl#> .
-  @prefix foaf: <http://xmlns.com/foaf/0.1/> .
-  @prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
-  @prefix ex:   <http://example.org/shapes/> .
-
-  ex:PersonShape
-      a sh:NodeShape ;
-      sh:targetClass foaf:Person ;
-      sh:property [
-          sh:path foaf:name ;
-          sh:minCount 1 ;
-          sh:message "foaf:Person needs at least one foaf:name" ;
-      ] ;
-      sh:property [
-          sh:path foaf:name ;
-          sh:datatype xsd:string ;
-          sh:message "foaf:name must be a plain xsd:string" ;
-      ] ;
-      sh:property [
-          sh:path foaf:knows ;
-          sh:class foaf:Person ;
-          sh:message "foaf:knows must point to another foaf:Person" ;
-      ] .
 `;
 
 const RDF_TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type";
@@ -192,32 +171,6 @@ kind of mistake. Break the graph three separate ways, one constraint
 at a time, and validate each against the same shape:
 
 ```observable-js
-const PERSON_SHAPE_TTL = `
-  @prefix sh:   <http://www.w3.org/ns/shacl#> .
-  @prefix foaf: <http://xmlns.com/foaf/0.1/> .
-  @prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
-  @prefix ex:   <http://example.org/shapes/> .
-
-  ex:PersonShape
-      a sh:NodeShape ;
-      sh:targetClass foaf:Person ;
-      sh:property [
-          sh:path foaf:name ;
-          sh:minCount 1 ;
-          sh:message "foaf:Person needs at least one foaf:name" ;
-      ] ;
-      sh:property [
-          sh:path foaf:name ;
-          sh:datatype xsd:string ;
-          sh:message "foaf:name must be a plain xsd:string" ;
-      ] ;
-      sh:property [
-          sh:path foaf:knows ;
-          sh:class foaf:Person ;
-          sh:message "foaf:knows must point to another foaf:Person" ;
-      ] .
-`;
-
 const MIN_COUNT_VIOLATION_TTL = `
   @prefix foaf: <http://xmlns.com/foaf/0.1/> .
   @prefix ex:   <http://example.org/> .

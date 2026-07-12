@@ -1,6 +1,6 @@
 // Pins every code sample in docs/web/hub/06-shapes-the-other-dialect-shex.md.
 
-import { NPM_FACTOIDAL_INDEX, extractObservableCells, runObservableCell } from './_helpers.mjs';
+import { NPM_FACTOIDAL_INDEX, extractObservableCells, runReactivePost } from './_helpers.mjs';
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -29,32 +29,68 @@ const FactoidalNode = {
   },
 };
 
-test('post06: post has at least 5 live cells', () => {
-  assert.ok(cells.length >= 5, `expected >= 5 live cells, found ${cells.length}`);
+test('post06: post has 10 live cells (WD_TTL/dataset/HUMAN_SHAPE_SCHEMA/tryShexValidate/HUMAN_SHAPE_SHEXC hoisted into named cells)', () => {
+  assert.equal(cells.length, 10, `expected 10 live cells, found ${cells.length}`);
 });
 
-test('post06 cell 1 (parse the Wikidata-shaped dataset): 3 triples', async () => {
-  const result = await runObservableCell(cells[0], { fn: factoidal });
+test('post06: dependency inference wires the shared cells to every consumer', () => {
+  const post = runReactivePost(cells, { fn: factoidal, Factoidal: FactoidalNode });
+  assert.deepEqual(post.names.slice(0, 2), ['WD_TTL', 'dataset']);
+  assert.ok(post.infos[1].refs.includes('WD_TTL'), 'dataset cell references WD_TTL');
+  // cell index 2: `return dataset.size;`
+  assert.ok(post.infos[2].refs.includes('dataset'), 'triple-count cell references dataset');
+  assert.equal(post.names[3], 'HUMAN_SHAPE_SCHEMA');
+  assert.equal(post.names[4], 'tryShexValidate');
+  // tryShexValidate takes the schema text as a parameter (schemaText),
+  // so it does NOT reference HUMAN_SHAPE_SCHEMA itself -- that's what
+  // lets the same wrapper serve both the ShExJ cells below and the
+  // ShExC cells further down the page.
+  assert.ok(!post.infos[4].refs.includes('HUMAN_SHAPE_SCHEMA'), 'tryShexValidate does not reference HUMAN_SHAPE_SCHEMA directly');
+  // cells 5, 6: conforming/non-conforming ShExJ checks reference the
+  // shared dataset, the shared tryShexValidate wrapper, AND the ShExJ
+  // schema (passed explicitly as tryShexValidate's second argument).
+  for (const i of [5, 6]) {
+    assert.ok(post.infos[i].refs.includes('dataset'), `cell ${i + 1} references dataset`);
+    assert.ok(post.infos[i].refs.includes('tryShexValidate'), `cell ${i + 1} references tryShexValidate`);
+    assert.ok(post.infos[i].refs.includes('HUMAN_SHAPE_SCHEMA'), `cell ${i + 1} references HUMAN_SHAPE_SCHEMA`);
+  }
+  assert.equal(post.names[7], 'HUMAN_SHAPE_SHEXC');
+  // cells 8, 9: conforming/non-conforming ShExC checks reference dataset,
+  // tryShexValidate, AND the ShExC schema text (passed explicitly too).
+  for (const i of [8, 9]) {
+    assert.ok(post.infos[i].refs.includes('dataset'), `cell ${i + 1} references dataset`);
+    assert.ok(post.infos[i].refs.includes('tryShexValidate'), `cell ${i + 1} references tryShexValidate`);
+    assert.ok(post.infos[i].refs.includes('HUMAN_SHAPE_SHEXC'), `cell ${i + 1} references HUMAN_SHAPE_SHEXC`);
+  }
+});
+
+test('post06 cell 3 (parse the Wikidata-shaped dataset): 3 triples', async () => {
+  const post = runReactivePost(cells, { fn: factoidal, Factoidal: FactoidalNode });
+  const result = await post.value(post.names[2]);
   assert.equal(result, 3);
 });
 
-test('post06 cell 2 (conforming node, ShExJ schema): Q42 matches HumanShape', async () => {
-  const result = await runObservableCell(cells[1], { fn: factoidal, Factoidal: FactoidalNode });
+test('post06 cell 6 (conforming node, ShExJ schema): Q42 matches HumanShape', async () => {
+  const post = runReactivePost(cells, { fn: factoidal, Factoidal: FactoidalNode });
+  const result = await post.value(post.names[5]);
   assert.deepEqual(result, { available: true, verdict: true, deferred: false });
 });
 
-test('post06 cell 3 (non-conforming node, ShExJ schema): Q5 does not match HumanShape', async () => {
-  const result = await runObservableCell(cells[2], { fn: factoidal, Factoidal: FactoidalNode });
+test('post06 cell 7 (non-conforming node, ShExJ schema): Q5 does not match HumanShape', async () => {
+  const post = runReactivePost(cells, { fn: factoidal, Factoidal: FactoidalNode });
+  const result = await post.value(post.names[6]);
   assert.deepEqual(result, { available: true, verdict: false, deferred: false });
 });
 
-test('post06 cell 4 (conforming node, ShExC schema text): Q42 matches HumanShape', async () => {
-  const result = await runObservableCell(cells[3], { fn: factoidal, Factoidal: FactoidalNode });
+test('post06 cell 9 (conforming node, ShExC schema text): Q42 matches HumanShape', async () => {
+  const post = runReactivePost(cells, { fn: factoidal, Factoidal: FactoidalNode });
+  const result = await post.value(post.names[8]);
   assert.deepEqual(result, { available: true, verdict: true, deferred: false });
 });
 
-test('post06 cell 5 (non-conforming node, ShExC schema text): Q5 does not match HumanShape', async () => {
-  const result = await runObservableCell(cells[4], { fn: factoidal, Factoidal: FactoidalNode });
+test('post06 cell 10 (non-conforming node, ShExC schema text): Q5 does not match HumanShape', async () => {
+  const post = runReactivePost(cells, { fn: factoidal, Factoidal: FactoidalNode });
+  const result = await post.value(post.names[9]);
   assert.deepEqual(result, { available: true, verdict: false, deferred: false });
 });
 

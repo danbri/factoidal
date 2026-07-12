@@ -5,7 +5,7 @@
 // see that skill's SKILL.md for the full six-condition writeup this
 // post reuses.
 
-import { NPM_FACTOIDAL_INDEX, extractObservableCells, runObservableCell } from './_helpers.mjs';
+import { NPM_FACTOIDAL_INDEX, extractObservableCells, runReactivePost } from './_helpers.mjs';
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -15,26 +15,43 @@ const POST_FILE = '04-concept-schemes-skos.md';
 
 const cells = extractObservableCells(POST_FILE);
 
-test('post04: post has at least 4 live cells', () => {
-  assert.ok(cells.length >= 4, `expected >= 4 live cells, found ${cells.length}`);
+test('post04: post has 7 live cells (fixtures hoisted into named cells)', () => {
+  assert.equal(cells.length, 7, `expected 7 live cells, found ${cells.length}`);
 });
 
-test('post04 cell 1 (parse the concept scheme): 28 triples, four English concept labels', async () => {
-  const result = await runObservableCell(cells[0], { fn: factoidal });
+test('post04: dependency inference wires SKOS_VALID_TTL -> dataset -> query cells, and SKOS_BROKEN_TTL -> the checks cells', () => {
+  const post = runReactivePost(cells, { fn: factoidal });
+  assert.deepEqual(post.names.slice(0, 2), ['SKOS_VALID_TTL', 'dataset']);
+  assert.ok(post.infos[1].refs.includes('SKOS_VALID_TTL'), 'dataset cell references SKOS_VALID_TTL');
+  for (const i of [2, 3]) {
+    assert.ok(post.infos[i].refs.includes('dataset'), `cell ${i + 1} references dataset`);
+  }
+  assert.equal(post.names[4], 'SKOS_BROKEN_TTL');
+  assert.ok(post.infos[5].refs.includes('SKOS_VALID_TTL'), 'integrity-checks cell references SKOS_VALID_TTL');
+  assert.ok(post.infos[5].refs.includes('SKOS_BROKEN_TTL'), 'integrity-checks cell references SKOS_BROKEN_TTL');
+  assert.ok(post.infos[6].refs.includes('SKOS_VALID_TTL'), 'SHACL cell references SKOS_VALID_TTL');
+  assert.ok(post.infos[6].refs.includes('SKOS_BROKEN_TTL'), 'SHACL cell references SKOS_BROKEN_TTL');
+});
+
+test('post04 cell 3 (parse the concept scheme): 28 triples, four English concept labels', async () => {
+  const post = runReactivePost(cells, { fn: factoidal });
+  const result = await post.value(post.names[2]);
   assert.equal(result.tripleCount, 28);
   assert.deepEqual(result.concepts, ['Animal', 'Cat', 'Dog', 'Mammal']);
 });
 
-test('post04 cell 2 (skos:broader+ property path): Dog\'s ancestors are Mammal then Animal', async () => {
-  const result = await runObservableCell(cells[1], { fn: factoidal });
+test('post04 cell 4 (skos:broader+ property path): Dog\'s ancestors are Mammal then Animal', async () => {
+  const post = runReactivePost(cells, { fn: factoidal });
+  const result = await post.value(post.names[3]);
   assert.deepEqual(result, [
     'http://example.org/skos-integrity/animals#Mammal',
     'http://example.org/skos-integrity/animals#Animal',
   ]);
 });
 
-test('post04 cell 3 (six SPARQL integrity checks): valid scheme clean, broken scheme catches exactly its planted defect', async () => {
-  const result = await runObservableCell(cells[2], { fn: factoidal });
+test('post04 cell 6 (six SPARQL integrity checks): valid scheme clean, broken scheme catches exactly its planted defect', async () => {
+  const post = runReactivePost(cells, { fn: factoidal });
+  const result = await post.value(post.names[5]);
   assert.deepEqual(result, {
     S9: { valid: false, broken: true },
     S13: { valid: 0, broken: 1 },
@@ -45,8 +62,9 @@ test('post04 cell 3 (six SPARQL integrity checks): valid scheme clean, broken sc
   });
 });
 
-test('post04 cell 4 (SHACL integrity check): valid conforms, broken reports 5 SHACL-checkable violations', async () => {
-  const result = await runObservableCell(cells[3], { fn: factoidal });
+test('post04 cell 7 (SHACL integrity check): valid conforms, broken reports 5 SHACL-checkable violations', async () => {
+  const post = runReactivePost(cells, { fn: factoidal });
+  const result = await post.value(post.names[6]);
   assert.deepEqual(result, {
     valid: { available: true, conforms: true, violations: 0 },
     broken: { available: true, conforms: false, violations: 5 },

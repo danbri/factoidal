@@ -1,7 +1,7 @@
 // Pins every code sample in
 // docs/web/hub/02-asking-questions-sparql.md.
 
-import { NPM_FACTOIDAL_INDEX, extractObservableCells, runObservableCell, pretty } from './_helpers.mjs';
+import { NPM_FACTOIDAL_INDEX, extractObservableCells, runObservableCell, runReactivePost, pretty } from './_helpers.mjs';
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -94,12 +94,22 @@ test('post02: CONSTRUCT derives a one-triple occupation-label graph', async () =
 
 const cells = extractObservableCells(POST_FILE);
 
-test('post02: post has at least 2 live cells', () => {
-  assert.ok(cells.length >= 2, `expected >= 2 live cells, found ${cells.length}`);
+test('post02: post has 6 live cells (ttl + dataset hoisted into named cells)', () => {
+  assert.equal(cells.length, 6, `expected 6 live cells, found ${cells.length}`);
 });
 
-test('post02 cell 1 (pretty(SELECT bindings) -> table): 3 rows, one "label" column', async () => {
-  const result = await runObservableCell(cells[0], { fn: factoidal, pretty });
+test('post02: dependency inference wires ttl -> dataset -> every query cell', () => {
+  const post = runReactivePost(cells, { fn: factoidal, pretty });
+  assert.deepEqual(post.names.slice(0, 2), ['ttl', 'dataset']);
+  assert.ok(post.infos[1].refs.includes('ttl'), 'dataset cell references ttl');
+  for (const i of [2, 3, 4, 5]) {
+    assert.ok(post.infos[i].refs.includes('dataset'), `cell ${i + 1} references dataset`);
+  }
+});
+
+test('post02 cell 3 (pretty(SELECT bindings) -> table): 3 rows, one "label" column', async () => {
+  const post = runReactivePost(cells, { fn: factoidal, pretty });
+  const result = await post.value(post.names[2]);
   assert.equal(result.kind, 'table');
   assert.deepEqual(result.columns, ['label']);
   assert.equal(result.rows.length, 3);
@@ -111,23 +121,26 @@ test('post02 cell 1 (pretty(SELECT bindings) -> table): 3 rows, one "label" colu
   assert.equal(unbound.length, 1, 'exactly one row has no OPTIONAL label binding');
 });
 
-test('post02 cell 2 (ASK): true', async () => {
-  const result = await runObservableCell(cells[1], { fn: factoidal });
+test('post02 cell 4 (ASK): true', async () => {
+  const post = runReactivePost(cells, { fn: factoidal, pretty });
+  const result = await post.value(post.names[3]);
   assert.equal(result, true);
 });
 
-test('post02 cell 3 (property-path alternation): both targets', async () => {
-  const result = await runObservableCell(cells[2], { fn: factoidal });
+test('post02 cell 5 (property-path alternation): both targets', async () => {
+  const post = runReactivePost(cells, { fn: factoidal, pretty });
+  const result = await post.value(post.names[4]);
   assert.deepEqual([...result].sort(), [
     'http://www.wikidata.org/entity/Q36180',
     'http://www.wikidata.org/entity/Q5',
   ]);
 });
 
-test('post02 cell 4 (CONSTRUCT): one-triple occupation-label graph', async () => {
+test('post02 cell 6 (CONSTRUCT): one-triple occupation-label graph', async () => {
   const caps = await factoidal.capabilities();
   if (!caps.construct) return;
-  const result = await runObservableCell(cells[3], { fn: factoidal });
+  const post = runReactivePost(cells, { fn: factoidal, pretty });
+  const result = await post.value(post.names[5]);
   assert.equal(result.size, 1);
   assert.equal(
     result.nquads,

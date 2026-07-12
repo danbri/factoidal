@@ -1,7 +1,7 @@
 // Pins every code sample in
 // docs/web/hub/03-schemas-that-infer-rdfs-owl.md.
 
-import { NPM_FACTOIDAL_INDEX, extractObservableCells, runObservableCell } from './_helpers.mjs';
+import { NPM_FACTOIDAL_INDEX, extractObservableCells, runReactivePost } from './_helpers.mjs';
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -72,20 +72,30 @@ test('post03: OWL-RL entailment derives foaf:Person and owl:Thing via equivalent
 
 const cells = extractObservableCells(POST_FILE);
 
-test('post03: post has at least 2 live cells', () => {
-  assert.ok(cells.length >= 2, `expected >= 2 live cells, found ${cells.length}`);
+test('post03: post has 4 live cells (the shared query hoisted into its own named cell)', () => {
+  assert.equal(cells.length, 4, `expected 4 live cells, found ${cells.length}`);
 });
 
-test('post03 cell 1 (RDFS toggle): schema:Thing appears only with entailment', async () => {
-  const result = await runObservableCell(cells[0], { fn: factoidal });
+test('post03: dependency inference wires all three query cells to the named q cell', () => {
+  const post = runReactivePost(cells, { fn: factoidal });
+  assert.equal(post.names[0], 'q');
+  for (const i of [1, 2, 3]) {
+    assert.ok(post.infos[i].refs.includes('q'), `cell ${i + 1} references q`);
+  }
+});
+
+test('post03 cell 2 (RDFS toggle): schema:Thing appears only with entailment', async () => {
+  const post = runReactivePost(cells, { fn: factoidal });
+  const result = await post.value(post.names[1]);
   assert.deepEqual(result, {
     withoutEntailment: ['https://schema.org/Person'],
     withRDFS: ['https://schema.org/Person', 'https://schema.org/Thing'],
   });
 });
 
-test('post03 cell 2 (OWL-RL toggle): equivalentClass only fires under OWL-RL', async () => {
-  const result = await runObservableCell(cells[1], { fn: factoidal });
+test('post03 cell 3 (OWL-RL toggle): equivalentClass only fires under OWL-RL', async () => {
+  const post = runReactivePost(cells, { fn: factoidal });
+  const result = await post.value(post.names[2]);
   assert.deepEqual(result, {
     withRDFS: ['https://schema.org/Person'],
     withOWLRL: [
@@ -96,8 +106,9 @@ test('post03 cell 2 (OWL-RL toggle): equivalentClass only fires under OWL-RL', a
   });
 });
 
-test('post03 cell 3 (mutual subClassOf): equivalence in pure RDFS', async () => {
-  const result = await runObservableCell(cells[2], { fn: factoidal });
+test('post03 cell 4 (mutual subClassOf): equivalence in pure RDFS', async () => {
+  const post = runReactivePost(cells, { fn: factoidal });
+  const result = await post.value(post.names[3]);
   assert.deepEqual(result, [
     'http://xmlns.com/foaf/0.1/Person',
     'https://schema.org/Person',

@@ -1,14 +1,19 @@
 // Pins every live code cell in docs/web/hub/13-verifiable-credentials-and-csvw.md.
 //
-// The post has four live cells, in document order:
-//   [0] VC Data Integrity step 1 -- RDFC-1.0 canonicalize the credential
-//       dataset (`fn.canonicalize`, the same typed wrapper post 08
-//       introduced).
-//   [1] VC Data Integrity step 2 -- SHA-256 of the canonical form, via
+// The post has seven live cells, in document order (the shared VC
+// `credential` dataset and the shared CSVW `csvText`/`metadataJson`
+// were hoisted into their own named cells so the two VC steps and the
+// two CSVW modes don't each redeclare identical consts):
+//   [0] credential      -- named cell: the unsecured VC dataset text.
+//   [1] VC Data Integrity step 1 -- RDFC-1.0 canonicalize `credential`
+//       (`fn.canonicalize`, the same typed wrapper post 08 introduced).
+//   [2] VC Data Integrity step 2 -- SHA-256 of the canonical form, via
 //       Web Crypto's `crypto.subtle.digest` (a browser/Node built-in,
 //       not one of our exports).
-//   [2] CSVW standard mode  (`Factoidal.csvwToRdf`).
-//   [3] CSVW minimal mode   (`Factoidal.csvwToRdf`).
+//   [3] csvText         -- named cell: the shared CSVW CSV text.
+//   [4] metadataJson    -- named cell: the shared CSVW metadata document.
+//   [5] CSVW standard mode  (`Factoidal.csvwToRdf`).
+//   [6] CSVW minimal mode   (`Factoidal.csvwToRdf`).
 //
 // The Ed25519 sign/verify roundtrip is NATIVE-ONLY (vendored HACL* C
 // does not link under wasm_of_ocaml -- tracked in #286), so it is shown
@@ -33,7 +38,7 @@
 // both halves of that.
 
 import { createRequire } from 'node:module';
-import { extractObservableCells, runObservableCell, HUB_POST_DIR } from './_helpers.mjs';
+import { extractObservableCells, runReactivePost, HUB_POST_DIR } from './_helpers.mjs';
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -74,12 +79,27 @@ const Factoidal = {
 
 const cells = extractObservableCells(POST_FILE);
 
-test('post13: post has 4 live cells (2 VC pipeline + 2 CSVW)', () => {
-  assert.equal(cells.length, 4, `expected exactly 4 live cells, found ${cells.length}`);
+test('post13: post has 7 live cells (credential + csvText + metadataJson hoisted into named cells)', () => {
+  assert.equal(cells.length, 7, `expected exactly 7 live cells, found ${cells.length}`);
 });
 
-test('post13 cell 1 (VC step 1: RDFC-1.0 canonicalize): 3 lines, bnode canonicalized to _:c14n0', async () => {
-  const result = await runObservableCell(cells[0], { fn });
+test('post13: dependency inference wires both VC step cells to credential, both CSVW mode cells to csvText/metadataJson', () => {
+  const post = runReactivePost(cells, { fn, Factoidal });
+  assert.equal(post.names[0], 'credential');
+  assert.equal(post.names[3], 'csvText');
+  assert.equal(post.names[4], 'metadataJson');
+  for (const i of [1, 2]) {
+    assert.ok(post.infos[i].refs.includes('credential'), `cell ${i + 1} references credential`);
+  }
+  for (const i of [5, 6]) {
+    assert.ok(post.infos[i].refs.includes('csvText'), `cell ${i + 1} references csvText`);
+    assert.ok(post.infos[i].refs.includes('metadataJson'), `cell ${i + 1} references metadataJson`);
+  }
+});
+
+test('post13 cell 2 (VC step 1: RDFC-1.0 canonicalize): 3 lines, bnode canonicalized to _:c14n0', async () => {
+  const post = runReactivePost(cells, { fn, Factoidal });
+  const result = await post.value(post.names[1]);
   assert.equal(result.lines, 3);
   assert.match(result.canonical, /_:c14n0/);
   // The credential's own IRIs survive; the arbitrary _:b0 label does not.
@@ -87,8 +107,9 @@ test('post13 cell 1 (VC step 1: RDFC-1.0 canonicalize): 3 lines, bnode canonical
   assert.ok(!result.canonical.includes('_:b0'));
 });
 
-test('post13 cell 2 (VC step 2: SHA-256 of canonical form): 64 hex chars, stable digest', async () => {
-  const result = await runObservableCell(cells[1], { fn });
+test('post13 cell 3 (VC step 2: SHA-256 of canonical form): 64 hex chars, stable digest', async () => {
+  const post = runReactivePost(cells, { fn, Factoidal });
+  const result = await post.value(post.names[2]);
   assert.equal(result.hashLength, 64);
   assert.match(result.sha256, /^[0-9a-f]{64}$/);
   // Deterministic: this is the SHA-256 of the canonical credential
@@ -96,8 +117,9 @@ test('post13 cell 2 (VC step 2: SHA-256 of canonical form): 64 hex chars, stable
   assert.equal(result.sha256, '1ae5f4ab2b655716e6fa6ce7e340fbeb13512adb6d09815e5e7b3f29c8a25e43');
 });
 
-test('post13 cell 3 (CSVW standard mode): 22 quads = 8 typed row data + 14 provenance', async () => {
-  const result = await runObservableCell(cells[2], { Factoidal });
+test('post13 cell 6 (CSVW standard mode): 22 quads = 8 typed row data + 14 provenance', async () => {
+  const post = runReactivePost(cells, { fn, Factoidal });
+  const result = await post.value(post.names[5]);
   assert.equal(result.available, true);
   assert.equal(result.totalQuads, 22);
   assert.equal(result.dataQuads, 8);
@@ -114,8 +136,9 @@ test('post13 cell 3 (CSVW standard mode): 22 quads = 8 typed row data + 14 prove
     (l) => l.includes('http://schema.org/population') && l.includes('XMLSchema#integer')));
 });
 
-test('post13 cell 4 (CSVW minimal mode): 8 typed quads, no provenance, template subjects', async () => {
-  const result = await runObservableCell(cells[3], { Factoidal });
+test('post13 cell 7 (CSVW minimal mode): 8 typed quads, no provenance, template subjects', async () => {
+  const post = runReactivePost(cells, { fn, Factoidal });
+  const result = await post.value(post.names[6]);
   assert.equal(result.available, true);
   assert.equal(result.totalQuads, 8);
   assert.equal(result.hasDoubleTyping, true);
@@ -133,7 +156,8 @@ test('post13: a CSVW cell degrades gracefully when the ABI lacks csvwToRdf', asy
       throw new Error('csvwToRdf: the loaded factoidal-npm-entry bundle predates the CSVW export');
     },
   };
-  const result = await runObservableCell(cells[2], { Factoidal: brokenFactoidal });
+  const post = runReactivePost(cells, { fn, Factoidal: brokenFactoidal });
+  const result = await post.value(post.names[5]);
   assert.equal(result.available, false);
   assert.match(result.note, /predates the CSVW export/);
 });

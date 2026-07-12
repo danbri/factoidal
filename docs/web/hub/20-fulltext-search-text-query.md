@@ -52,10 +52,12 @@ ex:battery rdfs:label "Battery storage panel" ; dc:title "Energy storage unit" ;
 ex:controlpanel rdfs:label "Interface unit"   ; dc:title "Control panel interface" ; ex:status "active" .
 ```
 
-Parse it and count — five subjects, three literals each:
+Parse it and count — five subjects, three literals each. The dataset
+and its parse are named once, below, and every cell in this post
+references `FT_TTL`/`dataset` by name instead of repeating them:
 
 ```observable-js
-const FT_TTL = `
+FT_TTL = `
   @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
   @prefix dc:   <http://purl.org/dc/elements/1.1/> .
   @prefix ex:   <http://example.org/> .
@@ -65,9 +67,14 @@ const FT_TTL = `
   ex:heater rdfs:label "Water heater" ; dc:title "Boiler room unit" ; ex:status "retired" .
   ex:battery rdfs:label "Battery storage panel" ; dc:title "Energy storage unit" ; ex:status "retired" .
   ex:controlpanel rdfs:label "Interface unit" ; dc:title "Control panel interface" ; ex:status "active" .
-`;
+`
+```
 
-const dataset = await fn.parse(FT_TTL);
+```observable-js
+dataset = fn.parse(FT_TTL)
+```
+
+```observable-js
 return dataset.size;
 ```
 
@@ -83,19 +90,6 @@ scans every literal of every subject, regardless of predicate, and
 binds `?s` to each subject that has a matching one:
 
 ```observable-js
-const FT_TTL = `
-  @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
-  @prefix dc:   <http://purl.org/dc/elements/1.1/> .
-  @prefix ex:   <http://example.org/> .
-
-  ex:panel1 rdfs:label "Solar panel array" ; dc:title "Rooftop installation" ; ex:status "active" .
-  ex:panel2 rdfs:label "Solar panel kit" ; dc:title "Backyard installation" ; ex:status "active" .
-  ex:heater rdfs:label "Water heater" ; dc:title "Boiler room unit" ; ex:status "retired" .
-  ex:battery rdfs:label "Battery storage panel" ; dc:title "Energy storage unit" ; ex:status "retired" .
-  ex:controlpanel rdfs:label "Interface unit" ; dc:title "Control panel interface" ; ex:status "active" .
-`;
-
-const dataset = await fn.parse(FT_TTL);
 const rows = await fn.query(dataset, `
   PREFIX text: <http://jena.apache.org/text#>
   SELECT ?s WHERE { ?s text:query "panel" }
@@ -116,19 +110,6 @@ both words) but drops `battery` — its label "Battery storage panel" has
 "panel" but not "solar":
 
 ```observable-js
-const FT_TTL = `
-  @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
-  @prefix dc:   <http://purl.org/dc/elements/1.1/> .
-  @prefix ex:   <http://example.org/> .
-
-  ex:panel1 rdfs:label "Solar panel array" ; dc:title "Rooftop installation" ; ex:status "active" .
-  ex:panel2 rdfs:label "Solar panel kit" ; dc:title "Backyard installation" ; ex:status "active" .
-  ex:heater rdfs:label "Water heater" ; dc:title "Boiler room unit" ; ex:status "retired" .
-  ex:battery rdfs:label "Battery storage panel" ; dc:title "Energy storage unit" ; ex:status "retired" .
-  ex:controlpanel rdfs:label "Interface unit" ; dc:title "Control panel interface" ; ex:status "active" .
-`;
-
-const dataset = await fn.parse(FT_TTL);
 const rows = await fn.query(dataset, `
   PREFIX text: <http://jena.apache.org/text#>
   SELECT ?s WHERE { ?s text:query "solar panel" }
@@ -149,19 +130,6 @@ literals reached by `rdfs:label` count. That drops `controlpanel` — its
 "panel", which this form no longer looks at:
 
 ```observable-js
-const FT_TTL = `
-  @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
-  @prefix dc:   <http://purl.org/dc/elements/1.1/> .
-  @prefix ex:   <http://example.org/> .
-
-  ex:panel1 rdfs:label "Solar panel array" ; dc:title "Rooftop installation" ; ex:status "active" .
-  ex:panel2 rdfs:label "Solar panel kit" ; dc:title "Backyard installation" ; ex:status "active" .
-  ex:heater rdfs:label "Water heater" ; dc:title "Boiler room unit" ; ex:status "retired" .
-  ex:battery rdfs:label "Battery storage panel" ; dc:title "Energy storage unit" ; ex:status "retired" .
-  ex:controlpanel rdfs:label "Interface unit" ; dc:title "Control panel interface" ; ex:status "active" .
-`;
-
-const dataset = await fn.parse(FT_TTL);
 const rows = await fn.query(dataset, `
   PREFIX text: <http://jena.apache.org/text#>
   PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
@@ -181,19 +149,6 @@ claim, *which* two you get is dataset order, not a relevance ranking —
 so the thing to assert is the count, not the identities:
 
 ```observable-js
-const FT_TTL = `
-  @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
-  @prefix dc:   <http://purl.org/dc/elements/1.1/> .
-  @prefix ex:   <http://example.org/> .
-
-  ex:panel1 rdfs:label "Solar panel array" ; dc:title "Rooftop installation" ; ex:status "active" .
-  ex:panel2 rdfs:label "Solar panel kit" ; dc:title "Backyard installation" ; ex:status "active" .
-  ex:heater rdfs:label "Water heater" ; dc:title "Boiler room unit" ; ex:status "retired" .
-  ex:battery rdfs:label "Battery storage panel" ; dc:title "Energy storage unit" ; ex:status "retired" .
-  ex:controlpanel rdfs:label "Interface unit" ; dc:title "Control panel interface" ; ex:status "active" .
-`;
-
-const dataset = await fn.parse(FT_TTL);
 const rows = await fn.query(dataset, `
   PREFIX text: <http://jena.apache.org/text#>
   PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
@@ -213,19 +168,6 @@ A term nothing contains binds nothing — `text:query` produces zero
 rows, not an error:
 
 ```observable-js
-const FT_TTL = `
-  @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
-  @prefix dc:   <http://purl.org/dc/elements/1.1/> .
-  @prefix ex:   <http://example.org/> .
-
-  ex:panel1 rdfs:label "Solar panel array" ; dc:title "Rooftop installation" ; ex:status "active" .
-  ex:panel2 rdfs:label "Solar panel kit" ; dc:title "Backyard installation" ; ex:status "active" .
-  ex:heater rdfs:label "Water heater" ; dc:title "Boiler room unit" ; ex:status "retired" .
-  ex:battery rdfs:label "Battery storage panel" ; dc:title "Energy storage unit" ; ex:status "retired" .
-  ex:controlpanel rdfs:label "Interface unit" ; dc:title "Control panel interface" ; ex:status "active" .
-`;
-
-const dataset = await fn.parse(FT_TTL);
 const rows = await fn.query(dataset, `
   PREFIX text: <http://jena.apache.org/text#>
   SELECT ?s WHERE { ?s text:query "zzzznonexistentterm" }
@@ -244,19 +186,6 @@ in the same group. Search for "panel" *and* require `ex:status
 while keeping the three active matches:
 
 ```observable-js
-const FT_TTL = `
-  @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
-  @prefix dc:   <http://purl.org/dc/elements/1.1/> .
-  @prefix ex:   <http://example.org/> .
-
-  ex:panel1 rdfs:label "Solar panel array" ; dc:title "Rooftop installation" ; ex:status "active" .
-  ex:panel2 rdfs:label "Solar panel kit" ; dc:title "Backyard installation" ; ex:status "active" .
-  ex:heater rdfs:label "Water heater" ; dc:title "Boiler room unit" ; ex:status "retired" .
-  ex:battery rdfs:label "Battery storage panel" ; dc:title "Energy storage unit" ; ex:status "retired" .
-  ex:controlpanel rdfs:label "Interface unit" ; dc:title "Control panel interface" ; ex:status "active" .
-`;
-
-const dataset = await fn.parse(FT_TTL);
 const rows = await fn.query(dataset, `
   PREFIX text: <http://jena.apache.org/text#>
   PREFIX ex: <http://example.org/>

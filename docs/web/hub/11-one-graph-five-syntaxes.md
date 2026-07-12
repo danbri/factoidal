@@ -39,15 +39,11 @@ current run of each suite individually.
 ## Same triples, two syntaxes, one parse each
 
 Turtle and RDF/XML describing the identical Alice/Bob graph from
-post 1. Parse both with `fn.parse()` (each with its own `format`) and
-compare the resulting N-Quads text byte for byte — `Dataset.toNQuads()`
-dumps triples in a fixed sorted order (`RDF.Canonical`'s
-`canonical_nquads`), so two parses of an equivalent graph, regardless
-of which syntax or triple order the source used, produce the exact
-same string:
+post 1. The Turtle text is named once, here, and referenced by the
+next two cells instead of being repeated in each:
 
 ```observable-js
-const turtle = `
+turtle = `
   @prefix foaf: <http://xmlns.com/foaf/0.1/> .
   @prefix ex:   <http://example.org/> .
 
@@ -57,8 +53,17 @@ const turtle = `
 
   ex:bob a foaf:Person ;
     foaf:name "Bob" .
-`;
+`
+```
 
+Parse both with `fn.parse()` (each with its own `format`) and
+compare the resulting N-Quads text byte for byte — `Dataset.toNQuads()`
+dumps triples in a fixed sorted order (`RDF.Canonical`'s
+`canonical_nquads`), so two parses of an equivalent graph, regardless
+of which syntax or triple order the source used, produce the exact
+same string:
+
+```observable-js
 const rdfxml = `<?xml version="1.0"?>
 <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
          xmlns:foaf="http://xmlns.com/foaf/0.1/">
@@ -93,13 +98,6 @@ N-Triples plus a graph term. Parsed straight, they should match the
 Turtle version above too:
 
 ```observable-js
-const turtle = `
-  @prefix foaf: <http://xmlns.com/foaf/0.1/> .
-  @prefix ex:   <http://example.org/> .
-  ex:alice a foaf:Person ; foaf:name "Alice" ; foaf:knows ex:bob .
-  ex:bob a foaf:Person ; foaf:name "Bob" .
-`;
-
 const ntriples = `
 <http://example.org/alice> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://xmlns.com/foaf/0.1/Person> .
 <http://example.org/alice> <http://xmlns.com/foaf/0.1/name> "Alice" .

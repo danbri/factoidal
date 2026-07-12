@@ -35,13 +35,19 @@ browser.
 The file this post queries is the
 [RML-Core ontology](http://w3id.org/rml/core/spec) shipped as HDT at
 [`third_party/testing/hdt/rml-core-ontology.hdt`](https://github.com/danbri/factoidal/blob/claude/main/third_party/testing/hdt/rml-core-ontology.hdt)
-— under 9 KB of binary holding the whole vocabulary. This first cell
-fetches those bytes, hands them to the CLI under a virtual path, and
+— under 9 KB of binary holding the whole vocabulary. The fetch is named
+once, below, and every cell that queries the file references `buf`
+instead of re-fetching it:
+
+```observable-js
+buf = fetch("../rml-core-ontology.hdt").then((r) => r.arrayBuffer())
+```
+
+This first cell hands those bytes to the CLI under a virtual path, and
 asks the one question every store should be able to answer about itself:
 how many triples are in here?
 
 ```observable-js
-const buf = await (await fetch("../rml-core-ontology.hdt")).arrayBuffer();
 const rows = await fn.queryHdt(buf, "SELECT (COUNT(*) AS ?n) WHERE { ?s ?p ?o }");
 return Number(rows[0].get("n").value);
 ```
@@ -62,7 +68,6 @@ plain `owl:Class` + `rdfs:label` query. Flip the cell's `Output` toggle
 to `Table` to read the id-to-label decode the dictionary made possible:
 
 ```observable-js
-const buf = await (await fetch("../rml-core-ontology.hdt")).arrayBuffer();
 const query = `PREFIX owl: <http://www.w3.org/2002/07/owl#>
 PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
 SELECT ?class ?label WHERE {
@@ -91,7 +96,6 @@ Plot — a schema-heavy ontology leans on `rdf:type`, `rdfs:comment`,
 that shows up:
 
 ```observable-js
-const buf = await (await fetch("../rml-core-ontology.hdt")).arrayBuffer();
 const query = `SELECT ?p (COUNT(*) AS ?n) WHERE { ?s ?p ?o } GROUP BY ?p ORDER BY DESC(?n)`;
 const bindings = await fn.queryHdt(buf, query);
 const data = bindings.slice(0, 8).map((row) => ({
