@@ -14,9 +14,14 @@
 //   - eddsa-rdfc-2022 create/verify:          `vcEddsaCreateFromCanonical`,
 //     `vcEddsaVerifyFromCanonical`, `vcEd25519SecretToPublic`.
 //   - did:key resolution:                     `didKeyResolve`.
+//   - VC Data Model 2.0 structural conformance: `vcCheckCredential`
+//     (Track A2, docs/designissues/2026-07-11-vc-canivc-eecc-plan.md),
+//     called from handleIssue/handleVerify before any crypto step.
 // It contains ZERO VC/RDF semantic logic: it never judges credential
-// well-formedness, never rewrites a verdict, and never special-cases a
-// test's input. A `verified` outcome is exactly what
+// well-formedness itself, never rewrites a verdict, and never
+// special-cases a test's input. A structural `valid`/`reason` outcome
+// is exactly what `vcCheckCredential` (VC.Credential.vc_check_from_
+// string, F*-verified) returned; a `verified` outcome is exactly what
 // `vcEddsaVerifyFromCanonical` returned; a parse/canonicalize failure
 // propagates as an honest error, not a fabricated pass or fail.
 //
@@ -107,6 +112,60 @@ function inlineContexts(docIn) {
 async function canonicalizeJsonld(doc) {
   const ds = await engine.parse(JSON.stringify(inlineContexts(doc)), { format: 'jsonld' });
   return engine.canonicalize(ds);
+}
+
+// ---------------------------------------------------------------------
+// VC Data Model 2.0 structural conformance (Track A2,
+// docs/designissues/2026-07-11-vc-canivc-eecc-plan.md). ALL judgment
+// comes from the F*-extracted VC.Credential.vc_check_from_string via
+// the npm ABI's vcCheckCredential export (rule #11: this shim never
+// re-implements a structural check, it only maps the verdict to an
+// HTTP rejection). `V2_CONTEXT_TEXT` is the vendored VCDM v2 base
+// context document's raw text (the SAME file bin/vc-runner/vc_runner.ml
+// reads as `v2ctx` for the offline vc_stage1 suite), read once at
+// startup and passed through unmodified on every call.
+// ---------------------------------------------------------------------
+
+const V2_CONTEXT_TEXT = fs.readFileSync(
+  path.join(CONTEXTS_DIR, 'credentials-v2.jsonld'), 'utf8');
+
+// VC.Credential.fst's structural checker is VCDM 2.0-specific: its
+// @context sentinel requires the v2 base context IRI first (VCDM 2.0
+// §4.1). A document whose FIRST @context entry is the legacy VC 1.1
+// base context (https://www.w3.org/2018/credentials/v1) is explicitly
+// NOT claiming VCDM 2.0 conformance — it is out of scope for a
+// VCDM-2.0-specific gate, the same way a SPARQL 1.0 query being
+// rejected by a SPARQL 1.1-only validator would be a mapping error,
+// not a defect in the validator. This matters because the (separate,
+// upstream) Data Integrity eddsa-rdfc-2022 conformance suite
+// (third_party/testing/vc-di-eddsa, a DIFFERENT W3C test suite from
+// vc-data-model-2.0-test-suite) deliberately exercises proof mechanics
+// against exactly such a legacy-context fixture (its vendored
+// data-integrity-test-suite-assertion/validVc.json) — Data Integrity
+// proofs are not scoped to a VCDM version. Skipping the VCDM 2.0
+// structural gate for that one explicit, unambiguous case and letting
+// the (unrelated) crypto layer handle the document as it did before
+// this gate existed is a mapping decision on THIS shim's part (rule
+// #11: no semantic logic added — it is an all-or-nothing bypass of the
+// F*-verified check, not a partial reimplementation of it), not a
+// change to VC.Credential.fst. No vc-data-model-2.0-test-suite fixture
+// uses the v1 context (grep-confirmed against third_party/testing/vc/
+// tests/input/*.json), so this carve-out cannot mask a real vc20_api
+// violation.
+const VC1_LEGACY_CONTEXT = 'https://www.w3.org/2018/credentials/v1';
+
+function firstContextEntry(ctx) {
+  if (typeof ctx === 'string') return ctx;
+  if (Array.isArray(ctx) && ctx.length > 0) return ctx[0];
+  return undefined;
+}
+
+// Returns {valid: true} | {valid: false, reason: string}.
+async function checkStructural(doc) {
+  if (firstContextEntry(doc && doc['@context']) === VC1_LEGACY_CONTEXT) {
+    return { valid: true };
+  }
+  return engine.vcCheckCredential(V2_CONTEXT_TEXT, JSON.stringify(doc));
 }
 
 // The Data Integrity vocabulary (DataIntegrityProof, cryptosuite,
@@ -261,6 +320,16 @@ async function handleIssue(issuer, body) {
   if (!credential || typeof credential !== 'object') {
     return [400, { errors: [{ message: 'request body must have a "credential" object' }] }];
   }
+  // Structural conformance (VC.Credential.fst, via vcCheckCredential) —
+  // BEFORE any crypto/canonicalization step. Rejects the same shapes
+  // the offline vc_stage1 suite's tests/input/*-fail.json fixtures do:
+  // missing/malformed @context, missing type, empty credentialSubject,
+  // malformed credentialStatus/credentialSchema/termsOfUse/evidence/
+  // refreshService, non-URL ids, validUntil before validFrom, etc.
+  const structural = await checkStructural(credential);
+  if (!structural.valid) {
+    return [400, { errors: [{ message: `structural validation failed: ${structural.reason}` }] }];
+  }
   const unsecured = { ...credential };
   delete unsecured.proof;
 
@@ -318,6 +387,14 @@ async function handleVerify(body) {
   const vc = body && body.verifiableCredential;
   if (!vc || typeof vc !== 'object') {
     return [400, { verified: false, errors: [{ message: 'request body must have a "verifiableCredential" object' }] }];
+  }
+  // Structural conformance (VC.Credential.fst, via vcCheckCredential) —
+  // BEFORE any crypto/canonicalization step. Same check + reasoning as
+  // handleIssue above; a structurally invalid document is rejected
+  // regardless of whether its proof would otherwise verify.
+  const structural = await checkStructural(vc);
+  if (!structural.valid) {
+    return [400, { verified: false, errors: [{ message: `structural validation failed: ${structural.reason}` }] }];
   }
   const proofs = Array.isArray(vc.proof) ? vc.proof : (vc.proof ? [vc.proof] : []);
   if (proofs.length === 0) {

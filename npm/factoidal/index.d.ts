@@ -703,6 +703,19 @@ export function vcEddsaVerifyFromCanonical(
   proofValue: string
 ): Promise<boolean>;
 
+/**
+ * VC Data Model 2.0 structural conformance check (VC.Credential.fst's
+ * vc_check_from_string, F*-verified — 117 pass, 0 fail on the offline
+ * vc_stage1 fixture suite). Pure structural validation, no crypto.
+ * `v2ctxJson` is the vendored VCDM v2 base context document's raw JSON
+ * text (third_party/contexts/credentials-v2.jsonld); `credentialJson`
+ * is the raw JSON text of the VC/VP document under test.
+ */
+export function vcCheckCredential(
+  v2ctxJson: string,
+  credentialJson: string
+): Promise<{ valid: boolean; reason?: string }>;
+
 /** Feature probe for the currently available engine bundles. */
 export function capabilities(): Promise<{
   entry: boolean;
@@ -824,6 +837,7 @@ declare const _default: {
   vcEd25519Verify: typeof vcEd25519Verify;
   vcEddsaCreateFromCanonical: typeof vcEddsaCreateFromCanonical;
   vcEddsaVerifyFromCanonical: typeof vcEddsaVerifyFromCanonical;
+  vcCheckCredential: typeof vcCheckCredential;
   capabilities: typeof capabilities;
   Dataset: typeof Dataset;
   dataFactory: DataFactory;

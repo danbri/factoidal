@@ -21,17 +21,33 @@ foundational: false
 #
 # Baseline (2026-07-10): 22 pass, 37 fail (out of 59). Single dominant
 # cause (see gap_summary in the result JSON and the scoping doc): the
-# shim performs NO VC Data Model 2.0 structural validation of its own —
-# it only implements Data Integrity eddsa-rdfc-2022 signing/verifying —
-# so nearly every failure is a "missing expected rejection of malformed
+# shim performed NO VC Data Model 2.0 structural validation of its own —
+# it only implemented Data Integrity eddsa-rdfc-2022 signing/verifying —
+# so nearly every failure was a "missing expected rejection of malformed
 # input" test (bad credentialStatus/refreshService/credentialSchema/
 # termsOfUse/evidence shape, validUntil-before-validFrom, missing
-# type/context, malformed VP). The shim deliberately does not
-# reimplement VC.Credential.fst's checks in hand-written JS (that would
-# be exactly the "no semantic logic in test runners" anti-pattern #15);
-# closing this gap needs a new npm ABI export wired to
-# VC_Credential.vc_check_from_string, which is out of scope for this
-# task (see the scoping doc's WP2/WP3 sections).
+# type/context, malformed VP).
+#
+# Track A2 (2026-07-12, docs/designissues/2026-07-11-vc-canivc-eecc-plan.md):
+# 47 pass, 12 fail (out of 59). Wired a new npm ABI export
+# (`vcCheckCredential`, bin/npm-entry/entry_jsoo.ml) to
+# VC_Credential.vc_check_from_string and call it from
+# bin/vc-api-shim/server.mjs's handleIssue/handleVerify before the
+# crypto step — pure wiring, no new F* semantics (rule #11: the shim
+# still never reimplements a check, it only maps the F*-verified
+# verdict to an HTTP rejection). One narrow shim-side carve-out: a
+# document whose first `@context` entry is the legacy VC 1.1 base
+# context (https://www.w3.org/2018/credentials/v1) skips the VCDM
+# 2.0-specific gate entirely (see checkStructural's comment in
+# server.mjs) — needed so the vc-di-eddsa suite's own
+# version-agnostic Data Integrity fixture (validVc.json) still issues;
+# no vc-data-model-2.0-test-suite fixture uses that context, so this
+# cannot mask a real violation here. Remaining 12 fails are two
+# families VC.Credential.fst does not check at all (not a wiring gap):
+# Verifiable Presentation verification (no vpVerifier config / no
+# /presentations/verify route) and `relatedResource` digest/id shape
+# (Advanced Concepts, 5 tests) — both need new F* checks or a new
+# route, out of scope for pure wiring.
 
 triggers:
   paths:
@@ -48,6 +64,5 @@ triggers:
 
 # What's left, in plain language.
 remaining:
-  - "the shim has no VC Data Model 2.0 structural validator wired via HTTP — it signs/verifies whatever JSON-LD it is given; almost all 37 failures are missing-rejection-of-malformed-input tests (see gap_summary in docs/test-results/by-suite/vc20-api.json)"
-  - "Verifiable Presentation (VP) verification is not implemented — no /presentations/verify route exists"
-  - "closing this gap requires either a new npm ABI export for VC.Credential.fst's structural checker, or hand-written structural checks in the shim (the latter is explicitly out of scope per anti-pattern #15 — no semantic logic in test runners/consumer tools)"
+  - "Verifiable Presentation (VP) verification is not implemented — no /presentations/verify route exists, and the test config declares no vpVerifier, so every VP-shaped negative test (Contexts/Types/Basic Conformance/Algorithms VP cases) fails regardless of the structural gate"
+  - "relatedResource digest/id checks (Advanced Concepts, 5 tests: array-of-strings shape, missing id, duplicate id, missing digest, wrong digest) are not implemented in VC.Credential.fst at all — needs new F* structural-check additions, not shim wiring"

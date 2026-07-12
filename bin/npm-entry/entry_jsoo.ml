@@ -1499,6 +1499,27 @@ let vc_eddsa_verify_from_canonical
                pk_hex canon_doc canon_cfg proof_value in
     "{\"ok\":true,\"verified\":" ^ (if ok then "true" else "false") ^ "}")
 
+(* VC Data Model 2.0 structural conformance (Track A2,
+   docs/designissues/2026-07-11-vc-canivc-eecc-plan.md). Delegates ALL
+   judgment to VC_Credential.vc_check_from_string (117 pass, 0 fail on
+   the offline vc_stage1 fixture suite) -- this wrapper only parses the
+   vendored VCDM v2 base context JSON text the consumer supplies (same
+   "parsed once, passed in as an already-decoded json_val" contract
+   bin/vc-runner/vc_runner.ml's load_v2_context follows) and turns the
+   vc_verdict into the same {"ok":true,...}/{"ok":false,...} envelope
+   every other export here uses. No structural-conformance logic lives
+   in this file (rule #11) -- see VC.Credential.fst for the checks. *)
+let vc_check_credential_json (v2ctx_json : string) (credential_json : string) : string =
+  guarded (fun () ->
+    match Parser_JSON.parse_json v2ctx_json with
+    | FStar_Pervasives_Native.None ->
+      failwith "vcCheckCredential (v2ctx): invalid JSON"
+    | FStar_Pervasives_Native.Some v2ctx ->
+      (match VC_Credential.vc_check_from_string v2ctx credential_json with
+       | VC_Credential.VC_Pass -> "{\"ok\":true,\"valid\":true}"
+       | VC_Credential.VC_Fail reason ->
+         "{\"ok\":true,\"valid\":false,\"reason\":" ^ jstr reason ^ "}"))
+
 (* ---------------------------------------------------------------------
    Typed engine functions (#74 npm FP surface) -- rule #11 consumer
    wrappers. Each parses its string inputs with the F* parsers
@@ -1879,6 +1900,7 @@ let () =
           ("vcEd25519Verify", s3 vc_ed25519_verify);
           ("vcEddsaCreateFromCanonical", s3 vc_eddsa_create_from_canonical);
           ("vcEddsaVerifyFromCanonical", s4 vc_eddsa_verify_from_canonical);
+          ("vcCheckCredential", s2 vc_check_credential_json);
           ("xsltTransform", s2 xslt_transform_json);
           ("mathmlEval", s2 mathml_eval_json);
           ("xformsRecalc", s2 xforms_recalc_json);
