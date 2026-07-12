@@ -1062,6 +1062,31 @@ function buildApi(driver) {
       'vcEddsaVerifyFromCanonical').verified;
   }
 
+  /**
+   * VC Data Model 2.0 structural conformance check (entry_jsoo.ml's
+   * vcCheckCredential -> VC_Credential.vc_check_from_string, 117 pass,
+   * 0 fail on the offline vc_stage1 fixture suite). Pure structural
+   * validation — no crypto, so this does NOT go through vcEntry/
+   * ensureCrypto. `v2ctxJson` is the vendored VCDM v2 base context
+   * document's raw JSON text (third_party/contexts/credentials-v2.jsonld,
+   * `@context` value included — the F* side parses the whole document
+   * and only reads its own @context field) and `credentialJson` is the
+   * raw JSON text of the VC/VP document under test.
+   * @param {string} v2ctxJson vendored credentials-v2.jsonld text
+   * @param {string} credentialJson the VC/VP document's raw JSON text
+   * @returns {Promise<{valid: boolean, reason?: string}>}
+   */
+  async function vcCheckCredential(v2ctxJson, credentialJson) {
+    if (typeof v2ctxJson !== 'string' || typeof credentialJson !== 'string') {
+      throw new TypeError('vcCheckCredential: v2ctxJson and credentialJson must be strings');
+    }
+    const e = await entry();
+    if (!e) throw pendingError('vcCheckCredential');
+    requireEntryFn(e, 'vcCheckCredential', 'VC Data Model 2.0 structural check');
+    const r = entryResult(e.vcCheckCredential(v2ctxJson, credentialJson), 'vcCheckCredential');
+    return r.valid ? { valid: true } : { valid: false, reason: r.reason };
+  }
+
   // -----------------------------------------------------------------
   // Typed "engine" functions (#74 npm FP surface). Each is a pure,
   // string/JSON-in, JSON-out wrapper over one F*-extracted engine
@@ -1603,6 +1628,7 @@ function buildApi(driver) {
     vcEd25519Verify,
     vcEddsaCreateFromCanonical,
     vcEddsaVerifyFromCanonical,
+    vcCheckCredential,
     openCottas,
     queryCottas,
     closeCottas,

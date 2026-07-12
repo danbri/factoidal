@@ -2,7 +2,7 @@
   "spec": "https://w3c.github.io/vc-di-eddsa-test-suite/",
   "suite": "vc-di-eddsa (eddsa-rdfc-2022 create + verify)",
   "runner": "tests/vc-di-eddsa/run.sh",
-  "retrieved_at": "2026-07-10T17:36:34Z",
+  "retrieved_at": "2026-07-12T23:16:04Z",
   "pass": 26,
   "fail": 5,
   "skip": 0,
@@ -18,15 +18,15 @@
   "failures": [
     {
       "title": "Data Integrity (eddsa-rdfc-2022 issuers) Factoidal Implementations that use JSON-LD processing, such as RDF Dataset Canonicalization [RDF-CANON], MUST throw an error, which SHOULD be DATA_LOSS_DETECTION_ERROR, when data is dropped by a JSON-LD processor, such as when an undefined term is detected in an input document.",
-      "message": "Expected issuer to error when VC has an undefined type.: expected Response { status: 201, statusText: 'Created', headers: Headers { 'content-type': 'application/json; charset=utf-8', 'content-length': '2078', date: 'Fri, 10 Jul 2026 17:36:33 GMT', connection: 'keep-alive', 'keep-alive': 'timeout=5', Authorization: 'sanitized to prevent exposure of secrets' }, body: ReadableStream { locked: false, state: 'readable', supportsBYOB: true }, bodyUsed: false, ok: true, redirected: false, type: 'default', url: '' } to not exist"
+      "message": "Expected issuer to error when VC has an undefined type.: expected Response { status: 201, statusText: 'Created', headers: Headers { 'content-type': 'application/json; charset=utf-8', 'content-length': '2076', date: 'Sun, 12 Jul 2026 23:16:04 GMT', connection: 'keep-alive', 'keep-alive': 'timeout=5', Authorization: 'sanitized to prevent exposure of secrets' }, body: ReadableStream { locked: false, state: 'readable', supportsBYOB: true }, bodyUsed: false, ok: true, redirected: false, type: 'default', url: '' } to not exist"
     },
     {
       "title": "Data Integrity (eddsa-rdfc-2022 issuers) Factoidal If the algorithm produces an error, the error MUST be propagated and SHOULD convey the error type.",
-      "message": "Expected issuer to error when VC has no credentialSubject.: expected Response { status: 201, statusText: 'Created', headers: Headers { 'content-type': 'application/json; charset=utf-8', 'content-length': '1834', date: 'Fri, 10 Jul 2026 17:36:33 GMT', connection: 'keep-alive', 'keep-alive': 'timeout=5', Authorization: 'sanitized to prevent exposure of secrets' }, body: ReadableStream { locked: false, state: 'readable', supportsBYOB: true }, bodyUsed: false, ok: true, redirected: false, type: 'default', url: '' } to not exist"
+      "message": "Expected issuer to error when VC has no credentialSubject.: expected Response { status: 201, statusText: 'Created', headers: Headers { 'content-type': 'application/json; charset=utf-8', 'content-length': '1834', date: 'Sun, 12 Jul 2026 23:16:04 GMT', connection: 'keep-alive', 'keep-alive': 'timeout=5', Authorization: 'sanitized to prevent exposure of secrets' }, body: ReadableStream { locked: false, state: 'readable', supportsBYOB: true }, bodyUsed: false, ok: true, redirected: false, type: 'default', url: '' } to not exist"
     },
     {
       "title": "Data Integrity (eddsa-rdfc-2022 verifiers) Factoidal Implementations that use JSON-LD processing, such as RDF Dataset Canonicalization [RDF-CANON], MUST throw an error, which SHOULD be DATA_LOSS_DETECTION_ERROR, when data is dropped by a JSON-LD processor, such as when an undefined term is detected in an input document.",
-      "message": "Should fail to verify VC if an undefined term is added after issuance.: expected Response { status: 200, statusText: 'OK', headers: Headers { 'content-type': 'application/json; charset=utf-8', 'content-length': '521', date: 'Fri, 10 Jul 2026 17:36:34 GMT', connection: 'keep-alive', 'keep-alive': 'timeout=5', Authorization: 'sanitized to prevent exposure of secrets' }, body: ReadableStream { locked: false, state: 'readable', supportsBYOB: true }, bodyUsed: false, ok: true, redirected: false, type: 'default', url: '' } to not exist"
+      "message": "Should fail to verify VC if an undefined term is added after issuance.: expected Response { status: 200, statusText: 'OK', headers: Headers { 'content-type': 'application/json; charset=utf-8', 'content-length': '522', date: 'Sun, 12 Jul 2026 23:16:04 GMT', connection: 'keep-alive', 'keep-alive': 'timeout=5', Authorization: 'sanitized to prevent exposure of secrets' }, body: ReadableStream { locked: false, state: 'readable', supportsBYOB: true }, bodyUsed: false, ok: true, redirected: false, type: 'default', url: '' } to not exist"
     },
     {
       "title": "Data Integrity (eddsa-rdfc-2022 verifiers) Factoidal An OPTIONAL string value (proof.previousProof) or unordered list of string values. Each value identifies another data integrity proof that MUST verify before the current proof is processed.",
