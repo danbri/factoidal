@@ -6,7 +6,7 @@
 // DOM-returning renderer. The cell source under test is the literal
 // string extracted from the shipped post -- not a hand-copied copy.
 
-import { NPM_FACTOIDAL_INDEX, extractObservableCells, runObservableCell, pretty } from './_helpers.mjs';
+import { NPM_FACTOIDAL_INDEX, extractObservableCells, runReactivePost, pretty } from './_helpers.mjs';
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -15,7 +15,6 @@ const factoidal = (await import(NPM_FACTOIDAL_INDEX)).default;
 const POST_FILE = '19-correlated-joins-lateral.md';
 
 const cells = extractObservableCells(POST_FILE);
-const bindings = { fn: factoidal, pretty };
 
 // Pull the display column out of a pretty() table result: for a
 // single-variable/-column projection, the values in that column.
@@ -26,17 +25,28 @@ function column(tableResult, name) {
   return tableResult.rows.map((r) => r[idx]);
 }
 
-test('post19: post has 4 live cells', () => {
-  assert.equal(cells.length, 4, `expected exactly 4 live cells, found ${cells.length}`);
+test('post19: post has 6 live cells (LAT_TTL + dataset hoisted into named cells)', () => {
+  assert.equal(cells.length, 6, `expected 6 live cells, found ${cells.length}`);
+});
+
+test('post19: dependency inference wires LAT_TTL -> dataset -> every query cell', () => {
+  const post = runReactivePost(cells, { fn: factoidal, pretty });
+  assert.deepEqual(post.names.slice(0, 2), ['LAT_TTL', 'dataset']);
+  assert.ok(post.infos[1].refs.includes('LAT_TTL'), 'dataset cell references LAT_TTL');
+  for (const i of [2, 3, 4, 5]) {
+    assert.ok(post.infos[i].refs.includes('dataset'), `cell ${i + 1} references dataset`);
+  }
 });
 
 test('post19 cell 1 (parse the dataset): 7 triples', async () => {
-  const result = await runObservableCell(cells[0], bindings);
+  const post = runReactivePost(cells, { fn: factoidal, pretty });
+  const result = await post.value(post.names[2]);
   assert.equal(result, 7);
 });
 
 test('post19 cell 2 (plain correlated pattern): 4 rows, carol dropped', async () => {
-  const result = await runObservableCell(cells[1], bindings);
+  const post = runReactivePost(cells, { fn: factoidal, pretty });
+  const result = await post.value(post.names[3]);
   assert.equal(result.kind, 'table');
   assert.deepEqual(result.columns, ['s', 'label']);
   assert.equal(result.rows.length, 4);
@@ -46,7 +56,8 @@ test('post19 cell 2 (plain correlated pattern): 4 rows, carol dropped', async ()
 });
 
 test('post19 cell 3 (top-N per group): one label per person', async () => {
-  const result = await runObservableCell(cells[2], bindings);
+  const post = runReactivePost(cells, { fn: factoidal, pretty });
+  const result = await post.value(post.names[4]);
   assert.equal(result.kind, 'table');
   assert.equal(result.rows.length, 2);
   assert.deepEqual(column(result, 's'), [
@@ -57,7 +68,8 @@ test('post19 cell 3 (top-N per group): one label per person', async () => {
 });
 
 test('post19 cell 4 (LATERAL vs plain join): 2 rows vs 1 row', async () => {
-  const result = await runObservableCell(cells[3], bindings);
+  const post = runReactivePost(cells, { fn: factoidal, pretty });
+  const result = await post.value(post.names[5]);
   assert.equal(result.lateralRowCount, 2);
   assert.equal(result.plainJoinRowCount, 1);
   assert.deepEqual(result.lateralLabels, ['Alice A', 'Bob A']);

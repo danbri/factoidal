@@ -71,21 +71,24 @@ rather than asserting past it.
 writing Turtle text — useful when the data is already structured in
 JS (rows from a database query, results from another API) rather than
 a string. This page's `fn`/`Factoidal` bindings don't expose
-`dataFactory` directly (see above), so the cell below defines the same
+`dataFactory` directly (see above), so the cells below define the same
 minimal factory shape locally — three tiny constructors, matching
 `rdfjs.js`'s `NamedNode`/`Literal`/`Quad` contract (frozen-shaped
-objects, a `termType`, a value-based `.equals()`) — then hands the
+objects, a `termType`, a value-based `.equals()`) — then hand the
 constructed quads to the real engine the only way any RDF/JS-shaped
-data reaches it: serialized to N-Quads text, parsed by `fn.parse()`:
+data reaches it: serialized to N-Quads text, parsed by `fn.parse()`.
+`namedNode` is used by both cells below, so it's declared once as a
+shared, named cell:
 
 ```observable-js
-function namedNode(value) {
-  return {
-    termType: "NamedNode",
-    value,
-    equals(o) { return !!o && o.termType === "NamedNode" && o.value === value; },
-  };
-}
+namedNode = (value) => ({
+  termType: "NamedNode",
+  value,
+  equals(o) { return !!o && o.termType === "NamedNode" && o.value === value; },
+})
+```
+
+```observable-js
 function literal(value, language) {
   return {
     termType: "Literal",
@@ -149,14 +152,6 @@ kind (same `termType` and `value`, and for `Literal` also the same
 `===` almost never is:
 
 ```observable-js
-function namedNode(value) {
-  return {
-    termType: "NamedNode",
-    value,
-    equals(o) { return !!o && o.termType === "NamedNode" && o.value === value; },
-  };
-}
-
 const a = namedNode("http://example.org/alice");
 const b = namedNode("http://example.org/alice");
 const c = namedNode("http://example.org/bob");

@@ -26,7 +26,7 @@
 // asserted here -- that's tests/web-demos/hub_post21_geo_check.sh
 // (headless Chromium, both the strict page and its live-mode twin).
 
-import { NPM_FACTOIDAL_INDEX, extractObservableCells, runObservableCell, pretty, HUB_POST_DIR } from './_helpers.mjs';
+import { NPM_FACTOIDAL_INDEX, extractObservableCells, runObservableCell, runReactivePost, pretty, HUB_POST_DIR } from './_helpers.mjs';
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -47,17 +47,34 @@ const THAMES_GEOJSON = JSON.parse(fs.readFileSync(path.join(GEO_DIR, 'thames.geo
 const cells = extractObservableCells(POST_FILE);
 const B = { fn: factoidal, pretty };
 
-test('post21: post has 7 live cells', () => {
-  assert.equal(cells.length, 7, `expected 7 live cells, found ${cells.length}`);
+test('post21: post has 8 live cells (GEO_TTL hoisted into its own named cell)', () => {
+  assert.equal(cells.length, 8, `expected 8 live cells, found ${cells.length}`);
+});
+
+test('post21: dependency inference wires GEO_TTL into cells 2,3,5,6 (not the map/envelope/BOX_TTL cells)', () => {
+  const post = runReactivePost(cells, B);
+  assert.equal(post.names[0], 'GEO_TTL');
+  for (const i of [1, 2, 4, 5]) {
+    assert.ok(post.infos[i].refs.includes('GEO_TTL'), `cell ${i + 1} references GEO_TTL`);
+  }
+  // The map cell (index 3), the envelope cell (index 6, which uses its
+  // own differently-named ENVELOPE_TTL subset precisely so it does not
+  // shadow the shared GEO_TTL cell), and the BOX_TTL cell (index 7)
+  // never mention GEO_TTL at all -- independent data.
+  for (const i of [3, 6, 7]) {
+    assert.ok(!post.infos[i].refs.includes('GEO_TTL'), `cell ${i + 1} does not reference the shared GEO_TTL`);
+  }
 });
 
 test('post21 cell 1 (parse the geo dataset): 15 triples', async () => {
-  const result = await runObservableCell(cells[0], B);
+  const post = runReactivePost(cells, B);
+  const result = await post.value(post.names[1]);
   assert.equal(result, 15);
 });
 
 test('post21 cell 2 (geof:sfWithin): the two inside pairs, ordered', async () => {
-  const result = await runObservableCell(cells[1], B);
+  const post = runReactivePost(cells, B);
+  const result = await post.value(post.names[2]);
   assert.deepEqual(result, {
     kind: 'table',
     columns: ['cityName', 'areaName'],
@@ -241,7 +258,7 @@ test('post21 map cell (cell 3): runs to completion with a minimal document/L/fet
     return { ok: true, async json() { return body; } };
   };
   try {
-    const result = await runObservableCell(cells[2], { fn: factoidal, pretty, L: stubL });
+    const result = await runObservableCell(cells[3], { fn: factoidal, pretty, L: stubL });
     // Success path returns the container object the stub
     // `document.createElement` produced (not a `map unavailable`
     // fallback), proving fn.parse/fn.query/geomToWkt/landmarkColor/L/
@@ -254,11 +271,12 @@ test('post21 map cell (cell 3): runs to completion with a minimal document/L/fet
   }
 });
 
-// --- Cells 4-7 (index 3-6): unchanged from before the map cell was
-// inserted, renumbered. ------------------------------------------------
+// --- Cells 4-7 of the post (new indices 4-7): unchanged from before the
+// map cell was inserted, renumbered again for the GEO_TTL hoist. -------
 
 test('post21 cell 4 (geof:sfDisjoint): the two cities outside the London box', async () => {
-  const result = await runObservableCell(cells[3], B);
+  const post = runReactivePost(cells, B);
+  const result = await post.value(post.names[4]);
   assert.deepEqual(result, {
     kind: 'table',
     columns: ['cityName'],
@@ -267,7 +285,8 @@ test('post21 cell 4 (geof:sfDisjoint): the two cities outside the London box', a
 });
 
 test('post21 cell 5 (geof:distance ORDER BY): London 0 first, then Manchester, Edinburgh', async () => {
-  const result = await runObservableCell(cells[4], B);
+  const post = runReactivePost(cells, B);
+  const result = await post.value(post.names[5]);
   assert.deepEqual(result, {
     kind: 'table',
     columns: ['cityName', 'd'],
@@ -280,7 +299,7 @@ test('post21 cell 5 (geof:distance ORDER BY): London 0 first, then Manchester, E
 });
 
 test('post21 cell 6 (geof:envelope): polygon envelopes to itself, point to a degenerate box', async () => {
-  const result = await runObservableCell(cells[5], B);
+  const result = await runObservableCell(cells[6], B);
   assert.deepEqual(result, {
     kind: 'table',
     columns: ['name', 'env'],
@@ -298,7 +317,7 @@ test('post21 cell 6 (geof:envelope): polygon envelopes to itself, point to a deg
 });
 
 test('post21 cell 7 (exact boundary): on-edge point is intersects+touches but NOT within', async () => {
-  const result = await runObservableCell(cells[6], B);
+  const result = await runObservableCell(cells[7], B);
   assert.deepEqual(result, {
     kind: 'table',
     columns: ['point', 'sfWithin', 'sfIntersects', 'sfTouches'],

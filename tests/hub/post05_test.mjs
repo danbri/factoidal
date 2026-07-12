@@ -1,6 +1,6 @@
 // Pins every code sample in docs/web/hub/05-shapes-that-validate-shacl.md.
 
-import { NPM_FACTOIDAL_INDEX, extractObservableCells, runObservableCell } from './_helpers.mjs';
+import { NPM_FACTOIDAL_INDEX, extractObservableCells, runReactivePost } from './_helpers.mjs';
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -10,17 +10,27 @@ const POST_FILE = '05-shapes-that-validate-shacl.md';
 
 const cells = extractObservableCells(POST_FILE);
 
-test('post05: post has at least 3 live cells', () => {
-  assert.ok(cells.length >= 3, `expected >= 3 live cells, found ${cells.length}`);
+test('post05: post has 4 live cells (PERSON_SHAPE_TTL hoisted into its own named cell)', () => {
+  assert.equal(cells.length, 4, `expected 4 live cells, found ${cells.length}`);
+});
+
+test('post05: dependency inference wires all three later cells to the named shape cell', () => {
+  const post = runReactivePost(cells, { fn: factoidal });
+  assert.equal(post.names[0], 'PERSON_SHAPE_TTL');
+  for (const i of [1, 2, 3]) {
+    assert.ok(post.infos[i].refs.includes('PERSON_SHAPE_TTL'), `cell ${i + 1} references PERSON_SHAPE_TTL`);
+  }
 });
 
 test('post05 cell 1 (conforming data): Alice and Bob satisfy the PersonShape', async () => {
-  const result = await runObservableCell(cells[0], { fn: factoidal });
+  const post = runReactivePost(cells, { fn: factoidal });
+  const result = await post.value(post.names[1]);
   assert.deepEqual(result, { conforms: true, reportSize: 2 });
 });
 
 test('post05 cell 2 (broken data): missing foaf:name on Bob is one minCount violation', async () => {
-  const result = await runObservableCell(cells[1], { fn: factoidal });
+  const post = runReactivePost(cells, { fn: factoidal });
+  const result = await post.value(post.names[2]);
   assert.equal(result.conforms, false);
   assert.deepEqual(result.violations, [
     {
@@ -32,7 +42,8 @@ test('post05 cell 2 (broken data): missing foaf:name on Bob is one minCount viol
 });
 
 test('post05 cell 3 (three distinct constraints): minCount/datatype/class each fire independently', async () => {
-  const result = await runObservableCell(cells[2], { fn: factoidal });
+  const post = runReactivePost(cells, { fn: factoidal });
+  const result = await post.value(post.names[3]);
   assert.deepEqual(result, {
     minCount: { conforms: false, component: 'MinCountConstraintComponent' },
     datatype: { conforms: false, component: 'DatatypeConstraintComponent' },

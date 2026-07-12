@@ -79,7 +79,7 @@ API (see [`README.md`](./README.md) for the full cell-authoring
 contract):
 
 ```observable-js
-const turtle = `
+turtle = `
   @prefix foaf: <http://xmlns.com/foaf/0.1/> .
   @prefix ex:   <http://example.org/> .
 
@@ -89,8 +89,10 @@ const turtle = `
 
   ex:bob a foaf:Person ;
     foaf:name "Bob" .
-`;
+`
+```
 
+```observable-js
 const dataset = await fn.parse(turtle);
 return dataset.size;
 ```
@@ -98,21 +100,12 @@ return dataset.size;
 Five triples, exactly as counted above. Each one is a `{subject,
 predicate, object}` term triple — `pretty()` (see
 [`README.md`](./README.md)) renders a `Dataset` as an s/p/o table
-directly, term values shortened for display:
+directly, term values shortened for display. This cell references the
+`turtle` cell above by name instead of repeating the Turtle text —
+[post 26](./26-reactive-cells-declare-once-use-everywhere.md) covers
+the reactive cell-naming convention in full:
 
 ```observable-js
-const turtle = `
-  @prefix foaf: <http://xmlns.com/foaf/0.1/> .
-  @prefix ex:   <http://example.org/> .
-
-  ex:alice a foaf:Person ;
-    foaf:name  "Alice" ;
-    foaf:knows ex:bob .
-
-  ex:bob a foaf:Person ;
-    foaf:name "Bob" .
-`;
-
 const dataset = await fn.parse(turtle);
 return pretty(dataset);
 ```

@@ -16,7 +16,7 @@
 // browser-vs-test duality documented for pretty() in hub/README.md).
 
 import { createRequire } from 'node:module';
-import { NPM_FACTOIDAL_INDEX, extractObservableCells, runObservableCell, pretty } from './_helpers.mjs';
+import { NPM_FACTOIDAL_INDEX, extractObservableCells, runReactivePost, pretty } from './_helpers.mjs';
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -64,17 +64,28 @@ const Plot = {
 const cells = extractObservableCells(POST_FILE);
 const B = { Factoidal, fn: factoidal, pretty, Plot };
 
-test('post23: post has 4 live cells', () => {
-  assert.equal(cells.length, 4, `expected 4 live cells, found ${cells.length}`);
+test('post23: post has 6 live cells (DID + didDataset hoisted into named cells)', () => {
+  assert.equal(cells.length, 6, `expected 6 live cells, found ${cells.length}`);
+});
+
+test('post23: dependency inference wires DID -> didDataset -> every downstream cell', () => {
+  const post = runReactivePost(cells, B);
+  assert.deepEqual(post.names.slice(0, 2), ['DID', 'didDataset']);
+  assert.ok(post.infos[1].refs.includes('DID'), 'didDataset cell references DID');
+  for (const i of [2, 3, 4, 5]) {
+    assert.ok(post.infos[i].refs.includes('didDataset'), `cell ${i + 1} references didDataset`);
+  }
 });
 
 test('post23 cell 1 (resolve did:key): 8 triples, no network', async () => {
-  const result = await runObservableCell(cells[0], B);
+  const post = runReactivePost(cells, B);
+  const result = await post.value(post.names[2]);
   assert.equal(result, 8);
 });
 
 test('post23 cell 2 (DID Document as triples): 8-row s/p/o table', async () => {
-  const result = await runObservableCell(cells[1], B);
+  const post = runReactivePost(cells, B);
+  const result = await post.value(post.names[3]);
   assert.equal(result.kind, 'table');
   assert.deepEqual(result.columns, ['s', 'p', 'o']);
   assert.equal(result.rows.length, 8);
@@ -92,7 +103,8 @@ test('post23 cell 2 (DID Document as triples): 8-row s/p/o table', async () => {
 });
 
 test('post23 cell 3 (verification method via SPARQL): one row, typed key literal', async () => {
-  const result = await runObservableCell(cells[2], B);
+  const post = runReactivePost(cells, B);
+  const result = await post.value(post.names[4]);
   assert.deepEqual(result, {
     kind: 'table',
     columns: ['type', 'controller', 'key'],
@@ -105,7 +117,8 @@ test('post23 cell 3 (verification method via SPARQL): one row, typed key literal
 });
 
 test('post23 cell 4 (node-graph): 4 nodes, 8 edges derived from the document', async () => {
-  const result = await runObservableCell(cells[3], B);
+  const post = runReactivePost(cells, B);
+  const result = await post.value(post.names[5]);
   assert.equal(result.isPlot, true);
   const arrow = result.marks.find((m) => m.mark === 'arrow');
   const dots = result.marks.find((m) => m.mark === 'dot');

@@ -6,7 +6,7 @@
 // DOM-returning renderer. The cell source under test is the literal
 // string extracted from the shipped post -- not a hand-copied copy.
 
-import { NPM_FACTOIDAL_INDEX, extractObservableCells, runObservableCell, pretty } from './_helpers.mjs';
+import { NPM_FACTOIDAL_INDEX, extractObservableCells, runReactivePost, pretty } from './_helpers.mjs';
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -15,7 +15,6 @@ const factoidal = (await import(NPM_FACTOIDAL_INDEX)).default;
 const POST_FILE = '20-fulltext-search-text-query.md';
 
 const cells = extractObservableCells(POST_FILE);
-const bindings = { fn: factoidal, pretty };
 
 // The set of matched subject IRIs from a pretty() single-column ?s table.
 function subjects(tableResult) {
@@ -25,17 +24,28 @@ function subjects(tableResult) {
   return tableResult.rows.map((r) => r[idx]).sort();
 }
 
-test('post20: post has 7 live cells', () => {
-  assert.equal(cells.length, 7, `expected exactly 7 live cells, found ${cells.length}`);
+test('post20: post has 9 live cells (FT_TTL + dataset hoisted into named cells)', () => {
+  assert.equal(cells.length, 9, `expected 9 live cells, found ${cells.length}`);
+});
+
+test('post20: dependency inference wires FT_TTL -> dataset -> every query cell', () => {
+  const post = runReactivePost(cells, { fn: factoidal, pretty });
+  assert.deepEqual(post.names.slice(0, 2), ['FT_TTL', 'dataset']);
+  assert.ok(post.infos[1].refs.includes('FT_TTL'), 'dataset cell references FT_TTL');
+  for (const i of [2, 3, 4, 5, 6, 7, 8]) {
+    assert.ok(post.infos[i].refs.includes('dataset'), `cell ${i + 1} references dataset`);
+  }
 });
 
 test('post20 cell 1 (parse the dataset): 15 triples', async () => {
-  const result = await runObservableCell(cells[0], bindings);
+  const post = runReactivePost(cells, { fn: factoidal, pretty });
+  const result = await post.value(post.names[2]);
   assert.equal(result, 15);
 });
 
 test('post20 cell 2 (2-arity "panel"): 4 subjects across labels + a title', async () => {
-  const result = await runObservableCell(cells[1], bindings);
+  const post = runReactivePost(cells, { fn: factoidal, pretty });
+  const result = await post.value(post.names[3]);
   assert.deepEqual(subjects(result), [
     'http://example.org/battery',
     'http://example.org/controlpanel',
@@ -45,7 +55,8 @@ test('post20 cell 2 (2-arity "panel"): 4 subjects across labels + a title', asyn
 });
 
 test('post20 cell 3 (AND-by-default "solar panel"): only the 2 with both tokens', async () => {
-  const result = await runObservableCell(cells[2], bindings);
+  const post = runReactivePost(cells, { fn: factoidal, pretty });
+  const result = await post.value(post.names[4]);
   assert.deepEqual(subjects(result), [
     'http://example.org/panel1',
     'http://example.org/panel2',
@@ -53,7 +64,8 @@ test('post20 cell 3 (AND-by-default "solar panel"): only the 2 with both tokens'
 });
 
 test('post20 cell 4 (list form, rdfs:label restriction): controlpanel dropped', async () => {
-  const result = await runObservableCell(cells[3], bindings);
+  const post = runReactivePost(cells, { fn: factoidal, pretty });
+  const result = await post.value(post.names[5]);
   assert.deepEqual(subjects(result), [
     'http://example.org/battery',
     'http://example.org/panel1',
@@ -62,17 +74,20 @@ test('post20 cell 4 (list form, rdfs:label restriction): controlpanel dropped', 
 });
 
 test('post20 cell 5 (list form + limit 2): capped count, no ranking claim', async () => {
-  const result = await runObservableCell(cells[4], bindings);
+  const post = runReactivePost(cells, { fn: factoidal, pretty });
+  const result = await post.value(post.names[6]);
   assert.deepEqual(result, { matchCount: 2 });
 });
 
 test('post20 cell 6 (no-match): zero rows, no error', async () => {
-  const result = await runObservableCell(cells[5], bindings);
+  const post = runReactivePost(cells, { fn: factoidal, pretty });
+  const result = await post.value(post.names[7]);
   assert.deepEqual(result, { matchCount: 0 });
 });
 
 test('post20 cell 7 (BGP composition): text:query joins ex:status, retired dropped', async () => {
-  const result = await runObservableCell(cells[6], bindings);
+  const post = runReactivePost(cells, { fn: factoidal, pretty });
+  const result = await post.value(post.names[8]);
   assert.deepEqual(subjects(result), [
     'http://example.org/controlpanel',
     'http://example.org/panel1',

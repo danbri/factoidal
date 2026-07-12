@@ -1,7 +1,7 @@
 // Pins every code sample in docs/web/hub/07-json-ld-rdf-as-json.md.
 
 import { createRequire } from 'node:module';
-import { NPM_FACTOIDAL_INDEX, extractObservableCells, runObservableCell } from './_helpers.mjs';
+import { NPM_FACTOIDAL_INDEX, extractObservableCells, runObservableCell, runReactivePost } from './_helpers.mjs';
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -53,8 +53,16 @@ const FactoidalNode = {
   },
 };
 
-test('post07: post has at least 4 live cells', () => {
-  assert.ok(cells.length >= 4, `expected >= 4 live cells, found ${cells.length}`);
+test('post07: post has 5 live cells (ALICE_JSONLD hoisted into its own named cell)', () => {
+  assert.equal(cells.length, 5, `expected 5 live cells, found ${cells.length}`);
+});
+
+test('post07: dependency inference wires ALICE_JSONLD to the tryJsonldToRdf and round-trip cells', () => {
+  const post = runReactivePost(cells, { fn: factoidal, Factoidal: FactoidalNode });
+  assert.equal(post.names[1], 'ALICE_JSONLD');
+  for (const i of [2, 3]) {
+    assert.ok(post.infos[i].refs.includes('ALICE_JSONLD'), `cell ${i + 1} references ALICE_JSONLD`);
+  }
 });
 
 test('post07 cell 1 (plain JSON, no @context): zero triples', async () => {
@@ -62,8 +70,9 @@ test('post07 cell 1 (plain JSON, no @context): zero triples', async () => {
   assert.deepEqual(result, { tripleCount: 0 });
 });
 
-test('post07 cell 2 (@context mapping): three triples, available', async () => {
-  const result = await runObservableCell(cells[1], { fn: factoidal, Factoidal: FactoidalNode });
+test('post07 cell 3 (@context mapping): three triples, available', async () => {
+  const post = runReactivePost(cells, { fn: factoidal, Factoidal: FactoidalNode });
+  const result = await post.value(post.names[2]);
   assert.equal(result.available, true);
   const lines = result.nquads.trim().split('\n').sort();
   assert.deepEqual(lines, [
@@ -73,13 +82,14 @@ test('post07 cell 2 (@context mapping): three triples, available', async () => {
   ]);
 });
 
-test('post07 cell 3 (round trip): JSON-LD -> N-Quads -> query returns Alice/Engineer', async () => {
-  const result = await runObservableCell(cells[2], { fn: factoidal, Factoidal: FactoidalNode });
+test('post07 cell 4 (round trip): JSON-LD -> N-Quads -> query returns Alice/Engineer', async () => {
+  const post = runReactivePost(cells, { fn: factoidal, Factoidal: FactoidalNode });
+  const result = await post.value(post.names[3]);
   assert.deepEqual(result, [{ name: 'Alice', title: 'Engineer' }]);
 });
 
-test('post07 cell 4 (fromRdf): N-Quads -> expanded JSON-LD node object', async () => {
-  const result = await runObservableCell(cells[3], { fn: factoidal, Factoidal: FactoidalNode });
+test('post07 cell 5 (fromRdf): N-Quads -> expanded JSON-LD node object', async () => {
+  const result = await runObservableCell(cells[4], { fn: factoidal, Factoidal: FactoidalNode });
   assert.ok(Array.isArray(result), 'expanded form is an array of node objects');
   assert.equal(result.length, 1);
   const node = result[0];

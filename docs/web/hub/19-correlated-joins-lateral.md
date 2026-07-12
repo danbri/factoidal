@@ -46,19 +46,26 @@ Three people; two of them have two labels each, one has none:
 ```
 
 Parse it and count the triples — three `rdf:type` triples plus four
-`:label` triples:
+`:label` triples. The dataset and its parse are named once, below, and
+every cell in this post references `LAT_TTL`/`dataset` by name instead
+of repeating them:
 
 ```observable-js
-const LAT_TTL = `
+LAT_TTL = `
   @prefix :    <https://example.org/> .
   @prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
 
   :alice rdf:type :Person ; :label "Alice A" ; :label "Alice B" .
   :bob   rdf:type :Person ; :label "Bob A"   ; :label "Bob B" .
   :carol rdf:type :Person .
-`;
+`
+```
 
-const dataset = await fn.parse(LAT_TTL);
+```observable-js
+dataset = fn.parse(LAT_TTL)
+```
+
+```observable-js
 return dataset.size;
 ```
 
@@ -75,16 +82,6 @@ row's `?s` in and evaluating gives the same answer a symmetric join
 would:
 
 ```observable-js
-const LAT_TTL = `
-  @prefix :    <https://example.org/> .
-  @prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
-
-  :alice rdf:type :Person ; :label "Alice A" ; :label "Alice B" .
-  :bob   rdf:type :Person ; :label "Bob A"   ; :label "Bob B" .
-  :carol rdf:type :Person .
-`;
-
-const dataset = await fn.parse(LAT_TTL);
 const rows = await fn.query(dataset, `
   PREFIX : <https://example.org/>
   PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
@@ -114,16 +111,6 @@ row's `?s` is substituted in *before* that sub-query runs, the
 `ORDER BY`/`LIMIT` ranks only that one person's labels:
 
 ```observable-js
-const LAT_TTL = `
-  @prefix :    <https://example.org/> .
-  @prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
-
-  :alice rdf:type :Person ; :label "Alice A" ; :label "Alice B" .
-  :bob   rdf:type :Person ; :label "Bob A"   ; :label "Bob B" .
-  :carol rdf:type :Person .
-`;
-
-const dataset = await fn.parse(LAT_TTL);
 const rows = await fn.query(dataset, `
   PREFIX : <https://example.org/>
   PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
@@ -156,17 +143,6 @@ applies once, to the whole joined result, so you get exactly one row
 total rather than one per person:
 
 ```observable-js
-const LAT_TTL = `
-  @prefix :    <https://example.org/> .
-  @prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
-
-  :alice rdf:type :Person ; :label "Alice A" ; :label "Alice B" .
-  :bob   rdf:type :Person ; :label "Bob A"   ; :label "Bob B" .
-  :carol rdf:type :Person .
-`;
-
-const dataset = await fn.parse(LAT_TTL);
-
 const lateralRows = await fn.query(dataset, `
   PREFIX : <https://example.org/>
   PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>

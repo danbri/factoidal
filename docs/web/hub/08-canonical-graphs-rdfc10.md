@@ -47,21 +47,27 @@ canonicalize to the identical byte sequence.
 
 ## Canonicalizing both, live
 
+The same two documents, as Turtle text:
+
 ```observable-js
-const DOC_A = `
+DOC_A = `
   @prefix foaf: <http://xmlns.com/foaf/0.1/> .
   @prefix ex:   <http://example.org/> .
   ex:alice a foaf:Person ; foaf:name "Alice" ; foaf:knows _:x .
   _:x a foaf:Person ; foaf:name "Bob" .
 `;
+```
 
-const DOC_B = `
+```observable-js
+DOC_B = `
   @prefix foaf: <http://xmlns.com/foaf/0.1/> .
   @prefix ex:   <http://example.org/> .
   ex:alice a foaf:Person ; foaf:name "Alice" ; foaf:knows _:friend42 .
   _:friend42 a foaf:Person ; foaf:name "Bob" .
 `;
+```
 
+```observable-js
 const canonA = await fn.canonicalize(DOC_A, { format: "turtle" });
 const canonB = await fn.canonicalize(DOC_B, { format: "turtle" });
 
@@ -88,20 +94,6 @@ instead of files. Hash both canonical forms above, then change one
 fact and confirm the hash moves:
 
 ```observable-js
-const DOC_A = `
-  @prefix foaf: <http://xmlns.com/foaf/0.1/> .
-  @prefix ex:   <http://example.org/> .
-  ex:alice a foaf:Person ; foaf:name "Alice" ; foaf:knows _:x .
-  _:x a foaf:Person ; foaf:name "Bob" .
-`;
-
-const DOC_B = `
-  @prefix foaf: <http://xmlns.com/foaf/0.1/> .
-  @prefix ex:   <http://example.org/> .
-  ex:alice a foaf:Person ; foaf:name "Alice" ; foaf:knows _:friend42 .
-  _:friend42 a foaf:Person ; foaf:name "Bob" .
-`;
-
 // Same facts as DOC_A, but Bob's name is changed -- a genuinely
 // different graph, not just a different blank-node label.
 const DOC_C = `

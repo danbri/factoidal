@@ -23,7 +23,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
-import { extractObservableCells, runObservableCell, pretty } from './_helpers.mjs';
+import { extractObservableCells, runObservableCell, runReactivePost, pretty } from './_helpers.mjs';
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -134,17 +134,27 @@ test.after(() => { globalThis.fetch = realFetch; });
 const cells = extractObservableCells(POST_FILE);
 const B = { fn, pretty, Plot };
 
-test('post24: post has 3 live cells', () => {
-  assert.equal(cells.length, 3, `expected 3 live cells, found ${cells.length}`);
+test('post24: post has 4 live cells (buf fetch hoisted into its own named cell)', () => {
+  assert.equal(cells.length, 4, `expected 4 live cells, found ${cells.length}`);
+});
+
+test('post24: dependency inference wires buf into every query cell', () => {
+  const post = runReactivePost(cells, B);
+  assert.equal(post.names[0], 'buf');
+  for (const i of [1, 2, 3]) {
+    assert.ok(post.infos[i].refs.includes('buf'), `cell ${i + 1} references buf`);
+  }
 });
 
 test('post24 cell 1 (count triples): 343', async () => {
-  const result = await runObservableCell(cells[0], B);
+  const post = runReactivePost(cells, B);
+  const result = await post.value(post.names[1]);
   assert.equal(result, 343);
 });
 
 test('post24 cell 2 (owl:Class labels): pretty table including RML classes', async () => {
-  const result = await runObservableCell(cells[1], B);
+  const post = runReactivePost(cells, B);
+  const result = await post.value(post.names[2]);
   assert.equal(result.kind, 'table');
   assert.deepEqual(result.columns, ['class', 'label']);
   assert.ok(result.rows.length >= 20, `expected >= 20 class rows, got ${result.rows.length}`);
@@ -155,7 +165,8 @@ test('post24 cell 2 (owl:Class labels): pretty table including RML classes', asy
 });
 
 test('post24 cell 3 (predicate histogram): rdf:type bar at 84', async () => {
-  const result = await runObservableCell(cells[2], B);
+  const post = runReactivePost(cells, B);
+  const result = await post.value(post.names[3]);
   assert.equal(result.isPlot, true);
   const bar = result.marks.find((m) => m.mark === 'barX');
   assert.ok(bar, 'expected a barX mark');

@@ -10,7 +10,7 @@
 // `pretty` is the shared node-side stub from _helpers.mjs.
 
 import { createRequire } from 'node:module';
-import { extractObservableCells, runObservableCell, pretty } from './_helpers.mjs';
+import { extractObservableCells, runObservableCell, runReactivePost, pretty } from './_helpers.mjs';
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -50,22 +50,34 @@ const Factoidal = {
 const cells = extractObservableCells(POST_FILE);
 const B = { Factoidal, pretty };
 
-test('post25: post has 4 live cells', () => {
-  assert.equal(cells.length, 4, `expected 4 live cells, found ${cells.length}`);
+test('post25: post has 5 live cells (XML hoisted into its own named cell)', () => {
+  assert.equal(cells.length, 5, `expected 5 live cells, found ${cells.length}`);
+});
+
+test('post25: dependency inference wires XML into cells 2, 4, 5 (not the BAD cell at 3)', () => {
+  const post = runReactivePost(cells, B);
+  assert.equal(post.names[0], 'XML');
+  for (const i of [1, 3, 4]) {
+    assert.ok(post.infos[i].refs.includes('XML'), `cell ${i + 1} references XML`);
+  }
+  assert.ok(!post.infos[2].refs.includes('XML'), 'the BAD cell does not reference XML');
 });
 
 test('post25 cell 1 (well-formed document): wellformed true', async () => {
-  const result = await runObservableCell(cells[0], B);
+  const post = runReactivePost(cells, B);
+  const result = await post.value(post.names[1]);
   assert.deepEqual(result, { ok: true, wellformed: true });
 });
 
 test('post25 cell 2 (mismatched close tag): wellformed false', async () => {
-  const result = await runObservableCell(cells[1], B);
+  const post = runReactivePost(cells, B);
+  const result = await post.value(post.names[2]);
   assert.deepEqual(result, { ok: true, wellformed: false });
 });
 
 test('post25 cell 3 (//book/title node-set): two title elements', async () => {
-  const result = await runObservableCell(cells[2], B);
+  const post = runReactivePost(cells, B);
+  const result = await post.value(post.names[3]);
   assert.equal(result.kind, 'table');
   assert.deepEqual(result.columns, ['kind', 'name', 'value']);
   assert.deepEqual(result.rows, [
@@ -75,7 +87,8 @@ test('post25 cell 3 (//book/title node-set): two title elements', async () => {
 });
 
 test('post25 cell 4 (four XPath result types): number/nodeset/string/boolean', async () => {
-  const result = await runObservableCell(cells[3], B);
+  const post = runReactivePost(cells, B);
+  const result = await post.value(post.names[4]);
   assert.equal(result.kind, 'table');
   assert.deepEqual(result.columns, ['expression', 'resultType', 'value']);
   assert.deepEqual(result.rows, [

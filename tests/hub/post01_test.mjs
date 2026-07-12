@@ -4,7 +4,7 @@
 // node:test, requiring the committed npm/factoidal bundles (no F*
 // toolchain needed) — mirrors npm/factoidal/test's own harness style.
 
-import { NPM_FACTOIDAL_INDEX, extractObservableCells, runObservableCell, pretty } from './_helpers.mjs';
+import { NPM_FACTOIDAL_INDEX, extractObservableCells, runObservableCell, runReactivePost, pretty } from './_helpers.mjs';
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -81,17 +81,38 @@ test('post01: blank-node subject is a genuine BlankNode term', async () => {
 
 const cells = extractObservableCells(POST_FILE);
 
-test('post01: post has at least 2 live cells', () => {
-  assert.ok(cells.length >= 2, `expected >= 2 live cells, found ${cells.length}`);
+test('post01: post has 4 live cells (turtle hoisted into its own named cell)', () => {
+  assert.equal(cells.length, 4, `expected 4 live cells, found ${cells.length}`);
 });
 
-test('post01 cell 1 (parse + size): returns 5', async () => {
-  const result = await runObservableCell(cells[0], { fn: factoidal });
+// Cells 2 and 3 (index 1 and 2) both reference the named `turtle` cell
+// (index 0) instead of redeclaring the Turtle text -- exercise the REAL
+// reactive wiring (the same compiler docs/_includes/hub.njk uses) to
+// prove the cross-cell reference actually resolves, not just that each
+// cell happens to run standalone.
+test('post01: dependency inference wires cells 2 and 3 to the named turtle cell', () => {
+  const post = runReactivePost(cells, { fn: factoidal, pretty });
+  assert.equal(post.names[0], 'turtle');
+  assert.ok(post.infos[1].refs.includes('turtle'), 'cell 2 references turtle');
+  assert.ok(post.infos[2].refs.includes('turtle'), 'cell 3 references turtle');
+});
+
+test('post01 cell 1 (named turtle cell): the Turtle text itself', async () => {
+  const post = runReactivePost(cells, { fn: factoidal, pretty });
+  const turtle = await post.value(post.names[0]);
+  assert.equal(typeof turtle, 'string');
+  assert.ok(turtle.includes('foaf:knows'), 'turtle cell carries the foaf:knows Turtle');
+});
+
+test('post01 cell 2 (parse + size): returns 5', async () => {
+  const post = runReactivePost(cells, { fn: factoidal, pretty });
+  const result = await post.value(post.names[1]);
   assert.equal(result, 5);
 });
 
-test('post01 cell 2 (pretty(dataset) -> triples table): 5 rows, 2 quoted literals, 3 IRIs', async () => {
-  const result = await runObservableCell(cells[1], { fn: factoidal, pretty });
+test('post01 cell 3 (pretty(dataset) -> triples table): 5 rows, 2 quoted literals, 3 IRIs', async () => {
+  const post = runReactivePost(cells, { fn: factoidal, pretty });
+  const result = await post.value(post.names[2]);
   assert.equal(result.kind, 'table');
   assert.deepEqual(result.columns, ['s', 'p', 'o']);
   assert.equal(result.rows.length, 5);
@@ -107,8 +128,8 @@ test('post01 cell 2 (pretty(dataset) -> triples table): 5 rows, 2 quoted literal
   }
 });
 
-test('post01 cell 3 (blank node): size 2, BlankNode subject, shared across both triples', async () => {
-  const result = await runObservableCell(cells[2], { fn: factoidal });
+test('post01 cell 4 (blank node): size 2, BlankNode subject, shared across both triples', async () => {
+  const result = await runObservableCell(cells[3], { fn: factoidal });
   assert.deepEqual(result, {
     size: 2,
     subjectTermType: 'BlankNode',

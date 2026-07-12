@@ -29,8 +29,16 @@ schema:Person rdfs:subClassOf schema:Thing .
 ex:alice a schema:Person .
 ```
 
-One instance (`ex:alice`, a `schema:Person`), one subclass axiom. Ask
-what type `ex:alice` has, twice — with and without RDFS entailment:
+One instance (`ex:alice`, a `schema:Person`), one subclass axiom. The
+query itself — "what type does `ex:alice` have" — is the same across
+every cell in this post, so it's named once and referenced everywhere
+below:
+
+```observable-js
+q = `SELECT ?type WHERE { <http://example.org/alice> a ?type }`
+```
+
+Ask it twice — with and without RDFS entailment:
 
 ```observable-js
 const ttl = `
@@ -42,7 +50,6 @@ const ttl = `
   ex:alice a schema:Person .
 `;
 const dataset = await fn.parse(ttl);
-const q = `SELECT ?type WHERE { <http://example.org/alice> a ?type }`;
 
 const plain = await fn.query(dataset, q);
 const withRdfs = await fn.query(dataset, q, { entail: "RDFS" });
@@ -86,7 +93,6 @@ const ttl2 = `
   ex:alice a schema:Person .
 `;
 const dataset2 = await fn.parse(ttl2);
-const q = `SELECT ?type WHERE { <http://example.org/alice> a ?type }`;
 
 const withRdfs = await fn.query(dataset2, q, { entail: "RDFS" });
 const withOwlRl = await fn.query(dataset2, q, { entail: "OWL-RL" });
@@ -122,11 +128,7 @@ const bothWays = `
   ex:alice a schema:Person .
 `;
 const ds3 = await fn.parse(bothWays);
-const rows = await fn.query(
-  ds3,
-  `SELECT ?type WHERE { <http://example.org/alice> a ?type }`,
-  { entail: "RDFS" }
-);
+const rows = await fn.query(ds3, q, { entail: "RDFS" });
 return rows.map((r) => r.get("type").value).sort();
 ```
 

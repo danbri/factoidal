@@ -44,10 +44,14 @@ points at. Every cell below parses that same Turtle text and queries
 it live, using the `fn` typed API (see [`README.md`](./README.md) for
 the cell-authoring contract).
 
-## SELECT
+Both the dataset and its parse are named once, below, and every query
+cell in this post references `ttl`/`dataset` by name instead of
+repeating them — the same declare-once, use-everywhere pattern
+[post 26](./26-reactive-cells-declare-once-use-everywhere.md) covers
+in full:
 
 ```observable-js
-const ttl = `
+ttl = `
   @prefix wd:   <http://www.wikidata.org/entity/> .
   @prefix wdt:  <http://www.wikidata.org/prop/direct/> .
   @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
@@ -58,9 +62,16 @@ const ttl = `
 
   wd:Q5     rdfs:label "human" .
   wd:Q36180 rdfs:label "writer" .
-`;
-const dataset = await fn.parse(ttl);
+`
+```
 
+```observable-js
+dataset = fn.parse(ttl)
+```
+
+## SELECT
+
+```observable-js
 const rows = await fn.query(dataset, `
   PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
   SELECT ?label WHERE {
@@ -81,20 +92,6 @@ per variable, with a "N rows" caption.
 A yes/no question — does this fact exist:
 
 ```observable-js
-const ttl = `
-  @prefix wd:   <http://www.wikidata.org/entity/> .
-  @prefix wdt:  <http://www.wikidata.org/prop/direct/> .
-  @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
-
-  wd:Q42 rdfs:label "Douglas Adams" ;
-    wdt:P31  wd:Q5 ;
-    wdt:P106 wd:Q36180 .
-
-  wd:Q5     rdfs:label "human" .
-  wd:Q36180 rdfs:label "writer" .
-`;
-const dataset = await fn.parse(ttl);
-
 return await fn.query(dataset, `
   PREFIX wdt: <http://www.wikidata.org/prop/direct/>
   ASK { <http://www.wikidata.org/entity/Q42> wdt:P106 <http://www.wikidata.org/entity/Q36180> }
@@ -109,20 +106,6 @@ occupation." Alternation (`|`), sequence (`/`), and transitive closure
 0 fail of 33) tests them:
 
 ```observable-js
-const ttl = `
-  @prefix wd:   <http://www.wikidata.org/entity/> .
-  @prefix wdt:  <http://www.wikidata.org/prop/direct/> .
-  @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
-
-  wd:Q42 rdfs:label "Douglas Adams" ;
-    wdt:P31  wd:Q5 ;
-    wdt:P106 wd:Q36180 .
-
-  wd:Q5     rdfs:label "human" .
-  wd:Q36180 rdfs:label "writer" .
-`;
-const dataset = await fn.parse(ttl);
-
 const types = await fn.query(dataset, `
   PREFIX wd:  <http://www.wikidata.org/entity/>
   PREFIX wdt: <http://www.wikidata.org/prop/direct/>
@@ -145,20 +128,6 @@ zero additional hops here; the syntax is identical either way.
 SELECT returns bindings; CONSTRUCT returns a new graph:
 
 ```observable-js
-const ttl = `
-  @prefix wd:   <http://www.wikidata.org/entity/> .
-  @prefix wdt:  <http://www.wikidata.org/prop/direct/> .
-  @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
-
-  wd:Q42 rdfs:label "Douglas Adams" ;
-    wdt:P31  wd:Q5 ;
-    wdt:P106 wd:Q36180 .
-
-  wd:Q5     rdfs:label "human" .
-  wd:Q36180 rdfs:label "writer" .
-`;
-const dataset = await fn.parse(ttl);
-
 const derived = await fn.query(dataset, `
   PREFIX wdt:  <http://www.wikidata.org/prop/direct/>
   PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
