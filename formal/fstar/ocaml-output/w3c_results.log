@@ -168,48 +168,48 @@
   [2/4] drop/DROP GRAPH ok
   [3/4] drop/DROP NAMED ok
   [4/4] drop/DROP ALL ok
-  [1/70] entailment/bind01 - BIND fixed data for OWL DL ok
-  [2/70] entailment/bind02 - BIND fixed data for OWL DL ok (10ms)
-  [3/70] entailment/bind03 - BIND fixed data for OWL DL ok
-  [4/70] entailment/bind04 - BIND fixed data for OWL DL ok
-  [5/70] entailment/bind05 - BIND fixed data for OWL DL ok
-  [6/70] entailment/bind06 - BIND fixed data for OWL DL ok
-  [7/70] entailment/bind07 - BIND fixed data for OWL DL ok (10ms)
-  [8/70] entailment/bind08 - BIND fixed data for OWL DL ok
+  [1/70] entailment/bind01 - BIND fixed data for OWL DL ok (11ms)
+  [2/70] entailment/bind02 - BIND fixed data for OWL DL ok (11ms)
+  [3/70] entailment/bind03 - BIND fixed data for OWL DL ok (11ms)
+  [4/70] entailment/bind04 - BIND fixed data for OWL DL ok (11ms)
+  [5/70] entailment/bind05 - BIND fixed data for OWL DL ok (11ms)
+  [6/70] entailment/bind06 - BIND fixed data for OWL DL ok (11ms)
+  [7/70] entailment/bind07 - BIND fixed data for OWL DL ok (11ms)
+  [8/70] entailment/bind08 - BIND fixed data for OWL DL ok (11ms)
   [9/70] entailment/D-Entailment test to show that  neither literals in subject position nor newly introduced surrogate blank nodes are to be returned in query answers ok
   [10/70] entailment/Literal with language tag test ok
-  [11/70] entailment/bnodes are not existentials ok (13ms)
-  [12/70] entailment/bnodes are not existentials with answer ok (19ms)
-  [13/70] entailment/paper-sparqldl-Q1 ok (29ms)
+  [11/70] entailment/bnodes are not existentials ok (14ms)
+  [12/70] entailment/bnodes are not existentials with answer ok (22ms)
+  [13/70] entailment/paper-sparqldl-Q1 ok (30ms)
   [14/70] entailment/paper-sparqldl-Q1-rdfs ok
-  [15/70] entailment/paper-sparqldl-Q2 ok (74ms)
-  [16/70] entailment/paper-sparqldl-Q3 ok (76ms)
+  [15/70] entailment/paper-sparqldl-Q2 ok (79ms)
+  [16/70] entailment/paper-sparqldl-Q3 ok (80ms)
   [17/70] entailment/paper-sparqldl-Q4 ok (31ms)
-  [18/70] entailment/paper-sparqldl-Q5 ok (29ms)
-  [19/70] entailment/filtered subclass query with (hasChild some Thing) restriction ok (124ms)
-  [20/70] entailment/parent query with distinguished variable ok (41ms)
-  [21/70] entailment/parent query with (hasChild some Thing) restriction ok (125ms)
-  [22/70] entailment/parent query with (hasChild min 1) restriction ok (121ms)
+  [18/70] entailment/paper-sparqldl-Q5 ok (30ms)
+  [19/70] entailment/filtered subclass query with (hasChild some Thing) restriction ok (135ms)
+  [20/70] entailment/parent query with distinguished variable ok (45ms)
+  [21/70] entailment/parent query with (hasChild some Thing) restriction ok (130ms)
+  [22/70] entailment/parent query with (hasChild min 1) restriction ok (124ms)
   [23/70] entailment/parent query with (hasChild some Female) restriction ok (124ms)
-  [24/70] entailment/parent query with (hasChild min 1 Female) restriction ok (127ms)
-  [25/70] entailment/parent query with (hasChild max 1 Female) restriction ok (124ms)
-  [26/70] entailment/parent query with (hasChild exactly 1 Female) restriction ok (123ms)
-  [27/70] entailment/subclass query with (hasChild some Thing) restriction ok (123ms)
-  [28/70] entailment/Plain literals with language tag are not the same as the same literal without ok
+  [24/70] entailment/parent query with (hasChild min 1 Female) restriction ok (126ms)
+  [25/70] entailment/parent query with (hasChild max 1 Female) restriction ok (127ms)
+  [26/70] entailment/parent query with (hasChild exactly 1 Female) restriction ok (125ms)
+  [27/70] entailment/subclass query with (hasChild some Thing) restriction ok (126ms)
+  [28/70] entailment/Plain literals with language tag are not the same as the same literal without ok (11ms)
   [29/70] entailment/RDF inference test ok
   [30/70] entailment/RDF inference test ok
   [31/70] entailment/RDF test for blank node cardinalities ok
-  [32/70] entailment/simple triple pattern match ok (14ms)
+  [32/70] entailment/simple triple pattern match ok (13ms)
   [33/70] entailment/RDFS inference test rdfs:subPropertyOf ok (14ms)
-  [34/70] entailment/RDFS inference test rdfs:subPropertyOf ok (13ms)
+  [34/70] entailment/RDFS inference test rdfs:subPropertyOf ok (15ms)
   [35/70] entailment/RDFS inference test combining subPropertyOf and domain ok
-  [36/70] entailment/RDFS inference test subClassOf ok
-  [37/70] entailment/RDFS inference test subClassOf ok (14ms)
-  [38/70] entailment/RDFS inference test domain ok (13ms)
-  [39/70] entailment/RDFS inference test range ok (15ms)
+  [36/70] entailment/RDFS inference test subClassOf ok (10ms)
+  [37/70] entailment/RDFS inference test subClassOf ok (15ms)
+  [38/70] entailment/RDFS inference test domain ok (14ms)
+  [39/70] entailment/RDFS inference test range ok (17ms)
   [40/70] entailment/RDFS inference test rdf:XMLLiteral subclass of rdfs:Literal ok
-  [41/70] entailment/RDFS inference test transitivity of subClassOf ok (12ms)
-  [42/70] entailment/RDFS inference test transitivity of subPropertyOf ok (19ms)
+  [41/70] entailment/RDFS inference test transitivity of subClassOf ok (13ms)
+  [42/70] entailment/RDFS inference test transitivity of subPropertyOf ok (20ms)
   [43/70] entailment/RDFS inference test subProperty and instances ok
   [44/70] entailment/RDFS inference test containers ok
   [45/70] entailment/RDFS inference test to show that neither literals in subject position nor newly introduced surrogate blank nodes are to be returned in query answers ok
@@ -217,27 +217,27 @@
   [47/70] entailment/RIF Core WG tests: Frames FAIL
   [48/70] entailment/RIF Core WG tests: Modeling Brain Anatomy FAIL
   [49/70] entailment/RIF Core WG tests: RDF Combination Blank Node FAIL
-  [50/70] entailment/simple 1 ok (53ms)
-  [51/70] entailment/simple 2 ok (54ms)
-  [52/70] entailment/simple 3 ok (54ms)
-  [53/70] entailment/simple 4 ok (55ms)
-  [54/70] entailment/simple 5 ok (56ms)
-  [55/70] entailment/simple 6 ok (62ms)
-  [56/70] entailment/simple 7 ok (56ms)
-  [57/70] entailment/simple 8 ok (54ms)
-  [58/70] entailment/sparqldl-01.rq: triple pattern ok
+  [50/70] entailment/simple 1 ok (56ms)
+  [51/70] entailment/simple 2 ok (56ms)
+  [52/70] entailment/simple 3 ok (56ms)
+  [53/70] entailment/simple 4 ok (57ms)
+  [54/70] entailment/simple 5 ok (58ms)
+  [55/70] entailment/simple 6 ok (66ms)
+  [56/70] entailment/simple 7 ok (59ms)
+  [57/70] entailment/simple 8 ok (56ms)
+  [58/70] entailment/sparqldl-01.rq: triple pattern ok (10ms)
   [59/70] entailment/sparqldl-02.rq: simple combined query ok (11ms)
-  [60/70] entailment/sparqldl-03.rq: combined query with complex class description ok (17ms)
-  [61/70] entailment/sparqldl-04.rq: bug fixing test ok (12ms)
-  [62/70] entailment/sparqldl-05.rq: simple undistinguished variable test. ok (11ms)
-  [63/70] entailment/sparqldl-06.rq: cycle of undistinguished variables ok (22ms)
-  [64/70] entailment/sparqldl-07.rq: two distinguished variables + undist. ok (22ms)
-  [65/70] entailment/sparqldl-08.rq: two distinguished variables + undist. ok (21ms)
-  [66/70] entailment/sparqldl-09.rq: undist vars test ok (22ms)
+  [60/70] entailment/sparqldl-03.rq: combined query with complex class description ok (18ms)
+  [61/70] entailment/sparqldl-04.rq: bug fixing test ok (14ms)
+  [62/70] entailment/sparqldl-05.rq: simple undistinguished variable test. ok (14ms)
+  [63/70] entailment/sparqldl-06.rq: cycle of undistinguished variables ok (23ms)
+  [64/70] entailment/sparqldl-07.rq: two distinguished variables + undist. ok (23ms)
+  [65/70] entailment/sparqldl-08.rq: two distinguished variables + undist. ok (22ms)
+  [66/70] entailment/sparqldl-09.rq: undist vars test ok (19ms)
   [67/70] entailment/sparqldl-10.rq: undist vars test ok (18ms)
   [68/70] entailment/sparqldl-11.rq: domain test ok (43ms)
-  [69/70] entailment/sparqldl-12.rq: range test ok (44ms)
-  [70/70] entailment/sparqldl-13.rq: sameAs ok (30ms)
+  [69/70] entailment/sparqldl-12.rq: range test ok (43ms)
+  [70/70] entailment/sparqldl-13.rq: sameAs ok (28ms)
   [1/6] exists/Exists with one constant ok
   [2/6] exists/Exists with ground triple ok
   [3/6] exists/Exists within graph pattern ok
@@ -344,8 +344,8 @@
   [17/19] http-rdf-update/GET of POST - after noop ok
   [18/19] http-rdf-update/HEAD on an existing graph ok
   [19/19] http-rdf-update/HEAD on a non-existing graph ok
-  [1/4] json-res/jsonres01 - JSON Result Format ok (12ms)
-  [2/4] json-res/jsonres02 - JSON Result Format ok (13ms)
+  [1/4] json-res/jsonres01 - JSON Result Format ok (13ms)
+  [2/4] json-res/jsonres02 - JSON Result Format ok (15ms)
   [3/4] json-res/jsonres03 - JSON Result Format ok
   [4/4] json-res/jsonres04 - JSON Result Format ok
   [1/6] move/MOVE 1 ok
@@ -358,9 +358,9 @@
   [2/12] negation/Subsets by exclusion (MINUS) ok
   [3/12] negation/Medical, temporal proximity by exclusion (NOT EXISTS) ok
   [4/12] negation/Calculate which sets are subsets of others (include A subsetOf A) ok
-  [5/12] negation/Calculate which sets are subsets of others (exclude A subsetOf A) ok
+  [5/12] negation/Calculate which sets are subsets of others (exclude A subsetOf A) ok (11ms)
   [6/12] negation/Calculate which sets have the same elements ok
-  [7/12] negation/Calculate proper subset ok (11ms)
+  [7/12] negation/Calculate proper subset ok (14ms)
   [8/12] negation/Positive EXISTS 1 ok
   [9/12] negation/Positive EXISTS 2 ok
   [10/12] negation/Subtraction with MINUS from a fully bound minuend ok
@@ -615,7 +615,7 @@
   [52/54] syntax-update-1/syntax-update-bad-12.ru ok
   [53/54] syntax-update-1/syntax-update-53.ru ok
   [54/54] syntax-update-1/syntax-update-54.ru ok
-  [1/1] syntax-update-2/syntax-update-other-01 ok (1.6s)
+  [1/1] syntax-update-2/syntax-update-other-01 ok (2.0s)
   [1/13] update-silent/LOAD SILENT ok
   [2/13] update-silent/LOAD SILENT INTO ok
   [3/13] update-silent/CLEAR SILENT GRAPH iri ok
@@ -1198,7 +1198,7 @@
   [15/313] rdf-turtle/reserved_escaped_localName ok
   [16/313] rdf-turtle/percent_escaped_localName ok
   [17/313] rdf-turtle/HYPHEN_MINUS_in_localName ok
-  [18/313] rdf-turtle/underscore_in_localName ok
+  [18/313] rdf-turtle/underscore_in_localName ok (51ms)
   [19/313] rdf-turtle/localname_with_COLON ok
   [20/313] rdf-turtle/localName_with_assigned_nfc_bmp_PN_CHARS_BASE_character_boundaries ok
   [21/313] rdf-turtle/localName_with_assigned_nfc_PN_CHARS_BASE_character_boundaries ok
@@ -1880,48 +1880,48 @@ Test base: ../../third_party/testing/w3c/sparql/sparql11
   [suite time: 0.0s]
 
 --- entailment ---
-  PASS: bind01 - BIND fixed data for OWL DL
-  PASS: bind02 - BIND fixed data for OWL DL (10ms)
-  PASS: bind03 - BIND fixed data for OWL DL
-  PASS: bind04 - BIND fixed data for OWL DL
-  PASS: bind05 - BIND fixed data for OWL DL
-  PASS: bind06 - BIND fixed data for OWL DL
-  PASS: bind07 - BIND fixed data for OWL DL (10ms)
-  PASS: bind08 - BIND fixed data for OWL DL
+  PASS: bind01 - BIND fixed data for OWL DL (11ms)
+  PASS: bind02 - BIND fixed data for OWL DL (11ms)
+  PASS: bind03 - BIND fixed data for OWL DL (11ms)
+  PASS: bind04 - BIND fixed data for OWL DL (11ms)
+  PASS: bind05 - BIND fixed data for OWL DL (11ms)
+  PASS: bind06 - BIND fixed data for OWL DL (11ms)
+  PASS: bind07 - BIND fixed data for OWL DL (11ms)
+  PASS: bind08 - BIND fixed data for OWL DL (11ms)
   PASS: D-Entailment test to show that  neither literals in subject position nor newly introduced surrogate blank nodes are to be returned in query answers
   PASS: Literal with language tag test
-  PASS: bnodes are not existentials (13ms)
-  PASS: bnodes are not existentials with answer (19ms)
-  PASS: paper-sparqldl-Q1 (29ms)
+  PASS: bnodes are not existentials (14ms)
+  PASS: bnodes are not existentials with answer (22ms)
+  PASS: paper-sparqldl-Q1 (30ms)
   PASS: paper-sparqldl-Q1-rdfs
-  PASS: paper-sparqldl-Q2 (74ms)
-  PASS: paper-sparqldl-Q3 (76ms)
+  PASS: paper-sparqldl-Q2 (79ms)
+  PASS: paper-sparqldl-Q3 (80ms)
   PASS: paper-sparqldl-Q4 (31ms)
-  PASS: paper-sparqldl-Q5 (29ms)
-  PASS: filtered subclass query with (hasChild some Thing) restriction (124ms)
-  PASS: parent query with distinguished variable (41ms)
-  PASS: parent query with (hasChild some Thing) restriction (125ms)
-  PASS: parent query with (hasChild min 1) restriction (121ms)
+  PASS: paper-sparqldl-Q5 (30ms)
+  PASS: filtered subclass query with (hasChild some Thing) restriction (135ms)
+  PASS: parent query with distinguished variable (45ms)
+  PASS: parent query with (hasChild some Thing) restriction (130ms)
+  PASS: parent query with (hasChild min 1) restriction (124ms)
   PASS: parent query with (hasChild some Female) restriction (124ms)
-  PASS: parent query with (hasChild min 1 Female) restriction (127ms)
-  PASS: parent query with (hasChild max 1 Female) restriction (124ms)
-  PASS: parent query with (hasChild exactly 1 Female) restriction (123ms)
-  PASS: subclass query with (hasChild some Thing) restriction (123ms)
-  PASS: Plain literals with language tag are not the same as the same literal without
+  PASS: parent query with (hasChild min 1 Female) restriction (126ms)
+  PASS: parent query with (hasChild max 1 Female) restriction (127ms)
+  PASS: parent query with (hasChild exactly 1 Female) restriction (125ms)
+  PASS: subclass query with (hasChild some Thing) restriction (126ms)
+  PASS: Plain literals with language tag are not the same as the same literal without (11ms)
   PASS: RDF inference test
   PASS: RDF inference test
   PASS: RDF test for blank node cardinalities
-  PASS: simple triple pattern match (14ms)
+  PASS: simple triple pattern match (13ms)
   PASS: RDFS inference test rdfs:subPropertyOf (14ms)
-  PASS: RDFS inference test rdfs:subPropertyOf (13ms)
+  PASS: RDFS inference test rdfs:subPropertyOf (15ms)
   PASS: RDFS inference test combining subPropertyOf and domain
-  PASS: RDFS inference test subClassOf
-  PASS: RDFS inference test subClassOf (14ms)
-  PASS: RDFS inference test domain (13ms)
-  PASS: RDFS inference test range (15ms)
+  PASS: RDFS inference test subClassOf (10ms)
+  PASS: RDFS inference test subClassOf (15ms)
+  PASS: RDFS inference test domain (14ms)
+  PASS: RDFS inference test range (17ms)
   PASS: RDFS inference test rdf:XMLLiteral subclass of rdfs:Literal
-  PASS: RDFS inference test transitivity of subClassOf (12ms)
-  PASS: RDFS inference test transitivity of subPropertyOf (19ms)
+  PASS: RDFS inference test transitivity of subClassOf (13ms)
+  PASS: RDFS inference test transitivity of subPropertyOf (20ms)
   PASS: RDFS inference test subProperty and instances
   PASS: RDFS inference test containers
   PASS: RDFS inference test to show that neither literals in subject position nor newly introduced surrogate blank nodes are to be returned in query answers
@@ -1931,28 +1931,28 @@ Test base: ../../third_party/testing/w3c/sparql/sparql11
       UNMATCHED: ?discount="10"^^<http://www.w3.org/2001/XMLSchema#integer>
   FAIL: RIF Core WG tests: Modeling Brain Anatomy — ASK boolean mismatch: expected true, got false
   FAIL: RIF Core WG tests: RDF Combination Blank Node — ASK boolean mismatch: expected true, got false
-  PASS: simple 1 (53ms)
-  PASS: simple 2 (54ms)
-  PASS: simple 3 (54ms)
-  PASS: simple 4 (55ms)
-  PASS: simple 5 (56ms)
-  PASS: simple 6 (62ms)
-  PASS: simple 7 (56ms)
-  PASS: simple 8 (54ms)
-  PASS: sparqldl-01.rq: triple pattern
+  PASS: simple 1 (56ms)
+  PASS: simple 2 (56ms)
+  PASS: simple 3 (56ms)
+  PASS: simple 4 (57ms)
+  PASS: simple 5 (58ms)
+  PASS: simple 6 (66ms)
+  PASS: simple 7 (59ms)
+  PASS: simple 8 (56ms)
+  PASS: sparqldl-01.rq: triple pattern (10ms)
   PASS: sparqldl-02.rq: simple combined query (11ms)
-  PASS: sparqldl-03.rq: combined query with complex class description (17ms)
-  PASS: sparqldl-04.rq: bug fixing test (12ms)
-  PASS: sparqldl-05.rq: simple undistinguished variable test. (11ms)
-  PASS: sparqldl-06.rq: cycle of undistinguished variables (22ms)
-  PASS: sparqldl-07.rq: two distinguished variables + undist. (22ms)
-  PASS: sparqldl-08.rq: two distinguished variables + undist. (21ms)
-  PASS: sparqldl-09.rq: undist vars test (22ms)
+  PASS: sparqldl-03.rq: combined query with complex class description (18ms)
+  PASS: sparqldl-04.rq: bug fixing test (14ms)
+  PASS: sparqldl-05.rq: simple undistinguished variable test. (14ms)
+  PASS: sparqldl-06.rq: cycle of undistinguished variables (23ms)
+  PASS: sparqldl-07.rq: two distinguished variables + undist. (23ms)
+  PASS: sparqldl-08.rq: two distinguished variables + undist. (22ms)
+  PASS: sparqldl-09.rq: undist vars test (19ms)
   PASS: sparqldl-10.rq: undist vars test (18ms)
   PASS: sparqldl-11.rq: domain test (43ms)
-  PASS: sparqldl-12.rq: range test (44ms)
-  PASS: sparqldl-13.rq: sameAs (30ms)
-  [suite time: 2.3s]
+  PASS: sparqldl-12.rq: range test (43ms)
+  PASS: sparqldl-13.rq: sameAs (28ms)
+  [suite time: 2.4s]
 
 --- exists ---
   PASS: Exists with one constant
@@ -2073,8 +2073,8 @@ Test base: ../../third_party/testing/w3c/sparql/sparql11
   [suite time: 0.0s]
 
 --- json-res ---
-  PASS: jsonres01 - JSON Result Format (12ms)
-  PASS: jsonres02 - JSON Result Format (13ms)
+  PASS: jsonres01 - JSON Result Format (13ms)
+  PASS: jsonres02 - JSON Result Format (15ms)
   PASS: jsonres03 - JSON Result Format
   PASS: jsonres04 - JSON Result Format
   [suite time: 0.0s]
@@ -2093,15 +2093,15 @@ Test base: ../../third_party/testing/w3c/sparql/sparql11
   PASS: Subsets by exclusion (MINUS)
   PASS: Medical, temporal proximity by exclusion (NOT EXISTS)
   PASS: Calculate which sets are subsets of others (include A subsetOf A)
-  PASS: Calculate which sets are subsets of others (exclude A subsetOf A)
+  PASS: Calculate which sets are subsets of others (exclude A subsetOf A) (11ms)
   PASS: Calculate which sets have the same elements
-  PASS: Calculate proper subset (11ms)
+  PASS: Calculate proper subset (14ms)
   PASS: Positive EXISTS 1
   PASS: Positive EXISTS 2
   PASS: Subtraction with MINUS from a fully bound minuend
   PASS: Subtraction with MINUS from a partially bound minuend
   PASS: outer GRAPH operator does not affect MINUS disjointness
-  [suite time: 0.0s]
+  [suite time: 0.1s]
 
 --- project-expression ---
   PASS: Expression is equality
@@ -2380,8 +2380,8 @@ Test base: ../../third_party/testing/w3c/sparql/sparql11
   [suite time: 0.0s]
 
 --- syntax-update-2 ---
-  PASS: syntax-update-other-01 (1.6s)
-  [suite time: 1.6s]
+  PASS: syntax-update-other-01 (2.0s)
+  [suite time: 2.0s]
 
 --- update-silent ---
   PASS: LOAD SILENT
@@ -3006,7 +3006,7 @@ Test base: ../../third_party/testing/w3c/rdf/rdf11
   PASS: IRI-resolution-02
   PASS: IRI-resolution-07
   PASS: IRI-resolution-08
-  [suite time: 0.2s]
+  [suite time: 0.3s]
 
 --- rdf-turtle ---
   PASS: IRI_subject
@@ -3026,7 +3026,7 @@ Test base: ../../third_party/testing/w3c/rdf/rdf11
   PASS: reserved_escaped_localName
   PASS: percent_escaped_localName
   PASS: HYPHEN_MINUS_in_localName
-  PASS: underscore_in_localName
+  PASS: underscore_in_localName (51ms)
   PASS: localname_with_COLON
   PASS: localName_with_assigned_nfc_bmp_PN_CHARS_BASE_character_boundaries
   PASS: localName_with_assigned_nfc_PN_CHARS_BASE_character_boundaries
@@ -3322,7 +3322,7 @@ Test base: ../../third_party/testing/w3c/rdf/rdf11
   PASS: IRI-resolution-02
   PASS: IRI-resolution-07
   PASS: IRI-resolution-08
-  [suite time: 0.1s]
+  [suite time: 0.3s]
 
 --- rdf-xml ---
   PASS: amp-in-url-test001
@@ -3491,7 +3491,7 @@ Test base: ../../third_party/testing/w3c/rdf/rdf11
   PASS: xmlbase-test011
   PASS: xmlbase-test013
   PASS: xmlbase-test014
-  [suite time: 0.1s]
+  [suite time: 0.2s]
 
 ========================================
 Suite Results:

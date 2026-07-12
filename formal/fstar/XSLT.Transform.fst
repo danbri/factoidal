@@ -667,6 +667,19 @@ let alt_matches_core (nsctx:list (string & string)) (alt:string) (nd:dnode) : bo
     (match nd with
      | D_Item (CI_Attr _ _ _ att) -> att.attr_name = str_of_chars (drop_prefix_chars (chars_of a) 1)
      | _ -> false)
+  // Explicit `attribute::` axis prefix in a match pattern -- the same
+  // node test as the `@` abbreviation, just spelled out. Needed for
+  // patterns like `attribute::*` / `attribute::name` (W3C test
+  // node-1102): without this the pattern never matches ANY node (the
+  // final catch-all below only tries the ELEMENT path matcher), so an
+  // `attribute::*` template silently never fires and the attribute
+  // falls through to the built-in template instead.
+  else if a = "attribute::*" then
+    (match nd with D_Item (CI_Attr _ _ _ _) -> true | _ -> false)
+  else if starts_with "attribute::" a then
+    (match nd with
+     | D_Item (CI_Attr _ _ _ att) -> att.attr_name = str_of_chars (drop_prefix_chars (chars_of a) 11)
+     | _ -> false)
   else
     (match nd with
      | D_Item (CI_Elem _ anc n) -> alt_matches_elem nsctx a n anc
@@ -758,7 +771,7 @@ let template_matches (vars:list (string & xp_value)) (nsctx:list (string & strin
 let alt_priority (alt:string) : int =
   let a = trim_str alt in
   if a = "*" || a = "@*" || a = "node()" || a = "text()" || a = "comment()"
-     || a = "processing-instruction()"
+     || a = "processing-instruction()" || a = "attribute::*"
   then -5
   else if contains_char '/' a || contains_char '[' a then 5
   else 0

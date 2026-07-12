@@ -1087,11 +1087,40 @@ and eval_absolute_steps (fuel:nat) (vars:list (string & xp_value)) (nsctx:list (
         match s.step_axis with
         | Ax_Child -> filter_by_node_test nsctx s.step_test [root_item]
         | Ax_Self -> filter_by_node_test nsctx s.step_test [root_item]
+        | Ax_Descendant -> filter_by_node_test nsctx s.step_test (descendant_items [] [] root_node)
         | Ax_DescendantOrSelf -> filter_by_node_test nsctx s.step_test (root_item :: descendant_items [] [] root_node)
+        | Ax_Attribute -> filter_by_node_test nsctx s.step_test (apply_axis Ax_Attribute root_item)
         | _ -> []
       in
       let kept = filter_items_by_preds (fuel - 1) vars nsctx expansion s.step_preds in
-      eval_steps (fuel - 1) vars nsctx kept rest
+      let normal = eval_steps (fuel - 1) vars nsctx kept rest in
+      // The `//` abbreviation parses to an unpredicated `descendant-or-
+      // self::node()` step immediately followed by the real `child::`
+      // test step (see Parser.XPath's `dstep`). Real XPath treats `//X`
+      // at the start of an absolute path as `/descendant-or-self::node()
+      // /child::X`: the document ROOT NODE's only child is the document
+      // ELEMENT, so the root element itself must ALSO be tested against
+      // X as a "child of the document node" candidate -- not just
+      // matched as a `descendant-or-self` member the way every other
+      // step treats it (which `expansion` above already does, via
+      // `kept`/`normal`). This engine has no separate document-node
+      // wrapper (root_node IS the document element), so that extra
+      // candidacy has to be added explicitly here; every other node in
+      // the tree reaches its real children through the ordinary child
+      // axis and needs no such patch (only the document root lacks a
+      // "parent" step to fall out of naturally).
+      if s.step_axis = Ax_DescendantOrSelf && s.step_test = NT_Node && Nil? s.step_preds then
+        (match rest with
+         | nxt :: rest2 ->
+           if nxt.step_axis = Ax_Child then
+             let root_as_child =
+               if matches_node_test nsctx nxt.step_test root_item then [root_item] else [] in
+             let root_as_child' = filter_items_by_preds (fuel - 1) vars nsctx root_as_child nxt.step_preds in
+             let extra = eval_steps (fuel - 1) vars nsctx root_as_child' rest2 in
+             extra @ normal
+           else normal
+         | [] -> normal)
+      else normal
 
 and eval_steps (fuel:nat) (vars:list (string & xp_value)) (nsctx:list (string & string)) (items:list xctx_item) (steps:list xp_step)
   : Tot (list xctx_item) (decreases fuel) =

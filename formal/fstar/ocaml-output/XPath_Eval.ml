@@ -1230,14 +1230,45 @@ and eval_absolute_steps (fuel : Prims.nat)
                filter_by_node_test nsctx s.Parser_XPath.step_test [root_item]
            | Parser_XPath.Ax_Self ->
                filter_by_node_test nsctx s.Parser_XPath.step_test [root_item]
+           | Parser_XPath.Ax_Descendant ->
+               filter_by_node_test nsctx s.Parser_XPath.step_test
+                 (descendant_items [] [] root_node)
            | Parser_XPath.Ax_DescendantOrSelf ->
                filter_by_node_test nsctx s.Parser_XPath.step_test (root_item
                  :: (descendant_items [] [] root_node))
+           | Parser_XPath.Ax_Attribute ->
+               filter_by_node_test nsctx s.Parser_XPath.step_test
+                 (apply_axis Parser_XPath.Ax_Attribute root_item)
            | uu___1 -> [] in
          let kept =
            filter_items_by_preds (fuel - Prims.int_one) vars nsctx expansion
              s.Parser_XPath.step_preds in
-         eval_steps (fuel - Prims.int_one) vars nsctx kept rest)
+         let normal = eval_steps (fuel - Prims.int_one) vars nsctx kept rest in
+         if
+           ((s.Parser_XPath.step_axis = Parser_XPath.Ax_DescendantOrSelf) &&
+              (s.Parser_XPath.step_test = Parser_XPath.NT_Node))
+             && (Prims.uu___is_Nil s.Parser_XPath.step_preds)
+         then
+           (match rest with
+            | nxt::rest2 ->
+                if nxt.Parser_XPath.step_axis = Parser_XPath.Ax_Child
+                then
+                  let root_as_child =
+                    if
+                      matches_node_test nsctx nxt.Parser_XPath.step_test
+                        root_item
+                    then [root_item]
+                    else [] in
+                  let root_as_child' =
+                    filter_items_by_preds (fuel - Prims.int_one) vars nsctx
+                      root_as_child nxt.Parser_XPath.step_preds in
+                  let extra =
+                    eval_steps (fuel - Prims.int_one) vars nsctx
+                      root_as_child' rest2 in
+                  FStar_List_Tot_Base.op_At extra normal
+                else normal
+            | [] -> normal)
+         else normal)
 and eval_steps (fuel : Prims.nat)
   (vars : (Prims.string * xp_value) Prims.list)
   (nsctx : (Prims.string * Prims.string) Prims.list)
