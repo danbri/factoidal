@@ -71,11 +71,7 @@ open XPath.Eval
 //   document-level comments/PIs around the root element (Parser.XML
 //   models the source as the root element, so a sibling comment/PI of
 //   the root is not in the tree),
-//   XPath 2.0 comparison operators (eq/ne/lt/le/gt/ge), positional
-//   predicates INSIDE xsl:template MATCH patterns (a match-pattern
-//   predicate is still evaluated as a plain boolean at position 1 --
-//   positional predicates inside SELECT expressions ARE correct, via
-//   XPath.Eval's position/size-threaded predicate evaluation), and the
+//   XPath 2.0 comparison operators (eq/ne/lt/le/gt/ge), and the
 //   processing-instruction() node test (a gap inherited from XPath.Eval;
 //   PI alternatives are dropped from a union select before evaluation).
 //   call-template recursion is bounded by the shared fuel parameter: a
@@ -237,8 +233,28 @@ let rec char_list_cmp (a b:list char) : Tot int (decreases a) =
     let cy = FStar.Char.int_of_char y in
     if cx < cy then -1 else if cx > cy then 1 else char_list_cmp xs ys
 
+// Compares two namespace-declaration attributes for build_nsscope's
+// stable sort, by PREFIX rather than the raw attr_name string -- and
+// the unprefixed default-namespace declaration (xmlns="...", prefix
+// "") sorts LAST, not first. A plain string compare treats "xmlns" as
+// a prefix of "xmlns:x" (hence "less than"), which is what this
+// function used to do; but that puts the default namespace first,
+// which is wrong for apply-templates/conflict-resolution-1301's
+// `<fo:root>` (wants xmlns:fo before the default xmlns). Prefixed
+// declarations among themselves still sort alphabetically, which is
+// what copy/copy-3102's `<out>` needs (xmlns:foo, xmlns:huh,
+// xmlns:joes, no default present at all) -- so this single comparator
+// change satisfies both without a stylesheet-order/sorted-order split:
+// see the long comment on build_nsscope below for why an earlier
+// attempt at a stylesheet-order-vs-sorted-order PROVENANCE split
+// turned out not to be the right axis at all.
 let attr_name_cmp (a b:xml_attribute) : int =
-  char_list_cmp (chars_of a.attr_name) (chars_of b.attr_name)
+  match ns_decl_prefix a.attr_name, ns_decl_prefix b.attr_name with
+  | Some pa, Some pb ->
+    if pa = "" && pb <> "" then 1
+    else if pa <> "" && pb = "" then -1
+    else char_list_cmp (chars_of pa) (chars_of pb)
+  | _, _ -> char_list_cmp (chars_of a.attr_name) (chars_of b.attr_name)
 
 (* ================================================================ *)
 (* Result nodes: an instantiated instruction produces a sequence of   *)
@@ -747,15 +763,42 @@ let select_nodes (ctx:dnode) (pos size:nat) (vars:list (string & xp_value)) (nsc
   if is_simple_child_union sel then select_child_union nsctx ctx (split_on_char '|' sel)
   else eval_nodeset_dn ctx pos size vars nsctx sel
 
+// XSLT 1.0 5.5 proximity position: position()/last() inside a match-
+// pattern predicate ("name[position()=last()]", apply-templates/
+// conflict-resolution-1301) are NOT the surrounding apply-templates/
+// for-each position -- they count the node among its OWN SIBLINGS that
+// satisfy the pattern's node test (namepart), independent of the
+// enclosing context. siblings_of/item_path/path_compare (XPath.Eval)
+// already rebuild a node's parent-relative sibling list with document-
+// order paths for the sibling axes, so this reuses them rather than
+// re-deriving parent/child bookkeeping. A node with no ancestors (the
+// document's root element) has no siblings and is trivially (1, 1).
+let match_proximity (nsctx:list (string & string)) (namepart:string) (it:xctx_item) : (nat & nat) =
+  let sibs = siblings_of it in
+  if Nil? sibs then (1, 1)
+  else
+    let matching = List.Tot.filter (fun s -> alt_matches_core nsctx namepart (D_Item s)) sibs in
+    let p = item_path it in
+    let before = List.Tot.filter (fun s -> path_compare (item_path s) p < 0) matching in
+    (List.Tot.length before + 1, List.Tot.length matching)
+
 // Evaluate a "name[pred]" predicate best-effort as a boolean against
-// the candidate node. Self-fuelled via eval_bool.
+// the candidate node. Self-fuelled via eval_bool. The predicate is
+// evaluated with the node's PROXIMITY position/size (see
+// match_proximity), not the caller's apply-templates/for-each
+// position -- those are unrelated per XSLT 5.5.
 let alt_matches (vars:list (string & xp_value)) (nsctx:list (string & string)) (alt:string) (nd:dnode) : bool =
   let (namepart, predopt) = split_predicate alt in
   match predopt with
   | None -> alt_matches_core nsctx alt nd
   | Some pred ->
     if not (alt_matches_core nsctx namepart nd) then false
-    else eval_bool (dnode_ci nd) 1 1 vars nsctx pred
+    else
+      match nd with
+      | D_Doc _ -> eval_bool (dnode_ci nd) 1 1 vars nsctx pred
+      | D_Item it ->
+        let (p, s) = match_proximity nsctx namepart it in
+        eval_bool it p s vars nsctx pred
 
 let rec any_alt_matches (vars:list (string & xp_value)) (nsctx:list (string & string)) (alts:list string) (nd:dnode)
   : Tot bool (decreases alts) =
@@ -1408,6 +1451,34 @@ let parse_prefix_list (s:string) : list string =
 // In-scope namespace declarations of the stylesheet element that
 // literal result elements must copy: every xmlns declaration EXCEPT
 // the XSLT namespace and any prefix named in exclude-result-prefixes.
+//
+// Ordering note (2026-07-13): apply-templates/conflict-resolution-1301
+// and copy/copy-3102 both attach THIS SAME list (via xs_nsscope, below)
+// to a literal result element -- 1301's `<fo:root>` wants xmlns:fo
+// before the stylesheet's default xmlns, and 3102's `<out>` wants its
+// three prefixed declarations alphabetical. An earlier attempt assumed
+// the two tests needed different ORDERING STRATEGIES by PROVENANCE
+// (raw stylesheet-declaration-order for this LRE path vs.
+// sorted-by-prefix for the separate xsl:copy/copy-of source-namespace
+// path in instantiate_copy/copy_of_item below) and flipping xs_nsscope
+// to emit raw stylesheet order broke 3102 (whose stylesheet declares
+// xmlns:foo, xmlns:joes, xmlns:huh in THAT order, not the expected
+// xmlns:foo, xmlns:huh, xmlns:joes). Tracing both fixtures byte for
+// byte shows they are not actually on different provenance paths --
+// 3102's <out> reaches this SAME build_nsscope/xs_nsscope list, same as
+// 1301's <fo:root>. The real defect was narrower: attr_name_cmp sorted
+// by the raw attribute-name STRING, under which "xmlns" (default,
+// prefix "") sorts before "xmlns:x" (any prefixed decl) because it is
+// a literal string prefix of it -- so the default namespace always
+// came first. Real serializers commonly put it last. Fixing
+// attr_name_cmp to sort by extracted PREFIX with the empty (default)
+// prefix pushed to the end satisfies both fixtures with the existing
+// single sorted-order list: no stylesheet-order/sorted-order split
+// needed after all. The xsl:copy / copy-of source-namespace path
+// (inscope_ns/ns_add/copy_of_item/instantiate_copy) never sorts --
+// it preserves source-document declaration order, unaffected by this
+// change, which remains correct provenance separation in its own
+// right (it just isn't what distinguishes 1301 from 3102).
 let build_nsscope (attrs:list xml_attribute) : list xml_attribute =
   let excluded = parse_prefix_list (attr_or "exclude-result-prefixes" "" attrs) in
   List.Tot.sortWith attr_name_cmp
