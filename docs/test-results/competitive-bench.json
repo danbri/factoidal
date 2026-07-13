@@ -1,11 +1,11 @@
 {
-  "generated_at": "2026-07-12T00:23:41Z",
+  "generated_at": "2026-07-13T05:37:42Z",
   "host_note": "cloud sandbox, 4-core Linux, shared with other sessions -- wall-clock, not isolated benchmark hardware",
-  "factoidal_commit": "49e80257c8a11176ec82cd8e434575b27d836ae6",
+  "factoidal_commit": "d623bdbe5d1e17e181b31597953a417431c07d94",
   "engines": {
     "factoidal": {
       "available": true,
-      "version": "factoidal (bin/linux-x86_64), commit 49e8025",
+      "version": "factoidal (bin/linux-x86_64), commit d623bdb",
       "provenance": "working-tree bin/ (matches HEAD, git status clean)"
     },
     "jena": {
@@ -28,7 +28,7 @@
       "bytes": 17363312
     },
     "lifesci-all": {
-      "path": "/tmp/bench-competitive-v274mush/lifesci-all.ttl",
+      "path": "/tmp/bench-competitive-zm3ot7k2/lifesci-all.ttl",
       "bytes": 29008189,
       "source_files": [
         "Protein__protein2.ttl",
@@ -97,17 +97,17 @@
       "n_runs": 3,
       "n_ok": 3,
       "wall_s_runs": [
-        9.10786410899999,
-        8.127819905999957,
-        8.052486409999972
+        11.461363479999989,
+        9.794164553999963,
+        9.316430894000007
       ],
-      "wall_s_median": 8.127819905999957,
+      "wall_s_median": 9.794164553999963,
       "peak_rss_kb_runs": [
-        436760,
-        436760,
-        436760
+        436680,
+        436656,
+        436732
       ],
-      "peak_rss_kb_median": 436760,
+      "peak_rss_kb_median": 436680,
       "any_timed_out": false
     },
     {
@@ -117,17 +117,17 @@
       "n_runs": 3,
       "n_ok": 3,
       "wall_s_runs": [
-        7.323799661999999,
-        6.531235938999998,
-        6.622176361000015
+        9.93030508999999,
+        10.391787600999976,
+        10.35712824799998
       ],
-      "wall_s_median": 6.622176361000015,
+      "wall_s_median": 10.35712824799998,
       "peak_rss_kb_runs": [
-        436760,
-        436756,
-        436756
+        436676,
+        436644,
+        436680
       ],
-      "peak_rss_kb_median": 436756,
+      "peak_rss_kb_median": 436676,
       "any_timed_out": false
     },
     {
@@ -137,17 +137,17 @@
       "n_runs": 3,
       "n_ok": 3,
       "wall_s_runs": [
-        14.026659364000011,
-        7.849988059999987,
-        8.259815367000044
+        19.792755666000005,
+        20.256340379999983,
+        14.761490499000047
       ],
-      "wall_s_median": 8.259815367000044,
+      "wall_s_median": 19.792755666000005,
       "peak_rss_kb_runs": [
-        1665816,
-        1636852,
-        1598048
+        1610248,
+        1839448,
+        1674500
       ],
-      "peak_rss_kb_median": 1636852,
+      "peak_rss_kb_median": 1674500,
       "any_timed_out": false
     },
     {
@@ -157,19 +157,19 @@
       "n_runs": 3,
       "n_ok": 3,
       "wall_s_runs": [
-        8.248483067999985,
-        8.055194331999985,
-        8.718233481000027
+        16.49500945799997,
+        20.210613109000008,
+        21.898618495999983
       ],
-      "wall_s_median": 8.248483067999985,
+      "wall_s_median": 20.210613109000008,
       "peak_rss_kb_runs": [
-        1982636,
-        1948988,
-        1918012
+        1877308,
+        2181972,
+        2081376
       ],
-      "peak_rss_kb_median": 1948988,
+      "peak_rss_kb_median": 2081376,
       "any_timed_out": false,
-      "last_db_dir": "/tmp/bench-competitive-v274mush/tdb2-gene-run2"
+      "last_db_dir": "/tmp/bench-competitive-zm3ot7k2/tdb2-gene-run2"
     },
     {
       "engine": "pyoxigraph (in-memory)",
@@ -178,31 +178,31 @@
       "n_runs": 3,
       "n_ok": 3,
       "wall_s_runs": [
-        2.0916605570000115,
-        2.0255271130000096,
-        1.995545361999973
+        2.6501713969999514,
+        2.835162883999999,
+        2.856241546000035
       ],
-      "wall_s_median": 2.0255271130000096,
+      "wall_s_median": 2.835162883999999,
       "peak_rss_kb_runs": [
-        322468,
-        322472,
-        322464
+        321300,
+        321324,
+        321348
       ],
-      "peak_rss_kb_median": 322468,
+      "peak_rss_kb_median": 321324,
       "any_timed_out": false
     },
     {
       "engine": "factoidal cottas-import (on-disk build)",
       "corpus": "gene",
       "method": "tools/corpus_pipeline.py materialize-nq-cottas-corpus --build-sidecars",
-      "wall_s": 42.71157653800003,
-      "peak_rss_kb": 1821692,
+      "wall_s": 56.71950941,
+      "peak_rss_kb": 1818804,
       "returncode": 0,
       "timed_out": false,
-      "stdout_path": "/tmp/bench-competitive-v274mush/cottas-import-gene-bench.out",
-      "stderr_path": "/tmp/bench-competitive-v274mush/cottas-import-gene-bench.err",
+      "stdout_path": "/tmp/bench-competitive-zm3ot7k2/cottas-import-gene-bench.out",
+      "stderr_path": "/tmp/bench-competitive-zm3ot7k2/cottas-import-gene-bench.err",
       "ok": true,
-      "artifact_path": "/tmp/bench-competitive-v274mush/cottas-gene/gene-bench/v1/data.cottas",
+      "artifact_path": "/tmp/bench-competitive-zm3ot7k2/cottas-gene/gene-bench/v1/data.cottas",
       "n_runs": 1,
       "note": "single run (import cost ~2 min on gene.ttl; median-of-3 not run for this workload)"
     },
@@ -213,17 +213,17 @@
       "n_runs": 3,
       "n_ok": 3,
       "wall_s_runs": [
-        11.10207513399996,
-        11.17352224299998,
-        11.151867691000007
+        13.66056487000003,
+        13.921584487000018,
+        13.950102375000029
       ],
-      "wall_s_median": 11.151867691000007,
+      "wall_s_median": 13.921584487000018,
       "peak_rss_kb_runs": [
-        660048,
-        660048,
-        660048
+        659764,
+        659968,
+        659968
       ],
-      "peak_rss_kb_median": 660048,
+      "peak_rss_kb_median": 659968,
       "any_timed_out": false
     },
     {
@@ -233,17 +233,17 @@
       "n_runs": 3,
       "n_ok": 3,
       "wall_s_runs": [
-        11.194716920000019,
-        11.116246666999984,
-        11.096542433000025
+        13.655491668999957,
+        13.743284131999985,
+        13.766522057999964
       ],
-      "wall_s_median": 11.116246666999984,
+      "wall_s_median": 13.743284131999985,
       "peak_rss_kb_runs": [
-        660048,
-        660044,
-        660044
+        659964,
+        659964,
+        659964
       ],
-      "peak_rss_kb_median": 660044,
+      "peak_rss_kb_median": 659964,
       "any_timed_out": false
     },
     {
@@ -253,17 +253,17 @@
       "n_runs": 3,
       "n_ok": 3,
       "wall_s_runs": [
-        12.037412471000039,
-        11.201513342999988,
-        11.098393146000035
+        15.402275480999947,
+        13.606187182999975,
+        14.12052616699998
       ],
-      "wall_s_median": 11.201513342999988,
+      "wall_s_median": 14.12052616699998,
       "peak_rss_kb_runs": [
-        1691628,
-        1712356,
-        1810824
+        1798396,
+        1771452,
+        1746284
       ],
-      "peak_rss_kb_median": 1712356,
+      "peak_rss_kb_median": 1771452,
       "any_timed_out": false
     },
     {
@@ -273,19 +273,19 @@
       "n_runs": 3,
       "n_ok": 3,
       "wall_s_runs": [
-        10.828227848999973,
-        11.259453074000021,
-        11.323018262000005
+        14.838322141000049,
+        13.51187956800004,
+        16.94871470399994
       ],
-      "wall_s_median": 11.259453074000021,
+      "wall_s_median": 14.838322141000049,
       "peak_rss_kb_runs": [
-        2117856,
-        2260248,
-        2328644
+        2406280,
+        2325560,
+        2466004
       ],
-      "peak_rss_kb_median": 2260248,
+      "peak_rss_kb_median": 2406280,
       "any_timed_out": false,
-      "last_db_dir": "/tmp/bench-competitive-v274mush/tdb2-lifesci-all-run2"
+      "last_db_dir": "/tmp/bench-competitive-zm3ot7k2/tdb2-lifesci-all-run2"
     },
     {
       "engine": "pyoxigraph (in-memory)",
@@ -294,17 +294,17 @@
       "n_runs": 3,
       "n_ok": 3,
       "wall_s_runs": [
-        3.412853367000025,
-        3.2773950470000273,
-        3.3310899089999566
+        4.22122187399998,
+        4.396086672000024,
+        4.372327150999922
       ],
-      "wall_s_median": 3.3310899089999566,
+      "wall_s_median": 4.372327150999922,
       "peak_rss_kb_runs": [
-        463260,
-        463280,
-        463224
+        462144,
+        462140,
+        462140
       ],
-      "peak_rss_kb_median": 463260,
+      "peak_rss_kb_median": 462140,
       "any_timed_out": false
     }
   ],
@@ -312,498 +312,498 @@
     {
       "engine": "factoidal-cli-fast-path",
       "query": "q1_count_star",
-      "cold_s": 5.321488680000016,
-      "cold_peak_rss_kb": 47444,
+      "cold_s": 6.388562378000074,
+      "cold_peak_rss_kb": 47256,
       "row_count": 1,
       "warm_s_runs": [
-        5.383506132999969,
-        5.352995594000049,
-        5.335588637000001
+        6.4691323810000085,
+        6.316826043999981,
+        6.415120200000047
       ],
-      "warm_s_median": 5.352995594000049,
+      "warm_s_median": 6.415120200000047,
       "answer_sha256": "03379de524d3f0e6"
     },
     {
       "engine": "factoidal-cli-forced-slow-path (kill switch)",
       "query": "q1_count_star",
-      "cold_s": 6.105602347000058,
-      "cold_peak_rss_kb": 272020,
+      "cold_s": 7.056874790000052,
+      "cold_peak_rss_kb": 271932,
       "row_count": 1,
       "warm_s_runs": [
-        5.733970454000087,
-        6.084022645999994,
-        5.723271183999941
+        7.042871160999994,
+        6.996607468000093,
+        7.193806097999982
       ],
-      "warm_s_median": 5.733970454000087,
+      "warm_s_median": 7.042871160999994,
       "answer_sha256": "03379de524d3f0e6"
     },
     {
       "engine": "factoidal-cottas (on-disk)",
       "query": "q1_count_star",
-      "cold_s": 0.40993546400000014,
-      "cold_peak_rss_kb": 62012,
+      "cold_s": 0.5957100439999294,
+      "cold_peak_rss_kb": 61884,
       "row_count": 1,
       "warm_s_runs": [
-        0.41359417199998916,
-        0.4058704049999733,
-        0.4204313339999999
+        0.5771486609999101,
+        0.5630405470000142,
+        0.5861969470000759
       ],
-      "warm_s_median": 0.41359417199998916,
+      "warm_s_median": 0.5771486609999101,
       "answer_sha256": "03379de524d3f0e6"
     },
     {
       "engine": "jena-arq-inmemory",
       "query": "q1_count_star",
-      "cold_s": 13.655532606000065,
-      "cold_peak_rss_kb": 1642420,
+      "cold_s": 11.744595393000054,
+      "cold_peak_rss_kb": 1618308,
       "row_count": 1,
       "warm_s_runs": [
-        13.680334556000048,
-        14.099728899999945,
-        9.078083694000043
+        12.324607259000004,
+        12.000394490999952,
+        11.863285571999995
       ],
-      "warm_s_median": 13.680334556000048,
+      "warm_s_median": 12.000394490999952,
       "answer_sha256": "03379de524d3f0e6"
     },
     {
       "engine": "jena-tdb2 (on-disk)",
       "query": "q1_count_star",
-      "cold_s": 3.868071415999907,
-      "cold_peak_rss_kb": 398660,
+      "cold_s": 2.1388238260000207,
+      "cold_peak_rss_kb": 351808,
       "row_count": 1,
       "warm_s_runs": [
-        2.724349607000022,
-        2.0734880759999896,
-        2.2663362120000556
+        2.1720956199999364,
+        1.9440183120000256,
+        1.981640311000092
       ],
-      "warm_s_median": 2.2663362120000556,
+      "warm_s_median": 1.981640311000092,
       "answer_sha256": "03379de524d3f0e6"
     },
     {
       "engine": "factoidal-cli-fast-path",
       "query": "q2_bound_predicate_count",
-      "cold_s": 5.264501034999967,
-      "cold_peak_rss_kb": 47448,
+      "cold_s": 6.585904866000078,
+      "cold_peak_rss_kb": 47256,
       "row_count": 1,
       "warm_s_runs": [
-        5.2733372710000594,
-        5.2744183410000005,
-        5.320380919000058
+        6.777239200000054,
+        6.978783058999966,
+        6.487352603999966
       ],
-      "warm_s_median": 5.2744183410000005,
+      "warm_s_median": 6.777239200000054,
       "answer_sha256": "fe789892d36760f0"
     },
     {
       "engine": "factoidal-cli-forced-slow-path (kill switch)",
       "query": "q2_bound_predicate_count",
-      "cold_s": 6.440723536000064,
-      "cold_peak_rss_kb": 396308,
+      "cold_s": 7.964634136999962,
+      "cold_peak_rss_kb": 396228,
       "row_count": 1,
       "warm_s_runs": [
-        6.375154633000079,
-        6.4161646350000865,
-        6.361831217000031
+        8.08161832299993,
+        7.974953046999985,
+        7.794121197000095
       ],
-      "warm_s_median": 6.375154633000079,
+      "warm_s_median": 7.974953046999985,
       "answer_sha256": "fe789892d36760f0"
     },
     {
       "engine": "factoidal-cottas (on-disk)",
       "query": "q2_bound_predicate_count",
-      "cold_s": 1.1787590940000428,
-      "cold_peak_rss_kb": 94392,
+      "cold_s": 1.6520891160000701,
+      "cold_peak_rss_kb": 94436,
       "row_count": 1,
       "warm_s_runs": [
-        1.1819368420000274,
-        1.1736477189999732,
-        1.1785672629999908
+        1.6593573089999154,
+        1.6100769380000202,
+        1.620723957999985
       ],
-      "warm_s_median": 1.1785672629999908,
+      "warm_s_median": 1.620723957999985,
       "answer_sha256": "fe789892d36760f0"
     },
     {
       "engine": "jena-arq-inmemory",
       "query": "q2_bound_predicate_count",
-      "cold_s": 12.777287659999956,
-      "cold_peak_rss_kb": 1602908,
+      "cold_s": 15.98504187200001,
+      "cold_peak_rss_kb": 1794816,
       "row_count": 1,
       "warm_s_runs": [
-        8.538363834999927,
-        8.772267567999961,
-        8.96640042699994
+        12.559842798999966,
+        11.803171926000005,
+        10.978247534000047
       ],
-      "warm_s_median": 8.772267567999961,
+      "warm_s_median": 11.803171926000005,
       "answer_sha256": "fe789892d36760f0"
     },
     {
       "engine": "jena-tdb2 (on-disk)",
       "query": "q2_bound_predicate_count",
-      "cold_s": 1.5438385930000322,
-      "cold_peak_rss_kb": 352948,
+      "cold_s": 1.9766894760000469,
+      "cold_peak_rss_kb": 352780,
       "row_count": 1,
       "warm_s_runs": [
-        1.5826131320000059,
-        1.457894634000013,
-        1.4489592099999982
+        1.8239852979999114,
+        1.8321761529999776,
+        1.8450821000000133
       ],
-      "warm_s_median": 1.457894634000013,
+      "warm_s_median": 1.8321761529999776,
       "answer_sha256": "fe789892d36760f0"
     },
     {
       "engine": "factoidal-cli-fast-path",
       "query": "q3_subject_point_lookup",
-      "cold_s": 6.715540751000049,
-      "cold_peak_rss_kb": 436760,
+      "cold_s": 8.312642003000065,
+      "cold_peak_rss_kb": 436680,
       "row_count": 3,
       "warm_s_runs": [
-        6.6836233770000035,
-        6.623865281000008,
-        6.537866967000014
+        8.112960002999898,
+        7.941857914000025,
+        8.059814954999979
       ],
-      "warm_s_median": 6.623865281000008,
+      "warm_s_median": 8.059814954999979,
       "answer_sha256": "fe19111a52800397"
     },
     {
       "engine": "factoidal-cli-forced-slow-path (kill switch)",
       "query": "q3_subject_point_lookup",
-      "cold_s": 6.521365936999928,
-      "cold_peak_rss_kb": 436716,
+      "cold_s": 8.227125450000017,
+      "cold_peak_rss_kb": 436676,
       "row_count": 3,
       "warm_s_runs": [
-        6.689573377999977,
-        6.627129769000021,
-        6.613717573000031
+        8.252503961999992,
+        8.365392583000016,
+        8.450594784000032
       ],
-      "warm_s_median": 6.627129769000021,
+      "warm_s_median": 8.365392583000016,
       "answer_sha256": "fe19111a52800397"
     },
     {
       "engine": "factoidal-cottas (on-disk)",
       "query": "q3_subject_point_lookup",
-      "cold_s": 2.3184275259999367,
-      "cold_peak_rss_kb": 96116,
+      "cold_s": 3.2001886319999358,
+      "cold_peak_rss_kb": 96096,
       "row_count": 3,
       "warm_s_runs": [
-        2.3531179130000055,
-        2.3382426739999573,
-        2.3613562799999954
+        3.118335221999928,
+        3.2014279119999856,
+        3.170903945999953
       ],
-      "warm_s_median": 2.3531179130000055,
+      "warm_s_median": 3.170903945999953,
       "answer_sha256": "fe19111a52800397"
     },
     {
       "engine": "jena-arq-inmemory",
       "query": "q3_subject_point_lookup",
-      "cold_s": 7.816516160999981,
-      "cold_peak_rss_kb": 1691884,
+      "cold_s": 10.94206457200005,
+      "cold_peak_rss_kb": 1520712,
       "row_count": 3,
       "warm_s_runs": [
-        7.827997307000032,
-        7.8737663200000725,
-        7.914389859999915
+        12.522737604999975,
+        10.953087598000138,
+        10.158962883999948
       ],
-      "warm_s_median": 7.8737663200000725,
+      "warm_s_median": 10.953087598000138,
       "answer_sha256": "fe19111a52800397"
     },
     {
       "engine": "jena-tdb2 (on-disk)",
       "query": "q3_subject_point_lookup",
-      "cold_s": 0.9840599940000629,
-      "cold_peak_rss_kb": 124968,
+      "cold_s": 1.233972144999825,
+      "cold_peak_rss_kb": 124492,
       "row_count": 3,
       "warm_s_runs": [
-        0.9341524849999132,
-        0.9560419260000117,
-        0.9216025399999808
+        1.2338338550000572,
+        1.2262290149999444,
+        1.2188287219998983
       ],
-      "warm_s_median": 0.9341524849999132,
+      "warm_s_median": 1.2262290149999444,
       "answer_sha256": "fe19111a52800397"
     },
     {
       "engine": "factoidal-cli-fast-path",
       "query": "q4_two_pattern_join",
-      "cold_s": 8.209452646999921,
-      "cold_peak_rss_kb": 579188,
+      "cold_s": 10.45783447000008,
+      "cold_peak_rss_kb": 579108,
       "row_count": 14,
       "warm_s_runs": [
-        8.303516069000011,
-        8.227870488000008,
-        8.310251589000018
+        10.271731456999987,
+        10.562899231000074,
+        10.157616834999999
       ],
-      "warm_s_median": 8.303516069000011,
+      "warm_s_median": 10.271731456999987,
       "answer_sha256": "ae7167c4b350975c"
     },
     {
       "engine": "factoidal-cli-forced-slow-path (kill switch)",
       "query": "q4_two_pattern_join",
-      "cold_s": 8.226351965000049,
-      "cold_peak_rss_kb": 579188,
+      "cold_s": 10.34955899900001,
+      "cold_peak_rss_kb": 579108,
       "row_count": 14,
       "warm_s_runs": [
-        8.297998520999954,
-        8.194345960000078,
-        8.248375357999976
+        10.674361425000143,
+        10.624508856000148,
+        10.59922328000016
       ],
-      "warm_s_median": 8.248375357999976,
+      "warm_s_median": 10.624508856000148,
       "answer_sha256": "ae7167c4b350975c"
     },
     {
       "engine": "factoidal-cottas (on-disk)",
       "query": "q4_two_pattern_join",
-      "cold_s": 4.399261207999984,
-      "cold_peak_rss_kb": 148296,
+      "cold_s": 6.149263636999876,
+      "cold_peak_rss_kb": 148180,
       "row_count": 14,
       "warm_s_runs": [
-        4.374264891000053,
-        4.4291271480000205,
-        4.429431388000012
+        6.082652700000153,
+        5.940078668000069,
+        5.940923924000117
       ],
-      "warm_s_median": 4.4291271480000205,
+      "warm_s_median": 5.940923924000117,
       "answer_sha256": "ae7167c4b350975c"
     },
     {
       "engine": "jena-arq-inmemory",
       "query": "q4_two_pattern_join",
-      "cold_s": 9.36106634600003,
-      "cold_peak_rss_kb": 1643792,
+      "cold_s": 15.022232218999989,
+      "cold_peak_rss_kb": 1645000,
       "row_count": 14,
       "warm_s_runs": [
-        8.964092865999987,
-        9.272507270999995,
-        9.238221250999914
+        16.614558085,
+        13.947741629999882,
+        11.645809232000147
       ],
-      "warm_s_median": 9.238221250999914,
+      "warm_s_median": 13.947741629999882,
       "answer_sha256": "ae7167c4b350975c"
     },
     {
       "engine": "jena-tdb2 (on-disk)",
       "query": "q4_two_pattern_join",
-      "cold_s": 3.352454196999929,
-      "cold_peak_rss_kb": 573216,
+      "cold_s": 4.250731491000124,
+      "cold_peak_rss_kb": 675404,
       "row_count": 14,
       "warm_s_runs": [
-        3.2652619199999435,
-        3.228928881999991,
-        3.289120900000057
+        4.324417080999865,
+        4.3664107659999445,
+        4.217746284999976
       ],
-      "warm_s_median": 3.2652619199999435,
+      "warm_s_median": 4.324417080999865,
       "answer_sha256": "ae7167c4b350975c"
     },
     {
       "engine": "factoidal-cli-fast-path",
       "query": "q5_group_by",
-      "cold_s": 6.6565476110000645,
-      "cold_peak_rss_kb": 426904,
+      "cold_s": 8.420198491000065,
+      "cold_peak_rss_kb": 426824,
       "row_count": 6,
       "warm_s_runs": [
-        6.563022405999845,
-        6.561999990999993,
-        6.667050635999885
+        8.293956393999906,
+        8.284913163000056,
+        8.246363322999969
       ],
-      "warm_s_median": 6.563022405999845,
+      "warm_s_median": 8.284913163000056,
       "answer_sha256": "e709bd9ceadd3c45"
     },
     {
       "engine": "factoidal-cli-forced-slow-path (kill switch)",
       "query": "q5_group_by",
-      "cold_s": 6.914672239000083,
-      "cold_peak_rss_kb": 426904,
+      "cold_s": 8.122968662999938,
+      "cold_peak_rss_kb": 426820,
       "row_count": 6,
       "warm_s_runs": [
-        6.611881783000172,
-        6.982822731999931,
-        6.588408345000062
+        8.270399085999998,
+        8.382287301000133,
+        8.612940827000102
       ],
-      "warm_s_median": 6.611881783000172,
+      "warm_s_median": 8.382287301000133,
       "answer_sha256": "e709bd9ceadd3c45"
     },
     {
       "engine": "factoidal-cottas (on-disk)",
       "query": "q5_group_by",
-      "cold_s": 23.40184786299983,
-      "cold_peak_rss_kb": 687384,
+      "cold_s": 1.953709629000059,
+      "cold_peak_rss_kb": 90984,
       "row_count": 6,
       "warm_s_runs": [
-        23.483406276000096,
-        23.49416622700005,
-        23.758781806999878
+        1.9831488109998645,
+        1.9184228910000911,
+        1.9283375280001565
       ],
-      "warm_s_median": 23.49416622700005,
+      "warm_s_median": 1.9283375280001565,
       "answer_sha256": "e709bd9ceadd3c45"
     },
     {
       "engine": "jena-arq-inmemory",
       "query": "q5_group_by",
-      "cold_s": 8.794915141000047,
-      "cold_peak_rss_kb": 1631456,
+      "cold_s": 11.550834729999906,
+      "cold_peak_rss_kb": 1555884,
       "row_count": 6,
       "warm_s_runs": [
-        10.723308177000035,
-        9.557823064000104,
-        9.723114900999917
+        11.724915625999984,
+        11.226829653000095,
+        10.822765032000007
       ],
-      "warm_s_median": 9.723114900999917,
+      "warm_s_median": 11.226829653000095,
       "answer_sha256": "e709bd9ceadd3c45"
     },
     {
       "engine": "jena-tdb2 (on-disk)",
       "query": "q5_group_by",
-      "cold_s": 1.8367424269999901,
-      "cold_peak_rss_kb": 354084,
+      "cold_s": 2.168676124000058,
+      "cold_peak_rss_kb": 380808,
       "row_count": 6,
       "warm_s_runs": [
-        1.8772366209998381,
-        1.786456539000028,
-        1.7209777210000539
+        2.274714586000073,
+        2.0838234540001395,
+        2.1292155050000474
       ],
-      "warm_s_median": 1.786456539000028,
+      "warm_s_median": 2.1292155050000474,
       "answer_sha256": "e709bd9ceadd3c45"
     },
     {
       "engine": "factoidal-cli-fast-path",
       "query": "q6_optional_filter",
-      "cold_s": 8.489922266999884,
-      "cold_peak_rss_kb": 580724,
+      "cold_s": 10.529607640999984,
+      "cold_peak_rss_kb": 579112,
       "row_count": 25083,
       "warm_s_runs": [
-        8.605306788000007,
-        8.700979363999977,
-        8.55052035499989
+        11.051931980000063,
+        10.894583880000027,
+        10.834975270999848
       ],
-      "warm_s_median": 8.605306788000007,
+      "warm_s_median": 10.894583880000027,
       "answer_sha256": "e30f57b54d8878dc"
     },
     {
       "engine": "factoidal-cli-forced-slow-path (kill switch)",
       "query": "q6_optional_filter",
-      "cold_s": 8.623330211999928,
-      "cold_peak_rss_kb": 580720,
+      "cold_s": 10.710265843000116,
+      "cold_peak_rss_kb": 579104,
       "row_count": 25083,
       "warm_s_runs": [
-        8.653181082999936,
-        8.573911753999937,
-        8.474622137999859
+        10.566604985999902,
+        10.581152500999906,
+        10.609743426000023
       ],
-      "warm_s_median": 8.573911753999937,
+      "warm_s_median": 10.581152500999906,
       "answer_sha256": "e30f57b54d8878dc"
     },
     {
       "engine": "factoidal-cottas (on-disk)",
       "query": "q6_optional_filter",
-      "cold_s": 8.831303330999845,
-      "cold_peak_rss_kb": 213920,
+      "cold_s": 11.666162356000086,
+      "cold_peak_rss_kb": 212708,
       "row_count": 25083,
       "warm_s_runs": [
-        8.706439761999945,
-        8.827749045000019,
-        8.83297867500005
+        11.848353437000014,
+        11.772180298999956,
+        11.5535803570001
       ],
-      "warm_s_median": 8.827749045000019,
+      "warm_s_median": 11.772180298999956,
       "answer_sha256": "e30f57b54d8878dc"
     },
     {
       "engine": "jena-arq-inmemory",
       "query": "q6_optional_filter",
-      "cold_s": 8.523384078999925,
-      "cold_peak_rss_kb": 1661864,
+      "cold_s": 11.530266688999973,
+      "cold_peak_rss_kb": 1860756,
       "row_count": 25083,
       "warm_s_runs": [
-        8.124993766999978,
-        8.918224769999824,
-        8.345214572000032
+        11.468778364999935,
+        11.748027988999866,
+        12.246666890999904
       ],
-      "warm_s_median": 8.345214572000032,
+      "warm_s_median": 11.748027988999866,
       "answer_sha256": "e30f57b54d8878dc"
     },
     {
       "engine": "jena-tdb2 (on-disk)",
       "query": "q6_optional_filter",
-      "cold_s": 2.1152176220000456,
-      "cold_peak_rss_kb": 295872,
+      "cold_s": 2.8698454160000892,
+      "cold_peak_rss_kb": 275672,
       "row_count": 25083,
       "warm_s_runs": [
-        2.0677825640000265,
-        2.1161983019999298,
-        2.026071025999954
+        2.63284471399993,
+        2.7367796380001437,
+        2.7840446289999363
       ],
-      "warm_s_median": 2.0677825640000265,
+      "warm_s_median": 2.7367796380001437,
       "answer_sha256": "e30f57b54d8878dc"
     },
     {
       "engine": "pyoxigraph (in-memory)",
       "query": "q1_count_star",
-      "cold_s": 0.177998179000042,
+      "cold_s": 0.20186662200012506,
       "warm_s_runs": [
-        0.17928553000001557,
-        0.1766023249999762,
-        0.17480595899996842
+        0.19921184800000447,
+        0.19943365299991456,
+        0.19735914300008517
       ],
-      "warm_s_median": 0.1766023249999762,
+      "warm_s_median": 0.19921184800000447,
       "row_count": 1,
       "answer_sha256": "03379de524d3f0e6"
     },
     {
       "engine": "pyoxigraph (in-memory)",
       "query": "q2_bound_predicate_count",
-      "cold_s": 0.1505500309999661,
+      "cold_s": 0.16557105699985186,
       "warm_s_runs": [
-        0.14861552200000006,
-        0.15428869799984568,
-        0.14894028199978493
+        0.16568888699998752,
+        0.16599724299999252,
+        0.1661601000000701
       ],
-      "warm_s_median": 0.14894028199978493,
+      "warm_s_median": 0.16599724299999252,
       "row_count": 1,
       "answer_sha256": "fe789892d36760f0"
     },
     {
       "engine": "pyoxigraph (in-memory)",
       "query": "q3_subject_point_lookup",
-      "cold_s": 0.00012593300016305875,
+      "cold_s": 0.00019089800002802804,
       "warm_s_runs": [
-        5.1652999900397845e-05,
-        4.731100011667877e-05,
-        4.103499986740644e-05
+        7.23149998975714e-05,
+        5.802900000162481e-05,
+        5.380099992180476e-05
       ],
-      "warm_s_median": 4.731100011667877e-05,
+      "warm_s_median": 5.802900000162481e-05,
       "row_count": 3,
       "answer_sha256": "fe19111a52800397"
     },
     {
       "engine": "pyoxigraph (in-memory)",
       "query": "q4_two_pattern_join",
-      "cold_s": 0.520868586000006,
+      "cold_s": 0.5717695649998404,
       "warm_s_runs": [
-        0.5174580689999857,
-        0.5195361730000059,
-        0.5186992740000278
+        0.5756481769999482,
+        0.5802388820000033,
+        0.5853313439999965
       ],
-      "warm_s_median": 0.5186992740000278,
+      "warm_s_median": 0.5802388820000033,
       "row_count": 14,
       "answer_sha256": "ae7167c4b350975c"
     },
     {
       "engine": "pyoxigraph (in-memory)",
       "query": "q5_group_by",
-      "cold_s": 0.19584539500010578,
+      "cold_s": 0.22615523300009954,
       "warm_s_runs": [
-        0.19586636799999724,
-        0.1952566200000092,
-        0.19698227500020948
+        0.2280495370000608,
+        0.22982357099999717,
+        0.23084445599988612
       ],
-      "warm_s_median": 0.19586636799999724,
+      "warm_s_median": 0.22982357099999717,
       "row_count": 6,
       "answer_sha256": "e709bd9ceadd3c45"
     },
     {
       "engine": "pyoxigraph (in-memory)",
       "query": "q6_optional_filter",
-      "cold_s": 0.17458241899998939,
+      "cold_s": 0.22786310800006504,
       "warm_s_runs": [
-        0.17633404999992308,
-        0.17080453900007342,
-        0.17255894000004446
+        0.2213110099999085,
+        0.22304669699997248,
+        0.23171496999998453
       ],
-      "warm_s_median": 0.17255894000004446,
+      "warm_s_median": 0.22304669699997248,
       "row_count": 25083,
       "answer_sha256": "e30f57b54d8878dc"
     }
@@ -894,6 +894,6 @@
       "reference_engine": "factoidal-cli-fast-path"
     }
   ],
-  "_gene_tdb2_dir": "/tmp/bench-competitive-v274mush/tdb2-gene-run2",
-  "_gene_cottas_artifact": "/tmp/bench-competitive-v274mush/cottas-gene/gene-bench/v1/data.cottas"
+  "_gene_tdb2_dir": "/tmp/bench-competitive-zm3ot7k2/tdb2-gene-run2",
+  "_gene_cottas_artifact": "/tmp/bench-competitive-zm3ot7k2/cottas-gene/gene-bench/v1/data.cottas"
 }
