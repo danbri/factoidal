@@ -42,12 +42,37 @@ foundational: false
 # server.mjs) — needed so the vc-di-eddsa suite's own
 # version-agnostic Data Integrity fixture (validVc.json) still issues;
 # no vc-data-model-2.0-test-suite fixture uses that context, so this
-# cannot mask a real violation here. Remaining 12 fails are two
-# families VC.Credential.fst does not check at all (not a wiring gap):
-# Verifiable Presentation verification (no vpVerifier config / no
-# /presentations/verify route) and `relatedResource` digest/id shape
-# (Advanced Concepts, 5 tests) — both need new F* checks or a new
-# route, out of scope for pure wiring.
+# cannot mask a real violation here.
+#
+# Track A3 (2026-07-13): 51 pass, 8 fail (out of 59). Added POST
+# /presentations/verify (bin/vc-api-shim/server.mjs's
+# handleVerifyPresentation) plus a `vpVerifiers` entry in
+# tests/vc20-api/run.sh's generated localConfig.cjs. No new npm ABI
+# export was needed — VC_Credential.vc_check_from_string already
+# dispatches VC-shaped vs VP-shaped documents internally (see
+# VC.Credential.fst's vc_check_document), so the existing
+# `vcCheckCredential` export / `checkStructural` helper handles VP
+# structural checks unchanged. The route does structural check first,
+# then the same eddsa-rdfc-2022 Data Integrity proof verification
+# already used for /credentials/verify, applied to the VP's own
+# top-level proof (verifySecuredDocument, shared by both routes).
+# Remaining 8 fails are two families, neither a wiring gap:
+#   - relatedResource digest/id checks (Advanced Concepts, 5 tests) —
+#     VC.Credential.fst does not implement this check at all.
+#   - 3 VP tests whose fixture embeds a `verifiableCredential`
+#     (Verifiable Presentations' "verifiableCredential property MAY be
+#     present" / "holder value" tests, and 4.03-contexts.js's
+#     `presentation-context-combo1-ok.json` case) — the VCDM v2
+#     context defines `verifiableCredential` (and `proof`) with
+#     `"@container": "@graph"`, and the shim's JSON-LD/RDF-dataset
+#     builder drops that named-graph subtree entirely: canonicalizing
+#     a VP with an embedded credential yields ONLY the top-level
+#     `type` triple (confirmed by direct testing), so the
+#     reconstructed signature input never matches what the real
+#     eddsa-rdfc-2022 signer produced and verification spuriously
+#     fails. This is a JSON-LD named-graph expansion gap (JSONLD.*),
+#     not a VC.Credential.fst structural-check gap — out of scope for
+#     a wiring task.
 
 triggers:
   paths:
@@ -64,5 +89,5 @@ triggers:
 
 # What's left, in plain language.
 remaining:
-  - "Verifiable Presentation (VP) verification is not implemented — no /presentations/verify route exists, and the test config declares no vpVerifier, so every VP-shaped negative test (Contexts/Types/Basic Conformance/Algorithms VP cases) fails regardless of the structural gate"
   - "relatedResource digest/id checks (Advanced Concepts, 5 tests: array-of-strings shape, missing id, duplicate id, missing digest, wrong digest) are not implemented in VC.Credential.fst at all — needs new F* structural-check additions, not shim wiring"
+  - "a VerifiablePresentation whose `verifiableCredential` field is populated cannot be cryptographically verified — the JSON-LD/RDF-dataset builder does not expand the VCDM v2 context's `@container: @graph` terms (`verifiableCredential`, `proof`), so canonicalizing such a VP silently drops the embedded-credential subtree and the reconstructed signature input never matches the real signer's bytes (3 tests: 'verifiableCredential property MAY be present', 'holder value must be URL or object', and the @context combo1 VP case)"
