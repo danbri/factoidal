@@ -95,4 +95,15 @@ let caps_of_cottas (cods : cottas_ondisk_store) (scope : cottas_ondisk_graph_sco
     // Realises the GB_CottasOnDisk arm of backend_decode_failure
     // (SPARQL11.Store.fst:292-293).
     sc_decode_failure = (fun () -> cottas_ondisk_has_decode_failure cods.cods_handle);
+
+    // GROUP BY ?p streaming fast path (2026-07-12 investigation): the
+    // COTTAS-on-disk builder is the only one that carries this
+    // capability at all — `Some`, wrapping (not eagerly calling)
+    // `cottas_ondisk_distinct_predicates`, so the dictionary-page walk
+    // only runs when a caller actually invokes the closure (never on
+    // every `caps_of_cottas`/`caps_of_backend` construction, which
+    // happens once per backend_* dispatch — see `RDF.CottasStore.
+    // cottas_ondisk_distinct_predicates`'s own banner for the None-on-
+    // missing-dictionary contract this passes straight through).
+    sc_distinct_predicates = Some (fun () -> cottas_ondisk_distinct_predicates cods);
   }

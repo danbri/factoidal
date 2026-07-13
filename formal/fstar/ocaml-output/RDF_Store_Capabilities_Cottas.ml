@@ -46,5 +46,8 @@ let caps_of_cottas (cods : RDF_CottasStore.cottas_ondisk_store)
     RDF_Store_Capabilities.sc_decode_failure =
       (fun uu___ ->
          RDF_CottasStore.cottas_ondisk_has_decode_failure
-           cods.RDF_CottasStore.cods_handle)
+           cods.RDF_CottasStore.cods_handle);
+    RDF_Store_Capabilities.sc_distinct_predicates =
+      (FStar_Pervasives_Native.Some
+         (fun uu___ -> RDF_CottasStore.cottas_ondisk_distinct_predicates cods))
   }

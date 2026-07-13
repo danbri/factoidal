@@ -155,6 +155,25 @@ noeq type store_caps = {
   // the current non-disk wildcard (SPARQL11.Store.fst:296). Realises
   // backend_decode_failure (SPARQL11.Store.fst:290).
   sc_decode_failure : unit -> Tot bool;
+
+  // GROUP BY ?p streaming fast path (2026-07-12 investigation, the
+  // GROUP BY streaming fast-path task): enumerate this store's DISTINCT
+  // predicate values without materialising/parsing every row. `None`
+  // means the backend has no cheap way to do this at all (every
+  // non-COTTAS-on-disk backend, statically, and a COTTAS-on-disk store
+  // with a live delta overlay — RDF.Store.Capabilities.Delta.fst's
+  // `overlay`). `Some f` means the backend CAN try; `f ()` itself
+  // returns a SECOND `option` because whether it actually succeeds is a
+  // per-corpus, per-column runtime fact discovered only when the
+  // dictionary pages are read (a DELTA_LENGTH_BYTE_ARRAY-encoded
+  // predicate column has no dictionary page at all) — `None` there
+  // means "tried, could not enumerate cheaply THIS time," and the
+  // caller must fall back to the materialise path, never assume the
+  // dictionary exists and never treat "couldn't enumerate" as "zero
+  // predicates." Realised for COTTAS-on-disk by
+  // RDF.CottasStore.cottas_ondisk_distinct_predicates
+  // (RDF.Store.Capabilities.Cottas.fst's `caps_of_cottas`).
+  sc_distinct_predicates : option (unit -> Tot (option (list wf_iri)));
 }
 
 // --------------------------------------------------------------------
@@ -269,6 +288,53 @@ let union_solve_limited (members : list store_caps) (b : triple_pattern_bound) (
     let result_rev = union_solve_limited_acc members b limit [] 0 in
     caps_take_n limit (rev result_rev)
 
+// Distinct-predicate enumeration ACROSS a union (GROUP BY ?p streaming
+// fast path). The union's predicate set is the union of member sets, so
+// the capability composes — but only when every member is accounted
+// for. Per member, in order:
+//   - advertises Some f and f () = Some ps  -> contribute ps;
+//   - advertises Some f but f () = None     -> whole union None (that
+//     member could not enumerate; falling back is the contract);
+//   - advertises None but is EMPTY (its all-unbound sc_count_exact is
+//     0 — e.g. the CLI's always-present in-memory graph member when the
+//     user only passed --data-cottas, which is exactly why the earlier
+//     blanket None here made the fast path unreachable from the CLI)
+//     -> contributes nothing;
+//   - advertises None and is non-empty -> whole union None.
+// The emptiness probe runs lazily inside the closure — only when a
+// caller actually asks (the detector already matched) — and costs one
+// count on an in-memory member, never a scan of a disk store (disk
+// stores advertise the capability themselves). Dedupe keeps the GROUP
+// key set exact when two members share a predicate.
+let caps_all_unbound : triple_pattern_bound = { bs = None; bp = None; bo = None }
+
+let rec caps_iri_mem (x : wf_iri) (l : list wf_iri) : Tot bool (decreases l) =
+  match l with
+  | [] -> false
+  | h :: t -> if h = x then true else caps_iri_mem x t
+
+let rec caps_iri_dedupe_acc (acc : list wf_iri) (l : list wf_iri)
+  : Tot (list wf_iri) (decreases l) =
+  match l with
+  | [] -> List.Tot.rev acc
+  | h :: t -> if caps_iri_mem h acc then caps_iri_dedupe_acc acc t
+             else caps_iri_dedupe_acc (h :: acc) t
+
+let rec union_distinct_predicates_acc (acc : list wf_iri) (ms : list store_caps)
+  : Tot (option (list wf_iri)) (decreases ms) =
+  match ms with
+  | [] -> Some (caps_iri_dedupe_acc [] acc)
+  | m :: rest ->
+    (match m.sc_distinct_predicates with
+     | Some f ->
+       (match f () with
+        | Some ps -> union_distinct_predicates_acc (acc @ ps) rest
+        | None -> None)
+     | None ->
+       if m.sc_count_exact caps_all_unbound = 0
+       then union_distinct_predicates_acc acc rest
+       else None)
+
 let union_caps (members : list store_caps) : Tot store_caps =
   {
     sc_flags = {
@@ -284,6 +350,10 @@ let union_caps (members : list store_caps) : Tot store_caps =
     sc_count_exact = (fun b -> union_count_exact members b);
     sc_predicate_present = (fun pred -> union_predicate_present members pred);
     sc_decode_failure = (fun () -> union_decode_failure members);
+    // Composes across members per union_distinct_predicates_acc's
+    // banner above: every member must either advertise the capability
+    // or be empty, else None (fall through to materialise).
+    sc_distinct_predicates = Some (fun () -> union_distinct_predicates_acc [] members);
   }
 
 // ======================================================================
@@ -307,6 +377,10 @@ let caps_of_indexed (ig : indexed_graph) : Tot store_caps =
     sc_predicate_present =
       (fun pred -> ig_estimate ig ({ bs = None; bp = Some pred; bo = None }) > 0);
     sc_decode_failure = (fun () -> false);
+    // In-memory index has no dictionary-page shortcut; GROUP BY ?p
+    // already streams cheaply enough there via the ordinary group_by
+    // path (rows are already in memory) so this capability isn't needed.
+    sc_distinct_predicates = None;
   }
 
 // ======================================================================

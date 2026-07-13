@@ -48,43 +48,62 @@ type store_caps =
   sc_estimate: SPARQL11_Algebra.triple_pattern_bound -> Prims.nat ;
   sc_count_exact: SPARQL11_Algebra.triple_pattern_bound -> Prims.nat ;
   sc_predicate_present: RDF_Term.wf_iri -> Prims.bool ;
-  sc_decode_failure: unit -> Prims.bool }
+  sc_decode_failure: unit -> Prims.bool ;
+  sc_distinct_predicates:
+    (unit -> RDF_Term.wf_iri Prims.list FStar_Pervasives_Native.option)
+      FStar_Pervasives_Native.option
+    }
 let __proj__Mkstore_caps__item__sc_flags (projectee : store_caps) :
   store_caps_flags=
   match projectee with
   | { sc_flags; sc_solve; sc_solve_limited; sc_estimate; sc_count_exact;
-      sc_predicate_present; sc_decode_failure;_} -> sc_flags
+      sc_predicate_present; sc_decode_failure; sc_distinct_predicates;_} ->
+      sc_flags
 let __proj__Mkstore_caps__item__sc_solve (projectee : store_caps) :
   SPARQL11_Algebra.triple_pattern_bound -> RDF_Triple.triple Prims.list=
   match projectee with
   | { sc_flags; sc_solve; sc_solve_limited; sc_estimate; sc_count_exact;
-      sc_predicate_present; sc_decode_failure;_} -> sc_solve
+      sc_predicate_present; sc_decode_failure; sc_distinct_predicates;_} ->
+      sc_solve
 let __proj__Mkstore_caps__item__sc_solve_limited (projectee : store_caps) :
   SPARQL11_Algebra.triple_pattern_bound ->
     Prims.nat -> RDF_Triple.triple Prims.list=
   match projectee with
   | { sc_flags; sc_solve; sc_solve_limited; sc_estimate; sc_count_exact;
-      sc_predicate_present; sc_decode_failure;_} -> sc_solve_limited
+      sc_predicate_present; sc_decode_failure; sc_distinct_predicates;_} ->
+      sc_solve_limited
 let __proj__Mkstore_caps__item__sc_estimate (projectee : store_caps) :
   SPARQL11_Algebra.triple_pattern_bound -> Prims.nat=
   match projectee with
   | { sc_flags; sc_solve; sc_solve_limited; sc_estimate; sc_count_exact;
-      sc_predicate_present; sc_decode_failure;_} -> sc_estimate
+      sc_predicate_present; sc_decode_failure; sc_distinct_predicates;_} ->
+      sc_estimate
 let __proj__Mkstore_caps__item__sc_count_exact (projectee : store_caps) :
   SPARQL11_Algebra.triple_pattern_bound -> Prims.nat=
   match projectee with
   | { sc_flags; sc_solve; sc_solve_limited; sc_estimate; sc_count_exact;
-      sc_predicate_present; sc_decode_failure;_} -> sc_count_exact
+      sc_predicate_present; sc_decode_failure; sc_distinct_predicates;_} ->
+      sc_count_exact
 let __proj__Mkstore_caps__item__sc_predicate_present (projectee : store_caps)
   : RDF_Term.wf_iri -> Prims.bool=
   match projectee with
   | { sc_flags; sc_solve; sc_solve_limited; sc_estimate; sc_count_exact;
-      sc_predicate_present; sc_decode_failure;_} -> sc_predicate_present
+      sc_predicate_present; sc_decode_failure; sc_distinct_predicates;_} ->
+      sc_predicate_present
 let __proj__Mkstore_caps__item__sc_decode_failure (projectee : store_caps) :
   unit -> Prims.bool=
   match projectee with
   | { sc_flags; sc_solve; sc_solve_limited; sc_estimate; sc_count_exact;
-      sc_predicate_present; sc_decode_failure;_} -> sc_decode_failure
+      sc_predicate_present; sc_decode_failure; sc_distinct_predicates;_} ->
+      sc_decode_failure
+let __proj__Mkstore_caps__item__sc_distinct_predicates
+  (projectee : store_caps) :
+  (unit -> RDF_Term.wf_iri Prims.list FStar_Pervasives_Native.option)
+    FStar_Pervasives_Native.option=
+  match projectee with
+  | { sc_flags; sc_solve; sc_solve_limited; sc_estimate; sc_count_exact;
+      sc_predicate_present; sc_decode_failure; sc_distinct_predicates;_} ->
+      sc_distinct_predicates
 type store_write_caps =
   {
   swc_apply_delta:
@@ -172,6 +191,42 @@ let union_solve_limited (members : store_caps Prims.list)
     (let result_rev =
        union_solve_limited_acc members b limit [] Prims.int_zero in
      caps_take_n limit (FStar_List_Tot_Base.rev result_rev))
+let caps_all_unbound : SPARQL11_Algebra.triple_pattern_bound=
+  {
+    SPARQL11_Algebra.bs = FStar_Pervasives_Native.None;
+    SPARQL11_Algebra.bp = FStar_Pervasives_Native.None;
+    SPARQL11_Algebra.bo = FStar_Pervasives_Native.None
+  }
+let rec caps_iri_mem (x : RDF_Term.wf_iri) (l : RDF_Term.wf_iri Prims.list) :
+  Prims.bool=
+  match l with
+  | [] -> false
+  | h::t -> if h = x then true else caps_iri_mem x t
+let rec caps_iri_dedupe_acc (acc : RDF_Term.wf_iri Prims.list)
+  (l : RDF_Term.wf_iri Prims.list) : RDF_Term.wf_iri Prims.list=
+  match l with
+  | [] -> FStar_List_Tot_Base.rev acc
+  | h::t ->
+      if caps_iri_mem h acc
+      then caps_iri_dedupe_acc acc t
+      else caps_iri_dedupe_acc (h :: acc) t
+let rec union_distinct_predicates_acc (acc : RDF_Term.wf_iri Prims.list)
+  (ms : store_caps Prims.list) :
+  RDF_Term.wf_iri Prims.list FStar_Pervasives_Native.option=
+  match ms with
+  | [] -> FStar_Pervasives_Native.Some (caps_iri_dedupe_acc [] acc)
+  | m::rest ->
+      (match m.sc_distinct_predicates with
+       | FStar_Pervasives_Native.Some f ->
+           (match f () with
+            | FStar_Pervasives_Native.Some ps ->
+                union_distinct_predicates_acc
+                  (FStar_List_Tot_Base.op_At acc ps) rest
+            | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None)
+       | FStar_Pervasives_Native.None ->
+           if (m.sc_count_exact caps_all_unbound) = Prims.int_zero
+           then union_distinct_predicates_acc acc rest
+           else FStar_Pervasives_Native.None)
 let union_caps (members : store_caps Prims.list) : store_caps=
   {
     sc_flags =
@@ -187,7 +242,10 @@ let union_caps (members : store_caps Prims.list) : store_caps=
     sc_estimate = (fun b -> union_estimate members b);
     sc_count_exact = (fun b -> union_count_exact members b);
     sc_predicate_present = (fun pred -> union_predicate_present members pred);
-    sc_decode_failure = (fun uu___ -> union_decode_failure members)
+    sc_decode_failure = (fun uu___ -> union_decode_failure members);
+    sc_distinct_predicates =
+      (FStar_Pervasives_Native.Some
+         (fun uu___ -> union_distinct_predicates_acc [] members))
   }
 let caps_of_indexed (ig : RDF_Indexed.indexed_graph) : store_caps=
   {
@@ -213,7 +271,8 @@ let caps_of_indexed (ig : RDF_Indexed.indexed_graph) : store_caps=
               SPARQL11_Algebra.bo = FStar_Pervasives_Native.None
             })
            > Prims.int_zero);
-    sc_decode_failure = (fun uu___ -> false)
+    sc_decode_failure = (fun uu___ -> false);
+    sc_distinct_predicates = FStar_Pervasives_Native.None
   }
 type dataset_caps =
   {

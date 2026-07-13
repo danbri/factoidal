@@ -365,4 +365,7 @@ let caps_of_rml_source (rvs : rml_virtual_source) : Tot store_caps =
           (rml_solve rvs.rvs_doc rvs.rvs_sources rvs.rvs_base_iri ({ bs = None; bp = Some pred; bo = None }))
         > 0);
     sc_decode_failure = (fun () -> false);
+    // v1 scope: no dictionary-page shortcut for a virtual (non-materialised)
+    // RML source; GROUP BY ?p falls through to the materialise path.
+    sc_distinct_predicates = None;
   }

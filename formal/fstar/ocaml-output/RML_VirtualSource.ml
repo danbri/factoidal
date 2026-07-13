@@ -230,5 +230,7 @@ let caps_of_rml_source (rvs : rml_virtual_source) :
                  SPARQL11_Algebra.bo = FStar_Pervasives_Native.None
                }))
            > Prims.int_zero);
-    RDF_Store_Capabilities.sc_decode_failure = (fun uu___ -> false)
+    RDF_Store_Capabilities.sc_decode_failure = (fun uu___ -> false);
+    RDF_Store_Capabilities.sc_distinct_predicates =
+      FStar_Pervasives_Native.None
   }

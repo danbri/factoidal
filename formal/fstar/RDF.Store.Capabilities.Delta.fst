@@ -99,4 +99,20 @@ let overlay (base : store_caps) (delta : DM.delta_resolved) : Tot store_caps =
 
       // The delta layer introduces no decode failures of its own.
       sc_decode_failure = base.sc_decode_failure;
+
+      // Correctness gate (GROUP BY streaming fast-path task, 2026-07-12):
+      // the base's dictionary pages were written when the base Parquet
+      // file was compacted and do NOT reflect any predicate introduced
+      // ONLY by rows sitting in the (non-empty, this branch) delta
+      // overlay. Enumerating base.sc_distinct_predicates here could
+      // silently MISS a predicate a delta-only INSERT added, which
+      // would drop an entire GROUP BY ?p row rather than merely
+      // mis-estimating its count — a wrong answer, not just a slow
+      // one. `None` forces the caller back to the materialise path
+      // (which reads base ⊕ delta via `sc_solve` above and is always
+      // correct) whenever a delta is actually in play. The EMPTY-delta
+      // branch above (`{ base with ... }`) inherits `base`'s own
+      // `sc_distinct_predicates` unchanged — correct, because an empty
+      // delta changes nothing the dictionary could have missed.
+      sc_distinct_predicates = None;
     }

@@ -304,6 +304,10 @@ let rec caps_of_backend (gb : graph_backend) : Tot store_caps (decreases gb) =
       sc_predicate_present =
         (fun pred -> store_estimate st ({ bs = None; bp = Some pred; bo = None }) > 0);
       sc_decode_failure = (fun () -> false);
+      // Dead in-memory path (no live construction site, see banner
+      // above) — no dictionary-page shortcut; None per every non-COTTAS
+      // backend.
+      sc_distinct_predicates = None;
     }
   | GB_Indexed ig -> caps_of_indexed ig
   | GB_HDT hgs ->
@@ -327,6 +331,9 @@ let rec caps_of_backend (gb : graph_backend) : Tot store_caps (decreases gb) =
       sc_count_exact = (fun b -> hdt_estimate hgs (hdt_build_bound_tp hgs b.bs b.bp b.bo));
       sc_predicate_present = (fun pred -> hdt_predicate_present hgs pred);
       sc_decode_failure = (fun () -> false);
+      // HDT 1.0 has no on-disk dictionary-page primitive of this shape;
+      // None per every non-COTTAS backend.
+      sc_distinct_predicates = None;
     }
   | GB_COTTAS cds graph_name ->
     // Old arms: backend_search -> cottas_search + the fst-projection of
@@ -361,6 +368,10 @@ let rec caps_of_backend (gb : graph_backend) : Tot store_caps (decreases gb) =
         (fun pred ->
           cottas_estimate cds (cottas_build_bound_qp cds None (Some pred) None graph_name) > 0);
       sc_decode_failure = (fun () -> false);
+      // Dead in-memory GB_COTTAS path (no live construction site, see
+      // banner above) — not the on-disk COTTAS builder that realises
+      // this capability; None here.
+      sc_distinct_predicates = None;
     }
   | GB_CottasOnDisk cods scope -> caps_of_cottas cods scope
   // Stage 3 D-overlay (see the constructor's own comment above): the
@@ -833,6 +844,159 @@ let count_group_by_graph_solutions
   : solution_sequence =
   count_group_by_graph_solutions_acc graph_var count_alias [] named
 
+// ----------------------------------------------------------------------
+// GROUP BY ?p streaming fast path (2026-07-12 investigation): `SELECT ?p
+// (COUNT(*) AS ?c) WHERE {?s ?p ?o} GROUP BY ?p` on the gene corpus
+// (888,949 quads) measured 23.05s on --data-cottas, all of it the
+// materialise path's per-row `cottas_ondisk_row_tok_to_quad` full
+// N-Triples parse of every column of every row, when the query only
+// ever needs the PREDICATE column's distinct values plus one exact
+// count per predicate. Sibling of `detect_streaming_count_group_by_
+// graph` above — same modifier rejections, same pairwise-distinct-
+// variables guard and for the same reason (a shape like `?p ?p ?o` or
+// `?s ?p ?s` carries an implicit equality constraint an independent
+// per-position bound check does not honour) — but detects grouping on
+// the PREDICATE position of a single-tp BGP instead of a GRAPH-wrapper
+// variable, and (unlike the per-named-graph GROUP BY ?g fast path,
+// which fans out over `dsb_named`) targets ONE graph_backend: the
+// default graph, or (issue #297-style) a `GRAPH <g>`-scoped variant
+// with a CONSTANT graph IRI, reusing `extract_single_tp_bgp_scoped`
+// (defined above) exactly as `detect_streaming_count_star` does.
+//
+// Conservative like every detector in this section: any projection
+// order/naming variant this doesn't recognise (e.g. the COUNT listed
+// before ?p) returns None and falls through to the materialise path —
+// zero regression risk, per the section banner's own contract.
+let detect_streaming_count_group_by_predicate (q : query)
+  : option (var_name & var_name & option wf_iri) =
+  match q.q_form with
+  | QF_Select (Select_Vars items) ->
+    if Some? q.q_having then None
+    else if Some? q.q_values then None
+    else if q.q_modifier.sm_distinct then None
+    else if q.q_modifier.sm_reduced then None
+    else
+      // SELECT must be exactly: SI_Var ?p, SI_Expr (COUNT(*) AS ?c).
+      (match items with
+       | [SI_Var pv; SI_Expr count_e nv] ->
+         (match count_e with
+          | E_Aggregate Agg_Count false sub_e ->
+            let count_ok = match sub_e with
+              | E_Var "*" -> true
+              | E_BoolLit true -> true
+              | _ -> false in
+            if not count_ok then None
+            else
+              // GROUP BY exactly [GC_Var pv] — the grouping variable
+              // must be the SAME variable projected in the SELECT.
+              (match q.q_group_by with
+               | Some [GC_Var gbv] ->
+                 if gbv <> pv then None
+                 else
+                   // WHERE: bare {?s ?p ?o} or GRAPH <g> {?s ?p ?o},
+                   // where the pattern's PREDICATE position is exactly
+                   // the grouping variable pv, and all three positions
+                   // are PAIRWISE DISTINCT (see banner above).
+                   (match extract_single_tp_bgp_scoped q.q_pattern with
+                    | None -> None
+                    | Some (tp, scope) ->
+                      (match tp.tp_s, tp.tp_p, tp.tp_o with
+                       | PS_Var sv, PT_Var tpv, PT_Var ov ->
+                         if tpv <> pv then None
+                         else if sv = tpv || sv = ov || tpv = ov then None
+                         else Some (pv, nv, scope)
+                       | _ -> None))
+               | _ -> None)
+          | _ -> None)
+       | _ -> None)
+  | _ -> None
+
+// Build the per-predicate solutions for the GROUP BY ?p COUNT(*) fast
+// path. One row per distinct predicate with a NONZERO count: ?p =
+// predicate IRI, ?count_alias = backend_count_exact for {bp = Some p}.
+// The 0-count filter matters even though `preds` is only ever built from
+// a delta-free COTTAS store's own dictionary (RDF.Store.Capabilities.
+// Delta.fst's `overlay` returns None on a live delta specifically to
+// keep this dictionary trustworthy): a dictionary that over-approximates
+// for any other reason (e.g. this SAME distinct-predicate list reused
+// against a GRAPH <g>-scoped backend, where a corpus-wide predicate may
+// have zero rows in THAT graph specifically) must not fabricate an empty
+// GROUP — SPARQL's GROUP BY never emits a group with no matching rows.
+//
+// Tail-recursive accumulator (mirrors count_group_by_graph_solutions_acc
+// above, same stack-safety precedent for a potentially-long predicate
+// list).
+let rec predicate_group_by_solutions_acc
+  (pred_var : var_name)
+  (count_alias : var_name)
+  (gb : graph_backend)
+  (acc : solution_sequence)
+  (preds : list wf_iri)
+  : Tot solution_sequence (decreases preds) =
+  match preds with
+  | [] -> List.Tot.rev acc
+  | p :: rest ->
+    let bound : triple_pattern_bound = { bs = None; bp = Some p; bo = None } in
+    // Exact, not estimate: this count IS the query result (same E1
+    // discipline as count_group_by_graph_solutions_acc above).
+    let cnt = backend_count_exact gb bound in
+    if cnt = 0 then
+      predicate_group_by_solutions_acc pred_var count_alias gb acc rest
+    else
+      let lit_term : rdf_term = T_Literal {
+        lexical_form = string_of_int cnt;
+        datatype = xsd_integer;
+        lang_tag = None;
+      } in
+      let mu0 = sm_bind count_alias lit_term sm_empty in
+      let mu = sm_bind pred_var (T_IRI p) mu0 in
+      predicate_group_by_solutions_acc pred_var count_alias gb (mu :: acc) rest
+
+let predicate_group_by_solutions
+  (pred_var : var_name)
+  (count_alias : var_name)
+  (gb : graph_backend)
+  (preds : list wf_iri)
+  : solution_sequence =
+  predicate_group_by_solutions_acc pred_var count_alias gb [] preds
+
+// Combine shape-detection with capability-availability: resolves the
+// target graph_backend (default, or the named backend for a constant
+// GRAPH <g>) and the store's distinct-predicate list, returning None
+// whenever ANY of the following holds, so the caller falls through to
+// the (always correct) materialise path:
+//   - the query doesn't match the shape at all;
+//   - `GRAPH <g>` names a graph this dataset has no backend for (rare;
+//     the materialise path already answers "no such graph" correctly
+//     as zero solutions, so falling through here costs nothing but the
+//     fast path on an edge case, never a wrong answer);
+//   - the target backend doesn't advertise `sc_distinct_predicates` at
+//     all (every non-COTTAS-on-disk backend, and a COTTAS-on-disk store
+//     under a live delta overlay — RDF.Store.Capabilities.Delta.fst's
+//     `overlay`);
+//   - the backend advertises the capability but couldn't enumerate the
+//     dictionary THIS time (e.g. no dictionary page for this column —
+//     RDF.CottasStore.cottas_ondisk_distinct_predicates's own contract).
+let resolve_streaming_count_group_by_predicate
+  (q : query) (gb : graph_backend) (dsb : dataset_backend)
+  : option (var_name & var_name & list wf_iri & graph_backend) =
+  match detect_streaming_count_group_by_predicate q with
+  | None -> None
+  | Some (pred_var, count_alias, graph_scope) ->
+    let target_opt = match graph_scope with
+      | None -> Some gb
+      | Some g -> lookup_named_backend g dsb.dsb_named in
+    (match target_opt with
+     | None -> None
+     | Some target_gb ->
+       let caps = caps_of_backend target_gb in
+       (match caps.sc_distinct_predicates with
+        | None -> None
+        | Some get_preds ->
+          (match get_preds () with
+           | None -> None
+           | Some preds -> Some (pred_var, count_alias, preds, target_gb))))
+
 // Detect the LIMIT-pushdown shape: SELECT ?vars WHERE { single tp }
 // [LIMIT k]  with no DISTINCT / ORDER BY / OFFSET / GROUP BY / HAVING /
 // VALUES / aggregates. Returns (triple_pattern, limit) when matched.
@@ -1097,6 +1261,22 @@ and eval_select_query_backend_on_graph (q : query) (gb : graph_backend) (dsb : d
          | None -> 0) in
     let omega = count_star_solution alias n in
     Some (slice_solutions q.q_modifier.sm_offset q.q_modifier.sm_limit omega)
+  | None ->
+  match resolve_streaming_count_group_by_predicate q gb dsb with
+  | Some (pred_var, count_alias, preds, target_gb) ->
+    // GROUP BY ?p streaming fast path (2026-07-12 investigation): one
+    // backend_count_exact call per distinct predicate the store's own
+    // dictionary pages advertise, no per-row materialisation/parse of
+    // the whole corpus. Semantics-preserving for the matched shape:
+    // each distinct predicate contributes exactly one ?p=iri /
+    // ?c=count row (zero-count predicates already filtered inside
+    // predicate_group_by_solutions, matching SPARQL GROUP BY's "no
+    // empty groups" semantics).
+    let omega = predicate_group_by_solutions pred_var count_alias target_gb preds in
+    let ordered = match q.q_modifier.sm_order_by with
+      | None -> omega
+      | Some o -> sort_solutions q.q_base o omega in
+    Some (slice_solutions q.q_modifier.sm_offset q.q_modifier.sm_limit ordered)
   | None ->
     // Aleph6: LIMIT-pushdown fast-path. SELECT vars WHERE single-tp LIMIT k.
     let limit_match : option (triple_pattern & nat) =

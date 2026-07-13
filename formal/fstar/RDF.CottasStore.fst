@@ -1225,6 +1225,86 @@ let rec list_string_mem (xs : list string) (s : string)
   | [] -> false
   | hd :: rest -> if hd = s then true else list_string_mem rest s
 
+// ----------------------------------------------------------------------
+// GROUP BY ?p streaming fast path (2026-07-12 investigation): enumerate
+// the predicate column's DISTINCT values by reading only the Parquet
+// DICTIONARY PAGES, never the data pages — the same "dict page only, no
+// data-page decode" trick `probe_parquet_column_dictionary_in_row_group[
+// _from_table]` already provides for the column-prune planner's dict
+// cache just above (`populate_dict_cache_for_column`). This is
+// deliberately NOT the Bet7/#254 `collect_distinct` full-column decode
+// (`coh_predicates`/`coh_pred_revmap`'s lazy-populate path in the OCaml
+// glue, see `cottas_ondisk_decode_predicate`'s own banner) — that walks
+// every row's DATA page; this walks only the (typically tiny, <1KB
+// compressed) dictionary page per row group.
+//
+// Returns `None` if ANY touched row group's predicate column has no
+// dictionary page at all (e.g. DELTA_LENGTH_BYTE_ARRAY-encoded from the
+// native writer, or a genuinely huge-cardinality column Parquet chose
+// not to dictionary-encode) — never silently treat "couldn't read the
+// dictionary" as "this row group has zero predicates." The caller
+// (SPARQL11.Store's GROUP BY ?p detector, via `RDF.Store.Capabilities
+// .Cottas`'s `sc_distinct_predicates`) falls back to the materialise
+// path on `None`.
+// ----------------------------------------------------------------------
+
+// Union `new_entries` into `acc`, skipping any string already present.
+// Dictionaries are small (distinct-predicate cardinality, not row
+// cardinality), so the O(n) `list_string_mem` membership check per
+// entry is cheap in practice — same trade `list_string_mem` itself
+// already makes for the column-prune dict cache.
+let rec union_dedupe_strings_acc (acc : list string) (new_entries : list string)
+  : Tot (list string) (decreases new_entries) =
+  match new_entries with
+  | [] -> acc
+  | hd :: tl ->
+    if list_string_mem acc hd
+    then union_dedupe_strings_acc acc tl
+    else union_dedupe_strings_acc (hd :: acc) tl
+
+// Walk row groups [rg_index .. rg_count), reading column `col_index`'s
+// dictionary page only (per `probe_parquet_column_dictionary_in_row_
+// group[_from_table]`) and union-dedupe the entries into `acc`. Any row
+// group whose dictionary page is missing aborts the WHOLE walk with
+// `None` (see the banner above — never assume the dictionary exists).
+let rec collect_distinct_column_tokens_rgs
+  (path : string) (table : option parquet_row_group_offset_table)
+  (col_index : nat)
+  (rg_index : nat) (rg_count : nat) (fuel : nat)
+  (acc : list string)
+  : Tot (option (list string)) (decreases fuel) =
+  if fuel = 0 then Some acc
+  else if rg_index >= rg_count then Some acc
+  else
+    let dict_opt =
+      match table with
+      | Some t ->
+        probe_parquet_column_dictionary_in_row_group_from_table t path rg_index col_index
+      | None ->
+        probe_parquet_column_dictionary_in_row_group path rg_index col_index in
+    match dict_opt with
+    | None -> None
+    | Some entries ->
+      let acc' = union_dedupe_strings_acc acc entries in
+      collect_distinct_column_tokens_rgs path table col_index
+        (rg_index + 1) rg_count (fuel - 1) acc'
+
+// Public entry point: the predicate column is Parquet column index 1
+// (0=subject, 1=predicate, 2=object, 3=graph — SPARQL11.Store.fst's
+// `candidates_for_one_bound` banner documents the same convention).
+// Tokens are typed via `token_to_predicate` (cheap at distinct-
+// cardinality, not row cardinality).
+let cottas_ondisk_distinct_predicates (ds : cottas_ondisk_store)
+  : Tot (option (list wf_iri)) =
+  let h = ds.cods_handle in
+  match probe_parquet_row_group_count h.coh_path with
+  | None -> None
+  | Some rg_count ->
+    let table = probe_parquet_row_group_offset_table h.coh_path in
+    match collect_distinct_column_tokens_rgs h.coh_path table 1 0 rg_count rg_count [] with
+    | None -> None
+    | Some toks -> Some (List.Tot.map token_to_predicate toks)
+
 // Populate `dict_cache` for column `col_index` across row groups
 // [rg_index .. rg_count). Each rg's dict is decoded via the new
 // `probe_parquet_column_dictionary_in_row_group` helper. Failures

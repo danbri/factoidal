@@ -2216,6 +2216,56 @@ let rec list_string_mem (xs : Prims.string Prims.list) (s : Prims.string) :
   match xs with
   | [] -> false
   | hd::rest -> if hd = s then true else list_string_mem rest s
+let rec union_dedupe_strings_acc (acc : Prims.string Prims.list)
+  (new_entries : Prims.string Prims.list) : Prims.string Prims.list=
+  match new_entries with
+  | [] -> acc
+  | hd::tl ->
+      if list_string_mem acc hd
+      then union_dedupe_strings_acc acc tl
+      else union_dedupe_strings_acc (hd :: acc) tl
+let rec collect_distinct_column_tokens_rgs (path : Prims.string)
+  (table :
+    Parquet_Footer.parquet_row_group_offset_table
+      FStar_Pervasives_Native.option)
+  (col_index : Prims.nat) (rg_index : Prims.nat) (rg_count : Prims.nat)
+  (fuel : Prims.nat) (acc : Prims.string Prims.list) :
+  Prims.string Prims.list FStar_Pervasives_Native.option=
+  if fuel = Prims.int_zero
+  then FStar_Pervasives_Native.Some acc
+  else
+    if rg_index >= rg_count
+    then FStar_Pervasives_Native.Some acc
+    else
+      (let dict_opt =
+         match table with
+         | FStar_Pervasives_Native.Some t ->
+             Parquet_Footer.probe_parquet_column_dictionary_in_row_group_from_table
+               t path rg_index col_index
+         | FStar_Pervasives_Native.None ->
+             Parquet_Footer.probe_parquet_column_dictionary_in_row_group path
+               rg_index col_index in
+       match dict_opt with
+       | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+       | FStar_Pervasives_Native.Some entries ->
+           let acc' = union_dedupe_strings_acc acc entries in
+           collect_distinct_column_tokens_rgs path table col_index
+             (rg_index + Prims.int_one) rg_count (fuel - Prims.int_one) acc')
+let cottas_ondisk_distinct_predicates (ds : cottas_ondisk_store) :
+  RDF_Term.wf_iri Prims.list FStar_Pervasives_Native.option=
+  let h = ds.cods_handle in
+  match Parquet_Footer.probe_parquet_row_group_count h.coh_path with
+  | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+  | FStar_Pervasives_Native.Some rg_count ->
+      let table =
+        Parquet_Footer.probe_parquet_row_group_offset_table h.coh_path in
+      (match collect_distinct_column_tokens_rgs h.coh_path table
+               Prims.int_one Prims.int_zero rg_count rg_count []
+       with
+       | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+       | FStar_Pervasives_Native.Some toks ->
+           FStar_Pervasives_Native.Some
+             (FStar_List_Tot_Base.map token_to_predicate toks))
 let rec populate_dict_cache_loop (c : dict_cache)
   (table :
     Parquet_Footer.parquet_row_group_offset_table
