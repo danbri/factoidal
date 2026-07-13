@@ -551,34 +551,62 @@ and parse_equality_rest (input : Prims.string) (lhs : xp_expr)
   else
     (let pos1 = skip_ws input pos in
      let len = Parser_FastString.fs_byte_length input in
-     if
-       (((pos1 + Prims.int_one) < len) &&
-          ((Parser_FastString.fs_byte_index input pos1) = 33))
-         &&
-         ((Parser_FastString.fs_byte_index input (pos1 + Prims.int_one)) = 61)
-     then
-       match parse_relational_expr input
-               (skip_ws input (pos1 + (Prims.of_int (2))))
-               (fuel - Prims.int_one)
-       with
-       | Parser_Combinators.ParseFail (msg, fpos) ->
-           Parser_Combinators.ParseFail (msg, fpos)
-       | Parser_Combinators.ParseOk (rhs, pos2) ->
-           parse_equality_rest input (XE_Compare (Cmp_Ne, lhs, rhs)) pos2
-             (fuel - Prims.int_one)
-     else
-       if (pos1 < len) && ((Parser_FastString.fs_byte_index input pos1) = 61)
-       then
-         (match parse_relational_expr input
-                  (skip_ws input (pos1 + Prims.int_one))
+     match match_keyword "eq" input pos1 with
+     | FStar_Pervasives_Native.Some pos2 ->
+         (match parse_relational_expr input (skip_ws input pos2)
                   (fuel - Prims.int_one)
           with
           | Parser_Combinators.ParseFail (msg, fpos) ->
               Parser_Combinators.ParseFail (msg, fpos)
-          | Parser_Combinators.ParseOk (rhs, pos2) ->
-              parse_equality_rest input (XE_Compare (Cmp_Eq, lhs, rhs)) pos2
+          | Parser_Combinators.ParseOk (rhs, pos3) ->
+              parse_equality_rest input (XE_Compare (Cmp_Eq, lhs, rhs)) pos3
                 (fuel - Prims.int_one))
-       else Parser_Combinators.ParseOk (lhs, pos1))
+     | FStar_Pervasives_Native.None ->
+         (match match_keyword "ne" input pos1 with
+          | FStar_Pervasives_Native.Some pos2 ->
+              (match parse_relational_expr input (skip_ws input pos2)
+                       (fuel - Prims.int_one)
+               with
+               | Parser_Combinators.ParseFail (msg, fpos) ->
+                   Parser_Combinators.ParseFail (msg, fpos)
+               | Parser_Combinators.ParseOk (rhs, pos3) ->
+                   parse_equality_rest input (XE_Compare (Cmp_Ne, lhs, rhs))
+                     pos3 (fuel - Prims.int_one))
+          | FStar_Pervasives_Native.None ->
+              if
+                (((pos1 + Prims.int_one) < len) &&
+                   ((Parser_FastString.fs_byte_index input pos1) = 33))
+                  &&
+                  ((Parser_FastString.fs_byte_index input
+                      (pos1 + Prims.int_one))
+                     = 61)
+              then
+                (match parse_relational_expr input
+                         (skip_ws input (pos1 + (Prims.of_int (2))))
+                         (fuel - Prims.int_one)
+                 with
+                 | Parser_Combinators.ParseFail (msg, fpos) ->
+                     Parser_Combinators.ParseFail (msg, fpos)
+                 | Parser_Combinators.ParseOk (rhs, pos2) ->
+                     parse_equality_rest input
+                       (XE_Compare (Cmp_Ne, lhs, rhs)) pos2
+                       (fuel - Prims.int_one))
+              else
+                if
+                  (pos1 < len) &&
+                    ((Parser_FastString.fs_byte_index input pos1) = 61)
+                then
+                  (match parse_relational_expr input
+                           (skip_ws input (pos1 + Prims.int_one))
+                           (fuel - Prims.int_one)
+                   with
+                   | Parser_Combinators.ParseFail (msg, fpos) ->
+                       Parser_Combinators.ParseFail (msg, fpos)
+                   | Parser_Combinators.ParseOk (rhs, pos2) ->
+                       parse_equality_rest input
+                         (XE_Compare (Cmp_Eq, lhs, rhs)) pos2
+                         (fuel - Prims.int_one))
+                else Parser_Combinators.ParseOk (lhs, pos1)))
 and parse_relational_expr (input : Prims.string) (pos : Prims.nat)
   (fuel : Prims.nat) : xp_expr Parser_Combinators.parse_result=
   if fuel = Prims.int_zero
@@ -599,67 +627,129 @@ and parse_relational_rest (input : Prims.string) (lhs : xp_expr)
   else
     (let pos1 = skip_ws input pos in
      let len = Parser_FastString.fs_byte_length input in
-     if
-       (((pos1 + Prims.int_one) < len) &&
-          ((Parser_FastString.fs_byte_index input pos1) = 60))
-         &&
-         ((Parser_FastString.fs_byte_index input (pos1 + Prims.int_one)) = 61)
-     then
-       match parse_additive_expr input
-               (skip_ws input (pos1 + (Prims.of_int (2))))
-               (fuel - Prims.int_one)
-       with
-       | Parser_Combinators.ParseFail (msg, fpos) ->
-           Parser_Combinators.ParseFail (msg, fpos)
-       | Parser_Combinators.ParseOk (rhs, pos2) ->
-           parse_relational_rest input (XE_Compare (Cmp_Le, lhs, rhs)) pos2
-             (fuel - Prims.int_one)
-     else
-       if
-         (((pos1 + Prims.int_one) < len) &&
-            ((Parser_FastString.fs_byte_index input pos1) = 62))
-           &&
-           ((Parser_FastString.fs_byte_index input (pos1 + Prims.int_one)) =
-              61)
-       then
-         (match parse_additive_expr input
-                  (skip_ws input (pos1 + (Prims.of_int (2))))
+     match match_keyword "le" input pos1 with
+     | FStar_Pervasives_Native.Some pos2 ->
+         (match parse_additive_expr input (skip_ws input pos2)
                   (fuel - Prims.int_one)
           with
           | Parser_Combinators.ParseFail (msg, fpos) ->
               Parser_Combinators.ParseFail (msg, fpos)
-          | Parser_Combinators.ParseOk (rhs, pos2) ->
-              parse_relational_rest input (XE_Compare (Cmp_Ge, lhs, rhs))
-                pos2 (fuel - Prims.int_one))
-       else
-         if
-           (pos1 < len) &&
-             ((Parser_FastString.fs_byte_index input pos1) = 60)
-         then
-           (match parse_additive_expr input
-                    (skip_ws input (pos1 + Prims.int_one))
-                    (fuel - Prims.int_one)
-            with
-            | Parser_Combinators.ParseFail (msg, fpos) ->
-                Parser_Combinators.ParseFail (msg, fpos)
-            | Parser_Combinators.ParseOk (rhs, pos2) ->
-                parse_relational_rest input (XE_Compare (Cmp_Lt, lhs, rhs))
-                  pos2 (fuel - Prims.int_one))
-         else
-           if
-             (pos1 < len) &&
-               ((Parser_FastString.fs_byte_index input pos1) = 62)
-           then
-             (match parse_additive_expr input
-                      (skip_ws input (pos1 + Prims.int_one))
-                      (fuel - Prims.int_one)
-              with
-              | Parser_Combinators.ParseFail (msg, fpos) ->
-                  Parser_Combinators.ParseFail (msg, fpos)
-              | Parser_Combinators.ParseOk (rhs, pos2) ->
-                  parse_relational_rest input (XE_Compare (Cmp_Gt, lhs, rhs))
-                    pos2 (fuel - Prims.int_one))
-           else Parser_Combinators.ParseOk (lhs, pos1))
+          | Parser_Combinators.ParseOk (rhs, pos3) ->
+              parse_relational_rest input (XE_Compare (Cmp_Le, lhs, rhs))
+                pos3 (fuel - Prims.int_one))
+     | FStar_Pervasives_Native.None ->
+         (match match_keyword "ge" input pos1 with
+          | FStar_Pervasives_Native.Some pos2 ->
+              (match parse_additive_expr input (skip_ws input pos2)
+                       (fuel - Prims.int_one)
+               with
+               | Parser_Combinators.ParseFail (msg, fpos) ->
+                   Parser_Combinators.ParseFail (msg, fpos)
+               | Parser_Combinators.ParseOk (rhs, pos3) ->
+                   parse_relational_rest input
+                     (XE_Compare (Cmp_Ge, lhs, rhs)) pos3
+                     (fuel - Prims.int_one))
+          | FStar_Pervasives_Native.None ->
+              (match match_keyword "lt" input pos1 with
+               | FStar_Pervasives_Native.Some pos2 ->
+                   (match parse_additive_expr input (skip_ws input pos2)
+                            (fuel - Prims.int_one)
+                    with
+                    | Parser_Combinators.ParseFail (msg, fpos) ->
+                        Parser_Combinators.ParseFail (msg, fpos)
+                    | Parser_Combinators.ParseOk (rhs, pos3) ->
+                        parse_relational_rest input
+                          (XE_Compare (Cmp_Lt, lhs, rhs)) pos3
+                          (fuel - Prims.int_one))
+               | FStar_Pervasives_Native.None ->
+                   (match match_keyword "gt" input pos1 with
+                    | FStar_Pervasives_Native.Some pos2 ->
+                        (match parse_additive_expr input (skip_ws input pos2)
+                                 (fuel - Prims.int_one)
+                         with
+                         | Parser_Combinators.ParseFail (msg, fpos) ->
+                             Parser_Combinators.ParseFail (msg, fpos)
+                         | Parser_Combinators.ParseOk (rhs, pos3) ->
+                             parse_relational_rest input
+                               (XE_Compare (Cmp_Gt, lhs, rhs)) pos3
+                               (fuel - Prims.int_one))
+                    | FStar_Pervasives_Native.None ->
+                        if
+                          (((pos1 + Prims.int_one) < len) &&
+                             ((Parser_FastString.fs_byte_index input pos1) =
+                                60))
+                            &&
+                            ((Parser_FastString.fs_byte_index input
+                                (pos1 + Prims.int_one))
+                               = 61)
+                        then
+                          (match parse_additive_expr input
+                                   (skip_ws input (pos1 + (Prims.of_int (2))))
+                                   (fuel - Prims.int_one)
+                           with
+                           | Parser_Combinators.ParseFail (msg, fpos) ->
+                               Parser_Combinators.ParseFail (msg, fpos)
+                           | Parser_Combinators.ParseOk (rhs, pos2) ->
+                               parse_relational_rest input
+                                 (XE_Compare (Cmp_Le, lhs, rhs)) pos2
+                                 (fuel - Prims.int_one))
+                        else
+                          if
+                            (((pos1 + Prims.int_one) < len) &&
+                               ((Parser_FastString.fs_byte_index input pos1)
+                                  = 62))
+                              &&
+                              ((Parser_FastString.fs_byte_index input
+                                  (pos1 + Prims.int_one))
+                                 = 61)
+                          then
+                            (match parse_additive_expr input
+                                     (skip_ws input
+                                        (pos1 + (Prims.of_int (2))))
+                                     (fuel - Prims.int_one)
+                             with
+                             | Parser_Combinators.ParseFail (msg, fpos) ->
+                                 Parser_Combinators.ParseFail (msg, fpos)
+                             | Parser_Combinators.ParseOk (rhs, pos2) ->
+                                 parse_relational_rest input
+                                   (XE_Compare (Cmp_Ge, lhs, rhs)) pos2
+                                   (fuel - Prims.int_one))
+                          else
+                            if
+                              (pos1 < len) &&
+                                ((Parser_FastString.fs_byte_index input pos1)
+                                   = 60)
+                            then
+                              (match parse_additive_expr input
+                                       (skip_ws input (pos1 + Prims.int_one))
+                                       (fuel - Prims.int_one)
+                               with
+                               | Parser_Combinators.ParseFail (msg, fpos) ->
+                                   Parser_Combinators.ParseFail (msg, fpos)
+                               | Parser_Combinators.ParseOk (rhs, pos2) ->
+                                   parse_relational_rest input
+                                     (XE_Compare (Cmp_Lt, lhs, rhs)) pos2
+                                     (fuel - Prims.int_one))
+                            else
+                              if
+                                (pos1 < len) &&
+                                  ((Parser_FastString.fs_byte_index input
+                                      pos1)
+                                     = 62)
+                              then
+                                (match parse_additive_expr input
+                                         (skip_ws input
+                                            (pos1 + Prims.int_one))
+                                         (fuel - Prims.int_one)
+                                 with
+                                 | Parser_Combinators.ParseFail (msg, fpos)
+                                     ->
+                                     Parser_Combinators.ParseFail (msg, fpos)
+                                 | Parser_Combinators.ParseOk (rhs, pos2) ->
+                                     parse_relational_rest input
+                                       (XE_Compare (Cmp_Gt, lhs, rhs)) pos2
+                                       (fuel - Prims.int_one))
+                              else Parser_Combinators.ParseOk (lhs, pos1)))))
 and parse_additive_expr (input : Prims.string) (pos : Prims.nat)
   (fuel : Prims.nat) : xp_expr Parser_Combinators.parse_result=
   if fuel = Prims.int_zero

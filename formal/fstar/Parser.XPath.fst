@@ -367,6 +367,23 @@ and parse_equality_rest (input:string) (lhs:xp_expr) (pos:nat) (fuel:nat)
   else
     let pos1 = skip_ws input pos in
     let len = fs_byte_length input in
+    // XPath 2.0 value-comparison keywords "eq"/"ne" are treated as
+    // singleton-atomic aliases for the general-comparison operators
+    // "="/"!=" -- sound for the number/string literal operands this
+    // engine evaluates (no sequence-typed operands reach here), not a
+    // full XPath 2.0 value-comparison (no type-error-on-non-singleton).
+    match match_keyword "eq" input pos1 with
+    | Some pos2 ->
+      (match parse_relational_expr input (skip_ws input pos2) (fuel - 1) with
+       | ParseFail msg fpos -> ParseFail msg fpos
+       | ParseOk rhs pos3 -> parse_equality_rest input (XE_Compare Cmp_Eq lhs rhs) pos3 (fuel - 1))
+    | None ->
+    match match_keyword "ne" input pos1 with
+    | Some pos2 ->
+      (match parse_relational_expr input (skip_ws input pos2) (fuel - 1) with
+       | ParseFail msg fpos -> ParseFail msg fpos
+       | ParseOk rhs pos3 -> parse_equality_rest input (XE_Compare Cmp_Ne lhs rhs) pos3 (fuel - 1))
+    | None ->
     if pos1 + 1 < len && fs_byte_index input pos1 = '!' && fs_byte_index input (pos1 + 1) = '=' then
       (match parse_relational_expr input (skip_ws input (pos1 + 2)) (fuel - 1) with
        | ParseFail msg fpos -> ParseFail msg fpos
@@ -391,6 +408,32 @@ and parse_relational_rest (input:string) (lhs:xp_expr) (pos:nat) (fuel:nat)
   else
     let pos1 = skip_ws input pos in
     let len = fs_byte_length input in
+    // XPath 2.0 value-comparison keywords "le"/"ge"/"lt"/"gt" -- same
+    // singleton-atomic-alias narrowing as "eq"/"ne" above.
+    match match_keyword "le" input pos1 with
+    | Some pos2 ->
+      (match parse_additive_expr input (skip_ws input pos2) (fuel - 1) with
+       | ParseFail msg fpos -> ParseFail msg fpos
+       | ParseOk rhs pos3 -> parse_relational_rest input (XE_Compare Cmp_Le lhs rhs) pos3 (fuel - 1))
+    | None ->
+    match match_keyword "ge" input pos1 with
+    | Some pos2 ->
+      (match parse_additive_expr input (skip_ws input pos2) (fuel - 1) with
+       | ParseFail msg fpos -> ParseFail msg fpos
+       | ParseOk rhs pos3 -> parse_relational_rest input (XE_Compare Cmp_Ge lhs rhs) pos3 (fuel - 1))
+    | None ->
+    match match_keyword "lt" input pos1 with
+    | Some pos2 ->
+      (match parse_additive_expr input (skip_ws input pos2) (fuel - 1) with
+       | ParseFail msg fpos -> ParseFail msg fpos
+       | ParseOk rhs pos3 -> parse_relational_rest input (XE_Compare Cmp_Lt lhs rhs) pos3 (fuel - 1))
+    | None ->
+    match match_keyword "gt" input pos1 with
+    | Some pos2 ->
+      (match parse_additive_expr input (skip_ws input pos2) (fuel - 1) with
+       | ParseFail msg fpos -> ParseFail msg fpos
+       | ParseOk rhs pos3 -> parse_relational_rest input (XE_Compare Cmp_Gt lhs rhs) pos3 (fuel - 1))
+    | None ->
     if pos1 + 1 < len && fs_byte_index input pos1 = '<' && fs_byte_index input (pos1 + 1) = '=' then
       (match parse_additive_expr input (skip_ws input (pos1 + 2)) (fuel - 1) with
        | ParseFail msg fpos -> ParseFail msg fpos
