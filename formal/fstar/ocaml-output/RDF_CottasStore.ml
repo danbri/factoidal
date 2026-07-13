@@ -2866,6 +2866,19 @@ let decode_indexed_or_fallback
        | FStar_Pervasives_Native.None -> []
        | FStar_Pervasives_Native.Some col ->
            filter_column_by_indices col indices)
+let rec vals_advance (vals : (Prims.nat * Prims.string) Prims.list)
+  (i : Prims.nat) :
+  (Prims.string FStar_Pervasives_Native.option * (Prims.nat * Prims.string)
+    Prims.list)=
+  match vals with
+  | [] -> (FStar_Pervasives_Native.None, [])
+  | (k, v)::rest ->
+      if k = i
+      then ((FStar_Pervasives_Native.Some v), rest)
+      else
+        if k < i
+        then vals_advance rest i
+        else (FStar_Pervasives_Native.None, vals)
 let rec build_selective_rows
   (bound_s : Prims.string FStar_Pervasives_Native.option)
   (bound_p : Prims.string FStar_Pervasives_Native.option)
@@ -2881,37 +2894,48 @@ let rec build_selective_rows
   match indices with
   | [] -> acc_rev
   | i::rest ->
-      let rst_s =
+      let uu___ =
         if FStar_Pervasives_Native.uu___is_Some bound_s
-        then bound_s
+        then (bound_s, s_vals)
         else
           if need.RDF_Graph_Executable.cn_s
-          then RDF_CottasStore_PageCache.indexed_decode_lookup s_vals i
-          else FStar_Pervasives_Native.None in
-      let rst_p =
-        if FStar_Pervasives_Native.uu___is_Some bound_p
-        then bound_p
-        else
-          if need.RDF_Graph_Executable.cn_p
-          then RDF_CottasStore_PageCache.indexed_decode_lookup p_vals i
-          else FStar_Pervasives_Native.None in
-      let rst_o =
-        if FStar_Pervasives_Native.uu___is_Some bound_o
-        then bound_o
-        else
-          if need.RDF_Graph_Executable.cn_o
-          then RDF_CottasStore_PageCache.indexed_decode_lookup o_vals i
-          else FStar_Pervasives_Native.None in
-      let rst_g =
-        if i < (RDF_CottasStore_ColumnSeq.cottas_column_length g_col)
-        then
-          match RDF_CottasStore_ColumnSeq.cottas_column_get g_col i with
-          | FStar_Pervasives_Native.Some g -> g
-          | FStar_Pervasives_Native.None -> ""
-        else "" in
-      let row = { rst_s; rst_p; rst_o; rst_g } in
-      build_selective_rows bound_s bound_p bound_o need s_vals p_vals o_vals
-        g_col rest (row :: acc_rev)
+          then vals_advance s_vals i
+          else (FStar_Pervasives_Native.None, s_vals) in
+      (match uu___ with
+       | (sv, s_vals2) ->
+           let uu___1 =
+             if FStar_Pervasives_Native.uu___is_Some bound_p
+             then (bound_p, p_vals)
+             else
+               if need.RDF_Graph_Executable.cn_p
+               then vals_advance p_vals i
+               else (FStar_Pervasives_Native.None, p_vals) in
+           (match uu___1 with
+            | (pv, p_vals2) ->
+                let uu___2 =
+                  if FStar_Pervasives_Native.uu___is_Some bound_o
+                  then (bound_o, o_vals)
+                  else
+                    if need.RDF_Graph_Executable.cn_o
+                    then vals_advance o_vals i
+                    else (FStar_Pervasives_Native.None, o_vals) in
+                (match uu___2 with
+                 | (ov, o_vals2) ->
+                     let rst_g =
+                       if
+                         i <
+                           (RDF_CottasStore_ColumnSeq.cottas_column_length
+                              g_col)
+                       then
+                         match RDF_CottasStore_ColumnSeq.cottas_column_get
+                                 g_col i
+                         with
+                         | FStar_Pervasives_Native.Some g -> g
+                         | FStar_Pervasives_Native.None -> ""
+                       else "" in
+                     let row = { rst_s = sv; rst_p = pv; rst_o = ov; rst_g } in
+                     build_selective_rows bound_s bound_p bound_o need
+                       s_vals2 p_vals2 o_vals2 g_col rest (row :: acc_rev))))
 let process_row_group_selective (path : Prims.string)
   (table :
     Parquet_Footer.parquet_row_group_offset_table

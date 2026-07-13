@@ -2004,6 +2004,22 @@ let decode_indexed_or_fallback
 // actual cell equals it); unbound positions are filled from the
 // indexed-decode pairs only when `need` marks them, else `None`. The
 // graph position is always filled from `g_col` (never gated).
+// O(total) lockstep advance instead of a per-row linear rescan: both
+// `indices` and each `*_vals` pairs list are ASCENDING in row index
+// (the vals are produced FROM the matched-indices request, in request
+// order), so each vals list is consumed head-forward exactly once
+// across the whole walk. The earlier per-row `indexed_decode_lookup`
+// rescan made the full-corpus differential gate quadratic (~889k
+// rows squared) and it timed out — 2026-07-13.
+let rec vals_advance (vals : list (nat & string)) (i : nat)
+  : Tot (option string & list (nat & string)) (decreases vals) =
+  match vals with
+  | [] -> (None, [])
+  | (k, v) :: rest ->
+    if k = i then (Some v, rest)
+    else if k < i then vals_advance rest i  // stale lower key: skip forward
+    else (None, vals)                        // k > i: no value for this row
+
 let rec build_selective_rows
   (bound_s bound_p bound_o : option string)
   (need : col_need)
@@ -2015,21 +2031,21 @@ let rec build_selective_rows
   match indices with
   | [] -> acc_rev
   | i :: rest ->
-    let rst_s =
-      if Some? bound_s then bound_s
-      else if need.cn_s then indexed_decode_lookup s_vals i else None in
-    let rst_p =
-      if Some? bound_p then bound_p
-      else if need.cn_p then indexed_decode_lookup p_vals i else None in
-    let rst_o =
-      if Some? bound_o then bound_o
-      else if need.cn_o then indexed_decode_lookup o_vals i else None in
+    let (sv, s_vals2) =
+      if Some? bound_s then (bound_s, s_vals)
+      else if need.cn_s then vals_advance s_vals i else (None, s_vals) in
+    let (pv, p_vals2) =
+      if Some? bound_p then (bound_p, p_vals)
+      else if need.cn_p then vals_advance p_vals i else (None, p_vals) in
+    let (ov, o_vals2) =
+      if Some? bound_o then (bound_o, o_vals)
+      else if need.cn_o then vals_advance o_vals i else (None, o_vals) in
     let rst_g =
       if i < cottas_column_length g_col then
         (match cottas_column_get g_col i with Some g -> g | None -> "")
       else "" in
-    let row = { rst_s = rst_s; rst_p = rst_p; rst_o = rst_o; rst_g = rst_g } in
-    build_selective_rows bound_s bound_p bound_o need s_vals p_vals o_vals g_col rest (row :: acc_rev)
+    let row = { rst_s = sv; rst_p = pv; rst_o = ov; rst_g = rst_g } in
+    build_selective_rows bound_s bound_p bound_o need s_vals2 p_vals2 o_vals2 g_col rest (row :: acc_rev)
 
 // Per-row-group step: decode the graph column (always) + any BOUND
 // column (fully, same boundness gate as `walk_row_groups_count_exact_

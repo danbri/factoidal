@@ -128,7 +128,7 @@ let () =
          check ~name:(Printf.sprintf "gate-a/%s: row count matches" label)
            (List.length ref_rows = List.length sel_rows);
          check ~name:(Printf.sprintf "gate-a/%s: rows byte-equal, in order, col_need_all" label)
-           (rows_eq (List.map selective_of_reference ref_rows) sel_rows);
+           (rows_eq (List.rev (List.rev_map selective_of_reference ref_rows)) sel_rows);  (* rev_map: stdlib List.map is not stack-safe at 889k elems on OCaml 4.14 *)
          ref_rows
        in
 
