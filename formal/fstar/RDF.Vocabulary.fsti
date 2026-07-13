@@ -172,3 +172,7 @@ let owl_maxQualifiedCardinality : string =
 /// owl:onClass — the qualifying class of a qualified cardinality
 /// restriction.
 let owl_onClass : string = "http://www.w3.org/2002/07/owl#onClass"
+
+/// owl:oneOf — enumerated-class (nominal) marker: the class extension
+/// is EXACTLY the listed individuals, no more, no fewer.
+let owl_oneOf : string = "http://www.w3.org/2002/07/owl#oneOf"

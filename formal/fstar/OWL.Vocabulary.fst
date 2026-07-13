@@ -93,6 +93,10 @@ let owl_onClass : wf_iri =
   assert_norm (is_iri RDF.Vocabulary.owl_onClass);
   RDF.Vocabulary.owl_onClass
 
+let owl_oneOf : wf_iri =
+  assert_norm (is_iri RDF.Vocabulary.owl_oneOf);
+  RDF.Vocabulary.owl_oneOf
+
 (* ----- RDF list-chain markers (used by OWL collections) --------------- *)
 
 let rdf_first : wf_iri =

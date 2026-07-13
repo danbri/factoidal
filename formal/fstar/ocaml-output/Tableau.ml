@@ -13,6 +13,7 @@ type class_expr =
   | CE_MinQualCard of Prims.nat * RDF_Term.wf_iri * class_expr 
   | CE_MaxQualCard of Prims.nat * RDF_Term.wf_iri * class_expr 
   | CE_ExactQualCard of Prims.nat * RDF_Term.wf_iri * class_expr 
+  | CE_OneOf of RDF_Term.rdf_term Prims.list 
   | CE_Unknown 
 let uu___is_CE_Named (projectee : class_expr) : Prims.bool=
   match projectee with | CE_Named _0 -> true | uu___ -> false
@@ -92,6 +93,10 @@ let __proj__CE_ExactQualCard__item___1 (projectee : class_expr) :
   RDF_Term.wf_iri= match projectee with | CE_ExactQualCard (_0, _1, _2) -> _1
 let __proj__CE_ExactQualCard__item___2 (projectee : class_expr) : class_expr=
   match projectee with | CE_ExactQualCard (_0, _1, _2) -> _2
+let uu___is_CE_OneOf (projectee : class_expr) : Prims.bool=
+  match projectee with | CE_OneOf _0 -> true | uu___ -> false
+let __proj__CE_OneOf__item___0 (projectee : class_expr) :
+  RDF_Term.rdf_term Prims.list= match projectee with | CE_OneOf _0 -> _0
 let uu___is_CE_Unknown (projectee : class_expr) : Prims.bool=
   match projectee with | CE_Unknown -> true | uu___ -> false
 let find_first_object (g : RDF_Graph.rdf_graph) (subj : RDF_Term.subject)
@@ -191,70 +196,56 @@ let rec parse_class_expr (g : RDF_Graph.rdf_graph) (t : RDF_Term.rdf_term)
                                (n - Prims.int_one))
                       | FStar_Pervasives_Native.None ->
                           (match find_first_object g s
-                                   OWL_Vocabulary.owl_complementOf
+                                   OWL_Vocabulary.owl_oneOf
                            with
-                           | FStar_Pervasives_Native.Some c ->
-                               CE_ComplementOf
-                                 (parse_class_expr g c (n - Prims.int_one))
+                           | FStar_Pervasives_Native.Some list_head ->
+                               CE_OneOf (walk_rdf_list g list_head n)
                            | FStar_Pervasives_Native.None ->
                                (match find_first_object g s
-                                        OWL_Vocabulary.owl_onProperty
+                                        OWL_Vocabulary.owl_complementOf
                                 with
-                                | FStar_Pervasives_Native.Some
-                                    (RDF_Term.T_IRI p) ->
+                                | FStar_Pervasives_Native.Some c ->
+                                    CE_ComplementOf
+                                      (parse_class_expr g c
+                                         (n - Prims.int_one))
+                                | FStar_Pervasives_Native.None ->
                                     (match find_first_object g s
-                                             OWL_Vocabulary.owl_someValuesFrom
+                                             OWL_Vocabulary.owl_onProperty
                                      with
-                                     | FStar_Pervasives_Native.Some c ->
-                                         CE_SomeValuesFrom
-                                           (p,
-                                             (parse_class_expr g c
-                                                (n - Prims.int_one)))
-                                     | FStar_Pervasives_Native.None ->
+                                     | FStar_Pervasives_Native.Some
+                                         (RDF_Term.T_IRI p) ->
                                          (match find_first_object g s
-                                                  OWL_Vocabulary.owl_allValuesFrom
+                                                  OWL_Vocabulary.owl_someValuesFrom
                                           with
                                           | FStar_Pervasives_Native.Some c ->
-                                              CE_AllValuesFrom
+                                              CE_SomeValuesFrom
                                                 (p,
                                                   (parse_class_expr g c
                                                      (n - Prims.int_one)))
                                           | FStar_Pervasives_Native.None ->
                                               (match find_first_object g s
-                                                       OWL_Vocabulary.owl_hasValue
+                                                       OWL_Vocabulary.owl_allValuesFrom
                                                with
                                                | FStar_Pervasives_Native.Some
-                                                   v -> CE_HasValue (p, v)
+                                                   c ->
+                                                   CE_AllValuesFrom
+                                                     (p,
+                                                       (parse_class_expr g c
+                                                          (n - Prims.int_one)))
                                                | FStar_Pervasives_Native.None
                                                    ->
-                                                   (match cardinality_value g
+                                                   (match find_first_object g
                                                             s
-                                                            OWL_Vocabulary.owl_minQualifiedCardinality
+                                                            OWL_Vocabulary.owl_hasValue
                                                     with
                                                     | FStar_Pervasives_Native.Some
-                                                        k ->
-                                                        (match find_first_object
-                                                                 g s
-                                                                 OWL_Vocabulary.owl_onClass
-                                                         with
-                                                         | FStar_Pervasives_Native.Some
-                                                             c ->
-                                                             CE_MinQualCard
-                                                               (k, p,
-                                                                 (parse_class_expr
-                                                                    g c
-                                                                    (
-                                                                    n -
-                                                                    Prims.int_one)))
-                                                         | FStar_Pervasives_Native.None
-                                                             ->
-                                                             CE_MinCard
-                                                               (k, p))
+                                                        v ->
+                                                        CE_HasValue (p, v)
                                                     | FStar_Pervasives_Native.None
                                                         ->
                                                         (match cardinality_value
                                                                  g s
-                                                                 OWL_Vocabulary.owl_maxQualifiedCardinality
+                                                                 OWL_Vocabulary.owl_minQualifiedCardinality
                                                          with
                                                          | FStar_Pervasives_Native.Some
                                                              k ->
@@ -264,7 +255,7 @@ let rec parse_class_expr (g : RDF_Graph.rdf_graph) (t : RDF_Term.rdf_term)
                                                               with
                                                               | FStar_Pervasives_Native.Some
                                                                   c ->
-                                                                  CE_MaxQualCard
+                                                                  CE_MinQualCard
                                                                     (k, p,
                                                                     (parse_class_expr
                                                                     g c
@@ -272,13 +263,13 @@ let rec parse_class_expr (g : RDF_Graph.rdf_graph) (t : RDF_Term.rdf_term)
                                                                     Prims.int_one)))
                                                               | FStar_Pervasives_Native.None
                                                                   ->
-                                                                  CE_MaxCard
+                                                                  CE_MinCard
                                                                     (k, p))
                                                          | FStar_Pervasives_Native.None
                                                              ->
                                                              (match cardinality_value
                                                                     g s
-                                                                    OWL_Vocabulary.owl_qualifiedCardinality
+                                                                    OWL_Vocabulary.owl_maxQualifiedCardinality
                                                               with
                                                               | FStar_Pervasives_Native.Some
                                                                   k ->
@@ -290,7 +281,7 @@ let rec parse_class_expr (g : RDF_Graph.rdf_graph) (t : RDF_Term.rdf_term)
                                                                    | 
                                                                    FStar_Pervasives_Native.Some
                                                                     c ->
-                                                                    CE_ExactQualCard
+                                                                    CE_MaxQualCard
                                                                     (k, p,
                                                                     (parse_class_expr
                                                                     g c
@@ -299,22 +290,52 @@ let rec parse_class_expr (g : RDF_Graph.rdf_graph) (t : RDF_Term.rdf_term)
                                                                    | 
                                                                    FStar_Pervasives_Native.None
                                                                     ->
-                                                                    CE_ExactCard
+                                                                    CE_MaxCard
                                                                     (k, p))
                                                               | FStar_Pervasives_Native.None
                                                                   ->
                                                                   (match 
                                                                     cardinality_value
                                                                     g s
-                                                                    OWL_Vocabulary.owl_minCardinality
+                                                                    OWL_Vocabulary.owl_qualifiedCardinality
                                                                    with
                                                                    | 
                                                                    FStar_Pervasives_Native.Some
                                                                     k ->
-                                                                    CE_MinCard
-                                                                    (k, p)
+                                                                    (match 
+                                                                    find_first_object
+                                                                    g s
+                                                                    OWL_Vocabulary.owl_onClass
+                                                                    with
+                                                                    | 
+                                                                    FStar_Pervasives_Native.Some
+                                                                    c ->
+                                                                    CE_ExactQualCard
+                                                                    (k, p,
+                                                                    (parse_class_expr
+                                                                    g c
+                                                                    (n -
+                                                                    Prims.int_one)))
+                                                                    | 
+                                                                    FStar_Pervasives_Native.None
+                                                                    ->
+                                                                    CE_ExactCard
+                                                                    (k, p))
                                                                    | 
                                                                    FStar_Pervasives_Native.None
+                                                                    ->
+                                                                    (match 
+                                                                    cardinality_value
+                                                                    g s
+                                                                    OWL_Vocabulary.owl_minCardinality
+                                                                    with
+                                                                    | 
+                                                                    FStar_Pervasives_Native.Some
+                                                                    k ->
+                                                                    CE_MinCard
+                                                                    (k, p)
+                                                                    | 
+                                                                    FStar_Pervasives_Native.None
                                                                     ->
                                                                     (match 
                                                                     cardinality_value
@@ -343,7 +364,7 @@ let rec parse_class_expr (g : RDF_Graph.rdf_graph) (t : RDF_Term.rdf_term)
                                                                     FStar_Pervasives_Native.None
                                                                     ->
                                                                     CE_Unknown)))))))))
-                                | uu___1 -> CE_Unknown)))))
+                                     | uu___1 -> CE_Unknown))))))
        | uu___ -> CE_Unknown)
 and parse_class_expr_list (g : RDF_Graph.rdf_graph)
   (ts : RDF_Term.rdf_term Prims.list) (fuel : Prims.nat) :
@@ -482,6 +503,13 @@ let rec is_member (g : RDF_Graph.rdf_graph) (i : RDF_Term.subject)
            let succs = find_P_successors g i p in
            let matched = count_qual_successors g succs c (n - Prims.int_one) in
            if (k = Prims.int_zero) && (matched = Prims.int_zero)
+           then FStar_Pervasives_Native.Some true
+           else FStar_Pervasives_Native.None
+       | CE_OneOf members ->
+           if
+             any_successor_sat
+               (fun t -> RDF_Term.rdf_term_eq t (RDF_Graph.subject_to_term i))
+               members
            then FStar_Pervasives_Native.Some true
            else FStar_Pervasives_Native.None)
 and any_is_member (g : RDF_Graph.rdf_graph)

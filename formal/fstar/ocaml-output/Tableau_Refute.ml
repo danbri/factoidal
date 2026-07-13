@@ -5,6 +5,8 @@ let owl_bottomDataProperty : RDF_Term.wf_iri=
   "http://www.w3.org/2002/07/owl#bottomDataProperty"
 let owl_topObjectProperty : RDF_Term.wf_iri=
   "http://www.w3.org/2002/07/owl#topObjectProperty"
+let owl_inverseOf : RDF_Term.wf_iri=
+  "http://www.w3.org/2002/07/owl#inverseOf"
 let owl_distinctMembers : RDF_Term.wf_iri=
   "http://www.w3.org/2002/07/owl#distinctMembers"
 let xsd_string_dt : RDF_Term.wf_iri=
@@ -13,9 +15,16 @@ let xsd_boolean_dt : RDF_Term.wf_iri=
   "http://www.w3.org/2001/XMLSchema#boolean"
 let is_bottom_prop (p : RDF_Term.wf_iri) : Prims.bool=
   (p = owl_bottomObjectProperty) || (p = owl_bottomDataProperty)
+let rec term_list_eq (xs : RDF_Term.rdf_term Prims.list)
+  (ys : RDF_Term.rdf_term Prims.list) : Prims.bool=
+  match (xs, ys) with
+  | ([], []) -> true
+  | (x::xtl, y::ytl) -> (RDF_Term.rdf_term_eq x y) && (term_list_eq xtl ytl)
+  | (uu___, uu___1) -> false
 let rec ce_eq (a : Tableau.class_expr) (b : Tableau.class_expr) : Prims.bool=
   match (a, b) with
   | (Tableau.CE_Named x, Tableau.CE_Named y) -> x = y
+  | (Tableau.CE_OneOf xs, Tableau.CE_OneOf ys) -> term_list_eq xs ys
   | (Tableau.CE_SomeValuesFrom (p, c), Tableau.CE_SomeValuesFrom (q, d)) ->
       (p = q) && (ce_eq c d)
   | (Tableau.CE_AllValuesFrom (p, c), Tableau.CE_AllValuesFrom (q, d)) ->
@@ -50,6 +59,7 @@ let rec ce_eq_syn (a : Tableau.class_expr) (b : Tableau.class_expr) :
   match (a, b) with
   | (Tableau.CE_Unknown, Tableau.CE_Unknown) -> true
   | (Tableau.CE_Named x, Tableau.CE_Named y) -> x = y
+  | (Tableau.CE_OneOf xs, Tableau.CE_OneOf ys) -> term_list_eq xs ys
   | (Tableau.CE_SomeValuesFrom (p, c), Tableau.CE_SomeValuesFrom (q, d)) ->
       (p = q) && (ce_eq_syn c d)
   | (Tableau.CE_AllValuesFrom (p, c), Tableau.CE_AllValuesFrom (q, d)) ->
@@ -87,6 +97,7 @@ let rec ce_definite (c : Tableau.class_expr) : Prims.bool=
   | Tableau.CE_MinCard (uu___, uu___1) -> true
   | Tableau.CE_MaxCard (uu___, uu___1) -> true
   | Tableau.CE_ExactCard (uu___, uu___1) -> true
+  | Tableau.CE_OneOf uu___ -> true
   | Tableau.CE_SomeValuesFrom (uu___, d) -> ce_definite d
   | Tableau.CE_AllValuesFrom (uu___, d) -> ce_definite d
   | Tableau.CE_ComplementOf d -> ce_definite d
@@ -164,6 +175,8 @@ and nnf_neg (c : Tableau.class_expr) : Tableau.class_expr=
         Tableau.CE_UnionOf
           [Tableau.CE_MaxQualCard ((k - Prims.int_one), p, d');
           Tableau.CE_MinQualCard ((k + Prims.int_one), p, d')]
+  | Tableau.CE_OneOf members ->
+      Tableau.CE_ComplementOf (Tableau.CE_OneOf members)
   | Tableau.CE_Unknown -> Tableau.CE_Unknown
 and nnf_list (cs : Tableau.class_expr Prims.list) :
   Tableau.class_expr Prims.list=
@@ -199,20 +212,44 @@ type rstate =
   rs_nodes: rnode Prims.list ;
   rs_extra: redge Prims.list ;
   rs_fresh: Prims.nat ;
-  rs_wdepth: (RDF_Term.bnode_id * Prims.nat) Prims.list }
+  rs_wdepth: (RDF_Term.bnode_id * Prims.nat) Prims.list ;
+  rs_inv: (RDF_Term.wf_iri * RDF_Term.wf_iri) Prims.list }
 let __proj__Mkrstate__item__rs_nodes (projectee : rstate) : rnode Prims.list=
   match projectee with
-  | { rs_nodes; rs_extra; rs_fresh; rs_wdepth;_} -> rs_nodes
+  | { rs_nodes; rs_extra; rs_fresh; rs_wdepth; rs_inv;_} -> rs_nodes
 let __proj__Mkrstate__item__rs_extra (projectee : rstate) : redge Prims.list=
   match projectee with
-  | { rs_nodes; rs_extra; rs_fresh; rs_wdepth;_} -> rs_extra
+  | { rs_nodes; rs_extra; rs_fresh; rs_wdepth; rs_inv;_} -> rs_extra
 let __proj__Mkrstate__item__rs_fresh (projectee : rstate) : Prims.nat=
   match projectee with
-  | { rs_nodes; rs_extra; rs_fresh; rs_wdepth;_} -> rs_fresh
+  | { rs_nodes; rs_extra; rs_fresh; rs_wdepth; rs_inv;_} -> rs_fresh
 let __proj__Mkrstate__item__rs_wdepth (projectee : rstate) :
   (RDF_Term.bnode_id * Prims.nat) Prims.list=
   match projectee with
-  | { rs_nodes; rs_extra; rs_fresh; rs_wdepth;_} -> rs_wdepth
+  | { rs_nodes; rs_extra; rs_fresh; rs_wdepth; rs_inv;_} -> rs_wdepth
+let __proj__Mkrstate__item__rs_inv (projectee : rstate) :
+  (RDF_Term.wf_iri * RDF_Term.wf_iri) Prims.list=
+  match projectee with
+  | { rs_nodes; rs_extra; rs_fresh; rs_wdepth; rs_inv;_} -> rs_inv
+let rec collect_inverse_pairs (ts : RDF_Graph.rdf_graph) :
+  (RDF_Term.wf_iri * RDF_Term.wf_iri) Prims.list=
+  match ts with
+  | [] -> []
+  | t::tl ->
+      let rest = collect_inverse_pairs tl in
+      if t.RDF_Triple.p = owl_inverseOf
+      then
+        (match ((t.RDF_Triple.s), (t.RDF_Triple.o)) with
+         | (RDF_Term.S_IRI p, RDF_Term.T_IRI q) -> (p, q) :: rest
+         | uu___ -> rest)
+      else rest
+let rec inverses_of (pairs : (RDF_Term.wf_iri * RDF_Term.wf_iri) Prims.list)
+  (p : RDF_Term.wf_iri) : RDF_Term.wf_iri Prims.list=
+  match pairs with
+  | [] -> []
+  | (a, b)::tl ->
+      let rest = inverses_of tl p in
+      if a = p then b :: rest else if b = p then a :: rest else rest
 let max_witness_depth : Prims.nat= (Prims.of_int (3))
 let rec witness_depth_of (ds : (RDF_Term.bnode_id * Prims.nat) Prims.list)
   (i : RDF_Term.subject) : Prims.nat=
@@ -269,7 +306,8 @@ let add_label (st : rstate) (i : RDF_Term.subject) (c : Tableau.class_expr) :
               rs_nodes = ns;
               rs_extra = (st.rs_extra);
               rs_fresh = (st.rs_fresh);
-              rs_wdepth = (st.rs_wdepth)
+              rs_wdepth = (st.rs_wdepth);
+              rs_inv = (st.rs_inv)
             }, ch))
 let rec add_labels_all (st : rstate) (i : RDF_Term.subject)
   (cs : Tableau.class_expr Prims.list) : (rstate * Prims.bool)=
@@ -302,18 +340,56 @@ let rec dedup_terms (ts : RDF_Term.rdf_term Prims.list) :
       if FStar_List_Tot_Base.existsb (fun o -> RDF_Term.rdf_term_eq t o) rest
       then rest
       else t :: rest
+let rec base_reverse_objects (g : RDF_Graph.rdf_graph) (i : RDF_Term.subject)
+  (invs : RDF_Term.wf_iri Prims.list) : RDF_Term.rdf_term Prims.list=
+  match invs with
+  | [] -> []
+  | q::tl ->
+      FStar_List_Tot_Base.op_At
+        (FStar_List_Tot_Base.map RDF_Graph.subject_to_term
+           (RDF_Graph_Executable.find_subjects g q
+              (RDF_Graph.subject_to_term i))) (base_reverse_objects g i tl)
+let rec extra_reverse_objects (es : redge Prims.list)
+  (i_term : RDF_Term.rdf_term) (q : RDF_Term.wf_iri)
+  (count_only : Prims.bool) : RDF_Term.rdf_term Prims.list=
+  match es with
+  | [] -> []
+  | e::tl ->
+      let rest = extra_reverse_objects tl i_term q count_only in
+      if
+        ((e.re_p = q) && (RDF_Term.rdf_term_eq e.re_o i_term)) &&
+          (e.re_count || (Prims.op_Negation count_only))
+      then (RDF_Graph.subject_to_term e.re_s) :: rest
+      else rest
+let rec extra_reverse_objects_all (es : redge Prims.list)
+  (i_term : RDF_Term.rdf_term) (invs : RDF_Term.wf_iri Prims.list)
+  (count_only : Prims.bool) : RDF_Term.rdf_term Prims.list=
+  match invs with
+  | [] -> []
+  | q::tl ->
+      FStar_List_Tot_Base.op_At
+        (extra_reverse_objects es i_term q count_only)
+        (extra_reverse_objects_all es i_term tl count_only)
 let countable_successors (g : RDF_Graph.rdf_graph) (st : rstate)
   (i : RDF_Term.subject) (p : RDF_Term.wf_iri) :
   RDF_Term.rdf_term Prims.list=
+  let invs = inverses_of st.rs_inv p in
   dedup_terms
     (FStar_List_Tot_Base.op_At (RDF_Graph_Executable.find_objects g i p)
-       (extra_objects st.rs_extra i p true))
+       (FStar_List_Tot_Base.op_At (extra_objects st.rs_extra i p true)
+          (FStar_List_Tot_Base.op_At (base_reverse_objects g i invs)
+             (extra_reverse_objects_all st.rs_extra
+                (RDF_Graph.subject_to_term i) invs true))))
 let all_successors (g : RDF_Graph.rdf_graph) (st : rstate)
   (i : RDF_Term.subject) (p : RDF_Term.wf_iri) :
   RDF_Term.rdf_term Prims.list=
+  let invs = inverses_of st.rs_inv p in
   dedup_terms
     (FStar_List_Tot_Base.op_At (RDF_Graph_Executable.find_objects g i p)
-       (extra_objects st.rs_extra i p false))
+       (FStar_List_Tot_Base.op_At (extra_objects st.rs_extra i p false)
+          (FStar_List_Tot_Base.op_At (base_reverse_objects g i invs)
+             (extra_reverse_objects_all st.rs_extra
+                (RDF_Graph.subject_to_term i) invs false))))
 let rec extra_edge_present (es : redge Prims.list) (i : RDF_Term.subject)
   (p : RDF_Term.wf_iri) (o : RDF_Term.rdf_term) : Prims.bool=
   match es with
@@ -339,7 +415,8 @@ let add_countable_edge (g : RDF_Graph.rdf_graph) (st : rstate)
        rs_extra = ({ re_s = i; re_p = p; re_o = v; re_count = true } ::
          (st.rs_extra));
        rs_fresh = (st.rs_fresh);
-       rs_wdepth = (st.rs_wdepth)
+       rs_wdepth = (st.rs_wdepth);
+       rs_inv = (st.rs_inv)
      }, true)
 let comparable_datatype (d : RDF_Term.wf_iri) : Prims.bool=
   (((d = RDF_Term.xsd_integer) || (d = RDF_Term.xsd_decimal)) ||
@@ -364,6 +441,11 @@ let rec filter_distinct_from (g : RDF_Graph.rdf_graph)
   | t::tl ->
       let rest = filter_distinct_from g h tl in
       if provably_distinct g h t then t :: rest else rest
+let rec all_provably_distinct (g : RDF_Graph.rdf_graph)
+  (x : RDF_Term.rdf_term) (ms : RDF_Term.rdf_term Prims.list) : Prims.bool=
+  match ms with
+  | [] -> true
+  | m::tl -> (provably_distinct g x m) && (all_provably_distinct g x tl)
 let rec exists_distinct_subset (g : RDF_Graph.rdf_graph)
   (cands : RDF_Term.rdf_term Prims.list) (need : Prims.nat) : Prims.bool=
   if need = Prims.int_zero
@@ -420,8 +502,15 @@ let clash_for_label (g : RDF_Graph.rdf_graph) (st : rstate)
       (is_bottom_prop p) || (exists_max_lt Prims.int_one p ls_all)
   | Tableau.CE_MinQualCard (k, p, c) ->
       (k >= Prims.int_one) &&
-        (((is_bottom_prop p) || (exists_max_lt k p ls_all)) ||
-           (exists_maxqual_lt k p c ls_all))
+        ((((is_bottom_prop p) || (exists_max_lt k p ls_all)) ||
+            (exists_maxqual_lt k p c ls_all))
+           ||
+           ((match c with
+             | Tableau.CE_OneOf members ->
+                 k > (FStar_List_Tot_Base.length members)
+             | uu___ -> false)))
+  | Tableau.CE_OneOf members ->
+      all_provably_distinct g (RDF_Graph.subject_to_term i) members
   | Tableau.CE_MaxCard (k, p) ->
       let succs = countable_successors g st i p in
       if k = Prims.int_zero
@@ -638,13 +727,20 @@ let ensure_witness (g : RDF_Graph.rdf_graph) (st : rstate)
             rs_nodes = (st.rs_nodes);
             rs_extra = (edge :: (st.rs_extra));
             rs_fresh = (st.rs_fresh + Prims.int_one);
-            rs_wdepth = ((w, (d + Prims.int_one)) :: (st.rs_wdepth))
+            rs_wdepth = ((w, (d + Prims.int_one)) :: (st.rs_wdepth));
+            rs_inv = (st.rs_inv)
           } in
         let uu___2 =
           match filler1 with
           | FStar_Pervasives_Native.Some c -> add_label st1 ws c
           | FStar_Pervasives_Native.None -> (st1, false) in
         match uu___2 with | (st2, uu___3) -> (st2, true)))
+let ensure_existential (g : RDF_Graph.rdf_graph) (st : rstate)
+  (i : RDF_Term.subject) (p : RDF_Term.wf_iri) (c : Tableau.class_expr) :
+  (rstate * Prims.bool)=
+  match c with
+  | Tableau.CE_OneOf (a::[]) -> add_countable_edge g st i p a
+  | uu___ -> ensure_witness g st i p (FStar_Pervasives_Native.Some c)
 let apply_label_rules (g : RDF_Graph.rdf_graph) (st : rstate)
   (i : RDF_Term.subject) (l : Tableau.class_expr) : (rstate * Prims.bool)=
   match l with
@@ -661,12 +757,10 @@ let apply_label_rules (g : RDF_Graph.rdf_graph) (st : rstate)
            else (st1, c1))
   | Tableau.CE_HasValue (p, v) -> add_countable_edge g st i p v
   | Tableau.CE_SomeValuesFrom (p, c) ->
-      if is_bottom_prop p
-      then (st, false)
-      else ensure_witness g st i p (FStar_Pervasives_Native.Some c)
+      if is_bottom_prop p then (st, false) else ensure_existential g st i p c
   | Tableau.CE_MinQualCard (k, p, c) ->
       if (k >= Prims.int_one) && (Prims.op_Negation (is_bottom_prop p))
-      then ensure_witness g st i p (FStar_Pervasives_Native.Some c)
+      then ensure_existential g st i p c
       else (st, false)
   | Tableau.CE_MinCard (k, p) ->
       if (k >= Prims.int_one) && (Prims.op_Negation (is_bottom_prop p))
@@ -700,14 +794,19 @@ let rec pass_nodes
   match ns with
   | [] -> (st, false)
   | n::tl ->
-      let uu___ = pass_labels tb g st n.rn_id n.rn_labels in
+      let uu___ =
+        step_label tb g st n.rn_id (Tableau.CE_Named RDFS_Closure.owl_Thing) in
       (match uu___ with
-       | (st1, c1) ->
-           let uu___1 = apply_axioms_edges tb g st1 n.rn_id in
+       | (st0, c0) ->
+           let uu___1 = pass_labels tb g st0 n.rn_id n.rn_labels in
            (match uu___1 with
-            | (st1b, c1b) ->
-                let uu___2 = pass_nodes tb g st1b tl in
-                (match uu___2 with | (st2, c2) -> (st2, ((c1 || c1b) || c2)))))
+            | (st1, c1) ->
+                let uu___2 = apply_axioms_edges tb g st1 n.rn_id in
+                (match uu___2 with
+                 | (st1b, c1b) ->
+                     let uu___3 = pass_nodes tb g st1b tl in
+                     (match uu___3 with
+                      | (st2, c2) -> (st2, (((c0 || c1) || c1b) || c2))))))
 let pass (tb : (Tableau.class_expr * Tableau.class_expr) Prims.list)
   (g : RDF_Graph.rdf_graph) (st : rstate) : (rstate * Prims.bool)=
   pass_nodes tb g st st.rs_nodes
@@ -927,7 +1026,12 @@ let rec init_nodes_aux (gfull : RDF_Graph.rdf_graph)
       init_nodes_aux gfull tl st'
 let init_state (g : RDF_Graph.rdf_graph) : rstate=
   init_nodes_aux g g
-    { rs_nodes = []; rs_extra = []; rs_fresh = Prims.int_zero; rs_wdepth = []
+    {
+      rs_nodes = [];
+      rs_extra = [];
+      rs_fresh = Prims.int_zero;
+      rs_wdepth = [];
+      rs_inv = (collect_inverse_pairs g)
     }
 let tableau_consistent (g : RDF_Graph.rdf_graph) (fuel : Prims.nat) :
   Prims.bool FStar_Pervasives_Native.option=

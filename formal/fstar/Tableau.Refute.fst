@@ -88,6 +88,21 @@ let owl_topObjectProperty : wf_iri =
   assert_norm (is_iri "http://www.w3.org/2002/07/owl#topObjectProperty");
   "http://www.w3.org/2002/07/owl#topObjectProperty"
 
+(* owl:inverseOf — used by the inverse-role successor lookup (#209
+   Wave A follow-up: "spy-point" pattern). The OWL-RL closure
+   (OWL.Closure.owl_rule_inverse_of) already flips AUTHOR-ASSERTED
+   edges through a declared inverse pair before the refuter ever sees
+   the graph, so `find_objects` alone already picks those up. What the
+   closure CANNOT do is flip edges the REFUTER mints during its own
+   expansion (∃-witnesses, hasValue-derived edges in `rs_extra`) — the
+   closure runs once, before refutation, and never sees those. The
+   `rs_inv` table + role-aware successor lookup below close that gap
+   for tableau-internal edges only; it is a narrow, additive
+   supplement to the closure-level rule, not a replacement for it. *)
+let owl_inverseOf : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2002/07/owl#inverseOf");
+  "http://www.w3.org/2002/07/owl#inverseOf"
+
 let owl_distinctMembers : wf_iri =
   assert_norm (is_iri "http://www.w3.org/2002/07/owl#distinctMembers");
   "http://www.w3.org/2002/07/owl#distinctMembers"
@@ -116,9 +131,22 @@ let is_bottom_prop (p : wf_iri) : bool =
    expressions — see ce_definite below.
    ------------------------------------------------------------------- *)
 
+(* Structural equality over rdf_term lists — used only by CE_OneOf's
+   ce_eq/ce_eq_syn cases (order-sensitive: the parser always walks the
+   RDF list in the same order for a given graph, so this is adequate
+   for both storage-dedup and axiom-LHS matching of one fixed oneOf
+   bnode; it is NOT a set-equality check). *)
+let rec term_list_eq (xs : list rdf_term) (ys : list rdf_term)
+  : Tot bool (decreases xs) =
+  match xs, ys with
+  | [], [] -> true
+  | x :: xtl, y :: ytl -> rdf_term_eq x y && term_list_eq xtl ytl
+  | _, _ -> false
+
 let rec ce_eq (a : class_expr) (b : class_expr) : Tot bool (decreases a) =
   match a, b with
   | CE_Named x, CE_Named y -> x = y
+  | CE_OneOf xs, CE_OneOf ys -> term_list_eq xs ys
   | CE_SomeValuesFrom p c, CE_SomeValuesFrom q d -> p = q && ce_eq c d
   | CE_AllValuesFrom p c, CE_AllValuesFrom q d -> p = q && ce_eq c d
   | CE_HasValue p v, CE_HasValue q w -> p = q && rdf_term_eq v w
@@ -156,6 +184,7 @@ let rec ce_eq_syn (a : class_expr) (b : class_expr) : Tot bool (decreases a) =
   match a, b with
   | CE_Unknown, CE_Unknown -> true
   | CE_Named x, CE_Named y -> x = y
+  | CE_OneOf xs, CE_OneOf ys -> term_list_eq xs ys
   | CE_SomeValuesFrom p c, CE_SomeValuesFrom q d -> p = q && ce_eq_syn c d
   | CE_AllValuesFrom p c, CE_AllValuesFrom q d -> p = q && ce_eq_syn c d
   | CE_HasValue p v, CE_HasValue q w -> p = q && rdf_term_eq v w
@@ -184,7 +213,7 @@ let rec ce_definite (c : class_expr) : Tot bool (decreases c) =
   match c with
   | CE_Unknown -> false
   | CE_Named _ | CE_HasValue _ _ | CE_MinCard _ _ | CE_MaxCard _ _
-  | CE_ExactCard _ _ -> true
+  | CE_ExactCard _ _ | CE_OneOf _ -> true
   | CE_SomeValuesFrom _ d | CE_AllValuesFrom _ d | CE_ComplementOf d
   | CE_MinQualCard _ _ d | CE_MaxQualCard _ _ d | CE_ExactQualCard _ _ d ->
     ce_definite d
@@ -253,6 +282,12 @@ and nnf_neg (c : class_expr) : Tot class_expr (decreases c) =
     let d' = nnf d in
     if k = 0 then CE_MinQualCard 1 p d'
     else CE_UnionOf [CE_MaxQualCard (k - 1) p d'; CE_MinQualCard (k + 1) p d']
+  | CE_OneOf members ->
+    (* neg{a1,...,am}: no closed-form atomic shape in this AST (it is
+       not a named/hasValue complement) — wrap it, exactly as the
+       CE_HasValue case does. Sound: nothing is dropped, only wrapped;
+       CE_OneOf is otherwise treated as atomic. *)
+    CE_ComplementOf (CE_OneOf members)
   | CE_Unknown -> CE_Unknown
 and nnf_list (cs : list class_expr) : Tot (list class_expr) (decreases cs) =
   match cs with
@@ -297,7 +332,51 @@ noeq type rstate = {
      interactions live within the first couple of levels in the W3C
      corpus). *)
   rs_wdepth : list (bnode_id & nat);
+  (* Declared owl:inverseOf pairs (P, Q), collected ONCE from the input
+     graph at init_state time (schema-level facts — TBox, not touched
+     by expansion). Read-only for the rest of the run; see
+     `inverses_of` / `countable_successors` / `all_successors` below
+     for how this makes tableau-internal edges (rs_extra) role-aware
+     without re-deriving what the closure-level owl_rule_inverse_of
+     already handles for author-asserted triples in `g`. *)
+  rs_inv : list (wf_iri & wf_iri);
 }
+
+(* -------------------------------------------------------------------
+   3a. Inverse-role table (#209 Wave A follow-up).
+
+   Collected once from the FULL input graph (schema-level: P
+   owl:inverseOf Q triples), then consulted symmetrically — a pair
+   (P, Q) means P and Q are each other's inverse, so a query "what are
+   the inverses of role R?" must match R against EITHER side of every
+   collected pair. ------------------------------------------------- *)
+
+let rec collect_inverse_pairs (ts : rdf_graph) : Tot (list (wf_iri & wf_iri)) (decreases ts) =
+  match ts with
+  | [] -> []
+  | t :: tl ->
+    let rest = collect_inverse_pairs tl in
+    if t.p = owl_inverseOf then
+      (match t.s, t.o with
+       | S_IRI p, T_IRI q -> (p, q) :: rest
+       | _ -> rest)
+    else rest
+
+(* All Q such that (P owl:inverseOf Q) or (Q owl:inverseOf P) was
+   declared — i.e. every role that is P's inverse, checked from
+   either side of the asserted pair. May return the same Q more than
+   once if the graph asserts the pair redundantly in both directions;
+   harmless duplication (successor lists get deduped downstream by
+   `dedup_terms`). *)
+let rec inverses_of (pairs : list (wf_iri & wf_iri)) (p : wf_iri)
+  : Tot (list wf_iri) (decreases pairs) =
+  match pairs with
+  | [] -> []
+  | (a, b) :: tl ->
+    let rest = inverses_of tl p in
+    if a = p then b :: rest
+    else if b = p then a :: rest
+    else rest
 
 let max_witness_depth : nat = 3
 
@@ -385,13 +464,64 @@ let rec dedup_terms (ts : list rdf_term) : Tot (list rdf_term) (decreases ts) =
     let rest = dedup_terms tl in
     if List.Tot.existsb (fun o -> rdf_term_eq t o) rest then rest else t :: rest
 
+(* -------------------------------------------------------------------
+   4a. Role-aware (inverse-aware) successor lookup.
+
+   For a declared pair (P, Q) with P owl:inverseOf Q: an edge (x, P, y)
+   in every model also witnesses (y, Q, x) (Direct Semantics EXT(Q) =
+   {(a,b) : (b,a) in EXT(P)}). The closure-level Datalog rule
+   (OWL.Closure.owl_rule_inverse_of) already materialises this flip for
+   every AUTHOR-ASSERTED triple before the refuter starts — so
+   `find_objects g i q` below already sees those. What it cannot see is
+   an edge the refuter itself mints DURING expansion (a witness or
+   hasValue-derived edge added to `rs_extra`): the closure ran once,
+   before refutation, over `g` only. These two helpers close that gap
+   by scanning `rs_extra` for the REVERSE direction through every
+   declared inverse of the queried role, so a tableau-internal edge
+   participates in role-aware counting exactly like an asserted one. *)
+let rec base_reverse_objects (g : rdf_graph) (i : subject) (invs : list wf_iri)
+  : Tot (list rdf_term) (decreases invs) =
+  match invs with
+  | [] -> []
+  | q :: tl ->
+    (List.Tot.map subject_to_term (find_subjects g q (subject_to_term i)))
+    @ base_reverse_objects g i tl
+
+let rec extra_reverse_objects (es : list redge) (i_term : rdf_term) (q : wf_iri)
+                              (count_only : bool)
+  : Tot (list rdf_term) (decreases es) =
+  match es with
+  | [] -> []
+  | e :: tl ->
+    let rest = extra_reverse_objects tl i_term q count_only in
+    if e.re_p = q && rdf_term_eq e.re_o i_term && (e.re_count || not count_only)
+    then subject_to_term e.re_s :: rest
+    else rest
+
+let rec extra_reverse_objects_all (es : list redge) (i_term : rdf_term)
+                                  (invs : list wf_iri) (count_only : bool)
+  : Tot (list rdf_term) (decreases invs) =
+  match invs with
+  | [] -> []
+  | q :: tl ->
+    extra_reverse_objects es i_term q count_only
+    @ extra_reverse_objects_all es i_term tl count_only
+
 let countable_successors (g : rdf_graph) (st : rstate) (i : subject) (p : wf_iri)
   : list rdf_term =
-  dedup_terms (find_objects g i p @ extra_objects st.rs_extra i p true)
+  let invs = inverses_of st.rs_inv p in
+  dedup_terms (find_objects g i p
+               @ extra_objects st.rs_extra i p true
+               @ base_reverse_objects g i invs
+               @ extra_reverse_objects_all st.rs_extra (subject_to_term i) invs true)
 
 let all_successors (g : rdf_graph) (st : rstate) (i : subject) (p : wf_iri)
   : list rdf_term =
-  dedup_terms (find_objects g i p @ extra_objects st.rs_extra i p false)
+  let invs = inverses_of st.rs_inv p in
+  dedup_terms (find_objects g i p
+               @ extra_objects st.rs_extra i p false
+               @ base_reverse_objects g i invs
+               @ extra_reverse_objects_all st.rs_extra (subject_to_term i) invs false)
 
 let rec extra_edge_present (es : list redge) (i : subject) (p : wf_iri)
                            (o : rdf_term)
@@ -456,6 +586,17 @@ let rec filter_distinct_from (g : rdf_graph) (h : rdf_term) (ts : list rdf_term)
   | t :: tl ->
     let rest = filter_distinct_from g h tl in
     if provably_distinct g h t then t :: rest else rest
+
+(* Is `x` provably distinct from EVERY term in `ms`? Vacuously true for
+   `ms = []` — being asserted a member of an EMPTY nominal (owl:oneOf
+   with no elements, semantically owl:Nothing) is itself a clash, and
+   this fold correctly reports that case as "distinct from all
+   (zero) members" without a separate empty-list special case. *)
+let rec all_provably_distinct (g : rdf_graph) (x : rdf_term) (ms : list rdf_term)
+  : Tot bool (decreases ms) =
+  match ms with
+  | [] -> true
+  | m :: tl -> provably_distinct g x m && all_provably_distinct g x tl
 
 (* Does `cands` contain `need` PAIRWISE provably-distinct members?
    Sound: a pairwise provably-distinct set of size k+1 denotes k+1
@@ -546,7 +687,27 @@ let clash_for_label (g : rdf_graph) (st : rstate) (i : subject)
     k >= 1
     && (is_bottom_prop p
         || exists_max_lt k p ls_all
-        || exists_maxqual_lt k p c ls_all)
+        || exists_maxqual_lt k p c ls_all
+        (* Nominal-aware counting (#209 Wave A, sharpened): a nominal
+           {a1,...,am} denotes AT MOST m distinct individuals in every
+           model (that is the entire content of owl:oneOf — no more,
+           no fewer). >= k P.{a1,...,am} demands k pairwise-distinct
+           P-fillers all drawn from a set of size m: impossible once
+           k > m, with NO owl:differentFrom needed — the bound comes
+           from the nominal's own finite size, not from asserted
+           distinctness of specific individuals. *)
+        || (match c with
+            | CE_OneOf members -> k > List.Tot.length members
+            | _ -> false))
+  | CE_OneOf members ->
+    (* O-rule (#209 Wave A): i : {a1,...,am} forces i to equal ONE of
+       the members in every model (that is what owl:oneOf asserts). If
+       i is provably distinct (owl:differentFrom, either direction, or
+       incomparable-value literals) from EVERY member, no member can be
+       i — clash. Sound, no cardinality reasoning needed; kept from the
+       first Wave-A probe (#209) even though it fires on zero corpus
+       tests by itself — it is free and still correct. *)
+    all_provably_distinct g (subject_to_term i) members
   | CE_MaxCard k p ->
     let succs = countable_successors g st i p in
     if k = 0 then Cons? succs
@@ -820,6 +981,28 @@ let ensure_witness (g : rdf_graph) (st : rstate) (i : subject) (p : wf_iri)
    provably belongs to in every model of the input graph (given the
    labels already present were). Union labels are NOT expanded here —
    they branch in the search (section 9). *)
+(* Singleton-nominal existential witness (#209 Wave A follow-up,
+   "spy-point" pattern). ∃P.{a} forces a P-edge to the SPECIFIC named
+   individual `a` in every model — {a}'s extension is exactly one
+   element (the referent of the term `a`), unlike a general ∃P.C
+   filler where the witness's identity is unconstrained. We therefore
+   assert (i, p, a) as a COUNTABLE edge (like hasValue) rather than
+   minting an anonymous ∃-witness: this lets the edge participate in
+   inverse-role successor counting AT `a` (e.g. a maxCardinality
+   restriction on invP sitting on `a` must see this edge to derive a
+   clash — that is the entire content of the spy-point pattern).
+   Sound: CEXT({a}) = {denotation of a} in every model, so `i : ∃P.{a}`
+   entails the edge (i, p, a) directly; no witness-merging machinery
+   needed for the singleton case. Multi-member nominals ({a1,...,am},
+   m >= 2) fall back to the ordinary anonymous witness — we cannot
+   name which member is the successor, only that at least one is. *)
+let ensure_existential (g : rdf_graph) (st : rstate) (i : subject) (p : wf_iri)
+                       (c : class_expr)
+  : rstate & bool =
+  match c with
+  | CE_OneOf [a] -> add_countable_edge g st i p a
+  | _ -> ensure_witness g st i p (Some c)
+
 let apply_label_rules (g : rdf_graph) (st : rstate) (i : subject)
                       (l : class_expr)
   : rstate & bool =
@@ -839,10 +1022,10 @@ let apply_label_rules (g : rdf_graph) (st : rstate) (i : subject)
   | CE_HasValue p v -> add_countable_edge g st i p v
   | CE_SomeValuesFrom p c ->
     if is_bottom_prop p then (st, false)  (* C5 clash fires instead *)
-    else ensure_witness g st i p (Some c)
+    else ensure_existential g st i p c
   | CE_MinQualCard k p c ->
     if k >= 1 && not (is_bottom_prop p)
-    then ensure_witness g st i p (Some c)
+    then ensure_existential g st i p c
     else (st, false)
   | CE_MinCard k p ->
     if k >= 1 && not (is_bottom_prop p)
@@ -867,16 +1050,34 @@ let rec pass_labels (tb : list (class_expr & class_expr)) (g : rdf_graph)
     let (st2, c2) = pass_labels tb g st1 i tl in
     (st2, c1 || c2)
 
+(* Universal owl:Thing membership: CEXT(owl:Thing) = Δ (the WHOLE
+   domain) in every model, for EVERY individual, whether or not
+   anything ever asserts `i rdf:type owl:Thing` explicitly. Without
+   this, a node only carries the `CE_Named owl_Thing` label when the
+   ABox happens to say so, so a TBox axiom shaped `owl:Thing ⊑ D` (or
+   an edge-entailment check whose filler is literally owl:Thing, e.g.
+   `∃P.owl:Thing`) silently never fires on individuals that were never
+   explicitly typed Thing — even though it is ENTAILED for all of
+   them. Adding the label unconditionally, once per node per round, is
+   sound (it is a structural fact, not a derived one) and idempotent
+   (add_label's syntactic dedup means it changes nothing after the
+   first round it fires in). Routed through `step_label` so it also
+   unfolds any `(owl:Thing, D)` TBox axiom exactly like every other
+   label. Only reaches nodes already present in `rs_nodes`; witnesses
+   minted with no filler (`ensure_witness ... None`) never become
+   nodes and so stay outside this pass — withholding there is sound,
+   just incomplete. *)
 let rec pass_nodes (tb : list (class_expr & class_expr)) (g : rdf_graph)
                    (st : rstate) (ns : list rnode)
   : Tot (rstate & bool) (decreases ns) =
   match ns with
   | [] -> (st, false)
   | n :: tl ->
-    let (st1, c1) = pass_labels tb g st n.rn_id n.rn_labels in
+    let (st0, c0) = step_label tb g st n.rn_id (CE_Named owl_Thing) in
+    let (st1, c1) = pass_labels tb g st0 n.rn_id n.rn_labels in
     let (st1b, c1b) = apply_axioms_edges tb g st1 n.rn_id in
     let (st2, c2) = pass_nodes tb g st1b tl in
-    (st2, c1 || c1b || c2)
+    (st2, c0 || c1 || c1b || c2)
 
 (* One full deterministic round over a snapshot of the current nodes.
    Nodes/labels added during the round are picked up next round. *)
@@ -1124,7 +1325,9 @@ let rec init_nodes_aux (gfull : rdf_graph) (ts : rdf_graph) (st : rstate)
     init_nodes_aux gfull tl st'
 
 let init_state (g : rdf_graph) : rstate =
-  init_nodes_aux g g { rs_nodes = []; rs_extra = []; rs_fresh = 0; rs_wdepth = [] }
+  init_nodes_aux g g
+    { rs_nodes = []; rs_extra = []; rs_fresh = 0; rs_wdepth = [];
+      rs_inv = collect_inverse_pairs g }
 
 (* tableau_consistent — the public satisfiability check.
 

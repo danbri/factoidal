@@ -102,6 +102,11 @@ noeq type class_expr =
   | CE_MinQualCard    : nat -> wf_iri -> class_expr -> class_expr
   | CE_MaxQualCard    : nat -> wf_iri -> class_expr -> class_expr
   | CE_ExactQualCard  : nat -> wf_iri -> class_expr -> class_expr
+  (* Nominal / enumerated class: owl:oneOf [a1; ...; am]. The class
+     extension is EXACTLY {a1,...,am} — no more, no fewer (#209 Wave A,
+     sharpened). Stored as the raw rdf_term list (individuals, not
+     class expressions) — mirrors CE_HasValue's use of rdf_term. *)
+  | CE_OneOf          : list rdf_term -> class_expr
   (* Parse gave up — unknown class expression. `is_member` returns
      None for these, falling back to the Datalog closure. *)
   | CE_Unknown        : class_expr
@@ -214,51 +219,59 @@ let rec parse_class_expr (g : rdf_graph) (t : rdf_term) (fuel : nat)
              let items = walk_rdf_list g list_head n in
              CE_UnionOf (parse_class_expr_list g items (n - 1))
            | None ->
-             match find_first_object g s owl_complementOf with
-             | Some c ->
-               CE_ComplementOf (parse_class_expr g c (n - 1))
+             match find_first_object g s owl_oneOf with
+             | Some list_head ->
+               (* owl:oneOf {a1,...,am}: the members are INDIVIDUALS
+                  (rdf_term), not nested class expressions — unlike
+                  intersectionOf/unionOf we do not recurse
+                  parse_class_expr over the list elements. *)
+               CE_OneOf (walk_rdf_list g list_head n)
              | None ->
-               (* Try restrictions. Require owl:onProperty P with P an IRI. *)
-               match find_first_object g s owl_onProperty with
-               | Some (T_IRI p) ->
-                 (match find_first_object g s owl_someValuesFrom with
-                  | Some c -> CE_SomeValuesFrom p (parse_class_expr g c (n - 1))
-                  | None ->
-                    match find_first_object g s owl_allValuesFrom with
-                    | Some c -> CE_AllValuesFrom p (parse_class_expr g c (n - 1))
+               match find_first_object g s owl_complementOf with
+               | Some c ->
+                 CE_ComplementOf (parse_class_expr g c (n - 1))
+               | None ->
+                 (* Try restrictions. Require owl:onProperty P with P an IRI. *)
+                 match find_first_object g s owl_onProperty with
+                 | Some (T_IRI p) ->
+                   (match find_first_object g s owl_someValuesFrom with
+                    | Some c -> CE_SomeValuesFrom p (parse_class_expr g c (n - 1))
                     | None ->
-                      match find_first_object g s owl_hasValue with
-                      | Some v -> CE_HasValue p v
+                      match find_first_object g s owl_allValuesFrom with
+                      | Some c -> CE_AllValuesFrom p (parse_class_expr g c (n - 1))
                       | None ->
-                        (* Stage (c): cardinality restrictions. *)
-                        (match cardinality_value g s owl_minQualifiedCardinality with
-                         | Some k ->
-                           (match find_first_object g s owl_onClass with
-                            | Some c -> CE_MinQualCard k p (parse_class_expr g c (n - 1))
-                            | None -> CE_MinCard k p)
-                         | None ->
-                           match cardinality_value g s owl_maxQualifiedCardinality with
+                        match find_first_object g s owl_hasValue with
+                        | Some v -> CE_HasValue p v
+                        | None ->
+                          (* Stage (c): cardinality restrictions. *)
+                          (match cardinality_value g s owl_minQualifiedCardinality with
                            | Some k ->
                              (match find_first_object g s owl_onClass with
-                              | Some c -> CE_MaxQualCard k p (parse_class_expr g c (n - 1))
-                              | None -> CE_MaxCard k p)
+                              | Some c -> CE_MinQualCard k p (parse_class_expr g c (n - 1))
+                              | None -> CE_MinCard k p)
                            | None ->
-                             match cardinality_value g s owl_qualifiedCardinality with
+                             match cardinality_value g s owl_maxQualifiedCardinality with
                              | Some k ->
                                (match find_first_object g s owl_onClass with
-                                | Some c -> CE_ExactQualCard k p (parse_class_expr g c (n - 1))
-                                | None -> CE_ExactCard k p)
+                                | Some c -> CE_MaxQualCard k p (parse_class_expr g c (n - 1))
+                                | None -> CE_MaxCard k p)
                              | None ->
-                               match cardinality_value g s owl_minCardinality with
-                               | Some k -> CE_MinCard k p
+                               match cardinality_value g s owl_qualifiedCardinality with
+                               | Some k ->
+                                 (match find_first_object g s owl_onClass with
+                                  | Some c -> CE_ExactQualCard k p (parse_class_expr g c (n - 1))
+                                  | None -> CE_ExactCard k p)
                                | None ->
-                                 match cardinality_value g s owl_maxCardinality with
-                                 | Some k -> CE_MaxCard k p
+                                 match cardinality_value g s owl_minCardinality with
+                                 | Some k -> CE_MinCard k p
                                  | None ->
-                                   match cardinality_value g s owl_cardinality with
-                                   | Some k -> CE_ExactCard k p
-                                   | None -> CE_Unknown))
-               | _ -> CE_Unknown)
+                                   match cardinality_value g s owl_maxCardinality with
+                                   | Some k -> CE_MaxCard k p
+                                   | None ->
+                                     match cardinality_value g s owl_cardinality with
+                                     | Some k -> CE_ExactCard k p
+                                     | None -> CE_Unknown))
+                 | _ -> CE_Unknown)
     | _ -> CE_Unknown
 and parse_class_expr_list (g : rdf_graph) (ts : list rdf_term) (fuel : nat)
   : Tot (list class_expr) (decreases %[fuel; List.Tot.length ts]) =
@@ -470,6 +483,16 @@ let rec is_member (g : rdf_graph) (i : subject) (ce : class_expr) (fuel : nat)
       let succs = find_P_successors g i p in
       let matched = count_qual_successors g succs c (n - 1) in
       if k = 0 && matched = 0 then Some true else None
+
+    | CE_OneOf members ->
+      (* {a1,...,am}: i is provably a member only when i is
+         SYNTACTICALLY one of the listed terms (same IRI/bnode/literal).
+         Open-world: i might be sameAs a member without a literal
+         syntactic match, so absence never yields Some false — only
+         None (the caller falls back). *)
+      if any_successor_sat (fun t -> rdf_term_eq t (subject_to_term i)) members
+      then Some true
+      else None
 
 (* ∃: fold over successors; short-circuit on Some true. *)
 and any_is_member (g : rdf_graph) (ys : list rdf_term) (c : class_expr)

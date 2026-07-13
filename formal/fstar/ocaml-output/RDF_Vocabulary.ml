@@ -81,3 +81,4 @@ let owl_minQualifiedCardinality : Prims.string=
 let owl_maxQualifiedCardinality : Prims.string=
   "http://www.w3.org/2002/07/owl#maxQualifiedCardinality"
 let owl_onClass : Prims.string= "http://www.w3.org/2002/07/owl#onClass"
+let owl_oneOf : Prims.string= "http://www.w3.org/2002/07/owl#oneOf"
