@@ -58,6 +58,11 @@ JSONLD_LOG="$OCAML_DIR/jsonld_results.log"
 RML_LOG="$OCAML_DIR/rml_results.log"
 RIFCORE_LOG="$OCAML_DIR/rif_results.log"
 VC_LOG="$OCAML_DIR/vc_results.log"
+# Track B1 (docs/designissues/2026-07-11-vc-canivc-eecc-plan.md):
+# eecc_runner writes both a plain-text log (this) and, via --json, the
+# flat JSON result file scrape_json_result reads (see EECCINTEROP
+# scraping below).
+EECC_LOG="$OCAML_DIR/eecc_interop_results.log"
 # Wave (2026-07-09): the vendor/local runner binaries the project already
 # ships (bin/linux-x86_64/) but that the dashboard never surfaced — every
 # one is a committed binary or a committed shell script, same
@@ -107,6 +112,7 @@ case "$(uname -s)-$(uname -m)" in
     RML_RUNNER="$SCRIPT_DIR/../../bin/darwin-arm64/rml_runner"
     RIF_RUNNER="$SCRIPT_DIR/../../bin/darwin-arm64/rif_runner"
     VC_RUNNER="$SCRIPT_DIR/../../bin/darwin-arm64/vc_runner"
+    EECC_RUNNER="$SCRIPT_DIR/../../bin/darwin-arm64/eecc_runner"
     XSLT_RUNNER="$SCRIPT_DIR/../../bin/darwin-arm64/xslt_runner"
     XML_RUNNER="$SCRIPT_DIR/../../bin/darwin-arm64/xml_runner"
     MATHML_RUNNER="$SCRIPT_DIR/../../bin/darwin-arm64/mathml_runner"
@@ -131,6 +137,7 @@ case "$(uname -s)-$(uname -m)" in
     RML_RUNNER="$SCRIPT_DIR/../../bin/linux-x86_64/rml_runner"
     RIF_RUNNER="$SCRIPT_DIR/../../bin/linux-x86_64/rif_runner"
     VC_RUNNER="$SCRIPT_DIR/../../bin/linux-x86_64/vc_runner"
+    EECC_RUNNER="$SCRIPT_DIR/../../bin/linux-x86_64/eecc_runner"
     XSLT_RUNNER="$SCRIPT_DIR/../../bin/linux-x86_64/xslt_runner"
     XML_RUNNER="$SCRIPT_DIR/../../bin/linux-x86_64/xml_runner"
     MATHML_RUNNER="$SCRIPT_DIR/../../bin/linux-x86_64/mathml_runner"
@@ -155,6 +162,7 @@ case "$(uname -s)-$(uname -m)" in
     RML_RUNNER="$OCAML_DIR/rml_runner"
     RIF_RUNNER="$OCAML_DIR/rif_runner"
     VC_RUNNER="$OCAML_DIR/vc_runner"
+    EECC_RUNNER="$OCAML_DIR/eecc_runner"
     XSLT_RUNNER="$OCAML_DIR/xslt_runner"
     XML_RUNNER="$OCAML_DIR/xml_runner"
     MATHML_RUNNER="$OCAML_DIR/mathml_runner"
@@ -275,6 +283,8 @@ if [ "$1" = "--run" ]; then
   run_optional_suite "RML rml-core suite"             "$RML_RUNNER"    "$RML_LOG"      90
   run_optional_suite "RIF Core suite"                 "$RIF_RUNNER"    "$RIFCORE_LOG"  90
   run_optional_suite "VC Data Model 2.0 stage-1 suite" "$VC_RUNNER"    "$VC_LOG"       60
+  run_optional_suite "EECC VC/DID interop fixture suite" "$EECC_RUNNER" "$EECC_LOG"    60 \
+    --json "$OUTPUT_DIR/by-suite/eecc-interop.json"
 
   # Wave (2026-07-09) — vendor/document suites the project already ships a
   # runner for but never surfaced on the public dashboard. Same guarded /
@@ -721,6 +731,11 @@ scrape_json_result() {
 }
 scrape_json_result VCDIEDDSA "$OUTPUT_DIR/by-suite/vc-di-eddsa.json"
 scrape_json_result VC20API   "$OUTPUT_DIR/by-suite/vc20-api.json"
+# Track B1 (docs/designissues/2026-07-11-vc-canivc-eecc-plan.md):
+# bin/eecc-runner/eecc_runner.ml writes its own flat JSON result file
+# (same shape as the two above, via its own --json flag) rather than a
+# TAP log — reuse the same scraper.
+scrape_json_result EECCINTEROP "$OUTPUT_DIR/by-suite/eecc-interop.json"
 scrape_added_summary JSONLD_FROMRDF "$JSONLD_FROMRDF_LOG" 'JSON-LD fromRdf tests:'
 scrape_added_summary HDT_PARITY     "$HDT_PARITY_LOG"     'hdt-stage4 parity:'
 scrape_node_test     HUB            "$HUB_LOG"
@@ -1020,6 +1035,8 @@ emit_json_suites () {
     "$VCDIEDDSA_PASS" "$VCDIEDDSA_FAIL" "$VCDIEDDSA_SKIP" "$VCDIEDDSA_TOTAL" "$(bp "$VCDIEDDSA_PRESENT")"
   printf '    "vc20_api":       {"pass":%s,"fail":%s,"skip":%s,"total":%s,"present":%s,"spec":"https://w3c.github.io/vc-data-model-2.0-test-suite/"},\n' \
     "$VC20API_PASS" "$VC20API_FAIL" "$VC20API_SKIP" "$VC20API_TOTAL" "$(bp "$VC20API_PRESENT")"
+  printf '    "eecc_interop":   {"pass":%s,"fail":%s,"skip":%s,"total":%s,"present":%s,"spec":"https://github.com/european-epc-competence-center"},\n' \
+    "$EECCINTEROP_PASS" "$EECCINTEROP_FAIL" "$EECCINTEROP_SKIP" "$EECCINTEROP_TOTAL" "$(bp "$EECCINTEROP_PRESENT")"
   printf '    "jsonld_fromrdf": {"pass":%s,"fail":%s,"skip":%s,"total":%s,"present":%s,"spec":"https://www.w3.org/TR/json-ld11-api/#serialize-rdf-as-json-ld-algorithm"},\n' \
     "$JSONLD_FROMRDF_PASS" "$JSONLD_FROMRDF_FAIL" "$JSONLD_FROMRDF_SKIP" "$JSONLD_FROMRDF_TOTAL" "$(bp "$JSONLD_FROMRDF_PRESENT")"
   printf '    "jsonld_expand":  {"pass":%s,"fail":%s,"skip":%s,"total":%s,"present":%s,"spec":"https://www.w3.org/TR/json-ld11-api/#expansion-algorithm"},\n' \
@@ -1073,6 +1090,7 @@ emit_json_suites () {
   emit_json_suite_obj "did_key"           DIDKEY
   emit_json_suite_obj "vc_di_eddsa"       VCDIEDDSA
   emit_json_suite_obj "vc20_api"          VC20API
+  emit_json_suite_obj "eecc_interop"      EECCINTEROP
   emit_json_suite_obj "jsonld_fromrdf"    JSONLD_FROMRDF
   emit_json_suite_obj "jsonld_expand"     JSONLD_EXPAND
   emit_json_suite_obj "jsonld_compact"    JSONLD_COMPACT
@@ -2073,6 +2091,12 @@ VC_DIAG="All 117 scorable fixtures pass. The two validity-period fixtures are sc
 # structural-fixture row above.
 VCDIEDDSA_DIAG="Remaining 5 failures: 3 are missing DATA_LOSS_DETECTION_ERROR detection (a JSON-LD term silently dropped by expansion is not caught and rejected), 2 are multi-proof / <code>proof.previousProof</code> chaining (not supported — the shim checks exactly one proof). Community comparison on the identical 31-test scope (canivc.com's &ldquo;eddsa-rdfc-2022 issuers&rdquo; + &ldquo;verifiers&rdquo; matrices): scores range 0% to 100% among registered implementations, median 41.9%; 83.9% here places Factoidal above the median, close behind Trential (93.5%) and SpruceID (96.8%), behind Grotto Networking (100%)."
 VC20API_DIAG="Single dominant cause for nearly all 37 failures: the shim has no VC Data Model 2.0 structural validator of its own (it only implements Data Integrity signing/verifying) — almost every failure is a missing-rejection-of-malformed-input test (bad <code>credentialStatus</code>/<code>refreshService</code>/<code>credentialSchema</code>/<code>termsOfUse</code>/<code>evidence</code> shape, <code>validUntil</code> before <code>validFrom</code>, missing <code>type</code>/<code>@context</code>, malformed Verifiable Presentation). Full breakdown: <code>docs/test-results/by-suite/vc20-api.json</code>."
+# Track B1 (2026-07-13, docs/designissues/2026-07-11-vc-canivc-eecc-plan.md):
+# vendored EECC (European EPC Competence Center) Apache-2.0 fixtures —
+# see third_party/testing/eecc/PROVENANCE.md for the full clone/licence/
+# pruning record. A DIFFERENT denominator again (anti-pattern #25):
+# real-world GS1 credentials, not an official W3C test corpus.
+EECCINTEROP_DIAG="4 real, DataIntegrityProof-signed W3C VCDM 2.0 credentials from EECC's own GS1 sandbox get a structural check (<code>VC_Credential.vc_check_from_string</code>, the same Stage 1 checker above) plus a crypto-verify check that is scored SKIP, not attempted or failed: every fixture's <code>verificationMethod</code> is a <code>did:web</code> URL needing live HTTPS DID resolution this offline runner does not perform, and no public key material is bundled in the fixture JSON. Every other vendored file (JSON Schemas, SD-JWT/mdoc claim sets from webuild-attestations, one JWT-VC example — a different credential serialization Factoidal has no parser for) is a format-mismatch SKIP, not fed through the JSON-LD checker at all. Full breakdown: <code>docs/test-results/by-suite/eecc-interop.json</code>."
 VC_BODY=$(
   family_suite_row "VC Data Model 2.0 — structural (Stage 1)" "$VC_PASS" "$VC_FAIL" "$VC_SKIP" "$VC_TOTAL" "$VC_PRESENT" \
     "Runner: <code>bin/vc-runner</code> (<code>bin/linux-x86_64/vc_runner</code>) &middot; Suite: <code>third_party/testing/vc/tests/input/</code> (structural fixtures, filename-encoded verdicts)" \
@@ -2083,6 +2107,9 @@ VC_BODY=$(
   family_suite_row "VC Data Model 2.0 — issuer/verifier HTTP suite (via shim)" "$VC20API_PASS" "$VC20API_FAIL" "$VC20API_SKIP" "$VC20API_TOTAL" "$VC20API_PRESENT" \
     "Runner: <code>tests/vc20-api/run.sh</code> &middot; Suite: <code>third_party/testing/vc/tests/{1.03-conformance,4.03-contexts,...,7-algorithms}.js</code> (14 files) against <code>bin/vc-api-shim/server.mjs</code>" \
     "${VC20API_DIAG} <a href=\"${GITHUB_BLOB_BASE}/.github/test-suites/vc20-api.yaml\" target=\"_blank\" rel=\"noopener\">suite manifest</a>"
+  family_suite_row "EECC VC/DID interop fixtures (vendored vc-verifier-rules + webuild-attestations)" "$EECCINTEROP_PASS" "$EECCINTEROP_FAIL" "$EECCINTEROP_SKIP" "$EECCINTEROP_TOTAL" "$EECCINTEROP_PRESENT" \
+    "Runner: <code>bin/eecc-runner</code> (<code>bin/linux-x86_64/eecc_runner</code>) &middot; Fixtures: <code>third_party/testing/eecc/</code> (vendored real-world GS1 credentials, Apache-2.0)" \
+    "${EECCINTEROP_DIAG} <a href=\"${GITHUB_BLOB_BASE}/.github/test-suites/eecc-interop.yaml\" target=\"_blank\" rel=\"noopener\">suite manifest</a> &middot; <a href=\"${GITHUB_BLOB_BASE}/third_party/testing/eecc/PROVENANCE.md\" target=\"_blank\" rel=\"noopener\">vendoring provenance</a> &middot; <a href=\"${GITHUB_BLOB_BASE}/docs/designissues/2026-07-11-vc-canivc-eecc-plan.md\" target=\"_blank\" rel=\"noopener\">VC/canivc/EECC plan</a>"
   cat <<CANIVC
       <details class="suite-node grey">
         <summary><span class="suite-name">VC community compatibility (canivc.com)</span><span class="suite-numbers">snapshot 2026-07-10</span><span class="dot grey"></span></summary>

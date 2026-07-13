@@ -1,0 +1,61 @@
+{
+  "vct": "eu.we-build:ubo:1",
+  "attestation_legal_category": "EAA",
+  "iss": "did:web:example-legal-entity.eu",
+  "iat": 1736935200,
+  "exp": 1768471200,
+  "ubo": [
+    {
+      "jurisdiction": "NL",
+      "person": {
+        "first_name": "Jan",
+        "surname": "de Vries"
+      },
+
+      "birth_place": {
+        "locality": "Amsterdam",
+        "country": "NL"
+      },
+
+      "citizenship": ["NL"],
+
+      "residential_address": {
+        "street": "Keizersgracht",
+        "house_number": "174",
+        "locality": "Amsterdam",
+        "region": "Noord-Holland",
+        "postal_code": "1016 DW",
+        "country": "NL"
+      },
+
+      "person_identifier": {
+        "document_type": "PASSPORT",
+        "document_number": "NL123456789",
+        "issuing_country": "NL",
+        "expiry_date": "2029-06-30"
+      },
+
+      "justification": {
+        "threshold_met": ["ownership_indirect"],
+        "ownership_percentage": 26.5
+      },
+
+      "effective_date": "2020-01-15",
+
+      "source": [
+        {
+          "id": "src-min-001",
+          "type": "CommercialRegister",
+          "url": "https://kvk.nl/extract/12345678"
+        }
+      ]
+    }
+  ],
+
+  "status": {
+    "type": "status-list",
+    "status_list_credential": "https://trust.webuildconsortium.eu/status/ubo-list-2026-002",
+    "status_list_index": 202,
+    "status_purpose": "revocation"
+  }
+}
