@@ -398,7 +398,7 @@
 <header>
   <div class="inner">
     <div class="rendered-pill" title="Rendered = when this page was last regenerated. Tests = when the *_results.log files inside the repository were last updated. Both UTC.">
-      <span class="row"><span class="label">Rendered</span><strong>2026-07-13 07:31 UTC</strong></span>
+      <span class="row"><span class="label">Rendered</span><strong>2026-07-13 07:42 UTC</strong></span>
       <span class="row"><span class="label">Tests</span><strong class="tests">2026-07-10 19:37 UTC</strong></span>
     </div>
     <h1>W3C test results</h1>
@@ -1266,6 +1266,15 @@
         </div>
       </details>
       <details class="suite-node grey">
+        <summary><span class="suite-name">EECC VC/DID interop fixtures (vendored vc-verifier-rules + webuild-attestations)</span><span class="suite-numbers">not measured this run</span><span class="dot grey"></span></summary>
+        <div class="suite-body">
+          <div class="meter"><div class="seg seg-skip" style="width:100%"></div></div>
+          <p class="suite-numbers-full">not measured this run</p>
+          <p class="suite-prov">Runner: <code>bin/eecc-runner</code> (<code>bin/linux-x86_64/eecc_runner</code>) &middot; Fixtures: <code>third_party/testing/eecc/</code> (vendored real-world GS1 credentials, Apache-2.0)</p>
+          
+        </div>
+      </details>
+      <details class="suite-node grey">
         <summary><span class="suite-name">VC community compatibility (canivc.com)</span><span class="suite-numbers">snapshot 2026-07-10</span><span class="dot grey"></span></summary>
         <div class="suite-body">
           <p class="suite-numbers-full">Digital Bazaar's <a href="https://canivc.com" target="_blank" rel="noopener">canivc.com</a> aggregates the same official W3C/CCG test-suite reports across ~20 implementations. Per-suite comparison (community min/median/max % across registered implementations, from a snapshot vendored at <code>third_party/testing/canivc-snapshot/</code>; full scoping + gap rationale in <a href="https://github.com/danbri/factoidal/blob/claude/main/docs/designissues/2026-07-10-canivc-community-compat.md" target="_blank" rel="noopener">the canivc.com integration doc</a>):</p>
@@ -1976,9 +1985,9 @@ vc-stage1:    117 pass, 0 fail, 0 skip (of 117) — present=1</pre>
 </main>
 
 <footer>
-  Generated <strong>2026-07-13 07:31 UTC</strong> from commit
-  <code><a href="https://github.com/danbri/factoidal/commit/d4c526a44866cb0910b08d9318ac3072e609473f">d4c526a</a></code>
-  on branch <code>claude/main</code> — &ldquo;Merge remote-tracking branch 'origin/subject-object-offset-sidecars' into claude/main&rdquo;.
+  Generated <strong>2026-07-13 07:42 UTC</strong> from commit
+  <code><a href="https://github.com/danbri/factoidal/commit/d976bf5f3e818e4f114a98f153549901712a4c08">d976bf5f</a></code>
+  on branch <code>claude/main</code> — &ldquo;Merge remote-tracking branch 'origin/eecc-fixtures' into claude/main&rdquo;.
   Re-run locally: <code>cd formal/fstar &amp;&amp; ./generate-report.sh --run</code>.
 </footer>
 
