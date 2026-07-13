@@ -609,7 +609,18 @@ if [[ "$STEP" == "all" || "$STEP" == "extract" ]]; then
     out_ml="${out_ml//./_}.ml"
     local status_file="$EXTRACT_STATUS_DIR/${fst//./_}.status"
     local fst_hash
-    fst_hash="$(sha256sum "$fst" | awk '{print $1}')"
+    # Issue #293: the staleness digest must cover the sibling .fsti too.
+    # Interface files carry real definitions (interface `let`s extract),
+    # so a .fsti-only edit with an unchanged .fst previously kept the
+    # stale .ml ("source unchanged") and broke the link with "Unbound
+    # value" — hit twice on 2026-07-12/13. Modules WITH a .fsti get a
+    # one-time re-extract after this change (their old fst-only hashes
+    # no longer match), which self-heals the manifest.
+    if [[ -f "${fst}i" ]]; then
+      fst_hash="$(cat "$fst" "${fst}i" | sha256sum | awk '{print $1}')"
+    else
+      fst_hash="$(sha256sum "$fst" | awk '{print $1}')"
+    fi
     local prev_hash
     prev_hash="$(awk -F'\t' -v m="$fst" '$1==m{h=$2} END{print h}' "$MANIFEST_FILE")"
 

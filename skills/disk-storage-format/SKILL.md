@@ -360,24 +360,23 @@ is a thin `execvp` wrapper around the exact same script
 (`bin/factoidal-cli/factoidal_cli.ml`'s `exec_corpus_pipeline`) — no
 independent logic to verify there.
 
-**In-flight, native path (uncommitted this session — check `git log`
-before relying on it):** `formal/fstar/RDF.CottasStore.BaseWriter.fst`
-(527 lines, new/untracked at inspection time) is a from-scratch F\*
-Parquet writer — `serialize_cottas : list cottas_quad -> Tot (list u8)`
-— closing the "why is Python still needed to write it" gap. Disclosed
-design deltas from the pycottas-produced files this skill otherwise
-describes: **DLBA for all four columns** (not RLE_DICTIONARY — the
-reader already decodes both, DLBA is simpler to get bit-exact first)
-and **UNCOMPRESSED, not ZSTD** codec (paired with a `Parquet.Footer.fst`
-edit adding the missing UNCOMPRESSED decode branch, since the existing
-decompress path unconditionally assumed ZSTD). At the time this skill
-was written, `RDF.CottasStore.BaseWriter.fst` exists but **no CLI
-subcommand wires it in yet** (`grep -n '"import"'
-bin/factoidal-cli/factoidal_cli.ml` found nothing) — `factoidal
-cottas-import` still means "shell out to `corpus_pipeline.py`" until
-that lands. Re-check `git log --oneline -- formal/fstar/RDF.CottasStore.BaseWriter.fst`
-and the CLI subcommand list before describing a native `factoidal
-import` command as available.
+**Native path (LANDED and CLI-wired — stale-claim corrected
+2026-07-13):** `formal/fstar/RDF.CottasStore.BaseWriter.fst` is a
+from-scratch F\* Parquet writer — `serialize_cottas_v2` — and IS wired
+into the CLI: `factoidal import` and `factoidal compact
+--native-writer` call it directly (`bin/factoidal-cli/factoidal_cli.ml`
+~line 1300), removing Python from the store-creation path. An earlier
+revision of this section claimed "no CLI subcommand wires it in yet";
+that was true when written and false since the import/compact landing —
+exactly the drift the obsolescence-sweep skill exists to catch.
+Disclosed design deltas from the pycottas-produced files this skill
+otherwise describes: the codec is **UNCOMPRESSED, not ZSTD** (paired
+with the `Parquet.Footer.fst` UNCOMPRESSED decode branch). "Wired in"
+and "emits compressed bytes" are independent facts: native output
+measures ~13.90 B/quad vs pycottas/DuckDB's zstd ~1.14-1.17 B/quad
+(~12x), so pycottas remains the small-file import path until a zstd
+encoder lands — tracked in the storage next-phase list
+(`docs/designissues/2026-07-11-ondisk-indexes-query-optimization-deep-dive.md`).
 
 ### Query with `--delta-log`
 
