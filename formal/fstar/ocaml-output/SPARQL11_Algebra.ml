@@ -3388,6 +3388,289 @@ let bucket_needs_of_pattern (p : group_graph_pattern) :
   if pattern_has_binding_source p
   then RDF_Indexed.all_bucket_needs
   else pattern_bucket_needs (pattern_var_occurrences p) p
+let rec expr_vars (e : expr) : var_name Prims.list=
+  match e with
+  | E_Var v -> [v]
+  | E_IRI uu___ -> []
+  | E_Literal uu___ -> []
+  | E_BoolLit uu___ -> []
+  | E_NumericLit uu___ -> []
+  | E_DecimalLit uu___ -> []
+  | E_DoubleLit uu___ -> []
+  | E_Arith (uu___, e1, e2) ->
+      FStar_List_Tot_Base.op_At (expr_vars e1) (expr_vars e2)
+  | E_UnaryMinus e1 -> expr_vars e1
+  | E_UnaryPlus e1 -> expr_vars e1
+  | E_Compare (uu___, e1, e2) ->
+      FStar_List_Tot_Base.op_At (expr_vars e1) (expr_vars e2)
+  | E_And (e1, e2) -> FStar_List_Tot_Base.op_At (expr_vars e1) (expr_vars e2)
+  | E_Or (e1, e2) -> FStar_List_Tot_Base.op_At (expr_vars e1) (expr_vars e2)
+  | E_Not e1 -> expr_vars e1
+  | E_IsIRI e1 -> expr_vars e1
+  | E_IsBlank e1 -> expr_vars e1
+  | E_IsLiteral e1 -> expr_vars e1
+  | E_IsNumeric e1 -> expr_vars e1
+  | E_Str e1 -> expr_vars e1
+  | E_Lang e1 -> expr_vars e1
+  | E_Datatype e1 -> expr_vars e1
+  | E_IRI_fn e1 -> expr_vars e1
+  | E_StrDt (e1, e2) ->
+      FStar_List_Tot_Base.op_At (expr_vars e1) (expr_vars e2)
+  | E_StrLang (e1, e2) ->
+      FStar_List_Tot_Base.op_At (expr_vars e1) (expr_vars e2)
+  | E_Bound v -> [v]
+  | E_If (c, t, f) ->
+      FStar_List_Tot_Base.op_At (expr_vars c)
+        (FStar_List_Tot_Base.op_At (expr_vars t) (expr_vars f))
+  | E_Coalesce es -> expr_list_vars es
+  | E_In (e1, es) ->
+      FStar_List_Tot_Base.op_At (expr_vars e1) (expr_list_vars es)
+  | E_NotIn (e1, es) ->
+      FStar_List_Tot_Base.op_At (expr_vars e1) (expr_list_vars es)
+  | E_StrLen e1 -> expr_vars e1
+  | E_Substr (e1, e2, e3_opt) ->
+      FStar_List_Tot_Base.op_At (expr_vars e1)
+        (FStar_List_Tot_Base.op_At (expr_vars e2) (expr_opt_vars e3_opt))
+  | E_UCase e1 -> expr_vars e1
+  | E_LCase e1 -> expr_vars e1
+  | E_StrStarts (e1, e2) ->
+      FStar_List_Tot_Base.op_At (expr_vars e1) (expr_vars e2)
+  | E_StrEnds (e1, e2) ->
+      FStar_List_Tot_Base.op_At (expr_vars e1) (expr_vars e2)
+  | E_Contains (e1, e2) ->
+      FStar_List_Tot_Base.op_At (expr_vars e1) (expr_vars e2)
+  | E_StrBefore (e1, e2) ->
+      FStar_List_Tot_Base.op_At (expr_vars e1) (expr_vars e2)
+  | E_StrAfter (e1, e2) ->
+      FStar_List_Tot_Base.op_At (expr_vars e1) (expr_vars e2)
+  | E_Concat es -> expr_list_vars es
+  | E_EncodeForUri e1 -> expr_vars e1
+  | E_Replace (e1, e2, e3, e4_opt) ->
+      FStar_List_Tot_Base.op_At (expr_vars e1)
+        (FStar_List_Tot_Base.op_At (expr_vars e2)
+           (FStar_List_Tot_Base.op_At (expr_vars e3) (expr_opt_vars e4_opt)))
+  | E_Regex (e1, e2, e3_opt) ->
+      FStar_List_Tot_Base.op_At (expr_vars e1)
+        (FStar_List_Tot_Base.op_At (expr_vars e2) (expr_opt_vars e3_opt))
+  | E_Abs e1 -> expr_vars e1
+  | E_Round e1 -> expr_vars e1
+  | E_Ceil e1 -> expr_vars e1
+  | E_Floor e1 -> expr_vars e1
+  | E_MD5 e1 -> expr_vars e1
+  | E_SHA1 e1 -> expr_vars e1
+  | E_SHA256 e1 -> expr_vars e1
+  | E_SHA384 e1 -> expr_vars e1
+  | E_SHA512 e1 -> expr_vars e1
+  | E_Now -> []
+  | E_Year e1 -> expr_vars e1
+  | E_Month e1 -> expr_vars e1
+  | E_Day e1 -> expr_vars e1
+  | E_Hours e1 -> expr_vars e1
+  | E_Minutes e1 -> expr_vars e1
+  | E_Seconds e1 -> expr_vars e1
+  | E_Timezone e1 -> expr_vars e1
+  | E_Tz e1 -> expr_vars e1
+  | E_SameTerm (e1, e2) ->
+      FStar_List_Tot_Base.op_At (expr_vars e1) (expr_vars e2)
+  | E_Exists p -> pattern_all_vars p
+  | E_NotExists p -> pattern_all_vars p
+  | E_Aggregate (uu___, uu___1, e1) -> expr_vars e1
+  | E_FunctionCall (uu___, es) -> expr_list_vars es
+and expr_list_vars (es : expr Prims.list) : var_name Prims.list=
+  match es with
+  | [] -> []
+  | e::rest -> FStar_List_Tot_Base.op_At (expr_vars e) (expr_list_vars rest)
+and expr_opt_vars (eo : expr FStar_Pervasives_Native.option) :
+  var_name Prims.list=
+  match eo with
+  | FStar_Pervasives_Native.None -> []
+  | FStar_Pervasives_Native.Some e -> expr_vars e
+and pattern_all_vars (p : group_graph_pattern) : var_name Prims.list=
+  match p with
+  | GP_BGP b -> bgp_vars b
+  | GP_Join (p1, p2) ->
+      FStar_List_Tot_Base.op_At (pattern_all_vars p1) (pattern_all_vars p2)
+  | GP_Union (p1, p2) ->
+      FStar_List_Tot_Base.op_At (pattern_all_vars p1) (pattern_all_vars p2)
+  | GP_Minus (p1, p2) ->
+      FStar_List_Tot_Base.op_At (pattern_all_vars p1) (pattern_all_vars p2)
+  | GP_Lateral (p1, p2) ->
+      FStar_List_Tot_Base.op_At (pattern_all_vars p1) (pattern_all_vars p2)
+  | GP_LeftJoin (p1, p2, e) ->
+      FStar_List_Tot_Base.op_At (pattern_all_vars p1)
+        (FStar_List_Tot_Base.op_At (pattern_all_vars p2) (expr_vars e))
+  | GP_Filter (e, p1) ->
+      FStar_List_Tot_Base.op_At (expr_vars e) (pattern_all_vars p1)
+  | GP_Graph (pt, p1) ->
+      FStar_List_Tot_Base.op_At (pattern_term_var pt) (pattern_all_vars p1)
+  | GP_Bind (e, v, p1) ->
+      FStar_List_Tot_Base.op_At (expr_vars e) (v :: (pattern_all_vars p1))
+  | GP_Values (vs, _rows) -> vs
+  | GP_Service (uu___, p1, uu___1) -> pattern_all_vars p1
+  | GP_ServiceVar (v, p1, uu___) -> v :: (pattern_all_vars p1)
+  | GP_SubSelect q -> query_all_vars q
+  | GP_PropertyPath (ps, uu___, pt) ->
+      FStar_List_Tot_Base.op_At (pattern_subject_var ps)
+        (pattern_term_var pt)
+  | GP_Empty -> []
+and query_all_vars (q : query) : var_name Prims.list=
+  FStar_List_Tot_Base.op_At (pattern_all_vars q.q_pattern)
+    (FStar_List_Tot_Base.op_At (query_form_all_vars q.q_form)
+       (FStar_List_Tot_Base.op_At
+          (match q.q_group_by with
+           | FStar_Pervasives_Native.None -> []
+           | FStar_Pervasives_Native.Some gcs -> group_conditions_vars gcs)
+          (FStar_List_Tot_Base.op_At
+             (match q.q_having with
+              | FStar_Pervasives_Native.None -> []
+              | FStar_Pervasives_Native.Some hs -> expr_list_vars hs)
+             (FStar_List_Tot_Base.op_At
+                (match (q.q_modifier).sm_order_by with
+                 | FStar_Pervasives_Native.None -> []
+                 | FStar_Pervasives_Native.Some ocs ->
+                     order_conditions_vars ocs)
+                (match q.q_values with
+                 | FStar_Pervasives_Native.None -> []
+                 | FStar_Pervasives_Native.Some rows -> values_rows_vars rows)))))
+and query_form_all_vars (qf : query_form) : var_name Prims.list=
+  match qf with
+  | QF_Select sc -> select_clause_vars sc
+  | QF_Construct tps -> bgp_vars tps
+  | QF_Ask -> []
+  | QF_Describe pts -> pattern_terms_vars pts
+and select_clause_vars (sc : select_clause) : var_name Prims.list=
+  match sc with
+  | Select_All -> []
+  | Select_Vars items -> select_items_all_vars items
+and select_items_all_vars (items : select_item Prims.list) :
+  var_name Prims.list=
+  match items with
+  | [] -> []
+  | (SI_Var v)::rest -> v :: (select_items_all_vars rest)
+  | (SI_Expr (e, v))::rest ->
+      FStar_List_Tot_Base.op_At (expr_vars e) (v ::
+        (select_items_all_vars rest))
+and group_conditions_vars (gcs : group_condition Prims.list) :
+  var_name Prims.list=
+  match gcs with
+  | [] -> []
+  | (GC_Var v)::rest -> v :: (group_conditions_vars rest)
+  | (GC_Expr (e, alias))::rest ->
+      FStar_List_Tot_Base.op_At (expr_vars e)
+        (FStar_List_Tot_Base.op_At
+           (match alias with
+            | FStar_Pervasives_Native.Some a -> [a]
+            | FStar_Pervasives_Native.None -> [])
+           (group_conditions_vars rest))
+  | (GC_BuiltIn e)::rest ->
+      FStar_List_Tot_Base.op_At (expr_vars e) (group_conditions_vars rest)
+and order_conditions_vars (ocs : order_condition Prims.list) :
+  var_name Prims.list=
+  match ocs with
+  | [] -> []
+  | (OC_Asc e)::rest ->
+      FStar_List_Tot_Base.op_At (expr_vars e) (order_conditions_vars rest)
+  | (OC_Desc e)::rest ->
+      FStar_List_Tot_Base.op_At (expr_vars e) (order_conditions_vars rest)
+and pattern_terms_vars (pts : pattern_term Prims.list) : var_name Prims.list=
+  match pts with
+  | [] -> []
+  | pt::rest ->
+      FStar_List_Tot_Base.op_At (pattern_term_var pt)
+        (pattern_terms_vars rest)
+and values_rows_vars
+  (rows : (var_name * RDF_Term.rdf_term) Prims.list Prims.list) :
+  var_name Prims.list=
+  match rows with
+  | [] -> []
+  | row::rest ->
+      FStar_List_Tot_Base.op_At (values_row_vars row) (values_rows_vars rest)
+and values_row_vars (row : (var_name * RDF_Term.rdf_term) Prims.list) :
+  var_name Prims.list=
+  match row with | [] -> [] | (v, uu___)::rest -> v :: (values_row_vars rest)
+let rec pattern_filter_bind_vars (p : group_graph_pattern) :
+  var_name Prims.list=
+  match p with
+  | GP_BGP uu___ -> []
+  | GP_PropertyPath (uu___, uu___1, uu___2) -> []
+  | GP_Join (p1, p2) ->
+      FStar_List_Tot_Base.op_At (pattern_filter_bind_vars p1)
+        (pattern_filter_bind_vars p2)
+  | GP_Union (p1, p2) ->
+      FStar_List_Tot_Base.op_At (pattern_filter_bind_vars p1)
+        (pattern_filter_bind_vars p2)
+  | GP_Minus (p1, p2) ->
+      FStar_List_Tot_Base.op_At (pattern_filter_bind_vars p1)
+        (pattern_filter_bind_vars p2)
+  | GP_Lateral (p1, p2) ->
+      FStar_List_Tot_Base.op_At (pattern_filter_bind_vars p1)
+        (pattern_filter_bind_vars p2)
+  | GP_LeftJoin (p1, p2, e) ->
+      FStar_List_Tot_Base.op_At (pattern_filter_bind_vars p1)
+        (FStar_List_Tot_Base.op_At (pattern_filter_bind_vars p2)
+           (expr_vars e))
+  | GP_Filter (e, p1) ->
+      FStar_List_Tot_Base.op_At (expr_vars e) (pattern_filter_bind_vars p1)
+  | GP_Graph (uu___, p1) -> pattern_filter_bind_vars p1
+  | GP_Bind (e, _v, p1) ->
+      FStar_List_Tot_Base.op_At (expr_vars e) (pattern_filter_bind_vars p1)
+  | GP_Values (vs, _rows) -> vs
+  | GP_Service (uu___, p1, uu___1) -> pattern_filter_bind_vars p1
+  | GP_ServiceVar (v, p1, uu___) -> v :: (pattern_filter_bind_vars p1)
+  | GP_SubSelect q -> query_all_vars q
+  | GP_Empty -> []
+let rec select_item_vars_full (items : select_item Prims.list) :
+  var_name Prims.list=
+  match items with
+  | [] -> []
+  | (SI_Var v)::rest -> v :: (select_item_vars_full rest)
+  | (SI_Expr (e, v))::rest ->
+      FStar_List_Tot_Base.op_At (expr_vars e) (v ::
+        (select_item_vars_full rest))
+let query_clause_vars (q : query) : var_name Prims.list=
+  FStar_List_Tot_Base.op_At (pattern_filter_bind_vars q.q_pattern)
+    (FStar_List_Tot_Base.op_At
+       (match q.q_group_by with
+        | FStar_Pervasives_Native.None -> []
+        | FStar_Pervasives_Native.Some gcs -> group_conditions_vars gcs)
+       (FStar_List_Tot_Base.op_At
+          (match q.q_having with
+           | FStar_Pervasives_Native.None -> []
+           | FStar_Pervasives_Native.Some hs -> expr_list_vars hs)
+          (match (q.q_modifier).sm_order_by with
+           | FStar_Pervasives_Native.None -> []
+           | FStar_Pervasives_Native.Some ocs -> order_conditions_vars ocs)))
+let query_live_vars (q : query) : var_name Prims.list=
+  match q.q_form with
+  | QF_Select (Select_All) -> query_all_vars q
+  | QF_Select (Select_Vars items) ->
+      FStar_List_Tot_Base.op_At (select_item_vars_full items)
+        (query_clause_vars q)
+  | QF_Construct uu___ -> query_all_vars q
+  | QF_Ask -> query_all_vars q
+  | QF_Describe uu___ -> query_all_vars q
+let col_need_for_tp (occ : var_name Prims.list) (live : var_name Prims.list)
+  (tp : triple_pattern) : RDF_Graph_Executable.col_need=
+  let needs_var v = (FStar_List_Tot_Base.mem v live) || (var_is_shared occ v) in
+  {
+    RDF_Graph_Executable.cn_s =
+      (match tp.tp_s with
+       | PS_Var v -> needs_var v
+       | PS_IRI uu___ -> false
+       | PS_BNode uu___ -> false);
+    RDF_Graph_Executable.cn_p =
+      (match tp.tp_p with
+       | PT_Var v -> needs_var v
+       | PT_IRI uu___ -> false
+       | PT_BNode uu___ -> false
+       | PT_Literal uu___ -> false);
+    RDF_Graph_Executable.cn_o =
+      (match tp.tp_o with
+       | PT_Var v -> needs_var v
+       | PT_IRI uu___ -> false
+       | PT_BNode uu___ -> false
+       | PT_Literal uu___ -> false)
+  }
 let graph_to_store_for (p : group_graph_pattern) (g : RDF_Graph.rdf_graph) :
   graph_store=
   {

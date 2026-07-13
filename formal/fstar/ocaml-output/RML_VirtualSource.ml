@@ -232,5 +232,6 @@ let caps_of_rml_source (rvs : rml_virtual_source) :
            > Prims.int_zero);
     RDF_Store_Capabilities.sc_decode_failure = (fun uu___ -> false);
     RDF_Store_Capabilities.sc_distinct_predicates =
-      FStar_Pervasives_Native.None
+      FStar_Pervasives_Native.None;
+    RDF_Store_Capabilities.sc_solve_selective = FStar_Pervasives_Native.None
   }

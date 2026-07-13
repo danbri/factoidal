@@ -106,4 +106,19 @@ let caps_of_cottas (cods : cottas_ondisk_store) (scope : cottas_ondisk_graph_sco
     // cottas_ondisk_distinct_predicates`'s own banner for the None-on-
     // missing-dictionary contract this passes straight through).
     sc_distinct_predicates = Some (fun () -> cottas_ondisk_distinct_predicates cods);
+
+    // OPTIONAL/FILTER row-index-selective decode (docs/designissues/
+    // 2026-07-13-optional-filter-selective-decode.md, stage 3): the only
+    // builder that carries a real accelerated `sc_solve_selective` --
+    // wraps `cottas_ondisk_search_tok_selective`, the sibling of
+    // `cottas_ondisk_search_tok` above that decodes an unbound column's
+    // value only at the row indices matched by the cheap columns (bound
+    // positions + graph). Converted to `list triple` via
+    // `cottas_ondisk_rows_tok_selective_to_triples`, the selective
+    // sibling of `cottas_ondisk_rows_tok_to_triples`.
+    sc_solve_selective =
+      Some (fun b need ->
+        let bound = cottas_ondisk_build_bound_qp_tok b.bs b.bp b.bo scope in
+        cottas_ondisk_rows_tok_selective_to_triples
+          (cottas_ondisk_search_tok_selective cods bound need));
   }

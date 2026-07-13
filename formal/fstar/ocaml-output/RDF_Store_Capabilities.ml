@@ -52,58 +52,71 @@ type store_caps =
   sc_distinct_predicates:
     (unit -> RDF_Term.wf_iri Prims.list FStar_Pervasives_Native.option)
       FStar_Pervasives_Native.option
+    ;
+  sc_solve_selective:
+    (SPARQL11_Algebra.triple_pattern_bound ->
+       RDF_Graph_Executable.col_need -> RDF_Triple.triple Prims.list)
+      FStar_Pervasives_Native.option
     }
 let __proj__Mkstore_caps__item__sc_flags (projectee : store_caps) :
   store_caps_flags=
   match projectee with
   | { sc_flags; sc_solve; sc_solve_limited; sc_estimate; sc_count_exact;
-      sc_predicate_present; sc_decode_failure; sc_distinct_predicates;_} ->
-      sc_flags
+      sc_predicate_present; sc_decode_failure; sc_distinct_predicates;
+      sc_solve_selective;_} -> sc_flags
 let __proj__Mkstore_caps__item__sc_solve (projectee : store_caps) :
   SPARQL11_Algebra.triple_pattern_bound -> RDF_Triple.triple Prims.list=
   match projectee with
   | { sc_flags; sc_solve; sc_solve_limited; sc_estimate; sc_count_exact;
-      sc_predicate_present; sc_decode_failure; sc_distinct_predicates;_} ->
-      sc_solve
+      sc_predicate_present; sc_decode_failure; sc_distinct_predicates;
+      sc_solve_selective;_} -> sc_solve
 let __proj__Mkstore_caps__item__sc_solve_limited (projectee : store_caps) :
   SPARQL11_Algebra.triple_pattern_bound ->
     Prims.nat -> RDF_Triple.triple Prims.list=
   match projectee with
   | { sc_flags; sc_solve; sc_solve_limited; sc_estimate; sc_count_exact;
-      sc_predicate_present; sc_decode_failure; sc_distinct_predicates;_} ->
-      sc_solve_limited
+      sc_predicate_present; sc_decode_failure; sc_distinct_predicates;
+      sc_solve_selective;_} -> sc_solve_limited
 let __proj__Mkstore_caps__item__sc_estimate (projectee : store_caps) :
   SPARQL11_Algebra.triple_pattern_bound -> Prims.nat=
   match projectee with
   | { sc_flags; sc_solve; sc_solve_limited; sc_estimate; sc_count_exact;
-      sc_predicate_present; sc_decode_failure; sc_distinct_predicates;_} ->
-      sc_estimate
+      sc_predicate_present; sc_decode_failure; sc_distinct_predicates;
+      sc_solve_selective;_} -> sc_estimate
 let __proj__Mkstore_caps__item__sc_count_exact (projectee : store_caps) :
   SPARQL11_Algebra.triple_pattern_bound -> Prims.nat=
   match projectee with
   | { sc_flags; sc_solve; sc_solve_limited; sc_estimate; sc_count_exact;
-      sc_predicate_present; sc_decode_failure; sc_distinct_predicates;_} ->
-      sc_count_exact
+      sc_predicate_present; sc_decode_failure; sc_distinct_predicates;
+      sc_solve_selective;_} -> sc_count_exact
 let __proj__Mkstore_caps__item__sc_predicate_present (projectee : store_caps)
   : RDF_Term.wf_iri -> Prims.bool=
   match projectee with
   | { sc_flags; sc_solve; sc_solve_limited; sc_estimate; sc_count_exact;
-      sc_predicate_present; sc_decode_failure; sc_distinct_predicates;_} ->
-      sc_predicate_present
+      sc_predicate_present; sc_decode_failure; sc_distinct_predicates;
+      sc_solve_selective;_} -> sc_predicate_present
 let __proj__Mkstore_caps__item__sc_decode_failure (projectee : store_caps) :
   unit -> Prims.bool=
   match projectee with
   | { sc_flags; sc_solve; sc_solve_limited; sc_estimate; sc_count_exact;
-      sc_predicate_present; sc_decode_failure; sc_distinct_predicates;_} ->
-      sc_decode_failure
+      sc_predicate_present; sc_decode_failure; sc_distinct_predicates;
+      sc_solve_selective;_} -> sc_decode_failure
 let __proj__Mkstore_caps__item__sc_distinct_predicates
   (projectee : store_caps) :
   (unit -> RDF_Term.wf_iri Prims.list FStar_Pervasives_Native.option)
     FStar_Pervasives_Native.option=
   match projectee with
   | { sc_flags; sc_solve; sc_solve_limited; sc_estimate; sc_count_exact;
-      sc_predicate_present; sc_decode_failure; sc_distinct_predicates;_} ->
-      sc_distinct_predicates
+      sc_predicate_present; sc_decode_failure; sc_distinct_predicates;
+      sc_solve_selective;_} -> sc_distinct_predicates
+let __proj__Mkstore_caps__item__sc_solve_selective (projectee : store_caps) :
+  (SPARQL11_Algebra.triple_pattern_bound ->
+     RDF_Graph_Executable.col_need -> RDF_Triple.triple Prims.list)
+    FStar_Pervasives_Native.option=
+  match projectee with
+  | { sc_flags; sc_solve; sc_solve_limited; sc_estimate; sc_count_exact;
+      sc_predicate_present; sc_decode_failure; sc_distinct_predicates;
+      sc_solve_selective;_} -> sc_solve_selective
 type store_write_caps =
   {
   swc_apply_delta:
@@ -227,6 +240,17 @@ let rec union_distinct_predicates_acc (acc : RDF_Term.wf_iri Prims.list)
            if (m.sc_count_exact caps_all_unbound) = Prims.int_zero
            then union_distinct_predicates_acc acc rest
            else FStar_Pervasives_Native.None)
+let rec union_solve_selective (members : store_caps Prims.list)
+  (b : SPARQL11_Algebra.triple_pattern_bound)
+  (need : RDF_Graph_Executable.col_need) : RDF_Triple.triple Prims.list=
+  match members with
+  | [] -> []
+  | m::rest ->
+      let part =
+        match m.sc_solve_selective with
+        | FStar_Pervasives_Native.Some f -> f b need
+        | FStar_Pervasives_Native.None -> m.sc_solve b in
+      FStar_List_Tot_Base.op_At part (union_solve_selective rest b need)
 let union_caps (members : store_caps Prims.list) : store_caps=
   {
     sc_flags =
@@ -245,7 +269,10 @@ let union_caps (members : store_caps Prims.list) : store_caps=
     sc_decode_failure = (fun uu___ -> union_decode_failure members);
     sc_distinct_predicates =
       (FStar_Pervasives_Native.Some
-         (fun uu___ -> union_distinct_predicates_acc [] members))
+         (fun uu___ -> union_distinct_predicates_acc [] members));
+    sc_solve_selective =
+      (FStar_Pervasives_Native.Some
+         (fun b need -> union_solve_selective members b need))
   }
 let caps_of_indexed (ig : RDF_Indexed.indexed_graph) : store_caps=
   {
@@ -272,7 +299,8 @@ let caps_of_indexed (ig : RDF_Indexed.indexed_graph) : store_caps=
             })
            > Prims.int_zero);
     sc_decode_failure = (fun uu___ -> false);
-    sc_distinct_predicates = FStar_Pervasives_Native.None
+    sc_distinct_predicates = FStar_Pervasives_Native.None;
+    sc_solve_selective = FStar_Pervasives_Native.None
   }
 type dataset_caps =
   {

@@ -232,6 +232,8 @@ let rec caps_of_backend (gb : graph_backend) :
                 > Prims.int_zero));
         RDF_Store_Capabilities.sc_decode_failure = ((fun uu___ -> false));
         RDF_Store_Capabilities.sc_distinct_predicates =
+          FStar_Pervasives_Native.None;
+        RDF_Store_Capabilities.sc_solve_selective =
           FStar_Pervasives_Native.None
       }
   | GB_Indexed ig -> RDF_Store_Capabilities.caps_of_indexed ig
@@ -271,6 +273,8 @@ let rec caps_of_backend (gb : graph_backend) :
           ((fun pred -> Parser_BallyhooHDT.hdt_predicate_present hgs pred));
         RDF_Store_Capabilities.sc_decode_failure = ((fun uu___ -> false));
         RDF_Store_Capabilities.sc_distinct_predicates =
+          FStar_Pervasives_Native.None;
+        RDF_Store_Capabilities.sc_solve_selective =
           FStar_Pervasives_Native.None
       }
   | GB_COTTAS (cds, graph_name) ->
@@ -324,6 +328,8 @@ let rec caps_of_backend (gb : graph_backend) :
                 > Prims.int_zero));
         RDF_Store_Capabilities.sc_decode_failure = ((fun uu___ -> false));
         RDF_Store_Capabilities.sc_distinct_predicates =
+          FStar_Pervasives_Native.None;
+        RDF_Store_Capabilities.sc_solve_selective =
           FStar_Pervasives_Native.None
       }
   | GB_CottasOnDisk (cods, scope) ->

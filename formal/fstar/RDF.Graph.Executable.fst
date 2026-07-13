@@ -260,6 +260,52 @@ type bgp = list triple_pattern
    on 2026-05-16 (~50 lines). Section 10's `graph_isomorphic` /
    `roundtrip_preserves_triples` were spec-only stubs, also removed. *)
 
+(* ----------------------------------------------------------------------
+   Column-decode need (OPTIONAL/FILTER row-index-selective decode design,
+   docs/designissues/2026-07-13-optional-filter-selective-decode.md).
+
+   Lives HERE rather than alongside its constructor `col_need_for_tp`
+   (SPARQL11.Algebra.fst) or its consumer field `sc_solve_selective`
+   (RDF.Store.Capabilities.fst) because `RDF.CottasStore.fst` -- which
+   realises the accelerated selective-decode walker family this type
+   threads through -- sits BELOW `SPARQL11.Algebra` in the module DAG
+   (`SPARQL11.Store` depends on both `SPARQL11.Algebra` and
+   `RDF.CottasStore`; the reverse edges don't exist -- build-ocaml.sh's
+   module list has SPARQL11.Algebra.fst before RDF.CottasStore.fst, and
+   RDF.CottasStore.fst does not `open SPARQL11.Algebra` -- same class of
+   DAG constraint RDF.Store.Capabilities.fst's own banner documents for
+   its transitional `SPARQL11.Algebra` import). `RDF.Graph.Executable` is
+   the one module already `open`ed by both `SPARQL11.Algebra.fst` (line
+   31) and `RDF.CottasStore.fst` (line 3), so defining `col_need` here
+   lets every consumer -- SPARQL11.Algebra's `col_need_for_tp`,
+   RDF.CottasStore's selective walker family, RDF.Store.Capabilities's
+   `sc_solve_selective` field type -- see the SAME type without
+   inverting anyone's DAG edge.
+
+   Deliberately carries no graph-column flag: the design's `g` column is
+   always decoded regardless of query shape (issue #267 correctness --
+   every live GB_CottasOnDisk bound carries a graph scope), so there is
+   nothing for a `cn_g` flag to gate. *)
+noeq type col_need = {
+  cn_s : bool;
+  cn_p : bool;
+  cn_o : bool;
+}
+
+// All three positions needed -- the "decode everything, same as the
+// unaccelerated path" baseline. Used as the differential-gate reference
+// value (stage 2's gate: `cottas_ondisk_search_tok_selective ...
+// col_need_all` must equal the unaccelerated `cottas_ondisk_search_tok`
+// byte-for-byte) and as the safe default for any caller that has not
+// computed a real `col_need`.
+let col_need_all : col_need = { cn_s = true; cn_p = true; cn_o = true }
+
+// No position needed -- every unbound column may be skipped. Only safe
+// when the caller genuinely consumes none of the pattern's variables
+// (e.g. a bound-everything ASK-shaped probe); not used by any wiring in
+// this stage.
+let col_need_none : col_need = { cn_s = false; cn_p = false; cn_o = false }
+
 (* ======================================================================== *)
 (* SPARQL Evaluation Semantics                                              *)
 (* ======================================================================== *)

@@ -308,6 +308,10 @@ let rec caps_of_backend (gb : graph_backend) : Tot store_caps (decreases gb) =
       // above) — no dictionary-page shortcut; None per every non-COTTAS
       // backend.
       sc_distinct_predicates = None;
+      // No accelerated selective-decode realisation; None per every
+      // non-COTTAS-on-disk backend (docs/designissues/2026-07-13-
+      // optional-filter-selective-decode.md).
+      sc_solve_selective = None;
     }
   | GB_Indexed ig -> caps_of_indexed ig
   | GB_HDT hgs ->
@@ -334,6 +338,8 @@ let rec caps_of_backend (gb : graph_backend) : Tot store_caps (decreases gb) =
       // HDT 1.0 has no on-disk dictionary-page primitive of this shape;
       // None per every non-COTTAS backend.
       sc_distinct_predicates = None;
+      // No accelerated selective-decode realisation for HDT 1.0.
+      sc_solve_selective = None;
     }
   | GB_COTTAS cds graph_name ->
     // Old arms: backend_search -> cottas_search + the fst-projection of
@@ -372,6 +378,9 @@ let rec caps_of_backend (gb : graph_backend) : Tot store_caps (decreases gb) =
       // banner above) — not the on-disk COTTAS builder that realises
       // this capability; None here.
       sc_distinct_predicates = None;
+      // Dead in-memory path (see banner above); no accelerated
+      // selective-decode realisation.
+      sc_solve_selective = None;
     }
   | GB_CottasOnDisk cods scope -> caps_of_cottas cods scope
   // Stage 3 D-overlay (see the constructor's own comment above): the

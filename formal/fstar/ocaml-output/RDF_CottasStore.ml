@@ -2774,6 +2774,322 @@ let cottas_ondisk_search_tok (ds : cottas_ondisk_store)
            walk_row_groups_search_tok_global h.coh_path table bound_s bound_p
              bound_o bound_g Prims.int_zero rg_count rg_count [] in
          Parquet_Footer.list_rev acc_rev)
+type cottas_qp_row_tok_selective =
+  {
+  rst_s: Prims.string FStar_Pervasives_Native.option ;
+  rst_p: Prims.string FStar_Pervasives_Native.option ;
+  rst_o: Prims.string FStar_Pervasives_Native.option ;
+  rst_g: Prims.string }
+let __proj__Mkcottas_qp_row_tok_selective__item__rst_s
+  (projectee : cottas_qp_row_tok_selective) :
+  Prims.string FStar_Pervasives_Native.option=
+  match projectee with | { rst_s; rst_p; rst_o; rst_g;_} -> rst_s
+let __proj__Mkcottas_qp_row_tok_selective__item__rst_p
+  (projectee : cottas_qp_row_tok_selective) :
+  Prims.string FStar_Pervasives_Native.option=
+  match projectee with | { rst_s; rst_p; rst_o; rst_g;_} -> rst_p
+let __proj__Mkcottas_qp_row_tok_selective__item__rst_o
+  (projectee : cottas_qp_row_tok_selective) :
+  Prims.string FStar_Pervasives_Native.option=
+  match projectee with | { rst_s; rst_p; rst_o; rst_g;_} -> rst_o
+let __proj__Mkcottas_qp_row_tok_selective__item__rst_g
+  (projectee : cottas_qp_row_tok_selective) : Prims.string=
+  match projectee with | { rst_s; rst_p; rst_o; rst_g;_} -> rst_g
+let rec matched_indices_seq
+  (bound_s : Prims.string FStar_Pervasives_Native.option)
+  (bound_p : Prims.string FStar_Pervasives_Native.option)
+  (bound_o : Prims.string FStar_Pervasives_Native.option)
+  (bound_g : Prims.string FStar_Pervasives_Native.option)
+  (s_col :
+    RDF_CottasStore_ColumnSeq.cottas_column FStar_Pervasives_Native.option)
+  (p_col :
+    RDF_CottasStore_ColumnSeq.cottas_column FStar_Pervasives_Native.option)
+  (o_col :
+    RDF_CottasStore_ColumnSeq.cottas_column FStar_Pervasives_Native.option)
+  (g_col : RDF_CottasStore_ColumnSeq.cottas_column) (n : Prims.nat)
+  (i : Prims.nat) (acc_rev : Prims.nat Prims.list) : Prims.nat Prims.list=
+  if i = n
+  then acc_rev
+  else
+    (let acc_rev' =
+       if i < (RDF_CottasStore_ColumnSeq.cottas_column_length g_col)
+       then
+         match RDF_CottasStore_ColumnSeq.cottas_column_get g_col i with
+         | FStar_Pervasives_Native.Some g_tok ->
+             (if
+                (((bound_col_match bound_s s_col i) &&
+                    (bound_col_match bound_p p_col i))
+                   && (bound_col_match bound_o o_col i))
+                  && (graph_cell_match bound_g g_tok)
+              then i :: acc_rev
+              else acc_rev)
+         | FStar_Pervasives_Native.None -> acc_rev
+       else acc_rev in
+     matched_indices_seq bound_s bound_p bound_o bound_g s_col p_col o_col
+       g_col n (i + Prims.int_one) acc_rev')
+let rec filter_column_by_indices_acc
+  (col : RDF_CottasStore_ColumnSeq.cottas_column)
+  (indices : Prims.nat Prims.list)
+  (acc_rev : (Prims.nat * Prims.string) Prims.list) :
+  (Prims.nat * Prims.string) Prims.list=
+  match indices with
+  | [] -> acc_rev
+  | i::rest ->
+      let acc_rev' =
+        if i < (RDF_CottasStore_ColumnSeq.cottas_column_length col)
+        then
+          match RDF_CottasStore_ColumnSeq.cottas_column_get col i with
+          | FStar_Pervasives_Native.Some tok -> (i, tok) :: acc_rev
+          | FStar_Pervasives_Native.None -> acc_rev
+        else acc_rev in
+      filter_column_by_indices_acc col rest acc_rev'
+let filter_column_by_indices (col : RDF_CottasStore_ColumnSeq.cottas_column)
+  (indices : Prims.nat Prims.list) : (Prims.nat * Prims.string) Prims.list=
+  FStar_List_Tot_Base.rev (filter_column_by_indices_acc col indices [])
+let decode_indexed_or_fallback
+  (table :
+    Parquet_Footer.parquet_row_group_offset_table
+      FStar_Pervasives_Native.option)
+  (path : Prims.string) (rg_index : Prims.nat) (col_index : Prims.nat)
+  (indices : Prims.nat Prims.list) : (Prims.nat * Prims.string) Prims.list=
+  match table with
+  | FStar_Pervasives_Native.Some t ->
+      (match RDF_CottasStore_PageCache.pcache_decode_column_at_indices_global_from_table
+               t path rg_index col_index indices
+       with
+       | FStar_Pervasives_Native.Some pairs -> pairs
+       | FStar_Pervasives_Native.None -> [])
+  | FStar_Pervasives_Native.None ->
+      (match RDF_CottasStore_PageCache.pcache_decode_in_row_group_global path
+               rg_index col_index
+       with
+       | FStar_Pervasives_Native.None -> []
+       | FStar_Pervasives_Native.Some col ->
+           filter_column_by_indices col indices)
+let rec build_selective_rows
+  (bound_s : Prims.string FStar_Pervasives_Native.option)
+  (bound_p : Prims.string FStar_Pervasives_Native.option)
+  (bound_o : Prims.string FStar_Pervasives_Native.option)
+  (need : RDF_Graph_Executable.col_need)
+  (s_vals : (Prims.nat * Prims.string) Prims.list)
+  (p_vals : (Prims.nat * Prims.string) Prims.list)
+  (o_vals : (Prims.nat * Prims.string) Prims.list)
+  (g_col : RDF_CottasStore_ColumnSeq.cottas_column)
+  (indices : Prims.nat Prims.list)
+  (acc_rev : cottas_qp_row_tok_selective Prims.list) :
+  cottas_qp_row_tok_selective Prims.list=
+  match indices with
+  | [] -> acc_rev
+  | i::rest ->
+      let rst_s =
+        if FStar_Pervasives_Native.uu___is_Some bound_s
+        then bound_s
+        else
+          if need.RDF_Graph_Executable.cn_s
+          then RDF_CottasStore_PageCache.indexed_decode_lookup s_vals i
+          else FStar_Pervasives_Native.None in
+      let rst_p =
+        if FStar_Pervasives_Native.uu___is_Some bound_p
+        then bound_p
+        else
+          if need.RDF_Graph_Executable.cn_p
+          then RDF_CottasStore_PageCache.indexed_decode_lookup p_vals i
+          else FStar_Pervasives_Native.None in
+      let rst_o =
+        if FStar_Pervasives_Native.uu___is_Some bound_o
+        then bound_o
+        else
+          if need.RDF_Graph_Executable.cn_o
+          then RDF_CottasStore_PageCache.indexed_decode_lookup o_vals i
+          else FStar_Pervasives_Native.None in
+      let rst_g =
+        if i < (RDF_CottasStore_ColumnSeq.cottas_column_length g_col)
+        then
+          match RDF_CottasStore_ColumnSeq.cottas_column_get g_col i with
+          | FStar_Pervasives_Native.Some g -> g
+          | FStar_Pervasives_Native.None -> ""
+        else "" in
+      let row = { rst_s; rst_p; rst_o; rst_g } in
+      build_selective_rows bound_s bound_p bound_o need s_vals p_vals o_vals
+        g_col rest (row :: acc_rev)
+let process_row_group_selective (path : Prims.string)
+  (table :
+    Parquet_Footer.parquet_row_group_offset_table
+      FStar_Pervasives_Native.option)
+  (bound_s : Prims.string FStar_Pervasives_Native.option)
+  (bound_p : Prims.string FStar_Pervasives_Native.option)
+  (bound_o : Prims.string FStar_Pervasives_Native.option)
+  (bound_g : Prims.string FStar_Pervasives_Native.option)
+  (need : RDF_Graph_Executable.col_need) (rg_index : Prims.nat)
+  (acc_rev : cottas_qp_row_tok_selective Prims.list) :
+  cottas_qp_row_tok_selective Prims.list=
+  match pcache_decode_global_auto table path rg_index (Prims.of_int (3)) with
+  | FStar_Pervasives_Native.None -> acc_rev
+  | FStar_Pervasives_Native.Some g_col ->
+      let s_col =
+        if FStar_Pervasives_Native.uu___is_Some bound_s
+        then pcache_decode_global_auto table path rg_index Prims.int_zero
+        else FStar_Pervasives_Native.None in
+      let p_col =
+        if FStar_Pervasives_Native.uu___is_Some bound_p
+        then pcache_decode_global_auto table path rg_index Prims.int_one
+        else FStar_Pervasives_Native.None in
+      let o_col =
+        if FStar_Pervasives_Native.uu___is_Some bound_o
+        then pcache_decode_global_auto table path rg_index (Prims.of_int (2))
+        else FStar_Pervasives_Native.None in
+      let bound_decode_ok =
+        (((FStar_Pervasives_Native.uu___is_None bound_s) ||
+            (FStar_Pervasives_Native.uu___is_Some s_col))
+           &&
+           ((FStar_Pervasives_Native.uu___is_None bound_p) ||
+              (FStar_Pervasives_Native.uu___is_Some p_col)))
+          &&
+          ((FStar_Pervasives_Native.uu___is_None bound_o) ||
+             (FStar_Pervasives_Native.uu___is_Some o_col)) in
+      if Prims.op_Negation bound_decode_ok
+      then acc_rev
+      else
+        (let n = RDF_CottasStore_ColumnSeq.cottas_column_length g_col in
+         let matched =
+           FStar_List_Tot_Base.rev
+             (matched_indices_seq bound_s bound_p bound_o bound_g s_col p_col
+                o_col g_col n Prims.int_zero []) in
+         let s_vals =
+           if
+             (FStar_Pervasives_Native.uu___is_None bound_s) &&
+               need.RDF_Graph_Executable.cn_s
+           then
+             decode_indexed_or_fallback table path rg_index Prims.int_zero
+               matched
+           else [] in
+         let p_vals =
+           if
+             (FStar_Pervasives_Native.uu___is_None bound_p) &&
+               need.RDF_Graph_Executable.cn_p
+           then
+             decode_indexed_or_fallback table path rg_index Prims.int_one
+               matched
+           else [] in
+         let o_vals =
+           if
+             (FStar_Pervasives_Native.uu___is_None bound_o) &&
+               need.RDF_Graph_Executable.cn_o
+           then
+             decode_indexed_or_fallback table path rg_index
+               (Prims.of_int (2)) matched
+           else [] in
+         build_selective_rows bound_s bound_p bound_o need s_vals p_vals
+           o_vals g_col matched acc_rev)
+let rec walk_row_groups_search_tok_selective_global (path : Prims.string)
+  (table :
+    Parquet_Footer.parquet_row_group_offset_table
+      FStar_Pervasives_Native.option)
+  (bound_s : Prims.string FStar_Pervasives_Native.option)
+  (bound_p : Prims.string FStar_Pervasives_Native.option)
+  (bound_o : Prims.string FStar_Pervasives_Native.option)
+  (bound_g : Prims.string FStar_Pervasives_Native.option)
+  (need : RDF_Graph_Executable.col_need) (rg_index : Prims.nat)
+  (rg_count : Prims.nat) (fuel : Prims.nat)
+  (acc_rev : cottas_qp_row_tok_selective Prims.list) :
+  cottas_qp_row_tok_selective Prims.list=
+  if fuel = Prims.int_zero
+  then acc_rev
+  else
+    if rg_index >= rg_count
+    then acc_rev
+    else
+      (let acc_rev' =
+         process_row_group_selective path table bound_s bound_p bound_o
+           bound_g need rg_index acc_rev in
+       walk_row_groups_search_tok_selective_global path table bound_s bound_p
+         bound_o bound_g need (rg_index + Prims.int_one) rg_count
+         (fuel - Prims.int_one) acc_rev')
+let rec walk_candidate_rgs_search_tok_selective_global (path : Prims.string)
+  (table :
+    Parquet_Footer.parquet_row_group_offset_table
+      FStar_Pervasives_Native.option)
+  (bound_s : Prims.string FStar_Pervasives_Native.option)
+  (bound_p : Prims.string FStar_Pervasives_Native.option)
+  (bound_o : Prims.string FStar_Pervasives_Native.option)
+  (bound_g : Prims.string FStar_Pervasives_Native.option)
+  (need : RDF_Graph_Executable.col_need) (candidates : Prims.nat Prims.list)
+  (acc_rev : cottas_qp_row_tok_selective Prims.list) :
+  cottas_qp_row_tok_selective Prims.list=
+  match candidates with
+  | [] -> acc_rev
+  | rg_index::rest ->
+      let acc_rev' =
+        process_row_group_selective path table bound_s bound_p bound_o
+          bound_g need rg_index acc_rev in
+      walk_candidate_rgs_search_tok_selective_global path table bound_s
+        bound_p bound_o bound_g need rest acc_rev'
+let cottas_ondisk_search_tok_selective (ds : cottas_ondisk_store)
+  (bound : cottas_bound_qp_tok) (need : RDF_Graph_Executable.col_need) :
+  cottas_qp_row_tok_selective Prims.list=
+  let h = ds.cods_handle in
+  let bound_s = bound.cbqpt_s in
+  let bound_p = bound.cbqpt_p in
+  let bound_o = bound.cbqpt_o in
+  let bound_g = bound.cbqpt_g in
+  match Parquet_Footer.probe_parquet_row_group_count h.coh_path with
+  | FStar_Pervasives_Native.None -> []
+  | FStar_Pervasives_Native.Some rg_count ->
+      let table =
+        Parquet_Footer.probe_parquet_row_group_offset_table h.coh_path in
+      let any_bound_present =
+        (((FStar_Pervasives_Native.uu___is_Some bound_s) ||
+            (FStar_Pervasives_Native.uu___is_Some bound_p))
+           || (FStar_Pervasives_Native.uu___is_Some bound_o))
+          || (FStar_Pervasives_Native.uu___is_Some bound_g) in
+      if any_bound_present
+      then
+        let uu___ =
+          plan_candidate_rgs h table bound_s bound_p bound_o bound_g rg_count in
+        (match uu___ with
+         | (candidates0, _dc) ->
+             let candidates =
+               filter_candidates_by_compound_po h.coh_path candidates0
+                 bound_p bound_o in
+             let acc_rev =
+               walk_candidate_rgs_search_tok_selective_global h.coh_path
+                 table bound_s bound_p bound_o bound_g need candidates [] in
+             Parquet_Footer.list_rev acc_rev)
+      else
+        (let acc_rev =
+           walk_row_groups_search_tok_selective_global h.coh_path table
+             bound_s bound_p bound_o bound_g need Prims.int_zero rg_count
+             rg_count [] in
+         Parquet_Footer.list_rev acc_rev)
+let cottas_ondisk_row_tok_selective_to_triple
+  (row : cottas_qp_row_tok_selective) : RDF_Triple.triple=
+  {
+    RDF_Triple.s =
+      (match row.rst_s with
+       | FStar_Pervasives_Native.Some tok -> token_to_subject tok
+       | FStar_Pervasives_Native.None -> RDF_Term.S_BNode "cottas_decode_oor");
+    RDF_Triple.p =
+      (match row.rst_p with
+       | FStar_Pervasives_Native.Some tok -> token_to_predicate tok
+       | FStar_Pervasives_Native.None -> cottas_decode_oor_predicate);
+    RDF_Triple.o =
+      (match row.rst_o with
+       | FStar_Pervasives_Native.Some tok -> token_to_object tok
+       | FStar_Pervasives_Native.None -> RDF_Term.T_BNode "cottas_decode_oor")
+  }
+let rec cottas_ondisk_rows_tok_selective_to_triples_acc
+  (rows : cottas_qp_row_tok_selective Prims.list)
+  (acc : RDF_Triple.triple Prims.list) : RDF_Triple.triple Prims.list=
+  match rows with
+  | [] -> acc
+  | row::rest ->
+      cottas_ondisk_rows_tok_selective_to_triples_acc rest
+        ((cottas_ondisk_row_tok_selective_to_triple row) :: acc)
+let cottas_ondisk_rows_tok_selective_to_triples
+  (rows : cottas_qp_row_tok_selective Prims.list) :
+  RDF_Triple.triple Prims.list=
+  FStar_List_Tot_Base.rev
+    (cottas_ondisk_rows_tok_selective_to_triples_acc rows [])
 let rec filter_zipped_rows_limited_seq (h : cottas_ondisk_handle)
   (bound_s : Prims.string FStar_Pervasives_Native.option)
   (bound_p : Prims.string FStar_Pervasives_Native.option)

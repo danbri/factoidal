@@ -368,4 +368,8 @@ let caps_of_rml_source (rvs : rml_virtual_source) : Tot store_caps =
     // v1 scope: no dictionary-page shortcut for a virtual (non-materialised)
     // RML source; GROUP BY ?p falls through to the materialise path.
     sc_distinct_predicates = None;
+    // No accelerated selective-decode realisation for a virtual
+    // (non-materialised) RML source (docs/designissues/2026-07-13-
+    // optional-filter-selective-decode.md).
+    sc_solve_selective = None;
   }

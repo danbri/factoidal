@@ -49,5 +49,15 @@ let caps_of_cottas (cods : RDF_CottasStore.cottas_ondisk_store)
            cods.RDF_CottasStore.cods_handle);
     RDF_Store_Capabilities.sc_distinct_predicates =
       (FStar_Pervasives_Native.Some
-         (fun uu___ -> RDF_CottasStore.cottas_ondisk_distinct_predicates cods))
+         (fun uu___ -> RDF_CottasStore.cottas_ondisk_distinct_predicates cods));
+    RDF_Store_Capabilities.sc_solve_selective =
+      (FStar_Pervasives_Native.Some
+         (fun b need ->
+            let bound =
+              RDF_CottasStore.cottas_ondisk_build_bound_qp_tok
+                b.SPARQL11_Algebra.bs b.SPARQL11_Algebra.bp
+                b.SPARQL11_Algebra.bo scope in
+            RDF_CottasStore.cottas_ondisk_rows_tok_selective_to_triples
+              (RDF_CottasStore.cottas_ondisk_search_tok_selective cods bound
+                 need)))
   }

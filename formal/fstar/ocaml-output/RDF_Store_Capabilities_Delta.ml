@@ -40,7 +40,9 @@ let overlay (base : RDF_Store_Capabilities.store_caps)
       RDF_Store_Capabilities.sc_decode_failure =
         (base.RDF_Store_Capabilities.sc_decode_failure);
       RDF_Store_Capabilities.sc_distinct_predicates =
-        (base.RDF_Store_Capabilities.sc_distinct_predicates)
+        (base.RDF_Store_Capabilities.sc_distinct_predicates);
+      RDF_Store_Capabilities.sc_solve_selective =
+        (base.RDF_Store_Capabilities.sc_solve_selective)
     }
   else
     {
@@ -83,5 +85,10 @@ let overlay (base : RDF_Store_Capabilities.store_caps)
       RDF_Store_Capabilities.sc_decode_failure =
         (base.RDF_Store_Capabilities.sc_decode_failure);
       RDF_Store_Capabilities.sc_distinct_predicates =
-        FStar_Pervasives_Native.None
+        FStar_Pervasives_Native.None;
+      RDF_Store_Capabilities.sc_solve_selective =
+        (FStar_Pervasives_Native.Some
+           ((fun b _need ->
+               RDF_Store_Columnar_DeltaMerge.merge_on_read
+                 (base.RDF_Store_Capabilities.sc_solve b) delta b)))
     }

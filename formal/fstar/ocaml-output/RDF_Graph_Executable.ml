@@ -117,6 +117,18 @@ let __proj__Mktriple_pattern__item__tp_o (projectee : triple_pattern) :
   pattern_term= match projectee with | { tp_s; tp_p; tp_o;_} -> tp_o
 type solution_mapping = (var_name * RDF_Term.rdf_term) Prims.list
 type bgp = triple_pattern Prims.list
+type col_need = {
+  cn_s: Prims.bool ;
+  cn_p: Prims.bool ;
+  cn_o: Prims.bool }
+let __proj__Mkcol_need__item__cn_s (projectee : col_need) : Prims.bool=
+  match projectee with | { cn_s; cn_p; cn_o;_} -> cn_s
+let __proj__Mkcol_need__item__cn_p (projectee : col_need) : Prims.bool=
+  match projectee with | { cn_s; cn_p; cn_o;_} -> cn_p
+let __proj__Mkcol_need__item__cn_o (projectee : col_need) : Prims.bool=
+  match projectee with | { cn_s; cn_p; cn_o;_} -> cn_o
+let col_need_all : col_need= { cn_s = true; cn_p = true; cn_o = true }
+let col_need_none : col_need= { cn_s = false; cn_p = false; cn_o = false }
 type numeric_type =
   | NT_Integer 
   | NT_Decimal 

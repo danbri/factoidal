@@ -2436,6 +2436,251 @@ let bucket_needs_of_pattern (p : group_graph_pattern) : bucket_needs =
   if pattern_has_binding_source p then all_bucket_needs
   else pattern_bucket_needs (pattern_var_occurrences p) p
 
+(* ==========================================================================
+   Needed-column analysis (OPTIONAL/FILTER row-index-selective decode
+   design, docs/designissues/2026-07-13-optional-filter-selective-decode.md).
+   Stage 1: pure, unwired free-variable analysis over the FULL algebra
+   tree. Nothing calls these yet (stage 4, a narrow single-BGP detector,
+   is a follow-up landing) -- this section is safe to land on its own.
+
+   `expr_vars` is exhaustive over every `expr` constructor: F* forces
+   this at typecheck time (an incomplete match is a verification error,
+   not a runtime one), which is the whole point of writing the traversal
+   as one big pattern match rather than hoping to remember every case.
+   `E_Exists`/`E_NotExists` descend into their sub-pattern via
+   `pattern_all_vars` (mutually recursive below) instead of treating
+   EXISTS as opaque: a correlated outer variable used ONLY inside an
+   EXISTS{} block still needs its column decoded by the enclosing query,
+   so under-counting there would be a silent correctness gap the moment
+   a future caller (stage 4+) gates decode on this analysis.
+   Over-counting is always safe (a column gets decoded that didn't
+   strictly need to be, costing decode-acceleration opportunity, never a
+   wrong answer) -- every ambiguous case in this section is resolved
+   toward "when in doubt, mark it live," matching `col_need_for_tp`'s
+   own contract below. *)
+
+let rec expr_vars (e : expr) : Tot (list var_name) (decreases e) =
+  match e with
+  | E_Var v -> [v]
+  | E_IRI _ | E_Literal _ | E_BoolLit _ | E_NumericLit _
+  | E_DecimalLit _ | E_DoubleLit _ -> []
+  | E_Arith _ e1 e2 -> expr_vars e1 @ expr_vars e2
+  | E_UnaryMinus e1 | E_UnaryPlus e1 -> expr_vars e1
+  | E_Compare _ e1 e2 -> expr_vars e1 @ expr_vars e2
+  | E_And e1 e2 | E_Or e1 e2 -> expr_vars e1 @ expr_vars e2
+  | E_Not e1 -> expr_vars e1
+  | E_IsIRI e1 | E_IsBlank e1 | E_IsLiteral e1 | E_IsNumeric e1 -> expr_vars e1
+  | E_Str e1 | E_Lang e1 | E_Datatype e1 | E_IRI_fn e1 -> expr_vars e1
+  | E_StrDt e1 e2 | E_StrLang e1 e2 -> expr_vars e1 @ expr_vars e2
+  // BOUND(?v) only tests presence, never the decoded VALUE of ?v -- but
+  // we count ?v live anyway, conservative-safe per the banner above.
+  | E_Bound v -> [v]
+  | E_If c t f -> expr_vars c @ expr_vars t @ expr_vars f
+  | E_Coalesce es -> expr_list_vars es
+  | E_In e1 es -> expr_vars e1 @ expr_list_vars es
+  | E_NotIn e1 es -> expr_vars e1 @ expr_list_vars es
+  | E_StrLen e1 -> expr_vars e1
+  | E_Substr e1 e2 e3_opt -> expr_vars e1 @ expr_vars e2 @ expr_opt_vars e3_opt
+  | E_UCase e1 | E_LCase e1 -> expr_vars e1
+  | E_StrStarts e1 e2 | E_StrEnds e1 e2 | E_Contains e1 e2
+  | E_StrBefore e1 e2 | E_StrAfter e1 e2 -> expr_vars e1 @ expr_vars e2
+  | E_Concat es -> expr_list_vars es
+  | E_EncodeForUri e1 -> expr_vars e1
+  | E_Replace e1 e2 e3 e4_opt ->
+    expr_vars e1 @ expr_vars e2 @ expr_vars e3 @ expr_opt_vars e4_opt
+  | E_Regex e1 e2 e3_opt -> expr_vars e1 @ expr_vars e2 @ expr_opt_vars e3_opt
+  | E_Abs e1 | E_Round e1 | E_Ceil e1 | E_Floor e1 -> expr_vars e1
+  | E_MD5 e1 | E_SHA1 e1 | E_SHA256 e1 | E_SHA384 e1 | E_SHA512 e1 -> expr_vars e1
+  | E_Now -> []
+  | E_Year e1 | E_Month e1 | E_Day e1 | E_Hours e1 | E_Minutes e1
+  | E_Seconds e1 | E_Timezone e1 | E_Tz e1 -> expr_vars e1
+  | E_SameTerm e1 e2 -> expr_vars e1 @ expr_vars e2
+  | E_Exists p -> pattern_all_vars p
+  | E_NotExists p -> pattern_all_vars p
+  | E_Aggregate _ _ e1 -> expr_vars e1
+  | E_FunctionCall _ es -> expr_list_vars es
+
+and expr_list_vars (es : list expr) : Tot (list var_name) (decreases es) =
+  match es with
+  | [] -> []
+  | e :: rest -> expr_vars e @ expr_list_vars rest
+
+and expr_opt_vars (eo : option expr) : Tot (list var_name) (decreases eo) =
+  match eo with
+  | None -> []
+  | Some e -> expr_vars e
+
+// Every variable name occurring ANYWHERE in a group graph pattern:
+// triple-pattern / property-path slots, FILTER/BIND/LeftJoin-filter
+// expressions (via expr_vars, including their EXISTS sub-patterns),
+// BIND's own bound variable, VALUES' column variables, GRAPH's
+// variable, SERVICE ?var's variable, and (conservatively -- see the
+// section banner) a nested sub-SELECT's entire variable set via
+// `query_all_vars`.
+and pattern_all_vars (p : group_graph_pattern) : Tot (list var_name) (decreases p) =
+  match p with
+  | GP_BGP b -> bgp_vars b
+  | GP_Join p1 p2 | GP_Union p1 p2 | GP_Minus p1 p2 | GP_Lateral p1 p2 ->
+    pattern_all_vars p1 @ pattern_all_vars p2
+  | GP_LeftJoin p1 p2 e -> pattern_all_vars p1 @ pattern_all_vars p2 @ expr_vars e
+  | GP_Filter e p1 -> expr_vars e @ pattern_all_vars p1
+  | GP_Graph pt p1 -> pattern_term_var pt @ pattern_all_vars p1
+  | GP_Bind e v p1 -> expr_vars e @ (v :: pattern_all_vars p1)
+  | GP_Values vs _rows -> vs
+  | GP_Service _ p1 _ -> pattern_all_vars p1
+  | GP_ServiceVar v p1 _ -> v :: pattern_all_vars p1
+  | GP_SubSelect q -> query_all_vars q
+  | GP_PropertyPath ps _ pt -> pattern_subject_var ps @ pattern_term_var pt
+  | GP_Empty -> []
+
+// Every variable name occurring anywhere in a whole query: its pattern
+// (via pattern_all_vars) plus every other clause that can mention a
+// variable (projection/CONSTRUCT template/DESCRIBE list, GROUP BY,
+// HAVING, ORDER BY, post-query VALUES).
+and query_all_vars (q : query) : Tot (list var_name) (decreases q) =
+  pattern_all_vars q.q_pattern
+  @ query_form_all_vars q.q_form
+  @ (match q.q_group_by with
+     | None -> []
+     | Some gcs -> group_conditions_vars gcs)
+  @ (match q.q_having with
+     | None -> []
+     | Some hs -> expr_list_vars hs)
+  @ (match q.q_modifier.sm_order_by with
+     | None -> []
+     | Some ocs -> order_conditions_vars ocs)
+  @ (match q.q_values with
+     | None -> []
+     | Some rows -> values_rows_vars rows)
+
+and query_form_all_vars (qf : query_form) : Tot (list var_name) (decreases qf) =
+  match qf with
+  | QF_Select sc -> select_clause_vars sc
+  | QF_Construct tps -> bgp_vars tps
+  | QF_Ask -> []
+  | QF_Describe pts -> pattern_terms_vars pts
+
+and select_clause_vars (sc : select_clause) : Tot (list var_name) (decreases sc) =
+  match sc with
+  | Select_All -> []
+  | Select_Vars items -> select_items_all_vars items
+
+and select_items_all_vars (items : list select_item) : Tot (list var_name) (decreases items) =
+  match items with
+  | [] -> []
+  | SI_Var v :: rest -> v :: select_items_all_vars rest
+  | SI_Expr e v :: rest -> expr_vars e @ (v :: select_items_all_vars rest)
+
+and group_conditions_vars (gcs : list group_condition) : Tot (list var_name) (decreases gcs) =
+  match gcs with
+  | [] -> []
+  | GC_Var v :: rest -> v :: group_conditions_vars rest
+  | GC_Expr e alias :: rest ->
+    expr_vars e @ (match alias with Some a -> [a] | None -> []) @ group_conditions_vars rest
+  | GC_BuiltIn e :: rest -> expr_vars e @ group_conditions_vars rest
+
+and order_conditions_vars (ocs : list order_condition) : Tot (list var_name) (decreases ocs) =
+  match ocs with
+  | [] -> []
+  | OC_Asc e :: rest -> expr_vars e @ order_conditions_vars rest
+  | OC_Desc e :: rest -> expr_vars e @ order_conditions_vars rest
+
+and pattern_terms_vars (pts : list pattern_term) : Tot (list var_name) (decreases pts) =
+  match pts with
+  | [] -> []
+  | pt :: rest -> pattern_term_var pt @ pattern_terms_vars rest
+
+and values_rows_vars (rows : list (list (var_name * rdf_term))) : Tot (list var_name) (decreases rows) =
+  match rows with
+  | [] -> []
+  | row :: rest -> values_row_vars row @ values_rows_vars rest
+
+and values_row_vars (row : list (var_name * rdf_term)) : Tot (list var_name) (decreases row) =
+  match row with
+  | [] -> []
+  | (v, _) :: rest -> v :: values_row_vars rest
+
+// Narrower "does this need decode" collector: FILTER/BIND/LeftJoin-filter
+// expression variables only -- NOT every triple-pattern occurrence (that
+// over-collection is exactly what `col_need` exists to avoid: an
+// unbound position nothing ever reads should not force a column
+// decode). GP_SubSelect / GP_Values / GP_ServiceVar still fall back to
+// "everything" (`query_all_vars` / the VALUES column list) -- narrowing
+// those further is unneeded complexity for the single-BGP detector
+// shape stage 4 targets, and staying conservative there only costs
+// decode-acceleration opportunity, never correctness.
+let rec pattern_filter_bind_vars (p : group_graph_pattern) : Tot (list var_name) (decreases p) =
+  match p with
+  | GP_BGP _ -> []
+  | GP_PropertyPath _ _ _ -> []
+  | GP_Join p1 p2 | GP_Union p1 p2 | GP_Minus p1 p2 | GP_Lateral p1 p2 ->
+    pattern_filter_bind_vars p1 @ pattern_filter_bind_vars p2
+  | GP_LeftJoin p1 p2 e ->
+    pattern_filter_bind_vars p1 @ pattern_filter_bind_vars p2 @ expr_vars e
+  | GP_Filter e p1 -> expr_vars e @ pattern_filter_bind_vars p1
+  | GP_Graph _ p1 -> pattern_filter_bind_vars p1
+  | GP_Bind e _v p1 -> expr_vars e @ pattern_filter_bind_vars p1
+  | GP_Values vs _rows -> vs
+  | GP_Service _ p1 _ -> pattern_filter_bind_vars p1
+  | GP_ServiceVar v p1 _ -> v :: pattern_filter_bind_vars p1
+  | GP_SubSelect q -> query_all_vars q
+  | GP_Empty -> []
+
+// Full projected-item variable set INCLUDING a SI_Expr's own free
+// variables (`select_item_vars` above only returns the alias, which is
+// enough for projection/renaming but not for "what must be decoded to
+// EVALUATE the expression").
+let rec select_item_vars_full (items : list select_item) : Tot (list var_name) (decreases items) =
+  match items with
+  | [] -> []
+  | SI_Var v :: rest -> v :: select_item_vars_full rest
+  | SI_Expr e v :: rest -> expr_vars e @ (v :: select_item_vars_full rest)
+
+// Query-wide filter/having/order-by/group-by variable set (the
+// non-projection half of `query_live_vars`'s union).
+let query_clause_vars (q : query) : Tot (list var_name) =
+  pattern_filter_bind_vars q.q_pattern
+  @ (match q.q_group_by with None -> [] | Some gcs -> group_conditions_vars gcs)
+  @ (match q.q_having with None -> [] | Some hs -> expr_list_vars hs)
+  @ (match q.q_modifier.sm_order_by with None -> [] | Some ocs -> order_conditions_vars ocs)
+
+// Top-level entry point (design doc's `query_live_vars`): the variables
+// whose DECODED VALUE some part of the query actually consumes --
+// projection UNION FILTER/HAVING/ORDER BY/BIND free variables UNION
+// "SELECT * means everything live." CONSTRUCT/ASK/DESCRIBE forms are
+// treated conservatively (everything in `query_all_vars`) -- none of
+// them have a narrow "these positions are dead" case in the design
+// doc's scope, and over-inclusion here only costs the decode
+// acceleration this design is chasing, never correctness.
+let query_live_vars (q : query) : Tot (list var_name) =
+  match q.q_form with
+  | QF_Select Select_All -> query_all_vars q
+  | QF_Select (Select_Vars items) -> select_item_vars_full items @ query_clause_vars q
+  | QF_Construct _ | QF_Ask | QF_Describe _ -> query_all_vars q
+
+// col_need_for_tp: which of a single triple pattern's three positions
+// need their column VALUE decoded, given the query-wide
+// variable-occurrence multiset `occ` (from `pattern_var_occurrences`,
+// which already counts cross-BGP AND within-BGP repeats -- see that
+// function's own banner) and the live-variable set `live` (from
+// `query_live_vars`). A concrete (bound) position never needs decode --
+// its value is already known from the query text, and matching it is
+// the CHEAP discriminating-column pass the design's mechanism section
+// describes, not this analysis's concern. A variable position needs
+// decode iff it is live OR shared with another occurrence anywhere in
+// the query pattern (a cross-pattern join var, or a within-BGP repeat
+// like `?x :knows ?x2 . ?x2 :knows ?x`) -- mirrors
+// `var_is_shared`/`tp_bucket_needs`'s existing occurrence-counting
+// exactly, just answering "does the VALUE need decoding" instead of
+// "which bucket can this ask."
+let col_need_for_tp (occ : list var_name) (live : list var_name) (tp : triple_pattern) : col_need =
+  let needs_var (v : var_name) : bool = List.Tot.mem v live || var_is_shared occ v in
+  {
+    cn_s = (match tp.tp_s with PS_Var v -> needs_var v | PS_IRI _ | PS_BNode _ -> false);
+    cn_p = (match tp.tp_p with PT_Var v -> needs_var v | PT_IRI _ | PT_BNode _ | PT_Literal _ -> false);
+    cn_o = (match tp.tp_o with PT_Var v -> needs_var v | PT_IRI _ | PT_BNode _ | PT_Literal _ -> false);
+  }
+
 (* Query-shape-aware sibling of `graph_to_store` (line ~159, kept
    unchanged/unselective for the lemmas at the bottom of this file and
    any other caller that doesn't know its own query shape). Same

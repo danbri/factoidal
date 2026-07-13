@@ -1,20 +1,14 @@
-* Warning 241 at RDF.Vocabulary.Axioms.fst(0,0-0,0):
-  - Unable to load RDF.Vocabulary.Axioms.fst.checked since checked file
-    RDF.Vocabulary.Axioms.fst.checked is stale (dependence hash mismatch, use
-    --debug CheckedFiles for more details); will recheck
-    RDF.Vocabulary.Axioms.fst (suppressing this warning for further modules)
+* Warning 241 at RDF.CottasStore.LazyDictRegistry.fst(0,0-0,0):
+  - Unable to load RDF.CottasStore.LazyDictRegistry.fst.checked since checked
+    file RDF.CottasStore.LazyDictRegistry.fst.checked is stale (dependence hash
+    mismatch, use --debug CheckedFiles for more details); will recheck
+    RDF.CottasStore.LazyDictRegistry.fst (suppressing this warning for further
+    modules)
 
 * Warning 328 at Parquet.Footer.fst(296,8-296,31):
   - Global binding
         'Parquet.Footer.decode_varint_value_hex'
     is recursive but not used in its body
-
-* Warning 349 at RDF.CottasStore.fst(2256,13-2348,40):
-  - The verification condition succeeded after splitting it to localize
-    potential errors, although the original non-split verification condition
-    failed. If you want to rely on splitting queries for verifying your program
-    please use the '--split_queries always' option rather than relying on it
-    implicitly.
 
 Extracted module RDF.CottasStore
 * Warning 247 at RDF.CottasStore.fst(0,0-0,0):

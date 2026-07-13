@@ -1898,6 +1898,268 @@ let cottas_ondisk_search_tok
       list_rev acc_rev
 
 // ----------------------------------------------------------------------
+// Row-index-selective SEARCH (OPTIONAL/FILTER row-index-selective decode
+// design, docs/designissues/2026-07-13-optional-filter-selective-decode.md,
+// stage 2). Sibling of `cottas_ondisk_search_tok` immediately above --
+// same row-group planning/pruning -- but decodes an UNBOUND column's
+// VALUE only at the row indices that already matched on the CHEAP
+// discriminating columns (bound positions + the graph column, which is
+// always decoded per issue #267), instead of decoding every column of
+// every candidate row group up front. Nothing calls this yet (stage 4,
+// a narrow single-BGP detector, is a follow-up landing); this is the
+// mechanism the design's differential gate exercises directly.
+//
+// Result shape carries `option string` per position instead of `string`
+// (contrast `cottas_qp_row_tok`): a position with `need.cn_x = false`
+// (and not itself a bound/constant position) is `None` -- its column was
+// never decoded, so there is nothing to report there. The graph position
+// is always `Some` (never gated). Callers that DID mark a position
+// needed always get `Some` back for a matched row (bound positions are
+// filled from the bound's own known token, no column read required at
+// all; needed-unbound positions are filled from the indexed decode).
+noeq type cottas_qp_row_tok_selective = {
+  rst_s : option string;
+  rst_p : option string;
+  rst_o : option string;
+  rst_g : string;
+}
+
+// Collect the (per-row-group-LOCAL) indices whose cheap columns (bound
+// positions, already fully decoded into `s_col`/`p_col`/`o_col` — `None`
+// when that position is unbound — plus the always-decoded `g_col`)
+// satisfy the bound. Mirrors `count_selective_matches_seq`'s gating
+// exactly (same `bound_col_match`/`graph_cell_match` calls), just
+// collecting indices instead of a count. Accumulates in REVERSE row
+// order; callers `List.Tot.rev` once, same convention as every other
+// walker in this file.
+let rec matched_indices_seq
+  (bound_s bound_p bound_o bound_g : option string)
+  (s_col p_col o_col : option cottas_column)
+  (g_col : cottas_column)
+  (n : nat) (i : nat{i <= n})
+  (acc_rev : list nat)
+  : Tot (list nat) (decreases (n - i)) =
+  if i = n then acc_rev
+  else
+    let acc_rev' =
+      if i < cottas_column_length g_col then
+        (match cottas_column_get g_col i with
+         | Some g_tok ->
+           if bound_col_match bound_s s_col i &&
+              bound_col_match bound_p p_col i &&
+              bound_col_match bound_o o_col i &&
+              graph_cell_match bound_g g_tok
+           then i :: acc_rev
+           else acc_rev
+         | None -> acc_rev)
+      else acc_rev in
+    matched_indices_seq bound_s bound_p bound_o bound_g s_col p_col o_col g_col n (i + 1) acc_rev'
+
+// Full-column fallback for the indexed-decode primitive: used when
+// either the row-group-offset table is unavailable (rare -- malformed
+// footer) or the caller just wants a plain filter-by-index over an
+// already-decoded column. Correct, unaccelerated -- same "DLBA/PLAIN
+// pages fall back to full decode" contract the primitive's own OCaml
+// realisation carries for those encodings.
+let rec filter_column_by_indices_acc
+  (col : cottas_column) (indices : list nat) (acc_rev : list (nat & string))
+  : Tot (list (nat & string)) (decreases indices) =
+  match indices with
+  | [] -> acc_rev
+  | i :: rest ->
+    let acc_rev' =
+      if i < cottas_column_length col then
+        (match cottas_column_get col i with
+         | Some tok -> (i, tok) :: acc_rev
+         | None -> acc_rev)
+      else acc_rev in
+    filter_column_by_indices_acc col rest acc_rev'
+
+let filter_column_by_indices (col : cottas_column) (indices : list nat)
+  : Tot (list (nat & string)) =
+  List.Tot.rev (filter_column_by_indices_acc col indices [])
+
+// Decode one column at exactly the requested (matched) row indices,
+// preferring the indexed primitive when a row-group-offset table is
+// available and falling back to a full decode + filter otherwise. Both
+// branches are correct; only the primitive's RLE_DICTIONARY path is
+// actually accelerated (see that assume val's own banner).
+let decode_indexed_or_fallback
+  (table : option parquet_row_group_offset_table)
+  (path : string) (rg_index col_index : nat) (indices : list nat)
+  : Tot (list (nat & string)) =
+  match table with
+  | Some t ->
+    (match pcache_decode_column_at_indices_global_from_table t path rg_index col_index indices with
+     | Some pairs -> pairs
+     | None -> [])
+  | None ->
+    (match pcache_decode_in_row_group_global path rg_index col_index with
+     | None -> []
+     | Some col -> filter_column_by_indices col indices)
+
+// Build the output rows for one row group's matched indices. Bound
+// positions are filled from the bound's OWN known token (no column read
+// at all -- `cell_match`'s equality check already guarantees the row's
+// actual cell equals it); unbound positions are filled from the
+// indexed-decode pairs only when `need` marks them, else `None`. The
+// graph position is always filled from `g_col` (never gated).
+let rec build_selective_rows
+  (bound_s bound_p bound_o : option string)
+  (need : col_need)
+  (s_vals p_vals o_vals : list (nat & string))
+  (g_col : cottas_column)
+  (indices : list nat)
+  (acc_rev : list cottas_qp_row_tok_selective)
+  : Tot (list cottas_qp_row_tok_selective) (decreases indices) =
+  match indices with
+  | [] -> acc_rev
+  | i :: rest ->
+    let rst_s =
+      if Some? bound_s then bound_s
+      else if need.cn_s then indexed_decode_lookup s_vals i else None in
+    let rst_p =
+      if Some? bound_p then bound_p
+      else if need.cn_p then indexed_decode_lookup p_vals i else None in
+    let rst_o =
+      if Some? bound_o then bound_o
+      else if need.cn_o then indexed_decode_lookup o_vals i else None in
+    let rst_g =
+      if i < cottas_column_length g_col then
+        (match cottas_column_get g_col i with Some g -> g | None -> "")
+      else "" in
+    let row = { rst_s = rst_s; rst_p = rst_p; rst_o = rst_o; rst_g = rst_g } in
+    build_selective_rows bound_s bound_p bound_o need s_vals p_vals o_vals g_col rest (row :: acc_rev)
+
+// Per-row-group step: decode the graph column (always) + any BOUND
+// column (fully, same boundness gate as `walk_row_groups_count_exact_
+// global`), compute matched indices from those, then decode only the
+// UNBOUND-but-NEEDED columns at exactly those indices.
+let process_row_group_selective
+  (path : string) (table : option parquet_row_group_offset_table)
+  (bound_s bound_p bound_o bound_g : option string)
+  (need : col_need)
+  (rg_index : nat)
+  (acc_rev : list cottas_qp_row_tok_selective)
+  : Tot (list cottas_qp_row_tok_selective) =
+  match pcache_decode_global_auto table path rg_index 3 with
+  | None -> acc_rev
+  | Some g_col ->
+    let s_col = if Some? bound_s then pcache_decode_global_auto table path rg_index 0 else None in
+    let p_col = if Some? bound_p then pcache_decode_global_auto table path rg_index 1 else None in
+    let o_col = if Some? bound_o then pcache_decode_global_auto table path rg_index 2 else None in
+    let bound_decode_ok =
+      (None? bound_s || Some? s_col) &&
+      (None? bound_p || Some? p_col) &&
+      (None? bound_o || Some? o_col) in
+    if not bound_decode_ok then acc_rev
+    else
+      let n = cottas_column_length g_col in
+      let matched = List.Tot.rev (matched_indices_seq bound_s bound_p bound_o bound_g s_col p_col o_col g_col n 0 []) in
+      let s_vals = if None? bound_s && need.cn_s then decode_indexed_or_fallback table path rg_index 0 matched else [] in
+      let p_vals = if None? bound_p && need.cn_p then decode_indexed_or_fallback table path rg_index 1 matched else [] in
+      let o_vals = if None? bound_o && need.cn_o then decode_indexed_or_fallback table path rg_index 2 matched else [] in
+      build_selective_rows bound_s bound_p bound_o need s_vals p_vals o_vals g_col matched acc_rev
+
+// Full-range walk, sibling of `walk_row_groups_search_tok_global`
+// (line ~969).
+let rec walk_row_groups_search_tok_selective_global
+  (path : string) (table : option parquet_row_group_offset_table)
+  (bound_s bound_p bound_o bound_g : option string)
+  (need : col_need)
+  (rg_index : nat) (rg_count : nat) (fuel : nat)
+  (acc_rev : list cottas_qp_row_tok_selective)
+  : Tot (list cottas_qp_row_tok_selective) (decreases fuel) =
+  if fuel = 0 then acc_rev
+  else if rg_index >= rg_count then acc_rev
+  else
+    let acc_rev' = process_row_group_selective path table bound_s bound_p bound_o bound_g need rg_index acc_rev in
+    walk_row_groups_search_tok_selective_global path table bound_s bound_p bound_o bound_g need
+      (rg_index + 1) rg_count (fuel - 1) acc_rev'
+
+// Candidate-driven walk, sibling of `walk_candidate_rgs_search_tok_global`
+// (line ~1518).
+let rec walk_candidate_rgs_search_tok_selective_global
+  (path : string) (table : option parquet_row_group_offset_table)
+  (bound_s bound_p bound_o bound_g : option string)
+  (need : col_need)
+  (candidates : list nat)
+  (acc_rev : list cottas_qp_row_tok_selective)
+  : Tot (list cottas_qp_row_tok_selective) (decreases candidates) =
+  match candidates with
+  | [] -> acc_rev
+  | rg_index :: rest ->
+    let acc_rev' = process_row_group_selective path table bound_s bound_p bound_o bound_g need rg_index acc_rev in
+    walk_candidate_rgs_search_tok_selective_global path table bound_s bound_p bound_o bound_g need
+      rest acc_rev'
+
+// Public entry point, sibling of `cottas_ondisk_search_tok`: identical
+// row-group planning (`plan_candidate_rgs` + the compound (p,o) prefilter)
+// and identical row/row-group ORDER to `cottas_ondisk_search_tok` -- the
+// differential gate compares the two directly. `need` only changes which
+// UNBOUND columns get decoded, never which rows match or their order.
+let cottas_ondisk_search_tok_selective
+  (ds : cottas_ondisk_store) (bound : cottas_bound_qp_tok) (need : col_need)
+  : Tot (list cottas_qp_row_tok_selective) =
+  let h = ds.cods_handle in
+  let bound_s = bound.cbqpt_s in
+  let bound_p = bound.cbqpt_p in
+  let bound_o = bound.cbqpt_o in
+  let bound_g = bound.cbqpt_g in
+  match probe_parquet_row_group_count h.coh_path with
+  | None -> []
+  | Some rg_count ->
+    let table = probe_parquet_row_group_offset_table h.coh_path in
+    let any_bound_present =
+      Some? bound_s || Some? bound_p || Some? bound_o || Some? bound_g in
+    if any_bound_present then
+      let (candidates0, _dc) = plan_candidate_rgs h table
+        bound_s bound_p bound_o bound_g rg_count in
+      let candidates = filter_candidates_by_compound_po
+        h.coh_path candidates0 bound_p bound_o in
+      let acc_rev = walk_candidate_rgs_search_tok_selective_global h.coh_path table
+        bound_s bound_p bound_o bound_g need
+        candidates [] in
+      list_rev acc_rev
+    else
+      let acc_rev = walk_row_groups_search_tok_selective_global h.coh_path table
+        bound_s bound_p bound_o bound_g need
+        0 rg_count rg_count [] in
+      list_rev acc_rev
+
+// Convert a selective row into a `triple`, for `store_caps.sc_solve_
+// selective`'s interface (RDF.Store.Capabilities.fst), which -- like
+// `sc_solve` -- returns `list triple` regardless of `col_need`: the
+// TYPE doesn't vary with acceleration, only which positions carry a
+// genuinely decoded value. A position the caller marked NOT needed
+// (`None` here) is filled with the SAME out-of-range sentinel
+// `cottas_ondisk_row_tok_to_quad`'s callers already use for a
+// corrupt/mismatched cell (`S_BNode "cottas_decode_oor"` /
+// `cottas_decode_oor_predicate` / `T_BNode "cottas_decode_oor"`) --
+// this is a documented, load-bearing part of the contract: a caller
+// must never read a position it did not mark needed in `col_need`.
+let cottas_ondisk_row_tok_selective_to_triple (row : cottas_qp_row_tok_selective)
+  : Tot triple =
+  {
+    s = (match row.rst_s with Some tok -> token_to_subject tok | None -> S_BNode "cottas_decode_oor");
+    p = (match row.rst_p with Some tok -> token_to_predicate tok | None -> cottas_decode_oor_predicate);
+    o = (match row.rst_o with Some tok -> token_to_object tok | None -> T_BNode "cottas_decode_oor");
+  }
+
+let rec cottas_ondisk_rows_tok_selective_to_triples_acc
+    (rows : list cottas_qp_row_tok_selective)
+    (acc : list triple)
+  : Tot (list triple) (decreases rows) =
+  match rows with
+  | [] -> acc
+  | row :: rest ->
+    cottas_ondisk_rows_tok_selective_to_triples_acc rest (cottas_ondisk_row_tok_selective_to_triple row :: acc)
+
+let cottas_ondisk_rows_tok_selective_to_triples (rows : list cottas_qp_row_tok_selective)
+  : Tot (list triple) =
+  List.Tot.rev (cottas_ondisk_rows_tok_selective_to_triples_acc rows [])
+
+// ----------------------------------------------------------------------
 // Aleph6 (issue #100, demo prep): LIMIT pushdown variants of the row-group
 // walkers. They short-circuit once `acc_rev` accumulates `limit` matched
 // rows, avoiding the rest-of-corpus walk for queries like

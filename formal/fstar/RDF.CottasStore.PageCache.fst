@@ -247,6 +247,65 @@ assume val pcache_decode_in_row_group_global_from_table :
   Tot (option cottas_column)
 
 // ----------------------------------------------------------------------
+// Row-index-selective column decode (OPTIONAL/FILTER row-index-selective
+// decode design, docs/designissues/2026-07-13-optional-filter-selective-
+// decode.md, stage 2). Sibling of `pcache_decode_in_row_group_global_
+// from_table` immediately above -- same table-threaded row-group locate
+// -- but decodes ONLY the requested row indices within that row group's
+// column, instead of the whole column.
+//
+// Why: `RDF.CottasStore`'s selective walker family already decodes the
+// BOUND positions (+ the graph column) in full to compute which row
+// indices match; for an UNBOUND-but-NEEDED column, decoding the WHOLE
+// column just to read a handful of matched cells is the exact cost the
+// design's mechanism section targets ("decode expensive unbound-but-
+// NEEDED columns ONLY at matched indices").
+//
+// Contract: `None` means the row group's column could not be decoded AT
+// ALL (same failure mode as `pcache_decode_in_row_group_global_from_
+// table` returning `None` -- a corrupt/unsupported page), in which case
+// the caller treats every requested index as absent (same "row group
+// contributes nothing it couldn't decode" fallback the unaccelerated
+// walkers already use). `Some pairs` carries one `(index, token)` entry
+// per REQUESTED index that has a value -- an index outside the column's
+// row count, or whose cell happens to be `None`, is simply omitted (the
+// caller looks values up by index rather than assuming positional
+// alignment with the input list). For a genuinely EMPTY `indices` list
+// the realisation returns `Some []` (nothing to decode, trivially not a
+// failure) rather than probing the page at all.
+//
+// Realisation (experimental_ocaml_glue/cottas_pagecache_indexed_
+// runtime.sh, rule #11(c) thin dispatch shim): RLE_DICTIONARY-encoded
+// pages resolve each requested index through the page's own index array
+// plus one dictionary-page lookup, touching none of the OTHER rows'
+// cells; DLBA/PLAIN-encoded pages have no such index/dictionary split
+// (mirrors the existing "no dictionary page" contract
+// `cottas_ondisk_distinct_predicates` already established) and fall
+// back to decoding the FULL column via the existing table-threaded
+// decoder, then filtering to the requested indices -- correct, simply
+// unaccelerated for those encodings. Tracked by open issue #295 (iron
+// rule #3) until the RLE_DICTIONARY fast path is measured in place --
+// the initial realisation may run every encoding through the
+// full-decode-then-filter fallback, which is correct but does not yet
+// deliver the design's targeted speedup.
+assume val pcache_decode_column_at_indices_global_from_table :
+  (table : Parquet.Footer.parquet_row_group_offset_table) ->
+  (path : string) -> (rg_index : nat) -> (col_index : nat) ->
+  (indices : list nat) ->
+  Tot (option (list (nat & string)))
+
+// Linear lookup of a requested index's decoded value in the pairs
+// `pcache_decode_column_at_indices_global_from_table` returns. `None`
+// covers both "index wasn't in the requested list" and "index WAS
+// requested but had no cell" -- the caller cannot and need not tell
+// those apart (both mean "nothing to report for this position").
+let rec indexed_decode_lookup (pairs : list (nat & string)) (i : nat)
+  : Tot (option string) (decreases pairs) =
+  match pairs with
+  | [] -> None
+  | (k, v) :: rest -> if k = i then Some v else indexed_decode_lookup rest i
+
+// ----------------------------------------------------------------------
 // Tsade2 Phase E (issue #100 followup, 2026-07-06): cross-query DICTIONARY
 // cache.
 //

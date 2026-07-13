@@ -174,6 +174,27 @@ noeq type store_caps = {
   // RDF.CottasStore.cottas_ondisk_distinct_predicates
   // (RDF.Store.Capabilities.Cottas.fst's `caps_of_cottas`).
   sc_distinct_predicates : option (unit -> Tot (option (list wf_iri)));
+
+  // OPTIONAL/FILTER row-index-selective decode (docs/designissues/
+  // 2026-07-13-optional-filter-selective-decode.md, stages 2-3): a
+  // column-need-aware sibling of `sc_solve`. `None` means the backend
+  // has no accelerated realisation (every backend except COTTAS-on-disk,
+  // statically -- same shape as `sc_distinct_predicates`'s "most
+  // backends can't do this" default). `Some f` means `f bound need`
+  // returns the SAME rows `sc_solve bound` would, for any `need`
+  // (differential gate, stage 2) -- narrower `need` only changes
+  // WHICH triple positions are cheaply decoded, never which rows match
+  // or their order.
+  //
+  // CRITICAL, unlike `sc_distinct_predicates`: this field STANDS IN for
+  // `sc_solve` at call sites that have it -- a caller that sees `None`
+  // here for one member of a composed capability (union, delta overlay)
+  // and treats that as "skip this member" would silently DROP rows, a
+  // wrong answer, not a missed fast path. Every composition below
+  // (`union_caps`, `RDF.Store.Capabilities.Delta.overlay`) accounts for
+  // every member/case explicitly rather than treating `None` as "this
+  // contributes nothing" -- see `union_solve_selective`'s own banner.
+  sc_solve_selective : option (triple_pattern_bound -> col_need -> Tot (list triple));
 }
 
 // --------------------------------------------------------------------
@@ -335,6 +356,23 @@ let rec union_distinct_predicates_acc (acc : list wf_iri) (ms : list store_caps)
        then union_distinct_predicates_acc acc rest
        else None)
 
+// Row-index-selective decode composition (design doc's §composition,
+// stage 3): union ALWAYS advertises `Some` (never `None`-as-skip -- see
+// `sc_solve_selective`'s own banner for why that would drop rows), with
+// each member falling back to its OWN plain `sc_solve` when it has no
+// accelerated realisation. This mirrors `union_solve` exactly, just
+// choosing `sc_solve_selective` when a member has it.
+let rec union_solve_selective (members : list store_caps) (b : triple_pattern_bound) (need : col_need)
+  : Tot (list triple) (decreases members) =
+  match members with
+  | [] -> []
+  | m :: rest ->
+    let part =
+      (match m.sc_solve_selective with
+       | Some f -> f b need
+       | None -> m.sc_solve b) in
+    part @ union_solve_selective rest b need
+
 let union_caps (members : list store_caps) : Tot store_caps =
   {
     sc_flags = {
@@ -354,6 +392,13 @@ let union_caps (members : list store_caps) : Tot store_caps =
     // banner above: every member must either advertise the capability
     // or be empty, else None (fall through to materialise).
     sc_distinct_predicates = Some (fun () -> union_distinct_predicates_acc [] members);
+    // ALWAYS Some -- per-member fallback inside `union_solve_selective`,
+    // never a blanket None (that would let a caller skip the whole
+    // union's acceleration path safely, but a caller that mis-read
+    // "None" as "no rows" for one MEMBER inside a hand-rolled composition
+    // would drop rows; advertising Some here and doing the right
+    // per-member thing removes that foot-gun entirely).
+    sc_solve_selective = Some (fun b need -> union_solve_selective members b need);
   }
 
 // ======================================================================
@@ -381,6 +426,10 @@ let caps_of_indexed (ig : indexed_graph) : Tot store_caps =
     // already streams cheaply enough there via the ordinary group_by
     // path (rows are already in memory) so this capability isn't needed.
     sc_distinct_predicates = None;
+    // No accelerated selective-decode realisation for the in-memory
+    // backend -- rows are already in memory, there is no column-decode
+    // cost to defer in the first place.
+    sc_solve_selective = None;
   }
 
 // ======================================================================

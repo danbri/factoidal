@@ -115,4 +115,24 @@ let overlay (base : store_caps) (delta : DM.delta_resolved) : Tot store_caps =
       // `sc_distinct_predicates` unchanged — correct, because an empty
       // delta changes nothing the dictionary could have missed.
       sc_distinct_predicates = None;
+
+      // OPTIONAL/FILTER row-index-selective decode (docs/designissues/
+      // 2026-07-13-optional-filter-selective-decode.md, stage 3):
+      // "the delta overlay uses merge_on_read like sc_solve, no
+      // acceleration under a live delta." The base's accelerated
+      // realisation (if any) was built from the BASE Parquet file alone
+      // and knows nothing about rows sitting only in this non-empty
+      // delta -- calling it directly here would silently miss delta-only
+      // matches for whichever positions `need` marks as needed, and the
+      // whole POINT of `sc_solve_selective` standing in for `sc_solve`
+      // is that a caller trusts it never drops rows. So this branch
+      // always advertises `Some`, but its body IGNORES `need` (and the
+      // base's own `sc_solve_selective`) entirely and reruns the exact
+      // `merge_on_read` composition `sc_solve` above uses -- correct by
+      // construction, simply not accelerated while a delta is live. The
+      // EMPTY-delta branch above (`{ base with ... }`) inherits
+      // `base.sc_solve_selective` unchanged -- correct, because an empty
+      // delta changes nothing the base's own acceleration could have
+      // missed.
+      sc_solve_selective = Some (fun b _need -> DM.merge_on_read (base.sc_solve b) delta b);
     }
