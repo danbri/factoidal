@@ -1,0 +1,18 @@
+* Warning 241 at RDF.Vocabulary.Axioms.fst(0,0-0,0):
+  - Unable to load RDF.Vocabulary.Axioms.fst.checked since checked file
+    RDF.Vocabulary.Axioms.fst.checked is stale (dependence hash mismatch, use
+    --debug CheckedFiles for more details); will recheck
+    RDF.Vocabulary.Axioms.fst (suppressing this warning for further modules)
+
+* Warning 361 at SPARQL11.Algebra.fst(6945,0-6946,40):
+  - Some #push-options have not been popped. Current depth is 1.
+
+Extracted module XForms.Bind
+* Warning 247 at XForms.Bind.fst(0,0-0,0):
+  - Checked file XForms.Bind.fst.checked was not written.
+  - Reason:
+      checked file Parser.XML.fst.checked is stale (digest mismatch for
+      Parser.XML.fst)
+
+Verified module: XForms.Bind
+All verification conditions discharged successfully

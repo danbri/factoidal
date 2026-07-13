@@ -1,0 +1,15 @@
+* Warning 241 at RDF.Vocabulary.Axioms.fst(0,0-0,0):
+  - Unable to load RDF.Vocabulary.Axioms.fst.checked since checked file
+    RDF.Vocabulary.Axioms.fst.checked is stale (dependence hash mismatch, use
+    --debug CheckedFiles for more details); will recheck
+    RDF.Vocabulary.Axioms.fst (suppressing this warning for further modules)
+
+Extracted module RDFS.Closure
+* Warning 247 at RDFS.Closure.fst(0,0-0,0):
+  - Checked file RDFS.Closure.fst.checked was not written.
+  - Reason:
+      checked file RDF.Vocabulary.Axioms.fst.checked is stale (dependence hash
+      mismatch, use --debug CheckedFiles for more details)
+
+Verified module: RDFS.Closure
+All verification conditions discharged successfully

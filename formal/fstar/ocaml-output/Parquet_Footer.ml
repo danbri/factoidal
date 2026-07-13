@@ -4309,6 +4309,27 @@ let probe_parquet_row_group_offset_table (path : Prims.string) :
                                     prgt_row_group_starts = starts
                                   })))
            else FStar_Pervasives_Native.None)
+let probe_parquet_row_group_num_rows_from_table
+  (table : parquet_row_group_offset_table) (rg_index : Prims.nat) :
+  Prims.nat FStar_Pervasives_Native.option=
+  match FStar_List_Tot_Base.nth table.prgt_row_group_starts rg_index with
+  | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+  | FStar_Pervasives_Native.Some rg_start ->
+      (match nth_field_hex table.prgt_meta_hex (Prims.of_int (3)) rg_start
+               Prims.int_zero table.prgt_meta_hex_len
+       with
+       | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+       | FStar_Pervasives_Native.Some row_group_field ->
+           if row_group_field.cf_type <> compact_t_i64
+           then FStar_Pervasives_Native.None
+           else
+             (match decode_varint_value_hex table.prgt_meta_hex
+                      row_group_field.cf_value_start Prims.int_zero
+                      Prims.int_zero table.prgt_meta_hex_len
+              with
+              | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+              | FStar_Pervasives_Native.Some raw ->
+                  FStar_Pervasives_Native.Some (zigzag_decode_nat raw)))
 let probe_parquet_column_chunk_locator_from_table
   (table : parquet_row_group_offset_table) (rg_index : Prims.nat)
   (col_index : Prims.nat) :

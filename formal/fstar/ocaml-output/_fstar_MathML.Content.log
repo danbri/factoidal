@@ -1,0 +1,14 @@
+* Warning 241 at Parser.XML.fst(0,0-0,0):
+  - Unable to load Parser.XML.fst.checked since checked file
+    Parser.XML.fst.checked is stale (digest mismatch for Parser.XML.fst); will
+    recheck Parser.XML.fst (suppressing this warning for further modules)
+
+Extracted module MathML.Content
+* Warning 247 at MathML.Content.fst(0,0-0,0):
+  - Checked file MathML.Content.fst.checked was not written.
+  - Reason:
+      checked file Parser.XML.fst.checked is stale (digest mismatch for
+      Parser.XML.fst)
+
+Verified module: MathML.Content
+All verification conditions discharged successfully

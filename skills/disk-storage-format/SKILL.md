@@ -1,6 +1,6 @@
 ---
 name: disk-storage-format
-description: How Factoidal stores RDF data on disk — the COTTAS/Parquet base file, its 10 sidecars, the durable-UPDATE delta log, the compacted-epoch marker, and the symlink-current versioning layout. Use when asked how data is stored on disk, when adding a new on-disk companion file, when a magic-number/framing question comes up (DLE1/DLB1/DLOG/CEP1/COTD/COTP/COTO/COPO), when running import/query/compact/serve against a COTTAS store, or when auditing rule #11 status for the storage layer.
+description: How Factoidal stores RDF data on disk — the COTTAS/Parquet base file, its 11 sidecars, the durable-UPDATE delta log, the compacted-epoch marker, and the symlink-current versioning layout. Use when asked how data is stored on disk, when adding a new on-disk companion file, when a magic-number/framing question comes up (DLE1/DLB1/DLOG/CEP1/COTD/COTP/COTO/COPO/COTS), when running import/query/compact/serve against a COTTAS store, or when auditing rule #11 status for the storage layer.
 ---
 
 # Disk storage format
@@ -35,14 +35,16 @@ a directory tree. Pre-durable-UPDATE (import only, no writes yet):
   cs-cluster-stats.log     present only if --row-order cs was used
   data.cottas.s.dict       )
   data.cottas.s.presence   )
-  data.cottas.p.dict       )  the 10 eager sidecars, present only if
+  data.cottas.p.dict       )  the 11 eager sidecars, present only if
   data.cottas.p.presence   )  --build-sidecars was passed at import
   data.cottas.o.dict       )  (verified directly, this session — see
-  data.cottas.o.presence   )  §5). All ten or none: the import script
+  data.cottas.o.presence   )  §5). All eleven or none: the import script
   data.cottas.g.dict       )  either writes the full set or leaves the
   data.cottas.g.presence   )  store without eager sidecars (lazy build
   data.cottas.p.offsets    )  at first server-open then applies).
   data.cottas.po.presence  )
+  data.cottas.s.offsets    )  per-subject contiguous global row-range
+                           )  index (§1.1), 2026-07-13
 ```
 
 After the first `factoidal compact` (durable-UPDATE stage 4), the
@@ -54,7 +56,7 @@ inside any version dir) and a **version-level** symlink indirection:
   v1/                      the original import (unchanged, still
                             directly queryable at its own path)
   v2/, v3/, ...             one full artifact SET per compaction —
-                            data.cottas + all 10 sidecars + this
+                            data.cottas + all 11 sidecars + this
                             version's OWN data.compacted-epoch (§1.2),
                             written to a FRESH directory name, never
                             mutating an existing version in place
@@ -89,6 +91,7 @@ atomically swap a whole non-empty directory onto another, so the
 | `<name>.presence` | `RDF.CottasStore.PresenceBitmap.fst` / `OnDiskIndex.fst` | `0x50544f43` ('COTP') | none |
 | `.p.offsets` | `RDF.Store.Columnar.OffsetIndex.fst` | `0x4f544f43` ('COTO') | none |
 | `.po.presence` | `RDF.CottasStore.CompoundPresenceBitmap.fst` | `0x4f504f43` ('COPO') | none |
+| `.s.offsets` | `RDF.CottasStore.SubjectOffsetsWriter.fst` (write) / `RDF.Store.Columnar.SubjectOffsetIndex.fst` (read) | `0x53544f43` ('COTS') | none |
 | `data.deltalog` — per-entry framing | `RDF.Store.Columnar.DeltaLog.fst` §5 | `0x31454C44` ('DLE1') | additive mod-2^32 `simple_checksum` over the payload |
 | `data.deltalog` — per-batch framing | `RDF.Store.Columnar.DeltaLog.fst` §7 | `0x31424C44` ('DLB1') | `simple_checksum` over the batch body |
 | `data.deltalog` — log-file header | `RDF.Store.Columnar.DeltaLog.fst` §9 | `0x474F4C44` ('DLOG') | none (the header carries no payload to check) |
@@ -350,15 +353,22 @@ python3 tools/corpus_pipeline.py materialize-nq-cottas-corpus \
   --row-order cs --build-sidecars
 ```
 
-Verified this session on `tests/local/data/cottas_sample.nq` (5 quads,
-2 named graphs): both invocations ran clean (`verified=True`,
+Verified in an earlier session on `tests/local/data/cottas_sample.nq`
+(5 quads, 2 named graphs): both invocations ran clean (`verified=True`,
 `quads=5`, `graphs=2`); the second printed `sidecars_built=['.s.dict',
 '.s.presence', '.p.dict', '.p.presence', '.o.dict', '.o.presence',
 '.g.dict', '.g.presence', '.p.offsets', '.po.presence']` — the 10
-sidecars, all present. `factoidal cottas-import` (the CLI subcommand)
-is a thin `execvp` wrapper around the exact same script
-(`bin/factoidal-cli/factoidal_cli.ml`'s `exec_corpus_pipeline`) — no
-independent logic to verify there.
+sidecars that existed at that time, all present. `COTTAS_SIDECAR_
+SUFFIXES` (`tools/corpus_pipeline.py`) grew an 11th entry, `.s.offsets`,
+2026-07-13 (§1.1) — not re-verified against this exact fixture in this
+pass, but the mechanism is identical: `build_cottas_sidecars_eager`
+shells out to `factoidal query --explain`, which calls
+`Cottas_companion_boot.prewarm_via_companions`, which now also calls
+`Cottas_subject_offset_idx.ensure_subject_offsets_built` (chained after
+the existing lamed3 + compound-po hooks). `factoidal cottas-import`
+(the CLI subcommand) is a thin `execvp` wrapper around the exact same
+script (`bin/factoidal-cli/factoidal_cli.ml`'s `exec_corpus_pipeline`)
+— no independent logic to verify there.
 
 **Native path (LANDED and CLI-wired — stale-claim corrected
 2026-07-13):** `formal/fstar/RDF.CottasStore.BaseWriter.fst` is a

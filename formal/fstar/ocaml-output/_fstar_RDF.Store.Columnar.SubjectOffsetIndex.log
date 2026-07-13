@@ -1,0 +1,17 @@
+* Warning 241 at RDF.CottasStore.OnDiskIndex.fst(0,0-0,0):
+  - Unable to load RDF.CottasStore.OnDiskIndex.fst.checked since checked file
+    RDF.CottasStore.OnDiskIndex.fst.checked is stale (dependence hash mismatch,
+    use --debug CheckedFiles for more details); will recheck
+    RDF.CottasStore.OnDiskIndex.fst (suppressing this warning for further
+    modules)
+
+Extracted module RDF.Store.Columnar.SubjectOffsetIndex
+* Warning 247 at RDF.Store.Columnar.SubjectOffsetIndex.fst(0,0-0,0):
+  - Checked file RDF.Store.Columnar.SubjectOffsetIndex.fst.checked was not
+    written.
+  - Reason:
+      checked file RDF.CottasStore.OnDiskIndex.fst.checked is stale (dependence
+      hash mismatch, use --debug CheckedFiles for more details)
+
+Verified module: RDF.Store.Columnar.SubjectOffsetIndex
+All verification conditions discharged successfully
