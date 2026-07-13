@@ -1045,6 +1045,244 @@ let eval_limit_single_tp (sel : select_clause) (tp : triple_pattern)
   | Select_Vars items -> project_solutions (select_item_vars items) omega'
   | Select_All -> omega'
 
+// ----------------------------------------------------------------------
+// Stage 4 (docs/designissues/2026-07-13-optional-filter-selective-decode.md
+// §8 steps 4-5): the OPTIONAL/FILTER row-index-selective decode fast
+// path. Stages 1-3 (c809db6) landed `query_live_vars` / `col_need_for_tp`
+// (SPARQL11.Algebra.fst), the COTTAS-on-disk selective walker family
+// (RDF.CottasStore.fst), and `sc_solve_selective` on `store_caps`
+// (RDF.Store.Capabilities*.fst) — nothing called any of it from query
+// evaluation yet. This section is that caller: two narrow,
+// detector-gated shapes, same idiom and fall-through contract as every
+// Aleph6 detector above (unrecognised shape -> None -> the existing
+// materialise path, zero regression risk).
+//
+// Helper: single-tp BGP optionally wrapped in exactly one GP_Filter
+// layer (no GRAPH/JOIN/other wrapper — narrower than
+// `extract_single_tp_bgp_scoped` on purpose; this fast path doesn't
+// (yet) handle a GRAPH-scoped variant).
+let extract_single_tp_bgp_maybe_filtered (p : group_graph_pattern)
+  : option (triple_pattern & option expr) =
+  match p with
+  | GP_BGP [tp] -> Some (tp, None)
+  | GP_Filter e (GP_BGP [tp]) -> Some (tp, Some e)
+  | _ -> None
+
+// q6's exact shape (design doc's premise-correction measurement): two
+// single-tp BGPs joined via ONE `GP_LeftJoin`, optionally under ONE
+// outer `GP_Filter` — `SELECT ?s ?o1 ?o2 WHERE { tp1 OPTIONAL { tp2 }
+// FILTER(e) }` parses to exactly `GP_Filter e (GP_LeftJoin (GP_BGP
+// [tp1]) (GP_BGP [tp2]) (E_BoolLit true))` (SPARQL11.Parser.fst's
+// `parse_ggp_body`: FILTERs fold OUTSIDE the accumulated pattern at the
+// end, per SPARQL 1.1 §18.2.4 — "filters scope over the entire group").
+let extract_leftjoin_pair_bound_predicate (p : group_graph_pattern)
+  : option (triple_pattern & triple_pattern & expr & option expr) =
+  match p with
+  | GP_Filter e (GP_LeftJoin (GP_BGP [tp1]) (GP_BGP [tp2]) jf) -> Some (tp1, tp2, jf, Some e)
+  | GP_LeftJoin (GP_BGP [tp1]) (GP_BGP [tp2]) jf -> Some (tp1, tp2, jf, None)
+  | _ -> None
+
+// Pairwise-distinct guard, one triple pattern: the only possible repeat
+// in a tp whose PREDICATE is a CONSTANT (this section's whole premise)
+// is subject == object (`?s P ?s`) — same guard, same reason, as
+// `detect_streaming_count_group_by_predicate` above: `tp_match`'s
+// implicit equality constraint between repeated positions isn't
+// honoured by an independent per-position selective decode.
+let tp_pairwise_ok (tp : triple_pattern) : bool =
+  match tp.tp_s, tp.tp_o with
+  | PS_Var sv, PT_Var ov -> sv <> ov
+  | _ -> true
+
+// Build the solution mapping for one selective-decode row, reading ONLY
+// the positions `need` marked. Load-bearing safety rule from the design
+// doc's own contract (RDF.CottasStore.fst's `cottas_ondisk_row_tok_
+// selective_to_triple` banner): a position `need` did NOT mark is
+// filled with the `cottas_decode_oor` sentinel, never a real decoded
+// value — this function must never read it. Mirrors `tp_match`'s
+// subject/predicate/object threading, but (a) skips any position whose
+// pattern side is a CONSTANT (no variable to bind — the walker's
+// row-group bound-column gate already guarantees the cell equals it,
+// see `cottas_ondisk_search_tok_selective`'s bound-column match) and
+// (b) skips any VARIABLE position `need` marked not-needed (nothing
+// downstream reads it, by `col_need_for_tp`'s own liveness contract).
+// Always succeeds (no `option`, unlike `tp_match`): there is no
+// pre-existing `mu` to conflict with (fresh `sm_empty` per row) and the
+// caller-side `tp_pairwise_ok` guard already rules out the one
+// self-conflict a bound-predicate tp could have.
+let tp_match_selective (tp : triple_pattern) (need : col_need) (t : triple)
+  : solution_mapping =
+  let mu1 = match tp.tp_s with
+    | PS_Var v -> if need.cn_s then sm_bind v (subject_to_term t.s) sm_empty else sm_empty
+    | PS_IRI _ | PS_BNode _ -> sm_empty in
+  let mu2 = match tp.tp_p with
+    | PT_Var v -> if need.cn_p then sm_bind v (T_IRI t.p) mu1 else mu1
+    | PT_IRI _ | PT_BNode _ | PT_Literal _ -> mu1 in
+  match tp.tp_o with
+  | PT_Var v -> if need.cn_o then sm_bind v t.o mu2 else mu2
+  | PT_IRI _ | PT_BNode _ | PT_Literal _ -> mu2
+
+// Detect: `SELECT <vars> WHERE { tp }` or `SELECT <vars> WHERE { tp
+// FILTER(e) }` with tp's PREDICATE position a CONSTANT IRI. Conservative
+// like every detector above: GROUP BY/HAVING/VALUES/DISTINCT/REDUCED/
+// ORDER BY/LIMIT/OFFSET/aggregates/SELECT * all fall through unchanged
+// (existing dedicated fast paths, or correctness-sensitive shapes this
+// one doesn't try to cover).
+let detect_single_bgp_bound_predicate_projection (q : query)
+  : option (triple_pattern & col_need & list select_item & option expr) =
+  match q.q_form with
+  | QF_Select (Select_Vars items) ->
+    if select_has_aggregates (Select_Vars items) then None
+    else if Some? q.q_group_by then None
+    else if Some? q.q_having then None
+    else if Some? q.q_values then None
+    else if q.q_modifier.sm_distinct then None
+    else if q.q_modifier.sm_reduced then None
+    else if Some? q.q_modifier.sm_order_by then None
+    else if Some? q.q_modifier.sm_offset then None
+    else if Some? q.q_modifier.sm_limit then None
+    else
+      (match extract_single_tp_bgp_maybe_filtered q.q_pattern with
+       | None -> None
+       | Some (tp, filter_opt) ->
+         (match tp.tp_p with
+          | PT_IRI _ ->
+            if not (tp_pairwise_ok tp) then None
+            else
+              let occ = pattern_var_occurrences q.q_pattern in
+              let live = query_live_vars q in
+              let need = col_need_for_tp occ live tp in
+              Some (tp, need, items, filter_opt)
+          | PT_Var _ | PT_BNode _ | PT_Literal _ -> None))
+  | _ -> None
+
+// Combine shape-detection with capability-availability, same contract
+// as `resolve_streaming_count_group_by_predicate` above: None whenever
+// the shape doesn't match OR the target backend doesn't advertise
+// `sc_solve_selective` (every non-COTTAS-on-disk backend, and a
+// COTTAS-on-disk store under a live delta overlay), so the caller falls
+// through to the always-correct materialise path.
+let resolve_single_bgp_bound_predicate_projection
+  (q : query) (gb : graph_backend)
+  : option (triple_pattern & col_need & list select_item & option expr &
+            (triple_pattern_bound -> col_need -> Tot (list triple))) =
+  match detect_single_bgp_bound_predicate_projection q with
+  | None -> None
+  | Some (tp, need, items, filter_opt) ->
+    let caps = caps_of_backend gb in
+    (match caps.sc_solve_selective with
+     | None -> None
+     | Some solve_sel -> Some (tp, need, items, filter_opt, solve_sel))
+
+// Run the single-BGP bound-predicate-projection fast path: one
+// `sc_solve_selective` call instead of the materialise path's full
+// per-row decode + `tp_match`.
+let eval_single_bgp_bound_predicate_projection
+  (base : option wf_iri) (tp : triple_pattern) (need : col_need)
+  (items : list select_item) (filter_opt : option expr)
+  (solve_sel : triple_pattern_bound -> col_need -> Tot (list triple))
+  : solution_sequence =
+  let bound = {
+    bs = bound_subject_of_pattern tp.tp_s sm_empty;
+    bp = bound_predicate_of_pattern tp.tp_p sm_empty;
+    bo = bound_object_of_pattern tp.tp_o sm_empty;
+  } in
+  let rows = solve_sel bound need in
+  let omega0 = List.Tot.map (tp_match_selective tp need) rows in
+  let omega1 = match filter_opt with
+    | Some e -> filter_solutions_fwd base e omega0
+    | None -> omega0 in
+  project_solutions (select_item_vars items) omega1
+
+// Detect q6's exact LeftJoin-pair shape (see `extract_leftjoin_pair_
+// bound_predicate` above): both tp's PREDICATE positions must be
+// CONSTANT IRIs. Same conservative modifier guards as the single-BGP
+// detector.
+let detect_leftjoin_pair_bound_predicate_projection (q : query)
+  : option (triple_pattern & col_need & triple_pattern & col_need & expr &
+            list select_item & option expr) =
+  match q.q_form with
+  | QF_Select (Select_Vars items) ->
+    if select_has_aggregates (Select_Vars items) then None
+    else if Some? q.q_group_by then None
+    else if Some? q.q_having then None
+    else if Some? q.q_values then None
+    else if q.q_modifier.sm_distinct then None
+    else if q.q_modifier.sm_reduced then None
+    else if Some? q.q_modifier.sm_order_by then None
+    else if Some? q.q_modifier.sm_offset then None
+    else if Some? q.q_modifier.sm_limit then None
+    else
+      (match extract_leftjoin_pair_bound_predicate q.q_pattern with
+       | None -> None
+       | Some (tp1, tp2, jf, filter_opt) ->
+         (match tp1.tp_p, tp2.tp_p with
+          | PT_IRI _, PT_IRI _ ->
+            if not (tp_pairwise_ok tp1) || not (tp_pairwise_ok tp2) then None
+            else
+              // occ/live computed over the WHOLE query pattern —
+              // `col_need_for_tp`'s cross-pattern-join-var case (`occ`
+              // from `pattern_var_occurrences`) is exactly what marks
+              // the LeftJoin's shared ?s column needed on BOTH sides
+              // even when it isn't itself projected; the LeftJoin's own
+              // join filter `jf`'s free vars are already folded into
+              // `live` via `pattern_filter_bind_vars`'s GP_LeftJoin arm.
+              let occ = pattern_var_occurrences q.q_pattern in
+              let live = query_live_vars q in
+              let need1 = col_need_for_tp occ live tp1 in
+              let need2 = col_need_for_tp occ live tp2 in
+              Some (tp1, need1, tp2, need2, jf, items, filter_opt)
+          | _ -> None))
+  | _ -> None
+
+// Same capability-availability contract as `resolve_single_bgp_bound_
+// predicate_projection`: both sides read through the SAME `gb` (this
+// shape has no GRAPH wrapper), so one capability check covers both.
+let resolve_leftjoin_pair_bound_predicate_projection
+  (q : query) (gb : graph_backend)
+  : option (triple_pattern & col_need & triple_pattern & col_need & expr &
+            list select_item & option expr &
+            (triple_pattern_bound -> col_need -> Tot (list triple))) =
+  match detect_leftjoin_pair_bound_predicate_projection q with
+  | None -> None
+  | Some (tp1, need1, tp2, need2, jf, items, filter_opt) ->
+    let caps = caps_of_backend gb in
+    (match caps.sc_solve_selective with
+     | None -> None
+     | Some solve_sel -> Some (tp1, need1, tp2, need2, jf, items, filter_opt, solve_sel))
+
+// Run the LeftJoin-pair fast path: two `sc_solve_selective` calls (one
+// per side) instead of the materialise path's per-row decode of BOTH
+// BGPs, then the SAME `left_join`/`filter_solutions_fwd`/
+// `project_solutions` combinators the materialise path uses — this
+// fast path only accelerates HOW each side's rows get decoded, never
+// the join/filter/projection semantics.
+let eval_leftjoin_pair_bound_predicate_projection
+  (base : option wf_iri)
+  (tp1 : triple_pattern) (need1 : col_need)
+  (tp2 : triple_pattern) (need2 : col_need)
+  (jf : expr) (items : list select_item) (filter_opt : option expr)
+  (solve_sel : triple_pattern_bound -> col_need -> Tot (list triple))
+  : solution_sequence =
+  let bound1 = {
+    bs = bound_subject_of_pattern tp1.tp_s sm_empty;
+    bp = bound_predicate_of_pattern tp1.tp_p sm_empty;
+    bo = bound_object_of_pattern tp1.tp_o sm_empty;
+  } in
+  let bound2 = {
+    bs = bound_subject_of_pattern tp2.tp_s sm_empty;
+    bp = bound_predicate_of_pattern tp2.tp_p sm_empty;
+    bo = bound_object_of_pattern tp2.tp_o sm_empty;
+  } in
+  let rows1 = solve_sel bound1 need1 in
+  let rows2 = solve_sel bound2 need2 in
+  let omega1 = List.Tot.map (tp_match_selective tp1 need1) rows1 in
+  let omega2 = List.Tot.map (tp_match_selective tp2 need2) rows2 in
+  let joined = left_join base omega1 omega2 jf in
+  let omega' = match filter_opt with
+    | Some e -> filter_solutions_fwd base e joined
+    | None -> joined in
+  project_solutions (select_item_vars items) omega'
+
 let rec eval_pattern_backend (base : option wf_iri) (p : group_graph_pattern) (gb : graph_backend) (dsb : dataset_backend)
   : Tot solution_sequence (decreases p) =
   match p with
@@ -1286,6 +1524,24 @@ and eval_select_query_backend_on_graph (q : query) (gb : graph_backend) (dsb : d
       | None -> omega
       | Some o -> sort_solutions q.q_base o omega in
     Some (slice_solutions q.q_modifier.sm_offset q.q_modifier.sm_limit ordered)
+  | None ->
+  // Stage 4 selective-decode fast paths (docs/designissues/2026-07-13-
+  // optional-filter-selective-decode.md §8 step 4): try the LeftJoin-pair
+  // shape (q6's exact shape) first, then the single-BGP shape — the two
+  // are structurally disjoint (`GP_LeftJoin(...)` vs bare/`GP_Filter`-
+  // wrapped `GP_BGP [tp]`) so order between them doesn't matter for
+  // correctness, only for which detector's comment applies.
+  match resolve_leftjoin_pair_bound_predicate_projection q gb with
+  | Some (tp1, need1, tp2, need2, jf, items, filter_opt, solve_sel) ->
+    let omega = eval_leftjoin_pair_bound_predicate_projection
+      q.q_base tp1 need1 tp2 need2 jf items filter_opt solve_sel in
+    Some omega
+  | None ->
+  match resolve_single_bgp_bound_predicate_projection q gb with
+  | Some (tp, need, items, filter_opt, solve_sel) ->
+    let omega = eval_single_bgp_bound_predicate_projection
+      q.q_base tp need items filter_opt solve_sel in
+    Some omega
   | None ->
     // Aleph6: LIMIT-pushdown fast-path. SELECT vars WHERE single-tp LIMIT k.
     let limit_match : option (triple_pattern & nat) =

@@ -11,17 +11,17 @@
         'Parquet.Footer.decode_varint_value_hex'
     is recursive but not used in its body
 
-* Warning 328 at SPARQL11.Store.fst(1216,4-1216,33):
+* Warning 328 at SPARQL11.Store.fst(1454,4-1454,33):
   - Global binding
         'SPARQL11.Store.eval_select_query_backend_bgp'
     is recursive but not used in its body
 
-* Warning 328 at SPARQL11.Store.fst(1353,4-1353,37):
+* Warning 328 at SPARQL11.Store.fst(1609,4-1609,37):
   - Global binding
         'SPARQL11.Store.eval_select_query_backend_dataset'
     is recursive but not used in its body
 
-* Warning 328 at SPARQL11.Store.fst(1372,4-1372,34):
+* Warning 328 at SPARQL11.Store.fst(1628,4-1628,34):
   - Global binding
         'SPARQL11.Store.eval_ask_query_backend_dataset'
     is recursive but not used in its body
@@ -30,8 +30,8 @@ Extracted module SPARQL11.Store
 * Warning 247 at SPARQL11.Store.fst(0,0-0,0):
   - Checked file SPARQL11.Store.fst.checked was not written.
   - Reason:
-      checked file Parser.BallyhooCOTTAS.fst.checked is stale (dependence hash
-      mismatch, use --debug CheckedFiles for more details)
+      checked file RDF.Graph.Executable.fst.checked is stale (digest mismatch
+      for RDF.Graph.Executable.fst)
 
 Verified module: SPARQL11.Store
 All verification conditions discharged successfully
