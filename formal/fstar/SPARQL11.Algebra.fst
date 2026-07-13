@@ -4446,15 +4446,33 @@ let rec eval_select_items_row (base : option wf_iri) (row : string) (i : nat)
     eval_select_items_row base row (i + 1) rest mu' g
 
 (* Map the item-fold over every row, tagging each row with its index so
-   the same expression yields a distinct fresh bnode/uuid per solution. *)
-let rec eval_select_items_rows (base : option wf_iri) (r : nat)
+   the same expression yields a distinct fresh bnode/uuid per solution.
+   Tail-rec walk (issue #294): the original recursed BEFORE consing
+   (`eval_select_items_row ... :: eval_select_items_rows ...`), the same
+   "cons after recurse" shape the 2026-04-26 Sin7 fix already eliminated
+   from `project_solutions`/`list_filter_map`/`list_deduplicate_sm`/
+   `eval_bgp_concatmap_acc`/`cottas_ondisk_rows_tok_to_triples` — this one
+   was missed, and it sits directly on the non-grouping `SELECT ?s ?p ?o`
+   (explicit-vars, no aggregates) path, so an unbounded full-scan query
+   (889k COTTAS rows) overflowed the OCaml native stack here. Accumulator
+   + `List.Tot.rev` at the end; per-row index `r` still increments in
+   input order so BNODE()/UUID() freshness is unchanged, only the final
+   list is built via reverse-accumulate-then-reverse instead of direct
+   consing during the recursive descent. *)
+let rec eval_select_items_rows_acc (base : option wf_iri) (r : nat)
   (omega : solution_sequence) (items : list select_item) (g : rdf_graph)
+  (acc : solution_sequence)
   : Tot solution_sequence (decreases omega) =
   match omega with
-  | [] -> []
+  | [] -> acc
   | mu :: rest ->
-    eval_select_items_row base (string_of_int r) 0 items mu g
-    :: eval_select_items_rows base (r + 1) rest items g
+    let mu' = eval_select_items_row base (string_of_int r) 0 items mu g in
+    eval_select_items_rows_acc base (r + 1) rest items g (mu' :: acc)
+
+let eval_select_items_rows (base : option wf_iri) (r : nat)
+  (omega : solution_sequence) (items : list select_item) (g : rdf_graph)
+  : solution_sequence =
+  List.Tot.rev (eval_select_items_rows_acc base r omega items g [])
 
 (* Apply SELECT expression items to each solution mapping — CONCRETE *)
 let eval_select_items (base : option wf_iri) (items : list select_item) (omega : solution_sequence) (g : rdf_graph)
