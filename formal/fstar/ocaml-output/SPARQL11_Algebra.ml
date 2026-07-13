@@ -5959,16 +5959,24 @@ let rec eval_select_items_row
   | item::rest ->
       let mu' = eval_select_item base row (Prims.string_of_int i) item mu g in
       eval_select_items_row base row (i + Prims.int_one) rest mu' g
-let rec eval_select_items_rows
+let rec eval_select_items_rows_acc
+  (base : RDF_Term.wf_iri FStar_Pervasives_Native.option) (r : Prims.nat)
+  (omega : solution_sequence) (items : select_item Prims.list)
+  (g : RDF_Graph.rdf_graph) (acc : solution_sequence) : solution_sequence=
+  match omega with
+  | [] -> acc
+  | mu::rest ->
+      let mu' =
+        eval_select_items_row base (Prims.string_of_int r) Prims.int_zero
+          items mu g in
+      eval_select_items_rows_acc base (r + Prims.int_one) rest items g (mu'
+        :: acc)
+let eval_select_items_rows
   (base : RDF_Term.wf_iri FStar_Pervasives_Native.option) (r : Prims.nat)
   (omega : solution_sequence) (items : select_item Prims.list)
   (g : RDF_Graph.rdf_graph) : solution_sequence=
-  match omega with
-  | [] -> []
-  | mu::rest ->
-      (eval_select_items_row base (Prims.string_of_int r) Prims.int_zero
-         items mu g)
-      :: (eval_select_items_rows base (r + Prims.int_one) rest items g)
+  FStar_List_Tot_Base.rev
+    (eval_select_items_rows_acc base r omega items g [])
 let eval_select_items (base : RDF_Term.wf_iri FStar_Pervasives_Native.option)
   (items : select_item Prims.list) (omega : solution_sequence)
   (g : RDF_Graph.rdf_graph) : solution_sequence=

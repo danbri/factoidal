@@ -3,7 +3,7 @@
     RDF.Bytes.fst.checked does not exist; will recheck RDF.Bytes.fst
     (suppressing this warning for further modules)
 
-* Warning 361 at SPARQL11.Algebra.fst(6927,0-6928,40):
+* Warning 361 at SPARQL11.Algebra.fst(6945,0-6946,40):
   - Some #push-options have not been popped. Current depth is 1.
 
 * Warning 328 at Parquet.Footer.fst(296,8-296,31):

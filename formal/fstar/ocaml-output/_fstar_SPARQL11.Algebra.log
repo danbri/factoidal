@@ -1,10 +1,10 @@
-* Warning 241 at RDF.IRI.fsti(0,0-0,0):
-  - Unable to load RDF.IRI.fsti.checked since checked file RDF.IRI.fsti.checked
-    is stale (dependence hash mismatch, use --debug CheckedFiles for more
-    details); will recheck RDF.IRI.fsti (suppressing this warning for further
-    modules)
+* Warning 241 at SPARQL11.IRI.Resolve.fst(0,0-0,0):
+  - Unable to load SPARQL11.IRI.Resolve.fst.checked since checked file
+    SPARQL11.IRI.Resolve.fst.checked is stale (digest mismatch for
+    SPARQL11.IRI.Resolve.fst); will recheck SPARQL11.IRI.Resolve.fst
+    (suppressing this warning for further modules)
 
-* Warning 361 at SPARQL11.Algebra.fst(6927,0-6928,40):
+* Warning 361 at SPARQL11.Algebra.fst(6945,0-6946,40):
   - Some #push-options have not been popped. Current depth is 1.
 
 Extracted module SPARQL11.Algebra

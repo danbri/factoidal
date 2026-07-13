@@ -1,6 +1,57 @@
 # Current State (Honest Assessment)
 
-Last refreshed: 2026-07-10 (RIF tail burndown: **RIF 46 pass, 1
+Last refreshed: 2026-07-13 (overnight wave, ten landings on
+claude/main; every landing gated on floors RDF 1031/0 + SPARQL 627+4
+known RIF-entailment, OWL soundness where applicable, and named
+fail-set diffs):
+- **XSLT 69 -> 74 pass, 14 fail (of 88)** in two landings: absolute-path
+  axes + `attribute::` match patterns (9a71201), then namespace
+  declarations ordered by PROVENANCE — stylesheet order for
+  LRE-declared, sorted for source-copied — resolving the
+  conflict-resolution-1301 / copy-3102 coupled pair (e27ce3e).
+- **VC vc20_api 22 -> 47 pass, 12 fail (of 59)** (40bda97): the
+  `VC.Credential` structural checker (117/0 offline) wired into the
+  vc-api-shim's issue/verify via a new `vcCheckCredential` npm ABI
+  export; remaining 12 = VP verification route + relatedResource
+  digests (unimplemented features, tracked on #288).
+- **OWL2 DL type-inconsistency 66 -> 68 pass, 49 fail (of 117)**
+  (435ee2a): owl:inverseOf-aware edge walking/counting in the tableau
+  + the CE_OneOf nominal machinery; soundness held at exactly one
+  unexpected-inconsistency (WebOnt-202). Two probes that moved 0 tests
+  were built, measured, and NOT landed first — the refuted hypotheses
+  (bare O-rule; qualified-cardinality-over-nominal) sharpened the
+  target to inverse roles, and the next increment (anonymous-inverse
+  restrictions + merge/pigeonhole for the 4 spy-point tests) is on
+  #209. QL scoping measured: profile-QL Inc 6 pass, 0 fail in 0.08s —
+  efficiency is a non-issue; the QL work item is COVERAGE (87 catalog
+  entries, only 6 scored).
+- **GROUP BY on COTTAS: 23.05s -> 1.31s (17.6x), ahead of Jena TDB2's
+  1.79s** (f99bb64): streaming fast path (detector + Parquet
+  dictionary-page distinct-predicate enumeration + a COMPOSING union
+  capability — the first cut's blanket None in union_caps kept the
+  path dead on the CLI, which always wraps stores as GB_Union; the
+  compositional fix is the load-bearing piece). Answer agreement exact
+  vs the in-memory path; aggregates 47/0.
+- **#294 fixed** (035a2e4): unbounded full-scan SELECT over 889k rows
+  no longer stack-overflows (eval_select_items_rows was the last
+  missed cons-after-recurse from the Sin7 family).
+- **Hub notebooks: 17 posts converted to named reactive cells**
+  (declare-once/reference-everywhere, net -185 lines of duplicated
+  cell data; 9 posts left alone deliberately — their per-cell data
+  differs by design); hub suite 223 pass, 5 fail (of 228, the 5
+  pre-existing env fails) (0337593 + merge 6ab2daa).
+- **js bundle** rebuilt centrally folding all of the above (595ef55).
+- **OPTIONAL/FILTER design landed** (deda096,
+  2026-07-13-optional-filter-selective-decode.md): measured q6
+  decomposition corrects the column-skip premise — the cost is eager
+  4-column row-group decode BEFORE filtering; mechanism =
+  row-index-selective decode; stages 1-3 implemented on branch
+  selective-decode-s123 (gates in flight at ledger time).
+- Build-infra: #293 filed (extract-state digest ignores .fsti —
+  bit twice tonight); toolchain installer hardened earlier the same
+  day (fstar.lib deps, tolerant apt, z3 switch pin).
+
+Previous (2026-07-10 refresh: RIF tail burndown: **RIF 46 pass, 1
 fail, 3 skip (of 50)** — up from 34/4/12 on 2026-07-05. The 2026-07-10
 wave added the RIF-DTB string + rdf:PlainLiteral builtin families,
 the EBusiness dateTime slice, pred:iri-string binding-pattern
