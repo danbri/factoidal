@@ -3115,6 +3115,39 @@ let probe_parquet_column_rle_dictionary_decode_all_in_row_group_from_table
                   | None -> None
                   | Some indices -> Some (map_indices_to_dict indices dict [])
 
+// Table-threaded, row-group-scoped decode of the RAW per-row dictionary
+// INDEX ints for an RLE_DICTIONARY column -- WITHOUT resolving them
+// against the dictionary page. Selective-decode design (issue #295):
+// the assume val `RDF.CottasStore.PageCache.pcache_decode_column_at_
+// indices_global_from_table`'s OCaml realisation resolves strings only
+// at the REQUESTED row positions instead of materializing every row's
+// string via `map_indices_to_dict` -- that full-column string
+// allocation is exactly the O(n) cost the selective-decode design
+// targets skipping for unbound-but-needed columns. Same decode steps as
+// `probe_parquet_column_rle_dictionary_decode_all_in_row_group_from_table`
+// up to (not including) the dictionary lookup; deliberately does NOT
+// read the dictionary page at all -- resolving indices to strings is
+// now the caller's job, via the separate (already-existing)
+// `probe_parquet_column_dictionary_in_row_group_from_table`.
+let probe_parquet_column_rle_dictionary_row_indices_in_row_group_from_table
+  (table:parquet_row_group_offset_table) (path:string) (rg_index:nat) (col_index:nat)
+  : option (list nat) =
+  match probe_parquet_column_decompressed_payload_hex_in_row_group_from_table
+          table path rg_index col_index with
+  | None -> None
+  | Some data_payload_hex ->
+    match probe_parquet_column_page_header_num_values_in_row_group_from_table
+            table path rg_index col_index with
+    | None -> None
+    | Some value_count ->
+      match probe_parquet_column_first_level_section_length_in_row_group_from_table
+              table path rg_index col_index with
+      | None -> None
+      | Some section_len ->
+        match skip_first_level_section_hex data_payload_hex section_len with
+        | None -> None
+        | Some values_hex -> decode_rle_dictionary_data_page values_hex value_count
+
 let probe_parquet_column_page_header_data_encoding_in_row_group_from_table
   (table:parquet_row_group_offset_table) (path:string) (rg_index:nat) (col_index:nat) : option string =
   match probe_parquet_column_data_page_offset_in_row_group_from_table table rg_index col_index with

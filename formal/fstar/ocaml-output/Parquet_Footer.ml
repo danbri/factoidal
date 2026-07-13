@@ -4758,6 +4758,32 @@ let probe_parquet_column_rle_dictionary_decode_all_in_row_group_from_table
                                                    FStar_Pervasives_Native.Some
                                                      (map_indices_to_dict
                                                         indices dict []))))))))))
+let probe_parquet_column_rle_dictionary_row_indices_in_row_group_from_table
+  (table : parquet_row_group_offset_table) (path : Prims.string)
+  (rg_index : Prims.nat) (col_index : Prims.nat) :
+  Prims.nat Prims.list FStar_Pervasives_Native.option=
+  match probe_parquet_column_decompressed_payload_hex_in_row_group_from_table
+          table path rg_index col_index
+  with
+  | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+  | FStar_Pervasives_Native.Some data_payload_hex ->
+      (match probe_parquet_column_page_header_num_values_in_row_group_from_table
+               table path rg_index col_index
+       with
+       | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+       | FStar_Pervasives_Native.Some value_count ->
+           (match probe_parquet_column_first_level_section_length_in_row_group_from_table
+                    table path rg_index col_index
+            with
+            | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+            | FStar_Pervasives_Native.Some section_len ->
+                (match skip_first_level_section_hex data_payload_hex
+                         section_len
+                 with
+                 | FStar_Pervasives_Native.None ->
+                     FStar_Pervasives_Native.None
+                 | FStar_Pervasives_Native.Some values_hex ->
+                     decode_rle_dictionary_data_page values_hex value_count)))
 let probe_parquet_column_page_header_data_encoding_in_row_group_from_table
   (table : parquet_row_group_offset_table) (path : Prims.string)
   (rg_index : Prims.nat) (col_index : Prims.nat) :
