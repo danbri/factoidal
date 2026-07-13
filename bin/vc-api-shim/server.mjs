@@ -16,7 +16,21 @@
 //   - did:key resolution:                     `didKeyResolve`.
 //   - VC Data Model 2.0 structural conformance: `vcCheckCredential`
 //     (Track A2, docs/designissues/2026-07-11-vc-canivc-eecc-plan.md),
-//     called from handleIssue/handleVerify before any crypto step.
+//     called from handleIssue/handleVerify/handleVerifyPresentation
+//     before any crypto step. The SAME export handles both VCs and VPs
+//     — VC.Credential.vc_check_from_string already dispatches on the
+//     document's `type` internally (see VC.Credential.fst's
+//     vc_check_document), so no separate npm ABI export was needed for
+//     Verifiable Presentation verification (Track A3).
+//   - Verifiable Presentation verification: POST /presentations/verify
+//     (handleVerifyPresentation), sharing verifySecuredDocument with
+//     handleVerify — structural check first, then the same
+//     eddsa-rdfc-2022 Data Integrity proof verification over the VP's
+//     own top-level proof (a presentation's embedded
+//     `verifiableCredential` entries are structurally checked by
+//     VC.Credential.fst but their own proofs are NOT independently
+//     re-verified by this route — documented gap, not silently
+//     assumed).
 // It contains ZERO VC/RDF semantic logic: it never judges credential
 // well-formedness itself, never rewrites a verdict, and never
 // special-cases a test's input. A structural `valid`/`reason` outcome
@@ -382,23 +396,31 @@ async function handleIssue(issuer, body) {
   return [201, { ...verifiableCredential, verifiableCredential }];
 }
 
-// POST /credentials/verify  { verifiableCredential } -> { verified, ... }
-async function handleVerify(body) {
-  const vc = body && body.verifiableCredential;
-  if (!vc || typeof vc !== 'object') {
-    return [400, { verified: false, errors: [{ message: 'request body must have a "verifiableCredential" object' }] }];
-  }
+// Shared structural + Data Integrity proof verification for any secured
+// VCDM 2.0 document — a VerifiableCredential (POST /credentials/verify)
+// or a VerifiablePresentation (POST /presentations/verify). The two
+// routes differ only in their request/response envelope field name
+// ("verifiableCredential" vs "verifiablePresentation"); the checks
+// themselves are identical because VC.Credential.vc_check_from_string
+// already dispatches VC-shaped vs VP-shaped documents internally (its
+// @context/type checks apply to both; credentialSubject is checked only
+// when "VerifiableCredential" is in `type`, the embedded
+// `verifiableCredential` list only when "VerifiablePresentation" is) —
+// see VC.Credential.fst's vc_check_document. Reusing one function here
+// keeps that symmetry on the shim side too (rule #11: no per-route
+// semantic logic, both routes map the SAME F*-verified verdict).
+async function verifySecuredDocument(doc) {
   // Structural conformance (VC.Credential.fst, via vcCheckCredential) —
-  // BEFORE any crypto/canonicalization step. Same check + reasoning as
-  // handleIssue above; a structurally invalid document is rejected
-  // regardless of whether its proof would otherwise verify.
-  const structural = await checkStructural(vc);
+  // BEFORE any crypto/canonicalization step. A structurally invalid
+  // document is rejected regardless of whether its proof would
+  // otherwise verify.
+  const structural = await checkStructural(doc);
   if (!structural.valid) {
     return [400, { verified: false, errors: [{ message: `structural validation failed: ${structural.reason}` }] }];
   }
-  const proofs = Array.isArray(vc.proof) ? vc.proof : (vc.proof ? [vc.proof] : []);
+  const proofs = Array.isArray(doc.proof) ? doc.proof : (doc.proof ? [doc.proof] : []);
   if (proofs.length === 0) {
-    return [400, { verified: false, errors: [{ message: 'credential has no proof' }] }];
+    return [400, { verified: false, errors: [{ message: 'document has no proof' }] }];
   }
   const proof = proofs[0]; // Multi-proof documents: only the first is checked (documented gap).
   if (proofs.length > 1) {
@@ -415,21 +437,28 @@ async function handleVerify(body) {
   // not a cryptographic judgment. Rejecting up front (before spending
   // an engine call) also matches how the eddsa-rdfc-2022 suite expects
   // these malformed inputs to fail: a non-2xx response, never a
-  // "verified" verdict of any kind.
+  // "verified" verdict of any kind. A VerifiablePresentation's proof
+  // commonly carries proofPurpose "authentication" plus "challenge"/
+  // "domain" (AuthenticationProofPurpose) rather than "assertionMethod"
+  // — this check only requires the three fields be present strings, it
+  // never constrains their value, so both shapes pass unchanged.
   for (const field of ['type', 'verificationMethod', 'proofPurpose']) {
     if (typeof proof[field] !== 'string' || proof[field] === '') {
       return [400, { verified: false, errors: [{ message: `proof is missing required field "${field}"` }] }];
     }
   }
 
-  const unsecured = { ...vc };
+  const unsecured = { ...doc };
   delete unsecured.proof;
-  // Respect an explicit proof-level @context if the credential carries
+  // Respect an explicit proof-level @context if the document carries
   // one (common from other implementations); otherwise fall back to
   // the document's own context plus the Data Integrity vocabulary
-  // (see proofContextFor's comment above).
+  // (see proofContextFor's comment above). Any extra proof fields
+  // (challenge, domain, ...) ride along via the `...proof` spread, so
+  // an AuthenticationProofPurpose VP proof canonicalizes with the same
+  // fields the signer included.
   const proofOptions = {
-    '@context': proof['@context'] || proofContextFor(vc['@context']),
+    '@context': proof['@context'] || proofContextFor(doc['@context']),
     ...proof,
   };
   delete proofOptions.proofValue;
@@ -462,6 +491,33 @@ async function handleVerify(body) {
   return [verified ? 200 : 400, { verified, results: [{ proof, verified }] }];
 }
 
+// POST /credentials/verify  { verifiableCredential } -> { verified, ... }
+async function handleVerify(body) {
+  const vc = body && body.verifiableCredential;
+  if (!vc || typeof vc !== 'object') {
+    return [400, { verified: false, errors: [{ message: 'request body must have a "verifiableCredential" object' }] }];
+  }
+  return verifySecuredDocument(vc);
+}
+
+// POST /presentations/verify  { verifiablePresentation, options? } -> { verified, ... }
+// Same structural-then-crypto pipeline as handleVerify (see
+// verifySecuredDocument's header comment) — this route exists because
+// the vc-data-model-2.0-test-suite's own VP-shaped negative tests
+// (Basic Conformance, Contexts, Types, Algorithms) need a real
+// `vpVerifiers` endpoint to POST to; without one, the suite's
+// TestEndpoints.verifyVp resolves to `null` and every `assert.rejects`
+// against it fails "missing expected rejection" regardless of the VP's
+// actual shape (docs/test-results/by-suite/vc20-api.json's `remaining`
+// entry, before this route existed).
+async function handleVerifyPresentation(body) {
+  const vp = body && body.verifiablePresentation;
+  if (!vp || typeof vp !== 'object') {
+    return [400, { verified: false, errors: [{ message: 'request body must have a "verifiablePresentation" object' }] }];
+  }
+  return verifySecuredDocument(vp);
+}
+
 async function main() {
   const args = process.argv.slice(2);
   let port = 40443;
@@ -486,6 +542,11 @@ async function main() {
       if (req.method === 'POST' && req.url === '/credentials/verify') {
         const body = await readJsonBody(req);
         const [status, out] = await handleVerify(body);
+        return sendJson(res, status, out);
+      }
+      if (req.method === 'POST' && req.url === '/presentations/verify') {
+        const body = await readJsonBody(req);
+        const [status, out] = await handleVerifyPresentation(body);
         return sendJson(res, status, out);
       }
       return sendJson(res, 404, { errors: [{ message: `no route for ${req.method} ${req.url}` }] });

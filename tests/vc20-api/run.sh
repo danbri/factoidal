@@ -68,6 +68,11 @@ module.exports = {
       id: '$ISSUER_DID',
       endpoint: \`\${baseUrl}/credentials/verify\`,
       tags: ['vc2.0']
+    }],
+    vpVerifiers: [{
+      id: '$ISSUER_DID',
+      endpoint: \`\${baseUrl}/presentations/verify\`,
+      tags: ['vc2.0']
     }]
   }]
 };
@@ -111,7 +116,7 @@ result = {
     "skip": stats.get("pending", 0),
     "total": stats["tests"],
     "present": True,
-    "gap_summary": "the shim performs no VC Data Model 2.0 structural validation (it only implements Data Integrity eddsa-rdfc-2022 signing/verifying) -- nearly every failure is a 'missing expected rejection of malformed input' test (bad credentialStatus/refreshService/credentialSchema/termsOfUse/evidence shape, validUntil-before-validFrom, missing type/context, malformed VP). This is a separate, complementary measurement from vc_stage1 (.github/test-suites/vc.yaml), which runs the SAME vendored fixtures directly through VC.Credential.fst's structural checker, no HTTP.",
+    "gap_summary": "Track A3 (2026-07-13): wired POST /presentations/verify (structural check via the same vcCheckCredential export, then eddsa-rdfc-2022 Data Integrity proof verification over the VP's own top-level proof). Remaining 8 fails are two families, neither a wiring gap: relatedResource digest/id checks (Advanced Concepts, 5 tests) VC.Credential.fst does not implement at all; and 3 VP tests whose fixture embeds a `verifiableCredential` (@container:@graph in the VCDM v2 context) -- the shim's JSON-LD/RDF-dataset builder drops that named-graph subtree entirely during canonicalization (confirmed: canonicalizing a VP with an embedded credential yields ONLY the top-level `type` triple), so the reconstructed signature input never matches what the real signer produced. This is a JSON-LD named-graph expansion gap, not a VC.Credential.fst structural-check gap -- out of scope for a wiring task. This is a separate, complementary measurement from vc_stage1 (.github/test-suites/vc.yaml), which runs the SAME vendored fixtures directly through VC.Credential.fst's structural checker, no HTTP.",
     "failures": failures,
 }
 

@@ -2,37 +2,25 @@
   "spec": "https://w3c.github.io/vc-data-model-2.0-test-suite/",
   "suite": "vc-data-model-2.0 (issuer/verifier HTTP suite, via shim)",
   "runner": "tests/vc20-api/run.sh",
-  "retrieved_at": "2026-07-12T23:16:18Z",
-  "pass": 47,
-  "fail": 12,
+  "retrieved_at": "2026-07-13T05:49:30Z",
+  "pass": 51,
+  "fail": 8,
   "skip": 0,
   "total": 59,
   "present": true,
   "gap_summary": "the shim performs no VC Data Model 2.0 structural validation (it only implements Data Integrity eddsa-rdfc-2022 signing/verifying) -- nearly every failure is a 'missing expected rejection of malformed input' test (bad credentialStatus/refreshService/credentialSchema/termsOfUse/evidence shape, validUntil-before-validFrom, missing type/context, malformed VP). This is a separate, complementary measurement from vc_stage1 (.github/test-suites/vc.yaml), which runs the SAME vendored fixtures directly through VC.Credential.fst's structural checker, no HTTP.",
   "failures": [
     {
-      "title": "Basic Conformance Factoidal A conforming verifier implementation MUST produce errors when non-conforming documents are detected.",
-      "message": "Missing expected rejection: Failed to reject malformed VP."
-    },
-    {
-      "title": "Contexts Factoidal Verifiable presentations MUST include a @context property.",
-      "message": "Missing expected rejection: Failed to reject a VP with a missing @context."
-    },
-    {
-      "title": "Contexts Factoidal Verifiable presentations: The value of the @context property MUST be an ordered set where the first item is a URL with the value https://www.w3.org/ns/credentials/v2.",
-      "message": "Missing expected rejection: Failed to reject a VP that has the wrong context order."
-    },
-    {
       "title": "Contexts Factoidal Verifiable Presentation `@context`: \"Subsequent items in the ordered set MUST be composed of any combination of URLs and/or objects where each is processable as a JSON-LD Context.\"",
-      "message": "Missing expected rejection: Failed to reject a VP with an invalid `@context` URL."
+      "message": "Got unwanted rejection: Failed to support multiple `@context` URLs in a VP.\nActual message: \"[object Object]\""
     },
     {
-      "title": "Types Factoidal Verifiable presentations MUST contain a type property with an associated value.",
-      "message": "Missing expected rejection: Failed to reject a VP without a type."
+      "title": "Verifiable Presentations Factoidal The verifiableCredential property MAY be present. The value MUST beone or more verifiable credential and/or enveloped verifiable credential objects (the values MUST NOT be non-object values such as numbers, strings, or URLs).",
+      "message": "Got unwanted rejection: Failed to verify a valid VP.\nActual message: \"[object Object]\""
     },
     {
-      "title": "Types Factoidal Verifiable Presentation objects MUST have a type specified.",
-      "message": "Missing expected rejection: Failed to reject VP missing `VerifiableCredential` type."
+      "title": "Verifiable Presentations Factoidal If present (holder), the value MUST be either a URL or an object containing an id property.",
+      "message": "Got unwanted rejection: Failed to verify a valid VP with holder.\nActual message: \"[object Object]\""
     },
     {
       "title": "Advanced Concepts Factoidal The value of the relatedResource property MUST be one or more objects of the following form:",
@@ -53,10 +41,6 @@
     {
       "title": "Advanced Concepts Factoidal If the digest provided by the issuer does not match the digest computed for the retrieved resource, the conforming verifier implementation MUST produce an error.",
       "message": "Missing expected rejection: Failed to reject a VC with a relatedResource with wrong digest."
-    },
-    {
-      "title": "Algorithms Factoidal This section contains an algorithm that conforming verifier implementations MUST run when verifying a verifiable credential or a verifiable presentation.",
-      "message": "Missing expected rejection: Failed to reject an invalid VP."
     }
   ]
 }
