@@ -51,10 +51,16 @@ fail-set diffs):
   (the q6 detector) was built, measured, and NOT landed: q6 REGRESSED
   9.5s -> 15.9s because the indexed-decode glue realises indexed access
   as full-column-decode-then-filter (its documented fallback), so the
-  selective path pays the eager cost plus overhead. Preserved on branch
-  selective-decode-s4 with the fix direction (real dictionary-page-
-  indexed resolution in the glue); the OPTIONAL/FILTER gap stands at
-  8.83s vs 2.07s until then.
+  selective path pays the eager cost plus overhead. The follow-up
+  (branch indexed-decode-fix) implemented real dictionary-page-indexed
+  resolution and measured q6 at ~20s — WORSE than both the fallback
+  glue (15.9s) and the eager path (9.5s): three consecutive negative
+  measurements. Conclusion: row-index-selective STRING decode cannot
+  beat eager decode on the current hex-string cell representation for
+  spread-across-all-row-groups shapes; the q6 gap (now 11.77s vs 2.74s
+  in the 2026-07-13 clean baseline) needs either the representational
+  fix (bytes/arrays on the decode path) or a token-level batched join.
+  Both refuted branches preserved with full measurements.
 - Build-infra: #293 filed (extract-state digest ignores .fsti —
   bit twice tonight); toolchain installer hardened earlier the same
   day (fstar.lib deps, tolerant apt, z3 switch pin).
