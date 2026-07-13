@@ -185,11 +185,17 @@ industry-mainstream perf** — inserts, reliability, query speed, disk
 usage — holding 100% standards compatibility. Measured baseline
 2026-07-12 (gene 889k quads, docs/test-results/competitive-bench.json):
 disk usage WON (COTTAS 992K vs Jena TDB2 105M, ~108x); answers agree
-with Jena+pyoxigraph on all 6 queries; remaining gaps ranked by
-measurement: GROUP BY 23.49s vs 1.79s (13x, worst), OPTIONAL/FILTER
-8.83s vs 2.07s (4.3x), point lookup 2.35s vs 0.93s (2.5x); we beat
-TDB2 on full-scan aggregates. Priority order now: GROUP BY execution,
-then OPTIONAL/FILTER, then the S/O offset sidecar.
+with Jena+pyoxigraph on all 6 queries. **GROUP BY WON 2026-07-13**
+(`f99bb64`, streaming fast path: detector + Parquet dictionary-page
+distinct-predicate enumeration + a composing union capability): q5
+23.05s -> 1.31s (17.6x), now ahead of Jena TDB2's 1.79s, answer
+agreement exact vs the in-memory path, aggregates 47 pass, 0 fail.
+Remaining gaps by measurement: OPTIONAL/FILTER 8.83s vs 2.07s (4.3x —
+needs column-aware decode, a genuinely different fix; see the
+2026-07-12 investigation's §e), point lookup 2.35s vs 0.93s (2.5x, S/O
+offset sidecar). Priority order now: OPTIONAL/FILTER column-aware
+decode, then the S/O offset sidecar; full-scan aggregates and GROUP BY
+both beat TDB2.
 
 **Prior /goal (owner, 2026-07-11), still standing:** the north star —
 exemplary and FULL implementation of every official W3C RDF/semweb spec
