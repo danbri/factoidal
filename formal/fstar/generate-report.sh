@@ -477,6 +477,48 @@ extract_owl_scores OWL_QL    "$OWL_QL_LOG"
 # separate scheduled workflow, not in the dashboard-refresh hot path.
 extract_owl_scores OWL_SEMDL "$OWL_SEMDL_LOG"
 
+# Catalog-level JSON aggregate (2026-07-13). extract_owl_scores gives four
+# PER-TYPE tuples (PE/NE/Cons/Inc); the HTML dashboard already renders all
+# four as separate bars via emit_catalog_rows (Phase 2.3, 2026-05-08), but
+# latest.json never got a matching per-catalog key — profile-QL and
+# profile-EL widened to full PE/NE/Cons/Inc scoring on the HTML side (87
+# and 121 catalog test-type entries respectively) with no machine-readable
+# counterpart. sum_owl_catalog_json folds the four PRESENT tuples into one
+# PASS/FAIL/SKIP/TOTAL/PRESENT set (the shape emit_json_suite_obj expects)
+# so the JSON total is the SAME scored denominator as the HTML bars, not a
+# re-derived one. SKIP is the "functional-syntax-only" honest-skip count
+# each score line already prints (Skip_functional_syntax_only in
+# owl_runner.ml) — summed straight from the log text since
+# extract_owl_scores' regex doesn't carry it, so pass+fail+skip is the
+# catalog's true `test:TestCase` — err rather test-TYPE — denominator.
+sum_owl_catalog_json () {
+  local prefix="$1" log="$2"
+  local pass=0 fail=0 total=0 present=0
+  local t
+  for t in PositiveEntailmentTests NegativeEntailmentTests ConsistencyTests InconsistencyTests; do
+    local pv="${prefix}_${t}_PRESENT"
+    if [ "${!pv:-0}" -eq 1 ]; then
+      present=1
+      local ppv="${prefix}_${t}_PASS" pfv="${prefix}_${t}_FAIL" ptv="${prefix}_${t}_TOTAL"
+      pass=$((pass + ${!ppv:-0}))
+      fail=$((fail + ${!pfv:-0}))
+      total=$((total + ${!ptv:-0}))
+    fi
+  done
+  local skip=0
+  if [ -f "$log" ]; then
+    skip=$(grep -oE '[0-9]+ skipped \(functional-syntax-only\)' "$log" | awk '{s+=$1} END{print s+0}')
+    skip=${skip:-0}
+  fi
+  declare -g "${prefix}_AGG_PASS=${pass}"
+  declare -g "${prefix}_AGG_FAIL=${fail}"
+  declare -g "${prefix}_AGG_SKIP=${skip}"
+  declare -g "${prefix}_AGG_TOTAL=$((total + skip))"
+  declare -g "${prefix}_AGG_PRESENT=${present}"
+}
+sum_owl_catalog_json OWL_QL "$OWL_QL_LOG"
+sum_owl_catalog_json OWL_EL "$OWL_EL_LOG"
+
 # syntax-dl species scores. Score-line shape (owl_runner --species):
 #   OWL2-DL SpeciesTests: N pass, M fail (out of K), S skipped (functional-syntax-only) in Ts
 OWL_SYNDL_PRESENT=0; OWL_SYNDL_PASS=0; OWL_SYNDL_FAIL=0; OWL_SYNDL_SKIP=0; OWL_SYNDL_TOTAL=0
@@ -914,6 +956,17 @@ emit_json_suites () {
     "$OWL_PASS" "$OWL_FAIL" "$OWL_TOTAL"
   printf '    "owl_syntax_dl_species": {"pass":%s,"fail":%s,"skip":%s,"total":%s,"present":%s,"catalog":"third_party/testing/owl/syntax-dl.rdf"},\n' \
     "$OWL_SYNDL_PASS" "$OWL_SYNDL_FAIL" "$OWL_SYNDL_SKIP" "$OWL_SYNDL_TOTAL" "$([ "$OWL_SYNDL_PRESENT" -eq 1 ] && echo true || echo false)"
+  # profile-QL / profile-EL catalog aggregates (2026-07-13) — see
+  # sum_owl_catalog_json above. pass/fail/total fold all four scored
+  # test:*Test types (PositiveEntailment/NegativeEntailment/Consistency/
+  # Inconsistency); "regime" names the closure regime the catalog was
+  # scored under (RL for both, per generate-report.sh's --run loop).
+  printf '    "owl2_profile_ql": {"pass":%s,"fail":%s,"skip":%s,"total":%s,"present":%s,"regime":"%s","catalog":"third_party/testing/owl/profile-QL.rdf"},\n' \
+    "${OWL_QL_AGG_PASS:-0}" "${OWL_QL_AGG_FAIL:-0}" "${OWL_QL_AGG_SKIP:-0}" "${OWL_QL_AGG_TOTAL:-0}" \
+    "$([ "${OWL_QL_AGG_PRESENT:-0}" -eq 1 ] && echo true || echo false)" "${OWL_QL_REGIME:-RL}"
+  printf '    "owl2_profile_el": {"pass":%s,"fail":%s,"skip":%s,"total":%s,"present":%s,"regime":"%s","catalog":"third_party/testing/owl/profile-EL.rdf"},\n' \
+    "${OWL_EL_AGG_PASS:-0}" "${OWL_EL_AGG_FAIL:-0}" "${OWL_EL_AGG_SKIP:-0}" "${OWL_EL_AGG_TOTAL:-0}" \
+    "$([ "${OWL_EL_AGG_PRESENT:-0}" -eq 1 ] && echo true || echo false)" "${OWL_EL_REGIME:-RL}"
   printf '    "rdfc10": {"pass":%s,"fail":%s,"skip":%s,"total":%s,"spec":"https://www.w3.org/TR/rdf-canon/"},\n' \
     "$RDFC10_PASS" "$RDFC10_FAIL" "$RDFC10_SKIP" "$RDFC10_TOTAL"
   printf '    "shacl_core":   {"pass":%s,"fail":%s,"skip":%s,"total":%s,"present":%s,"spec":"https://www.w3.org/TR/shacl/"},\n' \
@@ -998,6 +1051,8 @@ emit_json_suites () {
   # the two W3C core families.
   emit_json_suite_obj "owl_rl_positive_entailment" OWL
   emit_json_suite_obj "owl_syntax_dl_species" OWL_SYNDL
+  emit_json_suite_obj "owl2_profile_ql" OWL_QL_AGG
+  emit_json_suite_obj "owl2_profile_el" OWL_EL_AGG
   emit_json_suite_obj "rdfc10"            RDFC10
   emit_json_suite_obj "shacl_core"        SHACL_CORE
   emit_json_suite_obj "shacl_sparql"      SHACL_SPARQL
