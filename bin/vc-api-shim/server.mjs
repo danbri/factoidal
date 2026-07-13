@@ -177,7 +177,23 @@ function firstContextEntry(ctx) {
 // Returns {valid: true} | {valid: false, reason: string}.
 async function checkStructural(doc) {
   if (firstContextEntry(doc && doc['@context']) === VC1_LEGACY_CONTEXT) {
-    return { valid: true };
+    // Data Integrity proof mechanics are not scoped to a VCDM version
+    // (see this branch's original comment above) — the FULL
+    // vcCheckCredential gate below is VCDM-2.0-specific and does not
+    // apply here, but two invariants of the Data Integrity / VC Data
+    // Model spec DO apply regardless of @context vintage (Track A1,
+    // docs/designissues/2026-07-11-vc-canivc-eecc-plan.md):
+    //   1. credentialSubject presence/shape (vcCheckCredentialSubject
+    //      — the SAME rule vcCheckCredential enforces for v2 documents,
+    //      just without the v2-only @context gate around it).
+    //   2. DATA_LOSS_DETECTION_ERROR (vcCheckNoDataLoss): an undefined
+    //      type/credentialSubject term that a lenient JSON-LD processor
+    //      would silently drop MUST be rejected, not signed/verified
+    //      over. Needs the REAL (inlined) context object, not a remote
+    //      IRI string — this engine build has no remote-context loader.
+    const subj = await engine.vcCheckCredentialSubject(JSON.stringify(doc));
+    if (!subj.valid) return subj;
+    return engine.vcCheckNoDataLoss(JSON.stringify(inlineContexts(doc)));
   }
   return engine.vcCheckCredential(V2_CONTEXT_TEXT, JSON.stringify(doc));
 }
@@ -396,6 +412,70 @@ async function handleIssue(issuer, body) {
   return [201, { ...verifiableCredential, verifiableCredential }];
 }
 
+// Verify ONE proof entry from a (possibly multi-proof) proof set
+// against the securing document's ALREADY-canonicalized N-Quads
+// (`docNquads` — the same hash for every proof in the set: the Data
+// Integrity spec's createVerifyData canonicalizes the UNSECURED
+// document once and the proof's own config separately; previousProof/
+// id are ordinary proof-config fields it canonicalizes like
+// verificationMethod/created, not a document-hash input — see
+// @digitalbazaar/data-integrity's DataIntegrityProof.createVerifyData
+// and createProof's `proofSet` param, which the default createVerifyData
+// does not even read). Never throws — a resolution/canonicalization/
+// crypto failure comes back as `{ok: false, reason}` so the caller can
+// evaluate every proof in a set even when one individually fails.
+async function verifyOneProof(doc, docNquads, proof) {
+  if (proof.cryptosuite !== 'eddsa-rdfc-2022') {
+    return { ok: false, reason: `unsupported cryptosuite "${proof.cryptosuite}" (this shim only implements eddsa-rdfc-2022)` };
+  }
+  if (typeof proof.proofValue !== 'string') {
+    return { ok: false, reason: 'proof has no proofValue' };
+  }
+  // The Data Integrity spec requires type, verificationMethod, and
+  // proofPurpose on every proof (2.1 Proofs) — a request-shape check,
+  // not a cryptographic judgment. A VerifiablePresentation's proof
+  // commonly carries proofPurpose "authentication" plus "challenge"/
+  // "domain" (AuthenticationProofPurpose) rather than "assertionMethod"
+  // — this check only requires the three fields be present strings, it
+  // never constrains their value, so both shapes pass unchanged.
+  for (const field of ['type', 'verificationMethod', 'proofPurpose']) {
+    if (typeof proof[field] !== 'string' || proof[field] === '') {
+      return { ok: false, reason: `proof is missing required field "${field}"` };
+    }
+  }
+  // Respect an explicit proof-level @context if the document carries
+  // one (common from other implementations); otherwise fall back to
+  // the document's own context plus the Data Integrity vocabulary
+  // (see proofContextFor's comment above). Any extra proof fields
+  // (challenge, domain, id, previousProof, ...) ride along via the
+  // `...proof` spread, so they canonicalize as part of this proof's
+  // own config exactly as the signer included them.
+  const proofOptions = {
+    '@context': proof['@context'] || proofContextFor(doc['@context']),
+    ...proof,
+  };
+  delete proofOptions.proofValue;
+
+  let cfgNquads;
+  try {
+    cfgNquads = await canonicalizeJsonld(proofOptions);
+  } catch (e) {
+    return { ok: false, reason: `canonicalization failed: ${e.message}` };
+  }
+
+  const pkHex = publicKeyHexFromVerificationMethod(proof.verificationMethod);
+  if (!pkHex) {
+    return { ok: false, reason: `could not resolve verificationMethod "${proof.verificationMethod}" (only did:key Ed25519 is supported by this shim)` };
+  }
+
+  try {
+    const verified = await engine.vcEddsaVerifyFromCanonical(pkHex, docNquads, cfgNquads, proof.proofValue);
+    return verified ? { ok: true } : { ok: false, reason: 'signature did not verify' };
+  } catch (e) {
+    return { ok: false, reason: `verify failed: ${e.message}` };
+  }
+}
+
 // Shared structural + Data Integrity proof verification for any secured
 // VCDM 2.0 document — a VerifiableCredential (POST /credentials/verify)
 // or a VerifiablePresentation (POST /presentations/verify). The two
@@ -409,6 +489,23 @@ async function handleIssue(issuer, body) {
 // see VC.Credential.fst's vc_check_document. Reusing one function here
 // keeps that symmetry on the shim side too (rule #11: no per-route
 // semantic logic, both routes map the SAME F*-verified verdict).
+//
+// Proof sets / chains (Track A1, docs/designissues/2026-07-11-vc-
+// canivc-eecc-plan.md): `proof.proof` MAY be an unordered set of
+// objects (VC Data Integrity §2.1 "Proofs"). EVERY proof in the set is
+// verified independently against the SAME unsecured-document hash
+// (verifyOneProof above), and every `proof.previousProof` reference (a
+// single string or an unordered list of strings) MUST name a proof.id
+// present in this SAME set — VC Data Integrity §"Verify Proof Sets and
+// Chains": "If a proof with id equal to previousProof does not exist
+// in allProofs, an error MUST be raised". "Each value identifies
+// another data integrity proof, all of which MUST also verify for the
+// current proof to be considered verified" is already covered by
+// requiring EVERY proof's own signature to verify — a chained proof's
+// previousProof text is itself part of that proof's canonicalized
+// config (see verifyOneProof's header comment), so a corrupted
+// referenced proof already fails its OWN verifyOneProof call; no
+// separate recursive "verify the referent first" walk is needed.
 async function verifySecuredDocument(doc) {
   // Structural conformance (VC.Credential.fst, via vcCheckCredential) —
   // BEFORE any crypto/canonicalization step. A structurally invalid
@@ -422,73 +519,55 @@ async function verifySecuredDocument(doc) {
   if (proofs.length === 0) {
     return [400, { verified: false, errors: [{ message: 'document has no proof' }] }];
   }
-  const proof = proofs[0]; // Multi-proof documents: only the first is checked (documented gap).
-  if (proofs.length > 1) {
-    return [400, { verified: false, errors: [{ message: 'multiple proofs are not supported by this shim (documented gap)' }] }];
-  }
-  if (proof.cryptosuite !== 'eddsa-rdfc-2022') {
-    return [400, { verified: false, errors: [{ message: `unsupported cryptosuite "${proof.cryptosuite}" (this shim only implements eddsa-rdfc-2022)` }] }];
-  }
-  if (typeof proof.proofValue !== 'string') {
-    return [400, { verified: false, errors: [{ message: 'proof has no proofValue' }] }];
-  }
-  // The Data Integrity spec requires type, verificationMethod, and
-  // proofPurpose on every proof (2.1 Proofs) — a request-shape check,
-  // not a cryptographic judgment. Rejecting up front (before spending
-  // an engine call) also matches how the eddsa-rdfc-2022 suite expects
-  // these malformed inputs to fail: a non-2xx response, never a
-  // "verified" verdict of any kind. A VerifiablePresentation's proof
-  // commonly carries proofPurpose "authentication" plus "challenge"/
-  // "domain" (AuthenticationProofPurpose) rather than "assertionMethod"
-  // — this check only requires the three fields be present strings, it
-  // never constrains their value, so both shapes pass unchanged.
-  for (const field of ['type', 'verificationMethod', 'proofPurpose']) {
-    if (typeof proof[field] !== 'string' || proof[field] === '') {
-      return [400, { verified: false, errors: [{ message: `proof is missing required field "${field}"` }] }];
-    }
-  }
 
   const unsecured = { ...doc };
   delete unsecured.proof;
-  // Respect an explicit proof-level @context if the document carries
-  // one (common from other implementations); otherwise fall back to
-  // the document's own context plus the Data Integrity vocabulary
-  // (see proofContextFor's comment above). Any extra proof fields
-  // (challenge, domain, ...) ride along via the `...proof` spread, so
-  // an AuthenticationProofPurpose VP proof canonicalizes with the same
-  // fields the signer included.
-  const proofOptions = {
-    '@context': proof['@context'] || proofContextFor(doc['@context']),
-    ...proof,
-  };
-  delete proofOptions.proofValue;
 
-  let docNquads, cfgNquads;
+  let docNquads;
   try {
     docNquads = await canonicalizeJsonld(unsecured);
-    cfgNquads = await canonicalizeJsonld(proofOptions);
   } catch (e) {
     return [400, { verified: false, errors: [{ message: `canonicalization failed: ${e.message}` }] }];
   }
 
-  const pkHex = publicKeyHexFromVerificationMethod(proof.verificationMethod);
-  if (!pkHex) {
-    return [400, { verified: false, errors: [{ message: `could not resolve verificationMethod "${proof.verificationMethod}" (only did:key Ed25519 is supported by this shim)` }] }];
+  const perProof = [];
+  for (const proof of proofs) {
+    perProof.push(await verifyOneProof(doc, docNquads, proof));
   }
 
-  let verified;
-  try {
-    verified = await engine.vcEddsaVerifyFromCanonical(pkHex, docNquads, cfgNquads, proof.proofValue);
-  } catch (e) {
-    return [400, { verified: false, errors: [{ message: `verify failed: ${e.message}` }] }];
+  // previousProof topology: every reference must resolve to an id
+  // actually present in this proof set (proofs without an "id" simply
+  // cannot be referenced — a dangling reference to one is exactly the
+  // "does not exist in allProofs" failure the spec names).
+  const proofIds = new Set(proofs.map((p) => p && p.id).filter((id) => typeof id === 'string'));
+  const chainErrors = [];
+  for (const proof of proofs) {
+    if (proof.previousProof === undefined) continue;
+    const refs = Array.isArray(proof.previousProof) ? proof.previousProof : [proof.previousProof];
+    for (const ref of refs) {
+      if (typeof ref !== 'string' || !proofIds.has(ref)) {
+        chainErrors.push(`proof.previousProof "${ref}" does not match the id of any proof in this document`);
+      }
+    }
   }
-  // A verified:false crypto outcome (correctly-shaped proof, wrong
-  // signature/key/tampered document) is still reported as an error
-  // response (400) — this suite's own assertions
-  // (data-integrity-test-suite-assertion's verificationFail) require
-  // a non-2xx status + error body for every non-passing verification,
-  // not a 200-with-verified:false envelope.
-  return [verified ? 200 : 400, { verified, results: [{ proof, verified }] }];
+
+  const results = proofs.map((proof, i) => ({ proof, verified: perProof[i].ok }));
+  const verified = perProof.every((r) => r.ok) && chainErrors.length === 0;
+  if (!verified) {
+    const errors = perProof
+      .filter((r) => !r.ok)
+      .map((r) => ({ message: r.reason }))
+      .concat(chainErrors.map((message) => ({ message })));
+    // A verified:false crypto/topology outcome (correctly-shaped
+    // proof(s), wrong signature/key/tampered document/dangling
+    // previousProof) is still reported as an error response (400) —
+    // this suite's own assertions (data-integrity-test-suite-
+    // assertion's verificationFail) require a non-2xx status + error
+    // body for every non-passing verification, not a
+    // 200-with-verified:false envelope.
+    return [400, { verified: false, results, errors }];
+  }
+  return [200, { verified: true, results }];
 }
 
 // POST /credentials/verify  { verifiableCredential } -> { verified, ... }

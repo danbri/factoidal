@@ -133,6 +133,16 @@ open Parser.JSON
 // with this module's vc_* names.
 open VC.Context
 
+// JSONLD.Context: the general JSON-LD 1.1 context processor
+// (active_context, expand_iri, jldctx_term_resolves_as_*) used by the
+// DATA_LOSS_DETECTION_ERROR checks below (vc_check_no_data_loss_from_
+// string) — a DIFFERENT, more general term resolver than VC.Context's
+// minimal type-value-only walker, needed because the data-loss checks
+// must also cover credentialSubject's own property keys. Its jldctx_*
+// names do not clash with VC.Context's vcx_* names or this module's
+// vc_* names.
+open JSONLD.Context
+
 // XSD.Datatypes carries the xsd:dateTime lexical parser + comparison
 // (dt_parse_ms / dt_cmp, both operating directly on raw lexical
 // strings — no `literal` record wrapper needed) this module's
@@ -627,4 +637,106 @@ let vc_check_from_string (v2ctx : json_val) (input : string) : vc_verdict =
   | Some v ->
     (match v with
      | JObject _ -> vc_check_document v2ctx v
+     | _ -> VC_Fail "top-level JSON value must be an object")
+
+// ================================================================
+// Version-agnostic entry points (Track A1,
+// docs/designissues/2026-07-11-vc-canivc-eecc-plan.md): two checks
+// that hold for a credential-shaped document regardless of which VCDM
+// version's base @context it declares (VC 1.1's
+// https://www.w3.org/2018/credentials/v1 or VC 2.0's
+// https://www.w3.org/ns/credentials/v2). `vc_check_document`/
+// `vc_check_from_string` above are VCDM-2.0-specific (the @context
+// sentinel requires the v2 base context first) — these two are for a
+// consumer that needs them WITHOUT that gate, e.g. the vc-di-eddsa
+// Data Integrity conformance suite's fixtures, which deliberately use
+// the legacy VC 1.1 context because Data Integrity proof mechanics are
+// not scoped to a VCDM version (see bin/vc-api-shim/server.mjs's
+// VC1_LEGACY_CONTEXT carve-out comment, which calls these instead of
+// the full v2-gated check).
+// ================================================================
+
+// credentialSubject presence/shape only (reuses vc_check_credential_
+// subject, already used by vc_check_credential_shaped above) — no
+// @context involved at all.
+let vc_check_credential_subject_if_credential_shaped (v : json_val) : vc_verdict =
+  let types = vc_decode_type_list v in
+  if List.Tot.mem vc_credential_type types
+  then vc_check_credential_subject v
+  else VC_Pass
+
+let vc_check_credential_subject_from_string (input : string) : vc_verdict =
+  match parse_json input with
+  | None -> VC_Fail "input is not well-formed JSON"
+  | Some v ->
+    (match v with
+     | JObject _ -> vc_check_credential_subject_if_credential_shaped v
+     | _ -> VC_Fail "top-level JSON value must be an object")
+
+// DATA_LOSS_DETECTION_ERROR (VC Data Integrity spec, "Securing Data
+// Losslessly"): reject a document that a lenient JSON-LD processor
+// would silently drop data from. Scope: the two shapes the vc-di-eddsa
+// suite exercises — an undefined `type`/`@type` entry
+// (JSONLD.Context.jldctx_term_resolves_as_type: vocab-relative then
+// document-relative, mirroring JSONLD.Expand.jexp_expand_type_items),
+// and an undefined `credentialSubject` object's OWN property key, one
+// level down (JSONLD.Context.jldctx_term_resolves_as_property:
+// vocab-relative only, matching JSON-LD 1.1's key-expansion rule) —
+// the same "one level of embedding" scope boundary this module's
+// credentialSubject.id check already uses. NOT a general recursive
+// JSON-LD coverage checker (that would require threading a drop-flag
+// through JSONLD.Expand's full expand_node — see JSONLD.Context's
+// probe comment for why that was not done).
+let vc_check_type_terms_resolve (ac : active_context) (v : json_val) : vc_verdict =
+  let types = vc_decode_type_list v in
+  if List.Tot.for_all (jldctx_term_resolves_as_type ac) types
+  then VC_Pass
+  else VC_Fail "undefined type term would be dropped by JSON-LD processing (DATA_LOSS_DETECTION_ERROR)"
+
+let vc_subject_keys (subj : json_val) : list string =
+  match subj with
+  | JObject fields ->
+    List.Tot.map fst
+      (List.Tot.filter (fun (k, _) -> k <> "id" && k <> "@id") fields)
+  | _ -> []
+
+let vc_check_subject_terms_resolve_one (ac : active_context) (subj : json_val) : vc_verdict =
+  if List.Tot.for_all (jldctx_term_resolves_as_property ac) (vc_subject_keys subj)
+  then VC_Pass
+  else VC_Fail "undefined credentialSubject term would be dropped by JSON-LD processing (DATA_LOSS_DETECTION_ERROR)"
+
+let rec vc_check_subject_terms_resolve_all (ac : active_context) (items : list json_val)
+  : Tot vc_verdict (decreases items) =
+  match items with
+  | [] -> VC_Pass
+  | hd :: tl -> vc_then (vc_check_subject_terms_resolve_one ac hd) (fun () -> vc_check_subject_terms_resolve_all ac tl)
+
+let vc_check_subject_terms_resolve (ac : active_context) (v : json_val) : vc_verdict =
+  match json_get_field "credentialSubject" v with
+  | None -> VC_Pass
+  | Some (JObject fields) -> vc_check_subject_terms_resolve_one ac (JObject fields)
+  | Some (JArray items) -> vc_check_subject_terms_resolve_all ac items
+  | Some _ -> VC_Pass // shape errors are vc_check_credential_subject's job, not this check's
+
+let vc_check_no_data_loss (ac : active_context) (v : json_val) : vc_verdict =
+  vc_then (vc_check_type_terms_resolve ac v) (fun () -> vc_check_subject_terms_resolve ac v)
+
+// `input` is the document's raw JSON text with its `@context` value
+// ALREADY resolved to inline JSON (a consumer without a remote-context
+// loader — see bin/vc-api-shim/server.mjs's inlineContexts — must
+// substitute any remote IRI it recognizes before calling this; a bare
+// remote IRI string here fails context processing honestly rather
+// than silently skipping the check).
+let vc_check_no_data_loss_from_string (input : string) : vc_verdict =
+  match parse_json input with
+  | None -> VC_Fail "input is not well-formed JSON"
+  | Some v ->
+    (match v with
+     | JObject _ ->
+       (match json_get_field "@context" v with
+        | None -> VC_Fail "missing @context"
+        | Some ctxv ->
+          (match jldctx_active_context_from_json ctxv with
+           | None -> VC_Fail "could not process @context"
+           | Some ac -> vc_check_no_data_loss ac v))
      | _ -> VC_Fail "top-level JSON value must be an object")
