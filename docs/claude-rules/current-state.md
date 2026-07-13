@@ -45,8 +45,16 @@ fail-set diffs):
   2026-07-13-optional-filter-selective-decode.md): measured q6
   decomposition corrects the column-skip premise — the cost is eager
   4-column row-group decode BEFORE filtering; mechanism =
-  row-index-selective decode; stages 1-3 implemented on branch
-  selective-decode-s123 (gates in flight at ledger time).
+  row-index-selective decode; stages 1-3 LANDED (c809db6:
+  differential gate 14 pass, 0 fail incl. the full-corpus byte-equality
+  case; q5 1.44s; full-scan + #294 fix verified post-merge). Stage 4
+  (the q6 detector) was built, measured, and NOT landed: q6 REGRESSED
+  9.5s -> 15.9s because the indexed-decode glue realises indexed access
+  as full-column-decode-then-filter (its documented fallback), so the
+  selective path pays the eager cost plus overhead. Preserved on branch
+  selective-decode-s4 with the fix direction (real dictionary-page-
+  indexed resolution in the glue); the OPTIONAL/FILTER gap stands at
+  8.83s vs 2.07s until then.
 - Build-infra: #293 filed (extract-state digest ignores .fsti —
   bit twice tonight); toolchain installer hardened earlier the same
   day (fstar.lib deps, tolerant apt, z3 switch pin).
