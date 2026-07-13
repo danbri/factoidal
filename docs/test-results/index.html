@@ -398,7 +398,7 @@
 <header>
   <div class="inner">
     <div class="rendered-pill" title="Rendered = when this page was last regenerated. Tests = when the *_results.log files inside the repository were last updated. Both UTC.">
-      <span class="row"><span class="label">Rendered</span><strong>2026-07-13 05:49 UTC</strong></span>
+      <span class="row"><span class="label">Rendered</span><strong>2026-07-13 06:01 UTC</strong></span>
       <span class="row"><span class="label">Tests</span><strong class="tests">2026-07-10 19:37 UTC</strong></span>
     </div>
     <h1>W3C test results</h1>
@@ -1257,10 +1257,10 @@
         </div>
       </details>
       <details class="suite-node amber">
-        <summary><span class="suite-name">VC Data Model 2.0 — issuer/verifier HTTP suite (via shim)</span><span class="suite-numbers">47/12/0 of 59</span><span class="dot amber"></span></summary>
+        <summary><span class="suite-name">VC Data Model 2.0 — issuer/verifier HTTP suite (via shim)</span><span class="suite-numbers">51/8/0 of 59</span><span class="dot amber"></span></summary>
         <div class="suite-body">
-          <div class="meter"><div class="seg seg-pass" style="width:79.66%"></div><div class="seg seg-fail" style="width:20.34%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
-          <p class="suite-numbers-full">47 pass, 12 fail, 0 skip (out of 59)</p>
+          <div class="meter"><div class="seg seg-pass" style="width:86.44%"></div><div class="seg seg-fail" style="width:13.56%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+          <p class="suite-numbers-full">51 pass, 8 fail, 0 skip (out of 59)</p>
           <p class="suite-prov">Runner: <code>tests/vc20-api/run.sh</code> &middot; Suite: <code>third_party/testing/vc/tests/{1.03-conformance,4.03-contexts,...,7-algorithms}.js</code> (14 files) against <code>bin/vc-api-shim/server.mjs</code></p>
           <p class="suite-diag">Single dominant cause for nearly all 37 failures: the shim has no VC Data Model 2.0 structural validator of its own (it only implements Data Integrity signing/verifying) — almost every failure is a missing-rejection-of-malformed-input test (bad <code>credentialStatus</code>/<code>refreshService</code>/<code>credentialSchema</code>/<code>termsOfUse</code>/<code>evidence</code> shape, <code>validUntil</code> before <code>validFrom</code>, missing <code>type</code>/<code>@context</code>, malformed Verifiable Presentation). Full breakdown: <code>docs/test-results/by-suite/vc20-api.json</code>. <a href="https://github.com/danbri/factoidal/blob/claude/main/.github/test-suites/vc20-api.yaml" target="_blank" rel="noopener">suite manifest</a></p>
         </div>
@@ -1976,9 +1976,9 @@ vc-stage1:    117 pass, 0 fail, 0 skip (of 117) — present=1</pre>
 </main>
 
 <footer>
-  Generated <strong>2026-07-13 05:49 UTC</strong> from commit
-  <code><a href="https://github.com/danbri/factoidal/commit/79fabd56fcf22a16d0b5436289df0df9ff7602aa">79fabd56</a></code>
-  on branch <code>claude/main</code> — &ldquo;build: extract-staleness digest covers the sibling .fsti (fixes #293); docs: correct the stale native-writer claim in disk-storage-format&rdquo;.
+  Generated <strong>2026-07-13 06:01 UTC</strong> from commit
+  <code><a href="https://github.com/danbri/factoidal/commit/3b9dd9fa228bc51822b1a9140eff92cec83d2aff">3b9dd9fa</a></code>
+  on branch <code>claude/main</code> — &ldquo;vc: add the Verifiable Presentation verify route to the vc-api-shim (Track A3)&rdquo;.
   Re-run locally: <code>cd formal/fstar &amp;&amp; ./generate-report.sh --run</code>.
 </footer>
 
