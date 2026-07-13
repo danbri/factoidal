@@ -1,6 +1,49 @@
 # Current State (Honest Assessment)
 
-Last refreshed: 2026-07-13 (overnight wave, ten landings on
+Last refreshed: 2026-07-13 day shift (nine landings, continuing the
+overnight wave below; same gate regime — floors, named diffs,
+soundness where applicable):
+- **VC vc20_api 47 -> 51 pass, 8 fail (of 59)** (3b9dd9f): the
+  /presentations/verify route — pure shim wiring, the F* checker
+  already dispatched VC-vs-VP by type. Remaining 8 triaged: 5
+  relatedResource (unimplemented in VC.Credential), 3 JSON-LD
+  named-graph expansion (VCDM v2 marks verifiableCredential/proof as
+  "@container": "@graph"; canonicalization drops the subtree — a
+  JSONLD.* item, not a shim/VC one).
+- **Clean competitive baseline committed** (4c09b83): GROUP BY
+  officially a WIN (1.93s vs Jena TDB2 2.13s); all engines agree on
+  all six queries.
+- **Bound-predicate counts read the predicate offset index** (0043ca1):
+  q2 1.2s -> 0.28s warm; q5 GROUP BY 1.31s -> 0.32s (the fast path's
+  per-predicate counts inherit it).
+- **Subject offset sidecar `.s.offsets`** (d4c526a + 6b75469 merged-tree
+  rebuild): rows are subject-primary sorted so one (start,end) global
+  row range per subject is exact (~1.4MB for 91,871 subjects, magic
+  COTS); q3 point lookup 3.15s -> 2.35s median, byte-identical answers,
+  graceful fall-through on stores lacking the file. The O column
+  deliberately NOT built (contiguity doesn't hold; .po.presence covers
+  the co-bound case). Row-GROUP-level win; the containing group still
+  fully decodes.
+- **Indexed-decode line REFUTED and closed** (577df13 ledger): real
+  dictionary-page-indexed resolution measured q6 at ~20s vs 9.5s eager
+  — third negative; needs bytes/arrays representation or token-level
+  batched join. Branches preserved.
+- **profile-QL honestly scored** (b6f9b0d): 83 pass, 4 fail (of 87) —
+  scoring already existed, latest.json only carried the 6-test Inc
+  line; profile-EL gains the same aggregate.
+- **XSLT 74 -> 75 pass, 13 fail (of 88)** (f687af5): boolean-to-string
+  in Parser.XPath per XPath 1.0 §4.3; boolean-026 is the named
+  residual; xpath unit 91/0 held.
+- **EECC interop corpus vendored** (d976bf5): vc-verifier-rules +
+  webuild-attestations (Apache-2.0 verified, PROVENANCE.md; AGPL
+  verifier excluded), bin/eecc-runner over 51 real-world fixtures —
+  first score 4 pass, 0 fail, 51 categorized skips (of 55 checks).
+- **#293 fixed** (79fabd5): extract-staleness digest now covers the
+  sibling .fsti; disk-storage-format skill's stale native-writer claim
+  corrected.
+- In flight at refresh time: eddsa proof-sets (A1), OWL2 spy-points.
+
+Previous same day (overnight wave, ten landings on
 claude/main; every landing gated on floors RDF 1031/0 + SPARQL 627+4
 known RIF-entailment, OWL soundness where applicable, and named
 fail-set diffs):
