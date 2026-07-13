@@ -441,12 +441,14 @@ if [[ "$STEP" == "all" || "$STEP" == "extract" ]]; then
     RDF.CottasStore.CompoundPresenceBitmap.fst
     RDF.CottasStore.CompoundPresenceWriter.fst
     RDF.CottasStore.OffsetsWriter.fst
+    RDF.CottasStore.SubjectOffsetsWriter.fst
     RDF.CottasStore.BaseWriter.fst
     RDF.CottasStore.LazyDict.fst
     RDF.CottasStore.LazyDictRegistry.fst
     RDF.Store.LazyTermCache.fst
     RDF.Store.HDTTermCacheRegistry.fst
     RDF.Store.Columnar.OffsetIndex.fst
+    RDF.Store.Columnar.SubjectOffsetIndex.fst
     RDF.Store.Columnar.DeltaLog.fst
     SPARQL.Plan.Pruning.fst
     SPARQL.Plan.Estimate.fst
@@ -828,12 +830,13 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
     RDF_CottasStore_CompoundPresenceBitmap.ml \
     RDF_CottasStore_CompoundPresenceWriter.ml \
     RDF_CottasStore_OffsetsWriter.ml \
+    RDF_CottasStore_SubjectOffsetsWriter.ml \
     RDF_CottasStore_BaseWriter.ml \
     RDF_CottasStore_LazyDict.ml \
     RDF_CottasStore_LazyDictRegistry.ml \
     RDF_Store_LazyTermCache.ml \
     RDF_Store_HDTTermCacheRegistry.ml \
-    RDF_Store_Columnar_OffsetIndex.ml RDF_Store_Columnar_DeltaLog.ml \
+    RDF_Store_Columnar_OffsetIndex.ml RDF_Store_Columnar_SubjectOffsetIndex.ml RDF_Store_Columnar_DeltaLog.ml \
     SPARQL_Plan_Pruning.ml \
     SPARQL_Plan_Estimate.ml \
     SPARQL_Plan_Loader.ml \
@@ -1846,12 +1849,14 @@ if [[ "$STEP" == "all" || "$STEP" == "js" ]]; then
     RDF_CottasStore_CompoundPresenceBitmap.ml
     RDF_CottasStore_CompoundPresenceWriter.ml
     RDF_CottasStore_OffsetsWriter.ml
+    RDF_CottasStore_SubjectOffsetsWriter.ml
     RDF_CottasStore_BaseWriter.ml
     RDF_CottasStore_LazyDict.ml
     RDF_CottasStore_LazyDictRegistry.ml
     RDF_Store_LazyTermCache.ml
     RDF_Store_HDTTermCacheRegistry.ml
     RDF_Store_Columnar_OffsetIndex.ml
+    RDF_Store_Columnar_SubjectOffsetIndex.ml
     RDF_Store_Columnar_DeltaLog.ml
     SPARQL_Plan_Pruning.ml
     SPARQL_Plan_Estimate.ml

@@ -2631,6 +2631,77 @@ let filter_candidates_by_compound_po (path : Prims.string)
                        oh rg p_id o_id) candidates)
        | uu___ -> candidates)
   | uu___ -> candidates
+let rec subject_range_candidate_rgs_loop
+  (table : Parquet_Footer.parquet_row_group_offset_table)
+  (target_start : Prims.nat) (target_end : Prims.nat) (rg_index : Prims.nat)
+  (rg_count : Prims.nat) (fuel : Prims.nat) (cum_start : Prims.nat)
+  (acc_rev : Prims.nat Prims.list) :
+  Prims.nat Prims.list FStar_Pervasives_Native.option=
+  if fuel = Prims.int_zero
+  then FStar_Pervasives_Native.Some (Parquet_Footer.list_rev acc_rev)
+  else
+    if rg_index >= rg_count
+    then FStar_Pervasives_Native.Some (Parquet_Footer.list_rev acc_rev)
+    else
+      (match Parquet_Footer.probe_parquet_row_group_num_rows_from_table table
+               rg_index
+       with
+       | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+       | FStar_Pervasives_Native.Some rg_rows ->
+           let cum_end = cum_start + rg_rows in
+           let acc_rev' =
+             if (target_start < cum_end) && (cum_start < target_end)
+             then rg_index :: acc_rev
+             else acc_rev in
+           subject_range_candidate_rgs_loop table target_start target_end
+             (rg_index + Prims.int_one) rg_count (fuel - Prims.int_one)
+             cum_end acc_rev')
+let cottas_ondisk_subject_candidate_rgs (h : cottas_ondisk_handle)
+  (table :
+    Parquet_Footer.parquet_row_group_offset_table
+      FStar_Pervasives_Native.option)
+  (bound_s : Prims.string FStar_Pervasives_Native.option)
+  (rg_count : Prims.nat) :
+  Prims.nat Prims.list FStar_Pervasives_Native.option=
+  match bound_s with
+  | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+  | FStar_Pervasives_Native.Some s ->
+      (match compound_po_dict_encode h.coh_path "s" s with
+       | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.Some []
+       | FStar_Pervasives_Native.Some subj_id ->
+           (match RDF_Store_Columnar_SubjectOffsetIndex.open_subject_offsets
+                    (RDF_Store_Columnar_SubjectOffsetIndex.subject_offsets_path_of
+                       h.coh_path)
+            with
+            | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+            | FStar_Pervasives_Native.Some oh ->
+                if
+                  Prims.op_Negation
+                    (RDF_Store_Columnar_SubjectOffsetIndex.subject_offset_handle_ok
+                       oh)
+                then FStar_Pervasives_Native.None
+                else
+                  (match RDF_Store_Columnar_SubjectOffsetIndex.range_for_subject
+                           oh subj_id
+                   with
+                   | FStar_Pervasives_Native.None ->
+                       FStar_Pervasives_Native.None
+                   | FStar_Pervasives_Native.Some r ->
+                       if
+                         (RDF_Store_Columnar_SubjectOffsetIndex.subject_range_count
+                            r)
+                           = Prims.int_zero
+                       then FStar_Pervasives_Native.Some []
+                       else
+                         (match table with
+                          | FStar_Pervasives_Native.None ->
+                              FStar_Pervasives_Native.None
+                          | FStar_Pervasives_Native.Some t ->
+                              subject_range_candidate_rgs_loop t
+                                r.RDF_Store_Columnar_SubjectOffsetIndex.sr_start
+                                r.RDF_Store_Columnar_SubjectOffsetIndex.sr_end
+                                Prims.int_zero rg_count rg_count
+                                Prims.int_zero []))))
 let cottas_ondisk_has_decode_failure (h : cottas_ondisk_handle) : Prims.bool=
   (((FStar_Pervasives_Native.uu___is_None
        (Parquet_Footer.probe_parquet_column_decode_all_row_groups h.coh_path
@@ -2762,8 +2833,15 @@ let cottas_ondisk_search_tok (ds : cottas_ondisk_store)
           plan_candidate_rgs h table bound_s bound_p bound_o bound_g rg_count in
         (match uu___ with
          | (candidates0, _dc) ->
+             let candidates1 =
+               match cottas_ondisk_subject_candidate_rgs h table bound_s
+                       rg_count
+               with
+               | FStar_Pervasives_Native.None -> candidates0
+               | FStar_Pervasives_Native.Some subj_rgs ->
+                   intersect_sorted_rg_lists candidates0 subj_rgs in
              let candidates =
-               filter_candidates_by_compound_po h.coh_path candidates0
+               filter_candidates_by_compound_po h.coh_path candidates1
                  bound_p bound_o in
              let acc_rev =
                walk_candidate_rgs_search_tok_global h.coh_path table bound_s
@@ -3793,6 +3871,44 @@ let cottas_ondisk_count_exact_via_offset_index (h : cottas_ondisk_handle)
              sum_predicate_offset_counts oh pred_id Prims.int_zero rg_count
                rg_count Prims.int_zero)
   | (uu___, uu___1, uu___2) -> FStar_Pervasives_Native.None
+let cottas_ondisk_count_exact_via_subject_offset_index
+  (h : cottas_ondisk_handle)
+  (bound_s : Prims.string FStar_Pervasives_Native.option)
+  (bound_p : Prims.string FStar_Pervasives_Native.option)
+  (bound_o : Prims.string FStar_Pervasives_Native.option)
+  (bound_g : Prims.string FStar_Pervasives_Native.option) :
+  Prims.nat FStar_Pervasives_Native.option=
+  match (bound_s, bound_p, bound_o) with
+  | (FStar_Pervasives_Native.Some s, FStar_Pervasives_Native.None,
+     FStar_Pervasives_Native.None) ->
+      if Prims.op_Negation (count_exact_offset_index_eligible h bound_g)
+      then FStar_Pervasives_Native.None
+      else
+        (match compound_po_dict_encode h.coh_path "s" s with
+         | FStar_Pervasives_Native.None ->
+             FStar_Pervasives_Native.Some Prims.int_zero
+         | FStar_Pervasives_Native.Some subj_id ->
+             (match RDF_Store_Columnar_SubjectOffsetIndex.open_subject_offsets
+                      (RDF_Store_Columnar_SubjectOffsetIndex.subject_offsets_path_of
+                         h.coh_path)
+              with
+              | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+              | FStar_Pervasives_Native.Some oh ->
+                  if
+                    RDF_Store_Columnar_SubjectOffsetIndex.subject_offset_handle_ok
+                      oh
+                  then
+                    (match RDF_Store_Columnar_SubjectOffsetIndex.range_for_subject
+                             oh subj_id
+                     with
+                     | FStar_Pervasives_Native.None ->
+                         FStar_Pervasives_Native.None
+                     | FStar_Pervasives_Native.Some r ->
+                         FStar_Pervasives_Native.Some
+                           (RDF_Store_Columnar_SubjectOffsetIndex.subject_range_count
+                              r))
+                  else FStar_Pervasives_Native.None))
+  | (uu___, uu___1, uu___2) -> FStar_Pervasives_Native.None
 let cottas_ondisk_count_exact (ds : cottas_ondisk_store)
   (bound : Parser_BallyhooCOTTAS.cottas_bound_qp) : Prims.nat=
   let h = ds.cods_handle in
@@ -3881,9 +3997,14 @@ let cottas_ondisk_count_exact_tok (ds : cottas_ondisk_store)
             with
             | FStar_Pervasives_Native.Some n -> n
             | FStar_Pervasives_Native.None ->
-                walk_row_groups_count_exact_global h table bound_s bound_p
-                  bound_o bound_g Prims.int_zero rg_count rg_count
-                  Prims.int_zero))
+                (match cottas_ondisk_count_exact_via_subject_offset_index h
+                         bound_s bound_p bound_o bound_g
+                 with
+                 | FStar_Pervasives_Native.Some n -> n
+                 | FStar_Pervasives_Native.None ->
+                     walk_row_groups_count_exact_global h table bound_s
+                       bound_p bound_o bound_g Prims.int_zero rg_count
+                       rg_count Prims.int_zero)))
 let cottas_ondisk_build_bound_qp_opt (ds : cottas_ondisk_store)
   (s : RDF_Term.subject FStar_Pervasives_Native.option)
   (p : RDF_Term.wf_iri FStar_Pervasives_Native.option)
@@ -4504,6 +4625,169 @@ module Cottas_compound_po_writer = struct
       end
 end
 
+
+(* subject-offset-index: Cottas_subject_offset_idx installed (issue
+   #100 follow-up, 2026-07-13). Per-SUBJECT contiguous global
+   row-range index. Sibling .s.offsets file:
+     [ magic 'COTS' u32 | version u32 | num_subjects u32 | num_rows_total u32 ]
+     [ ranges : (u64 start, u64 end_exclusive) * num_subjects, ascending
+       subject-id order ]
+   Closes the q3 subject-point-lookup gap: a bound-subject query can
+   read one dense (start,end) entry instead of decoding whole row
+   groups on spec. Built once (subject column is globally contiguous
+   post-sort, so this is a single sequential pass), mmap'd on demand
+   by the generic companion-file primitives at query time (no
+   OCaml-side reader in this patch -- see this file's own header
+   comment). *)
+module Cottas_subject_offset_idx = struct
+  open Stdlib
+  type pint = Stdlib.Int.t
+
+  let header_size : pint = 16  (* 4 u32 fields *)
+
+  let subject_offsets_path (cottas_path : string) : string =
+    cottas_path ^ ".s.offsets"
+
+  let write_u32_le buf (v : pint) =
+    Buffer.add_char buf (Stdlib.Char.chr (v land 0xff));
+    Buffer.add_char buf (Stdlib.Char.chr ((v lsr 8) land 0xff));
+    Buffer.add_char buf (Stdlib.Char.chr ((v lsr 16) land 0xff));
+    Buffer.add_char buf (Stdlib.Char.chr ((v lsr 24) land 0xff))
+
+  let write_u64_le buf (v : pint) =
+    write_u32_le buf (v land 0xffffffff);
+    write_u32_le buf ((v lsr 32) land 0xffffffff)
+
+  let atomic_write (path : string) (data : string) : unit =
+    let tmp = path ^ ".tmp" in
+    let oc = open_out_bin tmp in
+    output_string oc data;
+    flush oc;
+    (try Unix.fsync (Unix.descr_of_out_channel oc) with _ -> ());
+    close_out oc;
+    Sys.rename tmp path
+
+  (* Build the offsets file by walking the SUBJECT column once,
+     row-group order (= global row order, per BaseWriter's subject-
+     primary sort). Requires the subject dict's tok_to_id mapping (as
+     a Hashtbl) so we can encode each token to its dict id during the
+     walk. Detects subject-value transitions (rows are pre-sorted) and
+     records each subject's [start, end) global row range. *)
+  let build_subject_offsets_file (cottas_path : string)
+    (subj_tok_to_id : (string, pint) Hashtbl.t)
+    (num_subjects : pint) (num_rgs : pint) : unit =
+    let opath = subject_offsets_path cottas_path in
+    Printf.eprintf "[subject-offset-trace] building offsets file %s (num_subjects=%d num_rgs=%d)\n%!"
+      opath num_subjects num_rgs;
+    let t0 = Unix.gettimeofday () in
+    let starts = Stdlib.Array.make num_subjects (-1) in
+    let ends   = Stdlib.Array.make num_subjects (-1) in
+    let global_row = ref 0 in
+    let cur_subj = ref (-1) in
+    let close_cur () =
+      if !cur_subj >= 0 then ends.(!cur_subj) <- !global_row
+    in
+    for rg = 0 to num_rgs - 1 do
+      let t_rg = Unix.gettimeofday () in
+      (match Parquet_Footer.probe_parquet_column_decode_in_row_group
+               cottas_path (Z.of_int rg) Z.zero with  (* col_index 0 = subject *)
+       | FStar_Pervasives_Native.None ->
+         Printf.eprintf "[subject-offset-WARN] offsets-build: rg=%d subject decode failed\n%!" rg
+       | FStar_Pervasives_Native.Some lst ->
+         List.iter (function
+           | FStar_Pervasives_Native.None -> incr global_row
+           | FStar_Pervasives_Native.Some raw ->
+             (match Hashtbl.find_opt subj_tok_to_id raw with
+              | None ->
+                Printf.eprintf "[subject-offset-WARN] offsets-build: rg=%d row=%d unknown subject token %s\n%!"
+                  rg !global_row raw
+              | Some sid ->
+                if sid >= 0 && sid < num_subjects then begin
+                  if sid <> !cur_subj then begin
+                    close_cur ();
+                    cur_subj := sid;
+                    starts.(sid) <- !global_row
+                  end
+                end else
+                  Printf.eprintf "[subject-offset-WARN] offsets-build: subject id %d out of range\n%!" sid);
+             incr global_row) lst);
+      if rg = 0 || rg = num_rgs - 1 || rg mod 5 = 0 then
+        Printf.eprintf "[subject-offset-trace] offsets-build rg=%d/%d (%.2fs this rg)\n%!"
+          rg num_rgs (Unix.gettimeofday () -. t_rg)
+    done;
+    close_cur ();
+    Printf.eprintf "[subject-offset-trace] offsets-build columnscan done in %.2fs (total_rows=%d)\n%!"
+      (Unix.gettimeofday () -. t0) !global_row;
+    (* Header — produced by F* (rule #11(a) byte-layout boundary). *)
+    let header_chars =
+      RDF_CottasStore_SubjectOffsetsWriter.serialize_subject_offsets_header
+        (Z.of_int num_subjects) (Z.of_int !global_row)
+    in
+    let buf = Buffer.create (header_size + 16 * num_subjects) in
+    List.iter (fun b -> Buffer.add_char buf (Char.chr (b land 0xff))) header_chars;
+    for sid = 0 to num_subjects - 1 do
+      let s = starts.(sid) and e = ends.(sid) in
+      if s < 0 || e < 0 then begin
+        Printf.eprintf "[subject-offset-WARN] offsets-build: subject id %d never observed; writing (0,0)\n%!" sid;
+        write_u64_le buf 0;
+        write_u64_le buf 0
+      end else begin
+        write_u64_le buf s;
+        write_u64_le buf e
+      end
+    done;
+    let t1 = Unix.gettimeofday () in
+    atomic_write opath (Buffer.contents buf);
+    let t2 = Unix.gettimeofday () in
+    let stat_size = try (Unix.stat opath).Unix.st_size with _ -> -1 in
+    Printf.eprintf "[subject-offset-trace] offsets-build wrote %s (Nbytes=%d) in %.2fs (build %.2fs + write %.2fs)\n%!"
+      opath stat_size (t2 -. t0) (t1 -. t0) (t2 -. t1)
+
+  (* Build the offsets file if absent. Reads the subject dict's
+     tok_to_id mapping from the F* extracted reader (so id assignment
+     matches the on-disk dict's sorted-rank ordering, the SAME
+     id-space `compound_po_dict_encode path "s" tok` resolves at query
+     time). Called from boot (after Vav3 companions are present). *)
+  let ensure_subject_offsets_built (cottas_path : string) : unit =
+    let opath = subject_offsets_path cottas_path in
+    if Sys.file_exists opath && (try (Unix.stat opath).Unix.st_size with _ -> 0) >= header_size then
+      Printf.eprintf "[subject-offset-trace] offsets file present at %s, skipping build\n%!" opath
+    else begin
+      Printf.eprintf "[subject-offset-trace] offsets file absent; building\n%!";
+      let dpath = cottas_path ^ ".s.dict" in
+      match RDF_CottasStore_OnDiskIndex.read_dict_header dpath with
+      | FStar_Pervasives_Native.None ->
+        Printf.eprintf "[subject-offset-FATAL] offsets-build: cannot read subject dict header at %s\n%!" dpath
+      | FStar_Pervasives_Native.Some dh ->
+        let n_subjects = Z.to_int dh.RDF_CottasStore_OnDiskIndex.dh_num_tokens in
+        let ppath = cottas_path ^ ".s.presence" in
+        let n_rgs = match RDF_CottasStore_OnDiskIndex.read_presence_header ppath with
+          | FStar_Pervasives_Native.Some ph ->
+            Z.to_int ph.RDF_CottasStore_OnDiskIndex.ph_num_rgs
+          | FStar_Pervasives_Native.None ->
+            (match Parquet_Footer.probe_parquet_row_group_count cottas_path with
+             | FStar_Pervasives_Native.None -> 0
+             | FStar_Pervasives_Native.Some n -> Z.to_int n) in
+        Printf.eprintf "[subject-offset-trace] offsets-build: n_rgs=%d n_subjects=%d\n%!" n_rgs n_subjects;
+        let tok_to_id : (string, pint) Hashtbl.t = Hashtbl.create (n_subjects * 2 + 17) in
+        for id = 0 to n_subjects - 1 do
+          match RDF_CottasStore_OnDiskIndex.dict_decode_token
+                  dpath dh (Z.of_int id) with
+          | FStar_Pervasives_Native.Some raw ->
+            Hashtbl.replace tok_to_id raw id
+          | FStar_Pervasives_Native.None ->
+            Printf.eprintf "[subject-offset-WARN] offsets-build: dict_decode_token failed for id=%d\n%!" id
+        done;
+        Printf.eprintf "[subject-offset-trace] offsets-build: built tok_to_id (size=%d)\n%!"
+          (Hashtbl.length tok_to_id);
+        if n_rgs > 0 && n_subjects > 0 && Hashtbl.length tok_to_id > 0 then
+          build_subject_offsets_file cottas_path tok_to_id n_subjects n_rgs
+        else
+          Printf.eprintf "[subject-offset-WARN] offsets-build: skipping (n_rgs=%d n_subjects=%d tok_to_id=%d)\n%!"
+            n_rgs n_subjects (Hashtbl.length tok_to_id)
+    end
+end
+
 module Cottas_companion_boot = struct
   open Stdlib
   type pint = Stdlib.Int.t
@@ -4705,6 +4989,13 @@ module Cottas_companion_boot = struct
     (try Cottas_compound_po_writer.ensure_compound_po_built cottas_path h
      with e ->
        Printf.eprintf "[compound-po-WARN] ensure_compound_po_built raised: %s
+%!"
+         (Printexc.to_string e));
+    (* subject-offset-index: build the per-subject contiguous
+       global row-range companion. *)
+    (try Cottas_subject_offset_idx.ensure_subject_offsets_built cottas_path
+     with e ->
+       Printf.eprintf "[subject-offset-WARN] ensure_subject_offsets_built raised: %s
 %!"
          (Printexc.to_string e));
     let dt = Unix.gettimeofday () -. t0 in

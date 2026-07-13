@@ -2840,6 +2840,29 @@ let probe_parquet_row_group_offset_table (path:string)
                   }
       else None
 
+// Read a row group's own `num_rows` field (thrift RowGroup struct
+// field 3, same field `probe_parquet_first_row_group_num_rows` reads
+// for row group 0 specifically) directly from the precomputed table's
+// row-group start offsets -- footer-metadata-only, no page/column
+// decode. Used by the `.s.offsets` subject-offset-index consumer
+// (`RDF.CottasStore.fst`'s `cottas_ondisk_subject_offset_candidate_
+// rgs`) to translate a subject's GLOBAL row range into the row groups
+// it intersects, without decoding any column.
+let probe_parquet_row_group_num_rows_from_table
+  (table:parquet_row_group_offset_table) (rg_index:nat) : option nat =
+  match List.Tot.nth table.prgt_row_group_starts rg_index with
+  | None -> None
+  | Some rg_start ->
+    match nth_field_hex table.prgt_meta_hex 3 rg_start 0 table.prgt_meta_hex_len with
+    | None -> None
+    | Some row_group_field ->
+      if row_group_field.cf_type <> compact_t_i64 then None
+      else
+        match decode_varint_value_hex table.prgt_meta_hex
+                row_group_field.cf_value_start 0 0 table.prgt_meta_hex_len with
+        | None -> None
+        | Some raw -> Some (zigzag_decode_nat raw)
+
 // `_from_table` sibling of `probe_parquet_column_chunk_in_row_group_locator`:
 // an O(rg_index) `List.Tot.nth` on the precomputed table instead of an
 // O(rg_index) skip-decode of every preceding row-group struct. Out-of-

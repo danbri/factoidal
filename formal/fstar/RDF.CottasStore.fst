@@ -14,6 +14,7 @@ module CPO = RDF.CottasStore.CompoundPresenceBitmap
 module ODI = RDF.CottasStore.OnDiskIndex
 module OI  = RDF.Store.Columnar.OffsetIndex
 module AP  = SPARQL.Plan.AccessPath
+module SOI = RDF.Store.Columnar.SubjectOffsetIndex
 
 // On-disk COTTAS store, query-time interface (issue #100).
 //
@@ -1718,6 +1719,98 @@ let filter_candidates_by_compound_po
      | _ -> candidates)
   | _ -> candidates
 
+// ----------------------------------------------------------------------
+// Subject-offset-index candidate-rg pruning (2026-07-13, closes the q3
+// subject-point-lookup gap -- docs/test-results/competitive-bench.json).
+// `.s.offsets` (RDF.CottasStore.SubjectOffsetsWriter.fst / RDF.Store.
+// Columnar.SubjectOffsetIndex.fst) records, per subject, the
+// CONTIGUOUS global row range that subject's rows occupy -- sound
+// because `RDF.CottasStore.BaseWriter` sorts rows (s,p,o,g)
+// subject-primary (see that writer module's own banner comment).
+//
+// `cottas_ondisk_subject_candidate_rgs` translates that global row
+// range into the row groups it actually intersects, via
+// `probe_parquet_row_group_num_rows_from_table` (footer-metadata only,
+// no page decode), for `cottas_ondisk_search_tok` to INTERSECT into
+// its existing `plan_candidate_rgs` candidate set. This is
+// unconditionally sound regardless of graph scope (the row range is
+// graph-independent by construction; the existing per-row filter
+// still applies bound_g after decode) and regardless of a live delta
+// overlay (the base-store search only narrows which BASE row groups
+// it decodes; any delta merge is a separate overlay layer per
+// `RDF.Store.Capabilities.Cottas.fst`'s banner comment -- "the
+// read-write COTTAS+delta view is a later overlay composition, not
+// this builder") -- unlike the COUNT sibling below, no
+// `count_exact_offset_index_eligible` graph-scope guard is needed
+// here.
+// ----------------------------------------------------------------------
+
+// Cumulative row-group row-count walk: does the GLOBAL row range
+// `[target_start, target_end)` intersect row group `rg_index`'s own
+// `[cum_start, cum_start + rg_rows)` span? Returns `None` the instant
+// ANY row group's row count can't be read (footer doubt) -- the safe
+// over-include direction is "fall through to the unpruned candidate
+// set", never a silently wrong empty list.
+let rec subject_range_candidate_rgs_loop
+  (table : parquet_row_group_offset_table)
+  (target_start target_end : nat)
+  (rg_index rg_count : nat) (fuel : nat)
+  (cum_start : nat) (acc_rev : list nat)
+  : Tot (option (list nat)) (decreases fuel) =
+  if fuel = 0 then Some (list_rev acc_rev)
+  else if rg_index >= rg_count then Some (list_rev acc_rev)
+  else
+    match probe_parquet_row_group_num_rows_from_table table rg_index with
+    | None -> None
+    | Some rg_rows ->
+      let cum_end : nat = cum_start + rg_rows in
+      let acc_rev' =
+        if target_start < cum_end && cum_start < target_end
+        then rg_index :: acc_rev
+        else acc_rev in
+      subject_range_candidate_rgs_loop table target_start target_end
+        (rg_index + 1) rg_count (fuel - 1) cum_end acc_rev'
+
+// Top-level entry point consulted from `cottas_ondisk_search_tok`.
+// Returns:
+//   - `None`     -- not eligible / sidecar absent / footer doubt:
+//                    caller keeps its existing `plan_candidate_rgs`
+//                    candidate set unchanged.
+//   - `Some []`  -- subject genuinely absent from the corpus
+//                    dictionary: zero rows, zero row groups to decode.
+//   - `Some rgs` -- exact row groups the subject's global row range
+//                    intersects; caller INTERSECTS this into its
+//                    existing candidate set (never replaces it wholesale,
+//                    so composition with predicate/object/graph pruning
+//                    stays correct).
+let cottas_ondisk_subject_candidate_rgs
+  (h : cottas_ondisk_handle)
+  (table : option parquet_row_group_offset_table)
+  (bound_s : option string)
+  (rg_count : nat)
+  : Tot (option (list nat)) =
+  match bound_s with
+  | None -> None
+  | Some s ->
+    (match compound_po_dict_encode h.coh_path "s" s with
+     | None -> Some []  // subject absent from the corpus dictionary: genuine zero
+     | Some subj_id ->
+       (match SOI.open_subject_offsets (SOI.subject_offsets_path_of h.coh_path) with
+        | None -> None
+        | Some oh ->
+          if not (SOI.subject_offset_handle_ok oh) then None
+          else
+            (match SOI.range_for_subject oh subj_id with
+             | None -> None
+             | Some r ->
+               if SOI.subject_range_count r = 0 then Some []
+               else
+                 (match table with
+                  | None -> None
+                  | Some t ->
+                    subject_range_candidate_rgs_loop t r.SOI.sr_start r.SOI.sr_end
+                      0 rg_count rg_count 0 []))))
+
 // ---- Decode-failure detection (issue #269) --------------------------
 //
 // The row-group walkers below (`walk_row_groups_search` and friends)
@@ -1887,8 +1980,19 @@ let cottas_ondisk_search_tok
     if any_bound_present then
       let (candidates0, _dc) = plan_candidate_rgs h table
         bound_s bound_p bound_o bound_g rg_count in
+      // 2026-07-13: subject-offset-index candidate-rg tightening (see
+      // `cottas_ondisk_subject_candidate_rgs`'s banner comment). `None`
+      // means "not eligible / sidecar absent / footer doubt" -- leave
+      // `candidates0` unchanged; `Some subj_rgs` INTERSECTS the exact
+      // row groups the bound subject's global row range intersects
+      // into the existing dict-page-probe candidate set (never
+      // replaces it, so predicate/object/graph pruning still applies).
+      let candidates1 =
+        match cottas_ondisk_subject_candidate_rgs h table bound_s rg_count with
+        | None -> candidates0
+        | Some subj_rgs -> intersect_sorted_rg_lists candidates0 subj_rgs in
       let candidates = filter_candidates_by_compound_po
-        h.coh_path candidates0 bound_p bound_o in
+        h.coh_path candidates1 bound_p bound_o in
       let acc_rev = walk_candidate_rgs_search_tok_global h.coh_path table
         bound_s bound_p bound_o bound_g
         candidates [] in
@@ -2771,6 +2875,38 @@ let cottas_ondisk_count_exact_via_offset_index
          sum_predicate_offset_counts oh pred_id 0 rg_count rg_count 0)
   | _, _, _ -> None
 
+// ----------------------------------------------------------------------
+// Subject-offset-index EXACT COUNT (2026-07-13, sibling of
+// `cottas_ondisk_count_exact_via_offset_index` above). See
+// `cottas_ondisk_subject_candidate_rgs`'s banner comment (defined
+// earlier in this file, right after `filter_candidates_by_compound_po`)
+// for the shared `.s.offsets` background. Same graph-scope
+// eligibility guard as the predicate sibling (the writer doesn't look
+// at the graph column, so a range's count is a total across every
+// graph).
+// ----------------------------------------------------------------------
+
+let cottas_ondisk_count_exact_via_subject_offset_index
+  (h : cottas_ondisk_handle)
+  (bound_s bound_p bound_o bound_g : option string)
+  : Tot (option nat) =
+  match bound_s, bound_p, bound_o with
+  | Some s, None, None ->
+    if not (count_exact_offset_index_eligible h bound_g) then None
+    else
+      (match compound_po_dict_encode h.coh_path "s" s with
+       | None -> Some 0  // subject absent from the corpus dictionary: genuine 0
+       | Some subj_id ->
+         (match SOI.open_subject_offsets (SOI.subject_offsets_path_of h.coh_path) with
+          | None -> None  // sidecar missing/unhealthy: fall through
+          | Some oh ->
+            if SOI.subject_offset_handle_ok oh then
+              (match SOI.range_for_subject oh subj_id with
+               | None -> None
+               | Some r -> Some (SOI.subject_range_count r))
+            else None))
+  | _, _, _ -> None
+
 // EXACT count — for result-producing callers (the streaming COUNT
 // fast paths in SPARQL11.Store). Contract difference from
 // cottas_ondisk_estimate: never approximates. Unbound: parquet
@@ -2874,8 +3010,20 @@ let cottas_ondisk_count_exact_tok
            bound_s bound_p bound_o bound_g rg_count with
          | Some n -> n
          | None ->
-           walk_row_groups_count_exact_global h table
-             bound_s bound_p bound_o bound_g 0 rg_count rg_count 0)
+           // 2026-07-13 follow-up: subject-offset-index fast path (see
+           // `cottas_ondisk_count_exact_via_subject_offset_index`'s
+           // banner comment) -- fires only for the exact
+           // subject-only bound shape with the same default-graph-
+           // eligible scope; mutually exclusive with the predicate
+           // branch just above (`Some p, None` vs `Some s, None,
+           // None` never both match the same bound tuple), so trying
+           // both costs nothing extra on the shapes neither serves.
+           match cottas_ondisk_count_exact_via_subject_offset_index h
+             bound_s bound_p bound_o bound_g with
+           | Some n -> n
+           | None ->
+             walk_row_groups_count_exact_global h table
+               bound_s bound_p bound_o bound_g 0 rg_count rg_count 0)
 
 // ----------------------------------------------------------------------
 // Bound-pattern + row-to-quad helpers (moved from Parser.BallyhooCOTTAS).

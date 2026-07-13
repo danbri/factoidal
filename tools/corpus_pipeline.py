@@ -1125,10 +1125,12 @@ def resolve_factoidal_query_bin() -> str:
 
 
 # Companion sidecar file suffixes written by
-# RDF_CottasStore.Cottas_companion_writer / Cottas_compound_po_writer
+# RDF_CottasStore.Cottas_companion_writer / Cottas_compound_po_writer /
+# Cottas_subject_offset_idx
 # (formal/fstar/experimental_ocaml_glue/cottas_ondisk_z*.sh), one .dict +
-# .presence pair per column (s, p, o, g), plus the Lamed3 predicate
-# offsets index and the compound (p,o) presence bitmap.
+# .presence pair per column (s, p, o, g), plus the predicate offsets
+# index, the compound (p,o) presence bitmap, and (2026-07-13) the
+# per-subject contiguous global row-range offsets index.
 COTTAS_SIDECAR_SUFFIXES = [
     ".s.dict", ".s.presence",
     ".p.dict", ".p.presence",
@@ -1136,6 +1138,7 @@ COTTAS_SIDECAR_SUFFIXES = [
     ".g.dict", ".g.presence",
     ".p.offsets",
     ".po.presence",
+    ".s.offsets",
 ]
 
 

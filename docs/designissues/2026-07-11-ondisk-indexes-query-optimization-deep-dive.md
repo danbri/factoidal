@@ -63,6 +63,30 @@ unblocks multiple debts** — see the unified roadmap (§4).
    `.p.offsets`. Bound-S/O lookups prune to a row *group* then decode it
    fully → 2.17s / 4.07s vs Jena TDB2's 1.16–3.88s on the same corpus.
    The single clearest "missing index for the slow access pattern."
+   **Partially closed 2026-07-13** for the S half: `.s.offsets`
+   (`RDF.CottasStore.SubjectOffsetsWriter.fst` /
+   `RDF.Store.Columnar.SubjectOffsetIndex.fst`) records each subject's
+   CONTIGUOUS global row range (rows are subject-primary sorted, so one
+   `(start, end)` pair per subject is exact — no per-row-group breakdown
+   needed, unlike `.p.offsets`). Wired into `cottas_ondisk_search_tok`'s
+   candidate-rg intersection and `cottas_ondisk_count_exact_tok`'s
+   bound-subject branch. Measured on the gene corpus (888,949 quads, 8
+   row groups): q3 subject point lookup 3.15s→2.35s median (old
+   committed binary/no sidecar vs new binary/with sidecar, 3 runs each,
+   byte-identical answers) — the win comes from skipping a second,
+   dict-page-unprunable (DELTA_LENGTH_BYTE_ARRAY-encoded) row group the
+   old dict-page-probe fallback always included; the row group that
+   DOES contain the subject is still fully decoded (no partial in-row-
+   group decode primitive exists — see the O assessment below and the
+   q6 indexed-decode refutation, `docs/claude-rules/current-state.md`).
+   The O half is NOT implemented: `BaseWriter` sorts `(s, p, o, g)`, so
+   object values are contiguous only within a fixed `(s, p)` pair, not
+   globally — a dense per-object global-range table would be as
+   impractical as a naive `.p.offsets`-style matrix at object
+   cardinality (per this doc's own scaling note). `.po.presence`
+   already gives object-side row-group pruning when `p` is co-bound;
+   a genuine `.o.offsets` would need a different structure (e.g.
+   sorted `(o) -> per-rg extents`) and is left as a follow-up.
 2. **Companion writers are "Option B"** — byte-format proven in F\*, but
    the runtime writer is hand-OCaml verified only by hash-test; the
    actual rule-#11 residual for storage.
@@ -171,6 +195,12 @@ side by post-hoc length) since 2026-07-06.
    mirroring `.p.offsets` — the OffsetsWriter already generalizes to any
    column). Closes the clearest perf gap (2.17s/4.07s → toward Jena's
    1.16–3.88s band) with an already-proven spec/writer/test pattern.
+   **S half landed 2026-07-13** (§1.3 item 1 has the measurement + the
+   contiguity finding that made the S format simpler than `.p.offsets`).
+   O half assessed and NOT implemented — objects aren't globally
+   contiguous under the `(s,p,o,g)` sort, so the same dense-range
+   structure doesn't apply; see the same section for the follow-up
+   shape.
    *Storage, highest single perf item.*
 2. **Roaring Phase E + wire it as the shared rank/select core** for the
    new offset sidecar and HDT stage 5. One verified module retires two
