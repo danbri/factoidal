@@ -1,0 +1,64 @@
+name: EECC VC/DID interop fixtures (vendored vc-verifier-rules + webuild-attestations)
+spec: https://github.com/european-epc-competence-center
+runner: bin/linux-x86_64/eecc_runner
+runner_args:
+  - --json
+  - docs/test-results/by-suite/eecc-interop.json
+manifest: third_party/testing/eecc
+result_path: docs/test-results/by-suite/eecc-interop.json
+domain: VC
+foundational: false
+
+# Track B1 of docs/designissues/2026-07-11-vc-canivc-eecc-plan.md.
+# Vendors two Apache-2.0 EECC (European EPC Competence Center, the GS1
+# product-passport VC/DID stack) repos at third_party/testing/eecc/
+# (see that directory's PROVENANCE.md for the full clone/licence/
+# pruning record) and runs them offline through
+# bin/eecc-runner/eecc_runner.ml — the same "OCaml consumer drives
+# F*-extracted VC modules directly against fixture files" pattern as
+# bin/vc-runner/vc_runner.ml (vc_stage1, 117 pass, 0 fail).
+#
+# The AGPL-3.0 `vc-verifier` repo from the same org is explicitly OUT
+# and was never cloned (plan §2 names it interop-target-only).
+#
+# Fixture classification (see eecc_runner.ml's header + PROVENANCE.md
+# for the full reasoning):
+#   - vc-verifier-rules/src/tests/example_chain/*.json (4 files) are
+#     real, DataIntegrityProof-signed W3C VCDM 2.0 credentials issued
+#     by EECC's own sandbox. Each gets TWO scored checks: a structural
+#     check (VC_Credential.vc_check_from_string, the same Stage-1
+#     checker vc_stage1 uses) expected PASS, and a crypto-verify
+#     check that is SKIPPED — every fixture's verificationMethod is a
+#     did:web URL needing live HTTPS DID resolution this offline
+#     runner does not perform, and no public key material is bundled
+#     in the fixture itself (unverifiable-by-design, not a fail).
+#   - Every other vendored file (JSON Schemas, SD-JWT/mdoc claim sets
+#     from webuild-attestations, one JWT-VC example) is SKIPPED with
+#     reason "not a W3C VCDM JSON-LD credential" — a different
+#     credential serialization entirely, out of VC.Credential.fst's
+#     scope; feeding it through would misreport a FORMAT mismatch as
+#     a structural defect.
+#
+# First honest score (2026-07-13): see docs/test-results/by-suite/eecc-interop.json
+# and the runner's own tagged final line ("eecc-interop: N pass, M
+# fail, K skip (out of T)") for the measured numbers — labelled per
+# anti-pattern #25, not asserted here to avoid drifting out of sync
+# with a re-run.
+
+triggers:
+  paths:
+    - bin/eecc-runner/**
+    - third_party/testing/eecc/**
+    - formal/fstar/VC.Credential.fst
+    - formal/fstar/VC.Context.fst
+    - formal/fstar/VC.DataIntegrity.fst
+    - formal/fstar/Parser.JSON.fst
+    - third_party/contexts/credentials-v2.jsonld
+
+  excludes: []
+
+# What's left, in plain language.
+remaining:
+  - "crypto verification is structurally skipped for all 4 real credentials, not attempted — every fixture's verificationMethod is a did:web URL that would need live HTTPS DID resolution to fetch the actual Ed25519 public key, which this offline, network-free runner does not do, and no key material is bundled in the fixture JSON"
+  - "47 of the 51 vendored JSON/JWT files (all 40 webuild-attestations files plus vc-verifier-rules' 6 JSON Schemas and 1 JWT-VC example) are not checked by any Factoidal engine at all — Factoidal has no SD-JWT, mdoc (ISO 18013-5), or JWT-VC parser/verifier; they are vendored as reference schema/sample data only, scored as format-mismatch skips"
+  - "no differential cross-check against EECC's own public vc-verifier endpoint (AGPL-3.0, explicitly not vendored) — that's Track C1 in the same plan, advisory only"

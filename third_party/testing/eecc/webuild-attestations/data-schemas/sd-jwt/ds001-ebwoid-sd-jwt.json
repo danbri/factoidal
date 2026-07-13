@@ -1,0 +1,147 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.org/schemas/ds001-ebw-oid-sd-jwt.json",
+  "title": "ds001 - European Business Wallet – Owner Identification Data (EBW-OID) – SD-JWT VC payload",
+  "description": "Schema for the SD-JWT VC payload of an EBW-OID as defined in the ds001 EBW-OID Rulebook (Chapter 3.2). This models the JSON claims set prior to SD-JWT disclosure/packing.",
+  "type": "object",
+  "version": "1.0.0",
+  "additionalProperties": true,
+  "properties": {
+    "vct": {
+      "type": "string",
+      "description": "Verifiable Credential Type. Base type is 'uri:eu.ebw.oid.1'.",
+      "examples": [
+        "uri:eu.ebw.oid.1"
+      ]
+    },
+    "id": {
+      "type": "string",
+      "description": "EUID where available, otherwise a similar constructed, unique per issuer identifier.",
+      "examples": [
+        "NOFOR.123456789"
+      ]
+    },
+    "name": {
+      "type": "string",
+      "description": "Official name of the EBW owner (economic operator or public sector body).",
+      "examples": [
+        "Example AS"
+      ]
+    },
+    "attestation_legal_category": {
+      "type": "string",
+      "description": "The legal category of the attestation.",
+      "enum": [
+        "QEAA",
+        "PUB-EAA"
+      ]
+    },
+    "date_of_expiry": {
+      "type": "string",
+      "description": "Administrative expiry date following ISO 8601." ,
+      "format": "date",
+      "examples": [
+        "2027-12-31"
+      ]
+    },
+    "issuing_authority": {
+      "type": "string",
+      "description": "Name of the administrative authority, Commission (for Union entities), or QTSP issuing the EAA/QEAA; or ISO 3166-1 alpha-2 where applicable.",
+      "examples": [
+        "Brønnøysundregistrene"
+      ]
+    },
+    "issuing_country": {
+      "type": "string",
+      "description": "ISO 3166-1 alpha-2 code of the provider’s country/territory.",
+      "minLength": 2,
+      "maxLength": 2,
+      "examples": [
+        "NO",
+        "DE"
+      ]
+    },
+    "status": {
+      "type": "object",
+      "description": "Status object per SD-JWT VC status-list mechanism (required when validity > 24h).",
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "type": "string",
+          "description": "Status mechanism type. For SD-JWT VC Status List this SHALL be 'status-list'.",
+          "examples": [
+            "status-list"
+          ]
+        },
+        "status_list_credential": {
+          "type": "string",
+          "format": "uri",
+          "description": "URI of the Status List Credential that contains the bitstring indicating status.",
+          "examples": [
+            "https://issuer.example.com/status/1"
+          ]
+        },
+        "status_list_index": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Zero-based index into the status list bitstring for this credential.",
+          "examples": [
+            42
+          ]
+        },
+        "status_purpose": {
+          "type": "string",
+          "description": "Purpose of the status entry. For EBW-OID this is 'revocation'.",
+          "examples": [
+            "revocation"
+          ]
+        }
+      },
+      "required": [
+        "type",
+        "status_list_credential",
+        "status_list_index",
+        "status_purpose"
+      ]
+    },
+    "trust_anchor": {
+      "type": "string",
+      "format": "uri",
+      "description": "URL at which a machine-readable version of the trust anchor to be used for verifying the EBW-OID can be found or looked up.",
+      "examples": [
+        "https://trust.example.org/anchors/qtsp/eidas-tl"
+      ]
+    },
+    "cnf": {
+      "type": "object",
+      "description": "Confirmation claims per SD-JWT VC. Holder binding via JWK is recommended.",
+      "additionalProperties": false,
+      "properties": {
+        "jwk": {
+          "type": "object",
+          "description": "Public key bound to the holder.",
+          "additionalProperties": true,
+          "properties": {
+            "kty": { "type": "string" },
+            "crv": { "type": "string" },
+            "x": { "type": "string" },
+            "y": { "type": "string" },
+            "n": { "type": "string" },
+            "e": { "type": "string" }
+          }
+        }
+      },
+      "required": [
+        "jwk"
+      ]
+    }
+  },
+  "required": [
+    "vct",
+    "id",
+    "name",
+    "attestation_legal_category",
+    "issuing_authority",
+    "issuing_country"
+  ]
+}
