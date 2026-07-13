@@ -3741,6 +3741,58 @@ let cottas_ondisk_estimate_tok (ds : cottas_ondisk_store)
                        let avg = total_rows / rg_count in
                        let prod = n_candidates * avg in
                        if prod < Prims.int_zero then Prims.int_zero else prod)))
+let count_exact_offset_index_eligible (h : cottas_ondisk_handle)
+  (bound_g : Prims.string FStar_Pervasives_Native.option) : Prims.bool=
+  (match h.coh_graphs with | [] -> true | uu___ -> false) &&
+    (match bound_g with
+     | FStar_Pervasives_Native.None -> true
+     | FStar_Pervasives_Native.Some g -> g = "DEFAULT")
+let rec sum_predicate_offset_counts
+  (oh :
+    RDF_Store_Columnar_OffsetIndex.offset_handle
+      FStar_Pervasives_Native.option)
+  (pred_id : Prims.nat) (rg_index : Prims.nat) (rg_count : Prims.nat)
+  (fuel : Prims.nat) (acc : Prims.nat) :
+  Prims.nat FStar_Pervasives_Native.option=
+  if fuel = Prims.int_zero
+  then FStar_Pervasives_Native.Some acc
+  else
+    if rg_index >= rg_count
+    then FStar_Pervasives_Native.Some acc
+    else
+      (match SPARQL_Plan_AccessPath.choose_access_path oh rg_index
+               (FStar_Pervasives_Native.Some pred_id)
+       with
+       | SPARQL_Plan_AccessPath.AP_FullScan -> FStar_Pervasives_Native.None
+       | SPARQL_Plan_AccessPath.AP_Skip ->
+           sum_predicate_offset_counts oh pred_id (rg_index + Prims.int_one)
+             rg_count (fuel - Prims.int_one) acc
+       | SPARQL_Plan_AccessPath.AP_OffsetJump cv ->
+           sum_predicate_offset_counts oh pred_id (rg_index + Prims.int_one)
+             rg_count (fuel - Prims.int_one)
+             (acc + cv.RDF_Store_Columnar_OffsetIndex.cv_count))
+let cottas_ondisk_count_exact_via_offset_index (h : cottas_ondisk_handle)
+  (bound_s : Prims.string FStar_Pervasives_Native.option)
+  (bound_p : Prims.string FStar_Pervasives_Native.option)
+  (bound_o : Prims.string FStar_Pervasives_Native.option)
+  (bound_g : Prims.string FStar_Pervasives_Native.option)
+  (rg_count : Prims.nat) : Prims.nat FStar_Pervasives_Native.option=
+  match (bound_s, bound_p, bound_o) with
+  | (FStar_Pervasives_Native.None, FStar_Pervasives_Native.Some p,
+     FStar_Pervasives_Native.None) ->
+      if Prims.op_Negation (count_exact_offset_index_eligible h bound_g)
+      then FStar_Pervasives_Native.None
+      else
+        (match compound_po_dict_encode h.coh_path "p" p with
+         | FStar_Pervasives_Native.None ->
+             FStar_Pervasives_Native.Some Prims.int_zero
+         | FStar_Pervasives_Native.Some pred_id ->
+             let oh =
+               RDF_Store_Columnar_OffsetIndex.open_offsets
+                 (RDF_Store_Columnar_OffsetIndex.offsets_path_of h.coh_path) in
+             sum_predicate_offset_counts oh pred_id Prims.int_zero rg_count
+               rg_count Prims.int_zero)
+  | (uu___, uu___1, uu___2) -> FStar_Pervasives_Native.None
 let cottas_ondisk_count_exact (ds : cottas_ondisk_store)
   (bound : Parser_BallyhooCOTTAS.cottas_bound_qp) : Prims.nat=
   let h = ds.cods_handle in
@@ -3824,8 +3876,14 @@ let cottas_ondisk_count_exact_tok (ds : cottas_ondisk_store)
            walk_row_groups_count_graph_global h table bound_g Prims.int_zero
              rg_count rg_count Prims.int_zero
          else
-           walk_row_groups_count_exact_global h table bound_s bound_p bound_o
-             bound_g Prims.int_zero rg_count rg_count Prims.int_zero)
+           (match cottas_ondisk_count_exact_via_offset_index h bound_s
+                    bound_p bound_o bound_g rg_count
+            with
+            | FStar_Pervasives_Native.Some n -> n
+            | FStar_Pervasives_Native.None ->
+                walk_row_groups_count_exact_global h table bound_s bound_p
+                  bound_o bound_g Prims.int_zero rg_count rg_count
+                  Prims.int_zero))
 let cottas_ondisk_build_bound_qp_opt (ds : cottas_ondisk_store)
   (s : RDF_Term.subject FStar_Pervasives_Native.option)
   (p : RDF_Term.wf_iri FStar_Pervasives_Native.option)

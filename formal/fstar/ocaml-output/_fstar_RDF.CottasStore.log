@@ -1,9 +1,7 @@
-* Warning 241 at RDF.CottasStore.LazyDictRegistry.fst(0,0-0,0):
-  - Unable to load RDF.CottasStore.LazyDictRegistry.fst.checked since checked
-    file RDF.CottasStore.LazyDictRegistry.fst.checked is stale (dependence hash
-    mismatch, use --debug CheckedFiles for more details); will recheck
-    RDF.CottasStore.LazyDictRegistry.fst (suppressing this warning for further
-    modules)
+* Warning 241 at RDF.Indexed.fsti(0,0-0,0):
+  - Unable to load RDF.Indexed.fsti.checked since checked file
+    RDF.Indexed.fsti.checked is stale (digest mismatch for RDF.Indexed.fsti);
+    will recheck RDF.Indexed.fsti (suppressing this warning for further modules)
 
 * Warning 328 at Parquet.Footer.fst(296,8-296,31):
   - Global binding

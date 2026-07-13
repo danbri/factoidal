@@ -12,6 +12,8 @@ open RDF.NQuads.Serialize
 open FStar.All
 module CPO = RDF.CottasStore.CompoundPresenceBitmap
 module ODI = RDF.CottasStore.OnDiskIndex
+module OI  = RDF.Store.Columnar.OffsetIndex
+module AP  = SPARQL.Plan.AccessPath
 
 // On-disk COTTAS store, query-time interface (issue #100).
 //
@@ -2670,6 +2672,105 @@ let cottas_ondisk_estimate_tok
            let prod : int = n_candidates `op_Multiply` avg in
            if prod < 0 then 0 else prod)
 
+// ----------------------------------------------------------------------
+// Predicate-offset-index exact count (2026-07-13 follow-up to the
+// 2026-07-12 GROUP BY investigation). `RDF.Store.Columnar.OffsetIndex.
+// fst`'s own header documents the `.p.offsets` companion -- an mmap'd
+// per-(row-group, predicate) row-offset table already built at import
+// on every store -- as named-but-unwired: no live count path consulted
+// it. `(end_offset - start_offset) / 4` per (row-group, predicate) is
+// the exact row count for that predicate with ZERO column decode; this
+// wires that read into `cottas_ondisk_count_exact_tok`'s selective-walk
+// branch for the predicate-only bound shape, reusing
+// `SPARQL.Plan.AccessPath.choose_access_path` (the same per-rg decision
+// the row-JUMP search path already exposes) rather than re-deriving the
+// index-consult logic here.
+//
+// Graph-scope guard: the offsets writer walks the raw predicate column
+// only (`experimental_ocaml_glue/cottas_ondisk_zzzzzz_lamed3_offset_
+// idx.sh`'s `build_offsets_file`) -- it never looks at the graph
+// column, so a cell's count is a total across every graph in that row
+// group, not just the query's graph scope. Consulting it is sound only
+// when that whole-predicate total already EQUALS the graph-scoped
+// count the caller wants. That holds when the store carries ZERO named
+// graphs (`coh_graphs = []`, per `cottas_ondisk_named_graphs`'s own
+// contract that this list excludes the DEFAULT sentinel and holds only
+// declared named-graph IRIs -- empty means every row in the store is a
+// default-graph row) AND the query's own graph bound is DEFAULT-scoped
+// or unscoped (`Some "DEFAULT"` or `None` -- never a specific
+// named-graph IRI, which the index cannot distinguish from any other
+// graph). Any store WITH named graphs, or any named-graph-scoped
+// query, falls through to the existing selective-column walk
+// unconditionally -- conservative by construction, not by a runtime
+// probe.
+let count_exact_offset_index_eligible
+  (h : cottas_ondisk_handle) (bound_g : option string)
+  : Tot bool =
+  (match h.coh_graphs with
+   | [] -> true
+   | _ -> false) &&
+  (match bound_g with
+   | None -> true
+   | Some g -> g = "DEFAULT")
+
+// Sum `(end - start) / 4` row-position counts for `pred_id` across row
+// groups `[0, rg_count)`, one `AP.choose_access_path` call per rg (the
+// same decision `SPARQL.Plan.AccessPath`'s row-jump search consumers
+// use). Returns `None` -- fall through to the full column-decode walk
+// -- the instant ANY row group reports `AP_FullScan` (offsets file
+// absent, corrupt, or this rg out of the index's built range, e.g. a
+// stale index from before a later compaction added row groups): a
+// partial sum would silently UNDERCOUNT, never acceptable for an EXACT
+// count. `AP_Skip` (a definitively-empty cell, soundness backed by
+// `OI.row_positions_for_count_sound`) contributes 0; `AP_OffsetJump cv`
+// contributes `cv.cv_count` with no subject/object decode at all.
+let rec sum_predicate_offset_counts
+  (oh : option OI.offset_handle) (pred_id : nat)
+  (rg_index : nat) (rg_count : nat) (fuel : nat) (acc : nat)
+  : Tot (option nat) (decreases fuel) =
+  if fuel = 0 then Some acc
+  else if rg_index >= rg_count then Some acc
+  else
+    match AP.choose_access_path oh rg_index (Some pred_id) with
+    | AP.AP_FullScan -> None
+    | AP.AP_Skip ->
+      sum_predicate_offset_counts oh pred_id (rg_index + 1) rg_count (fuel - 1) acc
+    | AP.AP_OffsetJump cv ->
+      sum_predicate_offset_counts oh pred_id (rg_index + 1) rg_count (fuel - 1) (acc + cv.OI.cv_count)
+
+// Top-level entry point consulted from `cottas_ondisk_count_exact_tok`'s
+// general-bounds branch. Only fires for the EXACT predicate-only bound
+// shape (`bound_s = None`, `bound_p = Some p`, `bound_o = None`) --
+// a bound subject or object needs the row POSITIONS the index hands
+// back to cross-check against (this call site only wants the count),
+// and a bound object needs a column the predicate-keyed index was
+// never built over. Absent predicate (not in the `.p.dict` at all,
+// `compound_po_dict_encode` returns `None`) is a genuine, index-free
+// zero: any predicate that actually appears in the corpus MUST be a
+// dict entry (the dict is built from the distinct predicate tokens
+// seen at corpus-build time), so a failed dict lookup is definitive,
+// not a doubt -- distinct from an in-range offset-index read failure,
+// which IS a doubt and falls through via `sum_predicate_offset_counts`
+// returning `None`. Any other doubt (graph-scope guard fails, offsets
+// file missing/corrupt/stale) also returns `None` here, and the caller
+// falls through to `walk_row_groups_count_exact_global` exactly as
+// before this change.
+let cottas_ondisk_count_exact_via_offset_index
+  (h : cottas_ondisk_handle)
+  (bound_s bound_p bound_o bound_g : option string)
+  (rg_count : nat)
+  : Tot (option nat) =
+  match bound_s, bound_p, bound_o with
+  | None, Some p, None ->
+    if not (count_exact_offset_index_eligible h bound_g) then None
+    else
+      (match compound_po_dict_encode h.coh_path "p" p with
+       | None -> Some 0  // predicate absent from the corpus dictionary: genuine 0
+       | Some pred_id ->
+         let oh = OI.open_offsets (OI.offsets_path_of h.coh_path) in
+         sum_predicate_offset_counts oh pred_id 0 rg_count rg_count 0)
+  | _, _, _ -> None
+
 // EXACT count — for result-producing callers (the streaming COUNT
 // fast paths in SPARQL11.Store). Contract difference from
 // cottas_ondisk_estimate: never approximates. Unbound: parquet
@@ -2763,8 +2864,18 @@ let cottas_ondisk_count_exact_tok
        if None? bound_s && None? bound_p && None? bound_o then
          walk_row_groups_count_graph_global h table bound_g 0 rg_count rg_count 0
        else
-         walk_row_groups_count_exact_global h table
-           bound_s bound_p bound_o bound_g 0 rg_count rg_count 0)
+         // 2026-07-13: predicate-offset-index fast path (see
+         // `cottas_ondisk_count_exact_via_offset_index`'s banner
+         // comment) -- fires only for the exact predicate-only bound
+         // shape with a default-graph-eligible scope; `None` means
+         // "not eligible or in doubt", so the selective-column walk
+         // below is unchanged for every other bound shape.
+         match cottas_ondisk_count_exact_via_offset_index h
+           bound_s bound_p bound_o bound_g rg_count with
+         | Some n -> n
+         | None ->
+           walk_row_groups_count_exact_global h table
+             bound_s bound_p bound_o bound_g 0 rg_count rg_count 0)
 
 // ----------------------------------------------------------------------
 // Bound-pattern + row-to-quad helpers (moved from Parser.BallyhooCOTTAS).
