@@ -213,24 +213,35 @@ type rstate =
   rs_extra: redge Prims.list ;
   rs_fresh: Prims.nat ;
   rs_wdepth: (RDF_Term.bnode_id * Prims.nat) Prims.list ;
-  rs_inv: (RDF_Term.wf_iri * RDF_Term.wf_iri) Prims.list }
+  rs_inv: (RDF_Term.wf_iri * RDF_Term.wf_iri) Prims.list ;
+  rs_gendistinct: RDF_Term.rdf_term Prims.list Prims.list }
 let __proj__Mkrstate__item__rs_nodes (projectee : rstate) : rnode Prims.list=
   match projectee with
-  | { rs_nodes; rs_extra; rs_fresh; rs_wdepth; rs_inv;_} -> rs_nodes
+  | { rs_nodes; rs_extra; rs_fresh; rs_wdepth; rs_inv; rs_gendistinct;_} ->
+      rs_nodes
 let __proj__Mkrstate__item__rs_extra (projectee : rstate) : redge Prims.list=
   match projectee with
-  | { rs_nodes; rs_extra; rs_fresh; rs_wdepth; rs_inv;_} -> rs_extra
+  | { rs_nodes; rs_extra; rs_fresh; rs_wdepth; rs_inv; rs_gendistinct;_} ->
+      rs_extra
 let __proj__Mkrstate__item__rs_fresh (projectee : rstate) : Prims.nat=
   match projectee with
-  | { rs_nodes; rs_extra; rs_fresh; rs_wdepth; rs_inv;_} -> rs_fresh
+  | { rs_nodes; rs_extra; rs_fresh; rs_wdepth; rs_inv; rs_gendistinct;_} ->
+      rs_fresh
 let __proj__Mkrstate__item__rs_wdepth (projectee : rstate) :
   (RDF_Term.bnode_id * Prims.nat) Prims.list=
   match projectee with
-  | { rs_nodes; rs_extra; rs_fresh; rs_wdepth; rs_inv;_} -> rs_wdepth
+  | { rs_nodes; rs_extra; rs_fresh; rs_wdepth; rs_inv; rs_gendistinct;_} ->
+      rs_wdepth
 let __proj__Mkrstate__item__rs_inv (projectee : rstate) :
   (RDF_Term.wf_iri * RDF_Term.wf_iri) Prims.list=
   match projectee with
-  | { rs_nodes; rs_extra; rs_fresh; rs_wdepth; rs_inv;_} -> rs_inv
+  | { rs_nodes; rs_extra; rs_fresh; rs_wdepth; rs_inv; rs_gendistinct;_} ->
+      rs_inv
+let __proj__Mkrstate__item__rs_gendistinct (projectee : rstate) :
+  RDF_Term.rdf_term Prims.list Prims.list=
+  match projectee with
+  | { rs_nodes; rs_extra; rs_fresh; rs_wdepth; rs_inv; rs_gendistinct;_} ->
+      rs_gendistinct
 let rec collect_inverse_pairs (ts : RDF_Graph.rdf_graph) :
   (RDF_Term.wf_iri * RDF_Term.wf_iri) Prims.list=
   match ts with
@@ -307,7 +318,8 @@ let add_label (st : rstate) (i : RDF_Term.subject) (c : Tableau.class_expr) :
               rs_extra = (st.rs_extra);
               rs_fresh = (st.rs_fresh);
               rs_wdepth = (st.rs_wdepth);
-              rs_inv = (st.rs_inv)
+              rs_inv = (st.rs_inv);
+              rs_gendistinct = (st.rs_gendistinct)
             }, ch))
 let rec add_labels_all (st : rstate) (i : RDF_Term.subject)
   (cs : Tableau.class_expr Prims.list) : (rstate * Prims.bool)=
@@ -416,16 +428,29 @@ let add_countable_edge (g : RDF_Graph.rdf_graph) (st : rstate)
          (st.rs_extra));
        rs_fresh = (st.rs_fresh);
        rs_wdepth = (st.rs_wdepth);
-       rs_inv = (st.rs_inv)
+       rs_inv = (st.rs_inv);
+       rs_gendistinct = (st.rs_gendistinct)
      }, true)
 let comparable_datatype (d : RDF_Term.wf_iri) : Prims.bool=
   (((d = RDF_Term.xsd_integer) || (d = RDF_Term.xsd_decimal)) ||
      (d = xsd_string_dt))
     || (d = xsd_boolean_dt)
-let provably_distinct (g : RDF_Graph.rdf_graph) (a : RDF_Term.rdf_term)
+let group_says_distinct (grp : RDF_Term.rdf_term Prims.list)
+  (a : RDF_Term.rdf_term) (b : RDF_Term.rdf_term) : Prims.bool=
+  ((Prims.op_Negation (RDF_Term.rdf_term_eq a b)) &&
+     (FStar_List_Tot_Base.existsb (fun x -> RDF_Term.rdf_term_eq x a) grp))
+    && (FStar_List_Tot_Base.existsb (fun x -> RDF_Term.rdf_term_eq x b) grp)
+let rec gen_distinct (groups : RDF_Term.rdf_term Prims.list Prims.list)
+  (a : RDF_Term.rdf_term) (b : RDF_Term.rdf_term) : Prims.bool=
+  match groups with
+  | [] -> false
+  | grp::tl -> (group_says_distinct grp a b) || (gen_distinct tl a b)
+let provably_distinct (g : RDF_Graph.rdf_graph)
+  (gd : RDF_Term.rdf_term Prims.list Prims.list) (a : RDF_Term.rdf_term)
   (b : RDF_Term.rdf_term) : Prims.bool=
-  ((OWL_Closure.differentFrom_in_graph g a b) ||
-     (OWL_Closure.differentFrom_in_graph g b a))
+  (((OWL_Closure.differentFrom_in_graph g a b) ||
+      (OWL_Closure.differentFrom_in_graph g b a))
+     || (gen_distinct gd a b))
     ||
     (match (a, b) with
      | (RDF_Term.T_Literal l1, RDF_Term.T_Literal l2) ->
@@ -434,19 +459,22 @@ let provably_distinct (g : RDF_Graph.rdf_graph) (a : RDF_Term.rdf_term)
            && (Prims.op_Negation (OWL_Closure.datatype_value_eq l1 l2))
      | (uu___, uu___1) -> false)
 let rec filter_distinct_from (g : RDF_Graph.rdf_graph)
-  (h : RDF_Term.rdf_term) (ts : RDF_Term.rdf_term Prims.list) :
-  RDF_Term.rdf_term Prims.list=
+  (gd : RDF_Term.rdf_term Prims.list Prims.list) (h : RDF_Term.rdf_term)
+  (ts : RDF_Term.rdf_term Prims.list) : RDF_Term.rdf_term Prims.list=
   match ts with
   | [] -> []
   | t::tl ->
-      let rest = filter_distinct_from g h tl in
-      if provably_distinct g h t then t :: rest else rest
+      let rest = filter_distinct_from g gd h tl in
+      if provably_distinct g gd h t then t :: rest else rest
 let rec all_provably_distinct (g : RDF_Graph.rdf_graph)
-  (x : RDF_Term.rdf_term) (ms : RDF_Term.rdf_term Prims.list) : Prims.bool=
+  (gd : RDF_Term.rdf_term Prims.list Prims.list) (x : RDF_Term.rdf_term)
+  (ms : RDF_Term.rdf_term Prims.list) : Prims.bool=
   match ms with
   | [] -> true
-  | m::tl -> (provably_distinct g x m) && (all_provably_distinct g x tl)
+  | m::tl ->
+      (provably_distinct g gd x m) && (all_provably_distinct g gd x tl)
 let rec exists_distinct_subset (g : RDF_Graph.rdf_graph)
+  (gd : RDF_Term.rdf_term Prims.list Prims.list)
   (cands : RDF_Term.rdf_term Prims.list) (need : Prims.nat) : Prims.bool=
   if need = Prims.int_zero
   then true
@@ -454,9 +482,9 @@ let rec exists_distinct_subset (g : RDF_Graph.rdf_graph)
     (match cands with
      | [] -> false
      | h::tl ->
-         (exists_distinct_subset g (filter_distinct_from g h tl)
+         (exists_distinct_subset g gd (filter_distinct_from g gd h tl)
             (need - Prims.int_one))
-           || (exists_distinct_subset g tl need))
+           || (exists_distinct_subset g gd tl need))
 let exists_max_lt (k : Prims.nat) (p : RDF_Term.wf_iri)
   (ls : Tableau.class_expr Prims.list) : Prims.bool=
   FStar_List_Tot_Base.existsb
@@ -510,17 +538,20 @@ let clash_for_label (g : RDF_Graph.rdf_graph) (st : rstate)
                  k > (FStar_List_Tot_Base.length members)
              | uu___ -> false)))
   | Tableau.CE_OneOf members ->
-      all_provably_distinct g (RDF_Graph.subject_to_term i) members
+      all_provably_distinct g st.rs_gendistinct (RDF_Graph.subject_to_term i)
+        members
   | Tableau.CE_MaxCard (k, p) ->
       let succs = countable_successors g st i p in
       if k = Prims.int_zero
       then Prims.uu___is_Cons succs
-      else exists_distinct_subset g succs (k + Prims.int_one)
+      else
+        exists_distinct_subset g st.rs_gendistinct succs (k + Prims.int_one)
   | Tableau.CE_MaxQualCard (k, p, c) ->
       let succs = filter_in_filler st c (countable_successors g st i p) in
       if k = Prims.int_zero
       then Prims.uu___is_Cons succs
-      else exists_distinct_subset g succs (k + Prims.int_one)
+      else
+        exists_distinct_subset g st.rs_gendistinct succs (k + Prims.int_one)
   | uu___ -> false
 let rec clash_labels (g : RDF_Graph.rdf_graph) (st : rstate)
   (i : RDF_Term.subject) (ls_all : Tableau.class_expr Prims.list)
@@ -631,7 +662,9 @@ let edge_entails_membership (g : RDF_Graph.rdf_graph) (st : rstate)
       else
         if k = Prims.int_one
         then Prims.uu___is_Cons (countable_successors g st i p)
-        else exists_distinct_subset g (countable_successors g st i p) k
+        else
+          exists_distinct_subset g st.rs_gendistinct
+            (countable_successors g st i p) k
   | Tableau.CE_SomeValuesFrom (p, c) ->
       (ce_definite c) &&
         (FStar_List_Tot_Base.existsb
@@ -650,7 +683,7 @@ let edge_entails_membership (g : RDF_Graph.rdf_graph) (st : rstate)
         (let cs = filter_in_filler st c (countable_successors g st i p) in
          if k = Prims.int_one
          then Prims.uu___is_Cons cs
-         else exists_distinct_subset g cs k)
+         else exists_distinct_subset g st.rs_gendistinct cs k)
   | uu___ -> false
 let rec apply_axioms_edges
   (tb : (Tableau.class_expr * Tableau.class_expr) Prims.list)
@@ -728,7 +761,8 @@ let ensure_witness (g : RDF_Graph.rdf_graph) (st : rstate)
             rs_extra = (edge :: (st.rs_extra));
             rs_fresh = (st.rs_fresh + Prims.int_one);
             rs_wdepth = ((w, (d + Prims.int_one)) :: (st.rs_wdepth));
-            rs_inv = (st.rs_inv)
+            rs_inv = (st.rs_inv);
+            rs_gendistinct = (st.rs_gendistinct)
           } in
         let uu___2 =
           match filler1 with
@@ -741,6 +775,57 @@ let ensure_existential (g : RDF_Graph.rdf_graph) (st : rstate)
   match c with
   | Tableau.CE_OneOf (a::[]) -> add_countable_edge g st i p a
   | uu___ -> ensure_witness g st i p (FStar_Pervasives_Native.Some c)
+let max_generated_witnesses : Prims.nat= (Prims.of_int (12))
+let rec mint_witness_group (base : Prims.nat) (n : Prims.nat) :
+  RDF_Term.bnode_id Prims.list=
+  if n = Prims.int_zero
+  then []
+  else (witness_id ((base + n) - Prims.int_one)) ::
+    (mint_witness_group base (n - Prims.int_one))
+let rec min_witness_parts (i : RDF_Term.subject) (p : RDF_Term.wf_iri)
+  (d : Prims.nat) (bids : RDF_Term.bnode_id Prims.list) :
+  (redge Prims.list * rnode Prims.list * (RDF_Term.bnode_id * Prims.nat)
+    Prims.list * RDF_Term.rdf_term Prims.list)=
+  match bids with
+  | [] -> ([], [], [], [])
+  | b::tl ->
+      let uu___ = min_witness_parts i p d tl in
+      (match uu___ with
+       | (es, ns, ds, ts) ->
+           let wt = RDF_Term.T_BNode b in
+           (({ re_s = i; re_p = p; re_o = wt; re_count = true } :: es),
+             ({ rn_id = (RDF_Term.S_BNode b); rn_labels = [] } :: ns),
+             ((b, (d + Prims.int_one)) :: ds), (wt :: ts)))
+let ensure_min_witnesses (g : RDF_Graph.rdf_graph) (st : rstate)
+  (i : RDF_Term.subject) (p : RDF_Term.wf_iri) (k : Prims.nat) :
+  (rstate * Prims.bool)=
+  if k < (Prims.of_int (2))
+  then ensure_witness g st i p FStar_Pervasives_Native.None
+  else
+    (let kk =
+       if k > max_generated_witnesses then max_generated_witnesses else k in
+     let succs = all_successors g st i p in
+     if exists_distinct_subset g st.rs_gendistinct succs kk
+     then (st, false)
+     else
+       (let d = witness_depth_of st.rs_wdepth i in
+        if d >= max_witness_depth
+        then (st, false)
+        else
+          (let bids = mint_witness_group st.rs_fresh kk in
+           let uu___3 = min_witness_parts i p d bids in
+           match uu___3 with
+           | (es, ns, ds, ts) ->
+               let st1 =
+                 {
+                   rs_nodes = (FStar_List_Tot_Base.op_At st.rs_nodes ns);
+                   rs_extra = (FStar_List_Tot_Base.op_At es st.rs_extra);
+                   rs_fresh = (st.rs_fresh + kk);
+                   rs_wdepth = (FStar_List_Tot_Base.op_At ds st.rs_wdepth);
+                   rs_inv = (st.rs_inv);
+                   rs_gendistinct = (ts :: (st.rs_gendistinct))
+                 } in
+               (st1, true))))
 let apply_label_rules (g : RDF_Graph.rdf_graph) (st : rstate)
   (i : RDF_Term.subject) (l : Tableau.class_expr) : (rstate * Prims.bool)=
   match l with
@@ -764,7 +849,7 @@ let apply_label_rules (g : RDF_Graph.rdf_graph) (st : rstate)
       else (st, false)
   | Tableau.CE_MinCard (k, p) ->
       if (k >= Prims.int_one) && (Prims.op_Negation (is_bottom_prop p))
-      then ensure_witness g st i p FStar_Pervasives_Native.None
+      then ensure_min_witnesses g st i p k
       else (st, false)
   | uu___ -> (st, false)
 let step_label (tb : (Tableau.class_expr * Tableau.class_expr) Prims.list)
@@ -1031,7 +1116,8 @@ let init_state (g : RDF_Graph.rdf_graph) : rstate=
       rs_extra = [];
       rs_fresh = Prims.int_zero;
       rs_wdepth = [];
-      rs_inv = (collect_inverse_pairs g)
+      rs_inv = (collect_inverse_pairs g);
+      rs_gendistinct = []
     }
 let tableau_consistent (g : RDF_Graph.rdf_graph) (fuel : Prims.nat) :
   Prims.bool FStar_Pervasives_Native.option=

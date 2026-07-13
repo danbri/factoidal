@@ -340,6 +340,20 @@ noeq type rstate = {
      without re-deriving what the closure-level owl_rule_inverse_of
      already handles for author-asserted triples in `g`. *)
   rs_inv : list (wf_iri & wf_iri);
+  (* Groups of terms that are PAIRWISE PROVABLY DISTINCT by tableau
+     construction (#209 spy-point increment): each group is the set of
+     fresh witnesses minted by ONE firing of the >= k R "generating
+     rule" (k >= 2, see `ensure_min_witnesses`). Direct Semantics
+     interprets ObjectMinCardinality(k, R) as "at least k PAIRWISE
+     DISTINCT R-successors exist" — a model-necessary fact, not a
+     tableau guess — so representing them as mutually-distinct fresh
+     individuals and propagating further consequences from them is
+     sound regardless of whether the "real" witnesses coincide with
+     other named individuals (every axiom that holds universally over
+     the domain, e.g. an owl:Thing-anchored one, holds of them too,
+     however they are named). Consulted by `provably_distinct`
+     alongside owl:differentFrom and literal-value inequality. *)
+  rs_gendistinct : list (list rdf_term);
 }
 
 (* -------------------------------------------------------------------
@@ -559,16 +573,38 @@ let add_countable_edge (g : rdf_graph) (st : rstate) (i : subject)
        under datatype_value_eq (which normalises integer/decimal
        lexical forms). Two lexically-distinct values of one datatype's
        value space denote distinct elements — Direct Semantics maps a
-       literal to its value.
+       literal to its value; or
+     - both terms appear together in one `rs_gendistinct` group — the
+       tableau's own >= k R "generating rule" minted them as mutually
+       distinct (see the rs_gendistinct field banner and
+       `ensure_min_witnesses` below for the soundness argument).
    Everything else (distinct IRIs without differentFrom under no-UNA,
-   cross-datatype literals, bnodes) is NOT provably distinct.          *)
+   cross-datatype literals, unrelated bnodes) is NOT provably distinct. *)
 
 let comparable_datatype (d : wf_iri) : bool =
   d = xsd_integer || d = xsd_decimal || d = xsd_string_dt || d = xsd_boolean_dt
 
-let provably_distinct (g : rdf_graph) (a : rdf_term) (b : rdf_term) : bool =
+(* Do `a` and `b` (distinct terms) both occur in one generated-distinct
+   group? Groups are produced only by `ensure_min_witnesses`, one per
+   >= k R firing, each holding k pairwise-distinct fresh witnesses —
+   so co-membership alone (no cross-group reasoning) is the correct,
+   sound test. *)
+let group_says_distinct (grp : list rdf_term) (a : rdf_term) (b : rdf_term) : bool =
+  not (rdf_term_eq a b)
+  && List.Tot.existsb (fun x -> rdf_term_eq x a) grp
+  && List.Tot.existsb (fun x -> rdf_term_eq x b) grp
+
+let rec gen_distinct (groups : list (list rdf_term)) (a : rdf_term) (b : rdf_term)
+  : Tot bool (decreases groups) =
+  match groups with
+  | [] -> false
+  | grp :: tl -> group_says_distinct grp a b || gen_distinct tl a b
+
+let provably_distinct (g : rdf_graph) (gd : list (list rdf_term))
+                      (a : rdf_term) (b : rdf_term) : bool =
   differentFrom_in_graph g a b
   || differentFrom_in_graph g b a
+  || gen_distinct gd a b
   || (match a, b with
       | T_Literal l1, T_Literal l2 ->
         l1.datatype = l2.datatype
@@ -578,40 +614,43 @@ let provably_distinct (g : rdf_graph) (a : rdf_term) (b : rdf_term) : bool =
 
 (* Keep only candidates provably distinct from h, with a length bound
    so the subset search below has a decreasing measure. *)
-let rec filter_distinct_from (g : rdf_graph) (h : rdf_term) (ts : list rdf_term)
+let rec filter_distinct_from (g : rdf_graph) (gd : list (list rdf_term))
+                             (h : rdf_term) (ts : list rdf_term)
   : Tot (r : list rdf_term { List.Tot.length r <= List.Tot.length ts })
     (decreases ts) =
   match ts with
   | [] -> []
   | t :: tl ->
-    let rest = filter_distinct_from g h tl in
-    if provably_distinct g h t then t :: rest else rest
+    let rest = filter_distinct_from g gd h tl in
+    if provably_distinct g gd h t then t :: rest else rest
 
 (* Is `x` provably distinct from EVERY term in `ms`? Vacuously true for
    `ms = []` — being asserted a member of an EMPTY nominal (owl:oneOf
    with no elements, semantically owl:Nothing) is itself a clash, and
    this fold correctly reports that case as "distinct from all
    (zero) members" without a separate empty-list special case. *)
-let rec all_provably_distinct (g : rdf_graph) (x : rdf_term) (ms : list rdf_term)
+let rec all_provably_distinct (g : rdf_graph) (gd : list (list rdf_term))
+                              (x : rdf_term) (ms : list rdf_term)
   : Tot bool (decreases ms) =
   match ms with
   | [] -> true
-  | m :: tl -> provably_distinct g x m && all_provably_distinct g x tl
+  | m :: tl -> provably_distinct g gd x m && all_provably_distinct g gd x tl
 
 (* Does `cands` contain `need` PAIRWISE provably-distinct members?
    Sound: a pairwise provably-distinct set of size k+1 denotes k+1
    distinct elements in every model, violating <= k. Exhaustive
    branch-on-first-element search; candidate lists are successor sets
    of a single individual in W3C test data (tiny). *)
-let rec exists_distinct_subset (g : rdf_graph) (cands : list rdf_term) (need : nat)
+let rec exists_distinct_subset (g : rdf_graph) (gd : list (list rdf_term))
+                               (cands : list rdf_term) (need : nat)
   : Tot bool (decreases (List.Tot.length cands)) =
   if need = 0 then true
   else
     match cands with
     | [] -> false
     | h :: tl ->
-      (exists_distinct_subset g (filter_distinct_from g h tl) (need - 1))
-      || exists_distinct_subset g tl need
+      (exists_distinct_subset g gd (filter_distinct_from g gd h tl) (need - 1))
+      || exists_distinct_subset g gd tl need
 
 (* -------------------------------------------------------------------
    6. Clash detection.
@@ -707,15 +746,15 @@ let clash_for_label (g : rdf_graph) (st : rstate) (i : subject)
        i — clash. Sound, no cardinality reasoning needed; kept from the
        first Wave-A probe (#209) even though it fires on zero corpus
        tests by itself — it is free and still correct. *)
-    all_provably_distinct g (subject_to_term i) members
+    all_provably_distinct g st.rs_gendistinct (subject_to_term i) members
   | CE_MaxCard k p ->
     let succs = countable_successors g st i p in
     if k = 0 then Cons? succs
-    else exists_distinct_subset g succs (k + 1)
+    else exists_distinct_subset g st.rs_gendistinct succs (k + 1)
   | CE_MaxQualCard k p c ->
     let succs = filter_in_filler st c (countable_successors g st i p) in
     if k = 0 then Cons? succs
-    else exists_distinct_subset g succs (k + 1)
+    else exists_distinct_subset g st.rs_gendistinct succs (k + 1)
   | _ -> false
 
 let rec clash_labels (g : rdf_graph) (st : rstate) (i : subject)
@@ -854,7 +893,7 @@ let edge_entails_membership (g : rdf_graph) (st : rstate) (i : subject)
   | CE_MinCard k p ->
     if k = 0 then false
     else if k = 1 then Cons? (countable_successors g st i p)
-    else exists_distinct_subset g (countable_successors g st i p) k
+    else exists_distinct_subset g st.rs_gendistinct (countable_successors g st i p) k
   | CE_SomeValuesFrom p c ->
     ce_definite c &&
     List.Tot.existsb
@@ -871,7 +910,7 @@ let edge_entails_membership (g : rdf_graph) (st : rstate) (i : subject)
     else
       let cs = filter_in_filler st c (countable_successors g st i p) in
       if k = 1 then Cons? cs
-      else exists_distinct_subset g cs k
+      else exists_distinct_subset g st.rs_gendistinct cs k
   | _ -> false
 
 (* Once per node per round: fire axioms whose LHS membership is proved
@@ -1003,6 +1042,88 @@ let ensure_existential (g : rdf_graph) (st : rstate) (i : subject) (p : wf_iri)
   | CE_OneOf [a] -> add_countable_edge g st i p a
   | _ -> ensure_witness g st i p (Some c)
 
+(* -------------------------------------------------------------------
+   8a. Multi-witness generation for unqualified min-cardinality k >= 2
+   (#209 spy-point increment — the standard SHIQ/SHOIN tableau
+   "generating rule" for >= n R, previously missing here: the k = 1
+   path above only ever ensures ONE successor exists, and marks it
+   non-countable / filler-less, so it never becomes a node other
+   axioms can unfold against).
+
+   Direct Semantics interprets ObjectMinCardinality(k, R) at x as
+   |{y : (x,y) in EXT(R)}| >= k — i.e. k PAIRWISE DISTINCT
+   R-successors are entailed to exist in EVERY model of the premises,
+   regardless of their identity. When fewer than k pairwise
+   provably-distinct R-successors are already known, minting k fresh
+   mutually-distinct witnesses, adding k countable R-edges to them,
+   AND registering them as full tableau nodes (unlike the k = 1 path)
+   is a sound representative choice: whichever domain elements
+   actually satisfy the k successors in a "real" model, every one of
+   them is subject to every axiom that holds universally over the
+   domain (e.g. an owl:Thing-anchored one) exactly as our fresh
+   representatives are — so any further consequence propagated from
+   the fresh witnesses is a genuine entailment, not a guess. This is
+   what closes the spy-point pattern (WebOnt-description-logic-035):
+   a maxCardinality bound on an inverse role, sitting on one "spy"
+   individual, is violated once >= n domain elements are shown to
+   exist via generating-rule witnesses that each acquire an edge to
+   the spy through an unrelated owl:Thing-anchored axiom.
+
+   Capped at `max_generated_witnesses` — for k beyond the cap we
+   deliberately under-generate (WITHHOLDING is always sound; corpus
+   cardinalities the spy-point pattern does not need, e.g. k = 601 in
+   WebOnt-description-logic-910, would otherwise blow the shared
+   per-test time budget for no soundness benefit — that test needs
+   functional-property equality-propagation reasoning this increment
+   does not attempt, see the module banner). Idempotent: once k
+   witnesses are minted and grouped in `rs_gendistinct`, the very
+   check this function opens with finds them on the next round (the
+   group makes `exists_distinct_subset` succeed), so no further
+   witnesses are minted for the same obligation. Guarded by the same
+   witness-depth cap as `ensure_witness`, for the same cyclic-TBox
+   termination reason. *)
+let max_generated_witnesses : nat = 12
+
+let rec mint_witness_group (base : nat) (n : nat)
+  : Tot (list bnode_id) (decreases n) =
+  if n = 0 then []
+  else witness_id (base + n - 1) :: mint_witness_group base (n - 1)
+
+let rec min_witness_parts (i : subject) (p : wf_iri) (d : nat) (bids : list bnode_id)
+  : Tot (list redge & list rnode & list (bnode_id & nat) & list rdf_term)
+    (decreases bids) =
+  match bids with
+  | [] -> ([], [], [], [])
+  | b :: tl ->
+    let (es, ns, ds, ts) = min_witness_parts i p d tl in
+    let wt = T_BNode b in
+    ({ re_s = i; re_p = p; re_o = wt; re_count = true } :: es,
+     { rn_id = S_BNode b; rn_labels = [] } :: ns,
+     (b, d + 1) :: ds,
+     wt :: ts)
+
+let ensure_min_witnesses (g : rdf_graph) (st : rstate) (i : subject) (p : wf_iri)
+                         (k : nat)
+  : rstate & bool =
+  if k < 2 then ensure_witness g st i p None
+  else
+    let kk = if k > max_generated_witnesses then max_generated_witnesses else k in
+    let succs = all_successors g st i p in
+    if exists_distinct_subset g st.rs_gendistinct succs kk then (st, false)
+    else
+      let d = witness_depth_of st.rs_wdepth i in
+      if d >= max_witness_depth then (st, false)  (* withhold — sound *)
+      else
+        let bids = mint_witness_group st.rs_fresh kk in
+        let (es, ns, ds, ts) = min_witness_parts i p d bids in
+        let st1 = { st with
+                    rs_extra = es @ st.rs_extra;
+                    rs_nodes = st.rs_nodes @ ns;
+                    rs_fresh = st.rs_fresh + kk;
+                    rs_wdepth = ds @ st.rs_wdepth;
+                    rs_gendistinct = ts :: st.rs_gendistinct } in
+        (st1, true)
+
 let apply_label_rules (g : rdf_graph) (st : rstate) (i : subject)
                       (l : class_expr)
   : rstate & bool =
@@ -1029,7 +1150,7 @@ let apply_label_rules (g : rdf_graph) (st : rstate) (i : subject)
     else (st, false)
   | CE_MinCard k p ->
     if k >= 1 && not (is_bottom_prop p)
-    then ensure_witness g st i p None
+    then ensure_min_witnesses g st i p k
     else (st, false)
   | _ -> (st, false)
 
@@ -1327,7 +1448,7 @@ let rec init_nodes_aux (gfull : rdf_graph) (ts : rdf_graph) (st : rstate)
 let init_state (g : rdf_graph) : rstate =
   init_nodes_aux g g
     { rs_nodes = []; rs_extra = []; rs_fresh = 0; rs_wdepth = [];
-      rs_inv = collect_inverse_pairs g }
+      rs_inv = collect_inverse_pairs g; rs_gendistinct = [] }
 
 (* tableau_consistent — the public satisfiability check.
 
