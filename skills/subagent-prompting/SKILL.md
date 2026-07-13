@@ -220,3 +220,16 @@ For tasks that must commit + push code, always use `isolation:
 - `session-economy` — when to fan out to a subagent at all and how to
   keep the parent session's context small; this skill is the prompt
   template, not the fan-out policy.
+
+## The extract-without-compile stall (cost three cycles, 2026-07-13)
+
+Agents that run `./build-ocaml.sh extract` (or whose last background
+build was extract-only) and then measure with `bin/<platform>/*`
+measure a STALE binary — extract regenerates `.ml` but does not relink.
+Three separate overnight agents hit this on one night. Brief inclusion
+for any agent that builds then measures: "if your last build step was
+`extract`, run `./build-ocaml.sh compile` before measuring; verify
+`stat -c '%y' bin/linux-x86_64/factoidal` is NEWER than your last
+source edit." The orchestrator-side tell: BUILD_STATUS=OK from an
+extract log + a binary mtime older than the newest `.ml`.
+
