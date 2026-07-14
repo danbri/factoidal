@@ -1292,28 +1292,33 @@ let edge_entails_membership (g : RDF_Graph.rdf_graph) (st : rstate)
          then Prims.uu___is_Cons cs
          else exists_distinct_subset g st.rs_gendistinct cs k)
   | uu___ -> false
-let rec apply_axioms_edges
+let rec apply_axioms_edges_ls
   (tb : (Tableau.class_expr * Tableau.class_expr) Prims.list)
-  (g : RDF_Graph.rdf_graph) (st : rstate) (i : RDF_Term.subject) :
-  (rstate * Prims.bool)=
+  (g : RDF_Graph.rdf_graph) (st : rstate) (i : RDF_Term.subject)
+  (ls_i : Tableau.class_expr Prims.list) : (rstate * Prims.bool)=
   match tb with
   | [] -> (st, false)
   | (a, d)::tl ->
-      let uu___ =
-        if
-          (Prims.op_Negation (mem_ce_syn a (labels_of st i))) &&
-            (edge_entails_membership g st i a)
-        then
-          let uu___1 = add_label st i a in
-          match uu___1 with
-          | (sta, ca) ->
-              let uu___2 = add_label sta i d in
-              (match uu___2 with | (stb, cb) -> (stb, (ca || cb)))
-        else (st, false) in
-      (match uu___ with
-       | (st1, c1) ->
-           let uu___1 = apply_axioms_edges tl g st1 i in
-           (match uu___1 with | (st2, c2) -> (st2, (c1 || c2))))
+      if
+        (Prims.op_Negation (mem_ce_syn a ls_i)) &&
+          (edge_entails_membership g st i a)
+      then
+        let uu___ = add_label st i a in
+        (match uu___ with
+         | (sta, ca) ->
+             let uu___1 = add_label sta i d in
+             (match uu___1 with
+              | (stb, cb) ->
+                  let uu___2 =
+                    apply_axioms_edges_ls tl g stb i (labels_of stb i) in
+                  (match uu___2 with | (st2, c2) -> (st2, ((ca || cb) || c2)))))
+      else
+        (let uu___1 = apply_axioms_edges_ls tl g st i ls_i in
+         match uu___1 with | (st2, c2) -> (st2, c2))
+let apply_axioms_edges
+  (tb : (Tableau.class_expr * Tableau.class_expr) Prims.list)
+  (g : RDF_Graph.rdf_graph) (st : rstate) (i : RDF_Term.subject) :
+  (rstate * Prims.bool)= apply_axioms_edges_ls tb g st i (labels_of st i)
 let rec forall_prop (st : rstate) (c : Tableau.class_expr)
   (succs : RDF_Term.rdf_term Prims.list) : (rstate * Prims.bool)=
   match succs with
@@ -1597,6 +1602,143 @@ let rec find_union_nodes (ns : rnode Prims.list) :
        | FStar_Pervasives_Native.Some cs ->
            FStar_Pervasives_Native.Some ((n.rn_id), cs)
        | FStar_Pervasives_Native.None -> find_union_nodes tl)
+let label_conflicts_with (ls : Tableau.class_expr Prims.list)
+  (c : Tableau.class_expr) : Prims.bool=
+  (match c with
+   | Tableau.CE_Named x -> x = RDFS_Closure.owl_Nothing
+   | Tableau.CE_ComplementOf cc ->
+       (mem_ce cc ls) ||
+         ((match cc with
+           | Tableau.CE_Named x -> x = RDFS_Closure.owl_Thing
+           | uu___ -> false))
+   | uu___ -> false) || (mem_ce (Tableau.CE_ComplementOf c) ls)
+let rec axiom_rhs_conflicts
+  (tb : (Tableau.class_expr * Tableau.class_expr) Prims.list)
+  (ls : Tableau.class_expr Prims.list) (d : Tableau.class_expr) : Prims.bool=
+  match tb with
+  | [] -> false
+  | (a, rhs)::tl ->
+      ((ce_eq a d) && (label_conflicts_with ls rhs)) ||
+        (axiom_rhs_conflicts tl ls d)
+let disjunct_would_clash
+  (tb : (Tableau.class_expr * Tableau.class_expr) Prims.list)
+  (ls : Tableau.class_expr Prims.list) (d : Tableau.class_expr) : Prims.bool=
+  (label_conflicts_with ls d) || (axiom_rhs_conflicts tb ls d)
+let rec surviving_disjuncts
+  (tb : (Tableau.class_expr * Tableau.class_expr) Prims.list)
+  (ls : Tableau.class_expr Prims.list) (cs : Tableau.class_expr Prims.list) :
+  Tableau.class_expr Prims.list=
+  match cs with
+  | [] -> []
+  | d::tl ->
+      let rest = surviving_disjuncts tb ls tl in
+      if disjunct_would_clash tb ls d then rest else d :: rest
+type union_scan_verdict =
+  | UScanEmpty 
+  | UScanForced of (RDF_Term.subject * Tableau.class_expr) Prims.list 
+  | UScanBranch of RDF_Term.subject * Tableau.class_expr Prims.list 
+  | UScanNone 
+let uu___is_UScanEmpty (projectee : union_scan_verdict) : Prims.bool=
+  match projectee with | UScanEmpty -> true | uu___ -> false
+let uu___is_UScanForced (projectee : union_scan_verdict) : Prims.bool=
+  match projectee with | UScanForced _0 -> true | uu___ -> false
+let __proj__UScanForced__item___0 (projectee : union_scan_verdict) :
+  (RDF_Term.subject * Tableau.class_expr) Prims.list=
+  match projectee with | UScanForced _0 -> _0
+let uu___is_UScanBranch (projectee : union_scan_verdict) : Prims.bool=
+  match projectee with | UScanBranch (_0, _1) -> true | uu___ -> false
+let __proj__UScanBranch__item___0 (projectee : union_scan_verdict) :
+  RDF_Term.subject= match projectee with | UScanBranch (_0, _1) -> _0
+let __proj__UScanBranch__item___1 (projectee : union_scan_verdict) :
+  Tableau.class_expr Prims.list=
+  match projectee with | UScanBranch (_0, _1) -> _1
+let uu___is_UScanNone (projectee : union_scan_verdict) : Prims.bool=
+  match projectee with | UScanNone -> true | uu___ -> false
+let combine_branch_pick
+  (a :
+    (RDF_Term.subject * Tableau.class_expr Prims.list)
+      FStar_Pervasives_Native.option)
+  (b :
+    (RDF_Term.subject * Tableau.class_expr Prims.list)
+      FStar_Pervasives_Native.option)
+  :
+  (RDF_Term.subject * Tableau.class_expr Prims.list)
+    FStar_Pervasives_Native.option=
+  match (a, b) with
+  | (FStar_Pervasives_Native.Some (uu___, sa), FStar_Pervasives_Native.Some
+     (uu___1, sb)) ->
+      if (FStar_List_Tot_Base.length sb) < (FStar_List_Tot_Base.length sa)
+      then b
+      else a
+  | (FStar_Pervasives_Native.None, uu___) -> b
+  | (uu___, FStar_Pervasives_Native.None) -> a
+let rec find_union_labels_scan
+  (tb : (Tableau.class_expr * Tableau.class_expr) Prims.list)
+  (i : RDF_Term.subject) (ls_all : Tableau.class_expr Prims.list)
+  (ls_iter : Tableau.class_expr Prims.list) :
+  ((RDF_Term.subject * Tableau.class_expr) Prims.list * (RDF_Term.subject *
+    Tableau.class_expr Prims.list) FStar_Pervasives_Native.option)
+    FStar_Pervasives_Native.option=
+  match ls_iter with
+  | [] -> FStar_Pervasives_Native.Some ([], FStar_Pervasives_Native.None)
+  | l::tl ->
+      (match branchable_union ls_all l with
+       | FStar_Pervasives_Native.None ->
+           find_union_labels_scan tb i ls_all tl
+       | FStar_Pervasives_Native.Some cs ->
+           (match surviving_disjuncts tb ls_all cs with
+            | [] -> FStar_Pervasives_Native.None
+            | survivors ->
+                (match find_union_labels_scan tb i ls_all tl with
+                 | FStar_Pervasives_Native.None ->
+                     FStar_Pervasives_Native.None
+                 | FStar_Pervasives_Native.Some (forced, pick) ->
+                     (match survivors with
+                      | d::[] ->
+                          FStar_Pervasives_Native.Some
+                            (((i, d) :: forced), pick)
+                      | uu___ ->
+                          FStar_Pervasives_Native.Some
+                            (forced,
+                              (combine_branch_pick
+                                 (FStar_Pervasives_Native.Some (i, survivors))
+                                 pick))))))
+let rec find_union_nodes_scan_aux
+  (tb : (Tableau.class_expr * Tableau.class_expr) Prims.list)
+  (ns : rnode Prims.list) :
+  ((RDF_Term.subject * Tableau.class_expr) Prims.list * (RDF_Term.subject *
+    Tableau.class_expr Prims.list) FStar_Pervasives_Native.option)
+    FStar_Pervasives_Native.option=
+  match ns with
+  | [] -> FStar_Pervasives_Native.Some ([], FStar_Pervasives_Native.None)
+  | n::tl ->
+      (match find_union_labels_scan tb n.rn_id n.rn_labels n.rn_labels with
+       | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+       | FStar_Pervasives_Native.Some (forced_n, pick_n) ->
+           (match find_union_nodes_scan_aux tb tl with
+            | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+            | FStar_Pervasives_Native.Some (forced_tl, pick_tl) ->
+                FStar_Pervasives_Native.Some
+                  ((FStar_List_Tot_Base.op_At forced_n forced_tl),
+                    (combine_branch_pick pick_n pick_tl))))
+let find_union_nodes_scan
+  (tb : (Tableau.class_expr * Tableau.class_expr) Prims.list)
+  (ns : rnode Prims.list) : union_scan_verdict=
+  match find_union_nodes_scan_aux tb ns with
+  | FStar_Pervasives_Native.None -> UScanEmpty
+  | FStar_Pervasives_Native.Some ([], FStar_Pervasives_Native.None) ->
+      UScanNone
+  | FStar_Pervasives_Native.Some
+      ([], FStar_Pervasives_Native.Some (i, survivors)) ->
+      UScanBranch (i, survivors)
+  | FStar_Pervasives_Native.Some (forced, uu___) -> UScanForced forced
+let rec add_forced_labels (st : rstate)
+  (ps : (RDF_Term.subject * Tableau.class_expr) Prims.list) : rstate=
+  match ps with
+  | [] -> st
+  | (i, d)::tl ->
+      let uu___ = add_label st i d in
+      (match uu___ with | (st1, uu___1) -> add_forced_labels st1 tl)
 let rec check (tb : (Tableau.class_expr * Tableau.class_expr) Prims.list)
   (g : RDF_Graph.rdf_graph) (st : rstate) (b : Prims.nat) :
   (tri * Prims.nat)=
@@ -1614,11 +1756,17 @@ let rec check (tb : (Tableau.class_expr * Tableau.class_expr) Prims.list)
              let uu___3 = check tb g st' (b - Prims.int_one) in
              (match uu___3 with | (r, b') -> (r, b'))
            else
-             (match find_union_nodes st'.rs_nodes with
-              | FStar_Pervasives_Native.Some (i, ds) ->
-                  let uu___4 = branch tb g i ds st' (b - Prims.int_one) in
+             (match find_union_nodes_scan tb st'.rs_nodes with
+              | UScanEmpty -> (TClash, (b - Prims.int_one))
+              | UScanForced forced ->
+                  let st'' = add_forced_labels st' forced in
+                  let uu___4 = check tb g st'' (b - Prims.int_one) in
                   (match uu___4 with | (r, b') -> (r, b'))
-              | FStar_Pervasives_Native.None ->
+              | UScanBranch (i, survivors) ->
+                  let uu___4 =
+                    branch tb g i survivors st' (b - Prims.int_one) in
+                  (match uu___4 with | (r, b') -> (r, b'))
+              | UScanNone ->
                   (match find_merge_nodes g st' st'.rs_nodes with
                    | FStar_Pervasives_Native.Some prs ->
                        let uu___4 =

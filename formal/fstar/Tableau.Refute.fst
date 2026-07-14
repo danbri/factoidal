@@ -1972,23 +1972,36 @@ let edge_entails_membership (g : rdf_graph) (st : rstate) (i : subject)
 
 (* Once per node per round: fire axioms whose LHS membership is proved
    by the node's asserted edges. Adds the LHS too (so label-level clash
-   rules like min/max see it), then the RHS. *)
-let rec apply_axioms_edges (tb : list (class_expr & class_expr)) (g : rdf_graph)
-                           (st : rstate) (i : subject)
+   rules like min/max see it), then the RHS.
+
+   PERF (owl2-dpll wave): the node's label read is HOISTED — `ls_i`
+   carries `labels_of st i` down the axiom recursion and is re-fetched
+   ONLY when an axiom actually fired (the sole way `st`'s labels
+   change here). The old per-axiom `labels_of st i` recomputation was
+   measured (callgrind, dl-504) at ~75% of the whole refutation wall:
+   |tb| full `rs_nodes` scans per node per round, each O(nodes) of
+   long-IRI `subject_eq` compares. Same reads, same results — pure
+   call-elimination. *)
+let rec apply_axioms_edges_ls (tb : list (class_expr & class_expr)) (g : rdf_graph)
+                              (st : rstate) (i : subject) (ls_i : list class_expr)
   : Tot (rstate & bool) (decreases tb) =
   match tb with
   | [] -> (st, false)
   | (a, d) :: tl ->
-    let (st1, c1) =
-      if not (mem_ce_syn a (labels_of st i)) && edge_entails_membership g st i a
-      then
-        let (sta, ca) = add_label st i a in
-        let (stb, cb) = add_label sta i d in
-        (stb, ca || cb)
-      else (st, false)
-    in
-    let (st2, c2) = apply_axioms_edges tl g st1 i in
-    (st2, c1 || c2)
+    if not (mem_ce_syn a ls_i) && edge_entails_membership g st i a
+    then
+      let (sta, ca) = add_label st i a in
+      let (stb, cb) = add_label sta i d in
+      let (st2, c2) = apply_axioms_edges_ls tl g stb i (labels_of stb i) in
+      (st2, ca || cb || c2)
+    else
+      let (st2, c2) = apply_axioms_edges_ls tl g st i ls_i in
+      (st2, c2)
+
+let apply_axioms_edges (tb : list (class_expr & class_expr)) (g : rdf_graph)
+                       (st : rstate) (i : subject)
+  : rstate & bool =
+  apply_axioms_edges_ls tb g st i (labels_of st i)
 
 (* ∀-propagation: x ∈ ∀P.C and (x,y) ∈ P imply y ∈ C — for asserted
    edges, hasValue edges AND witness edges (the witness stands for a
@@ -2396,6 +2409,252 @@ let rec find_union_nodes (ns : list rnode)
      | Some cs -> Some (n.rn_id, cs)
      | None -> find_union_nodes tl)
 
+(* -------------------------------------------------------------------
+   8b. DPLL-style union-branching heuristics (owl2-dpll wave).
+
+   PROBLEM this closes: `branch` below is refutation-complete but pays
+   for every union label with a full nondeterministic case split, even
+   when the OTHER disjuncts are already provably impossible given the
+   node's current label set. A pure propositional-SAT encoding inside
+   OWL (WebOnt-description-logic-504/502: nine disjoint boolean pairs
+   plus_k/minus_k, ~90 three-literal `rdfs:subClassOf (plus_a OR
+   plus_b OR minus_c)` clauses on ONE individual) turns this into a
+   90-clause 3-SAT refutation. Branching in declaration order with NO
+   propagation and NO clash-first pruning exhausts the fuel budget
+   rediscovering the same pigeonhole contradiction combinatorially
+   instead of converging the way DPLL does.
+
+   TWO techniques below, both provably sound extensions of the
+   EXISTING clash machinery — no new clash rule is added; the probe
+   restates the C1/C2 arms of `clash_for_label` (section 6) and the
+   axiom-match of `apply_axioms` (section 8) as PURE predicates over
+   one node's label list, each arm carrying the same soundness
+   argument as its stateful original:
+
+   (1) UNIT PROPAGATION (`disjunct_would_clash` / `surviving_disjuncts`
+       / `find_union_nodes_scan`): before branching on a union, probe
+       EVERY disjunct with a cheap, budget-INDEPENDENT trial — would
+       this disjunct C1/C2-clash against the node's current labels,
+       either directly or through one axiom-unfold level? This is
+       exactly what the first recursive `check` call on that branch
+       would itself discover; computing it as a pure predicate spends
+       neither an OR-branch nor budget on an alternative that was
+       always going to close. (The probe deliberately never copies an
+       rstate or walks the graph — an earlier draft that ran real
+       `pass` rounds per probe was sound but two orders of magnitude
+       too slow, blowing the per-test wall cap it was meant to save.)
+
+       WHY label-local suffices as an ORACLE: `check` only consults
+       the scan at quiescence, immediately after `has_clash` reported
+       the WHOLE state clash-free, and the trial adds one label to
+       node `i` — so `i`'s label set is where a new C1/C2 clash
+       appears. Effects the probe cannot see (edge-counting clashes,
+       cross-node filler counts, datatype facets) are deliberately not
+       probed — the probe saying `false` only means "not proven to
+       clash", which costs propagation power, never soundness; the
+       real `branch` still explores such a disjunct and the real
+       `has_clash` still catches the clash there.
+
+       WHY one unfold level suffices for the target family:
+       disjointWith compiles to BOTH contrapositive axiom pairs
+       ((a, negb) AND (b, nega) — section 7), so by quiescence a
+       DECIDED literal has already materialised the complement of
+       every class it excludes ON THE NODE; probing the excluded
+       disjunct then clashes IMMEDIATELY via C2, zero unfolds needed.
+       The single unfold level additionally catches one-way
+       `d subClassOf b` chains whose `b`-complement is already
+       present. Deeper chains are simply not proven — conservative.
+
+       If EVERY disjunct of some entailed union fails the probe, the
+       union constraint itself is unsatisfiable given the branch's
+       current commitments: TClash, with no `branch` call at all
+       (mirrors `branch`'s own `[] -> (TClash, b)` base case — this
+       just reaches the same verdict without paying disjunct by
+       disjunct for it).
+
+       If exactly ONE disjunct survives, classical disjunctive
+       syllogism applies: x is entailed to be in C1 ⊔ ... ⊔ Cn (every
+       label in this module is an entailed membership — see the `pass`
+       invariant note above), and every Ci except the survivor is now
+       PROVEN impossible along this branch, so the survivor is itself
+       entailed. It is added as a plain deterministic label — no
+       OR-branch, no budget spent on the disqualified alternatives —
+       and `check` loops from the top, so a whole chain of forced
+       literals collapses to a fixpoint (`find_union_nodes_scan`
+       re-scans fresh every round, and each round BATCHES every unit
+       it finds — see `union_scan_verdict`) before any real branch is
+       taken — the DPLL "propagate to a fixpoint before deciding"
+       discipline.
+
+   (2) CLASH-FIRST PRUNING + FEWEST-SURVIVORS-FIRST (folded into the
+       same scan): when a union still has 2+ surviving disjuncts, any
+       disjunct the SAME probe already proved impossible is DROPPED
+       from the list `branch` receives. `branch`'s AND-semantics
+       ("TClash only if EVERY disjunct's branch closes") is unaffected
+       by removing a disjunct independently proven to close, so this
+       only shrinks the branching factor — it can never change the
+       verdict. Live disjuncts keep their original relative order.
+       Among still-multi-way unions the scan then picks the one with
+       the FEWEST survivors (ties: first in node/label order — the
+       old `find_union_nodes` discipline) — the classic most-
+       constrained-first decision heuristic; branch-target selection
+       was always an arbitrary deterministic choice here, so
+       re-ordering it is trivially sound.
+
+   PRIORITY: a 0-survivor union ANYWHERE refutes the path outright
+   (short-circuits the scan); otherwise ALL 1-survivor unions found in
+   the sweep propagate as one batch; only when nothing anywhere is
+   forced does the search branch, on the fewest-survivor branchable
+   union's PRUNED list. *)
+
+(* Would label `c`, added to a node whose current label set is `ls`,
+   produce an IMMEDIATE C1/C2 clash? Exactly the ⊥ / complement cases
+   of `clash_for_label` (section 6), restated over a bare label list
+   so the probe never copies an rstate: c = owl:Nothing (C1); c = ¬cc
+   with cc present, or cc = owl:Thing (C2 — same two arms as
+   `clash_for_label`'s `CE_ComplementOf` case); or ¬c itself present
+   (C2 seen from the stored complement's side — `clash_for_label`
+   detects this pair when ITERATING the stored ¬c, `mem_ce c ls_all`;
+   here the probe iterates the trial `c`, so the mirror-image lookup
+   is the one that fires). Every arm is a genuine model-theoretic
+   contradiction per section 6's C1/C2 soundness arguments. *)
+let label_conflicts_with (ls : list class_expr) (c : class_expr) : bool =
+  (match c with
+   | CE_Named x -> x = owl_Nothing
+   | CE_ComplementOf cc ->
+     mem_ce cc ls
+     || (match cc with CE_Named x -> x = owl_Thing | _ -> false)
+   | _ -> false)
+  || mem_ce (CE_ComplementOf c) ls
+
+(* One axiom-unfold level: some (a, rhs) with a = d (ce_eq — the same
+   match `apply_axioms` fires on) whose entailed rhs conflicts with
+   `ls`. d entails rhs on this node (section 7 axiom soundness), so a
+   conflict is a genuine clash of the branch that commits to d. *)
+let rec axiom_rhs_conflicts (tb : list (class_expr & class_expr))
+                            (ls : list class_expr) (d : class_expr)
+  : Tot bool (decreases tb) =
+  match tb with
+  | [] -> false
+  | (a, rhs) :: tl ->
+    (ce_eq a d && label_conflicts_with ls rhs)
+    || axiom_rhs_conflicts tl ls d
+
+(* Does hypothetically committing to disjunct `d` on a node with label
+   set `ls` produce a C1/C2 clash, either immediately or after one
+   axiom-unfold level? `true` is a genuine, already-sound clash
+   derivation (both helpers above) — not an approximation of
+   SOUNDNESS, only of completeness (`false` only means "not yet known
+   to clash", never "safe"). A pure predicate over the label list: no
+   rstate copy, no graph walk — this is what keeps a full scan (every
+   disjunct of every open union, every quiescent point) cheap enough
+   to run inside the per-test wall-clock cap. See the section 8b
+   banner for why label-local + one unfold is the right oracle
+   strength. *)
+let disjunct_would_clash (tb : list (class_expr & class_expr))
+                         (ls : list class_expr) (d : class_expr) : bool =
+  label_conflicts_with ls d || axiom_rhs_conflicts tb ls d
+
+(* Disjuncts of `cs` that survive the probe, order preserved. *)
+let rec surviving_disjuncts (tb : list (class_expr & class_expr))
+                            (ls : list class_expr) (cs : list class_expr)
+  : Tot (list class_expr) (decreases cs) =
+  match cs with
+  | [] -> []
+  | d :: tl ->
+    let rest = surviving_disjuncts tb ls tl in
+    if disjunct_would_clash tb ls d then rest else d :: rest
+
+(* Scan verdict for one quiescent state. Batched: ALL forced unions
+   found in one sweep propagate together — a unit's justification is
+   evaluated against the CURRENT (pre-batch) label sets, and each unit
+   is individually entailed given them, so adding several entailed
+   labels in one step is exactly as sound as adding one and re-scanning
+   (entailment is monotone under adding entailed labels); batching just
+   amortises the full deterministic `pass` cascade that follows over
+   the whole batch instead of paying it per unit — the difference
+   between converging inside the per-test wall cap and not. *)
+noeq type union_scan_verdict =
+  | UScanEmpty  : union_scan_verdict
+    (* some entailed union has ZERO surviving disjuncts *)
+  | UScanForced : list (subject & class_expr) -> union_scan_verdict
+    (* every (node, lone-survivor) pair found — nonempty *)
+  | UScanBranch : subject -> list class_expr -> union_scan_verdict
+    (* fewest-survivor multi-way union, pruned *)
+  | UScanNone   : union_scan_verdict
+
+(* Prefer the FEWEST survivors among multi-way candidates
+   (most-constrained-first); ties keep the EARLIER candidate — the
+   "first in node/label order" contract `find_union_nodes` always had.
+   `a` is always the earlier candidate at every call site below.
+   Branch-target selection was always an arbitrary deterministic
+   choice, so re-ordering it is trivially sound. *)
+let combine_branch_pick (a b : option (subject & list class_expr))
+  : option (subject & list class_expr) =
+  match a, b with
+  | Some (_, sa), Some (_, sb) ->
+    if List.Tot.length sb < List.Tot.length sa then b else a
+  | None, _ -> b
+  | _, None -> a
+
+(* One node's labels: collect EVERY branchable union's outcome.
+   UScanEmpty short-circuits (the whole search path is refuted — no
+   point scanning further); forced pairs accumulate; the fewest-
+   survivor multi-way candidate is remembered. *)
+let rec find_union_labels_scan (tb : list (class_expr & class_expr)) (i : subject)
+                               (ls_all : list class_expr) (ls_iter : list class_expr)
+  : Tot (option (list (subject & class_expr) & option (subject & list class_expr)))
+    (decreases ls_iter) =
+  match ls_iter with
+  | [] -> Some ([], None)
+  | l :: tl ->
+    (match branchable_union ls_all l with
+     | None -> find_union_labels_scan tb i ls_all tl
+     | Some cs ->
+       (match surviving_disjuncts tb ls_all cs with
+        | [] -> None  (* encodes UScanEmpty *)
+        | survivors ->
+          (match find_union_labels_scan tb i ls_all tl with
+           | None -> None
+           | Some (forced, pick) ->
+             (match survivors with
+              | [d] -> Some ((i, d) :: forced, pick)
+              | _ -> Some (forced, combine_branch_pick (Some (i, survivors)) pick)))))
+
+let rec find_union_nodes_scan_aux (tb : list (class_expr & class_expr)) (ns : list rnode)
+  : Tot (option (list (subject & class_expr) & option (subject & list class_expr)))
+    (decreases ns) =
+  match ns with
+  | [] -> Some ([], None)
+  | n :: tl ->
+    (match find_union_labels_scan tb n.rn_id n.rn_labels n.rn_labels with
+     | None -> None
+     | Some (forced_n, pick_n) ->
+       (match find_union_nodes_scan_aux tb tl with
+        | None -> None
+        | Some (forced_tl, pick_tl) ->
+          Some (forced_n @ forced_tl, combine_branch_pick pick_n pick_tl)))
+
+let find_union_nodes_scan (tb : list (class_expr & class_expr)) (ns : list rnode)
+  : union_scan_verdict =
+  match find_union_nodes_scan_aux tb ns with
+  | None -> UScanEmpty
+  | Some ([], None) -> UScanNone
+  | Some ([], Some (i, survivors)) -> UScanBranch i survivors
+  | Some (forced, _) -> UScanForced forced
+
+(* Batch-apply the forced units. Each `d` was entailed at the state the
+   scan ran on (all sibling disjuncts provably clash there — section 8b
+   banner); adding labels never retracts entailments, so every later
+   unit in the batch is still entailed when its turn comes. *)
+let rec add_forced_labels (st : rstate) (ps : list (subject & class_expr))
+  : Tot rstate (decreases ps) =
+  match ps with
+  | [] -> st
+  | (i, d) :: tl ->
+    let (st1, _) = add_label st i d in
+    add_forced_labels st1 tl
+
 (* check/branch: the budget is THREADED — every recursive entry
    consumes at least one unit and returns the remainder, so total work
    across the whole search tree is linear in the initial budget.
@@ -2419,10 +2678,30 @@ let rec check (tb : list (class_expr & class_expr)) (g : rdf_graph)
     if changed then
       let (r, b') = check tb g st' (b - 1) in (r, b')
     else
-      (match find_union_nodes st'.rs_nodes with
-       | Some (i, ds) ->
-         let (r, b') = branch tb g i ds st' (b - 1) in (r, b')
-       | None ->
+      (match find_union_nodes_scan tb st'.rs_nodes with
+       | UScanEmpty ->
+         (* every disjunct of some entailed union provably clashes
+            under the probe: the union constraint itself is
+            unsatisfiable along this branch — section 8b technique
+            (1), the "0 survivors" case. Same verdict `branch` would
+            reach after exhausting every disjunct, reached without
+            paying for the recursion. *)
+         (TClash, b - 1)
+       | UScanForced forced ->
+         (* unit propagation (section 8b technique (1)): each lone
+            survivor is entailed by disjunctive syllogism now that
+            every sibling disjunct is proven impossible — add the
+            whole batch deterministically and loop; no OR-branch
+            spent. *)
+         let st'' = add_forced_labels st' forced in
+         let (r, b') = check tb g st'' (b - 1) in (r, b')
+       | UScanBranch i survivors ->
+         (* clash-first pruning + fewest-survivors-first (section 8b
+            technique (2)): `survivors` already dropped every disjunct
+            the probe proved impossible — branch only over what is
+            genuinely still live, on the most constrained union. *)
+         let (r, b') = branch tb g i survivors st' (b - 1) in (r, b')
+       | UScanNone ->
          (* ≤-rule (owl2-le-rule wave): only consulted once union
             branching has nothing left to offer — see the section 6a
             banner for the soundness argument and why trying every
