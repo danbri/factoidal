@@ -2,7 +2,7 @@
   "spec": "https://w3c.github.io/vc-di-eddsa-test-suite/",
   "suite": "vc-di-eddsa (eddsa-rdfc-2022 create + verify)",
   "runner": "tests/vc-di-eddsa/run.sh",
-  "retrieved_at": "2026-07-14T08:24:39Z",
+  "retrieved_at": "2026-07-14T09:27:56Z",
   "pass": 31,
   "fail": 0,
   "skip": 0,

@@ -398,8 +398,8 @@
 <header>
   <div class="inner">
     <div class="rendered-pill" title="Rendered = when this page was last regenerated. Tests = when the *_results.log files inside the repository were last updated. Both UTC.">
-      <span class="row"><span class="label">Rendered</span><strong>2026-07-14 08:42 UTC</strong></span>
-      <span class="row"><span class="label">Tests</span><strong class="tests">2026-07-10 19:37 UTC</strong></span>
+      <span class="row"><span class="label">Rendered</span><strong>2026-07-14 09:10 UTC</strong></span>
+      <span class="row"><span class="label">Tests</span><strong class="tests">2026-07-14 08:44 UTC</strong></span>
     </div>
     <h1>W3C test results</h1>
     <p>Pass/fail/skip counts against every standards suite this project measures: RDF 1.1, SPARQL 1.1, RDFS/OWL 2, SHACL, ShEx, RIF Core, RML, CSVW, JSON-LD 1.1, Verifiable Credentials 2.0, XSLT 1.0, XML 1.0, MathML 3, ISO Schematron, JSON Schema, QUDT, DID — plus HDT backend parity and the browser/npm bundle suites.</p>
@@ -1257,10 +1257,10 @@
         </div>
       </details>
       <details class="suite-node amber">
-        <summary><span class="suite-name">VC Data Model 2.0 — issuer/verifier HTTP suite (via shim)</span><span class="suite-numbers">51/8/0 of 59</span><span class="dot amber"></span></summary>
+        <summary><span class="suite-name">VC Data Model 2.0 — issuer/verifier HTTP suite (via shim)</span><span class="suite-numbers">56/3/0 of 59</span><span class="dot amber"></span></summary>
         <div class="suite-body">
-          <div class="meter"><div class="seg seg-pass" style="width:86.44%"></div><div class="seg seg-fail" style="width:13.56%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
-          <p class="suite-numbers-full">51 pass, 8 fail, 0 skip (out of 59)</p>
+          <div class="meter"><div class="seg seg-pass" style="width:94.92%"></div><div class="seg seg-fail" style="width:5.08%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+          <p class="suite-numbers-full">56 pass, 3 fail, 0 skip (out of 59)</p>
           <p class="suite-prov">Runner: <code>tests/vc20-api/run.sh</code> &middot; Suite: <code>third_party/testing/vc/tests/{1.03-conformance,4.03-contexts,...,7-algorithms}.js</code> (14 files) against <code>bin/vc-api-shim/server.mjs</code></p>
           <p class="suite-diag">Single dominant cause for nearly all 37 failures: the shim has no VC Data Model 2.0 structural validator of its own (it only implements Data Integrity signing/verifying) — almost every failure is a missing-rejection-of-malformed-input test (bad <code>credentialStatus</code>/<code>refreshService</code>/<code>credentialSchema</code>/<code>termsOfUse</code>/<code>evidence</code> shape, <code>validUntil</code> before <code>validFrom</code>, missing <code>type</code>/<code>@context</code>, malformed Verifiable Presentation). Full breakdown: <code>docs/test-results/by-suite/vc20-api.json</code>. <a href="https://github.com/danbri/factoidal/blob/claude/main/.github/test-suites/vc20-api.yaml" target="_blank" rel="noopener">suite manifest</a></p>
         </div>
@@ -1985,9 +1985,9 @@ vc-stage1:    117 pass, 0 fail, 0 skip (of 117) — present=1</pre>
 </main>
 
 <footer>
-  Generated <strong>2026-07-14 08:42 UTC</strong> from commit
-  <code><a href="https://github.com/danbri/factoidal/commit/a30f96f1e49883ec04be0ba001d8558eb6a28d7f">a30f96f1</a></code>
-  on branch <code>claude/main</code> — &ldquo;vc: eddsa proof sets/chains + previousProof + DATA_LOSS strict-mode (Track A1)&rdquo;.
+  Generated <strong>2026-07-14 09:10 UTC</strong> from commit
+  <code><a href="https://github.com/danbri/factoidal/commit/4fc459e6c6cd18ee598ee5d8524b640a9b836b55">4fc459e6</a></code>
+  on branch <code>claude/main</code> — &ldquo;Merge owl2-wave-b-facets: datatype facet satisfiability in the DL tableau (type-inconsistency 76 pass, 52 fail of 128; +6 named flips, soundness gate held)&rdquo;.
   Re-run locally: <code>cd formal/fstar &amp;&amp; ./generate-report.sh --run</code>.
 </footer>
 
