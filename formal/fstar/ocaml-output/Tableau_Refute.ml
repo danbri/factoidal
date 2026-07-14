@@ -9,6 +9,10 @@ let owl_inverseOf : RDF_Term.wf_iri=
   "http://www.w3.org/2002/07/owl#inverseOf"
 let owl_distinctMembers : RDF_Term.wf_iri=
   "http://www.w3.org/2002/07/owl#distinctMembers"
+let owl_FunctionalProperty : RDF_Term.wf_iri=
+  "http://www.w3.org/2002/07/owl#FunctionalProperty"
+let owl_TransitiveProperty : RDF_Term.wf_iri=
+  "http://www.w3.org/2002/07/owl#TransitiveProperty"
 let xsd_string_dt : RDF_Term.wf_iri=
   "http://www.w3.org/2001/XMLSchema#string"
 let xsd_boolean_dt : RDF_Term.wf_iri=
@@ -229,34 +233,52 @@ type rstate =
   rs_fresh: Prims.nat ;
   rs_wdepth: (RDF_Term.bnode_id * Prims.nat) Prims.list ;
   rs_inv: (RDF_Term.wf_iri * RDF_Term.wf_iri) Prims.list ;
-  rs_gendistinct: RDF_Term.rdf_term Prims.list Prims.list }
+  rs_gendistinct: RDF_Term.rdf_term Prims.list Prims.list ;
+  rs_subprop: (RDF_Term.wf_iri * RDF_Term.wf_iri) Prims.list ;
+  rs_transprops: RDF_Term.wf_iri Prims.list ;
+  rs_funcprops: RDF_Term.wf_iri Prims.list }
 let __proj__Mkrstate__item__rs_nodes (projectee : rstate) : rnode Prims.list=
   match projectee with
-  | { rs_nodes; rs_extra; rs_fresh; rs_wdepth; rs_inv; rs_gendistinct;_} ->
-      rs_nodes
+  | { rs_nodes; rs_extra; rs_fresh; rs_wdepth; rs_inv; rs_gendistinct;
+      rs_subprop; rs_transprops; rs_funcprops;_} -> rs_nodes
 let __proj__Mkrstate__item__rs_extra (projectee : rstate) : redge Prims.list=
   match projectee with
-  | { rs_nodes; rs_extra; rs_fresh; rs_wdepth; rs_inv; rs_gendistinct;_} ->
-      rs_extra
+  | { rs_nodes; rs_extra; rs_fresh; rs_wdepth; rs_inv; rs_gendistinct;
+      rs_subprop; rs_transprops; rs_funcprops;_} -> rs_extra
 let __proj__Mkrstate__item__rs_fresh (projectee : rstate) : Prims.nat=
   match projectee with
-  | { rs_nodes; rs_extra; rs_fresh; rs_wdepth; rs_inv; rs_gendistinct;_} ->
-      rs_fresh
+  | { rs_nodes; rs_extra; rs_fresh; rs_wdepth; rs_inv; rs_gendistinct;
+      rs_subprop; rs_transprops; rs_funcprops;_} -> rs_fresh
 let __proj__Mkrstate__item__rs_wdepth (projectee : rstate) :
   (RDF_Term.bnode_id * Prims.nat) Prims.list=
   match projectee with
-  | { rs_nodes; rs_extra; rs_fresh; rs_wdepth; rs_inv; rs_gendistinct;_} ->
-      rs_wdepth
+  | { rs_nodes; rs_extra; rs_fresh; rs_wdepth; rs_inv; rs_gendistinct;
+      rs_subprop; rs_transprops; rs_funcprops;_} -> rs_wdepth
 let __proj__Mkrstate__item__rs_inv (projectee : rstate) :
   (RDF_Term.wf_iri * RDF_Term.wf_iri) Prims.list=
   match projectee with
-  | { rs_nodes; rs_extra; rs_fresh; rs_wdepth; rs_inv; rs_gendistinct;_} ->
-      rs_inv
+  | { rs_nodes; rs_extra; rs_fresh; rs_wdepth; rs_inv; rs_gendistinct;
+      rs_subprop; rs_transprops; rs_funcprops;_} -> rs_inv
 let __proj__Mkrstate__item__rs_gendistinct (projectee : rstate) :
   RDF_Term.rdf_term Prims.list Prims.list=
   match projectee with
-  | { rs_nodes; rs_extra; rs_fresh; rs_wdepth; rs_inv; rs_gendistinct;_} ->
-      rs_gendistinct
+  | { rs_nodes; rs_extra; rs_fresh; rs_wdepth; rs_inv; rs_gendistinct;
+      rs_subprop; rs_transprops; rs_funcprops;_} -> rs_gendistinct
+let __proj__Mkrstate__item__rs_subprop (projectee : rstate) :
+  (RDF_Term.wf_iri * RDF_Term.wf_iri) Prims.list=
+  match projectee with
+  | { rs_nodes; rs_extra; rs_fresh; rs_wdepth; rs_inv; rs_gendistinct;
+      rs_subprop; rs_transprops; rs_funcprops;_} -> rs_subprop
+let __proj__Mkrstate__item__rs_transprops (projectee : rstate) :
+  RDF_Term.wf_iri Prims.list=
+  match projectee with
+  | { rs_nodes; rs_extra; rs_fresh; rs_wdepth; rs_inv; rs_gendistinct;
+      rs_subprop; rs_transprops; rs_funcprops;_} -> rs_transprops
+let __proj__Mkrstate__item__rs_funcprops (projectee : rstate) :
+  RDF_Term.wf_iri Prims.list=
+  match projectee with
+  | { rs_nodes; rs_extra; rs_fresh; rs_wdepth; rs_inv; rs_gendistinct;
+      rs_subprop; rs_transprops; rs_funcprops;_} -> rs_funcprops
 let rec collect_inverse_pairs (ts : RDF_Graph.rdf_graph) :
   (RDF_Term.wf_iri * RDF_Term.wf_iri) Prims.list=
   match ts with
@@ -276,6 +298,106 @@ let rec inverses_of (pairs : (RDF_Term.wf_iri * RDF_Term.wf_iri) Prims.list)
   | (a, b)::tl ->
       let rest = inverses_of tl p in
       if a = p then b :: rest else if b = p then a :: rest else rest
+let rec collect_subprop_pairs (ts : RDF_Graph.rdf_graph) :
+  (RDF_Term.wf_iri * RDF_Term.wf_iri) Prims.list=
+  match ts with
+  | [] -> []
+  | t::tl ->
+      let rest = collect_subprop_pairs tl in
+      if t.RDF_Triple.p = RDFS_Closure.rdfs_subPropertyOf
+      then
+        (match ((t.RDF_Triple.s), (t.RDF_Triple.o)) with
+         | (RDF_Term.S_IRI p, RDF_Term.T_IRI q) -> (p, q) :: rest
+         | uu___ -> rest)
+      else rest
+let rec collect_transitive_props (ts : RDF_Graph.rdf_graph) :
+  RDF_Term.wf_iri Prims.list=
+  match ts with
+  | [] -> []
+  | t::tl ->
+      let rest = collect_transitive_props tl in
+      if
+        (t.RDF_Triple.p = RDFS_Closure.rdf_type) &&
+          (RDF_Term.rdf_term_eq t.RDF_Triple.o
+             (RDF_Term.T_IRI owl_TransitiveProperty))
+      then
+        (match t.RDF_Triple.s with
+         | RDF_Term.S_IRI p -> p :: rest
+         | uu___ -> rest)
+      else rest
+let rec collect_functional_props (ts : RDF_Graph.rdf_graph) :
+  RDF_Term.wf_iri Prims.list=
+  match ts with
+  | [] -> []
+  | t::tl ->
+      let rest = collect_functional_props tl in
+      if
+        (t.RDF_Triple.p = RDFS_Closure.rdf_type) &&
+          (RDF_Term.rdf_term_eq t.RDF_Triple.o
+             (RDF_Term.T_IRI owl_FunctionalProperty))
+      then
+        (match t.RDF_Triple.s with
+         | RDF_Term.S_IRI p -> p :: rest
+         | uu___ -> rest)
+      else rest
+let rec mem_iri (x : RDF_Term.wf_iri) (xs : RDF_Term.wf_iri Prims.list) :
+  Prims.bool=
+  match xs with | [] -> false | h::tl -> (h = x) || (mem_iri x tl)
+let rec direct_subprops_of
+  (pairs : (RDF_Term.wf_iri * RDF_Term.wf_iri) Prims.list)
+  (q : RDF_Term.wf_iri) : RDF_Term.wf_iri Prims.list=
+  match pairs with
+  | [] -> []
+  | (p, r)::tl ->
+      let rest = direct_subprops_of tl q in if r = q then p :: rest else rest
+let rec direct_superprops_of
+  (pairs : (RDF_Term.wf_iri * RDF_Term.wf_iri) Prims.list)
+  (p : RDF_Term.wf_iri) : RDF_Term.wf_iri Prims.list=
+  match pairs with
+  | [] -> []
+  | (s, q)::tl ->
+      let rest = direct_superprops_of tl p in
+      if s = p then q :: rest else rest
+let rec filter_new_iris (visited : RDF_Term.wf_iri Prims.list)
+  (cands : RDF_Term.wf_iri Prims.list) : RDF_Term.wf_iri Prims.list=
+  match cands with
+  | [] -> []
+  | c::tl ->
+      let rest = filter_new_iris visited tl in
+      if mem_iri c visited then rest else c :: rest
+let rec collect_step (step : RDF_Term.wf_iri -> RDF_Term.wf_iri Prims.list)
+  (qs : RDF_Term.wf_iri Prims.list) : RDF_Term.wf_iri Prims.list=
+  match qs with
+  | [] -> []
+  | q::tl -> FStar_List_Tot_Base.op_At (step q) (collect_step step tl)
+let rec role_bfs (step : RDF_Term.wf_iri -> RDF_Term.wf_iri Prims.list)
+  (frontier : RDF_Term.wf_iri Prims.list)
+  (visited : RDF_Term.wf_iri Prims.list) (fuel : Prims.nat) :
+  RDF_Term.wf_iri Prims.list=
+  if fuel = Prims.int_zero
+  then visited
+  else
+    (match frontier with
+     | [] -> visited
+     | uu___1 ->
+         let candidates = collect_step step frontier in
+         let fresh = filter_new_iris visited candidates in
+         (match fresh with
+          | [] -> visited
+          | uu___2 ->
+              role_bfs step fresh (FStar_List_Tot_Base.op_At visited fresh)
+                (fuel - Prims.int_one)))
+let subproperties_of (pairs : (RDF_Term.wf_iri * RDF_Term.wf_iri) Prims.list)
+  (q : RDF_Term.wf_iri) : RDF_Term.wf_iri Prims.list=
+  let direct = direct_subprops_of pairs q in q ::
+    (role_bfs (direct_subprops_of pairs) direct direct
+       ((FStar_List_Tot_Base.length pairs) + Prims.int_one))
+let superproperties_of
+  (pairs : (RDF_Term.wf_iri * RDF_Term.wf_iri) Prims.list)
+  (p : RDF_Term.wf_iri) : RDF_Term.wf_iri Prims.list=
+  let direct = direct_superprops_of pairs p in p ::
+    (role_bfs (direct_superprops_of pairs) direct direct
+       ((FStar_List_Tot_Base.length pairs) + Prims.int_one))
 let max_witness_depth : Prims.nat= (Prims.of_int (3))
 let rec witness_depth_of (ds : (RDF_Term.bnode_id * Prims.nat) Prims.list)
   (i : RDF_Term.subject) : Prims.nat=
@@ -334,7 +456,10 @@ let add_label (st : rstate) (i : RDF_Term.subject) (c : Tableau.class_expr) :
               rs_fresh = (st.rs_fresh);
               rs_wdepth = (st.rs_wdepth);
               rs_inv = (st.rs_inv);
-              rs_gendistinct = (st.rs_gendistinct)
+              rs_gendistinct = (st.rs_gendistinct);
+              rs_subprop = (st.rs_subprop);
+              rs_transprops = (st.rs_transprops);
+              rs_funcprops = (st.rs_funcprops)
             }, ch))
 let rec add_labels_all (st : rstate) (i : RDF_Term.subject)
   (cs : Tableau.class_expr Prims.list) : (rstate * Prims.bool)=
@@ -397,26 +522,34 @@ let rec extra_reverse_objects_all (es : redge Prims.list)
       FStar_List_Tot_Base.op_At
         (extra_reverse_objects es i_term q count_only)
         (extra_reverse_objects_all es i_term tl count_only)
+let successors_via_single_role (g : RDF_Graph.rdf_graph) (st : rstate)
+  (i : RDF_Term.subject) (r : RDF_Term.wf_iri) (count_only : Prims.bool) :
+  RDF_Term.rdf_term Prims.list=
+  let invs = inverses_of st.rs_inv r in
+  FStar_List_Tot_Base.op_At (RDF_Graph_Executable.find_objects g i r)
+    (FStar_List_Tot_Base.op_At (extra_objects st.rs_extra i r count_only)
+       (FStar_List_Tot_Base.op_At (base_reverse_objects g i invs)
+          (extra_reverse_objects_all st.rs_extra
+             (RDF_Graph.subject_to_term i) invs count_only)))
+let rec successors_via_roles (g : RDF_Graph.rdf_graph) (st : rstate)
+  (i : RDF_Term.subject) (roles : RDF_Term.wf_iri Prims.list)
+  (count_only : Prims.bool) : RDF_Term.rdf_term Prims.list=
+  match roles with
+  | [] -> []
+  | r::tl ->
+      FStar_List_Tot_Base.op_At
+        (successors_via_single_role g st i r count_only)
+        (successors_via_roles g st i tl count_only)
 let countable_successors (g : RDF_Graph.rdf_graph) (st : rstate)
   (i : RDF_Term.subject) (p : RDF_Term.wf_iri) :
   RDF_Term.rdf_term Prims.list=
-  let invs = inverses_of st.rs_inv p in
   dedup_terms
-    (FStar_List_Tot_Base.op_At (RDF_Graph_Executable.find_objects g i p)
-       (FStar_List_Tot_Base.op_At (extra_objects st.rs_extra i p true)
-          (FStar_List_Tot_Base.op_At (base_reverse_objects g i invs)
-             (extra_reverse_objects_all st.rs_extra
-                (RDF_Graph.subject_to_term i) invs true))))
+    (successors_via_roles g st i (subproperties_of st.rs_subprop p) true)
 let all_successors (g : RDF_Graph.rdf_graph) (st : rstate)
   (i : RDF_Term.subject) (p : RDF_Term.wf_iri) :
   RDF_Term.rdf_term Prims.list=
-  let invs = inverses_of st.rs_inv p in
   dedup_terms
-    (FStar_List_Tot_Base.op_At (RDF_Graph_Executable.find_objects g i p)
-       (FStar_List_Tot_Base.op_At (extra_objects st.rs_extra i p false)
-          (FStar_List_Tot_Base.op_At (base_reverse_objects g i invs)
-             (extra_reverse_objects_all st.rs_extra
-                (RDF_Graph.subject_to_term i) invs false))))
+    (successors_via_roles g st i (subproperties_of st.rs_subprop p) false)
 let rec extra_edge_present (es : redge Prims.list) (i : RDF_Term.subject)
   (p : RDF_Term.wf_iri) (o : RDF_Term.rdf_term) : Prims.bool=
   match es with
@@ -444,7 +577,10 @@ let add_countable_edge (g : RDF_Graph.rdf_graph) (st : rstate)
        rs_fresh = (st.rs_fresh);
        rs_wdepth = (st.rs_wdepth);
        rs_inv = (st.rs_inv);
-       rs_gendistinct = (st.rs_gendistinct)
+       rs_gendistinct = (st.rs_gendistinct);
+       rs_subprop = (st.rs_subprop);
+       rs_transprops = (st.rs_transprops);
+       rs_funcprops = (st.rs_funcprops)
      }, true)
 let comparable_datatype (d : RDF_Term.wf_iri) : Prims.bool=
   (((d = RDF_Term.xsd_integer) || (d = RDF_Term.xsd_decimal)) ||
@@ -530,15 +666,18 @@ let rec fold_datatype_constraint (acc : XSD_Facets.value_set)
         fold_datatype_constraint XSD_Facets.VS_Unconstrained inner in
       XSD_Facets.value_set_subtract acc inner_vs
   | uu___ -> acc
-let rec universal_for_property (p : RDF_Term.wf_iri)
-  (ls : Tableau.class_expr Prims.list) (acc : XSD_Facets.value_set) :
-  XSD_Facets.value_set=
+let rec universal_for_property
+  (subprop_pairs : (RDF_Term.wf_iri * RDF_Term.wf_iri) Prims.list)
+  (p : RDF_Term.wf_iri) (ls : Tableau.class_expr Prims.list)
+  (acc : XSD_Facets.value_set) : XSD_Facets.value_set=
   match ls with
   | [] -> acc
   | (Tableau.CE_AllValuesFrom (q, d))::tl ->
-      universal_for_property p tl
-        (if q = p then fold_datatype_constraint acc d else acc)
-  | uu___::tl -> universal_for_property p tl acc
+      universal_for_property subprop_pairs p tl
+        (if mem_iri q (superproperties_of subprop_pairs p)
+         then fold_datatype_constraint acc d
+         else acc)
+  | uu___::tl -> universal_for_property subprop_pairs p tl acc
 let rec exists_unsatisfiable_witness (p : RDF_Term.wf_iri)
   (ls : Tableau.class_expr Prims.list) (universal : XSD_Facets.value_set) :
   Prims.bool=
@@ -565,9 +704,12 @@ let rec exists_unsatisfiable_witness (p : RDF_Term.wf_iri)
          | uu___ -> exists_unsatisfiable_witness p tl universal)
       else exists_unsatisfiable_witness p tl universal
   | uu___::tl -> exists_unsatisfiable_witness p tl universal
-let property_datatype_clash (p : RDF_Term.wf_iri)
-  (ls_all : Tableau.class_expr Prims.list) : Prims.bool=
-  let universal = universal_for_property p ls_all XSD_Facets.VS_Unconstrained in
+let property_datatype_clash
+  (subprop_pairs : (RDF_Term.wf_iri * RDF_Term.wf_iri) Prims.list)
+  (p : RDF_Term.wf_iri) (ls_all : Tableau.class_expr Prims.list) :
+  Prims.bool=
+  let universal =
+    universal_for_property subprop_pairs p ls_all XSD_Facets.VS_Unconstrained in
   exists_unsatisfiable_witness p ls_all universal
 let rec collect_dt_properties (ls : Tableau.class_expr Prims.list) :
   RDF_Term.wf_iri Prims.list=
@@ -579,16 +721,20 @@ let rec collect_dt_properties (ls : Tableau.class_expr Prims.list) :
       (collect_dt_properties tl)
   | (Tableau.CE_HasValue (p, uu___))::tl -> p :: (collect_dt_properties tl)
   | uu___::tl -> collect_dt_properties tl
-let rec any_property_datatype_clash (ps : RDF_Term.wf_iri Prims.list)
-  (ls_all : Tableau.class_expr Prims.list) : Prims.bool=
+let rec any_property_datatype_clash
+  (subprop_pairs : (RDF_Term.wf_iri * RDF_Term.wf_iri) Prims.list)
+  (ps : RDF_Term.wf_iri Prims.list) (ls_all : Tableau.class_expr Prims.list)
+  : Prims.bool=
   match ps with
   | [] -> false
   | p::tl ->
-      (property_datatype_clash p ls_all) ||
-        (any_property_datatype_clash tl ls_all)
-let datatype_range_clash (ls_all : Tableau.class_expr Prims.list) :
-  Prims.bool=
-  any_property_datatype_clash (collect_dt_properties ls_all) ls_all
+      (property_datatype_clash subprop_pairs p ls_all) ||
+        (any_property_datatype_clash subprop_pairs tl ls_all)
+let datatype_range_clash
+  (subprop_pairs : (RDF_Term.wf_iri * RDF_Term.wf_iri) Prims.list)
+  (ls_all : Tableau.class_expr Prims.list) : Prims.bool=
+  any_property_datatype_clash subprop_pairs (collect_dt_properties ls_all)
+    ls_all
 let exists_max_lt (k : Prims.nat) (p : RDF_Term.wf_iri)
   (ls : Tableau.class_expr Prims.list) : Prims.bool=
   FStar_List_Tot_Base.existsb
@@ -670,7 +816,7 @@ let rec clash_nodes (g : RDF_Graph.rdf_graph) (st : rstate)
   | [] -> false
   | n::tl ->
       ((clash_labels g st n.rn_id n.rn_labels n.rn_labels) ||
-         (datatype_range_clash n.rn_labels))
+         (datatype_range_clash st.rs_subprop n.rn_labels))
         || (clash_nodes g st tl)
 let has_clash (g : RDF_Graph.rdf_graph) (st : rstate) : Prims.bool=
   clash_nodes g st st.rs_nodes
@@ -867,7 +1013,10 @@ let ensure_witness (g : RDF_Graph.rdf_graph) (st : rstate)
             rs_fresh = (st.rs_fresh + Prims.int_one);
             rs_wdepth = ((w, (d + Prims.int_one)) :: (st.rs_wdepth));
             rs_inv = (st.rs_inv);
-            rs_gendistinct = (st.rs_gendistinct)
+            rs_gendistinct = (st.rs_gendistinct);
+            rs_subprop = (st.rs_subprop);
+            rs_transprops = (st.rs_transprops);
+            rs_funcprops = (st.rs_funcprops)
           } in
         let uu___2 =
           match filler1 with
@@ -928,9 +1077,32 @@ let ensure_min_witnesses (g : RDF_Graph.rdf_graph) (st : rstate)
                    rs_fresh = (st.rs_fresh + kk);
                    rs_wdepth = (FStar_List_Tot_Base.op_At ds st.rs_wdepth);
                    rs_inv = (st.rs_inv);
-                   rs_gendistinct = (ts :: (st.rs_gendistinct))
+                   rs_gendistinct = (ts :: (st.rs_gendistinct));
+                   rs_subprop = (st.rs_subprop);
+                   rs_transprops = (st.rs_transprops);
+                   rs_funcprops = (st.rs_funcprops)
                  } in
                (st1, true))))
+let role_is_transitive (st : rstate) (r : RDF_Term.wf_iri) : Prims.bool=
+  (mem_iri r st.rs_transprops) ||
+    (FStar_List_Tot_Base.existsb (fun q -> mem_iri q st.rs_transprops)
+       (inverses_of st.rs_inv r))
+let rec push_transitive_foralls (g : RDF_Graph.rdf_graph) (st : rstate)
+  (i : RDF_Term.subject) (c : Tableau.class_expr)
+  (roles : RDF_Term.wf_iri Prims.list) : (rstate * Prims.bool)=
+  match roles with
+  | [] -> (st, false)
+  | r::tl ->
+      let uu___ =
+        if role_is_transitive st r
+        then
+          forall_prop st (Tableau.CE_AllValuesFrom (r, c))
+            (all_successors g st i r)
+        else (st, false) in
+      (match uu___ with
+       | (st1, c1) ->
+           let uu___1 = push_transitive_foralls g st1 i c tl in
+           (match uu___1 with | (st2, c2) -> (st2, (c1 || c2))))
 let apply_label_rules (g : RDF_Graph.rdf_graph) (st : rstate)
   (i : RDF_Term.subject) (l : Tableau.class_expr) : (rstate * Prims.bool)=
   match l with
@@ -940,11 +1112,17 @@ let apply_label_rules (g : RDF_Graph.rdf_graph) (st : rstate)
       let uu___ = forall_prop st c succs in
       (match uu___ with
        | (st1, c1) ->
-           if p = owl_topObjectProperty
-           then
-             let uu___1 = add_label st1 i c in
-             (match uu___1 with | (st2, c2) -> (st2, (c1 || c2)))
-           else (st1, c1))
+           let uu___1 =
+             push_transitive_foralls g st1 i c
+               (subproperties_of st.rs_subprop p) in
+           (match uu___1 with
+            | (st1b, c1b) ->
+                if p = owl_topObjectProperty
+                then
+                  let uu___2 = add_label st1b i c in
+                  (match uu___2 with
+                   | (st2, c2) -> (st2, ((c1 || c1b) || c2)))
+                else (st1b, (c1 || c1b))))
   | Tableau.CE_HasValue (p, v) -> add_countable_edge g st i p v
   | Tableau.CE_SomeValuesFrom (p, c) ->
       if is_bottom_prop p then (st, false) else ensure_existential g st i p c
@@ -977,6 +1155,19 @@ let rec pass_labels
        | (st1, c1) ->
            let uu___1 = pass_labels tb g st1 i tl in
            (match uu___1 with | (st2, c2) -> (st2, (c1 || c2))))
+let rec inject_functional
+  (tb : (Tableau.class_expr * Tableau.class_expr) Prims.list)
+  (g : RDF_Graph.rdf_graph) (fps : RDF_Term.wf_iri Prims.list) (st : rstate)
+  (i : RDF_Term.subject) : (rstate * Prims.bool)=
+  match fps with
+  | [] -> (st, false)
+  | fp::tl ->
+      let uu___ =
+        step_label tb g st i (Tableau.CE_MaxCard (Prims.int_one, fp)) in
+      (match uu___ with
+       | (st1, c1) ->
+           let uu___1 = inject_functional tb g tl st1 i in
+           (match uu___1 with | (st2, c2) -> (st2, (c1 || c2))))
 let rec pass_nodes
   (tb : (Tableau.class_expr * Tableau.class_expr) Prims.list)
   (g : RDF_Graph.rdf_graph) (st : rstate) (ns : rnode Prims.list) :
@@ -988,15 +1179,19 @@ let rec pass_nodes
         step_label tb g st n.rn_id (Tableau.CE_Named RDFS_Closure.owl_Thing) in
       (match uu___ with
        | (st0, c0) ->
-           let uu___1 = pass_labels tb g st0 n.rn_id n.rn_labels in
+           let uu___1 = inject_functional tb g st.rs_funcprops st0 n.rn_id in
            (match uu___1 with
-            | (st1, c1) ->
-                let uu___2 = apply_axioms_edges tb g st1 n.rn_id in
+            | (st0f, c0f) ->
+                let uu___2 = pass_labels tb g st0f n.rn_id n.rn_labels in
                 (match uu___2 with
-                 | (st1b, c1b) ->
-                     let uu___3 = pass_nodes tb g st1b tl in
+                 | (st1, c1) ->
+                     let uu___3 = apply_axioms_edges tb g st1 n.rn_id in
                      (match uu___3 with
-                      | (st2, c2) -> (st2, (((c0 || c1) || c1b) || c2))))))
+                      | (st1b, c1b) ->
+                          let uu___4 = pass_nodes tb g st1b tl in
+                          (match uu___4 with
+                           | (st2, c2) ->
+                               (st2, ((((c0 || c0f) || c1) || c1b) || c2)))))))
 let pass (tb : (Tableau.class_expr * Tableau.class_expr) Prims.list)
   (g : RDF_Graph.rdf_graph) (st : rstate) : (rstate * Prims.bool)=
   pass_nodes tb g st st.rs_nodes
@@ -1222,7 +1417,10 @@ let init_state (g : RDF_Graph.rdf_graph) : rstate=
       rs_fresh = Prims.int_zero;
       rs_wdepth = [];
       rs_inv = (collect_inverse_pairs g);
-      rs_gendistinct = []
+      rs_gendistinct = [];
+      rs_subprop = (collect_subprop_pairs g);
+      rs_transprops = (collect_transitive_props g);
+      rs_funcprops = (collect_functional_props g)
     }
 let tableau_consistent (g : RDF_Graph.rdf_graph) (fuel : Prims.nat) :
   Prims.bool FStar_Pervasives_Native.option=

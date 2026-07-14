@@ -17,10 +17,28 @@ module Tableau.Refute
                      argument in its comment.
        Some true   = fully expanded with no clash. This is NOT a
                      completeness proof of consistency (the calculus is
-                     deliberately incomplete: nominals/oneOf, datatype
-                     facets, inverse roles, sameAs-merging cardinality
-                     are not implemented); callers must treat it the
-                     same as None for scoring "inconsistent".
+                     deliberately incomplete — see the role-box wave
+                     note below); callers must treat it the same as
+                     None for scoring "inconsistent".
+
+   ROLE BOX (Wave E-rolebox): rdfs:subPropertyOf (reflexive-transitive
+   closure over named roles, composed with Wave D's per-role inverse
+   lookup — see `subproperties_of` / `successors_via_roles`),
+   owl:FunctionalProperty (injected as a global `<= 1 P` label per
+   declared functional P — see `inject_functional`, reuses the
+   existing C3/C4 max-card clash machinery unchanged), and
+   owl:TransitiveProperty (the SHIQ ∀+ rule: for a ∀Q.C label, every
+   transitive R ⊑* Q re-pushes the WHOLE `∀R.C` label, not just `C`,
+   across each R-edge; transitivity is inverse-aware — Trans(R) iff
+   Trans(R⁻) — see `role_is_transitive` / `push_transitive_foralls`)
+   are implemented. NOT implemented: witness MERGING (the tableau
+   ≤-rule's "identify two witnesses" step — every rule above only
+   COUNTS or PROPAGATES over existing edges, never unifies two
+   individuals), double blocking (cyclic-TBox non-termination
+   avoidance beyond the flat max_witness_depth cut), inverse-lifted
+   subPropertyOf subsumptions (P ⊑ Q does not yet imply P⁻ ⊑ Q⁻ in
+   the role closure), nominal (oneOf) branching beyond the O-rule
+   clash test below, and sameAs-driven cardinality merging.
        None        = fuel/budget exhausted — indeterminate; callers
                      fall back to their existing behaviour (the OWL-RL
                      `is_inconsistent` marker check).
@@ -107,6 +125,19 @@ let owl_inverseOf : wf_iri =
 let owl_distinctMembers : wf_iri =
   assert_norm (is_iri "http://www.w3.org/2002/07/owl#distinctMembers");
   "http://www.w3.org/2002/07/owl#distinctMembers"
+
+(* owl:FunctionalProperty / owl:TransitiveProperty — role-box wave
+   (Wave E-rolebox). rdfs:subPropertyOf is NOT redeclared here: it is
+   already visible unqualified via RDF.Graph.Executable's `open
+   RDF.Vocabulary` (the same transitive-visibility path that already
+   makes `rdfs_subClassOf` usable in collect_axioms_aux below). *)
+let owl_FunctionalProperty : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2002/07/owl#FunctionalProperty");
+  "http://www.w3.org/2002/07/owl#FunctionalProperty"
+
+let owl_TransitiveProperty : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2002/07/owl#TransitiveProperty");
+  "http://www.w3.org/2002/07/owl#TransitiveProperty"
 
 let xsd_string_dt : wf_iri =
   assert_norm (is_iri "http://www.w3.org/2001/XMLSchema#string");
@@ -372,6 +403,31 @@ noeq type rstate = {
      however they are named). Consulted by `provably_distinct`
      alongside owl:differentFrom and literal-value inequality. *)
   rs_gendistinct : list (list rdf_term);
+  (* Declared rdfs:subPropertyOf pairs (P, Q) meaning "P rdfs:subPropertyOf
+     Q", collected ONCE at init_state time (schema-level, read-only —
+     same contract as rs_inv above). EXT(P) subset-of EXT(Q) in every
+     model, so a P-edge counts as a Q-edge everywhere a Q-successor is
+     consulted. See `subproperties_of` / `successors_via_roles` for how
+     this generalises `countable_successors` / `all_successors` (and,
+     composed with rs_inv, makes the closure ROLE-HIERARCHY aware for
+     tableau-internal edges the once-run RL closure never sees, exactly
+     as rs_inv already does for inverses). *)
+  rs_subprop : list (wf_iri & wf_iri);
+  (* Declared owl:TransitiveProperty IRIs, collected ONCE (schema-level,
+     read-only). Consulted by the `CE_AllValuesFrom` case of
+     `apply_label_rules` for the standard SHIQ S-rule: DIRECT
+     transitivity only (P itself declared transitive) — derived
+     transitivity of P's inverse is NOT computed (see the module
+     banner). *)
+  rs_transprops : list wf_iri;
+  (* Declared owl:FunctionalProperty IRIs, collected ONCE (schema-level,
+     read-only). `pass_nodes` injects `CE_MaxCard 1 P` onto every node
+     for every P here — see `inject_functional` — which folds
+     FunctionalProperty into the EXISTING C3/C4 max-card clash
+     machinery (`clash_for_label`'s `CE_MaxCard` case) unchanged: no
+     new merge logic, just a global "<= 1 P" constraint every node
+     already carries. *)
+  rs_funcprops : list wf_iri;
 }
 
 (* -------------------------------------------------------------------
@@ -409,6 +465,121 @@ let rec inverses_of (pairs : list (wf_iri & wf_iri)) (p : wf_iri)
     if a = p then b :: rest
     else if b = p then a :: rest
     else rest
+
+(* -------------------------------------------------------------------
+   3b. Role-hierarchy (rdfs:subPropertyOf), TransitiveProperty and
+   FunctionalProperty tables (Wave E-rolebox).
+
+   `collect_subprop_pairs` mirrors `collect_inverse_pairs` exactly:
+   schema-level, collected once from the FULL input graph. A pair
+   (P, Q) means "P rdfs:subPropertyOf Q" was asserted, i.e.
+   EXT(P) subset-of EXT(Q) in every model (rdfs7 / OWL 2 RL scm-sp
+   semantics). ------------------------------------------------------- *)
+
+let rec collect_subprop_pairs (ts : rdf_graph) : Tot (list (wf_iri & wf_iri)) (decreases ts) =
+  match ts with
+  | [] -> []
+  | t :: tl ->
+    let rest = collect_subprop_pairs tl in
+    if t.p = rdfs_subPropertyOf then
+      (match t.s, t.o with
+       | S_IRI p, T_IRI q -> (p, q) :: rest
+       | _ -> rest)
+    else rest
+
+let rec collect_transitive_props (ts : rdf_graph) : Tot (list wf_iri) (decreases ts) =
+  match ts with
+  | [] -> []
+  | t :: tl ->
+    let rest = collect_transitive_props tl in
+    if t.p = rdf_type && rdf_term_eq t.o (T_IRI owl_TransitiveProperty)
+    then (match t.s with S_IRI p -> p :: rest | _ -> rest)
+    else rest
+
+let rec collect_functional_props (ts : rdf_graph) : Tot (list wf_iri) (decreases ts) =
+  match ts with
+  | [] -> []
+  | t :: tl ->
+    let rest = collect_functional_props tl in
+    if t.p = rdf_type && rdf_term_eq t.o (T_IRI owl_FunctionalProperty)
+    then (match t.s with S_IRI p -> p :: rest | _ -> rest)
+    else rest
+
+let rec mem_iri (x : wf_iri) (xs : list wf_iri) : Tot bool (decreases xs) =
+  match xs with
+  | [] -> false
+  | h :: tl -> h = x || mem_iri x tl
+
+(* Direct sub-properties of q: every p with an asserted (p, q) pair. *)
+let rec direct_subprops_of (pairs : list (wf_iri & wf_iri)) (q : wf_iri)
+  : Tot (list wf_iri) (decreases pairs) =
+  match pairs with
+  | [] -> []
+  | (p, r) :: tl ->
+    let rest = direct_subprops_of tl q in
+    if r = q then p :: rest else rest
+
+(* Direct super-properties of p: every q with an asserted (p, q) pair. *)
+let rec direct_superprops_of (pairs : list (wf_iri & wf_iri)) (p : wf_iri)
+  : Tot (list wf_iri) (decreases pairs) =
+  match pairs with
+  | [] -> []
+  | (s, q) :: tl ->
+    let rest = direct_superprops_of tl p in
+    if s = p then q :: rest else rest
+
+let rec filter_new_iris (visited : list wf_iri) (cands : list wf_iri)
+  : Tot (list wf_iri) (decreases cands) =
+  match cands with
+  | [] -> []
+  | c :: tl ->
+    let rest = filter_new_iris visited tl in
+    if mem_iri c visited then rest else c :: rest
+
+let rec collect_step (step : wf_iri -> list wf_iri) (qs : list wf_iri)
+  : Tot (list wf_iri) (decreases qs) =
+  match qs with
+  | [] -> []
+  | q :: tl -> step q @ collect_step step tl
+
+(* Fuel-bounded BFS closure over a `step` relation (either
+   `direct_subprops_of pairs` or `direct_superprops_of pairs`).
+   TERMINATION: every recursive call strictly decreases `fuel`; running
+   out of fuel before the frontier naturally empties only WITHHOLDS
+   deeper ancestors/descendants of the role-hierarchy DAG — sound (same
+   precedent as `max_witness_depth` withholding deeper ∃-witnesses).
+   `List.Tot.length pairs + 1` steps is generous: each step that
+   doesn't return early adds >= 1 newly-visited IRI drawn from a fixed
+   list of `pairs` edges, so a real (cycle-free) hierarchy closes well
+   within that many steps; a cyclic subPropertyOf graph (legal RDF,
+   pathological OWL) just burns the fuel and stops — still sound. *)
+let rec role_bfs (step : wf_iri -> list wf_iri) (frontier : list wf_iri)
+                 (visited : list wf_iri) (fuel : nat)
+  : Tot (list wf_iri) (decreases fuel) =
+  if fuel = 0 then visited
+  else
+    match frontier with
+    | [] -> visited
+    | _ ->
+      let candidates = collect_step step frontier in
+      let fresh = filter_new_iris visited candidates in
+      (match fresh with
+       | [] -> visited
+       | _ -> role_bfs step fresh (visited @ fresh) (fuel - 1))
+
+(* All P with P rdfs:subPropertyOf* Q (reflexive-transitive closure,
+   including Q itself) — i.e. every role whose edges also count as
+   Q-edges. *)
+let subproperties_of (pairs : list (wf_iri & wf_iri)) (q : wf_iri) : list wf_iri =
+  let direct = direct_subprops_of pairs q in
+  q :: role_bfs (direct_subprops_of pairs) direct direct (List.Tot.length pairs + 1)
+
+(* All Q with P rdfs:subPropertyOf* Q (reflexive-transitive closure,
+   including P itself) — i.e. every restriction that also constrains
+   P's fillers (used by the C6 facet fold below). *)
+let superproperties_of (pairs : list (wf_iri & wf_iri)) (p : wf_iri) : list wf_iri =
+  let direct = direct_superprops_of pairs p in
+  p :: role_bfs (direct_superprops_of pairs) direct direct (List.Tot.length pairs + 1)
 
 let max_witness_depth : nat = 3
 
@@ -539,21 +710,46 @@ let rec extra_reverse_objects_all (es : list redge) (i_term : rdf_term)
     extra_reverse_objects es i_term q count_only
     @ extra_reverse_objects_all es i_term tl count_only
 
+(* Successors reached via ONE named role r: asserted + tableau-internal
+   edges over r itself, plus the inverse-aware reverse view over every
+   declared inverse of r (exactly the pre-rolebox `countable_successors`
+   / `all_successors` bodies, now factored out so `successors_via_roles`
+   below can apply the same per-role inverse view to every role in a
+   subPropertyOf-closure set, not just the literally-queried one). *)
+let successors_via_single_role (g : rdf_graph) (st : rstate) (i : subject)
+                               (r : wf_iri) (count_only : bool)
+  : list rdf_term =
+  let invs = inverses_of st.rs_inv r in
+  find_objects g i r
+  @ extra_objects st.rs_extra i r count_only
+  @ base_reverse_objects g i invs
+  @ extra_reverse_objects_all st.rs_extra (subject_to_term i) invs count_only
+
+(* Role-hierarchy-aware successor union: for every role r in `roles`
+   (intended to be `subproperties_of st.rs_subprop p` — p and every
+   rdfs:subPropertyOf* sub-role of p), gather r's successors. Sound:
+   EXT(r) subset-of EXT(p) for every r ⊑* p, so an r-successor is
+   ALWAYS a p-successor too in every model — this is exactly the same
+   "edge counts for every super-property" propagation the module
+   banner promises for ∀-rule / cardinality / existential-satisfaction,
+   implemented once here since all three consult `countable_successors`
+   / `all_successors`. *)
+let rec successors_via_roles (g : rdf_graph) (st : rstate) (i : subject)
+                             (roles : list wf_iri) (count_only : bool)
+  : Tot (list rdf_term) (decreases roles) =
+  match roles with
+  | [] -> []
+  | r :: tl ->
+    successors_via_single_role g st i r count_only
+    @ successors_via_roles g st i tl count_only
+
 let countable_successors (g : rdf_graph) (st : rstate) (i : subject) (p : wf_iri)
   : list rdf_term =
-  let invs = inverses_of st.rs_inv p in
-  dedup_terms (find_objects g i p
-               @ extra_objects st.rs_extra i p true
-               @ base_reverse_objects g i invs
-               @ extra_reverse_objects_all st.rs_extra (subject_to_term i) invs true)
+  dedup_terms (successors_via_roles g st i (subproperties_of st.rs_subprop p) true)
 
 let all_successors (g : rdf_graph) (st : rstate) (i : subject) (p : wf_iri)
   : list rdf_term =
-  let invs = inverses_of st.rs_inv p in
-  dedup_terms (find_objects g i p
-               @ extra_objects st.rs_extra i p false
-               @ base_reverse_objects g i invs
-               @ extra_reverse_objects_all st.rs_extra (subject_to_term i) invs false)
+  dedup_terms (successors_via_roles g st i (subproperties_of st.rs_subprop p) false)
 
 let rec extra_edge_present (es : list redge) (i : subject) (p : wf_iri)
                            (o : rdf_term)
@@ -728,16 +924,26 @@ let rec fold_datatype_constraint (acc : value_set) (ce : class_expr)
     value_set_subtract acc inner_vs
   | _ -> acc
 
-(* Intersect every CE_AllValuesFrom p D filler (D datatype-shaped or
+(* Intersect every CE_AllValuesFrom q D filler (D datatype-shaped or
    not — non-datatype D is a no-op via fold_datatype_constraint above)
-   for the given property p, over the node's full label list. *)
-let rec universal_for_property (p : wf_iri) (ls : list class_expr) (acc : value_set)
+   for every q that CONSTRAINS p's fillers, over the node's full label
+   list. Role-hierarchy aware (Wave E-rolebox): q constrains p's
+   fillers whenever p rdfs:subPropertyOf* q (q ∈ superproperties_of p,
+   which always includes p itself, preserving the pre-rolebox exact-
+   match behaviour) — EXT(p) subset-of EXT(q) means every p-filler is
+   ALSO a q-filler, so ∀q.D binds it too. `subprop_pairs` is
+   `st.rs_subprop`, threaded in rather than read off a state value so
+   this stays a plain Tot fold like its sibling `fold_datatype_constraint`. *)
+let rec universal_for_property (subprop_pairs : list (wf_iri & wf_iri))
+                               (p : wf_iri) (ls : list class_expr) (acc : value_set)
   : Tot value_set (decreases ls) =
   match ls with
   | [] -> acc
   | CE_AllValuesFrom q d :: tl ->
-    universal_for_property p tl (if q = p then fold_datatype_constraint acc d else acc)
-  | _ :: tl -> universal_for_property p tl acc
+    universal_for_property subprop_pairs p tl
+      (if mem_iri q (superproperties_of subprop_pairs p)
+       then fold_datatype_constraint acc d else acc)
+  | _ :: tl -> universal_for_property subprop_pairs p tl acc
 
 (* Does ANY single existence-forcing obligation on property p (one
    CE_SomeValuesFrom filler, or one CE_HasValue literal) fail to fit
@@ -762,13 +968,19 @@ let rec exists_unsatisfiable_witness (p : wf_iri) (ls : list class_expr) (univer
     else exists_unsatisfiable_witness p tl universal
   | _ :: tl -> exists_unsatisfiable_witness p tl universal
 
-let property_datatype_clash (p : wf_iri) (ls_all : list class_expr) : bool =
-  let universal = universal_for_property p ls_all VS_Unconstrained in
+let property_datatype_clash (subprop_pairs : list (wf_iri & wf_iri))
+                            (p : wf_iri) (ls_all : list class_expr) : bool =
+  let universal = universal_for_property subprop_pairs p ls_all VS_Unconstrained in
   exists_unsatisfiable_witness p ls_all universal
 
 (* Every property mentioned in a Some/All/HasValue label on this node
    (duplicates harmless — `any_property_datatype_clash` just re-checks
-   the same property, no different answer, no soundness risk). *)
+   the same property, no different answer, no soundness risk). Every
+   mentioned property (super- AND sub-roles alike) is visited as its
+   own outer-loop `p`, so a sub-role's OWN existence obligation is
+   already checked against its OWN (super-closure-widened) universal
+   by `property_datatype_clash` above — no separate role-hierarchy
+   widening needed on the existence-obligation side. *)
 let rec collect_dt_properties (ls : list class_expr) : Tot (list wf_iri) (decreases ls) =
   match ls with
   | [] -> []
@@ -777,16 +989,20 @@ let rec collect_dt_properties (ls : list class_expr) : Tot (list wf_iri) (decrea
   | CE_HasValue p _ :: tl -> p :: collect_dt_properties tl
   | _ :: tl -> collect_dt_properties tl
 
-let rec any_property_datatype_clash (ps : list wf_iri) (ls_all : list class_expr)
+let rec any_property_datatype_clash (subprop_pairs : list (wf_iri & wf_iri))
+                                    (ps : list wf_iri) (ls_all : list class_expr)
   : Tot bool (decreases ps) =
   match ps with
   | [] -> false
-  | p :: tl -> property_datatype_clash p ls_all || any_property_datatype_clash tl ls_all
+  | p :: tl ->
+    property_datatype_clash subprop_pairs p ls_all
+    || any_property_datatype_clash subprop_pairs tl ls_all
 
 (* C6 entry point: is there ANY property on this node whose combined
    ∀-constraint + at least one ∃/hasValue obligation is unsatisfiable? *)
-let datatype_range_clash (ls_all : list class_expr) : bool =
-  any_property_datatype_clash (collect_dt_properties ls_all) ls_all
+let datatype_range_clash (subprop_pairs : list (wf_iri & wf_iri))
+                         (ls_all : list class_expr) : bool =
+  any_property_datatype_clash subprop_pairs (collect_dt_properties ls_all) ls_all
 
 (* -------------------------------------------------------------------
    6. Clash detection.
@@ -907,7 +1123,7 @@ let rec clash_nodes (g : rdf_graph) (st : rstate) (ns : list rnode)
   | [] -> false
   | n :: tl ->
     clash_labels g st n.rn_id n.rn_labels n.rn_labels
-    || datatype_range_clash n.rn_labels
+    || datatype_range_clash st.rs_subprop n.rn_labels
     || clash_nodes g st tl
 
 let has_clash (g : rdf_graph) (st : rstate) : bool =
@@ -1261,6 +1477,34 @@ let ensure_min_witnesses (g : rdf_graph) (st : rstate) (i : subject) (p : wf_iri
                     rs_gendistinct = ts :: st.rs_gendistinct } in
         (st1, true)
 
+(* Is role R transitive? Direct declaration, OR any declared inverse
+   of R is declared transitive — Trans(R) iff Trans(R⁻) in every model
+   (EXT(R⁻) = {(b,a) : (a,b) ∈ EXT(R)}; composing two R⁻-steps is the
+   reverse of composing two R-steps, so one relation's composition
+   closure is exactly the other's). *)
+let role_is_transitive (st : rstate) (r : wf_iri) : bool =
+  mem_iri r st.rs_transprops
+  || List.Tot.existsb (fun q -> mem_iri q st.rs_transprops)
+       (inverses_of st.rs_inv r)
+
+(* For each transitive role R in `roles` (the ⊑*-closure below Q for a
+   ∀Q.C label on node i), push the label ∀R.C onto every R-successor
+   of i — the SHIQ ∀+ rule body. See the soundness argument at the
+   call site (apply_label_rules, CE_AllValuesFrom case). *)
+let rec push_transitive_foralls (g : rdf_graph) (st : rstate) (i : subject)
+                                (c : class_expr) (roles : list wf_iri)
+  : Tot (rstate & bool) (decreases roles) =
+  match roles with
+  | [] -> (st, false)
+  | r :: tl ->
+    let (st1, c1) =
+      if role_is_transitive st r
+      then forall_prop st (CE_AllValuesFrom r c) (all_successors g st i r)
+      else (st, false)
+    in
+    let (st2, c2) = push_transitive_foralls g st1 i c tl in
+    (st2, c1 || c2)
+
 let apply_label_rules (g : rdf_graph) (st : rstate) (i : subject)
                       (l : class_expr)
   : rstate & bool =
@@ -1271,12 +1515,32 @@ let apply_label_rules (g : rdf_graph) (st : rstate) (i : subject)
   | CE_AllValuesFrom p c ->
     let succs = all_successors g st i p in
     let (st1, c1) = forall_prop st c succs in
+    (* Transitive S-rule (Wave E-rolebox), the standard SHIQ ∀+ rule:
+       x ∈ ∀Q.C with Trans(R), R ⊑* Q, x -R-> y in every model implies
+       y ∈ ∀R.C — the constraint must hold all the way down the
+       R-chain, since y -R-> z (transitively x -R-> z, hence x -Q-> z
+       by R ⊑* Q) puts z under the original ∀Q.C too. Iterated over
+       EVERY transitive sub-role R of Q (including Q itself —
+       `subproperties_of` is reflexive), each over its own R-successor
+       view. Transitivity is checked inverse-aware
+       (`role_is_transitive`): EXT(R) is transitive iff EXT(R⁻) is
+       (Direct Semantics: (a,b),(b,c) ∈ EXT(R⁻) iff (c,b),(b,a) ∈
+       EXT(R), whose composition is closed exactly when EXT(R)'s is) —
+       the WebOnt t6/t7 fixtures place ∀invR.C labels while declaring
+       Trans(r) with invR owl:inverseOf r, so the DIRECT-only check
+       misses every one of them. Sound: only ever adds an entailed
+       label over edges that already hold in every model, never
+       fabricates an edge. *)
+    let (st1b, c1b) =
+      push_transitive_foralls g st1 i c
+        (subproperties_of st.rs_subprop p)
+    in
     (* EXT(owl:topObjectProperty) = Δ × Δ: every individual is its own
        top-successor, so ∀top.C puts C on the node itself. *)
     if p = owl_topObjectProperty then
-      let (st2, c2) = add_label st1 i c in
-      (st2, c1 || c2)
-    else (st1, c1)
+      let (st2, c2) = add_label st1b i c in
+      (st2, c1 || c1b || c2)
+    else (st1b, c1 || c1b)
   | CE_HasValue p v -> add_countable_edge g st i p v
   | CE_SomeValuesFrom p c ->
     if is_bottom_prop p then (st, false)  (* C5 clash fires instead *)
@@ -1308,6 +1572,34 @@ let rec pass_labels (tb : list (class_expr & class_expr)) (g : rdf_graph)
     let (st2, c2) = pass_labels tb g st1 i tl in
     (st2, c1 || c2)
 
+(* owl:FunctionalProperty (Wave E-rolebox): CEXT(P) is a partial
+   function in every model for every declared functional P — i.e.
+   every individual has AT MOST 1 P-successor, in every model,
+   unconditionally (a structural fact, like owl:Thing membership just
+   above — not a derived one). Injecting `CE_MaxCard 1 P` onto every
+   node for every P in `rs_funcprops` folds this DIRECTLY into the
+   EXISTING C3/C4 max-card clash machinery (`clash_for_label`'s
+   `CE_MaxCard` case, `countable_successors`, `provably_distinct`) with
+   NO new merge logic: a node whose (role-hierarchy-widened) countable
+   P-successors include 2 pairwise-provably-distinct terms now clashes
+   exactly as an explicit `<= 1 P` restriction would. Where the two
+   successors are NOT provably distinct (e.g. two separate ∃-witnesses
+   that would need to be MERGED/identified to see the clash) this
+   stays open — witness merging is out of scope this wave (see module
+   banner). Routed through `step_label` (not bare `add_label`) so it
+   also unfolds any `(<=1 P, D)`-shaped TBox axiom exactly like every
+   other injected label; idempotent via `step_label`'s underlying
+   `add_label` syntactic dedup, same as the Thing injection below. *)
+let rec inject_functional (tb : list (class_expr & class_expr)) (g : rdf_graph)
+                          (fps : list wf_iri) (st : rstate) (i : subject)
+  : Tot (rstate & bool) (decreases fps) =
+  match fps with
+  | [] -> (st, false)
+  | fp :: tl ->
+    let (st1, c1) = step_label tb g st i (CE_MaxCard 1 fp) in
+    let (st2, c2) = inject_functional tb g tl st1 i in
+    (st2, c1 || c2)
+
 (* Universal owl:Thing membership: CEXT(owl:Thing) = Δ (the WHOLE
    domain) in every model, for EVERY individual, whether or not
    anything ever asserts `i rdf:type owl:Thing` explicitly. Without
@@ -1332,10 +1624,11 @@ let rec pass_nodes (tb : list (class_expr & class_expr)) (g : rdf_graph)
   | [] -> (st, false)
   | n :: tl ->
     let (st0, c0) = step_label tb g st n.rn_id (CE_Named owl_Thing) in
-    let (st1, c1) = pass_labels tb g st0 n.rn_id n.rn_labels in
+    let (st0f, c0f) = inject_functional tb g st.rs_funcprops st0 n.rn_id in
+    let (st1, c1) = pass_labels tb g st0f n.rn_id n.rn_labels in
     let (st1b, c1b) = apply_axioms_edges tb g st1 n.rn_id in
     let (st2, c2) = pass_nodes tb g st1b tl in
-    (st2, c0 || c1 || c1b || c2)
+    (st2, c0 || c0f || c1 || c1b || c2)
 
 (* One full deterministic round over a snapshot of the current nodes.
    Nodes/labels added during the round are picked up next round. *)
@@ -1585,7 +1878,10 @@ let rec init_nodes_aux (gfull : rdf_graph) (ts : rdf_graph) (st : rstate)
 let init_state (g : rdf_graph) : rstate =
   init_nodes_aux g g
     { rs_nodes = []; rs_extra = []; rs_fresh = 0; rs_wdepth = [];
-      rs_inv = collect_inverse_pairs g; rs_gendistinct = [] }
+      rs_inv = collect_inverse_pairs g; rs_gendistinct = [];
+      rs_subprop = collect_subprop_pairs g;
+      rs_transprops = collect_transitive_props g;
+      rs_funcprops = collect_functional_props g }
 
 (* tableau_consistent — the public satisfiability check.
 
