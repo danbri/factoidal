@@ -389,6 +389,7 @@ if [[ "$STEP" == "all" || "$STEP" == "extract" ]]; then
     RDF.GraphIsomorphism.fst
     OWL.Vocabulary.fst
     OWL.DirectMapping.Filter.fst
+    XSD.Facets.fst
     Tableau.fst Tableau.Refute.fst SPARQL11.IRI.Resolve.fst SPARQL.FullText.fst SPARQL11.Algebra.fst
     XSD.Datatypes.fst
     RDF.Pretty.fst
@@ -799,7 +800,7 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
   # (COTTAS runtime glue calls Parquet_Footer.probe_*). SPARQL11_Store
   # depends on Parser_BallyhooHDT and Parser_BallyhooCOTTAS. See
   # docs/designissues/2026-04-19-cottas-parquet-wiring-plan.md §Phase 1.
-  COMMON_MODULES="Util_Log.ml RDF_Format.ml RDF_Vocabulary.ml RDF_Term.ml RDF_Triple.ml RDF_Indexed.ml RDF_Graph.ml RDF_Vocabulary_Axioms.ml RDFS_Closure.ml OWL_Closure.ml RDF_Graph_Executable.ml RDF_List_Helpers.ml RDF_Bytes.ml RDF_Store_Loader.ml Parquet_Footer.ml OWL_Vocabulary.ml OWL_DirectMapping_Filter.ml Tableau.ml Tableau_Refute.ml \
+  COMMON_MODULES="Util_Log.ml RDF_Format.ml RDF_Vocabulary.ml RDF_Term.ml RDF_Triple.ml RDF_Indexed.ml RDF_Graph.ml RDF_Vocabulary_Axioms.ml RDFS_Closure.ml OWL_Closure.ml RDF_Graph_Executable.ml RDF_List_Helpers.ml RDF_Bytes.ml RDF_Store_Loader.ml Parquet_Footer.ml OWL_Vocabulary.ml OWL_DirectMapping_Filter.ml XSD_Facets.ml Tableau.ml Tableau_Refute.ml \
     Parser_FastString.ml RDF_IRI.ml SPARQL11_IRI_Resolve.ml Parser_IRI.ml \
     RDF_NQuads_Serialize.ml \
     Parser_Combinators.ml Parser_TurtleScanner.ml Parser_NTriples.ml Parser_Turtle.ml HDT_Container.ml HDT_Dictionary.ml HDT_Triples.ml \
@@ -1817,7 +1818,7 @@ if [[ "$STEP" == "all" || "$STEP" == "js" ]]; then
     RDF_Term.ml RDF_Triple.ml
     RDF_Indexed.ml RDF_Graph.ml
     RDF_Vocabulary_Axioms.ml RDFS_Closure.ml OWL_Closure.ml
-    RDF_Graph_Executable.ml RDF_List_Helpers.ml RDF_Bytes.ml RDF_Store_Loader.ml Parquet_Footer.ml OWL_Vocabulary.ml OWL_DirectMapping_Filter.ml Tableau.ml Tableau_Refute.ml
+    RDF_Graph_Executable.ml RDF_List_Helpers.ml RDF_Bytes.ml RDF_Store_Loader.ml Parquet_Footer.ml OWL_Vocabulary.ml OWL_DirectMapping_Filter.ml XSD_Facets.ml Tableau.ml Tableau_Refute.ml
     Parser_FastString.ml RDF_IRI.ml SPARQL11_IRI_Resolve.ml Parser_IRI.ml
     RDF_NQuads_Serialize.ml
     Parser_Combinators.ml Parser_TurtleScanner.ml Parser_NTriples.ml Parser_Turtle.ml HDT_Container.ml HDT_Dictionary.ml HDT_Triples.ml

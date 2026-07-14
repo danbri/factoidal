@@ -107,9 +107,37 @@ noeq type class_expr =
      sharpened). Stored as the raw rdf_term list (individuals, not
      class expressions) — mirrors CE_HasValue's use of rdf_term. *)
   | CE_OneOf          : list rdf_term -> class_expr
+  (* owl:onDatatype DT + owl:withRestrictions [{F1:v1} ...]
+     (DatatypeRestriction(DT F1 v1 ...) per the OWL 2 Mapping to RDF
+     Graphs spec) — a facet-restricted datatype. Facets are stored as
+     the raw (facet-IRI, literal) pairs found on the graph; XSD.Facets
+     interprets them (Wave B,
+     docs/designissues/2026-07-10-owl2-dl-completion-program.md). *)
+  | CE_DataRestriction : wf_iri -> list (wf_iri & rdf_term) -> class_expr
   (* Parse gave up — unknown class expression. `is_member` returns
      None for these, falling back to the Datalog closure. *)
   | CE_Unknown        : class_expr
+
+(* owl:onDatatype / owl:withRestrictions / owl:datatypeComplementOf —
+   the DatatypeRestriction / DataComplementOf markers (OWL 2 Mapping to
+   RDF Graphs). Not in OWL.Vocabulary.fst (a shared module with many
+   consumers) — file-local, same "acknowledged duplication wart"
+   pattern OWL.QueryRewrite.fst / Parser.OWLFunctional.fst already use
+   for their own extras (see CLAUDE.md's "Known sound-but-narrow
+   rewrites"). Parser.OWLFunctional.fst defines the identical strings
+   locally for its own T() translation; kept in sync by construction
+   (both point at the same OWL 2 spec IRIs). *)
+let owl_onDatatype : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2002/07/owl#onDatatype");
+  "http://www.w3.org/2002/07/owl#onDatatype"
+
+let owl_withRestrictions : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2002/07/owl#withRestrictions");
+  "http://www.w3.org/2002/07/owl#withRestrictions"
+
+let owl_datatypeComplementOf : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2002/07/owl#datatypeComplementOf");
+  "http://www.w3.org/2002/07/owl#datatypeComplementOf"
 
 (* -------------------------------------------------------------------
    3. Helpers over the RDF graph.
@@ -189,6 +217,47 @@ let cardinality_value (g : rdf_graph) (s : subject) (pred : wf_iri) : option nat
   | Some (T_Literal l) -> cardinality_literal_to_nat l.lexical_form
   | _ -> None
 
+(* A single owl:withRestrictions list element is a bnode carrying
+   EXACTLY one `<facetIRI> <value>` triple (OWL 2 Mapping to RDF
+   Graphs: "a facet-restriction node carries exactly one triple", per
+   Parser.OWLFunctional.fst's `build_facet_list` comment). We don't
+   know which facet IRI ahead of time, so probe each recognised facet
+   predicate directly rather than dumping every triple on the bnode —
+   cheap (four checks) and sound (an unrecognised facet is simply
+   absent from the result, never guessed at). Only the four
+   min/maxInclusive/Exclusive facets are wired here; XSD.Facets.fst's
+   banner explains why pattern/length are out of this wave's scope. *)
+let facet_min_incl : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2001/XMLSchema#minInclusive");
+  "http://www.w3.org/2001/XMLSchema#minInclusive"
+
+let facet_max_incl : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2001/XMLSchema#maxInclusive");
+  "http://www.w3.org/2001/XMLSchema#maxInclusive"
+
+let facet_min_excl : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2001/XMLSchema#minExclusive");
+  "http://www.w3.org/2001/XMLSchema#minExclusive"
+
+let facet_max_excl : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2001/XMLSchema#maxExclusive");
+  "http://www.w3.org/2001/XMLSchema#maxExclusive"
+
+let facet_pair_for (g : rdf_graph) (fnode : subject) : list (wf_iri & rdf_term) =
+  (match find_first_object g fnode facet_min_incl with Some v -> [(facet_min_incl, v)] | None -> []) @
+  (match find_first_object g fnode facet_max_incl with Some v -> [(facet_max_incl, v)] | None -> []) @
+  (match find_first_object g fnode facet_min_excl with Some v -> [(facet_min_excl, v)] | None -> []) @
+  (match find_first_object g fnode facet_max_excl with Some v -> [(facet_max_excl, v)] | None -> [])
+
+let rec parse_facet_pairs (g : rdf_graph) (heads : list rdf_term) (fuel : nat)
+  : Tot (list (wf_iri & rdf_term)) (decreases fuel) =
+  match fuel, heads with
+  | 0, _ -> []
+  | _, [] -> []
+  | _, h :: tl ->
+    let this_node = (match term_as_subject h with Some s -> facet_pair_for g s | None -> []) in
+    this_node @ parse_facet_pairs g tl (fuel - 1)
+
 let rec parse_class_expr (g : rdf_graph) (t : rdf_term) (fuel : nat)
   : Tot class_expr (decreases %[fuel; 0]) =
   match fuel with
@@ -227,8 +296,23 @@ let rec parse_class_expr (g : rdf_graph) (t : rdf_term) (fuel : nat)
                   parse_class_expr over the list elements. *)
                CE_OneOf (walk_rdf_list g list_head n)
              | None ->
+               match find_first_object g s owl_onDatatype with
+               | Some (T_IRI base_dt) ->
+                 (* DatatypeRestriction(base_dt F1 v1 ...). *)
+                 (match find_first_object g s owl_withRestrictions with
+                  | Some list_head ->
+                    CE_DataRestriction base_dt (parse_facet_pairs g (walk_rdf_list g list_head n) n)
+                  | None -> CE_DataRestriction base_dt [])
+               | _ ->
                match find_first_object g s owl_complementOf with
                | Some c ->
+                 CE_ComplementOf (parse_class_expr g c (n - 1))
+               | None ->
+               match find_first_object g s owl_datatypeComplementOf with
+               | Some c ->
+                 (* DataComplementOf(DR): same AST shape as owl:complementOf
+                    — CE_ComplementOf's clash/nnf handling doesn't care
+                    which predicate produced it, only what it wraps. *)
                  CE_ComplementOf (parse_class_expr g c (n - 1))
                | None ->
                  (* Try restrictions. Require owl:onProperty P with P an IRI. *)
@@ -493,6 +577,14 @@ let rec is_member (g : rdf_graph) (i : subject) (ce : class_expr) (fuel : nat)
       if any_successor_sat (fun t -> rdf_term_eq t (subject_to_term i)) members
       then Some true
       else None
+
+    | CE_DataRestriction _ _ ->
+      (* Facet-restricted datatype: no positive-membership rule here
+         (this materialisation-only module never invents a witness or
+         evaluates a literal against facets) — always None, the caller
+         falls back. Facet SATISFIABILITY (the negative/refutation
+         direction) is Tableau.Refute.fst's job (Wave B). *)
+      None
 
 (* ∃: fold over successors; short-circuit on Some true. *)
 and any_is_member (g : rdf_graph) (ys : list rdf_term) (c : class_expr)
