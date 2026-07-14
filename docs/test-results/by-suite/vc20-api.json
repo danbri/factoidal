@@ -2,25 +2,12 @@
   "spec": "https://w3c.github.io/vc-data-model-2.0-test-suite/",
   "suite": "vc-data-model-2.0 (issuer/verifier HTTP suite, via shim)",
   "runner": "tests/vc20-api/run.sh",
-  "retrieved_at": "2026-07-14T09:27:54Z",
-  "pass": 56,
-  "fail": 3,
+  "retrieved_at": "2026-07-14T11:44:42Z",
+  "pass": 59,
+  "fail": 0,
   "skip": 0,
   "total": 59,
   "present": true,
   "gap_summary": "Track A4 (2026-07-14): relatedResource (VCDM 2.0 s5.3) implemented in VC.Credential.fst -- structural shape (object entries, required IRI id, digestSRI/digestMultibase presence, unique ids, mediaType string) inside vc_check_credential_shaped, plus digest VERIFICATION against a consumer-supplied registry of vendored resource digests (vc_check_related_resource_digests_from_string via the npm ABI's vcCheckRelatedResourceDigests; the shim's registry hashes third_party/contexts' vendored revisions of the v2 context, see PROVENANCE.md). All 5 Advanced Concepts relatedResource tests pass. Remaining 3 fails are one family: VP tests whose fixture embeds a `verifiableCredential` (@container:@graph in the VCDM v2 context) -- the shim's JSON-LD/RDF-dataset builder drops that named-graph subtree entirely during canonicalization (confirmed: canonicalizing a VP with an embedded credential yields ONLY the top-level `type` triple), so the reconstructed signature input never matches what the real signer produced. This is a JSON-LD named-graph expansion gap, not a VC.Credential.fst structural-check gap. This is a separate, complementary measurement from vc_stage1 (.github/test-suites/vc.yaml), which runs the SAME vendored fixtures directly through VC.Credential.fst's structural checker, no HTTP.",
-  "failures": [
-    {
-      "title": "Contexts Factoidal Verifiable Presentation `@context`: \"Subsequent items in the ordered set MUST be composed of any combination of URLs and/or objects where each is processable as a JSON-LD Context.\"",
-      "message": "Got unwanted rejection: Failed to support multiple `@context` URLs in a VP.\nActual message: \"[object Object]\""
-    },
-    {
-      "title": "Verifiable Presentations Factoidal The verifiableCredential property MAY be present. The value MUST beone or more verifiable credential and/or enveloped verifiable credential objects (the values MUST NOT be non-object values such as numbers, strings, or URLs).",
-      "message": "Got unwanted rejection: Failed to verify a valid VP.\nActual message: \"[object Object]\""
-    },
-    {
-      "title": "Verifiable Presentations Factoidal If present (holder), the value MUST be either a URL or an object containing an id property.",
-      "message": "Got unwanted rejection: Failed to verify a valid VP with holder.\nActual message: \"[object Object]\""
-    }
-  ]
+  "failures": []
 }
