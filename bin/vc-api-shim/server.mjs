@@ -121,6 +121,33 @@ function loadContext(iri) {
 // the strict F* context processor itself stays unchanged (an inline
 // "@context" key inside a context definition is not valid JSON-LD 1.1,
 // and the W3C JSON-LD negative tests depend on it staying rejected).
+//
+// Walks the WHOLE document tree, not just the top level: the VCDM v2
+// context defines `verifiableCredential` (and other terms) with BOTH
+// `"@container": "@graph"` AND a scoped `"@context": null` (see
+// third_party/contexts/credentials-v2.jsonld) — the null scoped
+// context means the JSON-LD processor resets the active context when
+// it descends into an embedded credential, so that credential's OWN
+// inline `@context` is what actually gets consulted, not the
+// enclosing document's. Before this fix, only `doc['@context']` was
+// rewritten, so a VP's embedded `verifiableCredential` array entries
+// (each carrying their own `"@context":
+// ["https://www.w3.org/ns/credentials/v2"]`) kept the bare remote
+// IRI string. Since this bundle has no remote-context loader wired
+// (module banner above), that unresolved nested reference made the
+// F* JSON-LD processor treat the credential's own context as
+// unresolvable, and the entire `@graph`-wrapped named-graph subtree
+// it names was silently dropped from the RDF dataset (confirmed:
+// canonicalizing such a VP produced only the top-level `type`
+// triple) — not an error, and not a JSON-LD Expand/toRdf bug: the
+// SAME `@container:@graph` + `@context:null` combination, with an
+// INLINE object context instead of a remote string reference, is
+// exercised and passes in the W3C toRdf suite (pr43). Recursing here
+// fixes vc20-api's three VP-with-embedded-credential fails
+// ("multiple @context URLs in a VP", "valid VP with
+// verifiableCredential", "valid VP with holder") by giving the
+// processor the same context content the real signer used when it
+// computed the proof.
 function inlineContexts(docIn) {
   const doc = JSON.parse(JSON.stringify(docIn));
   const rewrite = (ctx) => {
@@ -134,8 +161,22 @@ function inlineContexts(docIn) {
     }
     return ctx;
   };
-  if ('@context' in doc) doc['@context'] = rewrite(doc['@context']);
-  return doc;
+  // `walk` only ever calls `rewrite` on a "@context" key's VALUE, never
+  // recursing into it afterward — a context definition's own internal
+  // structure (e.g. a term's scoped "@context": null) is JSON-LD
+  // machinery, not a nested document subtree, and must stay untouched.
+  const walk = (node) => {
+    if (Array.isArray(node)) return node.map(walk);
+    if (node !== null && typeof node === 'object') {
+      const out = {};
+      for (const [k, v] of Object.entries(node)) {
+        out[k] = k === '@context' ? rewrite(v) : walk(v);
+      }
+      return out;
+    }
+    return node;
+  };
+  return walk(doc);
 }
 
 async function canonicalizeJsonld(doc) {
