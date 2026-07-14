@@ -71,6 +71,7 @@ open FStar.List.Tot
 open RDF.Graph.Executable
 open OWL.Vocabulary
 open Tableau
+open XSD.Facets
 
 (* -------------------------------------------------------------------
    1. Vocabulary constants not already exported by the opened modules.
@@ -143,6 +144,16 @@ let rec term_list_eq (xs : list rdf_term) (ys : list rdf_term)
   | x :: xtl, y :: ytl -> rdf_term_eq x y && term_list_eq xtl ytl
   | _, _ -> false
 
+(* Structural equality over (facet-IRI, literal) pairs — CE_DataRestriction's
+   ce_eq/ce_eq_syn case, same order-sensitive contract as term_list_eq
+   above (adequate for storage-dedup and axiom-LHS matching of one fixed
+   DatatypeRestriction bnode; not a set-equality check). *)
+let rec facet_pairs_eq (xs ys : list (wf_iri & rdf_term)) : Tot bool (decreases xs) =
+  match xs, ys with
+  | [], [] -> true
+  | (fi, fv) :: xtl, (gi, gv) :: ytl -> fi = gi && rdf_term_eq fv gv && facet_pairs_eq xtl ytl
+  | _, _ -> false
+
 let rec ce_eq (a : class_expr) (b : class_expr) : Tot bool (decreases a) =
   match a, b with
   | CE_Named x, CE_Named y -> x = y
@@ -159,6 +170,7 @@ let rec ce_eq (a : class_expr) (b : class_expr) : Tot bool (decreases a) =
   | CE_MinQualCard k p c, CE_MinQualCard j q d -> k = j && p = q && ce_eq c d
   | CE_MaxQualCard k p c, CE_MaxQualCard j q d -> k = j && p = q && ce_eq c d
   | CE_ExactQualCard k p c, CE_ExactQualCard j q d -> k = j && p = q && ce_eq c d
+  | CE_DataRestriction dt fs, CE_DataRestriction dt' fs' -> dt = dt' && facet_pairs_eq fs fs'
   | _, _ -> false
 and ce_list_eq (xs : list class_expr) (ys : list class_expr)
   : Tot bool (decreases xs) =
@@ -197,6 +209,7 @@ let rec ce_eq_syn (a : class_expr) (b : class_expr) : Tot bool (decreases a) =
   | CE_MinQualCard k p c, CE_MinQualCard j q d -> k = j && p = q && ce_eq_syn c d
   | CE_MaxQualCard k p c, CE_MaxQualCard j q d -> k = j && p = q && ce_eq_syn c d
   | CE_ExactQualCard k p c, CE_ExactQualCard j q d -> k = j && p = q && ce_eq_syn c d
+  | CE_DataRestriction dt fs, CE_DataRestriction dt' fs' -> dt = dt' && facet_pairs_eq fs fs'
   | _, _ -> false
 and ce_list_eq_syn (xs : list class_expr) (ys : list class_expr)
   : Tot bool (decreases xs) =
@@ -213,7 +226,7 @@ let rec ce_definite (c : class_expr) : Tot bool (decreases c) =
   match c with
   | CE_Unknown -> false
   | CE_Named _ | CE_HasValue _ _ | CE_MinCard _ _ | CE_MaxCard _ _
-  | CE_ExactCard _ _ | CE_OneOf _ -> true
+  | CE_ExactCard _ _ | CE_OneOf _ | CE_DataRestriction _ _ -> true
   | CE_SomeValuesFrom _ d | CE_AllValuesFrom _ d | CE_ComplementOf d
   | CE_MinQualCard _ _ d | CE_MaxQualCard _ _ d | CE_ExactQualCard _ _ d ->
     ce_definite d
@@ -288,6 +301,11 @@ and nnf_neg (c : class_expr) : Tot class_expr (decreases c) =
        CE_HasValue case does. Sound: nothing is dropped, only wrapped;
        CE_OneOf is otherwise treated as atomic. *)
     CE_ComplementOf (CE_OneOf members)
+  | CE_DataRestriction dt facets ->
+    (* Same treatment as CE_OneOf/CE_HasValue: a facet-restricted
+       datatype has no closed-form negation in this AST — wrap it.
+       Sound (nothing dropped, only wrapped) and atomic otherwise. *)
+    CE_ComplementOf (CE_DataRestriction dt facets)
   | CE_Unknown -> CE_Unknown
 and nnf_list (cs : list class_expr) : Tot (list class_expr) (decreases cs) =
   match cs with
@@ -653,6 +671,124 @@ let rec exists_distinct_subset (g : rdf_graph) (gd : list (list rdf_term))
       || exists_distinct_subset g gd tl need
 
 (* -------------------------------------------------------------------
+   5a. Datatype facet clash (Wave B,
+       docs/designissues/2026-07-10-owl2-dl-completion-program.md).
+
+   C6 (datatype range clash): for a node with label set ls_all and a
+   property p, EVERY `CE_AllValuesFrom p D` label constrains ALL
+   p-fillers to lie in D (standard ∀-semantics: multiple ∀p.Di on one
+   node combine by intersection, since "all fillers in D1" AND "all
+   fillers in D2" together mean "all fillers in D1 ∩ D2" — sound to
+   fold). An `CE_HasValue p v` or `CE_SomeValuesFrom p D0` label each
+   separately FORCE at least one p-filler to exist (v itself, or a
+   witness in D0) — and that filler, being a p-filler, must ALSO lie
+   in the intersected ∀-constraint. If D0 (or {v}) doesn't intersect
+   the ∀-constraint, no such filler can exist: clash.
+
+   Soundness-critical: two DIFFERENT existence-forcing obligations on
+   the SAME property (two separate ∃p.D0 / ∃p.D0' labels, or two
+   different HasValue literals) are NEVER combined with each other —
+   only every obligation individually against the SAME shared
+   ∀-intersection. Combining two ∃-obligations together would assume
+   they share one witness, which is unsound for a non-functional
+   property (two distinct ∃p.Di can be satisfied by two DIFFERENT
+   fillers). This mirrors the standard DL tableau ∀-propagation rule
+   applied to each ∃-witness independently — no witness materialisation
+   is actually needed here because every Wave-B target fixture places
+   BOTH the ∀ and ∃/hasValue obligations directly on the same ABox
+   individual via SubClassOf+ClassAssertion (TBox unfolding already
+   deposits every RHS label there), so this operates purely at the
+   label-list level.
+
+   `fold_datatype_constraint` is a no-op (returns `acc` unchanged) for
+   every class-expression shape XSD.Facets doesn't recognise as
+   datatype-related (ordinary named OWL classes, individual
+   owl:oneOf/hasValue, any other filler) — so this rule is inert on
+   the overwhelming majority of the corpus by construction; it can
+   only ever narrow a value_set that started from a recognised XSD
+   datatype IRI, a DatatypeRestriction, or an all-literal DataOneOf. *)
+let rec fold_datatype_constraint (acc : value_set) (ce : class_expr)
+  : Tot value_set (decreases ce) =
+  match ce with
+  | CE_DataRestriction dt facets ->
+    if is_integer_family_datatype dt
+    then value_set_intersect acc (VS_Interval (facets_to_interval dt facets full_interval))
+    else acc
+  | CE_OneOf members ->
+    if Cons? members && all_literal_terms members
+    then value_set_intersect acc (VS_Enum members)
+    else acc
+  | CE_Named dt ->
+    (match classify_family dt with
+     | Some Fam_Numeric -> value_set_intersect acc (VS_Interval (base_interval_for dt))
+     | Some f -> value_set_intersect acc (VS_Family f)
+     | None -> acc)
+  | CE_ComplementOf inner ->
+    let inner_vs = fold_datatype_constraint VS_Unconstrained inner in
+    value_set_subtract acc inner_vs
+  | _ -> acc
+
+(* Intersect every CE_AllValuesFrom p D filler (D datatype-shaped or
+   not — non-datatype D is a no-op via fold_datatype_constraint above)
+   for the given property p, over the node's full label list. *)
+let rec universal_for_property (p : wf_iri) (ls : list class_expr) (acc : value_set)
+  : Tot value_set (decreases ls) =
+  match ls with
+  | [] -> acc
+  | CE_AllValuesFrom q d :: tl ->
+    universal_for_property p tl (if q = p then fold_datatype_constraint acc d else acc)
+  | _ :: tl -> universal_for_property p tl acc
+
+(* Does ANY single existence-forcing obligation on property p (one
+   CE_SomeValuesFrom filler, or one CE_HasValue literal) fail to fit
+   inside `universal`? Each checked independently — see the soundness
+   note above for why obligations are never combined with each other. *)
+let rec exists_unsatisfiable_witness (p : wf_iri) (ls : list class_expr) (universal : value_set)
+  : Tot bool (decreases ls) =
+  match ls with
+  | [] -> false
+  | CE_SomeValuesFrom q d :: tl ->
+    if q = p && value_set_is_empty (fold_datatype_constraint universal d)
+    then true
+    else exists_unsatisfiable_witness p tl universal
+  | CE_HasValue q v :: tl ->
+    if q = p then
+      (match v with
+       | T_Literal _ ->
+         if value_set_is_empty (value_set_intersect universal (VS_Enum [v]))
+         then true
+         else exists_unsatisfiable_witness p tl universal
+       | _ -> exists_unsatisfiable_witness p tl universal)
+    else exists_unsatisfiable_witness p tl universal
+  | _ :: tl -> exists_unsatisfiable_witness p tl universal
+
+let property_datatype_clash (p : wf_iri) (ls_all : list class_expr) : bool =
+  let universal = universal_for_property p ls_all VS_Unconstrained in
+  exists_unsatisfiable_witness p ls_all universal
+
+(* Every property mentioned in a Some/All/HasValue label on this node
+   (duplicates harmless — `any_property_datatype_clash` just re-checks
+   the same property, no different answer, no soundness risk). *)
+let rec collect_dt_properties (ls : list class_expr) : Tot (list wf_iri) (decreases ls) =
+  match ls with
+  | [] -> []
+  | CE_SomeValuesFrom p _ :: tl -> p :: collect_dt_properties tl
+  | CE_AllValuesFrom p _ :: tl -> p :: collect_dt_properties tl
+  | CE_HasValue p _ :: tl -> p :: collect_dt_properties tl
+  | _ :: tl -> collect_dt_properties tl
+
+let rec any_property_datatype_clash (ps : list wf_iri) (ls_all : list class_expr)
+  : Tot bool (decreases ps) =
+  match ps with
+  | [] -> false
+  | p :: tl -> property_datatype_clash p ls_all || any_property_datatype_clash tl ls_all
+
+(* C6 entry point: is there ANY property on this node whose combined
+   ∀-constraint + at least one ∃/hasValue obligation is unsatisfiable? *)
+let datatype_range_clash (ls_all : list class_expr) : bool =
+  any_property_datatype_clash (collect_dt_properties ls_all) ls_all
+
+(* -------------------------------------------------------------------
    6. Clash detection.
    ------------------------------------------------------------------- *)
 
@@ -771,6 +907,7 @@ let rec clash_nodes (g : rdf_graph) (st : rstate) (ns : list rnode)
   | [] -> false
   | n :: tl ->
     clash_labels g st n.rn_id n.rn_labels n.rn_labels
+    || datatype_range_clash n.rn_labels
     || clash_nodes g st tl
 
 let has_clash (g : rdf_graph) (st : rstate) : bool =

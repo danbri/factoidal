@@ -21,6 +21,14 @@ let rec term_list_eq (xs : RDF_Term.rdf_term Prims.list)
   | ([], []) -> true
   | (x::xtl, y::ytl) -> (RDF_Term.rdf_term_eq x y) && (term_list_eq xtl ytl)
   | (uu___, uu___1) -> false
+let rec facet_pairs_eq
+  (xs : (RDF_Term.wf_iri * RDF_Term.rdf_term) Prims.list)
+  (ys : (RDF_Term.wf_iri * RDF_Term.rdf_term) Prims.list) : Prims.bool=
+  match (xs, ys) with
+  | ([], []) -> true
+  | ((fi, fv)::xtl, (gi, gv)::ytl) ->
+      ((fi = gi) && (RDF_Term.rdf_term_eq fv gv)) && (facet_pairs_eq xtl ytl)
+  | (uu___, uu___1) -> false
 let rec ce_eq (a : Tableau.class_expr) (b : Tableau.class_expr) : Prims.bool=
   match (a, b) with
   | (Tableau.CE_Named x, Tableau.CE_Named y) -> x = y
@@ -47,6 +55,8 @@ let rec ce_eq (a : Tableau.class_expr) (b : Tableau.class_expr) : Prims.bool=
       ((k = j) && (p = q)) && (ce_eq c d)
   | (Tableau.CE_ExactQualCard (k, p, c), Tableau.CE_ExactQualCard (j, q, d))
       -> ((k = j) && (p = q)) && (ce_eq c d)
+  | (Tableau.CE_DataRestriction (dt, fs), Tableau.CE_DataRestriction
+     (dt', fs')) -> (dt = dt') && (facet_pairs_eq fs fs')
   | (uu___, uu___1) -> false
 and ce_list_eq (xs : Tableau.class_expr Prims.list)
   (ys : Tableau.class_expr Prims.list) : Prims.bool=
@@ -82,6 +92,8 @@ let rec ce_eq_syn (a : Tableau.class_expr) (b : Tableau.class_expr) :
       ((k = j) && (p = q)) && (ce_eq_syn c d)
   | (Tableau.CE_ExactQualCard (k, p, c), Tableau.CE_ExactQualCard (j, q, d))
       -> ((k = j) && (p = q)) && (ce_eq_syn c d)
+  | (Tableau.CE_DataRestriction (dt, fs), Tableau.CE_DataRestriction
+     (dt', fs')) -> (dt = dt') && (facet_pairs_eq fs fs')
   | (uu___, uu___1) -> false
 and ce_list_eq_syn (xs : Tableau.class_expr Prims.list)
   (ys : Tableau.class_expr Prims.list) : Prims.bool=
@@ -98,6 +110,7 @@ let rec ce_definite (c : Tableau.class_expr) : Prims.bool=
   | Tableau.CE_MaxCard (uu___, uu___1) -> true
   | Tableau.CE_ExactCard (uu___, uu___1) -> true
   | Tableau.CE_OneOf uu___ -> true
+  | Tableau.CE_DataRestriction (uu___, uu___1) -> true
   | Tableau.CE_SomeValuesFrom (uu___, d) -> ce_definite d
   | Tableau.CE_AllValuesFrom (uu___, d) -> ce_definite d
   | Tableau.CE_ComplementOf d -> ce_definite d
@@ -177,6 +190,8 @@ and nnf_neg (c : Tableau.class_expr) : Tableau.class_expr=
           Tableau.CE_MinQualCard ((k + Prims.int_one), p, d')]
   | Tableau.CE_OneOf members ->
       Tableau.CE_ComplementOf (Tableau.CE_OneOf members)
+  | Tableau.CE_DataRestriction (dt, facets) ->
+      Tableau.CE_ComplementOf (Tableau.CE_DataRestriction (dt, facets))
   | Tableau.CE_Unknown -> Tableau.CE_Unknown
 and nnf_list (cs : Tableau.class_expr Prims.list) :
   Tableau.class_expr Prims.list=
@@ -485,6 +500,95 @@ let rec exists_distinct_subset (g : RDF_Graph.rdf_graph)
          (exists_distinct_subset g gd (filter_distinct_from g gd h tl)
             (need - Prims.int_one))
            || (exists_distinct_subset g gd tl need))
+let rec fold_datatype_constraint (acc : XSD_Facets.value_set)
+  (ce : Tableau.class_expr) : XSD_Facets.value_set=
+  match ce with
+  | Tableau.CE_DataRestriction (dt, facets) ->
+      if XSD_Facets.is_integer_family_datatype dt
+      then
+        XSD_Facets.value_set_intersect acc
+          (XSD_Facets.VS_Interval
+             (XSD_Facets.facets_to_interval dt facets
+                XSD_Facets.full_interval))
+      else acc
+  | Tableau.CE_OneOf members ->
+      if
+        (Prims.uu___is_Cons members) &&
+          (XSD_Facets.all_literal_terms members)
+      then XSD_Facets.value_set_intersect acc (XSD_Facets.VS_Enum members)
+      else acc
+  | Tableau.CE_Named dt ->
+      (match XSD_Facets.classify_family dt with
+       | FStar_Pervasives_Native.Some (XSD_Facets.Fam_Numeric) ->
+           XSD_Facets.value_set_intersect acc
+             (XSD_Facets.VS_Interval (XSD_Facets.base_interval_for dt))
+       | FStar_Pervasives_Native.Some f ->
+           XSD_Facets.value_set_intersect acc (XSD_Facets.VS_Family f)
+       | FStar_Pervasives_Native.None -> acc)
+  | Tableau.CE_ComplementOf inner ->
+      let inner_vs =
+        fold_datatype_constraint XSD_Facets.VS_Unconstrained inner in
+      XSD_Facets.value_set_subtract acc inner_vs
+  | uu___ -> acc
+let rec universal_for_property (p : RDF_Term.wf_iri)
+  (ls : Tableau.class_expr Prims.list) (acc : XSD_Facets.value_set) :
+  XSD_Facets.value_set=
+  match ls with
+  | [] -> acc
+  | (Tableau.CE_AllValuesFrom (q, d))::tl ->
+      universal_for_property p tl
+        (if q = p then fold_datatype_constraint acc d else acc)
+  | uu___::tl -> universal_for_property p tl acc
+let rec exists_unsatisfiable_witness (p : RDF_Term.wf_iri)
+  (ls : Tableau.class_expr Prims.list) (universal : XSD_Facets.value_set) :
+  Prims.bool=
+  match ls with
+  | [] -> false
+  | (Tableau.CE_SomeValuesFrom (q, d))::tl ->
+      if
+        (q = p) &&
+          (XSD_Facets.value_set_is_empty
+             (fold_datatype_constraint universal d))
+      then true
+      else exists_unsatisfiable_witness p tl universal
+  | (Tableau.CE_HasValue (q, v))::tl ->
+      if q = p
+      then
+        (match v with
+         | RDF_Term.T_Literal uu___ ->
+             if
+               XSD_Facets.value_set_is_empty
+                 (XSD_Facets.value_set_intersect universal
+                    (XSD_Facets.VS_Enum [v]))
+             then true
+             else exists_unsatisfiable_witness p tl universal
+         | uu___ -> exists_unsatisfiable_witness p tl universal)
+      else exists_unsatisfiable_witness p tl universal
+  | uu___::tl -> exists_unsatisfiable_witness p tl universal
+let property_datatype_clash (p : RDF_Term.wf_iri)
+  (ls_all : Tableau.class_expr Prims.list) : Prims.bool=
+  let universal = universal_for_property p ls_all XSD_Facets.VS_Unconstrained in
+  exists_unsatisfiable_witness p ls_all universal
+let rec collect_dt_properties (ls : Tableau.class_expr Prims.list) :
+  RDF_Term.wf_iri Prims.list=
+  match ls with
+  | [] -> []
+  | (Tableau.CE_SomeValuesFrom (p, uu___))::tl -> p ::
+      (collect_dt_properties tl)
+  | (Tableau.CE_AllValuesFrom (p, uu___))::tl -> p ::
+      (collect_dt_properties tl)
+  | (Tableau.CE_HasValue (p, uu___))::tl -> p :: (collect_dt_properties tl)
+  | uu___::tl -> collect_dt_properties tl
+let rec any_property_datatype_clash (ps : RDF_Term.wf_iri Prims.list)
+  (ls_all : Tableau.class_expr Prims.list) : Prims.bool=
+  match ps with
+  | [] -> false
+  | p::tl ->
+      (property_datatype_clash p ls_all) ||
+        (any_property_datatype_clash tl ls_all)
+let datatype_range_clash (ls_all : Tableau.class_expr Prims.list) :
+  Prims.bool=
+  any_property_datatype_clash (collect_dt_properties ls_all) ls_all
 let exists_max_lt (k : Prims.nat) (p : RDF_Term.wf_iri)
   (ls : Tableau.class_expr Prims.list) : Prims.bool=
   FStar_List_Tot_Base.existsb
@@ -565,8 +669,9 @@ let rec clash_nodes (g : RDF_Graph.rdf_graph) (st : rstate)
   match ns with
   | [] -> false
   | n::tl ->
-      (clash_labels g st n.rn_id n.rn_labels n.rn_labels) ||
-        (clash_nodes g st tl)
+      ((clash_labels g st n.rn_id n.rn_labels n.rn_labels) ||
+         (datatype_range_clash n.rn_labels))
+        || (clash_nodes g st tl)
 let has_clash (g : RDF_Graph.rdf_graph) (st : rstate) : Prims.bool=
   clash_nodes g st st.rs_nodes
 let is_scaffold_bnode (b : RDF_Term.bnode_id) : Prims.bool=
