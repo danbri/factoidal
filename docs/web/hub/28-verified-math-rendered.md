@@ -1,6 +1,6 @@
 ---
-title: "Verified math, rendered: MathML, TOAN, and linear algebra"
-description: "MathML evaluation returning an exact rational (and a clean undef instead of NaN on division by zero), an exact-arithmetic CAS producing Content MathML for a summation, and matrix/vector algebra over exact rationals — the verified semantic form and a small honest Presentation-MathML renderer shown side by side."
+title: "Verified math, rendered: MathML, TOAN, linear algebra, and a bounded-rational sigmoid"
+description: "MathML evaluation returning an exact rational (and a clean undef instead of NaN on division by zero), an exact-arithmetic CAS producing Content MathML for a summation, matrix/vector algebra over exact rationals, and a bounded-rational exp() approximation (argument reduction, truncated Taylor, repeated squaring, documented error bound) driving an engine-serialized MathML formula and an interactive sigmoid plot."
 layout: hub.njk
 series: docs-hub
 series_order: 28
@@ -171,6 +171,159 @@ double-precision determinant routine would produce. `matrixScalarProduct`,
 `matrixVectorProduct`, and `matrixOuterProduct` (`Math.Matrix.fst`, same
 module) follow the same `{result, reason}` shape for the other three
 operations.
+
+## The sigmoid: a bounded-rational `exp`, never a float
+
+Everything above evaluates or rewrites an expression a caller supplies.
+`Math.Sigmoid.fst` goes one step further: it *approximates* — `exp` is
+transcendental, so no finite expression computes it exactly — and an
+approximation needs a stated error bound or it is just a guess wearing a
+number. The whole computation stays scaled-integer, fixed-point
+arithmetic (never a float): argument reduction divides the input by
+`2^10`, a degree-12 Taylor polynomial approximates `exp` on that
+now-small value at a fixed 24-digit internal precision, and
+repeated squaring raises the result back to the `2^10` power. Every
+multiply/divide along the way truncates back to that fixed precision
+— deliberately: an earlier version of this module carried the
+computation as exact, arbitrary-precision rationals instead, and the
+ten repeated-squaring steps made the exact denominator's digit count
+explode (roughly doubling per squaring), so a single 25-point sample
+call didn't return in several CPU-minutes. Fixed-point arithmetic
+keeps every intermediate value's size constant regardless of how many
+multiplications are chained. `Math.Sigmoid.fst`'s header derives the
+combined error bound term by term — Taylor truncation, the fixed-point
+rounding at each of the roughly 180 internal operations, squaring
+amplification, and the final rounding to the 9-digit output — and it
+comes out to `< 10^-9` over the practical sigmoid range, dominated
+entirely by that last, deliberate rounding step.
+
+`sigmoidFormulaMathml` asks the engine to typeset its own formula —
+`MathML.Present.to_presentation_mathml` walks a `Math.Expr.expr` AST for
+`L / (1 + exp(-k*(x - x0)))` and emits real Presentation MathML, the
+browser-native vocabulary (unlike the hand-written Content-to-
+Presentation converter two sections up, this one is entirely engine
+output, nothing assembled in the cell):
+
+```observable-js
+sigmoidFormulaMathml = await fn.sigmoidFormulaMathml();
+```
+
+```observable-js
+sigmoidFormulaDisplay = html`${sigmoidFormulaMathml}`;
+```
+
+`sigmoidPoints(k, x0, l, xmin, xmax, n)` samples that formula at `n+1`
+evenly spaced `x` values — the samples themselves, and every `exp`
+inside them, computed by `Math.Sigmoid.sigmoid_points`, never by this
+page's JavaScript:
+
+```observable-js
+sigmoidParams = ({ k: "1", x0: "0", l: "1", xmin: "-6", xmax: "6", n: 24 })
+```
+
+```observable-js
+sigmoidSamples = await fn.sigmoidPoints(sigmoidParams);
+```
+
+Each sample is `{x, y}`, and each of `x`/`y` is the engine's `scaled`
+value verbatim — `{mantissa, scale, decimal}`, the same (mantissa,
+scale) pair `SPARQL11.Algebra.parse_to_scaled` produces for an
+`xsd:decimal` literal, plus `decimal` (that pair formatted back to a
+string by the same verified formatter) for convenience. The plot below
+only ever reads `.decimal` — it positions pixels, it does not compute
+sigmoid values:
+
+```observable-js
+sigmoidPlot = {
+  const width = 480, height = 220, pad = 24;
+  const xmin = Number(sigmoidParams.xmin);
+  const xmax = Number(sigmoidParams.xmax);
+  const l = Number(sigmoidParams.l);
+  const coords = sigmoidSamples.map((p) => {
+    const px = Number(p.x.decimal);
+    const py = Number(p.y.decimal);
+    const xFrac = (px - xmin) / (xmax - xmin);
+    const yFrac = l > 0 ? py / l : 0;
+    const sx = pad + xFrac * (width - 2 * pad);
+    const sy = height - pad - yFrac * (height - 2 * pad);
+    return sx.toFixed(2) + "," + sy.toFixed(2);
+  });
+  return (
+    '<svg viewBox="0 0 ' + width + ' ' + height + '" width="' + width + '" height="' + height + '">' +
+    '<polyline points="' + coords.join(" ") + '" fill="none" stroke="currentColor" stroke-width="2"></polyline>' +
+    '</svg>'
+  );
+}
+```
+
+```observable-js
+sigmoidPlotDisplay = html`${sigmoidPlot}`;
+```
+
+That's a fixed set of parameters. The last cell wires three range
+sliders (`k`, `x0`, `L`) to the same `fn.sigmoidPoints` call — every
+drag re-runs the F\*-verified sampler and redraws the curve; the slider
+values, converted to strings, are the only thing JavaScript hands the
+engine:
+
+```observable-js
+sigmoidInteractive = {
+  const container = document.createElement("div");
+  container.className = "hub-sigmoid-demo";
+
+  const width = 480, height = 220, pad = 24;
+  const xmin = -6, xmax = 6, n = 24;
+
+  function makeSlider(label, min, max, step, value) {
+    const wrap = document.createElement("label");
+    wrap.textContent = label + " ";
+    const input = document.createElement("input");
+    input.type = "range";
+    input.min = String(min);
+    input.max = String(max);
+    input.step = String(step);
+    input.value = String(value);
+    wrap.appendChild(input);
+    container.appendChild(wrap);
+    return input;
+  }
+
+  const kInput = makeSlider("k", 0.2, 5, 0.1, 1);
+  const x0Input = makeSlider("x0", -4, 4, 0.5, 0);
+  const lInput = makeSlider("L", 0.5, 3, 0.5, 1);
+
+  const svg = document.createElement("svg");
+  svg.setAttribute("viewBox", "0 0 " + width + " " + height);
+  svg.setAttribute("width", String(width));
+  svg.setAttribute("height", String(height));
+  container.appendChild(svg);
+
+  function toPixel(px, py, l) {
+    const xFrac = (px - xmin) / (xmax - xmin);
+    const yFrac = l > 0 ? py / l : 0;
+    const sx = pad + xFrac * (width - 2 * pad);
+    const sy = height - pad - yFrac * (height - 2 * pad);
+    return sx.toFixed(2) + "," + sy.toFixed(2);
+  }
+
+  async function render() {
+    const l = Number(lInput.value);
+    const points = await fn.sigmoidPoints({
+      k: kInput.value, x0: x0Input.value, l: lInput.value, xmin, xmax, n,
+    });
+    const coords = points.map((p) => toPixel(Number(p.x.decimal), Number(p.y.decimal), l));
+    svg.innerHTML = '<polyline points="' + coords.join(" ") + '" fill="none" stroke="currentColor" stroke-width="2"></polyline>';
+    return svg.innerHTML;
+  }
+
+  kInput.addEventListener("input", render);
+  x0Input.addEventListener("input", render);
+  lInput.addEventListener("input", render);
+
+  await render();
+  return container;
+}
+```
 
 Every live cell above is pinned in
 [`tests/hub/post28_test.mjs`](https://github.com/danbri/factoidal/blob/claude/main/tests/hub/post28_test.mjs),

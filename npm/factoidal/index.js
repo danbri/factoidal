@@ -199,6 +199,8 @@ module.exports = {
   matrixScalarProduct: api.matrixScalarProduct,
   matrixVectorProduct: api.matrixVectorProduct,
   matrixOuterProduct: api.matrixOuterProduct,
+  sigmoidPoints: api.sigmoidPoints,
+  sigmoidFormulaMathml: api.sigmoidFormulaMathml,
   vcSha256Hex: api.vcSha256Hex,
   vcEd25519SecretToPublic: api.vcEd25519SecretToPublic,
   vcEd25519Sign: api.vcEd25519Sign,

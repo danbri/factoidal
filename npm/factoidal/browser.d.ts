@@ -31,6 +31,8 @@ export type {
   MatrixCell,
   MatrixResult,
   XPathResult,
+  ScaledValue,
+  SigmoidParams,
 } from './index';
 
 /** Entailment regime accepted by the browser query paths. */
@@ -346,6 +348,10 @@ export function matrixDeterminant(matrix: MatrixCell[][]): Promise<MatrixResult>
 export function matrixScalarProduct(a: MatrixCell[], b: MatrixCell[]): Promise<MatrixResult>;
 export function matrixVectorProduct(a: MatrixCell[], b: MatrixCell[]): Promise<MatrixResult>;
 export function matrixOuterProduct(a: MatrixCell[], b: MatrixCell[]): Promise<MatrixResult>;
+export function sigmoidPoints(
+  params: SigmoidParams
+): Promise<Array<{ x: ScaledValue; y: ScaledValue }>>;
+export function sigmoidFormulaMathml(): Promise<string>;
 
 // ---------------------------------------------------------------------
 // Durable browser persistence (IndexedDB-backed delta log). Browser-
@@ -432,6 +438,8 @@ declare const _default: {
   matrixScalarProduct: typeof matrixScalarProduct;
   matrixVectorProduct: typeof matrixVectorProduct;
   matrixOuterProduct: typeof matrixOuterProduct;
+  sigmoidPoints: typeof sigmoidPoints;
+  sigmoidFormulaMathml: typeof sigmoidFormulaMathml;
   vcSha256Hex: typeof vcSha256Hex;
   vcEd25519SecretToPublic: typeof vcEd25519SecretToPublic;
   vcEd25519Sign: typeof vcEd25519Sign;

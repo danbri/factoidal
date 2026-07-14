@@ -58,6 +58,8 @@ export const matrixDeterminant   = cjs.matrixDeterminant;
 export const matrixScalarProduct = cjs.matrixScalarProduct;
 export const matrixVectorProduct = cjs.matrixVectorProduct;
 export const matrixOuterProduct  = cjs.matrixOuterProduct;
+export const sigmoidPoints        = cjs.sigmoidPoints;
+export const sigmoidFormulaMathml = cjs.sigmoidFormulaMathml;
 
 // VC Data Integrity crypto (eddsa-rdfc-2022, HACL* wasm backend). The
 // typed wrappers auto-await initHacl() on first call (see index.js).
