@@ -126,3 +126,19 @@ this twin set is to get these fixtures off the SKIP bucket (schema now
 decodes) and onto an honest DEFERRED/PASS/MISMATCH verdict once
 `ShEx_Validation.ml` actually implements `extends`/`abstract`, not to
 force a PASS.
+
+## start2RefS2 predicate mismatch — upstream provenance (2026-07-14)
+
+The 1 remaining ShEx validation-suite fail traces to a three-way fixture
+disagreement in the vendored corpus: `start2RefS2.json` and
+`start2RefS2.ttl` both use predicate `<http://a.example/p1>`, while
+`start2RefS2.shex` uses `<http://a.example/p2>`. Upstream knows:
+[shexSpec/shexTest#43](https://github.com/shexSpec/shexTest/issues/43)
+("Curiosity in start2RefS2.shex", reported 2023, closed 2023-06-09)
+describes exactly this mismatch, but the fixtures were never reconciled —
+upstream `main` still ships `p1` in the JSON (re-checked 2026-07-14 via
+raw.githubusercontent.com). Note the majority reading (JSON+Turtle = p1)
+does not by itself settle which representation is canonical; the closed
+issue reached no documented conclusion. Our runner is ShExJ-first, so we
+score against the JSON and carry the 1 mismatch as a fail rather than
+patching vendored fixtures locally.
