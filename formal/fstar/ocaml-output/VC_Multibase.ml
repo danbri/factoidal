@@ -50,6 +50,60 @@ let rec bytes_to_hex_chars (bs : byte Prims.list) :
       FStar_List_Tot_Base.op_At (byte_to_hex_chars b) (bytes_to_hex_chars t)
 let bytes_to_hex (bs : byte Prims.list) : Prims.string=
   FStar_String.string_of_list (bytes_to_hex_chars bs)
+let b64_char_val (c : FStar_Char.char) :
+  Prims.nat FStar_Pervasives_Native.option=
+  let x = FStar_Char.int_of_char c in
+  if (x >= (Prims.of_int (0x41))) && (x <= (Prims.of_int (0x5A)))
+  then FStar_Pervasives_Native.Some (x - (Prims.of_int (0x41)))
+  else
+    if (x >= (Prims.of_int (0x61))) && (x <= (Prims.of_int (0x7A)))
+    then
+      FStar_Pervasives_Native.Some
+        ((x - (Prims.of_int (0x61))) + (Prims.of_int (26)))
+    else
+      if (x >= (Prims.of_int (0x30))) && (x <= (Prims.of_int (0x39)))
+      then
+        FStar_Pervasives_Native.Some
+          ((x - (Prims.of_int (0x30))) + (Prims.of_int (52)))
+      else
+        if (x = (Prims.of_int (0x2B))) || (x = (Prims.of_int (0x2D)))
+        then FStar_Pervasives_Native.Some (Prims.of_int (62))
+        else
+          if (x = (Prims.of_int (0x2F))) || (x = (Prims.of_int (0x5F)))
+          then FStar_Pervasives_Native.Some (Prims.of_int (63))
+          else FStar_Pervasives_Native.None
+let rec b64_decode_go (cs : FStar_Char.char Prims.list) (acc : Prims.nat)
+  (nbits : Prims.nat) : byte Prims.list FStar_Pervasives_Native.option=
+  match cs with
+  | [] -> FStar_Pervasives_Native.Some []
+  | c::tl ->
+      if (FStar_Char.int_of_char c) = (Prims.of_int (0x3D))
+      then b64_decode_go tl acc nbits
+      else
+        (match b64_char_val c with
+         | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+         | FStar_Pervasives_Native.Some d ->
+             let acc2 = (acc * (Prims.of_int (64))) + d in
+             let nbits2 = nbits + (Prims.of_int (6)) in
+             if nbits2 >= (Prims.of_int (8))
+             then
+               let rem = nbits2 - (Prims.of_int (8)) in
+               let b = (mod) (acc2 / (Prims.pow2 rem)) (Prims.of_int (256)) in
+               (match b64_decode_go tl ((mod) acc2 (Prims.pow2 rem)) rem with
+                | FStar_Pervasives_Native.Some rest ->
+                    FStar_Pervasives_Native.Some (b :: rest)
+                | FStar_Pervasives_Native.None ->
+                    FStar_Pervasives_Native.None)
+             else b64_decode_go tl acc2 nbits2)
+let base64_flex_decode (s : Prims.string) :
+  byte Prims.list FStar_Pervasives_Native.option=
+  b64_decode_go (FStar_String.list_of_string s) Prims.int_zero Prims.int_zero
+let base64_to_hex (s : Prims.string) :
+  Prims.string FStar_Pervasives_Native.option=
+  match base64_flex_decode s with
+  | FStar_Pervasives_Native.Some bs ->
+      FStar_Pervasives_Native.Some (bytes_to_hex bs)
+  | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
 let rec pow256 (k : Prims.nat) : Prims.nat=
   if k = Prims.int_zero
   then Prims.int_one

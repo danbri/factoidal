@@ -210,6 +210,7 @@ module.exports = {
   vcCheckCredential: api.vcCheckCredential,
   vcCheckCredentialSubject: api.vcCheckCredentialSubject,
   vcCheckNoDataLoss: api.vcCheckNoDataLoss,
+  vcCheckRelatedResourceDigests: api.vcCheckRelatedResourceDigests,
   openCottas: api.openCottas,
   queryCottas: api.queryCottas,
   closeCottas: api.closeCottas,

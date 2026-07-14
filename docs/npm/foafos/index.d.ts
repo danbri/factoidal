@@ -779,6 +779,17 @@ export function vcCheckNoDataLoss(
   credentialJson: string
 ): Promise<{ valid: boolean; reason?: string }>;
 
+/**
+ * relatedResource digest verification (VCDM 2.0 §5.3) —
+ * VC.Credential.fst's vc_check_related_resource_digests_from_string.
+ * `registryJson` is a JSON array of {"id", "digestsHex"} entries computed
+ * from vendored copies of each known resource's content bytes.
+ */
+export function vcCheckRelatedResourceDigests(
+  registryJson: string,
+  credentialJson: string
+): Promise<{ valid: boolean; reason?: string }>;
+
 /** Feature probe for the currently available engine bundles. */
 export function capabilities(): Promise<{
   entry: boolean;
@@ -907,6 +918,7 @@ declare const _default: {
   vcCheckCredential: typeof vcCheckCredential;
   vcCheckCredentialSubject: typeof vcCheckCredentialSubject;
   vcCheckNoDataLoss: typeof vcCheckNoDataLoss;
+  vcCheckRelatedResourceDigests: typeof vcCheckRelatedResourceDigests;
   capabilities: typeof capabilities;
   Dataset: typeof Dataset;
   dataFactory: DataFactory;

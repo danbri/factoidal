@@ -74,6 +74,61 @@ let bytes_to_hex (bs:list byte) : string =
   S.string_of_list (bytes_to_hex_chars bs)
 
 // ---------------------------------------------------------------------------
+// base64 decode (RFC 4648 §4 standard AND §5 url-safe alphabets, padding
+// optional). Used by VC.Credential's relatedResource digest checks:
+// `digestMultibase` is multibase 'u' (base64url-no-pad) over raw hash
+// bytes, `digestSRI` is `<algo>-<base64>` where real-world SRI values use
+// the standard alphabet (the SRI grammar's base64-value accepts both).
+// One lenient decoder covers both call sites: '+'/'-' both map to 62,
+// '/'/'_' both to 63, trailing '=' padding is skipped. Leniency here can
+// only accept more ENCODINGS of the same bytes — the byte-level digest
+// comparison downstream is what accepts or rejects a value.
+// ---------------------------------------------------------------------------
+
+let b64_char_val (c:C.char) : option (d:nat{d < 64}) =
+  let x = C.int_of_char c in
+  if x >= 0x41 && x <= 0x5A then Some (x - 0x41)           // A-Z -> 0..25
+  else if x >= 0x61 && x <= 0x7A then Some (x - 0x61 + 26) // a-z -> 26..51
+  else if x >= 0x30 && x <= 0x39 then Some (x - 0x30 + 52) // 0-9 -> 52..61
+  else if x = 0x2B || x = 0x2D then Some 62                // '+' / '-'
+  else if x = 0x2F || x = 0x5F then Some 63                // '/' / '_'
+  else None
+
+// Bit accumulator: `acc` holds `nbits` (< 8) not-yet-emitted high bits.
+// Each sextet extends the accumulator; whenever >= 8 bits are pending the
+// top 8 are emitted as a byte. Leftover 2 or 4 low bits at end-of-input
+// (the non-multiple-of-4 no-padding case) are discarded, per RFC 4648's
+// canonical-encoding note — we accept and drop them.
+let rec b64_decode_go (cs:list C.char) (acc:nat) (nbits:nat{nbits < 8})
+  : Tot (option (list byte)) (decreases cs) =
+  match cs with
+  | [] -> Some []
+  | c :: tl ->
+    if C.int_of_char c = 0x3D then b64_decode_go tl acc nbits  // '=' padding: skip
+    else
+      (match b64_char_val c with
+       | None -> None
+       | Some d ->
+         let acc2 = acc * 64 + d in
+         let nbits2 = nbits + 6 in
+         if nbits2 >= 8 then
+           let rem : r:nat{r < 8} = nbits2 - 8 in
+           let b : byte = (acc2 / pow2 rem) % 256 in
+           (match b64_decode_go tl (acc2 % pow2 rem) rem with
+            | Some rest -> Some (b :: rest)
+            | None -> None)
+         else b64_decode_go tl acc2 nbits2)
+
+let base64_flex_decode (s:string) : option (list byte) =
+  b64_decode_go (S.list_of_string s) 0 0
+
+// Convenience for digest comparison: base64(-url) text -> lowercase hex.
+let base64_to_hex (s:string) : option string =
+  match base64_flex_decode s with
+  | Some bs -> Some (bytes_to_hex bs)
+  | None -> None
+
+// ---------------------------------------------------------------------------
 // Big-endian byte list <-> nat
 // ---------------------------------------------------------------------------
 
