@@ -413,6 +413,15 @@ let rec witness_depth_of (ds : (RDF_Term.bnode_id * Prims.nat) Prims.list)
       (match ds with
        | [] -> Prims.int_zero
        | (w, d)::tl -> if w = b then d else witness_depth_of tl i)
+let rec bnode_in_wdepth (ds : (RDF_Term.bnode_id * Prims.nat) Prims.list)
+  (b : RDF_Term.bnode_id) : Prims.bool=
+  match ds with
+  | [] -> false
+  | (w, uu___)::tl -> (w = b) || (bnode_in_wdepth tl b)
+let is_witness_subject (st : rstate) (s : RDF_Term.subject) : Prims.bool=
+  match s with
+  | RDF_Term.S_BNode b -> bnode_in_wdepth st.rs_wdepth b
+  | RDF_Term.S_IRI uu___ -> false
 let rec mem_ce (c : Tableau.class_expr) (ls : Tableau.class_expr Prims.list)
   : Prims.bool=
   match ls with
@@ -766,6 +775,130 @@ let rec filter_in_filler (st : rstate) (c : Tableau.class_expr)
        | FStar_Pervasives_Native.Some j ->
            if mem_ce c (labels_of st j) then t :: rest else rest
        | FStar_Pervasives_Native.None -> rest)
+let rec candidate_witness_subjects (st : rstate)
+  (ts : RDF_Term.rdf_term Prims.list) : RDF_Term.subject Prims.list=
+  match ts with
+  | [] -> []
+  | t::tl ->
+      let rest = candidate_witness_subjects st tl in
+      (match RDF_Graph.term_to_subject t with
+       | FStar_Pervasives_Native.Some s ->
+           if is_witness_subject st s then s :: rest else rest
+       | FStar_Pervasives_Native.None -> rest)
+let rec pairs_from_head (g : RDF_Graph.rdf_graph)
+  (gd : RDF_Term.rdf_term Prims.list Prims.list) (h : RDF_Term.subject)
+  (rest : RDF_Term.subject Prims.list) :
+  (RDF_Term.subject * RDF_Term.subject) Prims.list=
+  match rest with
+  | [] -> []
+  | s::tl ->
+      let more = pairs_from_head g gd h tl in
+      if
+        (RDF_Term.subject_eq h s) ||
+          (provably_distinct g gd (RDF_Graph.subject_to_term h)
+             (RDF_Graph.subject_to_term s))
+      then more
+      else (h, s) :: more
+let rec all_mergeable_pairs (g : RDF_Graph.rdf_graph)
+  (gd : RDF_Term.rdf_term Prims.list Prims.list)
+  (ss : RDF_Term.subject Prims.list) :
+  (RDF_Term.subject * RDF_Term.subject) Prims.list=
+  match ss with
+  | [] -> []
+  | h::tl ->
+      FStar_List_Tot_Base.op_At (pairs_from_head g gd h tl)
+        (all_mergeable_pairs g gd tl)
+let excess_pairs_for_label (g : RDF_Graph.rdf_graph) (st : rstate)
+  (i : RDF_Term.subject) (l : Tableau.class_expr) :
+  (RDF_Term.subject * RDF_Term.subject) Prims.list
+    FStar_Pervasives_Native.option=
+  match l with
+  | Tableau.CE_MaxCard (k, p) ->
+      let full = all_successors g st i p in
+      if (FStar_List_Tot_Base.length full) > k
+      then
+        let prs =
+          all_mergeable_pairs g st.rs_gendistinct
+            (candidate_witness_subjects st full) in
+        (if Prims.uu___is_Cons prs
+         then FStar_Pervasives_Native.Some prs
+         else FStar_Pervasives_Native.None)
+      else FStar_Pervasives_Native.None
+  | Tableau.CE_MaxQualCard (k, p, c) ->
+      let full = filter_in_filler st c (all_successors g st i p) in
+      if (FStar_List_Tot_Base.length full) > k
+      then
+        let prs =
+          all_mergeable_pairs g st.rs_gendistinct
+            (candidate_witness_subjects st full) in
+        (if Prims.uu___is_Cons prs
+         then FStar_Pervasives_Native.Some prs
+         else FStar_Pervasives_Native.None)
+      else FStar_Pervasives_Native.None
+  | uu___ -> FStar_Pervasives_Native.None
+let rec find_merge_labels (g : RDF_Graph.rdf_graph) (st : rstate)
+  (i : RDF_Term.subject) (ls : Tableau.class_expr Prims.list) :
+  (RDF_Term.subject * RDF_Term.subject) Prims.list
+    FStar_Pervasives_Native.option=
+  match ls with
+  | [] -> FStar_Pervasives_Native.None
+  | l::tl ->
+      (match excess_pairs_for_label g st i l with
+       | FStar_Pervasives_Native.Some prs -> FStar_Pervasives_Native.Some prs
+       | FStar_Pervasives_Native.None -> find_merge_labels g st i tl)
+let rec find_merge_nodes (g : RDF_Graph.rdf_graph) (st : rstate)
+  (ns : rnode Prims.list) :
+  (RDF_Term.subject * RDF_Term.subject) Prims.list
+    FStar_Pervasives_Native.option=
+  match ns with
+  | [] -> FStar_Pervasives_Native.None
+  | n::tl ->
+      (match find_merge_labels g st n.rn_id n.rn_labels with
+       | FStar_Pervasives_Native.Some prs -> FStar_Pervasives_Native.Some prs
+       | FStar_Pervasives_Native.None -> find_merge_nodes g st tl)
+let redirect_subject_term (y : RDF_Term.subject) (z : RDF_Term.subject)
+  (t : RDF_Term.rdf_term) : RDF_Term.rdf_term=
+  if RDF_Term.rdf_term_eq t (RDF_Graph.subject_to_term y)
+  then RDF_Graph.subject_to_term z
+  else t
+let redirect_subject (y : RDF_Term.subject) (z : RDF_Term.subject)
+  (s : RDF_Term.subject) : RDF_Term.subject=
+  if RDF_Term.subject_eq s y then z else s
+let redirect_edge (y : RDF_Term.subject) (z : RDF_Term.subject) (e : redge) :
+  redge=
+  {
+    re_s = (redirect_subject y z e.re_s);
+    re_p = (e.re_p);
+    re_o = (redirect_subject_term y z e.re_o);
+    re_count = (e.re_count)
+  }
+let rec redirect_group (y : RDF_Term.subject) (z : RDF_Term.subject)
+  (grp : RDF_Term.rdf_term Prims.list) : RDF_Term.rdf_term Prims.list=
+  match grp with
+  | [] -> []
+  | t::tl -> (redirect_subject_term y z t) :: (redirect_group y z tl)
+let rec redirect_groups (y : RDF_Term.subject) (z : RDF_Term.subject)
+  (gds : RDF_Term.rdf_term Prims.list Prims.list) :
+  RDF_Term.rdf_term Prims.list Prims.list=
+  match gds with
+  | [] -> []
+  | grp::tl -> (redirect_group y z grp) :: (redirect_groups y z tl)
+let merge_into (st : rstate) (y : RDF_Term.subject) (z : RDF_Term.subject) :
+  rstate=
+  let uu___ = add_labels_all st z (labels_of st y) in
+  match uu___ with
+  | (st1, uu___1) ->
+      {
+        rs_nodes = (st1.rs_nodes);
+        rs_extra = (FStar_List_Tot_Base.map (redirect_edge y z) st1.rs_extra);
+        rs_fresh = (st1.rs_fresh);
+        rs_wdepth = (st1.rs_wdepth);
+        rs_inv = (st1.rs_inv);
+        rs_gendistinct = (redirect_groups y z st1.rs_gendistinct);
+        rs_subprop = (st1.rs_subprop);
+        rs_transprops = (st1.rs_transprops);
+        rs_funcprops = (st1.rs_funcprops)
+      }
 let clash_for_label (g : RDF_Graph.rdf_graph) (st : rstate)
   (i : RDF_Term.subject) (ls_all : Tableau.class_expr Prims.list)
   (l : Tableau.class_expr) : Prims.bool=
@@ -1265,10 +1398,17 @@ let rec check (tb : (Tableau.class_expr * Tableau.class_expr) Prims.list)
              (match uu___3 with | (r, b') -> (r, b'))
            else
              (match find_union_nodes st'.rs_nodes with
-              | FStar_Pervasives_Native.None -> (TOpen, (b - Prims.int_one))
               | FStar_Pervasives_Native.Some (i, ds) ->
                   let uu___4 = branch tb g i ds st' (b - Prims.int_one) in
-                  (match uu___4 with | (r, b') -> (r, b'))))
+                  (match uu___4 with | (r, b') -> (r, b'))
+              | FStar_Pervasives_Native.None ->
+                  (match find_merge_nodes g st' st'.rs_nodes with
+                   | FStar_Pervasives_Native.Some prs ->
+                       let uu___4 =
+                         merge_branch tb g prs st' (b - Prims.int_one) in
+                       (match uu___4 with | (r, b') -> (r, b'))
+                   | FStar_Pervasives_Native.None ->
+                       (TOpen, (b - Prims.int_one)))))
 and branch (tb : (Tableau.class_expr * Tableau.class_expr) Prims.list)
   (g : RDF_Graph.rdf_graph) (i : RDF_Term.subject)
   (ds : Tableau.class_expr Prims.list) (st : rstate) (b : Prims.nat) :
@@ -1295,6 +1435,30 @@ and branch (tb : (Tableau.class_expr * Tableau.class_expr) Prims.list)
                              | (TClash, x) -> (x, b2)
                              | (TOut, TOpen) -> (TOpen, b2)
                              | (TOut, uu___6) -> (TOut, b2))))))
+and merge_branch (tb : (Tableau.class_expr * Tableau.class_expr) Prims.list)
+  (g : RDF_Graph.rdf_graph)
+  (pairs : (RDF_Term.subject * RDF_Term.subject) Prims.list) (st : rstate)
+  (b : Prims.nat) : (tri * Prims.nat)=
+  match pairs with
+  | [] -> (TClash, b)
+  | (y, z)::tl ->
+      if b = Prims.int_zero
+      then (TOut, Prims.int_zero)
+      else
+        (let st1 = merge_into st y z in
+         let uu___1 = check tb g st1 (b - Prims.int_one) in
+         match uu___1 with
+         | (r1, b1) ->
+             (match r1 with
+              | TOpen -> (TOpen, b1)
+              | uu___2 ->
+                  let uu___3 = merge_branch tb g tl st b1 in
+                  (match uu___3 with
+                   | (r2, b2) ->
+                       (match (r1, r2) with
+                        | (TClash, x) -> (x, b2)
+                        | (TOut, TOpen) -> (TOpen, b2)
+                        | (TOut, uu___4) -> (TOut, b2)))))
 let sameAs_linked (g : RDF_Graph.rdf_graph) (a : RDF_Term.rdf_term)
   (b : RDF_Term.rdf_term) : Prims.bool=
   FStar_List_Tot_Base.existsb

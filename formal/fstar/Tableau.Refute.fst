@@ -31,14 +31,35 @@ module Tableau.Refute
    transitive R ⊑* Q re-pushes the WHOLE `∀R.C` label, not just `C`,
    across each R-edge; transitivity is inverse-aware — Trans(R) iff
    Trans(R⁻) — see `role_is_transitive` / `push_transitive_foralls`)
-   are implemented. NOT implemented: witness MERGING (the tableau
-   ≤-rule's "identify two witnesses" step — every rule above only
-   COUNTS or PROPAGATES over existing edges, never unifies two
-   individuals), double blocking (cyclic-TBox non-termination
+   are implemented.
+
+   THE ≤-RULE (witness merging, owl2-le-rule wave): section 6a below
+   (`excess_pairs_for_label` / `merge_into` / `merge_branch` in section
+   9) closes the gap the paragraph above used to describe as "NOT
+   implemented" — when a `<= k P` obligation's FULL successor set
+   (witnesses included, unlike the C3/C4 count above) exceeds `k` and
+   is not already resolved by provable distinctness, the search
+   branches over every candidate pair of witness successors that isn't
+   already forced apart, identifies (merges) each candidate pair in
+   turn, and requires EVERY branch to close before reporting the node's
+   `<= k P` obligation refuted — same AND-semantics as `CE_UnionOf`
+   branching. Restricted to pure ∃-witness bnodes on BOTH sides of a
+   merge (`is_witness_subject`): a witness, by construction, never
+   appears in the fixed input graph `g`, so every edge that could ever
+   mention it lives in the mutable `rs_extra` list and can be
+   COMPLETELY redirected — named individuals and literal successors are
+   never merge candidates (conservative, not unsound: a real ABox
+   individual's graph-asserted edges cannot be rewritten this way, so
+   merging one in would silently under-redirect and risk fabricating a
+   clash from a half-merged state).
+
+   STILL NOT implemented: double blocking (cyclic-TBox non-termination
    avoidance beyond the flat max_witness_depth cut), inverse-lifted
    subPropertyOf subsumptions (P ⊑ Q does not yet imply P⁻ ⊑ Q⁻ in
    the role closure), nominal (oneOf) branching beyond the O-rule
-   clash test below, and sameAs-driven cardinality merging.
+   clash test below, sameAs-driven cardinality merging, and merging
+   that reaches a NAMED individual on either side (the ≤-rule above is
+   witness-to-witness only).
        None        = fuel/budget exhausted — indeterminate; callers
                      fall back to their existing behaviour (the OWL-RL
                      `is_inconsistent` marker check).
@@ -608,6 +629,30 @@ let rec witness_depth_of (ds : list (bnode_id & nat)) (i : subject)
      | [] -> 0
      | (w, d) :: tl -> if w = b then d else witness_depth_of tl i)
 
+(* Is bnode `b` a key in the witness-depth table — i.e. was it minted by
+   `ensure_witness` / `ensure_min_witnesses` (never a document bnode:
+   witness ids carry the illegal-in-source " rw_" prefix, per
+   `witness_id`'s banner, and BOTH minting functions register a
+   `rs_wdepth` entry unconditionally, even when the witness gets no
+   filler label and so never becomes an `rs_nodes` entry). Consulted
+   below (section 5b, the ≤-rule witness-merging wave) to restrict
+   merge candidates to nodes this module can always safely and
+   COMPLETELY redirect every edge of: a witness bnode, by construction,
+   never appears in the input graph `g` (fixed before the tableau
+   starts), so every triple that could ever mention it lives in
+   `rs_extra` — nothing is left un-redirected the way an asserted ABox
+   individual's graph-level triples would be. *)
+let rec bnode_in_wdepth (ds : list (bnode_id & nat)) (b : bnode_id)
+  : Tot bool (decreases ds) =
+  match ds with
+  | [] -> false
+  | (w, _) :: tl -> w = b || bnode_in_wdepth tl b
+
+let is_witness_subject (st : rstate) (s : subject) : bool =
+  match s with
+  | S_BNode b -> bnode_in_wdepth st.rs_wdepth b
+  | S_IRI _ -> false
+
 let rec mem_ce (c : class_expr) (ls : list class_expr) : Tot bool (decreases ls) =
   match ls with
   | [] -> false
@@ -1055,6 +1100,220 @@ let rec filter_in_filler (st : rstate) (c : class_expr) (ts : list rdf_term)
     (match term_to_subject t with
      | Some j -> if mem_ce c (labels_of st j) then t :: rest else rest
      | None -> rest)
+
+(* -------------------------------------------------------------------
+   6a. The tableau ≤-rule (witness merging — owl2-le-rule wave).
+
+   PROBLEM this closes: C3/C4 above only clash a `<= k P` label against
+   PROVABLY-DISTINCT successors (`countable_successors`, which itself
+   excludes ∃-witness edges entirely — `extra_objects`'s `re_count`
+   gate). When a node has MORE successors than `k` allows but they are
+   NOT provably distinct — the standard case being two separate
+   ∃-witnesses, or a role-hierarchy/FunctionalProperty-widened mix of a
+   witness and an asserted/witness successor of a sub-role — the C3/C4
+   scan simply never sees them and the search reports the branch open.
+   Standard SHIQ tableaux close this with the ≤-rule: pick two
+   successors that are not YET forced apart and IDENTIFY them (merge
+   node labels, redirect edges), then keep going; this is applied
+   repeatedly until the successor count is <= k or a clash appears from
+   the union of the merged labels.
+
+   NONDETERMINISM, encoded exactly like the existing `CE_UnionOf`
+   search (section 9 below reuses this precedent, see `branch`): the
+   real ≤-rule picks ONE mergeable pair per application, arbitrarily.
+   For REFUTATION we cannot assume any particular choice — we must
+   show every choice the algorithm could make still closes. So
+   `merge_branch` (section 9) branches over EVERY candidate pair as a
+   sibling choice (like every union disjunct) and requires ALL of them
+   to close (TClash) before reporting TClash; TOut/TOpen from any
+   candidate forbids it, mirroring `branch`'s verdict combination
+   exactly. Excess that still remains after one merge (e.g. 3
+   successors against `<= 1 P`) is caught again on the NEXT `check`
+   round (the merge collapses two successor TERMS into one via
+   `dedup_terms` in `all_successors`, so the excess count strictly
+   drops by exactly one per merge — monotonic, budget-bounded, and
+   re-detected by `find_merge_nodes` like any other saturation step),
+   so a whole nested tree of merge choices is explored exactly the way
+   nested union branches already are.
+
+   SOUNDNESS of triggering on excess-over-`all_successors` (INCLUDING
+   witnesses, unlike the C3/C4 test): if `<= k P` holds of `i` in every
+   model (entailed) and `i` has strictly more than `k` PROVABLY
+   DIFFERENT-AS-TERMS `P`-successors, then in every model SOME two of
+   those terms must denote the SAME domain element — that is exactly
+   what `<= k P` forces by pigeonhole. Which pair coincides is exactly
+   the nondeterministic choice above; trying every mergeable pair (and
+   requiring all to close) is the same OR-for-satisfiable /
+   AND-for-refutation encoding already used for `CE_UnionOf`.
+   "Mergeable" EXCLUDES any pair already forced apart
+   (`provably_distinct` — owl:differentFrom, incomparable literal
+   values, or co-membership of a `rs_gendistinct` generating-rule
+   group): merging a forced-distinct pair would be unsound, and is
+   never offered as a candidate. If a node's full successor set has NO
+   mergeable pair at all (every pair already forced apart), no merge
+   branch is offered — that situation is already, and correctly, a C4
+   clash whenever the same successors are also countable; when it
+   is NOT (forced-distinct pure witnesses over the cap) this rule
+   soundly stays silent, same as C4 today.
+
+   SOUNDNESS of `merge_into` (the actual identification step, defined
+   below): restricting candidates to `is_witness_subject` pairs (see
+   its banner) means every edge that could ever mention either side of
+   the pair lives in `st.rs_extra` — nothing is asserted about a
+   witness bnode in the fixed input graph `g`. `merge_into` therefore
+   redirects EVERY `rs_extra` edge mentioning the absorbed node `y`
+   (whether as `re_s` — an outgoing/successor edge — or as `re_o` — an
+   incoming edge, which is how the inverse-aware reverse lookups
+   `extra_reverse_objects`/`extra_reverse_objects_all` see predecessor
+   views — so both successor AND predecessor views are covered by one
+   rewrite, no separate inverse-specific step needed) onto the
+   surviving node `z`, and unions `y`'s current label set onto `z`
+   (every label ever added to a node is an entailed membership of its
+   denotation — see the `pass` invariant note below — so once `y` and
+   `z` are identified, `z`'s denotation is entailed to carry BOTH sets
+   of labels). `y`'s own `rnode` entry is deliberately left in place
+   rather than deleted: it keeps receiving deterministic expansion on
+   its original (unchanged, still perfectly sound) label set, but with
+   its edges gone nothing else in the state can reach it any more, so
+   it can only ever contribute EXTRA, still-sound entailments of `y`'s
+   (== `z`'s, under this branch's hypothesis) identity — anything it
+   derives to a clash is a genuine contradiction of a real entailment,
+   never a fabricated one; at worst this only costs completeness
+   (a combination fact spanning `y`'s post-merge derivations and `z`'s
+   post-merge derivations could be missed), which this module's
+   contract already tolerates everywhere else (TOpen is not a
+   consistency proof). *)
+
+(* Every `p`-successor of `i` (INCLUDING witness edges — the
+   completeness gap C3/C4 leave open) that is itself a pure witness
+   bnode, i.e. a node this module can safely and completely redirect
+   (see `is_witness_subject`'s banner). Named individuals and literals
+   are never merge candidates — conservative (fewer merges attempted),
+   never unsound. *)
+let rec candidate_witness_subjects (st : rstate) (ts : list rdf_term)
+  : Tot (list subject) (decreases ts) =
+  match ts with
+  | [] -> []
+  | t :: tl ->
+    let rest = candidate_witness_subjects st tl in
+    (match term_to_subject t with
+     | Some s -> if is_witness_subject st s then s :: rest else rest
+     | None -> rest)
+
+(* Every OTHER candidate in `rest` that `h` may soundly be merged with
+   (not `h` itself, not forced apart from `h` by `provably_distinct`). *)
+let rec pairs_from_head (g : rdf_graph) (gd : list (list rdf_term))
+                        (h : subject) (rest : list subject)
+  : Tot (list (subject & subject)) (decreases rest) =
+  match rest with
+  | [] -> []
+  | s :: tl ->
+    let more = pairs_from_head g gd h tl in
+    if subject_eq h s || provably_distinct g gd (subject_to_term h) (subject_to_term s)
+    then more
+    else (h, s) :: more
+
+(* All unordered mergeable pairs drawn from a (small — one node's
+   successor set) candidate list. Exhaustive, like `exists_distinct_subset`
+   above; bounded by the same successor-set-is-tiny corpus property, and
+   further bounded by the threaded search budget regardless. *)
+let rec all_mergeable_pairs (g : rdf_graph) (gd : list (list rdf_term))
+                            (ss : list subject)
+  : Tot (list (subject & subject)) (decreases ss) =
+  match ss with
+  | [] -> []
+  | h :: tl -> pairs_from_head g gd h tl @ all_mergeable_pairs g gd tl
+
+(* Is THIS label a `<= k P` (or qualified `<= k P.C`) obligation whose
+   FULL successor set (witnesses included — `all_successors`, not
+   `countable_successors`) exceeds `k`, with at least one mergeable
+   pair to branch over? `None` when the label isn't a max-card shape,
+   when the full set doesn't exceed the bound, or when every pair in
+   the full set is already forced apart (the C3/C4 rules above are the
+   ones responsible for flagging THAT case, whenever it also holds over
+   the countable-only subset — this rule stays silent rather than
+   duplicate or second-guess them). *)
+let excess_pairs_for_label (g : rdf_graph) (st : rstate) (i : subject) (l : class_expr)
+  : option (list (subject & subject)) =
+  match l with
+  | CE_MaxCard k p ->
+    let full = all_successors g st i p in
+    if List.Tot.length full > k then
+      let prs = all_mergeable_pairs g st.rs_gendistinct (candidate_witness_subjects st full) in
+      if Cons? prs then Some prs else None
+    else None
+  | CE_MaxQualCard k p c ->
+    let full = filter_in_filler st c (all_successors g st i p) in
+    if List.Tot.length full > k then
+      let prs = all_mergeable_pairs g st.rs_gendistinct (candidate_witness_subjects st full) in
+      if Cons? prs then Some prs else None
+    else None
+  | _ -> None
+
+let rec find_merge_labels (g : rdf_graph) (st : rstate) (i : subject) (ls : list class_expr)
+  : Tot (option (list (subject & subject))) (decreases ls) =
+  match ls with
+  | [] -> None
+  | l :: tl ->
+    (match excess_pairs_for_label g st i l with
+     | Some prs -> Some prs
+     | None -> find_merge_labels g st i tl)
+
+(* First node (deterministic: node order, then label order — same
+   discipline as `find_union_nodes`) carrying a mergeable excess. *)
+let rec find_merge_nodes (g : rdf_graph) (st : rstate) (ns : list rnode)
+  : Tot (option (list (subject & subject))) (decreases ns) =
+  match ns with
+  | [] -> None
+  | n :: tl ->
+    (match find_merge_labels g st n.rn_id n.rn_labels with
+     | Some prs -> Some prs
+     | None -> find_merge_nodes g st tl)
+
+(* Rewrite one term/subject occurrence of the absorbed node `y` to the
+   surviving node `z`. *)
+let redirect_subject_term (y : subject) (z : subject) (t : rdf_term) : rdf_term =
+  if rdf_term_eq t (subject_to_term y) then subject_to_term z else t
+
+let redirect_subject (y : subject) (z : subject) (s : subject) : subject =
+  if subject_eq s y then z else s
+
+(* Redirect BOTH endpoints of one tableau-internal edge — this is what
+   makes the rewrite predecessor/inverse-aware for free: an edge
+   discovered through `extra_reverse_objects` matches on `re_o`, so
+   redirecting `re_o` here is exactly what keeps inverse-role successor
+   views correct after the merge, with no separate inverse-specific
+   step. *)
+let redirect_edge (y : subject) (z : subject) (e : redge) : redge =
+  { e with re_s = redirect_subject y z e.re_s; re_o = redirect_subject_term y z e.re_o }
+
+let rec redirect_group (y : subject) (z : subject) (grp : list rdf_term)
+  : Tot (list rdf_term) (decreases grp) =
+  match grp with
+  | [] -> []
+  | t :: tl -> redirect_subject_term y z t :: redirect_group y z tl
+
+(* rs_gendistinct groups are read by `provably_distinct` to forbid
+   merging a FORCED-apart pair; once `y` is identified with `z`, any
+   distinctness fact the generating rule recorded about `y` (relative
+   to its group siblings) is a fact about `z` now, by exactly the same
+   "labels are entailed of the merged identity" argument the module
+   banner above makes for `rn_labels` — soundly TRANSFERRED, not
+   dropped, so a later merge attempt against one of `y`'s former
+   group-mates is still correctly refused. *)
+let rec redirect_groups (y : subject) (z : subject) (gds : list (list rdf_term))
+  : Tot (list (list rdf_term)) (decreases gds) =
+  match gds with
+  | [] -> []
+  | grp :: tl -> redirect_group y z grp :: redirect_groups y z tl
+
+(* The ≤-rule's identification step: absorb `y` into `z`. See the
+   section 6a banner above for the full soundness argument. *)
+let merge_into (st : rstate) (y : subject) (z : subject) : rstate =
+  let (st1, _) = add_labels_all st z (labels_of st y) in
+  { st1 with
+    rs_extra = List.Tot.map (redirect_edge y z) st1.rs_extra;
+    rs_gendistinct = redirect_groups y z st1.rs_gendistinct }
 
 (* Per-label clash test against the node's full label set + edges.
 
@@ -1764,9 +2023,19 @@ let rec check (tb : list (class_expr & class_expr)) (g : rdf_graph)
       let (r, b') = check tb g st' (b - 1) in (r, b')
     else
       (match find_union_nodes st'.rs_nodes with
-       | None -> (TOpen, b - 1)
        | Some (i, ds) ->
-         let (r, b') = branch tb g i ds st' (b - 1) in (r, b'))
+         let (r, b') = branch tb g i ds st' (b - 1) in (r, b')
+       | None ->
+         (* ≤-rule (owl2-le-rule wave): only consulted once union
+            branching has nothing left to offer — see the section 6a
+            banner for the soundness argument and why trying every
+            candidate pair (AND-semantics, `merge_branch` below) is the
+            refutation-sound encoding of the rule's real
+            nondeterminism. *)
+         (match find_merge_nodes g st' st'.rs_nodes with
+          | Some prs ->
+            let (r, b') = merge_branch tb g prs st' (b - 1) in (r, b')
+          | None -> (TOpen, b - 1)))
 and branch (tb : list (class_expr & class_expr)) (g : rdf_graph)
            (i : subject) (ds : list class_expr) (st : rstate) (b : nat)
   : Tot (tri & (r : nat { r <= b })) (decreases %[b; List.Tot.length ds]) =
@@ -1781,6 +2050,28 @@ and branch (tb : list (class_expr & class_expr)) (g : rdf_graph)
        | TOpen -> (TOpen, b1)
        | _ ->
          let (r2, b2) = branch tb g i tl st b1 in
+         (match r1, r2 with
+          | TClash, x -> (x, b2)
+          | TOut, TOpen -> (TOpen, b2)
+          | TOut, _ -> (TOut, b2)))
+and merge_branch (tb : list (class_expr & class_expr)) (g : rdf_graph)
+                 (pairs : list (subject & subject)) (st : rstate) (b : nat)
+  : Tot (tri & (r : nat { r <= b })) (decreases %[b; List.Tot.length pairs]) =
+  (* Same shape and same verdict-combination as `branch` above (see the
+     section 6a banner): TClash only if EVERY candidate pair's merge
+     closes; TOpen from any candidate wins; TOut otherwise. Budget is
+     threaded exactly like `branch` — each entry consumes >= 1 unit. *)
+  match pairs with
+  | [] -> (TClash, b)
+  | (y, z) :: tl ->
+    if b = 0 then (TOut, 0)
+    else
+      let st1 = merge_into st y z in
+      let (r1, b1) = check tb g st1 (b - 1) in
+      (match r1 with
+       | TOpen -> (TOpen, b1)
+       | _ ->
+         let (r2, b2) = merge_branch tb g tl st b1 in
          (match r1, r2 with
           | TClash, x -> (x, b2)
           | TOut, TOpen -> (TOpen, b2)
