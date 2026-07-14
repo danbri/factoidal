@@ -140,13 +140,19 @@ let rec nnf (c : Tableau.class_expr) : Tableau.class_expr=
   | Tableau.CE_MaxQualCard (k, p, d) ->
       Tableau.CE_MaxQualCard (k, p, (nnf d))
   | Tableau.CE_ExactCard (k, p) ->
-      Tableau.CE_IntersectionOf
-        [Tableau.CE_MinCard (k, p); Tableau.CE_MaxCard (k, p)]
+      if k = Prims.int_zero
+      then Tableau.CE_MaxCard (Prims.int_zero, p)
+      else
+        Tableau.CE_IntersectionOf
+          [Tableau.CE_MinCard (k, p); Tableau.CE_MaxCard (k, p)]
   | Tableau.CE_ExactQualCard (k, p, d) ->
       let d' = nnf d in
-      Tableau.CE_IntersectionOf
-        [Tableau.CE_MinQualCard (k, p, d');
-        Tableau.CE_MaxQualCard (k, p, d')]
+      if k = Prims.int_zero
+      then Tableau.CE_MaxQualCard (Prims.int_zero, p, d')
+      else
+        Tableau.CE_IntersectionOf
+          [Tableau.CE_MinQualCard (k, p, d');
+          Tableau.CE_MaxQualCard (k, p, d')]
   | uu___ -> c
 and nnf_neg (c : Tableau.class_expr) : Tableau.class_expr=
   match c with
@@ -855,7 +861,10 @@ let rec collect_axioms_aux (gfull : RDF_Graph.rdf_graph)
         if t.RDF_Triple.p = OWL_Closure.owl_equivalentClass
         then
           (let a = parse_nnf_subject gfull t.RDF_Triple.s in
-           let b = parse_nnf gfull t.RDF_Triple.o in (a, b) :: (b, a) :: rest)
+           let b = parse_nnf gfull t.RDF_Triple.o in
+           let na = nnf_neg a in
+           let nb = nnf_neg b in (a, b) :: (b, a) :: (nb, na) :: (na, nb) ::
+             rest)
         else
           if
             (t.RDF_Triple.p = OWL_Vocabulary.owl_disjointWith) ||
@@ -886,8 +895,10 @@ let rec collect_axioms_aux (gfull : RDF_Graph.rdf_graph)
                | RDF_Term.S_IRI z ->
                    let ce =
                      nnf (Tableau.parse_ce_of_subject gfull t.RDF_Triple.s) in
-                   ((Tableau.CE_Named z), ce) :: (ce, (Tableau.CE_Named z))
-                     :: rest
+                   let nz = nnf_neg (Tableau.CE_Named z) in
+                   let nce = nnf_neg ce in ((Tableau.CE_Named z), ce) ::
+                     (ce, (Tableau.CE_Named z)) :: (nce, nz) :: (nz, nce) ::
+                     rest
                | uu___3 -> rest)
             else rest
 let collect_axioms (g : RDF_Graph.rdf_graph) :

@@ -296,10 +296,26 @@ let rec nnf (c : class_expr) : Tot class_expr (decreases c) =
   | CE_AllValuesFrom p d -> CE_AllValuesFrom p (nnf d)
   | CE_MinQualCard k p d -> CE_MinQualCard k p (nnf d)
   | CE_MaxQualCard k p d -> CE_MaxQualCard k p (nnf d)
-  | CE_ExactCard k p -> CE_IntersectionOf [CE_MinCard k p; CE_MaxCard k p]
+  (* =0 P is ≤0 P exactly: >= 0 P is a tautology (every individual has
+     at least zero P-successors in every model), so the k = 0 exact
+     cardinality simplifies to its max conjunct ALONE rather than the
+     ⊓[>=0 P; <=0 P] pair the general case produces. This is not just
+     cosmetic — the FaCT-derived WebOnt-description-logic-6xx fixtures
+     define complement atoms as `X.comp ≡ owl:cardinality 0 on P`, and
+     lazy unfolding matches axiom LHSs by EXACT ce_eq: a node that
+     derives `<= 0 P` (e.g. via a contrapositive pair from the twin
+     `X ≡ >= 1 P` definition) could never fire the (⊓[>=0; <=0] →
+     X.comp) pair, because the tautological >=0 conjunct is never a
+     node label. Normalising the tautology away makes the two NNF
+     forms coincide, so the definition fires wherever `<= 0 P` lands.
+     (k >= 1 keeps the intersection: both conjuncts carry content.) *)
+  | CE_ExactCard k p ->
+    if k = 0 then CE_MaxCard 0 p
+    else CE_IntersectionOf [CE_MinCard k p; CE_MaxCard k p]
   | CE_ExactQualCard k p d ->
     let d' = nnf d in
-    CE_IntersectionOf [CE_MinQualCard k p d'; CE_MaxQualCard k p d']
+    if k = 0 then CE_MaxQualCard 0 p d'
+    else CE_IntersectionOf [CE_MinQualCard k p d'; CE_MaxQualCard k p d']
   | _ -> c
 and nnf_neg (c : class_expr) : Tot class_expr (decreases c) =
   match c with
@@ -1186,7 +1202,40 @@ let rec collect_axioms_aux (gfull : rdf_graph) (ts : rdf_graph)
     else if t.p = owl_equivalentClass then
       let a = parse_nnf_subject gfull t.s in
       let b = parse_nnf gfull t.o in
-      (a, b) :: (b, a) :: rest
+      (* Contrapositive unfolding (owl2-contrapositive wave, construct-gap:
+         "contrapositive unfolding" in the Wave E profile). owl:equivalentClass
+         asserts a GENUINE iff — both a ⊑ b and b ⊑ a already go into the pair
+         list below — so BOTH classical contrapositives are equally sound here:
+           a ⊑ b  contrapositive  ¬b ⊑ ¬a
+           b ⊑ a  contrapositive  ¬a ⊑ ¬b
+         This is what unlocks the FaCT-derived WebOnt-description-logic-6xx
+         family: those fixtures encode complementary class pairs arithmetically
+         (X ≡ >=1 P, X.comp ≡ =0 P on the SAME property, with no explicit
+         owl:complementOf triple linking X and X.comp at all) — deriving
+         anything from that pairing REQUIRES going through a defined name's
+         negation, which plain (a,b)/(b,a) unfolding never does since neither
+         side is ever the LHS the node's label actually carries. na/nb reuse
+         `nnf_neg` (NNF-in, NNF-out, already used by nnf itself) so this adds
+         no new recursion, no new fuel parameter, and no new branching source —
+         only two more STATIC axiom pairs per equivalentClass triple for the
+         existing apply_axioms exact-match scan to consult.
+         Deliberately NOT done for rdfs:subClassOf below, nor for
+         disjointWith/complementOf (self-dual: contrapositive of (a,¬b) is
+         just (b,¬a), already present, no new information). rdfs:subClassOf's
+         A ⊑ D is one-directional ONLY — D ⊑ A is not asserted — so a node
+         labelled ¬D must NOT be treated as ¬A here: that would silently
+         assume the missing reverse direction (the "equivalence-vs-subclass
+         confusion" the module's soundness gate calls out). The valid
+         contrapositive of a lone A ⊑ D (¬D ⊑ ¬A) runs the OPPOSITE direction
+         from what a naive "not-defined-so-not-defining-condition" unfold
+         would produce, and is not something this module needs: nothing in
+         the target fixtures required it (every clash chain traced during
+         design went entirely through equivalentClass/bidirectional-marker
+         pairs), so it stays out to keep the axiom table growth linear and
+         the soundness argument simple. *)
+      let na = nnf_neg a in
+      let nb = nnf_neg b in
+      (a, b) :: (b, a) :: (nb, na) :: (na, nb) :: rest
     else if t.p = owl_disjointWith || t.p = owl_complementOf then
       let a = parse_nnf_subject gfull t.s in
       let b = parse_nnf gfull t.o in
@@ -1196,11 +1245,25 @@ let rec collect_axioms_aux (gfull : rdf_graph) (ts : rdf_graph)
     else if (t.p = owl_onProperty || t.p = owl_intersectionOf || t.p = owl_unionOf)
             && S_IRI? t.s then
       (* Named class-expression subject: z ≡ CE(z). One axiom pair per
-         marker triple; duplicates are harmless (add_label dedups). *)
+         marker triple; duplicates are harmless (add_label dedups).
+         Contrapositive closure (same soundness argument as the
+         owl:equivalentClass branch above — this IS a genuine bidirectional
+         definition per the OWL 2 RDF-Based reading in the section-7 banner,
+         not a one-way subsumption): z's negation and CE(z)'s negation are
+         equally each other's contrapositive-derived unfold targets. This is
+         the branch the FaCT 6xx fixtures actually route the SECOND half of
+         each complement's definition through (e.g. `X.comp` is ALSO given a
+         real boolean-expression body — an intersectionOf sitting directly on
+         the named class — alongside its numeric-restriction equivalentClass
+         body; the contrapositive above turns "not X.comp" into a class-label
+         this branch's OWN pair can then unfold into the boolean expression's
+         NNF-negated disjunction). *)
       (match t.s with
        | S_IRI z ->
          let ce = nnf (parse_ce_of_subject gfull t.s) in
-         (CE_Named z, ce) :: (ce, CE_Named z) :: rest
+         let nz = nnf_neg (CE_Named z) in
+         let nce = nnf_neg ce in
+         (CE_Named z, ce) :: (ce, CE_Named z) :: (nce, nz) :: (nz, nce) :: rest
        | _ -> rest)
     else rest
 
