@@ -12,6 +12,14 @@ conformance. It supersedes the "remaining" stubs in
 `.github/test-suites/vc.yaml`, `vc-di-eddsa.yaml`, `vc20-api.yaml`,
 `did.yaml`.
 
+**Update 2026-07-14 (obsolescence sweep):** both suites named in the
+baseline below are now fully green — `vc_di_eddsa` 31 pass, 0 fail
+(out of 31, proof sets/chains + `previousProof` landed) and
+`vc20_api` 59 pass, 0 fail (out of 59, structural VC Data Model
+validator now wired into the HTTP verify path + relatedResource
+checks landed). The baseline below is the historical 2026-07-10
+starting point for this plan, not the current score.
+
 ## Measured baseline (2026-07-10, from the canivc integration)
 
 Run by our own VC-API shim (`bin/vc-api-shim`) against the vendored
