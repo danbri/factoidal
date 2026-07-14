@@ -2,7 +2,7 @@
   "spec": "https://w3c.github.io/vc-data-model-2.0-test-suite/",
   "suite": "vc-data-model-2.0 (issuer/verifier HTTP suite, via shim)",
   "runner": "tests/vc20-api/run.sh",
-  "retrieved_at": "2026-07-14T11:44:42Z",
+  "retrieved_at": "2026-07-14T13:08:31Z",
   "pass": 59,
   "fail": 0,
   "skip": 0,
