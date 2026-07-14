@@ -92,6 +92,16 @@ module VC.Credential
 //     property (`credential-name-extra-prop-en-fail.json`'s stray "url"
 //     key), OR an array of such objects.
 //
+// relatedResource (VCDM 2.0 §5.3, vc20-api suite Track A4, 2026-07-14):
+// a single object or array of objects; each object MUST carry an
+// IRI-shaped `id` (REQUIRED, unlike the other object-shaped fields
+// above) and at least one of `digestSRI`/`digestMultibase`; `id`
+// values MUST be unique across the list; `mediaType`, if present,
+// must be a string. A bare string entry (`relatedResource: [url]`)
+// is rejected. Digest-VALUE correctness against the identified
+// resource's actual content is explicitly out of scope — see
+// vc_check_related_resource_object's header comment.
+//
 // Context-driven type resolution (`credential-redef-type-fail.json`,
 // `credential-redef-type2-fail.json`,
 // `credential-type-mapped-nonurl-fail.json`,
@@ -151,6 +161,13 @@ open JSONLD.Context
 // helpers from silently shadowing (or being shadowed by) that much
 // larger module's namesake.
 module XSD = XSD.Datatypes
+
+// VC.Multibase carries the pure byte codecs (hex, base58btc, base64 both
+// alphabets) the relatedResource digest checks below need to decode a
+// declared digestMultibase ('u'/'z' multibase) or digestSRI
+// ("<algo>-<base64>") value into comparable hex. Qualified for the same
+// shadowing reason as XSD above (VC.Multibase defines its own `byte`).
+module MB = VC.Multibase
 
 // ================================================================
 // Small local string helpers (dependency-free of SPARQL11.Algebra —
@@ -481,6 +498,206 @@ let vc_check_proof (v : json_val) : vc_verdict =
   vc_check_object_or_array_field vc_check_proof_object "proof" v
 
 // ================================================================
+// relatedResource (VCDM 2.0 §5.3 Integrity of Related Resources):
+// each entry MUST be an object (a bare string, e.g. `["<url>"]`, is
+// REJECTED — the "data model" negative test in the corpus), MUST
+// carry an `id` (REQUIRED, unlike the other five object-shaped
+// fields above, and IRI-shaped per §4.4 Identifiers, reusing
+// vc_check_optional_id_field's IRI-shape check with `required =
+// true`), MUST carry at least one of `digestSRI`/`digestMultibase`
+// (as a JString — this module's usual "well-formed by presence and
+// shape" bar, not a cryptographic one), and its `id` MUST be unique
+// across the whole relatedResource list. `mediaType`, when present,
+// must be a string.
+//
+// Deliberately OUT of scope: verifying a digestSRI/digestMultibase
+// value actually matches the identified resource's content. VCDM
+// 2.0 assigns that MUST to "the conforming verifier implementation"
+// checking "the digest computed for the retrieved resource" — i.e.
+// it requires FETCHING the resource, which this module (and its
+// only caller, bin/vc-api-shim/server.mjs, an offline shim with no
+// resource-fetch wired) does not do. This module stays structural,
+// no I/O, per its header comment. (Confirmed non-viable to fake:
+// the vendored third_party/contexts/credentials-v2.jsonld copy's
+// own real SHA-384 does not match the W3C test suite's canned
+// `relatedResource.digestSRI` fixture value either — hashing our
+// local copy would reject the SAME "doesNotReject" positive fixture
+// this check must accept, not just the "wrong digest" negative
+// one.)
+// ================================================================
+
+let vc_check_related_resource_object (v : json_val) : vc_verdict =
+  match v with
+  | JObject _ ->
+    vc_then (vc_check_optional_id_field true "relatedResource" v) (fun () ->
+    let has_sri = (match json_get_field "digestSRI" v with Some (JString _) -> true | _ -> false) in
+    let has_mb = (match json_get_field "digestMultibase" v with Some (JString _) -> true | _ -> false) in
+    if not (has_sri || has_mb) then
+      VC_Fail "relatedResource: at least one of digestSRI or digestMultibase is required"
+    else
+      (match json_get_field "mediaType" v with
+       | None -> VC_Pass
+       | Some (JString _) -> VC_Pass
+       | Some _ -> VC_Fail "relatedResource: mediaType must be a string"))
+  | _ -> VC_Fail "relatedResource entry must be an object"
+
+let rec vc_related_resource_ids (items : list json_val) : Tot (list string) (decreases items) =
+  match items with
+  | [] -> []
+  | hd :: tl ->
+    (match json_get_string "id" hd with
+     | Some s -> s :: vc_related_resource_ids tl
+     | None -> vc_related_resource_ids tl)
+
+let rec vc_string_list_has_dup (seen : list string) (items : list string)
+  : Tot bool (decreases items) =
+  match items with
+  | [] -> false
+  | hd :: tl -> if List.Tot.mem hd seen then true else vc_string_list_has_dup (hd :: seen) tl
+
+let vc_check_related_resource_list (items : list json_val) : vc_verdict =
+  vc_then (vc_check_all vc_check_related_resource_object items) (fun () ->
+    if vc_string_list_has_dup [] (vc_related_resource_ids items)
+    then VC_Fail "relatedResource: duplicate id among related resource objects"
+    else VC_Pass)
+
+let vc_check_related_resource (v : json_val) : vc_verdict =
+  match json_get_field "relatedResource" v with
+  | None -> VC_Pass
+  | Some (JObject fields) -> vc_check_related_resource_object (JObject fields)
+  | Some (JArray items) -> vc_check_related_resource_list items
+  | Some _ -> VC_Fail "relatedResource must be an object or an array of objects"
+
+// ================================================================
+// relatedResource digest VERIFICATION (VCDM 2.0 §5.3: "If the digest
+// provided by the issuer does not match the digest computed for the
+// retrieved resource, the conforming verifier implementation MUST
+// produce an error."). This module does no I/O, so "the retrieved
+// resource" is supplied by the CONSUMER as a digest registry: a JSON
+// array [{"id": <resource URL>, "digestsHex": [<lowercase hex>, ...]}]
+// where digestsHex holds the digests (sha256 AND sha384, and possibly
+// several vendored revisions of a resource that has changed over time)
+// the consumer computed from its vendored copy/copies of that
+// resource's actual content bytes (see bin/vc-api-shim/server.mjs's
+// RELATED_RESOURCE_FILES — the registry derives from real vendored
+// resource files, never from expected-answer constants). The SEMANTICS
+// live here: how a declared digestMultibase/digestSRI value decodes,
+// what "matches" means (byte-level, via lowercase-hex comparison
+// against ANY known revision's digest), and the offline policy — a
+// resource id absent from the registry, or a digest algorithm we hold
+// no reference digest for, is UNVERIFIABLE offline and passes
+// (checking it would require fetching); a KNOWN resource whose
+// declared digest matches no known revision is the spec's mismatch
+// error. Kept separate from vc_check_document (a registry-threading
+// signature change would break that entry point's existing
+// consumers); consumers call this as an additional gate.
+// ================================================================
+
+let rec vc_registry_digests_for (entries : list json_val) (rid : string)
+  : Tot (option (list string)) (decreases entries) =
+  match entries with
+  | [] -> None
+  | e :: tl ->
+    (match json_get_string "id" e with
+     | Some i ->
+       if i = rid then
+         (match json_get_field "digestsHex" e with
+          | Some (JArray items) -> Some (vc_string_items items)
+          | _ -> Some [])
+       else vc_registry_digests_for tl rid
+     | None -> vc_registry_digests_for tl rid)
+
+// Declared digestMultibase -> lowercase hex. 'u' (base64url-no-pad —
+// the encoding the VCDM examples and the W3C test fixtures use) and
+// 'z' (base58btc) are decodable; any other multibase prefix decodes to
+// None (treated as a mismatch for a KNOWN resource — an undecodable
+// digest cannot match any computed digest).
+let vc_digest_multibase_to_hex (s : string) : option string =
+  match String.list_of_string s with
+  | c :: rest ->
+    let code = FStar.Char.int_of_char c in
+    if code = 0x75 then MB.base64_to_hex (string_of_list rest)
+    else if code = 0x7A then
+      (match MB.base58btc_decode (string_of_list rest) with
+       | Some bs -> Some (MB.bytes_to_hex bs)
+       | None -> None)
+    else None
+  | [] -> None
+
+// Split "<algo>-<base64>" at the FIRST '-' (the base64 payload may
+// itself contain '-' in the url-safe alphabet; the algo label never
+// does). None if there is no '-' at all.
+let rec vc_split_at_dash (cs : list FStar.Char.char) (acc_rev : list FStar.Char.char)
+  : Tot (option (list FStar.Char.char & list FStar.Char.char)) (decreases cs) =
+  match cs with
+  | [] -> None
+  | c :: tl ->
+    if FStar.Char.int_of_char c = 0x2D then Some (List.Tot.rev acc_rev, tl)
+    else vc_split_at_dash tl (c :: acc_rev)
+
+// The digest algorithms the consumer registry is DEFINED to carry for
+// every entry (both hashes of every vendored revision — see the shim's
+// registry builder). An SRI value declaring any other algorithm is
+// unverifiable offline and passes, same policy as an unknown resource
+// id.
+let vc_registry_covered_algo (algo : string) : bool =
+  algo = "sha256" || algo = "sha384"
+
+let vc_check_rr_digest_object (registry_entries : list json_val) (v : json_val) : vc_verdict =
+  match json_get_string "id" v with
+  | None -> VC_Pass // missing/non-string id is vc_check_related_resource's job
+  | Some rid ->
+    (match vc_registry_digests_for registry_entries rid with
+     | None -> VC_Pass // unknown resource: unverifiable offline
+     | Some known ->
+       let mb_ok =
+         (match json_get_field "digestMultibase" v with
+          | Some (JString s) ->
+            (match vc_digest_multibase_to_hex s with
+             | Some hx -> List.Tot.mem hx known
+             | None -> false)
+          | _ -> true) in
+       if not mb_ok then
+         VC_Fail "relatedResource: digestMultibase does not match the digest computed for the resource"
+       else
+         let sri_ok =
+           (match json_get_field "digestSRI" v with
+            | Some (JString s) ->
+              (match vc_split_at_dash (String.list_of_string s) [] with
+               | Some (algo_cs, val_cs) ->
+                 let algo = string_of_list algo_cs in
+                 if vc_registry_covered_algo algo then
+                   (match MB.base64_to_hex (string_of_list val_cs) with
+                    | Some hx -> List.Tot.mem hx known
+                    | None -> false)
+                 else true // algorithm outside the registry contract: unverifiable offline
+               | None -> false) // no "<algo>-" prefix: cannot match any computed digest
+            | _ -> true) in
+         if not sri_ok then
+           VC_Fail "relatedResource: digestSRI does not match the digest computed for the resource"
+         else VC_Pass)
+
+let vc_check_related_resource_digests (registry : json_val) (v : json_val) : vc_verdict =
+  let entries = (match registry with | JArray es -> es | _ -> []) in
+  match json_get_field "relatedResource" v with
+  | None -> VC_Pass
+  | Some (JObject fields) -> vc_check_rr_digest_object entries (JObject fields)
+  | Some (JArray items) -> vc_check_all (vc_check_rr_digest_object entries) items
+  | Some _ -> VC_Pass // shape errors are vc_check_related_resource's job
+
+let vc_check_related_resource_digests_from_string
+  (registry_json : string) (input : string) : vc_verdict =
+  match parse_json registry_json with
+  | None -> VC_Fail "digest registry is not well-formed JSON"
+  | Some reg ->
+    (match parse_json input with
+     | None -> VC_Fail "input is not well-formed JSON"
+     | Some v ->
+       (match v with
+        | JObject _ -> vc_check_related_resource_digests reg v
+        | _ -> VC_Fail "top-level JSON value must be an object"))
+
+// ================================================================
 // validFrom / validUntil (VCDM 2.0 §4.9 Validity Period): each, if
 // present, MUST be a well-formed xsd:dateTime lexical string; if both
 // are present, validFrom MUST be temporally the same or earlier than
@@ -555,10 +772,11 @@ let vc_check_credential_shaped (v : json_val) : vc_verdict =
   vc_then (vc_check_refresh_service v) (fun () ->
   vc_then (vc_check_proof v) (fun () ->
   vc_then (vc_check_validity_period v) (fun () ->
+  vc_then (vc_check_related_resource v) (fun () ->
     let types = vc_decode_type_list v in
     if List.Tot.mem vc_credential_type types
     then vc_check_credential_subject v
-    else VC_Pass))))))))))))))
+    else VC_Pass)))))))))))))))
 
 // ================================================================
 // verifiableCredential: presentation-kind documents only, field

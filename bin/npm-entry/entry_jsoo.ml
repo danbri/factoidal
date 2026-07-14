@@ -1551,6 +1551,24 @@ let vc_check_no_data_loss_json (credential_json : string) : string =
     | VC_Credential.VC_Fail reason ->
       "{\"ok\":true,\"valid\":false,\"reason\":" ^ jstr reason ^ "}")
 
+(* relatedResource digest verification (VCDM 2.0 section 5.3, vc20-api
+   Track A4) -- VC_Credential.vc_check_related_resource_digests_from_
+   string. `registry_json` is the consumer's known-resource digest
+   registry, a JSON array of {"id": <resource URL>, "digestsHex":
+   [<lowercase hex>, ...]} entries the consumer computed from its
+   VENDORED copies of each resource's content bytes (see
+   bin/vc-api-shim/server.mjs's registry builder). All decode/match/
+   offline-policy semantics are in VC.Credential.fst (rule #11); this
+   wrapper only maps the vc_verdict onto the shared envelope. *)
+let vc_check_related_resource_digests_json
+    (registry_json : string) (credential_json : string) : string =
+  guarded (fun () ->
+    match VC_Credential.vc_check_related_resource_digests_from_string
+            registry_json credential_json with
+    | VC_Credential.VC_Pass -> "{\"ok\":true,\"valid\":true}"
+    | VC_Credential.VC_Fail reason ->
+      "{\"ok\":true,\"valid\":false,\"reason\":" ^ jstr reason ^ "}")
+
 (* ---------------------------------------------------------------------
    Typed engine functions (#74 npm FP surface) -- rule #11 consumer
    wrappers. Each parses its string inputs with the F* parsers
@@ -1934,6 +1952,7 @@ let () =
           ("vcCheckCredential", s2 vc_check_credential_json);
           ("vcCheckCredentialSubject", s1 vc_check_credential_subject_json);
           ("vcCheckNoDataLoss", s1 vc_check_no_data_loss_json);
+          ("vcCheckRelatedResourceDigests", s2 vc_check_related_resource_digests_json);
           ("xsltTransform", s2 xslt_transform_json);
           ("mathmlEval", s2 mathml_eval_json);
           ("xformsRecalc", s2 xforms_recalc_json);

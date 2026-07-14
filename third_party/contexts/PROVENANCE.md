@@ -93,3 +93,32 @@ default fixture (`validVc.json`, vendored inside
 the v2 one, so the shim's local context registry needs both. Unlike
 `credentials-v2.jsonld`, `proof` and `credentialSubject` are top-level
 (unscoped) terms here. Same licence terms as above.
+
+## `credentials-v2-20240720-8d0ee107.jsonld` — VCDM 2.0 base context, 2024-07-20 revision
+
+- **Term IRI:** `https://www.w3.org/ns/credentials/v2` (historical revision)
+- **Source:** `w3c/vc-data-model` git commit
+  `8d0ee1072f16284a1a0613d78bd7c20c915bad09` (2024-07-20,
+  "Remove `@vocab` definition from v2 context."), file
+  `contexts/credentials/v2` — retrieved 2026-07-14 via
+  `git show 8d0ee107:contexts/credentials/v2` from a clone of
+  https://github.com/w3c/vc-data-model.
+- **SHA-256:** `24a18c90e9856d526111f29376e302d970b2bd10182e33959995b0207d7043b9`
+- **Bytes:** 10139
+
+An earlier published revision of the SAME resource as
+`credentials-v2.jsonld` above (the served document changed between
+2024-07 and the 2025-05-15 Recommendation). Vendored for
+`bin/vc-api-shim/server.mjs`'s relatedResource digest registry: VCDM
+2.0 §5.3 requires a declared `digestSRI`/`digestMultibase` to match
+"the digest computed for the retrieved resource", and the shim
+verifies offline against the digests of every vendored revision of a
+known resource. Real-world credentials citing this resource carry
+digests of whichever revision was live when they were issued — the
+W3C vc-data-model-2.0-test-suite's own `relatedResource` fixture
+digests are of exactly this revision (its `digestMultibase`
+`uJKGMkOmFbVJhEfKTduMC2XCyvRAYLjOVmZWwIH1wQ7k` is the base64url of
+this file's SHA-256 above — the file content is self-authenticating
+against the digests that reference it). NOT used by the JSON-LD
+context registry (parsing always uses the current
+`credentials-v2.jsonld`). Same licence terms as above.

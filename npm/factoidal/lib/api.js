@@ -1142,6 +1142,35 @@ function buildApi(driver) {
     return r.valid ? { valid: true } : { valid: false, reason: r.reason };
   }
 
+  /**
+   * relatedResource digest verification (VCDM 2.0 §5.3, vc20-api Track
+   * A4) — entry_jsoo.ml's vcCheckRelatedResourceDigests ->
+   * VC_Credential.vc_check_related_resource_digests_from_string. The
+   * engine does no I/O, so the caller supplies a known-resource digest
+   * registry: a JSON array of {"id": <resource URL>, "digestsHex":
+   * [<lowercase hex>, ...]} entries computed from the caller's VENDORED
+   * copies of each resource's content bytes. A relatedResource entry
+   * whose id is in the registry and whose declared digestSRI/
+   * digestMultibase matches none of that id's digests is rejected (the
+   * spec's digest-mismatch error); an id absent from the registry, or a
+   * digest algorithm the registry contract doesn't cover (anything
+   * outside sha256/sha384), is unverifiable offline and passes. All
+   * decode/match semantics are F*-verified (VC.Credential.fst).
+   * @param {string} registryJson the digest registry's raw JSON text
+   * @param {string} credentialJson the VC/VP document's raw JSON text
+   * @returns {Promise<{valid: boolean, reason?: string}>}
+   */
+  async function vcCheckRelatedResourceDigests(registryJson, credentialJson) {
+    if (typeof registryJson !== 'string' || typeof credentialJson !== 'string') {
+      throw new TypeError('vcCheckRelatedResourceDigests: registryJson and credentialJson must be strings');
+    }
+    const e = await entry();
+    if (!e) throw pendingError('vcCheckRelatedResourceDigests');
+    requireEntryFn(e, 'vcCheckRelatedResourceDigests', 'relatedResource digest check');
+    const r = entryResult(e.vcCheckRelatedResourceDigests(registryJson, credentialJson), 'vcCheckRelatedResourceDigests');
+    return r.valid ? { valid: true } : { valid: false, reason: r.reason };
+  }
+
   // -----------------------------------------------------------------
   // Typed "engine" functions (#74 npm FP surface). Each is a pure,
   // string/JSON-in, JSON-out wrapper over one F*-extracted engine
@@ -1686,6 +1715,7 @@ function buildApi(driver) {
     vcCheckCredential,
     vcCheckCredentialSubject,
     vcCheckNoDataLoss,
+    vcCheckRelatedResourceDigests,
     openCottas,
     queryCottas,
     closeCottas,

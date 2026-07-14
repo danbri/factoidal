@@ -2,13 +2,13 @@
   "spec": "https://w3c.github.io/vc-data-model-2.0-test-suite/",
   "suite": "vc-data-model-2.0 (issuer/verifier HTTP suite, via shim)",
   "runner": "tests/vc20-api/run.sh",
-  "retrieved_at": "2026-07-14T07:02:05Z",
-  "pass": 51,
-  "fail": 8,
+  "retrieved_at": "2026-07-14T08:24:28Z",
+  "pass": 56,
+  "fail": 3,
   "skip": 0,
   "total": 59,
   "present": true,
-  "gap_summary": "Track A3 (2026-07-13): wired POST /presentations/verify (structural check via the same vcCheckCredential export, then eddsa-rdfc-2022 Data Integrity proof verification over the VP's own top-level proof). Remaining 8 fails are two families, neither a wiring gap: relatedResource digest/id checks (Advanced Concepts, 5 tests) VC.Credential.fst does not implement at all; and 3 VP tests whose fixture embeds a `verifiableCredential` (@container:@graph in the VCDM v2 context) -- the shim's JSON-LD/RDF-dataset builder drops that named-graph subtree entirely during canonicalization (confirmed: canonicalizing a VP with an embedded credential yields ONLY the top-level `type` triple), so the reconstructed signature input never matches what the real signer produced. This is a JSON-LD named-graph expansion gap, not a VC.Credential.fst structural-check gap -- out of scope for a wiring task. This is a separate, complementary measurement from vc_stage1 (.github/test-suites/vc.yaml), which runs the SAME vendored fixtures directly through VC.Credential.fst's structural checker, no HTTP.",
+  "gap_summary": "Track A4 (2026-07-14): relatedResource (VCDM 2.0 s5.3) implemented in VC.Credential.fst -- structural shape (object entries, required IRI id, digestSRI/digestMultibase presence, unique ids, mediaType string) inside vc_check_credential_shaped, plus digest VERIFICATION against a consumer-supplied registry of vendored resource digests (vc_check_related_resource_digests_from_string via the npm ABI's vcCheckRelatedResourceDigests; the shim's registry hashes third_party/contexts' vendored revisions of the v2 context, see PROVENANCE.md). All 5 Advanced Concepts relatedResource tests pass. Remaining 3 fails are one family: VP tests whose fixture embeds a `verifiableCredential` (@container:@graph in the VCDM v2 context) -- the shim's JSON-LD/RDF-dataset builder drops that named-graph subtree entirely during canonicalization (confirmed: canonicalizing a VP with an embedded credential yields ONLY the top-level `type` triple), so the reconstructed signature input never matches what the real signer produced. This is a JSON-LD named-graph expansion gap, not a VC.Credential.fst structural-check gap. This is a separate, complementary measurement from vc_stage1 (.github/test-suites/vc.yaml), which runs the SAME vendored fixtures directly through VC.Credential.fst's structural checker, no HTTP.",
   "failures": [
     {
       "title": "Contexts Factoidal Verifiable Presentation `@context`: \"Subsequent items in the ordered set MUST be composed of any combination of URLs and/or objects where each is processable as a JSON-LD Context.\"",
@@ -21,26 +21,6 @@
     {
       "title": "Verifiable Presentations Factoidal If present (holder), the value MUST be either a URL or an object containing an id property.",
       "message": "Got unwanted rejection: Failed to verify a valid VP with holder.\nActual message: \"[object Object]\""
-    },
-    {
-      "title": "Advanced Concepts Factoidal The value of the relatedResource property MUST be one or more objects of the following form:",
-      "message": "Missing expected rejection: Failed to reject a VC with a relatedResource as array of strings."
-    },
-    {
-      "title": "Advanced Concepts Factoidal The identifier for the resource is REQUIRED and conforms to the format defined in Section 4.4 Identifiers.",
-      "message": "Missing expected rejection: Failed to reject a VC with a relatedResource with no `id` field."
-    },
-    {
-      "title": "Advanced Concepts Factoidal The value MUST be unique among the list of related resource objects.",
-      "message": "Missing expected rejection: Failed to reject a VC with a relatedResource with a duplicate `id` field."
-    },
-    {
-      "title": "Advanced Concepts Factoidal Each object associated with relatedResource MUST contain at least a digestSRI or a digestMultibase value.",
-      "message": "Missing expected rejection: Failed to reject a VC with a relatedResource with no digest info."
-    },
-    {
-      "title": "Advanced Concepts Factoidal If the digest provided by the issuer does not match the digest computed for the retrieved resource, the conforming verifier implementation MUST produce an error.",
-      "message": "Missing expected rejection: Failed to reject a VC with a relatedResource with wrong digest."
     }
   ]
 }

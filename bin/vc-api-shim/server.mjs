@@ -67,6 +67,7 @@
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
+import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
 
@@ -157,6 +158,46 @@ async function canonicalizeJsonld(doc) {
 const V2_CONTEXT_TEXT = fs.readFileSync(
   path.join(CONTEXTS_DIR, 'credentials-v2.jsonld'), 'utf8');
 
+// ---------------------------------------------------------------------
+// relatedResource digest registry (VCDM 2.0 §5.3, Track A4). The
+// F*-verified check (VC.Credential.vc_check_related_resource_digests_
+// from_string, via the npm ABI's vcCheckRelatedResourceDigests) owns
+// ALL the judgment — how a declared digestSRI/digestMultibase value
+// decodes, what "matches" means, and the offline policy (unknown
+// resource ids and uncovered algorithms pass; a KNOWN resource whose
+// digest matches no known revision is the spec's mismatch error). This
+// shim only supplies the registry the engine cannot build itself (no
+// I/O in F*): for each resource id, the sha256 + sha384 digests of
+// EVERY vendored revision of that resource's content bytes, computed
+// here from the real files at startup — never hardcoded digest
+// constants. Hashing a static vendored file is a host-crypto primitive
+// call (same category as the base58 codec above, per the crypto-policy
+// skill); the engine has no sha384 primitive, so both hashes use
+// node:crypto for symmetry. Multiple revisions per id because the
+// served document changes over time and a credential's digest refers
+// to whichever revision was live when it was issued (see
+// third_party/contexts/PROVENANCE.md's 20240720 entry).
+// ---------------------------------------------------------------------
+
+const RELATED_RESOURCE_FILES = new Map([
+  ['https://www.w3.org/ns/credentials/v2', [
+    'credentials-v2.jsonld',                  // current (2025-05-15 REC era)
+    'credentials-v2-20240720-8d0ee107.jsonld', // 2024-07-20 revision
+  ]],
+]);
+
+const RELATED_RESOURCE_REGISTRY_JSON = JSON.stringify(
+  [...RELATED_RESOURCE_FILES].map(([id, files]) => ({
+    id,
+    digestsHex: files.flatMap((f) => {
+      const bytes = fs.readFileSync(path.join(CONTEXTS_DIR, f));
+      return [
+        crypto.createHash('sha256').update(bytes).digest('hex'),
+        crypto.createHash('sha384').update(bytes).digest('hex'),
+      ];
+    }),
+  })));
+
 // VC.Credential.fst's structural checker is VCDM 2.0-specific: its
 // @context sentinel requires the v2 base context IRI first (VCDM 2.0
 // §4.1). A document whose FIRST @context entry is the legacy VC 1.1
@@ -209,7 +250,13 @@ async function checkStructural(doc) {
     if (!subj.valid) return subj;
     return engine.vcCheckNoDataLoss(JSON.stringify(inlineContexts(doc)));
   }
-  return engine.vcCheckCredential(V2_CONTEXT_TEXT, JSON.stringify(doc));
+  const structural = await engine.vcCheckCredential(V2_CONTEXT_TEXT, JSON.stringify(doc));
+  if (!structural.valid) return structural;
+  // relatedResource digest verification (VCDM 2.0 §5.3) — a separate
+  // F*-verified gate because vc_check_document's signature carries no
+  // digest registry (see the registry builder's comment above).
+  return engine.vcCheckRelatedResourceDigests(
+    RELATED_RESOURCE_REGISTRY_JSON, JSON.stringify(doc));
 }
 
 // The Data Integrity vocabulary (DataIntegrityProof, cryptosuite,
