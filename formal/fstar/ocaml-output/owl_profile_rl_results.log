@@ -119,8 +119,8 @@
   [inc-running] functionality-clash
   [inc-running] string-integer-clash
 Closure regime: RL
-OWL 2 test catalog: /home/user/factoidal/.claude/worktrees/tableau-refute/third_party/testing/owl/profile-RL.rdf
-  parsed 1896 triples in 0.09s
+OWL 2 test catalog: /home/user/factoidal/third_party/testing/owl/profile-RL.rdf
+  parsed 1896 triples in 0.07s
 Totals: 91 test cases
   PositiveEntailmentTest:    30
   NegativeEntailmentTest:    6
@@ -171,7 +171,7 @@ Running 6 NegativeEntailmentTest(s) through owl_rl_closure_with_reflexivity (fue
   PASS  WebOnt-I5.8-007
   PASS  WebOnt-equivalentClass-008
 
-Profile-RL NegativeEntailmentTests: 6 pass, 0 fail (out of 6) in 0.08s
+Profile-RL NegativeEntailmentTests: 6 pass, 0 fail (out of 6) in 0.09s
 
 Running 76 ConsistencyTest(s) through is_inconsistent (closure fuel=100)...
   PASS  DisjointClasses-001
@@ -251,7 +251,7 @@ Running 76 ConsistencyTest(s) through is_inconsistent (closure fuel=100)...
   PASS  owl2-rl-valid-oneof
   PASS  owl2-rl-valid-rightside-allvaluesfrom
 
-Profile-RL ConsistencyTests: 76 pass, 0 fail (out of 76), 0 skipped (functional-syntax-only) in 1.39s
+Profile-RL ConsistencyTests: 76 pass, 0 fail (out of 76), 0 skipped (functional-syntax-only) in 1.35s
 
 Running 14 InconsistencyTest(s) through is_inconsistent (closure fuel=100)...
   PASS  DisjointClasses-002

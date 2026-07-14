@@ -276,6 +276,32 @@
        docs/designissues/2026-07-05-csvw-program-plan.md's stage table
        for measured coverage (19 pass, 251 fail of 270 vendored
        csv2rdf fixtures at this stage).
+     factoidalNpmEntry.sigmoidPoints(paramsJson)
+       -> {"ok":true,"points":[{"x":{...scaled...},"y":{...scaled...}},...]}
+        | {"ok":false,"error":"..."}
+       paramsJson is a JSON object {"k":"1.0","x0":"0.0","l":"1.0",
+       "xmin":"-6.0","xmax":"6.0","n":"24"} -- k/x0/l/xmin/xmax are
+       decimal-literal strings decoded by the SAME verified parser
+       xsd:decimal literals use (SPARQL11_Algebra.parse_to_scaled,
+       issue #8's "scaled decimal" (mantissa,scale) convention), n is
+       a nonnegative integer point count. ALL arithmetic -- argument
+       reduction, the truncated Taylor series, repeated squaring, the
+       n+1 evenly spaced x samples -- runs in Math.Sigmoid.fst
+       (exp_approx / sigmoid_points, exact rational internally, see
+       that module's header for the documented error bound); this
+       wrapper only decodes the JSON in and re-encodes the returned
+       `scaled` pairs out. Each point's "x"/"y" is
+       {"mantissa":"...","scale":"...","decimal":"..."} -- mantissa
+       and scale are the raw (int,nat) pair, decimal is the same
+       value formatted by SPARQL11_Algebra.format_scaled_value.
+     factoidalNpmEntry.sigmoidFormulaMathml()
+       -> {"ok":true,"mathml":"<math>...</math>"}
+       The Presentation MathML for L / (1 + exp(-k*(x - x0))), built
+       by constructing the Math.Expr.expr AST for that formula (fixed,
+       no input) and serializing it with MathML.Present.
+       to_presentation_mathml -- the same engine serializer post28's
+       existing TOAN cells use, so this formula is never hand-written
+       MathML on the JS side, only engine output.
 
    Rich types (RDF/JS terms, Dataset objects, Maps of bindings) live on
    the JavaScript side (npm/factoidal/rdfjs.js); the js_of_ocaml string
@@ -1884,6 +1910,94 @@ let matrix_outerproduct_json (a_json : string) (b_json : string) : string =
     mres_json (Math_Matrix.dyn_outerproduct
                  (Math_Matrix.mk_vector_res a) (Math_Matrix.mk_vector_res bb)))
 
+(* 8. Sigmoid (Math.Sigmoid.fst): bounded-rational exp_approx + point
+   sampling, plus an engine-serialized MathML rendering of the formula
+   -- issue #289 / hub post 28's sigmoid showcase. No exp/sigmoid
+   arithmetic lives here: every number this wrapper touches either
+   arrives already decoded by SPARQL11_Algebra.parse_to_scaled (the
+   same decimal-literal parser xsd:decimal uses) or is produced by
+   Math_Sigmoid.sigmoid_points / formatted by SPARQL11_Algebra.
+   format_scaled_value. -------------------------------------------- *)
+
+(* Decode a decimal-literal string ("1.5", "-6", "0.0390625", ...) into
+   Math.Sigmoid's `scaled` (mantissa, scale) representation via the
+   SAME verified parser xsd:decimal literals go through -- never a
+   hand-rolled float parse. *)
+let scaled_of_decimal_string (who : string) (s : string) : Prims.int * Prims.nat =
+  match SPARQL11_Algebra.parse_to_scaled s with
+  | FStar_Pervasives_Native.Some pair -> pair
+  | FStar_Pervasives_Native.None ->
+    failwith (who ^ ": not a decimal literal: " ^ s)
+
+(* mantissa/scale are JSON STRINGS (not bare numbers): unlike
+   mvalue_json's num/den elsewhere in this file, a scaled mantissa can
+   exceed JS's 2^53 safe-integer range for a decimal literal with many
+   digits, and this ABI should never silently lose precision crossing
+   the JS boundary -- the caller gets the exact digits back as text,
+   plus `decimal` (the same pair formatted by the verified formatter)
+   for convenience. *)
+let scaled_json ((mantissa, scale) : Prims.int * Prims.nat) : string =
+  "{\"mantissa\":" ^ jstr (Z.to_string mantissa)
+  ^ ",\"scale\":" ^ jstr (Z.to_string scale)
+  ^ ",\"decimal\":" ^ jstr (SPARQL11_Algebra.format_scaled_value mantissa scale)
+  ^ "}"
+
+let sigmoid_points_json (params_json : string) : string =
+  guarded (fun () ->
+    let fields =
+      match parse_json_or_fail "sigmoidPoints" params_json with
+      | Parser_JSON.JObject fs -> fs
+      | _ -> failwith "sigmoidPoints: params must be a JSON object"
+    in
+    let field_str name =
+      match json_field name fields with
+      | Some (Parser_JSON.JString s) -> s
+      | Some (Parser_JSON.JNumber s) -> s
+      | _ -> failwith ("sigmoidPoints: missing/invalid field \"" ^ name ^ "\"")
+    in
+    let who = "sigmoidPoints" in
+    let k    = scaled_of_decimal_string who (field_str "k") in
+    let x0   = scaled_of_decimal_string who (field_str "x0") in
+    let l    = scaled_of_decimal_string who (field_str "l") in
+    let xmin = scaled_of_decimal_string who (field_str "xmin") in
+    let xmax = scaled_of_decimal_string who (field_str "xmax") in
+    let n    = Z.of_string (field_str "n") in
+    let pts  = Math_Sigmoid.sigmoid_points k x0 l xmin xmax n in
+    let point_json (x, y) =
+      "{\"x\":" ^ scaled_json x ^ ",\"y\":" ^ scaled_json y ^ "}"
+    in
+    "{\"ok\":true,\"points\":[" ^ String.concat "," (List.map point_json pts) ^ "]}")
+
+(* L / (1 + exp(-k*(x - x0))) as a Math.Expr.expr -- the AST the
+   engine's own MathML.Present.to_presentation_mathml serializes below.
+   Fixed (no input): this is the formula label, not a computation. *)
+let sigmoid_formula_expr : Math_Expr.expr =
+  Math_Expr.E_App
+    ("divide",
+     [ Math_Expr.E_Sym "L";
+       Math_Expr.E_App
+         ("plus",
+          [ Math_Expr.E_Int Z.one;
+            Math_Expr.E_App
+              ("exp",
+               [ Math_Expr.E_App
+                   ("minus",
+                    [ Math_Expr.E_App
+                        ("times",
+                         [ Math_Expr.E_Sym "k";
+                           Math_Expr.E_App
+                             ("minus", [ Math_Expr.E_Sym "x"; Math_Expr.E_Sym "x0" ]) ])
+                    ])
+               ])
+          ])
+     ])
+
+let sigmoid_formula_mathml_json () : string =
+  guarded (fun () ->
+    "{\"ok\":true,\"mathml\":"
+    ^ jstr (MathML_Present.to_presentation_mathml sigmoid_formula_expr)
+    ^ "}")
+
 (* ---------------------------------------------------------------------
    Js.export — the only js_of_ocaml-specific code. Strings cross the
    boundary via Js.to_string / Js.string (UTF-16 JS <-> UTF-8 OCaml).
@@ -1948,6 +2062,8 @@ let () =
           ("matrixScalarProduct", s2 matrix_scalarproduct_json);
           ("matrixVectorProduct", s2 matrix_vectorproduct_json);
           ("matrixOuterProduct", s2 matrix_outerproduct_json);
+          ("sigmoidPoints", s1 sigmoid_points_json);
+          ("sigmoidFormulaMathml", s0 sigmoid_formula_mathml_json);
           ("rifSmoke", s0 rif_smoke_json);
           ("rifEval", s2 rif_eval_json);
           ("jsonldToRdf", s2 jsonld_to_rdf_json);

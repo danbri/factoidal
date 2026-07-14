@@ -1403,6 +1403,56 @@ function buildApi(driver) {
     return matrixCall('matrixOuterProduct', 'vector outer product', a, b);
   }
 
+  // A `scaled` value as entry_jsoo.ml's scaledJson envelope decodes it:
+  // {mantissa,scale,decimal} strings straight off the wire.
+  function scaledFromJson(s) {
+    return { mantissa: s.mantissa, scale: s.scale, decimal: s.decimal };
+  }
+
+  /**
+   * n+1 evenly spaced samples of the logistic sigmoid
+   * L / (1 + exp(-k*(x - x0))) over [xmin, xmax] (entry_jsoo.ml's
+   * sigmoidPoints -> Math.Sigmoid.sigmoid_points). All arithmetic --
+   * argument reduction, the truncated Taylor series, repeated
+   * squaring, and the x samples themselves -- runs as exact rational
+   * arithmetic inside Math.Sigmoid.fst; see that module's header for
+   * the documented error bound on the returned (rounded) values. This
+   * wrapper only marshals JSON; it never computes exp itself.
+   * @param {{k:number|string,x0:number|string,l:number|string,
+   *   xmin:number|string,xmax:number|string,n:number|string}} params
+   * @returns {Promise<Array<{x:{mantissa:string,scale:string,decimal:string},
+   *   y:{mantissa:string,scale:string,decimal:string}}>>}
+   */
+  async function sigmoidPoints(params) {
+    if (!params || typeof params !== 'object') {
+      throw new TypeError('sigmoidPoints: params must be an object');
+    }
+    const e = await entry();
+    if (!e) throw pendingError('sigmoid points');
+    requireEntryFn(e, 'sigmoidPoints', 'sigmoid points');
+    const wire = {
+      k: String(params.k), x0: String(params.x0), l: String(params.l),
+      xmin: String(params.xmin), xmax: String(params.xmax), n: String(params.n),
+    };
+    const r = entryResult(e.sigmoidPoints(JSON.stringify(wire)), 'sigmoid points');
+    return r.points.map((p) => ({ x: scaledFromJson(p.x), y: scaledFromJson(p.y) }));
+  }
+
+  /**
+   * Presentation MathML for the sigmoid formula L / (1 + exp(-k*(x - x0))),
+   * engine-serialized (entry_jsoo.ml's sigmoidFormulaMathml ->
+   * MathML.Present.to_presentation_mathml applied to a fixed
+   * Math.Expr.expr) -- never hand-written MathML.
+   * @returns {Promise<string>} a `<math>...</math>` Presentation MathML document
+   */
+  async function sigmoidFormulaMathml() {
+    const e = await entry();
+    if (!e) throw pendingError('sigmoid formula MathML');
+    requireEntryFn(e, 'sigmoidFormulaMathml', 'sigmoid formula MathML');
+    const r = entryResult(e.sigmoidFormulaMathml(), 'sigmoid formula MathML');
+    return r.mathml;
+  }
+
   // -----------------------------------------------------------------
   // In-memory COTTAS bytes store (docs/designissues/2026-07-06-
   // inmemory-bytes-store.md, stage 5). Needs the npm-entry bundle
@@ -1608,6 +1658,8 @@ function buildApi(driver) {
         schematron: typeof e.schematronValidate === 'function',
         toan: typeof e.toanSummation === 'function',
         matrix: typeof e.matrixDeterminant === 'function',
+        sigmoid: typeof e.sigmoidPoints === 'function' &&
+          typeof e.sigmoidFormulaMathml === 'function',
         cottasBytesStore: typeof e.openCottas === 'function' &&
           typeof e.queryCottas === 'function' && typeof e.toCottas === 'function',
         // VC Data Integrity crypto surface (probed, not blanket-true --
@@ -1637,7 +1689,7 @@ function buildApi(driver) {
       csvw: false, jsonld: false, jsonldFromRdf: false, didKey: false,
       xml: false, xpath: false, rif: false, cottasBytesStore: false,
       xslt: false, mathml: false, xforms: false, jsonSchema: false,
-      schematron: false, toan: false, matrix: false, vcCrypto: false,
+      schematron: false, toan: false, matrix: false, sigmoid: false, vcCrypto: false,
     };
   }
 
@@ -1677,6 +1729,8 @@ function buildApi(driver) {
     matrixScalarProduct,
     matrixVectorProduct,
     matrixOuterProduct,
+    sigmoidPoints,
+    sigmoidFormulaMathml,
     vcSha256Hex,
     vcEd25519SecretToPublic,
     vcEd25519Sign,

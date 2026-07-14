@@ -1,6 +1,5 @@
-wallclock-start: 1783690149.636370927 (2026-07-10T13:29:09Z)
 === qudt-integrity: QUDT contributor ruleset vs QUDT v3.4.0 distribution ===
-parsed third_party/qudt/QUDT-all-in-one-SHACL.ttl: 6791181 bytes, 131169 triples in 1.97s
+parsed third_party/qudt/QUDT-all-in-one-SHACL.ttl: 6791181 bytes, 131169 triples in 2.04s
 parsed third_party/qudt/COLLECTION_QUDT_QA_TESTS_ALL.ttl: 53114 bytes, 415 triples in 0.06s
 29 root shapes in ruleset; running cheapest-target-first, budget 420s
 
@@ -34,25 +33,23 @@ parsed third_party/qudt/COLLECTION_QUDT_QA_TESTS_ALL.ttl: 53114 bytes, 415 tripl
   skip: MultipleLabelsConstraint                                wall-clock budget exhausted (424s > 420s) before this shape (est. 11510 foci) — perf finding
   skip: ScalingOfAndFactorUnitsPresent                          wall-clock budget exhausted (424s > 420s) before this shape (est. 11510 foci) — perf finding
 
-qudt-integrity elapsed: 426.8s (parse 1.97s + validation)
+qudt-integrity elapsed: 427.0s (parse 2.04s + validation)
 
 === qudt-user-shapes: QUDT user ruleset vs authored fixtures ===
-parsed distribution (131169 triples) + user ruleset (98 triples) in 2.08s
-  PASS: array-datatype-ok.ttl                         expected clean, got clean (0 new findings; 158 context triples; 0.2s)
-  PASS: array-datatype-viol.ttl                       expected flagged, got flagged (2 new findings; 158 context triples; 0.2s)
+parsed distribution (131169 triples) + user ruleset (98 triples) in 1.97s
+  PASS: array-datatype-ok.ttl                         expected clean, got clean (0 new findings; 158 context triples; 0.1s)
+  PASS: array-datatype-viol.ttl                       expected flagged, got flagged (2 new findings; 158 context triples; 0.1s)
   PASS: array-dims-ok.ttl                             expected clean, got clean (0 new findings; 119 context triples; 0.1s)
   PASS: array-dims-viol.ttl                           expected flagged, got flagged (1 new findings; 117 context triples; 0.1s)
   PASS: deprecated-property-use-viol.ttl              expected flagged, got flagged (1 new findings; 10 context triples; 0.1s)
-  PASS: deprecated-unit-ref-viol.ttl                  expected flagged, got flagged (2 new findings; 465 context triples; 0.5s)
-  PASS: quantity-dim-mismatch-viol.ttl                expected flagged, got flagged (1 new findings; 1723 context triples; 3.9s)
-  PASS: quantity-length-ft-ok.ttl                     expected clean, got clean (0 new findings; 1292 context triples; 2.5s)
-  PASS: quantity-mass-kg-ok.ttl                       expected clean, got clean (0 new findings; 1689 context triples; 4.0s)
+  PASS: deprecated-unit-ref-viol.ttl                  expected flagged, got flagged (2 new findings; 465 context triples; 0.3s)
+  PASS: quantity-dim-mismatch-viol.ttl                expected flagged, got flagged (1 new findings; 1723 context triples; 2.9s)
+  PASS: quantity-length-ft-ok.ttl                     expected clean, got clean (0 new findings; 1292 context triples; 1.7s)
+  PASS: quantity-mass-kg-ok.ttl                       expected clean, got clean (0 new findings; 1689 context triples; 2.7s)
 
-qudt-user-shapes elapsed: 14.1s
+qudt-user-shapes elapsed: 10.2s
 
 ========================================
 qudt-integrity: 0 pass, 0 fail, 29 skip (out of 29)
 qudt-user-shapes: 9 pass, 0 fail, 0 skip (out of 9)
 ========================================
-runner-exit: 0
-wallclock-end: 1783690590.654896018 (2026-07-10T13:36:30Z)

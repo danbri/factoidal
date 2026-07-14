@@ -1451,6 +1451,62 @@ export async function matrixOuterProduct(a, b) {
   return matrixCall('matrixOuterProduct', 'vector outer product', a, b);
 }
 
+// A `scaled` value as entry_jsoo.ml's scaledJson envelope decodes it:
+// {mantissa,scale,decimal} strings straight off the wire.
+function scaledFromJson(s) {
+  return { mantissa: s.mantissa, scale: s.scale, decimal: s.decimal };
+}
+
+/**
+ * n+1 evenly spaced samples of the logistic sigmoid
+ * L / (1 + exp(-k*(x - x0))) over [xmin, xmax] (entry_jsoo.ml's
+ * sigmoidPoints export -> Math.Sigmoid.sigmoid_points). All arithmetic
+ * -- argument reduction, the truncated Taylor series, repeated
+ * squaring, and the x samples themselves -- runs as exact rational
+ * arithmetic inside Math.Sigmoid.fst; see that module's header for the
+ * documented error bound on the returned (rounded) values. This
+ * wrapper only marshals JSON; it never computes exp itself.
+ *
+ * @param {{k:number|string,x0:number|string,l:number|string,
+ *   xmin:number|string,xmax:number|string,n:number|string}} params
+ * @returns {Promise<Array<{x:{mantissa:string,scale:string,decimal:string},
+ *   y:{mantissa:string,scale:string,decimal:string}}>>}
+ */
+export async function sigmoidPoints(params) {
+  if (!params || typeof params !== 'object') {
+    throw new TypeError('sigmoidPoints: params must be an object');
+  }
+  const abi = await loadNpmEntry();
+  if (typeof abi.sigmoidPoints !== 'function') {
+    throw new Error('sigmoidPoints: the loaded factoidal-npm-entry bundle predates the sigmoidPoints export');
+  }
+  const wire = {
+    k: String(params.k), x0: String(params.x0), l: String(params.l),
+    xmin: String(params.xmin), xmax: String(params.xmax), n: String(params.n),
+  };
+  const parsed = JSON.parse(abi.sigmoidPoints(JSON.stringify(wire)));
+  if (!parsed.ok) throw new Error(parsed.error || 'sigmoidPoints failed');
+  return parsed.points.map((p) => ({ x: scaledFromJson(p.x), y: scaledFromJson(p.y) }));
+}
+
+/**
+ * Presentation MathML for the sigmoid formula L / (1 + exp(-k*(x - x0))),
+ * engine-serialized (entry_jsoo.ml's sigmoidFormulaMathml export ->
+ * MathML.Present.to_presentation_mathml applied to a fixed Math.Expr.
+ * expr) -- never hand-written MathML.
+ *
+ * @returns {Promise<string>} a `<math>...</math>` Presentation MathML document
+ */
+export async function sigmoidFormulaMathml() {
+  const abi = await loadNpmEntry();
+  if (typeof abi.sigmoidFormulaMathml !== 'function') {
+    throw new Error('sigmoidFormulaMathml: the loaded factoidal-npm-entry bundle predates the sigmoidFormulaMathml export');
+  }
+  const parsed = JSON.parse(abi.sigmoidFormulaMathml());
+  if (!parsed.ok) throw new Error(parsed.error || 'sigmoidFormulaMathml failed');
+  return parsed.mathml;
+}
+
 // ---------------------------------------------------------------------
 // HDT (Header-Dictionary-Triples): query a read-only binary RDF
 // artifact's raw bytes via the CLI's `--data-hdt` backend

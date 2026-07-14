@@ -1,6 +1,6 @@
 Closure regime: RL
 OWL 2 test catalog: third_party/testing/owl/syntax-dl.rdf
-  parsed 7958 triples in 0.58s
+  parsed 7958 triples in 0.55s
 Totals: 323 test cases
   PositiveEntailmentTest:    90
   NegativeEntailmentTest:    16
@@ -9,15 +9,15 @@ Totals: 323 test cases
   ProfileIdentificationTest: 319
 
 Running 323 species-annotated test case(s) through OWL2_SyntaxDL.species_is_dl (F*-extracted)...
-  SKIP: Consistent Datatype restrictions with Different Types [species] functional-syntax-only premise outside Parser_OWLFunctional's subset
-  SKIP: Consistent owl:real range with DataOneOf [species] functional-syntax-only premise outside Parser_OWLFunctional's subset
+  PASS: Consistent Datatype restrictions with Different Types [species] verdict=DL expected=DL
+  PASS: Consistent owl:real range with DataOneOf [species] verdict=DL expected=DL
   PASS: Consistent-but-all-unsat [species] verdict=DL expected=DL
-  SKIP: Consistent-dateTime [species] functional-syntax-only premise outside Parser_OWLFunctional's subset
-  SKIP: Contradicting datatype Restrictions [species] functional-syntax-only premise outside Parser_OWLFunctional's subset
-  SKIP: Contradicting-dateTime-restrictions [species] functional-syntax-only premise outside Parser_OWLFunctional's subset
+  PASS: Consistent-dateTime [species] verdict=DL expected=DL
+  PASS: Contradicting datatype Restrictions [species] verdict=DL expected=DL
+  PASS: Contradicting-dateTime-restrictions [species] verdict=DL expected=DL
   PASS: Datatype-DataComplementOf-001 [species] verdict=DL expected=DL
   PASS: Datatype-Float-Discrete-001 [species] verdict=DL expected=DL
-  SKIP: Different types in Datatype Restrictions and Complement [species] functional-syntax-only premise outside Parser_OWLFunctional's subset
+  PASS: Different types in Datatype Restrictions and Complement [species] verdict=DL expected=DL
   PASS: DisjointClasses-001 [species] verdict=DL expected=DL
   PASS: DisjointClasses-002 [species] verdict=DL expected=DL
   PASS: DisjointClasses-003 [species] verdict=DL expected=DL
@@ -46,11 +46,11 @@ Running 323 species-annotated test case(s) through OWL2_SyntaxDL.species_is_dl (
   PASS: FS2RDF-same-individual-2-ar [species] verdict=DL expected=DL
   PASS: FS2RDF-same-individual-3-annotation-ar [species] verdict=DL expected=DL
   PASS: Footnote-not-about-self [species] verdict=DL expected=DL
-  SKIP: Inconsistent Byte Filler [species] functional-syntax-only premise outside Parser_OWLFunctional's subset
-  SKIP: Inconsistent Data Complement with the Restrictions [species] functional-syntax-only premise outside Parser_OWLFunctional's subset
-  SKIP: Inconsistent Disjoint Dataproperties [species] functional-syntax-only premise outside Parser_OWLFunctional's subset
-  SKIP: Inconsistent String Pattern with Disjoint Dataproperties [species] functional-syntax-only premise outside Parser_OWLFunctional's subset
-  SKIP: Minus Infinity is not in owl:real [species] functional-syntax-only premise outside Parser_OWLFunctional's subset
+  PASS: Inconsistent Byte Filler [species] verdict=DL expected=DL
+  PASS: Inconsistent Data Complement with the Restrictions [species] verdict=DL expected=DL
+  PASS: Inconsistent Disjoint Dataproperties [species] verdict=DL expected=DL
+  PASS: Inconsistent String Pattern with Disjoint Dataproperties [species] verdict=DL expected=DL
+  PASS: Minus Infinity is not in owl:real [species] verdict=DL expected=DL
   PASS: New-Feature-AnnotationAnnotations-001 [species] verdict=DL expected=DL
   PASS: New-Feature-AsymmetricProperty-001 [species] verdict=DL expected=DL
   PASS: New-Feature-AxiomAnnotations-001 [species] verdict=DL expected=DL
@@ -85,7 +85,7 @@ Running 323 species-annotated test case(s) through OWL2_SyntaxDL.species_is_dl (
   PASS: New-Feature-SelfRestriction-001 [species] verdict=DL expected=DL
   PASS: New-Feature-SelfRestriction-002 [species] verdict=DL expected=DL
   PASS: New-Feature-TopObjectProperty-001 [species] verdict=DL expected=DL
-  SKIP: Plus and Minus Zero Integer [species] functional-syntax-only premise outside Parser_OWLFunctional's subset
+  PASS: Plus and Minus Zero Integer [species] verdict=DL expected=DL
   PASS: Plus and Minus Zero are Distinct [species] verdict=DL expected=DL
   SKIP: Qualified-cardinality-boolean [species] functional-syntax-only premise outside Parser_OWLFunctional's subset
   SKIP: Qualified-cardinality-restricted-int [species] functional-syntax-only premise outside Parser_OWLFunctional's subset
@@ -311,12 +311,12 @@ Running 323 species-annotated test case(s) through OWL2_SyntaxDL.species_is_dl (
   PASS: WebOnt-unionOf-004 [species] verdict=DL expected=DL
   PASS: bnode2somevaluesfrom [species] verdict=DL expected=DL
   PASS: chain2trans1 [species] verdict=DL expected=DL
-  SKIP: consistent-dataproperty-disjointness [species] functional-syntax-only premise outside Parser_OWLFunctional's subset
-  SKIP: consistent-integer-filler [species] functional-syntax-only premise outside Parser_OWLFunctional's subset
-  SKIP: datatype-restriction-min-max-inconsistency [species] functional-syntax-only premise outside Parser_OWLFunctional's subset
+  PASS: consistent-dataproperty-disjointness [species] verdict=DL expected=DL
+  PASS: consistent-integer-filler [species] verdict=DL expected=DL
+  PASS: datatype-restriction-min-max-inconsistency [species] verdict=DL expected=DL
   PASS: functionality-clash [species] verdict=DL expected=DL
-  SKIP: inconsistent-integer-filler [species] functional-syntax-only premise outside Parser_OWLFunctional's subset
-  SKIP: inconsistent_datatypes [species] functional-syntax-only premise outside Parser_OWLFunctional's subset
+  PASS: inconsistent-integer-filler [species] verdict=DL expected=DL
+  PASS: inconsistent_datatypes [species] verdict=DL expected=DL
   PASS: one=two [species] verdict=DL expected=DL
   PASS: owl2-rl-anonymous-individual [species] verdict=DL expected=DL
   PASS: owl2-rl-invalid-leftside-allvaluesfrom [species] verdict=DL expected=DL
@@ -334,4 +334,4 @@ Running 323 species-annotated test case(s) through OWL2_SyntaxDL.species_is_dl (
   PASS: somevaluesfrom2bnode [species] verdict=DL expected=DL
   PASS: string-integer-clash [species] verdict=DL expected=DL
 
-OWL2-DL SpeciesTests: 302 pass, 2 fail (out of 304), 19 skipped (functional-syntax-only) in 1.54s
+OWL2-DL SpeciesTests: 319 pass, 2 fail (out of 321), 2 skipped (functional-syntax-only) in 1.69s

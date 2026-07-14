@@ -1,6 +1,6 @@
 === RML Test Runner ===
 
-=== rml-core: /home/user/factoidal/.claude/worktrees/agent-a8a3c7dbcf17f1b69/third_party/testing/rml-modules/rml-core/test-cases (76 test rows) ===
+=== rml-core: /home/user/factoidal/third_party/testing/rml-modules/rml-core/test-cases (76 test rows) ===
 PASS RMLTC0000-JSON
 PASS RMLTC0001a-JSON
 PASS RMLTC0001b-JSON
@@ -79,86 +79,21 @@ PASS RMLTC0031b-JSON
 PASS RMLTC0031c-JSON
 rml-core: 76 pass, 0 fail, 0 skip (out of 76)
 
-=== rml-io: /home/user/factoidal/.claude/worktrees/agent-a8a3c7dbcf17f1b69/third_party/testing/rml-modules/rml-io/test-cases (73 test rows) ===
-FAIL RMLSTC0012b — canonical N-Quads differ
-      expected:
-<http://example.org/25> <http://example.com/department> "Engineering" .
-<http://example.org/25> <http://example.com/department> "Marketing" .
-<http://example.org/35> <http://example.com/department> "Research & Development" .
-<http://example.org/35> <http://example.com/department> "Sales" .
-      got:
-
-FAIL RMLSTC0006a — canonical N-Quads differ
-      expected:
-<http://example.org/0> <http://xmlns.com/foaf/0.1/age> "33"^^<http://www.w3.org/2001/XMLSchema#integer> .
-<http://example.org/0> <http://xmlns.com/foaf/0.1/name> "Monica Geller" .
-<http://example.org/1> <http://xmlns.com/foaf/0.1/age> "34"^^<http://www.w3.org/2001/XMLSchema#integer> .
-<http://example.org/1> <http://xmlns.com/foaf/0.1/name> "Rachel Green" .
-<http://example.org/2> <http://xmlns.com/ …(truncated)      got:
-
+=== rml-io: /home/user/factoidal/third_party/testing/rml-modules/rml-io/test-cases (73 test rows) ===
 PASS RMLSTC0011a
 PASS RMLSTC0004c
 PASS RMLSTC0010a
 PASS RMLSTC0002a
 PASS RMLSTC0004b
 PASS RMLSTC0007b
-FAIL RMLSTC0002b — canonical N-Quads differ
-      expected:
-<http://example.org/0> <http://xmlns.com/foaf/0.1/age> "33"^^<http://www.w3.org/2001/XMLSchema#integer> .
-<http://example.org/0> <http://xmlns.com/foaf/0.1/name> "Monica Geller" .
-<http://example.org/1> <http://xmlns.com/foaf/0.1/age> "34"^^<http://www.w3.org/2001/XMLSchema#integer> .
-<http://example.org/1> <http://xmlns.com/foaf/0.1/name> "Rachel Green" .
-<http://example.org/2> <http://xmlns.com/ …(truncated)      got:
-
-FAIL RMLSTC0012a — canonical N-Quads differ
-      expected:
-<http://example.org/25> <http://xmlns.com/foaf/0.1/name> "TechCorp" .
-<http://example.org/35> <http://xmlns.com/foaf/0.1/name> "InnovateX" .
-      got:
-
-FAIL RMLSTC0002c — canonical N-Quads differ
-      expected:
-<http://example.org/0> <http://xmlns.com/foaf/0.1/age> "33"^^<http://www.w3.org/2001/XMLSchema#integer> .
-<http://example.org/0> <http://xmlns.com/foaf/0.1/name> "Monica Geller" .
-<http://example.org/1> <http://xmlns.com/foaf/0.1/age> "34"^^<http://www.w3.org/2001/XMLSchema#integer> .
-<http://example.org/1> <http://xmlns.com/foaf/0.1/name> "Rachel Green" .
-<http://example.org/2> <http://xmlns.com/ …(truncated)      got:
-
-FAIL RMLSTC0007d — canonical N-Quads differ
-      expected:
-<http://example.org/0> <http://xmlns.com/foaf/0.1/age> "33" .
-<http://example.org/0> <http://xmlns.com/foaf/0.1/name> "Monica Geller" .
-<http://example.org/1> <http://xmlns.com/foaf/0.1/age> "34" .
-<http://example.org/1> <http://xmlns.com/foaf/0.1/name> "Rachel Green" .
-<http://example.org/2> <http://xmlns.com/foaf/0.1/age> "35" .
-<http://example.org/2> <http://xmlns.com/foaf/0.1/name> "Joey Tribb …(truncated)      got:
-
 PASS RMLSTC0011d
 PASS RMLSTC0010b
 PASS RMLSTC0008a
-FAIL RMLSTC0012c — canonical N-Quads differ
-      expected:
-<http://example.org/25> <http://example.com/employee> "Bob Smith" .
-<http://example.org/25> <http://example.com/employee> "Eve Davis" .
-<http://example.org/25> <http://example.com/employee> "Sarah Lee" .
-<http://example.org/35> <http://example.com/employee> "Liam Brown" .
-<http://example.org/35> <http://example.com/employee> "Olivia Martinez" .
-<http://example.org/35> <http://example.com/employee> …(truncated)      got:
-
 PASS RMLSTC0011e
 PASS RMLSTC0007a
 PASS RMLSTC0001a
 PASS RMLSTC0008b
 PASS RMLSTC0011c
-FAIL RMLSTC0012e — canonical N-Quads differ
-      expected:
-<http://example.org/Bob%20Smith> <http://example.com/skill> "AWS" .
-<http://example.org/Bob%20Smith> <http://example.com/skill> "JavaScript" .
-<http://example.org/Bob%20Smith> <http://example.com/skill> "Python" .
-<http://example.org/Eve%20Davis> <http://example.com/skill> "Docker" .
-<http://example.org/Eve%20Davis> <http://example.com/skill> "Kubernetes" .
-<http://example.org/Eve%20Davis> <http:/ …(truncated)      got:
-
 FAIL RMLSTC0009a — expected empty dataset (error=true) but got:
 <http://example.org/0> <http://xmlns.com/foaf/0.1/age> "33" .
 <http://example.org/0> <http://xmlns.com/foaf/0.1/name> "Monica Geller" .
@@ -167,60 +102,16 @@ FAIL RMLSTC0009a — expected empty dataset (error=true) but got:
 <http://example.org/2> <http://xmlns.com/foaf/0.1/age> "35" .
 <http://example.org/2> <http://xmlns.com/foaf/0.1/name> "Joey Tribb …(truncated)
 PASS RMLSTC0011b
-FAIL RMLSTC0003 — canonical N-Quads differ
-      expected:
-<http://example.org/0> <http://xmlns.com/foaf/0.1/age> "33"^^<http://www.w3.org/2001/XMLSchema#integer> .
-<http://example.org/0> <http://xmlns.com/foaf/0.1/name> "Monica Geller" .
-<http://example.org/1> <http://xmlns.com/foaf/0.1/age> "34"^^<http://www.w3.org/2001/XMLSchema#integer> .
-<http://example.org/1> <http://xmlns.com/foaf/0.1/name> "Rachel Green" .
-<http://example.org/2> <http://xmlns.com/ …(truncated)      got:
-
-FAIL RMLSTC0002e — canonical N-Quads differ
-      expected:
-<http://example.org/0> <http://xmlns.com/foaf/0.1/age> "33"^^<http://www.w3.org/2001/XMLSchema#integer> .
-<http://example.org/0> <http://xmlns.com/foaf/0.1/name> "Monica Geller" .
-<http://example.org/1> <http://xmlns.com/foaf/0.1/age> "34"^^<http://www.w3.org/2001/XMLSchema#integer> .
-<http://example.org/1> <http://xmlns.com/foaf/0.1/name> "Rachel Green" .
-<http://example.org/2> <http://xmlns.com/ …(truncated)      got:
-
 PASS RMLSTC0006b
-FAIL RMLSTC0002d — canonical N-Quads differ
-      expected:
-<http://example.org/0> <http://xmlns.com/foaf/0.1/age> "33"^^<http://www.w3.org/2001/XMLSchema#integer> .
-<http://example.org/0> <http://xmlns.com/foaf/0.1/name> "Monica Geller" .
-<http://example.org/1> <http://xmlns.com/foaf/0.1/age> "34"^^<http://www.w3.org/2001/XMLSchema#integer> .
-<http://example.org/1> <http://xmlns.com/foaf/0.1/name> "Rachel Green" .
-<http://example.org/2> <http://xmlns.com/ …(truncated)      got:
-
-FAIL RMLSTC0012d — canonical N-Quads differ
-      expected:
-<http://example.org/25> <http://example.com/manager> "Alice Johnson" .
-<http://example.org/25> <http://example.com/manager> "John Doe" .
-<http://example.org/35> <http://example.com/manager> "Emma Wilson" .
-<http://example.org/35> <http://example.com/manager> "Michael Green" .
-      got:
-
-FAIL RMLSTC0007c — canonical N-Quads differ
-      expected:
-<http://example.org/0> <http://xmlns.com/foaf/0.1/age> "33" .
-<http://example.org/0> <http://xmlns.com/foaf/0.1/name> "Monica Geller" .
-<http://example.org/1> <http://xmlns.com/foaf/0.1/age> "34" .
-<http://example.org/1> <http://xmlns.com/foaf/0.1/name> "Rachel Green" .
-<http://example.org/2> <http://xmlns.com/foaf/0.1/age> "35" .
-<http://example.org/2> <http://xmlns.com/foaf/0.1/name> "Joey Tribb …(truncated)      got:
-
 PASS RMLSTC0004a
-FAIL RMLSTC0001b — canonical N-Quads differ
-      expected:
-<http://example.org/0> <http://xmlns.com/foaf/0.1/age> "33"^^<http://www.w3.org/2001/XMLSchema#integer> .
-<http://example.org/0> <http://xmlns.com/foaf/0.1/name> "Monica Geller" .
-<http://example.org/1> <http://xmlns.com/foaf/0.1/age> "34"^^<http://www.w3.org/2001/XMLSchema#integer> .
-<http://example.org/1> <http://xmlns.com/foaf/0.1/name> "Rachel Green" .
-<http://example.org/2> <http://xmlns.com/ …(truncated)      got:
-
-rml-io: 17 pass, 15 fail, 41 skip (out of 73)
+rml-io: 17 pass, 1 fail, 55 skip (out of 73)
 
 ========================================
 rml-core: 76 pass, 0 fail (out of 76)
-rml-io:   17 pass, 15 fail, 41 skip (out of 73)
+rml-io:   17 pass, 1 fail, 55 skip (out of 73)
+rml-star: not run — needs an RDF-star quoted-triple term; the core
+          rdf_term algebra (RDF.Term.fsti) has only T_IRI/T_BNode/
+          T_Literal, so << s p o >> cannot be represented yet.
+rml-fnml: not run — needs an FnO/GREL function registry + parameter
+          binding model (function execution), not yet implemented.
 ========================================

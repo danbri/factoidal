@@ -1,5 +1,5 @@
-RDFC-1.0 manifest: /home/user/factoidal/.claude/worktrees/agent-af596773f1fbb2e52/third_party/testing/rdf-canon/tests/manifest.ttl
-  parsed 713 triples in 0.01s
+RDFC-1.0 manifest: /home/user/factoidal/third_party/testing/rdf-canon/tests/manifest.ttl
+  parsed 713 triples in 0.49s
 Totals: 86 test entries
   RDFC10EvalTest:         64
   RDFC10MapTest:          21

@@ -639,6 +639,48 @@ export function matrixOuterProduct(
   b: MatrixCell[]
 ): Promise<MatrixResult>;
 
+/**
+ * A fixed-precision decimal (Math.Sigmoid.scaled: mantissa / 10^scale),
+ * the same (mantissa, scale) convention SPARQL11.Algebra.parse_to_scaled
+ * uses for xsd:decimal literals. `decimal` is the same pair formatted
+ * back to a string by SPARQL11_Algebra.format_scaled_value.
+ */
+export interface ScaledValue {
+  mantissa: string;
+  scale: string;
+  decimal: string;
+}
+
+/** Parameters for {@link sigmoidPoints}: decimal-literal strings/numbers. */
+export interface SigmoidParams {
+  k: number | string;
+  x0: number | string;
+  l: number | string;
+  xmin: number | string;
+  xmax: number | string;
+  n: number | string;
+}
+
+/**
+ * n+1 evenly spaced samples of the logistic sigmoid
+ * L / (1 + exp(-k*(x - x0))) over [xmin, xmax] (Math.Sigmoid.
+ * sigmoid_points). All arithmetic -- argument reduction, the
+ * truncated Taylor series, repeated squaring, and the x samples
+ * themselves -- runs as exact rational arithmetic inside
+ * Math.Sigmoid.fst; see that module's header for the documented error
+ * bound on the returned (rounded) values.
+ */
+export function sigmoidPoints(
+  params: SigmoidParams
+): Promise<Array<{ x: ScaledValue; y: ScaledValue }>>;
+
+/**
+ * Presentation MathML for the sigmoid formula L / (1 + exp(-k*(x - x0))),
+ * engine-serialized (MathML.Present.to_presentation_mathml applied to a
+ * fixed Math.Expr.expr) -- never hand-written MathML.
+ */
+export function sigmoidFormulaMathml(): Promise<string>;
+
 // ---------------------------------------------------------------------
 // VC Data Integrity crypto (eddsa-rdfc-2022) — the F*-extracted
 // VC_DataIntegrity pipeline, its four crypto assume vals realised by
@@ -764,6 +806,8 @@ export function capabilities(): Promise<{
   schematron: boolean;
   toan: boolean;
   matrix: boolean;
+  /** The sigmoid (Math.Sigmoid) ABI exports are present. */
+  sigmoid: boolean;
   /**
    * The VC Data Integrity crypto ABI exports are present. Note: the
    * HACL* wasm backend is still initialised at call time — this flag
@@ -852,6 +896,8 @@ declare const _default: {
   matrixScalarProduct: typeof matrixScalarProduct;
   matrixVectorProduct: typeof matrixVectorProduct;
   matrixOuterProduct: typeof matrixOuterProduct;
+  sigmoidPoints: typeof sigmoidPoints;
+  sigmoidFormulaMathml: typeof sigmoidFormulaMathml;
   vcSha256Hex: typeof vcSha256Hex;
   vcEd25519SecretToPublic: typeof vcEd25519SecretToPublic;
   vcEd25519Sign: typeof vcEd25519Sign;

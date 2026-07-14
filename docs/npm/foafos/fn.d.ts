@@ -18,6 +18,8 @@ import type {
   ToanExpr,
   MatrixCell,
   MatrixResult,
+  ScaledValue,
+  SigmoidParams,
 } from './index';
 
 export type {
@@ -28,6 +30,8 @@ export type {
   ToanExpr,
   MatrixCell,
   MatrixResult,
+  ScaledValue,
+  SigmoidParams,
 } from './index';
 
 /**
@@ -355,6 +359,10 @@ export function matrixOuterProduct(
   a: MatrixCell[],
   b: MatrixCell[]
 ): Promise<MatrixResult>;
+export function sigmoidPoints(
+  params: SigmoidParams
+): Promise<Array<{ x: ScaledValue; y: ScaledValue }>>;
+export function sigmoidFormulaMathml(): Promise<string>;
 
 // ---------------------------------------------------------------------
 // VC Data Integrity crypto (eddsa-rdfc-2022, HACL* wasm backend).
