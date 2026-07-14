@@ -56,23 +56,25 @@ foundational: false
 # then the same eddsa-rdfc-2022 Data Integrity proof verification
 # already used for /credentials/verify, applied to the VP's own
 # top-level proof (verifySecuredDocument, shared by both routes).
-# Remaining 8 fails are two families, neither a wiring gap:
+# Remaining 8 fails at that point were two families, neither a wiring
+# gap:
 #   - relatedResource digest/id checks (Advanced Concepts, 5 tests) —
-#     VC.Credential.fst does not implement this check at all.
+#     VC.Credential.fst did not implement this check at all.
 #   - 3 VP tests whose fixture embeds a `verifiableCredential`
 #     (Verifiable Presentations' "verifiableCredential property MAY be
 #     present" / "holder value" tests, and 4.03-contexts.js's
 #     `presentation-context-combo1-ok.json` case) — the VCDM v2
 #     context defines `verifiableCredential` (and `proof`) with
 #     `"@container": "@graph"`, and the shim's JSON-LD/RDF-dataset
-#     builder drops that named-graph subtree entirely: canonicalizing
-#     a VP with an embedded credential yields ONLY the top-level
-#     `type` triple (confirmed by direct testing), so the
-#     reconstructed signature input never matches what the real
-#     eddsa-rdfc-2022 signer produced and verification spuriously
-#     fails. This is a JSON-LD named-graph expansion gap (JSONLD.*),
-#     not a VC.Credential.fst structural-check gap — out of scope for
-#     a wiring task.
+#     builder dropped that named-graph subtree entirely.
+#
+# Track A4/jsonld-named-graph (2026-07-14): 59 pass, 0 fail (out of
+# 59) — suite fully green. Both remaining families landed: VC.Credential.fst
+# gained the relatedResource structural + digest checks (VCDM 2.0
+# s5.3, +5 tests), and the vc-api-shim's JSON-LD/RDF-dataset builder
+# now recurses inlineContexts into nested @context refs so the VCDM v2
+# `"@container": "@graph"` terms (`verifiableCredential`, `proof`)
+# expand correctly, fixing the 3 VP canonicalization fails.
 
 triggers:
   paths:
@@ -88,6 +90,8 @@ triggers:
   excludes: []
 
 # What's left, in plain language.
-remaining:
-  - "relatedResource digest/id checks (Advanced Concepts, 5 tests: array-of-strings shape, missing id, duplicate id, missing digest, wrong digest) are not implemented in VC.Credential.fst at all — needs new F* structural-check additions, not shim wiring"
-  - "a VerifiablePresentation whose `verifiableCredential` field is populated cannot be cryptographically verified — the JSON-LD/RDF-dataset builder does not expand the VCDM v2 context's `@container: @graph` terms (`verifiableCredential`, `proof`), so canonicalizing such a VP silently drops the embedded-credential subtree and the reconstructed signature input never matches the real signer's bytes (3 tests: 'verifiableCredential property MAY be present', 'holder value must be URL or object', and the @context combo1 VP case)"
+# 2026-07-14: nothing — suite is 59 pass, 0 fail (out of 59). The two
+# families below (relatedResource checks, VP named-graph expansion)
+# both landed; kept as an empty list rather than deleted so a future
+# regression has this shape to diff against.
+remaining: []

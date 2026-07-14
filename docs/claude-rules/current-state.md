@@ -1,6 +1,33 @@
 # Current State (Honest Assessment)
 
-Last refreshed: 2026-07-13 day shift (nine landings, continuing the
+Last refreshed: 2026-07-14 (nine landings from a long autonomous
+shift, gated on the same regime — floors, named diffs, soundness
+where applicable — all measured on the current `claude/main` tree):
+
+- **OWL 2 DL type-inconsistency 70 -> 110 pass, 18 fail (out of 128)**
+  via five tableau waves in `Tableau.Refute.fst`: datatype facet
+  satisfiability (Wave B), role box (subPropertyOf/FunctionalProperty/
+  transitive into the refuter), contrapositive unfolding of
+  definitions + exact-cardinality-0 NNF, SHIQ ≤-rule witness merging,
+  and named-individual identification + stored FP max-1 bounds.
+  Soundness gate held throughout: exactly one unexpected-inconsistency
+  (WebOnt-miscellaneous-202, pre-existing, tcon only).
+- **OWL 2 DL type-consistency 334 pass, 18 fail (out of 352).**
+- **vc20-api 51 -> 59 pass, 0 fail (out of 59) — suite fully green**:
+  relatedResource structural/digest checks (VCDM 2.0 s5.3, +5) and the
+  JSON-LD named-graph/`@container: @graph` VP expansion fix (+3).
+- **vc-di-eddsa 26 -> 31 pass, 0 fail (out of 31) — suite fully
+  green**: proof sets/chains + `previousProof` chaining landed.
+- **Hub post-28 (sigmoid/logistic)**: F*-verified bounded exp (error
+  < 1e-9), `fn.sigmoidPoints`, MathML + live sliders; post28 tests
+  14 pass, 0 fail.
+- Floors unchanged: SPARQL 631 pass, 0 fail; RDF 1031 pass, 0 fail;
+  hub 233 pass, 1 fail (pre-existing post18 env check).
+- Still open (do not claim done): dl-909/910 + one=two (finite-model
+  cardinality arithmetic), dl-626/627 (DL-materialise cap), dl-504
+  (DPLL), datatype/parse families in tinc; 18 tcon fails.
+
+Previous refresh: 2026-07-13 day shift (nine landings, continuing the
 overnight wave below; same gate regime — floors, named diffs,
 soundness where applicable):
 - **VC vc20_api 47 -> 51 pass, 8 fail (of 59)** (3b9dd9f): the
@@ -312,6 +339,15 @@ we touch (RDF 1.2/star parked; protocols deprioritized), tracked in
 coverage as the FOUNDATION FOR AUTOMATED PERF RESEARCH and every
 capability getting an npm API + Hub page. Re-rank when one lands; a
 dashboard red always jumps the queue. Three named thrusts carry it now:
+
+**Update 2026-07-14 (obsolescence sweep):** thrusts 1 and 2 below have
+both moved substantially since the baseline numbers were written —
+OWL2 DL type-inconsistency is now 110 pass, 18 fail (out of 128, was
+66/117 below); vc20_api and vc_di_eddsa are both fully green (59/0 and
+31/0 respectively, was 22/59 and 26/31 below). See the dated ledger
+entry at the top of this file for the wave-by-wave detail. The
+narrative below is kept as the historical reasoning that shaped this
+work, not the current score.
 
 1. **OWL2 DL to full coverage** (epic #209). The staged wave program is
    [`2026-07-10-owl2-dl-completion-program.md`](../designissues/2026-07-10-owl2-dl-completion-program.md)

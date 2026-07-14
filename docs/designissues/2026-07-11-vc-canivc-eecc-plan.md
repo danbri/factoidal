@@ -9,7 +9,18 @@ epic #288) with the two new interop test environments the owner named:
 **EECC** (European EPC Competence Center) VC/DID interop stack. Every
 number is labelled pass/fail/total (anti-pattern #25); no bare ratios.
 
-## 1. Current state (verified)
+**Update 2026-07-14 (obsolescence sweep):** Tracks A1 and A4 named
+below both landed and their target suites are now fully green:
+`vc_di_eddsa` 31 pass, 0 fail (out of 31 — proof sets/chains +
+`previousProof` chaining landed, closing the "multi-proof /
+`proof.previousProof` chaining unsupported" gap called out below) and
+`vc20_api` 59 pass, 0 fail (out of 59 — relatedResource digest/id
+checks and the VP JSON-LD named-graph `@container: @graph` expansion
+gap both closed). The root-cause narrative in §1 below is preserved as
+the 2026-07-11 baseline diagnosis that motivated this plan; treat its
+score numbers as historical, not current.
+
+## 1. Current state (verified, as of 2026-07-11 — see update above for current scores)
 
 **Scores** (`latest.json`): `vc_stage1` 117 pass, 0 fail (of 117,
 structural, `VC.Credential.fst` direct); `vc_di_eddsa` 26 pass, 5 fail

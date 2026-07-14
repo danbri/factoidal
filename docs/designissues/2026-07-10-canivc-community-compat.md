@@ -9,6 +9,13 @@ VC-API shim over Factoidal's engine. Companion pieces: the shim
 (`.github/test-suites/vc-di-eddsa.yaml`, `.github/test-suites/vc20-api.yaml`),
 and the dashboard section (`skills/site-and-dashboard/SKILL.md` §canivc).
 
+**Update 2026-07-14 (obsolescence sweep):** the 83.9%/37.3% scores
+below are the 2026-07-10 measurement session this doc records — both
+suites are now fully green: `vc_di_eddsa` 31 pass, 0 fail (out of 31)
+and `vc20_api` 59 pass, 0 fail (out of 59). Treat the community
+percentile comparisons below as a snapshot of that date, not current
+standing.
+
 ## What canivc.com is
 
 Digital Bazaar's static 11ty site, "Can I Credential?" — a "community

@@ -9,6 +9,21 @@ report of the same day, branch `worktree-tableau-refute` commit
 Owner goal (2026-07-10 `/goal`): level up implementation + npm FP JS
 API + hub docs for OWL2 DL/tableau to complete coverage.
 
+**Update 2026-07-14 (obsolescence sweep):** five tableau waves landed
+since the baseline below — datatype facet satisfiability, role box
+(subPropertyOf/FunctionalProperty/transitive), contrapositive
+unfolding of definitions + exact-cardinality-0 NNF, SHIQ ≤-rule
+witness merging, and named-individual identification + stored FP
+max-1 bounds. Current measured scores: type-inconsistency (DL) 110
+pass, 18 fail (out of 128 scored); type-consistency (DL) 334 pass, 18
+fail (out of 352). Soundness gate held throughout: exactly one
+`unexpected-inconsistency` (WebOnt-miscellaneous-202, pre-existing,
+tcon only). See `docs/claude-rules/current-state.md` and
+`w3c-completeness-ledger.md` for the current snapshot; the wave
+letters actually landed (datatype facets / role box / contrapositive /
+≤-rule / named-merge) diverge from the A–E plan below — treat the plan
+as the historical starting point, not the executed sequence.
+
 ## Baseline (measured, 2026-07-10)
 
 All DL-regime numbers from the rebuilt binaries of the tableau landing:
