@@ -1254,9 +1254,69 @@ let owl_rule_disjoint_to_complement (g : rdf_graph) (ig : indexed_graph) : rdf_g
 // Stack-safe (fold_left + accumulator); four nested folds: outer over
 // (svf) triples, then over onProperty IRIs, then over subClassOf
 // ancestors, then over typed members.
-let canonical_svf2_witness_bnode (p : wf_iri) (c : wf_iri) (x : subject) : bnode_id =
+//
+// WITNESS-DEPTH CAP (2026-07-14, dl-626/dl-627 perf fix): a cyclic TBox
+// (the WebOnt-description-logic "double blocking" fixtures t6.1/t6f.1 —
+// oiled:Unsatisfiable's someValuesFrom/allValuesFrom chain loops through
+// d / c.comp / V.3 with no acyclic bound) drives this rule into an
+// UNBOUNDED existential-witness chain: each round's freshly-minted
+// witness `w` becomes the `x` a LATER round mints a witness FROM, and
+// since every skolem name embeds its parent's key (`__from__ <x_key>`),
+// no two witnesses in the chain are ever equal, so `graph_dedup_sort`
+// can never collapse them — round-over-round growth measured at fuel
+// 10/15/20 = 1334/2122/5984 triples (665 baseline), 0.6s/2.1s/98s
+// wall, on `owl_rl_closure_with_reflexivity`'s default fuel=100 budget
+// this blows straight through the runner's 20s per-test SIGALRM cap.
+//
+// `Tableau.Refute.fst`'s `max_witness_depth` (= 3) already withholds
+// deeper tableau witnesses for exactly this cyclic-TBox non-termination
+// reason ("Refusing a witness only WITHHOLDS labels — sound"); this is
+// the same fix applied to the closure-side skolemisation, which had no
+// analogous cap. The depth is encoded directly in the skolem id itself
+// (`__rl_svf2w_d<N>__...`) rather than threaded as extra state, since
+// this rule (unlike Tableau's rstate) is a stateless `rdf_graph ->
+// rdf_graph` fold — `subject_svf2_depth` recovers `x`'s depth by
+// prefix-matching its OWN bnode id (String.length + String.sub, same
+// idiom as `iri_in_xsd_ns` above) against the marker this same rule
+// wrote on a prior round. Sound for the same reason Tableau's cap is:
+// the rule only ever ADDS entailed triples (module banner, "Monotonic:
+// only adds triples"), so withholding one more round of witnesses at
+// depth >= 3 only weakens completeness on pathologically cyclic TBoxes,
+// never soundness — every triple this rule DOES emit remains entailed.
+let svf2_max_witness_depth : nat = 3
+
+let svf2_witness_marker : string = "__rl_svf2w_d"
+
+// Single-digit depth encoding: svf2_max_witness_depth = 3 fits in one
+// ASCII digit, so no general nat<->string conversion is needed.
+let svf2_depth_char (d : nat) : string =
+  if d = 0 then "0"
+  else if d = 1 then "1"
+  else if d = 2 then "2"
+  else "3"
+
+// x's svf2-witness depth: 0 for named IRIs and bnodes this rule never
+// minted; the encoded digit for a bnode this rule DID mint (prefix
+// match via String.length + String.sub — no exceptions, no partiality).
+let subject_svf2_depth (x : subject) : nat =
+  match x with
+  | S_IRI _ -> 0
+  | S_BNode b ->
+    let plen = String.length svf2_witness_marker in
+    let blen = String.length b in
+    if blen <= plen then 0
+    else if String.sub b 0 plen = svf2_witness_marker
+    then
+      let dc = String.sub b plen 1 in
+      if dc = "0" then 0
+      else if dc = "1" then 1
+      else if dc = "2" then 2
+      else 3
+    else 0
+
+let canonical_svf2_witness_bnode (depth : nat) (p : wf_iri) (c : wf_iri) (x : subject) : bnode_id =
   String.concat ""
-    ["__rl_svf2w__on__"; p; "__filler__"; c; "__from__"; subject_to_key x]
+    [svf2_witness_marker; svf2_depth_char depth; "__on__"; p; "__filler__"; c; "__from__"; subject_to_key x]
 
 let owl_rule_svf2_existential_witness (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
   // Outer fold: find (_:r owl:someValuesFrom C) with C an IRI named class.
@@ -1291,14 +1351,18 @@ let owl_rule_svf2_existential_witness (g : rdf_graph) (ig : indexed_graph) : rdf
                           find_subjects_indexed ig rdf_type (T_IRI cls_iri) in
                         List.Tot.fold_left
                           (fun (acc4 : rdf_graph) (x : subject) ->
-                            let w_id = canonical_svf2_witness_bnode p c x in
-                            let edge_t : triple =
-                              { s = x; p = p; o = T_BNode w_id } in
-                            let type_t : triple =
-                              { s = S_BNode w_id; p = rdf_type; o = T_IRI c } in
-                            add_triple_unchecked
-                              (add_triple_unchecked acc4 edge_t)
-                              type_t)
+                            let d = subject_svf2_depth x in
+                            if d >= svf2_max_witness_depth
+                            then acc4  // withhold — sound, see banner above
+                            else
+                              let w_id = canonical_svf2_witness_bnode (d + 1) p c x in
+                              let edge_t : triple =
+                                { s = x; p = p; o = T_BNode w_id } in
+                              let type_t : triple =
+                                { s = S_BNode w_id; p = rdf_type; o = T_IRI c } in
+                              add_triple_unchecked
+                                (add_triple_unchecked acc4 edge_t)
+                                type_t)
                           acc3
                           members
                       | _ -> acc3)
