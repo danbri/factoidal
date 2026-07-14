@@ -53,13 +53,29 @@ module Tableau.Refute
    merging one in would silently under-redirect and risk fabricating a
    clash from a half-merged state).
 
+   NAMED-INDIVIDUAL IDENTIFICATION (owl2-named-merge wave): section 6b
+   below (`identify_pair` / `excess_ident_pairs_for_label` /
+   `identify_branch` in section 9) closes the "witness-to-witness only"
+   restriction just described. When a `<= k P` excess pair includes a
+   NAMED individual (an IRI, or a document bnode asserted in `g`) on
+   either side, its graph-asserted edges cannot be physically
+   redirected the way `merge_into` redirects a witness's — so instead
+   the two terms are IDENTIFIED in a `rs_ident` partition (owl:sameAs-
+   style, never written back to the graph) and every reader that
+   matters (`labels_of`, `countable_successors`/`all_successors`,
+   `clash_nodes`) pools the WHOLE identification group instead of one
+   node — see section 4a-ident's banner. Same AND-branching /
+   pigeonhole soundness argument as the witness ≤-rule; a pair the
+   graph (or a prior identification) already forces apart
+   (`provably_distinct_grouped`) is never offered, so a differentFrom
+   or distinct-literal pair can only ever be a CLASH here, never an
+   identification.
+
    STILL NOT implemented: double blocking (cyclic-TBox non-termination
    avoidance beyond the flat max_witness_depth cut), inverse-lifted
    subPropertyOf subsumptions (P ⊑ Q does not yet imply P⁻ ⊑ Q⁻ in
-   the role closure), nominal (oneOf) branching beyond the O-rule
-   clash test below, sameAs-driven cardinality merging, and merging
-   that reaches a NAMED individual on either side (the ≤-rule above is
-   witness-to-witness only).
+   the role closure), and nominal (oneOf) branching beyond the O-rule
+   clash test below.
        None        = fuel/budget exhausted — indeterminate; callers
                      fall back to their existing behaviour (the OWL-RL
                      `is_inconsistent` marker check).
@@ -465,6 +481,16 @@ noeq type rstate = {
      new merge logic, just a global "<= 1 P" constraint every node
      already carries. *)
   rs_funcprops : list wf_iri;
+  (* Named-individual identification partition (owl2-named-merge wave,
+     section 4a-ident): each inner list is a set of rdf_terms this
+     search branch currently HYPOTHESISES to denote one domain element
+     (owl:sameAs-style — never asserted back into the graph). Populated
+     only by `identify_pair` (section 6b), consulted by `labels_of`,
+     `countable_successors`/`all_successors`, and `clash_nodes`, which
+     pool a whole group's facts instead of one node's — see those
+     sites' banners for why pooling at read time is sound without ever
+     rewriting an edge (unlike `merge_into`'s witness redirection). *)
+  rs_ident : list (list rdf_term);
 }
 
 (* -------------------------------------------------------------------
@@ -664,14 +690,107 @@ let rec mem_ce_syn (c : class_expr) (ls : list class_expr) : Tot bool (decreases
   | [] -> false
   | l :: tl -> if ce_eq_syn c l then true else mem_ce_syn c tl
 
+(* -------------------------------------------------------------------
+   4a-ident. Named-individual identification partition
+   (owl2-named-merge wave — populated by section 6b below).
+
+   `rs_ident` records IDENTIFICATION hypotheses the search has made on
+   the current branch: each inner list is a set of rdf_terms treated as
+   ONE domain element. Unlike `merge_into` (section 6a), identification
+   never rewrites a triple or an `rs_extra` edge — a named individual's
+   edges may live in the fixed input graph `g`, which this module
+   treats as read-only. Instead every reader that needs "the
+   individual's" labels, successors, or distinctness consults the WHOLE
+   group via the helpers below and pools the answer: the group is
+   exactly the set of terms this branch currently treats as one
+   element, so pooling their individually-entailed facts is itself
+   entailed of the pooled identity — the same argument `merge_into`'s
+   banner makes for physically-unioned labels, applied at read time
+   instead of write time. *)
+
+let rec find_ident_group (ident : list (list rdf_term)) (t : rdf_term)
+  : Tot (option (list rdf_term)) (decreases ident) =
+  match ident with
+  | [] -> None
+  | grp :: tl ->
+    if List.Tot.existsb (fun x -> rdf_term_eq x t) grp
+    then Some grp
+    else find_ident_group tl t
+
+(* `t`'s current identification group, or the singleton `[t]` when `t`
+   has not (yet, on this branch) been identified with anything — the
+   trivial group of one, so every reader below treats "grouped" and
+   "ungrouped" uniformly. *)
+let ident_group_of (ident : list (list rdf_term)) (t : rdf_term) : list rdf_term =
+  match find_ident_group ident t with
+  | Some grp -> grp
+  | None -> [t]
+
+(* Are `a` and `b` the SAME domain element under the current
+   identification hypothesis — either syntactically equal, or
+   co-members of one `rs_ident` group? Used to fold identified
+   successor terms together (`dedup_terms_ident`) and to recognise a
+   pair as "already identified, not a new candidate" (section 6b). *)
+let same_individual (ident : list (list rdf_term)) (a b : rdf_term) : bool =
+  rdf_term_eq a b
+  || (match find_ident_group ident a with
+      | Some grp -> List.Tot.existsb (fun x -> rdf_term_eq x b) grp
+      | None -> false)
+
+(* `dedup_terms` (below) made ident-aware: two terms that denote the
+   SAME identified individual collapse to one, exactly as two
+   syntactically-identical terms already did. This is what makes
+   successor COUNTING "treat identified nodes as one" (module banner):
+   once x~y are identified, a `<= k P` label whose successor set
+   previously counted x and y separately now sees them as a single
+   successor, so the excess `countable_successors`/`all_successors`
+   report monotonically shrinks after an identification — the same
+   re-detection property `merge_into` gets from physically deleting a
+   duplicate edge target. *)
+let rec dedup_terms_ident (ident : list (list rdf_term)) (ts : list rdf_term)
+  : Tot (list rdf_term) (decreases ts) =
+  match ts with
+  | [] -> []
+  | t :: tl ->
+    let rest = dedup_terms_ident ident tl in
+    if List.Tot.existsb (fun o -> same_individual ident t o) rest
+    then rest else t :: rest
+
+let rec subjects_of_terms (ts : list rdf_term) : Tot (list subject) (decreases ts) =
+  match ts with
+  | [] -> []
+  | t :: tl ->
+    (match term_to_subject t with
+     | Some s -> s :: subjects_of_terms tl
+     | None -> subjects_of_terms tl)
+
 let rec labels_of_nodes (ns : list rnode) (i : subject)
   : Tot (list class_expr) (decreases ns) =
   match ns with
   | [] -> []
   | n :: tl -> if subject_eq n.rn_id i then n.rn_labels else labels_of_nodes tl i
 
+let rec labels_of_multi (ns : list rnode) (is : list subject)
+  : Tot (list class_expr) (decreases is) =
+  match is with
+  | [] -> []
+  | i :: tl -> labels_of_nodes ns i @ labels_of_multi ns tl
+
+(* Pooled across `i`'s WHOLE identification group (section 4a-ident) —
+   a plain lookup when `i` is unidentified (group = [i]), the union of
+   every group member's OWN labels otherwise. Every label ever added to
+   ANY node is an entailed membership of that node's denotation (the
+   `pass` invariant, section 8 banner); once two nodes are identified
+   their denotations coincide by hypothesis, so pooling is sound by the
+   same argument, applied at read time instead of by physically copying
+   labels the way `merge_into` does for witnesses. *)
 let labels_of (st : rstate) (i : subject) : list class_expr =
-  labels_of_nodes st.rs_nodes i
+  (* Perf guard (same as clash_nodes'): only pay the multi-member
+     pooled walk when `i` actually has an identification group; the
+     unidentified path is the direct pre-wave lookup. *)
+  match find_ident_group st.rs_ident (subject_to_term i) with
+  | Some grp -> labels_of_multi st.rs_nodes (subjects_of_terms grp)
+  | None -> labels_of_nodes st.rs_nodes i
 
 let rec add_label_nodes (ns : list rnode) (i : subject) (c : class_expr)
   : Tot (list rnode & bool) (decreases ns) =
@@ -804,13 +923,49 @@ let rec successors_via_roles (g : rdf_graph) (st : rstate) (i : subject)
     successors_via_single_role g st i r count_only
     @ successors_via_roles g st i tl count_only
 
+let rec successors_via_roles_multi (g : rdf_graph) (st : rstate) (is : list subject)
+                                   (roles : list wf_iri) (count_only : bool)
+  : Tot (list rdf_term) (decreases is) =
+  match is with
+  | [] -> []
+  | i :: tl ->
+    successors_via_roles g st i roles count_only
+    @ successors_via_roles_multi g st tl roles count_only
+
+(* Role-hierarchy successor union, POOLED across `i`'s WHOLE
+   identification group (section 4a-ident/6b) and ident-deduped: an
+   edge asserted on ANY group member is, by the current identification
+   hypothesis, an edge of the identified individual — sound to pool for
+   exactly the reason `labels_of` pools labels above, and this is what
+   lets a `<= k P` obligation see a role-hierarchy AND identification
+   widened successor set without ever rewriting the edge itself (module
+   banner). Reduces to the pre-owl2-named-merge behaviour when `i` is
+   unidentified (group = [i]). *)
 let countable_successors (g : rdf_graph) (st : rstate) (i : subject) (p : wf_iri)
   : list rdf_term =
-  dedup_terms (successors_via_roles g st i (subproperties_of st.rs_subprop p) true)
+  match find_ident_group st.rs_ident (subject_to_term i) with
+  | Some grp ->
+    dedup_terms_ident st.rs_ident
+      (successors_via_roles_multi g st (subjects_of_terms grp)
+        (subproperties_of st.rs_subprop p) true)
+  | None ->
+    (* Perf guard (same as labels_of'): unidentified nodes take the
+       pre-wave single-subject walk; dedup stays ident-aware so a
+       successor TERM that has itself been identified with another
+       still collapses to one countable element. *)
+    dedup_terms_ident st.rs_ident
+      (successors_via_roles g st i (subproperties_of st.rs_subprop p) true)
 
 let all_successors (g : rdf_graph) (st : rstate) (i : subject) (p : wf_iri)
   : list rdf_term =
-  dedup_terms (successors_via_roles g st i (subproperties_of st.rs_subprop p) false)
+  match find_ident_group st.rs_ident (subject_to_term i) with
+  | Some grp ->
+    dedup_terms_ident st.rs_ident
+      (successors_via_roles_multi g st (subjects_of_terms grp)
+        (subproperties_of st.rs_subprop p) false)
+  | None ->
+    dedup_terms_ident st.rs_ident
+      (successors_via_roles g st i (subproperties_of st.rs_subprop p) false)
 
 let rec extra_edge_present (es : list redge) (i : subject) (p : wf_iri)
                            (o : rdf_term)
@@ -886,6 +1041,32 @@ let provably_distinct (g : rdf_graph) (gd : list (list rdf_term))
         && comparable_datatype l1.datatype
         && not (datatype_value_eq l1 l2)
       | _, _ -> false)
+
+(* Group-aware distinctness (owl2-named-merge wave): are `a` and `b`
+   forced apart once identification GROUPS (section 4a-ident) are taken
+   into account? If `a` has already been identified with some `x` that
+   is provably distinct from `b` (or from any member of `b`'s own
+   group), then `a` is transitively forced apart from `b` too —
+   identifying `a` with `b` on top of that would silently contradict
+   the earlier identification. This is the check that keeps a
+   differentFrom pair, or a distinct-literal pair, from EVER being
+   offered as an identification candidate in section 6b, even
+   indirectly through a prior identification: no new distinctness rule,
+   just the EXISTING `provably_distinct` applied to every cross-pair
+   from the two full groups. *)
+let rec exists_distinct_cross (g : rdf_graph) (gd : list (list rdf_term))
+                              (xs : list rdf_term) (ys : list rdf_term)
+  : Tot bool (decreases xs) =
+  match xs with
+  | [] -> false
+  | x :: tl ->
+    List.Tot.existsb (fun y -> provably_distinct g gd x y) ys
+    || exists_distinct_cross g gd tl ys
+
+let provably_distinct_grouped (g : rdf_graph) (gd : list (list rdf_term))
+                              (ident : list (list rdf_term))
+                              (a : rdf_term) (b : rdf_term) : bool =
+  exists_distinct_cross g gd (ident_group_of ident a) (ident_group_of ident b)
 
 (* Keep only candidates provably distinct from h, with a length bound
    so the subset search below has a decreasing measure. *)
@@ -1315,6 +1496,190 @@ let merge_into (st : rstate) (y : subject) (z : subject) : rstate =
     rs_extra = List.Tot.map (redirect_edge y z) st1.rs_extra;
     rs_gendistinct = redirect_groups y z st1.rs_gendistinct }
 
+(* -------------------------------------------------------------------
+   6b. Named-individual identification (owl2-named-merge wave).
+
+   PROBLEM this closes: section 6a's ≤-rule only merges pairs where
+   BOTH successors are pure ∃-witness bnodes, because `merge_into`
+   physically redirects every edge mentioning the absorbed node, and
+   only a witness's edges are guaranteed to live entirely in
+   `rs_extra` (module banner, top of file). When a `<= k P`
+   obligation's excess successor set includes a NAMED individual (an
+   IRI, or a document bnode asserted directly in `g`) on EITHER side of
+   a candidate pair, that individual's graph-asserted edges cannot be
+   safely redirected — some could be missed, silently under-counting a
+   real successor set elsewhere in the graph. Standard SHIQ/SHOIN
+   tableaux handle this with the SAME ≤-rule nondeterminism, just
+   realised differently for individuals with a fixed identity: instead
+   of rewriting edges, the two names are IDENTIFIED (owl:sameAs-style,
+   `rs_ident`, section 4a-ident) and every reader that matters
+   (`labels_of`, `countable_successors`/`all_successors`,
+   `clash_nodes`) is made to consult the WHOLE group instead of one
+   node — see those sites' banners for the pooling argument. No UNA in
+   OWL: identifying two distinct names is always a legal hypothesis
+   unless something ALREADY forces them apart.
+
+   NONDETERMINISM / AND-verdict: identical encoding to `merge_branch`
+   above — every mergeable candidate pair is tried as a sibling branch
+   (`identify_branch`, section 9), and ALL must close (TClash) for the
+   overall obligation to be reported refuted; any TOpen wins, matching
+   `branch`/`merge_branch`'s verdict combination exactly. Budget is
+   threaded with the SAME `%[b; List.Tot.length pairs]` measure
+   `merge_branch` uses, so the two rules share one termination
+   argument.
+
+   CANDIDATE SCOPE: a pair qualifies here iff it is NOT the
+   witness-witness case section 6a already owns (that pair is left to
+   `merge_branch`, unchanged, so this wave never second-guesses an
+   already-verified rule), the two terms are not already identified
+   (`same_individual`), and the pair is not `provably_distinct_grouped`
+   (owl:differentFrom, incomparable literal values, a `rs_gendistinct`
+   generating-rule group, or any of those transitively via a PRIOR
+   identification — see that function's banner). A witness MAY appear
+   on one side of a pair here (identified with a named individual) —
+   sound, because identification never needs to redirect either side's
+   edges, unlike `merge_into`; nothing is lost by routing a
+   witness-vs-named pair through the partition instead of a physical
+   merge.
+
+   SOUNDNESS of the trigger condition (excess-over-`k` on the FULL,
+   ident-deduped successor set): identical pigeonhole argument to
+   section 6a's banner — if `<= k P` holds of `i` in every model and
+   `i` has strictly more than `k` pairwise-not-yet-identified,
+   not-yet-forced-apart `P`-successor TERMS, some two of them must
+   denote the SAME domain element in every model. Trying every
+   not-already-excluded pair (AND-for-refutation) is sound for the same
+   reason `exists_distinct_subset`/`merge_branch` already rely on.
+
+   differentFrom / distinct-literal SAFETY: a pair excluded by
+   `provably_distinct_grouped` is NEVER offered here, so this rule can
+   never identify two names the graph (or a prior identification step)
+   already forces apart — if EVERY candidate pair the excess set could
+   offer is excluded that way, `excess_ident_pairs_for_label` reports
+   `None` and the ordinary C3/C4 counting clash (section 6, over the
+   COUNTABLE/asserted-strength subset) is left to report the clash
+   instead, exactly as section 6a's witness rule already defers to C3/
+   C4 when no mergeable pair exists — this is exactly the pigeonhole a
+   max-card bound forcing k+1 successors into k pairwise-mergeable
+   named individuals, with one differentFrom pair, must resolve as a
+   clash rather than a further identification. *)
+
+(* The union step: identify `x` and `y` in the partition. A no-op if
+   they already denote the same element (co-membership or syntactic
+   equality). Otherwise pulls whichever existing groups contain `x`
+   and/or `y` (singleton groups when either was previously
+   unidentified) out of `ident`, unions their members (deduped), and
+   reinserts the merged group — a plain union-find "union" written as
+   an explicit list rewrite so the whole thing stays `Tot` with a
+   structural decreases, no path-compression bookkeeping needed at this
+   corpus's scale. *)
+let rec remove_ident_group (ident : list (list rdf_term)) (t : rdf_term)
+  : Tot (list (list rdf_term) & list rdf_term) (decreases ident) =
+  match ident with
+  | [] -> ([], [t])
+  | grp :: tl ->
+    if List.Tot.existsb (fun x -> rdf_term_eq x t) grp
+    then (tl, grp)
+    else
+      let (rest, found) = remove_ident_group tl t in
+      (grp :: rest, found)
+
+let identify_pair (ident : list (list rdf_term)) (x : rdf_term) (y : rdf_term)
+  : list (list rdf_term) =
+  if rdf_term_eq x y then ident
+  else
+    let (ident1, gx) = remove_ident_group ident x in
+    let (ident2, gy) = remove_ident_group ident1 y in
+    dedup_terms (gx @ gy) :: ident2
+
+(* Every successor term (witnesses INCLUDED, like `candidate_witness_subjects`
+   above) that resolves to a subject at all — literals are never
+   identification candidates: an individual's identity is
+   nondeterministic under no-UNA, but a literal's is fixed by its
+   value, so "identifying" one with anything else would fabricate an
+   equality no model need satisfy. *)
+let rec all_candidate_subjects (ts : list rdf_term) : Tot (list subject) (decreases ts) =
+  match ts with
+  | [] -> []
+  | t :: tl ->
+    let rest = all_candidate_subjects tl in
+    (match term_to_subject t with
+     | Some s -> s :: rest
+     | None -> rest)
+
+(* Every OTHER candidate in `rest` that `h` may soundly be IDENTIFIED
+   with — excludes the witness-witness case (owned by section 6a's
+   `pairs_from_head`/`merge_branch`), self-pairs, already-identified
+   pairs, and group-aware forced-distinct pairs. *)
+let rec identify_pairs_from_head (g : rdf_graph) (gd : list (list rdf_term))
+                                 (ident : list (list rdf_term)) (st : rstate)
+                                 (h : subject) (rest : list subject)
+  : Tot (list (subject & subject)) (decreases rest) =
+  match rest with
+  | [] -> []
+  | s :: tl ->
+    let more = identify_pairs_from_head g gd ident st h tl in
+    if subject_eq h s
+       || (is_witness_subject st h && is_witness_subject st s)
+       || same_individual ident (subject_to_term h) (subject_to_term s)
+       || provably_distinct_grouped g gd ident (subject_to_term h) (subject_to_term s)
+    then more
+    else (h, s) :: more
+
+let rec all_identify_pairs (g : rdf_graph) (gd : list (list rdf_term))
+                           (ident : list (list rdf_term)) (st : rstate)
+                           (ss : list subject)
+  : Tot (list (subject & subject)) (decreases ss) =
+  match ss with
+  | [] -> []
+  | h :: tl ->
+    identify_pairs_from_head g gd ident st h tl @ all_identify_pairs g gd ident st tl
+
+(* Mirrors `excess_pairs_for_label` (section 6a) exactly, over the SAME
+   ident-deduped `all_successors` view, but collecting IDENTIFICATION
+   candidates instead of witness-merge candidates. `None` when the
+   label isn't a max-card shape, the full ident-deduped set doesn't
+   exceed the bound (identification already brought it under — the
+   excess genuinely closed, nothing left to branch on), or every
+   remaining pair is witness-witness (section 6a's job) or forced
+   apart. *)
+let excess_ident_pairs_for_label (g : rdf_graph) (st : rstate) (i : subject) (l : class_expr)
+  : option (list (subject & subject)) =
+  match l with
+  | CE_MaxCard k p ->
+    let full = all_successors g st i p in
+    if List.Tot.length full > k then
+      let prs = all_identify_pairs g st.rs_gendistinct st.rs_ident st (all_candidate_subjects full) in
+      if Cons? prs then Some prs else None
+    else None
+  | CE_MaxQualCard k p c ->
+    let full = filter_in_filler st c (all_successors g st i p) in
+    if List.Tot.length full > k then
+      let prs = all_identify_pairs g st.rs_gendistinct st.rs_ident st (all_candidate_subjects full) in
+      if Cons? prs then Some prs else None
+    else None
+  | _ -> None
+
+let rec find_identify_labels (g : rdf_graph) (st : rstate) (i : subject) (ls : list class_expr)
+  : Tot (option (list (subject & subject))) (decreases ls) =
+  match ls with
+  | [] -> None
+  | l :: tl ->
+    (match excess_ident_pairs_for_label g st i l with
+     | Some prs -> Some prs
+     | None -> find_identify_labels g st i tl)
+
+(* First node (deterministic: node order, then label order — same
+   discipline as `find_merge_nodes`) carrying an identifiable excess. *)
+let rec find_identify_nodes (g : rdf_graph) (st : rstate) (ns : list rnode)
+  : Tot (option (list (subject & subject))) (decreases ns) =
+  match ns with
+  | [] -> None
+  | n :: tl ->
+    (match find_identify_labels g st n.rn_id n.rn_labels with
+     | Some prs -> Some prs
+     | None -> find_identify_nodes g st tl)
+
 (* Per-label clash test against the node's full label set + edges.
 
    Soundness arguments:
@@ -1397,8 +1762,25 @@ let rec clash_nodes (g : rdf_graph) (st : rstate) (ns : list rnode)
   match ns with
   | [] -> false
   | n :: tl ->
-    clash_labels g st n.rn_id n.rn_labels n.rn_labels
-    || datatype_range_clash st.rs_subprop n.rn_labels
+    (* Pooled across n's identification group (owl2-named-merge wave,
+       section 4a-ident): once two named individuals are identified, a
+       clash entailed by the UNION of their labels (e.g. one carries
+       `<= 0 P`, the other `>= 1 P`) must be visible from either one's
+       own node entry. `labels_of` is the ident-aware read that
+       supplies it without ever physically copying a label the way
+       `merge_into` does for witnesses. Perf guard: the pooled read
+       costs an O(rs_nodes) scan per group member, so it is only taken
+       when this node actually HAS an identification group — on the
+       (overwhelmingly common) unidentified path this is the same
+       direct `n.rn_labels` access as before the wave, keeping
+       `clash_nodes` linear when the partition is empty. *)
+    let ls =
+      match find_ident_group st.rs_ident (subject_to_term n.rn_id) with
+      | Some _ -> labels_of st n.rn_id
+      | None -> n.rn_labels
+    in
+    clash_labels g st n.rn_id ls ls
+    || datatype_range_clash st.rs_subprop ls
     || clash_nodes g st tl
 
 let has_clash (g : rdf_graph) (st : rstate) : bool =
@@ -1918,9 +2300,24 @@ let rec inject_functional (tb : list (class_expr & class_expr)) (g : rdf_graph)
   match fps with
   | [] -> (st, false)
   | fp :: tl ->
-    let (st1, c1) = step_label tb g st i (CE_MaxCard 1 fp) in
+    (* STORE the max-1 label (owl2-named-merge wave fix), don't just
+       route it through step_label transiently: `clash_for_label`'s C3/
+       C4 cases, `find_merge_labels` (section 6a), and
+       `find_identify_labels` (section 6b) all iterate a node's STORED
+       `rn_labels` — a label that is only ever passed to `step_label`
+       but never added is invisible to every one of them, so the
+       FunctionalProperty-as-max-1 fold this function's banner promises
+       never actually reached the max-card clash/merge machinery unless
+       the fixture ALSO asserted an explicit maxCardinality restriction.
+       Storing is sound for exactly the reason the banner already gives:
+       CEXT(P) being a partial function is a structural fact of every
+       model for a declared functional P, so `<= 1 P` is entailed of
+       EVERY individual unconditionally. Idempotent via add_label's
+       syntactic dedup (changed=false after the first round). *)
+    let (st0, c0) = add_label st i (CE_MaxCard 1 fp) in
+    let (st1, c1) = step_label tb g st0 i (CE_MaxCard 1 fp) in
     let (st2, c2) = inject_functional tb g tl st1 i in
-    (st2, c1 || c2)
+    (st2, c0 || c1 || c2)
 
 (* Universal owl:Thing membership: CEXT(owl:Thing) = Δ (the WHOLE
    domain) in every model, for EVERY individual, whether or not
@@ -2035,7 +2432,17 @@ let rec check (tb : list (class_expr & class_expr)) (g : rdf_graph)
          (match find_merge_nodes g st' st'.rs_nodes with
           | Some prs ->
             let (r, b') = merge_branch tb g prs st' (b - 1) in (r, b')
-          | None -> (TOpen, b - 1)))
+          | None ->
+            (* Named-individual identification (owl2-named-merge wave):
+               only consulted once BOTH union branching and witness
+               merging have nothing left to offer — see the section 6b
+               banner for why this is the correct fallback tier (it
+               never second-guesses a witness-witness merge section 6a
+               already owns). *)
+            (match find_identify_nodes g st' st'.rs_nodes with
+             | Some prs ->
+               let (r, b') = identify_branch tb g prs st' (b - 1) in (r, b')
+             | None -> (TOpen, b - 1))))
 and branch (tb : list (class_expr & class_expr)) (g : rdf_graph)
            (i : subject) (ds : list class_expr) (st : rstate) (b : nat)
   : Tot (tri & (r : nat { r <= b })) (decreases %[b; List.Tot.length ds]) =
@@ -2072,6 +2479,31 @@ and merge_branch (tb : list (class_expr & class_expr)) (g : rdf_graph)
        | TOpen -> (TOpen, b1)
        | _ ->
          let (r2, b2) = merge_branch tb g tl st b1 in
+         (match r1, r2 with
+          | TClash, x -> (x, b2)
+          | TOut, TOpen -> (TOpen, b2)
+          | TOut, _ -> (TOut, b2)))
+and identify_branch (tb : list (class_expr & class_expr)) (g : rdf_graph)
+                    (pairs : list (subject & subject)) (st : rstate) (b : nat)
+  : Tot (tri & (r : nat { r <= b })) (decreases %[b; List.Tot.length pairs]) =
+  (* Same shape, same verdict-combination, and the SAME
+     `%[b; List.Tot.length pairs]` measure as `merge_branch` above (see
+     the section 6b banner): TClash only if EVERY candidate pair's
+     identification closes; TOpen from any candidate wins; TOut
+     otherwise. The only difference from `merge_branch` is the state
+     update — `identify_pair` extends the `rs_ident` partition instead
+     of physically redirecting edges. *)
+  match pairs with
+  | [] -> (TClash, b)
+  | (y, z) :: tl ->
+    if b = 0 then (TOut, 0)
+    else
+      let st1 = { st with rs_ident = identify_pair st.rs_ident (subject_to_term y) (subject_to_term z) } in
+      let (r1, b1) = check tb g st1 (b - 1) in
+      (match r1 with
+       | TOpen -> (TOpen, b1)
+       | _ ->
+         let (r2, b2) = identify_branch tb g tl st b1 in
          (match r1, r2 with
           | TClash, x -> (x, b2)
           | TOut, TOpen -> (TOpen, b2)
@@ -2235,7 +2667,8 @@ let init_state (g : rdf_graph) : rstate =
       rs_inv = collect_inverse_pairs g; rs_gendistinct = [];
       rs_subprop = collect_subprop_pairs g;
       rs_transprops = collect_transitive_props g;
-      rs_funcprops = collect_functional_props g }
+      rs_funcprops = collect_functional_props g;
+      rs_ident = [] }
 
 (* tableau_consistent — the public satisfiability check.
 

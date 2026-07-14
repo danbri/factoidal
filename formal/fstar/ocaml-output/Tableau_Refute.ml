@@ -242,49 +242,55 @@ type rstate =
   rs_gendistinct: RDF_Term.rdf_term Prims.list Prims.list ;
   rs_subprop: (RDF_Term.wf_iri * RDF_Term.wf_iri) Prims.list ;
   rs_transprops: RDF_Term.wf_iri Prims.list ;
-  rs_funcprops: RDF_Term.wf_iri Prims.list }
+  rs_funcprops: RDF_Term.wf_iri Prims.list ;
+  rs_ident: RDF_Term.rdf_term Prims.list Prims.list }
 let __proj__Mkrstate__item__rs_nodes (projectee : rstate) : rnode Prims.list=
   match projectee with
   | { rs_nodes; rs_extra; rs_fresh; rs_wdepth; rs_inv; rs_gendistinct;
-      rs_subprop; rs_transprops; rs_funcprops;_} -> rs_nodes
+      rs_subprop; rs_transprops; rs_funcprops; rs_ident;_} -> rs_nodes
 let __proj__Mkrstate__item__rs_extra (projectee : rstate) : redge Prims.list=
   match projectee with
   | { rs_nodes; rs_extra; rs_fresh; rs_wdepth; rs_inv; rs_gendistinct;
-      rs_subprop; rs_transprops; rs_funcprops;_} -> rs_extra
+      rs_subprop; rs_transprops; rs_funcprops; rs_ident;_} -> rs_extra
 let __proj__Mkrstate__item__rs_fresh (projectee : rstate) : Prims.nat=
   match projectee with
   | { rs_nodes; rs_extra; rs_fresh; rs_wdepth; rs_inv; rs_gendistinct;
-      rs_subprop; rs_transprops; rs_funcprops;_} -> rs_fresh
+      rs_subprop; rs_transprops; rs_funcprops; rs_ident;_} -> rs_fresh
 let __proj__Mkrstate__item__rs_wdepth (projectee : rstate) :
   (RDF_Term.bnode_id * Prims.nat) Prims.list=
   match projectee with
   | { rs_nodes; rs_extra; rs_fresh; rs_wdepth; rs_inv; rs_gendistinct;
-      rs_subprop; rs_transprops; rs_funcprops;_} -> rs_wdepth
+      rs_subprop; rs_transprops; rs_funcprops; rs_ident;_} -> rs_wdepth
 let __proj__Mkrstate__item__rs_inv (projectee : rstate) :
   (RDF_Term.wf_iri * RDF_Term.wf_iri) Prims.list=
   match projectee with
   | { rs_nodes; rs_extra; rs_fresh; rs_wdepth; rs_inv; rs_gendistinct;
-      rs_subprop; rs_transprops; rs_funcprops;_} -> rs_inv
+      rs_subprop; rs_transprops; rs_funcprops; rs_ident;_} -> rs_inv
 let __proj__Mkrstate__item__rs_gendistinct (projectee : rstate) :
   RDF_Term.rdf_term Prims.list Prims.list=
   match projectee with
   | { rs_nodes; rs_extra; rs_fresh; rs_wdepth; rs_inv; rs_gendistinct;
-      rs_subprop; rs_transprops; rs_funcprops;_} -> rs_gendistinct
+      rs_subprop; rs_transprops; rs_funcprops; rs_ident;_} -> rs_gendistinct
 let __proj__Mkrstate__item__rs_subprop (projectee : rstate) :
   (RDF_Term.wf_iri * RDF_Term.wf_iri) Prims.list=
   match projectee with
   | { rs_nodes; rs_extra; rs_fresh; rs_wdepth; rs_inv; rs_gendistinct;
-      rs_subprop; rs_transprops; rs_funcprops;_} -> rs_subprop
+      rs_subprop; rs_transprops; rs_funcprops; rs_ident;_} -> rs_subprop
 let __proj__Mkrstate__item__rs_transprops (projectee : rstate) :
   RDF_Term.wf_iri Prims.list=
   match projectee with
   | { rs_nodes; rs_extra; rs_fresh; rs_wdepth; rs_inv; rs_gendistinct;
-      rs_subprop; rs_transprops; rs_funcprops;_} -> rs_transprops
+      rs_subprop; rs_transprops; rs_funcprops; rs_ident;_} -> rs_transprops
 let __proj__Mkrstate__item__rs_funcprops (projectee : rstate) :
   RDF_Term.wf_iri Prims.list=
   match projectee with
   | { rs_nodes; rs_extra; rs_fresh; rs_wdepth; rs_inv; rs_gendistinct;
-      rs_subprop; rs_transprops; rs_funcprops;_} -> rs_funcprops
+      rs_subprop; rs_transprops; rs_funcprops; rs_ident;_} -> rs_funcprops
+let __proj__Mkrstate__item__rs_ident (projectee : rstate) :
+  RDF_Term.rdf_term Prims.list Prims.list=
+  match projectee with
+  | { rs_nodes; rs_extra; rs_fresh; rs_wdepth; rs_inv; rs_gendistinct;
+      rs_subprop; rs_transprops; rs_funcprops; rs_ident;_} -> rs_ident
 let rec collect_inverse_pairs (ts : RDF_Graph.rdf_graph) :
   (RDF_Term.wf_iri * RDF_Term.wf_iri) Prims.list=
   match ts with
@@ -432,6 +438,45 @@ let rec mem_ce_syn (c : Tableau.class_expr)
   match ls with
   | [] -> false
   | l::tl -> if ce_eq_syn c l then true else mem_ce_syn c tl
+let rec find_ident_group (ident : RDF_Term.rdf_term Prims.list Prims.list)
+  (t : RDF_Term.rdf_term) :
+  RDF_Term.rdf_term Prims.list FStar_Pervasives_Native.option=
+  match ident with
+  | [] -> FStar_Pervasives_Native.None
+  | grp::tl ->
+      if FStar_List_Tot_Base.existsb (fun x -> RDF_Term.rdf_term_eq x t) grp
+      then FStar_Pervasives_Native.Some grp
+      else find_ident_group tl t
+let ident_group_of (ident : RDF_Term.rdf_term Prims.list Prims.list)
+  (t : RDF_Term.rdf_term) : RDF_Term.rdf_term Prims.list=
+  match find_ident_group ident t with
+  | FStar_Pervasives_Native.Some grp -> grp
+  | FStar_Pervasives_Native.None -> [t]
+let same_individual (ident : RDF_Term.rdf_term Prims.list Prims.list)
+  (a : RDF_Term.rdf_term) (b : RDF_Term.rdf_term) : Prims.bool=
+  (RDF_Term.rdf_term_eq a b) ||
+    (match find_ident_group ident a with
+     | FStar_Pervasives_Native.Some grp ->
+         FStar_List_Tot_Base.existsb (fun x -> RDF_Term.rdf_term_eq x b) grp
+     | FStar_Pervasives_Native.None -> false)
+let rec dedup_terms_ident (ident : RDF_Term.rdf_term Prims.list Prims.list)
+  (ts : RDF_Term.rdf_term Prims.list) : RDF_Term.rdf_term Prims.list=
+  match ts with
+  | [] -> []
+  | t::tl ->
+      let rest = dedup_terms_ident ident tl in
+      if
+        FStar_List_Tot_Base.existsb (fun o -> same_individual ident t o) rest
+      then rest
+      else t :: rest
+let rec subjects_of_terms (ts : RDF_Term.rdf_term Prims.list) :
+  RDF_Term.subject Prims.list=
+  match ts with
+  | [] -> []
+  | t::tl ->
+      (match RDF_Graph.term_to_subject t with
+       | FStar_Pervasives_Native.Some s -> s :: (subjects_of_terms tl)
+       | FStar_Pervasives_Native.None -> subjects_of_terms tl)
 let rec labels_of_nodes (ns : rnode Prims.list) (i : RDF_Term.subject) :
   Tableau.class_expr Prims.list=
   match ns with
@@ -440,8 +485,19 @@ let rec labels_of_nodes (ns : rnode Prims.list) (i : RDF_Term.subject) :
       if RDF_Term.subject_eq n.rn_id i
       then n.rn_labels
       else labels_of_nodes tl i
+let rec labels_of_multi (ns : rnode Prims.list)
+  (is : RDF_Term.subject Prims.list) : Tableau.class_expr Prims.list=
+  match is with
+  | [] -> []
+  | i::tl ->
+      FStar_List_Tot_Base.op_At (labels_of_nodes ns i)
+        (labels_of_multi ns tl)
 let labels_of (st : rstate) (i : RDF_Term.subject) :
-  Tableau.class_expr Prims.list= labels_of_nodes st.rs_nodes i
+  Tableau.class_expr Prims.list=
+  match find_ident_group st.rs_ident (RDF_Graph.subject_to_term i) with
+  | FStar_Pervasives_Native.Some grp ->
+      labels_of_multi st.rs_nodes (subjects_of_terms grp)
+  | FStar_Pervasives_Native.None -> labels_of_nodes st.rs_nodes i
 let rec add_label_nodes (ns : rnode Prims.list) (i : RDF_Term.subject)
   (c : Tableau.class_expr) : (rnode Prims.list * Prims.bool)=
   match ns with
@@ -474,7 +530,8 @@ let add_label (st : rstate) (i : RDF_Term.subject) (c : Tableau.class_expr) :
               rs_gendistinct = (st.rs_gendistinct);
               rs_subprop = (st.rs_subprop);
               rs_transprops = (st.rs_transprops);
-              rs_funcprops = (st.rs_funcprops)
+              rs_funcprops = (st.rs_funcprops);
+              rs_ident = (st.rs_ident)
             }, ch))
 let rec add_labels_all (st : rstate) (i : RDF_Term.subject)
   (cs : Tableau.class_expr Prims.list) : (rstate * Prims.bool)=
@@ -555,16 +612,37 @@ let rec successors_via_roles (g : RDF_Graph.rdf_graph) (st : rstate)
       FStar_List_Tot_Base.op_At
         (successors_via_single_role g st i r count_only)
         (successors_via_roles g st i tl count_only)
+let rec successors_via_roles_multi (g : RDF_Graph.rdf_graph) (st : rstate)
+  (is : RDF_Term.subject Prims.list) (roles : RDF_Term.wf_iri Prims.list)
+  (count_only : Prims.bool) : RDF_Term.rdf_term Prims.list=
+  match is with
+  | [] -> []
+  | i::tl ->
+      FStar_List_Tot_Base.op_At
+        (successors_via_roles g st i roles count_only)
+        (successors_via_roles_multi g st tl roles count_only)
 let countable_successors (g : RDF_Graph.rdf_graph) (st : rstate)
   (i : RDF_Term.subject) (p : RDF_Term.wf_iri) :
   RDF_Term.rdf_term Prims.list=
-  dedup_terms
-    (successors_via_roles g st i (subproperties_of st.rs_subprop p) true)
+  match find_ident_group st.rs_ident (RDF_Graph.subject_to_term i) with
+  | FStar_Pervasives_Native.Some grp ->
+      dedup_terms_ident st.rs_ident
+        (successors_via_roles_multi g st (subjects_of_terms grp)
+           (subproperties_of st.rs_subprop p) true)
+  | FStar_Pervasives_Native.None ->
+      dedup_terms_ident st.rs_ident
+        (successors_via_roles g st i (subproperties_of st.rs_subprop p) true)
 let all_successors (g : RDF_Graph.rdf_graph) (st : rstate)
   (i : RDF_Term.subject) (p : RDF_Term.wf_iri) :
   RDF_Term.rdf_term Prims.list=
-  dedup_terms
-    (successors_via_roles g st i (subproperties_of st.rs_subprop p) false)
+  match find_ident_group st.rs_ident (RDF_Graph.subject_to_term i) with
+  | FStar_Pervasives_Native.Some grp ->
+      dedup_terms_ident st.rs_ident
+        (successors_via_roles_multi g st (subjects_of_terms grp)
+           (subproperties_of st.rs_subprop p) false)
+  | FStar_Pervasives_Native.None ->
+      dedup_terms_ident st.rs_ident
+        (successors_via_roles g st i (subproperties_of st.rs_subprop p) false)
 let rec extra_edge_present (es : redge Prims.list) (i : RDF_Term.subject)
   (p : RDF_Term.wf_iri) (o : RDF_Term.rdf_term) : Prims.bool=
   match es with
@@ -595,7 +673,8 @@ let add_countable_edge (g : RDF_Graph.rdf_graph) (st : rstate)
        rs_gendistinct = (st.rs_gendistinct);
        rs_subprop = (st.rs_subprop);
        rs_transprops = (st.rs_transprops);
-       rs_funcprops = (st.rs_funcprops)
+       rs_funcprops = (st.rs_funcprops);
+       rs_ident = (st.rs_ident)
      }, true)
 let comparable_datatype (d : RDF_Term.wf_iri) : Prims.bool=
   (((d = RDF_Term.xsd_integer) || (d = RDF_Term.xsd_decimal)) ||
@@ -624,6 +703,21 @@ let provably_distinct (g : RDF_Graph.rdf_graph)
             (comparable_datatype l1.RDF_Term.datatype))
            && (Prims.op_Negation (OWL_Closure.datatype_value_eq l1 l2))
      | (uu___, uu___1) -> false)
+let rec exists_distinct_cross (g : RDF_Graph.rdf_graph)
+  (gd : RDF_Term.rdf_term Prims.list Prims.list)
+  (xs : RDF_Term.rdf_term Prims.list) (ys : RDF_Term.rdf_term Prims.list) :
+  Prims.bool=
+  match xs with
+  | [] -> false
+  | x::tl ->
+      (FStar_List_Tot_Base.existsb (fun y -> provably_distinct g gd x y) ys)
+        || (exists_distinct_cross g gd tl ys)
+let provably_distinct_grouped (g : RDF_Graph.rdf_graph)
+  (gd : RDF_Term.rdf_term Prims.list Prims.list)
+  (ident : RDF_Term.rdf_term Prims.list Prims.list) (a : RDF_Term.rdf_term)
+  (b : RDF_Term.rdf_term) : Prims.bool=
+  exists_distinct_cross g gd (ident_group_of ident a)
+    (ident_group_of ident b)
 let rec filter_distinct_from (g : RDF_Graph.rdf_graph)
   (gd : RDF_Term.rdf_term Prims.list Prims.list) (h : RDF_Term.rdf_term)
   (ts : RDF_Term.rdf_term Prims.list) : RDF_Term.rdf_term Prims.list=
@@ -897,8 +991,120 @@ let merge_into (st : rstate) (y : RDF_Term.subject) (z : RDF_Term.subject) :
         rs_gendistinct = (redirect_groups y z st1.rs_gendistinct);
         rs_subprop = (st1.rs_subprop);
         rs_transprops = (st1.rs_transprops);
-        rs_funcprops = (st1.rs_funcprops)
+        rs_funcprops = (st1.rs_funcprops);
+        rs_ident = (st1.rs_ident)
       }
+let rec remove_ident_group (ident : RDF_Term.rdf_term Prims.list Prims.list)
+  (t : RDF_Term.rdf_term) :
+  (RDF_Term.rdf_term Prims.list Prims.list * RDF_Term.rdf_term Prims.list)=
+  match ident with
+  | [] -> ([], [t])
+  | grp::tl ->
+      if FStar_List_Tot_Base.existsb (fun x -> RDF_Term.rdf_term_eq x t) grp
+      then (tl, grp)
+      else
+        (let uu___1 = remove_ident_group tl t in
+         match uu___1 with | (rest, found) -> ((grp :: rest), found))
+let identify_pair (ident : RDF_Term.rdf_term Prims.list Prims.list)
+  (x : RDF_Term.rdf_term) (y : RDF_Term.rdf_term) :
+  RDF_Term.rdf_term Prims.list Prims.list=
+  if RDF_Term.rdf_term_eq x y
+  then ident
+  else
+    (let uu___1 = remove_ident_group ident x in
+     match uu___1 with
+     | (ident1, gx) ->
+         let uu___2 = remove_ident_group ident1 y in
+         (match uu___2 with
+          | (ident2, gy) -> (dedup_terms (FStar_List_Tot_Base.op_At gx gy))
+              :: ident2))
+let rec all_candidate_subjects (ts : RDF_Term.rdf_term Prims.list) :
+  RDF_Term.subject Prims.list=
+  match ts with
+  | [] -> []
+  | t::tl ->
+      let rest = all_candidate_subjects tl in
+      (match RDF_Graph.term_to_subject t with
+       | FStar_Pervasives_Native.Some s -> s :: rest
+       | FStar_Pervasives_Native.None -> rest)
+let rec identify_pairs_from_head (g : RDF_Graph.rdf_graph)
+  (gd : RDF_Term.rdf_term Prims.list Prims.list)
+  (ident : RDF_Term.rdf_term Prims.list Prims.list) (st : rstate)
+  (h : RDF_Term.subject) (rest : RDF_Term.subject Prims.list) :
+  (RDF_Term.subject * RDF_Term.subject) Prims.list=
+  match rest with
+  | [] -> []
+  | s::tl ->
+      let more = identify_pairs_from_head g gd ident st h tl in
+      if
+        (((RDF_Term.subject_eq h s) ||
+            ((is_witness_subject st h) && (is_witness_subject st s)))
+           ||
+           (same_individual ident (RDF_Graph.subject_to_term h)
+              (RDF_Graph.subject_to_term s)))
+          ||
+          (provably_distinct_grouped g gd ident (RDF_Graph.subject_to_term h)
+             (RDF_Graph.subject_to_term s))
+      then more
+      else (h, s) :: more
+let rec all_identify_pairs (g : RDF_Graph.rdf_graph)
+  (gd : RDF_Term.rdf_term Prims.list Prims.list)
+  (ident : RDF_Term.rdf_term Prims.list Prims.list) (st : rstate)
+  (ss : RDF_Term.subject Prims.list) :
+  (RDF_Term.subject * RDF_Term.subject) Prims.list=
+  match ss with
+  | [] -> []
+  | h::tl ->
+      FStar_List_Tot_Base.op_At (identify_pairs_from_head g gd ident st h tl)
+        (all_identify_pairs g gd ident st tl)
+let excess_ident_pairs_for_label (g : RDF_Graph.rdf_graph) (st : rstate)
+  (i : RDF_Term.subject) (l : Tableau.class_expr) :
+  (RDF_Term.subject * RDF_Term.subject) Prims.list
+    FStar_Pervasives_Native.option=
+  match l with
+  | Tableau.CE_MaxCard (k, p) ->
+      let full = all_successors g st i p in
+      if (FStar_List_Tot_Base.length full) > k
+      then
+        let prs =
+          all_identify_pairs g st.rs_gendistinct st.rs_ident st
+            (all_candidate_subjects full) in
+        (if Prims.uu___is_Cons prs
+         then FStar_Pervasives_Native.Some prs
+         else FStar_Pervasives_Native.None)
+      else FStar_Pervasives_Native.None
+  | Tableau.CE_MaxQualCard (k, p, c) ->
+      let full = filter_in_filler st c (all_successors g st i p) in
+      if (FStar_List_Tot_Base.length full) > k
+      then
+        let prs =
+          all_identify_pairs g st.rs_gendistinct st.rs_ident st
+            (all_candidate_subjects full) in
+        (if Prims.uu___is_Cons prs
+         then FStar_Pervasives_Native.Some prs
+         else FStar_Pervasives_Native.None)
+      else FStar_Pervasives_Native.None
+  | uu___ -> FStar_Pervasives_Native.None
+let rec find_identify_labels (g : RDF_Graph.rdf_graph) (st : rstate)
+  (i : RDF_Term.subject) (ls : Tableau.class_expr Prims.list) :
+  (RDF_Term.subject * RDF_Term.subject) Prims.list
+    FStar_Pervasives_Native.option=
+  match ls with
+  | [] -> FStar_Pervasives_Native.None
+  | l::tl ->
+      (match excess_ident_pairs_for_label g st i l with
+       | FStar_Pervasives_Native.Some prs -> FStar_Pervasives_Native.Some prs
+       | FStar_Pervasives_Native.None -> find_identify_labels g st i tl)
+let rec find_identify_nodes (g : RDF_Graph.rdf_graph) (st : rstate)
+  (ns : rnode Prims.list) :
+  (RDF_Term.subject * RDF_Term.subject) Prims.list
+    FStar_Pervasives_Native.option=
+  match ns with
+  | [] -> FStar_Pervasives_Native.None
+  | n::tl ->
+      (match find_identify_labels g st n.rn_id n.rn_labels with
+       | FStar_Pervasives_Native.Some prs -> FStar_Pervasives_Native.Some prs
+       | FStar_Pervasives_Native.None -> find_identify_nodes g st tl)
 let clash_for_label (g : RDF_Graph.rdf_graph) (st : rstate)
   (i : RDF_Term.subject) (ls_all : Tableau.class_expr Prims.list)
   (l : Tableau.class_expr) : Prims.bool=
@@ -954,8 +1160,14 @@ let rec clash_nodes (g : RDF_Graph.rdf_graph) (st : rstate)
   match ns with
   | [] -> false
   | n::tl ->
-      ((clash_labels g st n.rn_id n.rn_labels n.rn_labels) ||
-         (datatype_range_clash st.rs_subprop n.rn_labels))
+      let ls =
+        match find_ident_group st.rs_ident
+                (RDF_Graph.subject_to_term n.rn_id)
+        with
+        | FStar_Pervasives_Native.Some uu___ -> labels_of st n.rn_id
+        | FStar_Pervasives_Native.None -> n.rn_labels in
+      ((clash_labels g st n.rn_id ls ls) ||
+         (datatype_range_clash st.rs_subprop ls))
         || (clash_nodes g st tl)
 let has_clash (g : RDF_Graph.rdf_graph) (st : rstate) : Prims.bool=
   clash_nodes g st st.rs_nodes
@@ -1160,7 +1372,8 @@ let ensure_witness (g : RDF_Graph.rdf_graph) (st : rstate)
             rs_gendistinct = (st.rs_gendistinct);
             rs_subprop = (st.rs_subprop);
             rs_transprops = (st.rs_transprops);
-            rs_funcprops = (st.rs_funcprops)
+            rs_funcprops = (st.rs_funcprops);
+            rs_ident = (st.rs_ident)
           } in
         let uu___2 =
           match filler1 with
@@ -1224,7 +1437,8 @@ let ensure_min_witnesses (g : RDF_Graph.rdf_graph) (st : rstate)
                    rs_gendistinct = (ts :: (st.rs_gendistinct));
                    rs_subprop = (st.rs_subprop);
                    rs_transprops = (st.rs_transprops);
-                   rs_funcprops = (st.rs_funcprops)
+                   rs_funcprops = (st.rs_funcprops);
+                   rs_ident = (st.rs_ident)
                  } in
                (st1, true))))
 let role_is_transitive (st : rstate) (r : RDF_Term.wf_iri) : Prims.bool=
@@ -1306,12 +1520,15 @@ let rec inject_functional
   match fps with
   | [] -> (st, false)
   | fp::tl ->
-      let uu___ =
-        step_label tb g st i (Tableau.CE_MaxCard (Prims.int_one, fp)) in
+      let uu___ = add_label st i (Tableau.CE_MaxCard (Prims.int_one, fp)) in
       (match uu___ with
-       | (st1, c1) ->
-           let uu___1 = inject_functional tb g tl st1 i in
-           (match uu___1 with | (st2, c2) -> (st2, (c1 || c2))))
+       | (st0, c0) ->
+           let uu___1 =
+             step_label tb g st0 i (Tableau.CE_MaxCard (Prims.int_one, fp)) in
+           (match uu___1 with
+            | (st1, c1) ->
+                let uu___2 = inject_functional tb g tl st1 i in
+                (match uu___2 with | (st2, c2) -> (st2, ((c0 || c1) || c2)))))
 let rec pass_nodes
   (tb : (Tableau.class_expr * Tableau.class_expr) Prims.list)
   (g : RDF_Graph.rdf_graph) (st : rstate) (ns : rnode Prims.list) :
@@ -1408,7 +1625,14 @@ let rec check (tb : (Tableau.class_expr * Tableau.class_expr) Prims.list)
                          merge_branch tb g prs st' (b - Prims.int_one) in
                        (match uu___4 with | (r, b') -> (r, b'))
                    | FStar_Pervasives_Native.None ->
-                       (TOpen, (b - Prims.int_one)))))
+                       (match find_identify_nodes g st' st'.rs_nodes with
+                        | FStar_Pervasives_Native.Some prs ->
+                            let uu___4 =
+                              identify_branch tb g prs st'
+                                (b - Prims.int_one) in
+                            (match uu___4 with | (r, b') -> (r, b'))
+                        | FStar_Pervasives_Native.None ->
+                            (TOpen, (b - Prims.int_one))))))
 and branch (tb : (Tableau.class_expr * Tableau.class_expr) Prims.list)
   (g : RDF_Graph.rdf_graph) (i : RDF_Term.subject)
   (ds : Tableau.class_expr Prims.list) (st : rstate) (b : Prims.nat) :
@@ -1453,6 +1677,45 @@ and merge_branch (tb : (Tableau.class_expr * Tableau.class_expr) Prims.list)
               | TOpen -> (TOpen, b1)
               | uu___2 ->
                   let uu___3 = merge_branch tb g tl st b1 in
+                  (match uu___3 with
+                   | (r2, b2) ->
+                       (match (r1, r2) with
+                        | (TClash, x) -> (x, b2)
+                        | (TOut, TOpen) -> (TOpen, b2)
+                        | (TOut, uu___4) -> (TOut, b2)))))
+and identify_branch
+  (tb : (Tableau.class_expr * Tableau.class_expr) Prims.list)
+  (g : RDF_Graph.rdf_graph)
+  (pairs : (RDF_Term.subject * RDF_Term.subject) Prims.list) (st : rstate)
+  (b : Prims.nat) : (tri * Prims.nat)=
+  match pairs with
+  | [] -> (TClash, b)
+  | (y, z)::tl ->
+      if b = Prims.int_zero
+      then (TOut, Prims.int_zero)
+      else
+        (let st1 =
+           {
+             rs_nodes = (st.rs_nodes);
+             rs_extra = (st.rs_extra);
+             rs_fresh = (st.rs_fresh);
+             rs_wdepth = (st.rs_wdepth);
+             rs_inv = (st.rs_inv);
+             rs_gendistinct = (st.rs_gendistinct);
+             rs_subprop = (st.rs_subprop);
+             rs_transprops = (st.rs_transprops);
+             rs_funcprops = (st.rs_funcprops);
+             rs_ident =
+               (identify_pair st.rs_ident (RDF_Graph.subject_to_term y)
+                  (RDF_Graph.subject_to_term z))
+           } in
+         let uu___1 = check tb g st1 (b - Prims.int_one) in
+         match uu___1 with
+         | (r1, b1) ->
+             (match r1 with
+              | TOpen -> (TOpen, b1)
+              | uu___2 ->
+                  let uu___3 = identify_branch tb g tl st b1 in
                   (match uu___3 with
                    | (r2, b2) ->
                        (match (r1, r2) with
@@ -1595,7 +1858,8 @@ let init_state (g : RDF_Graph.rdf_graph) : rstate=
       rs_gendistinct = [];
       rs_subprop = (collect_subprop_pairs g);
       rs_transprops = (collect_transitive_props g);
-      rs_funcprops = (collect_functional_props g)
+      rs_funcprops = (collect_functional_props g);
+      rs_ident = []
     }
 let tableau_consistent (g : RDF_Graph.rdf_graph) (fuel : Prims.nat) :
   Prims.bool FStar_Pervasives_Native.option=
