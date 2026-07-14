@@ -883,10 +883,40 @@ let owl_rule_disjoint_to_complement (g : RDF_Graph.rdf_graph)
                       RDF_Graph.add_triple_unchecked acc2 memb) acc1 members))
          | (uu___, uu___1) -> acc
        else acc) g g
-let canonical_svf2_witness_bnode (p : RDF_Term.wf_iri) (c : RDF_Term.wf_iri)
-  (x : RDF_Term.subject) : RDF_Term.bnode_id=
+let svf2_max_witness_depth : Prims.nat= (Prims.of_int (3))
+let svf2_witness_marker : Prims.string= "__rl_svf2w_d"
+let svf2_depth_char (d : Prims.nat) : Prims.string=
+  if d = Prims.int_zero
+  then "0"
+  else
+    if d = Prims.int_one
+    then "1"
+    else if d = (Prims.of_int (2)) then "2" else "3"
+let subject_svf2_depth (x : RDF_Term.subject) : Prims.nat=
+  match x with
+  | RDF_Term.S_IRI uu___ -> Prims.int_zero
+  | RDF_Term.S_BNode b ->
+      let plen = FStar_String.strlen svf2_witness_marker in
+      let blen = FStar_String.strlen b in
+      if blen <= plen
+      then Prims.int_zero
+      else
+        if (FStar_String.sub b Prims.int_zero plen) = svf2_witness_marker
+        then
+          (let dc = FStar_String.sub b plen Prims.int_one in
+           if dc = "0"
+           then Prims.int_zero
+           else
+             if dc = "1"
+             then Prims.int_one
+             else if dc = "2" then (Prims.of_int (2)) else (Prims.of_int (3)))
+        else Prims.int_zero
+let canonical_svf2_witness_bnode (depth : Prims.nat) (p : RDF_Term.wf_iri)
+  (c : RDF_Term.wf_iri) (x : RDF_Term.subject) : RDF_Term.bnode_id=
   FStar_String.concat ""
-    ["__rl_svf2w__on__";
+    [svf2_witness_marker;
+    svf2_depth_char depth;
+    "__on__";
     p;
     "__filler__";
     c;
@@ -925,26 +955,32 @@ let owl_rule_svf2_existential_witness (g : RDF_Graph.rdf_graph)
                                        (RDF_Term.T_IRI cls_iri) in
                                    FStar_List_Tot_Base.fold_left
                                      (fun acc4 x ->
-                                        let w_id =
-                                          canonical_svf2_witness_bnode p c x in
-                                        let edge_t =
-                                          {
-                                            RDF_Triple.s = x;
-                                            RDF_Triple.p = p;
-                                            RDF_Triple.o =
-                                              (RDF_Term.T_BNode w_id)
-                                          } in
-                                        let type_t =
-                                          {
-                                            RDF_Triple.s =
-                                              (RDF_Term.S_BNode w_id);
-                                            RDF_Triple.p =
-                                              RDFS_Closure.rdf_type;
-                                            RDF_Triple.o = (RDF_Term.T_IRI c)
-                                          } in
-                                        RDF_Graph.add_triple_unchecked
-                                          (RDF_Graph.add_triple_unchecked
-                                             acc4 edge_t) type_t) acc3
+                                        let d = subject_svf2_depth x in
+                                        if d >= svf2_max_witness_depth
+                                        then acc4
+                                        else
+                                          (let w_id =
+                                             canonical_svf2_witness_bnode
+                                               (d + Prims.int_one) p c x in
+                                           let edge_t =
+                                             {
+                                               RDF_Triple.s = x;
+                                               RDF_Triple.p = p;
+                                               RDF_Triple.o =
+                                                 (RDF_Term.T_BNode w_id)
+                                             } in
+                                           let type_t =
+                                             {
+                                               RDF_Triple.s =
+                                                 (RDF_Term.S_BNode w_id);
+                                               RDF_Triple.p =
+                                                 RDFS_Closure.rdf_type;
+                                               RDF_Triple.o =
+                                                 (RDF_Term.T_IRI c)
+                                             } in
+                                           RDF_Graph.add_triple_unchecked
+                                             (RDF_Graph.add_triple_unchecked
+                                                acc4 edge_t) type_t)) acc3
                                      members
                                | uu___1 -> acc3) acc2 ancestors
                       | uu___1 -> acc2) acc onprops))
