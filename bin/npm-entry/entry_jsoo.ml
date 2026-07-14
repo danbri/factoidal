@@ -1520,6 +1520,37 @@ let vc_check_credential_json (v2ctx_json : string) (credential_json : string) : 
        | VC_Credential.VC_Fail reason ->
          "{\"ok\":true,\"valid\":false,\"reason\":" ^ jstr reason ^ "}"))
 
+(* Version-agnostic credentialSubject presence/shape check (Track A1,
+   docs/designissues/2026-07-11-vc-canivc-eecc-plan.md) --
+   VC_Credential.vc_check_credential_subject_from_string, which does
+   NOT gate on the VCDM 2.0 @context sentinel the way vc_check_from_
+   string above does. Used by bin/vc-api-shim/server.mjs for documents
+   whose @context is the legacy VC 1.1 base context (Data Integrity
+   proof mechanics are not scoped to a VCDM version -- see that file's
+   VC1_LEGACY_CONTEXT carve-out comment). *)
+let vc_check_credential_subject_json (credential_json : string) : string =
+  guarded (fun () ->
+    match VC_Credential.vc_check_credential_subject_from_string credential_json with
+    | VC_Credential.VC_Pass -> "{\"ok\":true,\"valid\":true}"
+    | VC_Credential.VC_Fail reason ->
+      "{\"ok\":true,\"valid\":false,\"reason\":" ^ jstr reason ^ "}")
+
+(* DATA_LOSS_DETECTION_ERROR check (Track A1, same plan doc) --
+   VC_Credential.vc_check_no_data_loss_from_string. `credential_json`
+   MUST already have any remote @context IRI the consumer recognizes
+   inlined to the real context object (this entry has no
+   remote-context loader registered -- see jsonld_loader_register
+   below); the F* side reads the document's OWN "@context" field to
+   build the term resolver, so a still-remote IRI string there fails
+   context processing honestly rather than silently skipping the
+   check. *)
+let vc_check_no_data_loss_json (credential_json : string) : string =
+  guarded (fun () ->
+    match VC_Credential.vc_check_no_data_loss_from_string credential_json with
+    | VC_Credential.VC_Pass -> "{\"ok\":true,\"valid\":true}"
+    | VC_Credential.VC_Fail reason ->
+      "{\"ok\":true,\"valid\":false,\"reason\":" ^ jstr reason ^ "}")
+
 (* ---------------------------------------------------------------------
    Typed engine functions (#74 npm FP surface) -- rule #11 consumer
    wrappers. Each parses its string inputs with the F* parsers
@@ -1901,6 +1932,8 @@ let () =
           ("vcEddsaCreateFromCanonical", s3 vc_eddsa_create_from_canonical);
           ("vcEddsaVerifyFromCanonical", s4 vc_eddsa_verify_from_canonical);
           ("vcCheckCredential", s2 vc_check_credential_json);
+          ("vcCheckCredentialSubject", s1 vc_check_credential_subject_json);
+          ("vcCheckNoDataLoss", s1 vc_check_no_data_loss_json);
           ("xsltTransform", s2 xslt_transform_json);
           ("mathmlEval", s2 mathml_eval_json);
           ("xformsRecalc", s2 xforms_recalc_json);

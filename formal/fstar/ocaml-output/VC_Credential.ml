@@ -396,3 +396,84 @@ let vc_check_from_string (v2ctx : Parser_JSON.json_val)
       (match v with
        | Parser_JSON.JObject uu___ -> vc_check_document v2ctx v
        | uu___ -> VC_Fail "top-level JSON value must be an object")
+let vc_check_credential_subject_if_credential_shaped
+  (v : Parser_JSON.json_val) : vc_verdict=
+  let types = vc_decode_type_list v in
+  if FStar_List_Tot_Base.mem vc_credential_type types
+  then vc_check_credential_subject v
+  else VC_Pass
+let vc_check_credential_subject_from_string (input : Prims.string) :
+  vc_verdict=
+  match Parser_JSON.parse_json input with
+  | FStar_Pervasives_Native.None -> VC_Fail "input is not well-formed JSON"
+  | FStar_Pervasives_Native.Some v ->
+      (match v with
+       | Parser_JSON.JObject uu___ ->
+           vc_check_credential_subject_if_credential_shaped v
+       | uu___ -> VC_Fail "top-level JSON value must be an object")
+let vc_check_type_terms_resolve (ac : JSONLD_Context.active_context)
+  (v : Parser_JSON.json_val) : vc_verdict=
+  let types = vc_decode_type_list v in
+  if
+    FStar_List_Tot_Base.for_all
+      (JSONLD_Context.jldctx_term_resolves_as_type ac) types
+  then VC_Pass
+  else
+    VC_Fail
+      "undefined type term would be dropped by JSON-LD processing (DATA_LOSS_DETECTION_ERROR)"
+let vc_subject_keys (subj : Parser_JSON.json_val) : Prims.string Prims.list=
+  match subj with
+  | Parser_JSON.JObject fields ->
+      FStar_List_Tot_Base.map FStar_Pervasives_Native.fst
+        (FStar_List_Tot_Base.filter
+           (fun uu___ ->
+              match uu___ with | (k, uu___1) -> (k <> "id") && (k <> "@id"))
+           fields)
+  | uu___ -> []
+let vc_check_subject_terms_resolve_one (ac : JSONLD_Context.active_context)
+  (subj : Parser_JSON.json_val) : vc_verdict=
+  if
+    FStar_List_Tot_Base.for_all
+      (JSONLD_Context.jldctx_term_resolves_as_property ac)
+      (vc_subject_keys subj)
+  then VC_Pass
+  else
+    VC_Fail
+      "undefined credentialSubject term would be dropped by JSON-LD processing (DATA_LOSS_DETECTION_ERROR)"
+let rec vc_check_subject_terms_resolve_all
+  (ac : JSONLD_Context.active_context)
+  (items : Parser_JSON.json_val Prims.list) : vc_verdict=
+  match items with
+  | [] -> VC_Pass
+  | hd::tl ->
+      vc_then (vc_check_subject_terms_resolve_one ac hd)
+        (fun uu___ -> vc_check_subject_terms_resolve_all ac tl)
+let vc_check_subject_terms_resolve (ac : JSONLD_Context.active_context)
+  (v : Parser_JSON.json_val) : vc_verdict=
+  match Parser_JSON.json_get_field "credentialSubject" v with
+  | FStar_Pervasives_Native.None -> VC_Pass
+  | FStar_Pervasives_Native.Some (Parser_JSON.JObject fields) ->
+      vc_check_subject_terms_resolve_one ac (Parser_JSON.JObject fields)
+  | FStar_Pervasives_Native.Some (Parser_JSON.JArray items) ->
+      vc_check_subject_terms_resolve_all ac items
+  | FStar_Pervasives_Native.Some uu___ -> VC_Pass
+let vc_check_no_data_loss (ac : JSONLD_Context.active_context)
+  (v : Parser_JSON.json_val) : vc_verdict=
+  vc_then (vc_check_type_terms_resolve ac v)
+    (fun uu___ -> vc_check_subject_terms_resolve ac v)
+let vc_check_no_data_loss_from_string (input : Prims.string) : vc_verdict=
+  match Parser_JSON.parse_json input with
+  | FStar_Pervasives_Native.None -> VC_Fail "input is not well-formed JSON"
+  | FStar_Pervasives_Native.Some v ->
+      (match v with
+       | Parser_JSON.JObject uu___ ->
+           (match Parser_JSON.json_get_field "@context" v with
+            | FStar_Pervasives_Native.None -> VC_Fail "missing @context"
+            | FStar_Pervasives_Native.Some ctxv ->
+                (match JSONLD_Context.jldctx_active_context_from_json ctxv
+                 with
+                 | FStar_Pervasives_Native.None ->
+                     VC_Fail "could not process @context"
+                 | FStar_Pervasives_Native.Some ac ->
+                     vc_check_no_data_loss ac v))
+       | uu___ -> VC_Fail "top-level JSON value must be an object")

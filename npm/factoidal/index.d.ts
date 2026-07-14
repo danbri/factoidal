@@ -716,6 +716,27 @@ export function vcCheckCredential(
   credentialJson: string
 ): Promise<{ valid: boolean; reason?: string }>;
 
+/**
+ * credentialSubject presence/shape check, VERSION-AGNOSTIC (Track A1,
+ * docs/designissues/2026-07-11-vc-canivc-eecc-plan.md) —
+ * VC.Credential.fst's vc_check_credential_subject_from_string. Unlike
+ * vcCheckCredential, does not require the VCDM 2.0 base @context to be
+ * present/first.
+ */
+export function vcCheckCredentialSubject(
+  credentialJson: string
+): Promise<{ valid: boolean; reason?: string }>;
+
+/**
+ * DATA_LOSS_DETECTION_ERROR check (Track A1, same plan doc) —
+ * VC.Credential.fst's vc_check_no_data_loss_from_string. `credentialJson`
+ * must already have any remote @context IRI inlined to the real context
+ * object.
+ */
+export function vcCheckNoDataLoss(
+  credentialJson: string
+): Promise<{ valid: boolean; reason?: string }>;
+
 /** Feature probe for the currently available engine bundles. */
 export function capabilities(): Promise<{
   entry: boolean;
@@ -838,6 +859,8 @@ declare const _default: {
   vcEddsaCreateFromCanonical: typeof vcEddsaCreateFromCanonical;
   vcEddsaVerifyFromCanonical: typeof vcEddsaVerifyFromCanonical;
   vcCheckCredential: typeof vcCheckCredential;
+  vcCheckCredentialSubject: typeof vcCheckCredentialSubject;
+  vcCheckNoDataLoss: typeof vcCheckNoDataLoss;
   capabilities: typeof capabilities;
   Dataset: typeof Dataset;
   dataFactory: DataFactory;

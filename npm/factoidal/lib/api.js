@@ -1087,6 +1087,61 @@ function buildApi(driver) {
     return r.valid ? { valid: true } : { valid: false, reason: r.reason };
   }
 
+  /**
+   * credentialSubject presence/shape check, VERSION-AGNOSTIC (Track A1,
+   * docs/designissues/2026-07-11-vc-canivc-eecc-plan.md) —
+   * entry_jsoo.ml's vcCheckCredentialSubject ->
+   * VC_Credential.vc_check_credential_subject_from_string. Unlike
+   * vcCheckCredential above, this does NOT require the VCDM 2.0 base
+   * @context to be first (or present at all) — it only checks that a
+   * credential-shaped document (type includes "VerifiableCredential")
+   * has a present, non-empty credentialSubject. Used for documents
+   * under a non-VCDM-2.0 @context (e.g. the vc-di-eddsa Data Integrity
+   * conformance suite's legacy VC 1.1 fixtures) where the full
+   * vcCheckCredential's @context sentinel would (correctly) reject the
+   * document for an unrelated reason.
+   * @param {string} credentialJson the VC/VP document's raw JSON text
+   * @returns {Promise<{valid: boolean, reason?: string}>}
+   */
+  async function vcCheckCredentialSubject(credentialJson) {
+    if (typeof credentialJson !== 'string') {
+      throw new TypeError('vcCheckCredentialSubject: credentialJson must be a string');
+    }
+    const e = await entry();
+    if (!e) throw pendingError('vcCheckCredentialSubject');
+    requireEntryFn(e, 'vcCheckCredentialSubject', 'credentialSubject presence check');
+    const r = entryResult(e.vcCheckCredentialSubject(credentialJson), 'vcCheckCredentialSubject');
+    return r.valid ? { valid: true } : { valid: false, reason: r.reason };
+  }
+
+  /**
+   * DATA_LOSS_DETECTION_ERROR check (Track A1, same plan doc) —
+   * entry_jsoo.ml's vcCheckNoDataLoss ->
+   * VC_Credential.vc_check_no_data_loss_from_string. Rejects a
+   * credential-shaped document whose `type`/`@type` entries or
+   * `credentialSubject` property keys include one that a lenient
+   * JSON-LD processor would silently drop (VC Data Integrity spec,
+   * "Securing Data Losslessly"). `credentialJson` MUST already have
+   * any remote @context IRI the caller recognizes inlined to the real
+   * context object — this engine build has no remote-context loader
+   * registered, so a still-remote IRI string in "@context" fails
+   * context processing honestly rather than silently skipping the
+   * check.
+   * @param {string} credentialJson the VC/VP document's raw JSON text,
+   *   @context already inlined
+   * @returns {Promise<{valid: boolean, reason?: string}>}
+   */
+  async function vcCheckNoDataLoss(credentialJson) {
+    if (typeof credentialJson !== 'string') {
+      throw new TypeError('vcCheckNoDataLoss: credentialJson must be a string');
+    }
+    const e = await entry();
+    if (!e) throw pendingError('vcCheckNoDataLoss');
+    requireEntryFn(e, 'vcCheckNoDataLoss', 'DATA_LOSS_DETECTION_ERROR check');
+    const r = entryResult(e.vcCheckNoDataLoss(credentialJson), 'vcCheckNoDataLoss');
+    return r.valid ? { valid: true } : { valid: false, reason: r.reason };
+  }
+
   // -----------------------------------------------------------------
   // Typed "engine" functions (#74 npm FP surface). Each is a pure,
   // string/JSON-in, JSON-out wrapper over one F*-extracted engine
@@ -1629,6 +1684,8 @@ function buildApi(driver) {
     vcEddsaCreateFromCanonical,
     vcEddsaVerifyFromCanonical,
     vcCheckCredential,
+    vcCheckCredentialSubject,
+    vcCheckNoDataLoss,
     openCottas,
     queryCottas,
     closeCottas,

@@ -1729,6 +1729,45 @@ and context_process_one_field (ac:active_context) (key:string) (value:json_val)
                | None -> Some ac'))
      | _ -> None)
 
+// ================================================================
+// Term-coverage probes (DATA_LOSS_DETECTION_ERROR support — VC Data
+// Integrity spec, "Securing Data Losslessly": "Implementations that
+// use JSON-LD processing ... MUST throw an error, which SHOULD be
+// DATA_LOSS_DETECTION_ERROR, when data is dropped by a JSON-LD
+// processor, such as when an undefined term is detected"). Rather than
+// threading a drop-flag through JSONLD.Expand's full expand_node
+// (which silently drops/keeps-as-literal undefined terms by design,
+// matching a lenient JSON-LD processor's default behavior), these are
+// narrow, purpose-built resolution probes a consumer can run BEFORE
+// expansion to reject a specific term/type it is about to sign or
+// verify over. `jldctx_active_context_from_json` builds the active
+// context the same way `Parser.JSONLD.parse_jsonld`'s context-bearing
+// branch seeds `ac_seed` (empty_active_context, no @base/no 1.0 mode)
+// — good enough for a coverage probe, which needs term resolution
+// only, not full document parsing.
+// ================================================================
+
+let jldctx_active_context_from_json (ctx : json_val) : option active_context =
+  context_process empty_active_context ctx false jld_remote_context_fuel []
+
+// A property-KEY term: JSON-LD 1.1 API IRI Expansion for a node
+// object's own member keys is always vocab-relative (no
+// document-relative fallback) — an unmapped, colonless key with no
+// @vocab is dropped entirely during expansion.
+let jldctx_term_resolves_as_property (ac : active_context) (term : string) : bool =
+  Some? (expand_iri ac term true)
+
+// A @type VALUE: vocab-relative first, with a document-relative
+// fallback — mirrors JSONLD.Expand.jexp_expand_type_items exactly
+// (both branches there try `expand_iri ac t true` then `expand_iri ac
+// t false` before falling back to keeping the literal string, which a
+// downstream RDF-conversion step then drops because it is not
+// IRI-shaped — so "resolves as neither" is the right drop signal here
+// even though jexp_expand_type_items itself does not error).
+let jldctx_term_resolves_as_type (ac : active_context) (term : string) : bool =
+  match expand_iri ac term true with
+  | Some _ -> true
+  | None -> Some? (expand_iri ac term false)
 
 // ================================================================
 // @propagate-aware context application (JSON-LD 1.1 API §4/§5, the

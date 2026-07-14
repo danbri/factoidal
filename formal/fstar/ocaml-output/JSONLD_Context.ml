@@ -2017,6 +2017,18 @@ and context_process_one_field (ac : active_context) (key : Prims.string)
                                          | FStar_Pervasives_Native.None ->
                                              FStar_Pervasives_Native.Some ac'))
                          | uu___11 -> FStar_Pervasives_Native.None)
+let jldctx_active_context_from_json (ctx : Parser_JSON.json_val) :
+  active_context FStar_Pervasives_Native.option=
+  context_process empty_active_context ctx false jld_remote_context_fuel []
+let jldctx_term_resolves_as_property (ac : active_context)
+  (term : Prims.string) : Prims.bool=
+  FStar_Pervasives_Native.uu___is_Some (expand_iri ac term true)
+let jldctx_term_resolves_as_type (ac : active_context) (term : Prims.string)
+  : Prims.bool=
+  match expand_iri ac term true with
+  | FStar_Pervasives_Native.Some uu___ -> true
+  | FStar_Pervasives_Native.None ->
+      FStar_Pervasives_Native.uu___is_Some (expand_iri ac term false)
 let apply_context_with_propagate (ac : active_context)
   (ctxval : Parser_JSON.json_val) (default_propagate : Prims.bool)
   (override_protected : Prims.bool) :

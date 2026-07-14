@@ -206,6 +206,8 @@ module.exports = {
   vcEddsaCreateFromCanonical: api.vcEddsaCreateFromCanonical,
   vcEddsaVerifyFromCanonical: api.vcEddsaVerifyFromCanonical,
   vcCheckCredential: api.vcCheckCredential,
+  vcCheckCredentialSubject: api.vcCheckCredentialSubject,
+  vcCheckNoDataLoss: api.vcCheckNoDataLoss,
   openCottas: api.openCottas,
   queryCottas: api.queryCottas,
   closeCottas: api.closeCottas,
