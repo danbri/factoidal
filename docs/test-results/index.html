@@ -398,7 +398,7 @@
 <header>
   <div class="inner">
     <div class="rendered-pill" title="Rendered = when this page was last regenerated. Tests = when the *_results.log files inside the repository were last updated. Both UTC.">
-      <span class="row"><span class="label">Rendered</span><strong>2026-07-14 11:29 UTC</strong></span>
+      <span class="row"><span class="label">Rendered</span><strong>2026-07-14 11:52 UTC</strong></span>
       <span class="row"><span class="label">Tests</span><strong class="tests">2026-07-14 08:44 UTC</strong></span>
     </div>
     <h1>W3C test results</h1>
@@ -1256,13 +1256,13 @@
           
         </div>
       </details>
-      <details class="suite-node amber">
-        <summary><span class="suite-name">VC Data Model 2.0 — issuer/verifier HTTP suite (via shim)</span><span class="suite-numbers">56/3/0 of 59</span><span class="dot amber"></span></summary>
+      <details class="suite-node green">
+        <summary><span class="suite-name">VC Data Model 2.0 — issuer/verifier HTTP suite (via shim)</span><span class="suite-numbers">59/0/0 of 59</span><span class="dot green"></span></summary>
         <div class="suite-body">
-          <div class="meter"><div class="seg seg-pass" style="width:94.92%"></div><div class="seg seg-fail" style="width:5.08%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
-          <p class="suite-numbers-full">56 pass, 3 fail, 0 skip (out of 59)</p>
+          <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+          <p class="suite-numbers-full">59 pass, 0 fail, 0 skip (out of 59)</p>
           <p class="suite-prov">Runner: <code>tests/vc20-api/run.sh</code> &middot; Suite: <code>third_party/testing/vc/tests/{1.03-conformance,4.03-contexts,...,7-algorithms}.js</code> (14 files) against <code>bin/vc-api-shim/server.mjs</code></p>
-          <p class="suite-diag">Single dominant cause for nearly all 37 failures: the shim has no VC Data Model 2.0 structural validator of its own (it only implements Data Integrity signing/verifying) — almost every failure is a missing-rejection-of-malformed-input test (bad <code>credentialStatus</code>/<code>refreshService</code>/<code>credentialSchema</code>/<code>termsOfUse</code>/<code>evidence</code> shape, <code>validUntil</code> before <code>validFrom</code>, missing <code>type</code>/<code>@context</code>, malformed Verifiable Presentation). Full breakdown: <code>docs/test-results/by-suite/vc20-api.json</code>. <a href="https://github.com/danbri/factoidal/blob/claude/main/.github/test-suites/vc20-api.yaml" target="_blank" rel="noopener">suite manifest</a></p>
+          
         </div>
       </details>
       <details class="suite-node green">
@@ -1985,9 +1985,9 @@ vc-stage1:    117 pass, 0 fail, 0 skip (of 117) — present=1</pre>
 </main>
 
 <footer>
-  Generated <strong>2026-07-14 11:29 UTC</strong> from commit
-  <code><a href="https://github.com/danbri/factoidal/commit/91ce6992c58c8783290012b6e977816fc69f9cd8">91ce6992</a></code>
-  on branch <code>claude/main</code> — &ldquo;Merge jsonld-named-graph: shim inlineContexts recurses into nested @context refs (vc20-api 59 pass, 0 fail of 59 — suite fully green)&rdquo;.
+  Generated <strong>2026-07-14 11:52 UTC</strong> from commit
+  <code><a href="https://github.com/danbri/factoidal/commit/414873c358d7c16596dfea2794272627600f9587">414873c3</a></code>
+  on branch <code>claude/main</code> — &ldquo;Rebuild merged tree for owl2-contrapositive + jsonld-named-graph landings&rdquo;.
   Re-run locally: <code>cd formal/fstar &amp;&amp; ./generate-report.sh --run</code>.
 </footer>
 
