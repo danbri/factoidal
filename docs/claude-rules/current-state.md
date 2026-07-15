@@ -293,9 +293,21 @@ This file is a **periodic refresh doc** — it goes stale within a week.
 Update after material progress (suite-score movements, new F\* modules,
 resolved `assume val`s).
 
-## Standing priorities (as of 2026-07-12)
+## Standing priorities (as of 2026-07-15)
 
-**Active /goal (owner, 2026-07-12):** three named deliverables, on top
+**Active /goal (owner, 2026-07-15): full standards compliance for all
+W3C specs plus ShEx, with performance always also a priority.** This
+is the umbrella: every W3C spec we touch (RDF, RDFS, OWL 2 all
+profiles, SPARQL 1.1, SHACL, RDFC-1.0, JSON-LD, CSVW, GRDDL, RIF,
+XSLT/XPath, VC/DID) driven to full conformance, plus ShEx (a Community
+Group spec, explicitly in scope by owner direction), with measured
+performance treated as a co-equal priority on every landing — a
+compliance win that regresses wall-time needs its own measurement and
+justification, per skills/perf-benchmarking. The deliverables and
+directives below all serve this goal; a dashboard red always jumps
+the queue.
+
+**Prior /goal (owner, 2026-07-12):** three named deliverables, on top
 of the standing directives below:
 
 1. **OWL2 efficiently implemented, including the QL and DL/tableau
