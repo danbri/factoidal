@@ -60,6 +60,9 @@ mkdir -p "$BUILD_DIR"
 # assumptions over interface" / "Cannot find file *.cmx" (#82).
 COMMON_MODULES=(
   Util_Log
+  Regex_Syntax
+  Regex_Derivative
+  Regex_Exec
   RDF_Format
   RDF_Vocabulary
   RDF_Term
