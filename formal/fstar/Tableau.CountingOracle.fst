@@ -911,3 +911,540 @@ let encode_counting_smt (g : rdf_graph) : Tot string =
 // ============================================================
 
 assume val z3_check_sat : smtlib:string -> rlimit:nat -> Tot z3_verdict
+
+// ============================================================
+// 8. VERIFIED class-size unsat check (Z33kr Phase 2 -- oracle retirement).
+//
+// The z3 oracle above answers the counting-fragment class-size system
+// (section 6b) with an UNVERIFIED host solver. For the systems the
+// shipped W3C corpus actually produces (dl-910, one=two) that system is
+// a TINY linear system with small integer coefficients whose
+// unsatisfiability has a Farkas certificate -- a nonnegative-weighted
+// combination of the constraints that sums to `0 >= positive`. This
+// section decides those systems INSIDE the verified boundary:
+//
+//   - `build_lin_system g` : rebuild the SAME class-size relations the
+//     section-6b SMT encoder emits (FIBER / BIJECTION / DISJOINT-UNION /
+//     ONEOF-nonemptiness), but as an in-memory linear system over
+//     per-named-class integer size variables, instead of an SMT string.
+//   - `find_lin_cert`      : an UNVERIFIED searcher (integer Gaussian
+//     elimination with multiplier tracking) that proposes a Farkas
+//     certificate. It needs no proof: it is only ever a candidate.
+//   - `farkas_check` + `farkas_sound` : a VERIFIED validator. `farkas_
+//     sound` is a build-checked F* Lemma: whenever `farkas_check` accepts
+//     a certificate, NO integer assignment satisfies the system. So a
+//     `class_size_unsat g = true` verdict is a proven statement about the
+//     linear system -- the arithmetic is verified, not trusted to z3.
+//
+// The remaining (documented, unchanged) trust boundary is the same one
+// the section-6b lemmas already carried: that UNSAT of the class-size
+// linear system implies the closure is inconsistent under Direct
+// Semantics. That model-theoretic step (the FIBER / BIJECTION /
+// DISJOINT-UNION / ONEOF soundness arguments) is prose, exactly as
+// before; what moves inside F* here is the LIA decision the oracle used
+// to delegate to z3. dl-909 is NOT decided by this path: its class-size
+// system is genuinely satisfiable (the all-empty assignment with
+// |only-d| >= 1 is a model), so no Farkas certificate exists and the
+// checker returns false -- deriving |finite| >= 1 would need an UNSOUND
+// nonemptiness rule (see the 2026-07-15 refutation note), which we do
+// not add.
+// ============================================================
+
+// ---- 8a. Linear-system representation + Farkas validator (VERIFIED) ----
+
+// One constraint over the class-size variables c0..c(N-1):
+//   lc_is_eq = true  :  (lc_coeffs . x) =  lc_rhs
+//   lc_is_eq = false :  (lc_coeffs . x) >= lc_rhs
+noeq type lin_constraint = {
+  lc_coeffs : list int;
+  lc_rhs    : int;
+  lc_is_eq  : bool;
+}
+
+let rec lin_dot (coeffs : list int) (x : list int) : Tot int (decreases coeffs) =
+  match coeffs, x with
+  | c :: cs, v :: vs -> c * v + lin_dot cs vs
+  | _, _ -> 0
+
+let lin_sat1 (c : lin_constraint) (x : list int) : bool =
+  if c.lc_is_eq then lin_dot c.lc_coeffs x = c.lc_rhs
+  else lin_dot c.lc_coeffs x >= c.lc_rhs
+
+let rec lin_sat (cs : list lin_constraint) (x : list int)
+  : Tot bool (decreases cs) =
+  match cs with
+  | [] -> true
+  | c :: tl -> lin_sat1 c x && lin_sat tl x
+
+// A certificate is one integer multiplier per constraint. For a `>=`
+// (GEq) constraint the multiplier must be nonnegative; equalities take
+// any integer (both directions are available).
+let rec valid_mults (cs : list lin_constraint) (ms : list int)
+  : Tot bool (decreases cs) =
+  match cs, ms with
+  | c :: cs', m :: ms' ->
+    (if c.lc_is_eq then true else m >= 0) && valid_mults cs' ms'
+  | [], [] -> true
+  | _, _ -> false
+
+// Sum_i m_i * (coeffs_i . x)  and  Sum_i m_i * rhs_i.
+let rec weighted_lhs (cs : list lin_constraint) (ms : list int) (x : list int)
+  : Tot int (decreases cs) =
+  match cs, ms with
+  | c :: cs', m :: ms' -> m * lin_dot c.lc_coeffs x + weighted_lhs cs' ms' x
+  | _, _ -> 0
+
+let rec weighted_rhs (cs : list lin_constraint) (ms : list int)
+  : Tot int (decreases cs) =
+  match cs, ms with
+  | c :: cs', m :: ms' -> m * c.lc_rhs + weighted_rhs cs' ms'
+  | _, _ -> 0
+
+// Vector helpers over int rows.
+let rec zeros (n : nat) : Tot (list int) (decreases n) =
+  if n = 0 then [] else 0 :: zeros (n - 1)
+
+let rec vscale (m : int) (v : list int) : Tot (list int) (decreases v) =
+  match v with
+  | [] -> []
+  | h :: t -> (m * h) :: vscale m t
+
+let rec vadd (a b : list int) : Tot (list int) (decreases a) =
+  match a, b with
+  | ha :: ta, hb :: tb -> (ha + hb) :: vadd ta tb
+  | _, _ -> []
+
+// The combined coefficient vector  Sum_i m_i * coeffs_i , length n.
+let rec comb_coeffs (n : nat) (cs : list lin_constraint) (ms : list int)
+  : Tot (list int) (decreases cs) =
+  match cs, ms with
+  | c :: cs', m :: ms' ->
+    vadd (vscale m c.lc_coeffs) (comb_coeffs n cs' ms')
+  | _, _ -> zeros n
+
+// Every constraint row has length exactly n.
+let rec all_len (n : nat) (cs : list lin_constraint) : Tot bool (decreases cs) =
+  match cs with
+  | [] -> true
+  | c :: tl -> (List.Tot.length c.lc_coeffs = n) && all_len n tl
+
+// ---- length lemmas ----
+
+let rec zeros_len (n : nat) : Lemma (List.Tot.length (zeros n) = n) =
+  if n = 0 then () else zeros_len (n - 1)
+
+let rec vscale_len (m : int) (v : list int)
+  : Lemma (ensures List.Tot.length (vscale m v) = List.Tot.length v) (decreases v) =
+  match v with [] -> () | _ :: t -> vscale_len m t
+
+let rec vadd_len (a b : list int)
+  : Lemma (requires List.Tot.length a = List.Tot.length b)
+          (ensures List.Tot.length (vadd a b) = List.Tot.length a)
+          (decreases a) =
+  match a, b with
+  | _ :: ta, _ :: tb -> vadd_len ta tb
+  | _, _ -> ()
+
+let rec comb_len (n : nat) (cs : list lin_constraint) (ms : list int)
+  : Lemma (requires all_len n cs /\ List.Tot.length ms = List.Tot.length cs)
+          (ensures List.Tot.length (comb_coeffs n cs ms) = n)
+          (decreases cs) =
+  match cs, ms with
+  | c :: cs', m :: ms' ->
+    comb_len n cs' ms';
+    vscale_len m c.lc_coeffs;
+    vadd_len (vscale m c.lc_coeffs) (comb_coeffs n cs' ms')
+  | _, _ -> zeros_len n
+
+// ---- dot-product linearity lemmas ----
+
+let rec lin_dot_zeros (n : nat) (x : list int)
+  : Lemma (ensures lin_dot (zeros n) x = 0) (decreases n) =
+  match x with
+  | [] -> ()
+  | _ :: xs -> if n = 0 then () else lin_dot_zeros (n - 1) xs
+
+let rec lin_dot_vscale (m : int) (v : list int) (x : list int)
+  : Lemma (ensures lin_dot (vscale m v) x = m * lin_dot v x) (decreases v) =
+  match v, x with
+  | vh :: vt, xh :: xt ->
+    lin_dot_vscale m vt xt;
+    FStar.Math.Lemmas.paren_mul_right m vh xh
+  | _, _ -> ()
+
+let rec lin_dot_vadd (a b : list int) (x : list int)
+  : Lemma (requires List.Tot.length a = List.Tot.length b)
+          (ensures lin_dot (vadd a b) x = lin_dot a x + lin_dot b x)
+          (decreases a) =
+  match a, b, x with
+  | ah :: at_, bh :: bt, xh :: xt ->
+    lin_dot_vadd at_ bt xt;
+    FStar.Math.Lemmas.distributivity_add_left ah bh xh
+  | _, _, _ -> ()
+
+// lin_dot of the combined vector equals the weighted LHS.
+let rec comb_dot (n : nat) (cs : list lin_constraint) (ms : list int) (x : list int)
+  : Lemma (requires all_len n cs /\ List.Tot.length ms = List.Tot.length cs)
+          (ensures lin_dot (comb_coeffs n cs ms) x = weighted_lhs cs ms x)
+          (decreases cs) =
+  match cs, ms with
+  | c :: cs', m :: ms' ->
+    comb_len n cs' ms';
+    vscale_len m c.lc_coeffs;
+    lin_dot_vadd (vscale m c.lc_coeffs) (comb_coeffs n cs' ms') x;
+    lin_dot_vscale m c.lc_coeffs x;
+    comb_dot n cs' ms' x
+  | _, _ -> lin_dot_zeros n x
+
+// ---- monotonicity: satisfied constraints + valid mults => weighted >= ----
+
+let mult_mono (m : nat) (a : int) (b : int)
+  : Lemma (requires b <= a) (ensures m * b <= m * a) =
+  FStar.Math.Lemmas.lemma_mult_le_left m b a
+
+let rec weighted_ge (cs : list lin_constraint) (ms : list int) (x : list int)
+  : Lemma (requires lin_sat cs x /\ valid_mults cs ms)
+          (ensures weighted_lhs cs ms x >= weighted_rhs cs ms)
+          (decreases cs) =
+  match cs, ms with
+  | c :: cs', m :: ms' ->
+    weighted_ge cs' ms' x;
+    if c.lc_is_eq
+    then ()  // lin_dot = rhs, so m*lin_dot = m*rhs
+    else (assert (m >= 0);
+          assert (lin_dot c.lc_coeffs x >= c.lc_rhs);
+          mult_mono m (lin_dot c.lc_coeffs x) c.lc_rhs)
+  | _, _ -> ()
+
+// The validator: accept a certificate iff every row has length n, the
+// multipliers line up and respect the GEq sign rule, the combined
+// coefficient vector is the zero vector, and the combined RHS is
+// strictly positive.
+let farkas_check (n : nat) (cs : list lin_constraint) (ms : list int) : bool =
+  all_len n cs
+  && List.Tot.length ms = List.Tot.length cs
+  && valid_mults cs ms
+  && comb_coeffs n cs ms = zeros n
+  && weighted_rhs cs ms > 0
+
+// SOUNDNESS: an accepted certificate proves the system unsatisfiable
+// over ALL integer assignments (hence over nat assignments too). The
+// combined coefficient vector is zero, so the combined LHS is 0 for
+// every x, yet the combined RHS is > 0 and the weighted combination of
+// satisfied constraints would force LHS >= RHS -- contradiction.
+let farkas_sound (n : nat) (cs : list lin_constraint) (ms : list int) (x : list int)
+  : Lemma (requires farkas_check n cs ms /\ lin_sat cs x)
+          (ensures False) =
+  weighted_ge cs ms x;
+  comb_dot n cs ms x;
+  lin_dot_zeros n x
+
+// ---- 8b. Build the class-size linear system from the closure ----
+//
+// Mirrors section 6b's SMT emission exactly, but emits `lin_constraint`
+// records. Variable index of a class = its position in the deduped IRI
+// list `classes`; N = length classes. Every coefficient row is built to
+// length N by `mk_row`, so `all_len N` holds by construction.
+
+// Sum of the values whose index equals `pos`.
+let rec sum_at (pos : nat) (entries : list (nat & int)) : Tot int (decreases entries) =
+  match entries with
+  | [] -> 0
+  | (i, v) :: tl -> (if i = pos then v else 0) + sum_at pos tl
+
+// Length-n coefficient row from an (index, value) association list.
+let rec mk_row (n : nat) (pos : nat) (entries : list (nat & int))
+  : Tot (list int) (decreases n) =
+  if n = 0 then []
+  else sum_at pos entries :: mk_row (n - 1) (pos + 1) entries
+
+let rec mk_row_len (n : nat) (pos : nat) (entries : list (nat & int))
+  : Lemma (ensures List.Tot.length (mk_row n pos entries) = n) (decreases n) =
+  if n = 0 then () else mk_row_len (n - 1) (pos + 1) entries
+
+let cidx (classes : list wf_iri) (c : wf_iri) : nat = ico_iri_index classes c 0
+
+// FIBER: |D| = k*|X|  ->  (+1 at D) + (-k at X) = 0.
+let lc_fiber_of (g : rdf_graph) (n : nat) (classes : list wf_iri) (p : wf_iri)
+  : list lin_constraint =
+  match ico_find_dom g p, ico_find_inv g p with
+  | Some d, Some ip ->
+    (match ico_svf_via g (ico_restr_of g d) p with
+     | Some x ->
+       (match ico_exactcard_via g (ico_restr_of g x) ip with
+        | Some k ->
+          [ { lc_coeffs = mk_row n 0 [(cidx classes d, 1); (cidx classes x, - k)];
+              lc_rhs = 0; lc_is_eq = true } ]
+        | None -> [])
+     | None -> [])
+  | _ -> []
+
+let rec lc_fiber_all (g : rdf_graph) (n : nat) (classes : list wf_iri)
+                     (ps : list wf_iri)
+  : Tot (list lin_constraint) (decreases ps) =
+  match ps with
+  | [] -> []
+  | p :: tl -> lc_fiber_of g n classes p @ lc_fiber_all g n classes tl
+
+// BIJECTION: |D| = |Y|  ->  (+1 at D) + (-1 at Y) = 0.
+let rec lc_bij_for_prop (g : rdf_graph) (n : nat) (classes : list wf_iri)
+                        (p : wf_iri) (ip : wf_iri) (cs : list wf_iri)
+  : Tot (list lin_constraint) (decreases cs) =
+  match cs with
+  | [] -> []
+  | d :: tl ->
+    let this =
+      (match ico_svf_via g (ico_restr_of g d) p with
+       | Some y ->
+         (match ico_svf_via g (ico_restr_of g y) ip with
+          | Some dback ->
+            if dback = d
+            then [ { lc_coeffs = mk_row n 0 [(cidx classes d, 1); (cidx classes y, -1)];
+                     lc_rhs = 0; lc_is_eq = true } ]
+            else []
+          | None -> [])
+       | None -> [])
+    in this @ lc_bij_for_prop g n classes p ip tl
+
+let rec lc_bij_all (g : rdf_graph) (n : nat) (classes : list wf_iri)
+                   (ps : list wf_iri)
+  : Tot (list lin_constraint) (decreases ps) =
+  match ps with
+  | [] -> []
+  | p :: tl ->
+    (match ico_find_inv g p with
+     | Some ip -> lc_bij_for_prop g n classes p ip classes
+     | None -> [])
+    @ lc_bij_all g n classes tl
+
+// DISJOINT-UNION: |Z| = |m1| + |m2|  ->  (+1 Z) + (-1 m1) + (-1 m2) = 0.
+let lc_union_of_triple (g : rdf_graph) (n : nat) (classes : list wf_iri) (t : triple)
+  : list lin_constraint =
+  if t.p = ico_owl_equivalentClass
+  then (match t.s, t.o with
+        | S_IRI z, T_BNode _ ->
+          (match term_as_subject t.o with
+           | Some bs ->
+             (match find_first_object g bs ico_owl_unionOf with
+              | Some lterm ->
+                (match walk_rdf_list g lterm (length g) with
+                 | [T_IRI m1; T_IRI m2] ->
+                   if ico_disjoint g m1 m2
+                   then [ { lc_coeffs = mk_row n 0
+                              [(cidx classes z, 1); (cidx classes m1, -1);
+                               (cidx classes m2, -1)];
+                            lc_rhs = 0; lc_is_eq = true } ]
+                   else []
+                 | _ -> [])
+              | None -> [])
+           | None -> [])
+        | _ -> [])
+  else []
+
+let rec lc_union_all (g : rdf_graph) (n : nat) (classes : list wf_iri)
+                     (ts : list triple)
+  : Tot (list lin_constraint) (decreases ts) =
+  match ts with
+  | [] -> []
+  | t :: tl -> lc_union_of_triple g n classes t @ lc_union_all g n classes tl
+
+// ONEOF nonemptiness: |C| >= 1  ->  (+1 at C) >= 1.
+let rec lc_oneof_all (g : rdf_graph) (n : nat) (classes : list wf_iri)
+                     (cs : list wf_iri)
+  : Tot (list lin_constraint) (decreases cs) =
+  match cs with
+  | [] -> []
+  | c :: tl ->
+    (if ico_class_has_oneof g c
+     then [ { lc_coeffs = mk_row n 0 [(cidx classes c, 1)];
+              lc_rhs = 1; lc_is_eq = false } ]
+     else [])
+    @ lc_oneof_all g n classes tl
+
+// The equality rows (FIBER / BIJECTION / DISJOINT-UNION) come first,
+// then the ONEOF `>= 1` bound rows. `class_of_sys` returns (N, classes,
+// eq-rows, bound-rows) so the searcher and validator share the ordering.
+let build_lin_system (g : rdf_graph)
+  : (nat & list wf_iri & list lin_constraint & list lin_constraint) =
+  let classes = ico_dedup_iri (ico_all_iris g) in
+  let n = List.Tot.length classes in
+  let fprops  = ico_props_typed g ico_owl_FunctionalProperty in
+  let ifprops = ico_props_typed g ico_owl_InverseFunctionalProperty in
+  let bprops  = ico_iri_inter fprops ifprops in
+  let eqs =
+    lc_fiber_all g n classes fprops
+    @ lc_bij_all g n classes bprops
+    @ lc_union_all g n classes g in
+  let bounds = lc_oneof_all g n classes classes in
+  (n, classes, eqs, bounds)
+
+// ---- 8c. Certificate searcher (UNVERIFIED -- validated by farkas_check) ----
+//
+// Integer Gaussian elimination over the equality rows, carrying a
+// per-row multiplier vector (`er_cert`, one entry per original equality
+// row) so that at all times  er_coeffs = Sum_j er_cert_j * (eq row j).
+// After elimination we look for a reduced row that is a single nonzero
+// multiple of a bounded variable v (a*e_v = 0), whose attached cert is
+// the equality-side of a Farkas certificate; the bound `v >= k` supplies
+// the strictly-positive RHS. Pivots are taken only on +/-1 coefficients
+// (the class-size rows always carry a unit-coefficient "defined" class),
+// keeping the arithmetic fraction-free; if no unit pivot exists the pass
+// stops and the searcher returns None (=> no verified flip; falls
+// through to the z3 oracle, exactly as before).
+
+noeq type erow = { er_coeffs : list int; er_cert : list int; }
+
+let rec lidx (xs : list int) (i : nat) : Tot int (decreases xs) =
+  match xs with
+  | [] -> 0
+  | h :: tl -> if i = 0 then h else lidx tl (i - 1)
+
+let rec vsub (a b : list int) : Tot (list int) (decreases a) =
+  match a, b with
+  | ha :: ta, hb :: tb -> (ha - hb) :: vsub ta tb
+  | _, _ -> a
+
+let rec vneg (a : list int) : Tot (list int) (decreases a) =
+  match a with [] -> [] | h :: t -> (- h) :: vneg t
+
+// Unit basis vector e_i of length len (1 at position i, 0 elsewhere).
+let rec unit_basis_from (len : nat) (pos : nat) (i : nat)
+  : Tot (list int) (decreases len) =
+  if len = 0 then []
+  else (if pos = i then 1 else 0) :: unit_basis_from (len - 1) (pos + 1) i
+
+let unit_basis (len : nat) (i : nat) : list int = unit_basis_from len 0 i
+
+let rec erows_of_aux (e : nat) (i : nat) (eqs : list lin_constraint)
+  : Tot (list erow) (decreases eqs) =
+  match eqs with
+  | [] -> []
+  | c :: tl ->
+    { er_coeffs = c.lc_coeffs; er_cert = unit_basis e i }
+    :: erows_of_aux e (i + 1) tl
+
+let erows_of (eqs : list lin_constraint) : list erow =
+  erows_of_aux (List.Tot.length eqs) 0 eqs
+
+// Eliminate column j from row r using unit-pivot row piv (piv[j] = 1).
+let elim_row (j : nat) (piv : erow) (r : erow) : erow =
+  let a = lidx r.er_coeffs j in
+  if a = 0 then r
+  else { er_coeffs = vsub r.er_coeffs (vscale a piv.er_coeffs);
+         er_cert   = vsub r.er_cert   (vscale a piv.er_cert) }
+
+// Find, among `rows`, the first with a +/-1 coefficient at column j,
+// normalised so that coefficient becomes +1; return it plus the rest.
+let rec find_unit_pivot (j : nat) (rows : list erow)
+  : Tot (option (erow & list erow)) (decreases rows) =
+  match rows with
+  | [] -> None
+  | r :: tl ->
+    let a = lidx r.er_coeffs j in
+    if a = 1 then Some (r, tl)
+    else if a = -1
+    then Some ({ er_coeffs = vneg r.er_coeffs; er_cert = vneg r.er_cert }, tl)
+    else (match find_unit_pivot j tl with
+          | Some (p, rest) -> Some (p, r :: rest)
+          | None -> None)
+
+let rec elim_cols (cols_left : nat) (j : nat) (active : list erow) (solved : list erow)
+  : Tot (list erow) (decreases cols_left) =
+  if cols_left = 0 then solved @ active
+  else
+    match find_unit_pivot j active with
+    | None -> elim_cols (cols_left - 1) (j + 1) active solved
+    | Some (piv, rest) ->
+      let rest'   = List.Tot.map (elim_row j piv) rest in
+      let solved' = List.Tot.map (elim_row j piv) solved in
+      elim_cols (cols_left - 1) (j + 1) rest' (piv :: solved')
+
+// Is `coeffs` a single nonzero entry a*e_v? Return Some (v, a).
+let rec single_nonzero (coeffs : list int) (pos : nat)
+  : Tot (option (nat & int)) (decreases coeffs) =
+  match coeffs with
+  | [] -> None
+  | h :: tl ->
+    if h = 0 then single_nonzero tl (pos + 1)
+    else (match single_nonzero tl (pos + 1) with
+          | None -> Some (pos, h)
+          | Some _ -> None)   // more than one nonzero => not single
+
+// Lower bound (if any) on variable v from the ONEOF bound rows; also the
+// bound row's position among `bounds`.
+let rec bound_of_var (bounds : list lin_constraint) (v : nat) (pos : nat)
+  : Tot (option (nat & int)) (decreases bounds) =
+  match bounds with
+  | [] -> None
+  | b :: tl ->
+    (match single_nonzero b.lc_coeffs 0 with
+     | Some (bv, bc) ->
+       if bv = v && bc = 1 && b.lc_rhs >= 1 then Some (pos, b.lc_rhs)
+       else bound_of_var tl v (pos + 1)
+     | None -> bound_of_var tl v (pos + 1))
+
+let iabs (a : int) : nat = if a >= 0 then a else - a
+
+// From a reduced row (cert over eq rows, coeffs = a*e_v with a<>0) and a
+// matching bound at position bpos with multiplier need |a|, assemble the
+// full multiplier list aligned to (eqs @ bounds).
+let assemble_mults (cert : list int) (a : int) (num_bounds : nat) (bpos : nat)
+  : list int =
+  let t = if a > 0 then (-1) else 1 in
+  let eqmults = vscale t cert in
+  let rec bmults (k : nat) (i : nat) : Tot (list int) (decreases k) =
+    if k = 0 then []
+    else (if i = bpos then iabs a else 0) :: bmults (k - 1) (i + 1) in
+  eqmults @ bmults num_bounds 0
+
+// Scan reduced rows for a single-nonzero bounded-variable row; assemble.
+let rec scan_rows (rows : list erow) (bounds : list lin_constraint)
+                  (num_bounds : nat)
+  : Tot (option (list int)) (decreases rows) =
+  match rows with
+  | [] -> None
+  | r :: tl ->
+    (match single_nonzero r.er_coeffs 0 with
+     | Some (v, a) ->
+       if a = 0 then scan_rows tl bounds num_bounds
+       else (match bound_of_var bounds v 0 with
+             | Some (bpos, _k) -> Some (assemble_mults r.er_cert a num_bounds bpos)
+             | None -> scan_rows tl bounds num_bounds)
+     | None -> scan_rows tl bounds num_bounds)
+
+let find_lin_cert (n : nat) (classes : list wf_iri)
+                  (eqs : list lin_constraint) (bounds : list lin_constraint)
+  : option (list int) =
+  let rows = erows_of eqs in
+  let reduced = elim_cols n 0 rows [] in
+  scan_rows reduced bounds (List.Tot.length bounds)
+
+// ---- 8d. The verified verdict ----
+//
+// `class_size_unsat g = true` is a PROVEN statement (via farkas_sound)
+// that the class-size linear system built from g has no integer
+// assignment -- hence, by the section-6b/8-header soundness of the
+// class-size lemmas under Direct Semantics, the closure is inconsistent.
+// Gated by `in_counting_fragment` to mirror the z3 oracle's scope; the
+// validator makes the verdict sound regardless of gating.
+let class_size_unsat (g : rdf_graph) : Tot bool =
+  if not (in_counting_fragment g) then false
+  else
+    let (n, classes, eqs, bounds) = build_lin_system g in
+    let sys = eqs @ bounds in
+    match find_lin_cert n classes eqs bounds with
+    | None -> false
+    | Some ms -> farkas_check n sys ms
+
+// The soundness statement F* checks: an accepted verdict means the
+// built linear system is unsatisfiable over every integer assignment.
+let class_size_unsat_sound (g : rdf_graph) (x : list int)
+  : Lemma (requires class_size_unsat g = true)
+          (ensures (let (n, _, eqs, bounds) = build_lin_system g in
+                    ~(lin_sat (eqs @ bounds) x))) =
+  let (n, classes, eqs, bounds) = build_lin_system g in
+  let sys = eqs @ bounds in
+  match find_lin_cert n classes eqs bounds with
+  | None -> ()
+  | Some ms ->
+    if lin_sat sys x then farkas_sound n sys ms x else ()

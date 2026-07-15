@@ -1,5 +1,25 @@
 # Z3 native runtime pin (Z33kr Role 2 — runtime entailment oracle)
 
+> **Status update 2026-07-15 — oracle RETIRED IN PRACTICE for the shipped
+> corpus.** A verified F\* class-size linear-arithmetic reasoner
+> (`Tableau.CountingOracle.class_size_unsat`, a Farkas-certificate
+> validator with a build-checked soundness Lemma) now decides the
+> counting-fragment systems inside the verified boundary and is consulted
+> ONE RUNG BEFORE this oracle. The only two W3C tests the oracle ever
+> flipped — WebOnt-description-logic-910 and one=two — now pass as plain
+> VERIFIED passes (confirmed with `FACTOIDAL_OWL_Z3_RLIMIT=0`, i.e. z3
+> never spawned). WebOnt-description-logic-909 the oracle never flipped
+> (its class-size system is genuinely satisfiable — z3 answers `sat`), and
+> still does not flip: deriving `|finite| >= 1` would need an unsound
+> nonemptiness rule, which is deliberately NOT added. So for the shipped
+> OWL corpus the oracle is now unreachable — no test reaches
+> `z3_oracle_refutes` with a flippable input. The code path is KEPT (not
+> deleted) for future counting fixtures outside what the verified reasoner
+> decides; this pin stays valid until such a fixture appears or the
+> reasoner subsumes it. See
+> [`docs/designissues/2026-07-15-owl2-wave-c-finite-model-refutation.md`](../../docs/designissues/2026-07-15-owl2-wave-c-finite-model-refutation.md)
+> § forward path and issue #296.
+
 | Field | Value |
 |---|---|
 | Component | z3 (native), used as the **runtime** satisfiability oracle behind the OWL 2 DL consistency interface |

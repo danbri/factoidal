@@ -655,6 +655,28 @@ let dl_refutes (closure : RDF_Graph_Executable.rdf_graph) : bool =
        | _ -> false)
      with _ -> false)
 
+(* ---- Z33kr Phase 2: VERIFIED class-size unsat check ----------------
+   One rung OUTSIDE dl_refutes and one rung INSIDE the z3 oracle. This
+   is the model-theoretically-sound core of what the #296 z3 oracle did,
+   brought inside the verified boundary: Tableau_CountingOracle.class_
+   size_unsat builds the class-size linear system (FIBER / BIJECTION /
+   DISJOINT-UNION / ONEOF, section 6b) and decides its unsatisfiability
+   with a Farkas-certificate validator carrying a build-checked F*
+   soundness Lemma (farkas_sound / class_size_unsat_sound). A `true`
+   verdict is a PROVEN "no integer assignment satisfies the system", so
+   the flip it produces is a plain verified PASS, NOT oracle-assisted.
+   Runs under the same short refuter cap; any cap-trip/exception falls
+   back to false (then the z3 oracle is consulted, exactly as before).
+   RL regime: never consulted. Dispatch/fallback plumbing only -- all
+   satisfiability logic is F*-extracted (rule #15 boundary respected). *)
+let class_size_refutes (closure_rl : RDF_Graph_Executable.rdf_graph) : bool =
+  match !regime with
+  | Regime_RL -> false
+  | Regime_DL ->
+    (try with_refute_cap (fun () ->
+       Tableau_CountingOracle.class_size_unsat closure_rl)
+     with _ -> false)
+
 (* ---- Z33kr Phase 1: native z3 counting-fragment oracle -------------
    ONE RUNG OUTSIDE the dl_refutes contract above. Consulted ONLY when
    dl_refutes returned false (the tableau did not refute — None
@@ -1225,12 +1247,20 @@ let run_inconsistency_test
          not all entailment-sound, and must not feed a refutation). *)
       if capped_is_inconsistent closure || dl_refutes closure_rl
       then Pass
+      (* Z33kr Phase 2: VERIFIED class-size unsat check, BEFORE the z3
+         oracle. A `true` here is a proven-sound refutation of the
+         class-size linear system, so it flips to a plain verified PASS
+         (not oracle-assisted). Retires the z3 oracle for the fixtures it
+         decides (dl-910, one=two). *)
+      else if class_size_refutes closure_rl
+      then Pass
       (* Z33kr Phase 1: one rung outside dl_refutes — the native z3
-         counting-fragment oracle. Only reached when the verified path
-         did NOT refute; only fires inside in_counting_fragment; Unsat =>
-         inconsistent, LABELLED oracle-assisted (Pass_oracle_z3), never
-         folded into the pure-verified pass count. Anything else keeps
-         the exact pre-oracle verdict. *)
+         counting-fragment oracle. Only reached when neither the verified
+         tableau NOR the verified class-size check refuted; only fires
+         inside in_counting_fragment; Unsat => inconsistent, LABELLED
+         oracle-assisted (Pass_oracle_z3), never folded into the
+         pure-verified pass count. Anything else keeps the exact
+         pre-oracle verdict. *)
       else if z3_oracle_refutes id closure_rl
       then Pass_oracle_z3
       else Fail_unexpected_consistency

@@ -793,3 +793,374 @@ let z3_check_sat smtlib rlimit =
           | _ -> first tl) in
      first lines
    with _ -> Z3_Unknown)
+type lin_constraint =
+  {
+  lc_coeffs: Prims.int Prims.list ;
+  lc_rhs: Prims.int ;
+  lc_is_eq: Prims.bool }
+let __proj__Mklin_constraint__item__lc_coeffs (projectee : lin_constraint) :
+  Prims.int Prims.list=
+  match projectee with | { lc_coeffs; lc_rhs; lc_is_eq;_} -> lc_coeffs
+let __proj__Mklin_constraint__item__lc_rhs (projectee : lin_constraint) :
+  Prims.int=
+  match projectee with | { lc_coeffs; lc_rhs; lc_is_eq;_} -> lc_rhs
+let __proj__Mklin_constraint__item__lc_is_eq (projectee : lin_constraint) :
+  Prims.bool=
+  match projectee with | { lc_coeffs; lc_rhs; lc_is_eq;_} -> lc_is_eq
+let rec lin_dot (coeffs : Prims.int Prims.list) (x : Prims.int Prims.list) :
+  Prims.int=
+  match (coeffs, x) with
+  | (c::cs, v::vs) -> (c * v) + (lin_dot cs vs)
+  | (uu___, uu___1) -> Prims.int_zero
+let lin_sat1 (c : lin_constraint) (x : Prims.int Prims.list) : Prims.bool=
+  if c.lc_is_eq
+  then (lin_dot c.lc_coeffs x) = c.lc_rhs
+  else (lin_dot c.lc_coeffs x) >= c.lc_rhs
+let rec lin_sat (cs : lin_constraint Prims.list) (x : Prims.int Prims.list) :
+  Prims.bool=
+  match cs with | [] -> true | c::tl -> (lin_sat1 c x) && (lin_sat tl x)
+let rec valid_mults (cs : lin_constraint Prims.list)
+  (ms : Prims.int Prims.list) : Prims.bool=
+  match (cs, ms) with
+  | (c::cs', m::ms') ->
+      (if c.lc_is_eq then true else m >= Prims.int_zero) &&
+        (valid_mults cs' ms')
+  | ([], []) -> true
+  | (uu___, uu___1) -> false
+let rec weighted_lhs (cs : lin_constraint Prims.list)
+  (ms : Prims.int Prims.list) (x : Prims.int Prims.list) : Prims.int=
+  match (cs, ms) with
+  | (c::cs', m::ms') ->
+      (m * (lin_dot c.lc_coeffs x)) + (weighted_lhs cs' ms' x)
+  | (uu___, uu___1) -> Prims.int_zero
+let rec weighted_rhs (cs : lin_constraint Prims.list)
+  (ms : Prims.int Prims.list) : Prims.int=
+  match (cs, ms) with
+  | (c::cs', m::ms') -> (m * c.lc_rhs) + (weighted_rhs cs' ms')
+  | (uu___, uu___1) -> Prims.int_zero
+let rec zeros (n : Prims.nat) : Prims.int Prims.list=
+  if n = Prims.int_zero
+  then []
+  else Prims.int_zero :: (zeros (n - Prims.int_one))
+let rec vscale (m : Prims.int) (v : Prims.int Prims.list) :
+  Prims.int Prims.list=
+  match v with | [] -> [] | h::t -> (m * h) :: (vscale m t)
+let rec vadd (a : Prims.int Prims.list) (b : Prims.int Prims.list) :
+  Prims.int Prims.list=
+  match (a, b) with
+  | (ha::ta, hb::tb) -> (ha + hb) :: (vadd ta tb)
+  | (uu___, uu___1) -> []
+let rec comb_coeffs (n : Prims.nat) (cs : lin_constraint Prims.list)
+  (ms : Prims.int Prims.list) : Prims.int Prims.list=
+  match (cs, ms) with
+  | (c::cs', m::ms') -> vadd (vscale m c.lc_coeffs) (comb_coeffs n cs' ms')
+  | (uu___, uu___1) -> zeros n
+let rec all_len (n : Prims.nat) (cs : lin_constraint Prims.list) :
+  Prims.bool=
+  match cs with
+  | [] -> true
+  | c::tl -> ((FStar_List_Tot_Base.length c.lc_coeffs) = n) && (all_len n tl)
+let farkas_check (n : Prims.nat) (cs : lin_constraint Prims.list)
+  (ms : Prims.int Prims.list) : Prims.bool=
+  ((((all_len n cs) &&
+       ((FStar_List_Tot_Base.length ms) = (FStar_List_Tot_Base.length cs)))
+      && (valid_mults cs ms))
+     && ((comb_coeffs n cs ms) = (zeros n)))
+    && ((weighted_rhs cs ms) > Prims.int_zero)
+let rec sum_at (pos : Prims.nat)
+  (entries : (Prims.nat * Prims.int) Prims.list) : Prims.int=
+  match entries with
+  | [] -> Prims.int_zero
+  | (i, v)::tl -> (if i = pos then v else Prims.int_zero) + (sum_at pos tl)
+let rec mk_row (n : Prims.nat) (pos : Prims.nat)
+  (entries : (Prims.nat * Prims.int) Prims.list) : Prims.int Prims.list=
+  if n = Prims.int_zero
+  then []
+  else (sum_at pos entries) ::
+    (mk_row (n - Prims.int_one) (pos + Prims.int_one) entries)
+let cidx (classes : RDF_Term.wf_iri Prims.list) (c : RDF_Term.wf_iri) :
+  Prims.nat= ico_iri_index classes c Prims.int_zero
+let lc_fiber_of (g : RDF_Graph.rdf_graph) (n : Prims.nat)
+  (classes : RDF_Term.wf_iri Prims.list) (p : RDF_Term.wf_iri) :
+  lin_constraint Prims.list=
+  match ((ico_find_dom g p), (ico_find_inv g p)) with
+  | (FStar_Pervasives_Native.Some d, FStar_Pervasives_Native.Some ip) ->
+      (match ico_svf_via g (ico_restr_of g d) p with
+       | FStar_Pervasives_Native.Some x ->
+           (match ico_exactcard_via g (ico_restr_of g x) ip with
+            | FStar_Pervasives_Native.Some k ->
+                [{
+                   lc_coeffs =
+                     (mk_row n Prims.int_zero
+                        [((cidx classes d), Prims.int_one);
+                        ((cidx classes x), (- k))]);
+                   lc_rhs = Prims.int_zero;
+                   lc_is_eq = true
+                 }]
+            | FStar_Pervasives_Native.None -> [])
+       | FStar_Pervasives_Native.None -> [])
+  | uu___ -> []
+let rec lc_fiber_all (g : RDF_Graph.rdf_graph) (n : Prims.nat)
+  (classes : RDF_Term.wf_iri Prims.list) (ps : RDF_Term.wf_iri Prims.list) :
+  lin_constraint Prims.list=
+  match ps with
+  | [] -> []
+  | p::tl ->
+      FStar_List_Tot_Base.op_At (lc_fiber_of g n classes p)
+        (lc_fiber_all g n classes tl)
+let rec lc_bij_for_prop (g : RDF_Graph.rdf_graph) (n : Prims.nat)
+  (classes : RDF_Term.wf_iri Prims.list) (p : RDF_Term.wf_iri)
+  (ip : RDF_Term.wf_iri) (cs : RDF_Term.wf_iri Prims.list) :
+  lin_constraint Prims.list=
+  match cs with
+  | [] -> []
+  | d::tl ->
+      let this =
+        match ico_svf_via g (ico_restr_of g d) p with
+        | FStar_Pervasives_Native.Some y ->
+            (match ico_svf_via g (ico_restr_of g y) ip with
+             | FStar_Pervasives_Native.Some dback ->
+                 if dback = d
+                 then
+                   [{
+                      lc_coeffs =
+                        (mk_row n Prims.int_zero
+                           [((cidx classes d), Prims.int_one);
+                           ((cidx classes y), (Prims.of_int (-1)))]);
+                      lc_rhs = Prims.int_zero;
+                      lc_is_eq = true
+                    }]
+                 else []
+             | FStar_Pervasives_Native.None -> [])
+        | FStar_Pervasives_Native.None -> [] in
+      FStar_List_Tot_Base.op_At this (lc_bij_for_prop g n classes p ip tl)
+let rec lc_bij_all (g : RDF_Graph.rdf_graph) (n : Prims.nat)
+  (classes : RDF_Term.wf_iri Prims.list) (ps : RDF_Term.wf_iri Prims.list) :
+  lin_constraint Prims.list=
+  match ps with
+  | [] -> []
+  | p::tl ->
+      FStar_List_Tot_Base.op_At
+        (match ico_find_inv g p with
+         | FStar_Pervasives_Native.Some ip ->
+             lc_bij_for_prop g n classes p ip classes
+         | FStar_Pervasives_Native.None -> []) (lc_bij_all g n classes tl)
+let lc_union_of_triple (g : RDF_Graph.rdf_graph) (n : Prims.nat)
+  (classes : RDF_Term.wf_iri Prims.list) (t : RDF_Triple.triple) :
+  lin_constraint Prims.list=
+  if t.RDF_Triple.p = ico_owl_equivalentClass
+  then
+    match ((t.RDF_Triple.s), (t.RDF_Triple.o)) with
+    | (RDF_Term.S_IRI z, RDF_Term.T_BNode uu___) ->
+        (match Tableau.term_as_subject t.RDF_Triple.o with
+         | FStar_Pervasives_Native.Some bs ->
+             (match Tableau.find_first_object g bs ico_owl_unionOf with
+              | FStar_Pervasives_Native.Some lterm ->
+                  (match Tableau.walk_rdf_list g lterm
+                           (FStar_List_Tot_Base.length g)
+                   with
+                   | (RDF_Term.T_IRI m1)::(RDF_Term.T_IRI m2)::[] ->
+                       if ico_disjoint g m1 m2
+                       then
+                         [{
+                            lc_coeffs =
+                              (mk_row n Prims.int_zero
+                                 [((cidx classes z), Prims.int_one);
+                                 ((cidx classes m1), (Prims.of_int (-1)));
+                                 ((cidx classes m2), (Prims.of_int (-1)))]);
+                            lc_rhs = Prims.int_zero;
+                            lc_is_eq = true
+                          }]
+                       else []
+                   | uu___1 -> [])
+              | FStar_Pervasives_Native.None -> [])
+         | FStar_Pervasives_Native.None -> [])
+    | uu___ -> []
+  else []
+let rec lc_union_all (g : RDF_Graph.rdf_graph) (n : Prims.nat)
+  (classes : RDF_Term.wf_iri Prims.list) (ts : RDF_Triple.triple Prims.list)
+  : lin_constraint Prims.list=
+  match ts with
+  | [] -> []
+  | t::tl ->
+      FStar_List_Tot_Base.op_At (lc_union_of_triple g n classes t)
+        (lc_union_all g n classes tl)
+let rec lc_oneof_all (g : RDF_Graph.rdf_graph) (n : Prims.nat)
+  (classes : RDF_Term.wf_iri Prims.list) (cs : RDF_Term.wf_iri Prims.list) :
+  lin_constraint Prims.list=
+  match cs with
+  | [] -> []
+  | c::tl ->
+      FStar_List_Tot_Base.op_At
+        (if ico_class_has_oneof g c
+         then
+           [{
+              lc_coeffs =
+                (mk_row n Prims.int_zero [((cidx classes c), Prims.int_one)]);
+              lc_rhs = Prims.int_one;
+              lc_is_eq = false
+            }]
+         else []) (lc_oneof_all g n classes tl)
+let build_lin_system (g : RDF_Graph.rdf_graph) :
+  (Prims.nat * RDF_Term.wf_iri Prims.list * lin_constraint Prims.list *
+    lin_constraint Prims.list)=
+  let classes = ico_dedup_iri (ico_all_iris g) in
+  let n = FStar_List_Tot_Base.length classes in
+  let fprops = ico_props_typed g ico_owl_FunctionalProperty in
+  let ifprops = ico_props_typed g ico_owl_InverseFunctionalProperty in
+  let bprops = ico_iri_inter fprops ifprops in
+  let eqs =
+    FStar_List_Tot_Base.op_At (lc_fiber_all g n classes fprops)
+      (FStar_List_Tot_Base.op_At (lc_bij_all g n classes bprops)
+         (lc_union_all g n classes g)) in
+  let bounds = lc_oneof_all g n classes classes in (n, classes, eqs, bounds)
+type erow = {
+  er_coeffs: Prims.int Prims.list ;
+  er_cert: Prims.int Prims.list }
+let __proj__Mkerow__item__er_coeffs (projectee : erow) :
+  Prims.int Prims.list=
+  match projectee with | { er_coeffs; er_cert;_} -> er_coeffs
+let __proj__Mkerow__item__er_cert (projectee : erow) : Prims.int Prims.list=
+  match projectee with | { er_coeffs; er_cert;_} -> er_cert
+let rec lidx (xs : Prims.int Prims.list) (i : Prims.nat) : Prims.int=
+  match xs with
+  | [] -> Prims.int_zero
+  | h::tl -> if i = Prims.int_zero then h else lidx tl (i - Prims.int_one)
+let rec vsub (a : Prims.int Prims.list) (b : Prims.int Prims.list) :
+  Prims.int Prims.list=
+  match (a, b) with
+  | (ha::ta, hb::tb) -> (ha - hb) :: (vsub ta tb)
+  | (uu___, uu___1) -> a
+let rec vneg (a : Prims.int Prims.list) : Prims.int Prims.list=
+  match a with | [] -> [] | h::t -> (- h) :: (vneg t)
+let rec unit_basis_from (len : Prims.nat) (pos : Prims.nat) (i : Prims.nat) :
+  Prims.int Prims.list=
+  if len = Prims.int_zero
+  then []
+  else (if pos = i then Prims.int_one else Prims.int_zero) ::
+    (unit_basis_from (len - Prims.int_one) (pos + Prims.int_one) i)
+let unit_basis (len : Prims.nat) (i : Prims.nat) : Prims.int Prims.list=
+  unit_basis_from len Prims.int_zero i
+let rec erows_of_aux (e : Prims.nat) (i : Prims.nat)
+  (eqs : lin_constraint Prims.list) : erow Prims.list=
+  match eqs with
+  | [] -> []
+  | c::tl -> { er_coeffs = (c.lc_coeffs); er_cert = (unit_basis e i) } ::
+      (erows_of_aux e (i + Prims.int_one) tl)
+let erows_of (eqs : lin_constraint Prims.list) : erow Prims.list=
+  erows_of_aux (FStar_List_Tot_Base.length eqs) Prims.int_zero eqs
+let elim_row (j : Prims.nat) (piv : erow) (r : erow) : erow=
+  let a = lidx r.er_coeffs j in
+  if a = Prims.int_zero
+  then r
+  else
+    {
+      er_coeffs = (vsub r.er_coeffs (vscale a piv.er_coeffs));
+      er_cert = (vsub r.er_cert (vscale a piv.er_cert))
+    }
+let rec find_unit_pivot (j : Prims.nat) (rows : erow Prims.list) :
+  (erow * erow Prims.list) FStar_Pervasives_Native.option=
+  match rows with
+  | [] -> FStar_Pervasives_Native.None
+  | r::tl ->
+      let a = lidx r.er_coeffs j in
+      if a = Prims.int_one
+      then FStar_Pervasives_Native.Some (r, tl)
+      else
+        if a = (Prims.of_int (-1))
+        then
+          FStar_Pervasives_Native.Some
+            ({ er_coeffs = (vneg r.er_coeffs); er_cert = (vneg r.er_cert) },
+              tl)
+        else
+          (match find_unit_pivot j tl with
+           | FStar_Pervasives_Native.Some (p, rest) ->
+               FStar_Pervasives_Native.Some (p, (r :: rest))
+           | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None)
+let rec elim_cols (cols_left : Prims.nat) (j : Prims.nat)
+  (active : erow Prims.list) (solved : erow Prims.list) : erow Prims.list=
+  if cols_left = Prims.int_zero
+  then FStar_List_Tot_Base.op_At solved active
+  else
+    (match find_unit_pivot j active with
+     | FStar_Pervasives_Native.None ->
+         elim_cols (cols_left - Prims.int_one) (j + Prims.int_one) active
+           solved
+     | FStar_Pervasives_Native.Some (piv, rest) ->
+         let rest' = FStar_List_Tot_Base.map (elim_row j piv) rest in
+         let solved' = FStar_List_Tot_Base.map (elim_row j piv) solved in
+         elim_cols (cols_left - Prims.int_one) (j + Prims.int_one) rest' (piv
+           :: solved'))
+let rec single_nonzero (coeffs : Prims.int Prims.list) (pos : Prims.nat) :
+  (Prims.nat * Prims.int) FStar_Pervasives_Native.option=
+  match coeffs with
+  | [] -> FStar_Pervasives_Native.None
+  | h::tl ->
+      if h = Prims.int_zero
+      then single_nonzero tl (pos + Prims.int_one)
+      else
+        (match single_nonzero tl (pos + Prims.int_one) with
+         | FStar_Pervasives_Native.None ->
+             FStar_Pervasives_Native.Some (pos, h)
+         | FStar_Pervasives_Native.Some uu___1 ->
+             FStar_Pervasives_Native.None)
+let rec bound_of_var (bounds : lin_constraint Prims.list) (v : Prims.nat)
+  (pos : Prims.nat) : (Prims.nat * Prims.int) FStar_Pervasives_Native.option=
+  match bounds with
+  | [] -> FStar_Pervasives_Native.None
+  | b::tl ->
+      (match single_nonzero b.lc_coeffs Prims.int_zero with
+       | FStar_Pervasives_Native.Some (bv, bc) ->
+           if
+             ((bv = v) && (bc = Prims.int_one)) &&
+               (b.lc_rhs >= Prims.int_one)
+           then FStar_Pervasives_Native.Some (pos, (b.lc_rhs))
+           else bound_of_var tl v (pos + Prims.int_one)
+       | FStar_Pervasives_Native.None ->
+           bound_of_var tl v (pos + Prims.int_one))
+let iabs (a : Prims.int) : Prims.nat= if a >= Prims.int_zero then a else - a
+let assemble_mults (cert : Prims.int Prims.list) (a : Prims.int)
+  (num_bounds : Prims.nat) (bpos : Prims.nat) : Prims.int Prims.list=
+  let t = if a > Prims.int_zero then (Prims.of_int (-1)) else Prims.int_one in
+  let eqmults = vscale t cert in
+  let rec bmults k i =
+    if k = Prims.int_zero
+    then []
+    else (if i = bpos then iabs a else Prims.int_zero) ::
+      (bmults (k - Prims.int_one) (i + Prims.int_one)) in
+  FStar_List_Tot_Base.op_At eqmults (bmults num_bounds Prims.int_zero)
+let rec scan_rows (rows : erow Prims.list)
+  (bounds : lin_constraint Prims.list) (num_bounds : Prims.nat) :
+  Prims.int Prims.list FStar_Pervasives_Native.option=
+  match rows with
+  | [] -> FStar_Pervasives_Native.None
+  | r::tl ->
+      (match single_nonzero r.er_coeffs Prims.int_zero with
+       | FStar_Pervasives_Native.Some (v, a) ->
+           if a = Prims.int_zero
+           then scan_rows tl bounds num_bounds
+           else
+             (match bound_of_var bounds v Prims.int_zero with
+              | FStar_Pervasives_Native.Some (bpos, _k) ->
+                  FStar_Pervasives_Native.Some
+                    (assemble_mults r.er_cert a num_bounds bpos)
+              | FStar_Pervasives_Native.None ->
+                  scan_rows tl bounds num_bounds)
+       | FStar_Pervasives_Native.None -> scan_rows tl bounds num_bounds)
+let find_lin_cert (n : Prims.nat) (classes : RDF_Term.wf_iri Prims.list)
+  (eqs : lin_constraint Prims.list) (bounds : lin_constraint Prims.list) :
+  Prims.int Prims.list FStar_Pervasives_Native.option=
+  let rows = erows_of eqs in
+  let reduced = elim_cols n Prims.int_zero rows [] in
+  scan_rows reduced bounds (FStar_List_Tot_Base.length bounds)
+let class_size_unsat (g : RDF_Graph.rdf_graph) : Prims.bool=
+  if Prims.op_Negation (in_counting_fragment g)
+  then false
+  else
+    (let uu___1 = build_lin_system g in
+     match uu___1 with
+     | (n, classes, eqs, bounds) ->
+         let sys = FStar_List_Tot_Base.op_At eqs bounds in
+         (match find_lin_cert n classes eqs bounds with
+          | FStar_Pervasives_Native.None -> false
+          | FStar_Pervasives_Native.Some ms -> farkas_check n sys ms))
