@@ -414,6 +414,22 @@ let csvw_col_specs_from_header (header_cells : Prims.string Prims.list) :
          cs_lang = FStar_Pervasives_Native.None;
          cs_null = FStar_Pervasives_Native.None
        }) header_cells
+let csvw_col_specs_positional (header_cells : Prims.string Prims.list) :
+  csvw_col_spec Prims.list=
+  FStar_List_Tot_Base.mapi
+    (fun i h ->
+       {
+         cs_name = (csvw_positional_name i);
+         cs_virtual = false;
+         cs_suppress = false;
+         cs_datatype = FStar_Pervasives_Native.None;
+         cs_about_url = FStar_Pervasives_Native.None;
+         cs_property_url = FStar_Pervasives_Native.None;
+         cs_value_url = FStar_Pervasives_Native.None;
+         cs_separator = FStar_Pervasives_Native.None;
+         cs_lang = FStar_Pervasives_Native.None;
+         cs_null = FStar_Pervasives_Native.None
+       }) header_cells
 let csvw_build_col_specs (grp : CSVW_Metadata.csvw_inherited_props)
   (tbl : CSVW_Metadata.csvw_inherited_props)
   (ts_opt : CSVW_Metadata.csvw_table_schema FStar_Pervasives_Native.option)
@@ -427,7 +443,7 @@ let csvw_build_col_specs (grp : CSVW_Metadata.csvw_inherited_props)
             (csvw_merge_inherited tbl grp) in
         FStar_List_Tot_Base.map (csvw_col_spec_of_column eff)
           ts.CSVW_Metadata.ts_columns
-      else csvw_col_specs_from_header header_cells
+      else csvw_col_specs_positional header_cells
   | FStar_Pervasives_Native.None -> csvw_col_specs_from_header header_cells
 let csvw_header_row_count
   (dia_opt : CSVW_Metadata.csvw_dialect FStar_Pervasives_Native.option) :

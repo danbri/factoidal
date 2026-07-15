@@ -41,12 +41,17 @@ module CSVW.Metadata
 // malformed-typed leaf values are common in the validation manifest's
 // negative fixtures, and Stage 1's job is a structural "does the
 // document's shape parse," not full spec-conformance validation of
-// leaf facets (that is CSVW.Validate.fst, Stage 9). A field whose
-// declared JSON *shape* is wrong at the container level (a "columns"
-// key that in the JSON is anything but an array, an array element that
-// is not a JSON object) DOES fail the surrounding decode, mirroring
-// ShEx.Schema.fst's decode_shape_decl_list / decode_string_list
-// discipline of "None propagates out of a structurally-wrong list."
+// leaf facets (that is CSVW.Validate.fst, Stage 9). A "columns" array
+// ELEMENT that is not a JSON object DOES fail the surrounding decode,
+// mirroring ShEx.Schema.fst's decode_shape_decl_list /
+// decode_string_list discipline of "None propagates out of a
+// structurally-wrong list" — but a container-valued property whose
+// WHOLE value has the wrong JSON type (a non-object `tableSchema`,
+// test107; a non-object item in a `foreignKeys` array, test097)
+// degrades to empty/ignored per tabular-metadata section 4's "MUST
+// act as if it was an empty object" / "items ... that are not valid
+// objects of the type expected are ignored" (2026-07-15, burndown
+// round 2).
 //
 // Reference: Metadata Vocabulary for Tabular Data (w3.org/TR/tabular-
 // metadata, Rec. 2015-12-17). Corpus:
@@ -558,7 +563,15 @@ let csvw_decode_table_schema (v:json_val) : option csvw_table_schema =
         ts_primary_key  = json_get_string "primaryKey" v;
         ts_inherited    = csvw_decode_inherited v;
       })
-  | _ -> None
+  | _ ->
+    // tabular-metadata section 4 graceful degradation ("MUST act as if
+    // it was an empty object"), quoted verbatim in test107's manifest
+    // comment: a tableSchema value that is not even a JSON object at
+    // all (test107: "tableSchema": 1) decodes to an EMPTY schema, not
+    // a decode failure — distinct from columns_ok=false above (a
+    // structurally-wrong "columns" array element inside an otherwise
+    // valid object), which still propagates None.
+    Some ({ ts_columns = []; ts_primary_key = None; ts_inherited = csvw_inherited_empty })
 
 // ================================================================
 // Table decode
@@ -798,10 +811,14 @@ let csvw_common_props_valid (v:json_val) : bool =
 // --- structural @id / @type checks (blank-node @id => reject, test077-
 //     082/141; wrong structural @type => reject, test083-088) ---
 
+// A non-string @id (test102: "@id": 1) is graceful degradation ("act
+// as if the property had not been specified"), NOT a rejection — only
+// a STRING @id that is itself a blank-node reference (test077-082/141)
+// is a hard reject.
 let csvw_obj_id_ok (v:json_val) : bool =
   match json_get_field "@id" v with
   | Some (JString s) -> not (csvw_is_bnode_ref s)
-  | Some _ -> false
+  | Some _ -> true
   | None -> true
 
 let csvw_obj_type_ok (v:json_val) (expected:string) : bool =
@@ -947,10 +964,21 @@ let csvw_fk_valid (names:list string) (fk:json_val) : bool =
      | None -> false)
   | _ -> false
 
+// A foreignKeys array item that is not even a JSON object at all
+// (test097: `[{...valid FK...}, 1]`) is IGNORED per tabular-metadata's
+// "any items within an array that are not valid objects of the type
+// expected are ignored" (test097's own manifest comment, verbatim) —
+// distinct from a JObject item with the wrong INTERNAL shape (extra
+// keys, non-object `reference`; test108/271/272), which csvw_fk_valid
+// still rejects.
 let rec csvw_fks_all_valid (names:list string) (fks:list json_val) : Tot bool (decreases fks) =
   match fks with
   | [] -> true
-  | fk :: tl -> csvw_fk_valid names fk && csvw_fks_all_valid names tl
+  | fk :: tl ->
+    (match fk with
+     | JObject _ -> csvw_fk_valid names fk
+     | _ -> true)
+    && csvw_fks_all_valid names tl
 
 let csvw_schema_valid (v:json_val) : bool =
   match v with

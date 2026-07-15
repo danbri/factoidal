@@ -789,7 +789,13 @@ let csvw_decode_table_schema (v : Parser_JSON.json_val) :
                    (Parser_JSON.json_get_string "primaryKey" v);
                  ts_inherited = (csvw_decode_inherited v)
                })
-  | uu___ -> FStar_Pervasives_Native.None
+  | uu___ ->
+      FStar_Pervasives_Native.Some
+        {
+          ts_columns = [];
+          ts_primary_key = FStar_Pervasives_Native.None;
+          ts_inherited = csvw_inherited_empty
+        }
 let csvw_key_is_common (k : Prims.string) : Prims.bool=
   FStar_List_Tot_Base.existsb
     (fun c -> (FStar_Char.int_of_char c) = (Prims.of_int (58)))
@@ -1069,7 +1075,7 @@ let csvw_obj_id_ok (v : Parser_JSON.json_val) : Prims.bool=
   match Parser_JSON.json_get_field "@id" v with
   | FStar_Pervasives_Native.Some (Parser_JSON.JString s) ->
       Prims.op_Negation (csvw_is_bnode_ref s)
-  | FStar_Pervasives_Native.Some uu___ -> false
+  | FStar_Pervasives_Native.Some uu___ -> true
   | FStar_Pervasives_Native.None -> true
 let csvw_obj_type_ok (v : Parser_JSON.json_val) (expected : Prims.string) :
   Prims.bool=
@@ -1279,7 +1285,10 @@ let rec csvw_fks_all_valid (names : Prims.string Prims.list)
   (fks : Parser_JSON.json_val Prims.list) : Prims.bool=
   match fks with
   | [] -> true
-  | fk::tl -> (csvw_fk_valid names fk) && (csvw_fks_all_valid names tl)
+  | fk::tl ->
+      (match fk with
+       | Parser_JSON.JObject uu___ -> csvw_fk_valid names fk
+       | uu___ -> true) && (csvw_fks_all_valid names tl)
 let csvw_schema_valid (v : Parser_JSON.json_val) : Prims.bool=
   match v with
   | Parser_JSON.JObject uu___ ->
