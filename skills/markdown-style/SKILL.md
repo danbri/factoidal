@@ -236,6 +236,38 @@ cleanly everywhere" is smaller than the intersection of "patterns
 GitHub web accepts". Stick to the unambiguous patterns and the
 docs work everywhere.
 
+## Emoji as navigation texture (owner request, 2026-07-15)
+
+Chat updates from agents are read on a phone, scrolled at speed,
+between other obligations. Colored emoji (as rendered on a typical
+iPhone) give long text blocks scannable texture: the owner can flick
+through a day of output and stop exactly at decision points, score
+lines, and failures. This works only if the palette is small, stable,
+and semantic — the same marker always meaning the same thing — and
+sparse: one marker on a line that deserves it, none anywhere else.
+Decorative emoji destroy the signal; they are the visual equivalent of
+the sycophantic adjectives banned above.
+
+The palette:
+
+- ✅ landed / gates green / done and verified
+- ❌ regression / gate failure / refuted
+- 🔴 blocker — something needs action before work proceeds
+- 🟡 in flight (agent running, build going, result pending)
+- 📊 score line ("N pass, M fail (out of T)")
+- 🧭 decision needed from the owner — the highest-value marker;
+  never bury one mid-paragraph
+- ⚠️ risk, caveat, or assumption the reader should hold
+- 🧹 cleanup / hygiene / housekeeping
+
+Both directions: the owner may drop emoji into their messages as
+tags/bookmarks for the stream — read them as markers, not tone.
+
+Scope: chat replies and progress updates. Design docs, commit
+messages, and issue comments stay text-first (an emoji in a commit
+message is noise in `git log`); the one exception is issue comments
+that function as status streams, where 📊/✅ on score lines helps.
+
 ## What this skill does NOT cover
 
 - Code formatting style (covered by language-specific tooling).

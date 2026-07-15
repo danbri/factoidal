@@ -120,6 +120,56 @@ regime suite is at 70 pass, 0 fail (out of 70; re-measured 2026-07-10). Tracked 
 outside the entailment regime suite (the anchor still MULTIPLIES rows
 per P-edge and drops vacuous-truth individuals).
 
+## Reading owner steers: prioritization is not prohibition
+
+The owner usually steers this project from a phone, between other
+obligations, against a fast stream of agent output — with no good
+tooling for bookmarking, tagging, or cross-referencing what scrolled
+past. Instructions given under those conditions are prioritizations
+made on a partial view, and the owner has said plainly that they are
+sometimes inaccurate or flawed — most likely for protocol-shaped work,
+which is harder to test casually than format-shaped work (a format
+test is files-in/triples-out; a protocol test needs simulated or live
+endpoints, so a quick scope judgment about it is easier to get wrong).
+
+Rules that follow:
+
+1. **"X deprioritized" is an ordering decision, never a scope
+   prohibition.** Do not let a steer calcify into "out of scope by
+   owner directive" through document inheritance. (It happened: a
+   2026-07-11 "protocols deprioritized" — which actually meant
+   "format work is the lowest-hanging fruit, especially given the
+   historical difficulty of AI-written F\*" — was inherited three
+   documents deep into "owner-excluded" labels on specific CSVW
+   tests. The owner never made that call; see the 2026-07-15
+   correction in the CSVW triage ledger.)
+2. **Quote steers with date and original wording** when writing them
+   into ledgers or design docs. Paraphrase drifts; drift compounds.
+3. **Load-bearing implications get surfaced, not inferred.** Before
+   recording "owner excluded N tests" or dropping a suite from a
+   goal, put the implication back to the owner as one short question.
+   A sentence of friction now beats a fabricated decision that future
+   sessions will read as settled.
+4. **Write for phone-triage.** The owner's instruction quality is a
+   function of our output quality: lead with the result or the
+   decision needed, keep it short, no pseudo-private jargon (glossary
+   rule), scores always labelled. A wall of codenames upstream
+   becomes a flawed instruction downstream.
+5. **Use a small, stable emoji palette as visual anchors** (owner
+   request, 2026-07-15): colored emoji render as scannable texture on
+   a phone, letting the owner navigate giant scrolling blocks at
+   flick-speed. Fixed meanings, applied sparingly (one marker per
+   line that matters, never decoration): ✅ landed/gates green ·
+   ❌ regression/gate failure · 🔴 blocker needing action ·
+   🟡 in flight · 📊 score line · 🧭 decision needed from owner ·
+   ⚠️ risk/caveat · 🧹 cleanup/hygiene. Owner messages may use emoji
+   as markers too — treat them as tagging, not tone. Full register
+   rules: `skills/markdown-style/SKILL.md`.
+6. **Old steers decay — re-verify before acting on one.** "Protocols
+   deprioritized" predated SPARQL Protocol reaching 53 pass, 0 fail;
+   citing a steer against a tree that has since moved is acting on
+   stale data.
+
 ## Agent Work Strategy
 
 Use subagents aggressively for parallelism — independent work
