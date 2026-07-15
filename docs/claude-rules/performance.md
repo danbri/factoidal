@@ -48,6 +48,24 @@ The current-walls summary lives in
 [`skills/perf-benchmarking/SKILL.md`](../../skills/perf-benchmarking/SKILL.md)
 § "Scaling status".
 
+## OWL 2 DL suite wall-clock (measured 2026-07-15)
+
+Measured on the merged tree of the Wave-B (dateTime facets) and
+Z33kr-Phase-0 landings, freshly rebuilt binaries, remote container,
+`FACTOIDAL_OWL_CAP_SEC=20`, single run each
+(`.claude-runs/z33kr-land-gates-owl.log`):
+
+- type-inconsistency (DL regime): **43.1s** for 112 pass, 16 fail
+  (out of 128). Confirms the svf2 depth-cap landing's claim
+  (`2e4e328e`, 141s → 45s) still holds on the current tree; the
+  Wave-B facet rules and the Phase-0 recogniser module add no
+  measurable cost (43.1s vs the 44.8s pre-Wave-B baseline).
+- type-consistency catalog (DL regime): **7m 33.8s** total —
+  PE 121.8s (103 pass, 101 fail out of 204), NE 9.5s (22 pass,
+  1 fail out of 23), Cons 321.7s (334 pass, 18 fail out of 352).
+  The consistency phase dominates; it is the next timing target if
+  OWL suite wall-clock needs to shrink.
+
 ## Corpus: QUDT v3.4.0 all-in-one (SHACL-at-scale, measured 2026-07-10)
 
 `third_party/qudt/QUDT-all-in-one-SHACL.ttl` (6,791,181 bytes,
