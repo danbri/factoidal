@@ -7,8 +7,8 @@
 * Warning 247 at RDFS.Closure.fsti(0,0-0,0):
   - Checked file RDFS.Closure.fsti.checked was not written.
   - Reason:
-      checked file RDF.Vocabulary.Axioms.fst.checked is stale (dependence hash
-      mismatch, use --debug CheckedFiles for more details)
+      checked file RDF.Indexed.fsti.checked is stale (dependence hash mismatch,
+      use --debug CheckedFiles for more details)
 
 Verified i'face (or impl+i'face): RDFS.Closure
 All verification conditions discharged successfully

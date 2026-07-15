@@ -190,10 +190,204 @@ let lang_tag_option_eq (t1 t2 : option string) : bool =
   | Some s1, Some s2 -> lang_tag_eq s1 s2
   | _, _ -> false
 
+(** ------------------------------------------------------------------ *)
+(** XMLLiteral value equality — RDF 1.1 section 5.1                    *)
+(**                                                                    *)
+(** RDF 1.1 defines the value space of rdf:XMLLiteral via exclusive    *)
+(** canonical XML: two XMLLiterals denote the same value iff their     *)
+(** exclusive-c14n forms are equal. Comparing lexical forms as plain   *)
+(** strings is UNSOUND for functional-property counting — two          *)
+(** whitespace / attribute-order variants of one markup are one value, *)
+(** not two (WebOnt-miscellaneous-202: a false clash). The RDF/XML     *)
+(** parser's parseType="Literal" serializer already normalises         *)
+(** self-closing tags and intra-tag whitespace; the one remaining      *)
+(** c14n-insignificant difference it leaves is ATTRIBUTE ORDER (XML    *)
+(** infosets treat attributes as an unordered set). This canonicaliser *)
+(** sorts the attributes of every start tag and is otherwise verbatim: *)
+(**   - text content (incl. whitespace) preserved exactly              *)
+(**   - end tags, comments (!), PIs (?) emitted verbatim               *)
+(**   - self-closing start tags expand to open+close (same infoset)    *)
+(** Only genuinely-insignificant aspects are normalised, so two        *)
+(** DISTINCT XMLLiterals never canonicalise equal (no completeness     *)
+(** hole in clash detection); equal-value variants do (removes the     *)
+(** false clash). Char-list based; totality by structural recursion    *)
+(** on list length or an explicit fuel bound.                          *)
+(** ------------------------------------------------------------------ *)
+
+/// `rdf:XMLLiteral` — the datatype whose value space is exclusive
+/// canonical XML (RDF 1.1 section 5.1).
+let rdf_XMLLiteral : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/1999/02/22-rdf-syntax-ns#XMLLiteral");
+  "http://www.w3.org/1999/02/22-rdf-syntax-ns#XMLLiteral"
+
+let xmlc_is_ws (c : FStar.Char.char) : bool =
+  let n = FStar.Char.int_of_char c in
+  n = 0x20 || n = 0x09 || n = 0x0A || n = 0x0D
+
+/// Lexicographic comparison of two char lists by codepoint.
+let rec xmlc_chars_lt (a b : list FStar.Char.char) : Tot bool (decreases a) =
+  match a, b with
+  | [], [] -> false
+  | [], _ :: _ -> true
+  | _ :: _, [] -> false
+  | x :: xs, y :: ys ->
+    let nx = FStar.Char.int_of_char x in
+    let ny = FStar.Char.int_of_char y in
+    if nx < ny then true
+    else if nx > ny then false
+    else xmlc_chars_lt xs ys
+
+/// Read a tag/attribute name: up to whitespace, `/`, `=`, or end.
+/// Returns (name, remainder-at-delimiter).
+let rec xmlc_take_name (cs acc : list FStar.Char.char)
+  : Tot (list FStar.Char.char * list FStar.Char.char) (decreases cs) =
+  match cs with
+  | [] -> (List.Tot.rev acc, [])
+  | c :: rest ->
+    if xmlc_is_ws c || c = '/' || c = '=' then (List.Tot.rev acc, cs)
+    else xmlc_take_name rest (c :: acc)
+
+/// Drop leading whitespace.
+let rec xmlc_drop_ws (cs : list FStar.Char.char)
+  : Tot (list FStar.Char.char) (decreases cs) =
+  match cs with
+  | c :: rest -> if xmlc_is_ws c then xmlc_drop_ws rest else cs
+  | [] -> []
+
+/// Position just past the `=` between an attribute name and its value.
+let xmlc_drop_to_value (cs : list FStar.Char.char) : list FStar.Char.char =
+  let cs1 = xmlc_drop_ws cs in
+  match cs1 with
+  | c :: rest -> if c = '=' then xmlc_drop_ws rest else cs1
+  | [] -> cs1
+
+/// Read chars up to (and consuming) the closing quote `q`.
+let rec xmlc_take_until (q : FStar.Char.char) (cs acc : list FStar.Char.char)
+  : Tot (list FStar.Char.char * list FStar.Char.char) (decreases cs) =
+  match cs with
+  | [] -> (List.Tot.rev acc, [])
+  | c :: rest -> if c = q then (List.Tot.rev acc, rest)
+                 else xmlc_take_until q rest (c :: acc)
+
+/// Read one quoted attribute value; returns (value, remainder).
+let xmlc_take_quoted (cs : list FStar.Char.char)
+  : (list FStar.Char.char * list FStar.Char.char) =
+  match cs with
+  | c :: rest -> if c = '"' || c = '\'' then xmlc_take_until c rest []
+                 else ([], cs)
+  | [] -> ([], [])
+
+/// Parse a start tag's attributes into (name, value) pairs, reporting
+/// whether the tag self-closes (`/>`). Fuel-bounded.
+let rec xmlc_parse_attrs (fuel : nat) (cs : list FStar.Char.char)
+                          (acc : list (list FStar.Char.char * list FStar.Char.char))
+  : Tot (list (list FStar.Char.char * list FStar.Char.char) * bool)
+        (decreases fuel) =
+  if fuel = 0 then (List.Tot.rev acc, false)
+  else match cs with
+    | [] -> (List.Tot.rev acc, false)
+    | c :: rest ->
+      if xmlc_is_ws c then xmlc_parse_attrs (fuel - 1) rest acc
+      else if c = '/' then (List.Tot.rev acc, true)
+      else
+        let (nm, r1) = xmlc_take_name cs [] in
+        let r2 = xmlc_drop_to_value r1 in
+        let (v, r3) = xmlc_take_quoted r2 in
+        xmlc_parse_attrs (fuel - 1) r3 ((nm, v) :: acc)
+
+/// Insertion sort of attribute pairs by name (codepoint lexicographic).
+let rec xmlc_insert_attr (p : (list FStar.Char.char * list FStar.Char.char))
+                          (xs : list (list FStar.Char.char * list FStar.Char.char))
+  : Tot (list (list FStar.Char.char * list FStar.Char.char)) (decreases xs) =
+  match xs with
+  | [] -> [p]
+  | q :: rest ->
+    if xmlc_chars_lt (fst p) (fst q) then p :: xs
+    else q :: xmlc_insert_attr p rest
+
+let rec xmlc_sort_attrs (xs : list (list FStar.Char.char * list FStar.Char.char))
+  : Tot (list (list FStar.Char.char * list FStar.Char.char)) (decreases xs) =
+  match xs with
+  | [] -> []
+  | x :: rest -> xmlc_insert_attr x (xmlc_sort_attrs rest)
+
+/// Render sorted attributes as ` name="value"` fragments.
+let rec xmlc_render_attrs (xs : list (list FStar.Char.char * list FStar.Char.char))
+  : Tot (list FStar.Char.char) (decreases xs) =
+  match xs with
+  | [] -> []
+  | (nm, v) :: rest ->
+    List.Tot.append [' ']
+      (List.Tot.append nm
+        (List.Tot.append ['='; '"']
+          (List.Tot.append v
+            (List.Tot.append ['"'] (xmlc_render_attrs rest)))))
+
+/// Canonicalise a single tag body (chars strictly between `<` and `>`),
+/// returning the canonical tag WITH its angle brackets. End tags,
+/// comments (!), and PIs (?) are verbatim; start tags get their
+/// attributes sorted and any self-close expanded to open+close.
+let xmlc_canon_tag (body : list FStar.Char.char) : list FStar.Char.char =
+  match body with
+  | [] -> ['<'; '>']
+  | '/' :: _ -> List.Tot.append ['<'] (List.Tot.append body ['>'])
+  | '!' :: _ -> List.Tot.append ['<'] (List.Tot.append body ['>'])
+  | '?' :: _ -> List.Tot.append ['<'] (List.Tot.append body ['>'])
+  | _ ->
+    let (nm, r1) = xmlc_take_name body [] in
+    let (attrs, self_close) = xmlc_parse_attrs (List.Tot.length r1 + 1) r1 [] in
+    let sorted = xmlc_sort_attrs attrs in
+    let open_tag =
+      List.Tot.append ['<']
+        (List.Tot.append nm
+          (List.Tot.append (xmlc_render_attrs sorted) ['>'])) in
+    if self_close
+    then List.Tot.append open_tag
+           (List.Tot.append ['<'; '/'] (List.Tot.append nm ['>']))
+    else open_tag
+
+/// Scan up to (and consuming) the closing `>`; returns
+/// (body-without-brackets, remainder-after-`>`).
+let rec xmlc_split_tag (cs acc : list FStar.Char.char)
+  : Tot (list FStar.Char.char * list FStar.Char.char) (decreases cs) =
+  match cs with
+  | [] -> (List.Tot.rev acc, [])
+  | c :: rest -> if c = '>' then (List.Tot.rev acc, rest)
+                 else xmlc_split_tag rest (c :: acc)
+
+/// Walk the char stream: text verbatim; a `<` begins a tag that is
+/// canonicalised by `xmlc_canon_tag`. Fuel-bounded.
+let rec xmlc_walk (fuel : nat) (cs : list FStar.Char.char)
+  : Tot (list FStar.Char.char) (decreases fuel) =
+  if fuel = 0 then []
+  else match cs with
+    | [] -> []
+    | c :: rest ->
+      if c = '<' then
+        let (body, remainder) = xmlc_split_tag rest [] in
+        List.Tot.append (xmlc_canon_tag body) (xmlc_walk (fuel - 1) remainder)
+      else c :: xmlc_walk (fuel - 1) rest
+
+let xmlc_canonicalize (s : string) : list FStar.Char.char =
+  let cs = String.list_of_string s in
+  xmlc_walk (List.Tot.length cs + 1) cs
+
+/// XMLLiteral value equality: equal iff canonical char-streams match.
+/// Reflexive by construction (`f x = f x`).
+let xml_canon_eq (s1 s2 : string) : bool =
+  xmlc_canonicalize s1 = xmlc_canonicalize s2
+
 /// Structural equality on literals: lexical form and datatype compare
 /// exactly; the language tag (if any) compares case-insensitively.
+/// Exception: when both literals are rdf:XMLLiteral-typed, lexical
+/// forms compare via `xml_canon_eq` (RDF 1.1 exclusive-c14n value
+/// equality) rather than as raw strings — the sound fix for the
+/// WebOnt-miscellaneous-202 false functional-property clash. Reflexive:
+/// the XMLLiteral branch reduces to `f x = f x`.
 let literal_eq (l1 l2 : literal) : bool =
-  l1.lexical_form = l2.lexical_form &&
+  (if l1.datatype = rdf_XMLLiteral && l2.datatype = rdf_XMLLiteral
+   then xml_canon_eq l1.lexical_form l2.lexical_form
+   else l1.lexical_form = l2.lexical_form) &&
   l1.datatype = l2.datatype &&
   lang_tag_option_eq l1.lang_tag l2.lang_tag
 

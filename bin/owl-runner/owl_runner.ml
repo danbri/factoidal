@@ -995,16 +995,24 @@ let run_positive_entailment
     let p_src = expand_catalog_entities p_lex in
     let c_src = expand_catalog_entities c_lex in
     let base = info.iri in
-    let g_p_authored =
-      try Parser_RDFXML.parse_rdfxml_with_base base p_src
-      with _ -> [] in
-    let g_p = load_imports_into_premise info imports_lookup g_p_authored in
+    (* Distinguish parser-exception (None) from a legitimately-empty
+       parse result (Some []). A vocabulary-inherent PositiveEntailment
+       claim (e.g. "rdfs:comment is an owl:AnnotationProperty") may have
+       an empty ABox premise; the conclusion is entailed from RDF/RDFS/
+       OWL semantics via the closure, so an empty-but-parsed premise
+       must proceed to closure rather than short-circuiting. *)
+    let g_p_authored_opt =
+      try Some (Parser_RDFXML.parse_rdfxml_with_base base p_src)
+      with _ -> None in
     let g_c =
       try Parser_RDFXML.parse_rdfxml_with_base base c_src
       with _ -> [] in
-    if g_p = [] then Fail_parse_premise
-    else if g_c = [] then Fail_parse_conclusion
-    else begin
+    (match g_p_authored_opt with
+     | None -> Fail_parse_premise
+     | Some g_p_authored ->
+      let g_p = load_imports_into_premise info imports_lookup g_p_authored in
+      if g_c = [] then Fail_parse_conclusion
+      else begin
       let closure =
         try apply_closure g_p
         with _ -> g_p in
@@ -1016,7 +1024,7 @@ let run_positive_entailment
           else Fail_conclusion_miss t
       in
       check g_c
-    end
+      end)
 
 (* NegativeEntailmentTest: the conclusion is asserted to NOT be a
    logical consequence of the premise. Pass iff at least one
@@ -1046,16 +1054,22 @@ let run_negative_entailment
     let p_src = expand_catalog_entities p_lex in
     let c_src = expand_catalog_entities c_lex in
     let base = info.iri in
-    let g_p_authored =
-      try Parser_RDFXML.parse_rdfxml_with_base base p_src
-      with _ -> [] in
-    let g_p = load_imports_into_premise info imports_lookup g_p_authored in
+    (* Distinguish parser-exception (None) from a legitimately-empty
+       parse result (Some []). An empty premise entails almost nothing,
+       so a NegativeEntailmentTest with an empty premise is a genuine
+       (sound) non-entailment, not a parse failure. *)
+    let g_p_authored_opt =
+      try Some (Parser_RDFXML.parse_rdfxml_with_base base p_src)
+      with _ -> None in
     let g_c =
       try Parser_RDFXML.parse_rdfxml_with_base base c_src
       with _ -> [] in
-    if g_p = [] then Fail_parse_premise
-    else if g_c = [] then Fail_parse_conclusion
-    else begin
+    (match g_p_authored_opt with
+     | None -> Fail_parse_premise
+     | Some g_p_authored ->
+      let g_p = load_imports_into_premise info imports_lookup g_p_authored in
+      if g_c = [] then Fail_parse_conclusion
+      else begin
       let sem_mode = owl_semantics_mode_for info in
       let closure =
         try apply_closure_with_semantics g_p sem_mode
@@ -1068,7 +1082,7 @@ let run_negative_entailment
       in
       if any_missing then Pass
       else Fail_unexpected_entailment
-    end
+      end)
 
 (* ConsistencyTest: premise is asserted CONSISTENT. Pass iff closure has
    no inconsistency marker (per F*'s is_inconsistent in
@@ -1132,12 +1146,22 @@ let run_consistency_test
   | Some p_lex ->
     let p_src = expand_catalog_entities p_lex in
     let base = info.iri in
-    let g_p_authored =
-      try Parser_RDFXML.parse_rdfxml_with_base base p_src
-      with _ -> [] in
-    let g_p = load_imports_into_premise info imports_lookup g_p_authored in
-    if g_p = [] then Fail_parse_premise
-    else begin
+    (* Distinguish "parser threw on malformed input" (None ->
+       Fail_parse_premise) from "parser correctly returned zero triples
+       for a syntactically-valid but empty ontology" (Some []). The
+       vocabulary-inherent ConsistencyTests (WebOnt-Class-001,
+       rdfbased-sem-prop-*-type, ...) carry an intentionally empty
+       premise (`<rdf:RDF xmlns:rdf="..."/>`); an empty ontology is
+       trivially consistent, so it must NOT short-circuit to
+       Fail_parse_premise. *)
+    let g_p_authored_opt =
+      try Some (Parser_RDFXML.parse_rdfxml_with_base base p_src)
+      with _ -> None in
+    (match g_p_authored_opt with
+     | None -> Fail_parse_premise
+     | Some g_p_authored ->
+      let g_p = load_imports_into_premise info imports_lookup g_p_authored in
+      begin
       let (closure_rl, closure) =
         try apply_closure_stages g_p
         with _ -> (g_p, g_p) in
@@ -1151,7 +1175,7 @@ let run_consistency_test
       if capped_is_inconsistent closure || dl_refutes closure_rl
       then Fail_unexpected_inconsistency
       else Pass
-    end
+      end)
 
 (* OWL 2 Functional Syntax path for InconsistencyTest (2026-07-05).
    Same contract as run_positive_entailment_functional_syntax: `None`
@@ -1199,12 +1223,19 @@ let run_inconsistency_test
   | Some p_lex ->
     let p_src = expand_catalog_entities p_lex in
     let base = info.iri in
-    let g_p_authored =
-      try Parser_RDFXML.parse_rdfxml_with_base base p_src
-      with _ -> [] in
-    let g_p = load_imports_into_premise info imports_lookup g_p_authored in
-    if g_p = [] then Fail_parse_premise
-    else begin
+    (* Distinguish parser-exception (None) from a legitimately-empty
+       parse result (Some []). An empty premise can never BE
+       inconsistent, so it scores Fail_unexpected_consistency (the
+       correct verdict for an InconsistencyTest asserting the ontology
+       IS inconsistent) rather than the mislabelled Fail_parse_premise. *)
+    let g_p_authored_opt =
+      try Some (Parser_RDFXML.parse_rdfxml_with_base base p_src)
+      with _ -> None in
+    (match g_p_authored_opt with
+     | None -> Fail_parse_premise
+     | Some g_p_authored ->
+      let g_p = load_imports_into_premise info imports_lookup g_p_authored in
+      begin
       let (closure_rl, closure) =
         try apply_closure_stages g_p
         with _ -> (g_p, g_p) in
@@ -1234,7 +1265,7 @@ let run_inconsistency_test
       else if z3_oracle_refutes id closure_rl
       then Pass_oracle_z3
       else Fail_unexpected_consistency
-    end
+      end)
 
 let format_subject = function
   | RDF_Graph_Executable.S_IRI i -> "<" ^ i ^ ">"
