@@ -1,5 +1,11 @@
 # 2026-07-14 — Z3 as a runtime reasoning backend behind the entailment interfaces
 
+Project name: **Z33kr** (owner-assigned, 2026-07-15). Z33kr is this
+track — the runtime entailment oracle described below — as a
+standalone top-level project. It is registered in
+[`docs/code-name-glossary.md`](../code-name-glossary.md) under
+"Named tracks".
+
 Date: 2026-07-14. Status: PLAN (decision-ready design; no `.fst`,
 `.ml`, or build edits in this branch). Owner question (paraphrased):
 "consider whether z3 can be wired up behind OWL, RIF or SPARQL

@@ -49,6 +49,17 @@ it up here. When in doubt, the doc references are authoritative.
 | **Tav5** | Result-row cap circuit breaker. `--max-rows N`. Emits `[tav5-trace]` when triggered. | `factoidal_http.ml` |
 | **Heth3** | SIGALRM-based per-query timeout (`--query-timeout SECS`, default 120s). Process-global; flagged in audit §A as architecturally wrong, retire-pending. | `factoidal_http.ml:with_query_timeout` |
 
+## Named tracks (owner-assigned project names, not task short-codes)
+
+These are deliberate, owner-chosen names for top-level tracks. They
+are exempt from the no-new-short-codes rule below, which targets
+opaque agent-task codes — a named track is the opposite: the name is
+the public handle for the work.
+
+| Name | Plain description | Primary artefact |
+|-----|-----|-----|
+| **Z33kr** | The z3 runtime entailment-oracle track: z3 consulted at query/validation time behind the OWL DL consistency interface, restricted to the finite-model counting fragment the verified tableau cannot decide, with verdicts reported in a separate oracle-assisted column. Distinct from (and unrelated to) z3's build-time role as the F\* verification backend. Owner-named, 2026-07-15. | `2026-07-14-z3-entailment-backend.md` |
+
 ## CI / process
 
 | Short-code | Plain description | Primary artefact |
