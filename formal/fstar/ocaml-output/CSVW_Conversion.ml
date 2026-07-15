@@ -239,448 +239,13 @@ let csvw_build_literal_lang (lex : Prims.string) (dt : Prims.string)
       then FStar_Pervasives_Native.Some (RDF_Term.T_Literal lit)
       else FStar_Pervasives_Native.None
   | uu___ -> csvw_build_literal lex dt
-type csvw_col_spec =
-  {
-  cs_name: Prims.string ;
-  cs_virtual: Prims.bool ;
-  cs_suppress: Prims.bool ;
-  cs_datatype: CSVW_Metadata.csvw_datatype FStar_Pervasives_Native.option ;
-  cs_about_url: Prims.string FStar_Pervasives_Native.option ;
-  cs_property_url: Prims.string FStar_Pervasives_Native.option ;
-  cs_value_url: Prims.string FStar_Pervasives_Native.option ;
-  cs_separator: Prims.string FStar_Pervasives_Native.option ;
-  cs_lang: Prims.string FStar_Pervasives_Native.option ;
-  cs_null: Prims.string FStar_Pervasives_Native.option }
-let __proj__Mkcsvw_col_spec__item__cs_name (projectee : csvw_col_spec) :
-  Prims.string=
-  match projectee with
-  | { cs_name; cs_virtual; cs_suppress; cs_datatype; cs_about_url;
-      cs_property_url; cs_value_url; cs_separator; cs_lang; cs_null;_} ->
-      cs_name
-let __proj__Mkcsvw_col_spec__item__cs_virtual (projectee : csvw_col_spec) :
-  Prims.bool=
-  match projectee with
-  | { cs_name; cs_virtual; cs_suppress; cs_datatype; cs_about_url;
-      cs_property_url; cs_value_url; cs_separator; cs_lang; cs_null;_} ->
-      cs_virtual
-let __proj__Mkcsvw_col_spec__item__cs_suppress (projectee : csvw_col_spec) :
-  Prims.bool=
-  match projectee with
-  | { cs_name; cs_virtual; cs_suppress; cs_datatype; cs_about_url;
-      cs_property_url; cs_value_url; cs_separator; cs_lang; cs_null;_} ->
-      cs_suppress
-let __proj__Mkcsvw_col_spec__item__cs_datatype (projectee : csvw_col_spec) :
-  CSVW_Metadata.csvw_datatype FStar_Pervasives_Native.option=
-  match projectee with
-  | { cs_name; cs_virtual; cs_suppress; cs_datatype; cs_about_url;
-      cs_property_url; cs_value_url; cs_separator; cs_lang; cs_null;_} ->
-      cs_datatype
-let __proj__Mkcsvw_col_spec__item__cs_about_url (projectee : csvw_col_spec) :
-  Prims.string FStar_Pervasives_Native.option=
-  match projectee with
-  | { cs_name; cs_virtual; cs_suppress; cs_datatype; cs_about_url;
-      cs_property_url; cs_value_url; cs_separator; cs_lang; cs_null;_} ->
-      cs_about_url
-let __proj__Mkcsvw_col_spec__item__cs_property_url
-  (projectee : csvw_col_spec) : Prims.string FStar_Pervasives_Native.option=
-  match projectee with
-  | { cs_name; cs_virtual; cs_suppress; cs_datatype; cs_about_url;
-      cs_property_url; cs_value_url; cs_separator; cs_lang; cs_null;_} ->
-      cs_property_url
-let __proj__Mkcsvw_col_spec__item__cs_value_url (projectee : csvw_col_spec) :
-  Prims.string FStar_Pervasives_Native.option=
-  match projectee with
-  | { cs_name; cs_virtual; cs_suppress; cs_datatype; cs_about_url;
-      cs_property_url; cs_value_url; cs_separator; cs_lang; cs_null;_} ->
-      cs_value_url
-let __proj__Mkcsvw_col_spec__item__cs_separator (projectee : csvw_col_spec) :
-  Prims.string FStar_Pervasives_Native.option=
-  match projectee with
-  | { cs_name; cs_virtual; cs_suppress; cs_datatype; cs_about_url;
-      cs_property_url; cs_value_url; cs_separator; cs_lang; cs_null;_} ->
-      cs_separator
-let __proj__Mkcsvw_col_spec__item__cs_lang (projectee : csvw_col_spec) :
-  Prims.string FStar_Pervasives_Native.option=
-  match projectee with
-  | { cs_name; cs_virtual; cs_suppress; cs_datatype; cs_about_url;
-      cs_property_url; cs_value_url; cs_separator; cs_lang; cs_null;_} ->
-      cs_lang
-let __proj__Mkcsvw_col_spec__item__cs_null (projectee : csvw_col_spec) :
-  Prims.string FStar_Pervasives_Native.option=
-  match projectee with
-  | { cs_name; cs_virtual; cs_suppress; cs_datatype; cs_about_url;
-      cs_property_url; cs_value_url; cs_separator; cs_lang; cs_null;_} ->
-      cs_null
-let csvw_opt_bool (o : Prims.bool FStar_Pervasives_Native.option) :
-  Prims.bool=
-  match o with
-  | FStar_Pervasives_Native.Some b -> b
-  | FStar_Pervasives_Native.None -> false
-let csvw_merge_inherited (specific : CSVW_Metadata.csvw_inherited_props)
-  (general : CSVW_Metadata.csvw_inherited_props) :
-  CSVW_Metadata.csvw_inherited_props=
-  {
-    CSVW_Metadata.inh_about_url =
-      (match specific.CSVW_Metadata.inh_about_url with
-       | FStar_Pervasives_Native.Some uu___ ->
-           specific.CSVW_Metadata.inh_about_url
-       | FStar_Pervasives_Native.None -> general.CSVW_Metadata.inh_about_url);
-    CSVW_Metadata.inh_property_url =
-      (match specific.CSVW_Metadata.inh_property_url with
-       | FStar_Pervasives_Native.Some uu___ ->
-           specific.CSVW_Metadata.inh_property_url
-       | FStar_Pervasives_Native.None ->
-           general.CSVW_Metadata.inh_property_url);
-    CSVW_Metadata.inh_value_url =
-      (match specific.CSVW_Metadata.inh_value_url with
-       | FStar_Pervasives_Native.Some uu___ ->
-           specific.CSVW_Metadata.inh_value_url
-       | FStar_Pervasives_Native.None -> general.CSVW_Metadata.inh_value_url);
-    CSVW_Metadata.inh_lang =
-      (match specific.CSVW_Metadata.inh_lang with
-       | FStar_Pervasives_Native.Some uu___ ->
-           specific.CSVW_Metadata.inh_lang
-       | FStar_Pervasives_Native.None -> general.CSVW_Metadata.inh_lang);
-    CSVW_Metadata.inh_null =
-      (match specific.CSVW_Metadata.inh_null with
-       | FStar_Pervasives_Native.Some uu___ ->
-           specific.CSVW_Metadata.inh_null
-       | FStar_Pervasives_Native.None -> general.CSVW_Metadata.inh_null);
-    CSVW_Metadata.inh_separator =
-      (match specific.CSVW_Metadata.inh_separator with
-       | FStar_Pervasives_Native.Some uu___ ->
-           specific.CSVW_Metadata.inh_separator
-       | FStar_Pervasives_Native.None -> general.CSVW_Metadata.inh_separator);
-    CSVW_Metadata.inh_datatype =
-      (match specific.CSVW_Metadata.inh_datatype with
-       | FStar_Pervasives_Native.Some uu___ ->
-           specific.CSVW_Metadata.inh_datatype
-       | FStar_Pervasives_Native.None -> general.CSVW_Metadata.inh_datatype)
-  }
-let csvw_col_spec_of_column (eff : CSVW_Metadata.csvw_inherited_props)
-  (c : CSVW_Metadata.csvw_column) : csvw_col_spec=
-  {
-    cs_name =
-      (match c.CSVW_Metadata.col_name with
-       | FStar_Pervasives_Native.Some n -> n
-       | FStar_Pervasives_Native.None ->
-           (match c.CSVW_Metadata.col_titles with | t::uu___ -> t | [] -> ""));
-    cs_virtual = (csvw_opt_bool c.CSVW_Metadata.col_virtual);
-    cs_suppress = (csvw_opt_bool c.CSVW_Metadata.col_suppress_output);
-    cs_datatype =
-      (match c.CSVW_Metadata.col_datatype with
-       | FStar_Pervasives_Native.Some d -> FStar_Pervasives_Native.Some d
-       | FStar_Pervasives_Native.None -> eff.CSVW_Metadata.inh_datatype);
-    cs_about_url =
-      (match c.CSVW_Metadata.col_about_url with
-       | FStar_Pervasives_Native.Some a -> FStar_Pervasives_Native.Some a
-       | FStar_Pervasives_Native.None -> eff.CSVW_Metadata.inh_about_url);
-    cs_property_url =
-      (match c.CSVW_Metadata.col_property_url with
-       | FStar_Pervasives_Native.Some p -> FStar_Pervasives_Native.Some p
-       | FStar_Pervasives_Native.None -> eff.CSVW_Metadata.inh_property_url);
-    cs_value_url =
-      (match c.CSVW_Metadata.col_value_url with
-       | FStar_Pervasives_Native.Some v -> FStar_Pervasives_Native.Some v
-       | FStar_Pervasives_Native.None -> eff.CSVW_Metadata.inh_value_url);
-    cs_separator =
-      (match c.CSVW_Metadata.col_separator with
-       | FStar_Pervasives_Native.Some s -> FStar_Pervasives_Native.Some s
-       | FStar_Pervasives_Native.None -> eff.CSVW_Metadata.inh_separator);
-    cs_lang =
-      (match c.CSVW_Metadata.col_lang with
-       | FStar_Pervasives_Native.Some l -> FStar_Pervasives_Native.Some l
-       | FStar_Pervasives_Native.None -> eff.CSVW_Metadata.inh_lang);
-    cs_null =
-      (match c.CSVW_Metadata.col_null with
-       | FStar_Pervasives_Native.Some n -> FStar_Pervasives_Native.Some n
-       | FStar_Pervasives_Native.None -> eff.CSVW_Metadata.inh_null)
-  }
-let csvw_positional_name (i : Prims.int) : Prims.string=
-  Prims.strcat "_col." (Prims.string_of_int (i + Prims.int_one))
-let csvw_col_specs_from_header (header_cells : Prims.string Prims.list) :
-  csvw_col_spec Prims.list=
-  FStar_List_Tot_Base.mapi
-    (fun i h ->
-       {
-         cs_name = (if h = "" then csvw_positional_name i else h);
-         cs_virtual = false;
-         cs_suppress = false;
-         cs_datatype = FStar_Pervasives_Native.None;
-         cs_about_url = FStar_Pervasives_Native.None;
-         cs_property_url = FStar_Pervasives_Native.None;
-         cs_value_url = FStar_Pervasives_Native.None;
-         cs_separator = FStar_Pervasives_Native.None;
-         cs_lang = FStar_Pervasives_Native.None;
-         cs_null = FStar_Pervasives_Native.None
-       }) header_cells
-let csvw_col_specs_positional (header_cells : Prims.string Prims.list) :
-  csvw_col_spec Prims.list=
-  FStar_List_Tot_Base.mapi
-    (fun i h ->
-       {
-         cs_name = (csvw_positional_name i);
-         cs_virtual = false;
-         cs_suppress = false;
-         cs_datatype = FStar_Pervasives_Native.None;
-         cs_about_url = FStar_Pervasives_Native.None;
-         cs_property_url = FStar_Pervasives_Native.None;
-         cs_value_url = FStar_Pervasives_Native.None;
-         cs_separator = FStar_Pervasives_Native.None;
-         cs_lang = FStar_Pervasives_Native.None;
-         cs_null = FStar_Pervasives_Native.None
-       }) header_cells
-let csvw_build_col_specs (grp : CSVW_Metadata.csvw_inherited_props)
-  (tbl : CSVW_Metadata.csvw_inherited_props)
-  (ts_opt : CSVW_Metadata.csvw_table_schema FStar_Pervasives_Native.option)
-  (header_cells : Prims.string Prims.list) : csvw_col_spec Prims.list=
-  match ts_opt with
-  | FStar_Pervasives_Native.Some ts ->
-      if Prims.uu___is_Cons ts.CSVW_Metadata.ts_columns
-      then
-        let eff =
-          csvw_merge_inherited ts.CSVW_Metadata.ts_inherited
-            (csvw_merge_inherited tbl grp) in
-        FStar_List_Tot_Base.map (csvw_col_spec_of_column eff)
-          ts.CSVW_Metadata.ts_columns
-      else csvw_col_specs_positional header_cells
-  | FStar_Pervasives_Native.None -> csvw_col_specs_from_header header_cells
-let csvw_header_row_count
-  (dia_opt : CSVW_Metadata.csvw_dialect FStar_Pervasives_Native.option) :
-  Prims.nat=
-  match dia_opt with
-  | FStar_Pervasives_Native.None -> Prims.int_one
-  | FStar_Pervasives_Native.Some dia ->
-      (match dia.CSVW_Metadata.dia_header_row_count with
-       | FStar_Pervasives_Native.Some n ->
-           if n >= Prims.int_zero then n else Prims.int_one
-       | FStar_Pervasives_Native.None ->
-           (match dia.CSVW_Metadata.dia_header with
-            | FStar_Pervasives_Native.Some false -> Prims.int_zero
-            | uu___ -> Prims.int_one))
-let csvw_skip_rows_count
-  (dia_opt : CSVW_Metadata.csvw_dialect FStar_Pervasives_Native.option) :
-  Prims.nat=
-  match dia_opt with
-  | FStar_Pervasives_Native.None -> Prims.int_zero
-  | FStar_Pervasives_Native.Some dia ->
-      (match dia.CSVW_Metadata.dia_skip_rows with
-       | FStar_Pervasives_Native.Some n ->
-           if n >= Prims.int_zero then n else Prims.int_zero
-       | FStar_Pervasives_Native.None -> Prims.int_zero)
-let rec csvw_drop : 'a . Prims.nat -> 'a Prims.list -> 'a Prims.list =
-  fun n l ->
-    if n = Prims.int_zero
-    then l
-    else
-      (match l with
-       | [] -> []
-       | uu___1::tl -> csvw_drop (n - Prims.int_one) tl)
-let rec csvw_index_from :
-  'a . Prims.nat -> 'a Prims.list -> (Prims.nat * 'a) Prims.list =
-  fun n l ->
-    match l with
-    | [] -> []
-    | hd::tl -> (n, hd) :: (csvw_index_from (n + Prims.int_one) tl)
-let rec csvw_zip_specs_cells (specs : csvw_col_spec Prims.list)
-  (cells : Prims.string Prims.list) :
-  (csvw_col_spec * Prims.string) Prims.list=
-  match (specs, cells) with
-  | (s::srest, c::crest) -> (s, c) :: (csvw_zip_specs_cells srest crest)
-  | (uu___, uu___1) -> []
-let csvw_effective_table_url (base_iri : Prims.string)
-  (fallback_url : Prims.string) (tbl : CSVW_Metadata.csvw_table) :
-  Prims.string=
-  let raw =
-    match tbl.CSVW_Metadata.tbl_url with
-    | FStar_Pervasives_Native.Some u -> u
-    | FStar_Pervasives_Native.None -> fallback_url in
-  RDF_IRI.resolve_iri_v2 base_iri raw
-let csvw_row_lookup
-  (phys_bindings : (Prims.string * Prims.string) Prims.list)
-  (row_num : Prims.nat) (source_row_num : Prims.nat) (v : Prims.string) :
-  Prims.string FStar_Pervasives_Native.option=
-  if v = "_row"
-  then FStar_Pervasives_Native.Some (Prims.string_of_int row_num)
-  else
-    if v = "_sourceRow"
-    then FStar_Pervasives_Native.Some (Prims.string_of_int source_row_num)
-    else FStar_List_Tot_Base.assoc v phys_bindings
-let csvw_term_of_subject (s : RDF_Term.subject) : RDF_Term.rdf_term=
-  match s with
-  | RDF_Term.S_IRI i -> RDF_Term.T_IRI i
-  | RDF_Term.S_BNode b -> RDF_Term.T_BNode b
-let csvw_cell_object (table_url_resolved : Prims.string)
-  (spec : csvw_col_spec)
-  (cell_text : Prims.string FStar_Pervasives_Native.option)
-  (lookup : Prims.string -> Prims.string FStar_Pervasives_Native.option) :
-  RDF_Term.rdf_term FStar_Pervasives_Native.option=
-  match spec.cs_value_url with
-  | FStar_Pervasives_Native.Some tmpl ->
-      let raw = CSVW_URITemplate.csvw_expand_template lookup tmpl in
-      let resolved = RDF_IRI.resolve_iri_v2 table_url_resolved raw in
-      if RDF_Term.is_iri resolved
-      then FStar_Pervasives_Native.Some (RDF_Term.T_IRI resolved)
-      else FStar_Pervasives_Native.None
-  | FStar_Pervasives_Native.None ->
-      (match cell_text with
-       | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
-       | FStar_Pervasives_Native.Some txt ->
-           let is_null =
-             (txt = "") ||
-               (match spec.cs_null with
-                | FStar_Pervasives_Native.Some n -> txt = n
-                | FStar_Pervasives_Native.None -> false) in
-           if is_null
-           then FStar_Pervasives_Native.None
-           else
-             (let dt_str = csvw_datatype_iri spec.cs_datatype in
-              let dt_wf =
-                if RDF_Term.is_iri dt_str
-                then FStar_Pervasives_Native.Some dt_str
-                else FStar_Pervasives_Native.None in
-              match dt_wf with
-              | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
-              | FStar_Pervasives_Native.Some d ->
-                  let base_name = csvw_dt_base_name_of spec.cs_datatype in
-                  let uu___1 = csvw_dt_format_facets spec.cs_datatype in
-                  (match uu___1 with
-                   | (fmt_str, pat, grp, dec) ->
-                       let uu___2 =
-                         match CSVW_Formats.csvw_format_convert base_name
-                                 fmt_str pat grp dec txt
-                         with
-                         | CSVW_Formats.FO_Invalid ->
-                             (txt, RDF_Term.xsd_string)
-                         | CSVW_Formats.FO_Valid canonical -> (canonical, d)
-                         | CSVW_Formats.FO_NoFormat -> (txt, d) in
-                       (match uu___2 with
-                        | (lex, dt_eff) ->
-                            let violate =
-                              (XSD_Datatypes.literal_ill_formed dt_eff lex)
-                                ||
-                                (Prims.op_Negation
-                                   (csvw_value_satisfies base_name lex
-                                      spec.cs_datatype)) in
-                            let eff =
-                              if violate then RDF_Term.xsd_string else dt_eff in
-                            csvw_build_literal_lang lex eff spec.cs_lang))))
-let csvw_encode_name (s : Prims.string) : Prims.string=
-  FStar_String.string_of_list
-    (FStar_List_Tot_Base.concatMap
-       (fun c ->
-          if (FStar_Char.int_of_char c) = (Prims.of_int (45))
-          then
-            [FStar_Char.char_of_int (Prims.of_int (37));
-            FStar_Char.char_of_int (Prims.of_int (50));
-            FStar_Char.char_of_int (Prims.of_int (68))]
-          else [c])
-       (FStar_String.list_of_string (SPARQL11_Algebra.string_encode_uri s)))
-let csvw_split_list_cell (sep : Prims.string) (s : Prims.string) :
-  Prims.string Prims.list=
-  match FStar_String.list_of_string sep with
-  | sepc::uu___ ->
-      FStar_List_Tot_Base.map FStar_String.string_of_list
-        (CSVW_Formats.split_all sepc (FStar_String.list_of_string s))
-  | [] -> [s]
-let csvw_process_cell (table_url_resolved : Prims.string)
-  (lookup : Prims.string -> Prims.string FStar_Pervasives_Native.option)
-  (default_subject : RDF_Term.subject) (spec : csvw_col_spec)
-  (cell_text : Prims.string FStar_Pervasives_Native.option) :
-  (RDF_Term.subject * RDF_Triple.triple Prims.list)=
-  if spec.cs_suppress
-  then (default_subject, [])
-  else
-    (let cur_lookup v =
-       if v = "_name"
-       then FStar_Pervasives_Native.Some (spec.cs_name)
-       else lookup v in
-     let subj =
-       match spec.cs_about_url with
-       | FStar_Pervasives_Native.Some tmpl ->
-           let raw = CSVW_URITemplate.csvw_expand_template cur_lookup tmpl in
-           let resolved = RDF_IRI.resolve_iri_v2 table_url_resolved raw in
-           if RDF_Term.is_iri resolved
-           then RDF_Term.S_IRI resolved
-           else default_subject
-       | FStar_Pervasives_Native.None -> default_subject in
-     let raw =
-       match spec.cs_property_url with
-       | FStar_Pervasives_Native.Some tmpl ->
-           RDF_IRI.resolve_iri_v2 table_url_resolved
-             (CSVW_URITemplate.csvw_expand_template cur_lookup tmpl)
-       | FStar_Pervasives_Native.None ->
-           Prims.strcat table_url_resolved
-             (Prims.strcat "#" (csvw_encode_name spec.cs_name)) in
-     let pred_valid =
-       if RDF_Term.is_iri raw
-       then FStar_Pervasives_Native.Some raw
-       else FStar_Pervasives_Native.None in
-     match pred_valid with
-     | FStar_Pervasives_Native.None -> (subj, [])
-     | FStar_Pervasives_Native.Some pred_str ->
-         (match ((spec.cs_separator), cell_text) with
-          | (FStar_Pervasives_Native.Some sep, FStar_Pervasives_Native.Some
-             txt) ->
-              let parts = csvw_split_list_cell sep txt in
-              let objs =
-                FStar_List_Tot_Base.choose
-                  (fun part ->
-                     csvw_cell_object table_url_resolved spec
-                       (FStar_Pervasives_Native.Some part) cur_lookup) parts in
-              (subj,
-                (FStar_List_Tot_Base.map
-                   (fun o ->
-                      {
-                        RDF_Triple.s = subj;
-                        RDF_Triple.p = pred_str;
-                        RDF_Triple.o = o
-                      }) objs))
-          | uu___1 ->
-              (match csvw_cell_object table_url_resolved spec cell_text
-                       cur_lookup
-               with
-               | FStar_Pervasives_Native.None -> (subj, [])
-               | FStar_Pervasives_Native.Some obj ->
-                   (subj,
-                     [{
-                        RDF_Triple.s = subj;
-                        RDF_Triple.p = pred_str;
-                        RDF_Triple.o = obj
-                      }]))))
-let csvw_row_cell_results (table_url_resolved : Prims.string)
-  (col_specs : csvw_col_spec Prims.list) (row_num : Prims.nat)
-  (source_row_num : Prims.nat) (cells : Prims.string Prims.list) :
-  (RDF_Term.subject * RDF_Triple.triple Prims.list) Prims.list=
-  let phys_specs =
-    FStar_List_Tot_Base.filter (fun s -> Prims.op_Negation s.cs_virtual)
-      col_specs in
-  let virt_specs =
-    FStar_List_Tot_Base.filter (fun s -> s.cs_virtual) col_specs in
-  let phys_pairs = csvw_zip_specs_cells phys_specs cells in
-  let phys_bindings =
-    FStar_List_Tot_Base.map
-      (fun p ->
-         (((FStar_Pervasives_Native.fst p).cs_name),
-           (FStar_Pervasives_Native.snd p))) phys_pairs in
-  let lookup = csvw_row_lookup phys_bindings row_num source_row_num in
-  let default_subject =
-    RDF_Term.S_BNode
-      (Prims.strcat "csvwrow_"
-         (Prims.strcat
-            (SPARQL11_Algebra.string_encode_uri table_url_resolved)
-            (Prims.strcat "_" (Prims.string_of_int source_row_num)))) in
-  FStar_List_Tot_Base.op_At
-    (FStar_List_Tot_Base.map
-       (fun p ->
-          csvw_process_cell table_url_resolved lookup default_subject
-            (FStar_Pervasives_Native.fst p)
-            (FStar_Pervasives_Native.Some (FStar_Pervasives_Native.snd p)))
-       phys_pairs)
-    (FStar_List_Tot_Base.map
-       (fun s ->
-          csvw_process_cell table_url_resolved lookup default_subject s
-            FStar_Pervasives_Native.None) virt_specs)
+let rdf_first_iri : RDF_Term.wf_iri=
+  "http://www.w3.org/1999/02/22-rdf-syntax-ns#first"
+let rdf_rest_iri : RDF_Term.wf_iri=
+  "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest"
+let rdf_nil_iri : RDF_Term.wf_iri=
+  "http://www.w3.org/1999/02/22-rdf-syntax-ns#nil"
+let csvw_title_pred : RDF_Term.wf_iri= Prims.strcat csvw_ns "title"
 let csvw_curie_ns (prefix : Prims.string) :
   Prims.string FStar_Pervasives_Native.option=
   if prefix = "rdf"
@@ -770,6 +335,570 @@ let csvw_expand_curie (key : Prims.string) : Prims.string=
         (match csvw_curie_ns (FStar_String.string_of_list b) with
          | FStar_Pervasives_Native.Some ns -> Prims.strcat ns local
          | FStar_Pervasives_Native.None -> key)
+let csvw_builtin_type_term (t : Prims.string) :
+  Prims.string FStar_Pervasives_Native.option=
+  if
+    (((((((((((((t = "TableGroup") || (t = "Table")) || (t = "Schema")) ||
+                (t = "Column"))
+               || (t = "Row"))
+              || (t = "Dialect"))
+             || (t = "Template"))
+            || (t = "Datatype"))
+           || (t = "Direction"))
+          || (t = "ForeignKey"))
+         || (t = "NumericFormat"))
+        || (t = "TableReference"))
+       || (t = "Cell"))
+      || (t = "JSON")
+  then FStar_Pervasives_Native.Some (Prims.strcat csvw_ns t)
+  else FStar_Pervasives_Native.None
+let csvw_expand_type_token (t : Prims.string) : Prims.string=
+  match csvw_builtin_type_term t with
+  | FStar_Pervasives_Native.Some iri -> iri
+  | FStar_Pervasives_Native.None -> csvw_expand_curie t
+type csvw_col_spec =
+  {
+  cs_name: Prims.string ;
+  cs_virtual: Prims.bool ;
+  cs_suppress: Prims.bool ;
+  cs_datatype: CSVW_Metadata.csvw_datatype FStar_Pervasives_Native.option ;
+  cs_about_url: Prims.string FStar_Pervasives_Native.option ;
+  cs_property_url: Prims.string FStar_Pervasives_Native.option ;
+  cs_value_url: Prims.string FStar_Pervasives_Native.option ;
+  cs_separator: Prims.string FStar_Pervasives_Native.option ;
+  cs_lang: Prims.string FStar_Pervasives_Native.option ;
+  cs_null: Prims.string FStar_Pervasives_Native.option ;
+  cs_ordered: Prims.bool }
+let __proj__Mkcsvw_col_spec__item__cs_name (projectee : csvw_col_spec) :
+  Prims.string=
+  match projectee with
+  | { cs_name; cs_virtual; cs_suppress; cs_datatype; cs_about_url;
+      cs_property_url; cs_value_url; cs_separator; cs_lang; cs_null;
+      cs_ordered;_} -> cs_name
+let __proj__Mkcsvw_col_spec__item__cs_virtual (projectee : csvw_col_spec) :
+  Prims.bool=
+  match projectee with
+  | { cs_name; cs_virtual; cs_suppress; cs_datatype; cs_about_url;
+      cs_property_url; cs_value_url; cs_separator; cs_lang; cs_null;
+      cs_ordered;_} -> cs_virtual
+let __proj__Mkcsvw_col_spec__item__cs_suppress (projectee : csvw_col_spec) :
+  Prims.bool=
+  match projectee with
+  | { cs_name; cs_virtual; cs_suppress; cs_datatype; cs_about_url;
+      cs_property_url; cs_value_url; cs_separator; cs_lang; cs_null;
+      cs_ordered;_} -> cs_suppress
+let __proj__Mkcsvw_col_spec__item__cs_datatype (projectee : csvw_col_spec) :
+  CSVW_Metadata.csvw_datatype FStar_Pervasives_Native.option=
+  match projectee with
+  | { cs_name; cs_virtual; cs_suppress; cs_datatype; cs_about_url;
+      cs_property_url; cs_value_url; cs_separator; cs_lang; cs_null;
+      cs_ordered;_} -> cs_datatype
+let __proj__Mkcsvw_col_spec__item__cs_about_url (projectee : csvw_col_spec) :
+  Prims.string FStar_Pervasives_Native.option=
+  match projectee with
+  | { cs_name; cs_virtual; cs_suppress; cs_datatype; cs_about_url;
+      cs_property_url; cs_value_url; cs_separator; cs_lang; cs_null;
+      cs_ordered;_} -> cs_about_url
+let __proj__Mkcsvw_col_spec__item__cs_property_url
+  (projectee : csvw_col_spec) : Prims.string FStar_Pervasives_Native.option=
+  match projectee with
+  | { cs_name; cs_virtual; cs_suppress; cs_datatype; cs_about_url;
+      cs_property_url; cs_value_url; cs_separator; cs_lang; cs_null;
+      cs_ordered;_} -> cs_property_url
+let __proj__Mkcsvw_col_spec__item__cs_value_url (projectee : csvw_col_spec) :
+  Prims.string FStar_Pervasives_Native.option=
+  match projectee with
+  | { cs_name; cs_virtual; cs_suppress; cs_datatype; cs_about_url;
+      cs_property_url; cs_value_url; cs_separator; cs_lang; cs_null;
+      cs_ordered;_} -> cs_value_url
+let __proj__Mkcsvw_col_spec__item__cs_separator (projectee : csvw_col_spec) :
+  Prims.string FStar_Pervasives_Native.option=
+  match projectee with
+  | { cs_name; cs_virtual; cs_suppress; cs_datatype; cs_about_url;
+      cs_property_url; cs_value_url; cs_separator; cs_lang; cs_null;
+      cs_ordered;_} -> cs_separator
+let __proj__Mkcsvw_col_spec__item__cs_lang (projectee : csvw_col_spec) :
+  Prims.string FStar_Pervasives_Native.option=
+  match projectee with
+  | { cs_name; cs_virtual; cs_suppress; cs_datatype; cs_about_url;
+      cs_property_url; cs_value_url; cs_separator; cs_lang; cs_null;
+      cs_ordered;_} -> cs_lang
+let __proj__Mkcsvw_col_spec__item__cs_null (projectee : csvw_col_spec) :
+  Prims.string FStar_Pervasives_Native.option=
+  match projectee with
+  | { cs_name; cs_virtual; cs_suppress; cs_datatype; cs_about_url;
+      cs_property_url; cs_value_url; cs_separator; cs_lang; cs_null;
+      cs_ordered;_} -> cs_null
+let __proj__Mkcsvw_col_spec__item__cs_ordered (projectee : csvw_col_spec) :
+  Prims.bool=
+  match projectee with
+  | { cs_name; cs_virtual; cs_suppress; cs_datatype; cs_about_url;
+      cs_property_url; cs_value_url; cs_separator; cs_lang; cs_null;
+      cs_ordered;_} -> cs_ordered
+let csvw_opt_bool (o : Prims.bool FStar_Pervasives_Native.option) :
+  Prims.bool=
+  match o with
+  | FStar_Pervasives_Native.Some b -> b
+  | FStar_Pervasives_Native.None -> false
+let csvw_merge_inherited (specific : CSVW_Metadata.csvw_inherited_props)
+  (general : CSVW_Metadata.csvw_inherited_props) :
+  CSVW_Metadata.csvw_inherited_props=
+  {
+    CSVW_Metadata.inh_about_url =
+      (match specific.CSVW_Metadata.inh_about_url with
+       | FStar_Pervasives_Native.Some uu___ ->
+           specific.CSVW_Metadata.inh_about_url
+       | FStar_Pervasives_Native.None -> general.CSVW_Metadata.inh_about_url);
+    CSVW_Metadata.inh_property_url =
+      (match specific.CSVW_Metadata.inh_property_url with
+       | FStar_Pervasives_Native.Some uu___ ->
+           specific.CSVW_Metadata.inh_property_url
+       | FStar_Pervasives_Native.None ->
+           general.CSVW_Metadata.inh_property_url);
+    CSVW_Metadata.inh_value_url =
+      (match specific.CSVW_Metadata.inh_value_url with
+       | FStar_Pervasives_Native.Some uu___ ->
+           specific.CSVW_Metadata.inh_value_url
+       | FStar_Pervasives_Native.None -> general.CSVW_Metadata.inh_value_url);
+    CSVW_Metadata.inh_lang =
+      (match specific.CSVW_Metadata.inh_lang with
+       | FStar_Pervasives_Native.Some uu___ ->
+           specific.CSVW_Metadata.inh_lang
+       | FStar_Pervasives_Native.None -> general.CSVW_Metadata.inh_lang);
+    CSVW_Metadata.inh_null =
+      (match specific.CSVW_Metadata.inh_null with
+       | FStar_Pervasives_Native.Some uu___ ->
+           specific.CSVW_Metadata.inh_null
+       | FStar_Pervasives_Native.None -> general.CSVW_Metadata.inh_null);
+    CSVW_Metadata.inh_separator =
+      (match specific.CSVW_Metadata.inh_separator with
+       | FStar_Pervasives_Native.Some uu___ ->
+           specific.CSVW_Metadata.inh_separator
+       | FStar_Pervasives_Native.None -> general.CSVW_Metadata.inh_separator);
+    CSVW_Metadata.inh_datatype =
+      (match specific.CSVW_Metadata.inh_datatype with
+       | FStar_Pervasives_Native.Some uu___ ->
+           specific.CSVW_Metadata.inh_datatype
+       | FStar_Pervasives_Native.None -> general.CSVW_Metadata.inh_datatype);
+    CSVW_Metadata.inh_ordered =
+      (match specific.CSVW_Metadata.inh_ordered with
+       | FStar_Pervasives_Native.Some uu___ ->
+           specific.CSVW_Metadata.inh_ordered
+       | FStar_Pervasives_Native.None -> general.CSVW_Metadata.inh_ordered)
+  }
+let csvw_col_spec_of_column (eff : CSVW_Metadata.csvw_inherited_props)
+  (c : CSVW_Metadata.csvw_column) : csvw_col_spec=
+  {
+    cs_name =
+      (match c.CSVW_Metadata.col_name with
+       | FStar_Pervasives_Native.Some n -> n
+       | FStar_Pervasives_Native.None ->
+           (match c.CSVW_Metadata.col_titles with | t::uu___ -> t | [] -> ""));
+    cs_virtual = (csvw_opt_bool c.CSVW_Metadata.col_virtual);
+    cs_suppress = (csvw_opt_bool c.CSVW_Metadata.col_suppress_output);
+    cs_datatype =
+      (match c.CSVW_Metadata.col_datatype with
+       | FStar_Pervasives_Native.Some d -> FStar_Pervasives_Native.Some d
+       | FStar_Pervasives_Native.None -> eff.CSVW_Metadata.inh_datatype);
+    cs_about_url =
+      (match c.CSVW_Metadata.col_about_url with
+       | FStar_Pervasives_Native.Some a -> FStar_Pervasives_Native.Some a
+       | FStar_Pervasives_Native.None -> eff.CSVW_Metadata.inh_about_url);
+    cs_property_url =
+      (match c.CSVW_Metadata.col_property_url with
+       | FStar_Pervasives_Native.Some p -> FStar_Pervasives_Native.Some p
+       | FStar_Pervasives_Native.None -> eff.CSVW_Metadata.inh_property_url);
+    cs_value_url =
+      (match c.CSVW_Metadata.col_value_url with
+       | FStar_Pervasives_Native.Some v -> FStar_Pervasives_Native.Some v
+       | FStar_Pervasives_Native.None -> eff.CSVW_Metadata.inh_value_url);
+    cs_separator =
+      (match c.CSVW_Metadata.col_separator with
+       | FStar_Pervasives_Native.Some s -> FStar_Pervasives_Native.Some s
+       | FStar_Pervasives_Native.None -> eff.CSVW_Metadata.inh_separator);
+    cs_lang =
+      (match c.CSVW_Metadata.col_lang with
+       | FStar_Pervasives_Native.Some l -> FStar_Pervasives_Native.Some l
+       | FStar_Pervasives_Native.None -> eff.CSVW_Metadata.inh_lang);
+    cs_null =
+      (match c.CSVW_Metadata.col_null with
+       | FStar_Pervasives_Native.Some n -> FStar_Pervasives_Native.Some n
+       | FStar_Pervasives_Native.None -> eff.CSVW_Metadata.inh_null);
+    cs_ordered =
+      (match c.CSVW_Metadata.col_ordered with
+       | FStar_Pervasives_Native.Some b -> b
+       | FStar_Pervasives_Native.None ->
+           (match eff.CSVW_Metadata.inh_ordered with
+            | FStar_Pervasives_Native.Some b -> b
+            | FStar_Pervasives_Native.None -> false))
+  }
+let csvw_positional_name (i : Prims.int) : Prims.string=
+  Prims.strcat "_col." (Prims.string_of_int (i + Prims.int_one))
+let csvw_col_specs_from_header (header_cells : Prims.string Prims.list) :
+  csvw_col_spec Prims.list=
+  FStar_List_Tot_Base.mapi
+    (fun i h ->
+       {
+         cs_name = (if h = "" then csvw_positional_name i else h);
+         cs_virtual = false;
+         cs_suppress = false;
+         cs_datatype = FStar_Pervasives_Native.None;
+         cs_about_url = FStar_Pervasives_Native.None;
+         cs_property_url = FStar_Pervasives_Native.None;
+         cs_value_url = FStar_Pervasives_Native.None;
+         cs_separator = FStar_Pervasives_Native.None;
+         cs_lang = FStar_Pervasives_Native.None;
+         cs_null = FStar_Pervasives_Native.None;
+         cs_ordered = false
+       }) header_cells
+let csvw_col_specs_positional (header_cells : Prims.string Prims.list) :
+  csvw_col_spec Prims.list=
+  FStar_List_Tot_Base.mapi
+    (fun i h ->
+       {
+         cs_name = (csvw_positional_name i);
+         cs_virtual = false;
+         cs_suppress = false;
+         cs_datatype = FStar_Pervasives_Native.None;
+         cs_about_url = FStar_Pervasives_Native.None;
+         cs_property_url = FStar_Pervasives_Native.None;
+         cs_value_url = FStar_Pervasives_Native.None;
+         cs_separator = FStar_Pervasives_Native.None;
+         cs_lang = FStar_Pervasives_Native.None;
+         cs_null = FStar_Pervasives_Native.None;
+         cs_ordered = false
+       }) header_cells
+let csvw_positional_spec_eff (eff : CSVW_Metadata.csvw_inherited_props)
+  (i : Prims.int) : csvw_col_spec=
+  {
+    cs_name = (csvw_positional_name i);
+    cs_virtual = false;
+    cs_suppress = false;
+    cs_datatype = (eff.CSVW_Metadata.inh_datatype);
+    cs_about_url = (eff.CSVW_Metadata.inh_about_url);
+    cs_property_url = (eff.CSVW_Metadata.inh_property_url);
+    cs_value_url = (eff.CSVW_Metadata.inh_value_url);
+    cs_separator = (eff.CSVW_Metadata.inh_separator);
+    cs_lang = (eff.CSVW_Metadata.inh_lang);
+    cs_null = (eff.CSVW_Metadata.inh_null);
+    cs_ordered =
+      (match eff.CSVW_Metadata.inh_ordered with
+       | FStar_Pervasives_Native.Some b -> b
+       | FStar_Pervasives_Native.None -> false)
+  }
+let rec csvw_surplus_specs (eff : CSVW_Metadata.csvw_inherited_props)
+  (n_described : Prims.nat) (i : Prims.nat)
+  (header_cells : Prims.string Prims.list) : csvw_col_spec Prims.list=
+  match header_cells with
+  | [] -> []
+  | uu___::tl ->
+      let rest = csvw_surplus_specs eff n_described (i + Prims.int_one) tl in
+      if i >= n_described
+      then (csvw_positional_spec_eff eff i) :: rest
+      else rest
+let csvw_build_col_specs (grp : CSVW_Metadata.csvw_inherited_props)
+  (tbl : CSVW_Metadata.csvw_inherited_props)
+  (ts_opt : CSVW_Metadata.csvw_table_schema FStar_Pervasives_Native.option)
+  (header_cells : Prims.string Prims.list) : csvw_col_spec Prims.list=
+  match ts_opt with
+  | FStar_Pervasives_Native.Some ts ->
+      if Prims.uu___is_Cons ts.CSVW_Metadata.ts_columns
+      then
+        let eff =
+          csvw_merge_inherited ts.CSVW_Metadata.ts_inherited
+            (csvw_merge_inherited tbl grp) in
+        let described =
+          FStar_List_Tot_Base.map (csvw_col_spec_of_column eff)
+            ts.CSVW_Metadata.ts_columns in
+        FStar_List_Tot_Base.op_At described
+          (csvw_surplus_specs eff
+             (FStar_List_Tot_Base.length ts.CSVW_Metadata.ts_columns)
+             Prims.int_zero header_cells)
+      else csvw_col_specs_positional header_cells
+  | FStar_Pervasives_Native.None -> csvw_col_specs_from_header header_cells
+let csvw_header_row_count
+  (dia_opt : CSVW_Metadata.csvw_dialect FStar_Pervasives_Native.option) :
+  Prims.nat=
+  match dia_opt with
+  | FStar_Pervasives_Native.None -> Prims.int_one
+  | FStar_Pervasives_Native.Some dia ->
+      (match dia.CSVW_Metadata.dia_header_row_count with
+       | FStar_Pervasives_Native.Some n ->
+           if n >= Prims.int_zero then n else Prims.int_one
+       | FStar_Pervasives_Native.None ->
+           (match dia.CSVW_Metadata.dia_header with
+            | FStar_Pervasives_Native.Some false -> Prims.int_zero
+            | uu___ -> Prims.int_one))
+let csvw_skip_rows_count
+  (dia_opt : CSVW_Metadata.csvw_dialect FStar_Pervasives_Native.option) :
+  Prims.nat=
+  match dia_opt with
+  | FStar_Pervasives_Native.None -> Prims.int_zero
+  | FStar_Pervasives_Native.Some dia ->
+      (match dia.CSVW_Metadata.dia_skip_rows with
+       | FStar_Pervasives_Native.Some n ->
+           if n >= Prims.int_zero then n else Prims.int_zero
+       | FStar_Pervasives_Native.None -> Prims.int_zero)
+let rec csvw_drop : 'a . Prims.nat -> 'a Prims.list -> 'a Prims.list =
+  fun n l ->
+    if n = Prims.int_zero
+    then l
+    else
+      (match l with
+       | [] -> []
+       | uu___1::tl -> csvw_drop (n - Prims.int_one) tl)
+let rec csvw_index_from :
+  'a . Prims.nat -> 'a Prims.list -> (Prims.nat * 'a) Prims.list =
+  fun n l ->
+    match l with
+    | [] -> []
+    | hd::tl -> (n, hd) :: (csvw_index_from (n + Prims.int_one) tl)
+let rec csvw_zip_specs_cells (specs : csvw_col_spec Prims.list)
+  (cells : Prims.string Prims.list) :
+  (csvw_col_spec * Prims.string) Prims.list=
+  match (specs, cells) with
+  | (s::srest, c::crest) -> (s, c) :: (csvw_zip_specs_cells srest crest)
+  | (uu___, uu___1) -> []
+let csvw_effective_table_url (base_iri : Prims.string)
+  (fallback_url : Prims.string) (tbl : CSVW_Metadata.csvw_table) :
+  Prims.string=
+  let raw =
+    match tbl.CSVW_Metadata.tbl_url with
+    | FStar_Pervasives_Native.Some u -> u
+    | FStar_Pervasives_Native.None -> fallback_url in
+  RDF_IRI.resolve_iri_v2 base_iri raw
+let csvw_row_lookup
+  (phys_bindings : (Prims.string * Prims.string) Prims.list)
+  (row_num : Prims.nat) (source_row_num : Prims.nat) (v : Prims.string) :
+  Prims.string FStar_Pervasives_Native.option=
+  if v = "_row"
+  then FStar_Pervasives_Native.Some (Prims.string_of_int row_num)
+  else
+    if v = "_sourceRow"
+    then FStar_Pervasives_Native.Some (Prims.string_of_int source_row_num)
+    else FStar_List_Tot_Base.assoc v phys_bindings
+let csvw_term_of_subject (s : RDF_Term.subject) : RDF_Term.rdf_term=
+  match s with
+  | RDF_Term.S_IRI i -> RDF_Term.T_IRI i
+  | RDF_Term.S_BNode b -> RDF_Term.T_BNode b
+let csvw_cell_object (table_url_resolved : Prims.string)
+  (spec : csvw_col_spec)
+  (cell_text : Prims.string FStar_Pervasives_Native.option)
+  (lookup : Prims.string -> Prims.string FStar_Pervasives_Native.option) :
+  RDF_Term.rdf_term FStar_Pervasives_Native.option=
+  match spec.cs_value_url with
+  | FStar_Pervasives_Native.Some tmpl ->
+      let raw =
+        csvw_expand_curie (CSVW_URITemplate.csvw_expand_template lookup tmpl) in
+      let resolved = RDF_IRI.resolve_iri_v2 table_url_resolved raw in
+      if RDF_Term.is_iri resolved
+      then FStar_Pervasives_Native.Some (RDF_Term.T_IRI resolved)
+      else FStar_Pervasives_Native.None
+  | FStar_Pervasives_Native.None ->
+      (match cell_text with
+       | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+       | FStar_Pervasives_Native.Some txt ->
+           let is_null =
+             (txt = "") ||
+               (match spec.cs_null with
+                | FStar_Pervasives_Native.Some n -> txt = n
+                | FStar_Pervasives_Native.None -> false) in
+           if is_null
+           then FStar_Pervasives_Native.None
+           else
+             (let dt_str = csvw_datatype_iri spec.cs_datatype in
+              let dt_wf =
+                if RDF_Term.is_iri dt_str
+                then FStar_Pervasives_Native.Some dt_str
+                else FStar_Pervasives_Native.None in
+              match dt_wf with
+              | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+              | FStar_Pervasives_Native.Some d ->
+                  let base_name = csvw_dt_base_name_of spec.cs_datatype in
+                  let uu___1 = csvw_dt_format_facets spec.cs_datatype in
+                  (match uu___1 with
+                   | (fmt_str, pat, grp, dec) ->
+                       let uu___2 =
+                         match CSVW_Formats.csvw_format_convert base_name
+                                 fmt_str pat grp dec txt
+                         with
+                         | CSVW_Formats.FO_Invalid ->
+                             (txt, RDF_Term.xsd_string)
+                         | CSVW_Formats.FO_Valid canonical -> (canonical, d)
+                         | CSVW_Formats.FO_NoFormat -> (txt, d) in
+                       (match uu___2 with
+                        | (lex, dt_eff) ->
+                            let violate =
+                              (XSD_Datatypes.literal_ill_formed dt_eff lex)
+                                ||
+                                (Prims.op_Negation
+                                   (csvw_value_satisfies base_name lex
+                                      spec.cs_datatype)) in
+                            let eff =
+                              if violate then RDF_Term.xsd_string else dt_eff in
+                            csvw_build_literal_lang lex eff spec.cs_lang))))
+let csvw_encode_name (s : Prims.string) : Prims.string=
+  FStar_String.string_of_list
+    (FStar_List_Tot_Base.concatMap
+       (fun c ->
+          if (FStar_Char.int_of_char c) = (Prims.of_int (45))
+          then
+            [FStar_Char.char_of_int (Prims.of_int (37));
+            FStar_Char.char_of_int (Prims.of_int (50));
+            FStar_Char.char_of_int (Prims.of_int (68))]
+          else [c])
+       (FStar_String.list_of_string (SPARQL11_Algebra.string_encode_uri s)))
+let csvw_split_list_cell (sep : Prims.string) (s : Prims.string) :
+  Prims.string Prims.list=
+  match FStar_String.list_of_string sep with
+  | sepc::uu___ ->
+      FStar_List_Tot_Base.map FStar_String.string_of_list
+        (CSVW_Formats.split_all sepc (FStar_String.list_of_string s))
+  | [] -> [s]
+let rec csvw_rdf_list (seed : Prims.string) (idx : Prims.nat)
+  (objs : RDF_Term.rdf_term Prims.list) :
+  (RDF_Term.rdf_term * RDF_Triple.triple Prims.list)=
+  match objs with
+  | [] -> ((RDF_Term.T_IRI rdf_nil_iri), [])
+  | o::tl ->
+      let node =
+        RDF_Term.S_BNode
+          (Prims.strcat seed (Prims.strcat "_" (Prims.string_of_int idx))) in
+      let uu___ = csvw_rdf_list seed (idx + Prims.int_one) tl in
+      (match uu___ with
+       | (rest_head, rest_triples) ->
+           ((csvw_term_of_subject node),
+             ({
+                RDF_Triple.s = node;
+                RDF_Triple.p = rdf_first_iri;
+                RDF_Triple.o = o
+              } ::
+             {
+               RDF_Triple.s = node;
+               RDF_Triple.p = rdf_rest_iri;
+               RDF_Triple.o = rest_head
+             } :: rest_triples)))
+let csvw_process_cell (table_url_resolved : Prims.string)
+  (row_seed : Prims.string)
+  (lookup : Prims.string -> Prims.string FStar_Pervasives_Native.option)
+  (default_subject : RDF_Term.subject) (spec : csvw_col_spec)
+  (cell_text : Prims.string FStar_Pervasives_Native.option) :
+  (RDF_Term.subject * RDF_Triple.triple Prims.list)=
+  if spec.cs_suppress
+  then (default_subject, [])
+  else
+    (let cur_lookup v =
+       if v = "_name"
+       then FStar_Pervasives_Native.Some (spec.cs_name)
+       else lookup v in
+     let subj =
+       match spec.cs_about_url with
+       | FStar_Pervasives_Native.Some tmpl ->
+           let raw = CSVW_URITemplate.csvw_expand_template cur_lookup tmpl in
+           let resolved = RDF_IRI.resolve_iri_v2 table_url_resolved raw in
+           if RDF_Term.is_iri resolved
+           then RDF_Term.S_IRI resolved
+           else default_subject
+       | FStar_Pervasives_Native.None -> default_subject in
+     let raw =
+       match spec.cs_property_url with
+       | FStar_Pervasives_Native.Some tmpl ->
+           RDF_IRI.resolve_iri_v2 table_url_resolved
+             (CSVW_URITemplate.csvw_expand_template cur_lookup tmpl)
+       | FStar_Pervasives_Native.None ->
+           Prims.strcat table_url_resolved
+             (Prims.strcat "#" (csvw_encode_name spec.cs_name)) in
+     let pred_valid =
+       if RDF_Term.is_iri raw
+       then FStar_Pervasives_Native.Some raw
+       else FStar_Pervasives_Native.None in
+     match pred_valid with
+     | FStar_Pervasives_Native.None -> (subj, [])
+     | FStar_Pervasives_Native.Some pred_str ->
+         (match ((spec.cs_separator), cell_text) with
+          | (FStar_Pervasives_Native.Some sep, FStar_Pervasives_Native.Some
+             txt) ->
+              let parts = csvw_split_list_cell sep txt in
+              let objs =
+                FStar_List_Tot_Base.choose
+                  (fun part ->
+                     csvw_cell_object table_url_resolved spec
+                       (FStar_Pervasives_Native.Some part) cur_lookup) parts in
+              if spec.cs_ordered
+              then
+                (match objs with
+                 | [] -> (subj, [])
+                 | uu___1 ->
+                     let list_seed =
+                       Prims.strcat "csvwL_"
+                         (Prims.strcat row_seed
+                            (Prims.strcat "_" (csvw_encode_name spec.cs_name))) in
+                     let uu___2 = csvw_rdf_list list_seed Prims.int_zero objs in
+                     (match uu___2 with
+                      | (head, list_triples) ->
+                          (subj,
+                            ({
+                               RDF_Triple.s = subj;
+                               RDF_Triple.p = pred_str;
+                               RDF_Triple.o = head
+                             } :: list_triples))))
+              else
+                (subj,
+                  (FStar_List_Tot_Base.map
+                     (fun o ->
+                        {
+                          RDF_Triple.s = subj;
+                          RDF_Triple.p = pred_str;
+                          RDF_Triple.o = o
+                        }) objs))
+          | uu___1 ->
+              (match csvw_cell_object table_url_resolved spec cell_text
+                       cur_lookup
+               with
+               | FStar_Pervasives_Native.None -> (subj, [])
+               | FStar_Pervasives_Native.Some obj ->
+                   (subj,
+                     [{
+                        RDF_Triple.s = subj;
+                        RDF_Triple.p = pred_str;
+                        RDF_Triple.o = obj
+                      }]))))
+let csvw_row_cell_results (table_url_resolved : Prims.string)
+  (col_specs : csvw_col_spec Prims.list) (row_num : Prims.nat)
+  (source_row_num : Prims.nat) (cells : Prims.string Prims.list) :
+  (RDF_Term.subject * RDF_Triple.triple Prims.list) Prims.list=
+  let phys_specs =
+    FStar_List_Tot_Base.filter (fun s -> Prims.op_Negation s.cs_virtual)
+      col_specs in
+  let virt_specs =
+    FStar_List_Tot_Base.filter (fun s -> s.cs_virtual) col_specs in
+  let phys_pairs = csvw_zip_specs_cells phys_specs cells in
+  let phys_bindings =
+    FStar_List_Tot_Base.map
+      (fun p ->
+         (((FStar_Pervasives_Native.fst p).cs_name),
+           (FStar_Pervasives_Native.snd p))) phys_pairs in
+  let lookup = csvw_row_lookup phys_bindings row_num source_row_num in
+  let row_seed =
+    Prims.strcat (SPARQL11_Algebra.string_encode_uri table_url_resolved)
+      (Prims.strcat "_" (Prims.string_of_int source_row_num)) in
+  let default_subject =
+    RDF_Term.S_BNode
+      (Prims.strcat "csvwrow_"
+         (Prims.strcat
+            (SPARQL11_Algebra.string_encode_uri table_url_resolved)
+            (Prims.strcat "_" (Prims.string_of_int source_row_num)))) in
+  FStar_List_Tot_Base.op_At
+    (FStar_List_Tot_Base.map
+       (fun p ->
+          csvw_process_cell table_url_resolved row_seed lookup
+            default_subject (FStar_Pervasives_Native.fst p)
+            (FStar_Pervasives_Native.Some (FStar_Pervasives_Native.snd p)))
+       phys_pairs)
+    (FStar_List_Tot_Base.map
+       (fun s ->
+          csvw_process_cell table_url_resolved row_seed lookup
+            default_subject s FStar_Pervasives_Native.None) virt_specs)
 let csvw_mk_literal (lex : Prims.string) (dt : RDF_Term.wf_iri)
   (lang : Prims.string FStar_Pervasives_Native.option) :
   RDF_Term.rdf_term FStar_Pervasives_Native.option=
@@ -796,8 +925,9 @@ let csvw_opt_to_list (o : 'a FStar_Pervasives_Native.option) : 'a Prims.list=
   match o with
   | FStar_Pervasives_Native.Some x -> [x]
   | FStar_Pervasives_Native.None -> []
-let rec csvw_common_value (fuel : Prims.nat) (seed : Prims.string)
-  (v : Parser_JSON.json_val) :
+let rec csvw_common_value
+  (default_lang : Prims.string FStar_Pervasives_Native.option)
+  (fuel : Prims.nat) (seed : Prims.string) (v : Parser_JSON.json_val) :
   (RDF_Term.rdf_term Prims.list * RDF_Triple.triple Prims.list)=
   if fuel = Prims.int_zero
   then ([], [])
@@ -805,9 +935,15 @@ let rec csvw_common_value (fuel : Prims.nat) (seed : Prims.string)
     (match v with
      | Parser_JSON.JNull -> ([], [])
      | Parser_JSON.JString s ->
-         ((csvw_opt_to_list
-             (csvw_mk_literal s RDF_Term.xsd_string
-                FStar_Pervasives_Native.None)), [])
+         let term =
+           match default_lang with
+           | FStar_Pervasives_Native.Some l ->
+               csvw_mk_literal s RDF_Term.rdf_lang_string
+                 (FStar_Pervasives_Native.Some l)
+           | FStar_Pervasives_Native.None ->
+               csvw_mk_literal s RDF_Term.xsd_string
+                 FStar_Pervasives_Native.None in
+         ((csvw_opt_to_list term), [])
      | Parser_JSON.JBool b ->
          ((csvw_opt_to_list
              (csvw_mk_literal (if b then "true" else "false")
@@ -815,7 +951,8 @@ let rec csvw_common_value (fuel : Prims.nat) (seed : Prims.string)
      | Parser_JSON.JNumber s ->
          ((csvw_opt_to_list (csvw_number_literal_opt s)), [])
      | Parser_JSON.JArray items ->
-         csvw_common_array (fuel - Prims.int_one) seed Prims.int_zero items
+         csvw_common_array default_lang (fuel - Prims.int_one) seed
+           Prims.int_zero items
      | Parser_JSON.JObject fields ->
          (match Parser_JSON.json_get_field "@value" v with
           | FStar_Pervasives_Native.Some (Parser_JSON.JString lex) ->
@@ -843,11 +980,13 @@ let rec csvw_common_value (fuel : Prims.nat) (seed : Prims.string)
                    let lbl = Prims.strcat "csvwCP_" seed in
                    let b = RDF_Term.S_BNode lbl in
                    let inner =
-                     csvw_common_object_fields (fuel - Prims.int_one) b lbl
-                       fields in
+                     csvw_common_object_fields default_lang
+                       (fuel - Prims.int_one) b lbl fields in
                    ([csvw_term_of_subject b], inner))))
-and csvw_common_array (fuel : Prims.nat) (seed : Prims.string)
-  (idx : Prims.nat) (items : Parser_JSON.json_val Prims.list) :
+and csvw_common_array
+  (default_lang : Prims.string FStar_Pervasives_Native.option)
+  (fuel : Prims.nat) (seed : Prims.string) (idx : Prims.nat)
+  (items : Parser_JSON.json_val Prims.list) :
   (RDF_Term.rdf_term Prims.list * RDF_Triple.triple Prims.list)=
   if fuel = Prims.int_zero
   then ([], [])
@@ -856,20 +995,21 @@ and csvw_common_array (fuel : Prims.nat) (seed : Prims.string)
      | [] -> ([], [])
      | hd::tl ->
          let uu___1 =
-           csvw_common_value (fuel - Prims.int_one)
+           csvw_common_value default_lang (fuel - Prims.int_one)
              (Prims.strcat seed (Prims.strcat "_" (Prims.string_of_int idx)))
              hd in
          (match uu___1 with
           | (t1, r1) ->
               let uu___2 =
-                csvw_common_array (fuel - Prims.int_one) seed
+                csvw_common_array default_lang (fuel - Prims.int_one) seed
                   (idx + Prims.int_one) tl in
               (match uu___2 with
                | (t2, r2) ->
                    ((FStar_List_Tot_Base.op_At t1 t2),
                      (FStar_List_Tot_Base.op_At r1 r2)))))
-and csvw_common_object_fields (fuel : Prims.nat) (subj : RDF_Term.subject)
-  (seed : Prims.string)
+and csvw_common_object_fields
+  (default_lang : Prims.string FStar_Pervasives_Native.option)
+  (fuel : Prims.nat) (subj : RDF_Term.subject) (seed : Prims.string)
   (fields : (Prims.string * Parser_JSON.json_val) Prims.list) :
   RDF_Triple.triple Prims.list=
   if fuel = Prims.int_zero
@@ -883,7 +1023,7 @@ and csvw_common_object_fields (fuel : Prims.nat) (subj : RDF_Term.subject)
            then
              match v with
              | Parser_JSON.JString tv ->
-                 let ti = csvw_expand_curie tv in
+                 let ti = csvw_expand_type_token tv in
                  (match if RDF_Term.is_iri ti
                         then FStar_Pervasives_Native.Some ti
                         else FStar_Pervasives_Native.None
@@ -909,7 +1049,7 @@ and csvw_common_object_fields (fuel : Prims.nat) (subj : RDF_Term.subject)
                 | FStar_Pervasives_Native.Some pred ->
                     let pred1 = pred in
                     let uu___2 =
-                      csvw_common_value (fuel - Prims.int_one)
+                      csvw_common_value default_lang (fuel - Prims.int_one)
                         (Prims.strcat seed (Prims.strcat "_" k)) v in
                     (match uu___2 with
                      | (terms, sub) ->
@@ -923,17 +1063,21 @@ and csvw_common_object_fields (fuel : Prims.nat) (subj : RDF_Term.subject)
                                  }) terms) sub))
              else [] in
          FStar_List_Tot_Base.op_At here
-           (csvw_common_object_fields (fuel - Prims.int_one) subj seed tl))
+           (csvw_common_object_fields default_lang (fuel - Prims.int_one)
+              subj seed tl))
 let rec csvw_common_fuel
   (common : (Prims.string * Parser_JSON.json_val) Prims.list) : Prims.nat=
   match common with
   | [] -> Prims.int_one
   | (uu___, v)::tl ->
       (Prims.int_one + (Parser_JSON.json_size v)) + (csvw_common_fuel tl)
-let csvw_table_common_triples (subj : RDF_Term.subject) (seed : Prims.string)
+let csvw_table_common_triples
+  (default_lang : Prims.string FStar_Pervasives_Native.option)
+  (subj : RDF_Term.subject) (seed : Prims.string)
   (common : (Prims.string * Parser_JSON.json_val) Prims.list) :
   RDF_Triple.triple Prims.list=
-  csvw_common_object_fields (csvw_common_fuel common) subj seed common
+  csvw_common_object_fields default_lang (csvw_common_fuel common) subj seed
+    common
 let csvw_row_triples_minimal (table_url_resolved : Prims.string)
   (col_specs : csvw_col_spec Prims.list) (row_num : Prims.nat)
   (source_row_num : Prims.nat) (cells : Prims.string Prims.list) :
@@ -972,7 +1116,35 @@ let csvw_row_url (table_url_resolved : Prims.string)
   (source_row_num : Prims.nat) : Prims.string=
   Prims.strcat table_url_resolved
     (Prims.strcat "#row=" (Prims.string_of_int source_row_num))
+let csvw_row_title_triples (row_node : RDF_Term.subject)
+  (col_specs : csvw_col_spec Prims.list) (cells : Prims.string Prims.list)
+  (row_titles : Prims.string Prims.list) : RDF_Triple.triple Prims.list=
+  let phys_specs =
+    FStar_List_Tot_Base.filter (fun s -> Prims.op_Negation s.cs_virtual)
+      col_specs in
+  let phys_pairs = csvw_zip_specs_cells phys_specs cells in
+  let bindings =
+    FStar_List_Tot_Base.map
+      (fun p ->
+         (((FStar_Pervasives_Native.fst p).cs_name),
+           (FStar_Pervasives_Native.snd p))) phys_pairs in
+  FStar_List_Tot_Base.concatMap
+    (fun name ->
+       match FStar_List_Tot_Base.assoc name bindings with
+       | FStar_Pervasives_Native.Some txt ->
+           (match csvw_mk_literal txt RDF_Term.xsd_string
+                    FStar_Pervasives_Native.None
+            with
+            | FStar_Pervasives_Native.Some o ->
+                [{
+                   RDF_Triple.s = row_node;
+                   RDF_Triple.p = csvw_title_pred;
+                   RDF_Triple.o = o
+                 }]
+            | FStar_Pervasives_Native.None -> [])
+       | FStar_Pervasives_Native.None -> []) row_titles
 let csvw_row_triples_standard (table_url_resolved : Prims.string)
+  (row_titles : Prims.string Prims.list)
   (col_specs : csvw_col_spec Prims.list) (row_num : Prims.nat)
   (source_row_num : Prims.nat) (cells : Prims.string Prims.list) :
   (RDF_Term.subject * RDF_Triple.triple Prims.list)=
@@ -1028,11 +1200,15 @@ let csvw_row_triples_standard (table_url_resolved : Prims.string)
                 }]) per_col in
   let cell_triples =
     FStar_List_Tot_Base.concatMap FStar_Pervasives_Native.snd per_col in
+  let title_triples =
+    csvw_row_title_triples row_node col_specs cells row_titles in
   (row_node,
     (FStar_List_Tot_Base.op_At row_meta
-       (FStar_List_Tot_Base.op_At describes cell_triples)))
+       (FStar_List_Tot_Base.op_At title_triples
+          (FStar_List_Tot_Base.op_At describes cell_triples))))
 let csvw_convert_table_standard
   (grp_inherited : CSVW_Metadata.csvw_inherited_props)
+  (default_lang : Prims.string FStar_Pervasives_Native.option)
   (base_iri : Prims.string) (fallback_url : Prims.string)
   (tbl : CSVW_Metadata.csvw_table)
   (all_rows : Prims.string Prims.list Prims.list) :
@@ -1049,6 +1225,10 @@ let csvw_convert_table_standard
   let col_specs =
     csvw_build_col_specs grp_inherited tbl.CSVW_Metadata.tbl_inherited
       tbl.CSVW_Metadata.tbl_table_schema header_cells in
+  let row_titles =
+    match tbl.CSVW_Metadata.tbl_table_schema with
+    | FStar_Pervasives_Native.Some ts -> ts.CSVW_Metadata.ts_row_titles
+    | FStar_Pervasives_Native.None -> [] in
   let indexed = csvw_index_from Prims.int_zero data_rows in
   let row_results =
     FStar_List_Tot_Base.map
@@ -1056,9 +1236,9 @@ let csvw_convert_table_standard
          let uu___ = p in
          match uu___ with
          | (i, cells) ->
-             csvw_row_triples_standard table_url_resolved col_specs
-               (i + Prims.int_one) ((skip_n + i) + Prims.int_one) cells)
-      indexed in
+             csvw_row_triples_standard table_url_resolved row_titles
+               col_specs (i + Prims.int_one) ((skip_n + i) + Prims.int_one)
+               cells) indexed in
   let t_node =
     RDF_Term.S_BNode
       (Prims.strcat "csvwT_"
@@ -1075,7 +1255,7 @@ let csvw_convert_table_standard
   let row_all =
     FStar_List_Tot_Base.concatMap FStar_Pervasives_Native.snd row_results in
   let t_common =
-    csvw_table_common_triples t_node
+    csvw_table_common_triples default_lang t_node
       (SPARQL11_Algebra.string_encode_uri table_url_resolved)
       tbl.CSVW_Metadata.tbl_common in
   let t_meta =
@@ -1113,6 +1293,7 @@ let csvw_convert_document_minimal
              rows) tables_with_rows
 let csvw_group_node : RDF_Term.subject= RDF_Term.S_BNode "csvwG"
 let csvw_convert_document_standard (grp : CSVW_Metadata.csvw_group_meta)
+  (default_lang : Prims.string FStar_Pervasives_Native.option)
   (base_iri : Prims.string)
   (tables_with_rows :
     (CSVW_Metadata.csvw_table * Prims.string * Prims.string Prims.list
@@ -1125,7 +1306,7 @@ let csvw_convert_document_standard (grp : CSVW_Metadata.csvw_group_meta)
          match uu___ with
          | (tbl, fallback_url, rows) ->
              csvw_convert_table_standard grp.CSVW_Metadata.grp_inherited
-               base_iri fallback_url tbl rows) tables_with_rows in
+               default_lang base_iri fallback_url tbl rows) tables_with_rows in
   let g_meta =
     [{
        RDF_Triple.s = csvw_group_node;
@@ -1133,7 +1314,7 @@ let csvw_convert_document_standard (grp : CSVW_Metadata.csvw_group_meta)
        RDF_Triple.o = (RDF_Term.T_IRI csvw_TableGroup)
      }] in
   let g_common =
-    csvw_table_common_triples csvw_group_node "csvwG"
+    csvw_table_common_triples default_lang csvw_group_node "csvwG"
       grp.CSVW_Metadata.grp_common in
   let table_links =
     FStar_List_Tot_Base.concatMap

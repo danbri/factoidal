@@ -207,6 +207,9 @@ type csvw_column = {
   // eleven, not a claim of completeness.
   col_lang             : option string;
   col_null             : option string;
+  // `ordered` at column level (test307: one column ordered, its sibling
+  // not) — same rdf:List semantics as the inherited default above.
+  col_ordered          : option bool;
 }
 
 type csvw_dialect = {
@@ -243,11 +246,17 @@ type csvw_inherited_props = {
   inh_null         : option string;
   inh_separator    : option string;
   inh_datatype     : option csvw_datatype;
+  // `ordered` (one of the eleven inherited properties): when true a
+  // separator-split cell becomes an rdf:List rather than repeated
+  // triples (test306/307). Only consulted by CSVW.Conversion when a
+  // `separator` is also in effect.
+  inh_ordered      : option bool;
 }
 
 let csvw_inherited_empty : csvw_inherited_props = {
   inh_about_url = None; inh_property_url = None; inh_value_url = None;
   inh_lang = None; inh_null = None; inh_separator = None; inh_datatype = None;
+  inh_ordered = None;
 }
 
 // csvw_decode_inherited (needs csvw_decode_datatype, defined below) is
@@ -263,6 +272,12 @@ type csvw_table_schema = {
   // not this stage's job).
   ts_primary_key  : option string;
   ts_inherited    : csvw_inherited_props;
+  // `rowTitles` (tabular-metadata): a column NAME or list of column
+  // names whose per-row cell values are emitted as csvw:title triples
+  // on that row's node (test235/236). A bare-string value is a
+  // one-element list; anything but a string or string array decodes to
+  // the empty list (feature absent).
+  ts_row_titles   : list string;
 }
 
 type csvw_table = {
@@ -453,10 +468,23 @@ let csvw_builtin_datatype_names : list string = [
 let csvw_is_builtin_datatype_name (s:string) : bool =
   List.Tot.mem s csvw_builtin_datatype_names
 
+// A URI-template inherited property (aboutUrl/propertyUrl/valueUrl):
+// a string is the template; a NON-string present value (a JSON bool or
+// number — test047/048/049's `"aboutUrl": true` etc.) is not a valid
+// template, and per the reference processor degrades to the EMPTY
+// template "" (which expands to the table's own base URL), NOT to
+// absent (which would fall back to the blank-node / default-property
+// behaviour). JNull / absent stays None.
+let csvw_inh_uri_template (key:string) (v:json_val) : option string =
+  match json_get_field key v with
+  | Some (JString s) -> Some s
+  | Some (JBool _) | Some (JNumber _) -> Some ""
+  | _ -> None
+
 let csvw_decode_inherited (v:json_val) : csvw_inherited_props = {
-  inh_about_url    = json_get_string "aboutUrl" v;
-  inh_property_url = json_get_string "propertyUrl" v;
-  inh_value_url    = json_get_string "valueUrl" v;
+  inh_about_url    = csvw_inh_uri_template "aboutUrl" v;
+  inh_property_url = csvw_inh_uri_template "propertyUrl" v;
+  inh_value_url    = csvw_inh_uri_template "valueUrl" v;
   inh_lang         = (match json_get_string "lang" v with
                        | Some l -> if csvw_lang_tag_ok l then Some l else None
                        | None -> None);
@@ -470,6 +498,7 @@ let csvw_decode_inherited (v:json_val) : csvw_inherited_props = {
                             then Some (CSVW_DT_Named n) else None
                           | other -> other)
                        | None -> None);
+  inh_ordered      = json_get_bool "ordered" v;
 }
 
 // ================================================================
@@ -500,6 +529,7 @@ let csvw_decode_column (v:json_val) : option csvw_column =
       col_separator        = json_get_string "separator" v;
       col_lang             = json_get_string "lang" v;
       col_null             = json_get_string "null" v;
+      col_ordered          = json_get_bool "ordered" v;
     })
   | _ -> None
 
@@ -562,6 +592,9 @@ let csvw_decode_table_schema (v:json_val) : option csvw_table_schema =
         ts_columns      = columns;
         ts_primary_key  = json_get_string "primaryKey" v;
         ts_inherited    = csvw_decode_inherited v;
+        ts_row_titles   = (match json_get_field "rowTitles" v with
+                            | Some rv -> csvw_titles_value rv
+                            | None -> []);
       })
   | _ ->
     // tabular-metadata section 4 graceful degradation ("MUST act as if
@@ -571,7 +604,7 @@ let csvw_decode_table_schema (v:json_val) : option csvw_table_schema =
     // a decode failure — distinct from columns_ok=false above (a
     // structurally-wrong "columns" array element inside an otherwise
     // valid object), which still propagates None.
-    Some ({ ts_columns = []; ts_primary_key = None; ts_inherited = csvw_inherited_empty })
+    Some ({ ts_columns = []; ts_primary_key = None; ts_inherited = csvw_inherited_empty; ts_row_titles = [] })
 
 // ================================================================
 // Table decode
@@ -1074,3 +1107,85 @@ let csvw_decode_metadata_text (input:string) : option csvw_metadata =
   match parse_json input with
   | None -> None
   | Some v -> csvw_decode_metadata v
+
+// ================================================================
+// Simulated HTTP Link-header parsing (metadata discovery step 2,
+// tabular-data-model section 5.8). The csv2rdf test harness injects
+// the would-be `Link:` response header via the manifest's
+// `csvt:httpLink` annotation (there is no live server); its value has
+// the RFC 8288 shape `<url>; rel="describedby"`. This parser extracts
+// the bracketed URL, but only when a `describedby` relation is present
+// — a Link with any other rel is not metadata for the tabular file.
+// Pure string work (a parser, per rule #4), so it lives here rather
+// than in the runner; the runner reads the annotation string and
+// resolves the returned relative URL against the CSV's directory.
+// ================================================================
+
+// Characters strictly between the first '<' (0x3C) and the next '>'
+// (0x3E), as a string; None if the brackets are absent.
+let csvw_bracketed_url (s:string) : option string =
+  let rec after_lt (cs:list FStar.Char.char) : Tot (option (list FStar.Char.char)) (decreases cs) =
+    match cs with
+    | [] -> None
+    | c :: tl -> if FStar.Char.int_of_char c = 60 then Some tl else after_lt tl in
+  let rec until_gt (cs:list FStar.Char.char) (acc:list FStar.Char.char)
+    : Tot (option (list FStar.Char.char)) (decreases cs) =
+    match cs with
+    | [] -> None
+    | c :: tl -> if FStar.Char.int_of_char c = 62 then Some (List.Tot.rev acc)
+                 else until_gt tl (c :: acc) in
+  match after_lt (String.list_of_string s) with
+  | None -> None
+  | Some rest ->
+    (match until_gt rest [] with
+     | None -> None
+     | Some url -> Some (String.string_of_list url))
+
+// Does the char-list [hay] contain [needle] as a contiguous sublist?
+let rec csvw_chars_has_prefix (needle hay : list FStar.Char.char) : Tot bool (decreases needle) =
+  match needle, hay with
+  | [], _ -> true
+  | _, [] -> false
+  | n :: nt, h :: ht -> FStar.Char.int_of_char n = FStar.Char.int_of_char h && csvw_chars_has_prefix nt ht
+
+let rec csvw_chars_contains (needle hay : list FStar.Char.char) : Tot bool (decreases hay) =
+  if csvw_chars_has_prefix needle hay then true
+  else match hay with
+       | [] -> false
+       | _ :: tl -> csvw_chars_contains needle tl
+
+let csvw_str_contains (needle hay : string) : bool =
+  csvw_chars_contains (String.list_of_string needle) (String.list_of_string hay)
+
+let csvw_link_header_describedby (link_value:string) : option string =
+  if csvw_str_contains "describedby" link_value
+  then csvw_bracketed_url link_value
+  else None
+
+// The document's default language, declared by the @context array's
+// second element ({"@language": "en"} in the [sentinel, {...}] form).
+// Validated as a BCP47-plausible tag (csvw_lang_tag_ok) — test073's
+// "a-bad-language" is rejected and resolves to None, so its common
+// properties stay language-free. Used by CSVW.Conversion to
+// language-tag common-property natural-language string VALUES
+// (test259/260's dc:title/dcat:keyword/schema:name become @en); it is
+// deliberately NOT the inherited `lang` for cell values (those stay
+// untagged unless the explicit `lang` inherited property is set).
+let csvw_context_language (v:json_val) : option string =
+  match json_get_field "@context" v with
+  | Some (JArray ctx) ->
+    (match ctx with
+     | [_; second] ->
+       (match json_get_string "@language" second with
+        | Some l -> if csvw_lang_tag_ok l then Some l else None
+        | None -> None)
+     | _ -> None)
+  | _ -> None
+
+// Convenience: extract the @context default language straight from raw
+// metadata-document text (the runner already holds the text; this saves
+// it re-parsing the JSON itself, keeping @context interpretation in F*).
+let csvw_metadata_context_language (input:string) : option string =
+  match parse_json input with
+  | None -> None
+  | Some v -> csvw_context_language v

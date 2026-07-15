@@ -13,6 +13,21 @@ Burndown ledger. Score history (all measured on freshly rebuilt
   (family E), test116 test118 test123 (family F), test012 (family B,
   via the same discovery-candidate fix as family F). Zero regressions
   either round (fail-set diff against the previous round's log).
+- Round 3 (discovery family M/B-httpLink + family A subset + K + N,
+  branch csvw-burndown-3): ✅ **251 pass, 19 fail (out of 270)**. 16
+  named flips: test014 test016 (httpLink discovery, family B), test011
+  (family B, via the @context @language common-property fix), test259
+  test260 (`.well-known/csvm` templates + @context @language, family
+  M — DONE), test235 test236 (rowTitles, family K — DONE), test263
+  (@type built-in term, family N — DONE), test047 test048 test049
+  (invalid inherited URI-template -> empty/base, family A), test278
+  (surplus CSV columns -> _col.N, family A), test306 test307 (ordered
+  -> rdf:List, family A), test038 test039 (valueUrl CURIE expansion,
+  family A). 📊 Zero regressions (every one of the 19 remaining fails
+  is in the round-2 35-fail census; no new fail introduced). Cross-
+  suite gates green: RDF six suites 1031 pass, 0 fail; jsonld-toRdf
+  461 pass, 0 fail; SPARQL 1.1 (all suites, incl. query-eval) 631
+  pass, 0 fail.
 
 Baseline for the original triage below: **218 pass, 52 fail (out of
 270)**. This note triages all 52 named fails into root-cause families by
@@ -54,29 +69,35 @@ triples in the first place. It does not explain any of the 52 fails.
 
 **Total: 15 + 4 + 4 + 2 + 5 + 5 + 2 + 2 + 3 + 1 + 2 + 2 + 2 + 1 + 1 + 1 = 52.**
 
-## Remaining-fail census after round 2 (35 fails)
+## Remaining-fail census after round 3 (19 fails)
 
 | Family | Remaining | Named tests |
 |---|---|---|
-| A (residue after the inheritance-chain landing — needs re-triage) | 10 | test038, test039, test047, test048, test049, test148, test149, test278, test306, test307 |
-| B (test011 unexplained; test014/016 httpLink = out of scope) | 3 | test011, test014, test016 |
-| C (complex multi-subject/virtual/annotation, incl. `@id` node identity) | 5 | test032, test033, test036, test037, + test102 (moved from E) |
+| A (title-language name derivation — the last A residue) | 2 | test148, test149 |
+| C (complex multi-subject/virtual/annotation, incl. `@id` node identity) | 5 | test032, test033, test036, test037, test102 |
 | D (schema-by-reference) | 2 | test034, test035 |
 | H (column-name restriction) | 2 | test130, test131 |
 | I (non-builtin datatype validation) | 3 | test150, test151, test238 |
 | J (duration regex — blocked on regex engine) | 1 | test194 |
-| K (rowTitles) | 2 | test235, test236 |
 | L (cross-table FK validation, NegativeRdf) | 2 | test252, test253 |
-| M (HTTP `.well-known` discovery — in scope per owner clarification 2026-07-15, round 3) | 2 | test259, test260 |
-| N (`@type` built-in-term expansion) | 1 | test263 |
 | O (`@base` in `@context`) | 1 | test273 |
 | P (`header=false` + schema compatibility) | 1 | test023 |
 
-Family G has no row: its named tests (test125, test127) flipped with
-round 1's landing, so family G as originally scoped is DONE.
-Row sum: 10 + 3 + 5 + 2 + 2 + 3 + 1 + 2 + 2 + 2 + 1 + 1 + 1 = 35.
-Out-of-scope by directive/blocker: 5 (test014, test016, test194,
-test259, test260). Actionable remainder: 30.
+Families B, K, M, N are DONE (all their named tests flipped in round
+3); family G was DONE in round 1; families E and F in round 2.
+Row sum: 2 + 5 + 2 + 2 + 3 + 1 + 2 + 1 + 1 = 19.
+Blocked: 1 (test194, duration regex, needs a regex engine).
+Actionable remainder: 18.
+
+**Family A's last residue (test148/149)** is title-LANGUAGE-aware
+column-name derivation: a column whose only `titles` value has an
+explicit language tag that does not exactly match the table's default
+language contributes NO name (falls to positional `_col.N`), while a
+plain-string title (normalised to the default language) does. Needs
+titles decoded WITH their language tags (currently `csvw_decode_titles`
+flattens the tag away) plus the default-language-match test at name
+derivation. Deferred this round — a decode-shape change larger than
+the rest of the A subset.
 
 ## What this session fixed
 
@@ -115,15 +136,64 @@ runner I/O changes in `bin/csvw-runner/csvw_runner.ml`
 directory-discovery candidate). Both F* modules verify clean under
 z3 4.13.3, no --lax, no admits.
 
+## What round 3 fixed (2026-07-15, branch csvw-burndown-3)
+
+Discovery family (M + the two B httpLink cases) plus a family-A
+subset, family K, family N, and one common-property language fix that
+carried B's test011 with it. 16 named flips, zero regressions, all
+cross-suite gates green (see the round-3 score line at the top).
+
+F* changes:
+- `CSVW.Metadata.fst`: (1) a non-string inherited `aboutUrl`/
+  `propertyUrl`/`valueUrl` (`csvw_inh_uri_template`) decodes to the
+  EMPTY template `""` (expands to the table base URL), not to absent —
+  test047/048/049. (2) `ordered` decoded at inherited + column level
+  (`inh_ordered`/`col_ordered`) — test306/307. (3) `rowTitles` decoded
+  on the table schema (`ts_row_titles`) — test235/236. (4)
+  `csvw_link_header_describedby` — parses the simulated `Link:` header
+  value `<url>; rel="describedby"` (a parser, per rule #4). (5)
+  `csvw_context_language`/`csvw_metadata_context_language` — the
+  @context array's validated (`csvw_lang_tag_ok`) default language.
+- `CSVW.Conversion.fst`: (1) `ordered` list-valued cell -> rdf:List
+  (`csvw_rdf_list`) instead of repeated triples — test306/307. (2)
+  surplus CSV headers beyond the described columns -> `_col.N`
+  (`csvw_surplus_specs`) — test278. (3) valueUrl template result run
+  through `csvw_expand_curie` before base resolution — test038/039
+  (`schema:about`, `rdf:value`). (4) `@type` bare CSVW built-in term
+  expansion (`csvw_expand_type_token`/`csvw_builtin_type_term`) —
+  test263. (5) rowTitles -> csvw:title triples
+  (`csvw_row_title_triples`) — test235/236. (6) common-property string
+  VALUES take the @context default language (threaded `default_lang`
+  through `csvw_common_value`/`_array`/`_object_fields` +
+  `csvw_table_common_triples` + the two standard-mode entry points) —
+  test259/260, and test011.
+
+Runner I/O glue (`bin/csvw-runner/csvw_runner.ml`, all rule-#11
+acceptable — no semantics): reads `csvt:httpLink` per test; discovery
+precedence now tries the Link-header metadata (via the F* parser,
+applying the same references-file check the file/dir candidates use, so
+test120/122's non-referencing linked docs stay ignored) BEFORE file/
+directory discovery; two new site-wide-config discovery candidates
+`<url>.json` and `csvm.json` (test260/259, both guarded by the
+references-file check — only two files in the whole corpus match);
+feeds the metadata document text to `csvw_metadata_context_language`
+and passes the result into the standard entry point. Consumer glue
+(`bin/factoidal-cli/factoidal_cli.ml`, `bin/npm-entry/entry_jsoo.ml`):
+pass `None` for the new `default_lang` argument (neither consumer
+interprets @context language today). Both F* modules verify clean
+under z3 4.13.3, no --lax, no admits.
+
 ## What's next (by expected yield)
 
-Family A's 10-test residue is the largest block but needs a re-triage
-pass first (the inheritance chain alone was not their delta — get a
-fresh `-v` diff per fixture before coding). Of the well-understood
-families: I (3 tests, datatype-name validation against the built-in
-table — the column-level twin of the round-1 inherited-datatype
-check), H (2, column-name validity fallback), K (2, rowTitles), and
-L (2, the `CSVW.Validate.fst` Stage 9 cross-table FK check) are each
-small and independently commit-sized. Family C (5 incl. test102)
+Well-understood, independently commit-sized: I (3 tests, datatype-name
+validation against the built-in table — the column-level twin of the
+round-1 inherited-datatype check), H (2, column-name validity
+fallback), L (2, the `CSVW.Validate.fst` Stage 9 cross-table FK
+check), and family A's last residue test148/149 (2, title-language
+name derivation — decode titles with their tags, then match the
+default language at name derivation). Family C (5 incl. test102)
 hinges on real-IRI `@id` node identity for table/group nodes — a
-CSVW.Conversion signature change, bigger than the others.
+CSVW.Conversion signature change, bigger than the others. Family O
+(1, test273 `@base` in `@context`) and P (1, test023 `header=false`
++ schema compatibility) are single fixtures. test194 (family J,
+duration regex) stays blocked on a regex engine.
