@@ -508,6 +508,16 @@ let debug_dump_closure_ref : (test_case_info -> RDF_Graph_Executable.rdf_graph -
   ref (fun _ _ -> ())
 let debug_dump_closure info closure = !debug_dump_closure_ref info closure
 
+(* Z33kr Phase 0 recogniser SWEEP (diagnostic only, off by default).
+   When FACTOIDAL_OWL_COUNTING_SWEEP is set, each InconsistencyTest
+   prints whether the verified F*-extracted
+   Tableau_CountingOracle.in_counting_fragment accepts its RL-base
+   closure — the honest upper bound on how many DL type-inconsistency
+   fails the counting oracle could ever flip. This never affects a
+   verdict (no call site consults z3 in Phase 0); it is pure stdout
+   instrumentation, gated so default runs are byte-for-byte unchanged. *)
+let counting_sweep = Sys.getenv_opt "FACTOIDAL_OWL_COUNTING_SWEEP" <> None
+
 (* Per-test SIGALRM cap (issue #263). The OWL-RL closure can blow up
    on some test premises (see issue #262). Without a per-test wall-
    clock cap, a single hung test takes the whole catalog down — we
@@ -1094,6 +1104,13 @@ let run_inconsistency_test
         try apply_closure_stages g_p
         with _ -> (g_p, g_p) in
       debug_dump_closure info closure;
+      (if counting_sweep then
+         let id = (match info.identifier with Some id -> id | None -> info.iri) in
+         let accepted =
+           try Tableau_CountingOracle.in_counting_fragment closure_rl
+           with _ -> false in
+         Printf.printf "  COUNTING_SWEEP  in_fragment=%b  %s\n%!"
+           accepted id);
       (* DL regime: RL inconsistency markers first (cheap), then the
          F*-extracted clash-detecting tableau (Tableau_Refute) for the
          constructs Datalog closure cannot refute — complement/
