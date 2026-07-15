@@ -2988,6 +2988,209 @@ let tableau_consistent (g : rdf_graph) (fuel : nat) : Tot (option bool) =
     | (TOut, _) -> None
 
 (* -------------------------------------------------------------------
+   11a. PE-via-refutation: negate a PositiveEntailment conclusion graph
+        into a clash-seeking augmentation (issue #298, fail-family 6).
+   -------------------------------------------------------------------
+
+   SOUNDNESS CONTRACT. For a premise P and a conclusion graph C, under
+   OWL 2 Direct Semantics:
+
+       P |= C     <=>     P ∪ ¬C  is UNSATISFIABLE.
+
+   The owl-runner consults this as a fallback rung: when the RL/DL
+   closure of P does NOT already contain every triple of C, it computes
+   `negate_conclusion C` and (on `Some neg`) runs
+   `tableau_consistent (closure(P) @ neg)`. A `Some false` (proven
+   unsat on every branch — the tableau's own soundness contract above)
+   is then a sound proof of `P |= C`, so the runner scores the test
+   PASS. `closure(P)` has exactly the models of P — RL/DL closure only
+   adds P-entailed triples, which every model of P already satisfies —
+   so refuting `closure(P) ∪ ¬C` is equivalent to refuting `P ∪ ¬C`.
+
+   FAITHFULNESS is the soundness risk. An OVER-STRONG negation would
+   make `P ∪ ¬C` unsatisfiable even when `P` does NOT entail `C`,
+   fabricating a PE pass (and, by the same mechanism, potentially
+   flipping a NegativeEntailment test — hence the NE gate). So the
+   negation emitted here must be EXACTLY ¬C, never stronger:
+
+   * A conclusion graph is a CONJUNCTION of its content assertions.
+     The sound negation of a conjunction is the DISJUNCTION of the
+     per-assertion negations — which cannot be expressed as a single
+     clash target without union branching over heterogeneous forms.
+     Therefore `negate_conclusion` supports ONLY conclusions with
+     EXACTLY ONE content assertion; every other shape returns `None`
+     and the runner keeps its pre-existing closure-miss verdict. This
+     is the monotonicity guarantee: PE can only GAIN passes here,
+     never lose one (`None` == today's behaviour).
+
+   * "Content assertion" excludes the STRUCTURAL triples that merely
+     BUILD the class expressions / declare vocabulary referenced by the
+     one assertion (owl:Restriction/onProperty/…, rdf:first/rest list
+     cells, owl:Class/ObjectProperty/… declarations). Those are kept
+     verbatim in the augmentation — they constrain nothing on their own
+     — so a class-expression-membership conclusion still counts as a
+     SINGLE content assertion. Mis-classifying a genuine content triple
+     (e.g. a property assertion `i P j`) as structural would be the
+     unsound direction, so the structural set below is restricted to
+     RDF/OWL vocabulary that is NEVER itself the asserted fact of a PE
+     conclusion; any predicate NOT in it is treated as content, so an
+     unrecognised predicate can only ADD to the content count and push
+     the result to `None` (safe), never hide an assertion.
+
+   Supported single-assertion forms:
+     (a) class membership  `i rdf:type C`  (i a NAMED individual):
+         ¬(i ∈ C) ≡ i ∈ ¬C. Emit `_:neg owl:complementOf C` and
+         `i rdf:type _:neg`; drop the positive membership; keep C's
+         defining structure. Sound: i∈C and i∈¬C are jointly
+         unsatisfiable in every model, and the augmentation asserts
+         nothing beyond i∈¬C.
+     (b) subclass axiom    `C rdfs:subClassOf D`:
+         ¬(C ⊑ D) ≡ ∃x. x ∈ C ⊓ ¬D. Introduce a FRESH individual
+         `_:x` (absent from P, so it constrains nothing else), assert
+         `_:x rdf:type C` and `_:x rdf:type ¬D`; drop the axiom; keep
+         the structure of C and D. Sound: C ⊑ D holds iff C ⊓ ¬D is
+         unsatisfiable relative to the premise TBox iff a fresh witness
+         of C ⊓ ¬D is unsatisfiable with the premise.
+
+   Existential conclusions (a bnode/existential SUBJECT in the asserted
+   triple) are NOT supported: their negation is a UNIVERSAL, not a
+   clash target, so form (a) requires a named (S_IRI) subject. Property
+   assertions, sameAs/differentFrom, equivalence and disjointness
+   axioms are all left to `None` (a later wave; each needs nominals or
+   conjunctive refutation).                                            *)
+
+// Extra RDF/OWL vocabulary IRIs used only for the structural/content
+// split below; the assert_norm idiom mirrors the file's other IRI
+// constants so each is a genuine `wf_iri` and `=` stays at wf_iri.
+let owl_Ontology_iri : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2002/07/owl#Ontology");
+  "http://www.w3.org/2002/07/owl#Ontology"
+let owl_AnnotationProperty_iri : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2002/07/owl#AnnotationProperty");
+  "http://www.w3.org/2002/07/owl#AnnotationProperty"
+let owl_DataRange_iri : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2002/07/owl#DataRange");
+  "http://www.w3.org/2002/07/owl#DataRange"
+let owl_onDataRange_iri : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2002/07/owl#onDataRange");
+  "http://www.w3.org/2002/07/owl#onDataRange"
+let owl_members_iri : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2002/07/owl#members");
+  "http://www.w3.org/2002/07/owl#members"
+let owl_withRestrictions_iri : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2002/07/owl#withRestrictions");
+  "http://www.w3.org/2002/07/owl#withRestrictions"
+let owl_onProperties_iri : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2002/07/owl#onProperties");
+  "http://www.w3.org/2002/07/owl#onProperties"
+let owl_datatypeComplementOf_iri : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2002/07/owl#datatypeComplementOf");
+  "http://www.w3.org/2002/07/owl#datatypeComplementOf"
+
+// A "meta" rdf:type object: a declaration (`X rdf:type owl:Class`,
+// `X rdf:type owl:Restriction`, `X rdf:type owl:ObjectProperty`, …) or
+// the tautological `owl:Thing`. Membership in one of these is never
+// the asserted fact a PositiveEntailment conclusion is testing, so it
+// is STRUCTURAL, not content. (owl:Nothing is deliberately absent — a
+// `i rdf:type owl:Nothing` conclusion is a real, if degenerate, claim.)
+let is_meta_type_iri (i : wf_iri) : bool =
+  i = owl_Class || i = owl_ObjectProperty || i = owl_DatatypeProperty
+  || i = owl_AnnotationProperty_iri || i = owl_NamedIndividual
+  || i = owl_Restriction || i = rdfs_Class || i = rdf_Property
+  || i = rdfs_Datatype || i = owl_DataRange_iri || i = owl_Thing
+  || i = owl_Ontology_iri
+  || i = owl_FunctionalProperty || i = owl_InverseFunctionalProperty
+  || i = owl_TransitiveProperty || i = owl_SymmetricProperty
+  || i = owl_AsymmetricProperty || i = owl_IrreflexiveProperty
+  || i = owl_ReflexiveProperty
+
+// A predicate that BUILDS a class expression / list / restriction, or
+// wires a declaration — never itself the asserted fact of a PE
+// conclusion. Any predicate NOT listed is treated as content (safe
+// over-approximation of "content": an omission can only push the
+// content count up and force `None`, never mask an assertion).
+let is_structural_predicate (p : wf_iri) : bool =
+  p = owl_onProperty || p = owl_someValuesFrom || p = owl_allValuesFrom
+  || p = owl_hasValue || p = owl_onClass || p = owl_onDataRange_iri
+  || p = owl_cardinality || p = owl_minCardinality || p = owl_maxCardinality
+  || p = owl_qualifiedCardinality || p = owl_minQualifiedCardinality
+  || p = owl_maxQualifiedCardinality || p = owl_intersectionOf
+  || p = owl_unionOf || p = owl_complementOf || p = owl_datatypeComplementOf_iri
+  || p = owl_oneOf || p = owl_hasSelf_iri || p = owl_inverseOf
+  || p = owl_distinctMembers || p = owl_members_iri
+  || p = owl_withRestrictions_iri || p = owl_onProperties_iri
+  || p = rdf_first || p = rdf_rest
+
+let is_structural_triple (t : triple) : bool =
+  (t.p = rdf_type &&
+     (match t.o with
+      | T_IRI c -> is_meta_type_iri c
+      | _ -> false))
+  || is_structural_predicate t.p
+
+// The content assertions of a conclusion graph — every non-structural
+// triple.
+let rec content_triples (g : rdf_graph) : Tot (list triple) (decreases g) =
+  match g with
+  | []      -> []
+  | t :: tl -> if is_structural_triple t then content_triples tl
+               else t :: content_triples tl
+
+// A single class-membership assertion of a NAMED individual in a
+// non-meta class (IRI or anonymous class-expression bnode).
+let is_class_membership (t : triple) : bool =
+  t.p = rdf_type
+  && (match t.s with S_IRI _ -> true | S_BNode _ -> false)
+  && (match t.o with
+      | T_IRI c    -> not (is_meta_type_iri c)
+      | T_BNode _  -> true
+      | T_Literal _ -> false)
+
+// Structural triple removal (used to drop the positive assertion that
+// the negation replaces).
+let rec drop_triple (target : triple) (g : rdf_graph)
+  : Tot rdf_graph (decreases g) =
+  match g with
+  | []      -> []
+  | t :: tl ->
+    if triple_eq t target then drop_triple target tl
+    else t :: drop_triple target tl
+
+// Fresh bnode ids for the negation. The distinctive prefix keeps them
+// disjoint from every bnode a W3C fixture / RDFXML parser produces.
+let pe_neg_class_bnode : bnode_id = "__factoidal_pe_neg_class"
+let pe_sub_fresh_bnode : bnode_id = "__factoidal_pe_sub_witness"
+
+let negate_conclusion (g_c : rdf_graph) : option rdf_graph =
+  match content_triples g_c with
+  | [t] ->
+    if is_class_membership t then
+      // (a) i rdf:type C  ->  i rdf:type ¬C.
+      let rest = drop_triple t g_c in
+      let comp : triple =
+        { s = S_BNode pe_neg_class_bnode; p = owl_complementOf; o = t.o } in
+      let member : triple =
+        { s = t.s; p = rdf_type; o = T_BNode pe_neg_class_bnode } in
+      Some (comp :: member :: rest)
+    else if t.p = rdfs_subClassOf then
+      // (b) C rdfs:subClassOf D  ->  fresh _:x with _:x ∈ C ⊓ ¬D.
+      (match term_to_subject t.o with
+       | None   -> None                       // D not a resource — no negation
+       | Some _ ->
+         let rest = drop_triple t g_c in
+         let x : subject = S_BNode pe_sub_fresh_bnode in
+         let in_c : triple =
+           { s = x; p = rdf_type; o = subject_to_term t.s } in
+         let comp : triple =
+           { s = S_BNode pe_neg_class_bnode; p = owl_complementOf; o = t.o } in
+         let in_neg_d : triple =
+           { s = x; p = rdf_type; o = T_BNode pe_neg_class_bnode } in
+         Some (in_c :: comp :: in_neg_d :: rest))
+    else None
+  | _ -> None    // 0 or >=2 content assertions: sound negation is a
+                 // disjunction / unsupported — keep the closure verdict.
+
+(* -------------------------------------------------------------------
    12. In-file sanity matrix (guarded, dead-code — same pattern as
        Tableau.fst section 9).
    ------------------------------------------------------------------- *)

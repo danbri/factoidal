@@ -2032,3 +2032,149 @@ let tableau_consistent (g : RDF_Graph.rdf_graph) (fuel : Prims.nat) :
      | (TClash, uu___1) -> FStar_Pervasives_Native.Some false
      | (TOpen, uu___1) -> FStar_Pervasives_Native.Some true
      | (TOut, uu___1) -> FStar_Pervasives_Native.None)
+let owl_Ontology_iri : RDF_Term.wf_iri=
+  "http://www.w3.org/2002/07/owl#Ontology"
+let owl_AnnotationProperty_iri : RDF_Term.wf_iri=
+  "http://www.w3.org/2002/07/owl#AnnotationProperty"
+let owl_DataRange_iri : RDF_Term.wf_iri=
+  "http://www.w3.org/2002/07/owl#DataRange"
+let owl_onDataRange_iri : RDF_Term.wf_iri=
+  "http://www.w3.org/2002/07/owl#onDataRange"
+let owl_members_iri : RDF_Term.wf_iri=
+  "http://www.w3.org/2002/07/owl#members"
+let owl_withRestrictions_iri : RDF_Term.wf_iri=
+  "http://www.w3.org/2002/07/owl#withRestrictions"
+let owl_onProperties_iri : RDF_Term.wf_iri=
+  "http://www.w3.org/2002/07/owl#onProperties"
+let owl_datatypeComplementOf_iri : RDF_Term.wf_iri=
+  "http://www.w3.org/2002/07/owl#datatypeComplementOf"
+let is_meta_type_iri (i : RDF_Term.wf_iri) : Prims.bool=
+  ((((((((((((((((((i = RDFS_Closure.owl_Class) ||
+                     (i = RDFS_Closure.owl_ObjectProperty))
+                    || (i = RDFS_Closure.owl_DatatypeProperty))
+                   || (i = owl_AnnotationProperty_iri))
+                  || (i = RDFS_Closure.owl_NamedIndividual))
+                 || (i = OWL_Vocabulary.owl_Restriction))
+                || (i = RDFS_Closure.rdfs_Class))
+               || (i = RDFS_Closure.rdf_Property))
+              || (i = RDFS_Closure.rdfs_Datatype))
+             || (i = owl_DataRange_iri))
+            || (i = RDFS_Closure.owl_Thing))
+           || (i = owl_Ontology_iri))
+          || (i = owl_FunctionalProperty))
+         || (i = OWL_Closure.owl_InverseFunctionalProperty))
+        || (i = owl_TransitiveProperty))
+       || (i = OWL_Closure.owl_SymmetricProperty))
+      || (i = OWL_Closure.owl_AsymmetricProperty))
+     || (i = OWL_Closure.owl_IrreflexiveProperty))
+    || (i = OWL_Closure.owl_ReflexiveProperty)
+let is_structural_predicate (p : RDF_Term.wf_iri) : Prims.bool=
+  ((((((((((((((((((((((((p = OWL_Vocabulary.owl_onProperty) ||
+                           (p = OWL_Vocabulary.owl_someValuesFrom))
+                          || (p = OWL_Vocabulary.owl_allValuesFrom))
+                         || (p = OWL_Vocabulary.owl_hasValue))
+                        || (p = OWL_Vocabulary.owl_onClass))
+                       || (p = owl_onDataRange_iri))
+                      || (p = OWL_Vocabulary.owl_cardinality))
+                     || (p = OWL_Vocabulary.owl_minCardinality))
+                    || (p = OWL_Vocabulary.owl_maxCardinality))
+                   || (p = OWL_Vocabulary.owl_qualifiedCardinality))
+                  || (p = OWL_Vocabulary.owl_minQualifiedCardinality))
+                 || (p = OWL_Vocabulary.owl_maxQualifiedCardinality))
+                || (p = OWL_Vocabulary.owl_intersectionOf))
+               || (p = OWL_Vocabulary.owl_unionOf))
+              || (p = OWL_Vocabulary.owl_complementOf))
+             || (p = owl_datatypeComplementOf_iri))
+            || (p = OWL_Vocabulary.owl_oneOf))
+           || (p = owl_hasSelf_iri))
+          || (p = owl_inverseOf))
+         || (p = owl_distinctMembers))
+        || (p = owl_members_iri))
+       || (p = owl_withRestrictions_iri))
+      || (p = owl_onProperties_iri))
+     || (p = OWL_Vocabulary.rdf_first))
+    || (p = OWL_Vocabulary.rdf_rest)
+let is_structural_triple (t : RDF_Triple.triple) : Prims.bool=
+  ((t.RDF_Triple.p = RDFS_Closure.rdf_type) &&
+     (match t.RDF_Triple.o with
+      | RDF_Term.T_IRI c -> is_meta_type_iri c
+      | uu___ -> false))
+    || (is_structural_predicate t.RDF_Triple.p)
+let rec content_triples (g : RDF_Graph.rdf_graph) :
+  RDF_Triple.triple Prims.list=
+  match g with
+  | [] -> []
+  | t::tl ->
+      if is_structural_triple t
+      then content_triples tl
+      else t :: (content_triples tl)
+let is_class_membership (t : RDF_Triple.triple) : Prims.bool=
+  ((t.RDF_Triple.p = RDFS_Closure.rdf_type) &&
+     (match t.RDF_Triple.s with
+      | RDF_Term.S_IRI uu___ -> true
+      | RDF_Term.S_BNode uu___ -> false))
+    &&
+    (match t.RDF_Triple.o with
+     | RDF_Term.T_IRI c -> Prims.op_Negation (is_meta_type_iri c)
+     | RDF_Term.T_BNode uu___ -> true
+     | RDF_Term.T_Literal uu___ -> false)
+let rec drop_triple (target : RDF_Triple.triple) (g : RDF_Graph.rdf_graph) :
+  RDF_Graph.rdf_graph=
+  match g with
+  | [] -> []
+  | t::tl ->
+      if RDF_Triple.triple_eq t target
+      then drop_triple target tl
+      else t :: (drop_triple target tl)
+let pe_neg_class_bnode : RDF_Term.bnode_id= "__factoidal_pe_neg_class"
+let pe_sub_fresh_bnode : RDF_Term.bnode_id= "__factoidal_pe_sub_witness"
+let negate_conclusion (g_c : RDF_Graph.rdf_graph) :
+  RDF_Graph.rdf_graph FStar_Pervasives_Native.option=
+  match content_triples g_c with
+  | t::[] ->
+      if is_class_membership t
+      then
+        let rest = drop_triple t g_c in
+        let comp =
+          {
+            RDF_Triple.s = (RDF_Term.S_BNode pe_neg_class_bnode);
+            RDF_Triple.p = OWL_Vocabulary.owl_complementOf;
+            RDF_Triple.o = (t.RDF_Triple.o)
+          } in
+        let member =
+          {
+            RDF_Triple.s = (t.RDF_Triple.s);
+            RDF_Triple.p = RDFS_Closure.rdf_type;
+            RDF_Triple.o = (RDF_Term.T_BNode pe_neg_class_bnode)
+          } in
+        FStar_Pervasives_Native.Some (comp :: member :: rest)
+      else
+        if t.RDF_Triple.p = RDFS_Closure.rdfs_subClassOf
+        then
+          (match RDF_Graph.term_to_subject t.RDF_Triple.o with
+           | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+           | FStar_Pervasives_Native.Some uu___1 ->
+               let rest = drop_triple t g_c in
+               let x = RDF_Term.S_BNode pe_sub_fresh_bnode in
+               let in_c =
+                 {
+                   RDF_Triple.s = x;
+                   RDF_Triple.p = RDFS_Closure.rdf_type;
+                   RDF_Triple.o = (RDF_Graph.subject_to_term t.RDF_Triple.s)
+                 } in
+               let comp =
+                 {
+                   RDF_Triple.s = (RDF_Term.S_BNode pe_neg_class_bnode);
+                   RDF_Triple.p = OWL_Vocabulary.owl_complementOf;
+                   RDF_Triple.o = (t.RDF_Triple.o)
+                 } in
+               let in_neg_d =
+                 {
+                   RDF_Triple.s = x;
+                   RDF_Triple.p = RDFS_Closure.rdf_type;
+                   RDF_Triple.o = (RDF_Term.T_BNode pe_neg_class_bnode)
+                 } in
+               FStar_Pervasives_Native.Some (in_c :: comp :: in_neg_d ::
+                 rest))
+        else FStar_Pervasives_Native.None
+  | uu___ -> FStar_Pervasives_Native.None
