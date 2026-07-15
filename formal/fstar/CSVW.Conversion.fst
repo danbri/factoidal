@@ -329,12 +329,33 @@ let csvw_col_spec_of_column (eff : csvw_inherited_props) (c : csvw_column) : csv
 // mapi ever supplies are always >= 0.
 let csvw_positional_name (i : int) : string = "_col." ^ string_of_int (i + 1)
 
-// Schema absent entirely, or present but with an empty column list
-// (both mean "infer purely from the header row").
+// Schema absent entirely ("no metadata document at all" — test001):
+// column names come from the CSV file's own header row text (the
+// "embedded metadata" the Model for Tabular Data derives purely from
+// the header when no user metadata exists at all).
 let csvw_col_specs_from_header (header_cells : list string) : list csvw_col_spec =
   List.Tot.mapi
     (fun i (h : string) -> {
        cs_name = (if h = "" then csvw_positional_name i else h);
+       cs_virtual = false; cs_suppress = false; cs_datatype = None;
+       cs_about_url = None; cs_property_url = None; cs_value_url = None;
+       cs_separator = None; cs_lang = None; cs_null = None;
+     })
+    header_cells
+
+// A tableSchema WAS supplied by user metadata but decoded to zero
+// column descriptions — either "columns" was validly omitted, or it
+// was present with the wrong JSON shape and graceful degradation
+// (tabular-metadata section 4, CSVW.Metadata.csvw_decode_table_schema)
+// reduced it to empty. Once a user schema exists at all, the header
+// row's own text no longer supplies column names (test100/test107):
+// every column falls straight to the positional "_col.N" default,
+// never the CSV header cell's literal text — unlike the "no schema
+// object at all" case above, which DOES use header text.
+let csvw_col_specs_positional (header_cells : list string) : list csvw_col_spec =
+  List.Tot.mapi
+    (fun i (h : string) -> {
+       cs_name = csvw_positional_name i;
        cs_virtual = false; cs_suppress = false; cs_datatype = None;
        cs_about_url = None; cs_property_url = None; cs_value_url = None;
        cs_separator = None; cs_lang = None; cs_null = None;
@@ -354,7 +375,7 @@ let csvw_build_col_specs
     if Cons? ts.ts_columns then
       let eff = csvw_merge_inherited ts.ts_inherited (csvw_merge_inherited tbl grp) in
       List.Tot.map (csvw_col_spec_of_column eff) ts.ts_columns
-    else csvw_col_specs_from_header header_cells
+    else csvw_col_specs_positional header_cells
   | None -> csvw_col_specs_from_header header_cells
 
 // ================================================================

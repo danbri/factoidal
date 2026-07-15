@@ -215,6 +215,36 @@ let file_iri_to_path (iri : string) =
   then String.sub iri plen (String.length iri - plen)
   else iri
 
+(* Family F (query-string discovery edge cases, test116/test118): an
+   `mf:action` may itself carry a `?query` (or, in principle, a `#frag`)
+   component — e.g. `test116.csv?query`. That component is part of the
+   LOGICAL table URL (it must survive into the IRIs the conversion
+   layer builds — csvw:url <test116.csv?query>, table subject IRIs,
+   ...) but is NOT part of the on-disk filename: the real file is
+   `test116.csv`, with no literal '?' in its name. Every actual
+   filesystem access (CSV data read, metadata-file read) strips the
+   query/fragment first; every IRI-construction path (base_iri,
+   fallback_url, tbl_url, discover_metadata's file-metadata candidate
+   name) keeps it, since a "file metadata" lookup for a query-bearing
+   URL is a genuinely different (and, per test116, absent) resource
+   location than the query-free one. *)
+let strip_query_frag (s : string) =
+  let cut c = try Some (String.index s c) with Not_found -> None in
+  match cut '?', cut '#' with
+  | Some q, Some h -> String.sub s 0 (min q h)
+  | Some q, None -> String.sub s 0 q
+  | None, Some h -> String.sub s 0 h
+  | None, None -> s
+
+(* The file extension (no leading '.'), from a query/fragment-stripped
+   path — used to build the "directory metadata" discovery candidate
+   name below. Defaults to "csv" (this corpus's only tabular-file
+   extension) when the action has none. *)
+let file_ext_no_dot (path : string) =
+  match Filename.extension (strip_query_frag path) with
+  | "" -> "csv"
+  | e -> String.sub e 1 (String.length e - 1)
+
 (* ------------------------------------------------------------------ *)
 (* Test-entry extraction. *)
 
@@ -289,7 +319,11 @@ let tables_with_rows (test_dir : string) (action_path : string) (meta_opt : CSVW
   : (CSVW_Metadata.csvw_table * string * string list list) list =
   let read_table (tbl : CSVW_Metadata.csvw_table) (fallback_url : string) =
     let rel = (match opt_of_fs tbl.CSVW_Metadata.tbl_url with Some u -> u | None -> fallback_url) in
-    let path = Filename.concat test_dir rel in
+    (* `rel` may carry a `?query`/`#frag` (test118: tbl_url itself is
+       "action.csv?query"; test116: fallback_url is "test116.csv?query")
+       — strip it for the actual disk read only; `fallback_url` (passed
+       through unchanged to CSVW_Conversion for IRI construction) keeps it. *)
+    let path = Filename.concat test_dir (strip_query_frag rel) in
     (tbl, fallback_url, read_rows path)
   in
   match meta_opt with
@@ -316,11 +350,24 @@ type outcome = Pass | Fail of string | Skip of string
         caller before this function runs).
      2. `mf:action` itself, when it already IS a metadata document.
      3. `<tabular file name>-metadata.json` next to the CSV ("file
-        metadata" — test011/tree-ops.csv-metadata.json).
-     4. `metadata.json` in the same directory ("directory metadata").
+        metadata" — test011/tree-ops.csv-metadata.json). Built from the
+        UN-stripped action path, so a query-bearing action (test116:
+        `test116.csv?query`) genuinely fails to find a same-named file
+        — a query-suffixed URL is a distinct resource per tabular-
+        data-model, and this corpus's own fixtures never ship a
+        literal `?`-containing filename.
+     4. `<extension>-metadata.json` in the same directory ("directory
+        metadata" — test012/csv-metadata.json, test118/csv-metadata.json,
+        test123/csv-metadata.json). The vendored corpus's own naming
+        convention for this candidate is the ACTION's file extension
+        (always "csv" here), not the spec-literal "metadata.json" — no
+        fixture in the corpus ever uses that literal name (confirmed:
+        zero `metadata.json` files under third_party/testing/csvw/tests).
    Link-header simulation (`csvt:httpLink`) and site-wide
    `/.well-known/csvm` are out of scope — no HTTP layer in this
-   runner. *)
+   runner (test014/test016's `csvt:httpLink` fixtures stay unhandled by
+   design, per the owner directive parking HTTP-based discovery
+   alongside SPARQL Protocol). *)
 let decode_metadata_file (p : string) : CSVW_Metadata.csvw_metadata option =
   match read_file p with
   | None -> None
@@ -356,7 +403,7 @@ let discover_metadata (test_dir : string) (action_path : string) =
   in
   match try_candidate (action_path ^ "-metadata.json") with
   | Some r -> Some r
-  | None -> try_candidate (Filename.concat test_dir "metadata.json")
+  | None -> try_candidate (Filename.concat test_dir (file_ext_no_dot action_path ^ "-metadata.json"))
 
 (* The per-test working directory is the ACTION file's own directory,
    not the shared manifest directory — most tests sit flat in
