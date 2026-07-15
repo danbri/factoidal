@@ -919,6 +919,32 @@ and process_property_element (st : rdfxml_state) (subj : subject) (node : xml_no
                 match c with
                 | XElement _ _ _ -> true
                 | _ -> false) children in
+              (* A datatyped property element whose content contains XML
+                 element children is an opaque XML literal (RDF 1.1
+                 XMLLiteral, or any datatyped literal whose lexical form
+                 happens to look like nested RDF/XML — e.g.
+                 FS2RDF-literals-ar's `rdf:datatype=".../xmlliteral"`
+                 value carrying `<rdf:RDF>...</rdf:RDF>`). Per RDF/XML the
+                 content is the LEXICAL FORM, captured as opaque XML text
+                 exactly like the rdf:parseType="Literal" path — it is
+                 NEVER re-entered as node structure. Walking it as a node
+                 element raised `Forbidden node element name` on the
+                 nested `<rdf:RDF>` and aborted the whole parse. This
+                 branch must precede the node-walking branch below. *)
+              let dt_opaque =
+                if List.Tot.length child_elements_list > 0
+                then datatype_opt else None in
+              (match dt_opaque with
+               | Some dt ->
+                 let xml_content = serialize_children_xml children st1.namespaces in
+                 let full_dt = resolve_iri st2.base_iri dt in
+                 begin match make_typed_literal xml_content full_dt with
+                 | Some obj ->
+                   let t : triple = { s = subj; p = pred_iri; o = obj } in
+                   { pr_triples = t :: reif_of pred_iri obj; pr_state = st2; }
+                 | None -> empty_result st2
+                 end
+               | None ->
               if List.Tot.length child_elements_list > 0 then
                 begin match child_elements_list with
                 | child_elem :: _ ->
@@ -986,6 +1012,7 @@ and process_property_element (st : rdfxml_state) (subj : subject) (node : xml_no
                     { pr_triples = t :: reif_of pred_iri obj; pr_state = st2; }
                   | None -> empty_result st2
                   end
+              )
             end
           end
       end

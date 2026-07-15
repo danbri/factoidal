@@ -1036,106 +1036,22 @@ and process_property_element (st : rdfxml_state) (subj : RDF_Term.subject)
                                       | Parser_XML.XElement
                                           (uu___4, uu___5, uu___6) -> true
                                       | uu___4 -> false) children in
-                               if
-                                 (FStar_List_Tot_Base.length
-                                    child_elements_list)
-                                   > Prims.int_zero
-                               then
-                                 (match child_elements_list with
-                                  | child_elem::uu___4 ->
-                                      let node_result =
-                                        process_node_element st2 child_elem
-                                          (fuel - Prims.int_one) in
-                                      let child_subj =
-                                        determine_subject_readonly
-                                          (update_state_from_attrs st2
-                                             (Parser_XML.element_attrs
-                                                child_elem))
-                                          (Parser_XML.element_attrs
-                                             child_elem) in
-                                      let uu___5 = child_subj in
-                                      (match uu___5 with
-                                       | (child_s, st3) ->
-                                           let obj_term =
-                                             match child_s with
-                                             | RDF_Term.S_IRI i ->
-                                                 RDF_Term.T_IRI i
-                                             | RDF_Term.S_BNode b ->
-                                                 RDF_Term.T_BNode b in
-                                           let link_triple =
-                                             {
-                                               RDF_Triple.s = subj;
-                                               RDF_Triple.p = pred_iri;
-                                               RDF_Triple.o = obj_term
-                                             } in
-                                           {
-                                             pr_triples =
-                                               (FStar_List_Tot_Base.op_At
-                                                  (link_triple ::
-                                                  (reif_of pred_iri obj_term))
-                                                  node_result.pr_triples);
-                                             pr_state =
-                                               (node_result.pr_state)
-                                           })
-                                  | [] -> empty_result st2)
-                               else
-                                 (let text_val = collect_text children in
-                                  let has_text =
-                                    (FStar_String.strlen text_val) >
-                                      Prims.int_zero in
-                                  let has_datatype =
-                                    match datatype_opt with
-                                    | FStar_Pervasives_Native.Some uu___5 ->
-                                        true
-                                    | FStar_Pervasives_Native.None -> false in
-                                  let probe_triples =
-                                    let uu___5 = fresh_bnode st2 in
-                                    match uu___5 with
-                                    | (probe_bid, uu___6) ->
-                                        collect_property_attributes st2
-                                          (RDF_Term.S_BNode probe_bid) attrs in
-                                  if
-                                    ((Prims.op_Negation has_text) &&
-                                       (Prims.op_Negation has_datatype))
-                                      &&
-                                      ((FStar_List_Tot_Base.length
-                                          probe_triples)
-                                         > Prims.int_zero)
-                                  then
-                                    let uu___5 = fresh_bnode st2 in
-                                    match uu___5 with
-                                    | (bid, st3) ->
-                                        let bnode_subj = RDF_Term.S_BNode bid in
-                                        let obj_term = RDF_Term.T_BNode bid in
-                                        let link_triple =
-                                          {
-                                            RDF_Triple.s = subj;
-                                            RDF_Triple.p = pred_iri;
-                                            RDF_Triple.o = obj_term
-                                          } in
-                                        let prop_attr_triples =
-                                          collect_property_attributes st3
-                                            bnode_subj attrs in
-                                        {
-                                          pr_triples =
-                                            (FStar_List_Tot_Base.op_At
-                                               (link_triple ::
-                                               (reif_of pred_iri obj_term))
-                                               prop_attr_triples);
-                                          pr_state = st3
-                                        }
-                                  else
-                                    (let obj_opt =
-                                       match datatype_opt with
-                                       | FStar_Pervasives_Native.Some dt ->
-                                           let full_dt =
-                                             resolve_iri st2.base_iri dt in
-                                           make_typed_literal text_val
+                               let dt_opaque =
+                                 if
+                                   (FStar_List_Tot_Base.length
+                                      child_elements_list)
+                                     > Prims.int_zero
+                                 then datatype_opt
+                                 else FStar_Pervasives_Native.None in
+                               (match dt_opaque with
+                                | FStar_Pervasives_Native.Some dt ->
+                                    let xml_content =
+                                      serialize_children_xml children
+                                        st1.namespaces in
+                                    let full_dt = resolve_iri st2.base_iri dt in
+                                    (match make_typed_literal xml_content
                                              full_dt
-                                       | FStar_Pervasives_Native.None ->
-                                           make_plain_literal text_val
-                                             st2.lang in
-                                     match obj_opt with
+                                     with
                                      | FStar_Pervasives_Native.Some obj ->
                                          let t =
                                            {
@@ -1149,7 +1065,131 @@ and process_property_element (st : rdfxml_state) (subj : RDF_Term.subject)
                                            pr_state = st2
                                          }
                                      | FStar_Pervasives_Native.None ->
-                                         empty_result st2))))))
+                                         empty_result st2)
+                                | FStar_Pervasives_Native.None ->
+                                    if
+                                      (FStar_List_Tot_Base.length
+                                         child_elements_list)
+                                        > Prims.int_zero
+                                    then
+                                      (match child_elements_list with
+                                       | child_elem::uu___4 ->
+                                           let node_result =
+                                             process_node_element st2
+                                               child_elem
+                                               (fuel - Prims.int_one) in
+                                           let child_subj =
+                                             determine_subject_readonly
+                                               (update_state_from_attrs st2
+                                                  (Parser_XML.element_attrs
+                                                     child_elem))
+                                               (Parser_XML.element_attrs
+                                                  child_elem) in
+                                           let uu___5 = child_subj in
+                                           (match uu___5 with
+                                            | (child_s, st3) ->
+                                                let obj_term =
+                                                  match child_s with
+                                                  | RDF_Term.S_IRI i ->
+                                                      RDF_Term.T_IRI i
+                                                  | RDF_Term.S_BNode b ->
+                                                      RDF_Term.T_BNode b in
+                                                let link_triple =
+                                                  {
+                                                    RDF_Triple.s = subj;
+                                                    RDF_Triple.p = pred_iri;
+                                                    RDF_Triple.o = obj_term
+                                                  } in
+                                                {
+                                                  pr_triples =
+                                                    (FStar_List_Tot_Base.op_At
+                                                       (link_triple ::
+                                                       (reif_of pred_iri
+                                                          obj_term))
+                                                       node_result.pr_triples);
+                                                  pr_state =
+                                                    (node_result.pr_state)
+                                                })
+                                       | [] -> empty_result st2)
+                                    else
+                                      (let text_val = collect_text children in
+                                       let has_text =
+                                         (FStar_String.strlen text_val) >
+                                           Prims.int_zero in
+                                       let has_datatype =
+                                         match datatype_opt with
+                                         | FStar_Pervasives_Native.Some
+                                             uu___5 -> true
+                                         | FStar_Pervasives_Native.None ->
+                                             false in
+                                       let probe_triples =
+                                         let uu___5 = fresh_bnode st2 in
+                                         match uu___5 with
+                                         | (probe_bid, uu___6) ->
+                                             collect_property_attributes st2
+                                               (RDF_Term.S_BNode probe_bid)
+                                               attrs in
+                                       if
+                                         ((Prims.op_Negation has_text) &&
+                                            (Prims.op_Negation has_datatype))
+                                           &&
+                                           ((FStar_List_Tot_Base.length
+                                               probe_triples)
+                                              > Prims.int_zero)
+                                       then
+                                         let uu___5 = fresh_bnode st2 in
+                                         match uu___5 with
+                                         | (bid, st3) ->
+                                             let bnode_subj =
+                                               RDF_Term.S_BNode bid in
+                                             let obj_term =
+                                               RDF_Term.T_BNode bid in
+                                             let link_triple =
+                                               {
+                                                 RDF_Triple.s = subj;
+                                                 RDF_Triple.p = pred_iri;
+                                                 RDF_Triple.o = obj_term
+                                               } in
+                                             let prop_attr_triples =
+                                               collect_property_attributes
+                                                 st3 bnode_subj attrs in
+                                             {
+                                               pr_triples =
+                                                 (FStar_List_Tot_Base.op_At
+                                                    (link_triple ::
+                                                    (reif_of pred_iri
+                                                       obj_term))
+                                                    prop_attr_triples);
+                                               pr_state = st3
+                                             }
+                                       else
+                                         (let obj_opt =
+                                            match datatype_opt with
+                                            | FStar_Pervasives_Native.Some dt
+                                                ->
+                                                let full_dt =
+                                                  resolve_iri st2.base_iri dt in
+                                                make_typed_literal text_val
+                                                  full_dt
+                                            | FStar_Pervasives_Native.None ->
+                                                make_plain_literal text_val
+                                                  st2.lang in
+                                          match obj_opt with
+                                          | FStar_Pervasives_Native.Some obj
+                                              ->
+                                              let t =
+                                                {
+                                                  RDF_Triple.s = subj;
+                                                  RDF_Triple.p = pred_iri;
+                                                  RDF_Triple.o = obj
+                                                } in
+                                              {
+                                                pr_triples = (t ::
+                                                  (reif_of pred_iri obj));
+                                                pr_state = st2
+                                              }
+                                          | FStar_Pervasives_Native.None ->
+                                              empty_result st2)))))))
      | uu___1 -> empty_result st)
 and process_collection (st : rdfxml_state) (subj : RDF_Term.subject)
   (pred_iri : Prims.string)
