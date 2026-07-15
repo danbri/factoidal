@@ -677,6 +677,48 @@ let class_size_refutes (closure_rl : RDF_Graph_Executable.rdf_graph) : bool =
        Tableau_CountingOracle.class_size_unsat closure_rl)
      with _ -> false)
 
+(* ---- PE via refutation (issue #298, fail-family 6) -----------------
+   A PositiveEntailment fallback rung, ONE RUNG OUTSIDE the closure
+   check: when the RL/DL closure of the premise does NOT already
+   contain the conclusion, negate the conclusion and ask the verified
+   refuter whether premise-closure conjoined with the negation is
+   inconsistent. `Tableau_Refute.negate_conclusion` (F*-extracted)
+   decides WHETHER a sound single-assertion negation exists for the
+   conclusion's form — returning None (fall back to today's closure
+   verdict) for every form it cannot faithfully negate — and, on Some,
+   emits exactly ¬conclusion as clash-seeking RDF triples. This runner
+   code decides only WHEN to consult and under what budget; all
+   satisfiability + negation logic is F*-extracted (rule #15 boundary
+   respected). A `true` verdict is a PROVEN refutation of the negated
+   conclusion, hence a sound proof of the entailment (see the soundness
+   contract at Tableau.Refute.negate_conclusion): a plain verified PASS,
+   never oracle-assisted.
+
+   Contract, mirroring dl_refutes: RL regime never consulted (RL PE
+   scoring unchanged). In DL, runs under the same short refuter
+   SIGALRM cap; a cap-trip / None / Some true / any exception falls
+   back to `false`, i.e. the pre-existing closure-miss verdict — so PE
+   can only GAIN passes here, never lose one, and no NegativeEntailment
+   test can flip to a false pass through this path (a NE test's closure
+   verdict is preserved unless the refuter PROVES the negation
+   inconsistent, which for a genuinely non-entailed conclusion it
+   cannot). *)
+let pe_refute_entails
+      (closure : RDF_Graph_Executable.rdf_graph)
+      (g_c : RDF_Graph_Executable.rdf_graph) : bool =
+  match !regime with
+  | Regime_RL -> false
+  | Regime_DL ->
+    (match Tableau_Refute.negate_conclusion g_c with
+     | None -> false
+     | Some neg ->
+       (try with_refute_cap (fun () ->
+          match Tableau_Refute.tableau_consistent
+                  (List.append closure neg) refute_fuel with
+          | Some false -> true
+          | _ -> false)
+        with _ -> false))
+
 (* ---- Z33kr Phase 1: native z3 counting-fragment oracle -------------
    ONE RUNG OUTSIDE the dl_refutes contract above. Consulted ONLY when
    dl_refutes returned false (the tableau did not refute — None
@@ -991,7 +1033,11 @@ let run_positive_entailment_functional_syntax
           then check rest
           else Fail_conclusion_miss t
       in
-      Some (check g_c)
+      (match check g_c with
+       | Pass -> Some Pass
+       | miss ->
+         (* PE-via-refutation fallback (issue #298). *)
+         if pe_refute_entails closure g_c then Some Pass else Some miss)
 
 let run_positive_entailment
       (info : test_case_info)
@@ -1045,7 +1091,11 @@ let run_positive_entailment
           then check rest
           else Fail_conclusion_miss t
       in
-      check g_c
+      (match check g_c with
+       | Pass -> Pass
+       | miss ->
+         (* PE-via-refutation fallback (issue #298). *)
+         if pe_refute_entails closure g_c then Pass else miss)
       end)
 
 (* NegativeEntailmentTest: the conclusion is asserted to NOT be a
