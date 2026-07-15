@@ -30,10 +30,15 @@ module CSVW.Conversion
 // SCOPE / KNOWN GAPS (all deliberate, not oversights — see
 // docs/designissues/2026-07-05-csvw-program-plan.md's stage table for
 // what a later stage should pick up):
-//   - Inherited properties (Stage 2, not yet built in CSVW.Metadata):
-//     this module approximates ONE level of aboutUrl/propertyUrl/
-//     valueUrl inheritance itself (column overrides table-schema),
-//     not the full table-group -> table -> schema -> column chain.
+//   - Inherited properties (Stage 2): the full table-group -> table ->
+//     tableSchema -> column chain is now built (csvw_merge_inherited /
+//     csvw_build_col_specs below, over CSVW.Metadata's
+//     csvw_inherited_props/csvw_group_meta) for seven of the eleven
+//     tabular-metadata 5.1.1 properties — aboutUrl/propertyUrl/
+//     valueUrl/datatype/lang/null/separator. `default`/`ordered`/
+//     `required`/`textDirection` remain undecoded at any level (no
+//     consumer here reads them yet) — a narrower slice than the full
+//     eleven, not a claim of completeness.
 //   - Table-group-level shared dialect/tableSchema (a table inside a
 //     "tables": [...] array that has NO tableSchema/dialect of its
 //     own, relying on the group's) is not decoded by CSVW.Metadata at
@@ -250,11 +255,27 @@ let csvw_build_literal (lex : string) (dt : string) : option rdf_term =
     if literal_wf l then Some (T_Literal l) else None
   else None
 
+// Stage 2's inherited "lang" property (tabular-metadata section
+// 5.1.1): a cell whose column has an effective `lang` gets that
+// language tag ONLY when the cell's resulting value is a plain string
+// (datatype xsd:string, csv2rdf's own default) — a typed value
+// (xsd:date, xsd:integer, ...) is never language-tagged. RDF 1.1
+// requires datatype = rdf:langString exactly when a language tag is
+// present (literal_wf above), so tagging also swaps the datatype.
+let csvw_build_literal_lang (lex : string) (dt : string) (lang : option string) : option rdf_term =
+  match lang, dt = xsd_string with
+  | Some l, true ->
+    let lit : literal = { lexical_form = lex; datatype = rdf_lang_string; lang_tag = Some l } in
+    if literal_wf lit then Some (T_Literal lit) else None
+  | _ -> csvw_build_literal lex dt
+
 // ================================================================
-// Column specs: CSVW.Metadata's csvw_column merged with a ONE-LEVEL
-// table-schema fallback for aboutUrl/propertyUrl/valueUrl (see the
-// banner's "Scope / known gaps" note on inheritance), or synthesized
-// straight from a header row when no schema was given at all.
+// Column specs: CSVW.Metadata's csvw_column merged with the FULL
+// table-group -> table -> tableSchema -> column inherited-property
+// chain (Stage 2 — csvw_inherited_props/csvw_group_meta in
+// CSVW.Metadata; the module banner's old "ONE-LEVEL" note is
+// superseded, kept there only as history), or synthesized straight
+// from a header row when no schema was given at all.
 // ================================================================
 
 noeq type csvw_col_spec = {
@@ -266,21 +287,39 @@ noeq type csvw_col_spec = {
   cs_property_url : option string;
   cs_value_url    : option string;
   cs_separator    : option string;   // list-valued cell separator (test228-230)
+  cs_lang         : option string;   // Stage 2 inherited "lang"
+  cs_null         : option string;   // Stage 2 inherited "null"
 }
 
 let csvw_opt_bool (o : option bool) : bool = match o with Some b -> b | None -> false
 
-let csvw_col_spec_of_column (ts : csvw_table_schema) (c : csvw_column) : csvw_col_spec = {
+// More-specific-wins merge of two inherited-property records — used
+// to fold table-group -> table -> tableSchema into ONE effective
+// record before a column's own (most-specific) values are applied on
+// top of it in csvw_col_spec_of_column.
+let csvw_merge_inherited (specific general : csvw_inherited_props) : csvw_inherited_props = {
+  inh_about_url    = (match specific.inh_about_url with    Some _ -> specific.inh_about_url    | None -> general.inh_about_url);
+  inh_property_url = (match specific.inh_property_url with Some _ -> specific.inh_property_url | None -> general.inh_property_url);
+  inh_value_url    = (match specific.inh_value_url with    Some _ -> specific.inh_value_url    | None -> general.inh_value_url);
+  inh_lang         = (match specific.inh_lang with         Some _ -> specific.inh_lang         | None -> general.inh_lang);
+  inh_null         = (match specific.inh_null with         Some _ -> specific.inh_null         | None -> general.inh_null);
+  inh_separator    = (match specific.inh_separator with    Some _ -> specific.inh_separator    | None -> general.inh_separator);
+  inh_datatype     = (match specific.inh_datatype with     Some _ -> specific.inh_datatype     | None -> general.inh_datatype);
+}
+
+let csvw_col_spec_of_column (eff : csvw_inherited_props) (c : csvw_column) : csvw_col_spec = {
   cs_name = (match c.col_name with
              | Some n -> n
              | None -> (match c.col_titles with t :: _ -> t | [] -> ""));
   cs_virtual = csvw_opt_bool c.col_virtual;
   cs_suppress = csvw_opt_bool c.col_suppress_output;
-  cs_datatype = c.col_datatype;
-  cs_about_url = (match c.col_about_url with Some a -> Some a | None -> ts.ts_about_url);
-  cs_property_url = (match c.col_property_url with Some p -> Some p | None -> ts.ts_property_url);
-  cs_value_url = (match c.col_value_url with Some v -> Some v | None -> ts.ts_value_url);
-  cs_separator = c.col_separator;
+  cs_datatype = (match c.col_datatype with Some d -> Some d | None -> eff.inh_datatype);
+  cs_about_url = (match c.col_about_url with Some a -> Some a | None -> eff.inh_about_url);
+  cs_property_url = (match c.col_property_url with Some p -> Some p | None -> eff.inh_property_url);
+  cs_value_url = (match c.col_value_url with Some v -> Some v | None -> eff.inh_value_url);
+  cs_separator = (match c.col_separator with Some s -> Some s | None -> eff.inh_separator);
+  cs_lang = (match c.col_lang with Some l -> Some l | None -> eff.inh_lang);
+  cs_null = (match c.col_null with Some n -> Some n | None -> eff.inh_null);
 }
 
 // Positional default column name when neither a schema nor a header
@@ -298,15 +337,23 @@ let csvw_col_specs_from_header (header_cells : list string) : list csvw_col_spec
        cs_name = (if h = "" then csvw_positional_name i else h);
        cs_virtual = false; cs_suppress = false; cs_datatype = None;
        cs_about_url = None; cs_property_url = None; cs_value_url = None;
-       cs_separator = None;
+       cs_separator = None; cs_lang = None; cs_null = None;
      })
     header_cells
 
-let csvw_build_col_specs (ts_opt : option csvw_table_schema) (header_cells : list string)
+// `grp`/`tbl` are the already-decoded table-group and table level
+// inherited-property records (csvw_convert_table_*'s callers own the
+// group one; the table itself carries its own via tbl.tbl_inherited).
+// Merge order group -> table -> tableSchema, most specific last, then
+// let each column override on top of that (csvw_col_spec_of_column).
+let csvw_build_col_specs
+    (grp tbl : csvw_inherited_props) (ts_opt : option csvw_table_schema) (header_cells : list string)
   : list csvw_col_spec =
   match ts_opt with
   | Some ts ->
-    if Cons? ts.ts_columns then List.Tot.map (csvw_col_spec_of_column ts) ts.ts_columns
+    if Cons? ts.ts_columns then
+      let eff = csvw_merge_inherited ts.ts_inherited (csvw_merge_inherited tbl grp) in
+      List.Tot.map (csvw_col_spec_of_column eff) ts.ts_columns
     else csvw_col_specs_from_header header_cells
   | None -> csvw_col_specs_from_header header_cells
 
@@ -417,7 +464,11 @@ let csvw_cell_object
     (match cell_text with
      | None -> None                      // virtual column with no valueUrl: nothing to emit
      | Some txt ->
-       if txt = "" then None             // default null value ("") -> no cell triple
+       // Stage 2 inherited "null": a cell whose raw text matches the
+       // column's effective `null` value is null too, same as the
+       // default "" case (tabular-metadata 5.1.1 / test126).
+       let is_null = txt = "" || (match spec.cs_null with Some n -> txt = n | None -> false) in
+       if is_null then None
        else
          // A cell whose text is not a valid lexical form for its declared
          // datatype does NOT get that datatype (tabular-data-model
@@ -451,7 +502,7 @@ let csvw_cell_object
             let violate = XSD.Datatypes.literal_ill_formed dt_eff lex
                        || not (csvw_value_satisfies base_name lex spec.cs_datatype) in
             let eff : wf_iri = if violate then xsd_string else dt_eff in
-            csvw_build_literal lex eff))
+            csvw_build_literal_lang lex eff spec.cs_lang))
 
 // Default-propertyUrl column-name encoding. csv2rdf builds a column's
 // default propertyUrl as `<tableUrl>#<name>` where the name is the
@@ -734,6 +785,7 @@ let csvw_row_triples_minimal
     (csvw_row_cell_results table_url_resolved col_specs row_num source_row_num cells)
 
 let csvw_convert_table_minimal
+    (grp_inherited : csvw_inherited_props)
     (base_iri : string) (fallback_url : string) (tbl : csvw_table) (all_rows : list (list string))
   : list triple =
   let table_url_resolved = csvw_effective_table_url base_iri fallback_url tbl in
@@ -744,7 +796,7 @@ let csvw_convert_table_minimal
     if csvw_header_row_count dia > 0 then (match after_skip_rows with h :: _ -> h | [] -> [])
     else [] in
   let data_rows = csvw_drop (csvw_header_row_count dia) after_skip_rows in
-  let col_specs = csvw_build_col_specs tbl.tbl_table_schema header_cells in
+  let col_specs = csvw_build_col_specs grp_inherited tbl.tbl_inherited tbl.tbl_table_schema header_cells in
   let indexed = csvw_index_from 0 data_rows in
   List.Tot.concatMap
     (fun (p : (nat & list string)) ->
@@ -788,6 +840,7 @@ let csvw_row_triples_standard
   (row_node, row_meta @ describes @ cell_triples)
 
 let csvw_convert_table_standard
+    (grp_inherited : csvw_inherited_props)
     (base_iri : string) (fallback_url : string) (tbl : csvw_table) (all_rows : list (list string))
   : (subject & list triple) =
   let table_url_resolved = csvw_effective_table_url base_iri fallback_url tbl in
@@ -798,7 +851,7 @@ let csvw_convert_table_standard
     if csvw_header_row_count dia > 0 then (match after_skip_rows with h :: _ -> h | [] -> [])
     else [] in
   let data_rows = csvw_drop (csvw_header_row_count dia) after_skip_rows in
-  let col_specs = csvw_build_col_specs tbl.tbl_table_schema header_cells in
+  let col_specs = csvw_build_col_specs grp_inherited tbl.tbl_inherited tbl.tbl_table_schema header_cells in
   let indexed = csvw_index_from 0 data_rows in
   let row_results =
     List.Tot.map
@@ -827,33 +880,48 @@ let csvw_convert_table_standard
 // (normally the CSV file the test's mf:action names directly).
 // ================================================================
 
+// `grp_inherited` is the table-group's own inherited-property defaults
+// (CSVW.Metadata.csvw_group_meta.grp_inherited) — the runner passes
+// CSVW.Metadata.csvw_inherited_empty for a CSVW_Table document (no
+// separate group-level JSON object exists in that case, so there is
+// nothing to inherit from at this level; the table's own tbl_inherited
+// still applies inside csvw_convert_table_minimal).
 let csvw_convert_document_minimal
+    (grp_inherited : csvw_inherited_props)
     (base_iri : string) (tables_with_rows : list (csvw_table & string & list (list string)))
   : list triple =
   List.Tot.concatMap
     (fun (t : (csvw_table & string & list (list string))) ->
        let (tbl, fallback_url, rows) = t in
-       csvw_convert_table_minimal base_iri fallback_url tbl rows)
+       csvw_convert_table_minimal grp_inherited base_iri fallback_url tbl rows)
     tables_with_rows
 
 let csvw_group_node : subject = S_BNode "csvwG"
 
+// `grp` carries both the inherited-property defaults (threaded into
+// every table's column-spec build) AND the group's own common
+// properties (rdfs:label/rdfs:comment/... test275-278 family),
+// attached directly to the csvw:TableGroup node the same way
+// csvw_convert_table_standard already attaches tbl_common to its
+// csvw:Table node.
 let csvw_convert_document_standard
+    (grp : csvw_group_meta)
     (base_iri : string) (tables_with_rows : list (csvw_table & string & list (list string)))
   : list triple =
   let table_results =
     List.Tot.map
       (fun (t : (csvw_table & string & list (list string))) ->
          let (tbl, fallback_url, rows) = t in
-         csvw_convert_table_standard base_iri fallback_url tbl rows)
+         csvw_convert_table_standard grp.grp_inherited base_iri fallback_url tbl rows)
       tables_with_rows in
   let g_meta = [ { s = csvw_group_node; p = rdf_type; o = T_IRI csvw_TableGroup } ] in
+  let g_common = csvw_table_common_triples csvw_group_node "csvwG" grp.grp_common in
   let table_links =
     List.Tot.concatMap
       (fun (r : (subject & list triple)) -> [ { s = csvw_group_node; p = csvw_table_pred; o = csvw_term_of_subject (fst r) } ])
       table_results in
   let table_all = List.Tot.concatMap snd table_results in
-  g_meta @ table_links @ table_all
+  g_meta @ g_common @ table_links @ table_all
 
 // Convenience: a synthetic "no metadata document at all" table — the
 // mf:action-is-a-bare-CSV-file case (schema inferred purely from the
@@ -865,4 +933,5 @@ let csvw_no_metadata_table : csvw_table = {
   tbl_dialect = None;
   tbl_table_schema = None;
   tbl_common = [];
+  tbl_inherited = csvw_inherited_empty;
 }

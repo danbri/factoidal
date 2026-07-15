@@ -1135,27 +1135,30 @@ let csvw_to_rdf_json (csv_text : string) (metadata_json : string)
     match mode with
     | "standard" | "minimal" ->
       let tables_opt =
+        (* Second component: the table-group's own meta (inherited-property
+           defaults + group common properties, Stage 2) — empty when the
+           document is a single table or absent entirely. *)
         if metadata_json = "" then
-          FStar_Pervasives_Native.Some [ CSVW_Conversion.csvw_no_metadata_table ]
+          FStar_Pervasives_Native.Some ([ CSVW_Conversion.csvw_no_metadata_table ], CSVW_Metadata.csvw_group_meta_empty)
         else
           (match CSVW_Metadata.csvw_decode_metadata_text metadata_json with
            | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
            | FStar_Pervasives_Native.Some (CSVW_Metadata.CSVW_Table t) ->
-             FStar_Pervasives_Native.Some [ t ]
-           | FStar_Pervasives_Native.Some (CSVW_Metadata.CSVW_TableGroup ts) ->
-             FStar_Pervasives_Native.Some ts)
+             FStar_Pervasives_Native.Some ([ t ], CSVW_Metadata.csvw_group_meta_empty)
+           | FStar_Pervasives_Native.Some (CSVW_Metadata.CSVW_TableGroup (ts, g)) ->
+             FStar_Pervasives_Native.Some (ts, g))
       in
       (match tables_opt with
        | FStar_Pervasives_Native.None ->
          err_json "csvwToRdf: metadataJson is not a decodable CSVW metadata document"
-       | FStar_Pervasives_Native.Some tables ->
+       | FStar_Pervasives_Native.Some (tables, grp_meta) ->
          let rows = RML_Sources.csv_parse_rows csv_text in
          let tables_with_rows =
            List.map (fun t -> (t, fallback_url, rows)) tables in
          let triples =
            if mode = "minimal"
-           then CSVW_Conversion.csvw_convert_document_minimal base_iri tables_with_rows
-           else CSVW_Conversion.csvw_convert_document_standard base_iri tables_with_rows
+           then CSVW_Conversion.csvw_convert_document_minimal grp_meta.CSVW_Metadata.grp_inherited base_iri tables_with_rows
+           else CSVW_Conversion.csvw_convert_document_standard grp_meta base_iri tables_with_rows
          in
          let ds : RDF_Graph_Executable.rdf_dataset =
            { RDF_Graph_Executable.ds_default = triples; ds_named = [] } in
