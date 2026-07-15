@@ -4258,6 +4258,7 @@ RDF.Vocabulary.fsti.checked: \
 
 Tableau.CountingOracle.fst.checked: \
 	Tableau.CountingOracle.fst \
+	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Math.Lemmas.fsti.checked \
 	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.String.fsti.checked \
 	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Char.fsti.checked \
 	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Pervasives.Native.fst.checked \
