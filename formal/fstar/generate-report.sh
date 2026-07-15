@@ -464,16 +464,23 @@ extract_owl_scores () {
     declare -g "${prefix}_${t}_PASS=0"
     declare -g "${prefix}_${t}_FAIL=0"
     declare -g "${prefix}_${t}_TOTAL=0"
+    declare -g "${prefix}_${t}_ORACLE=0"
     [ -f "$log" ] || continue
     L=$(grep -E "^Profile-RL ${t}:" "$log" | tail -1 || true)
     [ -z "$L" ] && continue
     p=$(echo  "$L" | sed -nE 's/.* ([0-9]+) pass.*/\1/p')
     f=$(echo  "$L" | sed -nE 's/.* ([0-9]+) fail.*/\1/p')
     tt=$(echo "$L" | sed -nE 's/.*out of ([0-9]+).*/\1/p')
+    # Z33kr Phase 1: optional "; +K oracle-assisted" suffix (additive —
+    # absent when the z3 oracle flipped nothing, so pre-oracle logs scrape
+    # exactly as before). Captured as a SEPARATE field, never added into
+    # PASS (which stays the pure-verified count).
+    orc=$(echo "$L" | sed -nE 's/.*\+([0-9]+) oracle-assisted.*/\1/p')
     declare -g "${prefix}_${t}_PRESENT=1"
     declare -g "${prefix}_${t}_PASS=${p:-0}"
     declare -g "${prefix}_${t}_FAIL=${f:-0}"
     declare -g "${prefix}_${t}_TOTAL=${tt:-0}"
+    declare -g "${prefix}_${t}_ORACLE=${orc:-0}"
   done
 }
 
@@ -503,16 +510,21 @@ extract_owl_scores OWL_SEMDL "$OWL_SEMDL_LOG"
 # catalog's true `test:TestCase` — err rather test-TYPE — denominator.
 sum_owl_catalog_json () {
   local prefix="$1" log="$2"
-  local pass=0 fail=0 total=0 present=0
+  local pass=0 fail=0 total=0 present=0 oracle=0
   local t
   for t in PositiveEntailmentTests NegativeEntailmentTests ConsistencyTests InconsistencyTests; do
     local pv="${prefix}_${t}_PRESENT"
     if [ "${!pv:-0}" -eq 1 ]; then
       present=1
-      local ppv="${prefix}_${t}_PASS" pfv="${prefix}_${t}_FAIL" ptv="${prefix}_${t}_TOTAL"
+      local ppv="${prefix}_${t}_PASS" pfv="${prefix}_${t}_FAIL" ptv="${prefix}_${t}_TOTAL" pov="${prefix}_${t}_ORACLE"
       pass=$((pass + ${!ppv:-0}))
       fail=$((fail + ${!pfv:-0}))
       total=$((total + ${!ptv:-0}))
+      # Z33kr Phase 1: oracle_assisted is a separate labelled count of
+      # z3-flipped InconsistencyTests. It is NEVER added into pass/fail —
+      # the pure-verified pass/fail split already includes these tests on
+      # the fail side. It rides alongside for dashboard disclosure only.
+      oracle=$((oracle + ${!pov:-0}))
     fi
   done
   local skip=0
@@ -525,9 +537,14 @@ sum_owl_catalog_json () {
   declare -g "${prefix}_AGG_SKIP=${skip}"
   declare -g "${prefix}_AGG_TOTAL=$((total + skip))"
   declare -g "${prefix}_AGG_PRESENT=${present}"
+  declare -g "${prefix}_AGG_ORACLE=${oracle}"
 }
 sum_owl_catalog_json OWL_QL "$OWL_QL_LOG"
 sum_owl_catalog_json OWL_EL "$OWL_EL_LOG"
+# Z33kr Phase 1 — fold the DL type-inconsistency catalog so the JSON can
+# carry its oracle_assisted count (z3-flipped InconsistencyTests) as a
+# separate labelled field, never inside pass.
+sum_owl_catalog_json OWL_TINC "$OWL_TINC_LOG"
 
 # syntax-dl species scores. Score-line shape (owl_runner --species):
 #   OWL2-DL SpeciesTests: N pass, M fail (out of K), S skipped (functional-syntax-only) in Ts
@@ -982,6 +999,14 @@ emit_json_suites () {
   printf '    "owl2_profile_el": {"pass":%s,"fail":%s,"skip":%s,"total":%s,"present":%s,"regime":"%s","catalog":"third_party/testing/owl/profile-EL.rdf"},\n' \
     "${OWL_EL_AGG_PASS:-0}" "${OWL_EL_AGG_FAIL:-0}" "${OWL_EL_AGG_SKIP:-0}" "${OWL_EL_AGG_TOTAL:-0}" \
     "$([ "${OWL_EL_AGG_PRESENT:-0}" -eq 1 ] && echo true || echo false)" "${OWL_EL_REGIME:-RL}"
+  # Z33kr Phase 1 — OWL 2 DL type-inconsistency catalog with the
+  # oracle_assisted count broken out as its OWN labelled field. pass/fail
+  # is the PURE-VERIFIED split (z3-flipped tests stay on the fail side);
+  # oracle_assisted is the additive z3 overlay, never summed into pass.
+  printf '    "owl2_dl_inconsistency": {"pass":%s,"fail":%s,"skip":%s,"oracle_assisted":%s,"total":%s,"present":%s,"regime":"%s","catalog":"third_party/testing/owl/type-inconsistency.rdf"},\n' \
+    "${OWL_TINC_AGG_PASS:-0}" "${OWL_TINC_AGG_FAIL:-0}" "${OWL_TINC_AGG_SKIP:-0}" \
+    "${OWL_TINC_AGG_ORACLE:-0}" "${OWL_TINC_AGG_TOTAL:-0}" \
+    "$([ "${OWL_TINC_AGG_PRESENT:-0}" -eq 1 ] && echo true || echo false)" "${OWL_TINC_REGIME:-DL}"
   printf '    "rdfc10": {"pass":%s,"fail":%s,"skip":%s,"total":%s,"spec":"https://www.w3.org/TR/rdf-canon/"},\n' \
     "$RDFC10_PASS" "$RDFC10_FAIL" "$RDFC10_SKIP" "$RDFC10_TOTAL"
   printf '    "shacl_core":   {"pass":%s,"fail":%s,"skip":%s,"total":%s,"present":%s,"spec":"https://www.w3.org/TR/shacl/"},\n' \

@@ -468,6 +468,15 @@ type outcome =
   (* InconsistencyTest: closure of an asserted-inconsistent premise has
      no inconsistency marker — the engine couldn't see the contradiction. *)
   | Fail_unexpected_consistency
+  (* InconsistencyTest flipped to inconsistent by the Z33kr native z3
+     counting-fragment oracle (Phase 1) — the verified tableau returned
+     None/consistent, in_counting_fragment accepted the closure, and z3
+     answered Unsat. This is NOT a pure-verified pass: it depends on the
+     unverified z3 oracle, so it is counted OUTSIDE the pure pass tally
+     (folded into the fail bucket for the pure-verified score) and
+     reported separately as "+K oracle-assisted". See
+     docs/designissues/2026-07-14-z3-entailment-backend.md Phase 1. *)
+  | Pass_oracle_z3
   | Fail_parse_premise
   | Fail_parse_conclusion
   | Fail_no_premise
@@ -490,6 +499,7 @@ let outcome_tag = function
   | Fail_unexpected_entailment -> "FAIL/unexpected-entailment"
   | Fail_unexpected_inconsistency -> "FAIL/unexpected-inconsistency"
   | Fail_unexpected_consistency -> "FAIL/unexpected-consistency"
+  | Pass_oracle_z3 -> "PASS/oracle-z3"
   | Fail_parse_premise -> "FAIL/parse-premise"
   | Fail_parse_conclusion -> "FAIL/parse-conclusion"
   | Fail_no_premise -> "FAIL/no-premise"
@@ -643,6 +653,101 @@ let dl_refutes (closure : RDF_Graph_Executable.rdf_graph) : bool =
        match Tableau_Refute.tableau_consistent closure refute_fuel with
        | Some false -> true
        | _ -> false)
+     with _ -> false)
+
+(* ---- Z33kr Phase 1: native z3 counting-fragment oracle -------------
+   ONE RUNG OUTSIDE the dl_refutes contract above. Consulted ONLY when
+   dl_refutes returned false (the tableau did not refute — None
+   indeterminate, or Some-true "not inconsistent", which the design doc
+   treats as None-for-scoring), ONLY when the verified F*-extracted
+   Tableau_CountingOracle.in_counting_fragment accepts the RL-base
+   closure, and ONLY for InconsistencyTests (this predicate is never
+   called from any ConsistencyTest path, so z3 can flip ZERO consistency
+   tests by construction — the soundness gate holds structurally).
+
+   All semantic content is F*-extracted: encode_counting_smt builds the
+   QF_LIA class-size system (verified Tot), z3_check_sat is the single
+   ASSUME-HOST realisation (spawn/feed/parse only). This runner code is
+   dispatch/fallback plumbing — it decides WHEN to consult, never WHAT
+   the answer means. Z3_Unsat => inconsistent (LABELLED oracle-assisted);
+   Z3_Sat / Z3_Unknown / Z3_Timeout / cap-trip => exactly the pre-oracle
+   fallback verdict (Fail_unexpected_consistency), so no previously-
+   passing test can flake and the pure-verified score never moves.
+
+   Two env knobs (design doc Q5):
+     FACTOIDAL_OWL_Z3_RLIMIT  — z3's DETERMINISTIC instruction-count
+       budget (the parity-relevant primary bound). Default 1_000_000
+       (measured need for dl-909/910/one=two is < 1000 rlimit; this is
+       >1000x margin, robust to the runner's larger all-IRIs encoding,
+       still a hard bound). A value of 0 DISABLES the oracle entirely
+       (z3 is never spawned) so the runner reproduces the pre-oracle
+       scores byte-for-byte — the transparency switch.
+     FACTOIDAL_OWL_Z3_CAP_SEC — SIGALRM wall-clock backstop (default 3s),
+       smaller than the refuter cap; a wall-clock trip falls back
+       identically to an rlimit Unknown. *)
+let z3_rlimit : Prims.nat =
+  match Sys.getenv_opt "FACTOIDAL_OWL_Z3_RLIMIT" with
+  | Some s -> (try Z.of_int (int_of_string s) with _ -> Z.of_int 1000000)
+  | None -> Z.of_int 1000000
+
+let z3_cap_seconds : float =
+  match Sys.getenv_opt "FACTOIDAL_OWL_Z3_CAP_SEC" with
+  | Some s -> (try float_of_string s with _ -> 3.0)
+  | None -> 3.0
+
+(* Optional diagnostic dump (rule #11 territory: outcome plumbing only).
+   FACTOIDAL_OWL_Z3_DUMP=<dir> writes the emitted SMT-LIB and the z3
+   verdict per consulted InconsistencyTest to <dir>/<id>.smt2 — the
+   Phase-1 gate evidence. Never affects a verdict. *)
+let z3_dump_dir = Sys.getenv_opt "FACTOIDAL_OWL_Z3_DUMP"
+
+let with_z3_cap (f : unit -> 'a) : 'a =
+  let prev =
+    Sys.signal Sys.sigalrm (Sys.Signal_handle (fun _ -> raise Owl_closure_timeout))
+  in
+  let restore () =
+    let _ = Unix.setitimer Unix.ITIMER_REAL { Unix.it_interval = 0.0; it_value = 0.0 } in
+    Sys.set_signal Sys.sigalrm prev
+  in
+  let _ = Unix.setitimer Unix.ITIMER_REAL
+            { Unix.it_interval = 0.0; it_value = z3_cap_seconds }
+  in
+  match f () with
+  | v -> restore (); v
+  | exception e -> restore (); raise e
+
+(* Consult the native z3 counting oracle over the RL-base closure.
+   Returns true ONLY on a genuine Z3_Unsat within the fragment. `id` is
+   used only for the optional SMT dump. Any failure path => false. *)
+let z3_oracle_refutes (id : string)
+                      (closure_rl : RDF_Graph_Executable.rdf_graph) : bool =
+  if Z.equal z3_rlimit (Z.of_int 0) then false          (* oracle disabled *)
+  else if not (Tableau_CountingOracle.in_counting_fragment closure_rl) then false
+  else
+    (try with_z3_cap (fun () ->
+       let smt = Tableau_CountingOracle.encode_counting_smt closure_rl in
+       let verdict = Tableau_CountingOracle.z3_check_sat smt z3_rlimit in
+       (match z3_dump_dir with
+        | Some dir ->
+          (try
+             let safe = String.map (fun c ->
+               if (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z')
+                  || (c >= '0' && c <= '9') || c = '-' || c = '_'
+               then c else '_') id in
+             let oc = open_out (Filename.concat dir (safe ^ ".smt2")) in
+             let vstr = (match verdict with
+               | Tableau_CountingOracle.Z3_Unsat -> "unsat"
+               | Tableau_CountingOracle.Z3_Sat -> "sat"
+               | Tableau_CountingOracle.Z3_Unknown -> "unknown"
+               | Tableau_CountingOracle.Z3_Timeout -> "timeout") in
+             Printf.fprintf oc "; z3 verdict: %s\n; rlimit: %s\n%s"
+               vstr (Z.to_string z3_rlimit) smt;
+             close_out oc
+           with _ -> ())
+        | None -> ());
+       (match verdict with
+        | Tableau_CountingOracle.Z3_Unsat -> true
+        | _ -> false))
      with _ -> false)
 
 (* is_inconsistent under the per-test cap (2026-07-10). The F* marker
@@ -1104,8 +1209,8 @@ let run_inconsistency_test
         try apply_closure_stages g_p
         with _ -> (g_p, g_p) in
       debug_dump_closure info closure;
+      let id = (match info.identifier with Some id -> id | None -> info.iri) in
       (if counting_sweep then
-         let id = (match info.identifier with Some id -> id | None -> info.iri) in
          let accepted =
            try Tableau_CountingOracle.in_counting_fragment closure_rl
            with _ -> false in
@@ -1120,6 +1225,14 @@ let run_inconsistency_test
          not all entailment-sound, and must not feed a refutation). *)
       if capped_is_inconsistent closure || dl_refutes closure_rl
       then Pass
+      (* Z33kr Phase 1: one rung outside dl_refutes — the native z3
+         counting-fragment oracle. Only reached when the verified path
+         did NOT refute; only fires inside in_counting_fragment; Unsat =>
+         inconsistent, LABELLED oracle-assisted (Pass_oracle_z3), never
+         folded into the pure-verified pass count. Anything else keeps
+         the exact pre-oracle verdict. *)
+      else if z3_oracle_refutes id closure_rl
+      then Pass_oracle_z3
       else Fail_unexpected_consistency
     end
 
@@ -1615,11 +1728,25 @@ let run_catalog ?(verbose=false) path =
         (fun acc (_, o) -> match o with Skip_functional_syntax_only -> acc + 1 | _ -> acc)
         0 i_outcomes
     in
+    (* Z33kr Phase 1: oracle-assisted passes are counted SEPARATELY and
+       NEVER folded into i_passes (the pure-verified pass count). They
+       stay inside the fail bucket for the pure-verified score line
+       (i_fails = i_scored - i_passes), and are surfaced additively as
+       "+K oracle-assisted". With the oracle disabled (rlimit 0 / z3
+       absent) K = 0 and the summary line is byte-for-byte the pre-oracle
+       output. *)
+    let i_oracle =
+      List.fold_left
+        (fun acc (_, o) -> match o with Pass_oracle_z3 -> acc + 1 | _ -> acc)
+        0 i_outcomes
+    in
     let i_scored = ik - i_skips in
     let i_fails = i_scored - i_passes in
+    let oracle_suffix =
+      if i_oracle > 0 then Printf.sprintf "; +%d oracle-assisted" i_oracle else "" in
     Printf.printf "\n";
-    Printf.printf "Profile-RL InconsistencyTests: %d pass, %d fail (out of %d), %d skipped (functional-syntax-only) in %.2fs\n"
-      i_passes i_fails i_scored i_skips (t_inc1 -. t_inc0)
+    Printf.printf "Profile-RL InconsistencyTests: %d pass, %d fail (out of %d), %d skipped (functional-syntax-only) in %.2fs%s\n"
+      i_passes i_fails i_scored i_skips (t_inc1 -. t_inc0) oracle_suffix
   end
   end (* not species_mode *)
 

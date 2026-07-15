@@ -31,6 +31,7 @@ module Tableau.CountingOracle
 // differentFrom read straight off the closed graph.
 
 open FStar.List.Tot
+open FStar.Mul
 open RDF.Graph.Executable
 open Tableau
 
@@ -531,6 +532,368 @@ let encode_counting_fragment (ast : counting_ast) : Tot string =
   ^ ico_distinct_asserts inds ast.cx_distinct
   ^ ico_decls names
   ^ ico_bound_asserts inds roles fillers axs
+  ^ "(check-sat)\n"
+
+// ============================================================
+// 6b. Class-size SMT-LIB 2 encoder (QF_LIA) -- Phase 1.
+//
+// The Phase-0 encoder (encode_counting_fragment above) emits one Int
+// successor-count per restriction bnode. That is faithful to a single
+// min-above-max clash on one restriction subject, but the residual
+// finite-model fails (dl-909 / dl-910 / one=two) are CLASS-SIZE
+// multiplication arguments: the contradiction is a linear system over
+// the CARDINALITIES of NAMED classes, related by three sound lemmas
+// over the counting fragment `in_counting_fragment` accepts.
+//
+// For each named class C an Int variable |C| >= 0. The linear relations:
+//
+//   FIBER (functional p, dom D, inv ip, D subclassof (p some X),
+//          X equiv (ip exactly k)):  |D| = k * |X|.
+//     p total+functional makes p : D -> X a total function; each x in X
+//     receives exactly k p-preimages (= its k ip-successors), and the
+//     fibers partition D, so |D| = k * |X|. Sound under Direct Semantics.
+//
+//   BIJECTION (functional+inverse-functional p, inv ip,
+//              D subclassof (p some Y), Y subclassof (ip some D)):
+//              |D| = |Y|.  p is a total injection both ways -> a bijection.
+//
+//   DISJOINT UNION (Z equiv unionOf(m1,m2), m1 disjointWith m2):
+//              |Z| = |m1| + |m2|.
+//
+//   ONEOF NONEMPTINESS (C equiv/def oneOf L, L non-empty):  |C| >= 1.
+//     A sound lower bound; the finite named domain anchor.
+//
+// Unsat of the resulting QF_LIA system implies the closure is
+// inconsistent under Direct Semantics for inputs `in_counting_fragment`
+// accepts. Symbol names are index-based (c<i>, i = position in the
+// deduped IRI list) so no SMT-LIB symbol escaping is needed and every
+// referenced class is declared. All total pure string building.
+// ============================================================
+
+let ico_rdfs_subClassOf : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2000/01/rdf-schema#subClassOf");
+  "http://www.w3.org/2000/01/rdf-schema#subClassOf"
+
+let ico_owl_equivalentClass : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2002/07/owl#equivalentClass");
+  "http://www.w3.org/2002/07/owl#equivalentClass"
+
+let ico_owl_someValuesFrom : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2002/07/owl#someValuesFrom");
+  "http://www.w3.org/2002/07/owl#someValuesFrom"
+
+let ico_owl_inverseOf : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2002/07/owl#inverseOf");
+  "http://www.w3.org/2002/07/owl#inverseOf"
+
+let ico_owl_unionOf : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2002/07/owl#unionOf");
+  "http://www.w3.org/2002/07/owl#unionOf"
+
+let ico_owl_oneOf2 : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2002/07/owl#oneOf");
+  "http://www.w3.org/2002/07/owl#oneOf"
+
+let ico_owl_disjointWith : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2002/07/owl#disjointWith");
+  "http://www.w3.org/2002/07/owl#disjointWith"
+
+let ico_rdfs_domain : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2000/01/rdf-schema#domain");
+  "http://www.w3.org/2000/01/rdf-schema#domain"
+
+let ico_rdfs_range : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2000/01/rdf-schema#range");
+  "http://www.w3.org/2000/01/rdf-schema#range"
+
+let ico_owl_Thing2 : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2002/07/owl#Thing");
+  "http://www.w3.org/2002/07/owl#Thing"
+
+// A general multi-digit non-negative decimal parser (the Phase-0
+// cardinality_literal_to_nat only covers 0-9; dl-910's bounds are
+// 20 / 30 / 601). Total, decreasing on the character list.
+let ico_digit (c : FStar.Char.char) : option nat =
+  if c = '0' then Some 0 else if c = '1' then Some 1
+  else if c = '2' then Some 2 else if c = '3' then Some 3
+  else if c = '4' then Some 4 else if c = '5' then Some 5
+  else if c = '6' then Some 6 else if c = '7' then Some 7
+  else if c = '8' then Some 8 else if c = '9' then Some 9
+  else None
+
+let rec ico_digits (acc : nat) (cs : list FStar.Char.char)
+  : Tot (option nat) (decreases cs) =
+  match cs with
+  | [] -> Some acc
+  | c :: tl ->
+    (match ico_digit c with
+     | None -> None
+     | Some d -> ico_digits (acc * 10 + d) tl)
+
+let ico_parse_nat (s : string) : option nat =
+  match FStar.String.list_of_string s with
+  | [] -> None
+  | cs -> ico_digits 0 cs
+
+// All IRIs appearing as an S_IRI subject or a T_IRI object. Over-
+// collecting is harmless (spare declared Int vars are unconstrained);
+// it GUARANTEES every class an assertion references is declared.
+let rec ico_all_iris (ts : list triple) : Tot (list wf_iri) (decreases ts) =
+  match ts with
+  | [] -> []
+  | t :: tl ->
+    (match t.s with S_IRI i -> [i] | _ -> [])
+    @ (match t.o with T_IRI i -> [i] | _ -> [])
+    @ ico_all_iris tl
+
+let ico_cvar (classes : list wf_iri) (c : wf_iri) : string =
+  "c" ^ string_of_int (ico_iri_index classes c 0)
+
+// Subjects carrying `rdf:type <cls>` (used for FunctionalProperty /
+// InverseFunctionalProperty property sets).
+let rec ico_props_typed (ts : list triple) (cls : wf_iri)
+  : Tot (list wf_iri) (decreases ts) =
+  match ts with
+  | [] -> []
+  | t :: tl ->
+    (if t.p = ico_rdf_type
+        && (match t.o with T_IRI i -> i = cls | _ -> false)
+     then (match t.s with S_IRI i -> [i] | _ -> [])
+     else [])
+    @ ico_props_typed tl cls
+
+// First non-Thing rdfs:domain of property p (the closure also asserts
+// `p rdfs:domain owl:Thing`, which must be skipped).
+let rec ico_find_dom (ts : list triple) (p : wf_iri)
+  : Tot (option wf_iri) (decreases ts) =
+  match ts with
+  | [] -> None
+  | t :: tl ->
+    if t.p = ico_rdfs_domain && (match t.s with S_IRI i -> i = p | _ -> false)
+    then (match t.o with
+          | T_IRI i -> if i = ico_owl_Thing2 then ico_find_dom tl p else Some i
+          | _ -> ico_find_dom tl p)
+    else ico_find_dom tl p
+
+// Inverse of p, either direction of owl:inverseOf.
+let rec ico_find_inv (ts : list triple) (p : wf_iri)
+  : Tot (option wf_iri) (decreases ts) =
+  match ts with
+  | [] -> None
+  | t :: tl ->
+    if t.p = ico_owl_inverseOf
+    then (match t.s, t.o with
+          | S_IRI a, T_IRI b ->
+            if a = p then Some b else if b = p then Some a else ico_find_inv tl p
+          | _ -> ico_find_inv tl p)
+    else ico_find_inv tl p
+
+// disjointWith either direction.
+let rec ico_disjoint (ts : list triple) (a : wf_iri) (b : wf_iri)
+  : Tot bool (decreases ts) =
+  match ts with
+  | [] -> false
+  | t :: tl ->
+    (t.p = ico_owl_disjointWith
+     && (match t.s, t.o with
+         | S_IRI x, T_IRI y -> (x = a && y = b) || (x = b && y = a)
+         | _ -> false))
+    || ico_disjoint tl a b
+
+// Among restriction bnodes `bs`, the someValuesFrom target of the first
+// one whose onProperty is p (the totality witness D subclassof p-some-X).
+let rec ico_svf_via (g : rdf_graph) (bs : list rdf_term) (p : wf_iri)
+  : Tot (option wf_iri) (decreases bs) =
+  match bs with
+  | [] -> None
+  | b :: tl ->
+    (match term_as_subject b with
+     | Some s ->
+       (match find_first_object g s ico_owl_onProperty with
+        | Some (T_IRI pp) ->
+          if pp = p
+          then (match find_first_object g s ico_owl_someValuesFrom with
+                | Some (T_IRI x) -> Some x
+                | _ -> ico_svf_via g tl p)
+          else ico_svf_via g tl p
+        | _ -> ico_svf_via g tl p)
+     | None -> ico_svf_via g tl p)
+
+// Among restriction bnodes `bs`, the exact owl:cardinality of the first
+// one whose onProperty is invp (the X equiv (invp exactly k) side).
+let rec ico_exactcard_via (g : rdf_graph) (bs : list rdf_term) (invp : wf_iri)
+  : Tot (option nat) (decreases bs) =
+  match bs with
+  | [] -> None
+  | b :: tl ->
+    (match term_as_subject b with
+     | Some s ->
+       (match find_first_object g s ico_owl_onProperty with
+        | Some (T_IRI pp) ->
+          if pp = invp
+          then (match find_first_object g s ico_owl_cardinality with
+                | Some (T_Literal l) ->
+                  (match ico_parse_nat l.lexical_form with
+                   | Some k -> Some k
+                   | None -> ico_exactcard_via g tl invp)
+                | _ -> ico_exactcard_via g tl invp)
+          else ico_exactcard_via g tl invp
+        | _ -> ico_exactcard_via g tl invp)
+     | None -> ico_exactcard_via g tl invp)
+
+// Restriction bnodes a named class C is linked to (either subClassOf or
+// equivalentClass -- both directions of an equivalence appear post-closure).
+let ico_restr_of (g : rdf_graph) (c : wf_iri) : list rdf_term =
+  find_objects g (S_IRI c) ico_rdfs_subClassOf
+  @ find_objects g (S_IRI c) ico_owl_equivalentClass
+
+// FIBER lemma emission for one functional property p.
+let ico_fiber_of (g : rdf_graph) (classes : list wf_iri) (p : wf_iri) : string =
+  match ico_find_dom g p, ico_find_inv g p with
+  | Some d, Some ip ->
+    (match ico_svf_via g (ico_restr_of g d) p with
+     | Some x ->
+       (match ico_exactcard_via g (ico_restr_of g x) ip with
+        | Some k ->
+          "(assert (= " ^ ico_cvar classes d
+          ^ " (* " ^ string_of_int k ^ " " ^ ico_cvar classes x ^ ")))\n"
+        | None -> "")
+     | None -> "")
+  | _ -> ""
+
+let rec ico_fiber_asserts (g : rdf_graph) (classes : list wf_iri)
+                          (ps : list wf_iri)
+  : Tot string (decreases ps) =
+  match ps with
+  | [] -> ""
+  | p :: tl -> ico_fiber_of g classes p ^ ico_fiber_asserts g classes tl
+
+// BIJECTION lemma: for property p (functional+inverse-functional) with
+// inverse ip, any class d with d subclassof (p some y) and y subclassof
+// (ip some d) forces |d| = |y|.
+let rec ico_bij_for_prop (g : rdf_graph) (classes : list wf_iri)
+                         (p : wf_iri) (ip : wf_iri) (cs : list wf_iri)
+  : Tot string (decreases cs) =
+  match cs with
+  | [] -> ""
+  | d :: tl ->
+    let this =
+      (match ico_svf_via g (ico_restr_of g d) p with
+       | Some y ->
+         (match ico_svf_via g (ico_restr_of g y) ip with
+          | Some dback ->
+            if dback = d
+            then "(assert (= " ^ ico_cvar classes d ^ " " ^ ico_cvar classes y ^ "))\n"
+            else ""
+          | None -> "")
+       | None -> "")
+    in this ^ ico_bij_for_prop g classes p ip tl
+
+let rec ico_bij_asserts (g : rdf_graph) (classes : list wf_iri)
+                        (ps : list wf_iri)
+  : Tot string (decreases ps) =
+  match ps with
+  | [] -> ""
+  | p :: tl ->
+    (match ico_find_inv g p with
+     | Some ip -> ico_bij_for_prop g classes p ip classes
+     | None -> "")
+    ^ ico_bij_asserts g classes tl
+
+// DISJOINT UNION: scan for `z equivalentClass <bnode unionOf(m1,m2)>`
+// with m1 disjointWith m2.
+let ico_union_of_triple (g : rdf_graph) (classes : list wf_iri) (t : triple) : string =
+  if t.p = ico_owl_equivalentClass
+  then (match t.s, t.o with
+        | S_IRI z, T_BNode _ ->
+          (match term_as_subject t.o with
+           | Some bs ->
+             (match find_first_object g bs ico_owl_unionOf with
+              | Some lterm ->
+                (match walk_rdf_list g lterm (length g) with
+                 | [T_IRI m1; T_IRI m2] ->
+                   if ico_disjoint g m1 m2
+                   then "(assert (= " ^ ico_cvar classes z
+                        ^ " (+ " ^ ico_cvar classes m1 ^ " " ^ ico_cvar classes m2 ^ ")))\n"
+                   else ""
+                 | _ -> "")
+              | None -> "")
+           | None -> "")
+        | _ -> "")
+  else ""
+
+let rec ico_union_asserts (g : rdf_graph) (classes : list wf_iri)
+                          (ts : list triple)
+  : Tot string (decreases ts) =
+  match ts with
+  | [] -> ""
+  | t :: tl -> ico_union_of_triple g classes t ^ ico_union_asserts g classes tl
+
+// ONEOF NONEMPTINESS.
+let ico_list_nonempty (g : rdf_graph) (head : rdf_term) : bool =
+  match term_as_subject head with
+  | Some s -> (match find_first_object g s rdf_first with Some _ -> true | None -> false)
+  | None -> false
+
+let rec ico_any_equiv_oneof (g : rdf_graph) (bs : list rdf_term)
+  : Tot bool (decreases bs) =
+  match bs with
+  | [] -> false
+  | b :: tl ->
+    (match term_as_subject b with
+     | Some s ->
+       (match find_first_object g s ico_owl_oneOf2 with
+        | Some l -> ico_list_nonempty g l
+        | None -> false)
+     | None -> false)
+    || ico_any_equiv_oneof g tl
+
+let ico_class_has_oneof (g : rdf_graph) (c : wf_iri) : bool =
+  (match find_first_object g (S_IRI c) ico_owl_oneOf2 with
+   | Some l -> ico_list_nonempty g l
+   | None -> false)
+  || ico_any_equiv_oneof g (find_objects g (S_IRI c) ico_owl_equivalentClass)
+
+let rec ico_oneof_asserts (g : rdf_graph) (classes : list wf_iri)
+                          (cs : list wf_iri)
+  : Tot string (decreases cs) =
+  match cs with
+  | [] -> ""
+  | c :: tl ->
+    (if ico_class_has_oneof g c
+     then "(assert (>= " ^ ico_cvar classes c ^ " 1))\n"
+     else "")
+    ^ ico_oneof_asserts g classes tl
+
+let rec ico_class_decls (classes : list wf_iri) (cs : list wf_iri)
+  : Tot string (decreases cs) =
+  match cs with
+  | [] -> ""
+  | c :: tl ->
+    "(declare-const " ^ ico_cvar classes c ^ " Int)\n"
+    ^ "(assert (>= " ^ ico_cvar classes c ^ " 0))\n"
+    ^ ico_class_decls classes tl
+
+let rec ico_iri_inter (xs : list wf_iri) (ys : list wf_iri)
+  : Tot (list wf_iri) (decreases xs) =
+  match xs with
+  | [] -> []
+  | h :: tl -> (if ico_mem_iri h ys then [h] else []) @ ico_iri_inter tl ys
+
+// The graph-level counting encoder the Phase-1 oracle consults. Builds
+// the QF_LIA class-size linear system directly from the RL-base closure.
+let encode_counting_smt (g : rdf_graph) : Tot string =
+  let classes = ico_dedup_iri (ico_all_iris g) in
+  let fprops  = ico_props_typed g ico_owl_FunctionalProperty in
+  let ifprops = ico_props_typed g ico_owl_InverseFunctionalProperty in
+  let bprops  = ico_iri_inter fprops ifprops in
+  "(set-logic QF_LIA)\n"
+  ^ "; Z33kr counting-fragment class-size encoding (Phase 1)\n"
+  ^ ico_class_decls classes classes
+  ^ ico_fiber_asserts g classes fprops
+  ^ ico_bij_asserts g classes bprops
+  ^ ico_union_asserts g classes g
+  ^ ico_oneof_asserts g classes classes
   ^ "(check-sat)\n"
 
 // ============================================================
