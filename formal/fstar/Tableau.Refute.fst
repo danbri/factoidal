@@ -1151,12 +1151,27 @@ let rec fold_datatype_constraint (acc : value_set) (ce : class_expr)
   | CE_DataRestriction dt facets ->
     if is_integer_family_datatype dt
     then value_set_intersect acc (VS_Interval (facets_to_interval dt facets full_interval))
+    // A DatatypeRestriction over xsd:dateTime with min/max facets binds
+    // every filler to a UTC-instant interval; folded into the shared
+    // value_set it makes an out-of-range hasValue / someValuesFrom
+    // witness refute the node (Contradicting-dateTime-restrictions).
+    // Sound: the interval is exact over timezoned instants and the
+    // dateTime dimension never mixes with the integer one.
+    else if is_datetime_datatype dt
+    then value_set_intersect acc (VS_DateInterval (datetime_facets_to_interval facets full_interval))
     else acc
   | CE_OneOf members ->
     if Cons? members && all_literal_terms members
     then value_set_intersect acc (VS_Enum members)
     else acc
   | CE_Named dt ->
+    // A bare xsd:dateTime datatype filler constrains fillers to the
+    // (unbounded) dateTime dimension — enough to clash against a
+    // numeric/string/boolean constraint on the same property. Sound:
+    // an unbounded interval adds no false emptiness on its own.
+    if is_datetime_datatype dt
+    then value_set_intersect acc (VS_DateInterval full_interval)
+    else
     (match classify_family dt with
      | Some Fam_Numeric -> value_set_intersect acc (VS_Interval (base_interval_for dt))
      | Some f -> value_set_intersect acc (VS_Family f)

@@ -115,6 +115,122 @@ let literal_int_value (l : literal) : option int =
   if is_integer_family_datatype l.datatype then parse_facet_int l.lexical_form else None
 
 (* -------------------------------------------------------------------
+   2b. Minimal xsd:dateTime lexical parser (Wave B dateTime facets).
+
+   Self-contained for the same build-order reason as parse_facet_int
+   (see the module banner): XSD.Datatypes.fst carries the reference
+   dt_parse_ms / days_from_civil, but it compiles LATE — after
+   Tableau.Refute.ml, this module's only consumer. This port reduces a
+   TIMEZONED xsd:dateTime to a single UTC-normalised millisecond count,
+   giving a TOTAL order over timezoned instants (XSD Part 2 §3.2.7 order
+   relation: two dateTimes that both carry a timezone are compared by
+   their UTC instants). A dateTime WITHOUT an explicit timezone, an
+   expanded/negative year, or any lexical form this restricted parser
+   does not accept yields None and is DROPPED by every caller — sound:
+   a value we cannot totally place is never used to manufacture an empty
+   intersection (a clash). Timezone-less dateTimes sit in a partial
+   order (±14h indeterminacy) with the timezoned ones, so refusing to
+   place them withholds every uncertain clash. Withholding is sound;
+   manufacturing emptiness is not. *)
+
+let xsd_dateTime : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2001/XMLSchema#dateTime");
+  "http://www.w3.org/2001/XMLSchema#dateTime"
+
+let is_datetime_datatype (dt : wf_iri) : bool = dt = xsd_dateTime
+
+// Parse the fixed-width substring [pos, pos+n) as an unsigned decimal
+// integer (every char must be an ASCII digit). Out-of-range or any
+// non-digit -> None (sound: an unparseable field drops the whole value).
+let parse_digits_sub (s : string) (pos n : nat) : option int =
+  if pos + n > String.length s then None
+  else digits_to_int (FStar.String.list_of_string (String.sub s pos n)) 0
+
+// Days from the civil date to 1970-01-01 (Howard Hinnant's algorithm,
+// same port as XSD.Datatypes.days_from_civil). Total integer arithmetic.
+let days_from_civil (y m d : int) : int =
+  let y' = if m <= 2 then y - 1 else y in
+  let era = (if y' >= 0 then y' else y' - 399) / 400 in
+  let yoe = y' - op_Multiply era 400 in
+  let mp = (m + 9) % 12 in
+  let doy = (op_Multiply 153 mp + 2) / 5 + d - 1 in
+  let doe = op_Multiply yoe 365 + yoe / 4 - yoe / 100 + doy in
+  op_Multiply era 146097 + doe - 719468
+
+// Parse the fraction+timezone tail (everything after the seconds field):
+// optional ".<digits>" then one of "", "Z", "+HH:MM", "-HH:MM". Returns
+// (fraction_ms, tz_offset_seconds, has_tz). Faithful port of
+// XSD.Datatypes.dt_parse_tail with parse_digits_sub in place of the
+// SPARQL11.Algebra parser (build-order-local duplication, per banner).
+let dt_parse_tail (tail : string) : option (int & int & bool) =
+  let len = String.length tail in
+  let (frac_ms, tz_start) =
+    if len >= 2 && String.sub tail 0 1 = "." then
+      let rec frac_end (pos : nat{pos <= len}) : Tot (r:nat{pos <= r /\ r <= len}) (decreases (len - pos)) =
+        if pos < len then
+          (let c = FStar.Char.int_of_char (String.index tail pos) in
+           if c >= 48 && c <= 57 then frac_end (pos + 1) else pos)
+        else pos
+      in
+      let fe = frac_end 1 in
+      if fe = 1 then (None, 0)  // "." with no digits: ill-formed
+      else
+        let dig_len : nat = if fe - 1 > 3 then 3 else fe - 1 in
+        (match parse_digits_sub tail 1 dig_len with
+         | Some f ->
+           let ms = if dig_len = 1 then op_Multiply f 100
+                    else if dig_len = 2 then op_Multiply f 10
+                    else f in
+           (Some ms, fe)
+         | None -> (None, 0))
+    else (Some 0, 0)
+  in
+  match frac_ms with
+  | None -> None
+  | Some fms ->
+    let rest_len = len - tz_start in
+    if rest_len = 0 then Some (fms, 0, false)
+    else if rest_len = 1 && String.sub tail tz_start 1 = "Z" then Some (fms, 0, true)
+    else if rest_len = 6 then
+      let sign_s = String.sub tail tz_start 1 in
+      if sign_s = "+" || sign_s = "-" then
+        (match parse_digits_sub tail (tz_start + 1) 2,
+               parse_digits_sub tail (tz_start + 4) 2 with
+         | Some th, Some tm ->
+           let off = op_Multiply th 3600 + op_Multiply tm 60 in
+           Some (fms, (if sign_s = "-" then 0 - off else off), true)
+         | _, _ -> None)
+      else None
+    else None
+
+// Reduce a timezoned xsd:dateTime lexical form to its UTC-normalised
+// millisecond count. Returns None (dropped) unless the value carries an
+// explicit timezone — see the section banner for why.
+let dt_parse_utc_ms (s : string) : option int =
+  let len = String.length s in
+  if len < 19 then None
+  else if String.sub s 0 1 = "-" then None  // expanded/negative year: out of scope
+  else
+    match parse_digits_sub s 0 4, parse_digits_sub s 5 2, parse_digits_sub s 8 2,
+          parse_digits_sub s 11 2, parse_digits_sub s 14 2, parse_digits_sub s 17 2 with
+    | Some y, Some mo, Some d, Some h, Some mi, Some se ->
+      (match dt_parse_tail (String.sub s 19 (len - 19)) with
+       | Some (fms, tzoff, has_tz) ->
+         if has_tz then
+           let days = days_from_civil y mo d in
+           let secs = op_Multiply days 86400 + op_Multiply h 3600 + op_Multiply mi 60 + se - tzoff in
+           Some (op_Multiply secs 1000 + fms)
+         else None
+       | None -> None)
+    | _ -> None
+
+let literal_datetime_key (l : literal) : option int =
+  if l.datatype = xsd_dateTime then dt_parse_utc_ms l.lexical_form else None
+
+let term_datetime_key (t : rdf_term) : option int =
+  match t with T_Literal l -> literal_datetime_key l | _ -> None
+
+(* -------------------------------------------------------------------
    3. Interval representation over integers.
    ------------------------------------------------------------------- *)
 
@@ -136,6 +252,23 @@ let interval_empty (iv : interval) : bool =
   | B_Incl lo, B_Excl hi -> lo >= hi
   | B_Excl lo, B_Incl hi -> lo >= hi
   | B_Excl lo, B_Excl hi -> lo >= hi - 1
+  | _, _ -> false
+
+(* PROVABLY empty over a DENSE value space (xsd:dateTime, whose value
+   space has unbounded fractional-second precision — between any two
+   distinct instants lies another). The discrete `B_Excl,B_Excl ->
+   lo >= hi - 1` rule of `interval_empty` above is UNSOUND for a dense
+   order: minExclusive T / maxExclusive T+1ms is NON-empty (T+0.5ms
+   exists), so an open interval is empty only when its endpoints cross
+   or coincide, never merely by being adjacent. Used for VS_DateInterval
+   intersections; keeping it separate leaves the integer discrete rule
+   untouched. *)
+let interval_empty_dense (iv : interval) : bool =
+  match iv.iv_lo, iv.iv_hi with
+  | B_Incl lo, B_Incl hi -> lo > hi
+  | B_Incl lo, B_Excl hi -> lo >= hi
+  | B_Excl lo, B_Incl hi -> lo >= hi
+  | B_Excl lo, B_Excl hi -> lo >= hi
   | _, _ -> false
 
 let tighter_lo (a b : bound) : bound =
@@ -227,6 +360,31 @@ let rec facets_to_interval (base_dt : wf_iri) (facets : list (wf_iri & rdf_term)
     in
     facets_to_interval base_dt tl acc'
 
+(* dateTime facets -> interval over UTC-normalised millisecond keys,
+   restricted to min/maxInclusive/Exclusive. A facet value that is not a
+   TIMEZONED xsd:dateTime literal (`term_datetime_key` = None) is DROPPED
+   — sound narrowing: fewer constraints only make refutation harder. The
+   resulting interval lives in the dateTime dimension and is only ever
+   intersected against other dateTime keys / dateTime intervals (see
+   value_set_intersect's VS_DateInterval cases), never against the
+   integer intervals `facets_to_interval` builds. *)
+let rec datetime_facets_to_interval (facets : list (wf_iri & rdf_term)) (acc : interval)
+  : Tot interval (decreases facets) =
+  match facets with
+  | [] -> acc
+  | (firi, fval) :: tl ->
+    let acc' =
+      match term_datetime_key fval with
+      | None -> acc
+      | Some v ->
+        if firi = facet_min_incl_iri then interval_intersect acc { iv_lo = B_Incl v; iv_hi = B_Unbounded }
+        else if firi = facet_max_incl_iri then interval_intersect acc { iv_lo = B_Unbounded; iv_hi = B_Incl v }
+        else if firi = facet_min_excl_iri then interval_intersect acc { iv_lo = B_Excl v; iv_hi = B_Unbounded }
+        else if firi = facet_max_excl_iri then interval_intersect acc { iv_lo = B_Unbounded; iv_hi = B_Excl v }
+        else acc
+    in
+    datetime_facets_to_interval tl acc'
+
 (* -------------------------------------------------------------------
    5. Value sets: the combined shape a facet checker needs — an
       interval, a finite literal enumeration (DataOneOf), a bare
@@ -236,6 +394,7 @@ let rec facets_to_interval (base_dt : wf_iri) (facets : list (wf_iri & rdf_term)
 noeq type value_set =
   | VS_Unconstrained : value_set
   | VS_Interval : interval -> value_set
+  | VS_DateInterval : interval -> value_set
   | VS_Enum : list rdf_term -> value_set
   | VS_Family : xsd_family -> value_set
   | VS_Empty : value_set
@@ -359,6 +518,21 @@ let provably_outside_family (f : xsd_family) (t : rdf_term) : bool =
   | Some g -> not (xsd_family_eq f g)
   | None -> false
 
+(* Drop h from a dateTime-interval intersection only when PROVABLY
+   outside: either h is a timezoned dateTime whose UTC instant misses
+   the interval, or h is a literal of a recognised NON-dateTime base
+   family (numeric / string / boolean — `term_family` = Some, and the
+   xsd:dateTime value space is disjoint from all three, XSD Part 2 §3).
+   A timezone-less dateTime (`term_datetime_key` = None yet dateTime-
+   typed, so `term_family` = None) is KEPT — its instant is only
+   partially ordered w.r.t. the timezoned bounds, so it might lie
+   inside; withholding the clash is sound. *)
+let provably_outside_date_interval (iv : interval) (t : rdf_term) : bool =
+  (match term_datetime_key t with
+   | Some v -> not (value_in_interval v iv)
+   | None -> false)
+  || Some? (term_family t)
+
 let value_set_intersect (a b : value_set) : value_set =
   match a, b with
   | VS_Empty, _ -> VS_Empty
@@ -368,6 +542,22 @@ let value_set_intersect (a b : value_set) : value_set =
   | VS_Interval ia, VS_Interval ib ->
     let ii = interval_intersect ia ib in
     if interval_empty ii then VS_Empty else VS_Interval ii
+  | VS_DateInterval ia, VS_DateInterval ib ->
+    let ii = interval_intersect ia ib in
+    if interval_empty_dense ii then VS_Empty else VS_DateInterval ii
+  (* dateTime value space is disjoint from every integer/decimal (numeric
+     family) value space, so a dateTime interval meeting an integer
+     interval or any base family is EMPTY (a value cannot be both). *)
+  | VS_DateInterval _, VS_Interval _ -> VS_Empty
+  | VS_Interval _, VS_DateInterval _ -> VS_Empty
+  | VS_DateInterval _, VS_Family _ -> VS_Empty
+  | VS_Family _, VS_DateInterval _ -> VS_Empty
+  | VS_DateInterval iv, VS_Enum xs ->
+    let e = filter_enum_by (fun t -> not (provably_outside_date_interval iv t)) xs in
+    if Nil? e then VS_Empty else VS_Enum e
+  | VS_Enum xs, VS_DateInterval iv ->
+    let e = filter_enum_by (fun t -> not (provably_outside_date_interval iv t)) xs in
+    if Nil? e then VS_Empty else VS_Enum e
   | VS_Enum xs, VS_Enum ys ->
     let e = enum_intersect xs ys in
     if Nil? e then VS_Empty else VS_Enum e
@@ -397,6 +587,11 @@ let value_set_is_empty (v : value_set) : bool =
   match v with
   | VS_Empty -> true
   | VS_Enum [] -> true
+  (* A bare dateTime restriction whose own facets already cross (e.g. a
+     single DataSomeValuesFrom with contradictory min/max on dateTime —
+     case (b) of the Wave B clash rules) is empty before any second
+     restriction intersects it. Dense emptiness, per interval_empty_dense. *)
+  | VS_DateInterval iv -> interval_empty_dense iv
   | _ -> false
 
 (* Subtract `remove` from `acc` — used for DataComplementOf. Only the
