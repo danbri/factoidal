@@ -4,6 +4,20 @@
 # exactly as regex_match's semantics are the host regex engine's).
 # https://github.com/danbri/factoidal/issues/296
 #
+# RETIRED IN PRACTICE (2026-07-15): the verified F* class-size reasoner
+# Tableau.CountingOracle.class_size_unsat (a Farkas-certificate validator
+# with a build-checked soundness Lemma) is now consulted ONE RUNG BEFORE
+# this oracle in owl_runner's InconsistencyTest dispatch. It decides the
+# two counting fixtures the oracle ever flipped (dl-910, one=two) inside
+# the verified boundary, so they are now plain VERIFIED passes and z3 is
+# never reached for them (confirmed under FACTOIDAL_OWL_Z3_RLIMIT=0).
+# dl-909 the oracle never flipped (its class-size system is genuinely
+# `sat`) and still does not. This realisation is KEPT -- not deleted --
+# as the fallback for any future counting fixture the verified reasoner
+# does not yet decide, but for the shipped corpus the oracle is
+# unreachable. See docs/designissues/2026-07-15-owl2-wave-c-finite-model-
+# refutation.md and third_party/z3-native/PROVENANCE.md.
+#
 # PHASE 1 realisation (Z33kr, docs/designissues/2026-07-14-z3-entailment-
 # backend.md, Phase 1 / section 3): spawn the pinned native z3 binary,
 # feed the F*-built SMT-LIB 2 string on stdin, parse the first
