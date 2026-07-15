@@ -17,6 +17,7 @@ tracking when it can be eliminated.**
 | `103_parquet_ascii_string_fast_path.sh` | [#103](https://github.com/danbri/factoidal/issues/103) | OCaml runtime override (perf) | Parquet_Footer.ml |
 | `181_shacl_validate_stub.sh` | [#181](https://github.com/danbri/factoidal/issues/181) | assume-val stubs | SHACL_Validation.ml |
 | `202_now_ms.sh` | [#202](https://github.com/danbri/factoidal/issues/202) | assume-val stubs (I/O clock) | SPARQL_Eval_TimeBudget.ml |
+| `296_z3_check_sat.sh` | [#296](https://github.com/danbri/factoidal/issues/296) | assume-val stub (ASSUME-HOST) | Tableau_CountingOracle.ml |
 
 Retired patches (F\* now covers them; kept in git history only): #53
 blank-node rewriting, #64 parser escape stubs, #65 base-IRI resolution,
