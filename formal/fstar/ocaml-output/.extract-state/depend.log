@@ -48,6 +48,109 @@
     instead of /root/.opam/fstar/lib/fstar/ulib/FStar.Pervasives.fst.checked
 
 * Warning 321:
+  - Did not expect module FStar.List.Tot to be already checked.
+  - Found it in an unexpected location:
+      /root/.opam/fstar/lib/fstar/ulib.checked/FStar.List.Tot.fst.checked
+    instead of /root/.opam/fstar/lib/fstar/ulib/FStar.List.Tot.fst.checked
+
+* Warning 321:
+  - Did not expect module FStar.List.Tot.Properties to be already checked.
+  - Found it in an unexpected location:
+      /root/.opam/fstar/lib/fstar/ulib.checked/FStar.List.Tot.Properties.fsti.checked
+    instead of
+      /root/.opam/fstar/lib/fstar/ulib/FStar.List.Tot.Properties.fsti.checked
+
+* Warning 321:
+  - Did not expect module FStar.StrongExcludedMiddle to be already checked.
+  - Found it in an unexpected location:
+      /root/.opam/fstar/lib/fstar/ulib.checked/FStar.StrongExcludedMiddle.fst.checked
+    instead of
+      /root/.opam/fstar/lib/fstar/ulib/FStar.StrongExcludedMiddle.fst.checked
+
+* Warning 321:
+  - Did not expect module FStar.IndefiniteDescription to be already checked.
+  - Found it in an unexpected location:
+      /root/.opam/fstar/lib/fstar/ulib.checked/FStar.IndefiniteDescription.fsti.checked
+    instead of
+      /root/.opam/fstar/lib/fstar/ulib/FStar.IndefiniteDescription.fsti.checked
+
+* Warning 321:
+  - Did not expect module FStar.Ghost to be already checked.
+  - Found it in an unexpected location:
+      /root/.opam/fstar/lib/fstar/ulib.checked/FStar.Ghost.fsti.checked
+    instead of /root/.opam/fstar/lib/fstar/ulib/FStar.Ghost.fsti.checked
+
+* Warning 321:
+  - Did not expect module FStar.Ghost to be already checked.
+  - Found it in an unexpected location:
+      /root/.opam/fstar/lib/fstar/ulib.checked/FStar.Ghost.fst.checked
+    instead of /root/.opam/fstar/lib/fstar/ulib/FStar.Ghost.fst.checked
+
+* Warning 321:
+  - Did not expect module FStar.IndefiniteDescription to be already checked.
+  - Found it in an unexpected location:
+      /root/.opam/fstar/lib/fstar/ulib.checked/FStar.IndefiniteDescription.fst.checked
+    instead of
+      /root/.opam/fstar/lib/fstar/ulib/FStar.IndefiniteDescription.fst.checked
+
+* Warning 321:
+  - Did not expect module FStar.List.Tot.Base to be already checked.
+  - Found it in an unexpected location:
+      /root/.opam/fstar/lib/fstar/ulib.checked/FStar.List.Tot.Base.fst.checked
+    instead of /root/.opam/fstar/lib/fstar/ulib/FStar.List.Tot.Base.fst.checked
+
+* Warning 321:
+  - Did not expect module FStar.Classical.Sugar to be already checked.
+  - Found it in an unexpected location:
+      /root/.opam/fstar/lib/fstar/ulib.checked/FStar.Classical.Sugar.fsti.checked
+    instead of
+      /root/.opam/fstar/lib/fstar/ulib/FStar.Classical.Sugar.fsti.checked
+
+* Warning 321:
+  - Did not expect module FStar.Classical.Sugar to be already checked.
+  - Found it in an unexpected location:
+      /root/.opam/fstar/lib/fstar/ulib.checked/FStar.Classical.Sugar.fst.checked
+    instead of
+      /root/.opam/fstar/lib/fstar/ulib/FStar.Classical.Sugar.fst.checked
+
+* Warning 321:
+  - Did not expect module FStar.Squash to be already checked.
+  - Found it in an unexpected location:
+      /root/.opam/fstar/lib/fstar/ulib.checked/FStar.Squash.fsti.checked
+    instead of /root/.opam/fstar/lib/fstar/ulib/FStar.Squash.fsti.checked
+
+* Warning 321:
+  - Did not expect module FStar.Squash to be already checked.
+  - Found it in an unexpected location:
+      /root/.opam/fstar/lib/fstar/ulib.checked/FStar.Squash.fst.checked
+    instead of /root/.opam/fstar/lib/fstar/ulib/FStar.Squash.fst.checked
+
+* Warning 321:
+  - Did not expect module FStar.List.Tot.Properties to be already checked.
+  - Found it in an unexpected location:
+      /root/.opam/fstar/lib/fstar/ulib.checked/FStar.List.Tot.Properties.fst.checked
+    instead of
+      /root/.opam/fstar/lib/fstar/ulib/FStar.List.Tot.Properties.fst.checked
+
+* Warning 321:
+  - Did not expect module FStar.Classical to be already checked.
+  - Found it in an unexpected location:
+      /root/.opam/fstar/lib/fstar/ulib.checked/FStar.Classical.fsti.checked
+    instead of /root/.opam/fstar/lib/fstar/ulib/FStar.Classical.fsti.checked
+
+* Warning 321:
+  - Did not expect module FStar.Classical to be already checked.
+  - Found it in an unexpected location:
+      /root/.opam/fstar/lib/fstar/ulib.checked/FStar.Classical.fst.checked
+    instead of /root/.opam/fstar/lib/fstar/ulib/FStar.Classical.fst.checked
+
+* Warning 321:
+  - Did not expect module FStar.Mul to be already checked.
+  - Found it in an unexpected location:
+      /root/.opam/fstar/lib/fstar/ulib.checked/FStar.Mul.fst.checked
+    instead of /root/.opam/fstar/lib/fstar/ulib/FStar.Mul.fst.checked
+
+* Warning 321:
   - Did not expect module FStar.String to be already checked.
   - Found it in an unexpected location:
       /root/.opam/fstar/lib/fstar/ulib.checked/FStar.String.fsti.checked
@@ -82,56 +185,6 @@
   - Found it in an unexpected location:
       /root/.opam/fstar/lib/fstar/ulib.checked/FStar.Set.fst.checked
     instead of /root/.opam/fstar/lib/fstar/ulib/FStar.Set.fst.checked
-
-* Warning 321:
-  - Did not expect module FStar.Classical to be already checked.
-  - Found it in an unexpected location:
-      /root/.opam/fstar/lib/fstar/ulib.checked/FStar.Classical.fsti.checked
-    instead of /root/.opam/fstar/lib/fstar/ulib/FStar.Classical.fsti.checked
-
-* Warning 321:
-  - Did not expect module FStar.Classical to be already checked.
-  - Found it in an unexpected location:
-      /root/.opam/fstar/lib/fstar/ulib.checked/FStar.Classical.fst.checked
-    instead of /root/.opam/fstar/lib/fstar/ulib/FStar.Classical.fst.checked
-
-* Warning 321:
-  - Did not expect module FStar.Squash to be already checked.
-  - Found it in an unexpected location:
-      /root/.opam/fstar/lib/fstar/ulib.checked/FStar.Squash.fsti.checked
-    instead of /root/.opam/fstar/lib/fstar/ulib/FStar.Squash.fsti.checked
-
-* Warning 321:
-  - Did not expect module FStar.Squash to be already checked.
-  - Found it in an unexpected location:
-      /root/.opam/fstar/lib/fstar/ulib.checked/FStar.Squash.fst.checked
-    instead of /root/.opam/fstar/lib/fstar/ulib/FStar.Squash.fst.checked
-
-* Warning 321:
-  - Did not expect module FStar.IndefiniteDescription to be already checked.
-  - Found it in an unexpected location:
-      /root/.opam/fstar/lib/fstar/ulib.checked/FStar.IndefiniteDescription.fsti.checked
-    instead of
-      /root/.opam/fstar/lib/fstar/ulib/FStar.IndefiniteDescription.fsti.checked
-
-* Warning 321:
-  - Did not expect module FStar.Ghost to be already checked.
-  - Found it in an unexpected location:
-      /root/.opam/fstar/lib/fstar/ulib.checked/FStar.Ghost.fsti.checked
-    instead of /root/.opam/fstar/lib/fstar/ulib/FStar.Ghost.fsti.checked
-
-* Warning 321:
-  - Did not expect module FStar.Ghost to be already checked.
-  - Found it in an unexpected location:
-      /root/.opam/fstar/lib/fstar/ulib.checked/FStar.Ghost.fst.checked
-    instead of /root/.opam/fstar/lib/fstar/ulib/FStar.Ghost.fst.checked
-
-* Warning 321:
-  - Did not expect module FStar.IndefiniteDescription to be already checked.
-  - Found it in an unexpected location:
-      /root/.opam/fstar/lib/fstar/ulib.checked/FStar.IndefiniteDescription.fst.checked
-    instead of
-      /root/.opam/fstar/lib/fstar/ulib/FStar.IndefiniteDescription.fst.checked
 
 * Warning 321:
   - Did not expect module FStar.FunctionalExtensionality to be already checked.
@@ -204,12 +257,6 @@
     instead of /root/.opam/fstar/lib/fstar/ulib/FStar.UInt32.fsti.checked
 
 * Warning 321:
-  - Did not expect module FStar.Mul to be already checked.
-  - Found it in an unexpected location:
-      /root/.opam/fstar/lib/fstar/ulib.checked/FStar.Mul.fst.checked
-    instead of /root/.opam/fstar/lib/fstar/ulib/FStar.Mul.fst.checked
-
-* Warning 321:
   - Did not expect module FStar.UInt to be already checked.
   - Found it in an unexpected location:
       /root/.opam/fstar/lib/fstar/ulib.checked/FStar.UInt.fsti.checked
@@ -222,57 +269,10 @@
     instead of /root/.opam/fstar/lib/fstar/ulib/FStar.Seq.Base.fsti.checked
 
 * Warning 321:
-  - Did not expect module FStar.List.Tot.Base to be already checked.
-  - Found it in an unexpected location:
-      /root/.opam/fstar/lib/fstar/ulib.checked/FStar.List.Tot.Base.fst.checked
-    instead of /root/.opam/fstar/lib/fstar/ulib/FStar.List.Tot.Base.fst.checked
-
-* Warning 321:
-  - Did not expect module FStar.Classical.Sugar to be already checked.
-  - Found it in an unexpected location:
-      /root/.opam/fstar/lib/fstar/ulib.checked/FStar.Classical.Sugar.fsti.checked
-    instead of
-      /root/.opam/fstar/lib/fstar/ulib/FStar.Classical.Sugar.fsti.checked
-
-* Warning 321:
-  - Did not expect module FStar.Classical.Sugar to be already checked.
-  - Found it in an unexpected location:
-      /root/.opam/fstar/lib/fstar/ulib.checked/FStar.Classical.Sugar.fst.checked
-    instead of
-      /root/.opam/fstar/lib/fstar/ulib/FStar.Classical.Sugar.fst.checked
-
-* Warning 321:
   - Did not expect module FStar.Seq.Base to be already checked.
   - Found it in an unexpected location:
       /root/.opam/fstar/lib/fstar/ulib.checked/FStar.Seq.Base.fst.checked
     instead of /root/.opam/fstar/lib/fstar/ulib/FStar.Seq.Base.fst.checked
-
-* Warning 321:
-  - Did not expect module FStar.List.Tot to be already checked.
-  - Found it in an unexpected location:
-      /root/.opam/fstar/lib/fstar/ulib.checked/FStar.List.Tot.fst.checked
-    instead of /root/.opam/fstar/lib/fstar/ulib/FStar.List.Tot.fst.checked
-
-* Warning 321:
-  - Did not expect module FStar.List.Tot.Properties to be already checked.
-  - Found it in an unexpected location:
-      /root/.opam/fstar/lib/fstar/ulib.checked/FStar.List.Tot.Properties.fsti.checked
-    instead of
-      /root/.opam/fstar/lib/fstar/ulib/FStar.List.Tot.Properties.fsti.checked
-
-* Warning 321:
-  - Did not expect module FStar.StrongExcludedMiddle to be already checked.
-  - Found it in an unexpected location:
-      /root/.opam/fstar/lib/fstar/ulib.checked/FStar.StrongExcludedMiddle.fst.checked
-    instead of
-      /root/.opam/fstar/lib/fstar/ulib/FStar.StrongExcludedMiddle.fst.checked
-
-* Warning 321:
-  - Did not expect module FStar.List.Tot.Properties to be already checked.
-  - Found it in an unexpected location:
-      /root/.opam/fstar/lib/fstar/ulib.checked/FStar.List.Tot.Properties.fst.checked
-    instead of
-      /root/.opam/fstar/lib/fstar/ulib/FStar.List.Tot.Properties.fst.checked
 
 * Warning 321:
   - Did not expect module FStar.Math.Lemmas to be already checked.

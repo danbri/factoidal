@@ -7,7 +7,7 @@
 * Warning 247 at OWL.Closure.fsti(0,0-0,0):
   - Checked file OWL.Closure.fsti.checked was not written.
   - Reason:
-      checked file RDF.Indexed.fsti.checked is stale (dependence hash mismatch,
+      checked file RDF.Graph.fsti.checked is stale (dependence hash mismatch,
       use --debug CheckedFiles for more details)
 
 Verified i'face (or impl+i'face): OWL.Closure
