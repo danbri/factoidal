@@ -270,6 +270,101 @@ let csvw_build_literal_lang (lex : string) (dt : string) (lang : option string) 
   | _ -> csvw_build_literal lex dt
 
 // ================================================================
+// rdf: List vocabulary + csvw:title, as wf_iri constants (RDF.Vocabulary
+// exposes the plain-string forms; the triple builders here need the
+// refinement, same pattern as the csvw: constants above). Used by the
+// `ordered` list-valued cell path (test306/307) and rowTitles
+// (test235/236) respectively.
+// ================================================================
+
+let rdf_first_iri : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/1999/02/22-rdf-syntax-ns#first");
+  "http://www.w3.org/1999/02/22-rdf-syntax-ns#first"
+let rdf_rest_iri : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest");
+  "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest"
+let rdf_nil_iri : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/1999/02/22-rdf-syntax-ns#nil");
+  "http://www.w3.org/1999/02/22-rdf-syntax-ns#nil"
+let csvw_title_pred : wf_iri =
+  assert_norm (is_iri (csvw_ns ^ "title")); csvw_ns ^ "title"
+
+// ================================================================
+// CURIE / prefixed-name expansion. Used both for common-property keys
+// and @type/@id tokens (below) AND for URI-template valueUrl results
+// (test038 `schema:about`, test039 `rdf:value`) — a prefixed name that
+// survives URI-template expansion must expand to its absolute IRI
+// before being resolved against the table URL. Defined here (before
+// the per-cell conversion) so csvw_cell_object can call it.
+// ================================================================
+
+// CURIE prefix table — the subset of the CSVW default context (which
+// imports the RDFa 1.1 initial context) that the csv2rdf corpus's
+// common properties actually use. An unknown prefix leaves the key
+// unexpanded (dropped downstream by the is_iri guard).
+let csvw_curie_ns (prefix : string) : option string =
+  if prefix = "rdf" then Some "http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+  else if prefix = "rdfs" then Some "http://www.w3.org/2000/01/rdf-schema#"
+  else if prefix = "xsd" then Some "http://www.w3.org/2001/XMLSchema#"
+  else if prefix = "dc" then Some "http://purl.org/dc/terms/"
+  else if prefix = "dcterms" then Some "http://purl.org/dc/terms/"
+  else if prefix = "dc11" then Some "http://purl.org/dc/elements/1.1/"
+  else if prefix = "dcat" then Some "http://www.w3.org/ns/dcat#"
+  else if prefix = "schema" then Some "http://schema.org/"
+  else if prefix = "foaf" then Some "http://xmlns.com/foaf/0.1/"
+  else if prefix = "skos" then Some "http://www.w3.org/2004/02/skos/core#"
+  else if prefix = "owl" then Some "http://www.w3.org/2002/07/owl#"
+  else if prefix = "org" then Some "http://www.w3.org/ns/org#"
+  else if prefix = "oa" then Some "http://www.w3.org/ns/oa#"
+  else if prefix = "prov" then Some "http://www.w3.org/ns/prov#"
+  else if prefix = "as" then Some "https://www.w3.org/ns/activitystreams#"
+  else None
+
+// Split a key at its FIRST ':' into (before-chars, after-chars).
+let rec csvw_split_colon (chars : list FStar.Char.char)
+  : Tot (option (list FStar.Char.char & list FStar.Char.char)) (decreases chars) =
+  match chars with
+  | [] -> None
+  | c :: rest ->
+    if FStar.Char.int_of_char c = 58 (* ':' *) then Some ([], rest)
+    else (match csvw_split_colon rest with
+          | None -> None
+          | Some (b, a) -> Some (c :: b, a))
+
+// Expand a prefixed name to an absolute IRI. A key whose part after the
+// first ':' begins with "//" (i.e. scheme://...) is an absolute URL and
+// returned verbatim; a known prefix expands; anything else is returned
+// unchanged (dropped downstream if not a well-formed IRI).
+let csvw_expand_curie (key : string) : string =
+  match csvw_split_colon (String.list_of_string key) with
+  | None -> key
+  | Some (b, a) ->
+    let local = String.string_of_list a in
+    if String.length local >= 2 && String.sub local 0 2 = "//" then key
+    else (match csvw_curie_ns (String.string_of_list b) with
+          | Some ns -> ns ^ local
+          | None -> key)
+
+// The CSVW built-in @type terms (class names) defined in the CSVW
+// context, for the "@type is a bare built-in term" case (test263:
+// `"@type": "Table"` -> csvw:Table). A bare token (no ':') that names
+// one of these expands to the csvw: namespace; anything else is left
+// to csvw_expand_curie (prefixed name / absolute URL).
+let csvw_builtin_type_term (t : string) : option string =
+  if t = "TableGroup" || t = "Table" || t = "Schema" || t = "Column" ||
+     t = "Row" || t = "Dialect" || t = "Template" || t = "Datatype" ||
+     t = "Direction" || t = "ForeignKey" || t = "NumericFormat" ||
+     t = "TableReference" || t = "Cell" || t = "JSON"
+  then Some (csvw_ns ^ t) else None
+
+// Expand an @type token: a bare built-in CSVW term first (test263),
+// else the ordinary CURIE / absolute-URL expansion.
+let csvw_expand_type_token (t : string) : string =
+  match csvw_builtin_type_term t with
+  | Some iri -> iri
+  | None -> csvw_expand_curie t
+
+// ================================================================
 // Column specs: CSVW.Metadata's csvw_column merged with the FULL
 // table-group -> table -> tableSchema -> column inherited-property
 // chain (Stage 2 — csvw_inherited_props/csvw_group_meta in
@@ -289,6 +384,7 @@ noeq type csvw_col_spec = {
   cs_separator    : option string;   // list-valued cell separator (test228-230)
   cs_lang         : option string;   // Stage 2 inherited "lang"
   cs_null         : option string;   // Stage 2 inherited "null"
+  cs_ordered      : bool;            // "ordered" -> rdf:List cell (test306/307)
 }
 
 let csvw_opt_bool (o : option bool) : bool = match o with Some b -> b | None -> false
@@ -305,6 +401,7 @@ let csvw_merge_inherited (specific general : csvw_inherited_props) : csvw_inheri
   inh_null         = (match specific.inh_null with         Some _ -> specific.inh_null         | None -> general.inh_null);
   inh_separator    = (match specific.inh_separator with    Some _ -> specific.inh_separator    | None -> general.inh_separator);
   inh_datatype     = (match specific.inh_datatype with     Some _ -> specific.inh_datatype     | None -> general.inh_datatype);
+  inh_ordered      = (match specific.inh_ordered with      Some _ -> specific.inh_ordered      | None -> general.inh_ordered);
 }
 
 let csvw_col_spec_of_column (eff : csvw_inherited_props) (c : csvw_column) : csvw_col_spec = {
@@ -320,6 +417,7 @@ let csvw_col_spec_of_column (eff : csvw_inherited_props) (c : csvw_column) : csv
   cs_separator = (match c.col_separator with Some s -> Some s | None -> eff.inh_separator);
   cs_lang = (match c.col_lang with Some l -> Some l | None -> eff.inh_lang);
   cs_null = (match c.col_null with Some n -> Some n | None -> eff.inh_null);
+  cs_ordered = (match c.col_ordered with Some b -> b | None -> (match eff.inh_ordered with Some b -> b | None -> false));
 }
 
 // Positional default column name when neither a schema nor a header
@@ -339,7 +437,7 @@ let csvw_col_specs_from_header (header_cells : list string) : list csvw_col_spec
        cs_name = (if h = "" then csvw_positional_name i else h);
        cs_virtual = false; cs_suppress = false; cs_datatype = None;
        cs_about_url = None; cs_property_url = None; cs_value_url = None;
-       cs_separator = None; cs_lang = None; cs_null = None;
+       cs_separator = None; cs_lang = None; cs_null = None; cs_ordered = false;
      })
     header_cells
 
@@ -358,7 +456,7 @@ let csvw_col_specs_positional (header_cells : list string) : list csvw_col_spec 
        cs_name = csvw_positional_name i;
        cs_virtual = false; cs_suppress = false; cs_datatype = None;
        cs_about_url = None; cs_property_url = None; cs_value_url = None;
-       cs_separator = None; cs_lang = None; cs_null = None;
+       cs_separator = None; cs_lang = None; cs_null = None; cs_ordered = false;
      })
     header_cells
 
@@ -367,6 +465,37 @@ let csvw_col_specs_positional (header_cells : list string) : list csvw_col_spec 
 // group one; the table itself carries its own via tbl.tbl_inherited).
 // Merge order group -> table -> tableSchema, most specific last, then
 // let each column override on top of that (csvw_col_spec_of_column).
+// A default positional column ("_col.N") for a CSV header cell that the
+// user schema did not describe (test278: the CSV has MORE headers than
+// the schema has non-virtual columns; the surplus become extra columns
+// named _col.N, inheriting the effective schema/table/group props but
+// carrying no per-column overrides). Index is 0-based; csvw_positional_
+// name turns it into the 1-based "_col.(i+1)".
+let csvw_positional_spec_eff (eff : csvw_inherited_props) (i : int) : csvw_col_spec = {
+  cs_name = csvw_positional_name i;
+  cs_virtual = false; cs_suppress = false;
+  cs_datatype = eff.inh_datatype;
+  cs_about_url = eff.inh_about_url;
+  cs_property_url = eff.inh_property_url;
+  cs_value_url = eff.inh_value_url;
+  cs_separator = eff.inh_separator;
+  cs_lang = eff.inh_lang;
+  cs_null = eff.inh_null;
+  cs_ordered = (match eff.inh_ordered with Some b -> b | None -> false);
+}
+
+// Append "_col.N" specs for header cells at positions beyond the last
+// described column (test278). `n_described` is the schema's column
+// count; only header indices >= n_described produce a surplus spec, in
+// order, so the CSV columns the schema DID describe keep their own spec.
+let rec csvw_surplus_specs (eff : csvw_inherited_props) (n_described : nat) (i : nat) (header_cells : list string)
+  : Tot (list csvw_col_spec) (decreases header_cells) =
+  match header_cells with
+  | [] -> []
+  | _ :: tl ->
+    let rest = csvw_surplus_specs eff n_described (i + 1) tl in
+    if i >= n_described then csvw_positional_spec_eff eff i :: rest else rest
+
 let csvw_build_col_specs
     (grp tbl : csvw_inherited_props) (ts_opt : option csvw_table_schema) (header_cells : list string)
   : list csvw_col_spec =
@@ -374,7 +503,11 @@ let csvw_build_col_specs
   | Some ts ->
     if Cons? ts.ts_columns then
       let eff = csvw_merge_inherited ts.ts_inherited (csvw_merge_inherited tbl grp) in
-      List.Tot.map (csvw_col_spec_of_column eff) ts.ts_columns
+      let described = List.Tot.map (csvw_col_spec_of_column eff) ts.ts_columns in
+      // CSV headers beyond the described columns become surplus _col.N
+      // columns (test278). A schema with as many or more columns than
+      // headers adds nothing here.
+      described @ csvw_surplus_specs eff (List.Tot.length ts.ts_columns) 0 header_cells
     else csvw_col_specs_positional header_cells
   | None -> csvw_col_specs_from_header header_cells
 
@@ -478,7 +611,12 @@ let csvw_cell_object
   : option rdf_term =
   match spec.cs_value_url with
   | Some tmpl ->
-    let raw = csvw_expand_template lookup tmpl in
+    // A valueUrl template may itself be (or expand to) a prefixed name
+    // — `schema:about` (test038), `rdf:value` (test039) — which must
+    // expand to its absolute IRI via the CSVW context before being
+    // resolved against the table URL. csvw_expand_curie is a no-op on a
+    // template with no known prefix (fragment refs, absolute URLs).
+    let raw = csvw_expand_curie (csvw_expand_template lookup tmpl) in
     let resolved = resolve_iri_v2 table_url_resolved raw in
     if is_iri resolved then Some (T_IRI resolved) else None
   | None ->
@@ -553,8 +691,27 @@ let csvw_split_list_cell (sep : string) (s : string) : list string =
   | sepc :: _ -> List.Tot.map String.string_of_list (split_all sepc (String.list_of_string s))
   | [] -> [s]
 
+// Build an rdf:List (rdf:first/rdf:rest/rdf:nil chain) from a list of
+// object terms — the `ordered` list-valued cell (test306/307). Returns
+// the list HEAD term (a fresh blank node, or rdf:nil for the empty
+// list) plus every rdf:first/rdf:rest triple. `seed` must be unique per
+// (row, column) so distinct cells never collide their blank-node labels
+// (the isomorphism comparison relabels them, but they must stay
+// distinct within the graph).
+let rec csvw_rdf_list (seed : string) (idx : nat) (objs : list rdf_term)
+  : Tot (rdf_term & list triple) (decreases objs) =
+  match objs with
+  | [] -> (T_IRI rdf_nil_iri, [])
+  | o :: tl ->
+    let node : subject = S_BNode (seed ^ "_" ^ string_of_int idx) in
+    let (rest_head, rest_triples) = csvw_rdf_list seed (idx + 1) tl in
+    (csvw_term_of_subject node,
+       { s = node; p = rdf_first_iri; o = o }
+       :: { s = node; p = rdf_rest_iri; o = rest_head }
+       :: rest_triples)
+
 let csvw_process_cell
-    (table_url_resolved : string)
+    (table_url_resolved : string) (row_seed : string)
     (lookup : string -> option string) (default_subject : subject)
     (spec : csvw_col_spec) (cell_text : option string)
   : (subject & list triple) =
@@ -594,7 +751,17 @@ let csvw_process_cell
          let objs = List.Tot.choose
            (fun (part : string) -> csvw_cell_object table_url_resolved spec (Some part) cur_lookup)
            parts in
-         (subj, List.Tot.map (fun (o : rdf_term) -> ({ s = subj; p = pred_str; o = o } <: triple)) objs)
+         if spec.cs_ordered then
+           // `ordered`: the values form an rdf:List, linked once from the
+           // subject via the property (test306/307).
+           (match objs with
+            | [] -> (subj, [])
+            | _ ->
+              let list_seed = "csvwL_" ^ row_seed ^ "_" ^ csvw_encode_name spec.cs_name in
+              let (head, list_triples) = csvw_rdf_list list_seed 0 objs in
+              (subj, { s = subj; p = pred_str; o = head } :: list_triples))
+         else
+           (subj, List.Tot.map (fun (o : rdf_term) -> ({ s = subj; p = pred_str; o = o } <: triple)) objs)
        | _ ->
          (match csvw_cell_object table_url_resolved spec cell_text cur_lookup with
           | None -> (subj, [])
@@ -613,14 +780,19 @@ let csvw_row_cell_results
   let phys_pairs = csvw_zip_specs_cells phys_specs cells in
   let phys_bindings = List.Tot.map (fun (p : (csvw_col_spec & string)) -> (fst p).cs_name, snd p) phys_pairs in
   let lookup = csvw_row_lookup phys_bindings row_num source_row_num in
+  // Per-row seed for any list-valued (ordered) cell's blank nodes —
+  // unique across rows AND tables (a shared aboutUrl can repeat a
+  // subject across rows, test306, so the SUBJECT alone is not a safe
+  // discriminator; the physical source-row number is).
+  let row_seed = string_encode_uri table_url_resolved ^ "_" ^ string_of_int source_row_num in
   let default_subject =
     S_BNode ("csvwrow_" ^ string_encode_uri table_url_resolved ^ "_" ^ string_of_int source_row_num) in
   List.Tot.map
     (fun (p : (csvw_col_spec & string)) ->
-       csvw_process_cell table_url_resolved lookup default_subject (fst p) (Some (snd p)))
+       csvw_process_cell table_url_resolved row_seed lookup default_subject (fst p) (Some (snd p)))
     phys_pairs
   @ List.Tot.map
-      (fun (s : csvw_col_spec) -> csvw_process_cell table_url_resolved lookup default_subject s None)
+      (fun (s : csvw_col_spec) -> csvw_process_cell table_url_resolved row_seed lookup default_subject s None)
       virt_specs
 
 // ================================================================
@@ -640,53 +812,6 @@ let csvw_row_cell_results
 //   - an array -> one object per element, same predicate.
 //   - JNull / anything unresolvable -> nothing.
 // ================================================================
-
-// CURIE prefix table — the subset of the CSVW default context (which
-// imports the RDFa 1.1 initial context) that the csv2rdf corpus's
-// common properties actually use. An unknown prefix leaves the key
-// unexpanded (dropped downstream by the is_iri guard).
-let csvw_curie_ns (prefix : string) : option string =
-  if prefix = "rdf" then Some "http://www.w3.org/1999/02/22-rdf-syntax-ns#"
-  else if prefix = "rdfs" then Some "http://www.w3.org/2000/01/rdf-schema#"
-  else if prefix = "xsd" then Some "http://www.w3.org/2001/XMLSchema#"
-  else if prefix = "dc" then Some "http://purl.org/dc/terms/"
-  else if prefix = "dcterms" then Some "http://purl.org/dc/terms/"
-  else if prefix = "dc11" then Some "http://purl.org/dc/elements/1.1/"
-  else if prefix = "dcat" then Some "http://www.w3.org/ns/dcat#"
-  else if prefix = "schema" then Some "http://schema.org/"
-  else if prefix = "foaf" then Some "http://xmlns.com/foaf/0.1/"
-  else if prefix = "skos" then Some "http://www.w3.org/2004/02/skos/core#"
-  else if prefix = "owl" then Some "http://www.w3.org/2002/07/owl#"
-  else if prefix = "org" then Some "http://www.w3.org/ns/org#"
-  else if prefix = "oa" then Some "http://www.w3.org/ns/oa#"
-  else if prefix = "prov" then Some "http://www.w3.org/ns/prov#"
-  else if prefix = "as" then Some "https://www.w3.org/ns/activitystreams#"
-  else None
-
-// Split a key at its FIRST ':' into (before-chars, after-chars).
-let rec csvw_split_colon (chars : list FStar.Char.char)
-  : Tot (option (list FStar.Char.char & list FStar.Char.char)) (decreases chars) =
-  match chars with
-  | [] -> None
-  | c :: rest ->
-    if FStar.Char.int_of_char c = 58 (* ':' *) then Some ([], rest)
-    else (match csvw_split_colon rest with
-          | None -> None
-          | Some (b, a) -> Some (c :: b, a))
-
-// Expand a prefixed name to an absolute IRI. A key whose part after the
-// first ':' begins with "//" (i.e. scheme://...) is an absolute URL and
-// returned verbatim; a known prefix expands; anything else is returned
-// unchanged (dropped downstream if not a well-formed IRI).
-let csvw_expand_curie (key : string) : string =
-  match csvw_split_colon (String.list_of_string key) with
-  | None -> key
-  | Some (b, a) ->
-    let local = String.string_of_list a in
-    if String.length local >= 2 && String.sub local 0 2 = "//" then key
-    else (match csvw_curie_ns (String.string_of_list b) with
-          | Some ns -> ns ^ local
-          | None -> key)
 
 // Guarded literal builder (same discipline as csvw_build_literal, but
 // with an optional language tag): only a well-formed literal is emitted.
@@ -712,16 +837,26 @@ let csvw_opt_to_list (#a:Type) (o : option a) : list a =
 // for nested objects/array elements; termination is by fuel decrease,
 // with the top-level caller supplying fuel >= the value forest's total
 // json_size so a well-formed document never truncates.
-let rec csvw_common_value (fuel : nat) (seed : string) (v : json_val)
+let rec csvw_common_value (default_lang : option string) (fuel : nat) (seed : string) (v : json_val)
   : Tot (list rdf_term & list triple) (decreases fuel) =
   if fuel = 0 then ([], [])
   else
     match v with
     | JNull -> ([], [])
-    | JString s -> (csvw_opt_to_list (csvw_mk_literal s xsd_string None), [])
+    | JString s ->
+      // A plain common-property string takes the document's default
+      // language from @context (test259/260: dc:title/dcat:keyword/
+      // schema:name become @en); with no default language it is a plain
+      // xsd:string (unchanged for every fixture without @context
+      // @language, and for test073 whose @context language is invalid
+      // and so resolves to None).
+      let term = (match default_lang with
+                  | Some l -> csvw_mk_literal s rdf_lang_string (Some l)
+                  | None -> csvw_mk_literal s xsd_string None) in
+      (csvw_opt_to_list term, [])
     | JBool b -> (csvw_opt_to_list (csvw_mk_literal (if b then "true" else "false") xsd_boolean None), [])
     | JNumber s -> (csvw_opt_to_list (csvw_number_literal_opt s), [])
-    | JArray items -> csvw_common_array (fuel - 1) seed 0 items
+    | JArray items -> csvw_common_array default_lang (fuel - 1) seed 0 items
     | JObject fields ->
       (match json_get_field "@value" v with
        | Some (JString lex) ->
@@ -741,21 +876,21 @@ let rec csvw_common_value (fuel : nat) (seed : string) (v : json_val)
           | _ ->
             let lbl = "csvwCP_" ^ seed in
             let b : subject = S_BNode lbl in
-            let inner = csvw_common_object_fields (fuel - 1) b lbl fields in
+            let inner = csvw_common_object_fields default_lang (fuel - 1) b lbl fields in
             ([csvw_term_of_subject b], inner)))
 
-and csvw_common_array (fuel : nat) (seed : string) (idx : nat) (items : list json_val)
+and csvw_common_array (default_lang : option string) (fuel : nat) (seed : string) (idx : nat) (items : list json_val)
   : Tot (list rdf_term & list triple) (decreases fuel) =
   if fuel = 0 then ([], [])
   else
     match items with
     | [] -> ([], [])
     | hd :: tl ->
-      let (t1, r1) = csvw_common_value (fuel - 1) (seed ^ "_" ^ string_of_int idx) hd in
-      let (t2, r2) = csvw_common_array (fuel - 1) seed (idx + 1) tl in
+      let (t1, r1) = csvw_common_value default_lang (fuel - 1) (seed ^ "_" ^ string_of_int idx) hd in
+      let (t2, r2) = csvw_common_array default_lang (fuel - 1) seed (idx + 1) tl in
       (t1 @ t2, r1 @ r2)
 
-and csvw_common_object_fields (fuel : nat) (subj : subject) (seed : string)
+and csvw_common_object_fields (default_lang : option string) (fuel : nat) (subj : subject) (seed : string)
     (fields : list (string & json_val))
   : Tot (list triple) (decreases fuel) =
   if fuel = 0 then []
@@ -767,7 +902,9 @@ and csvw_common_object_fields (fuel : nat) (subj : subject) (seed : string)
         if k = "@type" then
           (match v with
            | JString tv ->
-             let ti = csvw_expand_curie tv in
+             // A bare CSVW built-in term (`Table`, test263), a prefixed
+             // name, or an absolute URL — expand accordingly.
+             let ti = csvw_expand_type_token tv in
              (match (if is_iri ti then Some ti else None) with
               | Some (tiw:wf_iri) -> [ { s = subj; p = rdf_type; o = T_IRI tiw } ]
               | None -> [])
@@ -777,10 +914,10 @@ and csvw_common_object_fields (fuel : nat) (subj : subject) (seed : string)
           (match (if is_iri praw then Some praw else None) with
            | None -> []
            | Some (pred:wf_iri) ->
-             let (terms, sub) = csvw_common_value (fuel - 1) (seed ^ "_" ^ k) v in
+             let (terms, sub) = csvw_common_value default_lang (fuel - 1) (seed ^ "_" ^ k) v in
              List.Tot.map (fun (t:rdf_term) -> ({ s = subj; p = pred; o = t } <: triple)) terms @ sub)
         else [] in
-      here @ csvw_common_object_fields (fuel - 1) subj seed tl
+      here @ csvw_common_object_fields default_lang (fuel - 1) subj seed tl
 
 // Total json_size budget across a common-property list — a fuel bound
 // generous enough that csvw_common_object_fields never truncates a
@@ -790,9 +927,9 @@ let rec csvw_common_fuel (common : list (string & json_val)) : Tot nat (decrease
   | [] -> 1
   | (_, v) :: tl -> 1 + json_size v + csvw_common_fuel tl
 
-let csvw_table_common_triples (subj : subject) (seed : string) (common : list (string & json_val))
+let csvw_table_common_triples (default_lang : option string) (subj : subject) (seed : string) (common : list (string & json_val))
   : list triple =
-  csvw_common_object_fields (csvw_common_fuel common) subj seed common
+  csvw_common_object_fields default_lang (csvw_common_fuel common) subj seed common
 
 // ================================================================
 // Minimal mode: bare cell-value triples only, no wrapper nodes.
@@ -839,8 +976,29 @@ let csvw_convert_table_minimal
 let csvw_row_url (table_url_resolved : string) (source_row_num : nat) : string =
   table_url_resolved ^ "#row=" ^ string_of_int source_row_num
 
+// rowTitles (tabular-metadata): for each column name listed in the
+// schema's rowTitles annotation, emit a csvw:title triple on the row
+// node carrying that column's cell value as a plain string literal
+// (test235/236). A rowTitles name that matches no physical column
+// contributes nothing.
+let csvw_row_title_triples
+    (row_node : subject) (col_specs : list csvw_col_spec) (cells : list string) (row_titles : list string)
+  : list triple =
+  let phys_specs = List.Tot.filter (fun (s : csvw_col_spec) -> not s.cs_virtual) col_specs in
+  let phys_pairs = csvw_zip_specs_cells phys_specs cells in
+  let bindings = List.Tot.map (fun (p : (csvw_col_spec & string)) -> (fst p).cs_name, snd p) phys_pairs in
+  List.Tot.concatMap
+    (fun (name : string) ->
+       match List.Tot.assoc name bindings with
+       | Some txt ->
+         (match csvw_mk_literal txt xsd_string None with
+          | Some o -> [ ({ s = row_node; p = csvw_title_pred; o = o } <: triple) ]
+          | None -> [])
+       | None -> [])
+    row_titles
+
 let csvw_row_triples_standard
-    (table_url_resolved : string)
+    (table_url_resolved : string) (row_titles : list string)
     (col_specs : list csvw_col_spec) (row_num : nat) (source_row_num : nat) (cells : list string)
   : (subject & list triple) =
   let per_col = csvw_row_cell_results table_url_resolved col_specs row_num source_row_num cells in
@@ -858,10 +1016,11 @@ let csvw_row_triples_standard
          if Nil? ts then [] else [ { s = row_node; p = csvw_describes; o = csvw_term_of_subject subj } ])
       per_col in
   let cell_triples = List.Tot.concatMap snd per_col in
-  (row_node, row_meta @ describes @ cell_triples)
+  let title_triples = csvw_row_title_triples row_node col_specs cells row_titles in
+  (row_node, row_meta @ title_triples @ describes @ cell_triples)
 
 let csvw_convert_table_standard
-    (grp_inherited : csvw_inherited_props)
+    (grp_inherited : csvw_inherited_props) (default_lang : option string)
     (base_iri : string) (fallback_url : string) (tbl : csvw_table) (all_rows : list (list string))
   : (subject & list triple) =
   let table_url_resolved = csvw_effective_table_url base_iri fallback_url tbl in
@@ -873,12 +1032,13 @@ let csvw_convert_table_standard
     else [] in
   let data_rows = csvw_drop (csvw_header_row_count dia) after_skip_rows in
   let col_specs = csvw_build_col_specs grp_inherited tbl.tbl_inherited tbl.tbl_table_schema header_cells in
+  let row_titles = (match tbl.tbl_table_schema with Some ts -> ts.ts_row_titles | None -> []) in
   let indexed = csvw_index_from 0 data_rows in
   let row_results =
     List.Tot.map
       (fun (p : (nat & list string)) ->
          let (i, cells) = p in
-         csvw_row_triples_standard table_url_resolved col_specs (i + 1) (skip_n + i + 1) cells)
+         csvw_row_triples_standard table_url_resolved row_titles col_specs (i + 1) (skip_n + i + 1) cells)
       indexed in
   let t_node = S_BNode ("csvwT_" ^ string_encode_uri table_url_resolved) in
   let row_links =
@@ -886,7 +1046,7 @@ let csvw_convert_table_standard
       (fun (r : (subject & list triple)) -> [ { s = t_node; p = csvw_row_pred; o = csvw_term_of_subject (fst r) } ])
       row_results in
   let row_all = List.Tot.concatMap snd row_results in
-  let t_common = csvw_table_common_triples t_node (string_encode_uri table_url_resolved) tbl.tbl_common in
+  let t_common = csvw_table_common_triples default_lang t_node (string_encode_uri table_url_resolved) tbl.tbl_common in
   let t_meta =
     [ { s = t_node; p = rdf_type; o = T_IRI csvw_Table } ]
     @ (if is_iri table_url_resolved then [ { s = t_node; p = csvw_url_pred; o = T_IRI table_url_resolved } ] else []) in
@@ -926,17 +1086,17 @@ let csvw_group_node : subject = S_BNode "csvwG"
 // csvw_convert_table_standard already attaches tbl_common to its
 // csvw:Table node.
 let csvw_convert_document_standard
-    (grp : csvw_group_meta)
+    (grp : csvw_group_meta) (default_lang : option string)
     (base_iri : string) (tables_with_rows : list (csvw_table & string & list (list string)))
   : list triple =
   let table_results =
     List.Tot.map
       (fun (t : (csvw_table & string & list (list string))) ->
          let (tbl, fallback_url, rows) = t in
-         csvw_convert_table_standard grp.grp_inherited base_iri fallback_url tbl rows)
+         csvw_convert_table_standard grp.grp_inherited default_lang base_iri fallback_url tbl rows)
       tables_with_rows in
   let g_meta = [ { s = csvw_group_node; p = rdf_type; o = T_IRI csvw_TableGroup } ] in
-  let g_common = csvw_table_common_triples csvw_group_node "csvwG" grp.grp_common in
+  let g_common = csvw_table_common_triples default_lang csvw_group_node "csvwG" grp.grp_common in
   let table_links =
     List.Tot.concatMap
       (fun (r : (subject & list triple)) -> [ { s = csvw_group_node; p = csvw_table_pred; o = csvw_term_of_subject (fst r) } ])

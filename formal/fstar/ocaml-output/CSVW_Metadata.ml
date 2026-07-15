@@ -236,79 +236,87 @@ type csvw_column =
   col_value_url: Prims.string FStar_Pervasives_Native.option ;
   col_separator: Prims.string FStar_Pervasives_Native.option ;
   col_lang: Prims.string FStar_Pervasives_Native.option ;
-  col_null: Prims.string FStar_Pervasives_Native.option }
+  col_null: Prims.string FStar_Pervasives_Native.option ;
+  col_ordered: Prims.bool FStar_Pervasives_Native.option }
 let __proj__Mkcsvw_column__item__col_name (projectee : csvw_column) :
   Prims.string FStar_Pervasives_Native.option=
   match projectee with
   | { col_name; col_titles; col_datatype; col_virtual; col_suppress_output;
       col_required; col_about_url; col_property_url; col_value_url;
-      col_separator; col_lang; col_null;_} -> col_name
+      col_separator; col_lang; col_null; col_ordered;_} -> col_name
 let __proj__Mkcsvw_column__item__col_titles (projectee : csvw_column) :
   Prims.string Prims.list=
   match projectee with
   | { col_name; col_titles; col_datatype; col_virtual; col_suppress_output;
       col_required; col_about_url; col_property_url; col_value_url;
-      col_separator; col_lang; col_null;_} -> col_titles
+      col_separator; col_lang; col_null; col_ordered;_} -> col_titles
 let __proj__Mkcsvw_column__item__col_datatype (projectee : csvw_column) :
   csvw_datatype FStar_Pervasives_Native.option=
   match projectee with
   | { col_name; col_titles; col_datatype; col_virtual; col_suppress_output;
       col_required; col_about_url; col_property_url; col_value_url;
-      col_separator; col_lang; col_null;_} -> col_datatype
+      col_separator; col_lang; col_null; col_ordered;_} -> col_datatype
 let __proj__Mkcsvw_column__item__col_virtual (projectee : csvw_column) :
   Prims.bool FStar_Pervasives_Native.option=
   match projectee with
   | { col_name; col_titles; col_datatype; col_virtual; col_suppress_output;
       col_required; col_about_url; col_property_url; col_value_url;
-      col_separator; col_lang; col_null;_} -> col_virtual
+      col_separator; col_lang; col_null; col_ordered;_} -> col_virtual
 let __proj__Mkcsvw_column__item__col_suppress_output
   (projectee : csvw_column) : Prims.bool FStar_Pervasives_Native.option=
   match projectee with
   | { col_name; col_titles; col_datatype; col_virtual; col_suppress_output;
       col_required; col_about_url; col_property_url; col_value_url;
-      col_separator; col_lang; col_null;_} -> col_suppress_output
+      col_separator; col_lang; col_null; col_ordered;_} ->
+      col_suppress_output
 let __proj__Mkcsvw_column__item__col_required (projectee : csvw_column) :
   Prims.bool FStar_Pervasives_Native.option=
   match projectee with
   | { col_name; col_titles; col_datatype; col_virtual; col_suppress_output;
       col_required; col_about_url; col_property_url; col_value_url;
-      col_separator; col_lang; col_null;_} -> col_required
+      col_separator; col_lang; col_null; col_ordered;_} -> col_required
 let __proj__Mkcsvw_column__item__col_about_url (projectee : csvw_column) :
   Prims.string FStar_Pervasives_Native.option=
   match projectee with
   | { col_name; col_titles; col_datatype; col_virtual; col_suppress_output;
       col_required; col_about_url; col_property_url; col_value_url;
-      col_separator; col_lang; col_null;_} -> col_about_url
+      col_separator; col_lang; col_null; col_ordered;_} -> col_about_url
 let __proj__Mkcsvw_column__item__col_property_url (projectee : csvw_column) :
   Prims.string FStar_Pervasives_Native.option=
   match projectee with
   | { col_name; col_titles; col_datatype; col_virtual; col_suppress_output;
       col_required; col_about_url; col_property_url; col_value_url;
-      col_separator; col_lang; col_null;_} -> col_property_url
+      col_separator; col_lang; col_null; col_ordered;_} -> col_property_url
 let __proj__Mkcsvw_column__item__col_value_url (projectee : csvw_column) :
   Prims.string FStar_Pervasives_Native.option=
   match projectee with
   | { col_name; col_titles; col_datatype; col_virtual; col_suppress_output;
       col_required; col_about_url; col_property_url; col_value_url;
-      col_separator; col_lang; col_null;_} -> col_value_url
+      col_separator; col_lang; col_null; col_ordered;_} -> col_value_url
 let __proj__Mkcsvw_column__item__col_separator (projectee : csvw_column) :
   Prims.string FStar_Pervasives_Native.option=
   match projectee with
   | { col_name; col_titles; col_datatype; col_virtual; col_suppress_output;
       col_required; col_about_url; col_property_url; col_value_url;
-      col_separator; col_lang; col_null;_} -> col_separator
+      col_separator; col_lang; col_null; col_ordered;_} -> col_separator
 let __proj__Mkcsvw_column__item__col_lang (projectee : csvw_column) :
   Prims.string FStar_Pervasives_Native.option=
   match projectee with
   | { col_name; col_titles; col_datatype; col_virtual; col_suppress_output;
       col_required; col_about_url; col_property_url; col_value_url;
-      col_separator; col_lang; col_null;_} -> col_lang
+      col_separator; col_lang; col_null; col_ordered;_} -> col_lang
 let __proj__Mkcsvw_column__item__col_null (projectee : csvw_column) :
   Prims.string FStar_Pervasives_Native.option=
   match projectee with
   | { col_name; col_titles; col_datatype; col_virtual; col_suppress_output;
       col_required; col_about_url; col_property_url; col_value_url;
-      col_separator; col_lang; col_null;_} -> col_null
+      col_separator; col_lang; col_null; col_ordered;_} -> col_null
+let __proj__Mkcsvw_column__item__col_ordered (projectee : csvw_column) :
+  Prims.bool FStar_Pervasives_Native.option=
+  match projectee with
+  | { col_name; col_titles; col_datatype; col_virtual; col_suppress_output;
+      col_required; col_about_url; col_property_url; col_value_url;
+      col_separator; col_lang; col_null; col_ordered;_} -> col_ordered
 type csvw_dialect =
   {
   dia_delimiter: Prims.string FStar_Pervasives_Native.option ;
@@ -415,49 +423,56 @@ type csvw_inherited_props =
   inh_lang: Prims.string FStar_Pervasives_Native.option ;
   inh_null: Prims.string FStar_Pervasives_Native.option ;
   inh_separator: Prims.string FStar_Pervasives_Native.option ;
-  inh_datatype: csvw_datatype FStar_Pervasives_Native.option }
+  inh_datatype: csvw_datatype FStar_Pervasives_Native.option ;
+  inh_ordered: Prims.bool FStar_Pervasives_Native.option }
 let __proj__Mkcsvw_inherited_props__item__inh_about_url
   (projectee : csvw_inherited_props) :
   Prims.string FStar_Pervasives_Native.option=
   match projectee with
   | { inh_about_url; inh_property_url; inh_value_url; inh_lang; inh_null;
-      inh_separator; inh_datatype;_} -> inh_about_url
+      inh_separator; inh_datatype; inh_ordered;_} -> inh_about_url
 let __proj__Mkcsvw_inherited_props__item__inh_property_url
   (projectee : csvw_inherited_props) :
   Prims.string FStar_Pervasives_Native.option=
   match projectee with
   | { inh_about_url; inh_property_url; inh_value_url; inh_lang; inh_null;
-      inh_separator; inh_datatype;_} -> inh_property_url
+      inh_separator; inh_datatype; inh_ordered;_} -> inh_property_url
 let __proj__Mkcsvw_inherited_props__item__inh_value_url
   (projectee : csvw_inherited_props) :
   Prims.string FStar_Pervasives_Native.option=
   match projectee with
   | { inh_about_url; inh_property_url; inh_value_url; inh_lang; inh_null;
-      inh_separator; inh_datatype;_} -> inh_value_url
+      inh_separator; inh_datatype; inh_ordered;_} -> inh_value_url
 let __proj__Mkcsvw_inherited_props__item__inh_lang
   (projectee : csvw_inherited_props) :
   Prims.string FStar_Pervasives_Native.option=
   match projectee with
   | { inh_about_url; inh_property_url; inh_value_url; inh_lang; inh_null;
-      inh_separator; inh_datatype;_} -> inh_lang
+      inh_separator; inh_datatype; inh_ordered;_} -> inh_lang
 let __proj__Mkcsvw_inherited_props__item__inh_null
   (projectee : csvw_inherited_props) :
   Prims.string FStar_Pervasives_Native.option=
   match projectee with
   | { inh_about_url; inh_property_url; inh_value_url; inh_lang; inh_null;
-      inh_separator; inh_datatype;_} -> inh_null
+      inh_separator; inh_datatype; inh_ordered;_} -> inh_null
 let __proj__Mkcsvw_inherited_props__item__inh_separator
   (projectee : csvw_inherited_props) :
   Prims.string FStar_Pervasives_Native.option=
   match projectee with
   | { inh_about_url; inh_property_url; inh_value_url; inh_lang; inh_null;
-      inh_separator; inh_datatype;_} -> inh_separator
+      inh_separator; inh_datatype; inh_ordered;_} -> inh_separator
 let __proj__Mkcsvw_inherited_props__item__inh_datatype
   (projectee : csvw_inherited_props) :
   csvw_datatype FStar_Pervasives_Native.option=
   match projectee with
   | { inh_about_url; inh_property_url; inh_value_url; inh_lang; inh_null;
-      inh_separator; inh_datatype;_} -> inh_datatype
+      inh_separator; inh_datatype; inh_ordered;_} -> inh_datatype
+let __proj__Mkcsvw_inherited_props__item__inh_ordered
+  (projectee : csvw_inherited_props) :
+  Prims.bool FStar_Pervasives_Native.option=
+  match projectee with
+  | { inh_about_url; inh_property_url; inh_value_url; inh_lang; inh_null;
+      inh_separator; inh_datatype; inh_ordered;_} -> inh_ordered
 let csvw_inherited_empty : csvw_inherited_props=
   {
     inh_about_url = FStar_Pervasives_Native.None;
@@ -466,26 +481,36 @@ let csvw_inherited_empty : csvw_inherited_props=
     inh_lang = FStar_Pervasives_Native.None;
     inh_null = FStar_Pervasives_Native.None;
     inh_separator = FStar_Pervasives_Native.None;
-    inh_datatype = FStar_Pervasives_Native.None
+    inh_datatype = FStar_Pervasives_Native.None;
+    inh_ordered = FStar_Pervasives_Native.None
   }
 type csvw_table_schema =
   {
   ts_columns: csvw_column Prims.list ;
   ts_primary_key: Prims.string FStar_Pervasives_Native.option ;
-  ts_inherited: csvw_inherited_props }
+  ts_inherited: csvw_inherited_props ;
+  ts_row_titles: Prims.string Prims.list }
 let __proj__Mkcsvw_table_schema__item__ts_columns
   (projectee : csvw_table_schema) : csvw_column Prims.list=
   match projectee with
-  | { ts_columns; ts_primary_key; ts_inherited;_} -> ts_columns
+  | { ts_columns; ts_primary_key; ts_inherited; ts_row_titles;_} ->
+      ts_columns
 let __proj__Mkcsvw_table_schema__item__ts_primary_key
   (projectee : csvw_table_schema) :
   Prims.string FStar_Pervasives_Native.option=
   match projectee with
-  | { ts_columns; ts_primary_key; ts_inherited;_} -> ts_primary_key
+  | { ts_columns; ts_primary_key; ts_inherited; ts_row_titles;_} ->
+      ts_primary_key
 let __proj__Mkcsvw_table_schema__item__ts_inherited
   (projectee : csvw_table_schema) : csvw_inherited_props=
   match projectee with
-  | { ts_columns; ts_primary_key; ts_inherited;_} -> ts_inherited
+  | { ts_columns; ts_primary_key; ts_inherited; ts_row_titles;_} ->
+      ts_inherited
+let __proj__Mkcsvw_table_schema__item__ts_row_titles
+  (projectee : csvw_table_schema) : Prims.string Prims.list=
+  match projectee with
+  | { ts_columns; ts_primary_key; ts_inherited; ts_row_titles;_} ->
+      ts_row_titles
 type csvw_table =
   {
   tbl_url: Prims.string FStar_Pervasives_Native.option ;
@@ -678,11 +703,21 @@ let csvw_builtin_datatype_names : Prims.string Prims.list=
   "yearMonthDuration"]
 let csvw_is_builtin_datatype_name (s : Prims.string) : Prims.bool=
   FStar_List_Tot_Base.mem s csvw_builtin_datatype_names
+let csvw_inh_uri_template (key : Prims.string) (v : Parser_JSON.json_val) :
+  Prims.string FStar_Pervasives_Native.option=
+  match Parser_JSON.json_get_field key v with
+  | FStar_Pervasives_Native.Some (Parser_JSON.JString s) ->
+      FStar_Pervasives_Native.Some s
+  | FStar_Pervasives_Native.Some (Parser_JSON.JBool uu___) ->
+      FStar_Pervasives_Native.Some ""
+  | FStar_Pervasives_Native.Some (Parser_JSON.JNumber uu___) ->
+      FStar_Pervasives_Native.Some ""
+  | uu___ -> FStar_Pervasives_Native.None
 let csvw_decode_inherited (v : Parser_JSON.json_val) : csvw_inherited_props=
   {
-    inh_about_url = (Parser_JSON.json_get_string "aboutUrl" v);
-    inh_property_url = (Parser_JSON.json_get_string "propertyUrl" v);
-    inh_value_url = (Parser_JSON.json_get_string "valueUrl" v);
+    inh_about_url = (csvw_inh_uri_template "aboutUrl" v);
+    inh_property_url = (csvw_inh_uri_template "propertyUrl" v);
+    inh_value_url = (csvw_inh_uri_template "valueUrl" v);
     inh_lang =
       (match Parser_JSON.json_get_string "lang" v with
        | FStar_Pervasives_Native.Some l ->
@@ -701,7 +736,8 @@ let csvw_decode_inherited (v : Parser_JSON.json_val) : csvw_inherited_props=
                 then FStar_Pervasives_Native.Some (CSVW_DT_Named n)
                 else FStar_Pervasives_Native.None
             | other -> other)
-       | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None)
+       | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None);
+    inh_ordered = (Parser_JSON.json_get_bool "ordered" v)
   }
 let csvw_decode_column (v : Parser_JSON.json_val) :
   csvw_column FStar_Pervasives_Native.option=
@@ -729,7 +765,8 @@ let csvw_decode_column (v : Parser_JSON.json_val) :
           col_value_url = (Parser_JSON.json_get_string "valueUrl" v);
           col_separator = (Parser_JSON.json_get_string "separator" v);
           col_lang = (Parser_JSON.json_get_string "lang" v);
-          col_null = (Parser_JSON.json_get_string "null" v)
+          col_null = (Parser_JSON.json_get_string "null" v);
+          col_ordered = (Parser_JSON.json_get_bool "ordered" v)
         }
   | uu___ -> FStar_Pervasives_Native.None
 let rec csvw_decode_column_list (items : Parser_JSON.json_val Prims.list) :
@@ -787,14 +824,20 @@ let csvw_decode_table_schema (v : Parser_JSON.json_val) :
                  ts_columns = columns;
                  ts_primary_key =
                    (Parser_JSON.json_get_string "primaryKey" v);
-                 ts_inherited = (csvw_decode_inherited v)
+                 ts_inherited = (csvw_decode_inherited v);
+                 ts_row_titles =
+                   ((match Parser_JSON.json_get_field "rowTitles" v with
+                     | FStar_Pervasives_Native.Some rv ->
+                         csvw_titles_value rv
+                     | FStar_Pervasives_Native.None -> []))
                })
   | uu___ ->
       FStar_Pervasives_Native.Some
         {
           ts_columns = [];
           ts_primary_key = FStar_Pervasives_Native.None;
-          ts_inherited = csvw_inherited_empty
+          ts_inherited = csvw_inherited_empty;
+          ts_row_titles = []
         }
 let csvw_key_is_common (k : Prims.string) : Prims.bool=
   FStar_List_Tot_Base.existsb
@@ -1380,3 +1423,70 @@ let csvw_decode_metadata_text (input : Prims.string) :
   match Parser_JSON.parse_json input with
   | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
   | FStar_Pervasives_Native.Some v -> csvw_decode_metadata v
+let csvw_bracketed_url (s : Prims.string) :
+  Prims.string FStar_Pervasives_Native.option=
+  let rec after_lt cs =
+    match cs with
+    | [] -> FStar_Pervasives_Native.None
+    | c::tl ->
+        if (FStar_Char.int_of_char c) = (Prims.of_int (60))
+        then FStar_Pervasives_Native.Some tl
+        else after_lt tl in
+  let rec until_gt cs acc =
+    match cs with
+    | [] -> FStar_Pervasives_Native.None
+    | c::tl ->
+        if (FStar_Char.int_of_char c) = (Prims.of_int (62))
+        then FStar_Pervasives_Native.Some (FStar_List_Tot_Base.rev acc)
+        else until_gt tl (c :: acc) in
+  match after_lt (FStar_String.list_of_string s) with
+  | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+  | FStar_Pervasives_Native.Some rest ->
+      (match until_gt rest [] with
+       | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+       | FStar_Pervasives_Native.Some url ->
+           FStar_Pervasives_Native.Some (FStar_String.string_of_list url))
+let rec csvw_chars_has_prefix (needle : FStar_Char.char Prims.list)
+  (hay : FStar_Char.char Prims.list) : Prims.bool=
+  match (needle, hay) with
+  | ([], uu___) -> true
+  | (uu___, []) -> false
+  | (n::nt, h::ht) ->
+      ((FStar_Char.int_of_char n) = (FStar_Char.int_of_char h)) &&
+        (csvw_chars_has_prefix nt ht)
+let rec csvw_chars_contains (needle : FStar_Char.char Prims.list)
+  (hay : FStar_Char.char Prims.list) : Prims.bool=
+  if csvw_chars_has_prefix needle hay
+  then true
+  else
+    (match hay with
+     | [] -> false
+     | uu___1::tl -> csvw_chars_contains needle tl)
+let csvw_str_contains (needle : Prims.string) (hay : Prims.string) :
+  Prims.bool=
+  csvw_chars_contains (FStar_String.list_of_string needle)
+    (FStar_String.list_of_string hay)
+let csvw_link_header_describedby (link_value : Prims.string) :
+  Prims.string FStar_Pervasives_Native.option=
+  if csvw_str_contains "describedby" link_value
+  then csvw_bracketed_url link_value
+  else FStar_Pervasives_Native.None
+let csvw_context_language (v : Parser_JSON.json_val) :
+  Prims.string FStar_Pervasives_Native.option=
+  match Parser_JSON.json_get_field "@context" v with
+  | FStar_Pervasives_Native.Some (Parser_JSON.JArray ctx) ->
+      (match ctx with
+       | uu___::second::[] ->
+           (match Parser_JSON.json_get_string "@language" second with
+            | FStar_Pervasives_Native.Some l ->
+                if csvw_lang_tag_ok l
+                then FStar_Pervasives_Native.Some l
+                else FStar_Pervasives_Native.None
+            | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None)
+       | uu___ -> FStar_Pervasives_Native.None)
+  | uu___ -> FStar_Pervasives_Native.None
+let csvw_metadata_context_language (input : Prims.string) :
+  Prims.string FStar_Pervasives_Native.option=
+  match Parser_JSON.parse_json input with
+  | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+  | FStar_Pervasives_Native.Some v -> csvw_context_language v

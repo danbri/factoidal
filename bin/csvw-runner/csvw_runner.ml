@@ -152,6 +152,10 @@ let p_name = mf_ns ^ "name"
 let p_option = csvt_ns ^ "option"
 let p_minimal = csvt_ns ^ "minimal"
 let p_metadata = csvt_ns ^ "metadata"
+(* csvt:httpLink — the simulated HTTP `Link:` response header the suite
+   injects for metadata discovery step 2 (there is no live server). Its
+   value is a string literal of RFC 8288 shape `<url>; rel="describedby"`. *)
+let p_http_link = csvt_ns ^ "httpLink"
 
 (* ------------------------------------------------------------------ *)
 (* Minimal triple-pattern lookups over an already-parsed manifest graph.
@@ -258,6 +262,7 @@ type test_entry = {
   te_result : string option;(* resolved file:// IRI; None for negative tests with no expected output *)
   te_minimal : bool;
   te_metadata_override : string option; (* csvt:option's csvt:metadata, if given *)
+  te_http_link : string option;         (* csvt:httpLink literal value, if given *)
 }
 
 let load_entries (g : RDF_Graph_Executable.triple list) =
@@ -278,8 +283,13 @@ let load_entries (g : RDF_Graph_Executable.triple list) =
                  | Some opt_key -> (object_bool_of g opt_key p_minimal, object_iri_of g opt_key p_metadata)
                  | None -> (false, None))
               | None -> (false, None)) in
+           let http_link =
+             (match object_of g subj_key p_http_link with
+              | Some (RDF_Graph_Executable.T_Literal l) -> Some l.RDF_Graph_Executable.lexical_form
+              | _ -> None) in
            Some { te_id = subj_key; te_name = name; te_kind = kind; te_action = action;
-                  te_result = result; te_minimal = minimal; te_metadata_override = metadata_override })
+                  te_result = result; te_minimal = minimal; te_metadata_override = metadata_override;
+                  te_http_link = http_link })
       (subjects_with_type g ty_iri)
   in
   of_kind Positive p_to_rdf_test
@@ -403,7 +413,50 @@ let discover_metadata (test_dir : string) (action_path : string) =
   in
   match try_candidate (action_path ^ "-metadata.json") with
   | Some r -> Some r
-  | None -> try_candidate (Filename.concat test_dir (file_ext_no_dot action_path ^ "-metadata.json"))
+  | None ->
+    (match try_candidate (Filename.concat test_dir (file_ext_no_dot action_path ^ "-metadata.json")) with
+     | Some r -> Some r
+     | None ->
+       (* Site-wide-configuration templates (tabular-data-model §5.8,
+          "the metadata located through site-wide configuration" served
+          at w3.org/.well-known/csvm): the `{+url}.json` template
+          (test260: tree-ops.csv.json) and the fixed-name `csvm.json`
+          (test259). No live HTTP — these are ordinary local files here.
+          Both are guarded by the same references-file check as the
+          file/directory candidates above, and only two files in the
+          whole corpus match either name (test259/csvm.json,
+          test260/tree-ops.csv.json), so they never misfire elsewhere. *)
+       (match try_candidate (action_path ^ ".json") with
+        | Some r -> Some r
+        | None -> try_candidate (Filename.concat test_dir "csvm.json")))
+
+(* Metadata discovery step 2 (tabular-data-model §5.8): the metadata
+   referenced by the simulated HTTP `Link:` header (csvt:httpLink). The
+   Link value is parsed in F* (CSVW_Metadata.csvw_link_header_describedby
+   — a parser, per rule #4); this glue only reads the annotation string,
+   resolves the returned (relative) URL against the CSV's directory,
+   reads it, and applies the SAME references-file check the file/
+   directory candidates use: a linked document that does not reference
+   the requested tabular file MUST be ignored (test120/122 keep passing
+   because their linked docs don't reference the file, so discovery
+   falls through to file/directory metadata). Higher priority than
+   file/directory discovery, so a describing linked document wins over
+   directory metadata (test016: linked-metadata.json beats
+   csv-metadata.json). *)
+let discover_via_http_link (test_dir : string) (action_path : string) (link_opt : string option) =
+  match link_opt with
+  | None -> None
+  | Some link ->
+    (match opt_of_fs (CSVW_Metadata.csvw_link_header_describedby link) with
+     | None -> None
+     | Some rel_url ->
+       let action_basename = Filename.basename action_path in
+       let p = Filename.concat test_dir (strip_query_frag rel_url) in
+       if Sys.file_exists p then
+         (match decode_metadata_file p with
+          | Some meta when metadata_references_file action_basename meta -> Some (p, meta)
+          | _ -> None)
+       else None)
 
 (* The per-test working directory is the ACTION file's own directory,
    not the shared manifest directory — most tests sit flat in
@@ -426,9 +479,12 @@ let run_test (te : test_entry) =
     match explicit_metadata_path with
     | Some p -> (Some p, decode_metadata_file p)
     | None ->
-      (match discover_metadata test_dir action_path with
+      (match discover_via_http_link test_dir action_path te.te_http_link with
        | Some (p, meta) -> (Some p, Some meta)
-       | None -> (None, None))
+       | None ->
+         (match discover_metadata test_dir action_path with
+          | Some (p, meta) -> (Some p, Some meta)
+          | None -> (None, None)))
   in
   let decode_failed = (metadata_path <> None && meta_opt = None) in
   let tables = tables_with_rows test_dir action_path meta_opt in
@@ -443,11 +499,23 @@ let run_test (te : test_entry) =
     | Some (CSVW_Metadata.CSVW_TableGroup (_, g)) -> g
     | _ -> CSVW_Metadata.csvw_group_meta_empty
   in
+  (* The metadata document's @context default language (test259/260):
+     applied by CSVW.Conversion to common-property string values only.
+     Interpreting @context stays in F* (csvw_metadata_context_language);
+     this glue only feeds it the already-read document text. *)
+  let default_lang =
+    match metadata_path with
+    | Some p ->
+      (match read_file p with
+       | Some content -> opt_of_fs (CSVW_Metadata.csvw_metadata_context_language content)
+       | None -> None)
+    | None -> None
+  in
   let triples =
     if decode_failed then []
     else if te.te_minimal then
       CSVW_Conversion.csvw_convert_document_minimal grp_meta.CSVW_Metadata.grp_inherited base_iri tables
-    else CSVW_Conversion.csvw_convert_document_standard grp_meta base_iri tables
+    else CSVW_Conversion.csvw_convert_document_standard grp_meta (fs_of_opt default_lang) base_iri tables
   in
   let got_ds : RDF_Graph_Executable.rdf_dataset = { RDF_Graph_Executable.ds_default = triples; ds_named = [] } in
   match te.te_kind with
