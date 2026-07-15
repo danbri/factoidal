@@ -755,7 +755,14 @@ let rec fold_datatype_constraint (acc : XSD_Facets.value_set)
           (XSD_Facets.VS_Interval
              (XSD_Facets.facets_to_interval dt facets
                 XSD_Facets.full_interval))
-      else acc
+      else
+        if XSD_Facets.is_datetime_datatype dt
+        then
+          XSD_Facets.value_set_intersect acc
+            (XSD_Facets.VS_DateInterval
+               (XSD_Facets.datetime_facets_to_interval facets
+                  XSD_Facets.full_interval))
+        else acc
   | Tableau.CE_OneOf members ->
       if
         (Prims.uu___is_Cons members) &&
@@ -763,13 +770,18 @@ let rec fold_datatype_constraint (acc : XSD_Facets.value_set)
       then XSD_Facets.value_set_intersect acc (XSD_Facets.VS_Enum members)
       else acc
   | Tableau.CE_Named dt ->
-      (match XSD_Facets.classify_family dt with
-       | FStar_Pervasives_Native.Some (XSD_Facets.Fam_Numeric) ->
-           XSD_Facets.value_set_intersect acc
-             (XSD_Facets.VS_Interval (XSD_Facets.base_interval_for dt))
-       | FStar_Pervasives_Native.Some f ->
-           XSD_Facets.value_set_intersect acc (XSD_Facets.VS_Family f)
-       | FStar_Pervasives_Native.None -> acc)
+      if XSD_Facets.is_datetime_datatype dt
+      then
+        XSD_Facets.value_set_intersect acc
+          (XSD_Facets.VS_DateInterval XSD_Facets.full_interval)
+      else
+        (match XSD_Facets.classify_family dt with
+         | FStar_Pervasives_Native.Some (XSD_Facets.Fam_Numeric) ->
+             XSD_Facets.value_set_intersect acc
+               (XSD_Facets.VS_Interval (XSD_Facets.base_interval_for dt))
+         | FStar_Pervasives_Native.Some f ->
+             XSD_Facets.value_set_intersect acc (XSD_Facets.VS_Family f)
+         | FStar_Pervasives_Native.None -> acc)
   | Tableau.CE_ComplementOf inner ->
       let inner_vs =
         fold_datatype_constraint XSD_Facets.VS_Unconstrained inner in

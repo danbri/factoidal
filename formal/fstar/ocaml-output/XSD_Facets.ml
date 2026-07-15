@@ -80,6 +80,158 @@ let literal_int_value (l : RDF_Term.literal) :
   if is_integer_family_datatype l.RDF_Term.datatype
   then parse_facet_int l.RDF_Term.lexical_form
   else FStar_Pervasives_Native.None
+let xsd_dateTime : RDF_Term.wf_iri=
+  "http://www.w3.org/2001/XMLSchema#dateTime"
+let is_datetime_datatype (dt : RDF_Term.wf_iri) : Prims.bool=
+  dt = xsd_dateTime
+let parse_digits_sub (s : Prims.string) (pos : Prims.nat) (n : Prims.nat) :
+  Prims.int FStar_Pervasives_Native.option=
+  if (pos + n) > (FStar_String.strlen s)
+  then FStar_Pervasives_Native.None
+  else
+    digits_to_int (FStar_String.list_of_string (FStar_String.sub s pos n))
+      Prims.int_zero
+let days_from_civil (y : Prims.int) (m : Prims.int) (d : Prims.int) :
+  Prims.int=
+  let y' = if m <= (Prims.of_int (2)) then y - Prims.int_one else y in
+  let era =
+    (if y' >= Prims.int_zero then y' else y' - (Prims.of_int (399))) /
+      (Prims.of_int (400)) in
+  let yoe = y' - (era * (Prims.of_int (400))) in
+  let mp = (mod) (m + (Prims.of_int (9))) (Prims.of_int (12)) in
+  let doy =
+    (((((Prims.of_int (153)) * mp) + (Prims.of_int (2))) / (Prims.of_int (5)))
+       + d)
+      - Prims.int_one in
+  let doe =
+    (((yoe * (Prims.of_int (365))) + (yoe / (Prims.of_int (4)))) -
+       (yoe / (Prims.of_int (100))))
+      + doy in
+  ((era * (Prims.parse_int "146097")) + doe) - (Prims.parse_int "719468")
+let dt_parse_tail (tail : Prims.string) :
+  (Prims.int * Prims.int * Prims.bool) FStar_Pervasives_Native.option=
+  let len = FStar_String.strlen tail in
+  let uu___ =
+    if
+      (len >= (Prims.of_int (2))) &&
+        ((FStar_String.sub tail Prims.int_zero Prims.int_one) = ".")
+    then
+      let rec frac_end pos =
+        if pos < len
+        then
+          let c = FStar_Char.int_of_char (FStar_String.index tail pos) in
+          (if (c >= (Prims.of_int (48))) && (c <= (Prims.of_int (57)))
+           then frac_end (pos + Prims.int_one)
+           else pos)
+        else pos in
+      let fe = frac_end Prims.int_one in
+      (if fe = Prims.int_one
+       then (FStar_Pervasives_Native.None, Prims.int_zero)
+       else
+         (let dig_len =
+            if (fe - Prims.int_one) > (Prims.of_int (3))
+            then (Prims.of_int (3))
+            else fe - Prims.int_one in
+          match parse_digits_sub tail Prims.int_one dig_len with
+          | FStar_Pervasives_Native.Some f ->
+              let ms =
+                if dig_len = Prims.int_one
+                then f * (Prims.of_int (100))
+                else
+                  if dig_len = (Prims.of_int (2))
+                  then f * (Prims.of_int (10))
+                  else f in
+              ((FStar_Pervasives_Native.Some ms), fe)
+          | FStar_Pervasives_Native.None ->
+              (FStar_Pervasives_Native.None, Prims.int_zero)))
+    else ((FStar_Pervasives_Native.Some Prims.int_zero), Prims.int_zero) in
+  match uu___ with
+  | (frac_ms, tz_start) ->
+      (match frac_ms with
+       | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+       | FStar_Pervasives_Native.Some fms ->
+           let rest_len = len - tz_start in
+           if rest_len = Prims.int_zero
+           then FStar_Pervasives_Native.Some (fms, Prims.int_zero, false)
+           else
+             if
+               (rest_len = Prims.int_one) &&
+                 ((FStar_String.sub tail tz_start Prims.int_one) = "Z")
+             then FStar_Pervasives_Native.Some (fms, Prims.int_zero, true)
+             else
+               if rest_len = (Prims.of_int (6))
+               then
+                 (let sign_s = FStar_String.sub tail tz_start Prims.int_one in
+                  if (sign_s = "+") || (sign_s = "-")
+                  then
+                    match ((parse_digits_sub tail (tz_start + Prims.int_one)
+                              (Prims.of_int (2))),
+                            (parse_digits_sub tail
+                               (tz_start + (Prims.of_int (4)))
+                               (Prims.of_int (2))))
+                    with
+                    | (FStar_Pervasives_Native.Some th,
+                       FStar_Pervasives_Native.Some tm) ->
+                        let off =
+                          (th * (Prims.of_int (3600))) +
+                            (tm * (Prims.of_int (60))) in
+                        FStar_Pervasives_Native.Some
+                          (fms,
+                            ((if sign_s = "-"
+                              then Prims.int_zero - off
+                              else off)), true)
+                    | (uu___3, uu___4) -> FStar_Pervasives_Native.None
+                  else FStar_Pervasives_Native.None)
+               else FStar_Pervasives_Native.None)
+let dt_parse_utc_ms (s : Prims.string) :
+  Prims.int FStar_Pervasives_Native.option=
+  let len = FStar_String.strlen s in
+  if len < (Prims.of_int (19))
+  then FStar_Pervasives_Native.None
+  else
+    if (FStar_String.sub s Prims.int_zero Prims.int_one) = "-"
+    then FStar_Pervasives_Native.None
+    else
+      (match ((parse_digits_sub s Prims.int_zero (Prims.of_int (4))),
+               (parse_digits_sub s (Prims.of_int (5)) (Prims.of_int (2))),
+               (parse_digits_sub s (Prims.of_int (8)) (Prims.of_int (2))),
+               (parse_digits_sub s (Prims.of_int (11)) (Prims.of_int (2))),
+               (parse_digits_sub s (Prims.of_int (14)) (Prims.of_int (2))),
+               (parse_digits_sub s (Prims.of_int (17)) (Prims.of_int (2))))
+       with
+       | (FStar_Pervasives_Native.Some y, FStar_Pervasives_Native.Some mo,
+          FStar_Pervasives_Native.Some d, FStar_Pervasives_Native.Some h,
+          FStar_Pervasives_Native.Some mi, FStar_Pervasives_Native.Some se)
+           ->
+           (match dt_parse_tail
+                    (FStar_String.sub s (Prims.of_int (19))
+                       (len - (Prims.of_int (19))))
+            with
+            | FStar_Pervasives_Native.Some (fms, tzoff, has_tz) ->
+                if has_tz
+                then
+                  let days = days_from_civil y mo d in
+                  let secs =
+                    ((((days * (Prims.parse_int "86400")) +
+                         (h * (Prims.of_int (3600))))
+                        + (mi * (Prims.of_int (60))))
+                       + se)
+                      - tzoff in
+                  FStar_Pervasives_Native.Some
+                    ((secs * (Prims.of_int (1000))) + fms)
+                else FStar_Pervasives_Native.None
+            | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None)
+       | uu___2 -> FStar_Pervasives_Native.None)
+let literal_datetime_key (l : RDF_Term.literal) :
+  Prims.int FStar_Pervasives_Native.option=
+  if l.RDF_Term.datatype = xsd_dateTime
+  then dt_parse_utc_ms l.RDF_Term.lexical_form
+  else FStar_Pervasives_Native.None
+let term_datetime_key (t : RDF_Term.rdf_term) :
+  Prims.int FStar_Pervasives_Native.option=
+  match t with
+  | RDF_Term.T_Literal l -> literal_datetime_key l
+  | uu___ -> FStar_Pervasives_Native.None
 type bound =
   | B_Unbounded 
   | B_Incl of Prims.int 
@@ -108,6 +260,13 @@ let interval_empty (iv : interval) : Prims.bool=
   | (B_Incl lo, B_Excl hi) -> lo >= hi
   | (B_Excl lo, B_Incl hi) -> lo >= hi
   | (B_Excl lo, B_Excl hi) -> lo >= (hi - Prims.int_one)
+  | (uu___, uu___1) -> false
+let interval_empty_dense (iv : interval) : Prims.bool=
+  match ((iv.iv_lo), (iv.iv_hi)) with
+  | (B_Incl lo, B_Incl hi) -> lo > hi
+  | (B_Incl lo, B_Excl hi) -> lo >= hi
+  | (B_Excl lo, B_Incl hi) -> lo >= hi
+  | (B_Excl lo, B_Excl hi) -> lo >= hi
   | (uu___, uu___1) -> false
 let tighter_lo (a : bound) (b : bound) : bound=
   match (a, b) with
@@ -244,9 +403,41 @@ let rec facets_to_interval (base_dt : RDF_Term.wf_iri)
                           else acc)
            | uu___1 -> acc) in
       facets_to_interval base_dt tl acc'
+let rec datetime_facets_to_interval
+  (facets : (RDF_Term.wf_iri * RDF_Term.rdf_term) Prims.list)
+  (acc : interval) : interval=
+  match facets with
+  | [] -> acc
+  | (firi, fval)::tl ->
+      let acc' =
+        match term_datetime_key fval with
+        | FStar_Pervasives_Native.None -> acc
+        | FStar_Pervasives_Native.Some v ->
+            if firi = facet_min_incl_iri
+            then
+              interval_intersect acc
+                { iv_lo = (B_Incl v); iv_hi = B_Unbounded }
+            else
+              if firi = facet_max_incl_iri
+              then
+                interval_intersect acc
+                  { iv_lo = B_Unbounded; iv_hi = (B_Incl v) }
+              else
+                if firi = facet_min_excl_iri
+                then
+                  interval_intersect acc
+                    { iv_lo = (B_Excl v); iv_hi = B_Unbounded }
+                else
+                  if firi = facet_max_excl_iri
+                  then
+                    interval_intersect acc
+                      { iv_lo = B_Unbounded; iv_hi = (B_Excl v) }
+                  else acc in
+      datetime_facets_to_interval tl acc'
 type value_set =
   | VS_Unconstrained 
   | VS_Interval of interval 
+  | VS_DateInterval of interval 
   | VS_Enum of RDF_Term.rdf_term Prims.list 
   | VS_Family of xsd_family 
   | VS_Empty 
@@ -256,6 +447,10 @@ let uu___is_VS_Interval (projectee : value_set) : Prims.bool=
   match projectee with | VS_Interval _0 -> true | uu___ -> false
 let __proj__VS_Interval__item___0 (projectee : value_set) : interval=
   match projectee with | VS_Interval _0 -> _0
+let uu___is_VS_DateInterval (projectee : value_set) : Prims.bool=
+  match projectee with | VS_DateInterval _0 -> true | uu___ -> false
+let __proj__VS_DateInterval__item___0 (projectee : value_set) : interval=
+  match projectee with | VS_DateInterval _0 -> _0
 let uu___is_VS_Enum (projectee : value_set) : Prims.bool=
   match projectee with | VS_Enum _0 -> true | uu___ -> false
 let __proj__VS_Enum__item___0 (projectee : value_set) :
@@ -366,6 +561,13 @@ let provably_outside_family (f : xsd_family) (t : RDF_Term.rdf_term) :
   match term_family t with
   | FStar_Pervasives_Native.Some g -> Prims.op_Negation (xsd_family_eq f g)
   | FStar_Pervasives_Native.None -> false
+let provably_outside_date_interval (iv : interval) (t : RDF_Term.rdf_term) :
+  Prims.bool=
+  (match term_datetime_key t with
+   | FStar_Pervasives_Native.Some v ->
+       Prims.op_Negation (value_in_interval v iv)
+   | FStar_Pervasives_Native.None -> false) ||
+    (FStar_Pervasives_Native.uu___is_Some (term_family t))
 let value_set_intersect (a : value_set) (b : value_set) : value_set=
   match (a, b) with
   | (VS_Empty, uu___) -> VS_Empty
@@ -375,6 +577,25 @@ let value_set_intersect (a : value_set) (b : value_set) : value_set=
   | (VS_Interval ia, VS_Interval ib) ->
       let ii = interval_intersect ia ib in
       if interval_empty ii then VS_Empty else VS_Interval ii
+  | (VS_DateInterval ia, VS_DateInterval ib) ->
+      let ii = interval_intersect ia ib in
+      if interval_empty_dense ii then VS_Empty else VS_DateInterval ii
+  | (VS_DateInterval uu___, VS_Interval uu___1) -> VS_Empty
+  | (VS_Interval uu___, VS_DateInterval uu___1) -> VS_Empty
+  | (VS_DateInterval uu___, VS_Family uu___1) -> VS_Empty
+  | (VS_Family uu___, VS_DateInterval uu___1) -> VS_Empty
+  | (VS_DateInterval iv, VS_Enum xs) ->
+      let e =
+        filter_enum_by
+          (fun t -> Prims.op_Negation (provably_outside_date_interval iv t))
+          xs in
+      if Prims.uu___is_Nil e then VS_Empty else VS_Enum e
+  | (VS_Enum xs, VS_DateInterval iv) ->
+      let e =
+        filter_enum_by
+          (fun t -> Prims.op_Negation (provably_outside_date_interval iv t))
+          xs in
+      if Prims.uu___is_Nil e then VS_Empty else VS_Enum e
   | (VS_Enum xs, VS_Enum ys) ->
       let e = enum_intersect xs ys in
       if Prims.uu___is_Nil e then VS_Empty else VS_Enum e
@@ -405,7 +626,11 @@ let value_set_intersect (a : value_set) (b : value_set) : value_set=
   | (VS_Family fa, VS_Family fb) ->
       if xsd_family_eq fa fb then VS_Family fa else VS_Empty
 let value_set_is_empty (v : value_set) : Prims.bool=
-  match v with | VS_Empty -> true | VS_Enum [] -> true | uu___ -> false
+  match v with
+  | VS_Empty -> true
+  | VS_Enum [] -> true
+  | VS_DateInterval iv -> interval_empty_dense iv
+  | uu___ -> false
 let value_set_subtract (acc : value_set) (remove : value_set) : value_set=
   match (acc, remove) with
   | (VS_Enum xs, VS_Enum ys) ->
