@@ -4,6 +4,24 @@ Last refreshed: 2026-07-14 (nine landings from a long autonomous
 shift, gated on the same regime — floors, named diffs, soundness
 where applicable — all measured on the current `claude/main` tree):
 
+**Update 2026-07-15 (evening, eight gated landings):** the OWL numbers
+below are superseded — current: **type-consistency 352 pass, 0 fail
+(out of 352)** (empty-premise harness fix +16, XMLLiteral c14n
+equality, RDFXML XMLLiteral opaque capture) and **type-inconsistency
+114 pass, 14 fail (out of 128) with zero oracle-assisted** (verified
+Farkas-certificate class-size reasoner decides dl-910 + one=two;
+dl-909 out-of-fragment per the Wave-C refutation note). **The
+soundness gate is now ZERO `unexpected-inconsistency`** — WebOnt-202
+is retired; any doc/gate saying "exactly one" is historical. The z3
+runtime oracle (Z33kr, #296) landed (Phase 0+1) and is retired-in-
+practice the same day. CSVW csv2rdf 218 -> **235 pass, 35 fail (out
+of 270)** over two burndown rounds (triage ledger:
+`2026-07-15-csvw-csv2rdf-fail-triage.md`; discovery/.well-known
+family confirmed in scope by owner). PE 103 -> 105 pass (out of 204).
+Task list migrated to GitHub issues (#297–#303 created; see #198).
+CLAUDE.md gains "Reading owner steers" (prioritization vs prohibition,
+phone-triage register, emoji palette).
+
 - **OWL 2 DL type-inconsistency 70 -> 110 pass, 18 fail (out of 128)**
   via five tableau waves in `Tableau.Refute.fst`: datatype facet
   satisfiability (Wave B), role box (subPropertyOf/FunctionalProperty/
