@@ -299,7 +299,7 @@ let tables_with_rows (test_dir : string) (action_path : string) (meta_opt : CSVW
     [ read_table CSVW_Conversion.csvw_no_metadata_table fallback ]
   | Some (CSVW_Metadata.CSVW_Table t) ->
     [ read_table t (Filename.basename action_path) ]
-  | Some (CSVW_Metadata.CSVW_TableGroup ts) ->
+  | Some (CSVW_Metadata.CSVW_TableGroup (ts, _)) ->
     List.map (fun t -> read_table t (Filename.basename action_path)) ts
 
 (* ------------------------------------------------------------------ *)
@@ -343,7 +343,7 @@ let metadata_references_file (action_basename : string) (meta : CSVW_Metadata.cs
   in
   match meta with
   | CSVW_Metadata.CSVW_Table t -> tbl_matches t
-  | CSVW_Metadata.CSVW_TableGroup ts -> List.exists tbl_matches ts
+  | CSVW_Metadata.CSVW_TableGroup (ts, _) -> List.exists tbl_matches ts
 
 let discover_metadata (test_dir : string) (action_path : string) =
   let action_basename = Filename.basename action_path in
@@ -385,10 +385,22 @@ let run_test (te : test_entry) =
   in
   let decode_failed = (metadata_path <> None && meta_opt = None) in
   let tables = tables_with_rows test_dir action_path meta_opt in
+  (* Group-level inherited-property defaults + common properties
+     (Stage 2 — test038/039/275-278/305-307 family): present only when
+     the document actually IS a table group ("tables": [...] at the
+     top level); a bare CSVW_Table document has no separate group-level
+     JSON object to inherit from, so csvw_group_meta_empty is correct
+     there, not a stand-in for a missing feature. *)
+  let grp_meta =
+    match meta_opt with
+    | Some (CSVW_Metadata.CSVW_TableGroup (_, g)) -> g
+    | _ -> CSVW_Metadata.csvw_group_meta_empty
+  in
   let triples =
     if decode_failed then []
-    else if te.te_minimal then CSVW_Conversion.csvw_convert_document_minimal base_iri tables
-    else CSVW_Conversion.csvw_convert_document_standard base_iri tables
+    else if te.te_minimal then
+      CSVW_Conversion.csvw_convert_document_minimal grp_meta.CSVW_Metadata.grp_inherited base_iri tables
+    else CSVW_Conversion.csvw_convert_document_standard grp_meta base_iri tables
   in
   let got_ds : RDF_Graph_Executable.rdf_dataset = { RDF_Graph_Executable.ds_default = triples; ds_named = [] } in
   match te.te_kind with

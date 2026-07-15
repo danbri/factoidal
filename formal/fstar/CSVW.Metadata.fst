@@ -193,6 +193,15 @@ type csvw_column = {
   // string, each element converted + emitted as its own triple
   // (tabular-metadata section "separator"; test228-230).
   col_separator        : option string;
+  // Stage 2 (inherited properties, tabular-metadata section 5.1.1):
+  // `lang`/`null` are two more of the eleven inherited properties
+  // (aboutUrl/datatype/default/lang/null/ordered/propertyUrl/required/
+  // separator/textDirection/valueUrl); `default`/`ordered`/
+  // `textDirection` are not modeled yet (no consumer in
+  // CSVW.Conversion reads them) — a narrower slice than the full
+  // eleven, not a claim of completeness.
+  col_lang             : option string;
+  col_null             : option string;
 }
 
 type csvw_dialect = {
@@ -210,6 +219,35 @@ type csvw_dialect = {
   dia_trim               : option string;
 }
 
+// Stage 2: the inherited-property SUBSET this decoder carries at every
+// level above a column (tableSchema / table / table-group) — the same
+// six properties csvw_column itself carries (aboutUrl/propertyUrl/
+// valueUrl/lang/null/separator) plus datatype, so a value set on the
+// table-group or table object directly (sibling of "url"/"tables",
+// not nested inside tableSchema/columns) is no longer silently
+// dropped. One record shared by all three levels so CSVW.Conversion
+// can merge them with one fallback function instead of three
+// hand-written ones. `default`/`ordered`/`required`/`textDirection`
+// remain undecoded at this level too (matching csvw_column's own
+// scope note above).
+type csvw_inherited_props = {
+  inh_about_url    : option string;
+  inh_property_url : option string;
+  inh_value_url    : option string;
+  inh_lang         : option string;
+  inh_null         : option string;
+  inh_separator    : option string;
+  inh_datatype     : option csvw_datatype;
+}
+
+let csvw_inherited_empty : csvw_inherited_props = {
+  inh_about_url = None; inh_property_url = None; inh_value_url = None;
+  inh_lang = None; inh_null = None; inh_separator = None; inh_datatype = None;
+}
+
+// csvw_decode_inherited (needs csvw_decode_datatype, defined below) is
+// declared just after it — see "Inherited-property decode" below.
+
 type csvw_table_schema = {
   ts_columns      : list csvw_column;
   // primaryKey/foreignKeys may be a bare column-name string or a list
@@ -219,9 +257,7 @@ type csvw_table_schema = {
   // leniency policy above (list-valued composite keys are a follow-on,
   // not this stage's job).
   ts_primary_key  : option string;
-  ts_about_url    : option string;
-  ts_property_url : option string;
-  ts_value_url    : option string;
+  ts_inherited    : csvw_inherited_props;
 }
 
 type csvw_table = {
@@ -240,16 +276,38 @@ type csvw_table = {
   // expansion, @value/@id/@language node forms) is CSVW.Conversion's
   // job, not this decoder's.
   tbl_common       : list (string & json_val);
+  // Stage 2: inherited properties set directly on the table object
+  // (sibling of "url"/"tableSchema"), e.g. `{"url": "x.csv", "aboutUrl":
+  // "#row-{_row}", "tableSchema": {...}}` — test038/test126/test305-307
+  // family.
+  tbl_inherited    : csvw_inherited_props;
+}
+
+// Stage 2: a table group's own top-level annotations — common
+// properties (rdfs:label/rdfs:comment/... test275-278 family) and
+// inherited-property defaults (test039 family: aboutUrl/propertyUrl/
+// lang/etc set once at the top of a "tables": [...] document, meant
+// to cascade into every table that doesn't override them).
+type csvw_group_meta = {
+  grp_common    : list (string & json_val);
+  grp_inherited : csvw_inherited_props;
+}
+
+let csvw_group_meta_empty : csvw_group_meta = {
+  grp_common = []; grp_inherited = csvw_inherited_empty;
 }
 
 // A metadata document is either a single annotated table (top-level
-// "url"/"tableSchema"/"dialect") or a table group ("tables": [...],
-// optionally with its own shared dialect/tableSchema — NOT decoded
-// here, since propagating those down is Stage 2's inherited-property
-// work).
+// "url"/"tableSchema"/"dialect" — its own tbl_common/tbl_inherited
+// already carry whatever the top object set directly) or a table
+// group ("tables": [...] plus the group's own csvw_group_meta: common
+// properties + inherited-property defaults, Stage 2). A group's
+// shared dialect/tableSchema (a table inside "tables" with NO
+// tableSchema/dialect of its own) is still not decoded — that remains
+// a separate, narrower gap from inherited-property propagation.
 type csvw_metadata =
   | CSVW_Table      : csvw_table -> csvw_metadata
-  | CSVW_TableGroup : list csvw_table -> csvw_metadata
+  | CSVW_TableGroup : list csvw_table -> csvw_group_meta -> csvw_metadata
 
 // ================================================================
 // Titles: string | list string | lang-map object -> flattened list
@@ -321,6 +379,95 @@ let csvw_decode_datatype (v:json_val) : option csvw_datatype =
   | _ -> None
 
 // ================================================================
+// Inherited-property decode (Stage 2) — the csvw_inherited_props
+// subset, read directly off an already-parsed object `v`. Used
+// identically at tableSchema, table, and table-group level (each
+// passes its own json_val); csvw_decode_table_schema/csvw_decode_table
+// and the top-level table-group decode below each call this once.
+//
+// Graceful degradation (tabular-metadata section 4, quoted verbatim
+// in test041/test046's manifest comments): "If a property has a value
+// that is not permitted by this specification ... compliant
+// applications MUST generate a warning and behave as if the property
+// had not been specified." An invalid `lang` (not BCP47-shaped —
+// test041's "notavalidlanguagetag") or a non-built-in `datatype` name
+// (test046's "anySimpleType") therefore decodes to None here, exactly
+// as if absent, rather than propagating an illegal value into every
+// cell literal.
+// ================================================================
+
+let csvw_inh_char_is_alpha (c:FStar.Char.char) : bool =
+  let n = FStar.Char.int_of_char c in
+  (n >= 65 && n <= 90) || (n >= 97 && n <= 122)
+
+let csvw_inh_char_is_alnum (c:FStar.Char.char) : bool =
+  csvw_inh_char_is_alpha c ||
+  (let n = FStar.Char.int_of_char c in n >= 48 && n <= 57)
+
+// Split a char list on '-' (0x2D). Total on the list structure.
+let rec csvw_inh_split_hyphen (cs : list FStar.Char.char) (acc : list FStar.Char.char)
+  : Tot (list (list FStar.Char.char)) (decreases cs) =
+  match cs with
+  | [] -> [List.Tot.rev acc]
+  | c :: tl ->
+    if FStar.Char.int_of_char c = 45
+    then (List.Tot.rev acc) :: csvw_inh_split_hyphen tl []
+    else csvw_inh_split_hyphen tl (c :: acc)
+
+// BCP47 plausibility: primary subtag 2-8 ASCII letters; each further
+// '-'-separated subtag 1-8 ASCII alphanumerics. Accepts every tag the
+// corpus uses ("de", "en", "en-US"); rejects test041's 20-letter
+// non-tag. Deliberately a syntactic shape check, not a registry
+// lookup — same depth as the SPARQL LANGMATCHES machinery needs.
+let csvw_lang_tag_ok (s : string) : bool =
+  match csvw_inh_split_hyphen (String.list_of_string s) [] with
+  | [] -> false
+  | first :: rest ->
+    let fl = List.Tot.length first in
+    fl >= 2 && fl <= 8 && List.Tot.for_all csvw_inh_char_is_alpha first &&
+    List.Tot.for_all
+      (fun (sub : list FStar.Char.char) ->
+         let l = List.Tot.length sub in
+         l >= 1 && l <= 8 && List.Tot.for_all csvw_inh_char_is_alnum sub)
+      rest
+
+// tabular-metadata section 5.11.1 "Built-in Datatypes" — the closed
+// name list a string-valued `datatype` may use (note: anySimpleType
+// is NOT in it, test046).
+let csvw_builtin_datatype_names : list string = [
+  "anyAtomicType"; "anyURI"; "base64Binary"; "boolean"; "byte"; "date";
+  "dateTime"; "dateTimeStamp"; "dayTimeDuration"; "decimal"; "double";
+  "duration"; "float"; "gDay"; "gMonth"; "gMonthDay"; "gYear";
+  "gYearMonth"; "hexBinary"; "int"; "integer"; "language"; "long";
+  "Name"; "negativeInteger"; "NMTOKEN"; "nonNegativeInteger";
+  "nonPositiveInteger"; "normalizedString"; "positiveInteger"; "QName";
+  "short"; "string"; "time"; "token"; "unsignedByte"; "unsignedInt";
+  "unsignedLong"; "unsignedShort"; "xml"; "html"; "json"; "number";
+  "binary"; "datetime"; "any"; "yearMonthDuration" ]
+
+let csvw_is_builtin_datatype_name (s:string) : bool =
+  List.Tot.mem s csvw_builtin_datatype_names
+
+let csvw_decode_inherited (v:json_val) : csvw_inherited_props = {
+  inh_about_url    = json_get_string "aboutUrl" v;
+  inh_property_url = json_get_string "propertyUrl" v;
+  inh_value_url    = json_get_string "valueUrl" v;
+  inh_lang         = (match json_get_string "lang" v with
+                       | Some l -> if csvw_lang_tag_ok l then Some l else None
+                       | None -> None);
+  inh_null         = json_get_string "null" v;
+  inh_separator    = json_get_string "separator" v;
+  inh_datatype     = (match json_get_field "datatype" v with
+                       | Some dv ->
+                         (match csvw_decode_datatype dv with
+                          | Some (CSVW_DT_Named n) ->
+                            if csvw_is_builtin_datatype_name n
+                            then Some (CSVW_DT_Named n) else None
+                          | other -> other)
+                       | None -> None);
+}
+
+// ================================================================
 // Column decode
 // ================================================================
 
@@ -346,6 +493,8 @@ let csvw_decode_column (v:json_val) : option csvw_column =
       col_property_url     = json_get_string "propertyUrl" v;
       col_value_url        = json_get_string "valueUrl" v;
       col_separator        = json_get_string "separator" v;
+      col_lang             = json_get_string "lang" v;
+      col_null             = json_get_string "null" v;
     })
   | _ -> None
 
@@ -407,9 +556,7 @@ let csvw_decode_table_schema (v:json_val) : option csvw_table_schema =
       Some ({
         ts_columns      = columns;
         ts_primary_key  = json_get_string "primaryKey" v;
-        ts_about_url    = json_get_string "aboutUrl" v;
-        ts_property_url = json_get_string "propertyUrl" v;
-        ts_value_url    = json_get_string "valueUrl" v;
+        ts_inherited    = csvw_decode_inherited v;
       })
   | _ -> None
 
@@ -451,6 +598,7 @@ let csvw_decode_table (v:json_val) : option csvw_table =
         tbl_dialect      = dialect;
         tbl_table_schema = schema;
         tbl_common       = csvw_common_fields v;
+        tbl_inherited    = csvw_decode_inherited v;
       })
   | _ -> None
 
@@ -884,7 +1032,8 @@ let csvw_decode_metadata (v:json_val) : option csvw_metadata =
   match json_get_array "tables" v with
   | Some items ->
     (match csvw_decode_table_list items with
-     | Some ts -> Some (CSVW_TableGroup ts)
+     | Some ts ->
+       Some (CSVW_TableGroup ts { grp_common = csvw_common_fields v; grp_inherited = csvw_decode_inherited v })
      | None -> None)
   | None ->
     (match csvw_decode_table v with
