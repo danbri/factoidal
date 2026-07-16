@@ -900,7 +900,7 @@
   [35/166] rdf-xml/rdfms-duplicate-member-props-test001 ok
   [36/166] rdf-xml/rdfms-empty-property-elements-error001 ok
   [37/166] rdf-xml/rdfms-empty-property-elements-error002 ok
-  [38/166] rdf-xml/rdfms-empty-property-elements-test001 ok
+  [38/166] rdf-xml/rdfms-empty-property-elements-test001 ok (75ms)
   [39/166] rdf-xml/rdfms-empty-property-elements-test002 ok
   [40/166] rdf-xml/rdfms-empty-property-elements-test004 ok
   [41/166] rdf-xml/rdfms-empty-property-elements-test005 ok
@@ -1911,7 +1911,7 @@ Test base: third_party/testing/w3c/rdf/rdf11
   PASS: IRI-resolution-02
   PASS: IRI-resolution-07
   PASS: IRI-resolution-08
-  [suite time: 0.2s]
+  [suite time: 0.1s]
 
 --- rdf-xml ---
   PASS: amp-in-url-test001
@@ -1951,7 +1951,7 @@ Test base: third_party/testing/w3c/rdf/rdf11
   PASS: rdfms-duplicate-member-props-test001
   PASS: rdfms-empty-property-elements-error001
   PASS: rdfms-empty-property-elements-error002
-  PASS: rdfms-empty-property-elements-test001
+  PASS: rdfms-empty-property-elements-test001 (75ms)
   PASS: rdfms-empty-property-elements-test002
   PASS: rdfms-empty-property-elements-test004
   PASS: rdfms-empty-property-elements-test005
@@ -2080,7 +2080,7 @@ Test base: third_party/testing/w3c/rdf/rdf11
   PASS: xmlbase-test011
   PASS: xmlbase-test013
   PASS: xmlbase-test014
-  [suite time: 0.1s]
+  [suite time: 0.2s]
 
 ========================================
 Suite Results:

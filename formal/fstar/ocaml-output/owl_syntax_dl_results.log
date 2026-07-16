@@ -1,6 +1,6 @@
 Closure regime: RL
 OWL 2 test catalog: third_party/testing/owl/syntax-dl.rdf
-  parsed 7958 triples in 0.55s
+  parsed 7958 triples in 0.45s
 Totals: 323 test cases
   PositiveEntailmentTest:    90
   NegativeEntailmentTest:    16
@@ -35,7 +35,12 @@ Running 323 species-annotated test case(s) through OWL2_SyntaxDL.species_is_dl (
   PASS: FS2RDF-equivalent-classes-2-ar [species] verdict=DL expected=DL
   PASS: FS2RDF-equivalent-classes-3-annotation-ar [species] verdict=DL expected=DL
   PASS: FS2RDF-equivalent-classes-3-ar [species] verdict=DL expected=DL
-  FAIL: FS2RDF-literals-ar [species] verdict=(premise/conclusion parse failure) expected=DL
+  FAIL: FS2RDF-literals-ar [species] verdict=FULL expected=DL
+      violation: premise: reserved-vocabulary-as-datatype: http://www.w3.org/2001/XMLSchema#datetime
+      violation: premise: reserved-vocabulary-as-datatype: http://www.w3.org/2001/XMLSchema#unsignedint
+      violation: premise: reserved-vocabulary-as-datatype: http://www.w3.org/2001/XMLSchema#negativeinteger
+      violation: premise: reserved-vocabulary-as-datatype: http://www.w3.org/2001/XMLSchema#anyuri
+      violation: premise: reserved-vocabulary-as-datatype: http://www.w3.org/2001/XMLSchema#unsignedshort
   PASS: FS2RDF-negative-property-assertion-ar [species] verdict=DL expected=DL
   PASS: FS2RDF-no-builtin-prefixes-ar [species] verdict=DL expected=DL
   PASS: FS2RDF-ontology-annotation-annotation-ar [species] verdict=DL expected=DL
@@ -334,4 +339,4 @@ Running 323 species-annotated test case(s) through OWL2_SyntaxDL.species_is_dl (
   PASS: somevaluesfrom2bnode [species] verdict=DL expected=DL
   PASS: string-integer-clash [species] verdict=DL expected=DL
 
-OWL2-DL SpeciesTests: 319 pass, 2 fail (out of 321), 2 skipped (functional-syntax-only) in 1.69s
+OWL2-DL SpeciesTests: 319 pass, 2 fail (out of 321), 2 skipped (functional-syntax-only) in 1.05s

@@ -130,7 +130,6 @@
   [pe-running] WebOnt-sameAs-001
   [pe-running] WebOnt-someValuesFrom-001
   [pe-running] WebOnt-someValuesFrom-003
-  [owl_closure_timeout] DL tableau closure exceeded 20s cap; falling back to RL closure
   [pe-running] WebOnt-unionOf-001
   [pe-running] WebOnt-unionOf-002
   [pe-running] WebOnt-unionOf-003
@@ -393,7 +392,6 @@
   [cons-running] WebOnt-description-logic-503
   [cons-running] WebOnt-description-logic-605
   [cons-running] WebOnt-description-logic-606
-  [owl_closure_timeout] DL tableau closure exceeded 20s cap; falling back to RL closure
   [cons-running] WebOnt-description-logic-609
   [cons-running] WebOnt-description-logic-616
   [cons-running] WebOnt-description-logic-624
@@ -478,7 +476,6 @@
   [cons-running] WebOnt-someValuesFrom-001
   [cons-running] WebOnt-someValuesFrom-002
   [cons-running] WebOnt-someValuesFrom-003
-  [owl_closure_timeout] DL tableau closure exceeded 20s cap; falling back to RL closure
   [cons-running] WebOnt-unionOf-001
   [cons-running] WebOnt-unionOf-002
   [cons-running] WebOnt-unionOf-003
@@ -643,23 +640,18 @@
   [inc-running] WebOnt-description-logic-603
   [inc-running] WebOnt-description-logic-604
   [inc-running] WebOnt-description-logic-608
-  [owl_closure_timeout] DL tableau closure exceeded 20s cap; falling back to RL closure
   [inc-running] WebOnt-description-logic-610
   [inc-running] WebOnt-description-logic-611
   [inc-running] WebOnt-description-logic-612
   [inc-running] WebOnt-description-logic-613
   [inc-running] WebOnt-description-logic-614
   [inc-running] WebOnt-description-logic-615
-  [owl_closure_timeout] DL tableau closure exceeded 20s cap; falling back to RL closure
   [inc-running] WebOnt-description-logic-617
   [inc-running] WebOnt-description-logic-623
   [inc-running] WebOnt-description-logic-626
-  [owl_closure_timeout] DL tableau closure exceeded 20s cap; falling back to RL closure
   [inc-running] WebOnt-description-logic-627
-  [owl_closure_timeout] DL tableau closure exceeded 20s cap; falling back to RL closure
   [inc-running] WebOnt-description-logic-629
   [inc-running] WebOnt-description-logic-630
-  [owl_closure_timeout] DL tableau closure exceeded 20s cap; falling back to RL closure
   [inc-running] WebOnt-description-logic-632
   [inc-running] WebOnt-description-logic-633
   [inc-running] WebOnt-description-logic-641
@@ -703,7 +695,7 @@
   [inc-running] string-integer-clash
 Closure regime: DL
 OWL 2 test catalog: third_party/testing/owl/semantics-direct.rdf
-  parsed 12070 triples in 0.67s
+  parsed 12070 triples in 0.55s
 Totals: 488 test cases
   PositiveEntailmentTest:    206
   NegativeEntailmentTest:    23
@@ -715,7 +707,7 @@ Running 206 PositiveEntailmentTest(s) through owl_rl_closure_with_reflexivity (f
   FAIL  Consistent-but-all-unsat
   PASS  DisjointClasses-001
   PASS  DisjointClasses-003
-  FAIL  New-Feature-DataQCR-001
+  PASS  New-Feature-DataQCR-001
   PASS  New-Feature-DisjointDataProperties-002
   PASS  New-Feature-DisjointObjectProperties-001
   PASS  New-Feature-DisjointObjectProperties-002
@@ -725,7 +717,7 @@ Running 206 PositiveEntailmentTest(s) through owl_rl_closure_with_reflexivity (f
   PASS  New-Feature-ObjectPropertyChain-001
   PASS  New-Feature-ObjectPropertyChain-BJP-002
   PASS  New-Feature-ObjectPropertyChain-BJP-003
-  FAIL  New-Feature-ObjectQCR-001
+  PASS  New-Feature-ObjectQCR-001
   PASS  New-Feature-ObjectQCR-002
   PASS  New-Feature-ReflexiveProperty-001
   FAIL  New-Feature-SelfRestriction-001
@@ -736,21 +728,21 @@ Running 206 PositiveEntailmentTest(s) through owl_rl_closure_with_reflexivity (f
       reason: unsupported input syntax — catalog entry provides only test:fsPremiseOntology (OWL 2 Functional Syntax) with test:normativeSyntax FUNCTIONAL, and either no fs premise/conclusion literal is present or it uses Functional-Syntax constructs beyond Parser_OWLFunctional's narrow subset (Prefix/Ontology/Declaration + ~6 axiom forms; see docs/designissues/2026-07-05-owl-functional-syntax-plan.md)
   FAIL  WebOnt-AllDifferent-001
   PASS  WebOnt-AnnotationProperty-002
-  FAIL/parse-premise  WebOnt-Class-001
+  FAIL  WebOnt-Class-001
   FAIL  WebOnt-Class-002
   FAIL  WebOnt-Class-003
-  FAIL  WebOnt-Class-005-direct
-  FAIL  WebOnt-Class-006
+  PASS  WebOnt-Class-005-direct
+  PASS  WebOnt-Class-006
   PASS  WebOnt-FunctionalProperty-001
   PASS  WebOnt-FunctionalProperty-002
   FAIL  WebOnt-FunctionalProperty-003
   FAIL  WebOnt-FunctionalProperty-004
-  FAIL  WebOnt-FunctionalProperty-005
-  FAIL  WebOnt-I4.5-001
+  PASS  WebOnt-FunctionalProperty-005
+  PASS  WebOnt-I4.5-001
   PASS  WebOnt-I4.6-003
   PASS  WebOnt-I4.6-005-Direct
   PASS  WebOnt-I5.1-001
-  FAIL  WebOnt-I5.2-002
+  PASS  WebOnt-I5.2-002
   FAIL  WebOnt-I5.2-004
   FAIL  WebOnt-I5.2-006
   FAIL  WebOnt-I5.21-002
@@ -758,12 +750,12 @@ Running 206 PositiveEntailmentTest(s) through owl_rl_closure_with_reflexivity (f
   FAIL  WebOnt-I5.24-002
   FAIL  WebOnt-I5.24-003
   FAIL  WebOnt-I5.24-004
-  FAIL  WebOnt-I5.26-009
+  PASS  WebOnt-I5.26-009
   FAIL  WebOnt-I5.26-010
   FAIL  WebOnt-I5.3-014
   FAIL  WebOnt-I5.3-015
-  FAIL/parse-premise  WebOnt-I5.5-001
-  FAIL/parse-premise  WebOnt-I5.5-002
+  FAIL  WebOnt-I5.5-001
+  FAIL  WebOnt-I5.5-002
   FAIL  WebOnt-I5.5-005
   FAIL  WebOnt-I5.8-004
   PASS  WebOnt-I5.8-006
@@ -776,30 +768,30 @@ Running 206 PositiveEntailmentTest(s) through owl_rl_closure_with_reflexivity (f
   PASS  WebOnt-InverseFunctionalProperty-002
   FAIL  WebOnt-InverseFunctionalProperty-003
   FAIL  WebOnt-InverseFunctionalProperty-004
-  FAIL/parse-premise  WebOnt-Nothing-002
+  PASS  WebOnt-Nothing-002
   PASS  WebOnt-Ontology-001
   PASS  WebOnt-Ontology-004
-  FAIL  WebOnt-Restriction-005-direct
-  FAIL  WebOnt-Restriction-006
+  PASS  WebOnt-Restriction-005-direct
+  PASS  WebOnt-Restriction-006
   PASS  WebOnt-SymmetricProperty-001
   FAIL  WebOnt-SymmetricProperty-002
-  FAIL  WebOnt-SymmetricProperty-003
+  PASS  WebOnt-SymmetricProperty-003
   PASS  WebOnt-TransitiveProperty-001
-  FAIL  WebOnt-TransitiveProperty-002
+  PASS  WebOnt-TransitiveProperty-002
   PASS  WebOnt-allValuesFrom-001
   FAIL  WebOnt-cardinality-001
-  FAIL  WebOnt-cardinality-002
+  PASS  WebOnt-cardinality-002
   FAIL  WebOnt-cardinality-003
-  FAIL  WebOnt-cardinality-004
+  PASS  WebOnt-cardinality-004
   FAIL  WebOnt-cardinality-006
   FAIL  WebOnt-complementOf-001
   FAIL  WebOnt-description-logic-201
-  FAIL  WebOnt-description-logic-202
+  PASS  WebOnt-description-logic-202
   PASS  WebOnt-description-logic-203
   PASS  WebOnt-description-logic-204
-  FAIL  WebOnt-description-logic-205
+  PASS  WebOnt-description-logic-205
   FAIL  WebOnt-description-logic-206
-  FAIL  WebOnt-description-logic-207
+  PASS  WebOnt-description-logic-207
   FAIL  WebOnt-description-logic-208
   FAIL  WebOnt-description-logic-661
   FAIL  WebOnt-description-logic-662
@@ -817,9 +809,9 @@ Running 206 PositiveEntailmentTest(s) through owl_rl_closure_with_reflexivity (f
   PASS  WebOnt-equivalentClass-001
   PASS  WebOnt-equivalentClass-002
   PASS  WebOnt-equivalentClass-003
-  FAIL  WebOnt-equivalentClass-004
-  FAIL  WebOnt-equivalentClass-006
-  FAIL  WebOnt-equivalentClass-007
+  PASS  WebOnt-equivalentClass-004
+  PASS  WebOnt-equivalentClass-006
+  PASS  WebOnt-equivalentClass-007
   PASS  WebOnt-equivalentClass-008-Direct
   PASS  WebOnt-equivalentProperty-001
   PASS  WebOnt-equivalentProperty-002
@@ -832,11 +824,11 @@ Running 206 PositiveEntailmentTest(s) through owl_rl_closure_with_reflexivity (f
   FAIL  WebOnt-extra-credit-004
   PASS  WebOnt-imports-001
   PASS  WebOnt-imports-003
-  FAIL/parse-premise  WebOnt-imports-010
+  FAIL  WebOnt-imports-010
   PASS  WebOnt-imports-011
   PASS  WebOnt-intersectionOf-001
   PASS  WebOnt-inverseOf-001
-  FAIL  WebOnt-miscellaneous-011
+  PASS  WebOnt-miscellaneous-011
   FAIL  WebOnt-miscellaneous-302-Direct
   FAIL  WebOnt-oneOf-002
   FAIL  WebOnt-oneOf-003
@@ -845,10 +837,10 @@ Running 206 PositiveEntailmentTest(s) through owl_rl_closure_with_reflexivity (f
   PASS  WebOnt-someValuesFrom-001
   PASS  WebOnt-someValuesFrom-003
   PASS  WebOnt-unionOf-001
-  FAIL  WebOnt-unionOf-002
+  PASS  WebOnt-unionOf-002
   FAIL  WebOnt-unionOf-003
   FAIL  WebOnt-unionOf-004
-  FAIL  bnode2somevaluesfrom
+  PASS  bnode2somevaluesfrom
   PASS  chain2trans1
   PASS  owl2-rl-rules-fp-differentFrom
   PASS  owl2-rl-rules-ifp-askey
@@ -865,19 +857,19 @@ Running 206 PositiveEntailmentTest(s) through owl_rl_closure_with_reflexivity (f
   PASS  rdfbased-sem-char-symmetric-inst
   PASS  rdfbased-sem-char-transitive-inst
   PASS  rdfbased-sem-class-nothing-term
-  FAIL/parse-premise  rdfbased-sem-class-nothing-type
+  PASS  rdfbased-sem-class-nothing-type
   PASS  rdfbased-sem-class-thing-term
-  FAIL/parse-premise  rdfbased-sem-class-thing-type
+  PASS  rdfbased-sem-class-thing-type
   FAIL  rdfbased-sem-enum-inst-included
   PASS  rdfbased-sem-eqdis-eqclass-inst
-  FAIL  rdfbased-sem-eqdis-eqclass-rflxv
+  PASS  rdfbased-sem-eqdis-eqclass-rflxv
   PASS  rdfbased-sem-eqdis-eqclass-subclass-1
   PASS  rdfbased-sem-eqdis-eqclass-subclass-2
   PASS  rdfbased-sem-eqdis-eqclass-subst
   PASS  rdfbased-sem-eqdis-eqclass-sym
   PASS  rdfbased-sem-eqdis-eqclass-trans
   PASS  rdfbased-sem-eqdis-eqprop-inst
-  FAIL  rdfbased-sem-eqdis-eqprop-rflxv
+  PASS  rdfbased-sem-eqdis-eqprop-rflxv
   PASS  rdfbased-sem-eqdis-eqprop-subprop-1
   PASS  rdfbased-sem-eqdis-eqprop-subprop-2
   PASS  rdfbased-sem-eqdis-eqprop-subst
@@ -889,15 +881,15 @@ Running 206 PositiveEntailmentTest(s) through owl_rl_closure_with_reflexivity (f
   PASS  rdfbased-sem-eqdis-sameas-trans
   PASS  rdfbased-sem-inv-inst
   PASS  rdfbased-sem-key-def
-  FAIL/parse-premise  rdfbased-sem-prop-backwardcompatiblewith-type-annot
-  FAIL/parse-premise  rdfbased-sem-prop-comment-type
-  FAIL/parse-premise  rdfbased-sem-prop-deprecated-type
-  FAIL/parse-premise  rdfbased-sem-prop-incompatiblewith-type-annot
-  FAIL/parse-premise  rdfbased-sem-prop-isdefinedby-type
-  FAIL/parse-premise  rdfbased-sem-prop-label-type
-  FAIL/parse-premise  rdfbased-sem-prop-priorversion-type-annot
-  FAIL/parse-premise  rdfbased-sem-prop-seealso-type
-  FAIL/parse-premise  rdfbased-sem-prop-versioninfo-type
+  FAIL  rdfbased-sem-prop-backwardcompatiblewith-type-annot
+  FAIL  rdfbased-sem-prop-comment-type
+  FAIL  rdfbased-sem-prop-deprecated-type
+  FAIL  rdfbased-sem-prop-incompatiblewith-type-annot
+  FAIL  rdfbased-sem-prop-isdefinedby-type
+  FAIL  rdfbased-sem-prop-label-type
+  FAIL  rdfbased-sem-prop-priorversion-type-annot
+  FAIL  rdfbased-sem-prop-seealso-type
+  FAIL  rdfbased-sem-prop-versioninfo-type
   PASS  rdfbased-sem-rdfs-domain-cond
   PASS  rdfbased-sem-rdfs-range-cond
   PASS  rdfbased-sem-rdfs-subclass-cond
@@ -908,20 +900,20 @@ Running 206 PositiveEntailmentTest(s) through owl_rl_closure_with_reflexivity (f
   PASS  rdfbased-sem-rdfsext-domain-superclass
   FAIL  rdfbased-sem-rdfsext-range-subprop
   PASS  rdfbased-sem-rdfsext-range-superclass
-  FAIL  rdfbased-sem-restrict-allvalues-cmp-class
-  FAIL  rdfbased-sem-restrict-allvalues-cmp-prop
+  PASS  rdfbased-sem-restrict-allvalues-cmp-class
+  PASS  rdfbased-sem-restrict-allvalues-cmp-prop
   PASS  rdfbased-sem-restrict-allvalues-inst-obj
-  FAIL  rdfbased-sem-restrict-hasvalue-cmp-prop
+  PASS  rdfbased-sem-restrict-hasvalue-cmp-prop
   PASS  rdfbased-sem-restrict-hasvalue-inst-obj
   PASS  rdfbased-sem-restrict-hasvalue-inst-subj
   PASS  rdfbased-sem-restrict-maxcard-inst-obj-one
   FAIL  rdfbased-sem-restrict-maxqcr-inst-obj-one
-  FAIL  rdfbased-sem-restrict-somevalues-cmp-class
-  FAIL  rdfbased-sem-restrict-somevalues-cmp-prop
+  PASS  rdfbased-sem-restrict-somevalues-cmp-class
+  PASS  rdfbased-sem-restrict-somevalues-cmp-prop
   PASS  rdfbased-sem-restrict-somevalues-inst-subj
   PASS  somevaluesfrom2bnode
 
-Profile-RL PositiveEntailmentTests: 103 pass, 101 fail (out of 204 RDF/XML tests), 2 skipped (functional-syntax-only) in 152.43s
+Profile-RL PositiveEntailmentTests: 136 pass, 68 fail (out of 204 RDF/XML tests), 2 skipped (functional-syntax-only) in 127.58s
   (bnode pattern matches any term at the position; full isomorphism deferred — see docs/designissues/2026-04-24-owl-runner-phase1.md)
 
 Running 23 NegativeEntailmentTest(s) through owl_rl_closure_with_reflexivity (fuel=100)...
@@ -949,7 +941,7 @@ Running 23 NegativeEntailmentTest(s) through owl_rl_closure_with_reflexivity (fu
   PASS  WebOnt-miscellaneous-302
   PASS  WebOnt-someValuesFrom-002
 
-Profile-RL NegativeEntailmentTests: 22 pass, 1 fail (out of 23) in 9.23s
+Profile-RL NegativeEntailmentTests: 22 pass, 1 fail (out of 23) in 6.24s
 
 Running 353 ConsistencyTest(s) through is_inconsistent (closure fuel=100)...
   PASS  Consistent Datatype restrictions with Different Types
@@ -973,7 +965,7 @@ Running 353 ConsistencyTest(s) through is_inconsistent (closure fuel=100)...
   PASS  FS2RDF-equivalent-classes-2-ar
   PASS  FS2RDF-equivalent-classes-3-annotation-ar
   PASS  FS2RDF-equivalent-classes-3-ar
-  FAIL/parse-premise  FS2RDF-literals-ar
+  PASS  FS2RDF-literals-ar
   PASS  FS2RDF-negative-property-assertion-ar
   PASS  FS2RDF-no-builtin-prefixes-ar
   PASS  FS2RDF-ontology-annotation-annotation-ar
@@ -1015,7 +1007,7 @@ Running 353 ConsistencyTest(s) through is_inconsistent (closure fuel=100)...
   PASS  WebOnt-AnnotationProperty-002
   PASS  WebOnt-AnnotationProperty-003
   PASS  WebOnt-AnnotationProperty-004
-  FAIL/parse-premise  WebOnt-Class-001
+  PASS  WebOnt-Class-001
   PASS  WebOnt-Class-002
   PASS  WebOnt-Class-003
   PASS  WebOnt-Class-004
@@ -1066,8 +1058,8 @@ Running 353 ConsistencyTest(s) through is_inconsistent (closure fuel=100)...
   PASS  WebOnt-I5.3-011
   PASS  WebOnt-I5.3-014
   PASS  WebOnt-I5.3-015
-  FAIL/parse-premise  WebOnt-I5.5-001
-  FAIL/parse-premise  WebOnt-I5.5-002
+  PASS  WebOnt-I5.5-001
+  PASS  WebOnt-I5.5-002
   PASS  WebOnt-I5.5-005
   PASS  WebOnt-I5.5-006
   PASS  WebOnt-I5.5-007
@@ -1090,7 +1082,7 @@ Running 353 ConsistencyTest(s) through is_inconsistent (closure fuel=100)...
   PASS  WebOnt-InverseFunctionalProperty-002
   PASS  WebOnt-InverseFunctionalProperty-003
   PASS  WebOnt-InverseFunctionalProperty-004
-  FAIL/parse-premise  WebOnt-Nothing-002
+  PASS  WebOnt-Nothing-002
   PASS  WebOnt-Ontology-001
   PASS  WebOnt-Ontology-003
   PASS  WebOnt-Ontology-004
@@ -1195,7 +1187,7 @@ Running 353 ConsistencyTest(s) through is_inconsistent (closure fuel=100)...
   PASS  WebOnt-imports-001
   PASS  WebOnt-imports-002
   PASS  WebOnt-imports-003
-  FAIL/parse-premise  WebOnt-imports-010
+  PASS  WebOnt-imports-010
   PASS  WebOnt-imports-011
   PASS  WebOnt-imports-012
   PASS  WebOnt-intersectionOf-001
@@ -1205,7 +1197,7 @@ Running 353 ConsistencyTest(s) through is_inconsistent (closure fuel=100)...
   PASS  WebOnt-miscellaneous-011
   PASS  WebOnt-miscellaneous-102
   PASS  WebOnt-miscellaneous-103
-  FAIL/unexpected-inconsistency  WebOnt-miscellaneous-202
+  PASS  WebOnt-miscellaneous-202
   PASS  WebOnt-miscellaneous-301
   PASS  WebOnt-miscellaneous-302
   PASS  WebOnt-miscellaneous-302-Direct
@@ -1252,9 +1244,9 @@ Running 353 ConsistencyTest(s) through is_inconsistent (closure fuel=100)...
   PASS  rdfbased-sem-char-symmetric-inst
   PASS  rdfbased-sem-char-transitive-inst
   PASS  rdfbased-sem-class-nothing-term
-  FAIL/parse-premise  rdfbased-sem-class-nothing-type
+  PASS  rdfbased-sem-class-nothing-type
   PASS  rdfbased-sem-class-thing-term
-  FAIL/parse-premise  rdfbased-sem-class-thing-type
+  PASS  rdfbased-sem-class-thing-type
   PASS  rdfbased-sem-enum-inst-included
   PASS  rdfbased-sem-eqdis-eqclass-inst
   PASS  rdfbased-sem-eqdis-eqclass-rflxv
@@ -1276,15 +1268,15 @@ Running 353 ConsistencyTest(s) through is_inconsistent (closure fuel=100)...
   PASS  rdfbased-sem-eqdis-sameas-trans
   PASS  rdfbased-sem-inv-inst
   PASS  rdfbased-sem-key-def
-  FAIL/parse-premise  rdfbased-sem-prop-backwardcompatiblewith-type-annot
-  FAIL/parse-premise  rdfbased-sem-prop-comment-type
-  FAIL/parse-premise  rdfbased-sem-prop-deprecated-type
-  FAIL/parse-premise  rdfbased-sem-prop-incompatiblewith-type-annot
-  FAIL/parse-premise  rdfbased-sem-prop-isdefinedby-type
-  FAIL/parse-premise  rdfbased-sem-prop-label-type
-  FAIL/parse-premise  rdfbased-sem-prop-priorversion-type-annot
-  FAIL/parse-premise  rdfbased-sem-prop-seealso-type
-  FAIL/parse-premise  rdfbased-sem-prop-versioninfo-type
+  PASS  rdfbased-sem-prop-backwardcompatiblewith-type-annot
+  PASS  rdfbased-sem-prop-comment-type
+  PASS  rdfbased-sem-prop-deprecated-type
+  PASS  rdfbased-sem-prop-incompatiblewith-type-annot
+  PASS  rdfbased-sem-prop-isdefinedby-type
+  PASS  rdfbased-sem-prop-label-type
+  PASS  rdfbased-sem-prop-priorversion-type-annot
+  PASS  rdfbased-sem-prop-seealso-type
+  PASS  rdfbased-sem-prop-versioninfo-type
   PASS  rdfbased-sem-rdfs-domain-cond
   PASS  rdfbased-sem-rdfs-range-cond
   PASS  rdfbased-sem-rdfs-subclass-cond
@@ -1308,19 +1300,19 @@ Running 353 ConsistencyTest(s) through is_inconsistent (closure fuel=100)...
   PASS  rdfbased-sem-restrict-somevalues-inst-subj
   PASS  somevaluesfrom2bnode
 
-Profile-RL ConsistencyTests: 333 pass, 18 fail (out of 351), 2 skipped (functional-syntax-only) in 358.22s
+Profile-RL ConsistencyTests: 351 pass, 0 fail (out of 351), 2 skipped (functional-syntax-only) in 282.44s
 
 Running 128 InconsistencyTest(s) through is_inconsistent (closure fuel=100)...
-  FAIL/unexpected-consistency  Contradicting datatype Restrictions
-  FAIL/unexpected-consistency  Contradicting-dateTime-restrictions
-  FAIL/unexpected-consistency  Datatype-Float-Discrete-001
-  FAIL/unexpected-consistency  Different types in Datatype Restrictions and Complement
+  PASS  Contradicting datatype Restrictions
+  PASS  Contradicting-dateTime-restrictions
+  PASS  Datatype-Float-Discrete-001
+  PASS  Different types in Datatype Restrictions and Complement
   PASS  DisjointClasses-002
   PASS  Footnote-not-about-self
-  FAIL/unexpected-consistency  Inconsistent Byte Filler
-  FAIL/unexpected-consistency  Inconsistent Data Complement with the Restrictions
+  PASS  Inconsistent Byte Filler
+  PASS  Inconsistent Data Complement with the Restrictions
   FAIL/unexpected-consistency  Inconsistent Disjoint Dataproperties
-  FAIL/unexpected-consistency  Inconsistent String Pattern with Disjoint Dataproperties
+  PASS  Inconsistent String Pattern with Disjoint Dataproperties
   FAIL/unexpected-consistency  Minus Infinity is not in owl:real
   PASS  New-Feature-AsymmetricProperty-001
   PASS  New-Feature-BottomDataProperty-001
@@ -1331,14 +1323,14 @@ Running 128 InconsistencyTest(s) through is_inconsistent (closure fuel=100)...
   PASS  New-Feature-Keys-006
   PASS  New-Feature-NegativeDataPropertyAssertion-001
   PASS  New-Feature-NegativeObjectPropertyAssertion-001
-  FAIL/unexpected-consistency  New-Feature-Rational-002
+  PASS  New-Feature-Rational-002
   PASS  New-Feature-TopObjectProperty-001
   PASS  Plus and Minus Zero are Distinct
   PASS  WebOnt-I4.5-002
   PASS  WebOnt-I5.5-003
   PASS  WebOnt-I5.5-004
-  FAIL/unexpected-consistency  WebOnt-I5.8-001
-  FAIL/unexpected-consistency  WebOnt-I5.8-003
+  PASS  WebOnt-I5.8-001
+  PASS  WebOnt-I5.8-003
   PASS  WebOnt-Nothing-001
   PASS  WebOnt-Restriction-001
   PASS  WebOnt-Restriction-002
@@ -1346,26 +1338,26 @@ Running 128 InconsistencyTest(s) through is_inconsistent (closure fuel=100)...
   FAIL/unexpected-consistency  WebOnt-Thing-005
   PASS  WebOnt-description-logic-001
   PASS  WebOnt-description-logic-002
-  FAIL/unexpected-consistency  WebOnt-description-logic-003
-  FAIL/unexpected-consistency  WebOnt-description-logic-004
-  FAIL/unexpected-consistency  WebOnt-description-logic-007
-  FAIL/unexpected-consistency  WebOnt-description-logic-008
-  FAIL/unexpected-consistency  WebOnt-description-logic-010
+  PASS  WebOnt-description-logic-003
+  PASS  WebOnt-description-logic-004
+  PASS  WebOnt-description-logic-007
+  PASS  WebOnt-description-logic-008
+  PASS  WebOnt-description-logic-010
   PASS  WebOnt-description-logic-011
-  FAIL/unexpected-consistency  WebOnt-description-logic-012
-  FAIL/unexpected-consistency  WebOnt-description-logic-013
-  FAIL/unexpected-consistency  WebOnt-description-logic-014
-  FAIL/unexpected-consistency  WebOnt-description-logic-015
-  FAIL/unexpected-consistency  WebOnt-description-logic-017
-  FAIL/unexpected-consistency  WebOnt-description-logic-019
-  FAIL/unexpected-consistency  WebOnt-description-logic-022
+  PASS  WebOnt-description-logic-012
+  PASS  WebOnt-description-logic-013
+  PASS  WebOnt-description-logic-014
+  PASS  WebOnt-description-logic-015
+  PASS  WebOnt-description-logic-017
+  PASS  WebOnt-description-logic-019
+  PASS  WebOnt-description-logic-022
   PASS  WebOnt-description-logic-023
-  FAIL/unexpected-consistency  WebOnt-description-logic-026
-  FAIL/unexpected-consistency  WebOnt-description-logic-027
-  FAIL/unexpected-consistency  WebOnt-description-logic-029
-  FAIL/unexpected-consistency  WebOnt-description-logic-030
-  FAIL/unexpected-consistency  WebOnt-description-logic-032
-  FAIL/unexpected-consistency  WebOnt-description-logic-033
+  PASS  WebOnt-description-logic-026
+  PASS  WebOnt-description-logic-027
+  PASS  WebOnt-description-logic-029
+  PASS  WebOnt-description-logic-030
+  PASS  WebOnt-description-logic-032
+  PASS  WebOnt-description-logic-033
   PASS  WebOnt-description-logic-035
   PASS  WebOnt-description-logic-040
   PASS  WebOnt-description-logic-101
@@ -1374,49 +1366,49 @@ Running 128 InconsistencyTest(s) through is_inconsistent (closure fuel=100)...
   PASS  WebOnt-description-logic-104
   PASS  WebOnt-description-logic-105
   PASS  WebOnt-description-logic-106
-  FAIL/unexpected-consistency  WebOnt-description-logic-107
-  FAIL/unexpected-consistency  WebOnt-description-logic-108
+  PASS  WebOnt-description-logic-107
+  PASS  WebOnt-description-logic-108
   PASS  WebOnt-description-logic-109
   PASS  WebOnt-description-logic-110
   PASS  WebOnt-description-logic-111
   FAIL/unexpected-consistency  WebOnt-description-logic-502
-  FAIL/unexpected-consistency  WebOnt-description-logic-504
-  FAIL/unexpected-consistency  WebOnt-description-logic-601
+  PASS  WebOnt-description-logic-504
+  PASS  WebOnt-description-logic-601
   PASS  WebOnt-description-logic-602
-  FAIL/unexpected-consistency  WebOnt-description-logic-603
-  FAIL/unexpected-consistency  WebOnt-description-logic-604
-  FAIL/unexpected-consistency  WebOnt-description-logic-608
-  FAIL/unexpected-consistency  WebOnt-description-logic-610
+  PASS  WebOnt-description-logic-603
+  PASS  WebOnt-description-logic-604
+  PASS  WebOnt-description-logic-608
+  PASS  WebOnt-description-logic-610
   PASS  WebOnt-description-logic-611
-  FAIL/unexpected-consistency  WebOnt-description-logic-612
-  FAIL/unexpected-consistency  WebOnt-description-logic-613
-  FAIL/unexpected-consistency  WebOnt-description-logic-614
-  FAIL/unexpected-consistency  WebOnt-description-logic-615
-  FAIL/unexpected-consistency  WebOnt-description-logic-617
+  PASS  WebOnt-description-logic-612
+  PASS  WebOnt-description-logic-613
+  PASS  WebOnt-description-logic-614
+  PASS  WebOnt-description-logic-615
+  PASS  WebOnt-description-logic-617
   PASS  WebOnt-description-logic-623
-  FAIL/unexpected-consistency  WebOnt-description-logic-626
-  FAIL/unexpected-consistency  WebOnt-description-logic-627
-  FAIL/unexpected-consistency  WebOnt-description-logic-629
-  FAIL/unexpected-consistency  WebOnt-description-logic-630
-  FAIL/unexpected-consistency  WebOnt-description-logic-632
-  FAIL/unexpected-consistency  WebOnt-description-logic-633
+  PASS  WebOnt-description-logic-626
+  PASS  WebOnt-description-logic-627
+  PASS  WebOnt-description-logic-629
+  PASS  WebOnt-description-logic-630
+  PASS  WebOnt-description-logic-632
+  PASS  WebOnt-description-logic-633
   PASS  WebOnt-description-logic-641
   PASS  WebOnt-description-logic-642
   PASS  WebOnt-description-logic-643
   PASS  WebOnt-description-logic-644
-  FAIL/unexpected-consistency  WebOnt-description-logic-646
-  FAIL/unexpected-consistency  WebOnt-description-logic-650
+  PASS  WebOnt-description-logic-646
+  PASS  WebOnt-description-logic-650
   FAIL/unexpected-consistency  WebOnt-description-logic-909
-  FAIL/unexpected-consistency  WebOnt-description-logic-910
+  PASS  WebOnt-description-logic-910
   PASS  WebOnt-disjointWith-010
   PASS  WebOnt-maxCardinality-001
   PASS  WebOnt-miscellaneous-203
   PASS  WebOnt-miscellaneous-204
-  FAIL/unexpected-consistency  datatype-restriction-min-max-inconsistency
+  PASS  datatype-restriction-min-max-inconsistency
   PASS  functionality-clash
   PASS  inconsistent-integer-filler
-  FAIL/unexpected-consistency  inconsistent_datatypes
-  FAIL/unexpected-consistency  one=two
+  PASS  inconsistent_datatypes
+  PASS  one=two
   PASS  rdfbased-sem-bool-complement-inst
   PASS  rdfbased-sem-char-asymmetric-inst
   PASS  rdfbased-sem-char-asymmetric-term
@@ -1440,4 +1432,4 @@ Running 128 InconsistencyTest(s) through is_inconsistent (closure fuel=100)...
   PASS  rdfbased-sem-restrict-maxqcr-inst-obj-zero
   PASS  string-integer-clash
 
-Profile-RL InconsistencyTests: 70 pass, 58 fail (out of 128), 0 skipped (functional-syntax-only) in 143.64s
+Profile-RL InconsistencyTests: 123 pass, 5 fail (out of 128), 0 skipped (functional-syntax-only) in 31.31s

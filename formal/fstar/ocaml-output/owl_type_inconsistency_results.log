@@ -30,7 +30,6 @@
   [inc-running] WebOnt-Restriction-001
   [inc-running] WebOnt-Restriction-002
   [inc-running] WebOnt-Thing-003
-  [owl_closure_timeout] DL tableau closure exceeded 20s cap; falling back to RL closure
   [inc-running] WebOnt-Thing-005
   [inc-running] WebOnt-description-logic-001
   [inc-running] WebOnt-description-logic-002
@@ -74,23 +73,18 @@
   [inc-running] WebOnt-description-logic-603
   [inc-running] WebOnt-description-logic-604
   [inc-running] WebOnt-description-logic-608
-  [owl_closure_timeout] DL tableau closure exceeded 20s cap; falling back to RL closure
   [inc-running] WebOnt-description-logic-610
   [inc-running] WebOnt-description-logic-611
   [inc-running] WebOnt-description-logic-612
   [inc-running] WebOnt-description-logic-613
   [inc-running] WebOnt-description-logic-614
   [inc-running] WebOnt-description-logic-615
-  [owl_closure_timeout] DL tableau closure exceeded 20s cap; falling back to RL closure
   [inc-running] WebOnt-description-logic-617
   [inc-running] WebOnt-description-logic-623
   [inc-running] WebOnt-description-logic-626
-  [owl_closure_timeout] DL tableau closure exceeded 20s cap; falling back to RL closure
   [inc-running] WebOnt-description-logic-627
-  [owl_closure_timeout] DL tableau closure exceeded 20s cap; falling back to RL closure
   [inc-running] WebOnt-description-logic-629
   [inc-running] WebOnt-description-logic-630
-  [owl_closure_timeout] DL tableau closure exceeded 20s cap; falling back to RL closure
   [inc-running] WebOnt-description-logic-632
   [inc-running] WebOnt-description-logic-633
   [inc-running] WebOnt-description-logic-641
@@ -134,7 +128,7 @@
   [inc-running] string-integer-clash
 Closure regime: DL
 OWL 2 test catalog: third_party/testing/owl/type-inconsistency.rdf
-  parsed 3220 triples in 0.15s
+  parsed 3220 triples in 0.12s
 Totals: 128 test cases
   PositiveEntailmentTest:    0
   NegativeEntailmentTest:    0
@@ -148,16 +142,16 @@ Profile-RL PositiveEntailmentTests: 0 pass, 0 fail (out of 0 RDF/XML tests), 0 s
   (bnode pattern matches any term at the position; full isomorphism deferred — see docs/designissues/2026-04-24-owl-runner-phase1.md)
 
 Running 128 InconsistencyTest(s) through is_inconsistent (closure fuel=100)...
-  FAIL/unexpected-consistency  Contradicting datatype Restrictions
-  FAIL/unexpected-consistency  Contradicting-dateTime-restrictions
-  FAIL/unexpected-consistency  Datatype-Float-Discrete-001
-  FAIL/unexpected-consistency  Different types in Datatype Restrictions and Complement
+  PASS  Contradicting datatype Restrictions
+  PASS  Contradicting-dateTime-restrictions
+  PASS  Datatype-Float-Discrete-001
+  PASS  Different types in Datatype Restrictions and Complement
   PASS  DisjointClasses-002
   PASS  Footnote-not-about-self
-  FAIL/unexpected-consistency  Inconsistent Byte Filler
-  FAIL/unexpected-consistency  Inconsistent Data Complement with the Restrictions
+  PASS  Inconsistent Byte Filler
+  PASS  Inconsistent Data Complement with the Restrictions
   FAIL/unexpected-consistency  Inconsistent Disjoint Dataproperties
-  FAIL/unexpected-consistency  Inconsistent String Pattern with Disjoint Dataproperties
+  PASS  Inconsistent String Pattern with Disjoint Dataproperties
   FAIL/unexpected-consistency  Minus Infinity is not in owl:real
   PASS  New-Feature-AsymmetricProperty-001
   PASS  New-Feature-BottomDataProperty-001
@@ -168,14 +162,14 @@ Running 128 InconsistencyTest(s) through is_inconsistent (closure fuel=100)...
   PASS  New-Feature-Keys-006
   PASS  New-Feature-NegativeDataPropertyAssertion-001
   PASS  New-Feature-NegativeObjectPropertyAssertion-001
-  FAIL/unexpected-consistency  New-Feature-Rational-002
+  PASS  New-Feature-Rational-002
   PASS  New-Feature-TopObjectProperty-001
   PASS  Plus and Minus Zero are Distinct
   PASS  WebOnt-I4.5-002
   PASS  WebOnt-I5.5-003
   PASS  WebOnt-I5.5-004
-  FAIL/unexpected-consistency  WebOnt-I5.8-001
-  FAIL/unexpected-consistency  WebOnt-I5.8-003
+  PASS  WebOnt-I5.8-001
+  PASS  WebOnt-I5.8-003
   PASS  WebOnt-Nothing-001
   PASS  WebOnt-Restriction-001
   PASS  WebOnt-Restriction-002
@@ -183,26 +177,26 @@ Running 128 InconsistencyTest(s) through is_inconsistent (closure fuel=100)...
   FAIL/unexpected-consistency  WebOnt-Thing-005
   PASS  WebOnt-description-logic-001
   PASS  WebOnt-description-logic-002
-  FAIL/unexpected-consistency  WebOnt-description-logic-003
-  FAIL/unexpected-consistency  WebOnt-description-logic-004
-  FAIL/unexpected-consistency  WebOnt-description-logic-007
-  FAIL/unexpected-consistency  WebOnt-description-logic-008
-  FAIL/unexpected-consistency  WebOnt-description-logic-010
+  PASS  WebOnt-description-logic-003
+  PASS  WebOnt-description-logic-004
+  PASS  WebOnt-description-logic-007
+  PASS  WebOnt-description-logic-008
+  PASS  WebOnt-description-logic-010
   PASS  WebOnt-description-logic-011
-  FAIL/unexpected-consistency  WebOnt-description-logic-012
-  FAIL/unexpected-consistency  WebOnt-description-logic-013
-  FAIL/unexpected-consistency  WebOnt-description-logic-014
-  FAIL/unexpected-consistency  WebOnt-description-logic-015
-  FAIL/unexpected-consistency  WebOnt-description-logic-017
-  FAIL/unexpected-consistency  WebOnt-description-logic-019
-  FAIL/unexpected-consistency  WebOnt-description-logic-022
+  PASS  WebOnt-description-logic-012
+  PASS  WebOnt-description-logic-013
+  PASS  WebOnt-description-logic-014
+  PASS  WebOnt-description-logic-015
+  PASS  WebOnt-description-logic-017
+  PASS  WebOnt-description-logic-019
+  PASS  WebOnt-description-logic-022
   PASS  WebOnt-description-logic-023
-  FAIL/unexpected-consistency  WebOnt-description-logic-026
-  FAIL/unexpected-consistency  WebOnt-description-logic-027
-  FAIL/unexpected-consistency  WebOnt-description-logic-029
-  FAIL/unexpected-consistency  WebOnt-description-logic-030
-  FAIL/unexpected-consistency  WebOnt-description-logic-032
-  FAIL/unexpected-consistency  WebOnt-description-logic-033
+  PASS  WebOnt-description-logic-026
+  PASS  WebOnt-description-logic-027
+  PASS  WebOnt-description-logic-029
+  PASS  WebOnt-description-logic-030
+  PASS  WebOnt-description-logic-032
+  PASS  WebOnt-description-logic-033
   PASS  WebOnt-description-logic-035
   PASS  WebOnt-description-logic-040
   PASS  WebOnt-description-logic-101
@@ -211,49 +205,49 @@ Running 128 InconsistencyTest(s) through is_inconsistent (closure fuel=100)...
   PASS  WebOnt-description-logic-104
   PASS  WebOnt-description-logic-105
   PASS  WebOnt-description-logic-106
-  FAIL/unexpected-consistency  WebOnt-description-logic-107
-  FAIL/unexpected-consistency  WebOnt-description-logic-108
+  PASS  WebOnt-description-logic-107
+  PASS  WebOnt-description-logic-108
   PASS  WebOnt-description-logic-109
   PASS  WebOnt-description-logic-110
   PASS  WebOnt-description-logic-111
   FAIL/unexpected-consistency  WebOnt-description-logic-502
-  FAIL/unexpected-consistency  WebOnt-description-logic-504
-  FAIL/unexpected-consistency  WebOnt-description-logic-601
+  PASS  WebOnt-description-logic-504
+  PASS  WebOnt-description-logic-601
   PASS  WebOnt-description-logic-602
-  FAIL/unexpected-consistency  WebOnt-description-logic-603
-  FAIL/unexpected-consistency  WebOnt-description-logic-604
-  FAIL/unexpected-consistency  WebOnt-description-logic-608
-  FAIL/unexpected-consistency  WebOnt-description-logic-610
+  PASS  WebOnt-description-logic-603
+  PASS  WebOnt-description-logic-604
+  PASS  WebOnt-description-logic-608
+  PASS  WebOnt-description-logic-610
   PASS  WebOnt-description-logic-611
-  FAIL/unexpected-consistency  WebOnt-description-logic-612
-  FAIL/unexpected-consistency  WebOnt-description-logic-613
-  FAIL/unexpected-consistency  WebOnt-description-logic-614
-  FAIL/unexpected-consistency  WebOnt-description-logic-615
-  FAIL/unexpected-consistency  WebOnt-description-logic-617
+  PASS  WebOnt-description-logic-612
+  PASS  WebOnt-description-logic-613
+  PASS  WebOnt-description-logic-614
+  PASS  WebOnt-description-logic-615
+  PASS  WebOnt-description-logic-617
   PASS  WebOnt-description-logic-623
-  FAIL/unexpected-consistency  WebOnt-description-logic-626
-  FAIL/unexpected-consistency  WebOnt-description-logic-627
-  FAIL/unexpected-consistency  WebOnt-description-logic-629
-  FAIL/unexpected-consistency  WebOnt-description-logic-630
-  FAIL/unexpected-consistency  WebOnt-description-logic-632
-  FAIL/unexpected-consistency  WebOnt-description-logic-633
+  PASS  WebOnt-description-logic-626
+  PASS  WebOnt-description-logic-627
+  PASS  WebOnt-description-logic-629
+  PASS  WebOnt-description-logic-630
+  PASS  WebOnt-description-logic-632
+  PASS  WebOnt-description-logic-633
   PASS  WebOnt-description-logic-641
   PASS  WebOnt-description-logic-642
   PASS  WebOnt-description-logic-643
   PASS  WebOnt-description-logic-644
-  FAIL/unexpected-consistency  WebOnt-description-logic-646
-  FAIL/unexpected-consistency  WebOnt-description-logic-650
+  PASS  WebOnt-description-logic-646
+  PASS  WebOnt-description-logic-650
   FAIL/unexpected-consistency  WebOnt-description-logic-909
-  FAIL/unexpected-consistency  WebOnt-description-logic-910
+  PASS  WebOnt-description-logic-910
   PASS  WebOnt-disjointWith-010
   PASS  WebOnt-maxCardinality-001
   PASS  WebOnt-miscellaneous-203
   PASS  WebOnt-miscellaneous-204
-  FAIL/unexpected-consistency  datatype-restriction-min-max-inconsistency
+  PASS  datatype-restriction-min-max-inconsistency
   PASS  functionality-clash
   PASS  inconsistent-integer-filler
-  FAIL/unexpected-consistency  inconsistent_datatypes
-  FAIL/unexpected-consistency  one=two
+  PASS  inconsistent_datatypes
+  PASS  one=two
   PASS  rdfbased-sem-bool-complement-inst
   PASS  rdfbased-sem-char-asymmetric-inst
   PASS  rdfbased-sem-char-asymmetric-term
@@ -277,4 +271,4 @@ Running 128 InconsistencyTest(s) through is_inconsistent (closure fuel=100)...
   PASS  rdfbased-sem-restrict-maxqcr-inst-obj-zero
   PASS  string-integer-clash
 
-Profile-RL InconsistencyTests: 70 pass, 58 fail (out of 128), 0 skipped (functional-syntax-only) in 145.04s
+Profile-RL InconsistencyTests: 123 pass, 5 fail (out of 128), 0 skipped (functional-syntax-only) in 32.45s

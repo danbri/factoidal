@@ -7,48 +7,37 @@ Manifest entries: 88
   apply-templates    exact:1   loose:0   fail:0   skip:0   (of 1)
   avt                exact:1   loose:0   fail:0   skip:0   (of 1)
   axes               exact:8   loose:1   fail:0   skip:0   (of 9)
-  boolean            exact:1   loose:0   fail:1   skip:0   (of 2)
+  boolean            exact:2   loose:0   fail:0   skip:0   (of 2)
   bug                exact:3   loose:0   fail:0   skip:0   (of 3)
-  construct-node     exact:0   loose:0   fail:1   skip:0   (of 1)
-  copy               exact:14  loose:0   fail:2   skip:0   (of 16)
+  construct-node     exact:1   loose:0   fail:0   skip:0   (of 1)
+  copy               exact:15  loose:0   fail:1   skip:0   (of 16)
   expression         exact:1   loose:0   fail:0   skip:0   (of 1)
   function-available exact:1   loose:0   fail:0   skip:0   (of 1)
   id                 exact:0   loose:0   fail:1   skip:0   (of 1)
   lre                exact:1   loose:0   fail:0   skip:0   (of 1)
-  match              exact:4   loose:0   fail:1   skip:0   (of 5)
+  match              exact:5   loose:0   fail:0   skip:0   (of 5)
   math               exact:1   loose:0   fail:0   skip:0   (of 1)
-  namespace          exact:1   loose:0   fail:4   skip:0   (of 5)
+  namespace          exact:4   loose:0   fail:1   skip:0   (of 5)
   node               exact:3   loose:0   fail:1   skip:0   (of 4)
   position           exact:6   loose:0   fail:0   skip:0   (of 6)
   select             exact:4   loose:0   fail:1   skip:0   (of 5)
-  sort               exact:23  loose:0   fail:1   skip:0   (of 24)
+  sort               exact:24  loose:0   fail:0   skip:0   (of 24)
   variable           exact:1   loose:0   fail:0   skip:0   (of 1)
 
--- FAIL clusters (13 total) --
-  [1] boolean
-        boolean-026: got "<out><true value=\"true\"/><true value=\"true\"/><true value=\"\"/><true value=\"true\"/><true val\226\128\166" vs want "<out><true value=\"true\"/><true value=\"true\"/><true value=\"true\"/><true value=\"true\"/><true\226\128\166"
-  [1] construct-node
-        construct-node-026: got "<out> <p>Everything is about xslt</p> </out>" vs want "<out> <stylesheet>href=\"mine.css\" type=\"text/css\"</stylesheet> <p>Everything is about xslt\226\128\166"
-  [2] copy
-        copy-0601: got "<output><with-namespaces><pink xmlns:rose=\"http://www.rose.com\"> <green xmlns:grass=\"http:\226\128\166" vs want "<output><with-namespaces><pink xmlns:rose=\"http://www.rose.com\"> <green xmlns:grass=\"http:\226\128\166"
+-- FAIL clusters (5 total) --
+  [1] copy
         copy-2601: got "<OUTLINE xmlns:xlink=\"http://www.w3.org/1999/xlink\"><NODE type=\"book\" xlink:href=\"hello.ht\226\128\166" vs want "<!-- Leave line-breaks as-is --><OUTLINE xmlns:xlink=\"http://www.w3.org/1999/xlink\"><NODE \226\128\166"
   [1] id
         id-016: got "<out> Test for id selection and pattern matching... Next line should read: -*id17*- -*id17\226\128\166" vs want "<out> Test for id selection and pattern matching... Next line should read: -*id17*- -*id17\226\128\166"
-  [1] match
-        match-045: got "<root xmlns:xhtml=\"http://www.w3.org/1999/xhtml\"> <test> <xhtml:html> <xhtml:form xhtml:id\226\128\166" vs want "<root xmlns:xhtml=\"http://www.w3.org/1999/xhtml\"> <test> <html> <form id=\"test\"> <a> <br/>\226\128\166"
-  [4] namespace
-        namespace-1701: got "<out xmlns=\"http://www.w3.org/TR/REC-html40\"> Correct output: 8 lines, saying \"value is n\"\226\128\166" vs want "<out xmlns=\"http://www.w3.org/TR/REC-html40\"> Correct output: 8 lines, saying \"value is n\"\226\128\166"
-        namespace-4101: got "<out> 0 : 1 : 2 : 3 : 4 : 5 : 6 : 7 : </out>" vs want "<out> 0 http://xsl.lotus.com/ns2: 1 http://xsl.lotus.com/ns1: 2 http://xsl.lotus.com/ns1: \226\128\166"
-        namespace-4501: got "<out> <literalName> <hello1/><hello2><hiya/></hello2> <hello3><yo1/><yo2/></hello3> <hello\226\128\166" vs want "<out> <literalName xmlns=\"http://literalURI\"> <hello1 xmlns=\"\"/><hello2><hiya xmlns=\"\"/></\226\128\166"
+  [1] namespace
+        namespace-4801: got "<out xmlns:bdd=\"http://bdd.com/\"> <test>Test5</test><test xmlns=\"http://missing.com/\">Test\226\128\166" vs want "<out xmlns=\"http://bubba.com/\" xmlns:bdd=\"http://bdd.com/\"> <ped:test xmlns:xsl=\"http://ww\226\128\166"
   [1] node
         node-1601: got "<NSlist/>" vs want "<NSlist xml=\"http://www.w3.org/XML/1998/namespace\" bdd=\"http://buster.com\" jad=\"http://adm\226\128\166"
   [1] select
         select-1001: got "<out> Upper Middle comment Lower Middle comment Found the tag... item1 item2 item3 subitem\226\128\166" vs want "<out> Top comment Upper Middle comment Lower Middle comment Bottom comment Found the tag..\226\128\166"
-  [1] sort
-        sort-043: got "<out><item>Namespaces</item> <item>URI</item> <item>XML</item> <item>XSLT</item> <item>XSL\226\128\166" vs want "<out><item>document</item> <item>elements</item> <item>mechanism</item> <item>must</item> \226\128\166"
 
 ========================================
-  pass-exact: 74
+  pass-exact: 82
   pass-loose (whitespace-collapsed): 1
 ========================================
-XSLT 1.0 tests: 75 pass, 13 fail, 0 skip (out of 88)
+XSLT 1.0 tests: 83 pass, 5 fail, 0 skip (out of 88)

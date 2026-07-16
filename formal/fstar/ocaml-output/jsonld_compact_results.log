@@ -148,7 +148,7 @@
   [148/246] #tdi05 ok
   [149/246] #tdi06 ok
   [150/246] #tdi07 ok
-  [151/246] #te001 skip
+  [151/246] #te001 ok
   [152/246] #te002 ok
   [153/246] #ten01 ok
   [154/246] #tep05 ok
@@ -398,6 +398,7 @@ Totals: 246 test entries
   PASS: simple language map with overriding term direction
   PASS: simple language map with overriding null direction
   PASS: simple language map with mismatching term direction
+  PASS: Compaction to list of lists
   PASS: Absolute IRI confused with Compact IRI
   PASS: Nest term not defined
   PASS: processingMode json-ld-1.0 conflicts with @version: 1.1
@@ -497,8 +498,8 @@ Totals: 246 test entries
 ========================================
 Suite Results:
   compact-Positive     pass:228 fail:0 skip:1
-  compact-Negative     pass:16 fail:0 skip:1
+  compact-Negative     pass:17 fail:0 skip:0
 ========================================
-TOTAL: 244 pass, 0 fail, 2 skip (out of 246)
+TOTAL: 245 pass, 0 fail, 1 skip (out of 246)
 ========================================
-jsonld-compact: 244 pass, 0 fail, 2 skip (out of 246)
+jsonld-compact: 245 pass, 0 fail, 1 skip (out of 246)

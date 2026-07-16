@@ -11,7 +11,7 @@
   [11/58] #t0011 ok
   [12/58] #t0012 ok
   [13/58] #t0013 ok
-  [14/58] #t0014 skip
+  [14/58] #t0014 ok
   [15/58] #t0015 ok
   [16/58] #t0016 ok
   [17/58] #t0017 ok
@@ -34,7 +34,7 @@
   [34/58] #t0035 ok
   [35/58] #t0036 ok
   [36/58] #t0037 ok
-  [37/58] #t0038 skip
+  [37/58] #t0038 ok
   [38/58] #t0039 ok
   [39/58] #t0040 ok
   [40/58] #t0041 ok
@@ -74,6 +74,7 @@ Totals: 58 test entries
   PASS: coerced @id
   PASS: @graph with embed
   PASS: flatten already expanded
+  PASS: @set of @value objects with keyword aliases
   PASS: collapse set of sets, keep empty lists
   PASS: context reset
   PASS: @graph and @id aliased
@@ -96,6 +97,7 @@ Totals: 58 test entries
   PASS: Language maps with @vocab, default language, and colliding property
   PASS: Flattening @index
   PASS: Flattening reverse properties
+  PASS: Flattening blank node labels
   PASS: Using terms in a reverse-maps
   PASS: language and index expansion on non-objects
   PASS: Free-floating sets and lists
@@ -120,9 +122,9 @@ Totals: 58 test entries
 
 ========================================
 Suite Results:
-  flatten-Positive     pass:55 fail:0 skip:2
+  flatten-Positive     pass:57 fail:0 skip:0
   flatten-Negative     pass:1 fail:0 skip:0
 ========================================
-TOTAL: 56 pass, 0 fail, 2 skip (out of 58)
+TOTAL: 58 pass, 0 fail, 0 skip (out of 58)
 ========================================
-jsonld-flatten: 56 pass, 0 fail, 2 skip (out of 58)
+jsonld-flatten: 58 pass, 0 fail, 0 skip (out of 58)

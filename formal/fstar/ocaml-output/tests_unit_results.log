@@ -1,24 +1,163 @@
-note: 17 canonical module(s) have no committed .cmx in this checkout;
-      a test whose closure needs one will fail with an honest Unbound-module build error:
-      XSLT_Transform Schematron_Validate Math_Expr Math_Subst Math_Diff Math_Simplify Math_Matrix MathML_Content Math_Series MathML_Present JSONLD_FromRdf JSONSchema_Validate XForms_Bind VC_Multibase DID_Key fstar_hacl_crypto VC_DataIntegrity
-
-tests/unit runner: 41 file(s) under /home/user/factoidal/.claude/worktrees/agent-a8a3c7dbcf17f1b69/tests/unit
-                   ocaml-output at /home/user/factoidal/.claude/worktrees/agent-a8a3c7dbcf17f1b69/formal/fstar/ocaml-output
+tests/unit runner: 45 file(s) under /home/user/factoidal/tests/unit
+                   ocaml-output at /home/user/factoidal/formal/fstar/ocaml-output
 
 --- cas_tests ---
-  BUILD FAILED (rc=2)
-    findlib: [WARNING] Interface big_int.cmi occurs in several directories: /root/.opam/fstar/lib/num, /root/.opam/fstar/lib/ocaml
-    findlib: [WARNING] Interface nat.cmi occurs in several directories: /root/.opam/fstar/lib/num, /root/.opam/fstar/lib/ocaml
-    findlib: [WARNING] Interface arith_status.cmi occurs in several directories: /root/.opam/fstar/lib/num, /root/.opam/fstar/lib/ocaml
-    findlib: [WARNING] Interface digestif.cmi occurs in several directories: /root/.opam/fstar/lib/digestif/c, /root/.opam/fstar/lib/digestif
-    findlib: [WARNING] Interface ratio.cmi occurs in several directories: /root/.opam/fstar/lib/num, /root/.opam/fstar/lib/ocaml
-    findlib: [WARNING] Interface num.cmi occurs in several directories: /root/.opam/fstar/lib/num, /root/.opam/fstar/lib/ocaml
-    ocamlfind: [WARNING] Package `threads': Linking problems may arise because of the missing -thread or -vmthread switch
-    File "/home/user/factoidal/.claude/worktrees/agent-a8a3c7dbcf17f1b69/tests/unit/_build/cas_tests.ml", line 37, characters 11-20:
-    37 | module E = Math_Expr
-                    ^^^^^^^^^
-    Error: Unbound module Math_Expr
-cas_tests: FAIL (build)
+  PASS  simplify(2+3) = 5
+  PASS  simplify(2*3) = 6
+  PASS  simplify(2^3) = 8
+  PASS  simplify(6/2) = 3
+  PASS  simplify(x+0) = x  (additive identity)
+  PASS  simplify(0+x) = x
+  PASS  simplify(x*1) = x  (multiplicative identity)
+  PASS  simplify(x*0) = 0  (annihilation)
+  PASS  simplify(x-0) = x
+  PASS  simplify(x^1) = x
+  PASS  simplify(x/1) = x
+  PASS  simplify(x+x) = 2*x  (coefficient collection)
+  PASS  simplify(x+x+x) = 3*x
+  PASS  simplify(x*x) = x^2  (exponent combination)
+  PASS  simplify(x^2 * x^3) = x^5
+  PASS  simplify flattens nested plus  ((x+2)+3) = x+5
+  PASS  simplify constant-folds inside a symbolic sum  (2+x+3) = x+5
+  PASS  d/dx x^2 = 2x  (power rule)
+  PASS  d/dx x^3 = 3x^2
+  PASS  d/dx (x^2 + 3x + 5) = 2x + 3
+  PASS  d/dx c = 0  (constant)
+  PASS  d/dx y = 0  (independent symbol)
+  PASS  d/dx x = 1
+  PASS  d/dx sin x = cos x
+  PASS  d/dx cos x = -sin x
+  PASS  d/dx exp x = exp x
+  PASS  d/dx ln x = 1/x
+  PASS  d/dx sin(x^2) = 2*x*cos(x^2)  (chain rule)
+  PASS  d/dx (x * sin x) = sin x + x*cos x  (product rule)
+  PASS  d/dx exp(sin x) = cos x * exp(sin x)  (chain rule)
+  PASS  d/dx of an uncovered function (arcsin) yields an explicit marker, not a wrong value
+  PASS  d/dx x^2 at x=2/1 matches finite difference
+  PASS  d/dx x^2 at x=3/1 matches finite difference
+  PASS  d/dx x^2 at x=1/2 matches finite difference
+  PASS  d/dx x^2 at x=5/2 matches finite difference
+  PASS  d/dx x^2 at x=7/3 matches finite difference
+  PASS  d/dx x^3 at x=2/1 matches finite difference
+  PASS  d/dx x^3 at x=3/1 matches finite difference
+  PASS  d/dx x^3 at x=1/2 matches finite difference
+  PASS  d/dx x^3 at x=5/2 matches finite difference
+  PASS  d/dx x^3 at x=7/3 matches finite difference
+  PASS  d/dx x^4 at x=2/1 matches finite difference
+  PASS  d/dx x^4 at x=3/1 matches finite difference
+  PASS  d/dx x^4 at x=1/2 matches finite difference
+  PASS  d/dx x^4 at x=5/2 matches finite difference
+  PASS  d/dx x^4 at x=7/3 matches finite difference
+  PASS  d/dx x^2+3x+5 at x=2/1 matches finite difference
+  PASS  d/dx x^2+3x+5 at x=3/1 matches finite difference
+  PASS  d/dx x^2+3x+5 at x=1/2 matches finite difference
+  PASS  d/dx x^2+3x+5 at x=5/2 matches finite difference
+  PASS  d/dx x^2+3x+5 at x=7/3 matches finite difference
+  PASS  d/dx x*x (product rule) at x=2/1 matches finite difference
+  PASS  d/dx x*x (product rule) at x=3/1 matches finite difference
+  PASS  d/dx x*x (product rule) at x=1/2 matches finite difference
+  PASS  d/dx x*x (product rule) at x=5/2 matches finite difference
+  PASS  d/dx x*x (product rule) at x=7/3 matches finite difference
+  PASS  d/dx x^2 * x^3 (product) at x=2/1 matches finite difference
+  PASS  d/dx x^2 * x^3 (product) at x=3/1 matches finite difference
+  PASS  d/dx x^2 * x^3 (product) at x=1/2 matches finite difference
+  PASS  d/dx x^2 * x^3 (product) at x=5/2 matches finite difference
+  PASS  d/dx x^2 * x^3 (product) at x=7/3 matches finite difference
+  PASS  d/dx (x+1)^2 (power/chain) at x=2/1 matches finite difference
+  PASS  d/dx (x+1)^2 (power/chain) at x=3/1 matches finite difference
+  PASS  d/dx (x+1)^2 (power/chain) at x=1/2 matches finite difference
+  PASS  d/dx (x+1)^2 (power/chain) at x=5/2 matches finite difference
+  PASS  d/dx (x+1)^2 (power/chain) at x=7/3 matches finite difference
+  PASS  d/dx 1/x (quotient) at x=2/1 matches finite difference
+  PASS  d/dx 1/x (quotient) at x=3/1 matches finite difference
+  PASS  d/dx 1/x (quotient) at x=1/2 matches finite difference
+  PASS  d/dx 1/x (quotient) at x=5/2 matches finite difference
+  PASS  d/dx 1/x (quotient) at x=7/3 matches finite difference
+  PASS  d/dx x/(x^2+1) (quotient) at x=2/1 matches finite difference
+  PASS  d/dx x/(x^2+1) (quotient) at x=3/1 matches finite difference
+  PASS  d/dx x/(x^2+1) (quotient) at x=1/2 matches finite difference
+  PASS  d/dx x/(x^2+1) (quotient) at x=5/2 matches finite difference
+  PASS  d/dx x/(x^2+1) (quotient) at x=7/3 matches finite difference
+  PASS  d/dx x^3 - 2x (minus) at x=2/1 matches finite difference
+  PASS  d/dx x^3 - 2x (minus) at x=3/1 matches finite difference
+  PASS  d/dx x^3 - 2x (minus) at x=1/2 matches finite difference
+  PASS  d/dx x^3 - 2x (minus) at x=5/2 matches finite difference
+  PASS  d/dx x^3 - 2x (minus) at x=7/3 matches finite difference
+  PASS  d/dx (2x+1)*(x-3) (product) at x=2/1 matches finite difference
+  PASS  d/dx (2x+1)*(x-3) (product) at x=3/1 matches finite difference
+  PASS  d/dx (2x+1)*(x-3) (product) at x=1/2 matches finite difference
+  PASS  d/dx (2x+1)*(x-3) (product) at x=5/2 matches finite difference
+  PASS  d/dx (2x+1)*(x-3) (product) at x=7/3 matches finite difference
+  PASS  subst x:=3 in x^2+1
+  PASS  subst x:=-4 in x^2+1
+  PASS  subst x:=5/2 in x^2+1
+  PASS  subst x:=0 in x^2+1
+  PASS  subst x:=3 in x^3 - 2x
+  PASS  subst x:=-4 in x^3 - 2x
+  PASS  subst x:=5/2 in x^3 - 2x
+  PASS  subst x:=0 in x^3 - 2x
+  PASS  subst x:=3 in (x+1)*(x-1)
+  PASS  subst x:=-4 in (x+1)*(x-1)
+  PASS  subst x:=5/2 in (x+1)*(x-1)
+  PASS  subst x:=0 in (x+1)*(x-1)
+  PASS  subst x:=3 in x/(x^2+1)
+  PASS  subst x:=-4 in x/(x^2+1)
+  PASS  subst x:=5/2 in x/(x^2+1)
+  PASS  subst x:=0 in x/(x^2+1)
+  PASS  idempotent: 2+3
+  PASS  idempotent: x+0
+  PASS  idempotent: x+x
+  PASS  idempotent: x*x
+  PASS  idempotent: nested plus
+  PASS  idempotent: nested times
+  PASS  idempotent: x^2 * x^3
+  PASS  idempotent: x^2 * x^-2
+  PASS  idempotent: sin(x)+sin(x)
+  PASS  idempotent: diff of x^5
+  PASS  idempotent: diff of x*sin x
+  PASS  idempotent: diff of sin(x^2)
+  PASS  idempotent: diff of x^x (general power rule)
+  PASS  idempotent: diff of arcsin (unsupported marker)
+  PASS  idempotent: big mixed
+  PASS  eval(simplify x+x) = eval(x+x) at x=2/1
+  PASS  eval(simplify x+x) = eval(x+x) at x=3/1
+  PASS  eval(simplify x+x) = eval(x+x) at x=5/2
+  PASS  eval(simplify x+x) = eval(x+x) at x=1/3
+  PASS  eval(simplify x*x) = eval(x*x) at x=2/1
+  PASS  eval(simplify x*x) = eval(x*x) at x=3/1
+  PASS  eval(simplify x*x) = eval(x*x) at x=5/2
+  PASS  eval(simplify x*x) = eval(x*x) at x=1/3
+  PASS  eval(simplify 2+x+3) = eval(2+x+3) at x=2/1
+  PASS  eval(simplify 2+x+3) = eval(2+x+3) at x=3/1
+  PASS  eval(simplify 2+x+3) = eval(2+x+3) at x=5/2
+  PASS  eval(simplify 2+x+3) = eval(2+x+3) at x=1/3
+  PASS  eval(simplify x^2 * x^3) = eval(x^2 * x^3) at x=2/1
+  PASS  eval(simplify x^2 * x^3) = eval(x^2 * x^3) at x=3/1
+  PASS  eval(simplify x^2 * x^3) = eval(x^2 * x^3) at x=5/2
+  PASS  eval(simplify x^2 * x^3) = eval(x^2 * x^3) at x=1/3
+  PASS  eval(simplify (x+1)+(x+2)) = eval((x+1)+(x+2)) at x=2/1
+  PASS  eval(simplify (x+1)+(x+2)) = eval((x+1)+(x+2)) at x=3/1
+  PASS  eval(simplify (x+1)+(x+2)) = eval((x+1)+(x+2)) at x=5/2
+  PASS  eval(simplify (x+1)+(x+2)) = eval((x+1)+(x+2)) at x=1/3
+  PASS  eval(simplify 3*x + x) = eval(3*x + x) at x=2/1
+  PASS  eval(simplify 3*x + x) = eval(3*x + x) at x=3/1
+  PASS  eval(simplify 3*x + x) = eval(3*x + x) at x=5/2
+  PASS  eval(simplify 3*x + x) = eval(3*x + x) at x=1/3
+  PASS  eval(simplify x*1 + 0) = eval(x*1 + 0) at x=2/1
+  PASS  eval(simplify x*1 + 0) = eval(x*1 + 0) at x=3/1
+  PASS  eval(simplify x*1 + 0) = eval(x*1 + 0) at x=5/2
+  PASS  eval(simplify x*1 + 0) = eval(x*1 + 0) at x=1/3
+  PASS  eval(simplify 6/2 * x) = eval(6/2 * x) at x=2/1
+  PASS  eval(simplify 6/2 * x) = eval(6/2 * x) at x=3/1
+  PASS  eval(simplify 6/2 * x) = eval(6/2 * x) at x=5/2
+  PASS  eval(simplify 6/2 * x) = eval(6/2 * x) at x=1/3
+  PASS  eval(simplify diff(x^3 - 2x)) = eval(diff(x^3 - 2x)) at x=2/1
+  PASS  eval(simplify diff(x^3 - 2x)) = eval(diff(x^3 - 2x)) at x=3/1
+  PASS  eval(simplify diff(x^3 - 2x)) = eval(diff(x^3 - 2x)) at x=5/2
+  PASS  eval(simplify diff(x^3 - 2x)) = eval(diff(x^3 - 2x)) at x=1/3
+
+CAS: 153 pass, 0 fail (out of 153)
+cas_tests: PASS
 
 --- compound_presence_writer_roundtrip ---
 == compound_presence_writer_roundtrip ==
@@ -122,11 +261,10 @@ cottas_base_writer_roundtrip: PASS
 [pagecache-global-trace] hits=28 misses=4 entries=4 cap=256
 [dictcache-global-trace] hits=0 misses=32 entries=0 cap=1024
 [pagecache-global-trace] hits=60 misses=4 entries=4 cap=256
-[pagecache-global-trace] hits=92 misses=4 entries=4 cap=256
 [dictcache-global-trace] hits=0 misses=64 entries=0 cap=1024
-[pagecache-global-trace] hits=124 misses=4 entries=4 cap=256
+[pagecache-global-trace] hits=92 misses=4 entries=4 cap=256
 [dictcache-global-trace] hits=0 misses=96 entries=0 cap=1024
-[pagecache-global-trace] hits=156 misses=4 entries=4 cap=256
+[pagecache-global-trace] hits=124 misses=4 entries=4 cap=256
 [bet7-trace] ensure_predicates_loaded: lazy populate path=mem:cottas_memory_buffer_unit
 [qof3-trace] collect_distinct col=1 path=mem:cottas_memory_buffer_unit
 [qof3-trace] collect_distinct col=1 distinct=4 rows=5
@@ -135,20 +273,18 @@ cottas_base_writer_roundtrip: PASS
 [qof3-trace] collect_distinct col=1 path=tests/unit/fixtures/store_capabilities_sample.cottas
 [qof3-trace] collect_distinct col=1 distinct=4 rows=5
 [bet7-trace] ensure_predicates_loaded: 4 distinct predicates
-[pagecache-global-trace] hits=188 misses=4 entries=4 cap=256
 [dictcache-global-trace] hits=0 misses=128 entries=0 cap=1024
-[pagecache-global-trace] hits=220 misses=4 entries=4 cap=256
+[pagecache-global-trace] hits=156 misses=4 entries=4 cap=256
+[pagecache-global-trace] hits=188 misses=4 entries=4 cap=256
 [dictcache-global-trace] hits=0 misses=160 entries=0 cap=1024
-[pagecache-global-trace] hits=252 misses=4 entries=4 cap=256
-[pagecache-global-trace] hits=284 misses=4 entries=4 cap=256
+[pagecache-global-trace] hits=220 misses=4 entries=4 cap=256
 [dictcache-global-trace] hits=0 misses=192 entries=0 cap=1024
-[pagecache-global-trace] hits=316 misses=4 entries=4 cap=256
+[pagecache-global-trace] hits=252 misses=4 entries=4 cap=256
 [dictcache-global-trace] hits=0 misses=224 entries=0 cap=1024
 [qof3-trace] cottas_ondisk_open path=mem:cottas_memory_buffer_unit
 [qof3-trace] load_handle path=mem:cottas_memory_buffer_unit
 [qof3-trace] load_handle: cache hit
 [qof3-trace] cottas_ondisk_open: handle ready
-[pagecache-global-trace] hits=348 misses=4 entries=4 cap=256
 == cottas_memory_buffer_unit ==
   PASS  synthetic handle is not a real file
   PASS  named_graphs agree (file vs memory)
@@ -354,19 +490,31 @@ delta_log_roundtrip: PASS
 dict_writer_roundtrip: PASS
 
 --- fulltext_slice1_unit ---
-  BUILD FAILED (rc=2)
-    findlib: [WARNING] Interface big_int.cmi occurs in several directories: /root/.opam/fstar/lib/num, /root/.opam/fstar/lib/ocaml
-    findlib: [WARNING] Interface nat.cmi occurs in several directories: /root/.opam/fstar/lib/num, /root/.opam/fstar/lib/ocaml
-    findlib: [WARNING] Interface arith_status.cmi occurs in several directories: /root/.opam/fstar/lib/num, /root/.opam/fstar/lib/ocaml
-    findlib: [WARNING] Interface digestif.cmi occurs in several directories: /root/.opam/fstar/lib/digestif/c, /root/.opam/fstar/lib/digestif
-    findlib: [WARNING] Interface ratio.cmi occurs in several directories: /root/.opam/fstar/lib/num, /root/.opam/fstar/lib/ocaml
-    findlib: [WARNING] Interface num.cmi occurs in several directories: /root/.opam/fstar/lib/num, /root/.opam/fstar/lib/ocaml
-    ocamlfind: [WARNING] Package `threads': Linking problems may arise because of the missing -thread or -vmthread switch
-    File "/home/user/factoidal/.claude/worktrees/agent-a8a3c7dbcf17f1b69/tests/unit/_build/fulltext_slice1_unit.ml", line 1:
-    Error: Files /home/user/factoidal/.claude/worktrees/agent-a8a3c7dbcf17f1b69/formal/fstar/ocaml-output/RML_Eval.cmx
-           and /home/user/factoidal/.claude/worktrees/agent-a8a3c7dbcf17f1b69/formal/fstar/ocaml-output/SPARQL11_Algebra.cmx
-           make inconsistent assumptions over implementation SPARQL11_Algebra
-fulltext_slice1_unit: FAIL (build)
+  PASS  tokenizer: empty string
+  PASS  tokenizer: all punctuation
+  PASS  tokenizer: single word
+  PASS  tokenizer: mixed case folds to lowercase
+  PASS  tokenizer: punctuation splits words
+  PASS  tokenizer: whitespace runs collapse
+  PASS  tokenizer: digits are alnum (kept in-token)
+  PASS  tokenizer: non-ASCII bytes act as separators (documented floor)
+  PASS  match_tokens: all query tokens present
+  PASS  match_tokens: one query token missing
+  PASS  match_tokens: candidate token order/duplicates don't matter
+  PASS  match_tokens: empty candidate never matches a nonempty query
+  PASS  literal_matches_query: multi-token AND match
+  PASS  literal_matches_query: stemming-off baseline ("panels" != "panel")
+  PASS  codec round trip: 2-arity (no field, no limit)
+  PASS  codec round trip: field restriction, no limit
+  PASS  codec round trip: field restriction + limit
+  PASS  decode_fulltext_literal: non-fulltext literal decodes to None
+  PASS  object_matches_query: IRI object never matches
+  PASS  limit handling: SPARQL11_Algebra.list_take truncates
+  PASS  limit handling: SPARQL11_Algebra.list_take n > length is a no-op
+  PASS  limit handling: SPARQL11_Algebra.list_take 0 yields empty
+  PASS  limit handling: SPARQL11_Store.list_take_n truncates
+fulltext_slice1_unit: 23 pass, 0 fail (out of 23)
+fulltext_slice1_unit: PASS
 
 --- geosparql_v0_unit ---
 
@@ -571,15 +719,15 @@ lateral_unit: PASS
 --- lifesci_closure_timing ---
 === lifesci_closure_timing: RDFS closure fixed-overhead probe ===
 
-  [parse chromosome                        ]    0.114s
+  [parse chromosome                        ]    0.104s
   chromosome: 9227 triples
-  [parse sequence_variant                  ]    0.082s
+  [parse sequence_variant                  ]    0.076s
   sequence_variant: 6455 triples
-  [parse disease                           ]    0.340s
+  [parse disease                           ]    0.271s
   disease: 27421 triples
 
 -- sequence_variant (6455 triples): single rdfs_closure_step phase breakdown --
-  [build_indexed (6 sortWith passes)       ]    0.030s
+  [build_indexed (6 sortWith passes)       ]    0.023s
   [rdfs_rule_subPropertyOf                 ]    0.000s
   [rdfs_rule_domain                        ]    0.000s
   [rdfs_rule_range                         ]    0.000s
@@ -587,11 +735,11 @@ lateral_unit: PASS
   [rdfs_rule_container_membership          ]    0.000s
   [rdfs_rule_subClassOf_trans              ]    0.000s
   [rdfs_rule_subPropertyOf_trans           ]    0.000s
-  [graph_dedup_sort                        ]    0.023s
+  [graph_dedup_sort                        ]    0.020s
   final: 6455 -> 6465 triples
 
 -- chromosome (9227 triples): single rdfs_closure_step phase breakdown --
-  [build_indexed (6 sortWith passes)       ]    0.038s
+  [build_indexed (6 sortWith passes)       ]    0.029s
   [rdfs_rule_subPropertyOf                 ]    0.000s
   [rdfs_rule_domain                        ]    0.000s
   [rdfs_rule_range                         ]    0.000s
@@ -599,59 +747,59 @@ lateral_unit: PASS
   [rdfs_rule_container_membership          ]    0.000s
   [rdfs_rule_subClassOf_trans              ]    0.000s
   [rdfs_rule_subPropertyOf_trans           ]    0.000s
-  [graph_dedup_sort                        ]    0.023s
+  [graph_dedup_sort                        ]    0.021s
   final: 9227 -> 9237 triples
 
 -- disease (27421 triples): single rdfs_closure_step phase breakdown --
-  [build_indexed (6 sortWith passes)       ]    0.198s
+  [build_indexed (6 sortWith passes)       ]    0.118s
   [rdfs_rule_subPropertyOf                 ]    0.000s
   [rdfs_rule_domain                        ]    0.000s
   [rdfs_rule_range                         ]    0.000s
-  [rdfs_rule_subClassOf                    ]    0.001s
+  [rdfs_rule_subClassOf                    ]    0.000s
   [rdfs_rule_container_membership          ]    0.000s
   [rdfs_rule_subClassOf_trans              ]    0.000s
   [rdfs_rule_subPropertyOf_trans           ]    0.000s
-  [graph_dedup_sort                        ]    0.128s
+  [graph_dedup_sort                        ]    0.109s
   final: 27421 -> 27431 triples
 
 -- sequence_variant: manual rdfs_closure_step loop (cap 6 iters) --
-  [iter  1 rdfs_closure_step               ]    0.047s
-      iter  1: len 6455 -> 6465 (delta +10) in 0.047s
-  [iter  2 rdfs_closure_step               ]    0.049s
-      iter  2: len 6465 -> 6465 (delta +0) in 0.049s
+  [iter  1 rdfs_closure_step               ]    0.041s
+      iter  1: len 6455 -> 6465 (delta +10) in 0.041s
+  [iter  2 rdfs_closure_step               ]    0.039s
+      iter  2: len 6465 -> 6465 (delta +0) in 0.039s
   converged after 2 iteration(s)
 
 -- disease: manual rdfs_closure_step loop (cap 6 iters) --
-  [iter  1 rdfs_closure_step               ]    0.280s
-      iter  1: len 27421 -> 27431 (delta +10) in 0.280s
-  [iter  2 rdfs_closure_step               ]    0.281s
-      iter  2: len 27431 -> 27431 (delta +0) in 0.281s
+  [iter  1 rdfs_closure_step               ]    0.220s
+      iter  1: len 27421 -> 27431 (delta +10) in 0.220s
+  [iter  2 rdfs_closure_step               ]    0.215s
+      iter  2: len 27431 -> 27431 (delta +0) in 0.215s
   converged after 2 iteration(s)
 
-  [rdfs_closure_with_reflexivity(disease, fuel=100)]    0.808s
-  disease: 27421 -> 27437 triples in 0.808s
+  [rdfs_closure_with_reflexivity(disease, fuel=100)]    0.638s
+  disease: 27421 -> 27437 triples in 0.638s
 
 summary: probe complete (no pass/fail assertions — instrumentation only)
 lifesci_closure_timing: PASS
 
 --- lifesci_owlrl_loop_timing ---
 Input g0 (sequence_variant): 6455 triples
-rdfs_closed: 6471 triples (0.136s)
-  iter  1: len 6471 -> 8908 (delta +2437)  owl_step=0.242s  rdfs_step=0.068s  total=0.309s  elapsed=0.3s
-  iter  2: len 8908 -> 8953 (delta +45)  owl_step=0.249s  rdfs_step=0.066s  total=0.315s  elapsed=0.6s
-  iter  3: len 8953 -> 8989 (delta +36)  owl_step=0.238s  rdfs_step=0.073s  total=0.311s  elapsed=0.9s
-  iter  4: len 8989 -> 8998 (delta +9)  owl_step=0.251s  rdfs_step=0.067s  total=0.318s  elapsed=1.3s
-  iter  5: len 8998 -> 8998 (delta +0)  owl_step=0.230s  rdfs_step=0.065s  total=0.294s  elapsed=1.5s
+rdfs_closed: 6471 triples (0.114s)
+  iter  1: len 6471 -> 8908 (delta +2437)  owl_step=0.209s  rdfs_step=0.052s  total=0.261s  elapsed=0.3s
+  iter  2: len 8908 -> 8953 (delta +45)  owl_step=0.214s  rdfs_step=0.052s  total=0.266s  elapsed=0.5s
+  iter  3: len 8953 -> 8989 (delta +36)  owl_step=0.198s  rdfs_step=0.058s  total=0.256s  elapsed=0.8s
+  iter  4: len 8989 -> 8998 (delta +9)  owl_step=0.207s  rdfs_step=0.062s  total=0.269s  elapsed=1.1s
+  iter  5: len 8998 -> 8998 (delta +0)  owl_step=0.197s  rdfs_step=0.058s  total=0.254s  elapsed=1.3s
 
-converged after 5 iteration(s), final len=8998, wall=1.5s
+converged after 5 iteration(s), final len=8998, wall=1.3s
 lifesci_owlrl_loop_timing: PASS
 
 --- lifesci_owlrl_rule_reorder_check ---
 === lifesci_owlrl_rule_reorder_check: task #36 before/after + equivalence ===
 
 chromosome: 9227 triples
-  [rdfs_closure_with_reflexivity                 ]    0.173s
-  [one owl_step+rdfs_step round (grow)           ]    1.062s
+  [rdfs_closure_with_reflexivity                 ]    0.142s
+  [one owl_step+rdfs_step round (grow)           ]    0.970s
 grown graph: 18480 triples
 
   [BEFORE owl_rule_reflexive_property            ]    0.000s
@@ -666,10 +814,10 @@ lifesci_owlrl_rule_reorder_check: PASS
 
 --- lifesci_owlrl_rule_timing ---
 Input g0 (sequence_variant): 6455 triples
-g1a = rdfs_closure_with_reflexivity(g0, fuel=100): 6471 triples (0.134s)
+g1a = rdfs_closure_with_reflexivity(g0, fuel=100): 6471 triples (0.127s)
 
 Per-rule timing on g1 (6471 triples, cap=20s each):
-  build_indexed: 0.024s
+  build_indexed: 0.022s
 
   testing equivalent_class                             ... PASS    6471 triples  (  0.000s)
   testing equivalent_property                          ... PASS    6471 triples  (  0.000s)
@@ -681,7 +829,7 @@ Per-rule timing on g1 (6471 triples, cap=20s each):
   testing symmetric_property                           ... PASS    6471 triples  (  0.000s)
   testing transitive_property                          ... PASS    6471 triples  (  0.000s)
   testing named_equivClass_to_sameAs                   ... PASS    6471 triples  (  0.000s)
-  testing sameAs_reflexivity                           ... PASS    8906 triples  (  0.083s)
+  testing sameAs_reflexivity                           ... PASS    8906 triples  (  0.082s)
   testing sameAs_symmetry                              ... PASS    6471 triples  (  0.000s)
   testing differentFrom_symmetry                       ... PASS    6471 triples  (  0.000s)
   testing sameAs_transitivity                          ... PASS    6471 triples  (  0.000s)
@@ -695,10 +843,10 @@ Per-rule timing on g1 (6471 triples, cap=20s each):
   testing ifp_diff_to_diff                             ... PASS    6471 triples  (  0.000s)
   testing minc1_bridge                                 ... PASS    6471 triples  (  0.000s)
   testing svf2_existential_witness                     ... PASS    6471 triples  (  0.000s)
-  testing cls_svf2_qualified                           ... PASS    6471 triples  (  0.014s)
-  testing cls_minc_qual1                               ... PASS    6471 triples  (  0.014s)
-  testing cls_maxqc1                                   ... PASS    6471 triples  (  0.014s)
-  testing cls_exactqc1                                 ... PASS    6471 triples  (  0.014s)
+  testing cls_svf2_qualified                           ... PASS    6471 triples  (  0.013s)
+  testing cls_minc_qual1                               ... PASS    6471 triples  (  0.013s)
+  testing cls_maxqc1                                   ... PASS    6471 triples  (  0.012s)
+  testing cls_exactqc1                                 ... PASS    6471 triples  (  0.012s)
   testing cls_maxc2                                    ... PASS    6471 triples  (  0.000s)
   testing cls_avf1                                     ... PASS    6471 triples  (  0.000s)
   testing reflexive_property                           ... PASS    6471 triples  (  0.000s)
@@ -708,7 +856,7 @@ Per-rule timing on g1 (6471 triples, cap=20s each):
   testing chain_to_transitive                          ... PASS    6471 triples  (  0.000s)
   testing named_sameAs_to_equivClass                   ... PASS    6471 triples  (  0.000s)
   testing prp_key                                      ... PASS    6471 triples  (  0.000s)
-  testing xsd_datatype_axioms                          ... PASS    6471 triples  (  0.030s)
+  testing xsd_datatype_axioms                          ... PASS    6471 triples  (  0.027s)
   testing scm_dom2                                     ... PASS    6471 triples  (  0.000s)
   testing scm_rng2                                     ... PASS    6471 triples  (  0.000s)
 
@@ -719,7 +867,7 @@ lifesci_owlrl_rule_timing: PASS
 === lifesci_rdfs_rule_reorder_check: task #36 before/after + equivalence ===
 
 -- sequence_variant (6455 triples) --
-  [build_indexed                                 ]    0.029s
+  [build_indexed                                 ]    0.023s
   [BEFORE rdfs_rule_subPropertyOf                ]    0.000s
   [AFTER  rdfs_rule_subPropertyOf                ]    0.000s
   [BEFORE rdfs_rule_domain                       ]    0.000s
@@ -731,7 +879,7 @@ lifesci_owlrl_rule_timing: PASS
     range                        EQUIVALENT (6455 triples both sides)
 
 -- chromosome (9227 triples) --
-  [build_indexed                                 ]    0.035s
+  [build_indexed                                 ]    0.027s
   [BEFORE rdfs_rule_subPropertyOf                ]    0.000s
   [AFTER  rdfs_rule_subPropertyOf                ]    0.000s
   [BEFORE rdfs_rule_domain                       ]    0.000s
@@ -743,7 +891,7 @@ lifesci_owlrl_rule_timing: PASS
     range                        EQUIVALENT (9227 triples both sides)
 
 -- disease (27421 triples) --
-  [build_indexed                                 ]    0.161s
+  [build_indexed                                 ]    0.135s
   [BEFORE rdfs_rule_subPropertyOf                ]    0.000s
   [AFTER  rdfs_rule_subPropertyOf                ]    0.000s
   [BEFORE rdfs_rule_domain                       ]    0.000s
@@ -795,7 +943,7 @@ Loaded third_party/testing/w3c/sparql/sparql11/entailment/simple.ttl (448 bytes)
   parsed: 16 triples
   [owl_rl_closure fuel=1           ] 0.004s
 PASS  owl_rl_closure fuel=1 (cap=5s) -> 207 triples
-  [owl_rl_closure fuel=2           ] 0.007s
+  [owl_rl_closure fuel=2           ] 0.006s
 PASS  owl_rl_closure fuel=2 (cap=5s) -> 280 triples
 summary: 2 pass, 0 expected-fail, 0 unexpected fail
 owl_direct_pipeline_timing: PASS
@@ -942,7 +1090,7 @@ Sequenced timing through owl_rl_closure_step's 28 rules (cap=10s each):
   step cls_exactqc1                     (in=318) 0.001s -> 343 [+25]
   step cls_maxc2                        (in=343) 0.001s -> 343 [unchanged]
   step cls_avf1                         (in=343) 0.001s -> 343 [unchanged]
-  step reflexive_property               (in=343) 0.000s -> 343 [unchanged]
+  step reflexive_property               (in=343) 0.001s -> 343 [unchanged]
   step scm_cls_restriction              (in=343) 0.000s -> 375 [+32]
   step property_chain_2                 (in=375) 0.001s -> 375 [unchanged]
   step property_chain_n                 (in=375) 0.001s -> 375 [unchanged]
@@ -1150,19 +1298,19 @@ Loaded third_party/testing/owl/profile-EL.rdf (244108 bytes)
 header: 376 bytes
 
 Per-size timing on profile-EL prefixes:
-  size=   926 bytes  ... PASS  0 triples (0.000s, 5349.8 bytes/ms)
-  size=  1434 bytes  ... PASS  0 triples (0.000s, 5558.8 bytes/ms)
-  size=  2413 bytes  ... PASS  0 triples (0.000s, 6454.6 bytes/ms)
-  size=  4403 bytes  ... PASS  0 triples (0.001s, 6945.3 bytes/ms)
-  size=  8433 bytes  ... PASS  0 triples (0.001s, 7535.3 bytes/ms)
-  size= 12443 bytes  ... PASS  0 triples (0.002s, 6908.9 bytes/ms)
-  size= 16588 bytes  ... PASS  0 triples (0.002s, 7752.1 bytes/ms)
-  size= 24430 bytes  ... PASS  0 triples (0.003s, 8111.0 bytes/ms)
-  size= 32535 bytes  ... PASS  0 triples (0.004s, 7918.2 bytes/ms)
-  size= 48439 bytes  ... PASS  0 triples (0.006s, 8348.5 bytes/ms)
-  size= 64411 bytes  ... PASS  0 triples (0.008s, 8377.0 bytes/ms)
-  size= 96477 bytes  ... PASS  0 triples (0.012s, 8164.3 bytes/ms)
-  size=128499 bytes  ... PASS  0 triples (0.015s, 8603.3 bytes/ms)
+  size=   926 bytes  ... PASS  0 triples (0.000s, 3431.0 bytes/ms)
+  size=  1434 bytes  ... PASS  0 triples (0.000s, 6580.6 bytes/ms)
+  size=  2413 bytes  ... PASS  0 triples (0.000s, 5870.6 bytes/ms)
+  size=  4403 bytes  ... PASS  0 triples (0.001s, 7749.7 bytes/ms)
+  size=  8433 bytes  ... PASS  0 triples (0.001s, 7624.6 bytes/ms)
+  size= 12443 bytes  ... PASS  0 triples (0.002s, 7830.4 bytes/ms)
+  size= 16588 bytes  ... PASS  0 triples (0.002s, 8519.1 bytes/ms)
+  size= 24430 bytes  ... PASS  0 triples (0.003s, 8841.7 bytes/ms)
+  size= 32535 bytes  ... PASS  0 triples (0.004s, 8075.1 bytes/ms)
+  size= 48439 bytes  ... PASS  0 triples (0.005s, 8852.2 bytes/ms)
+  size= 64411 bytes  ... PASS  0 triples (0.007s, 8838.0 bytes/ms)
+  size= 96477 bytes  ... PASS  0 triples (0.011s, 8540.1 bytes/ms)
+  size=128499 bytes  ... PASS  0 triples (0.015s, 8467.8 bytes/ms)
 
 summary: 13 pass, 0 expected-fail (perf cap exceeded)
 rdfxml_parser_perf: PASS
@@ -1177,22 +1325,156 @@ Step B: expand catalog entities (Str.global_replace x 5)
   expanded to 298759 bytes in 0.003s
 
 Step C: Parser_XML.parse_xml_document on expanded
-  PASS  parsed (0.035s)
+  PASS  parsed (0.032s)
 
 Step D: Parser_RDFXML.parse_rdfxml_with_base on expanded
-  PASS  1896 triples (0.057s)
+  PASS  1896 triples (0.051s)
 
 summary: 2 pass, 0 expected-fail
 rdfxml_profile_repro: PASS
 
 --- rdfxml_stack_regression ---
 rdfxml_stack_regression: generated 50000-triple fixture (6577910 bytes)
-  parsed 50000 triples in 1.364s
+  parsed 50000 triples in 1.273s
   PASS  triple count
   PASS  first triple subject is s0
   PASS  last triple subject is s(n-1)
 rdfxml_stack_regression: 3 pass, 0 fail (out of 3)
 rdfxml_stack_regression: PASS
+
+--- regex_engine_unit ---
+  PASS  literal exact match
+  PASS  literal rejects prefix
+  PASS  literal rejects extra
+  PASS  empty string vs Eps
+  PASS  nonempty vs Eps
+  PASS  class [a-z] matches 'm'
+  PASS  class [a-z] rejects 'M'
+  PASS  class [0-9]+ matches digits
+  PASS  a* matches empty
+  PASS  a* matches aaaa
+  PASS  a* rejects b
+  PASS  (ab)* matches abab
+  PASS  (ab)* rejects aba
+  PASS  cat|dog left
+  PASS  cat|dog right
+  PASS  cat|dog miss
+  PASS  a(b|c) matches ab
+  PASS  a(b|c) matches ac
+  PASS  a(b|c) rejects ad
+  PASS  a(b|c) rejects a
+  PASS  And: alnum & (exactly 3 chars) accepts 'a1z'
+  PASS  And: alnum & (exactly 3 chars) rejects 'ab' (len 2)
+  PASS  And: alnum & (exactly 3 chars) rejects 'a b' (space not alnum)
+  PASS  Not(ab) rejects 'ab'
+  PASS  Not(ab) accepts 'ac'
+  PASS  Not(ab) accepts empty
+  PASS  Not(Not(ab)) matches 'ab'
+  PASS  is_empty R_Empty
+  PASS  is_empty R_Eps is false
+  PASS  intersection_empty: a(b|c) & 'ad' is empty
+  PASS  intersection_empty: a(b|c) & 'ab' is NON-empty
+  PASS  intersection_empty: 'a' & 'b' is empty
+  PASS  subsumes: {ab,ac} covers a(b|c)
+  PASS  (a?)^25 a^25 matches a^25 (no blowup)
+  PASS  (a?)^25 a^25 rejects a^24
+  PASS  codepoint class [00E0-00FF] matches U+00E4
+  PASS  codepoint class [00E0-00FF] rejects U+0100
+  PASS  astral single codepoint U+1D4B8 matches its literal
+  PASS  astral literal rejects a different astral codepoint
+  PASS  range [FF00-10FFFF] matches U+1F600
+  PASS  search: 'cat' inside 'the cat sat'
+  PASS  search: 'dog' not in 'the cat sat'
+  PASS  proven==norm abc
+  PASS  proven==norm a(b|c) on ab
+  PASS  proven==norm a(b|c) on ax
+  PASS  proven==norm (ab)* on abab
+  PASS  proven==norm Not(ab) on ac
+  PASS  proven==norm [a-z]+ on m
+  PASS  parse OWL fixture pattern a(b|c)
+  PASS  parse OWL dp1-enumeration ab|ac
+  PASS  OWL e2e: parsed a(b|c) matches ab
+  PASS  OWL e2e: parsed a(b|c) matches ac
+  PASS  OWL e2e: parsed a(b|c) rejects ad
+  PASS  OWL e2e: parsed a(b|c) rejects a
+  PASS  OWL e2e: parsed ab|ac matches ab
+  PASS  OWL e2e: parsed ab|ac rejects abc
+  PASS  OWL e2e: is_empty(And pat (Not enum)) -- pattern subsumed
+  PASS  OWL e2e: intersection_empty(pat, enum) is false (ab,ac collide)
+  PASS  OWL e2e: subsumes(enum, pat)
+  PASS  OWL collision: pattern non-empty (witness exists)
+  PASS  OWL collision: {ab,ac} covers a(b|c) -> CLASH
+  PASS  OWL collision: {ab} alone does NOT cover a(b|c) -> no clash
+  PASS  OWL collision: {ab,ad} does NOT cover a(b|c) -> no clash
+  PASS  parse CSVW test194 duration format ^.$
+  PASS  ^.$ matches single char 'x'
+  PASS  ^.$ rejects empty
+  PASS  ^.$ rejects two chars
+  PASS  ^.$ dot excludes newline
+  PASS  CSVW194 ^.$ rejects duration 'PT130S'
+  PASS  CSVW194 ^.$ rejects duration 'P0Y20M'
+  PASS  CSVW193 ^-?P.*$ accepts 'PT130S'
+  PASS  CSVW193 ^-?P.*$ accepts '-P60D'
+  PASS  CSVW193 ^-?P.DT.*$ accepts 'P1DT2H'
+  PASS  CSVW193 ^-?P.Y20M$ accepts 'P0Y20M'
+  PASS  CSVW193 ^-?P.Y20M$ rejects 'P0Y21M'
+  PASS  a(b|c) via parser matches ab
+  PASS  a(b|c) via parser rejects ad
+  PASS  [0-9]+ matches 2026
+  PASS  [0-9]+ rejects 20a
+  PASS  [2-8][0-9]* matches 5001
+  PASS  [2-8][0-9]* rejects leading 9
+  PASS  [Aa]+ matches AaAa
+  PASS  [Aa]+ rejects b
+  PASS  SSN pattern matches 123-45-6789
+  PASS  SSN pattern rejects short group
+  PASS  \d{4} matches 2026
+  PASS  \d{4} rejects 3 digits
+  PASS  (ab)+ matches abab
+  PASS  (ab)+ rejects aba
+  PASS  (ab)+ rejects empty
+  PASS  https?:// matches http://
+  PASS  https?:// matches https://
+  PASS  https?:// rejects htt://
+  PASS  .*cd.* matches xxcdyy
+  PASS  .*cd.* matches bare cd
+  PASS  .*cd.* rejects xy
+  PASS  a{2,3} matches aa
+  PASS  a{2,3} matches aaa
+  PASS  a{2,3} rejects a
+  PASS  a{2,3} rejects aaaa
+  PASS  a{2,} matches aaaaa
+  PASS  a{2,} rejects a
+  PASS  .*?x matches yyx
+  PASS  .*?x rejects yy
+  PASS  \^bc\$ matches literal ^bc$
+  PASS  \. matches literal dot
+  PASS  \. rejects any-char use
+  PASS  \u0061 matches 'a'
+  PASS  \u0061 rejects 'b'
+  PASS  \U0001D4B8 matches astral 𝒸
+  PASS  \U0001D4B8 rejects nearby astral
+  PASS  [^b] matches 'a'
+  PASS  [^b] rejects 'b'
+  PASS  a[^b]c matches axc
+  PASS  a[^b]c rejects abc
+  PASS  [^0-9]+ matches letters
+  PASS  [^0-9]+ rejects a digit
+  PASS  (?:ab)+ matches abab
+  PASS  parse-None unterminated class [
+  PASS  parse-None bare quantifier +
+  PASS  parse-None unclosed group a(b
+  PASS  parse-None unbalanced close a)
+  PASS  parse-None category escape \p{L}
+  PASS  parse-None backreference \1
+  PASS  parse-None lookahead (?=x)
+  PASS  parse-None empty brace a{
+  PASS  parse-None non-numeric brace a{x}
+  PASS  proven==norm(parsed) a(b|c) on ab
+  PASS  proven==norm(parsed) [0-9]+ on 2026
+  PASS  proven==norm(parsed) (ab)+ on abab
+regex_engine_unit: 130 pass, 0 fail (out of 130)
+regex_engine_unit: PASS
 
 --- regex_match_unit ---
   PASS  #276 reproducer: http vs https?
@@ -1266,8 +1548,108 @@ rdfxml_stack_regression: PASS
   PASS  \r escape rejects the literal letter r
   PASS  ShEx REGEXP_escapes fixture: control escapes + astral char
   PASS  ShEx REGEXP_escapes fixture: rejects the _999 suffix variant
-regex_match_unit: 71 pass, 0 fail (out of 71)
+  PASS  unanchored: 'cat' inside 'the cat sat'
+  PASS  unanchored: 'dog' not in 'the cat sat'
+  PASS  ^abc matches a prefix
+  PASS  ^abc rejects a non-prefix
+  PASS  abc$ matches a suffix
+  PASS  abc$ rejects a non-suffix
+  PASS  i flag with ^..$ whole-string
+  PASS  default dot excludes newline
+  PASS  s flag makes dot match newline
+  PASS  no-q: a+b is a regex (matches aaab)
+  PASS  q: a+b is literal (rejects aaab)
+  PASS  q: a+b literal matches the literal 'a+b'
+  PASS  iq: literal + case-insensitive
+  PASS  x flag strips pattern whitespace
+  PASS  x flag: whitespace inside a class is kept
+  PASS  codepoint class [本語] matches 本
+  PASS  codepoint class [本語] rejects 日
+regex_match_unit: 88 pass, 0 fail (out of 88)
 regex_match_unit: PASS
+
+--- selective_decode_differential_gate ---
+[qof3-trace] cottas_ondisk_open path=/tmp/bench-competitive-v274mush/cottas-gene/gene-bench/v1/data.cottas
+[qof3-trace] load_handle path=/tmp/bench-competitive-v274mush/cottas-gene/gene-bench/v1/data.cottas
+[bet7-trace] build_handle path=/tmp/bench-competitive-v274mush/cottas-gene/gene-bench/v1/data.cottas (lazy open: defer all 4 columns)
+[qof3-trace] build_handle: distinct s=0 p=0 o=0 g=0 total_rows=888949
+[qof3-trace] cottas_ondisk_open: handle ready
+[pagecache-global-trace] hits=0 misses=32 entries=32 cap=256
+[dictcache-global-trace] hits=16 misses=16 entries=16 cap=1024
+[pagecache-global-trace] hits=32 misses=32 entries=32 cap=256
+[dictcache-global-trace] hits=40 misses=24 entries=22 cap=1024
+[dictcache-global-trace] hits=68 misses=28 entries=22 cap=1024
+[pagecache-global-trace] hits=64 misses=32 entries=32 cap=256
+[dictcache-global-trace] hits=100 misses=28 entries=22 cap=1024
+[pagecache-global-trace] hits=96 misses=32 entries=32 cap=256
+[pagecache-global-trace] hits=128 misses=32 entries=32 cap=256
+== selective_decode_differential_gate ==
+  using artifact: /tmp/bench-competitive-v274mush/cottas-gene/gene-bench/v1/data.cottas
+  PASS  fixture sanity: wdt:P1057 has at least one row on this artifact
+  PASS  gate-a/bound-predicate(P1057): row count matches
+  PASS  gate-a/bound-predicate(P1057): rows byte-equal, in order, col_need_all
+  PASS  gate-a/bound-subject: row count matches
+  PASS  gate-a/bound-subject: rows byte-equal, in order, col_need_all
+  PASS  gate-b/bound-subject: kept positions (p,o,g) match with cn_s=false
+  PASS  gate-b/bound-subject: s is still Some (filled from the bound, not gated by need)
+  PASS  gate-b/bound-predicate: kept position (p) matches with cn_s=cn_o=false
+  PASS  gate-b/bound-predicate: p is still Some (bound position, always filled)
+  PASS  gate-b/bound-predicate: s is None (unbound, not needed)
+  PASS  gate-b/bound-predicate: o is None (unbound, not needed)
+  PASS  gate-b/bound-predicate: kept position (o) matches with cn_s=cn_p=false
+  PASS  gate-a/all-unbound(LIMIT-shaped): row count matches
+  PASS  gate-a/all-unbound(LIMIT-shaped): rows byte-equal, in order, col_need_all
+
+selective_decode_differential_gate: 14 pass, 0 fail (out of 14)
+selective_decode_differential_gate: PASS
+
+--- selective_decode_vars_unit ---
+  PASS  expr_vars: E_Var
+  PASS  expr_vars: literals/constants contribute nothing
+  PASS  expr_vars: E_Arith both sides
+  PASS  expr_vars: E_Compare both sides
+  PASS  expr_vars: E_And / E_Or / E_Not
+  PASS  expr_vars: E_IsIRI/E_IsBlank/E_IsLiteral/E_IsNumeric
+  PASS  expr_vars: E_Str/E_Lang/E_Datatype/E_IRI_fn
+  PASS  expr_vars: E_StrDt / E_StrLang
+  PASS  expr_vars: E_Bound
+  PASS  expr_vars: E_If all three branches
+  PASS  expr_vars: E_Coalesce list
+  PASS  expr_vars: E_In / E_NotIn
+  PASS  expr_vars: E_StrLen
+  PASS  expr_vars: E_Substr with and without the optional length
+  PASS  expr_vars: E_UCase / E_LCase
+  PASS  expr_vars: E_StrStarts/E_StrEnds/E_Contains/E_StrBefore/E_StrAfter
+  PASS  expr_vars: E_Concat list
+  PASS  expr_vars: E_EncodeForUri
+  PASS  expr_vars: E_Replace with and without flags
+  PASS  expr_vars: E_Regex with and without flags
+  PASS  expr_vars: numeric functions (Abs/Round/Ceil/Floor)
+  PASS  expr_vars: hash functions (MD5/SHA1/SHA256/SHA384/SHA512)
+  PASS  expr_vars: date/time accessors
+  PASS  expr_vars: E_SameTerm
+  PASS  expr_vars: E_Exists descends into its sub-pattern
+  PASS  expr_vars: E_NotExists descends into its sub-pattern
+  PASS  expr_vars: E_Aggregate
+  PASS  expr_vars: E_FunctionCall args
+  PASS  query_live_vars: plain SELECT ?s projects only ?s
+  PASS  query_live_vars: SELECT * means everything live
+  PASS  query_live_vars: FILTER free vars are live
+  PASS  query_live_vars: ORDER BY free vars are live
+  PASS  query_live_vars: HAVING free vars are live
+  PASS  query_live_vars: BIND free vars are live
+  PASS  col_need_for_tp: bound predicate position never needs decode
+  PASS  col_need_for_tp: live projected subject needs decode
+  PASS  col_need_for_tp: dead unbound object does not need decode
+  PASS  col_need_for_tp: cross-pattern join var needs decode
+  PASS  col_need_for_tp: non-shared non-live subject does not need decode
+  PASS  col_need_for_tp: within-BGP repeat (subject side of t1) needs decode
+  PASS  col_need_for_tp: within-BGP repeat (object side of t1) needs decode
+  PASS  col_need_for_tp: within-BGP repeat (subject side of t2) needs decode
+  PASS  col_need_for_tp: within-BGP repeat (object side of t2) needs decode
+
+selective_decode_vars_unit: 43 pass, 0 fail (out of 43)
+selective_decode_vars_unit: PASS
 
 --- shexc_parser_unit ---
   PASS  PREFIX + BASE directives, named prefix (parsed)
@@ -1379,34 +1761,659 @@ sparql_protocol_client_unit: 69 pass, 0 fail (out of 69)
 sparql_protocol_client_unit: PASS
 
 --- sparql_service_wrap_unit ---
-  BUILD FAILED (rc=2)
-    findlib: [WARNING] Interface big_int.cmi occurs in several directories: /root/.opam/fstar/lib/num, /root/.opam/fstar/lib/ocaml
-    findlib: [WARNING] Interface nat.cmi occurs in several directories: /root/.opam/fstar/lib/num, /root/.opam/fstar/lib/ocaml
-    findlib: [WARNING] Interface arith_status.cmi occurs in several directories: /root/.opam/fstar/lib/num, /root/.opam/fstar/lib/ocaml
-    findlib: [WARNING] Interface digestif.cmi occurs in several directories: /root/.opam/fstar/lib/digestif/c, /root/.opam/fstar/lib/digestif
-    findlib: [WARNING] Interface ratio.cmi occurs in several directories: /root/.opam/fstar/lib/num, /root/.opam/fstar/lib/ocaml
-    findlib: [WARNING] Interface num.cmi occurs in several directories: /root/.opam/fstar/lib/num, /root/.opam/fstar/lib/ocaml
-    ocamlfind: [WARNING] Package `threads': Linking problems may arise because of the missing -thread or -vmthread switch
-    File "/home/user/factoidal/.claude/worktrees/agent-a8a3c7dbcf17f1b69/tests/unit/_build/sparql_service_wrap_unit.ml", line 1:
-    Error: Files /home/user/factoidal/.claude/worktrees/agent-a8a3c7dbcf17f1b69/formal/fstar/ocaml-output/RML_Eval.cmx
-           and /home/user/factoidal/.claude/worktrees/agent-a8a3c7dbcf17f1b69/formal/fstar/ocaml-output/SPARQL11_Algebra.cmx
-           make inconsistent assumptions over implementation SPARQL11_Algebra
-sparql_service_wrap_unit: FAIL (build)
+  PASS  parse_wrap_iri: wrap+https with #rml= control fragment
+  PASS  parse_wrap_iri: wrap+http, no control fragment
+  PASS  parse_wrap_iri: #mime= control fragment
+  PASS  parse_wrap_iri: #ttl= control fragment (parsed, v1 ignores semantically)
+  PASS  parse_wrap_iri: multiple control-fragment keys, all recovered
+  PASS  parse_wrap_iri: rejects wrap+mcp: (out of scope this stage)
+  PASS  parse_wrap_iri: rejects wrap+exec: (out of scope this stage)
+  PASS  parse_wrap_iri: rejects a plain http(s) IRI (no wrap+ prefix)
+  PASS  parse_wrap_iri: rejects an entirely unrelated string
+  PASS  wrap_target_url: https round trip
+  PASS  wrap_target_url: http round trip
+  PASS  build_wrap_get_request: host/port/path/query split (explicit port)
+  PASS  build_wrap_get_request: default https port is 443
+  PASS  build_wrap_get_request: default http port is 80
+  PASS  build_wrap_get_request: no path defaults to /
+  PASS  build_wrap_get_request: request is Accept: */* , Connection: close, no body
+  PASS  detect_wrap_format: mime= override wins over Content-Type
+  PASS  detect_wrap_format: falls back to Content-Type, params stripped
+  PASS  detect_wrap_format: text/turtle
+  PASS  detect_wrap_format: application/x-turtle (alias)
+  PASS  detect_wrap_format: application/n-triples
+  PASS  detect_wrap_format: application/n-quads
+  PASS  detect_wrap_format: no Content-Type and no mime= -> plain-string fallback
+  PASS  detect_wrap_format: unrecognized Content-Type -> plain-string fallback
+  PASS  resolve_wrap_response: flat JSON object -> one triple per field
+  PASS  resolve_wrap_response: nested JSON object adds a blank-node link triple
+  PASS  resolve_wrap_response: JSON array fans out as repeated triples, same predicate
+  PASS  resolve_wrap_response: CSV -- one blank-node subject per row, one triple per cell
+  PASS  resolve_wrap_response: Turtle passthrough (no default mapping applied)
+  PASS  resolve_wrap_response: N-Triples passthrough (2 triples)
+  PASS  resolve_wrap_response: plain-string fallback (unrecognized content, no mime=)
+  PASS  resolve_wrap_response: 404 status -> no triples
+  PASS  resolve_wrap_response: 500 status -> no triples
+  PASS  resolve_wrap_response: non-wrap+ IRI is never resolved, regardless of status/body
+  PASS  resolve_wrap_response: malformed JSON body -> no triples (not a crash)
+  PASS  resolve_wrap_response: mime= override forces CSV mapping over a text/plain Content-Type
+sparql_service_wrap_unit: 36 pass, 0 fail (out of 36)
+sparql_service_wrap_unit: PASS
 
 --- store_capabilities_unit ---
-  BUILD FAILED (rc=2)
-    findlib: [WARNING] Interface big_int.cmi occurs in several directories: /root/.opam/fstar/lib/num, /root/.opam/fstar/lib/ocaml
-    findlib: [WARNING] Interface nat.cmi occurs in several directories: /root/.opam/fstar/lib/num, /root/.opam/fstar/lib/ocaml
-    findlib: [WARNING] Interface arith_status.cmi occurs in several directories: /root/.opam/fstar/lib/num, /root/.opam/fstar/lib/ocaml
-    findlib: [WARNING] Interface digestif.cmi occurs in several directories: /root/.opam/fstar/lib/digestif/c, /root/.opam/fstar/lib/digestif
-    findlib: [WARNING] Interface ratio.cmi occurs in several directories: /root/.opam/fstar/lib/num, /root/.opam/fstar/lib/ocaml
-    findlib: [WARNING] Interface num.cmi occurs in several directories: /root/.opam/fstar/lib/num, /root/.opam/fstar/lib/ocaml
-    ocamlfind: [WARNING] Package `threads': Linking problems may arise because of the missing -thread or -vmthread switch
-    File "/home/user/factoidal/.claude/worktrees/agent-a8a3c7dbcf17f1b69/tests/unit/_build/store_capabilities_unit.ml", line 1:
-    Error: Files /home/user/factoidal/.claude/worktrees/agent-a8a3c7dbcf17f1b69/formal/fstar/ocaml-output/RML_Eval.cmx
-           and /home/user/factoidal/.claude/worktrees/agent-a8a3c7dbcf17f1b69/formal/fstar/ocaml-output/SPARQL11_Algebra.cmx
-           make inconsistent assumptions over implementation SPARQL11_Algebra
-store_capabilities_unit: FAIL (build)
+[qof3-trace] cottas_ondisk_open path=tests/unit/fixtures/store_capabilities_sample.cottas
+[qof3-trace] load_handle path=tests/unit/fixtures/store_capabilities_sample.cottas
+[bet7-trace] build_handle path=tests/unit/fixtures/store_capabilities_sample.cottas (lazy open: defer all 4 columns)
+[qof3-trace] build_handle: distinct s=0 p=0 o=0 g=0 total_rows=5
+[qof3-trace] cottas_ondisk_open: handle ready
+[bet7-trace] ensure_graphs_loaded: lazy populate path=tests/unit/fixtures/store_capabilities_sample.cottas
+[qof3-trace] collect_distinct_graph col=3 path=tests/unit/fixtures/store_capabilities_sample.cottas
+[qof3-trace] collect_distinct_graph col=3 named_graphs=2 rows=5
+[bet7-trace] ensure_graphs_loaded: 2 distinct graphs
+[pagecache-global-trace] hits=28 misses=4 entries=4 cap=256
+[dictcache-global-trace] hits=0 misses=32 entries=0 cap=1024
+[pagecache-global-trace] hits=60 misses=4 entries=4 cap=256
+[dictcache-global-trace] hits=0 misses=64 entries=0 cap=1024
+[pagecache-global-trace] hits=92 misses=4 entries=4 cap=256
+[dictcache-global-trace] hits=0 misses=96 entries=0 cap=1024
+[pagecache-global-trace] hits=124 misses=4 entries=4 cap=256
+[bet7-trace] ensure_predicates_loaded: lazy populate path=tests/unit/fixtures/store_capabilities_sample.cottas
+[qof3-trace] collect_distinct col=1 path=tests/unit/fixtures/store_capabilities_sample.cottas
+[qof3-trace] collect_distinct col=1 distinct=4 rows=5
+[bet7-trace] ensure_predicates_loaded: 4 distinct predicates
+[dictcache-global-trace] hits=0 misses=128 entries=0 cap=1024
+[pagecache-global-trace] hits=156 misses=4 entries=4 cap=256
+[pagecache-global-trace] hits=188 misses=4 entries=4 cap=256
+[dictcache-global-trace] hits=0 misses=160 entries=0 cap=1024
+[pagecache-global-trace] hits=220 misses=4 entries=4 cap=256
+[dictcache-global-trace] hits=0 misses=192 entries=0 cap=1024
+[pagecache-global-trace] hits=252 misses=4 entries=4 cap=256
+[dictcache-global-trace] hits=0 misses=224 entries=0 cap=1024
+[dictcache-global-trace] hits=0 misses=256 entries=0 cap=1024
+[pagecache-global-trace] hits=284 misses=4 entries=4 cap=256
+[dictcache-global-trace] hits=0 misses=288 entries=0 cap=1024
+[pagecache-global-trace] hits=316 misses=4 entries=4 cap=256
+[dictcache-global-trace] hits=0 misses=320 entries=0 cap=1024
+[pagecache-global-trace] hits=348 misses=4 entries=4 cap=256
+[dictcache-global-trace] hits=0 misses=352 entries=0 cap=1024
+[pagecache-global-trace] hits=380 misses=4 entries=4 cap=256
+[dictcache-global-trace] hits=0 misses=384 entries=0 cap=1024
+[pagecache-global-trace] hits=412 misses=4 entries=4 cap=256
+[pagecache-global-trace] hits=444 misses=4 entries=4 cap=256
+[dictcache-global-trace] hits=0 misses=416 entries=0 cap=1024
+[dictcache-global-trace] hits=0 misses=448 entries=0 cap=1024
+[pagecache-global-trace] hits=476 misses=4 entries=4 cap=256
+[dictcache-global-trace] hits=0 misses=480 entries=0 cap=1024
+[pagecache-global-trace] hits=508 misses=4 entries=4 cap=256
+[qof3-trace] cottas_ondisk_open path=tests/unit/fixtures/store_capabilities_sample.cottas
+[qof3-trace] load_handle path=tests/unit/fixtures/store_capabilities_sample.cottas
+[qof3-trace] load_handle: cache hit
+[qof3-trace] cottas_ondisk_open: handle ready
+[qof3-trace] cottas_ondisk_open path=mem:store_capabilities_unit
+[qof3-trace] load_handle path=mem:store_capabilities_unit
+[bet7-trace] build_handle path=mem:store_capabilities_unit (lazy open: defer all 4 columns)
+[qof3-trace] build_handle: distinct s=0 p=0 o=0 g=0 total_rows=5
+[qof3-trace] cottas_ondisk_open: handle ready
+[pagecache-global-trace] hits=540 misses=4 entries=4 cap=256
+[dictcache-global-trace] hits=0 misses=512 entries=0 cap=1024
+[pagecache-global-trace] hits=572 misses=4 entries=4 cap=256
+[dictcache-global-trace] hits=0 misses=544 entries=0 cap=1024
+[pagecache-global-trace] hits=604 misses=4 entries=4 cap=256
+[dictcache-global-trace] hits=0 misses=576 entries=0 cap=1024
+[pagecache-global-trace] hits=636 misses=4 entries=4 cap=256
+[dictcache-global-trace] hits=0 misses=608 entries=0 cap=1024
+[bet7-trace] ensure_predicates_loaded: lazy populate path=mem:store_capabilities_unit
+[qof3-trace] collect_distinct col=1 path=mem:store_capabilities_unit
+[qof3-trace] collect_distinct col=1 distinct=4 rows=5
+[bet7-trace] ensure_predicates_loaded: 4 distinct predicates
+[pagecache-global-trace] hits=668 misses=4 entries=4 cap=256
+[dictcache-global-trace] hits=0 misses=640 entries=0 cap=1024
+[pagecache-global-trace] hits=700 misses=4 entries=4 cap=256
+[dictcache-global-trace] hits=0 misses=672 entries=0 cap=1024
+[pagecache-global-trace] hits=732 misses=4 entries=4 cap=256
+[dictcache-global-trace] hits=0 misses=704 entries=0 cap=1024
+[pagecache-global-trace] hits=764 misses=4 entries=4 cap=256
+[dictcache-global-trace] hits=0 misses=736 entries=0 cap=1024
+[pagecache-global-trace] hits=796 misses=4 entries=4 cap=256
+[pagecache-global-trace] hits=828 misses=4 entries=4 cap=256
+[dictcache-global-trace] hits=0 misses=768 entries=0 cap=1024
+[pagecache-global-trace] hits=860 misses=4 entries=4 cap=256
+[dictcache-global-trace] hits=0 misses=800 entries=0 cap=1024
+[pagecache-global-trace] hits=892 misses=4 entries=4 cap=256
+[dictcache-global-trace] hits=0 misses=832 entries=0 cap=1024
+[pagecache-global-trace] hits=924 misses=4 entries=4 cap=256
+[dictcache-global-trace] hits=0 misses=864 entries=0 cap=1024
+[pagecache-global-trace] hits=956 misses=4 entries=4 cap=256
+[dictcache-global-trace] hits=0 misses=896 entries=0 cap=1024
+[pagecache-global-trace] hits=988 misses=4 entries=4 cap=256
+[dictcache-global-trace] hits=0 misses=928 entries=0 cap=1024
+[pagecache-global-trace] hits=1020 misses=4 entries=4 cap=256
+[dictcache-global-trace] hits=0 misses=960 entries=0 cap=1024
+[pagecache-global-trace] hits=1052 misses=4 entries=4 cap=256
+== store_capabilities_unit ==
+  PASS  indexed/default/unbound/solve
+  PASS  indexed/default/unbound/solve_limited(1)
+  PASS  indexed/default/unbound/estimate
+  PASS  indexed/default/unbound/count_exact
+  PASS  indexed/default/bound-s/solve
+  PASS  indexed/default/bound-s/solve_limited(1)
+  PASS  indexed/default/bound-s/estimate
+  PASS  indexed/default/bound-s/count_exact
+  PASS  indexed/default/bound-p/solve
+  PASS  indexed/default/bound-p/solve_limited(1)
+  PASS  indexed/default/bound-p/estimate
+  PASS  indexed/default/bound-p/count_exact
+  PASS  indexed/default/bound-o/solve
+  PASS  indexed/default/bound-o/solve_limited(1)
+  PASS  indexed/default/bound-o/estimate
+  PASS  indexed/default/bound-o/count_exact
+  PASS  indexed/default/bound-sp/solve
+  PASS  indexed/default/bound-sp/solve_limited(1)
+  PASS  indexed/default/bound-sp/estimate
+  PASS  indexed/default/bound-sp/count_exact
+  PASS  indexed/default/bound-po/solve
+  PASS  indexed/default/bound-po/solve_limited(1)
+  PASS  indexed/default/bound-po/estimate
+  PASS  indexed/default/bound-po/count_exact
+  PASS  indexed/default/bound-so/solve
+  PASS  indexed/default/bound-so/solve_limited(1)
+  PASS  indexed/default/bound-so/estimate
+  PASS  indexed/default/bound-so/count_exact
+  PASS  indexed/default/bound-spo/solve
+  PASS  indexed/default/bound-spo/solve_limited(1)
+  PASS  indexed/default/bound-spo/estimate
+  PASS  indexed/default/bound-spo/count_exact
+  PASS  indexed/default/predicate_present/known
+  PASS  indexed/default/predicate_present/absent
+  PASS  indexed/default/decode_failure
+  PASS  indexed/people(named-graph-analog)/unbound/solve
+  PASS  indexed/people(named-graph-analog)/unbound/solve_limited(1)
+  PASS  indexed/people(named-graph-analog)/unbound/estimate
+  PASS  indexed/people(named-graph-analog)/unbound/count_exact
+  PASS  indexed/people(named-graph-analog)/bound-s/solve
+  PASS  indexed/people(named-graph-analog)/bound-s/solve_limited(1)
+  PASS  indexed/people(named-graph-analog)/bound-s/estimate
+  PASS  indexed/people(named-graph-analog)/bound-s/count_exact
+  PASS  indexed/people(named-graph-analog)/bound-p/solve
+  PASS  indexed/people(named-graph-analog)/bound-p/solve_limited(1)
+  PASS  indexed/people(named-graph-analog)/bound-p/estimate
+  PASS  indexed/people(named-graph-analog)/bound-p/count_exact
+  PASS  indexed/people(named-graph-analog)/bound-o/solve
+  PASS  indexed/people(named-graph-analog)/bound-o/solve_limited(1)
+  PASS  indexed/people(named-graph-analog)/bound-o/estimate
+  PASS  indexed/people(named-graph-analog)/bound-o/count_exact
+  PASS  indexed/people(named-graph-analog)/bound-sp/solve
+  PASS  indexed/people(named-graph-analog)/bound-sp/solve_limited(1)
+  PASS  indexed/people(named-graph-analog)/bound-sp/estimate
+  PASS  indexed/people(named-graph-analog)/bound-sp/count_exact
+  PASS  indexed/people(named-graph-analog)/bound-po/solve
+  PASS  indexed/people(named-graph-analog)/bound-po/solve_limited(1)
+  PASS  indexed/people(named-graph-analog)/bound-po/estimate
+  PASS  indexed/people(named-graph-analog)/bound-po/count_exact
+  PASS  indexed/people(named-graph-analog)/bound-so/solve
+  PASS  indexed/people(named-graph-analog)/bound-so/solve_limited(1)
+  PASS  indexed/people(named-graph-analog)/bound-so/estimate
+  PASS  indexed/people(named-graph-analog)/bound-so/count_exact
+  PASS  indexed/people(named-graph-analog)/bound-spo/solve
+  PASS  indexed/people(named-graph-analog)/bound-spo/solve_limited(1)
+  PASS  indexed/people(named-graph-analog)/bound-spo/estimate
+  PASS  indexed/people(named-graph-analog)/bound-spo/count_exact
+  PASS  indexed/people(named-graph-analog)/predicate_present/known
+  PASS  indexed/people(named-graph-analog)/predicate_present/absent
+  PASS  indexed/people(named-graph-analog)/decode_failure
+  PASS  indexed/docs(named-graph-analog)/unbound/solve
+  PASS  indexed/docs(named-graph-analog)/unbound/solve_limited(1)
+  PASS  indexed/docs(named-graph-analog)/unbound/estimate
+  PASS  indexed/docs(named-graph-analog)/unbound/count_exact
+  PASS  indexed/docs(named-graph-analog)/bound-s/solve
+  PASS  indexed/docs(named-graph-analog)/bound-s/solve_limited(1)
+  PASS  indexed/docs(named-graph-analog)/bound-s/estimate
+  PASS  indexed/docs(named-graph-analog)/bound-s/count_exact
+  PASS  indexed/docs(named-graph-analog)/bound-p/solve
+  PASS  indexed/docs(named-graph-analog)/bound-p/solve_limited(1)
+  PASS  indexed/docs(named-graph-analog)/bound-p/estimate
+  PASS  indexed/docs(named-graph-analog)/bound-p/count_exact
+  PASS  indexed/docs(named-graph-analog)/bound-o/solve
+  PASS  indexed/docs(named-graph-analog)/bound-o/solve_limited(1)
+  PASS  indexed/docs(named-graph-analog)/bound-o/estimate
+  PASS  indexed/docs(named-graph-analog)/bound-o/count_exact
+  PASS  indexed/docs(named-graph-analog)/bound-sp/solve
+  PASS  indexed/docs(named-graph-analog)/bound-sp/solve_limited(1)
+  PASS  indexed/docs(named-graph-analog)/bound-sp/estimate
+  PASS  indexed/docs(named-graph-analog)/bound-sp/count_exact
+  PASS  indexed/docs(named-graph-analog)/bound-po/solve
+  PASS  indexed/docs(named-graph-analog)/bound-po/solve_limited(1)
+  PASS  indexed/docs(named-graph-analog)/bound-po/estimate
+  PASS  indexed/docs(named-graph-analog)/bound-po/count_exact
+  PASS  indexed/docs(named-graph-analog)/bound-so/solve
+  PASS  indexed/docs(named-graph-analog)/bound-so/solve_limited(1)
+  PASS  indexed/docs(named-graph-analog)/bound-so/estimate
+  PASS  indexed/docs(named-graph-analog)/bound-so/count_exact
+  PASS  indexed/docs(named-graph-analog)/bound-spo/solve
+  PASS  indexed/docs(named-graph-analog)/bound-spo/solve_limited(1)
+  PASS  indexed/docs(named-graph-analog)/bound-spo/estimate
+  PASS  indexed/docs(named-graph-analog)/bound-spo/count_exact
+  PASS  indexed/docs(named-graph-analog)/predicate_present/known
+  PASS  indexed/docs(named-graph-analog)/predicate_present/absent
+  PASS  indexed/docs(named-graph-analog)/decode_failure
+  PASS  indexed/flags/estimate_is_exact
+  PASS  indexed/flags/can_report_decode_fail(false)
+  PASS  indexed/flags/supports_update
+  PASS  union/in-memory(people+docs)/unbound/solve
+  PASS  union/in-memory(people+docs)/unbound/estimate
+  PASS  union/in-memory(people+docs)/unbound/count_exact
+  PASS  union/in-memory(people+docs)/bound-s/solve
+  PASS  union/in-memory(people+docs)/bound-s/estimate
+  PASS  union/in-memory(people+docs)/bound-s/count_exact
+  PASS  union/in-memory(people+docs)/bound-p/solve
+  PASS  union/in-memory(people+docs)/bound-p/estimate
+  PASS  union/in-memory(people+docs)/bound-p/count_exact
+  PASS  union/in-memory(people+docs)/bound-o/solve
+  PASS  union/in-memory(people+docs)/bound-o/estimate
+  PASS  union/in-memory(people+docs)/bound-o/count_exact
+  PASS  union/in-memory(people+docs)/bound-sp/solve
+  PASS  union/in-memory(people+docs)/bound-sp/estimate
+  PASS  union/in-memory(people+docs)/bound-sp/count_exact
+  PASS  union/in-memory(people+docs)/bound-po/solve
+  PASS  union/in-memory(people+docs)/bound-po/estimate
+  PASS  union/in-memory(people+docs)/bound-po/count_exact
+  PASS  union/in-memory(people+docs)/bound-so/solve
+  PASS  union/in-memory(people+docs)/bound-so/estimate
+  PASS  union/in-memory(people+docs)/bound-so/count_exact
+  PASS  union/in-memory(people+docs)/bound-spo/solve
+  PASS  union/in-memory(people+docs)/bound-spo/estimate
+  PASS  union/in-memory(people+docs)/bound-spo/count_exact
+  PASS  union/in-memory(people+docs)/unbound/solve
+  PASS  union/in-memory(people+docs)/unbound/estimate
+  PASS  union/in-memory(people+docs)/unbound/count_exact
+  PASS  union/in-memory(people+docs)/bound-s/solve
+  PASS  union/in-memory(people+docs)/bound-s/estimate
+  PASS  union/in-memory(people+docs)/bound-s/count_exact
+  PASS  union/in-memory(people+docs)/bound-p/solve
+  PASS  union/in-memory(people+docs)/bound-p/estimate
+  PASS  union/in-memory(people+docs)/bound-p/count_exact
+  PASS  union/in-memory(people+docs)/bound-o/solve
+  PASS  union/in-memory(people+docs)/bound-o/estimate
+  PASS  union/in-memory(people+docs)/bound-o/count_exact
+  PASS  union/in-memory(people+docs)/bound-sp/solve
+  PASS  union/in-memory(people+docs)/bound-sp/estimate
+  PASS  union/in-memory(people+docs)/bound-sp/count_exact
+  PASS  union/in-memory(people+docs)/bound-po/solve
+  PASS  union/in-memory(people+docs)/bound-po/estimate
+  PASS  union/in-memory(people+docs)/bound-po/count_exact
+  PASS  union/in-memory(people+docs)/bound-so/solve
+  PASS  union/in-memory(people+docs)/bound-so/estimate
+  PASS  union/in-memory(people+docs)/bound-so/count_exact
+  PASS  union/in-memory(people+docs)/bound-spo/solve
+  PASS  union/in-memory(people+docs)/bound-spo/estimate
+  PASS  union/in-memory(people+docs)/bound-spo/count_exact
+  PASS  union/in-memory(people+docs)/solve_limited(0)
+  PASS  union/in-memory(people+docs)/solve_limited(1)
+  PASS  union/in-memory(people+docs)/solve_limited(2)
+  PASS  union/in-memory(people+docs)/solve_limited(3)
+  PASS  union/in-memory(people+docs)/solve_limited(4)
+  PASS  union/in-memory(people+docs)/solve_limited(5)
+  PASS  union/in-memory(people+docs)/solve_limited(100)
+  PASS  union/in-memory(people+docs)/predicate_present/https://example.org/does-not-exist
+  PASS  union/in-memory(people+docs)/predicate_present/https://example.org/name
+  PASS  union/in-memory(people+docs)/predicate_present/https://example.org/title
+  PASS  union/in-memory(people+docs)/decode_failure
+  PASS  cottas/default/unbound/solve
+  PASS  cottas/default/unbound/solve_limited(1)
+  PASS  cottas/default/unbound/estimate
+  PASS  cottas/default/unbound/count_exact
+  PASS  cottas/default/bound-s/solve
+  PASS  cottas/default/bound-s/solve_limited(1)
+  PASS  cottas/default/bound-s/estimate
+  PASS  cottas/default/bound-s/count_exact
+  PASS  cottas/default/bound-p/solve
+  PASS  cottas/default/bound-p/solve_limited(1)
+  PASS  cottas/default/bound-p/estimate
+  PASS  cottas/default/bound-p/count_exact
+  PASS  cottas/default/bound-o/solve
+  PASS  cottas/default/bound-o/solve_limited(1)
+  PASS  cottas/default/bound-o/estimate
+  PASS  cottas/default/bound-o/count_exact
+  PASS  cottas/default/bound-sp/solve
+  PASS  cottas/default/bound-sp/solve_limited(1)
+  PASS  cottas/default/bound-sp/estimate
+  PASS  cottas/default/bound-sp/count_exact
+  PASS  cottas/default/bound-po/solve
+  PASS  cottas/default/bound-po/solve_limited(1)
+  PASS  cottas/default/bound-po/estimate
+  PASS  cottas/default/bound-po/count_exact
+  PASS  cottas/default/bound-so/solve
+  PASS  cottas/default/bound-so/solve_limited(1)
+  PASS  cottas/default/bound-so/estimate
+  PASS  cottas/default/bound-so/count_exact
+  PASS  cottas/default/bound-spo/solve
+  PASS  cottas/default/bound-spo/solve_limited(1)
+  PASS  cottas/default/bound-spo/estimate
+  PASS  cottas/default/bound-spo/count_exact
+  PASS  cottas/default/predicate_present/known
+  PASS  cottas/default/predicate_present/absent
+  PASS  cottas/default/decode_failure
+  PASS  cottas/named-graph(people)/unbound/solve
+  PASS  cottas/named-graph(people)/unbound/solve_limited(1)
+  PASS  cottas/named-graph(people)/unbound/estimate
+  PASS  cottas/named-graph(people)/unbound/count_exact
+  PASS  cottas/named-graph(people)/bound-s/solve
+  PASS  cottas/named-graph(people)/bound-s/solve_limited(1)
+  PASS  cottas/named-graph(people)/bound-s/estimate
+  PASS  cottas/named-graph(people)/bound-s/count_exact
+  PASS  cottas/named-graph(people)/bound-p/solve
+  PASS  cottas/named-graph(people)/bound-p/solve_limited(1)
+  PASS  cottas/named-graph(people)/bound-p/estimate
+  PASS  cottas/named-graph(people)/bound-p/count_exact
+  PASS  cottas/named-graph(people)/bound-o/solve
+  PASS  cottas/named-graph(people)/bound-o/solve_limited(1)
+  PASS  cottas/named-graph(people)/bound-o/estimate
+  PASS  cottas/named-graph(people)/bound-o/count_exact
+  PASS  cottas/named-graph(people)/bound-sp/solve
+  PASS  cottas/named-graph(people)/bound-sp/solve_limited(1)
+  PASS  cottas/named-graph(people)/bound-sp/estimate
+  PASS  cottas/named-graph(people)/bound-sp/count_exact
+  PASS  cottas/named-graph(people)/bound-po/solve
+  PASS  cottas/named-graph(people)/bound-po/solve_limited(1)
+  PASS  cottas/named-graph(people)/bound-po/estimate
+  PASS  cottas/named-graph(people)/bound-po/count_exact
+  PASS  cottas/named-graph(people)/bound-so/solve
+  PASS  cottas/named-graph(people)/bound-so/solve_limited(1)
+  PASS  cottas/named-graph(people)/bound-so/estimate
+  PASS  cottas/named-graph(people)/bound-so/count_exact
+  PASS  cottas/named-graph(people)/bound-spo/solve
+  PASS  cottas/named-graph(people)/bound-spo/solve_limited(1)
+  PASS  cottas/named-graph(people)/bound-spo/estimate
+  PASS  cottas/named-graph(people)/bound-spo/count_exact
+  PASS  cottas/named-graph(people)/predicate_present/known
+  PASS  cottas/named-graph(people)/predicate_present/absent
+  PASS  cottas/named-graph(people)/decode_failure
+  PASS  cottas/flags/estimate_is_exact(false)
+  PASS  cottas/flags/can_report_decode_fail
+  PASS  cottas/flags/supports_update(false)
+  PASS  union/mixed(indexed+cottas-ondisk)/unbound/solve
+  PASS  union/mixed(indexed+cottas-ondisk)/unbound/estimate
+  PASS  union/mixed(indexed+cottas-ondisk)/unbound/count_exact
+  PASS  union/mixed(indexed+cottas-ondisk)/bound-s/solve
+  PASS  union/mixed(indexed+cottas-ondisk)/bound-s/estimate
+  PASS  union/mixed(indexed+cottas-ondisk)/bound-s/count_exact
+  PASS  union/mixed(indexed+cottas-ondisk)/bound-p/solve
+  PASS  union/mixed(indexed+cottas-ondisk)/bound-p/estimate
+  PASS  union/mixed(indexed+cottas-ondisk)/bound-p/count_exact
+  PASS  union/mixed(indexed+cottas-ondisk)/bound-o/solve
+  PASS  union/mixed(indexed+cottas-ondisk)/bound-o/estimate
+  PASS  union/mixed(indexed+cottas-ondisk)/bound-o/count_exact
+  PASS  union/mixed(indexed+cottas-ondisk)/bound-sp/solve
+  PASS  union/mixed(indexed+cottas-ondisk)/bound-sp/estimate
+  PASS  union/mixed(indexed+cottas-ondisk)/bound-sp/count_exact
+  PASS  union/mixed(indexed+cottas-ondisk)/bound-po/solve
+  PASS  union/mixed(indexed+cottas-ondisk)/bound-po/estimate
+  PASS  union/mixed(indexed+cottas-ondisk)/bound-po/count_exact
+  PASS  union/mixed(indexed+cottas-ondisk)/bound-so/solve
+  PASS  union/mixed(indexed+cottas-ondisk)/bound-so/estimate
+  PASS  union/mixed(indexed+cottas-ondisk)/bound-so/count_exact
+  PASS  union/mixed(indexed+cottas-ondisk)/bound-spo/solve
+  PASS  union/mixed(indexed+cottas-ondisk)/bound-spo/estimate
+  PASS  union/mixed(indexed+cottas-ondisk)/bound-spo/count_exact
+  PASS  union/mixed(indexed+cottas-ondisk)/unbound/solve
+  PASS  union/mixed(indexed+cottas-ondisk)/unbound/estimate
+  PASS  union/mixed(indexed+cottas-ondisk)/unbound/count_exact
+  PASS  union/mixed(indexed+cottas-ondisk)/bound-s/solve
+  PASS  union/mixed(indexed+cottas-ondisk)/bound-s/estimate
+  PASS  union/mixed(indexed+cottas-ondisk)/bound-s/count_exact
+  PASS  union/mixed(indexed+cottas-ondisk)/bound-p/solve
+  PASS  union/mixed(indexed+cottas-ondisk)/bound-p/estimate
+  PASS  union/mixed(indexed+cottas-ondisk)/bound-p/count_exact
+  PASS  union/mixed(indexed+cottas-ondisk)/bound-o/solve
+  PASS  union/mixed(indexed+cottas-ondisk)/bound-o/estimate
+  PASS  union/mixed(indexed+cottas-ondisk)/bound-o/count_exact
+  PASS  union/mixed(indexed+cottas-ondisk)/bound-sp/solve
+  PASS  union/mixed(indexed+cottas-ondisk)/bound-sp/estimate
+  PASS  union/mixed(indexed+cottas-ondisk)/bound-sp/count_exact
+  PASS  union/mixed(indexed+cottas-ondisk)/bound-po/solve
+  PASS  union/mixed(indexed+cottas-ondisk)/bound-po/estimate
+  PASS  union/mixed(indexed+cottas-ondisk)/bound-po/count_exact
+  PASS  union/mixed(indexed+cottas-ondisk)/bound-so/solve
+  PASS  union/mixed(indexed+cottas-ondisk)/bound-so/estimate
+  PASS  union/mixed(indexed+cottas-ondisk)/bound-so/count_exact
+  PASS  union/mixed(indexed+cottas-ondisk)/bound-spo/solve
+  PASS  union/mixed(indexed+cottas-ondisk)/bound-spo/estimate
+  PASS  union/mixed(indexed+cottas-ondisk)/bound-spo/count_exact
+  PASS  union/mixed(indexed+cottas-ondisk)/solve_limited(0)
+  PASS  union/mixed(indexed+cottas-ondisk)/solve_limited(1)
+  PASS  union/mixed(indexed+cottas-ondisk)/solve_limited(2)
+  PASS  union/mixed(indexed+cottas-ondisk)/solve_limited(3)
+  PASS  union/mixed(indexed+cottas-ondisk)/solve_limited(4)
+  PASS  union/mixed(indexed+cottas-ondisk)/solve_limited(5)
+  PASS  union/mixed(indexed+cottas-ondisk)/solve_limited(100)
+  PASS  union/mixed(indexed+cottas-ondisk)/predicate_present/https://example.org/does-not-exist
+  PASS  union/mixed(indexed+cottas-ondisk)/predicate_present/https://example.org/status
+  PASS  union/mixed(indexed+cottas-ondisk)/decode_failure
+  PASS  overlay/default/empty-noop/unbound/solve
+  PASS  overlay/default/empty-noop/unbound/estimate
+  PASS  overlay/default/empty-noop/unbound/count_exact
+  PASS  overlay/default/empty-noop/bound-s/solve
+  PASS  overlay/default/empty-noop/bound-s/estimate
+  PASS  overlay/default/empty-noop/bound-s/count_exact
+  PASS  overlay/default/empty-noop/bound-p/solve
+  PASS  overlay/default/empty-noop/bound-p/estimate
+  PASS  overlay/default/empty-noop/bound-p/count_exact
+  PASS  overlay/default/empty-noop/bound-o/solve
+  PASS  overlay/default/empty-noop/bound-o/estimate
+  PASS  overlay/default/empty-noop/bound-o/count_exact
+  PASS  overlay/default/empty-noop/bound-sp/solve
+  PASS  overlay/default/empty-noop/bound-sp/estimate
+  PASS  overlay/default/empty-noop/bound-sp/count_exact
+  PASS  overlay/default/empty-noop/bound-po/solve
+  PASS  overlay/default/empty-noop/bound-po/estimate
+  PASS  overlay/default/empty-noop/bound-po/count_exact
+  PASS  overlay/default/empty-noop/bound-so/solve
+  PASS  overlay/default/empty-noop/bound-so/estimate
+  PASS  overlay/default/empty-noop/bound-so/count_exact
+  PASS  overlay/default/empty-noop/bound-spo/solve
+  PASS  overlay/default/empty-noop/bound-spo/estimate
+  PASS  overlay/default/empty-noop/bound-spo/count_exact
+  PASS  overlay/default/empty-noop/flags/supports_update
+  PASS  overlay/default/nonempty/solve-matches-merge_on_read
+  PASS  overlay/default/nonempty/fresh-triple-present
+  PASS  overlay/default/nonempty/anchor-tombstoned
+  PASS  overlay/default/nonempty/count_exact-net-unchanged
+  PASS  overlay/default/nonempty/estimate-adds-delta-only
+  PASS  buffer-vs-file/default/unbound/solve
+  PASS  buffer-vs-file/default/unbound/solve_limited(1)
+  PASS  buffer-vs-file/default/unbound/estimate
+  PASS  buffer-vs-file/default/unbound/count_exact
+  PASS  buffer-vs-file/default/bound-s/solve
+  PASS  buffer-vs-file/default/bound-s/solve_limited(1)
+  PASS  buffer-vs-file/default/bound-s/estimate
+  PASS  buffer-vs-file/default/bound-s/count_exact
+  PASS  buffer-vs-file/default/bound-p/solve
+  PASS  buffer-vs-file/default/bound-p/solve_limited(1)
+  PASS  buffer-vs-file/default/bound-p/estimate
+  PASS  buffer-vs-file/default/bound-p/count_exact
+  PASS  buffer-vs-file/default/bound-o/solve
+  PASS  buffer-vs-file/default/bound-o/solve_limited(1)
+  PASS  buffer-vs-file/default/bound-o/estimate
+  PASS  buffer-vs-file/default/bound-o/count_exact
+  PASS  buffer-vs-file/default/bound-sp/solve
+  PASS  buffer-vs-file/default/bound-sp/solve_limited(1)
+  PASS  buffer-vs-file/default/bound-sp/estimate
+  PASS  buffer-vs-file/default/bound-sp/count_exact
+  PASS  buffer-vs-file/default/bound-po/solve
+  PASS  buffer-vs-file/default/bound-po/solve_limited(1)
+  PASS  buffer-vs-file/default/bound-po/estimate
+  PASS  buffer-vs-file/default/bound-po/count_exact
+  PASS  buffer-vs-file/default/bound-so/solve
+  PASS  buffer-vs-file/default/bound-so/solve_limited(1)
+  PASS  buffer-vs-file/default/bound-so/estimate
+  PASS  buffer-vs-file/default/bound-so/count_exact
+  PASS  buffer-vs-file/default/bound-spo/solve
+  PASS  buffer-vs-file/default/bound-spo/solve_limited(1)
+  PASS  buffer-vs-file/default/bound-spo/estimate
+  PASS  buffer-vs-file/default/bound-spo/count_exact
+  PASS  buffer-vs-file/default/predicate_present/known
+  PASS  buffer-vs-file/default/predicate_present/absent
+  PASS  buffer-vs-file/default/decode_failure
+  PASS  buffer-vs-file/named-graph(people)/unbound/solve
+  PASS  buffer-vs-file/named-graph(people)/unbound/solve_limited(1)
+  PASS  buffer-vs-file/named-graph(people)/unbound/estimate
+  PASS  buffer-vs-file/named-graph(people)/unbound/count_exact
+  PASS  buffer-vs-file/named-graph(people)/bound-s/solve
+  PASS  buffer-vs-file/named-graph(people)/bound-s/solve_limited(1)
+  PASS  buffer-vs-file/named-graph(people)/bound-s/estimate
+  PASS  buffer-vs-file/named-graph(people)/bound-s/count_exact
+  PASS  buffer-vs-file/named-graph(people)/bound-p/solve
+  PASS  buffer-vs-file/named-graph(people)/bound-p/solve_limited(1)
+  PASS  buffer-vs-file/named-graph(people)/bound-p/estimate
+  PASS  buffer-vs-file/named-graph(people)/bound-p/count_exact
+  PASS  buffer-vs-file/named-graph(people)/bound-o/solve
+  PASS  buffer-vs-file/named-graph(people)/bound-o/solve_limited(1)
+  PASS  buffer-vs-file/named-graph(people)/bound-o/estimate
+  PASS  buffer-vs-file/named-graph(people)/bound-o/count_exact
+  PASS  buffer-vs-file/named-graph(people)/bound-sp/solve
+  PASS  buffer-vs-file/named-graph(people)/bound-sp/solve_limited(1)
+  PASS  buffer-vs-file/named-graph(people)/bound-sp/estimate
+  PASS  buffer-vs-file/named-graph(people)/bound-sp/count_exact
+  PASS  buffer-vs-file/named-graph(people)/bound-po/solve
+  PASS  buffer-vs-file/named-graph(people)/bound-po/solve_limited(1)
+  PASS  buffer-vs-file/named-graph(people)/bound-po/estimate
+  PASS  buffer-vs-file/named-graph(people)/bound-po/count_exact
+  PASS  buffer-vs-file/named-graph(people)/bound-so/solve
+  PASS  buffer-vs-file/named-graph(people)/bound-so/solve_limited(1)
+  PASS  buffer-vs-file/named-graph(people)/bound-so/estimate
+  PASS  buffer-vs-file/named-graph(people)/bound-so/count_exact
+  PASS  buffer-vs-file/named-graph(people)/bound-spo/solve
+  PASS  buffer-vs-file/named-graph(people)/bound-spo/solve_limited(1)
+  PASS  buffer-vs-file/named-graph(people)/bound-spo/estimate
+  PASS  buffer-vs-file/named-graph(people)/bound-spo/count_exact
+  PASS  buffer-vs-file/named-graph(people)/predicate_present/known
+  PASS  buffer-vs-file/named-graph(people)/predicate_present/absent
+  PASS  buffer-vs-file/named-graph(people)/decode_failure
+  PASS  cottas/buffer/default/unbound/solve
+  PASS  cottas/buffer/default/unbound/solve_limited(1)
+  PASS  cottas/buffer/default/unbound/estimate
+  PASS  cottas/buffer/default/unbound/count_exact
+  PASS  cottas/buffer/default/bound-s/solve
+  PASS  cottas/buffer/default/bound-s/solve_limited(1)
+  PASS  cottas/buffer/default/bound-s/estimate
+  PASS  cottas/buffer/default/bound-s/count_exact
+  PASS  cottas/buffer/default/bound-p/solve
+  PASS  cottas/buffer/default/bound-p/solve_limited(1)
+  PASS  cottas/buffer/default/bound-p/estimate
+  PASS  cottas/buffer/default/bound-p/count_exact
+  PASS  cottas/buffer/default/bound-o/solve
+  PASS  cottas/buffer/default/bound-o/solve_limited(1)
+  PASS  cottas/buffer/default/bound-o/estimate
+  PASS  cottas/buffer/default/bound-o/count_exact
+  PASS  cottas/buffer/default/bound-sp/solve
+  PASS  cottas/buffer/default/bound-sp/solve_limited(1)
+  PASS  cottas/buffer/default/bound-sp/estimate
+  PASS  cottas/buffer/default/bound-sp/count_exact
+  PASS  cottas/buffer/default/bound-po/solve
+  PASS  cottas/buffer/default/bound-po/solve_limited(1)
+  PASS  cottas/buffer/default/bound-po/estimate
+  PASS  cottas/buffer/default/bound-po/count_exact
+  PASS  cottas/buffer/default/bound-so/solve
+  PASS  cottas/buffer/default/bound-so/solve_limited(1)
+  PASS  cottas/buffer/default/bound-so/estimate
+  PASS  cottas/buffer/default/bound-so/count_exact
+  PASS  cottas/buffer/default/bound-spo/solve
+  PASS  cottas/buffer/default/bound-spo/solve_limited(1)
+  PASS  cottas/buffer/default/bound-spo/estimate
+  PASS  cottas/buffer/default/bound-spo/count_exact
+  PASS  cottas/buffer/default/predicate_present/known
+  PASS  cottas/buffer/default/predicate_present/absent
+  PASS  cottas/buffer/default/decode_failure
+  PASS  cottas/buffer/named-graph(people)/unbound/solve
+  PASS  cottas/buffer/named-graph(people)/unbound/solve_limited(1)
+  PASS  cottas/buffer/named-graph(people)/unbound/estimate
+  PASS  cottas/buffer/named-graph(people)/unbound/count_exact
+  PASS  cottas/buffer/named-graph(people)/bound-s/solve
+  PASS  cottas/buffer/named-graph(people)/bound-s/solve_limited(1)
+  PASS  cottas/buffer/named-graph(people)/bound-s/estimate
+  PASS  cottas/buffer/named-graph(people)/bound-s/count_exact
+  PASS  cottas/buffer/named-graph(people)/bound-p/solve
+  PASS  cottas/buffer/named-graph(people)/bound-p/solve_limited(1)
+  PASS  cottas/buffer/named-graph(people)/bound-p/estimate
+  PASS  cottas/buffer/named-graph(people)/bound-p/count_exact
+  PASS  cottas/buffer/named-graph(people)/bound-o/solve
+  PASS  cottas/buffer/named-graph(people)/bound-o/solve_limited(1)
+  PASS  cottas/buffer/named-graph(people)/bound-o/estimate
+  PASS  cottas/buffer/named-graph(people)/bound-o/count_exact
+  PASS  cottas/buffer/named-graph(people)/bound-sp/solve
+  PASS  cottas/buffer/named-graph(people)/bound-sp/solve_limited(1)
+  PASS  cottas/buffer/named-graph(people)/bound-sp/estimate
+  PASS  cottas/buffer/named-graph(people)/bound-sp/count_exact
+  PASS  cottas/buffer/named-graph(people)/bound-po/solve
+  PASS  cottas/buffer/named-graph(people)/bound-po/solve_limited(1)
+  PASS  cottas/buffer/named-graph(people)/bound-po/estimate
+  PASS  cottas/buffer/named-graph(people)/bound-po/count_exact
+  PASS  cottas/buffer/named-graph(people)/bound-so/solve
+  PASS  cottas/buffer/named-graph(people)/bound-so/solve_limited(1)
+  PASS  cottas/buffer/named-graph(people)/bound-so/estimate
+  PASS  cottas/buffer/named-graph(people)/bound-so/count_exact
+  PASS  cottas/buffer/named-graph(people)/bound-spo/solve
+  PASS  cottas/buffer/named-graph(people)/bound-spo/solve_limited(1)
+  PASS  cottas/buffer/named-graph(people)/bound-spo/estimate
+  PASS  cottas/buffer/named-graph(people)/bound-spo/count_exact
+  PASS  cottas/buffer/named-graph(people)/predicate_present/known
+  PASS  cottas/buffer/named-graph(people)/predicate_present/absent
+  PASS  cottas/buffer/named-graph(people)/decode_failure
+  PASS  dataset_caps/list_graphs matches dsb_named order
+  PASS  dataset_caps/lookup_named(absent) = None
+  PASS  dataset_caps/https://example.org/graph/people/unbound/solve
+  PASS  dataset_caps/https://example.org/graph/people/unbound/estimate
+  PASS  dataset_caps/https://example.org/graph/people/unbound/count_exact
+  PASS  dataset_caps/https://example.org/graph/people/bound-s/solve
+  PASS  dataset_caps/https://example.org/graph/people/bound-s/estimate
+  PASS  dataset_caps/https://example.org/graph/people/bound-s/count_exact
+  PASS  dataset_caps/https://example.org/graph/people/bound-p/solve
+  PASS  dataset_caps/https://example.org/graph/people/bound-p/estimate
+  PASS  dataset_caps/https://example.org/graph/people/bound-p/count_exact
+  PASS  dataset_caps/https://example.org/graph/people/bound-o/solve
+  PASS  dataset_caps/https://example.org/graph/people/bound-o/estimate
+  PASS  dataset_caps/https://example.org/graph/people/bound-o/count_exact
+  PASS  dataset_caps/https://example.org/graph/people/bound-sp/solve
+  PASS  dataset_caps/https://example.org/graph/people/bound-sp/estimate
+  PASS  dataset_caps/https://example.org/graph/people/bound-sp/count_exact
+  PASS  dataset_caps/https://example.org/graph/people/bound-po/solve
+  PASS  dataset_caps/https://example.org/graph/people/bound-po/estimate
+  PASS  dataset_caps/https://example.org/graph/people/bound-po/count_exact
+  PASS  dataset_caps/https://example.org/graph/people/bound-so/solve
+  PASS  dataset_caps/https://example.org/graph/people/bound-so/estimate
+  PASS  dataset_caps/https://example.org/graph/people/bound-so/count_exact
+  PASS  dataset_caps/https://example.org/graph/people/bound-spo/solve
+  PASS  dataset_caps/https://example.org/graph/people/bound-spo/estimate
+  PASS  dataset_caps/https://example.org/graph/people/bound-spo/count_exact
+  PASS  dataset_caps/https://example.org/graph/docs/unbound/solve
+  PASS  dataset_caps/https://example.org/graph/docs/unbound/estimate
+  PASS  dataset_caps/https://example.org/graph/docs/unbound/count_exact
+  PASS  dataset_caps/https://example.org/graph/docs/bound-s/solve
+  PASS  dataset_caps/https://example.org/graph/docs/bound-s/estimate
+  PASS  dataset_caps/https://example.org/graph/docs/bound-s/count_exact
+  PASS  dataset_caps/https://example.org/graph/docs/bound-p/solve
+  PASS  dataset_caps/https://example.org/graph/docs/bound-p/estimate
+  PASS  dataset_caps/https://example.org/graph/docs/bound-p/count_exact
+  PASS  dataset_caps/https://example.org/graph/docs/bound-o/solve
+  PASS  dataset_caps/https://example.org/graph/docs/bound-o/estimate
+  PASS  dataset_caps/https://example.org/graph/docs/bound-o/count_exact
+  PASS  dataset_caps/https://example.org/graph/docs/bound-sp/solve
+  PASS  dataset_caps/https://example.org/graph/docs/bound-sp/estimate
+  PASS  dataset_caps/https://example.org/graph/docs/bound-sp/count_exact
+  PASS  dataset_caps/https://example.org/graph/docs/bound-po/solve
+  PASS  dataset_caps/https://example.org/graph/docs/bound-po/estimate
+  PASS  dataset_caps/https://example.org/graph/docs/bound-po/count_exact
+  PASS  dataset_caps/https://example.org/graph/docs/bound-so/solve
+  PASS  dataset_caps/https://example.org/graph/docs/bound-so/estimate
+  PASS  dataset_caps/https://example.org/graph/docs/bound-so/count_exact
+  PASS  dataset_caps/https://example.org/graph/docs/bound-spo/solve
+  PASS  dataset_caps/https://example.org/graph/docs/bound-spo/estimate
+  PASS  dataset_caps/https://example.org/graph/docs/bound-spo/count_exact
+  PASS  dataset_caps/eval/GRAPH<https://example.org/graph/people>/solution-count
+  PASS  dataset_caps/eval/GRAPH<https://example.org/graph/docs>/solution-count
+  PASS  dataset_caps/eval/GRAPH?g/solution-count
+== summary: 521 pass, 0 fail (out of 521) ==
+store_capabilities_unit: PASS
 
 --- streamable_fastpath_unit ---
 -- streamable_shape: positive shapes --
@@ -1442,20 +2449,151 @@ store_capabilities_unit: FAIL (build)
 streamable_fastpath_unit: 26 pass, 0 fail (out of 26)
 streamable_fastpath_unit: PASS
 
+--- subject_offsets_writer_roundtrip ---
+== subject_offsets_writer_roundtrip ==
+  HASH  empty sha256=184f8469b06228b26bbbd5a29868f5a2832b5444a9c6d31c34d5345e33aa3d06 len=16
+  PASS  empty [hash]
+  PASS  empty [parse]
+  PASS  empty [num_subjects]
+  PASS  empty [num_rows_total]
+  PASS  empty [ranges]
+  HASH  singleton sha256=df022a3363424bc23bc38d644ce39f07629723b5e97d08bf21c1712e941a81df len=32
+  PASS  singleton [hash]
+  PASS  singleton [parse]
+  PASS  singleton [num_subjects]
+  PASS  singleton [num_rows_total]
+  PASS  singleton [ranges]
+  HASH  three-contiguous sha256=23684857221d55b3eccc895a8beb2c481d7cf9d271098353209eea03f9ebf576 len=64
+  PASS  three-contiguous [hash]
+  PASS  three-contiguous [parse]
+  PASS  three-contiguous [num_subjects]
+  PASS  three-contiguous [num_rows_total]
+  PASS  three-contiguous [ranges]
+  HASH  rg-boundary-straddle sha256=2d0cf97955489c1112f18cd50f8eb0e03fed75ac0c419b4164fda46db64af61f len=48
+  PASS  rg-boundary-straddle [hash]
+  PASS  rg-boundary-straddle [parse]
+  PASS  rg-boundary-straddle [num_subjects]
+  PASS  rg-boundary-straddle [num_rows_total]
+  PASS  rg-boundary-straddle [ranges]
+== summary: 20 pass, 0 fail (out of 20) ==
+subject_offsets_writer_roundtrip: PASS
+
 --- toan_tests ---
-  BUILD FAILED (rc=2)
-    findlib: [WARNING] Interface big_int.cmi occurs in several directories: /root/.opam/fstar/lib/num, /root/.opam/fstar/lib/ocaml
-    findlib: [WARNING] Interface nat.cmi occurs in several directories: /root/.opam/fstar/lib/num, /root/.opam/fstar/lib/ocaml
-    findlib: [WARNING] Interface arith_status.cmi occurs in several directories: /root/.opam/fstar/lib/num, /root/.opam/fstar/lib/ocaml
-    findlib: [WARNING] Interface digestif.cmi occurs in several directories: /root/.opam/fstar/lib/digestif/c, /root/.opam/fstar/lib/digestif
-    findlib: [WARNING] Interface ratio.cmi occurs in several directories: /root/.opam/fstar/lib/num, /root/.opam/fstar/lib/ocaml
-    findlib: [WARNING] Interface num.cmi occurs in several directories: /root/.opam/fstar/lib/num, /root/.opam/fstar/lib/ocaml
-    ocamlfind: [WARNING] Package `threads': Linking problems may arise because of the missing -thread or -vmthread switch
-    File "/home/user/factoidal/.claude/worktrees/agent-a8a3c7dbcf17f1b69/tests/unit/_build/toan_tests.ml", line 24, characters 11-20:
-    24 | module E = Math_Expr
-                    ^^^^^^^^^
-    Error: Unbound module Math_Expr
-toan_tests: FAIL (build)
+  PASS  summation(x + i*y, i, 1, 4) = 4*x + 10*y
+  [info] summation(x + i*y, i, 1, 4) key = 4a:plus(4a:times(0i:10,3s:y,),4a:times(0i:4,3s:x,),)
+  PASS  product(x + i*y, i, 0, 5) = x*(x+y)*(x+2y)*(x+3y)*(x+4y)*(x+5y)
+  [info] product(x + i*y, i, 0, 5) key = 4a:times(3s:x,4a:plus(3s:x,3s:y,),4a:plus(3s:x,4a:times(0i:2,3s:y,),),4a:plus(3s:x,4a:times(0i:3,3s:y,),),4a:plus(3s:x,4a:times(0i:4,3s:y,),),4a:plus(3s:x,4a:times(0i:5,3s:y,),),)
+  PASS  summation over empty range (5..1) = 0
+  PASS  product over empty range (5..1) = 1
+  PASS  summation over single point (2..2) = x + 2*y
+  PASS  product over single point (3..3) = x + 3*y
+  PASS  simplify(2*y + 3*y) = 5*y
+  PASS  simplify(y + 2*y + 3*y + 4*y) = 10*y
+  PASS  simplify(3*x + x) = 4*x
+  PASS  simplify(x + 2*y + 3*y) = x + 5*y
+  PASS  simplify(2*x + 3*x + 4) = 5*x + 4
+  PASS  simplify((1/2)*y + (1/2)*y) = y
+  PASS  simplify(2*y + (-2)*y) = 0
+  PASS  simplify(2*x*y + 3*x*y) = 5*x*y
+  PASS  simplify(2*x + 3*y) keeps two distinct terms (no merge)
+  PASS  simplify(2*x + 3*x^2) keeps distinct cores x vs x^2
+  PASS  eval(simplify(2*x+3*y)) = eval(2*x+3*y) at x=5,y=7
+  PASS  idempotent: 2*y + 3*y
+  PASS  idempotent: y + 2y + 3y + 4y
+  PASS  idempotent: x + 2y + 3y
+  PASS  idempotent: 2*x*y + 3*x*y
+  PASS  idempotent: 2y + (-2)y
+  PASS  idempotent: summation(1..4)
+  PASS  idempotent: summation(0..6)
+  PASS  idempotent: product(0..5)
+  PASS  idempotent: product(1..4)
+  PASS  eval(simplify 2y + 3y) = eval(2y + 3y)
+  PASS  eval(simplify y + 2y + 3y + 4y) = eval(y + 2y + 3y + 4y)
+  PASS  eval(simplify x + 2y + 3y) = eval(x + 2y + 3y)
+  PASS  eval(simplify 2*x*y + 3*x*y) = eval(2*x*y + 3*x*y)
+  PASS  eval(simplify summation(1..4)) = eval(summation(1..4))
+  PASS  eval(simplify product(1..4)) = eval(product(1..4))
+  PASS  to_presentation_mathml(x) starts with <math
+  PASS  Parser.XML accepts to_presentation_mathml(x)
+  PASS  to_presentation_mathml(4*x + 10*y) starts with <math
+  PASS  Parser.XML accepts to_presentation_mathml(4*x + 10*y)
+  PASS  to_presentation_mathml((x+y)*z) starts with <math
+  PASS  Parser.XML accepts to_presentation_mathml((x+y)*z)
+  PASS  to_presentation_mathml(x^2 * y) starts with <math
+  PASS  Parser.XML accepts to_presentation_mathml(x^2 * y)
+  PASS  to_presentation_mathml((x+y)^2) starts with <math
+  PASS  Parser.XML accepts to_presentation_mathml((x+y)^2)
+  PASS  to_presentation_mathml(1/2) starts with <math
+  PASS  Parser.XML accepts to_presentation_mathml(1/2)
+  PASS  to_presentation_mathml(x/(x^2+1)) starts with <math
+  PASS  Parser.XML accepts to_presentation_mathml(x/(x^2+1))
+  PASS  to_presentation_mathml(sin(x^2)) starts with <math
+  PASS  Parser.XML accepts to_presentation_mathml(sin(x^2))
+  PASS  to_presentation_mathml(product(0..5)) starts with <math
+  PASS  Parser.XML accepts to_presentation_mathml(product(0..5))
+  PASS  (x+y)*z fences the sum
+  PASS  x^2 * y does NOT parenthesize the power
+  PASS  (x+y)^2 fences the base
+  PASS  x + y is not parenthesized
+  PASS  (x/y)*z does not fence the fraction
+  PASS  content round-trip: x^2 + 1
+  PASS  content round-trip: 2*x + 3*y
+  PASS  content round-trip: x*(x+y)
+  PASS  content round-trip: 5/2
+  PASS  content round-trip: x/(x^2+1)
+  PASS  content round-trip: 4*x + 10*y
+  PASS  content round-trip: summation(1..4)
+  PASS  content round-trip: product(0..5)
+  PASS  eq(x,y)
+  PASS  neq(x,y)
+  PASS  lt(x,y)
+  PASS  gt(x,y)
+  PASS  leq(x,y)
+  PASS  geq(x,y)
+  PASS  eq(x, plus(y,1))
+  PASS  geq(eq(x,y), z) fences the nested relation
+  PASS  lt(plus(x,y), z) does not fence the sum
+  PASS  abs(x)
+  PASS  abs(plus(x,y)) does not fence the sum inside the bars
+  PASS  abs(-3) carries the sign inside the bars unfenced
+  PASS  factorial(n)
+  PASS  factorial(plus(x,y)) fences the sum
+  PASS  factorial(abs(x)) does not re-fence an already-atomic operand
+  PASS  exp(x)
+  PASS  exp(plus(x,y)) puts the sum in the exponent unfenced
+  PASS  diff_unsupported(x) direct construction
+  PASS  diff x (coth x) has no rule -> diff_unsupported -> merror
+  PASS  plus(x, diff_unsupported(y)) embeds the error box atomically
+  PASS  to_presentation_mathml(eq(x,y)) starts with <math
+  PASS  Parser.XML accepts to_presentation_mathml(eq(x,y))
+  PASS  to_presentation_mathml(geq(eq(x,y), z)) starts with <math
+  PASS  Parser.XML accepts to_presentation_mathml(geq(eq(x,y), z))
+  PASS  to_presentation_mathml(abs(minus(x,y))) starts with <math
+  PASS  Parser.XML accepts to_presentation_mathml(abs(minus(x,y)))
+  PASS  to_presentation_mathml(factorial(plus(x,1))) starts with <math
+  PASS  Parser.XML accepts to_presentation_mathml(factorial(plus(x,1)))
+  PASS  to_presentation_mathml(exp(power(x,2))) starts with <math
+  PASS  Parser.XML accepts to_presentation_mathml(exp(power(x,2)))
+  PASS  to_presentation_mathml(diff_unsupported(x)) starts with <math
+  PASS  Parser.XML accepts to_presentation_mathml(diff_unsupported(x))
+  PASS  to_presentation_mathml(eq(x, abs(y))) starts with <math
+  PASS  Parser.XML accepts to_presentation_mathml(eq(x, abs(y)))
+  PASS  content round-trip: eq(x,y)
+  PASS  content round-trip: neq(x,y)
+  PASS  content round-trip: lt(x,y)
+  PASS  content round-trip: gt(x,y)
+  PASS  content round-trip: leq(x,y)
+  PASS  content round-trip: geq(x,y)
+  PASS  content round-trip: abs(x)
+  PASS  content round-trip: factorial(n)
+  PASS  content round-trip: exp(x)
+  PASS  to_content_mathml(exp(x)) uses <exp/> not <csymbol>
+  PASS  to_content_mathml(abs(x)) uses <abs/>
+  PASS  to_content_mathml(factorial(n)) uses <factorial/>
+  PASS  to_content_mathml(eq(x,y)) uses <eq/>
+
+TOAN: 110 pass, 0 fail (out of 110)
+toan_tests: PASS
 
 --- ucase_lcase_unicode ---
 == ucase_lcase_unicode ==
@@ -1495,19 +2633,38 @@ summary: 16 pass, 0 expected-fail, 0 unexpected fail
 utf8_roundtrip: PASS
 
 --- xforms_tests ---
-  BUILD FAILED (rc=2)
-    findlib: [WARNING] Interface big_int.cmi occurs in several directories: /root/.opam/fstar/lib/num, /root/.opam/fstar/lib/ocaml
-    findlib: [WARNING] Interface nat.cmi occurs in several directories: /root/.opam/fstar/lib/num, /root/.opam/fstar/lib/ocaml
-    findlib: [WARNING] Interface arith_status.cmi occurs in several directories: /root/.opam/fstar/lib/num, /root/.opam/fstar/lib/ocaml
-    findlib: [WARNING] Interface digestif.cmi occurs in several directories: /root/.opam/fstar/lib/digestif/c, /root/.opam/fstar/lib/digestif
-    findlib: [WARNING] Interface ratio.cmi occurs in several directories: /root/.opam/fstar/lib/num, /root/.opam/fstar/lib/ocaml
-    findlib: [WARNING] Interface num.cmi occurs in several directories: /root/.opam/fstar/lib/num, /root/.opam/fstar/lib/ocaml
-    ocamlfind: [WARNING] Package `threads': Linking problems may arise because of the missing -thread or -vmthread switch
-    File "/home/user/factoidal/.claude/worktrees/agent-a8a3c7dbcf17f1b69/tests/unit/_build/xforms_tests.ml", line 17, characters 12-23:
-    17 | module XB = XForms_Bind
-                     ^^^^^^^^^^^
-    Error: Unbound module XForms_Bind
-xforms_tests: FAIL (build)
+xforms_tests: XForms 1.1 model-layer bind/recalc (spec-cited)
+  PASS  §7.6 calculate b = ../a * 10 = 20
+  PASS  §7.6.1 calculate c = ../b + 1 = 21 (b computed first)
+  PASS  §7.6.1 diamond b = a+1 = 4
+  PASS  §7.6.1 diamond c = a+2 = 5
+  PASS  §7.6.1 diamond d = b+c = 9
+  PASS  §7.6.1 two-node calculate cycle a<->b rejected (document error)
+  PASS  §7.6.1 self-referential calculate a = ../a + 1 rejected
+  PASS  §7.6.1 three-node calculate cycle a->b->c->a rejected
+  PASS  §7.6 deep chain d = 4 (1+1+1+1)
+  PASS  §7.7 constraint '. >= 18' on age=17 is UNsatisfied
+  PASS  §7.7 node age invalid when constraint fails
+  PASS  §7.7 constraint '. >= 18' on age=21 satisfied
+  PASS  §7.7 node age valid when constraint holds
+  PASS  §7.4 relevant false when wantsMail=false
+  PASS  §7.5 required false when wantsMail=false
+  PASS  §7.4 non-relevant empty node stays valid
+  PASS  §7.4 relevant true when wantsMail=true
+  PASS  §7.5 required true when wantsMail=true
+  PASS  §7.5 required-but-empty relevant node is INVALID
+  PASS  §6.2.1 type xsd:integer accepts "42"
+  PASS  §6.2.1 node valid for well-formed integer
+  PASS  §6.2.1 type xsd:integer REJECTS "4.2"
+  PASS  §6.2.1 node invalid for ill-formed integer
+  PASS  §6.2.1 type xsd:decimal accepts "4.2"
+  PASS  §6.2.1 unsupported type QName is explicitly INVALID
+  PASS  §7.6 apply_edit qty:=5 recomputes total = 5*3 = 15
+  PASS  §6.2.1 recomputed total 15 is a valid xsd:integer
+  PASS  §7.3 decode_binds reads two <xf:bind> elements
+  PASS  §7.3 decoded bind computes b = ../a + 1 = 8
+XForms bind/recalc: 29 pass, 0 fail (out of 29)
+xforms_tests: PASS
 
 --- xpath_tests ---
   PASS  §2.2 child axis count
@@ -1648,4 +2805,4 @@ xsd_datatypes_unit: 38 passed, 0 failed
 xsd_datatypes_unit: PASS
 
 ============================================================
-tests/unit summary: 35 file(s) pass, 6 file(s) fail (out of 41)
+tests/unit summary: 45 file(s) pass, 0 file(s) fail (out of 45)

@@ -35,7 +35,7 @@
   [35/385] #t0035 ok
   [36/385] #t0036 ok
   [37/385] #t0037 ok
-  [38/385] #t0038 skip
+  [38/385] #t0038 ok
   [39/385] #t0039 ok
   [40/385] #t0040 ok
   [41/385] #t0041 ok
@@ -112,8 +112,8 @@
   [112/385] #t0112 ok
   [113/385] #t0113 ok
   [114/385] #t0114 ok
-  [115/385] #t0115 skip
-  [116/385] #t0116 skip
+  [115/385] #t0115 ok
+  [116/385] #t0116 ok
   [117/385] #t0117 ok
   [118/385] #t0118 ok
   [119/385] #t0119 ok
@@ -209,7 +209,7 @@
   [209/385] #ter21 ok
   [210/385] #ter22 ok
   [211/385] #ter23 ok
-  [212/385] #ter24 skip
+  [212/385] #ter24 ok
   [213/385] #ter25 ok
   [214/385] #ter26 ok
   [215/385] #ter27 ok
@@ -217,7 +217,7 @@
   [217/385] #ter29 ok
   [218/385] #ter30 ok
   [219/385] #ter31 ok
-  [220/385] #ter32 skip
+  [220/385] #ter32 ok
   [221/385] #ter33 ok
   [222/385] #ter34 ok
   [223/385] #ter35 ok
@@ -425,6 +425,7 @@ Totals: 385 test entries
   PASS: Language maps with @vocab, default language, and colliding property
   PASS: Expanding @index
   PASS: Expanding @reverse
+  PASS: Expanding blank node labels
   PASS: Using terms in a reverse-maps
   PASS: language and index expansion on non-objects
   PASS: @language: null
@@ -500,6 +501,8 @@ Totals: 385 test entries
   PASS: Various relative IRIs as properties with with relative @vocab relative to another relative vocabulary base
   PASS: context with JavaScript Object property names
   PASS: Expansion allows multiple properties expanding to @type
+  PASS: Verifies that relative IRIs as properties with @vocab: '' in 1.0 generate an error
+  PASS: Verifies that relative IRIs as properties with relative @vocab in 1.0 generate an error
   PASS: A term starting with a colon can expand to a different IRI
   PASS: Expanding a value staring with a colon does not treat that value as an IRI
   PASS: Ignore some terms with @, allow others.
@@ -595,6 +598,7 @@ Totals: 385 test entries
   PASS: Invalid container mapping
   PASS: Invalid language mapping
   PASS: Invalid IRI mapping (relative IRI in @type)
+  PASS: List of lists (from array)
   PASS: Invalid reverse property map
   PASS: Colliding keywords
   PASS: Invalid @id value
@@ -602,6 +606,7 @@ Totals: 385 test entries
   PASS: Invalid value object value
   PASS: Invalid language-tagged string
   PASS: Invalid @index value
+  PASS: List of lists (from array)
   PASS: Invalid @reverse value
   PASS: Invalid reverse property value (in @reverse)
   PASS: Invalid language map value
@@ -770,9 +775,9 @@ Totals: 385 test entries
 
 ========================================
 Suite Results:
-  expand-Positive      pass:274 fail:0 skip:2
-  expand-Negative      pass:105 fail:0 skip:4
+  expand-Positive      pass:275 fail:0 skip:1
+  expand-Negative      pass:109 fail:0 skip:0
 ========================================
-TOTAL: 379 pass, 0 fail, 6 skip (out of 385)
+TOTAL: 384 pass, 0 fail, 1 skip (out of 385)
 ========================================
-jsonld-expand: 379 pass, 0 fail, 6 skip (out of 385)
+jsonld-expand: 384 pass, 0 fail, 1 skip (out of 385)
