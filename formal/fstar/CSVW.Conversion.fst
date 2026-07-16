@@ -404,9 +404,31 @@ let csvw_merge_inherited (specific general : csvw_inherited_props) : csvw_inheri
   inh_ordered      = (match specific.inh_ordered with      Some _ -> specific.inh_ordered      | None -> general.inh_ordered);
 }
 
+// A column `name` that is not a valid URI-Template variable name must be
+// treated as if absent (tabular-metadata section 5.6: "column names are
+// restricted as defined in Variables in [URI-TEMPLATE]"; and "names
+// beginning with '_' are reserved by this specification and MUST NOT be
+// used"). RFC 6570 varname = varchar *( ["."] varchar ), varchar =
+// ALPHA / DIGIT / "_" / pct-encoded — so a space (test130 "G I D") or a
+// leading '_' (test131 "_GID") makes the name invalid; the column then
+// falls back to its percent-encoded title, exactly as the absent-name
+// case already does.
+let csvw_varname_char_ok (c : FStar.Char.char) : bool =
+  let n = FStar.Char.int_of_char c in
+  (n >= 65 && n <= 90) || (n >= 97 && n <= 122) ||  // A-Z a-z
+  (n >= 48 && n <= 57) ||                            // 0-9
+  n = 95 || n = 46 || n = 37                         // '_' '.' '%'
+let csvw_valid_column_name (s : string) : bool =
+  match String.list_of_string s with
+  | [] -> false
+  | c0 :: _ ->
+    FStar.Char.int_of_char c0 <> 95 (* not leading '_' *)
+    && List.Tot.for_all csvw_varname_char_ok (String.list_of_string s)
+
 let csvw_col_spec_of_column (eff : csvw_inherited_props) (c : csvw_column) : csvw_col_spec = {
   cs_name = (match c.col_name with
-             | Some n -> n
+             | Some n -> if csvw_valid_column_name n then n
+                         else (match c.col_titles with t :: _ -> t | [] -> "")
              | None -> (match c.col_titles with t :: _ -> t | [] -> ""));
   cs_virtual = csvw_opt_bool c.col_virtual;
   cs_suppress = csvw_opt_bool c.col_suppress_output;
@@ -609,6 +631,18 @@ let csvw_cell_object
     (table_url_resolved : string) (spec : csvw_col_spec) (cell_text : option string)
     (lookup : string -> option string)
   : option rdf_term =
+  // A PHYSICAL cell (cell_text = Some _) whose text matches the column's
+  // effective `null` value (or is "") is null and produces NO object,
+  // even when a valueUrl template is present (test035: the reportsTo
+  // column declares `null: "xx"`, so the "xx" cell emits no
+  // org:reportsTo triple). VIRTUAL columns (cell_text = None) are exempt
+  // — their value comes entirely from the valueUrl template (test032's
+  // rdf:type / schema:location virtual columns).
+  let phys_null = (match cell_text with
+                   | Some txt -> txt = "" || (match spec.cs_null with Some n -> txt = n | None -> false)
+                   | None -> false) in
+  if phys_null then None
+  else
   match spec.cs_value_url with
   | Some tmpl ->
     // A valueUrl template may itself be (or expand to) a prefixed name
@@ -736,7 +770,13 @@ let csvw_process_cell
     // check even though it is only ever used inside the guarded branch).
     let raw : string =
       match spec.cs_property_url with
-      | Some tmpl -> resolve_iri_v2 table_url_resolved (csvw_expand_template cur_lookup tmpl)
+      // A propertyUrl template may itself be (or expand to) a prefixed
+      // name — `schema:name`, `rdf:type` (test032/033) — expanded to its
+      // absolute IRI via the CSVW context before being resolved against
+      // the table URL, exactly as the valueUrl path (csvw_cell_object)
+      // already does. csvw_expand_curie is a no-op on a template with no
+      // known prefix (fragment refs, absolute URLs).
+      | Some tmpl -> resolve_iri_v2 table_url_resolved (csvw_expand_curie (csvw_expand_template cur_lookup tmpl))
       | None -> table_url_resolved ^ "#" ^ csvw_encode_name spec.cs_name
     in
     let pred_valid : option wf_iri = if is_iri raw then Some raw else None in
@@ -950,10 +990,15 @@ let csvw_convert_table_minimal
   let dia = tbl.tbl_dialect in
   let skip_n = csvw_skip_rows_count dia + csvw_header_row_count dia in
   let after_skip_rows = csvw_drop (csvw_skip_rows_count dia) all_rows in
+  let data_rows = csvw_drop (csvw_header_row_count dia) after_skip_rows in
+  // See csvw_convert_table_standard: a header-less, schema-less table
+  // gets positional `_col.N` names from an empty header of the data
+  // row's width (test023 minimal variant).
   let header_cells =
     if csvw_header_row_count dia > 0 then (match after_skip_rows with h :: _ -> h | [] -> [])
-    else [] in
-  let data_rows = csvw_drop (csvw_header_row_count dia) after_skip_rows in
+    else (match tbl.tbl_table_schema with
+          | Some _ -> []
+          | None -> (match data_rows with r :: _ -> List.Tot.map (fun (_:string) -> "") r | [] -> [])) in
   let col_specs = csvw_build_col_specs grp_inherited tbl.tbl_inherited tbl.tbl_table_schema header_cells in
   let indexed = csvw_index_from 0 data_rows in
   List.Tot.concatMap
@@ -1027,10 +1072,18 @@ let csvw_convert_table_standard
   let dia = tbl.tbl_dialect in
   let skip_n = csvw_skip_rows_count dia + csvw_header_row_count dia in
   let after_skip_rows = csvw_drop (csvw_skip_rows_count dia) all_rows in
+  let data_rows = csvw_drop (csvw_header_row_count dia) after_skip_rows in
+  // With no header row (`header: false` / `headerRowCount: 0`, test023)
+  // and no user schema, positional `_col.N` names still need a header of
+  // the right WIDTH: an all-empty-cell header of the first data row's
+  // width makes csvw_col_specs_from_header emit `_col.1.._col.N`. When a
+  // header row IS present it supplies the names as before; a user schema
+  // drives the specs regardless (empty header adds no surplus columns).
   let header_cells =
     if csvw_header_row_count dia > 0 then (match after_skip_rows with h :: _ -> h | [] -> [])
-    else [] in
-  let data_rows = csvw_drop (csvw_header_row_count dia) after_skip_rows in
+    else (match tbl.tbl_table_schema with
+          | Some _ -> []
+          | None -> (match data_rows with r :: _ -> List.Tot.map (fun (_:string) -> "") r | [] -> [])) in
   let col_specs = csvw_build_col_specs grp_inherited tbl.tbl_inherited tbl.tbl_table_schema header_cells in
   let row_titles = (match tbl.tbl_table_schema with Some ts -> ts.ts_row_titles | None -> []) in
   let indexed = csvw_index_from 0 data_rows in
@@ -1067,6 +1120,13 @@ let csvw_convert_table_standard
 // separate group-level JSON object exists in that case, so there is
 // nothing to inherit from at this level; the table's own tbl_inherited
 // still applies inside csvw_convert_table_minimal).
+// A table with `suppressOutput` true contributes nothing to the output
+// (tabular-metadata; test034/035's lookup tables). Filtered at the
+// document level so neither its cell triples (minimal) nor its
+// csvw:Table node / row links (standard) are emitted.
+let csvw_table_suppressed (tbl : csvw_table) : bool =
+  match tbl.tbl_suppress_output with Some b -> b | None -> false
+
 let csvw_convert_document_minimal
     (grp_inherited : csvw_inherited_props)
     (base_iri : string) (tables_with_rows : list (csvw_table & string & list (list string)))
@@ -1074,7 +1134,8 @@ let csvw_convert_document_minimal
   List.Tot.concatMap
     (fun (t : (csvw_table & string & list (list string))) ->
        let (tbl, fallback_url, rows) = t in
-       csvw_convert_table_minimal grp_inherited base_iri fallback_url tbl rows)
+       if csvw_table_suppressed tbl then []
+       else csvw_convert_table_minimal grp_inherited base_iri fallback_url tbl rows)
     tables_with_rows
 
 let csvw_group_node : subject = S_BNode "csvwG"
@@ -1094,7 +1155,10 @@ let csvw_convert_document_standard
       (fun (t : (csvw_table & string & list (list string))) ->
          let (tbl, fallback_url, rows) = t in
          csvw_convert_table_standard grp.grp_inherited default_lang base_iri fallback_url tbl rows)
-      tables_with_rows in
+      (List.Tot.filter
+         (fun (t : (csvw_table & string & list (list string))) ->
+            let (tbl, _, _) = t in not (csvw_table_suppressed tbl))
+         tables_with_rows) in
   let g_meta = [ { s = csvw_group_node; p = rdf_type; o = T_IRI csvw_TableGroup } ] in
   let g_common = csvw_table_common_triples default_lang csvw_group_node "csvwG" grp.grp_common in
   let table_links =
@@ -1115,4 +1179,6 @@ let csvw_no_metadata_table : csvw_table = {
   tbl_table_schema = None;
   tbl_common = [];
   tbl_inherited = csvw_inherited_empty;
+  tbl_schema_ref = None;
+  tbl_suppress_output = None;
 }

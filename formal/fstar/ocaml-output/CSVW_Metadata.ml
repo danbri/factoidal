@@ -517,32 +517,44 @@ type csvw_table =
   tbl_dialect: csvw_dialect FStar_Pervasives_Native.option ;
   tbl_table_schema: csvw_table_schema FStar_Pervasives_Native.option ;
   tbl_common: (Prims.string * Parser_JSON.json_val) Prims.list ;
-  tbl_inherited: csvw_inherited_props }
+  tbl_inherited: csvw_inherited_props ;
+  tbl_schema_ref: Prims.string FStar_Pervasives_Native.option ;
+  tbl_suppress_output: Prims.bool FStar_Pervasives_Native.option }
 let __proj__Mkcsvw_table__item__tbl_url (projectee : csvw_table) :
   Prims.string FStar_Pervasives_Native.option=
   match projectee with
-  | { tbl_url; tbl_dialect; tbl_table_schema; tbl_common; tbl_inherited;_} ->
-      tbl_url
+  | { tbl_url; tbl_dialect; tbl_table_schema; tbl_common; tbl_inherited;
+      tbl_schema_ref; tbl_suppress_output;_} -> tbl_url
 let __proj__Mkcsvw_table__item__tbl_dialect (projectee : csvw_table) :
   csvw_dialect FStar_Pervasives_Native.option=
   match projectee with
-  | { tbl_url; tbl_dialect; tbl_table_schema; tbl_common; tbl_inherited;_} ->
-      tbl_dialect
+  | { tbl_url; tbl_dialect; tbl_table_schema; tbl_common; tbl_inherited;
+      tbl_schema_ref; tbl_suppress_output;_} -> tbl_dialect
 let __proj__Mkcsvw_table__item__tbl_table_schema (projectee : csvw_table) :
   csvw_table_schema FStar_Pervasives_Native.option=
   match projectee with
-  | { tbl_url; tbl_dialect; tbl_table_schema; tbl_common; tbl_inherited;_} ->
-      tbl_table_schema
+  | { tbl_url; tbl_dialect; tbl_table_schema; tbl_common; tbl_inherited;
+      tbl_schema_ref; tbl_suppress_output;_} -> tbl_table_schema
 let __proj__Mkcsvw_table__item__tbl_common (projectee : csvw_table) :
   (Prims.string * Parser_JSON.json_val) Prims.list=
   match projectee with
-  | { tbl_url; tbl_dialect; tbl_table_schema; tbl_common; tbl_inherited;_} ->
-      tbl_common
+  | { tbl_url; tbl_dialect; tbl_table_schema; tbl_common; tbl_inherited;
+      tbl_schema_ref; tbl_suppress_output;_} -> tbl_common
 let __proj__Mkcsvw_table__item__tbl_inherited (projectee : csvw_table) :
   csvw_inherited_props=
   match projectee with
-  | { tbl_url; tbl_dialect; tbl_table_schema; tbl_common; tbl_inherited;_} ->
-      tbl_inherited
+  | { tbl_url; tbl_dialect; tbl_table_schema; tbl_common; tbl_inherited;
+      tbl_schema_ref; tbl_suppress_output;_} -> tbl_inherited
+let __proj__Mkcsvw_table__item__tbl_schema_ref (projectee : csvw_table) :
+  Prims.string FStar_Pervasives_Native.option=
+  match projectee with
+  | { tbl_url; tbl_dialect; tbl_table_schema; tbl_common; tbl_inherited;
+      tbl_schema_ref; tbl_suppress_output;_} -> tbl_schema_ref
+let __proj__Mkcsvw_table__item__tbl_suppress_output (projectee : csvw_table)
+  : Prims.bool FStar_Pervasives_Native.option=
+  match projectee with
+  | { tbl_url; tbl_dialect; tbl_table_schema; tbl_common; tbl_inherited;
+      tbl_schema_ref; tbl_suppress_output;_} -> tbl_suppress_output
 type csvw_group_meta =
   {
   grp_common: (Prims.string * Parser_JSON.json_val) Prims.list ;
@@ -703,6 +715,23 @@ let csvw_builtin_datatype_names : Prims.string Prims.list=
   "yearMonthDuration"]
 let csvw_is_builtin_datatype_name (s : Prims.string) : Prims.bool=
   FStar_List_Tot_Base.mem s csvw_builtin_datatype_names
+let csvw_datatype_valid_or_degrade (d : csvw_datatype) :
+  csvw_datatype FStar_Pervasives_Native.option=
+  match d with
+  | CSVW_DT_Named n ->
+      if csvw_is_builtin_datatype_name n
+      then FStar_Pervasives_Native.Some d
+      else FStar_Pervasives_Native.None
+  | CSVW_DT_Object
+      (base_opt, uu___, uu___1, uu___2, uu___3, uu___4, uu___5, uu___6,
+       uu___7, uu___8, uu___9, uu___10, uu___11, uu___12, uu___13)
+      ->
+      (match base_opt with
+       | FStar_Pervasives_Native.Some b ->
+           if csvw_is_builtin_datatype_name b
+           then FStar_Pervasives_Native.Some d
+           else FStar_Pervasives_Native.None
+       | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.Some d)
 let csvw_inh_uri_template (key : Prims.string) (v : Parser_JSON.json_val) :
   Prims.string FStar_Pervasives_Native.option=
   match Parser_JSON.json_get_field key v with
@@ -731,11 +760,9 @@ let csvw_decode_inherited (v : Parser_JSON.json_val) : csvw_inherited_props=
       (match Parser_JSON.json_get_field "datatype" v with
        | FStar_Pervasives_Native.Some dv ->
            (match csvw_decode_datatype dv with
-            | FStar_Pervasives_Native.Some (CSVW_DT_Named n) ->
-                if csvw_is_builtin_datatype_name n
-                then FStar_Pervasives_Native.Some (CSVW_DT_Named n)
-                else FStar_Pervasives_Native.None
-            | other -> other)
+            | FStar_Pervasives_Native.Some d ->
+                csvw_datatype_valid_or_degrade d
+            | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None)
        | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None);
     inh_ordered = (Parser_JSON.json_get_bool "ordered" v)
   }
@@ -749,7 +776,11 @@ let csvw_decode_column (v : Parser_JSON.json_val) :
         | FStar_Pervasives_Native.None -> [] in
       let datatype =
         match Parser_JSON.json_get_field "datatype" v with
-        | FStar_Pervasives_Native.Some dv -> csvw_decode_datatype dv
+        | FStar_Pervasives_Native.Some dv ->
+            (match csvw_decode_datatype dv with
+             | FStar_Pervasives_Native.Some d ->
+                 csvw_datatype_valid_or_degrade d
+             | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None)
         | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None in
       FStar_Pervasives_Native.Some
         {
@@ -859,9 +890,16 @@ let csvw_decode_table (v : Parser_JSON.json_val) :
         match Parser_JSON.json_get_field "dialect" v with
         | FStar_Pervasives_Native.Some dv -> csvw_decode_dialect dv
         | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None in
+      let schema_ref =
+        match Parser_JSON.json_get_field "tableSchema" v with
+        | FStar_Pervasives_Native.Some (Parser_JSON.JString s) ->
+            FStar_Pervasives_Native.Some s
+        | uu___1 -> FStar_Pervasives_Native.None in
       let uu___1 =
         match Parser_JSON.json_get_field "tableSchema" v with
         | FStar_Pervasives_Native.None ->
+            (true, FStar_Pervasives_Native.None)
+        | FStar_Pervasives_Native.Some (Parser_JSON.JString uu___2) ->
             (true, FStar_Pervasives_Native.None)
         | FStar_Pervasives_Native.Some sv ->
             (match csvw_decode_table_schema sv with
@@ -880,9 +918,28 @@ let csvw_decode_table (v : Parser_JSON.json_val) :
                  tbl_dialect = dialect;
                  tbl_table_schema = schema;
                  tbl_common = (csvw_common_fields v);
-                 tbl_inherited = (csvw_decode_inherited v)
+                 tbl_inherited = (csvw_decode_inherited v);
+                 tbl_schema_ref = schema_ref;
+                 tbl_suppress_output =
+                   (Parser_JSON.json_get_bool "suppressOutput" v)
                })
   | uu___ -> FStar_Pervasives_Native.None
+let csvw_decode_table_schema_text (input : Prims.string) :
+  csvw_table_schema FStar_Pervasives_Native.option=
+  match Parser_JSON.parse_json input with
+  | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+  | FStar_Pervasives_Native.Some v -> csvw_decode_table_schema v
+let csvw_table_inline_schema (t : csvw_table) (ts : csvw_table_schema) :
+  csvw_table=
+  {
+    tbl_url = (t.tbl_url);
+    tbl_dialect = (t.tbl_dialect);
+    tbl_table_schema = (FStar_Pervasives_Native.Some ts);
+    tbl_common = (t.tbl_common);
+    tbl_inherited = (t.tbl_inherited);
+    tbl_schema_ref = FStar_Pervasives_Native.None;
+    tbl_suppress_output = (t.tbl_suppress_output)
+  }
 let rec csvw_decode_table_list (items : Parser_JSON.json_val Prims.list) :
   csvw_table Prims.list FStar_Pervasives_Native.option=
   match items with
@@ -1386,14 +1443,83 @@ let csvw_context_valid (v : Parser_JSON.json_val) : Prims.bool=
            let k = FStar_Pervasives_Native.fst kv in
            (k = "@base") || (k = "@language")) fields
   | uu___ -> true
+let csvw_table_fk_objs (t : Parser_JSON.json_val) :
+  Parser_JSON.json_val Prims.list=
+  match Parser_JSON.json_get_field "tableSchema" t with
+  | FStar_Pervasives_Native.Some ts ->
+      (match Parser_JSON.json_get_field "foreignKeys" ts with
+       | FStar_Pervasives_Native.Some (Parser_JSON.JArray items) ->
+           FStar_List_Tot_Base.filter
+             (fun i -> Parser_JSON.uu___is_JObject i) items
+       | FStar_Pervasives_Native.Some (Parser_JSON.JObject fields) ->
+           [Parser_JSON.JObject fields]
+       | uu___ -> [])
+  | uu___ -> []
+let csvw_table_inline_names (t : Parser_JSON.json_val) :
+  Prims.string Prims.list=
+  match Parser_JSON.json_get_field "tableSchema" t with
+  | FStar_Pervasives_Native.Some ts ->
+      (match Parser_JSON.json_get_array "columns" ts with
+       | FStar_Pervasives_Native.Some cols -> csvw_column_names cols
+       | FStar_Pervasives_Native.None -> [])
+  | uu___ -> []
+let csvw_ref_cols (refobj : Parser_JSON.json_val) : Prims.string Prims.list=
+  match Parser_JSON.json_get_field "columnReference" refobj with
+  | FStar_Pervasives_Native.Some (Parser_JSON.JString s) -> [s]
+  | FStar_Pervasives_Native.Some (Parser_JSON.JArray items) ->
+      FStar_List_Tot_Base.concatMap
+        (fun i -> match i with | Parser_JSON.JString s -> [s] | uu___ -> [])
+        items
+  | uu___ -> []
+let rec csvw_find_table_by_url (all : Parser_JSON.json_val Prims.list)
+  (res : Prims.string) : Parser_JSON.json_val FStar_Pervasives_Native.option=
+  match all with
+  | [] -> FStar_Pervasives_Native.None
+  | t::tl ->
+      (match Parser_JSON.json_get_string "url" t with
+       | FStar_Pervasives_Native.Some u ->
+           if u = res
+           then FStar_Pervasives_Native.Some t
+           else csvw_find_table_by_url tl res
+       | FStar_Pervasives_Native.None -> csvw_find_table_by_url tl res)
+let csvw_fk_resolves (all : Parser_JSON.json_val Prims.list)
+  (fk : Parser_JSON.json_val) : Prims.bool=
+  match Parser_JSON.json_get_field "reference" fk with
+  | FStar_Pervasives_Native.Some rf ->
+      (match Parser_JSON.json_get_field "resource" rf with
+       | FStar_Pervasives_Native.Some (Parser_JSON.JString res) ->
+           (match csvw_find_table_by_url all res with
+            | FStar_Pervasives_Native.None -> false
+            | FStar_Pervasives_Native.Some tgt ->
+                (match csvw_table_inline_names tgt with
+                 | [] -> true
+                 | tnames ->
+                     FStar_List_Tot_Base.for_all
+                       (fun c -> FStar_List_Tot_Base.mem c tnames)
+                       (csvw_ref_cols rf)))
+       | uu___ -> true)
+  | FStar_Pervasives_Native.None -> true
+let rec csvw_fks_resolve_list (all : Parser_JSON.json_val Prims.list)
+  (fks : Parser_JSON.json_val Prims.list) : Prims.bool=
+  match fks with
+  | [] -> true
+  | fk::tl -> (csvw_fk_resolves all fk) && (csvw_fks_resolve_list all tl)
+let rec csvw_group_fks_resolve (all : Parser_JSON.json_val Prims.list)
+  (remaining : Parser_JSON.json_val Prims.list) : Prims.bool=
+  match remaining with
+  | [] -> true
+  | t::tl ->
+      (csvw_fks_resolve_list all (csvw_table_fk_objs t)) &&
+        (csvw_group_fks_resolve all tl)
 let csvw_metadata_valid (v : Parser_JSON.json_val) : Prims.bool=
   ((csvw_context_valid v) && (csvw_obj_id_ok v)) &&
     (match Parser_JSON.json_get_field "tables" v with
      | FStar_Pervasives_Native.Some (Parser_JSON.JArray items) ->
-         ((((Prims.uu___is_Cons items) && (csvw_obj_type_ok v "TableGroup"))
-             && (csvw_transformations_ok v))
-            && (csvw_common_props_valid v))
-           && (csvw_tables_all_valid items)
+         (((((Prims.uu___is_Cons items) && (csvw_obj_type_ok v "TableGroup"))
+              && (csvw_transformations_ok v))
+             && (csvw_common_props_valid v))
+            && (csvw_tables_all_valid items))
+           && (csvw_group_fks_resolve items items)
      | FStar_Pervasives_Native.Some uu___ -> false
      | FStar_Pervasives_Native.None -> csvw_table_valid false v)
 let csvw_decode_metadata (v : Parser_JSON.json_val) :
@@ -1405,9 +1531,29 @@ let csvw_decode_metadata (v : Parser_JSON.json_val) :
      | FStar_Pervasives_Native.Some items ->
          (match csvw_decode_table_list items with
           | FStar_Pervasives_Native.Some ts ->
+              let grp_dia =
+                match Parser_JSON.json_get_field "dialect" v with
+                | FStar_Pervasives_Native.Some dv -> csvw_decode_dialect dv
+                | FStar_Pervasives_Native.None ->
+                    FStar_Pervasives_Native.None in
+              let ts_dia =
+                FStar_List_Tot_Base.map
+                  (fun t ->
+                     match t.tbl_dialect with
+                     | FStar_Pervasives_Native.Some uu___1 -> t
+                     | FStar_Pervasives_Native.None ->
+                         {
+                           tbl_url = (t.tbl_url);
+                           tbl_dialect = grp_dia;
+                           tbl_table_schema = (t.tbl_table_schema);
+                           tbl_common = (t.tbl_common);
+                           tbl_inherited = (t.tbl_inherited);
+                           tbl_schema_ref = (t.tbl_schema_ref);
+                           tbl_suppress_output = (t.tbl_suppress_output)
+                         }) ts in
               FStar_Pervasives_Native.Some
                 (CSVW_TableGroup
-                   (ts,
+                   (ts_dia,
                      {
                        grp_common = (csvw_common_fields v);
                        grp_inherited = (csvw_decode_inherited v)
@@ -1490,3 +1636,16 @@ let csvw_metadata_context_language (input : Prims.string) :
   match Parser_JSON.parse_json input with
   | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
   | FStar_Pervasives_Native.Some v -> csvw_context_language v
+let csvw_context_base (v : Parser_JSON.json_val) :
+  Prims.string FStar_Pervasives_Native.option=
+  match Parser_JSON.json_get_field "@context" v with
+  | FStar_Pervasives_Native.Some (Parser_JSON.JArray ctx) ->
+      (match ctx with
+       | uu___::second::[] -> Parser_JSON.json_get_string "@base" second
+       | uu___ -> FStar_Pervasives_Native.None)
+  | uu___ -> FStar_Pervasives_Native.None
+let csvw_metadata_context_base (input : Prims.string) :
+  Prims.string FStar_Pervasives_Native.option=
+  match Parser_JSON.parse_json input with
+  | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+  | FStar_Pervasives_Native.Some v -> csvw_context_base v

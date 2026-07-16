@@ -301,6 +301,19 @@ type csvw_table = {
   // "#row-{_row}", "tableSchema": {...}}` — test038/test126/test305-307
   // family.
   tbl_inherited    : csvw_inherited_props;
+  // Schema-by-reference (tabular-metadata: `tableSchema` MAY be a string
+  // that is a URL of an external schema document, test034/035): when the
+  // `tableSchema` value is a bare JSON string this holds that (unresolved)
+  // URL and `tbl_table_schema` stays None. The consumer (runner I/O) reads
+  // the referenced local file and calls csvw_table_inline_schema to fold
+  // the decoded schema in, as if it had been written inline.
+  tbl_schema_ref   : option string;
+  // Table-level `suppressOutput` (tabular-metadata): a table with
+  // suppressOutput=true contributes NO output at all — no csvw:Table
+  // node, no rows, no cell triples (test034/035: the professions and
+  // organizations lookup tables are suppressed; only senior/junior
+  // roles reach the output).
+  tbl_suppress_output : option bool;
 }
 
 // Stage 2: a table group's own top-level annotations — common
@@ -468,6 +481,24 @@ let csvw_builtin_datatype_names : list string = [
 let csvw_is_builtin_datatype_name (s:string) : bool =
   List.Tot.mem s csvw_builtin_datatype_names
 
+// Graceful degradation for a decoded datatype whose NAME (string form)
+// or object `base` is not one of the section 5.11.1 built-in datatypes
+// (tabular-metadata section 4): "a string ... MUST be one of the
+// built-in datatypes ... or an absolute URL" — the reference processor
+// nonetheless treats a non-built-in string value (test150 "foo",
+// test238 an absolute URL that does not resolve) as a warning and
+// behaves as if the datatype were absent; likewise an object whose
+// `base` names a non-built-in type (test151 `{"base": "foo"}`). An
+// object with NO `base` (format-only / @id-only) is left untouched.
+let csvw_datatype_valid_or_degrade (d : csvw_datatype) : option csvw_datatype =
+  match d with
+  | CSVW_DT_Named n ->
+    if csvw_is_builtin_datatype_name n then Some d else None
+  | CSVW_DT_Object base_opt _ _ _ _ _ _ _ _ _ _ _ _ _ _ ->
+    (match base_opt with
+     | Some b -> if csvw_is_builtin_datatype_name b then Some d else None
+     | None -> Some d)
+
 // A URI-template inherited property (aboutUrl/propertyUrl/valueUrl):
 // a string is the template; a NON-string present value (a JSON bool or
 // number — test047/048/049's `"aboutUrl": true` etc.) is not a valid
@@ -493,10 +524,8 @@ let csvw_decode_inherited (v:json_val) : csvw_inherited_props = {
   inh_datatype     = (match json_get_field "datatype" v with
                        | Some dv ->
                          (match csvw_decode_datatype dv with
-                          | Some (CSVW_DT_Named n) ->
-                            if csvw_is_builtin_datatype_name n
-                            then Some (CSVW_DT_Named n) else None
-                          | other -> other)
+                          | Some d -> csvw_datatype_valid_or_degrade d
+                          | None -> None)
                        | None -> None);
   inh_ordered      = json_get_bool "ordered" v;
 }
@@ -514,7 +543,9 @@ let csvw_decode_column (v:json_val) : option csvw_column =
       | None -> [] in
     let datatype =
       match json_get_field "datatype" v with
-      | Some dv -> csvw_decode_datatype dv
+      | Some dv -> (match csvw_decode_datatype dv with
+                    | Some d -> csvw_datatype_valid_or_degrade d
+                    | None -> None)
       | None -> None in
     Some ({
       col_name             = json_get_string "name" v;
@@ -630,9 +661,16 @@ let csvw_decode_table (v:json_val) : option csvw_table =
       match json_get_field "dialect" v with
       | Some dv -> csvw_decode_dialect dv
       | None -> None in
+    // A `tableSchema` given as a bare STRING is a URL reference to an
+    // external schema document (test034/035): defer it to `tbl_schema_ref`
+    // and leave `tbl_table_schema` None for the consumer to resolve; any
+    // other (object or degrade-to-empty) form decodes inline as before.
+    let schema_ref = match json_get_field "tableSchema" v with
+                     | Some (JString s) -> Some s | _ -> None in
     let schema_ok, schema =
       match json_get_field "tableSchema" v with
       | None -> true, None
+      | Some (JString _) -> true, None
       | Some sv ->
         (match csvw_decode_table_schema sv with
          | Some ts -> true, Some ts
@@ -645,8 +683,22 @@ let csvw_decode_table (v:json_val) : option csvw_table =
         tbl_table_schema = schema;
         tbl_common       = csvw_common_fields v;
         tbl_inherited    = csvw_decode_inherited v;
+        tbl_schema_ref   = schema_ref;
+        tbl_suppress_output = json_get_bool "suppressOutput" v;
       })
   | _ -> None
+
+// Schema-by-reference resolution (tabular-metadata, test034/035): parse
+// an external schema document's TEXT (the runner reads the referenced
+// local file) into a table schema, then fold it into a table that
+// carried only a `tbl_schema_ref`, as if it had been written inline.
+let csvw_decode_table_schema_text (input:string) : option csvw_table_schema =
+  match parse_json input with
+  | None -> None
+  | Some v -> csvw_decode_table_schema v
+
+let csvw_table_inline_schema (t:csvw_table) (ts:csvw_table_schema) : csvw_table =
+  { t with tbl_table_schema = Some ts; tbl_schema_ref = None }
 
 // All-or-nothing over the table-group's "tables" list — same
 // structural-shape discipline as csvw_decode_column_list.
@@ -1060,6 +1112,85 @@ let csvw_context_valid (v:json_val) : bool =
       fields
   | _ -> true
 
+// ================================================================
+// Cross-table foreignKey referential integrity (Stage 9, test252/253).
+// A foreignKey's `reference` given by `resource` (a sibling table's URL)
+// MUST name an existing sibling table AND, when that table's schema is
+// inline, an existing column in it. A dangling reference — missing
+// target table (test253) or missing target column (test252) — is a
+// metadata error: the whole document is rejected (both fixtures are
+// NegativeRdfTest, expecting no output). This is distinct from a
+// DATA-level FK violation (a row value with no matching target row —
+// test034's organization.csv), which is a validation warning and still
+// produces output; that is never checked here.
+//
+// Only `resource`-based references are checked. A `schemaReference`-based
+// reference (test034/035) points at an EXTERNAL schema document whose
+// columns are not visible at this pre-resolution layer, so it is treated
+// as satisfied to avoid false negatives on those positive fixtures.
+// ================================================================
+
+// The foreignKeys of a table's inline schema, normalising the
+// single-object form (test101) and skipping non-object array items
+// (test097's trailing `1`).
+let csvw_table_fk_objs (t:json_val) : list json_val =
+  match json_get_field "tableSchema" t with
+  | Some ts ->
+    (match json_get_field "foreignKeys" ts with
+     | Some (JArray items) -> List.Tot.filter (fun (i:json_val) -> JObject? i) items
+     | Some (JObject fields) -> [JObject fields]
+     | _ -> [])
+  | _ -> []
+
+// A table's inline column names ([] when the schema is a URL string —
+// schema-by-reference, resolved later by the consumer, so its columns
+// are invisible here and a reference into it stays unchecked).
+let csvw_table_inline_names (t:json_val) : list string =
+  match json_get_field "tableSchema" t with
+  | Some ts -> (match json_get_array "columns" ts with Some cols -> csvw_column_names cols | None -> [])
+  | _ -> []
+
+// A reference object's target column name(s) (string or array form).
+let csvw_ref_cols (refobj:json_val) : list string =
+  match json_get_field "columnReference" refobj with
+  | Some (JString s) -> [s]
+  | Some (JArray items) ->
+    List.Tot.concatMap (fun (i:json_val) -> match i with JString s -> [s] | _ -> []) items
+  | _ -> []
+
+let rec csvw_find_table_by_url (all:list json_val) (res:string)
+  : Tot (option json_val) (decreases all) =
+  match all with
+  | [] -> None
+  | t :: tl ->
+    (match json_get_string "url" t with
+     | Some u -> if u = res then Some t else csvw_find_table_by_url tl res
+     | None -> csvw_find_table_by_url tl res)
+
+let csvw_fk_resolves (all:list json_val) (fk:json_val) : bool =
+  match json_get_field "reference" fk with
+  | Some rf ->
+    (match json_get_field "resource" rf with
+     | Some (JString res) ->
+       (match csvw_find_table_by_url all res with
+        | None -> false   // missing destination table (test253)
+        | Some tgt ->
+          (match csvw_table_inline_names tgt with
+           | [] -> true   // target schema external / no inline columns: unchecked
+           | tnames -> List.Tot.for_all (fun (c:string) -> List.Tot.mem c tnames) (csvw_ref_cols rf)))
+     | _ -> true)   // schemaReference / no resource: unchecked here
+  | None -> true
+
+let rec csvw_fks_resolve_list (all fks:list json_val) : Tot bool (decreases fks) =
+  match fks with
+  | [] -> true
+  | fk :: tl -> csvw_fk_resolves all fk && csvw_fks_resolve_list all tl
+
+let rec csvw_group_fks_resolve (all remaining:list json_val) : Tot bool (decreases remaining) =
+  match remaining with
+  | [] -> true
+  | t :: tl -> csvw_fks_resolve_list all (csvw_table_fk_objs t) && csvw_group_fks_resolve all tl
+
 // Whole-document consistency gate. A "tables" member that is an empty
 // array (test074) or not an array at all (test098) is rejected; a
 // present "tables" makes the top object a table group whose @type, if
@@ -1073,7 +1204,8 @@ let csvw_metadata_valid (v:json_val) : bool =
      csvw_obj_type_ok v "TableGroup" &&
      csvw_transformations_ok v &&
      csvw_common_props_valid v &&
-     csvw_tables_all_valid items
+     csvw_tables_all_valid items &&
+     csvw_group_fks_resolve items items
    | Some _ -> false
    | None -> csvw_table_valid false v)
 
@@ -1094,7 +1226,17 @@ let csvw_decode_metadata (v:json_val) : option csvw_metadata =
   | Some items ->
     (match csvw_decode_table_list items with
      | Some ts ->
-       Some (CSVW_TableGroup ts { grp_common = csvw_common_fields v; grp_inherited = csvw_decode_inherited v })
+       // A `dialect` set at the table-GROUP level (sibling of "tables",
+       // test023's `header: false`/`headerRowCount: 0`) cascades to every
+       // table that does not declare its own dialect — tabular-metadata's
+       // inherited-dialect rule; test058 (a table WITH its own dialect)
+       // keeps it, so the cascade only fills the None slots.
+       let grp_dia = (match json_get_field "dialect" v with
+                      | Some dv -> csvw_decode_dialect dv | None -> None) in
+       let ts_dia = List.Tot.map
+         (fun (t:csvw_table) ->
+            match t.tbl_dialect with Some _ -> t | None -> { t with tbl_dialect = grp_dia }) ts in
+       Some (CSVW_TableGroup ts_dia { grp_common = csvw_common_fields v; grp_inherited = csvw_decode_inherited v })
      | None -> None)
   | None ->
     (match csvw_decode_table v with
@@ -1189,3 +1331,24 @@ let csvw_metadata_context_language (input:string) : option string =
   match parse_json input with
   | None -> None
   | Some v -> csvw_context_language v
+
+// The document's base-URL override, declared by the @context array's
+// second element ({"@base": "test273/"} in the [sentinel, {...}] form,
+// tabular-metadata section "The `@context` ..."): "a string that is
+// interpreted as a URL which is resolved against the location of the
+// metadata document to provide the base URL for other URLs" (test273).
+// A bare string value (no BCP47 shape check — this is a URL, not a
+// language tag). The runner resolves it against the metadata-document
+// location and uses the result as the base for table/cell IRIs.
+let csvw_context_base (v:json_val) : option string =
+  match json_get_field "@context" v with
+  | Some (JArray ctx) ->
+    (match ctx with
+     | [_; second] -> json_get_string "@base" second
+     | _ -> None)
+  | _ -> None
+
+let csvw_metadata_context_base (input:string) : option string =
+  match parse_json input with
+  | None -> None
+  | Some v -> csvw_context_base v

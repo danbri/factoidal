@@ -466,10 +466,36 @@ let discover_via_http_link (test_dir : string) (action_path : string) (link_opt 
    test_dir from action_path here (rather than threading the
    manifest's directory through) makes subdirectory tests fall out
    for free instead of needing a special case per fixture. *)
+(* Schema-by-reference resolution (tabular-metadata, test034/035): a
+   table whose `tableSchema` was a bare URL string carries a
+   CSVW_Metadata.tbl_schema_ref instead of an inline schema. Read the
+   referenced local file (resolved against the metadata document's
+   directory) and fold its decoded schema into the table via the F*
+   csvw_table_inline_schema — I/O glue only; the JSON decode itself stays
+   in CSVW.Metadata (csvw_decode_table_schema_text, rule #4/#11). *)
+let resolve_schema_refs (dir : string) (meta : CSVW_Metadata.csvw_metadata)
+  : CSVW_Metadata.csvw_metadata =
+  let inline_one (t : CSVW_Metadata.csvw_table) =
+    match opt_of_fs t.CSVW_Metadata.tbl_schema_ref with
+    | None -> t
+    | Some url ->
+      let p = Filename.concat dir (strip_query_frag url) in
+      (match read_file p with
+       | None -> t
+       | Some content ->
+         (match opt_of_fs (CSVW_Metadata.csvw_decode_table_schema_text content) with
+          | None -> t
+          | Some ts -> CSVW_Metadata.csvw_table_inline_schema t ts))
+  in
+  match meta with
+  | CSVW_Metadata.CSVW_Table t -> CSVW_Metadata.CSVW_Table (inline_one t)
+  | CSVW_Metadata.CSVW_TableGroup (ts, g) ->
+    CSVW_Metadata.CSVW_TableGroup (List.map inline_one ts, g)
+
 let run_test (te : test_entry) =
   let action_path = file_iri_to_path te.te_action in
   let test_dir = Filename.dirname action_path in
-  let base_iri = web_base_of_dir (abs_path test_dir) in
+  let base_iri0 = web_base_of_dir (abs_path test_dir) in
   let explicit_metadata_path =
     match te.te_metadata_override with
     | Some m -> Some (file_iri_to_path m)
@@ -487,7 +513,41 @@ let run_test (te : test_entry) =
           | None -> (None, None)))
   in
   let decode_failed = (metadata_path <> None && meta_opt = None) in
-  let tables = tables_with_rows test_dir action_path meta_opt in
+  (* `@base` override in the @context array (test273): a string resolved
+     against the metadata-document location, becoming the base URL for
+     every other URL in the document (table `url`, cell templates). The
+     @context is interpreted in F* (CSVW_Metadata.csvw_metadata_context_
+     base — a parser, rule #4); this glue only folds the result into the
+     base IRI and, for a RELATIVE override, into the directory the CSV
+     files are physically read from (the referenced CSV moves with the
+     base — test273's action.csv sits under tests/test273/, not tests/).
+     An absolute override changes only the logical base, not disk paths. *)
+  let ctx_base =
+    match metadata_path with
+    | Some p ->
+      (match read_file p with
+       | Some content -> opt_of_fs (CSVW_Metadata.csvw_metadata_context_base content)
+       | None -> None)
+    | None -> None
+  in
+  let base_iri, csv_dir =
+    match ctx_base with
+    | Some b when String.length b >= 1 ->
+      (* Absolute (has a "scheme://") overrides only the logical base;
+         relative resolves against the metadata-document location and
+         also relocates the CSV read directory. *)
+      if substr_end_index b "://" <> None
+      then (b, test_dir)
+      else (base_iri0 ^ b, Filename.concat test_dir b)
+    | _ -> (base_iri0, test_dir)
+  in
+  (* Fold any external schema references (test034/035) in before building
+     the table/row list — the referenced schema files live under the same
+     directory the CSVs are read from (csv_dir). *)
+  let meta_opt = match meta_opt with
+    | Some m -> Some (resolve_schema_refs csv_dir m)
+    | None -> None in
+  let tables = tables_with_rows csv_dir action_path meta_opt in
   (* Group-level inherited-property defaults + common properties
      (Stage 2 — test038/039/275-278/305-307 family): present only when
      the document actually IS a table group ("tables": [...] at the
