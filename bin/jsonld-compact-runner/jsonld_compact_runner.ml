@@ -251,27 +251,32 @@ let compact_document_tc tc input_content context_content =
    after each candidate was RUN and its failure diagnosed as a genuine
    1.0-vs-1.1 semantic gap — never a blanket specVersion check (mirrors
    jsonld_expand_runner.ml's jld_1_0_still_skip policy). JLD_NO_SKIP=1
-   re-runs them. *)
+   re-runs them.
+
+   2026-07-16 skip audit: #te001 "Compaction to list of lists" flipped
+   to an ordinary run (JSONLD.Expand.fst's expand_property now raises
+   1.0's "list of lists" error behind ac_mode10, shared with the
+   toRdf/expand runners' former #ter24/#ter32 skips). #t0038 remains,
+   with a sharper measured reason than before — see below. *)
 let jld_1_0_still_skip (id : string) : string option =
   if Sys.getenv_opt "JLD_NO_SKIP" <> None then None else
   match id with
   | "#t0038" ->
-    Some "option.specVersion=json-ld-1.0 — \"Index map round-tripping\": \
-          the expected output's \"body:/format\"-style keys need JSON-LD \
-          1.0's compact-IRI rule (EVERY colon-free term is a prefix \
-          candidate); the 1.1 API's prefix flag (which this program \
-          implements, and which processingMode json-ld-1.0 does not \
-          relax — compact/p001 pins that) never grants prefix status to \
-          expanded term definitions, so the property stays a full IRI. \
-          Measured, not a false skip; same fixture family as the expand \
-          runner's #t0038 skip."
-  | "#te001" ->
-    Some "option.processingMode=json-ld-1.0 (NegativeEvaluationTest) — \
-          \"Compaction to list of lists\": 1.0 rejects nested list \
-          objects; 1.1 (this program) legitimately compacts them, so it \
-          scores 'compacted successfully, failure expected' — the same \
-          measured 1.0-vs-1.1 gap as the expand runner's #ter24/#ter32 \
-          (see bin/jsonld-expand-runner/jsonld_expand_runner.ml)."
+    Some "option.specVersion=json-ld-1.0 — \"Index map round-tripping\" \
+          expects a genuine JSON-LD 1.0 processor's compaction (the \
+          \"body:/format\"-style keys need EVERY term — expanded-form \
+          definitions included — to be a compact-IRI prefix candidate); \
+          this suite's OWN #tp001 (\"Compact IRI will not use an \
+          expanded term definition in 1.0\", processingMode=json-ld-1.0, \
+          specVersion=json-ld-1.1) pins the OPPOSITE for the 1.1 API \
+          running in 1.0 processing mode. One processingMode-driven \
+          engine state cannot pass both; this program implements the \
+          1.1 API, so tp001 (the in-suite 1.1 conformance pin) wins and \
+          t0038 is excluded by design (diagnosed 2026-07-16: t0038's \
+          only diff vs this engine is the body:/format-style prefix \
+          compaction, confirmed with -v; see JSONLD.Compact.fst's \
+          cmp_curie_loop comment for why the gate is not relaxed under \
+          ac_mode10)."
   | _ -> None
 
 let run_test tc =

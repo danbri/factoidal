@@ -528,7 +528,8 @@ let expand_iri_gen (ac : active_context) (value : Prims.string)
                                 else
                                   if
                                     Prims.op_Negation
-                                      (in_ctx || ptd.td_prefix)
+                                      ((in_ctx || ptd.td_prefix) ||
+                                         ac.ac_mode10)
                                   then FStar_Pervasives_Native.Some value
                                   else
                                     (let suffix =
@@ -1420,40 +1421,60 @@ and context_process_one_field (ac : active_context) (key : Prims.string)
     then
       (match value with
        | Parser_JSON.JString s ->
-           (match jldctx_expand_iri_ctx ac s true with
-            | FStar_Pervasives_Native.Some iri ->
-                FStar_Pervasives_Native.Some
-                  {
-                    ac_terms = (ac.ac_terms);
-                    ac_vocab = (FStar_Pervasives_Native.Some iri);
-                    ac_base = (ac.ac_base);
-                    ac_language = (ac.ac_language);
-                    ac_direction = (ac.ac_direction);
-                    ac_previous = (ac.ac_previous);
-                    ac_mode10 = (ac.ac_mode10);
-                    ac_doc_url = (ac.ac_doc_url);
-                    ac_original_base = (ac.ac_original_base);
-                    ac_suppress_pop = (ac.ac_suppress_pop)
-                  }
-            | FStar_Pervasives_Native.None ->
-                (match ac.ac_base with
-                 | FStar_Pervasives_Native.Some b ->
-                     FStar_Pervasives_Native.Some
-                       {
-                         ac_terms = (ac.ac_terms);
-                         ac_vocab =
-                           (FStar_Pervasives_Native.Some (jldctx_resolve b s));
-                         ac_base = (ac.ac_base);
-                         ac_language = (ac.ac_language);
-                         ac_direction = (ac.ac_direction);
-                         ac_previous = (ac.ac_previous);
-                         ac_mode10 = (ac.ac_mode10);
-                         ac_doc_url = (ac.ac_doc_url);
-                         ac_original_base = (ac.ac_original_base);
-                         ac_suppress_pop = (ac.ac_suppress_pop)
-                       }
-                 | FStar_Pervasives_Native.None ->
-                     FStar_Pervasives_Native.None))
+           let n10 = Parser_FastString.fs_byte_length s in
+           let abs10 =
+             (((n10 >= (Prims.of_int (2))) &&
+                 ((Parser_JSON.jbyte_at s Prims.int_zero) =
+                    (Prims.of_int (0x5F))))
+                &&
+                ((Parser_JSON.jbyte_at s Prims.int_one) =
+                   (Prims.of_int (0x3A))))
+               ||
+               (match jldctx_find_colon s Prims.int_zero
+                        (n10 + Prims.int_one)
+                with
+                | FStar_Pervasives_Native.None -> false
+                | FStar_Pervasives_Native.Some c ->
+                    (c > Prims.int_zero) &&
+                      (jldctx_all_scheme_chars_from s Prims.int_zero c)) in
+           if ac.ac_mode10 && (Prims.op_Negation abs10)
+           then FStar_Pervasives_Native.None
+           else
+             (match jldctx_expand_iri_ctx ac s true with
+              | FStar_Pervasives_Native.Some iri ->
+                  FStar_Pervasives_Native.Some
+                    {
+                      ac_terms = (ac.ac_terms);
+                      ac_vocab = (FStar_Pervasives_Native.Some iri);
+                      ac_base = (ac.ac_base);
+                      ac_language = (ac.ac_language);
+                      ac_direction = (ac.ac_direction);
+                      ac_previous = (ac.ac_previous);
+                      ac_mode10 = (ac.ac_mode10);
+                      ac_doc_url = (ac.ac_doc_url);
+                      ac_original_base = (ac.ac_original_base);
+                      ac_suppress_pop = (ac.ac_suppress_pop)
+                    }
+              | FStar_Pervasives_Native.None ->
+                  (match ac.ac_base with
+                   | FStar_Pervasives_Native.Some b ->
+                       FStar_Pervasives_Native.Some
+                         {
+                           ac_terms = (ac.ac_terms);
+                           ac_vocab =
+                             (FStar_Pervasives_Native.Some
+                                (jldctx_resolve b s));
+                           ac_base = (ac.ac_base);
+                           ac_language = (ac.ac_language);
+                           ac_direction = (ac.ac_direction);
+                           ac_previous = (ac.ac_previous);
+                           ac_mode10 = (ac.ac_mode10);
+                           ac_doc_url = (ac.ac_doc_url);
+                           ac_original_base = (ac.ac_original_base);
+                           ac_suppress_pop = (ac.ac_suppress_pop)
+                         }
+                   | FStar_Pervasives_Native.None ->
+                       FStar_Pervasives_Native.None))
        | Parser_JSON.JNull ->
            FStar_Pervasives_Native.Some
              {

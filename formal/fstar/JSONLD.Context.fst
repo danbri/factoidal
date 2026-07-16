@@ -715,8 +715,19 @@ let expand_iri_gen (ac:active_context) (value:string) (vocab:bool) (in_ctx:bool)
                 // shaped value untouched — it already has a colon, so
                 // downstream treats it as an (odd but well-formed) IRI.
                 // Context processing (in_ctx) bypasses the gate — see
-                // this function's banner.
-                else if not (in_ctx || ptd.td_prefix) then Some value
+                // this function's banner. JSON-LD 1.0 (ac.ac_mode10) had
+                // NO prefix flag at all — the 1.1 API's restriction to
+                // explicitly-"@prefix":true terms is a 1.1-only tightening
+                // (JSON-LD 1.1 API §4.1's own "changes since 1.0" note);
+                // under 1.0, EVERY defined term is a compact-IRI prefix
+                // candidate, so ac_mode10 bypasses the gate exactly like
+                // in_ctx does (expand/t0038 "Expanding blank node labels",
+                // compact/t0038 "Index map round-tripping", flatten/
+                // t0014+t0038 — all specVersion=json-ld-1.0
+                // PositiveEvaluationTests whose expected output resolves a
+                // non-@prefix term, incl. a blank-node-valued one, as a
+                // compact-IRI prefix).
+                else if not (in_ctx || ptd.td_prefix || ac.ac_mode10) then Some value
                 else
                   let suffix = fs_byte_sub value (c + 1) (n - c - 1) in
                   Some (String.concat "" [ptd.td_iri; suffix])))
@@ -1426,6 +1437,26 @@ and context_process_one_field (ac:active_context) (key:string) (value:json_val)
        // EXISTING vocab concatenates onto it (e111/e112 "./rel2#"), and
        // otherwise resolves against @base per RFC 3986 (e092 "" -> the
        // base itself; e110 "/relative").
+       //
+       // JSON-LD 1.0 (ac.ac_mode10) had no such relative-@vocab
+       // resolution: Context Processing step "Otherwise, if value is an
+       // absolute IRI or blank node identifier, the vocabulary mapping
+       // ... is set to value" — anything else (the empty string,
+       // "/relative") is an "invalid vocab mapping" error (toRdf/expand
+       // t0115+t0116/te115+te116, NegativeEvaluationTests "relative
+       // IRIs as properties with @vocab: ''/relative @vocab in 1.0").
+       // The syntactic absolute-IRI test (scheme-shaped prefix before
+       // the first colon) is the same one expand_iri_gen's compact-IRI
+       // branch uses; a compact IRI is indistinguishable from an
+       // absolute IRI at this level and passes through to the 1.1
+       // resolution below, same as a 1.0 processor would store it raw.
+       let n10 = fs_byte_length s in
+       let abs10 =
+         (n10 >= 2 && jbyte_at s 0 = 0x5F && jbyte_at s 1 = 0x3A) ||
+         (match jldctx_find_colon s 0 (n10 + 1) with
+          | None -> false
+          | Some c -> c > 0 && jldctx_all_scheme_chars_from s 0 c) in
+       if ac.ac_mode10 && not abs10 then None else
        (match jldctx_expand_iri_ctx ac s true with
         | Some iri -> Some ({ ac with ac_vocab = Some iri })
         | None ->

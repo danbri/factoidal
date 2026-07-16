@@ -253,35 +253,20 @@ let flatten_document_tc tc input_content context_content =
    after each candidate was RUN and its failure diagnosed as a genuine
    1.0-vs-1.1 semantic gap — never a blanket specVersion check (mirrors
    jsonld_compact_runner.ml's jld_1_0_still_skip policy). JLD_NO_SKIP=1
-   re-runs them. *)
+   re-runs them.
+
+   2026-07-16 skip audit: the list is now EMPTY — both former entries
+   (#t0014 "@set of @value objects with keyword aliases", #t0038
+   "Flattening blank node labels") flipped to ordinary runs after
+   JSONLD.Context.fst's expand_iri_gen learned JSON-LD 1.0's
+   prefix rule behind ac_mode10 (1.0 has no prefix flag: EVERY defined
+   term — expanded-definition and bnode-valued ones included — is a
+   compact-IRI prefix candidate). The mechanism stays so the next
+   genuine 1.0-only gap has a place to be recorded (and JLD_NO_SKIP
+   keeps working). *)
 let jld_1_0_still_skip (id : string) : string option =
   if Sys.getenv_opt "JLD_NO_SKIP" <> None then None else
   match id with
-  | "#t0014" ->
-    Some "option.specVersion=json-ld-1.0 — \"@set of @value objects \
-          with keyword aliases\": the expected output needs JSON-LD \
-          1.0's compact-IRI rule (EVERY colon-free term is a prefix \
-          candidate) to expand \"xsd:date\" through the EXPANDED term \
-          definition {\"xsd\": {\"@id\": \"...XMLSchema#\"}}; the 1.1 \
-          API's prefix flag (which this program implements, and which \
-          processingMode json-ld-1.0 does not relax — compact/p001 \
-          pins that) never grants prefix status to expanded term \
-          definitions, so \"@type\" stays the literal \"xsd:date\". \
-          Measured under JLD_NO_SKIP=1 (only this one @type value \
-          differs); same fixture family as the compact runner's \
-          #t0038 skip."
-  | "#t0038" ->
-    Some "option.specVersion=json-ld-1.0 — \"Flattening blank node \
-          labels\": the expected output needs the same JSON-LD 1.0 \
-          every-term-is-a-prefix rule to expand \
-          \"term:AppendedToBlankNode\" through the bnode-valued term \
-          {\"term\": \"_:term\"} into \"_:termAppendedToBlankNode\" \
-          (which then relabels to the SAME _:b3 as the explicit \
-          \"_:termAppendedToBlankNode\" value); under the 1.1 prefix \
-          flag it stays the IRI \"term:AppendedToBlankNode\", one \
-          extra node reference. Measured under JLD_NO_SKIP=1; same \
-          1.0-prefix family as #t0014 here and the expand/compact \
-          runners' #t0038 skips."
   | _ -> None
 
 let run_test tc =

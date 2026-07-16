@@ -1,9 +1,10 @@
-* Warning 241 at JSONLD.Loader.fst(0,0-0,0):
-  - Unable to load JSONLD.Loader.fst.checked since checked file
-    JSONLD.Loader.fst.checked does not exist; will recheck JSONLD.Loader.fst
+* Warning 241 at RDF.Vocabulary.Axioms.fst(0,0-0,0):
+  - Unable to load RDF.Vocabulary.Axioms.fst.checked since checked file
+    RDF.Vocabulary.Axioms.fst.checked is stale (digest mismatch for
+    RDF.Vocabulary.Axioms.fst); will recheck RDF.Vocabulary.Axioms.fst
     (suppressing this warning for further modules)
 
-* Warning 349 at JSONLD.Context.fst(1011,33-1128,28):
+* Warning 349 at JSONLD.Context.fst(1022,33-1139,28):
   - The verification condition succeeded after splitting it to localize
     potential errors, although the original non-split verification condition
     failed. If you want to rely on splitting queries for verifying your program
@@ -13,7 +14,9 @@
 Extracted module JSONLD.Context
 * Warning 247 at JSONLD.Context.fst(0,0-0,0):
   - Checked file JSONLD.Context.fst.checked was not written.
-  - Reason: checked file JSONLD.Loader.fst.checked does not exist
+  - Reason:
+      checked file RDF.Graph.Executable.fst.checked is stale (digest mismatch
+      for RDF.Graph.Executable.fst)
 
 Verified module: JSONLD.Context
 All verification conditions discharged successfully
