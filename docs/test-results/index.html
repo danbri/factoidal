@@ -398,7 +398,7 @@
 <header>
   <div class="inner">
     <div class="rendered-pill" title="Rendered = when this page was last regenerated. Tests = when the *_results.log files inside the repository were last updated. Both UTC.">
-      <span class="row"><span class="label">Rendered</span><strong>2026-07-16 04:24 UTC</strong></span>
+      <span class="row"><span class="label">Rendered</span><strong>2026-07-16 04:59 UTC</strong></span>
       <span class="row"><span class="label">Tests</span><strong class="tests">2026-07-14 08:44 UTC</strong></span>
     </div>
     <h1>W3C test results</h1>
@@ -1394,18 +1394,18 @@
 <details class="family-node amber" id="grddl">
   <summary>
     <span class="fam-name">GRDDL</span>
-    <span class="fam-score">9/8/51 of 68</span>
-    <span class="gap-badge">4 gaps</span>
+    <span class="fam-score">15/53/0 of 68</span>
+    <span class="gap-badge">5 gaps</span>
     <span class="dot amber"></span>
   </summary>
   <div class="family-body">
-    <p class="fam-headline amber">9 pass, 8 fail, 51 skip (out of 68) on the local GRDDL Stage 1 subset.</p>
+    <p class="fam-headline amber">15 pass, 53 fail, 0 skip (out of 68) on the local GRDDL Stage 1 subset.</p>
     <div class="suites">
       <details class="suite-node amber">
-        <summary><span class="suite-name">GRDDL Stage 1 (local subset)</span><span class="suite-numbers">9/8/51 of 68</span><span class="dot amber"></span></summary>
+        <summary><span class="suite-name">GRDDL Stage 1 (local subset)</span><span class="suite-numbers">15/53/0 of 68</span><span class="dot amber"></span></summary>
         <div class="suite-body">
-          <div class="meter"><div class="seg seg-pass" style="width:13.24%"></div><div class="seg seg-fail" style="width:11.76%"></div><div class="seg seg-skip" style="width:75.00%"></div></div>
-          <p class="suite-numbers-full">9 pass, 8 fail, 51 skip (out of 68)</p>
+          <div class="meter"><div class="seg seg-pass" style="width:22.06%"></div><div class="seg seg-fail" style="width:77.94%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+          <p class="suite-numbers-full">15 pass, 53 fail, 0 skip (out of 68)</p>
           <p class="suite-prov">Runner: <code>bin/grddl-runner</code> (<code>bin/linux-x86_64/grddl_runner</code>) &middot; Suite: local subset of the GRDDL Test Cases</p>
           <p class="suite-diag">the fails are graph-mismatch cases in the local subset; the skips are fixtures that need a live network fetch of a transformation profile, out of scope for an offline conformance run</p>
         </div>
@@ -1415,10 +1415,11 @@
     <div class="remaining">
       <p class="remaining-title">Remaining work</p>
       <ul>
-        <li>8 local-subset tests fail on deeper per-stylesheet fidelity gaps (e.g. a Gnumeric-generated transform sheet the engine doesn't fully replicate) — each is a distinct stylesheet-feature gap, not one shared bug</li>
-        <li>Stage 2 (namespace/profile-document transformation paths, plus the hCard family of transforms) is not implemented — it needs a live document-fetch hook this offline runner doesn't have</li>
-        <li>Stage 3 (HTML tag-soup input, as opposed to well-formed XML/XHTML) is not implemented</li>
-        <li>49 tests are skipped because they require a live network fetch, which this offline conformance run does not perform</li>
+        <li>30 fail-graph-mismatch: consumed XSLT-engine fidelity gaps (e.g. grokSheet.xsl Gnumeric, hcard2rdf.xsl), HTTP content-negotiation (langconneg/multipleRepresentations), namespace-transformation recursion+merge, and XInclude posture — engine bugs are reported, not fixed in the GRDDL layer</li>
+        <li>6 fail-known-gap-xslt-feature: inline-rdf xml:base/xml:lang handling in embeddedRDF.xsl</li>
+        <li>10 fail-no-transformation-discovered: namespace/profile-document tests whose SECOND document is not vendored offline (two/three/four-transforms, ns-*, sq1/sq2)</li>
+        <li>7 fail-transform-not-vendored: a discovered stylesheet (.sxsl, or a redirect-base path) is not present in the offline docroot</li>
+        <li>Recursion + loop-detection (loop/loopx/ns-* chains) is single-level only; HTTP redirect-base and content-negotiation are not simulated; Stage 3 (HTML tag-soup input) is not implemented</li>
       </ul>
     </div>
   </div>
@@ -1985,8 +1986,8 @@ vc-stage1:    117 pass, 0 fail, 0 skip (of 117) — present=1</pre>
 </main>
 
 <footer>
-  Generated <strong>2026-07-16 04:24 UTC</strong> from commit
-  <code><a href="https://github.com/danbri/factoidal/commit/a8e1ea6942c9a6b58966361fc40ef9a6f4dddd24">a8e1ea69</a></code>
+  Generated <strong>2026-07-16 04:59 UTC</strong> from commit
+  <code><a href="https://github.com/danbri/factoidal/commit/0f4090d533069974baa1a3542f7506a79e1f8abb">0f4090d5</a></code>
   on branch <code>claude/main</code> — &ldquo;Merge branch 'claude/main' of http://127.0.0.1:41729/git/danbri/factoidal into claude/main&rdquo;.
   Re-run locally: <code>cd formal/fstar &amp;&amp; ./generate-report.sh --run</code>.
 </footer>
