@@ -41,3 +41,408 @@ factoidal-http serves them — see the SPARQL row.)
 Non-semweb engines (XML, XSLT, XPath, Schematron, JSON Schema, MathML,
 XForms, TOAN) stay measured on the dashboard but are outside this
 ledger's "full implementation" mandate.
+
+## Dispositions table (2026-07-16 day-closure /goal)
+
+Owner day-closure goal (2026-07-16): every W3C + ShEx suite either
+fully green or every residual fail/skip named with a one-line written
+disposition. Vocabulary (fixed): **disputed-fixture** (the vendored
+corpus fixture itself is wrong/contested upstream) ·
+**dependency-blocked(what)** (blocked on a named engine/component not
+yet built) · **planned-family(issue/doc)** (a named family with a plan
+and a tracker) · **environment(what)** (a checkout/toolchain gap, not
+an engine defect) · **by-design(why)** (deliberately out of scope, the
+processor's behavior is correct).
+
+Scores below are cross-checked against `git merge-base --is-ancestor`
+on this worktree's HEAD (`1e152504`) — a score is reported as "landed"
+only when its source commit is a verified ancestor. Suites with zero
+fails and zero skips (SPARQL 1.1, RDF 1.1 six-suite, RDFC-1.0, SHACL,
+type-consistency 352/0, DID, geosparql, mathml, schematron, xforms,
+toan_matrix, vc20_api, vc_di_eddsa, vc_stage1, hdt_stage4_parity,
+xpath_unit, rml_core, shex_negative_syntax) are omitted — nothing to
+disposition.
+
+| Suite | Score (labelled) | Status |
+|---|---|---|
+| CSVW csv2rdf | 264 pass, 6 fail (out of 270) [round 4, `c91fd4c7`, ancestor-confirmed] | 🟡 dashboard/ledger headline stale at 235/35 |
+| eecc_interop | 4 pass, 0 fail, 51 skip (out of 55) | ✅ fully dispositioned |
+| GRDDL stage 1 | 15 pass, 53 fail, 0 skip (out of 68) | ✅ fully dispositioned; stage 3 parked |
+| hub_browser_bundle | 234 pass, 1 fail (out of 235) | ✅ fully dispositioned |
+| JSON-LD 1.1 (5 sub-suites) | 1193 pass, 0 fail, 17 skip combined (of 1210) | ✅ per existing ledger row |
+| JSON Schema draft-07 | 712 pass, 0 fail, 58 skip (out of 770) | ✅ fully dispositioned |
+| npm_package | 160 pass, 2 fail, 1 skip (out of 163) | 🔴 2 fails undocumented, no tracking issue |
+| OWL 2 DL type-inconsistency (tinc) | 118 pass, 10 fail (out of 128), zero oracle-assisted [`ed8c4a03`, ancestor-confirmed] | ✅ per #299; ⚠️ committed log stale (see note) |
+| OWL 2 DL positive entailment (PE) | 135 pass, 69 fail, 2 skip (out of 204) [`81cf6906`, ancestor-confirmed] | 🟡 per #298, families not individually named |
+| OWL 2 DL negative entailment (NE) | 22 pass, 1 fail (out of 23) | ✅ fully dispositioned |
+| OWL 2 RL positive entailment | 28 pass, 2 fail (out of 30) | ✅ fully dispositioned |
+| OWL 2 DL syntax-dl species | 319 pass, 2 fail, 2 skip (out of 323) | ✅ fully dispositioned; ⚠️ ledger headline stale (302/2/19) |
+| OWL 2 profile EL | 108 pass, 13 fail (out of 121) | 🧭 untriaged — no owner disposition on file |
+| OWL 2 profile QL | 83 pass, 4 fail (out of 87) | 🧭 untriaged — no owner disposition on file |
+| QUDT integrity | 0 pass, 0 fail, 29 skip (out of 29) | ✅ fully dispositioned (all-skip is a perf finding, not a dead suite) |
+| RIF Core | 46 pass, 1 fail, 3 skip (out of 50) | ✅ fully dispositioned |
+| rml_io | 17 pass, 1 fail, 55 skip (out of 73) | ✅ fully dispositioned |
+| ShEx validation | 1181 pass, 1 fail (out of 1182) | ✅ per `tests/shex-shexj-twins/README.md` |
+| tests_unit | dashboard: 35 pass, 6 fail (out of 41) — stale; this session's fresh run: 45 pass, 0 fail (out of 45) | ✅ dispositioned as environment; dashboard needs republish |
+| xml_conformance | 1414 pass, 0 fail, 1171 skip (out of 2585) | ✅ fully dispositioned (runner's own "HONEST BREAKDOWN") |
+| XSLT 1.0 | 79 pass, 9 fail (out of 88) [`fd5fc372`, ancestor-confirmed] | 🟡 namespace-node family in flight (`xslt-namespace-nodes`) |
+
+### CSVW csv2rdf — 264 pass, 6 fail (out of 270)
+
+Linked: `docs/designissues/2026-07-15-csvw-csv2rdf-fail-triage.md` +
+#297. The ledger's own headline (row above, "235 pass, 35 fail") is
+stale — round 3 (`6ee10225`) and round 4 (`c91fd4c7`) are both
+ancestors of this worktree's HEAD and bring the real current score to
+264/6. Named residuals, from the triage doc's round-4 remaining-detail
+section:
+
+- test036, test037, test102 — **planned-family** (#297 family C: `@id`
+  real-IRI table/group-node identity, not yet a CSVW.Conversion
+  signature change; test036/037 additionally need annotation-object
+  common properties).
+- test148, test149 — **planned-family** (#297 family A residue:
+  title-LANGUAGE-aware column-name derivation, a decode-shape change
+  to `csvw_decode_titles`).
+- test194 — **dependency-blocked**(regex engine phase 3, #304) — the
+  `datatype.format` duration-pattern facet needs a regex match; #304
+  phase 2 (Brzozowski-derivative Exec + XSD pattern parser) has landed
+  (`e2e2dbb9`, ancestor-confirmed) but the CSVW/OWL consumer swap
+  (phase 3) has not.
+
+### eecc_interop — 4 pass, 0 fail, 51 skip (out of 55)
+
+Vendoring commits (`third_party/testing/eecc/PROVENANCE.md`):
+`vc-verifier-rules` at `b165d68393485c0fd3c5285eaa32fa9c3602a264`
+(2026-06-22), `webuild-attestations` at
+`1f1096b06b40b19c3711d635a2e9bada8f8584ef` (2026-07-06), both
+Apache-2.0, both retrieved 2026-07-13.
+
+- 4 skips (crypto-verify on the 4 real DataIntegrityProof credentials)
+  — **dependency-blocked**(live HTTPS `did:web` resolution; this
+  runner is offline/network-free and no fixture bundles the Ed25519
+  public key material).
+- 47 skips (40 webuild-attestations files + 6 vc-verifier-rules JSON
+  Schemas + 1 JWT-VC example) — **by-design**(not W3C VCDM JSON-LD
+  credentials — SD-JWT/mdoc/JWT-VC serializations Factoidal has no
+  parser for; vendored as reference data only, per the suite's own
+  yaml comment).
+
+### GRDDL stage 1 — 15 pass, 53 fail, 0 skip (out of 68)
+
+Linked: #301 + the stage-2 census already in this ledger's GRDDL row
+(landed `7d1c36e4`/`5c54fd21`, ancestor-confirmed). Four named
+fail-buckets, all **planned-family**(#301, stage 3 — parked as
+prioritization not prohibition per owner comment 2026-07-16 on #301:
+*"Do what you outlined but not grddl - more polish/optimize our xpath,
+xslt ... first"*):
+
+- 30 `fail-graph-mismatch` — consumed XSLT-engine fidelity gaps
+  (side-effect improvement expected from the now-prioritized XSLT
+  burndown — the #301 comment itself notes "~30 of the 53 fails are
+  XSLT-engine fidelity items").
+- 6 `fail-known-gap-xslt-feature` — inline-rdf4/5/6/8/9/10, `xml:base`/
+  `xml:lang` handling in `embeddedRDF.xsl`.
+- 10 `fail-no-transformation-discovered` — namespace/profile
+  second-document not vendored offline (two-transforms, three/
+  four-transforms, ns-\*, sq1/sq2, glean/hcarda/card5na/
+  grddlProfileBase3).
+- 7 `fail-transform-not-vendored` — a discovered stylesheet (`.sxsl` or
+  a redirect-base path) not present offline.
+
+### hub_browser_bundle — 234 pass, 1 fail (out of 235)
+
+- post18 "the C demo transcript quoted in this post is real" —
+  **environment**(the compiled KaRaMeL C binary
+  `formal/fstar/c-output/deltalog/demo/delta_log_demo` is listed in
+  `formal/fstar/.gitignore:23` and is not built in this checkout — the
+  `.c` sources are present, the compile step was never run here).
+  Verified: the assertion failure is literally "expected the compiled
+  C delta-log demo binary to exist", not a content mismatch.
+
+### JSON-LD 1.1 — 1193 pass, 0 fail, 17 skip combined (of 1210)
+
+toRdf 461/0/6, fromRdf 53/0/1, expand 379/0/6, compact 244/0/2, flatten
+56/0/2 — all **by-design**(JSON-LD-1.0-version fixtures, named per-ID
+in each runner; frame/html API suites are NOT RUN, already flagged in
+the existing ledger row as counting as failed until measured, not a
+skip). Note: this session found no unmerged branch touching JSON-LD
+skips despite the task brief's "concurrent agents ... jsonld skips"
+warning — treated as current, not in flight, but re-verify before
+citing if a jsonld-\* branch lands after this commit.
+
+### JSON Schema draft-07 — 712 pass, 0 fail, 58 skip (out of 770)
+
+All 58 — **by-design**(keywords outside the validator's slice-1 scope:
+pattern-regex matching, the `format` vocabulary, and remote/anchor
+`$ref` resolution — `bin/jsonschema-runner`'s own header comment).
+Per-file: `ref.json` 38 (remote/anchor `$ref`), `additionalProperties.json`
+8 + `properties.json` 8 (pattern-keyed properties), `definitions.json`
+2 + `propertyNames.json` 2 (anchor `$ref` / pattern).
+
+### npm_package — 160 pass, 2 fail, 1 skip (out of 163)
+
+🔴 The 2 fails are **not** covered by any linked design doc or GitHub
+issue found in this pass — flagged, not confidently dispositioned:
+
+- Test 44 `openCottas + queryCottas (raw ABI): COUNT/ASK/SELECT match
+  the fixture's known content` — fails at
+  `cottas-bytes-store.test.js:94` (`ask.boolean` expected `true`, got
+  `false`).
+- Test 50 `index.js openCottas/queryCottas: SELECT/ASK/COUNT match the
+  heap-store answers for the same data` — same file, line 173.
+
+Both are in `npm/factoidal/test/cottas-bytes-store.test.js`, which
+compares the binary `.cottas` fixture
+(`tests/unit/fixtures/store_capabilities_sample.cottas`) against the
+same data parsed live from `tests/local/data/cottas_sample.nq`. Best
+working hypothesis, unverified: **environment**(the binary `.cottas`
+fixture is stale relative to the `.nq` source it claims to be built
+from, and needs regeneration) — but this is a guess, not a diagnosed
+root cause, and no tracking issue exists. Needs a live `-v` diff before
+it can be reclassified with confidence.
+
+The 1 skip (test 22, "update: without npm-entry bundle rejects with
+pending message") is **by-design**(the negative-path test only applies
+when no npm-entry bundle is present; this checkout has the bundle, so
+the SKIP is the correct outcome — `# SKIP npm-entry bundle present —
+pending-message path not reachable`).
+
+### OWL 2 DL type-inconsistency (tinc) — 118 pass, 10 fail (out of 128), zero oracle-assisted
+
+Linked: #299 (`docs/designissues/2026-07-16-owl2-per-node-algebraic-tableau-909.md`),
+#298, #209. Landed via `owl2-concrete-domain` (`ed8c4a03`,
+ancestor-confirmed) on top of the Wave-C class-size reasoner. ⚠️ The
+committed `formal/fstar/ocaml-output/owl_type_inconsistency_results.log`
+reads 70 pass, 58 fail — that file is a stale artifact from an earlier
+wave, not regenerated after the later landings; the 118/10 figure is
+corroborated by three independent sources (the #299 issue-comment
+thread, `current-state.md`'s 114/14 entry plus the +4 concrete-domain
+flips it doesn't yet reflect, and commit-ancestry confirmation of
+`ed8c4a03`). Named residuals, reconstructed from #299's comment thread
++ `docs/designissues/2026-07-16-owl2-per-node-algebraic-tableau-909.md`
+§8 + `docs/designissues/2026-07-14-tcon-fail-classification.md`:
+
+- `WebOnt-description-logic-909` — **disputed-fixture**, 🧭 owner
+  decision pending (#299 comment 2026-07-16: three independent methods
+  — hand-checked one-element model, z3 `sat`, clash-free tableau —
+  agree the premise is consistent; the catalog itself marks the test
+  `Extracredit`, not `Approved`, with a WG comment that even the
+  approved version was defective).
+- `WebOnt-description-logic-626`, `WebOnt-description-logic-627` —
+  **planned-family**(#299, "double-blocking tableau extension",
+  reclassified by the per-node wave's analysis as the next OWL
+  dispatch candidate).
+- `Inconsistent String Pattern with Disjoint Dataproperties` —
+  **dependency-blocked**(regex engine phase 3, #304 — same blocker as
+  CSVW test194).
+- `WebOnt-description-logic-026`, `WebOnt-description-logic-027`,
+  `WebOnt-description-logic-502`, `WebOnt-Thing-005` —
+  **planned-family**(#299 Wave E, complementOf/oneOf search +
+  budget-outs; note `dl-502`'s corpus `test:description` calls it "the
+  classic 3 SAT problem," not a nominals test, per the 2026-07-14
+  tcon-fail-classification doc's caveat — the "nominals" label on this
+  test is inherited from an earlier, imprecise classification).
+- `Inconsistent Disjoint Dataproperties` — **planned-family**(#299,
+  "missing DisjointDataProperties clash, not a facet issue").
+- `Minus Infinity is not in owl:real` — **planned-family**(#299,
+  named scoped-out singleton, no dedicated wave yet).
+
+### OWL 2 DL positive entailment (PE) — 135 pass, 69 fail, 2 skip (out of 204)
+
+Linked: #298. Landed via two refutation waves (`257f2ce3`→`fd0359e5`,
+`eb01d209`, both ancestor-confirmed). The 69 remaining are **not**
+individually named in the source issue — grouped per #298's own
+comment-2/comment-3 breakdown, reported here as a group rather than
+fabricating per-test names:
+
+- ~55 — **planned-family**(#299/#298, tableau-completeness: the
+  negation is already correct but the tableau can't close — datatype-
+  facet and counting territory the concrete-domain + per-node waves
+  address).
+- 9 (5 `differentFrom`, 4 `sameAs`) — **planned-family**(#298, nominal
+  forms need O-rule/nominal-identification machinery, not yet
+  dispatched).
+- 4 named scoped-out (`equivalentProperty-004`, `equivalentProperty-005`,
+  `rdfbased-sem-rdfsext-domain-subprop`, `rdfbased-sem-rdfsext-range-subprop`)
+  — **dependency-blocked**(role-hierarchy reasoning outside the
+  refuter's current completeness — #298 comment: "premise
+  property-inclusion outside the refuter's role hierarchy").
+- Remainder (~1, arithmetic residue of the above buckets against 69) —
+  unclassified in the source issue; not separately named here rather
+  than guessed.
+
+2 skips: `Qualified-cardinality-boolean`, `Qualified-cardinality-restricted-int`
+— **by-design**(functional-syntax-only fixtures; the parser targets
+RDF/XML premises/conclusions, not OWL functional syntax).
+
+### OWL 2 DL negative entailment (NE) — 22 pass, 1 fail (out of 23)
+
+`WebOnt-imports-002` (`FAIL/unexpected-entailment`) —
+**planned-family**(import-resolution edge case; same family as the OWL
+2 row's syntax-dl species misses on `imports-004/012/014`). Confirmed
+unchanged across every OWL wave this session traced (#298/#299
+comments both say "NE 22/1 unchanged").
+
+### OWL 2 RL positive entailment — 28 pass, 2 fail (out of 30)
+
+`WebOnt-I5.5-005`, `WebOnt-I5.26-010` — **by-design**(documented in
+`docs/designissues/2026-07-03-owl-rl-pe-fails-fix-sketch.md` as OWL 1
+Full comprehension entailments deliberately outside the OWL 2 RL
+closure). The suite moved from 27/2/1 (that doc's "end state") to
+28/2/0 — the 1 skip it left open has since resolved to a pass; the 2
+fails are unchanged.
+
+### OWL 2 DL syntax-dl species — 319 pass, 2 fail, 2 skip (out of 323)
+
+⚠️ This ledger's existing OWL 2 row headline ("302 pass, 2 fail (out of
+304 scored), 19 skipped") is stale — the committed
+`formal/fstar/ocaml-output/owl_syntax_dl_results.log` confirms 319/2/2
+today (17 of the 19 former functional-syntax-only skips now run and
+pass; likely the "OWL profiles" work the task brief flagged as
+concurrent). The 2 fails are unchanged from the ledger's existing
+prose:
+
+- `FS2RDF-literals-ar` — **disputed-fixture**(RDF/XML premise our
+  parser rejects; existing ledger text).
+- `WebOnt-I5.5-005` — **disputed-fixture**(header-less conclusion; the
+  graph-identical `I5.5-006` sibling is judged FULL by the corpus, so
+  no graph-level function separates them; existing ledger text).
+
+### OWL 2 profile EL / QL — 108 pass, 13 fail (of 121) / 83 pass, 4 fail (of 87)
+
+🧭 Both rows are new in `docs/test-results/latest.json` (commit
+`0f4090d5`, ancestor-confirmed) with no matching row in this ledger and
+no GitHub issue found referencing either suite name. Not individually
+triaged in this pass — out of the brief's named scope (CSVW/OWL
+tinc-tcon-PE-NE/ShEx/XSLT/GRDDL plus the 9 named fresh-investigation
+suites) and 17 total fails is more than can be responsibly named from
+scratch inside this docs-only pass. Surfacing per rule 3 of "Reading
+owner steers": these look like the "OWL profiles" work the task brief
+flagged as being landed concurrently — recommend a dedicated triage
+pass once that work settles, rather than this session guessing at
+per-test dispositions.
+
+### QUDT integrity — 0 pass, 0 fail, 29 skip (out of 29)
+
+Re-run fresh this session (`./bin/linux-x86_64/qudt_runner`, matches
+the committed log exactly): all 29 skips are accounted for and the
+suite is not silently dead — it parses 131,169 triples + runs
+9-for-9 on the sibling `qudt_user_shapes` suite in the same process.
+Not a 🔴 finding.
+
+- 26 — **environment**(per-shape wall-clock budget: the 420s cap trips
+  before wide-target shapes finish; `docs/designissues/2026-07-10-qudt-scoping.md`
+  names this a perf-program work item — indexed SPARQL-constraint
+  evaluation, not an engine defect).
+- 2 (`Concept-label-IRI-Shape`, `UnitsHaveRdfClassQudtUnitTriple`) —
+  **dependency-blocked**(`sh:SPARQLTarget`, #181 — the one acknowledged
+  SHACL gap).
+- 1 (`UniqueSymbolTypeRestrictedPropertyConstraint`) — **by-design**
+  (`sh:deactivated true`, excluded by SHACL semantics itself).
+
+### RIF Core — 46 pass, 1 fail, 3 skip (out of 50)
+
+All named in `.github/test-suites/rif.yaml`'s own header, re-verified
+against the committed log:
+
+- `RDF_Combination_Constant_Equivalence_4` — **disputed-fixture**(a
+  malformed `xsd:string` datatype IRI present in both the official
+  `Core_v1.22.zip` and the archived W3C wiki source; not fixable
+  without breaking correct datatype-IRI semantics).
+- `Builtins_List`, `NestedListsAreNotFlatLists` —
+  **dependency-blocked**(RIF List terms are not modelled in
+  `RIF.Core.Syntax.fst`).
+- `Builtins_Time` — **dependency-blocked**(the ~60-builtin date/time/
+  duration family; only the `EBusiness_Contract` slice is
+  implemented).
+
+### rml_io — 17 pass, 1 fail, 55 skip (out of 73)
+
+Re-run fresh this session (`./bin/linux-x86_64/rml_runner --io -v`,
+matches the committed log's 17/1/55 exactly):
+
+- `RMLSTC0009a` — expects an empty dataset (`error=true`) but the
+  runner produces 3 triples — **planned-family**(no dedicated issue
+  found; same shape as an unhandled error-detection case in the
+  rml-io source-tests section, needs its own triage — flagged, not
+  fabricated a root cause).
+- 41 — **by-design**(`RMLTTC0*` logical-target/output-serialization
+  tests, out of scope per the 2026-07-05 rml program plan Stage 9).
+- 7 — **dependency-blocked**(XPath/XML reference formulation not
+  implemented).
+- 4 — **dependency-blocked**(compressed source, needs decompression).
+- 1 — **dependency-blocked**(relational SQL2008 source, needs an
+  RDBMS).
+- 1 — **dependency-blocked**(non-UTF-8/UTF-16 source encoding not
+  supported).
+- 1 — **dependency-blocked**(SPARQL-over-RDF iterator not
+  implemented).
+
+### ShEx validation — 1181 pass, 1 fail (out of 1182)
+
+`start2RefS2` — **disputed-fixture**, linked
+[`shexSpec/shexTest#43`](https://github.com/shexSpec/shexTest/issues/43)
+(closed 2023, unreconciled upstream — `start2RefS2.json`/`.ttl` use
+predicate `p1`, `start2RefS2.shex` uses `p2`; per
+`tests/shex-shexj-twins/README.md`, our ShExJ-first runner scores
+against the JSON and carries the mismatch as a fail rather than
+patching a vendored fixture).
+
+### tests_unit — dashboard 35 pass, 6 fail (of 41); fresh run 45 pass, 0 fail (of 45)
+
+**environment**(the dashboard capture ran against a checkout with
+gaps this session reproduced the failure signature for: this
+worktree's `third_party/testing/w3c/` submodule was NOT populated
+until `tools/ensure-test-env.sh` was re-run against the actual
+worktree path — an initial run against a sibling checkout's root had
+falsely reported "ok". With the submodule missing, 4 tests
+(`owl_direct_pipeline_timing`, `owl_rl_bisect`, `owl_rl_closure_diff`,
+`owl_rl_sequenced`) fail on `Sys_error("...simple.ttl: No such file or
+directory")` — the same ENOENT-from-missing-submodule shape
+`workflow-gotchas-debugging` hazard #15 describes, though this
+session's reproduction hit 41/4 not the dashboard's 35/6, so the
+dashboard's exact capture environment was likely worse-broken still,
+e.g. opam switch not activated per iron rule #12). After
+`tools/ensure-test-env.sh` + `eval $(opam env --switch=fstar
+--set-switch)`, the suite is clean: **45 pass, 0 fail (out of 45)**.
+The dashboard number needs republishing from a hazard-15-clean
+checkout — flagged for the publication step, not fixed here (docs-only
+commit, no rebuild triggered).
+
+### xml_conformance — 1414 pass, 0 fail, 1171 skip (out of 2585)
+
+The runner's own "HONEST BREAKDOWN" (re-verified against the committed
+log), five categories, all **by-design**(explicit Stage-A scope
+limits, not silent gaps):
+
+- 386 — valid docs rejected at a Stage-A DTD boundary (markup entity /
+  external subset / DTD construct beyond the WF slice).
+- 332 — not-wf violation is in the DTD internal subset
+  (parsed-but-not-validated — Stage-A scope limit).
+- 416 — other (DOCTYPE-external-on-valid, encoding-name edge cases,
+  invalid/error-by-design, external-entity exemption, file-not-found).
+- 37 — out-of-profile (not-wf holds only under XML 1.1 or Namespaces
+  in XML; this parser is XML 1.0 non-namespace).
+- 0 — vacuous (retired by Stage-A DTD support; the runner asserts this
+  stays 0).
+
+### XSLT 1.0 — 79 pass, 9 fail (out of 88)
+
+Linked: #302. Landed via `xslt-burndown-1` (`fd5fc372`,
+ancestor-confirmed): "XSLT 79 pass, 9 fail (of 88), was 75/13" —
+this ledger's dashboard-adjacent headline is stale at 75/13. Named
+residuals, from #302's 2026-07-16 comment:
+
+- `copy-0601`, `match-045`, `namespace-4101`, `namespace-4501`,
+  `namespace-4801`, `node-1601` (comment counts this family as "5" but
+  names 6 — quoted as written per the steers-quoting discipline rather
+  than silently corrected) — 🟡 **in flight**: branch
+  `xslt-namespace-nodes`, dispatched per the owner's 2026-07-16
+  XSLT-polish priority; not yet merged into this worktree's HEAD
+  (branch not found in `git branch -a` as of this measurement).
+- `copy-2601`, `select-1001` — **planned-family**(#302, document-node
+  prolog/epilog comment handling).
+- `id-016` — **planned-family**(#302, DTD-ID `id()` function).
+
+All nine are confirmed in-scope (none PSVI/XSLT-2.0-schema-aware; #302
+explicitly excludes that boundary, tracked separately at #190).
