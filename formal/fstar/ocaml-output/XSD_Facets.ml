@@ -84,6 +84,9 @@ let xsd_dateTime : RDF_Term.wf_iri=
   "http://www.w3.org/2001/XMLSchema#dateTime"
 let is_datetime_datatype (dt : RDF_Term.wf_iri) : Prims.bool=
   dt = xsd_dateTime
+let xsd_float : RDF_Term.wf_iri= "http://www.w3.org/2001/XMLSchema#float"
+let owl_rational : RDF_Term.wf_iri= "http://www.w3.org/2002/07/owl#rational"
+let is_float_datatype (dt : RDF_Term.wf_iri) : Prims.bool= dt = xsd_float
 let parse_digits_sub (s : Prims.string) (pos : Prims.nat) (n : Prims.nat) :
   Prims.int FStar_Pervasives_Native.option=
   if (pos + n) > (FStar_String.strlen s)
@@ -434,6 +437,221 @@ let rec datetime_facets_to_interval
                       { iv_lo = B_Unbounded; iv_hi = (B_Excl v) }
                   else acc in
       datetime_facets_to_interval tl acc'
+type rational = {
+  rn_num: Prims.int ;
+  rn_den: Prims.pos }
+let __proj__Mkrational__item__rn_num (projectee : rational) : Prims.int=
+  match projectee with | { rn_num; rn_den;_} -> rn_num
+let __proj__Mkrational__item__rn_den (projectee : rational) : Prims.pos=
+  match projectee with | { rn_num; rn_den;_} -> rn_den
+let rec pow10 (n : Prims.nat) : Prims.pos=
+  if n = Prims.int_zero
+  then Prims.int_one
+  else (Prims.of_int (10)) * (pow10 (n - Prims.int_one))
+let rec pow2i (n : Prims.nat) : Prims.pos=
+  if n = Prims.int_zero
+  then Prims.int_one
+  else (Prims.of_int (2)) * (pow2i (n - Prims.int_one))
+let rational_eq (a : rational) (b : rational) : Prims.bool=
+  (a.rn_num * b.rn_den) = (b.rn_num * a.rn_den)
+let rec span_digits (cs : FStar_Char.char Prims.list) (accv : Prims.int)
+  (accn : Prims.nat) : (Prims.int * Prims.nat * FStar_Char.char Prims.list)=
+  match cs with
+  | c::tl ->
+      if is_ascii_digit c
+      then
+        span_digits tl ((accv * (Prims.of_int (10))) + (digit_val c))
+          (accn + Prims.int_one)
+      else (accv, accn, cs)
+  | [] -> (accv, accn, cs)
+let parse_decimal_rational (lex : Prims.string) :
+  rational FStar_Pervasives_Native.option=
+  let cs0 = FStar_String.list_of_string lex in
+  let uu___ =
+    match cs0 with
+    | c::tl ->
+        let n = FStar_Char.int_of_char c in
+        if n = (Prims.of_int (45))
+        then (true, tl)
+        else if n = (Prims.of_int (43)) then (false, tl) else (false, cs0)
+    | [] -> (false, cs0) in
+  match uu___ with
+  | (neg, cs1) ->
+      let uu___1 = span_digits cs1 Prims.int_zero Prims.int_zero in
+      (match uu___1 with
+       | (ipart, ilen, cs2) ->
+           let uu___2 =
+             match cs2 with
+             | c::tl ->
+                 if (FStar_Char.int_of_char c) = (Prims.of_int (46))
+                 then span_digits tl Prims.int_zero Prims.int_zero
+                 else (Prims.int_zero, Prims.int_zero, cs2)
+             | [] -> (Prims.int_zero, Prims.int_zero, cs2) in
+           (match uu___2 with
+            | (fpart, flen, cs3) ->
+                let uu___3 =
+                  match cs3 with
+                  | c::tl ->
+                      let ec = FStar_Char.int_of_char c in
+                      if
+                        (ec = (Prims.of_int (101))) ||
+                          (ec = (Prims.of_int (69)))
+                      then
+                        (match tl with
+                         | s::tl2 ->
+                             let sn = FStar_Char.int_of_char s in
+                             let uu___4 =
+                               if sn = (Prims.of_int (45))
+                               then (true, tl2)
+                               else
+                                 if sn = (Prims.of_int (43))
+                                 then (false, tl2)
+                                 else (false, tl) in
+                             (match uu___4 with
+                              | (eneg, ed) ->
+                                  let uu___5 =
+                                    span_digits ed Prims.int_zero
+                                      Prims.int_zero in
+                                  (match uu___5 with
+                                   | (ev, elen, r) ->
+                                       if elen = Prims.int_zero
+                                       then (false, Prims.int_zero, r)
+                                       else
+                                         (true,
+                                           (if eneg
+                                            then Prims.int_zero - ev
+                                            else ev), r)))
+                         | [] -> (false, Prims.int_zero, cs3))
+                      else (true, Prims.int_zero, cs3)
+                  | [] -> (true, Prims.int_zero, cs3) in
+                (match uu___3 with
+                 | (ok_exp, expv, cs4) ->
+                     if
+                       ((Prims.op_Negation ok_exp) ||
+                          (Prims.uu___is_Cons cs4))
+                         || ((ilen + flen) = Prims.int_zero)
+                     then FStar_Pervasives_Native.None
+                     else
+                       (let mantissa = (ipart * (pow10 flen)) + fpart in
+                        let net = expv - flen in
+                        let signed =
+                          if neg then Prims.int_zero - mantissa else mantissa in
+                        if net >= Prims.int_zero
+                        then
+                          FStar_Pervasives_Native.Some
+                            {
+                              rn_num = (signed * (pow10 net));
+                              rn_den = Prims.int_one
+                            }
+                        else
+                          FStar_Pervasives_Native.Some
+                            {
+                              rn_num = signed;
+                              rn_den = (pow10 (Prims.int_zero - net))
+                            }))))
+let rec split_slash (cs : FStar_Char.char Prims.list)
+  (acc : FStar_Char.char Prims.list) :
+  (FStar_Char.char Prims.list * FStar_Char.char Prims.list)
+    FStar_Pervasives_Native.option=
+  match cs with
+  | [] -> FStar_Pervasives_Native.None
+  | c::tl ->
+      if (FStar_Char.int_of_char c) = (Prims.of_int (47))
+      then FStar_Pervasives_Native.Some ((FStar_List_Tot_Base.rev acc), tl)
+      else split_slash tl (c :: acc)
+let parse_rational_lex (lex : Prims.string) :
+  rational FStar_Pervasives_Native.option=
+  match split_slash (FStar_String.list_of_string lex) [] with
+  | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+  | FStar_Pervasives_Native.Some (ns, ds) ->
+      (match ((parse_facet_int (FStar_String.string_of_list ns)),
+               (parse_facet_int (FStar_String.string_of_list ds)))
+       with
+       | (FStar_Pervasives_Native.Some n, FStar_Pervasives_Native.Some d) ->
+           if d > Prims.int_zero
+           then FStar_Pervasives_Native.Some { rn_num = n; rn_den = d }
+           else FStar_Pervasives_Native.None
+       | (uu___, uu___1) -> FStar_Pervasives_Native.None)
+let term_exact_rational (t : RDF_Term.rdf_term) :
+  rational FStar_Pervasives_Native.option=
+  match t with
+  | RDF_Term.T_Literal l ->
+      if is_integer_family_datatype l.RDF_Term.datatype
+      then
+        (match parse_facet_int l.RDF_Term.lexical_form with
+         | FStar_Pervasives_Native.Some v ->
+             FStar_Pervasives_Native.Some
+               { rn_num = v; rn_den = Prims.int_one }
+         | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None)
+      else
+        if l.RDF_Term.datatype = RDF_Term.xsd_decimal
+        then parse_decimal_rational l.RDF_Term.lexical_form
+        else
+          if l.RDF_Term.datatype = owl_rational
+          then parse_rational_lex l.RDF_Term.lexical_form
+          else FStar_Pervasives_Native.None
+  | uu___ -> FStar_Pervasives_Native.None
+let float_ordinal_of_lexical (lex : Prims.string) :
+  Prims.int FStar_Pervasives_Native.option=
+  match parse_decimal_rational lex with
+  | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+  | FStar_Pervasives_Native.Some r ->
+      if r.rn_num = Prims.int_zero
+      then FStar_Pervasives_Native.Some Prims.int_zero
+      else
+        if r.rn_num < Prims.int_zero
+        then FStar_Pervasives_Native.None
+        else
+          (let n150 = r.rn_num * (pow2i (Prims.of_int (150))) in
+           let den = r.rn_den in
+           let twoden = (Prims.of_int (2)) * den in
+           let k = (n150 + den) / twoden in
+           if
+             (((k >= Prims.int_one) &&
+                 (k <= ((pow2i (Prims.of_int (23))) - Prims.int_one)))
+                &&
+                (((((Prims.of_int (2)) * k) - Prims.int_one) * den) < n150))
+               && (n150 < ((((Prims.of_int (2)) * k) + Prims.int_one) * den))
+           then FStar_Pervasives_Native.Some k
+           else FStar_Pervasives_Native.None)
+let rec float_facets_to_ordinal_interval
+  (facets : (RDF_Term.wf_iri * RDF_Term.rdf_term) Prims.list)
+  (acc : interval) : interval=
+  match facets with
+  | [] -> acc
+  | (firi, fval)::tl ->
+      let acc' =
+        match fval with
+        | RDF_Term.T_Literal l ->
+            (match float_ordinal_of_lexical l.RDF_Term.lexical_form with
+             | FStar_Pervasives_Native.None -> acc
+             | FStar_Pervasives_Native.Some v ->
+                 if firi = facet_min_incl_iri
+                 then
+                   interval_intersect acc
+                     { iv_lo = (B_Incl v); iv_hi = B_Unbounded }
+                 else
+                   if firi = facet_max_incl_iri
+                   then
+                     interval_intersect acc
+                       { iv_lo = B_Unbounded; iv_hi = (B_Incl v) }
+                   else
+                     if firi = facet_min_excl_iri
+                     then
+                       interval_intersect acc
+                         { iv_lo = (B_Excl v); iv_hi = B_Unbounded }
+                     else
+                       if firi = facet_max_excl_iri
+                       then
+                         interval_intersect acc
+                           { iv_lo = B_Unbounded; iv_hi = (B_Excl v) }
+                       else acc)
+        | uu___ -> acc in
+      float_facets_to_ordinal_interval tl acc'
+let float_restriction_provably_empty (dt : RDF_Term.wf_iri)
+  (facets : (RDF_Term.wf_iri * RDF_Term.rdf_term) Prims.list) : Prims.bool=
+  (is_float_datatype dt) &&
+    (interval_empty (float_facets_to_ordinal_interval facets full_interval))
 type value_set =
   | VS_Unconstrained 
   | VS_Interval of interval 
@@ -491,15 +709,20 @@ let term_bool_opt (t : RDF_Term.rdf_term) :
   | uu___ -> FStar_Pervasives_Native.None
 let term_provably_equal (a : RDF_Term.rdf_term) (b : RDF_Term.rdf_term) :
   Prims.bool=
-  (RDF_Term.rdf_term_eq a b) ||
-    (match ((term_int_opt a), (term_int_opt b)) with
+  ((RDF_Term.rdf_term_eq a b) ||
+     (match ((term_int_opt a), (term_int_opt b)) with
+      | (FStar_Pervasives_Native.Some x, FStar_Pervasives_Native.Some y) ->
+          x = y
+      | (uu___, uu___1) ->
+          (match ((term_bool_opt a), (term_bool_opt b)) with
+           | (FStar_Pervasives_Native.Some x, FStar_Pervasives_Native.Some y)
+               -> x = y
+           | (uu___2, uu___3) -> false)))
+    ||
+    (match ((term_exact_rational a), (term_exact_rational b)) with
      | (FStar_Pervasives_Native.Some x, FStar_Pervasives_Native.Some y) ->
-         x = y
-     | (uu___, uu___1) ->
-         (match ((term_bool_opt a), (term_bool_opt b)) with
-          | (FStar_Pervasives_Native.Some x, FStar_Pervasives_Native.Some y)
-              -> x = y
-          | (uu___2, uu___3) -> false))
+         rational_eq x y
+     | (uu___, uu___1) -> false)
 let both_string (a : RDF_Term.rdf_term) (b : RDF_Term.rdf_term) : Prims.bool=
   match (a, b) with
   | (RDF_Term.T_Literal la, RDF_Term.T_Literal lb) ->
@@ -631,6 +854,48 @@ let value_set_is_empty (v : value_set) : Prims.bool=
   | VS_Enum [] -> true
   | VS_DateInterval iv -> interval_empty_dense iv
   | uu___ -> false
+let bound_lo_incl (b : bound) : Prims.int FStar_Pervasives_Native.option=
+  match b with
+  | B_Unbounded -> FStar_Pervasives_Native.None
+  | B_Incl x -> FStar_Pervasives_Native.Some x
+  | B_Excl x -> FStar_Pervasives_Native.Some (x + Prims.int_one)
+let bound_hi_incl (b : bound) : Prims.int FStar_Pervasives_Native.option=
+  match b with
+  | B_Unbounded -> FStar_Pervasives_Native.None
+  | B_Incl x -> FStar_Pervasives_Native.Some x
+  | B_Excl x -> FStar_Pervasives_Native.Some (x - Prims.int_one)
+let interval_count (iv : interval) :
+  Prims.nat FStar_Pervasives_Native.option=
+  match ((bound_lo_incl iv.iv_lo), (bound_hi_incl iv.iv_hi)) with
+  | (FStar_Pervasives_Native.Some lo, FStar_Pervasives_Native.Some hi) ->
+      if hi >= lo
+      then FStar_Pervasives_Native.Some ((hi - lo) + Prims.int_one)
+      else FStar_Pervasives_Native.Some Prims.int_zero
+  | (uu___, uu___1) -> FStar_Pervasives_Native.None
+let rec drop_provably_equal (h : RDF_Term.rdf_term)
+  (xs : RDF_Term.rdf_term Prims.list) : RDF_Term.rdf_term Prims.list=
+  match xs with
+  | [] -> []
+  | x::tl ->
+      let rest = drop_provably_equal h tl in
+      if term_provably_equal h x then rest else x :: rest
+let rec enum_distinct_count (xs : RDF_Term.rdf_term Prims.list) : Prims.nat=
+  match xs with
+  | [] -> Prims.int_zero
+  | h::tl -> Prims.int_one + (enum_distinct_count (drop_provably_equal h tl))
+let value_set_max_size (v : value_set) :
+  Prims.nat FStar_Pervasives_Native.option=
+  match v with
+  | VS_Empty -> FStar_Pervasives_Native.Some Prims.int_zero
+  | VS_Enum [] -> FStar_Pervasives_Native.Some Prims.int_zero
+  | VS_Enum xs -> FStar_Pervasives_Native.Some (enum_distinct_count xs)
+  | VS_Interval iv -> interval_count iv
+  | VS_DateInterval iv ->
+      if interval_empty_dense iv
+      then FStar_Pervasives_Native.Some Prims.int_zero
+      else FStar_Pervasives_Native.None
+  | VS_Unconstrained -> FStar_Pervasives_Native.None
+  | VS_Family uu___ -> FStar_Pervasives_Native.None
 let value_set_subtract (acc : value_set) (remove : value_set) : value_set=
   match (acc, remove) with
   | (VS_Enum xs, VS_Enum ys) ->

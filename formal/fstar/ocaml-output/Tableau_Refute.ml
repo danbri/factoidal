@@ -243,54 +243,71 @@ type rstate =
   rs_subprop: (RDF_Term.wf_iri * RDF_Term.wf_iri) Prims.list ;
   rs_transprops: RDF_Term.wf_iri Prims.list ;
   rs_funcprops: RDF_Term.wf_iri Prims.list ;
-  rs_ident: RDF_Term.rdf_term Prims.list Prims.list }
+  rs_ident: RDF_Term.rdf_term Prims.list Prims.list ;
+  rs_range: (RDF_Term.wf_iri * RDF_Term.wf_iri) Prims.list }
 let __proj__Mkrstate__item__rs_nodes (projectee : rstate) : rnode Prims.list=
   match projectee with
   | { rs_nodes; rs_extra; rs_fresh; rs_wdepth; rs_inv; rs_gendistinct;
-      rs_subprop; rs_transprops; rs_funcprops; rs_ident;_} -> rs_nodes
+      rs_subprop; rs_transprops; rs_funcprops; rs_ident; rs_range;_} ->
+      rs_nodes
 let __proj__Mkrstate__item__rs_extra (projectee : rstate) : redge Prims.list=
   match projectee with
   | { rs_nodes; rs_extra; rs_fresh; rs_wdepth; rs_inv; rs_gendistinct;
-      rs_subprop; rs_transprops; rs_funcprops; rs_ident;_} -> rs_extra
+      rs_subprop; rs_transprops; rs_funcprops; rs_ident; rs_range;_} ->
+      rs_extra
 let __proj__Mkrstate__item__rs_fresh (projectee : rstate) : Prims.nat=
   match projectee with
   | { rs_nodes; rs_extra; rs_fresh; rs_wdepth; rs_inv; rs_gendistinct;
-      rs_subprop; rs_transprops; rs_funcprops; rs_ident;_} -> rs_fresh
+      rs_subprop; rs_transprops; rs_funcprops; rs_ident; rs_range;_} ->
+      rs_fresh
 let __proj__Mkrstate__item__rs_wdepth (projectee : rstate) :
   (RDF_Term.bnode_id * Prims.nat) Prims.list=
   match projectee with
   | { rs_nodes; rs_extra; rs_fresh; rs_wdepth; rs_inv; rs_gendistinct;
-      rs_subprop; rs_transprops; rs_funcprops; rs_ident;_} -> rs_wdepth
+      rs_subprop; rs_transprops; rs_funcprops; rs_ident; rs_range;_} ->
+      rs_wdepth
 let __proj__Mkrstate__item__rs_inv (projectee : rstate) :
   (RDF_Term.wf_iri * RDF_Term.wf_iri) Prims.list=
   match projectee with
   | { rs_nodes; rs_extra; rs_fresh; rs_wdepth; rs_inv; rs_gendistinct;
-      rs_subprop; rs_transprops; rs_funcprops; rs_ident;_} -> rs_inv
+      rs_subprop; rs_transprops; rs_funcprops; rs_ident; rs_range;_} ->
+      rs_inv
 let __proj__Mkrstate__item__rs_gendistinct (projectee : rstate) :
   RDF_Term.rdf_term Prims.list Prims.list=
   match projectee with
   | { rs_nodes; rs_extra; rs_fresh; rs_wdepth; rs_inv; rs_gendistinct;
-      rs_subprop; rs_transprops; rs_funcprops; rs_ident;_} -> rs_gendistinct
+      rs_subprop; rs_transprops; rs_funcprops; rs_ident; rs_range;_} ->
+      rs_gendistinct
 let __proj__Mkrstate__item__rs_subprop (projectee : rstate) :
   (RDF_Term.wf_iri * RDF_Term.wf_iri) Prims.list=
   match projectee with
   | { rs_nodes; rs_extra; rs_fresh; rs_wdepth; rs_inv; rs_gendistinct;
-      rs_subprop; rs_transprops; rs_funcprops; rs_ident;_} -> rs_subprop
+      rs_subprop; rs_transprops; rs_funcprops; rs_ident; rs_range;_} ->
+      rs_subprop
 let __proj__Mkrstate__item__rs_transprops (projectee : rstate) :
   RDF_Term.wf_iri Prims.list=
   match projectee with
   | { rs_nodes; rs_extra; rs_fresh; rs_wdepth; rs_inv; rs_gendistinct;
-      rs_subprop; rs_transprops; rs_funcprops; rs_ident;_} -> rs_transprops
+      rs_subprop; rs_transprops; rs_funcprops; rs_ident; rs_range;_} ->
+      rs_transprops
 let __proj__Mkrstate__item__rs_funcprops (projectee : rstate) :
   RDF_Term.wf_iri Prims.list=
   match projectee with
   | { rs_nodes; rs_extra; rs_fresh; rs_wdepth; rs_inv; rs_gendistinct;
-      rs_subprop; rs_transprops; rs_funcprops; rs_ident;_} -> rs_funcprops
+      rs_subprop; rs_transprops; rs_funcprops; rs_ident; rs_range;_} ->
+      rs_funcprops
 let __proj__Mkrstate__item__rs_ident (projectee : rstate) :
   RDF_Term.rdf_term Prims.list Prims.list=
   match projectee with
   | { rs_nodes; rs_extra; rs_fresh; rs_wdepth; rs_inv; rs_gendistinct;
-      rs_subprop; rs_transprops; rs_funcprops; rs_ident;_} -> rs_ident
+      rs_subprop; rs_transprops; rs_funcprops; rs_ident; rs_range;_} ->
+      rs_ident
+let __proj__Mkrstate__item__rs_range (projectee : rstate) :
+  (RDF_Term.wf_iri * RDF_Term.wf_iri) Prims.list=
+  match projectee with
+  | { rs_nodes; rs_extra; rs_fresh; rs_wdepth; rs_inv; rs_gendistinct;
+      rs_subprop; rs_transprops; rs_funcprops; rs_ident; rs_range;_} ->
+      rs_range
 let rec collect_inverse_pairs (ts : RDF_Graph.rdf_graph) :
   (RDF_Term.wf_iri * RDF_Term.wf_iri) Prims.list=
   match ts with
@@ -320,6 +337,18 @@ let rec collect_subprop_pairs (ts : RDF_Graph.rdf_graph) :
       then
         (match ((t.RDF_Triple.s), (t.RDF_Triple.o)) with
          | (RDF_Term.S_IRI p, RDF_Term.T_IRI q) -> (p, q) :: rest
+         | uu___ -> rest)
+      else rest
+let rec collect_range_pairs (ts : RDF_Graph.rdf_graph) :
+  (RDF_Term.wf_iri * RDF_Term.wf_iri) Prims.list=
+  match ts with
+  | [] -> []
+  | t::tl ->
+      let rest = collect_range_pairs tl in
+      if t.RDF_Triple.p = RDFS_Closure.rdfs_range
+      then
+        (match ((t.RDF_Triple.s), (t.RDF_Triple.o)) with
+         | (RDF_Term.S_IRI p, RDF_Term.T_IRI d) -> (p, d) :: rest
          | uu___ -> rest)
       else rest
 let rec collect_transitive_props (ts : RDF_Graph.rdf_graph) :
@@ -531,7 +560,8 @@ let add_label (st : rstate) (i : RDF_Term.subject) (c : Tableau.class_expr) :
               rs_subprop = (st.rs_subprop);
               rs_transprops = (st.rs_transprops);
               rs_funcprops = (st.rs_funcprops);
-              rs_ident = (st.rs_ident)
+              rs_ident = (st.rs_ident);
+              rs_range = (st.rs_range)
             }, ch))
 let rec add_labels_all (st : rstate) (i : RDF_Term.subject)
   (cs : Tableau.class_expr Prims.list) : (rstate * Prims.bool)=
@@ -674,7 +704,8 @@ let add_countable_edge (g : RDF_Graph.rdf_graph) (st : rstate)
        rs_subprop = (st.rs_subprop);
        rs_transprops = (st.rs_transprops);
        rs_funcprops = (st.rs_funcprops);
-       rs_ident = (st.rs_ident)
+       rs_ident = (st.rs_ident);
+       rs_range = (st.rs_range)
      }, true)
 let comparable_datatype (d : RDF_Term.wf_iri) : Prims.bool=
   (((d = RDF_Term.xsd_integer) || (d = RDF_Term.xsd_decimal)) ||
@@ -762,7 +793,13 @@ let rec fold_datatype_constraint (acc : XSD_Facets.value_set)
             (XSD_Facets.VS_DateInterval
                (XSD_Facets.datetime_facets_to_interval facets
                   XSD_Facets.full_interval))
-        else acc
+        else
+          if XSD_Facets.is_float_datatype dt
+          then
+            (if XSD_Facets.float_restriction_provably_empty dt facets
+             then XSD_Facets.VS_Empty
+             else acc)
+          else acc
   | Tableau.CE_OneOf members ->
       if
         (Prims.uu___is_Cons members) &&
@@ -856,6 +893,56 @@ let datatype_range_clash
   (ls_all : Tableau.class_expr Prims.list) : Prims.bool=
   any_property_datatype_clash subprop_pairs (collect_dt_properties ls_all)
     ls_all
+let rec range_value_set
+  (subprop_pairs : (RDF_Term.wf_iri * RDF_Term.wf_iri) Prims.list)
+  (range_pairs : (RDF_Term.wf_iri * RDF_Term.wf_iri) Prims.list)
+  (p : RDF_Term.wf_iri) (acc : XSD_Facets.value_set) : XSD_Facets.value_set=
+  match range_pairs with
+  | [] -> acc
+  | (q, d)::tl ->
+      let acc' =
+        if mem_iri q (superproperties_of subprop_pairs p)
+        then fold_datatype_constraint acc (Tableau.CE_Named d)
+        else acc in
+      range_value_set subprop_pairs tl p acc'
+let rec collect_card_props (ls : Tableau.class_expr Prims.list) :
+  (Prims.nat * RDF_Term.wf_iri) Prims.list=
+  match ls with
+  | [] -> []
+  | (Tableau.CE_MinCard (k, p))::tl -> (k, p) :: (collect_card_props tl)
+  | (Tableau.CE_ExactCard (k, p))::tl -> (k, p) :: (collect_card_props tl)
+  | uu___::tl -> collect_card_props tl
+let card_valuespace_clash
+  (subprop_pairs : (RDF_Term.wf_iri * RDF_Term.wf_iri) Prims.list)
+  (range_pairs : (RDF_Term.wf_iri * RDF_Term.wf_iri) Prims.list)
+  (ls_all : Tableau.class_expr Prims.list) (k : Prims.nat)
+  (p : RDF_Term.wf_iri) : Prims.bool=
+  (k >= Prims.int_one) &&
+    (let u =
+       XSD_Facets.value_set_intersect
+         (universal_for_property subprop_pairs p ls_all
+            XSD_Facets.VS_Unconstrained)
+         (range_value_set subprop_pairs range_pairs p
+            XSD_Facets.VS_Unconstrained) in
+     match XSD_Facets.value_set_max_size u with
+     | FStar_Pervasives_Native.Some m -> k > m
+     | FStar_Pervasives_Native.None -> false)
+let rec any_card_valuespace_clash
+  (subprop_pairs : (RDF_Term.wf_iri * RDF_Term.wf_iri) Prims.list)
+  (range_pairs : (RDF_Term.wf_iri * RDF_Term.wf_iri) Prims.list)
+  (kps : (Prims.nat * RDF_Term.wf_iri) Prims.list)
+  (ls_all : Tableau.class_expr Prims.list) : Prims.bool=
+  match kps with
+  | [] -> false
+  | (k, p)::tl ->
+      (card_valuespace_clash subprop_pairs range_pairs ls_all k p) ||
+        (any_card_valuespace_clash subprop_pairs range_pairs tl ls_all)
+let datatype_cardinality_clash
+  (subprop_pairs : (RDF_Term.wf_iri * RDF_Term.wf_iri) Prims.list)
+  (range_pairs : (RDF_Term.wf_iri * RDF_Term.wf_iri) Prims.list)
+  (ls_all : Tableau.class_expr Prims.list) : Prims.bool=
+  any_card_valuespace_clash subprop_pairs range_pairs
+    (collect_card_props ls_all) ls_all
 let exists_max_lt (k : Prims.nat) (p : RDF_Term.wf_iri)
   (ls : Tableau.class_expr Prims.list) : Prims.bool=
   FStar_List_Tot_Base.existsb
@@ -1004,7 +1091,8 @@ let merge_into (st : rstate) (y : RDF_Term.subject) (z : RDF_Term.subject) :
         rs_subprop = (st1.rs_subprop);
         rs_transprops = (st1.rs_transprops);
         rs_funcprops = (st1.rs_funcprops);
-        rs_ident = (st1.rs_ident)
+        rs_ident = (st1.rs_ident);
+        rs_range = (st1.rs_range)
       }
 let rec remove_ident_group (ident : RDF_Term.rdf_term Prims.list Prims.list)
   (t : RDF_Term.rdf_term) :
@@ -1178,8 +1266,9 @@ let rec clash_nodes (g : RDF_Graph.rdf_graph) (st : rstate)
         with
         | FStar_Pervasives_Native.Some uu___ -> labels_of st n.rn_id
         | FStar_Pervasives_Native.None -> n.rn_labels in
-      ((clash_labels g st n.rn_id ls ls) ||
-         (datatype_range_clash st.rs_subprop ls))
+      (((clash_labels g st n.rn_id ls ls) ||
+          (datatype_range_clash st.rs_subprop ls))
+         || (datatype_cardinality_clash st.rs_subprop st.rs_range ls))
         || (clash_nodes g st tl)
 let has_clash (g : RDF_Graph.rdf_graph) (st : rstate) : Prims.bool=
   clash_nodes g st st.rs_nodes
@@ -1390,7 +1479,8 @@ let ensure_witness (g : RDF_Graph.rdf_graph) (st : rstate)
             rs_subprop = (st.rs_subprop);
             rs_transprops = (st.rs_transprops);
             rs_funcprops = (st.rs_funcprops);
-            rs_ident = (st.rs_ident)
+            rs_ident = (st.rs_ident);
+            rs_range = (st.rs_range)
           } in
         let uu___2 =
           match filler1 with
@@ -1455,7 +1545,8 @@ let ensure_min_witnesses (g : RDF_Graph.rdf_graph) (st : rstate)
                    rs_subprop = (st.rs_subprop);
                    rs_transprops = (st.rs_transprops);
                    rs_funcprops = (st.rs_funcprops);
-                   rs_ident = (st.rs_ident)
+                   rs_ident = (st.rs_ident);
+                   rs_range = (st.rs_range)
                  } in
                (st1, true))))
 let role_is_transitive (st : rstate) (r : RDF_Term.wf_iri) : Prims.bool=
@@ -1867,7 +1958,8 @@ and identify_branch
              rs_funcprops = (st.rs_funcprops);
              rs_ident =
                (identify_pair st.rs_ident (RDF_Graph.subject_to_term y)
-                  (RDF_Graph.subject_to_term z))
+                  (RDF_Graph.subject_to_term z));
+             rs_range = (st.rs_range)
            } in
          let uu___1 = check tb g st1 (b - Prims.int_one) in
          match uu___1 with
@@ -2019,7 +2111,8 @@ let init_state (g : RDF_Graph.rdf_graph) : rstate=
       rs_subprop = (collect_subprop_pairs g);
       rs_transprops = (collect_transitive_props g);
       rs_funcprops = (collect_functional_props g);
-      rs_ident = []
+      rs_ident = [];
+      rs_range = (collect_range_pairs g)
     }
 let tableau_consistent (g : RDF_Graph.rdf_graph) (fuel : Prims.nat) :
   Prims.bool FStar_Pervasives_Native.option=

@@ -139,6 +139,19 @@ let xsd_dateTime : wf_iri =
 
 let is_datetime_datatype (dt : wf_iri) : bool = dt = xsd_dateTime
 
+(* xsd:float and owl:rational IRI constants (self-contained for the same
+   build-order reason as xsd_dateTime above — neither is re-exported
+   through RDF.Term.fsti / OWL.Closure.fsti, which stop at xsd:double). *)
+let xsd_float : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2001/XMLSchema#float");
+  "http://www.w3.org/2001/XMLSchema#float"
+
+let owl_rational : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2002/07/owl#rational");
+  "http://www.w3.org/2002/07/owl#rational"
+
+let is_float_datatype (dt : wf_iri) : bool = dt = xsd_float
+
 // Parse the fixed-width substring [pos, pos+n) as an unsigned decimal
 // integer (every char must be an ASCII digit). Out-of-range or any
 // non-digit -> None (sound: an unparseable field drops the whole value).
@@ -386,6 +399,193 @@ let rec datetime_facets_to_interval (facets : list (wf_iri & rdf_term)) (acc : i
     datetime_facets_to_interval tl acc'
 
 (* -------------------------------------------------------------------
+   4b. Exact rationals (numerator/denominator), the shared concrete-
+       domain endpoint model for the owl:real number line.
+
+   OWL 2's numeric value space (owl:real ⊃ owl:rational ⊃ xsd:decimal ⊃
+   xsd:integer ⊃ ...) is a single dense line; xsd:decimal and owl:rational
+   literals both denote EXACT points on it. "0.5"^^xsd:decimal and
+   "1/2"^^owl:rational are the SAME real, and this module must be able to
+   prove it (New-Feature-Rational-002). We carry the value as an exact
+   fraction num/den (den > 0). No rounding, no float here — see 4c for the
+   IEEE-754 float grid, which is a DIFFERENT, discrete value space.
+   ------------------------------------------------------------------- *)
+
+type rational = { rn_num : int; rn_den : pos }
+
+let rec pow10 (n : nat) : Tot pos (decreases n) =
+  if n = 0 then 1 else op_Multiply 10 (pow10 (n - 1))
+
+let rec pow2i (n : nat) : Tot pos (decreases n) =
+  if n = 0 then 1 else op_Multiply 2 (pow2i (n - 1))
+
+// Two exact rationals are equal iff a.num*b.den = b.num*a.den (dens > 0).
+let rational_eq (a b : rational) : bool =
+  op_Multiply a.rn_num b.rn_den = op_Multiply b.rn_num a.rn_den
+
+// Consume a maximal run of ASCII digits, returning (value, count, rest).
+let rec span_digits (cs : list FStar.Char.char) (accv : int) (accn : nat)
+  : Tot (int & nat & list FStar.Char.char) (decreases cs) =
+  match cs with
+  | c :: tl ->
+    if is_ascii_digit c then span_digits tl (op_Multiply accv 10 + digit_val c) (accn + 1)
+    else (accv, accn, cs)
+  | [] -> (accv, accn, cs)
+
+// Parse an optional-sign decimal or scientific lexical form into an EXACT
+// rational. Grammar accepted: [+-]? d* ('.' d*)? ([eE] [+-]? d+)? with at
+// least one mantissa digit and full consumption. Returns None otherwise
+// (sound: an unparseable value is DROPPED by every caller, never guessed).
+let parse_decimal_rational (lex : string) : option rational =
+  let cs0 = FStar.String.list_of_string lex in
+  let (neg, cs1) =
+    match cs0 with
+    | c :: tl ->
+      let n = FStar.Char.int_of_char c in
+      if n = 45 then (true, tl) else if n = 43 then (false, tl) else (false, cs0)
+    | [] -> (false, cs0) in
+  let (ipart, ilen, cs2) = span_digits cs1 0 0 in
+  let (fpart, flen, cs3) =
+    match cs2 with
+    | c :: tl -> if FStar.Char.int_of_char c = 46 then span_digits tl 0 0 else (0, 0, cs2)
+    | [] -> (0, 0, cs2) in
+  let (ok_exp, expv, cs4) =
+    match cs3 with
+    | c :: tl ->
+      let ec = FStar.Char.int_of_char c in
+      if ec = 101 || ec = 69 then
+        (match tl with
+         | s :: tl2 ->
+           let sn = FStar.Char.int_of_char s in
+           let (eneg, ed) =
+             if sn = 45 then (true, tl2) else if sn = 43 then (false, tl2) else (false, tl) in
+           let (ev, elen, r) = span_digits ed 0 0 in
+           if elen = 0 then (false, 0, r) else (true, (if eneg then 0 - ev else ev), r)
+         | [] -> (false, 0, cs3))
+      else (true, 0, cs3)
+    | [] -> (true, 0, cs3) in
+  if (not ok_exp) || Cons? cs4 || ilen + flen = 0 then None
+  else
+    let mantissa = op_Multiply ipart (pow10 flen) + fpart in
+    let net = expv - flen in
+    let signed = if neg then 0 - mantissa else mantissa in
+    if net >= 0 then Some ({ rn_num = op_Multiply signed (pow10 net); rn_den = 1 })
+    else Some ({ rn_num = signed; rn_den = pow10 (0 - net) })
+
+// Split a char list on the first '/', returning (before, after).
+let rec split_slash (cs : list FStar.Char.char) (acc : list FStar.Char.char)
+  : Tot (option (list FStar.Char.char & list FStar.Char.char)) (decreases cs) =
+  match cs with
+  | [] -> None
+  | c :: tl ->
+    if FStar.Char.int_of_char c = 47 then Some (List.Tot.rev acc, tl)
+    else split_slash tl (c :: acc)
+
+// Parse an owl:rational lexical form "num/den" (den a positive integer).
+let parse_rational_lex (lex : string) : option rational =
+  match split_slash (FStar.String.list_of_string lex) [] with
+  | None -> None
+  | Some (ns, ds) ->
+    (match parse_facet_int (FStar.String.string_of_list ns),
+           parse_facet_int (FStar.String.string_of_list ds) with
+     | Some n, Some d -> if d > 0 then Some ({ rn_num = n; rn_den = d }) else None
+     | _, _ -> None)
+
+// The EXACT rational value of a literal whose datatype places it on the
+// owl:real line with an exact lexical-to-value map: integer family
+// (v/1), xsd:decimal, owl:rational. Everything else -> None (xsd:float /
+// xsd:double are NOT here — their value is the ROUNDED grid point, a
+// different value space handled in 4c; conflating them would be unsound).
+let term_exact_rational (t : rdf_term) : option rational =
+  match t with
+  | T_Literal l ->
+    if is_integer_family_datatype l.datatype then
+      (match parse_facet_int l.lexical_form with
+       | Some v -> Some ({ rn_num = v; rn_den = 1 })
+       | None -> None)
+    else if l.datatype = xsd_decimal then parse_decimal_rational l.lexical_form
+    else if l.datatype = owl_rational then parse_rational_lex l.lexical_form
+    else None
+  | _ -> None
+
+(* -------------------------------------------------------------------
+   4c. IEEE-754 single-precision float grid (DISCRETE value space).
+
+   xsd:float's value space is the finite IEEE-754 single grid, NOT the
+   real line: between two ADJACENT floats lies no representable value.
+   So an OPEN interval (minExclusive a, maxExclusive b) whose endpoints
+   are adjacent floats is EMPTY, though the same open interval over the
+   reals is not (Datatype-Float-Discrete-001: (0, 2^-149) is empty in
+   float — 2^-149 is the smallest positive subnormal, ordinal 1, and 0.0
+   is ordinal 0).
+
+   We coordinatise the grid by ORDINAL (the value's rank in the sorted
+   grid): 0.0 = 0, the k-th positive subnormal = k for 1 <= k <= 2^23-1
+   (subnormals are spaced exactly 2^-149 apart). Two floats are adjacent
+   iff their ordinals differ by 1, so emptiness reduces to the EXISTING
+   discrete `interval_empty` rule applied to an ordinal-valued interval.
+
+   `float_ordinal_of_lexical` is sound-partial: it returns the ordinal
+   ONLY for 0.0 and the subnormal band [1, 2^23-1], and ONLY when the
+   parsed exact rational lies STRICTLY inside that ordinal's round-to-
+   nearest interval ((2k-1)/2^150, (2k+1)/2^150). Ties, negatives,
+   normals, and anything it cannot place -> None, and the caller DROPS
+   the bound (widening the interval -> withholding the emptiness verdict).
+   Withholding is always sound; manufacturing emptiness is not.
+   ------------------------------------------------------------------- *)
+
+// Subnormal-grid ordinal of a single-precision float lexical form. See
+// the section banner for the soundness contract (partial by design).
+let float_ordinal_of_lexical (lex : string) : option int =
+  match parse_decimal_rational lex with
+  | None -> None
+  | Some r ->
+    if r.rn_num = 0 then Some 0
+    else if r.rn_num < 0 then None
+    else
+      // r = num/den, both > 0. k = round(num*2^149 / den); accept only
+      // when (2k-1)*den < num*2^150 < (2k+1)*den and 1 <= k <= 2^23-1.
+      let n150 = op_Multiply r.rn_num (pow2i 150) in
+      let den : pos = r.rn_den in
+      let twoden : pos = op_Multiply 2 den in
+      let k = (n150 + den) / twoden in
+      if k >= 1 && k <= (pow2i 23) - 1
+         && op_Multiply (op_Multiply 2 k - 1) den < n150
+         && n150 < op_Multiply (op_Multiply 2 k + 1) den
+      then Some k else None
+
+// Fold min/max Inclusive/Exclusive facets into an ORDINAL interval, the
+// float analogue of facets_to_interval. A facet value whose ordinal is
+// unknown (None) is DROPPED (sound narrowing — see banner).
+let rec float_facets_to_ordinal_interval (facets : list (wf_iri & rdf_term)) (acc : interval)
+  : Tot interval (decreases facets) =
+  match facets with
+  | [] -> acc
+  | (firi, fval) :: tl ->
+    let acc' =
+      match fval with
+      | T_Literal l ->
+        (match float_ordinal_of_lexical l.lexical_form with
+         | None -> acc
+         | Some v ->
+           if firi = facet_min_incl_iri then interval_intersect acc { iv_lo = B_Incl v; iv_hi = B_Unbounded }
+           else if firi = facet_max_incl_iri then interval_intersect acc { iv_lo = B_Unbounded; iv_hi = B_Incl v }
+           else if firi = facet_min_excl_iri then interval_intersect acc { iv_lo = B_Excl v; iv_hi = B_Unbounded }
+           else if firi = facet_max_excl_iri then interval_intersect acc { iv_lo = B_Unbounded; iv_hi = B_Excl v }
+           else acc)
+      | _ -> acc
+    in float_facets_to_ordinal_interval tl acc'
+
+// Is a DatatypeRestriction over xsd:float PROVABLY empty on the float
+// grid? True only when the ordinal interval is empty by the DISCRETE rule
+// (interval_empty) — i.e. the representable endpoints are adjacent or
+// crossed, so no float satisfies. Sound: unknown ordinals widen the
+// interval, so `interval_empty` never fires on a doubt.
+let float_restriction_provably_empty (dt : wf_iri) (facets : list (wf_iri & rdf_term)) : bool =
+  is_float_datatype dt
+  && interval_empty (float_facets_to_ordinal_interval facets full_interval)
+
+(* -------------------------------------------------------------------
    5. Value sets: the combined shape a facet checker needs — an
       interval, a finite literal enumeration (DataOneOf), a bare
       base-datatype family, unconstrained (top), or empty (bottom).
@@ -452,6 +652,15 @@ let term_provably_equal (a b : rdf_term) : bool =
         (match term_bool_opt a, term_bool_opt b with
          | Some x, Some y -> x = y
          | _, _ -> false))
+  (* Exact-rational equality across the owl:real line: "0.5"^^xsd:decimal
+     and "1/2"^^owl:rational denote the SAME real (owl:decimal ⊂
+     owl:rational ⊂ owl:real, both maps exact) — provably equal, so a
+     DataOneOf enumerating them holds ONE value, not two (New-Feature-
+     Rational-002). Sound: rational_eq is true only for genuinely equal
+     reals, so no distinct pair is ever falsely merged. *)
+  || (match term_exact_rational a, term_exact_rational b with
+      | Some x, Some y -> rational_eq x y
+      | _, _ -> false)
 
 let both_string (a b : rdf_term) : bool =
   match a, b with
@@ -593,6 +802,65 @@ let value_set_is_empty (v : value_set) : bool =
      restriction intersects it. Dense emptiness, per interval_empty_dense. *)
   | VS_DateInterval iv -> interval_empty_dense iv
   | _ -> false
+
+(* -------------------------------------------------------------------
+   5b. Value-space cardinality: a SOUND UPPER BOUND on the number of
+       distinct values a value_set admits.
+
+   Feeds the datatype cardinality clash (Tableau.Refute): a min/exact
+   cardinality k on a datatype property whose fillers are all confined to
+   a value space of provable size < k is UNSATISFIABLE (k distinct data
+   values cannot be drawn from fewer than k). Soundness DIRECTION: the
+   returned M must be >= the true number of distinct values, so that
+   `k > M` implies `k > |value space|` (never the reverse) — an
+   over-count only WITHHOLDS a clash, an under-count would MANUFACTURE
+   one. Every branch below returns a sound over-approximation:
+     - integer interval: EXACT count (discrete, both ends finite);
+     - enum: distinct count after collapsing ONLY provably-equal members
+       (unproven-equal pairs stay separate -> count can only be too high);
+     - dense/unbounded/unknown (decimal, dateTime, family, ⊤): None (no
+       finite bound — a min-cardinality on a dense domain is satisfiable,
+       the Wave B dense-domain lesson).
+   ------------------------------------------------------------------- *)
+
+let bound_lo_incl (b : bound) : option int =
+  match b with B_Unbounded -> None | B_Incl x -> Some x | B_Excl x -> Some (x + 1)
+
+let bound_hi_incl (b : bound) : option int =
+  match b with B_Unbounded -> None | B_Incl x -> Some x | B_Excl x -> Some (x - 1)
+
+// Number of integers in a discrete interval, when both ends are finite;
+// None when either end is unbounded (an infinite integer value space).
+let interval_count (iv : interval) : option nat =
+  match bound_lo_incl iv.iv_lo, bound_hi_incl iv.iv_hi with
+  | Some lo, Some hi -> if hi >= lo then Some (hi - lo + 1) else Some 0
+  | _, _ -> None
+
+// Drop every member provably equal to h (length-bounded for termination).
+let rec drop_provably_equal (h : rdf_term) (xs : list rdf_term)
+  : Tot (r : list rdf_term { List.Tot.length r <= List.Tot.length xs }) (decreases xs) =
+  match xs with
+  | [] -> []
+  | x :: tl ->
+    let rest = drop_provably_equal h tl in
+    if term_provably_equal h x then rest else x :: rest
+
+// Distinct-value count of a literal enum, collapsing ONLY provably-equal
+// members: a sound UPPER bound on the true number of distinct values.
+let rec enum_distinct_count (xs : list rdf_term) : Tot nat (decreases (List.Tot.length xs)) =
+  match xs with
+  | [] -> 0
+  | h :: tl -> 1 + enum_distinct_count (drop_provably_equal h tl)
+
+let value_set_max_size (v : value_set) : option nat =
+  match v with
+  | VS_Empty -> Some 0
+  | VS_Enum [] -> Some 0
+  | VS_Enum xs -> Some (enum_distinct_count xs)
+  | VS_Interval iv -> interval_count iv
+  | VS_DateInterval iv -> if interval_empty_dense iv then Some 0 else None
+  | VS_Unconstrained -> None
+  | VS_Family _ -> None
 
 (* Subtract `remove` from `acc` — used for DataComplementOf. Only the
    Enum/Enum shape is representable exactly (removing a finite literal

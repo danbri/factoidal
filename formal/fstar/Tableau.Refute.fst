@@ -491,6 +491,11 @@ noeq type rstate = {
      sites' banners for why pooling at read time is sound without ever
      rewriting an edge (unlike `merge_into`'s witness redirection). *)
   rs_ident : list (list rdf_term);
+  (* Declared rdfs:range pairs (P, D), collected ONCE at init_state time
+     (schema-level, read-only — same contract as rs_subprop). Consulted by
+     `datatype_cardinality_clash` to bound a datatype property's filler
+     value space by its range datatype(s). *)
+  rs_range : list (wf_iri & wf_iri);
 }
 
 (* -------------------------------------------------------------------
@@ -547,6 +552,25 @@ let rec collect_subprop_pairs (ts : rdf_graph) : Tot (list (wf_iri & wf_iri)) (d
     if t.p = rdfs_subPropertyOf then
       (match t.s, t.o with
        | S_IRI p, T_IRI q -> (p, q) :: rest
+       | _ -> rest)
+    else rest
+
+(* rdfs:range pairs (P, D): every "P rdfs:range D" with D an IRI. Schema-
+   level, collected once (same contract as collect_subprop_pairs). In OWL 2
+   Direct Semantics this asserts ⊤ ⊑ ∀P.D — every P-filler lies in D — so a
+   DATATYPE range D confines P's data-value fillers to D's value space
+   (consulted by `range_value_set` for the datatype cardinality clash). An
+   object-property (class) range contributes a value_set that is
+   unconstrained under `fold_datatype_constraint`, so this table is inert
+   there — no soundness dependence on P being a datatype property. *)
+let rec collect_range_pairs (ts : rdf_graph) : Tot (list (wf_iri & wf_iri)) (decreases ts) =
+  match ts with
+  | [] -> []
+  | t :: tl ->
+    let rest = collect_range_pairs tl in
+    if t.p = rdfs_range then
+      (match t.s, t.o with
+       | S_IRI p, T_IRI d -> (p, d) :: rest
        | _ -> rest)
     else rest
 
@@ -1159,6 +1183,17 @@ let rec fold_datatype_constraint (acc : value_set) (ce : class_expr)
     // dateTime dimension never mixes with the integer one.
     else if is_datetime_datatype dt
     then value_set_intersect acc (VS_DateInterval (datetime_facets_to_interval facets full_interval))
+    // A DatatypeRestriction over xsd:float is DISCRETE: an open
+    // min/maxExclusive interval whose endpoints are adjacent representable
+    // floats is EMPTY though the same real interval is not (Datatype-
+    // Float-Discrete-001: (0, 2^-149) contains no float). Model-theoretic:
+    // xsd:float's value space is the finite IEEE-754 single grid, so a
+    // some-values-from filler in a grid-empty range has no model — clash.
+    // Sound: `float_restriction_provably_empty` reports empty ONLY on a
+    // proof of grid-adjacency; otherwise this arm adds NO constraint
+    // (acc unchanged), never a false clash on a satisfiable float range.
+    else if is_float_datatype dt
+    then (if float_restriction_provably_empty dt facets then VS_Empty else acc)
     else acc
   | CE_OneOf members ->
     if Cons? members && all_literal_terms members
@@ -1260,6 +1295,79 @@ let rec any_property_datatype_clash (subprop_pairs : list (wf_iri & wf_iri))
 let datatype_range_clash (subprop_pairs : list (wf_iri & wf_iri))
                          (ls_all : list class_expr) : bool =
   any_property_datatype_clash subprop_pairs (collect_dt_properties ls_all) ls_all
+
+(* -------------------------------------------------------------------
+   5b. Datatype cardinality clash (owl2 concrete-domain intervals).
+
+   A min/exact cardinality k (k >= 1) on property p demands k pairwise-
+   distinct p-fillers. When p's fillers are all confined to a value space
+   of provable size M < k, that is impossible: CLASH. Two ingredients:
+     - the ∀-constraint intersection U_p that ALL p-fillers must satisfy:
+       every `CE_AllValuesFrom q D` label with p ⊑* q (via
+       `universal_for_property`), intersected with p's rdfs:range
+       datatype(s) (`range_value_set`, which folds each range D as ∀p.D);
+     - `value_set_max_size U_p`, a SOUND UPPER BOUND on the number of
+       distinct values in U_p (exact integer-interval count, or a
+       provably-equal-collapsed enum count).
+   Fires iff `value_set_max_size U_p = Some M && k > M`.
+
+   Soundness (Direct Semantics):
+     - I5.8-001: p rdfs:range xsd:byte, cardinality 257 — |byte| = 256 < 257.
+     - I5.8-003: p rdfs:range xsd:byte AND xsd:unsignedInt, cardinality 129
+       — byte ∩ unsignedInt = [0,127], 128 < 129.
+     - New-Feature-Rational-002: ∀dp.DataOneOf("0.5"^^decimal,"1/2"^^rational)
+       + min-cardinality 2 — the enum holds ONE real (1/2), 1 < 2.
+   M is an OVER-approximation of |value space|, so k > M implies
+   k > |value space| (never the reverse): over-count only withholds a
+   clash, so a consistent ontology is NEVER falsely refuted. Object
+   properties and dense/unbounded datatype ranges give `value_set_max_size
+   = None`, making this rule inert there (the Wave B dense-domain lesson:
+   a min-cardinality on xsd:decimal is satisfiable — decimals are dense). *)
+
+let rec range_value_set (subprop_pairs : list (wf_iri & wf_iri))
+                        (range_pairs : list (wf_iri & wf_iri)) (p : wf_iri) (acc : value_set)
+  : Tot value_set (decreases range_pairs) =
+  match range_pairs with
+  | [] -> acc
+  | (q, d) :: tl ->
+    // q rdfs:range d constrains p's fillers when p ⊑* q (q is p itself or
+    // a super-property): every p-filler is a q-filler, hence in d.
+    let acc' = if mem_iri q (superproperties_of subprop_pairs p)
+               then fold_datatype_constraint acc (CE_Named d) else acc in
+    range_value_set subprop_pairs tl p acc'
+
+let rec collect_card_props (ls : list class_expr) : Tot (list (nat & wf_iri)) (decreases ls) =
+  match ls with
+  | [] -> []
+  | CE_MinCard k p :: tl -> (k, p) :: collect_card_props tl
+  | CE_ExactCard k p :: tl -> (k, p) :: collect_card_props tl
+  | _ :: tl -> collect_card_props tl
+
+let card_valuespace_clash (subprop_pairs : list (wf_iri & wf_iri))
+                          (range_pairs : list (wf_iri & wf_iri))
+                          (ls_all : list class_expr) (k : nat) (p : wf_iri) : bool =
+  k >= 1 &&
+  (let u = value_set_intersect
+             (universal_for_property subprop_pairs p ls_all VS_Unconstrained)
+             (range_value_set subprop_pairs range_pairs p VS_Unconstrained) in
+   match value_set_max_size u with
+   | Some m -> k > m
+   | None -> false)
+
+let rec any_card_valuespace_clash (subprop_pairs : list (wf_iri & wf_iri))
+                                  (range_pairs : list (wf_iri & wf_iri))
+                                  (kps : list (nat & wf_iri)) (ls_all : list class_expr)
+  : Tot bool (decreases kps) =
+  match kps with
+  | [] -> false
+  | (k, p) :: tl ->
+    card_valuespace_clash subprop_pairs range_pairs ls_all k p
+    || any_card_valuespace_clash subprop_pairs range_pairs tl ls_all
+
+let datatype_cardinality_clash (subprop_pairs : list (wf_iri & wf_iri))
+                               (range_pairs : list (wf_iri & wf_iri))
+                               (ls_all : list class_expr) : bool =
+  any_card_valuespace_clash subprop_pairs range_pairs (collect_card_props ls_all) ls_all
 
 (* -------------------------------------------------------------------
    6. Clash detection.
@@ -1796,6 +1904,7 @@ let rec clash_nodes (g : rdf_graph) (st : rstate) (ns : list rnode)
     in
     clash_labels g st n.rn_id ls ls
     || datatype_range_clash st.rs_subprop ls
+    || datatype_cardinality_clash st.rs_subprop st.rs_range ls
     || clash_nodes g st tl
 
 let has_clash (g : rdf_graph) (st : rstate) : bool =
@@ -2962,7 +3071,8 @@ let init_state (g : rdf_graph) : rstate =
       rs_subprop = collect_subprop_pairs g;
       rs_transprops = collect_transitive_props g;
       rs_funcprops = collect_functional_props g;
-      rs_ident = [] }
+      rs_ident = [];
+      rs_range = collect_range_pairs g }
 
 (* tableau_consistent — the public satisfiability check.
 
