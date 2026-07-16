@@ -555,6 +555,47 @@ let rec collect_subprop_pairs (ts : rdf_graph) : Tot (list (wf_iri & wf_iri)) (d
        | _ -> rest)
     else rest
 
+(* Cross-product of two role lists into subPropertyOf pairs. Helper for
+   inverse_lift_subprops below only. *)
+let rec cross_subprop_pairs (ps qs : list wf_iri)
+  : Tot (list (wf_iri & wf_iri)) (decreases ps) =
+  match ps with
+  | [] -> []
+  | p :: tl -> List.Tot.map (fun q -> (p, q)) qs @ cross_subprop_pairs tl qs
+
+(* Inverse-lifted rdfs:subPropertyOf (owl2-double-blocking wave, #299).
+   For every declared "P rdfs:subPropertyOf Q" and every declared inverse
+   P' of P and Q' of Q, "P' rdfs:subPropertyOf Q'" holds in every model.
+
+   MODEL-THEORETIC SOUNDNESS: "P subPropertyOf Q" means EXT(P) subset-of
+   EXT(Q) in every model (rdfs7 / scm-sp). Direct Semantics of
+   owl:inverseOf gives EXT(P') = {(b,a) | (a,b) in EXT(P)}, so
+   EXT(P') subset-of {(b,a) | (a,b) in EXT(Q)} = EXT(Q'); hence
+   P' subPropertyOf Q' in every model. Adding these to the role hierarchy
+   only widens SOUND successor propagation — the exact contract
+   collect_subprop_pairs already carries (EXT(r) subset-of EXT(p) for
+   r subPropertyOf* p) — never fabricates an edge, so it can add sound
+   labels/clashes but never a false inconsistency.
+
+   WHY NEEDED (the double-blocking families): WebOnt-description-logic-626
+   and -627 declare "f subPropertyOf r" with invF = f-inverse and
+   invR = r-inverse. The Unsatisfiable concept carries forall invR.V.3,
+   and its exists invF.d witness must be seen AS an invR-successor for
+   that universal to fire and build the V.3/d chain the SHIQ
+   double-blocking example needs. That requires invF subPropertyOf invR,
+   which is exactly the f subPropertyOf r pair lifted through the two
+   inverse declarations. Without it the chain is never built and the
+   c / c.comp cardinality clash the example closes on is never reached
+   (the tableau reports a spurious "consistent"). *)
+let rec inverse_lift_subprops (subs : list (wf_iri & wf_iri))
+                              (invs : list (wf_iri & wf_iri))
+  : Tot (list (wf_iri & wf_iri)) (decreases subs) =
+  match subs with
+  | [] -> []
+  | (p, q) :: tl ->
+    cross_subprop_pairs (inverses_of invs p) (inverses_of invs q)
+    @ inverse_lift_subprops tl invs
+
 (* rdfs:range pairs (P, D): every "P rdfs:range D" with D an IRI. Schema-
    level, collected once (same contract as collect_subprop_pairs). In OWL 2
    Direct Semantics this asserts ⊤ ⊑ ∀P.D — every P-filler lies in D — so a
@@ -3065,10 +3106,17 @@ let rec init_nodes_aux (gfull : rdf_graph) (ts : rdf_graph) (st : rstate)
     init_nodes_aux gfull tl st'
 
 let init_state (g : rdf_graph) : rstate =
+  (* Role hierarchy is inverse-lifted once, up front: a declared
+     P subPropertyOf Q is augmented with P' subPropertyOf Q' for every
+     declared inverse P'/Q' (see inverse_lift_subprops for the soundness
+     argument — this is what the WebOnt double-blocking families 626/627
+     need). Collected once, like every other schema-level table. *)
+  let subprops0 = collect_subprop_pairs g in
+  let invpairs0 = collect_inverse_pairs g in
   init_nodes_aux g g
     { rs_nodes = []; rs_extra = []; rs_fresh = 0; rs_wdepth = [];
-      rs_inv = collect_inverse_pairs g; rs_gendistinct = [];
-      rs_subprop = collect_subprop_pairs g;
+      rs_inv = invpairs0; rs_gendistinct = [];
+      rs_subprop = subprops0 @ inverse_lift_subprops subprops0 invpairs0;
       rs_transprops = collect_transitive_props g;
       rs_funcprops = collect_functional_props g;
       rs_ident = [];
