@@ -339,6 +339,25 @@ let rec collect_subprop_pairs (ts : RDF_Graph.rdf_graph) :
          | (RDF_Term.S_IRI p, RDF_Term.T_IRI q) -> (p, q) :: rest
          | uu___ -> rest)
       else rest
+let rec cross_subprop_pairs (ps : RDF_Term.wf_iri Prims.list)
+  (qs : RDF_Term.wf_iri Prims.list) :
+  (RDF_Term.wf_iri * RDF_Term.wf_iri) Prims.list=
+  match ps with
+  | [] -> []
+  | p::tl ->
+      FStar_List_Tot_Base.op_At
+        (FStar_List_Tot_Base.map (fun q -> (p, q)) qs)
+        (cross_subprop_pairs tl qs)
+let rec inverse_lift_subprops
+  (subs : (RDF_Term.wf_iri * RDF_Term.wf_iri) Prims.list)
+  (invs : (RDF_Term.wf_iri * RDF_Term.wf_iri) Prims.list) :
+  (RDF_Term.wf_iri * RDF_Term.wf_iri) Prims.list=
+  match subs with
+  | [] -> []
+  | (p, q)::tl ->
+      FStar_List_Tot_Base.op_At
+        (cross_subprop_pairs (inverses_of invs p) (inverses_of invs q))
+        (inverse_lift_subprops tl invs)
 let rec collect_range_pairs (ts : RDF_Graph.rdf_graph) :
   (RDF_Term.wf_iri * RDF_Term.wf_iri) Prims.list=
   match ts with
@@ -2100,15 +2119,19 @@ let rec init_nodes_aux (gfull : RDF_Graph.rdf_graph)
         else st in
       init_nodes_aux gfull tl st'
 let init_state (g : RDF_Graph.rdf_graph) : rstate=
+  let subprops0 = collect_subprop_pairs g in
+  let invpairs0 = collect_inverse_pairs g in
   init_nodes_aux g g
     {
       rs_nodes = [];
       rs_extra = [];
       rs_fresh = Prims.int_zero;
       rs_wdepth = [];
-      rs_inv = (collect_inverse_pairs g);
+      rs_inv = invpairs0;
       rs_gendistinct = [];
-      rs_subprop = (collect_subprop_pairs g);
+      rs_subprop =
+        (FStar_List_Tot_Base.op_At subprops0
+           (inverse_lift_subprops subprops0 invpairs0));
       rs_transprops = (collect_transitive_props g);
       rs_funcprops = (collect_functional_props g);
       rs_ident = [];
