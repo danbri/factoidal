@@ -4,6 +4,30 @@ Last refreshed: 2026-07-14 (nine landings from a long autonomous
 shift, gated on the same regime — floors, named diffs, soundness
 where applicable — all measured on the current `claude/main` tree):
 
+**Update 2026-07-16 (the day-closure run, ~20 gated landings):**
+current headline numbers, all measured on the shipped tree:
+- 📊 OWL 2 DL type-inconsistency **123 pass, 5 fail (out of 128), zero
+  oracle-assisted** (concrete-domain intervals +4, inverse-lifted
+  subPropertyOf +4, verified-regex pattern-facet clash +1; remaining 5
+  dispositioned — dl-909 disputed-fixture pending owner on #299).
+- 📊 type-consistency **352 pass, 0 fail (out of 352)**, soundness
+  exceptions ZERO; PE **135 pass, 69 fail (out of 204)** (+30 today via
+  negate-and-refute waves); NE 22/1.
+- 📊 CSVW csv2rdf **265 pass, 5 fail (out of 270)** (four rounds +
+  regex format arm; discovery family in scope per owner).
+- 📊 XSLT **83 pass, 5 fail (out of 88)**; GRDDL honestly rescored
+  **15 pass, 53 fail, 0 skip (out of 68)** (stage 3 parked by owner).
+- 📊 JSON-LD five suites zero-fail, skips 17 -> 4 (all documented).
+- **Verified regex engine (#304) phases 1–4 landed**: fully-proven
+  derivative core (incl. And/Not), proven fast path, XSD pattern
+  parser, and the `regex_match` assume val RETIRED — SPARQL
+  REGEX/fn:matches now runs on the verified engine (`regex_replace`
+  is the one remaining Str seam, #63).
+- RDF 1.2 / SPARQL 1.2 investigation landed (#305): measured census
+  (RDF 1.2 eval 14/84 true gap), term-model-first strategy.
+- Dispositions table landed in the completeness ledger (day-closure
+  /goal): every residual fail/skip named with a one-line disposition.
+
 **Update 2026-07-15 (evening, eight gated landings):** the OWL numbers
 below are superseded — current: **type-consistency 352 pass, 0 fail
 (out of 352)** (empty-premise harness fix +16, XMLLiteral c14n
