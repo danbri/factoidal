@@ -319,9 +319,20 @@ This file is a **periodic refresh doc** — it goes stale within a week.
 Update after material progress (suite-score movements, new F\* modules,
 resolved `assume val`s).
 
-## Standing priorities (as of 2026-07-15)
+## Standing priorities (as of 2026-07-16)
 
-**Active /goal (owner, 2026-07-15): full standards compliance for all
+**Active /goal (owner, 2026-07-16, day-closure):** every W3C + ShEx
+suite either fully green or every residual fail named with a one-line
+written disposition (disputed-fixture / dependency-blocked /
+planned-family); retire the last OCaml regex glue via the verified
+engine; then publish reality — dashboard, README, site, and
+completeness ledger refreshed to match the tree, closing with an
+owner-readable day report. Also active (owner, 2026-07-16): the RDF
+1.2 / SPARQL 1.2 upgrade investigation (un-parks the 2026-07-11
+"RDF 1.2/star parked" steer; epic + measured census in flight on
+branch rdf12-investigation).
+
+**Umbrella /goal (owner, 2026-07-15): full standards compliance for all
 W3C specs plus ShEx, with performance always also a priority.** This
 is the umbrella: every W3C spec we touch (RDF, RDFS, OWL 2 all
 profiles, SPARQL 1.1, SHACL, RDFC-1.0, JSON-LD, CSVW, GRDDL, RIF,
