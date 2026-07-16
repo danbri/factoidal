@@ -663,6 +663,29 @@ let alt_matches_elem (nsctx:list (string & string)) (a:string) (n:xml_node) (anc
     if not (pstep_ok nsctx nk n anc) then false
     else match_up nsctx anchored rrest ck anc
 
+// Strip one layer of matching surrounding single/double quotes.
+let strip_quotes (s:string) : string =
+  let t = trim_str s in
+  match chars_of t with
+  | q :: rest ->
+    if q = '\'' || q = '"' then
+      (match List.Tot.rev rest with
+       | q2 :: mid -> if q2 = q then str_of_chars (List.Tot.rev mid) else t
+       | [] -> t)
+    else t
+  | [] -> t
+
+// Literal target of a `processing-instruction('target')` node test, or
+// None for the no-argument form `processing-instruction()` (which then
+// matches any PI). `a` is assumed to start with "processing-instruction(".
+let pi_test_target (a:string) : option string =
+  match split_on_char '(' a with
+  | _ :: rest :: _ ->
+    let before_close = (match split_on_char ')' rest with x :: _ -> x | [] -> rest) in
+    let t = trim_str before_close in
+    if t = "" then None else Some (strip_quotes t)
+  | _ -> None
+
 let alt_matches_core (nsctx:list (string & string)) (alt:string) (nd:dnode) : bool =
   let a = trim_str alt in
   if a = "/" then (match nd with D_Doc _ -> true | _ -> false)
@@ -679,6 +702,15 @@ let alt_matches_core (nsctx:list (string & string)) (alt:string) (nd:dnode) : bo
      | _ -> false)
   else if a = "processing-instruction()" then
     (match nd with D_Item (CI_PI _ _ _ _ _) -> true | _ -> false)
+  else if starts_with "processing-instruction(" a then
+    // processing-instruction('target') — matches a PI whose target is
+    // the given literal (construct-node-026). XPath.Eval already carries
+    // the NT_PI (Some target) node test for the axis path; this brings
+    // the same test to XSLT match patterns.
+    (match nd with
+     | D_Item (CI_PI _ _ _ tgt _) ->
+       (match pi_test_target a with None -> true | Some want -> tgt = want)
+     | _ -> false)
   else if starts_with "@" a then
     (match nd with
      | D_Item (CI_Attr _ _ _ att) -> att.attr_name = str_of_chars (drop_prefix_chars (chars_of a) 1)
@@ -962,10 +994,60 @@ and text_value_nodes (ns:list xml_node) : Tot string (decreases ns) =
 (* candidate as the context node (self-fuelled via eval_string).       *)
 (* ================================================================ *)
 
+// ASCII case folding for the case-order collation below (non-ASCII
+// characters are left unchanged, which is conservative — they never
+// participate in a case-only tie).
+let ascii_lower_char (c:char) : char =
+  let n = FStar.Char.int_of_char c in
+  if n >= 0x41 && n <= 0x5A then FStar.Char.char_of_int (n + 0x20) else c
+
+let is_ascii_lower (c:char) : bool =
+  let n = FStar.Char.int_of_char c in n >= 0x61 && n <= 0x7A
+
+// Primary key of the case-order collation: compare case-folded, by
+// codepoint. So "Namespaces" and "must" order case-insensitively.
+let rec cmp_chars_ci (a b : list char) : Tot int (decreases a) =
+  match a, b with
+  | [], [] -> 0
+  | [], _ -> -1
+  | _, [] -> 1
+  | x :: xs, y :: ys ->
+    let lx = FStar.Char.int_of_char (ascii_lower_char x) in
+    let ly = FStar.Char.int_of_char (ascii_lower_char y) in
+    if lx = ly then cmp_chars_ci xs ys
+    else if lx < ly then -1 else 1
+
+// Tiebreak among strings equal under the case-folded primary key: the
+// first position that differs is a same-letter case difference. Under
+// lower-first the lowercase variant sorts first; upper-first mirrors it.
+let rec cmp_chars_case (lower_first:bool) (a b : list char) : Tot int (decreases a) =
+  match a, b with
+  | [], [] -> 0
+  | [], _ -> -1
+  | _, [] -> 1
+  | x :: xs, y :: ys ->
+    if x = y then cmp_chars_case lower_first xs ys
+    else
+      let x_is_lower = is_ascii_lower x in
+      if lower_first then (if x_is_lower then -1 else 1)
+      else (if x_is_lower then 1 else -1)
+
+// XSLT 1.0 §10 case-order collation for xsl:sort. Applied ONLY when
+// case-order= is explicitly present (so_case_order <> 0); the default
+// text sort keeps the codepoint String.compare path, so the other sort
+// tests are untouched. Primary key is the ASCII-case-folded string;
+// case-only ties break by case-order (sort-043).
+let cmp_text_caseorder (lower_first:bool) (a b : string) : int =
+  let ca = chars_of a in
+  let cb = chars_of b in
+  let prim = cmp_chars_ci ca cb in
+  if prim <> 0 then prim else cmp_chars_case lower_first ca cb
+
 type sortspec = {
   so_select : string;
   so_numeric : bool;
   so_descending : bool;
+  so_case_order : int;   // 0 = none (codepoint), 1 = lower-first, 2 = upper-first
 }
 
 // The data-type / order attributes of xsl:sort are attribute value
@@ -980,9 +1062,12 @@ let parse_sort (ctx:xctx_item) (pos size:nat) (vars:list (string & xp_value)) (n
     if is_xsl pfx tag && xsl_instr pfx tag = "sort" then
       let dt = expand_avt ctx pos size vars nsctx (attr_or "data-type" "text" attrs) in
       let od = expand_avt ctx pos size vars nsctx (attr_or "order" "ascending" attrs) in
+      let co = expand_avt ctx pos size vars nsctx (attr_or "case-order" "" attrs) in
       Some { so_select = attr_or "select" "." attrs;
              so_numeric = (dt = "number");
-             so_descending = (od = "descending") }
+             so_descending = (od = "descending");
+             so_case_order = (if co = "lower-first" then 1
+                              else if co = "upper-first" then 2 else 0) }
     else None
   | _ -> None
 
@@ -1038,7 +1123,8 @@ let rec cmp_sort_keys (specs:list sortspec) (ka kb:list string)
            let a_nan = (match na with XN_NaN -> true | _ -> false) in
            let b_nan = (match nb with XN_NaN -> true | _ -> false) in
            if a_nan && b_nan then 0 else if a_nan then -1 else 1)
-      else String.compare a b in
+      else if s.so_case_order = 0 then String.compare a b
+      else cmp_text_caseorder (s.so_case_order = 1) a b in
     let signed = if s.so_descending then 0 - raw else raw in
     if signed <> 0 then signed else cmp_sort_keys sr ar br
   | _, _, _ -> 0
@@ -1423,7 +1509,14 @@ let rec build_nsctx (attrs:list xml_attribute) : Tot (list (string & string)) (d
      | None -> build_nsctx rest)
 
 // Top-level xsl:variable / xsl:param with a select= expression,
-// evaluated once against the source document root.
+// evaluated once against the source DOCUMENT node (XSLT 1.0 §11.4: the
+// context node for a global variable is the root node, not the document
+// element). Using the document-node evaluator makes a relative location
+// path like `data/row` resolve as the absolute `/data/row` — evaluating
+// it against the root ELEMENT instead (the earlier behaviour) looked for
+// a `data` CHILD of `<data>` and returned the empty node-set, so
+// `for-each select="$var"` over such a global silently produced nothing
+// (namespace-1701).
 let rec collect_globals (pfx:string) (nsctx:list (string & string)) (children:list xml_node) (source:xml_node)
   : Tot (list (string & xp_value)) (decreases children) =
   match children with
@@ -1435,7 +1528,7 @@ let rec collect_globals (pfx:string) (nsctx:list (string & string)) (children:li
           (let ln = xsl_instr pfx tag in ln = "variable" || ln = "param") then
          (match attr_opt "select" attrs, attr_opt "name" attrs with
           | Some sel, Some nm ->
-            let v = eval_val (CI_Elem [] [] source) 1 1 [] nsctx sel in
+            let v = eval_val_dn (D_Doc source) 1 1 [] nsctx sel in
             (nm, v) :: collect_globals pfx nsctx tl source
           | _, _ -> collect_globals pfx nsctx tl source)
        else collect_globals pfx nsctx tl source

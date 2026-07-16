@@ -576,6 +576,29 @@ let alt_matches_elem (nsctx : (Prims.string * Prims.string) Prims.list)
            if Prims.op_Negation (pstep_ok nsctx nk n anc)
            then false
            else match_up nsctx anchored rrest ck anc)
+let strip_quotes (s : Prims.string) : Prims.string=
+  let t = trim_str s in
+  match chars_of t with
+  | q::rest ->
+      if (q = 39) || (q = 34)
+      then
+        (match FStar_List_Tot_Base.rev rest with
+         | q2::mid ->
+             if q2 = q then str_of_chars (FStar_List_Tot_Base.rev mid) else t
+         | [] -> t)
+      else t
+  | [] -> t
+let pi_test_target (a : Prims.string) :
+  Prims.string FStar_Pervasives_Native.option=
+  match split_on_char 40 a with
+  | uu___::rest::uu___1 ->
+      let before_close =
+        match split_on_char 41 rest with | x::uu___2 -> x | [] -> rest in
+      let t = trim_str before_close in
+      if t = ""
+      then FStar_Pervasives_Native.None
+      else FStar_Pervasives_Native.Some (strip_quotes t)
+  | uu___ -> FStar_Pervasives_Native.None
 let alt_matches_core (nsctx : (Prims.string * Prims.string) Prims.list)
   (alt : Prims.string) (nd : dnode) : Prims.bool=
   let a = trim_str alt in
@@ -628,38 +651,48 @@ let alt_matches_core (nsctx : (Prims.string * Prims.string) Prims.list)
                      (uu___6, uu___7, uu___8, uu___9, uu___10)) -> true
                  | uu___6 -> false)
               else
-                if starts_with "@" a
+                if starts_with "processing-instruction(" a
                 then
                   (match nd with
-                   | D_Item (XPath_Eval.CI_Attr
-                       (uu___7, uu___8, uu___9, att)) ->
-                       att.Parser_XML.attr_name =
-                         (str_of_chars
-                            (drop_prefix_chars (chars_of a) Prims.int_one))
+                   | D_Item (XPath_Eval.CI_PI
+                       (uu___7, uu___8, uu___9, tgt, uu___10)) ->
+                       (match pi_test_target a with
+                        | FStar_Pervasives_Native.None -> true
+                        | FStar_Pervasives_Native.Some want -> tgt = want)
                    | uu___7 -> false)
                 else
-                  if a = "attribute::*"
+                  if starts_with "@" a
                   then
                     (match nd with
                      | D_Item (XPath_Eval.CI_Attr
-                         (uu___8, uu___9, uu___10, uu___11)) -> true
+                         (uu___8, uu___9, uu___10, att)) ->
+                         att.Parser_XML.attr_name =
+                           (str_of_chars
+                              (drop_prefix_chars (chars_of a) Prims.int_one))
                      | uu___8 -> false)
                   else
-                    if starts_with "attribute::" a
+                    if a = "attribute::*"
                     then
                       (match nd with
                        | D_Item (XPath_Eval.CI_Attr
-                           (uu___9, uu___10, uu___11, att)) ->
-                           att.Parser_XML.attr_name =
-                             (str_of_chars
-                                (drop_prefix_chars (chars_of a)
-                                   (Prims.of_int (11))))
+                           (uu___9, uu___10, uu___11, uu___12)) -> true
                        | uu___9 -> false)
                     else
-                      (match nd with
-                       | D_Item (XPath_Eval.CI_Elem (uu___10, anc, n)) ->
-                           alt_matches_elem nsctx a n anc
-                       | uu___10 -> false)
+                      if starts_with "attribute::" a
+                      then
+                        (match nd with
+                         | D_Item (XPath_Eval.CI_Attr
+                             (uu___10, uu___11, uu___12, att)) ->
+                             att.Parser_XML.attr_name =
+                               (str_of_chars
+                                  (drop_prefix_chars (chars_of a)
+                                     (Prims.of_int (11))))
+                         | uu___10 -> false)
+                      else
+                        (match nd with
+                         | D_Item (XPath_Eval.CI_Elem (uu___11, anc, n)) ->
+                             alt_matches_elem nsctx a n anc
+                         | uu___11 -> false)
 let rec has_double_colon_chars (cs : FStar_String.char Prims.list) :
   Prims.bool=
   match cs with
@@ -936,22 +969,68 @@ and text_value_nodes (ns : Parser_XML.xml_node Prims.list) : Prims.string=
   match ns with
   | [] -> ""
   | hd::tl -> Prims.strcat (text_value_node hd) (text_value_nodes tl)
+let ascii_lower_char (c : FStar_String.char) : FStar_String.char=
+  let n = FStar_Char.int_of_char c in
+  if (n >= (Prims.of_int (0x41))) && (n <= (Prims.of_int (0x5A)))
+  then FStar_Char.char_of_int (n + (Prims.of_int (0x20)))
+  else c
+let is_ascii_lower (c : FStar_String.char) : Prims.bool=
+  let n = FStar_Char.int_of_char c in
+  (n >= (Prims.of_int (0x61))) && (n <= (Prims.of_int (0x7A)))
+let rec cmp_chars_ci (a : FStar_String.char Prims.list)
+  (b : FStar_String.char Prims.list) : Prims.int=
+  match (a, b) with
+  | ([], []) -> Prims.int_zero
+  | ([], uu___) -> (Prims.of_int (-1))
+  | (uu___, []) -> Prims.int_one
+  | (x::xs, y::ys) ->
+      let lx = FStar_Char.int_of_char (ascii_lower_char x) in
+      let ly = FStar_Char.int_of_char (ascii_lower_char y) in
+      if lx = ly
+      then cmp_chars_ci xs ys
+      else if lx < ly then (Prims.of_int (-1)) else Prims.int_one
+let rec cmp_chars_case (lower_first : Prims.bool)
+  (a : FStar_String.char Prims.list) (b : FStar_String.char Prims.list) :
+  Prims.int=
+  match (a, b) with
+  | ([], []) -> Prims.int_zero
+  | ([], uu___) -> (Prims.of_int (-1))
+  | (uu___, []) -> Prims.int_one
+  | (x::xs, y::ys) ->
+      if x = y
+      then cmp_chars_case lower_first xs ys
+      else
+        (let x_is_lower = is_ascii_lower x in
+         if lower_first
+         then (if x_is_lower then (Prims.of_int (-1)) else Prims.int_one)
+         else if x_is_lower then Prims.int_one else (Prims.of_int (-1)))
+let cmp_text_caseorder (lower_first : Prims.bool) (a : Prims.string)
+  (b : Prims.string) : Prims.int=
+  let ca = chars_of a in
+  let cb = chars_of b in
+  let prim = cmp_chars_ci ca cb in
+  if prim <> Prims.int_zero then prim else cmp_chars_case lower_first ca cb
 type sortspec =
   {
   so_select: Prims.string ;
   so_numeric: Prims.bool ;
-  so_descending: Prims.bool }
+  so_descending: Prims.bool ;
+  so_case_order: Prims.int }
 let __proj__Mksortspec__item__so_select (projectee : sortspec) :
   Prims.string=
   match projectee with
-  | { so_select; so_numeric; so_descending;_} -> so_select
+  | { so_select; so_numeric; so_descending; so_case_order;_} -> so_select
 let __proj__Mksortspec__item__so_numeric (projectee : sortspec) : Prims.bool=
   match projectee with
-  | { so_select; so_numeric; so_descending;_} -> so_numeric
+  | { so_select; so_numeric; so_descending; so_case_order;_} -> so_numeric
 let __proj__Mksortspec__item__so_descending (projectee : sortspec) :
   Prims.bool=
   match projectee with
-  | { so_select; so_numeric; so_descending;_} -> so_descending
+  | { so_select; so_numeric; so_descending; so_case_order;_} -> so_descending
+let __proj__Mksortspec__item__so_case_order (projectee : sortspec) :
+  Prims.int=
+  match projectee with
+  | { so_select; so_numeric; so_descending; so_case_order;_} -> so_case_order
 let parse_sort (ctx : XPath_Eval.xctx_item) (pos : Prims.nat)
   (size : Prims.nat) (vars : (Prims.string * XPath_Eval.xp_value) Prims.list)
   (nsctx : (Prims.string * Prims.string) Prims.list) (pfx : Prims.string)
@@ -966,11 +1045,20 @@ let parse_sort (ctx : XPath_Eval.xctx_item) (pos : Prims.nat)
         let od =
           expand_avt ctx pos size vars nsctx
             (attr_or "order" "ascending" attrs) in
+        let co =
+          expand_avt ctx pos size vars nsctx (attr_or "case-order" "" attrs) in
         FStar_Pervasives_Native.Some
           {
             so_select = (attr_or "select" "." attrs);
             so_numeric = (dt = "number");
-            so_descending = (od = "descending")
+            so_descending = (od = "descending");
+            so_case_order =
+              ((if co = "lower-first"
+                then Prims.int_one
+                else
+                  if co = "upper-first"
+                  then (Prims.of_int (2))
+                  else Prims.int_zero))
           }
       else FStar_Pervasives_Native.None
   | uu___ -> FStar_Pervasives_Native.None
@@ -1031,7 +1119,10 @@ let rec cmp_sort_keys (specs : sortspec Prims.list)
               (if a_nan && b_nan
                then Prims.int_zero
                else if a_nan then (Prims.of_int (-1)) else Prims.int_one)
-        else FStar_String.compare a b in
+        else
+          if s.so_case_order = Prims.int_zero
+          then FStar_String.compare a b
+          else cmp_text_caseorder (s.so_case_order = Prims.int_one) a b in
       let signed = if s.so_descending then Prims.int_zero - raw else raw in
       if signed <> Prims.int_zero then signed else cmp_sort_keys sr ar br
   | (uu___, uu___1, uu___2) -> Prims.int_zero
@@ -1590,8 +1681,8 @@ let rec collect_globals (pfx : Prims.string)
               | (FStar_Pervasives_Native.Some sel,
                  FStar_Pervasives_Native.Some nm) ->
                   let v =
-                    eval_val (XPath_Eval.CI_Elem ([], [], source))
-                      Prims.int_one Prims.int_one [] nsctx sel in
+                    eval_val_dn (D_Doc source) Prims.int_one Prims.int_one []
+                      nsctx sel in
                   (nm, v) :: (collect_globals pfx nsctx tl source)
               | (uu___1, uu___2) -> collect_globals pfx nsctx tl source)
            else collect_globals pfx nsctx tl source

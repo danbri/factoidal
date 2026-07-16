@@ -76,9 +76,17 @@ soundness where applicable):
 - **profile-QL honestly scored** (b6f9b0d): 83 pass, 4 fail (of 87) —
   scoring already existed, latest.json only carried the 6-test Inc
   line; profile-EL gains the same aggregate.
-- **XSLT 74 -> 75 pass, 13 fail (of 88)** (f687af5): boolean-to-string
-  in Parser.XPath per XPath 1.0 §4.3; boolean-026 is the named
-  residual; xpath unit 91/0 held.
+- **XSLT 75 -> 79 pass, 9 fail (of 88)** (#302 burndown): flips
+  boolean-026 (E-notation numeric literals in Parser.XPath),
+  namespace-1701 (global variable select evaluated against the source
+  DOCUMENT node, not the root element), construct-node-026
+  (`processing-instruction('target')` node test in XSLT match
+  patterns), and sort-043 (xsl:sort case-order collation). xpath unit
+  91/0 held; xml-conformance 1414/0/1171 and GRDDL 9/8/51 unchanged.
+  Residual 9 are the namespace-node model (copy-0601, match-045,
+  namespace-4101/4501/4801, node-1601), document-node prolog/epilog
+  comments (copy-2601, select-1001), and id()/DTD-ID patterns (id-016)
+  — all in-scope but larger; none PSVI/schema-dependent.
 - **EECC interop corpus vendored** (d976bf5): vc-verifier-rules +
   webuild-attestations (Apache-2.0 verified, PROVENANCE.md; AGPL
   verifier excluded), bin/eecc-runner over 51 real-world fixtures —

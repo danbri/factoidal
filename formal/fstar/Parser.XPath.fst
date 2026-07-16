@@ -20,10 +20,12 @@ open Parser.Combinators
 // processing-instruction() / processing-instruction('t')); predicates;
 // the six comparison operators with
 // §3.4 type coercion; +,-,*,div,mod, unary minus; '|' union. Numeric
-// literals follow the XPath 1.0 `Number` production exactly (Digits
-// ('.' Digits?)? | '.' Digits) — no E-notation, no sign (a leading '-'
-// on a literal is UnaryExpr wrapping a Number, per the grammar's own
-// UnaryExpr/Number split).
+// literals follow the XPath 1.0 `Number` production (Digits
+// ('.' Digits?)? | '.' Digits) — no sign (a leading '-' on a literal is
+// UnaryExpr wrapping a Number, per the grammar's own UnaryExpr/Number
+// split) — PLUS an optional [eE][+-]?Digits exponent (the XPath 2.0
+// numeric-literal lexeme, folded into the same value/scale pair; see
+// parse_number_lit).
 //
 // Termination: XPath's grammar is a ~10-level operator-precedence
 // cascade (OrExpr..PrimaryExpr) with genuine recursion back to the top
@@ -198,7 +200,17 @@ let initial_parse_fuel (input:string) : nat =
 (* Number and Literal                                                *)
 (* ================================================================ *)
 
-// Number ::= Digits ('.' Digits?)? | '.' Digits   (no sign, no E-notation)
+// Number ::= Digits ('.' Digits?)? | '.' Digits, with an OPTIONAL
+// [eE][+-]?Digits exponent folded into the (value, scale) pair. Plain
+// XPath 1.0 has no E-notation, but the XPath 2.0 numeric-literal form
+// (`1.0e2`, `1e3`, `2.5e-1`) is lexical, not schema-aware, and several
+// XSLT tests use it; accepting it never mis-reads valid XPath 1.0 (a
+// number is never directly followed by a bare `e`+digit in the 1.0
+// grammar). The exponent is applied to the SAME rational representation
+// used elsewhere: value = numerator / 10^scale. A non-negative exponent
+// multiplies the numerator by 10^exp; a negative exponent adds |exp| to
+// the scale. A trailing `e` with no digits (e.g. `1eq`, `1 eq 2`) is
+// left unconsumed so the `eq`/`ne`/... operators still lex.
 let parse_number_lit (input:string) (pos:nat) : option (int & nat & nat) =
   let len = fs_byte_length input in
   let has_int_digit = match peek_char input pos with Some c -> is_digit_char c | None -> false in
@@ -207,6 +219,21 @@ let parse_number_lit (input:string) (pos:nat) : option (int & nat & nat) =
   else
     let int_end = ptake_while_scan is_digit_char input pos (len - pos + 1) in
     let int_val = digits_to_nat input pos int_end 0 in
+    // Fold an optional exponent onto a mantissa (numerator `mval`, scale
+    // `mscale`) whose lexeme ends at `mend`.
+    let apply_exp (mval:int) (mscale:nat) (mend:nat) : (int & nat & nat) =
+      if mend < len && (let c = fs_byte_index input mend in c = 'e' || c = 'E') then
+        (let p1 = mend + 1 in
+         let has_sign = p1 < len && (let c = fs_byte_index input p1 in c = '+' || c = '-') in
+         let neg = has_sign && fs_byte_index input p1 = '-' in
+         let p2 = if has_sign then p1 + 1 else p1 in
+         let exp_end = ptake_while_scan is_digit_char input p2 (len - p2 + 1) in
+         if exp_end > p2 then
+           (let exp = digits_to_nat input p2 exp_end 0 in
+            if neg then (mval, mscale + exp, exp_end)
+            else (op_Multiply mval (pow10_nat exp), mscale, exp_end))
+         else (mval, mscale, mend))
+      else (mval, mscale, mend) in
     if int_end < len && fs_byte_index input int_end = '.' then
       let frac_start = int_end + 1 in
       let frac_end = ptake_while_scan is_digit_char input frac_start (len - frac_start + 1) in
@@ -214,12 +241,12 @@ let parse_number_lit (input:string) (pos:nat) : option (int & nat & nat) =
       if scale = 0 then
         // "42." — Digits '.' with no fraction digits is still valid
         // per the grammar (`'.' Digits?`).
-        Some (int_val, 0, frac_end)
+        Some (apply_exp int_val 0 frac_end)
       else
         let frac_val = digits_to_nat input frac_start frac_end 0 in
-        Some (op_Multiply int_val (pow10_nat scale) + frac_val, scale, frac_end)
+        Some (apply_exp (op_Multiply int_val (pow10_nat scale) + frac_val) scale frac_end)
     else if int_end = pos then None // ".": neither an int digit nor dot consumed a fraction digit
-    else Some (int_val, 0, int_end)
+    else Some (apply_exp int_val 0 int_end)
 
 // Literal ::= '"' [^"]* '"' | "'" [^']* "'"   -- NO escape mechanism.
 let parse_string_lit (input:string) (pos:nat) : option (string & nat) =
