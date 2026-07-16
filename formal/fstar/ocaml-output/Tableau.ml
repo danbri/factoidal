@@ -145,38 +145,22 @@ let rec walk_rdf_list (g : RDF_Graph.rdf_graph) (head : RDF_Term.rdf_term)
                      (walk_rdf_list g t (n - Prims.int_one))
                  | (uu___1, uu___2) -> []))
        | uu___ -> [])
+let rec cardinality_digits_to_nat (cs : FStar_Char.char Prims.list)
+  (acc : Prims.nat) : Prims.nat FStar_Pervasives_Native.option=
+  match cs with
+  | [] -> FStar_Pervasives_Native.Some acc
+  | c::tl ->
+      let n = FStar_Char.int_of_char c in
+      if (n >= (Prims.of_int (48))) && (n <= (Prims.of_int (57)))
+      then
+        cardinality_digits_to_nat tl
+          ((acc * (Prims.of_int (10))) + (n - (Prims.of_int (48))))
+      else FStar_Pervasives_Native.None
 let cardinality_literal_to_nat (s : Prims.string) :
   Prims.nat FStar_Pervasives_Native.option=
-  if s = "0"
-  then FStar_Pervasives_Native.Some Prims.int_zero
-  else
-    if s = "1"
-    then FStar_Pervasives_Native.Some Prims.int_one
-    else
-      if s = "2"
-      then FStar_Pervasives_Native.Some (Prims.of_int (2))
-      else
-        if s = "3"
-        then FStar_Pervasives_Native.Some (Prims.of_int (3))
-        else
-          if s = "4"
-          then FStar_Pervasives_Native.Some (Prims.of_int (4))
-          else
-            if s = "5"
-            then FStar_Pervasives_Native.Some (Prims.of_int (5))
-            else
-              if s = "6"
-              then FStar_Pervasives_Native.Some (Prims.of_int (6))
-              else
-                if s = "7"
-                then FStar_Pervasives_Native.Some (Prims.of_int (7))
-                else
-                  if s = "8"
-                  then FStar_Pervasives_Native.Some (Prims.of_int (8))
-                  else
-                    if s = "9"
-                    then FStar_Pervasives_Native.Some (Prims.of_int (9))
-                    else FStar_Pervasives_Native.None
+  match FStar_String.list_of_string s with
+  | [] -> FStar_Pervasives_Native.None
+  | cs -> cardinality_digits_to_nat cs Prims.int_zero
 let cardinality_value (g : RDF_Graph.rdf_graph) (s : RDF_Term.subject)
   (pred : RDF_Term.wf_iri) : Prims.nat FStar_Pervasives_Native.option=
   match find_first_object g s pred with

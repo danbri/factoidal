@@ -194,23 +194,25 @@ let rec walk_rdf_list (g : rdf_graph) (head : rdf_term) (fuel : nat)
    consumes `ts` at fixed `fuel`; parse_class_expr strictly
    decreases `fuel`. Inside parse_class_expr we pass `n - 1` to the
    list walker so the fuel is strictly smaller than our own. *)
-(* Cardinality values in W3C entailment tests are tiny (0-9 covers
-   essentially all cases). We match literal lexical forms directly so
-   F\* doesn't need to verify a string-to-nat helper. Anything outside
-   the 0-9 range is surfaced as None, which makes the outer parse
-   emit CE_Unknown — sound under open-world. *)
+(* Parse a non-negative-integer lexical form (a run of ASCII digits) to a
+   nat. Multi-digit is needed for the value-space cardinality clashes
+   (WebOnt-I5.8: cardinality 257 on xsd:byte, 129 on byte ∩ unsignedInt);
+   witness generation stays bounded regardless (Tableau.Refute caps at
+   max_generated_witnesses). A non-digit or empty form yields None, which
+   makes the outer parse emit CE_Unknown — sound under open-world. *)
+let rec cardinality_digits_to_nat (cs : list FStar.Char.char) (acc : nat)
+  : Tot (option nat) (decreases cs) =
+  match cs with
+  | [] -> Some acc
+  | c :: tl ->
+    let n = FStar.Char.int_of_char c in
+    if n >= 48 && n <= 57 then cardinality_digits_to_nat tl (op_Multiply acc 10 + (n - 48))
+    else None
+
 let cardinality_literal_to_nat (s : string) : option nat =
-  if s = "0" then Some 0
-  else if s = "1" then Some 1
-  else if s = "2" then Some 2
-  else if s = "3" then Some 3
-  else if s = "4" then Some 4
-  else if s = "5" then Some 5
-  else if s = "6" then Some 6
-  else if s = "7" then Some 7
-  else if s = "8" then Some 8
-  else if s = "9" then Some 9
-  else None
+  match FStar.String.list_of_string s with
+  | [] -> None
+  | cs -> cardinality_digits_to_nat cs 0
 
 let cardinality_value (g : rdf_graph) (s : subject) (pred : wf_iri) : option nat =
   match find_first_object g s pred with
