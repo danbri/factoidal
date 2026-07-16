@@ -3191,6 +3191,255 @@ let negate_conclusion (g_c : rdf_graph) : option rdf_graph =
                  // disjunction / unsupported — keep the closure verdict.
 
 (* -------------------------------------------------------------------
+   11b. PE-via-refutation WAVE 2: multi-goal refutation (issue #298).
+   -------------------------------------------------------------------
+
+   `negate_conclusion` above emits a SINGLE clash target and so supports
+   exactly one content assertion, of one of two shapes. This wave
+   generalises it to `negation_goals`, which returns a CONJUNCTION of
+   refutation goals — a `list rdf_graph`, ALL of which the runner must
+   refute (each with `Some false`) for the entailment to be proven.
+
+   SOUNDNESS of the conjunction reduction. Under OWL 2 Direct Semantics,
+   for a premise P:
+
+     (i)  CONJUNCTION conclusions.  A conclusion graph is the
+          conjunction of its content assertions A1 ⊓ … ⊓ An, and
+              P |= (A1 ⊓ … ⊓ An)   iff   for every k, P |= Ak.
+          So we refute each conjunct SEPARATELY: goal k augments P with
+          ¬Ak alone (never the other conjuncts — adding an unproven Aj
+          to goal k would ASSUME Aj while proving Ak, which is the
+          unsound direction). If EVERY conjunct is a supported single
+          form, the goal list is the concatenation of the per-conjunct
+          negations; one unsupported conjunct collapses the whole
+          conclusion to `None` (conservative — today's closure verdict).
+
+     (ii) EQUIVALENCE conclusions.  C ≡ D  iff  C ⊑ D and D ⊑ C, so the
+          single equivalence assertion expands to TWO subsumption
+          refutation goals, both required. Likewise P ≡ Q (properties)
+          expands to P ⊑ Q and Q ⊑ P.
+
+   Each remaining goal is a single-assertion refutation whose per-shape
+   soundness argument is given at its builder below. `structural_triples`
+   (the class-expression / list / declaration scaffolding) is kept in
+   EVERY goal — it constrains nothing on its own — so a goal that refutes
+   a subsumption still has C's and D's defining structure available.
+
+   PROPERTY subsumption / property assertion negation (the ¬p(a,b)
+   encoding).  The sound negation of P ⊑ Q is a FRESH pair ⟨a,b⟩ with
+   P(a,b) ∧ ¬Q(a,b); the sound negation of a property assertion
+   `s p o` is ¬p(s,o) on the EXISTING named terms. Both need to express
+   "x has no p-successor equal to y" as a clash target the tableau can
+   consume. We encode it as
+
+        x rdf:type ObjectMaxCardinality(0, p, ObjectOneOf(y))
+
+   i.e. `x : ≤0 p.{y}`. In every model {y} = {den(y)}, so ≤0 p.{y}
+   denotes exactly the individuals with zero p-successor equal to y —
+   precisely ¬(⟨x,y⟩ ∈ EXT(p)), nothing stronger (unlike `≤0 p`, which
+   would forbid ALL p-successors and be unsound). The tableau closes
+   this via `clash_for_label`'s `CE_MaxQualCard 0` arm: it counts x's
+   role-hierarchy-aware p-successors (`countable_successors`, which sees
+   a P-edge as a Q-successor exactly when P ⊑* Q holds in the premise
+   closure — the only route by which y becomes a counted p-successor of
+   x, so the clash fires iff the premise forces ⟨x,y⟩ ∈ EXT(p), i.e.
+   iff the subsumption / assertion is entailed), then filters them to
+   the {y} nominal via `filter_in_filler`, which requires y to carry the
+   `{y}` label. We therefore also assert the TAUTOLOGY  y ∈ {y}
+   (`y rdf:type _:oneof`), true in every model, so the filter recognises
+   y. A literal object is out of this encoding (owl:oneOf of a literal
+   is a data range) — such a conclusion falls to `None`.                *)
+
+// rdfs:domain / rdfs:range — needed only for the property-assertion
+// blocklist below (these axiom predicates are NOT plain object-property
+// assertions and must never be mistaken for one). Local assert_norm
+// constants, matching the file's IRI idiom.
+let pe_rdfs_domain : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2000/01/rdf-schema#domain");
+  "http://www.w3.org/2000/01/rdf-schema#domain"
+let pe_rdfs_range : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2000/01/rdf-schema#range");
+  "http://www.w3.org/2000/01/rdf-schema#range"
+
+// "0"^^xsd:nonNegativeInteger — the ≤0 bound of the ¬p(x,y) encoding.
+// cardinality_value reads only the lexical form; the datatype keeps the
+// augmentation a well-formed graph.
+let pe_xsd_nonNegInteger : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2001/XMLSchema#nonNegativeInteger");
+  "http://www.w3.org/2001/XMLSchema#nonNegativeInteger"
+let pe_zero_literal : wf_literal =
+  let l : literal = { lexical_form = "0"; datatype = pe_xsd_nonNegInteger;
+                      lang_tag = None } in
+  assert (literal_wf l);
+  l
+
+// Fresh bnode ids for the property-refutation encoding. The prefix is
+// illegal in W3C fixtures / parser output, so these never collide with
+// premise or closure bnodes. Each refutation GOAL is a SEPARATE graph
+// handed to the refuter on its own, so reusing one fixed id set across
+// goals is safe (no two goals share a tableau run / state).
+let pe_prop_a_bnode     : bnode_id = "__factoidal_pe_prop_a"
+let pe_prop_b_bnode     : bnode_id = "__factoidal_pe_prop_b"
+let pe_prop_restr_bnode : bnode_id = "__factoidal_pe_prop_restr"
+let pe_prop_oneof_bnode : bnode_id = "__factoidal_pe_prop_oneof"
+let pe_prop_list_bnode  : bnode_id = "__factoidal_pe_prop_list"
+
+// The structural (class-expression-building / list / declaration)
+// triples of a conclusion graph — kept verbatim in every refutation
+// goal. Exact complement of `content_triples`.
+let rec structural_triples (g : rdf_graph) : Tot (list triple) (decreases g) =
+  match g with
+  | []      -> []
+  | t :: tl -> if is_structural_triple t then t :: structural_triples tl
+               else structural_triples tl
+
+// The triples encoding  `sub rdf:type ObjectMaxCardinality(0, p, {m})`
+// plus the tautology  m ∈ {m}. Together they assert exactly ¬p(sub, m)
+// (see the wave-2 banner's soundness argument). `None` when m is a
+// literal (owl:oneOf of a literal is a data range, out of scope).
+let neg_pair_triples (sub : subject) (p : wf_iri) (m : rdf_term)
+  : option (list triple) =
+  match term_to_subject m with
+  | None -> None
+  | Some m_subj ->
+    let restr = S_BNode pe_prop_restr_bnode in
+    let oneof = S_BNode pe_prop_oneof_bnode in
+    let lcell = S_BNode pe_prop_list_bnode in
+    Some [
+      { s = sub;   p = rdf_type;                    o = T_BNode pe_prop_restr_bnode };
+      { s = restr; p = rdf_type;                    o = T_IRI owl_Restriction };
+      { s = restr; p = owl_onProperty;              o = T_IRI p };
+      { s = restr; p = owl_maxQualifiedCardinality; o = T_Literal pe_zero_literal };
+      { s = restr; p = owl_onClass;                 o = T_BNode pe_prop_oneof_bnode };
+      { s = oneof; p = rdf_type;                    o = T_IRI owl_Class };
+      { s = oneof; p = owl_oneOf;                   o = T_BNode pe_prop_list_bnode };
+      { s = lcell; p = rdf_first;                   o = m };
+      { s = lcell; p = rdf_rest;                    o = T_IRI rdf_nil };
+      { s = m_subj; p = rdf_type;                   o = T_BNode pe_prop_oneof_bnode };
+    ]
+
+// Refutation goal for a property SUBSUMPTION P ⊑ Q: a fresh pair ⟨a,b⟩
+// with P(a,b) and  a : ≤0 Q.{b}  (= ¬Q(a,b)). Total: b is a bnode, so
+// `neg_pair_triples` is always `Some` here.
+let prop_inclusion_goal (base : rdf_graph) (p q : wf_iri) : rdf_graph =
+  let a = S_BNode pe_prop_a_bnode in
+  let b = T_BNode pe_prop_b_bnode in
+  let edge : triple = { s = a; p = p; o = b } in
+  (match neg_pair_triples a q b with
+   | Some ts -> (edge :: ts) @ base
+   | None    -> edge :: base)
+
+// Predicates that are OWL/RDFS axioms or the equality/nominal
+// vocabulary — never a plain object-property assertion whose ¬p(s,o)
+// encoding would be meaningful. (Structural predicates are already
+// removed by `content_triples`, so only the axiom/nominal ones reach
+// here.) `rdf:type`, subClassOf, subPropertyOf, equivalentClass and
+// equivalentProperty are dispatched by earlier arms of
+// `negate_content_triple`; the rest fall to `None`.
+let is_axiom_or_special_predicate (p : wf_iri) : bool =
+  p = rdf_type || p = rdfs_subClassOf || p = rdfs_subPropertyOf
+  || p = owl_equivalentClass || p = owl_equivalentProperty
+  || p = owl_disjointWith || p = owl_sameAs || p = owl_differentFrom
+  || p = owl_propertyDisjointWith || p = pe_rdfs_domain || p = pe_rdfs_range
+
+// A conclusion triple that is a plain object-property assertion of a
+// NAMED subject to a RESOURCE object (`s p o`, s an IRI, o an IRI/bnode,
+// p not an axiom/nominal predicate). Its sound negation is ¬p(s,o).
+let is_negatable_property_assertion (t : triple) : bool =
+  (match t.s with S_IRI _ -> true | S_BNode _ -> false)
+  && (match t.o with T_IRI _ | T_BNode _ -> true | T_Literal _ -> false)
+  && not (is_axiom_or_special_predicate t.p)
+
+// One content assertion -> the list of refutation goals it expands to
+// (a conjunction — every goal required). `None` = unsupported shape.
+let negate_content_triple (base : rdf_graph) (t : triple)
+  : option (list rdf_graph) =
+  if is_class_membership t then
+    // (a) i rdf:type C  ->  i rdf:type ¬C.
+    let comp : triple =
+      { s = S_BNode pe_neg_class_bnode; p = owl_complementOf; o = t.o } in
+    let member : triple =
+      { s = t.s; p = rdf_type; o = T_BNode pe_neg_class_bnode } in
+    Some [comp :: member :: base]
+  else if t.p = rdfs_subClassOf then
+    // (b) C rdfs:subClassOf D  ->  fresh _:x with _:x ∈ C ⊓ ¬D.
+    (match term_to_subject t.o with
+     | None   -> None
+     | Some _ ->
+       let x : subject = S_BNode pe_sub_fresh_bnode in
+       let in_c : triple = { s = x; p = rdf_type; o = subject_to_term t.s } in
+       let comp : triple =
+         { s = S_BNode pe_neg_class_bnode; p = owl_complementOf; o = t.o } in
+       let in_neg_d : triple = { s = x; p = rdf_type; o = T_BNode pe_neg_class_bnode } in
+       Some [in_c :: comp :: in_neg_d :: base])
+  else if t.p = owl_equivalentClass then
+    // C ≡ D  ->  refute C ⊑ D and D ⊑ C. Both need a fresh witness in
+    // (source ⊓ ¬target); the second requires D to be a resource.
+    (match term_to_subject t.o with
+     | None      -> None
+     | Some _    ->
+       let x : subject = S_BNode pe_sub_fresh_bnode in
+       let comp_d : triple =
+         { s = S_BNode pe_neg_class_bnode; p = owl_complementOf; o = t.o } in
+       let g1 : rdf_graph =
+         [ { s = x; p = rdf_type; o = subject_to_term t.s };
+           comp_d;
+           { s = x; p = rdf_type; o = T_BNode pe_neg_class_bnode } ] @ base in
+       let comp_c : triple =
+         { s = S_BNode pe_neg_class_bnode; p = owl_complementOf; o = subject_to_term t.s } in
+       let g2 : rdf_graph =
+         [ { s = x; p = rdf_type; o = t.o };
+           comp_c;
+           { s = x; p = rdf_type; o = T_BNode pe_neg_class_bnode } ] @ base in
+       Some [g1; g2])
+  else if t.p = rdfs_subPropertyOf then
+    // P ⊑ Q  ->  one property-subsumption refutation goal.
+    (match t.s, t.o with
+     | S_IRI p, T_IRI q -> Some [prop_inclusion_goal base p q]
+     | _, _             -> None)
+  else if t.p = owl_equivalentProperty then
+    // P ≡ Q  ->  refute P ⊑ Q and Q ⊑ P.
+    (match t.s, t.o with
+     | S_IRI p, T_IRI q ->
+       Some [prop_inclusion_goal base p q; prop_inclusion_goal base q p]
+     | _, _             -> None)
+  else if is_negatable_property_assertion t then
+    // s p o  ->  ¬p(s,o)  on the existing named terms.
+    (match t.s with
+     | S_IRI _ ->
+       (match neg_pair_triples t.s t.p t.o with
+        | None    -> None
+        | Some ts -> Some [ts @ base])
+     | _ -> None)
+  else None
+
+let rec negate_content_list (base : rdf_graph) (cs : list triple)
+  : Tot (option (list rdf_graph)) (decreases cs) =
+  match cs with
+  | [] -> Some []
+  | t :: tl ->
+    (match negate_content_triple base t with
+     | None    -> None
+     | Some gs ->
+       (match negate_content_list base tl with
+        | None      -> None
+        | Some rest -> Some (gs @ rest)))
+
+// The conjunction of refutation goals for a conclusion graph, or `None`
+// when any content assertion is an unsupported shape (conservative:
+// the runner keeps its pre-existing closure-miss verdict). The runner
+// ANDs the refuter over the returned list — the entailment is proven
+// iff EVERY goal refutes.
+let negation_goals (g_c : rdf_graph) : option (list rdf_graph) =
+  match content_triples g_c with
+  | []  -> None
+  | cs  ->
+    (match negate_content_list (structural_triples g_c) cs with
+     | None        -> None
+     | Some []     -> None
+     | Some (g::t) -> Some (g :: t))
+
+(* -------------------------------------------------------------------
    12. In-file sanity matrix (guarded, dead-code — same pattern as
        Tableau.fst section 9).
    ------------------------------------------------------------------- *)

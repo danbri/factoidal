@@ -709,14 +709,25 @@ let pe_refute_entails
   match !regime with
   | Regime_RL -> false
   | Regime_DL ->
-    (match Tableau_Refute.negate_conclusion g_c with
+    (* Wave 2 (issue #298): the conclusion negates to a CONJUNCTION of
+       refutation goals (equivalence -> two subsumptions; a multi-
+       assertion conclusion -> one goal per conjunct). The entailment is
+       proven iff EVERY goal refutes (Some false). `negation_goals` never
+       returns `Some []`, so the vacuous-true empty case cannot arise.
+       All splitting/negation logic is F*-extracted; this stays pure
+       dispatch (rule #15). Any None / cap-trip / exception falls back to
+       the pre-existing closure-miss verdict, so PE only ever GAINS. *)
+    (match Tableau_Refute.negation_goals g_c with
      | None -> false
-     | Some neg ->
+     | Some goals ->
        (try with_refute_cap (fun () ->
-          match Tableau_Refute.tableau_consistent
-                  (List.append closure neg) refute_fuel with
-          | Some false -> true
-          | _ -> false)
+          List.for_all
+            (fun neg ->
+               match Tableau_Refute.tableau_consistent
+                       (List.append closure neg) refute_fuel with
+               | Some false -> true
+               | _ -> false)
+            goals)
         with _ -> false))
 
 (* ---- Z33kr Phase 1: native z3 counting-fragment oracle -------------

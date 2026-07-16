@@ -2178,3 +2178,264 @@ let negate_conclusion (g_c : RDF_Graph.rdf_graph) :
                  rest))
         else FStar_Pervasives_Native.None
   | uu___ -> FStar_Pervasives_Native.None
+let pe_rdfs_domain : RDF_Term.wf_iri=
+  "http://www.w3.org/2000/01/rdf-schema#domain"
+let pe_rdfs_range : RDF_Term.wf_iri=
+  "http://www.w3.org/2000/01/rdf-schema#range"
+let pe_xsd_nonNegInteger : RDF_Term.wf_iri=
+  "http://www.w3.org/2001/XMLSchema#nonNegativeInteger"
+let pe_zero_literal : RDF_Term.wf_literal=
+  let l =
+    {
+      RDF_Term.lexical_form = "0";
+      RDF_Term.datatype = pe_xsd_nonNegInteger;
+      RDF_Term.lang_tag = FStar_Pervasives_Native.None
+    } in
+  l
+let pe_prop_a_bnode : RDF_Term.bnode_id= "__factoidal_pe_prop_a"
+let pe_prop_b_bnode : RDF_Term.bnode_id= "__factoidal_pe_prop_b"
+let pe_prop_restr_bnode : RDF_Term.bnode_id= "__factoidal_pe_prop_restr"
+let pe_prop_oneof_bnode : RDF_Term.bnode_id= "__factoidal_pe_prop_oneof"
+let pe_prop_list_bnode : RDF_Term.bnode_id= "__factoidal_pe_prop_list"
+let rec structural_triples (g : RDF_Graph.rdf_graph) :
+  RDF_Triple.triple Prims.list=
+  match g with
+  | [] -> []
+  | t::tl ->
+      if is_structural_triple t
+      then t :: (structural_triples tl)
+      else structural_triples tl
+let neg_pair_triples (sub : RDF_Term.subject) (p : RDF_Term.wf_iri)
+  (m : RDF_Term.rdf_term) :
+  RDF_Triple.triple Prims.list FStar_Pervasives_Native.option=
+  match RDF_Graph.term_to_subject m with
+  | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+  | FStar_Pervasives_Native.Some m_subj ->
+      let restr = RDF_Term.S_BNode pe_prop_restr_bnode in
+      let oneof = RDF_Term.S_BNode pe_prop_oneof_bnode in
+      let lcell = RDF_Term.S_BNode pe_prop_list_bnode in
+      FStar_Pervasives_Native.Some
+        [{
+           RDF_Triple.s = sub;
+           RDF_Triple.p = RDFS_Closure.rdf_type;
+           RDF_Triple.o = (RDF_Term.T_BNode pe_prop_restr_bnode)
+         };
+        {
+          RDF_Triple.s = restr;
+          RDF_Triple.p = RDFS_Closure.rdf_type;
+          RDF_Triple.o = (RDF_Term.T_IRI OWL_Vocabulary.owl_Restriction)
+        };
+        {
+          RDF_Triple.s = restr;
+          RDF_Triple.p = OWL_Vocabulary.owl_onProperty;
+          RDF_Triple.o = (RDF_Term.T_IRI p)
+        };
+        {
+          RDF_Triple.s = restr;
+          RDF_Triple.p = OWL_Vocabulary.owl_maxQualifiedCardinality;
+          RDF_Triple.o = (RDF_Term.T_Literal pe_zero_literal)
+        };
+        {
+          RDF_Triple.s = restr;
+          RDF_Triple.p = OWL_Vocabulary.owl_onClass;
+          RDF_Triple.o = (RDF_Term.T_BNode pe_prop_oneof_bnode)
+        };
+        {
+          RDF_Triple.s = oneof;
+          RDF_Triple.p = RDFS_Closure.rdf_type;
+          RDF_Triple.o = (RDF_Term.T_IRI RDFS_Closure.owl_Class)
+        };
+        {
+          RDF_Triple.s = oneof;
+          RDF_Triple.p = OWL_Vocabulary.owl_oneOf;
+          RDF_Triple.o = (RDF_Term.T_BNode pe_prop_list_bnode)
+        };
+        {
+          RDF_Triple.s = lcell;
+          RDF_Triple.p = OWL_Vocabulary.rdf_first;
+          RDF_Triple.o = m
+        };
+        {
+          RDF_Triple.s = lcell;
+          RDF_Triple.p = OWL_Vocabulary.rdf_rest;
+          RDF_Triple.o = (RDF_Term.T_IRI OWL_Vocabulary.rdf_nil)
+        };
+        {
+          RDF_Triple.s = m_subj;
+          RDF_Triple.p = RDFS_Closure.rdf_type;
+          RDF_Triple.o = (RDF_Term.T_BNode pe_prop_oneof_bnode)
+        }]
+let prop_inclusion_goal (base : RDF_Graph.rdf_graph) (p : RDF_Term.wf_iri)
+  (q : RDF_Term.wf_iri) : RDF_Graph.rdf_graph=
+  let a = RDF_Term.S_BNode pe_prop_a_bnode in
+  let b = RDF_Term.T_BNode pe_prop_b_bnode in
+  let edge = { RDF_Triple.s = a; RDF_Triple.p = p; RDF_Triple.o = b } in
+  match neg_pair_triples a q b with
+  | FStar_Pervasives_Native.Some ts ->
+      FStar_List_Tot_Base.op_At (edge :: ts) base
+  | FStar_Pervasives_Native.None -> edge :: base
+let is_axiom_or_special_predicate (p : RDF_Term.wf_iri) : Prims.bool=
+  ((((((((((p = RDFS_Closure.rdf_type) || (p = RDFS_Closure.rdfs_subClassOf))
+            || (p = RDFS_Closure.rdfs_subPropertyOf))
+           || (p = OWL_Closure.owl_equivalentClass))
+          || (p = OWL_Closure.owl_equivalentProperty))
+         || (p = OWL_Vocabulary.owl_disjointWith))
+        || (p = OWL_Closure.owl_sameAs))
+       || (p = OWL_Closure.owl_differentFrom))
+      || (p = OWL_Closure.owl_propertyDisjointWith))
+     || (p = pe_rdfs_domain))
+    || (p = pe_rdfs_range)
+let is_negatable_property_assertion (t : RDF_Triple.triple) : Prims.bool=
+  ((match t.RDF_Triple.s with
+    | RDF_Term.S_IRI uu___ -> true
+    | RDF_Term.S_BNode uu___ -> false) &&
+     (match t.RDF_Triple.o with
+      | RDF_Term.T_IRI uu___ -> true
+      | RDF_Term.T_BNode uu___ -> true
+      | RDF_Term.T_Literal uu___ -> false))
+    && (Prims.op_Negation (is_axiom_or_special_predicate t.RDF_Triple.p))
+let negate_content_triple (base : RDF_Graph.rdf_graph)
+  (t : RDF_Triple.triple) :
+  RDF_Graph.rdf_graph Prims.list FStar_Pervasives_Native.option=
+  if is_class_membership t
+  then
+    let comp =
+      {
+        RDF_Triple.s = (RDF_Term.S_BNode pe_neg_class_bnode);
+        RDF_Triple.p = OWL_Vocabulary.owl_complementOf;
+        RDF_Triple.o = (t.RDF_Triple.o)
+      } in
+    let member =
+      {
+        RDF_Triple.s = (t.RDF_Triple.s);
+        RDF_Triple.p = RDFS_Closure.rdf_type;
+        RDF_Triple.o = (RDF_Term.T_BNode pe_neg_class_bnode)
+      } in
+    FStar_Pervasives_Native.Some [comp :: member :: base]
+  else
+    if t.RDF_Triple.p = RDFS_Closure.rdfs_subClassOf
+    then
+      (match RDF_Graph.term_to_subject t.RDF_Triple.o with
+       | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+       | FStar_Pervasives_Native.Some uu___1 ->
+           let x = RDF_Term.S_BNode pe_sub_fresh_bnode in
+           let in_c =
+             {
+               RDF_Triple.s = x;
+               RDF_Triple.p = RDFS_Closure.rdf_type;
+               RDF_Triple.o = (RDF_Graph.subject_to_term t.RDF_Triple.s)
+             } in
+           let comp =
+             {
+               RDF_Triple.s = (RDF_Term.S_BNode pe_neg_class_bnode);
+               RDF_Triple.p = OWL_Vocabulary.owl_complementOf;
+               RDF_Triple.o = (t.RDF_Triple.o)
+             } in
+           let in_neg_d =
+             {
+               RDF_Triple.s = x;
+               RDF_Triple.p = RDFS_Closure.rdf_type;
+               RDF_Triple.o = (RDF_Term.T_BNode pe_neg_class_bnode)
+             } in
+           FStar_Pervasives_Native.Some [in_c :: comp :: in_neg_d :: base])
+    else
+      if t.RDF_Triple.p = OWL_Closure.owl_equivalentClass
+      then
+        (match RDF_Graph.term_to_subject t.RDF_Triple.o with
+         | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+         | FStar_Pervasives_Native.Some uu___2 ->
+             let x = RDF_Term.S_BNode pe_sub_fresh_bnode in
+             let comp_d =
+               {
+                 RDF_Triple.s = (RDF_Term.S_BNode pe_neg_class_bnode);
+                 RDF_Triple.p = OWL_Vocabulary.owl_complementOf;
+                 RDF_Triple.o = (t.RDF_Triple.o)
+               } in
+             let g1 =
+               FStar_List_Tot_Base.op_At
+                 [{
+                    RDF_Triple.s = x;
+                    RDF_Triple.p = RDFS_Closure.rdf_type;
+                    RDF_Triple.o = (RDF_Graph.subject_to_term t.RDF_Triple.s)
+                  };
+                 comp_d;
+                 {
+                   RDF_Triple.s = x;
+                   RDF_Triple.p = RDFS_Closure.rdf_type;
+                   RDF_Triple.o = (RDF_Term.T_BNode pe_neg_class_bnode)
+                 }] base in
+             let comp_c =
+               {
+                 RDF_Triple.s = (RDF_Term.S_BNode pe_neg_class_bnode);
+                 RDF_Triple.p = OWL_Vocabulary.owl_complementOf;
+                 RDF_Triple.o = (RDF_Graph.subject_to_term t.RDF_Triple.s)
+               } in
+             let g2 =
+               FStar_List_Tot_Base.op_At
+                 [{
+                    RDF_Triple.s = x;
+                    RDF_Triple.p = RDFS_Closure.rdf_type;
+                    RDF_Triple.o = (t.RDF_Triple.o)
+                  };
+                 comp_c;
+                 {
+                   RDF_Triple.s = x;
+                   RDF_Triple.p = RDFS_Closure.rdf_type;
+                   RDF_Triple.o = (RDF_Term.T_BNode pe_neg_class_bnode)
+                 }] base in
+             FStar_Pervasives_Native.Some [g1; g2])
+      else
+        if t.RDF_Triple.p = RDFS_Closure.rdfs_subPropertyOf
+        then
+          (match ((t.RDF_Triple.s), (t.RDF_Triple.o)) with
+           | (RDF_Term.S_IRI p, RDF_Term.T_IRI q) ->
+               FStar_Pervasives_Native.Some [prop_inclusion_goal base p q]
+           | (uu___3, uu___4) -> FStar_Pervasives_Native.None)
+        else
+          if t.RDF_Triple.p = OWL_Closure.owl_equivalentProperty
+          then
+            (match ((t.RDF_Triple.s), (t.RDF_Triple.o)) with
+             | (RDF_Term.S_IRI p, RDF_Term.T_IRI q) ->
+                 FStar_Pervasives_Native.Some
+                   [prop_inclusion_goal base p q;
+                   prop_inclusion_goal base q p]
+             | (uu___4, uu___5) -> FStar_Pervasives_Native.None)
+          else
+            if is_negatable_property_assertion t
+            then
+              (match t.RDF_Triple.s with
+               | RDF_Term.S_IRI uu___5 ->
+                   (match neg_pair_triples t.RDF_Triple.s t.RDF_Triple.p
+                            t.RDF_Triple.o
+                    with
+                    | FStar_Pervasives_Native.None ->
+                        FStar_Pervasives_Native.None
+                    | FStar_Pervasives_Native.Some ts ->
+                        FStar_Pervasives_Native.Some
+                          [FStar_List_Tot_Base.op_At ts base])
+               | uu___5 -> FStar_Pervasives_Native.None)
+            else FStar_Pervasives_Native.None
+let rec negate_content_list (base : RDF_Graph.rdf_graph)
+  (cs : RDF_Triple.triple Prims.list) :
+  RDF_Graph.rdf_graph Prims.list FStar_Pervasives_Native.option=
+  match cs with
+  | [] -> FStar_Pervasives_Native.Some []
+  | t::tl ->
+      (match negate_content_triple base t with
+       | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+       | FStar_Pervasives_Native.Some gs ->
+           (match negate_content_list base tl with
+            | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+            | FStar_Pervasives_Native.Some rest ->
+                FStar_Pervasives_Native.Some
+                  (FStar_List_Tot_Base.op_At gs rest)))
+let negation_goals (g_c : RDF_Graph.rdf_graph) :
+  RDF_Graph.rdf_graph Prims.list FStar_Pervasives_Native.option=
+  match content_triples g_c with
+  | [] -> FStar_Pervasives_Native.None
+  | cs ->
+      (match negate_content_list (structural_triples g_c) cs with
+       | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+       | FStar_Pervasives_Native.Some [] -> FStar_Pervasives_Native.None
+       | FStar_Pervasives_Native.Some (g::t) ->
+           FStar_Pervasives_Native.Some (g :: t))
