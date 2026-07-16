@@ -14,6 +14,7 @@
 
 module S = Regex_Syntax
 module E = Regex_Exec
+module X = Regex_XSDPattern
 
 let passed = ref 0
 let failed = ref 0
@@ -174,6 +175,143 @@ let () =
   agree ~name:"(ab)* on abab" (star (lit_str "ab")) (word "abab");
   agree ~name:"Not(ab) on ac" (rnot (lit_str "ab")) (word "ac");
   agree ~name:"[a-z]+ on m" (cat (range 0x61 0x7a) (star (range 0x61 0x7a))) (word "m");
+
+  (* ==================================================================== *)
+  (* Phase 2: the XSD-flavor pattern PARSER (Regex.XSDPattern), driven on   *)
+  (* the ACTUAL measured fixture patterns (design doc 2026-07-15 §2 audit). *)
+  (* Parser is F* over codepoints; here we exercise the string entrypoint   *)
+  (* parse_xsd_pattern and match the parsed regex with the fast path.        *)
+  (* ==================================================================== *)
+  let parse (s:string) : S.regex option = X.parse_xsd_pattern s in
+  (* record a successful parse and return the regex (R_Empty on failure so
+     the run continues and the fail is counted, not aborted) *)
+  let must_parse ~name pat =
+    match parse pat with
+    | Some r -> incr passed; Printf.printf "  PASS  parse %s\n" name; r
+    | None -> incr failed; Printf.printf "  FAIL  parse %s: %S failed to parse\n" name pat; S.R_Empty in
+  (* parse then match a word, checking the expected membership *)
+  let pmatch ~name pat w expect =
+    match parse pat with
+    | None -> incr failed; Printf.printf "  FAIL  pmatch %s: %S failed to parse\n" name pat
+    | Some r -> check ~name expect (m r w) in
+  (* a pattern that must cleanly return None (outside the supported fragment) *)
+  let parse_none ~name pat =
+    match parse pat with
+    | None -> incr passed; Printf.printf "  PASS  parse-None %s\n" name
+    | Some _ -> incr failed; Printf.printf "  FAIL  parse-None %s: %S unexpectedly parsed\n" name pat in
+
+  (* ---- OWL Inconsistent-pattern fixture (all.rdf:3051), END-TO-END ----
+     Parse the ACTUAL fixture pattern "a(b|c)" and the derived dp1-filler
+     enumeration "ab|ac", then run the #299 regex-language emptiness check on
+     the parsed ASTs: pattern subsumed by enumeration  <=>  is_empty (And pat
+     (Not enum)). This is the exact operation the OWL facet consistency check
+     needs (the pattern admits only {ab,ac}, both already dp1 fillers). *)
+  let owl_pat  = must_parse ~name:"OWL fixture pattern a(b|c)" "a(b|c)" in
+  let owl_enum = must_parse ~name:"OWL dp1-enumeration ab|ac" "ab|ac" in
+  check ~name:"OWL e2e: parsed a(b|c) matches ab" true (m owl_pat (word "ab"));
+  check ~name:"OWL e2e: parsed a(b|c) matches ac" true (m owl_pat (word "ac"));
+  check ~name:"OWL e2e: parsed a(b|c) rejects ad" false (m owl_pat (word "ad"));
+  check ~name:"OWL e2e: parsed a(b|c) rejects a" false (m owl_pat (word "a"));
+  check ~name:"OWL e2e: parsed ab|ac matches ab" true (m owl_enum (word "ab"));
+  check ~name:"OWL e2e: parsed ab|ac rejects abc" false (m owl_enum (word "abc"));
+  (* the load-bearing intersection-emptiness: L(pat) \ L(enum) = empty *)
+  check ~name:"OWL e2e: is_empty(And pat (Not enum)) -- pattern subsumed" true
+    (E.is_empty (S.R_And (owl_pat, S.R_Not owl_enum)));
+  (* dual: the collision set L(pat) INTERSECT L(enum) is NON-empty *)
+  check ~name:"OWL e2e: intersection_empty(pat, enum) is false (ab,ac collide)" false
+    (E.intersection_empty owl_pat owl_enum);
+  (* and via the Exec.subsumes API on the parsed patterns *)
+  check ~name:"OWL e2e: subsumes(enum, pat)" true (E.subsumes owl_enum owl_pat);
+
+  (* ---- CSVW test194 duration format "^.$" (the named phase-3 unblock) ---- *)
+  ignore (must_parse ~name:"CSVW test194 duration format ^.$" "^.$");
+  pmatch ~name:"^.$ matches single char 'x'" "^.$" (word "x") true;
+  pmatch ~name:"^.$ rejects empty" "^.$" (word "") false;
+  pmatch ~name:"^.$ rejects two chars" "^.$" (word "ab") false;
+  pmatch ~name:"^.$ dot excludes newline" "^.$" (cword [0x0A]) false;
+
+  (* ---- literals, groups, alternation (OWL flavor) ---- *)
+  pmatch ~name:"a(b|c) via parser matches ab" "a(b|c)" (word "ab") true;
+  pmatch ~name:"a(b|c) via parser rejects ad" "a(b|c)" (word "ad") false;
+
+  (* ---- character classes with ranges (SHACL [2-8][0-9]* flavor) ---- *)
+  pmatch ~name:"[0-9]+ matches 2026" "[0-9]+" (word "2026") true;
+  pmatch ~name:"[0-9]+ rejects 20a" "[0-9]+" (word "20a") false;
+  pmatch ~name:"[2-8][0-9]* matches 5001" "[2-8][0-9]*" (word "5001") true;
+  pmatch ~name:"[2-8][0-9]* rejects leading 9" "[2-8][0-9]*" (word "9001") false;
+  pmatch ~name:"[Aa]+ matches AaAa" "[Aa]+" (word "AaAa") true;
+  pmatch ~name:"[Aa]+ rejects b" "[Aa]+" (word "b") false;
+
+  (* ---- \d escape + {n} counted repetition (SHACL SSN ^\d{3}-\d{2}-\d{4}$) ---- *)
+  pmatch ~name:"SSN pattern matches 123-45-6789" "^\\d{3}-\\d{2}-\\d{4}$" (word "123-45-6789") true;
+  pmatch ~name:"SSN pattern rejects short group" "^\\d{3}-\\d{2}-\\d{4}$" (word "12-45-6789") false;
+  pmatch ~name:"\\d{4} matches 2026" "\\d{4}" (word "2026") true;
+  pmatch ~name:"\\d{4} rejects 3 digits" "\\d{4}" (word "202") false;
+
+  (* ---- + on a group (ShEx (ab)+) ---- *)
+  pmatch ~name:"(ab)+ matches abab" "(ab)+" (word "abab") true;
+  pmatch ~name:"(ab)+ rejects aba" "(ab)+" (word "aba") false;
+  pmatch ~name:"(ab)+ rejects empty" "(ab)+" (word "") false;
+
+  (* ---- ? optional (ShEx ^https?://, whole-string here) ---- *)
+  pmatch ~name:"https?:// matches http://" "https?://" (word "http://") true;
+  pmatch ~name:"https?:// matches https://" "https?://" (word "https://") true;
+  pmatch ~name:"https?:// rejects htt://" "https?://" (word "htt://") false;
+
+  (* ---- dot and dot-star: the ShEx contains-cd form ---- *)
+  pmatch ~name:".*cd.* matches xxcdyy" ".*cd.*" (word "xxcdyy") true;
+  pmatch ~name:".*cd.* matches bare cd" ".*cd.*" (word "cd") true;
+  pmatch ~name:".*cd.* rejects xy" ".*cd.*" (word "xy") false;
+
+  (* ---- {n,m} bounded repetition (ShEx {2,3}) ---- *)
+  pmatch ~name:"a{2,3} matches aa" "a{2,3}" (word "aa") true;
+  pmatch ~name:"a{2,3} matches aaa" "a{2,3}" (word "aaa") true;
+  pmatch ~name:"a{2,3} rejects a" "a{2,3}" (word "a") false;
+  pmatch ~name:"a{2,3} rejects aaaa" "a{2,3}" (word "aaaa") false;
+  pmatch ~name:"a{2,} matches aaaaa" "a{2,}" (word "aaaaa") true;
+  pmatch ~name:"a{2,} rejects a" "a{2,}" (word "a") false;
+
+  (* ---- lazy quantifier: same LANGUAGE as greedy (SHACL .*?@) ---- *)
+  pmatch ~name:".*?x matches yyx" ".*?x" (word "yyx") true;
+  pmatch ~name:".*?x rejects yy" ".*?x" (word "yy") false;
+
+  (* ---- escaped metacharacters (ShEx \^bc\$, bc\$) ---- *)
+  pmatch ~name:"\\^bc\\$ matches literal ^bc$" "\\^bc\\$" (word "^bc$") true;
+  pmatch ~name:"\\. matches literal dot" "a\\.b" (word "a.b") true;
+  pmatch ~name:"\\. rejects any-char use" "a\\.b" (word "axb") false;
+
+  (* ---- Unicode escapes \uHHHH / \UHHHHHHHH (ShEx a, \U0001D4B8) ---- *)
+  pmatch ~name:"\\u0061 matches 'a'" "\\u0061" (word "a") true;
+  pmatch ~name:"\\u0061 rejects 'b'" "\\u0061" (word "b") false;
+  pmatch ~name:"\\U0001D4B8 matches astral 𝒸" "\\U0001D4B8" (cword [0x1D4B8]) true;
+  pmatch ~name:"\\U0001D4B8 rejects nearby astral" "\\U0001D4B8" (cword [0x1D4B9]) false;
+
+  (* ---- non-capturing group (?:...) ---- *)
+  pmatch ~name:"(?:ab)+ matches abab" "(?:ab)+" (word "abab") true;
+
+  (* ---- NEGATIVE cases: clean None outside the measured fragment ---- *)
+  parse_none ~name:"unterminated class [" "[";
+  parse_none ~name:"bare quantifier +" "+";
+  parse_none ~name:"unclosed group a(b" "a(b";
+  parse_none ~name:"unbalanced close a)" "a)";
+  parse_none ~name:"category escape \\p{L}" "\\p{L}";
+  parse_none ~name:"backreference \\1" "(a)\\1";
+  parse_none ~name:"lookahead (?=x)" "(?=x)";
+  parse_none ~name:"negated class [^a]" "[^a]";
+  parse_none ~name:"empty brace a{" "a{";
+  parse_none ~name:"non-numeric brace a{x}" "a{x}";
+
+  (* cross-check: a parsed pattern agrees on the proven reference path too *)
+  let agree2 ~name pat w =
+    match parse pat with
+    | None -> incr failed; Printf.printf "  FAIL  proven==norm(parsed) %s: %S failed to parse\n" name pat
+    | Some r ->
+      let p = Regex_Derivative.matches r w and f = E.matches_norm r w in
+      if p = f then (incr passed; Printf.printf "  PASS  proven==norm(parsed) %s\n" name)
+      else (incr failed; Printf.printf "  FAIL  proven==norm(parsed) %s: proven=%b norm=%b\n" name p f) in
+  agree2 ~name:"a(b|c) on ab" "a(b|c)" (word "ab");
+  agree2 ~name:"[0-9]+ on 2026" "[0-9]+" (word "2026");
+  agree2 ~name:"(ab)+ on abab" "(ab)+" (word "abab");
 
   Printf.printf "regex_engine_unit: %d pass, %d fail (out of %d)\n"
     !passed !failed (!passed + !failed);

@@ -170,3 +170,13 @@ let intersection_empty (p : Regex_Syntax.regex) (q : Regex_Syntax.regex) :
   Prims.bool= is_empty (Regex_Syntax.R_And (p, q))
 let subsumes (p : Regex_Syntax.regex) (q : Regex_Syntax.regex) : Prims.bool=
   is_empty (Regex_Syntax.R_And (q, (Regex_Syntax.R_Not p)))
+let rec mem_alt_list (xs : Regex_Syntax.regex Prims.list)
+  (w : Prims.nat Prims.list) : Prims.bool=
+  match xs with
+  | [] -> false
+  | x::rest -> (Regex_Syntax.mem x w) || (mem_alt_list rest w)
+let rec mem_and_list (xs : Regex_Syntax.regex Prims.list)
+  (w : Prims.nat Prims.list) : Prims.bool=
+  match xs with
+  | [] -> true
+  | x::rest -> (Regex_Syntax.mem x w) && (mem_and_list rest w)

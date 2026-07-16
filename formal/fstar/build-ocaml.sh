@@ -368,7 +368,7 @@ if [[ "$STEP" == "all" || "$STEP" == "extract" ]]; then
   # ---------------------------------------------------------------------
   ALL_MODULES=(
     Util.Log.fst
-    Regex.Syntax.fst Regex.Derivative.fst Regex.Exec.fst
+    Regex.Syntax.fst Regex.Derivative.fst Regex.Exec.fst Regex.XSDPattern.fst
     RDF.Format.fst
     RDF.Vocabulary.fst
     RDF.Term.fst
@@ -801,7 +801,7 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
   # (COTTAS runtime glue calls Parquet_Footer.probe_*). SPARQL11_Store
   # depends on Parser_BallyhooHDT and Parser_BallyhooCOTTAS. See
   # docs/designissues/2026-04-19-cottas-parquet-wiring-plan.md §Phase 1.
-  COMMON_MODULES="Util_Log.ml Regex_Syntax.ml Regex_Derivative.ml Regex_Exec.ml RDF_Format.ml RDF_Vocabulary.ml RDF_Term.ml RDF_Triple.ml RDF_Indexed.ml RDF_Graph.ml RDF_Vocabulary_Axioms.ml RDFS_Closure.ml OWL_Closure.ml RDF_Graph_Executable.ml RDF_List_Helpers.ml RDF_Bytes.ml RDF_Store_Loader.ml Parquet_Footer.ml OWL_Vocabulary.ml OWL_DirectMapping_Filter.ml XSD_Facets.ml Tableau.ml Tableau_Refute.ml Tableau_CountingOracle.ml \
+  COMMON_MODULES="Util_Log.ml Regex_Syntax.ml Regex_Derivative.ml Regex_Exec.ml Regex_XSDPattern.ml RDF_Format.ml RDF_Vocabulary.ml RDF_Term.ml RDF_Triple.ml RDF_Indexed.ml RDF_Graph.ml RDF_Vocabulary_Axioms.ml RDFS_Closure.ml OWL_Closure.ml RDF_Graph_Executable.ml RDF_List_Helpers.ml RDF_Bytes.ml RDF_Store_Loader.ml Parquet_Footer.ml OWL_Vocabulary.ml OWL_DirectMapping_Filter.ml XSD_Facets.ml Tableau.ml Tableau_Refute.ml Tableau_CountingOracle.ml \
     Parser_FastString.ml RDF_IRI.ml SPARQL11_IRI_Resolve.ml Parser_IRI.ml \
     RDF_NQuads_Serialize.ml \
     Parser_Combinators.ml Parser_TurtleScanner.ml Parser_NTriples.ml Parser_Turtle.ml HDT_Container.ml HDT_Dictionary.ml HDT_Triples.ml \
@@ -1815,7 +1815,7 @@ if [[ "$STEP" == "all" || "$STEP" == "js" ]]; then
   # build. Phase 3 (wasm_of_ocaml) with Zstd is a follow-on commit.
   # See docs/designissues/2026-04-19-cottas-parquet-wiring-plan.md.
   FSTAR_MODULES=(
-    Regex_Syntax.ml Regex_Derivative.ml Regex_Exec.ml
+    Regex_Syntax.ml Regex_Derivative.ml Regex_Exec.ml Regex_XSDPattern.ml
     RDF_Format.ml RDF_Vocabulary.ml
     RDF_Term.ml RDF_Triple.ml
     RDF_Indexed.ml RDF_Graph.ml

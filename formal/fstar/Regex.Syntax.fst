@@ -291,3 +291,133 @@ let smart_star (a:regex) : regex =
   | R_Eps -> R_Eps
   | R_Star _ -> a
   | _ -> R_Star a
+
+// ----------------------------------------------------------------------------
+// 7. Language lemmas for smart_cat / smart_star  (Phase 2 of #304)
+// ----------------------------------------------------------------------------
+//
+// These close the carried Phase-1 obligation: the Regex.Exec fast path
+// (`nderiv`, `matches_norm`, `is_empty`) re-normalizes derivatives with
+// `smart_cat` (and the ACI Alt/And flatten in Exec). To make that path as
+// trusted as the proven Regex.Derivative core, every normalizing constructor
+// must be shown to PRESERVE the denotational language `mem`. `smart_alt_ok`,
+// `smart_and_ok`, `smart_not_ok` are above; here we add `smart_cat_ok` and
+// `smart_star_ok`, plus the `mem`-level split-enumeration facts they rest on.
+// `regex_cmp` injectivity (`regex_cmp_eq`) is used by the Exec ACI dedup proof.
+
+// take_n / drop_n at the full length: prefix = whole word, suffix = [].
+let rec take_all (w:list nat) : Lemma (ensures take_n (L.length w) w == w) (decreases w) =
+  match w with [] -> () | _ :: xs -> take_all xs
+
+let rec drop_all (w:list nat) : Lemma (ensures drop_n (L.length w) w == []) (decreases w) =
+  match w with [] -> () | _ :: xs -> drop_all xs
+
+// Below the length, the remaining suffix is non-empty (so mem R_Eps of it is
+// false — used by the Eps-on-the-right concatenation law).
+let rec drop_below (w:list nat) (k:nat)
+  : Lemma (requires k < L.length w) (ensures Cons? (drop_n k w)) (decreases w) =
+  match w with
+  | [] -> ()
+  | _ :: xs -> if k = 0 then () else drop_below xs (k - 1)
+
+// R_Empty is the annihilator of concatenation: no split can match, from EITHER
+// side (mem R_Empty _ = false collapses every enumerated term).
+let rec cat_empty_left (b:regex) (w:list nat) (k:nat)
+  : Lemma (ensures cat_try R_Empty b w k == false) (decreases k) =
+  if k = 0 then () else cat_empty_left b w (k - 1)
+
+let rec cat_empty_right (a:regex) (w:list nat) (k:nat)
+  : Lemma (ensures cat_try a R_Empty w k == false) (decreases k) =
+  if k = 0 then () else cat_empty_right a w (k - 1)
+
+// R_Eps is the unit of concatenation. Left unit: R_Eps matches only "" (the
+// k=0 split), so the whole enumeration collapses to `mem b w`.
+let rec cat_eps_left (b:regex) (w:list nat) (k:nat)
+  : Lemma (ensures cat_try R_Eps b w k <==> mem b w) (decreases k) =
+  if k = 0 then ()
+  else match w with
+       | [] -> cat_eps_left b w (k - 1)
+       | _ :: _ -> cat_eps_left b w (k - 1)
+
+// Right unit, below the full length every term is false (the suffix is
+// non-empty, so R_Eps rejects it).
+let rec cat_eps_right_below (a:regex) (w:list nat) (k:nat)
+  : Lemma (requires k < L.length w) (ensures cat_try a R_Eps w k == false) (decreases k) =
+  drop_below w k;
+  if k = 0 then () else cat_eps_right_below a w (k - 1)
+
+// Right unit at full length: only the k=|w| split contributes (whole word to
+// `a`, "" to R_Eps), so the enumeration collapses to `mem a w`.
+let cat_eps_right (a:regex) (w:list nat)
+  : Lemma (ensures cat_try a R_Eps w (L.length w) <==> mem a w) =
+  take_all w; drop_all w;
+  if L.length w = 0 then () else cat_eps_right_below a w (L.length w - 1)
+
+// smart_cat preserves the language of R_Cat (Empty annihilator, Eps unit).
+let smart_cat_ok (a b:regex) (w:list nat)
+  : Lemma (ensures (mem (smart_cat a b) w <==> mem (R_Cat a b) w)) =
+  if R_Empty? a then cat_empty_left b w (L.length w)
+  else if R_Empty? b then cat_empty_right a w (L.length w)
+  else if R_Eps? a then cat_eps_left b w (L.length w)
+  else if R_Eps? b then cat_eps_right a w
+  else ()
+
+// R_Empty inside a star: only "" is accepted (every non-empty split needs a
+// non-empty word in R_Empty, impossible).
+let rec star_try_empty (w:list nat{Cons? w}) (k:nat)
+  : Lemma (ensures star_try R_Empty w k == false) (decreases k) =
+  if k = 0 then () else star_try_empty w (k - 1)
+
+let star_empty_lang (w:list nat) : Lemma (ensures mem (R_Star R_Empty) w <==> Nil? w) =
+  match w with [] -> () | _ :: _ -> star_try_empty w (L.length w)
+
+// R_Eps inside a star: again only "" (a non-empty prefix can never be in
+// R_Eps, so no non-empty word is accepted).
+let rec star_try_eps (w:list nat{Cons? w}) (k:nat)
+  : Lemma (ensures star_try R_Eps w k == false) (decreases k) =
+  if k = 0 then () else star_try_eps w (k - 1)
+
+let star_eps_lang (w:list nat) : Lemma (ensures mem (R_Star R_Eps) w <==> Nil? w) =
+  match w with [] -> () | _ :: _ -> star_try_eps w (L.length w)
+
+// smart_star preserves language for NON-STAR arguments (the R_Empty/R_Eps
+// collapses to {""}, the default is reflexive). The remaining case,
+// `smart_star (R_Star x) = R_Star x`, is star IDEMPOTENCE
+// (mem (R_Star (R_Star x)) w <==> mem (R_Star x) w); its "flatten" direction
+// needs a star-concatenation-closure induction that is deferred (#304 phase 2
+// note). This costs the verified fast path NOTHING: `nderiv` (hence
+// `matches_norm` / `is_empty`) normalizes stars with `smart_cat`
+// (`R_Star a -> smart_cat (nderiv c a) (R_Star a)`) and never invokes
+// `smart_star`, so the deferred sub-case is off the trusted path entirely.
+let smart_star_ok (a:regex{~(R_Star? a)}) (w:list nat)
+  : Lemma (ensures (mem (smart_star a) w <==> mem (R_Star a) w)) =
+  match a with
+  | R_Empty -> star_empty_lang w
+  | R_Eps -> star_eps_lang w
+  | _ -> ()
+
+// ----------------------------------------------------------------------------
+// 8. Injectivity of the structural order (regex_cmp x y = 0 ==> x == y)
+// ----------------------------------------------------------------------------
+// The Exec ACI dedup (`insert_regex`) drops an operand when `regex_cmp` reports
+// 0. That is language-safe only because `regex_cmp = 0` means the two regexes
+// are STRUCTURALLY equal (hence `mem`-equal). Proven here for both the range
+// order and the regex order.
+
+let rec ranges_cmp_eq (x y:list (nat & nat))
+  : Lemma (requires ranges_cmp x y == 0) (ensures x == y) (decreases x) =
+  match x, y with
+  | [], [] -> ()
+  | (_, _) :: xs, (_, _) :: ys -> ranges_cmp_eq xs ys
+  | _, _ -> ()
+
+let rec regex_cmp_eq (a b:regex)
+  : Lemma (requires regex_cmp a b == 0) (ensures a == b) (decreases a) =
+  match a, b with
+  | R_Ranges x, R_Ranges y -> ranges_cmp_eq x y
+  | R_Cat a1 a2, R_Cat b1 b2 -> regex_cmp_eq a1 b1; regex_cmp_eq a2 b2
+  | R_Alt a1 a2, R_Alt b1 b2 -> regex_cmp_eq a1 b1; regex_cmp_eq a2 b2
+  | R_And a1 a2, R_And b1 b2 -> regex_cmp_eq a1 b1; regex_cmp_eq a2 b2
+  | R_Star a1, R_Star b1 -> regex_cmp_eq a1 b1
+  | R_Not a1, R_Not b1 -> regex_cmp_eq a1 b1
+  | _, _ -> ()
