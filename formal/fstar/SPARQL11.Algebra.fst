@@ -37,6 +37,9 @@ module GeoBBox = RDF.Geo.BBox
 module GeoTopo = RDF.Geo.Topology
 module GeoFn = RDF.Geo.Functions
 module WKT = Parser.WKT
+module RxS = Regex.Syntax
+module RxE = Regex.Exec
+module RxP = Regex.XSDPattern
 
 (** ====================================================================== **)
 (** Part 1: Concrete RDF Types (imported from RDF.Graph.Executable)         **)
@@ -1146,7 +1149,207 @@ let string_replace_literal (s : string) (pattern : string) (replacement : string
   else
     String.string_of_list (replace_all_chars (String.list_of_string s) (String.list_of_string pattern) (String.list_of_string replacement))
 
-assume val regex_match : string -> string -> option string -> bool
+// ---------------------------------------------------------------------------
+// SPARQL REGEX() / XPath-XQuery fn:matches — VERIFIED engine (#304 phase 4)
+// ---------------------------------------------------------------------------
+//
+// regex_match implements XPath/XQuery fn:matches semantics on top of the
+// verified Brzozowski-derivative engine (Regex.Syntax / Regex.Exec /
+// Regex.XSDPattern), RETIRING the former `assume val regex_match` and its
+// OCaml `Str` realisation (issue #63, anti-pattern #10: `Str` matches BYTES,
+// not codepoints, so its character classes split multi-byte UTF-8). This path
+// now matches over Unicode CODEPOINTS end-to-end.
+//
+// fn:matches is an UNANCHORED substring test with flags i/s/m/x/q. The
+// Regex.XSDPattern parser reads a pattern as a WHOLE-STRING membership regex
+// (its native reading for XSD `xsd:pattern` facets, CSVW duration `format`,
+// and the OWL facet-emptiness check), treating `^`/`$` as no-ops. The
+// fn:matches flavor needs those as REAL string anchors, and the "somewhere in
+// the string" search wrapping — so BOTH are applied HERE, in the SPARQL layer,
+// leaving the parser's whole-string reading (and its consumers) untouched.
+//
+// FLAG COVERAGE (measured from the corpora this feeds: SPARQL functions
+// struuid01/uuid01, service05; SHACL sh:pattern + sh:flags; ShEx pattern;
+// RIF pred:matches — audit in docs/designissues/2026-07-15-verified-regex-
+// engine.md §2):
+//   i  case-insensitive — ASCII A-Z<->a-z case-folding of literal ranges
+//      (rx_fold_ci). UNICODE GAP: non-ASCII case folding is NOT applied
+//      (documented; the gated corpora are ASCII, and the retired `Str`
+//      realisation likewise gave no reliable non-ASCII class folding).
+//   s  dot-all — `.` also matches #xA/#xD (rx_dotall rewrite of the parser's
+//      dot leaf).
+//   x  ignore-whitespace — unescaped, non-class whitespace elided before
+//      parsing (rx_strip_ws).
+//   q  literal — the whole pattern is a literal codepoint sequence
+//      (rx_literal_regex); no metacharacter, no anchor is special.
+//   m  multiline — ACCEPTED but treated as string-level anchoring (^/$ match
+//      string start/end, not internal line boundaries). Correct when the
+//      input has no interior newline (the fixtures); a KNOWN LIMITATION for
+//      multi-line inputs, tracked with #304.
+
+let rx_cp_caret     : nat = 0x5E
+let rx_cp_dollar    : nat = 0x24
+let rx_cp_backslash : nat = 0x5C
+let rx_cp_lbracket  : nat = 0x5B
+let rx_cp_rbracket  : nat = 0x5D
+
+let rx_flag_has (flags : option string) (ch : FStar.Char.char) : bool =
+  match flags with
+  | None -> false
+  | Some f -> List.Tot.mem ch (String.list_of_string f)
+
+// Is `c` an XML/XSD whitespace codepoint (#x9 #xA #xD #x20)?
+let rx_is_ws (c : nat) : bool = c = 0x09 || c = 0x0A || c = 0x0D || c = 0x20
+
+// `x` flag: drop whitespace that is neither escaped nor inside a character
+// class. `in_class` tracks `[...]` nesting; a backslash protects the next
+// codepoint (kept verbatim, so `\ ` stays a literal space).
+let rec rx_strip_ws (cps : list nat) (in_class : bool) : Tot (list nat) (decreases cps) =
+  match cps with
+  | [] -> []
+  | c :: t ->
+    if c = rx_cp_backslash then
+      (match t with
+       | c2 :: t2 -> c :: c2 :: rx_strip_ws t2 in_class
+       | [] -> [c])
+    else if c = rx_cp_lbracket && not in_class then c :: rx_strip_ws t true
+    else if c = rx_cp_rbracket && in_class then c :: rx_strip_ws t false
+    else if rx_is_ws c && not in_class then rx_strip_ws t in_class
+    else c :: rx_strip_ws t in_class
+
+// REAL anchors via SENTINEL encoding. `^`/`$` are zero-width position
+// assertions; boundary-stripping is WRONG once the pattern has a top-level
+// alternation, because each `^`/`$` binds to its own branch (e.g. the ShEx
+// `^\t...$|\\N/A` fixture: branch 1 is start-and-end anchored, branch 2 is a
+// free substring). Instead we give `^`/`$` REAL anchor semantics by:
+//   1. wrapping the INPUT word with two sentinel codepoints ABOVE
+//      max_codepoint (BEGIN, END) that no real char, `.`, or class can match;
+//   2. replacing each unescaped, out-of-class `^`/`$` in the PATTERN with the
+//      BEGIN/END sentinel codepoint — which the XSDPattern parser then reads
+//      as an ordinary literal codepoint, so the anchor composes correctly
+//      through alternation, groups and quantifiers;
+//   3. searching with `gap_left . P' . gap_right`, where the gaps consume the
+//      BEGIN sentinel + a real-char run on the left and a real-char run + the
+//      END sentinel on the right (or nothing, when P' itself consumes the
+//      sentinel because it began/ended with an anchor).
+// This is the standard begin/end-marker construction for anchored search in a
+// membership (whole-string) matcher, and it is uniform: no boundary detection.
+
+let rx_begin_sentinel : nat = RxS.max_codepoint + 1
+let rx_end_sentinel   : nat = RxS.max_codepoint + 2
+
+// Replace unescaped, out-of-class `^`/`$` with the BEGIN/END sentinels. `\^`,
+// `\$`, and `^`/`$` inside `[...]` are left untouched (they are literal, or
+// the class-negation marker, handled by the parser). Mirrors rx_strip_ws's
+// escape/class bookkeeping.
+let rec rx_replace_anchors (cps : list nat) (in_class : bool) : Tot (list nat) (decreases cps) =
+  match cps with
+  | [] -> []
+  | c :: t ->
+    if c = rx_cp_backslash then
+      (match t with
+       | c2 :: t2 -> c :: c2 :: rx_replace_anchors t2 in_class
+       | [] -> [c])
+    else if c = rx_cp_lbracket && not in_class then c :: rx_replace_anchors t true
+    else if c = rx_cp_rbracket && in_class then c :: rx_replace_anchors t false
+    else if c = rx_cp_caret && not in_class then rx_begin_sentinel :: rx_replace_anchors t in_class
+    else if c = rx_cp_dollar && not in_class then rx_end_sentinel :: rx_replace_anchors t in_class
+    else c :: rx_replace_anchors t in_class
+
+// Any real codepoint (0..max_codepoint) — EXCLUDES the two sentinels.
+let rx_nonsent : RxS.regex = RxS.R_Ranges [(0, RxS.max_codepoint)]
+
+// gap_left consumes the leading BEGIN sentinel plus a real-char prefix, OR
+// nothing (used when P' itself starts with `^` and so consumes BEGIN).
+let rx_gap_left : RxS.regex =
+  RxS.R_Alt RxS.R_Eps
+    (RxS.R_Cat (RxS.R_Ranges [(rx_begin_sentinel, rx_begin_sentinel)]) (RxS.R_Star rx_nonsent))
+
+// gap_right consumes a real-char suffix plus the trailing END sentinel, OR
+// nothing (used when P' itself ends with `$` and so consumes END).
+let rx_gap_right : RxS.regex =
+  RxS.R_Alt RxS.R_Eps
+    (RxS.R_Cat (RxS.R_Star rx_nonsent) (RxS.R_Ranges [(rx_end_sentinel, rx_end_sentinel)]))
+
+// `q` flag: literal codepoint sequence (no metacharacters).
+let rec rx_literal_regex (cps : list nat) : Tot RxS.regex (decreases cps) =
+  match cps with
+  | [] -> RxS.R_Eps
+  | [c] -> RxS.R_Ranges [(c, c)]
+  | c :: t -> RxS.R_Cat (RxS.R_Ranges [(c, c)]) (rx_literal_regex t)
+
+// `i` flag: ASCII case-fold the extra intervals a range should also accept.
+// For the A-Z overlap add the a-z image (+0x20); for the a-z overlap add the
+// A-Z image (-0x20). `in_ranges` is an OR over intervals, so appending the
+// case images is exact.
+let rx_ci_extra (lo hi : nat) : list (nat & nat) =
+  let up_lo : nat = if lo > 0x41 then lo else 0x41 in
+  let up_hi : nat = if hi < 0x5A then hi else 0x5A in
+  let img_lower : list (nat & nat) = if up_lo <= up_hi then [(up_lo + 0x20, up_hi + 0x20)] else [] in
+  let lo_lo : nat = if lo > 0x61 then lo else 0x61 in
+  let lo_hi : nat = if hi < 0x7A then hi else 0x7A in
+  let img_upper : list (nat & nat) = if lo_lo <= lo_hi then [(lo_lo - 0x20, lo_hi - 0x20)] else [] in
+  img_lower @ img_upper
+
+let rec rx_ci_ranges (rs : list (nat & nat)) : Tot (list (nat & nat)) (decreases rs) =
+  match rs with
+  | [] -> []
+  | (lo, hi) :: t -> (lo, hi) :: (rx_ci_extra lo hi @ rx_ci_ranges t)
+
+let rec rx_fold_ci (r : RxS.regex) : Tot RxS.regex (decreases r) =
+  match r with
+  | RxS.R_Empty -> RxS.R_Empty
+  | RxS.R_Eps -> RxS.R_Eps
+  | RxS.R_Ranges rs -> RxS.R_Ranges (rx_ci_ranges rs)
+  | RxS.R_Cat a b -> RxS.R_Cat (rx_fold_ci a) (rx_fold_ci b)
+  | RxS.R_Alt a b -> RxS.R_Alt (rx_fold_ci a) (rx_fold_ci b)
+  | RxS.R_And a b -> RxS.R_And (rx_fold_ci a) (rx_fold_ci b)
+  | RxS.R_Not a -> RxS.R_Not (rx_fold_ci a)
+  | RxS.R_Star a -> RxS.R_Star (rx_fold_ci a)
+
+// `s` flag: rewrite the parser's `.` leaf (which excludes #xA/#xD) to accept
+// every codepoint. `RxP.dot_regex` is the fixed constant the parser emits for
+// `.`, compared structurally.
+let rec rx_dotall (r : RxS.regex) : Tot RxS.regex (decreases r) =
+  match r with
+  | RxS.R_Empty -> RxS.R_Empty
+  | RxS.R_Eps -> RxS.R_Eps
+  | RxS.R_Ranges _ -> if r = RxP.dot_regex then RxE.any_char else r
+  | RxS.R_Cat a b -> RxS.R_Cat (rx_dotall a) (rx_dotall b)
+  | RxS.R_Alt a b -> RxS.R_Alt (rx_dotall a) (rx_dotall b)
+  | RxS.R_And a b -> RxS.R_And (rx_dotall a) (rx_dotall b)
+  | RxS.R_Not a -> RxS.R_Not (rx_dotall a)
+  | RxS.R_Star a -> RxS.R_Star (rx_dotall a)
+
+// XPath/XQuery fn:matches: does the pattern match SOMEWHERE in `text`?
+// Retires the `assume val` — this is now a total, verified F* function whose
+// matching decision is `Regex.Exec.matches_norm` (proven language-equal to the
+// derivative reference `Regex.Derivative.matches`, matches_norm_correct).
+let regex_match (text pattern : string) (flags : option string) : bool =
+  let has_i = rx_flag_has flags 'i' in
+  let has_s = rx_flag_has flags 's' in
+  let has_x = rx_flag_has flags 'x' in
+  let has_q = rx_flag_has flags 'q' in
+  let input_cps = RxP.cps_of_string text in
+  let pat_cps0 = RxP.cps_of_string pattern in
+  if has_q then
+    // literal mode: whole pattern is literal; no anchors, unanchored search.
+    let core0 = rx_literal_regex pat_cps0 in
+    let core = if has_i then rx_fold_ci core0 else core0 in
+    RxE.matches_norm (RxS.R_Cat RxE.dot_star (RxS.R_Cat core RxE.dot_star)) input_cps
+  else
+    let pat_cps1 = if has_x then rx_strip_ws pat_cps0 false else pat_cps0 in
+    // `^`/`$` -> BEGIN/END sentinels so the parser yields REAL anchors.
+    let pat_cps = rx_replace_anchors pat_cps1 false in
+    (match RxP.parse_cps pat_cps with
+     | None -> false   // pattern outside the supported fragment -> no match
+     | Some r0 ->
+       let r1 = if has_s then rx_dotall r0 else r0 in
+       let r2 = if has_i then rx_fold_ci r1 else r1 in
+       // sentinel-wrapped input + gap-bracketed pattern = anchored search.
+       let m = RxS.R_Cat rx_gap_left (RxS.R_Cat r2 rx_gap_right) in
+       let wrapped = rx_begin_sentinel :: (List.Tot.append input_cps [rx_end_sentinel]) in
+       RxE.matches_norm m wrapped)
 
 (* Spec-level wrappers for string functions. Only the variants actually
    used by `eval_expr_typed_with_base` survive — the rest of the

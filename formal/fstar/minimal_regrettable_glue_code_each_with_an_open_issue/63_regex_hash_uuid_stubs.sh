@@ -3,10 +3,16 @@
 # https://github.com/danbri/factoidal/issues/63
 #
 # Replaces F*-extracted failwith stubs for:
-#   - regex_match (SPARQL REGEX) with OCaml Str implementation + XPath regex conversion
-#   - regex_replace (SPARQL REPLACE) with forward ref + OCaml Str implementation
+#   - regex_replace (SPARQL REPLACE / XPath fn:replace) with forward ref +
+#     OCaml Str implementation (+ the XPath->Str translator xpath_to_str_regex).
 #   - hash_md5, hash_sha1, hash_sha256, hash_sha384, hash_sha512
 #   - UUID/STRUUID generation (random UUID v4 instead of all-zeros placeholder)
+#
+# NOTE (#304 phase 4): regex_match (SPARQL REGEX / XPath fn:matches) is NO LONGER
+# an assume val — it is a VERIFIED F* function over the Regex.Syntax/Exec/
+# XSDPattern codepoint engine (SPARQL11.Algebra.fst), so this script no longer
+# patches it. Only regex_replace still rides OCaml Str, pending match-SPAN
+# extraction in the verified engine.
 #
 # Also wires regex_replace_ref after xpath_to_str_regex is defined.
 
@@ -42,12 +48,18 @@ path = sys.argv[1]
 with open(path, 'r') as f:
     content = f.read()
 
-# 1. Replace regex_match stub with OCaml Str implementation
-# Includes XPath/Perl regex -> OCaml Str regex conversion (handles {n}, (), |, etc.)
+# 1. regex_match is now a VERIFIED F* function (#304 phase 4): SPARQL REGEX /
+#    XPath fn:matches runs on the Regex.Syntax/Exec/XSDPattern codepoint engine,
+#    so there is NO `failwith` stub to patch here anymore. The XPath->Str
+#    translator below is retained ONLY for regex_replace (SPARQL REPLACE /
+#    XPath fn:replace still uses OCaml Str until match-SPAN extraction lands in
+#    the verified engine — see #304). It is prepended to the regex_replace stub
+#    replacement so it is in scope at the regex_replace_ref wiring site.
 content = content.replace(
-    '''let regex_match (uu___ : Prims.string) (uu___1 : Prims.string)
-  (uu___2 : Prims.string FStar_Pervasives_Native.option) : Prims.bool=
-  failwith "Not yet implemented: SPARQL11.Algebra.regex_match"''',
+    '''let regex_replace (uu___ : Prims.string) (uu___1 : Prims.string)
+  (uu___2 : Prims.string)
+  (uu___3 : Prims.string FStar_Pervasives_Native.option) : Prims.string=
+  failwith "Not yet implemented: SPARQL11.Algebra.regex_replace"''',
     '''let xpath_to_str_regex (p : string) : string =
   let open Stdlib in
   let len = String.length p in
@@ -176,28 +188,7 @@ content = content.replace(
     end else (set_atom (String.make 1 c); i := !i + 1)
   done;
   Buffer.contents buf
-let regex_match (text : Prims.string) (pattern : Prims.string)
-  (flags : Prims.string FStar_Pervasives_Native.option) : Prims.bool=
-  try
-    let case_insensitive = match flags with
-      | FStar_Pervasives_Native.Some f -> String.contains f 'i'
-      | FStar_Pervasives_Native.None -> false in
-    let converted = xpath_to_str_regex pattern in
-    let re = if case_insensitive
-      then Str.regexp_case_fold converted
-      else Str.regexp converted in
-    (try let _ = Str.search_forward re text 0 in true
-     with Not_found -> false)
-  with _ -> false'''
-)
-
-# 2. Replace regex_replace stub with forward ref
-content = content.replace(
-    '''let regex_replace (uu___ : Prims.string) (uu___1 : Prims.string)
-  (uu___2 : Prims.string)
-  (uu___3 : Prims.string FStar_Pervasives_Native.option) : Prims.string=
-  failwith "Not yet implemented: SPARQL11.Algebra.regex_replace"''',
-    '''let regex_replace_ref : (Prims.string -> Prims.string -> Prims.string -> Prims.string FStar_Pervasives_Native.option -> Prims.string) ref =
+let regex_replace_ref : (Prims.string -> Prims.string -> Prims.string -> Prims.string FStar_Pervasives_Native.option -> Prims.string) ref =
   ref (fun t _ _ _ -> t)
 let regex_replace (text : Prims.string) (pattern : Prims.string)
   (replacement : Prims.string)

@@ -36,8 +36,10 @@ module Regex.XSDPattern
 // boundary anchor asserts what is already true — a Phase-3 substring consumer
 // wraps with `.*`).
 //
-// Constructs that cleanly return None (NOT in the measured set): negated
-// character classes `[^...]`, lookahead/lookbehind/flag groups `(?=...`,
+// Negated character classes `[^...]` ARE supported (complement over
+// [0, max_codepoint] via `complement_ranges`; #304 phase 4 added the SPARQL
+// `a[^b]c` shape). Constructs that still cleanly return None (NOT in the
+// measured set): lookahead/lookbehind/flag groups `(?=...`,
 // `(?<...`, `(?i)`, category escapes `\p{...}` / `\P{...}`, and backreferences
 // `\1` (which leave the regular fragment entirely — issue #304 excludes them
 // on principle). `\w`/`\W` use the ECMAScript definition [A-Za-z0-9_]; the
@@ -220,11 +222,19 @@ let rec parse_class_items (input:list nat) (acc:list (nat & nat))
        | _ -> parse_class_items t (L.append acc [(h, h)]))
 
 // Entry after the opening `[`.
+// Negated class `[^...]`: parse the item ranges after the `^`, then take their
+// complement over [0, max_codepoint] (`complement_ranges`). The complement is
+// exact when the item ranges are sorted-disjoint (`complement_ranges`' stated
+// precondition); the measured negated-class fixtures are single-range
+// (SPARQL `a[^b]c`), for which this holds trivially.
 let parse_class (input:list nat) : option (regex & list nat) =
   match input with
   | [] -> None
-  | h :: _ ->
-    if h = cp_caret then None                      // negated class: unmeasured -> None
+  | h :: t ->
+    if h = cp_caret then
+      (match parse_class_items t [] with
+       | None -> None
+       | Some (ranges, rest) -> Some (R_Ranges (complement_ranges ranges), rest))
     else (match parse_class_items input [] with
           | None -> None
           | Some (ranges, rest) -> Some (R_Ranges ranges, rest))
