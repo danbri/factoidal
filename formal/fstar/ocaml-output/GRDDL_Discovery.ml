@@ -156,6 +156,114 @@ let discover_transformations (fallback_base : Prims.string)
     FStar_List_Tot_Base.op_At (find_transformation_attr root)
       (find_xhtml_transformation_links root) in
   resolve_all base raw
+let rec find_base_href_in_list (nodes : Parser_XML.xml_node Prims.list) :
+  Prims.string FStar_Pervasives_Native.option=
+  match nodes with
+  | [] -> FStar_Pervasives_Native.None
+  | n::rest ->
+      (match n with
+       | Parser_XML.XElement (tag, attrs, uu___) ->
+           if (local_of tag) = "base"
+           then
+             (match Parser_XML.find_attr "href" attrs with
+              | FStar_Pervasives_Native.Some h ->
+                  FStar_Pervasives_Native.Some h
+              | FStar_Pervasives_Native.None -> find_base_href_in_list rest)
+           else find_base_href_in_list rest
+       | uu___ -> find_base_href_in_list rest)
+let html_base_href (root : Parser_XML.xml_node) :
+  Prims.string FStar_Pervasives_Native.option=
+  match find_head_in_node root with
+  | FStar_Pervasives_Native.Some (Parser_XML.XElement
+      (uu___, uu___1, children)) -> find_base_href_in_list children
+  | uu___ -> FStar_Pervasives_Native.None
+let doc_base (fallback : Prims.string) (root : Parser_XML.xml_node) :
+  Prims.string=
+  match html_base_href root with
+  | FStar_Pervasives_Native.Some b -> Parser_RDFXML.resolve_iri fallback b
+  | FStar_Pervasives_Native.None -> effective_base fallback root
+let head_custom_profile_uris (fallback : Prims.string)
+  (root : Parser_XML.xml_node) : Prims.string Prims.list=
+  let base = doc_base fallback root in
+  match find_head_in_node root with
+  | FStar_Pervasives_Native.Some (Parser_XML.XElement (uu___, attrs, uu___1))
+      ->
+      (match Parser_XML.find_attr "profile" attrs with
+       | FStar_Pervasives_Native.Some pv ->
+           resolve_all base
+             (FStar_List_Tot_Base.filter (fun u -> u <> grddl_profile)
+                (split_ws pv))
+       | FStar_Pervasives_Native.None -> [])
+  | uu___ -> []
+let elt_is_profiletx_link (node : Parser_XML.xml_node) : Prims.bool=
+  match node with
+  | Parser_XML.XElement (tag, attrs, uu___) ->
+      let ln = local_of tag in
+      ((ln = "link") || (ln = "a")) &&
+        ((match Parser_XML.find_attr "rel" attrs with
+          | FStar_Pervasives_Native.Some rv ->
+              FStar_List_Tot_Base.mem "profileTransformation" (split_ws rv)
+          | FStar_Pervasives_Native.None -> false))
+  | uu___ -> false
+let rec collect_profiletx_node (node : Parser_XML.xml_node) :
+  Prims.string Prims.list=
+  let here = if elt_is_profiletx_link node then elt_href node else [] in
+  match node with
+  | Parser_XML.XElement (uu___, uu___1, children) ->
+      FStar_List_Tot_Base.op_At here (collect_profiletx_list children)
+  | uu___ -> here
+and collect_profiletx_list (nodes : Parser_XML.xml_node Prims.list) :
+  Prims.string Prims.list=
+  match nodes with
+  | [] -> []
+  | n::rest ->
+      FStar_List_Tot_Base.op_At (collect_profiletx_node n)
+        (collect_profiletx_list rest)
+let profile_doc_transformations (profile_iri : Prims.string)
+  (profile_doc : Parser_XML.xml_node) : Prims.string Prims.list=
+  if head_has_grddl_profile profile_doc
+  then
+    resolve_all (doc_base profile_iri profile_doc)
+      (collect_profiletx_node profile_doc)
+  else []
+let root_namespace_uri (root : Parser_XML.xml_node) :
+  Prims.string FStar_Pervasives_Native.option=
+  match root with
+  | Parser_XML.XElement (tag, attrs, uu___) ->
+      let uu___1 = Parser_RDFXML.split_qname tag in
+      (match uu___1 with
+       | (pfx, uu___2) ->
+           if pfx = ""
+           then Parser_XML.find_attr "xmlns" attrs
+           else Parser_RDFXML.lookup_ns pfx (ns_map_of_attrs attrs))
+  | uu___ -> FStar_Pervasives_Native.None
+let elt_ns_transform (node : Parser_XML.xml_node) : Prims.string Prims.list=
+  match node with
+  | Parser_XML.XElement (tag, attrs, uu___) ->
+      if (local_of tag) = "namespaceTransformation"
+      then
+        (match Parser_XML.find_attr "rdf:resource" attrs with
+         | FStar_Pervasives_Native.Some r -> [r]
+         | FStar_Pervasives_Native.None -> [])
+      else []
+  | uu___ -> []
+let rec collect_nstx_node (node : Parser_XML.xml_node) :
+  Prims.string Prims.list=
+  let here = elt_ns_transform node in
+  match node with
+  | Parser_XML.XElement (uu___, uu___1, children) ->
+      FStar_List_Tot_Base.op_At here (collect_nstx_list children)
+  | uu___ -> here
+and collect_nstx_list (nodes : Parser_XML.xml_node Prims.list) :
+  Prims.string Prims.list=
+  match nodes with
+  | [] -> []
+  | n::rest ->
+      FStar_List_Tot_Base.op_At (collect_nstx_node n)
+        (collect_nstx_list rest)
+let namespace_doc_transformations (ns_iri : Prims.string)
+  (ns_doc : Parser_XML.xml_node) : Prims.string Prims.list=
+  resolve_all (doc_base ns_iri ns_doc) (collect_nstx_node ns_doc)
 let is_rdfxml_root (root : Parser_XML.xml_node) : Prims.bool=
   match root with
   | Parser_XML.XElement (tag, attrs, uu___) ->
