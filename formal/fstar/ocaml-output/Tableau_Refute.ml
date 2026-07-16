@@ -962,6 +962,95 @@ let datatype_cardinality_clash
   (ls_all : Tableau.class_expr Prims.list) : Prims.bool=
   any_card_valuespace_clash subprop_pairs range_pairs
     (collect_card_props ls_all) ls_all
+let rec facet_pattern_string
+  (facets : (RDF_Term.wf_iri * RDF_Term.rdf_term) Prims.list) :
+  Prims.string FStar_Pervasives_Native.option=
+  match facets with
+  | [] -> FStar_Pervasives_Native.None
+  | (firi, fval)::tl ->
+      if firi = Tableau.facet_pattern
+      then
+        (match fval with
+         | RDF_Term.T_Literal l ->
+             FStar_Pervasives_Native.Some (l.RDF_Term.lexical_form)
+         | uu___ -> facet_pattern_string tl)
+      else facet_pattern_string tl
+let rec exact_regex_cps (cps : Prims.nat Prims.list) : Regex_Syntax.regex=
+  match cps with
+  | [] -> Regex_Syntax.R_Eps
+  | c::tl ->
+      Regex_Syntax.R_Cat
+        ((Regex_Syntax.R_Ranges [(c, c)]), (exact_regex_cps tl))
+let exact_regex (s : Prims.string) : Regex_Syntax.regex=
+  exact_regex_cps (Regex_XSDPattern.cps_of_string s)
+let rec enum_regex (ss : Prims.string Prims.list) : Regex_Syntax.regex=
+  match ss with
+  | [] -> Regex_Syntax.R_Empty
+  | s::tl -> Regex_Syntax.R_Alt ((exact_regex s), (enum_regex tl))
+let rec string_fillers (ts : RDF_Term.rdf_term Prims.list) :
+  Prims.string Prims.list=
+  match ts with
+  | [] -> []
+  | (RDF_Term.T_Literal l)::tl ->
+      if l.RDF_Term.datatype = RDF_Term.xsd_string
+      then (l.RDF_Term.lexical_form) :: (string_fillers tl)
+      else string_fillers tl
+  | uu___::tl -> string_fillers tl
+let rec iris_of_terms (ts : RDF_Term.rdf_term Prims.list) :
+  RDF_Term.wf_iri Prims.list=
+  match ts with
+  | [] -> []
+  | (RDF_Term.T_IRI q)::tl -> q :: (iris_of_terms tl)
+  | uu___::tl -> iris_of_terms tl
+let rec iris_of_subjects (ss : RDF_Term.subject Prims.list) :
+  RDF_Term.wf_iri Prims.list=
+  match ss with
+  | [] -> []
+  | (RDF_Term.S_IRI q)::tl -> q :: (iris_of_subjects tl)
+  | uu___::tl -> iris_of_subjects tl
+let disjoint_props (g : RDF_Graph.rdf_graph) (p2 : RDF_Term.wf_iri) :
+  RDF_Term.wf_iri Prims.list=
+  FStar_List_Tot_Base.op_At
+    (iris_of_terms
+       (RDF_Graph_Executable.find_objects g (RDF_Term.S_IRI p2)
+          OWL_Closure.owl_propertyDisjointWith))
+    (iris_of_subjects
+       (RDF_Graph_Executable.find_subjects g
+          OWL_Closure.owl_propertyDisjointWith (RDF_Term.T_IRI p2)))
+let rec pattern_covered_by_disjoint (g : RDF_Graph.rdf_graph)
+  (i : RDF_Term.subject) (pat : Regex_Syntax.regex)
+  (p1s : RDF_Term.wf_iri Prims.list) : Prims.bool=
+  match p1s with
+  | [] -> false
+  | p1::tl ->
+      let e = string_fillers (RDF_Graph_Executable.find_objects g i p1) in
+      ((Prims.uu___is_Cons e) && (Regex_Exec.subsumes (enum_regex e) pat)) ||
+        (pattern_covered_by_disjoint g i pat tl)
+let disjoint_dataprop_pattern_label (g : RDF_Graph.rdf_graph)
+  (i : RDF_Term.subject) (l : Tableau.class_expr) : Prims.bool=
+  match l with
+  | Tableau.CE_SomeValuesFrom (p2, Tableau.CE_DataRestriction (base, facets))
+      ->
+      if base = RDF_Term.xsd_string
+      then
+        (match facet_pattern_string facets with
+         | FStar_Pervasives_Native.Some ps ->
+             (match Regex_XSDPattern.parse_xsd_pattern ps with
+              | FStar_Pervasives_Native.Some pat ->
+                  (Prims.op_Negation (Regex_Exec.is_empty pat)) &&
+                    (pattern_covered_by_disjoint g i pat
+                       (disjoint_props g p2))
+              | FStar_Pervasives_Native.None -> false)
+         | FStar_Pervasives_Native.None -> false)
+      else false
+  | uu___ -> false
+let rec disjoint_dataprop_pattern_clash (g : RDF_Graph.rdf_graph)
+  (i : RDF_Term.subject) (ls : Tableau.class_expr Prims.list) : Prims.bool=
+  match ls with
+  | [] -> false
+  | l::tl ->
+      (disjoint_dataprop_pattern_label g i l) ||
+        (disjoint_dataprop_pattern_clash g i tl)
 let exists_max_lt (k : Prims.nat) (p : RDF_Term.wf_iri)
   (ls : Tableau.class_expr Prims.list) : Prims.bool=
   FStar_List_Tot_Base.existsb
@@ -1285,9 +1374,10 @@ let rec clash_nodes (g : RDF_Graph.rdf_graph) (st : rstate)
         with
         | FStar_Pervasives_Native.Some uu___ -> labels_of st n.rn_id
         | FStar_Pervasives_Native.None -> n.rn_labels in
-      (((clash_labels g st n.rn_id ls ls) ||
-          (datatype_range_clash st.rs_subprop ls))
-         || (datatype_cardinality_clash st.rs_subprop st.rs_range ls))
+      ((((clash_labels g st n.rn_id ls ls) ||
+           (datatype_range_clash st.rs_subprop ls))
+          || (datatype_cardinality_clash st.rs_subprop st.rs_range ls))
+         || (disjoint_dataprop_pattern_clash g n.rn_id ls))
         || (clash_nodes g st tl)
 let has_clash (g : RDF_Graph.rdf_graph) (st : rstate) : Prims.bool=
   clash_nodes g st st.rs_nodes

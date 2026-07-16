@@ -223,12 +223,44 @@ let () =
   (* and via the Exec.subsumes API on the parsed patterns *)
   check ~name:"OWL e2e: subsumes(enum, pat)" true (E.subsumes owl_enum owl_pat);
 
+  (* ---- Phase-3 OWL disjoint-data-property CONSUMER PATH
+     (Tableau.Refute.disjoint_dataprop_pattern_clash). The clash fires iff
+     the pattern is NON-EMPTY and subsumes(enum(dp1-fillers), pattern) — i.e.
+     L(pattern) subset-of the disjoint property's asserted string fillers.
+     Positive: fillers {ab,ac} cover a(b|c) -> clash. Negatives (must NOT
+     fire, matching the conservative soundness direction): fillers {ab} alone
+     leave "ac" uncovered; an empty pattern has no witness. The enum here is
+     built the way the tableau builds it: an alternation of exact-string
+     regexes (lit_str), not the XSD parser. *)
+  check ~name:"OWL collision: pattern non-empty (witness exists)" false
+    (E.is_empty owl_pat);
+  check ~name:"OWL collision: {ab,ac} covers a(b|c) -> CLASH"
+    true (E.subsumes (alt (lit_str "ab") (lit_str "ac")) owl_pat);
+  check ~name:"OWL collision: {ab} alone does NOT cover a(b|c) -> no clash"
+    false (E.subsumes (lit_str "ab") owl_pat);
+  check ~name:"OWL collision: {ab,ad} does NOT cover a(b|c) -> no clash"
+    false (E.subsumes (alt (lit_str "ab") (lit_str "ad")) owl_pat);
+
   (* ---- CSVW test194 duration format "^.$" (the named phase-3 unblock) ---- *)
   ignore (must_parse ~name:"CSVW test194 duration format ^.$" "^.$");
   pmatch ~name:"^.$ matches single char 'x'" "^.$" (word "x") true;
   pmatch ~name:"^.$ rejects empty" "^.$" (word "") false;
   pmatch ~name:"^.$ rejects two chars" "^.$" (word "ab") false;
   pmatch ~name:"^.$ dot excludes newline" "^.$" (cword [0x0A]) false;
+
+  (* ---- Phase-3 CSVW duration-format CONSUMER PATH (CSVW.Formats.fst).
+     The duration branch runs `matches_norm (parse_xsd_pattern fmt)
+     (cps_of_string cell)`. test194 (`^.$`) REJECTS the multi-char duration
+     values -> FO_Invalid -> plain string literal; test193 (`^-?P.*$` and
+     friends) ACCEPT them -> FO_Valid -> the value keeps its duration
+     datatype. These assertions pin exactly those cell/format decisions. *)
+  pmatch ~name:"CSVW194 ^.$ rejects duration 'PT130S'" "^.$" (word "PT130S") false;
+  pmatch ~name:"CSVW194 ^.$ rejects duration 'P0Y20M'" "^.$" (word "P0Y20M") false;
+  pmatch ~name:"CSVW193 ^-?P.*$ accepts 'PT130S'" "^-?P.*$" (word "PT130S") true;
+  pmatch ~name:"CSVW193 ^-?P.*$ accepts '-P60D'" "^-?P.*$" (word "-P60D") true;
+  pmatch ~name:"CSVW193 ^-?P.DT.*$ accepts 'P1DT2H'" "^-?P.DT.*$" (word "P1DT2H") true;
+  pmatch ~name:"CSVW193 ^-?P.Y20M$ accepts 'P0Y20M'" "^-?P.Y20M$" (word "P0Y20M") true;
+  pmatch ~name:"CSVW193 ^-?P.Y20M$ rejects 'P0Y21M'" "^-?P.Y20M$" (word "P0Y21M") false;
 
   (* ---- literals, groups, alternation (OWL flavor) ---- *)
   pmatch ~name:"a(b|c) via parser matches ab" "a(b|c)" (word "ab") true;

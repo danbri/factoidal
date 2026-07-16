@@ -1029,7 +1029,15 @@ let csvw_format_convert (base_name : Prims.string)
         if is_duration_base base_name
         then
           (match format_str with
-           | FStar_Pervasives_Native.Some uu___3 -> FO_NoFormat
+           | FStar_Pervasives_Native.Some fmt ->
+               (match Regex_XSDPattern.parse_xsd_pattern fmt with
+                | FStar_Pervasives_Native.Some r ->
+                    if
+                      Regex_Exec.matches_norm r
+                        (Regex_XSDPattern.cps_of_string txt)
+                    then FO_Valid txt
+                    else FO_Invalid
+                | FStar_Pervasives_Native.None -> FO_NoFormat)
            | FStar_Pervasives_Native.None ->
                if duration_lexical_valid base_name (chars_of txt)
                then FO_Valid txt

@@ -346,6 +346,33 @@ suite-flip gate:
 | OWL facet emptiness | new, uses `Regex.Exec.subsumes`/`intersection_empty` | `Inconsistent-pattern-disjointness` reported inconsistent |
 | XPath/XSLT `fn:matches` | `XPath.Eval` (#302) | XPath matches/replace residue |
 
+**Phase 3 — first two consumer swaps LANDED (2026-07-16).** The two
+test-flipping consumers are wired to the engine; the remaining rows
+(SPARQL `regex_match` retirement, SHACL/ShEx/RIF, XPath) stay open.
+
+- **CSVW duration `format`** — `CSVW.Formats.csvw_format_convert`'s duration
+  arm now parses the `format` regex with `Regex.XSDPattern.parse_xsd_pattern`
+  and tests the whole cell with `Regex.Exec.matches_norm` (XSD pattern facets
+  are whole-value anchored = `matches_norm` semantics). Match → keep the
+  duration datatype; non-match → drop to a plain string; unparseable pattern →
+  `FO_NoFormat` (conservative, pre-engine behaviour). ✅ csv2rdf **265 pass, 5
+  fail** (out of 270): test194 (`^.$` rejects the multi-char durations) flips,
+  test193 (`^-?P.*$` etc. accept them) stays green.
+- **OWL `Inconsistent String Pattern`** — `Tableau.fst`'s `facet_pair_for` now
+  carries the `xsd:pattern` facet through (it previously dropped every
+  non-min/max facet, so the DatatypeRestriction parsed to an empty facet
+  list), and `Tableau.Refute` section 5c adds the disjoint-data-property
+  pattern-collision clash: a node forced into `DataSomeValuesFrom(p2,
+  DatatypeRestriction(xsd:string, pattern R))` clashes when `R` is non-empty
+  and `L(R) ⊆` the asserted string fillers of a property disjoint from `p2`
+  (`Regex.Exec.subsumes`). The `is_empty` finiteness debt makes this
+  CONSERVATIVE (a wrong "non-empty" only withholds a clash), guarded by the
+  tcon suite. ✅ tinc **119 pass, 9 fail** (out of 128, 0 oracle-assisted) —
+  `Inconsistent String Pattern with Disjoint Dataproperties` flips; tcon **352
+  pass, 0 fail, 0 unexpected-inconsistency**. (The sibling `Inconsistent
+  Disjoint Dataproperties`, a numeric-interval collision, stays failing — this
+  swap is scoped to the string-pattern arm.)
+
 ---
 
 ## Part B — the core engine (built, this commit)
