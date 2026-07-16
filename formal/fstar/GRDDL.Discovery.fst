@@ -239,6 +239,147 @@ let discover_transformations (fallback_base : string) (root : xml_node) : list s
   resolve_all base raw
 
 (* ================================================================ *)
+(* Stage 2: namespace-document (section 3) + profile-document        *)
+(* (section 5) transformation discovery.                             *)
+(*                                                                    *)
+(* These are pure Tot tree-walks over an ALREADY-FETCHED, already-    *)
+(* parsed second-document `xml_node`. The consumer (bin/grddl-runner) *)
+(* performs the document FETCH -- resolving the root-element          *)
+(* namespace URI (section 3) and each head @profile URI (section 5)   *)
+(* to local allowlisted files, no network -- and hands the parsed     *)
+(* trees to the functions below (CLAUDE.md rule #11: the runner does  *)
+(* I/O, the discovery semantics live here). Single level: a fetched   *)
+(* namespace/profile document that itself declares further namespace/ *)
+(* profile documents is NOT recursed into (the recursive `loop`/      *)
+(* `loopx`/`ns-*` corpus stays honestly unmet residue).              *)
+(* ================================================================ *)
+
+// An XHTML `<base href="...">` element in the document head sets the
+// document base for relative reference resolution (grddlProfileWith-
+// BaseElement, hcard). Scan the head's children for it.
+let rec find_base_href_in_list (nodes : list xml_node)
+  : Tot (option string) (decreases nodes) =
+  match nodes with
+  | [] -> None
+  | n :: rest ->
+    (match n with
+     | XElement tag attrs _ ->
+       if local_of tag = "base" then
+         (match find_attr "href" attrs with
+          | Some h -> Some h
+          | None -> find_base_href_in_list rest)
+       else find_base_href_in_list rest
+     | _ -> find_base_href_in_list rest)
+
+let html_base_href (root : xml_node) : option string =
+  match find_head_in_node root with
+  | Some (XElement _ _ children) -> find_base_href_in_list children
+  | _ -> None
+
+// The effective document base: an XHTML `<base href>` element takes
+// precedence, then a root `xml:base` attribute (effective_base), then
+// the fetch fallback (the document's own IRI).
+let doc_base (fallback : string) (root : xml_node) : string =
+  match html_base_href root with
+  | Some b -> resolve_iri fallback b
+  | None -> effective_base fallback root
+
+(* ---- Section 5: profile-document transformation discovery -------- *)
+
+// The custom profile URIs the agent must dereference: the head
+// @profile token list minus the fixed GRDDL profile constant (which
+// only gates same-document rel="transformation" links, path b; it is
+// never itself a profile document to fetch). Resolved against the
+// document base.
+let head_custom_profile_uris (fallback : string) (root : xml_node) : list string =
+  let base = doc_base fallback root in
+  match find_head_in_node root with
+  | Some (XElement _ attrs _) ->
+    (match find_attr "profile" attrs with
+     | Some pv ->
+       resolve_all base
+         (List.Tot.filter (fun (u:string) -> u <> grddl_profile) (split_ws pv))
+     | None -> [])
+  | _ -> []
+
+let elt_is_profiletx_link (node : xml_node) : bool =
+  match node with
+  | XElement tag attrs _ ->
+    let ln = local_of tag in
+    (ln = "link" || ln = "a") &&
+    (match find_attr "rel" attrs with
+     | Some rv -> List.Tot.mem "profileTransformation" (split_ws rv)
+     | None -> false)
+  | _ -> false
+
+let rec collect_profiletx_node (node : xml_node) : Tot (list string) (decreases node) =
+  let here = if elt_is_profiletx_link node then elt_href node else [] in
+  match node with
+  | XElement _ _ children -> here @ collect_profiletx_list children
+  | _ -> here
+and collect_profiletx_list (nodes : list xml_node) : Tot (list string) (decreases nodes) =
+  match nodes with
+  | [] -> []
+  | n :: rest -> collect_profiletx_node n @ collect_profiletx_list rest
+
+// Section 5: the transformations a fetched profile document associates
+// with documents that reference it -- the @href of every link/a whose
+// @rel token list includes "profileTransformation" -- resolved against
+// the profile document's own base. The profile document must itself
+// carry the GRDDL profile in its head @profile (the §5 gate).
+let profile_doc_transformations (profile_iri : string) (profile_doc : xml_node)
+  : list string =
+  if head_has_grddl_profile profile_doc then
+    resolve_all (doc_base profile_iri profile_doc)
+      (collect_profiletx_node profile_doc)
+  else []
+
+(* ---- Section 3: namespace-document transformation discovery ------ *)
+
+// The root element's namespace URI -- the namespace document the agent
+// dereferences (section 3). Unprefixed root name -> the default xmlns;
+// prefixed -> the prefix's binding among the root's xmlns:* attributes.
+let root_namespace_uri (root : xml_node) : option string =
+  match root with
+  | XElement tag attrs _ ->
+    let (pfx, _) = split_qname tag in
+    if pfx = "" then find_attr "xmlns" attrs
+    else lookup_ns pfx (ns_map_of_attrs attrs)
+  | _ -> None
+
+// A grddl:namespaceTransformation element (data-view namespace) carries
+// the transform IRI in its rdf:resource attribute. Matched by local
+// name (consistent with this module's local_of-based link matching) and
+// gated on the presence of an rdf:resource, so a stray element named
+// "namespaceTransformation" without one contributes nothing.
+let elt_ns_transform (node : xml_node) : list string =
+  match node with
+  | XElement tag attrs _ ->
+    if local_of tag = "namespaceTransformation" then
+      (match find_attr "rdf:resource" attrs with
+       | Some r -> [r]
+       | None -> [])
+    else []
+  | _ -> []
+
+let rec collect_nstx_node (node : xml_node) : Tot (list string) (decreases node) =
+  let here = elt_ns_transform node in
+  match node with
+  | XElement _ _ children -> here @ collect_nstx_list children
+  | _ -> here
+and collect_nstx_list (nodes : list xml_node) : Tot (list string) (decreases nodes) =
+  match nodes with
+  | [] -> []
+  | n :: rest -> collect_nstx_node n @ collect_nstx_list rest
+
+// Section 3: the transformations a fetched namespace document declares
+// -- the rdf:resource of every grddl:namespaceTransformation element --
+// resolved against the namespace document's own base.
+let namespace_doc_transformations (ns_iri : string) (ns_doc : xml_node)
+  : list string =
+  resolve_all (doc_base ns_iri ns_doc) (collect_nstx_node ns_doc)
+
+(* ================================================================ *)
 (* rdfxbase: an RDF/XML source contributes its own faithful rendition *)
 (* ================================================================ *)
 

@@ -1,88 +1,89 @@
-=== GRDDL Stage 1 Runner (local subset, no network) ===
-suite dir: /home/user/factoidal/third_party/testing/grddl
-manifest:  /home/user/factoidal/third_party/testing/grddl/grddl-tests-normative.rdf
+=== GRDDL Stage 2 Runner (local docroot, no live network) ===
+suite dir: /home/user/factoidal/.claude/worktrees/agent-a5fb83734c2c94d01/third_party/testing/grddl
+manifest:  /home/user/factoidal/.claude/worktrees/agent-a5fb83734c2c94d01/third_party/testing/grddl/grddl-tests-normative.rdf
 
 manifest triples: 528
 test entries: 68
 
--- PASS (9) --
+-- PASS (15) --
   base-param
   grddlonrdf
   grddlonrdf-xmlmediatype
+  htmlbase3
   inline
+  inline-rdf1
+  inline-rdf2
+  inline-rdf3
+  multipleRepresentations
   rdfXMLDoc
   xhtmlWithGrddlProfile
   xhtmlWithGrddlTransformationInBody
   xmlWithGrddlAttribute
   xmlWithGrddlAttributeAndNonXMLNamespaceDocument
+  xmlbase3
 
--- FAIL (8) --
+-- FAIL (53) --
+  card5n                                   fail-graph-mismatch
+  card5na                                  fail-no-transformation-discovered
+  four-transforms                          fail-graph-mismatch
+  glean-profile                            fail-transform-not-vendored
+  grddlProfileBase1                        fail-graph-mismatch
+  grddlProfileBase2                        fail-graph-mismatch
+  grddlProfileBase3                        fail-transform-not-vendored
+  hcard                                    fail-graph-mismatch
+  hcard1                                   fail-graph-mismatch
+  hcarda                                   fail-no-transformation-discovered
   hl7-to-owl                               fail-graph-mismatch
+  html-and-transformation-attr             fail-transform-not-vendored
+  htmlbase1                                fail-transform-not-vendored
+  htmlbase2                                fail-transform-not-vendored
+  htmlbase4                                fail-graph-mismatch
+  inline-rdf10                             fail-known-gap-xslt-feature
+  inline-rdf4                              fail-known-gap-xslt-feature
+  inline-rdf5                              fail-known-gap-xslt-feature
+  inline-rdf6                              fail-known-gap-xslt-feature
+  inline-rdf8                              fail-known-gap-xslt-feature
+  inline-rdf9                              fail-known-gap-xslt-feature
+  langconneg1                              fail-graph-mismatch
+  langconneg2                              fail-graph-mismatch
+  langconneg3                              fail-graph-mismatch
+  loop                                     fail-graph-mismatch
+  loopx                                    fail-graph-mismatch
+  loopx1                                   fail-graph-mismatch
+  loopx2                                   fail-graph-mismatch
+  loopx3                                   fail-graph-mismatch
+  multipleRepresentations2                 fail-graph-mismatch
+  multipleRepresentations3                 fail-graph-mismatch
+  multiprofile                             fail-graph-mismatch
   noxinclude                               fail-graph-mismatch
+  ns-ns-pf-pf                              fail-no-transformation-discovered
+  ns-pf-ns-pf-ns                           fail-no-transformation-discovered
+  pf-pf-pf-ns                              fail-no-transformation-discovered
   projectsSpreadsheet                      fail-graph-mismatch
   rdfa1                                    fail-graph-mismatch
+  spaces-in-rel                            fail-transform-not-vendored
+  sq1                                      fail-no-transformation-discovered
+  sq2                                      fail-no-transformation-discovered
+  three-transforms                         fail-graph-mismatch
   title_author                             fail-graph-mismatch
+  two-transforms                           fail-no-transformation-discovered
+  xhtmlWithGrddlEnabledProfile             fail-no-transformation-discovered
+  xhtmlWithGrddlEnabledProfileAndADisabledInBodyTransform fail-no-transformation-discovered
+  xhtmlWithGrddlEnabledProfileAndInBodyTransform fail-graph-mismatch
   xhtmlWithMoreThanOneGrddlTransformation  fail-graph-mismatch
   xhtmlWithMoreThanOneProfile              fail-graph-mismatch
   xinclude                                 fail-graph-mismatch
+  xmlbase1                                 fail-graph-mismatch
+  xmlbase2                                 fail-transform-not-vendored
+  xmlbase4                                 fail-graph-mismatch
 
--- SKIP (51) --
-  card5n                                   skip-network
-  card5na                                  skip-network
-  four-transforms                          skip-network
-  glean-profile                            skip-network
-  grddlProfileBase1                        skip-network
-  grddlProfileBase2                        skip-network
-  grddlProfileBase3                        skip-network
-  hcard                                    skip-network
-  hcard1                                   skip-network
-  hcarda                                   skip-network
-  html-and-transformation-attr             skip-network
-  htmlbase1                                skip-network
-  htmlbase2                                skip-network
-  htmlbase3                                skip-network
-  htmlbase4                                skip-network
-  inline-rdf1                              skip-network
-  inline-rdf10                             skip-network
-  inline-rdf2                              skip-network
-  inline-rdf3                              skip-network
-  inline-rdf4                              skip-network
-  inline-rdf5                              skip-network
-  inline-rdf6                              skip-network
-  inline-rdf8                              skip-network
-  inline-rdf9                              skip-network
-  langconneg1                              skip-network
-  langconneg2                              skip-network
-  langconneg3                              skip-network
-  loop                                     skip-network
-  loopx                                    skip-network
-  loopx1                                   skip-network
-  loopx2                                   skip-network
-  loopx3                                   skip-network
-  multipleRepresentations                  skip-network
-  multipleRepresentations2                 skip-network
-  multipleRepresentations3                 skip-network
-  multiprofile                             skip-network
-  ns-ns-pf-pf                              skip-network
-  ns-pf-ns-pf-ns                           skip-network
-  pf-pf-pf-ns                              skip-network
-  spaces-in-rel                            skip-network
-  sq1                                      skip-network
-  sq2                                      skip-network
-  three-transforms                         skip-network
-  two-transforms                           skip-network
-  xhtmlWithGrddlEnabledProfile             skip-network
-  xhtmlWithGrddlEnabledProfileAndADisabledInBodyTransform skip-stage2-ns-or-profile-document
-  xhtmlWithGrddlEnabledProfileAndInBodyTransform skip-stage2-ns-or-profile-document
-  xmlbase1                                 skip-network
-  xmlbase2                                 skip-network
-  xmlbase3                                 skip-network
-  xmlbase4                                 skip-network
+-- SKIP (0) --
 
 -- reason buckets --
-  fail-graph-mismatch                    8
-  skip-network                           49
-  skip-stage2-ns-or-profile-document     2
+  fail-graph-mismatch                    30
+  fail-known-gap-xslt-feature            6
+  fail-no-transformation-discovered      10
+  fail-transform-not-vendored            7
 
 ========================================
-grddl: 9 pass, 8 fail, 51 skip (out of 68)
+grddl: 15 pass, 53 fail, 0 skip (out of 68)

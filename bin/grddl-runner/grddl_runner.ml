@@ -1,11 +1,18 @@
-(* GRDDL Stage 1 test runner (local subset, no network).
+(* GRDDL test runner (local docroot, no live network).
+
+   Stage 2 (issue #301): every manifest test is now actually RUN against
+   the vendored docroot -- no blanket skip by manifest type. Same-document
+   discovery (paths a+b) is composed with namespace-document (section 3)
+   and profile-document (section 5) transformation discovery, all in F*
+   (GRDDL_Discovery); the runner only FETCHES the referenced second
+   documents from the local allowlisted docroot (rule #11). A test whose
+   source document is not vendored locally (would need a live fetch) is
+   the sole remaining honest Skip.
 
    Reads third_party/testing/grddl/grddl-tests-normative.rdf (RDF/XML)
    via the F*-extracted Parser_RDFXML, walks the parsed triples to build
    a per-test index (rdfcore test-schema: t:Test, t:inputDocument,
-   t:outputDocument, g:exercisesRule), classifies each test with the
-   F*-extracted GRDDL_Discovery.is_networked_type / is_stage2_rule, and
-   for the local Stage-1 subset:
+   t:outputDocument, g:exercisesRule), and for each test:
 
      * reads the source document from third_party/testing/grddl/docroot/
        (allowlisted local files -- NO network fetch),
@@ -239,19 +246,56 @@ let text_has_gap texts =
    that prefixed tests could not match) is therefore retired; any
    remaining graph mismatch is bucketed by the real reason below. *)
 
-(* Run one Stage-1 test: discover, transform, compare. *)
+(* Fetch a second document (namespace or profile document, Stage 2) from
+   the local allowlisted docroot and parse it. I/O only (rule #11): the
+   fetch is the runner's job; every discovery decision over the parsed
+   tree is delegated to GRDDL_Discovery below. Returns [] when the IRI is
+   not vendored locally or the document is not well-formed XML. *)
+let second_doc_transforms
+    (fetch_iri : string)
+    (discover : Parser_XML.xml_node -> string list) : string list =
+  match read_iri fetch_iri with
+  | None -> []
+  | Some src ->
+    (match some (Parser_XML.parse_xml_document src) with
+     | None -> []
+     | Some tree -> discover tree)
+
+(* Run one test: discover (paths a+b same-document, section-5 profile
+   document, section-3 namespace document), transform, compare. *)
 let run_local (t : gtest) : outcome =
   match t.input, t.output with
   | None, _ | _, None -> Fail "fail-manifest-incomplete"
   | Some in_iri, Some out_iri ->
     match read_iri in_iri with
-    | None -> Fail "fail-input-missing"
+    | None -> Skip "skip-input-not-vendored"
     | Some input ->
       match some (Parser_XML.parse_xml_document input) with
       | None -> Fail "fail-known-gap-xml-parse"
       | Some root ->
         let base = in_iri in
-        let xform_iris = GRDDL_Discovery.discover_transformations base root in
+        (* Path a + b: same-document transformation references. *)
+        let same_doc = GRDDL_Discovery.discover_transformations base root in
+        (* Section 5: dereference each custom head @profile document and
+           collect its profileTransformation links (resolved F*-side
+           against the profile document's own base). *)
+        let profile_uris = GRDDL_Discovery.head_custom_profile_uris base root in
+        let profile_txs =
+          List.concat
+            (List.map
+               (fun p ->
+                  second_doc_transforms p
+                    (fun tree -> GRDDL_Discovery.profile_doc_transformations p tree))
+               profile_uris) in
+        (* Section 3: dereference the root-element namespace document and
+           collect its namespaceTransformation references. *)
+        let ns_txs =
+          match some (GRDDL_Discovery.root_namespace_uri root) with
+          | None -> []
+          | Some nsu ->
+            second_doc_transforms nsu
+              (fun tree -> GRDDL_Discovery.namespace_doc_transformations nsu tree) in
+        let xform_iris = same_doc @ profile_txs @ ns_txs in
         (* Load + parse each discovered stylesheet from local docroot. *)
         let styles_texts =
           List.map (fun xi ->
@@ -267,9 +311,15 @@ let run_local (t : gtest) : outcome =
            nothing to act on. *)
         let is_rdfxml = GRDDL_Discovery.is_rdfxml_root root in
         if xform_iris = [] && not is_rdfxml then
-          Fail "fail-discovery"
+          (* No same-document, profile-document, or namespace-document
+             transformation reference, and the source is not itself
+             RDF/XML: nothing to glean offline. Namespace/profile-document
+             tests whose SECOND document is not vendored land here. *)
+          Fail "fail-no-transformation-discovered"
         else if missing_style then
-          Fail "fail-discovery"
+          (* A transformation reference WAS discovered but its stylesheet
+             is not vendored under docroot (would need a live fetch). *)
+          Fail "fail-transform-not-vendored"
         else begin
           match read_iri out_iri with
           | None -> Fail "fail-expected-missing"
@@ -299,14 +349,19 @@ let run_local (t : gtest) : outcome =
             else Fail "fail-graph-mismatch"
         end
 
+(* Stage 2 (issue #301): every test is now actually RUN, not blanket-
+   skipped by manifest type. NetworkedTest / namespace-document / profile-
+   document tests whose source and referenced second-documents are vendored
+   under docroot execute offline through GRDDL_Discovery; only a source
+   document that is genuinely not present locally (would need a live fetch)
+   yields an honest Skip "skip-input-not-vendored". The former manifest-
+   type classifiers are retained for reference but no longer gate. *)
 let classify (t : gtest) : outcome =
-  if is_networked t then Skip "skip-network"
-  else if needs_second_document t then Skip "skip-stage2-ns-or-profile-document"
-  else
-    try with_timeout 60 (fun () -> run_local t)
-    with
-    | Test_timeout -> Fail "fail-timeout"
-    | e -> Fail (Printf.sprintf "fail-exception:%s" (Printexc.to_string e))
+  ignore (is_networked t); ignore (needs_second_document t);
+  try with_timeout 60 (fun () -> run_local t)
+  with
+  | Test_timeout -> Fail "fail-timeout"
+  | e -> Fail (Printf.sprintf "fail-exception:%s" (Printexc.to_string e))
 
 (* ------------------------------------------------------------------ *)
 
@@ -322,7 +377,7 @@ let () =
   let manifest_path =
     if Array.length Sys.argv > 1 then Sys.argv.(1)
     else Filename.concat (suite_dir ()) "grddl-tests-normative.rdf" in
-  Printf.printf "=== GRDDL Stage 1 Runner (local subset, no network) ===\n";
+  Printf.printf "=== GRDDL Stage 2 Runner (local docroot, no live network) ===\n";
   Printf.printf "suite dir: %s\n" (suite_dir ());
   Printf.printf "manifest:  %s\n\n" manifest_path;
   (match read_file manifest_path with
