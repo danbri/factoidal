@@ -41,11 +41,14 @@
        ac_mode10-gating engine: te026, ter02, ter03. A same-day
        goal-wave follow-up (jld_predicate_iri_wf, Parser.JSONLD.fst)
        made 2 more (t0118, te038) genuinely re-measure as MATCH too —
-       see jld_1_0_still_skip's banner for exactly why. The remaining 6
-       (te014, te071, te115, te116, ter24, ter32) still need GENUINE
-       1.0-mode semantics this engine does not implement (see
-       jld_1_0_still_skip below for a fixture-specific reason per ID
-       instead of the old one-size-fits-all message).
+       see jld_1_0_still_skip's banner for exactly why. The 2026-07-16
+       skip audit implemented three more 1.0-mode semantics in F*
+       behind ac_mode10 (1.0's absolute-@vocab requirement ->
+       te115+te116; 1.0's list-of-lists error -> ter24+ter32; 1.0's
+       every-term-is-a-prefix rule -> te014), leaving only 1 (te071)
+       that still needs GENUINE 1.0-mode semantics this engine does
+       not implement (see jld_1_0_still_skip below for the
+       fixture-specific reason).
 
    PHASE 6 (issue #275): remote contexts / "@import" + document base.
    This runner is the ONE consumer that realises
@@ -357,44 +360,30 @@ let parse_jsonld_tc tc content =
    by that parser the exact same way this program now drops them at
    emission — the two "wrongs" cancel out into a genuine, honest MATCH
    for this specific fixture shape, not a semantic implementation of
-   the produceGeneralizedRdf flag. *)
+   the produceGeneralizedRdf flag.
+
+   2026-07-16 skip audit: five more entries flipped to ordinary runs by
+   implementing their 1.0-mode semantics in F* behind ac_mode10 —
+   #te115 + #te116 (JSONLD.Context.fst's @vocab branch now enforces
+   1.0's absolute-IRI-or-bnode requirement on the vocab mapping),
+   #ter24 + #ter32 (JSONLD.Expand.fst's expand_property now raises
+   1.0's "list of lists" error instead of the 1.1 nested-list
+   coercion), and #te014 (JSONLD.Context.fst's expand_iri_gen now
+   applies 1.0's prefix rule — every defined term, expanded-form
+   definitions included, is a compact-IRI prefix candidate — which
+   makes the fixture's {"xsd": {"@id": ...}} definition expand
+   "xsd:date"; re-measured PASS under JLD_NO_SKIP=1). The one entry
+   below is what measurably remains. JLD_NO_SKIP=1 re-runs it (same
+   convention as the expand/compact/flatten runners) so the residual
+   gap stays re-measurable without a rebuild. *)
 let jld_1_0_still_skip (id : string) : string option =
+  if Sys.getenv_opt "JLD_NO_SKIP" <> None then None else
   match id with
-  | "#te014" ->
-    Some "option.specVersion=json-ld-1.0 — \"@set of @value objects \
-          with keyword aliases\" exercises how 1.0 shapes an aliased \
-          @set/@value combination differently from 1.1; under this \
-          program's (1.1) processing parse_jsonld returns None \
-          (measured, not a false skip)."
   | "#te071" ->
     Some "option.specVersion=json-ld-1.0 — 1.0's stricter restriction on \
           redefining a term that looks like a compact IRI differs from \
           1.1's more permissive rule this program implements; measured: \
           canonical N-Quads differ."
-  | "#te115" ->
-    Some "option.specVersion=json-ld-1.0 (NegativeEvaluationTest) — 1.0 \
-          treats a relative IRI property expanded under @vocab: '' as \
-          an error; 1.1 (this program) legitimately ACCEPTS the same \
-          input (toRdf/e124's sibling positive test pins this), so \
-          running it unskipped scores 'parse succeeded, failure \
-          expected' — a real 1.1-vs-1.0 semantic gap, not a false skip."
-  | "#te116" ->
-    Some "option.specVersion=json-ld-1.0 (NegativeEvaluationTest) — same \
-          shape as te115 (relative IRI property under a relative, \
-          non-empty @vocab): 1.1 (this program) accepts what 1.0 \
-          rejects; measured 'parse succeeded, failure expected'."
-  | "#ter24" ->
-    Some "option.specVersion=json-ld-1.0 (NegativeEvaluationTest) — \
-          \"List of lists (from array)\": 1.0 rejects a list-of-lists \
-          formed by an array nested directly in @list; 1.1 (this \
-          program) legitimately coerces it, so this needs a genuine \
-          1.0-mode array-nesting restriction, not just ac_mode10's \
-          existing @index/@context/@json gates; measured 'parse \
-          succeeded, failure expected'."
-  | "#ter32" ->
-    Some "option.specVersion=json-ld-1.0 (NegativeEvaluationTest) — a \
-          second \"List of lists (from array)\" fixture; same gap as \
-          ter24."
   | _ -> None
 
 let run_test tc =

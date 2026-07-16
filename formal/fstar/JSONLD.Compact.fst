@@ -582,6 +582,18 @@ let rec cmp_curie_loop (ac:active_context) (terms:list (string & term_def))
   | (name, td) :: rest ->
     let li = fs_byte_length iri in
     let lt = fs_byte_length td.td_iri in
+    // not td.td_prefix: the 1.1 API's prefix flag — a term may only
+    // shorten an IRI as the prefix half of a compact IRI when its
+    // definition grants prefix status. Deliberately NOT relaxed under
+    // ac.ac_mode10: compact/tp001 ("Compact IRI will not use an
+    // expanded term definition in 1.0", processingMode=json-ld-1.0,
+    // specVersion=json-ld-1.1) pins that the 1.1 API keeps this gate
+    // even in 1.0 processing mode, while the 1.0-era compact/t0038
+    // ("Index map round-tripping", specVersion=json-ld-1.0) expects a
+    // genuine 1.0 processor's opposite behavior — the two cannot both
+    // pass from one processingMode-driven engine state, and tp001 is
+    // the 1.1-suite conformance test. t0038 stays a documented skip in
+    // bin/jsonld-compact-runner/jsonld_compact_runner.ml.
     let skip =
       Some? (jldctx_find_colon name 0 (fs_byte_length name + 1)) ||
       td.td_iri = "@null" || not td.td_prefix ||

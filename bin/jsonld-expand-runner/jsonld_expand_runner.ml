@@ -236,7 +236,7 @@ let expand_document_tc tc content =
        (FStar_Pervasives_Native.Some (test_base tc))
        fs_expand_context fs_processing_mode)
 
-(* The 6 specVersion=json-ld-1.0 tests that need GENUINE 1.0-mode
+(* The specVersion=json-ld-1.0 tests that need GENUINE 1.0-mode
    semantics this 1.1-plus-ac_mode10 engine does not implement — measured
    (not blanket-skipped): each was RUN and produced the wrong result
    because the fixture exercises a 1.0-only behaviour. Kept as an explicit
@@ -245,39 +245,24 @@ let expand_document_tc tc content =
    IDs (#t0026, #ter02, #ter03) are NOT here: they were measured to PASS
    under normal comparison and run like any other test. See this file's
    companion in bin/jsonld-runner/jsonld_runner.ml (jld_1_0_still_skip)
-   for the toRdf equivalent of this same split. *)
+   for the toRdf equivalent of this same split.
+
+   2026-07-16 skip audit: five entries flipped to ordinary runs by
+   implementing their 1.0-mode semantics in F* behind ac_mode10 —
+   #t0038 (JSONLD.Context.fst's expand_iri_gen: 1.0 has no prefix
+   flag, every term is a compact-IRI prefix candidate), #t0115 +
+   #t0116 (JSONLD.Context.fst's @vocab branch: 1.0 requires an
+   absolute-IRI-or-bnode vocab mapping), and #ter24 + #ter32
+   (JSONLD.Expand.fst's expand_property: 1.0's "list of lists"
+   error). #t0071 is what measurably remains. *)
 let jld_1_0_still_skip (id : string) : string option =
   if Sys.getenv_opt "JLD_NO_SKIP" <> None then None else
   match id with
-  | "#t0038" ->
-    Some "option.specVersion=json-ld-1.0 — \"@vocab as blank node \
-          identifier\" is handled differently in 1.0 vs 1.1; under this \
-          program's 1.1 expansion the canonical expanded JSON differs \
-          from the 1.0 expected fixture (measured, not a false skip)."
   | "#t0071" ->
     Some "option.specVersion=json-ld-1.0 — 1.0's stricter rule on \
           redefining a term that looks like a compact IRI differs from \
           1.1's more permissive rule this program implements; measured: \
           expanded JSON differs."
-  | "#t0115" ->
-    Some "option.specVersion=json-ld-1.0 (NegativeEvaluationTest) — 1.0 \
-          treats this input as an error; 1.1 (this program) legitimately \
-          ACCEPTS it, so it scores 'expanded successfully, failure \
-          expected' — a real 1.1-vs-1.0 gap, not a false skip."
-  | "#t0116" ->
-    Some "option.specVersion=json-ld-1.0 (NegativeEvaluationTest) — same \
-          shape as t0115: 1.1 accepts what 1.0 rejects; measured \
-          'expanded successfully, failure expected'."
-  | "#ter24" ->
-    Some "option.specVersion=json-ld-1.0 (NegativeEvaluationTest) — \
-          \"List of lists (from array)\": 1.0 rejects a list-of-lists \
-          formed by an array nested in @list; 1.1 (this program) \
-          legitimately coerces it; measured 'expanded successfully, \
-          failure expected'."
-  | "#ter32" ->
-    Some "option.specVersion=json-ld-1.0 (NegativeEvaluationTest) — a \
-          second \"List of lists (from array)\" fixture; same gap as \
-          #ter24."
   | _ -> None
 
 let run_test tc =

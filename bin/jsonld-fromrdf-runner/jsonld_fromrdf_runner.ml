@@ -196,6 +196,7 @@ let run_from_rdf tc content =
    the toRdf runner records as an honest specVersion skip (jld_runner's
    jld_1_0_still_skip), classified here as skip rather than fail. *)
 let from_rdf_1_0_still_skip tc =
+  if Sys.getenv_opt "JLD_NO_SKIP" <> None then None else
   if tc.spec_version = Some "json-ld-1.0" then
     Some (Printf.sprintf
             "option.specVersion=json-ld-1.0 — %s: 1.0's partially-ordered \

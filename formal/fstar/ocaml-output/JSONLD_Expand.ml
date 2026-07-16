@@ -6,6 +6,10 @@ let jexp_has_field (name : Prims.string)
   (fields : (Prims.string * Parser_JSON.json_val) Prims.list) : Prims.bool=
   FStar_List_Tot_Base.existsb
     (fun kv -> (FStar_Pervasives_Native.fst kv) = name) fields
+let jexp_is_list_object (v : Parser_JSON.json_val) : Prims.bool=
+  match v with
+  | Parser_JSON.JObject fields -> jexp_has_field "@list" fields
+  | uu___ -> false
 let rec jexp_find_aliased_field (ac : JSONLD_Context.active_context)
   (kw : Prims.string)
   (fields : (Prims.string * Parser_JSON.json_val) Prims.list) :
@@ -1778,24 +1782,29 @@ and expand_property (ac : JSONLD_Context.active_context)
                                FStar_Pervasives_Native.Some
                                  (FStar_List_Tot_Base.append innerout restout)))
                    else
-                     (match expand_item ac type_map lang_ovr dir_ovr false v
-                              (fuel - Prims.int_one)
-                      with
-                      | FStar_Pervasives_Native.None ->
-                          FStar_Pervasives_Native.None
-                      | FStar_Pervasives_Native.Some
-                          (FStar_Pervasives_Native.None) ->
-                          expand_property ac type_map lang_ovr dir_ovr
-                            in_list rest (fuel - Prims.int_one)
-                      | FStar_Pervasives_Native.Some
-                          (FStar_Pervasives_Native.Some one) ->
-                          (match expand_property ac type_map lang_ovr dir_ovr
-                                   in_list rest (fuel - Prims.int_one)
-                           with
-                           | FStar_Pervasives_Native.None ->
-                               FStar_Pervasives_Native.None
-                           | FStar_Pervasives_Native.Some restout ->
-                               FStar_Pervasives_Native.Some (one :: restout)))
+                     if ac.JSONLD_Context.ac_mode10
+                     then FStar_Pervasives_Native.None
+                     else
+                       (match expand_item ac type_map lang_ovr dir_ovr false
+                                v (fuel - Prims.int_one)
+                        with
+                        | FStar_Pervasives_Native.None ->
+                            FStar_Pervasives_Native.None
+                        | FStar_Pervasives_Native.Some
+                            (FStar_Pervasives_Native.None) ->
+                            expand_property ac type_map lang_ovr dir_ovr
+                              in_list rest (fuel - Prims.int_one)
+                        | FStar_Pervasives_Native.Some
+                            (FStar_Pervasives_Native.Some one) ->
+                            (match expand_property ac type_map lang_ovr
+                                     dir_ovr in_list rest
+                                     (fuel - Prims.int_one)
+                             with
+                             | FStar_Pervasives_Native.None ->
+                                 FStar_Pervasives_Native.None
+                             | FStar_Pervasives_Native.Some restout ->
+                                 FStar_Pervasives_Native.Some (one ::
+                                   restout)))
                | uu___1 ->
                    (match expand_item ac type_map lang_ovr dir_ovr false v
                             (fuel - Prims.int_one)
@@ -1808,13 +1817,18 @@ and expand_property (ac : JSONLD_Context.active_context)
                           rest (fuel - Prims.int_one)
                     | FStar_Pervasives_Native.Some
                         (FStar_Pervasives_Native.Some one) ->
-                        (match expand_property ac type_map lang_ovr dir_ovr
-                                 in_list rest (fuel - Prims.int_one)
-                         with
-                         | FStar_Pervasives_Native.None ->
-                             FStar_Pervasives_Native.None
-                         | FStar_Pervasives_Native.Some restout ->
-                             FStar_Pervasives_Native.Some (one :: restout))))))
+                        if
+                          (in_list && ac.JSONLD_Context.ac_mode10) &&
+                            (jexp_is_list_object one)
+                        then FStar_Pervasives_Native.None
+                        else
+                          (match expand_property ac type_map lang_ovr dir_ovr
+                                   in_list rest (fuel - Prims.int_one)
+                           with
+                           | FStar_Pervasives_Native.None ->
+                               FStar_Pervasives_Native.None
+                           | FStar_Pervasives_Native.Some restout ->
+                               FStar_Pervasives_Native.Some (one :: restout))))))
 and expand_item (ac : JSONLD_Context.active_context)
   (type_map : Prims.string FStar_Pervasives_Native.option)
   (lang_ovr :

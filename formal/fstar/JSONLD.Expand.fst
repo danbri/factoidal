@@ -144,6 +144,21 @@ let jexp_as_array (v:json_val) : list json_val =
 let jexp_has_field (name:string) (fields:list (string & json_val)) : bool =
   List.Tot.existsb (fun (kv:(string & json_val)) -> fst kv = name) fields
 
+// JSON-LD 1.0's "list of lists" restriction (Expansion algorithm, List
+// Expansion step): once already inside a @list's own contents, an item
+// that is ITSELF list-shaped is an error. JSON-LD 1.1 lifted this
+// restriction (the "Lists of Lists" feature this engine implements by
+// default); expand_property's in_list branches below only enforce the
+// 1.0 rejection when ac.ac_mode10 is set. Checking for the literal
+// "@list" key (not jexp_find_aliased_field's alias-aware lookup) is
+// correct here because `v` is an ALREADY-EXPANDED item — expansion's
+// own output always normalizes to the literal keyword spelling,
+// regardless of what alias the source document used.
+let jexp_is_list_object (v:json_val) : bool =
+  match v with
+  | JObject fields -> jexp_has_field "@list" fields
+  | _ -> false
+
 // Alias-aware field lookup used throughout Expansion's object-SHAPE
 // dispatch (is this JSON object a value object? a list object? ...).
 // JSON-LD 1.1 lets a scoped (or ordinary) context alias any keyword to
@@ -1854,6 +1869,13 @@ and expand_property (ac:active_context) (type_map:option string) (lang_ovr:optio
          // nested bare array as a genuine nested list. (`when` guards
          // are unsupported in F*'s --verify mode, hence the nested
          // if/match instead of a pattern guard.)
+         //
+         // toRdf/expand ter24+ter32 (specVersion=json-ld-1.0,
+         // NegativeEvaluationTest "List of lists (from array)"): a bare
+         // array found while in_list is already true is exactly a
+         // "list of lists" — under ac.ac_mode10 that is the 1.0 error,
+         // not the 1.1 nested-list feature, so short-circuit to None
+         // before ever calling expand_item.
          (match v with
           | JArray inner ->
             if not in_list then
@@ -1863,6 +1885,7 @@ and expand_property (ac:active_context) (type_map:option string) (lang_ovr:optio
                  (match expand_property ac type_map lang_ovr dir_ovr in_list rest (fuel - 1) with
                   | None -> None
                   | Some restout -> Some (List.Tot.append innerout restout)))
+            else if ac.ac_mode10 then None
             else
               (match expand_item ac type_map lang_ovr dir_ovr false v (fuel - 1) with
                | None -> None
@@ -1876,6 +1899,14 @@ and expand_property (ac:active_context) (type_map:option string) (lang_ovr:optio
              | None -> None
              | Some None -> expand_property ac type_map lang_ovr dir_ovr in_list rest (fuel - 1)
              | Some (Some one) ->
+               // compact/e001 (specVersion=json-ld-1.0, NegativeEvaluationTest
+               // "Compaction to list of lists"): the bare-array short-circuit
+               // above only catches a RAW array nested in @list; an explicit
+               // {"@list": [...]} item nested in another @list is the SAME
+               // 1.0 "list of lists" error, caught here by checking the
+               // freshly-expanded item's own shape once in_list is true.
+               if in_list && ac.ac_mode10 && jexp_is_list_object one then None
+               else
                (match expand_property ac type_map lang_ovr dir_ovr in_list rest (fuel - 1) with
                 | None -> None
                 | Some restout -> Some (one :: restout)))))
