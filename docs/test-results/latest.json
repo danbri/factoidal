@@ -1,7 +1,7 @@
 {
-  "timestamp": "2026-07-16 00:37 UTC",
-  "commit": "469b830b98ab3fe5f4a7a1597cb867603de83289",
-  "branch": "claude/main",
+  "timestamp": "2026-07-16 02:57 UTC",
+  "commit": "81cf690601a48ef238aacbdddb06fdeddce0d72d",
+  "branch": "csvw-burndown-4",
   "totals": {
     "sparql":   {"pass":631,"fail":0,"skip":0,"unsupported":0,"total":631},
     "rdf":      {"pass":1031,"fail":0,"skip":0,"unsupported":0,"total":1031},

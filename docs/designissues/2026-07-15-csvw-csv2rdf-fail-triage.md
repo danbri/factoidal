@@ -28,6 +28,23 @@ Burndown ledger. Score history (all measured on freshly rebuilt
   suite gates green: RDF six suites 1031 pass, 0 fail; jsonld-toRdf
   461 pass, 0 fail; SPARQL 1.1 (all suites, incl. query-eval) 631
   pass, 0 fail.
+- Round 4 (families C-partial + D + H + I + L + O + P, branch
+  csvw-burndown-4): ✅ **264 pass, 6 fail (out of 270)**. 13 named
+  flips: test032 test033 (family C — propertyUrl prefixed-name/CURIE
+  expansion, the twin of round-3's valueUrl fix), test130 test131
+  (family H — invalid URI-Template column `name` → title fallback),
+  test150 test151 test238 (family I — non-built-in `datatype` /
+  `datatype.base` string degrades to no-datatype, column-level twin of
+  round-1's inherited check), test273 (family O — `@base` in the
+  `@context` array), test034 test035 (family D — `tableSchema`-as-URL
+  schema-by-reference, plus table-level `suppressOutput` and null-value
+  suppression of valueUrl triples the two fixtures also needed), test252
+  test253 (family L — cross-table foreignKey referential integrity:
+  a `resource` reference to a missing table/column rejects the
+  document), test023 (family P — dialect `header:false`/`headerRowCount:0`
+  cascaded from the table-group level → header-less positional `_col.N`
+  columns). 📊 Zero regressions (every remaining fail is in the round-3
+  19-fail census). Cross-suite gates green (see round-4 note below).
 
 Baseline for the original triage below: **218 pass, 52 fail (out of
 270)**. This note triages all 52 named fails into root-cause families by
@@ -69,25 +86,33 @@ triples in the first place. It does not explain any of the 52 fails.
 
 **Total: 15 + 4 + 4 + 2 + 5 + 5 + 2 + 2 + 3 + 1 + 2 + 2 + 2 + 1 + 1 + 1 = 52.**
 
-## Remaining-fail census after round 3 (19 fails)
+## Remaining-fail census after round 4 (6 fails)
 
 | Family | Remaining | Named tests |
 |---|---|---|
 | A (title-language name derivation — the last A residue) | 2 | test148, test149 |
-| C (complex multi-subject/virtual/annotation, incl. `@id` node identity) | 5 | test032, test033, test036, test037, test102 |
-| D (schema-by-reference) | 2 | test034, test035 |
-| H (column-name restriction) | 2 | test130, test131 |
-| I (non-builtin datatype validation) | 3 | test150, test151, test238 |
+| C (`@id` real-IRI node identity + annotation-object common properties + trim-on-separator-split) | 3 | test036, test037, test102 |
 | J (duration regex — blocked on regex engine) | 1 | test194 |
-| L (cross-table FK validation, NegativeRdf) | 2 | test252, test253 |
-| O (`@base` in `@context`) | 1 | test273 |
-| P (`header=false` + schema compatibility) | 1 | test023 |
 
-Families B, K, M, N are DONE (all their named tests flipped in round
-3); family G was DONE in round 1; families E and F in round 2.
-Row sum: 2 + 5 + 2 + 2 + 3 + 1 + 2 + 1 + 1 = 19.
-Blocked: 1 (test194, duration regex, needs a regex engine).
-Actionable remainder: 18.
+Families B, K, M, N DONE round 3; G DONE round 1; E, F DONE round 2;
+D, H, I, L, O, P and the propertyUrl-CURIE half of C DONE round 4.
+Row sum: 2 + 3 + 1 = 6. Blocked: 1 (test194, duration regex).
+Actionable remainder: 5.
+
+**Round-4 remaining detail.** The three round-4 C survivors
+(test036/037/102) all hinge on the same unbuilt piece — real-IRI node
+identity for the table/group node from a metadata `@id` (test102's
+invalid-integer `@id` degrades to the metadata-document URL as the
+Table node; test036/037's `@id: "http://example.org/tree-ops-ext"` is
+the real Table node) — plus, for test036/037, annotation-object common
+properties (`notes` → `oa:Annotation`, nested `dc:publisher`/`schema:`
+objects, `dcat:keyword` arrays) and whitespace-trim on
+separator-split cell values. All are CSVW.Conversion signature-level
+changes, bigger than the round-4 set. test148/149 remain the
+title-LANGUAGE decode-shape change deferred since round 3 (titles must
+be decoded WITH their language tags, then intersected against the
+table default language at name derivation). test194 stays blocked on a
+regex engine (#304).
 
 **Family A's last residue (test148/149)** is title-LANGUAGE-aware
 column-name derivation: a column whose only `titles` value has an
@@ -183,17 +208,68 @@ pass `None` for the new `default_lang` argument (neither consumer
 interprets @context language today). Both F* modules verify clean
 under z3 4.13.3, no --lax, no admits.
 
+## What round 4 fixed (2026-07-16, branch csvw-burndown-4)
+
+Families D, H, I, L, O, P in full plus the propertyUrl-CURIE half of
+C — 13 named flips, zero regressions, all cross-suite gates green
+(264 pass, 6 fail; see the round-4 score line at the top).
+
+F* changes:
+- `CSVW.Conversion.fst`: (1) propertyUrl template result run through
+  `csvw_expand_curie` before base resolution, matching the round-3
+  valueUrl path — `schema:name`/`rdf:type` etc. expand (test032/033).
+  (2) `csvw_valid_column_name`/`csvw_varname_char_ok`: a column `name`
+  that is not an RFC-6570 URI-Template variable (contains a space, or
+  begins with `_`) falls back to the column's title, as if the name
+  were absent (test130/131). (3) a PHYSICAL cell whose text matches the
+  effective `null` (or is "") now suppresses even a valueUrl-based
+  triple (`phys_null` guard in `csvw_cell_object`); virtual columns
+  (no cell text) stay exempt (test035's `null: "xx"` reportsTo).
+  (4) `csvw_table_suppressed`: a table-level `suppressOutput` skips the
+  table entirely in both document-level entry points (test034/035
+  lookup tables). (5) header-less, schema-less tables build positional
+  `_col.N` specs from an empty header of the first data row's width
+  (test023).
+- `CSVW.Metadata.fst`: (1) `csvw_datatype_valid_or_degrade` — a
+  non-built-in `datatype` string OR object `base` degrades to None
+  (no datatype), applied at both column and inherited decode
+  (test150/151/238). (2) `tbl_schema_ref` field +
+  `csvw_decode_table_schema_text`/`csvw_table_inline_schema`: a
+  `tableSchema` given as a bare URL string defers to a ref the consumer
+  resolves and inlines (test034/035). (3) `tbl_suppress_output` field +
+  decode. (4) `csvw_context_base`/`csvw_metadata_context_base` — reads
+  `@base` out of the `@context` array (test273). (5) group-level
+  `dialect` cascades to tables without their own (test023). (6)
+  `csvw_group_fks_resolve` + helpers: cross-table foreignKey
+  referential integrity over `resource`-based references — a missing
+  target table (test253) or missing target column (test252) rejects
+  the document; `schemaReference`-based FKs (test034/035) stay
+  unchecked, avoiding false negatives.
+
+Runner I/O glue (`bin/csvw-runner/csvw_runner.ml`, all rule-#11
+acceptable — no semantics): folds the `@context` `@base` override into
+the base IRI and, for a relative override, into the CSV read directory
+(test273); resolves `tbl_schema_ref` external schema files against the
+CSV directory and inlines them via the F* helper (test034/035). Both
+F* modules verify clean under z3 4.13.3, no --lax, no admits.
+
 ## What's next (by expected yield)
 
-Well-understood, independently commit-sized: I (3 tests, datatype-name
-validation against the built-in table — the column-level twin of the
-round-1 inherited-datatype check), H (2, column-name validity
-fallback), L (2, the `CSVW.Validate.fst` Stage 9 cross-table FK
-check), and family A's last residue test148/149 (2, title-language
-name derivation — decode titles with their tags, then match the
-default language at name derivation). Family C (5 incl. test102)
-hinges on real-IRI `@id` node identity for table/group nodes — a
-CSVW.Conversion signature change, bigger than the others. Family O
-(1, test273 `@base` in `@context`) and P (1, test023 `header=false`
-+ schema compatibility) are single fixtures. test194 (family J,
-duration regex) stays blocked on a regex engine.
+Only 5 actionable fails remain, all sharing large, well-understood
+shapes:
+
+- **Family C `@id` node identity (test036/037/102)** — the table/group
+  node's IRI must come from the metadata `@id` (or, for test102's
+  invalid integer `@id`, degrade to the metadata-document URL) instead
+  of the current synthesized blank node. test036/037 additionally need
+  annotation-object common properties (`notes` → `oa:Annotation`,
+  nested `dc:publisher`/`schema:` objects, `dcat:keyword` arrays) and
+  whitespace-trim on separator-split cell values. This is a
+  CSVW.Conversion signature change (the node builder must receive the
+  `@id` and the document URL).
+- **Family A residue (test148/149)** — title-LANGUAGE-aware column-name
+  derivation: `csvw_decode_titles` must stop flattening the language
+  tag away, and name derivation must test each title's tag against the
+  table default language (BCP47 truncation match) before it can supply
+  a name. A decode-shape change.
+- **test194 (family J)** stays blocked on a regex engine (#304).
