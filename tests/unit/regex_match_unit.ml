@@ -294,6 +294,43 @@ let () =
     (m ("/" ^ "\t" ^ "\n" ^ "\r" ^ "-" ^ "\\" ^ "a" ^ "\xf0\x9d\x92\xb8" ^ "999")
        ("^/" ^ "\\t" ^ "\\n" ^ "\\r" ^ "\\-" ^ "\\\\" ^ "a" ^ "\xf0\x9d\x92\xb8" ^ "$"));
 
+  (* ==================================================================== *)
+  (* #304 phase 4: fn:matches via the VERIFIED engine (regex_match retired *)
+  (* from `assume val` to a real F* definition over Regex.Exec). These pin *)
+  (* the fn:matches flag + anchor + codepoint semantics the swap must keep. *)
+  (* ==================================================================== *)
+
+  (* --- unanchored substring search (fn:matches default) --- *)
+  check ~name:"unanchored: 'cat' inside 'the cat sat'" true (m "the cat sat" "cat");
+  check ~name:"unanchored: 'dog' not in 'the cat sat'" false (m "the cat sat" "dog");
+
+  (* --- single-boundary anchors --- *)
+  check ~name:"^abc matches a prefix" true (m "abcxyz" "^abc");
+  check ~name:"^abc rejects a non-prefix" false (m "xabc" "^abc");
+  check ~name:"abc$ matches a suffix" true (m "xyzabc" "abc$");
+  check ~name:"abc$ rejects a non-suffix" false (m "abcx" "abc$");
+  check ~name:"i flag with ^..$ whole-string" true (m ~flags:"i" "ABC" "^abc$");
+
+  (* --- s (dot-all) flag: `.` matches newline only under s --- *)
+  check ~name:"default dot excludes newline" false (m "a\nc" "a.c");
+  check ~name:"s flag makes dot match newline" true (m ~flags:"s" "a\nc" "a.c");
+
+  (* --- q (literal) flag: metacharacters lose their meaning --- *)
+  check ~name:"no-q: a+b is a regex (matches aaab)" true (m "aaab" "a+b");
+  check ~name:"q: a+b is literal (rejects aaab)" false (m ~flags:"q" "aaab" "a+b");
+  check ~name:"q: a+b literal matches the literal 'a+b'" true (m ~flags:"q" "xa+by" "a+b");
+  check ~name:"iq: literal + case-insensitive" true (m ~flags:"iq" "A+B" "a+b");
+
+  (* --- x (ignore-whitespace) flag: unescaped whitespace elided --- *)
+  check ~name:"x flag strips pattern whitespace" true (m ~flags:"x" "abc" "a b c");
+  check ~name:"x flag: whitespace inside a class is kept" true (m ~flags:"x" "a c" "a[ ]c");
+
+  (* --- CODEPOINT correctness (the anti-pattern #10 win over byte-level Str):
+     a character class over multi-byte codepoints matches by CODEPOINT, not by
+     UTF-8 byte. `[本語]` is a two-codepoint class; "本" is one codepoint. --- *)
+  check ~name:"codepoint class [本語] matches 本" true (m "\xe6\x9c\xac" "[\xe6\x9c\xac\xe8\xaa\x9e]");
+  check ~name:"codepoint class [本語] rejects 日" false (m "\xe6\x97\xa5" "[\xe6\x9c\xac\xe8\xaa\x9e]");
+
   Printf.printf "regex_match_unit: %d pass, %d fail (out of %d)\n"
     !passed !failed (!passed + !failed);
   if !failed > 0 then exit 1

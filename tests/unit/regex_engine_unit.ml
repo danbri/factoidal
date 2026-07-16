@@ -318,6 +318,14 @@ let () =
   pmatch ~name:"\\U0001D4B8 matches astral 𝒸" "\\U0001D4B8" (cword [0x1D4B8]) true;
   pmatch ~name:"\\U0001D4B8 rejects nearby astral" "\\U0001D4B8" (cword [0x1D4B9]) false;
 
+  (* ---- negated character classes [^...] (#304 phase 4; SPARQL a[^b]c) ---- *)
+  pmatch ~name:"[^b] matches 'a'" "[^b]" (word "a") true;
+  pmatch ~name:"[^b] rejects 'b'" "[^b]" (word "b") false;
+  pmatch ~name:"a[^b]c matches axc" "a[^b]c" (word "axc") true;
+  pmatch ~name:"a[^b]c rejects abc" "a[^b]c" (word "abc") false;
+  pmatch ~name:"[^0-9]+ matches letters" "[^0-9]+" (word "abc") true;
+  pmatch ~name:"[^0-9]+ rejects a digit" "[^0-9]+" (word "a1c") false;
+
   (* ---- non-capturing group (?:...) ---- *)
   pmatch ~name:"(?:ab)+ matches abab" "(?:ab)+" (word "abab") true;
 
@@ -329,7 +337,6 @@ let () =
   parse_none ~name:"category escape \\p{L}" "\\p{L}";
   parse_none ~name:"backreference \\1" "(a)\\1";
   parse_none ~name:"lookahead (?=x)" "(?=x)";
-  parse_none ~name:"negated class [^a]" "[^a]";
   parse_none ~name:"empty brace a{" "a{";
   parse_none ~name:"non-numeric brace a{x}" "a{x}";
 
