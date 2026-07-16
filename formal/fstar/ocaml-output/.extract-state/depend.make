@@ -3227,6 +3227,9 @@ SPARQL11.Algebra.fst.checked: \
 	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Char.fsti.checked \
 	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Pervasives.Native.fst.checked \
 	/root/.opam/fstar/lib/fstar/ulib.checked/Prims.fst.checked \
+	Regex.XSDPattern.fst.checked \
+	Regex.Exec.fst.checked \
+	Regex.Syntax.fst.checked \
 	Parser.WKT.fst.checked \
 	RDF.Geo.Functions.fst.checked \
 	RDF.Geo.Topology.fst.checked \
@@ -3253,6 +3256,9 @@ SPARQL11_Algebra.cmx: \
 	SPARQL11_Algebra.ml \
 	RDF_Indexed.cmx \
 	SPARQL11_IRI_Resolve.cmx \
+	Regex_XSDPattern.cmx \
+	Regex_Exec.cmx \
+	Regex_Syntax.cmx \
 	Parser_WKT.cmx \
 	RDF_Geo_Functions.cmx \
 	RDF_Geo_Topology.cmx \
@@ -5861,6 +5867,10 @@ ALL_FS_FILES= \
 	RDF_Store_Columnar_DeltaLog.fs \
 	RDF_IRI.fs \
 	SPARQL11_IRI_Resolve.fs \
+	Regex_Syntax.fs \
+	Regex_XSDPattern.fs \
+	Regex_Derivative.fs \
+	Regex_Exec.fs \
 	RDF_Geo_Types.fs \
 	Parser_WKT.fs \
 	RDF_Geo_BBox.fs \
@@ -5918,10 +5928,6 @@ ALL_FS_FILES= \
 	RDF_Store_Columnar_DeltaMerge.fs \
 	RDF_Store_Capabilities_Delta.fs \
 	SPARQL_ServiceDescription.fs \
-	Regex_Syntax.fs \
-	Regex_Derivative.fs \
-	Regex_Exec.fs \
-	Regex_XSDPattern.fs \
 	CSVW_Formats.fs \
 	JSONLD_Loader.fs \
 	JSONLD_Context.fs \
@@ -6040,6 +6046,10 @@ ALL_ML_FILES= \
 	RDF_Store_Columnar_DeltaLog.ml \
 	RDF_IRI.ml \
 	SPARQL11_IRI_Resolve.ml \
+	Regex_Syntax.ml \
+	Regex_XSDPattern.ml \
+	Regex_Derivative.ml \
+	Regex_Exec.ml \
 	RDF_Geo_Types.ml \
 	Parser_WKT.ml \
 	RDF_Geo_BBox.ml \
@@ -6097,10 +6107,6 @@ ALL_ML_FILES= \
 	RDF_Store_Columnar_DeltaMerge.ml \
 	RDF_Store_Capabilities_Delta.ml \
 	SPARQL_ServiceDescription.ml \
-	Regex_Syntax.ml \
-	Regex_Derivative.ml \
-	Regex_Exec.ml \
-	Regex_XSDPattern.ml \
 	CSVW_Formats.ml \
 	JSONLD_Loader.ml \
 	JSONLD_Context.ml \
@@ -6274,6 +6280,10 @@ ALL_KRML_FILES= \
 	Parser_FastString.krml \
 	RDF_IRI.krml \
 	SPARQL11_IRI_Resolve.krml \
+	Regex_Syntax.krml \
+	Regex_XSDPattern.krml \
+	Regex_Derivative.krml \
+	Regex_Exec.krml \
 	RDF_Geo_Types.krml \
 	Parser_Combinators.krml \
 	Parser_WKT.krml \
@@ -6339,10 +6349,6 @@ ALL_KRML_FILES= \
 	RDF_Store_Columnar_DeltaMerge.krml \
 	RDF_Store_Capabilities_Delta.krml \
 	SPARQL_ServiceDescription.krml \
-	Regex_Syntax.krml \
-	Regex_Derivative.krml \
-	Regex_Exec.krml \
-	Regex_XSDPattern.krml \
 	CSVW_Formats.krml \
 	JSONLD_Loader.krml \
 	JSONLD_Context.krml \

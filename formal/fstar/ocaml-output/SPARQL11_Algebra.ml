@@ -1902,26 +1902,6 @@ let replace_all_chars (haystack : FStar_Char.char Prims.list)
   else
     replace_all_chars_fuel haystack pattern replacement
       (FStar_List_Tot_Base.length haystack)
-let regex_replace_ref : (Prims.string -> Prims.string -> Prims.string -> Prims.string FStar_Pervasives_Native.option -> Prims.string) ref =
-  ref (fun t _ _ _ -> t)
-let regex_replace (text : Prims.string) (pattern : Prims.string)
-  (replacement : Prims.string)
-  (flags : Prims.string FStar_Pervasives_Native.option) : Prims.string=
-  !regex_replace_ref text pattern replacement flags
-let string_replace (s : Prims.string) (pattern : Prims.string)
-  (replacement : Prims.string)
-  (flags : Prims.string FStar_Pervasives_Native.option) : Prims.string=
-  regex_replace s pattern replacement flags
-let string_replace_literal (s : Prims.string) (pattern : Prims.string)
-  (replacement : Prims.string)
-  (_flags : Prims.string FStar_Pervasives_Native.option) : Prims.string=
-  if (FStar_String.strlen pattern) = Prims.int_zero
-  then s
-  else
-    FStar_String.string_of_list
-      (replace_all_chars (FStar_String.list_of_string s)
-         (FStar_String.list_of_string pattern)
-         (FStar_String.list_of_string replacement))
 let xpath_to_str_regex (p : string) : string =
   let open Stdlib in
   let len = String.length p in
@@ -2051,19 +2031,190 @@ let xpath_to_str_regex (p : string) : string =
     end else (set_atom (String.make 1 c); i := !i + 1)
   done;
   Buffer.contents buf
+let regex_replace_ref : (Prims.string -> Prims.string -> Prims.string -> Prims.string FStar_Pervasives_Native.option -> Prims.string) ref =
+  ref (fun t _ _ _ -> t)
+let regex_replace (text : Prims.string) (pattern : Prims.string)
+  (replacement : Prims.string)
+  (flags : Prims.string FStar_Pervasives_Native.option) : Prims.string=
+  !regex_replace_ref text pattern replacement flags
+let string_replace (s : Prims.string) (pattern : Prims.string)
+  (replacement : Prims.string)
+  (flags : Prims.string FStar_Pervasives_Native.option) : Prims.string=
+  regex_replace s pattern replacement flags
+let string_replace_literal (s : Prims.string) (pattern : Prims.string)
+  (replacement : Prims.string)
+  (_flags : Prims.string FStar_Pervasives_Native.option) : Prims.string=
+  if (FStar_String.strlen pattern) = Prims.int_zero
+  then s
+  else
+    FStar_String.string_of_list
+      (replace_all_chars (FStar_String.list_of_string s)
+         (FStar_String.list_of_string pattern)
+         (FStar_String.list_of_string replacement))
+let rx_cp_caret : Prims.nat= (Prims.of_int (0x5E))
+let rx_cp_dollar : Prims.nat= (Prims.of_int (0x24))
+let rx_cp_backslash : Prims.nat= (Prims.of_int (0x5C))
+let rx_cp_lbracket : Prims.nat= (Prims.of_int (0x5B))
+let rx_cp_rbracket : Prims.nat= (Prims.of_int (0x5D))
+let rx_flag_has (flags : Prims.string FStar_Pervasives_Native.option)
+  (ch : FStar_Char.char) : Prims.bool=
+  match flags with
+  | FStar_Pervasives_Native.None -> false
+  | FStar_Pervasives_Native.Some f ->
+      FStar_List_Tot_Base.mem ch (FStar_String.list_of_string f)
+let rx_is_ws (c : Prims.nat) : Prims.bool=
+  (((c = (Prims.of_int (0x09))) || (c = (Prims.of_int (0x0A)))) ||
+     (c = (Prims.of_int (0x0D))))
+    || (c = (Prims.of_int (0x20)))
+let rec rx_strip_ws (cps : Prims.nat Prims.list) (in_class : Prims.bool) :
+  Prims.nat Prims.list=
+  match cps with
+  | [] -> []
+  | c::t ->
+      if c = rx_cp_backslash
+      then
+        (match t with
+         | c2::t2 -> c :: c2 :: (rx_strip_ws t2 in_class)
+         | [] -> [c])
+      else
+        if (c = rx_cp_lbracket) && (Prims.op_Negation in_class)
+        then c :: (rx_strip_ws t true)
+        else
+          if (c = rx_cp_rbracket) && in_class
+          then c :: (rx_strip_ws t false)
+          else
+            if (rx_is_ws c) && (Prims.op_Negation in_class)
+            then rx_strip_ws t in_class
+            else c :: (rx_strip_ws t in_class)
+let rx_begin_sentinel : Prims.nat= Regex_Syntax.max_codepoint + Prims.int_one
+let rx_end_sentinel : Prims.nat=
+  Regex_Syntax.max_codepoint + (Prims.of_int (2))
+let rec rx_replace_anchors (cps : Prims.nat Prims.list)
+  (in_class : Prims.bool) : Prims.nat Prims.list=
+  match cps with
+  | [] -> []
+  | c::t ->
+      if c = rx_cp_backslash
+      then
+        (match t with
+         | c2::t2 -> c :: c2 :: (rx_replace_anchors t2 in_class)
+         | [] -> [c])
+      else
+        if (c = rx_cp_lbracket) && (Prims.op_Negation in_class)
+        then c :: (rx_replace_anchors t true)
+        else
+          if (c = rx_cp_rbracket) && in_class
+          then c :: (rx_replace_anchors t false)
+          else
+            if (c = rx_cp_caret) && (Prims.op_Negation in_class)
+            then rx_begin_sentinel :: (rx_replace_anchors t in_class)
+            else
+              if (c = rx_cp_dollar) && (Prims.op_Negation in_class)
+              then rx_end_sentinel :: (rx_replace_anchors t in_class)
+              else c :: (rx_replace_anchors t in_class)
+let rx_nonsent : Regex_Syntax.regex=
+  Regex_Syntax.R_Ranges [(Prims.int_zero, Regex_Syntax.max_codepoint)]
+let rx_gap_left : Regex_Syntax.regex=
+  Regex_Syntax.R_Alt
+    (Regex_Syntax.R_Eps,
+      (Regex_Syntax.R_Cat
+         ((Regex_Syntax.R_Ranges [(rx_begin_sentinel, rx_begin_sentinel)]),
+           (Regex_Syntax.R_Star rx_nonsent))))
+let rx_gap_right : Regex_Syntax.regex=
+  Regex_Syntax.R_Alt
+    (Regex_Syntax.R_Eps,
+      (Regex_Syntax.R_Cat
+         ((Regex_Syntax.R_Star rx_nonsent),
+           (Regex_Syntax.R_Ranges [(rx_end_sentinel, rx_end_sentinel)]))))
+let rec rx_literal_regex (cps : Prims.nat Prims.list) : Regex_Syntax.regex=
+  match cps with
+  | [] -> Regex_Syntax.R_Eps
+  | c::[] -> Regex_Syntax.R_Ranges [(c, c)]
+  | c::t ->
+      Regex_Syntax.R_Cat
+        ((Regex_Syntax.R_Ranges [(c, c)]), (rx_literal_regex t))
+let rx_ci_extra (lo : Prims.nat) (hi : Prims.nat) :
+  (Prims.nat * Prims.nat) Prims.list=
+  let up_lo =
+    if lo > (Prims.of_int (0x41)) then lo else (Prims.of_int (0x41)) in
+  let up_hi =
+    if hi < (Prims.of_int (0x5A)) then hi else (Prims.of_int (0x5A)) in
+  let img_lower =
+    if up_lo <= up_hi
+    then [((up_lo + (Prims.of_int (0x20))), (up_hi + (Prims.of_int (0x20))))]
+    else [] in
+  let lo_lo =
+    if lo > (Prims.of_int (0x61)) then lo else (Prims.of_int (0x61)) in
+  let lo_hi =
+    if hi < (Prims.of_int (0x7A)) then hi else (Prims.of_int (0x7A)) in
+  let img_upper =
+    if lo_lo <= lo_hi
+    then [((lo_lo - (Prims.of_int (0x20))), (lo_hi - (Prims.of_int (0x20))))]
+    else [] in
+  FStar_List_Tot_Base.op_At img_lower img_upper
+let rec rx_ci_ranges (rs : (Prims.nat * Prims.nat) Prims.list) :
+  (Prims.nat * Prims.nat) Prims.list=
+  match rs with
+  | [] -> []
+  | (lo, hi)::t -> (lo, hi) ::
+      (FStar_List_Tot_Base.op_At (rx_ci_extra lo hi) (rx_ci_ranges t))
+let rec rx_fold_ci (r : Regex_Syntax.regex) : Regex_Syntax.regex=
+  match r with
+  | Regex_Syntax.R_Empty -> Regex_Syntax.R_Empty
+  | Regex_Syntax.R_Eps -> Regex_Syntax.R_Eps
+  | Regex_Syntax.R_Ranges rs -> Regex_Syntax.R_Ranges (rx_ci_ranges rs)
+  | Regex_Syntax.R_Cat (a, b) ->
+      Regex_Syntax.R_Cat ((rx_fold_ci a), (rx_fold_ci b))
+  | Regex_Syntax.R_Alt (a, b) ->
+      Regex_Syntax.R_Alt ((rx_fold_ci a), (rx_fold_ci b))
+  | Regex_Syntax.R_And (a, b) ->
+      Regex_Syntax.R_And ((rx_fold_ci a), (rx_fold_ci b))
+  | Regex_Syntax.R_Not a -> Regex_Syntax.R_Not (rx_fold_ci a)
+  | Regex_Syntax.R_Star a -> Regex_Syntax.R_Star (rx_fold_ci a)
+let rec rx_dotall (r : Regex_Syntax.regex) : Regex_Syntax.regex=
+  match r with
+  | Regex_Syntax.R_Empty -> Regex_Syntax.R_Empty
+  | Regex_Syntax.R_Eps -> Regex_Syntax.R_Eps
+  | Regex_Syntax.R_Ranges uu___ ->
+      if r = Regex_XSDPattern.dot_regex then Regex_Exec.any_char else r
+  | Regex_Syntax.R_Cat (a, b) ->
+      Regex_Syntax.R_Cat ((rx_dotall a), (rx_dotall b))
+  | Regex_Syntax.R_Alt (a, b) ->
+      Regex_Syntax.R_Alt ((rx_dotall a), (rx_dotall b))
+  | Regex_Syntax.R_And (a, b) ->
+      Regex_Syntax.R_And ((rx_dotall a), (rx_dotall b))
+  | Regex_Syntax.R_Not a -> Regex_Syntax.R_Not (rx_dotall a)
+  | Regex_Syntax.R_Star a -> Regex_Syntax.R_Star (rx_dotall a)
 let regex_match (text : Prims.string) (pattern : Prims.string)
   (flags : Prims.string FStar_Pervasives_Native.option) : Prims.bool=
-  try
-    let case_insensitive = match flags with
-      | FStar_Pervasives_Native.Some f -> String.contains f 'i'
-      | FStar_Pervasives_Native.None -> false in
-    let converted = xpath_to_str_regex pattern in
-    let re = if case_insensitive
-      then Str.regexp_case_fold converted
-      else Str.regexp converted in
-    (try let _ = Str.search_forward re text 0 in true
-     with Not_found -> false)
-  with _ -> false
+  let has_i = rx_flag_has flags 105 in
+  let has_s = rx_flag_has flags 115 in
+  let has_x = rx_flag_has flags 120 in
+  let has_q = rx_flag_has flags 113 in
+  let input_cps = Regex_XSDPattern.cps_of_string text in
+  let pat_cps0 = Regex_XSDPattern.cps_of_string pattern in
+  if has_q
+  then
+    let core0 = rx_literal_regex pat_cps0 in
+    let core = if has_i then rx_fold_ci core0 else core0 in
+    Regex_Exec.matches_norm
+      (Regex_Syntax.R_Cat
+         (Regex_Exec.dot_star,
+           (Regex_Syntax.R_Cat (core, Regex_Exec.dot_star)))) input_cps
+  else
+    (let pat_cps1 = if has_x then rx_strip_ws pat_cps0 false else pat_cps0 in
+     let pat_cps = rx_replace_anchors pat_cps1 false in
+     match Regex_XSDPattern.parse_cps pat_cps with
+     | FStar_Pervasives_Native.None -> false
+     | FStar_Pervasives_Native.Some r0 ->
+         let r1 = if has_s then rx_dotall r0 else r0 in
+         let r2 = if has_i then rx_fold_ci r1 else r1 in
+         let m =
+           Regex_Syntax.R_Cat
+             (rx_gap_left, (Regex_Syntax.R_Cat (r2, rx_gap_right))) in
+         let wrapped = rx_begin_sentinel ::
+           (FStar_List_Tot_Base.append input_cps [rx_end_sentinel]) in
+         Regex_Exec.matches_norm m wrapped)
 let fn_substr_spec (s : Prims.string) (start : Prims.nat)
   (len : Prims.nat FStar_Pervasives_Native.option) : Prims.string=
   let idx =

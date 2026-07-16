@@ -278,9 +278,15 @@ let parse_class (input : Prims.nat Prims.list) :
   (Regex_Syntax.regex * Prims.nat Prims.list) FStar_Pervasives_Native.option=
   match input with
   | [] -> FStar_Pervasives_Native.None
-  | h::uu___ ->
+  | h::t ->
       if h = cp_caret
-      then FStar_Pervasives_Native.None
+      then
+        (match parse_class_items t [] with
+         | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+         | FStar_Pervasives_Native.Some (ranges, rest) ->
+             FStar_Pervasives_Native.Some
+               ((Regex_Syntax.R_Ranges
+                   (Regex_Syntax.complement_ranges ranges)), rest))
       else
         (match parse_class_items input [] with
          | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
