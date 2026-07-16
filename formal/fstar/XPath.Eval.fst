@@ -929,6 +929,27 @@ let item_qname (it:xctx_item) : string =
   | CI_PI _ _ _ tg _ -> tg   // name()/local-name() of a PI is its target
   | _ -> ""
 
+// namespace-uri() of a node (XPath 1.0 §4.1): the namespace URI of the
+// expanded name, or "" when the node has no namespace or is not an
+// element/attribute. An element's namespace is its tag prefix resolved
+// against its own xmlns:* declarations then its ancestors (nearest-
+// first); an unprefixed attribute is always in the null namespace, so
+// only a prefixed attribute has a non-empty namespace URI. Reuses the
+// same in-scope resolution (`elem_ns_uri`/`resolve_ns_uri`) that the
+// namespace-URI-aware name tests use, so selection and namespace-uri()
+// agree on what namespace a source node is in.
+let item_namespace_uri (it:xctx_item) : string =
+  match it with
+  | CI_Elem _ anc n ->
+    (match element_tag n with
+     | Some t -> (match elem_ns_uri t (element_attrs n) anc with Some u -> u | None -> "")
+     | None -> "")
+  | CI_Attr _ anc owner a ->
+    let pfx = prefix_of a.attr_name in
+    if pfx = "" then ""
+    else (match resolve_ns_uri pfx (element_attrs owner) anc with Some u -> u | None -> "")
+  | _ -> ""
+
 let rec sum_items (items:list xctx_item) : Tot xpath_number (decreases items) =
   match items with
   | [] -> XN_Finite 0 0
@@ -1217,6 +1238,19 @@ and eval_funcall (fuel:nat) (env:xp_env) (name:string) (args:list xp_expr)
        | it :: _ ->
          let qn = item_qname it in
          XV_Str (if name = "local-name" then local_name_of qn else qn))
+    else if name = "namespace-uri" then
+      // namespace-uri(node-set?) — the namespace URI of the first node in
+      // document order (here: the first of the argument's node-set, or the
+      // context node if no argument). "" for a null-namespace node or a
+      // non-element/attribute node.
+      let items =
+        match args with
+        | [] -> [env.env_item]
+        | a :: _ -> (match eval_expr (fuel - 1) env a with XV_Nodes its -> its | _ -> [])
+      in
+      (match items with
+       | [] -> XV_Str ""
+       | it :: _ -> XV_Str (item_namespace_uri it))
     else if name = "current" then
       // XSLT current(): the node the XSLT template is processing. This
       // engine threads it as env_item at each XPath call-out, so at the
