@@ -63,6 +63,7 @@ COMMON_MODULES=(
   Regex_Syntax
   Regex_Derivative
   Regex_Exec
+  Regex_XSDPattern
   RDF_Format
   RDF_Vocabulary
   RDF_Term

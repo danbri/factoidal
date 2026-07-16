@@ -275,3 +275,227 @@ let intersection_empty (p q:regex) : bool = is_empty (R_And p q)
 // Does the language of `p` contain that of `q`?  q \ p is empty iff
 // L(q) subseteq L(p).  (q AND NOT p) empty.
 let subsumes (p q:regex) : bool = is_empty (R_And q (R_Not p))
+
+// ----------------------------------------------------------------------------
+// PHASE-2 EQUIVALENCE PROOFS: the ACI-normalized fast path is language-equal
+// to the proven Regex.Derivative core.
+// ----------------------------------------------------------------------------
+//
+// Phase 1 shipped `matches_norm` / `is_empty` as SOUND-BY-CONSTRUCTION: they
+// re-normalize derivatives with the Exec ACI flatten (`ealt`/`eand`) and
+// `smart_cat`, whose language-equality to the plain derivative was not yet
+// machine-checked. This section discharges that obligation for the MATCHING
+// path: `matches_norm r w <==> mem r w`, with no admit, no --lax, no assume
+// val — so `matches_norm` is now as trusted as `Regex.Derivative.matches`.
+//
+// Structure (mirrors the proven `deriv_correct` in Regex.Derivative):
+//   1. `ealt`/`eand` preserve language      (ACI flatten + sorted dedup)
+//   2. generic split-shift lemmas relate `cat_try`/`star_try` on (c::w) to a
+//      derivative on w, for ANY derivative function meeting the shift spec
+//   3. `nderiv_correct : mem (nderiv c r) w <==> mem r (c::w)`  (full AST)
+//   4. `matches_norm_correct`, and equality to the proven reference
+//
+// SCOPE NOTE — `is_empty`/`intersection_empty`/`subsumes` still carry residual
+// proof debt: their per-step transition (`nderiv`) is now proven
+// language-correct (nderiv_correct below), but full machine-checked emptiness
+// SOUNDNESS additionally needs a derivative-CLASS-COVERAGE lemma (that
+// `class_reps` and the BFS closure enumerate every reachable derivative up to
+// language-equality — the Owens-Reppy-Turon finiteness argument). That
+// coverage lemma is NOT proven here; `is_empty` remains sound-by-construction +
+// test-cross-checked, its precise fuel/closure guarantee stated at its
+// definition. Closing it is the remaining #304 phase-2 item.
+
+// ---- 1a. Alt flatten preserves the union language ----
+
+// Membership against a flattened Alt leaf list = OR over the leaves.
+let rec mem_alt_list (xs:list regex) (w:list nat) : Tot bool (decreases xs) =
+  match xs with
+  | [] -> false
+  | x :: rest -> mem x w || mem_alt_list rest w
+
+// Sorted insertion preserves the OR (dedup is language-safe: regex_cmp = 0
+// means structural equality, Regex.Syntax.regex_cmp_eq).
+let rec insert_regex_ok (x:regex) (xs:list regex) (w:list nat)
+  : Lemma (ensures (mem_alt_list (insert_regex x xs) w <==> (mem x w || mem_alt_list xs w)))
+          (decreases xs) =
+  match xs with
+  | [] -> ()
+  | y :: ys ->
+    let c = regex_cmp x y in
+    if c = 0 then regex_cmp_eq x y
+    else if c < 0 then ()
+    else insert_regex_ok x ys w
+
+let rec alt_flatten_ok (r:regex) (acc:list regex) (w:list nat)
+  : Lemma (ensures (mem_alt_list (alt_flatten r acc) w <==> (mem r w || mem_alt_list acc w)))
+          (decreases r) =
+  match r with
+  | R_Empty -> ()
+  | R_Alt a b -> alt_flatten_ok b acc w; alt_flatten_ok a (alt_flatten b acc) w
+  | _ -> insert_regex_ok r acc w
+
+let rec rebuild_alt_ok (xs:list regex) (w:list nat)
+  : Lemma (ensures (mem (rebuild_alt xs) w <==> mem_alt_list xs w)) (decreases xs) =
+  match xs with
+  | [] -> ()
+  | [_] -> ()
+  | _ :: rest -> rebuild_alt_ok rest w
+
+// If a universal leaf is present, everything matches (r_universal accepts all).
+let rec has_universal_ok (xs:list regex) (w:list nat)
+  : Lemma (requires has_universal xs) (ensures mem_alt_list xs w) (decreases xs) =
+  match xs with
+  | [] -> ()
+  | y :: ys -> if y = r_universal then () else has_universal_ok ys w
+
+let ealt_ok (a b:regex) (w:list nat)
+  : Lemma (ensures (mem (ealt a b) w <==> (mem a w || mem b w))) =
+  let leaves = alt_flatten a (alt_flatten b []) in
+  alt_flatten_ok b [] w;
+  alt_flatten_ok a (alt_flatten b []) w;
+  if has_universal leaves then has_universal_ok leaves w
+  else rebuild_alt_ok leaves w
+
+// ---- 1b. And flatten preserves the intersection language ----
+
+let rec mem_and_list (xs:list regex) (w:list nat) : Tot bool (decreases xs) =
+  match xs with
+  | [] -> true
+  | x :: rest -> mem x w && mem_and_list rest w
+
+let rec insert_regex_and_ok (x:regex) (xs:list regex) (w:list nat)
+  : Lemma (ensures (mem_and_list (insert_regex x xs) w <==> (mem x w && mem_and_list xs w)))
+          (decreases xs) =
+  match xs with
+  | [] -> ()
+  | y :: ys ->
+    let c = regex_cmp x y in
+    if c = 0 then regex_cmp_eq x y
+    else if c < 0 then ()
+    else insert_regex_and_ok x ys w
+
+let rec and_flatten_ok (r:regex) (acc:list regex) (w:list nat)
+  : Lemma (ensures (mem_and_list (and_flatten r acc) w <==> (mem r w && mem_and_list acc w)))
+          (decreases r) =
+  match r with
+  | R_And a b -> and_flatten_ok b acc w; and_flatten_ok a (and_flatten b acc) w
+  | _ -> if r = r_universal then () else insert_regex_and_ok r acc w
+
+let rec rebuild_and_ok (xs:list regex) (w:list nat)
+  : Lemma (ensures (mem (rebuild_and xs) w <==> mem_and_list xs w)) (decreases xs) =
+  match xs with
+  | [] -> ()
+  | [_] -> ()
+  | _ :: rest -> rebuild_and_ok rest w
+
+let rec has_empty_ok (xs:list regex) (w:list nat)
+  : Lemma (requires has_empty xs) (ensures mem_and_list xs w == false) (decreases xs) =
+  match xs with
+  | [] -> ()
+  | y :: ys -> if R_Empty? y then () else has_empty_ok ys w
+
+let eand_ok (a b:regex) (w:list nat)
+  : Lemma (ensures (mem (eand a b) w <==> (mem a w && mem b w))) =
+  let leaves = and_flatten a (and_flatten b []) in
+  and_flatten_ok b [] w;
+  and_flatten_ok a (and_flatten b []) w;
+  if has_empty leaves then has_empty_ok leaves w
+  else rebuild_and_ok leaves w
+
+// ---- 2. Generic split-shift lemmas (any derivative meeting the spec) ----
+//
+// These are the Regex.Derivative `cat_shift`/`star_shift`, but abstracted over
+// the derivative regex `da` (given `mem da w' <==> mem a (c::w')`) so they work
+// for `nderiv` as well as `deriv`. Proof: induction on the split index k,
+// exactly as the proven originals.
+
+let rec cat_shift_gen (a b da:regex) (c:nat) (w:list nat) (k:nat)
+  : Lemma (requires (forall (w':list nat). mem da w' <==> mem a (c :: w')))
+          (ensures (cat_try a b (c :: w) (k + 1) <==>
+                    ((mem a [] && mem b (c :: w)) \/ cat_try da b w k)))
+          (decreases k) =
+  D.take_cons c w k;
+  D.drop_cons c w k;
+  if k = 0 then (D.take_zero (c :: w); D.drop_zero (c :: w); D.take_zero w; D.drop_zero w)
+  else cat_shift_gen a b da c w (k - 1)
+
+let rec star_shift_gen (a da:regex) (c:nat) (w:list nat) (k:nat)
+  : Lemma (requires (forall (w':list nat). mem da w' <==> mem a (c :: w')))
+          (ensures (star_try a (c :: w) (k + 1) <==> cat_try da (R_Star a) w k))
+          (decreases k) =
+  D.take_cons c w k;
+  D.drop_cons c w k;
+  if k = 0 then (D.take_zero w; D.drop_zero w)
+  else star_shift_gen a da c w (k - 1)
+
+// Per-word normalized-derivative correctness for Cat and Star, given the IHs.
+
+let nderiv_cat_w (a b:regex) (c:nat) (w:list nat)
+  : Lemma (requires (forall (w':list nat). mem (nderiv c a) w' <==> mem a (c :: w')) /\
+                    (forall (w':list nat). mem (nderiv c b) w' <==> mem b (c :: w')))
+          (ensures (mem (nderiv c (R_Cat a b)) w <==> mem (R_Cat a b) (c :: w))) =
+  nullable_correct a;
+  cat_shift_gen a b (nderiv c a) c w (L.length w);
+  smart_cat_ok (nderiv c a) b w;
+  if nullable a then ealt_ok (smart_cat (nderiv c a) b) (nderiv c b) w
+  else ()
+
+let nderiv_star_w (a:regex) (c:nat) (w:list nat)
+  : Lemma (requires (forall (w':list nat). mem (nderiv c a) w' <==> mem a (c :: w')))
+          (ensures (mem (nderiv c (R_Star a)) w <==> mem (R_Star a) (c :: w))) =
+  star_shift_gen a (nderiv c a) c w (L.length w);
+  smart_cat_ok (nderiv c a) (R_Star a) w
+
+// ---- 3. Normalized-derivative correctness for the FULL AST ----
+
+let rec nderiv_correct (c:nat) (r:regex)
+  : Lemma (ensures (forall (w:list nat). mem (nderiv c r) w <==> mem r (c :: w)))
+          (decreases r) =
+  match r with
+  | R_Empty -> ()
+  | R_Eps -> ()
+  | R_Ranges _ -> ()
+  | R_Alt a b ->
+    nderiv_correct c a; nderiv_correct c b;
+    introduce forall (w:list nat). mem (nderiv c (R_Alt a b)) w <==> mem (R_Alt a b) (c :: w)
+    with ealt_ok (nderiv c a) (nderiv c b) w
+  | R_And a b ->
+    nderiv_correct c a; nderiv_correct c b;
+    introduce forall (w:list nat). mem (nderiv c (R_And a b)) w <==> mem (R_And a b) (c :: w)
+    with eand_ok (nderiv c a) (nderiv c b) w
+  | R_Not a ->
+    nderiv_correct c a;
+    introduce forall (w:list nat). mem (nderiv c (R_Not a)) w <==> mem (R_Not a) (c :: w)
+    with smart_not_ok (nderiv c a) w
+  | R_Cat a b ->
+    nderiv_correct c a; nderiv_correct c b;
+    introduce forall (w:list nat). mem (nderiv c (R_Cat a b)) w <==> mem (R_Cat a b) (c :: w)
+    with nderiv_cat_w a b c w
+  | R_Star a ->
+    nderiv_correct c a;
+    introduce forall (w:list nat). mem (nderiv c (R_Star a)) w <==> mem (R_Star a) (c :: w)
+    with nderiv_star_w a c w
+
+// ---- 4. matches_norm correctness ----
+
+let rec run_word_norm_correct (r:regex) (w:list nat)
+  : Lemma (ensures (mem (run_word_norm r w) [] <==> mem r w)) (decreases w) =
+  match w with
+  | [] -> ()
+  | c :: rest ->
+    run_word_norm_correct (nderiv c r) rest;
+    nderiv_correct c r
+
+// The Phase-2 theorem: the ACI-normalized fast path denotes exactly the
+// reference language `mem`. No admit, no assume val.
+let matches_norm_correct (r:regex) (w:list nat)
+  : Lemma (ensures (matches_norm r w <==> mem r w)) =
+  nullable_correct (run_word_norm r w);
+  run_word_norm_correct r w
+
+// Corollary: the fast path agrees with the machine-checked reference
+// Regex.Derivative.matches (matches_correct) on every input.
+let matches_norm_eq_proven (r:regex) (w:list nat)
+  : Lemma (ensures (matches_norm r w <==> D.matches r w)) =
+  matches_norm_correct r w;
+  D.matches_correct r w

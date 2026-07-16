@@ -281,34 +281,56 @@ transition table per class) is the natural next step; `matches_norm` already
 recomputes the same deterministic transition, so adding a cache is
 transparent.
 
-**Verified vs. Phase-2 proof obligations.** `matches_norm`/`is_empty` live in
-the pragmatics tier because they rest on the smart-constructor language
-lemmas for the *normalized* derivative — `smart_cat_ok`, `smart_star_ok`, and
-an ACI-flatten language lemma — which are NOT yet proven. So today:
+**Verified vs. Phase-2 proof obligations — `matches_norm` now CLOSED
+(2026-07-16, phase 2).** The fast-path matching equivalence is machine-checked:
 
-- `Regex.Derivative.matches` is machine-checked correct (`matches_correct`),
-  but the plain derivative is exponential on adversarial nullable-heavy
-  patterns (no normalization).
-- `Regex.Exec.matches_norm`/`is_empty` are linear / state-finite in practice
-  but their language-equality to the proven path is
-  **sound-by-construction, not machine-checked**. The unit test cross-checks
-  the two on small inputs (`proven==norm`), and `is_empty`'s precise
-  guarantee (conservative under fuel; `true` only after the closure drains)
-  is documented at its definition. Closing `smart_cat_ok`/`smart_star_ok` +
-  a class-coverage lemma to make `matches_norm`/`is_empty` fully verified is
-  Phase-2 work.
+- `Regex.Derivative.matches` is correct (`matches_correct`), but the plain
+  derivative is exponential on adversarial nullable-heavy patterns (no
+  normalization).
+- `Regex.Exec.matches_norm` is now **proven language-equal to the reference**:
+  `matches_norm_correct : matches_norm r w <==> mem r w` and the corollary
+  `matches_norm_eq_proven : matches_norm r w <==> Regex.Derivative.matches r w`,
+  with no admit / no `--lax` / no `assume val`. The proof rests on the
+  smart-constructor language lemmas now discharged in `Regex.Syntax`
+  (`smart_cat_ok`; `smart_star_ok` for non-nested-star arguments) and
+  `Regex.Exec` (`ealt_ok`/`eand_ok` — the ACI-flatten + sorted-dedup language
+  lemmas, using `regex_cmp_eq` injectivity), composed through
+  `nderiv_correct : mem (nderiv c r) w <==> mem r (c::w)` for the FULL AST.
+  So the ACI-normalized fast path is now as trusted as the core.
+- **Remaining debt:** two items, both off the matching path. (1) `smart_star`
+  star-IDEMPOTENCE (`R_Star (R_Star x)` collapse) is deferred — its flatten
+  direction needs a star-concatenation-closure induction; cost is NIL because
+  `nderiv` normalizes stars with `smart_cat`, never `smart_star`, so
+  `matches_norm`/`is_empty` never invoke it. (2) `is_empty` (hence
+  `intersection_empty`/`subsumes`) has its per-step transition proven
+  (`nderiv_correct`) but full emptiness SOUNDNESS still needs a
+  derivative-CLASS-COVERAGE lemma (that `class_reps` + the BFS closure
+  enumerate every reachable derivative up to language-equality — the
+  Owens-Reppy-Turon finiteness argument); it remains sound-by-construction +
+  test-cross-checked, its precise fuel/closure guarantee stated at its
+  definition. Closing the class-coverage lemma is the remaining phase-2 item.
 
 This matches iron rule #11's standing qualifier: parser and algebra spec
-verified in F\*; the performance layer carries stated, tracked proof debt.
+verified in F\*; the residual `is_empty` finiteness layer carries stated,
+tracked proof debt.
 
-**Phase 2 — XSD-flavor parser.** Parse XML Schema Part 2 Appendix F regex
-syntax (+ XPath `fn:matches` `i`/`s`/`m`/`x` flags and anchors) to the
-`Regex.Syntax` AST, in F\* (iron rule #4). No backreferences ever (out of the
-regular fragment; no target spec needs them). Measure before building Unicode
-general-category tables — build only the `\d`/`\w`/`\s`/`\p{...}` escapes the
-fixtures actually use.
-*Acceptance:* the escapes exercised by the ShEx/SHACL/RIF pattern fixtures
-and the CSVW duration `format` of test194 parse and match.
+**Phase 2 — XSD-flavor parser — LANDED (2026-07-16).**
+`Regex.XSDPattern.parse_xsd_pattern : string -> option regex` parses XML
+Schema Part 2 Appendix F regex syntax (+ the XPath `fn:matches` `^`/`$` anchors
+the corpora use) to the `Regex.Syntax` AST, total F\* (fuel-terminated
+recursive descent over codepoints), no backreferences. Scope was MEASURED from
+the fixtures the engine will consume (grep, 2026-07-16): OWL `a(b|c)`
+(all.rdf:3051) + its `ab|ac` enumeration; CSVW test194 `^.$`; the SHACL/ShEx
+`sh:pattern` corpora (ranges `[2-8]`, `\d{n,m}`, `?`/`*`/`+`, groups,
+alternation, escaped metachars, `\uHHHH`/`\UHHHHHHHH`); XSD.Datatypes/Facets
+carry no built-in pattern constants. Implemented exactly that union;
+`\d \D \s \S \w \W` are built (`\w`=[A-Za-z0-9_] ECMAScript form, category
+tables deferred, unmeasured); negated classes `[^...]`, lookahead/flag groups,
+`\p{...}`, and backreferences cleanly return `None`. *Acceptance met:* every
+measured fixture pattern parses and matches; the OWL fixture runs end-to-end
+(parse both patterns, `is_empty (And pat (Not enum))` = true) in
+`tests/unit/regex_engine_unit.ml` (114 pass, 0 fail). No consumer is wired yet
+(that is phase 3), so all spec suites stay byte-identical.
 
 **Phase 3 — consumer integration**, each behind an existing seam with a
 suite-flip gate:
