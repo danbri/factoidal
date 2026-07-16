@@ -308,6 +308,31 @@ let parse_number_lit (input : Prims.string) (pos : Prims.nat) :
        Parser_Combinators.ptake_while_scan is_digit_char input pos
          ((len - pos) + Prims.int_one) in
      let int_val = digits_to_nat input pos int_end Prims.int_zero in
+     let apply_exp mval mscale mend =
+       if
+         (mend < len) &&
+           (let c = Parser_FastString.fs_byte_index input mend in
+            (c = 101) || (c = 69))
+       then
+         let p1 = mend + Prims.int_one in
+         let has_sign =
+           (p1 < len) &&
+             (let c = Parser_FastString.fs_byte_index input p1 in
+              (c = 43) || (c = 45)) in
+         let neg =
+           has_sign && ((Parser_FastString.fs_byte_index input p1) = 45) in
+         let p2 = if has_sign then p1 + Prims.int_one else p1 in
+         let exp_end =
+           Parser_Combinators.ptake_while_scan is_digit_char input p2
+             ((len - p2) + Prims.int_one) in
+         (if exp_end > p2
+          then
+            let exp = digits_to_nat input p2 exp_end Prims.int_zero in
+            (if neg
+             then (mval, (mscale + exp), exp_end)
+             else ((mval * (pow10_nat exp)), mscale, exp_end))
+          else (mval, mscale, mend))
+       else (mval, mscale, mend) in
      if
        (int_end < len) &&
          ((Parser_FastString.fs_byte_index input int_end) = 46)
@@ -318,16 +343,21 @@ let parse_number_lit (input : Prims.string) (pos : Prims.nat) :
            ((len - frac_start) + Prims.int_one) in
        let scale = frac_end - frac_start in
        (if scale = Prims.int_zero
-        then FStar_Pervasives_Native.Some (int_val, Prims.int_zero, frac_end)
+        then
+          FStar_Pervasives_Native.Some
+            (apply_exp int_val Prims.int_zero frac_end)
         else
           (let frac_val =
              digits_to_nat input frac_start frac_end Prims.int_zero in
            FStar_Pervasives_Native.Some
-             (((int_val * (pow10_nat scale)) + frac_val), scale, frac_end)))
+             (apply_exp ((int_val * (pow10_nat scale)) + frac_val) scale
+                frac_end)))
      else
        if int_end = pos
        then FStar_Pervasives_Native.None
-       else FStar_Pervasives_Native.Some (int_val, Prims.int_zero, int_end))
+       else
+         FStar_Pervasives_Native.Some
+           (apply_exp int_val Prims.int_zero int_end))
 let parse_string_lit (input : Prims.string) (pos : Prims.nat) :
   (Prims.string * Prims.nat) FStar_Pervasives_Native.option=
   match peek_char input pos with
