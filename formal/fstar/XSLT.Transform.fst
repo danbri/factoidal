@@ -40,13 +40,22 @@ open XPath.Eval
 // result tree (stripped of the XSLT namespace and of the stylesheet's
 // exclude-result-prefixes); xsl:copy and xsl:copy-of copy an element's
 // in-scope namespace nodes (own + ancestor-inherited) onto the copied
-// element. The serializer threads output scope and suppresses redundant
-// declarations, and xsl:-namespaced attributes on LREs are not written.
+// element. xsl:copy-of copy-namespaces="no" (XSLT 2.0) strips those
+// namespace nodes from the copied subtree. xsl:element honours a
+// namespace= AVT (and an unprefixed name with no namespace= takes the
+// stylesheet's default namespace, null if none), attaching the right
+// xmlns / xmlns:pfx declaration. The serializer threads output scope,
+// suppresses redundant declarations, emits xmlns="" resets when a
+// null-namespace element sits inside a default-namespaced context, and
+// does NOT write xsl:-namespaced attributes on LREs. namespace-uri()
+// resolves a source node's expanded-name namespace.
 //
 // Match patterns: a general right-to-left location-path matcher over
-// name/"*" steps with "/" (child) and "//" (descendant) separators,
-// optional leading "/" (root-anchored) or "//" (any-descendant), and
-// "child::" axis prefixes; plus "@name"/"@*"/node-test alternatives.
+// name/"*"/"pfx:*" steps with "/" (child) and "//" (descendant)
+// separators, optional leading "/" (root-anchored) or "//" (any-
+// descendant), and "child::" axis prefixes; plus "@name"/"@*"/"@pfx:*"/
+// node-test alternatives. Prefixed name and pfx:* tests are namespace-
+// URI aware (resolved via the stylesheet's namespace context).
 //
 // Node-set order: xsl:for-each and xsl:apply-templates process the
 // selected node-set in DOCUMENT ORDER with duplicates removed (XSLT 1.0
@@ -65,9 +74,11 @@ open XPath.Eval
 //   document(), xsl:import/include, xsl:apply-imports/next-match,
 //   format-number, xsl:sort case-order / lang collations, the
 //   `namespace::` axis and namespace-node counting (XPath.Eval models no
-//   namespace-node kind), namespace-uri()/prefix-aware match patterns,
-//   xsl:element/@namespace with default-namespace reset, xsl:namespace-
-//   alias, copy-namespaces="no" (XSLT 2.0), disable-output-escaping,
+//   namespace-node kind, so `namespace::node()` selects nothing -- the
+//   only namespace machinery still missing after the namespace-node
+//   work: namespace-uri(), pfx:* / @pfx:* patterns, xsl:element/@namespace
+//   with default-namespace reset, and copy-namespaces="no" now land),
+//   xsl:namespace-alias, disable-output-escaping,
 //   document-level comments/PIs around the root element (Parser.XML
 //   models the source as the root element, so a sibling comment/PI of
 //   the root is not in the tree),
@@ -393,6 +404,28 @@ let copy_of_item (it:xctx_item) : rnode =
     R_Node (XElement t (List.Tot.append inherited attrs) kids)
   | _ -> item_to_rnode it
 
+// Recursively remove every namespace declaration (xmlns / xmlns:pfx)
+// from an element subtree. Realises xsl:copy-of's copy-namespaces="no"
+// (XSLT 2.0 §11.9.2, copy-0601): the copied elements keep their names
+// and content but shed all namespace nodes.
+let rec strip_ns_node (n:xml_node) : Tot xml_node (decreases n) =
+  match n with
+  | XElement tag attrs kids ->
+    let attrs' = List.Tot.filter (fun (a:xml_attribute) -> not (is_ns_decl a)) attrs in
+    XElement tag attrs' (strip_ns_nodes kids)
+  | other -> other
+and strip_ns_nodes (ns:list xml_node) : Tot (list xml_node) (decreases ns) =
+  match ns with
+  | [] -> []
+  | hd :: tl -> strip_ns_node hd :: strip_ns_nodes tl
+
+let rnode_strip_ns (r:rnode) : rnode =
+  match r with
+  | R_Node n -> R_Node (strip_ns_node n)
+  | _ -> r
+
+let copy_of_item_no_ns (it:xctx_item) : rnode = rnode_strip_ns (copy_of_item it)
+
 // Detect the prefix bound to the XSLT namespace on the stylesheet
 // element's own xmlns:* declarations; default "xsl".
 let rec find_xsl_prefix (attrs:list xml_attribute) : Tot (option string) (decreases attrs) =
@@ -594,7 +627,16 @@ let pstep_ok (nsctx:list (string & string)) (nm:string) (n:xml_node) (anc:list x
   let nm' = trim_str nm in
   if nm' = "*" then true
   else match element_tag n with
-       | Some tag -> name_test_matches_elem nsctx nm' (element_attrs n) anc tag
+       | Some tag ->
+         // `pfx:*` (namespace wildcard, XPath 1.0 §2.3 / XSLT match
+         // pattern) matches any element whose expanded-name namespace is
+         // the URI bound to `pfx` in the stylesheet context, regardless of
+         // the source prefix. Distinguished from a plain `pfx:local`
+         // QName test by a "*" local part (match-045: `xhtml:*`).
+         let tpfx = prefix_of nm' in
+         if local_name_of nm' = "*" && tpfx <> "" then
+           prefix_test_matches_elem nsctx tpfx (element_attrs n) anc tag
+         else name_test_matches_elem nsctx nm' (element_attrs n) anc tag
        | None -> false
 
 // General location-path pattern matcher for element nodes: a chain of
@@ -713,7 +755,20 @@ let alt_matches_core (nsctx:list (string & string)) (alt:string) (nd:dnode) : bo
      | _ -> false)
   else if starts_with "@" a then
     (match nd with
-     | D_Item (CI_Attr _ _ _ att) -> att.attr_name = str_of_chars (drop_prefix_chars (chars_of a) 1)
+     | D_Item (CI_Attr _ anc owner att) ->
+       let nm = str_of_chars (drop_prefix_chars (chars_of a) 1) in
+       let tpfx = prefix_of nm in
+       // `@pfx:*` namespace-wildcard attribute pattern (match-045: the
+       // `@xhtml:*` template). Matches any attribute whose namespace URI
+       // is the one `pfx` names in the stylesheet context. Plain `@name`
+       // keeps the literal-name test (unchanged behaviour).
+       if local_name_of nm = "*" && tpfx <> "" then
+         (match lookup_nsctx nsctx tpfx with
+          | None -> string_starts_with att.attr_name (strcat tpfx ":")
+          | Some turi ->
+            let apfx = prefix_of att.attr_name in
+            apfx <> "" && ns_uri_eq (resolve_ns_uri apfx (element_attrs owner) anc) (Some turi))
+       else att.attr_name = nm
      | _ -> false)
   // Explicit `attribute::` axis prefix in a match pattern -- the same
   // node test as the `@` abbreviation, just spelled out. Needed for
@@ -849,7 +904,13 @@ let alt_priority (alt:string) : int =
      || a = "processing-instruction()" || a = "attribute::*"
   then -5
   else if contains_char '/' a || contains_char '[' a then 5
-  else 0
+  else
+    // `pfx:*` / `@pfx:*` namespace-wildcard test: XSLT 1.0 §5.5 default
+    // priority -0.25 (x10 = -2 here), between a QName test (0) and a bare
+    // node test (-0.5). A prefixed name with a "*" local part.
+    let core = if starts_with "@" a then str_of_chars (drop_prefix_chars (chars_of a) 1) else a in
+    if local_name_of core = "*" && prefix_of core <> "" then -2
+    else 0
 
 let rec max_alt_priority (alts:list string) (cur:int) : Tot int (decreases alts) =
   match alts with
@@ -939,7 +1000,16 @@ let rec emit_ns_decls (scope:list (string & string)) (decls:list xml_attribute)
     (match ns_decl_prefix a.attr_name with
      | None -> emit_ns_decls scope rest
      | Some pfx ->
-       let redundant = (lookup_ns scope pfx = Some a.attr_value) in
+       let cur = lookup_ns scope pfx in
+       // A declaration is redundant if the same prefix is already bound to
+       // the same URI in scope. Additionally, an unbind (xmlns="" /
+       // xmlns:pfx="") is redundant when the prefix is not bound at all in
+       // scope -- there is nothing to reset (namespace-4501: a null-
+       // namespace xsl:element at a context with no default namespace must
+       // NOT emit a spurious xmlns="").
+       let redundant =
+         (cur = Some a.attr_value) ||
+         (a.attr_value = "" && cur = None) in
        let scope' = if redundant then scope else (pfx, a.attr_value) :: scope in
        let (s_rest, scope'') = emit_ns_decls scope' rest in
        let here = if redundant then "" else serialize_attr a in
@@ -1347,18 +1417,46 @@ and instantiate_one (fuel:nat) (st:xstyle) (ctx:dnode) (pos size:nat)
            | None -> [])
         else if ln = "copy-of" then
           let sel = attr_or "select" "." attrs in
+          // copy-namespaces="no" (XSLT 2.0) strips namespace nodes from the
+          // copied elements; the default "yes" keeps them (copy-0601).
+          let no_ns = (attr_or "copy-namespaces" "yes" attrs = "no") in
+          let mk = if no_ns then copy_of_item_no_ns else copy_of_item in
           (match rtf_var_name sel with
            | Some nm ->
              (match rtf_find rtf nm with
-              | Some frag -> frag
-              | None -> List.Tot.map copy_of_item (select_nodes ctx pos size vars st.xs_nsctx sel))
-           | None -> List.Tot.map copy_of_item (select_nodes ctx pos size vars st.xs_nsctx sel))
+              | Some frag -> if no_ns then List.Tot.map rnode_strip_ns frag else frag
+              | None -> List.Tot.map mk (select_nodes ctx pos size vars st.xs_nsctx sel))
+           | None -> List.Tot.map mk (select_nodes ctx pos size vars st.xs_nsctx sel))
         else if ln = "copy" then
           instantiate_copy (fuel - 1) st ctx pos size vars rtf children
         else if ln = "element" then
           let nm = expand_avt (dnode_ci ctx) pos size vars st.xs_nsctx (attr_or "name" "" attrs) in
+          let epfx = name_prefix nm in
+          // xsl:element namespace (XSLT 1.0 §7.1.2, namespace-4501). With
+          // an explicit namespace= AVT the element goes into that URI; with
+          // none, an unprefixed name takes the stylesheet's default
+          // namespace (null if none), a prefixed name its bound URI. The
+          // resulting xmlns/xmlns:pfx declaration is attached to the built
+          // element; the serializer dedups it (and suppresses a redundant
+          // xmlns="" when the output default is already null).
+          let nsdecls : list xml_attribute =
+            (match attr_opt "namespace" attrs with
+             | Some nsraw ->
+               let u = expand_avt (dnode_ci ctx) pos size vars st.xs_nsctx nsraw in
+               if epfx = "" then [ { attr_name = "xmlns"; attr_value = u } ]
+               else if u = "" then []
+               else [ { attr_name = strcat "xmlns:" epfx; attr_value = u } ]
+             | None ->
+               if epfx = "" then
+                 (match lookup_nsctx st.xs_nsctx "" with
+                  | Some u -> [ { attr_name = "xmlns"; attr_value = u } ]
+                  | None -> [ { attr_name = "xmlns"; attr_value = "" } ])
+               else
+                 (match lookup_nsctx st.xs_nsctx epfx with
+                  | Some u -> [ { attr_name = strcat "xmlns:" epfx; attr_value = u } ]
+                  | None -> [])) in
           let body = instantiate_seq (fuel - 1) st ctx pos size vars rtf children in
-          [R_Node (build_element nm [] body)]
+          [R_Node (build_element nm nsdecls body)]
         else if ln = "attribute" then
           let nm = expand_avt (dnode_ci ctx) pos size vars st.xs_nsctx (attr_or "name" "" attrs) in
           let body = instantiate_seq (fuel - 1) st ctx pos size vars rtf children in
