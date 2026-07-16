@@ -50,6 +50,15 @@ open FStar.List.Tot
 module S = FStar.String
 module C = FStar.Char
 
+// Verified regex engine (issue #304): a duration `format` facet is a
+// REGULAR EXPRESSION per tabular-metadata, not a UAX-35 field pattern.
+// `Regex.XSDPattern.parse_xsd_pattern` reads the XSD-flavor pattern to
+// the `Regex.Syntax` AST and `Regex.Exec.matches_norm` tests the whole
+// cell against it (matches_norm is proven language-equal to the
+// `Regex.Derivative` reference — matches_norm_correct).
+module RXP = Regex.XSDPattern
+module RXE = Regex.Exec
+
 // ----------------------------------------------------------------
 // Character helpers (all parsing is over `list C.char`).
 // ----------------------------------------------------------------
@@ -734,7 +743,23 @@ let csvw_format_convert
   end
   else if is_duration_base base_name then begin
     match format_str with
-    | Some _ -> FO_NoFormat   // duration formats are regexes — not implemented
+    | Some fmt ->
+      // A duration `format` facet is a REGULAR EXPRESSION (tabular-
+      // metadata). Parse it with the verified XSD-flavor engine and test
+      // the WHOLE cell against it: XSD pattern facets are implicitly
+      // anchored to the entire lexical value, which is exactly
+      // matches_norm's whole-word semantics. A match keeps the value on
+      // its duration datatype (the caller re-checks the duration lexical
+      // space); a non-match drops it to a plain string (test194's `^.$`
+      // rejects the multi-char durations). An unparseable pattern (outside
+      // the engine's measured fragment) yields None and we FALL BACK to the
+      // pre-engine behaviour (FO_NoFormat) — conservative: a format we
+      // cannot read never rejects a value it might have accepted.
+      (match RXP.parse_xsd_pattern fmt with
+       | Some r ->
+         if RXE.matches_norm r (RXP.cps_of_string txt) then FO_Valid txt
+         else FO_Invalid
+       | None -> FO_NoFormat)
     | None ->
       if duration_lexical_valid base_name (chars_of txt) then FO_Valid txt
       else FO_Invalid

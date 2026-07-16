@@ -128,6 +128,15 @@ open OWL.Vocabulary
 open Tableau
 open XSD.Facets
 
+// Verified regex engine (issue #304). Used by the disjoint-data-property
+// pattern-collision clash (section 5c): parse an xsd:pattern facet to the
+// Regex.Syntax AST, then decide LANGUAGE INCLUSION L(pattern) ⊆ E over the
+// finite set E of a disjoint property's asserted string fillers via
+// Regex.Exec.subsumes (is_empty (pattern ∧ ¬enum)).
+module RXS = Regex.Syntax
+module RXE = Regex.Exec
+module RXP = Regex.XSDPattern
+
 (* -------------------------------------------------------------------
    1. Vocabulary constants not already exported by the opened modules.
    ------------------------------------------------------------------- *)
@@ -1370,6 +1379,139 @@ let datatype_cardinality_clash (subprop_pairs : list (wf_iri & wf_iri))
   any_card_valuespace_clash subprop_pairs range_pairs (collect_card_props ls_all) ls_all
 
 (* -------------------------------------------------------------------
+   5c. Disjoint-data-property pattern collision (issue #304 / #299).
+
+   The W3C DL InconsistencyTest "Inconsistent String Pattern with Disjoint
+   Dataproperties" (Birte Glimm):
+
+     DisjointDataProperties(:dp1 :dp2)
+     DataPropertyAssertion(:dp1 :a "ab")  DataPropertyAssertion(:dp1 :a "ac")
+     SubClassOf(:A DataSomeValuesFrom(:dp2
+                  DatatypeRestriction(xsd:string xsd:pattern "a(b|c)")))
+     ClassAssertion(:A :a)
+
+   Node :a carries the label CE_SomeValuesFrom(:dp2, DatatypeRestriction), so
+   :a is FORCED to have a :dp2-filler v with v in L("a(b|c)") = {ab, ac}. Both
+   "ab" and "ac" are asserted :dp1-fillers of :a. Model-theoretically (OWL 2
+   Direct Semantics), DisjointDataProperties(:dp1 :dp2) forces
+   EXT(:dp1) INTERSECT EXT(:dp2) = empty, so no value is both a :dp1 and a :dp2
+   filler of :a. When the pattern language is CONTAINED IN the set E of :dp1's
+   asserted string fillers of :a -- L(pattern) subset-of E -- every admissible
+   :dp2-witness v is already a :dp1-filler value, so the forced
+   (:a, v) in EXT(:dp2) collides with (:a, v) in EXT(:dp1): no model. CLASH.
+
+   The regex operation is LANGUAGE INCLUSION L(pattern) subset-of L(enum E),
+   decided by `RXE.subsumes (enum_regex E) pat` = is_empty (pat AND NOT enum).
+   We also require L(pattern) non-empty (`not (RXE.is_empty pat)`) so a witness
+   actually exists.
+
+   SOUNDNESS DIRECTION IS LOAD-BEARING. `RXE.is_empty` carries an OPEN
+   derivative-class-coverage finiteness lemma (#304 phase-2 debt): it may
+   wrongly report NON-empty (=> subsumes false => NO clash, conservative and
+   safe) but must never wrongly report EMPTY (=> a false clash). For the tiny
+   patterns this rule sees the fuel-bounded BFS closure drains completely, so
+   `is_empty` is exact here; the tcon suite (352 pass, 0 unexpected-
+   inconsistency) is the standing guard. The rule is otherwise tightly shaped
+   -- it fires ONLY on a DataSomeValuesFrom over an xsd:string
+   DatatypeRestriction bearing a PARSEABLE xsd:pattern, against a data property
+   PROVABLY disjoint from the some-values property that has a NON-EMPTY set of
+   asserted string fillers on this very node -- so it is inert on the
+   overwhelming majority of the corpus by construction.
+   ------------------------------------------------------------------- *)
+
+// The xsd:pattern facet value (a regex string) from a facet list, if any.
+// `facet_pattern` is the xsd:pattern IRI defined in Tableau (facet_pair_for
+// carries this facet through since issue #304).
+let rec facet_pattern_string (facets : list (wf_iri & rdf_term))
+  : Tot (option string) (decreases facets) =
+  match facets with
+  | [] -> None
+  | (firi, fval) :: tl ->
+    if firi = facet_pattern then
+      (match fval with T_Literal l -> Some l.lexical_form | _ -> facet_pattern_string tl)
+    else facet_pattern_string tl
+
+// A single literal string as an exact-match regex: its codepoints as
+// singleton ranges concatenated (R_Eps for the empty string).
+let rec exact_regex_cps (cps : list nat) : Tot RXS.regex (decreases cps) =
+  match cps with
+  | [] -> RXS.R_Eps
+  | c :: tl -> RXS.R_Cat (RXS.R_Ranges [(c, c)]) (exact_regex_cps tl)
+
+let exact_regex (s : string) : RXS.regex = exact_regex_cps (RXP.cps_of_string s)
+
+// The finite language E = { s1, ..., sn } as an alternation of exact-match
+// regexes (R_Empty is the empty language, the unit of R_Alt).
+let rec enum_regex (ss : list string) : Tot RXS.regex (decreases ss) =
+  match ss with
+  | [] -> RXS.R_Empty
+  | s :: tl -> RXS.R_Alt (exact_regex s) (enum_regex tl)
+
+// xsd:string lexical forms among a list of objects.
+let rec string_fillers (ts : list rdf_term) : Tot (list string) (decreases ts) =
+  match ts with
+  | [] -> []
+  | T_Literal l :: tl ->
+    if l.datatype = xsd_string then l.lexical_form :: string_fillers tl
+    else string_fillers tl
+  | _ :: tl -> string_fillers tl
+
+let rec iris_of_terms (ts : list rdf_term) : Tot (list wf_iri) (decreases ts) =
+  match ts with
+  | [] -> []
+  | T_IRI q :: tl -> q :: iris_of_terms tl
+  | _ :: tl -> iris_of_terms tl
+
+let rec iris_of_subjects (ss : list subject) : Tot (list wf_iri) (decreases ss) =
+  match ss with
+  | [] -> []
+  | S_IRI q :: tl -> q :: iris_of_subjects tl
+  | _ :: tl -> iris_of_subjects tl
+
+// Data properties PROVABLY disjoint from p2 in g (both triple directions of
+// owl:propertyDisjointWith; DisjointDataProperties over exactly two
+// properties maps to a single such triple, OWL 2 Mapping to RDF).
+let disjoint_props (g : rdf_graph) (p2 : wf_iri) : list wf_iri =
+  iris_of_terms (find_objects g (S_IRI p2) owl_propertyDisjointWith)
+  @ iris_of_subjects (find_subjects g owl_propertyDisjointWith (T_IRI p2))
+
+// Does the pattern's language sit entirely inside i's asserted string fillers
+// of SOME property disjoint from p2 (pattern already checked non-empty)?
+let rec pattern_covered_by_disjoint (g : rdf_graph) (i : subject)
+                                    (pat : RXS.regex) (p1s : list wf_iri)
+  : Tot bool (decreases p1s) =
+  match p1s with
+  | [] -> false
+  | p1 :: tl ->
+    let e = string_fillers (find_objects g i p1) in
+    (Cons? e && RXE.subsumes (enum_regex e) pat)
+    || pattern_covered_by_disjoint g i pat tl
+
+// Per-label check: a forced DataSomeValuesFrom over an xsd:string pattern
+// restriction whose language is covered by a disjoint property's fillers.
+let disjoint_dataprop_pattern_label (g : rdf_graph) (i : subject) (l : class_expr) : bool =
+  match l with
+  | CE_SomeValuesFrom p2 (CE_DataRestriction base facets) ->
+    if base = xsd_string then
+      (match facet_pattern_string facets with
+       | Some ps ->
+         (match RXP.parse_xsd_pattern ps with
+          | Some pat ->
+            not (RXE.is_empty pat)
+            && pattern_covered_by_disjoint g i pat (disjoint_props g p2)
+          | None -> false)   // unparseable pattern -> conservative (no clash)
+       | None -> false)
+    else false
+  | _ -> false
+
+let rec disjoint_dataprop_pattern_clash (g : rdf_graph) (i : subject) (ls : list class_expr)
+  : Tot bool (decreases ls) =
+  match ls with
+  | [] -> false
+  | l :: tl ->
+    disjoint_dataprop_pattern_label g i l || disjoint_dataprop_pattern_clash g i tl
+
+(* -------------------------------------------------------------------
    6. Clash detection.
    ------------------------------------------------------------------- *)
 
@@ -1905,6 +2047,7 @@ let rec clash_nodes (g : rdf_graph) (st : rstate) (ns : list rnode)
     clash_labels g st n.rn_id ls ls
     || datatype_range_clash st.rs_subprop ls
     || datatype_cardinality_clash st.rs_subprop st.rs_range ls
+    || disjoint_dataprop_pattern_clash g n.rn_id ls
     || clash_nodes g st tl
 
 let has_clash (g : rdf_graph) (st : rstate) : bool =

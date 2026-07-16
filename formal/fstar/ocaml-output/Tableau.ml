@@ -175,6 +175,8 @@ let facet_min_excl : RDF_Term.wf_iri=
   "http://www.w3.org/2001/XMLSchema#minExclusive"
 let facet_max_excl : RDF_Term.wf_iri=
   "http://www.w3.org/2001/XMLSchema#maxExclusive"
+let facet_pattern : RDF_Term.wf_iri=
+  "http://www.w3.org/2001/XMLSchema#pattern"
 let facet_pair_for (g : RDF_Graph.rdf_graph) (fnode : RDF_Term.subject) :
   (RDF_Term.wf_iri * RDF_Term.rdf_term) Prims.list=
   FStar_List_Tot_Base.op_At
@@ -189,9 +191,13 @@ let facet_pair_for (g : RDF_Graph.rdf_graph) (fnode : RDF_Term.subject) :
           (match find_first_object g fnode facet_min_excl with
            | FStar_Pervasives_Native.Some v -> [(facet_min_excl, v)]
            | FStar_Pervasives_Native.None -> [])
-          (match find_first_object g fnode facet_max_excl with
-           | FStar_Pervasives_Native.Some v -> [(facet_max_excl, v)]
-           | FStar_Pervasives_Native.None -> [])))
+          (FStar_List_Tot_Base.op_At
+             (match find_first_object g fnode facet_max_excl with
+              | FStar_Pervasives_Native.Some v -> [(facet_max_excl, v)]
+              | FStar_Pervasives_Native.None -> [])
+             (match find_first_object g fnode facet_pattern with
+              | FStar_Pervasives_Native.Some v -> [(facet_pattern, v)]
+              | FStar_Pervasives_Native.None -> []))))
 let rec parse_facet_pairs (g : RDF_Graph.rdf_graph)
   (heads : RDF_Term.rdf_term Prims.list) (fuel : Prims.nat) :
   (RDF_Term.wf_iri * RDF_Term.rdf_term) Prims.list=

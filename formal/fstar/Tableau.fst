@@ -245,11 +245,21 @@ let facet_max_excl : wf_iri =
   assert_norm (is_iri "http://www.w3.org/2001/XMLSchema#maxExclusive");
   "http://www.w3.org/2001/XMLSchema#maxExclusive"
 
+// xsd:pattern — a REGULAR-EXPRESSION facet (constrains the lexical space,
+// not a numeric interval). Carried through so the tableau's pattern-facet
+// clash (Tableau.Refute section 5c, issue #304) can read it; the numeric
+// interval machinery (XSD.Facets.facets_to_interval) ignores it as an
+// unrecognised facet IRI, so string restrictions add no false numeric bound.
+let facet_pattern : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2001/XMLSchema#pattern");
+  "http://www.w3.org/2001/XMLSchema#pattern"
+
 let facet_pair_for (g : rdf_graph) (fnode : subject) : list (wf_iri & rdf_term) =
   (match find_first_object g fnode facet_min_incl with Some v -> [(facet_min_incl, v)] | None -> []) @
   (match find_first_object g fnode facet_max_incl with Some v -> [(facet_max_incl, v)] | None -> []) @
   (match find_first_object g fnode facet_min_excl with Some v -> [(facet_min_excl, v)] | None -> []) @
-  (match find_first_object g fnode facet_max_excl with Some v -> [(facet_max_excl, v)] | None -> [])
+  (match find_first_object g fnode facet_max_excl with Some v -> [(facet_max_excl, v)] | None -> []) @
+  (match find_first_object g fnode facet_pattern with Some v -> [(facet_pattern, v)] | None -> [])
 
 let rec parse_facet_pairs (g : rdf_graph) (heads : list rdf_term) (fuel : nat)
   : Tot (list (wf_iri & rdf_term)) (decreases fuel) =
