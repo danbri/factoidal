@@ -1051,6 +1051,47 @@ let rec disjoint_dataprop_pattern_clash (g : RDF_Graph.rdf_graph)
   | l::tl ->
       (disjoint_dataprop_pattern_label g i l) ||
         (disjoint_dataprop_pattern_clash g i tl)
+let rec disjoint_has_int_filler (g : RDF_Graph.rdf_graph)
+  (i : RDF_Term.subject) (v : Prims.int) (p1s : RDF_Term.wf_iri Prims.list) :
+  Prims.bool=
+  match p1s with
+  | [] -> false
+  | p1::tl ->
+      (FStar_List_Tot_Base.existsb
+         (fun t ->
+            match XSD_Facets.term_int_opt t with
+            | FStar_Pervasives_Native.Some w -> w = v
+            | FStar_Pervasives_Native.None -> false)
+         (RDF_Graph_Executable.find_objects g i p1))
+        || (disjoint_has_int_filler g i v tl)
+let disjoint_dataprop_singleton_label (g : RDF_Graph.rdf_graph)
+  (i : RDF_Term.subject) (l : Tableau.class_expr) : Prims.bool=
+  match l with
+  | Tableau.CE_SomeValuesFrom (p2, Tableau.CE_DataRestriction (base, facets))
+      ->
+      if XSD_Facets.is_integer_family_datatype base
+      then
+        let iv =
+          XSD_Facets.interval_intersect
+            (XSD_Facets.facets_to_interval base facets
+               XSD_Facets.full_interval) (XSD_Facets.base_interval_for base) in
+        (match ((XSD_Facets.interval_count iv),
+                 (XSD_Facets.bound_lo_incl iv.XSD_Facets.iv_lo))
+         with
+         | (FStar_Pervasives_Native.Some n, FStar_Pervasives_Native.Some v)
+             ->
+             (n = Prims.int_one) &&
+               (disjoint_has_int_filler g i v (disjoint_props g p2))
+         | (uu___, uu___1) -> false)
+      else false
+  | uu___ -> false
+let rec disjoint_dataprop_singleton_clash (g : RDF_Graph.rdf_graph)
+  (i : RDF_Term.subject) (ls : Tableau.class_expr Prims.list) : Prims.bool=
+  match ls with
+  | [] -> false
+  | l::tl ->
+      (disjoint_dataprop_singleton_label g i l) ||
+        (disjoint_dataprop_singleton_clash g i tl)
 let exists_max_lt (k : Prims.nat) (p : RDF_Term.wf_iri)
   (ls : Tableau.class_expr Prims.list) : Prims.bool=
   FStar_List_Tot_Base.existsb
@@ -1374,10 +1415,11 @@ let rec clash_nodes (g : RDF_Graph.rdf_graph) (st : rstate)
         with
         | FStar_Pervasives_Native.Some uu___ -> labels_of st n.rn_id
         | FStar_Pervasives_Native.None -> n.rn_labels in
-      ((((clash_labels g st n.rn_id ls ls) ||
-           (datatype_range_clash st.rs_subprop ls))
-          || (datatype_cardinality_clash st.rs_subprop st.rs_range ls))
-         || (disjoint_dataprop_pattern_clash g n.rn_id ls))
+      (((((clash_labels g st n.rn_id ls ls) ||
+            (datatype_range_clash st.rs_subprop ls))
+           || (datatype_cardinality_clash st.rs_subprop st.rs_range ls))
+          || (disjoint_dataprop_pattern_clash g n.rn_id ls))
+         || (disjoint_dataprop_singleton_clash g n.rn_id ls))
         || (clash_nodes g st tl)
 let has_clash (g : RDF_Graph.rdf_graph) (st : rstate) : Prims.bool=
   clash_nodes g st st.rs_nodes
