@@ -40,6 +40,14 @@ let find_repo_root () =
 let suite_dir () =
   Filename.concat (find_repo_root ()) "third_party/testing/jsonschema/tests/draft7"
 
+(* Vendored draft-07 meta-schema, supplied to the F* validator as an external
+   document so remote $refs to http://json-schema.org/draft-07/schema resolve
+   (ref.json "remote ref" group; definitions.json "validate against
+   metaschema"). No live HTTP -- this reads the shipped file only. *)
+let metaschema_path () =
+  Filename.concat (find_repo_root ())
+    "third_party/testing/jsonschema/remotes/draft-07-schema.json"
+
 let read_file path =
   try
     let ic = open_in_bin path in
@@ -58,11 +66,21 @@ let opt_of_fs = function
 let field key obj = opt_of_fs (Parser_JSON.json_get_field key obj)
 let str_field key obj = opt_of_fs (Parser_JSON.json_get_string key obj)
 
+(* External documents handed to the validator: the vendored draft-07
+   meta-schema keyed by its canonical URI (fragment stripped). Loaded once. *)
+let externals : (string * Parser_JSON.json_val) list =
+  match read_file (metaschema_path ()) with
+  | None -> []
+  | Some raw ->
+    (match opt_of_fs (Parser_JSON.parse_json raw) with
+     | Some doc -> [("http://json-schema.org/draft-07/schema", doc)]
+     | None -> [])
+
 type outcome = Pass | Fail of string | Skip
 
 (* One test case within a group. *)
 let run_one schema data expected =
-  match JSONSchema_Validate.validate schema data with
+  match JSONSchema_Validate.validate_ext externals schema data with
   | JSONSchema_Validate.VUnsupported -> Skip
   | JSONSchema_Validate.VPass -> if expected then Pass else Fail "validator: valid, expected invalid"
   | JSONSchema_Validate.VFail -> if not expected then Pass else Fail "validator: invalid, expected valid"

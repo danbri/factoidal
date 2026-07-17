@@ -139,22 +139,31 @@
       "tests": 69
     }
   ],
-  "excluded_from_slice1": [
+  "score": "770 pass, 0 fail, 0 skip (of 770)",
+  "remotes": [
+    {
+      "path": "remotes/draft-07-schema.json",
+      "uri": "http://json-schema.org/draft-07/schema",
+      "provenance": "json-schema-org/json-schema-spec draft-07 branch schema.json (MIT)",
+      "used_by": "ref.json remote-ref group + definitions.json; supplied to the validator as an external document (no live HTTP)"
+    }
+  ],
+  "not_yet_vendored_as_own_file": [
     {
       "file": "pattern.json",
-      "reason": "needs a regex facility; not exposed inside the verified F* boundary"
+      "note": "pattern keyword IS supported (verified regex engine); embedded copies in propertyNames.json pass. Standalone file not yet copied in."
     },
     {
       "file": "patternProperties.json",
-      "reason": "regex"
+      "note": "patternProperties IS supported; embedded copies in additionalProperties.json / properties.json pass. Standalone file not yet copied in."
     },
     {
       "file": "format.json",
-      "reason": "regex/format; draft7 treats format as annotation, tested as optional assertion"
+      "note": "draft7 treats format as an annotation; the validator keeps it as a skip (VUnsupported). No vendored test asserts format."
     },
     {
       "file": "refRemote.json",
-      "reason": "remote $ref resolution across documents; slice-1 resolves only local #-pointers"
+      "note": "cross-document $ref IS supported via external documents; the remote-ref group in ref.json + definitions.json pass. Standalone file not yet copied in."
     }
   ]
 }

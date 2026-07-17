@@ -241,21 +241,294 @@ let rec resolve_pointer (doc : Parser_JSON.json_val)
                      FStar_Pervasives_Native.None)
             | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None)
        | uu___ -> FStar_Pervasives_Native.None)
-let ptr_tokens (r : Prims.string) :
-  Prims.string Prims.list FStar_Pervasives_Native.option=
-  match FStar_String.list_of_string r with
-  | 35::rest ->
-      let frag = FStar_String.string_of_list rest in
-      if frag = ""
-      then FStar_Pervasives_Native.Some []
+let hexv (c : FStar_String.char) : Prims.nat FStar_Pervasives_Native.option=
+  let n = code c in
+  if (n >= (Prims.of_int (48))) && (n <= (Prims.of_int (57)))
+  then FStar_Pervasives_Native.Some (n - (Prims.of_int (48)))
+  else
+    if (n >= (Prims.of_int (97))) && (n <= (Prims.of_int (102)))
+    then FStar_Pervasives_Native.Some (n - (Prims.of_int (87)))
+    else
+      if (n >= (Prims.of_int (65))) && (n <= (Prims.of_int (70)))
+      then FStar_Pervasives_Native.Some (n - (Prims.of_int (55)))
+      else FStar_Pervasives_Native.None
+let rec pct_decode (cs : FStar_String.char Prims.list) :
+  FStar_String.char Prims.list=
+  match cs with
+  | 37::h1::h2::r ->
+      (match ((hexv h1), (hexv h2)) with
+       | (FStar_Pervasives_Native.Some a, FStar_Pervasives_Native.Some b) ->
+           let v = (a * (Prims.of_int (16))) + b in
+           (FStar_Char.char_of_int v) :: (pct_decode r)
+       | (uu___, uu___1) -> 37 :: (pct_decode (h1 :: h2 :: r)))
+  | c::r -> c :: (pct_decode r)
+  | [] -> []
+let frag_tokens (f : Prims.string) : Prims.string Prims.list=
+  let decoded =
+    FStar_String.string_of_list (pct_decode (FStar_String.list_of_string f)) in
+  match FStar_String.split [47] decoded with
+  | uu___::toks -> FStar_List_Tot_Base.map unescape_token toks
+  | [] -> []
+let rec split_at_hash (cs : FStar_String.char Prims.list)
+  (acc : FStar_String.char Prims.list) :
+  (FStar_String.char Prims.list * FStar_String.char Prims.list
+    FStar_Pervasives_Native.option)=
+  match cs with
+  | [] -> ((FStar_List_Tot_Base.rev acc), FStar_Pervasives_Native.None)
+  | 35::r ->
+      ((FStar_List_Tot_Base.rev acc), (FStar_Pervasives_Native.Some r))
+  | c::r -> split_at_hash r (c :: acc)
+let split_fragment (s : Prims.string) :
+  (Prims.string * Prims.string FStar_Pervasives_Native.option)=
+  match split_at_hash (FStar_String.list_of_string s) [] with
+  | (before, FStar_Pervasives_Native.Some after) ->
+      ((FStar_String.string_of_list before),
+        (FStar_Pervasives_Native.Some (FStar_String.string_of_list after)))
+  | (before, FStar_Pervasives_Native.None) ->
+      ((FStar_String.string_of_list before), FStar_Pervasives_Native.None)
+let base_of (s : Prims.string) : Prims.string=
+  FStar_Pervasives_Native.fst (split_fragment s)
+let is_alpha (c : FStar_String.char) : Prims.bool=
+  let n = code c in
+  ((n >= (Prims.of_int (65))) && (n <= (Prims.of_int (90)))) ||
+    ((n >= (Prims.of_int (97))) && (n <= (Prims.of_int (122))))
+let rec scheme_colon (cs : FStar_String.char Prims.list) : Prims.bool=
+  match cs with
+  | [] -> false
+  | 58::uu___ -> true
+  | c::r ->
+      if ((c = 47) || (c = 63)) || (c = 35) then false else scheme_colon r
+let is_absolute_ref (s : Prims.string) : Prims.bool=
+  match FStar_String.list_of_string s with
+  | c::uu___ ->
+      (is_alpha c) && (scheme_colon (FStar_String.list_of_string s))
+  | [] -> false
+let rec take_to_slash (cs : FStar_String.char Prims.list) :
+  FStar_String.char Prims.list=
+  match cs with | [] -> [] | 47::uu___ -> [] | c::r -> c :: (take_to_slash r)
+let rec take_to_colon (cs : FStar_String.char Prims.list) :
+  FStar_String.char Prims.list=
+  match cs with | [] -> [] | 58::uu___ -> [] | c::r -> c :: (take_to_colon r)
+let rec split_scheme_sep (cs : FStar_String.char Prims.list)
+  (acc : FStar_String.char Prims.list) :
+  (FStar_String.char Prims.list * FStar_String.char Prims.list)
+    FStar_Pervasives_Native.option=
+  match cs with
+  | 58::47::47::r ->
+      FStar_Pervasives_Native.Some ((FStar_List_Tot_Base.rev acc), r)
+  | c::r -> split_scheme_sep r (c :: acc)
+  | [] -> FStar_Pervasives_Native.None
+let scheme_authority (base : Prims.string) : Prims.string=
+  match split_scheme_sep (FStar_String.list_of_string (base_of base)) [] with
+  | FStar_Pervasives_Native.Some (sch, rest) ->
+      Prims.strcat (FStar_String.string_of_list sch)
+        (Prims.strcat "://"
+           (FStar_String.string_of_list (take_to_slash rest)))
+  | FStar_Pervasives_Native.None -> base_of base
+let scheme_prefix (base : Prims.string) : Prims.string=
+  FStar_String.string_of_list
+    (take_to_colon (FStar_String.list_of_string (base_of base)))
+let rec dir_prefix (cs : FStar_String.char Prims.list) :
+  FStar_String.char Prims.list=
+  match cs with
+  | [] -> []
+  | c::r ->
+      if FStar_List_Tot_Base.mem 47 r
+      then c :: (dir_prefix r)
+      else if c = 47 then [47] else []
+let base_dir (base : Prims.string) : Prims.string=
+  FStar_String.string_of_list
+    (dir_prefix (FStar_String.list_of_string (base_of base)))
+let resolve_uri (base : Prims.string) (r : Prims.string) : Prims.string=
+  if r = ""
+  then base_of base
+  else
+    if is_absolute_ref r
+    then r
+    else
+      (match FStar_String.list_of_string r with
+       | 35::uu___2 -> Prims.strcat (base_of base) r
+       | 47::47::uu___2 ->
+           Prims.strcat (scheme_prefix base) (Prims.strcat ":" r)
+       | 47::uu___2 -> Prims.strcat (scheme_authority base) r
+       | uu___2 -> Prims.strcat (base_dir base) r)
+let id_base (base : Prims.string) (idval : Prims.string) : Prims.string=
+  base_of (resolve_uri base idval)
+type refctx =
+  {
+  idreg: (Prims.string * Parser_JSON.json_val) Prims.list ;
+  anchreg: (Prims.string * Parser_JSON.json_val) Prims.list }
+let __proj__Mkrefctx__item__idreg (projectee : refctx) :
+  (Prims.string * Parser_JSON.json_val) Prims.list=
+  match projectee with | { idreg; anchreg;_} -> idreg
+let __proj__Mkrefctx__item__anchreg (projectee : refctx) :
+  (Prims.string * Parser_JSON.json_val) Prims.list=
+  match projectee with | { idreg; anchreg;_} -> anchreg
+let rec lookup_reg (k : Prims.string)
+  (l : (Prims.string * Parser_JSON.json_val) Prims.list) :
+  Parser_JSON.json_val FStar_Pervasives_Native.option=
+  match l with
+  | [] -> FStar_Pervasives_Native.None
+  | (kk, v)::tl ->
+      if kk = k then FStar_Pervasives_Native.Some v else lookup_reg k tl
+let frag_is_pointer (f : Prims.string) : Prims.bool=
+  match FStar_String.list_of_string f with | c::uu___ -> c = 47 | [] -> false
+let resolve_ref (ctx : refctx) (base : Prims.string) (r : Prims.string) :
+  (Parser_JSON.json_val * Prims.string) FStar_Pervasives_Native.option=
+  let target = resolve_uri base r in
+  match split_fragment target with
+  | (tbase, FStar_Pervasives_Native.None) ->
+      (match lookup_reg tbase ctx.idreg with
+       | FStar_Pervasives_Native.Some n ->
+           FStar_Pervasives_Native.Some (n, tbase)
+       | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None)
+  | (tbase, FStar_Pervasives_Native.Some f) ->
+      if f = ""
+      then
+        (match lookup_reg tbase ctx.idreg with
+         | FStar_Pervasives_Native.Some n ->
+             FStar_Pervasives_Native.Some (n, tbase)
+         | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None)
       else
-        (match rest with
-         | 47::uu___1 ->
-             (match FStar_String.split [47] frag with
-              | uu___2::toks -> FStar_Pervasives_Native.Some toks
-              | [] -> FStar_Pervasives_Native.Some [])
-         | uu___1 -> FStar_Pervasives_Native.None)
-  | uu___ -> FStar_Pervasives_Native.None
+        if frag_is_pointer f
+        then
+          (match lookup_reg tbase ctx.idreg with
+           | FStar_Pervasives_Native.Some doc ->
+               (match resolve_pointer doc (frag_tokens f) with
+                | FStar_Pervasives_Native.Some n ->
+                    FStar_Pervasives_Native.Some (n, tbase)
+                | FStar_Pervasives_Native.None ->
+                    FStar_Pervasives_Native.None)
+           | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None)
+        else
+          (match lookup_reg target ctx.anchreg with
+           | FStar_Pervasives_Native.Some n ->
+               FStar_Pervasives_Native.Some (n, tbase)
+           | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None)
+let rec collect_ids (base : Prims.string) (node : Parser_JSON.json_val)
+  (fuel : Prims.nat) :
+  ((Prims.string * Parser_JSON.json_val) Prims.list * (Prims.string *
+    Parser_JSON.json_val) Prims.list)=
+  if fuel = Prims.int_zero
+  then ([], [])
+  else
+    (match node with
+     | Parser_JSON.JObject fs ->
+         let uu___1 =
+           match Parser_JSON.json_get_field "$id" node with
+           | FStar_Pervasives_Native.Some (Parser_JSON.JString v) ->
+               let resolved = resolve_uri base v in
+               (match split_fragment resolved with
+                | (rb, FStar_Pervasives_Native.Some a) ->
+                    if (rb = base) && (a <> "")
+                    then (base, [], [(resolved, node)])
+                    else
+                      (rb, [(rb, node)],
+                        (if a = "" then [] else [(resolved, node)]))
+                | (rb, FStar_Pervasives_Native.None) ->
+                    (rb, [(rb, node)], []))
+           | uu___2 -> (base, [], []) in
+         (match uu___1 with
+          | (nbase, sids, sanch) ->
+              let uu___2 = collect_ids_fields nbase fs (fuel - Prims.int_one) in
+              (match uu___2 with
+               | (cids, canch) ->
+                   ((FStar_List_Tot_Base.append sids cids),
+                     (FStar_List_Tot_Base.append sanch canch))))
+     | Parser_JSON.JArray xs ->
+         collect_ids_list base xs (fuel - Prims.int_one)
+     | uu___1 -> ([], []))
+and collect_ids_fields (base : Prims.string)
+  (fs : (Prims.string * Parser_JSON.json_val) Prims.list) (fuel : Prims.nat)
+  :
+  ((Prims.string * Parser_JSON.json_val) Prims.list * (Prims.string *
+    Parser_JSON.json_val) Prims.list)=
+  if fuel = Prims.int_zero
+  then ([], [])
+  else
+    (match fs with
+     | [] -> ([], [])
+     | (uu___1, v)::tl ->
+         let uu___2 = collect_ids base v (fuel - Prims.int_one) in
+         (match uu___2 with
+          | (a1, b1) ->
+              let uu___3 = collect_ids_fields base tl (fuel - Prims.int_one) in
+              (match uu___3 with
+               | (a2, b2) ->
+                   ((FStar_List_Tot_Base.append a1 a2),
+                     (FStar_List_Tot_Base.append b1 b2)))))
+and collect_ids_list (base : Prims.string)
+  (xs : Parser_JSON.json_val Prims.list) (fuel : Prims.nat) :
+  ((Prims.string * Parser_JSON.json_val) Prims.list * (Prims.string *
+    Parser_JSON.json_val) Prims.list)=
+  if fuel = Prims.int_zero
+  then ([], [])
+  else
+    (match xs with
+     | [] -> ([], [])
+     | v::tl ->
+         let uu___1 = collect_ids base v (fuel - Prims.int_one) in
+         (match uu___1 with
+          | (a1, b1) ->
+              let uu___2 = collect_ids_list base tl (fuel - Prims.int_one) in
+              (match uu___2 with
+               | (a2, b2) ->
+                   ((FStar_List_Tot_Base.append a1 a2),
+                     (FStar_List_Tot_Base.append b1 b2)))))
+let last_dollar (cs : FStar_String.char Prims.list) : Prims.bool=
+  match FStar_List_Tot_Base.rev cs with
+  | 36::92::uu___ -> false
+  | 36::uu___ -> true
+  | uu___ -> false
+let ecma_match (pat : Prims.string) (s : Prims.string) :
+  Prims.bool FStar_Pervasives_Native.option=
+  let pchars = FStar_String.list_of_string pat in
+  let starts = match pchars with | c::uu___ -> c = 94 | [] -> false in
+  let ends = last_dollar pchars in
+  match Regex_XSDPattern.parse_xsd_pattern pat with
+  | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+  | FStar_Pervasives_Native.Some r ->
+      let scs = Regex_XSDPattern.cps_of_string s in
+      let re =
+        if starts && ends
+        then r
+        else
+          if starts
+          then Regex_Syntax.R_Cat (r, Regex_Exec.dot_star)
+          else
+            if ends
+            then Regex_Syntax.R_Cat (Regex_Exec.dot_star, r)
+            else Regex_Exec.contains r in
+      FStar_Pervasives_Native.Some (Regex_Exec.matches_norm re scs)
+let rec key_matches_any (k : Prims.string) (pats : Prims.string Prims.list) :
+  Prims.bool=
+  match pats with
+  | [] -> false
+  | p::tl ->
+      (match ecma_match p k with
+       | FStar_Pervasives_Native.Some true -> true
+       | uu___ -> key_matches_any k tl)
+let pattern_bad (schema : Parser_JSON.json_val) : Prims.bool=
+  match Parser_JSON.json_get_field "pattern" schema with
+  | FStar_Pervasives_Native.Some (Parser_JSON.JString p) ->
+      FStar_Pervasives_Native.uu___is_None
+        (Regex_XSDPattern.parse_xsd_pattern p)
+  | FStar_Pervasives_Native.Some uu___ -> true
+  | FStar_Pervasives_Native.None -> false
+let rec any_pat_unparseable
+  (pps : (Prims.string * Parser_JSON.json_val) Prims.list) : Prims.bool=
+  match pps with
+  | [] -> false
+  | (r, uu___)::tl ->
+      (FStar_Pervasives_Native.uu___is_None
+         (Regex_XSDPattern.parse_xsd_pattern r))
+        || (any_pat_unparseable tl)
+let patprops_bad (schema : Parser_JSON.json_val) : Prims.bool=
+  match Parser_JSON.json_get_field "patternProperties" schema with
+  | FStar_Pervasives_Native.Some (Parser_JSON.JObject pps) ->
+      any_pat_unparseable pps
+  | FStar_Pervasives_Native.Some uu___ -> true
+  | FStar_Pervasives_Native.None -> false
 let inst_matches_type (v : Parser_JSON.json_val) (t : Prims.string) :
   Prims.bool=
   match t with
@@ -467,7 +740,7 @@ let check_local (schema : Parser_JSON.json_val) (inst : Parser_JSON.json_val)
     c_mult;
     c_minlen;
     c_maxlen]
-let rec validate_schema (root : Parser_JSON.json_val)
+let rec validate_schema (ctx : refctx) (base : Prims.string)
   (schema : Parser_JSON.json_val) (inst : Parser_JSON.json_val)
   (fuel : Prims.nat) : vresult=
   if fuel = Prims.int_zero
@@ -480,30 +753,47 @@ let rec validate_schema (root : Parser_JSON.json_val)
      | Parser_JSON.JObject uu___1 ->
          (match Parser_JSON.json_get_field "$ref" schema with
           | FStar_Pervasives_Native.Some (Parser_JSON.JString r) ->
-              (match ptr_tokens r with
+              (match resolve_ref ctx base r with
                | FStar_Pervasives_Native.None -> VUnsupported
-               | FStar_Pervasives_Native.Some toks ->
-                   (match resolve_pointer root toks with
-                    | FStar_Pervasives_Native.None -> VUnsupported
-                    | FStar_Pervasives_Native.Some sub ->
-                        validate_schema root sub inst f1))
+               | FStar_Pervasives_Native.Some (sub, nbase) ->
+                   validate_schema ctx nbase sub inst f1)
           | FStar_Pervasives_Native.Some uu___2 -> VUnsupported
           | FStar_Pervasives_Native.None ->
               let get k = Parser_JSON.json_get_field k schema in
+              let base1 =
+                match get "$id" with
+                | FStar_Pervasives_Native.Some (Parser_JSON.JString i) ->
+                    id_base base i
+                | uu___2 -> base in
               if
-                ((FStar_Pervasives_Native.uu___is_Some (get "pattern")) ||
-                   (FStar_Pervasives_Native.uu___is_Some
-                      (get "patternProperties")))
-                  || (FStar_Pervasives_Native.uu___is_Some (get "format"))
+                ((FStar_Pervasives_Native.uu___is_Some (get "format")) ||
+                   (pattern_bad schema))
+                  || (patprops_bad schema)
               then VUnsupported
               else
                 (let c_local = check_local schema inst in
+                 let c_pattern =
+                   match ((get "pattern"), inst) with
+                   | (FStar_Pervasives_Native.Some (Parser_JSON.JString p),
+                      Parser_JSON.JString s) ->
+                       (match ecma_match p s with
+                        | FStar_Pervasives_Native.Some true -> VPass
+                        | FStar_Pervasives_Native.Some false -> VFail
+                        | FStar_Pervasives_Native.None -> VUnsupported)
+                   | (uu___3, uu___4) -> VPass in
                  let c_props =
                    match ((get "properties"), inst) with
                    | (FStar_Pervasives_Native.Some (Parser_JSON.JObject ps),
                       Parser_JSON.JObject fs) ->
                        FStar_List_Tot_Base.fold_left vand VPass
-                         (results_props root ps fs f1)
+                         (results_props ctx base1 ps fs f1)
+                   | (uu___3, uu___4) -> VPass in
+                 let c_patprops =
+                   match ((get "patternProperties"), inst) with
+                   | (FStar_Pervasives_Native.Some (Parser_JSON.JObject pps),
+                      Parser_JSON.JObject fs) ->
+                       FStar_List_Tot_Base.fold_left vand VPass
+                         (results_patprops ctx base1 pps fs f1)
                    | (uu___3, uu___4) -> VPass in
                  let c_addprops =
                    match ((get "additionalProperties"), inst) with
@@ -516,20 +806,30 @@ let rec validate_schema (root : Parser_JSON.json_val)
                              FStar_List_Tot_Base.map
                                FStar_Pervasives_Native.fst ps
                          | uu___3 -> [] in
+                       let pats =
+                         match get "patternProperties" with
+                         | FStar_Pervasives_Native.Some (Parser_JSON.JObject
+                             pps) ->
+                             FStar_List_Tot_Base.map
+                               FStar_Pervasives_Native.fst pps
+                         | uu___3 -> [] in
                        let extra =
                          FStar_List_Tot_Base.filter
                            (fun uu___3 ->
                               match uu___3 with
                               | (k, uu___4) ->
-                                  Prims.op_Negation
-                                    (FStar_List_Tot_Base.mem k declared)) fs in
+                                  (Prims.op_Negation
+                                     (FStar_List_Tot_Base.mem k declared))
+                                    &&
+                                    (Prims.op_Negation
+                                       (key_matches_any k pats))) fs in
                        (match ap with
                         | Parser_JSON.JBool true -> VPass
                         | Parser_JSON.JBool false ->
                             (match extra with | [] -> VPass | uu___3 -> VFail)
                         | uu___3 ->
                             FStar_List_Tot_Base.fold_left vand VPass
-                              (results_over_instances root ap
+                              (results_over_instances ctx base1 ap
                                  (FStar_List_Tot_Base.map
                                     FStar_Pervasives_Native.snd extra) f1))
                    | (uu___3, uu___4) -> VPass in
@@ -538,7 +838,7 @@ let rec validate_schema (root : Parser_JSON.json_val)
                    | (FStar_Pervasives_Native.Some pn, Parser_JSON.JObject
                       fs) ->
                        FStar_List_Tot_Base.fold_left vand VPass
-                         (results_over_instances root pn
+                         (results_over_instances ctx base1 pn
                             (FStar_List_Tot_Base.map
                                (fun uu___3 ->
                                   match uu___3 with
@@ -550,14 +850,14 @@ let rec validate_schema (root : Parser_JSON.json_val)
                    | (FStar_Pervasives_Native.Some (Parser_JSON.JObject
                       deps), Parser_JSON.JObject fs) ->
                        FStar_List_Tot_Base.fold_left vand VPass
-                         (results_deps root deps fs inst f1)
+                         (results_deps ctx base1 deps fs inst f1)
                    | (uu___3, uu___4) -> VPass in
                  let c_items =
                    match ((get "items"), inst) with
                    | (FStar_Pervasives_Native.Some (Parser_JSON.JArray subs),
                       Parser_JSON.JArray xs) ->
                        FStar_List_Tot_Base.fold_left vand VPass
-                         (results_pairs root (zip_pairs subs xs) f1)
+                         (results_pairs ctx base1 (zip_pairs subs xs) f1)
                    | (FStar_Pervasives_Native.Some sub, Parser_JSON.JArray
                       xs) ->
                        if
@@ -565,7 +865,7 @@ let rec validate_schema (root : Parser_JSON.json_val)
                            (Parser_JSON.uu___is_JBool sub)
                        then
                          FStar_List_Tot_Base.fold_left vand VPass
-                           (results_over_instances root sub xs f1)
+                           (results_over_instances ctx base1 sub xs f1)
                        else VPass
                    | (uu___3, uu___4) -> VPass in
                  let c_additems =
@@ -581,13 +881,13 @@ let rec validate_schema (root : Parser_JSON.json_val)
                             (match extra with | [] -> VPass | uu___3 -> VFail)
                         | uu___3 ->
                             FStar_List_Tot_Base.fold_left vand VPass
-                              (results_over_instances root ai extra f1))
+                              (results_over_instances ctx base1 ai extra f1))
                    | (uu___3, uu___4, uu___5) -> VPass in
                  let c_contains =
                    match ((get "contains"), inst) with
                    | (FStar_Pervasives_Native.Some sub, Parser_JSON.JArray
                       xs) ->
-                       let rs = results_over_instances root sub xs f1 in
+                       let rs = results_over_instances ctx base1 sub xs f1 in
                        if FStar_List_Tot_Base.existsb (fun r -> r = VPass) rs
                        then VPass
                        else
@@ -602,20 +902,20 @@ let rec validate_schema (root : Parser_JSON.json_val)
                    | FStar_Pervasives_Native.Some (Parser_JSON.JArray subs)
                        ->
                        FStar_List_Tot_Base.fold_left vand VPass
-                         (results_over_schemas root subs inst f1)
+                         (results_over_schemas ctx base1 subs inst f1)
                    | uu___3 -> VPass in
                  let c_anyof =
                    match get "anyOf" with
                    | FStar_Pervasives_Native.Some (Parser_JSON.JArray subs)
                        ->
                        FStar_List_Tot_Base.fold_left vor VFail
-                         (results_over_schemas root subs inst f1)
+                         (results_over_schemas ctx base1 subs inst f1)
                    | uu___3 -> VPass in
                  let c_oneof =
                    match get "oneOf" with
                    | FStar_Pervasives_Native.Some (Parser_JSON.JArray subs)
                        ->
-                       let rs = results_over_schemas root subs inst f1 in
+                       let rs = results_over_schemas ctx base1 subs inst f1 in
                        if
                          FStar_List_Tot_Base.existsb
                            (fun r -> r = VUnsupported) rs
@@ -632,7 +932,7 @@ let rec validate_schema (root : Parser_JSON.json_val)
                  let c_not =
                    match get "not" with
                    | FStar_Pervasives_Native.Some s ->
-                       (match validate_schema root s inst f1 with
+                       (match validate_schema ctx base1 s inst f1 with
                         | VPass -> VFail
                         | VFail -> VPass
                         | VUnsupported -> VUnsupported)
@@ -641,21 +941,23 @@ let rec validate_schema (root : Parser_JSON.json_val)
                    match get "if" with
                    | FStar_Pervasives_Native.None -> VPass
                    | FStar_Pervasives_Native.Some ci ->
-                       (match validate_schema root ci inst f1 with
+                       (match validate_schema ctx base1 ci inst f1 with
                         | VUnsupported -> VUnsupported
                         | VPass ->
                             (match get "then" with
                              | FStar_Pervasives_Native.Some t ->
-                                 validate_schema root t inst f1
+                                 validate_schema ctx base1 t inst f1
                              | FStar_Pervasives_Native.None -> VPass)
                         | VFail ->
                             (match get "else" with
                              | FStar_Pervasives_Native.Some e ->
-                                 validate_schema root e inst f1
+                                 validate_schema ctx base1 e inst f1
                              | FStar_Pervasives_Native.None -> VPass)) in
                  FStar_List_Tot_Base.fold_left vand VPass
                    [c_local;
+                   c_pattern;
                    c_props;
+                   c_patprops;
                    c_addprops;
                    c_propnames;
                    c_deps;
@@ -668,7 +970,7 @@ let rec validate_schema (root : Parser_JSON.json_val)
                    c_not;
                    c_ite]))
      | uu___1 -> VUnsupported)
-and results_over_instances (root : Parser_JSON.json_val)
+and results_over_instances (ctx : refctx) (base : Prims.string)
   (sub : Parser_JSON.json_val) (xs : Parser_JSON.json_val Prims.list)
   (fuel : Prims.nat) : vresult Prims.list=
   if fuel = Prims.int_zero
@@ -676,9 +978,9 @@ and results_over_instances (root : Parser_JSON.json_val)
   else
     (match xs with
      | [] -> []
-     | x::tl -> (validate_schema root sub x (fuel - Prims.int_one)) ::
-         (results_over_instances root sub tl (fuel - Prims.int_one)))
-and results_over_schemas (root : Parser_JSON.json_val)
+     | x::tl -> (validate_schema ctx base sub x (fuel - Prims.int_one)) ::
+         (results_over_instances ctx base sub tl (fuel - Prims.int_one)))
+and results_over_schemas (ctx : refctx) (base : Prims.string)
   (subs : Parser_JSON.json_val Prims.list) (inst : Parser_JSON.json_val)
   (fuel : Prims.nat) : vresult Prims.list=
   if fuel = Prims.int_zero
@@ -686,9 +988,9 @@ and results_over_schemas (root : Parser_JSON.json_val)
   else
     (match subs with
      | [] -> []
-     | s::tl -> (validate_schema root s inst (fuel - Prims.int_one)) ::
-         (results_over_schemas root tl inst (fuel - Prims.int_one)))
-and results_props (root : Parser_JSON.json_val)
+     | s::tl -> (validate_schema ctx base s inst (fuel - Prims.int_one)) ::
+         (results_over_schemas ctx base tl inst (fuel - Prims.int_one)))
+and results_props (ctx : refctx) (base : Prims.string)
   (ps : (Prims.string * Parser_JSON.json_val) Prims.list)
   (fs : (Prims.string * Parser_JSON.json_val) Prims.list) (fuel : Prims.nat)
   : vresult Prims.list=
@@ -698,12 +1000,43 @@ and results_props (root : Parser_JSON.json_val)
     (match ps with
      | [] -> []
      | (pn, psub)::tl ->
-         let rest = results_props root tl fs (fuel - Prims.int_one) in
+         let rest = results_props ctx base tl fs (fuel - Prims.int_one) in
          (match lookup pn fs with
           | FStar_Pervasives_Native.Some pv ->
-              (validate_schema root psub pv (fuel - Prims.int_one)) :: rest
+              (validate_schema ctx base psub pv (fuel - Prims.int_one)) ::
+              rest
           | FStar_Pervasives_Native.None -> rest))
-and results_pairs (root : Parser_JSON.json_val)
+and results_patprops (ctx : refctx) (base : Prims.string)
+  (pps : (Prims.string * Parser_JSON.json_val) Prims.list)
+  (fs : (Prims.string * Parser_JSON.json_val) Prims.list) (fuel : Prims.nat)
+  : vresult Prims.list=
+  if fuel = Prims.int_zero
+  then []
+  else
+    (match pps with
+     | [] -> []
+     | (rgx, sub)::tl ->
+         FStar_List_Tot_Base.append
+           (results_patprop_one ctx base rgx sub fs (fuel - Prims.int_one))
+           (results_patprops ctx base tl fs (fuel - Prims.int_one)))
+and results_patprop_one (ctx : refctx) (base : Prims.string)
+  (rgx : Prims.string) (sub : Parser_JSON.json_val)
+  (fs : (Prims.string * Parser_JSON.json_val) Prims.list) (fuel : Prims.nat)
+  : vresult Prims.list=
+  if fuel = Prims.int_zero
+  then []
+  else
+    (match fs with
+     | [] -> []
+     | (k, v)::tl ->
+         let rest =
+           results_patprop_one ctx base rgx sub tl (fuel - Prims.int_one) in
+         (match ecma_match rgx k with
+          | FStar_Pervasives_Native.Some true ->
+              (validate_schema ctx base sub v (fuel - Prims.int_one)) :: rest
+          | FStar_Pervasives_Native.Some false -> rest
+          | FStar_Pervasives_Native.None -> VUnsupported :: rest))
+and results_pairs (ctx : refctx) (base : Prims.string)
   (pairs : (Parser_JSON.json_val * Parser_JSON.json_val) Prims.list)
   (fuel : Prims.nat) : vresult Prims.list=
   if fuel = Prims.int_zero
@@ -711,9 +1044,10 @@ and results_pairs (root : Parser_JSON.json_val)
   else
     (match pairs with
      | [] -> []
-     | (sub, x)::tl -> (validate_schema root sub x (fuel - Prims.int_one)) ::
-         (results_pairs root tl (fuel - Prims.int_one)))
-and results_deps (root : Parser_JSON.json_val)
+     | (sub, x)::tl ->
+         (validate_schema ctx base sub x (fuel - Prims.int_one)) ::
+         (results_pairs ctx base tl (fuel - Prims.int_one)))
+and results_deps (ctx : refctx) (base : Prims.string)
   (deps : (Prims.string * Parser_JSON.json_val) Prims.list)
   (fs : (Prims.string * Parser_JSON.json_val) Prims.list)
   (inst : Parser_JSON.json_val) (fuel : Prims.nat) : vresult Prims.list=
@@ -723,22 +1057,68 @@ and results_deps (root : Parser_JSON.json_val)
     (match deps with
      | [] -> []
      | (pn, dv2)::tl ->
-         let rest = results_deps root tl fs inst (fuel - Prims.int_one) in
+         let rest = results_deps ctx base tl fs inst (fuel - Prims.int_one) in
          if has_key pn fs
          then
            (match dv2 with
             | Parser_JSON.JArray names ->
                 (if names_present fs names then VPass else VFail) :: rest
             | uu___1 ->
-                (validate_schema root dv2 inst (fuel - Prims.int_one)) ::
+                (validate_schema ctx base dv2 inst (fuel - Prims.int_one)) ::
                 rest)
          else rest)
-let validate (schema : Parser_JSON.json_val) (inst : Parser_JSON.json_val) :
-  vresult=
+let rec collect_externals
+  (externals : (Prims.string * Parser_JSON.json_val) Prims.list)
+  (fuel : Prims.nat) :
+  ((Prims.string * Parser_JSON.json_val) Prims.list * (Prims.string *
+    Parser_JSON.json_val) Prims.list)=
+  match externals with
+  | [] -> ([], [])
+  | (u, doc)::tl ->
+      let uu___ = collect_ids (base_of u) doc fuel in
+      (match uu___ with
+       | (a1, b1) ->
+           let uu___1 = collect_externals tl fuel in
+           (match uu___1 with
+            | (a2, b2) ->
+                ((FStar_List_Tot_Base.append ((u, doc) :: a1) a2),
+                  (FStar_List_Tot_Base.append b1 b2))))
+let root_base_of (schema : Parser_JSON.json_val) : Prims.string=
+  match Parser_JSON.json_get_field "$id" schema with
+  | FStar_Pervasives_Native.Some (Parser_JSON.JString i) ->
+      base_of (resolve_uri "" i)
+  | uu___ -> ""
+let build_ctx (externals : (Prims.string * Parser_JSON.json_val) Prims.list)
+  (schema : Parser_JSON.json_val) : refctx=
+  let rb = root_base_of schema in
+  let cf =
+    (Prims.of_int (100)) +
+      ((Prims.of_int (4)) * (Parser_JSON.json_size schema)) in
+  let uu___ = collect_ids rb schema cf in
+  match uu___ with
+  | (sids, sanch) ->
+      let uu___1 = collect_externals externals cf in
+      (match uu___1 with
+       | (eids, eanch) ->
+           let base_reg = ("", schema) ::
+             (if rb = "" then [] else [(rb, schema)]) in
+           {
+             idreg =
+               (FStar_List_Tot_Base.append base_reg
+                  (FStar_List_Tot_Base.append sids eids));
+             anchreg = (FStar_List_Tot_Base.append sanch eanch)
+           })
+let validate_ext
+  (externals : (Prims.string * Parser_JSON.json_val) Prims.list)
+  (schema : Parser_JSON.json_val) (inst : Parser_JSON.json_val) : vresult=
+  let ctx = build_ctx externals schema in
   let n =
     ((Parser_JSON.json_size schema) + (Parser_JSON.json_size inst)) +
       (Prims.of_int (10)) in
-  validate_schema schema schema inst ((n * n) + (Prims.of_int (5000)))
+  validate_schema ctx (root_base_of schema) schema inst
+    ((n * n) + (Prims.of_int (5000)))
+let validate (schema : Parser_JSON.json_val) (inst : Parser_JSON.json_val) :
+  vresult= validate_ext [] schema inst
 let validate_bool (schema : Parser_JSON.json_val)
   (inst : Parser_JSON.json_val) : Prims.bool=
   match validate schema inst with | VPass -> true | uu___ -> false
