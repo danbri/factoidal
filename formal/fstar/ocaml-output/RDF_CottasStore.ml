@@ -2666,42 +2666,55 @@ let cottas_ondisk_subject_candidate_rgs (h : cottas_ondisk_handle)
   match bound_s with
   | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
   | FStar_Pervasives_Native.Some s ->
-      (match compound_po_dict_encode h.coh_path "s" s with
-       | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.Some []
-       | FStar_Pervasives_Native.Some subj_id ->
-           (match RDF_Store_Columnar_SubjectOffsetIndex.open_subject_offsets
-                    (RDF_Store_Columnar_SubjectOffsetIndex.subject_offsets_path_of
-                       h.coh_path)
-            with
-            | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
-            | FStar_Pervasives_Native.Some oh ->
-                if
-                  Prims.op_Negation
-                    (RDF_Store_Columnar_SubjectOffsetIndex.subject_offset_handle_ok
-                       oh)
-                then FStar_Pervasives_Native.None
-                else
-                  (match RDF_Store_Columnar_SubjectOffsetIndex.range_for_subject
-                           oh subj_id
+      let s_dict_path = Prims.strcat h.coh_path ".s.dict" in
+      (match RDF_CottasStore_OnDiskIndex.read_dict_header s_dict_path with
+       | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+       | FStar_Pervasives_Native.Some dh ->
+           if
+             Prims.op_Negation
+               (RDF_CottasStore_OnDiskIndex.dict_header_ok dh)
+           then FStar_Pervasives_Native.None
+           else
+             (match RDF_CottasStore_OnDiskIndex.dict_encode_token s_dict_path
+                      dh s
+              with
+              | FStar_Pervasives_Native.None ->
+                  FStar_Pervasives_Native.Some []
+              | FStar_Pervasives_Native.Some subj_id ->
+                  (match RDF_Store_Columnar_SubjectOffsetIndex.open_subject_offsets
+                           (RDF_Store_Columnar_SubjectOffsetIndex.subject_offsets_path_of
+                              h.coh_path)
                    with
                    | FStar_Pervasives_Native.None ->
                        FStar_Pervasives_Native.None
-                   | FStar_Pervasives_Native.Some r ->
+                   | FStar_Pervasives_Native.Some oh ->
                        if
-                         (RDF_Store_Columnar_SubjectOffsetIndex.subject_range_count
-                            r)
-                           = Prims.int_zero
-                       then FStar_Pervasives_Native.Some []
+                         Prims.op_Negation
+                           (RDF_Store_Columnar_SubjectOffsetIndex.subject_offset_handle_ok
+                              oh)
+                       then FStar_Pervasives_Native.None
                        else
-                         (match table with
+                         (match RDF_Store_Columnar_SubjectOffsetIndex.range_for_subject
+                                  oh subj_id
+                          with
                           | FStar_Pervasives_Native.None ->
                               FStar_Pervasives_Native.None
-                          | FStar_Pervasives_Native.Some t ->
-                              subject_range_candidate_rgs_loop t
-                                r.RDF_Store_Columnar_SubjectOffsetIndex.sr_start
-                                r.RDF_Store_Columnar_SubjectOffsetIndex.sr_end
-                                Prims.int_zero rg_count rg_count
-                                Prims.int_zero []))))
+                          | FStar_Pervasives_Native.Some r ->
+                              if
+                                (RDF_Store_Columnar_SubjectOffsetIndex.subject_range_count
+                                   r)
+                                  = Prims.int_zero
+                              then FStar_Pervasives_Native.Some []
+                              else
+                                (match table with
+                                 | FStar_Pervasives_Native.None ->
+                                     FStar_Pervasives_Native.None
+                                 | FStar_Pervasives_Native.Some t ->
+                                     subject_range_candidate_rgs_loop t
+                                       r.RDF_Store_Columnar_SubjectOffsetIndex.sr_start
+                                       r.RDF_Store_Columnar_SubjectOffsetIndex.sr_end
+                                       Prims.int_zero rg_count rg_count
+                                       Prims.int_zero [])))))
 let cottas_ondisk_has_decode_failure (h : cottas_ondisk_handle) : Prims.bool=
   (((FStar_Pervasives_Native.uu___is_None
        (Parquet_Footer.probe_parquet_column_decode_all_row_groups h.coh_path

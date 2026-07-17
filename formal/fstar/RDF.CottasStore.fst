@@ -1792,24 +1792,49 @@ let cottas_ondisk_subject_candidate_rgs
   match bound_s with
   | None -> None
   | Some s ->
-    (match compound_po_dict_encode h.coh_path "s" s with
-     | None -> Some []  // subject absent from the corpus dictionary: genuine zero
-     | Some subj_id ->
-       (match SOI.open_subject_offsets (SOI.subject_offsets_path_of h.coh_path) with
-        | None -> None
-        | Some oh ->
-          if not (SOI.subject_offset_handle_ok oh) then None
-          else
-            (match SOI.range_for_subject oh subj_id with
+    // Bug fix (npm bytes-store #306, cottas-bytes-store.test.js 44/50):
+    // `compound_po_dict_encode` collapses "`.s.dict` sidecar absent" and
+    // "dict present but token not found" into the SAME `None` — fine for
+    // `filter_candidates_by_compound_po` above (either case falls through
+    // to `candidates` unchanged, the safe no-opinion default), but WRONG
+    // here, where this function's own contract (banner above) requires
+    // telling "not eligible / sidecar absent" (`None`) apart from
+    // "subject genuinely absent" (`Some []`). The former used to be
+    // read as the latter, so ANY store without eager sidecars (every
+    // npm/embedded in-memory `.cottas` buffer opened via `openCottas`/
+    // `toCottas` — those never had a sidecar directory to begin with —
+    // plus any on-disk import run without `--build-sidecars`) silently
+    // pruned every bound-subject query's candidate row groups to `[]`:
+    // a wrong `false`/empty answer with a clean exit, not a slow one.
+    // Fix: check `.s.dict` presence/validity directly (mirroring the
+    // `.s.offsets` disambiguation three lines below — `open_subject_
+    // offsets` returning `None` already correctly falls through to
+    // `None` here, not `Some []`) so only a PRESENT, well-formed
+    // dictionary's genuine miss reaches `Some []`.
+    let s_dict_path = h.coh_path ^ ".s.dict" in
+    (match ODI.read_dict_header s_dict_path with
+     | None -> None  // `.s.dict` sidecar absent: not eligible, no opinion
+     | Some dh ->
+       if not (ODI.dict_header_ok dh) then None  // malformed sidecar: no opinion
+       else
+         (match ODI.dict_encode_token s_dict_path dh s with
+          | None -> Some []  // dict present + valid, subject genuinely absent
+          | Some subj_id ->
+            (match SOI.open_subject_offsets (SOI.subject_offsets_path_of h.coh_path) with
              | None -> None
-             | Some r ->
-               if SOI.subject_range_count r = 0 then Some []
+             | Some oh ->
+               if not (SOI.subject_offset_handle_ok oh) then None
                else
-                 (match table with
+                 (match SOI.range_for_subject oh subj_id with
                   | None -> None
-                  | Some t ->
-                    subject_range_candidate_rgs_loop t r.SOI.sr_start r.SOI.sr_end
-                      0 rg_count rg_count 0 []))))
+                  | Some r ->
+                    if SOI.subject_range_count r = 0 then Some []
+                    else
+                      (match table with
+                       | None -> None
+                       | Some t ->
+                         subject_range_candidate_rgs_loop t r.SOI.sr_start r.SOI.sr_end
+                           0 rg_count rg_count 0 [])))))
 
 // ---- Decode-failure detection (issue #269) --------------------------
 //
