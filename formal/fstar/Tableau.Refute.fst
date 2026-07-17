@@ -1553,6 +1553,93 @@ let rec disjoint_dataprop_pattern_clash (g : rdf_graph) (i : subject) (ls : list
     disjoint_dataprop_pattern_label g i l || disjoint_dataprop_pattern_clash g i tl
 
 (* -------------------------------------------------------------------
+   5c'. Disjoint-data-property NUMERIC-SINGLETON collision (issue #299).
+
+   The W3C DL InconsistencyTest "Inconsistent Disjoint Dataproperties"
+   (Birte Glimm) -- the integer sibling of the xsd:string-pattern case
+   above:
+
+     DisjointDataProperties(:dp1 :dp2)
+     DataPropertyAssertion(:dp1 :a "10"^^xsd:integer)
+     SubClassOf(:A DataSomeValuesFrom(:dp2
+        DatatypeRestriction(xsd:integer xsd:minInclusive "10" xsd:maxInclusive "10")))
+     ClassAssertion(:A :a)
+
+   Node :a carries the label CE_SomeValuesFrom(:dp2, DatatypeRestriction),
+   so :a is FORCED to have a :dp2-filler whose value lies in the
+   restriction's value space. Here that value space is the SINGLETON {10}
+   (the only integer satisfying >= 10 AND <= 10), so the forced :dp2-filler
+   value is EXACTLY 10. Because "10"^^xsd:integer is an asserted :dp1-filler
+   of :a with the SAME integer value, the forced (:a, 10) in EXT(:dp2)
+   collides with the asserted (:a, 10) in EXT(:dp1). Model-theoretically
+   (OWL 2 Direct Semantics), DisjointDataProperties(:dp1 :dp2) forces
+   EXT(:dp1) INTERSECT EXT(:dp2) = empty, so no value is a filler on BOTH
+   properties for the same subject: no model. CLASH.
+
+   SOUNDNESS is load-bearing in two places, both handled conservatively:
+     (1) SINGLETON must be a genuine value-space singleton. The facet
+         interval is intersected with the base datatype's OWN value range
+         (`base_interval_for`) BEFORE the `interval_count = Some 1` test, so
+         a facet naming a value OUTSIDE the base type (e.g. min=max=200 over
+         xsd:byte, where 200 is not a byte) can NOT masquerade as a
+         singleton -- the clamp empties it. `interval_count` is EXACT over a
+         discrete integer family with both ends finite, so `Some 1`
+         witnesses exactly one admissible integer value v.
+     (2) The disjoint filler must PROVABLY carry value v. Matching is by
+         `term_int_opt t = Some v` -- a proof the asserted literal parses to
+         the integer v (the XSD derived-integer types share ONE value space,
+         so "10"^^xsd:byte and "10"^^xsd:integer denote the same value 10).
+         The over-approximating `value_set_intersect` is deliberately NOT
+         used: a filler that merely MIGHT equal v (an unparsed decimal, a
+         string) yields `None` and never triggers a false clash.
+   The rule fires ONLY on a DataSomeValuesFrom over an integer-family
+   DatatypeRestriction whose clamped interval is a singleton, against a
+   property PROVABLY disjoint from the some-values property that has an
+   integer-valued asserted filler of the SAME value on this very node --
+   inert on the rest of the corpus by construction (a non-singleton, dense,
+   or non-integer-family base adds no constraint). The tcon suite (0
+   unexpected-inconsistency) is the standing soundness guard.
+   ------------------------------------------------------------------- *)
+
+// Does some property PROVABLY disjoint from the some-values property carry
+// an asserted filler of i whose integer value is exactly v?
+let rec disjoint_has_int_filler (g : rdf_graph) (i : subject) (v : int)
+                                (p1s : list wf_iri)
+  : Tot bool (decreases p1s) =
+  match p1s with
+  | [] -> false
+  | p1 :: tl ->
+    List.Tot.existsb
+      (fun (t : rdf_term) -> match term_int_opt t with
+                             | Some w -> w = v
+                             | None -> false)
+      (find_objects g i p1)
+    || disjoint_has_int_filler g i v tl
+
+// Per-label check: a forced DataSomeValuesFrom over an integer-family
+// DatatypeRestriction whose (base-clamped) value space is the singleton {v},
+// where v is an asserted filler of a disjoint data property on this node.
+let disjoint_dataprop_singleton_label (g : rdf_graph) (i : subject) (l : class_expr) : bool =
+  match l with
+  | CE_SomeValuesFrom p2 (CE_DataRestriction base facets) ->
+    if is_integer_family_datatype base then
+      let iv = interval_intersect (facets_to_interval base facets full_interval)
+                                  (base_interval_for base) in
+      (match interval_count iv, bound_lo_incl iv.iv_lo with
+       | Some n, Some v ->
+         n = 1 && disjoint_has_int_filler g i v (disjoint_props g p2)
+       | _, _ -> false)
+    else false
+  | _ -> false
+
+let rec disjoint_dataprop_singleton_clash (g : rdf_graph) (i : subject) (ls : list class_expr)
+  : Tot bool (decreases ls) =
+  match ls with
+  | [] -> false
+  | l :: tl ->
+    disjoint_dataprop_singleton_label g i l || disjoint_dataprop_singleton_clash g i tl
+
+(* -------------------------------------------------------------------
    6. Clash detection.
    ------------------------------------------------------------------- *)
 
@@ -2089,6 +2176,7 @@ let rec clash_nodes (g : rdf_graph) (st : rstate) (ns : list rnode)
     || datatype_range_clash st.rs_subprop ls
     || datatype_cardinality_clash st.rs_subprop st.rs_range ls
     || disjoint_dataprop_pattern_clash g n.rn_id ls
+    || disjoint_dataprop_singleton_clash g n.rn_id ls
     || clash_nodes g st tl
 
 let has_clash (g : rdf_graph) (st : rstate) : bool =

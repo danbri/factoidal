@@ -56,9 +56,7 @@
 Extracted module Tableau.Refute
 * Warning 247 at Tableau.Refute.fst(0,0-0,0):
   - Checked file Tableau.Refute.fst.checked was not written.
-  - Reason:
-      checked file OWL.Vocabulary.fst.checked is stale (digest mismatch for
-      OWL.Vocabulary.fst)
+  - Reason: checked file OWL.Vocabulary.fst.checked does not exist
 
 Verified module: Tableau.Refute
 All verification conditions discharged successfully
