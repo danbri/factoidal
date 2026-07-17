@@ -425,11 +425,57 @@ let csvw_valid_column_name (s : string) : bool =
     FStar.Char.int_of_char c0 <> 95 (* not leading '_' *)
     && List.Tot.for_all csvw_varname_char_ok (String.list_of_string s)
 
-let csvw_col_spec_of_column (eff : csvw_inherited_props) (c : csvw_column) : csvw_col_spec = {
+// Positional default column name when neither a schema nor a header
+// cell gives one — csv2rdf's own "_col.N" fallback (1-based).
+// `List.Tot.mapi`'s index callback type is plain `int` (FStar.List.Tot.Base),
+// not `nat` — take `int` here to match, even though the actual values
+// mapi ever supplies are always >= 0.
+let csvw_positional_name (i : int) : string = "_col." ^ string_of_int (i + 1)
+
+// Title-language match for column-name derivation (test148/149). A
+// title with no explicit language (None) always qualifies — a bare
+// string title inherits the metadata @context @language (und, absent in
+// these fixtures) and und matches any language. A title with an explicit
+// language qualifies iff that language is `und`, or the table default
+// language is absent (und) or `und`, or the two are EXACTLY equal.
+// Matching is exact, not BCP47-truncation: test149's `en-US` title does
+// NOT qualify under a `en` default, so its column falls to _col.N — the
+// truncation rule governs the compatibility WARNING, not name derivation.
+let csvw_title_lang_ok (default title : option string) : bool =
+  match title with
+  | None -> true
+  | Some tl ->
+    tl = "und" ||
+    (match default with
+     | None -> true
+     | Some dl -> dl = "und" || dl = tl)
+
+let rec csvw_first_matching_title (default : option string)
+                                  (ts : list (string & option string))
+  : Tot (option string) (decreases ts) =
+  match ts with
+  | [] -> None
+  | (txt, tl) :: rest ->
+    if csvw_title_lang_ok default tl then Some txt
+    else csvw_first_matching_title default rest
+
+// Derive a column's name from its titles, honouring the title languages.
+// When titles exist but none match the table default language, the
+// column has no name-from-titles and takes the positional _col.(i+1)
+// default (test148/149). No titles at all keeps the prior "" behaviour
+// (a virtual/anonymous described column), unchanged.
+let csvw_name_from_titles (eff : csvw_inherited_props) (i : int) (c : csvw_column) : string =
+  match c.col_titles_l with
+  | [] -> ""
+  | _ -> (match csvw_first_matching_title eff.inh_lang c.col_titles_l with
+          | Some t -> t
+          | None -> csvw_positional_name i)
+
+let csvw_col_spec_of_column (eff : csvw_inherited_props) (i : int) (c : csvw_column) : csvw_col_spec = {
   cs_name = (match c.col_name with
              | Some n -> if csvw_valid_column_name n then n
-                         else (match c.col_titles with t :: _ -> t | [] -> "")
-             | None -> (match c.col_titles with t :: _ -> t | [] -> ""));
+                         else csvw_name_from_titles eff i c
+             | None -> csvw_name_from_titles eff i c);
   cs_virtual = csvw_opt_bool c.col_virtual;
   cs_suppress = csvw_opt_bool c.col_suppress_output;
   cs_datatype = (match c.col_datatype with Some d -> Some d | None -> eff.inh_datatype);
@@ -441,13 +487,6 @@ let csvw_col_spec_of_column (eff : csvw_inherited_props) (c : csvw_column) : csv
   cs_null = (match c.col_null with Some n -> Some n | None -> eff.inh_null);
   cs_ordered = (match c.col_ordered with Some b -> b | None -> (match eff.inh_ordered with Some b -> b | None -> false));
 }
-
-// Positional default column name when neither a schema nor a header
-// cell gives one — csv2rdf's own "_col.N" fallback (1-based).
-// `List.Tot.mapi`'s index callback type is plain `int` (FStar.List.Tot.Base),
-// not `nat` — take `int` here to match, even though the actual values
-// mapi ever supplies are always >= 0.
-let csvw_positional_name (i : int) : string = "_col." ^ string_of_int (i + 1)
 
 // Schema absent entirely ("no metadata document at all" — test001):
 // column names come from the CSV file's own header row text (the
@@ -525,7 +564,7 @@ let csvw_build_col_specs
   | Some ts ->
     if Cons? ts.ts_columns then
       let eff = csvw_merge_inherited ts.ts_inherited (csvw_merge_inherited tbl grp) in
-      let described = List.Tot.map (csvw_col_spec_of_column eff) ts.ts_columns in
+      let described = List.Tot.mapi (fun i c -> csvw_col_spec_of_column eff i c) ts.ts_columns in
       // CSV headers beyond the described columns become surplus _col.N
       // columns (test278). A schema with as many or more columns than
       // headers adds nothing here.

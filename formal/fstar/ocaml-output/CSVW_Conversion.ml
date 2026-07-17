@@ -501,20 +501,49 @@ let csvw_valid_column_name (s : Prims.string) : Prims.bool=
       ((FStar_Char.int_of_char c0) <> (Prims.of_int (95))) &&
         (FStar_List_Tot_Base.for_all csvw_varname_char_ok
            (FStar_String.list_of_string s))
+let csvw_positional_name (i : Prims.int) : Prims.string=
+  Prims.strcat "_col." (Prims.string_of_int (i + Prims.int_one))
+let csvw_title_lang_ok
+  (default : Prims.string FStar_Pervasives_Native.option)
+  (title : Prims.string FStar_Pervasives_Native.option) : Prims.bool=
+  match title with
+  | FStar_Pervasives_Native.None -> true
+  | FStar_Pervasives_Native.Some tl ->
+      (tl = "und") ||
+        ((match default with
+          | FStar_Pervasives_Native.None -> true
+          | FStar_Pervasives_Native.Some dl -> (dl = "und") || (dl = tl)))
+let rec csvw_first_matching_title
+  (default : Prims.string FStar_Pervasives_Native.option)
+  (ts :
+    (Prims.string * Prims.string FStar_Pervasives_Native.option) Prims.list)
+  : Prims.string FStar_Pervasives_Native.option=
+  match ts with
+  | [] -> FStar_Pervasives_Native.None
+  | (txt, tl)::rest ->
+      if csvw_title_lang_ok default tl
+      then FStar_Pervasives_Native.Some txt
+      else csvw_first_matching_title default rest
+let csvw_name_from_titles (eff : CSVW_Metadata.csvw_inherited_props)
+  (i : Prims.int) (c : CSVW_Metadata.csvw_column) : Prims.string=
+  match c.CSVW_Metadata.col_titles_l with
+  | [] -> ""
+  | uu___ ->
+      (match csvw_first_matching_title eff.CSVW_Metadata.inh_lang
+               c.CSVW_Metadata.col_titles_l
+       with
+       | FStar_Pervasives_Native.Some t -> t
+       | FStar_Pervasives_Native.None -> csvw_positional_name i)
 let csvw_col_spec_of_column (eff : CSVW_Metadata.csvw_inherited_props)
-  (c : CSVW_Metadata.csvw_column) : csvw_col_spec=
+  (i : Prims.int) (c : CSVW_Metadata.csvw_column) : csvw_col_spec=
   {
     cs_name =
       (match c.CSVW_Metadata.col_name with
        | FStar_Pervasives_Native.Some n ->
            if csvw_valid_column_name n
            then n
-           else
-             (match c.CSVW_Metadata.col_titles with
-              | t::uu___1 -> t
-              | [] -> "")
-       | FStar_Pervasives_Native.None ->
-           (match c.CSVW_Metadata.col_titles with | t::uu___ -> t | [] -> ""));
+           else csvw_name_from_titles eff i c
+       | FStar_Pervasives_Native.None -> csvw_name_from_titles eff i c);
     cs_virtual = (csvw_opt_bool c.CSVW_Metadata.col_virtual);
     cs_suppress = (csvw_opt_bool c.CSVW_Metadata.col_suppress_output);
     cs_datatype =
@@ -553,8 +582,6 @@ let csvw_col_spec_of_column (eff : CSVW_Metadata.csvw_inherited_props)
             | FStar_Pervasives_Native.Some b -> b
             | FStar_Pervasives_Native.None -> false))
   }
-let csvw_positional_name (i : Prims.int) : Prims.string=
-  Prims.strcat "_col." (Prims.string_of_int (i + Prims.int_one))
 let csvw_col_specs_from_header (header_cells : Prims.string Prims.list) :
   csvw_col_spec Prims.list=
   FStar_List_Tot_Base.mapi
@@ -629,7 +656,8 @@ let csvw_build_col_specs (grp : CSVW_Metadata.csvw_inherited_props)
           csvw_merge_inherited ts.CSVW_Metadata.ts_inherited
             (csvw_merge_inherited tbl grp) in
         let described =
-          FStar_List_Tot_Base.map (csvw_col_spec_of_column eff)
+          FStar_List_Tot_Base.mapi
+            (fun i c -> csvw_col_spec_of_column eff i c)
             ts.CSVW_Metadata.ts_columns in
         FStar_List_Tot_Base.op_At described
           (csvw_surplus_specs eff

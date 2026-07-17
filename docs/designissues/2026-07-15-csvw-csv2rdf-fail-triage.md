@@ -45,6 +45,19 @@ Burndown ledger. Score history (all measured on freshly rebuilt
   cascaded from the table-group level → header-less positional `_col.N`
   columns). 📊 Zero regressions (every remaining fail is in the round-3
   19-fail census). Cross-suite gates green (see round-4 note below).
+- Round 5 (family A last residue — title-language name derivation,
+  branch csvw-burndown-5): ✅ **267 pass, 3 fail (out of 270)**. 2 named
+  flips: test148 test149 (family A — a column whose only `titles` value
+  carries an explicit language tag that does not EXACTLY equal the table
+  default language contributes no name, so the column falls to positional
+  `_col.N`; a plain-string title with no explicit tag still names its
+  column). 📊 Zero regressions (both remaining ToRdfTest fails test036/
+  test037 and the ToRdfTestWithWarnings fail test102 were in the round-4
+  6-fail census; the round-4 census also carried test194, which the
+  regex-engine landing since flipped, so the measured base this round was
+  265 pass, 5 fail). Cross-suite gates green: RDF six suites 1031 pass,
+  0 fail; SPARQL 1.1 Query 338 pass, 0 fail; jsonld-toRdf 466 pass, 0
+  fail, 1 skip (of 467); vc20-api 59 pass, 0 fail (of 59).
 
 Baseline for the original triage below: **218 pass, 52 fail (out of
 270)**. This note triages all 52 named fails into root-cause families by
@@ -67,7 +80,7 @@ triples in the first place. It does not explain any of the 52 fails.
 
 | Family | Count | Named tests | Root cause (one sentence) | Fix sketch | F* module |
 |---|---|---|---|---|---|
-| A. Table/table-group-level inherited + common properties dropped (Stage 2) | 15 | test038, test039, test047, test048, test049, test126, test148, test149, test275, test276, test277, test278, test305, test306, test307 | `csvw_table`/`csvw_metadata`'s `CSVW_TableGroup` never decoded a value set directly on the table or table-group JSON object (aboutUrl/propertyUrl/valueUrl/lang/null/separator/datatype, or arbitrary rdfs:/dc:-style common properties) — only tableSchema-level and column-level values reached `CSVW.Conversion`, so e.g. `{"url": "x.csv", "aboutUrl": "#row-{_row}", ...}` silently lost its `aboutUrl`. | **PARTIALLY FIXED (round 1, commit 6f5544eb).** The inheritance-chain machinery landed and flipped 5 of this family's 15 (test126, test275, test276, test277, test305) plus 5 tests filed under other families; the OTHER 10 named here (test038, test039, test047-049, test148, test149, test278, test306, test307) still fail post-round-2 — the chain alone wasn't their whole delta; each needs a fresh `-v` diff to re-triage what remains (likely per-feature gaps layered on top: `describes` linking for aboutUrl-grouped subjects, list-value ordering, title-language intersection). Round-1 change detail: added `csvw_inherited_props` (7-field record: about/property/value_url, lang, null, separator, datatype) + `csvw_group_meta` (group common properties + inherited defaults) to `CSVW.Metadata.fst`; decoded at tableSchema/table/table-group level via one shared `csvw_decode_inherited`; merged group→table→schema→column (most-specific-wins) in `CSVW.Conversion.fst`'s `csvw_merge_inherited`/`csvw_build_col_specs`/`csvw_col_spec_of_column`; threaded `grp_inherited`/`grp` through `csvw_convert_table_{minimal,standard}` and `csvw_convert_document_{minimal,standard}`; group common properties attached to the `csvw:TableGroup` node via the existing `csvw_table_common_triples` helper; `lang` applied only when the effective datatype is `xsd:string` (`csvw_build_literal_lang`, RDF 1.1's langString-iff-lang-tag rule); `null` checked alongside the existing `""` no-value rule in `csvw_cell_object`. | `CSVW.Metadata.fst`, `CSVW.Conversion.fst`, `bin/csvw-runner/csvw_runner.ml` (I/O glue: extract `csvw_group_meta` from `CSVW_TableGroup`'s new second field, pass to the two document-level entry points) |
+| A. Table/table-group-level inherited + common properties dropped (Stage 2) | 15 | test038, test039, test047, test048, test049, test126, test148, test149, test275, test276, test277, test278, test305, test306, test307 | `csvw_table`/`csvw_metadata`'s `CSVW_TableGroup` never decoded a value set directly on the table or table-group JSON object (aboutUrl/propertyUrl/valueUrl/lang/null/separator/datatype, or arbitrary rdfs:/dc:-style common properties) — only tableSchema-level and column-level values reached `CSVW.Conversion`, so e.g. `{"url": "x.csv", "aboutUrl": "#row-{_row}", ...}` silently lost its `aboutUrl`. | **PARTIALLY FIXED (round 1, commit 6f5544eb).** The inheritance-chain machinery landed and flipped 5 of this family's 15 (test126, test275, test276, test277, test305) plus 5 tests filed under other families; the OTHER 10 named here still fail post-round-2 — the chain alone wasn't their whole delta; each needed a fresh `-v` diff to re-triage what remained. **All 10 now landed:** test038/039 (round 3, valueUrl CURIE), test047-049 (round 3, invalid-inherited-URI-template → empty/base), test278 (round 3, surplus `_col.N`), test306/307 (round 3, ordered → rdf:List), test148/149 (round 5, title-language name derivation). Round-1 change detail: added `csvw_inherited_props` (7-field record: about/property/value_url, lang, null, separator, datatype) + `csvw_group_meta` (group common properties + inherited defaults) to `CSVW.Metadata.fst`; decoded at tableSchema/table/table-group level via one shared `csvw_decode_inherited`; merged group→table→schema→column (most-specific-wins) in `CSVW.Conversion.fst`'s `csvw_merge_inherited`/`csvw_build_col_specs`/`csvw_col_spec_of_column`; threaded `grp_inherited`/`grp` through `csvw_convert_table_{minimal,standard}` and `csvw_convert_document_{minimal,standard}`; group common properties attached to the `csvw:TableGroup` node via the existing `csvw_table_common_triples` helper; `lang` applied only when the effective datatype is `xsd:string` (`csvw_build_literal_lang`, RDF 1.1's langString-iff-lang-tag rule); `null` checked alongside the existing `""` no-value rule in `csvw_cell_object`. | `CSVW.Metadata.fst`, `CSVW.Conversion.fst`, `bin/csvw-runner/csvw_runner.ml` (I/O glue: extract `csvw_group_meta` from `CSVW_TableGroup`'s new second field, pass to the two document-level entry points) |
 | B. Metadata discovery (implicit/directory/linked) still mismatches after correct document is found | 4 | test011, test012, test014, test016 | The runner's `discover_metadata`/explicit-`csvt:implicit` path already locates the right metadata document (file/directory metadata is implemented, and these fixtures don't need HTTP); the remaining diff is unexplained — not yet isolated to a specific field or code path (test014/016 additionally use `csvt:httpLink`, i.e. Link-header simulation, which the runner has no HTTP layer for at all, so those two may be a distinct, currently out-of-scope sub-case). | **PARTIALLY FIXED (round 2).** test012 was actually a family-F-shaped bug — the runner's directory-metadata candidate name was the spec-literal `metadata.json`, but this corpus names it `csv-metadata.json` (`<extension>-metadata.json`); the round-2 discovery fix flipped it. test014/test016 are `csvt:httpLink` (Link-header simulation over local files; IN SCOPE — owner clarified 2026-07-15: the 2026-07-11 steer was a prioritization ("format work first, lowest-hanging fruit"), not a prohibition. Round-3 work, shared runner glue with family M.) test011 remains: its file-metadata document IS found and mostly converts (the `-v` diff heads are identical); still needs the widened-diff isolation pass. | `CSVW.Metadata.fst` or `bin/csvw-runner/csvw_runner.ml`, TBD |
 | C. Complex multi-subject/virtual-column/annotation fixtures | 4 | test032, test033, test036, test037 | events-listing.csv (virtual columns + multiple `aboutUrl`-distinguished subjects per row) and tree-ops-ext.csv (`notes`/`oa:Annotation` common-property object, `suppressOutput`, boolean `Y\|N`-style format, `xml` datatype, named `@id` table node) each combine several features at once; per the program plan's own Stage-6 measurement this combinatorial case was flagged as needing "the full table-group→table→schema→column chain" (partially addressed by family A) plus per-feature work (annotation-object common properties, `@id` node identity) this pass didn't touch. | Isolate per-fixture: does family A's inheritance fix already flip these, or is `@id`-as-real-IRI (not synthesized blank node) and/or nested-object common-property emission still missing? | `CSVW.Metadata.fst`, `CSVW.Conversion.fst` |
 | D. Schema-by-reference (`tableSchema` as a URL string) | 2 | test034, test035 | `csvw_decode_table_schema` only accepts `tableSchema` as an inline JSON object; these two fixtures give it as a bare URL string (`"tableSchema": "gov.uk/schema/professions.json"`) pointing at an external schema document — explicitly flagged out of scope in the program plan's Stage 1 measurement (needs a local-file fetch+inline I/O seam this program hasn't scoped). | Add a schema-by-reference resolution step (read + decode the referenced local JSON file, inline as if it had been nested) — I/O-glue-shaped work in the runner, semantics in `CSVW.Metadata`. | `CSVW.Metadata.fst`, `bin/csvw-runner/csvw_runner.ml` |
@@ -86,17 +99,26 @@ triples in the first place. It does not explain any of the 52 fails.
 
 **Total: 15 + 4 + 4 + 2 + 5 + 5 + 2 + 2 + 3 + 1 + 2 + 2 + 2 + 1 + 1 + 1 = 52.**
 
-## Remaining-fail census after round 4 (6 fails)
+## Remaining-fail census after round 5 (3 fails)
+
+| Family | Remaining | Named tests |
+|---|---|---|
+| C (`@id` real-IRI node identity + annotation-object common properties + trim-on-separator-split) | 3 | test036, test037, test102 |
+
+Family A (title-language name derivation) DONE round 5 (test148/149).
+Families B, K, M, N DONE round 3; G DONE round 1; E, F DONE round 2;
+D, H, I, L, O, P and the propertyUrl-CURIE half of C DONE round 4.
+Family J (test194, duration regex) flipped to PASS with the round-3
+regex-engine landing (#304) — no longer in the fail set.
+Row sum: 3. Only family C remains, all in one combinatorial shape.
+
+### Prior census after round 4 (6 fails)
 
 | Family | Remaining | Named tests |
 |---|---|---|
 | A (title-language name derivation — the last A residue) | 2 | test148, test149 |
 | C (`@id` real-IRI node identity + annotation-object common properties + trim-on-separator-split) | 3 | test036, test037, test102 |
 | J (duration regex — blocked on regex engine) | 1 | test194 |
-
-Families B, K, M, N DONE round 3; G DONE round 1; E, F DONE round 2;
-D, H, I, L, O, P and the propertyUrl-CURIE half of C DONE round 4.
-Row sum: 2 + 3 + 1 = 6. Blocked: 1 (test194, duration regex).
 Actionable remainder: 5.
 
 **Round-4 remaining detail.** The three round-4 C survivors
@@ -114,15 +136,14 @@ be decoded WITH their language tags, then intersected against the
 table default language at name derivation). test194 stays blocked on a
 regex engine (#304).
 
-**Family A's last residue (test148/149)** is title-LANGUAGE-aware
-column-name derivation: a column whose only `titles` value has an
-explicit language tag that does not exactly match the table's default
-language contributes NO name (falls to positional `_col.N`), while a
-plain-string title (normalised to the default language) does. Needs
-titles decoded WITH their language tags (currently `csvw_decode_titles`
-flattens the tag away) plus the default-language-match test at name
-derivation. Deferred this round — a decode-shape change larger than
-the rest of the A subset.
+**Family A's last residue (test148/149)** — DONE round 5. Title-
+LANGUAGE-aware column-name derivation: a column whose only `titles`
+value has an explicit language tag that does not exactly match the
+table's default language contributes NO name (falls to positional
+`_col.N`), while a plain-string title (no explicit tag) does. Landed via
+`csvw_decode_titles_l` (titles decoded WITH their tags on the new
+`col_titles_l` field) plus an exact default-language-match test at name
+derivation; see the "What round 5 fixed" section.
 
 ## What this session fixed
 
@@ -253,23 +274,57 @@ the base IRI and, for a relative override, into the CSV read directory
 CSV directory and inlines them via the F* helper (test034/035). Both
 F* modules verify clean under z3 4.13.3, no --lax, no admits.
 
+## What round 5 fixed (2026-07-17, branch csvw-burndown-5)
+
+Family A's last residue — title-language-aware column-name derivation
+(test148/149). 2 named flips, zero regressions, all cross-suite gates
+green (267 pass, 3 fail; see the round-5 score line at the top).
+
+F* changes (both modules verify clean under z3 4.13.3, no --lax, no
+admits):
+- `CSVW.Metadata.fst`: `csvw_decode_titles_l` (+ `csvw_titles_value_l`/
+  `csvw_titles_fields_l`) decodes titles WITH their language tags into a
+  `list (string & option string)`, stored on the new `col_titles_l`
+  column field. A bare-string title or a top-level array element carries
+  no explicit language (None); a language-map object attaches its field
+  key as the title's language. `col_titles` (flattened, tag-less) is
+  kept unchanged for any other consumer.
+- `CSVW.Conversion.fst`: `csvw_title_lang_ok` / `csvw_first_matching_title`
+  / `csvw_name_from_titles` derive a column's name from the FIRST title
+  whose language qualifies against the table default language
+  (`eff.inh_lang`). A title with no explicit tag always qualifies (it
+  inherits the @context @language — und, absent in these fixtures — and
+  und matches any); a title with an explicit tag qualifies only when the
+  tag is `und`, or the default is absent/`und`, or the two are EXACTLY
+  equal. Matching is exact, not BCP47-truncation: test149's `en-US`
+  title does not qualify under an `en` default, so its column falls to
+  `_col.N` — the truncation rule governs the compatibility WARNING, not
+  name derivation, which is why test148 (`en` title vs `de` default,
+  incompatible) and test149 (`en-US` title vs `en` default, compatible)
+  emit the same `_col.2`. When titles exist but none qualify, the column
+  takes the positional `_col.(i+1)` name (`csvw_col_spec_of_column` now
+  receives the column index via `List.Tot.mapi`); no-titles columns keep
+  the prior `""` behaviour. No runner or consumer glue change — the
+  `csvw_convert_document_{standard,minimal}` entry points are unchanged.
+
+The only other fixtures with language-map titles (test109/110) give
+their columns explicit `name` properties, so titles never drive their
+names — no regression exposure there.
+
 ## What's next (by expected yield)
 
-Only 5 actionable fails remain, all sharing large, well-understood
-shapes:
+Only 3 actionable fails remain, all in family C's single combinatorial
+shape (test036/037/102):
 
 - **Family C `@id` node identity (test036/037/102)** — the table/group
   node's IRI must come from the metadata `@id` (or, for test102's
   invalid integer `@id`, degrade to the metadata-document URL) instead
   of the current synthesized blank node. test036/037 additionally need
-  annotation-object common properties (`notes` → `oa:Annotation`,
-  nested `dc:publisher`/`schema:` objects, `dcat:keyword` arrays) and
-  whitespace-trim on separator-split cell values. This is a
-  CSVW.Conversion signature change (the node builder must receive the
-  `@id` and the document URL).
-- **Family A residue (test148/149)** — title-LANGUAGE-aware column-name
-  derivation: `csvw_decode_titles` must stop flattening the language
-  tag away, and name derivation must test each title's tag against the
-  table default language (BCP47 truncation match) before it can supply
-  a name. A decode-shape change.
-- **test194 (family J)** stays blocked on a regex engine (#304).
+  annotation-object common properties (`notes` → `csvw:note` →
+  `oa:Annotation`, nested `oa:hasBody`/`oa:hasTarget`, `dc:publisher`/
+  `schema:` objects, `@value`/`@type`/`@id` object shapes, `dcat:keyword`
+  arrays) and whitespace-trim on separator-split cell values, plus
+  aboutUrl expansion against the `@id` base. This is a CSVW.Conversion
+  signature change (the node builder must receive the `@id` and the
+  document URL) layered with several common-property emission gaps — the
+  corpus's hardest remaining case, best split across multiple commits.
