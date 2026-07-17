@@ -401,6 +401,42 @@ let opt_of_fstar (o : 'a FStar_Pervasives_Native.option) : 'a option =
   | FStar_Pervasives_Native.Some v -> Some v
   | FStar_Pervasives_Native.None -> None
 
+(* ------------------------------------------------------------------ *)
+(* Local-override layer — tests/local-overrides/. When we carefully
+   disagree with a vendored upstream fixture (a written analysis + an
+   upstream provenance link, per that directory's README.md and the
+   owner directive of 2026-07-17: "if we carefully disagree with test
+   make our own local override of it. Shex Also."), the disputed test
+   is reclassified from MISMATCH to a distinctly-counted local-override
+   — NEVER folded into plain pass (the honesty invariant, anti-pattern
+   #25). This reads every *.json override file, keeps the entries whose
+   `suite` matches "shex-validation", and returns [(test_id,
+   our_expectation)]; a test is honored as overridden only when the
+   engine's ACTUAL verdict equals `our_expectation` (a different wrong
+   answer still fails). Overrides use the F*-extracted Parser_JSON, same
+   as every other JSON path in this runner. *)
+let load_local_overrides (repo_root : string) (suite : string) : (string * bool) list =
+  let dir = Filename.concat repo_root "tests/local-overrides" in
+  if not (Sys.file_exists dir) then []
+  else
+    let entries = try Array.to_list (Sys.readdir dir) with _ -> [] in
+    List.filter_map
+      (fun fn ->
+         if Filename.check_suffix fn ".json" then
+           match read_file (Filename.concat dir fn) with
+           | None -> None
+           | Some txt ->
+             (match opt_of_fstar (Parser_JSON.parse_json txt) with
+              | Some obj ->
+                (match opt_of_fstar (Parser_JSON.json_get_string "suite" obj),
+                       opt_of_fstar (Parser_JSON.json_get_string "test_id" obj),
+                       opt_of_fstar (Parser_JSON.json_get_bool "our_expectation" obj) with
+                 | Some s, Some tid, Some v when s = suite -> Some (tid, v)
+                 | _ -> None)
+              | None -> None)
+         else None)
+      entries
+
 let parse_map_entries (json_text : string) : map_entry list option =
   match opt_of_fstar (Parser_JSON.parse_json json_text) with
   | Some (Parser_JSON.JArray items) ->
@@ -484,7 +520,7 @@ let collect_tests (g : rdf_graph) : test_case list =
 (* ------------------------------------------------------------------ *)
 (* Per-test execution. *)
 
-type outcome = Pass | Mismatch of string | Deferred of string | Skip of string
+type outcome = Pass | Override of string | Mismatch of string | Deferred of string | Skip of string
 
 (* Resolves + decodes the ShExJ schema and Turtle data graph shared by
    both the single-focus (`sht:focus`/`sht:shape`) and ShapeMap-form
@@ -543,7 +579,7 @@ let load_schema_and_data (repo_root : string) (schema_iri : string) (data_iri : 
                            | None -> Error (Skip (Printf.sprintf "cannot read %s" data_path))
                            | Some data_graph -> Ok (schema, data_graph)))))))))
 
-let run_single_focus_test (repo_root : string) (tc : test_case) (schema_iri : string) (data_iri : string) (focus : rdf_term) : outcome =
+let run_single_focus_test (repo_root : string) (overrides : (string * bool) list) (tc : test_case) (schema_iri : string) (data_iri : string) (focus : rdf_term) : outcome =
   match load_schema_and_data repo_root schema_iri data_iri tc.tc_shape_externs_iri with
   | Error o -> o
   | Ok (schema, data_graph) ->
@@ -558,7 +594,13 @@ let run_single_focus_test (repo_root : string) (tc : test_case) (schema_iri : st
           Deferred "validate_focus returned None (Stage 4/5 territory — TE_OneOf, cardinality-wrapped groups, overlapping-signature siblings, shapeExprRef recursion, or fuel exhaustion)"
         | FStar_Pervasives_Native.Some got ->
           if got = tc.tc_expect then Pass
-          else Mismatch (Printf.sprintf "expected %b, got %b" tc.tc_expect got))
+          else (match List.assoc_opt tc.tc_name overrides with
+                | Some our_exp when our_exp = got ->
+                  Override (Printf.sprintf
+                              "carefully-disputed fixture (see tests/local-overrides/): \
+                               upstream expects %b, our expectation %b, engine produced %b"
+                              tc.tc_expect our_exp got)
+                | _ -> Mismatch (Printf.sprintf "expected %b, got %b" tc.tc_expect got)))
      with e -> Skip (Printf.sprintf "exception: %s" (Printexc.to_string e)))
 
 (* ShapeMap-form fixture (sht:trait sht:ShapeMap): validate every
@@ -625,13 +667,13 @@ let run_shapemap_test (repo_root : string) (schema_iri : string) (data_iri : str
                                   else Pass)))))
                with e -> Skip (Printf.sprintf "exception: %s" (Printexc.to_string e)))))
 
-let run_test (repo_root : string) (tc : test_case) : outcome =
+let run_test (repo_root : string) (overrides : (string * bool) list) (tc : test_case) : outcome =
   match tc.tc_schema_iri, tc.tc_data_iri with
   | None, _ -> Skip "no sht:schema in mf:action"
   | _, None -> Skip "no sht:data in mf:action"
   | Some schema_iri, Some data_iri ->
     (match tc.tc_focus with
-     | Some focus -> run_single_focus_test repo_root tc schema_iri data_iri focus
+     | Some focus -> run_single_focus_test repo_root overrides tc schema_iri data_iri focus
      | None ->
        (match tc.tc_map_iri, tc.tc_result_iri with
         | Some map_iri, Some result_iri -> run_shapemap_test repo_root schema_iri data_iri map_iri result_iri tc.tc_shape_externs_iri
@@ -643,6 +685,7 @@ let run_test (repo_root : string) (tc : test_case) : outcome =
 
 let run_manifest ~verbose ~list_only manifest_path =
   let repo_root = find_repo_root () in
+  let overrides = load_local_overrides repo_root "shex-validation" in
   Printf.printf "=== ShEx Validation Manifest Runner (stage 8) ===\n";
   Printf.printf "Manifest: %s\n\n" manifest_path;
   match parse_ttl_file manifest_path with
@@ -662,42 +705,52 @@ let run_manifest ~verbose ~list_only manifest_path =
           (fun tc ->
              incr n;
              Printf.eprintf "  [%d/%d] %s%!" !n total tc.tc_name;
-             let o = run_test repo_root tc in
+             let o = run_test repo_root overrides tc in
              let tag = match o with
-               | Pass -> "ok" | Mismatch _ -> "MISMATCH" | Deferred _ -> "deferred" | Skip _ -> "skip" in
+               | Pass -> "ok" | Override _ -> "local-override" | Mismatch _ -> "MISMATCH" | Deferred _ -> "deferred" | Skip _ -> "skip" in
              Printf.eprintf " %s\n%!" tag;
              (match o with
               | Pass -> Printf.printf "  PASS: %s\n" tc.tc_name
+              | Override msg -> Printf.printf "  PASS (local-override): %s — %s\n" tc.tc_name msg
               | Mismatch msg -> Printf.printf "  MISMATCH: %s — %s\n" tc.tc_name msg
               | Deferred msg -> if verbose then Printf.printf "  deferred: %s — %s\n" tc.tc_name msg
               | Skip msg -> if verbose then Printf.printf "  skip: %s — %s\n" tc.tc_name msg);
              o)
           tests
       in
-      let pass, mismatch, deferred, skip =
+      let pass, override, mismatch, deferred, skip =
         List.fold_left
-          (fun (p, m, d, s) o ->
+          (fun (p, ov, m, d, s) o ->
              match o with
-             | Pass -> (p + 1, m, d, s)
-             | Mismatch _ -> (p, m + 1, d, s)
-             | Deferred _ -> (p, m, d + 1, s)
-             | Skip _ -> (p, m, d, s + 1))
-          (0, 0, 0, 0) outcomes
+             | Pass -> (p + 1, ov, m, d, s)
+             | Override _ -> (p, ov + 1, m, d, s)
+             | Mismatch _ -> (p, ov, m + 1, d, s)
+             | Deferred _ -> (p, ov, m, d + 1, s)
+             | Skip _ -> (p, ov, m, d, s + 1))
+          (0, 0, 0, 0, 0) outcomes
       in
       Printf.printf "\n========================================\n";
-      Printf.printf "TOTAL: %d pass, %d mismatch, %d deferred, %d skipped (out of %d)\n"
-        pass mismatch deferred skip total;
+      Printf.printf "TOTAL: %d pass, %d mismatch, %d local-override, %d deferred, %d skipped (out of %d)\n"
+        pass mismatch override deferred skip total;
       Printf.printf "========================================\n";
-      (* The exact labelled line the task + dashboard humans read. *)
-      Printf.printf "shex-validation: %d pass, %d mismatch, %d deferred, %d skipped (out of %d)\n"
-        pass mismatch deferred skip total;
-      (* A second, generic-regex-compatible line ("N pass, M fail (out of
-         K)") for tools/affected-tests.sh's summarize_output, which only
-         understands pass/fail. `fail` here is mismatch only — deferred
-         and skip are "no verdict produced", not a wrong answer, same
-         judgment call shacl_runner.ml's skip bucket makes. *)
+      (* A generic-regex-compatible line ("N pass, M fail (out of K)")
+         for tools/affected-tests.sh's summarize_output, which only
+         understands pass/fail. `fail` here is mismatch only — deferred,
+         skip and local-override are "no upstream-clean verdict", not a
+         wrong answer, same judgment call shacl_runner.ml's skip bucket
+         makes. Printed BEFORE the detailed labelled line so the
+         dashboard's scrape_last_summary (which reads the LAST
+         "(out of N)" line) sees the local-override token and the total
+         reconciles. *)
       Printf.printf "shex-validation (pass/fail compat): %d pass, %d fail (out of %d)\n"
         pass mismatch total;
+      (* The exact labelled line the task + dashboard humans read. Local
+         overrides are counted DISTINCTLY — never folded into plain pass
+         (the honesty invariant; anti-pattern #25). Each override is a
+         carefully-disputed fixture documented under
+         tests/local-overrides/. *)
+      Printf.printf "shex-validation: %d pass, %d fail, %d local-override, %d deferred, %d skipped (out of %d)\n"
+        pass mismatch override deferred skip total;
       if mismatch > 0 then exit 1
     end
 

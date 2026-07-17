@@ -91,6 +91,42 @@ let field key obj = opt_of_fs (Parser_JSON.json_get_field key obj)
 let str_field key obj = opt_of_fs (Parser_JSON.json_get_string key obj)
 let arr_field key obj = opt_of_fs (Parser_JSON.json_get_array key obj)
 
+(* ------------------------------------------------------------------ *)
+(* Local-override layer — tests/local-overrides/. When we carefully
+   disagree with a vendored upstream fixture (a written analysis + an
+   upstream provenance link, per that directory's README.md and the
+   owner directive of 2026-07-17: "if we carefully disagree with test
+   make our own local override of it. Shex Also."), the disputed test
+   is reclassified from FAIL to a distinctly-counted local-override —
+   NEVER folded into plain pass (the honesty invariant, anti-pattern
+   #25). This reads every *.json override file, keeps the entries whose
+   `suite` matches "jsonld-fromrdf", and returns the overridden test
+   ids. #t0008 lives here: it pins JSON-LD 1.0's partially-ordered
+   RDF-collection-to-@list conversion, while this engine implements the
+   1.1 fully-collapsing algorithm (see the override file's rationale;
+   the suite's own #tli03 pins the 1.1 shape and passes). Was formerly a
+   specVersion=json-ld-1.0 skip; now it RUNS and its output-mismatch
+   failure is reclassified. *)
+let load_local_overrides (repo_root : string) (suite : string) : string list =
+  let dir = Filename.concat repo_root "tests/local-overrides" in
+  if not (Sys.file_exists dir) then []
+  else
+    let entries = try Array.to_list (Sys.readdir dir) with _ -> [] in
+    List.filter_map
+      (fun fn ->
+         if Filename.check_suffix fn ".json" then
+           match read_file (Filename.concat dir fn) with
+           | None -> None
+           | Some txt ->
+             (match opt_of_fs (Parser_JSON.parse_json txt) with
+              | Some obj ->
+                (match str_field "suite" obj, str_field "test_id" obj with
+                 | Some s, Some tid when s = suite -> Some tid
+                 | _ -> None)
+              | None -> None)
+         else None)
+      entries
+
 let bool_field key obj =
   match field key obj with
   | Some (Parser_JSON.JBool b) -> Some b
@@ -170,7 +206,7 @@ let build_test_cases manifest_dir root =
 (* ------------------------------------------------------------------ *)
 (* Outcome + per-test execution. *)
 
-type outcome = Pass | Fail of string | Skip of string
+type outcome = Pass | Override of string | Fail of string | Skip of string
 
 let run_from_rdf tc content =
   let ds = Parser_NQuads.parse_nquads content in
@@ -184,32 +220,25 @@ let run_from_rdf tc content =
       JSONLD_FromRdf.rdf_direction = fs_rdf_direction } in
   opt_of_fs (JSONLD_FromRdf.from_rdf ds opts)
 
-(* The sole specVersion=json-ld-1.0 fromRdf fixture (t0008, "List
-   conversion"). The JSON-LD 1.0 "RDF collection -> @list" step converted
-   lists node-by-node against triples that are only PARTIALLY ORDERED on
-   purpose (see the manifest `purpose`), yielding the specific
-   partially-collapsed shape 0008-out.jsonld pins. JSONLD.FromRdf
-   implements the JSON-LD 1.1 "Serialize RDF as JSON-LD" list conversion
-   (a single order-independent referenced-once/list-shape pass — see that
-   module's banner), which fully collapses the same input and so does NOT
-   reproduce the 1.0-only partial shape. This is the SAME 1.0-vs-1.1 gap
-   the toRdf runner records as an honest specVersion skip (jld_runner's
-   jld_1_0_still_skip), classified here as skip rather than fail. *)
-let from_rdf_1_0_still_skip tc =
-  if Sys.getenv_opt "JLD_NO_SKIP" <> None then None else
-  if tc.spec_version = Some "json-ld-1.0" then
-    Some (Printf.sprintf
-            "option.specVersion=json-ld-1.0 — %s: 1.0's partially-ordered \
-             RDF-collection-to-@list conversion; this engine implements the \
-             1.1 fully-collapsing algorithm (see toRdf jld_1_0_still_skip \
-             for the matching honest 1.0-version skip policy)."
-            tc.name)
-  else None
+(* The sole specVersion=json-ld-1.0 fromRdf fixture (#t0008, "List
+   conversion") was formerly a specVersion=json-ld-1.0 skip here: JSON-LD
+   1.0 converted an RDF collection to @list node-by-node against triples
+   that are only PARTIALLY ORDERED on purpose (see the manifest
+   `purpose`), yielding the partially-collapsed shape 0008-out.jsonld
+   pins. JSONLD.FromRdf implements the JSON-LD 1.1 "Serialize RDF as
+   JSON-LD" list conversion (a single order-independent
+   referenced-once/list-shape pass), which fully collapses the same input
+   and so does NOT reproduce the 1.0-only partial shape — the suite's own
+   #tli03 ("t0008 as interpreted for 1.1") pins the 1.1 shape and passes.
+
+   As of the owner directive of 2026-07-17 ("if we carefully disagree
+   with test make our own local override of it. Shex Also.") that skip is
+   retired in favour of the tests/local-overrides/ layer: #t0008 now
+   RUNS, produces its output-mismatch failure, and is reclassified to a
+   distinctly-counted local-override in the summary below (never folded
+   into plain pass). No JSON-LD-1.0 skip remains in this runner. *)
 
 let run_test tc =
-  match from_rdf_1_0_still_skip tc with
-  | Some reason -> Skip reason
-  | None ->
   let input_path = Filename.concat tc.manifest_dir tc.input in
   match read_file input_path with
   | None -> Fail (Printf.sprintf "input file not found: %s" input_path)
@@ -276,9 +305,28 @@ let () =
     | m :: _ -> m
     | [] -> default_manifest ()
   in
+  let overrides = load_local_overrides (find_repo_root ()) "jsonld-fromrdf" in
   let tests = load_manifest manifest_path in
-  let results = List.map (fun tc -> (tc, run_test tc)) tests in
+  let results =
+    List.map
+      (fun tc ->
+         let o0 = run_test tc in
+         (* Local-override reclassification (tests/local-overrides/): a
+            carefully-disputed fixture whose output legitimately differs
+            from the vendored 1.0-pinned expected output is moved out of
+            the FAIL bucket into a distinctly-counted local-override —
+            never into plain pass (honesty invariant, anti-pattern #25). *)
+         let o = match o0 with
+           | Fail _ when List.mem tc.id overrides ->
+             Override "carefully-disputed fixture (see tests/local-overrides/): \
+                       output differs from the vendored expectation by design"
+           | _ -> o0 in
+         (tc, o))
+      tests
+  in
   let pass = List.length (List.filter (fun (_, o) -> o = Pass) results) in
+  let override =
+    List.length (List.filter (fun (_, o) -> match o with Override _ -> true | _ -> false) results) in
   let fail =
     List.length (List.filter (fun (_, o) -> match o with Fail _ -> true | _ -> false) results) in
   let skip =
@@ -288,11 +336,15 @@ let () =
     (fun (tc, o) ->
        match o with
        | Pass -> Printf.printf "  PASS  %-8s %s [%s]\n" tc.id tc.name (kind_label tc.kind)
+       | Override r -> Printf.printf "  PASS (local-override)  %-8s %s [%s] — %s\n" tc.id tc.name (kind_label tc.kind) r
        | Skip r -> Printf.printf "  SKIP  %-8s %s — %s\n" tc.id tc.name r
        | Fail r ->
          Printf.printf "  FAIL  %-8s %s [%s]\n" tc.id tc.name (kind_label tc.kind);
          if verbose then Printf.printf "        %s\n" r)
     results;
+  (* Local overrides are counted DISTINCTLY — never folded into plain
+     pass (the honesty invariant; anti-pattern #25). *)
   Printf.printf "\n^JSON-LD fromRdf tests: %d pass, %d fail" pass fail;
+  if override > 0 then Printf.printf ", %d local-override" override;
   if skip > 0 then Printf.printf ", %d skip" skip;
   Printf.printf " (out of %d)\n" total

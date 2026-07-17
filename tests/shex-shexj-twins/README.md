@@ -129,16 +129,28 @@ force a PASS.
 
 ## start2RefS2 predicate mismatch — upstream provenance (2026-07-14)
 
-The 1 remaining ShEx validation-suite fail traces to a three-way fixture
-disagreement in the vendored corpus: `start2RefS2.json` and
-`start2RefS2.ttl` both use predicate `<http://a.example/p1>`, while
-`start2RefS2.shex` uses `<http://a.example/p2>`. Upstream knows:
+The one non-passing ShEx validation-suite fixture, `start2RefS1-IstartS2`,
+traces to a three-way fixture disagreement in the vendored corpus. It
+imports `start2RefS2`, whose `start2RefS2.json` and `start2RefS2.ttl`
+both use predicate `<http://a.example/p1>`, while `start2RefS2.shex`
+uses `<http://a.example/p2>`. Upstream knows:
 [shexSpec/shexTest#43](https://github.com/shexSpec/shexTest/issues/43)
 ("Curiosity in start2RefS2.shex", reported 2023, closed 2023-06-09)
 describes exactly this mismatch, but the fixtures were never reconciled —
 upstream `main` still ships `p1` in the JSON (re-checked 2026-07-14 via
 raw.githubusercontent.com). Note the majority reading (JSON+Turtle = p1)
 does not by itself settle which representation is canonical; the closed
-issue reached no documented conclusion. Our runner is ShExJ-first, so we
-score against the JSON and carry the 1 mismatch as a fail rather than
-patching vendored fixtures locally.
+issue reached no documented conclusion. Our runner is ShExJ-first, so it
+scores against the JSON (`p1`) and correctly returns `false`; the
+manifest's expected `true` depends on the `.shex` reading (`p2`).
+
+**Disposition (2026-07-17): local override, not a fail.** Per the owner
+directive "if we carefully disagree with test make our own local
+override of it. Shex Also.", this carefully-disputed fixture is recorded
+as a local override in
+[`tests/local-overrides/shex-validation__start2RefS1-IstartS2.json`](../local-overrides/shex-validation__start2RefS1-IstartS2.json)
+(upstream=`true`, ours=`false`, with this analysis + issue #43 as
+provenance). `bin/shex-runner/shex_runner.ml` consumes that layer and
+reports the fixture `PASS (local-override)` with a distinct labelled
+count — the suite is 1181 pass, 0 fail, 1 local-override (out of 1182),
+and no vendored fixture is patched.

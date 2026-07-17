@@ -133,6 +133,41 @@ let field key obj = opt_of_fs (Parser_JSON.json_get_field key obj)
 let str_field key obj = opt_of_fs (Parser_JSON.json_get_string key obj)
 let arr_field key obj = opt_of_fs (Parser_JSON.json_get_array key obj)
 
+(* ------------------------------------------------------------------ *)
+(* Local-override layer — tests/local-overrides/. When we carefully
+   disagree with a vendored upstream fixture (a written analysis + an
+   upstream provenance link, per that directory's README.md and the
+   owner directive of 2026-07-17: "if we carefully disagree with test
+   make our own local override of it. Shex Also."), the disputed test
+   is reclassified from FAIL to a distinctly-counted local-override —
+   NEVER folded into plain pass (the honesty invariant, anti-pattern
+   #25). This reads every *.json override file, keeps the entries whose
+   `suite` matches "jsonld-compact", and returns the overridden test
+   ids. #t0038 lives here: its json-ld-1.0 expected output contradicts
+   this suite's OWN 1.1 pin #tp001 (see the override file's rationale
+   and JSONLD.Compact.fst's cmp_curie_loop comment). Was formerly a
+   per-ID skip; now it RUNS and its output-mismatch failure is
+   reclassified. *)
+let load_local_overrides (repo_root : string) (suite : string) : string list =
+  let dir = Filename.concat repo_root "tests/local-overrides" in
+  if not (Sys.file_exists dir) then []
+  else
+    let entries = try Array.to_list (Sys.readdir dir) with _ -> [] in
+    List.filter_map
+      (fun fn ->
+         if Filename.check_suffix fn ".json" then
+           match read_file (Filename.concat dir fn) with
+           | None -> None
+           | Some txt ->
+             (match opt_of_fs (Parser_JSON.parse_json txt) with
+              | Some obj ->
+                (match str_field "suite" obj, str_field "test_id" obj with
+                 | Some s, Some tid when s = suite -> Some tid
+                 | _ -> None)
+              | None -> None)
+         else None)
+      entries
+
 let jld_types entry =
   match field "@type" entry with
   | Some (Parser_JSON.JArray items) ->
@@ -220,7 +255,7 @@ let build_test_cases manifest_dir root =
 (* ------------------------------------------------------------------ *)
 (* Outcome + per-test execution. *)
 
-type outcome = Pass | Fail of string | Skip of string
+type outcome = Pass | Override of string | Fail of string | Skip of string
 
 let test_base tc =
   match tc.base_override with
@@ -247,42 +282,24 @@ let compact_document_tc tc input_content context_content =
        tc.compact_to_relative
        fs_processing_mode)
 
-(* Measured per-ID skips (JSON-LD-1.0-only fixtures). Populated only
-   after each candidate was RUN and its failure diagnosed as a genuine
-   1.0-vs-1.1 semantic gap — never a blanket specVersion check (mirrors
-   jsonld_expand_runner.ml's jld_1_0_still_skip policy). JLD_NO_SKIP=1
-   re-runs them.
+(* #t0038 ("Index map round-tripping") was formerly a measured per-ID
+   skip here: its option.specVersion=json-ld-1.0 expected output needs
+   every term (expanded-form definitions included) to be a compact-IRI
+   prefix candidate, which directly contradicts this suite's OWN 1.1 pin
+   #tp001 ("Compact IRI will not use an expanded term definition in
+   1.0"). One processingMode-driven engine state cannot satisfy both;
+   this program implements the 1.1 API, so tp001 wins and t0038's
+   body:/format-style prefix compaction diverges by design (see
+   JSONLD.Compact.fst's cmp_curie_loop comment).
 
-   2026-07-16 skip audit: #te001 "Compaction to list of lists" flipped
-   to an ordinary run (JSONLD.Expand.fst's expand_property now raises
-   1.0's "list of lists" error behind ac_mode10, shared with the
-   toRdf/expand runners' former #ter24/#ter32 skips). #t0038 remains,
-   with a sharper measured reason than before — see below. *)
-let jld_1_0_still_skip (id : string) : string option =
-  if Sys.getenv_opt "JLD_NO_SKIP" <> None then None else
-  match id with
-  | "#t0038" ->
-    Some "option.specVersion=json-ld-1.0 — \"Index map round-tripping\" \
-          expects a genuine JSON-LD 1.0 processor's compaction (the \
-          \"body:/format\"-style keys need EVERY term — expanded-form \
-          definitions included — to be a compact-IRI prefix candidate); \
-          this suite's OWN #tp001 (\"Compact IRI will not use an \
-          expanded term definition in 1.0\", processingMode=json-ld-1.0, \
-          specVersion=json-ld-1.1) pins the OPPOSITE for the 1.1 API \
-          running in 1.0 processing mode. One processingMode-driven \
-          engine state cannot pass both; this program implements the \
-          1.1 API, so tp001 (the in-suite 1.1 conformance pin) wins and \
-          t0038 is excluded by design (diagnosed 2026-07-16: t0038's \
-          only diff vs this engine is the body:/format-style prefix \
-          compaction, confirmed with -v; see JSONLD.Compact.fst's \
-          cmp_curie_loop comment for why the gate is not relaxed under \
-          ac_mode10)."
-  | _ -> None
+   As of the owner directive of 2026-07-17 ("if we carefully disagree
+   with test make our own local override of it") that skip is retired in
+   favour of the tests/local-overrides/ layer: #t0038 now RUNS, produces
+   its output-mismatch failure, and is reclassified to a distinctly-
+   counted local-override in run_manifest below (never folded into plain
+   pass). No JSON-LD-1.0 skip remains in this runner. *)
 
 let run_test tc =
-  match jld_1_0_still_skip tc.id with
-  | Some reason -> Skip reason
-  | None ->
     let input_path = Filename.concat tc.manifest_dir tc.input in
     (match read_file input_path with
      | None -> Fail (Printf.sprintf "input file not found: %s" input_path)
@@ -340,17 +357,19 @@ let load_manifest manifest_path =
 
 let tally_by_kind tests_and_outcomes kind =
   List.fold_left
-    (fun (p, f, s) (tc, o) ->
-       if tc.kind <> kind then (p, f, s)
+    (fun (p, ov, f, s) (tc, o) ->
+       if tc.kind <> kind then (p, ov, f, s)
        else match o with
-         | Pass -> (p + 1, f, s)
-         | Fail _ -> (p, f + 1, s)
-         | Skip _ -> (p, f, s + 1))
-    (0, 0, 0) tests_and_outcomes
+         | Pass -> (p + 1, ov, f, s)
+         | Override _ -> (p, ov + 1, f, s)
+         | Fail _ -> (p, ov, f + 1, s)
+         | Skip _ -> (p, ov, f, s + 1))
+    (0, 0, 0, 0) tests_and_outcomes
 
 let run_manifest ~verbose ~list_only manifest_path =
   Printf.printf "=== JSON-LD 1.1 Compaction Test Runner ===\n";
   Printf.printf "Manifest: %s\n\n" manifest_path;
+  let overrides = load_local_overrides (find_repo_root ()) "jsonld-compact" in
   let tests = load_manifest manifest_path in
   let total = List.length tests in
   Printf.printf "Totals: %d test entries\n\n" total;
@@ -367,14 +386,26 @@ let run_manifest ~verbose ~list_only manifest_path =
            incr n;
            Printf.eprintf "  [%d/%d] %s%!" !n total tc.id;
            let t0 = Unix.gettimeofday () in
-           let o = run_test tc in
+           let o0 = run_test tc in
+           (* Local-override reclassification (tests/local-overrides/): a
+              carefully-disputed fixture whose output legitimately differs
+              from the vendored 1.0-pinned expected output is moved out of
+              the FAIL bucket into a distinctly-counted local-override —
+              never into plain pass (honesty invariant, anti-pattern #25). *)
+           let o = match o0 with
+             | Fail _ when List.mem tc.id overrides ->
+               Override (Printf.sprintf
+                           "carefully-disputed fixture (see tests/local-overrides/): \
+                            output differs from the vendored expectation by design")
+             | _ -> o0 in
            let elapsed = Unix.gettimeofday () -. t0 in
            let status_tag = match o with
-             | Pass -> "ok" | Fail _ -> "FAIL" | Skip _ -> "skip" in
+             | Pass -> "ok" | Override _ -> "local-override" | Fail _ -> "FAIL" | Skip _ -> "skip" in
            Printf.eprintf " %s%s\n%!" status_tag
              (if elapsed >= 1.0 then Printf.sprintf " (%.1fs)" elapsed else "");
            (match o with
             | Pass -> Printf.printf "  PASS: %s\n" tc.name
+            | Override msg -> Printf.printf "  PASS (local-override): %s (%s) — %s\n" tc.name tc.id msg
             | Fail msg -> Printf.printf "  FAIL: %s (%s) — %s\n" tc.name tc.id msg
             | Skip msg -> if verbose then Printf.printf "  skip: %s — %s\n" tc.name msg);
            (tc, o))
@@ -384,26 +415,28 @@ let run_manifest ~verbose ~list_only manifest_path =
     Printf.printf "Suite Results:\n";
     List.iter
       (fun kind ->
-         let (p, f, s) = tally_by_kind outcomes kind in
-         if p + f + s > 0 then
-           Printf.printf "  %-20s pass:%d fail:%d skip:%d\n" (kind_label kind) p f s)
+         let (p, ov, f, s) = tally_by_kind outcomes kind in
+         if p + ov + f + s > 0 then
+           Printf.printf "  %-20s pass:%d local-override:%d fail:%d skip:%d\n" (kind_label kind) p ov f s)
       [ K_Positive; K_Negative; K_Unknown ];
     Printf.printf "========================================\n";
-    let pass, fail, skip =
+    let pass, override, fail, skip =
       List.fold_left
-        (fun (p, f, s) (_, o) ->
+        (fun (p, ov, f, s) (_, o) ->
            match o with
-           | Pass -> (p + 1, f, s)
-           | Fail _ -> (p, f + 1, s)
-           | Skip _ -> (p, f, s + 1))
-        (0, 0, 0) outcomes
+           | Pass -> (p + 1, ov, f, s)
+           | Override _ -> (p, ov + 1, f, s)
+           | Fail _ -> (p, ov, f + 1, s)
+           | Skip _ -> (p, ov, f, s + 1))
+        (0, 0, 0, 0) outcomes
     in
-    Printf.printf "TOTAL: %d pass, %d fail, %d skip (out of %d)\n" pass fail skip total;
+    Printf.printf "TOTAL: %d pass, %d fail, %d local-override, %d skip (out of %d)\n" pass fail override skip total;
     Printf.printf "========================================\n";
     (* Exact final-line format consumed by generate-report.sh's generic
-       "N pass, M fail (out of K)" score-line regex. *)
-    Printf.printf "jsonld-compact: %d pass, %d fail, %d skip (out of %d)\n"
-      pass fail skip total;
+       "N pass, M fail (out of K)" score-line regex. Local overrides are
+       counted DISTINCTLY — never folded into plain pass. *)
+    Printf.printf "jsonld-compact: %d pass, %d fail, %d local-override, %d skip (out of %d)\n"
+      pass fail override skip total;
     if fail > 0 then exit 1
   end
 

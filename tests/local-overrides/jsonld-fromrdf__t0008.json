@@ -1,0 +1,17 @@
+{
+  "test_id": "#t0008",
+  "suite": "jsonld-fromrdf",
+  "dispute_kind": "output",
+  "upstream_expectation": "the JSON-LD 1.0 \"List conversion\" output (option.specVersion=json-ld-1.0): 1.0 converted an RDF collection to @list node-by-node against triples that are only PARTIALLY ORDERED on purpose (see the manifest `purpose`), yielding the specific partially-collapsed shape 0008-out.jsonld pins",
+  "our_expectation": "the JSON-LD 1.1 \"Serialize RDF as JSON-LD\" list conversion — a single order-independent referenced-once/list-shape pass — which fully collapses the same input and so does NOT reproduce the 1.0-only partial shape",
+  "rationale": "This is the sole specVersion=json-ld-1.0 fromRdf fixture. JSONLD.FromRdf implements the JSON-LD 1.1 fully-collapsing RDF-collection-to-@list algorithm; t0008 pins the 1.0 partially-ordered conversion, so our output legitimately differs. The same 1.0-vs-1.1 gap is what the toRdf runner records as an honest specVersion skip. The suite's OWN #tli03 (\"t0008 as interpreted for 1.1\") pins the 1.1 fully-collapsed shape and passes here — so the 1.1 reading is not our invention, it is the corpus's own 1.1 expectation for this input. Previously carried as a specVersion=json-ld-1.0 skip in jsonld_fromrdf_runner.ml; converted to a local-override on 2026-07-17 so the test runs and its disagreement is counted distinctly rather than hidden.",
+  "analysis_refs": [
+    "bin/jsonld-fromrdf-runner/jsonld_fromrdf_runner.ml",
+    "formal/fstar/JSONLD.FromRdf.fst"
+  ],
+  "upstream_provenance": [
+    "https://github.com/w3c/json-ld-api/blob/main/tests/fromRdf-manifest.jsonld"
+  ],
+  "date": "2026-07-17",
+  "owner_directive": "if we carefully disagree with test make our own local override of it. Shex Also. (owner, 2026-07-17)"
+}

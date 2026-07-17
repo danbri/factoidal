@@ -609,12 +609,18 @@ fi
 # Shared by the SHACL / ShEx / JSON-LD / RML / RIF Core / VC suites added
 # 2026-07-05. Each runner prints its own final tally line ending
 # "(out of N)"; the label vocabulary differs per runner (pass/fail/
-# mismatch/skip/skipped/deferred/stub) so we SUM matching tokens rather
-# than hard-coding one shape — e.g. shex_runner's "N pass, N mismatch,
-# N deferred, N skipped (out of N)" folds mismatch into the fail bucket
-# and deferred+skipped into the skip bucket. Missing log or no matching
-# line => PRESENT stays 0 and every count stays 0, which the HTML/CSV/
-# JSON emitters below render as "not measured this run" — never a
+# mismatch/skip/skipped/deferred/stub/local-override) so we SUM matching
+# tokens rather than hard-coding one shape — e.g. shex_runner's "N pass,
+# N mismatch, N deferred, N skipped (out of N)" folds mismatch into the
+# fail bucket and deferred+skipped into the skip bucket. `local-override`
+# (a carefully-disputed vendored fixture scored against our own
+# expectation — see tests/local-overrides/) folds into the coarse
+# skip-side bucket too: on the 3-bucket dashboard it is neither a clean
+# upstream pass nor a real fail, so the total reconciles while the
+# runner's own output keeps it as a DISTINCT labelled count (the honesty
+# invariant lives in the runner line, not this rollup). Missing log or no
+# matching line => PRESENT stays 0 and every count stays 0, which the
+# HTML/CSV/JSON emitters below render as "not measured this run" — never a
 # fabricated number (CLAUDE.md anti-pattern #3/#25).
 scrape_last_summary () {
   local prefix="$1" log="$2" anchor="${3:-}"
@@ -634,7 +640,7 @@ scrape_last_summary () {
   local p f s t
   p=$(echo "$line" | grep -oE '[0-9]+ pass'                         | awk '{s+=$1} END{print s+0}')
   f=$(echo "$line" | grep -oE '[0-9]+ (fail|mismatch)'              | awk '{s+=$1} END{print s+0}')
-  s=$(echo "$line" | grep -oE '[0-9]+ (skip|skipped|deferred|stub)' | awk '{s+=$1} END{print s+0}')
+  s=$(echo "$line" | grep -oE '[0-9]+ (skip|skipped|deferred|stub|local-override)' | awk '{s+=$1} END{print s+0}')
   t=$(echo "$line" | sed -nE 's/.*\(out of ([0-9]+)\).*/\1/p')
   declare -g "${prefix}_PRESENT=1"
   declare -g "${prefix}_PASS=${p:-0}"
@@ -694,7 +700,7 @@ scrape_added_summary () {
   local p f s t
   p=$(echo "$line" | grep -oE '[0-9]+ pass'                         | awk '{s+=$1} END{print s+0}')
   f=$(echo "$line" | grep -oE '[0-9]+ (fail|mismatch)'              | awk '{s+=$1} END{print s+0}')
-  s=$(echo "$line" | grep -oE '[0-9]+ (skip|skipped|deferred|stub)' | awk '{s+=$1} END{print s+0}')
+  s=$(echo "$line" | grep -oE '[0-9]+ (skip|skipped|deferred|stub|local-override)' | awk '{s+=$1} END{print s+0}')
   # Accepts "(out of N)" and "(of N)" (and trailing words like "N cases").
   t=$(echo "$line" | sed -nE 's/.*\((out )?of ([0-9]+).*/\2/p')
   declare -g "${prefix}_PRESENT=1" "${prefix}_PASS=${p:-0}" "${prefix}_FAIL=${f:-0}" "${prefix}_SKIP=${s:-0}" "${prefix}_TOTAL=${t:-0}"
