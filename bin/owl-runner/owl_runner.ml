@@ -492,6 +492,26 @@ type outcome =
      syntax gap as a semantic failure. Counted outside the pass/fail
      denominator. *)
   | Skip_functional_syntax_only
+  (* InconsistencyTest whose catalog entry declares test:semantics
+     RDF-BASED and does NOT also declare DIRECT (2026-07-17 sweep of
+     all 128 InconsistencyTest cases in type-inconsistency.rdf: 127
+     carry BOTH test:semantics DIRECT and RDF-BASED; exactly one,
+     WebOnt-Thing-005 ["the extension of owl:Thing may not be a
+     singleton in OWL Full"], carries RDF-BASED alone — and the
+     catalog additionally ships an owl:NegativePropertyAssertion on
+     that TestCase explicitly denying test:semantics DIRECT). This
+     runner's DL-regime path (RL closure -> Tableau.Refute -> RL) and
+     RL-regime path both implement Direct (Description Logic) Semantics
+     model theory — no RDF-Based domain-size / comprehension reasoning
+     over owl:Thing's own extension. Scoring a DIRECT-inapplicable test
+     as a DL fail was a harness categorization bug, not an engine gap;
+     this is the fix (owl_semantics_mode_for, already used to gate
+     NegativeEntailmentTest's closure mode, reduces to the same
+     RDF-Based-only signal here). Counted outside the pass/fail
+     denominator, same as Skip_functional_syntax_only. See
+     docs/claude-rules/w3c-completeness-ledger.md (Thing-005
+     disposition) and #299. *)
+  | Skip_semantics_rdf_based_only
 
 let outcome_tag = function
   | Pass -> "PASS"
@@ -505,6 +525,7 @@ let outcome_tag = function
   | Fail_no_premise -> "FAIL/no-premise"
   | Fail_no_conclusion -> "FAIL/no-conclusion"
   | Skip_functional_syntax_only -> "SKIP/functional-syntax-only"
+  | Skip_semantics_rdf_based_only -> "SKIP/semantics-rdf-based-only"
 
 let fuel_100 : Prims.nat = Z.of_int 100
 
@@ -1289,6 +1310,13 @@ let run_inconsistency_test
       (imports_lookup : (string, string) Hashtbl.t) : outcome =
   Printf.eprintf "  [inc-running] %s\n%!"
     (match info.identifier with Some id -> id | None -> info.iri);
+  (* 2026-07-17 categorization fix: a test:semantics RDF-BASED-only
+     catalog entry (see Skip_semantics_rdf_based_only's comment) is out
+     of scope for this runner's Direct-Semantics closure/tableau in
+     EITHER regime — skip before touching the premise at all. *)
+  if owl_semantics_mode_for info = RDF_Graph_Executable.owl_semantics_rdf_based
+  then Skip_semantics_rdf_based_only
+  else
   match info.premise with
   | None ->
     (match info.fs_premise with
@@ -1392,6 +1420,9 @@ let print_outcome verbose info outcome =
         anti-pattern #3 warns about. *)
      Printf.printf
        "      reason: unsupported input syntax — catalog entry provides only test:fsPremiseOntology (OWL 2 Functional Syntax) with test:normativeSyntax FUNCTIONAL, and either no fs premise/conclusion literal is present or it uses Functional-Syntax constructs beyond Parser_OWLFunctional's narrow subset (Prefix/Ontology/Declaration + ~6 axiom forms; see docs/designissues/2026-07-05-owl-functional-syntax-plan.md)\n"
+   | Skip_semantics_rdf_based_only ->
+     Printf.printf
+       "      reason: catalog test:semantics = RDF-BASED only (DIRECT not asserted; catalog also ships an owl:NegativePropertyAssertion explicitly denying test:semantics DIRECT for this TestCase) — Direct Semantics, which is what this runner's RL closure and DL tableau implement, does not apply; RDF-Based (OWL Full) domain-size/comprehension reasoning over owl:Thing's extension is out of scope (see docs/claude-rules/w3c-completeness-ledger.md, #299)\n"
    | _ -> ());
   if verbose then begin
     match outcome with
@@ -1845,11 +1876,21 @@ let run_catalog ?(verbose=false) path =
         (fun acc (_, o) -> match o with Pass -> acc + 1 | _ -> acc)
         0 i_outcomes
     in
-    let i_skips =
+    let i_skips_fs =
       List.fold_left
         (fun acc (_, o) -> match o with Skip_functional_syntax_only -> acc + 1 | _ -> acc)
         0 i_outcomes
     in
+    (* 2026-07-17: RDF-BASED-only catalog entries (Thing-005; see
+       Skip_semantics_rdf_based_only) counted separately from the
+       functional-syntax skips so the reported reason stays honest
+       (anti-pattern #3) — the two are unrelated harness-scope gaps. *)
+    let i_skips_sem =
+      List.fold_left
+        (fun acc (_, o) -> match o with Skip_semantics_rdf_based_only -> acc + 1 | _ -> acc)
+        0 i_outcomes
+    in
+    let i_skips = i_skips_fs + i_skips_sem in
     (* Z33kr Phase 1: oracle-assisted passes are counted SEPARATELY and
        NEVER folded into i_passes (the pure-verified pass count). They
        stay inside the fail bucket for the pure-verified score line
@@ -1867,8 +1908,8 @@ let run_catalog ?(verbose=false) path =
     let oracle_suffix =
       if i_oracle > 0 then Printf.sprintf "; +%d oracle-assisted" i_oracle else "" in
     Printf.printf "\n";
-    Printf.printf "Profile-RL InconsistencyTests: %d pass, %d fail (out of %d), %d skipped (functional-syntax-only) in %.2fs%s\n"
-      i_passes i_fails i_scored i_skips (t_inc1 -. t_inc0) oracle_suffix
+    Printf.printf "Profile-RL InconsistencyTests: %d pass, %d fail (out of %d), %d skipped (functional-syntax-only), %d skipped (semantics-scope: RDF-Based only, not applicable under Direct Semantics) in %.2fs%s\n"
+      i_passes i_fails i_scored i_skips_fs i_skips_sem (t_inc1 -. t_inc0) oracle_suffix
   end
   end (* not species_mode *)
 
