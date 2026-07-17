@@ -1,4 +1,2 @@
-    [SPARQL.Diagnostics.fst]
-    [RDF.Store.Combine.fst]
-    [RDF.Store.Combine.fst] Extracted module RDF.Store.Combine
-    [SPARQL.Diagnostics.fst] Extracted module SPARQL.Diagnostics
+    RDF.Store.Combine.fst (up to date, skipped -- source unchanged since last extract)
+    SPARQL.Diagnostics.fst (up to date, skipped -- source unchanged since last extract)

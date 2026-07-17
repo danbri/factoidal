@@ -1,40 +1,16 @@
-    [XSD.Datatypes.fst]
-    [RIF.Core.Translation.fst]
-    [OWL.QueryRewrite.fst]
-    [RDF.Pretty.fst]
-    [RIF.Core.Translation.fst] Extracted module RIF.Core.Translation
-    [SPARQL11.Parser.fst]
-    [RDF.Pretty.fst] Extracted module RDF.Pretty
-    [HDT.Triples.fst]
-    [XSD.Datatypes.fst] Extracted module XSD.Datatypes
-    [Schematron.Validate.fst]
-    [Schematron.Validate.fst] Extracted module Schematron.Validate
-    [GRDDL.Discovery.fst]
-    [OWL.QueryRewrite.fst] Extracted module OWL.QueryRewrite
-    [Parser.JSONLD.fst]
-    [HDT.Triples.fst] Extracted module HDT.Triples
-    [ShEx.SchemaEq.fst]
-    [GRDDL.Discovery.fst] Extracted module GRDDL.Discovery
-    [RML.Eval.fst]
-    [Parser.JSONLD.fst] Extracted module Parser.JSONLD
-    [CSVW.URITemplate.fst]
-    [ShEx.SchemaEq.fst] Extracted module ShEx.SchemaEq
-    [SPARQL.Plan.AccessPath.fst]
-    [SPARQL.Plan.AccessPath.fst] Extracted module SPARQL.Plan.AccessPath
-    [RDF.Store.Columnar.DeltaMerge.fst]
-    [RML.Eval.fst] Extracted module RML.Eval
-    [RDF.Store.Capabilities.fst]
-    [CSVW.URITemplate.fst] Extracted module CSVW.URITemplate
-    [SPARQL.Plan.Streamable.fst]
-    [RDF.Store.Capabilities.fst] Extracted module RDF.Store.Capabilities
-    [SPARQL.HTTP.RunQuery.fst]
-    [RDF.Store.Columnar.DeltaMerge.fst] Extracted module RDF.Store.Columnar.DeltaMerge
-    [SPARQL.Update.Sandbox.fst]
-    [SPARQL.Plan.Streamable.fst] Extracted module SPARQL.Plan.Streamable
-    [SPARQL.Update.Analysis.fst]
-    [SPARQL.HTTP.RunQuery.fst] Extracted module SPARQL.HTTP.RunQuery
-    [SPARQL.Query.Analysis.fst]
-    [SPARQL.Update.Sandbox.fst] Extracted module SPARQL.Update.Sandbox
-    [SPARQL11.Parser.fst] Extracted module SPARQL11.Parser
-    [SPARQL.Update.Analysis.fst] Extracted module SPARQL.Update.Analysis
-    [SPARQL.Query.Analysis.fst] Extracted module SPARQL.Query.Analysis
+    Schematron.Validate.fst (up to date, skipped -- source unchanged since last extract)
+    OWL.QueryEval.fst (up to date, skipped -- source unchanged since last extract)
+    HDT.Triples.fst (up to date, skipped -- source unchanged since last extract)
+    SHACL.Validation.fst (up to date, skipped -- source unchanged since last extract)
+    RIF.Core.Builtins.fst (up to date, skipped -- source unchanged since last extract)
+    GRDDL.Discovery.fst (up to date, skipped -- source unchanged since last extract)
+    XForms.Bind.fst (up to date, skipped -- source unchanged since last extract)
+    Parser.JSONLD.fst (up to date, skipped -- source unchanged since last extract)
+    VC.Credential.fst (up to date, skipped -- source unchanged since last extract)
+    ShEx.Validation.fst (up to date, skipped -- source unchanged since last extract)
+    CSVW.Conversion.fst (up to date, skipped -- source unchanged since last extract)
+    SPARQL.Plan.AccessPath.fst (up to date, skipped -- source unchanged since last extract)
+    RML.VirtualSource.fst (up to date, skipped -- source unchanged since last extract)
+    RDF.Store.Capabilities.Delta.fst (up to date, skipped -- source unchanged since last extract)
+    SPARQL.Explain.fst (up to date, skipped -- source unchanged since last extract)
+    SPARQL.Service.Wrap.fst (up to date, skipped -- source unchanged since last extract)

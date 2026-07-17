@@ -835,34 +835,52 @@ type xp_env =
   env_size: Prims.nat ;
   env_vars: (Prims.string * xp_value) Prims.list ;
   env_nsctx: (Prims.string * Prims.string) Prims.list ;
-  env_doc_kids: Parser_XML.xml_node Prims.list }
+  env_doc_kids: Parser_XML.xml_node Prims.list ;
+  env_id_attrs: (Prims.string * Prims.string) Prims.list ;
+  env_style_root: Parser_XML.xml_node }
 let __proj__Mkxp_env__item__env_item (projectee : xp_env) : xctx_item=
   match projectee with
-  | { env_item; env_pos; env_size; env_vars; env_nsctx; env_doc_kids;_} ->
-      env_item
+  | { env_item; env_pos; env_size; env_vars; env_nsctx; env_doc_kids;
+      env_id_attrs; env_style_root;_} -> env_item
 let __proj__Mkxp_env__item__env_pos (projectee : xp_env) : Prims.nat=
   match projectee with
-  | { env_item; env_pos; env_size; env_vars; env_nsctx; env_doc_kids;_} ->
-      env_pos
+  | { env_item; env_pos; env_size; env_vars; env_nsctx; env_doc_kids;
+      env_id_attrs; env_style_root;_} -> env_pos
 let __proj__Mkxp_env__item__env_size (projectee : xp_env) : Prims.nat=
   match projectee with
-  | { env_item; env_pos; env_size; env_vars; env_nsctx; env_doc_kids;_} ->
-      env_size
+  | { env_item; env_pos; env_size; env_vars; env_nsctx; env_doc_kids;
+      env_id_attrs; env_style_root;_} -> env_size
 let __proj__Mkxp_env__item__env_vars (projectee : xp_env) :
   (Prims.string * xp_value) Prims.list=
   match projectee with
-  | { env_item; env_pos; env_size; env_vars; env_nsctx; env_doc_kids;_} ->
-      env_vars
+  | { env_item; env_pos; env_size; env_vars; env_nsctx; env_doc_kids;
+      env_id_attrs; env_style_root;_} -> env_vars
 let __proj__Mkxp_env__item__env_nsctx (projectee : xp_env) :
   (Prims.string * Prims.string) Prims.list=
   match projectee with
-  | { env_item; env_pos; env_size; env_vars; env_nsctx; env_doc_kids;_} ->
-      env_nsctx
+  | { env_item; env_pos; env_size; env_vars; env_nsctx; env_doc_kids;
+      env_id_attrs; env_style_root;_} -> env_nsctx
 let __proj__Mkxp_env__item__env_doc_kids (projectee : xp_env) :
   Parser_XML.xml_node Prims.list=
   match projectee with
-  | { env_item; env_pos; env_size; env_vars; env_nsctx; env_doc_kids;_} ->
-      env_doc_kids
+  | { env_item; env_pos; env_size; env_vars; env_nsctx; env_doc_kids;
+      env_id_attrs; env_style_root;_} -> env_doc_kids
+let __proj__Mkxp_env__item__env_id_attrs (projectee : xp_env) :
+  (Prims.string * Prims.string) Prims.list=
+  match projectee with
+  | { env_item; env_pos; env_size; env_vars; env_nsctx; env_doc_kids;
+      env_id_attrs; env_style_root;_} -> env_id_attrs
+let __proj__Mkxp_env__item__env_style_root (projectee : xp_env) :
+  Parser_XML.xml_node=
+  match projectee with
+  | { env_item; env_pos; env_size; env_vars; env_nsctx; env_doc_kids;
+      env_id_attrs; env_style_root;_} -> env_style_root
+let xnode_none : Parser_XML.xml_node= Parser_XML.XElement ("", [], [])
+let is_xnode_none (n : Parser_XML.xml_node) : Prims.bool=
+  match n with
+  | Parser_XML.XElement (t, attrs, kids) ->
+      ((t = "") && (Prims.uu___is_Nil attrs)) && (Prims.uu___is_Nil kids)
+  | uu___ -> false
 let lookup_var (vars : (Prims.string * xp_value) Prims.list)
   (name : Prims.string) : xp_value FStar_Pervasives_Native.option=
   match FStar_List_Tot_Base.find
@@ -1156,30 +1174,80 @@ let initial_eval_fuel (e : Parser_XPath.xp_expr) (doc_nodes : Prims.nat) :
      ((doc_nodes + Prims.int_one) * (Prims.of_int (24))))
     + (Prims.of_int (4096))
 let is_supported_xpath_function (nm : Prims.string) : Prims.bool=
-  ((((((((((((((((((((((((nm = "position") || (nm = "last")) ||
-                          (nm = "count"))
-                         || (nm = "name"))
-                        || (nm = "local-name"))
-                       || (nm = "namespace-uri"))
-                      || (nm = "current"))
-                     || (nm = "string"))
-                    || (nm = "concat"))
-                   || (nm = "contains"))
-                  || (nm = "starts-with"))
-                 || (nm = "substring-before"))
-                || (nm = "substring-after"))
-               || (nm = "substring"))
-              || (nm = "string-length"))
-             || (nm = "normalize-space"))
-            || (nm = "not"))
-           || (nm = "true"))
-          || (nm = "false"))
-         || (nm = "boolean"))
-        || (nm = "number"))
-       || (nm = "sum"))
-      || (nm = "floor"))
-     || (nm = "ceiling"))
-    || (nm = "round")
+  ((((((((((((((((((((((((((nm = "position") || (nm = "last")) ||
+                            (nm = "count"))
+                           || (nm = "name"))
+                          || (nm = "local-name"))
+                         || (nm = "namespace-uri"))
+                        || (nm = "current"))
+                       || (nm = "string"))
+                      || (nm = "concat"))
+                     || (nm = "contains"))
+                    || (nm = "starts-with"))
+                   || (nm = "substring-before"))
+                  || (nm = "substring-after"))
+                 || (nm = "substring"))
+                || (nm = "string-length"))
+               || (nm = "normalize-space"))
+              || (nm = "not"))
+             || (nm = "true"))
+            || (nm = "false"))
+           || (nm = "boolean"))
+          || (nm = "number"))
+         || (nm = "sum"))
+        || (nm = "floor"))
+       || (nm = "ceiling"))
+      || (nm = "round"))
+     || (nm = "id"))
+    || (nm = "document")
+let rec ws_split_chars (cs : FStar_Char.char Prims.list)
+  (cur : FStar_Char.char Prims.list) (acc : Prims.string Prims.list) :
+  Prims.string Prims.list=
+  match cs with
+  | [] ->
+      FStar_List_Tot_Base.rev
+        (if Prims.uu___is_Nil cur
+         then acc
+         else (FStar_String.string_of_list (FStar_List_Tot_Base.rev cur)) ::
+           acc)
+  | c::rest ->
+      if (((c = 32) || (c = 9)) || (c = 10)) || (c = 13)
+      then
+        ws_split_chars rest []
+          (if Prims.uu___is_Nil cur
+           then acc
+           else (FStar_String.string_of_list (FStar_List_Tot_Base.rev cur))
+             :: acc)
+      else ws_split_chars rest (c :: cur) acc
+let ws_tokens (s : Prims.string) : Prims.string Prims.list=
+  ws_split_chars (FStar_String.list_of_string s) [] []
+let rec id_attr_declared
+  (id_attrs : (Prims.string * Prims.string) Prims.list) (tag : Prims.string)
+  (attr : Prims.string) : Prims.bool=
+  match id_attrs with
+  | [] -> false
+  | (e, a)::rest ->
+      if (e = tag) && (a = attr)
+      then true
+      else id_attr_declared rest tag attr
+let rec str_mem (x : Prims.string) (xs : Prims.string Prims.list) :
+  Prims.bool=
+  match xs with | [] -> false | h::t -> if h = x then true else str_mem x t
+let elem_has_id (id_attrs : (Prims.string * Prims.string) Prims.list)
+  (wanted : Prims.string Prims.list) (it : xctx_item) : Prims.bool=
+  match it with
+  | CI_Elem (uu___, uu___1, Parser_XML.XElement (tag, attrs, uu___2)) ->
+      FStar_List_Tot_Base.existsb
+        (fun a ->
+           (id_attr_declared id_attrs tag a.Parser_XML.attr_name) &&
+             (str_mem a.Parser_XML.attr_value wanted)) attrs
+  | uu___ -> false
+let id_wanted_tokens (v : xp_value) : Prims.string Prims.list=
+  match v with
+  | XV_Nodes items ->
+      FStar_List_Tot_Base.collect
+        (fun it -> ws_tokens (item_string_value it)) items
+  | other -> ws_tokens (to_string_val other)
 let rec eval_expr (fuel : Prims.nat) (env : xp_env)
   (e : Parser_XPath.xp_expr) : xp_value=
   if fuel = Prims.int_zero
@@ -1387,7 +1455,9 @@ and filter_one_pred (fuel : Prims.nat)
              env_size = size;
              env_vars = vars;
              env_nsctx = nsctx;
-             env_doc_kids = []
+             env_doc_kids = [];
+             env_id_attrs = [];
+             env_style_root = xnode_none
            } in
          let v = eval_expr (fuel - Prims.int_one) e p in
          let keep =
@@ -1436,79 +1506,82 @@ and eval_funcall (fuel : Prims.nat) (env : xp_env) (name : Prims.string)
                     XV_Num (XN_Finite (Prims.int_zero, Prims.int_zero)))
            | uu___3 -> XV_Num (XN_Finite (Prims.int_zero, Prims.int_zero)))
         else
-          if (name = "name") || (name = "local-name")
+          if name = "id"
           then
-            (let items =
-               match args with
-               | [] -> [env.env_item]
-               | a::uu___4 ->
-                   (match eval_expr (fuel - Prims.int_one) env a with
-                    | XV_Nodes its -> its
-                    | uu___5 -> []) in
-             match items with
-             | [] -> XV_Str ""
-             | it::uu___4 ->
-                 let qn = item_qname it in
-                 XV_Str
-                   (if name = "local-name" then local_name_of qn else qn))
+            (match args with
+             | a::[] ->
+                 let wanted =
+                   id_wanted_tokens (eval_expr (fuel - Prims.int_one) env a) in
+                 (match wanted with
+                  | [] -> XV_Nodes []
+                  | uu___4 ->
+                      let all = all_document_items env.env_item in
+                      XV_Nodes
+                        (FStar_List_Tot_Base.filter
+                           (elem_has_id env.env_id_attrs wanted) all))
+             | uu___4 -> XV_Nodes [])
           else
-            if name = "namespace-uri"
+            if name = "document"
             then
-              (let items =
-                 match args with
-                 | [] -> [env.env_item]
-                 | a::uu___5 ->
-                     (match eval_expr (fuel - Prims.int_one) env a with
-                      | XV_Nodes its -> its
-                      | uu___6 -> []) in
-               match items with
-               | [] -> XV_Str ""
-               | it::uu___5 -> XV_Str (item_namespace_uri it))
+              (match args with
+               | a::[] ->
+                   let s =
+                     to_string_val (eval_expr (fuel - Prims.int_one) env a) in
+                   if s = ""
+                   then
+                     (if is_xnode_none env.env_style_root
+                      then XV_Nodes []
+                      else XV_Nodes [CI_Elem ([], [], (env.env_style_root))])
+                   else XV_Nodes []
+               | uu___5 -> XV_Nodes [])
             else
-              if name = "current"
-              then XV_Nodes [env.env_item]
+              if (name = "name") || (name = "local-name")
+              then
+                (let items =
+                   match args with
+                   | [] -> [env.env_item]
+                   | a::uu___6 ->
+                       (match eval_expr (fuel - Prims.int_one) env a with
+                        | XV_Nodes its -> its
+                        | uu___7 -> []) in
+                 match items with
+                 | [] -> XV_Str ""
+                 | it::uu___6 ->
+                     let qn = item_qname it in
+                     XV_Str
+                       (if name = "local-name" then local_name_of qn else qn))
               else
-                if name = "string"
+                if name = "namespace-uri"
                 then
-                  (match args with
-                   | [] -> XV_Str (item_string_value env.env_item)
-                   | a::uu___7 ->
-                       XV_Str
-                         (to_string_val
-                            (eval_expr (fuel - Prims.int_one) env a)))
+                  (let items =
+                     match args with
+                     | [] -> [env.env_item]
+                     | a::uu___7 ->
+                         (match eval_expr (fuel - Prims.int_one) env a with
+                          | XV_Nodes its -> its
+                          | uu___8 -> []) in
+                   match items with
+                   | [] -> XV_Str ""
+                   | it::uu___7 -> XV_Str (item_namespace_uri it))
                 else
-                  if name = "concat"
-                  then
-                    XV_Str (eval_concat_args (fuel - Prims.int_one) env args)
+                  if name = "current"
+                  then XV_Nodes [env.env_item]
                   else
-                    if name = "contains"
+                    if name = "string"
                     then
                       (match args with
-                       | a::b::[] ->
-                           let s =
-                             to_string_val
-                               (eval_expr (fuel - Prims.int_one) env a) in
-                           let sub =
-                             to_string_val
-                               (eval_expr (fuel - Prims.int_one) env b) in
-                           XV_Bool
-                             (FStar_Pervasives_Native.uu___is_Some
-                                (str_find s sub))
-                       | uu___9 -> XV_Bool false)
+                       | [] -> XV_Str (item_string_value env.env_item)
+                       | a::uu___9 ->
+                           XV_Str
+                             (to_string_val
+                                (eval_expr (fuel - Prims.int_one) env a)))
                     else
-                      if name = "starts-with"
+                      if name = "concat"
                       then
-                        (match args with
-                         | a::b::[] ->
-                             XV_Bool
-                               (string_starts_with2
-                                  (to_string_val
-                                     (eval_expr (fuel - Prims.int_one) env a))
-                                  (to_string_val
-                                     (eval_expr (fuel - Prims.int_one) env b)))
-                         | uu___10 -> XV_Bool false)
+                        XV_Str
+                          (eval_concat_args (fuel - Prims.int_one) env args)
                       else
-                        if name = "substring-before"
+                        if name = "contains"
                         then
                           (match args with
                            | a::b::[] ->
@@ -1518,34 +1591,26 @@ and eval_funcall (fuel : Prims.nat) (env : xp_env) (name : Prims.string)
                                let sub =
                                  to_string_val
                                    (eval_expr (fuel - Prims.int_one) env b) in
-                               (match str_find s sub with
-                                | FStar_Pervasives_Native.Some i ->
-                                    XV_Str
-                                      (FStar_String.sub s Prims.int_zero i)
-                                | FStar_Pervasives_Native.None -> XV_Str "")
-                           | uu___11 -> XV_Str "")
+                               XV_Bool
+                                 (FStar_Pervasives_Native.uu___is_Some
+                                    (str_find s sub))
+                           | uu___11 -> XV_Bool false)
                         else
-                          if name = "substring-after"
+                          if name = "starts-with"
                           then
                             (match args with
                              | a::b::[] ->
-                                 let s =
-                                   to_string_val
-                                     (eval_expr (fuel - Prims.int_one) env a) in
-                                 let sub =
-                                   to_string_val
-                                     (eval_expr (fuel - Prims.int_one) env b) in
-                                 (match str_find s sub with
-                                  | FStar_Pervasives_Native.Some i ->
-                                      let sl = FStar_String.strlen sub in
-                                      XV_Str
-                                        (FStar_String.sub s (i + sl)
-                                           (((FStar_String.strlen s) - i) -
-                                              sl))
-                                  | FStar_Pervasives_Native.None -> XV_Str "")
-                             | uu___12 -> XV_Str "")
+                                 XV_Bool
+                                   (string_starts_with2
+                                      (to_string_val
+                                         (eval_expr (fuel - Prims.int_one)
+                                            env a))
+                                      (to_string_val
+                                         (eval_expr (fuel - Prims.int_one)
+                                            env b)))
+                             | uu___12 -> XV_Bool false)
                           else
-                            if name = "substring"
+                            if name = "substring-before"
                             then
                               (match args with
                                | a::b::[] ->
@@ -1553,153 +1618,175 @@ and eval_funcall (fuel : Prims.nat) (env : xp_env) (name : Prims.string)
                                      to_string_val
                                        (eval_expr (fuel - Prims.int_one) env
                                           a) in
-                                   let sv =
-                                     to_number_val
-                                       (eval_expr (fuel - Prims.int_one) env
-                                          b) in
-                                   XV_Str (substring_impl s sv XN_PosInf)
-                               | a::b::c::[] ->
-                                   let s =
+                                   let sub =
                                      to_string_val
                                        (eval_expr (fuel - Prims.int_one) env
-                                          a) in
-                                   let sv =
-                                     to_number_val
-                                       (eval_expr (fuel - Prims.int_one) env
                                           b) in
-                                   let lv =
-                                     to_number_val
-                                       (eval_expr (fuel - Prims.int_one) env
-                                          c) in
-                                   XV_Str (substring_impl s sv lv)
+                                   (match str_find s sub with
+                                    | FStar_Pervasives_Native.Some i ->
+                                        XV_Str
+                                          (FStar_String.sub s Prims.int_zero
+                                             i)
+                                    | FStar_Pervasives_Native.None ->
+                                        XV_Str "")
                                | uu___13 -> XV_Str "")
                             else
-                              if name = "string-length"
+                              if name = "substring-after"
                               then
-                                (let s =
-                                   match args with
-                                   | [] -> item_string_value env.env_item
-                                   | a::uu___14 ->
+                                (match args with
+                                 | a::b::[] ->
+                                     let s =
                                        to_string_val
                                          (eval_expr (fuel - Prims.int_one)
                                             env a) in
-                                 XV_Num
-                                   (XN_Finite
-                                      ((FStar_String.strlen s),
-                                        Prims.int_zero)))
+                                     let sub =
+                                       to_string_val
+                                         (eval_expr (fuel - Prims.int_one)
+                                            env b) in
+                                     (match str_find s sub with
+                                      | FStar_Pervasives_Native.Some i ->
+                                          let sl = FStar_String.strlen sub in
+                                          XV_Str
+                                            (FStar_String.sub s (i + sl)
+                                               (((FStar_String.strlen s) - i)
+                                                  - sl))
+                                      | FStar_Pervasives_Native.None ->
+                                          XV_Str "")
+                                 | uu___14 -> XV_Str "")
                               else
-                                if name = "normalize-space"
+                                if name = "substring"
                                 then
-                                  (let s =
-                                     match args with
-                                     | [] -> item_string_value env.env_item
-                                     | a::uu___15 ->
+                                  (match args with
+                                   | a::b::[] ->
+                                       let s =
                                          to_string_val
                                            (eval_expr (fuel - Prims.int_one)
                                               env a) in
-                                   XV_Str (normalize_space s))
+                                       let sv =
+                                         to_number_val
+                                           (eval_expr (fuel - Prims.int_one)
+                                              env b) in
+                                       XV_Str (substring_impl s sv XN_PosInf)
+                                   | a::b::c::[] ->
+                                       let s =
+                                         to_string_val
+                                           (eval_expr (fuel - Prims.int_one)
+                                              env a) in
+                                       let sv =
+                                         to_number_val
+                                           (eval_expr (fuel - Prims.int_one)
+                                              env b) in
+                                       let lv =
+                                         to_number_val
+                                           (eval_expr (fuel - Prims.int_one)
+                                              env c) in
+                                       XV_Str (substring_impl s sv lv)
+                                   | uu___15 -> XV_Str "")
                                 else
-                                  if name = "not"
+                                  if name = "string-length"
                                   then
-                                    (match args with
-                                     | a::[] ->
-                                         XV_Bool
-                                           (Prims.op_Negation
-                                              (to_bool_val
-                                                 (eval_expr
-                                                    (fuel - Prims.int_one)
-                                                    env a)))
-                                     | uu___16 -> XV_Bool true)
+                                    (let s =
+                                       match args with
+                                       | [] -> item_string_value env.env_item
+                                       | a::uu___16 ->
+                                           to_string_val
+                                             (eval_expr
+                                                (fuel - Prims.int_one) env a) in
+                                     XV_Num
+                                       (XN_Finite
+                                          ((FStar_String.strlen s),
+                                            Prims.int_zero)))
                                   else
-                                    if name = "true"
-                                    then XV_Bool true
+                                    if name = "normalize-space"
+                                    then
+                                      (let s =
+                                         match args with
+                                         | [] ->
+                                             item_string_value env.env_item
+                                         | a::uu___17 ->
+                                             to_string_val
+                                               (eval_expr
+                                                  (fuel - Prims.int_one) env
+                                                  a) in
+                                       XV_Str (normalize_space s))
                                     else
-                                      if name = "false"
-                                      then XV_Bool false
+                                      if name = "not"
+                                      then
+                                        (match args with
+                                         | a::[] ->
+                                             XV_Bool
+                                               (Prims.op_Negation
+                                                  (to_bool_val
+                                                     (eval_expr
+                                                        (fuel - Prims.int_one)
+                                                        env a)))
+                                         | uu___18 -> XV_Bool true)
                                       else
-                                        if name = "boolean"
-                                        then
-                                          (match args with
-                                           | a::[] ->
-                                               XV_Bool
-                                                 (to_bool_val
-                                                    (eval_expr
-                                                       (fuel - Prims.int_one)
-                                                       env a))
-                                           | uu___19 -> XV_Bool false)
+                                        if name = "true"
+                                        then XV_Bool true
                                         else
-                                          if name = "number"
-                                          then
-                                            (match args with
-                                             | [] ->
-                                                 XV_Num
-                                                   (to_number_val
-                                                      (XV_Str
-                                                         (item_string_value
-                                                            env.env_item)))
-                                             | a::uu___20 ->
-                                                 XV_Num
-                                                   (to_number_val
-                                                      (eval_expr
-                                                         (fuel -
-                                                            Prims.int_one)
-                                                         env a)))
+                                          if name = "false"
+                                          then XV_Bool false
                                           else
-                                            if name = "sum"
+                                            if name = "boolean"
                                             then
                                               (match args with
                                                | a::[] ->
-                                                   (match eval_expr
-                                                            (fuel -
-                                                               Prims.int_one)
-                                                            env a
-                                                    with
-                                                    | XV_Nodes items ->
-                                                        XV_Num
-                                                          (sum_items items)
-                                                    | uu___21 ->
-                                                        XV_Num
-                                                          (XN_Finite
-                                                             (Prims.int_zero,
-                                                               Prims.int_zero)))
-                                               | uu___21 ->
-                                                   XV_Num
-                                                     (XN_Finite
-                                                        (Prims.int_zero,
-                                                          Prims.int_zero)))
+                                                   XV_Bool
+                                                     (to_bool_val
+                                                        (eval_expr
+                                                           (fuel -
+                                                              Prims.int_one)
+                                                           env a))
+                                               | uu___21 -> XV_Bool false)
                                             else
-                                              if name = "floor"
+                                              if name = "number"
                                               then
                                                 (match args with
-                                                 | a::[] ->
+                                                 | [] ->
                                                      XV_Num
-                                                       (xn_floor
-                                                          (to_number_val
-                                                             (eval_expr
-                                                                (fuel -
-                                                                   Prims.int_one)
-                                                                env a)))
-                                                 | uu___22 -> XV_Num XN_NaN)
+                                                       (to_number_val
+                                                          (XV_Str
+                                                             (item_string_value
+                                                                env.env_item)))
+                                                 | a::uu___22 ->
+                                                     XV_Num
+                                                       (to_number_val
+                                                          (eval_expr
+                                                             (fuel -
+                                                                Prims.int_one)
+                                                             env a)))
                                               else
-                                                if name = "ceiling"
+                                                if name = "sum"
                                                 then
                                                   (match args with
                                                    | a::[] ->
+                                                       (match eval_expr
+                                                                (fuel -
+                                                                   Prims.int_one)
+                                                                env a
+                                                        with
+                                                        | XV_Nodes items ->
+                                                            XV_Num
+                                                              (sum_items
+                                                                 items)
+                                                        | uu___23 ->
+                                                            XV_Num
+                                                              (XN_Finite
+                                                                 (Prims.int_zero,
+                                                                   Prims.int_zero)))
+                                                   | uu___23 ->
                                                        XV_Num
-                                                         (xn_ceiling
-                                                            (to_number_val
-                                                               (eval_expr
-                                                                  (fuel -
-                                                                    Prims.int_one)
-                                                                  env a)))
-                                                   | uu___23 -> XV_Num XN_NaN)
+                                                         (XN_Finite
+                                                            (Prims.int_zero,
+                                                              Prims.int_zero)))
                                                 else
-                                                  if name = "round"
+                                                  if name = "floor"
                                                   then
                                                     (match args with
                                                      | a::[] ->
                                                          XV_Num
-                                                           (xn_round
+                                                           (xn_floor
                                                               (to_number_val
                                                                  (eval_expr
                                                                     (
@@ -1709,27 +1796,56 @@ and eval_funcall (fuel : Prims.nat) (env : xp_env) (name : Prims.string)
                                                      | uu___24 ->
                                                          XV_Num XN_NaN)
                                                   else
-                                                    if
-                                                      name =
-                                                        "function-available"
+                                                    if name = "ceiling"
                                                     then
                                                       (match args with
                                                        | a::[] ->
-                                                           XV_Bool
-                                                             (is_supported_xpath_function
-                                                                (to_string_val
+                                                           XV_Num
+                                                             (xn_ceiling
+                                                                (to_number_val
                                                                    (eval_expr
                                                                     (fuel -
                                                                     Prims.int_one)
                                                                     env a)))
                                                        | uu___25 ->
-                                                           XV_Bool false)
+                                                           XV_Num XN_NaN)
                                                     else
-                                                      if
-                                                        name =
-                                                          "element-available"
-                                                      then XV_Bool false
-                                                      else XV_Str ""
+                                                      if name = "round"
+                                                      then
+                                                        (match args with
+                                                         | a::[] ->
+                                                             XV_Num
+                                                               (xn_round
+                                                                  (to_number_val
+                                                                    (eval_expr
+                                                                    (fuel -
+                                                                    Prims.int_one)
+                                                                    env a)))
+                                                         | uu___26 ->
+                                                             XV_Num XN_NaN)
+                                                      else
+                                                        if
+                                                          name =
+                                                            "function-available"
+                                                        then
+                                                          (match args with
+                                                           | a::[] ->
+                                                               XV_Bool
+                                                                 (is_supported_xpath_function
+                                                                    (
+                                                                    to_string_val
+                                                                    (eval_expr
+                                                                    (fuel -
+                                                                    Prims.int_one)
+                                                                    env a)))
+                                                           | uu___27 ->
+                                                               XV_Bool false)
+                                                        else
+                                                          if
+                                                            name =
+                                                              "element-available"
+                                                          then XV_Bool false
+                                                          else XV_Str ""
 let rec find_child_index (nodes : Parser_XML.xml_node Prims.list)
   (target : Parser_XML.xml_node) (i : Prims.nat) : Prims.nat=
   match nodes with
@@ -1769,7 +1885,9 @@ let eval_xpath_from_root (root_node : Parser_XML.xml_node)
           env_size = Prims.int_one;
           env_vars = vars;
           env_nsctx = [];
-          env_doc_kids = []
+          env_doc_kids = [];
+          env_id_attrs = [];
+          env_style_root = xnode_none
         } in
       FStar_Pervasives_Native.Some (eval_expr fuel env e)
 let eval_xpath_from_item (ancestors : Parser_XML.xml_node Prims.list)
@@ -1792,6 +1910,8 @@ let eval_xpath_from_item (ancestors : Parser_XML.xml_node Prims.list)
           env_size = Prims.int_one;
           env_vars = vars;
           env_nsctx = [];
-          env_doc_kids = []
+          env_doc_kids = [];
+          env_id_attrs = [];
+          env_style_root = xnode_none
         } in
       FStar_Pervasives_Native.Some (eval_expr fuel env e)
