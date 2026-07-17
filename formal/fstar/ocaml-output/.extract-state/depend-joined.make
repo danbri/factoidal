@@ -46,7 +46,7 @@ FStar_List.ml:  	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.List.fst.checked
 
 FStar_List.krml:  	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.List.fst.checked
 
-JSONSchema.Validate.fst.checked:  	JSONSchema.Validate.fst  	/root/.opam/fstar/lib/fstar/ulib.checked/Prims.fst.checked  	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Char.fsti.checked  	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Pervasives.Native.fst.checked  	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.List.Tot.fst.checked  	Parser.JSON.fst.checked  	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.String.fsti.checked  	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Mul.fst.checked  	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Prelude.fsti.checked
+JSONSchema.Validate.fst.checked:  	JSONSchema.Validate.fst  	/root/.opam/fstar/lib/fstar/ulib.checked/Prims.fst.checked  	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Char.fsti.checked  	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Pervasives.Native.fst.checked  	Regex.Exec.fst.checked  	Regex.XSDPattern.fst.checked  	Regex.Syntax.fst.checked  	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.List.Tot.fst.checked  	Parser.JSON.fst.checked  	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.String.fsti.checked  	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Mul.fst.checked  	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Prelude.fsti.checked
 
 JSONSchema_Validate.ml:  	JSONSchema.Validate.fst.checked
 
@@ -54,7 +54,7 @@ JSONSchema_Validate.fs:  	JSONSchema.Validate.fst.checked
 
 JSONSchema_Validate.krml:  	JSONSchema.Validate.fst.checked
 
-JSONSchema_Validate.cmx:  	JSONSchema_Validate.ml  	Parser_JSON.cmx
+JSONSchema_Validate.cmx:  	JSONSchema_Validate.ml  	Regex_Exec.cmx  	Regex_XSDPattern.cmx  	Regex_Syntax.cmx  	Parser_JSON.cmx
 
 /root/.opam/fstar/lib/fstar/ulib.checked/FStar.Tactics.Effect.fst.checked:  	/root/.opam/fstar/lib/fstar/ulib/FStar.Tactics.Effect.fst  	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Tactics.Effect.fsti.checked  	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Range.fsti.checked  	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Stubs.Tactics.Types.fsti.checked  	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Stubs.Reflection.Types.fsti.checked  	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Monotonic.Pure.fst.checked  	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Prelude.fsti.checked
 

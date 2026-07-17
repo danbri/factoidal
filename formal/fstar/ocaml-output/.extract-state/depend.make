@@ -124,6 +124,9 @@ JSONSchema.Validate.fst.checked: \
 	/root/.opam/fstar/lib/fstar/ulib.checked/Prims.fst.checked \
 	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Char.fsti.checked \
 	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Pervasives.Native.fst.checked \
+	Regex.Exec.fst.checked \
+	Regex.XSDPattern.fst.checked \
+	Regex.Syntax.fst.checked \
 	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.List.Tot.fst.checked \
 	Parser.JSON.fst.checked \
 	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.String.fsti.checked \
@@ -141,6 +144,9 @@ JSONSchema_Validate.krml: \
 
 JSONSchema_Validate.cmx: \
 	JSONSchema_Validate.ml \
+	Regex_Exec.cmx \
+	Regex_XSDPattern.cmx \
+	Regex_Syntax.cmx \
 	Parser_JSON.cmx
 
 /root/.opam/fstar/lib/fstar/ulib.checked/FStar.Tactics.Effect.fst.checked: \
