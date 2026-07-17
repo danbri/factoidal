@@ -398,7 +398,7 @@
 <header>
   <div class="inner">
     <div class="rendered-pill" title="Rendered = when this page was last regenerated. Tests = when the *_results.log files inside the repository were last updated. Both UTC.">
-      <span class="row"><span class="label">Rendered</span><strong>2026-07-17 17:07 UTC</strong></span>
+      <span class="row"><span class="label">Rendered</span><strong>2026-07-17 17:17 UTC</strong></span>
       <span class="row"><span class="label">Tests</span><strong class="tests">2026-07-16 08:27 UTC</strong></span>
     </div>
     <h1>W3C test results</h1>
@@ -1342,7 +1342,7 @@
   <summary>
     <span class="fam-name">Rules: RIF Core</span>
     <span class="fam-score">46/1/3 of 50</span>
-    <span class="gap-badge">7 gaps</span>
+    <span class="gap-badge">3 gaps</span>
     <span class="dot amber"></span>
   </summary>
   <div class="family-body">
@@ -1380,13 +1380,9 @@
     <div class="remaining">
       <p class="remaining-title">Remaining work</p>
       <ul>
-        <li>1 known-gap fail: a rule whose body re-binds an arity-2 predicate needs real n-ary reification, not attempted</li>
-        <li>2 known-gap fails: rif:local constants are not scoped per-document in this engine</li>
-        <li>1 fail is a defect in the vendored corpus data itself (a malformed xsd:string IRI), not an engine bug</li>
-        <li>6 skips: the String, Time+dateTime, and PlainLiteral builtin families, plus List-term builtins, are not implemented</li>
-        <li>2 skips: Exists-quantified rule bodies (existential variables in RIF Core) are not implemented</li>
-        <li>1 skip: detecting that a premise combination is internally inconsistent (needed for one vocabulary-separation fixture) is not implemented</li>
-        <li>1 skip: cross-document constant-role tracking for one import-rejection fixture (Multiple_Context_Error) is not implemented</li>
+        <li>1 local-override: RDF_Combination_Constant_Equivalence_4 is a defect in the vendored corpus data itself (a malformed xsd:string datatype IRI), not an engine bug -- dispositioned via tests/local-overrides/rif/ (distinctly counted, exit 0)</li>
+        <li>2 skips: RIF List terms (Builtins_List, NestedListsAreNotFlatLists) are not modelled in RIF.Core.Syntax -- a syntax/translation/eval extension, not attempted</li>
+        <li>1 skip: the full date/time/duration builtin family (~85 builtins; Builtins_Time) is not implemented -- only the EBusiness_Contract dateTime slice exists; the skip names the first unimplemented builtin (is-literal-dateTimeStamp)</li>
       </ul>
     </div>
   </div>
@@ -1986,8 +1982,8 @@ vc-stage1:    117 pass, 0 fail, 0 skip (of 117) — present=1</pre>
 </main>
 
 <footer>
-  Generated <strong>2026-07-17 17:07 UTC</strong> from commit
-  <code><a href="https://github.com/danbri/factoidal/commit/6904596b62c1c7e227d39fec34e5b6a94f463abe">6904596b6</a></code>
+  Generated <strong>2026-07-17 17:17 UTC</strong> from commit
+  <code><a href="https://github.com/danbri/factoidal/commit/f152ba3144ec09d21f3053c5f64c35f213688321">f152ba314</a></code>
   on branch <code>claude/main</code> — &ldquo;Merge branch 'claude/main' of http://127.0.0.1:41729/git/danbri/factoidal into claude/main&rdquo;.
   Re-run locally: <code>cd formal/fstar &amp;&amp; ./generate-report.sh --run</code>.
 </footer>
