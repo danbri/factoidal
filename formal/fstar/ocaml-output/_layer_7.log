@@ -1,12 +1,6 @@
-    [RIF.Core.Tests.fst]
-    [JSONLD.Flatten.fst]
-    [Parser.BallyhooHDTQ.fst]
-    [RDF.CottasStore.OnDiskRuntime.fst]
-    [Parser.BallyhooHDTQ.fst] Extracted module Parser.BallyhooHDTQ
-    [RDF.Store.Capabilities.Cottas.fst]
-    [RDF.CottasStore.OnDiskRuntime.fst] Extracted module RDF.CottasStore.OnDiskRuntime
-    [RDF.CottasInMem.fst]
-    [RDF.CottasInMem.fst] Extracted module RDF.CottasInMem
-    [RIF.Core.Tests.fst] Extracted module RIF.Core.Tests
-    [RDF.Store.Capabilities.Cottas.fst] Extracted module RDF.Store.Capabilities.Cottas
-    [JSONLD.Flatten.fst] Extracted module JSONLD.Flatten
+    JSONLD.Flatten.fst (up to date, skipped -- source unchanged since last extract)
+    RIF.Core.Tests.fst (up to date, skipped -- source unchanged since last extract)
+    RDF.CottasStore.OnDiskRuntime.fst (up to date, skipped -- source unchanged since last extract)
+    Parser.BallyhooHDTQ.fst (up to date, skipped -- source unchanged since last extract)
+    RDF.Store.Capabilities.Cottas.fst (up to date, skipped -- source unchanged since last extract)
+    RDF.CottasInMem.fst (up to date, skipped -- source unchanged since last extract)

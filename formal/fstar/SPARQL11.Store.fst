@@ -1192,12 +1192,14 @@ let rec eval_pattern_backend (base : option wf_iri) (p : group_graph_pattern) (g
             (match ps with
              | PS_IRI i   -> [T_IRI i]
              | PS_BNode b -> [T_BNode b]
-             | PS_Var _   -> [])
+             | PS_Var _   -> []
+             | PS_TripleTerm _ _ _ -> [])
             (match pt with
              | PT_IRI i     -> [T_IRI i]
              | PT_BNode b   -> [T_BNode b]
              | PT_Literal l -> [T_Literal l]
-             | PT_Var _     -> [])
+             | PT_Var _     -> []
+             | PT_TripleTerm _ _ _ -> [])
         in
         let has_reflexive (t : rdf_term) : bool =
           List.Tot.existsb

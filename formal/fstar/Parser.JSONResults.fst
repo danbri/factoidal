@@ -340,7 +340,12 @@ let mk_literal (lexical : string) (dt : string) (lang : option string) : option 
 //   {"type":"literal","value":"foo","xml:lang":"en"}
 //   {"type":"literal","value":"foo","datatype":"http://..."}
 //   {"type":"bnode","value":"b0"}
-let parse_binding_value (obj: json_value) : option rdf_term =
+// SPARQL 1.2 SRJ (Results-JSON WD): a triple-term binding is encoded as
+//   {"type":"triple","value":{"subject":{...},"predicate":{...},"object":{...}}}
+// so `value` is an object, not a string, and the three sub-values recurse
+// through the same decoder. `fuel` bounds the (shallow) nesting depth.
+let rec parse_binding_value_fuel (fuel: nat) (obj: json_value) : option rdf_term =
+  if fuel = 0 then None else
   match json_get_string "type" obj with
   | None -> None
   | Some typ ->
@@ -361,7 +366,25 @@ let parse_binding_value (obj: json_value) : option rdf_term =
          mk_literal val_str dt_val None
        | None, None ->
          mk_literal val_str xsd_string None)
+    else if typ = "triple" then
+      (match json_get_field "value" obj with
+       | None -> None
+       | Some tval ->
+         (match json_get_field "subject" tval,
+                json_get_field "predicate" tval,
+                json_get_field "object" tval with
+          | Some sj, Some pj, Some oj ->
+            (match parse_binding_value_fuel (fuel - 1) sj,
+                   parse_binding_value_fuel (fuel - 1) pj,
+                   parse_binding_value_fuel (fuel - 1) oj with
+             | Some (T_IRI si), Some (T_IRI p), Some ot -> Some (T_TripleTerm (S_IRI si) p ot)
+             | Some (T_BNode sb), Some (T_IRI p), Some ot -> Some (T_TripleTerm (S_BNode sb) p ot)
+             | _, _, _ -> None)
+          | _, _, _ -> None))
     else None
+
+let parse_binding_value (obj: json_value) : option rdf_term =
+  parse_binding_value_fuel 64 obj
 
 // Parse a single binding row object:
 //   {"x":{"type":"uri","value":"..."},"y":{"type":"literal","value":"..."}}

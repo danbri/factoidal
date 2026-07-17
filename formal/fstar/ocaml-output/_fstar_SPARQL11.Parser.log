@@ -1,32 +1,33 @@
-* Warning 241 at RDF.Indexed.fsti(0,0-0,0):
-  - Unable to load RDF.Indexed.fsti.checked since checked file
-    RDF.Indexed.fsti.checked is stale (digest mismatch for RDF.Indexed.fsti);
-    will recheck RDF.Indexed.fsti (suppressing this warning for further modules)
+* Warning 241 at RDF.Graph.Executable.fst(0,0-0,0):
+  - Unable to load RDF.Graph.Executable.fst.checked since checked file
+    RDF.Graph.Executable.fst.checked is stale (digest mismatch for
+    RDF.Graph.Executable.fst); will recheck RDF.Graph.Executable.fst
+    (suppressing this warning for further modules)
 
-* Warning 361 at SPARQL11.Algebra.fst(7627,0-7628,40):
+* Warning 361 at SPARQL11.Algebra.fst(7818,0-7819,40):
   - Some #push-options have not been popped. Current depth is 1.
 
-* Warning 328 at SPARQL11.Parser.fst(2343,6-2343,19):
+* Warning 328 at SPARQL11.Parser.fst(2455,6-2455,19):
   - Global binding
         'SPARQL11.Parser.parse_subject'
     is recursive but not used in its body
 
-* Warning 328 at SPARQL11.Parser.fst(2609,4-2609,16):
+* Warning 328 at SPARQL11.Parser.fst(2775,4-2775,16):
   - Global binding
         'SPARQL11.Parser.parse_object'
     is recursive but not used in its body
 
-* Warning 328 at SPARQL11.Parser.fst(3477,8-3477,25):
+* Warning 328 at SPARQL11.Parser.fst(3643,8-3643,25):
   - Global binding
         'SPARQL11.Parser.string_add_unique'
     is recursive but not used in its body
 
-* Warning 328 at SPARQL11.Parser.fst(3940,8-3940,30):
+* Warning 328 at SPARQL11.Parser.fst(4123,8-4123,30):
   - Global binding
         'SPARQL11.Parser.parse_single_update_op'
     is recursive but not used in its body
 
-* Warning 361 at SPARQL11.Parser.fst(4369,0-4523,40):
+* Warning 361 at SPARQL11.Parser.fst(4577,0-4736,40):
   - Some #push-options have not been popped. Current depth is 1.
 
 Extracted module SPARQL11.Parser

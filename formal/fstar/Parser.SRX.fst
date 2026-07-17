@@ -143,9 +143,12 @@ let parse_literal_value (node: xml_node) : option rdf_term =
   | _ -> None
 
 
-(* Parse the value child of a <binding> element.
-   Looks for the first <uri>, <literal>, or <bnode> child. *)
-let parse_binding_value (node: xml_node) : option rdf_term =
+(* Parse the value child of a <binding> element (or of a <subject>/
+   <predicate>/<object> wrapper inside a <triple>). Looks for the first
+   <uri>, <literal>, <bnode>, or — SPARQL 1.2 (Results-XML WD) — <triple>
+   child. `fuel` bounds the (shallow) triple-term nesting depth. *)
+let rec parse_binding_value_fuel (fuel: nat) (node: xml_node) : option rdf_term =
+  if fuel = 0 then None else
   match node with
   | XElement _ _ children ->
     let elems = List.Tot.filter (fun (child: xml_node) ->
@@ -157,15 +160,30 @@ let parse_binding_value (node: xml_node) : option rdf_term =
     | [] -> None
     | value_node :: _ ->
       match value_node with
-      | XElement t _ _ ->
+      | XElement t _ vchildren ->
         let local = strip_ns_prefix t in
         if local = "uri" then parse_uri_value value_node
         else if local = "bnode" then parse_bnode_value value_node
         else if local = "literal" then parse_literal_value value_node
+        else if local = "triple" then
+          (match find_child "subject" vchildren,
+                 find_child "predicate" vchildren,
+                 find_child "object" vchildren with
+           | Some sj, Some pj, Some oj ->
+             (match parse_binding_value_fuel (fuel - 1) sj,
+                    parse_binding_value_fuel (fuel - 1) pj,
+                    parse_binding_value_fuel (fuel - 1) oj with
+              | Some (T_IRI si), Some (T_IRI p), Some ot -> Some (T_TripleTerm (S_IRI si) p ot)
+              | Some (T_BNode sb), Some (T_IRI p), Some ot -> Some (T_TripleTerm (S_BNode sb) p ot)
+              | _, _, _ -> None)
+           | _, _, _ -> None)
         else None
       | _ -> None
     end
   | _ -> None
+
+let parse_binding_value (node: xml_node) : option rdf_term =
+  parse_binding_value_fuel 64 node
 
 
 (* ================================================================ *)

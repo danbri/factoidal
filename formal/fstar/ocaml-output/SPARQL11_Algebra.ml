@@ -276,6 +276,7 @@ type pattern_term =
   | PT_IRI of RDF_Term.wf_iri 
   | PT_BNode of RDF_Term.bnode_id 
   | PT_Literal of RDF_Term.wf_literal 
+  | PT_TripleTerm of pattern_term * pattern_term * pattern_term 
 let uu___is_PT_Var (projectee : pattern_term) : Prims.bool=
   match projectee with | PT_Var _0 -> true | uu___ -> false
 let __proj__PT_Var__item___0 (projectee : pattern_term) : var_name=
@@ -292,10 +293,19 @@ let uu___is_PT_Literal (projectee : pattern_term) : Prims.bool=
   match projectee with | PT_Literal _0 -> true | uu___ -> false
 let __proj__PT_Literal__item___0 (projectee : pattern_term) :
   RDF_Term.wf_literal= match projectee with | PT_Literal _0 -> _0
+let uu___is_PT_TripleTerm (projectee : pattern_term) : Prims.bool=
+  match projectee with | PT_TripleTerm (_0, _1, _2) -> true | uu___ -> false
+let __proj__PT_TripleTerm__item___0 (projectee : pattern_term) :
+  pattern_term= match projectee with | PT_TripleTerm (_0, _1, _2) -> _0
+let __proj__PT_TripleTerm__item___1 (projectee : pattern_term) :
+  pattern_term= match projectee with | PT_TripleTerm (_0, _1, _2) -> _1
+let __proj__PT_TripleTerm__item___2 (projectee : pattern_term) :
+  pattern_term= match projectee with | PT_TripleTerm (_0, _1, _2) -> _2
 type pattern_subject =
   | PS_Var of var_name 
   | PS_IRI of RDF_Term.wf_iri 
   | PS_BNode of RDF_Term.bnode_id 
+  | PS_TripleTerm of pattern_term * pattern_term * pattern_term 
 let uu___is_PS_Var (projectee : pattern_subject) : Prims.bool=
   match projectee with | PS_Var _0 -> true | uu___ -> false
 let __proj__PS_Var__item___0 (projectee : pattern_subject) : var_name=
@@ -308,6 +318,14 @@ let uu___is_PS_BNode (projectee : pattern_subject) : Prims.bool=
   match projectee with | PS_BNode _0 -> true | uu___ -> false
 let __proj__PS_BNode__item___0 (projectee : pattern_subject) :
   RDF_Term.bnode_id= match projectee with | PS_BNode _0 -> _0
+let uu___is_PS_TripleTerm (projectee : pattern_subject) : Prims.bool=
+  match projectee with | PS_TripleTerm (_0, _1, _2) -> true | uu___ -> false
+let __proj__PS_TripleTerm__item___0 (projectee : pattern_subject) :
+  pattern_term= match projectee with | PS_TripleTerm (_0, _1, _2) -> _0
+let __proj__PS_TripleTerm__item___1 (projectee : pattern_subject) :
+  pattern_term= match projectee with | PS_TripleTerm (_0, _1, _2) -> _1
+let __proj__PS_TripleTerm__item___2 (projectee : pattern_subject) :
+  pattern_term= match projectee with | PS_TripleTerm (_0, _1, _2) -> _2
 type triple_pattern =
   {
   tp_s: pattern_subject ;
@@ -319,12 +337,19 @@ let __proj__Mktriple_pattern__item__tp_p (projectee : triple_pattern) :
   pattern_term= match projectee with | { tp_s; tp_p; tp_o;_} -> tp_p
 let __proj__Mktriple_pattern__item__tp_o (projectee : triple_pattern) :
   pattern_term= match projectee with | { tp_s; tp_p; tp_o;_} -> tp_o
+let term_to_subject_opt (t : RDF_Term.rdf_term) :
+  RDF_Term.subject FStar_Pervasives_Native.option=
+  match t with
+  | RDF_Term.T_IRI i -> FStar_Pervasives_Native.Some (RDF_Term.S_IRI i)
+  | RDF_Term.T_BNode b -> FStar_Pervasives_Native.Some (RDF_Term.S_BNode b)
+  | uu___ -> FStar_Pervasives_Native.None
 let bound_subject_of_pattern (ps : pattern_subject)
   (mu : RDF_Graph_Executable.solution_mapping) :
   RDF_Term.subject FStar_Pervasives_Native.option=
   match ps with
   | PS_IRI i -> FStar_Pervasives_Native.Some (RDF_Term.S_IRI i)
   | PS_BNode b -> FStar_Pervasives_Native.Some (RDF_Term.S_BNode b)
+  | PS_TripleTerm (uu___, uu___1, uu___2) -> FStar_Pervasives_Native.None
   | PS_Var v ->
       (match sm_lookup v mu with
        | FStar_Pervasives_Native.Some (RDF_Term.T_IRI i) ->
@@ -343,6 +368,7 @@ let bound_predicate_of_pattern (pt : pattern_term)
   | PT_IRI i -> FStar_Pervasives_Native.Some i
   | PT_BNode uu___ -> FStar_Pervasives_Native.None
   | PT_Literal uu___ -> FStar_Pervasives_Native.None
+  | PT_TripleTerm (uu___, uu___1, uu___2) -> FStar_Pervasives_Native.None
   | PT_Var v ->
       (match sm_lookup v mu with
        | FStar_Pervasives_Native.Some (RDF_Term.T_IRI i) ->
@@ -354,7 +380,7 @@ let bound_predicate_of_pattern (pt : pattern_term)
        | FStar_Pervasives_Native.Some (RDF_Term.T_TripleTerm
            (uu___, uu___1, uu___2)) -> FStar_Pervasives_Native.None
        | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None)
-let bound_object_of_pattern (pt : pattern_term)
+let rec bound_object_of_pattern (pt : pattern_term)
   (mu : RDF_Graph_Executable.solution_mapping) :
   RDF_Term.rdf_term FStar_Pervasives_Native.option=
   match pt with
@@ -362,6 +388,22 @@ let bound_object_of_pattern (pt : pattern_term)
   | PT_BNode b -> FStar_Pervasives_Native.Some (RDF_Term.T_BNode b)
   | PT_Literal l -> FStar_Pervasives_Native.Some (RDF_Term.T_Literal l)
   | PT_Var v -> sm_lookup v mu
+  | PT_TripleTerm (ps, pp, po) ->
+      (match bound_object_of_pattern ps mu with
+       | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+       | FStar_Pervasives_Native.Some sterm ->
+           (match term_to_subject_opt sterm with
+            | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+            | FStar_Pervasives_Native.Some ssub ->
+                (match bound_object_of_pattern pp mu with
+                 | FStar_Pervasives_Native.Some (RDF_Term.T_IRI ppi) ->
+                     (match bound_object_of_pattern po mu with
+                      | FStar_Pervasives_Native.None ->
+                          FStar_Pervasives_Native.None
+                      | FStar_Pervasives_Native.Some oterm ->
+                          FStar_Pervasives_Native.Some
+                            (RDF_Term.T_TripleTerm (ssub, ppi, oterm)))
+                 | uu___ -> FStar_Pervasives_Native.None)))
 let pattern_subject_eq (a : pattern_subject) (b : pattern_subject) :
   Prims.bool=
   match (a, b) with
@@ -369,12 +411,15 @@ let pattern_subject_eq (a : pattern_subject) (b : pattern_subject) :
   | (PS_IRI i1, PS_IRI i2) -> i1 = i2
   | (PS_BNode b1, PS_BNode b2) -> b1 = b2
   | (uu___, uu___1) -> false
-let pattern_term_eq (a : pattern_term) (b : pattern_term) : Prims.bool=
+let rec pattern_term_eq (a : pattern_term) (b : pattern_term) : Prims.bool=
   match (a, b) with
   | (PT_Var v1, PT_Var v2) -> v1 = v2
   | (PT_IRI i1, PT_IRI i2) -> i1 = i2
   | (PT_BNode b1, PT_BNode b2) -> b1 = b2
   | (PT_Literal l1, PT_Literal l2) -> RDF_Term.literal_eq l1 l2
+  | (PT_TripleTerm (s1, p1, o1), PT_TripleTerm (s2, p2, o2)) ->
+      ((pattern_term_eq s1 s2) && (pattern_term_eq p1 p2)) &&
+        (pattern_term_eq o1 o2)
   | (uu___, uu___1) -> false
 let triple_pattern_eq (a : triple_pattern) (b : triple_pattern) : Prims.bool=
   ((pattern_subject_eq a.tp_s b.tp_s) && (pattern_term_eq a.tp_p b.tp_p)) &&
@@ -503,6 +548,11 @@ type expr =
   | E_NotExists of group_graph_pattern 
   | E_Aggregate of aggregate_fn * Prims.bool * expr 
   | E_FunctionCall of RDF_Term.wf_iri * expr Prims.list 
+  | E_TripleTerm of expr * expr * expr 
+  | E_TTSubject of expr 
+  | E_TTPredicate of expr 
+  | E_TTObject of expr 
+  | E_IsTriple of expr 
 and property_path =
   | PP_IRI of RDF_Term.wf_iri 
   | PP_Inverse of property_path 
@@ -888,6 +938,30 @@ let __proj__E_FunctionCall__item___0 (projectee : expr) : RDF_Term.wf_iri=
   match projectee with | E_FunctionCall (_0, _1) -> _0
 let __proj__E_FunctionCall__item___1 (projectee : expr) : expr Prims.list=
   match projectee with | E_FunctionCall (_0, _1) -> _1
+let uu___is_E_TripleTerm (projectee : expr) : Prims.bool=
+  match projectee with | E_TripleTerm (_0, _1, _2) -> true | uu___ -> false
+let __proj__E_TripleTerm__item___0 (projectee : expr) : expr=
+  match projectee with | E_TripleTerm (_0, _1, _2) -> _0
+let __proj__E_TripleTerm__item___1 (projectee : expr) : expr=
+  match projectee with | E_TripleTerm (_0, _1, _2) -> _1
+let __proj__E_TripleTerm__item___2 (projectee : expr) : expr=
+  match projectee with | E_TripleTerm (_0, _1, _2) -> _2
+let uu___is_E_TTSubject (projectee : expr) : Prims.bool=
+  match projectee with | E_TTSubject _0 -> true | uu___ -> false
+let __proj__E_TTSubject__item___0 (projectee : expr) : expr=
+  match projectee with | E_TTSubject _0 -> _0
+let uu___is_E_TTPredicate (projectee : expr) : Prims.bool=
+  match projectee with | E_TTPredicate _0 -> true | uu___ -> false
+let __proj__E_TTPredicate__item___0 (projectee : expr) : expr=
+  match projectee with | E_TTPredicate _0 -> _0
+let uu___is_E_TTObject (projectee : expr) : Prims.bool=
+  match projectee with | E_TTObject _0 -> true | uu___ -> false
+let __proj__E_TTObject__item___0 (projectee : expr) : expr=
+  match projectee with | E_TTObject _0 -> _0
+let uu___is_E_IsTriple (projectee : expr) : Prims.bool=
+  match projectee with | E_IsTriple _0 -> true | uu___ -> false
+let __proj__E_IsTriple__item___0 (projectee : expr) : expr=
+  match projectee with | E_IsTriple _0 -> _0
 let uu___is_PP_IRI (projectee : property_path) : Prims.bool=
   match projectee with | PP_IRI _0 -> true | uu___ -> false
 let __proj__PP_IRI__item___0 (projectee : property_path) : RDF_Term.wf_iri=
@@ -3443,6 +3517,7 @@ let try_bind_subject (ps : pattern_subject) (s : RDF_Term.subject)
            then FStar_Pervasives_Native.Some mu
            else FStar_Pervasives_Native.None
        | uu___ -> FStar_Pervasives_Native.None)
+  | PS_TripleTerm (uu___, uu___1, uu___2) -> FStar_Pervasives_Native.None
   | PS_Var v ->
       let term = subject_to_term s in
       (match sm_lookup v mu with
@@ -3452,7 +3527,7 @@ let try_bind_subject (ps : pattern_subject) (s : RDF_Term.subject)
            else FStar_Pervasives_Native.None
        | FStar_Pervasives_Native.None ->
            FStar_Pervasives_Native.Some (sm_bind v term mu))
-let try_bind_term (pt : pattern_term) (t : RDF_Term.rdf_term)
+let rec try_bind_term (pt : pattern_term) (t : RDF_Term.rdf_term)
   (mu : RDF_Graph_Executable.solution_mapping) :
   RDF_Graph_Executable.solution_mapping FStar_Pervasives_Native.option=
   match pt with
@@ -3476,6 +3551,17 @@ let try_bind_term (pt : pattern_term) (t : RDF_Term.rdf_term)
            if RDF_Term.literal_eq l l'
            then FStar_Pervasives_Native.Some mu
            else FStar_Pervasives_Native.None
+       | uu___ -> FStar_Pervasives_Native.None)
+  | PT_TripleTerm (ps, pp, po) ->
+      (match t with
+       | RDF_Term.T_TripleTerm (s, p, o) ->
+           (match try_bind_term ps (subject_to_term s) mu with
+            | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+            | FStar_Pervasives_Native.Some mu1 ->
+                (match try_bind_term pp (RDF_Term.T_IRI p) mu1 with
+                 | FStar_Pervasives_Native.None ->
+                     FStar_Pervasives_Native.None
+                 | FStar_Pervasives_Native.Some mu2 -> try_bind_term po o mu2))
        | uu___ -> FStar_Pervasives_Native.None)
   | PT_Var v ->
       (match sm_lookup v mu with
@@ -3879,14 +3965,21 @@ let rec pattern_has_binding_source (p : group_graph_pattern) : Prims.bool=
       (pattern_has_binding_source p1) || (pattern_has_binding_source p2)
   | GP_Filter (uu___, p1) -> pattern_has_binding_source p1
   | GP_Graph (uu___, p1) -> pattern_has_binding_source p1
-let pattern_subject_var (ps : pattern_subject) : var_name Prims.list=
-  match ps with | PS_Var v -> [v] | PS_IRI uu___ -> [] | PS_BNode uu___ -> []
-let pattern_term_var (pt : pattern_term) : var_name Prims.list=
+let rec pattern_term_var (pt : pattern_term) : var_name Prims.list=
   match pt with
   | PT_Var v -> [v]
   | PT_IRI uu___ -> []
   | PT_BNode uu___ -> []
   | PT_Literal uu___ -> []
+  | PT_TripleTerm (s, p, o) ->
+      FStar_List_Tot_Base.op_At (pattern_term_var s)
+        (FStar_List_Tot_Base.op_At (pattern_term_var p) (pattern_term_var o))
+let pattern_subject_var (ps : pattern_subject) : var_name Prims.list=
+  match ps with
+  | PS_Var v -> [v]
+  | PS_IRI uu___ -> []
+  | PS_BNode uu___ -> []
+  | PS_TripleTerm (uu___, uu___1, uu___2) -> []
 let tp_vars (tp : triple_pattern) : var_name Prims.list=
   FStar_List_Tot_Base.op_At (pattern_subject_var tp.tp_s)
     (FStar_List_Tot_Base.op_At (pattern_term_var tp.tp_p)
@@ -3933,6 +4026,7 @@ let subj_boundable (occ : var_name Prims.list) (ps : pattern_subject) :
   | PS_IRI uu___ -> true
   | PS_BNode uu___ -> true
   | PS_Var v -> var_is_shared occ v
+  | PS_TripleTerm (uu___, uu___1, uu___2) -> false
 let term_boundable (occ : var_name Prims.list) (pt : pattern_term) :
   Prims.bool=
   match pt with
@@ -3940,6 +4034,7 @@ let term_boundable (occ : var_name Prims.list) (pt : pattern_term) :
   | PT_BNode uu___ -> true
   | PT_Literal uu___ -> true
   | PT_Var v -> var_is_shared occ v
+  | PT_TripleTerm (uu___, uu___1, uu___2) -> false
 let tp_bucket_needs (occ : var_name Prims.list) (tp : triple_pattern) :
   RDF_Indexed.bucket_needs=
   let s_ok = subj_boundable occ tp.tp_s in
@@ -4079,6 +4174,13 @@ let rec expr_vars (e : expr) : var_name Prims.list=
   | E_NotExists p -> pattern_all_vars p
   | E_Aggregate (uu___, uu___1, e1) -> expr_vars e1
   | E_FunctionCall (uu___, es) -> expr_list_vars es
+  | E_TripleTerm (a, b, c) ->
+      FStar_List_Tot_Base.op_At (expr_vars a)
+        (FStar_List_Tot_Base.op_At (expr_vars b) (expr_vars c))
+  | E_TTSubject e1 -> expr_vars e1
+  | E_TTPredicate e1 -> expr_vars e1
+  | E_TTObject e1 -> expr_vars e1
+  | E_IsTriple e1 -> expr_vars e1
 and expr_list_vars (es : expr Prims.list) : var_name Prims.list=
   match es with
   | [] -> []
@@ -4260,19 +4362,22 @@ let col_need_for_tp (occ : var_name Prims.list) (live : var_name Prims.list)
       (match tp.tp_s with
        | PS_Var v -> needs_var v
        | PS_IRI uu___ -> false
-       | PS_BNode uu___ -> false);
+       | PS_BNode uu___ -> false
+       | PS_TripleTerm (uu___, uu___1, uu___2) -> true);
     RDF_Graph_Executable.cn_p =
       (match tp.tp_p with
        | PT_Var v -> needs_var v
        | PT_IRI uu___ -> false
        | PT_BNode uu___ -> false
-       | PT_Literal uu___ -> false);
+       | PT_Literal uu___ -> false
+       | PT_TripleTerm (uu___, uu___1, uu___2) -> true);
     RDF_Graph_Executable.cn_o =
       (match tp.tp_o with
        | PT_Var v -> needs_var v
        | PT_IRI uu___ -> false
        | PT_BNode uu___ -> false
-       | PT_Literal uu___ -> false)
+       | PT_Literal uu___ -> false
+       | PT_TripleTerm (uu___, uu___1, uu___2) -> true)
   }
 let graph_to_store_for (p : group_graph_pattern) (g : RDF_Graph.rdf_graph) :
   graph_store=
@@ -4387,7 +4492,9 @@ let path_result_to_solutions (ps : pattern_subject) (pt : pattern_term)
              | PS_BNode b ->
                  if RDF_Term.rdf_term_eq (RDF_Term.T_BNode b) s
                  then FStar_Pervasives_Native.Some []
-                 else FStar_Pervasives_Native.None in
+                 else FStar_Pervasives_Native.None
+             | PS_TripleTerm (uu___1, uu___2, uu___3) ->
+                 FStar_Pervasives_Native.None in
            (match mu_s with
             | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
             | FStar_Pervasives_Native.Some bindings_s ->
@@ -4413,7 +4520,9 @@ let path_result_to_solutions (ps : pattern_subject) (pt : pattern_term)
                   | PT_Literal l ->
                       if RDF_Term.rdf_term_eq (RDF_Term.T_Literal l) o
                       then FStar_Pervasives_Native.Some bindings_s
-                      else FStar_Pervasives_Native.None in
+                      else FStar_Pervasives_Native.None
+                  | PT_TripleTerm (uu___1, uu___2, uu___3) ->
+                      FStar_Pervasives_Native.None in
                 mu_o)) pairs
 let left_join (base : RDF_Term.wf_iri FStar_Pervasives_Native.option)
   (omega1 : solution_sequence) (omega2 : solution_sequence)
@@ -4587,6 +4696,16 @@ let rec substitute_existentials
       E_Aggregate (fn, dist, (substitute_existentials base e1 mu g ds))
   | E_FunctionCall (iri, args) ->
       E_FunctionCall (iri, (substitute_existentials_list base args mu g ds))
+  | E_TripleTerm (a, b, c) ->
+      E_TripleTerm
+        ((substitute_existentials base a mu g ds),
+          (substitute_existentials base b mu g ds),
+          (substitute_existentials base c mu g ds))
+  | E_TTSubject e1 -> E_TTSubject (substitute_existentials base e1 mu g ds)
+  | E_TTPredicate e1 ->
+      E_TTPredicate (substitute_existentials base e1 mu g ds)
+  | E_TTObject e1 -> E_TTObject (substitute_existentials base e1 mu g ds)
+  | E_IsTriple e1 -> E_IsTriple (substitute_existentials base e1 mu g ds)
   | uu___ -> e
 and substitute_existentials_list
   (base : RDF_Term.wf_iri FStar_Pervasives_Native.option)
@@ -4820,12 +4939,14 @@ let rec eval_pattern_store
                 (match ps with
                  | PS_IRI i -> [RDF_Term.T_IRI i]
                  | PS_BNode b -> [RDF_Term.T_BNode b]
-                 | PS_Var uu___1 -> [])
+                 | PS_Var uu___1 -> []
+                 | PS_TripleTerm (uu___1, uu___2, uu___3) -> [])
                 (match pt with
                  | PT_IRI i -> [RDF_Term.T_IRI i]
                  | PT_BNode b -> [RDF_Term.T_BNode b]
                  | PT_Literal l -> [RDF_Term.T_Literal l]
-                 | PT_Var uu___1 -> []) in
+                 | PT_Var uu___1 -> []
+                 | PT_TripleTerm (uu___1, uu___2, uu___3) -> []) in
             let has_reflexive t =
               FStar_List_Tot_Base.existsb
                 (fun pair ->
@@ -4846,12 +4967,14 @@ let rec eval_pattern_store
                 (match ps with
                  | PS_IRI i -> [RDF_Term.T_IRI i]
                  | PS_BNode b -> [RDF_Term.T_BNode b]
-                 | PS_Var uu___1 -> [])
+                 | PS_Var uu___1 -> []
+                 | PS_TripleTerm (uu___1, uu___2, uu___3) -> [])
                 (match pt with
                  | PT_IRI i -> [RDF_Term.T_IRI i]
                  | PT_BNode b -> [RDF_Term.T_BNode b]
                  | PT_Literal l -> [RDF_Term.T_Literal l]
-                 | PT_Var uu___1 -> []) in
+                 | PT_Var uu___1 -> []
+                 | PT_TripleTerm (uu___1, uu___2, uu___3) -> []) in
             let has_reflexive t =
               FStar_List_Tot_Base.existsb
                 (fun pair ->
@@ -5744,6 +5867,38 @@ let rec eval_expr_with_base
        | (uu___, uu___1) -> ER_Bool false)
   | E_Exists uu___ -> ER_Error
   | E_NotExists uu___ -> ER_Error
+  | E_TripleTerm (es, ep, eo) ->
+      (match ((er_to_term (eval_expr_with_base base es mu)),
+               (er_to_term (eval_expr_with_base base ep mu)),
+               (er_to_term (eval_expr_with_base base eo mu)))
+       with
+       | (FStar_Pervasives_Native.Some sterm, FStar_Pervasives_Native.Some
+          (RDF_Term.T_IRI p), FStar_Pervasives_Native.Some oterm) ->
+           (match term_to_subject_opt sterm with
+            | FStar_Pervasives_Native.Some ssub ->
+                ER_Term (RDF_Term.T_TripleTerm (ssub, p, oterm))
+            | FStar_Pervasives_Native.None -> ER_Error)
+       | (uu___, uu___1, uu___2) -> ER_Error)
+  | E_TTSubject e1 ->
+      (match eval_expr_with_base base e1 mu with
+       | ER_Term (RDF_Term.T_TripleTerm (s, uu___, uu___1)) ->
+           ER_Term (subject_to_term s)
+       | uu___ -> ER_Error)
+  | E_TTPredicate e1 ->
+      (match eval_expr_with_base base e1 mu with
+       | ER_Term (RDF_Term.T_TripleTerm (uu___, p, uu___1)) ->
+           ER_Term (RDF_Term.T_IRI p)
+       | uu___ -> ER_Error)
+  | E_TTObject e1 ->
+      (match eval_expr_with_base base e1 mu with
+       | ER_Term (RDF_Term.T_TripleTerm (uu___, uu___1, o)) -> ER_Term o
+       | uu___ -> ER_Error)
+  | E_IsTriple e1 ->
+      (match eval_expr_with_base base e1 mu with
+       | ER_Error -> ER_Error
+       | ER_Term (RDF_Term.T_TripleTerm (uu___, uu___1, uu___2)) ->
+           ER_Bool true
+       | uu___ -> ER_Bool false)
   | E_Aggregate (uu___, uu___1, uu___2) -> ER_Error
   | E_FunctionCall (iri, args) ->
       let iri_s = iri_to_string iri in
@@ -6539,9 +6694,13 @@ let rec collect_distinct_vars_in_order_acc (omega : solution_sequence)
 let collect_distinct_vars_in_order (omega : solution_sequence) :
   var_name Prims.list=
   FStar_List_Tot_Base.rev (collect_distinct_vars_in_order_acc omega [])
-let rewrite_query_bnode_term (pt : pattern_term) : pattern_term=
+let rec rewrite_query_bnode_term (pt : pattern_term) : pattern_term=
   match pt with
   | PT_BNode b -> PT_Var (Prims.strcat "_bnode_" b)
+  | PT_TripleTerm (s, p, o) ->
+      PT_TripleTerm
+        ((rewrite_query_bnode_term s), (rewrite_query_bnode_term p),
+          (rewrite_query_bnode_term o))
   | uu___ -> pt
 let rewrite_query_bnode_subject (ps : pattern_subject) : pattern_subject=
   match ps with
@@ -6799,6 +6958,7 @@ let construct_subject (ps : pattern_subject)
   | PS_BNode b ->
       FStar_Pervasives_Native.Some
         (RDF_Term.S_BNode (fresh_bnode_for sol_ix b))
+  | PS_TripleTerm (uu___, uu___1, uu___2) -> FStar_Pervasives_Native.None
   | PS_Var v ->
       (match sm_lookup v mu with
        | FStar_Pervasives_Native.Some (RDF_Term.T_IRI i) ->
@@ -6817,12 +6977,13 @@ let construct_predicate (pt : pattern_term)
   | PT_IRI i -> FStar_Pervasives_Native.Some i
   | PT_BNode uu___ -> FStar_Pervasives_Native.None
   | PT_Literal uu___ -> FStar_Pervasives_Native.None
+  | PT_TripleTerm (uu___, uu___1, uu___2) -> FStar_Pervasives_Native.None
   | PT_Var v ->
       (match sm_lookup v mu with
        | FStar_Pervasives_Native.Some (RDF_Term.T_IRI i) ->
            FStar_Pervasives_Native.Some i
        | uu___ -> FStar_Pervasives_Native.None)
-let construct_object (pt : pattern_term)
+let rec construct_object (pt : pattern_term)
   (mu : RDF_Graph_Executable.solution_mapping) (sol_ix : Prims.nat) :
   RDF_Term.rdf_term FStar_Pervasives_Native.option=
   match pt with
@@ -6832,6 +6993,22 @@ let construct_object (pt : pattern_term)
         (RDF_Term.T_BNode (fresh_bnode_for sol_ix b))
   | PT_Literal l -> FStar_Pervasives_Native.Some (RDF_Term.T_Literal l)
   | PT_Var v -> sm_lookup v mu
+  | PT_TripleTerm (ps, pp, po) ->
+      (match construct_object ps mu sol_ix with
+       | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+       | FStar_Pervasives_Native.Some sterm ->
+           (match term_to_subject_opt sterm with
+            | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+            | FStar_Pervasives_Native.Some ssub ->
+                (match construct_object pp mu sol_ix with
+                 | FStar_Pervasives_Native.Some (RDF_Term.T_IRI ppi) ->
+                     (match construct_object po mu sol_ix with
+                      | FStar_Pervasives_Native.None ->
+                          FStar_Pervasives_Native.None
+                      | FStar_Pervasives_Native.Some oterm ->
+                          FStar_Pervasives_Native.Some
+                            (RDF_Term.T_TripleTerm (ssub, ppi, oterm)))
+                 | uu___ -> FStar_Pervasives_Native.None)))
 let instantiate_template (template : triple_pattern Prims.list)
   (mu : RDF_Graph_Executable.solution_mapping) (sol_ix : Prims.nat) :
   RDF_Triple.triple Prims.list=
@@ -7522,18 +7699,36 @@ let ps_to_subject_concrete (ps : pattern_subject) :
   | PS_IRI i -> FStar_Pervasives_Native.Some (RDF_Term.S_IRI i)
   | PS_BNode b -> FStar_Pervasives_Native.Some (RDF_Term.S_BNode b)
   | PS_Var uu___ -> FStar_Pervasives_Native.None
+  | PS_TripleTerm (uu___, uu___1, uu___2) -> FStar_Pervasives_Native.None
 let pt_to_iri_concrete (pt : pattern_term) :
   RDF_Term.wf_iri FStar_Pervasives_Native.option=
   match pt with
   | PT_IRI i -> FStar_Pervasives_Native.Some i
   | uu___ -> FStar_Pervasives_Native.None
-let pt_to_term_concrete (pt : pattern_term) :
+let rec pt_to_term_concrete (pt : pattern_term) :
   RDF_Term.rdf_term FStar_Pervasives_Native.option=
   match pt with
   | PT_IRI i -> FStar_Pervasives_Native.Some (RDF_Term.T_IRI i)
   | PT_BNode b -> FStar_Pervasives_Native.Some (RDF_Term.T_BNode b)
   | PT_Literal l -> FStar_Pervasives_Native.Some (RDF_Term.T_Literal l)
   | PT_Var uu___ -> FStar_Pervasives_Native.None
+  | PT_TripleTerm (ps, pp, po) ->
+      (match pt_to_term_concrete ps with
+       | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+       | FStar_Pervasives_Native.Some sterm ->
+           (match term_to_subject_opt sterm with
+            | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+            | FStar_Pervasives_Native.Some ssub ->
+                (match pt_to_iri_concrete pp with
+                 | FStar_Pervasives_Native.None ->
+                     FStar_Pervasives_Native.None
+                 | FStar_Pervasives_Native.Some ppi ->
+                     (match pt_to_term_concrete po with
+                      | FStar_Pervasives_Native.None ->
+                          FStar_Pervasives_Native.None
+                      | FStar_Pervasives_Native.Some oterm ->
+                          FStar_Pervasives_Native.Some
+                            (RDF_Term.T_TripleTerm (ssub, ppi, oterm))))))
 let tp_to_triple_concrete (tp : triple_pattern) :
   RDF_Triple.triple FStar_Pervasives_Native.option=
   match ps_to_subject_concrete tp.tp_s with
@@ -7729,6 +7924,7 @@ let bound_subject_of_pattern_freshen (op_salt : Prims.string)
   | PS_BNode b ->
       FStar_Pervasives_Native.Some
         (RDF_Term.S_BNode (fresh_bnode_for_op op_salt sol_ix b))
+  | PS_TripleTerm (uu___, uu___1, uu___2) -> FStar_Pervasives_Native.None
   | PS_Var v ->
       (match sm_lookup v mu with
        | FStar_Pervasives_Native.Some (RDF_Term.T_IRI i) ->
@@ -7740,7 +7936,7 @@ let bound_subject_of_pattern_freshen (op_salt : Prims.string)
        | FStar_Pervasives_Native.Some (RDF_Term.T_TripleTerm
            (uu___, uu___1, uu___2)) -> FStar_Pervasives_Native.None
        | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None)
-let bound_object_of_pattern_freshen (op_salt : Prims.string)
+let rec bound_object_of_pattern_freshen (op_salt : Prims.string)
   (sol_ix : Prims.nat) (pt : pattern_term)
   (mu : RDF_Graph_Executable.solution_mapping) :
   RDF_Term.rdf_term FStar_Pervasives_Native.option=
@@ -7751,6 +7947,25 @@ let bound_object_of_pattern_freshen (op_salt : Prims.string)
         (RDF_Term.T_BNode (fresh_bnode_for_op op_salt sol_ix b))
   | PT_Literal l -> FStar_Pervasives_Native.Some (RDF_Term.T_Literal l)
   | PT_Var v -> sm_lookup v mu
+  | PT_TripleTerm (ps, pp, po) ->
+      (match bound_object_of_pattern_freshen op_salt sol_ix ps mu with
+       | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+       | FStar_Pervasives_Native.Some sterm ->
+           (match term_to_subject_opt sterm with
+            | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+            | FStar_Pervasives_Native.Some ssub ->
+                (match bound_object_of_pattern_freshen op_salt sol_ix pp mu
+                 with
+                 | FStar_Pervasives_Native.Some (RDF_Term.T_IRI ppi) ->
+                     (match bound_object_of_pattern_freshen op_salt sol_ix po
+                              mu
+                      with
+                      | FStar_Pervasives_Native.None ->
+                          FStar_Pervasives_Native.None
+                      | FStar_Pervasives_Native.Some oterm ->
+                          FStar_Pervasives_Native.Some
+                            (RDF_Term.T_TripleTerm (ssub, ppi, oterm)))
+                 | uu___ -> FStar_Pervasives_Native.None)))
 let instantiate_tp_freshen (op_salt : Prims.string) (sol_ix : Prims.nat)
   (tp : triple_pattern) (mu : RDF_Graph_Executable.solution_mapping) :
   RDF_Triple.triple FStar_Pervasives_Native.option=

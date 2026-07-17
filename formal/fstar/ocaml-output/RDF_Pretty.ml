@@ -116,7 +116,7 @@ let subject_to_turtle (s : RDF_Term.subject) : Prims.string=
   subject_with_prefixes cli_turtle_prefixes s
 let term_short_explain (t : RDF_Term.rdf_term) : Prims.string=
   term_with_prefixes explain_prefixes t
-let pattern_term_short (table : prefix_table)
+let rec pattern_term_short (table : prefix_table)
   (pt : SPARQL11_Algebra.pattern_term) : Prims.string=
   match pt with
   | SPARQL11_Algebra.PT_Var v -> Prims.strcat "?" v
@@ -124,12 +124,26 @@ let pattern_term_short (table : prefix_table)
   | SPARQL11_Algebra.PT_BNode b -> Prims.strcat "_:" b
   | SPARQL11_Algebra.PT_Literal l ->
       term_with_prefixes table (RDF_Term.T_Literal l)
+  | SPARQL11_Algebra.PT_TripleTerm (s, p, o) ->
+      Prims.strcat "<<( "
+        (Prims.strcat (pattern_term_short table s)
+           (Prims.strcat " "
+              (Prims.strcat (pattern_term_short table p)
+                 (Prims.strcat " "
+                    (Prims.strcat (pattern_term_short table o) " )>>")))))
 let pattern_subject_short (table : prefix_table)
   (ps : SPARQL11_Algebra.pattern_subject) : Prims.string=
   match ps with
   | SPARQL11_Algebra.PS_Var v -> Prims.strcat "?" v
   | SPARQL11_Algebra.PS_IRI i -> abbreviate_iri table i
   | SPARQL11_Algebra.PS_BNode b -> Prims.strcat "_:" b
+  | SPARQL11_Algebra.PS_TripleTerm (s, p, o) ->
+      Prims.strcat "<<( "
+        (Prims.strcat (pattern_term_short table s)
+           (Prims.strcat " "
+              (Prims.strcat (pattern_term_short table p)
+                 (Prims.strcat " "
+                    (Prims.strcat (pattern_term_short table o) " )>>")))))
 let triple_pattern_short (table : prefix_table)
   (tp : SPARQL11_Algebra.triple_pattern) : Prims.string=
   Prims.strcat (pattern_subject_short table tp.SPARQL11_Algebra.tp_s)

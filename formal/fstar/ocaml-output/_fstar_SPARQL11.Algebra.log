@@ -1,9 +1,9 @@
-* Warning 241 at RDF.Indexed.fsti(0,0-0,0):
-  - Unable to load RDF.Indexed.fsti.checked since checked file
-    RDF.Indexed.fsti.checked is stale (digest mismatch for RDF.Indexed.fsti);
-    will recheck RDF.Indexed.fsti (suppressing this warning for further modules)
+* Warning 241 at RDF.Graph.fsti(0,0-0,0):
+  - Unable to load RDF.Graph.fsti.checked since checked file
+    RDF.Graph.fsti.checked is stale (digest mismatch for RDF.Graph.fsti); will
+    recheck RDF.Graph.fsti (suppressing this warning for further modules)
 
-* Warning 361 at SPARQL11.Algebra.fst(7627,0-7628,40):
+* Warning 361 at SPARQL11.Algebra.fst(7818,0-7819,40):
   - Some #push-options have not been popped. Current depth is 1.
 
 Extracted module SPARQL11.Algebra

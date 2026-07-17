@@ -101,33 +101,77 @@ let parse_literal_value (node : Parser_XML.xml_node) :
            then FStar_Pervasives_Native.Some (RDF_Term.T_Literal lit)
            else FStar_Pervasives_Native.None)
   | uu___ -> FStar_Pervasives_Native.None
+let rec parse_binding_value_fuel (fuel : Prims.nat)
+  (node : Parser_XML.xml_node) :
+  RDF_Term.rdf_term FStar_Pervasives_Native.option=
+  if fuel = Prims.int_zero
+  then FStar_Pervasives_Native.None
+  else
+    (match node with
+     | Parser_XML.XElement (uu___1, uu___2, children) ->
+         let elems =
+           FStar_List_Tot_Base.filter
+             (fun child ->
+                match child with
+                | Parser_XML.XElement (uu___3, uu___4, uu___5) -> true
+                | uu___3 -> false) children in
+         (match elems with
+          | [] -> FStar_Pervasives_Native.None
+          | value_node::uu___3 ->
+              (match value_node with
+               | Parser_XML.XElement (t, uu___4, vchildren) ->
+                   let local = strip_ns_prefix t in
+                   if local = "uri"
+                   then parse_uri_value value_node
+                   else
+                     if local = "bnode"
+                     then parse_bnode_value value_node
+                     else
+                       if local = "literal"
+                       then parse_literal_value value_node
+                       else
+                         if local = "triple"
+                         then
+                           (match ((find_child "subject" vchildren),
+                                    (find_child "predicate" vchildren),
+                                    (find_child "object" vchildren))
+                            with
+                            | (FStar_Pervasives_Native.Some sj,
+                               FStar_Pervasives_Native.Some pj,
+                               FStar_Pervasives_Native.Some oj) ->
+                                (match ((parse_binding_value_fuel
+                                           (fuel - Prims.int_one) sj),
+                                         (parse_binding_value_fuel
+                                            (fuel - Prims.int_one) pj),
+                                         (parse_binding_value_fuel
+                                            (fuel - Prims.int_one) oj))
+                                 with
+                                 | (FStar_Pervasives_Native.Some
+                                    (RDF_Term.T_IRI si),
+                                    FStar_Pervasives_Native.Some
+                                    (RDF_Term.T_IRI p),
+                                    FStar_Pervasives_Native.Some ot) ->
+                                     FStar_Pervasives_Native.Some
+                                       (RDF_Term.T_TripleTerm
+                                          ((RDF_Term.S_IRI si), p, ot))
+                                 | (FStar_Pervasives_Native.Some
+                                    (RDF_Term.T_BNode sb),
+                                    FStar_Pervasives_Native.Some
+                                    (RDF_Term.T_IRI p),
+                                    FStar_Pervasives_Native.Some ot) ->
+                                     FStar_Pervasives_Native.Some
+                                       (RDF_Term.T_TripleTerm
+                                          ((RDF_Term.S_BNode sb), p, ot))
+                                 | (uu___8, uu___9, uu___10) ->
+                                     FStar_Pervasives_Native.None)
+                            | (uu___8, uu___9, uu___10) ->
+                                FStar_Pervasives_Native.None)
+                         else FStar_Pervasives_Native.None
+               | uu___4 -> FStar_Pervasives_Native.None))
+     | uu___1 -> FStar_Pervasives_Native.None)
 let parse_binding_value (node : Parser_XML.xml_node) :
   RDF_Term.rdf_term FStar_Pervasives_Native.option=
-  match node with
-  | Parser_XML.XElement (uu___, uu___1, children) ->
-      let elems =
-        FStar_List_Tot_Base.filter
-          (fun child ->
-             match child with
-             | Parser_XML.XElement (uu___2, uu___3, uu___4) -> true
-             | uu___2 -> false) children in
-      (match elems with
-       | [] -> FStar_Pervasives_Native.None
-       | value_node::uu___2 ->
-           (match value_node with
-            | Parser_XML.XElement (t, uu___3, uu___4) ->
-                let local = strip_ns_prefix t in
-                if local = "uri"
-                then parse_uri_value value_node
-                else
-                  if local = "bnode"
-                  then parse_bnode_value value_node
-                  else
-                    if local = "literal"
-                    then parse_literal_value value_node
-                    else FStar_Pervasives_Native.None
-            | uu___3 -> FStar_Pervasives_Native.None))
-  | uu___ -> FStar_Pervasives_Native.None
+  parse_binding_value_fuel (Prims.of_int (64)) node
 let parse_binding (node : Parser_XML.xml_node) :
   (Prims.string * RDF_Term.rdf_term) FStar_Pervasives_Native.option=
   match node with

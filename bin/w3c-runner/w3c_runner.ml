@@ -77,6 +77,14 @@ let file_to_base_uri path =
   let abs = if Filename.is_relative path then Filename.concat (Sys.getcwd ()) path else path in
   "file://" ^ abs
 
+(* SPARQL 1.2 dispatch flag (epic #305). When set, the parser wrappers
+   below select the F*-verified 1.2 tokenizer entry points
+   (parse_sparql_12_with_base / parse_sparql_update_12_with_base), which
+   recognize `<<( )>>` triple terms and the triple-term builtin keywords.
+   This is pure dispatch between two verified entry points — no semantics
+   live here (rule #15). Default false → 1.1 parsing is byte-identical. *)
+let sparql12_mode = ref false
+
 let parse_sparql_query ?(base_file=None) content =
   (* #65 Step 3 (2026-05-11): pass base_file as init_base directly to the
      F* parser. Previously this was wired through the OCaml-side
@@ -86,7 +94,11 @@ let parse_sparql_query ?(base_file=None) content =
   let init_base = match base_file with
     | Some path -> Some (file_to_base_uri path)
     | None -> None in
-  match SPARQL11_Parser.parse_sparql_with_base init_base content with
+  let parsed =
+    if !sparql12_mode
+    then SPARQL11_Parser.parse_sparql_12_with_base init_base content
+    else SPARQL11_Parser.parse_sparql_with_base init_base content in
+  match parsed with
   | SPARQL11_Parser.ParseOk (q, _remaining) -> hoist_query_filters q
   | SPARQL11_Parser.ParseErr msg -> raise (Sparql_parse_error msg)
 
@@ -97,7 +109,11 @@ let parse_sparql_update ?(base_file=None) content =
   let init_base = match base_file with
     | Some path -> Some (file_to_base_uri path)
     | None -> None in
-  match SPARQL11_Parser.parse_sparql_update_with_base init_base content with
+  let parsed =
+    if !sparql12_mode
+    then SPARQL11_Parser.parse_sparql_update_12_with_base init_base content
+    else SPARQL11_Parser.parse_sparql_update_with_base init_base content in
+  match parsed with
   | SPARQL11_Parser.ParseOk (u, _remaining) -> u
   | SPARQL11_Parser.ParseErr msg -> raise (Sparql_parse_error msg)
 
@@ -254,10 +270,13 @@ let find_objects graph subj pred =
     if s_match && t.p = pred then Some t.o else None
   ) graph
 
-let term_to_str = function
+let rec term_to_str = function
   | T_IRI i -> i
   | T_BNode b -> b
   | T_Literal l -> l.lexical_form
+  | T_TripleTerm (s, p, o) ->
+    let ss = match s with S_IRI i -> i | S_BNode b -> b in
+    "<<( " ^ ss ^ " " ^ p ^ " " ^ term_to_str o ^ " )>>"
 
 (* Convert an IRI to a filesystem path relative to manifest_dir.
    The Turtle parser resolves relative IRIs like <bind01.rq> against
@@ -545,7 +564,7 @@ let read_manifest manifest_path =
 (* Local exception for features not yet supported *)
 exception Unsupported of string
 
-let term_to_verbose_string t =
+let rec term_to_verbose_string t =
   match t with
   | T_IRI i -> Printf.sprintf "<%s>" i
   | T_BNode b -> Printf.sprintf "_:%s" b
@@ -553,6 +572,9 @@ let term_to_verbose_string t =
     let dt = if l.datatype <> "" then "^^<" ^ l.datatype ^ ">" else "" in
     let lg = match l.lang_tag with Some t -> "@" ^ t | None -> "" in
     Printf.sprintf "\"%s\"%s%s" l.lexical_form dt lg
+  | T_TripleTerm (s, p, o) ->
+    let ss = match s with S_IRI i -> Printf.sprintf "<%s>" i | S_BNode b -> Printf.sprintf "_:%s" b in
+    Printf.sprintf "<<( %s <%s> %s )>>" ss p (term_to_verbose_string o)
 
 let row_to_verbose_string row =
   String.concat ", " (List.map (fun (v, t) -> "?" ^ v ^ "=" ^ term_to_verbose_string t) row)
@@ -588,7 +610,7 @@ let lang_tag_equal t1 t2 =
   | Some a, Some b -> String.lowercase_ascii a = String.lowercase_ascii b
   | _ -> false
 
-let term_equal a b =
+let rec term_equal a b =
   match a, b with
   | T_IRI i1, T_IRI i2 -> i1 = i2
   | T_BNode _, T_BNode _ -> true  (* bnodes match any bnode *)
@@ -598,6 +620,14 @@ let term_equal a b =
      lang_tag_equal l1.lang_tag l2.lang_tag) ||
     (* Fall back to numeric value comparison for xsd numeric types *)
     (l1.datatype = l2.datatype && numeric_literal_equal l1 l2)
+  (* SPARQL 1.2 triple-term binding: structural equality (subject bnodes
+     match any bnode, mirroring the T_BNode arm above). *)
+  | T_TripleTerm (s1, p1, o1), T_TripleTerm (s2, p2, o2) ->
+    let subj_eq = match s1, s2 with
+      | S_IRI i1, S_IRI i2 -> i1 = i2
+      | S_BNode _, S_BNode _ -> true
+      | _ -> false in
+    subj_eq && p1 = p2 && term_equal o1 o2
   | _ -> false
 
 (* CSV-lenient term comparison: CSV format loses type information,
@@ -683,7 +713,8 @@ let graph_lenient_multiset_eq (expected : triple list) (actual : triple list) =
         | T_Literal l ->
           "L:" ^ l.RDF_Graph_Executable.lexical_form ^ "^^" ^
           l.RDF_Graph_Executable.datatype ^
-          (match l.RDF_Graph_Executable.lang_tag with Some g -> "@" ^ g | None -> "") in
+          (match l.RDF_Graph_Executable.lang_tag with Some g -> "@" ^ g | None -> "")
+        | T_TripleTerm _ as tt -> "T:" ^ term_to_str tt in
       Printf.sprintf "%s|%s|%s" s t.RDF_Graph_Executable.p o in
     List.sort compare (List.map key expected) = List.sort compare (List.map key actual)
 
@@ -2285,7 +2316,8 @@ let triple_to_canonical_key t =
     | T_Literal l ->
       let dt = if l.datatype <> "" then "^^<" ^ l.datatype ^ ">" else "" in
       let lg = match l.lang_tag with Some t -> "@" ^ t | None -> "" in
-      "\"" ^ l.lexical_form ^ "\"" ^ dt ^ lg in
+      "\"" ^ l.lexical_form ^ "\"" ^ dt ^ lg
+    | T_TripleTerm _ as tt -> "<<( " ^ term_to_str tt ^ " )>>" in
   (s_str, t.p, o_str)
 
 (* Simple triple set comparison ignoring blank node labels.
@@ -2848,6 +2880,28 @@ let rdf12_tests_base =
   try List.find Sys.file_exists candidates
   with Not_found -> "third_party/testing/w3c/rdf/rdf12"
 
+(* SPARQL 1.2 vendored suite root (epic #305). Its top-level manifest.ttl
+   is an mf:include list; the leaf suites live in subdirectories, each with
+   its own manifest.ttl (same mf:/rdft: vocabulary as sparql11). *)
+let sparql12_tests_base =
+  let candidates = [
+    "third_party/testing/w3c/sparql/sparql12";
+    "../../third_party/testing/w3c/sparql/sparql12";
+    "../../../third_party/testing/w3c/sparql/sparql12";
+  ] in
+  try List.find Sys.file_exists candidates
+  with Not_found -> "third_party/testing/w3c/sparql/sparql12"
+
+let discover_sparql12_suites () =
+  try
+    let entries = Sys.readdir sparql12_tests_base in
+    let dirs = Array.to_list entries |> List.filter (fun e ->
+      Sys.is_directory (Filename.concat sparql12_tests_base e)) in
+    List.sort String.compare dirs
+  with Sys_error _ ->
+    Printf.eprintf "Warning: SPARQL 1.2 test directory not found: %s\n" sparql12_tests_base;
+    []
+
 let discover_suites () =
   try
     let entries = Sys.readdir tests_base in
@@ -2957,6 +3011,37 @@ let run_rdf12_test assumed_base tc =
 let run_rdf12_suite suite_name =
   run_suite_generic rdf12_tests_base (fun assumed_base tc -> run_rdf12_test assumed_base tc) suite_name
 
+(* SPARQL 1.2 test dispatch (epic #305 wave 1). Reuses the shared run_test
+   machinery — which now parses in 1.2 mode because `sparql12_mode` is set
+   by the --sparql12 CLI branch before the suites run — and additionally
+   handles the sparql12 manifests' bare `PositiveUpdateSyntaxTest` /
+   `NegativeUpdateSyntaxTest` types (the sparql11 manifests use the `...11`
+   suffix), which run_test would otherwise skip as "unknown test type". *)
+let run_sparql12_test tc =
+  match tc.test_type with
+  | "PositiveUpdateSyntaxTest" ->
+    (match read_file tc.query_file with
+     | None -> Skip "Update file missing"
+     | Some content ->
+       (try ignore (parse_sparql_update ~base_file:(Some tc.query_file) content); Pass
+        with
+        | Sparql_parse_error _ -> Fail "Should parse but didn't"
+        | Sparql_unsupported msg -> Unsupported_feature msg))
+  | "NegativeUpdateSyntaxTest" ->
+    (match read_file tc.query_file with
+     | None -> Skip "Update file missing"
+     | Some content ->
+       (try ignore (parse_sparql_update ~base_file:(Some tc.query_file) content);
+            Fail "Should reject but parsed OK"
+        with
+        | Sparql_parse_error _ -> Pass
+        | Failure _ -> Pass
+        | Sparql_unsupported _ -> Unsupported_feature "Can't test rejection"))
+  | _ -> run_test tc
+
+let run_sparql12_suite suite_name =
+  run_suite_generic sparql12_tests_base (fun _assumed_base tc -> run_sparql12_test tc) suite_name
+
 let run_and_tally runner suites banner base_dir =
   Printf.printf "=== %s ===\n" banner;
   Printf.printf "Test base: %s\n\n" base_dir;
@@ -3017,13 +3102,23 @@ let () =
     verbose_mode := true;
   let run_rdf_mode = List.mem "--rdf" args in
   let run_rdf12_mode = List.mem "--rdf12" args in
+  let run_sparql12_mode = List.mem "--sparql12" args in
   let run_all_mode = List.mem "--all" args in
   let suite_args = List.filter (fun s ->
-    s <> "--rdf" && s <> "--rdf12" && s <> "--all" && s <> "--verbose" && s <> "-v") args in
+    s <> "--rdf" && s <> "--rdf12" && s <> "--sparql12" && s <> "--all" && s <> "--verbose" && s <> "-v") args in
 
   let any_fail = ref false in
 
-  if run_rdf12_mode then begin
+  if run_sparql12_mode then begin
+    (* SPARQL 1.2 suites (epic #305 wave 1). Parses in 1.2 mode so triple
+       terms + triple-term builtins are recognized; 1.1 suites are
+       unaffected (separate CLI mode). *)
+    sparql12_mode := true;
+    let s12_suites = if suite_args = [] then discover_sparql12_suites () else suite_args in
+    let (_, f, _, _) = run_and_tally run_sparql12_suite s12_suites
+      "W3C SPARQL 1.2 Test Runner" sparql12_tests_base in
+    if f > 0 then any_fail := true
+  end else if run_rdf12_mode then begin
     (* RDF 1.2 suites (epic #305 phase 1). Default: the N-Triples syntax
        suite (leaf manifest at rdf12/rdf-n-triples/syntax/manifest.ttl). *)
     let rdf12_suites = if suite_args = [] then ["rdf-n-triples/syntax"] else suite_args in
