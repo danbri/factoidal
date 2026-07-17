@@ -232,6 +232,31 @@ export function tableauDlInconsistent(
   ds: FnDataset
 ): Promise<{ inconsistent: boolean; rlAlone: boolean }>;
 
+/**
+ * OWL DL consistency verdict via the verified clash-detecting tableau
+ * (Tableau.Refute.tableau_consistent over the OWL-RL closure). Needs the
+ * npm-entry engine bundle. Default graph only. `ontology` is an
+ * FnDataset or raw RDF text (Turtle by default). `consistent` is
+ * `false`, `true`, or `null` (budget-out, `reason` names the fuel cap).
+ */
+export function owlIsConsistent(
+  ontology: FnDataset | string,
+  options?: { format?: string; fuel?: number | string }
+): Promise<{ consistent: boolean | null; reason?: string }>;
+
+/**
+ * OWL entailment check: does `premise` entail `conclusion`? Verified
+ * two-path dispatch (`via: "closure"` / `via: "refutation"`). Needs the
+ * npm-entry engine bundle. Default graph only. Each argument is an
+ * FnDataset or raw RDF text. `entailed` is `true`, `false`, or `null`
+ * (refutation budget-out, `reason` names the cap).
+ */
+export function owlEntails(
+  premise: FnDataset | string,
+  conclusion: FnDataset | string,
+  options?: { format?: string; fuel?: number | string }
+): Promise<{ entailed: boolean | null; via: 'closure' | 'refutation'; reason?: string }>;
+
 /** RDFC-1.0 canonical N-Quads text. Needs the npm-entry engine bundle. */
 export function canonicalize(ds: FnDataset): Promise<string>;
 

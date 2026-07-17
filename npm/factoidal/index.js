@@ -177,6 +177,8 @@ module.exports = {
   owlClosure: api.owlClosure,
   tableauMaterialise: api.tableauMaterialise,
   tableauDlInconsistent: api.tableauDlInconsistent,
+  owlIsConsistent: api.owlIsConsistent,
+  owlEntails: api.owlEntails,
   rmlMap: api.rmlMap,
   csvwToRdf: api.csvwToRdf,
   jsonldToRdf: api.jsonldToRdf,

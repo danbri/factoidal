@@ -1064,6 +1064,142 @@ let tableau_dl_inconsistent_json (data_nquads : string) : string =
       (RDF_Graph_Executable.is_inconsistent rl_only))
 
 (* ---------------------------------------------------------------------
+   OWL DL reasoning by refutation (rule #11 consumer -- exports only).
+   owlIsConsistent / owlEntails expose the VERIFIED clash-detecting
+   tableau (formal/fstar/Tableau.Refute.fst) the way
+   bin/owl-runner/owl_runner.ml dispatches it under --regime dl, minus
+   owl_runner's native-only z3 counting oracle: z3_oracle_refutes spawns
+   a z3 subprocess, which js_of_ocaml/wasm_of_ocaml cannot do, so this
+   entry point never touches it. The chain is the pure verified one --
+   Tableau_Refute.tableau_consistent (three-valued: Some false = clash on
+   every branch, Some true = model built, None = fuel budget exhausted)
+   over the OWL-RL closure -- and the None case is reported as an honest
+   `null`, never a silent `false`. No reasoning logic lives here (rule
+   #11): the closure, the refuter, and negation_goals are all
+   F*-extracted; this only computes the RL closure, calls the refuter,
+   and shapes the JSON verdict. Default graph only (same scope cut as
+   owlClosure / tableauDlInconsistent above).
+   --------------------------------------------------------------------- *)
+
+(* Refutation budget (Tableau_Refute.tableau_consistent's threaded linear
+   `fuel`). Default 20000, matching owl_runner's refute_fuel. opts_json is
+   "" or a JSON object {"fuel":"<nat>"} (fuel a decimal STRING -- a large
+   budget can exceed JS's safe-integer range, so it crosses the ABI as
+   text). Unlike owl_runner there is NO SIGALRM wall-clock cap here:
+   js_of_ocaml has no Unix.setitimer, and the fuel bound is itself the
+   termination guarantee (fuel exhaustion returns None = indeterminate),
+   so a browser call is bounded by fuel alone. *)
+let owl_refute_fuel_of_opts (opts_json : string) : Prims.nat =
+  let default_fuel = Z.of_int 20000 in
+  if opts_json = "" then default_fuel
+  else
+    match Parser_JSON.parse_json opts_json with
+    | FStar_Pervasives_Native.None -> default_fuel
+    | FStar_Pervasives_Native.Some root ->
+      (match Parser_JSON.json_get_string "fuel" root with
+       | FStar_Pervasives_Native.Some s ->
+         (try Z.of_string s with _ -> default_fuel)
+       | FStar_Pervasives_Native.None -> default_fuel)
+
+(* owlIsConsistent(dataNquads, optsJson)
+   -> {"ok":true,"consistent":true|false|null,"reason"?:"..."}
+   Mirrors owl_runner's dl_refutes dispatch: RL closure of the input,
+   then Tableau_Refute.tableau_consistent on the closure. reason is a
+   plumbing-level description of the verdict source (there is no
+   clash-trace string in the verified refuter); present on the
+   false/null verdicts, omitted on true. *)
+let owl_is_consistent_json (data_nquads : string) (opts_json : string) : string =
+  guarded (fun () ->
+    let graph = (dataset_of_nquads data_nquads).ds_default in
+    let fuel100 = Z.of_int 100 in
+    let closure =
+      RDF_Graph_Executable.owl_rl_closure_with_reflexivity graph fuel100 in
+    let fuel = owl_refute_fuel_of_opts opts_json in
+    match Tableau_Refute.tableau_consistent closure fuel with
+    | FStar_Pervasives_Native.Some false ->
+      "{\"ok\":true,\"consistent\":false,\"reason\":"
+      ^ jstr ("the clash-detecting tableau derived a contradiction on "
+              ^ "every branch of the OWL-RL closure") ^ "}"
+    | FStar_Pervasives_Native.Some true ->
+      "{\"ok\":true,\"consistent\":true}"
+    | FStar_Pervasives_Native.None ->
+      "{\"ok\":true,\"consistent\":null,\"reason\":"
+      ^ jstr (Printf.sprintf
+                "budget-out: tableau refutation fuel %s exhausted before \
+                 every branch closed (indeterminate, not inconsistent); \
+                 raise it via opts.fuel"
+                (Z.to_string fuel))
+      ^ "}")
+
+(* Every conclusion triple present (exactly) in the closure? Soundness:
+   exact membership of a ground triple in the RL closure is always a valid
+   entailment witness. A conclusion carrying blank nodes needs either
+   matching labels or the refutation path below -- owl_runner's relaxed
+   bnode-existential match is a test-scoring convenience, not needed for a
+   clean API verdict, and is not replicated here. *)
+let closure_entails
+      (closure : RDF_Graph_Executable.rdf_graph)
+      (g_c : RDF_Graph_Executable.rdf_graph) : bool =
+  List.for_all
+    (fun t -> List.exists (RDF_Graph_Executable.triple_eq t) closure)
+    g_c
+
+(* owlEntails(premiseNquads, conclusionNquads, optsJson)
+   -> {"ok":true,"entailed":true|false|null,"via":"closure"|"refutation",
+       "reason"?:"..."}
+   Mirrors owl_runner's PositiveEntailment dispatch (run_positive_
+   entailment + pe_refute_entails): first the OWL-RL closure path, then
+   the negate-and-refute fallback. The conclusion is entailed via
+   refutation iff EVERY negation goal (Tableau_Refute.negation_goals
+   splits equivalences / conjunctions) refutes; a satisfiable goal
+   (Some true) is a countermodel => not entailed; an indeterminate goal
+   (None) with no countermodel => null (budget-out), never a silent
+   false. Verified-only chain (no z3). *)
+let owl_entails_json
+      (premise_nquads : string) (conclusion_nquads : string)
+      (opts_json : string) : string =
+  guarded (fun () ->
+    let g_p = (dataset_of_nquads premise_nquads).ds_default in
+    let g_c = (dataset_of_nquads conclusion_nquads).ds_default in
+    let fuel100 = Z.of_int 100 in
+    let closure =
+      RDF_Graph_Executable.owl_rl_closure_with_reflexivity g_p fuel100 in
+    let fuel = owl_refute_fuel_of_opts opts_json in
+    if closure_entails closure g_c then
+      "{\"ok\":true,\"entailed\":true,\"via\":\"closure\"}"
+    else
+      match Tableau_Refute.negation_goals g_c with
+      | FStar_Pervasives_Native.None ->
+        (* No sound negation for this conclusion form; only the closure
+           verdict (miss) is available. *)
+        "{\"ok\":true,\"entailed\":false,\"via\":\"closure\",\"reason\":"
+        ^ jstr ("not in the OWL-RL closure, and the conclusion form "
+                ^ "cannot be soundly negated for refutation") ^ "}"
+      | FStar_Pervasives_Native.Some goals ->
+        let results =
+          List.map
+            (fun neg ->
+               Tableau_Refute.tableau_consistent
+                 (List.append closure neg) fuel)
+            goals
+        in
+        if List.for_all (fun r -> r = FStar_Pervasives_Native.Some false) results
+        then "{\"ok\":true,\"entailed\":true,\"via\":\"refutation\"}"
+        else if List.exists (fun r -> r = FStar_Pervasives_Native.Some true) results
+        then
+          "{\"ok\":true,\"entailed\":false,\"via\":\"refutation\",\"reason\":"
+          ^ jstr ("a model satisfying the premise and the negated "
+                  ^ "conclusion was constructed (conclusion not entailed)")
+          ^ "}"
+        else
+          "{\"ok\":true,\"entailed\":null,\"via\":\"refutation\",\"reason\":"
+          ^ jstr (Printf.sprintf
+                    "budget-out: a refutation goal exhausted fuel %s "
+                    (Z.to_string fuel)
+                  ^ "before closing (indeterminate); raise it via opts.fuel")
+          ^ "}")
+
+(* ---------------------------------------------------------------------
    RML (rule #11 consumer -- exports only). Mapping-document decoding
    lives in formal/fstar/RML.Mapping.fst, logical-source iteration in
    formal/fstar/RML.Sources.fst, term-map/triples-map evaluation in
@@ -2097,6 +2233,8 @@ let () =
           ("owlClosure", s2 owl_closure_json);
           ("tableauMaterialise", s1 tableau_materialise_json);
           ("tableauDlInconsistent", s1 tableau_dl_inconsistent_json);
+          ("owlIsConsistent", s2 owl_is_consistent_json);
+          ("owlEntails", s3 owl_entails_json);
           ("rmlMap", s3 rml_map_json);
           ("csvwToRdf", s3 csvw_to_rdf_json);
           ("deltaBatchToHex", s3 delta_batch_to_hex);

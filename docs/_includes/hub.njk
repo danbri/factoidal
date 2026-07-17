@@ -683,6 +683,55 @@ const fn = {
     return { inconsistent: parsed.inconsistent, rlAlone: parsed.rlAlone };
   },
   /**
+   * OWL DL consistency verdict via the verified clash-detecting tableau
+   * (mirrors npm/factoidal/index.js's `owlIsConsistent(data, options)
+   * -> {consistent, reason?}`): Tableau.Refute.tableau_consistent over
+   * the OWL-RL closure, the pure verified chain bin/owl-runner runs
+   * under `--regime dl`. `data` may be raw RDF text (parsed with
+   * `options.format`, default "turtle") or an FnDataset. `consistent`
+   * is true|false|null (null = budget-out, `reason` names the fuel cap
+   * -- never a silent false).
+   */
+  async owlIsConsistent(data, options) {
+    const opts = options || {};
+    if (typeof Factoidal.owlIsConsistent !== "function") {
+      throw new Error(
+        "owlIsConsistent: the loaded factoidal-npm-entry bundle predates the owlIsConsistent export");
+    }
+    const dataNq = data && typeof data.toNQuads === "function"
+      ? data.toNQuads()
+      : await Factoidal.toRdf(data, { format: opts.format || "turtle" });
+    const optsJson = JSON.stringify(opts.fuel != null ? { fuel: String(opts.fuel) } : {});
+    const parsed = await Factoidal.owlIsConsistent(dataNq, optsJson);
+    return parsed.reason === undefined
+      ? { consistent: parsed.consistent }
+      : { consistent: parsed.consistent, reason: parsed.reason };
+  },
+  /**
+   * OWL entailment check (mirrors npm/factoidal/index.js's
+   * `owlEntails(premise, conclusion, options) -> {entailed, via,
+   * reason?}`): the OWL-RL closure path then negate-and-refute. Each
+   * argument may be raw RDF text (parsed with `options.format`, default
+   * "turtle") or an FnDataset. `entailed` is true|false|null.
+   */
+  async owlEntails(premise, conclusion, options) {
+    const opts = options || {};
+    if (typeof Factoidal.owlEntails !== "function") {
+      throw new Error(
+        "owlEntails: the loaded factoidal-npm-entry bundle predates the owlEntails export");
+    }
+    const toNq = async (x) => (x && typeof x.toNQuads === "function"
+      ? x.toNQuads()
+      : Factoidal.toRdf(x, { format: opts.format || "turtle" }));
+    const premiseNq = await toNq(premise);
+    const conclusionNq = await toNq(conclusion);
+    const optsJson = JSON.stringify(opts.fuel != null ? { fuel: String(opts.fuel) } : {});
+    const parsed = await Factoidal.owlEntails(premiseNq, conclusionNq, optsJson);
+    return parsed.reason === undefined
+      ? { entailed: parsed.entailed, via: parsed.via }
+      : { entailed: parsed.entailed, via: parsed.via, reason: parsed.reason };
+  },
+  /**
    * RDFC-1.0 canonicalization (mirrors npm/factoidal/index.js's
    * `canonicalize(data, options) -> Promise<string>`): canonical
    * blank-node labels plus sorted canonical N-Quads text. `data` may

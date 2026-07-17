@@ -32,8 +32,11 @@ never weaker than the RL one. The reasoner is
 verified F\*, no `assume val`, no `--lax`.
 
 The cells below call the tableau through the npm surface —
-`fn.tableauMaterialise` (add the memberships the tableau proves) and
-`fn.tableauDlInconsistent` (the DL consistency verdict).
+`fn.tableauMaterialise` (add the memberships the tableau proves),
+`fn.tableauDlInconsistent` (the DL consistency verdict),
+`fn.owlIsConsistent` (a three-valued consistency verdict straight from
+the clash-detecting refuter), and `fn.owlEntails` (does a premise entail
+a conclusion, by closure or by refuting the negated conclusion).
 
 ## Covered: existential classification
 
@@ -150,6 +153,170 @@ plain OWL-RL verdict on the same graph — does not, because the
 Datalog closure never introduces the witness that reaches `owl:Nothing`.
 This is the shape of the `WebOnt-Restriction` cases the DL regime
 decides that RL leaves consistent.
+
+## Consistency by refutation: a verdict and its clash families
+
+`fn.owlIsConsistent(ontology)` runs the clash-detecting refuter
+([`formal/fstar/Tableau.Refute.fst`](https://github.com/danbri/factoidal/blob/claude/main/formal/fstar/Tableau.Refute.fst))
+over the OWL-RL closure and reports a **three-valued** verdict:
+`consistent: false` when a clash closes every branch, `true` when a model
+is built with no clash, and `consistent: null` when the refuter's linear
+budget runs out before it decides — an indeterminate result that is
+never reported as `false`. This is the pure verified chain the OWL
+runner uses under `--regime dl`; the runner's native z3 counting oracle
+is not on this path (a browser cannot spawn z3), so every verdict here
+comes from the extracted tableau alone.
+
+Edit the ontology below and re-run it: a class that is both `:Cat` and
+`:Dog` where the two are `owl:disjointWith` cannot have members.
+
+```observable-js
+disjointClassesOntology = `
+@prefix : <http://example.org/> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+:Cat a owl:Class . :Dog a owl:Class .
+:Cat owl:disjointWith :Dog .
+:Felix a owl:NamedIndividual , :Cat , :Dog .
+`
+```
+
+```observable-js
+disjointClassesVerdict = await fn.owlIsConsistent(disjointClassesOntology)
+```
+
+`disjointClassesVerdict` is `{ consistent: false, reason: … }` — the
+`reason` string is the refuter's plumbing-level account of the verdict
+(there is no full clash trace in the verified core; the `reason` reports
+which stage decided). The next two ontologies are different clash
+families the same refuter closes.
+
+A cardinality contradiction — `:Sam` is asserted into a class needing at
+least two `:knows` edges and a class allowing at most one, over the same
+property:
+
+```observable-js
+cardinalityClashOntology = `
+@prefix : <http://example.org/> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+:knows a owl:ObjectProperty .
+:Sociable a owl:Class ; owl:equivalentClass [ a owl:Restriction ;
+    owl:onProperty :knows ; owl:minCardinality "2"^^xsd:nonNegativeInteger ] .
+:Hermit a owl:Class ; owl:equivalentClass [ a owl:Restriction ;
+    owl:onProperty :knows ; owl:maxCardinality "1"^^xsd:nonNegativeInteger ] .
+:Sam a owl:NamedIndividual , :Sociable , :Hermit .
+`
+```
+
+```observable-js
+cardinalityClashVerdict = await fn.owlIsConsistent(cardinalityClashOntology)
+```
+
+A functional-property contradiction — a functional `:hasSSN` cannot point
+at two individuals declared `owl:differentFrom` each other:
+
+```observable-js
+functionalClashOntology = `
+@prefix : <http://example.org/> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+:hasSSN a owl:FunctionalProperty , owl:ObjectProperty .
+:Alice a owl:NamedIndividual ; :hasSSN :N1 , :N2 .
+:N1 a owl:NamedIndividual . :N2 a owl:NamedIndividual .
+:N1 owl:differentFrom :N2 .
+`
+```
+
+```observable-js
+functionalClashVerdict = await fn.owlIsConsistent(functionalClashOntology)
+```
+
+And a satisfiable control — an ordinary graph with no contradiction — so
+the `true` verdict is not just the absence of a test:
+
+```observable-js
+satisfiableOntology = `
+@prefix : <http://example.org/> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+:hasChild a owl:ObjectProperty . :Doctor a owl:Class .
+:Alice a owl:NamedIndividual ; :hasChild :Bob .
+:Bob a :Doctor , owl:NamedIndividual .
+`
+```
+
+```observable-js
+satisfiableVerdict = await fn.owlIsConsistent(satisfiableOntology)
+```
+
+The summary cell collects the four verdicts — three clash families that
+close, one control that stays open:
+
+```observable-js
+clashFamilySummary = [
+  { family: "disjoint classes", consistent: disjointClassesVerdict.consistent,
+    reason: disjointClassesVerdict.reason ?? "" },
+  { family: "min/max cardinality", consistent: cardinalityClashVerdict.consistent,
+    reason: cardinalityClashVerdict.reason ?? "" },
+  { family: "functional property", consistent: functionalClashVerdict.consistent,
+    reason: functionalClashVerdict.reason ?? "" },
+  { family: "satisfiable control", consistent: satisfiableVerdict.consistent,
+    reason: satisfiableVerdict.reason ?? "" }
+]
+```
+
+### The budget-out is not a false
+
+The refuter's search is bounded by a linear fuel budget. When the budget
+is too small to close every branch the verdict is `null`, and the
+`reason` names the exhausted cap — the reasoner reports "I did not
+decide", never a silent "consistent". Re-running the disjoint-classes
+ontology with `fuel: 0` forces that path:
+
+```observable-js
+budgetOutVerdict = await fn.owlIsConsistent(disjointClassesOntology, { fuel: 0 })
+```
+
+`budgetOutVerdict` is `{ consistent: null, reason: … }` — the same
+ontology the default budget reports as `false`. Raising `opts.fuel`
+past the search depth turns the `null` back into the decided verdict.
+
+## Entailment: closure first, refutation second
+
+`fn.owlEntails(premise, conclusion)` answers "does the premise entail the
+conclusion?" by the same two-regime dispatch the OWL runner's
+positive-entailment path uses. It first checks whether the conclusion is
+already in the OWL-RL closure of the premise (`via: "closure"`); if not,
+it negates the conclusion and asks the refuter whether premise-plus-
+negation is inconsistent (`via: "refutation"`). Here the conclusion is
+`:Alice a :ParentOfDoctor` — a `someValuesFrom` classification the
+closure never makes, so the entailment is decided by refuting its
+negation:
+
+```observable-js
+entailmentPremise = `
+@prefix : <http://example.org/> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+:hasChild a owl:ObjectProperty . :Doctor a owl:Class .
+:ParentOfDoctor a owl:Class ; owl:equivalentClass [ a owl:Restriction ;
+    owl:onProperty :hasChild ; owl:someValuesFrom :Doctor ] .
+:Alice a owl:NamedIndividual ; :hasChild :Bob .
+:Bob a :Doctor , owl:NamedIndividual .
+`
+```
+
+```observable-js
+entailmentConclusion = `@prefix : <http://example.org/> . :Alice a :ParentOfDoctor .`
+```
+
+```observable-js
+entailmentVerdict = await fn.owlEntails(entailmentPremise, entailmentConclusion)
+```
+
+`entailmentVerdict` is `{ entailed: true, via: "refutation" }`: the
+closure alone leaves it undecided, and the refuter proves it by finding
+no model of the premise where Alice is *not* a `ParentOfDoctor`. Like
+`owlIsConsistent`, `owlEntails` is three-valued — a refutation goal that
+exhausts its budget returns `entailed: null` with the cap named, never a
+false negative.
 
 ## The standing measured proof
 
