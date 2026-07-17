@@ -979,6 +979,57 @@ export async function tableauDlInconsistent(dataNQuads) {
 }
 
 /**
+ * OWL DL consistency verdict via the verified clash-detecting tableau
+ * (bin/npm-entry/entry_jsoo.ml's owlIsConsistent export ->
+ * Tableau.Refute.tableau_consistent over the OWL-RL closure). Default
+ * graph only. `consistent` is true|false|null (null = budget-out, with
+ * `reason` naming the fuel cap -- never a silent false).
+ *
+ * @param {string} dataNQuads
+ * @param {string} [optsJson] '' or a JSON object {"fuel":"<nat>"}
+ * @returns {Promise<{ok:true,consistent:boolean|null,reason?:string}>}
+ */
+export async function owlIsConsistent(dataNQuads, optsJson) {
+  if (typeof dataNQuads !== 'string') {
+    throw new TypeError('owlIsConsistent: dataNQuads must be a string');
+  }
+  const abi = await loadNpmEntry();
+  if (typeof abi.owlIsConsistent !== 'function') {
+    throw new Error(
+      'owlIsConsistent: the loaded factoidal-npm-entry bundle predates the owlIsConsistent export');
+  }
+  const parsed = JSON.parse(abi.owlIsConsistent(dataNQuads, optsJson || ''));
+  if (!parsed.ok) throw new Error(parsed.error || 'owlIsConsistent failed');
+  return parsed;
+}
+
+/**
+ * OWL entailment check via the verified engine (bin/npm-entry/
+ * entry_jsoo.ml's owlEntails export): the OWL-RL closure path
+ * (`via:"closure"`) then negate-and-refute (`via:"refutation"`).
+ * Default graph only. `entailed` is true|false|null (null = budget-out,
+ * `reason` names the fuel cap).
+ *
+ * @param {string} premiseNQuads
+ * @param {string} conclusionNQuads
+ * @param {string} [optsJson] '' or a JSON object {"fuel":"<nat>"}
+ * @returns {Promise<{ok:true,entailed:boolean|null,via:string,reason?:string}>}
+ */
+export async function owlEntails(premiseNQuads, conclusionNQuads, optsJson) {
+  if (typeof premiseNQuads !== 'string' || typeof conclusionNQuads !== 'string') {
+    throw new TypeError('owlEntails: premiseNQuads and conclusionNQuads must be strings');
+  }
+  const abi = await loadNpmEntry();
+  if (typeof abi.owlEntails !== 'function') {
+    throw new Error(
+      'owlEntails: the loaded factoidal-npm-entry bundle predates the owlEntails export');
+  }
+  const parsed = JSON.parse(abi.owlEntails(premiseNQuads, conclusionNQuads, optsJson || ''));
+  if (!parsed.ok) throw new Error(parsed.error || 'owlEntails failed');
+  return parsed;
+}
+
+/**
  * Evaluate an RML mapping graph against one logical source's raw data
  * (bin/npm-entry/entry_jsoo.ml's rmlMap export). Every triples map in
  * `mappingNQuads` reads the SAME `sourceData` -- joins across two
@@ -1866,7 +1917,7 @@ export default {
   encodeTextAsBundleBytes, queryDataset, version,
   loadNpmEntry, setFactoidalNpmEntryUrl, rifSmoke, rifEval,
   shaclValidate, shexValidate, didKeyResolve, owlClosure,
-  tableauMaterialise, tableauDlInconsistent, rmlMap, jsonldToRdf,
+  tableauMaterialise, tableauDlInconsistent, owlIsConsistent, owlEntails, rmlMap, jsonldToRdf,
   jsonldFromRdf, xmlWellformed, xpathEval,
   deltaLogOpen, deltaLogAppend, deltaLogReadAllHex, deltaLogMerge,
   deltaLogDestroy, _deltaLogCorruptLastForTest,

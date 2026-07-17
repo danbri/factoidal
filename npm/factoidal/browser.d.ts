@@ -198,6 +198,22 @@ export function tableauDlInconsistent(
   dataNQuads: string
 ): Promise<{ ok: true; inconsistent: boolean; rlAlone: boolean }>;
 
+/** OWL DL consistency verdict via the verified clash-detecting tableau
+ * (Tableau.Refute over the OWL-RL closure); `consistent` is
+ * true|false|null (null = budget-out, `reason` names the fuel cap). */
+export function owlIsConsistent(
+  dataNQuads: string,
+  optsJson?: string
+): Promise<{ ok: true; consistent: boolean | null; reason?: string }>;
+
+/** OWL entailment check (OWL-RL closure path then negate-and-refute);
+ * `entailed` is true|false|null, `via` is 'closure' | 'refutation'. */
+export function owlEntails(
+  premiseNQuads: string,
+  conclusionNQuads: string,
+  optsJson?: string
+): Promise<{ ok: true; entailed: boolean | null; via: string; reason?: string }>;
+
 /** RML mapping evaluation against one logical source. */
 export function rmlMap(
   mappingNQuads: string,
@@ -410,6 +426,8 @@ declare const _default: {
   owlClosure: typeof owlClosure;
   tableauMaterialise: typeof tableauMaterialise;
   tableauDlInconsistent: typeof tableauDlInconsistent;
+  owlIsConsistent: typeof owlIsConsistent;
+  owlEntails: typeof owlEntails;
   rmlMap: typeof rmlMap;
   jsonldToRdf: typeof jsonldToRdf;
   jsonldFromRdf: typeof jsonldFromRdf;
