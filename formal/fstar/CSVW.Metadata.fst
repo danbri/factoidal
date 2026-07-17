@@ -211,6 +211,13 @@ type csvw_column = {
   // eleven, not a claim of completeness.
   col_lang             : option string;
   col_null             : option string;
+  // `default` (one of the eleven inherited properties, tabular-metadata
+  // 5.1.1): the string substituted for an EMPTY cell before datatype
+  // parsing (test036/037: the `protected` column's `"default": "NO"`
+  // fills every blank Protected cell with NO, which the YES|NO boolean
+  // format then reads as false). Column-level only for now — no fixture
+  // needs it set above the column.
+  col_default          : option string;
   // `ordered` at column level (test307: one column ordered, its sibling
   // not) — same rdf:List semantics as the inherited default above.
   col_ordered          : option bool;
@@ -284,10 +291,33 @@ type csvw_table_schema = {
   ts_row_titles   : list string;
 }
 
+// A table/group `@id` annotation, kept distinct enough for the
+// conversion layer to decide node identity (csv2rdf "Generating RDF":
+// the subject is the table's id, or a blank node when there is none).
+//   - CsvwIdNone   : no `@id` member at all -> blank-node table node.
+//   - CsvwIdString : `@id` is a string -> that (base-resolved) IRI.
+//   - CsvwIdInvalid: `@id` present but NOT a string (test102's integer
+//     `@id`: 1) -> graceful degradation to the metadata-document URL.
+type csvw_id_ann =
+  | CsvwIdNone
+  | CsvwIdString : string -> csvw_id_ann
+  | CsvwIdInvalid
+
 type csvw_table = {
   tbl_url          : option string;
   tbl_dialect      : option csvw_dialect;
   tbl_table_schema : option csvw_table_schema;
+  // The table's `@id` annotation (see csvw_id_ann). Drives the table
+  // node's RDF identity in standard mode (test036/102); minimal mode
+  // ignores it (no table node is emitted at all).
+  tbl_id           : csvw_id_ann;
+  // The table's `notes` annotation (tabular-metadata): an array of
+  // common-property VALUES, each emitted as a `csvw:note` object on the
+  // table node in standard mode (test036: a nested oa:Annotation). Kept
+  // as verbatim json_val, interpreted by CSVW.Conversion like any other
+  // common-property value. Reserved key ("notes" has no ':'), so it is
+  // never captured by the tbl_common colon-filter.
+  tbl_notes        : list json_val;
   // Common properties (tabular-metadata section 5.8): every top-level
   // member of the table object whose name is a prefixed name or an
   // absolute URL (heuristic: contains a ':') rather than a reserved
@@ -598,6 +628,7 @@ let csvw_decode_column (v:json_val) : option csvw_column =
       col_separator        = json_get_string "separator" v;
       col_lang             = json_get_string "lang" v;
       col_null             = json_get_string "null" v;
+      col_default          = json_get_string "default" v;
       col_ordered          = json_get_bool "ordered" v;
     })
   | _ -> None
@@ -692,6 +723,24 @@ let csvw_common_fields (v:json_val) : list (string & json_val) =
   | JObject fields -> List.Tot.filter (fun (kv:(string & json_val)) -> csvw_key_is_common (fst kv)) fields
   | _ -> []
 
+// Decode a table/group object's `@id`: absent -> CsvwIdNone; a JSON
+// string -> CsvwIdString; any non-string value (test102's integer)
+// -> CsvwIdInvalid (graceful degradation, "act as if empty array"-style
+// but for the id: fall back to the document URL at conversion time).
+let csvw_decode_id (v:json_val) : csvw_id_ann =
+  match json_get_field "@id" v with
+  | None -> CsvwIdNone
+  | Some (JString s) -> CsvwIdString s
+  | Some _ -> CsvwIdInvalid
+
+// Decode a table/group object's `notes`: only the array form contributes
+// (tabular-metadata: notes is an array of common-property values); any
+// other shape yields no notes (leniency — a warning-not-error condition).
+let csvw_decode_notes (v:json_val) : list json_val =
+  match json_get_field "notes" v with
+  | Some (JArray items) -> items
+  | _ -> []
+
 let csvw_decode_table (v:json_val) : option csvw_table =
   match v with
   | JObject _ ->
@@ -719,6 +768,8 @@ let csvw_decode_table (v:json_val) : option csvw_table =
         tbl_url          = json_get_string "url" v;
         tbl_dialect      = dialect;
         tbl_table_schema = schema;
+        tbl_id           = csvw_decode_id v;
+        tbl_notes        = csvw_decode_notes v;
         tbl_common       = csvw_common_fields v;
         tbl_inherited    = csvw_decode_inherited v;
         tbl_schema_ref   = schema_ref;

@@ -571,11 +571,22 @@ let run_test (te : test_entry) =
        | None -> None)
     | None -> None
   in
+  (* The metadata document's own web URL — used ONLY by standard-mode
+     conversion for a table whose @id is present-but-invalid (test102's
+     integer @id degrades to this document URL). Derived from the
+     metadata file path exactly as base_iri0 is derived from a directory;
+     I/O-derived, so it lives here rather than in the F* layer. *)
+  let doc_url =
+    match metadata_path with
+    | Some p ->
+      Some (web_base_of_dir (abs_path (Filename.dirname p)) ^ Filename.basename p)
+    | None -> None
+  in
   let triples =
     if decode_failed then []
     else if te.te_minimal then
       CSVW_Conversion.csvw_convert_document_minimal grp_meta.CSVW_Metadata.grp_inherited base_iri tables
-    else CSVW_Conversion.csvw_convert_document_standard grp_meta (fs_of_opt default_lang) base_iri tables
+    else CSVW_Conversion.csvw_convert_document_standard grp_meta (fs_of_opt default_lang) base_iri (fs_of_opt doc_url) tables
   in
   let got_ds : RDF_Graph_Executable.rdf_dataset = { RDF_Graph_Executable.ds_default = triples; ds_named = [] } in
   match te.te_kind with

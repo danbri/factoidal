@@ -58,6 +58,31 @@ Burndown ledger. Score history (all measured on freshly rebuilt
   265 pass, 5 fail). Cross-suite gates green: RDF six suites 1031 pass,
   0 fail; SPARQL 1.1 Query 338 pass, 0 fail; jsonld-toRdf 466 pass, 0
   fail, 1 skip (of 467); vc20-api 59 pass, 0 fail (of 59).
+- Round 6 (family C — the final trio, branch csvw-burndown-6): ✅
+  **270 pass, 0 fail (out of 270) — csv2rdf suite COMPLETE.** 3 named
+  flips: test036 test037 test102. Four verified changes, all in
+  `CSVW.Metadata.fst` / `CSVW.Conversion.fst`: (A) whitespace-trim on
+  each separator-split list value (default dialect `trim`=true —
+  test036/037 `comments`); (B) the column `default` inherited property,
+  substituting an empty cell's value BEFORE the null-check / datatype
+  parse (test036/037 `protected` blank cells → "NO" → xsd:boolean
+  false via the YES|NO format); (C) `notes` → `csvw:note`: each element
+  of a table's `notes` array emitted as a common-property value (the
+  existing `csvw_common_value` machinery already builds test036's nested
+  `oa:Annotation` / `oa:hasBody` / `oa:hasTarget` subgraph); (D) table
+  node identity from `@id` (`csvw_id_ann` = None/String/Invalid) — a
+  valid string `@id` resolved against the metadata base IS the table
+  node (test036 `<http://example.org/tree-ops-ext>`), an invalid
+  non-string `@id` degrades to the metadata-document URL (test102's
+  integer `@id`: 1 → `<…/test102-metadata.json>`), absent `@id` keeps
+  the blank node the un-`@id`'d corpus already uses. 📊 Zero
+  regressions (the other 267 stayed green; the whole suite is now 0
+  fail). Cross-suite gates green: RDF six suites 1031 pass, 0 fail;
+  SPARQL 1.1 all suites 631 pass, 0 fail (incl. Query 338/0); jsonld-
+  toRdf 466 pass, 0 fail, 1 skip (of 467). Boundary (rule #11) held:
+  the runner's only new code derives the metadata-document URL from the
+  file path (I/O) and passes it in; the invalid-`@id` degradation logic
+  lives in `CSVW.Conversion.fst`.
 
 Baseline for the original triage below: **218 pass, 52 fail (out of
 270)**. This note triages all 52 named fails into root-cause families by
@@ -313,18 +338,26 @@ names — no regression exposure there.
 
 ## What's next (by expected yield)
 
-Only 3 actionable fails remain, all in family C's single combinatorial
-shape (test036/037/102):
+✅ **Nothing — the csv2rdf suite is complete at 270 pass, 0 fail (out
+of 270).** Family C (test036/037/102) landed in round 6; see the
+round-6 score line at the top for the four changes (trim, `default`,
+`notes`→`csvw:note`, `@id` node identity). The generalisations round 6
+deliberately did NOT need (and so did not build) remain open for any
+future non-suite use of the converter, none of them blocking a suite
+fixture:
 
-- **Family C `@id` node identity (test036/037/102)** — the table/group
-  node's IRI must come from the metadata `@id` (or, for test102's
-  invalid integer `@id`, degrade to the metadata-document URL) instead
-  of the current synthesized blank node. test036/037 additionally need
-  annotation-object common properties (`notes` → `csvw:note` →
-  `oa:Annotation`, nested `oa:hasBody`/`oa:hasTarget`, `dc:publisher`/
-  `schema:` objects, `@value`/`@type`/`@id` object shapes, `dcat:keyword`
-  arrays) and whitespace-trim on separator-split cell values, plus
-  aboutUrl expansion against the `@id` base. This is a CSVW.Conversion
-  signature change (the node builder must receive the `@id` and the
-  document URL) layered with several common-property emission gaps — the
-  corpus's hardest remaining case, best split across multiple commits.
+- **Group-level `@id` / `notes`** — round 6 wired `tbl_id` / `tbl_notes`
+  on `csvw_table` only; the `csvw_group_meta` record has no `@id`/`notes`
+  yet. Every trio fixture is a single-table document (the group node is
+  the anonymous bnode wrapper), so no fixture exercises a group `@id` or
+  group `notes`. Add `grp_id`/`grp_notes` if a TableGroup document ever
+  needs a real group node IRI or group-level annotations.
+- **Inherited (non-column) `default`** — `default` is decoded and applied
+  at the column level (`col_default`/`cs_default`); it is not threaded
+  through `csvw_inherited_props`, so a `default` set on a tableSchema /
+  table / group object does not cascade. No fixture sets it above a
+  column.
+- **`@id`-based aboutUrl base** — the trio's aboutUrl templates are
+  already absolute, so the round-6 `@id` node identity did not have to
+  change template resolution (still against the table URL). A relative
+  aboutUrl on an `@id`'d table is untested by the corpus.
