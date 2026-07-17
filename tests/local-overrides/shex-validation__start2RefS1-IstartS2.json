@@ -1,0 +1,17 @@
+{
+  "test_id": "start2RefS1-IstartS2",
+  "suite": "shex-validation",
+  "dispute_kind": "verdict",
+  "upstream_expectation": true,
+  "our_expectation": false,
+  "rationale": "This ValidationTest imports the vendored start2RefS2 schema, which is internally inconsistent in the shexTest corpus: start2RefS2.json and start2RefS2.ttl both give shape S2 the triple constraint on predicate <http://a.example/p1>, while start2RefS2.shex gives it <http://a.example/p2>. The manifest's expected verdict (true) is only reachable under the .shex reading (S2 requires p2, and the data supplies n2 p2 \"X\"). Our runner is ShExJ-first by policy (the canonical .shex references are consumed as their .json twins throughout the corpus), so it validates against the JSON reading (S2 requires p1); the data's n2 has p2 but not p1, so n2 fails S2, so start-shape S1 fails, and the engine correctly returns false. We are not going to patch a vendored fixture, and our ShExJ-first policy is deliberate, so false is our expectation. Upstream shexSpec/shexTest#43 (\"Curiosity in start2RefS2.shex\", reported 2023, closed 2023-06-09) describes exactly this p1/p2 mismatch but the fixtures were never reconciled; upstream main still ships p1 in the JSON (re-checked 2026-07-14). The closed issue reached no documented conclusion, so the majority reading (JSON+Turtle = p1) does not by itself settle canonicality — but it is the reading our ShExJ-first runner is bound to, and we accept its false as correct.",
+  "analysis_refs": [
+    "tests/shex-shexj-twins/README.md#start2refs2-predicate-mismatch--upstream-provenance-2026-07-14",
+    "bin/shex-runner/shex_runner.ml"
+  ],
+  "upstream_provenance": [
+    "https://github.com/shexSpec/shexTest/issues/43"
+  ],
+  "date": "2026-07-17",
+  "owner_directive": "if we carefully disagree with test make our own local override of it. Shex Also. (owner, 2026-07-17)"
+}

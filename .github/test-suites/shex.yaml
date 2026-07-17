@@ -70,8 +70,15 @@ foundational: false
 # stem `kind` gate so LiteralStem/LanguageStem stems and bnode ids are
 # never treated as IRIs). (4)+(5) fixed the remaining 4 deferred
 # (bnode1dot_pass/fail, 1dot-relative_pass-short-shape/relative-shape).
-# Current: 1164 pass, 18 mismatch, 0 deferred, 0 skipped (out of
-# 1182) — up from 1026 pass, 11 mismatch, 145 deferred, 0 skipped.
+# Current (2026-07-17): 1181 pass, 0 mismatch, 1 local-override, 0
+# deferred, 0 skipped (out of 1182) — up from 1026 pass, 11 mismatch,
+# 145 deferred, 0 skipped. The single remaining non-pass fixture
+# (start2RefS1-IstartS2, a three-way vendored-fixture disagreement — see
+# tests/shex-shexj-twins/README.md and shexSpec/shexTest#43) is now a
+# LOCAL OVERRIDE (tests/local-overrides/), reported PASS (local-override)
+# with a distinct labelled count, per the owner directive of 2026-07-17.
+# The runner reports FIVE buckets now: PASS / local-override / MISMATCH /
+# DEFERRED / SKIP.
 
 triggers:
   paths:

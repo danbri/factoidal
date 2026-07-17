@@ -54,6 +54,21 @@ and a tracker) · **environment(what)** (a checkout/toolchain gap, not
 an engine defect) · **by-design(why)** (deliberately out of scope, the
 processor's behavior is correct).
 
+**disputed-fixture → local override (owner directive 2026-07-17: "if we
+carefully disagree with test make our own local override of it. Shex
+Also.").** A `disputed-fixture` we have *carefully disagreed* with (a
+written analysis + upstream provenance link) is no longer carried as a
+bare fail/skip: it gets a local-override file under
+[`tests/local-overrides/`](../../tests/local-overrides/) recording the
+upstream expectation, our expectation, the rationale, and the provenance.
+Participating runners consume that layer and report the test as
+`PASS (local-override)` with a **distinct labelled count** — "N pass, M
+fail, K local-overrides (out of T)", never folded into plain pass (the
+honesty invariant, anti-pattern #25). Three fixtures are overridden so
+far: ShEx `start2RefS1-IstartS2`, JSON-LD compact `#t0038`, JSON-LD
+fromRdf `#t0008` (see the per-suite rows below and that directory's
+README for the bar an override must clear).
+
 Scores below are cross-checked against `git merge-base --is-ancestor`
 on this worktree's HEAD (`1e152504`) — a score is reported as "landed"
 only when its source commit is a verified ancestor. Suites with zero
@@ -69,7 +84,7 @@ disposition.
 | eecc_interop | 4 pass, 0 fail, 51 skip (out of 55) | ✅ fully dispositioned |
 | GRDDL stage 1 | 15 pass, 53 fail, 0 skip (out of 68) | ✅ fully dispositioned; stage 3 parked |
 | hub_browser_bundle | 234 pass, 1 fail (out of 235) | ✅ fully dispositioned |
-| JSON-LD 1.1 (5 sub-suites) | 1193 pass, 0 fail, 17 skip combined (of 1210) | ✅ per existing ledger row |
+| JSON-LD 1.1 (5 sub-suites) | 1208 pass, 0 fail, 0 skip, 2 local-overrides (of 1210) [re-measured 2026-07-17: toRdf 467/0/0, expand 385/0/0, flatten 58/0/0, compact 245/0/0/1-override, fromRdf 53/0/0/1-override; the former per-ID 1.0 skips are now either ordinary runs or local-overrides] | ✅ fully dispositioned; ⚠️ prior headline (1193/0/17-skip) was stale |
 | JSON Schema draft-07 | 712 pass, 0 fail, 58 skip (out of 770) | ✅ fully dispositioned |
 | npm_package | 160 pass, 2 fail, 1 skip (out of 163) | 🔴 2 fails undocumented, no tracking issue |
 | OWL 2 DL type-inconsistency (tinc) | 118 pass, 10 fail (out of 128), zero oracle-assisted [`ed8c4a03`, ancestor-confirmed] | ✅ per #299; ⚠️ committed log stale (see note) |
@@ -82,7 +97,7 @@ disposition.
 | QUDT integrity | 0 pass, 0 fail, 29 skip (out of 29) | ✅ fully dispositioned (all-skip is a perf finding, not a dead suite) |
 | RIF Core | 46 pass, 1 fail, 3 skip (out of 50) | ✅ fully dispositioned |
 | rml_io | 17 pass, 1 fail, 55 skip (out of 73) | ✅ fully dispositioned |
-| ShEx validation | 1181 pass, 1 fail (out of 1182) | ✅ per `tests/shex-shexj-twins/README.md` |
+| ShEx validation | 1181 pass, 0 fail, 1 local-override (out of 1182) | ✅ `start2RefS1-IstartS2` local-overridden per `tests/local-overrides/` |
 | tests_unit | dashboard: 35 pass, 6 fail (out of 41) — stale; this session's fresh run: 45 pass, 0 fail (out of 45) | ✅ dispositioned as environment; dashboard needs republish |
 | xml_conformance | 1414 pass, 0 fail, 1171 skip (out of 2585) | ✅ fully dispositioned (runner's own "HONEST BREAKDOWN") |
 | XSLT 1.0 | 87 pass, 1 fail (out of 88) [2026-07-17, DTD-ID id() + document("") landed (id-016, namespace-4801 flipped green); sole residual node-1601 is dispositioned (implementation-defined namespace-node order / unmodeled `namespace::` axis)] | ✅ landed |
@@ -159,16 +174,32 @@ xslt ... first"*):
   Verified: the assertion failure is literally "expected the compiled
   C delta-log demo binary to exist", not a content mismatch.
 
-### JSON-LD 1.1 — 1193 pass, 0 fail, 17 skip combined (of 1210)
+### JSON-LD 1.1 — 1208 pass, 0 fail, 0 skip, 2 local-overrides (of 1210) [2026-07-17]
 
-toRdf 461/0/6, fromRdf 53/0/1, expand 379/0/6, compact 244/0/2, flatten
-56/0/2 — all **by-design**(JSON-LD-1.0-version fixtures, named per-ID
-in each runner; frame/html API suites are NOT RUN, already flagged in
-the existing ledger row as counting as failed until measured, not a
-skip). Note: this session found no unmerged branch touching JSON-LD
-skips despite the task brief's "concurrent agents ... jsonld skips"
-warning — treated as current, not in flight, but re-verify before
-citing if a jsonld-\* branch lands after this commit.
+Re-measured 2026-07-17: toRdf 467/0/0, expand 385/0/0, flatten 58/0/0,
+compact 245 pass, 0 fail, 1 local-override (of 246), fromRdf 53 pass, 0
+fail, 1 local-override (of 54). The prior "17 skip combined" headline
+was stale on every sub-suite; toRdf/expand/flatten now carry no skips at
+all, and the two remaining JSON-LD-1.0 divergences are **local-overrides**
+rather than skips:
+
+- compact `#t0038` ("Index map round-tripping") — **disputed-fixture →
+  local override**: its `option.specVersion=json-ld-1.0` expected output
+  directly contradicts the same suite's OWN 1.1 pin `#tp001` ("Compact
+  IRI will not use an expanded term definition in 1.0"); one
+  processingMode-driven engine state cannot satisfy both and this engine
+  implements the 1.1 API. See
+  [`tests/local-overrides/jsonld-compact__t0038.json`](../../tests/local-overrides/jsonld-compact__t0038.json)
+  and `JSONLD.Compact.fst`'s `cmp_curie_loop` comment.
+- fromRdf `#t0008` ("List conversion") — **disputed-fixture → local
+  override**: pins JSON-LD 1.0's partially-ordered RDF-collection-to-`@list`
+  conversion; this engine implements the 1.1 fully-collapsing algorithm
+  (the suite's own `#tli03` pins the 1.1 shape and passes). See
+  [`tests/local-overrides/jsonld-fromrdf__t0008.json`](../../tests/local-overrides/jsonld-fromrdf__t0008.json).
+
+frame/html API suites are still NOT RUN (counted as failed until
+measured, not a skip). Both overrides are counted distinctly by their
+runners and never folded into plain pass (honesty invariant).
 
 ### JSON Schema draft-07 — 712 pass, 0 fail, 58 skip (out of 770)
 
@@ -542,15 +573,21 @@ matches the committed log's 17/1/55 exactly):
 - 1 — **dependency-blocked**(SPARQL-over-RDF iterator not
   implemented).
 
-### ShEx validation — 1181 pass, 1 fail (out of 1182)
+### ShEx validation — 1181 pass, 0 fail, 1 local-override (out of 1182) [2026-07-17]
 
-`start2RefS2` — **disputed-fixture**, linked
+`start2RefS1-IstartS2` — **disputed-fixture → local override**, linked
 [`shexSpec/shexTest#43`](https://github.com/shexSpec/shexTest/issues/43)
-(closed 2023, unreconciled upstream — `start2RefS2.json`/`.ttl` use
-predicate `p1`, `start2RefS2.shex` uses `p2`; per
+(closed 2023, unreconciled upstream — the imported `start2RefS2.json`/
+`.ttl` use predicate `p1`, `start2RefS2.shex` uses `p2`). Per
 `tests/shex-shexj-twins/README.md`, our ShExJ-first runner scores
-against the JSON and carries the mismatch as a fail rather than
-patching a vendored fixture).
+against the JSON (`p1`) and correctly returns `false`, while the
+manifest's expected `true` depends on the `.shex` reading (`p2`). This
+was previously carried as a bare fail; as of the owner directive of
+2026-07-17 it is a **local override** —
+[`tests/local-overrides/shex-validation__start2RefS1-IstartS2.json`](../../tests/local-overrides/shex-validation__start2RefS1-IstartS2.json)
+records upstream=`true`, ours=`false`, and the runner reports it
+`PASS (local-override)` with a distinct labelled count (never folded
+into plain pass), so the suite is 1181 pass, 0 fail, 1 local-override.
 
 ### tests_unit — dashboard 35 pass, 6 fail (of 41); fresh run 45 pass, 0 fail (of 45)
 

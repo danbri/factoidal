@@ -1,0 +1,17 @@
+{
+  "test_id": "#t0038",
+  "suite": "jsonld-compact",
+  "dispute_kind": "output",
+  "upstream_expectation": "the JSON-LD 1.0 compaction of \"Index map round-tripping\" (option.specVersion=json-ld-1.0), in which every term — expanded-form term definitions included — is a compact-IRI prefix candidate, producing the body:/format-style prefix-compacted keys 0038-out.jsonld pins",
+  "our_expectation": "the JSON-LD 1.1 compaction, which under processingMode=json-ld-1.0 does NOT use an expanded term definition as a compact-IRI prefix — the behavior this suite's OWN #tp001 (\"Compact IRI will not use an expanded term definition in 1.0\") explicitly pins",
+  "rationale": "t0038's json-ld-1.0 expected output directly contradicts the same suite's 1.1 conformance pin #tp001. One processingMode-driven engine state cannot satisfy both: t0038 wants expanded-form terms treated as prefix candidates in 1.0 processing mode; tp001 pins the opposite for the 1.1 API running in 1.0 processing mode. This program implements the JSON-LD 1.1 API, so tp001 (the in-suite 1.1 conformance pin) wins and t0038's only remaining divergence — body:/format-style prefix compaction — is excluded by design. Diagnosed 2026-07-16: t0038's sole diff vs this engine is that prefix compaction (confirmed with -v). See JSONLD.Compact.fst's cmp_curie_loop comment for why the gate is not relaxed under ac_mode10. Previously carried as a per-ID skip in jsonld_compact_runner.ml; converted to a local-override on 2026-07-17 so the test runs and its disagreement is counted distinctly rather than hidden.",
+  "analysis_refs": [
+    "formal/fstar/JSONLD.Compact.fst#cmp_curie_loop",
+    "bin/jsonld-compact-runner/jsonld_compact_runner.ml"
+  ],
+  "upstream_provenance": [
+    "https://github.com/w3c/json-ld-api/blob/main/tests/compact-manifest.jsonld"
+  ],
+  "date": "2026-07-17",
+  "owner_directive": "if we carefully disagree with test make our own local override of it. Shex Also. (owner, 2026-07-17)"
+}
