@@ -26,13 +26,23 @@ noeq type turtle_state = {
   prefixes: list (string & string);   (* prefix -> IRI base mapping *)
   base_iri: string;                   (* current base IRI for relative resolution *)
   bnode_counter: nat;                 (* counter for generating anonymous blank node IDs *)
+  ts_mode: rdf_syntax_mode;           (* RDF 1.1 vs 1.2 processing mode (#305 wave 2) *)
 }
 
+// RDF 1.1 default state: the mode field carries Mode_11 so every
+// existing entry point (which builds from empty_turtle_state) stays
+// byte-identical. The mode is threaded through turtle_state — already
+// passed to every production — so it is a real parameter of the parse,
+// not a global. Mode_12 forms unlock only when ts_mode = Mode_12.
 let empty_turtle_state : turtle_state = {
   prefixes = [];
   base_iri = "";
   bnode_counter = 0;
+  ts_mode = Mode_11;
 }
+
+// RDF 1.2 seed state.
+let empty_turtle_state_12 : turtle_state = { empty_turtle_state with ts_mode = Mode_12 }
 
 (* Generate a fresh blank node ID and increment counter *)
 let fresh_bnode (st: turtle_state) : (bnode_id & turtle_state) =
@@ -1218,11 +1228,23 @@ let parse_turtle_literal (st: turtle_state) (input: string) (pos: nat) : parse_r
       let next = fs_byte_index input pos' in
       let next_code = int_of_char next in
       if next_code = 0x40 then  (* '@' — language tag *)
-        begin match parse_lang_tag input pos' with
-        | ParseOk lang pos'' ->
-          ParseOk ({ lexical_form = lexical; datatype = rdf_lang_string; lang_tag = Some lang; direction = None }) pos''
-        | ParseFail msg fpos -> ParseFail msg fpos
-        end
+        (match st.ts_mode with
+         | Mode_12 ->
+           // RDF 1.2: `@lang` or `@lang--dir`. parse_lang_dir_12 validates
+           // the BCP47 tag and the direction token (`ltr`/`rtl`), and a
+           // dir picks datatype rdf:dirLangString.
+           begin match parse_lang_dir_12 input pos' with
+           | ParseOk (lang, dopt) pos'' ->
+             let dt = (match dopt with None -> rdf_lang_string | Some _ -> rdf_dir_lang_string) in
+             ParseOk ({ lexical_form = lexical; datatype = dt; lang_tag = Some lang; direction = dopt }) pos''
+           | ParseFail msg fpos -> ParseFail msg fpos
+           end
+         | Mode_11 ->
+           begin match parse_lang_tag input pos' with
+           | ParseOk lang pos'' ->
+             ParseOk ({ lexical_form = lexical; datatype = rdf_lang_string; lang_tag = Some lang; direction = None }) pos''
+           | ParseFail msg fpos -> ParseFail msg fpos
+           end)
       else if next_code = 0x5E then  (* '^' — might be '^^' datatype *)
         if pos' + 1 < len then
           let next2 = fs_byte_index input (pos' + 1) in
@@ -1354,6 +1376,152 @@ noeq type subject_result = {
 }
 
 (* ================================================================ *)
+(* RDF 1.2 triple terms for Turtle/TriG (epic #305, wave 2).         *)
+(*                                                                   *)
+(* A triple term `<<( ttSubject ttPredicate ttObject )>>` occurs     *)
+(* ONLY in object position and is reached only when ts_mode =        *)
+(* Mode_12. ttSubject is an IRI / blank node / prefixed name (never  *)
+(* a literal); ttPredicate is an IRI or `a`; ttObject may nest       *)
+(* another triple term. Prefixes and base resolve through            *)
+(* turtle_state. The retired RDF-star `<< s p o >>` quoted-triple    *)
+(* form is rejected — only `<<(` opens a term. This is a self-       *)
+(* contained fuel recursion (it never re-enters the collection /     *)
+(* blank-node-property-list machinery, which cannot appear inside a  *)
+(* triple term), so it stays outside parse_turtle_object's mutual    *)
+(* block and cannot perturb those termination proofs.                *)
+(* ================================================================ *)
+
+let parse_tt_subject (st: turtle_state) (input: string) (pos: nat) : parse_result subject =
+  let len = fs_byte_length input in
+  if pos >= len then ParseFail "expected triple-term subject" pos
+  else
+    let code = int_of_char (fs_byte_index input pos) in
+    if code = 0x5F then  (* '_' — blank node *)
+      begin match parse_bnode input pos with
+      | ParseOk b pos' -> ParseOk (S_BNode b) pos'
+      | ParseFail msg fpos -> ParseFail msg fpos
+      end
+    else
+      begin match parse_turtle_iri st input pos with
+      | ParseOk i pos' ->
+        if is_iri i then ParseOk (S_IRI i) pos'
+        else ParseFail "invalid triple-term subject IRI" pos
+      | ParseFail msg fpos -> ParseFail msg fpos
+      end
+
+let parse_tt_predicate (st: turtle_state) (input: string) (pos: nat) : parse_result wf_iri =
+  let len = fs_byte_length input in
+  if pos >= len then ParseFail "expected triple-term predicate" pos
+  else
+    let code = int_of_char (fs_byte_index input pos) in
+    if code = 0x61 (* 'a' — rdf:type shorthand (falls through if a prefixed name) *) then
+      begin match parse_a_keyword input pos with
+      | ParseOk i pos' -> ParseOk i pos'
+      | ParseFail _ _ ->
+        begin match parse_turtle_iri st input pos with
+        | ParseOk i pos' -> if is_iri i then ParseOk i pos' else ParseFail "invalid predicate IRI" pos
+        | ParseFail msg fpos -> ParseFail msg fpos
+        end
+      end
+    else
+      begin match parse_turtle_iri st input pos with
+      | ParseOk i pos' -> if is_iri i then ParseOk i pos' else ParseFail "invalid predicate IRI" pos
+      | ParseFail msg fpos -> ParseFail msg fpos
+      end
+
+let rec parse_tt_object (st: turtle_state) (input: string) (pos: nat) (fuel: nat)
+  : Tot (parse_result rdf_term) (decreases fuel) =
+  if fuel = 0 then ParseFail "triple-term nesting too deep" pos
+  else
+    let len = fs_byte_length input in
+    if pos >= len then ParseFail "expected triple-term object" pos
+    else
+      let code = int_of_char (fs_byte_index input pos) in
+      if code = 0x3C then  (* '<' — IRI or nested '<<(' triple term *)
+        (if pos + 2 < len
+            && int_of_char (fs_byte_index input (pos + 1)) = 0x3C
+            && int_of_char (fs_byte_index input (pos + 2)) = 0x28 then
+           parse_turtle_triple_term st input pos (fuel - 1)
+         else if pos + 1 < len && int_of_char (fs_byte_index input (pos + 1)) = 0x3C then
+           ParseFail "legacy '<< >>' quoted triple is not RDF 1.2 syntax" pos
+         else
+           begin match parse_turtle_iri st input pos with
+           | ParseOk i pos' -> if is_iri i then ParseOk (T_IRI i) pos' else ParseFail "invalid IRI" pos
+           | ParseFail msg fpos -> ParseFail msg fpos
+           end)
+      else if code = 0x5F then  (* '_' — blank node *)
+        begin match parse_bnode input pos with
+        | ParseOk b pos' -> ParseOk (T_BNode b) pos'
+        | ParseFail msg fpos -> ParseFail msg fpos
+        end
+      else if code = 0x22 || code = 0x27 then  (* '"' or '\'' — literal *)
+        begin match parse_turtle_literal st input pos with
+        | ParseOk lit pos' -> if literal_wf lit then ParseOk (T_Literal lit) pos' else ParseFail "invalid literal" pos
+        | ParseFail msg fpos -> ParseFail msg fpos
+        end
+      else
+        begin match parse_boolean_literal input pos with
+        | ParseOk lit pos' -> ParseOk (T_Literal lit) pos'
+        | ParseFail _ _ ->
+          begin match parse_numeric_literal input pos with
+          | ParseOk (lexical, dt) pos' ->
+            let lit : literal = { lexical_form = lexical; datatype = dt; lang_tag = None; direction = None } in
+            if literal_wf lit then ParseOk (T_Literal lit) pos' else ParseFail "invalid numeric literal" pos
+          | ParseFail _ _ ->
+            begin match parse_turtle_iri st input pos with
+            | ParseOk i pos' -> if is_iri i then ParseOk (T_IRI i) pos' else ParseFail "invalid IRI" pos
+            | ParseFail _ _ -> ParseFail "expected triple-term object" pos
+            end
+          end
+        end
+
+and parse_turtle_triple_term (st: turtle_state) (input: string) (pos: nat) (fuel: nat)
+  : Tot (parse_result rdf_term) (decreases fuel) =
+  if fuel = 0 then ParseFail "triple-term nesting too deep" pos
+  else
+    let len = fs_byte_length input in
+    if pos + 3 > len
+       || int_of_char (fs_byte_index input pos) <> 0x3C
+       || int_of_char (fs_byte_index input (pos + 1)) <> 0x3C
+       || int_of_char (fs_byte_index input (pos + 2)) <> 0x28 then
+      ParseFail "expected '<<('" pos
+    else
+      begin match turtle_ws input (pos + 3) with
+      | ParseFail msg fpos -> ParseFail msg fpos
+      | ParseOk () p1 ->
+        begin match parse_tt_subject st input p1 with
+        | ParseFail msg fpos -> ParseFail msg fpos
+        | ParseOk subj p2 ->
+          begin match turtle_ws input p2 with
+          | ParseFail msg fpos -> ParseFail msg fpos
+          | ParseOk () p3 ->
+            begin match parse_tt_predicate st input p3 with
+            | ParseFail msg fpos -> ParseFail msg fpos
+            | ParseOk pred p4 ->
+              begin match turtle_ws input p4 with
+              | ParseFail msg fpos -> ParseFail msg fpos
+              | ParseOk () p5 ->
+                begin match parse_tt_object st input p5 (fuel - 1) with
+                | ParseFail msg fpos -> ParseFail msg fpos
+                | ParseOk obj p6 ->
+                  begin match turtle_ws input p6 with
+                  | ParseFail msg fpos -> ParseFail msg fpos
+                  | ParseOk () p7 ->
+                    if p7 + 3 > len then ParseFail "expected ')>>'" p7
+                    else if int_of_char (fs_byte_index input p7) = 0x29
+                         && int_of_char (fs_byte_index input (p7 + 1)) = 0x3E
+                         && int_of_char (fs_byte_index input (p7 + 2)) = 0x3E then
+                      ParseOk (T_TripleTerm subj pred obj) (p7 + 3)
+                    else ParseFail "expected ')>>'" p7
+                  end
+                end
+              end
+            end
+          end
+        end
+      end
+
+(* ================================================================ *)
 (* Main recursive Turtle parser — all productions in one mutual      *)
 (* recursion block using fuel for termination.                       *)
 (* ================================================================ *)
@@ -1370,14 +1538,27 @@ let rec parse_turtle_object (st: turtle_state) (input: string) (pos: nat) (fuel:
     else
       let c = fs_byte_index input pos in
       let code = int_of_char c in
-      if code = 0x3C then  (* '<' — full IRI *)
-        begin match parse_turtle_iri st input pos with
-        | ParseOk i pos' ->
-          if is_iri i then
-            ParseOk ({ or_term = T_IRI i; or_triples = []; or_state = st }) pos'
-          else ParseFail "invalid IRI" pos
-        | ParseFail msg fpos -> ParseFail msg fpos
-        end
+      if code = 0x3C then  (* '<' — full IRI, or (Mode_12) '<<(' triple term *)
+        (if st.ts_mode = Mode_12 && pos + 2 < len
+            && int_of_char (fs_byte_index input (pos + 1)) = 0x3C
+            && int_of_char (fs_byte_index input (pos + 2)) = 0x28 then
+           (* RDF 1.2 triple term in object position *)
+           begin match parse_turtle_triple_term st input pos fuel with
+           | ParseOk tt pos' -> ParseOk ({ or_term = tt; or_triples = []; or_state = st }) pos'
+           | ParseFail msg fpos -> ParseFail msg fpos
+           end
+         else if st.ts_mode = Mode_12 && pos + 1 < len
+                 && int_of_char (fs_byte_index input (pos + 1)) = 0x3C then
+           (* Retired RDF-star '<< s p o >>' quoted triple: reject in 1.2 *)
+           ParseFail "legacy '<< >>' quoted triple is not RDF 1.2 syntax" pos
+         else
+           begin match parse_turtle_iri st input pos with
+           | ParseOk i pos' ->
+             if is_iri i then
+               ParseOk ({ or_term = T_IRI i; or_triples = []; or_state = st }) pos'
+             else ParseFail "invalid IRI" pos
+           | ParseFail msg fpos -> ParseFail msg fpos
+           end)
       else if code = 0x5F then  (* '_' — blank node *)
         begin match parse_bnode input pos with
         | ParseOk b pos' -> ParseOk ({ or_term = T_BNode b; or_triples = []; or_state = st }) pos'
@@ -1993,3 +2174,56 @@ let parse_turtle_with_base_strict (input: string) (base: string) : option (list 
   let st = { empty_turtle_state with base_iri = base } in
   let r = parse_turtle_doc st input 0 [] false fuel in
   if r.tdr_has_error then None else Some r.tdr_triples
+
+(* ================================================================ *)
+(* RDF 1.2 Turtle entry points (epic #305, wave 2).                 *)
+(*                                                                   *)
+(* Same document walk, seeded with a Mode_12 turtle_state so the     *)
+(* object parser accepts `<<( )>>` triple terms and the literal      *)
+(* parser accepts `@lang--dir` directional strings. The mode is a    *)
+(* real parameter carried in turtle_state; `parse_turtle_mode`       *)
+(* dispatches so a consumer threads its `--rdf12` / CLI / npm option *)
+(* through one entry point. Note: reifying triples `<< s p o >>`,    *)
+(* the `~` reifier, and the `{| |}` annotation block are NOT yet     *)
+(* materialised — those need reifier-blank-node generation +         *)
+(* rdf:reifies emission (a later wave); this wave covers triple      *)
+(* terms + directional literals + legacy-form rejection.             *)
+(* ================================================================ *)
+
+let parse_turtle_12 (input: string) : list triple =
+  let len = fs_byte_length input in
+  let fuel = (len + 1) `op_Multiply` 2 in
+  let r = parse_turtle_doc empty_turtle_state_12 input 0 [] false fuel in
+  r.tdr_triples
+
+let parse_turtle_with_base_12 (input: string) (base: string) : list triple =
+  let len = fs_byte_length input in
+  let fuel = (len + 1) `op_Multiply` 2 in
+  let st = { empty_turtle_state_12 with base_iri = base } in
+  let r = parse_turtle_doc st input 0 [] false fuel in
+  r.tdr_triples
+
+let parse_turtle_strict_12 (input: string) : option (list triple) =
+  let len = fs_byte_length input in
+  let fuel = (len + 1) `op_Multiply` 2 in
+  let r = parse_turtle_doc empty_turtle_state_12 input 0 [] false fuel in
+  if r.tdr_has_error then None else Some r.tdr_triples
+
+let parse_turtle_with_base_strict_12 (input: string) (base: string) : option (list triple) =
+  let len = fs_byte_length input in
+  let fuel = (len + 1) `op_Multiply` 2 in
+  let st = { empty_turtle_state_12 with base_iri = base } in
+  let r = parse_turtle_doc st input 0 [] false fuel in
+  if r.tdr_has_error then None else Some r.tdr_triples
+
+// Mode-parametrised dispatchers.
+let parse_turtle_with_base_mode (mode: rdf_syntax_mode) (input: string) (base: string) : list triple =
+  match mode with
+  | Mode_11 -> parse_turtle_with_base input base
+  | Mode_12 -> parse_turtle_with_base_12 input base
+
+let parse_turtle_with_base_strict_mode (mode: rdf_syntax_mode) (input: string) (base: string)
+  : option (list triple) =
+  match mode with
+  | Mode_11 -> parse_turtle_with_base_strict input base
+  | Mode_12 -> parse_turtle_with_base_strict_12 input base

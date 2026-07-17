@@ -205,6 +205,13 @@ let concat_map_preserve_order f xs =
    _:x in two separately loaded files spuriously joined. *)
 let bnode_scope_counter = ref 0
 
+(* RDF 1.2 processing mode (epic #305 wave 2). Off by default (the 1.2
+   concrete-syntax specs are still W3C Working Drafts). When the
+   `--rdf12` flag is present, the N-Triples / N-Quads / Turtle / TriG
+   loaders route through the Mode_12 parsers, which accept `<<( )>>`
+   triple terms and `@lang--dir` directional literals. *)
+let rdf12_mode = ref false
+
 let scope_dataset_bnodes ds =
   let n = !bnode_scope_counter in
   incr bnode_scope_counter;
@@ -216,11 +223,17 @@ let load_dataset ?(format=None) ?(base=None) path =
   let base_iri = match base with Some b -> Some b | None -> file_base_iri path in
   scope_dataset_bnodes @@ match fmt with
   | NQuads ->
-    Parser_NQuads.parse_nquads content
+    if !rdf12_mode then Parser_NQuads.parse_nquads_12 content
+    else Parser_NQuads.parse_nquads content
   | TriG ->
+    let b12 = match base_iri with Some b -> b | None -> "" in
     (match base_iri with
-     | Some b -> Parser_TriG.parse_trig_with_base_lenient content b
-     | None -> Parser_TriG.parse_trig_lenient content)
+     | Some b ->
+       if !rdf12_mode then Parser_TriG.parse_trig_with_base_lenient_12 content b
+       else Parser_TriG.parse_trig_with_base_lenient content b
+     | None ->
+       if !rdf12_mode then Parser_TriG.parse_trig_with_base_lenient_12 content b12
+       else Parser_TriG.parse_trig_lenient content)
   | JSONLD ->
     (* Context processing (JSONLD.Context/JSONLD.Expand) + document
        base threading per issue #275 — see
@@ -238,11 +251,21 @@ let load_dataset ?(format=None) ?(base=None) path =
        failwith "invalid JSON-LD (parse or unsupported feature — remote contexts need a loader this CLI does not have)")
   | _ ->
     let triples = match fmt with
-      | NT -> Parser_NTriples.parse_ntriples content
+      | NT ->
+        if !rdf12_mode then
+          (match Parser_NTriples.parse_ntriples_strict_12 content with
+           | FStar_Pervasives_Native.Some ts -> ts
+           | FStar_Pervasives_Native.None -> [])
+        else Parser_NTriples.parse_ntriples content
       | Turtle ->
+        let b12 = match base_iri with Some b -> b | None -> "" in
         (match base_iri with
-         | Some b -> Parser_Turtle.parse_turtle_with_base content b
-         | None -> Parser_Turtle.parse_turtle content)
+         | Some b ->
+           if !rdf12_mode then Parser_Turtle.parse_turtle_with_base_12 content b
+           else Parser_Turtle.parse_turtle_with_base content b
+         | None ->
+           if !rdf12_mode then Parser_Turtle.parse_turtle_with_base_12 content b12
+           else Parser_Turtle.parse_turtle content)
       | RDFXML ->
         (match base_iri with
          | Some b -> Parser_RDFXML.parse_rdfxml_with_base b content
@@ -936,6 +959,7 @@ let parse_args ?args () =
     | "--dump-turtle" :: rest -> cfg.dump_turtle_mode <- true; loop rest
     | "--canonicalize" :: rest -> cfg.canonicalize_mode <- true; loop rest
     | "--count" :: rest -> cfg.count_mode <- true; loop rest
+    | "--rdf12" :: rest -> rdf12_mode := true; loop rest
     | "--explain" :: q :: rest ->
       (* `--explain SPARQL` is the new "plan dump without execution" mode.
          The argument is the SPARQL query text (or use --query-file with

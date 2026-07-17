@@ -525,6 +525,186 @@ let parse_nquads_strict (input:string) : option rdf_dataset =
   | None -> None
 
 (* ================================================================ *)
+(* RDF 1.2 N-Quads (epic #305, wave 2).                              *)
+(*                                                                   *)
+(* N-Quads 1.2 = N-Triples 1.2 in the first three slots + an         *)
+(* optional graph label. The object slot may be a triple term        *)
+(* `<<( s p o )>>` and a literal may carry a base direction          *)
+(* (`@lang--dir`); subject, predicate, and graph label are           *)
+(* unchanged from 1.1 (no triple terms there). We reuse the strict   *)
+(* 1.2 object parser from Parser.NTriples (`parse_object_12_f`),      *)
+(* which also rejects the retired `<< s p o >>` quoted-triple form.  *)
+(* Behind distinct `_12` entry points so the 1.1 path stays          *)
+(* byte-identical; `parse_nquads_mode` selects between them.         *)
+(* ================================================================ *)
+
+// Single N-Quad line, RDF 1.2 object slot. Mirrors `parse_nquad` but
+// routes the object through `parse_object_12_f`.
+let parse_nquad_12 : parser (triple * option iri) =
+  fun input pos ->
+    match pws input pos with
+    | ParseOk () pos1 ->
+      begin match parse_subject input pos1 with
+      | ParseOk subj pos2 ->
+        begin match pws input pos2 with
+        | ParseOk () pos3 ->
+          begin match parse_iri input pos3 with
+          | ParseOk pred pos4 ->
+            begin match pws input pos4 with
+            | ParseOk () pos5 ->
+              let fuel = fs_byte_length input + 1 in
+              begin match parse_object_12_f input pos5 fuel with
+              | ParseOk obj pos6 ->
+                begin match parse_opt_graph_label input pos6 with
+                | ParseOk graph_opt pos7 ->
+                  begin match pws input pos7 with
+                  | ParseOk () pos8 ->
+                    let len = fs_byte_length input in
+                    if pos8 >= len then ParseFail "expected '.'" pos8
+                    else
+                      let dot = fs_byte_index input pos8 in
+                      if FStar.Char.int_of_char dot = 0x2E then
+                        if is_iri pred then
+                          let t : triple = { s = subj; p = pred; o = obj } in
+                          ParseOk (t, graph_opt) (pos8 + 1)
+                        else ParseFail "invalid predicate IRI" pos4
+                      else
+                        ParseFail "expected '.'" pos8
+                  | ParseFail msg fpos -> ParseFail msg fpos
+                  end
+                | ParseFail msg fpos -> ParseFail msg fpos
+                end
+              | ParseFail msg fpos -> ParseFail msg fpos
+              end
+            | ParseFail msg fpos -> ParseFail msg fpos
+            end
+          | ParseFail msg fpos -> ParseFail msg fpos
+          end
+        | ParseFail msg fpos -> ParseFail msg fpos
+        end
+      | ParseFail msg fpos -> ParseFail msg fpos
+      end
+    | ParseFail msg fpos -> ParseFail msg fpos
+
+// Lenient RDF 1.2 document walk (builds a dataset). Structurally the
+// same line walk as `parse_nquads_acc`, calling `parse_nquad_12`.
+#push-options "--z3rlimit 30"
+let rec parse_nquads_12_acc (input:string) (pos:nat) (ds:rdf_dataset) (fuel:nat)
+  : Tot rdf_dataset (decreases fuel) =
+  if fuel = 0 then ds
+  else
+    let len = fs_byte_length input in
+    if pos >= len then ds
+    else
+      let pos1 : nat = match pws input pos with
+                       | ParseOk () p -> p
+                       | _ -> pos in
+      if pos1 >= len then ds
+      else
+        let ch = fs_byte_index input pos1 in
+        let code = FStar.Char.int_of_char ch in
+        if code = 0x23 then
+          let pos2 = skip_comment input pos1 in
+          let pos3 = skip_eol input pos2 in
+          if pos3 = pos1 then ds
+          else parse_nquads_12_acc input pos3 ds (fuel - 1)
+        else if code = 0x0A || code = 0x0D then
+          let pos2 = skip_eol input pos1 in
+          if pos2 = pos1 then ds
+          else parse_nquads_12_acc input pos2 ds (fuel - 1)
+        else
+          match parse_nquad_12 input pos1 with
+          | ParseOk (t, graph_opt) pos2 ->
+            let ds' = dataset_add_quad ds t graph_opt in
+            let pos3 = match pws input pos2 with
+                       | ParseOk () p -> p
+                       | _ -> pos2 in
+            let pos4 = skip_comment input pos3 in
+            let pos5 = skip_eol input pos4 in
+            let pos_next = if pos5 > pos1 then pos5
+                          else if pos4 > pos1 then pos4
+                          else pos2 in
+            parse_nquads_12_acc input pos_next ds' (fuel - 1)
+          | ParseFail _ _ ->
+            let rec skip_line (p:nat) (f:nat) : Tot nat (decreases f) =
+              if f = 0 then p
+              else if p >= len then p
+              else
+                let c = fs_byte_index input p in
+                let cc = FStar.Char.int_of_char c in
+                if cc = 0x0A || cc = 0x0D then skip_eol input p
+                else skip_line (p + 1) (f - 1)
+            in
+            let pos2 = skip_line pos1 (len - pos1) in
+            if pos2 = pos1 then ds
+            else parse_nquads_12_acc input pos2 ds (fuel - 1)
+#pop-options
+
+let parse_nquads_12 (input:string) : rdf_dataset =
+  let len = fs_byte_length input in
+  dataset_finalise (parse_nquads_12_acc input 0 empty_dataset (len + 1))
+
+// Strict RDF 1.2 walk: None on ANY parse error (drives the rdf12
+// N-Quads syntax suite — positives must be Some, negatives None).
+let rec parse_nquads_strict_12_acc (input:string) (pos:nat) (ds:rdf_dataset) (fuel:nat)
+  : Tot (option rdf_dataset) (decreases fuel) =
+  if fuel = 0 then None
+  else
+    let len = fs_byte_length input in
+    if pos >= len then Some ds
+    else
+      let pos1 : nat = match pws input pos with
+                       | ParseOk () p -> p
+                       | _ -> pos in
+      if pos1 >= len then Some ds
+      else
+        let ch = fs_byte_index input pos1 in
+        let code = FStar.Char.int_of_char ch in
+        if code = 0x23 then
+          let pos2 = skip_comment input pos1 in
+          let pos3 = skip_eol input pos2 in
+          if pos3 = pos1 then None
+          else parse_nquads_strict_12_acc input pos3 ds (fuel - 1)
+        else if code = 0x0A || code = 0x0D then
+          let pos2 = skip_eol input pos1 in
+          if pos2 = pos1 then None
+          else parse_nquads_strict_12_acc input pos2 ds (fuel - 1)
+        else
+          match parse_nquad_12 input pos1 with
+          | ParseOk (t, graph_opt) pos2 ->
+            let ds' = dataset_add_quad ds t graph_opt in
+            let pos3 = match pws input pos2 with
+                       | ParseOk () p -> p
+                       | _ -> pos2 in
+            let pos4 = skip_comment input pos3 in
+            let pos5 = skip_eol input pos4 in
+            if pos5 > pos1 then
+              parse_nquads_strict_12_acc input pos5 ds' (fuel - 1)
+            else if pos2 >= len then
+              parse_nquads_strict_12_acc input pos2 ds' (fuel - 1)
+            else
+              None
+          | ParseFail _ _ -> None
+
+let parse_nquads_strict_12 (input:string) : option rdf_dataset =
+  let len = fs_byte_length input in
+  match parse_nquads_strict_12_acc input 0 empty_dataset (len + 1) with
+  | Some ds -> Some (dataset_finalise ds)
+  | None -> None
+
+// Mode-parametrised entry points (the `--rdf12` / CLI / npm option
+// threads its mode here rather than branching on a global).
+let parse_nquads_mode (mode:rdf_syntax_mode) (input:string) : rdf_dataset =
+  match mode with
+  | Mode_11 -> parse_nquads input
+  | Mode_12 -> parse_nquads_12 input
+
+let parse_nquads_strict_mode (mode:rdf_syntax_mode) (input:string) : option rdf_dataset =
+  match mode with
+  | Mode_11 -> parse_nquads_strict input
+  | Mode_12 -> parse_nquads_strict_12 input
+
+(* ================================================================ *)
 (* Convenience: parse N-Quads returning just a flat list of quads    *)
 (* ================================================================ *)
 

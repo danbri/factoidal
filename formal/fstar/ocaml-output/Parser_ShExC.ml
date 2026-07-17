@@ -3116,7 +3116,8 @@ let rec parse_directives (ps : shexc_parse_state) (ts : shexc_tokens)
                     ((ps.ps_turtle).Parser_Turtle.prefixes));
                   Parser_Turtle.base_iri = (uu___1.Parser_Turtle.base_iri);
                   Parser_Turtle.bnode_counter =
-                    (uu___1.Parser_Turtle.bnode_counter)
+                    (uu___1.Parser_Turtle.bnode_counter);
+                  Parser_Turtle.ts_mode = (uu___1.Parser_Turtle.ts_mode)
                 } in
               parse_directives
                 {
@@ -3138,7 +3139,8 @@ let rec parse_directives (ps : shexc_parse_state) (ts : shexc_tokens)
                   Parser_Turtle.prefixes = (uu___1.Parser_Turtle.prefixes);
                   Parser_Turtle.base_iri = iri_val;
                   Parser_Turtle.bnode_counter =
-                    (uu___1.Parser_Turtle.bnode_counter)
+                    (uu___1.Parser_Turtle.bnode_counter);
+                  Parser_Turtle.ts_mode = (uu___1.Parser_Turtle.ts_mode)
                 } in
               parse_directives
                 {
@@ -3299,7 +3301,9 @@ let empty_parse_state (base : Prims.string) : shexc_parse_state=
           (Parser_Turtle.empty_turtle_state.Parser_Turtle.prefixes);
         Parser_Turtle.base_iri = base;
         Parser_Turtle.bnode_counter =
-          (Parser_Turtle.empty_turtle_state.Parser_Turtle.bnode_counter)
+          (Parser_Turtle.empty_turtle_state.Parser_Turtle.bnode_counter);
+        Parser_Turtle.ts_mode =
+          (Parser_Turtle.empty_turtle_state.Parser_Turtle.ts_mode)
       };
     ps_start = FStar_Pervasives_Native.None;
     ps_start_acts = [];

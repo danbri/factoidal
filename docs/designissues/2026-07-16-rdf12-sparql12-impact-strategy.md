@@ -349,6 +349,81 @@ Per-suite 1.1 floors (RDF): n-triples 70, n-quads 87, turtle 313, trig
   positive-syntax on **eval**, not parse-success, or the census will lie
   (anti-pattern #3, #25).
 
+## Wave 2 landing — processing-mode architecture + Turtle/TriG/N-Quads 1.2 grammars (2026-07-17)
+
+Owner directive, 2026-07-17 (quoted verbatim, per the CLAUDE.md
+"Reading owner steers" rule): full 1.2 build-out with a **"1.1
+compatibility mode"** usable **"in whole or part, thoughtfully"**.
+
+### Processing-mode mechanism
+
+A two-constructor F\* type `rdf_syntax_mode = Mode_11 | Mode_12`
+(defined in `Parser.NTriples.fst`, the lowest-level line-parser module
+every syntax parser already opens) is threaded as a **parameter** — not
+a global — through the concrete-syntax parsers and serializers:
+
+- **N-Triples / N-Quads:** distinct `_12` entry points +
+  `parse_ntriples_mode` / `parse_nquads_mode` /
+  `parse_nquads_strict_mode` dispatchers.
+- **Turtle / TriG:** the mode is a field `ts_mode` on the already-
+  threaded `turtle_state`, so every production sees it; `Mode_11`
+  behaviour is byte-identical (the field defaults to `Mode_11` in
+  `empty_turtle_state`). `empty_turtle_state_12` +
+  `parse_turtle_*_12` / `parse_trig_*_12` +
+  `parse_turtle_with_base_mode` / `parse_trig_with_base_mode` seed
+  Mode_12. TriG inherits triple-term + dirlang support for free
+  (it threads a `turtle_state`).
+- **Serializers are emit-minimal:** `RDF.NQuads.Serialize`'s
+  `nq_term_to_string` already renders `<<( )>>` and `--ltr`/`--rtl`
+  only for terms that carry a triple term / base direction, so a
+  purely-1.1 term is byte-identical in both modes.
+  `nq_term_to_string_mode` adds the honest-failure half: under Mode_11
+  a term that requires 1.2 syntax returns `None` (a typed error) rather
+  than being silently emitted.
+
+**Default everywhere is Mode_11.** Rationale (the "thoughtfully" part
+of the directive): the 1.2 concrete-syntax specs are still W3C Working
+Drafts (N-Triples 2026-05-15, N-Quads/Turtle/TriG 2026-05-28), so 1.1
+stays normative and no WD grammar churn can move a 1.1 score. Consumers
+opt in: `w3c_runner --rdf12`, the `factoidal` CLI `--rdf12` flag.
+
+### Scope of this wave
+
+Landed: object-position triple terms `<<( s p o )>>` (incl. nesting) +
+directional language strings `"x"@lang--dir` (with tag/direction
+validation) across N-Triples/N-Quads/Turtle/TriG, their serializer
+counterparts, and rejection of the retired RDF-star `<< s p o >>`
+quoted-triple form in **both** modes.
+
+**Deferred to a later wave (honest disposition):** the RDF 1.2 Turtle/
+TriG **reifying triple** `<< s p o >>`, the `~` reifier, the `{| |}`
+annotation block, and the `VERSION` directive. These need reifier-
+blank-node generation + `rdf:reifies` materialisation (a semantic
+feature), which is why every remaining Turtle/TriG positive-syntax and
+eval failure is a "should parse but didn't" on exactly those
+productions — **zero** false-accepts (all negative-syntax tests pass).
+
+### Measured (gate on eval, not masked parse-success)
+
+| Suite | before (baseline census, lenient-masked) | after (wave 2, strict) |
+|---|---|---|
+| rdf12 n-triples/syntax | 29 pass, 0 fail (of 29) | **29 pass, 0 fail** |
+| rdf12 n-quads/syntax | 25 pass, 2 fail (of 27) | **27 pass, 0 fail** |
+| rdf12 turtle/syntax | 65 pass, 2 fail (of 67) *(masked)* | **36 pass, 31 fail** (31 = reifier/annotation/`VERSION` positives) |
+| rdf12 turtle/eval | 4 pass, 25 fail (of 29) | **4 pass, 25 fail** (25 need reification) |
+| rdf12 trig/syntax | 33 pass, 2 fail (of 35) *(masked)* | **14 pass, 21 fail** (21 = reifier/annotation positives) |
+| rdf12 trig/eval | 0 pass, 25 fail (of 25) | **0 pass, 25 fail** (all need reification) |
+
+The turtle/trig-syntax numbers *drop* against the census because the
+census counted lenient parse-success (dropping content silently); the
+wave-2 runner parses strictly and compares eval output to the expected
+N-Triples/N-Quads parsed with the 1.2 parser. This is the anti-pattern
+#3/#25 correction the strategy insisted on: eval is the true gate.
+
+1.1 floors held byte-identical: RDF six suites 1031 pass, 0 fail;
+SPARQL 1.1 631 pass, 0 fail; tinc 124/3-of-127; tcon 352/0; csvw
+267/3; jsonld-tordf 466/0; tests/unit 46/46.
+
 ## Cross-references
 
 - Epic: [#305](https://github.com/danbri/factoidal/issues/305).

@@ -1,9 +1,9 @@
-* Warning 241 at RDF.Indexed.fsti(0,0-0,0):
-  - Unable to load RDF.Indexed.fsti.checked since checked file
-    RDF.Indexed.fsti.checked is stale (digest mismatch for RDF.Indexed.fsti);
-    will recheck RDF.Indexed.fsti (suppressing this warning for further modules)
+* Warning 241 at RDF.Graph.fsti(0,0-0,0):
+  - Unable to load RDF.Graph.fsti.checked since checked file
+    RDF.Graph.fsti.checked is stale (digest mismatch for RDF.Graph.fsti); will
+    recheck RDF.Graph.fsti (suppressing this warning for further modules)
 
-* Warning 349 at Parser.NTriples.fst(684,2-733,61):
+* Warning 349 at Parser.NTriples.fst(711,2-760,61):
   - The verification condition succeeded after splitting it to localize
     potential errors, although the original non-split verification condition
     failed. If you want to rely on splitting queries for verifying your program

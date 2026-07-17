@@ -1,48 +1,25 @@
-    [RDF.Canonical.fst]
-    [Regex.Exec.fst]
-    [RDF.Geo.Topology.fst]
-    [Tableau.fst]
-    [RDF.Geo.Topology.fst] Extracted module RDF.Geo.Topology
-    [RDF.Geo.Functions.fst]
-    [RDF.Geo.Functions.fst] Extracted module RDF.Geo.Functions
-    [Parser.TurtleScanner.fst]
-    [Parser.TurtleScanner.fst] Extracted module Parser.TurtleScanner
-    [Parser.WKT.fst]
-    [Regex.Exec.fst] Extracted module Regex.Exec
+    Tableau.fst (up to date, skipped -- source unchanged since last extract)
+    Regex.Exec.fst (up to date, skipped -- source unchanged since last extract)
+    RDF.Canonical.fst (up to date, skipped -- source unchanged since last extract)
+    RDF.Geo.Topology.fst (up to date, skipped -- source unchanged since last extract)
+    RDF.Geo.Functions.fst (up to date, skipped -- source unchanged since last extract)
+    Parser.TurtleScanner.fst (up to date, skipped -- source unchanged since last extract)
+    Parser.WKT.fst (up to date, skipped -- source unchanged since last extract)
     [Parser.NTriples.fst]
-    [Tableau.fst] Extracted module Tableau
-    [Parser.OWLFunctional.fst]
-    [RDF.Canonical.fst] Extracted module RDF.Canonical
-    [Parser.XML.fst]
-    [Parser.OWLFunctional.fst] Extracted module Parser.OWLFunctional
-    [Parser.XPath.fst]
-    [Parser.XPath.fst] Extracted module Parser.XPath
-    [Math.Series.fst]
-    [Math.Series.fst] Extracted module Math.Series
-    [Parser.CSVResults.fst]
-    [Parser.CSVResults.fst] Extracted module Parser.CSVResults
-    [Parser.JSONResults.fst]
-    [Parser.WKT.fst] Extracted module Parser.WKT
-    [Parser.JSON.fst]
-    [Parser.JSON.fst] Extracted module Parser.JSON
-    [SPARQL.HTTP.BackendInfo.fst]
-    [Parser.JSONResults.fst] Extracted module Parser.JSONResults
-    [SPARQL.HTTP.QueriesIndex.fst]
-    [SPARQL.HTTP.QueriesIndex.fst] Extracted module SPARQL.HTTP.QueriesIndex
-    [SPARQL.HTTP.Admin.fst]
-    [Parser.XML.fst]     potential errors, although the original non-split verification condition
-    [Parser.XML.fst] Extracted module Parser.XML
-    [RDF.CottasStore.PageCache.fst]
-    [SPARQL.HTTP.Admin.fst] Extracted module SPARQL.HTTP.Admin
-    [RDF.CottasStore.PresenceBitmap.fst]
-    [RDF.CottasStore.PresenceBitmap.fst] Extracted module RDF.CottasStore.PresenceBitmap
-    [RDF.CottasStore.SubjectOffsetsWriter.fst]
-    [RDF.CottasStore.PageCache.fst] Extracted module RDF.CottasStore.PageCache
-    [RDF.Store.Columnar.OffsetIndex.fst]
-    [SPARQL.HTTP.BackendInfo.fst] Extracted module SPARQL.HTTP.BackendInfo
-    [RDF.Store.Columnar.SubjectOffsetIndex.fst]
-    [RDF.Store.Columnar.OffsetIndex.fst] Extracted module RDF.Store.Columnar.OffsetIndex
-    [RDF.Store.Columnar.SubjectOffsetIndex.fst] Extracted module RDF.Store.Columnar.SubjectOffsetIndex
-    [RDF.CottasStore.SubjectOffsetsWriter.fst] Extracted module RDF.CottasStore.SubjectOffsetsWriter
+    Parser.XML.fst (up to date, skipped -- source unchanged since last extract)
+    Parser.OWLFunctional.fst (up to date, skipped -- source unchanged since last extract)
+    Parser.XPath.fst (up to date, skipped -- source unchanged since last extract)
+    Parser.CSVResults.fst (up to date, skipped -- source unchanged since last extract)
+    Math.Series.fst (up to date, skipped -- source unchanged since last extract)
+    Parser.JSONResults.fst (up to date, skipped -- source unchanged since last extract)
+    Parser.JSON.fst (up to date, skipped -- source unchanged since last extract)
+    SPARQL.HTTP.QueriesIndex.fst (up to date, skipped -- source unchanged since last extract)
+    SPARQL.HTTP.BackendInfo.fst (up to date, skipped -- source unchanged since last extract)
+    SPARQL.HTTP.Admin.fst (up to date, skipped -- source unchanged since last extract)
+    RDF.CottasStore.PageCache.fst (up to date, skipped -- source unchanged since last extract)
+    RDF.CottasStore.PresenceBitmap.fst (up to date, skipped -- source unchanged since last extract)
+    RDF.CottasStore.SubjectOffsetsWriter.fst (up to date, skipped -- source unchanged since last extract)
+    RDF.Store.Columnar.OffsetIndex.fst (up to date, skipped -- source unchanged since last extract)
+    RDF.Store.Columnar.SubjectOffsetIndex.fst (up to date, skipped -- source unchanged since last extract)
     [Parser.NTriples.fst]     potential errors, although the original non-split verification condition
     [Parser.NTriples.fst] Extracted module Parser.NTriples

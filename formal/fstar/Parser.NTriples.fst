@@ -10,6 +10,33 @@ open RDF.Graph.Executable
 // on the parser hot path. See Parser.FastString.fst.
 
 (* ================================================================ *)
+(* RDF 1.2 processing mode (epic #305, wave 2).                      *)
+(*                                                                   *)
+(* A small two-constructor tag threaded as a PARAMETER through the   *)
+(* concrete-syntax parsers and serializers (never a global). It is  *)
+(* defined here in the lowest-level line-parser module so every      *)
+(* syntax parser (N-Triples/N-Quads/Turtle/TriG) and both wire       *)
+(* serializers can name it without a new module in the build list.   *)
+(*                                                                   *)
+(*   Mode_11  RDF 1.1: legacy behaviour, byte-for-byte. Rejects the  *)
+(*            1.2 lexical forms (`<<( )>>` triple terms, `@lang--dir` *)
+(*            directional literals) exactly as the 1.1 grammar does. *)
+(*   Mode_12  RDF 1.2: additionally accepts triple terms in object   *)
+(*            position and directional language strings, and still   *)
+(*            rejects the retired RDF-star `<< s p o >>` quoted-      *)
+(*            triple form in BOTH modes.                              *)
+(*                                                                   *)
+(* Default everywhere is Mode_11: the RDF 1.2 concrete-syntax specs  *)
+(* are still W3C Working Drafts (2026-05/2026-05-28), so 1.1 stays   *)
+(* the normative default and no WD churn can move a 1.1 score.       *)
+(* Rationale + phased plan:                                          *)
+(* docs/designissues/2026-07-16-rdf12-sparql12-impact-strategy.md.   *)
+(* ================================================================ *)
+type rdf_syntax_mode =
+  | Mode_11
+  | Mode_12
+
+(* ================================================================ *)
 (* Helper: Unicode code point to UTF-8 string                       *)
 (* ================================================================ *)
 
@@ -1355,3 +1382,15 @@ let rec parse_ntriples_strict_12_acc (input:string) (pos:nat) (acc:list triple) 
 let parse_ntriples_strict_12 (input:string) : option (list triple) =
   let len = fs_byte_length input in
   parse_ntriples_strict_12_acc input 0 [] (len + 1)
+
+// Mode-parametrised strict N-Triples entry point. The processing mode is
+// a real parameter selecting the validated code path: Mode_11 is the
+// byte-identical 1.1 grammar (no triple terms, no directional literals);
+// Mode_12 is the 1.2 grammar. Consumers thread their `--rdf12` / CLI /
+// npm option through this single entry point instead of branching on a
+// global. `parse_ntriples_strict` / `parse_ntriples_strict_12` remain as
+// named aliases for their respective modes.
+let parse_ntriples_mode (mode:rdf_syntax_mode) (input:string) : option (list triple) =
+  match mode with
+  | Mode_11 -> parse_ntriples_strict input
+  | Mode_12 -> parse_ntriples_strict_12 input

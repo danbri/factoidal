@@ -73,6 +73,21 @@ let rec nq_term_to_string (t : RDF_Term.rdf_term) : Prims.string=
               (Prims.strcat p
                  (Prims.strcat "> "
                     (Prims.strcat (nq_term_to_string o) " )>>")))))
+let term_requires_rdf12 (t : RDF_Term.rdf_term) : Prims.bool=
+  match t with
+  | RDF_Term.T_TripleTerm (uu___, uu___1, uu___2) -> true
+  | RDF_Term.T_Literal l ->
+      FStar_Pervasives_Native.uu___is_Some l.RDF_Term.direction
+  | uu___ -> false
+let nq_term_to_string_mode (mode : Parser_NTriples.rdf_syntax_mode)
+  (t : RDF_Term.rdf_term) : Prims.string FStar_Pervasives_Native.option=
+  match mode with
+  | Parser_NTriples.Mode_12 ->
+      FStar_Pervasives_Native.Some (nq_term_to_string t)
+  | Parser_NTriples.Mode_11 ->
+      if term_requires_rdf12 t
+      then FStar_Pervasives_Native.None
+      else FStar_Pervasives_Native.Some (nq_term_to_string t)
 let nq_subject_to_string (s : RDF_Term.subject) : Prims.string=
   match s with
   | RDF_Term.S_IRI i -> Prims.strcat "<" (Prims.strcat i ">")
