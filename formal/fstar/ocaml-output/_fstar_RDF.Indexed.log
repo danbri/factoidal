@@ -1,3 +1,9 @@
 Extracted module RDF.Indexed
+* Warning 247 at RDF.Indexed.fst(0,0-0,0):
+  - Checked file RDF.Indexed.fst.checked was not written.
+  - Reason:
+      checked file RDF.Indexed.fsti.checked is stale (digest mismatch for
+      RDF.Indexed.fsti)
+
 Verified module: RDF.Indexed
 All verification conditions discharged successfully

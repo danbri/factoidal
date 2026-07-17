@@ -1,8 +1,7 @@
-* Warning 241 at RDF.IRI.fsti(0,0-0,0):
-  - Unable to load RDF.IRI.fsti.checked since checked file RDF.IRI.fsti.checked
-    is stale (dependence hash mismatch, use --debug CheckedFiles for more
-    details); will recheck RDF.IRI.fsti (suppressing this warning for further
-    modules)
+* Warning 241 at RDF.Indexed.fsti(0,0-0,0):
+  - Unable to load RDF.Indexed.fsti.checked since checked file
+    RDF.Indexed.fsti.checked is stale (digest mismatch for RDF.Indexed.fsti);
+    will recheck RDF.Indexed.fsti (suppressing this warning for further modules)
 
 * Warning 328 at Parser.Turtle.fst(1530,4-1530,21):
   - Global binding
@@ -13,8 +12,8 @@ Extracted module Parser.TriG
 * Warning 247 at Parser.TriG.fst(0,0-0,0):
   - Checked file Parser.TriG.fst.checked was not written.
   - Reason:
-      checked file Parser.Turtle.fst.checked is stale (digest mismatch for
-      Parser.Turtle.fst)
+      checked file Parser.NTriples.fst.checked is stale (digest mismatch for
+      Parser.NTriples.fst)
 
 Verified module: Parser.TriG
 All verification conditions discharged successfully

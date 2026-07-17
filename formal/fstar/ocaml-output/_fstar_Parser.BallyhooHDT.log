@@ -1,3 +1,12 @@
+* Warning 241 at RDF.Indexed.fsti(0,0-0,0):
+  - Unable to load RDF.Indexed.fsti.checked since checked file
+    RDF.Indexed.fsti.checked is stale (digest mismatch for RDF.Indexed.fsti);
+    will recheck RDF.Indexed.fsti (suppressing this warning for further modules)
+
 Extracted module Parser.BallyhooHDT
+* Warning 247 at Parser.BallyhooHDT.fst(0,0-0,0):
+  - Checked file Parser.BallyhooHDT.fst.checked was not written.
+  - Reason: checked file HDT.Container.fst.checked does not exist
+
 Verified module: Parser.BallyhooHDT
 All verification conditions discharged successfully

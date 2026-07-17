@@ -1,25 +1,50 @@
-    XSD.Datatypes.fst (up to date, skipped -- source unchanged since last extract)
-    RDF.Pretty.fst (up to date, skipped -- source unchanged since last extract)
-    RIF.Core.Translation.fst (up to date, skipped -- source unchanged since last extract)
-    OWL.QueryRewrite.fst (up to date, skipped -- source unchanged since last extract)
-    SPARQL11.Parser.fst (up to date, skipped -- source unchanged since last extract)
-    HDT.Dictionary.fst (up to date, skipped -- source unchanged since last extract)
-    RDF.Turtle.Serialize.fst (up to date, skipped -- source unchanged since last extract)
-    Parser.TriG.fst (up to date, skipped -- source unchanged since last extract)
-    XSLT.Transform.fst (up to date, skipped -- source unchanged since last extract)
-    RIF.Core.Conformance.fst (up to date, skipped -- source unchanged since last extract)
-    JSONLD.Expand.fst (up to date, skipped -- source unchanged since last extract)
-    Parser.ShExC.fst (up to date, skipped -- source unchanged since last extract)
-    ShEx.SchemaEq.fst (up to date, skipped -- source unchanged since last extract)
-    CSVW.URITemplate.fst (up to date, skipped -- source unchanged since last extract)
-    RML.Eval.fst (up to date, skipped -- source unchanged since last extract)
-    Parser.Ballyhoo.fst (up to date, skipped -- source unchanged since last extract)
-    SPARQL.Plan.Pruning.fst (up to date, skipped -- source unchanged since last extract)
-    RDF.Store.Columnar.DeltaMerge.fst (up to date, skipped -- source unchanged since last extract)
-    RDF.Store.Capabilities.fst (up to date, skipped -- source unchanged since last extract)
-    SPARQL.Plan.Streamable.fst (up to date, skipped -- source unchanged since last extract)
-    SPARQL.HTTP.RunQuery.fst (up to date, skipped -- source unchanged since last extract)
-    SPARQL.Update.Analysis.fst (up to date, skipped -- source unchanged since last extract)
-    SPARQL.Update.Sandbox.fst (up to date, skipped -- source unchanged since last extract)
-    SPARQL.Query.Analysis.fst (up to date, skipped -- source unchanged since last extract)
-    SPARQL.Protocol.Client.fst (up to date, skipped -- source unchanged since last extract)
+    [XSD.Datatypes.fst]
+    [OWL.QueryRewrite.fst]
+    [RDF.Pretty.fst]
+    [RIF.Core.Translation.fst]
+    [RDF.Pretty.fst] Extracted module RDF.Pretty
+    [SPARQL11.Parser.fst]
+    [RIF.Core.Translation.fst] Extracted module RIF.Core.Translation
+    [HDT.Dictionary.fst]
+    [XSD.Datatypes.fst] Extracted module XSD.Datatypes
+    [RDF.Turtle.Serialize.fst]
+    [OWL.QueryRewrite.fst] Extracted module OWL.QueryRewrite
+    [Parser.TriG.fst]
+    [HDT.Dictionary.fst] Extracted module HDT.Dictionary
+    [XSLT.Transform.fst]
+    [RDF.Turtle.Serialize.fst] Extracted module RDF.Turtle.Serialize
+    [RIF.Core.Conformance.fst]
+    [Parser.TriG.fst] Extracted module Parser.TriG
+    [JSONLD.Expand.fst]
+    [RIF.Core.Conformance.fst] Extracted module RIF.Core.Conformance
+    [Parser.ShExC.fst]
+    [XSLT.Transform.fst] Extracted module XSLT.Transform
+    [ShEx.SchemaEq.fst]
+    [JSONLD.Expand.fst] Extracted module JSONLD.Expand
+    [RML.Eval.fst]
+    [ShEx.SchemaEq.fst] Extracted module ShEx.SchemaEq
+    [CSVW.URITemplate.fst]
+    [Parser.ShExC.fst] Extracted module Parser.ShExC
+    [Parser.Ballyhoo.fst]
+    [Parser.Ballyhoo.fst] Extracted module Parser.Ballyhoo
+    [SPARQL.Plan.Pruning.fst]
+    [SPARQL.Plan.Pruning.fst] Extracted module SPARQL.Plan.Pruning
+    [RDF.Store.Columnar.DeltaMerge.fst]
+    [CSVW.URITemplate.fst] Extracted module CSVW.URITemplate
+    [RDF.Store.Capabilities.fst]
+    [RML.Eval.fst] Extracted module RML.Eval
+    [SPARQL.Plan.Streamable.fst]
+    [SPARQL11.Parser.fst] Extracted module SPARQL11.Parser
+    [SPARQL.HTTP.RunQuery.fst]
+    [RDF.Store.Capabilities.fst] Extracted module RDF.Store.Capabilities
+    [SPARQL.Update.Sandbox.fst]
+    [SPARQL.Plan.Streamable.fst] Extracted module SPARQL.Plan.Streamable
+    [SPARQL.Update.Analysis.fst]
+    [RDF.Store.Columnar.DeltaMerge.fst] Extracted module RDF.Store.Columnar.DeltaMerge
+    [SPARQL.Query.Analysis.fst]
+    [SPARQL.HTTP.RunQuery.fst] Extracted module SPARQL.HTTP.RunQuery
+    [SPARQL.Protocol.Client.fst]
+    [SPARQL.Query.Analysis.fst] Extracted module SPARQL.Query.Analysis
+    [SPARQL.Update.Analysis.fst] Extracted module SPARQL.Update.Analysis
+    [SPARQL.Update.Sandbox.fst] Extracted module SPARQL.Update.Sandbox
+    [SPARQL.Protocol.Client.fst] Extracted module SPARQL.Protocol.Client

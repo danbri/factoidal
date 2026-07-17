@@ -1,8 +1,7 @@
-* Warning 241 at RDF.IRI.fsti(0,0-0,0):
-  - Unable to load RDF.IRI.fsti.checked since checked file RDF.IRI.fsti.checked
-    is stale (dependence hash mismatch, use --debug CheckedFiles for more
-    details); will recheck RDF.IRI.fsti (suppressing this warning for further
-    modules)
+* Warning 241 at RDF.Indexed.fsti(0,0-0,0):
+  - Unable to load RDF.Indexed.fsti.checked since checked file
+    RDF.Indexed.fsti.checked is stale (digest mismatch for RDF.Indexed.fsti);
+    will recheck RDF.Indexed.fsti (suppressing this warning for further modules)
 
 * Warning 349 at Parser.RDFXML.fst(818,2-1022,26):
   - The verification condition succeeded after splitting it to localize

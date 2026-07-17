@@ -1,41 +1,82 @@
-    Regex.Derivative.fst (up to date, skipped -- source unchanged since last extract)
-    Regex.XSDPattern.fst (up to date, skipped -- source unchanged since last extract)
-    RDF.IRI.fst (up to date, skipped -- source unchanged since last extract)
-    RDFS.Closure.fst (up to date, skipped -- source unchanged since last extract)
-    RDF.NQuads.Serialize.fst (up to date, skipped -- source unchanged since last extract)
-    RDF.Dataset.Graphs.fst (up to date, skipped -- source unchanged since last extract)
-    RDF.Store.Loader.fst (up to date, skipped -- source unchanged since last extract)
-    OWL.Vocabulary.fst (up to date, skipped -- source unchanged since last extract)
-    OWL.DirectMapping.Filter.fst (up to date, skipped -- source unchanged since last extract)
-    XSD.Facets.fst (up to date, skipped -- source unchanged since last extract)
-    SPARQL.FullText.fst (up to date, skipped -- source unchanged since last extract)
-    RIF.Core.Syntax.fst (up to date, skipped -- source unchanged since last extract)
-    SPARQL11.IRI.Resolve.fst (up to date, skipped -- source unchanged since last extract)
-    RDF.Geo.BBox.fst (up to date, skipped -- source unchanged since last extract)
-    Math.Subst.fst (up to date, skipped -- source unchanged since last extract)
-    Parser.Combinators.fst (up to date, skipped -- source unchanged since last extract)
-    Math.Diff.fst (up to date, skipped -- source unchanged since last extract)
-    Math.Simplify.fst (up to date, skipped -- source unchanged since last extract)
-    MathML.Present.fst (up to date, skipped -- source unchanged since last extract)
-    Math.Matrix.fst (up to date, skipped -- source unchanged since last extract)
-    SPARQL.JSON.Escape.fst (up to date, skipped -- source unchanged since last extract)
-    Math.Sigmoid.fst (up to date, skipped -- source unchanged since last extract)
-    RML.Mapping.fst (up to date, skipped -- source unchanged since last extract)
-    DID.Key.fst (up to date, skipped -- source unchanged since last extract)
-    Parser.BallyhooBloom.fst (up to date, skipped -- source unchanged since last extract)
+    [Regex.Derivative.fst]
+    [Regex.XSDPattern.fst]
+    [RDF.IRI.fst]
+    [RDFS.Closure.fst]
+    [Regex.Derivative.fst] Extracted module Regex.Derivative
+    [RDF.NQuads.Serialize.fst]
+    [Regex.XSDPattern.fst] Extracted module Regex.XSDPattern
+    [RDF.Store.Loader.fst]
+    [RDFS.Closure.fst] Extracted module RDFS.Closure
+    [RDF.Dataset.Graphs.fst]
+    [RDF.NQuads.Serialize.fst] Extracted module RDF.NQuads.Serialize
+    [OWL.Vocabulary.fst]
+    [RDF.IRI.fst] Extracted module RDF.IRI
+    [OWL.DirectMapping.Filter.fst]
+    [RDF.Dataset.Graphs.fst] Extracted module RDF.Dataset.Graphs
+    [XSD.Facets.fst]
+    [RDF.Store.Loader.fst] Extracted module RDF.Store.Loader
+    [SPARQL11.IRI.Resolve.fst]
+    [OWL.Vocabulary.fst] Extracted module OWL.Vocabulary
+    [SPARQL.FullText.fst]
+    [SPARQL11.IRI.Resolve.fst] Extracted module SPARQL11.IRI.Resolve
+    [RIF.Core.Syntax.fst]
+    [OWL.DirectMapping.Filter.fst] Extracted module OWL.DirectMapping.Filter
+    [RDF.Geo.BBox.fst]
+    [RDF.Geo.BBox.fst] Extracted module RDF.Geo.BBox
+    [Parser.Combinators.fst]
+    [Parser.Combinators.fst] Extracted module Parser.Combinators
+    [Math.Subst.fst]
+    [Math.Subst.fst] Extracted module Math.Subst
+    [Math.Diff.fst]
+    [Math.Diff.fst] Extracted module Math.Diff
+    [Math.Simplify.fst]
+    [Math.Simplify.fst] Extracted module Math.Simplify
+    [Math.Matrix.fst]
+    [XSD.Facets.fst] Extracted module XSD.Facets
+    [MathML.Present.fst]
+    [Math.Matrix.fst] Extracted module Math.Matrix
+    [Math.Sigmoid.fst]
+    [MathML.Present.fst] Extracted module MathML.Present
+    [SPARQL.JSON.Escape.fst]
+    [RIF.Core.Syntax.fst] Extracted module RIF.Core.Syntax
+    [DID.Key.fst]
+    [SPARQL.FullText.fst] Extracted module SPARQL.FullText
+    [RML.Mapping.fst]
+    [Math.Sigmoid.fst] Extracted module Math.Sigmoid
+    [Parser.BallyhooBloom.fst]
+    [SPARQL.JSON.Escape.fst] Extracted module SPARQL.JSON.Escape
     [Parser.BallyhooCOTTAS.fst]
-    RDF.CottasStore.ColumnSeq.fst (up to date, skipped -- source unchanged since last extract)
-    RDF.CottasStore.OnDiskIndex.fst (up to date, skipped -- source unchanged since last extract)
-    RDF.CottasStore.DictWriter.fst (up to date, skipped -- source unchanged since last extract)
-    RDF.CottasStore.PresenceWriter.fst (up to date, skipped -- source unchanged since last extract)
-    RDF.CottasStore.CompoundPresenceWriter.fst (up to date, skipped -- source unchanged since last extract)
-    RDF.CottasStore.OffsetsWriter.fst (up to date, skipped -- source unchanged since last extract)
-    RDF.CottasStore.LazyDictRegistry.fst (up to date, skipped -- source unchanged since last extract)
-    RDF.CottasStore.BaseWriter.fst (up to date, skipped -- source unchanged since last extract)
-    RDF.Store.HDTTermCacheRegistry.fst (up to date, skipped -- source unchanged since last extract)
-    RDF.Store.Columnar.DeltaLog.fst (up to date, skipped -- source unchanged since last extract)
-    RDF.Dataset.Merge.fst (up to date, skipped -- source unchanged since last extract)
-    SPARQL.Protocol.fst (up to date, skipped -- source unchanged since last extract)
-    SPARQL.ServiceDescription.fst (up to date, skipped -- source unchanged since last extract)
-    SPARQL.GraphStore.fst (up to date, skipped -- source unchanged since last extract)
+    [DID.Key.fst] Extracted module DID.Key
+    [RDF.CottasStore.ColumnSeq.fst]
+    [RDF.CottasStore.ColumnSeq.fst] Extracted module RDF.CottasStore.ColumnSeq
+    [RDF.CottasStore.OnDiskIndex.fst]
+    [RDF.CottasStore.OnDiskIndex.fst] Extracted module RDF.CottasStore.OnDiskIndex
+    [RDF.CottasStore.DictWriter.fst]
     [Parser.BallyhooCOTTAS.fst] Extracted module Parser.BallyhooCOTTAS
+    [RDF.CottasStore.PresenceWriter.fst]
+    [Parser.BallyhooBloom.fst] Extracted module Parser.BallyhooBloom
+    [RDF.CottasStore.CompoundPresenceWriter.fst]
+    [RDF.CottasStore.PresenceWriter.fst] Extracted module RDF.CottasStore.PresenceWriter
+    [RDF.CottasStore.OffsetsWriter.fst]
+    [RDF.CottasStore.CompoundPresenceWriter.fst] Extracted module RDF.CottasStore.CompoundPresenceWriter
+    [RDF.CottasStore.BaseWriter.fst]
+    [RDF.CottasStore.OffsetsWriter.fst] Extracted module RDF.CottasStore.OffsetsWriter
+    [RDF.CottasStore.LazyDictRegistry.fst]
+    [RML.Mapping.fst] Extracted module RML.Mapping
+    [RDF.Store.HDTTermCacheRegistry.fst]
+    [RDF.CottasStore.BaseWriter.fst] Extracted module RDF.CottasStore.BaseWriter
+    [RDF.Store.Columnar.DeltaLog.fst]
+    [RDF.CottasStore.LazyDictRegistry.fst] Extracted module RDF.CottasStore.LazyDictRegistry
+    [RDF.Dataset.Merge.fst]
+    [RDF.Store.HDTTermCacheRegistry.fst] Extracted module RDF.Store.HDTTermCacheRegistry
+    [SPARQL.Protocol.fst]
+    [RDF.Dataset.Merge.fst] Extracted module RDF.Dataset.Merge
+    [SPARQL.ServiceDescription.fst]
+    [SPARQL.Protocol.fst] Extracted module SPARQL.Protocol
+    [SPARQL.GraphStore.fst]
+    [SPARQL.ServiceDescription.fst] Extracted module SPARQL.ServiceDescription
+    [RDF.CottasStore.DictWriter.fst] Extracted module RDF.CottasStore.DictWriter
+    [SPARQL.GraphStore.fst] Extracted module SPARQL.GraphStore
+    [RDF.Store.Columnar.DeltaLog.fst]     potential errors, although the original non-split verification condition
+    [RDF.Store.Columnar.DeltaLog.fst]     potential errors, although the original non-split verification condition
+    [RDF.Store.Columnar.DeltaLog.fst] Extracted module RDF.Store.Columnar.DeltaLog

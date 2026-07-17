@@ -1,3 +1,14 @@
+* Warning 241 at RDF.Indexed.fsti(0,0-0,0):
+  - Unable to load RDF.Indexed.fsti.checked since checked file
+    RDF.Indexed.fsti.checked is stale (digest mismatch for RDF.Indexed.fsti);
+    will recheck RDF.Indexed.fsti (suppressing this warning for further modules)
+
 Extracted module Tableau
+* Warning 247 at Tableau.fst(0,0-0,0):
+  - Checked file Tableau.fst.checked was not written.
+  - Reason:
+      checked file OWL.Vocabulary.fst.checked is stale (digest mismatch for
+      OWL.Vocabulary.fst)
+
 Verified module: Tableau
 All verification conditions discharged successfully

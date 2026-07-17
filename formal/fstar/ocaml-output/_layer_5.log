@@ -1,16 +1,33 @@
-    SHACL.Validation.fst (up to date, skipped -- source unchanged since last extract)
-    OWL.QueryEval.fst (up to date, skipped -- source unchanged since last extract)
-    HDT.Triples.fst (up to date, skipped -- source unchanged since last extract)
-    Schematron.Validate.fst (up to date, skipped -- source unchanged since last extract)
-    RIF.Core.Builtins.fst (up to date, skipped -- source unchanged since last extract)
-    GRDDL.Discovery.fst (up to date, skipped -- source unchanged since last extract)
-    Parser.JSONLD.fst (up to date, skipped -- source unchanged since last extract)
-    XForms.Bind.fst (up to date, skipped -- source unchanged since last extract)
-    ShEx.Validation.fst (up to date, skipped -- source unchanged since last extract)
-    VC.Credential.fst (up to date, skipped -- source unchanged since last extract)
-    CSVW.Conversion.fst (up to date, skipped -- source unchanged since last extract)
-    SPARQL.Plan.AccessPath.fst (up to date, skipped -- source unchanged since last extract)
-    RDF.Store.Capabilities.Delta.fst (up to date, skipped -- source unchanged since last extract)
-    SPARQL.Explain.fst (up to date, skipped -- source unchanged since last extract)
-    RML.VirtualSource.fst (up to date, skipped -- source unchanged since last extract)
-    SPARQL.Service.Wrap.fst (up to date, skipped -- source unchanged since last extract)
+    [SHACL.Validation.fst]
+    [OWL.QueryEval.fst]
+    [HDT.Triples.fst]
+    [Schematron.Validate.fst]
+    [Schematron.Validate.fst] Extracted module Schematron.Validate
+    [GRDDL.Discovery.fst]
+    [HDT.Triples.fst] Extracted module HDT.Triples
+    [XForms.Bind.fst]
+    [GRDDL.Discovery.fst] Extracted module GRDDL.Discovery
+    [RIF.Core.Builtins.fst]
+    [OWL.QueryEval.fst] Extracted module OWL.QueryEval
+    [Parser.JSONLD.fst]
+    [XForms.Bind.fst] Extracted module XForms.Bind
+    [ShEx.Validation.fst]
+    [RIF.Core.Builtins.fst] Extracted module RIF.Core.Builtins
+    [VC.Credential.fst]
+    [Parser.JSONLD.fst] Extracted module Parser.JSONLD
+    [CSVW.Conversion.fst]
+    [VC.Credential.fst] Extracted module VC.Credential
+    [SPARQL.Plan.AccessPath.fst]
+    [SPARQL.Plan.AccessPath.fst] Extracted module SPARQL.Plan.AccessPath
+    [RDF.Store.Capabilities.Delta.fst]
+    [CSVW.Conversion.fst] Extracted module CSVW.Conversion
+    [RML.VirtualSource.fst]
+    [RDF.Store.Capabilities.Delta.fst] Extracted module RDF.Store.Capabilities.Delta
+    [SPARQL.Explain.fst]
+    [RML.VirtualSource.fst] Extracted module RML.VirtualSource
+    [SPARQL.Service.Wrap.fst]
+    [SHACL.Validation.fst] Extracted module SHACL.Validation
+    [SPARQL.Explain.fst] Extracted module SPARQL.Explain
+    [SPARQL.Service.Wrap.fst] Extracted module SPARQL.Service.Wrap
+    [ShEx.Validation.fst]     potential errors, although the original non-split verification condition
+    [ShEx.Validation.fst] Extracted module ShEx.Validation

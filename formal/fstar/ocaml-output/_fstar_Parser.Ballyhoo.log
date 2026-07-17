@@ -1,3 +1,14 @@
+* Warning 241 at RDF.Indexed.fsti(0,0-0,0):
+  - Unable to load RDF.Indexed.fsti.checked since checked file
+    RDF.Indexed.fsti.checked is stale (digest mismatch for RDF.Indexed.fsti);
+    will recheck RDF.Indexed.fsti (suppressing this warning for further modules)
+
 Extracted module Parser.Ballyhoo
+* Warning 247 at Parser.Ballyhoo.fst(0,0-0,0):
+  - Checked file Parser.Ballyhoo.fst.checked was not written.
+  - Reason:
+      checked file Parser.NQuads.fst.checked is stale (digest mismatch for
+      Parser.NQuads.fst)
+
 Verified module: Parser.Ballyhoo
 All verification conditions discharged successfully
