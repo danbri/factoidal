@@ -78,22 +78,29 @@ foundational: false
 #     Turtle vendored from the archived W3C wiki with PROVENANCE.md)
 #     and the runner evaluates graph-entailment conclusions -> passes.
 #
-# Combined score: 46 pass, 1 fail, 3 skip (out of 50) -- up from
-# 34 pass, 4 fail, 12 skip. Dispositions of the 4 non-passes:
-#   - FAIL RDF_Combination_Constant_Equivalence_4: data defect in the
-#     official corpus itself (malformed xsd:string datatype IRI,
-#     present in both the Core_v1.22.zip and the archived
-#     authoritative wiki source) -- not fixable without breaking
-#     correct datatype-IRI semantics.
+# Combined score, measured 2026-07-17: 46 pass, 0 fail, 1 local-
+# override, 3 skip (out of 50) -- up from 34 pass, 4 fail, 12 skip
+# (2026-07-05). Dispositions of the 4 non-plain-passes:
+#   - LOCAL-OVERRIDE RDF_Combination_Constant_Equivalence_4: data
+#     defect in the official corpus itself (malformed xsd:string
+#     datatype IRI -- a Windows local path in the RDF/XML, a
+#     scheme-less prefix in the Turtle, present in both the
+#     Core_v1.22.zip and the archived authoritative wiki source) --
+#     not fixable without breaking correct datatype-IRI semantics.
+#     Dispositioned 2026-07-17 as a distinctly-counted local override
+#     (tests/local-overrides/rif/RDF_Combination_Constant_Equivalence_4.override,
+#     full rationale + provenance there) rather than left an
+#     undispositioned red. The pipeline still runs unchanged and still
+#     reports entailed=false on the OVERRIDE line.
 #   - SKIP Builtins_List + NestedListsAreNotFlatLists: RIF List terms
 #     are not modelled in RIF.Core.Syntax.
 #   - SKIP Builtins_Time: the full date/time/duration builtin family
-#     (~60 builtins; only the EBusiness_Contract slice is
+#     (~85 builtins; only the EBusiness_Contract slice is
 #     implemented) -- the skip names the first unimplemented builtin.
-# The runner exits 1 whenever the combined fail count is nonzero; CI
-# consumers should expect exit 1 while the corpus-defect FAIL stands
-# (the W3C RIF wiki is archived read-only, so no upstream fix is
-# coming).
+# The runner exits 1 only on an UNDISPOSITIONED fail; honoured local
+# overrides are excluded from the fail count, so the suite now exits 0
+# (the W3C RIF wiki is archived read-only, so no upstream fix to the
+# corpus defect is coming).
 #
 # See bin/rif-runner/rif_runner.ml's header comment,
 # formal/fstar/RIF.Core.Builtins.fst's module comment, and
@@ -146,13 +153,9 @@ triggers:
 
   excludes: []
 
-# What's left, in plain language (source: docs/claude-rules/w3c-completeness-ledger.md,
-# RIF Core row, 2026-07-10; and bin/rif-runner/README.md's Score section).
+# What's left, in plain language (source: bin/rif-runner/README.md's
+# Score section; re-measured 2026-07-17). Zero undispositioned reds.
 remaining:
-  - "1 known-gap fail: a rule whose body re-binds an arity-2 predicate needs real n-ary reification, not attempted"
-  - "2 known-gap fails: rif:local constants are not scoped per-document in this engine"
-  - "1 fail is a defect in the vendored corpus data itself (a malformed xsd:string IRI), not an engine bug"
-  - "6 skips: the String, Time+dateTime, and PlainLiteral builtin families, plus List-term builtins, are not implemented"
-  - "2 skips: Exists-quantified rule bodies (existential variables in RIF Core) are not implemented"
-  - "1 skip: detecting that a premise combination is internally inconsistent (needed for one vocabulary-separation fixture) is not implemented"
-  - "1 skip: cross-document constant-role tracking for one import-rejection fixture (Multiple_Context_Error) is not implemented"
+  - "1 local-override: RDF_Combination_Constant_Equivalence_4 is a defect in the vendored corpus data itself (a malformed xsd:string datatype IRI), not an engine bug -- dispositioned via tests/local-overrides/rif/ (distinctly counted, exit 0)"
+  - "2 skips: RIF List terms (Builtins_List, NestedListsAreNotFlatLists) are not modelled in RIF.Core.Syntax -- a syntax/translation/eval extension, not attempted"
+  - "1 skip: the full date/time/duration builtin family (~85 builtins; Builtins_Time) is not implemented -- only the EBusiness_Contract dateTime slice exists; the skip names the first unimplemented builtin (is-literal-dateTimeStamp)"

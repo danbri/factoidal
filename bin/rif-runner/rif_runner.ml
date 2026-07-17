@@ -956,15 +956,18 @@ let bump (tbl : bucket_tally) (label : string) : unit =
    prefix, respectively) that does not match the conclusion's
    correctly-formed "http://www.w3.org/2001/XMLSchema#string" --
    present in the official W3C Core_v1.22.zip distribution as
-   authored in 2010, uncorrected in the "Second Edition". Left
-   reporting FAIL rather than moved to SKIP: unlike the SKIP buckets
-   above (constructs this engine does not yet implement -- External,
-   Equal, Exists, List, safeness/import-rejection checking), this
-   test IS fully processed by the pipeline and genuinely does not
-   entail under a correct datatype-IRI comparison -- the honest
-   report is a labelled FAIL, not a skip that could be misread as
-   "not attempted". See bin/rif-runner/README.md's Score section for
-   the full diagnosis. *)
+   authored in 2010, uncorrected in the "Second Edition". It is NOT a
+   SKIP: unlike the SKIP buckets above (constructs this engine does
+   not yet implement -- External, Equal, Exists, List, safeness/
+   import-rejection checking), this test IS fully processed by the
+   pipeline and genuinely does not entail under a correct datatype-IRI
+   comparison. As of 2026-07-17 it is dispositioned via a local
+   override (tests/local-overrides/rif/), so the runner reports it on
+   an OVERRIDE line (distinctly counted, not a fail) instead of a red.
+   This note function stays as the FALLBACK message printed only if
+   the override file is ever absent -- then the test reverts to a
+   labelled FAIL rather than a silent pass. See
+   bin/rif-runner/README.md's Score section for the full diagnosis. *)
 let known_corpus_defect_note (name : string) : string option =
   if name = "RDF_Combination_Constant_Equivalence_4"
   then Some "KNOWN-DEFECT: malformed xsd:string datatype IRI in the official W3C corpus itself (both the Core_v1.22.zip files and the archived authoritative wiki source at https://www.w3.org/2005/rules/wiki/RDF_Combination_Constant_Equivalence_4 carry the scheme-less prefix, checked 2026-07-10; see bin/rif-runner/README.md Score section) -- not an engine gap"
@@ -1122,22 +1125,90 @@ let run_corpus_import_rejection_test (verbose : bool) (name : string) (dir : str
   | Corpus_skip reason -> CSkip reason
   | exn -> CFail (Printf.sprintf "exception: %s" (Printexc.to_string exn))
 
-let run_corpus_suite (verbose : bool) : int * int * int * bucket_tally =
-  let pass = ref 0 and fail = ref 0 and skip = ref 0 in
+(* ------------------------------------------------------------------ *)
+(* Local test overrides (tests/local-overrides/rif/).
+
+   A local override is a DISPOSITION, not a semantic change: the RIF
+   pipeline still runs unchanged and still computes its real answer.
+   The override only reclassifies one named, documented divergence
+   from an upstream fixture's expectation out of the FAIL bucket into
+   a distinctly-counted "local-override" bucket, so the suite can
+   reach exit 0 without HIDING the divergence (the OVERRIDE line still
+   prints the observed result). This is consumer-tool bookkeeping
+   (rule #11 consumer) -- no RIF/SPARQL/RDF reasoning happens here.
+
+   Contract (see tests/local-overrides/README.md):
+   - An override is applied only to a real CFail. If an overridden
+     test starts PASSing on its own, the override is flagged STALE and
+     a plain PASS is counted -- an override never masks a success.
+   - Honoured overrides are counted separately and excluded from the
+     fail count.
+   Each tests/local-overrides/rif/<Name>.override carries the full
+   rationale + provenance; here we read only the `test:` and
+   `disposition:` header lines. *)
+
+let override_dir = "tests/local-overrides/rif"
+
+let header_field (body : string) (key : string) : string option =
+  let pfx = key ^ ":" in
+  String.split_on_char '\n' body
+  |> List.find_map (fun line ->
+       let line = String.trim line in
+       let plen = String.length pfx in
+       if String.length line >= plen && String.sub line 0 plen = pfx
+       then Some (String.trim (String.sub line plen (String.length line - plen)))
+       else None)
+
+(* name -> override file path, for every file whose disposition is
+   local-override. Missing directory yields an empty table. *)
+let load_local_overrides () : (string, string) Hashtbl.t =
+  let tbl : (string, string) Hashtbl.t = Hashtbl.create 8 in
+  (try
+     Sys.readdir override_dir
+     |> Array.to_list
+     |> List.filter (fun n -> Filename.check_suffix n ".override")
+     |> List.iter (fun fname ->
+          let path = Filename.concat override_dir fname in
+          match read_file path with
+          | None -> ()
+          | Some body ->
+            (match header_field body "test", header_field body "disposition" with
+             | Some t, Some "local-override" -> Hashtbl.replace tbl t path
+             | _ -> ()))
+   with Sys_error _ -> ());
+  tbl
+
+let run_corpus_suite (verbose : bool) : int * int * int * int * bucket_tally =
+  let pass = ref 0 and fail = ref 0 and skip = ref 0 and override = ref 0 in
   let buckets : bucket_tally = Hashtbl.create 16 in
+  let overrides = load_local_overrides () in
   let record (category_name : string) (name : string) (outcome : corpus_outcome) : unit =
     match outcome with
     | CPass ->
       incr pass;
-      Printf.printf "PASS corpus:%s (%s)\n" name category_name
+      (match Hashtbl.find_opt overrides name with
+       | Some path ->
+         (* Test passes on its own: the override is now redundant. *)
+         Printf.printf
+           "PASS corpus:%s (%s) [STALE local-override %s -- test now passes, remove it]\n"
+           name category_name path
+       | None ->
+         Printf.printf "PASS corpus:%s (%s)\n" name category_name)
     | CFail msg ->
-      incr fail;
-      let msg =
-        match known_corpus_defect_note name with
-        | Some note -> Printf.sprintf "%s -- %s" msg note
-        | None -> msg
-      in
-      Printf.printf "FAIL corpus:%s (%s): %s\n" name category_name msg
+      (match Hashtbl.find_opt overrides name with
+       | Some path ->
+         incr override;
+         Printf.printf
+           "OVERRIDE corpus:%s (%s): local-override (%s) -- observed %s\n"
+           name category_name path msg
+       | None ->
+         incr fail;
+         let msg =
+           match known_corpus_defect_note name with
+           | Some note -> Printf.sprintf "%s -- %s" msg note
+           | None -> msg
+         in
+         Printf.printf "FAIL corpus:%s (%s): %s\n" name category_name msg)
     | CSkip reason ->
       incr skip;
       bump buckets reason;
@@ -1154,7 +1225,7 @@ let run_corpus_suite (verbose : bool) : int * int * int * bucket_tally =
   run_category "PositiveSyntaxTest" (run_corpus_syntax_test verbose true);
   run_category "NegativeSyntaxTest" (run_corpus_syntax_test verbose false);
   run_category "ImportRejectionTest" (run_corpus_import_rejection_test verbose);
-  (!pass, !fail, !skip, buckets)
+  (!pass, !fail, !skip, !override, buckets)
 
 (* ------------------------------------------------------------------ *)
 (* Main. *)
@@ -1215,11 +1286,11 @@ let () =
   Printf.printf "rif (original 4 vendored SPARQL-manifest cases): %d pass, %d fail (out of %d)\n"
     pass fail total;
 
-  let (c_pass, c_fail, c_skip, buckets) = run_corpus_suite !verbose in
-  let c_total = c_pass + c_fail + c_skip in
+  let (c_pass, c_fail, c_skip, c_override, buckets) = run_corpus_suite !verbose in
+  let c_total = c_pass + c_fail + c_skip + c_override in
   Printf.printf "========================================\n";
-  Printf.printf "rif-core-suite (vendored W3C RIF Core dialect corpus): %d pass, %d fail, %d skip (out of %d)\n"
-    c_pass c_fail c_skip c_total;
+  Printf.printf "rif-core-suite (vendored W3C RIF Core dialect corpus): %d pass, %d fail, %d local-override, %d skip (out of %d)\n"
+    c_pass c_fail c_override c_skip c_total;
   Printf.printf "Skip buckets (by construct/reason):\n";
   Hashtbl.fold (fun k v acc -> (k, v) :: acc) buckets []
   |> List.sort (fun (_, a) (_, b) -> compare (b : int) a)
@@ -1227,10 +1298,15 @@ let () =
 
   let grand_pass = pass + c_pass
   and grand_fail = fail + c_fail
+  and grand_override = c_override
   and grand_skip = c_skip
   in
   let grand_total = total + c_total in
   Printf.printf "========================================\n";
-  Printf.printf "rif TOTAL: %d pass, %d fail, %d skip (out of %d)\n"
-    grand_pass grand_fail grand_skip grand_total;
+  (* "pass equivalents" = plain passes + distinctly-counted local
+     overrides (documented disagreements with a defective fixture,
+     see tests/local-overrides/). Overrides are reported separately
+     and never fold into the plain pass count. *)
+  Printf.printf "rif TOTAL: %d pass, %d fail, %d local-override, %d skip (out of %d)\n"
+    grand_pass grand_fail grand_override grand_skip grand_total;
   if grand_fail > 0 then exit 1
