@@ -173,6 +173,8 @@ COMMON_MODULES=(
   RDF_Dataset_Graphs
   RDF_Canonical
   RDF_Canonical_Manifest
+  RDF_GraphIsomorphism
+  GRDDL_Discovery
   service_wrap_hook
   SPARQL_FullText
   SPARQL11_Algebra
