@@ -362,7 +362,8 @@ let parse_trig_statement (tps : trig_parse_state) (input : Prims.string)
                            Parser_Turtle.base_iri =
                              (st.Parser_Turtle.base_iri);
                            Parser_Turtle.bnode_counter =
-                             (st.Parser_Turtle.bnode_counter)
+                             (st.Parser_Turtle.bnode_counter);
+                           Parser_Turtle.ts_mode = (st.Parser_Turtle.ts_mode)
                          };
                        has_error = (tps.has_error)
                      }), pos2)
@@ -378,7 +379,9 @@ let parse_trig_statement (tps : trig_parse_state) (input : Prims.string)
                                   (st.Parser_Turtle.prefixes);
                                 Parser_Turtle.base_iri = base_val;
                                 Parser_Turtle.bnode_counter =
-                                  (st.Parser_Turtle.bnode_counter)
+                                  (st.Parser_Turtle.bnode_counter);
+                                Parser_Turtle.ts_mode =
+                                  (st.Parser_Turtle.ts_mode)
                               };
                             has_error = (tps.has_error)
                           }), pos2)
@@ -729,7 +732,9 @@ let parse_trig_with_base (input : Prims.string) (base : Prims.string) :
         (Parser_Turtle.empty_turtle_state.Parser_Turtle.prefixes);
       Parser_Turtle.base_iri = base;
       Parser_Turtle.bnode_counter =
-        (Parser_Turtle.empty_turtle_state.Parser_Turtle.bnode_counter)
+        (Parser_Turtle.empty_turtle_state.Parser_Turtle.bnode_counter);
+      Parser_Turtle.ts_mode =
+        (Parser_Turtle.empty_turtle_state.Parser_Turtle.ts_mode)
     } in
   let tps = make_trig_parse_state st in
   let uu___ =
@@ -758,9 +763,65 @@ let parse_trig_with_base_lenient (input : Prims.string) (base : Prims.string)
         (Parser_Turtle.empty_turtle_state.Parser_Turtle.prefixes);
       Parser_Turtle.base_iri = base;
       Parser_Turtle.bnode_counter =
-        (Parser_Turtle.empty_turtle_state.Parser_Turtle.bnode_counter)
+        (Parser_Turtle.empty_turtle_state.Parser_Turtle.bnode_counter);
+      Parser_Turtle.ts_mode =
+        (Parser_Turtle.empty_turtle_state.Parser_Turtle.ts_mode)
     } in
   let tps = make_trig_parse_state st in
   let uu___ =
     parse_trig_doc tps input Prims.int_zero RDF_Graph.empty_dataset fuel in
   match uu___ with | (ds, uu___1) -> RDF_Graph_Executable.dataset_finalise ds
+let parse_trig_with_base_12 (input : Prims.string) (base : Prims.string) :
+  RDF_Graph.rdf_dataset FStar_Pervasives_Native.option=
+  let len = Parser_FastString.fs_byte_length input in
+  let fuel = (len + Prims.int_one) * (Prims.of_int (3)) in
+  let st =
+    {
+      Parser_Turtle.prefixes =
+        (Parser_Turtle.empty_turtle_state_12.Parser_Turtle.prefixes);
+      Parser_Turtle.base_iri = base;
+      Parser_Turtle.bnode_counter =
+        (Parser_Turtle.empty_turtle_state_12.Parser_Turtle.bnode_counter);
+      Parser_Turtle.ts_mode =
+        (Parser_Turtle.empty_turtle_state_12.Parser_Turtle.ts_mode)
+    } in
+  let tps = make_trig_parse_state st in
+  let uu___ =
+    parse_trig_doc tps input Prims.int_zero RDF_Graph.empty_dataset fuel in
+  match uu___ with
+  | (ds, tps') ->
+      if tps'.has_error
+      then FStar_Pervasives_Native.None
+      else
+        FStar_Pervasives_Native.Some
+          (RDF_Graph_Executable.dataset_finalise ds)
+let parse_trig_with_base_lenient_12 (input : Prims.string)
+  (base : Prims.string) : RDF_Graph.rdf_dataset=
+  let len = Parser_FastString.fs_byte_length input in
+  let fuel = (len + Prims.int_one) * (Prims.of_int (3)) in
+  let st =
+    {
+      Parser_Turtle.prefixes =
+        (Parser_Turtle.empty_turtle_state_12.Parser_Turtle.prefixes);
+      Parser_Turtle.base_iri = base;
+      Parser_Turtle.bnode_counter =
+        (Parser_Turtle.empty_turtle_state_12.Parser_Turtle.bnode_counter);
+      Parser_Turtle.ts_mode =
+        (Parser_Turtle.empty_turtle_state_12.Parser_Turtle.ts_mode)
+    } in
+  let tps = make_trig_parse_state st in
+  let uu___ =
+    parse_trig_doc tps input Prims.int_zero RDF_Graph.empty_dataset fuel in
+  match uu___ with | (ds, uu___1) -> RDF_Graph_Executable.dataset_finalise ds
+let parse_trig_with_base_mode (mode : Parser_NTriples.rdf_syntax_mode)
+  (input : Prims.string) (base : Prims.string) :
+  RDF_Graph.rdf_dataset FStar_Pervasives_Native.option=
+  match mode with
+  | Parser_NTriples.Mode_11 -> parse_trig_with_base input base
+  | Parser_NTriples.Mode_12 -> parse_trig_with_base_12 input base
+let parse_trig_with_base_lenient_mode
+  (mode : Parser_NTriples.rdf_syntax_mode) (input : Prims.string)
+  (base : Prims.string) : RDF_Graph.rdf_dataset=
+  match mode with
+  | Parser_NTriples.Mode_11 -> parse_trig_with_base_lenient input base
+  | Parser_NTriples.Mode_12 -> parse_trig_with_base_lenient_12 input base

@@ -1,4 +1,11 @@
 open Prims
+type rdf_syntax_mode =
+  | Mode_11 
+  | Mode_12 
+let uu___is_Mode_11 (projectee : rdf_syntax_mode) : Prims.bool=
+  match projectee with | Mode_11 -> true | uu___ -> false
+let uu___is_Mode_12 (projectee : rdf_syntax_mode) : Prims.bool=
+  match projectee with | Mode_12 -> true | uu___ -> false
 let hex_val_opt (c : FStar_Char.char) :
   Prims.int FStar_Pervasives_Native.option=
   let code = FStar_Char.int_of_char c in
@@ -1974,3 +1981,8 @@ let parse_ntriples_strict_12 (input : Prims.string) :
   RDF_Triple.triple Prims.list FStar_Pervasives_Native.option=
   let len = Parser_FastString.fs_byte_length input in
   parse_ntriples_strict_12_acc input Prims.int_zero [] (len + Prims.int_one)
+let parse_ntriples_mode (mode : rdf_syntax_mode) (input : Prims.string) :
+  RDF_Triple.triple Prims.list FStar_Pervasives_Native.option=
+  match mode with
+  | Mode_11 -> parse_ntriples_strict input
+  | Mode_12 -> parse_ntriples_strict_12 input

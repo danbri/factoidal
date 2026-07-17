@@ -1,9 +1,9 @@
-* Warning 241 at RDF.Indexed.fsti(0,0-0,0):
-  - Unable to load RDF.Indexed.fsti.checked since checked file
-    RDF.Indexed.fsti.checked is stale (digest mismatch for RDF.Indexed.fsti);
-    will recheck RDF.Indexed.fsti (suppressing this warning for further modules)
+* Warning 241 at RDF.Graph.fsti(0,0-0,0):
+  - Unable to load RDF.Graph.fsti.checked since checked file
+    RDF.Graph.fsti.checked is stale (digest mismatch for RDF.Graph.fsti); will
+    recheck RDF.Graph.fsti (suppressing this warning for further modules)
 
-* Warning 328 at Parser.Turtle.fst(1530,4-1530,21):
+* Warning 328 at Parser.Turtle.fst(1711,4-1711,21):
   - Global binding
         'Parser.Turtle.parse_object_list'
     is recursive but not used in its body

@@ -86,10 +86,10 @@ COMMON_MODULES=(
   RDF_IRI
   SPARQL11_IRI_Resolve
   Parser_IRI
-  RDF_NQuads_Serialize
   Parser_Combinators
   Parser_TurtleScanner
   Parser_NTriples
+  RDF_NQuads_Serialize
   Parser_Turtle
   HDT_Container
   HDT_Dictionary

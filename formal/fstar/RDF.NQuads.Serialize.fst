@@ -134,6 +134,32 @@ let rec nq_term_to_string (t : rdf_term) : Tot string (decreases t) =
     "<<( " ^ subj_str ^ " <" ^ p ^ "> " ^ nq_term_to_string o ^ " )>>"
 
 // ---------------------------------------------------------------
+// Processing-mode guard (epic #305, wave 2).
+//
+// The serializer above is EMIT-MINIMAL: it renders `<<( )>>` and the
+// `--ltr`/`--rtl` direction suffix ONLY for terms that actually carry
+// a triple term or a base direction, so a purely-1.1 term is already
+// byte-identical in both modes. `nq_term_to_string_mode` adds the
+// honest-failure half of the contract: under Mode_11 a term that
+// requires RDF 1.2 lexical syntax returns None (a typed error the
+// caller must handle) instead of being silently emitted. Under
+// Mode_12 every term serializes.
+// ---------------------------------------------------------------
+
+let term_requires_rdf12 (t : rdf_term) : bool =
+  match t with
+  | T_TripleTerm _ _ _ -> true
+  | T_Literal l -> Some? l.direction
+  | _ -> false
+
+let nq_term_to_string_mode (mode : Parser.NTriples.rdf_syntax_mode) (t : rdf_term)
+  : option string =
+  match mode with
+  | Parser.NTriples.Mode_12 -> Some (nq_term_to_string t)
+  | Parser.NTriples.Mode_11 ->
+    if term_requires_rdf12 t then None else Some (nq_term_to_string t)
+
+// ---------------------------------------------------------------
 // nq_subject_to_string : serialize a subject (IRI or blank node).
 // ---------------------------------------------------------------
 

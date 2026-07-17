@@ -523,3 +523,44 @@ let parse_trig_with_base_lenient (input: string) (base: string) : rdf_dataset =
   let tps = make_trig_parse_state st in
   let (ds, _) = parse_trig_doc tps input 0 empty_dataset fuel in
   dataset_finalise ds
+
+(* ================================================================ *)
+(* RDF 1.2 TriG entry points (epic #305, wave 2).                   *)
+(*                                                                   *)
+(* TriG is Turtle-with-datasets; it threads a turtle_state through   *)
+(* trig_parse_state.ts, so seeding that state with Mode_12 unlocks   *)
+(* the object parser's `<<( )>>` triple terms and the literal        *)
+(* parser's `@lang--dir` directional strings inside every graph      *)
+(* block, with no TriG-specific grammar change. Same reifier /       *)
+(* annotation caveat as Turtle: `<< >>`, `~`, `{| |}` materialise    *)
+(* in a later wave.                                                  *)
+(* ================================================================ *)
+
+let parse_trig_with_base_12 (input: string) (base: string) : option rdf_dataset =
+  let len = fs_byte_length input in
+  let fuel = (len + 1) `op_Multiply` 3 in
+  let st = { empty_turtle_state_12 with base_iri = base } in
+  let tps = make_trig_parse_state st in
+  let (ds, tps') = parse_trig_doc tps input 0 empty_dataset fuel in
+  if tps'.has_error then None else Some (dataset_finalise ds)
+
+let parse_trig_with_base_lenient_12 (input: string) (base: string) : rdf_dataset =
+  let len = fs_byte_length input in
+  let fuel = (len + 1) `op_Multiply` 3 in
+  let st = { empty_turtle_state_12 with base_iri = base } in
+  let tps = make_trig_parse_state st in
+  let (ds, _) = parse_trig_doc tps input 0 empty_dataset fuel in
+  dataset_finalise ds
+
+// Mode-parametrised dispatchers.
+let parse_trig_with_base_mode (mode: rdf_syntax_mode) (input: string) (base: string)
+  : option rdf_dataset =
+  match mode with
+  | Mode_11 -> parse_trig_with_base input base
+  | Mode_12 -> parse_trig_with_base_12 input base
+
+let parse_trig_with_base_lenient_mode (mode: rdf_syntax_mode) (input: string) (base: string)
+  : rdf_dataset =
+  match mode with
+  | Mode_11 -> parse_trig_with_base_lenient input base
+  | Mode_12 -> parse_trig_with_base_lenient_12 input base

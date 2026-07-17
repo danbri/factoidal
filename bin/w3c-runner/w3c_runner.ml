@@ -195,6 +195,33 @@ let parse_trig_strict input base_opt =
   | Some base -> Parser_TriG.parse_trig_with_base input base
   | None -> Parser_TriG.parse_trig input
 
+(* ---- RDF 1.2 parser entry points (epic #305 wave 2) ----
+   Mode_12 variants: accept `<<( )>>` triple terms + `@lang--dir`
+   directional literals and reject the retired `<< >>` quoted-triple
+   form. Behind distinct entry points so the 1.1 path is byte-identical
+   (the mode is a real parameter carried through turtle_state / the
+   *_12 line parsers). Reifying triples / `~` / `{| |}` annotation
+   materialisation is a later wave. *)
+let parse_turtle_strict_12 input base =
+  Parser_Turtle.parse_turtle_with_base_strict_12 input base
+let parse_turtle_12 input base =
+  Parser_Turtle.parse_turtle_with_base_12 input base
+let parse_nquads_strict_12 input =
+  Parser_NQuads.parse_nquads_strict_12 input
+let parse_nquads_12 input =
+  Parser_NQuads.parse_nquads_12 input
+let parse_trig_strict_12 input base =
+  Parser_TriG.parse_trig_with_base_12 input base
+let parse_trig_lenient_12 input base =
+  Parser_TriG.parse_trig_with_base_lenient_12 input base
+(* Expected N-Triples for a 1.2 eval test: parse with the 1.2 strict
+   parser so triple terms / directional literals in the .nt oracle
+   survive (the 1.1 parser would drop `<<( )>>` lines). *)
+let parse_ntriples_expected_12 content =
+  match Parser_NTriples.parse_ntriples_strict_12 content with
+  | Some ts -> ts
+  | None -> []
+
 (* RDF vocabulary constants for manifest list traversal *)
 let rdf_first = "http://www.w3.org/1999/02/22-rdf-syntax-ns#first"
 let rdf_rest = "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest"
@@ -2952,6 +2979,111 @@ let run_rdf12_test assumed_base tc =
           | None -> Pass
           | Some _ -> Fail "Should reject (RDF 1.2) but parsed OK"
         with _ -> Pass))
+
+  (* ---- N-Quads 1.2 ---- *)
+  | "TestNQuadsPositiveSyntax" ->
+    (match read_file tc.query_file with
+     | None -> Skip "File missing"
+     | Some content ->
+       (try
+          match parse_nquads_strict_12 content with
+          | Some _ -> Pass
+          | None -> Fail "Should parse (RDF 1.2 N-Quads) but didn't"
+        with _ -> Fail "Should parse (RDF 1.2 N-Quads) but raised"))
+  | "TestNQuadsNegativeSyntax" ->
+    (match read_file tc.query_file with
+     | None -> Skip "File missing"
+     | Some content ->
+       (try
+          match parse_nquads_strict_12 content with
+          | None -> Pass
+          | Some _ -> Fail "Should reject (RDF 1.2 N-Quads) but parsed OK"
+        with _ -> Pass))
+
+  (* ---- Turtle 1.2 ---- *)
+  | "TestTurtlePositiveSyntax" ->
+    (match read_file tc.query_file with
+     | None -> Skip "File missing"
+     | Some content ->
+       (try
+          let base = make_turtle_base_tc assumed_base tc.manifest_dir tc.query_file in
+          match parse_turtle_strict_12 content base with
+          | Some _ -> Pass
+          | None -> Fail "Should parse (RDF 1.2 Turtle) but didn't"
+        with _ -> Fail "Should parse (RDF 1.2 Turtle) but raised"))
+  | "TestTurtleNegativeSyntax" ->
+    (match read_file tc.query_file with
+     | None -> Skip "File missing"
+     | Some content ->
+       (try
+          let base = make_turtle_base_tc assumed_base tc.manifest_dir tc.query_file in
+          match parse_turtle_strict_12 content base with
+          | None -> Pass
+          | Some _ -> Fail "Should reject (RDF 1.2 Turtle) but parsed OK"
+        with _ -> Pass))
+  | "TestTurtleEval" ->
+    (match read_file tc.query_file, tc.result_file with
+     | None, _ -> Skip "Input file missing"
+     | _, None -> Skip "No expected result file"
+     | Some input, Some rf ->
+       (match read_file rf with
+        | None -> Skip (Printf.sprintf "Result file missing: %s" rf)
+        | Some expected_content ->
+          (try
+            let base = make_turtle_base_tc assumed_base tc.manifest_dir tc.query_file in
+            let actual = parse_turtle_12 input base in
+            let expected = parse_ntriples_expected_12 expected_content in
+            if graphs_equal_strict tc.name expected actual then Pass
+            else
+              Fail (Printf.sprintf "Triples mismatch: expected %d, got %d"
+                      (List.length expected) (List.length actual))
+          with e ->
+            Fail (Printf.sprintf "Parse error: %s" (Printexc.to_string e)))))
+
+  (* ---- TriG 1.2 ---- *)
+  | "TestTrigPositiveSyntax" ->
+    (match read_file tc.query_file with
+     | None -> Skip "File missing"
+     | Some content ->
+       (try
+          let base = make_turtle_base_tc assumed_base tc.manifest_dir tc.query_file in
+          match parse_trig_strict_12 content base with
+          | Some _ -> Pass
+          | None -> Fail "Should parse (RDF 1.2 TriG) but didn't"
+        with _ -> Fail "Should parse (RDF 1.2 TriG) but raised"))
+  | "TestTrigNegativeSyntax" ->
+    (match read_file tc.query_file with
+     | None -> Skip "File missing"
+     | Some content ->
+       (try
+          let base = make_turtle_base_tc assumed_base tc.manifest_dir tc.query_file in
+          match parse_trig_strict_12 content base with
+          | None -> Pass
+          | Some _ -> Fail "Should reject (RDF 1.2 TriG) but parsed OK"
+        with _ -> Pass))
+  | "TestTrigEval" ->
+    (match read_file tc.query_file, tc.result_file with
+     | None, _ -> Skip "Input file missing"
+     | _, None -> Skip "No expected result file"
+     | Some input, Some rf ->
+       (match read_file rf with
+        | None -> Skip (Printf.sprintf "Result file missing: %s" rf)
+        | Some expected_content ->
+          (try
+            let base = make_turtle_base_tc assumed_base tc.manifest_dir tc.query_file in
+            let actual_ds = parse_trig_lenient_12 input base in
+            let expected_ds = parse_nquads_12 expected_content in
+            let actual_all = actual_ds.RDF_Graph_Executable.ds_default @
+              List.concat_map (fun ng -> ng.RDF_Graph_Executable.ng_graph) actual_ds.RDF_Graph_Executable.ds_named in
+            let expected_all = expected_ds.RDF_Graph_Executable.ds_default @
+              List.concat_map (fun ng -> ng.RDF_Graph_Executable.ng_graph) expected_ds.RDF_Graph_Executable.ds_named in
+            if datasets_equal_strict tc.name expected_ds actual_ds then Pass
+            else
+              Fail (Printf.sprintf "Quads mismatch: expected %d, got %d"
+                      (List.length expected_all) (List.length actual_all))
+          with e ->
+            Fail (Printf.sprintf "Parse error: %s" (Printexc.to_string e)))))
+
   | _ -> run_rdf_test assumed_base tc
 
 let run_rdf12_suite suite_name =
@@ -3026,7 +3158,11 @@ let () =
   if run_rdf12_mode then begin
     (* RDF 1.2 suites (epic #305 phase 1). Default: the N-Triples syntax
        suite (leaf manifest at rdf12/rdf-n-triples/syntax/manifest.ttl). *)
-    let rdf12_suites = if suite_args = [] then ["rdf-n-triples/syntax"] else suite_args in
+    let rdf12_suites = if suite_args = [] then
+        ["rdf-n-triples/syntax"; "rdf-n-quads/syntax";
+         "rdf-turtle/syntax"; "rdf-turtle/eval";
+         "rdf-trig/syntax"; "rdf-trig/eval"]
+      else suite_args in
     let (_, f, _, _) = run_and_tally run_rdf12_suite rdf12_suites
       "W3C RDF 1.2 Test Runner" rdf12_tests_base in
     if f > 0 then any_fail := true
