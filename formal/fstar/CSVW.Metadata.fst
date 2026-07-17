@@ -187,6 +187,10 @@ type csvw_column = {
   // has no consumer that needs the tag (display/labeling is out of
   // scope for csv2rdf/csv2json's own conformance signal).
   col_titles           : list string;
+  // Language-tagged titles (test148/149): same titles as col_titles but
+  // each paired with its explicit language tag (None = no explicit tag).
+  // Used only for language-aware column-name derivation.
+  col_titles_l         : list (string & option string);
   col_datatype         : option csvw_datatype;
   col_virtual          : option bool;
   col_suppress_output  : option bool;
@@ -373,6 +377,35 @@ let csvw_decode_titles (v:json_val) : list string =
   | JObject fields -> csvw_titles_fields fields
   | _ -> csvw_titles_value v
 
+// Language-aware titles decode (test148/149): pair each title with its
+// explicit language tag, if any. A bare string or a top-level array
+// element carries NO explicit language (None) — it inherits the
+// metadata @context @language (und, absent here). A language-map object
+// attaches the field key as the title's language (Some key). Column-name
+// derivation (CSVW.Conversion) keeps only titles whose language matches
+// the table default language, so a title tagged with a non-matching
+// language contributes no name (the column falls to positional _col.N).
+let csvw_titles_value_l (lang:option string) (v:json_val)
+  : list (string & option string) =
+  match v with
+  | JString s -> [(s, lang)]
+  | JArray items ->
+    List.Tot.concatMap
+      (fun (item:json_val) -> match item with | JString s -> [(s, lang)] | _ -> [])
+      items
+  | _ -> []
+
+let rec csvw_titles_fields_l (fields:list (string & json_val))
+  : Tot (list (string & option string)) (decreases fields) =
+  match fields with
+  | [] -> []
+  | (k, v) :: tl -> csvw_titles_value_l (Some k) v @ csvw_titles_fields_l tl
+
+let csvw_decode_titles_l (v:json_val) : list (string & option string) =
+  match v with
+  | JObject fields -> csvw_titles_fields_l fields
+  | _ -> csvw_titles_value_l None v
+
 // ================================================================
 // Datatype decode
 // ================================================================
@@ -541,6 +574,10 @@ let csvw_decode_column (v:json_val) : option csvw_column =
       match json_get_field "titles" v with
       | Some tv -> csvw_decode_titles tv
       | None -> [] in
+    let titles_l =
+      match json_get_field "titles" v with
+      | Some tv -> csvw_decode_titles_l tv
+      | None -> [] in
     let datatype =
       match json_get_field "datatype" v with
       | Some dv -> (match csvw_decode_datatype dv with
@@ -550,6 +587,7 @@ let csvw_decode_column (v:json_val) : option csvw_column =
     Some ({
       col_name             = json_get_string "name" v;
       col_titles           = titles;
+      col_titles_l         = titles_l;
       col_datatype         = datatype;
       col_virtual          = json_get_bool "virtual" v;
       col_suppress_output  = json_get_bool "suppressOutput" v;
