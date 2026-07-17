@@ -54,6 +54,16 @@ and a tracker) · **environment(what)** (a checkout/toolchain gap, not
 an engine defect) · **by-design(why)** (deliberately out of scope, the
 processor's behavior is correct).
 
+**Capability-existence rule (added 2026-07-17, owner escalation on the
+`namespace::` axis).** `disputed-fixture` and `by-design` may only be
+applied when the underlying capability EXISTS; a missing feature is
+always **planned-family**/gap, stated as such. Labelling a hole
+"implementation-defined" or "disputed fixture" implies the processor
+made a *correct choice among valid behaviours* — false when it produces
+nothing because the feature was never built. Full re-audit + the
+XPath/XSLT spec-derived coverage matrix that prompted this rule:
+[`docs/designissues/2026-07-17-xpath-xslt-coverage-matrix.md`](../designissues/2026-07-17-xpath-xslt-coverage-matrix.md).
+
 Scores below are cross-checked against `git merge-base --is-ancestor`
 on this worktree's HEAD (`1e152504`) — a score is reported as "landed"
 only when its source commit is a verified ancestor. Suites with zero
@@ -85,7 +95,7 @@ disposition.
 | ShEx validation | 1181 pass, 1 fail (out of 1182) | ✅ per `tests/shex-shexj-twins/README.md` |
 | tests_unit | dashboard: 35 pass, 6 fail (out of 41) — stale; this session's fresh run: 45 pass, 0 fail (out of 45) | ✅ dispositioned as environment; dashboard needs republish |
 | xml_conformance | 1414 pass, 0 fail, 1171 skip (out of 2585) | ✅ fully dispositioned (runner's own "HONEST BREAKDOWN") |
-| XSLT 1.0 | 87 pass, 1 fail (out of 88) [2026-07-17, DTD-ID id() + document("") landed (id-016, namespace-4801 flipped green); sole residual node-1601 is dispositioned (implementation-defined namespace-node order / unmodeled `namespace::` axis)] | ✅ landed |
+| XSLT 1.0 | 87 pass, 1 fail (out of 88) [2026-07-17, DTD-ID id() + document("") landed (id-016, namespace-4801 flipped green); sole residual node-1601 is **planned-family**(#302, branch `xslt-namespace-nodes`)/gap — the `namespace::` axis is UNMODELED (Parser.XML has no namespace-node kind), so `namespace::node()` selects nothing and the output is `<NSlist/>`; this is a missing feature, NOT "implementation-defined namespace-node order" (capability-existence rule, above). See the coverage matrix.] | 🟡 gap named |
 
 ### CSVW csv2rdf — 264 pass, 6 fail (out of 270)
 
