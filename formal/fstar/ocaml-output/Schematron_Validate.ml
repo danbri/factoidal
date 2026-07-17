@@ -259,7 +259,8 @@ let sch_eval (it : XPath_Eval.xctx_item)
           XPath_Eval.env_pos = Prims.int_one;
           XPath_Eval.env_size = Prims.int_one;
           XPath_Eval.env_vars = vars;
-          XPath_Eval.env_nsctx = []
+          XPath_Eval.env_nsctx = [];
+          XPath_Eval.env_doc_kids = []
         } in
       FStar_Pervasives_Native.Some (XPath_Eval.eval_expr fuel env e)
 let context_matches (ctx : Prims.string)

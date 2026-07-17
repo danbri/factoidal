@@ -323,9 +323,20 @@ let item_to_rnode (it:xctx_item) : rnode =
 (* root element.                                                       *)
 (* ================================================================ *)
 
+// A D_Doc carries the document node's root element (its string value and
+// legacy absolute-path base) AND the document node's full ordered child
+// list `doc_kids` (prolog Comment/PI Misc, root element, epilog Misc), as
+// retained by Parser.XML.parse_xml_document_children. When `doc_kids` is
+// just the root (no prolog/epilog Misc -- every document GRDDL and the
+// legacy `transform` entry produce), the node behaves exactly as before.
 noeq type dnode =
-  | D_Doc  : xml_node -> dnode
+  | D_Doc  : xml_node -> list xml_node -> dnode
   | D_Item : xctx_item -> dnode
+
+// True when the document node has children beyond the root element, i.e.
+// prolog/epilog Comment/PI Misc that the document-node model must expose.
+let doc_has_misc (doc_kids:list xml_node) : bool =
+  match doc_kids with [] -> false | [_] -> false | _ -> true
 
 // XPath context item for a driver node. The document node presents to
 // the XPath engine as its root element (ancestors empty), so absolute
@@ -336,14 +347,21 @@ noeq type dnode =
 // wrapper would otherwise leak an empty-tag element into copy-of ".").
 let dnode_ci (nd:dnode) : xctx_item =
   match nd with
-  | D_Doc root -> CI_Elem [] [] root
+  | D_Doc root _ -> CI_Elem [] [] root
   | D_Item it -> it
 
 // The children of a driver node, in document order, as driver nodes --
-// the default node-set for xsl:apply-templates with no select.
+// the default node-set for xsl:apply-templates with no select. For a
+// document node WITH prolog/epilog Misc, that child list is the prolog
+// Misc, the root element, then the epilog Misc (the identity transform's
+// built-in rule then copies a leading comment -- copy-2601); WITHOUT it,
+// the single root element, exactly as before.
 let dnode_children (nd:dnode) : list dnode =
   match nd with
-  | D_Doc root -> [D_Item (CI_Elem [] [] root)]
+  | D_Doc root doc_kids ->
+    if doc_has_misc doc_kids
+    then List.Tot.map (fun it -> D_Item it) (doc_child_items doc_kids)
+    else [D_Item (CI_Elem [] [] root)]
   | D_Item (CI_Elem p anc n) -> List.Tot.map (fun it -> D_Item it) (child_items p anc n)
   | D_Item _ -> []
 
@@ -351,7 +369,10 @@ let dnode_children (nd:dnode) : list dnode =
 // basis of the child-union select fast path (see select_child_union).
 let dnode_attrs_and_kids (nd:dnode) : (list xctx_item & list xctx_item) =
   match nd with
-  | D_Doc root -> ([], [CI_Elem [] [] root])
+  | D_Doc root doc_kids ->
+    if doc_has_misc doc_kids
+    then ([], doc_child_items doc_kids)
+    else ([], [CI_Elem [] [] root])
   | D_Item (CI_Elem p anc n) -> (attribute_items p anc n, child_items p anc n)
   | D_Item _ -> ([], [])
 
@@ -471,7 +492,7 @@ let eval_val (ctx:xctx_item) (pos:nat) (size:nat) (vars:list (string & xp_value)
   | Some e ->
     let doc_nodes = xml_node_count (root_of_item ctx) in
     let fuel = initial_eval_fuel e doc_nodes in
-    let env = { env_item = ctx; env_pos = pos; env_size = size; env_vars = vars; env_nsctx = nsctx } in
+    let env = { env_item = ctx; env_pos = pos; env_size = size; env_vars = vars; env_nsctx = nsctx; env_doc_kids = [] } in
     eval_expr fuel env e
 
 let eval_string (ctx:xctx_item) (pos size:nat) (vars) (nsctx:list (string & string)) (expr_text:string) : string =
@@ -518,14 +539,18 @@ let eval_val_dn (ctx:dnode) (pos size:nat) (vars:list (string & xp_value)) (nsct
   : xp_value =
   match ctx with
   | D_Item it -> eval_val it pos size vars nsctx expr_text
-  | D_Doc root ->
+  | D_Doc root doc_kids ->
     (match parse_xpath expr_text with
      | None -> XV_Str ""
      | Some e ->
        let e2 = force_abs e in
        let doc_nodes = xml_node_count root in
        let fuel = initial_eval_fuel e2 doc_nodes in
-       let env = { env_item = CI_Elem [] [] root; env_pos = pos; env_size = size; env_vars = vars; env_nsctx = nsctx } in
+       // env_doc_kids carries the document node's children so an absolute
+       // path (force_abs made every top-level path absolute) resolves
+       // against the true document node when prolog/epilog Misc are
+       // present -- `//comment()` reaches a prolog comment (select-1001).
+       let env = { env_item = CI_Elem [] [] root; env_pos = pos; env_size = size; env_vars = vars; env_nsctx = nsctx; env_doc_kids = doc_kids } in
        eval_expr fuel env e2)
 
 let eval_string_dn (ctx:dnode) (pos size:nat) (vars) (nsctx:list (string & string)) (expr_text:string) : string =
@@ -730,7 +755,7 @@ let pi_test_target (a:string) : option string =
 
 let alt_matches_core (nsctx:list (string & string)) (alt:string) (nd:dnode) : bool =
   let a = trim_str alt in
-  if a = "/" then (match nd with D_Doc _ -> true | _ -> false)
+  if a = "/" then (match nd with D_Doc _ _ -> true | _ -> false)
   else if a = "*" then (match nd with D_Item (CI_Elem _ _ _) -> true | _ -> false)
   else if a = "@*" then (match nd with D_Item (CI_Attr _ _ _ _) -> true | _ -> false)
   else if a = "text()" then (match nd with D_Item (CI_Text _ _ _ _) -> true | _ -> false)
@@ -882,7 +907,7 @@ let alt_matches (vars:list (string & xp_value)) (nsctx:list (string & string)) (
     if not (alt_matches_core nsctx namepart nd) then false
     else
       match nd with
-      | D_Doc _ -> eval_bool (dnode_ci nd) 1 1 vars nsctx pred
+      | D_Doc _ _ -> eval_bool (dnode_ci nd) 1 1 vars nsctx pred
       | D_Item it ->
         let (p, s) = match_proximity nsctx namepart it in
         eval_bool it p s vars nsctx pred
@@ -1264,7 +1289,7 @@ and builtin_rule (fuel:nat) (st:xstyle) (nd:dnode) (mode:string) : Tot (list rno
   if fuel = 0 then []
   else
     match nd with
-    | D_Doc _ ->
+    | D_Doc _ _ ->
       let kids = dnode_children nd in
       apply_list (fuel - 1) st kids 1 (List.Tot.length kids) mode
     | D_Item (CI_Elem _ _ _) ->
@@ -1516,7 +1541,7 @@ and instantiate_copy (fuel:nat) (st:xstyle) (ctx:dnode) (pos size:nat)
   if fuel = 0 then []
   else
     match ctx with
-    | D_Doc _ -> instantiate_seq (fuel - 1) st ctx pos size vars rtf children
+    | D_Doc _ _ -> instantiate_seq (fuel - 1) st ctx pos size vars rtf children
     | D_Item (CI_Elem _ anc n) ->
       (match n with
        | XElement t _ _ ->
@@ -1615,7 +1640,7 @@ let rec build_nsctx (attrs:list xml_attribute) : Tot (list (string & string)) (d
 // a `data` CHILD of `<data>` and returned the empty node-set, so
 // `for-each select="$var"` over such a global silently produced nothing
 // (namespace-1701).
-let rec collect_globals (pfx:string) (nsctx:list (string & string)) (children:list xml_node) (source:xml_node)
+let rec collect_globals (pfx:string) (nsctx:list (string & string)) (children:list xml_node) (source:xml_node) (doc_kids:list xml_node)
   : Tot (list (string & xp_value)) (decreases children) =
   match children with
   | [] -> []
@@ -1626,11 +1651,11 @@ let rec collect_globals (pfx:string) (nsctx:list (string & string)) (children:li
           (let ln = xsl_instr pfx tag in ln = "variable" || ln = "param") then
          (match attr_opt "select" attrs, attr_opt "name" attrs with
           | Some sel, Some nm ->
-            let v = eval_val_dn (D_Doc source) 1 1 [] nsctx sel in
-            (nm, v) :: collect_globals pfx nsctx tl source
-          | _, _ -> collect_globals pfx nsctx tl source)
-       else collect_globals pfx nsctx tl source
-     | _ -> collect_globals pfx nsctx tl source)
+            let v = eval_val_dn (D_Doc source doc_kids) 1 1 [] nsctx sel in
+            (nm, v) :: collect_globals pfx nsctx tl source doc_kids
+          | _, _ -> collect_globals pfx nsctx tl source doc_kids)
+       else collect_globals pfx nsctx tl source doc_kids
+     | _ -> collect_globals pfx nsctx tl source doc_kids)
 
 // Parse a whitespace-separated prefix list (exclude-result-prefixes).
 // "#default" designates the default namespace (prefix "").
@@ -1680,7 +1705,7 @@ let build_nsscope (attrs:list xml_attribute) : list xml_attribute =
          | Some pfx -> a.attr_value <> xslt_ns && not (mem_str pfx excluded))
       attrs)
 
-let build_style (stylesheet:xml_node) (source:xml_node) : xstyle =
+let build_style (stylesheet:xml_node) (source:xml_node) (doc_kids:list xml_node) : xstyle =
   match stylesheet with
   | XElement tag attrs children ->
     let pfx = xsl_prefix_of stylesheet in
@@ -1690,7 +1715,7 @@ let build_style (stylesheet:xml_node) (source:xml_node) : xstyle =
       { xs_pfx = pfx;
         xs_templates = collect_templates pfx children;
         xs_method = find_output_method pfx children;
-        xs_globals = collect_globals pfx nsctx children source;
+        xs_globals = collect_globals pfx nsctx children source doc_kids;
         xs_nsscope = build_nsscope attrs;
         xs_nsctx = nsctx }
     else
@@ -1707,17 +1732,53 @@ let build_style (stylesheet:xml_node) (source:xml_node) : xstyle =
   | _ ->
     { xs_pfx = "xsl"; xs_templates = []; xs_method = "xml"; xs_globals = []; xs_nsscope = []; xs_nsctx = [] }
 
+// The root element among a document node's children (the single element
+// child; XML well-formedness guarantees exactly one). Used to recover the
+// legacy `source` root from the full child list for transform_doc.
+let rec doc_root_elem (doc_kids:list xml_node) : Tot (option xml_node) (decreases doc_kids) =
+  match doc_kids with
+  | [] -> None
+  | (XElement t a c) :: _ -> Some (XElement t a c)
+  | _ :: tl -> doc_root_elem tl
+
+let rec xml_nodes_count_sum (ns:list xml_node) : Tot nat (decreases ns) =
+  match ns with
+  | [] -> 0
+  | hd :: tl -> xml_node_count hd + xml_nodes_count_sum tl
+
 (* ================================================================ *)
 (* Entry point.                                                       *)
 (* ================================================================ *)
 
+// Legacy entry: `source` is the root element alone (the document node has
+// no prolog/epilog Misc). GRDDL and the js/npm bridge use this; behavior
+// is byte-for-byte what it was before the document-node model existed.
 let transform (stylesheet:xml_node) (source:xml_node) : string =
-  let st = build_style stylesheet source in
+  let st = build_style stylesheet source [source] in
   // Fuel: generous multiple of the combined tree sizes -- every
   // apply-templates / instantiate step consumes one unit.
   let sz = xml_node_count stylesheet + xml_node_count source in
   let fuel = op_Multiply (sz + 1) 256 + 100000 in
-  let result = dispatch fuel st (D_Doc source) 1 1 "" in
+  let result = dispatch fuel st (D_Doc source [source]) 1 1 "" in
   let nodes = only_nodes result in
   if st.xs_method = "text" then text_value_nodes nodes
   else serialize_nodes [] nodes
+
+// Document-node aware entry: `source_kids` is the full ordered child list
+// of the source document node (prolog Comment/PI Misc, root element,
+// epilog Misc), from Parser.XML.parse_xml_document_children. The XSLT
+// document node then exposes those Misc nodes, so `//comment()` reaches a
+// prolog comment (select-1001) and the identity transform copies a leading
+// comment (copy-2601). With no Misc (source_kids = [root]) it reduces to
+// `transform` exactly.
+let transform_doc (stylesheet:xml_node) (source_kids:list xml_node) : string =
+  match doc_root_elem source_kids with
+  | None -> ""
+  | Some root ->
+    let st = build_style stylesheet root source_kids in
+    let sz = xml_node_count stylesheet + xml_nodes_count_sum source_kids in
+    let fuel = op_Multiply (sz + 1) 256 + 100000 in
+    let result = dispatch fuel st (D_Doc root source_kids) 1 1 "" in
+    let nodes = only_nodes result in
+    if st.xs_method = "text" then text_value_nodes nodes
+    else serialize_nodes [] nodes

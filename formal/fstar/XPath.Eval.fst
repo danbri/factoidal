@@ -671,6 +671,32 @@ let all_document_items (it:xctx_item) : list xctx_item =
   let root = root_of_item it in
   CI_Elem [] [] root :: descendant_items [] [] root
 
+// The document node modelled as a real node. XML has no in-tree value
+// for the document node, so `doc_node_of` synthesises a tagless element
+// whose children ARE the document node's children (`doc_kids` = prolog
+// Comment/PI Misc, root element, epilog Comment/PI Misc). It is used only
+// as the starting context of an absolute location path evaluated from the
+// document node (eval_absolute_steps' doc-frame branch): its child axis
+// yields the prolog/epilog Misc plus the root element, so `//comment()`
+// reaches a prolog comment and `/child::name` reaches the root element as
+// a child of the document node. Under this frame the root element sits at
+// path [i] (its index among the document node's children) rather than [],
+// which is the price of representing the document node's OTHER children at
+// all -- paths stay mutually consistent, so document-order sort still
+// works. The synthetic element never leaves eval_absolute_steps.
+let doc_node_of (doc_kids:list xml_node) : xctx_item =
+  CI_Elem [] [] (XElement "" [] doc_kids)
+
+// The document node's children as items in document order -- used by the
+// XSLT layer (dnode_children / dnode_attrs_and_kids) for a `D_Doc` context
+// so the built-in / identity template processes prolog Comment/PI Misc,
+// the root element, then epilog Misc (copy-2601). The root element carries
+// no ancestors (it IS the outermost element); Comment/PI parents point at
+// the synthetic document element, whose only observable use is a Misc
+// node's string value, which is the Misc node's own text regardless.
+let doc_child_items (doc_kids:list xml_node) : list xctx_item =
+  children_with_paths [] [] (XElement "" [] doc_kids) doc_kids 0
+
 // following axis: nodes after the context node in document order,
 // excluding its descendants (XPath 1.0 §2.2). Ancestors sort before
 // the context node so are excluded by the path_compare > 0 test.
@@ -724,6 +750,15 @@ noeq type xp_env = {
   // name tests in this expression (XPath 1.0 §2.3). [] = no context
   // (name tests fall back to legacy textual comparison).
   env_nsctx : list (string & string);
+  // The document node's ordered children, when this expression is being
+  // evaluated FROM the document node (XSLT's D_Doc context): the prolog
+  // Comment/PI Misc, the root element, then the epilog Comment/PI Misc.
+  // Empty (or a singleton root) means "legacy: the root element stands in
+  // for the document node" -- prolog/epilog Misc are then invisible, as
+  // they were before this field existed, so every other caller sets it to
+  // [] and keeps byte-identical behavior. Only an absolute location path
+  // reads it (see eval_absolute_steps), so a relative context never cares.
+  env_doc_kids : list xml_node;
 }
 
 let lookup_var (vars:list (string & xp_value)) (name:string) : option xp_value =
@@ -1078,7 +1113,7 @@ let rec eval_expr (fuel:nat) (env:xp_env) (e:xp_expr) : Tot xp_value (decreases 
        | _, _ -> XV_Nodes [])
     | XE_FunCall name args -> eval_funcall (fuel - 1) env name args
     | XE_Path absolute steps ->
-      if absolute then XV_Nodes (eval_absolute_steps (fuel - 1) env.env_vars env.env_nsctx (root_of_item env.env_item) steps)
+      if absolute then XV_Nodes (eval_absolute_steps (fuel - 1) env.env_vars env.env_nsctx (root_of_item env.env_item) env.env_doc_kids steps)
       else XV_Nodes (eval_steps (fuel - 1) env.env_vars env.env_nsctx [env.env_item] steps)
     | XE_FilterPath primary preds steps ->
       let pv = eval_expr (fuel - 1) env primary in
@@ -1096,9 +1131,27 @@ let rec eval_expr (fuel:nat) (env:xp_env) (e:xp_expr) : Tot xp_value (decreases 
 // practically-useful reading of `/tagName`, at the cost of `name(/)`
 // returning the root's own tag rather than strict XPath 1.0's empty
 // document-node name (disclosed divergence).
-and eval_absolute_steps (fuel:nat) (vars:list (string & xp_value)) (nsctx:list (string & string)) (root_node:xml_node) (steps:list xp_step)
+and eval_absolute_steps (fuel:nat) (vars:list (string & xp_value)) (nsctx:list (string & string)) (root_node:xml_node) (doc_kids:list xml_node) (steps:list xp_step)
   : Tot (list xctx_item) (decreases fuel) =
   if fuel = 0 then []
+  // Doc-frame branch: when the document node has children BEYOND the root
+  // element (prolog/epilog Comment/PI Misc were retained by
+  // Parser.XML.parse_xml_document_children and threaded here via
+  // env_doc_kids), model the document node as a real starting context
+  // (`doc_node_of doc_kids`) and evaluate the whole absolute path from it
+  // with the ordinary relative-step machinery. `//comment()` then reaches
+  // prolog/epilog comments (child::comment() of the document node), and
+  // `/name` reaches the root element as a child of the document node --
+  // no root-as-self special-case needed, because the document node's real
+  // child axis already exposes the root element. Only reachable for the
+  // rare document carrying prolog/epilog Misc; every other document takes
+  // the legacy branch below (root_node stands in for the document node),
+  // byte-for-byte unchanged.
+  else if (match doc_kids with [] -> false | [_] -> false | _ -> true) then
+    (let doc_node = doc_node_of doc_kids in
+     match steps with
+     | [] -> [doc_node]
+     | _ -> eval_steps (fuel - 1) vars nsctx [doc_node] steps)
   else
     let root_item = CI_Elem [] [] root_node in
     match steps with
@@ -1197,7 +1250,7 @@ and filter_one_pred (fuel:nat) (vars:list (string & xp_value)) (nsctx:list (stri
     match items with
     | [] -> []
     | it :: rest ->
-      let e = { env_item = it; env_pos = pos; env_size = size; env_vars = vars; env_nsctx = nsctx } in
+      let e = { env_item = it; env_pos = pos; env_size = size; env_vars = vars; env_nsctx = nsctx; env_doc_kids = [] } in
       let v = eval_expr (fuel - 1) e p in
       let keep =
         match v with
@@ -1386,7 +1439,7 @@ let eval_xpath_from_root (root_node:xml_node) (vars:list (string & xp_value)) (e
   | None -> None
   | Some e ->
     let fuel = initial_eval_fuel e (xml_node_count root_node) in
-    let env = { env_item = CI_Elem [] [] root_node; env_pos = 1; env_size = 1; env_vars = vars; env_nsctx = [] } in
+    let env = { env_item = CI_Elem [] [] root_node; env_pos = 1; env_size = 1; env_vars = vars; env_nsctx = []; env_doc_kids = [] } in
     Some (eval_expr fuel env e)
 
 // Evaluate with an arbitrary context node deeper in the document,
@@ -1401,5 +1454,5 @@ let eval_xpath_from_item (ancestors:list xml_node) (context_node:xml_node) (vars
     let doc_nodes = xml_node_count context_node + xml_nodes_count ancestors in
     let fuel = initial_eval_fuel e doc_nodes in
     let env = { env_item = CI_Elem (compute_ctx_path ancestors context_node) ancestors context_node;
-                env_pos = 1; env_size = 1; env_vars = vars; env_nsctx = [] } in
+                env_pos = 1; env_size = 1; env_vars = vars; env_nsctx = []; env_doc_kids = [] } in
     Some (eval_expr fuel env e)

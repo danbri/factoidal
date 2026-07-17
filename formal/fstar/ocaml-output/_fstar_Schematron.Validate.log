@@ -1,14 +1,3 @@
-* Warning 241 at Parser.XPath.fst(0,0-0,0):
-  - Unable to load Parser.XPath.fst.checked since checked file
-    Parser.XPath.fst.checked does not exist; will recheck Parser.XPath.fst
-    (suppressing this warning for further modules)
-
 Extracted module Schematron.Validate
-* Warning 247 at Schematron.Validate.fst(0,0-0,0):
-  - Checked file Schematron.Validate.fst.checked was not written.
-  - Reason:
-      checked file Parser.XML.fst.checked is stale (digest mismatch for
-      Parser.XML.fst)
-
 Verified module: Schematron.Validate
 All verification conditions discharged successfully

@@ -165,10 +165,14 @@ let run_one base_dir e : outcome =
     (match Parser_XML.parse_xml_document sty_s with
      | FStar_Pervasives_Native.None -> Skip "stylesheet did not parse (Parser_XML)"
      | FStar_Pervasives_Native.Some sty ->
-       (match Parser_XML.parse_xml_document src_s with
+       (* Source parsed with the document-node aware entry so prolog/epilog
+          comments+PIs (children of the document node) survive: transform_doc
+          exposes them to //comment() and the identity transform. Plumbing
+          only -- all XSLT semantics live in XSLT_Transform. *)
+       (match Parser_XML.parse_xml_document_children src_s with
         | FStar_Pervasives_Native.None -> Skip "source did not parse (Parser_XML)"
-        | FStar_Pervasives_Native.Some src ->
-          let actual = XSLT_Transform.transform sty src in
+        | FStar_Pervasives_Native.Some src_kids ->
+          let actual = XSLT_Transform.transform_doc sty src_kids in
           if normalize_exact actual = normalize_exact exp_s then Pass_exact
           else if normalize_loose actual = normalize_loose exp_s then Pass_loose
           else
@@ -232,9 +236,9 @@ let () =
         let exp = read_file (Filename.concat base_dir e.expected) in
         (match sty, src, exp with
          | Some sty_s, Some src_s, Some exp_s ->
-           (match Parser_XML.parse_xml_document sty_s, Parser_XML.parse_xml_document src_s with
+           (match Parser_XML.parse_xml_document sty_s, Parser_XML.parse_xml_document_children src_s with
             | FStar_Pervasives_Native.Some s, FStar_Pervasives_Native.Some d ->
-              let a = XSLT_Transform.transform s d in
+              let a = XSLT_Transform.transform_doc s d in
               Printf.printf "=== GOT (normalize_exact) ===\n%s\n=== WANT (normalize_exact) ===\n%s\n"
                 (normalize_exact a) (normalize_exact exp_s);
               Printf.printf "=== equal-exact:%b equal-loose:%b ===\n"

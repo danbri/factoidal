@@ -771,6 +771,12 @@ let root_of_item (it : xctx_item) : Parser_XML.xml_node=
 let all_document_items (it : xctx_item) : xctx_item Prims.list=
   let root = root_of_item it in (CI_Elem ([], [], root)) ::
     (descendant_items [] [] root)
+let doc_node_of (doc_kids : Parser_XML.xml_node Prims.list) : xctx_item=
+  CI_Elem ([], [], (Parser_XML.XElement ("", [], doc_kids)))
+let doc_child_items (doc_kids : Parser_XML.xml_node Prims.list) :
+  xctx_item Prims.list=
+  children_with_paths [] [] (Parser_XML.XElement ("", [], doc_kids)) doc_kids
+    Prims.int_zero
 let following_axis (it : xctx_item) : xctx_item Prims.list=
   let p = item_path it in
   FStar_List_Tot_Base.filter
@@ -828,24 +834,35 @@ type xp_env =
   env_pos: Prims.nat ;
   env_size: Prims.nat ;
   env_vars: (Prims.string * xp_value) Prims.list ;
-  env_nsctx: (Prims.string * Prims.string) Prims.list }
+  env_nsctx: (Prims.string * Prims.string) Prims.list ;
+  env_doc_kids: Parser_XML.xml_node Prims.list }
 let __proj__Mkxp_env__item__env_item (projectee : xp_env) : xctx_item=
   match projectee with
-  | { env_item; env_pos; env_size; env_vars; env_nsctx;_} -> env_item
+  | { env_item; env_pos; env_size; env_vars; env_nsctx; env_doc_kids;_} ->
+      env_item
 let __proj__Mkxp_env__item__env_pos (projectee : xp_env) : Prims.nat=
   match projectee with
-  | { env_item; env_pos; env_size; env_vars; env_nsctx;_} -> env_pos
+  | { env_item; env_pos; env_size; env_vars; env_nsctx; env_doc_kids;_} ->
+      env_pos
 let __proj__Mkxp_env__item__env_size (projectee : xp_env) : Prims.nat=
   match projectee with
-  | { env_item; env_pos; env_size; env_vars; env_nsctx;_} -> env_size
+  | { env_item; env_pos; env_size; env_vars; env_nsctx; env_doc_kids;_} ->
+      env_size
 let __proj__Mkxp_env__item__env_vars (projectee : xp_env) :
   (Prims.string * xp_value) Prims.list=
   match projectee with
-  | { env_item; env_pos; env_size; env_vars; env_nsctx;_} -> env_vars
+  | { env_item; env_pos; env_size; env_vars; env_nsctx; env_doc_kids;_} ->
+      env_vars
 let __proj__Mkxp_env__item__env_nsctx (projectee : xp_env) :
   (Prims.string * Prims.string) Prims.list=
   match projectee with
-  | { env_item; env_pos; env_size; env_vars; env_nsctx;_} -> env_nsctx
+  | { env_item; env_pos; env_size; env_vars; env_nsctx; env_doc_kids;_} ->
+      env_nsctx
+let __proj__Mkxp_env__item__env_doc_kids (projectee : xp_env) :
+  Parser_XML.xml_node Prims.list=
+  match projectee with
+  | { env_item; env_pos; env_size; env_vars; env_nsctx; env_doc_kids;_} ->
+      env_doc_kids
 let lookup_var (vars : (Prims.string * xp_value) Prims.list)
   (name : Prims.string) : xp_value FStar_Pervasives_Native.option=
   match FStar_List_Tot_Base.find
@@ -1211,7 +1228,8 @@ let rec eval_expr (fuel : Prims.nat) (env : xp_env)
          then
            XV_Nodes
              (eval_absolute_steps (fuel - Prims.int_one) env.env_vars
-                env.env_nsctx (root_of_item env.env_item) steps)
+                env.env_nsctx (root_of_item env.env_item) env.env_doc_kids
+                steps)
          else
            XV_Nodes
              (eval_steps (fuel - Prims.int_one) env.env_vars env.env_nsctx
@@ -1233,60 +1251,76 @@ let rec eval_expr (fuel : Prims.nat) (env : xp_env)
 and eval_absolute_steps (fuel : Prims.nat)
   (vars : (Prims.string * xp_value) Prims.list)
   (nsctx : (Prims.string * Prims.string) Prims.list)
-  (root_node : Parser_XML.xml_node) (steps : Parser_XPath.xp_step Prims.list)
-  : xctx_item Prims.list=
+  (root_node : Parser_XML.xml_node)
+  (doc_kids : Parser_XML.xml_node Prims.list)
+  (steps : Parser_XPath.xp_step Prims.list) : xctx_item Prims.list=
   if fuel = Prims.int_zero
   then []
   else
-    (let root_item = CI_Elem ([], [], root_node) in
-     match steps with
-     | [] -> [root_item]
-     | s::rest ->
-         let expansion =
-           match s.Parser_XPath.step_axis with
-           | Parser_XPath.Ax_Child ->
-               filter_by_node_test nsctx s.Parser_XPath.step_test [root_item]
-           | Parser_XPath.Ax_Self ->
-               filter_by_node_test nsctx s.Parser_XPath.step_test [root_item]
-           | Parser_XPath.Ax_Descendant ->
-               filter_by_node_test nsctx s.Parser_XPath.step_test
-                 (descendant_items [] [] root_node)
-           | Parser_XPath.Ax_DescendantOrSelf ->
-               filter_by_node_test nsctx s.Parser_XPath.step_test (root_item
-                 :: (descendant_items [] [] root_node))
-           | Parser_XPath.Ax_Attribute ->
-               filter_by_node_test nsctx s.Parser_XPath.step_test
-                 (apply_axis Parser_XPath.Ax_Attribute root_item)
-           | uu___1 -> [] in
-         let kept =
-           filter_items_by_preds (fuel - Prims.int_one) vars nsctx expansion
-             s.Parser_XPath.step_preds in
-         let normal = eval_steps (fuel - Prims.int_one) vars nsctx kept rest in
-         if
-           ((s.Parser_XPath.step_axis = Parser_XPath.Ax_DescendantOrSelf) &&
-              (s.Parser_XPath.step_test = Parser_XPath.NT_Node))
-             && (Prims.uu___is_Nil s.Parser_XPath.step_preds)
-         then
-           (match rest with
-            | nxt::rest2 ->
-                if nxt.Parser_XPath.step_axis = Parser_XPath.Ax_Child
-                then
-                  let root_as_child =
-                    if
-                      matches_node_test nsctx nxt.Parser_XPath.step_test
-                        root_item
-                    then [root_item]
-                    else [] in
-                  let root_as_child' =
-                    filter_items_by_preds (fuel - Prims.int_one) vars nsctx
-                      root_as_child nxt.Parser_XPath.step_preds in
-                  let extra =
-                    eval_steps (fuel - Prims.int_one) vars nsctx
-                      root_as_child' rest2 in
-                  FStar_List_Tot_Base.op_At extra normal
-                else normal
-            | [] -> normal)
-         else normal)
+    if
+      (match doc_kids with
+       | [] -> false
+       | uu___1::[] -> false
+       | uu___1 -> true)
+    then
+      (let doc_node = doc_node_of doc_kids in
+       match steps with
+       | [] -> [doc_node]
+       | uu___1 ->
+           eval_steps (fuel - Prims.int_one) vars nsctx [doc_node] steps)
+    else
+      (let root_item = CI_Elem ([], [], root_node) in
+       match steps with
+       | [] -> [root_item]
+       | s::rest ->
+           let expansion =
+             match s.Parser_XPath.step_axis with
+             | Parser_XPath.Ax_Child ->
+                 filter_by_node_test nsctx s.Parser_XPath.step_test
+                   [root_item]
+             | Parser_XPath.Ax_Self ->
+                 filter_by_node_test nsctx s.Parser_XPath.step_test
+                   [root_item]
+             | Parser_XPath.Ax_Descendant ->
+                 filter_by_node_test nsctx s.Parser_XPath.step_test
+                   (descendant_items [] [] root_node)
+             | Parser_XPath.Ax_DescendantOrSelf ->
+                 filter_by_node_test nsctx s.Parser_XPath.step_test
+                   (root_item :: (descendant_items [] [] root_node))
+             | Parser_XPath.Ax_Attribute ->
+                 filter_by_node_test nsctx s.Parser_XPath.step_test
+                   (apply_axis Parser_XPath.Ax_Attribute root_item)
+             | uu___2 -> [] in
+           let kept =
+             filter_items_by_preds (fuel - Prims.int_one) vars nsctx
+               expansion s.Parser_XPath.step_preds in
+           let normal =
+             eval_steps (fuel - Prims.int_one) vars nsctx kept rest in
+           if
+             ((s.Parser_XPath.step_axis = Parser_XPath.Ax_DescendantOrSelf)
+                && (s.Parser_XPath.step_test = Parser_XPath.NT_Node))
+               && (Prims.uu___is_Nil s.Parser_XPath.step_preds)
+           then
+             (match rest with
+              | nxt::rest2 ->
+                  if nxt.Parser_XPath.step_axis = Parser_XPath.Ax_Child
+                  then
+                    let root_as_child =
+                      if
+                        matches_node_test nsctx nxt.Parser_XPath.step_test
+                          root_item
+                      then [root_item]
+                      else [] in
+                    let root_as_child' =
+                      filter_items_by_preds (fuel - Prims.int_one) vars nsctx
+                        root_as_child nxt.Parser_XPath.step_preds in
+                    let extra =
+                      eval_steps (fuel - Prims.int_one) vars nsctx
+                        root_as_child' rest2 in
+                    FStar_List_Tot_Base.op_At extra normal
+                  else normal
+              | [] -> normal)
+           else normal)
 and eval_steps (fuel : Prims.nat)
   (vars : (Prims.string * xp_value) Prims.list)
   (nsctx : (Prims.string * Prims.string) Prims.list)
@@ -1352,7 +1386,8 @@ and filter_one_pred (fuel : Prims.nat)
              env_pos = pos;
              env_size = size;
              env_vars = vars;
-             env_nsctx = nsctx
+             env_nsctx = nsctx;
+             env_doc_kids = []
            } in
          let v = eval_expr (fuel - Prims.int_one) e p in
          let keep =
@@ -1733,7 +1768,8 @@ let eval_xpath_from_root (root_node : Parser_XML.xml_node)
           env_pos = Prims.int_one;
           env_size = Prims.int_one;
           env_vars = vars;
-          env_nsctx = []
+          env_nsctx = [];
+          env_doc_kids = []
         } in
       FStar_Pervasives_Native.Some (eval_expr fuel env e)
 let eval_xpath_from_item (ancestors : Parser_XML.xml_node Prims.list)
@@ -1755,6 +1791,7 @@ let eval_xpath_from_item (ancestors : Parser_XML.xml_node Prims.list)
           env_pos = Prims.int_one;
           env_size = Prims.int_one;
           env_vars = vars;
-          env_nsctx = []
+          env_nsctx = [];
+          env_doc_kids = []
         } in
       FStar_Pervasives_Native.Some (eval_expr fuel env e)
