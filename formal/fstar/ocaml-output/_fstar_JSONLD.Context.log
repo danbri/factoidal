@@ -1,14 +1,7 @@
-* Warning 241 at RDF.Indexed.fsti(0,0-0,0):
-  - Unable to load RDF.Indexed.fsti.checked since checked file
-    RDF.Indexed.fsti.checked is stale (digest mismatch for RDF.Indexed.fsti);
-    will recheck RDF.Indexed.fsti (suppressing this warning for further modules)
-
-* Warning 349 at JSONLD.Context.fst(1022,33-1139,28):
-  - The verification condition succeeded after splitting it to localize
-    potential errors, although the original non-split verification condition
-    failed. If you want to rely on splitting queries for verifying your program
-    please use the '--split_queries always' option rather than relying on it
-    implicitly.
+* Warning 241 at OWL.Closure.fsti(0,0-0,0):
+  - Unable to load OWL.Closure.fsti.checked since checked file
+    OWL.Closure.fsti.checked is stale (digest mismatch for OWL.Closure.fsti);
+    will recheck OWL.Closure.fsti (suppressing this warning for further modules)
 
 Extracted module JSONLD.Context
 * Warning 247 at JSONLD.Context.fst(0,0-0,0):

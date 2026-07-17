@@ -372,18 +372,22 @@ let parse_jsonld_tc tc content =
    applies 1.0's prefix rule — every defined term, expanded-form
    definitions included, is a compact-IRI prefix candidate — which
    makes the fixture's {"xsd": {"@id": ...}} definition expand
-   "xsd:date"; re-measured PASS under JLD_NO_SKIP=1). The one entry
-   below is what measurably remains. JLD_NO_SKIP=1 re-runs it (same
-   convention as the expand/compact/flatten runners) so the residual
-   gap stays re-measurable without a rebuild. *)
+   "xsd:date"; re-measured PASS under JLD_NO_SKIP=1).
+
+   2026-07-17 direction wave: #te071 ("Redefine terms looking like
+   compact IRIs", the toRdf twin of expand/#t0071) FLIPPED to an
+   ordinary run. It never needed a 1.0-only semantic: the JSON-LD 1.1
+   API's Create Term Definition already specifies the defined[term]=false
+   guard that makes a term's own compact-IRI-shaped @id re-resolve via
+   the prefix instead of the term's stale mapping. The object-form @id
+   branch of JSONLD.Context.fst's process_term_def_obj was missing the
+   self-strip the simple string form already had; it now applies it, so
+   {"v:termId": {"@id": "v:termId"}} maps to vocab#termId. Measured MATCH
+   afterwards. The allowlist is now empty — no toRdf test needs a
+   documented 1.0-only skip. *)
 let jld_1_0_still_skip (id : string) : string option =
   if Sys.getenv_opt "JLD_NO_SKIP" <> None then None else
   match id with
-  | "#te071" ->
-    Some "option.specVersion=json-ld-1.0 — 1.0's stricter restriction on \
-          redefining a term that looks like a compact IRI differs from \
-          1.1's more permissive rule this program implements; measured: \
-          canonical N-Quads differ."
   | _ -> None
 
 let run_test tc =

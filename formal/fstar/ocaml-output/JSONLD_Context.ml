@@ -905,6 +905,20 @@ let jldctx_scan_nest
   | FStar_Pervasives_Native.Some (uu___, Parser_JSON.JString s) ->
       FStar_Pervasives_Native.Some s
   | uu___ -> FStar_Pervasives_Native.None
+let jldctx_term_obj_self_id (key : Prims.string)
+  (fields : (Prims.string * Parser_JSON.json_val) Prims.list) : Prims.bool=
+  match FStar_List_Tot_Base.find
+          (fun kv -> (FStar_Pervasives_Native.fst kv) = "@id") fields
+  with
+  | FStar_Pervasives_Native.Some (uu___, Parser_JSON.JString s) -> s = key
+  | uu___ ->
+      (match FStar_List_Tot_Base.find
+               (fun kv -> (FStar_Pervasives_Native.fst kv) = "@reverse")
+               fields
+       with
+       | FStar_Pervasives_Native.Some (uu___1, Parser_JSON.JString s) ->
+           s = key
+       | uu___1 -> false)
 let process_term_def_obj (ac : active_context) (key : Prims.string)
   (fields : (Prims.string * Parser_JSON.json_val) Prims.list)
   (default_protected : Prims.bool) (override_protected : Prims.bool) :
@@ -926,7 +940,23 @@ let process_term_def_obj (ac : active_context) (key : Prims.string)
   if self_ref
   then FStar_Pervasives_Native.None
   else
-    (match jldctx_term_obj_fields ac FStar_Pervasives_Native.None
+    (let ac_fields =
+       if jldctx_term_obj_self_id key fields
+       then
+         {
+           ac_terms = (jldctx_remove_term ac.ac_terms key);
+           ac_vocab = (ac.ac_vocab);
+           ac_base = (ac.ac_base);
+           ac_language = (ac.ac_language);
+           ac_direction = (ac.ac_direction);
+           ac_previous = (ac.ac_previous);
+           ac_mode10 = (ac.ac_mode10);
+           ac_doc_url = (ac.ac_doc_url);
+           ac_original_base = (ac.ac_original_base);
+           ac_suppress_pop = (ac.ac_suppress_pop)
+         }
+       else ac in
+     match jldctx_term_obj_fields ac_fields FStar_Pervasives_Native.None
              FStar_Pervasives_Native.None FStar_Pervasives_Native.None
              CK_None FStar_Pervasives_Native.None
              FStar_Pervasives_Native.None FStar_Pervasives_Native.None

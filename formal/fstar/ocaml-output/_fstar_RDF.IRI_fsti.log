@@ -1,7 +1,8 @@
-* Warning 241 at RDF.Term.fsti(0,0-0,0):
-  - Unable to load RDF.Term.fsti.checked since checked file
-    RDF.Term.fsti.checked is stale (digest mismatch for RDF.Term.fsti); will
-    recheck RDF.Term.fsti (suppressing this warning for further modules)
+* Warning 241 at RDFS.Closure.fsti(0,0-0,0):
+  - Unable to load RDFS.Closure.fsti.checked since checked file
+    RDFS.Closure.fsti.checked is stale (dependence hash mismatch, use --debug
+    CheckedFiles for more details); will recheck RDFS.Closure.fsti (suppressing
+    this warning for further modules)
 
 * Warning 247 at RDF.IRI.fsti(0,0-0,0):
   - Checked file RDF.IRI.fsti.checked was not written.
