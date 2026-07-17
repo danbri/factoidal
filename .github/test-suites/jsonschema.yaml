@@ -8,11 +8,17 @@ result_path: docs/test-results/by-suite/jsonschema.json
 domain: JSON
 foundational: false
 
-# JSON-Schema-Test-Suite (draft7). Skips are optional/format vocabularies
-# out of scope for the core validator.
+# JSON-Schema-Test-Suite (draft7). 770 pass, 0 fail, 0 skip. pattern /
+# patternProperties run against the verified regex engine; remote $ref
+# resolves the vendored meta-schema under remotes/. Only `format`
+# (annotation in draft-07) remains a validator skip source, unexercised
+# by any vendored test.
 triggers:
   paths:
     - bin/jsonschema-runner/**
     - third_party/testing/jsonschema/**
     - formal/fstar/Parser.JSON.fst
+    - formal/fstar/JSONSchema.Validate.fst
+    - formal/fstar/Regex.XSDPattern.fst
+    - formal/fstar/Regex.Exec.fst
   excludes: []
