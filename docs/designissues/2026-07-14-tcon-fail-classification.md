@@ -163,6 +163,16 @@ adjacent to the nominals/oneOf branching machinery) rather than the
 TEST CONTENT. Re-verify against the actual fixture before scoping a
 "nominals" wave around it.
 
+> **UPDATE 2026-07-17 (#299/#209 nominal-DPLL wave):** the fixture was
+> worked on paper and the engine measured — dl-502 is NOT a DPLL
+> budget-out. It returns a definite `FAIL/unexpected-consistency` with
+> zero refuter cap-trips because the multiply-defined `owl:oneOf`
+> constraints that encode the 9 boolean variables are never LOADED
+> into the tableau (`Tableau.fst:303` reads first-`oneOf`-only;
+> `OWL.Closure.fst` has no `oneOf` rule). The flip is blocked upstream
+> of the refuter, not by search budget. Full root cause + F1/F2/F3
+> design in `w3c-completeness-ledger.md` § "dl-502 nominal-DPLL wave".
+
 None of these mechanisms — double blocking, pigeonhole/finite-model
 merge search, 3-SAT-style deep branching, DPLL budget tuning — appear
 anywhere in the 18 type-consistency fails. The type-consistency fails
