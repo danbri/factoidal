@@ -1329,12 +1329,18 @@ let rec rtf_find (rtf:list (string & list rnode)) (nm:string) : option (list rno
 // XPath call-outs use `dnode_ci ctx` (the document node presents as
 // its root element for expression evaluation).
 
+// `svars`/`srtf` seed the matched template's xsl:param slots: they carry
+// xsl:with-param bindings from an enclosing xsl:apply-templates (XSLT 1.0
+// §11.6). For a plain apply-templates with no with-param they are
+// st.xs_globals / [] and the behavior is unchanged. The built-in rule
+// does NOT forward params (§5.8), so it re-seeds with globals only.
 let rec dispatch (fuel:nat) (st:xstyle) (nd:dnode) (pos size:nat) (mode:string)
+                 (svars:list (string & xp_value)) (srtf:list (string & list rnode))
   : Tot (list rnode) (decreases fuel) =
   if fuel = 0 then []
   else
     match pick_template st.xs_globals st.xs_nsctx st.xs_id_attrs mode st.xs_templates nd None with
-    | Some tpl -> instantiate_seq (fuel - 1) st nd pos size st.xs_globals [] tpl.tpl_body
+    | Some tpl -> instantiate_seq (fuel - 1) st nd pos size svars srtf tpl.tpl_body
     | None -> builtin_rule (fuel - 1) st nd mode
 
 and builtin_rule (fuel:nat) (st:xstyle) (nd:dnode) (mode:string) : Tot (list rnode) (decreases fuel) =
@@ -1343,10 +1349,10 @@ and builtin_rule (fuel:nat) (st:xstyle) (nd:dnode) (mode:string) : Tot (list rno
     match nd with
     | D_Doc _ _ ->
       let kids = dnode_children nd in
-      apply_list (fuel - 1) st kids 1 (List.Tot.length kids) mode
+      apply_list (fuel - 1) st kids 1 (List.Tot.length kids) mode st.xs_globals []
     | D_Item (CI_Elem _ _ _) ->
       let kids = dnode_children nd in
-      apply_list (fuel - 1) st kids 1 (List.Tot.length kids) mode
+      apply_list (fuel - 1) st kids 1 (List.Tot.length kids) mode st.xs_globals []
     | D_Item (CI_Text _ _ _ t) -> [R_Node (XText t)]
     | D_Item (CI_Attr _ _ _ a) -> [R_Node (XText a.attr_value)]
     | D_Item (CI_Comment _ _ _ _) -> []
@@ -1355,14 +1361,15 @@ and builtin_rule (fuel:nat) (st:xstyle) (nd:dnode) (mode:string) : Tot (list rno
 // Apply templates (in the active mode) to a list of driver nodes,
 // threading 1-based position and the common size.
 and apply_list (fuel:nat) (st:xstyle) (nodes:list dnode) (pos size:nat) (mode:string)
+               (svars:list (string & xp_value)) (srtf:list (string & list rnode))
   : Tot (list rnode) (decreases fuel) =
   if fuel = 0 then []
   else
     match nodes with
     | [] -> []
     | hd :: tl ->
-      let here = dispatch (fuel - 1) st hd pos size mode in
-      here @ apply_list (fuel - 1) st tl (pos + 1) size mode
+      let here = dispatch (fuel - 1) st hd pos size mode svars srtf in
+      here @ apply_list (fuel - 1) st tl (pos + 1) size mode svars srtf
 
 // Instantiate a template body (sequence of instruction nodes),
 // threading local variable bindings (xp-value + result-tree-fragment)
@@ -1403,17 +1410,26 @@ and instantiate_seq (fuel:nat) (st:xstyle) (ctx:dnode) (pos size:nat)
          let here = instantiate_one (fuel - 1) st ctx pos size vars rtf hd in
          here @ instantiate_seq (fuel - 1) st ctx pos size vars rtf tl)
 
-// Bind xsl:with-param children (select= or body RTF) onto the variable
-// lists that will seed a called template. First non-param handling is
-// skipped; params accumulate onto (vars, rtf).
-and bind_with_params (fuel:nat) (st:xstyle) (ctx:dnode) (pos size:nat)
-                     (vars:list (string & xp_value)) (rtf:list (string & list rnode))
-                     (children:list xml_node)
+// Bind xsl:with-param children (select= or body RTF) for xsl:call-template
+// and xsl:apply-templates. `evars`/`ertf` are the CALLER's in-scope
+// variables + result-tree fragments, used to evaluate each with-param's
+// select=/body; the bound pairs accumulate onto the seed lists
+// `svars`/`srtf`, which start at st.xs_globals / [] and become the callee
+// template's parameter seed. Separating the evaluation scope from the seed
+// is what lets a with-param whose value references a LOCAL variable of the
+// calling template resolve correctly (hcard2rdf.xsl forwards select="$field"
+// both to <xsl:call-template name="testclass"> and to a recursive
+// <xsl:apply-templates ... mode="extract-field">) without leaking the
+// caller's locals into the callee.
+and bind_with_params_scoped (fuel:nat) (st:xstyle) (ctx:dnode) (pos size:nat)
+                            (evars:list (string & xp_value)) (ertf:list (string & list rnode))
+                            (svars:list (string & xp_value)) (srtf:list (string & list rnode))
+                            (children:list xml_node)
   : Tot (list (string & xp_value) & list (string & list rnode)) (decreases fuel) =
-  if fuel = 0 then (vars, rtf)
+  if fuel = 0 then (svars, srtf)
   else
     match children with
-    | [] -> (vars, rtf)
+    | [] -> (svars, srtf)
     | hd :: tl ->
       (match hd with
        | XElement tag attrs pchildren ->
@@ -1421,14 +1437,14 @@ and bind_with_params (fuel:nat) (st:xstyle) (ctx:dnode) (pos size:nat)
            let nm = attr_or "name" "" attrs in
            (match attr_opt "select" attrs with
             | Some sel ->
-              let v = eval_val_dn ctx pos size vars st.xs_nsctx st.xs_id_attrs st.xs_style_root sel in
-              bind_with_params (fuel - 1) st ctx pos size ((nm, v) :: vars) rtf tl
+              let v = eval_val_dn ctx pos size evars st.xs_nsctx st.xs_id_attrs st.xs_style_root sel in
+              bind_with_params_scoped (fuel - 1) st ctx pos size evars ertf ((nm, v) :: svars) srtf tl
             | None ->
-              let frag = instantiate_seq (fuel - 1) st ctx pos size vars rtf pchildren in
+              let frag = instantiate_seq (fuel - 1) st ctx pos size evars ertf pchildren in
               let sval = text_value_nodes (only_nodes frag) in
-              bind_with_params (fuel - 1) st ctx pos size ((nm, XV_Str sval) :: vars) ((nm, frag) :: rtf) tl)
-         else bind_with_params (fuel - 1) st ctx pos size vars rtf tl
-       | _ -> bind_with_params (fuel - 1) st ctx pos size vars rtf tl)
+              bind_with_params_scoped (fuel - 1) st ctx pos size evars ertf ((nm, XV_Str sval) :: svars) ((nm, frag) :: srtf) tl)
+         else bind_with_params_scoped (fuel - 1) st ctx pos size evars ertf svars srtf tl
+       | _ -> bind_with_params_scoped (fuel - 1) st ctx pos size evars ertf svars srtf tl)
 
 and instantiate_one (fuel:nat) (st:xstyle) (ctx:dnode) (pos size:nat)
                     (vars:list (string & xp_value)) (rtf:list (string & list rnode)) (node:xml_node)
@@ -1465,12 +1481,21 @@ and instantiate_one (fuel:nat) (st:xstyle) (ctx:dnode) (pos size:nat)
           for_each_items (fuel - 1) st children vars rtf items 1 (List.Tot.length items)
         else if ln = "apply-templates" then
           let amode = attr_or "mode" "" attrs in
+          // xsl:with-param children seed the params of whichever templates
+          // match the selected nodes (XSLT 1.0 §11.6). Their select= /
+          // body is evaluated in THIS instruction's scope (current context
+          // node + the caller's in-scope variables `vars`/`rtf`), so a
+          // recursive apply-templates that forwards a param with
+          // select="$field" resolves the caller's local $field. The bound
+          // pairs are prepended onto st.xs_globals to form the callee seed.
+          let (pvars, prtf) =
+            bind_with_params_scoped (fuel - 1) st ctx pos size vars rtf st.xs_globals [] children in
           (match attr_opt "select" attrs with
            | Some sel ->
              let items0 = doc_sort_dedup (select_nodes ctx pos size vars st.xs_nsctx st.xs_id_attrs st.xs_style_root sel) in
              let items = sort_maybe (dnode_ci ctx) pos size st.xs_pfx vars st.xs_nsctx children items0 in
              let dns = List.Tot.map (fun it -> D_Item it) items in
-             apply_list (fuel - 1) st dns 1 (List.Tot.length items) amode
+             apply_list (fuel - 1) st dns 1 (List.Tot.length items) amode pvars prtf
            | None ->
              // Default node-set = the context node's children; an
              // xsl:sort child reorders them (apply-templates with no
@@ -1479,7 +1504,7 @@ and instantiate_one (fuel:nat) (st:xstyle) (ctx:dnode) (pos size:nat)
              let items0 = List.Tot.map dnode_ci kids0 in
              let items = sort_maybe (dnode_ci ctx) pos size st.xs_pfx vars st.xs_nsctx children items0 in
              let dns = List.Tot.map (fun it -> D_Item it) items in
-             apply_list (fuel - 1) st dns 1 (List.Tot.length items) amode)
+             apply_list (fuel - 1) st dns 1 (List.Tot.length items) amode pvars prtf)
         else if ln = "call-template" then
           let nm = attr_or "name" "" attrs in
           (match find_named_template st.xs_templates nm with
@@ -1488,8 +1513,13 @@ and instantiate_one (fuel:nat) (st:xstyle) (ctx:dnode) (pos size:nat)
              // with-param bindings seed the called template's params;
              // recursion is bounded by the same fuel as every other call
              // (a self-calling template exhausts fuel and yields [], not
-             // a nonterminating loop).
-             let (cvars, crtf) = bind_with_params (fuel - 1) st ctx pos size st.xs_globals [] children in
+             // a nonterminating loop). Each with-param's select=/body is
+             // evaluated in the CALLER's scope (its in-scope variables
+             // `vars`/`rtf`) so a param forwarded as select="$field"
+             // resolves the caller's local $field (hcard2rdf.xsl calls
+             // <xsl:call-template name="testclass"> with val="$field");
+             // the bound pairs seed onto st.xs_globals for the callee.
+             let (cvars, crtf) = bind_with_params_scoped (fuel - 1) st ctx pos size vars rtf st.xs_globals [] children in
              instantiate_seq (fuel - 1) st ctx pos size cvars crtf tpl.tpl_body
            | None -> [])
         else if ln = "copy-of" then
@@ -1837,7 +1867,7 @@ let transform (stylesheet:xml_node) (source:xml_node) : string =
   // apply-templates / instantiate step consumes one unit.
   let sz = xml_node_count stylesheet + xml_node_count source in
   let fuel = op_Multiply (sz + 1) 256 + 100000 in
-  let result = dispatch fuel st (D_Doc source [source]) 1 1 "" in
+  let result = dispatch fuel st (D_Doc source [source]) 1 1 "" st.xs_globals [] in
   let nodes = only_nodes result in
   if st.xs_method = "text" then text_value_nodes nodes
   else serialize_nodes [] nodes
@@ -1856,7 +1886,7 @@ let transform_doc (stylesheet:xml_node) (source_kids:list xml_node) : string =
     let st = build_style stylesheet root source_kids [] in
     let sz = xml_node_count stylesheet + xml_nodes_count_sum source_kids in
     let fuel = op_Multiply (sz + 1) 256 + 100000 in
-    let result = dispatch fuel st (D_Doc root source_kids) 1 1 "" in
+    let result = dispatch fuel st (D_Doc root source_kids) 1 1 "" st.xs_globals [] in
     let nodes = only_nodes result in
     if st.xs_method = "text" then text_value_nodes nodes
     else serialize_nodes [] nodes
@@ -1873,7 +1903,7 @@ let transform_doc_ids (stylesheet:xml_node) (source_kids:list xml_node) (source_
     let st = build_style stylesheet root source_kids source_id_attrs in
     let sz = xml_node_count stylesheet + xml_nodes_count_sum source_kids in
     let fuel = op_Multiply (sz + 1) 256 + 100000 in
-    let result = dispatch fuel st (D_Doc root source_kids) 1 1 "" in
+    let result = dispatch fuel st (D_Doc root source_kids) 1 1 "" st.xs_globals [] in
     let nodes = only_nodes result in
     if st.xs_method = "text" then text_value_nodes nodes
     else serialize_nodes [] nodes

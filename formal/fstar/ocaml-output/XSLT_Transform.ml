@@ -1320,8 +1320,9 @@ let rec rtf_find (rtf : (Prims.string * rnode Prims.list) Prims.list)
   | (k, v)::rest ->
       if k = nm then FStar_Pervasives_Native.Some v else rtf_find rest nm
 let rec dispatch (fuel : Prims.nat) (st : xstyle) (nd : dnode)
-  (pos : Prims.nat) (size : Prims.nat) (mode : Prims.string) :
-  rnode Prims.list=
+  (pos : Prims.nat) (size : Prims.nat) (mode : Prims.string)
+  (svars : (Prims.string * XPath_Eval.xp_value) Prims.list)
+  (srtf : (Prims.string * rnode Prims.list) Prims.list) : rnode Prims.list=
   if fuel = Prims.int_zero
   then []
   else
@@ -1329,8 +1330,8 @@ let rec dispatch (fuel : Prims.nat) (st : xstyle) (nd : dnode)
              st.xs_templates nd FStar_Pervasives_Native.None
      with
      | FStar_Pervasives_Native.Some tpl ->
-         instantiate_seq (fuel - Prims.int_one) st nd pos size st.xs_globals
-           [] tpl.tpl_body
+         instantiate_seq (fuel - Prims.int_one) st nd pos size svars srtf
+           tpl.tpl_body
      | FStar_Pervasives_Native.None ->
          builtin_rule (fuel - Prims.int_one) st nd mode)
 and builtin_rule (fuel : Prims.nat) (st : xstyle) (nd : dnode)
@@ -1342,11 +1343,11 @@ and builtin_rule (fuel : Prims.nat) (st : xstyle) (nd : dnode)
      | D_Doc (uu___1, uu___2) ->
          let kids = dnode_children nd in
          apply_list (fuel - Prims.int_one) st kids Prims.int_one
-           (FStar_List_Tot_Base.length kids) mode
+           (FStar_List_Tot_Base.length kids) mode st.xs_globals []
      | D_Item (XPath_Eval.CI_Elem (uu___1, uu___2, uu___3)) ->
          let kids = dnode_children nd in
          apply_list (fuel - Prims.int_one) st kids Prims.int_one
-           (FStar_List_Tot_Base.length kids) mode
+           (FStar_List_Tot_Base.length kids) mode st.xs_globals []
      | D_Item (XPath_Eval.CI_Text (uu___1, uu___2, uu___3, t)) ->
          [R_Node (Parser_XML.XText t)]
      | D_Item (XPath_Eval.CI_Attr (uu___1, uu___2, uu___3, a)) ->
@@ -1355,18 +1356,20 @@ and builtin_rule (fuel : Prims.nat) (st : xstyle) (nd : dnode)
      | D_Item (XPath_Eval.CI_PI (uu___1, uu___2, uu___3, uu___4, uu___5)) ->
          [])
 and apply_list (fuel : Prims.nat) (st : xstyle) (nodes : dnode Prims.list)
-  (pos : Prims.nat) (size : Prims.nat) (mode : Prims.string) :
-  rnode Prims.list=
+  (pos : Prims.nat) (size : Prims.nat) (mode : Prims.string)
+  (svars : (Prims.string * XPath_Eval.xp_value) Prims.list)
+  (srtf : (Prims.string * rnode Prims.list) Prims.list) : rnode Prims.list=
   if fuel = Prims.int_zero
   then []
   else
     (match nodes with
      | [] -> []
      | hd::tl ->
-         let here = dispatch (fuel - Prims.int_one) st hd pos size mode in
+         let here =
+           dispatch (fuel - Prims.int_one) st hd pos size mode svars srtf in
          FStar_List_Tot_Base.op_At here
            (apply_list (fuel - Prims.int_one) st tl (pos + Prims.int_one)
-              size mode))
+              size mode svars srtf))
 and instantiate_seq (fuel : Prims.nat) (st : xstyle) (ctx : dnode)
   (pos : Prims.nat) (size : Prims.nat)
   (vars : (Prims.string * XPath_Eval.xp_value) Prims.list)
@@ -1424,18 +1427,20 @@ and instantiate_seq (fuel : Prims.nat) (st : xstyle) (ctx : dnode)
               FStar_List_Tot_Base.op_At here
                 (instantiate_seq (fuel - Prims.int_one) st ctx pos size vars
                    rtf tl)))
-and bind_with_params (fuel : Prims.nat) (st : xstyle) (ctx : dnode)
+and bind_with_params_scoped (fuel : Prims.nat) (st : xstyle) (ctx : dnode)
   (pos : Prims.nat) (size : Prims.nat)
-  (vars : (Prims.string * XPath_Eval.xp_value) Prims.list)
-  (rtf : (Prims.string * rnode Prims.list) Prims.list)
+  (evars : (Prims.string * XPath_Eval.xp_value) Prims.list)
+  (ertf : (Prims.string * rnode Prims.list) Prims.list)
+  (svars : (Prims.string * XPath_Eval.xp_value) Prims.list)
+  (srtf : (Prims.string * rnode Prims.list) Prims.list)
   (children : Parser_XML.xml_node Prims.list) :
   ((Prims.string * XPath_Eval.xp_value) Prims.list * (Prims.string * rnode
     Prims.list) Prims.list)=
   if fuel = Prims.int_zero
-  then (vars, rtf)
+  then (svars, srtf)
   else
     (match children with
-     | [] -> (vars, rtf)
+     | [] -> (svars, srtf)
      | hd::tl ->
          (match hd with
           | Parser_XML.XElement (tag, attrs, pchildren) ->
@@ -1447,24 +1452,24 @@ and bind_with_params (fuel : Prims.nat) (st : xstyle) (ctx : dnode)
                 (match attr_opt "select" attrs with
                  | FStar_Pervasives_Native.Some sel ->
                      let v =
-                       eval_val_dn ctx pos size vars st.xs_nsctx
+                       eval_val_dn ctx pos size evars st.xs_nsctx
                          st.xs_id_attrs st.xs_style_root sel in
-                     bind_with_params (fuel - Prims.int_one) st ctx pos size
-                       ((nm, v) :: vars) rtf tl
+                     bind_with_params_scoped (fuel - Prims.int_one) st ctx
+                       pos size evars ertf ((nm, v) :: svars) srtf tl
                  | FStar_Pervasives_Native.None ->
                      let frag =
                        instantiate_seq (fuel - Prims.int_one) st ctx pos size
-                         vars rtf pchildren in
+                         evars ertf pchildren in
                      let sval = text_value_nodes (only_nodes frag) in
-                     bind_with_params (fuel - Prims.int_one) st ctx pos size
-                       ((nm, (XPath_Eval.XV_Str sval)) :: vars) ((nm, frag)
-                       :: rtf) tl)
+                     bind_with_params_scoped (fuel - Prims.int_one) st ctx
+                       pos size evars ertf ((nm, (XPath_Eval.XV_Str sval)) ::
+                       svars) ((nm, frag) :: srtf) tl)
               else
-                bind_with_params (fuel - Prims.int_one) st ctx pos size vars
-                  rtf tl
+                bind_with_params_scoped (fuel - Prims.int_one) st ctx pos
+                  size evars ertf svars srtf tl
           | uu___1 ->
-              bind_with_params (fuel - Prims.int_one) st ctx pos size vars
-                rtf tl))
+              bind_with_params_scoped (fuel - Prims.int_one) st ctx pos size
+                evars ertf svars srtf tl))
 and instantiate_one (fuel : Prims.nat) (st : xstyle) (ctx : dnode)
   (pos : Prims.nat) (size : Prims.nat)
   (vars : (Prims.string * XPath_Eval.xp_value) Prims.list)
@@ -1527,34 +1532,44 @@ and instantiate_one (fuel : Prims.nat) (st : xstyle) (ctx : dnode)
                       if ln = "apply-templates"
                       then
                         (let amode = attr_or "mode" "" attrs in
-                         match attr_opt "select" attrs with
-                         | FStar_Pervasives_Native.Some sel ->
-                             let items0 =
-                               XPath_Eval.doc_sort_dedup
-                                 (select_nodes ctx pos size vars st.xs_nsctx
-                                    st.xs_id_attrs st.xs_style_root sel) in
-                             let items =
-                               sort_maybe (dnode_ci ctx) pos size st.xs_pfx
-                                 vars st.xs_nsctx children items0 in
-                             let dns =
-                               FStar_List_Tot_Base.map (fun it -> D_Item it)
-                                 items in
-                             apply_list (fuel - Prims.int_one) st dns
-                               Prims.int_one
-                               (FStar_List_Tot_Base.length items) amode
-                         | FStar_Pervasives_Native.None ->
-                             let kids0 = dnode_children ctx in
-                             let items0 =
-                               FStar_List_Tot_Base.map dnode_ci kids0 in
-                             let items =
-                               sort_maybe (dnode_ci ctx) pos size st.xs_pfx
-                                 vars st.xs_nsctx children items0 in
-                             let dns =
-                               FStar_List_Tot_Base.map (fun it -> D_Item it)
-                                 items in
-                             apply_list (fuel - Prims.int_one) st dns
-                               Prims.int_one
-                               (FStar_List_Tot_Base.length items) amode)
+                         let uu___6 =
+                           bind_with_params_scoped (fuel - Prims.int_one) st
+                             ctx pos size vars rtf st.xs_globals [] children in
+                         match uu___6 with
+                         | (pvars, prtf) ->
+                             (match attr_opt "select" attrs with
+                              | FStar_Pervasives_Native.Some sel ->
+                                  let items0 =
+                                    XPath_Eval.doc_sort_dedup
+                                      (select_nodes ctx pos size vars
+                                         st.xs_nsctx st.xs_id_attrs
+                                         st.xs_style_root sel) in
+                                  let items =
+                                    sort_maybe (dnode_ci ctx) pos size
+                                      st.xs_pfx vars st.xs_nsctx children
+                                      items0 in
+                                  let dns =
+                                    FStar_List_Tot_Base.map
+                                      (fun it -> D_Item it) items in
+                                  apply_list (fuel - Prims.int_one) st dns
+                                    Prims.int_one
+                                    (FStar_List_Tot_Base.length items) amode
+                                    pvars prtf
+                              | FStar_Pervasives_Native.None ->
+                                  let kids0 = dnode_children ctx in
+                                  let items0 =
+                                    FStar_List_Tot_Base.map dnode_ci kids0 in
+                                  let items =
+                                    sort_maybe (dnode_ci ctx) pos size
+                                      st.xs_pfx vars st.xs_nsctx children
+                                      items0 in
+                                  let dns =
+                                    FStar_List_Tot_Base.map
+                                      (fun it -> D_Item it) items in
+                                  apply_list (fuel - Prims.int_one) st dns
+                                    Prims.int_one
+                                    (FStar_List_Tot_Base.length items) amode
+                                    pvars prtf))
                       else
                         if ln = "call-template"
                         then
@@ -1562,8 +1577,9 @@ and instantiate_one (fuel : Prims.nat) (st : xstyle) (ctx : dnode)
                            match find_named_template st.xs_templates nm with
                            | FStar_Pervasives_Native.Some tpl ->
                                let uu___7 =
-                                 bind_with_params (fuel - Prims.int_one) st
-                                   ctx pos size st.xs_globals [] children in
+                                 bind_with_params_scoped
+                                   (fuel - Prims.int_one) st ctx pos size
+                                   vars rtf st.xs_globals [] children in
                                (match uu___7 with
                                 | (cvars, crtf) ->
                                     instantiate_seq (fuel - Prims.int_one) st
@@ -2021,7 +2037,7 @@ let transform (stylesheet : Parser_XML.xml_node)
       (Prims.parse_int "100000") in
   let result =
     dispatch fuel st (D_Doc (source, [source])) Prims.int_one Prims.int_one
-      "" in
+      "" st.xs_globals [] in
   let nodes = only_nodes result in
   if st.xs_method = "text"
   then text_value_nodes nodes
@@ -2040,7 +2056,7 @@ let transform_doc (stylesheet : Parser_XML.xml_node)
           (Prims.parse_int "100000") in
       let result =
         dispatch fuel st (D_Doc (root, source_kids)) Prims.int_one
-          Prims.int_one "" in
+          Prims.int_one "" st.xs_globals [] in
       let nodes = only_nodes result in
       if st.xs_method = "text"
       then text_value_nodes nodes
@@ -2061,7 +2077,7 @@ let transform_doc_ids (stylesheet : Parser_XML.xml_node)
           (Prims.parse_int "100000") in
       let result =
         dispatch fuel st (D_Doc (root, source_kids)) Prims.int_one
-          Prims.int_one "" in
+          Prims.int_one "" st.xs_globals [] in
       let nodes = only_nodes result in
       if st.xs_method = "text"
       then text_value_nodes nodes
