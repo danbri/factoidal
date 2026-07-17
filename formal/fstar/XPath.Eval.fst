@@ -759,7 +759,25 @@ noeq type xp_env = {
   // [] and keeps byte-identical behavior. Only an absolute location path
   // reads it (see eval_absolute_steps), so a relative context never cares.
   env_doc_kids : list xml_node;
+  // (element-name, attribute-name) pairs declared type ID in the context
+  // document's DTD internal subset (Parser.XML). id() consults this to
+  // decide which attribute carries a node's unique identifier. [] when no
+  // DTD / no ID attribute is in scope (id() then selects nothing).
+  env_id_attrs : list (string & string);
+  // The stylesheet document's root element, so XSLT's document("") (empty
+  // string = the stylesheet itself) resolves to it. `xnode_none` (a
+  // tagless empty element) means "no stylesheet document available", and
+  // document("") then selects nothing.
+  env_style_root : xml_node;
 }
+
+// Sentinel "no document" node for env_style_root: an empty tagless
+// element. document("") treats it as unavailable.
+let xnode_none : xml_node = XElement "" [] []
+let is_xnode_none (n:xml_node) : bool =
+  match n with
+  | XElement t attrs kids -> t = "" && Nil? attrs && Nil? kids
+  | _ -> false
 
 let lookup_var (vars:list (string & xp_value)) (name:string) : option xp_value =
   match List.Tot.find (fun (kv:(string & xp_value)) -> fst kv = name) vars with
@@ -1078,7 +1096,50 @@ let is_supported_xpath_function (nm:string) : bool =
   nm = "substring-before" || nm = "substring-after" || nm = "substring" ||
   nm = "string-length" || nm = "normalize-space" ||
   nm = "not" || nm = "true" || nm = "false" || nm = "boolean" ||
-  nm = "number" || nm = "sum" || nm = "floor" || nm = "ceiling" || nm = "round"
+  nm = "number" || nm = "sum" || nm = "floor" || nm = "ceiling" || nm = "round" ||
+  nm = "id" || nm = "document"
+
+(* ---- id() support: DTD ID-typed attribute lookup ------------------- *)
+
+// Whitespace-split a string into non-empty tokens (the id() argument is
+// tokenised on XML whitespace: space, tab, CR, LF).
+let rec ws_split_chars (cs:list FStar.Char.char) (cur:list FStar.Char.char) (acc:list string)
+  : Tot (list string) (decreases cs) =
+  match cs with
+  | [] -> List.Tot.rev (if Nil? cur then acc else String.string_of_list (List.Tot.rev cur) :: acc)
+  | c :: rest ->
+    if c = ' ' || c = '\t' || c = '\n' || c = '\r' then
+      ws_split_chars rest [] (if Nil? cur then acc else String.string_of_list (List.Tot.rev cur) :: acc)
+    else ws_split_chars rest (c :: cur) acc
+
+let ws_tokens (s:string) : list string = ws_split_chars (String.list_of_string s) [] []
+
+// Is (element-tag, attribute-name) declared with ATTLIST AttType ID?
+let rec id_attr_declared (id_attrs:list (string & string)) (tag:string) (attr:string)
+  : Tot bool (decreases id_attrs) =
+  match id_attrs with
+  | [] -> false
+  | (e, a) :: rest -> if e = tag && a = attr then true else id_attr_declared rest tag attr
+
+let rec str_mem (x:string) (xs:list string) : Tot bool (decreases xs) =
+  match xs with [] -> false | h :: t -> if h = x then true else str_mem x t
+
+// Element item bears an ID-typed attribute whose value is one of `wanted`.
+let elem_has_id (id_attrs:list (string & string)) (wanted:list string) (it:xctx_item) : bool =
+  match it with
+  | CI_Elem _ _ (XElement tag attrs _) ->
+    List.Tot.existsb
+      (fun (a:xml_attribute) -> id_attr_declared id_attrs tag a.attr_name && str_mem a.attr_value wanted)
+      attrs
+  | _ -> false
+
+// The wanted-id token set for an id() argument (XPath 1.0 §4.1): a
+// node-set contributes the whitespace-separated tokens of each node's
+// string-value; any other type contributes the tokens of its string.
+let id_wanted_tokens (v:xp_value) : list string =
+  match v with
+  | XV_Nodes items -> List.Tot.collect (fun it -> ws_tokens (item_string_value it)) items
+  | other -> ws_tokens (to_string_val other)
 
 (* ================================================================ *)
 (* The evaluator — fuel-threaded, one call = one fuel unit, always.   *)
@@ -1250,7 +1311,7 @@ and filter_one_pred (fuel:nat) (vars:list (string & xp_value)) (nsctx:list (stri
     match items with
     | [] -> []
     | it :: rest ->
-      let e = { env_item = it; env_pos = pos; env_size = size; env_vars = vars; env_nsctx = nsctx; env_doc_kids = [] } in
+      let e = { env_item = it; env_pos = pos; env_size = size; env_vars = vars; env_nsctx = nsctx; env_doc_kids = []; env_id_attrs = []; env_style_root = xnode_none } in
       let v = eval_expr (fuel - 1) e p in
       let keep =
         match v with
@@ -1280,6 +1341,32 @@ and eval_funcall (fuel:nat) (env:xp_env) (name:string) (args:list xp_expr)
           | XV_Nodes items -> XV_Num (XN_Finite (List.Tot.length items) 0)
           | _ -> XV_Num (XN_Finite 0 0))
        | _ -> XV_Num (XN_Finite 0 0))
+    else if name = "id" then
+      // XPath 1.0 §4.1 id(): the elements of the context document whose
+      // ID-typed attribute (per the DTD internal-subset ATTLIST, threaded
+      // as env_id_attrs) has a value among the argument's id tokens.
+      (match args with
+       | [a] ->
+         let wanted = id_wanted_tokens (eval_expr (fuel - 1) env a) in
+         (match wanted with
+          | [] -> XV_Nodes []
+          | _ ->
+            let all = all_document_items env.env_item in
+            XV_Nodes (List.Tot.filter (elem_has_id env.env_id_attrs wanted) all))
+       | _ -> XV_Nodes [])
+    else if name = "document" then
+      // XSLT document(): only the empty-string form (the stylesheet itself
+      // as a source document) is supported here; it yields the stylesheet
+      // document's root node (env_style_root). Any other URI selects
+      // nothing (external-document loading is out of scope).
+      (match args with
+       | [a] ->
+         let s = to_string_val (eval_expr (fuel - 1) env a) in
+         if s = "" then
+           (if is_xnode_none env.env_style_root then XV_Nodes []
+            else XV_Nodes [CI_Elem [] [] env.env_style_root])
+         else XV_Nodes []
+       | _ -> XV_Nodes [])
     else if name = "name" || name = "local-name" then
       let items =
         match args with
@@ -1439,7 +1526,7 @@ let eval_xpath_from_root (root_node:xml_node) (vars:list (string & xp_value)) (e
   | None -> None
   | Some e ->
     let fuel = initial_eval_fuel e (xml_node_count root_node) in
-    let env = { env_item = CI_Elem [] [] root_node; env_pos = 1; env_size = 1; env_vars = vars; env_nsctx = []; env_doc_kids = [] } in
+    let env = { env_item = CI_Elem [] [] root_node; env_pos = 1; env_size = 1; env_vars = vars; env_nsctx = []; env_doc_kids = []; env_id_attrs = []; env_style_root = xnode_none } in
     Some (eval_expr fuel env e)
 
 // Evaluate with an arbitrary context node deeper in the document,
@@ -1454,5 +1541,5 @@ let eval_xpath_from_item (ancestors:list xml_node) (context_node:xml_node) (vars
     let doc_nodes = xml_node_count context_node + xml_nodes_count ancestors in
     let fuel = initial_eval_fuel e doc_nodes in
     let env = { env_item = CI_Elem (compute_ctx_path ancestors context_node) ancestors context_node;
-                env_pos = 1; env_size = 1; env_vars = vars; env_nsctx = []; env_doc_kids = [] } in
+                env_pos = 1; env_size = 1; env_vars = vars; env_nsctx = []; env_doc_kids = []; env_id_attrs = []; env_style_root = xnode_none } in
     Some (eval_expr fuel env e)

@@ -1479,9 +1479,140 @@ let parse_entity_decl (input : Prims.string) (pos : Prims.nat)
                               Parser_Combinators.ParseOk (ents, p')
                           | Parser_Combinators.ParseFail (msg, fpos) ->
                               Parser_Combinators.ParseFail (msg, fpos)))))
+let rec skip_ws_to (input : Prims.string) (pos : Prims.nat) (gt : Prims.nat)
+  (fuel : Prims.nat) : Prims.nat=
+  if fuel = Prims.int_zero
+  then pos
+  else
+    if pos >= gt
+    then pos
+    else
+      if is_xml_space (Parser_FastString.fs_byte_index input pos)
+      then skip_ws_to input (pos + Prims.int_one) gt (fuel - Prims.int_one)
+      else pos
+let rec skip_parens_to (input : Prims.string) (pos : Prims.nat)
+  (gt : Prims.nat) (depth : Prims.nat) (fuel : Prims.nat) : Prims.nat=
+  if fuel = Prims.int_zero
+  then pos
+  else
+    if pos >= gt
+    then pos
+    else
+      (let c = Parser_FastString.fs_byte_index input pos in
+       if c = 40
+       then
+         skip_parens_to input (pos + Prims.int_one) gt
+           (depth + Prims.int_one) (fuel - Prims.int_one)
+       else
+         if c = 41
+         then
+           (if depth <= Prims.int_one
+            then pos + Prims.int_one
+            else
+              skip_parens_to input (pos + Prims.int_one) gt
+                (depth - Prims.int_one) (fuel - Prims.int_one))
+         else
+           skip_parens_to input (pos + Prims.int_one) gt depth
+             (fuel - Prims.int_one))
+let rec skip_quoted_to (input : Prims.string) (pos : Prims.nat)
+  (gt : Prims.nat) (q : FStar_Char.char) (fuel : Prims.nat) : Prims.nat=
+  if fuel = Prims.int_zero
+  then pos
+  else
+    if pos >= gt
+    then pos
+    else
+      if (Parser_FastString.fs_byte_index input pos) = q
+      then pos + Prims.int_one
+      else
+        skip_quoted_to input (pos + Prims.int_one) gt q
+          (fuel - Prims.int_one)
+let skip_default_decl (input : Prims.string) (pos : Prims.nat)
+  (gt : Prims.nat) : Prims.nat=
+  if pos >= gt
+  then pos
+  else
+    (let c = Parser_FastString.fs_byte_index input pos in
+     if c = 35
+     then
+       match parse_xml_name input (pos + Prims.int_one) with
+       | Parser_Combinators.ParseOk (kw, p2) ->
+           (if kw = "FIXED"
+            then
+              let p3 = skip_ws_to input p2 gt gt in
+              (if
+                 (p3 < gt) &&
+                   (let q = Parser_FastString.fs_byte_index input p3 in
+                    (q = 34) || (q = 39))
+               then
+                 skip_quoted_to input (p3 + Prims.int_one) gt
+                   (Parser_FastString.fs_byte_index input p3) gt
+               else p2)
+            else p2)
+       | Parser_Combinators.ParseFail (uu___1, uu___2) -> pos + Prims.int_one
+     else
+       if (c = 34) || (c = 39)
+       then skip_quoted_to input (pos + Prims.int_one) gt c gt
+       else pos)
+let rec scan_attdefs (input : Prims.string) (pos : Prims.nat)
+  (gt : Prims.nat) (elem : Prims.string) (fuel : Prims.nat)
+  (acc : (Prims.string * Prims.string) Prims.list) :
+  (Prims.string * Prims.string) Prims.list=
+  if fuel = Prims.int_zero
+  then acc
+  else
+    (let pos1 = skip_ws_to input pos gt gt in
+     if (pos1 >= gt) || ((Parser_FastString.fs_byte_index input pos1) = 62)
+     then acc
+     else
+       (match parse_xml_name input pos1 with
+        | Parser_Combinators.ParseFail (uu___2, uu___3) -> acc
+        | Parser_Combinators.ParseOk (attr, p2) ->
+            let p21 = skip_ws_to input p2 gt gt in
+            if
+              (p21 < gt) &&
+                ((Parser_FastString.fs_byte_index input p21) = 40)
+            then
+              let p3 = skip_parens_to input p21 gt Prims.int_zero gt in
+              let p4 = skip_default_decl input (skip_ws_to input p3 gt gt) gt in
+              scan_attdefs input p4 gt elem (fuel - Prims.int_one) acc
+            else
+              (match parse_xml_name input p21 with
+               | Parser_Combinators.ParseFail (uu___3, uu___4) -> acc
+               | Parser_Combinators.ParseOk (typ, p3) ->
+                   let uu___3 =
+                     if typ = "NOTATION"
+                     then
+                       let pn = skip_ws_to input p3 gt gt in
+                       (if
+                          (pn < gt) &&
+                            ((Parser_FastString.fs_byte_index input pn) = 40)
+                        then
+                          ((skip_parens_to input pn gt Prims.int_zero gt),
+                            false)
+                        else (p3, false))
+                     else (p3, (typ = "ID")) in
+                   (match uu___3 with
+                    | (p3b, is_id) ->
+                        let p4 =
+                          skip_default_decl input
+                            (skip_ws_to input p3b gt gt) gt in
+                        let acc' = if is_id then (elem, attr) :: acc else acc in
+                        scan_attdefs input p4 gt elem (fuel - Prims.int_one)
+                          acc'))))
+let scan_attlist_ids (input : Prims.string) (pos : Prims.nat)
+  (gt : Prims.nat) (acc : (Prims.string * Prims.string) Prims.list) :
+  (Prims.string * Prims.string) Prims.list=
+  let pos1 = skip_ws_to input pos gt gt in
+  match parse_xml_name input pos1 with
+  | Parser_Combinators.ParseFail (uu___, uu___1) -> acc
+  | Parser_Combinators.ParseOk (elem, p1) ->
+      scan_attdefs input p1 gt elem gt acc
 let rec parse_int_subset (input : Prims.string) (pos : Prims.nat)
-  (ents : dtd_entity_table) (fuel : Prims.nat) :
-  dtd_entity_table Parser_Combinators.parse_result=
+  (ents : dtd_entity_table) (ids : (Prims.string * Prims.string) Prims.list)
+  (fuel : Prims.nat) :
+  (dtd_entity_table * (Prims.string * Prims.string) Prims.list)
+    Parser_Combinators.parse_result=
   if fuel = Prims.int_zero
   then Parser_Combinators.ParseFail ("internal subset too long", pos)
   else
@@ -1493,11 +1624,11 @@ let rec parse_int_subset (input : Prims.string) (pos : Prims.nat)
      else
        (let ch = Parser_FastString.fs_byte_index input pos in
         if ch = 93
-        then Parser_Combinators.ParseOk (ents, (pos + Prims.int_one))
+        then Parser_Combinators.ParseOk ((ents, ids), (pos + Prims.int_one))
         else
           if is_xml_space ch
           then
-            parse_int_subset input (pos + Prims.int_one) ents
+            parse_int_subset input (pos + Prims.int_one) ents ids
               (fuel - Prims.int_one)
           else
             if ch = 37
@@ -1506,7 +1637,8 @@ let rec parse_int_subset (input : Prims.string) (pos : Prims.nat)
                        ((len - pos) + Prims.int_one)
                with
                | Parser_Combinators.ParseOk ((), pos') ->
-                   parse_int_subset input pos' ents (fuel - Prims.int_one)
+                   parse_int_subset input pos' ents ids
+                     (fuel - Prims.int_one)
                | Parser_Combinators.ParseFail (msg, fpos) ->
                    Parser_Combinators.ParseFail (msg, fpos))
             else
@@ -1516,7 +1648,7 @@ let rec parse_int_subset (input : Prims.string) (pos : Prims.nat)
                  | Parser_Combinators.ParseOk (uu___5, uu___6) ->
                      (match parse_xml_comment input pos with
                       | Parser_Combinators.ParseOk (uu___7, pos') ->
-                          parse_int_subset input pos' ents
+                          parse_int_subset input pos' ents ids
                             (fuel - Prims.int_one)
                       | Parser_Combinators.ParseFail (msg, fpos) ->
                           Parser_Combinators.ParseFail (msg, fpos))
@@ -1526,7 +1658,7 @@ let rec parse_int_subset (input : Prims.string) (pos : Prims.nat)
                       | Parser_Combinators.ParseOk (uu___7, uu___8) ->
                           (match parse_entity_decl input pos ents with
                            | Parser_Combinators.ParseOk (ents', pos') ->
-                               parse_int_subset input pos' ents'
+                               parse_int_subset input pos' ents' ids
                                  (fuel - Prims.int_one)
                            | Parser_Combinators.ParseFail (msg, fpos) ->
                                Parser_Combinators.ParseFail (msg, fpos))
@@ -1537,7 +1669,7 @@ let rec parse_int_subset (input : Prims.string) (pos : Prims.nat)
                                (match parse_xml_pi input pos with
                                 | Parser_Combinators.ParseOk (uu___11, pos')
                                     ->
-                                    parse_int_subset input pos' ents
+                                    parse_int_subset input pos' ents ids
                                       (fuel - Prims.int_one)
                                 | Parser_Combinators.ParseFail (msg, fpos) ->
                                     Parser_Combinators.ParseFail (msg, fpos))
@@ -1553,8 +1685,18 @@ let rec parse_int_subset (input : Prims.string) (pos : Prims.nat)
                                      with
                                      | Parser_Combinators.ParseOk ((), pos')
                                          ->
+                                         let ids' =
+                                           match Parser_Combinators.pstring
+                                                   "<!ATTLIST" input pos
+                                           with
+                                           | Parser_Combinators.ParseOk
+                                               (uu___13, p_after) ->
+                                               scan_attlist_ids input p_after
+                                                 pos' ids
+                                           | Parser_Combinators.ParseFail
+                                               (uu___13, uu___14) -> ids in
                                          parse_int_subset input pos' ents
-                                           (fuel - Prims.int_one)
+                                           ids' (fuel - Prims.int_one)
                                      | Parser_Combinators.ParseFail
                                          (msg, fpos) ->
                                          Parser_Combinators.ParseFail
@@ -1593,7 +1735,8 @@ let rec skip_to_subset_or_gt (input : Prims.string) (pos : Prims.nat)
             skip_to_subset_or_gt input (pos + Prims.int_one)
               (fuel - Prims.int_one)))
 let parse_doctype (input : Prims.string) (pos : Prims.nat) :
-  dtd_entity_table Parser_Combinators.parse_result=
+  (dtd_entity_table * (Prims.string * Prims.string) Prims.list)
+    Parser_Combinators.parse_result=
   let len = Parser_FastString.fs_byte_length input in
   match Parser_Combinators.pstring "<!DOCTYPE" input pos with
   | Parser_Combinators.ParseFail (msg, fpos) ->
@@ -1617,11 +1760,11 @@ let parse_doctype (input : Prims.string) (pos : Prims.nat) :
                          ((Parser_FastString.fs_byte_index input p4) = 91)
                      then
                        (match parse_int_subset input (p4 + Prims.int_one) []
-                                (len + Prims.int_one)
+                                [] (len + Prims.int_one)
                         with
                         | Parser_Combinators.ParseFail (msg, fpos) ->
                             Parser_Combinators.ParseFail (msg, fpos)
-                        | Parser_Combinators.ParseOk (ents, p5) ->
+                        | Parser_Combinators.ParseOk ((ents, ids), p5) ->
                             (match skip_xml_space input p5 with
                              | Parser_Combinators.ParseFail (msg, fpos) ->
                                  Parser_Combinators.ParseFail (msg, fpos)
@@ -1633,7 +1776,7 @@ let parse_doctype (input : Prims.string) (pos : Prims.nat) :
                                         = 62)
                                  then
                                    Parser_Combinators.ParseOk
-                                     (ents, (p6 + Prims.int_one))
+                                     ((ents, ids), (p6 + Prims.int_one))
                                  else
                                    Parser_Combinators.ParseFail
                                      ("DOCTYPE: expected '>' after internal subset",
@@ -1644,7 +1787,7 @@ let parse_doctype (input : Prims.string) (pos : Prims.nat) :
                            ((Parser_FastString.fs_byte_index input p4) = 62)
                        then
                          Parser_Combinators.ParseOk
-                           ([], (p4 + Prims.int_one))
+                           (([], []), (p4 + Prims.int_one))
                        else
                          Parser_Combinators.ParseFail
                            ("DOCTYPE: expected '[' or '>'", p4))))
@@ -1739,7 +1882,7 @@ let parse_xml_document (input : Prims.string) :
   | Parser_Combinators.ParseOk ((), pos2) ->
       let uu___ =
         match parse_doctype input pos2 with
-        | Parser_Combinators.ParseOk (e, p) -> (e, p)
+        | Parser_Combinators.ParseOk ((e, _ids), p) -> (e, p)
         | Parser_Combinators.ParseFail (uu___1, uu___2) -> ([], pos2) in
       (match uu___ with
        | (ents, pos_dt) ->
@@ -1772,7 +1915,7 @@ let parse_xml_document_children (input : Prims.string) :
   | Parser_Combinators.ParseOk (pre1, pos2) ->
       let uu___ =
         match parse_doctype input pos2 with
-        | Parser_Combinators.ParseOk (e, p) -> (e, p)
+        | Parser_Combinators.ParseOk ((e, _ids), p) -> (e, p)
         | Parser_Combinators.ParseFail (uu___1, uu___2) -> ([], pos2) in
       (match uu___ with
        | (ents, pos_dt) ->
@@ -1788,6 +1931,44 @@ let parse_xml_document_children (input : Prims.string) :
                               (FStar_List_Tot_Base.append pre1
                                  (FStar_List_Tot_Base.append pre2 (root ::
                                     post)))
+                          else FStar_Pervasives_Native.None
+                      | Parser_Combinators.ParseFail (uu___1, uu___2) ->
+                          FStar_Pervasives_Native.None)
+                 | Parser_Combinators.ParseFail (uu___1, uu___2) ->
+                     FStar_Pervasives_Native.None)
+            | Parser_Combinators.ParseFail (uu___1, uu___2) ->
+                FStar_Pervasives_Native.None))
+  | Parser_Combinators.ParseFail (uu___, uu___1) ->
+      FStar_Pervasives_Native.None
+let parse_xml_document_children_with_ids (input : Prims.string) :
+  (xml_node Prims.list * (Prims.string * Prims.string) Prims.list)
+    FStar_Pervasives_Native.option=
+  let len = Parser_FastString.fs_byte_length input in
+  let fuel = len + Prims.int_one in
+  let pos1 =
+    match parse_xml_declaration input Prims.int_zero with
+    | Parser_Combinators.ParseOk (_attrs, pos') -> pos'
+    | Parser_Combinators.ParseFail (uu___, uu___1) -> Prims.int_zero in
+  match collect_misc input pos1 fuel [] with
+  | Parser_Combinators.ParseOk (pre1, pos2) ->
+      let uu___ =
+        match parse_doctype input pos2 with
+        | Parser_Combinators.ParseOk ((e, idl), p) -> (e, idl, p)
+        | Parser_Combinators.ParseFail (uu___1, uu___2) -> ([], [], pos2) in
+      (match uu___ with
+       | (ents, ids, pos_dt) ->
+           (match collect_misc input pos_dt fuel [] with
+            | Parser_Combinators.ParseOk (pre2, pos3) ->
+                (match parse_xml_element ents input pos3 fuel with
+                 | Parser_Combinators.ParseOk (root, pos4) ->
+                     (match collect_epilog_misc input pos4 fuel [] with
+                      | Parser_Combinators.ParseOk (post, pos5) ->
+                          if pos5 >= (Parser_FastString.fs_byte_length input)
+                          then
+                            FStar_Pervasives_Native.Some
+                              ((FStar_List_Tot_Base.append pre1
+                                  (FStar_List_Tot_Base.append pre2 (root ::
+                                     post))), ids)
                           else FStar_Pervasives_Native.None
                       | Parser_Combinators.ParseFail (uu___1, uu___2) ->
                           FStar_Pervasives_Native.None)

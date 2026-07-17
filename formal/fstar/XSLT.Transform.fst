@@ -406,6 +406,13 @@ noeq type xstyle = {
   // tree still names a namespace for pattern matching, so this must NOT
   // apply the exclude-result-prefixes filter that xs_nsscope does.
   xs_nsctx : list (string & string);
+  // (element-name, attribute-name) pairs declared type ID in the SOURCE
+  // document's DTD internal subset (from Parser.XML). Consulted by id()
+  // and id()-anchored match patterns. [] when the source has no such DTD.
+  xs_id_attrs : list (string & string);
+  // The stylesheet document's root element, so document("") resolves to
+  // the stylesheet itself as a source document.
+  xs_style_root : xml_node;
 }
 
 let xslt_ns : string = "http://www.w3.org/1999/XSL/Transform"
@@ -485,21 +492,29 @@ let attr_or (name:string) (dflt:string) (attrs:list xml_attribute) : string =
 // XPath resolve to (namespace-URI, local-name) pairs -- see
 // XPath.Eval.matches_node_test. It is constant for a whole transform
 // (built from the stylesheet element's xmlns:* declarations).
-let eval_val (ctx:xctx_item) (pos:nat) (size:nat) (vars:list (string & xp_value)) (nsctx:list (string & string)) (expr_text:string)
+// `id_attrs` (context document's DTD ID-typed attribute declarations) and
+// `style_root` (the stylesheet document root, for document("")) are
+// transform constants threaded to XPath.Eval so id() and document("")
+// resolve. Both default to []/xnode_none on paths that never use them.
+let eval_val (ctx:xctx_item) (pos:nat) (size:nat) (vars:list (string & xp_value)) (nsctx:list (string & string))
+             (id_attrs:list (string & string)) (style_root:xml_node) (expr_text:string)
   : xp_value =
   match parse_xpath expr_text with
   | None -> XV_Str ""
   | Some e ->
     let doc_nodes = xml_node_count (root_of_item ctx) in
     let fuel = initial_eval_fuel e doc_nodes in
-    let env = { env_item = ctx; env_pos = pos; env_size = size; env_vars = vars; env_nsctx = nsctx; env_doc_kids = [] } in
+    let env = { env_item = ctx; env_pos = pos; env_size = size; env_vars = vars; env_nsctx = nsctx; env_doc_kids = []; env_id_attrs = id_attrs; env_style_root = style_root } in
     eval_expr fuel env e
 
+// AVT / sort-key / predicate call-outs never carry id()/document("")
+// context in the vendored suite, so these keep their arity and pass the
+// neutral defaults.
 let eval_string (ctx:xctx_item) (pos size:nat) (vars) (nsctx:list (string & string)) (expr_text:string) : string =
-  to_string_val (eval_val ctx pos size vars nsctx expr_text)
+  to_string_val (eval_val ctx pos size vars nsctx [] xnode_none expr_text)
 
 let eval_bool (ctx:xctx_item) (pos size:nat) (vars) (nsctx:list (string & string)) (expr_text:string) : bool =
-  to_bool_val (eval_val ctx pos size vars nsctx expr_text)
+  to_bool_val (eval_val ctx pos size vars nsctx [] xnode_none expr_text)
 
 // Drop `processing-instruction()` alternatives from a union select
 // before handing it to XPath.Eval (which has no PI node test).
@@ -513,7 +528,7 @@ let drop_pi_alts (sel:string) : string =
   | _ -> String.concat "|" kept
 
 let eval_nodeset (ctx:xctx_item) (pos size:nat) (vars) (nsctx:list (string & string)) (sel:string) : list xctx_item =
-  match eval_val ctx pos size vars nsctx (drop_pi_alts sel) with
+  match eval_val ctx pos size vars nsctx [] xnode_none (drop_pi_alts sel) with
   | XV_Nodes items -> items
   | _ -> []
 
@@ -535,10 +550,11 @@ let rec force_abs (e:xp_expr) : Tot xp_expr (decreases e) =
   | XE_Union a b -> XE_Union (force_abs a) (force_abs b)
   | _ -> e
 
-let eval_val_dn (ctx:dnode) (pos size:nat) (vars:list (string & xp_value)) (nsctx:list (string & string)) (expr_text:string)
+let eval_val_dn (ctx:dnode) (pos size:nat) (vars:list (string & xp_value)) (nsctx:list (string & string))
+                (id_attrs:list (string & string)) (style_root:xml_node) (expr_text:string)
   : xp_value =
   match ctx with
-  | D_Item it -> eval_val it pos size vars nsctx expr_text
+  | D_Item it -> eval_val it pos size vars nsctx id_attrs style_root expr_text
   | D_Doc root doc_kids ->
     (match parse_xpath expr_text with
      | None -> XV_Str ""
@@ -550,17 +566,20 @@ let eval_val_dn (ctx:dnode) (pos size:nat) (vars:list (string & xp_value)) (nsct
        // path (force_abs made every top-level path absolute) resolves
        // against the true document node when prolog/epilog Misc are
        // present -- `//comment()` reaches a prolog comment (select-1001).
-       let env = { env_item = CI_Elem [] [] root; env_pos = pos; env_size = size; env_vars = vars; env_nsctx = nsctx; env_doc_kids = doc_kids } in
+       let env = { env_item = CI_Elem [] [] root; env_pos = pos; env_size = size; env_vars = vars; env_nsctx = nsctx; env_doc_kids = doc_kids; env_id_attrs = id_attrs; env_style_root = style_root } in
        eval_expr fuel env e2)
 
-let eval_string_dn (ctx:dnode) (pos size:nat) (vars) (nsctx:list (string & string)) (expr_text:string) : string =
-  to_string_val (eval_val_dn ctx pos size vars nsctx expr_text)
+let eval_string_dn (ctx:dnode) (pos size:nat) (vars) (nsctx:list (string & string))
+                   (id_attrs:list (string & string)) (style_root:xml_node) (expr_text:string) : string =
+  to_string_val (eval_val_dn ctx pos size vars nsctx id_attrs style_root expr_text)
 
-let eval_bool_dn (ctx:dnode) (pos size:nat) (vars) (nsctx:list (string & string)) (expr_text:string) : bool =
-  to_bool_val (eval_val_dn ctx pos size vars nsctx expr_text)
+let eval_bool_dn (ctx:dnode) (pos size:nat) (vars) (nsctx:list (string & string))
+                 (id_attrs:list (string & string)) (style_root:xml_node) (expr_text:string) : bool =
+  to_bool_val (eval_val_dn ctx pos size vars nsctx id_attrs style_root expr_text)
 
-let eval_nodeset_dn (ctx:dnode) (pos size:nat) (vars) (nsctx:list (string & string)) (sel:string) : list xctx_item =
-  match eval_val_dn ctx pos size vars nsctx (drop_pi_alts sel) with
+let eval_nodeset_dn (ctx:dnode) (pos size:nat) (vars) (nsctx:list (string & string))
+                    (id_attrs:list (string & string)) (style_root:xml_node) (sel:string) : list xctx_item =
+  match eval_val_dn ctx pos size vars nsctx id_attrs style_root (drop_pi_alts sel) with
   | XV_Nodes items -> items
   | _ -> []
 
@@ -870,10 +889,11 @@ let select_child_union (nsctx:list (string & string)) (nd:dnode) (alts:list stri
 // a bare child name) is resolved directly in document order; anything
 // else (paths, predicates, axes, functions, ".") goes through the full
 // XPath.Eval engine.
-let select_nodes (ctx:dnode) (pos size:nat) (vars:list (string & xp_value)) (nsctx:list (string & string)) (sel:string)
+let select_nodes (ctx:dnode) (pos size:nat) (vars:list (string & xp_value)) (nsctx:list (string & string))
+                 (id_attrs:list (string & string)) (style_root:xml_node) (sel:string)
   : list xctx_item =
   if is_simple_child_union sel then select_child_union nsctx ctx (split_on_char '|' sel)
-  else eval_nodeset_dn ctx pos size vars nsctx sel
+  else eval_nodeset_dn ctx pos size vars nsctx id_attrs style_root sel
 
 // XSLT 1.0 5.5 proximity position: position()/last() inside a match-
 // pattern predicate ("name[position()=last()]", apply-templates/
@@ -899,7 +919,39 @@ let match_proximity (nsctx:list (string & string)) (namepart:string) (it:xctx_it
 // evaluated with the node's PROXIMITY position/size (see
 // match_proximity), not the caller's apply-templates/for-each
 // position -- those are unrelated per XSLT 5.5.
-let alt_matches (vars:list (string & xp_value)) (nsctx:list (string & string)) (alt:string) (nd:dnode) : bool =
+// An id()-anchored match pattern (`id('x')`, `id('x')/a/b`, `id('x')//b`)
+// matches a node N iff N is a member of the node-set the pattern selects
+// when evaluated as an expression from the context document (XSLT 1.0
+// §5.2). id() is absolute, so the starting context is immaterial -- we
+// evaluate from the document root. Membership is by document-order path.
+let match_id_pattern (id_attrs:list (string & string)) (nsctx:list (string & string)) (pat:string) (it:xctx_item) : bool =
+  match parse_xpath pat with
+  | None -> false
+  | Some e ->
+    let root = root_of_item it in
+    let fuel = initial_eval_fuel e (xml_node_count root) in
+    let env = { env_item = CI_Elem [] [] root; env_pos = 1; env_size = 1; env_vars = []; env_nsctx = nsctx; env_doc_kids = []; env_id_attrs = id_attrs; env_style_root = xnode_none } in
+    // Membership by node identity: same element node AND same ancestor
+    // chain. Not by item_path, because the candidate `it` may have been
+    // selected under the document-node path framing (root element at [i])
+    // while the pattern's own id()-rooted evaluation numbers the root at
+    // [] -- the two schemes disagree by that offset, so a path compare
+    // misses (id-016's `b/c`-selected id14 vs the `id('id8')//c` pattern).
+    // Structural node+ancestor equality is offset-independent; the fixture
+    // has no identical-content twins under an identical ancestor chain.
+    let same_node (s:xctx_item) : bool =
+      match s, it with
+      | CI_Elem _ sanc sn, CI_Elem _ ianc inode -> sn = inode && sanc = ianc
+      | _, _ -> item_path s = item_path it
+    in
+    (match eval_expr fuel env e with
+     | XV_Nodes items -> List.Tot.existsb same_node items
+     | _ -> false)
+
+let alt_matches (vars:list (string & xp_value)) (nsctx:list (string & string)) (id_attrs:list (string & string)) (alt:string) (nd:dnode) : bool =
+  if starts_with "id(" (trim_str alt) then
+    (match nd with D_Item it -> match_id_pattern id_attrs nsctx (trim_str alt) it | _ -> false)
+  else
   let (namepart, predopt) = split_predicate alt in
   match predopt with
   | None -> alt_matches_core nsctx alt nd
@@ -912,15 +964,15 @@ let alt_matches (vars:list (string & xp_value)) (nsctx:list (string & string)) (
         let (p, s) = match_proximity nsctx namepart it in
         eval_bool it p s vars nsctx pred
 
-let rec any_alt_matches (vars:list (string & xp_value)) (nsctx:list (string & string)) (alts:list string) (nd:dnode)
+let rec any_alt_matches (vars:list (string & xp_value)) (nsctx:list (string & string)) (id_attrs:list (string & string)) (alts:list string) (nd:dnode)
   : Tot bool (decreases alts) =
   match alts with
   | [] -> false
-  | a :: rest -> if alt_matches vars nsctx a nd then true else any_alt_matches vars nsctx rest nd
+  | a :: rest -> if alt_matches vars nsctx id_attrs a nd then true else any_alt_matches vars nsctx id_attrs rest nd
 
-let template_matches (vars:list (string & xp_value)) (nsctx:list (string & string)) (tpl:template) (nd:dnode) : bool =
+let template_matches (vars:list (string & xp_value)) (nsctx:list (string & string)) (id_attrs:list (string & string)) (tpl:template) (nd:dnode) : bool =
   if tpl.tpl_match = "" then false
-  else any_alt_matches vars nsctx (split_on_char '|' tpl.tpl_match) nd
+  else any_alt_matches vars nsctx id_attrs (split_on_char '|' tpl.tpl_match) nd
 
 // Default priority of a single alternative (x10 to keep integers).
 let alt_priority (alt:string) : int =
@@ -952,19 +1004,19 @@ let template_priority (tpl:template) : int =
 // Highest-priority template that both matches `nd` AND is declared in
 // the active `mode` (default mode = ""); ties resolved to the LAST in
 // document order (XSLT 1.0 conflict resolution, minus the error).
-let rec pick_template (vars) (nsctx:list (string & string)) (mode:string) (tpls:list template) (nd:dnode) (best:option template)
+let rec pick_template (vars) (nsctx:list (string & string)) (id_attrs:list (string & string)) (mode:string) (tpls:list template) (nd:dnode) (best:option template)
   : Tot (option template) (decreases tpls) =
   match tpls with
   | [] -> best
   | t :: rest ->
     let best' =
-      if t.tpl_mode = mode && template_matches vars nsctx t nd then
+      if t.tpl_mode = mode && template_matches vars nsctx id_attrs t nd then
         (match best with
          | None -> Some t
          | Some b -> if template_priority t >= template_priority b then Some t else best)
       else best
     in
-    pick_template vars nsctx mode rest nd best'
+    pick_template vars nsctx id_attrs mode rest nd best'
 
 // Look up a named template (xsl:call-template target); first match wins.
 let rec find_named_template (tpls:list template) (nm:string) : Tot (option template) (decreases tpls) =
@@ -1281,7 +1333,7 @@ let rec dispatch (fuel:nat) (st:xstyle) (nd:dnode) (pos size:nat) (mode:string)
   : Tot (list rnode) (decreases fuel) =
   if fuel = 0 then []
   else
-    match pick_template st.xs_globals st.xs_nsctx mode st.xs_templates nd None with
+    match pick_template st.xs_globals st.xs_nsctx st.xs_id_attrs mode st.xs_templates nd None with
     | Some tpl -> instantiate_seq (fuel - 1) st nd pos size st.xs_globals [] tpl.tpl_body
     | None -> builtin_rule (fuel - 1) st nd mode
 
@@ -1336,7 +1388,7 @@ and instantiate_seq (fuel:nat) (st:xstyle) (ctx:dnode) (pos size:nat)
            else
              (match attr_opt "select" attrs with
               | Some sel ->
-                let v = eval_val_dn ctx pos size vars st.xs_nsctx sel in
+                let v = eval_val_dn ctx pos size vars st.xs_nsctx st.xs_id_attrs st.xs_style_root sel in
                 instantiate_seq (fuel - 1) st ctx pos size ((nm, v) :: vars) rtf tl
               | None ->
                 // Result-tree-fragment: instantiate the body, bind its
@@ -1369,7 +1421,7 @@ and bind_with_params (fuel:nat) (st:xstyle) (ctx:dnode) (pos size:nat)
            let nm = attr_or "name" "" attrs in
            (match attr_opt "select" attrs with
             | Some sel ->
-              let v = eval_val_dn ctx pos size vars st.xs_nsctx sel in
+              let v = eval_val_dn ctx pos size vars st.xs_nsctx st.xs_id_attrs st.xs_style_root sel in
               bind_with_params (fuel - 1) st ctx pos size ((nm, v) :: vars) rtf tl
             | None ->
               let frag = instantiate_seq (fuel - 1) st ctx pos size vars rtf pchildren in
@@ -1392,11 +1444,11 @@ and instantiate_one (fuel:nat) (st:xstyle) (ctx:dnode) (pos size:nat)
       if is_xsl st.xs_pfx tag then
         let ln = xsl_instr st.xs_pfx tag in
         if ln = "value-of" then
-          [R_Node (XText (eval_string_dn ctx pos size vars st.xs_nsctx (attr_or "select" "." attrs)))]
+          [R_Node (XText (eval_string_dn ctx pos size vars st.xs_nsctx st.xs_id_attrs st.xs_style_root (attr_or "select" "." attrs)))]
         else if ln = "text" then
           [R_Node (XText (raw_text children))]
         else if ln = "if" then
-          (if eval_bool_dn ctx pos size vars st.xs_nsctx (attr_or "test" "false()" attrs)
+          (if eval_bool_dn ctx pos size vars st.xs_nsctx st.xs_id_attrs st.xs_style_root (attr_or "test" "false()" attrs)
            then instantiate_seq (fuel - 1) st ctx pos size vars rtf children
            else [])
         else if ln = "choose" then
@@ -1408,14 +1460,14 @@ and instantiate_one (fuel:nat) (st:xstyle) (ctx:dnode) (pos size:nat)
           // an xsl:sort). doc_sort_dedup fixes reverse-axis proximity
           // order (preceding::, ancestor::) and de-duplicates descendant
           // (//) selects before iteration.
-          let items0 = doc_sort_dedup (select_nodes ctx pos size vars st.xs_nsctx sel) in
+          let items0 = doc_sort_dedup (select_nodes ctx pos size vars st.xs_nsctx st.xs_id_attrs st.xs_style_root sel) in
           let items = sort_maybe (dnode_ci ctx) pos size st.xs_pfx vars st.xs_nsctx children items0 in
           for_each_items (fuel - 1) st children vars rtf items 1 (List.Tot.length items)
         else if ln = "apply-templates" then
           let amode = attr_or "mode" "" attrs in
           (match attr_opt "select" attrs with
            | Some sel ->
-             let items0 = doc_sort_dedup (select_nodes ctx pos size vars st.xs_nsctx sel) in
+             let items0 = doc_sort_dedup (select_nodes ctx pos size vars st.xs_nsctx st.xs_id_attrs st.xs_style_root sel) in
              let items = sort_maybe (dnode_ci ctx) pos size st.xs_pfx vars st.xs_nsctx children items0 in
              let dns = List.Tot.map (fun it -> D_Item it) items in
              apply_list (fuel - 1) st dns 1 (List.Tot.length items) amode
@@ -1450,8 +1502,8 @@ and instantiate_one (fuel:nat) (st:xstyle) (ctx:dnode) (pos size:nat)
            | Some nm ->
              (match rtf_find rtf nm with
               | Some frag -> if no_ns then List.Tot.map rnode_strip_ns frag else frag
-              | None -> List.Tot.map mk (select_nodes ctx pos size vars st.xs_nsctx sel))
-           | None -> List.Tot.map mk (select_nodes ctx pos size vars st.xs_nsctx sel))
+              | None -> List.Tot.map mk (select_nodes ctx pos size vars st.xs_nsctx st.xs_id_attrs st.xs_style_root sel))
+           | None -> List.Tot.map mk (select_nodes ctx pos size vars st.xs_nsctx st.xs_id_attrs st.xs_style_root sel))
         else if ln = "copy" then
           instantiate_copy (fuel - 1) st ctx pos size vars rtf children
         else if ln = "element" then
@@ -1509,9 +1561,26 @@ and instantiate_one (fuel:nat) (st:xstyle) (ctx:dnode) (pos size:nat)
                { attr_name = a.attr_name; attr_value = expand_avt (dnode_ci ctx) pos size vars st.xs_nsctx a.attr_value })
             kept in
         let body = instantiate_seq (fuel - 1) st ctx pos size vars rtf children in
+        // An unprefixed literal result element is in the stylesheet's
+        // default namespace. If that namespace was named in
+        // exclude-result-prefixes (#default) it is absent from xs_nsscope,
+        // yet the element still USES it, so it must be declared (XSLT §7.5
+        // namespace fixup: exclude-result-prefixes only drops UNused
+        // namespace nodes, never the element's own namespace). Add it only
+        // when otherwise missing (not on the element, not already in
+        // nsscope) so every previously-passing case is byte-identical; the
+        // serializer dedups it against an ancestor declaring the same
+        // default (namespace-4801).
+        let default_ns_fixup : list xml_attribute =
+          if contains_char ':' tag then []
+          else if List.Tot.existsb (fun (a:xml_attribute) -> a.attr_name = "xmlns") kept
+               || List.Tot.existsb (fun (a:xml_attribute) -> a.attr_name = "xmlns") st.xs_nsscope then []
+          else (match lookup_nsctx st.xs_nsctx "" with
+                | Some u -> if u <> "" then [ { attr_name = "xmlns"; attr_value = u } ] else []
+                | None -> []) in
         // Copy the in-scope stylesheet namespace nodes onto the result
         // element (deduped later by the serializer).
-        [R_Node (build_element tag (st.xs_nsscope @ out_attrs) body)]
+        [R_Node (build_element tag (default_ns_fixup @ st.xs_nsscope @ out_attrs) body)]
 
 and instantiate_choose (fuel:nat) (st:xstyle) (ctx:dnode) (pos size:nat)
                        (vars:list (string & xp_value)) (rtf:list (string & list rnode)) (branches:list xml_node)
@@ -1526,7 +1595,7 @@ and instantiate_choose (fuel:nat) (st:xstyle) (ctx:dnode) (pos size:nat)
          if is_xsl st.xs_pfx tag then
            let ln = xsl_instr st.xs_pfx tag in
            if ln = "when" then
-             (if eval_bool_dn ctx pos size vars st.xs_nsctx (attr_or "test" "false()" attrs)
+             (if eval_bool_dn ctx pos size vars st.xs_nsctx st.xs_id_attrs st.xs_style_root (attr_or "test" "false()" attrs)
               then instantiate_seq (fuel - 1) st ctx pos size vars rtf children
               else instantiate_choose (fuel - 1) st ctx pos size vars rtf tl)
            else if ln = "otherwise" then
@@ -1548,10 +1617,14 @@ and instantiate_copy (fuel:nat) (st:xstyle) (ctx:dnode) (pos size:nat)
          let body = instantiate_seq (fuel - 1) st ctx pos size vars rtf children in
          // xsl:copy copies the element's namespace nodes (its in-scope
          // declarations), but not its attributes or content; the
-         // serializer dedups against output ancestors.
-         let nsnodes =
-           List.Tot.filter (fun (a:xml_attribute) -> a.attr_value <> xslt_ns)
-             (inscope_ns [] [] (n :: anc)) in
+         // serializer dedups against output ancestors. All in-scope
+         // namespaces are copied, including one bound to the XSLT
+         // namespace: when the copied node comes from document("") (the
+         // stylesheet loaded as a source document) its xmlns:xsl is an
+         // ordinary namespace node that xsl:copy must preserve
+         // (namespace-4801). A source node in a normal transform never has
+         // the XSLT namespace in scope, so this is a no-op for those.
+         let nsnodes = inscope_ns [] [] (n :: anc) in
          [R_Node (build_element t nsnodes body)]
        | _ -> instantiate_seq (fuel - 1) st ctx pos size vars rtf children)
     | D_Item (CI_Text _ _ _ t) -> [R_Node (XText t)]
@@ -1651,7 +1724,7 @@ let rec collect_globals (pfx:string) (nsctx:list (string & string)) (children:li
           (let ln = xsl_instr pfx tag in ln = "variable" || ln = "param") then
          (match attr_opt "select" attrs, attr_opt "name" attrs with
           | Some sel, Some nm ->
-            let v = eval_val_dn (D_Doc source doc_kids) 1 1 [] nsctx sel in
+            let v = eval_val_dn (D_Doc source doc_kids) 1 1 [] nsctx [] xnode_none sel in
             (nm, v) :: collect_globals pfx nsctx tl source doc_kids
           | _, _ -> collect_globals pfx nsctx tl source doc_kids)
        else collect_globals pfx nsctx tl source doc_kids
@@ -1705,7 +1778,7 @@ let build_nsscope (attrs:list xml_attribute) : list xml_attribute =
          | Some pfx -> a.attr_value <> xslt_ns && not (mem_str pfx excluded))
       attrs)
 
-let build_style (stylesheet:xml_node) (source:xml_node) (doc_kids:list xml_node) : xstyle =
+let build_style (stylesheet:xml_node) (source:xml_node) (doc_kids:list xml_node) (id_attrs:list (string & string)) : xstyle =
   match stylesheet with
   | XElement tag attrs children ->
     let pfx = xsl_prefix_of stylesheet in
@@ -1717,7 +1790,9 @@ let build_style (stylesheet:xml_node) (source:xml_node) (doc_kids:list xml_node)
         xs_method = find_output_method pfx children;
         xs_globals = collect_globals pfx nsctx children source doc_kids;
         xs_nsscope = build_nsscope attrs;
-        xs_nsctx = nsctx }
+        xs_nsctx = nsctx;
+        xs_id_attrs = id_attrs;
+        xs_style_root = stylesheet }
     else
       // Simplified stylesheet: the literal result element IS the body
       // of a single template matching the document root. Its own
@@ -1728,9 +1803,12 @@ let build_style (stylesheet:xml_node) (source:xml_node) (doc_kids:list xml_node)
         xs_method = "xml";
         xs_globals = [];
         xs_nsscope = [];
-        xs_nsctx = build_nsctx attrs }
+        xs_nsctx = build_nsctx attrs;
+        xs_id_attrs = id_attrs;
+        xs_style_root = stylesheet }
   | _ ->
-    { xs_pfx = "xsl"; xs_templates = []; xs_method = "xml"; xs_globals = []; xs_nsscope = []; xs_nsctx = [] }
+    { xs_pfx = "xsl"; xs_templates = []; xs_method = "xml"; xs_globals = []; xs_nsscope = []; xs_nsctx = [];
+      xs_id_attrs = id_attrs; xs_style_root = stylesheet }
 
 // The root element among a document node's children (the single element
 // child; XML well-formedness guarantees exactly one). Used to recover the
@@ -1754,7 +1832,7 @@ let rec xml_nodes_count_sum (ns:list xml_node) : Tot nat (decreases ns) =
 // no prolog/epilog Misc). GRDDL and the js/npm bridge use this; behavior
 // is byte-for-byte what it was before the document-node model existed.
 let transform (stylesheet:xml_node) (source:xml_node) : string =
-  let st = build_style stylesheet source [source] in
+  let st = build_style stylesheet source [source] [] in
   // Fuel: generous multiple of the combined tree sizes -- every
   // apply-templates / instantiate step consumes one unit.
   let sz = xml_node_count stylesheet + xml_node_count source in
@@ -1775,7 +1853,24 @@ let transform_doc (stylesheet:xml_node) (source_kids:list xml_node) : string =
   match doc_root_elem source_kids with
   | None -> ""
   | Some root ->
-    let st = build_style stylesheet root source_kids in
+    let st = build_style stylesheet root source_kids [] in
+    let sz = xml_node_count stylesheet + xml_nodes_count_sum source_kids in
+    let fuel = op_Multiply (sz + 1) 256 + 100000 in
+    let result = dispatch fuel st (D_Doc root source_kids) 1 1 "" in
+    let nodes = only_nodes result in
+    if st.xs_method = "text" then text_value_nodes nodes
+    else serialize_nodes [] nodes
+
+// Document-node aware entry that ALSO threads the SOURCE document's DTD
+// internal-subset ATTLIST ID-type declarations (from
+// Parser.XML.parse_xml_document_children_with_ids). id() and id()-anchored
+// match patterns need it; document("") uses the stylesheet root (recorded
+// in build_style). Reduces to transform_doc when source_id_attrs = [].
+let transform_doc_ids (stylesheet:xml_node) (source_kids:list xml_node) (source_id_attrs:list (string & string)) : string =
+  match doc_root_elem source_kids with
+  | None -> ""
+  | Some root ->
+    let st = build_style stylesheet root source_kids source_id_attrs in
     let sz = xml_node_count stylesheet + xml_nodes_count_sum source_kids in
     let fuel = op_Multiply (sz + 1) 256 + 100000 in
     let result = dispatch fuel st (D_Doc root source_kids) 1 1 "" in

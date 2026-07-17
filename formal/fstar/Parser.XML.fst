@@ -1247,52 +1247,157 @@ let parse_entity_decl (input:string) (pos:nat) (ents:dtd_entity_table)
         end
     end
 
+// ---- ATTLIST ID-type recognition (best-effort, non-failing) --------
+// The declared-attributes-of-type-ID table maps (element-name,
+// attribute-name) pairs whose ATTLIST AttType keyword is exactly "ID"
+// (NOT IDREF/IDREFS). XPath.Eval.id() and XSLT id()-anchored match
+// patterns use it to find the element bearing a given unique identifier.
+// This scanner runs OVER the region a `<!ATTLIST ... >` declaration
+// occupies -- the same span skip_decl_to_gt consumes -- and NEVER moves
+// the parser position or changes accept/reject: it only reads out ID
+// pairs. Any structural surprise stops it early (fewer pairs), so a
+// malformed or exotic ATTLIST can lose IDs but can never corrupt the
+// well-formedness parse. Scoped to the internal subset (no external
+// DTD, no parameter-entity expansion in ATTLIST bodies).
+
+// Skip XML spaces up to (not past) `gt`.
+let rec skip_ws_to (input:string) (pos:nat) (gt:nat) (fuel:nat) : Tot nat (decreases fuel) =
+  if fuel = 0 then pos
+  else if pos >= gt then pos
+  else if is_xml_space (fs_byte_index input pos) then skip_ws_to input (pos + 1) gt (fuel - 1)
+  else pos
+
+// From a '(' at `pos`, skip to just after the matching ')'. `depth` 0 at
+// entry; bounded by `gt`.
+let rec skip_parens_to (input:string) (pos:nat) (gt:nat) (depth:nat) (fuel:nat) : Tot nat (decreases fuel) =
+  if fuel = 0 then pos
+  else if pos >= gt then pos
+  else
+    let c = fs_byte_index input pos in
+    if c = '(' then skip_parens_to input (pos + 1) gt (depth + 1) (fuel - 1)
+    else if c = ')' then (if depth <= 1 then pos + 1 else skip_parens_to input (pos + 1) gt (depth - 1) (fuel - 1))
+    else skip_parens_to input (pos + 1) gt depth (fuel - 1)
+
+// From just after an opening quote `q`, skip to just after the closer.
+let rec skip_quoted_to (input:string) (pos:nat) (gt:nat) (q:char) (fuel:nat) : Tot nat (decreases fuel) =
+  if fuel = 0 then pos
+  else if pos >= gt then pos
+  else if fs_byte_index input pos = q then pos + 1
+  else skip_quoted_to input (pos + 1) gt q (fuel - 1)
+
+// Skip an AttDef DefaultDecl: `#REQUIRED` | `#IMPLIED` | (`#FIXED` S)? AttValue.
+let skip_default_decl (input:string) (pos:nat) (gt:nat) : nat =
+  if pos >= gt then pos
+  else
+    let c = fs_byte_index input pos in
+    if c = '#' then
+      (match parse_xml_name input (pos + 1) with
+       | ParseOk kw p2 ->
+         if kw = "FIXED" then
+           let p3 = skip_ws_to input p2 gt gt in
+           if p3 < gt && (let q = fs_byte_index input p3 in q = '"' || q = '\'')
+           then skip_quoted_to input (p3 + 1) gt (fs_byte_index input p3) gt
+           else p2
+         else p2
+       | ParseFail _ _ -> pos + 1)
+    else if c = '"' || c = '\'' then skip_quoted_to input (pos + 1) gt c gt
+    else pos
+
+// Iterate over the AttDefs of one ATTLIST for element `elem`, collecting
+// (elem, attr) pairs whose AttType is exactly "ID".
+let rec scan_attdefs (input:string) (pos:nat) (gt:nat) (elem:string) (fuel:nat) (acc:list (string & string))
+  : Tot (list (string & string)) (decreases fuel) =
+  if fuel = 0 then acc
+  else
+    let pos = skip_ws_to input pos gt gt in
+    if pos >= gt || fs_byte_index input pos = '>' then acc
+    else
+      match parse_xml_name input pos with
+      | ParseFail _ _ -> acc
+      | ParseOk attr p2 ->
+        let p2 = skip_ws_to input p2 gt gt in
+        if p2 < gt && fs_byte_index input p2 = '(' then
+          // Enumeration type (never ID).
+          let p3 = skip_parens_to input p2 gt 0 gt in
+          let p4 = skip_default_decl input (skip_ws_to input p3 gt gt) gt in
+          scan_attdefs input p4 gt elem (fuel - 1) acc
+        else
+          match parse_xml_name input p2 with
+          | ParseFail _ _ -> acc
+          | ParseOk typ p3 ->
+            let (p3b, is_id) =
+              if typ = "NOTATION" then
+                let pn = skip_ws_to input p3 gt gt in
+                (if pn < gt && fs_byte_index input pn = '(' then (skip_parens_to input pn gt 0 gt, false) else (p3, false))
+              else (p3, typ = "ID")
+            in
+            let p4 = skip_default_decl input (skip_ws_to input p3b gt gt) gt in
+            let acc' = if is_id then (elem, attr) :: acc else acc in
+            scan_attdefs input p4 gt elem (fuel - 1) acc'
+
+// Scan a `<!ATTLIST ... >` region [pos, gt). `pos` is just after the
+// "<!ATTLIST" keyword; `gt` is the position just after the closing '>'.
+let scan_attlist_ids (input:string) (pos:nat) (gt:nat) (acc:list (string & string))
+  : list (string & string) =
+  let pos = skip_ws_to input pos gt gt in
+  match parse_xml_name input pos with
+  | ParseFail _ _ -> acc
+  | ParseOk elem p1 -> scan_attdefs input p1 gt elem gt acc
+
 // Parse the internal subset body (from just after '[') up to and
-// including the ']'. Collects general entity declarations; skips the
+// including the ']'. Collects general entity declarations AND the
+// (element, attribute) pairs declared with ATTLIST AttType ID; skips the
 // rest structurally.
-let rec parse_int_subset (input:string) (pos:nat) (ents:dtd_entity_table) (fuel:nat)
-  : Tot (parse_result dtd_entity_table) (decreases fuel) =
+let rec parse_int_subset (input:string) (pos:nat) (ents:dtd_entity_table) (ids:list (string & string)) (fuel:nat)
+  : Tot (parse_result (dtd_entity_table & list (string & string))) (decreases fuel) =
   if fuel = 0 then ParseFail "internal subset too long" pos
   else
     let len = fs_byte_length input in
     if pos >= len then ParseFail "unterminated internal subset (missing ']')" pos
     else
       let ch = fs_byte_index input pos in
-      if ch = ']' then ParseOk ents (pos + 1)
-      else if is_xml_space ch then parse_int_subset input (pos + 1) ents (fuel - 1)
+      if ch = ']' then ParseOk (ents, ids) (pos + 1)
+      else if is_xml_space ch then parse_int_subset input (pos + 1) ents ids (fuel - 1)
       else if ch = '%' then
         begin match skip_pe_reference input (pos + 1) (len - pos + 1) with
-        | ParseOk () pos' -> parse_int_subset input pos' ents (fuel - 1)
+        | ParseOk () pos' -> parse_int_subset input pos' ents ids (fuel - 1)
         | ParseFail msg fpos -> ParseFail msg fpos
         end
       else if ch = '<' then
         begin match pstring "<!--" input pos with
         | ParseOk _ _ ->
           begin match parse_xml_comment input pos with
-          | ParseOk _ pos' -> parse_int_subset input pos' ents (fuel - 1)
+          | ParseOk _ pos' -> parse_int_subset input pos' ents ids (fuel - 1)
           | ParseFail msg fpos -> ParseFail msg fpos
           end
         | ParseFail _ _ ->
           begin match pstring "<!ENTITY" input pos with
           | ParseOk _ _ ->
             begin match parse_entity_decl input pos ents with
-            | ParseOk ents' pos' -> parse_int_subset input pos' ents' (fuel - 1)
+            | ParseOk ents' pos' -> parse_int_subset input pos' ents' ids (fuel - 1)
             | ParseFail msg fpos -> ParseFail msg fpos
             end
           | ParseFail _ _ ->
             begin match pstring "<?" input pos with
             | ParseOk _ _ ->
               begin match parse_xml_pi input pos with
-              | ParseOk _ pos' -> parse_int_subset input pos' ents (fuel - 1)
+              | ParseOk _ pos' -> parse_int_subset input pos' ents ids (fuel - 1)
               | ParseFail msg fpos -> ParseFail msg fpos
               end
             | ParseFail _ _ ->
               begin match pstring "<!" input pos with
               | ParseOk _ _ ->
                 // <!ELEMENT ...> / <!ATTLIST ...> / <!NOTATION ...> and
-                // any other markup declaration -- skip structurally.
+                // any other markup declaration -- skip structurally, but
+                // read ID-typed attributes out of an ATTLIST first.
                 begin match skip_decl_to_gt input pos (len - pos + 1) with
-                | ParseOk () pos' -> parse_int_subset input pos' ents (fuel - 1)
+                | ParseOk () pos' ->
+                  let ids' =
+                    match pstring "<!ATTLIST" input pos with
+                    | ParseOk _ p_after -> scan_attlist_ids input p_after pos' ids
+                    | ParseFail _ _ -> ids
+                  in
+                  parse_int_subset input pos' ents ids' (fuel - 1)
                 | ParseFail msg fpos -> ParseFail msg fpos
                 end
               | ParseFail _ _ -> ParseFail "malformed internal subset declaration" pos
@@ -1324,7 +1429,7 @@ let rec skip_to_subset_or_gt (input:string) (pos:nat) (fuel:nat)
 // doctypedecl. On success returns the collected general-entity table and
 // the position just after the closing '>'. Fails (ParseFail) if there is
 // no '<!DOCTYPE' here, or if the DOCTYPE is structurally malformed.
-let parse_doctype (input:string) (pos:nat) : parse_result dtd_entity_table =
+let parse_doctype (input:string) (pos:nat) : parse_result (dtd_entity_table & list (string & string)) =
   let len = fs_byte_length input in
   match pstring "<!DOCTYPE" input pos with
   | ParseFail msg fpos -> ParseFail msg fpos
@@ -1339,18 +1444,18 @@ let parse_doctype (input:string) (pos:nat) : parse_result dtd_entity_table =
         | ParseFail msg fpos -> ParseFail msg fpos
         | ParseOk () p4 ->
           if p4 < len && fs_byte_index input p4 = '[' then
-            begin match parse_int_subset input (p4 + 1) [] (len + 1) with
+            begin match parse_int_subset input (p4 + 1) [] [] (len + 1) with
             | ParseFail msg fpos -> ParseFail msg fpos
-            | ParseOk ents p5 ->
+            | ParseOk (ents, ids) p5 ->
               begin match skip_xml_space input p5 with
               | ParseFail msg fpos -> ParseFail msg fpos
               | ParseOk () p6 ->
-                if p6 < len && fs_byte_index input p6 = '>' then ParseOk ents (p6 + 1)
+                if p6 < len && fs_byte_index input p6 = '>' then ParseOk (ents, ids) (p6 + 1)
                 else ParseFail "DOCTYPE: expected '>' after internal subset" p6
               end
             end
           else if p4 < len && fs_byte_index input p4 = '>' then
-            ParseOk [] (p4 + 1)
+            ParseOk ([], []) (p4 + 1)
           else ParseFail "DOCTYPE: expected '[' or '>'" p4
         end
       end
@@ -1496,7 +1601,7 @@ let parse_xml_document (input:string) : option xml_node =
     // parse_xml_element rejects it (the document is then not-wf).
     let (ents, pos_dt) =
       match parse_doctype input pos2 with
-      | ParseOk e p -> (e, p)
+      | ParseOk (e, _ids) p -> (e, p)
       | ParseFail _ _ -> ([], pos2)
     in
     begin match skip_misc input pos_dt fuel with
@@ -1535,7 +1640,7 @@ let parse_xml_document_children (input:string) : option (list xml_node) =
   | ParseOk pre1 pos2 ->
     let (ents, pos_dt) =
       match parse_doctype input pos2 with
-      | ParseOk e p -> (e, p)
+      | ParseOk (e, _ids) p -> (e, p)
       | ParseFail _ _ -> ([], pos2)
     in
     begin match collect_misc input pos_dt fuel [] with
@@ -1546,6 +1651,44 @@ let parse_xml_document_children (input:string) : option (list xml_node) =
         | ParseOk post pos5 ->
           if pos5 >= fs_byte_length input
           then Some (append pre1 (append pre2 (root :: post)))
+          else None
+        | ParseFail _ _ -> None
+        end
+      | ParseFail _ _ -> None
+      end
+    | ParseFail _ _ -> None
+    end
+  | ParseFail _ _ -> None
+  end
+
+// Document-node aware entry point that ALSO returns the internal-subset
+// ATTLIST ID-type declarations as (element-name, attribute-name) pairs.
+// Parses identically to parse_xml_document_children (same accept/reject
+// flow); the extra component is the id() index substrate. Empty pair list
+// when there is no DOCTYPE or no ID-typed attribute.
+let parse_xml_document_children_with_ids (input:string) : option (list xml_node & list (string & string)) =
+  let len = fs_byte_length input in
+  let fuel = len + 1 in
+  let pos1 =
+    match parse_xml_declaration input 0 with
+    | ParseOk _attrs pos' -> pos'
+    | ParseFail _ _ -> 0
+  in
+  begin match collect_misc input pos1 fuel [] with
+  | ParseOk pre1 pos2 ->
+    let (ents, ids, pos_dt) =
+      match parse_doctype input pos2 with
+      | ParseOk (e, idl) p -> (e, idl, p)
+      | ParseFail _ _ -> ([], [], pos2)
+    in
+    begin match collect_misc input pos_dt fuel [] with
+    | ParseOk pre2 pos3 ->
+      begin match parse_xml_element ents input pos3 fuel with
+      | ParseOk root pos4 ->
+        begin match collect_epilog_misc input pos4 fuel [] with
+        | ParseOk post pos5 ->
+          if pos5 >= fs_byte_length input
+          then Some (append pre1 (append pre2 (root :: post)), ids)
           else None
         | ParseFail _ _ -> None
         end

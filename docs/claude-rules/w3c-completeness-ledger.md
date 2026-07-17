@@ -85,7 +85,7 @@ disposition.
 | ShEx validation | 1181 pass, 1 fail (out of 1182) | ✅ per `tests/shex-shexj-twins/README.md` |
 | tests_unit | dashboard: 35 pass, 6 fail (out of 41) — stale; this session's fresh run: 45 pass, 0 fail (out of 45) | ✅ dispositioned as environment; dashboard needs republish |
 | xml_conformance | 1414 pass, 0 fail, 1171 skip (out of 2585) | ✅ fully dispositioned (runner's own "HONEST BREAKDOWN") |
-| XSLT 1.0 | 83 pass, 5 fail (out of 88) [2026-07-16, namespace-node family landed; remaining 5 dispositioned: node-1601 (implementation-defined namespace-node order), namespace-4801 (document("")), copy-2601/select-1001 (doc-node prolog model), id-016 (DTD-ID)] | ✅ landed |
+| XSLT 1.0 | 87 pass, 1 fail (out of 88) [2026-07-17, DTD-ID id() + document("") landed (id-016, namespace-4801 flipped green); sole residual node-1601 is dispositioned (implementation-defined namespace-node order / unmodeled `namespace::` axis)] | ✅ landed |
 
 ### CSVW csv2rdf — 264 pass, 6 fail (out of 270)
 
