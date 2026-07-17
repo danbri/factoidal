@@ -553,3 +553,18 @@ This skill is the durable form of a single bad session:
   `build-and-test`.
 - `.checked` cache correctness and safe parallel verification (the
   root cause behind hazard #2) — `fast-verify-extract`.
+
+## Hazard 16: extract manifest-hash skip is dependency-blind
+
+Found 2026-07-17 during the RDF 1.2 term-model landing. `build-ocaml.sh
+extract` skips modules whose OWN .fst/.fsti digest is unchanged — it
+does not track dependencies. After a foundational change (e.g. a new
+`rdf_term` constructor in `RDF.Term.fsti`), consumers whose source is
+untouched keep their stale extracted `.ml` and are silently NOT
+re-verified: the phase-1 agent measured 142 stale `.ml` files hiding
+unverified consumers. Detection: a foundational-type change that
+compiles suspiciously fast. Recovery/rule: any change to a widely-
+imported type (RDF.Term, RDF.Triple, core algebra types) MUST rebuild
+with `./build-ocaml.sh extract --force-full` (all modules re-verified,
+0 skipped) before compile. Targeted extracts remain fine for leaf-module
+edits.
