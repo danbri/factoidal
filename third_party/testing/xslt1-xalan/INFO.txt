@@ -1,0 +1,63 @@
+Apache Xalan XSLT 1.0 conformance corpus — INFO
+================================================
+
+Upstream:   apache/xalan-test @ 5120be9b3704a724ff0205b750d3cb409b62869b
+License:     Apache-2.0 (see PROVENANCE.md; xalan-test-src/LICENSE + NOTICE)
+Vendored:    git submodule at xalan-test-src/ + generated manifest.json
+Format:      per test = stylesheet (.xsl) + source (.xml) + expected (.out,
+             the OASIS "gold" serialized tree). manifest.json lists
+             {name, category, stylesheet, source, expected, description}
+             with paths relative to this directory. Same schema the
+             existing third_party/testing/xslt/ corpus uses.
+Test count:  1690 triples across 35 categories (every conf/ category that
+             has an xsl+xml+gold triple).
+Runner:      bin/linux-x86_64/xslt_runner --base third_party/testing/xslt1-xalan
+             (the same F*-extracted XSLT_Transform oracle as the default
+             suite; --base just points it at this manifest.)
+
+Initial measured score (2026-07-17, engine = slice-1 XSLT.Transform.fst,
+NO engine changes this pass — the red count is the deliverable, converting
+the coverage-matrix's static ~25-hole analysis into a measured burndown):
+
+    970 pass, 712 fail, 8 skip (out of 1690)
+    (pass-exact 967, pass-loose 3; 8 skips = XML parse failures on
+     4 source + 4 stylesheet files; 2 of the fails are engine
+     exceptions on non-Latin1 sort keys — Char.chr, sort-alphabet-*)
+
+Per-category fail clustering (fail / of), mapped to matrix holes:
+
+  numberformat   44/44   format-number() + xsl:decimal-format   (hole #6)
+  impincl        29/29   xsl:import / include / apply-imports   (hole #7)
+  reluri         11/11   document() real-URI / relative URIs    (matrix document() partial)
+  numbering      91/93   xsl:number                             (hole #4)
+  namespace      92/134  namespace:: axis + xsl:namespace-alias (holes #1, #16)
+  mdocs          18/19   document() multi-document              (matrix document() partial)
+  attribset      44/47   xsl:attribute-set / use-attribute-sets (hole #14)
+  idkey          44/62   xsl:key + key() + generate-id()        (holes #5, #10)
+  output         75/109  xsl:output attrs beyond method         (hole #18)
+  extend          5/5    extension elements + xsl:fallback      (hole #17)
+  expression      6/6    lang()/XPath gaps                      (hole #3)
+  variable       38/70   call-template / with-param interplay
+  string         40/135  translate() + string gaps              (hole #2)
+  position       26/113  position/axis corner cases
+  copy           19/62   copy / copy-of namespace fidelity
+  whitespace     15/23   strip-space / preserve-space           (hole #15)
+  lre            15/23   literal-result-element attribute order
+  axes           15/130  axis corner cases
+  match          14/34   pattern matching corners
+  select         14/85   select corners
+  sort            8/41   case-order/lang collations + Char.chr  (matrix sort caveat)
+  node            8/21   node construction
+  math            7/107  number formatting corners
+  conflictres     6/37   template conflict resolution / import precedence
+  boolean         5/90   lang()                                 (hole #3)
+  attribvaltemplate 4/12 AVT corner cases
+  predicate       3/58   predicate corners
+  message         2/16   xsl:message / terminate                (hole #9)
+  processorinfo   1/1    system-property()                      (hole #11)
+  modes           1/17 · ver 1/8
+
+Burndown target: docs/designissues/2026-07-17-xpath-xslt-coverage-matrix.md
+Re-run any time with:
+  tools/ensure-test-env.sh   # restore the submodule in a fresh env
+  bin/linux-x86_64/xslt_runner --base third_party/testing/xslt1-xalan -v

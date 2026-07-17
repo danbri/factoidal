@@ -41,3 +41,6 @@
 [submodule "third_party/testing/rml-modules/rml-star"]
 	path = third_party/testing/rml-modules/rml-star
 	url = https://github.com/kg-construct/rml-star.git
+[submodule "third_party/testing/xslt1-xalan/xalan-test-src"]
+	path = third_party/testing/xslt1-xalan/xalan-test-src
+	url = https://github.com/apache/xalan-test.git

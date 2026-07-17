@@ -75,7 +75,8 @@ check third_party/testing/rml-modules/rml-star       "rml-star"           "futur
 # Vendored-in-tree (not submodules) — regressions here mean a bad
 # checkout/sparse clone rather than submodule drift, but verify anyway:
 check third_party/testing/xml/xmlconf                "xml-conformance"    "xml_runner (1414/0/1171 row)"
-check third_party/testing/xslt/manifest.json         "xslt"               "xslt_runner"
+check third_party/testing/xslt/manifest.json         "xslt"               "xslt_runner (default slice-1 subset)"
+check third_party/testing/xslt1-xalan/xalan-test-src/tests/conf/axes/axes01.xsl "xslt1-xalan (Apache)" "xslt_runner --base xslt1-xalan (XSLT 1.0 conformance mirror)"
 check third_party/testing/owl                        "owl"                "owl_runner"
 check third_party/testing/hdt/rml-core-ontology.hdt  "hdt"                "hdt parity, hub post24, npm hdt tests"
 

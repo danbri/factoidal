@@ -189,6 +189,10 @@ let print_help () =
      Usage:\n\
      \  ./xslt_runner          Run the full vendored suite\n\
      \  ./xslt_runner -v       Print every FAIL as it runs\n\
+     \  ./xslt_runner --base D Run an alternate corpus dir D (with its\n\
+     \                         own manifest.json; e.g. the Apache-2.0\n\
+     \                         Xalan XSLT 1.0 conformance mirror under\n\
+     \                         third_party/testing/xslt1-xalan)\n\
      \  ./xslt_runner --help   Show this help\n\n\
      Tests are the XSLT-1.0-expressible subset of w3c/xslt30-test,\n\
      vendored under third_party/testing/xslt/. A test passes when the\n\
@@ -198,17 +202,26 @@ let print_help () =
 let () =
   let verbose = ref false in
   let dump = ref None in
+  let base_override = ref None in
   let args = Array.to_list Sys.argv in
   let rec scan = function
     | [] -> ()
     | ("-v" | "--verbose") :: r -> verbose := true; scan r
     | ("-h" | "--help") :: _ -> print_help (); exit 0
     | "--dump" :: name :: r -> dump := Some name; scan r
+    | "--base" :: dir :: r -> base_override := Some dir; scan r
     | _ :: r -> scan r
   in
   (match args with _ :: rest -> scan rest | [] -> ());
   let repo_root = find_repo_root () in
-  let base_dir = Filename.concat repo_root "third_party/testing/xslt" in
+  (* --base <dir> selects an alternate corpus directory (must contain a
+     manifest.json in the same {name,category,stylesheet,source,expected}
+     schema; test paths are resolved relative to <dir>). Default is the
+     xslt30-test slice-1 subset. Same output-comparison oracle either
+     way -- this is I/O plumbing, no XSLT semantics (iron rule #11). *)
+  let base_dir = match !base_override with
+    | Some d -> if Filename.is_relative d then Filename.concat repo_root d else d
+    | None -> Filename.concat repo_root "third_party/testing/xslt" in
   let manifest_path = Filename.concat base_dir "manifest.json" in
   Printf.printf "=== XSLT 1.0 Transform Runner ===\n";
   Printf.printf "suite dir: %s\n\n" base_dir;
@@ -251,7 +264,13 @@ let () =
   let results =
     List.map
       (fun e ->
-         let o = run_one base_dir e in
+         (* Robustness only (no XSLT semantics): a per-test crash in the
+            extracted engine on an adversarial input is one FAIL, not an
+            aborted run. Larger corpora (e.g. the Xalan conformance
+            mirror under --base) reach code paths the slice-1 subset
+            never did; catch here so the honest tally still completes. *)
+         let o = try run_one base_dir e
+                 with ex -> Fail (Printf.sprintf "exception: %s" (Printexc.to_string ex)) in
          (match o with
           | Fail msg when !verbose -> Printf.eprintf "FAIL %s (%s): %s\n" e.name e.category msg
           | Skip msg when !verbose -> Printf.eprintf "SKIP %s (%s): %s\n" e.name e.category msg
