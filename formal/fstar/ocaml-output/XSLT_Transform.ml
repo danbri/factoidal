@@ -196,23 +196,32 @@ let item_to_rnode (it : XPath_Eval.xctx_item) : rnode=
       R_Node (Parser_XML.XPI (tg, d))
   | XPath_Eval.CI_Attr (uu___, uu___1, uu___2, a) -> R_Attr a
 type dnode =
-  | D_Doc of Parser_XML.xml_node 
+  | D_Doc of Parser_XML.xml_node * Parser_XML.xml_node Prims.list 
   | D_Item of XPath_Eval.xctx_item 
 let uu___is_D_Doc (projectee : dnode) : Prims.bool=
-  match projectee with | D_Doc _0 -> true | uu___ -> false
+  match projectee with | D_Doc (_0, _1) -> true | uu___ -> false
 let __proj__D_Doc__item___0 (projectee : dnode) : Parser_XML.xml_node=
-  match projectee with | D_Doc _0 -> _0
+  match projectee with | D_Doc (_0, _1) -> _0
+let __proj__D_Doc__item___1 (projectee : dnode) :
+  Parser_XML.xml_node Prims.list= match projectee with | D_Doc (_0, _1) -> _1
 let uu___is_D_Item (projectee : dnode) : Prims.bool=
   match projectee with | D_Item _0 -> true | uu___ -> false
 let __proj__D_Item__item___0 (projectee : dnode) : XPath_Eval.xctx_item=
   match projectee with | D_Item _0 -> _0
+let doc_has_misc (doc_kids : Parser_XML.xml_node Prims.list) : Prims.bool=
+  match doc_kids with | [] -> false | uu___::[] -> false | uu___ -> true
 let dnode_ci (nd : dnode) : XPath_Eval.xctx_item=
   match nd with
-  | D_Doc root -> XPath_Eval.CI_Elem ([], [], root)
+  | D_Doc (root, uu___) -> XPath_Eval.CI_Elem ([], [], root)
   | D_Item it -> it
 let dnode_children (nd : dnode) : dnode Prims.list=
   match nd with
-  | D_Doc root -> [D_Item (XPath_Eval.CI_Elem ([], [], root))]
+  | D_Doc (root, doc_kids) ->
+      if doc_has_misc doc_kids
+      then
+        FStar_List_Tot_Base.map (fun it -> D_Item it)
+          (XPath_Eval.doc_child_items doc_kids)
+      else [D_Item (XPath_Eval.CI_Elem ([], [], root))]
   | D_Item (XPath_Eval.CI_Elem (p, anc, n)) ->
       FStar_List_Tot_Base.map (fun it -> D_Item it)
         (XPath_Eval.child_items p anc n)
@@ -220,7 +229,10 @@ let dnode_children (nd : dnode) : dnode Prims.list=
 let dnode_attrs_and_kids (nd : dnode) :
   (XPath_Eval.xctx_item Prims.list * XPath_Eval.xctx_item Prims.list)=
   match nd with
-  | D_Doc root -> ([], [XPath_Eval.CI_Elem ([], [], root)])
+  | D_Doc (root, doc_kids) ->
+      if doc_has_misc doc_kids
+      then ([], (XPath_Eval.doc_child_items doc_kids))
+      else ([], [XPath_Eval.CI_Elem ([], [], root)])
   | D_Item (XPath_Eval.CI_Elem (p, anc, n)) ->
       ((XPath_Eval.attribute_items p anc n),
         (XPath_Eval.child_items p anc n))
@@ -364,7 +376,8 @@ let eval_val (ctx : XPath_Eval.xctx_item) (pos : Prims.nat)
           XPath_Eval.env_pos = pos;
           XPath_Eval.env_size = size;
           XPath_Eval.env_vars = vars;
-          XPath_Eval.env_nsctx = nsctx
+          XPath_Eval.env_nsctx = nsctx;
+          XPath_Eval.env_doc_kids = []
         } in
       XPath_Eval.eval_expr fuel env e
 let eval_string (ctx : XPath_Eval.xctx_item) (pos : Prims.nat)
@@ -406,7 +419,7 @@ let eval_val_dn (ctx : dnode) (pos : Prims.nat) (size : Prims.nat)
   (expr_text : Prims.string) : XPath_Eval.xp_value=
   match ctx with
   | D_Item it -> eval_val it pos size vars nsctx expr_text
-  | D_Doc root ->
+  | D_Doc (root, doc_kids) ->
       (match Parser_XPath.parse_xpath expr_text with
        | FStar_Pervasives_Native.None -> XPath_Eval.XV_Str ""
        | FStar_Pervasives_Native.Some e ->
@@ -419,7 +432,8 @@ let eval_val_dn (ctx : dnode) (pos : Prims.nat) (size : Prims.nat)
                XPath_Eval.env_pos = pos;
                XPath_Eval.env_size = size;
                XPath_Eval.env_vars = vars;
-               XPath_Eval.env_nsctx = nsctx
+               XPath_Eval.env_nsctx = nsctx;
+               XPath_Eval.env_doc_kids = doc_kids
              } in
            XPath_Eval.eval_expr fuel env e2)
 let eval_string_dn (ctx : dnode) (pos : Prims.nat) (size : Prims.nat)
@@ -626,7 +640,7 @@ let alt_matches_core (nsctx : (Prims.string * Prims.string) Prims.list)
   (alt : Prims.string) (nd : dnode) : Prims.bool=
   let a = trim_str alt in
   if a = "/"
-  then match nd with | D_Doc uu___ -> true | uu___ -> false
+  then match nd with | D_Doc (uu___, uu___1) -> true | uu___ -> false
   else
     if a = "*"
     then
@@ -836,7 +850,7 @@ let alt_matches (vars : (Prims.string * XPath_Eval.xp_value) Prims.list)
            then false
            else
              (match nd with
-              | D_Doc uu___2 ->
+              | D_Doc (uu___2, uu___3) ->
                   eval_bool (dnode_ci nd) Prims.int_one Prims.int_one vars
                     nsctx pred
               | D_Item it ->
@@ -1248,7 +1262,7 @@ and builtin_rule (fuel : Prims.nat) (st : xstyle) (nd : dnode)
   then []
   else
     (match nd with
-     | D_Doc uu___1 ->
+     | D_Doc (uu___1, uu___2) ->
          let kids = dnode_children nd in
          apply_list (fuel - Prims.int_one) st kids Prims.int_one
            (FStar_List_Tot_Base.length kids) mode
@@ -1667,7 +1681,7 @@ and instantiate_copy (fuel : Prims.nat) (st : xstyle) (ctx : dnode)
   then []
   else
     (match ctx with
-     | D_Doc uu___1 ->
+     | D_Doc (uu___1, uu___2) ->
          instantiate_seq (fuel - Prims.int_one) st ctx pos size vars rtf
            children
      | D_Item (XPath_Eval.CI_Elem (uu___1, anc, n)) ->
@@ -1785,7 +1799,8 @@ let rec build_nsctx (attrs : Parser_XML.xml_attribute Prims.list) :
 let rec collect_globals (pfx : Prims.string)
   (nsctx : (Prims.string * Prims.string) Prims.list)
   (children : Parser_XML.xml_node Prims.list) (source : Parser_XML.xml_node)
-  : (Prims.string * XPath_Eval.xp_value) Prims.list=
+  (doc_kids : Parser_XML.xml_node Prims.list) :
+  (Prims.string * XPath_Eval.xp_value) Prims.list=
   match children with
   | [] -> []
   | hd::tl ->
@@ -1800,12 +1815,13 @@ let rec collect_globals (pfx : Prims.string)
               | (FStar_Pervasives_Native.Some sel,
                  FStar_Pervasives_Native.Some nm) ->
                   let v =
-                    eval_val_dn (D_Doc source) Prims.int_one Prims.int_one []
-                      nsctx sel in
-                  (nm, v) :: (collect_globals pfx nsctx tl source)
-              | (uu___1, uu___2) -> collect_globals pfx nsctx tl source)
-           else collect_globals pfx nsctx tl source
-       | uu___ -> collect_globals pfx nsctx tl source)
+                    eval_val_dn (D_Doc (source, doc_kids)) Prims.int_one
+                      Prims.int_one [] nsctx sel in
+                  (nm, v) :: (collect_globals pfx nsctx tl source doc_kids)
+              | (uu___1, uu___2) ->
+                  collect_globals pfx nsctx tl source doc_kids)
+           else collect_globals pfx nsctx tl source doc_kids
+       | uu___ -> collect_globals pfx nsctx tl source doc_kids)
 let parse_prefix_list (s : Prims.string) : Prims.string Prims.list=
   FStar_List_Tot_Base.map (fun p -> if p = "#default" then "" else p)
     (FStar_List_Tot_Base.filter (fun p -> p <> "")
@@ -1823,7 +1839,8 @@ let build_nsscope (attrs : Parser_XML.xml_attribute Prims.list) :
               (a.Parser_XML.attr_value <> xslt_ns) &&
                 (Prims.op_Negation (mem_str pfx excluded))) attrs)
 let build_style (stylesheet : Parser_XML.xml_node)
-  (source : Parser_XML.xml_node) : xstyle=
+  (source : Parser_XML.xml_node) (doc_kids : Parser_XML.xml_node Prims.list)
+  : xstyle=
   match stylesheet with
   | Parser_XML.XElement (tag, attrs, children) ->
       let pfx = xsl_prefix_of stylesheet in
@@ -1837,7 +1854,7 @@ let build_style (stylesheet : Parser_XML.xml_node)
           xs_pfx = pfx;
           xs_templates = (collect_templates pfx children);
           xs_method = (find_output_method pfx children);
-          xs_globals = (collect_globals pfx nsctx children source);
+          xs_globals = (collect_globals pfx nsctx children source doc_kids);
           xs_nsscope = (build_nsscope attrs);
           xs_nsctx = nsctx
         }
@@ -1866,17 +1883,50 @@ let build_style (stylesheet : Parser_XML.xml_node)
         xs_nsscope = [];
         xs_nsctx = []
       }
+let rec doc_root_elem (doc_kids : Parser_XML.xml_node Prims.list) :
+  Parser_XML.xml_node FStar_Pervasives_Native.option=
+  match doc_kids with
+  | [] -> FStar_Pervasives_Native.None
+  | (Parser_XML.XElement (t, a, c))::uu___ ->
+      FStar_Pervasives_Native.Some (Parser_XML.XElement (t, a, c))
+  | uu___::tl -> doc_root_elem tl
+let rec xml_nodes_count_sum (ns : Parser_XML.xml_node Prims.list) :
+  Prims.nat=
+  match ns with
+  | [] -> Prims.int_zero
+  | hd::tl -> (XPath_Eval.xml_node_count hd) + (xml_nodes_count_sum tl)
 let transform (stylesheet : Parser_XML.xml_node)
   (source : Parser_XML.xml_node) : Prims.string=
-  let st = build_style stylesheet source in
+  let st = build_style stylesheet source [source] in
   let sz =
     (XPath_Eval.xml_node_count stylesheet) +
       (XPath_Eval.xml_node_count source) in
   let fuel =
     ((sz + Prims.int_one) * (Prims.of_int (256))) +
       (Prims.parse_int "100000") in
-  let result = dispatch fuel st (D_Doc source) Prims.int_one Prims.int_one "" in
+  let result =
+    dispatch fuel st (D_Doc (source, [source])) Prims.int_one Prims.int_one
+      "" in
   let nodes = only_nodes result in
   if st.xs_method = "text"
   then text_value_nodes nodes
   else serialize_nodes [] nodes
+let transform_doc (stylesheet : Parser_XML.xml_node)
+  (source_kids : Parser_XML.xml_node Prims.list) : Prims.string=
+  match doc_root_elem source_kids with
+  | FStar_Pervasives_Native.None -> ""
+  | FStar_Pervasives_Native.Some root ->
+      let st = build_style stylesheet root source_kids in
+      let sz =
+        (XPath_Eval.xml_node_count stylesheet) +
+          (xml_nodes_count_sum source_kids) in
+      let fuel =
+        ((sz + Prims.int_one) * (Prims.of_int (256))) +
+          (Prims.parse_int "100000") in
+      let result =
+        dispatch fuel st (D_Doc (root, source_kids)) Prims.int_one
+          Prims.int_one "" in
+      let nodes = only_nodes result in
+      if st.xs_method = "text"
+      then text_value_nodes nodes
+      else serialize_nodes [] nodes

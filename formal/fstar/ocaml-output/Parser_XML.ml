@@ -1684,6 +1684,49 @@ let rec skip_epilog_misc (input : Prims.string) (pos : Prims.nat)
                    Parser_Combinators.ParseOk ((), pos1)))
      | Parser_Combinators.ParseFail (msg, fpos) ->
          Parser_Combinators.ParseFail (msg, fpos))
+let rec collect_misc (input : Prims.string) (pos : Prims.nat)
+  (fuel : Prims.nat) (acc : xml_node Prims.list) :
+  xml_node Prims.list Parser_Combinators.parse_result=
+  if fuel = Prims.int_zero
+  then Parser_Combinators.ParseOk ((FStar_List_Tot_Base.rev acc), pos)
+  else
+    (match skip_xml_space input pos with
+     | Parser_Combinators.ParseOk ((), pos1) ->
+         (match parse_xml_comment input pos1 with
+          | Parser_Combinators.ParseOk (node, pos2) ->
+              collect_misc input pos2 (fuel - Prims.int_one) (node :: acc)
+          | Parser_Combinators.ParseFail (uu___1, uu___2) ->
+              (match parse_xml_pi input pos1 with
+               | Parser_Combinators.ParseOk (node, pos2) ->
+                   collect_misc input pos2 (fuel - Prims.int_one) (node ::
+                     acc)
+               | Parser_Combinators.ParseFail (uu___3, uu___4) ->
+                   Parser_Combinators.ParseOk
+                     ((FStar_List_Tot_Base.rev acc), pos1)))
+     | Parser_Combinators.ParseFail (msg, fpos) ->
+         Parser_Combinators.ParseFail (msg, fpos))
+let rec collect_epilog_misc (input : Prims.string) (pos : Prims.nat)
+  (fuel : Prims.nat) (acc : xml_node Prims.list) :
+  xml_node Prims.list Parser_Combinators.parse_result=
+  if fuel = Prims.int_zero
+  then Parser_Combinators.ParseOk ((FStar_List_Tot_Base.rev acc), pos)
+  else
+    (match skip_xml_space input pos with
+     | Parser_Combinators.ParseOk ((), pos1) ->
+         (match parse_xml_comment input pos1 with
+          | Parser_Combinators.ParseOk (node, pos2) ->
+              collect_epilog_misc input pos2 (fuel - Prims.int_one) (node ::
+                acc)
+          | Parser_Combinators.ParseFail (uu___1, uu___2) ->
+              (match parse_xml_pi input pos1 with
+               | Parser_Combinators.ParseOk (node, pos2) ->
+                   collect_epilog_misc input pos2 (fuel - Prims.int_one)
+                     (node :: acc)
+               | Parser_Combinators.ParseFail (uu___3, uu___4) ->
+                   Parser_Combinators.ParseOk
+                     ((FStar_List_Tot_Base.rev acc), pos1)))
+     | Parser_Combinators.ParseFail (msg, fpos) ->
+         Parser_Combinators.ParseFail (msg, fpos))
 let parse_xml_document (input : Prims.string) :
   xml_node FStar_Pervasives_Native.option=
   let len = Parser_FastString.fs_byte_length input in
@@ -1708,6 +1751,43 @@ let parse_xml_document (input : Prims.string) :
                       | Parser_Combinators.ParseOk ((), pos5) ->
                           if pos5 >= (Parser_FastString.fs_byte_length input)
                           then FStar_Pervasives_Native.Some root
+                          else FStar_Pervasives_Native.None
+                      | Parser_Combinators.ParseFail (uu___1, uu___2) ->
+                          FStar_Pervasives_Native.None)
+                 | Parser_Combinators.ParseFail (uu___1, uu___2) ->
+                     FStar_Pervasives_Native.None)
+            | Parser_Combinators.ParseFail (uu___1, uu___2) ->
+                FStar_Pervasives_Native.None))
+  | Parser_Combinators.ParseFail (uu___, uu___1) ->
+      FStar_Pervasives_Native.None
+let parse_xml_document_children (input : Prims.string) :
+  xml_node Prims.list FStar_Pervasives_Native.option=
+  let len = Parser_FastString.fs_byte_length input in
+  let fuel = len + Prims.int_one in
+  let pos1 =
+    match parse_xml_declaration input Prims.int_zero with
+    | Parser_Combinators.ParseOk (_attrs, pos') -> pos'
+    | Parser_Combinators.ParseFail (uu___, uu___1) -> Prims.int_zero in
+  match collect_misc input pos1 fuel [] with
+  | Parser_Combinators.ParseOk (pre1, pos2) ->
+      let uu___ =
+        match parse_doctype input pos2 with
+        | Parser_Combinators.ParseOk (e, p) -> (e, p)
+        | Parser_Combinators.ParseFail (uu___1, uu___2) -> ([], pos2) in
+      (match uu___ with
+       | (ents, pos_dt) ->
+           (match collect_misc input pos_dt fuel [] with
+            | Parser_Combinators.ParseOk (pre2, pos3) ->
+                (match parse_xml_element ents input pos3 fuel with
+                 | Parser_Combinators.ParseOk (root, pos4) ->
+                     (match collect_epilog_misc input pos4 fuel [] with
+                      | Parser_Combinators.ParseOk (post, pos5) ->
+                          if pos5 >= (Parser_FastString.fs_byte_length input)
+                          then
+                            FStar_Pervasives_Native.Some
+                              (FStar_List_Tot_Base.append pre1
+                                 (FStar_List_Tot_Base.append pre2 (root ::
+                                    post)))
                           else FStar_Pervasives_Native.None
                       | Parser_Combinators.ParseFail (uu___1, uu___2) ->
                           FStar_Pervasives_Native.None)

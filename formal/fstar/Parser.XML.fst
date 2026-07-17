@@ -1422,6 +1422,50 @@ let rec skip_epilog_misc (input:string) (pos:nat) (fuel:nat)
     | ParseFail msg fpos -> ParseFail msg fpos
 
 
+// collect_misc / collect_epilog_misc mirror skip_misc / skip_epilog_misc
+// EXACTLY -- same sub-parsers (parse_xml_comment / parse_xml_pi), same
+// consume decisions, same failure propagation -- so the document-level
+// accept/reject verdict (the xml-conformance gate) is byte-for-byte
+// unchanged. The only difference is that they REMEMBER the Comment / PI
+// nodes they consume (in document order) rather than discarding them.
+// Parser.XML has no document node; the XPath/XSLT layer builds one, and
+// its children are the prolog/epilog Comment and PI nodes plus the root
+// element. Whitespace between them is NOT a node at the document level
+// (XML has no document-level text nodes), so only Comment and PI Misc
+// are accumulated -- exactly the two Misc kinds skip_misc recognises.
+let rec collect_misc (input:string) (pos:nat) (fuel:nat) (acc:list xml_node)
+  : Tot (parse_result (list xml_node)) (decreases fuel) =
+  if fuel = 0 then ParseOk (rev acc) pos
+  else
+    match skip_xml_space input pos with
+    | ParseOk () pos1 ->
+      begin match parse_xml_comment input pos1 with
+      | ParseOk node pos2 -> collect_misc input pos2 (fuel - 1) (node :: acc)
+      | ParseFail _ _ ->
+        begin match parse_xml_pi input pos1 with
+        | ParseOk node pos2 -> collect_misc input pos2 (fuel - 1) (node :: acc)
+        | ParseFail _ _ -> ParseOk (rev acc) pos1
+        end
+      end
+    | ParseFail msg fpos -> ParseFail msg fpos
+
+let rec collect_epilog_misc (input:string) (pos:nat) (fuel:nat) (acc:list xml_node)
+  : Tot (parse_result (list xml_node)) (decreases fuel) =
+  if fuel = 0 then ParseOk (rev acc) pos
+  else
+    match skip_xml_space input pos with
+    | ParseOk () pos1 ->
+      begin match parse_xml_comment input pos1 with
+      | ParseOk node pos2 -> collect_epilog_misc input pos2 (fuel - 1) (node :: acc)
+      | ParseFail _ _ ->
+        begin match parse_xml_pi input pos1 with
+        | ParseOk node pos2 -> collect_epilog_misc input pos2 (fuel - 1) (node :: acc)
+        | ParseFail _ _ -> ParseOk (rev acc) pos1
+        end
+      end
+    | ParseFail msg fpos -> ParseFail msg fpos
+
+
 (* ================================================================ *)
 (* Document-level entry point                                        *)
 (* ================================================================ *)
@@ -1462,6 +1506,47 @@ let parse_xml_document (input:string) : option xml_node =
         begin match skip_epilog_misc input pos4 fuel with
         | ParseOk () pos5 ->
           if pos5 >= fs_byte_length input then Some root else None
+        | ParseFail _ _ -> None
+        end
+      | ParseFail _ _ -> None
+      end
+    | ParseFail _ _ -> None
+    end
+  | ParseFail _ _ -> None
+  end
+
+// Document-node aware entry point. Parses EXACTLY as parse_xml_document
+// (identical accept/reject flow -- see collect_misc), but returns the
+// full ordered child list of the document node: the prolog Comment/PI
+// Misc, then the root element, then the epilog Comment/PI Misc. A caller
+// that only wants the root element uses parse_xml_document; a caller that
+// needs the document-node model (XPath's `/`, XSLT's `//comment()` over
+// prolog/epilog, the identity transform copying a leading comment) uses
+// this. `None` on exactly the same inputs parse_xml_document rejects.
+let parse_xml_document_children (input:string) : option (list xml_node) =
+  let len = fs_byte_length input in
+  let fuel = len + 1 in
+  let pos1 =
+    match parse_xml_declaration input 0 with
+    | ParseOk _attrs pos' -> pos'
+    | ParseFail _ _ -> 0
+  in
+  begin match collect_misc input pos1 fuel [] with
+  | ParseOk pre1 pos2 ->
+    let (ents, pos_dt) =
+      match parse_doctype input pos2 with
+      | ParseOk e p -> (e, p)
+      | ParseFail _ _ -> ([], pos2)
+    in
+    begin match collect_misc input pos_dt fuel [] with
+    | ParseOk pre2 pos3 ->
+      begin match parse_xml_element ents input pos3 fuel with
+      | ParseOk root pos4 ->
+        begin match collect_epilog_misc input pos4 fuel [] with
+        | ParseOk post pos5 ->
+          if pos5 >= fs_byte_length input
+          then Some (append pre1 (append pre2 (root :: post)))
+          else None
         | ParseFail _ _ -> None
         end
       | ParseFail _ _ -> None
