@@ -1,67 +1,53 @@
 open Prims
-let rec trig_find_named_graph (name : RDF_Graph_Executable.iri)
-  (ngs : RDF_Graph_Executable.named_graph Prims.list) :
-  (RDF_Graph_Executable.named_graph Prims.list *
-    RDF_Graph_Executable.rdf_graph * RDF_Graph_Executable.named_graph
-    Prims.list) FStar_Pervasives_Native.option=
+let rec trig_find_named_graph (name : RDF_Term.iri)
+  (ngs : RDF_Graph.named_graph Prims.list) :
+  (RDF_Graph.named_graph Prims.list * RDF_Graph.rdf_graph *
+    RDF_Graph.named_graph Prims.list) FStar_Pervasives_Native.option=
   match ngs with
   | [] -> FStar_Pervasives_Native.None
   | ng::rest ->
-      if ng.RDF_Graph_Executable.ng_name = name
-      then
-        FStar_Pervasives_Native.Some
-          ([], (ng.RDF_Graph_Executable.ng_graph), rest)
+      if ng.RDF_Graph.ng_name = name
+      then FStar_Pervasives_Native.Some ([], (ng.RDF_Graph.ng_graph), rest)
       else
         (match trig_find_named_graph name rest with
          | FStar_Pervasives_Native.Some (before, g, after) ->
              FStar_Pervasives_Native.Some ((ng :: before), g, after)
          | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None)
-let trig_dataset_add (ds : RDF_Graph_Executable.rdf_dataset)
-  (t : RDF_Graph_Executable.triple)
-  (graph_name : RDF_Graph_Executable.iri FStar_Pervasives_Native.option) :
-  RDF_Graph_Executable.rdf_dataset=
+let trig_dataset_add (ds : RDF_Graph.rdf_dataset) (t : RDF_Triple.triple)
+  (graph_name : RDF_Term.iri FStar_Pervasives_Native.option) :
+  RDF_Graph.rdf_dataset=
   match graph_name with
   | FStar_Pervasives_Native.None ->
       {
-        RDF_Graph_Executable.ds_default =
-          (RDF_Graph_Executable.graph_add_unchecked t
-             ds.RDF_Graph_Executable.ds_default);
-        RDF_Graph_Executable.ds_named = (ds.RDF_Graph_Executable.ds_named)
+        RDF_Graph.ds_default =
+          (RDF_Graph_Executable.graph_add_unchecked t ds.RDF_Graph.ds_default);
+        RDF_Graph.ds_named = (ds.RDF_Graph.ds_named)
       }
   | FStar_Pervasives_Native.Some name ->
-      (match trig_find_named_graph name ds.RDF_Graph_Executable.ds_named with
+      (match trig_find_named_graph name ds.RDF_Graph.ds_named with
        | FStar_Pervasives_Native.Some (before, existing_g, after) ->
            let updated_g =
              RDF_Graph_Executable.graph_add_unchecked t existing_g in
            let updated_ng =
-             {
-               RDF_Graph_Executable.ng_name = name;
-               RDF_Graph_Executable.ng_graph = updated_g
-             } in
+             { RDF_Graph.ng_name = name; RDF_Graph.ng_graph = updated_g } in
            {
-             RDF_Graph_Executable.ds_default =
-               (ds.RDF_Graph_Executable.ds_default);
-             RDF_Graph_Executable.ds_named =
+             RDF_Graph.ds_default = (ds.RDF_Graph.ds_default);
+             RDF_Graph.ds_named =
                (FStar_List_Tot_Base.append before
                   (FStar_List_Tot_Base.append [updated_ng] after))
            }
        | FStar_Pervasives_Native.None ->
            let new_ng =
-             {
-               RDF_Graph_Executable.ng_name = name;
-               RDF_Graph_Executable.ng_graph = [t]
-             } in
+             { RDF_Graph.ng_name = name; RDF_Graph.ng_graph = [t] } in
            {
-             RDF_Graph_Executable.ds_default =
-               (ds.RDF_Graph_Executable.ds_default);
-             RDF_Graph_Executable.ds_named =
-               (FStar_List_Tot_Base.append ds.RDF_Graph_Executable.ds_named
-                  [new_ng])
+             RDF_Graph.ds_default = (ds.RDF_Graph.ds_default);
+             RDF_Graph.ds_named =
+               (FStar_List_Tot_Base.append ds.RDF_Graph.ds_named [new_ng])
            })
-let rec trig_dataset_add_triples (ds : RDF_Graph_Executable.rdf_dataset)
-  (triples : RDF_Graph_Executable.triple Prims.list)
-  (graph_name : RDF_Graph_Executable.iri FStar_Pervasives_Native.option) :
-  RDF_Graph_Executable.rdf_dataset=
+let rec trig_dataset_add_triples (ds : RDF_Graph.rdf_dataset)
+  (triples : RDF_Triple.triple Prims.list)
+  (graph_name : RDF_Term.iri FStar_Pervasives_Native.option) :
+  RDF_Graph.rdf_dataset=
   match triples with
   | [] -> ds
   | t::rest ->
@@ -69,8 +55,7 @@ let rec trig_dataset_add_triples (ds : RDF_Graph_Executable.rdf_dataset)
         graph_name
 let parse_trig_graph_name (st : Parser_Turtle.turtle_state)
   (input : Prims.string) (pos : Prims.nat) :
-  (RDF_Graph_Executable.iri * Parser_Turtle.turtle_state)
-    Parser_Combinators.parse_result=
+  (RDF_Term.iri * Parser_Turtle.turtle_state) Parser_Combinators.parse_result=
   let len = Parser_FastString.fs_byte_length input in
   if pos >= len
   then Parser_Combinators.ParseFail ("expected graph name", pos)
@@ -288,9 +273,8 @@ let __proj__Mktrig_parse_state__item__has_error
   (projectee : trig_parse_state) : Prims.bool=
   match projectee with | { ts; has_error;_} -> has_error
 let rec parse_graph_body (tps : trig_parse_state) (input : Prims.string)
-  (pos : Prims.nat) (acc : RDF_Graph_Executable.triple Prims.list)
-  (fuel : Prims.nat) :
-  (RDF_Graph_Executable.triple Prims.list * trig_parse_state)
+  (pos : Prims.nat) (acc : RDF_Triple.triple Prims.list) (fuel : Prims.nat) :
+  (RDF_Triple.triple Prims.list * trig_parse_state)
     Parser_Combinators.parse_result=
   if fuel = Prims.int_zero
   then Parser_Combinators.ParseOk (((FStar_List_Tot_Base.rev acc), tps), pos)
@@ -349,8 +333,8 @@ let rec parse_graph_body (tps : trig_parse_state) (input : Prims.string)
                        else parse_graph_body tps' input pos2 acc fuel')))
 let parse_trig_statement (tps : trig_parse_state) (input : Prims.string)
   (pos : Prims.nat) (fuel : Prims.nat) :
-  ((RDF_Graph_Executable.iri FStar_Pervasives_Native.option *
-    RDF_Graph_Executable.triple Prims.list) Prims.list * trig_parse_state)
+  ((RDF_Term.iri FStar_Pervasives_Native.option * RDF_Triple.triple
+    Prims.list) Prims.list * trig_parse_state)
     Parser_Combinators.parse_result=
   if fuel = Prims.int_zero
   then Parser_Combinators.ParseFail ("recursion limit", pos)
@@ -543,9 +527,7 @@ let parse_trig_statement (tps : trig_parse_state) (input : Prims.string)
                                                     candidate_name)
                                                    - (Prims.of_int (2)))
                                             else "" in
-                                          let subj =
-                                            RDF_Graph_Executable.S_BNode
-                                              bname in
+                                          let subj = RDF_Term.S_BNode bname in
                                           match Parser_Turtle.parse_predicate_object_list
                                                   st2 subj input pos3 fuel'
                                           with
@@ -600,13 +582,10 @@ let parse_trig_statement (tps : trig_parse_state) (input : Prims.string)
                                               Parser_Combinators.ParseFail
                                                 (msg, fpos)
                                         else
-                                          if
-                                            RDF_Graph_Executable.is_iri
-                                              candidate_name
+                                          if RDF_Term.is_iri candidate_name
                                           then
                                             (let subj =
-                                               RDF_Graph_Executable.S_IRI
-                                                 candidate_name in
+                                               RDF_Term.S_IRI candidate_name in
                                              match Parser_Turtle.parse_predicate_object_list
                                                      st2 subj input pos3
                                                      fuel'
@@ -683,8 +662,8 @@ let parse_trig_statement (tps : trig_parse_state) (input : Prims.string)
                                      ->
                                      Parser_Combinators.ParseFail (msg, fpos))))))
 let rec parse_trig_doc (tps : trig_parse_state) (input : Prims.string)
-  (pos : Prims.nat) (ds : RDF_Graph_Executable.rdf_dataset)
-  (fuel : Prims.nat) : (RDF_Graph_Executable.rdf_dataset * trig_parse_state)=
+  (pos : Prims.nat) (ds : RDF_Graph.rdf_dataset) (fuel : Prims.nat) :
+  (RDF_Graph.rdf_dataset * trig_parse_state)=
   if fuel = Prims.int_zero
   then (ds, tps)
   else
@@ -727,13 +706,12 @@ let rec parse_trig_doc (tps : trig_parse_state) (input : Prims.string)
 let make_trig_parse_state (st : Parser_Turtle.turtle_state) :
   trig_parse_state= { ts = st; has_error = false }
 let parse_trig (input : Prims.string) :
-  RDF_Graph_Executable.rdf_dataset FStar_Pervasives_Native.option=
+  RDF_Graph.rdf_dataset FStar_Pervasives_Native.option=
   let len = Parser_FastString.fs_byte_length input in
   let fuel = (len + Prims.int_one) * (Prims.of_int (3)) in
   let tps = make_trig_parse_state Parser_Turtle.empty_turtle_state in
   let uu___ =
-    parse_trig_doc tps input Prims.int_zero
-      RDF_Graph_Executable.empty_dataset fuel in
+    parse_trig_doc tps input Prims.int_zero RDF_Graph.empty_dataset fuel in
   match uu___ with
   | (ds, tps') ->
       if tps'.has_error
@@ -742,7 +720,7 @@ let parse_trig (input : Prims.string) :
         FStar_Pervasives_Native.Some
           (RDF_Graph_Executable.dataset_finalise ds)
 let parse_trig_with_base (input : Prims.string) (base : Prims.string) :
-  RDF_Graph_Executable.rdf_dataset FStar_Pervasives_Native.option=
+  RDF_Graph.rdf_dataset FStar_Pervasives_Native.option=
   let len = Parser_FastString.fs_byte_length input in
   let fuel = (len + Prims.int_one) * (Prims.of_int (3)) in
   let st =
@@ -755,8 +733,7 @@ let parse_trig_with_base (input : Prims.string) (base : Prims.string) :
     } in
   let tps = make_trig_parse_state st in
   let uu___ =
-    parse_trig_doc tps input Prims.int_zero
-      RDF_Graph_Executable.empty_dataset fuel in
+    parse_trig_doc tps input Prims.int_zero RDF_Graph.empty_dataset fuel in
   match uu___ with
   | (ds, tps') ->
       if tps'.has_error
@@ -764,17 +741,15 @@ let parse_trig_with_base (input : Prims.string) (base : Prims.string) :
       else
         FStar_Pervasives_Native.Some
           (RDF_Graph_Executable.dataset_finalise ds)
-let parse_trig_lenient (input : Prims.string) :
-  RDF_Graph_Executable.rdf_dataset=
+let parse_trig_lenient (input : Prims.string) : RDF_Graph.rdf_dataset=
   let len = Parser_FastString.fs_byte_length input in
   let fuel = (len + Prims.int_one) * (Prims.of_int (3)) in
   let tps = make_trig_parse_state Parser_Turtle.empty_turtle_state in
   let uu___ =
-    parse_trig_doc tps input Prims.int_zero
-      RDF_Graph_Executable.empty_dataset fuel in
+    parse_trig_doc tps input Prims.int_zero RDF_Graph.empty_dataset fuel in
   match uu___ with | (ds, uu___1) -> RDF_Graph_Executable.dataset_finalise ds
 let parse_trig_with_base_lenient (input : Prims.string) (base : Prims.string)
-  : RDF_Graph_Executable.rdf_dataset=
+  : RDF_Graph.rdf_dataset=
   let len = Parser_FastString.fs_byte_length input in
   let fuel = (len + Prims.int_one) * (Prims.of_int (3)) in
   let st =
@@ -787,6 +762,5 @@ let parse_trig_with_base_lenient (input : Prims.string) (base : Prims.string)
     } in
   let tps = make_trig_parse_state st in
   let uu___ =
-    parse_trig_doc tps input Prims.int_zero
-      RDF_Graph_Executable.empty_dataset fuel in
+    parse_trig_doc tps input Prims.int_zero RDF_Graph.empty_dataset fuel in
   match uu___ with | (ds, uu___1) -> RDF_Graph_Executable.dataset_finalise ds

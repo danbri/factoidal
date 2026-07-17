@@ -308,7 +308,8 @@ let collect_iri_or_bnode_terms (g : RDF_Graph.rdf_graph) :
                acc1
            then acc1
            else ox :: acc1
-       | RDF_Term.T_Literal uu___ -> acc1) [] g
+       | RDF_Term.T_Literal uu___ -> acc1
+       | RDF_Term.T_TripleTerm (uu___, uu___1, uu___2) -> acc1) [] g
 let owl_rule_sameAs_reflexivity (g : RDF_Graph.rdf_graph)
   (ig : RDF_Indexed.indexed_graph) : RDF_Graph.rdf_graph=
   let nodes = collect_iri_or_bnode_terms g in
@@ -785,7 +786,8 @@ let one_nonNegInteger_literal : RDF_Term.wf_literal=
     {
       RDF_Term.lexical_form = "1";
       RDF_Term.datatype = xsd_nonNegativeInteger;
-      RDF_Term.lang_tag = FStar_Pervasives_Native.None
+      RDF_Term.lang_tag = FStar_Pervasives_Native.None;
+      RDF_Term.direction = FStar_Pervasives_Native.None
     } in
   l
 let canonical_svf_restriction_bnode (p : RDF_Term.wf_iri)

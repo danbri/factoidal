@@ -640,7 +640,7 @@ let trunc_mod (a b : int) : int =
   else a - op_Multiply (trunc_div a b) b
 
 let mk_int_literal (n : int) : rdf_term =
-  T_Literal ({ lexical_form = string_of_int n; datatype = xsd_integer; lang_tag = None })
+  T_Literal ({ lexical_form = string_of_int n; datatype = xsd_integer; lang_tag = None; direction = None })
 
 // ------------------------------------------------------------------
 // 5. Local-name extraction (substring after the LAST '#') — builtin
@@ -670,15 +670,16 @@ let local_name_of_iri (iri : string) : string =
 // ------------------------------------------------------------------
 
 let mk_string_literal (s : string) : rdf_term =
-  T_Literal ({ lexical_form = s; datatype = xsd_string; lang_tag = None })
+  T_Literal ({ lexical_form = s; datatype = xsd_string; lang_tag = None; direction = None })
 
 let mk_lang_literal (s lang : string) : rdf_term =
-  T_Literal ({ lexical_form = s; datatype = rdf_lang_string; lang_tag = Some lang })
+  T_Literal ({ lexical_form = s; datatype = rdf_lang_string; lang_tag = Some lang; direction = None })
 
 let mk_dayTimeDuration_literal (ms : int) : rdf_term =
   assert_norm (xsd_dayTimeDuration <> rdf_lang_string);
+  assert_norm (xsd_dayTimeDuration <> rdf_dir_lang_string);
   T_Literal ({ lexical_form = dayTimeDuration_of_ms ms;
-               datatype = xsd_dayTimeDuration; lang_tag = None })
+               datatype = xsd_dayTimeDuration; lang_tag = None; direction = None })
 
 // The plain string VALUE of a term, when it denotes one: any
 // string-family literal, or a language-tagged (rdf:langString /
@@ -893,8 +894,8 @@ let xsd_constructor_cast (op : wf_iri) (args : list rdf_term) : option rdf_term 
     // the DECODED xsd:string / rdf:langString representation this
     // project uses for PlainLiteral values throughout.
     then Some (decode_plain_literal_packed l.lexical_form)
-    else if List.Tot.mem op supported_cast_targets && op <> rdf_lang_string
-    then Some (T_Literal ({ lexical_form = l.lexical_form; datatype = op; lang_tag = None }))
+    else if List.Tot.mem op supported_cast_targets && op <> rdf_lang_string && op <> rdf_dir_lang_string
+    then Some (T_Literal ({ lexical_form = l.lexical_form; datatype = op; lang_tag = None; direction = None }))
     else None
   | _ -> None
 

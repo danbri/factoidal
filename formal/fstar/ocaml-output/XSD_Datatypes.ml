@@ -9,17 +9,17 @@ let parse_double_to_scaled :
   Prims.string -> (Prims.int * Prims.nat) FStar_Pervasives_Native.option=
   SPARQL11_Algebra.parse_double_to_scaled
 let pow10 : Prims.nat -> Prims.int= SPARQL11_Algebra.pow10
-let xsd_dateTime : RDF_Graph_Executable.wf_iri= SPARQL11_Algebra.xsd_dateTime
-let xsd_float : RDF_Graph_Executable.wf_iri= SPARQL11_Algebra.xsd_float
-let literal_to_scaled (l : RDF_Graph_Executable.literal) :
+let xsd_dateTime : RDF_Term.wf_iri= SPARQL11_Algebra.xsd_dateTime
+let xsd_float : RDF_Term.wf_iri= SPARQL11_Algebra.xsd_float
+let literal_to_scaled (l : RDF_Term.literal) :
   (Prims.int * Prims.nat) FStar_Pervasives_Native.option=
-  if l.RDF_Graph_Executable.datatype = RDF_Graph_Executable.xsd_double
-  then parse_double_to_scaled l.RDF_Graph_Executable.lexical_form
+  if l.RDF_Term.datatype = RDF_Term.xsd_double
+  then parse_double_to_scaled l.RDF_Term.lexical_form
   else
     if
-      (l.RDF_Graph_Executable.datatype = RDF_Graph_Executable.xsd_integer) ||
-        (l.RDF_Graph_Executable.datatype = RDF_Graph_Executable.xsd_decimal)
-    then parse_to_scaled l.RDF_Graph_Executable.lexical_form
+      (l.RDF_Term.datatype = RDF_Term.xsd_integer) ||
+        (l.RDF_Term.datatype = RDF_Term.xsd_decimal)
+    then parse_to_scaled l.RDF_Term.lexical_form
     else FStar_Pervasives_Native.None
 let scaled_cmp (a : (Prims.int * Prims.nat)) (b : (Prims.int * Prims.nat)) :
   Prims.int=
@@ -195,18 +195,15 @@ let dt_cmp (a : Prims.string) (b : Prims.string) :
             else if ma > mb then Prims.int_one else Prims.int_zero))
       else FStar_Pervasives_Native.None
   | (uu___, uu___1) -> FStar_Pervasives_Native.None
-let both_datetimes (a : RDF_Graph_Executable.literal)
-  (b : RDF_Graph_Executable.literal) : Prims.bool=
-  (a.RDF_Graph_Executable.datatype = xsd_dateTime) &&
-    (b.RDF_Graph_Executable.datatype = xsd_dateTime)
-let numeric_cmp_le (a : RDF_Graph_Executable.literal)
-  (b : RDF_Graph_Executable.literal) :
+let both_datetimes (a : RDF_Term.literal) (b : RDF_Term.literal) :
+  Prims.bool=
+  (a.RDF_Term.datatype = xsd_dateTime) &&
+    (b.RDF_Term.datatype = xsd_dateTime)
+let numeric_cmp_le (a : RDF_Term.literal) (b : RDF_Term.literal) :
   Prims.bool FStar_Pervasives_Native.option=
   if both_datetimes a b
   then
-    match dt_cmp a.RDF_Graph_Executable.lexical_form
-            b.RDF_Graph_Executable.lexical_form
-    with
+    match dt_cmp a.RDF_Term.lexical_form b.RDF_Term.lexical_form with
     | FStar_Pervasives_Native.Some c ->
         FStar_Pervasives_Native.Some (c <= Prims.int_zero)
     | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
@@ -215,14 +212,11 @@ let numeric_cmp_le (a : RDF_Graph_Executable.literal)
      | (FStar_Pervasives_Native.Some sa, FStar_Pervasives_Native.Some sb) ->
          FStar_Pervasives_Native.Some ((scaled_cmp sa sb) <= Prims.int_zero)
      | (uu___1, uu___2) -> FStar_Pervasives_Native.None)
-let numeric_cmp_lt (a : RDF_Graph_Executable.literal)
-  (b : RDF_Graph_Executable.literal) :
+let numeric_cmp_lt (a : RDF_Term.literal) (b : RDF_Term.literal) :
   Prims.bool FStar_Pervasives_Native.option=
   if both_datetimes a b
   then
-    match dt_cmp a.RDF_Graph_Executable.lexical_form
-            b.RDF_Graph_Executable.lexical_form
-    with
+    match dt_cmp a.RDF_Term.lexical_form b.RDF_Term.lexical_form with
     | FStar_Pervasives_Native.Some c ->
         FStar_Pervasives_Native.Some (c < Prims.int_zero)
     | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
@@ -315,20 +309,20 @@ let int_lexical_in_range (lex : Prims.string)
              | FStar_Pervasives_Native.Some h -> n <= h
              | FStar_Pervasives_Native.None -> true))
      | FStar_Pervasives_Native.None -> true)
-let literal_ill_formed (dt : RDF_Graph_Executable.wf_iri)
-  (lex : Prims.string) : Prims.bool=
-  if dt = RDF_Graph_Executable.xsd_boolean
+let literal_ill_formed (dt : RDF_Term.wf_iri) (lex : Prims.string) :
+  Prims.bool=
+  if dt = RDF_Term.xsd_boolean
   then
     Prims.op_Negation
       ((((lex = "true") || (lex = "false")) || (lex = "1")) || (lex = "0"))
   else
-    if dt = RDF_Graph_Executable.xsd_integer
+    if dt = RDF_Term.xsd_integer
     then Prims.op_Negation (is_integer_lexical lex)
     else
-      if dt = RDF_Graph_Executable.xsd_decimal
+      if dt = RDF_Term.xsd_decimal
       then Prims.op_Negation (is_decimal_lexical lex)
       else
-        if dt = RDF_Graph_Executable.xsd_long
+        if dt = OWL_Closure.xsd_long
         then
           Prims.op_Negation
             (int_lexical_in_range lex
@@ -337,7 +331,7 @@ let literal_ill_formed (dt : RDF_Graph_Executable.wf_iri)
                (FStar_Pervasives_Native.Some
                   (Prims.parse_int "9223372036854775807")))
         else
-          if dt = RDF_Graph_Executable.xsd_int
+          if dt = OWL_Closure.xsd_int
           then
             Prims.op_Negation
               (int_lexical_in_range lex
@@ -345,21 +339,21 @@ let literal_ill_formed (dt : RDF_Graph_Executable.wf_iri)
                     (Prims.parse_int "-2147483648"))
                  (FStar_Pervasives_Native.Some (Prims.parse_int "2147483647")))
           else
-            if dt = RDF_Graph_Executable.xsd_short
+            if dt = OWL_Closure.xsd_short
             then
               Prims.op_Negation
                 (int_lexical_in_range lex
                    (FStar_Pervasives_Native.Some (Prims.of_int (-32768)))
                    (FStar_Pervasives_Native.Some (Prims.of_int (32767))))
             else
-              if dt = RDF_Graph_Executable.xsd_byte
+              if dt = OWL_Closure.xsd_byte
               then
                 Prims.op_Negation
                   (int_lexical_in_range lex
                      (FStar_Pervasives_Native.Some (Prims.of_int (-128)))
                      (FStar_Pervasives_Native.Some (Prims.of_int (127))))
               else
-                if dt = RDF_Graph_Executable.xsd_unsignedLong
+                if dt = OWL_Closure.xsd_unsignedLong
                 then
                   Prims.op_Negation
                     (int_lexical_in_range lex
@@ -367,7 +361,7 @@ let literal_ill_formed (dt : RDF_Graph_Executable.wf_iri)
                        (FStar_Pervasives_Native.Some
                           (Prims.parse_int "18446744073709551615")))
                 else
-                  if dt = RDF_Graph_Executable.xsd_unsignedInt
+                  if dt = OWL_Closure.xsd_unsignedInt
                   then
                     Prims.op_Negation
                       (int_lexical_in_range lex
@@ -375,7 +369,7 @@ let literal_ill_formed (dt : RDF_Graph_Executable.wf_iri)
                          (FStar_Pervasives_Native.Some
                             (Prims.parse_int "4294967295")))
                   else
-                    if dt = RDF_Graph_Executable.xsd_unsignedShort
+                    if dt = OWL_Closure.xsd_unsignedShort
                     then
                       Prims.op_Negation
                         (int_lexical_in_range lex
@@ -383,7 +377,7 @@ let literal_ill_formed (dt : RDF_Graph_Executable.wf_iri)
                            (FStar_Pervasives_Native.Some
                               (Prims.parse_int "65535")))
                     else
-                      if dt = RDF_Graph_Executable.xsd_unsignedByte
+                      if dt = OWL_Closure.xsd_unsignedByte
                       then
                         Prims.op_Negation
                           (int_lexical_in_range lex
@@ -391,23 +385,21 @@ let literal_ill_formed (dt : RDF_Graph_Executable.wf_iri)
                              (FStar_Pervasives_Native.Some
                                 (Prims.of_int (255))))
                       else
-                        if dt = RDF_Graph_Executable.xsd_nonNegativeInteger
+                        if dt = OWL_Closure.xsd_nonNegativeInteger
                         then
                           Prims.op_Negation
                             (int_lexical_in_range lex
                                (FStar_Pervasives_Native.Some Prims.int_zero)
                                FStar_Pervasives_Native.None)
                         else
-                          if dt = RDF_Graph_Executable.xsd_positiveInteger
+                          if dt = OWL_Closure.xsd_positiveInteger
                           then
                             Prims.op_Negation
                               (int_lexical_in_range lex
                                  (FStar_Pervasives_Native.Some Prims.int_one)
                                  FStar_Pervasives_Native.None)
                           else
-                            if
-                              dt =
-                                RDF_Graph_Executable.xsd_nonPositiveInteger
+                            if dt = OWL_Closure.xsd_nonPositiveInteger
                             then
                               Prims.op_Negation
                                 (int_lexical_in_range lex
@@ -415,8 +407,7 @@ let literal_ill_formed (dt : RDF_Graph_Executable.wf_iri)
                                    (FStar_Pervasives_Native.Some
                                       Prims.int_zero))
                             else
-                              if
-                                dt = RDF_Graph_Executable.xsd_negativeInteger
+                              if dt = OWL_Closure.xsd_negativeInteger
                               then
                                 Prims.op_Negation
                                   (int_lexical_in_range lex
@@ -431,23 +422,21 @@ let literal_ill_formed (dt : RDF_Graph_Executable.wf_iri)
                                 else
                                   if
                                     (dt = xsd_float) ||
-                                      (dt = RDF_Graph_Executable.xsd_double)
+                                      (dt = RDF_Term.xsd_double)
                                   then
                                     Prims.op_Negation (is_float_lexical lex)
                                   else false
-let is_decimal_derived_datatype (dt : RDF_Graph_Executable.wf_iri) :
-  Prims.bool=
-  (((((((((((((dt = RDF_Graph_Executable.xsd_decimal) ||
-                (dt = RDF_Graph_Executable.xsd_integer))
-               || (dt = RDF_Graph_Executable.xsd_long))
-              || (dt = RDF_Graph_Executable.xsd_int))
-             || (dt = RDF_Graph_Executable.xsd_short))
-            || (dt = RDF_Graph_Executable.xsd_byte))
-           || (dt = RDF_Graph_Executable.xsd_unsignedLong))
-          || (dt = RDF_Graph_Executable.xsd_unsignedInt))
-         || (dt = RDF_Graph_Executable.xsd_unsignedShort))
-        || (dt = RDF_Graph_Executable.xsd_unsignedByte))
-       || (dt = RDF_Graph_Executable.xsd_nonNegativeInteger))
-      || (dt = RDF_Graph_Executable.xsd_positiveInteger))
-     || (dt = RDF_Graph_Executable.xsd_nonPositiveInteger))
-    || (dt = RDF_Graph_Executable.xsd_negativeInteger)
+let is_decimal_derived_datatype (dt : RDF_Term.wf_iri) : Prims.bool=
+  (((((((((((((dt = RDF_Term.xsd_decimal) || (dt = RDF_Term.xsd_integer)) ||
+               (dt = OWL_Closure.xsd_long))
+              || (dt = OWL_Closure.xsd_int))
+             || (dt = OWL_Closure.xsd_short))
+            || (dt = OWL_Closure.xsd_byte))
+           || (dt = OWL_Closure.xsd_unsignedLong))
+          || (dt = OWL_Closure.xsd_unsignedInt))
+         || (dt = OWL_Closure.xsd_unsignedShort))
+        || (dt = OWL_Closure.xsd_unsignedByte))
+       || (dt = OWL_Closure.xsd_nonNegativeInteger))
+      || (dt = OWL_Closure.xsd_positiveInteger))
+     || (dt = OWL_Closure.xsd_nonPositiveInteger))
+    || (dt = OWL_Closure.xsd_negativeInteger)

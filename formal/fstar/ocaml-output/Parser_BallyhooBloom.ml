@@ -126,5 +126,5 @@ let bloom_union (a : predicate_bloom) (b : predicate_bloom) :
         pb_bits = (list_or_bool a.pb_bits b.pb_bits)
       }
   else FStar_Pervasives_Native.None
-let bloom_predicate_present (bf : predicate_bloom)
-  (p : RDF_Graph_Executable.wf_iri) : Prims.bool= bloom_might_contain bf p
+let bloom_predicate_present (bf : predicate_bloom) (p : RDF_Term.wf_iri) :
+  Prims.bool= bloom_might_contain bf p

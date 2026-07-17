@@ -230,7 +230,7 @@ let subject_to_revmap_key (s : RDF_Term.subject) : Prims.string=
   | RDF_Term.S_BNode b -> FStar_String.concat "" ["B_"; b]
 let iri_to_revmap_key (i : RDF_Term.iri) : Prims.string=
   FStar_String.concat "" ["I_"; i]
-let object_to_revmap_key (o : RDF_Term.rdf_term) : Prims.string=
+let rec object_to_revmap_key (o : RDF_Term.rdf_term) : Prims.string=
   match o with
   | RDF_Term.T_IRI i -> FStar_String.concat "" ["I_"; i]
   | RDF_Term.T_BNode b -> FStar_String.concat "" ["B_"; b]
@@ -239,13 +239,32 @@ let object_to_revmap_key (o : RDF_Term.rdf_term) : Prims.string=
         match l.RDF_Term.lang_tag with
         | FStar_Pervasives_Native.Some t -> t
         | FStar_Pervasives_Native.None -> "" in
+      let base =
+        FStar_String.concat ""
+          ["L_";
+          l.RDF_Term.datatype;
+          revmap_unit_sep;
+          tag;
+          revmap_unit_sep;
+          l.RDF_Term.lexical_form] in
+      (match l.RDF_Term.direction with
+       | FStar_Pervasives_Native.None -> base
+       | FStar_Pervasives_Native.Some (RDF_Term.Dir_LTR) ->
+           FStar_String.concat "" [base; revmap_unit_sep; "ltr"]
+       | FStar_Pervasives_Native.Some (RDF_Term.Dir_RTL) ->
+           FStar_String.concat "" [base; revmap_unit_sep; "rtl"])
+  | RDF_Term.T_TripleTerm (s, p, obj) ->
+      let subj =
+        match s with
+        | RDF_Term.S_IRI i -> FStar_String.concat "" ["I_"; i]
+        | RDF_Term.S_BNode b -> FStar_String.concat "" ["B_"; b] in
       FStar_String.concat ""
-        ["L_";
-        l.RDF_Term.datatype;
+        ["T_";
+        subj;
         revmap_unit_sep;
-        tag;
+        p;
         revmap_unit_sep;
-        l.RDF_Term.lexical_form]
+        object_to_revmap_key obj]
 module Cottas_ondisk_lazy = struct
   open Stdlib
 
@@ -678,12 +697,14 @@ module Cottas_ondisk_runtime = struct
             RDF_Graph_Executable.lexical_form = lexical;
             datatype = RDF_Graph_Executable.xsd_string;
             lang_tag = FStar_Pervasives_Native.None;
+            direction = FStar_Pervasives_Native.None;
           }
         else if String.length suffix >= 1 && suffix.[0] = '@' then
           Some {
             RDF_Graph_Executable.lexical_form = lexical;
             datatype = RDF_Graph_Executable.rdf_lang_string;
             lang_tag = FStar_Pervasives_Native.Some (String.sub suffix 1 (String.length suffix - 1));
+            direction = FStar_Pervasives_Native.None;
           }
         else if String.length suffix >= 4 && String.sub suffix 0 2 = "^^" then
           (match parse_iri_token (String.sub suffix 2 (String.length suffix - 2)) with
@@ -692,6 +713,7 @@ module Cottas_ondisk_runtime = struct
                RDF_Graph_Executable.lexical_form = lexical;
                datatype = dt;
                lang_tag = FStar_Pervasives_Native.None;
+               direction = FStar_Pervasives_Native.None;
              }
            | None -> None)
         else None

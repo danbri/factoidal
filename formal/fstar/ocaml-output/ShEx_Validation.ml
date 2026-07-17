@@ -17,11 +17,12 @@ let lang_range_matches (tag : Prims.string) (range : Prims.string) :
         let tl = FStar_String.strlen tag_l in
         ((tl > rl) && ((FStar_String.sub tag_l Prims.int_zero rl) = range_l))
           && ((FStar_String.sub tag_l rl Prims.int_one) = "-")))
-let shex_lex (t : RDF_Graph_Executable.rdf_term) : Prims.string=
+let shex_lex (t : RDF_Term.rdf_term) : Prims.string=
   match t with
-  | RDF_Graph_Executable.T_IRI i -> i
-  | RDF_Graph_Executable.T_BNode b -> b
-  | RDF_Graph_Executable.T_Literal l -> l.RDF_Graph_Executable.lexical_form
+  | RDF_Term.T_IRI i -> i
+  | RDF_Term.T_BNode b -> b
+  | RDF_Term.T_Literal l -> l.RDF_Term.lexical_form
+  | RDF_Term.T_TripleTerm (uu___, uu___1, uu___2) -> ""
 let is_ascii_digit_char (c : FStar_Char.char) : Prims.bool=
   let n = FStar_Char.int_of_char c in
   (n >= (Prims.of_int (48))) && (n <= (Prims.of_int (57)))
@@ -102,26 +103,23 @@ let shex_numeric_lt (a : Prims.string) (b : Prims.string) :
         ((XSD_Datatypes.scaled_cmp sa sb) < Prims.int_zero)
   | (uu___, uu___1) -> FStar_Pervasives_Native.None
 let shex_node_kind_ok (nk : ShEx_Schema.shex_node_kind)
-  (t : RDF_Graph_Executable.rdf_term) : Prims.bool=
+  (t : RDF_Term.rdf_term) : Prims.bool=
   match (nk, t) with
-  | (ShEx_Schema.ShexNK_Iri, RDF_Graph_Executable.T_IRI uu___) -> true
-  | (ShEx_Schema.ShexNK_BNode, RDF_Graph_Executable.T_BNode uu___) -> true
-  | (ShEx_Schema.ShexNK_NonLiteral, RDF_Graph_Executable.T_IRI uu___) -> true
-  | (ShEx_Schema.ShexNK_NonLiteral, RDF_Graph_Executable.T_BNode uu___) ->
-      true
-  | (ShEx_Schema.ShexNK_Literal, RDF_Graph_Executable.T_Literal uu___) ->
-      true
+  | (ShEx_Schema.ShexNK_Iri, RDF_Term.T_IRI uu___) -> true
+  | (ShEx_Schema.ShexNK_BNode, RDF_Term.T_BNode uu___) -> true
+  | (ShEx_Schema.ShexNK_NonLiteral, RDF_Term.T_IRI uu___) -> true
+  | (ShEx_Schema.ShexNK_NonLiteral, RDF_Term.T_BNode uu___) -> true
+  | (ShEx_Schema.ShexNK_Literal, RDF_Term.T_Literal uu___) -> true
   | (uu___, uu___1) -> false
-let shex_datatype_ok (dt : Prims.string) (t : RDF_Graph_Executable.rdf_term)
-  : Prims.bool=
+let shex_datatype_ok (dt : Prims.string) (t : RDF_Term.rdf_term) :
+  Prims.bool=
   match t with
-  | RDF_Graph_Executable.T_Literal l ->
-      (l.RDF_Graph_Executable.datatype = dt) &&
-        (if RDF_Graph_Executable.is_iri dt
+  | RDF_Term.T_Literal l ->
+      (l.RDF_Term.datatype = dt) &&
+        (if RDF_Term.is_iri dt
          then
            Prims.op_Negation
-             (XSD_Datatypes.literal_ill_formed dt
-                l.RDF_Graph_Executable.lexical_form)
+             (XSD_Datatypes.literal_ill_formed dt l.RDF_Term.lexical_form)
          else true)
   | uu___ -> false
 let stem_matches (st : ShEx_Schema.shex_stem) (s : Prims.string) :
@@ -130,35 +128,30 @@ let stem_matches (st : ShEx_Schema.shex_stem) (s : Prims.string) :
   | ShEx_Schema.ShexStemWildcard -> true
   | ShEx_Schema.ShexStemPlain pfx -> shex_starts_with s pfx
 let object_value_matches (ov : ShEx_Schema.shex_object_value)
-  (t : RDF_Graph_Executable.rdf_term) : Prims.bool=
+  (t : RDF_Term.rdf_term) : Prims.bool=
   match (ov, t) with
-  | (ShEx_Schema.ShexOV_Iri i, RDF_Graph_Executable.T_IRI ti) -> i = ti
-  | (ShEx_Schema.ShexOV_Literal (value, lang, dt),
-     RDF_Graph_Executable.T_Literal l) ->
-      (l.RDF_Graph_Executable.lexical_form = value) &&
+  | (ShEx_Schema.ShexOV_Iri i, RDF_Term.T_IRI ti) -> i = ti
+  | (ShEx_Schema.ShexOV_Literal (value, lang, dt), RDF_Term.T_Literal l) ->
+      (l.RDF_Term.lexical_form = value) &&
         ((match lang with
           | FStar_Pervasives_Native.Some lg ->
               if lg = ""
-              then
-                FStar_Pervasives_Native.uu___is_None
-                  l.RDF_Graph_Executable.lang_tag
+              then FStar_Pervasives_Native.uu___is_None l.RDF_Term.lang_tag
               else
-                (match l.RDF_Graph_Executable.lang_tag with
+                (match l.RDF_Term.lang_tag with
                  | FStar_Pervasives_Native.Some tlg ->
-                     RDF_Graph_Executable.lang_tag_eq lg tlg
+                     RDF_Term.lang_tag_eq lg tlg
                  | FStar_Pervasives_Native.None -> false)
           | FStar_Pervasives_Native.None ->
               (match dt with
                | FStar_Pervasives_Native.Some d ->
-                   (l.RDF_Graph_Executable.datatype = d) &&
+                   (l.RDF_Term.datatype = d) &&
                      (FStar_Pervasives_Native.uu___is_None
-                        l.RDF_Graph_Executable.lang_tag)
+                        l.RDF_Term.lang_tag)
                | FStar_Pervasives_Native.None ->
-                   (l.RDF_Graph_Executable.datatype =
-                      RDF_Graph_Executable.xsd_string)
-                     &&
+                   (l.RDF_Term.datatype = RDF_Term.xsd_string) &&
                      (FStar_Pervasives_Native.uu___is_None
-                        l.RDF_Graph_Executable.lang_tag))))
+                        l.RDF_Term.lang_tag))))
   | (uu___, uu___1) -> false
 let rec vsv_size (v : ShEx_Schema.shex_value_set_value) : Prims.nat=
   match v with
@@ -175,7 +168,7 @@ and vsv_list_size (l : ShEx_Schema.shex_value_set_value Prims.list) :
   | [] -> Prims.int_zero
   | hd::tl -> (Prims.int_one + (vsv_size hd)) + (vsv_list_size tl)
 let rec vsv_matches (vsv : ShEx_Schema.shex_value_set_value)
-  (t : RDF_Graph_Executable.rdf_term) (fuel : Prims.nat) : Prims.bool=
+  (t : RDF_Term.rdf_term) (fuel : Prims.nat) : Prims.bool=
   if fuel = Prims.int_zero
   then false
   else
@@ -184,37 +177,36 @@ let rec vsv_matches (vsv : ShEx_Schema.shex_value_set_value)
      | ShEx_Schema.VSV_Value ov -> object_value_matches ov t
      | ShEx_Schema.VSV_IriStem st ->
          (match t with
-          | RDF_Graph_Executable.T_IRI i -> stem_matches st i
+          | RDF_Term.T_IRI i -> stem_matches st i
           | uu___1 -> false)
      | ShEx_Schema.VSV_IriStemRange (st, excl) ->
          (match t with
-          | RDF_Graph_Executable.T_IRI i ->
+          | RDF_Term.T_IRI i ->
               (stem_matches st i) &&
                 (Prims.op_Negation (vsv_list_exists excl t fuel'))
           | uu___1 -> false)
      | ShEx_Schema.VSV_LiteralStem st ->
          (match t with
-          | RDF_Graph_Executable.T_Literal l ->
-              stem_matches st l.RDF_Graph_Executable.lexical_form
+          | RDF_Term.T_Literal l -> stem_matches st l.RDF_Term.lexical_form
           | uu___1 -> false)
      | ShEx_Schema.VSV_LiteralStemRange (st, excl) ->
          (match t with
-          | RDF_Graph_Executable.T_Literal l ->
-              (stem_matches st l.RDF_Graph_Executable.lexical_form) &&
+          | RDF_Term.T_Literal l ->
+              (stem_matches st l.RDF_Term.lexical_form) &&
                 (Prims.op_Negation (vsv_list_exists excl t fuel'))
           | uu___1 -> false)
      | ShEx_Schema.VSV_Language lt ->
          (match t with
-          | RDF_Graph_Executable.T_Literal l ->
-              (match l.RDF_Graph_Executable.lang_tag with
+          | RDF_Term.T_Literal l ->
+              (match l.RDF_Term.lang_tag with
                | FStar_Pervasives_Native.Some tag ->
-                   RDF_Graph_Executable.lang_tag_eq lt tag
+                   RDF_Term.lang_tag_eq lt tag
                | FStar_Pervasives_Native.None -> false)
           | uu___1 -> false)
      | ShEx_Schema.VSV_LanguageStem st ->
          (match t with
-          | RDF_Graph_Executable.T_Literal l ->
-              (match l.RDF_Graph_Executable.lang_tag with
+          | RDF_Term.T_Literal l ->
+              (match l.RDF_Term.lang_tag with
                | FStar_Pervasives_Native.Some tag ->
                    (match st with
                     | ShEx_Schema.ShexStemWildcard -> true
@@ -223,8 +215,8 @@ let rec vsv_matches (vsv : ShEx_Schema.shex_value_set_value)
           | uu___1 -> false)
      | ShEx_Schema.VSV_LanguageStemRange (st, excl) ->
          (match t with
-          | RDF_Graph_Executable.T_Literal l ->
-              (match l.RDF_Graph_Executable.lang_tag with
+          | RDF_Term.T_Literal l ->
+              (match l.RDF_Term.lang_tag with
                | FStar_Pervasives_Native.Some tag ->
                    let base_ok =
                      match st with
@@ -236,7 +228,7 @@ let rec vsv_matches (vsv : ShEx_Schema.shex_value_set_value)
                | FStar_Pervasives_Native.None -> false)
           | uu___1 -> false))
 and vsv_list_exists (items : ShEx_Schema.shex_value_set_value Prims.list)
-  (t : RDF_Graph_Executable.rdf_term) (fuel : Prims.nat) : Prims.bool=
+  (t : RDF_Term.rdf_term) (fuel : Prims.nat) : Prims.bool=
   if fuel = Prims.int_zero
   then false
   else
@@ -247,12 +239,12 @@ and vsv_list_exists (items : ShEx_Schema.shex_value_set_value Prims.list)
          then true
          else vsv_list_exists tl t (fuel - Prims.int_one))
 let values_ok (values : ShEx_Schema.shex_value_set_value Prims.list)
-  (t : RDF_Graph_Executable.rdf_term) : Prims.bool=
+  (t : RDF_Term.rdf_term) : Prims.bool=
   if Prims.uu___is_Nil values
   then true
   else vsv_list_exists values t (Prims.int_one + (vsv_list_size values))
 let node_constraint_matches (nc : ShEx_Schema.shex_node_constraint)
-  (t : RDF_Graph_Executable.rdf_term) : Prims.bool=
+  (t : RDF_Term.rdf_term) : Prims.bool=
   let nk_ok =
     match nc.ShEx_Schema.nc_node_kind with
     | FStar_Pervasives_Native.None -> true
@@ -286,22 +278,18 @@ let node_constraint_matches (nc : ShEx_Schema.shex_node_constraint)
         SPARQL11_Algebra.regex_match lex re flags_opt in
   let num_lex =
     match t with
-    | RDF_Graph_Executable.T_Literal l ->
-        FStar_Pervasives_Native.Some (l.RDF_Graph_Executable.lexical_form)
+    | RDF_Term.T_Literal l ->
+        FStar_Pervasives_Native.Some (l.RDF_Term.lexical_form)
     | uu___ -> FStar_Pervasives_Native.None in
   let digits_lex =
     match t with
-    | RDF_Graph_Executable.T_Literal l ->
+    | RDF_Term.T_Literal l ->
         if
-          (XSD_Datatypes.is_decimal_derived_datatype
-             l.RDF_Graph_Executable.datatype)
-            &&
+          (XSD_Datatypes.is_decimal_derived_datatype l.RDF_Term.datatype) &&
             (Prims.op_Negation
-               (XSD_Datatypes.literal_ill_formed
-                  l.RDF_Graph_Executable.datatype
-                  l.RDF_Graph_Executable.lexical_form))
-        then
-          FStar_Pervasives_Native.Some (l.RDF_Graph_Executable.lexical_form)
+               (XSD_Datatypes.literal_ill_formed l.RDF_Term.datatype
+                  l.RDF_Term.lexical_form))
+        then FStar_Pervasives_Native.Some (l.RDF_Term.lexical_form)
         else FStar_Pervasives_Native.None
     | uu___ -> FStar_Pervasives_Native.None in
   let mininclusive_ok =
@@ -384,14 +372,13 @@ let rec any_semact_fails (l : ShEx_Schema.shex_sem_act Prims.list) :
   match l with
   | [] -> false
   | hd::tl -> (semact_says_fail hd) || (any_semact_fails tl)
-type shex_visited = (Prims.string * RDF_Graph_Executable.rdf_term) Prims.list
-let visited_mem (label : Prims.string) (t : RDF_Graph_Executable.rdf_term)
+type shex_visited = (Prims.string * RDF_Term.rdf_term) Prims.list
+let visited_mem (label : Prims.string) (t : RDF_Term.rdf_term)
   (v : shex_visited) : Prims.bool=
   FStar_List_Tot_Base.existsb
     (fun entry ->
        ((FStar_Pervasives_Native.fst entry) = label) &&
-         (RDF_Graph_Executable.rdf_term_eq
-            (FStar_Pervasives_Native.snd entry) t)) v
+         (RDF_Term.rdf_term_eq (FStar_Pervasives_Native.snd entry) t)) v
 let rec lookup_shape_decl (decls : ShEx_Schema.shex_shape_decl Prims.list)
   (label : Prims.string) :
   ShEx_Schema.shex_shape_decl FStar_Pervasives_Native.option=
@@ -630,27 +617,26 @@ and resolve_extends (decls : ShEx_Schema.shex_shape_decl Prims.list)
                       | FStar_Pervasives_Native.Some (b, visited2) ->
                           FStar_Pervasives_Native.Some
                             ((ef_combine a b), visited2)))))
-let shex_gather_candidates (g : RDF_Graph_Executable.rdf_graph)
-  (focus : RDF_Graph_Executable.rdf_term) (inverse : Prims.bool)
-  (pred : Prims.string) : RDF_Graph_Executable.rdf_term Prims.list=
-  if Prims.op_Negation (RDF_Graph_Executable.is_iri pred)
+let shex_gather_candidates (g : RDF_Graph.rdf_graph)
+  (focus : RDF_Term.rdf_term) (inverse : Prims.bool) (pred : Prims.string) :
+  RDF_Term.rdf_term Prims.list=
+  if Prims.op_Negation (RDF_Term.is_iri pred)
   then []
   else
     if inverse
     then
-      FStar_List_Tot_Base.map RDF_Graph_Executable.subject_to_term
+      FStar_List_Tot_Base.map RDF_Graph.subject_to_term
         (RDF_Graph_Executable.find_subjects g pred focus)
     else
-      (match RDF_Graph_Executable.term_to_subject focus with
+      (match RDF_Graph.term_to_subject focus with
        | FStar_Pervasives_Native.None -> []
        | FStar_Pervasives_Native.Some s ->
            RDF_Graph_Executable.find_objects g s pred)
-let triples_with_subject (g : RDF_Graph_Executable.rdf_graph)
-  (s : RDF_Graph_Executable.subject) :
-  RDF_Graph_Executable.triple Prims.list=
+let triples_with_subject (g : RDF_Graph.rdf_graph) (s : RDF_Term.subject) :
+  RDF_Triple.triple Prims.list=
   FStar_List_Tot_Base.filter
-    (fun tr -> RDF_Graph_Executable.subject_eq tr.RDF_Graph_Executable.s s) g
-type pool_elem = (Prims.bool * Prims.string * RDF_Graph_Executable.rdf_term)
+    (fun tr -> RDF_Term.subject_eq tr.RDF_Triple.s s) g
+type pool_elem = (Prims.bool * Prims.string * RDF_Term.rdf_term)
 type pool_t = pool_elem Prims.list
 let pool_elem_eq (a : pool_elem) (b : pool_elem) : Prims.bool=
   let uu___ = a in
@@ -659,8 +645,7 @@ let pool_elem_eq (a : pool_elem) (b : pool_elem) : Prims.bool=
       let uu___1 = b in
       (match uu___1 with
        | (bi, bp, bt) ->
-           ((ai = bi) && (ap = bp)) &&
-             (RDF_Graph_Executable.rdf_term_eq at bt))
+           ((ai = bi) && (ap = bp)) && (RDF_Term.rdf_term_eq at bt))
 let rec pool_intersect (running : pool_t) (other : pool_t) : pool_t=
   match running with
   | [] -> []
@@ -693,8 +678,7 @@ let rec dedup_pairs (l : (Prims.bool * Prims.string) Prims.list) :
   | [] -> []
   | hd::tl ->
       if pair_mem hd tl then dedup_pairs tl else hd :: (dedup_pairs tl)
-let rec gather_pool (g : RDF_Graph_Executable.rdf_graph)
-  (focus : RDF_Graph_Executable.rdf_term)
+let rec gather_pool (g : RDF_Graph.rdf_graph) (focus : RDF_Term.rdf_term)
   (pairs : (Prims.bool * Prims.string) Prims.list) : pool_t=
   match pairs with
   | [] -> []
@@ -784,8 +768,8 @@ let rec sum_nat (l : Prims.nat Prims.list) : Prims.nat=
 let rec matches_shape_expr (decls : ShEx_Schema.shex_shape_decl Prims.list)
   (idtab : (Prims.string * ShEx_Schema.shex_triple_expr) Prims.list)
   (visited : shex_visited) (se : ShEx_Schema.shex_shape_expr)
-  (t : RDF_Graph_Executable.rdf_term) (g : RDF_Graph_Executable.rdf_graph)
-  (fuel : Prims.nat) : Prims.bool FStar_Pervasives_Native.option=
+  (t : RDF_Term.rdf_term) (g : RDF_Graph.rdf_graph) (fuel : Prims.nat) :
+  Prims.bool FStar_Pervasives_Native.option=
   if fuel = Prims.int_zero
   then FStar_Pervasives_Native.None
   else
@@ -837,9 +821,9 @@ let rec matches_shape_expr (decls : ShEx_Schema.shex_shape_decl Prims.list)
 and exists_nonabstract_descendant_satisfying
   (decls : ShEx_Schema.shex_shape_decl Prims.list)
   (idtab : (Prims.string * ShEx_Schema.shex_triple_expr) Prims.list)
-  (visited : shex_visited) (label : Prims.string)
-  (t : RDF_Graph_Executable.rdf_term) (g : RDF_Graph_Executable.rdf_graph)
-  (fuel : Prims.nat) : Prims.bool FStar_Pervasives_Native.option=
+  (visited : shex_visited) (label : Prims.string) (t : RDF_Term.rdf_term)
+  (g : RDF_Graph.rdf_graph) (fuel : Prims.nat) :
+  Prims.bool FStar_Pervasives_Native.option=
   if fuel = Prims.int_zero
   then FStar_Pervasives_Native.None
   else
@@ -850,8 +834,8 @@ and check_descendant_candidates
   (idtab : (Prims.string * ShEx_Schema.shex_triple_expr) Prims.list)
   (visited : shex_visited) (label : Prims.string)
   (candidates : ShEx_Schema.shex_shape_decl Prims.list)
-  (t : RDF_Graph_Executable.rdf_term) (g : RDF_Graph_Executable.rdf_graph)
-  (fuel : Prims.nat) : Prims.bool FStar_Pervasives_Native.option=
+  (t : RDF_Term.rdf_term) (g : RDF_Graph.rdf_graph) (fuel : Prims.nat) :
+  Prims.bool FStar_Pervasives_Native.option=
   if fuel = Prims.int_zero
   then FStar_Pervasives_Native.None
   else
@@ -940,8 +924,8 @@ and labels_extend_label (decls : ShEx_Schema.shex_shape_decl Prims.list)
 and matches_all (decls : ShEx_Schema.shex_shape_decl Prims.list)
   (idtab : (Prims.string * ShEx_Schema.shex_triple_expr) Prims.list)
   (visited : shex_visited) (ses : ShEx_Schema.shex_shape_expr Prims.list)
-  (t : RDF_Graph_Executable.rdf_term) (g : RDF_Graph_Executable.rdf_graph)
-  (fuel : Prims.nat) : Prims.bool FStar_Pervasives_Native.option=
+  (t : RDF_Term.rdf_term) (g : RDF_Graph.rdf_graph) (fuel : Prims.nat) :
+  Prims.bool FStar_Pervasives_Native.option=
   if fuel = Prims.int_zero
   then FStar_Pervasives_Native.None
   else
@@ -962,8 +946,8 @@ and matches_all (decls : ShEx_Schema.shex_shape_decl Prims.list)
 and matches_any (decls : ShEx_Schema.shex_shape_decl Prims.list)
   (idtab : (Prims.string * ShEx_Schema.shex_triple_expr) Prims.list)
   (visited : shex_visited) (ses : ShEx_Schema.shex_shape_expr Prims.list)
-  (t : RDF_Graph_Executable.rdf_term) (g : RDF_Graph_Executable.rdf_graph)
-  (fuel : Prims.nat) : Prims.bool FStar_Pervasives_Native.option=
+  (t : RDF_Term.rdf_term) (g : RDF_Graph.rdf_graph) (fuel : Prims.nat) :
+  Prims.bool FStar_Pervasives_Native.option=
   if fuel = Prims.int_zero
   then FStar_Pervasives_Native.None
   else
@@ -984,8 +968,8 @@ and matches_any (decls : ShEx_Schema.shex_shape_decl Prims.list)
 and matches_shape (decls : ShEx_Schema.shex_shape_decl Prims.list)
   (idtab : (Prims.string * ShEx_Schema.shex_triple_expr) Prims.list)
   (visited : shex_visited) (sh : ShEx_Schema.shex_shape)
-  (t : RDF_Graph_Executable.rdf_term) (g : RDF_Graph_Executable.rdf_graph)
-  (fuel : Prims.nat) : Prims.bool FStar_Pervasives_Native.option=
+  (t : RDF_Term.rdf_term) (g : RDF_Graph.rdf_graph) (fuel : Prims.nat) :
+  Prims.bool FStar_Pervasives_Native.option=
   if fuel = Prims.int_zero
   then FStar_Pervasives_Native.None
   else
@@ -1012,7 +996,7 @@ and matches_shape (decls : ShEx_Schema.shex_shape_decl Prims.list)
               then FStar_Pervasives_Native.Some true
               else matches_all decls idtab visited chain.ef_checks t g fuel' in
             let arcs_out =
-              match RDF_Graph_Executable.term_to_subject t with
+              match RDF_Graph.term_to_subject t with
               | FStar_Pervasives_Native.None -> []
               | FStar_Pervasives_Native.Some s -> triples_with_subject g s in
             let own_pairs_opt =
@@ -1045,12 +1029,11 @@ and matches_shape (decls : ShEx_Schema.shex_shape_decl Prims.list)
                       FStar_Pervasives_Native.Some
                         (FStar_List_Tot_Base.for_all
                            (fun tr ->
-                              (FStar_List_Tot_Base.mem
-                                 tr.RDF_Graph_Executable.p mentioned_preds)
+                              (FStar_List_Tot_Base.mem tr.RDF_Triple.p
+                                 mentioned_preds)
                                 ||
-                                (FStar_List_Tot_Base.mem
-                                   tr.RDF_Graph_Executable.p all_extra))
-                           arcs_out)) in
+                                (FStar_List_Tot_Base.mem tr.RDF_Triple.p
+                                   all_extra)) arcs_out)) in
                  let pool0 = gather_pool g t (dedup_pairs all_pairs) in
                  let own_chain_ambiguous = ambiguous_pairs_of all_pairs in
                  let expr_result =
@@ -1084,9 +1067,9 @@ and matches_shape_flat (decls : ShEx_Schema.shex_shape_decl Prims.list)
   (extra : Prims.string Prims.list) (closed : Prims.bool)
   (node_checks : ShEx_Schema.shex_shape_expr Prims.list)
   (sh : ShEx_Schema.shex_shape)
-  (semacts : ShEx_Schema.shex_sem_act Prims.list)
-  (t : RDF_Graph_Executable.rdf_term) (g : RDF_Graph_Executable.rdf_graph)
-  (fuel : Prims.nat) : Prims.bool FStar_Pervasives_Native.option=
+  (semacts : ShEx_Schema.shex_sem_act Prims.list) (t : RDF_Term.rdf_term)
+  (g : RDF_Graph.rdf_graph) (fuel : Prims.nat) :
+  Prims.bool FStar_Pervasives_Native.option=
   if fuel = Prims.int_zero
   then FStar_Pervasives_Native.None
   else
@@ -1096,7 +1079,7 @@ and matches_shape_flat (decls : ShEx_Schema.shex_shape_decl Prims.list)
        then FStar_Pervasives_Native.Some true
        else matches_all decls idtab visited node_checks t g fuel' in
      let arcs_out =
-       match RDF_Graph_Executable.term_to_subject t with
+       match RDF_Graph.term_to_subject t with
        | FStar_Pervasives_Native.None -> []
        | FStar_Pervasives_Native.Some s -> triples_with_subject g s in
      let mentioned_opt = te_mentioned_pairs_list idtab own_te_list fuel' in
@@ -1116,11 +1099,10 @@ and matches_shape_flat (decls : ShEx_Schema.shex_shape_decl Prims.list)
               FStar_Pervasives_Native.Some
                 (FStar_List_Tot_Base.for_all
                    (fun tr ->
-                      (FStar_List_Tot_Base.mem tr.RDF_Graph_Executable.p
+                      (FStar_List_Tot_Base.mem tr.RDF_Triple.p
                          mentioned_preds)
-                        ||
-                        (FStar_List_Tot_Base.mem tr.RDF_Graph_Executable.p
-                           extra)) arcs_out)) in
+                        || (FStar_List_Tot_Base.mem tr.RDF_Triple.p extra))
+                   arcs_out)) in
      let expr_result =
        eval_expr_list_over_pool decls idtab visited own_te_list extra t g
          fuel' in
@@ -1147,9 +1129,8 @@ and eval_own_vs_chain (decls : ShEx_Schema.shex_shape_decl Prims.list)
   (ambiguous : (Prims.bool * Prims.string) Prims.list)
   (own_te_opt : ShEx_Schema.shex_triple_expr FStar_Pervasives_Native.option)
   (chain_tes : ShEx_Schema.shex_triple_expr Prims.list)
-  (extra : Prims.string Prims.list) (pool : pool_t)
-  (g : RDF_Graph_Executable.rdf_graph) (fuel : Prims.nat) :
-  Prims.bool FStar_Pervasives_Native.option=
+  (extra : Prims.string Prims.list) (pool : pool_t) (g : RDF_Graph.rdf_graph)
+  (fuel : Prims.nat) : Prims.bool FStar_Pervasives_Native.option=
   if fuel = Prims.int_zero
   then FStar_Pervasives_Native.None
   else
@@ -1175,7 +1156,7 @@ and combine_own_vs_chain_results
   (chain_tes : ShEx_Schema.shex_triple_expr Prims.list)
   (unbounded_tes : ShEx_Schema.shex_triple_expr Prims.list)
   (extra : Prims.string Prims.list) (leftovers : pool_t Prims.list)
-  (g : RDF_Graph_Executable.rdf_graph) (fuel : Prims.nat) :
+  (g : RDF_Graph.rdf_graph) (fuel : Prims.nat) :
   Prims.bool FStar_Pervasives_Native.option=
   if fuel = Prims.int_zero
   then FStar_Pervasives_Native.None
@@ -1203,7 +1184,7 @@ and matches_chain_shared (decls : ShEx_Schema.shex_shape_decl Prims.list)
   (chain_tes : ShEx_Schema.shex_triple_expr Prims.list)
   (unbounded_tes : ShEx_Schema.shex_triple_expr Prims.list)
   (extra : Prims.string Prims.list) (pool : pool_t) (running : pool_t)
-  (g : RDF_Graph_Executable.rdf_graph) (fuel : Prims.nat) :
+  (g : RDF_Graph.rdf_graph) (fuel : Prims.nat) :
   Prims.bool FStar_Pervasives_Native.option=
   if fuel = Prims.int_zero
   then FStar_Pervasives_Native.None
@@ -1236,7 +1217,7 @@ and matches_chain_shared_try (decls : ShEx_Schema.shex_shape_decl Prims.list)
   (rest_tes : ShEx_Schema.shex_triple_expr Prims.list)
   (unbounded_tes : ShEx_Schema.shex_triple_expr Prims.list)
   (extra : Prims.string Prims.list) (pool : pool_t) (running : pool_t)
-  (completions : pool_t Prims.list) (g : RDF_Graph_Executable.rdf_graph)
+  (completions : pool_t Prims.list) (g : RDF_Graph.rdf_graph)
   (fuel : Prims.nat) : Prims.bool FStar_Pervasives_Native.option=
   if fuel = Prims.int_zero
   then FStar_Pervasives_Native.None
@@ -1263,7 +1244,7 @@ and restrict_unbounded_completions
   (idtab : (Prims.string * ShEx_Schema.shex_triple_expr) Prims.list)
   (visited : shex_visited) (hd : ShEx_Schema.shex_triple_expr)
   (unbounded_tes : ShEx_Schema.shex_triple_expr Prims.list) (pool : pool_t)
-  (raw_completions : pool_t Prims.list) (g : RDF_Graph_Executable.rdf_graph)
+  (raw_completions : pool_t Prims.list) (g : RDF_Graph.rdf_graph)
   (fuel : Prims.nat) : pool_t Prims.list FStar_Pervasives_Native.option=
   if fuel = Prims.int_zero
   then FStar_Pervasives_Native.None
@@ -1293,8 +1274,8 @@ and restrict_claimed (decls : ShEx_Schema.shex_shape_decl Prims.list)
   (idtab : (Prims.string * ShEx_Schema.shex_triple_expr) Prims.list)
   (visited : shex_visited)
   (unbounded_tes : ShEx_Schema.shex_triple_expr Prims.list)
-  (claimed : pool_t) (g : RDF_Graph_Executable.rdf_graph) (fuel : Prims.nat)
-  : pool_t FStar_Pervasives_Native.option=
+  (claimed : pool_t) (g : RDF_Graph.rdf_graph) (fuel : Prims.nat) :
+  pool_t FStar_Pervasives_Native.option=
   if fuel = Prims.int_zero
   then FStar_Pervasives_Native.None
   else
@@ -1315,8 +1296,8 @@ and background_safe (decls : ShEx_Schema.shex_shape_decl Prims.list)
   (idtab : (Prims.string * ShEx_Schema.shex_triple_expr) Prims.list)
   (visited : shex_visited)
   (unbounded_tes : ShEx_Schema.shex_triple_expr Prims.list)
-  (item : pool_elem) (g : RDF_Graph_Executable.rdf_graph) (fuel : Prims.nat)
-  : Prims.bool FStar_Pervasives_Native.option=
+  (item : pool_elem) (g : RDF_Graph.rdf_graph) (fuel : Prims.nat) :
+  Prims.bool FStar_Pervasives_Native.option=
   if fuel = Prims.int_zero
   then FStar_Pervasives_Native.None
   else
@@ -1328,8 +1309,8 @@ and background_safe_all (decls : ShEx_Schema.shex_shape_decl Prims.list)
   (idtab : (Prims.string * ShEx_Schema.shex_triple_expr) Prims.list)
   (visited : shex_visited)
   (unbounded_tes : ShEx_Schema.shex_triple_expr Prims.list)
-  (item : pool_elem) (g : RDF_Graph_Executable.rdf_graph) (fuel : Prims.nat)
-  : Prims.bool FStar_Pervasives_Native.option=
+  (item : pool_elem) (g : RDF_Graph.rdf_graph) (fuel : Prims.nat) :
+  Prims.bool FStar_Pervasives_Native.option=
   if fuel = Prims.int_zero
   then FStar_Pervasives_Native.None
   else
@@ -1348,8 +1329,8 @@ and item_good_for_unbounded_te
   (decls : ShEx_Schema.shex_shape_decl Prims.list)
   (idtab : (Prims.string * ShEx_Schema.shex_triple_expr) Prims.list)
   (visited : shex_visited) (te : ShEx_Schema.shex_triple_expr)
-  (item : pool_elem) (g : RDF_Graph_Executable.rdf_graph) (fuel : Prims.nat)
-  : Prims.bool FStar_Pervasives_Native.option=
+  (item : pool_elem) (g : RDF_Graph.rdf_graph) (fuel : Prims.nat) :
+  Prims.bool FStar_Pervasives_Native.option=
   if fuel = Prims.int_zero
   then FStar_Pervasives_Native.None
   else
@@ -1374,8 +1355,8 @@ and item_good_for_unbounded_te
 and eval_expr_list_over_pool (decls : ShEx_Schema.shex_shape_decl Prims.list)
   (idtab : (Prims.string * ShEx_Schema.shex_triple_expr) Prims.list)
   (visited : shex_visited) (tes : ShEx_Schema.shex_triple_expr Prims.list)
-  (extra : Prims.string Prims.list) (t : RDF_Graph_Executable.rdf_term)
-  (g : RDF_Graph_Executable.rdf_graph) (fuel : Prims.nat) :
+  (extra : Prims.string Prims.list) (t : RDF_Term.rdf_term)
+  (g : RDF_Graph.rdf_graph) (fuel : Prims.nat) :
   Prims.bool FStar_Pervasives_Native.option=
   if fuel = Prims.int_zero
   then FStar_Pervasives_Native.None
@@ -1447,8 +1428,8 @@ and tc_choose_acc (decls : ShEx_Schema.shex_shape_decl Prims.list)
   (visited : shex_visited)
   (ambiguous : (Prims.bool * Prims.string) Prims.list)
   (tc : ShEx_Schema.shex_triple_constraint) (pool : pool_t)
-  (chosen : Prims.nat) (g : RDF_Graph_Executable.rdf_graph)
-  (fuel : Prims.nat) : pool_t Prims.list FStar_Pervasives_Native.option=
+  (chosen : Prims.nat) (g : RDF_Graph.rdf_graph) (fuel : Prims.nat) :
+  pool_t Prims.list FStar_Pervasives_Native.option=
   if fuel = Prims.int_zero
   then FStar_Pervasives_Native.None
   else
@@ -1521,7 +1502,7 @@ and classify_candidates (decls : ShEx_Schema.shex_shape_decl Prims.list)
   (idtab : (Prims.string * ShEx_Schema.shex_triple_expr) Prims.list)
   (visited : shex_visited)
   (ve : ShEx_Schema.shex_shape_expr FStar_Pervasives_Native.option)
-  (items : pool_t) (g : RDF_Graph_Executable.rdf_graph) (fuel : Prims.nat) :
+  (items : pool_t) (g : RDF_Graph.rdf_graph) (fuel : Prims.nat) :
   (Prims.nat * pool_t) FStar_Pervasives_Native.option=
   if fuel = Prims.int_zero
   then FStar_Pervasives_Native.None
@@ -1556,7 +1537,7 @@ and classify_candidates (decls : ShEx_Schema.shex_shape_decl Prims.list)
 and count_children (decls : ShEx_Schema.shex_shape_decl Prims.list)
   (idtab : (Prims.string * ShEx_Schema.shex_triple_expr) Prims.list)
   (visited : shex_visited) (tes : ShEx_Schema.shex_triple_expr Prims.list)
-  (pool : pool_t) (g : RDF_Graph_Executable.rdf_graph) (fuel : Prims.nat) :
+  (pool : pool_t) (g : RDF_Graph.rdf_graph) (fuel : Prims.nat) :
   (Prims.nat Prims.list * pool_t) FStar_Pervasives_Native.option=
   if fuel = Prims.int_zero
   then FStar_Pervasives_Native.None
@@ -1592,8 +1573,7 @@ and count_children (decls : ShEx_Schema.shex_shape_decl Prims.list)
 and search_repeated_group (decls : ShEx_Schema.shex_shape_decl Prims.list)
   (idtab : (Prims.string * ShEx_Schema.shex_triple_expr) Prims.list)
   (visited : shex_visited) (grp : ShEx_Schema.shex_group) (pool : pool_t)
-  (g : RDF_Graph_Executable.rdf_graph) (fuel : Prims.nat)
-  (is_eachof : Prims.bool) :
+  (g : RDF_Graph.rdf_graph) (fuel : Prims.nat) (is_eachof : Prims.bool) :
   pool_t Prims.list FStar_Pervasives_Native.option=
   if fuel = Prims.int_zero
   then FStar_Pervasives_Native.None
@@ -1648,7 +1628,7 @@ and search_te (decls : ShEx_Schema.shex_shape_decl Prims.list)
   (visited : shex_visited)
   (ambiguous : (Prims.bool * Prims.string) Prims.list)
   (te : ShEx_Schema.shex_triple_expr) (pool : pool_t)
-  (g : RDF_Graph_Executable.rdf_graph) (fuel : Prims.nat) :
+  (g : RDF_Graph.rdf_graph) (fuel : Prims.nat) :
   pool_t Prims.list FStar_Pervasives_Native.option=
   if fuel = Prims.int_zero
   then FStar_Pervasives_Native.None
@@ -1706,7 +1686,7 @@ and search_eachof_list (decls : ShEx_Schema.shex_shape_decl Prims.list)
   (visited : shex_visited)
   (ambiguous : (Prims.bool * Prims.string) Prims.list)
   (tes : ShEx_Schema.shex_triple_expr Prims.list) (pool : pool_t)
-  (g : RDF_Graph_Executable.rdf_graph) (fuel : Prims.nat) :
+  (g : RDF_Graph.rdf_graph) (fuel : Prims.nat) :
   pool_t Prims.list FStar_Pervasives_Native.option=
   if fuel = Prims.int_zero
   then FStar_Pervasives_Native.None
@@ -1724,7 +1704,7 @@ and thread_states (decls : ShEx_Schema.shex_shape_decl Prims.list)
   (visited : shex_visited)
   (ambiguous : (Prims.bool * Prims.string) Prims.list)
   (tl : ShEx_Schema.shex_triple_expr Prims.list) (states : pool_t Prims.list)
-  (g : RDF_Graph_Executable.rdf_graph) (fuel : Prims.nat) :
+  (g : RDF_Graph.rdf_graph) (fuel : Prims.nat) :
   pool_t Prims.list FStar_Pervasives_Native.option=
   if fuel = Prims.int_zero
   then FStar_Pervasives_Native.None
@@ -1746,7 +1726,7 @@ and search_oneof_list (decls : ShEx_Schema.shex_shape_decl Prims.list)
   (visited : shex_visited)
   (ambiguous : (Prims.bool * Prims.string) Prims.list)
   (tes : ShEx_Schema.shex_triple_expr Prims.list) (pool : pool_t)
-  (g : RDF_Graph_Executable.rdf_graph) (fuel : Prims.nat) :
+  (g : RDF_Graph.rdf_graph) (fuel : Prims.nat) :
   pool_t Prims.list FStar_Pervasives_Native.option=
   if fuel = Prims.int_zero
   then FStar_Pervasives_Native.None
@@ -1759,7 +1739,7 @@ and search_te_list_map (decls : ShEx_Schema.shex_shape_decl Prims.list)
   (visited : shex_visited)
   (ambiguous : (Prims.bool * Prims.string) Prims.list)
   (tes : ShEx_Schema.shex_triple_expr Prims.list) (pool : pool_t)
-  (g : RDF_Graph_Executable.rdf_graph) (fuel : Prims.nat) :
+  (g : RDF_Graph.rdf_graph) (fuel : Prims.nat) :
   pool_t Prims.list FStar_Pervasives_Native.option Prims.list=
   if fuel = Prims.int_zero
   then []
@@ -1771,7 +1751,7 @@ and search_te_list_map (decls : ShEx_Schema.shex_shape_decl Prims.list)
          (search_te_list_map decls idtab visited ambiguous tl pool g fuel'))
 let validate_focus (schema : ShEx_Schema.shex_schema)
   (shape_id : Prims.string FStar_Pervasives_Native.option)
-  (t : RDF_Graph_Executable.rdf_term) (g : RDF_Graph_Executable.rdf_graph) :
+  (t : RDF_Term.rdf_term) (g : RDF_Graph.rdf_graph) :
   Prims.bool FStar_Pervasives_Native.option=
   if any_semact_fails schema.ShEx_Schema.sch_start_acts
   then FStar_Pervasives_Native.Some false

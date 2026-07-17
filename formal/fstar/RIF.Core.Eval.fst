@@ -101,6 +101,7 @@ let resolve_subject (mu : solution_mapping) (t : Syn.rif_term)
   | Some (T_IRI i)        -> Some (S_IRI i)
   | Some (T_BNode b)      -> Some (S_BNode b)
   | Some (T_Literal _)    -> None
+  | Some (T_TripleTerm _ _ _) -> None
 
 let resolve_predicate (mu : solution_mapping) (t : Syn.rif_term)
   : option wf_iri
@@ -125,6 +126,7 @@ let resolve_uniterm_subject (mu : solution_mapping) (t : Syn.rif_term)
   | Some (T_IRI i)        -> Some (S_IRI i)
   | Some (T_BNode b)      -> Some (S_BNode b)
   | Some (T_Literal l)    -> Some (S_BNode (Tx.literal_subject_bnode_label l))
+  | Some (T_TripleTerm _ _ _) -> None
 
 // Build a concrete triple from a fully-resolved subject/predicate/
 // object triple, when all three positions are well-typed.

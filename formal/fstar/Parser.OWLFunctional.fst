@@ -214,7 +214,7 @@ let parse_fs_literal (prefixes:list (string & string)) (input:string) (pos:nat)
           (match parse_fs_iri prefixes input (pos1 + 2) with
            | None -> None
            | Some (dt, pos2) ->
-             let lit : literal = { lexical_form = lexical; datatype = dt; lang_tag = None } in
+             let lit : literal = { lexical_form = lexical; datatype = dt; lang_tag = None; direction = None } in
              if literal_wf lit then Some (lit, pos2) else None)
         else None
 
@@ -255,6 +255,8 @@ let term_to_subject (t:rdf_term) : option subject =
   | T_IRI i -> Some (S_IRI i)
   | T_BNode b -> Some (S_BNode b)
   | T_Literal _ -> None
+  // No production here ever returns a triple term; object-only anyway.
+  | T_TripleTerm _ _ _ -> None
 
 (* ------------------------------------------------------------------ *)
 (* Prefix( pfx = <IRI> ) — zero or more, collected before Ontology(...) *)

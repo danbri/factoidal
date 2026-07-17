@@ -1,3 +1,20 @@
+* Warning 241 at RDF.IRI.fsti(0,0-0,0):
+  - Unable to load RDF.IRI.fsti.checked since checked file RDF.IRI.fsti.checked
+    is stale (dependence hash mismatch, use --debug CheckedFiles for more
+    details); will recheck RDF.IRI.fsti (suppressing this warning for further
+    modules)
+
+* Warning 328 at Parser.Turtle.fst(1530,4-1530,21):
+  - Global binding
+        'Parser.Turtle.parse_object_list'
+    is recursive but not used in its body
+
 Extracted module RDF.Turtle.Serialize
+* Warning 247 at RDF.Turtle.Serialize.fst(0,0-0,0):
+  - Checked file RDF.Turtle.Serialize.fst.checked was not written.
+  - Reason:
+      checked file Parser.Turtle.fst.checked is stale (digest mismatch for
+      Parser.Turtle.fst)
+
 Verified module: RDF.Turtle.Serialize
 All verification conditions discharged successfully

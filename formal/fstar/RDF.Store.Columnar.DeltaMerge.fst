@@ -320,19 +320,32 @@ let lemma_literal_eq_trans (l1 l2 l3 : literal)
   : Lemma (requires literal_eq l1 l2 /\ literal_eq l2 l3) (ensures literal_eq l1 l3) =
   lemma_lang_tag_option_eq_trans l1.lang_tag l2.lang_tag l3.lang_tag
 
-let lemma_rdf_term_eq_symm (a b : rdf_term) : Lemma (rdf_term_eq a b == rdf_term_eq b a) =
+let rec lemma_rdf_term_eq_symm (a b : rdf_term)
+  : Lemma (ensures rdf_term_eq a b == rdf_term_eq b a) (decreases a) =
   match a, b with
   | T_IRI _, T_IRI _ -> ()
   | T_BNode _, T_BNode _ -> ()
   | T_Literal l1, T_Literal l2 -> lemma_literal_eq_symm l1 l2
+  // RDF 1.2 triple term: symmetry structurally — subject-position via
+  // subject_eq symmetry, predicate via string-eq symmetry (SMT), object
+  // recursively.
+  | T_TripleTerm s1 _ o1, T_TripleTerm s2 _ o2 ->
+    lemma_subject_eq_symm s1 s2;
+    lemma_rdf_term_eq_symm o1 o2
   | _, _ -> ()
 
-let lemma_rdf_term_eq_trans (a b c : rdf_term)
-  : Lemma (requires rdf_term_eq a b /\ rdf_term_eq b c) (ensures rdf_term_eq a c) =
+let rec lemma_rdf_term_eq_trans (a b c : rdf_term)
+  : Lemma (requires rdf_term_eq a b /\ rdf_term_eq b c) (ensures rdf_term_eq a c) (decreases a) =
   match a, b, c with
   | T_IRI _, T_IRI _, T_IRI _ -> ()
   | T_BNode _, T_BNode _, T_BNode _ -> ()
   | T_Literal l1, T_Literal l2, T_Literal l3 -> lemma_literal_eq_trans l1 l2 l3
+  // RDF 1.2 triple term: `rdf_term_eq a b` unfolds to the conjunction of
+  // subject/predicate/object equalities, so the object hypotheses hold and
+  // transitivity follows structurally + recursively.
+  | T_TripleTerm s1 _ o1, T_TripleTerm s2 _ o2, T_TripleTerm s3 _ o3 ->
+    lemma_subject_eq_trans s1 s2 s3;
+    lemma_rdf_term_eq_trans o1 o2 o3
   | _, _, _ -> ()
 
 let lemma_rdf_term_eq_congruent (o a b : rdf_term)
@@ -363,6 +376,11 @@ let lemma_bound_matches_congruent (b : triple_pattern_bound) (hd t : triple)
 // mem_triple through triple_matches_bound_acc's own accumulator shape,
 // generalised over an arbitrary starting accumulator (what the induction
 // in `triple_matches_bound`'s definition needs).
+// NOTE (#305): `rdf_term_eq` became recursive when RDF 1.2 triple terms
+// were added, so the SMT solver needs a little more unfolding budget to
+// relate `bound_matches`/`triple_eq` (both of which call it) across the
+// induction. The proof structure is unchanged.
+#push-options "--z3rlimit 120 --fuel 4 --ifuel 2"
 let rec lemma_mem_matches_bound_acc (b : triple_pattern_bound) (ts : list triple) (acc : list triple) (t : triple)
   : Lemma
       (ensures mem_triple t (triple_matches_bound_acc b ts acc) ==
@@ -374,12 +392,25 @@ let rec lemma_mem_matches_bound_acc (b : triple_pattern_bound) (ts : list triple
       let subj_ok = match b.bs with | None -> true | Some s -> subject_eq s hd.s in
       let pred_ok = match b.bp with | None -> true | Some p -> p = hd.p in
       let obj_ok = match b.bo with | None -> true | Some o -> rdf_term_eq o hd.o in
+      // Force `bound_matches b hd` to unfold and be related to the inline
+      // subj/pred/obj checks. Since `rdf_term_eq` became recursive (#305),
+      // it no longer fully unfolds under SMT, so this equality — trivial by
+      // definition of `bound_matches` — must be asserted explicitly.
+      assert (bound_matches b hd == (subj_ok && pred_ok && obj_ok));
       if subj_ok && pred_ok && obj_ok
       then begin
         lemma_mem_matches_bound_acc b tl (hd :: acc) t;
         if triple_eq hd t then lemma_bound_matches_congruent b hd t
       end
-      else lemma_mem_matches_bound_acc b tl acc t
+      else begin
+        lemma_mem_matches_bound_acc b tl acc t;
+        // Also needed in the non-matching branch: if `hd` and `t` are the
+        // same triple, `bound_matches b t == bound_matches b hd == false`.
+        // With the now-recursive `rdf_term_eq` (#305) SMT can no longer
+        // derive this by full unfolding, so invoke the congruence lemma.
+        if triple_eq hd t then lemma_bound_matches_congruent b hd t
+      end
+#pop-options
 
 // `triple_matches_bound` finishes with `List.Tot.rev` (SPARQL11.Algebra.fst
 // :193-195) — mem_triple doesn't care about order, so this bridges

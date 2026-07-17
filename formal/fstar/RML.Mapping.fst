@@ -438,6 +438,7 @@ let term_to_node_ref (t : rdf_term) : option node_ref =
   | T_IRI i -> Some i
   | T_BNode b -> Some ("_:" ^ b)
   | T_Literal _ -> None
+  | T_TripleTerm _ _ _ -> None
 
 let subject_to_node_ref (s : subject) : node_ref =
   match s with

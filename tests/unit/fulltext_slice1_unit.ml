@@ -67,7 +67,7 @@ let () =
   let mk_literal lex =
     { RDF_Term.lexical_form = lex;
       RDF_Term.datatype = "http://www.w3.org/2001/XMLSchema#string";
-      RDF_Term.lang_tag = FStar_Pervasives_Native.None }
+      RDF_Term.lang_tag = FStar_Pervasives_Native.None; RDF_Term.direction = FStar_Pervasives_Native.None }
   in
   let ftq_no_field terms limit =
     { SPARQL_FullText.ftq_field = FStar_Pervasives_Native.None;

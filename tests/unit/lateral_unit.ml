@@ -79,7 +79,7 @@ let iri_obj i : rdf_term = T_IRI i
 let lit_obj lex : rdf_term =
   T_Literal { RDF_Term.lexical_form = lex;
               RDF_Term.datatype = "http://www.w3.org/2001/XMLSchema#string";
-              RDF_Term.lang_tag = FStar_Pervasives_Native.None }
+              RDF_Term.lang_tag = FStar_Pervasives_Native.None; RDF_Term.direction = FStar_Pervasives_Native.None }
 
 (* ---------------------------------------------------------------- *)
 (* 1. lateral_substitute                                              *)

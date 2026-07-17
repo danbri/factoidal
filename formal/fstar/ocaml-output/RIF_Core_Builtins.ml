@@ -592,7 +592,8 @@ let mk_int_literal (n : Prims.int) : RDF_Term.rdf_term=
     {
       RDF_Term.lexical_form = (Prims.string_of_int n);
       RDF_Term.datatype = RDF_Term.xsd_integer;
-      RDF_Term.lang_tag = FStar_Pervasives_Native.None
+      RDF_Term.lang_tag = FStar_Pervasives_Native.None;
+      RDF_Term.direction = FStar_Pervasives_Native.None
     }
 let rec find_last_hash_aux (cs : FStar_Char.char Prims.list)
   (idx : Prims.nat) (last : Prims.nat FStar_Pervasives_Native.option) :
@@ -622,7 +623,8 @@ let mk_string_literal (s : Prims.string) : RDF_Term.rdf_term=
     {
       RDF_Term.lexical_form = s;
       RDF_Term.datatype = RDF_Term.xsd_string;
-      RDF_Term.lang_tag = FStar_Pervasives_Native.None
+      RDF_Term.lang_tag = FStar_Pervasives_Native.None;
+      RDF_Term.direction = FStar_Pervasives_Native.None
     }
 let mk_lang_literal (s : Prims.string) (lang : Prims.string) :
   RDF_Term.rdf_term=
@@ -630,14 +632,16 @@ let mk_lang_literal (s : Prims.string) (lang : Prims.string) :
     {
       RDF_Term.lexical_form = s;
       RDF_Term.datatype = RDF_Term.rdf_lang_string;
-      RDF_Term.lang_tag = (FStar_Pervasives_Native.Some lang)
+      RDF_Term.lang_tag = (FStar_Pervasives_Native.Some lang);
+      RDF_Term.direction = FStar_Pervasives_Native.None
     }
 let mk_dayTimeDuration_literal (ms : Prims.int) : RDF_Term.rdf_term=
   RDF_Term.T_Literal
     {
       RDF_Term.lexical_form = (dayTimeDuration_of_ms ms);
       RDF_Term.datatype = xsd_dayTimeDuration;
-      RDF_Term.lang_tag = FStar_Pervasives_Native.None
+      RDF_Term.lang_tag = FStar_Pervasives_Native.None;
+      RDF_Term.direction = FStar_Pervasives_Native.None
     }
 let term_string_value (t : RDF_Term.rdf_term) :
   Prims.string FStar_Pervasives_Native.option=
@@ -827,15 +831,17 @@ let xsd_constructor_cast (op : RDF_Term.wf_iri)
           (decode_plain_literal_packed l.RDF_Term.lexical_form)
       else
         if
-          (FStar_List_Tot_Base.mem op supported_cast_targets) &&
-            (op <> RDF_Term.rdf_lang_string)
+          ((FStar_List_Tot_Base.mem op supported_cast_targets) &&
+             (op <> RDF_Term.rdf_lang_string))
+            && (op <> RDF_Term.rdf_dir_lang_string)
         then
           FStar_Pervasives_Native.Some
             (RDF_Term.T_Literal
                {
                  RDF_Term.lexical_form = (l.RDF_Term.lexical_form);
                  RDF_Term.datatype = op;
-                 RDF_Term.lang_tag = FStar_Pervasives_Native.None
+                 RDF_Term.lang_tag = FStar_Pervasives_Native.None;
+                 RDF_Term.direction = FStar_Pervasives_Native.None
                })
         else FStar_Pervasives_Native.None
   | uu___ -> FStar_Pervasives_Native.None

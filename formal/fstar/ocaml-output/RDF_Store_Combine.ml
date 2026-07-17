@@ -1,5 +1,5 @@
 open Prims
-let rec extend_backend_bucket (iri_name : RDF_Graph_Executable.iri)
+let rec extend_backend_bucket (iri_name : RDF_Term.iri)
   (g : SPARQL11_Store.graph_backend)
   (acc : SPARQL11_Store.named_graph_backend Prims.list) :
   SPARQL11_Store.named_graph_backend Prims.list=

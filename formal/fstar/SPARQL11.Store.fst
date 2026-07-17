@@ -744,7 +744,7 @@ let count_star_solution (alias : var_name) (n : nat) : solution_sequence =
   let lit_term : rdf_term = T_Literal {
     lexical_form = string_of_int n;
     datatype = xsd_integer;
-    lang_tag = None;
+    lang_tag = None; direction = None 
   } in
   [ sm_bind alias lit_term sm_empty ]
 
@@ -838,7 +838,7 @@ let rec count_group_by_graph_solutions_acc
     let lit_term : rdf_term = T_Literal {
       lexical_form = string_of_int cnt;
       datatype = xsd_integer;
-      lang_tag = None;
+      lang_tag = None; direction = None 
     } in
     let mu0 = sm_bind count_alias lit_term sm_empty in
     let mu = if is_iri ngb.ngb_name
@@ -955,7 +955,7 @@ let rec predicate_group_by_solutions_acc
       let lit_term : rdf_term = T_Literal {
         lexical_form = string_of_int cnt;
         datatype = xsd_integer;
-        lang_tag = None;
+        lang_tag = None; direction = None 
       } in
       let mu0 = sm_bind count_alias lit_term sm_empty in
       let mu = sm_bind pred_var (T_IRI p) mu0 in

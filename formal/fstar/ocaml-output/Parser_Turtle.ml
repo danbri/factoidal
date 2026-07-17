@@ -1775,7 +1775,8 @@ let parse_turtle_literal (st : turtle_state) (input : Prims.string)
           ({
              RDF_Term.lexical_form = lexical;
              RDF_Term.datatype = RDF_Term.xsd_string;
-             RDF_Term.lang_tag = FStar_Pervasives_Native.None
+             RDF_Term.lang_tag = FStar_Pervasives_Native.None;
+             RDF_Term.direction = FStar_Pervasives_Native.None
            }, pos')
       else
         (let next = Parser_FastString.fs_byte_index input pos' in
@@ -1788,7 +1789,8 @@ let parse_turtle_literal (st : turtle_state) (input : Prims.string)
                  ({
                     RDF_Term.lexical_form = lexical;
                     RDF_Term.datatype = RDF_Term.rdf_lang_string;
-                    RDF_Term.lang_tag = (FStar_Pervasives_Native.Some lang)
+                    RDF_Term.lang_tag = (FStar_Pervasives_Native.Some lang);
+                    RDF_Term.direction = FStar_Pervasives_Native.None
                   }, pos'')
            | Parser_Combinators.ParseFail (msg, fpos) ->
                Parser_Combinators.ParseFail (msg, fpos)
@@ -1813,6 +1815,8 @@ let parse_turtle_literal (st : turtle_state) (input : Prims.string)
                                RDF_Term.lexical_form = lexical;
                                RDF_Term.datatype = dt;
                                RDF_Term.lang_tag =
+                                 FStar_Pervasives_Native.None;
+                               RDF_Term.direction =
                                  FStar_Pervasives_Native.None
                              }, pos'')
                         else
@@ -1825,21 +1829,24 @@ let parse_turtle_literal (st : turtle_state) (input : Prims.string)
                      ({
                         RDF_Term.lexical_form = lexical;
                         RDF_Term.datatype = RDF_Term.xsd_string;
-                        RDF_Term.lang_tag = FStar_Pervasives_Native.None
+                        RDF_Term.lang_tag = FStar_Pervasives_Native.None;
+                        RDF_Term.direction = FStar_Pervasives_Native.None
                       }, pos'))
               else
                 Parser_Combinators.ParseOk
                   ({
                      RDF_Term.lexical_form = lexical;
                      RDF_Term.datatype = RDF_Term.xsd_string;
-                     RDF_Term.lang_tag = FStar_Pervasives_Native.None
+                     RDF_Term.lang_tag = FStar_Pervasives_Native.None;
+                     RDF_Term.direction = FStar_Pervasives_Native.None
                    }, pos'))
            else
              Parser_Combinators.ParseOk
                ({
                   RDF_Term.lexical_form = lexical;
                   RDF_Term.datatype = RDF_Term.xsd_string;
-                  RDF_Term.lang_tag = FStar_Pervasives_Native.None
+                  RDF_Term.lang_tag = FStar_Pervasives_Native.None;
+                  RDF_Term.direction = FStar_Pervasives_Native.None
                 }, pos'))
   | Parser_Combinators.ParseFail (msg, fpos) ->
       Parser_Combinators.ParseFail (msg, fpos)
@@ -1870,7 +1877,8 @@ let parse_boolean_literal (input : Prims.string) (pos : Prims.nat) :
           ({
              RDF_Term.lexical_form = "true";
              RDF_Term.datatype = RDF_Term.xsd_boolean;
-             RDF_Term.lang_tag = FStar_Pervasives_Native.None
+             RDF_Term.lang_tag = FStar_Pervasives_Native.None;
+             RDF_Term.direction = FStar_Pervasives_Native.None
            }, pos')
   | Parser_Combinators.ParseFail (uu___, uu___1) ->
       (match Parser_Combinators.pstring "false" input pos with
@@ -1883,7 +1891,8 @@ let parse_boolean_literal (input : Prims.string) (pos : Prims.nat) :
                ({
                   RDF_Term.lexical_form = "false";
                   RDF_Term.datatype = RDF_Term.xsd_boolean;
-                  RDF_Term.lang_tag = FStar_Pervasives_Native.None
+                  RDF_Term.lang_tag = FStar_Pervasives_Native.None;
+                  RDF_Term.direction = FStar_Pervasives_Native.None
                 }, pos')
        | Parser_Combinators.ParseFail (uu___2, uu___3) ->
            Parser_Combinators.ParseFail ("expected boolean literal", pos))
@@ -2080,6 +2089,8 @@ let rec parse_turtle_object (st : turtle_state) (input : Prims.string)
                                 RDF_Term.lexical_form = lexical;
                                 RDF_Term.datatype = dt;
                                 RDF_Term.lang_tag =
+                                  FStar_Pervasives_Native.None;
+                                RDF_Term.direction =
                                   FStar_Pervasives_Native.None
                               } in
                             if RDF_Term.literal_wf lit

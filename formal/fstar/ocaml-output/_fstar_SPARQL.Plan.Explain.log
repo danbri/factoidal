@@ -1,15 +1,18 @@
-* Warning 241 at RDF.Pretty.fst(0,0-0,0):
-  - Unable to load RDF.Pretty.fst.checked since checked file
-    RDF.Pretty.fst.checked is stale (dependence hash mismatch, use --debug
-    CheckedFiles for more details); will recheck RDF.Pretty.fst (suppressing
-    this warning for further modules)
+* Warning 241 at RDF.IRI.fsti(0,0-0,0):
+  - Unable to load RDF.IRI.fsti.checked since checked file RDF.IRI.fsti.checked
+    is stale (dependence hash mismatch, use --debug CheckedFiles for more
+    details); will recheck RDF.IRI.fsti (suppressing this warning for further
+    modules)
+
+* Warning 361 at SPARQL11.Algebra.fst(7167,0-7168,40):
+  - Some #push-options have not been popped. Current depth is 1.
 
 Extracted module SPARQL.Plan.Explain
 * Warning 247 at SPARQL.Plan.Explain.fst(0,0-0,0):
   - Checked file SPARQL.Plan.Explain.fst.checked was not written.
   - Reason:
-      checked file RDF.Pretty.fst.checked is stale (dependence hash mismatch,
-      use --debug CheckedFiles for more details)
+      checked file RDF.Pretty.fst.checked is stale (digest mismatch for
+      RDF.Pretty.fst)
 
 Verified module: SPARQL.Plan.Explain
 All verification conditions discharged successfully

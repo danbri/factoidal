@@ -4,6 +4,7 @@ let delta_entry_version : Prims.nat= Prims.int_one
 let term_tag_iri : Prims.nat= Prims.int_zero
 let term_tag_bnode : Prims.nat= Prims.int_one
 let term_tag_literal : Prims.nat= (Prims.of_int (2))
+let term_tag_tripleterm : Prims.nat= (Prims.of_int (3))
 let subj_tag_iri : Prims.nat= Prims.int_zero
 let subj_tag_bnode : Prims.nat= Prims.int_one
 let de_tag_add : Prims.nat= Prims.int_zero
@@ -84,6 +85,8 @@ let serialize_term (t : RDF_Term.rdf_term) : RDF_Bytes.bytes=
                | FStar_Pervasives_Native.Some tag ->
                    FStar_List_Tot_Base.append (write_u8 Prims.int_one)
                      (serialize_lstring tag))))
+  | RDF_Term.T_TripleTerm (uu___, uu___1, uu___2) ->
+      write_u8 term_tag_tripleterm
 let parse_term (bs : RDF_Bytes.bytes) :
   (RDF_Term.rdf_term * RDF_Bytes.bytes) FStar_Pervasives_Native.option=
   match parse_u8 bs with
@@ -128,6 +131,8 @@ let parse_term (bs : RDF_Bytes.bytes) :
                                    RDF_Term.lexical_form = lex;
                                    RDF_Term.datatype = dt;
                                    RDF_Term.lang_tag =
+                                     FStar_Pervasives_Native.None;
+                                   RDF_Term.direction =
                                      FStar_Pervasives_Native.None
                                  } in
                                (if RDF_Term.literal_wf l
@@ -149,7 +154,9 @@ let parse_term (bs : RDF_Bytes.bytes) :
                                           RDF_Term.datatype = dt;
                                           RDF_Term.lang_tag =
                                             (FStar_Pervasives_Native.Some
-                                               tag_str)
+                                               tag_str);
+                                          RDF_Term.direction =
+                                            FStar_Pervasives_Native.None
                                         } in
                                       if RDF_Term.literal_wf l
                                       then
@@ -358,13 +365,15 @@ let term_ok (t : RDF_Term.rdf_term) : Prims.bool=
   | RDF_Term.T_IRI i -> (FStar_String.strlen i) < max_field_chars
   | RDF_Term.T_BNode b -> (FStar_String.strlen b) < max_field_chars
   | RDF_Term.T_Literal l ->
-      (((FStar_String.strlen l.RDF_Term.lexical_form) < max_field_chars) &&
-         ((FStar_String.strlen l.RDF_Term.datatype) < max_field_chars))
+      ((((FStar_String.strlen l.RDF_Term.lexical_form) < max_field_chars) &&
+          ((FStar_String.strlen l.RDF_Term.datatype) < max_field_chars))
+         && (l.RDF_Term.direction = FStar_Pervasives_Native.None))
         &&
         ((match l.RDF_Term.lang_tag with
           | FStar_Pervasives_Native.None -> true
           | FStar_Pervasives_Native.Some tg ->
               (FStar_String.strlen tg) < max_field_chars))
+  | RDF_Term.T_TripleTerm (uu___, uu___1, uu___2) -> false
 let subject_ok (s : RDF_Term.subject) : Prims.bool=
   match s with
   | RDF_Term.S_IRI i -> (FStar_String.strlen i) < max_field_chars

@@ -97,11 +97,16 @@ let rename_subject_bnodes (prefix:string) (s:subject) : subject =
   | S_IRI i -> S_IRI i
   | S_BNode b -> S_BNode (rename_bnode_id prefix b)
 
-let rename_term_bnodes (prefix:string) (o:rdf_term) : rdf_term =
+let rec rename_term_bnodes (prefix:string) (o:rdf_term) : Tot rdf_term (decreases o) =
   match o with
   | T_IRI i -> T_IRI i
   | T_Literal l -> T_Literal l
   | T_BNode b -> T_BNode (rename_bnode_id prefix b)
+  // RDF 1.2 triple term: blank nodes can occur inside a triple term (its
+  // subject or, recursively, its object), so renaming must reach into it
+  // or bnode-scoped isomorphism/merge would miss them.
+  | T_TripleTerm s p obj ->
+    T_TripleTerm (rename_subject_bnodes prefix s) p (rename_term_bnodes prefix obj)
 
 let rename_triple_bnodes (prefix:string) (t:triple) : triple =
   {

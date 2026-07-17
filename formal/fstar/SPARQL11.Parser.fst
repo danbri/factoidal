@@ -1015,19 +1015,20 @@ let make_plain_literal (lex : string) : wf_literal =
   assert_norm (is_iri "http://www.w3.org/2001/XMLSchema#string");
   { lexical_form = lex;
     datatype = "http://www.w3.org/2001/XMLSchema#string";
-    lang_tag = None }
+    lang_tag = None; direction = None }
 
 let make_typed_literal (lex : string) (dt : string) : option wf_literal =
   if is_iri dt then
-    if dt = "http://www.w3.org/1999/02/22-rdf-syntax-ns#langString" then None
-    else Some { lexical_form = lex; datatype = dt; lang_tag = None }
+    if dt = "http://www.w3.org/1999/02/22-rdf-syntax-ns#langString"
+       || dt = "http://www.w3.org/1999/02/22-rdf-syntax-ns#dirLangString" then None
+    else Some { lexical_form = lex; datatype = dt; lang_tag = None; direction = None }
   else None
 
 let make_lang_literal (lex : string) (lang : string) : wf_literal =
   assert_norm (is_iri "http://www.w3.org/1999/02/22-rdf-syntax-ns#langString");
   { lexical_form = lex;
     datatype = "http://www.w3.org/1999/02/22-rdf-syntax-ns#langString";
-    lang_tag = Some lang }
+    lang_tag = Some lang; direction = None }
 
 (* rdf:type IRI constant *)
 let rdf_type_iri_str : wf_iri =

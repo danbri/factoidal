@@ -12,12 +12,16 @@ let rename_subject_bnodes (prefix : Prims.string) (s : RDF_Term.subject) :
   match s with
   | RDF_Term.S_IRI i -> RDF_Term.S_IRI i
   | RDF_Term.S_BNode b -> RDF_Term.S_BNode (rename_bnode_id prefix b)
-let rename_term_bnodes (prefix : Prims.string) (o : RDF_Term.rdf_term) :
+let rec rename_term_bnodes (prefix : Prims.string) (o : RDF_Term.rdf_term) :
   RDF_Term.rdf_term=
   match o with
   | RDF_Term.T_IRI i -> RDF_Term.T_IRI i
   | RDF_Term.T_Literal l -> RDF_Term.T_Literal l
   | RDF_Term.T_BNode b -> RDF_Term.T_BNode (rename_bnode_id prefix b)
+  | RDF_Term.T_TripleTerm (s, p, obj) ->
+      RDF_Term.T_TripleTerm
+        ((rename_subject_bnodes prefix s), p,
+          (rename_term_bnodes prefix obj))
 let rename_triple_bnodes (prefix : Prims.string) (t : RDF_Triple.triple) :
   RDF_Triple.triple=
   {

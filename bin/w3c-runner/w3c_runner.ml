@@ -114,6 +114,13 @@ let parse_ntriples_fstar input =
 let parse_ntriples_strict input =
   Parser_NTriples.parse_ntriples_strict input
 
+(* N-Triples 1.2 strict (epic #305 phase 1): the RDF 1.2 productions —
+   object-position triple terms `<<( s p o )>>` and directional language
+   strings `"x"@en--ltr` — behind a distinct entry point so the RDF 1.1
+   path stays byte-identical. Used by the rdf12 N-Triples W3C suite only. *)
+let parse_ntriples_strict_12 input =
+  Parser_NTriples.parse_ntriples_strict_12 input
+
 (* Turtle: F*-extracted, with optional base IRI (lenient — always returns triples) *)
 let parse_turtle_fstar input base_opt =
   match base_opt with
@@ -1887,6 +1894,7 @@ let _gsp_sentinel_triple_for body : RDF_Graph_Executable.triple =
       RDF_Graph_Executable.lexical_form = body;
       RDF_Graph_Executable.datatype = RDF_Graph_Executable.xsd_string;
       RDF_Graph_Executable.lang_tag = FStar_Pervasives_Native.None;
+      RDF_Graph_Executable.direction = FStar_Pervasives_Native.None;
     };
   }
 
@@ -2828,6 +2836,18 @@ let rdf_tests_base =
   try List.find Sys.file_exists candidates
   with Not_found -> "third_party/testing/w3c/rdf/rdf11"
 
+(* RDF 1.2 vendored suites (epic #305). Same w3c/rdf-tests submodule as
+   rdf11; the rdf12 subtree carries its own leaf manifests (e.g.
+   rdf-n-triples/syntax/manifest.ttl). *)
+let rdf12_tests_base =
+  let candidates = [
+    "third_party/testing/w3c/rdf/rdf12";
+    "../../third_party/testing/w3c/rdf/rdf12";
+    "../../../third_party/testing/w3c/rdf/rdf12";
+  ] in
+  try List.find Sys.file_exists candidates
+  with Not_found -> "third_party/testing/w3c/rdf/rdf12"
+
 let discover_suites () =
   try
     let entries = Sys.readdir tests_base in
@@ -2905,6 +2925,38 @@ let run_suite suite_name =
 let run_rdf_suite suite_name =
   run_suite_generic rdf_tests_base (fun assumed_base tc -> run_rdf_test assumed_base tc) suite_name
 
+(* RDF 1.2 N-Triples runner (epic #305 phase 1). Uses the F* RDF 1.2
+   strict parser (`parse_ntriples_strict_12`) for BOTH positive and
+   negative syntax tests: positives must parse (Some), negatives must be
+   rejected (None). Positives are gated on real parsing — NOT the lenient
+   "never errors" path — so triple-term / dirlang support is genuinely
+   exercised (anti-pattern #3). Any other rdf12 test type is delegated to
+   the RDF 1.1 handler unchanged. *)
+let run_rdf12_test assumed_base tc =
+  match tc.test_type with
+  | "TestNTriplesPositiveSyntax" ->
+    (match read_file tc.query_file with
+     | None -> Skip "File missing"
+     | Some content ->
+       (try
+          match parse_ntriples_strict_12 content with
+          | Some _ -> Pass
+          | None -> Fail "Should parse (RDF 1.2) but didn't"
+        with _ -> Fail "Should parse (RDF 1.2) but raised"))
+  | "TestNTriplesNegativeSyntax" ->
+    (match read_file tc.query_file with
+     | None -> Skip "File missing"
+     | Some content ->
+       (try
+          match parse_ntriples_strict_12 content with
+          | None -> Pass
+          | Some _ -> Fail "Should reject (RDF 1.2) but parsed OK"
+        with _ -> Pass))
+  | _ -> run_rdf_test assumed_base tc
+
+let run_rdf12_suite suite_name =
+  run_suite_generic rdf12_tests_base (fun assumed_base tc -> run_rdf12_test assumed_base tc) suite_name
+
 let run_and_tally runner suites banner base_dir =
   Printf.printf "=== %s ===\n" banner;
   Printf.printf "Test base: %s\n\n" base_dir;
@@ -2964,13 +3016,21 @@ let () =
   if List.mem "--verbose" args || List.mem "-v" args then
     verbose_mode := true;
   let run_rdf_mode = List.mem "--rdf" args in
+  let run_rdf12_mode = List.mem "--rdf12" args in
   let run_all_mode = List.mem "--all" args in
   let suite_args = List.filter (fun s ->
-    s <> "--rdf" && s <> "--all" && s <> "--verbose" && s <> "-v") args in
+    s <> "--rdf" && s <> "--rdf12" && s <> "--all" && s <> "--verbose" && s <> "-v") args in
 
   let any_fail = ref false in
 
-  if run_rdf_mode then begin
+  if run_rdf12_mode then begin
+    (* RDF 1.2 suites (epic #305 phase 1). Default: the N-Triples syntax
+       suite (leaf manifest at rdf12/rdf-n-triples/syntax/manifest.ttl). *)
+    let rdf12_suites = if suite_args = [] then ["rdf-n-triples/syntax"] else suite_args in
+    let (_, f, _, _) = run_and_tally run_rdf12_suite rdf12_suites
+      "W3C RDF 1.2 Test Runner" rdf12_tests_base in
+    if f > 0 then any_fail := true
+  end else if run_rdf_mode then begin
     let rdf_suites = if suite_args = [] then discover_rdf_suites () else suite_args in
     let (_, f, _, _) = run_and_tally run_rdf_suite rdf_suites
       "W3C RDF 1.1 Test Runner" rdf_tests_base in

@@ -797,7 +797,7 @@ let nt_escape (s : string) : string =
 (** ====================================================================== **)
 
 // Render a single term as a JSON binding value object.
-let json_term (t : rdf_term) : string =
+let rec json_term (t : rdf_term) : Tot string (decreases t) =
   match t with
   | T_IRI i ->
     "{\"type\":\"uri\",\"value\":\"" ^ json_escape i ^ "\"}"
@@ -806,11 +806,18 @@ let json_term (t : rdf_term) : string =
   | T_Literal l ->
     (match l.lang_tag with
      | Some tag ->
+       // RDF 1.2 SPARQL Results JSON: a directional language string adds
+       // a "dir" member alongside "xml:lang". Empty (member omitted) for
+       // RDF 1.1 langString, so 1.1 output is byte-identical.
+       let dir_member = (match l.direction with
+                         | Some Dir_LTR -> ",\"its:dir\":\"ltr\""
+                         | Some Dir_RTL -> ",\"its:dir\":\"rtl\""
+                         | None -> "") in
        "{\"type\":\"literal\",\"value\":\""
          ^ json_escape l.lexical_form
          ^ "\",\"xml:lang\":\""
          ^ json_escape tag
-         ^ "\"}"
+         ^ "\"" ^ dir_member ^ "}"
      | None ->
        if l.datatype = xsd_string then
          "{\"type\":\"literal\",\"value\":\""
@@ -822,6 +829,16 @@ let json_term (t : rdf_term) : string =
            ^ "\",\"datatype\":\""
            ^ json_escape l.datatype
            ^ "\"}")
+  // RDF 1.2 SPARQL Results JSON encoding of a triple-term binding
+  // (SPARQL 1.2 Results JSON WD): {"type":"triple","value":{...}}.
+  | T_TripleTerm s p o ->
+    let subj = (match s with
+                | S_IRI i   -> "{\"type\":\"uri\",\"value\":\"" ^ json_escape i ^ "\"}"
+                | S_BNode b -> "{\"type\":\"bnode\",\"value\":\"" ^ json_escape b ^ "\"}") in
+    let pred = "{\"type\":\"uri\",\"value\":\"" ^ json_escape p ^ "\"}" in
+    "{\"type\":\"triple\",\"value\":{\"subject\":" ^ subj
+      ^ ",\"predicate\":" ^ pred
+      ^ ",\"object\":" ^ json_term o ^ "}}"
 
 // Render "\"x\",\"y\",\"z\"" from ["x";"y";"z"].
 let rec json_var_list_body
@@ -920,28 +937,44 @@ let rec xml_head_vars_body (vars : list string)
     "<variable name=\"" ^ xml_escape v ^ "\"/>"
       ^ xml_head_vars_body rest
 
+// Render one term in SPARQL Results XML (SRX) form.
+let rec xml_term (t : rdf_term) : Tot string (decreases t) =
+  match t with
+  | T_IRI i    -> "<uri>" ^ xml_escape i ^ "</uri>"
+  | T_BNode b  -> "<bnode>" ^ xml_escape b ^ "</bnode>"
+  | T_Literal l ->
+    (match l.lang_tag with
+     | Some tag ->
+       // RDF 1.2 directional language string adds an ITS `its:dir`
+       // attribute. Absent for RDF 1.1 langString (byte-identical).
+       let dir_attr = (match l.direction with
+                       | Some Dir_LTR -> " its:dir=\"ltr\""
+                       | Some Dir_RTL -> " its:dir=\"rtl\""
+                       | None -> "") in
+       "<literal xml:lang=\"" ^ xml_escape tag ^ "\"" ^ dir_attr ^ ">"
+         ^ xml_escape l.lexical_form
+         ^ "</literal>"
+     | None ->
+       if l.datatype = xsd_string then
+         "<literal>" ^ xml_escape l.lexical_form ^ "</literal>"
+       else
+         "<literal datatype=\"" ^ xml_escape l.datatype ^ "\">"
+           ^ xml_escape l.lexical_form
+           ^ "</literal>")
+  // RDF 1.2 SPARQL Results XML triple-term binding (SPARQL 1.2 WD):
+  // <triple><subject/><predicate/><object/></triple>.
+  | T_TripleTerm s p o ->
+    let subj = (match s with
+                | S_IRI i   -> "<uri>" ^ xml_escape i ^ "</uri>"
+                | S_BNode b -> "<bnode>" ^ xml_escape b ^ "</bnode>") in
+    "<triple><subject>" ^ subj ^ "</subject>"
+      ^ "<predicate><uri>" ^ xml_escape p ^ "</uri></predicate>"
+      ^ "<object>" ^ xml_term o ^ "</object></triple>"
+
 // Render a single <binding name="..."><...>...</...></binding>.
 let xml_binding (name : string) (t : rdf_term) : string =
   let open_tag = "<binding name=\"" ^ xml_escape name ^ "\">" in
-  let inner =
-    match t with
-    | T_IRI i    -> "<uri>" ^ xml_escape i ^ "</uri>"
-    | T_BNode b  -> "<bnode>" ^ xml_escape b ^ "</bnode>"
-    | T_Literal l ->
-      (match l.lang_tag with
-       | Some tag ->
-         "<literal xml:lang=\"" ^ xml_escape tag ^ "\">"
-           ^ xml_escape l.lexical_form
-           ^ "</literal>"
-       | None ->
-         if l.datatype = xsd_string then
-           "<literal>" ^ xml_escape l.lexical_form ^ "</literal>"
-         else
-           "<literal datatype=\"" ^ xml_escape l.datatype ^ "\">"
-             ^ xml_escape l.lexical_form
-             ^ "</literal>")
-  in
-  open_tag ^ inner ^ "</binding>"
+  open_tag ^ xml_term t ^ "</binding>"
 
 let rec xml_row_body (row : binding_row)
   : Tot string (decreases (List.Tot.length row)) =
@@ -998,12 +1031,21 @@ let serialise_response_boolean_xml (b : bool) : string =
 // CSV: header is variable names (no '?' prefix). Cells are the
 // "plain" value. Unbound = empty string. Booleans / numerics are
 // written as their lexical forms.
+// The "plain" value of a term for CSV cells. RDF 1.2 triple terms render
+// in N-Triples `<<( )>>` form (recursing through the object).
+let rec csv_plain_term (t : rdf_term) : Tot string (decreases t) =
+  match t with
+  | T_IRI i     -> i
+  | T_BNode b   -> "_:" ^ b
+  | T_Literal l -> l.lexical_form
+  | T_TripleTerm s p o ->
+    let subj = (match s with S_IRI i -> i | S_BNode b -> "_:" ^ b) in
+    "<<( " ^ subj ^ " " ^ p ^ " " ^ csv_plain_term o ^ " )>>"
+
 let csv_cell (t_opt : option rdf_term) : string =
   match t_opt with
   | None -> ""
-  | Some (T_IRI i) -> csv_escape i
-  | Some (T_BNode b) -> csv_escape ("_:" ^ b)
-  | Some (T_Literal l) -> csv_escape l.lexical_form
+  | Some t -> csv_escape (csv_plain_term t)
 
 let rec csv_header_body
     (vars : list string)
@@ -1059,19 +1101,30 @@ let serialise_response_csv
   csv_header_body vars true ^ "\r\n" ^ String.concat "" body_pieces
 
 // TSV: header keeps the ? prefix; cells use N-Triples-style syntax.
-let tsv_term (t : rdf_term) : string =
+let rec tsv_term (t : rdf_term) : Tot string (decreases t) =
   match t with
   | T_IRI i -> "<" ^ i ^ ">"
   | T_BNode b -> "_:" ^ b
   | T_Literal l ->
     let escaped = nt_escape l.lexical_form in
     (match l.lang_tag with
-     | Some tag -> "\"" ^ escaped ^ "\"@" ^ tag
+     | Some tag ->
+       let ds = (match l.direction with
+                 | Some Dir_LTR -> "--ltr"
+                 | Some Dir_RTL -> "--rtl"
+                 | None -> "") in
+       "\"" ^ escaped ^ "\"@" ^ tag ^ ds
      | None ->
        if l.datatype = xsd_string then
          "\"" ^ escaped ^ "\""
        else
          "\"" ^ escaped ^ "\"^^<" ^ l.datatype ^ ">")
+  // RDF 1.2 triple term in N-Triples-style TSV cell syntax.
+  | T_TripleTerm s p o ->
+    let subj = (match s with
+                | S_IRI i   -> "<" ^ i ^ ">"
+                | S_BNode b -> "_:" ^ b) in
+    "<<( " ^ subj ^ " <" ^ p ^ "> " ^ tsv_term o ^ " )>>"
 
 let tsv_cell (t_opt : option rdf_term) : string =
   match t_opt with
@@ -1166,7 +1219,7 @@ let lit_str (s : string) : option rdf_term =
   let l : literal = {
     lexical_form = s;
     datatype     = xsd_string;
-    lang_tag     = None
+    lang_tag     = None; direction = None
   } in
   if literal_wf l then Some (T_Literal l) else None
 

@@ -104,19 +104,34 @@ let nq_escape_literal (s : string) : Tot string =
 // F* wf_iri refinement makes unreachable; it's dropped here.)
 // ---------------------------------------------------------------
 
-let nq_term_to_string (t : rdf_term) : Tot string =
+let rec nq_term_to_string (t : rdf_term) : Tot string (decreases t) =
   match t with
   | T_IRI i   -> "<" ^ i ^ ">"
   | T_BNode b -> "_:" ^ b
   | T_Literal l ->
     let esc = nq_escape_literal l.lexical_form in
     (match l.lang_tag with
-     | Some tag -> "\"" ^ esc ^ "\"@" ^ tag
+     | Some tag ->
+       // RDF 1.2: a directional language string appends `--ltr`/`--rtl`
+       // to the language tag. RDF 1.1 langString literals have
+       // direction = None, so this suffix is empty and the output is
+       // byte-identical to before.
+       let dir_suffix = (match l.direction with
+                         | Some Dir_LTR -> "--ltr"
+                         | Some Dir_RTL -> "--rtl"
+                         | None -> "") in
+       "\"" ^ esc ^ "\"@" ^ tag ^ dir_suffix
      | None ->
        if l.datatype = xsd_string then
          "\"" ^ esc ^ "\""
        else
          "\"" ^ esc ^ "\"^^<" ^ l.datatype ^ ">")
+  | T_TripleTerm s p o ->
+    // RDF 1.2 triple term in object position: `<<( s p o )>>`.
+    let subj_str = (match s with
+                    | S_IRI i   -> "<" ^ i ^ ">"
+                    | S_BNode b -> "_:" ^ b) in
+    "<<( " ^ subj_str ^ " <" ^ p ^ "> " ^ nq_term_to_string o ^ " )>>"
 
 // ---------------------------------------------------------------
 // nq_subject_to_string : serialize a subject (IRI or blank node).

@@ -43,11 +43,13 @@ let term_to_subject (t : RDF_Term.rdf_term) :
   | RDF_Term.T_IRI i -> FStar_Pervasives_Native.Some (RDF_Term.S_IRI i)
   | RDF_Term.T_BNode b -> FStar_Pervasives_Native.Some (RDF_Term.S_BNode b)
   | RDF_Term.T_Literal uu___ -> FStar_Pervasives_Native.None
+  | RDF_Term.T_TripleTerm (uu___, uu___1, uu___2) ->
+      FStar_Pervasives_Native.None
 let add_triple_if_new (g : rdf_graph) (t : RDF_Triple.triple) : rdf_graph=
   graph_add t g
 let add_triple_unchecked (g : rdf_graph) (t : RDF_Triple.triple) : rdf_graph=
   t :: g
-let term_to_key_total (o : RDF_Term.rdf_term) : Prims.string=
+let rec term_to_key_total (o : RDF_Term.rdf_term) : Prims.string=
   match o with
   | RDF_Term.T_IRI i -> FStar_String.concat "" ["I_"; i]
   | RDF_Term.T_BNode b -> FStar_String.concat "" ["B_"; b]
@@ -59,7 +61,19 @@ let term_to_key_total (o : RDF_Term.rdf_term) : Prims.string=
         l.RDF_Term.datatype;
         (match l.RDF_Term.lang_tag with
          | FStar_Pervasives_Native.Some t -> FStar_String.concat "" ["@"; t]
+         | FStar_Pervasives_Native.None -> "");
+        (match l.RDF_Term.direction with
+         | FStar_Pervasives_Native.Some (RDF_Term.Dir_LTR) -> "--ltr"
+         | FStar_Pervasives_Native.Some (RDF_Term.Dir_RTL) -> "--rtl"
          | FStar_Pervasives_Native.None -> "")]
+  | RDF_Term.T_TripleTerm (s, p, obj) ->
+      FStar_String.concat ""
+        ["T_";
+        RDF_Indexed.subject_to_key s;
+        RDF_Indexed.unit_sep;
+        p;
+        RDF_Indexed.unit_sep;
+        term_to_key_total obj]
 let triple_to_key (t : RDF_Triple.triple) : Prims.string=
   FStar_String.concat ""
     [RDF_Indexed.subject_to_key t.RDF_Triple.s;

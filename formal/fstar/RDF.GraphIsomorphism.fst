@@ -143,7 +143,7 @@ let rrv_index : wf_iri =
    mk_plain_literal; xsd:string is not rdf:langString and there is no
    language tag, so literal_wf holds. *)
 let iso_plain_literal (s : string) : wf_literal =
-  { lexical_form = s; datatype = xsd_string; lang_tag = None }
+  { lexical_form = s; datatype = xsd_string; lang_tag = None; direction = None }
 
 (* A binding is a (variable-name, bound-term) pair; a row is a list of
    them; a result set is a list of rows. Matches the OCaml runner's

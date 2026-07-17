@@ -5,21 +5,20 @@ let __proj__Mkrif_var__item__var_name (projectee : rif_var) : Prims.string=
   match projectee with | { var_name;_} -> var_name
 type rif_term =
   | RIF_Var of rif_var 
-  | RIF_Const of RDF_Graph_Executable.rdf_term 
-  | RIF_TermExternal of RDF_Graph_Executable.wf_iri * rif_term Prims.list 
+  | RIF_Const of RDF_Term.rdf_term 
+  | RIF_TermExternal of RDF_Term.wf_iri * rif_term Prims.list 
 let uu___is_RIF_Var (projectee : rif_term) : Prims.bool=
   match projectee with | RIF_Var _0 -> true | uu___ -> false
 let __proj__RIF_Var__item___0 (projectee : rif_term) : rif_var=
   match projectee with | RIF_Var _0 -> _0
 let uu___is_RIF_Const (projectee : rif_term) : Prims.bool=
   match projectee with | RIF_Const _0 -> true | uu___ -> false
-let __proj__RIF_Const__item___0 (projectee : rif_term) :
-  RDF_Graph_Executable.rdf_term= match projectee with | RIF_Const _0 -> _0
+let __proj__RIF_Const__item___0 (projectee : rif_term) : RDF_Term.rdf_term=
+  match projectee with | RIF_Const _0 -> _0
 let uu___is_RIF_TermExternal (projectee : rif_term) : Prims.bool=
   match projectee with | RIF_TermExternal (_0, _1) -> true | uu___ -> false
 let __proj__RIF_TermExternal__item___0 (projectee : rif_term) :
-  RDF_Graph_Executable.wf_iri=
-  match projectee with | RIF_TermExternal (_0, _1) -> _0
+  RDF_Term.wf_iri= match projectee with | RIF_TermExternal (_0, _1) -> _0
 let __proj__RIF_TermExternal__item___1 (projectee : rif_term) :
   rif_term Prims.list= match projectee with | RIF_TermExternal (_0, _1) -> _1
 type rif_atom =
@@ -65,7 +64,7 @@ let __proj__RIF_Uniterm__item___1 (projectee : rif_atom) :
 type rif_body =
   | RIF_BodyAtom of rif_atom 
   | RIF_BodyAnd of rif_body Prims.list 
-  | RIF_BodyExternal of RDF_Graph_Executable.wf_iri * rif_term Prims.list 
+  | RIF_BodyExternal of RDF_Term.wf_iri * rif_term Prims.list 
   | RIF_BodyEqual of rif_term * rif_term 
 let uu___is_RIF_BodyAtom (projectee : rif_body) : Prims.bool=
   match projectee with | RIF_BodyAtom _0 -> true | uu___ -> false
@@ -78,8 +77,7 @@ let __proj__RIF_BodyAnd__item___0 (projectee : rif_body) :
 let uu___is_RIF_BodyExternal (projectee : rif_body) : Prims.bool=
   match projectee with | RIF_BodyExternal (_0, _1) -> true | uu___ -> false
 let __proj__RIF_BodyExternal__item___0 (projectee : rif_body) :
-  RDF_Graph_Executable.wf_iri=
-  match projectee with | RIF_BodyExternal (_0, _1) -> _0
+  RDF_Term.wf_iri= match projectee with | RIF_BodyExternal (_0, _1) -> _0
 let __proj__RIF_BodyExternal__item___1 (projectee : rif_body) :
   rif_term Prims.list= match projectee with | RIF_BodyExternal (_0, _1) -> _1
 let uu___is_RIF_BodyEqual (projectee : rif_body) : Prims.bool=
@@ -105,9 +103,9 @@ type rif_program = {
 let __proj__Mkrif_program__item__rules (projectee : rif_program) :
   rif_rule Prims.list= match projectee with | { rules;_} -> rules
 let mk_var (n : Prims.string) : rif_term= RIF_Var { var_name = n }
-let mk_const (t : RDF_Graph_Executable.rdf_term) : rif_term= RIF_Const t
-let mk_const_iri (i : RDF_Graph_Executable.wf_iri) : rif_term=
-  RIF_Const (RDF_Graph_Executable.T_IRI i)
+let mk_const (t : RDF_Term.rdf_term) : rif_term= RIF_Const t
+let mk_const_iri (i : RDF_Term.wf_iri) : rif_term=
+  RIF_Const (RDF_Term.T_IRI i)
 let mk_atom_triple (s : rif_term) (p : rif_term) (o : rif_term) : rif_atom=
   RIF_Triple (s, p, o)
 let mk_atom_frame (o : rif_term) (p : rif_term) (v : rif_term) : rif_atom=
@@ -118,12 +116,12 @@ let mk_atom_sub (sub : rif_term) (sup_ : rif_term) : rif_atom=
   RIF_Sub (sub, sup_)
 let mk_atom_uniterm (p : rif_term) (args : rif_term Prims.list) : rif_atom=
   RIF_Uniterm (p, args)
-let mk_term_external (op : RDF_Graph_Executable.wf_iri)
-  (args : rif_term Prims.list) : rif_term= RIF_TermExternal (op, args)
+let mk_term_external (op : RDF_Term.wf_iri) (args : rif_term Prims.list) :
+  rif_term= RIF_TermExternal (op, args)
 let mk_body_atom (a : rif_atom) : rif_body= RIF_BodyAtom a
 let mk_body_and (bs : rif_body Prims.list) : rif_body= RIF_BodyAnd bs
-let mk_body_external (op : RDF_Graph_Executable.wf_iri)
-  (args : rif_term Prims.list) : rif_body= RIF_BodyExternal (op, args)
+let mk_body_external (op : RDF_Term.wf_iri) (args : rif_term Prims.list) :
+  rif_body= RIF_BodyExternal (op, args)
 let mk_body_equal (lhs : rif_term) (rhs : rif_term) : rif_body=
   RIF_BodyEqual (lhs, rhs)
 let mk_rule (head_ : rif_atom) (body_ : rif_body) : rif_rule=
@@ -139,7 +137,7 @@ let rif_var_eq (a : rif_var) (b : rif_var) : Prims.bool=
 let rec rif_term_eq (a : rif_term) (b : rif_term) : Prims.bool=
   match (a, b) with
   | (RIF_Var v1, RIF_Var v2) -> rif_var_eq v1 v2
-  | (RIF_Const c1, RIF_Const c2) -> RDF_Graph_Executable.rdf_term_eq c1 c2
+  | (RIF_Const c1, RIF_Const c2) -> RDF_Term.rdf_term_eq c1 c2
   | (RIF_TermExternal (op1, args1), RIF_TermExternal (op2, args2)) ->
       (op1 = op2) && (rif_term_list_eq args1 args2)
   | (uu___, uu___1) -> false

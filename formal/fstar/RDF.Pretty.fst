@@ -34,18 +34,32 @@ module S = FStar.String
 // output isn't a Turtle/abbreviated context (e.g. JSON value field).
 // ---------------------------------------------------------------
 
-let term_to_ntriples (t : rdf_term) : Tot string =
+// RDF 1.2 base-direction suffix for a directional language string.
+// Empty for every RDF 1.1 literal (direction = None), so output stays
+// byte-identical for pre-1.2 data.
+let dir_suffix (d : option text_direction) : Tot string =
+  match d with
+  | Some Dir_LTR -> "--ltr"
+  | Some Dir_RTL -> "--rtl"
+  | None -> ""
+
+let rec term_to_ntriples (t : rdf_term) : Tot string (decreases t) =
   match t with
   | T_IRI i   -> "<" ^ i ^ ">"
   | T_BNode b -> "_:" ^ b
   | T_Literal l ->
     (match l.lang_tag with
-     | Some tag -> "\"" ^ l.lexical_form ^ "\"@" ^ tag
+     | Some tag -> "\"" ^ l.lexical_form ^ "\"@" ^ tag ^ dir_suffix l.direction
      | None ->
        if l.datatype = xsd_string then
          "\"" ^ l.lexical_form ^ "\""
        else
          "\"" ^ l.lexical_form ^ "\"^^<" ^ l.datatype ^ ">")
+  | T_TripleTerm s p o ->
+    let subj_str = (match s with
+                    | S_IRI i   -> "<" ^ i ^ ">"
+                    | S_BNode b -> "_:" ^ b) in
+    "<<( " ^ subj_str ^ " <" ^ p ^ "> " ^ term_to_ntriples o ^ " )>>"
 
 // ---------------------------------------------------------------
 // 2. Prefix-table support.
@@ -97,18 +111,23 @@ let abbreviate_iri (table : prefix_table) (iri : string) : Tot string =
 // in either OCaml caller, and we preserve the legacy behaviour).
 // ---------------------------------------------------------------
 
-let term_with_prefixes (table : prefix_table) (t : rdf_term) : Tot string =
+let rec term_with_prefixes (table : prefix_table) (t : rdf_term) : Tot string (decreases t) =
   match t with
   | T_IRI i   -> abbreviate_iri table i
   | T_BNode b -> "_:" ^ b
   | T_Literal l ->
     (match l.lang_tag with
-     | Some tag -> "\"" ^ l.lexical_form ^ "\"@" ^ tag
+     | Some tag -> "\"" ^ l.lexical_form ^ "\"@" ^ tag ^ dir_suffix l.direction
      | None ->
        if l.datatype = xsd_string then
          "\"" ^ l.lexical_form ^ "\""
        else
          "\"" ^ l.lexical_form ^ "\"^^<" ^ l.datatype ^ ">")
+  | T_TripleTerm s p o ->
+    let subj_str = (match s with
+                    | S_IRI i   -> abbreviate_iri table i
+                    | S_BNode b -> "_:" ^ b) in
+    "<<( " ^ subj_str ^ " <" ^ p ^ "> " ^ term_with_prefixes table o ^ " )>>"
 
 // ---------------------------------------------------------------
 // 4. Subject rendering.

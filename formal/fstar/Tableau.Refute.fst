@@ -3445,7 +3445,8 @@ let is_class_membership (t : triple) : bool =
   && (match t.o with
       | T_IRI c    -> not (is_meta_type_iri c)
       | T_BNode _  -> true
-      | T_Literal _ -> false)
+      | T_Literal _ -> false
+      | T_TripleTerm _ _ _ -> false)
 
 // Structural triple removal (used to drop the positive assertion that
 // the negation replaces).
@@ -3570,7 +3571,7 @@ let pe_xsd_nonNegInteger : wf_iri =
   "http://www.w3.org/2001/XMLSchema#nonNegativeInteger"
 let pe_zero_literal : wf_literal =
   let l : literal = { lexical_form = "0"; datatype = pe_xsd_nonNegInteger;
-                      lang_tag = None } in
+                      lang_tag = None; direction = None } in
   assert (literal_wf l);
   l
 
@@ -3648,7 +3649,7 @@ let is_axiom_or_special_predicate (p : wf_iri) : bool =
 // p not an axiom/nominal predicate). Its sound negation is ¬p(s,o).
 let is_negatable_property_assertion (t : triple) : bool =
   (match t.s with S_IRI _ -> true | S_BNode _ -> false)
-  && (match t.o with T_IRI _ | T_BNode _ -> true | T_Literal _ -> false)
+  && (match t.o with T_IRI _ | T_BNode _ -> true | T_Literal _ -> false | T_TripleTerm _ _ _ -> false)
   && not (is_axiom_or_special_predicate t.p)
 
 // One content assertion -> the list of refutation goals it expands to

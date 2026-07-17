@@ -482,6 +482,11 @@ let term_to_key_opt (o : rdf_term) : option string =
   | T_IRI i     -> Some (String.concat "" ["I_"; i])
   | T_BNode b   -> Some (String.concat "" ["B_"; b])
   | T_Literal _ -> None
+  // RDF 1.2 triple terms are not indexed (same rationale as literals:
+  // they would need structural normalisation and rarely serve as a join
+  // axis). Object-triple-term patterns fall through to the bound
+  // subject/predicate index or the full triple list.
+  | T_TripleTerm _ _ _ -> None
 
 (* Composite key separator: ASCII Unit Separator (U+001F). Forbidden in
    IRIs by RFC 3987, never appears in our subject/object keys (which are

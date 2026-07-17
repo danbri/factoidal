@@ -218,7 +218,8 @@ let csvw_build_literal (lex : Prims.string) (dt : Prims.string) :
       {
         RDF_Term.lexical_form = lex;
         RDF_Term.datatype = dt;
-        RDF_Term.lang_tag = FStar_Pervasives_Native.None
+        RDF_Term.lang_tag = FStar_Pervasives_Native.None;
+        RDF_Term.direction = FStar_Pervasives_Native.None
       } in
     (if RDF_Term.literal_wf l
      then FStar_Pervasives_Native.Some (RDF_Term.T_Literal l)
@@ -233,7 +234,8 @@ let csvw_build_literal_lang (lex : Prims.string) (dt : Prims.string)
         {
           RDF_Term.lexical_form = lex;
           RDF_Term.datatype = RDF_Term.rdf_lang_string;
-          RDF_Term.lang_tag = (FStar_Pervasives_Native.Some l)
+          RDF_Term.lang_tag = (FStar_Pervasives_Native.Some l);
+          RDF_Term.direction = FStar_Pervasives_Native.None
         } in
       if RDF_Term.literal_wf lit
       then FStar_Pervasives_Native.Some (RDF_Term.T_Literal lit)
@@ -944,7 +946,8 @@ let csvw_mk_literal (lex : Prims.string) (dt : RDF_Term.wf_iri)
     {
       RDF_Term.lexical_form = lex;
       RDF_Term.datatype = dt;
-      RDF_Term.lang_tag = lang
+      RDF_Term.lang_tag = lang;
+      RDF_Term.direction = FStar_Pervasives_Native.None
     } in
   if RDF_Term.literal_wf l
   then FStar_Pervasives_Native.Some (RDF_Term.T_Literal l)
@@ -1217,7 +1220,8 @@ let csvw_row_triples_standard (table_url_resolved : Prims.string)
              {
                RDF_Term.lexical_form = (Prims.string_of_int row_num);
                RDF_Term.datatype = RDF_Term.xsd_integer;
-               RDF_Term.lang_tag = FStar_Pervasives_Native.None
+               RDF_Term.lang_tag = FStar_Pervasives_Native.None;
+               RDF_Term.direction = FStar_Pervasives_Native.None
              })
       }]
       (if RDF_Term.is_iri row_url

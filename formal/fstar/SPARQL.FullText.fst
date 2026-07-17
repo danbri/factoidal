@@ -193,7 +193,7 @@ let encode_fulltext_literal (ftq : fulltext_query) : Tot wf_literal =
   let field_part : string = (match ftq.ftq_field with | None -> "" | Some f -> f) in
   let limit_part : string = (match ftq.ftq_limit with | None -> "" | Some n -> string_of_int n) in
   let lex = field_part ^ unit_sep_str ^ ftq.ftq_terms ^ unit_sep_str ^ limit_part in
-  { lexical_form = lex; datatype = fulltext_args_datatype; lang_tag = None }
+  { lexical_form = lex; datatype = fulltext_args_datatype; lang_tag = None; direction = None }
 
 let decode_fulltext_literal (l : wf_literal) : Tot (option fulltext_query) =
   if l.datatype <> fulltext_args_datatype then None

@@ -188,7 +188,8 @@ module DM = RDF_Store_Columnar_DeltaMerge
 let lit (v : string) : RDF_Term.rdf_term =
   RDF_Term.T_Literal
     { RDF_Term.lexical_form = v; RDF_Term.datatype = RDF_Term.xsd_string;
-      RDF_Term.lang_tag = FStar_Pervasives_Native.None }
+      RDF_Term.lang_tag = FStar_Pervasives_Native.None;
+      RDF_Term.direction = FStar_Pervasives_Native.None }
 
 let mk_triple (s : string) (p : string) (o : RDF_Term.rdf_term) : RDF_Triple.triple =
   { RDF_Triple.s = RDF_Term.S_IRI s; RDF_Triple.p = p; RDF_Triple.o = o }

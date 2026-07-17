@@ -87,101 +87,106 @@ let rec escape_lit_walk (s : Prims.string) (len : Prims.nat)
 let escape_lit (s : Prims.string) : Prims.string=
   escape_lit_walk s (Parser_FastString.fs_byte_length s) Prims.int_zero
     Prims.int_zero ""
-let canon_term (t : RDF_Graph_Executable.rdf_term) : Prims.string=
+let rec canon_term (t : RDF_Term.rdf_term) : Prims.string=
   match t with
-  | RDF_Graph_Executable.T_IRI i -> Prims.strcat "<" (Prims.strcat i ">")
-  | RDF_Graph_Executable.T_BNode b -> Prims.strcat "_:" b
-  | RDF_Graph_Executable.T_Literal l ->
-      let lex = escape_lit l.RDF_Graph_Executable.lexical_form in
-      (match l.RDF_Graph_Executable.lang_tag with
+  | RDF_Term.T_IRI i -> Prims.strcat "<" (Prims.strcat i ">")
+  | RDF_Term.T_BNode b -> Prims.strcat "_:" b
+  | RDF_Term.T_Literal l ->
+      let lex = escape_lit l.RDF_Term.lexical_form in
+      (match l.RDF_Term.lang_tag with
        | FStar_Pervasives_Native.Some tag ->
-           Prims.strcat "\"" (Prims.strcat lex (Prims.strcat "\"@" tag))
+           let ds =
+             match l.RDF_Term.direction with
+             | FStar_Pervasives_Native.Some (RDF_Term.Dir_LTR) -> "--ltr"
+             | FStar_Pervasives_Native.Some (RDF_Term.Dir_RTL) -> "--rtl"
+             | FStar_Pervasives_Native.None -> "" in
+           Prims.strcat "\""
+             (Prims.strcat lex (Prims.strcat "\"@" (Prims.strcat tag ds)))
        | FStar_Pervasives_Native.None ->
-           if
-             l.RDF_Graph_Executable.datatype =
-               RDF_Graph_Executable.xsd_string
+           if l.RDF_Term.datatype = RDF_Term.xsd_string
            then Prims.strcat "\"" (Prims.strcat lex "\"")
            else
              Prims.strcat "\""
                (Prims.strcat lex
                   (Prims.strcat "\"^^<"
-                     (Prims.strcat l.RDF_Graph_Executable.datatype ">"))))
-let canon_subject (s : RDF_Graph_Executable.subject) : Prims.string=
+                     (Prims.strcat l.RDF_Term.datatype ">"))))
+  | RDF_Term.T_TripleTerm (s, p, o) ->
+      let subj =
+        match s with
+        | RDF_Term.S_IRI i -> Prims.strcat "<" (Prims.strcat i ">")
+        | RDF_Term.S_BNode b -> Prims.strcat "_:" b in
+      Prims.strcat "<<( "
+        (Prims.strcat subj
+           (Prims.strcat " <"
+              (Prims.strcat p
+                 (Prims.strcat "> " (Prims.strcat (canon_term o) " )>>")))))
+let canon_subject (s : RDF_Term.subject) : Prims.string=
   match s with
-  | RDF_Graph_Executable.S_IRI i -> Prims.strcat "<" (Prims.strcat i ">")
-  | RDF_Graph_Executable.S_BNode b -> Prims.strcat "_:" b
-let is_bnode_graph_label (gi : RDF_Graph_Executable.iri) : Prims.bool=
+  | RDF_Term.S_IRI i -> Prims.strcat "<" (Prims.strcat i ">")
+  | RDF_Term.S_BNode b -> Prims.strcat "_:" b
+let is_bnode_graph_label (gi : RDF_Term.iri) : Prims.bool=
   let n = FStar_String.strlen gi in
   if n < (Prims.of_int (2))
   then false
   else (FStar_String.sub gi Prims.int_zero (Prims.of_int (2))) = "_:"
-let bnode_of_graph_label (gi : RDF_Graph_Executable.iri) :
-  RDF_Graph_Executable.bnode_id=
+let bnode_of_graph_label (gi : RDF_Term.iri) : RDF_Term.bnode_id=
   let n = FStar_String.strlen gi in
   if n < (Prims.of_int (2))
   then gi
   else FStar_String.sub gi (Prims.of_int (2)) (n - (Prims.of_int (2)))
-let canon_graph_name (gi : RDF_Graph_Executable.iri) : Prims.string=
+let canon_graph_name (gi : RDF_Term.iri) : Prims.string=
   if is_bnode_graph_label gi
   then Prims.strcat "_:" (bnode_of_graph_label gi)
   else Prims.strcat "<" (Prims.strcat gi ">")
-let canon_quad
-  (graph_name : RDF_Graph_Executable.iri FStar_Pervasives_Native.option)
-  (t : RDF_Graph_Executable.triple) : Prims.string=
+let canon_quad (graph_name : RDF_Term.iri FStar_Pervasives_Native.option)
+  (t : RDF_Triple.triple) : Prims.string=
   let g =
     match graph_name with
     | FStar_Pervasives_Native.Some gi ->
         Prims.strcat " " (canon_graph_name gi)
     | FStar_Pervasives_Native.None -> "" in
-  Prims.strcat (canon_subject t.RDF_Graph_Executable.s)
+  Prims.strcat (canon_subject t.RDF_Triple.s)
     (Prims.strcat " <"
-       (Prims.strcat t.RDF_Graph_Executable.p
+       (Prims.strcat t.RDF_Triple.p
           (Prims.strcat "> "
-             (Prims.strcat (canon_term t.RDF_Graph_Executable.o)
+             (Prims.strcat (canon_term t.RDF_Triple.o)
                 (Prims.strcat g " .\n")))))
 type qquad =
-  (RDF_Graph_Executable.iri FStar_Pervasives_Native.option *
-    RDF_Graph_Executable.triple)
+  (RDF_Term.iri FStar_Pervasives_Native.option * RDF_Triple.triple)
 let rec attach_graph_rev_onto
-  (g : RDF_Graph_Executable.iri FStar_Pervasives_Native.option)
-  (ts : RDF_Graph_Executable.triple Prims.list) (acc : qquad Prims.list) :
+  (g : RDF_Term.iri FStar_Pervasives_Native.option)
+  (ts : RDF_Triple.triple Prims.list) (acc : qquad Prims.list) :
   qquad Prims.list=
   match ts with
   | [] -> acc
   | hd::tl -> attach_graph_rev_onto g tl ((g, hd) :: acc)
-let attach_graph
-  (g : RDF_Graph_Executable.iri FStar_Pervasives_Native.option)
-  (ts : RDF_Graph_Executable.triple Prims.list) : qquad Prims.list=
+let attach_graph (g : RDF_Term.iri FStar_Pervasives_Native.option)
+  (ts : RDF_Triple.triple Prims.list) : qquad Prims.list=
   FStar_List_Tot_Base.rev (attach_graph_rev_onto g ts [])
-let rec flatten_named_rev_onto
-  (named : RDF_Graph_Executable.named_graph Prims.list)
+let rec flatten_named_rev_onto (named : RDF_Graph.named_graph Prims.list)
   (acc : qquad Prims.list) : qquad Prims.list=
   match named with
   | [] -> acc
   | ng::rest ->
       flatten_named_rev_onto rest
         (attach_graph_rev_onto
-           (FStar_Pervasives_Native.Some (ng.RDF_Graph_Executable.ng_name))
-           ng.RDF_Graph_Executable.ng_graph acc)
-let flatten_named (named : RDF_Graph_Executable.named_graph Prims.list) :
+           (FStar_Pervasives_Native.Some (ng.RDF_Graph.ng_name))
+           ng.RDF_Graph.ng_graph acc)
+let flatten_named (named : RDF_Graph.named_graph Prims.list) :
   qquad Prims.list= FStar_List_Tot_Base.rev (flatten_named_rev_onto named [])
-let dataset_quads (ds : RDF_Graph_Executable.rdf_dataset) : qquad Prims.list=
+let dataset_quads (ds : RDF_Graph.rdf_dataset) : qquad Prims.list=
   FStar_List_Tot_Base.rev
-    (flatten_named_rev_onto ds.RDF_Graph_Executable.ds_named
+    (flatten_named_rev_onto ds.RDF_Graph.ds_named
        (attach_graph_rev_onto FStar_Pervasives_Native.None
-          ds.RDF_Graph_Executable.ds_default []))
-let bnodes_in_quad (qq : qquad) : RDF_Graph_Executable.bnode_id Prims.list=
+          ds.RDF_Graph.ds_default []))
+let bnodes_in_quad (qq : qquad) : RDF_Term.bnode_id Prims.list=
   let uu___ = qq in
   match uu___ with
   | (g, t) ->
       let l1 =
-        match t.RDF_Graph_Executable.s with
-        | RDF_Graph_Executable.S_BNode b -> [b]
-        | uu___1 -> [] in
+        match t.RDF_Triple.s with | RDF_Term.S_BNode b -> [b] | uu___1 -> [] in
       let l2 =
-        match t.RDF_Graph_Executable.o with
-        | RDF_Graph_Executable.T_BNode b -> [b]
-        | uu___1 -> [] in
+        match t.RDF_Triple.o with | RDF_Term.T_BNode b -> [b] | uu___1 -> [] in
       let l3 =
         match g with
         | FStar_Pervasives_Native.Some gi ->
@@ -190,41 +195,35 @@ let bnodes_in_quad (qq : qquad) : RDF_Graph_Executable.bnode_id Prims.list=
       FStar_List_Tot_Base.op_At l1 (FStar_List_Tot_Base.op_At l2 l3)
 let qquad_key (q : qquad) : Prims.string=
   let uu___ = q in match uu___ with | (g, t) -> canon_quad g t
-let rewrite_subject_for_hfdq (target : RDF_Graph_Executable.bnode_id)
-  (s : RDF_Graph_Executable.subject) : RDF_Graph_Executable.subject=
+let rewrite_subject_for_hfdq (target : RDF_Term.bnode_id)
+  (s : RDF_Term.subject) : RDF_Term.subject=
   match s with
-  | RDF_Graph_Executable.S_BNode b ->
-      if b = target
-      then RDF_Graph_Executable.S_BNode "a"
-      else RDF_Graph_Executable.S_BNode "z"
-  | RDF_Graph_Executable.S_IRI uu___ -> s
-let rewrite_term_for_hfdq (target : RDF_Graph_Executable.bnode_id)
-  (t : RDF_Graph_Executable.rdf_term) : RDF_Graph_Executable.rdf_term=
+  | RDF_Term.S_BNode b ->
+      if b = target then RDF_Term.S_BNode "a" else RDF_Term.S_BNode "z"
+  | RDF_Term.S_IRI uu___ -> s
+let rewrite_term_for_hfdq (target : RDF_Term.bnode_id)
+  (t : RDF_Term.rdf_term) : RDF_Term.rdf_term=
   match t with
-  | RDF_Graph_Executable.T_BNode b ->
-      if b = target
-      then RDF_Graph_Executable.T_BNode "a"
-      else RDF_Graph_Executable.T_BNode "z"
+  | RDF_Term.T_BNode b ->
+      if b = target then RDF_Term.T_BNode "a" else RDF_Term.T_BNode "z"
   | uu___ -> t
-let rewrite_triple_for_hfdq (target : RDF_Graph_Executable.bnode_id)
-  (t : RDF_Graph_Executable.triple) : RDF_Graph_Executable.triple=
+let rewrite_triple_for_hfdq (target : RDF_Term.bnode_id)
+  (t : RDF_Triple.triple) : RDF_Triple.triple=
   {
-    RDF_Graph_Executable.s =
-      (rewrite_subject_for_hfdq target t.RDF_Graph_Executable.s);
-    RDF_Graph_Executable.p = (t.RDF_Graph_Executable.p);
-    RDF_Graph_Executable.o =
-      (rewrite_term_for_hfdq target t.RDF_Graph_Executable.o)
+    RDF_Triple.s = (rewrite_subject_for_hfdq target t.RDF_Triple.s);
+    RDF_Triple.p = (t.RDF_Triple.p);
+    RDF_Triple.o = (rewrite_term_for_hfdq target t.RDF_Triple.o)
   }
-let quad_mentions_bnode (target : RDF_Graph_Executable.bnode_id) (q : qquad)
-  : Prims.bool=
+let quad_mentions_bnode (target : RDF_Term.bnode_id) (q : qquad) :
+  Prims.bool=
   let uu___ = q in
   match uu___ with
   | (g, t) ->
-      ((match t.RDF_Graph_Executable.s with
-        | RDF_Graph_Executable.S_BNode b -> b = target
+      ((match t.RDF_Triple.s with
+        | RDF_Term.S_BNode b -> b = target
         | uu___1 -> false) ||
-         (match t.RDF_Graph_Executable.o with
-          | RDF_Graph_Executable.T_BNode b -> b = target
+         (match t.RDF_Triple.o with
+          | RDF_Term.T_BNode b -> b = target
           | uu___1 -> false))
         ||
         ((match g with
@@ -232,7 +231,7 @@ let quad_mentions_bnode (target : RDF_Graph_Executable.bnode_id) (q : qquad)
               (is_bnode_graph_label gi) &&
                 ((bnode_of_graph_label gi) = target)
           | FStar_Pervasives_Native.None -> false))
-let rec quads_for_bnode_acc (target : RDF_Graph_Executable.bnode_id)
+let rec quads_for_bnode_acc (target : RDF_Term.bnode_id)
   (qs : qquad Prims.list) (acc : qquad Prims.list) : qquad Prims.list=
   match qs with
   | [] -> FStar_List_Tot_Base.rev acc
@@ -240,12 +239,11 @@ let rec quads_for_bnode_acc (target : RDF_Graph_Executable.bnode_id)
       if quad_mentions_bnode target q
       then quads_for_bnode_acc target rest (q :: acc)
       else quads_for_bnode_acc target rest acc
-let quads_for_bnode (target : RDF_Graph_Executable.bnode_id)
-  (qs : qquad Prims.list) : qquad Prims.list=
-  quads_for_bnode_acc target qs []
-let rewrite_graph_for_hfdq (target : RDF_Graph_Executable.bnode_id)
-  (g : RDF_Graph_Executable.iri FStar_Pervasives_Native.option) :
-  RDF_Graph_Executable.iri FStar_Pervasives_Native.option=
+let quads_for_bnode (target : RDF_Term.bnode_id) (qs : qquad Prims.list) :
+  qquad Prims.list= quads_for_bnode_acc target qs []
+let rewrite_graph_for_hfdq (target : RDF_Term.bnode_id)
+  (g : RDF_Term.iri FStar_Pervasives_Native.option) :
+  RDF_Term.iri FStar_Pervasives_Native.option=
   match g with
   | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
   | FStar_Pervasives_Native.Some gi ->
@@ -256,14 +254,13 @@ let rewrite_graph_for_hfdq (target : RDF_Graph_Executable.bnode_id)
          then FStar_Pervasives_Native.Some "_:a"
          else FStar_Pervasives_Native.Some "_:z")
       else FStar_Pervasives_Native.Some gi
-let render_for_hfdq (target : RDF_Graph_Executable.bnode_id) (q : qquad) :
-  Prims.string=
+let render_for_hfdq (target : RDF_Term.bnode_id) (q : qquad) : Prims.string=
   let uu___ = q in
   match uu___ with
   | (g, t) ->
       canon_quad (rewrite_graph_for_hfdq target g)
         (rewrite_triple_for_hfdq target t)
-let rec render_all_for_hfdq (target : RDF_Graph_Executable.bnode_id)
+let rec render_all_for_hfdq (target : RDF_Term.bnode_id)
   (qs : qquad Prims.list) : Prims.string Prims.list=
   match qs with
   | [] -> []
@@ -463,39 +460,38 @@ let rec dedup_sorted_strings2_acc (xs : Prims.string Prims.list)
       else dedup_sorted_strings2_acc (y :: rest) (x :: acc)
 let dedup_strings (xs : Prims.string Prims.list) : Prims.string Prims.list=
   dedup_sorted_strings2_acc (generic_stable_sort str_le xs) []
-let rec all_bnodes_acc (acc : RDF_Graph_Executable.bnode_id Prims.list)
-  (qs : qquad Prims.list) : RDF_Graph_Executable.bnode_id Prims.list=
+let rec all_bnodes_acc (acc : RDF_Term.bnode_id Prims.list)
+  (qs : qquad Prims.list) : RDF_Term.bnode_id Prims.list=
   match qs with
   | [] -> acc
   | q::rest ->
       all_bnodes_acc (FStar_List_Tot_Base.rev_acc (bnodes_in_quad q) acc)
         rest
-let dataset_bnodes (ds : RDF_Graph_Executable.rdf_dataset) :
-  RDF_Graph_Executable.bnode_id Prims.list=
+let dataset_bnodes (ds : RDF_Graph.rdf_dataset) :
+  RDF_Term.bnode_id Prims.list=
   dedup_strings
     (FStar_List_Tot_Base.rev (all_bnodes_acc [] (dataset_quads ds)))
-let rec tag_bnodes_with_quad (bs : RDF_Graph_Executable.bnode_id Prims.list)
-  (q : qquad) (acc : (RDF_Graph_Executable.bnode_id * qquad) Prims.list) :
-  (RDF_Graph_Executable.bnode_id * qquad) Prims.list=
+let rec tag_bnodes_with_quad (bs : RDF_Term.bnode_id Prims.list) (q : qquad)
+  (acc : (RDF_Term.bnode_id * qquad) Prims.list) :
+  (RDF_Term.bnode_id * qquad) Prims.list=
   match bs with
   | [] -> acc
   | b::rest -> tag_bnodes_with_quad rest q ((b, q) :: acc)
 let rec qquad_bnode_pairs_acc (qs : qquad Prims.list)
-  (acc : (RDF_Graph_Executable.bnode_id * qquad) Prims.list) :
-  (RDF_Graph_Executable.bnode_id * qquad) Prims.list=
+  (acc : (RDF_Term.bnode_id * qquad) Prims.list) :
+  (RDF_Term.bnode_id * qquad) Prims.list=
   match qs with
   | [] -> acc
   | q::rest ->
       qquad_bnode_pairs_acc rest
         (tag_bnodes_with_quad (dedup_strings (bnodes_in_quad q)) q acc)
-let bnq_pair_le (a : (RDF_Graph_Executable.bnode_id * qquad))
-  (b : (RDF_Graph_Executable.bnode_id * qquad)) : Prims.bool=
+let bnq_pair_le (a : (RDF_Term.bnode_id * qquad))
+  (b : (RDF_Term.bnode_id * qquad)) : Prims.bool=
   str_le (FStar_Pervasives_Native.fst a) (FStar_Pervasives_Native.fst b)
-let rec group_sorted_bnq_acc
-  (xs : (RDF_Graph_Executable.bnode_id * qquad) Prims.list)
-  (cur_b : RDF_Graph_Executable.bnode_id) (cur_qs : qquad Prims.list)
-  (acc : (RDF_Graph_Executable.bnode_id * qquad Prims.list) Prims.list) :
-  (RDF_Graph_Executable.bnode_id * qquad Prims.list) Prims.list=
+let rec group_sorted_bnq_acc (xs : (RDF_Term.bnode_id * qquad) Prims.list)
+  (cur_b : RDF_Term.bnode_id) (cur_qs : qquad Prims.list)
+  (acc : (RDF_Term.bnode_id * qquad Prims.list) Prims.list) :
+  (RDF_Term.bnode_id * qquad Prims.list) Prims.list=
   match xs with
   | [] -> FStar_List_Tot_Base.rev ((cur_b, cur_qs) :: acc)
   | (b, q)::rest ->
@@ -503,13 +499,12 @@ let rec group_sorted_bnq_acc
       then group_sorted_bnq_acc rest cur_b (q :: cur_qs) acc
       else group_sorted_bnq_acc rest b [q] ((cur_b, cur_qs) :: acc)
 let bnode_quads_index (qs : qquad Prims.list) :
-  (RDF_Graph_Executable.bnode_id * qquad Prims.list) Prims.list=
+  (RDF_Term.bnode_id * qquad Prims.list) Prims.list=
   match generic_stable_sort bnq_pair_le (qquad_bnode_pairs_acc qs []) with
   | [] -> []
   | (b0, q0)::rest -> group_sorted_bnq_acc rest b0 [q0] []
-let compute_hfdq (alg : hash_algorithm)
-  (target : RDF_Graph_Executable.bnode_id) (qs : qquad Prims.list) :
-  Prims.string=
+let compute_hfdq (alg : hash_algorithm) (target : RDF_Term.bnode_id)
+  (qs : qquad Prims.list) : Prims.string=
   let mentioning = quads_for_bnode target qs in
   let rendered = render_all_for_hfdq target mentioning in
   let sorted = insertion_sort rendered in
@@ -559,7 +554,7 @@ type issuer_state =
   {
   is_prefix: Prims.string ;
   is_counter: Prims.nat ;
-  is_issued: (RDF_Graph_Executable.bnode_id * Prims.string) Prims.list }
+  is_issued: (RDF_Term.bnode_id * Prims.string) Prims.list }
 let __proj__Mkissuer_state__item__is_prefix (projectee : issuer_state) :
   Prims.string=
   match projectee with | { is_prefix; is_counter; is_issued;_} -> is_prefix
@@ -567,21 +562,21 @@ let __proj__Mkissuer_state__item__is_counter (projectee : issuer_state) :
   Prims.nat=
   match projectee with | { is_prefix; is_counter; is_issued;_} -> is_counter
 let __proj__Mkissuer_state__item__is_issued (projectee : issuer_state) :
-  (RDF_Graph_Executable.bnode_id * Prims.string) Prims.list=
+  (RDF_Term.bnode_id * Prims.string) Prims.list=
   match projectee with | { is_prefix; is_counter; is_issued;_} -> is_issued
 let empty_issuer : issuer_state=
   { is_prefix = "c14n"; is_counter = Prims.int_zero; is_issued = [] }
 let empty_temp_issuer : issuer_state=
   { is_prefix = "b"; is_counter = Prims.int_zero; is_issued = [] }
-let rec lookup_issued (b : RDF_Graph_Executable.bnode_id)
-  (xs : (RDF_Graph_Executable.bnode_id * Prims.string) Prims.list) :
+let rec lookup_issued (b : RDF_Term.bnode_id)
+  (xs : (RDF_Term.bnode_id * Prims.string) Prims.list) :
   Prims.string FStar_Pervasives_Native.option=
   match xs with
   | [] -> FStar_Pervasives_Native.None
   | (k, v)::rest ->
       if k = b then FStar_Pervasives_Native.Some v else lookup_issued b rest
-let issue_identifier (st : issuer_state) (b : RDF_Graph_Executable.bnode_id)
-  : (issuer_state * Prims.string)=
+let issue_identifier (st : issuer_state) (b : RDF_Term.bnode_id) :
+  (issuer_state * Prims.string)=
   match lookup_issued b st.is_issued with
   | FStar_Pervasives_Native.Some v -> (st, v)
   | FStar_Pervasives_Native.None ->
@@ -593,23 +588,21 @@ let issue_identifier (st : issuer_state) (b : RDF_Graph_Executable.bnode_id)
           is_issued = (FStar_List_Tot_Base.op_At st.is_issued [(b, label)])
         } in
       (st', label)
-let issue_fresh (st : issuer_state) (b : RDF_Graph_Executable.bnode_id) :
-  issuer_state=
+let issue_fresh (st : issuer_state) (b : RDF_Term.bnode_id) : issuer_state=
   let label = Prims.strcat st.is_prefix (nat_to_string st.is_counter) in
   {
     is_prefix = (st.is_prefix);
     is_counter = (st.is_counter + Prims.int_one);
     is_issued = ((b, label) :: (st.is_issued))
   }
-type bn_hfdq_pair = (RDF_Graph_Executable.bnode_id * Prims.string)
+type bn_hfdq_pair = (RDF_Term.bnode_id * Prims.string)
 let compute_hfdq_from_quads (alg : hash_algorithm)
-  (target : RDF_Graph_Executable.bnode_id) (qs : qquad Prims.list) :
-  Prims.string=
+  (target : RDF_Term.bnode_id) (qs : qquad Prims.list) : Prims.string=
   let rendered = render_all_for_hfdq target qs in
   let sorted = insertion_sort rendered in
   apply_hash alg (concat_strings sorted)
 let rec compute_all_hfdq_from_index (alg : hash_algorithm)
-  (idx : (RDF_Graph_Executable.bnode_id * qquad Prims.list) Prims.list) :
+  (idx : (RDF_Term.bnode_id * qquad Prims.list) Prims.list) :
   bn_hfdq_pair Prims.list=
   match idx with
   | [] -> []
@@ -618,23 +611,22 @@ let rec compute_all_hfdq_from_index (alg : hash_algorithm)
 let compute_all_hfdq (alg : hash_algorithm) (qs : qquad Prims.list) :
   bn_hfdq_pair Prims.list=
   compute_all_hfdq_from_index alg (bnode_quads_index qs)
-let rec lookup_hfdq (b : RDF_Graph_Executable.bnode_id)
-  (xs : bn_hfdq_pair Prims.list) : Prims.string=
+let rec lookup_hfdq (b : RDF_Term.bnode_id) (xs : bn_hfdq_pair Prims.list) :
+  Prims.string=
   match xs with
   | [] -> ""
   | (k, h)::rest -> if k = b then h else lookup_hfdq b rest
-let nbr_position_tag (target : RDF_Graph_Executable.bnode_id) (q : qquad) :
-  Prims.string=
+let nbr_position_tag (target : RDF_Term.bnode_id) (q : qquad) : Prims.string=
   let uu___ = q in
   match uu___ with
   | (g, t) ->
       let s_bn =
-        match t.RDF_Graph_Executable.s with
-        | RDF_Graph_Executable.S_BNode b -> FStar_Pervasives_Native.Some b
+        match t.RDF_Triple.s with
+        | RDF_Term.S_BNode b -> FStar_Pervasives_Native.Some b
         | uu___1 -> FStar_Pervasives_Native.None in
       let o_bn =
-        match t.RDF_Graph_Executable.o with
-        | RDF_Graph_Executable.T_BNode b -> FStar_Pervasives_Native.Some b
+        match t.RDF_Triple.o with
+        | RDF_Term.T_BNode b -> FStar_Pervasives_Native.Some b
         | uu___1 -> FStar_Pervasives_Native.None in
       let g_is_target =
         match g with
@@ -677,7 +669,7 @@ let nbr_position_tag (target : RDF_Graph_Executable.bnode_id) (q : qquad) :
                    | FStar_Pervasives_Native.None -> "_"))
            else "g")
 let graph_bnode_of (q : qquad) :
-  RDF_Graph_Executable.bnode_id FStar_Pervasives_Native.option=
+  RDF_Term.bnode_id FStar_Pervasives_Native.option=
   let uu___ = q in
   match uu___ with
   | (g, uu___1) ->
@@ -687,18 +679,18 @@ let graph_bnode_of (q : qquad) :
            then FStar_Pervasives_Native.Some (bnode_of_graph_label gi)
            else FStar_Pervasives_Native.None
        | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None)
-let related_bnode (target : RDF_Graph_Executable.bnode_id) (q : qquad) :
-  RDF_Graph_Executable.bnode_id FStar_Pervasives_Native.option=
+let related_bnode (target : RDF_Term.bnode_id) (q : qquad) :
+  RDF_Term.bnode_id FStar_Pervasives_Native.option=
   let uu___ = q in
   match uu___ with
   | (uu___1, t) ->
       let s_bn =
-        match t.RDF_Graph_Executable.s with
-        | RDF_Graph_Executable.S_BNode b -> FStar_Pervasives_Native.Some b
+        match t.RDF_Triple.s with
+        | RDF_Term.S_BNode b -> FStar_Pervasives_Native.Some b
         | uu___2 -> FStar_Pervasives_Native.None in
       let o_bn =
-        match t.RDF_Graph_Executable.o with
-        | RDF_Graph_Executable.T_BNode b -> FStar_Pervasives_Native.Some b
+        match t.RDF_Triple.o with
+        | RDF_Term.T_BNode b -> FStar_Pervasives_Native.Some b
         | uu___2 -> FStar_Pervasives_Native.None in
       let g_bn = graph_bnode_of q in
       let so_other =
@@ -745,36 +737,34 @@ let hash_related_blank_node (alg : hash_algorithm) (pos : Prims.string)
          (if pos <> "g" then Prims.strcat "<" (Prims.strcat pred ">") else "")
          identifier) in
   apply_hash alg input
-let nbr_contribution (target : RDF_Graph_Executable.bnode_id) (q : qquad)
-  (key_of : RDF_Graph_Executable.bnode_id -> Prims.string) : Prims.string=
+let nbr_contribution (target : RDF_Term.bnode_id) (q : qquad)
+  (key_of : RDF_Term.bnode_id -> Prims.string) : Prims.string=
   let uu___ = q in
   match uu___ with
   | (uu___1, t) ->
       let pos = nbr_position_tag target q in
-      let pred = t.RDF_Graph_Executable.p in
+      let pred = t.RDF_Triple.p in
       let rk =
         match related_bnode target q with
         | FStar_Pervasives_Native.None -> "_"
         | FStar_Pervasives_Native.Some rb -> key_of rb in
       Prims.strcat pos
         (Prims.strcat "|" (Prims.strcat pred (Prims.strcat "|" rk)))
-let rec nbr_contributions (target : RDF_Graph_Executable.bnode_id)
-  (qs : qquad Prims.list)
-  (key_of : RDF_Graph_Executable.bnode_id -> Prims.string) :
+let rec nbr_contributions (target : RDF_Term.bnode_id)
+  (qs : qquad Prims.list) (key_of : RDF_Term.bnode_id -> Prims.string) :
   Prims.string Prims.list=
   match qs with
   | [] -> []
   | q::rest -> (nbr_contribution target q key_of) ::
       (nbr_contributions target rest key_of)
-let compute_nbr_hash (target : RDF_Graph_Executable.bnode_id)
-  (qs : qquad Prims.list)
-  (key_of : RDF_Graph_Executable.bnode_id -> Prims.string) : Prims.string=
+let compute_nbr_hash (target : RDF_Term.bnode_id) (qs : qquad Prims.list)
+  (key_of : RDF_Term.bnode_id -> Prims.string) : Prims.string=
   let mentioning = quads_for_bnode target qs in
   let contribs = nbr_contributions target mentioning key_of in
   let sorted = insertion_sort contribs in hash_sha256 (concat_strings sorted)
 let rec compute_all_nbr1 (qs : qquad Prims.list)
-  (bs : RDF_Graph_Executable.bnode_id Prims.list)
-  (hfdq_table : bn_hfdq_pair Prims.list) : bn_hfdq_pair Prims.list=
+  (bs : RDF_Term.bnode_id Prims.list) (hfdq_table : bn_hfdq_pair Prims.list)
+  : bn_hfdq_pair Prims.list=
   match bs with
   | [] -> []
   | b::rest ->
@@ -782,8 +772,8 @@ let rec compute_all_nbr1 (qs : qquad Prims.list)
       let h = compute_nbr_hash b qs key_of in (b, h) ::
         (compute_all_nbr1 qs rest hfdq_table)
 let rec compute_all_nbr2 (qs : qquad Prims.list)
-  (bs : RDF_Graph_Executable.bnode_id Prims.list)
-  (nbr1_table : bn_hfdq_pair Prims.list) : bn_hfdq_pair Prims.list=
+  (bs : RDF_Term.bnode_id Prims.list) (nbr1_table : bn_hfdq_pair Prims.list)
+  : bn_hfdq_pair Prims.list=
   match bs with
   | [] -> []
   | b::rest ->
@@ -791,8 +781,8 @@ let rec compute_all_nbr2 (qs : qquad Prims.list)
       let h = compute_nbr_hash b qs key_of in (b, h) ::
         (compute_all_nbr2 qs rest nbr1_table)
 let rec compute_all_nbr3 (qs : qquad Prims.list)
-  (bs : RDF_Graph_Executable.bnode_id Prims.list)
-  (nbr2_table : bn_hfdq_pair Prims.list) : bn_hfdq_pair Prims.list=
+  (bs : RDF_Term.bnode_id Prims.list) (nbr2_table : bn_hfdq_pair Prims.list)
+  : bn_hfdq_pair Prims.list=
   match bs with
   | [] -> []
   | b::rest ->
@@ -801,13 +791,13 @@ let rec compute_all_nbr3 (qs : qquad Prims.list)
         (compute_all_nbr3 qs rest nbr2_table)
 type bn_full_key =
   {
-  bk_orig: RDF_Graph_Executable.bnode_id ;
+  bk_orig: RDF_Term.bnode_id ;
   bk_hfdq: Prims.string ;
   bk_nbr1: Prims.string ;
   bk_nbr2: Prims.string ;
   bk_nbr3: Prims.string }
 let __proj__Mkbn_full_key__item__bk_orig (projectee : bn_full_key) :
-  RDF_Graph_Executable.bnode_id=
+  RDF_Term.bnode_id=
   match projectee with
   | { bk_orig; bk_hfdq; bk_nbr1; bk_nbr2; bk_nbr3;_} -> bk_orig
 let __proj__Mkbn_full_key__item__bk_hfdq (projectee : bn_full_key) :
@@ -826,12 +816,12 @@ let __proj__Mkbn_full_key__item__bk_nbr3 (projectee : bn_full_key) :
   Prims.string=
   match projectee with
   | { bk_orig; bk_hfdq; bk_nbr1; bk_nbr2; bk_nbr3;_} -> bk_nbr3
-let rec lookup_pair (b : RDF_Graph_Executable.bnode_id)
-  (xs : bn_hfdq_pair Prims.list) : Prims.string=
+let rec lookup_pair (b : RDF_Term.bnode_id) (xs : bn_hfdq_pair Prims.list) :
+  Prims.string=
   match xs with
   | [] -> ""
   | (k, v)::rest -> if k = b then v else lookup_pair b rest
-let rec build_full_keys (bs : RDF_Graph_Executable.bnode_id Prims.list)
+let rec build_full_keys (bs : RDF_Term.bnode_id Prims.list)
   (hfdq_t : bn_hfdq_pair Prims.list) (nbr1_t : bn_hfdq_pair Prims.list)
   (nbr2_t : bn_hfdq_pair Prims.list) (nbr3_t : bn_hfdq_pair Prims.list) :
   bn_full_key Prims.list=
@@ -899,15 +889,14 @@ let rec assign_full_in_order (st : issuer_state)
       (match uu___ with | (st', uu___1) -> assign_full_in_order st' rest)
 type bn_lookup_tree =
   | BLT_Leaf 
-  | BLT_Node of (bn_lookup_tree * RDF_Graph_Executable.bnode_id *
-  Prims.string * bn_lookup_tree) 
+  | BLT_Node of (bn_lookup_tree * RDF_Term.bnode_id * Prims.string *
+  bn_lookup_tree) 
 let uu___is_BLT_Leaf (projectee : bn_lookup_tree) : Prims.bool=
   match projectee with | BLT_Leaf -> true | uu___ -> false
 let uu___is_BLT_Node (projectee : bn_lookup_tree) : Prims.bool=
   match projectee with | BLT_Node _0 -> true | uu___ -> false
 let __proj__BLT_Node__item___0 (projectee : bn_lookup_tree) :
-  (bn_lookup_tree * RDF_Graph_Executable.bnode_id * Prims.string *
-    bn_lookup_tree)=
+  (bn_lookup_tree * RDF_Term.bnode_id * Prims.string * bn_lookup_tree)=
   match projectee with | BLT_Node _0 -> _0
 let rec bn_lookup_tree_of_sorted (xs : bn_hfdq_pair Prims.list)
   (n : Prims.nat) : bn_lookup_tree=
@@ -925,16 +914,15 @@ let rec bn_lookup_tree_of_sorted (xs : bn_hfdq_pair Prims.list)
                 ((bn_lookup_tree_of_sorted left mid), k, v,
                   (bn_lookup_tree_of_sorted right ((n - mid) - Prims.int_one)))))
 let build_bn_lookup_tree
-  (mapping : (RDF_Graph_Executable.bnode_id * Prims.string) Prims.list) :
-  bn_lookup_tree=
+  (mapping : (RDF_Term.bnode_id * Prims.string) Prims.list) : bn_lookup_tree=
   let sorted =
     generic_stable_sort
       (fun a b ->
          str_le (FStar_Pervasives_Native.fst a)
            (FStar_Pervasives_Native.fst b)) mapping in
   bn_lookup_tree_of_sorted sorted (generic_list_length sorted)
-let rec bn_lookup_tree_find (b : RDF_Graph_Executable.bnode_id)
-  (t : bn_lookup_tree) : Prims.string FStar_Pervasives_Native.option=
+let rec bn_lookup_tree_find (b : RDF_Term.bnode_id) (t : bn_lookup_tree) :
+  Prims.string FStar_Pervasives_Native.option=
   match t with
   | BLT_Leaf -> FStar_Pervasives_Native.None
   | BLT_Node (l, k, v, r) ->
@@ -944,35 +932,33 @@ let rec bn_lookup_tree_find (b : RDF_Graph_Executable.bnode_id)
         if str_le b k
         then bn_lookup_tree_find b l
         else bn_lookup_tree_find b r
-let relabel_subject (mapping : bn_lookup_tree)
-  (s : RDF_Graph_Executable.subject) : RDF_Graph_Executable.subject=
+let relabel_subject (mapping : bn_lookup_tree) (s : RDF_Term.subject) :
+  RDF_Term.subject=
   match s with
-  | RDF_Graph_Executable.S_IRI uu___ -> s
-  | RDF_Graph_Executable.S_BNode b ->
+  | RDF_Term.S_IRI uu___ -> s
+  | RDF_Term.S_BNode b ->
       (match bn_lookup_tree_find b mapping with
-       | FStar_Pervasives_Native.Some lbl -> RDF_Graph_Executable.S_BNode lbl
+       | FStar_Pervasives_Native.Some lbl -> RDF_Term.S_BNode lbl
        | FStar_Pervasives_Native.None -> s)
-let relabel_term (mapping : bn_lookup_tree)
-  (t : RDF_Graph_Executable.rdf_term) : RDF_Graph_Executable.rdf_term=
+let relabel_term (mapping : bn_lookup_tree) (t : RDF_Term.rdf_term) :
+  RDF_Term.rdf_term=
   match t with
-  | RDF_Graph_Executable.T_BNode b ->
+  | RDF_Term.T_BNode b ->
       (match bn_lookup_tree_find b mapping with
-       | FStar_Pervasives_Native.Some lbl -> RDF_Graph_Executable.T_BNode lbl
+       | FStar_Pervasives_Native.Some lbl -> RDF_Term.T_BNode lbl
        | FStar_Pervasives_Native.None -> t)
   | uu___ -> t
-let relabel_triple (mapping : bn_lookup_tree)
-  (t : RDF_Graph_Executable.triple) : RDF_Graph_Executable.triple=
+let relabel_triple (mapping : bn_lookup_tree) (t : RDF_Triple.triple) :
+  RDF_Triple.triple=
   {
-    RDF_Graph_Executable.s =
-      (relabel_subject mapping t.RDF_Graph_Executable.s);
-    RDF_Graph_Executable.p = (t.RDF_Graph_Executable.p);
-    RDF_Graph_Executable.o = (relabel_term mapping t.RDF_Graph_Executable.o)
+    RDF_Triple.s = (relabel_subject mapping t.RDF_Triple.s);
+    RDF_Triple.p = (t.RDF_Triple.p);
+    RDF_Triple.o = (relabel_term mapping t.RDF_Triple.o)
   }
-let relabel_graph (mapping : bn_lookup_tree)
-  (g : RDF_Graph_Executable.rdf_graph) : RDF_Graph_Executable.rdf_graph=
-  FStar_List_Tot_Base.map (relabel_triple mapping) g
-let relabel_graph_name (mapping : bn_lookup_tree)
-  (gi : RDF_Graph_Executable.iri) : RDF_Graph_Executable.iri=
+let relabel_graph (mapping : bn_lookup_tree) (g : RDF_Graph.rdf_graph) :
+  RDF_Graph.rdf_graph= FStar_List_Tot_Base.map (relabel_triple mapping) g
+let relabel_graph_name (mapping : bn_lookup_tree) (gi : RDF_Term.iri) :
+  RDF_Term.iri=
   if is_bnode_graph_label gi
   then
     let lbl = bnode_of_graph_label gi in
@@ -981,26 +967,22 @@ let relabel_graph_name (mapping : bn_lookup_tree)
     | FStar_Pervasives_Native.None -> gi
   else gi
 let relabel_named_graph (mapping : bn_lookup_tree)
-  (ng : RDF_Graph_Executable.named_graph) : RDF_Graph_Executable.named_graph=
+  (ng : RDF_Graph.named_graph) : RDF_Graph.named_graph=
   {
-    RDF_Graph_Executable.ng_name =
-      (relabel_graph_name mapping ng.RDF_Graph_Executable.ng_name);
-    RDF_Graph_Executable.ng_graph =
-      (relabel_graph mapping ng.RDF_Graph_Executable.ng_graph)
+    RDF_Graph.ng_name = (relabel_graph_name mapping ng.RDF_Graph.ng_name);
+    RDF_Graph.ng_graph = (relabel_graph mapping ng.RDF_Graph.ng_graph)
   }
-let relabel_dataset
-  (mapping : (RDF_Graph_Executable.bnode_id * Prims.string) Prims.list)
-  (ds : RDF_Graph_Executable.rdf_dataset) : RDF_Graph_Executable.rdf_dataset=
+let relabel_dataset (mapping : (RDF_Term.bnode_id * Prims.string) Prims.list)
+  (ds : RDF_Graph.rdf_dataset) : RDF_Graph.rdf_dataset=
   let tree = build_bn_lookup_tree mapping in
   {
-    RDF_Graph_Executable.ds_default =
-      (relabel_graph tree ds.RDF_Graph_Executable.ds_default);
-    RDF_Graph_Executable.ds_named =
+    RDF_Graph.ds_default = (relabel_graph tree ds.RDF_Graph.ds_default);
+    RDF_Graph.ds_named =
       (FStar_List_Tot_Base.map (relabel_named_graph tree)
-         ds.RDF_Graph_Executable.ds_named)
+         ds.RDF_Graph.ds_named)
   }
-type bucket = (Prims.string * RDF_Graph_Executable.bnode_id Prims.list)
-let rec bucket_insert (k : Prims.string) (b : RDF_Graph_Executable.bnode_id)
+type bucket = (Prims.string * RDF_Term.bnode_id Prims.list)
+let rec bucket_insert (k : Prims.string) (b : RDF_Term.bnode_id)
   (xs : bucket Prims.list) : bucket Prims.list=
   match xs with
   | [] -> [(k, [b])]
@@ -1011,26 +993,23 @@ let rec bucket_insert (k : Prims.string) (b : RDF_Graph_Executable.bnode_id)
         if str_le k k'
         then (k, [b]) :: xs
         else (k', members) :: (bucket_insert k b rest)
-let lookup_issued2 (b : RDF_Graph_Executable.bnode_id)
-  (canon_st : issuer_state) (local_st : issuer_state) :
-  Prims.string FStar_Pervasives_Native.option=
+let lookup_issued2 (b : RDF_Term.bnode_id) (canon_st : issuer_state)
+  (local_st : issuer_state) : Prims.string FStar_Pervasives_Native.option=
   match lookup_issued b canon_st.is_issued with
   | FStar_Pervasives_Native.Some lbl -> FStar_Pervasives_Native.Some lbl
   | FStar_Pervasives_Native.None -> lookup_issued b local_st.is_issued
-let related_components (target : RDF_Graph_Executable.bnode_id) (q : qquad) :
-  (Prims.string * RDF_Graph_Executable.bnode_id) Prims.list=
+let related_components (target : RDF_Term.bnode_id) (q : qquad) :
+  (Prims.string * RDF_Term.bnode_id) Prims.list=
   let uu___ = q in
   match uu___ with
   | (uu___1, t) ->
       let s_e =
-        match t.RDF_Graph_Executable.s with
-        | RDF_Graph_Executable.S_BNode b ->
-            if b <> target then [("s", b)] else []
+        match t.RDF_Triple.s with
+        | RDF_Term.S_BNode b -> if b <> target then [("s", b)] else []
         | uu___2 -> [] in
       let o_e =
-        match t.RDF_Graph_Executable.o with
-        | RDF_Graph_Executable.T_BNode b ->
-            if b <> target then [("o", b)] else []
+        match t.RDF_Triple.o with
+        | RDF_Term.T_BNode b -> if b <> target then [("o", b)] else []
         | uu___2 -> [] in
       let g_e =
         match graph_bnode_of q with
@@ -1039,7 +1018,7 @@ let related_components (target : RDF_Graph_Executable.bnode_id) (q : qquad) :
         | FStar_Pervasives_Native.None -> [] in
       FStar_List_Tot_Base.op_At s_e (FStar_List_Tot_Base.op_At o_e g_e)
 let rec insert_related_entries (alg : hash_algorithm)
-  (entries : (Prims.string * RDF_Graph_Executable.bnode_id) Prims.list)
+  (entries : (Prims.string * RDF_Term.bnode_id) Prims.list)
   (pred : Prims.string) (hfdq_table : bn_hfdq_pair Prims.list)
   (canon_st : issuer_state) (local_st : issuer_state)
   (acc : bucket Prims.list) : bucket Prims.list=
@@ -1053,10 +1032,10 @@ let rec insert_related_entries (alg : hash_algorithm)
       let k = hash_related_blank_node alg pos pred identifier in
       insert_related_entries alg rest pred hfdq_table canon_st local_st
         (bucket_insert k rb acc)
-let rec build_buckets_for (alg : hash_algorithm)
-  (target : RDF_Graph_Executable.bnode_id) (qs : qquad Prims.list)
-  (hfdq_table : bn_hfdq_pair Prims.list) (canon_st : issuer_state)
-  (local_st : issuer_state) (acc : bucket Prims.list) : bucket Prims.list=
+let rec build_buckets_for (alg : hash_algorithm) (target : RDF_Term.bnode_id)
+  (qs : qquad Prims.list) (hfdq_table : bn_hfdq_pair Prims.list)
+  (canon_st : issuer_state) (local_st : issuer_state)
+  (acc : bucket Prims.list) : bucket Prims.list=
   match qs with
   | [] -> acc
   | q::rest ->
@@ -1068,13 +1047,12 @@ let rec build_buckets_for (alg : hash_algorithm)
          | (uu___2, t) ->
              let entries = related_components target q in
              let acc' =
-               insert_related_entries alg entries t.RDF_Graph_Executable.p
-                 hfdq_table canon_st local_st acc in
+               insert_related_entries alg entries t.RDF_Triple.p hfdq_table
+                 canon_st local_st acc in
              build_buckets_for alg target rest hfdq_table canon_st local_st
                acc')
-let rec remove_first (x : RDF_Graph_Executable.bnode_id)
-  (xs : RDF_Graph_Executable.bnode_id Prims.list) :
-  RDF_Graph_Executable.bnode_id Prims.list=
+let rec remove_first (x : RDF_Term.bnode_id)
+  (xs : RDF_Term.bnode_id Prims.list) : RDF_Term.bnode_id Prims.list=
   match xs with
   | [] -> []
   | hd::tl -> if hd = x then tl else hd :: (remove_first x tl)
@@ -1086,15 +1064,15 @@ let rec take_n : 'a . Prims.nat -> 'a Prims.list -> 'a Prims.list =
       (match xs with
        | [] -> []
        | hd::tl -> hd :: (take_n (n - Prims.int_one) tl))
-let rec insert_at_all (x : RDF_Graph_Executable.bnode_id)
-  (ys : RDF_Graph_Executable.bnode_id Prims.list) :
-  RDF_Graph_Executable.bnode_id Prims.list Prims.list=
+let rec insert_at_all (x : RDF_Term.bnode_id)
+  (ys : RDF_Term.bnode_id Prims.list) :
+  RDF_Term.bnode_id Prims.list Prims.list=
   match ys with
   | [] -> [[x]]
   | hd::tl -> (x :: ys) ::
       (FStar_List_Tot_Base.map (fun zs -> hd :: zs) (insert_at_all x tl))
-let rec permutations (xs : RDF_Graph_Executable.bnode_id Prims.list) :
-  RDF_Graph_Executable.bnode_id Prims.list Prims.list=
+let rec permutations (xs : RDF_Term.bnode_id Prims.list) :
+  RDF_Term.bnode_id Prims.list Prims.list=
   match xs with
   | [] -> [[]]
   | hd::tl ->
@@ -1102,8 +1080,8 @@ let rec permutations (xs : RDF_Graph_Executable.bnode_id Prims.list) :
       FStar_List_Tot_Base.fold_left
         (fun acc p -> FStar_List_Tot_Base.op_At acc (insert_at_all hd p)) []
         sub
-let rec mem_bnode (b : RDF_Graph_Executable.bnode_id)
-  (xs : RDF_Graph_Executable.bnode_id Prims.list) : Prims.bool=
+let rec mem_bnode (b : RDF_Term.bnode_id) (xs : RDF_Term.bnode_id Prims.list)
+  : Prims.bool=
   match xs with | [] -> false | hd::tl -> (hd = b) || (mem_bnode b tl)
 type hndq_budget = {
   hb_remaining: Prims.nat ;
@@ -1128,9 +1106,9 @@ let hb_consume (b : hndq_budget) : hndq_budget=
         hb_exceeded = (b.hb_exceeded)
       }
 let rec build_path_labels (canon_st : issuer_state) (local_st : issuer_state)
-  (perm : RDF_Graph_Executable.bnode_id Prims.list) (path : Prims.string)
-  (recursion : RDF_Graph_Executable.bnode_id Prims.list) :
-  (Prims.string * issuer_state * RDF_Graph_Executable.bnode_id Prims.list)=
+  (perm : RDF_Term.bnode_id Prims.list) (path : Prims.string)
+  (recursion : RDF_Term.bnode_id Prims.list) :
+  (Prims.string * issuer_state * RDF_Term.bnode_id Prims.list)=
   match perm with
   | [] -> (path, local_st, recursion)
   | b::rest ->
@@ -1148,7 +1126,7 @@ let rec build_path_labels (canon_st : issuer_state) (local_st : issuer_state)
 let rec hndq_run (alg : hash_algorithm) (fuel : Prims.nat)
   (qs : qquad Prims.list) (hfdq_table : bn_hfdq_pair Prims.list)
   (canon_st : issuer_state) (local_st : issuer_state)
-  (target : RDF_Graph_Executable.bnode_id) (hb : hndq_budget) :
+  (target : RDF_Term.bnode_id) (hb : hndq_budget) :
   (Prims.string * issuer_state * hndq_budget)=
   let hb1 = hb_consume hb in
   if (fuel = Prims.int_zero) || hb1.hb_exceeded
@@ -1181,8 +1159,8 @@ and walk_buckets (alg : hash_algorithm) (fuel : Prims.nat)
 and best_permutation (alg : hash_algorithm) (fuel : Prims.nat)
   (qs : qquad Prims.list) (hfdq_table : bn_hfdq_pair Prims.list)
   (canon_st : issuer_state) (local_st : issuer_state)
-  (perms : RDF_Graph_Executable.bnode_id Prims.list Prims.list)
-  (hb : hndq_budget) : (Prims.string * issuer_state * hndq_budget)=
+  (perms : RDF_Term.bnode_id Prims.list Prims.list) (hb : hndq_budget) :
+  (Prims.string * issuer_state * hndq_budget)=
   match perms with
   | [] -> ("", local_st, hb)
   | p::rest ->
@@ -1198,7 +1176,7 @@ and best_permutation (alg : hash_algorithm) (fuel : Prims.nat)
 and pick_best (alg : hash_algorithm) (fuel : Prims.nat)
   (qs : qquad Prims.list) (hfdq_table : bn_hfdq_pair Prims.list)
   (canon_st : issuer_state) (local_st_initial : issuer_state)
-  (perms : RDF_Graph_Executable.bnode_id Prims.list Prims.list)
+  (perms : RDF_Term.bnode_id Prims.list Prims.list)
   (best_hash : Prims.string) (best_st : issuer_state) (hb : hndq_budget) :
   (Prims.string * issuer_state * hndq_budget)=
   match perms with
@@ -1222,7 +1200,7 @@ and pick_best (alg : hash_algorithm) (fuel : Prims.nat)
 and walk_perm (alg : hash_algorithm) (fuel : Prims.nat)
   (qs : qquad Prims.list) (hfdq_table : bn_hfdq_pair Prims.list)
   (canon_st : issuer_state) (local_st : issuer_state)
-  (perm : RDF_Graph_Executable.bnode_id Prims.list) (path : Prims.string)
+  (perm : RDF_Term.bnode_id Prims.list) (path : Prims.string)
   (hb : hndq_budget) : (Prims.string * issuer_state * hndq_budget)=
   let uu___ = build_path_labels canon_st local_st perm path [] in
   match uu___ with
@@ -1232,9 +1210,8 @@ and walk_perm (alg : hash_algorithm) (fuel : Prims.nat)
 and walk_recursion (alg : hash_algorithm) (fuel : Prims.nat)
   (qs : qquad Prims.list) (hfdq_table : bn_hfdq_pair Prims.list)
   (canon_st : issuer_state) (local_st : issuer_state)
-  (recursion : RDF_Graph_Executable.bnode_id Prims.list)
-  (path : Prims.string) (hb : hndq_budget) :
-  (Prims.string * issuer_state * hndq_budget)=
+  (recursion : RDF_Term.bnode_id Prims.list) (path : Prims.string)
+  (hb : hndq_budget) : (Prims.string * issuer_state * hndq_budget)=
   match recursion with
   | [] -> (path, local_st, hb)
   | b::rest ->
@@ -1264,8 +1241,7 @@ let hfdq_pair_le (a : bn_hfdq_pair) (b : bn_hfdq_pair) : Prims.bool=
   | (uu___1, ha) ->
       let uu___2 = b in (match uu___2 with | (uu___3, hb) -> str_le ha hb)
 let rec group_sorted_hfdq_acc (xs : bn_hfdq_pair Prims.list)
-  (cur_h : Prims.string)
-  (cur_members : RDF_Graph_Executable.bnode_id Prims.list)
+  (cur_h : Prims.string) (cur_members : RDF_Term.bnode_id Prims.list)
   (acc : bucket Prims.list) : bucket Prims.list=
   match xs with
   | [] ->
@@ -1277,14 +1253,13 @@ let rec group_sorted_hfdq_acc (xs : bn_hfdq_pair Prims.list)
       else
         group_sorted_hfdq_acc rest h [b]
           ((cur_h, (FStar_List_Tot_Base.rev cur_members)) :: acc)
-let group_by_hfdq (bs : RDF_Graph_Executable.bnode_id Prims.list)
+let group_by_hfdq (bs : RDF_Term.bnode_id Prims.list)
   (table : bn_hfdq_pair Prims.list) : bucket Prims.list=
   match generic_stable_sort hfdq_pair_le table with
   | [] -> []
   | (b0, h0)::rest -> group_sorted_hfdq_acc rest h0 [b0] []
 let rec filter_unissued (st : issuer_state)
-  (xs : RDF_Graph_Executable.bnode_id Prims.list) :
-  RDF_Graph_Executable.bnode_id Prims.list=
+  (xs : RDF_Term.bnode_id Prims.list) : RDF_Term.bnode_id Prims.list=
   match xs with
   | [] -> []
   | b::rest ->
@@ -1293,10 +1268,10 @@ let rec filter_unissued (st : issuer_state)
        | FStar_Pervasives_Native.None -> b :: (filter_unissued st rest))
 let rec explore_members (alg : hash_algorithm) (fuel : Prims.nat)
   (qs : qquad Prims.list) (hfdq_table : bn_hfdq_pair Prims.list)
-  (canon_st : issuer_state)
-  (members : RDF_Graph_Executable.bnode_id Prims.list) (hb : hndq_budget) :
-  ((Prims.string * (RDF_Graph_Executable.bnode_id * Prims.string) Prims.list)
-    Prims.list * hndq_budget)=
+  (canon_st : issuer_state) (members : RDF_Term.bnode_id Prims.list)
+  (hb : hndq_budget) :
+  ((Prims.string * (RDF_Term.bnode_id * Prims.string) Prims.list) Prims.list
+    * hndq_budget)=
   match members with
   | [] -> ([], hb)
   | m::rest ->
@@ -1321,15 +1296,11 @@ let rec explore_members (alg : hash_algorithm) (fuel : Prims.nat)
                         | (rest_results, hb2) ->
                             (((h, (local2.is_issued)) :: rest_results), hb2)))))
 let rec insert_result_stable
-  (x :
-    (Prims.string * (RDF_Graph_Executable.bnode_id * Prims.string)
-      Prims.list))
+  (x : (Prims.string * (RDF_Term.bnode_id * Prims.string) Prims.list))
   (xs :
-    (Prims.string * (RDF_Graph_Executable.bnode_id * Prims.string)
-      Prims.list) Prims.list)
+    (Prims.string * (RDF_Term.bnode_id * Prims.string) Prims.list) Prims.list)
   :
-  (Prims.string * (RDF_Graph_Executable.bnode_id * Prims.string) Prims.list)
-    Prims.list=
+  (Prims.string * (RDF_Term.bnode_id * Prims.string) Prims.list) Prims.list=
   match xs with
   | [] -> [x]
   | (k, v)::rest ->
@@ -1341,27 +1312,22 @@ let rec insert_result_stable
            else x :: xs)
 let rec sort_results_stable_acc
   (acc :
-    (Prims.string * (RDF_Graph_Executable.bnode_id * Prims.string)
-      Prims.list) Prims.list)
+    (Prims.string * (RDF_Term.bnode_id * Prims.string) Prims.list) Prims.list)
   (xs :
-    (Prims.string * (RDF_Graph_Executable.bnode_id * Prims.string)
-      Prims.list) Prims.list)
+    (Prims.string * (RDF_Term.bnode_id * Prims.string) Prims.list) Prims.list)
   :
-  (Prims.string * (RDF_Graph_Executable.bnode_id * Prims.string) Prims.list)
-    Prims.list=
+  (Prims.string * (RDF_Term.bnode_id * Prims.string) Prims.list) Prims.list=
   match xs with
   | [] -> acc
   | x::rest -> sort_results_stable_acc (insert_result_stable x acc) rest
 let sort_results_stable
   (xs :
-    (Prims.string * (RDF_Graph_Executable.bnode_id * Prims.string)
-      Prims.list) Prims.list)
+    (Prims.string * (RDF_Term.bnode_id * Prims.string) Prims.list) Prims.list)
   :
-  (Prims.string * (RDF_Graph_Executable.bnode_id * Prims.string) Prims.list)
-    Prims.list=
+  (Prims.string * (RDF_Term.bnode_id * Prims.string) Prims.list) Prims.list=
   sort_results_stable_acc [] xs
 let rec replay_one (canon_st : issuer_state)
-  (temp_issued : (RDF_Graph_Executable.bnode_id * Prims.string) Prims.list) :
+  (temp_issued : (RDF_Term.bnode_id * Prims.string) Prims.list) :
   issuer_state=
   match temp_issued with
   | [] -> canon_st
@@ -1370,8 +1336,7 @@ let rec replay_one (canon_st : issuer_state)
       (match uu___1 with | (canon_st', uu___2) -> replay_one canon_st' rest)
 let rec replay_all (canon_st : issuer_state)
   (results :
-    (Prims.string * (RDF_Graph_Executable.bnode_id * Prims.string)
-      Prims.list) Prims.list)
+    (Prims.string * (RDF_Term.bnode_id * Prims.string) Prims.list) Prims.list)
   : issuer_state=
   match results with
   | [] -> canon_st
@@ -1379,7 +1344,7 @@ let rec replay_all (canon_st : issuer_state)
       replay_all (replay_one canon_st temp_issued) rest
 let process_collision_members (alg : hash_algorithm) (fuel : Prims.nat)
   (qs : qquad Prims.list) (hfdq_table : bn_hfdq_pair Prims.list)
-  (st : issuer_state) (members : RDF_Graph_Executable.bnode_id Prims.list)
+  (st : issuer_state) (members : RDF_Term.bnode_id Prims.list)
   (hb : hndq_budget) : (issuer_state * hndq_budget)=
   let uu___ = explore_members alg fuel qs hfdq_table st members hb in
   match uu___ with
@@ -1417,8 +1382,8 @@ let walk_groups (alg : hash_algorithm) (fuel : Prims.nat)
   let st1 = assign_singletons st groups in
   process_collision_groups alg fuel qs hfdq_table st1 groups hb
 let build_canonical_mapping_alg_budgeted (alg : hash_algorithm)
-  (budget : Prims.nat) (ds : RDF_Graph_Executable.rdf_dataset) :
-  (RDF_Graph_Executable.bnode_id * Prims.string) Prims.list
+  (budget : Prims.nat) (ds : RDF_Graph.rdf_dataset) :
+  (RDF_Term.bnode_id * Prims.string) Prims.list
     FStar_Pervasives_Native.option=
   let qs = dedup_qquads (dataset_quads ds) in
   let bs = dataset_bnodes ds in
@@ -1446,25 +1411,25 @@ let build_canonical_mapping_alg_budgeted (alg : hash_algorithm)
          FStar_Pervasives_Native.Some (final_state'.is_issued))
 let default_hndq_budget : Prims.nat= (Prims.parse_int "1000000")
 let build_canonical_mapping_alg (alg : hash_algorithm)
-  (ds : RDF_Graph_Executable.rdf_dataset) :
-  (RDF_Graph_Executable.bnode_id * Prims.string) Prims.list=
+  (ds : RDF_Graph.rdf_dataset) :
+  (RDF_Term.bnode_id * Prims.string) Prims.list=
   match build_canonical_mapping_alg_budgeted alg default_hndq_budget ds with
   | FStar_Pervasives_Native.Some m -> m
   | FStar_Pervasives_Native.None -> []
-let build_canonical_mapping (ds : RDF_Graph_Executable.rdf_dataset) :
-  (RDF_Graph_Executable.bnode_id * Prims.string) Prims.list=
+let build_canonical_mapping (ds : RDF_Graph.rdf_dataset) :
+  (RDF_Term.bnode_id * Prims.string) Prims.list=
   build_canonical_mapping_alg HA_SHA256 ds
 let canonicalize_exceeds_hndq_budget (alg : hash_algorithm)
-  (budget : Prims.nat) (ds : RDF_Graph_Executable.rdf_dataset) : Prims.bool=
+  (budget : Prims.nat) (ds : RDF_Graph.rdf_dataset) : Prims.bool=
   match build_canonical_mapping_alg_budgeted alg budget ds with
   | FStar_Pervasives_Native.Some uu___ -> false
   | FStar_Pervasives_Native.None -> true
-let canonicalize_alg (alg : hash_algorithm)
-  (ds : RDF_Graph_Executable.rdf_dataset) : RDF_Graph_Executable.rdf_dataset=
+let canonicalize_alg (alg : hash_algorithm) (ds : RDF_Graph.rdf_dataset) :
+  RDF_Graph.rdf_dataset=
   let mapping = build_canonical_mapping_alg alg ds in
   relabel_dataset mapping ds
-let canonicalize (ds : RDF_Graph_Executable.rdf_dataset) :
-  RDF_Graph_Executable.rdf_dataset= canonicalize_alg HA_SHA256 ds
+let canonicalize (ds : RDF_Graph.rdf_dataset) : RDF_Graph.rdf_dataset=
+  canonicalize_alg HA_SHA256 ds
 let rec render_quads_acc (qs : qquad Prims.list)
   (acc : Prims.string Prims.list) : Prims.string Prims.list=
   match qs with
@@ -1483,27 +1448,22 @@ let rec dedup_sorted_strings_acc (xs : Prims.string Prims.list)
       else dedup_sorted_strings_acc (y :: rest) (x :: acc)
 let dedup_sorted_strings (xs : Prims.string Prims.list) :
   Prims.string Prims.list= dedup_sorted_strings_acc xs []
-let canonical_nquads (ds : RDF_Graph_Executable.rdf_dataset) : Prims.string=
+let canonical_nquads (ds : RDF_Graph.rdf_dataset) : Prims.string=
   let qs = dataset_quads ds in
   let lines = render_quads qs in
   let sorted = insertion_sort lines in
   let deduped = dedup_sorted_strings sorted in concat_strings deduped
 let canonicalize_to_nquads_alg (alg : hash_algorithm)
-  (ds : RDF_Graph_Executable.rdf_dataset) : Prims.string=
+  (ds : RDF_Graph.rdf_dataset) : Prims.string=
   canonical_nquads (canonicalize_alg alg ds)
-let canonicalize_to_nquads (ds : RDF_Graph_Executable.rdf_dataset) :
-  Prims.string= canonicalize_to_nquads_alg HA_SHA256 ds
-let canonicalize_named_graph (ds : RDF_Graph_Executable.rdf_dataset)
+let canonicalize_to_nquads (ds : RDF_Graph.rdf_dataset) : Prims.string=
+  canonicalize_to_nquads_alg HA_SHA256 ds
+let canonicalize_named_graph (ds : RDF_Graph.rdf_dataset)
   (name : RDF_Dataset_Graphs.graph_ref) :
   Prims.string FStar_Pervasives_Native.option=
-  match RDF_Graph_Executable.lookup_named_graph name
-          ds.RDF_Graph_Executable.ds_named
-  with
+  match RDF_Graph.lookup_named_graph name ds.RDF_Graph.ds_named with
   | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
   | FStar_Pervasives_Native.Some g ->
       FStar_Pervasives_Native.Some
         (canonicalize_to_nquads
-           {
-             RDF_Graph_Executable.ds_default = g;
-             RDF_Graph_Executable.ds_named = []
-           })
+           { RDF_Graph.ds_default = g; RDF_Graph.ds_named = [] })

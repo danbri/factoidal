@@ -222,6 +222,7 @@ let term_key (o: rdf_term) : Tot (option string) =
   | T_IRI i -> Some ("I" ^ i)
   | T_BNode b -> Some ("B" ^ b)
   | T_Literal _ -> None
+  | T_TripleTerm _ _ _ -> None   // triple terms are not class/property keys
 
 let term_is_iri (o: rdf_term) (i: string) : Tot bool =
   match o with
@@ -393,6 +394,7 @@ let typing_only_triple (t: triple) : Tot bool =
   (match t.o with
    | T_BNode _ -> true
    | T_Literal _ -> false
+   | T_TripleTerm _ _ _ -> false
    | T_IRI o -> mem o headerless_type_whitelist || not (iri_reserved o))
 
 let rec all_typing_only (g: list triple) : Tot bool =
@@ -450,6 +452,7 @@ let triple_violations (g: list triple) (d: decl_index) (t: triple)
     else
       match t.o with
       | T_Literal _ -> ["literal-as-type-object"]
+      | T_TripleTerm _ _ _ -> ["triple-term-as-type-object"]
       | T_BNode b ->
         if class_evidence g d ("B" ^ b) then []
         else ["undefined-bnode-class-expression"]
@@ -465,6 +468,7 @@ let triple_violations (g: list triple) (d: decl_index) (t: triple)
     else
       match t.o with
       | T_Literal _ -> ["literal-as-onProperty"]
+      | T_TripleTerm _ _ _ -> ["triple-term-as-onProperty"]
       | T_BNode b ->
         if mem ("B" ^ b) d.d_inv then [] else ["undefined-bnode-onProperty"]
       | T_IRI o ->

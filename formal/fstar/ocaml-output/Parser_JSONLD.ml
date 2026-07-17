@@ -603,7 +603,8 @@ let jld_make_literal (lexical : Prims.string) (dt : Prims.string)
       {
         RDF_Term.lexical_form = lexical;
         RDF_Term.datatype = dt;
-        RDF_Term.lang_tag = lang
+        RDF_Term.lang_tag = lang;
+        RDF_Term.direction = FStar_Pervasives_Native.None
       } in
     (if RDF_Term.literal_wf lit
      then FStar_Pervasives_Native.Some (RDF_Term.T_Literal lit)
@@ -738,13 +739,15 @@ let jld_compound_literal_term (lex : Prims.string)
         {
           RDF_Term.lexical_form = lex;
           RDF_Term.datatype = RDF_Term.xsd_string;
-          RDF_Term.lang_tag = FStar_Pervasives_Native.None
+          RDF_Term.lang_tag = FStar_Pervasives_Native.None;
+          RDF_Term.direction = FStar_Pervasives_Native.None
         } in
       let dir_lit =
         {
           RDF_Term.lexical_form = dir;
           RDF_Term.datatype = RDF_Term.xsd_string;
-          RDF_Term.lang_tag = FStar_Pervasives_Native.None
+          RDF_Term.lang_tag = FStar_Pervasives_Native.None;
+          RDF_Term.direction = FStar_Pervasives_Native.None
         } in
       let acc1 =
         {
@@ -765,7 +768,8 @@ let jld_compound_literal_term (lex : Prims.string)
               {
                 RDF_Term.lexical_form = (FStar_String.lowercase lg);
                 RDF_Term.datatype = RDF_Term.xsd_string;
-                RDF_Term.lang_tag = FStar_Pervasives_Native.None
+                RDF_Term.lang_tag = FStar_Pervasives_Native.None;
+                RDF_Term.direction = FStar_Pervasives_Native.None
               } in
             {
               RDF_Triple.s = bsubj;

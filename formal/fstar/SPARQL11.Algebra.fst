@@ -337,6 +337,7 @@ let bound_subject_of_pattern (ps : pattern_subject) (mu : solution_mapping) : op
     | Some (T_IRI i) -> Some (S_IRI i)
     | Some (T_BNode b) -> Some (S_BNode b)
     | Some (T_Literal _) -> None
+    | Some (T_TripleTerm _ _ _) -> None   // triple terms are object-only, never a subject
     | None -> None
 
 let bound_predicate_of_pattern (pt : pattern_term) (mu : solution_mapping) : option wf_iri =
@@ -349,6 +350,7 @@ let bound_predicate_of_pattern (pt : pattern_term) (mu : solution_mapping) : opt
     | Some (T_IRI i) -> Some i
     | Some (T_BNode _) -> None
     | Some (T_Literal _) -> None
+    | Some (T_TripleTerm _ _ _) -> None   // a triple term is not a predicate IRI
     | None -> None
 
 let bound_object_of_pattern (pt : pattern_term) (mu : solution_mapping) : option rdf_term =
@@ -791,7 +793,7 @@ let is_numeric_datatype (dt : wf_iri) : bool =
 
 (* Helper: make a plain literal with xsd:string datatype *)
 let mk_plain_literal (s : string) : wf_literal =
-  { lexical_form = s; datatype = xsd_string; lang_tag = None }
+  { lexical_form = s; datatype = xsd_string; lang_tag = None; direction = None }
 
 (* Expression result type — needed by eval_pattern *)
 noeq type eval_result =
@@ -827,15 +829,15 @@ let er_to_term (v : eval_result) : option rdf_term =
   match v with
   | ER_Term t -> Some t
   | ER_Bool true -> Some (T_Literal ({ lexical_form = "true";
-                                       datatype = xsd_boolean; lang_tag = None }))
+                                       datatype = xsd_boolean; lang_tag = None; direction = None }))
   | ER_Bool false -> Some (T_Literal ({ lexical_form = "false";
-                                        datatype = xsd_boolean; lang_tag = None }))
+                                        datatype = xsd_boolean; lang_tag = None; direction = None }))
   | ER_Num n -> Some (T_Literal ({ lexical_form = string_of_int n;
-                                    datatype = xsd_integer; lang_tag = None }))
+                                    datatype = xsd_integer; lang_tag = None; direction = None }))
   | ER_Dec s -> Some (T_Literal ({ lexical_form = s;
-                                    datatype = xsd_decimal; lang_tag = None }))
+                                    datatype = xsd_decimal; lang_tag = None; direction = None }))
   | ER_Dbl s -> Some (T_Literal ({ lexical_form = s;
-                                    datatype = xsd_double; lang_tag = None }))
+                                    datatype = xsd_double; lang_tag = None; direction = None }))
   | ER_Error -> None
 
 (* Helper: extract string from eval_result *)
@@ -868,12 +870,12 @@ let er_string_preserve (s : string) (lang : option string) (dt : string) : eval_
   if is_iri dt then
     match lang with
     | None ->
-      if dt <> rdf_lang_string then
-        ER_Term (T_Literal { lexical_form = s; datatype = dt; lang_tag = None })
+      if dt <> rdf_lang_string && dt <> rdf_dir_lang_string then
+        ER_Term (T_Literal { lexical_form = s; datatype = dt; lang_tag = None; direction = None })
       else er_string s
     | Some l ->
       if dt = rdf_lang_string then
-        ER_Term (T_Literal { lexical_form = s; datatype = dt; lang_tag = Some l })
+        ER_Term (T_Literal { lexical_form = s; datatype = dt; lang_tag = Some l; direction = None })
       else er_string s
   else er_string s
 
@@ -997,7 +999,10 @@ let fn_str (v : eval_result) : eval_result =
   | ER_Dec s -> ER_Term (T_Literal (mk_plain_literal s))
   | ER_Dbl s -> ER_Term (T_Literal (mk_plain_literal s))
   | ER_Bool b -> ER_Term (T_Literal ({ lexical_form = (if b then "true" else "false");
-                                       datatype = xsd_boolean; lang_tag = None }))
+                                       datatype = xsd_boolean; lang_tag = None; direction = None }))
+  // STR() is not defined on a triple term (it is neither literal nor IRI);
+  // conservative error (SPARQL 1.2 STR/accessor semantics are #305 P7).
+  | ER_Term (T_TripleTerm _ _ _) -> ER_Error
   | ER_Error -> ER_Error
 
 let fn_lang (v : eval_result) : eval_result =
@@ -1363,12 +1368,12 @@ let fn_substr_spec (s : string) (start : nat) (len : option nat) : string =
 
 (* Constructor functions *)
 let fn_strdt (lex : string) (dt : wf_iri) : rdf_term =
-  if dt = rdf_lang_string
-  then T_Literal ({ lexical_form = lex; datatype = xsd_string; lang_tag = None })
-  else T_Literal ({ lexical_form = lex; datatype = dt; lang_tag = None })
+  if dt = rdf_lang_string || dt = rdf_dir_lang_string
+  then T_Literal ({ lexical_form = lex; datatype = xsd_string; lang_tag = None; direction = None })
+  else T_Literal ({ lexical_form = lex; datatype = dt; lang_tag = None; direction = None })
 
 let fn_strlang (lex : string) (lang : string) : rdf_term =
-  T_Literal ({ lexical_form = lex; datatype = rdf_lang_string; lang_tag = Some lang })
+  T_Literal ({ lexical_form = lex; datatype = rdf_lang_string; lang_tag = Some lang; direction = None })
 
 (* sameTerm — stricter than = *)
 let same_term (t1 t2 : rdf_term) : bool = rdf_term_eq t1 t2
@@ -1425,8 +1430,8 @@ let fx_ctx_get (key : string) (mu : solution_mapping) : option string =
    evaluation (used transiently — never stored into results). *)
 let fx_ctx_put (row : string) (occ : string) (mu : solution_mapping)
   : solution_mapping =
-  (fx_key_row, T_Literal ({ lexical_form = row; datatype = xsd_string; lang_tag = None }))
-  :: (fx_key_occ, T_Literal ({ lexical_form = occ; datatype = xsd_string; lang_tag = None }))
+  (fx_key_row, T_Literal ({ lexical_form = row; datatype = xsd_string; lang_tag = None; direction = None }))
+  :: (fx_key_occ, T_Literal ({ lexical_form = occ; datatype = xsd_string; lang_tag = None; direction = None }))
   :: mu
 
 (* Total take/pad and drop over a char list (avoids String.sub bounds
@@ -2324,6 +2329,7 @@ let lateral_subst_pattern_term (mu : solution_mapping) (pt : pattern_term) : pat
      | Some (T_IRI i) -> PT_IRI i
      | Some (T_BNode b) -> PT_BNode b
      | Some (T_Literal l) -> PT_Literal l
+     | Some (T_TripleTerm _ _ _) -> PT_Var v   // no triple-term pattern_term yet (#305 P6)
      | None -> PT_Var v)
   | _ -> pt
 
@@ -2334,6 +2340,7 @@ let lateral_subst_pattern_subject (mu : solution_mapping) (ps : pattern_subject)
      | Some (T_IRI i) -> PS_IRI i
      | Some (T_BNode b) -> PS_BNode b
      | Some (T_Literal _) -> PS_Var v  (* literals cannot be subjects *)
+     | Some (T_TripleTerm _ _ _) -> PS_Var v  (* triple terms cannot be subjects *)
      | None -> PS_Var v)
   | _ -> ps
 
@@ -3599,7 +3606,7 @@ let eval_xsd_cast (v : eval_result) (target_type : string) (full_iri : string) :
       //                  0 -> "0.0", n -> "<n>.0"
       //   - else preserve lexical form
       let mk_float (s : string) : eval_result =
-        ER_Term (T_Literal { lexical_form = s; datatype = xsd_float; lang_tag = None })
+        ER_Term (T_Literal { lexical_form = s; datatype = xsd_float; lang_tag = None; direction = None })
       in
       // Canonical form for an integer-valued numeric coming from a parsed
       // double/decimal scaled pair. zero -> "0.0", nonzero -> "<n>.0".
@@ -3687,8 +3694,8 @@ let eval_xsd_cast (v : eval_result) (target_type : string) (full_iri : string) :
        | _ -> er_string lex)
     else
       // Other XSD types: create a typed literal
-      if is_iri full_iri && full_iri <> rdf_lang_string then
-        ER_Term (T_Literal { lexical_form = lex; datatype = full_iri; lang_tag = None })
+      if is_iri full_iri && full_iri <> rdf_lang_string && full_iri <> rdf_dir_lang_string then
+        ER_Term (T_Literal { lexical_form = lex; datatype = full_iri; lang_tag = None; direction = None })
       else ER_Error
 
 (* ================================================================ *)
@@ -3719,11 +3726,11 @@ let geo_bool_result (b : option bool) : eval_result =
   | None -> ER_Error
 
 let geo_double_result (v : Geo.geo_scaled) : eval_result =
-  ER_Term (T_Literal { lexical_form = Geo.gs_to_string v; datatype = xsd_double; lang_tag = None })
+  ER_Term (T_Literal { lexical_form = Geo.gs_to_string v; datatype = xsd_double; lang_tag = None; direction = None })
 
 let geo_wkt_result (v : Geo.geo_wkt_value) : eval_result =
   ER_Term (T_Literal { lexical_form = WKT.serialize_wkt_value v;
-                        datatype = Geo.geo_wktLiteral; lang_tag = None })
+                        datatype = Geo.geo_wktLiteral; lang_tag = None; direction = None })
 
 // The 8 Simple Features predicates, dispatched by exact IRI match.
 let eval_geof_predicate (name : string) (a b : Geo.geo_wkt_value) : option eval_result =
@@ -4082,7 +4089,7 @@ let rec eval_expr_with_base (base : option wf_iri) (e : expr) (mu : solution_map
        one query execution. The lexical form is read at the boundary
        (process-fixed) via fx_current_datetime. *)
     ER_Term (T_Literal ({ lexical_form = fx_current_datetime ();
-                          datatype = xsd_dateTime; lang_tag = None }))
+                          datatype = xsd_dateTime; lang_tag = None; direction = None }))
   | E_Year e1 ->
     (match er_to_datetime_lex (eval_expr_with_base base e1 mu) with
      | Some s -> (match dt_year s with Some n -> ER_Num n | None -> ER_Error)
@@ -4113,7 +4120,7 @@ let rec eval_expr_with_base (base : option wf_iri) (e : expr) (mu : solution_map
                   | Some "" -> ER_Error  // no timezone = unbound
                   | Some tz -> ER_Term (T_Literal { lexical_form = tz;
                                datatype = xsd_dayTimeDuration;
-                               lang_tag = None })
+                               lang_tag = None; direction = None })
                   | None -> ER_Error)
      | None -> ER_Error)
   | E_Tz e1 ->
@@ -4254,12 +4261,12 @@ and eval_concat_with_base (base : option wf_iri) (es : list expr) (mu : solution
           (match lang, l.lang_tag with
            | Some l1, Some l2 ->
              if string_lower l1 = string_lower l2 then
-               ER_Term (T_Literal { lexical_form = combined; datatype = rdf_lang_string; lang_tag = Some l1 })
+               ER_Term (T_Literal { lexical_form = combined; datatype = rdf_lang_string; lang_tag = Some l1; direction = None })
              else er_string combined
            | None, None ->
              // Both plain: preserve xsd:string datatype
              if dt = l.datatype then
-               ER_Term (T_Literal { lexical_form = combined; datatype = dt; lang_tag = None })
+               ER_Term (T_Literal { lexical_form = combined; datatype = dt; lang_tag = None; direction = None })
              else er_string combined
            | _, _ -> er_string combined)
         | ER_Error -> ER_Error
@@ -4317,6 +4324,10 @@ let er_rank (v : eval_result) : int =
   | ER_Dec _ -> 4
   | ER_Dbl _ -> 4
   | ER_Term (T_Literal _) -> 7
+  // RDF 1.2 triple terms sort after all other kinds (conservative,
+  // distinct rank; sparql_order's final `_,_ -> 0` treats two triple
+  // terms as order-equal for now — full ordering is #305 P7).
+  | ER_Term (T_TripleTerm _ _ _) -> 8
 
 (* SPARQL ordering (§15.1) — CONCRETE implementation.
    Returns -1 (less), 0 (equal), 1 (greater). *)
@@ -4551,7 +4562,10 @@ let eval_aggregate (base : option wf_iri) (fn : aggregate_fn) (distinct : bool) 
              fst p ^ "=" ^ (match snd p with
                | T_IRI i -> i
                | T_BNode b -> b
-               | T_Literal l -> lit_lexical l ^ "^^" ^ lit_datatype l)) mu) in
+               | T_Literal l -> lit_lexical l ^ "^^" ^ lit_datatype l
+               // RDF 1.2 triple term: a structural, distinct dedup key via
+               // the canonical N-Quads rendering (recurses into the term).
+               | T_TripleTerm _ _ _ -> nq_term_to_string (snd p))) mu) in
          // Stack-safe dedup: fold_left + cons-onto-accumulator.
          // The earlier `seen @ [k]` form was non-tail-rec via `@`, so
          // on the lifesci demo's COUNT(DISTINCT *) over thousands of
@@ -5268,6 +5282,7 @@ let construct_subject (ps : pattern_subject) (mu : solution_mapping) (sol_ix : n
      | Some (T_IRI i) -> Some (S_IRI i)
      | Some (T_BNode b) -> Some (S_BNode b)
      | Some (T_Literal _) -> None
+     | Some (T_TripleTerm _ _ _) -> None
      | None -> None)
 
 let construct_predicate (pt : pattern_term) (mu : solution_mapping) : option wf_iri =
@@ -5798,6 +5813,7 @@ let xsd_cast (v : eval_result) (target : cast_target) : option eval_result =
      | ER_Term (T_IRI i) -> Some (er_string (iri_to_string i))
      | ER_Term (T_Literal l) -> Some (er_string (lit_lexical l))
      | ER_Term (T_BNode _) -> None
+     | ER_Term (T_TripleTerm _ _ _) -> None
      | ER_Error -> None)
 
   (* === Cast to boolean === *)
@@ -5830,7 +5846,7 @@ let xsd_cast (v : eval_result) (target : cast_target) : option eval_result =
        if lit_datatype l = xsd_dateTime then Some v
        else if lit_datatype l = xsd_string then
          (* Accept string → dateTime but don't validate format *)
-         Some (ER_Term (T_Literal { lexical_form = lit_lexical l; datatype = xsd_dateTime; lang_tag = None }))
+         Some (ER_Term (T_Literal { lexical_form = lit_lexical l; datatype = xsd_dateTime; lang_tag = None; direction = None }))
        else None
      | _ -> None)
 
@@ -5865,6 +5881,7 @@ let substitute_pattern_term (mu : solution_mapping) (pt : pattern_term) : patter
      | Some (T_IRI i) -> PT_IRI i
      | Some (T_BNode b) -> PT_BNode b
      | Some (T_Literal l) -> PT_Literal l
+     | Some (T_TripleTerm _ _ _) -> PT_Var v   // no triple-term pattern_term yet (#305 P6)
      | None -> PT_Var v)
   | _ -> pt
 
@@ -5875,6 +5892,7 @@ let substitute_pattern_subject (mu : solution_mapping) (ps : pattern_subject) : 
      | Some (T_IRI i) -> PS_IRI i
      | Some (T_BNode b) -> PS_BNode b
      | Some (T_Literal _) -> PS_Var v  (* literals cannot be subjects *)
+     | Some (T_TripleTerm _ _ _) -> PS_Var v  (* triple terms cannot be subjects *)
      | None -> PS_Var v)
   | _ -> ps
 
@@ -6491,6 +6509,7 @@ let bound_subject_of_pattern_freshen (op_salt : string) (sol_ix : nat)
      | Some (T_IRI i) -> Some (S_IRI i)
      | Some (T_BNode b) -> Some (S_BNode b)
      | Some (T_Literal _) -> None
+     | Some (T_TripleTerm _ _ _) -> None
      | None -> None)
 
 let bound_object_of_pattern_freshen (op_salt : string) (sol_ix : nat)

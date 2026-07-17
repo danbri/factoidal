@@ -142,17 +142,30 @@ let rec escape_lit_walk (s : string) (len : nat) (run_start : nat) (pos : nat) (
 let escape_lit (s : string) : string =
   escape_lit_walk s (fs_byte_length s) 0 0 ""
 
-let canon_term (t : rdf_term) : string =
+let rec canon_term (t : rdf_term) : Tot string (decreases t) =
   match t with
   | T_IRI i -> "<" ^ i ^ ">"
   | T_BNode b -> "_:" ^ b
   | T_Literal l ->
     let lex = escape_lit l.lexical_form in
     (match l.lang_tag with
-     | Some tag -> "\"" ^ lex ^ "\"@" ^ tag
+     | Some tag ->
+       // RDF 1.2 directional language string: `--ltr`/`--rtl` suffix.
+       // Empty for RDF 1.1 langString (direction = None).
+       let ds = (match l.direction with
+                 | Some Dir_LTR -> "--ltr"
+                 | Some Dir_RTL -> "--rtl"
+                 | None -> "") in
+       "\"" ^ lex ^ "\"@" ^ tag ^ ds
      | None ->
        if l.datatype = xsd_string then "\"" ^ lex ^ "\""
        else "\"" ^ lex ^ "\"^^<" ^ l.datatype ^ ">")
+  // RDF 1.2 triple term canonical form `<<( s p o )>>`.
+  | T_TripleTerm s p o ->
+    let subj = (match s with
+                | S_IRI i   -> "<" ^ i ^ ">"
+                | S_BNode b -> "_:" ^ b) in
+    "<<( " ^ subj ^ " <" ^ p ^ "> " ^ canon_term o ^ " )>>"
 
 let canon_subject (s : subject) : string =
   match s with

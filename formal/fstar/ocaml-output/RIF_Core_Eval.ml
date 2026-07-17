@@ -38,6 +38,8 @@ let resolve_subject (mu : RDF_Graph_Executable.solution_mapping)
       FStar_Pervasives_Native.Some (RDF_Term.S_BNode b)
   | FStar_Pervasives_Native.Some (RDF_Term.T_Literal uu___) ->
       FStar_Pervasives_Native.None
+  | FStar_Pervasives_Native.Some (RDF_Term.T_TripleTerm
+      (uu___, uu___1, uu___2)) -> FStar_Pervasives_Native.None
 let resolve_predicate (mu : RDF_Graph_Executable.solution_mapping)
   (t : RIF_Core_Syntax.rif_term) :
   RDF_Term.wf_iri FStar_Pervasives_Native.option=
@@ -58,6 +60,8 @@ let resolve_uniterm_subject (mu : RDF_Graph_Executable.solution_mapping)
       FStar_Pervasives_Native.Some
         (RDF_Term.S_BNode
            (RIF_Core_Translation.literal_subject_bnode_label l))
+  | FStar_Pervasives_Native.Some (RDF_Term.T_TripleTerm
+      (uu___, uu___1, uu___2)) -> FStar_Pervasives_Native.None
 let mk_triple_opt (s_opt : RDF_Term.subject FStar_Pervasives_Native.option)
   (p_opt : RDF_Term.wf_iri FStar_Pervasives_Native.option)
   (o_opt : RDF_Term.rdf_term FStar_Pervasives_Native.option) :

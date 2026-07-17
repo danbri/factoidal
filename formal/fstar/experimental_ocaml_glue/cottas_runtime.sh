@@ -139,12 +139,14 @@ module Ballyhoo_cottas_runtime = struct
             RDF_Graph_Executable.lexical_form = lexical;
             datatype = RDF_Graph_Executable.xsd_string;
             lang_tag = FStar_Pervasives_Native.None;
+            direction = FStar_Pervasives_Native.None;
           }
         else if String.length suffix >= 1 && suffix.[0] = '@' then
           Some {
             RDF_Graph_Executable.lexical_form = lexical;
             datatype = RDF_Graph_Executable.rdf_lang_string;
             lang_tag = FStar_Pervasives_Native.Some (String.sub suffix 1 (String.length suffix - 1));
+            direction = FStar_Pervasives_Native.None;
           }
         else if String.length suffix >= 4 && String.sub suffix 0 2 = "^^" then
           (match parse_iri_token (String.sub suffix 2 (String.length suffix - 2)) with
@@ -153,6 +155,7 @@ module Ballyhoo_cottas_runtime = struct
                RDF_Graph_Executable.lexical_form = lexical;
                datatype = dt;
                lang_tag = FStar_Pervasives_Native.None;
+               direction = FStar_Pervasives_Native.None;
              }
            | None -> None)
         else

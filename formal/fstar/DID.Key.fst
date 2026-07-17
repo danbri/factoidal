@@ -181,7 +181,7 @@ let did_key_document (s:string) : option (list triple) =
        let did_subj : subject = S_IRI did_iri in
        let vm_subj  : subject = S_IRI vm_iri in
        let pk_lit : wf_literal =
-         { lexical_form = k.multikey; datatype = sec_multibase_datatype; lang_tag = None } in
+         { lexical_form = k.multikey; datatype = sec_multibase_datatype; lang_tag = None; direction = None } in
        Some [
          { s = did_subj; p = sec_verificationMethod;         o = T_IRI vm_iri };
          { s = vm_subj;  p = rdf_type_pred;                  o = T_IRI sec_Ed25519VerificationKey2020 };

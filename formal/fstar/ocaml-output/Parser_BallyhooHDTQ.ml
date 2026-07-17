@@ -109,11 +109,11 @@ let __proj__Mkhdtq_dataset_store__item__hqds_handle
   | { hqds_artifact_path; hqds_summary; hqds_handle;_} -> hqds_handle
 type hdtq_named_graph_store =
   {
-  hqng_name: RDF_Graph_Executable.iri ;
+  hqng_name: RDF_Term.iri ;
   hqng_ref: hdtq_graph_ref ;
   hqng_dataset: hdtq_dataset_store }
 let __proj__Mkhdtq_named_graph_store__item__hqng_name
-  (projectee : hdtq_named_graph_store) : RDF_Graph_Executable.iri=
+  (projectee : hdtq_named_graph_store) : RDF_Term.iri=
   match projectee with | { hqng_name; hqng_ref; hqng_dataset;_} -> hqng_name
 let __proj__Mkhdtq_named_graph_store__item__hqng_ref
   (projectee : hdtq_named_graph_store) : hdtq_graph_ref=
@@ -133,36 +133,35 @@ let hdtq_named_graphs (uu___ : hdtq_dataset_store) :
   hdtq_named_graph_store Prims.list=
   failwith "Not yet implemented: Parser.BallyhooHDTQ.hdtq_named_graphs"
 let hdtq_lookup_named_graph (uu___ : hdtq_dataset_store)
-  (uu___1 : RDF_Graph_Executable.iri) :
+  (uu___1 : RDF_Term.iri) :
   hdtq_named_graph_store FStar_Pervasives_Native.option=
   failwith "Not yet implemented: Parser.BallyhooHDTQ.hdtq_lookup_named_graph"
 let hdtq_encode_subject (uu___ : hdtq_dataset_store)
-  (uu___1 : RDF_Graph_Executable.subject) :
+  (uu___1 : RDF_Term.subject) :
   Parser_BallyhooHDT.hdt_term_ref FStar_Pervasives_Native.option=
   failwith "Not yet implemented: Parser.BallyhooHDTQ.hdtq_encode_subject"
 let hdtq_encode_predicate (uu___ : hdtq_dataset_store)
-  (uu___1 : RDF_Graph_Executable.wf_iri) :
+  (uu___1 : RDF_Term.wf_iri) :
   Parser_BallyhooHDT.hdt_term_ref FStar_Pervasives_Native.option=
   failwith "Not yet implemented: Parser.BallyhooHDTQ.hdtq_encode_predicate"
 let hdtq_encode_object (uu___ : hdtq_dataset_store)
-  (uu___1 : RDF_Graph_Executable.rdf_term) :
+  (uu___1 : RDF_Term.rdf_term) :
   Parser_BallyhooHDT.hdt_term_ref FStar_Pervasives_Native.option=
   failwith "Not yet implemented: Parser.BallyhooHDTQ.hdtq_encode_object"
 let hdtq_encode_graph_name (uu___ : hdtq_dataset_store)
-  (uu___1 : RDF_Graph_Executable.iri) :
-  hdtq_graph_ref FStar_Pervasives_Native.option=
+  (uu___1 : RDF_Term.iri) : hdtq_graph_ref FStar_Pervasives_Native.option=
   failwith "Not yet implemented: Parser.BallyhooHDTQ.hdtq_encode_graph_name"
 let hdtq_decode_subject (uu___ : hdtq_dataset_store)
-  (uu___1 : Parser_BallyhooHDT.hdt_term_ref) : RDF_Graph_Executable.subject=
+  (uu___1 : Parser_BallyhooHDT.hdt_term_ref) : RDF_Term.subject=
   failwith "Not yet implemented: Parser.BallyhooHDTQ.hdtq_decode_subject"
 let hdtq_decode_predicate (uu___ : hdtq_dataset_store)
-  (uu___1 : Parser_BallyhooHDT.hdt_term_ref) : RDF_Graph_Executable.wf_iri=
+  (uu___1 : Parser_BallyhooHDT.hdt_term_ref) : RDF_Term.wf_iri=
   failwith "Not yet implemented: Parser.BallyhooHDTQ.hdtq_decode_predicate"
 let hdtq_decode_object (uu___ : hdtq_dataset_store)
-  (uu___1 : Parser_BallyhooHDT.hdt_term_ref) : RDF_Graph_Executable.rdf_term=
+  (uu___1 : Parser_BallyhooHDT.hdt_term_ref) : RDF_Term.rdf_term=
   failwith "Not yet implemented: Parser.BallyhooHDTQ.hdtq_decode_object"
 let hdtq_decode_graph_name (uu___ : hdtq_dataset_store)
-  (uu___1 : hdtq_graph_ref) : RDF_Graph_Executable.iri=
+  (uu___1 : hdtq_graph_ref) : RDF_Term.iri=
   failwith "Not yet implemented: Parser.BallyhooHDTQ.hdtq_decode_graph_name"
 let hdtq_search (uu___ : hdtq_dataset_store) (uu___1 : hdtq_bound_qp) :
   hdtq_qp_row Prims.list=
@@ -171,19 +170,18 @@ let hdtq_estimate (uu___ : hdtq_dataset_store) (uu___1 : hdtq_bound_qp) :
   Prims.nat=
   failwith "Not yet implemented: Parser.BallyhooHDTQ.hdtq_estimate"
 let hdtq_predicate_present_in_graph (uu___ : hdtq_named_graph_store)
-  (uu___1 : RDF_Graph_Executable.wf_iri) : Prims.bool=
+  (uu___1 : RDF_Term.wf_iri) : Prims.bool=
   failwith
     "Not yet implemented: Parser.BallyhooHDTQ.hdtq_predicate_present_in_graph"
 let hdtq_graph_candidates_for_predicate (uu___ : hdtq_dataset_store)
-  (uu___1 : RDF_Graph_Executable.wf_iri) : hdtq_named_graph_store Prims.list=
+  (uu___1 : RDF_Term.wf_iri) : hdtq_named_graph_store Prims.list=
   failwith
     "Not yet implemented: Parser.BallyhooHDTQ.hdtq_graph_candidates_for_predicate"
 let hdtq_build_bound_qp (ds : hdtq_dataset_store)
-  (s : RDF_Graph_Executable.subject FStar_Pervasives_Native.option)
-  (p : RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option)
-  (o : RDF_Graph_Executable.rdf_term FStar_Pervasives_Native.option)
-  (g : RDF_Graph_Executable.iri FStar_Pervasives_Native.option) :
-  hdtq_bound_qp=
+  (s : RDF_Term.subject FStar_Pervasives_Native.option)
+  (p : RDF_Term.wf_iri FStar_Pervasives_Native.option)
+  (o : RDF_Term.rdf_term FStar_Pervasives_Native.option)
+  (g : RDF_Term.iri FStar_Pervasives_Native.option) : hdtq_bound_qp=
   {
     hqbp_s =
       (match s with
@@ -203,16 +201,16 @@ let hdtq_build_bound_qp (ds : hdtq_dataset_store)
        | FStar_Pervasives_Native.Some gv -> hdtq_encode_graph_name ds gv)
   }
 let hdtq_row_to_quad (ds : hdtq_dataset_store) (row : hdtq_qp_row) :
-  (RDF_Graph_Executable.triple * RDF_Graph_Executable.iri
-    FStar_Pervasives_Native.option) FStar_Pervasives_Native.option=
+  (RDF_Triple.triple * RDF_Term.iri FStar_Pervasives_Native.option)
+    FStar_Pervasives_Native.option=
   match ((row.hqrow_s), (row.hqrow_p), (row.hqrow_o)) with
   | (FStar_Pervasives_Native.Some sr, FStar_Pervasives_Native.Some pr,
      FStar_Pervasives_Native.Some orf) ->
       FStar_Pervasives_Native.Some
         ({
-           RDF_Graph_Executable.s = (hdtq_decode_subject ds sr);
-           RDF_Graph_Executable.p = (hdtq_decode_predicate ds pr);
-           RDF_Graph_Executable.o = (hdtq_decode_object ds orf)
+           RDF_Triple.s = (hdtq_decode_subject ds sr);
+           RDF_Triple.p = (hdtq_decode_predicate ds pr);
+           RDF_Triple.o = (hdtq_decode_object ds orf)
          },
           ((match row.hqrow_g with
             | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
@@ -221,8 +219,8 @@ let hdtq_row_to_quad (ds : hdtq_dataset_store) (row : hdtq_qp_row) :
   | uu___ -> FStar_Pervasives_Native.None
 let rec hdtq_rows_to_quads (ds : hdtq_dataset_store)
   (rows : hdtq_qp_row Prims.list) :
-  (RDF_Graph_Executable.triple * RDF_Graph_Executable.iri
-    FStar_Pervasives_Native.option) Prims.list=
+  (RDF_Triple.triple * RDF_Term.iri FStar_Pervasives_Native.option)
+    Prims.list=
   match rows with
   | [] -> []
   | row::rest ->

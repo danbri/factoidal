@@ -455,7 +455,10 @@ let collect_iri_or_bnode_terms (g : rdf_graph) : list subject =
       | T_BNode b ->
         let ox = S_BNode b in
         if List.Tot.existsb (fun x -> subject_eq x ox) acc1 then acc1 else ox :: acc1
-      | T_Literal _ -> acc1)
+      | T_Literal _ -> acc1
+      // A triple term contributes no node to this subject-position set
+      // (object-only, like a literal).
+      | T_TripleTerm _ _ _ -> acc1)
     []
     g
 
@@ -1095,7 +1098,7 @@ let one_nonNegInteger_literal : wf_literal =
   let l : literal = {
     lexical_form = "1";
     datatype     = xsd_nonNegativeInteger;
-    lang_tag     = None;
+    lang_tag     = None; direction = None 
   } in
   // literal_wf l reduces by definition to (l.datatype <> rdf_lang_string),
   // since l.lang_tag = None. xsd_nonNegativeInteger and rdf_lang_string are

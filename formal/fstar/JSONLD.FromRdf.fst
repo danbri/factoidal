@@ -121,6 +121,7 @@ let term_node_id (o:rdf_term) : option (string & bool) =
   | T_IRI i     -> Some (i, false)
   | T_BNode b   -> Some (strcat "_:" b, true)
   | T_Literal _ -> None
+  | T_TripleTerm _ _ _ -> None   // a triple term is not a node identifier
 
 let starts_with_us (s:string) : bool =
   fs_byte_length s >= 2 && fs_byte_at s 0 = 0x5F && fs_byte_at s 1 = 0x3A
@@ -274,6 +275,10 @@ let rdf_to_object (opts:from_rdf_options) (o:rdf_term) : option ov =
   match o with
   | T_IRI i     -> Some (OV_Ref i)
   | T_BNode b   -> Some (OV_Ref (strcat "_:" b))
+  // JSON-LD has no from-RDF representation for a triple term (the RDF 1.2
+  // JSON-LD triple-term story is not yet settled and out of #305 phase 1);
+  // signal unsupported rather than emit a wrong value object.
+  | T_TripleTerm _ _ _ -> None
   | T_Literal l ->
     let lex : string = l.lexical_form in
     let dt  : string = l.datatype in

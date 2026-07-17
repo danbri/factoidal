@@ -2323,7 +2323,8 @@ let is_class_membership (t : RDF_Triple.triple) : Prims.bool=
     (match t.RDF_Triple.o with
      | RDF_Term.T_IRI c -> Prims.op_Negation (is_meta_type_iri c)
      | RDF_Term.T_BNode uu___ -> true
-     | RDF_Term.T_Literal uu___ -> false)
+     | RDF_Term.T_Literal uu___ -> false
+     | RDF_Term.T_TripleTerm (uu___, uu___1, uu___2) -> false)
 let rec drop_triple (target : RDF_Triple.triple) (g : RDF_Graph.rdf_graph) :
   RDF_Graph.rdf_graph=
   match g with
@@ -2395,7 +2396,8 @@ let pe_zero_literal : RDF_Term.wf_literal=
     {
       RDF_Term.lexical_form = "0";
       RDF_Term.datatype = pe_xsd_nonNegInteger;
-      RDF_Term.lang_tag = FStar_Pervasives_Native.None
+      RDF_Term.lang_tag = FStar_Pervasives_Native.None;
+      RDF_Term.direction = FStar_Pervasives_Native.None
     } in
   l
 let pe_prop_a_bnode : RDF_Term.bnode_id= "__factoidal_pe_prop_a"
@@ -2498,7 +2500,8 @@ let is_negatable_property_assertion (t : RDF_Triple.triple) : Prims.bool=
      (match t.RDF_Triple.o with
       | RDF_Term.T_IRI uu___ -> true
       | RDF_Term.T_BNode uu___ -> true
-      | RDF_Term.T_Literal uu___ -> false))
+      | RDF_Term.T_Literal uu___ -> false
+      | RDF_Term.T_TripleTerm (uu___, uu___1, uu___2) -> false))
     && (Prims.op_Negation (is_axiom_or_special_predicate t.RDF_Triple.p))
 let negate_content_triple (base : RDF_Graph.rdf_graph)
   (t : RDF_Triple.triple) :

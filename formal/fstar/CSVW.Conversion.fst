@@ -251,7 +251,7 @@ let csvw_value_satisfies (base_name : string) (text : string) (dt : option csvw_
 // F* typechecker honest about wf_iri's refinement rather than assuming it.
 let csvw_build_literal (lex : string) (dt : string) : option rdf_term =
   if is_iri dt then
-    let l : literal = { lexical_form = lex; datatype = dt; lang_tag = None } in
+    let l : literal = { lexical_form = lex; datatype = dt; lang_tag = None; direction = None } in
     if literal_wf l then Some (T_Literal l) else None
   else None
 
@@ -265,7 +265,7 @@ let csvw_build_literal (lex : string) (dt : string) : option rdf_term =
 let csvw_build_literal_lang (lex : string) (dt : string) (lang : option string) : option rdf_term =
   match lang, dt = xsd_string with
   | Some l, true ->
-    let lit : literal = { lexical_form = lex; datatype = rdf_lang_string; lang_tag = Some l } in
+    let lit : literal = { lexical_form = lex; datatype = rdf_lang_string; lang_tag = Some l; direction = None } in
     if literal_wf lit then Some (T_Literal lit) else None
   | _ -> csvw_build_literal lex dt
 
@@ -856,7 +856,7 @@ let csvw_row_cell_results
 // Guarded literal builder (same discipline as csvw_build_literal, but
 // with an optional language tag): only a well-formed literal is emitted.
 let csvw_mk_literal (lex : string) (dt : wf_iri) (lang : option string) : option rdf_term =
-  let l : literal = { lexical_form = lex; datatype = dt; lang_tag = lang } in
+  let l : literal = { lexical_form = lex; datatype = dt; lang_tag = lang; direction = None } in
   if literal_wf l then Some (T_Literal l) else None
 
 let csvw_typed_literal_opt (lex : string) (dt : string) : option rdf_term =
@@ -1052,7 +1052,7 @@ let csvw_row_triples_standard
   let row_meta =
     [ { s = row_node; p = rdf_type; o = T_IRI csvw_Row };
       { s = row_node; p = csvw_rownum;
-        o = T_Literal ({ lexical_form = string_of_int row_num; datatype = xsd_integer; lang_tag = None }) } ]
+        o = T_Literal ({ lexical_form = string_of_int row_num; datatype = xsd_integer; lang_tag = None; direction = None }) } ]
     @ (if is_iri row_url then [ { s = row_node; p = csvw_url_pred; o = T_IRI row_url } ] else []) in
   let describes =
     List.Tot.concatMap

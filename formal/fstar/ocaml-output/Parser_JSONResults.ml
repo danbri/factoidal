@@ -475,21 +475,22 @@ let json_get_string_array (key : Prims.string) (obj : json_value) :
            (fun v -> match v with | JString s -> [s] | uu___ -> []) items)
 let mk_literal (lexical : Prims.string) (dt : Prims.string)
   (lang : Prims.string FStar_Pervasives_Native.option) :
-  RDF_Graph_Executable.rdf_term FStar_Pervasives_Native.option=
-  if RDF_Graph_Executable.is_iri dt
+  RDF_Term.rdf_term FStar_Pervasives_Native.option=
+  if RDF_Term.is_iri dt
   then
     let lit =
       {
-        RDF_Graph_Executable.lexical_form = lexical;
-        RDF_Graph_Executable.datatype = dt;
-        RDF_Graph_Executable.lang_tag = lang
+        RDF_Term.lexical_form = lexical;
+        RDF_Term.datatype = dt;
+        RDF_Term.lang_tag = lang;
+        RDF_Term.direction = FStar_Pervasives_Native.None
       } in
-    (if RDF_Graph_Executable.literal_wf lit
-     then FStar_Pervasives_Native.Some (RDF_Graph_Executable.T_Literal lit)
+    (if RDF_Term.literal_wf lit
+     then FStar_Pervasives_Native.Some (RDF_Term.T_Literal lit)
      else FStar_Pervasives_Native.None)
   else FStar_Pervasives_Native.None
 let parse_binding_value (obj : json_value) :
-  RDF_Graph_Executable.rdf_term FStar_Pervasives_Native.option=
+  RDF_Term.rdf_term FStar_Pervasives_Native.option=
   match json_get_string "type" obj with
   | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
   | FStar_Pervasives_Native.Some typ ->
@@ -499,14 +500,12 @@ let parse_binding_value (obj : json_value) :
         | FStar_Pervasives_Native.None -> "" in
       if typ = "uri"
       then
-        (if RDF_Graph_Executable.is_iri val_str
-         then
-           FStar_Pervasives_Native.Some (RDF_Graph_Executable.T_IRI val_str)
+        (if RDF_Term.is_iri val_str
+         then FStar_Pervasives_Native.Some (RDF_Term.T_IRI val_str)
          else FStar_Pervasives_Native.None)
       else
         if typ = "bnode"
-        then
-          FStar_Pervasives_Native.Some (RDF_Graph_Executable.T_BNode val_str)
+        then FStar_Pervasives_Native.Some (RDF_Term.T_BNode val_str)
         else
           if (typ = "literal") || (typ = "typed-literal")
           then
@@ -514,18 +513,18 @@ let parse_binding_value (obj : json_value) :
              let dt = json_get_string "datatype" obj in
              match (lang, dt) with
              | (FStar_Pervasives_Native.Some lang_val, uu___2) ->
-                 mk_literal val_str RDF_Graph_Executable.rdf_lang_string
+                 mk_literal val_str RDF_Term.rdf_lang_string
                    (FStar_Pervasives_Native.Some lang_val)
              | (FStar_Pervasives_Native.None, FStar_Pervasives_Native.Some
                 dt_val) ->
                  mk_literal val_str dt_val FStar_Pervasives_Native.None
              | (FStar_Pervasives_Native.None, FStar_Pervasives_Native.None)
                  ->
-                 mk_literal val_str RDF_Graph_Executable.xsd_string
+                 mk_literal val_str RDF_Term.xsd_string
                    FStar_Pervasives_Native.None)
           else FStar_Pervasives_Native.None
 let parse_binding_row (obj : json_value) :
-  (Prims.string * RDF_Graph_Executable.rdf_term) Prims.list=
+  (Prims.string * RDF_Term.rdf_term) Prims.list=
   match obj with
   | JObject fields ->
       FStar_List_Tot_Base.concatMap
@@ -538,8 +537,8 @@ let parse_binding_row (obj : json_value) :
                 | FStar_Pervasives_Native.None -> [])) fields
   | uu___ -> []
 let parse_srj_results (input : Prims.string) :
-  (Prims.string Prims.list * (Prims.string * RDF_Graph_Executable.rdf_term)
-    Prims.list Prims.list) FStar_Pervasives_Native.option=
+  (Prims.string Prims.list * (Prims.string * RDF_Term.rdf_term) Prims.list
+    Prims.list) FStar_Pervasives_Native.option=
   match parse_json input with
   | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
   | FStar_Pervasives_Native.Some root ->
