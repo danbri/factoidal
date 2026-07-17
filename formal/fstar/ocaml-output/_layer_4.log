@@ -1,12 +1,22 @@
-    HDT.Dictionary.fst (up to date, skipped -- source unchanged since last extract)
-    RDF.Turtle.Serialize.fst (up to date, skipped -- source unchanged since last extract)
-    SPARQL11.Algebra.fst (up to date, skipped -- source unchanged since last extract)
     [Parser.TriG.fst]
-    XSLT.Transform.fst (up to date, skipped -- source unchanged since last extract)
-    Parser.ShExC.fst (up to date, skipped -- source unchanged since last extract)
-    JSONLD.Expand.fst (up to date, skipped -- source unchanged since last extract)
-    RIF.Core.Conformance.fst (up to date, skipped -- source unchanged since last extract)
-    Parser.Ballyhoo.fst (up to date, skipped -- source unchanged since last extract)
-    SPARQL.Plan.Pruning.fst (up to date, skipped -- source unchanged since last extract)
-    SPARQL.Protocol.Client.fst (up to date, skipped -- source unchanged since last extract)
+    [RDF.Turtle.Serialize.fst]
+    [SPARQL11.Algebra.fst]
+    [HDT.Dictionary.fst]
+    [HDT.Dictionary.fst] Extracted module HDT.Dictionary
+    [XSLT.Transform.fst]
+    [XSLT.Transform.fst] Extracted module XSLT.Transform
+    [RIF.Core.Conformance.fst]
+    [RDF.Turtle.Serialize.fst] Extracted module RDF.Turtle.Serialize
+    [JSONLD.Expand.fst]
     [Parser.TriG.fst] Extracted module Parser.TriG
+    [Parser.ShExC.fst]
+    [RIF.Core.Conformance.fst] Extracted module RIF.Core.Conformance
+    [Parser.Ballyhoo.fst]
+    [Parser.Ballyhoo.fst] Extracted module Parser.Ballyhoo
+    [SPARQL.Plan.Pruning.fst]
+    [SPARQL.Plan.Pruning.fst] Extracted module SPARQL.Plan.Pruning
+    [SPARQL.Protocol.Client.fst]
+    [JSONLD.Expand.fst] Extracted module JSONLD.Expand
+    [Parser.ShExC.fst] Extracted module Parser.ShExC
+    [SPARQL.Protocol.Client.fst] Extracted module SPARQL.Protocol.Client
+    [SPARQL11.Algebra.fst] Extracted module SPARQL11.Algebra

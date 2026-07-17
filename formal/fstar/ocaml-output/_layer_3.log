@@ -1,26 +1,48 @@
-    RDF.GraphIsomorphism.fst (up to date, skipped -- source unchanged since last extract)
-    Tableau.CountingOracle.fst (up to date, skipped -- source unchanged since last extract)
+    [RDF.GraphIsomorphism.fst]
+    [Tableau.Refute.fst]
     [RDF.NQuads.Serialize.fst]
-    Tableau.Refute.fst (up to date, skipped -- source unchanged since last extract)
-    [Parser.Turtle.fst]
-    HDT.Container.fst (up to date, skipped -- source unchanged since last extract)
-    [Parser.NQuads.fst]
-    XML.Namespaces.fst (up to date, skipped -- source unchanged since last extract)
-    XPath.Eval.fst (up to date, skipped -- source unchanged since last extract)
-    Parser.RDFXML.fst (up to date, skipped -- source unchanged since last extract)
-    Parser.RIFXML.fst (up to date, skipped -- source unchanged since last extract)
-    MathML.Content.fst (up to date, skipped -- source unchanged since last extract)
-    Parser.SRX.fst (up to date, skipped -- source unchanged since last extract)
-    JSONLD.Context.fst (up to date, skipped -- source unchanged since last extract)
-    JSONLD.FromRdf.fst (up to date, skipped -- source unchanged since last extract)
-    JSONSchema.Validate.fst (up to date, skipped -- source unchanged since last extract)
-    ShEx.Schema.fst (up to date, skipped -- source unchanged since last extract)
-    VC.Context.fst (up to date, skipped -- source unchanged since last extract)
-    VC.DataIntegrity.fst (up to date, skipped -- source unchanged since last extract)
-    RML.Sources.fst (up to date, skipped -- source unchanged since last extract)
-    CSVW.Metadata.fst (up to date, skipped -- source unchanged since last extract)
-    CSVW.Formats.fst (up to date, skipped -- source unchanged since last extract)
-    RDF.CottasStore.CompoundPresenceBitmap.fst (up to date, skipped -- source unchanged since last extract)
+    [Tableau.CountingOracle.fst]
     [RDF.NQuads.Serialize.fst] Extracted module RDF.NQuads.Serialize
+    [Parser.Turtle.fst]
+    [RDF.GraphIsomorphism.fst] Extracted module RDF.GraphIsomorphism
+    [HDT.Container.fst]
+    [Tableau.CountingOracle.fst] Extracted module Tableau.CountingOracle
+    [Parser.NQuads.fst]
+    [HDT.Container.fst] Extracted module HDT.Container
+    [XML.Namespaces.fst]
+    [XML.Namespaces.fst] Extracted module XML.Namespaces
+    [XPath.Eval.fst]
+    [XPath.Eval.fst] Extracted module XPath.Eval
+    [Parser.RDFXML.fst]
+    [Tableau.Refute.fst] Extracted module Tableau.Refute
+    [Parser.RIFXML.fst]
+    [Parser.RIFXML.fst] Extracted module Parser.RIFXML
+    [MathML.Content.fst]
     [Parser.Turtle.fst] Extracted module Parser.Turtle
+    [Parser.SRX.fst]
+    [MathML.Content.fst] Extracted module MathML.Content
+    [JSONLD.Context.fst]
     [Parser.NQuads.fst] Extracted module Parser.NQuads
+    [JSONLD.FromRdf.fst]
+    [Parser.SRX.fst] Extracted module Parser.SRX
+    [JSONSchema.Validate.fst]
+    [JSONSchema.Validate.fst] Extracted module JSONSchema.Validate
+    [ShEx.Schema.fst]
+    [JSONLD.FromRdf.fst] Extracted module JSONLD.FromRdf
+    [VC.Context.fst]
+    [VC.Context.fst] Extracted module VC.Context
+    [VC.DataIntegrity.fst]
+    [Parser.RDFXML.fst]     potential errors, although the original non-split verification condition
+    [Parser.RDFXML.fst] Extracted module Parser.RDFXML
+    [RML.Sources.fst]
+    [RML.Sources.fst] Extracted module RML.Sources
+    [CSVW.Metadata.fst]
+    [CSVW.Metadata.fst] Extracted module CSVW.Metadata
+    [CSVW.Formats.fst]
+    [CSVW.Formats.fst] Extracted module CSVW.Formats
+    [RDF.CottasStore.CompoundPresenceBitmap.fst]
+    [ShEx.Schema.fst] Extracted module ShEx.Schema
+    [RDF.CottasStore.CompoundPresenceBitmap.fst] Extracted module RDF.CottasStore.CompoundPresenceBitmap
+    [VC.DataIntegrity.fst] Extracted module VC.DataIntegrity
+    [JSONLD.Context.fst]     potential errors, although the original non-split verification condition
+    [JSONLD.Context.fst] Extracted module JSONLD.Context
