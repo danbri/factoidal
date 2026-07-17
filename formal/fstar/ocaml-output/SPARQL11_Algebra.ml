@@ -1902,145 +1902,6 @@ let replace_all_chars (haystack : FStar_Char.char Prims.list)
   else
     replace_all_chars_fuel haystack pattern replacement
       (FStar_List_Tot_Base.length haystack)
-let xpath_to_str_regex (p : string) : string =
-  let open Stdlib in
-  let len = String.length p in
-  let buf = Buffer.create (len * 2) in
-  let i = ref 0 in
-  let last_atom = ref "" in
-  let last_atom_start = ref 0 in
-  (* NOT annotated `: int list` — this .ml file has a top-level
-     `open Prims` (F* extraction convention) that shadows the bare
-     `int` type name to `Prims.int = Z.t` (zarith bignum) for the
-     rest of the file, so an explicit `int` annotation here would
-     silently pin this ref to a bignum list instead of Stdlib's
-     native int, conflicting with `Buffer.length buf` (genuinely
-     native int) at every push/pop. Leave it unannotated; the first
-     push below (`(Buffer.length buf) :: !group_starts`) fixes the
-     concrete native-int type from Buffer.length's real signature. *)
-  let group_starts = ref [] in
-  let set_atom s = last_atom_start := Buffer.length buf; last_atom := s; Buffer.add_string buf s in
-  while !i < len do
-    let c = p.[!i] in
-    if c = '\\' && !i + 1 < len then begin
-      let next = p.[!i + 1] in
-      if next = '(' || next = ')' || next = '|' || next = '{' || next = '}' then
-        (set_atom (String.make 1 next); i := !i + 2)
-      else if next = '?' then (set_atom "\?"; i := !i + 2)
-      else if next = '+' then (set_atom "\+"; i := !i + 2)
-      else if next = '*' then (set_atom "\*"; i := !i + 2)
-      else if next = 'd' then (set_atom "[0-9]"; i := !i + 2)
-      else if next = 'D' then (set_atom "[^0-9]"; i := !i + 2)
-      else if next = 'w' then (set_atom "[a-zA-Z0-9_]"; i := !i + 2)
-      else if next = 'W' then (set_atom "[^a-zA-Z0-9_]"; i := !i + 2)
-      else if next = 's' then (set_atom "[ \t\n\r]"; i := !i + 2)
-      else if next = 'S' then (set_atom "[^ \t\n\r]"; i := !i + 2)
-      (* Outside-BMP ShEx characterization (#277 comment / follow-up
-         issue): literal outside-BMP UTF-8 byte sequences embedded
-         directly in a pattern already match correctly (no lead/cont.
-         byte collides with an ASCII regex metachar), so no BMP-range
-         translation belongs here. The XSD/XPath regex SingleCharEsc
-         control escapes 
-  	 DO need translating though: OCaml
-         Str has no notion of them (Str.regexp "\t" matches the
-         literal letter 't', not a tab byte), so without this the
-         ShExJ "REGEXP_escapes" fixtures (which combine these with an
-         astral character, hence their OutsideBMP trait tag) fail on
-         the control-char escape, not on the astral byte matching. *)
-      else if next = 'n' then (set_atom "\n"; i := !i + 2)
-      else if next = 'r' then (set_atom "\r"; i := !i + 2)
-      else if next = 't' then (set_atom "\t"; i := !i + 2)
-      else (let s = String.sub p !i 2 in set_atom s; i := !i + 2)
-    end else if c = '(' then
-      (group_starts := (Buffer.length buf) :: !group_starts;
-       Buffer.add_string buf "\("; last_atom := ""; i := !i + 1)
-    else if c = ')' then begin
-      Buffer.add_string buf "\)";
-      (* #277: capture the FULL group text (not just the closing
-         delimiter) so {n,m} repetition of a group re-emits the whole
-         group instead of stray close-parens. group_starts is a stack
-         (not last_atom_start) because atoms *inside* the group (e.g.
-         the 'b' in "(ab)") run through set_atom too and would
-         otherwise clobber the group's own start position before we
-         get here — nesting-safe via push on '(' / pop on ')'. *)
-      (match !group_starts with
-       | start :: rest ->
-         group_starts := rest;
-         last_atom_start := start;
-         last_atom := Buffer.sub buf start (Buffer.length buf - start)
-       | [] ->
-         (* Unmatched ')' in a malformed pattern: no group to close
-            over, fall back to the pre-#277 behaviour rather than
-            crash on Buffer.sub with a bogus start. *)
-         last_atom := "\)");
-      i := !i + 1
-    end
-    else if c = '|' then
-      (Buffer.add_string buf "\|"; last_atom := ""; i := !i + 1)
-    else if c = '?' || c = '+' || c = '*' then
-      (Buffer.add_char buf c; i := !i + 1)
-    else if c = '{' then begin
-      i := !i + 1;
-      let nb = Buffer.create 8 in
-      while !i < len && p.[!i] <> '}' && p.[!i] <> ',' do
-        Buffer.add_char nb p.[!i]; i := !i + 1 done;
-      let n = try int_of_string (Buffer.contents nb) with _ -> 1 in
-      (* #277: the quantified atom's first occurrence was already
-         written to buf unconditionally by the main loop (set_atom /
-         the group-close branch) before this {n,m} was even parsed.
-         Roll that copy back and rebuild the whole expansion from n
-         and m directly, so a parsed minimum of 0 makes every copy
-         optional instead of leaving one mandatory copy stuck at the
-         front. Behaviourally identical to the old emission for
-         n >= 1 (same text produced), and now also correct for n = 0
-         and the exact-count {0} case. *)
-      Buffer.truncate buf !last_atom_start;
-      if !i < len && p.[!i] = ',' then begin
-        i := !i + 1;
-        let mb = Buffer.create 8 in
-        while !i < len && p.[!i] <> '}' do
-          Buffer.add_char mb p.[!i]; i := !i + 1 done;
-        if !i < len then i := !i + 1;
-        let ms = Buffer.contents mb in
-        if ms = "" then begin
-          (* {n,} unbounded: n mandatory copies + 0-or-more extra *)
-          for _ = 1 to n do Buffer.add_string buf !last_atom done;
-          Buffer.add_string buf !last_atom; Buffer.add_char buf '*'
-        end else begin
-          let m = try int_of_string ms with _ -> n in
-          (* {n,m} bounded: n mandatory + (m - n) individually optional *)
-          for _ = 1 to n do Buffer.add_string buf !last_atom done;
-          for _ = n + 1 to m do
-            Buffer.add_string buf !last_atom;
-            Buffer.add_string buf "?" done
-        end
-      end else begin
-        (* {n} exact: n mandatory copies, none at all when n = 0 *)
-        if !i < len then i := !i + 1;
-        for _ = 1 to n do Buffer.add_string buf !last_atom done
-      end
-    end else if c = '[' then begin
-      let start = !i in
-      i := !i + 1;
-      if !i < len && p.[!i] = '^' then i := !i + 1;
-      if !i < len && p.[!i] = ']' then i := !i + 1;
-      while !i < len && p.[!i] <> ']' do i := !i + 1 done;
-      if !i < len then i := !i + 1;
-      let cls = String.sub p start (!i - start) in
-      set_atom cls
-    end else (set_atom (String.make 1 c); i := !i + 1)
-  done;
-  Buffer.contents buf
-let regex_replace_ref : (Prims.string -> Prims.string -> Prims.string -> Prims.string FStar_Pervasives_Native.option -> Prims.string) ref =
-  ref (fun t _ _ _ -> t)
-let regex_replace (text : Prims.string) (pattern : Prims.string)
-  (replacement : Prims.string)
-  (flags : Prims.string FStar_Pervasives_Native.option) : Prims.string=
-  !regex_replace_ref text pattern replacement flags
-let string_replace (s : Prims.string) (pattern : Prims.string)
-  (replacement : Prims.string)
-  (flags : Prims.string FStar_Pervasives_Native.option) : Prims.string=
-  regex_replace s pattern replacement flags
 let string_replace_literal (s : Prims.string) (pattern : Prims.string)
   (replacement : Prims.string)
   (_flags : Prims.string FStar_Pervasives_Native.option) : Prims.string=
@@ -2215,6 +2076,572 @@ let regex_match (text : Prims.string) (pattern : Prims.string)
          let wrapped = rx_begin_sentinel ::
            (FStar_List_Tot_Base.append input_cps [rx_end_sentinel]) in
          Regex_Exec.matches_norm m wrapped)
+let rx_safe_char (n : Prims.nat) : FStar_Char.char=
+  if
+    (n < (Prims.of_int (0xD7FF))) ||
+      ((n >= (Prims.of_int (0xE000))) && (n <= (Prims.parse_int "0x10FFFF")))
+  then FStar_Char.char_of_int n
+  else FStar_Char.char_of_int (Prims.of_int (0xFFFD))
+let rx_string_of_cps (cps : Prims.nat Prims.list) : Prims.string=
+  FStar_String.string_of_list (FStar_List_Tot_Base.map rx_safe_char cps)
+let rec rx_take (k : Prims.nat) (w : Prims.nat Prims.list) :
+  Prims.nat Prims.list=
+  match w with
+  | [] -> []
+  | c::t ->
+      if k = Prims.int_zero then [] else c :: (rx_take (k - Prims.int_one) t)
+let rec rx_drop (k : Prims.nat) (w : Prims.nat Prims.list) :
+  Prims.nat Prims.list=
+  match w with
+  | [] -> []
+  | uu___::t ->
+      if k = Prims.int_zero then w else rx_drop (k - Prims.int_one) t
+let rx_slice (w : Prims.nat Prims.list) (s : Prims.nat) (e : Prims.nat) :
+  Prims.nat Prims.list= if e > s then rx_take (e - s) (rx_drop s w) else []
+let rec rx_leaf_ends_from (r : Regex_Syntax.regex) (w : Prims.nat Prims.list)
+  (k : Prims.nat) : Prims.nat Prims.list=
+  let here = if Regex_Syntax.nullable r then [k] else [] in
+  match w with
+  | [] -> here
+  | c::rest ->
+      if r = Regex_Syntax.R_Empty
+      then here
+      else
+        FStar_List_Tot_Base.append here
+          (rx_leaf_ends_from (Regex_Exec.nderiv c r) rest (k + Prims.int_one))
+let rx_leaf_ends (r : Regex_Syntax.regex) (w : Prims.nat Prims.list) :
+  Prims.nat Prims.list= rx_leaf_ends_from r w Prims.int_zero
+let rec rx_list_max_opt (xs : Prims.nat Prims.list) :
+  Prims.nat FStar_Pervasives_Native.option=
+  match xs with
+  | [] -> FStar_Pervasives_Native.None
+  | x::t ->
+      (match rx_list_max_opt t with
+       | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.Some x
+       | FStar_Pervasives_Native.Some m ->
+           FStar_Pervasives_Native.Some (if x > m then x else m))
+let rx_longest_end (pr : Regex_Syntax.regex) (suffix : Prims.nat Prims.list)
+  : Prims.nat FStar_Pervasives_Native.option=
+  rx_list_max_opt (rx_leaf_ends pr suffix)
+type rx_cre =
+  | RC_Leaf of Regex_Syntax.regex 
+  | RC_Eps 
+  | RC_Cat of rx_cre * rx_cre 
+  | RC_Alt of rx_cre * rx_cre 
+  | RC_Star of rx_cre 
+  | RC_Group of Prims.nat * rx_cre 
+let uu___is_RC_Leaf (projectee : rx_cre) : Prims.bool=
+  match projectee with | RC_Leaf _0 -> true | uu___ -> false
+let __proj__RC_Leaf__item___0 (projectee : rx_cre) : Regex_Syntax.regex=
+  match projectee with | RC_Leaf _0 -> _0
+let uu___is_RC_Eps (projectee : rx_cre) : Prims.bool=
+  match projectee with | RC_Eps -> true | uu___ -> false
+let uu___is_RC_Cat (projectee : rx_cre) : Prims.bool=
+  match projectee with | RC_Cat (_0, _1) -> true | uu___ -> false
+let __proj__RC_Cat__item___0 (projectee : rx_cre) : rx_cre=
+  match projectee with | RC_Cat (_0, _1) -> _0
+let __proj__RC_Cat__item___1 (projectee : rx_cre) : rx_cre=
+  match projectee with | RC_Cat (_0, _1) -> _1
+let uu___is_RC_Alt (projectee : rx_cre) : Prims.bool=
+  match projectee with | RC_Alt (_0, _1) -> true | uu___ -> false
+let __proj__RC_Alt__item___0 (projectee : rx_cre) : rx_cre=
+  match projectee with | RC_Alt (_0, _1) -> _0
+let __proj__RC_Alt__item___1 (projectee : rx_cre) : rx_cre=
+  match projectee with | RC_Alt (_0, _1) -> _1
+let uu___is_RC_Star (projectee : rx_cre) : Prims.bool=
+  match projectee with | RC_Star _0 -> true | uu___ -> false
+let __proj__RC_Star__item___0 (projectee : rx_cre) : rx_cre=
+  match projectee with | RC_Star _0 -> _0
+let uu___is_RC_Group (projectee : rx_cre) : Prims.bool=
+  match projectee with | RC_Group (_0, _1) -> true | uu___ -> false
+let __proj__RC_Group__item___0 (projectee : rx_cre) : Prims.nat=
+  match projectee with | RC_Group (_0, _1) -> _0
+let __proj__RC_Group__item___1 (projectee : rx_cre) : rx_cre=
+  match projectee with | RC_Group (_0, _1) -> _1
+let rec rx_cre_size (r : rx_cre) : Prims.nat=
+  match r with
+  | RC_Leaf uu___ -> Prims.int_one
+  | RC_Eps -> Prims.int_one
+  | RC_Cat (a, b) -> (Prims.int_one + (rx_cre_size a)) + (rx_cre_size b)
+  | RC_Alt (a, b) -> (Prims.int_one + (rx_cre_size a)) + (rx_cre_size b)
+  | RC_Star a -> Prims.int_one + (rx_cre_size a)
+  | RC_Group (uu___, a) -> Prims.int_one + (rx_cre_size a)
+let rec rx_cre_fold_ci (r : rx_cre) : rx_cre=
+  match r with
+  | RC_Leaf x -> RC_Leaf (rx_fold_ci x)
+  | RC_Eps -> RC_Eps
+  | RC_Cat (a, b) -> RC_Cat ((rx_cre_fold_ci a), (rx_cre_fold_ci b))
+  | RC_Alt (a, b) -> RC_Alt ((rx_cre_fold_ci a), (rx_cre_fold_ci b))
+  | RC_Star a -> RC_Star (rx_cre_fold_ci a)
+  | RC_Group (n, a) -> RC_Group (n, (rx_cre_fold_ci a))
+let rec rx_cre_dotall (r : rx_cre) : rx_cre=
+  match r with
+  | RC_Leaf x -> RC_Leaf (rx_dotall x)
+  | RC_Eps -> RC_Eps
+  | RC_Cat (a, b) -> RC_Cat ((rx_cre_dotall a), (rx_cre_dotall b))
+  | RC_Alt (a, b) -> RC_Alt ((rx_cre_dotall a), (rx_cre_dotall b))
+  | RC_Star a -> RC_Star (rx_cre_dotall a)
+  | RC_Group (n, a) -> RC_Group (n, (rx_cre_dotall a))
+let rec rx_cre_repeat_exact (r : rx_cre) (n : Prims.nat) : rx_cre=
+  if n = Prims.int_zero
+  then RC_Eps
+  else RC_Cat (r, (rx_cre_repeat_exact r (n - Prims.int_one)))
+let rec rx_cre_repeat_opt (r : rx_cre) (k : Prims.nat) : rx_cre=
+  if k = Prims.int_zero
+  then RC_Eps
+  else
+    RC_Cat ((RC_Alt (r, RC_Eps)), (rx_cre_repeat_opt r (k - Prims.int_one)))
+let rx_cparse_brace (r : rx_cre) (t : Prims.nat Prims.list) :
+  (rx_cre * Prims.nat Prims.list) FStar_Pervasives_Native.option=
+  match Regex_XSDPattern.read_uint t with
+  | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+  | FStar_Pervasives_Native.Some (n, t1) ->
+      (match t1 with
+       | c::t2 ->
+           if c = Regex_XSDPattern.cp_rbrace
+           then FStar_Pervasives_Native.Some ((rx_cre_repeat_exact r n), t2)
+           else
+             if c = Regex_XSDPattern.cp_comma
+             then
+               (match t2 with
+                | c2::t3 ->
+                    if c2 = Regex_XSDPattern.cp_rbrace
+                    then
+                      FStar_Pervasives_Native.Some
+                        ((RC_Cat ((rx_cre_repeat_exact r n), (RC_Star r))),
+                          t3)
+                    else
+                      (match Regex_XSDPattern.read_uint t2 with
+                       | FStar_Pervasives_Native.None ->
+                           FStar_Pervasives_Native.None
+                       | FStar_Pervasives_Native.Some (m, t3') ->
+                           (match t3' with
+                            | c3::t4 ->
+                                if
+                                  (c3 = Regex_XSDPattern.cp_rbrace) &&
+                                    (m >= n)
+                                then
+                                  FStar_Pervasives_Native.Some
+                                    ((RC_Cat
+                                        ((rx_cre_repeat_exact r n),
+                                          (rx_cre_repeat_opt r (m - n)))),
+                                      t4)
+                                else FStar_Pervasives_Native.None
+                            | [] -> FStar_Pervasives_Native.None))
+                | [] -> FStar_Pervasives_Native.None)
+             else FStar_Pervasives_Native.None
+       | [] -> FStar_Pervasives_Native.None)
+let rx_cparse_quant (r : rx_cre) (rest : Prims.nat Prims.list) :
+  (rx_cre * Prims.nat Prims.list) FStar_Pervasives_Native.option=
+  match rest with
+  | [] -> FStar_Pervasives_Native.Some (r, rest)
+  | q::t ->
+      if q = Regex_XSDPattern.cp_star
+      then
+        FStar_Pervasives_Native.Some
+          ((RC_Star r), (Regex_XSDPattern.skip_lazy t))
+      else
+        if q = Regex_XSDPattern.cp_plus
+        then
+          FStar_Pervasives_Native.Some
+            ((RC_Cat (r, (RC_Star r))), (Regex_XSDPattern.skip_lazy t))
+        else
+          if q = Regex_XSDPattern.cp_question
+          then
+            FStar_Pervasives_Native.Some
+              ((RC_Alt (r, RC_Eps)), (Regex_XSDPattern.skip_lazy t))
+          else
+            if q = Regex_XSDPattern.cp_lbrace
+            then
+              (match rx_cparse_brace r t with
+               | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+               | FStar_Pervasives_Native.Some (r', t') ->
+                   FStar_Pervasives_Native.Some
+                     (r', (Regex_XSDPattern.skip_lazy t')))
+            else FStar_Pervasives_Native.Some (r, rest)
+let rec rx_cparse_alt (fuel : Prims.nat) (input : Prims.nat Prims.list)
+  (g : Prims.nat) :
+  (rx_cre * Prims.nat Prims.list * Prims.nat) FStar_Pervasives_Native.option=
+  if fuel = Prims.int_zero
+  then FStar_Pervasives_Native.None
+  else
+    (match rx_cparse_seq (fuel - Prims.int_one) input g with
+     | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+     | FStar_Pervasives_Native.Some (r1, rest, g1) ->
+         (match rest with
+          | c::t ->
+              if c = Regex_XSDPattern.cp_pipe
+              then
+                (match rx_cparse_alt (fuel - Prims.int_one) t g1 with
+                 | FStar_Pervasives_Native.None ->
+                     FStar_Pervasives_Native.None
+                 | FStar_Pervasives_Native.Some (r2, rest2, g2) ->
+                     FStar_Pervasives_Native.Some
+                       ((RC_Alt (r1, r2)), rest2, g2))
+              else FStar_Pervasives_Native.Some (r1, rest, g1)
+          | [] -> FStar_Pervasives_Native.Some (r1, rest, g1)))
+and rx_cparse_seq (fuel : Prims.nat) (input : Prims.nat Prims.list)
+  (g : Prims.nat) :
+  (rx_cre * Prims.nat Prims.list * Prims.nat) FStar_Pervasives_Native.option=
+  if fuel = Prims.int_zero
+  then FStar_Pervasives_Native.None
+  else
+    (match input with
+     | [] -> FStar_Pervasives_Native.Some (RC_Eps, [], g)
+     | h::uu___1 ->
+         if
+           (h = Regex_XSDPattern.cp_pipe) || (h = Regex_XSDPattern.cp_rparen)
+         then FStar_Pervasives_Native.Some (RC_Eps, input, g)
+         else
+           (match rx_cparse_rep (fuel - Prims.int_one) input g with
+            | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+            | FStar_Pervasives_Native.Some (r1, rest, g1) ->
+                (match rest with
+                 | [] -> FStar_Pervasives_Native.Some (r1, [], g1)
+                 | h2::uu___3 ->
+                     if
+                       (h2 = Regex_XSDPattern.cp_pipe) ||
+                         (h2 = Regex_XSDPattern.cp_rparen)
+                     then FStar_Pervasives_Native.Some (r1, rest, g1)
+                     else
+                       (match rx_cparse_seq (fuel - Prims.int_one) rest g1
+                        with
+                        | FStar_Pervasives_Native.None ->
+                            FStar_Pervasives_Native.None
+                        | FStar_Pervasives_Native.Some (r2, rest2, g2) ->
+                            FStar_Pervasives_Native.Some
+                              ((RC_Cat (r1, r2)), rest2, g2)))))
+and rx_cparse_rep (fuel : Prims.nat) (input : Prims.nat Prims.list)
+  (g : Prims.nat) :
+  (rx_cre * Prims.nat Prims.list * Prims.nat) FStar_Pervasives_Native.option=
+  if fuel = Prims.int_zero
+  then FStar_Pervasives_Native.None
+  else
+    (match rx_cparse_atom (fuel - Prims.int_one) input g with
+     | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+     | FStar_Pervasives_Native.Some (r, rest, g1) ->
+         (match rx_cparse_quant r rest with
+          | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+          | FStar_Pervasives_Native.Some (r', rest') ->
+              FStar_Pervasives_Native.Some (r', rest', g1)))
+and rx_cparse_atom (fuel : Prims.nat) (input : Prims.nat Prims.list)
+  (g : Prims.nat) :
+  (rx_cre * Prims.nat Prims.list * Prims.nat) FStar_Pervasives_Native.option=
+  if fuel = Prims.int_zero
+  then FStar_Pervasives_Native.None
+  else
+    (match input with
+     | [] -> FStar_Pervasives_Native.None
+     | h::t ->
+         if h = Regex_XSDPattern.cp_lparen
+         then rx_cparse_group (fuel - Prims.int_one) t g
+         else
+           if h = Regex_XSDPattern.cp_lbracket
+           then
+             (match Regex_XSDPattern.parse_class t with
+              | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+              | FStar_Pervasives_Native.Some (r, rest) ->
+                  FStar_Pervasives_Native.Some ((RC_Leaf r), rest, g))
+           else
+             if h = Regex_XSDPattern.cp_dot
+             then
+               FStar_Pervasives_Native.Some
+                 ((RC_Leaf Regex_XSDPattern.dot_regex), t, g)
+             else
+               if h = Regex_XSDPattern.cp_caret
+               then FStar_Pervasives_Native.Some (RC_Eps, t, g)
+               else
+                 if h = Regex_XSDPattern.cp_dollar
+                 then FStar_Pervasives_Native.Some (RC_Eps, t, g)
+                 else
+                   if h = Regex_XSDPattern.cp_backslash
+                   then
+                     (match t with
+                      | [] -> FStar_Pervasives_Native.None
+                      | letter::t2 ->
+                          (match Regex_XSDPattern.parse_escape_atom letter t2
+                           with
+                           | FStar_Pervasives_Native.None ->
+                               FStar_Pervasives_Native.None
+                           | FStar_Pervasives_Native.Some (r, rest) ->
+                               FStar_Pervasives_Native.Some
+                                 ((RC_Leaf r), rest, g)))
+                   else
+                     if Regex_XSDPattern.is_atom_meta h
+                     then FStar_Pervasives_Native.None
+                     else
+                       FStar_Pervasives_Native.Some
+                         ((RC_Leaf (Regex_XSDPattern.single h)), t, g))
+and rx_cparse_group (fuel : Prims.nat) (t : Prims.nat Prims.list)
+  (g : Prims.nat) :
+  (rx_cre * Prims.nat Prims.list * Prims.nat) FStar_Pervasives_Native.option=
+  if fuel = Prims.int_zero
+  then FStar_Pervasives_Native.None
+  else
+    (match t with
+     | q::c::t2 ->
+         if
+           (q = Regex_XSDPattern.cp_question) &&
+             (c = Regex_XSDPattern.cp_colon)
+         then rx_cparse_noncap (fuel - Prims.int_one) t2 g
+         else
+           if q = Regex_XSDPattern.cp_question
+           then FStar_Pervasives_Native.None
+           else rx_cparse_cap (fuel - Prims.int_one) t g
+     | q::uu___1 ->
+         if q = Regex_XSDPattern.cp_question
+         then FStar_Pervasives_Native.None
+         else rx_cparse_cap (fuel - Prims.int_one) t g
+     | [] -> FStar_Pervasives_Native.None)
+and rx_cparse_cap (fuel : Prims.nat) (t : Prims.nat Prims.list)
+  (g : Prims.nat) :
+  (rx_cre * Prims.nat Prims.list * Prims.nat) FStar_Pervasives_Native.option=
+  if fuel = Prims.int_zero
+  then FStar_Pervasives_Native.None
+  else
+    (match rx_cparse_alt (fuel - Prims.int_one) t (g + Prims.int_one) with
+     | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+     | FStar_Pervasives_Native.Some (r, rest, g') ->
+         (match rest with
+          | c::t2 ->
+              if c = Regex_XSDPattern.cp_rparen
+              then FStar_Pervasives_Native.Some ((RC_Group (g, r)), t2, g')
+              else FStar_Pervasives_Native.None
+          | [] -> FStar_Pervasives_Native.None))
+and rx_cparse_noncap (fuel : Prims.nat) (t : Prims.nat Prims.list)
+  (g : Prims.nat) :
+  (rx_cre * Prims.nat Prims.list * Prims.nat) FStar_Pervasives_Native.option=
+  if fuel = Prims.int_zero
+  then FStar_Pervasives_Native.None
+  else
+    (match rx_cparse_alt (fuel - Prims.int_one) t g with
+     | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+     | FStar_Pervasives_Native.Some (r, rest, g') ->
+         (match rest with
+          | c::t2 ->
+              if c = Regex_XSDPattern.cp_rparen
+              then FStar_Pervasives_Native.Some (r, t2, g')
+              else FStar_Pervasives_Native.None
+          | [] -> FStar_Pervasives_Native.None))
+let rx_parse_capturing (cps : Prims.nat Prims.list) :
+  rx_cre FStar_Pervasives_Native.option=
+  let fuel =
+    (Prims.of_int (16)) *
+      ((FStar_List_Tot_Base.length cps) + (Prims.of_int (4))) in
+  match rx_cparse_alt fuel cps Prims.int_one with
+  | FStar_Pervasives_Native.Some (r, [], uu___) ->
+      FStar_Pervasives_Native.Some r
+  | uu___ -> FStar_Pervasives_Native.None
+let rec rx_cmatch (fuel : Prims.nat) (r : rx_cre) (w : Prims.nat Prims.list)
+  (pos : Prims.nat) :
+  (Prims.nat Prims.list * Prims.nat * (Prims.nat * Prims.nat * Prims.nat)
+    Prims.list) Prims.list=
+  if fuel = Prims.int_zero
+  then []
+  else
+    (match r with
+     | RC_Eps -> [(w, pos, [])]
+     | RC_Leaf x ->
+         FStar_List_Tot_Base.map
+           (fun k -> let ep = pos + k in ((rx_drop k w), ep, []))
+           (rx_leaf_ends x w)
+     | RC_Cat (a, b) ->
+         FStar_List_Tot_Base.concatMap
+           (fun oa ->
+              let uu___1 = oa in
+              match uu___1 with
+              | (resta, epa, capa) ->
+                  FStar_List_Tot_Base.map
+                    (fun ob ->
+                       let uu___2 = ob in
+                       match uu___2 with
+                       | (restb, epb, capb) ->
+                           (restb, epb,
+                             (FStar_List_Tot_Base.append capa capb)))
+                    (rx_cmatch (fuel - Prims.int_one) b resta epa))
+           (rx_cmatch (fuel - Prims.int_one) a w pos)
+     | RC_Alt (a, b) ->
+         FStar_List_Tot_Base.append
+           (rx_cmatch (fuel - Prims.int_one) a w pos)
+           (rx_cmatch (fuel - Prims.int_one) b w pos)
+     | RC_Group (n, inner) ->
+         FStar_List_Tot_Base.map
+           (fun o ->
+              let uu___1 = o in
+              match uu___1 with
+              | (rest, ep, caps) -> (rest, ep, ((n, pos, ep) :: caps)))
+           (rx_cmatch (fuel - Prims.int_one) inner w pos)
+     | RC_Star inner -> (w, pos, []) ::
+         (FStar_List_Tot_Base.concatMap
+            (fun oi ->
+               let uu___1 = oi in
+               match uu___1 with
+               | (rest, ep, capi) ->
+                   if
+                     (FStar_List_Tot_Base.length rest) <
+                       (FStar_List_Tot_Base.length w)
+                   then
+                     FStar_List_Tot_Base.map
+                       (fun o2 ->
+                          let uu___2 = o2 in
+                          match uu___2 with
+                          | (rest2, ep2, cap2) ->
+                              (rest2, ep2,
+                                (FStar_List_Tot_Base.append capi cap2)))
+                       (rx_cmatch (fuel - Prims.int_one) (RC_Star inner) rest
+                          ep)
+                   else []) (rx_cmatch (fuel - Prims.int_one) inner w pos)))
+let rec rx_pick_caps
+  (outs :
+    (Prims.nat Prims.list * Prims.nat * (Prims.nat * Prims.nat * Prims.nat)
+      Prims.list) Prims.list)
+  (target : Prims.nat) : (Prims.nat * Prims.nat * Prims.nat) Prims.list=
+  match outs with
+  | [] -> []
+  | (uu___, ep, caps)::t ->
+      if ep = target then caps else rx_pick_caps t target
+let rec rx_find_cap (caps : (Prims.nat * Prims.nat * Prims.nat) Prims.list)
+  (n : Prims.nat) : (Prims.nat * Prims.nat) FStar_Pervasives_Native.option=
+  match caps with
+  | [] -> FStar_Pervasives_Native.None
+  | (gnum, s, e)::t ->
+      if gnum = n
+      then FStar_Pervasives_Native.Some (s, e)
+      else rx_find_cap t n
+let rx_group_text (input : Prims.nat Prims.list)
+  (caps : (Prims.nat * Prims.nat * Prims.nat) Prims.list) (n : Prims.nat) :
+  Prims.nat Prims.list=
+  match rx_find_cap caps n with
+  | FStar_Pervasives_Native.None -> []
+  | FStar_Pervasives_Native.Some (s, e) -> rx_slice input s e
+let rec rx_expand_template (rep : Prims.nat Prims.list)
+  (input : Prims.nat Prims.list) (mstart : Prims.nat) (mend : Prims.nat)
+  (caps : (Prims.nat * Prims.nat * Prims.nat) Prims.list) :
+  Prims.nat Prims.list=
+  match rep with
+  | [] -> []
+  | c::t ->
+      if c = rx_cp_backslash
+      then
+        (match t with
+         | c2::t2 -> c2 :: (rx_expand_template t2 input mstart mend caps)
+         | [] -> [c])
+      else
+        if c = (Prims.of_int (0x24))
+        then
+          (match t with
+           | d::t2 ->
+               if
+                 (d >= (Prims.of_int (0x30))) && (d <= (Prims.of_int (0x39)))
+               then
+                 let gnum = d - (Prims.of_int (0x30)) in
+                 let gt =
+                   if gnum = Prims.int_zero
+                   then rx_slice input mstart mend
+                   else rx_group_text input caps gnum in
+                 FStar_List_Tot_Base.append gt
+                   (rx_expand_template t2 input mstart mend caps)
+               else c :: (rx_expand_template t input mstart mend caps)
+           | [] -> [c])
+        else c :: (rx_expand_template t input mstart mend caps)
+let rec rx_template_has_group (rep : Prims.nat Prims.list) : Prims.bool=
+  match rep with
+  | [] -> false
+  | c::t ->
+      if c = rx_cp_backslash
+      then
+        (match t with | uu___::t2 -> rx_template_has_group t2 | [] -> false)
+      else
+        if c = (Prims.of_int (0x24))
+        then
+          (match t with
+           | d::uu___1 ->
+               if
+                 (d >= (Prims.of_int (0x30))) && (d <= (Prims.of_int (0x39)))
+               then true
+               else rx_template_has_group t
+           | [] -> false)
+        else rx_template_has_group t
+let rx_cmatch_fuel (cre : rx_cre) (suffix : Prims.nat Prims.list) :
+  Prims.nat=
+  ((rx_cre_size cre) + Prims.int_one) *
+    ((FStar_List_Tot_Base.length suffix) + (Prims.of_int (2)))
+let rec rx_replace_loop (fuel : Prims.nat) (pr : Regex_Syntax.regex)
+  (cre_opt : rx_cre FStar_Pervasives_Native.option)
+  (rep : Prims.nat Prims.list) (input_all : Prims.nat Prims.list)
+  (suffix : Prims.nat Prims.list) (pos : Prims.nat) : Prims.nat Prims.list=
+  if fuel = Prims.int_zero
+  then suffix
+  else
+    (match suffix with
+     | [] -> []
+     | c::rest ->
+         (match rx_longest_end pr suffix with
+          | FStar_Pervasives_Native.None -> c ::
+              (rx_replace_loop (fuel - Prims.int_one) pr cre_opt rep
+                 input_all rest (pos + Prims.int_one))
+          | FStar_Pervasives_Native.Some len ->
+              if len = Prims.int_zero
+              then c ::
+                (rx_replace_loop (fuel - Prims.int_one) pr cre_opt rep
+                   input_all rest (pos + Prims.int_one))
+              else
+                (let mend = pos + len in
+                 let caps =
+                   match cre_opt with
+                   | FStar_Pervasives_Native.None -> []
+                   | FStar_Pervasives_Native.Some cre ->
+                       rx_pick_caps
+                         (rx_cmatch (rx_cmatch_fuel cre suffix) cre suffix
+                            pos) mend in
+                 let expanded =
+                   rx_expand_template rep input_all pos mend caps in
+                 let new_suffix = rx_drop len suffix in
+                 FStar_List_Tot_Base.append expanded
+                   (rx_replace_loop (fuel - Prims.int_one) pr cre_opt rep
+                      input_all new_suffix mend))))
+let regex_replace (text : Prims.string) (pattern : Prims.string)
+  (replacement : Prims.string)
+  (flags : Prims.string FStar_Pervasives_Native.option) : Prims.string=
+  let has_i = rx_flag_has flags 105 in
+  let has_s = rx_flag_has flags 115 in
+  let has_x = rx_flag_has flags 120 in
+  let has_q = rx_flag_has flags 113 in
+  let input_cps = Regex_XSDPattern.cps_of_string text in
+  let rep_cps = Regex_XSDPattern.cps_of_string replacement in
+  let pat_cps0 = Regex_XSDPattern.cps_of_string pattern in
+  let fuel = (FStar_List_Tot_Base.length input_cps) + Prims.int_one in
+  if has_q
+  then
+    let core0 = rx_literal_regex pat_cps0 in
+    let pr = if has_i then rx_fold_ci core0 else core0 in
+    rx_string_of_cps
+      (rx_replace_loop fuel pr FStar_Pervasives_Native.None rep_cps input_cps
+         input_cps Prims.int_zero)
+  else
+    (let pat_cps1 = if has_x then rx_strip_ws pat_cps0 false else pat_cps0 in
+     match Regex_XSDPattern.parse_cps pat_cps1 with
+     | FStar_Pervasives_Native.None -> text
+     | FStar_Pervasives_Native.Some r0 ->
+         let r1 = if has_s then rx_dotall r0 else r0 in
+         let pr = if has_i then rx_fold_ci r1 else r1 in
+         let cre_opt =
+           if rx_template_has_group rep_cps
+           then
+             match rx_parse_capturing pat_cps1 with
+             | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+             | FStar_Pervasives_Native.Some cre0 ->
+                 let cre1 = if has_s then rx_cre_dotall cre0 else cre0 in
+                 FStar_Pervasives_Native.Some
+                   ((if has_i then rx_cre_fold_ci cre1 else cre1))
+           else FStar_Pervasives_Native.None in
+         rx_string_of_cps
+           (rx_replace_loop fuel pr cre_opt rep_cps input_cps input_cps
+              Prims.int_zero))
+let string_replace (s : Prims.string) (pattern : Prims.string)
+  (replacement : Prims.string)
+  (flags : Prims.string FStar_Pervasives_Native.option) : Prims.string=
+  regex_replace s pattern replacement flags
 let fn_substr_spec (s : Prims.string) (start : Prims.nat)
   (len : Prims.nat FStar_Pervasives_Native.option) : Prims.string=
   let idx =
@@ -5477,93 +5904,6 @@ and eval_concat_with_base
        | FStar_Pervasives_Native.None -> ER_Error)
 let () = eval_expr_ebv_ref := (fun base e mu -> ebv (eval_expr_with_base base e mu))
 let () = eval_expr_fwd_ref := (fun base e mu -> eval_expr_with_base base e mu)
-let () = regex_replace_ref := (fun text pattern replacement flags ->
-  try
-    let case_insensitive = match flags with
-      | FStar_Pervasives_Native.Some f -> String.contains f 'i'
-      | FStar_Pervasives_Native.None -> false in
-    let converted = xpath_to_str_regex pattern in
-    let re = if case_insensitive
-      then Str.regexp_case_fold converted
-      else Str.regexp converted in
-    (* Manual global replace that handles unmatched groups gracefully.
-       OCaml Str.matched_group raises Not_found for unmatched groups;
-       we replace them with empty string per XPath/SPARQL semantics. *)
-    let open Stdlib in
-    let build_replacement matched_text =
-      let len = String.length replacement in
-      let buf = Buffer.create len in
-      let i = ref 0 in
-      while !i < len do
-        if replacement.[!i] = '$' && !i + 1 < len &&
-           replacement.[!i + 1] >= '0' && replacement.[!i + 1] <= '9' then begin
-          let group_n = Char.code replacement.[!i + 1] - Char.code '0' in
-          (try Buffer.add_string buf (Str.matched_group group_n matched_text)
-           with Not_found -> ());
-          i := !i + 2
-        end else begin
-          Buffer.add_char buf replacement.[!i];
-          i := !i + 1
-        end
-      done;
-      Buffer.contents buf
-    in
-    (* UTF-8 correction: OCaml Str treats the input as bytes. A character
-       class like `[^a-z0-9]` will match each byte of a multi-byte codepoint
-       separately — e.g. "日" (E6 97 A5) produces three matches instead of one.
-       We post-process Str matches so that:
-         * a match starting at a UTF-8 continuation byte is skipped
-           (it's inside a codepoint the regex couldn't actually match),
-         * a single-byte match whose byte is a UTF-8 lead byte is extended
-           to cover the whole codepoint.
-       SPARQL REPLACE is defined over codepoint strings (XPath regex). *)
-    let utf8_cp_len_at s pos =
-      if pos >= String.length s then 1
-      else
-        let c = Char.code s.[pos] in
-        if c < 0x80 then 1
-        else if c < 0xC0 then 1
-        else if c < 0xE0 then 2
-        else if c < 0xF0 then 3
-        else 4
-    in
-    let is_utf8_cont s pos =
-      pos < String.length s && (Char.code s.[pos] land 0xC0) = 0x80
-    in
-    let result = Buffer.create (String.length text) in
-    let pos = ref 0 in
-    (try
-      while true do
-        ignore (Str.search_forward re text !pos);
-        let m_start = Str.match_beginning () in
-        let m_end = Str.match_end () in
-        if is_utf8_cont text m_start then begin
-          Buffer.add_string result (String.sub text !pos (m_start - !pos));
-          Buffer.add_char result text.[m_start];
-          pos := m_start + 1
-        end else begin
-          let m_end' =
-            if m_end = m_start + 1 then
-              let cp_len = utf8_cp_len_at text m_start in
-              if cp_len > 1 then m_start + cp_len else m_end
-            else m_end
-          in
-          Buffer.add_string result (String.sub text !pos (m_start - !pos));
-          Buffer.add_string result (build_replacement text);
-          pos := m_end';
-          if m_start = m_end' then begin
-            if !pos < String.length text then begin
-              let step = utf8_cp_len_at text !pos in
-              Buffer.add_string result (String.sub text !pos step);
-              pos := !pos + step
-            end else raise Not_found
-          end
-        end
-      done
-    with Not_found -> ());
-    Buffer.add_string result (String.sub text !pos (String.length text - !pos));
-    Buffer.contents result
-  with _ -> text)
 type group = {
   g_key: eval_result Prims.list ;
   g_solutions: solution_sequence }

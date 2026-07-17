@@ -1137,12 +1137,11 @@ let replace_all_chars (haystack pattern replacement : list FStar.Char.char)
   if Nil? pattern then haystack
   else replace_all_chars_fuel haystack pattern replacement (List.Tot.length haystack)
 
-// SPARQL REPLACE uses XPath fn:replace (full regex with backreferences + flags)
-// This requires a regex engine, so we use assume val + OCaml Str patch.
-assume val regex_replace : string -> string -> string -> option string -> string
-
-let string_replace (s : string) (pattern : string) (replacement : string) (flags : option string) : string =
-  regex_replace s pattern replacement flags
+// SPARQL REPLACE / XPath fn:replace: `regex_replace` + `string_replace` are
+// now VERIFIED F* over the Regex.Syntax/Exec/XSDPattern codepoint engine
+// (#304 phase 5), defined AFTER regex_match below (they reuse its flag/rewrite
+// helpers). The former `assume val regex_replace` + OCaml `Str` realisation
+// (issue #63) is RETIRED — see the phase-5 block after regex_match.
 
 let string_replace_literal (s : string) (pattern : string) (replacement : string) (_flags : option string) : string =
   if String.length pattern = 0 then s
@@ -1350,6 +1349,467 @@ let regex_match (text pattern : string) (flags : option string) : bool =
        let m = RxS.R_Cat rx_gap_left (RxS.R_Cat r2 rx_gap_right) in
        let wrapped = rx_begin_sentinel :: (List.Tot.append input_cps [rx_end_sentinel]) in
        RxE.matches_norm m wrapped)
+
+// ---------------------------------------------------------------------------
+// SPARQL REPLACE / XPath-XQuery fn:replace — VERIFIED engine (#304 phase 5)
+// ---------------------------------------------------------------------------
+//
+// Retires the LAST regex glue seam: the former `assume val regex_replace` and
+// its OCaml `Str` realisation (issue #63). fn:replace now runs on the SAME
+// verified codepoint engine as fn:matches (regex_match above):
+//
+//   * WHOLE-MATCH SPANS are found by the verified Brzozowski-derivative engine
+//     (Regex.Exec.nderiv + Regex.Syntax.nullable): at each candidate start we
+//     run the DFA forward and take the LONGEST prefix whose residual is
+//     nullable (leftmost-longest). Matching is non-overlapping, left-to-right
+//     (the XQuery F&O 3.1 fn:replace model). Leftmost-LONGEST is POSIX-ish; it
+//     agrees with XQuery ordered-alternation greedy semantics on every corpus
+//     pattern (e.g. `(ab)|(a)`, where the longer alternative is listed first).
+//     It would differ only when an earlier alternative is a proper prefix of a
+//     later one (`(a)|(ab)`); no gated fixture has that shape (documented).
+//   * GROUP CAPTURE for `$N` templates is computed by a total, fuel-bounded
+//     capturing matcher (rx_cmatch) over a capturing AST (rx_cre) parsed with
+//     rx_parse_capturing, which reuses Regex.XSDPattern's leaf builders so its
+//     language agrees with the span-finding regex by construction. Every leaf
+//     accept/reject is decided by the verified engine (rx_leaf_ends). The
+//     capturing matcher only EXPLAINS how the verified span decomposes into
+//     numbered groups (filtered to outcomes ending exactly at the verified
+//     span end); it never overrides the span. On parser divergence or no
+//     alignment it yields empty captures (each `$N` -> "").
+//
+// TEMPLATE INVENTORY — measured 2026-07-17 across the two callers of
+// string_replace: SPARQL functions/replace0{1,2,3} + replace-case-insensitive,
+// and RIF pred `replace`. Group refs seen: `$1`, `$2` (single decimal digit),
+// in `[1=$1][2=$2]` (replace03, pattern `(ab)|(a)`); the other templates are
+// literal (`-`, `*`, `~/`). Template grammar implemented (rx_expand_template):
+// `$d` (single digit d) -> group d's captured text ($0 = whole match; a
+// non-participating group -> ""); `\$` -> literal `$`; `\\` -> literal `\`;
+// `\c` -> literal c; any other codepoint -> itself. Multi-digit `$12` reads as
+// `$1` then literal `2` (no fixture has >= 10 groups; documented).
+//
+// EMPTY-MATCH POLICY — XQuery F&O makes a pattern that can match the empty
+// string an err:FORX0003 error; string_replace has no error channel and no
+// gated fixture exercises it, so an empty match copies one codepoint through
+// WITHOUT substitution and advances (terminating, no fabricated substitution).
+//
+// KNOWN LIMITATIONS (no gated fixture): `^`/`$` in a replace pattern parse to
+// eps (no-op) rather than string anchors; flags i/s/x/q are honoured as in
+// regex_match, m is not modelled.
+
+// Safe codepoint -> char (guards the FStar.Char scalar-value refinement; every
+// codepoint we feed here is already a valid scalar, so this is defensive).
+let rx_safe_char (n:nat) : FStar.Char.char =
+  if n < 0xD7FF || (n >= 0xE000 && n <= 0x10FFFF) then FStar.Char.char_of_int n
+  else FStar.Char.char_of_int 0xFFFD
+
+let rx_string_of_cps (cps : list nat) : string =
+  String.string_of_list (List.Tot.map rx_safe_char cps)
+
+// Take / drop / slice on codepoint lists (total for any k).
+let rec rx_take (k:nat) (w:list nat) : Tot (list nat) (decreases w) =
+  match w with
+  | [] -> []
+  | c :: t -> if k = 0 then [] else c :: rx_take (k - 1) t
+
+let rec rx_drop (k:nat) (w:list nat) : Tot (list nat) (decreases w) =
+  match w with
+  | [] -> []
+  | _ :: t -> if k = 0 then w else rx_drop (k - 1) t
+
+let rx_slice (w:list nat) (s e:nat) : list nat =
+  if e > s then rx_take (e - s) (rx_drop s w) else []
+
+// All prefix-lengths k at which regex `r` matches the first k codepoints of
+// `w`, via the VERIFIED normalized derivative (Regex.Exec.nderiv) and
+// Regex.Syntax.nullable — ascending in k. The engine decides every accept.
+let rec rx_leaf_ends_from (r:RxS.regex) (w:list nat) (k:nat)
+  : Tot (list nat) (decreases w) =
+  let here : list nat = if RxS.nullable r then [k] else [] in
+  match w with
+  | [] -> here
+  | c :: rest ->
+    if r = RxS.R_Empty then here    // dead state: no farther / longer match
+    else List.Tot.append here (rx_leaf_ends_from (RxE.nderiv c r) rest (k + 1))
+
+let rx_leaf_ends (r:RxS.regex) (w:list nat) : list nat = rx_leaf_ends_from r w 0
+
+let rec rx_list_max_opt (xs:list nat) : Tot (option nat) (decreases xs) =
+  match xs with
+  | [] -> None
+  | x :: t ->
+    (match rx_list_max_opt t with
+     | None -> Some x
+     | Some m -> Some (if x > m then x else m))
+
+// Longest prefix of `suffix` matched by `pr` (leftmost-longest at a fixed
+// start), or None when nothing matches here.
+let rx_longest_end (pr:RxS.regex) (suffix:list nat) : option nat =
+  rx_list_max_opt (rx_leaf_ends pr suffix)
+
+// Capturing AST: a parallel to Regex.Syntax over which fn:replace group spans
+// are recovered. RC_Leaf carries an ordinary (group-less) sub-regex whose
+// prefix matches are decided by the verified engine.
+type rx_cre =
+  | RC_Leaf  : RxS.regex -> rx_cre
+  | RC_Eps   : rx_cre
+  | RC_Cat   : rx_cre -> rx_cre -> rx_cre
+  | RC_Alt   : rx_cre -> rx_cre -> rx_cre
+  | RC_Star  : rx_cre -> rx_cre
+  | RC_Group : nat -> rx_cre -> rx_cre
+
+let rec rx_cre_size (r:rx_cre) : Tot (n:nat{n >= 1}) =
+  match r with
+  | RC_Leaf _ -> 1
+  | RC_Eps -> 1
+  | RC_Cat a b -> 1 + rx_cre_size a + rx_cre_size b
+  | RC_Alt a b -> 1 + rx_cre_size a + rx_cre_size b
+  | RC_Star a -> 1 + rx_cre_size a
+  | RC_Group _ a -> 1 + rx_cre_size a
+
+// Flag rewrites lifted to the capturing AST (leaves only).
+let rec rx_cre_fold_ci (r:rx_cre) : Tot rx_cre (decreases r) =
+  match r with
+  | RC_Leaf x -> RC_Leaf (rx_fold_ci x)
+  | RC_Eps -> RC_Eps
+  | RC_Cat a b -> RC_Cat (rx_cre_fold_ci a) (rx_cre_fold_ci b)
+  | RC_Alt a b -> RC_Alt (rx_cre_fold_ci a) (rx_cre_fold_ci b)
+  | RC_Star a -> RC_Star (rx_cre_fold_ci a)
+  | RC_Group n a -> RC_Group n (rx_cre_fold_ci a)
+
+let rec rx_cre_dotall (r:rx_cre) : Tot rx_cre (decreases r) =
+  match r with
+  | RC_Leaf x -> RC_Leaf (rx_dotall x)
+  | RC_Eps -> RC_Eps
+  | RC_Cat a b -> RC_Cat (rx_cre_dotall a) (rx_cre_dotall b)
+  | RC_Alt a b -> RC_Alt (rx_cre_dotall a) (rx_cre_dotall b)
+  | RC_Star a -> RC_Star (rx_cre_dotall a)
+  | RC_Group n a -> RC_Group n (rx_cre_dotall a)
+
+// {n,m}-style expansion on the capturing AST.
+let rec rx_cre_repeat_exact (r:rx_cre) (n:nat) : Tot rx_cre (decreases n) =
+  if n = 0 then RC_Eps else RC_Cat r (rx_cre_repeat_exact r (n - 1))
+
+let rec rx_cre_repeat_opt (r:rx_cre) (k:nat) : Tot rx_cre (decreases k) =
+  if k = 0 then RC_Eps else RC_Cat (RC_Alt r RC_Eps) (rx_cre_repeat_opt r (k - 1))
+
+let rx_cparse_brace (r:rx_cre) (t:list nat) : option (rx_cre & list nat) =
+  match RxP.read_uint t with
+  | None -> None
+  | Some (n, t1) ->
+    (match t1 with
+     | c :: t2 ->
+       if c = RxP.cp_rbrace then Some (rx_cre_repeat_exact r n, t2)
+       else if c = RxP.cp_comma then
+         (match t2 with
+          | c2 :: t3 ->
+            if c2 = RxP.cp_rbrace then Some (RC_Cat (rx_cre_repeat_exact r n) (RC_Star r), t3)
+            else (match RxP.read_uint t2 with
+                  | None -> None
+                  | Some (m, t3') ->
+                    (match t3' with
+                     | c3 :: t4 ->
+                       if c3 = RxP.cp_rbrace && m >= n then
+                         Some (RC_Cat (rx_cre_repeat_exact r n) (rx_cre_repeat_opt r (m - n)), t4)
+                       else None
+                     | [] -> None))
+          | [] -> None)
+       else None
+     | [] -> None)
+
+let rx_cparse_quant (r:rx_cre) (rest:list nat) : option (rx_cre & list nat) =
+  match rest with
+  | [] -> Some (r, rest)
+  | q :: t ->
+    if q = RxP.cp_star then Some (RC_Star r, RxP.skip_lazy t)
+    else if q = RxP.cp_plus then Some (RC_Cat r (RC_Star r), RxP.skip_lazy t)
+    else if q = RxP.cp_question then Some (RC_Alt r RC_Eps, RxP.skip_lazy t)
+    else if q = RxP.cp_lbrace then
+      (match rx_cparse_brace r t with
+       | None -> None
+       | Some (r', t') -> Some (r', RxP.skip_lazy t'))
+    else Some (r, rest)
+
+// Recursive-descent capturing parser mirroring Regex.XSDPattern. Threads the
+// next group number `g`; a `(...)` group takes the current `g` and parses its
+// body with `g+1` (outer groups number lower than nested). `(?:...)` is
+// non-capturing. Leaf atoms reuse XSDPattern's builders, so the capturing
+// AST's language matches the span-finding regex by construction.
+let rec rx_cparse_alt (fuel:nat) (input:list nat) (g:nat)
+  : Tot (option (rx_cre & list nat & nat)) (decreases fuel) =
+  if fuel = 0 then None
+  else (match rx_cparse_seq (fuel - 1) input g with
+        | None -> None
+        | Some (r1, rest, g1) ->
+          (match rest with
+           | c :: t ->
+             if c = RxP.cp_pipe then
+               (match rx_cparse_alt (fuel - 1) t g1 with
+                | None -> None
+                | Some (r2, rest2, g2) -> Some (RC_Alt r1 r2, rest2, g2))
+             else Some (r1, rest, g1)
+           | [] -> Some (r1, rest, g1)))
+
+and rx_cparse_seq (fuel:nat) (input:list nat) (g:nat)
+  : Tot (option (rx_cre & list nat & nat)) (decreases fuel) =
+  if fuel = 0 then None
+  else (match input with
+        | [] -> Some (RC_Eps, [], g)
+        | h :: _ ->
+          if h = RxP.cp_pipe || h = RxP.cp_rparen then Some (RC_Eps, input, g)
+          else (match rx_cparse_rep (fuel - 1) input g with
+                | None -> None
+                | Some (r1, rest, g1) ->
+                  (match rest with
+                   | [] -> Some (r1, [], g1)
+                   | h2 :: _ ->
+                     if h2 = RxP.cp_pipe || h2 = RxP.cp_rparen then Some (r1, rest, g1)
+                     else (match rx_cparse_seq (fuel - 1) rest g1 with
+                           | None -> None
+                           | Some (r2, rest2, g2) -> Some (RC_Cat r1 r2, rest2, g2)))))
+
+and rx_cparse_rep (fuel:nat) (input:list nat) (g:nat)
+  : Tot (option (rx_cre & list nat & nat)) (decreases fuel) =
+  if fuel = 0 then None
+  else (match rx_cparse_atom (fuel - 1) input g with
+        | None -> None
+        | Some (r, rest, g1) ->
+          (match rx_cparse_quant r rest with
+           | None -> None
+           | Some (r', rest') -> Some (r', rest', g1)))
+
+and rx_cparse_atom (fuel:nat) (input:list nat) (g:nat)
+  : Tot (option (rx_cre & list nat & nat)) (decreases fuel) =
+  if fuel = 0 then None
+  else (match input with
+        | [] -> None
+        | h :: t ->
+          if h = RxP.cp_lparen then rx_cparse_group (fuel - 1) t g
+          else if h = RxP.cp_lbracket then
+            (match RxP.parse_class t with
+             | None -> None
+             | Some (r, rest) -> Some (RC_Leaf r, rest, g))
+          else if h = RxP.cp_dot then Some (RC_Leaf RxP.dot_regex, t, g)
+          else if h = RxP.cp_caret then Some (RC_Eps, t, g)
+          else if h = RxP.cp_dollar then Some (RC_Eps, t, g)
+          else if h = RxP.cp_backslash then
+            (match t with
+             | [] -> None
+             | letter :: t2 ->
+               (match RxP.parse_escape_atom letter t2 with
+                | None -> None
+                | Some (r, rest) -> Some (RC_Leaf r, rest, g)))
+          else if RxP.is_atom_meta h then None
+          else Some (RC_Leaf (RxP.single h), t, g))
+
+and rx_cparse_group (fuel:nat) (t:list nat) (g:nat)
+  : Tot (option (rx_cre & list nat & nat)) (decreases fuel) =
+  if fuel = 0 then None
+  else (match t with
+        | q :: c :: t2 ->
+          if q = RxP.cp_question && c = RxP.cp_colon then rx_cparse_noncap (fuel - 1) t2 g
+          else if q = RxP.cp_question then None
+          else rx_cparse_cap (fuel - 1) t g
+        | q :: _ ->
+          if q = RxP.cp_question then None
+          else rx_cparse_cap (fuel - 1) t g
+        | [] -> None)
+
+and rx_cparse_cap (fuel:nat) (t:list nat) (g:nat)
+  : Tot (option (rx_cre & list nat & nat)) (decreases fuel) =
+  if fuel = 0 then None
+  else (match rx_cparse_alt (fuel - 1) t (g + 1) with
+        | None -> None
+        | Some (r, rest, g') ->
+          (match rest with
+           | c :: t2 -> if c = RxP.cp_rparen then Some (RC_Group g r, t2, g') else None
+           | [] -> None))
+
+and rx_cparse_noncap (fuel:nat) (t:list nat) (g:nat)
+  : Tot (option (rx_cre & list nat & nat)) (decreases fuel) =
+  if fuel = 0 then None
+  else (match rx_cparse_alt (fuel - 1) t g with
+        | None -> None
+        | Some (r, rest, g') ->
+          (match rest with
+           | c :: t2 -> if c = RxP.cp_rparen then Some (r, t2, g') else None
+           | [] -> None))
+
+let rx_parse_capturing (cps:list nat) : option rx_cre =
+  let fuel : nat = op_Multiply 16 (List.Tot.length cps + 4) in
+  match rx_cparse_alt fuel cps 1 with
+  | Some (r, [], _) -> Some r
+  | _ -> None
+
+// One capturing-match outcome: (unconsumed suffix, absolute end position,
+// group spans (group#, start, end)). rx_cmatch returns ALL prefix outcomes of
+// `r` starting at absolute `pos`; the driver filters to the verified span end.
+// Fuel-bounded (structural descent <= size, star iterations bounded by the
+// strict-progress guard); total.
+let rec rx_cmatch (fuel:nat) (r:rx_cre) (w:list nat) (pos:nat)
+  : Tot (list (list nat & nat & list (nat & nat & nat))) (decreases fuel) =
+  if fuel = 0 then []
+  else (match r with
+        | RC_Eps -> [(w, pos, ([] <: list (nat & nat & nat)))]
+        | RC_Leaf x ->
+          List.Tot.map
+            (fun (k:nat) -> let ep : nat = pos + k in (rx_drop k w, ep, ([] <: list (nat & nat & nat))))
+            (rx_leaf_ends x w)
+        | RC_Cat a b ->
+          List.Tot.concatMap
+            (fun (oa : (list nat & nat & list (nat & nat & nat))) ->
+               let (resta, epa, capa) = oa in
+               List.Tot.map
+                 (fun (ob : (list nat & nat & list (nat & nat & nat))) ->
+                    let (restb, epb, capb) = ob in
+                    (restb, epb, List.Tot.append capa capb))
+                 (rx_cmatch (fuel - 1) b resta epa))
+            (rx_cmatch (fuel - 1) a w pos)
+        | RC_Alt a b ->
+          List.Tot.append (rx_cmatch (fuel - 1) a w pos) (rx_cmatch (fuel - 1) b w pos)
+        | RC_Group n inner ->
+          List.Tot.map
+            (fun (o : (list nat & nat & list (nat & nat & nat))) ->
+               let (rest, ep, caps) = o in
+               (rest, ep, (n, pos, ep) :: caps))
+            (rx_cmatch (fuel - 1) inner w pos)
+        | RC_Star inner ->
+          (w, pos, ([] <: list (nat & nat & nat))) ::
+          List.Tot.concatMap
+            (fun (oi : (list nat & nat & list (nat & nat & nat))) ->
+               let (rest, ep, capi) = oi in
+               if List.Tot.length rest < List.Tot.length w then
+                 List.Tot.map
+                   (fun (o2 : (list nat & nat & list (nat & nat & nat))) ->
+                      let (rest2, ep2, cap2) = o2 in
+                      (rest2, ep2, List.Tot.append capi cap2))
+                   (rx_cmatch (fuel - 1) (RC_Star inner) rest ep)
+               else [])
+            (rx_cmatch (fuel - 1) inner w pos))
+
+// Caps of the FIRST outcome ending exactly at the verified span end `target`
+// (alternation order = ordered-alternation preference); else empty.
+let rec rx_pick_caps
+  (outs : list (list nat & nat & list (nat & nat & nat))) (target:nat)
+  : Tot (list (nat & nat & nat)) (decreases outs) =
+  match outs with
+  | [] -> []
+  | (_, ep, caps) :: t -> if ep = target then caps else rx_pick_caps t target
+
+let rec rx_find_cap (caps:list (nat & nat & nat)) (n:nat)
+  : Tot (option (nat & nat)) (decreases caps) =
+  match caps with
+  | [] -> None
+  | (gnum, s, e) :: t -> if gnum = n then Some (s, e) else rx_find_cap t n
+
+let rx_group_text (input:list nat) (caps:list (nat & nat & nat)) (n:nat) : list nat =
+  match rx_find_cap caps n with
+  | None -> []
+  | Some (s, e) -> rx_slice input s e
+
+// Expand a replacement template: `$d` -> group d ($0 = whole match); `\c` ->
+// literal c; other -> literal.
+let rec rx_expand_template
+  (rep : list nat) (input:list nat) (mstart mend:nat) (caps:list (nat & nat & nat))
+  : Tot (list nat) (decreases rep) =
+  match rep with
+  | [] -> []
+  | c :: t ->
+    if c = rx_cp_backslash then
+      (match t with
+       | c2 :: t2 -> c2 :: rx_expand_template t2 input mstart mend caps
+       | [] -> [c])
+    else if c = 0x24 then    // '$'
+      (match t with
+       | d :: t2 ->
+         if d >= 0x30 && d <= 0x39 then
+           let gnum : nat = d - 0x30 in
+           let gt = if gnum = 0 then rx_slice input mstart mend
+                    else rx_group_text input caps gnum in
+           List.Tot.append gt (rx_expand_template t2 input mstart mend caps)
+         else c :: rx_expand_template t input mstart mend caps
+       | [] -> [c])
+    else c :: rx_expand_template t input mstart mend caps
+
+// Does the template reference a group (`$` + digit, respecting `\` escapes)?
+let rec rx_template_has_group (rep:list nat) : Tot bool (decreases rep) =
+  match rep with
+  | [] -> false
+  | c :: t ->
+    if c = rx_cp_backslash then (match t with | _ :: t2 -> rx_template_has_group t2 | [] -> false)
+    else if c = 0x24 then
+      (match t with
+       | d :: _ -> if d >= 0x30 && d <= 0x39 then true else rx_template_has_group t
+       | [] -> false)
+    else rx_template_has_group t
+
+// rx_cmatch fuel budget: bounds one match attempt's recursion depth
+// (structural descent <= size, star iterations <= |suffix|).
+let rx_cmatch_fuel (cre:rx_cre) (suffix:list nat) : nat =
+  op_Multiply (rx_cre_size cre + 1) (List.Tot.length suffix + 2)
+
+// Global left-to-right, non-overlapping replace over codepoint lists. `pr` is
+// the verified whole-match oracle; `cre_opt` is the capturing AST when the
+// template has group refs (else capture is skipped). fuel >= |suffix|.
+let rec rx_replace_loop
+  (fuel:nat) (pr:RxS.regex) (cre_opt:option rx_cre)
+  (rep:list nat) (input_all:list nat) (suffix:list nat) (pos:nat)
+  : Tot (list nat) (decreases fuel) =
+  if fuel = 0 then suffix
+  else (match suffix with
+        | [] -> []
+        | c :: rest ->
+          (match rx_longest_end pr suffix with
+           | None -> c :: rx_replace_loop (fuel - 1) pr cre_opt rep input_all rest (pos + 1)
+           | Some len ->
+             if len = 0 then
+               // empty match: copy one codepoint, no substitution (policy)
+               c :: rx_replace_loop (fuel - 1) pr cre_opt rep input_all rest (pos + 1)
+             else
+               let mend : nat = pos + len in
+               let caps : list (nat & nat & nat) =
+                 (match cre_opt with
+                  | None -> []
+                  | Some cre ->
+                    rx_pick_caps (rx_cmatch (rx_cmatch_fuel cre suffix) cre suffix pos) mend) in
+               let expanded = rx_expand_template rep input_all pos mend caps in
+               let new_suffix = rx_drop len suffix in
+               List.Tot.append expanded
+                 (rx_replace_loop (fuel - 1) pr cre_opt rep input_all new_suffix mend)))
+
+// XPath/XQuery fn:replace, retiring the `assume val` — total, verified F*.
+let regex_replace (text pattern replacement : string) (flags : option string) : string =
+  let has_i = rx_flag_has flags 'i' in
+  let has_s = rx_flag_has flags 's' in
+  let has_x = rx_flag_has flags 'x' in
+  let has_q = rx_flag_has flags 'q' in
+  let input_cps = RxP.cps_of_string text in
+  let rep_cps = RxP.cps_of_string replacement in
+  let pat_cps0 = RxP.cps_of_string pattern in
+  let fuel : nat = List.Tot.length input_cps + 1 in
+  if has_q then
+    // literal pattern: no metacharacters, no groups.
+    let core0 = rx_literal_regex pat_cps0 in
+    let pr = if has_i then rx_fold_ci core0 else core0 in
+    rx_string_of_cps (rx_replace_loop fuel pr None rep_cps input_cps input_cps 0)
+  else
+    let pat_cps1 = if has_x then rx_strip_ws pat_cps0 false else pat_cps0 in
+    (match RxP.parse_cps pat_cps1 with
+     | None -> text   // pattern outside the supported fragment: leave unchanged
+     | Some r0 ->
+       let r1 = if has_s then rx_dotall r0 else r0 in
+       let pr = if has_i then rx_fold_ci r1 else r1 in
+       let cre_opt =
+         if rx_template_has_group rep_cps then
+           (match rx_parse_capturing pat_cps1 with
+            | None -> None
+            | Some cre0 ->
+              let cre1 = if has_s then rx_cre_dotall cre0 else cre0 in
+              Some (if has_i then rx_cre_fold_ci cre1 else cre1))
+         else None in
+       rx_string_of_cps (rx_replace_loop fuel pr cre_opt rep_cps input_cps input_cps 0))
+
+let string_replace (s : string) (pattern : string) (replacement : string) (flags : option string) : string =
+  regex_replace s pattern replacement flags
 
 (* Spec-level wrappers for string functions. Only the variants actually
    used by `eval_expr_typed_with_base` survive — the rest of the

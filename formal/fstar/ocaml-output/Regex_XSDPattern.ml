@@ -274,6 +274,18 @@ let rec parse_class_items (input : Prims.nat Prims.list)
                    (FStar_List_Tot_Base.append acc [(h, h)])
            | uu___2 ->
                parse_class_items t (FStar_List_Tot_Base.append acc [(h, h)]))
+let rec insert_range (x : (Prims.nat * Prims.nat))
+  (xs : (Prims.nat * Prims.nat) Prims.list) :
+  (Prims.nat * Prims.nat) Prims.list=
+  match xs with
+  | [] -> [x]
+  | y::t ->
+      if (FStar_Pervasives_Native.fst x) <= (FStar_Pervasives_Native.fst y)
+      then x :: xs
+      else y :: (insert_range x t)
+let rec sort_ranges (xs : (Prims.nat * Prims.nat) Prims.list) :
+  (Prims.nat * Prims.nat) Prims.list=
+  match xs with | [] -> [] | y::t -> insert_range y (sort_ranges t)
 let parse_class (input : Prims.nat Prims.list) :
   (Regex_Syntax.regex * Prims.nat Prims.list) FStar_Pervasives_Native.option=
   match input with
@@ -286,7 +298,8 @@ let parse_class (input : Prims.nat Prims.list) :
          | FStar_Pervasives_Native.Some (ranges, rest) ->
              FStar_Pervasives_Native.Some
                ((Regex_Syntax.R_Ranges
-                   (Regex_Syntax.complement_ranges ranges)), rest))
+                   (Regex_Syntax.complement_ranges (sort_ranges ranges))),
+                 rest))
       else
         (match parse_class_items input [] with
          | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
