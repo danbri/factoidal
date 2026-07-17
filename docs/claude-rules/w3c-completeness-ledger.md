@@ -207,20 +207,26 @@ when no npm-entry bundle is present; this checkout has the bundle, so
 the SKIP is the correct outcome — `# SKIP npm-entry bundle present —
 pending-message path not reachable`).
 
-### OWL 2 DL type-inconsistency (tinc) — 118 pass, 10 fail (out of 128), zero oracle-assisted
+### OWL 2 DL type-inconsistency (tinc) — 124 pass, 3 fail (out of 127 scored), 1 skipped (semantics-scope: RDF-Based only), zero oracle-assisted [re-measured 2026-07-17]
 
-Linked: #299 (`docs/designissues/2026-07-16-owl2-per-node-algebraic-tableau-909.md`),
-#298, #209. Landed via `owl2-concrete-domain` (`ed8c4a03`,
-ancestor-confirmed) on top of the Wave-C class-size reasoner. ⚠️ The
-committed `formal/fstar/ocaml-output/owl_type_inconsistency_results.log`
-reads 70 pass, 58 fail — that file is a stale artifact from an earlier
-wave, not regenerated after the later landings; the 118/10 figure is
-corroborated by three independent sources (the #299 issue-comment
-thread, `current-state.md`'s 114/14 entry plus the +4 concrete-domain
-flips it doesn't yet reflect, and commit-ancestry confirmation of
-`ed8c4a03`). Named residuals, reconstructed from #299's comment thread
-+ `docs/designissues/2026-07-16-owl2-per-node-algebraic-tableau-909.md`
-§8 + `docs/designissues/2026-07-14-tcon-fail-classification.md`:
+Linked: #299. Score history since the 118/10 measurement: `owl2-double-
+blocking` (inverse-lifted subPropertyOf, 122 pass/6 fail — flips dl-626,
+dl-627, dl-026, dl-027), a regex-phase3 pattern-facet clash (123/5 —
+flip: Inconsistent String Pattern), and `owl2-tableau-completeness`'s
+disjoint-dataproperty numeric-singleton clash (`541753cb`, 124 pass, 4
+fail out of 128 — flip: Inconsistent Disjoint Dataproperties), all
+ancestor-confirmed on top of the `owl2-concrete-domain` wave (`ed8c4a03`).
+2026-07-17: `WebOnt-Thing-005` recategorized OUT of the DL-regime
+denominator (harness categorization fix, evidence + rationale below) —
+scored denominator moves 128 -> 127, pass/fail on the remaining 127
+UNCHANGED (124/3, was 124/4 including Thing-005) — a categorization
+move, not a verdict change; confirmed by a fresh `owl_runner
+type-inconsistency.rdf --regime dl` run whose 3 named FAIL lines are
+identical to the pre-fix run's non-Thing-005 fails (`Minus Infinity is
+not in owl:real`, `WebOnt-description-logic-502`,
+`WebOnt-description-logic-909`).
+
+Named residuals (the 3 scored fails):
 
 - `WebOnt-description-logic-909` — **disputed-fixture**, 🧭 owner
   decision pending (#299 comment 2026-07-16: three independent methods
@@ -228,24 +234,81 @@ flips it doesn't yet reflect, and commit-ancestry confirmation of
   agree the premise is consistent; the catalog itself marks the test
   `Extracredit`, not `Approved`, with a WG comment that even the
   approved version was defective).
-- `WebOnt-description-logic-626`, `WebOnt-description-logic-627` —
-  **planned-family**(#299, "double-blocking tableau extension",
-  reclassified by the per-node wave's analysis as the next OWL
-  dispatch candidate).
-- `Inconsistent String Pattern with Disjoint Dataproperties` —
-  **dependency-blocked**(regex engine phase 3, #304 — same blocker as
-  CSVW test194).
-- `WebOnt-description-logic-026`, `WebOnt-description-logic-027`,
-  `WebOnt-description-logic-502`, `WebOnt-Thing-005` —
-  **planned-family**(#299 Wave E, complementOf/oneOf search +
-  budget-outs; note `dl-502`'s corpus `test:description` calls it "the
-  classic 3 SAT problem," not a nominals test, per the 2026-07-14
-  tcon-fail-classification doc's caveat — the "nominals" label on this
-  test is inherited from an earlier, imprecise classification).
-- `Inconsistent Disjoint Dataproperties` — **planned-family**(#299,
-  "missing DisjointDataProperties clash, not a facet issue").
+- `WebOnt-description-logic-502` — **planned-family**(#299 Wave E,
+  complementOf/oneOf search + budget-outs; the corpus
+  `test:description` calls it "the classic 3 SAT problem," not a
+  nominals test, per the 2026-07-14 tcon-fail-classification doc's
+  caveat — the "nominals" label on this test is inherited from an
+  earlier, imprecise classification).
 - `Minus Infinity is not in owl:real` — **planned-family**(#299,
   named scoped-out singleton, no dedicated wave yet).
+
+**`WebOnt-Thing-005` disposition (2026-07-17, #299) — outcome (a):
+harness categorization bug, FIXED, not an engine gap.** Catalog
+evidence, quoted verbatim from
+`third_party/testing/owl/type-inconsistency.rdf` (TestCase
+`WebOnt-Thing-2D005`):
+
+```
+<test:description>The extension of OWL Thing may not be a singleton in OWL Full.</test:description>
+<test:status rdf:resource="&test;Proposed" />
+<test:semantics rdf:resource="&test;RDF-BASED" />
+<test:species rdf:resource="&test;FULL" />
+<test:species rdf:resource="&test;DL" />
+```
+plus a same-subject `owl:NegativePropertyAssertion` immediately after
+the `TestCase` block:
+```
+<owl:sourceIndividual rdf:resource=".../TestCase-3AWebOnt-2DThing-2D005" />
+<owl:assertionProperty rdf:resource="&test;semantics" />
+<owl:targetIndividual rdf:resource="&test;DIRECT" />
+```
+i.e. the catalog declares `test:semantics = RDF-BASED` and explicitly
+DENIES `test:semantics = DIRECT` for this TestCase — an OWL Full
+domain-size/comprehension test ("owl:Thing's own extension may not be a
+singleton"), not a Direct-Semantics DL test, despite also carrying
+`test:species DL` alongside `FULL` (species and semantics are
+orthogonal facets in this catalog — species says which syntactic
+profile the document parses as, semantics says which model theory the
+inconsistency claim is made under).
+
+Census (2026-07-17 sweep, all 128 `InconsistencyTest` cases in
+`type-inconsistency.rdf`, script-verified): 127 carry BOTH
+`test:semantics DIRECT` and `RDF-BASED`; exactly 1 —
+`WebOnt-Thing-005` — carries `RDF-BASED` alone (and is the only one
+with a semantics-`NegativePropertyAssertion`). Not a systemic issue
+elsewhere in this catalog — a single named case.
+
+`bin/owl-runner/owl_runner.ml`'s `run_inconsistency_test` (both RL and
+DL regime — this catalog is always run `--regime dl` per
+`generate-report.sh`) implements Direct Semantics only (`RL closure ->
+Tableau.Refute -> RL` model theory; no RDF-Based domain-size reasoning
+over `owl:Thing`'s own extension), and — before this fix — never
+consulted `test:semantics` at all for `InconsistencyTest` scoring
+(unlike `run_negative_entailment`, which already gates its closure mode
+on `owl_semantics_mode_for`). Scoring Thing-005 as a DL fail was
+therefore a harness categorization bug: fixed by gating
+`run_inconsistency_test` on `owl_semantics_mode_for info =
+RDF_Graph_Executable.owl_semantics_rdf_based` and returning a new
+`Skip_semantics_rdf_based_only` outcome, counted outside the pass/fail
+denominator with its own labelled reason line — same pattern as the
+pre-existing `Skip_functional_syntax_only`. RDF-Based (OWL Full)
+domain-size/comprehension reasoning remains a genuine, undispatched
+engine gap; the fix is scope correction, not new capability — if the
+engine later grows RDF-Based semantics support, Thing-005 is the test
+to re-enable it against.
+
+Scores (`bin/linux-x86_64/owl_runner`, this worktree, 2026-07-17):
+- tinc before: 124 pass, 4 fail (out of 128), 0 skipped.
+- tinc after: 124 pass, 3 fail (out of 127 scored), 1 skipped
+  (semantics-scope: RDF-Based only) — flip: `WebOnt-Thing-005`
+  `FAIL/unexpected-consistency` -> `SKIP/semantics-rdf-based-only`; all
+  other 127 verdicts unchanged.
+- `type-consistency.rdf --regime dl` (tcon, unaffected by construction
+  — the fix only touches `run_inconsistency_test`, tcon uses
+  `run_consistency_test`): 352 pass, 0 fail (out of 352), zero
+  unexpected-inconsistency — gate held.
+- floor `rdf-turtle`: 313 pass, 0 fail (out of 313) — gate held.
 
 ### OWL 2 DL positive entailment (PE) — 135 pass, 69 fail, 2 skip (out of 204)
 
