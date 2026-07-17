@@ -80,7 +80,7 @@ disposition.
 | OWL 2 profile EL | 108 pass, 13 fail (out of 121) | 🧭 untriaged — no owner disposition on file |
 | OWL 2 profile QL | 83 pass, 4 fail (out of 87) | 🧭 untriaged — no owner disposition on file |
 | QUDT integrity | 0 pass, 0 fail, 29 skip (out of 29) | ✅ fully dispositioned (all-skip is a perf finding, not a dead suite) |
-| RIF Core | 46 pass, 1 fail, 3 skip (out of 50) | ✅ fully dispositioned |
+| RIF Core | 46 pass, 0 fail, 1 local-override, 3 skip (out of 50) | ✅ fully dispositioned; exit 0 |
 | rml_io | 17 pass, 1 fail, 55 skip (out of 73) | ✅ fully dispositioned |
 | ShEx validation | 1181 pass, 1 fail (out of 1182) | ✅ per `tests/shex-shexj-twins/README.md` |
 | tests_unit | dashboard: 35 pass, 6 fail (out of 41) — stale; this session's fresh run: 45 pass, 0 fail (out of 45) | ✅ dispositioned as environment; dashboard needs republish |
@@ -504,19 +504,23 @@ Not a 🔴 finding.
 - 1 (`UniqueSymbolTypeRestrictedPropertyConstraint`) — **by-design**
   (`sh:deactivated true`, excluded by SHACL semantics itself).
 
-### RIF Core — 46 pass, 1 fail, 3 skip (out of 50)
+### RIF Core — 46 pass, 0 fail, 1 local-override, 3 skip (out of 50)
 
 All named in `.github/test-suites/rif.yaml`'s own header, re-verified
-against the committed log:
+against the committed log (re-measured 2026-07-17; runner exits 0):
 
-- `RDF_Combination_Constant_Equivalence_4` — **disputed-fixture**(a
-  malformed `xsd:string` datatype IRI present in both the official
-  `Core_v1.22.zip` and the archived W3C wiki source; not fixable
-  without breaking correct datatype-IRI semantics).
+- `RDF_Combination_Constant_Equivalence_4` — **local-override**(a
+  malformed `xsd:string` datatype IRI — a Windows local path in the
+  RDF/XML, a scheme-less prefix in the Turtle — present in both the
+  official `Core_v1.22.zip` and the archived W3C wiki source; not
+  fixable without breaking correct datatype-IRI semantics. Dispositioned
+  2026-07-17 as a distinctly-counted local override,
+  `tests/local-overrides/rif/RDF_Combination_Constant_Equivalence_4.override`,
+  rather than an undispositioned red).
 - `Builtins_List`, `NestedListsAreNotFlatLists` —
   **dependency-blocked**(RIF List terms are not modelled in
   `RIF.Core.Syntax.fst`).
-- `Builtins_Time` — **dependency-blocked**(the ~60-builtin date/time/
+- `Builtins_Time` — **dependency-blocked**(the ~85-builtin date/time/
   duration family; only the `EBusiness_Contract` slice is
   implemented).
 

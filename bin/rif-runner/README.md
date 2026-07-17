@@ -285,8 +285,11 @@ skip after it.** Current, measured 2026-07-10 (the tail-burndown
 wave):
 
 - **Part 1 (original 4 vendored SPARQL-manifest cases): 4 pass, 0 fail (out of 4).**
-- **Part 2 (vendored W3C RIF Core dialect corpus): 42 pass, 1 fail, 3 skip (out of 46).**
-- **Combined: 46 pass, 1 fail, 3 skip (out of 50).**
+- **Part 2 (vendored W3C RIF Core dialect corpus): 42 pass, 0 fail, 1 local-override, 3 skip (out of 46).**
+- **Combined: 46 pass, 0 fail, 1 local-override, 3 skip (out of 50).**
+
+The one remaining non-pass in Part 2 (`RDF_Combination_Constant_Equivalence_4`) is a **corpus data defect**, not an engine gap. As of 2026-07-17 it is dispositioned via a **local override**
+(`tests/local-overrides/rif/RDF_Combination_Constant_Equivalence_4.override`) — a documented, distinctly-counted disagreement with a defective fixture (see `tests/local-overrides/README.md`). The runner reports it on an `OVERRIDE` line (still printing the observed `entailed=false`), counts it separately from both passes and fails, and **now exits 0** (no undispositioned reds). If a future change ever makes that test pass on its own, the runner prints a plain `PASS` and flags the override as stale/removable — an override never masks a success.
 
 ### The 2026-07-10 tail burndown (34/4/12 -> 46/1/3)
 
@@ -297,7 +300,7 @@ Per-test dispositions of the 4 fails + 12 skips that made up the
 |---|---|---|
 | Factorial_Forward_Chaining (KNOWN-GAP FAIL) | **PASS** | Uniterm ARGUMENT-VALUE satellites: `instantiate_atom_all` emits `(enc(a1), urn:rif-uniterm:arg1, a1)` alongside the classic arity-2 triple; a body atom with a VARIABLE first argument joins through the satellite and re-binds the genuine literal value (RIF.Core.Translation §1c + RIF.Core.Eval §1b) |
 | Local_Constant, Local_Predicate (KNOWN-GAP FAILs) | **PASS** | rif:local constants are document-scoped per RIF-BLD §3.3: `Parser.RIFXML.scope_local_constants` renames `urn:rif-local:<lex>` to `urn:rif-local:<scope>:<lex>`; the runner parses premise and conclusion under different scopes |
-| RDF_Combination_Constant_Equivalence_4 (KNOWN-DEFECT FAIL) | **FAIL (unchanged, corpus defect)** | Both the zip's import files AND the archived authoritative wiki source (checked 2026-07-10) declare the malformed scheme-less `xs:` prefix; under a correct datatype-IRI comparison the test genuinely does not entail. Left a labelled FAIL, not a skip: the pipeline fully processes it end to end |
+| RDF_Combination_Constant_Equivalence_4 (KNOWN-DEFECT FAIL) | **LOCAL-OVERRIDE (2026-07-17)** | Both the zip's import files AND the archived authoritative wiki source (re-checked 2026-07-17) declare a malformed datatype IRI (a Windows local path `file:///C:/.../XMLSchema#string` in the RDF/XML, a scheme-less `www.w3.org/2001/XMLSchema#` prefix in the Turtle) that does not match the conclusion's `xsd:string`; under a correct datatype-IRI comparison the test genuinely does not entail. The pipeline fully processes it end to end and correctly returns `entailed=false`. Now dispositioned via `tests/local-overrides/rif/RDF_Combination_Constant_Equivalence_4.override` (distinctly counted, exit 0) rather than left a red |
 | Builtins_String (skip: is-literal-string) | **PASS** | full RIF-DTB string family in RIF.Core.Builtins: compare/concat/string-join/substring/string-length/upper-case/lower-case/encode-for-uri/iri-to-uri/escape-html-uri/substring-before/-after/replace (via the SPARQL REPLACE regex realisation), contains/starts-with/ends-with/matches, and VALUE-SPACE is-literal-\<T\> for the xsd:string-derived datatypes (string/normalizedString/token/language/Name/NCName/NMTOKEN) |
 | Builtins_PlainLiteral (skip: is-literal-PlainLiteral) | **PASS** | rdf:PlainLiteral family over the DECODED xsd:string/rdf:langString form: PlainLiteral-from-string-lang, string-from-PlainLiteral, lang-from-PlainLiteral, PlainLiteral-compare, matches-language-range, is-literal-(not-)PlainLiteral, and the rdf:PlainLiteral constructor cast |
 | EBusiness_Contract (skip: is-literal-dateTime) | **PASS** | the dateTime slice: is-literal-dateTime (accepting xs:date operands at midnight — the Approved fixture itself applies dateTime guards to `"2008-07-22Z"^^xs:date` and expects them to hold), func:subtract-dateTimes -> xsd:dayTimeDuration, func:days-from-duration; plus n-ary reification for its arity-3 `cpt:delivered` relation |

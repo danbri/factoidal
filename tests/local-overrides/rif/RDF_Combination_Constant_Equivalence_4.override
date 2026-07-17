@@ -1,0 +1,75 @@
+# Factoidal local test override
+# See tests/local-overrides/README.md for the convention + runner contract.
+suite: rif
+test: RDF_Combination_Constant_Equivalence_4
+category: PositiveEntailmentTest
+upstream-result: entailed=true
+our-result: entailed=false
+kind: corpus-data-defect
+disposition: local-override
+date: 2026-07-17
+provenance: W3C RIF Core test suite Core_v1.22 (Approved), and the archived authoritative wiki source https://www.w3.org/2005/rules/wiki/RDF_Combination_Constant_Equivalence_4 (read-only archive, re-checked 2026-07-17)
+---
+DISAGREEMENT WITH THE FIXTURE — the fixture's data is malformed, so
+its stated expectation cannot be satisfied under correct RDF datatype
+semantics.
+
+What the test asserts
+  PositiveEntailmentTest. The premise is a single
+  Import(<...-import001> <.../entailment/Simple>); the imported graph
+  is meant to carry
+      <http://example.org#a> <http://example.org#p>
+          "this is a string"^^xsd:string .
+  and the conclusion is the RIF frame
+      <http://example.org#a>[<http://example.org#p> -> "this is a string"]
+  whose object constant is typed `&xs;string`
+  (http://www.w3.org/2001/XMLSchema#string). Under Simple entailment
+  this holds iff the imported literal and the conclusion literal are
+  the SAME RDF literal — same lexical form AND same datatype IRI.
+
+The defect
+  In BOTH vendored import companion files the datatype IRI of the
+  imported literal is not xsd:string but a broken local-authoring
+  artifact:
+    - RDF_Combination_Constant_Equivalence_4-import001.rdf declares
+        xmlns:xs="file:///C:/work/eclipse_workspaces/version3.4.2/rif/TestCaseManagement/www.w3.org/2001/XMLSchema#"
+      and types the literal
+        rdf:datatype="file:///C:/work/.../www.w3.org/2001/XMLSchema#string"
+      i.e. a Windows local filesystem path baked into the datatype IRI
+      by the 2010 authoring tool.
+    - RDF_Combination_Constant_Equivalence_4-import001.ttl declares
+        @prefix xs: <www.w3.org/2001/XMLSchema#> .
+      i.e. a scheme-less relative IRI, and types the literal
+        "this is a string"^^xs:string  ==  ^^<www.w3.org/2001/XMLSchema#string>
+  Neither resolves to http://www.w3.org/2001/XMLSchema#string. The
+  imported literal is therefore
+      "this is a string"^^<file:///C:/.../XMLSchema#string>   (RDF/XML), or
+      "this is a string"^^<www.w3.org/2001/XMLSchema#string>  (Turtle),
+  which is a DIFFERENT RDF literal from the conclusion's
+  "this is a string"^^xsd:string. Under Simple entailment the two do
+  not unify, so the premise does NOT entail the conclusion:
+  our pipeline correctly computes entailed=false.
+
+Why this is a fixture defect, not an engine gap
+  The test is fully processed end to end (import resolution, Simple
+  regime, RIF_Core_Eval saturation, conclusion-BGP ASK) — nothing is
+  unimplemented or skipped. Making it "pass" would require either
+  silently rewriting the two broken datatype IRIs to xsd:string
+  (special-casing this one file), or collapsing distinct datatype IRIs
+  during literal comparison — both of which would BREAK correct RDF
+  datatype semantics that the rest of the suite (and rdf-mt) depends
+  on. The honest engine answer is entailed=false; the honest project
+  answer is that the published fixture is unsatisfiable as shipped.
+
+Upstream status
+  The defect is present in the official Core_v1.22.zip distribution as
+  authored (timestamp "Sun Nov 07 2010" in the fixture headers) and
+  is uncorrected in the archived, now read-only W3C RIF wiki source
+  (provenance above). No upstream fix is coming.
+
+Effect of this override
+  The rif runner reports this test as a distinctly-counted
+  `local-override` (not FAIL), so the RIF suite exits 0. If a future
+  change ever makes the test pass on its own, the runner will instead
+  print it as a plain PASS and flag this file as a stale, removable
+  override — the override never masks a success.
