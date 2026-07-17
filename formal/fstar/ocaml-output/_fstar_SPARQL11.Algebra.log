@@ -1,8 +1,7 @@
-* Warning 241 at RDF.Vocabulary.Axioms.fst(0,0-0,0):
-  - Unable to load RDF.Vocabulary.Axioms.fst.checked since checked file
-    RDF.Vocabulary.Axioms.fst.checked is stale (dependence hash mismatch, use
-    --debug CheckedFiles for more details); will recheck
-    RDF.Vocabulary.Axioms.fst (suppressing this warning for further modules)
+* Warning 241 at RDF.Indexed.fsti(0,0-0,0):
+  - Unable to load RDF.Indexed.fsti.checked since checked file
+    RDF.Indexed.fsti.checked is stale (digest mismatch for RDF.Indexed.fsti);
+    will recheck RDF.Indexed.fsti (suppressing this warning for further modules)
 
 * Warning 337 at Regex.Syntax.fst(105,9-105,10):
   - The operator '@' has been resolved to FStar.List.Tot.append even though
@@ -54,7 +53,7 @@
   - The type of the second term is: Prims.int
   - If the proof fails, try annotating these with the same type.
 
-* Warning 361 at SPARQL11.Algebra.fst(7148,0-7149,40):
+* Warning 361 at SPARQL11.Algebra.fst(7608,0-7609,40):
   - Some #push-options have not been popped. Current depth is 1.
 
 Extracted module SPARQL11.Algebra

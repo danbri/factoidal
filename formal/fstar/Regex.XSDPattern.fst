@@ -221,12 +221,28 @@ let rec parse_class_items (input:list nat) (acc:list (nat & nat))
          else parse_class_items t (L.append acc [(h, h)])       // literal h
        | _ -> parse_class_items t (L.append acc [(h, h)]))
 
+// Insertion sort of a codepoint-interval list by lower bound. `complement_ranges`
+// requires its input SORTED ascending (disjoint intervals stay disjoint); a
+// class like `[^a-z0-9]` supplies the ranges in SOURCE order ((a,z) before
+// (0,9)), which is NOT sorted, so its complement would wrongly readmit the
+// digits without this. Positive classes need no sort (`in_ranges` is an OR).
+let rec insert_range (x:(nat & nat)) (xs:list (nat & nat))
+  : Tot (list (nat & nat)) (decreases xs) =
+  match xs with
+  | [] -> [x]
+  | y :: t -> if fst x <= fst y then x :: xs else y :: insert_range x t
+
+let rec sort_ranges (xs:list (nat & nat)) : Tot (list (nat & nat)) (decreases xs) =
+  match xs with
+  | [] -> []
+  | y :: t -> insert_range y (sort_ranges t)
+
 // Entry after the opening `[`.
-// Negated class `[^...]`: parse the item ranges after the `^`, then take their
-// complement over [0, max_codepoint] (`complement_ranges`). The complement is
-// exact when the item ranges are sorted-disjoint (`complement_ranges`' stated
-// precondition); the measured negated-class fixtures are single-range
-// (SPARQL `a[^b]c`), for which this holds trivially.
+// Negated class `[^...]`: parse the item ranges after the `^`, SORT them by
+// lower bound (so `complement_ranges`' sorted-ascending precondition holds for
+// multi-range classes like `[^a-z0-9]`), then take their complement over
+// [0, max_codepoint]. The complement is exact for sorted-DISJOINT ranges; the
+// measured negated-class fixtures (`a[^b]c`, `[^a-z0-9]`) are disjoint.
 let parse_class (input:list nat) : option (regex & list nat) =
   match input with
   | [] -> None
@@ -234,7 +250,7 @@ let parse_class (input:list nat) : option (regex & list nat) =
     if h = cp_caret then
       (match parse_class_items t [] with
        | None -> None
-       | Some (ranges, rest) -> Some (R_Ranges (complement_ranges ranges), rest))
+       | Some (ranges, rest) -> Some (R_Ranges (complement_ranges (sort_ranges ranges)), rest))
     else (match parse_class_items input [] with
           | None -> None
           | Some (ranges, rest) -> Some (R_Ranges ranges, rest))
