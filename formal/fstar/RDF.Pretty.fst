@@ -191,18 +191,24 @@ let term_short_explain (t : rdf_term) : Tot string =
 // 7. SPARQL pattern-term rendering (used by factoidal_explain.ml).
 // ---------------------------------------------------------------
 
-let pattern_term_short (table : prefix_table) (pt : pattern_term) : Tot string =
+let rec pattern_term_short (table : prefix_table) (pt : pattern_term) : Tot string (decreases pt) =
   match pt with
   | PT_Var v     -> "?" ^ v
   | PT_IRI i     -> abbreviate_iri table i
   | PT_BNode b   -> "_:" ^ b
   | PT_Literal l -> term_with_prefixes table (T_Literal l)
+  | PT_TripleTerm s p o ->
+    "<<( " ^ pattern_term_short table s ^ " " ^ pattern_term_short table p
+           ^ " " ^ pattern_term_short table o ^ " )>>"
 
 let pattern_subject_short (table : prefix_table) (ps : pattern_subject) : Tot string =
   match ps with
   | PS_Var v   -> "?" ^ v
   | PS_IRI i   -> abbreviate_iri table i
   | PS_BNode b -> "_:" ^ b
+  | PS_TripleTerm s p o ->
+    "<<( " ^ pattern_term_short table s ^ " " ^ pattern_term_short table p
+           ^ " " ^ pattern_term_short table o ^ " )>>"
 
 let triple_pattern_short (table : prefix_table) (tp : triple_pattern) : Tot string =
   pattern_subject_short table tp.tp_s ^ " " ^

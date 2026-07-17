@@ -63,6 +63,13 @@ type token =
   | Tok_AND 
   | Tok_OR 
   | Tok_HATHAT 
+  | Tok_TT_OPEN 
+  | Tok_TT_CLOSE 
+  | Tok_TRIPLE_KW 
+  | Tok_SUBJECT_KW 
+  | Tok_PREDICATE_KW 
+  | Tok_OBJECT_KW 
+  | Tok_ISTRIPLE_KW 
   | Tok_IRI of Prims.string 
   | Tok_PNAME of Prims.string 
   | Tok_VAR of Prims.string 
@@ -276,6 +283,20 @@ let uu___is_Tok_OR (projectee : token) : Prims.bool=
   match projectee with | Tok_OR -> true | uu___ -> false
 let uu___is_Tok_HATHAT (projectee : token) : Prims.bool=
   match projectee with | Tok_HATHAT -> true | uu___ -> false
+let uu___is_Tok_TT_OPEN (projectee : token) : Prims.bool=
+  match projectee with | Tok_TT_OPEN -> true | uu___ -> false
+let uu___is_Tok_TT_CLOSE (projectee : token) : Prims.bool=
+  match projectee with | Tok_TT_CLOSE -> true | uu___ -> false
+let uu___is_Tok_TRIPLE_KW (projectee : token) : Prims.bool=
+  match projectee with | Tok_TRIPLE_KW -> true | uu___ -> false
+let uu___is_Tok_SUBJECT_KW (projectee : token) : Prims.bool=
+  match projectee with | Tok_SUBJECT_KW -> true | uu___ -> false
+let uu___is_Tok_PREDICATE_KW (projectee : token) : Prims.bool=
+  match projectee with | Tok_PREDICATE_KW -> true | uu___ -> false
+let uu___is_Tok_OBJECT_KW (projectee : token) : Prims.bool=
+  match projectee with | Tok_OBJECT_KW -> true | uu___ -> false
+let uu___is_Tok_ISTRIPLE_KW (projectee : token) : Prims.bool=
+  match projectee with | Tok_ISTRIPLE_KW -> true | uu___ -> false
 let uu___is_Tok_IRI (projectee : token) : Prims.bool=
   match projectee with | Tok_IRI _0 -> true | uu___ -> false
 let __proj__Tok_IRI__item___0 (projectee : token) : Prims.string=
@@ -905,121 +926,155 @@ let rec scan_pn_local_end (input : Prims.string) (p : pos) : pos=
             then scan_pn_local_end input (p + (Prims.of_int (2)))
             else p)
        else p)
-let keyword_of_upper (upper : Prims.string) (original : Prims.string) :
-  token=
-  if streq upper "SELECT"
-  then Tok_SELECT
+let keyword_of_upper (sparql12 : Prims.bool) (upper : Prims.string)
+  (original : Prims.string) : token=
+  if sparql12 && (streq upper "TRIPLE")
+  then Tok_TRIPLE_KW
   else
-    if streq upper "ASK"
-    then Tok_ASK
+    if sparql12 && (streq upper "SUBJECT")
+    then Tok_SUBJECT_KW
     else
-      if streq upper "CONSTRUCT"
-      then Tok_CONSTRUCT
+      if sparql12 && (streq upper "PREDICATE")
+      then Tok_PREDICATE_KW
       else
-        if streq upper "DESCRIBE"
-        then Tok_DESCRIBE
+        if sparql12 && (streq upper "OBJECT")
+        then Tok_OBJECT_KW
         else
-          if streq upper "WHERE"
-          then Tok_WHERE
+          if sparql12 && (streq upper "ISTRIPLE")
+          then Tok_ISTRIPLE_KW
           else
-            if streq upper "PREFIX"
-            then Tok_PREFIX
+            if streq upper "SELECT"
+            then Tok_SELECT
             else
-              if streq upper "BASE"
-              then Tok_BASE
+              if streq upper "ASK"
+              then Tok_ASK
               else
-                if streq upper "OPTIONAL"
-                then Tok_OPTIONAL
+                if streq upper "CONSTRUCT"
+                then Tok_CONSTRUCT
                 else
-                  if streq upper "UNION"
-                  then Tok_UNION
+                  if streq upper "DESCRIBE"
+                  then Tok_DESCRIBE
                   else
-                    if streq upper "MINUS"
-                    then Tok_MINUS_KW
+                    if streq upper "WHERE"
+                    then Tok_WHERE
                     else
-                      if streq upper "LATERAL"
-                      then Tok_LATERAL
+                      if streq upper "PREFIX"
+                      then Tok_PREFIX
                       else
-                        if streq upper "FILTER"
-                        then Tok_FILTER
+                        if streq upper "BASE"
+                        then Tok_BASE
                         else
-                          if streq upper "BIND"
-                          then Tok_BIND
+                          if streq upper "OPTIONAL"
+                          then Tok_OPTIONAL
                           else
-                            if streq upper "VALUES"
-                            then Tok_VALUES
+                            if streq upper "UNION"
+                            then Tok_UNION
                             else
-                              if streq upper "GRAPH"
-                              then Tok_GRAPH
+                              if streq upper "MINUS"
+                              then Tok_MINUS_KW
                               else
-                                if streq upper "SERVICE"
-                                then Tok_SERVICE
+                                if streq upper "LATERAL"
+                                then Tok_LATERAL
                                 else
-                                  if streq upper "SILENT"
-                                  then Tok_SILENT
+                                  if streq upper "FILTER"
+                                  then Tok_FILTER
                                   else
-                                    if streq upper "EXISTS"
-                                    then Tok_EXISTS
+                                    if streq upper "BIND"
+                                    then Tok_BIND
                                     else
-                                      if streq upper "NOT"
-                                      then Tok_NOT
+                                      if streq upper "VALUES"
+                                      then Tok_VALUES
                                       else
-                                        if streq upper "AS"
-                                        then Tok_AS
+                                        if streq upper "GRAPH"
+                                        then Tok_GRAPH
                                         else
-                                          if streq upper "DISTINCT"
-                                          then Tok_DISTINCT
+                                          if streq upper "SERVICE"
+                                          then Tok_SERVICE
                                           else
-                                            if streq upper "REDUCED"
-                                            then Tok_REDUCED
+                                            if streq upper "SILENT"
+                                            then Tok_SILENT
                                             else
-                                              if streq upper "ORDER"
-                                              then Tok_ORDER
+                                              if streq upper "EXISTS"
+                                              then Tok_EXISTS
                                               else
-                                                if streq upper "BY"
-                                                then Tok_BY
+                                                if streq upper "NOT"
+                                                then Tok_NOT
                                                 else
-                                                  if streq upper "ASC"
-                                                  then Tok_ASC
+                                                  if streq upper "AS"
+                                                  then Tok_AS
                                                   else
-                                                    if streq upper "DESC"
-                                                    then Tok_DESC
+                                                    if streq upper "DISTINCT"
+                                                    then Tok_DISTINCT
                                                     else
-                                                      if streq upper "GROUP"
-                                                      then Tok_GROUP
+                                                      if
+                                                        streq upper "REDUCED"
+                                                      then Tok_REDUCED
                                                       else
                                                         if
-                                                          streq upper
-                                                            "HAVING"
-                                                        then Tok_HAVING
+                                                          streq upper "ORDER"
+                                                        then Tok_ORDER
                                                         else
-                                                          if
-                                                            streq upper
-                                                              "LIMIT"
-                                                          then Tok_LIMIT
+                                                          if streq upper "BY"
+                                                          then Tok_BY
                                                           else
                                                             if
                                                               streq upper
-                                                                "OFFSET"
-                                                            then Tok_OFFSET
+                                                                "ASC"
+                                                            then Tok_ASC
                                                             else
                                                               if
                                                                 streq upper
-                                                                  "FROM"
-                                                              then Tok_FROM
+                                                                  "DESC"
+                                                              then Tok_DESC
                                                               else
                                                                 if
                                                                   streq upper
-                                                                    "NAMED"
+                                                                    "GROUP"
                                                                 then
-                                                                  Tok_NAMED
+                                                                  Tok_GROUP
                                                                 else
                                                                   if
                                                                     streq
                                                                     upper
-                                                                    "IN"
-                                                                  then Tok_IN
+                                                                    "HAVING"
+                                                                  then
+                                                                    Tok_HAVING
                                                                   else
+                                                                    if
+                                                                    streq
+                                                                    upper
+                                                                    "LIMIT"
+                                                                    then
+                                                                    Tok_LIMIT
+                                                                    else
+                                                                    if
+                                                                    streq
+                                                                    upper
+                                                                    "OFFSET"
+                                                                    then
+                                                                    Tok_OFFSET
+                                                                    else
+                                                                    if
+                                                                    streq
+                                                                    upper
+                                                                    "FROM"
+                                                                    then
+                                                                    Tok_FROM
+                                                                    else
+                                                                    if
+                                                                    streq
+                                                                    upper
+                                                                    "NAMED"
+                                                                    then
+                                                                    Tok_NAMED
+                                                                    else
+                                                                    if
+                                                                    streq
+                                                                    upper
+                                                                    "IN"
+                                                                    then
+                                                                    Tok_IN
+                                                                    else
                                                                     if
                                                                     streq
                                                                     upper
@@ -1588,7 +1643,8 @@ let keyword_of_upper (upper : Prims.string) (original : Prims.string) :
                                                                     else
                                                                     Tok_PNAME
                                                                     original
-let scan_pname_or_keyword (input : Prims.string) (p : pos) : lex_result=
+let scan_pname_or_keyword (sparql12 : Prims.bool) (input : Prims.string)
+  (p : pos) : lex_result=
   let p1 = scan_pn_chars_end input p in
   if
     (Prims.op_Negation (at_end input p1)) &&
@@ -1599,7 +1655,7 @@ let scan_pname_or_keyword (input : Prims.string) (p : pos) : lex_result=
     ((Tok_PNAME (substring input p (safe_sub p21 p))), p21)
   else
     (let word = substring input p (safe_sub p1 p) in
-     ((keyword_of_upper (string_upper word) word), p1))
+     ((keyword_of_upper sparql12 (string_upper word) word), p1))
 let rec scan_digits_end (input : Prims.string) (p : pos) : pos=
   if at_end input p
   then p
@@ -1684,7 +1740,8 @@ let rec has_gt_before_terminator (input : Prims.string) (p : pos) :
            || (code = (Prims.of_int (0x5D)))
        then false
        else has_gt_before_terminator input (p + Prims.int_one))
-let next_token (input : Prims.string) (p : pos) : lex_result=
+let next_token (sparql12 : Prims.bool) (input : Prims.string) (p : pos) :
+  lex_result=
   let p1 = skip_ws input p in
   if at_end input p1
   then (Tok_EOF, p1)
@@ -1694,33 +1751,46 @@ let next_token (input : Prims.string) (p : pos) : lex_result=
      if code = (Prims.of_int (0x3C))
      then
        (if
-          (Prims.op_Negation (at_end input (p1 + Prims.int_one))) &&
-            ((char_code (peek_char input (p1 + Prims.int_one))) =
-               (Prims.of_int (0x3D)))
-        then (Tok_LE, (p1 + (Prims.of_int (2))))
+          ((sparql12 &&
+              (Prims.op_Negation (at_end input (p1 + (Prims.of_int (2))))))
+             &&
+             ((char_code (peek_char input (p1 + Prims.int_one))) =
+                (Prims.of_int (0x3C))))
+            &&
+            ((char_code (peek_char input (p1 + (Prims.of_int (2))))) =
+               (Prims.of_int (0x28)))
+        then (Tok_TT_OPEN, (p1 + (Prims.of_int (3))))
         else
-          if at_end input (p1 + Prims.int_one)
-          then (Tok_LT, (p1 + Prims.int_one))
+          if
+            (Prims.op_Negation (at_end input (p1 + Prims.int_one))) &&
+              ((char_code (peek_char input (p1 + Prims.int_one))) =
+                 (Prims.of_int (0x3D)))
+          then (Tok_LE, (p1 + (Prims.of_int (2))))
           else
-            (let next_code = char_code (peek_char input (p1 + Prims.int_one)) in
-             if
-               (((((((next_code >= (Prims.of_int (0x41))) &&
-                       (next_code <= (Prims.of_int (0x5A))))
-                      ||
-                      ((next_code >= (Prims.of_int (0x61))) &&
-                         (next_code <= (Prims.of_int (0x7A)))))
-                     || (next_code = (Prims.of_int (0x3E))))
-                    || (next_code = (Prims.of_int (0x5F))))
-                   || (next_code = (Prims.of_int (0x2F))))
-                  || (next_code = (Prims.of_int (0x23))))
-                 ||
-                 (((next_code = (Prims.of_int (0x3F))) ||
-                     (next_code = (Prims.of_int (0x24))))
-                    && (has_gt_before_terminator input (p1 + Prims.int_one)))
-             then
-               let uu___3 = scan_iri input (p1 + Prims.int_one) in
-               match uu___3 with | (iri, p') -> ((Tok_IRI iri), p')
-             else (Tok_LT, (p1 + Prims.int_one))))
+            if at_end input (p1 + Prims.int_one)
+            then (Tok_LT, (p1 + Prims.int_one))
+            else
+              (let next_code =
+                 char_code (peek_char input (p1 + Prims.int_one)) in
+               if
+                 (((((((next_code >= (Prims.of_int (0x41))) &&
+                         (next_code <= (Prims.of_int (0x5A))))
+                        ||
+                        ((next_code >= (Prims.of_int (0x61))) &&
+                           (next_code <= (Prims.of_int (0x7A)))))
+                       || (next_code = (Prims.of_int (0x3E))))
+                      || (next_code = (Prims.of_int (0x5F))))
+                     || (next_code = (Prims.of_int (0x2F))))
+                    || (next_code = (Prims.of_int (0x23))))
+                   ||
+                   (((next_code = (Prims.of_int (0x3F))) ||
+                       (next_code = (Prims.of_int (0x24))))
+                      &&
+                      (has_gt_before_terminator input (p1 + Prims.int_one)))
+               then
+                 let uu___4 = scan_iri input (p1 + Prims.int_one) in
+                 match uu___4 with | (iri, p') -> ((Tok_IRI iri), p')
+               else (Tok_LT, (p1 + Prims.int_one))))
      else
        if code = (Prims.of_int (0x3E))
        then
@@ -1741,7 +1811,19 @@ let next_token (input : Prims.string) (p : pos) : lex_result=
              then (Tok_LPAREN, (p1 + Prims.int_one))
              else
                if code = (Prims.of_int (0x29))
-               then (Tok_RPAREN, (p1 + Prims.int_one))
+               then
+                 (if
+                    ((sparql12 &&
+                        (Prims.op_Negation
+                           (at_end input (p1 + (Prims.of_int (2))))))
+                       &&
+                       ((char_code (peek_char input (p1 + Prims.int_one))) =
+                          (Prims.of_int (0x3E))))
+                      &&
+                      ((char_code (peek_char input (p1 + (Prims.of_int (2)))))
+                         = (Prims.of_int (0x3E)))
+                  then (Tok_TT_CLOSE, (p1 + (Prims.of_int (3))))
+                  else (Tok_RPAREN, (p1 + Prims.int_one)))
                else
                  if code = (Prims.of_int (0x5B))
                  then (Tok_LBRACKET, (p1 + Prims.int_one))
@@ -1913,7 +1995,7 @@ let next_token (input : Prims.string) (p : pos) : lex_result=
                                                               p')
                                                       else
                                                         scan_pname_or_keyword
-                                                          input p1)
+                                                          sparql12 input p1)
                                                    else
                                                      if is_digit c
                                                      then
@@ -1928,7 +2010,7 @@ let next_token (input : Prims.string) (p : pos) : lex_result=
                                                               (Prims.of_int (0x80)))
                                                        then
                                                          scan_pname_or_keyword
-                                                           input p1
+                                                           sparql12 input p1
                                                        else
                                                          (Tok_EOF,
                                                            (p1 +
@@ -1983,15 +2065,15 @@ type modifier_result =
     Prims.list FStar_Pervasives_Native.option *
     SPARQL11_Algebra.having_condition Prims.list
     FStar_Pervasives_Native.option)
-let rec tokenize_loop (input : Prims.string) (p : pos)
-  (acc : token Prims.list) (fuel : Prims.nat) : token Prims.list=
+let rec tokenize_loop (sparql12 : Prims.bool) (input : Prims.string)
+  (p : pos) (acc : token Prims.list) (fuel : Prims.nat) : token Prims.list=
   if fuel = Prims.int_zero
   then FStar_List_Tot_Base.rev (Tok_EOF :: acc)
   else
     if p > (FStar_String.strlen input)
     then FStar_List_Tot_Base.rev (Tok_EOF :: acc)
     else
-      (let uu___2 = next_token input p in
+      (let uu___2 = next_token sparql12 input p in
        match uu___2 with
        | (tok, p') ->
            (match tok with
@@ -2000,9 +2082,13 @@ let rec tokenize_loop (input : Prims.string) (p : pos)
                 if p' <= p
                 then FStar_List_Tot_Base.rev (Tok_EOF :: acc)
                 else
-                  tokenize_loop input p' (tok :: acc) (fuel - Prims.int_one)))
+                  tokenize_loop sparql12 input p' (tok :: acc)
+                    (fuel - Prims.int_one)))
 let tokenize (input : Prims.string) : token Prims.list=
-  tokenize_loop input Prims.int_zero []
+  tokenize_loop false input Prims.int_zero []
+    ((FStar_String.strlen input) + Prims.int_one)
+let tokenize_12 (input : Prims.string) : token Prims.list=
+  tokenize_loop true input Prims.int_zero []
     ((FStar_String.strlen input) + Prims.int_one)
 let parse_ok (v : 'a) (ts : token_stream) : 'a parse_result= ParseOk (v, ts)
 let parse_err (msg : Prims.string) : 'a parse_result= ParseErr msg
@@ -2309,6 +2395,8 @@ let pattern_term_to_subject (pt : SPARQL11_Algebra.pattern_term) :
   | SPARQL11_Algebra.PT_BNode b ->
       FStar_Pervasives_Native.Some (SPARQL11_Algebra.PS_BNode b)
   | SPARQL11_Algebra.PT_Literal uu___ -> FStar_Pervasives_Native.None
+  | SPARQL11_Algebra.PT_TripleTerm (s, p, o) ->
+      FStar_Pervasives_Native.Some (SPARQL11_Algebra.PS_TripleTerm (s, p, o))
 let select_item_var (item : SPARQL11_Algebra.select_item) :
   SPARQL11_Algebra.var_name=
   match item with
@@ -2616,6 +2704,29 @@ and parse_primary_expr (pm : prefix_map) (fuel : Prims.nat)
               (match parse_expect Tok_RPAREN ts' with
                | ParseErr uu___1 -> ParseErr "expected ')'"
                | ParseOk ((), ts'') -> ParseOk (e, ts'')))
+     | Tok_TT_OPEN ->
+         parse_tt_expr pm (fuel - Prims.int_one) (parse_advance ts)
+     | Tok_TRIPLE_KW ->
+         parse_b3 pm (fuel - Prims.int_one)
+           (fun uu___1 uu___2 uu___3 ->
+              SPARQL11_Algebra.E_TripleTerm (uu___1, uu___2, uu___3))
+           (parse_advance ts)
+     | Tok_SUBJECT_KW ->
+         parse_b1 pm (fuel - Prims.int_one)
+           (fun uu___1 -> SPARQL11_Algebra.E_TTSubject uu___1)
+           (parse_advance ts)
+     | Tok_PREDICATE_KW ->
+         parse_b1 pm (fuel - Prims.int_one)
+           (fun uu___1 -> SPARQL11_Algebra.E_TTPredicate uu___1)
+           (parse_advance ts)
+     | Tok_OBJECT_KW ->
+         parse_b1 pm (fuel - Prims.int_one)
+           (fun uu___1 -> SPARQL11_Algebra.E_TTObject uu___1)
+           (parse_advance ts)
+     | Tok_ISTRIPLE_KW ->
+         parse_b1 pm (fuel - Prims.int_one)
+           (fun uu___1 -> SPARQL11_Algebra.E_IsTriple uu___1)
+           (parse_advance ts)
      | Tok_STR ->
          parse_b1 pm (fuel - Prims.int_one)
            (fun uu___1 -> SPARQL11_Algebra.E_Str uu___1) (parse_advance ts)
@@ -3215,6 +3326,87 @@ and parse_b2 (pm : prefix_map) (fuel : Prims.nat)
                         (match parse_expect Tok_RPAREN ts4 with
                          | ParseErr m -> ParseErr m
                          | ParseOk ((), ts5) -> ParseOk ((ctor e1 e2), ts5))))))
+and parse_b3 (pm : prefix_map) (fuel : Prims.nat)
+  (ctor :
+    SPARQL11_Algebra.expr ->
+      SPARQL11_Algebra.expr -> SPARQL11_Algebra.expr -> SPARQL11_Algebra.expr)
+  (ts : token_stream) : SPARQL11_Algebra.expr parse_result=
+  if fuel = Prims.int_zero
+  then ParseErr "recursion limit"
+  else
+    (match parse_expect Tok_LPAREN ts with
+     | ParseErr m -> ParseErr m
+     | ParseOk ((), ts1) ->
+         (match parse_expr pm (fuel - Prims.int_one) ts1 with
+          | ParseErr m -> ParseErr m
+          | ParseOk (e1, ts2) ->
+              (match parse_expect Tok_COMMA ts2 with
+               | ParseErr m -> ParseErr m
+               | ParseOk ((), ts3) ->
+                   (match parse_expr pm (fuel - Prims.int_one) ts3 with
+                    | ParseErr m -> ParseErr m
+                    | ParseOk (e2, ts4) ->
+                        (match parse_expect Tok_COMMA ts4 with
+                         | ParseErr m -> ParseErr m
+                         | ParseOk ((), ts5) ->
+                             (match parse_expr pm (fuel - Prims.int_one) ts5
+                              with
+                              | ParseErr m -> ParseErr m
+                              | ParseOk (e3, ts6) ->
+                                  (match parse_expect Tok_RPAREN ts6 with
+                                   | ParseErr m -> ParseErr m
+                                   | ParseOk ((), ts7) ->
+                                       ParseOk ((ctor e1 e2 e3), ts7))))))))
+and parse_tt_expr_component (pm : prefix_map) (fuel : Prims.nat)
+  (ts : token_stream) : SPARQL11_Algebra.expr parse_result=
+  if fuel = Prims.int_zero
+  then ParseErr "recursion limit"
+  else
+    (match parse_peek ts with
+     | Tok_A ->
+         ParseOk
+           ((SPARQL11_Algebra.E_IRI rdf_type_iri_str), (parse_advance ts))
+     | uu___1 -> parse_primary_expr pm (fuel - Prims.int_one) ts)
+and parse_tt_expr_subject (pm : prefix_map) (fuel : Prims.nat)
+  (ts : token_stream) : SPARQL11_Algebra.expr parse_result=
+  if fuel = Prims.int_zero
+  then ParseErr "recursion limit"
+  else
+    (match parse_peek ts with
+     | Tok_VAR v -> ParseOk ((SPARQL11_Algebra.E_Var v), (parse_advance ts))
+     | Tok_IRI i ->
+         if RDF_Term.is_iri i
+         then ParseOk ((SPARQL11_Algebra.E_IRI i), (parse_advance ts))
+         else ParseErr "invalid IRI"
+     | Tok_PNAME pn ->
+         (match resolve_pname pn pm with
+          | FStar_Pervasives_Native.Some iri ->
+              if RDF_Term.is_iri iri
+              then ParseOk ((SPARQL11_Algebra.E_IRI iri), (parse_advance ts))
+              else ParseErr "invalid IRI"
+          | FStar_Pervasives_Native.None -> ParseErr "unresolved prefix")
+     | uu___1 -> ParseErr "triple-term subject must be a variable or IRI")
+and parse_tt_expr (pm : prefix_map) (fuel : Prims.nat) (ts : token_stream) :
+  SPARQL11_Algebra.expr parse_result=
+  if fuel = Prims.int_zero
+  then ParseErr "recursion limit"
+  else
+    (match parse_tt_expr_subject pm (fuel - Prims.int_one) ts with
+     | ParseErr m -> ParseErr m
+     | ParseOk (es, ts1) ->
+         (match parse_tt_expr_component pm (fuel - Prims.int_one) ts1 with
+          | ParseErr m -> ParseErr m
+          | ParseOk (ep, ts2) ->
+              (match parse_tt_expr_component pm (fuel - Prims.int_one) ts2
+               with
+               | ParseErr m -> ParseErr m
+               | ParseOk (eo, ts3) ->
+                   (match parse_expect Tok_TT_CLOSE ts3 with
+                    | ParseErr uu___1 ->
+                        ParseErr "expected ')>>' to close triple term"
+                    | ParseOk ((), ts4) ->
+                        ParseOk
+                          ((SPARQL11_Algebra.E_TripleTerm (es, ep, eo)), ts4)))))
 and parse_func_call (pm : prefix_map) (fuel : Prims.nat)
   (iri : RDF_Term.wf_iri) (ts : token_stream) :
   SPARQL11_Algebra.expr parse_result=
@@ -3523,6 +3715,22 @@ and parse_ggp_body (pm : prefix_map) (fuel : Prims.nat)
                  parse_ggp_body pm (fuel - Prims.int_one) acc' filters false
                    ts'))
      | Tok_FALSE ->
+         (match parse_triples_block pm (fuel - Prims.int_one)
+                  SPARQL11_Algebra.GP_Empty ts
+          with
+          | ParseErr m -> ParseErr m
+          | ParseOk (triples_ggp, ts') ->
+              if
+                cross_scope &&
+                  (local_string_overlaps (ggp_labeled_bnodes acc)
+                     (ggp_labeled_bnodes triples_ggp))
+              then
+                ParseErr "blank node label reused across nested group scope"
+              else
+                (let acc' = ggp_join acc triples_ggp in
+                 parse_ggp_body pm (fuel - Prims.int_one) acc' filters false
+                   ts'))
+     | Tok_TT_OPEN ->
          (match parse_triples_block pm (fuel - Prims.int_one)
                   SPARQL11_Algebra.GP_Empty ts
           with
@@ -4186,6 +4394,17 @@ and parse_subject_with_extras (pm : prefix_map) (fuel : Prims.nat)
                    ParseOk ((subj, extras, false), ts')
                | FStar_Pervasives_Native.None ->
                    ParseErr "collection cannot be used as subject"))
+     | Tok_TT_OPEN ->
+         (match parse_triple_term_pattern pm (fuel - Prims.int_one)
+                  (parse_advance ts)
+          with
+          | ParseErr m -> ParseErr m
+          | ParseOk ((pt, extras), ts') ->
+              (match pattern_term_to_subject pt with
+               | FStar_Pervasives_Native.Some subj ->
+                   ParseOk ((subj, extras, false), ts')
+               | FStar_Pervasives_Native.None ->
+                   ParseErr "invalid triple-term subject"))
      | uu___1 -> ParseErr "expected subject")
 and parse_subject (pm : prefix_map) (fuel : Prims.nat) (ts : token_stream) :
   SPARQL11_Algebra.pattern_subject parse_result=
@@ -4542,7 +4761,68 @@ and parse_object_with_extras (pm : prefix_map) (fuel : Prims.nat)
                              extra_triples), ts'''))))
      | Tok_LPAREN ->
          parse_collection pm (fuel - Prims.int_one) (parse_advance ts)
+     | Tok_TT_OPEN ->
+         parse_triple_term_pattern pm (fuel - Prims.int_one)
+           (parse_advance ts)
      | uu___1 -> ParseErr "expected object")
+and parse_tt_pat_component (pm : prefix_map) (fuel : Prims.nat)
+  (ts : token_stream) :
+  (SPARQL11_Algebra.pattern_term * SPARQL11_Algebra.group_graph_pattern)
+    parse_result=
+  if fuel = Prims.int_zero
+  then ParseErr "recursion limit"
+  else
+    (match parse_peek ts with
+     | Tok_LPAREN ->
+         ParseErr "RDF collection not allowed inside a triple term"
+     | uu___1 -> parse_object_with_extras pm (fuel - Prims.int_one) ts)
+and parse_tt_pat_predicate (pm : prefix_map) (fuel : Prims.nat)
+  (ts : token_stream) : SPARQL11_Algebra.pattern_term parse_result=
+  if fuel = Prims.int_zero
+  then ParseErr "recursion limit"
+  else
+    (match parse_peek ts with
+     | Tok_VAR v -> ParseOk ((SPARQL11_Algebra.PT_Var v), (parse_advance ts))
+     | Tok_IRI i ->
+         if RDF_Term.is_iri i
+         then ParseOk ((SPARQL11_Algebra.PT_IRI i), (parse_advance ts))
+         else ParseErr "invalid IRI"
+     | Tok_PNAME pn ->
+         (match resolve_pname pn pm with
+          | FStar_Pervasives_Native.Some iri ->
+              if RDF_Term.is_iri iri
+              then
+                ParseOk ((SPARQL11_Algebra.PT_IRI iri), (parse_advance ts))
+              else ParseErr "invalid IRI"
+          | FStar_Pervasives_Native.None -> ParseErr "unresolved prefix")
+     | Tok_A ->
+         ParseOk
+           ((SPARQL11_Algebra.PT_IRI rdf_type_iri_str), (parse_advance ts))
+     | uu___1 -> ParseErr "triple-term predicate must be a variable or IRI")
+and parse_triple_term_pattern (pm : prefix_map) (fuel : Prims.nat)
+  (ts : token_stream) :
+  (SPARQL11_Algebra.pattern_term * SPARQL11_Algebra.group_graph_pattern)
+    parse_result=
+  if fuel = Prims.int_zero
+  then ParseErr "recursion limit"
+  else
+    (match parse_tt_pat_component pm (fuel - Prims.int_one) ts with
+     | ParseErr m -> ParseErr m
+     | ParseOk ((s_pt, ex1), ts1) ->
+         (match parse_tt_pat_predicate pm (fuel - Prims.int_one) ts1 with
+          | ParseErr m -> ParseErr m
+          | ParseOk (p_pt, ts2) ->
+              (match parse_tt_pat_component pm (fuel - Prims.int_one) ts2
+               with
+               | ParseErr m -> ParseErr m
+               | ParseOk ((o_pt, ex3), ts3) ->
+                   (match parse_expect Tok_TT_CLOSE ts3 with
+                    | ParseErr uu___1 ->
+                        ParseErr "expected ')>>' to close triple term"
+                    | ParseOk ((), ts4) ->
+                        ParseOk
+                          (((SPARQL11_Algebra.PT_TripleTerm
+                               (s_pt, p_pt, o_pt)), (ggp_join ex1 ex3)), ts4)))))
 and parse_collection (pm : prefix_map) (fuel : Prims.nat) (ts : token_stream)
   :
   (SPARQL11_Algebra.pattern_term * SPARQL11_Algebra.group_graph_pattern)
@@ -4882,6 +5162,9 @@ and parse_triples_block (pm : prefix_map) (fuel : Prims.nat)
                     | Tok_FALSE ->
                         parse_triples_block pm (fuel - Prims.int_one) acc'
                           ts'''
+                    | Tok_TT_OPEN ->
+                        parse_triples_block pm (fuel - Prims.int_one) acc'
+                          ts'''
                     | uu___1 -> ParseOk (acc', ts'''))
                | Tok_VAR uu___1 -> ParseErr "expected dot between triples"
                | Tok_IRI uu___1 -> ParseErr "expected dot between triples"
@@ -4898,6 +5181,7 @@ and parse_triples_block (pm : prefix_map) (fuel : Prims.nat)
                | Tok_STRING uu___1 -> ParseErr "expected dot between triples"
                | Tok_TRUE -> ParseErr "expected dot between triples"
                | Tok_FALSE -> ParseErr "expected dot between triples"
+               | Tok_TT_OPEN -> ParseErr "expected dot between triples"
                | uu___1 -> ParseOk (acc', ts''))))
 and parse_select_query (pm : prefix_map)
   (init_base : RDF_Term.wf_iri FStar_Pervasives_Native.option)
@@ -6537,6 +6821,24 @@ let parse_sparql_with_base
 let parse_sparql (input : Prims.string) :
   SPARQL11_Algebra.query parse_result=
   parse_sparql_with_base FStar_Pervasives_Native.None input
+let parse_sparql_12_with_base
+  (init_base : RDF_Term.wf_iri FStar_Pervasives_Native.option)
+  (input : Prims.string) : SPARQL11_Algebra.query parse_result=
+  let tokens = tokenize_12 input in
+  match first_invalid_token_msg tokens with
+  | FStar_Pervasives_Native.Some m -> ParseErr m
+  | FStar_Pervasives_Native.None ->
+      (match parse_select_query [] init_base (Prims.of_int (10000)) tokens
+       with
+       | ParseOk (q, rest) ->
+           if Prims.op_Negation (tokens_only_eof rest)
+           then ParseErr "unexpected tokens after query"
+           else
+             if Prims.op_Negation (validate_bnode_scope_top q)
+             then
+               ParseErr "blank node label reused across graph-pattern scope"
+             else ParseOk (q, rest)
+       | ParseErr msg -> ParseErr msg)
 let parse_iri_ref (pm : prefix_map) (ts : token_stream) :
   RDF_Term.wf_iri parse_result=
   match parse_peek ts with
@@ -7206,22 +7508,66 @@ let parse_sparql_update_with_base
 let parse_sparql_update (input : Prims.string) :
   SPARQL11_Algebra.sparql_update parse_result=
   parse_sparql_update_with_base FStar_Pervasives_Native.None input
+let parse_sparql_update_12_with_base
+  (init_base : RDF_Term.wf_iri FStar_Pervasives_Native.option)
+  (input : Prims.string) : SPARQL11_Algebra.sparql_update parse_result=
+  let tokens = tokenize_12 input in
+  match first_invalid_token_msg tokens with
+  | FStar_Pervasives_Native.Some m -> ParseErr m
+  | FStar_Pervasives_Native.None ->
+      let tokens' =
+        match init_base with
+        | FStar_Pervasives_Native.Some uu___ ->
+            resolve_relative_iri_tokens init_base tokens
+        | FStar_Pervasives_Native.None -> tokens in
+      (match parse_update_seq [] init_base [] false (Prims.of_int (10000))
+               tokens'
+       with
+       | ParseErr m -> ParseErr m
+       | ParseOk ((pm, base, ops), rest) ->
+           if Prims.op_Negation (tokens_only_eof rest)
+           then ParseErr "unexpected tokens after update request"
+           else
+             if
+               Prims.op_Negation (bnode_labels_unique_across_data_ops [] ops)
+             then
+               ParseErr
+                 "blank node label reused across INSERT DATA / DELETE DATA ops (SPARQL 1.1 Update \194\16719.6)"
+             else
+               ParseOk
+                 ({
+                    SPARQL11_Algebra.u_base = base;
+                    SPARQL11_Algebra.u_prefixes = (prefix_map_to_wf pm);
+                    SPARQL11_Algebra.u_ops = ops
+                  }, rest))
 let sse_wrap (tag : Prims.string) (body : Prims.string) : Prims.string=
   Prims.strcat "("
     (Prims.strcat tag (Prims.strcat " " (Prims.strcat body ")")))
-let sse_pattern_term (pt : SPARQL11_Algebra.pattern_term) : Prims.string=
+let rec sse_pattern_term (pt : SPARQL11_Algebra.pattern_term) : Prims.string=
   match pt with
   | SPARQL11_Algebra.PT_Var v -> Prims.strcat "?" v
   | SPARQL11_Algebra.PT_IRI i -> Prims.strcat "<" (Prims.strcat i ">")
   | SPARQL11_Algebra.PT_BNode b -> Prims.strcat "_:" b
   | SPARQL11_Algebra.PT_Literal l ->
       Prims.strcat "\"" (Prims.strcat l.RDF_Term.lexical_form "\"")
+  | SPARQL11_Algebra.PT_TripleTerm (s, p, o) ->
+      Prims.strcat "<<( "
+        (Prims.strcat (sse_pattern_term s)
+           (Prims.strcat " "
+              (Prims.strcat (sse_pattern_term p)
+                 (Prims.strcat " " (Prims.strcat (sse_pattern_term o) " )>>")))))
 let sse_pattern_subject (ps : SPARQL11_Algebra.pattern_subject) :
   Prims.string=
   match ps with
   | SPARQL11_Algebra.PS_Var v -> Prims.strcat "?" v
   | SPARQL11_Algebra.PS_IRI i -> Prims.strcat "<" (Prims.strcat i ">")
   | SPARQL11_Algebra.PS_BNode b -> Prims.strcat "_:" b
+  | SPARQL11_Algebra.PS_TripleTerm (s, p, o) ->
+      Prims.strcat "<<( "
+        (Prims.strcat (sse_pattern_term s)
+           (Prims.strcat " "
+              (Prims.strcat (sse_pattern_term p)
+                 (Prims.strcat " " (Prims.strcat (sse_pattern_term o) " )>>")))))
 let sse_triple (tp : SPARQL11_Algebra.triple_pattern) : Prims.string=
   sse_wrap "triple"
     (Prims.strcat (sse_pattern_subject tp.SPARQL11_Algebra.tp_s)
@@ -7376,6 +7722,15 @@ let rec sse_expr (e : SPARQL11_Algebra.expr) : Prims.string=
       sse_wrap "agg" (sse_expr e1)
   | SPARQL11_Algebra.E_FunctionCall (iri, args) ->
       sse_wrap (Prims.strcat "call " iri) (sse_expr_list args)
+  | SPARQL11_Algebra.E_TripleTerm (a, b, c) ->
+      sse_wrap "tripleterm"
+        (Prims.strcat (sse_expr a)
+           (Prims.strcat " "
+              (Prims.strcat (sse_expr b) (Prims.strcat " " (sse_expr c)))))
+  | SPARQL11_Algebra.E_TTSubject e1 -> sse_wrap "subject" (sse_expr e1)
+  | SPARQL11_Algebra.E_TTPredicate e1 -> sse_wrap "predicate" (sse_expr e1)
+  | SPARQL11_Algebra.E_TTObject e1 -> sse_wrap "object" (sse_expr e1)
+  | SPARQL11_Algebra.E_IsTriple e1 -> sse_wrap "istriple" (sse_expr e1)
 and sse_expr_list (es : SPARQL11_Algebra.expr Prims.list) : Prims.string=
   match es with
   | [] -> ""

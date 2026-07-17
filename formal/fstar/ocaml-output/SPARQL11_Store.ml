@@ -1072,12 +1072,16 @@ let rec eval_pattern_backend
                 (match ps with
                  | SPARQL11_Algebra.PS_IRI i -> [RDF_Term.T_IRI i]
                  | SPARQL11_Algebra.PS_BNode b -> [RDF_Term.T_BNode b]
-                 | SPARQL11_Algebra.PS_Var uu___1 -> [])
+                 | SPARQL11_Algebra.PS_Var uu___1 -> []
+                 | SPARQL11_Algebra.PS_TripleTerm (uu___1, uu___2, uu___3) ->
+                     [])
                 (match pt with
                  | SPARQL11_Algebra.PT_IRI i -> [RDF_Term.T_IRI i]
                  | SPARQL11_Algebra.PT_BNode b -> [RDF_Term.T_BNode b]
                  | SPARQL11_Algebra.PT_Literal l -> [RDF_Term.T_Literal l]
-                 | SPARQL11_Algebra.PT_Var uu___1 -> []) in
+                 | SPARQL11_Algebra.PT_Var uu___1 -> []
+                 | SPARQL11_Algebra.PT_TripleTerm (uu___1, uu___2, uu___3) ->
+                     []) in
             let has_reflexive t =
               FStar_List_Tot_Base.existsb
                 (fun pair ->
@@ -1098,12 +1102,16 @@ let rec eval_pattern_backend
                 (match ps with
                  | SPARQL11_Algebra.PS_IRI i -> [RDF_Term.T_IRI i]
                  | SPARQL11_Algebra.PS_BNode b -> [RDF_Term.T_BNode b]
-                 | SPARQL11_Algebra.PS_Var uu___1 -> [])
+                 | SPARQL11_Algebra.PS_Var uu___1 -> []
+                 | SPARQL11_Algebra.PS_TripleTerm (uu___1, uu___2, uu___3) ->
+                     [])
                 (match pt with
                  | SPARQL11_Algebra.PT_IRI i -> [RDF_Term.T_IRI i]
                  | SPARQL11_Algebra.PT_BNode b -> [RDF_Term.T_BNode b]
                  | SPARQL11_Algebra.PT_Literal l -> [RDF_Term.T_Literal l]
-                 | SPARQL11_Algebra.PT_Var uu___1 -> []) in
+                 | SPARQL11_Algebra.PT_Var uu___1 -> []
+                 | SPARQL11_Algebra.PT_TripleTerm (uu___1, uu___2, uu___3) ->
+                     []) in
             let has_reflexive t =
               FStar_List_Tot_Base.existsb
                 (fun pair ->

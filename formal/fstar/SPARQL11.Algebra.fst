@@ -309,17 +309,29 @@ let rec lookup_named_store (name : iri) (named : list named_graph_store) : optio
 
 type var_name = string
 
-(** Pattern terms: variables or concrete RDF terms **)
+(** Pattern terms: variables or concrete RDF terms.
+    SPARQL 1.2 (epic #305 P6/P7) adds `PT_TripleTerm`, a triple-term
+    pattern `<<( s p o )>>` whose three sub-positions are themselves
+    pattern terms (each may be a variable, concrete term, or a nested
+    triple term). Only reachable when the parser runs in SPARQL 1.2
+    mode; 1.1 queries never produce it. **)
 noeq type pattern_term =
   | PT_Var      : var_name -> pattern_term
   | PT_IRI      : wf_iri -> pattern_term
   | PT_BNode    : bnode_id -> pattern_term
   | PT_Literal  : wf_literal -> pattern_term
+  | PT_TripleTerm : pattern_term -> pattern_term -> pattern_term -> pattern_term
 
 noeq type pattern_subject =
   | PS_Var   : var_name -> pattern_subject
   | PS_IRI   : wf_iri -> pattern_subject
   | PS_BNode : bnode_id -> pattern_subject
+  // SPARQL 1.2: a triple-term pattern in subject position of a triple
+  // pattern. Sub-positions reuse pattern_term (defined above). A concrete
+  // data triple can never have a triple-term subject, so binding one
+  // against real data always fails — which is exactly the RDF 1.2
+  // "triple terms are object-only" rule surfacing at match time.
+  | PS_TripleTerm : pattern_term -> pattern_term -> pattern_term -> pattern_subject
 
 (** Triple pattern: subject, predicate (may be variable), object **)
 noeq type triple_pattern = {
@@ -328,10 +340,23 @@ noeq type triple_pattern = {
   tp_o : pattern_term;
 }
 
+// RDF 1.2 helper: coerce a concrete term into a subject (IRI or blank
+// node). A literal or a triple term can never occupy subject position,
+// so those yield None.
+let term_to_subject_opt (t : rdf_term) : option subject =
+  match t with
+  | T_IRI i -> Some (S_IRI i)
+  | T_BNode b -> Some (S_BNode b)
+  | _ -> None
+
 let bound_subject_of_pattern (ps : pattern_subject) (mu : solution_mapping) : option subject =
   match ps with
   | PS_IRI i -> Some (S_IRI i)
   | PS_BNode b -> Some (S_BNode b)
+  // A triple-term subject pattern can never instantiate to a concrete
+  // subject (subjects are IRI/bnode only) — used only in CONSTRUCT/match,
+  // where it correctly produces no triple / no match.
+  | PS_TripleTerm _ _ _ -> None
   | PS_Var v ->
     match sm_lookup v mu with
     | Some (T_IRI i) -> Some (S_IRI i)
@@ -345,6 +370,7 @@ let bound_predicate_of_pattern (pt : pattern_term) (mu : solution_mapping) : opt
   | PT_IRI i -> Some i
   | PT_BNode _ -> None
   | PT_Literal _ -> None
+  | PT_TripleTerm _ _ _ -> None   // a triple term is not a predicate IRI
   | PT_Var v ->
     match sm_lookup v mu with
     | Some (T_IRI i) -> Some i
@@ -353,12 +379,30 @@ let bound_predicate_of_pattern (pt : pattern_term) (mu : solution_mapping) : opt
     | Some (T_TripleTerm _ _ _) -> None   // a triple term is not a predicate IRI
     | None -> None
 
-let bound_object_of_pattern (pt : pattern_term) (mu : solution_mapping) : option rdf_term =
+// RDF 1.2: a triple-term pattern object binds to a concrete `T_TripleTerm`
+// only when every sub-position is groundable under `mu` (used both for
+// CONSTRUCT-template instantiation and for index-key computation, where a
+// partially-unbound triple term yields None → full scan + tp_match filter).
+let rec bound_object_of_pattern (pt : pattern_term) (mu : solution_mapping)
+  : Tot (option rdf_term) (decreases pt) =
   match pt with
   | PT_IRI i -> Some (T_IRI i)
   | PT_BNode b -> Some (T_BNode b)
   | PT_Literal l -> Some (T_Literal l)
   | PT_Var v -> sm_lookup v mu
+  | PT_TripleTerm ps pp po ->
+    (match bound_object_of_pattern ps mu with
+     | None -> None
+     | Some sterm ->
+       (match term_to_subject_opt sterm with
+        | None -> None
+        | Some ssub ->
+          (match bound_object_of_pattern pp mu with
+           | Some (T_IRI ppi) ->
+             (match bound_object_of_pattern po mu with
+              | None -> None
+              | Some oterm -> Some (T_TripleTerm ssub ppi oterm))
+           | _ -> None)))
 
 let pattern_subject_eq (a : pattern_subject) (b : pattern_subject) : bool =
   match a, b with
@@ -367,12 +411,14 @@ let pattern_subject_eq (a : pattern_subject) (b : pattern_subject) : bool =
   | PS_BNode b1, PS_BNode b2 -> b1 = b2
   | _, _ -> false
 
-let pattern_term_eq (a : pattern_term) (b : pattern_term) : bool =
+let rec pattern_term_eq (a : pattern_term) (b : pattern_term) : Tot bool (decreases a) =
   match a, b with
   | PT_Var v1, PT_Var v2 -> v1 = v2
   | PT_IRI i1, PT_IRI i2 -> i1 = i2
   | PT_BNode b1, PT_BNode b2 -> b1 = b2
   | PT_Literal l1, PT_Literal l2 -> literal_eq l1 l2
+  | PT_TripleTerm s1 p1 o1, PT_TripleTerm s2 p2 o2 ->
+    pattern_term_eq s1 s2 && pattern_term_eq p1 p2 && pattern_term_eq o1 o2
   | _, _ -> false
 
 let triple_pattern_eq (a : triple_pattern) (b : triple_pattern) : bool =
@@ -503,6 +549,16 @@ noeq type expr =
 
   (* Function call (extensible — IRI-named functions, §17.6) *)
   | E_FunctionCall  : wf_iri -> list expr -> expr
+
+  (* SPARQL 1.2 triple-term builtins (SPARQL 1.2 Query WD §17.4).
+     E_TripleTerm is the constructor shared by both the `TRIPLE(s,p,o)`
+     function and the `<<( s p o )>>` expression term; the four accessors
+     project / test a triple term. *)
+  | E_TripleTerm    : expr -> expr -> expr -> expr   (* TRIPLE(s,p,o) / <<( s p o )>> *)
+  | E_TTSubject     : expr -> expr                   (* SUBJECT(t)   *)
+  | E_TTPredicate   : expr -> expr                   (* PREDICATE(t) *)
+  | E_TTObject      : expr -> expr                   (* OBJECT(t)    *)
+  | E_IsTriple      : expr -> expr                   (* isTRIPLE(x)  *)
 
 (** ====================================================================== **)
 (** Part 4: SPARQL 1.1 Property Paths (§9)                                 **)
@@ -2504,15 +2560,21 @@ let try_bind_subject (ps : pattern_subject) (s : subject) (mu : solution_mapping
     (match s with
      | S_BNode b' -> if b = b' then Some mu else None
      | _ -> None)
+  // A triple-term subject pattern never matches a concrete data subject
+  // (subjects are IRI/bnode only in the RDF data model).
+  | PS_TripleTerm _ _ _ -> None
   | PS_Var v ->
     let term = subject_to_term s in
     match sm_lookup v mu with
     | Some existing -> if rdf_term_eq existing term then Some mu else None
     | None -> Some (sm_bind v term mu)
 
-(* Try to bind a pattern term against a concrete RDF term. *)
-let try_bind_term (pt : pattern_term) (t : rdf_term) (mu : solution_mapping)
-  : option solution_mapping =
+(* Try to bind a pattern term against a concrete RDF term. RDF 1.2:
+   a triple-term pattern `<<( s p o )>>` matches a concrete `T_TripleTerm`
+   by recursively binding its three sub-positions (threading bindings
+   subject → predicate → object). *)
+let rec try_bind_term (pt : pattern_term) (t : rdf_term) (mu : solution_mapping)
+  : Tot (option solution_mapping) (decreases pt) =
   match pt with
   | PT_IRI i ->
     (match t with
@@ -2525,6 +2587,16 @@ let try_bind_term (pt : pattern_term) (t : rdf_term) (mu : solution_mapping)
   | PT_Literal l ->
     (match t with
      | T_Literal l' -> if literal_eq l l' then Some mu else None
+     | _ -> None)
+  | PT_TripleTerm ps pp po ->
+    (match t with
+     | T_TripleTerm s p o ->
+       (match try_bind_term ps (subject_to_term s) mu with
+        | None -> None
+        | Some mu1 ->
+          (match try_bind_term pp (T_IRI p) mu1 with
+           | None -> None
+           | Some mu2 -> try_bind_term po o mu2))
      | _ -> None)
   | PT_Var v ->
     match sm_lookup v mu with
@@ -3011,15 +3083,21 @@ let rec pattern_has_binding_source (p : group_graph_pattern) : Tot bool (decreas
     pattern_has_binding_source p1 || pattern_has_binding_source p2
   | GP_Filter _ p1 | GP_Graph _ p1 -> pattern_has_binding_source p1
 
+let rec pattern_term_var (pt : pattern_term) : Tot (list var_name) (decreases pt) =
+  match pt with
+  | PT_Var v -> [v]
+  | PT_IRI _ | PT_BNode _ | PT_Literal _ -> []
+  // RDF 1.2: collect vars from every sub-position of a triple-term
+  // pattern — object-position triple terms bind these vars at match time.
+  | PT_TripleTerm s p o -> pattern_term_var s @ pattern_term_var p @ pattern_term_var o
+
 let pattern_subject_var (ps : pattern_subject) : list var_name =
   match ps with
   | PS_Var v -> [v]
   | PS_IRI _ | PS_BNode _ -> []
-
-let pattern_term_var (pt : pattern_term) : list var_name =
-  match pt with
-  | PT_Var v -> [v]
-  | PT_IRI _ | PT_BNode _ | PT_Literal _ -> []
+  // A subject-position triple term never matches concrete data, so its
+  // sub-vars can never bind; contribute none to the pattern's var scope.
+  | PS_TripleTerm _ _ _ -> []
 
 let tp_vars (tp : triple_pattern) : list var_name =
   pattern_subject_var tp.tp_s @ pattern_term_var tp.tp_p @ pattern_term_var tp.tp_o
@@ -3059,11 +3137,15 @@ let subj_boundable (occ : list var_name) (ps : pattern_subject) : bool =
   match ps with
   | PS_IRI _ | PS_BNode _ -> true
   | PS_Var v -> var_is_shared occ v
+  // Triple-term positions never serve as a single index key; treat as
+  // unbound so the planner scans and the matcher filters (correctness-safe).
+  | PS_TripleTerm _ _ _ -> false
 
 let term_boundable (occ : list var_name) (pt : pattern_term) : bool =
   match pt with
   | PT_IRI _ | PT_BNode _ | PT_Literal _ -> true
   | PT_Var v -> var_is_shared occ v
+  | PT_TripleTerm _ _ _ -> false
 
 (* Which buckets a single triple pattern could read, given the
    whole-query occurrence multiset `occ`. Compound buckets (sp/po/so)
@@ -3169,6 +3251,11 @@ let rec expr_vars (e : expr) : Tot (list var_name) (decreases e) =
   | E_NotExists p -> pattern_all_vars p
   | E_Aggregate _ _ e1 -> expr_vars e1
   | E_FunctionCall _ es -> expr_list_vars es
+  | E_TripleTerm a b c -> expr_vars a @ expr_vars b @ expr_vars c
+  | E_TTSubject e1 -> expr_vars e1
+  | E_TTPredicate e1 -> expr_vars e1
+  | E_TTObject e1 -> expr_vars e1
+  | E_IsTriple e1 -> expr_vars e1
 
 and expr_list_vars (es : list expr) : Tot (list var_name) (decreases es) =
   match es with
@@ -3346,9 +3433,9 @@ let query_live_vars (q : query) : Tot (list var_name) =
 let col_need_for_tp (occ : list var_name) (live : list var_name) (tp : triple_pattern) : col_need =
   let needs_var (v : var_name) : bool = List.Tot.mem v live || var_is_shared occ v in
   {
-    cn_s = (match tp.tp_s with PS_Var v -> needs_var v | PS_IRI _ | PS_BNode _ -> false);
-    cn_p = (match tp.tp_p with PT_Var v -> needs_var v | PT_IRI _ | PT_BNode _ | PT_Literal _ -> false);
-    cn_o = (match tp.tp_o with PT_Var v -> needs_var v | PT_IRI _ | PT_BNode _ | PT_Literal _ -> false);
+    cn_s = (match tp.tp_s with PS_Var v -> needs_var v | PS_IRI _ | PS_BNode _ -> false | PS_TripleTerm _ _ _ -> true);
+    cn_p = (match tp.tp_p with PT_Var v -> needs_var v | PT_IRI _ | PT_BNode _ | PT_Literal _ -> false | PT_TripleTerm _ _ _ -> true);
+    cn_o = (match tp.tp_o with PT_Var v -> needs_var v | PT_IRI _ | PT_BNode _ | PT_Literal _ -> false | PT_TripleTerm _ _ _ -> true);
   }
 
 (* Query-shape-aware sibling of `graph_to_store` (line ~159, kept
@@ -3413,7 +3500,10 @@ let path_result_to_solutions (ps : pattern_subject) (pt : pattern_term)
       let mu_s = match ps with
         | PS_Var v -> Some [(v, s)]
         | PS_IRI i -> if rdf_term_eq (T_IRI i) s then Some [] else None
-        | PS_BNode b -> if rdf_term_eq (T_BNode b) s then Some [] else None in
+        | PS_BNode b -> if rdf_term_eq (T_BNode b) s then Some [] else None
+        // Property paths over triple-term endpoints are out of wave-1
+        // scope (#305): a triple-term subject never matches, drop the pair.
+        | PS_TripleTerm _ _ _ -> None in
       match mu_s with
       | None -> None
       | Some bindings_s ->
@@ -3426,7 +3516,8 @@ let path_result_to_solutions (ps : pattern_subject) (pt : pattern_term)
              | None -> Some ((v, o) :: bindings_s))
           | PT_IRI i -> if rdf_term_eq (T_IRI i) o then Some bindings_s else None
           | PT_BNode b -> if rdf_term_eq (T_BNode b) o then Some bindings_s else None
-          | PT_Literal l -> if rdf_term_eq (T_Literal l) o then Some bindings_s else None in
+          | PT_Literal l -> if rdf_term_eq (T_Literal l) o then Some bindings_s else None
+          | PT_TripleTerm _ _ _ -> None in
         mu_o)
     pairs
 
@@ -3595,6 +3686,14 @@ let rec substitute_existentials
     E_Aggregate fn dist (substitute_existentials base e1 mu g ds)
   | E_FunctionCall iri args ->
     E_FunctionCall iri (substitute_existentials_list base args mu g ds)
+  | E_TripleTerm a b c ->
+    E_TripleTerm (substitute_existentials base a mu g ds)
+                 (substitute_existentials base b mu g ds)
+                 (substitute_existentials base c mu g ds)
+  | E_TTSubject e1 -> E_TTSubject (substitute_existentials base e1 mu g ds)
+  | E_TTPredicate e1 -> E_TTPredicate (substitute_existentials base e1 mu g ds)
+  | E_TTObject e1 -> E_TTObject (substitute_existentials base e1 mu g ds)
+  | E_IsTriple e1 -> E_IsTriple (substitute_existentials base e1 mu g ds)
   // Leaf cases pass through unchanged
   | _ -> e
 
@@ -3910,12 +4009,14 @@ let rec eval_pattern_store (base : option wf_iri) (p : group_graph_pattern) (gs 
             (match ps with
              | PS_IRI i   -> [T_IRI i]
              | PS_BNode b -> [T_BNode b]
-             | PS_Var _   -> [])
+             | PS_Var _   -> []
+             | PS_TripleTerm _ _ _ -> [])
             (match pt with
              | PT_IRI i     -> [T_IRI i]
              | PT_BNode b   -> [T_BNode b]
              | PT_Literal l -> [T_Literal l]
-             | PT_Var _     -> [])
+             | PT_Var _     -> []
+             | PT_TripleTerm _ _ _ -> [])
         in
         let has_reflexive (t : rdf_term) : bool =
           List.Tot.existsb
@@ -4601,6 +4702,39 @@ let rec eval_expr_with_base (base : option wf_iri) (e : expr) (mu : solution_map
   (* EXISTS / NOT EXISTS — require graph context, delegated *)
   | E_Exists _ -> ER_Error
   | E_NotExists _ -> ER_Error
+
+  (* SPARQL 1.2 triple-term builtins (Query WD §17.4).
+     TRIPLE(s,p,o) / <<( s p o )>>: s must be an IRI or blank node, p an
+     IRI, o any RDF term; anything else is a type error. The accessors
+     SUBJECT/PREDICATE/OBJECT project a triple term (type error on a
+     non-triple), and isTRIPLE tests for one (never errors on a bound
+     value; propagates an argument error). *)
+  | E_TripleTerm es ep eo ->
+    (match er_to_term (eval_expr_with_base base es mu),
+           er_to_term (eval_expr_with_base base ep mu),
+           er_to_term (eval_expr_with_base base eo mu) with
+     | Some sterm, Some (T_IRI p), Some oterm ->
+       (match term_to_subject_opt sterm with
+        | Some ssub -> ER_Term (T_TripleTerm ssub p oterm)
+        | None -> ER_Error)   // subject was a literal or triple term
+     | _, _, _ -> ER_Error)
+  | E_TTSubject e1 ->
+    (match eval_expr_with_base base e1 mu with
+     | ER_Term (T_TripleTerm s _ _) -> ER_Term (subject_to_term s)
+     | _ -> ER_Error)
+  | E_TTPredicate e1 ->
+    (match eval_expr_with_base base e1 mu with
+     | ER_Term (T_TripleTerm _ p _) -> ER_Term (T_IRI p)
+     | _ -> ER_Error)
+  | E_TTObject e1 ->
+    (match eval_expr_with_base base e1 mu with
+     | ER_Term (T_TripleTerm _ _ o) -> ER_Term o
+     | _ -> ER_Error)
+  | E_IsTriple e1 ->
+    (match eval_expr_with_base base e1 mu with
+     | ER_Error -> ER_Error
+     | ER_Term (T_TripleTerm _ _ _) -> ER_Bool true
+     | _ -> ER_Bool false)
 
   (* Aggregates — evaluated in aggregation context, not here *)
   | E_Aggregate _ _ _ -> ER_Error
@@ -5437,9 +5571,15 @@ let rec collect_distinct_vars_in_order_acc
 let collect_distinct_vars_in_order (omega : solution_sequence) : list var_name =
   List.Tot.rev (collect_distinct_vars_in_order_acc omega [])
 
-let rewrite_query_bnode_term (pt : pattern_term) : pattern_term =
+let rec rewrite_query_bnode_term (pt : pattern_term) : Tot pattern_term (decreases pt) =
   match pt with
   | PT_BNode b -> PT_Var ("_bnode_" ^ b)
+  // RDF 1.2: rewrite bnodes inside a triple-term pattern too, so a
+  // `<<( _:a :p :o )>>` treats `_:a` as a non-distinguished variable.
+  | PT_TripleTerm s p o ->
+    PT_TripleTerm (rewrite_query_bnode_term s)
+                  (rewrite_query_bnode_term p)
+                  (rewrite_query_bnode_term o)
   | _ -> pt
 
 let rewrite_query_bnode_subject (ps : pattern_subject) : pattern_subject =
@@ -5737,6 +5877,8 @@ let construct_subject (ps : pattern_subject) (mu : solution_mapping) (sol_ix : n
   match ps with
   | PS_IRI i -> Some (S_IRI i)
   | PS_BNode b -> Some (S_BNode (fresh_bnode_for sol_ix b))
+  // A triple term can never be a triple's subject — drop the template triple.
+  | PS_TripleTerm _ _ _ -> None
   | PS_Var v ->
     (match sm_lookup v mu with
      | Some (T_IRI i) -> Some (S_IRI i)
@@ -5750,18 +5892,35 @@ let construct_predicate (pt : pattern_term) (mu : solution_mapping) : option wf_
   | PT_IRI i -> Some i
   | PT_BNode _ -> None       (* predicate must be an IRI *)
   | PT_Literal _ -> None
+  | PT_TripleTerm _ _ _ -> None
   | PT_Var v ->
     (match sm_lookup v mu with
      | Some (T_IRI i) -> Some i
      | _ -> None)
 
-let construct_object (pt : pattern_term) (mu : solution_mapping) (sol_ix : nat)
-  : option rdf_term =
+// RDF 1.2: a triple-term object in a CONSTRUCT template is instantiated
+// into a concrete `T_TripleTerm` when every sub-position grounds; template
+// bnodes inside it are freshened per solution just like ordinary ones.
+let rec construct_object (pt : pattern_term) (mu : solution_mapping) (sol_ix : nat)
+  : Tot (option rdf_term) (decreases pt) =
   match pt with
   | PT_IRI i -> Some (T_IRI i)
   | PT_BNode b -> Some (T_BNode (fresh_bnode_for sol_ix b))
   | PT_Literal l -> Some (T_Literal l)
   | PT_Var v -> sm_lookup v mu
+  | PT_TripleTerm ps pp po ->
+    (match construct_object ps mu sol_ix with
+     | None -> None
+     | Some sterm ->
+       (match term_to_subject_opt sterm with
+        | None -> None
+        | Some ssub ->
+          (match construct_object pp mu sol_ix with
+           | Some (T_IRI ppi) ->
+             (match construct_object po mu sol_ix with
+              | None -> None
+              | Some oterm -> Some (T_TripleTerm ssub ppi oterm))
+           | _ -> None)))
 
 let instantiate_template (template : list triple_pattern)
                           (mu : solution_mapping) (sol_ix : nat)
@@ -6710,18 +6869,35 @@ let ps_to_subject_concrete (ps : pattern_subject) : option subject =
   | PS_IRI i -> Some (S_IRI i)
   | PS_BNode b -> Some (S_BNode b)
   | PS_Var _ -> None
+  | PS_TripleTerm _ _ _ -> None  // triple terms cannot be a triple's subject
 
 let pt_to_iri_concrete (pt : pattern_term) : option wf_iri =
   match pt with
   | PT_IRI i -> Some i
-  | _ -> None  // variables, bnodes, literals are not valid predicates
+  | _ -> None  // variables, bnodes, literals, triple terms are not valid predicates
 
-let pt_to_term_concrete (pt : pattern_term) : option rdf_term =
+// RDF 1.2: a ground triple-term object (INSERT DATA `<<( s p o )>>`) is
+// converted to a concrete `T_TripleTerm`; any variable position makes it
+// non-concrete (parser rejects vars in DATA blocks, so this drops safely).
+let rec pt_to_term_concrete (pt : pattern_term) : Tot (option rdf_term) (decreases pt) =
   match pt with
   | PT_IRI i -> Some (T_IRI i)
   | PT_BNode b -> Some (T_BNode b)
   | PT_Literal l -> Some (T_Literal l)
   | PT_Var _ -> None
+  | PT_TripleTerm ps pp po ->
+    (match pt_to_term_concrete ps with
+     | None -> None
+     | Some sterm ->
+       (match term_to_subject_opt sterm with
+        | None -> None
+        | Some ssub ->
+          (match pt_to_iri_concrete pp with
+           | None -> None
+           | Some ppi ->
+             (match pt_to_term_concrete po with
+              | None -> None
+              | Some oterm -> Some (T_TripleTerm ssub ppi oterm)))))
 
 // Convert a triple_pattern to a concrete triple, dropping the pattern if
 // any position is a variable or malformed.
@@ -6964,6 +7140,8 @@ let bound_subject_of_pattern_freshen (op_salt : string) (sol_ix : nat)
   | PS_IRI i -> Some (S_IRI i)
   | PS_BNode b ->
     Some (S_BNode (fresh_bnode_for_op op_salt sol_ix b))
+  // A triple-term subject pattern can never form a concrete subject.
+  | PS_TripleTerm _ _ _ -> None
   | PS_Var v ->
     (match sm_lookup v mu with
      | Some (T_IRI i) -> Some (S_IRI i)
@@ -6972,14 +7150,27 @@ let bound_subject_of_pattern_freshen (op_salt : string) (sol_ix : nat)
      | Some (T_TripleTerm _ _ _) -> None
      | None -> None)
 
-let bound_object_of_pattern_freshen (op_salt : string) (sol_ix : nat)
-  (pt : pattern_term) (mu : solution_mapping) : option rdf_term =
+let rec bound_object_of_pattern_freshen (op_salt : string) (sol_ix : nat)
+  (pt : pattern_term) (mu : solution_mapping) : Tot (option rdf_term) (decreases pt) =
   match pt with
   | PT_IRI i -> Some (T_IRI i)
   | PT_BNode b ->
     Some (T_BNode (fresh_bnode_for_op op_salt sol_ix b))
   | PT_Literal l -> Some (T_Literal l)
   | PT_Var v -> sm_lookup v mu
+  | PT_TripleTerm ps pp po ->
+    (match bound_object_of_pattern_freshen op_salt sol_ix ps mu with
+     | None -> None
+     | Some sterm ->
+       (match term_to_subject_opt sterm with
+        | None -> None
+        | Some ssub ->
+          (match bound_object_of_pattern_freshen op_salt sol_ix pp mu with
+           | Some (T_IRI ppi) ->
+             (match bound_object_of_pattern_freshen op_salt sol_ix po mu with
+              | None -> None
+              | Some oterm -> Some (T_TripleTerm ssub ppi oterm))
+           | _ -> None)))
 
 let instantiate_tp_freshen (op_salt : string) (sol_ix : nat)
   (tp : triple_pattern) (mu : solution_mapping)

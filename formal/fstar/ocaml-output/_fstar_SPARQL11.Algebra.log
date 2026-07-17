@@ -3,7 +3,7 @@
     RDF.Graph.fsti.checked is stale (digest mismatch for RDF.Graph.fsti); will
     recheck RDF.Graph.fsti (suppressing this warning for further modules)
 
-* Warning 361 at SPARQL11.Algebra.fst(7627,0-7628,40):
+* Warning 361 at SPARQL11.Algebra.fst(7818,0-7819,40):
   - Some #push-options have not been popped. Current depth is 1.
 
 Extracted module SPARQL11.Algebra

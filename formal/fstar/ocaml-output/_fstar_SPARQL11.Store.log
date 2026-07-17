@@ -3,20 +3,20 @@
     RDF.Graph.fsti.checked is stale (digest mismatch for RDF.Graph.fsti); will
     recheck RDF.Graph.fsti (suppressing this warning for further modules)
 
-* Warning 361 at SPARQL11.Algebra.fst(7627,0-7628,40):
+* Warning 361 at SPARQL11.Algebra.fst(7818,0-7819,40):
   - Some #push-options have not been popped. Current depth is 1.
 
-* Warning 328 at SPARQL11.Store.fst(1216,4-1216,33):
+* Warning 328 at SPARQL11.Store.fst(1218,4-1218,33):
   - Global binding
         'SPARQL11.Store.eval_select_query_backend_bgp'
     is recursive but not used in its body
 
-* Warning 328 at SPARQL11.Store.fst(1353,4-1353,37):
+* Warning 328 at SPARQL11.Store.fst(1355,4-1355,37):
   - Global binding
         'SPARQL11.Store.eval_select_query_backend_dataset'
     is recursive but not used in its body
 
-* Warning 328 at SPARQL11.Store.fst(1372,4-1372,34):
+* Warning 328 at SPARQL11.Store.fst(1374,4-1374,34):
   - Global binding
         'SPARQL11.Store.eval_ask_query_backend_dataset'
     is recursive but not used in its body

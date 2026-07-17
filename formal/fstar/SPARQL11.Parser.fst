@@ -48,6 +48,13 @@ type token =
   | Tok_EQ | Tok_NE | Tok_LT | Tok_GT | Tok_LE | Tok_GE
   | Tok_AND | Tok_OR
   | Tok_HATHAT (* ^^ *)
+  (* SPARQL 1.2 triple-term delimiters. Emitted only in SPARQL 1.2 lexer
+     mode; in 1.1 mode the same characters tokenize exactly as before, so
+     1.1 parsing is byte-identical. *)
+  | Tok_TT_OPEN  (* <<(  triple-term open  *)
+  | Tok_TT_CLOSE (* )>>  triple-term close *)
+  (* SPARQL 1.2 triple-term builtin function keywords (1.2 mode only). *)
+  | Tok_TRIPLE_KW | Tok_SUBJECT_KW | Tok_PREDICATE_KW | Tok_OBJECT_KW | Tok_ISTRIPLE_KW
   (* Literals and names *)
   | Tok_IRI      : string -> token
   | Tok_PNAME    : string -> token   (* prefixed name, pre-expansion *)
@@ -517,8 +524,16 @@ let rec scan_pn_local_end (input : string) (p : pos)
 
 (* Map an uppercased word to its SPARQL keyword token, or Tok_PNAME if not a keyword.
    Case-insensitive keyword matching per SPARQL grammar. *)
-let keyword_of_upper (upper : string) (original : string) : token =
-  if streq upper "SELECT" then Tok_SELECT
+let keyword_of_upper (sparql12 : bool) (upper : string) (original : string) : token =
+  // SPARQL 1.2 triple-term builtin keywords — recognized only in 1.2 mode
+  // so 1.1 parsing stays byte-identical (these words are otherwise
+  // Tok_PNAME, which they still are in 1.1 mode).
+  if sparql12 && streq upper "TRIPLE" then Tok_TRIPLE_KW
+  else if sparql12 && streq upper "SUBJECT" then Tok_SUBJECT_KW
+  else if sparql12 && streq upper "PREDICATE" then Tok_PREDICATE_KW
+  else if sparql12 && streq upper "OBJECT" then Tok_OBJECT_KW
+  else if sparql12 && streq upper "ISTRIPLE" then Tok_ISTRIPLE_KW
+  else if streq upper "SELECT" then Tok_SELECT
   else if streq upper "ASK" then Tok_ASK
   else if streq upper "CONSTRUCT" then Tok_CONSTRUCT
   else if streq upper "DESCRIBE" then Tok_DESCRIBE
@@ -638,7 +653,7 @@ let keyword_of_upper (upper : string) (original : string) : token =
 
 (* Scan a prefixed name (prefix:local) or a keyword.
    Position p is at the first character of the name. *)
-let scan_pname_or_keyword (input : string) (p : pos) : lex_result =
+let scan_pname_or_keyword (sparql12 : bool) (input : string) (p : pos) : lex_result =
   let p1 = scan_pn_chars_end input p in
   if not (at_end input p1) && char_code (peek_char input p1) = 0x3A (* : *) then
     (* Prefixed name: prefix:local *)
@@ -648,7 +663,7 @@ let scan_pname_or_keyword (input : string) (p : pos) : lex_result =
   else
     (* Keyword or bare name *)
     let word = substring input p (safe_sub p1 p) in
-    (keyword_of_upper (string_upper word) word, p1)
+    (keyword_of_upper sparql12 (string_upper word) word, p1)
 
 (* --- scan_number: integer, decimal, or double literal --- *)
 
@@ -746,15 +761,22 @@ let rec has_gt_before_terminator (input : string) (p : pos)
     else has_gt_before_terminator input (p + 1)
 
 (* Main tokenizer: produce one token from current position *)
-let next_token (input : string) (p : pos) : lex_result =
+let next_token (sparql12 : bool) (input : string) (p : pos) : lex_result =
   let p = skip_ws input p in
   if at_end input p then (Tok_EOF, p)
   else
     let c = peek_char input p in
     let code = char_code c in
     if code = 0x3C (* < *) then begin
+      // SPARQL 1.2: `<<(` opens a triple term. Recognized only in 1.2 mode;
+      // 1.1 never has `<<(` (falls through to the LT/IRI logic below).
+      if sparql12
+         && not (at_end input (p + 2))
+         && char_code (peek_char input (p + 1)) = 0x3C   // <
+         && char_code (peek_char input (p + 2)) = 0x28   // (
+      then (Tok_TT_OPEN, p + 3)
       // Could be <= or <IRI> or < (less-than)
-      if not (at_end input (p + 1)) && char_code (peek_char input (p + 1)) = 0x3D
+      else if not (at_end input (p + 1)) && char_code (peek_char input (p + 1)) = 0x3D
       then (Tok_LE, p + 2)
       else if at_end input (p + 1) then (Tok_LT, p + 1)
       else
@@ -782,7 +804,14 @@ let next_token (input : string) (p : pos) : lex_result =
     else if code = 0x7B then (Tok_LBRACE, p + 1)   (* { *)
     else if code = 0x7D then (Tok_RBRACE, p + 1)   (* } *)
     else if code = 0x28 then (Tok_LPAREN, p + 1)   (* ( *)
-    else if code = 0x29 then (Tok_RPAREN, p + 1)   (* ) *)
+    else if code = 0x29 then begin                  (* ) or )>> (triple-term close) *)
+      if sparql12
+         && not (at_end input (p + 2))
+         && char_code (peek_char input (p + 1)) = 0x3E   // >
+         && char_code (peek_char input (p + 2)) = 0x3E   // >
+      then (Tok_TT_CLOSE, p + 3)
+      else (Tok_RPAREN, p + 1)
+    end
     else if code = 0x5B then (Tok_LBRACKET, p + 1)  (* [ — anon detection in parser *)
     else if code = 0x5D then (Tok_RBRACKET, p + 1)  (* ] *)
     else if code = 0x2E then (Tok_DOT, p + 1)       (* . *)
@@ -833,11 +862,11 @@ let next_token (input : string) (p : pos) : lex_result =
       then
         let (label, p') = scan_bnode_label input (p + 2) in
         (Tok_BNODE label, p')
-      else scan_pname_or_keyword input p
+      else scan_pname_or_keyword sparql12 input p
     end
     else if is_digit c then scan_number input p
     else if is_alpha c || code = 0x3A || code >= 0x80 then
-      scan_pname_or_keyword input p
+      scan_pname_or_keyword sparql12 input p
     else (Tok_EOF, p + 1)  (* skip unknown char *)
 
 
@@ -877,20 +906,26 @@ type modifier_result = solution_modifier & option (list group_condition) & optio
 
 (* Tokenize entire input into a token list.
    Repeatedly calls next_token until EOF. Safety: stops if no progress. *)
-let rec tokenize_loop (input : string) (p : pos) (acc : list token) (fuel : nat)
+let rec tokenize_loop (sparql12 : bool) (input : string) (p : pos) (acc : list token) (fuel : nat)
   : Tot (list token) (decreases fuel) =
   if fuel = 0 then List.Tot.rev (Tok_EOF :: acc)
   else if p > String.length input then List.Tot.rev (Tok_EOF :: acc)
   else
-    let (tok, p') = next_token input p in
+    let (tok, p') = next_token sparql12 input p in
     match tok with
     | Tok_EOF -> List.Tot.rev (Tok_EOF :: acc)
     | _ ->
       if p' <= p then List.Tot.rev (Tok_EOF :: acc)
-      else tokenize_loop input p' (tok :: acc) (fuel - 1)
+      else tokenize_loop sparql12 input p' (tok :: acc) (fuel - 1)
 
+// SPARQL 1.1 tokenizer (default) — byte-identical to prior behavior.
 let tokenize (input : string) : list token =
-  tokenize_loop input 0 [] (String.length input + 1)
+  tokenize_loop false input 0 [] (String.length input + 1)
+
+// SPARQL 1.2 tokenizer — additionally emits Tok_TT_OPEN / Tok_TT_CLOSE
+// and the triple-term builtin keywords.
+let tokenize_12 (input : string) : list token =
+  tokenize_loop true input 0 [] (String.length input + 1)
 
 (** ====================================================================== **)
 (** Part 5: Parser Combinators                                              **)
@@ -1213,6 +1248,7 @@ let pattern_term_to_subject (pt : pattern_term) : Tot (option pattern_subject) =
   | PT_IRI i -> Some (PS_IRI i)
   | PT_BNode b -> Some (PS_BNode b)
   | PT_Literal _ -> None
+  | PT_TripleTerm s p o -> Some (PS_TripleTerm s p o)
 
 let select_item_var (item : select_item) : var_name =
   match item with
@@ -1431,6 +1467,13 @@ and parse_primary_expr (pm : prefix_map) (fuel : nat) (ts : token_stream)
        | ParseErr _ -> ParseErr "expected ')'"
        | ParseOk () ts'' -> ParseOk e ts''
        end)
+  (* SPARQL 1.2 triple-term builtins (1.2 lexer mode only) *)
+  | Tok_TT_OPEN -> parse_tt_expr pm (fuel-1) (parse_advance ts)
+  | Tok_TRIPLE_KW -> parse_b3 pm (fuel-1) E_TripleTerm (parse_advance ts)
+  | Tok_SUBJECT_KW -> parse_b1 pm (fuel-1) E_TTSubject (parse_advance ts)
+  | Tok_PREDICATE_KW -> parse_b1 pm (fuel-1) E_TTPredicate (parse_advance ts)
+  | Tok_OBJECT_KW -> parse_b1 pm (fuel-1) E_TTObject (parse_advance ts)
+  | Tok_ISTRIPLE_KW -> parse_b1 pm (fuel-1) E_IsTriple (parse_advance ts)
   (* Built-in 1-arg functions *)
   | Tok_STR -> parse_b1 pm (fuel-1) E_Str (parse_advance ts)
   | Tok_LANG -> parse_b1 pm (fuel-1) E_Lang (parse_advance ts)
@@ -1818,6 +1861,67 @@ and parse_b2 (pm : prefix_map) (fuel : nat) (ctor : expr -> expr -> expr) (ts : 
     ParseOk (ctor e1 e2) ts5
     end end end end
 
+(* Parse builtin 3-arg: ( expr , expr , expr ) — SPARQL 1.2 TRIPLE(s,p,o) *)
+and parse_b3 (pm : prefix_map) (fuel : nat) (ctor : expr -> expr -> expr -> expr) (ts : token_stream)
+  : Tot (parse_result expr) (decreases fuel) =
+  if fuel = 0 then ParseErr "recursion limit"
+  else match parse_expect Tok_LPAREN ts with
+  | ParseErr m -> ParseErr m
+  | ParseOk () ts1 ->
+    begin match parse_expr pm (fuel-1) ts1 with | ParseErr m -> ParseErr m | ParseOk e1 ts2 ->
+    begin match parse_expect Tok_COMMA ts2 with | ParseErr m -> ParseErr m | ParseOk () ts3 ->
+    begin match parse_expr pm (fuel-1) ts3 with | ParseErr m -> ParseErr m | ParseOk e2 ts4 ->
+    begin match parse_expect Tok_COMMA ts4 with | ParseErr m -> ParseErr m | ParseOk () ts5 ->
+    begin match parse_expr pm (fuel-1) ts5 with | ParseErr m -> ParseErr m | ParseOk e3 ts6 ->
+    begin match parse_expect Tok_RPAREN ts6 with | ParseErr m -> ParseErr m | ParseOk () ts7 ->
+    ParseOk (ctor e1 e2 e3) ts7
+    end end end end end end
+
+(* SPARQL 1.2: one component (predicate / object) of a triple-term
+   EXPRESSION `<<( s p o )>>`. Components are var-or-term (no commas); the
+   predicate may be `a` (rdf:type). Handled by the primary-expression parser,
+   with `a` special-cased. *)
+and parse_tt_expr_component (pm : prefix_map) (fuel : nat) (ts : token_stream)
+  : Tot (parse_result expr) (decreases fuel) =
+  if fuel = 0 then ParseErr "recursion limit"
+  else match parse_peek ts with
+  | Tok_A -> ParseOk (E_IRI rdf_type_iri_str) (parse_advance ts)
+  | _ -> parse_primary_expr pm (fuel-1) ts
+
+(* SPARQL 1.2: the SUBJECT component of a triple-term expression is
+   restricted to a variable or IRI (VarOrIri) — a literal or a nested
+   triple term in subject position is a *syntax* error (Query WD grammar),
+   which the negative suite checks (tripleterm-subject-05/06). *)
+and parse_tt_expr_subject (pm : prefix_map) (fuel : nat) (ts : token_stream)
+  : Tot (parse_result expr) (decreases fuel) =
+  if fuel = 0 then ParseErr "recursion limit"
+  else match parse_peek ts with
+  | Tok_VAR v -> ParseOk (E_Var v) (parse_advance ts)
+  | Tok_IRI i -> if is_iri i then ParseOk (E_IRI i) (parse_advance ts) else ParseErr "invalid IRI"
+  | Tok_PNAME pn ->
+    (match resolve_pname pn pm with
+     | Some iri -> if is_iri iri then ParseOk (E_IRI iri) (parse_advance ts) else ParseErr "invalid IRI"
+     | None -> ParseErr "unresolved prefix")
+  | _ -> ParseErr "triple-term subject must be a variable or IRI"
+
+(* SPARQL 1.2: triple-term EXPRESSION `<<( s p o )>>` — the opening `<<(`
+   is already consumed. Space-separated (no commas), unlike TRIPLE(...). *)
+and parse_tt_expr (pm : prefix_map) (fuel : nat) (ts : token_stream)
+  : Tot (parse_result expr) (decreases fuel) =
+  if fuel = 0 then ParseErr "recursion limit"
+  else match parse_tt_expr_subject pm (fuel-1) ts with
+  | ParseErr m -> ParseErr m
+  | ParseOk es ts1 ->
+    (match parse_tt_expr_component pm (fuel-1) ts1 with
+     | ParseErr m -> ParseErr m
+     | ParseOk ep ts2 ->
+       (match parse_tt_expr_component pm (fuel-1) ts2 with
+        | ParseErr m -> ParseErr m
+        | ParseOk eo ts3 ->
+          (match parse_expect Tok_TT_CLOSE ts3 with
+           | ParseErr _ -> ParseErr "expected ')>>' to close triple term"
+           | ParseOk () ts4 -> ParseOk (E_TripleTerm es ep eo) ts4)))
+
 (* Parse function call: IRI already consumed, position after '(' *)
 and parse_func_call (pm : prefix_map) (fuel : nat) (iri : wf_iri) (ts : token_stream)
   : Tot (parse_result expr) (decreases fuel) =
@@ -1914,7 +2018,7 @@ and parse_ggp_body (pm : prefix_map) (fuel : nat) (acc : group_graph_pattern)
   // Try parsing triples if we see a term
   | Tok_VAR _ | Tok_IRI _ | Tok_PNAME _ | Tok_BNODE _ | Tok_LBRACKET
   | Tok_LPAREN | Tok_A | Tok_INTEGER _ | Tok_DECIMAL _ | Tok_DOUBLE _
-  | Tok_STRING _ | Tok_TRUE | Tok_FALSE ->
+  | Tok_STRING _ | Tok_TRUE | Tok_FALSE | Tok_TT_OPEN ->
     (match parse_triples_block pm (fuel-1) GP_Empty ts with
      | ParseErr m -> ParseErr m
      | ParseOk triples_ggp ts' ->
@@ -2337,6 +2441,14 @@ and parse_subject_with_extras (pm : prefix_map) (fuel : nat) (ts : token_stream)
        (match pattern_term_to_subject pt with
         | Some subj -> ParseOk (subj, extras, false) ts'
         | None -> ParseErr "collection cannot be used as subject"))
+  | Tok_TT_OPEN ->
+    // SPARQL 1.2 triple term  <<( s p o )>>  in subject position.
+    (match parse_triple_term_pattern pm (fuel-1) (parse_advance ts) with
+     | ParseErr m -> ParseErr m
+     | ParseOk (pt, extras) ts' ->
+       (match pattern_term_to_subject pt with
+        | Some subj -> ParseOk (subj, extras, false) ts'
+        | None -> ParseErr "invalid triple-term subject"))
   | _ -> ParseErr "expected subject"
 
 (* Legacy wrapper for parse_subject (returns just pattern_subject, no extras) *)
@@ -2573,7 +2685,61 @@ and parse_object_with_extras (pm : prefix_map) (fuel : nat) (ts : token_stream)
   | Tok_LPAREN ->
     // Collection: ( item1 item2 ... ) -> rdf:first/rdf:rest chain
     parse_collection pm (fuel-1) (parse_advance ts)
+  | Tok_TT_OPEN ->
+    // SPARQL 1.2 triple term  <<( s p o )>>  in object position.
+    parse_triple_term_pattern pm (fuel-1) (parse_advance ts)
   | _ -> ParseErr "expected object"
+
+// SPARQL 1.2: a subject / object component of a triple-term PATTERN. Like
+// an object term (var, IRI, blank node, literal, `a`, or a nested triple
+// term) but a collection `( ... )` is a syntax error inside a triple term
+// (negative suite: list-tripleterm, quoted-list-*).
+and parse_tt_pat_component (pm : prefix_map) (fuel : nat) (ts : token_stream)
+  : Tot (parse_result (pattern_term & group_graph_pattern)) (decreases fuel) =
+  if fuel = 0 then ParseErr "recursion limit"
+  else match parse_peek ts with
+  | Tok_LPAREN -> ParseErr "RDF collection not allowed inside a triple term"
+  | _ -> parse_object_with_extras pm (fuel-1) ts
+
+// SPARQL 1.2: the PREDICATE component of a triple-term pattern is
+// restricted to a variable, IRI, or `a` (never a blank node, literal,
+// list, or nested triple term) — negative suite: bnode-predicate-tripleterm,
+// quoted-list-predicate-tripleterm.
+and parse_tt_pat_predicate (pm : prefix_map) (fuel : nat) (ts : token_stream)
+  : Tot (parse_result pattern_term) (decreases fuel) =
+  if fuel = 0 then ParseErr "recursion limit"
+  else match parse_peek ts with
+  | Tok_VAR v -> ParseOk (PT_Var v) (parse_advance ts)
+  | Tok_IRI i -> if is_iri i then ParseOk (PT_IRI i) (parse_advance ts) else ParseErr "invalid IRI"
+  | Tok_PNAME pn ->
+    (match resolve_pname pn pm with
+     | Some iri -> if is_iri iri then ParseOk (PT_IRI iri) (parse_advance ts) else ParseErr "invalid IRI"
+     | None -> ParseErr "unresolved prefix")
+  | Tok_A -> ParseOk (PT_IRI rdf_type_iri_str) (parse_advance ts)
+  | _ -> ParseErr "triple-term predicate must be a variable or IRI"
+
+// SPARQL 1.2: parse the body of a triple-term pattern `<<( s p o )>>`
+// (the opening `<<(` is already consumed). Subject/object are term
+// components (no collections); the predicate is restricted to var/IRI/`a`.
+// Any blank-node property-list "extras" are threaded out to the enclosing
+// pattern.
+and parse_triple_term_pattern (pm : prefix_map) (fuel : nat) (ts : token_stream)
+  : Tot (parse_result (pattern_term & group_graph_pattern)) (decreases fuel) =
+  if fuel = 0 then ParseErr "recursion limit"
+  else match parse_tt_pat_component pm (fuel-1) ts with
+  | ParseErr m -> ParseErr m
+  | ParseOk (s_pt, ex1) ts1 ->
+    (match parse_tt_pat_predicate pm (fuel-1) ts1 with
+     | ParseErr m -> ParseErr m
+     | ParseOk p_pt ts2 ->
+       (match parse_tt_pat_component pm (fuel-1) ts2 with
+        | ParseErr m -> ParseErr m
+        | ParseOk (o_pt, ex3) ts3 ->
+          (match parse_expect Tok_TT_CLOSE ts3 with
+           | ParseErr _ -> ParseErr "expected ')>>' to close triple term"
+           | ParseOk () ts4 ->
+             ParseOk (PT_TripleTerm s_pt p_pt o_pt,
+                      ggp_join ex1 ex3) ts4)))
 
 // Parse an RDF collection ( item1 item2 ... ) into rdf:first/rdf:rest chain
 and parse_collection (pm : prefix_map) (fuel : nat) (ts : token_stream)
@@ -2802,12 +2968,12 @@ and parse_triples_block (pm : prefix_map) (fuel : nat) (acc : group_graph_patter
         (match parse_peek ts''' with
          | Tok_VAR _ | Tok_IRI _ | Tok_PNAME _ | Tok_BNODE _ | Tok_LBRACKET
          | Tok_LPAREN | Tok_A | Tok_INTEGER _ | Tok_DECIMAL _ | Tok_DOUBLE _
-         | Tok_STRING _ | Tok_TRUE | Tok_FALSE ->
+         | Tok_STRING _ | Tok_TRUE | Tok_FALSE | Tok_TT_OPEN ->
            parse_triples_block pm (fuel-1) acc' ts'''
          | _ -> ParseOk acc' ts''')
       | Tok_VAR _ | Tok_IRI _ | Tok_PNAME _ | Tok_BNODE _ | Tok_LBRACKET
       | Tok_LPAREN | Tok_A | Tok_INTEGER _ | Tok_DECIMAL _ | Tok_DOUBLE _
-      | Tok_STRING _ | Tok_TRUE | Tok_FALSE ->
+      | Tok_STRING _ | Tok_TRUE | Tok_FALSE | Tok_TT_OPEN ->
         ParseErr "expected dot between triples"
       | _ -> ParseOk acc' ts''
       end end
@@ -3700,6 +3866,23 @@ let parse_sparql_with_base (init_base : option wf_iri) (input : string) : parse_
 let parse_sparql (input : string) : parse_result query =
   parse_sparql_with_base None input
 
+// SPARQL 1.2 query entry point (epic #305). Identical to
+// `parse_sparql_with_base` except the input is tokenized in 1.2 mode, so
+// `<<( )>>` triple terms and the triple-term builtin keywords are
+// recognized. 1.1 documents parse byte-identically under both.
+let parse_sparql_12_with_base (init_base : option wf_iri) (input : string) : parse_result query =
+  let tokens = tokenize_12 input in
+  match first_invalid_token_msg tokens with
+  | Some m -> ParseErr m
+  | None ->
+    match parse_select_query [] init_base 10000 tokens with
+    | ParseOk q rest ->
+      if not (tokens_only_eof rest) then ParseErr "unexpected tokens after query"
+      else if not (validate_bnode_scope_top q) then
+        ParseErr "blank node label reused across graph-pattern scope"
+      else ParseOk q rest
+    | ParseErr msg -> ParseErr msg
+
 
 (** ====================================================================== **)
 (** Part 7b: SPARQL 1.1 Update Parser — Grammar + AST only                 **)
@@ -4316,6 +4499,27 @@ let parse_sparql_update_with_base (init_base : option wf_iri) (input : string)
 let parse_sparql_update (input : string) : parse_result sparql_update =
   parse_sparql_update_with_base None input
 
+// SPARQL 1.2 Update entry point (epic #305). Tokenizes in 1.2 mode so
+// `<<( )>>` triple terms are accepted in templates and DATA blocks.
+let parse_sparql_update_12_with_base (init_base : option wf_iri) (input : string)
+  : parse_result sparql_update =
+  let tokens = tokenize_12 input in
+  match first_invalid_token_msg tokens with
+  | Some m -> ParseErr m
+  | None ->
+  let tokens' = match init_base with
+    | Some _ -> resolve_relative_iri_tokens init_base tokens
+    | None -> tokens in
+  match parse_update_seq [] init_base [] false 10000 tokens' with
+  | ParseErr m -> ParseErr m
+  | ParseOk (pm, base, ops) rest ->
+    if not (tokens_only_eof rest) then
+      ParseErr "unexpected tokens after update request"
+    else if not (bnode_labels_unique_across_data_ops [] ops) then
+      ParseErr "blank node label reused across INSERT DATA / DELETE DATA ops (SPARQL 1.1 Update §19.6)"
+    else
+      ParseOk ({ u_base = base; u_prefixes = prefix_map_to_wf pm; u_ops = ops }) rest
+
 
 (** ====================================================================== **)
 (** Part 8: SSE-style Algebra Printer                                       **)
@@ -4329,12 +4533,14 @@ let sse_wrap (tag : string) (body : string) : string =
   "(" ^ tag ^ " " ^ body ^ ")"
 
 (* Print a pattern term *)
-let sse_pattern_term (pt : pattern_term) : string =
+let rec sse_pattern_term (pt : pattern_term) : Tot string (decreases pt) =
   match pt with
   | PT_Var v -> "?" ^ v
   | PT_IRI i -> "<" ^ i ^ ">"
   | PT_BNode b -> "_:" ^ b
   | PT_Literal l -> "\"" ^ l.lexical_form ^ "\""
+  | PT_TripleTerm s p o ->
+    "<<( " ^ sse_pattern_term s ^ " " ^ sse_pattern_term p ^ " " ^ sse_pattern_term o ^ " )>>"
 
 (* Print a pattern subject *)
 let sse_pattern_subject (ps : pattern_subject) : string =
@@ -4342,6 +4548,8 @@ let sse_pattern_subject (ps : pattern_subject) : string =
   | PS_Var v -> "?" ^ v
   | PS_IRI i -> "<" ^ i ^ ">"
   | PS_BNode b -> "_:" ^ b
+  | PS_TripleTerm s p o ->
+    "<<( " ^ sse_pattern_term s ^ " " ^ sse_pattern_term p ^ " " ^ sse_pattern_term o ^ " )>>"
 
 (* Print a triple pattern *)
 let sse_triple (tp : triple_pattern) : string =
@@ -4436,6 +4644,11 @@ let rec sse_expr (e : expr) : Tot string (decreases e) =
   | E_NotExists ggp -> sse_wrap "notexists" (sse_ggp ggp)
   | E_Aggregate agg distinct e1 -> sse_wrap "agg" (sse_expr e1)
   | E_FunctionCall iri args -> sse_wrap ("call " ^ iri) (sse_expr_list args)
+  | E_TripleTerm a b c -> sse_wrap "tripleterm" (sse_expr a ^ " " ^ sse_expr b ^ " " ^ sse_expr c)
+  | E_TTSubject e1 -> sse_wrap "subject" (sse_expr e1)
+  | E_TTPredicate e1 -> sse_wrap "predicate" (sse_expr e1)
+  | E_TTObject e1 -> sse_wrap "object" (sse_expr e1)
+  | E_IsTriple e1 -> sse_wrap "istriple" (sse_expr e1)
 
 and sse_expr_list (es : list expr) : Tot string (decreases es) =
   match es with
