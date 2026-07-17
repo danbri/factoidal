@@ -110,6 +110,8 @@ let csvw_url_pred : wf_iri =
   assert_norm (is_iri (csvw_ns ^ "url")); csvw_ns ^ "url"
 let csvw_describes : wf_iri =
   assert_norm (is_iri (csvw_ns ^ "describes")); csvw_ns ^ "describes"
+let csvw_note_pred : wf_iri =
+  assert_norm (is_iri (csvw_ns ^ "note")); csvw_ns ^ "note"
 
 // ================================================================
 // Datatype-name -> RDF datatype IRI (csv2rdf §"Interpreting
@@ -384,6 +386,7 @@ noeq type csvw_col_spec = {
   cs_separator    : option string;   // list-valued cell separator (test228-230)
   cs_lang         : option string;   // Stage 2 inherited "lang"
   cs_null         : option string;   // Stage 2 inherited "null"
+  cs_default      : option string;   // "default" -> value for an empty cell (test036/037)
   cs_ordered      : bool;            // "ordered" -> rdf:List cell (test306/307)
 }
 
@@ -485,6 +488,7 @@ let csvw_col_spec_of_column (eff : csvw_inherited_props) (i : int) (c : csvw_col
   cs_separator = (match c.col_separator with Some s -> Some s | None -> eff.inh_separator);
   cs_lang = (match c.col_lang with Some l -> Some l | None -> eff.inh_lang);
   cs_null = (match c.col_null with Some n -> Some n | None -> eff.inh_null);
+  cs_default = c.col_default;
   cs_ordered = (match c.col_ordered with Some b -> b | None -> (match eff.inh_ordered with Some b -> b | None -> false));
 }
 
@@ -498,7 +502,7 @@ let csvw_col_specs_from_header (header_cells : list string) : list csvw_col_spec
        cs_name = (if h = "" then csvw_positional_name i else h);
        cs_virtual = false; cs_suppress = false; cs_datatype = None;
        cs_about_url = None; cs_property_url = None; cs_value_url = None;
-       cs_separator = None; cs_lang = None; cs_null = None; cs_ordered = false;
+       cs_separator = None; cs_lang = None; cs_null = None; cs_default = None; cs_ordered = false;
      })
     header_cells
 
@@ -517,7 +521,7 @@ let csvw_col_specs_positional (header_cells : list string) : list csvw_col_spec 
        cs_name = csvw_positional_name i;
        cs_virtual = false; cs_suppress = false; cs_datatype = None;
        cs_about_url = None; cs_property_url = None; cs_value_url = None;
-       cs_separator = None; cs_lang = None; cs_null = None; cs_ordered = false;
+       cs_separator = None; cs_lang = None; cs_null = None; cs_default = None; cs_ordered = false;
      })
     header_cells
 
@@ -542,6 +546,7 @@ let csvw_positional_spec_eff (eff : csvw_inherited_props) (i : int) : csvw_col_s
   cs_separator = eff.inh_separator;
   cs_lang = eff.inh_lang;
   cs_null = eff.inh_null;
+  cs_default = None;
   cs_ordered = (match eff.inh_ordered with Some b -> b | None -> false);
 }
 
@@ -667,9 +672,19 @@ let csvw_term_of_subject (s : subject) : rdf_term =
 // per-cell template downstream of that resolves against the result,
 // not against base_iri a second time.
 let csvw_cell_object
-    (table_url_resolved : string) (spec : csvw_col_spec) (cell_text : option string)
+    (table_url_resolved : string) (spec : csvw_col_spec) (cell_text0 : option string)
     (lookup : string -> option string)
   : option rdf_term =
+  // `default` (tabular-data-model 6.4): an EMPTY physical cell is
+  // replaced by the column's default value BEFORE the null-check /
+  // datatype parsing that follows (test036/037: the blank `protected`
+  // cells become "NO", read as xsd:boolean false by the YES|NO format).
+  // Only single-valued cells: a `separator` column's empty cell is an
+  // empty list, not a defaulted value, so it is left untouched here.
+  let cell_text =
+    match spec.cs_separator, cell_text0 with
+    | None, Some "" -> (match spec.cs_default with Some d -> Some d | None -> cell_text0)
+    | _ -> cell_text0 in
   // A PHYSICAL cell (cell_text = Some _) whose text matches the column's
   // effective `null` value (or is "") is null and produces NO object,
   // even when a valueUrl template is present (test035: the reportsTo
@@ -755,13 +770,35 @@ let csvw_encode_name (s : string) : string =
           else [c])
        (String.list_of_string (string_encode_uri s)))
 
+// ASCII whitespace test (space/tab/LF/CR) for trimming split list
+// elements (tabular-data-model 6.4: with the default dialect `trim`=true
+// each value produced by splitting on a `separator` has leading and
+// trailing whitespace removed — test036/037's `comments` cells:
+// "cavity or decay; trunk decay; ..." splits to " trunk decay" etc.,
+// each of which trims to "trunk decay").
+let csvw_char_ws (c : FStar.Char.char) : bool =
+  let n = FStar.Char.int_of_char c in n = 32 || n = 9 || n = 10 || n = 13
+
+let rec csvw_drop_leading_ws (cs : list FStar.Char.char)
+  : Tot (list FStar.Char.char) (decreases cs) =
+  match cs with
+  | c :: tl -> if csvw_char_ws c then csvw_drop_leading_ws tl else cs
+  | [] -> []
+
+// Trim both ends: drop leading whitespace, then drop leading whitespace
+// of the reversed remainder and reverse back (drops the trailing run).
+let csvw_trim (s : string) : string =
+  let front = csvw_drop_leading_ws (String.list_of_string s) in
+  String.string_of_list (List.Tot.rev (csvw_drop_leading_ws (List.Tot.rev front)))
+
 // Split a list-valued cell (tabular-metadata `separator`) on the first
-// character of the separator string. Empty elements survive so the
-// caller's "" -> no triple rule drops them (matches the null-value
-// handling in csvw_cell_object).
+// character of the separator string, trimming whitespace off each
+// element (default `trim`=true). Whitespace-only / empty elements
+// become "" so the caller's "" -> no triple rule drops them (matches the
+// null-value handling in csvw_cell_object).
 let csvw_split_list_cell (sep : string) (s : string) : list string =
   match String.list_of_string sep with
-  | sepc :: _ -> List.Tot.map String.string_of_list (split_all sepc (String.list_of_string s))
+  | sepc :: _ -> List.Tot.map (fun cs -> csvw_trim (String.string_of_list cs)) (split_all sepc (String.list_of_string s))
   | [] -> [s]
 
 // Build an rdf:List (rdf:first/rdf:rest/rdf:nil chain) from a list of
@@ -1010,6 +1047,24 @@ let csvw_table_common_triples (default_lang : option string) (subj : subject) (s
   : list triple =
   csvw_common_object_fields default_lang (csvw_common_fuel common) subj seed common
 
+// `notes` -> `csvw:note` (tabular-metadata / csv2rdf): each element of
+// the table's `notes` array is a common-property VALUE, emitted as a
+// `csvw:note` object on the table node with whatever nested structure
+// csvw_common_value builds for it (test036: a nested oa:Annotation with
+// oa:hasTarget/oa:hasBody). `idx` keeps each note's blank-node seed
+// distinct. Fuel per note is its own json_size (+1) — the same bound
+// csvw_common_fuel uses per common-property value.
+let rec csvw_notes_triples (default_lang : option string) (subj : subject) (seed : string)
+    (idx : nat) (notes : list json_val)
+  : Tot (list triple) (decreases notes) =
+  match notes with
+  | [] -> []
+  | n :: tl ->
+    let (terms, sub) = csvw_common_value default_lang (json_size n + 1) (seed ^ "_note_" ^ string_of_int idx) n in
+    (List.Tot.map (fun (t:rdf_term) -> ({ s = subj; p = csvw_note_pred; o = t } <: triple)) terms)
+    @ sub
+    @ csvw_notes_triples default_lang subj seed (idx + 1) tl
+
 // ================================================================
 // Minimal mode: bare cell-value triples only, no wrapper nodes.
 // ================================================================
@@ -1103,9 +1158,14 @@ let csvw_row_triples_standard
   let title_triples = csvw_row_title_triples row_node col_specs cells row_titles in
   (row_node, row_meta @ title_triples @ describes @ cell_triples)
 
+// `doc_url` is the metadata-document URL (I/O-derived by the runner),
+// used only for a table whose `@id` is present-but-invalid (test102's
+// integer @id degrades to the document URL). A valid string @id
+// resolves against `base_iri`; an absent @id keeps the blank node.
 let csvw_convert_table_standard
     (grp_inherited : csvw_inherited_props) (default_lang : option string)
-    (base_iri : string) (fallback_url : string) (tbl : csvw_table) (all_rows : list (list string))
+    (base_iri : string) (doc_url : option string)
+    (fallback_url : string) (tbl : csvw_table) (all_rows : list (list string))
   : (subject & list triple) =
   let table_url_resolved = csvw_effective_table_url base_iri fallback_url tbl in
   let dia = tbl.tbl_dialect in
@@ -1132,17 +1192,32 @@ let csvw_convert_table_standard
          let (i, cells) = p in
          csvw_row_triples_standard table_url_resolved row_titles col_specs (i + 1) (skip_n + i + 1) cells)
       indexed in
-  let t_node = S_BNode ("csvwT_" ^ string_encode_uri table_url_resolved) in
+  // Table node identity (csv2rdf "Generating RDF"): a valid string `@id`
+  // (resolved against the metadata-document base) IS the table node; an
+  // invalid `@id` (test102) degrades to the metadata-document URL; no
+  // `@id` keeps the blank node the corpus's un-@id'd tables already use.
+  let bnode_fallback = S_BNode ("csvwT_" ^ string_encode_uri table_url_resolved) in
+  let t_node : subject =
+    match tbl.tbl_id with
+    | CsvwIdString s ->
+      let resolved = resolve_iri_v2 base_iri s in
+      if is_iri resolved then S_IRI resolved else bnode_fallback
+    | CsvwIdInvalid ->
+      (match doc_url with
+       | Some u -> if is_iri u then S_IRI u else bnode_fallback
+       | None -> bnode_fallback)
+    | CsvwIdNone -> bnode_fallback in
   let row_links =
     List.Tot.concatMap
       (fun (r : (subject & list triple)) -> [ { s = t_node; p = csvw_row_pred; o = csvw_term_of_subject (fst r) } ])
       row_results in
   let row_all = List.Tot.concatMap snd row_results in
   let t_common = csvw_table_common_triples default_lang t_node (string_encode_uri table_url_resolved) tbl.tbl_common in
+  let t_notes = csvw_notes_triples default_lang t_node (string_encode_uri table_url_resolved) 0 tbl.tbl_notes in
   let t_meta =
     [ { s = t_node; p = rdf_type; o = T_IRI csvw_Table } ]
     @ (if is_iri table_url_resolved then [ { s = t_node; p = csvw_url_pred; o = T_IRI table_url_resolved } ] else []) in
-  (t_node, t_meta @ t_common @ row_links @ row_all)
+  (t_node, t_meta @ t_common @ t_notes @ row_links @ row_all)
 
 // ================================================================
 // Whole-document entry points. `tables_with_rows` pairs each table in
@@ -1185,15 +1260,17 @@ let csvw_group_node : subject = S_BNode "csvwG"
 // attached directly to the csvw:TableGroup node the same way
 // csvw_convert_table_standard already attaches tbl_common to its
 // csvw:Table node.
+// `doc_url` is the metadata-document URL (runner-supplied I/O), passed
+// through to each table for the invalid-@id degradation (test102).
 let csvw_convert_document_standard
     (grp : csvw_group_meta) (default_lang : option string)
-    (base_iri : string) (tables_with_rows : list (csvw_table & string & list (list string)))
+    (base_iri : string) (doc_url : option string) (tables_with_rows : list (csvw_table & string & list (list string)))
   : list triple =
   let table_results =
     List.Tot.map
       (fun (t : (csvw_table & string & list (list string))) ->
          let (tbl, fallback_url, rows) = t in
-         csvw_convert_table_standard grp.grp_inherited default_lang base_iri fallback_url tbl rows)
+         csvw_convert_table_standard grp.grp_inherited default_lang base_iri doc_url fallback_url tbl rows)
       (List.Tot.filter
          (fun (t : (csvw_table & string & list (list string))) ->
             let (tbl, _, _) = t in not (csvw_table_suppressed tbl))
@@ -1216,6 +1293,8 @@ let csvw_no_metadata_table : csvw_table = {
   tbl_url = None;
   tbl_dialect = None;
   tbl_table_schema = None;
+  tbl_id = CsvwIdNone;
+  tbl_notes = [];
   tbl_common = [];
   tbl_inherited = csvw_inherited_empty;
   tbl_schema_ref = None;
