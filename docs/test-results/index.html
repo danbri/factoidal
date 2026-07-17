@@ -398,7 +398,7 @@
 <header>
   <div class="inner">
     <div class="rendered-pill" title="Rendered = when this page was last regenerated. Tests = when the *_results.log files inside the repository were last updated. Both UTC.">
-      <span class="row"><span class="label">Rendered</span><strong>2026-07-17 12:39 UTC</strong></span>
+      <span class="row"><span class="label">Rendered</span><strong>2026-07-17 13:23 UTC</strong></span>
       <span class="row"><span class="label">Tests</span><strong class="tests">2026-07-16 08:27 UTC</strong></span>
     </div>
     <h1>W3C test results</h1>
@@ -1451,18 +1451,18 @@
 <details class="family-node green" id="xml10">
   <summary>
     <span class="fam-name">XML 1.0</span>
-    <span class="fam-score">1414/0/1171 of 2585</span>
+    <span class="fam-score">1428/0/1157 of 2585</span>
     
     <span class="dot green"></span>
   </summary>
   <div class="family-body">
-    <p class="fam-headline green">1414 pass, 0 fail, 1171 skip (out of 2585) on XML 1.0 well-formedness conformance.</p>
+    <p class="fam-headline green">1428 pass, 0 fail, 1157 skip (out of 2585) on XML 1.0 well-formedness conformance.</p>
     <div class="suites">
       <details class="suite-node green">
-        <summary><span class="suite-name">XML 1.0 conformance</span><span class="suite-numbers">1414/0/1171 of 2585</span><span class="dot green"></span></summary>
+        <summary><span class="suite-name">XML 1.0 conformance</span><span class="suite-numbers">1428/0/1157 of 2585</span><span class="dot green"></span></summary>
         <div class="suite-body">
-          <div class="meter"><div class="seg seg-pass" style="width:54.70%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:45.30%"></div></div>
-          <p class="suite-numbers-full">1414 pass, 0 fail, 1171 skip (out of 2585)</p>
+          <div class="meter"><div class="seg seg-pass" style="width:55.24%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:44.76%"></div></div>
+          <p class="suite-numbers-full">1428 pass, 0 fail, 1157 skip (out of 2585)</p>
           <p class="suite-prov">Runner: <code>bin/xml-runner</code> (<code>bin/linux-x86_64/xml_runner</code>) &middot; Suite: <code>third_party/testing/xml/xmlconf</code> (OASIS/W3C XML conformance) &middot; skips are DTD-boundary / out-of-XML-1.0-profile fixtures, decomposed in the breakdown below</p>
           
         </div>
@@ -1470,9 +1470,9 @@
       <details class="failure-detail">
         <summary>XML conformance — integrity breakdown (real rejects vs skips)</summary>
         <pre>-- HONEST BREAKDOWN (PART 1 integrity accounting) --
-  not-wf REAL passes (parser rejected for the tested construct): 1016
+  not-wf REAL passes (parser rejected for the tested construct): 1030
   valid  wf-accept passes (DOCTYPE internal subset now parsed):  398
-  --&gt; real pass total:                                           1414
+  --&gt; real pass total:                                           1428
   not-wf FAILs (parser wrongly ACCEPTED a wf-1.0 not-wf doc):     0
   valid  FAILs (parser wrongly REJECTED a valid doc):            0
   --&gt; fail total:                                                0
@@ -1484,8 +1484,8 @@
         parser is XML 1.0 non-namespace):                        37
   SKIP: vacuous (RETIRED by Stage-A DTD support; must be 0):      0
   SKIP: other (DOCTYPE-external-on-valid, encoding, invalid/error
-        by design, external-entity exemption, file-not-found):   416
-  --&gt; skip total:                                                1171
+        by design, external-entity exemption, file-not-found):   402
+  --&gt; skip total:                                                1157
   (side-check: PassVacuous counter = 0, must equal vacuous skip = 0)
 XML_Wellformedness.is_valid_ncname (informational only, see module comment):
   checked 741 element tags across accepted documents; 8 would have been
@@ -1986,8 +1986,8 @@ vc-stage1:    117 pass, 0 fail, 0 skip (of 117) — present=1</pre>
 </main>
 
 <footer>
-  Generated <strong>2026-07-17 12:39 UTC</strong> from commit
-  <code><a href="https://github.com/danbri/factoidal/commit/ee5bf18d851db9edc972b38bac383aca06105983">ee5bf18d8</a></code>
+  Generated <strong>2026-07-17 13:23 UTC</strong> from commit
+  <code><a href="https://github.com/danbri/factoidal/commit/2e9a8a91955bfc19410ccbd0afec8fc8f089822b">2e9a8a919</a></code>
   on branch <code>claude/main</code> — &ldquo;Merge branch 'claude/main' of http://127.0.0.1:41729/git/danbri/factoidal into claude/main&rdquo;.
   Re-run locally: <code>cd formal/fstar &amp;&amp; ./generate-report.sh --run</code>.
 </footer>
