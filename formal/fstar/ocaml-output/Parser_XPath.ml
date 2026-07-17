@@ -12,6 +12,7 @@ type xp_axis =
   | Ax_Preceding 
   | Ax_FollowingSibling 
   | Ax_PrecedingSibling 
+  | Ax_Namespace 
 let uu___is_Ax_Child (projectee : xp_axis) : Prims.bool=
   match projectee with | Ax_Child -> true | uu___ -> false
 let uu___is_Ax_Descendant (projectee : xp_axis) : Prims.bool=
@@ -36,6 +37,8 @@ let uu___is_Ax_FollowingSibling (projectee : xp_axis) : Prims.bool=
   match projectee with | Ax_FollowingSibling -> true | uu___ -> false
 let uu___is_Ax_PrecedingSibling (projectee : xp_axis) : Prims.bool=
   match projectee with | Ax_PrecedingSibling -> true | uu___ -> false
+let uu___is_Ax_Namespace (projectee : xp_axis) : Prims.bool=
+  match projectee with | Ax_Namespace -> true | uu___ -> false
 type xp_nodetest =
   | NT_Name of Prims.string 
   | NT_Prefix of Prims.string 
@@ -414,7 +417,10 @@ let axis_of_name (name : Prims.string) :
                       else
                         if name = "preceding-sibling"
                         then FStar_Pervasives_Native.Some Ax_PrecedingSibling
-                        else FStar_Pervasives_Native.None
+                        else
+                          if name = "namespace"
+                          then FStar_Pervasives_Native.Some Ax_Namespace
+                          else FStar_Pervasives_Native.None
 let is_nodetype_keyword (name : Prims.string) : Prims.bool=
   (((name = "text") || (name = "comment")) || (name = "node")) ||
     (name = "processing-instruction")

@@ -316,6 +316,8 @@ type xctx_item =
   Parser_XML.xml_node * Prims.string 
   | CI_PI of Prims.int Prims.list * Parser_XML.xml_node Prims.list *
   Parser_XML.xml_node * Prims.string * Prims.string 
+  | CI_Namespace of Prims.int Prims.list * Parser_XML.xml_node Prims.list *
+  Parser_XML.xml_node * Prims.string * Prims.string 
 let uu___is_CI_Elem (projectee : xctx_item) : Prims.bool=
   match projectee with
   | CI_Elem (path, ancestors, node) -> true
@@ -397,6 +399,29 @@ let __proj__CI_PI__item__target (projectee : xctx_item) : Prims.string=
 let __proj__CI_PI__item__data (projectee : xctx_item) : Prims.string=
   match projectee with
   | CI_PI (path, ancestors, parent, target, data) -> data
+let uu___is_CI_Namespace (projectee : xctx_item) : Prims.bool=
+  match projectee with
+  | CI_Namespace (path, ancestors, element, prefix, uri) -> true
+  | uu___ -> false
+let __proj__CI_Namespace__item__path (projectee : xctx_item) :
+  Prims.int Prims.list=
+  match projectee with
+  | CI_Namespace (path, ancestors, element, prefix, uri) -> path
+let __proj__CI_Namespace__item__ancestors (projectee : xctx_item) :
+  Parser_XML.xml_node Prims.list=
+  match projectee with
+  | CI_Namespace (path, ancestors, element, prefix, uri) -> ancestors
+let __proj__CI_Namespace__item__element (projectee : xctx_item) :
+  Parser_XML.xml_node=
+  match projectee with
+  | CI_Namespace (path, ancestors, element, prefix, uri) -> element
+let __proj__CI_Namespace__item__prefix (projectee : xctx_item) :
+  Prims.string=
+  match projectee with
+  | CI_Namespace (path, ancestors, element, prefix, uri) -> prefix
+let __proj__CI_Namespace__item__uri (projectee : xctx_item) : Prims.string=
+  match projectee with
+  | CI_Namespace (path, ancestors, element, prefix, uri) -> uri
 let item_path (it : xctx_item) : Prims.int Prims.list=
   match it with
   | CI_Elem (p, uu___, uu___1) -> p
@@ -404,6 +429,7 @@ let item_path (it : xctx_item) : Prims.int Prims.list=
   | CI_Text (p, uu___, uu___1, uu___2) -> p
   | CI_Comment (p, uu___, uu___1, uu___2) -> p
   | CI_PI (p, uu___, uu___1, uu___2, uu___3) -> p
+  | CI_Namespace (p, uu___, uu___1, uu___2, uu___3) -> p
 let rec path_drop_last (l : Prims.int Prims.list) : Prims.int Prims.list=
   match l with
   | [] -> []
@@ -510,10 +536,13 @@ let item_ancestors (it : xctx_item) : Parser_XML.xml_node Prims.list=
   | CI_Text (uu___, anc, uu___1, uu___2) -> anc
   | CI_Comment (uu___, anc, uu___1, uu___2) -> anc
   | CI_PI (uu___, anc, uu___1, uu___2, uu___3) -> anc
+  | CI_Namespace (uu___, anc, uu___1, uu___2, uu___3) -> anc
 let parent_axis (it : xctx_item) : xctx_item Prims.list=
   match it with
   | CI_Attr (p, anc, owner, uu___) ->
       [CI_Elem ((attr_owner_path p), anc, owner)]
+  | CI_Namespace (p, anc, elem, uu___, uu___1) ->
+      [CI_Elem ((attr_owner_path p), anc, elem)]
   | CI_Elem (p, anc, uu___) ->
       (match anc with
        | [] -> []
@@ -534,6 +563,9 @@ let ancestor_axis (it : xctx_item) : xctx_item Prims.list=
   match it with
   | CI_Attr (p, anc, owner, uu___) ->
       let opath = attr_owner_path p in (CI_Elem (opath, anc, owner)) ::
+        (ancestor_items opath anc)
+  | CI_Namespace (p, anc, elem, uu___, uu___1) ->
+      let opath = attr_owner_path p in (CI_Elem (opath, anc, elem)) ::
         (ancestor_items opath anc)
   | CI_Elem (p, anc, uu___) -> ancestor_items p anc
   | CI_Text (p, anc, uu___, uu___1) -> ancestor_items p anc
@@ -568,6 +600,7 @@ let siblings_of (it : xctx_item) : xctx_item Prims.list=
        | [] -> []
        | parent::grand -> child_items (path_drop_last p) grand parent)
   | CI_Attr (uu___, uu___1, uu___2, uu___3) -> []
+  | CI_Namespace (uu___, uu___1, uu___2, uu___3, uu___4) -> []
 let following_sibling_axis (it : xctx_item) : xctx_item Prims.list=
   let p = item_path it in
   FStar_List_Tot_Base.filter
@@ -654,6 +687,107 @@ let elem_ns_uri (tag : Prims.string)
   (anc : Parser_XML.xml_node Prims.list) :
   Prims.string FStar_Pervasives_Native.option=
   resolve_ns_uri (prefix_of tag) own_attrs anc
+let ns_decl_of_attr (a : Parser_XML.xml_attribute) :
+  (Prims.string * Prims.string) FStar_Pervasives_Native.option=
+  let n = FStar_String.strlen a.Parser_XML.attr_name in
+  if a.Parser_XML.attr_name = "xmlns"
+  then FStar_Pervasives_Native.Some ("", (a.Parser_XML.attr_value))
+  else
+    if
+      (n >= (Prims.of_int (6))) &&
+        (string_starts_with a.Parser_XML.attr_name "xmlns:")
+    then
+      FStar_Pervasives_Native.Some
+        ((FStar_String.sub a.Parser_XML.attr_name (Prims.of_int (6))
+            (n - (Prims.of_int (6)))), (a.Parser_XML.attr_value))
+    else FStar_Pervasives_Native.None
+let rec mem_str_e (x : Prims.string) (xs : Prims.string Prims.list) :
+  Prims.bool=
+  match xs with | [] -> false | h::t -> if h = x then true else mem_str_e x t
+let rec add_elem_ns (seen : Prims.string Prims.list)
+  (acc : (Prims.string * Prims.string) Prims.list)
+  (attrs : Parser_XML.xml_attribute Prims.list) :
+  (Prims.string Prims.list * (Prims.string * Prims.string) Prims.list)=
+  match attrs with
+  | [] -> (seen, acc)
+  | a::rest ->
+      (match ns_decl_of_attr a with
+       | FStar_Pervasives_Native.Some (pfx, uri) ->
+           if mem_str_e pfx seen
+           then add_elem_ns seen acc rest
+           else
+             if uri = ""
+             then add_elem_ns (pfx :: seen) acc rest
+             else
+               add_elem_ns (pfx :: seen)
+                 (FStar_List_Tot_Base.op_At acc [(pfx, uri)]) rest
+       | FStar_Pervasives_Native.None -> add_elem_ns seen acc rest)
+let rec collect_ns (seen : Prims.string Prims.list)
+  (acc : (Prims.string * Prims.string) Prims.list)
+  (nodes : Parser_XML.xml_node Prims.list) :
+  (Prims.string * Prims.string) Prims.list=
+  match nodes with
+  | [] -> acc
+  | n::rest ->
+      let uu___ = add_elem_ns seen acc (Parser_XML.element_attrs n) in
+      (match uu___ with | (seen', acc') -> collect_ns seen' acc' rest)
+let rec cp_list_cmp (a : FStar_Char.char Prims.list)
+  (b : FStar_Char.char Prims.list) : Prims.int=
+  match (a, b) with
+  | ([], []) -> Prims.int_zero
+  | ([], uu___) -> (Prims.of_int (-1))
+  | (uu___, []) -> Prims.int_one
+  | (x::xs, y::ys) ->
+      let cx = FStar_Char.int_of_char x in
+      let cy = FStar_Char.int_of_char y in
+      if cx < cy
+      then (Prims.of_int (-1))
+      else if cx > cy then Prims.int_one else cp_list_cmp xs ys
+let prefix_cmp (a : Prims.string) (b : Prims.string) : Prims.int=
+  cp_list_cmp (FStar_String.list_of_string a) (FStar_String.list_of_string b)
+let ns_binding_leq (a : (Prims.string * Prims.string))
+  (b : (Prims.string * Prims.string)) : Prims.bool=
+  let pa = FStar_Pervasives_Native.fst a in
+  let pb = FStar_Pervasives_Native.fst b in
+  if pa = ""
+  then true
+  else if pb = "" then false else (prefix_cmp pa pb) <= Prims.int_zero
+let rec ns_insert (x : (Prims.string * Prims.string))
+  (l : (Prims.string * Prims.string) Prims.list) :
+  (Prims.string * Prims.string) Prims.list=
+  match l with
+  | [] -> [x]
+  | y::ys -> if ns_binding_leq x y then x :: l else y :: (ns_insert x ys)
+let rec ns_sort (l : (Prims.string * Prims.string) Prims.list) :
+  (Prims.string * Prims.string) Prims.list=
+  match l with | [] -> [] | x::xs -> ns_insert x (ns_sort xs)
+let inscope_ns_ordered (elem : Parser_XML.xml_node)
+  (anc : Parser_XML.xml_node Prims.list) :
+  (Prims.string * Prims.string) Prims.list=
+  let raw = collect_ns [] [] (elem :: anc) in
+  let with_xml =
+    if
+      mem_str_e "xml"
+        (FStar_List_Tot_Base.map FStar_Pervasives_Native.fst raw)
+    then raw
+    else FStar_List_Tot_Base.op_At raw [("xml", xpath_xml_ns_uri)] in
+  ns_sort with_xml
+let rec ns_items (p : Prims.int Prims.list)
+  (anc : Parser_XML.xml_node Prims.list) (elem : Parser_XML.xml_node)
+  (bs : (Prims.string * Prims.string) Prims.list) (k : Prims.nat) :
+  xctx_item Prims.list=
+  match bs with
+  | [] -> []
+  | (pfx, uri)::rest ->
+      (CI_Namespace
+         ((FStar_List_Tot_Base.op_At p [(Prims.of_int (-2)); k]), anc, elem,
+           pfx, uri))
+      :: (ns_items p anc elem rest (k + Prims.int_one))
+let namespace_axis (it : xctx_item) : xctx_item Prims.list=
+  match it with
+  | CI_Elem (p, anc, n) ->
+      ns_items p anc n (inscope_ns_ordered n anc) Prims.int_zero
+  | uu___ -> []
 let rec lookup_nsctx (nsctx : (Prims.string * Prims.string) Prims.list)
   (pfx : Prims.string) : Prims.string FStar_Pervasives_Native.option=
   match nsctx with
@@ -731,6 +865,8 @@ let matches_node_test (nsctx : (Prims.string * Prims.string) Prims.list)
   | (Parser_XPath.NT_PI uu___, uu___1) -> false
   | (Parser_XPath.NT_Any, CI_Elem (uu___, uu___1, uu___2)) -> true
   | (Parser_XPath.NT_Any, CI_Attr (uu___, uu___1, uu___2, uu___3)) -> true
+  | (Parser_XPath.NT_Any, CI_Namespace
+     (uu___, uu___1, uu___2, uu___3, uu___4)) -> true
   | (Parser_XPath.NT_Any, uu___) -> false
   | (Parser_XPath.NT_Name nm, CI_Elem (uu___, anc, n)) ->
       (match Parser_XML.element_tag n with
@@ -739,6 +875,8 @@ let matches_node_test (nsctx : (Prims.string * Prims.string) Prims.list)
        | FStar_Pervasives_Native.None -> false)
   | (Parser_XPath.NT_Name nm, CI_Attr (uu___, anc, owner, a)) ->
       attr_name_test nsctx nm anc owner a
+  | (Parser_XPath.NT_Name nm, CI_Namespace
+     (uu___, uu___1, uu___2, pfx, uu___3)) -> nm = pfx
   | (Parser_XPath.NT_Name uu___, uu___1) -> false
   | (Parser_XPath.NT_Prefix pfx, CI_Elem (uu___, anc, n)) ->
       (match Parser_XML.element_tag n with
@@ -766,7 +904,8 @@ let root_of_item (it : xctx_item) : Parser_XML.xml_node=
     | CI_Attr (uu___, uu___1, owner, uu___2) -> owner
     | CI_Text (uu___, uu___1, parent, uu___2) -> parent
     | CI_Comment (uu___, uu___1, parent, uu___2) -> parent
-    | CI_PI (uu___, uu___1, parent, uu___2, uu___3) -> parent in
+    | CI_PI (uu___, uu___1, parent, uu___2, uu___3) -> parent
+    | CI_Namespace (uu___, uu___1, elem, uu___2, uu___3) -> elem in
   list_last_or self_node (item_ancestors it)
 let all_document_items (it : xctx_item) : xctx_item Prims.list=
   let root = root_of_item it in (CI_Elem ([], [], root)) ::
@@ -807,6 +946,7 @@ let apply_axis (ax : Parser_XPath.xp_axis) (it : xctx_item) :
   | Parser_XPath.Ax_PrecedingSibling -> preceding_sibling_axis it
   | Parser_XPath.Ax_Following -> following_axis it
   | Parser_XPath.Ax_Preceding -> preceding_axis it
+  | Parser_XPath.Ax_Namespace -> namespace_axis it
 type xp_value =
   | XV_Nodes of xctx_item Prims.list 
   | XV_Bool of Prims.bool 
@@ -895,6 +1035,7 @@ let item_string_value (it : xctx_item) : Prims.string=
   | CI_Text (uu___, uu___1, uu___2, t) -> t
   | CI_Comment (uu___, uu___1, uu___2, t) -> t
   | CI_PI (uu___, uu___1, uu___2, uu___3, d) -> d
+  | CI_Namespace (uu___, uu___1, uu___2, uu___3, uri) -> uri
 let nodeset_string_value (items : xctx_item Prims.list) : Prims.string=
   match items with | [] -> "" | hd::uu___ -> item_string_value hd
 let to_string_val (v : xp_value) : Prims.string=
@@ -1090,6 +1231,7 @@ let item_qname (it : xctx_item) : Prims.string=
        | FStar_Pervasives_Native.None -> "")
   | CI_Attr (uu___, uu___1, uu___2, a) -> a.Parser_XML.attr_name
   | CI_PI (uu___, uu___1, uu___2, tg, uu___3) -> tg
+  | CI_Namespace (uu___, uu___1, uu___2, pfx, uu___3) -> pfx
   | uu___ -> ""
 let item_namespace_uri (it : xctx_item) : Prims.string=
   match it with

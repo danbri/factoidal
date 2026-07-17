@@ -1,0 +1,15 @@
+{
+  "test": "node-1601",
+  "suite": "xslt",
+  "category": "node",
+  "dispute_kind": "implementation-defined-order",
+  "upstream_expectation": "<NSlist xml=\"http://www.w3.org/XML/1998/namespace\" bdd=\"http://buster.com\" jad=\"http://administrator.com\" ped=\"http://tester.com\" java=\"http://xml.apache.org/xslt/java\" ext=\"http://somebody.elses.extension\"/>",
+  "our_expectation": "<NSlist bdd=\"http://buster.com\" ext=\"http://somebody.elses.extension\" jad=\"http://administrator.com\" java=\"http://xml.apache.org/xslt/java\" ped=\"http://tester.com\" xml=\"http://www.w3.org/XML/1998/namespace\"/>",
+  "expected": "<NSlist bdd=\"http://buster.com\" ext=\"http://somebody.elses.extension\" jad=\"http://administrator.com\" java=\"http://xml.apache.org/xslt/java\" ped=\"http://tester.com\" xml=\"http://www.w3.org/XML/1998/namespace\"/>",
+  "reason": "namespace-node order is implementation-defined (XPath 1.0 5.4); fixture pins one processor's hash-table order. Our documented order (default xmlns first if present, then prefixes ascending lexicographic, xml included) is conformant.",
+  "rationale": "node-1601 selects namespace::node() and serialises one attribute per in-scope namespace node. XPath 1.0 section 5.4 states the relative order of an element's namespace nodes is IMPLEMENTATION-DEFINED (exactly as it is for the attribute axis). The vendored xslt30-test fixture pins the order xml, bdd, jad, ped, java, ext -- the traversal order of the processor that generated the reference output (a hash-table iteration order), not a value any conformant processor is required to reproduce. Our engine emits namespace nodes in a documented, deterministic order (XPath.Eval.inscope_ns_ordered): the default-namespace node first when present, then every prefixed binding -- the always-present xml binding included -- in ascending Unicode-codepoint order by prefix. For this source (no default xmlns; prefixes bdd, ext, jad, java, ped plus xml) that yields bdd, ext, jad, java, ped, xml. The set of namespace nodes, each node's name (its prefix) and each node's string-value (its URI) are all correct and identical to the fixture's; only the sibling order differs, and that order is not a conformance requirement. This is a disposition, not a semantic change: the engine still runs unchanged and still reports its real output; the override only reclassifies this one justified divergence from FAIL into a distinctly-counted local-override. If the fixture's exact order ever becomes reachable on its own the runner will report a plain pass and flag this override as stale.",
+  "spec": "https://www.w3.org/TR/1999/REC-xpath-19991116/#namespaces",
+  "disposition": "local-override",
+  "date": "2026-07-17",
+  "owner_directive": "implementation defined ordering doesn't sound like we failed compatibility, explain or progress us (owner, node-1601, 2026-07-17)"
+}

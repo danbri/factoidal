@@ -1,12 +1,14 @@
-* Warning 241 at Parser.FastString.fst(0,0-0,0):
-  - Unable to load Parser.FastString.fst.checked since checked file
-    Parser.FastString.fst.checked does not exist; will recheck
-    Parser.FastString.fst (suppressing this warning for further modules)
+* Warning 241 at Parser.XML.fst(0,0-0,0):
+  - Unable to load Parser.XML.fst.checked since checked file
+    Parser.XML.fst.checked is stale (digest mismatch for Parser.XML.fst); will
+    recheck Parser.XML.fst (suppressing this warning for further modules)
 
 Extracted module Schematron.Validate
 * Warning 247 at Schematron.Validate.fst(0,0-0,0):
   - Checked file Schematron.Validate.fst.checked was not written.
-  - Reason: checked file Parser.XML.fst.checked does not exist
+  - Reason:
+      checked file Parser.XML.fst.checked is stale (digest mismatch for
+      Parser.XML.fst)
 
 Verified module: Schematron.Validate
 All verification conditions discharged successfully

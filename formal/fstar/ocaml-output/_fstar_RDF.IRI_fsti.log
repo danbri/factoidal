@@ -1,7 +1,6 @@
-* Warning 241 at RDF.Graph.Executable.fst(0,0-0,0):
-  - Unable to load RDF.Graph.Executable.fst.checked since checked file
-    RDF.Graph.Executable.fst.checked is stale (digest mismatch for
-    RDF.Graph.Executable.fst); will recheck RDF.Graph.Executable.fst
+* Warning 241 at RDF.Indexed.fsti(0,0-0,0):
+  - Unable to load RDF.Indexed.fsti.checked since checked file
+    RDF.Indexed.fsti.checked does not exist; will recheck RDF.Indexed.fsti
     (suppressing this warning for further modules)
 
 * Warning 247 at RDF.IRI.fsti(0,0-0,0):

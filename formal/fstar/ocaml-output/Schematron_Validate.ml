@@ -285,6 +285,8 @@ let item_self_label (it : XPath_Eval.xctx_item) : Prims.string=
   | XPath_Eval.CI_Comment (uu___, uu___1, uu___2, uu___3) -> "comment()"
   | XPath_Eval.CI_PI (uu___, uu___1, uu___2, tg, uu___3) ->
       Prims.strcat "processing-instruction()::" tg
+  | XPath_Eval.CI_Namespace (uu___, uu___1, uu___2, pfx, uu___3) ->
+      Prims.strcat "namespace::" pfx
 let item_path (it : XPath_Eval.xctx_item) : Prims.string=
   let anc = FStar_List_Tot_Base.rev (XSLT_Transform.ancestor_tags_of it) in
   Prims.strcat "/"

@@ -195,6 +195,13 @@ let item_to_rnode (it : XPath_Eval.xctx_item) : rnode=
   | XPath_Eval.CI_PI (uu___, uu___1, uu___2, tg, d) ->
       R_Node (Parser_XML.XPI (tg, d))
   | XPath_Eval.CI_Attr (uu___, uu___1, uu___2, a) -> R_Attr a
+  | XPath_Eval.CI_Namespace (uu___, uu___1, uu___2, pfx, uri) ->
+      R_Attr
+        {
+          Parser_XML.attr_name =
+            (if pfx = "" then "xmlns" else Prims.strcat "xmlns:" pfx);
+          Parser_XML.attr_value = uri
+        }
 type dnode =
   | D_Doc of Parser_XML.xml_node * Parser_XML.xml_node Prims.list 
   | D_Item of XPath_Eval.xctx_item 
@@ -1353,7 +1360,9 @@ and builtin_rule (fuel : Prims.nat) (st : xstyle) (nd : dnode)
          [R_Node (Parser_XML.XText (a.Parser_XML.attr_value))]
      | D_Item (XPath_Eval.CI_Comment (uu___1, uu___2, uu___3, uu___4)) -> []
      | D_Item (XPath_Eval.CI_PI (uu___1, uu___2, uu___3, uu___4, uu___5)) ->
-         [])
+         []
+     | D_Item (XPath_Eval.CI_Namespace
+         (uu___1, uu___2, uu___3, uu___4, uu___5)) -> [])
 and apply_list (fuel : Prims.nat) (st : xstyle) (nodes : dnode Prims.list)
   (pos : Prims.nat) (size : Prims.nat) (mode : Prims.string) :
   rnode Prims.list=
@@ -1813,7 +1822,14 @@ and instantiate_copy (fuel : Prims.nat) (st : xstyle) (ctx : dnode)
          [R_Node (Parser_XML.XComment t)]
      | D_Item (XPath_Eval.CI_PI (uu___1, uu___2, uu___3, tg, d)) ->
          [R_Node (Parser_XML.XPI (tg, d))]
-     | D_Item (XPath_Eval.CI_Attr (uu___1, uu___2, uu___3, a)) -> [R_Attr a])
+     | D_Item (XPath_Eval.CI_Attr (uu___1, uu___2, uu___3, a)) -> [R_Attr a]
+     | D_Item (XPath_Eval.CI_Namespace (uu___1, uu___2, uu___3, pfx, uri)) ->
+         [R_Attr
+            {
+              Parser_XML.attr_name =
+                (if pfx = "" then "xmlns" else Prims.strcat "xmlns:" pfx);
+              Parser_XML.attr_value = uri
+            }])
 and for_each_items (fuel : Prims.nat) (st : xstyle)
   (body : Parser_XML.xml_node Prims.list)
   (vars : (Prims.string * XPath_Eval.xp_value) Prims.list)
