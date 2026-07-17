@@ -1,0 +1,27 @@
+name: XSLT 1.0 conformance (Apache Xalan mirror)
+spec: https://www.w3.org/TR/xslt-10/
+runner: bin/linux-x86_64/xslt_runner
+runner_args:
+  - --base
+  - third_party/testing/xslt1-xalan
+manifest: third_party/testing/xslt1-xalan/manifest.json
+log_path: formal/fstar/ocaml-output/xslt1_xalan_results.log
+result_path: docs/test-results/by-suite/xslt1-xalan.json
+domain: XML
+foundational: false
+
+# The hole-targeted XSLT 1.0 conformance corpus (OASIS cases as mirrored by
+# Apache Xalan, Apache-2.0; vendored as the xslt1-xalan submodule). 1690
+# test triples; the same committed xslt_runner + F*-extracted
+# XSLT.Transform oracle as the default `xslt` suite, pointed at this
+# manifest via --base. Unlike the slice-1 `xslt` corpus this suite is
+# built to SURFACE unimplemented XSLT 1.0 features, so a large red count is
+# expected and is the point — it is the measured burndown target for
+# docs/designissues/2026-07-17-xpath-xslt-coverage-matrix.md. Initial
+# score (2026-07-17, no engine changes): 970 pass, 712 fail, 8 skip
+# (out of 1690).
+triggers:
+  paths:
+    - bin/xslt-runner/**
+    - third_party/testing/xslt1-xalan/**
+  excludes: []

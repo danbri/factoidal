@@ -54,20 +54,15 @@ and a tracker) · **environment(what)** (a checkout/toolchain gap, not
 an engine defect) · **by-design(why)** (deliberately out of scope, the
 processor's behavior is correct).
 
-**disputed-fixture → local override (owner directive 2026-07-17: "if we
-carefully disagree with test make our own local override of it. Shex
-Also.").** A `disputed-fixture` we have *carefully disagreed* with (a
-written analysis + upstream provenance link) is no longer carried as a
-bare fail/skip: it gets a local-override file under
-[`tests/local-overrides/`](../../tests/local-overrides/) recording the
-upstream expectation, our expectation, the rationale, and the provenance.
-Participating runners consume that layer and report the test as
-`PASS (local-override)` with a **distinct labelled count** — "N pass, M
-fail, K local-overrides (out of T)", never folded into plain pass (the
-honesty invariant, anti-pattern #25). Three fixtures are overridden so
-far: ShEx `start2RefS1-IstartS2`, JSON-LD compact `#t0038`, JSON-LD
-fromRdf `#t0008` (see the per-suite rows below and that directory's
-README for the bar an override must clear).
+**Capability-existence rule (added 2026-07-17, owner escalation on the
+`namespace::` axis).** `disputed-fixture` and `by-design` may only be
+applied when the underlying capability EXISTS; a missing feature is
+always **planned-family**/gap, stated as such. Labelling a hole
+"implementation-defined" or "disputed fixture" implies the processor
+made a *correct choice among valid behaviours* — false when it produces
+nothing because the feature was never built. Full re-audit + the
+XPath/XSLT spec-derived coverage matrix that prompted this rule:
+[`docs/designissues/2026-07-17-xpath-xslt-coverage-matrix.md`](../designissues/2026-07-17-xpath-xslt-coverage-matrix.md).
 
 Scores below are cross-checked against `git merge-base --is-ancestor`
 on this worktree's HEAD (`1e152504`) — a score is reported as "landed"
@@ -84,7 +79,7 @@ disposition.
 | eecc_interop | 4 pass, 0 fail, 51 skip (out of 55) | ✅ fully dispositioned |
 | GRDDL stage 1 | 15 pass, 53 fail, 0 skip (out of 68) | ✅ fully dispositioned; stage 3 parked |
 | hub_browser_bundle | 234 pass, 1 fail (out of 235) | ✅ fully dispositioned |
-| JSON-LD 1.1 (5 sub-suites) | 1208 pass, 0 fail, 0 skip, 2 local-overrides (of 1210) [re-measured 2026-07-17: toRdf 467/0/0, expand 385/0/0, flatten 58/0/0, compact 245/0/0/1-override, fromRdf 53/0/0/1-override; the former per-ID 1.0 skips are now either ordinary runs or local-overrides] | ✅ fully dispositioned; ⚠️ prior headline (1193/0/17-skip) was stale |
+| JSON-LD 1.1 (5 sub-suites) | 1193 pass, 0 fail, 17 skip combined (of 1210) | ✅ per existing ledger row |
 | JSON Schema draft-07 | 712 pass, 0 fail, 58 skip (out of 770) | ✅ fully dispositioned |
 | npm_package | 160 pass, 2 fail, 1 skip (out of 163) | 🔴 2 fails undocumented, no tracking issue |
 | OWL 2 DL type-inconsistency (tinc) | 118 pass, 10 fail (out of 128), zero oracle-assisted [`ed8c4a03`, ancestor-confirmed] | ✅ per #299; ⚠️ committed log stale (see note) |
@@ -95,12 +90,13 @@ disposition.
 | OWL 2 profile EL | 108 pass, 13 fail (out of 121) | 🧭 untriaged — no owner disposition on file |
 | OWL 2 profile QL | 83 pass, 4 fail (out of 87) | 🧭 untriaged — no owner disposition on file |
 | QUDT integrity | 0 pass, 0 fail, 29 skip (out of 29) | ✅ fully dispositioned (all-skip is a perf finding, not a dead suite) |
-| RIF Core | 46 pass, 0 fail, 1 local-override, 3 skip (out of 50) | ✅ fully dispositioned; exit 0 |
+| RIF Core | 46 pass, 1 fail, 3 skip (out of 50) | ✅ fully dispositioned |
 | rml_io | 17 pass, 1 fail, 55 skip (out of 73) | ✅ fully dispositioned |
-| ShEx validation | 1181 pass, 0 fail, 1 local-override (out of 1182) | ✅ `start2RefS1-IstartS2` local-overridden per `tests/local-overrides/` |
+| ShEx validation | 1181 pass, 1 fail (out of 1182) | ✅ per `tests/shex-shexj-twins/README.md` |
 | tests_unit | dashboard: 35 pass, 6 fail (out of 41) — stale; this session's fresh run: 45 pass, 0 fail (out of 45) | ✅ dispositioned as environment; dashboard needs republish |
 | xml_conformance | 1414 pass, 0 fail, 1171 skip (out of 2585) | ✅ fully dispositioned (runner's own "HONEST BREAKDOWN") |
-| XSLT 1.0 | 87 pass, 1 fail (out of 88) [2026-07-17, DTD-ID id() + document("") landed (id-016, namespace-4801 flipped green); sole residual node-1601 is dispositioned (implementation-defined namespace-node order / unmodeled `namespace::` axis)] | ✅ landed |
+| XSLT 1.0 (slice-1 pin) | 87 pass, 1 fail (out of 88) [2026-07-17, DTD-ID id() + document("") landed (id-016, namespace-4801 flipped green); sole residual node-1601 is **planned-family**(#302, branch `xslt-namespace-nodes`)/gap — the `namespace::` axis is UNMODELED (Parser.XML has no namespace-node kind), so `namespace::node()` selects nothing and the output is `<NSlist/>`; this is a missing feature, NOT "implementation-defined namespace-node order" (capability-existence rule, above). ⚠️ This corpus is a **regression pin** whose selection blocklists every unimplemented feature — see the row below for the conformance measurement. See the coverage matrix.] | 🟡 gap named |
+| XSLT 1.0 conformance (Apache Xalan mirror) | **970 pass, 712 fail, 8 skip (out of 1690)** [2026-07-17, NO engine changes — the red count IS the deliverable, converting the coverage-matrix's static ~25-hole analysis into a measured burndown]. Corpus: OASIS XSLT 1.0 conformance cases as mirrored by `apache/xalan-test` (Apache-2.0), vendored as submodule `third_party/testing/xslt1-xalan/xalan-test-src` + generated `manifest.json`; run via `xslt_runner --base third_party/testing/xslt1-xalan` (same F\*-extracted `XSLT.Transform` oracle). The 712 fails cluster onto the matrix holes: numberformat 44/44 (format-number/decimal-format #6), impincl 29/29 (import/include #7), numbering 91/93 (xsl:number #4), namespace 92/134 (namespace:: axis #1 + namespace-alias #16), attribset 44/47 (#14), idkey 44/62 (key/generate-id #5/#10), output 75/109 (#18), reluri 11/11 + mdocs 18/19 (document() partial), string 40/135 (translate #2), boolean 5/90 + expression 6/6 (lang #3), extend 5/5 (fallback #17), whitespace 15/23 (#15), message 2/16 (#9), processorinfo 1/1 (system-property #11), plus general axis/match/select/copy corners. Per-category table: `third_party/testing/xslt1-xalan/INFO.txt`. Provenance + license-verdict table: `third_party/testing/xslt1-xalan/PROVENANCE.md`. | 🟡 gap named / burndown target (matrix) |
 
 ### CSVW csv2rdf — 264 pass, 6 fail (out of 270)
 
@@ -174,32 +170,16 @@ xslt ... first"*):
   Verified: the assertion failure is literally "expected the compiled
   C delta-log demo binary to exist", not a content mismatch.
 
-### JSON-LD 1.1 — 1208 pass, 0 fail, 0 skip, 2 local-overrides (of 1210) [2026-07-17]
+### JSON-LD 1.1 — 1193 pass, 0 fail, 17 skip combined (of 1210)
 
-Re-measured 2026-07-17: toRdf 467/0/0, expand 385/0/0, flatten 58/0/0,
-compact 245 pass, 0 fail, 1 local-override (of 246), fromRdf 53 pass, 0
-fail, 1 local-override (of 54). The prior "17 skip combined" headline
-was stale on every sub-suite; toRdf/expand/flatten now carry no skips at
-all, and the two remaining JSON-LD-1.0 divergences are **local-overrides**
-rather than skips:
-
-- compact `#t0038` ("Index map round-tripping") — **disputed-fixture →
-  local override**: its `option.specVersion=json-ld-1.0` expected output
-  directly contradicts the same suite's OWN 1.1 pin `#tp001` ("Compact
-  IRI will not use an expanded term definition in 1.0"); one
-  processingMode-driven engine state cannot satisfy both and this engine
-  implements the 1.1 API. See
-  [`tests/local-overrides/jsonld-compact__t0038.json`](../../tests/local-overrides/jsonld-compact__t0038.json)
-  and `JSONLD.Compact.fst`'s `cmp_curie_loop` comment.
-- fromRdf `#t0008` ("List conversion") — **disputed-fixture → local
-  override**: pins JSON-LD 1.0's partially-ordered RDF-collection-to-`@list`
-  conversion; this engine implements the 1.1 fully-collapsing algorithm
-  (the suite's own `#tli03` pins the 1.1 shape and passes). See
-  [`tests/local-overrides/jsonld-fromrdf__t0008.json`](../../tests/local-overrides/jsonld-fromrdf__t0008.json).
-
-frame/html API suites are still NOT RUN (counted as failed until
-measured, not a skip). Both overrides are counted distinctly by their
-runners and never folded into plain pass (honesty invariant).
+toRdf 461/0/6, fromRdf 53/0/1, expand 379/0/6, compact 244/0/2, flatten
+56/0/2 — all **by-design**(JSON-LD-1.0-version fixtures, named per-ID
+in each runner; frame/html API suites are NOT RUN, already flagged in
+the existing ledger row as counting as failed until measured, not a
+skip). Note: this session found no unmerged branch touching JSON-LD
+skips despite the task brief's "concurrent agents ... jsonld skips"
+warning — treated as current, not in flight, but re-verify before
+citing if a jsonld-\* branch lands after this commit.
 
 ### JSON Schema draft-07 — 712 pass, 0 fail, 58 skip (out of 770)
 
@@ -535,23 +515,19 @@ Not a 🔴 finding.
 - 1 (`UniqueSymbolTypeRestrictedPropertyConstraint`) — **by-design**
   (`sh:deactivated true`, excluded by SHACL semantics itself).
 
-### RIF Core — 46 pass, 0 fail, 1 local-override, 3 skip (out of 50)
+### RIF Core — 46 pass, 1 fail, 3 skip (out of 50)
 
 All named in `.github/test-suites/rif.yaml`'s own header, re-verified
-against the committed log (re-measured 2026-07-17; runner exits 0):
+against the committed log:
 
-- `RDF_Combination_Constant_Equivalence_4` — **local-override**(a
-  malformed `xsd:string` datatype IRI — a Windows local path in the
-  RDF/XML, a scheme-less prefix in the Turtle — present in both the
-  official `Core_v1.22.zip` and the archived W3C wiki source; not
-  fixable without breaking correct datatype-IRI semantics. Dispositioned
-  2026-07-17 as a distinctly-counted local override,
-  `tests/local-overrides/rif/RDF_Combination_Constant_Equivalence_4.override`,
-  rather than an undispositioned red).
+- `RDF_Combination_Constant_Equivalence_4` — **disputed-fixture**(a
+  malformed `xsd:string` datatype IRI present in both the official
+  `Core_v1.22.zip` and the archived W3C wiki source; not fixable
+  without breaking correct datatype-IRI semantics).
 - `Builtins_List`, `NestedListsAreNotFlatLists` —
   **dependency-blocked**(RIF List terms are not modelled in
   `RIF.Core.Syntax.fst`).
-- `Builtins_Time` — **dependency-blocked**(the ~85-builtin date/time/
+- `Builtins_Time` — **dependency-blocked**(the ~60-builtin date/time/
   duration family; only the `EBusiness_Contract` slice is
   implemented).
 
@@ -577,21 +553,15 @@ matches the committed log's 17/1/55 exactly):
 - 1 — **dependency-blocked**(SPARQL-over-RDF iterator not
   implemented).
 
-### ShEx validation — 1181 pass, 0 fail, 1 local-override (out of 1182) [2026-07-17]
+### ShEx validation — 1181 pass, 1 fail (out of 1182)
 
-`start2RefS1-IstartS2` — **disputed-fixture → local override**, linked
+`start2RefS2` — **disputed-fixture**, linked
 [`shexSpec/shexTest#43`](https://github.com/shexSpec/shexTest/issues/43)
-(closed 2023, unreconciled upstream — the imported `start2RefS2.json`/
-`.ttl` use predicate `p1`, `start2RefS2.shex` uses `p2`). Per
+(closed 2023, unreconciled upstream — `start2RefS2.json`/`.ttl` use
+predicate `p1`, `start2RefS2.shex` uses `p2`; per
 `tests/shex-shexj-twins/README.md`, our ShExJ-first runner scores
-against the JSON (`p1`) and correctly returns `false`, while the
-manifest's expected `true` depends on the `.shex` reading (`p2`). This
-was previously carried as a bare fail; as of the owner directive of
-2026-07-17 it is a **local override** —
-[`tests/local-overrides/shex-validation__start2RefS1-IstartS2.json`](../../tests/local-overrides/shex-validation__start2RefS1-IstartS2.json)
-records upstream=`true`, ours=`false`, and the runner reports it
-`PASS (local-override)` with a distinct labelled count (never folded
-into plain pass), so the suite is 1181 pass, 0 fail, 1 local-override.
+against the JSON and carries the mismatch as a fail rather than
+patching a vendored fixture).
 
 ### tests_unit — dashboard 35 pass, 6 fail (of 41); fresh run 45 pass, 0 fail (of 45)
 
