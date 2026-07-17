@@ -453,9 +453,32 @@ let encoding_skip_reason content : string option =
     (match detect_declared_encoding content with
      | None -> None
      | Some enc ->
-       let norm = String.lowercase_ascii (String.trim enc) in
+       let trimmed = String.trim enc in
+       let norm = String.lowercase_ascii trimmed in
        if List.mem norm supported_encodings then None
-       else Some (Printf.sprintf "declared encoding %S not decoded (byte-oriented parser assumes UTF-8/ASCII)" enc))
+       else if not (Parser_XML.is_enc_name trimmed) then
+         (* 2026-07-17 census fix (docs/designissues/2026-07-17-xml-conformance-skip-census.md):
+            the declared
+            encoding VALUE itself is not a syntactically legal EncName
+            (XML 1.0 Production 81: [A-Za-z]([A-Za-z0-9._]|'-')* -- e.g.
+            "UTF#8", "-UTF-8", "utf:8"). Parser.XML.fst's own
+            parse_xml_declaration independently runs this exact
+            is_enc_name check and will reject the declaration on this
+            ground, so let the real dogfooded parser decide instead of
+            pre-emptively skipping here: a not-wf test's rejection then
+            becomes a genuine PASS instead of a manufactured skip. This
+            is not new XML logic (rule #11/#15) -- it calls the already-
+            extracted Parser_XML.is_enc_name, the same function
+            parse_xml_declaration itself uses, so the parser's actual
+            accept/reject decision is what's dogfooded, unchanged. A
+            syntactically legal but undecoded EncName (e.g. "UTF-16",
+            "iso-8859-1") still correctly falls through to the skip
+            below -- this only stops pre-filtering the syntax-invalid
+            subset that the real parser was always going to reject on
+            its own. *)
+         None
+       else
+         Some (Printf.sprintf "declared encoding %S not decoded (byte-oriented parser assumes UTF-8/ASCII)" enc))
 
 let has_doctype content =
   find_substring_from content "<!DOCTYPE" 0 <> None

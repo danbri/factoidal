@@ -84,7 +84,7 @@ disposition.
 | rml_io | 17 pass, 1 fail, 55 skip (out of 73) | ✅ fully dispositioned |
 | ShEx validation | 1181 pass, 1 fail (out of 1182) | ✅ per `tests/shex-shexj-twins/README.md` |
 | tests_unit | dashboard: 35 pass, 6 fail (out of 41) — stale; this session's fresh run: 45 pass, 0 fail (out of 45) | ✅ dispositioned as environment; dashboard needs republish |
-| xml_conformance | 1414 pass, 0 fail, 1171 skip (out of 2585) | ✅ fully dispositioned (runner's own "HONEST BREAKDOWN") |
+| xml_conformance | 1428 pass, 0 fail, 1157 skip (out of 2585) [2026-07-17, +14 pass/−14 skip: runner-level encoding-name pre-filter fix, see below] | ✅ fully dispositioned — full category census below (was a one-liner) |
 | XSLT 1.0 | 83 pass, 5 fail (out of 88) [2026-07-16, namespace-node family landed; remaining 5 dispositioned: node-1601 (implementation-defined namespace-node order), namespace-4801 (document("")), copy-2601/select-1001 (doc-node prolog model), id-016 (DTD-ID)] | ✅ landed |
 
 ### CSVW csv2rdf — 264 pass, 6 fail (out of 270)
@@ -573,22 +573,48 @@ The dashboard number needs republishing from a hazard-15-clean
 checkout — flagged for the publication step, not fixed here (docs-only
 commit, no rebuild triggered).
 
-### xml_conformance — 1414 pass, 0 fail, 1171 skip (out of 2585)
+### xml_conformance — 1428 pass, 0 fail, 1157 skip (out of 2585) [2026-07-17 census]
 
-The runner's own "HONEST BREAKDOWN" (re-verified against the committed
-log), five categories, all **by-design**(explicit Stage-A scope
-limits, not silent gaps):
+Full per-category skip census (was a five-line "HONEST BREAKDOWN"
+paraphrase; superseded by
+`docs/designissues/2026-07-17-xml-conformance-skip-census.md`, which
+carries the SECTIONS-histogram methodology + full recommended
+implementation order). Conformance class we claim: **non-validating,
+non-external-entity-reading XML 1.0 well-formedness processor** —
+named explicitly in XML 1.0 §5.1 and in `testcases.dtd`'s own
+`ENTITIES` exemption, not an ad-hoc excuse. Under that class, 332 of
+the 1157 skips (275 `invalid`/`error` TYPE + 57 external-entity
+exemption) are **not applicable** rather than missing; the remaining
+825 are real, closeable gaps.
 
-- 386 — valid docs rejected at a Stage-A DTD boundary (markup entity /
-  external subset / DTD construct beyond the WF slice).
-- 332 — not-wf violation is in the DTD internal subset
-  (parsed-but-not-validated — Stage-A scope limit).
-- 416 — other (DOCTYPE-external-on-valid, encoding-name edge cases,
-  invalid/error-by-design, external-entity exemption, file-not-found).
-- 37 — out-of-profile (not-wf holds only under XML 1.1 or Namespaces
-  in XML; this parser is XML 1.0 non-namespace).
-- 0 — vacuous (retired by Stage-A DTD support; the runner asserts this
-  stays 0).
+| Category | Count | Disposition | F\* effort |
+|---|---|---|---|
+| `invalid`/`error` TYPE (DTD validity: content models, ATTLIST enforcement, ID/IDREF, NOTATION) | 275 | **by-design** — VCs are validating-processor-only | L (a validating XML processor — different project) |
+| External-entity exemption (`ENTITIES` ≠ none) | 57 | **by-design** — `testcases.dtd`'s own non-external-entity-reading exemption | L (external DTD-subset fetch/resolution) |
+| `not-wf` DTD-internal-subset WFC-shape gap (malformed `<!ELEMENT>`/`<!ATTLIST>`/`<!NOTATION>`/`<!ENTITY>` declarations) | 332 | **real gap, in-scope** — these are WFCs, binding on non-validating processors too | M/L — Stage B of `2026-07-08-xml-dtd-support.md`; touches `Parser.XML.fst` core, deferred (concurrent DTD-ID work) |
+| `valid` Stage-A DTD-boundary — Name-char-class errata (5th-edition `BaseChar`/`Digit`/`Extender`, `SECTIONS B.`) | 305 | **real gap, cheapest large family** | S/M — Unicode range-table edit, no new grammar; **recommended #1 priority next pass** |
+| `valid` Stage-A DTD-boundary — genuine Stage-B remainder (external subset, markup-bearing entity content) | 81 | **real gap, in-scope** | L |
+| UTF-16 decode (BOM/no-BOM sniffed + declared) | 41 | **real gap against the mandatory baseline** — XML 1.0 §4.3.3 requires UTF-8 *and* UTF-16 support regardless of processor class | M — recommended #2 priority |
+| `not-wf` out-of-profile: XML 1.1 (tighter `Char`/`RestrictedChar`) | 33 | **profile choice**, not VC/WFC — owner call open (see design doc) | M |
+| Declared encoding "iso-8859-1" undecoded | 27 | **real gap, optional** (XML 1.0 permits, doesn't require, extra encodings) | S — trivial byte-range decode |
+| `not-wf` out-of-profile: Namespaces-in-XML (PI-target colon) | 4 | **real gap, small** | S |
+| UTF-8 BOM prefix not skipped | 2 | **real gap, trivial** | S — touches `Parser.XML.fst` entry point |
+
+**2026-07-17 fix (implemented this pass, before/after labelled):** 14
+of the "declared encoding not decoded" skips were a **runner bug, not
+a parser gap** — `Parser.XML.fst` already implements XML 1.0
+Production 81's `EncName` grammar (`is_enc_name`) and independently
+rejects syntactically illegal encoding names (`UTF#8`, `-UTF-8`,
+`utf:8`, …), but `bin/xml-runner/xml_runner.ml`'s
+`encoding_skip_reason` pre-filtered on a cruder check and skipped
+these before the real parser ever ran. Fixed by calling the
+already-extracted `Parser_XML.is_enc_name` from the runner instead of
+re-deriving the check — zero changes to any `.fst`. All 14 affected
+tests are `TYPE="not-wf"`, so the fix can only convert skip→pass,
+never manufacture a fail. **Before: 1414 pass, 0 fail, 1171 skip.
+After: 1428 pass, 0 fail, 1157 skip** (out of 2585 both times). Gates
+re-verified: rdf-xml 166/0, grddl 15 pass (≥15 floor), xpath-unit
+91/0 — all unaffected (different binaries; `Parser.XML.fst` untouched).
 
 ### XSLT 1.0 — 79 pass, 9 fail (out of 88)
 
