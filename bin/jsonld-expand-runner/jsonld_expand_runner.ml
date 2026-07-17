@@ -254,15 +254,22 @@ let expand_document_tc tc content =
    #t0116 (JSONLD.Context.fst's @vocab branch: 1.0 requires an
    absolute-IRI-or-bnode vocab mapping), and #ter24 + #ter32
    (JSONLD.Expand.fst's expand_property: 1.0's "list of lists"
-   error). #t0071 is what measurably remains. *)
+   error).
+
+   2026-07-17 direction wave: #t0071 ("Redefine terms looking like
+   compact IRIs") FLIPPED to an ordinary run. Its 1.0-mode redefinition
+   of a compact-IRI-shaped term to itself is NOT a 1.0-only semantic at
+   all — the same defined[term]=false guard the JSON-LD 1.1 API's Create
+   Term Definition already specifies (a term's own @id/@reverse value
+   must not resolve through the term's own stale mapping) covers it. The
+   object-form @id branch was missing the self-strip the simple string
+   form already had; JSONLD.Context.fst's process_term_def_obj now
+   applies it, so {"v:termId": {"@id": "v:termId"}} re-resolves via the
+   compact-IRI prefix. Measured MATCH afterwards. The allowlist is now
+   empty — no expand test needs a documented 1.0-only skip. *)
 let jld_1_0_still_skip (id : string) : string option =
   if Sys.getenv_opt "JLD_NO_SKIP" <> None then None else
   match id with
-  | "#t0071" ->
-    Some "option.specVersion=json-ld-1.0 — 1.0's stricter rule on \
-          redefining a term that looks like a compact IRI differs from \
-          1.1's more permissive rule this program implements; measured: \
-          expanded JSON differs."
   | _ -> None
 
 let run_test tc =

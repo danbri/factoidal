@@ -1017,6 +1017,28 @@ let jldctx_scan_nest (fields:list (string & json_val)) : option string =
   | Some (_, JString s) -> Some s
   | _ -> None
 
+// True when an object-form term definition's own @id (or, absent that,
+// @reverse) STRING value names the very term being defined — the
+// object-form analogue of the JString arm's `s = key` self-reference
+// test. Used by process_term_def_obj to reproduce Create Term
+// Definition's defined[term]=false guard (see its call site). A separate
+// top-level function so the refined `List.Tot.find` return types stay
+// out of process_term_def_obj's own proof context.
+let jldctx_term_obj_self_id (key:string) (fields:list (string & json_val)) : bool =
+  match List.Tot.find (fun (kv:(string & json_val)) -> fst kv = "@id") fields with
+  | Some (_, JString s) -> s = key
+  | _ ->
+    (match List.Tot.find (fun (kv:(string & json_val)) -> fst kv = "@reverse") fields with
+     | Some (_, JString s) -> s = key
+     | _ -> false)
+
+// This function's body was already at the default z3rlimit ceiling; the
+// 2026-07-17 self-strip addition (ac_fields, for toRdf/te071 + expand/
+// t0071) tips an existing obligation over it. A scoped rlimit bump — the
+// same idiom sibling JSONLD.Compact.fst / JSONLD.Flatten.fst use — keeps
+// the module verifying under the build's default flags with NO --lax and
+// NO admit (iron rule #10).
+#push-options "--z3rlimit 150"
 let process_term_def_obj (ac:active_context) (key:string) (fields:list (string & json_val))
                           (default_protected:bool) (override_protected:bool)
   : Tot (option active_context) =
@@ -1032,7 +1054,26 @@ let process_term_def_obj (ac:active_context) (key:string) (fields:list (string &
      | Some (_, JString s) -> jldctx_self_cyclic ac key s
      | _ -> false) in
   if self_ref then None else
-  match jldctx_term_obj_fields ac None None None CK_None None None None None None fields with
+  // JSON-LD 1.1 API Create Term Definition marks `defined[term] = false`
+  // for the WHOLE of a term's own processing, so IRI Expansion of that
+  // term's own @id/@reverse value must NOT resolve `term` through full-
+  // term substitution against its own stale, about-to-be-replaced
+  // mapping — it must fall through to the compact-IRI-prefix / @vocab
+  // derivation instead. The simple string form already does this (see
+  // context_process_one_field's JString arm: strip when s = key); the
+  // object form must apply the SAME self-strip whenever its @id (or
+  // @reverse) VALUE equals the key being defined (jldctx_term_obj_self_id),
+  // or a redefinition like {"v:termId": {"@id": "v:termId"}} in a second
+  // context wrongly keeps the first context's mapping (toRdf/te071,
+  // expand/t0071 — a term that LOOKS like a compact IRI, redefined to
+  // itself). Strip only in the self-referencing case; an @id naming a
+  // DIFFERENT already-defined term still resolves through it, exactly
+  // like the JString arm.
+  let ac_fields =
+    if jldctx_term_obj_self_id key fields
+    then { ac with ac_terms = jldctx_remove_term ac.ac_terms key }
+    else ac in
+  match jldctx_term_obj_fields ac_fields None None None CK_None None None None None None fields with
   | None -> None
   | Some (idf, revf, typef, contk, langf, dirf, idxf, ctxf, protf) ->
     // toRdf/pi02: a term's "@index" member is only meaningful when its
@@ -1137,6 +1178,7 @@ let process_term_def_obj (ac:active_context) (key:string) (fields:list (string &
           (match jldctx_resolve_redefine ac key td override_protected with
            | Some final_td -> Some ({ ac with ac_terms = (key, final_td) :: ac.ac_terms })
            | None -> None)))
+#pop-options
 
 // ================================================================
 // Top level: process an inline @context value (object, array, string, or
