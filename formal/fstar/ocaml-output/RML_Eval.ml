@@ -223,7 +223,8 @@ let eval_plain_strings (tm : RML_Mapping.term_map)
       (match t with
        | RDF_Term.T_IRI i -> [i]
        | RDF_Term.T_Literal l -> [l.RDF_Term.lexical_form]
-       | RDF_Term.T_BNode uu___ -> [])
+       | RDF_Term.T_BNode uu___ -> []
+       | RDF_Term.T_TripleTerm (uu___, uu___1, uu___2) -> [])
   | RML_Mapping.TMF_Reference r -> reference_cast_strings row r
   | RML_Mapping.TMF_Template t ->
       eval_template_strings FStar_Pervasives_Native.None t row
@@ -237,7 +238,8 @@ let build_literal_opt (lex : Prims.string) (dt : Prims.string)
       {
         RDF_Term.lexical_form = lex;
         RDF_Term.datatype = dt;
-        RDF_Term.lang_tag = lang
+        RDF_Term.lang_tag = lang;
+        RDF_Term.direction = FStar_Pervasives_Native.None
       } in
     (if RDF_Term.literal_wf l
      then FStar_Pervasives_Native.Some (RDF_Term.T_Literal l)
@@ -382,7 +384,8 @@ let eval_term_map (role : map_role) (tm : RML_Mapping.term_map)
       (match t with
        | RDF_Term.T_IRI uu___ -> [t]
        | RDF_Term.T_Literal uu___ -> [t]
-       | RDF_Term.T_BNode uu___ -> [])
+       | RDF_Term.T_BNode uu___ -> []
+       | RDF_Term.T_TripleTerm (uu___, uu___1, uu___2) -> [])
   | RML_Mapping.TMF_Unknown ->
       (match tm.RML_Mapping.tmap_termtype with
        | FStar_Pervasives_Native.Some (RML_Mapping.TT_BlankNode) ->
@@ -446,7 +449,8 @@ let gather_heads (gm : RML_Mapping.gather_map) (row : RML_Sources.source_row)
            match t with
            | RDF_Term.T_IRI i -> [RDF_Term.S_IRI i]
            | RDF_Term.T_BNode b -> [RDF_Term.S_BNode b]
-           | RDF_Term.T_Literal uu___1 -> [])
+           | RDF_Term.T_Literal uu___1 -> []
+           | RDF_Term.T_TripleTerm (uu___1, uu___2, uu___3) -> [])
         (eval_term_map MR_Object gm.RML_Mapping.gm_head row seed base)
 let rec build_list_struct (headsubj : RDF_Term.subject)
   (members : RDF_Term.rdf_term Prims.list) (seed : Prims.string)
@@ -586,12 +590,16 @@ let subject_of_rdf_term (t : RDF_Term.rdf_term) :
   | RDF_Term.T_IRI i -> FStar_Pervasives_Native.Some (RDF_Term.S_IRI i)
   | RDF_Term.T_BNode b -> FStar_Pervasives_Native.Some (RDF_Term.S_BNode b)
   | RDF_Term.T_Literal uu___ -> FStar_Pervasives_Native.None
+  | RDF_Term.T_TripleTerm (uu___, uu___1, uu___2) ->
+      FStar_Pervasives_Native.None
 let term_to_graph_name (t : RDF_Term.rdf_term) :
   Prims.string FStar_Pervasives_Native.option=
   match t with
   | RDF_Term.T_IRI i -> FStar_Pervasives_Native.Some i
   | RDF_Term.T_BNode b -> FStar_Pervasives_Native.Some (Prims.strcat "_:" b)
   | RDF_Term.T_Literal uu___ -> FStar_Pervasives_Native.None
+  | RDF_Term.T_TripleTerm (uu___, uu___1, uu___2) ->
+      FStar_Pervasives_Native.None
 let eval_graphs (gms : RML_Mapping.term_map Prims.list)
   (row : RML_Sources.source_row) (row_seed : Prims.string)
   (base_iri : Prims.string FStar_Pervasives_Native.option) :

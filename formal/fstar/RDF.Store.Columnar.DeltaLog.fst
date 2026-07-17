@@ -82,6 +82,10 @@ let delta_entry_version : nat = 1
 let term_tag_iri     : nat = 0
 let term_tag_bnode    : nat = 1
 let term_tag_literal  : nat = 2
+// RDF 1.2 triple term. Durable delta-log persistence of triple terms is a
+// later phase (#305 P8); `term_ok` below excludes them from the round-trip
+// contract, but `serialize_term` still handles them totally (tag 3).
+let term_tag_tripleterm : nat = 3
 
 let subj_tag_iri      : nat = 0
 let subj_tag_bnode     : nat = 1
@@ -165,6 +169,14 @@ let serialize_term (t : T.rdf_term) : Tot B.bytes =
           (match l.T.lang_tag with
            | None -> write_u8 0
            | Some tag -> append (write_u8 1) (serialize_lstring tag))))
+  // RDF 1.2 triple term (tag 3). Durable delta-log persistence of triple
+  // terms is a later phase (#305 P8): `term_ok` is false for triple terms,
+  // so they are never part of the round-trip contract and this arm is dead
+  // code with respect to it. A bare tag byte keeps `serialize_term` total
+  // AND non-recursive, so the existing IRI/bnode/literal round-trip and
+  // length proofs (which rely on definitional unfolding) are unchanged and
+  // 1.1 delta logs stay byte-identical.
+  | T.T_TripleTerm _ _ _ -> write_u8 term_tag_tripleterm
 
 let parse_term (bs : B.bytes) : Tot (option (T.rdf_term & B.bytes)) =
   match parse_u8 bs with
@@ -191,13 +203,13 @@ let parse_term (bs : B.bytes) : Tot (option (T.rdf_term & B.bytes)) =
             | None -> None
             | Some (flag, after_flag) ->
               if flag = 0 then
-                let l : T.literal = { T.lexical_form = lex; T.datatype = dt; T.lang_tag = None } in
+                let l : T.literal = { T.lexical_form = lex; T.datatype = dt; T.lang_tag = None; direction = None } in
                 if T.literal_wf l then Some (T.T_Literal l, after_flag) else None
               else if flag = 1 then
                 match parse_lstring after_flag with
                 | None -> None
                 | Some (tag_str, rest) ->
-                  let l : T.literal = { T.lexical_form = lex; T.datatype = dt; T.lang_tag = Some tag_str } in
+                  let l : T.literal = { T.lexical_form = lex; T.datatype = dt; T.lang_tag = Some tag_str; direction = None } in
                   if T.literal_wf l then Some (T.T_Literal l, rest) else None
               else None
     else None
@@ -383,9 +395,25 @@ let term_ok (t : T.rdf_term) : bool =
   | T.T_Literal l ->
     String.length l.T.lexical_form < max_field_chars &&
     String.length l.T.datatype < max_field_chars &&
+    // RDF 1.2 base direction is NOT persisted by the length-prefixed term
+    // encoding here (parse_term reconstructs direction = None), so a
+    // directional literal would not round-trip byte-for-byte. Persistence
+    // of dirLangString is a later phase (#305 P8); exclude it from the
+    // contract. Every RDF 1.1 literal has direction = None, so this
+    // narrows nothing for pre-1.2 data.
+    l.T.direction = None &&
     (match l.T.lang_tag with
      | None -> true
      | Some tg -> String.length tg < max_field_chars)
+  // RDF 1.2 triple terms are outside the phase-1 durable delta-log
+  // contract (persistence is #305 P8), so they are never `term_ok`.
+  | T.T_TripleTerm _ _ _ -> false
+
+// term_ok is definitionally false on a triple term; a `Tot`-level
+// lemma so callers can add that fact to the SMT context to discharge
+// the (unreachable) triple-term branches of the round-trip lemmas.
+let lemma_term_ok_tripleterm (s : T.subject) (p : T.wf_iri) (o : T.rdf_term)
+  : Lemma (ensures term_ok (T.T_TripleTerm s p o) == false) = ()
 
 let subject_ok (s : T.subject) : bool =
   match s with
@@ -453,6 +481,9 @@ let lemma_term_length (t : T.rdf_term{term_ok t})
       FStar.List.Tot.Properties.append_length lexb (append dtb tailb);
       FStar.List.Tot.Properties.append_length (write_u8 term_tag_literal)
         (append lexb (append dtb tailb))
+    // Unreachable: `term_ok t` (the refinement) is false for a triple
+    // term, so this branch's hypotheses are contradictory.
+    | T.T_TripleTerm s p obj -> lemma_term_ok_tripleterm s p obj
 
 (* --- round-trip, bottom-up: each layer requires the `_ok` predicate
    directly on the SOURCE value (never derived from an output length —
@@ -499,6 +530,8 @@ let lemma_term_roundtrip (t : T.rdf_term) (rest : B.bytes)
          projections); `literal_wf` holds because `l : T.wf_literal`
          already carries that refinement. *)
       T.lemma_literal_eq_refl l
+    // Unreachable: `requires term_ok t` is false for a triple term.
+    | T.T_TripleTerm s p obj -> lemma_term_ok_tripleterm s p obj
 
 let lemma_subject_roundtrip (s : T.subject) (rest : B.bytes)
   : Lemma

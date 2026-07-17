@@ -39,48 +39,62 @@ let ts_abbreviate_iri (table : prefix_table) (iri : Prims.string) :
          else Prims.strcat "<" (Prims.strcat iri ">"))
       else Prims.strcat "<" (Prims.strcat iri ">")
   | FStar_Pervasives_Native.None -> Prims.strcat "<" (Prims.strcat iri ">")
-let ts_term_to_turtle (table : prefix_table)
-  (t : RDF_Graph_Executable.rdf_term) : Prims.string=
+let rec ts_term_to_turtle (table : prefix_table) (t : RDF_Term.rdf_term) :
+  Prims.string=
   match t with
-  | RDF_Graph_Executable.T_IRI i -> ts_abbreviate_iri table i
-  | RDF_Graph_Executable.T_BNode b -> Prims.strcat "_:" b
-  | RDF_Graph_Executable.T_Literal l ->
+  | RDF_Term.T_IRI i -> ts_abbreviate_iri table i
+  | RDF_Term.T_BNode b -> Prims.strcat "_:" b
+  | RDF_Term.T_Literal l ->
       let esc =
-        RDF_NQuads_Serialize.nq_escape_literal
-          l.RDF_Graph_Executable.lexical_form in
-      (match l.RDF_Graph_Executable.lang_tag with
+        RDF_NQuads_Serialize.nq_escape_literal l.RDF_Term.lexical_form in
+      (match l.RDF_Term.lang_tag with
        | FStar_Pervasives_Native.Some tag ->
-           Prims.strcat "\"" (Prims.strcat esc (Prims.strcat "\"@" tag))
+           let ds =
+             match l.RDF_Term.direction with
+             | FStar_Pervasives_Native.Some (RDF_Term.Dir_LTR) -> "--ltr"
+             | FStar_Pervasives_Native.Some (RDF_Term.Dir_RTL) -> "--rtl"
+             | FStar_Pervasives_Native.None -> "" in
+           Prims.strcat "\""
+             (Prims.strcat esc (Prims.strcat "\"@" (Prims.strcat tag ds)))
        | FStar_Pervasives_Native.None ->
-           if
-             l.RDF_Graph_Executable.datatype =
-               RDF_Graph_Executable.xsd_string
+           if l.RDF_Term.datatype = RDF_Term.xsd_string
            then Prims.strcat "\"" (Prims.strcat esc "\"")
            else
              Prims.strcat "\""
                (Prims.strcat esc
                   (Prims.strcat "\"^^"
-                     (ts_abbreviate_iri table l.RDF_Graph_Executable.datatype))))
-let ts_subject_to_turtle (table : prefix_table)
-  (s : RDF_Graph_Executable.subject) : Prims.string=
+                     (ts_abbreviate_iri table l.RDF_Term.datatype))))
+  | RDF_Term.T_TripleTerm (s, p, o) ->
+      let subj_str =
+        match s with
+        | RDF_Term.S_IRI i -> ts_abbreviate_iri table i
+        | RDF_Term.S_BNode b -> Prims.strcat "_:" b in
+      let pred_str =
+        if p = RDFS_Closure.rdf_type then "a" else ts_abbreviate_iri table p in
+      Prims.strcat "<<( "
+        (Prims.strcat subj_str
+           (Prims.strcat " "
+              (Prims.strcat pred_str
+                 (Prims.strcat " "
+                    (Prims.strcat (ts_term_to_turtle table o) " )>>")))))
+let ts_subject_to_turtle (table : prefix_table) (s : RDF_Term.subject) :
+  Prims.string=
   match s with
-  | RDF_Graph_Executable.S_IRI i -> ts_abbreviate_iri table i
-  | RDF_Graph_Executable.S_BNode b -> Prims.strcat "_:" b
-let ts_predicate_to_turtle (table : prefix_table)
-  (p : RDF_Graph_Executable.wf_iri) : Prims.string=
-  if p = RDF_Graph_Executable.rdf_type
-  then "a"
-  else ts_abbreviate_iri table p
+  | RDF_Term.S_IRI i -> ts_abbreviate_iri table i
+  | RDF_Term.S_BNode b -> Prims.strcat "_:" b
+let ts_predicate_to_turtle (table : prefix_table) (p : RDF_Term.wf_iri) :
+  Prims.string=
+  if p = RDFS_Closure.rdf_type then "a" else ts_abbreviate_iri table p
 type subj_state =
   {
-  ss_subj: RDF_Graph_Executable.subject ;
+  ss_subj: RDF_Term.subject ;
   ss_subj_text: Prims.string ;
-  ss_cur_pred: RDF_Graph_Executable.wf_iri ;
+  ss_cur_pred: RDF_Term.wf_iri ;
   ss_cur_pred_text: Prims.string ;
   ss_cur_objs: Prims.string Prims.list ;
   ss_pred_chunks: Prims.string Prims.list }
 let __proj__Mksubj_state__item__ss_subj (projectee : subj_state) :
-  RDF_Graph_Executable.subject=
+  RDF_Term.subject=
   match projectee with
   | { ss_subj; ss_subj_text; ss_cur_pred; ss_cur_pred_text; ss_cur_objs;
       ss_pred_chunks;_} -> ss_subj
@@ -90,7 +104,7 @@ let __proj__Mksubj_state__item__ss_subj_text (projectee : subj_state) :
   | { ss_subj; ss_subj_text; ss_cur_pred; ss_cur_pred_text; ss_cur_objs;
       ss_pred_chunks;_} -> ss_subj_text
 let __proj__Mksubj_state__item__ss_cur_pred (projectee : subj_state) :
-  RDF_Graph_Executable.wf_iri=
+  RDF_Term.wf_iri=
   match projectee with
   | { ss_subj; ss_subj_text; ss_cur_pred; ss_cur_pred_text; ss_cur_objs;
       ss_pred_chunks;_} -> ss_cur_pred
@@ -119,8 +133,7 @@ let finish_subj (st : subj_state) : Prims.string=
   let chunks = FStar_List_Tot_Base.rev (finish_pred st) in
   Prims.strcat st.ss_subj_text
     (Prims.strcat " " (Prims.strcat (join_with " ;\n    " chunks) " .\n\n"))
-let rec walk_triples (table : prefix_table)
-  (sorted : RDF_Graph_Executable.rdf_graph)
+let rec walk_triples (table : prefix_table) (sorted : RDF_Graph.rdf_graph)
   (st : subj_state FStar_Pervasives_Native.option)
   (acc : Prims.string Prims.list) : Prims.string Prims.list=
   match sorted with
@@ -129,27 +142,24 @@ let rec walk_triples (table : prefix_table)
        | FStar_Pervasives_Native.None -> acc
        | FStar_Pervasives_Native.Some s -> (finish_subj s) :: acc)
   | t::rest ->
-      let obj_text = ts_term_to_turtle table t.RDF_Graph_Executable.o in
+      let obj_text = ts_term_to_turtle table t.RDF_Triple.o in
       (match st with
        | FStar_Pervasives_Native.None ->
            let st' =
              {
-               ss_subj = (t.RDF_Graph_Executable.s);
-               ss_subj_text =
-                 (ts_subject_to_turtle table t.RDF_Graph_Executable.s);
-               ss_cur_pred = (t.RDF_Graph_Executable.p);
+               ss_subj = (t.RDF_Triple.s);
+               ss_subj_text = (ts_subject_to_turtle table t.RDF_Triple.s);
+               ss_cur_pred = (t.RDF_Triple.p);
                ss_cur_pred_text =
-                 (ts_predicate_to_turtle table t.RDF_Graph_Executable.p);
+                 (ts_predicate_to_turtle table t.RDF_Triple.p);
                ss_cur_objs = [obj_text];
                ss_pred_chunks = []
              } in
            walk_triples table rest (FStar_Pervasives_Native.Some st') acc
        | FStar_Pervasives_Native.Some s ->
-           if
-             RDF_Graph_Executable.subject_eq s.ss_subj
-               t.RDF_Graph_Executable.s
+           if RDF_Term.subject_eq s.ss_subj t.RDF_Triple.s
            then
-             (if s.ss_cur_pred = t.RDF_Graph_Executable.p
+             (if s.ss_cur_pred = t.RDF_Triple.p
               then
                 let s' =
                   {
@@ -167,9 +177,9 @@ let rec walk_triples (table : prefix_table)
                    {
                      ss_subj = (s.ss_subj);
                      ss_subj_text = (s.ss_subj_text);
-                     ss_cur_pred = (t.RDF_Graph_Executable.p);
+                     ss_cur_pred = (t.RDF_Triple.p);
                      ss_cur_pred_text =
-                       (ts_predicate_to_turtle table t.RDF_Graph_Executable.p);
+                       (ts_predicate_to_turtle table t.RDF_Triple.p);
                      ss_cur_objs = [obj_text];
                      ss_pred_chunks = pred_chunks'
                    } in
@@ -179,20 +189,19 @@ let rec walk_triples (table : prefix_table)
              (let block = finish_subj s in
               let st' =
                 {
-                  ss_subj = (t.RDF_Graph_Executable.s);
-                  ss_subj_text =
-                    (ts_subject_to_turtle table t.RDF_Graph_Executable.s);
-                  ss_cur_pred = (t.RDF_Graph_Executable.p);
+                  ss_subj = (t.RDF_Triple.s);
+                  ss_subj_text = (ts_subject_to_turtle table t.RDF_Triple.s);
+                  ss_cur_pred = (t.RDF_Triple.p);
                   ss_cur_pred_text =
-                    (ts_predicate_to_turtle table t.RDF_Graph_Executable.p);
+                    (ts_predicate_to_turtle table t.RDF_Triple.p);
                   ss_cur_objs = [obj_text];
                   ss_pred_chunks = []
                 } in
               walk_triples table rest (FStar_Pervasives_Native.Some st')
                 (block :: acc)))
-let render_triples (table : prefix_table)
-  (g : RDF_Graph_Executable.rdf_graph) : Prims.string=
-  let sorted = FStar_List_Tot_Base.sortWith RDF_Graph_Executable.triple_cmp g in
+let render_triples (table : prefix_table) (g : RDF_Graph.rdf_graph) :
+  Prims.string=
+  let sorted = FStar_List_Tot_Base.sortWith RDF_Graph.triple_cmp g in
   let blocks = walk_triples table sorted FStar_Pervasives_Native.None [] in
   FStar_String.concat "" (FStar_List_Tot_Base.rev blocks)
 let rec render_prefix_header (table : prefix_table) :
@@ -204,7 +213,7 @@ let rec render_prefix_header (table : prefix_table) :
          (Prims.strcat abbr (Prims.strcat " <" (Prims.strcat ns "> .\n"))))
       :: (render_prefix_header rest)
 let turtle_of_graph (table : (Prims.string * Prims.string) Prims.list)
-  (g : RDF_Graph_Executable.rdf_graph) : Prims.string=
+  (g : RDF_Graph.rdf_graph) : Prims.string=
   let header_lines = render_prefix_header table in
   let header = FStar_String.concat "" header_lines in
   let sep = match header_lines with | [] -> "" | uu___ -> "\n" in
@@ -242,29 +251,28 @@ let ns_split (iri : Prims.string) :
             (len - (idx + Prims.int_one)) in
         FStar_Pervasives_Native.Some (ns, local)
       else FStar_Pervasives_Native.None
-let rec collect_iris_acc (g : RDF_Graph_Executable.rdf_graph)
+let rec collect_iris_acc (g : RDF_Graph.rdf_graph)
   (acc : Prims.string Prims.list) : Prims.string Prims.list=
   match g with
   | [] -> acc
   | t::rest ->
-      let acc1 = (t.RDF_Graph_Executable.p) :: acc in
+      let acc1 = (t.RDF_Triple.p) :: acc in
       let acc2 =
-        match t.RDF_Graph_Executable.s with
-        | RDF_Graph_Executable.S_IRI i -> i :: acc1
-        | RDF_Graph_Executable.S_BNode uu___ -> acc1 in
+        match t.RDF_Triple.s with
+        | RDF_Term.S_IRI i -> i :: acc1
+        | RDF_Term.S_BNode uu___ -> acc1 in
       let acc3 =
-        match t.RDF_Graph_Executable.o with
-        | RDF_Graph_Executable.T_IRI i -> i :: acc2
-        | RDF_Graph_Executable.T_BNode uu___ -> acc2
-        | RDF_Graph_Executable.T_Literal l ->
-            (match l.RDF_Graph_Executable.lang_tag with
+        match t.RDF_Triple.o with
+        | RDF_Term.T_IRI i -> i :: acc2
+        | RDF_Term.T_BNode uu___ -> acc2
+        | RDF_Term.T_Literal l ->
+            (match l.RDF_Term.lang_tag with
              | FStar_Pervasives_Native.Some uu___ -> acc2
              | FStar_Pervasives_Native.None ->
-                 if
-                   l.RDF_Graph_Executable.datatype =
-                     RDF_Graph_Executable.xsd_string
+                 if l.RDF_Term.datatype = RDF_Term.xsd_string
                  then acc2
-                 else (l.RDF_Graph_Executable.datatype) :: acc2) in
+                 else (l.RDF_Term.datatype) :: acc2)
+        | RDF_Term.T_TripleTerm (uu___, uu___1, uu___2) -> acc2 in
       collect_iris_acc rest acc3
 let rec candidate_namespaces_acc (iris : Prims.string Prims.list)
   (acc : Prims.string Prims.list) : Prims.string Prims.list=
@@ -337,7 +345,7 @@ let known_prefixes_used (present_namespaces : Prims.string Prims.list) :
        match uu___ with
        | (ns, uu___1) -> FStar_List_Tot_Base.mem ns present_namespaces)
     well_known_prefixes
-let turtle_of_graph_auto (g : RDF_Graph_Executable.rdf_graph) : Prims.string=
+let turtle_of_graph_auto (g : RDF_Graph.rdf_graph) : Prims.string=
   let iris = collect_iris_acc g [] in
   let candidates = candidate_namespaces_acc iris [] in
   let sorted_candidates =

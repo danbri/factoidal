@@ -128,7 +128,8 @@ let encode_fulltext_literal (ftq : fulltext_query) : RDF_Term.wf_literal=
   {
     RDF_Term.lexical_form = lex;
     RDF_Term.datatype = fulltext_args_datatype;
-    RDF_Term.lang_tag = FStar_Pervasives_Native.None
+    RDF_Term.lang_tag = FStar_Pervasives_Native.None;
+    RDF_Term.direction = FStar_Pervasives_Native.None
   }
 let decode_fulltext_literal (l : RDF_Term.wf_literal) :
   fulltext_query FStar_Pervasives_Native.option=

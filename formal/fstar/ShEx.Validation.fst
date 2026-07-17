@@ -160,6 +160,10 @@ let shex_lex (t : rdf_term) : string =
   | T_IRI i     -> i
   | T_BNode b   -> b
   | T_Literal l -> l.lexical_form
+  // A triple term has no lexical form for length/pattern facets; ShEx
+  // node-constraint facets over a triple-term node are undefined, so an
+  // empty string is the conservative total value.
+  | T_TripleTerm _ _ _ -> ""
 
 let is_ascii_digit_char (c : FStar.Char.char) : bool =
   let n = FStar.Char.int_of_char c in n >= 48 && n <= 57

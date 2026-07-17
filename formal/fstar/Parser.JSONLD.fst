@@ -807,7 +807,7 @@ let jld_make_literal (lexical:string) (dt:string) (lang:option string)
   // rejected via jld_iri_wf, not the shared (minimal) is_iri; toRdf/wf05:
   // likewise for an invalid @language value, via jld_lang_tag_wf.
   if jld_iri_wf dt && (match lang with Some l -> jld_lang_tag_wf l | None -> true) then
-    let lit : literal = { lexical_form = lexical; datatype = dt; lang_tag = lang } in
+    let lit : literal = { lexical_form = lexical; datatype = dt; lang_tag = lang; direction = None } in
     if literal_wf lit then Some (T_Literal lit) else None
   else None
 
@@ -989,14 +989,14 @@ let jld_compound_literal_term (lex:string) (lang:option string) (dir:string) (ct
   : (rdf_term & list triple & nat) =
   let (b, ctr1) = jld_fresh_bnode ctr in
   let bsubj = S_BNode b in
-  let value_lit : wf_literal = { lexical_form = lex; datatype = xsd_string; lang_tag = None } in
-  let dir_lit : wf_literal = { lexical_form = dir; datatype = xsd_string; lang_tag = None } in
+  let value_lit : wf_literal = { lexical_form = lex; datatype = xsd_string; lang_tag = None; direction = None } in
+  let dir_lit : wf_literal = { lexical_form = dir; datatype = xsd_string; lang_tag = None; direction = None } in
   let acc1 = { s = bsubj; p = rdf_value_iri; o = T_Literal value_lit } :: acc in
   let acc2 = { s = bsubj; p = rdf_direction_iri; o = T_Literal dir_lit } :: acc1 in
   let acc3 =
     (match lang with
      | Some lg ->
-       let lang_lit : wf_literal = { lexical_form = FStar.String.lowercase lg; datatype = xsd_string; lang_tag = None } in
+       let lang_lit : wf_literal = { lexical_form = FStar.String.lowercase lg; datatype = xsd_string; lang_tag = None; direction = None } in
        { s = bsubj; p = rdf_language_iri; o = T_Literal lang_lit } :: acc2
      | None -> acc2) in
   (T_BNode b, acc3, ctr1)

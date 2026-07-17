@@ -2,4 +2,6 @@
     RIF.Core.Eval.fst (up to date, skipped -- source unchanged since last extract)
     JSONLD.Compact.fst (up to date, skipped -- source unchanged since last extract)
     Parser.BallyhooHDT.fst (up to date, skipped -- source unchanged since last extract)
+    [RDF.CottasStore.fst]
     SPARQL.Plan.Explain.fst (up to date, skipped -- source unchanged since last extract)
+    [RDF.CottasStore.fst] Extracted module RDF.CottasStore

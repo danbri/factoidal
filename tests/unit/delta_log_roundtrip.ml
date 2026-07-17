@@ -34,7 +34,7 @@ let iri s : RDF_Term.wf_iri = s   (* caller supplies a colon-bearing string *)
 
 let lit ?lang ~datatype lex : RDF_Term.rdf_term =
   RDF_Term.T_Literal { RDF_Term.lexical_form = lex; RDF_Term.datatype = datatype;
-                        RDF_Term.lang_tag = lang }
+                        RDF_Term.lang_tag = lang; RDF_Term.direction = FStar_Pervasives_Native.None }
 
 let plain_lit lex : RDF_Term.rdf_term = lit ~datatype:RDF_Term.xsd_string lex
 

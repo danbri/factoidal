@@ -635,7 +635,8 @@ let count_star_solution (alias : SPARQL11_Algebra.var_name) (n : Prims.nat) :
       {
         RDF_Term.lexical_form = (Prims.string_of_int n);
         RDF_Term.datatype = RDF_Term.xsd_integer;
-        RDF_Term.lang_tag = FStar_Pervasives_Native.None
+        RDF_Term.lang_tag = FStar_Pervasives_Native.None;
+        RDF_Term.direction = FStar_Pervasives_Native.None
       } in
   [SPARQL11_Algebra.sm_bind alias lit_term SPARQL11_Algebra.sm_empty]
 let detect_streaming_count_group_by_graph (q : SPARQL11_Algebra.query) :
@@ -738,7 +739,8 @@ let rec count_group_by_graph_solutions_acc
           {
             RDF_Term.lexical_form = (Prims.string_of_int cnt);
             RDF_Term.datatype = RDF_Term.xsd_integer;
-            RDF_Term.lang_tag = FStar_Pervasives_Native.None
+            RDF_Term.lang_tag = FStar_Pervasives_Native.None;
+            RDF_Term.direction = FStar_Pervasives_Native.None
           } in
       let mu0 =
         SPARQL11_Algebra.sm_bind count_alias lit_term
@@ -847,7 +849,8 @@ let rec predicate_group_by_solutions_acc
              {
                RDF_Term.lexical_form = (Prims.string_of_int cnt);
                RDF_Term.datatype = RDF_Term.xsd_integer;
-               RDF_Term.lang_tag = FStar_Pervasives_Native.None
+               RDF_Term.lang_tag = FStar_Pervasives_Native.None;
+               RDF_Term.direction = FStar_Pervasives_Native.None
              } in
          let mu0 =
            SPARQL11_Algebra.sm_bind count_alias lit_term

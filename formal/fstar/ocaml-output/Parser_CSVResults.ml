@@ -1,17 +1,18 @@
 open Prims
 let mk_literal (lexical : Prims.string) (dt : Prims.string)
   (lang : Prims.string FStar_Pervasives_Native.option) :
-  RDF_Graph_Executable.rdf_term FStar_Pervasives_Native.option=
-  if RDF_Graph_Executable.is_iri dt
+  RDF_Term.rdf_term FStar_Pervasives_Native.option=
+  if RDF_Term.is_iri dt
   then
     let lit =
       {
-        RDF_Graph_Executable.lexical_form = lexical;
-        RDF_Graph_Executable.datatype = dt;
-        RDF_Graph_Executable.lang_tag = lang
+        RDF_Term.lexical_form = lexical;
+        RDF_Term.datatype = dt;
+        RDF_Term.lang_tag = lang;
+        RDF_Term.direction = FStar_Pervasives_Native.None
       } in
-    (if RDF_Graph_Executable.literal_wf lit
-     then FStar_Pervasives_Native.Some (RDF_Graph_Executable.T_Literal lit)
+    (if RDF_Term.literal_wf lit
+     then FStar_Pervasives_Native.Some (RDF_Term.T_Literal lit)
      else FStar_Pervasives_Native.None)
   else FStar_Pervasives_Native.None
 let rec split_lines_acc (cs : FStar_Char.char Prims.list)
@@ -150,30 +151,25 @@ let is_numeric_str (s : Prims.string) : Prims.bool=
                 | uu___2::c2::uu___3 -> is_ascii_digit c2
                 | uu___2 -> false)))
      | [] -> false)
-let looks_like_iri (s : Prims.string) : Prims.bool=
-  RDF_Graph_Executable.is_iri s
+let looks_like_iri (s : Prims.string) : Prims.bool= RDF_Term.is_iri s
 let parse_csv_value (field : Prims.string) :
-  RDF_Graph_Executable.rdf_term FStar_Pervasives_Native.option=
+  RDF_Term.rdf_term FStar_Pervasives_Native.option=
   if (FStar_String.strlen field) = Prims.int_zero
   then FStar_Pervasives_Native.None
   else
     if is_blank_node_str field
-    then
-      FStar_Pervasives_Native.Some
-        (RDF_Graph_Executable.T_BNode (bnode_label field))
+    then FStar_Pervasives_Native.Some (RDF_Term.T_BNode (bnode_label field))
     else
       if looks_like_iri field
-      then FStar_Pervasives_Native.Some (RDF_Graph_Executable.T_IRI field)
-      else
-        mk_literal field RDF_Graph_Executable.xsd_string
-          FStar_Pervasives_Native.None
+      then FStar_Pervasives_Native.Some (RDF_Term.T_IRI field)
+      else mk_literal field RDF_Term.xsd_string FStar_Pervasives_Native.None
 let parse_csv_row (line : Prims.string) :
-  RDF_Graph_Executable.rdf_term FStar_Pervasives_Native.option Prims.list=
+  RDF_Term.rdf_term FStar_Pervasives_Native.option Prims.list=
   let fields =
     csv_split_fields line (FStar_Char.char_of_int (Prims.of_int (0x2C))) in
   FStar_List_Tot_Base.map parse_csv_value fields
 let parse_tsv_iri (s : Prims.string) :
-  RDF_Graph_Executable.rdf_term FStar_Pervasives_Native.option=
+  RDF_Term.rdf_term FStar_Pervasives_Native.option=
   let cs = FStar_String.list_of_string s in
   let len = FStar_String.strlen s in
   if len >= (Prims.of_int (2))
@@ -191,10 +187,8 @@ let parse_tsv_iri (s : Prims.string) :
                   let inner =
                     FStar_String.sub s Prims.int_one
                       (len - (Prims.of_int (2))) in
-                  (if RDF_Graph_Executable.is_iri inner
-                   then
-                     FStar_Pervasives_Native.Some
-                       (RDF_Graph_Executable.T_IRI inner)
+                  (if RDF_Term.is_iri inner
+                   then FStar_Pervasives_Native.Some (RDF_Term.T_IRI inner)
                    else FStar_Pervasives_Native.None)
                 else FStar_Pervasives_Native.None)
            | [] -> FStar_Pervasives_Native.None
@@ -276,7 +270,7 @@ let extract_angle_iri (s : Prims.string) :
     | [] -> FStar_Pervasives_Native.None
   else FStar_Pervasives_Native.None
 let parse_tsv_quoted_literal (s : Prims.string) :
-  RDF_Graph_Executable.rdf_term FStar_Pervasives_Native.option=
+  RDF_Term.rdf_term FStar_Pervasives_Native.option=
   let cs = FStar_String.list_of_string s in
   let len = FStar_String.strlen s in
   if len < (Prims.of_int (2))
@@ -297,7 +291,7 @@ let parse_tsv_quoted_literal (s : Prims.string) :
              else "" in
            (match extract_angle_iri rest_str with
             | FStar_Pervasives_Native.Some dt_str ->
-                if RDF_Graph_Executable.is_iri dt_str
+                if RDF_Term.is_iri dt_str
                 then mk_literal lexical dt_str FStar_Pervasives_Native.None
                 else FStar_Pervasives_Native.None
             | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None)
@@ -320,19 +314,19 @@ let parse_tsv_quoted_literal (s : Prims.string) :
                        FStar_String.sub s (ap + Prims.int_one)
                          ((len - ap) - Prims.int_one)
                      else "" in
-                   mk_literal lexical RDF_Graph_Executable.rdf_lang_string
+                   mk_literal lexical RDF_Term.rdf_lang_string
                      (FStar_Pervasives_Native.Some lang)
                  else
                    (let lexical = strip_quotes s in
-                    mk_literal lexical RDF_Graph_Executable.xsd_string
+                    mk_literal lexical RDF_Term.xsd_string
                       FStar_Pervasives_Native.None))
               else
                 (let lexical = strip_quotes s in
-                 mk_literal lexical RDF_Graph_Executable.xsd_string
+                 mk_literal lexical RDF_Term.xsd_string
                    FStar_Pervasives_Native.None)
           | FStar_Pervasives_Native.None ->
               let lexical = strip_quotes s in
-              mk_literal lexical RDF_Graph_Executable.xsd_string
+              mk_literal lexical RDF_Term.xsd_string
                 FStar_Pervasives_Native.None))
 let rec is_all_digits (cs : FStar_Char.char Prims.list) : Prims.bool=
   match cs with
@@ -388,7 +382,7 @@ let rec has_exponent (cs : FStar_Char.char Prims.list) : Prims.bool=
 let is_double_str (s : Prims.string) : Prims.bool=
   has_exponent (FStar_String.list_of_string s)
 let parse_tsv_value (field : Prims.string) :
-  RDF_Graph_Executable.rdf_term FStar_Pervasives_Native.option=
+  RDF_Term.rdf_term FStar_Pervasives_Native.option=
   if (FStar_String.strlen field) = Prims.int_zero
   then FStar_Pervasives_Native.None
   else
@@ -407,38 +401,37 @@ let parse_tsv_value (field : Prims.string) :
                (if is_blank_node_str field
                 then
                   FStar_Pervasives_Native.Some
-                    (RDF_Graph_Executable.T_BNode (bnode_label field))
+                    (RDF_Term.T_BNode (bnode_label field))
                 else
-                  mk_literal field RDF_Graph_Executable.xsd_string
+                  mk_literal field RDF_Term.xsd_string
                     FStar_Pervasives_Native.None)
              else
                if is_integer_str field
                then
-                 mk_literal field RDF_Graph_Executable.xsd_integer
+                 mk_literal field RDF_Term.xsd_integer
                    FStar_Pervasives_Native.None
                else
                  if is_double_str field
                  then
-                   mk_literal field RDF_Graph_Executable.xsd_double
+                   mk_literal field RDF_Term.xsd_double
                      FStar_Pervasives_Native.None
                  else
                    if is_decimal_str field
                    then
-                     mk_literal field RDF_Graph_Executable.xsd_decimal
+                     mk_literal field RDF_Term.xsd_decimal
                        FStar_Pervasives_Native.None
                    else
-                     mk_literal field RDF_Graph_Executable.xsd_string
+                     mk_literal field RDF_Term.xsd_string
                        FStar_Pervasives_Native.None
      | [] -> FStar_Pervasives_Native.None)
 let parse_tsv_row (line : Prims.string) :
-  RDF_Graph_Executable.rdf_term FStar_Pervasives_Native.option Prims.list=
+  RDF_Term.rdf_term FStar_Pervasives_Native.option Prims.list=
   let fields = tsv_split_fields line in
   FStar_List_Tot_Base.map parse_tsv_value fields
 let rec pad_row
-  (row :
-    RDF_Graph_Executable.rdf_term FStar_Pervasives_Native.option Prims.list)
+  (row : RDF_Term.rdf_term FStar_Pervasives_Native.option Prims.list)
   (n : Prims.nat) :
-  RDF_Graph_Executable.rdf_term FStar_Pervasives_Native.option Prims.list=
+  RDF_Term.rdf_term FStar_Pervasives_Native.option Prims.list=
   if n = Prims.int_zero
   then []
   else
@@ -446,7 +439,7 @@ let rec pad_row
      | [] -> FStar_Pervasives_Native.None :: (pad_row [] (n - Prims.int_one))
      | v::rest -> v :: (pad_row rest (n - Prims.int_one)))
 let parse_csv_results (input : Prims.string) :
-  (RDF_Graph_Executable.var_name Prims.list * RDF_Graph_Executable.rdf_term
+  (RDF_Graph_Executable.var_name Prims.list * RDF_Term.rdf_term
     FStar_Pervasives_Native.option Prims.list Prims.list)
     FStar_Pervasives_Native.option=
   let lines = remove_trailing_empty (split_lines input) in
@@ -463,7 +456,7 @@ let parse_csv_results (input : Prims.string) :
                data_lines in
            FStar_Pervasives_Native.Some (vars, rows))
 let parse_tsv_results (input : Prims.string) :
-  (RDF_Graph_Executable.var_name Prims.list * RDF_Graph_Executable.rdf_term
+  (RDF_Graph_Executable.var_name Prims.list * RDF_Term.rdf_term
     FStar_Pervasives_Native.option Prims.list Prims.list)
     FStar_Pervasives_Native.option=
   let lines = remove_trailing_empty (split_lines input) in
@@ -481,9 +474,8 @@ let parse_tsv_results (input : Prims.string) :
            FStar_Pervasives_Native.Some (vars, rows))
 let rec build_solution_mapping
   (vars : RDF_Graph_Executable.var_name Prims.list)
-  (vals :
-    RDF_Graph_Executable.rdf_term FStar_Pervasives_Native.option Prims.list)
-  : RDF_Graph_Executable.solution_mapping=
+  (vals : RDF_Term.rdf_term FStar_Pervasives_Native.option Prims.list) :
+  RDF_Graph_Executable.solution_mapping=
   match (vars, vals) with
   | ([], uu___) -> []
   | (uu___::uu___1, []) -> []
@@ -495,8 +487,7 @@ let rec build_solution_mapping
 let results_to_solution_mappings
   (vars : RDF_Graph_Executable.var_name Prims.list)
   (rows :
-    RDF_Graph_Executable.rdf_term FStar_Pervasives_Native.option Prims.list
-      Prims.list)
+    RDF_Term.rdf_term FStar_Pervasives_Native.option Prims.list Prims.list)
   : RDF_Graph_Executable.solution_mapping Prims.list=
   FStar_List_Tot_Base.map (build_solution_mapping vars) rows
 let parse_csv_to_solutions (input : Prims.string) :

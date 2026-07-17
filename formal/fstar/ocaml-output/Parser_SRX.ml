@@ -44,17 +44,17 @@ let get_attr (name : Prims.string)
 let collect_text (node : Parser_XML.xml_node) : Prims.string=
   Parser_XML.text_content node
 let parse_uri_value (node : Parser_XML.xml_node) :
-  RDF_Graph_Executable.rdf_term FStar_Pervasives_Native.option=
+  RDF_Term.rdf_term FStar_Pervasives_Native.option=
   let uri_str = collect_text node in
-  if RDF_Graph_Executable.is_iri uri_str
-  then FStar_Pervasives_Native.Some (RDF_Graph_Executable.T_IRI uri_str)
+  if RDF_Term.is_iri uri_str
+  then FStar_Pervasives_Native.Some (RDF_Term.T_IRI uri_str)
   else FStar_Pervasives_Native.None
 let parse_bnode_value (node : Parser_XML.xml_node) :
-  RDF_Graph_Executable.rdf_term FStar_Pervasives_Native.option=
+  RDF_Term.rdf_term FStar_Pervasives_Native.option=
   let bnode_str = collect_text node in
-  FStar_Pervasives_Native.Some (RDF_Graph_Executable.T_BNode bnode_str)
+  FStar_Pervasives_Native.Some (RDF_Term.T_BNode bnode_str)
 let parse_literal_value (node : Parser_XML.xml_node) :
-  RDF_Graph_Executable.rdf_term FStar_Pervasives_Native.option=
+  RDF_Term.rdf_term FStar_Pervasives_Native.option=
   match node with
   | Parser_XML.XElement (uu___, attrs, children) ->
       let lex =
@@ -66,49 +66,43 @@ let parse_literal_value (node : Parser_XML.xml_node) :
        | (FStar_Pervasives_Native.Some lang_val, uu___1) ->
            let lit =
              {
-               RDF_Graph_Executable.lexical_form = lex;
-               RDF_Graph_Executable.datatype =
-                 RDF_Graph_Executable.rdf_lang_string;
-               RDF_Graph_Executable.lang_tag =
-                 (FStar_Pervasives_Native.Some lang_val)
+               RDF_Term.lexical_form = lex;
+               RDF_Term.datatype = RDF_Term.rdf_lang_string;
+               RDF_Term.lang_tag = (FStar_Pervasives_Native.Some lang_val);
+               RDF_Term.direction = FStar_Pervasives_Native.None
              } in
-           if RDF_Graph_Executable.literal_wf lit
-           then
-             FStar_Pervasives_Native.Some
-               (RDF_Graph_Executable.T_Literal lit)
+           if RDF_Term.literal_wf lit
+           then FStar_Pervasives_Native.Some (RDF_Term.T_Literal lit)
            else FStar_Pervasives_Native.None
        | (FStar_Pervasives_Native.None, FStar_Pervasives_Native.Some dt_val)
            ->
-           if RDF_Graph_Executable.is_iri dt_val
+           if RDF_Term.is_iri dt_val
            then
              let lit =
                {
-                 RDF_Graph_Executable.lexical_form = lex;
-                 RDF_Graph_Executable.datatype = dt_val;
-                 RDF_Graph_Executable.lang_tag = FStar_Pervasives_Native.None
+                 RDF_Term.lexical_form = lex;
+                 RDF_Term.datatype = dt_val;
+                 RDF_Term.lang_tag = FStar_Pervasives_Native.None;
+                 RDF_Term.direction = FStar_Pervasives_Native.None
                } in
-             (if RDF_Graph_Executable.literal_wf lit
-              then
-                FStar_Pervasives_Native.Some
-                  (RDF_Graph_Executable.T_Literal lit)
+             (if RDF_Term.literal_wf lit
+              then FStar_Pervasives_Native.Some (RDF_Term.T_Literal lit)
               else FStar_Pervasives_Native.None)
            else FStar_Pervasives_Native.None
        | (FStar_Pervasives_Native.None, FStar_Pervasives_Native.None) ->
            let lit =
              {
-               RDF_Graph_Executable.lexical_form = lex;
-               RDF_Graph_Executable.datatype =
-                 RDF_Graph_Executable.xsd_string;
-               RDF_Graph_Executable.lang_tag = FStar_Pervasives_Native.None
+               RDF_Term.lexical_form = lex;
+               RDF_Term.datatype = RDF_Term.xsd_string;
+               RDF_Term.lang_tag = FStar_Pervasives_Native.None;
+               RDF_Term.direction = FStar_Pervasives_Native.None
              } in
-           if RDF_Graph_Executable.literal_wf lit
-           then
-             FStar_Pervasives_Native.Some
-               (RDF_Graph_Executable.T_Literal lit)
+           if RDF_Term.literal_wf lit
+           then FStar_Pervasives_Native.Some (RDF_Term.T_Literal lit)
            else FStar_Pervasives_Native.None)
   | uu___ -> FStar_Pervasives_Native.None
 let parse_binding_value (node : Parser_XML.xml_node) :
-  RDF_Graph_Executable.rdf_term FStar_Pervasives_Native.option=
+  RDF_Term.rdf_term FStar_Pervasives_Native.option=
   match node with
   | Parser_XML.XElement (uu___, uu___1, children) ->
       let elems =
@@ -135,8 +129,7 @@ let parse_binding_value (node : Parser_XML.xml_node) :
             | uu___3 -> FStar_Pervasives_Native.None))
   | uu___ -> FStar_Pervasives_Native.None
 let parse_binding (node : Parser_XML.xml_node) :
-  (Prims.string * RDF_Graph_Executable.rdf_term)
-    FStar_Pervasives_Native.option=
+  (Prims.string * RDF_Term.rdf_term) FStar_Pervasives_Native.option=
   match node with
   | Parser_XML.XElement (uu___, attrs, uu___1) ->
       (match get_attr "name" attrs with
@@ -148,7 +141,7 @@ let parse_binding (node : Parser_XML.xml_node) :
        | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None)
   | uu___ -> FStar_Pervasives_Native.None
 let parse_result_row (node : Parser_XML.xml_node) :
-  (Prims.string * RDF_Graph_Executable.rdf_term) Prims.list=
+  (Prims.string * RDF_Term.rdf_term) Prims.list=
   match node with
   | Parser_XML.XElement (uu___, uu___1, children) ->
       let bindings = find_children "binding" children in
@@ -173,8 +166,8 @@ let parse_head_vars (head_node : Parser_XML.xml_node) :
            | uu___2 -> []) var_elems
   | uu___ -> []
 let parse_srx_results (input : Prims.string) :
-  (Prims.string Prims.list * (Prims.string * RDF_Graph_Executable.rdf_term)
-    Prims.list Prims.list) FStar_Pervasives_Native.option=
+  (Prims.string Prims.list * (Prims.string * RDF_Term.rdf_term) Prims.list
+    Prims.list) FStar_Pervasives_Native.option=
   match Parser_XML.parse_xml_document input with
   | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
   | FStar_Pervasives_Native.Some root ->

@@ -91,6 +91,10 @@ let term_to_subject (t : rdf_term) : option subject =
   | T_IRI i -> Some (S_IRI i)
   | T_BNode b -> Some (S_BNode b)
   | T_Literal _ -> None
+  // RDF 1.2 triple terms are object-position-only and never denote a
+  // triple's subject, so there is no subject to recover — None, exactly
+  // as for a literal object.
+  | T_TripleTerm _ _ _ -> None
 
 /// Add a triple only if not already present.
 /// #259 followup (2026-05-11): O(n) membership scan + O(n) tail-append.
@@ -112,14 +116,24 @@ let add_triple_unchecked (g : rdf_graph) (t : triple) : rdf_graph =
 /// Total key for any rdf_term — extends `RDF.Indexed`'s `term_to_key_opt`
 /// with a literal branch. Used only for in-graph dedup comparisons; not
 /// stable across graph encodings.
-let term_to_key_total (o : rdf_term) : string =
+let rec term_to_key_total (o : rdf_term) : Tot string (decreases o) =
   match o with
   | T_IRI i     -> String.concat "" ["I_"; i]
   | T_BNode b   -> String.concat "" ["B_"; b]
   | T_Literal l -> String.concat "" ["L_"; l.lexical_form; "^^"; l.datatype;
                                        (match l.lang_tag with
                                         | Some t -> String.concat "" ["@"; t]
-                                        | None   -> "")]
+                                        | None   -> "");
+                                       (match l.direction with
+                                        | Some Dir_LTR -> "--ltr"
+                                        | Some Dir_RTL -> "--rtl"
+                                        | None         -> "")]
+  // RDF 1.2 triple term: a distinct, structural in-graph dedup key so two
+  // different triple terms never collide. (Object-position, so it recurses
+  // through the object slot.)
+  | T_TripleTerm s p obj ->
+    String.concat "" ["T_"; subject_to_key s; unit_sep; p; unit_sep;
+                      term_to_key_total obj]
 
 /// Triple key: subject + predicate + object, separated by unit-sep so
 /// no two distinct triples collide on the string. Reuses

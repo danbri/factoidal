@@ -325,24 +325,26 @@ let make_plain_literal (lex : string) (lang : option string) : option rdf_term =
     Some (T_Literal ({
       lexical_form = lex;
       datatype = rdf_lang_string;
-      lang_tag = Some l;
+      lang_tag = Some l; direction = None 
     }))
   | None ->
     Some (T_Literal ({
       lexical_form = lex;
       datatype = xsd_string;
-      lang_tag = None;
+      lang_tag = None; direction = None 
     }))
 
 let make_typed_literal (lex : string) (dt : string) : option rdf_term =
   if is_iri dt then
-    if dt = "http://www.w3.org/1999/02/22-rdf-syntax-ns#langString" then
-      None  (* langString requires a lang tag — use make_plain_literal instead *)
+    if dt = "http://www.w3.org/1999/02/22-rdf-syntax-ns#langString"
+       || dt = "http://www.w3.org/1999/02/22-rdf-syntax-ns#dirLangString" then
+      None  (* langString / dirLangString require a lang tag (and a
+               direction) — not expressible as a plain typed literal *)
     else
       Some (T_Literal ({
         lexical_form = lex;
         datatype = dt;
-        lang_tag = None;
+        lang_tag = None; direction = None 
       }))
   else None
 

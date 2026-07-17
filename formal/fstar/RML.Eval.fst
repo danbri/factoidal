@@ -293,7 +293,10 @@ let eval_plain_strings (tm : term_map) (row : source_row) : list string =
     (match t with
      | T_IRI i -> [i]
      | T_Literal l -> [l.lexical_form]
-     | T_BNode _ -> [])
+     | T_BNode _ -> []
+     // RML never produces triple-term constants (RML-star is a later
+     // stage, #305); no plain-string form for a triple term.
+     | T_TripleTerm _ _ _ -> [])
   | TMF_Reference r -> reference_cast_strings row r
   | TMF_Template t -> eval_template_strings None t row
   | TMF_Unknown -> []
@@ -305,7 +308,7 @@ let eval_plain_strings (tm : term_map) (row : source_row) : list string =
 // if it declares a datatype map... otherwise the natural RDF literal").
 let build_literal_opt (lex : string) (dt : string) (lang : option string) : option rdf_term =
   if is_iri dt then
-    let l : literal = { lexical_form = lex; datatype = dt; lang_tag = lang } in
+    let l : literal = { lexical_form = lex; datatype = dt; lang_tag = lang; direction = None } in
     if literal_wf l then Some (T_Literal l) else None
   else None
 
@@ -435,7 +438,8 @@ let eval_term_map (role : map_role) (tm : term_map) (row : source_row) (row_seed
   | TMF_Constant t ->
     (match t with
      | T_IRI _ | T_Literal _ -> [t]
-     | T_BNode _ -> [])  // constants may only be IRIs/literals (spec 8.4.2 note) — data error, no term
+     | T_BNode _ -> []   // constants may only be IRIs/literals (spec 8.4.2 note) — data error, no term
+     | T_TripleTerm _ _ _ -> [])  // RML never produces triple-term constants (RML-star is later)
   | TMF_Unknown ->
     (match tm.tmap_termtype with
      | Some TT_BlankNode -> [T_BNode row_seed]
@@ -514,7 +518,10 @@ let gather_heads (gm : gather_map) (row : source_row) (seed : string) (base : op
       (fun t -> match t with
                 | T_IRI i   -> [S_IRI i]
                 | T_BNode b -> [S_BNode b]
-                | T_Literal _ -> [])
+                | T_Literal _ -> []
+                // A triple term is object-position-only and cannot be a
+                // subject head.
+                | T_TripleTerm _ _ _ -> [])
       (eval_term_map MR_Object gm.gm_head row seed base)
 
 // rdf:List cons chain: the first cons cell IS the head node (bnode or
@@ -580,12 +587,14 @@ let subject_of_rdf_term (t : rdf_term) : option subject =
   | T_IRI i -> Some (S_IRI i)
   | T_BNode b -> Some (S_BNode b)
   | T_Literal _ -> None
+  | T_TripleTerm _ _ _ -> None
 
 let term_to_graph_name (t : rdf_term) : option string =
   match t with
   | T_IRI i -> Some i
   | T_BNode b -> Some ("_:" ^ b)
   | T_Literal _ -> None
+  | T_TripleTerm _ _ _ -> None   // a triple term is not a graph name
 
 let eval_graphs (gms : list term_map) (row : source_row) (row_seed : string) (base_iri : option string) : list string =
   List.Tot.concatMap

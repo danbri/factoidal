@@ -10,21 +10,18 @@ let __proj__Mkballyhoo_error__item__be_line (projectee : ballyhoo_error) :
 let __proj__Mkballyhoo_error__item__be_message (projectee : ballyhoo_error) :
   Prims.string= match projectee with | { be_line; be_message;_} -> be_message
 type ballyhoo_event =
-  | BE_DefaultTriple of RDF_Graph_Executable.triple 
-  | BE_NamedTriple of RDF_Graph_Executable.iri * RDF_Graph_Executable.triple 
+  | BE_DefaultTriple of RDF_Triple.triple 
+  | BE_NamedTriple of RDF_Term.iri * RDF_Triple.triple 
 let uu___is_BE_DefaultTriple (projectee : ballyhoo_event) : Prims.bool=
   match projectee with | BE_DefaultTriple _0 -> true | uu___ -> false
 let __proj__BE_DefaultTriple__item___0 (projectee : ballyhoo_event) :
-  RDF_Graph_Executable.triple=
-  match projectee with | BE_DefaultTriple _0 -> _0
+  RDF_Triple.triple= match projectee with | BE_DefaultTriple _0 -> _0
 let uu___is_BE_NamedTriple (projectee : ballyhoo_event) : Prims.bool=
   match projectee with | BE_NamedTriple (_0, _1) -> true | uu___ -> false
 let __proj__BE_NamedTriple__item___0 (projectee : ballyhoo_event) :
-  RDF_Graph_Executable.iri=
-  match projectee with | BE_NamedTriple (_0, _1) -> _0
+  RDF_Term.iri= match projectee with | BE_NamedTriple (_0, _1) -> _0
 let __proj__BE_NamedTriple__item___1 (projectee : ballyhoo_event) :
-  RDF_Graph_Executable.triple=
-  match projectee with | BE_NamedTriple (_0, _1) -> _1
+  RDF_Triple.triple= match projectee with | BE_NamedTriple (_0, _1) -> _1
 type ballyhoo_state =
   {
   bs_mode: ballyhoo_mode ;
@@ -137,9 +134,8 @@ let line_sub (input : Prims.string) (start_pos : Prims.nat)
   if (end_pos >= start_pos) && (end_pos <= (FStar_String.strlen input))
   then FStar_String.sub input start_pos (end_pos - start_pos)
   else ""
-let add_event (st : ballyhoo_state) (t : RDF_Graph_Executable.triple)
-  (graph_opt : RDF_Graph_Executable.iri FStar_Pervasives_Native.option) :
-  ballyhoo_state=
+let add_event (st : ballyhoo_state) (t : RDF_Triple.triple)
+  (graph_opt : RDF_Term.iri FStar_Pervasives_Native.option) : ballyhoo_state=
   let ev =
     match graph_opt with
     | FStar_Pervasives_Native.None -> BE_DefaultTriple t
@@ -297,48 +293,39 @@ let ballyhoo_events (st : ballyhoo_state) : ballyhoo_event Prims.list=
   FStar_List_Tot_Base.rev st.bs_events_rev
 let ballyhoo_errors (st : ballyhoo_state) : ballyhoo_error Prims.list=
   FStar_List_Tot_Base.rev st.bs_errors_rev
-let dataset_add_ballyhoo_event (ds : RDF_Graph_Executable.rdf_dataset)
-  (ev : ballyhoo_event) : RDF_Graph_Executable.rdf_dataset=
+let dataset_add_ballyhoo_event (ds : RDF_Graph.rdf_dataset)
+  (ev : ballyhoo_event) : RDF_Graph.rdf_dataset=
   match ev with
   | BE_DefaultTriple t ->
       {
-        RDF_Graph_Executable.ds_default =
-          (RDF_Graph_Executable.graph_add t
-             ds.RDF_Graph_Executable.ds_default);
-        RDF_Graph_Executable.ds_named = (ds.RDF_Graph_Executable.ds_named)
+        RDF_Graph.ds_default =
+          (RDF_Graph.graph_add t ds.RDF_Graph.ds_default);
+        RDF_Graph.ds_named = (ds.RDF_Graph.ds_named)
       }
   | BE_NamedTriple (g, t) ->
       let rec update_named ngs =
         match ngs with
-        | [] ->
-            [{
-               RDF_Graph_Executable.ng_name = g;
-               RDF_Graph_Executable.ng_graph = [t]
-             }]
+        | [] -> [{ RDF_Graph.ng_name = g; RDF_Graph.ng_graph = [t] }]
         | ng::rest ->
-            if ng.RDF_Graph_Executable.ng_name = g
+            if ng.RDF_Graph.ng_name = g
             then
               {
-                RDF_Graph_Executable.ng_name = g;
-                RDF_Graph_Executable.ng_graph =
-                  (RDF_Graph_Executable.graph_add t
-                     ng.RDF_Graph_Executable.ng_graph)
+                RDF_Graph.ng_name = g;
+                RDF_Graph.ng_graph =
+                  (RDF_Graph.graph_add t ng.RDF_Graph.ng_graph)
               } :: rest
             else ng :: (update_named rest) in
       {
-        RDF_Graph_Executable.ds_default =
-          (ds.RDF_Graph_Executable.ds_default);
-        RDF_Graph_Executable.ds_named =
-          (update_named ds.RDF_Graph_Executable.ds_named)
+        RDF_Graph.ds_default = (ds.RDF_Graph.ds_default);
+        RDF_Graph.ds_named = (update_named ds.RDF_Graph.ds_named)
       }
 let rec dataset_of_events_acc (evs : ballyhoo_event Prims.list)
-  (ds : RDF_Graph_Executable.rdf_dataset) : RDF_Graph_Executable.rdf_dataset=
+  (ds : RDF_Graph.rdf_dataset) : RDF_Graph.rdf_dataset=
   match evs with
   | [] -> ds
   | ev::rest -> dataset_of_events_acc rest (dataset_add_ballyhoo_event ds ev)
 let dataset_of_ballyhoo_events (evs : ballyhoo_event Prims.list) :
-  RDF_Graph_Executable.rdf_dataset=
-  dataset_of_events_acc evs RDF_Graph_Executable.empty_dataset
+  RDF_Graph.rdf_dataset= dataset_of_events_acc evs RDF_Graph.empty_dataset
 let parse_ballyhoo_nquads (input : Prims.string) : ballyhoo_state=
   finish_ballyhoo_nquads
     (feed_ballyhoo_nquads_chunk empty_ballyhoo_state input)

@@ -627,6 +627,8 @@ let term_to_shape_ref (t : RDF_Term.rdf_term) :
   | RDF_Term.T_IRI i -> FStar_Pervasives_Native.Some i
   | RDF_Term.T_BNode b -> FStar_Pervasives_Native.Some (Prims.strcat "_:" b)
   | RDF_Term.T_Literal uu___ -> FStar_Pervasives_Native.None
+  | RDF_Term.T_TripleTerm (uu___, uu___1, uu___2) ->
+      FStar_Pervasives_Native.None
 let subject_to_shape_ref (s : RDF_Term.subject) : shape_ref=
   match s with
   | RDF_Term.S_IRI i -> i
@@ -647,6 +649,8 @@ let term_lexical (t : RDF_Term.rdf_term) :
       FStar_Pervasives_Native.Some (l.RDF_Term.lexical_form)
   | RDF_Term.T_IRI i -> FStar_Pervasives_Native.Some i
   | RDF_Term.T_BNode uu___ -> FStar_Pervasives_Native.None
+  | RDF_Term.T_TripleTerm (uu___, uu___1, uu___2) ->
+      FStar_Pervasives_Native.None
 let first_int (l : RDF_Term.rdf_term Prims.list) :
   Prims.nat FStar_Pervasives_Native.option=
   match l with
@@ -780,6 +784,7 @@ let rec parse_path (g : RDF_Graph.rdf_graph) (t : RDF_Term.rdf_term)
       (match t with
        | RDF_Term.T_IRI i -> P_Predicate i
        | RDF_Term.T_Literal uu___1 -> P_Sequence []
+       | RDF_Term.T_TripleTerm (uu___1, uu___2, uu___3) -> P_Sequence []
        | RDF_Term.T_BNode uu___1 ->
            (match RDF_Graph.term_to_subject t with
             | FStar_Pervasives_Native.None -> P_Sequence []
@@ -2085,7 +2090,8 @@ let subst_var_ps (name : Prims.string) (t : RDF_Term.rdf_term)
         (match t with
          | RDF_Term.T_IRI i -> SPARQL11_Algebra.PS_IRI i
          | RDF_Term.T_BNode b -> SPARQL11_Algebra.PS_BNode b
-         | RDF_Term.T_Literal uu___ -> ps)
+         | RDF_Term.T_Literal uu___ -> ps
+         | RDF_Term.T_TripleTerm (uu___, uu___1, uu___2) -> ps)
       else ps
   | uu___ -> ps
 let subst_var_pt (name : Prims.string) (t : RDF_Term.rdf_term)
@@ -2097,7 +2103,8 @@ let subst_var_pt (name : Prims.string) (t : RDF_Term.rdf_term)
         (match t with
          | RDF_Term.T_IRI i -> SPARQL11_Algebra.PT_IRI i
          | RDF_Term.T_BNode b -> SPARQL11_Algebra.PT_BNode b
-         | RDF_Term.T_Literal l -> SPARQL11_Algebra.PT_Literal l)
+         | RDF_Term.T_Literal l -> SPARQL11_Algebra.PT_Literal l
+         | RDF_Term.T_TripleTerm (uu___, uu___1, uu___2) -> pt)
       else pt
   | uu___ -> pt
 let subst_var_tp (name : Prims.string) (t : RDF_Term.rdf_term)
@@ -2121,6 +2128,8 @@ let term_to_expr_opt (t : RDF_Term.rdf_term) :
   | RDF_Term.T_Literal l ->
       FStar_Pervasives_Native.Some (SPARQL11_Algebra.E_Literal l)
   | RDF_Term.T_BNode uu___ -> FStar_Pervasives_Native.None
+  | RDF_Term.T_TripleTerm (uu___, uu___1, uu___2) ->
+      FStar_Pervasives_Native.None
 let rec subst_var_expr (name : Prims.string) (t : RDF_Term.rdf_term)
   (e : SPARQL11_Algebra.expr) : SPARQL11_Algebra.expr=
   match e with
@@ -3104,7 +3113,8 @@ let validation_report_to_graph (r : validation_report) : RDF_Graph.rdf_graph=
            {
              RDF_Term.lexical_form = (if r.conforms then "true" else "false");
              RDF_Term.datatype = RDF_Term.xsd_boolean;
-             RDF_Term.lang_tag = FStar_Pervasives_Native.None
+             RDF_Term.lang_tag = FStar_Pervasives_Native.None;
+             RDF_Term.direction = FStar_Pervasives_Native.None
            })
     }] in
   FStar_List_Tot_Base.op_At header

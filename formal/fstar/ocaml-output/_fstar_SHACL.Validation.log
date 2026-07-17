@@ -1,10 +1,36 @@
-* Warning 241 at XSD.Datatypes.fst(0,0-0,0):
-  - Unable to load XSD.Datatypes.fst.checked since checked file
-    XSD.Datatypes.fst.checked is stale (digest mismatch for XSD.Datatypes.fst);
-    will recheck XSD.Datatypes.fst (suppressing this warning for further
+* Warning 241 at RDF.IRI.fsti(0,0-0,0):
+  - Unable to load RDF.IRI.fsti.checked since checked file RDF.IRI.fsti.checked
+    is stale (dependence hash mismatch, use --debug CheckedFiles for more
+    details); will recheck RDF.IRI.fsti (suppressing this warning for further
     modules)
 
-* Warning 328 at SHACL.Validation.fst(1108,8-1108,27):
+* Warning 361 at SPARQL11.Algebra.fst(7167,0-7168,40):
+  - Some #push-options have not been popped. Current depth is 1.
+
+* Warning 328 at SPARQL11.Parser.fst(2343,6-2343,19):
+  - Global binding
+        'SPARQL11.Parser.parse_subject'
+    is recursive but not used in its body
+
+* Warning 328 at SPARQL11.Parser.fst(2609,4-2609,16):
+  - Global binding
+        'SPARQL11.Parser.parse_object'
+    is recursive but not used in its body
+
+* Warning 328 at SPARQL11.Parser.fst(3477,8-3477,25):
+  - Global binding
+        'SPARQL11.Parser.string_add_unique'
+    is recursive but not used in its body
+
+* Warning 328 at SPARQL11.Parser.fst(3940,8-3940,30):
+  - Global binding
+        'SPARQL11.Parser.parse_single_update_op'
+    is recursive but not used in its body
+
+* Warning 361 at SPARQL11.Parser.fst(4369,0-4523,40):
+  - Some #push-options have not been popped. Current depth is 1.
+
+* Warning 328 at SHACL.Validation.fst(1112,8-1112,27):
   - Global binding
         'SHACL.Validation.path_to_sparql_expr'
     is recursive but not used in its body
@@ -13,8 +39,8 @@ Extracted module SHACL.Validation
 * Warning 247 at SHACL.Validation.fst(0,0-0,0):
   - Checked file SHACL.Validation.fst.checked was not written.
   - Reason:
-      checked file XSD.Datatypes.fst.checked is stale (digest mismatch for
-      XSD.Datatypes.fst)
+      checked file SPARQL11.Algebra.fst.checked is stale (digest mismatch for
+      SPARQL11.Algebra.fst)
 
 Verified module: SHACL.Validation
 All verification conditions discharged successfully

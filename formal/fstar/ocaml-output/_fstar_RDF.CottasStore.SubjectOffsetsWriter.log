@@ -1,13 +1,3 @@
-* Warning 241 at RDF.Bytes.fst(0,0-0,0):
-  - Unable to load RDF.Bytes.fst.checked since checked file
-    RDF.Bytes.fst.checked does not exist; will recheck RDF.Bytes.fst
-    (suppressing this warning for further modules)
-
 Extracted module RDF.CottasStore.SubjectOffsetsWriter
-* Warning 247 at RDF.CottasStore.SubjectOffsetsWriter.fst(0,0-0,0):
-  - Checked file RDF.CottasStore.SubjectOffsetsWriter.fst.checked was not
-    written.
-  - Reason: checked file RDF.Bytes.fst.checked does not exist
-
 Verified module: RDF.CottasStore.SubjectOffsetsWriter
 All verification conditions discharged successfully

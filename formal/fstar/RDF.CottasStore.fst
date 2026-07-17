@@ -133,7 +133,7 @@ let iri_to_revmap_key (i : iri) : string =
 // when absent. Lexical form is included verbatim — no escape needed
 // because literals can't contain U+001F (it's a control character;
 // not allowed in well-formed RDF lexical forms either).
-let object_to_revmap_key (o : rdf_term) : string =
+let rec object_to_revmap_key (o : rdf_term) : Tot string (decreases o) =
   match o with
   | T_IRI i -> String.concat "" ["I_"; i]
   | T_BNode b -> String.concat "" ["B_"; b]
@@ -141,8 +141,26 @@ let object_to_revmap_key (o : rdf_term) : string =
     let tag = match l.lang_tag with
       | Some t -> t
       | None -> "" in
+    let base = String.concat ""
+      ["L_"; l.datatype; revmap_unit_sep; tag; revmap_unit_sep; l.lexical_form] in
+    // RDF 1.2 base direction, appended ONLY when present. Every RDF 1.1
+    // literal has direction = None and so keeps its exact pre-1.2 key —
+    // the on-disk dictionary encoding is byte-identical for 1.1 data.
+    // (A dirLangString literal already carries a distinct datatype IRI in
+    // the key, so keys never collide regardless.)
+    (match l.direction with
+     | None         -> base
+     | Some Dir_LTR -> String.concat "" [base; revmap_unit_sep; "ltr"]
+     | Some Dir_RTL -> String.concat "" [base; revmap_unit_sep; "rtl"])
+  // RDF 1.2 triple term: a structural dictionary key distinct from the
+  // I_/B_/L_ families. Full COTTAS triple-term storage is a later phase
+  // (#305 P8); this keeps the key total and collision-free for now.
+  | T_TripleTerm s p obj ->
+    let subj = (match s with
+                | S_IRI i   -> String.concat "" ["I_"; i]
+                | S_BNode b -> String.concat "" ["B_"; b]) in
     String.concat ""
-      ["L_"; l.datatype; revmap_unit_sep; tag; revmap_unit_sep; l.lexical_form]
+      ["T_"; subj; revmap_unit_sep; p; revmap_unit_sep; object_to_revmap_key obj]
 
 // ----------------------------------------------------------------------
 // 11 lookup functions — F* implementations

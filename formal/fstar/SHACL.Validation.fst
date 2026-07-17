@@ -675,6 +675,7 @@ let term_to_shape_ref (t : rdf_term) : option shape_ref =
   | T_IRI i   -> Some i
   | T_BNode b -> Some ("_:" ^ b)
   | T_Literal _ -> None
+  | T_TripleTerm _ _ _ -> None   // a triple term is not a shape reference
 
 let subject_to_shape_ref (s : subject) : shape_ref =
   match s with
@@ -698,6 +699,7 @@ let term_lexical (t : rdf_term) : option string =
   | T_Literal l -> Some l.lexical_form
   | T_IRI i     -> Some i
   | T_BNode _   -> None
+  | T_TripleTerm _ _ _ -> None   // no lexical form for a triple term
 
 let first_int (l : list rdf_term) : option nat =
   match l with
@@ -933,6 +935,8 @@ let rec parse_path (g : rdf_graph) (t : rdf_term) (fuel : nat)
     (match t with
      | T_IRI i -> P_Predicate i
      | T_Literal _ -> P_Sequence []
+     // A triple term is not a valid SHACL property path (like a literal).
+     | T_TripleTerm _ _ _ -> P_Sequence []
      | T_BNode _ ->
        (match term_to_subject t with
         | None -> P_Sequence []
@@ -2126,7 +2130,8 @@ let subst_var_ps (name : string) (t : rdf_term) (ps : Alg.pattern_subject) : Alg
       (match t with
        | T_IRI i -> Alg.PS_IRI i
        | T_BNode b -> Alg.PS_BNode b
-       | T_Literal _ -> ps)   // literal subjects are inexpressible; leave the var
+       | T_Literal _ -> ps      // literal subjects are inexpressible; leave the var
+       | T_TripleTerm _ _ _ -> ps)  // triple-term subjects inexpressible; leave the var
     else ps
   | _ -> ps
 
@@ -2137,7 +2142,11 @@ let subst_var_pt (name : string) (t : rdf_term) (pt : Alg.pattern_term) : Alg.pa
       (match t with
        | T_IRI i -> Alg.PT_IRI i
        | T_BNode b -> Alg.PT_BNode b
-       | T_Literal l -> Alg.PT_Literal l)
+       | T_Literal l -> Alg.PT_Literal l
+       // The SPARQL algebra's pattern_term has no triple-term form yet
+       // (SPARQL 1.2 patterns are a later phase, #305 P6/P7). Leave the
+       // variable unsubstituted rather than force a wrong term kind.
+       | T_TripleTerm _ _ _ -> pt)
     else pt
   | _ -> pt
 
@@ -2152,6 +2161,7 @@ let term_to_expr_opt (t : rdf_term) : option Alg.expr =
   | T_IRI i -> Some (Alg.E_IRI i)
   | T_Literal l -> Some (Alg.E_Literal l)
   | T_BNode _ -> None
+  | T_TripleTerm _ _ _ -> None   // no SPARQL expression form for a triple term (P7)
 
 // Structural walk over the expression/pattern AST. Constructors with
 // no expression or pattern children fall through the final wildcard
@@ -2859,5 +2869,5 @@ let validation_report_to_graph (r : validation_report) : rdf_graph =
   let header =
     [ { s = report_subj; p = rdf_type; o = T_IRI sh_ValidationReport };
       { s = report_subj; p = sh_conforms_pred;
-        o = T_Literal ({ lexical_form = (if r.conforms then "true" else "false"); datatype = xsd_boolean; lang_tag = None }) } ] in
+        o = T_Literal ({ lexical_form = (if r.conforms then "true" else "false"); datatype = xsd_boolean; lang_tag = None; direction = None }) } ] in
   header @ violations_to_triples report_subj r.results 0

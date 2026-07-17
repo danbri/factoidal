@@ -6,7 +6,8 @@ let normalize_literal (l : RDF_Term.wf_literal) : RDF_Term.wf_literal=
         RDF_Term.lexical_form = (l.RDF_Term.lexical_form);
         RDF_Term.datatype = (l.RDF_Term.datatype);
         RDF_Term.lang_tag =
-          (FStar_Pervasives_Native.Some (FStar_String.lowercase t))
+          (FStar_Pervasives_Native.Some (FStar_String.lowercase t));
+        RDF_Term.direction = (l.RDF_Term.direction)
       }
   | FStar_Pervasives_Native.None -> l
 let normalize_term (t : RDF_Term.rdf_term) : RDF_Term.rdf_term=
@@ -81,7 +82,8 @@ let iso_plain_literal (s : Prims.string) : RDF_Term.wf_literal=
   {
     RDF_Term.lexical_form = s;
     RDF_Term.datatype = RDF_Term.xsd_string;
-    RDF_Term.lang_tag = FStar_Pervasives_Native.None
+    RDF_Term.lang_tag = FStar_Pervasives_Native.None;
+    RDF_Term.direction = FStar_Pervasives_Native.None
   }
 let rec reify_bindings (rowbn : RDF_Term.bnode_id) (row_ix : Prims.nat)
   (bind_ix : Prims.nat) (bs : (Prims.string * RDF_Term.rdf_term) Prims.list)

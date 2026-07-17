@@ -1,15 +1,15 @@
-* Warning 241 at OWL.Closure.fsti(0,0-0,0):
-  - Unable to load OWL.Closure.fsti.checked since checked file
-    OWL.Closure.fsti.checked is stale (dependence hash mismatch, use --debug
-    CheckedFiles for more details); will recheck OWL.Closure.fsti (suppressing
-    this warning for further modules)
+* Warning 241 at RDF.IRI.fsti(0,0-0,0):
+  - Unable to load RDF.IRI.fsti.checked since checked file RDF.IRI.fsti.checked
+    is stale (dependence hash mismatch, use --debug CheckedFiles for more
+    details); will recheck RDF.IRI.fsti (suppressing this warning for further
+    modules)
 
 Extracted module Parser.JSONLD
 * Warning 247 at Parser.JSONLD.fst(0,0-0,0):
   - Checked file Parser.JSONLD.fst.checked was not written.
   - Reason:
-      checked file OWL.Closure.fsti.checked is stale (dependence hash mismatch,
-      use --debug CheckedFiles for more details)
+      checked file JSONLD.Context.fst.checked is stale (digest mismatch for
+      JSONLD.Context.fst)
 
 Verified module: Parser.JSONLD
 All verification conditions discharged successfully

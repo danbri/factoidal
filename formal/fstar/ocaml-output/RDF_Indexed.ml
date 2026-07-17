@@ -308,6 +308,8 @@ let term_to_key_opt (o : RDF_Term.rdf_term) :
   | RDF_Term.T_BNode b ->
       FStar_Pervasives_Native.Some (FStar_String.concat "" ["B_"; b])
   | RDF_Term.T_Literal uu___ -> FStar_Pervasives_Native.None
+  | RDF_Term.T_TripleTerm (uu___, uu___1, uu___2) ->
+      FStar_Pervasives_Native.None
 let unit_sep : Prims.string= "\031"
 let sp_key (s : RDF_Term.subject) (p : RDF_Term.wf_iri) : Prims.string=
   FStar_String.concat "" [subject_to_key s; unit_sep; p]

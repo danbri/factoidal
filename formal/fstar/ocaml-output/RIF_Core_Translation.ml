@@ -11,6 +11,8 @@ let rif_term_to_subject (t : RIF_Core_Syntax.rif_term) :
       FStar_Pervasives_Native.Some (SPARQL11_Algebra.PS_BNode b)
   | RIF_Core_Syntax.RIF_Const (RDF_Term.T_Literal uu___) ->
       FStar_Pervasives_Native.None
+  | RIF_Core_Syntax.RIF_Const (RDF_Term.T_TripleTerm (uu___, uu___1, uu___2))
+      -> FStar_Pervasives_Native.None
   | RIF_Core_Syntax.RIF_TermExternal (uu___, uu___1) ->
       FStar_Pervasives_Native.None
 let rif_term_to_pattern (t : RIF_Core_Syntax.rif_term) :
@@ -23,6 +25,8 @@ let rif_term_to_pattern (t : RIF_Core_Syntax.rif_term) :
       SPARQL11_Algebra.PT_BNode b
   | RIF_Core_Syntax.RIF_Const (RDF_Term.T_Literal l) ->
       SPARQL11_Algebra.PT_Literal l
+  | RIF_Core_Syntax.RIF_Const (RDF_Term.T_TripleTerm (uu___, uu___1, uu___2))
+      -> SPARQL11_Algebra.PT_Var "$$triple-term-unsupported$$"
   | RIF_Core_Syntax.RIF_TermExternal (uu___, uu___1) ->
       SPARQL11_Algebra.PT_Var "$$unevaluated-external$$"
 let rif_rdf_type : RDF_Term.wf_iri= RDFS_Closure.rdf_type
@@ -32,7 +36,8 @@ let rif_uniterm_true_marker : RDF_Term.rdf_term=
     {
       RDF_Term.lexical_form = "true";
       RDF_Term.datatype = RDF_Term.xsd_boolean;
-      RDF_Term.lang_tag = FStar_Pervasives_Native.None
+      RDF_Term.lang_tag = FStar_Pervasives_Native.None;
+      RDF_Term.direction = FStar_Pervasives_Native.None
     }
 let rif_uniterm_nullary_subject : RDF_Term.wf_iri= "urn:rif-nullary:subject"
 let literal_subject_bnode_label (l : RDF_Term.literal) : RDF_Term.bnode_id=
@@ -58,6 +63,8 @@ let rif_term_to_uniterm_subject (t : RIF_Core_Syntax.rif_term) :
   | RIF_Core_Syntax.RIF_Const (RDF_Term.T_Literal l) ->
       FStar_Pervasives_Native.Some
         (SPARQL11_Algebra.PS_BNode (literal_subject_bnode_label l))
+  | RIF_Core_Syntax.RIF_Const (RDF_Term.T_TripleTerm (uu___, uu___1, uu___2))
+      -> FStar_Pervasives_Native.None
   | RIF_Core_Syntax.RIF_TermExternal (uu___, uu___1) ->
       FStar_Pervasives_Native.None
 let rif_uniterm_arg_pred (i : Prims.nat) : RDF_Term.wf_iri=
@@ -68,7 +75,7 @@ let uniterm_subject_anchor_var (v : Prims.string) : Prims.string=
   FStar_String.concat "" ["$$uniterm-subj$"; v]
 let uniterm_anchor_var (idx : Prims.nat) : Prims.string=
   FStar_String.concat "" ["$$uniterm-anchor$"; Prims.string_of_int idx]
-let rif_term_anchor_fragment (t : RDF_Term.rdf_term) : Prims.string=
+let rec rif_term_anchor_fragment (t : RDF_Term.rdf_term) : Prims.string=
   match t with
   | RDF_Term.T_IRI i -> FStar_String.concat "" ["i:"; i]
   | RDF_Term.T_BNode b -> FStar_String.concat "" ["b:"; b]
@@ -82,6 +89,13 @@ let rif_term_anchor_fragment (t : RDF_Term.rdf_term) : Prims.string=
          | FStar_Pervasives_Native.None -> "");
         ":";
         l.RDF_Term.lexical_form]
+  | RDF_Term.T_TripleTerm (s, p, o) ->
+      let subj =
+        match s with
+        | RDF_Term.S_IRI i -> FStar_String.concat "" ["i:"; i]
+        | RDF_Term.S_BNode b -> FStar_String.concat "" ["b:"; b] in
+      FStar_String.concat ""
+        ["t:"; subj; ":"; p; ":"; rif_term_anchor_fragment o]
 let rec anchor_fragments (ts : RDF_Term.rdf_term Prims.list) :
   Prims.string Prims.list=
   match ts with
@@ -302,7 +316,9 @@ let triple_to_pattern (t : RDF_Triple.triple) :
       (match t.RDF_Triple.o with
        | RDF_Term.T_IRI i -> SPARQL11_Algebra.PT_IRI i
        | RDF_Term.T_BNode b -> SPARQL11_Algebra.PT_BNode b
-       | RDF_Term.T_Literal l -> SPARQL11_Algebra.PT_Literal l)
+       | RDF_Term.T_Literal l -> SPARQL11_Algebra.PT_Literal l
+       | RDF_Term.T_TripleTerm (uu___, uu___1, uu___2) ->
+           SPARQL11_Algebra.PT_BNode "rif_triple_term_unsupported")
   }
 let graph_to_bgp (g : RDF_Graph.rdf_graph) : SPARQL11_Algebra.bgp=
   FStar_List_Tot_Base.map triple_to_pattern g

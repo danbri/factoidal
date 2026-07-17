@@ -333,6 +333,8 @@ let bound_subject_of_pattern (ps : pattern_subject)
            FStar_Pervasives_Native.Some (RDF_Term.S_BNode b)
        | FStar_Pervasives_Native.Some (RDF_Term.T_Literal uu___) ->
            FStar_Pervasives_Native.None
+       | FStar_Pervasives_Native.Some (RDF_Term.T_TripleTerm
+           (uu___, uu___1, uu___2)) -> FStar_Pervasives_Native.None
        | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None)
 let bound_predicate_of_pattern (pt : pattern_term)
   (mu : RDF_Graph_Executable.solution_mapping) :
@@ -349,6 +351,8 @@ let bound_predicate_of_pattern (pt : pattern_term)
            FStar_Pervasives_Native.None
        | FStar_Pervasives_Native.Some (RDF_Term.T_Literal uu___) ->
            FStar_Pervasives_Native.None
+       | FStar_Pervasives_Native.Some (RDF_Term.T_TripleTerm
+           (uu___, uu___1, uu___2)) -> FStar_Pervasives_Native.None
        | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None)
 let bound_object_of_pattern (pt : pattern_term)
   (mu : RDF_Graph_Executable.solution_mapping) :
@@ -1428,7 +1432,8 @@ let mk_plain_literal (s : Prims.string) : RDF_Term.wf_literal=
   {
     RDF_Term.lexical_form = s;
     RDF_Term.datatype = RDF_Term.xsd_string;
-    RDF_Term.lang_tag = FStar_Pervasives_Native.None
+    RDF_Term.lang_tag = FStar_Pervasives_Native.None;
+    RDF_Term.direction = FStar_Pervasives_Native.None
   }
 type eval_result =
   | ER_Term of RDF_Term.rdf_term 
@@ -1492,7 +1497,8 @@ let er_to_term (v : eval_result) :
            {
              RDF_Term.lexical_form = "true";
              RDF_Term.datatype = RDF_Term.xsd_boolean;
-             RDF_Term.lang_tag = FStar_Pervasives_Native.None
+             RDF_Term.lang_tag = FStar_Pervasives_Native.None;
+             RDF_Term.direction = FStar_Pervasives_Native.None
            })
   | ER_Bool false ->
       FStar_Pervasives_Native.Some
@@ -1500,7 +1506,8 @@ let er_to_term (v : eval_result) :
            {
              RDF_Term.lexical_form = "false";
              RDF_Term.datatype = RDF_Term.xsd_boolean;
-             RDF_Term.lang_tag = FStar_Pervasives_Native.None
+             RDF_Term.lang_tag = FStar_Pervasives_Native.None;
+             RDF_Term.direction = FStar_Pervasives_Native.None
            })
   | ER_Num n ->
       FStar_Pervasives_Native.Some
@@ -1508,7 +1515,8 @@ let er_to_term (v : eval_result) :
            {
              RDF_Term.lexical_form = (Prims.string_of_int n);
              RDF_Term.datatype = RDF_Term.xsd_integer;
-             RDF_Term.lang_tag = FStar_Pervasives_Native.None
+             RDF_Term.lang_tag = FStar_Pervasives_Native.None;
+             RDF_Term.direction = FStar_Pervasives_Native.None
            })
   | ER_Dec s ->
       FStar_Pervasives_Native.Some
@@ -1516,7 +1524,8 @@ let er_to_term (v : eval_result) :
            {
              RDF_Term.lexical_form = s;
              RDF_Term.datatype = RDF_Term.xsd_decimal;
-             RDF_Term.lang_tag = FStar_Pervasives_Native.None
+             RDF_Term.lang_tag = FStar_Pervasives_Native.None;
+             RDF_Term.direction = FStar_Pervasives_Native.None
            })
   | ER_Dbl s ->
       FStar_Pervasives_Native.Some
@@ -1524,7 +1533,8 @@ let er_to_term (v : eval_result) :
            {
              RDF_Term.lexical_form = s;
              RDF_Term.datatype = RDF_Term.xsd_double;
-             RDF_Term.lang_tag = FStar_Pervasives_Native.None
+             RDF_Term.lang_tag = FStar_Pervasives_Native.None;
+             RDF_Term.direction = FStar_Pervasives_Native.None
            })
   | ER_Error -> FStar_Pervasives_Native.None
 let er_to_string (v : eval_result) :
@@ -1570,14 +1580,17 @@ let er_string_preserve (s : Prims.string)
   then
     match lang with
     | FStar_Pervasives_Native.None ->
-        (if dt <> RDF_Term.rdf_lang_string
+        (if
+           (dt <> RDF_Term.rdf_lang_string) &&
+             (dt <> RDF_Term.rdf_dir_lang_string)
          then
            ER_Term
              (RDF_Term.T_Literal
                 {
                   RDF_Term.lexical_form = s;
                   RDF_Term.datatype = dt;
-                  RDF_Term.lang_tag = FStar_Pervasives_Native.None
+                  RDF_Term.lang_tag = FStar_Pervasives_Native.None;
+                  RDF_Term.direction = FStar_Pervasives_Native.None
                 })
          else er_string s)
     | FStar_Pervasives_Native.Some l ->
@@ -1588,7 +1601,8 @@ let er_string_preserve (s : Prims.string)
                 {
                   RDF_Term.lexical_form = s;
                   RDF_Term.datatype = dt;
-                  RDF_Term.lang_tag = (FStar_Pervasives_Native.Some l)
+                  RDF_Term.lang_tag = (FStar_Pervasives_Native.Some l);
+                  RDF_Term.direction = FStar_Pervasives_Native.None
                 })
          else er_string s)
   else er_string s
@@ -1729,8 +1743,10 @@ let fn_str (v : eval_result) : eval_result=
            {
              RDF_Term.lexical_form = (if b then "true" else "false");
              RDF_Term.datatype = RDF_Term.xsd_boolean;
-             RDF_Term.lang_tag = FStar_Pervasives_Native.None
+             RDF_Term.lang_tag = FStar_Pervasives_Native.None;
+             RDF_Term.direction = FStar_Pervasives_Native.None
            })
+  | ER_Term (RDF_Term.T_TripleTerm (uu___, uu___1, uu___2)) -> ER_Error
   | ER_Error -> ER_Error
 let fn_lang (v : eval_result) : eval_result=
   match v with
@@ -2648,20 +2664,22 @@ let fn_substr_spec (s : Prims.string) (start : Prims.nat)
     if start > Prims.int_zero then start - Prims.int_one else Prims.int_zero in
   string_substring s idx len
 let fn_strdt (lex : Prims.string) (dt : RDF_Term.wf_iri) : RDF_Term.rdf_term=
-  if dt = RDF_Term.rdf_lang_string
+  if (dt = RDF_Term.rdf_lang_string) || (dt = RDF_Term.rdf_dir_lang_string)
   then
     RDF_Term.T_Literal
       {
         RDF_Term.lexical_form = lex;
         RDF_Term.datatype = RDF_Term.xsd_string;
-        RDF_Term.lang_tag = FStar_Pervasives_Native.None
+        RDF_Term.lang_tag = FStar_Pervasives_Native.None;
+        RDF_Term.direction = FStar_Pervasives_Native.None
       }
   else
     RDF_Term.T_Literal
       {
         RDF_Term.lexical_form = lex;
         RDF_Term.datatype = dt;
-        RDF_Term.lang_tag = FStar_Pervasives_Native.None
+        RDF_Term.lang_tag = FStar_Pervasives_Native.None;
+        RDF_Term.direction = FStar_Pervasives_Native.None
       }
 let fn_strlang (lex : Prims.string) (lang : Prims.string) :
   RDF_Term.rdf_term=
@@ -2669,7 +2687,8 @@ let fn_strlang (lex : Prims.string) (lang : Prims.string) :
     {
       RDF_Term.lexical_form = lex;
       RDF_Term.datatype = RDF_Term.rdf_lang_string;
-      RDF_Term.lang_tag = (FStar_Pervasives_Native.Some lang)
+      RDF_Term.lang_tag = (FStar_Pervasives_Native.Some lang);
+      RDF_Term.direction = FStar_Pervasives_Native.None
     }
 let same_term (t1 : RDF_Term.rdf_term) (t2 : RDF_Term.rdf_term) : Prims.bool=
   RDF_Term.rdf_term_eq t1 t2
@@ -2725,7 +2744,8 @@ let fx_ctx_put (row : Prims.string) (occ : Prims.string)
        {
          RDF_Term.lexical_form = row;
          RDF_Term.datatype = RDF_Term.xsd_string;
-         RDF_Term.lang_tag = FStar_Pervasives_Native.None
+         RDF_Term.lang_tag = FStar_Pervasives_Native.None;
+         RDF_Term.direction = FStar_Pervasives_Native.None
        }))
   ::
   (fx_key_occ,
@@ -2733,7 +2753,8 @@ let fx_ctx_put (row : Prims.string) (occ : Prims.string)
        {
          RDF_Term.lexical_form = occ;
          RDF_Term.datatype = RDF_Term.xsd_string;
-         RDF_Term.lang_tag = FStar_Pervasives_Native.None
+         RDF_Term.lang_tag = FStar_Pervasives_Native.None;
+         RDF_Term.direction = FStar_Pervasives_Native.None
        }))
   :: mu
 let rec fx_take_pad (n : Prims.nat) (l : FStar_Char.char Prims.list) :
@@ -3683,6 +3704,8 @@ let lateral_subst_pattern_term (mu : RDF_Graph_Executable.solution_mapping)
        | FStar_Pervasives_Native.Some (RDF_Term.T_IRI i) -> PT_IRI i
        | FStar_Pervasives_Native.Some (RDF_Term.T_BNode b) -> PT_BNode b
        | FStar_Pervasives_Native.Some (RDF_Term.T_Literal l) -> PT_Literal l
+       | FStar_Pervasives_Native.Some (RDF_Term.T_TripleTerm
+           (uu___, uu___1, uu___2)) -> PT_Var v
        | FStar_Pervasives_Native.None -> PT_Var v)
   | uu___ -> pt
 let lateral_subst_pattern_subject
@@ -3694,6 +3717,8 @@ let lateral_subst_pattern_subject
        | FStar_Pervasives_Native.Some (RDF_Term.T_IRI i) -> PS_IRI i
        | FStar_Pervasives_Native.Some (RDF_Term.T_BNode b) -> PS_BNode b
        | FStar_Pervasives_Native.Some (RDF_Term.T_Literal uu___) -> PS_Var v
+       | FStar_Pervasives_Native.Some (RDF_Term.T_TripleTerm
+           (uu___, uu___1, uu___2)) -> PS_Var v
        | FStar_Pervasives_Native.None -> PS_Var v)
   | uu___ -> ps
 let lateral_subst_triple_pattern (mu : RDF_Graph_Executable.solution_mapping)
@@ -4971,7 +4996,8 @@ let eval_xsd_cast (v : eval_result) (target_type : Prims.string)
                       {
                         RDF_Term.lexical_form = s;
                         RDF_Term.datatype = xsd_float;
-                        RDF_Term.lang_tag = FStar_Pervasives_Native.None
+                        RDF_Term.lang_tag = FStar_Pervasives_Native.None;
+                        RDF_Term.direction = FStar_Pervasives_Native.None
                       }) in
                let canon_int_float n =
                  if n = Prims.int_zero
@@ -5088,15 +5114,17 @@ let eval_xsd_cast (v : eval_result) (target_type : Prims.string)
                    | uu___5 -> er_string lex)
                 else
                   if
-                    (RDF_Term.is_iri full_iri) &&
-                      (full_iri <> RDF_Term.rdf_lang_string)
+                    ((RDF_Term.is_iri full_iri) &&
+                       (full_iri <> RDF_Term.rdf_lang_string))
+                      && (full_iri <> RDF_Term.rdf_dir_lang_string)
                   then
                     ER_Term
                       (RDF_Term.T_Literal
                          {
                            RDF_Term.lexical_form = lex;
                            RDF_Term.datatype = full_iri;
-                           RDF_Term.lang_tag = FStar_Pervasives_Native.None
+                           RDF_Term.lang_tag = FStar_Pervasives_Native.None;
+                           RDF_Term.direction = FStar_Pervasives_Native.None
                          })
                   else ER_Error
 let er_to_geo_wkt (v : eval_result) :
@@ -5118,7 +5146,8 @@ let geo_double_result (v : RDF_Geo_Types.geo_scaled) : eval_result=
        {
          RDF_Term.lexical_form = (RDF_Geo_Types.gs_to_string v);
          RDF_Term.datatype = RDF_Term.xsd_double;
-         RDF_Term.lang_tag = FStar_Pervasives_Native.None
+         RDF_Term.lang_tag = FStar_Pervasives_Native.None;
+         RDF_Term.direction = FStar_Pervasives_Native.None
        })
 let geo_wkt_result (v : RDF_Geo_Types.geo_wkt_value) : eval_result=
   ER_Term
@@ -5126,7 +5155,8 @@ let geo_wkt_result (v : RDF_Geo_Types.geo_wkt_value) : eval_result=
        {
          RDF_Term.lexical_form = (Parser_WKT.serialize_wkt_value v);
          RDF_Term.datatype = RDF_Geo_Types.geo_wktLiteral;
-         RDF_Term.lang_tag = FStar_Pervasives_Native.None
+         RDF_Term.lang_tag = FStar_Pervasives_Native.None;
+         RDF_Term.direction = FStar_Pervasives_Native.None
        })
 let eval_geof_predicate (name : Prims.string)
   (a : RDF_Geo_Types.geo_wkt_value) (b : RDF_Geo_Types.geo_wkt_value) :
@@ -5634,7 +5664,8 @@ let rec eval_expr_with_base
            {
              RDF_Term.lexical_form = (fx_current_datetime ());
              RDF_Term.datatype = xsd_dateTime;
-             RDF_Term.lang_tag = FStar_Pervasives_Native.None
+             RDF_Term.lang_tag = FStar_Pervasives_Native.None;
+             RDF_Term.direction = FStar_Pervasives_Native.None
            })
   | E_Year e1 ->
       (match er_to_datetime_lex (eval_expr_with_base base e1 mu) with
@@ -5689,7 +5720,8 @@ let rec eval_expr_with_base
                      {
                        RDF_Term.lexical_form = tz;
                        RDF_Term.datatype = xsd_dayTimeDuration;
-                       RDF_Term.lang_tag = FStar_Pervasives_Native.None
+                       RDF_Term.lang_tag = FStar_Pervasives_Native.None;
+                       RDF_Term.direction = FStar_Pervasives_Native.None
                      })
             | FStar_Pervasives_Native.None -> ER_Error)
        | FStar_Pervasives_Native.None -> ER_Error)
@@ -5882,7 +5914,9 @@ and eval_concat_with_base
                               RDF_Term.lexical_form = combined;
                               RDF_Term.datatype = RDF_Term.rdf_lang_string;
                               RDF_Term.lang_tag =
-                                (FStar_Pervasives_Native.Some l1)
+                                (FStar_Pervasives_Native.Some l1);
+                              RDF_Term.direction =
+                                FStar_Pervasives_Native.None
                             })
                      else er_string combined
                  | (FStar_Pervasives_Native.None,
@@ -5895,6 +5929,8 @@ and eval_concat_with_base
                               RDF_Term.lexical_form = combined;
                               RDF_Term.datatype = dt;
                               RDF_Term.lang_tag =
+                                FStar_Pervasives_Native.None;
+                              RDF_Term.direction =
                                 FStar_Pervasives_Native.None
                             })
                      else er_string combined
@@ -5938,6 +5974,8 @@ let er_rank (v : eval_result) : Prims.int=
   | ER_Dec uu___ -> (Prims.of_int (4))
   | ER_Dbl uu___ -> (Prims.of_int (4))
   | ER_Term (RDF_Term.T_Literal uu___) -> (Prims.of_int (7))
+  | ER_Term (RDF_Term.T_TripleTerm (uu___, uu___1, uu___2)) ->
+      (Prims.of_int (8))
 let sparql_order (a : eval_result) (b : eval_result) : Prims.int=
   let ra = er_rank a in
   let rb = er_rank b in
@@ -6134,7 +6172,11 @@ let eval_aggregate (base : RDF_Term.wf_iri FStar_Pervasives_Native.option)
                              | RDF_Term.T_BNode b -> b
                              | RDF_Term.T_Literal l ->
                                  Prims.strcat (lit_lexical l)
-                                   (Prims.strcat "^^" (lit_datatype l))))) mu) in
+                                   (Prims.strcat "^^" (lit_datatype l))
+                             | RDF_Term.T_TripleTerm (uu___, uu___1, uu___2)
+                                 ->
+                                 RDF_NQuads_Serialize.nq_term_to_string
+                                   (FStar_Pervasives_Native.snd p)))) mu) in
              let dedup_strings_tr keys =
                FStar_List_Tot_Base.fold_left
                  (fun seen k ->
@@ -6160,7 +6202,11 @@ let eval_aggregate (base : RDF_Term.wf_iri FStar_Pervasives_Native.option)
                              | RDF_Term.T_BNode b -> b
                              | RDF_Term.T_Literal l ->
                                  Prims.strcat (lit_lexical l)
-                                   (Prims.strcat "^^" (lit_datatype l))))) mu) in
+                                   (Prims.strcat "^^" (lit_datatype l))
+                             | RDF_Term.T_TripleTerm (uu___, uu___1, uu___2)
+                                 ->
+                                 RDF_NQuads_Serialize.nq_term_to_string
+                                   (FStar_Pervasives_Native.snd p)))) mu) in
              let dedup_strings_tr keys =
                FStar_List_Tot_Base.fold_left
                  (fun seen k ->
@@ -6761,6 +6807,8 @@ let construct_subject (ps : pattern_subject)
            FStar_Pervasives_Native.Some (RDF_Term.S_BNode b)
        | FStar_Pervasives_Native.Some (RDF_Term.T_Literal uu___) ->
            FStar_Pervasives_Native.None
+       | FStar_Pervasives_Native.Some (RDF_Term.T_TripleTerm
+           (uu___, uu___1, uu___2)) -> FStar_Pervasives_Native.None
        | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None)
 let construct_predicate (pt : pattern_term)
   (mu : RDF_Graph_Executable.solution_mapping) :
@@ -7282,6 +7330,8 @@ let xsd_cast (v : eval_result) (target : cast_target) :
        | ER_Term (RDF_Term.T_Literal l) ->
            FStar_Pervasives_Native.Some (er_string (lit_lexical l))
        | ER_Term (RDF_Term.T_BNode uu___) -> FStar_Pervasives_Native.None
+       | ER_Term (RDF_Term.T_TripleTerm (uu___, uu___1, uu___2)) ->
+           FStar_Pervasives_Native.None
        | ER_Error -> FStar_Pervasives_Native.None)
   | Cast_Boolean ->
       (match v with
@@ -7337,7 +7387,8 @@ let xsd_cast (v : eval_result) (target : cast_target) :
                        {
                          RDF_Term.lexical_form = (lit_lexical l);
                          RDF_Term.datatype = xsd_dateTime;
-                         RDF_Term.lang_tag = FStar_Pervasives_Native.None
+                         RDF_Term.lang_tag = FStar_Pervasives_Native.None;
+                         RDF_Term.direction = FStar_Pervasives_Native.None
                        }))
              else FStar_Pervasives_Native.None
        | uu___ -> FStar_Pervasives_Native.None)
@@ -7349,6 +7400,8 @@ let substitute_pattern_term (mu : RDF_Graph_Executable.solution_mapping)
        | FStar_Pervasives_Native.Some (RDF_Term.T_IRI i) -> PT_IRI i
        | FStar_Pervasives_Native.Some (RDF_Term.T_BNode b) -> PT_BNode b
        | FStar_Pervasives_Native.Some (RDF_Term.T_Literal l) -> PT_Literal l
+       | FStar_Pervasives_Native.Some (RDF_Term.T_TripleTerm
+           (uu___, uu___1, uu___2)) -> PT_Var v
        | FStar_Pervasives_Native.None -> PT_Var v)
   | uu___ -> pt
 let substitute_pattern_subject (mu : RDF_Graph_Executable.solution_mapping)
@@ -7359,6 +7412,8 @@ let substitute_pattern_subject (mu : RDF_Graph_Executable.solution_mapping)
        | FStar_Pervasives_Native.Some (RDF_Term.T_IRI i) -> PS_IRI i
        | FStar_Pervasives_Native.Some (RDF_Term.T_BNode b) -> PS_BNode b
        | FStar_Pervasives_Native.Some (RDF_Term.T_Literal uu___) -> PS_Var v
+       | FStar_Pervasives_Native.Some (RDF_Term.T_TripleTerm
+           (uu___, uu___1, uu___2)) -> PS_Var v
        | FStar_Pervasives_Native.None -> PS_Var v)
   | uu___ -> ps
 let substitute_triple_pattern (mu : RDF_Graph_Executable.solution_mapping)
@@ -7682,6 +7737,8 @@ let bound_subject_of_pattern_freshen (op_salt : Prims.string)
            FStar_Pervasives_Native.Some (RDF_Term.S_BNode b)
        | FStar_Pervasives_Native.Some (RDF_Term.T_Literal uu___) ->
            FStar_Pervasives_Native.None
+       | FStar_Pervasives_Native.Some (RDF_Term.T_TripleTerm
+           (uu___, uu___1, uu___2)) -> FStar_Pervasives_Native.None
        | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None)
 let bound_object_of_pattern_freshen (op_salt : Prims.string)
   (sol_ix : Prims.nat) (pt : pattern_term)

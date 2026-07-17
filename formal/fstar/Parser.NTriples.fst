@@ -506,7 +506,7 @@ let parse_literal : parser wf_literal =
       let len = fs_byte_length input in
       if pos' >= len then
         (* Plain literal — per RDF 1.1, has datatype xsd:string *)
-        let lit = { lexical_form = lexical; datatype = xsd_string; lang_tag = None } in
+        let lit = { lexical_form = lexical; datatype = xsd_string; lang_tag = None; direction = None } in
         if literal_wf lit then ParseOk lit pos'
         else ParseFail "invalid literal" pos
       else
@@ -515,7 +515,7 @@ let parse_literal : parser wf_literal =
         if next_code = 0x40 then (* '@' — language tag *)
           begin match parse_lang_tag input pos' with
           | ParseOk lang pos'' ->
-            let lit = { lexical_form = lexical; datatype = rdf_lang_string; lang_tag = Some lang } in
+            let lit = { lexical_form = lexical; datatype = rdf_lang_string; lang_tag = Some lang; direction = None } in
             if literal_wf lit then ParseOk lit pos''
             else ParseFail "invalid literal" pos
           | ParseFail msg fpos -> ParseFail msg fpos
@@ -523,14 +523,14 @@ let parse_literal : parser wf_literal =
         else if next_code = 0x5E then (* '^' — might be '^^' datatype *)
           begin match parse_datatype input pos' with
           | ParseOk dt pos'' ->
-            let lit = { lexical_form = lexical; datatype = dt; lang_tag = None } in
+            let lit = { lexical_form = lexical; datatype = dt; lang_tag = None; direction = None } in
             if literal_wf lit then ParseOk lit pos''
             else ParseFail "invalid literal" pos
           | ParseFail msg fpos -> ParseFail msg fpos
           end
         else
           (* Plain literal *)
-          let lit = { lexical_form = lexical; datatype = xsd_string; lang_tag = None } in
+          let lit = { lexical_form = lexical; datatype = xsd_string; lang_tag = None; direction = None } in
           if literal_wf lit then ParseOk lit pos'
           else ParseFail "invalid literal" pos
     | ParseFail msg fpos -> ParseFail msg fpos
@@ -1100,3 +1100,258 @@ let rec parse_ntriples_strict_acc (input:string) (pos:nat) (acc:list triple) (fu
 let parse_ntriples_strict (input:string) : option (list triple) =
   let len = fs_byte_length input in
   parse_ntriples_strict_acc input 0 [] (len + 1)
+
+(* ================================================================ *)
+(* RDF 1.2 N-Triples productions (epic #305, phase 1).              *)
+(*                                                                  *)
+(* Behind a distinct entry point (`parse_ntriples_strict_12`) so the *)
+(* RDF 1.1 path above stays byte-identical: the `_12` functions add  *)
+(* object-position triple terms `<<( s p o )>>` and directional      *)
+(* language strings `"x"@en--ltr`, and reject the legacy RDF-star     *)
+(* `<< s p o >>` quoted-triple form and malformed base directions.   *)
+(* Version-flag discipline per                                       *)
+(* docs/designissues/2026-07-16-rdf12-sparql12-impact-strategy.md.   *)
+(* ================================================================ *)
+
+// BCP47-ish subtag validation: each hyphen-separated subtag is 1..8
+// chars. Rejects `@cantbethislong` (14-char subtag) and empty subtags
+// (`en-`, trailing/leading hyphen). `cur` counts chars in the current
+// subtag.
+let rec valid_lang_subtags (cs : list FStar.Char.char) (cur : nat)
+  : Tot bool (decreases cs) =
+  match cs with
+  | [] -> cur >= 1 && cur <= 8
+  | c :: rest ->
+    if FStar.Char.int_of_char c = 0x2D (* '-' *)
+    then (cur >= 1 && cur <= 8) && valid_lang_subtags rest 0
+    else valid_lang_subtags rest (cur + 1)
+
+// Split a raw `@`-tag run at the FIRST double hyphen `--`: the left part
+// is the language tag, the right part (if any) is the base-direction
+// token. A well-formed BCP47 language tag never contains an empty
+// subtag, so the only `--` present is the RDF 1.2 direction separator.
+let rec split_on_double_hyphen (cs : list FStar.Char.char) (acc : list FStar.Char.char)
+  : Tot (list FStar.Char.char * option (list FStar.Char.char)) (decreases cs) =
+  match cs with
+  | c1 :: c2 :: rest ->
+    if FStar.Char.int_of_char c1 = 0x2D && FStar.Char.int_of_char c2 = 0x2D
+    then (List.Tot.rev acc, Some rest)
+    else split_on_double_hyphen (c2 :: rest) (c1 :: acc)
+  | [c] -> (List.Tot.rev (c :: acc), None)
+  | [] -> (List.Tot.rev acc, None)
+
+// Parse an RDF 1.2 `@lang` or `@lang--dir` suffix. `pos` points at '@'.
+// Validates the language tag and the direction token (`ltr`/`rtl`,
+// lowercase only). Rejects `@en--unk`, `@en--LTR`, `@cantbethislong`.
+let parse_lang_dir_12 (input:string) (pos:nat)
+  : parse_result (string * option text_direction) =
+  let len = fs_byte_length input in
+  if pos >= len || FStar.Char.int_of_char (fs_byte_index input pos) <> 0x40 then
+    ParseFail "expected '@'" pos
+  else if pos + 1 >= len || not (is_alpha (fs_byte_index input (pos + 1))) then
+    ParseFail "language tag must start with a letter" (pos + 1)
+  else
+    match ptake_while1_pos is_lang_char input (pos + 1) with
+    | ParseFail _ fpos -> ParseFail "expected language tag after '@'" fpos
+    | ParseOk raw pos' ->
+      let cs = FStar.String.list_of_string raw in
+      let (lt_chars, dir_opt) = split_on_double_hyphen cs [] in
+      if not (valid_lang_subtags lt_chars 0) then
+        ParseFail "invalid language tag" pos
+      else
+        let langtag = FStar.String.string_of_list lt_chars in
+        (match dir_opt with
+         | None -> ParseOk (langtag, None) pos'
+         | Some dchars ->
+           if dchars = ['l'; 't'; 'r'] then ParseOk (langtag, Some Dir_LTR) pos'
+           else if dchars = ['r'; 't'; 'l'] then ParseOk (langtag, Some Dir_RTL) pos'
+           else ParseFail "invalid base direction (expected ltr or rtl)" pos)
+
+// RDF 1.2 literal: string + optional `@lang`/`@lang--dir` or `^^<dt>`.
+// The `^^` typed form still routes through `literal_wf`, which now also
+// rejects an explicit `^^rdf:langString` / `^^rdf:dirLangString`
+// (langdir-bad-3 / langdir-bad-5) because those datatypes require a
+// language tag (and, for dirLangString, a direction).
+let parse_literal_12 (input:string) (pos:nat) : parse_result wf_literal =
+  match parse_string_literal input pos with
+  | ParseFail msg fpos -> ParseFail msg fpos
+  | ParseOk lexical pos' ->
+    let len = fs_byte_length input in
+    if pos' >= len then
+      let lit = { lexical_form = lexical; datatype = xsd_string; lang_tag = None; direction = None } in
+      if literal_wf lit then ParseOk lit pos' else ParseFail "invalid literal" pos
+    else
+      let next_code = FStar.Char.int_of_char (fs_byte_index input pos') in
+      if next_code = 0x40 then (* '@' *)
+        (match parse_lang_dir_12 input pos' with
+         | ParseFail msg fpos -> ParseFail msg fpos
+         | ParseOk (langtag, dopt) pos'' ->
+           let dt = (match dopt with None -> rdf_lang_string | Some _ -> rdf_dir_lang_string) in
+           let lit = { lexical_form = lexical; datatype = dt; lang_tag = Some langtag; direction = dopt } in
+           if literal_wf lit then ParseOk lit pos'' else ParseFail "invalid literal" pos)
+      else if next_code = 0x5E then (* '^^' *)
+        (match parse_datatype input pos' with
+         | ParseFail msg fpos -> ParseFail msg fpos
+         | ParseOk dt pos'' ->
+           let lit = { lexical_form = lexical; datatype = dt; lang_tag = None; direction = None } in
+           if literal_wf lit then ParseOk lit pos'' else ParseFail "invalid literal" pos)
+      else
+        let lit = { lexical_form = lexical; datatype = xsd_string; lang_tag = None; direction = None } in
+        if literal_wf lit then ParseOk lit pos' else ParseFail "invalid literal" pos
+
+// Object in RDF 1.2: IRI | blank node | literal | triple term `<<( )>>`.
+// A bare '<' followed by '<' begins a `<<`-form: accepted ONLY as `<<(`
+// (a triple term); the legacy RDF-star `<< s p o >>` quoted triple is a
+// syntax error (ntriples12-bad-syntax-09, bad-reified-2/3). Fuel bounds
+// the mutual recursion (each triple-term level consumes '<<(' = 3 bytes).
+let rec parse_object_12_f (input:string) (pos:nat) (fuel:nat)
+  : Tot (parse_result rdf_term) (decreases fuel) =
+  if fuel = 0 then ParseFail "triple-term nesting too deep" pos
+  else
+    let len = fs_byte_length input in
+    if pos >= len then ParseFail "expected object" pos
+    else
+      let code = FStar.Char.int_of_char (fs_byte_index input pos) in
+      if code = 0x3C then (* '<' *)
+        (if pos + 1 < len && FStar.Char.int_of_char (fs_byte_index input (pos + 1)) = 0x3C then
+           (* '<<' — only '<<(' triple term is legal; legacy '<<' rejected *)
+           if pos + 2 < len && FStar.Char.int_of_char (fs_byte_index input (pos + 2)) = 0x28 then
+             parse_triple_term_12_f input pos (fuel - 1)
+           else
+             ParseFail "legacy '<< >>' quoted triple is not RDF 1.2 syntax" pos
+         else
+           (match parse_iri input pos with
+            | ParseOk i pos' -> ParseOk (T_IRI i) pos'
+            | ParseFail msg fpos -> ParseFail msg fpos))
+      else if code = 0x5F then (* '_' — blank node *)
+        (match parse_bnode input pos with
+         | ParseOk b pos' -> ParseOk (T_BNode b) pos'
+         | ParseFail msg fpos -> ParseFail msg fpos)
+      else if code = 0x22 then (* '"' — literal *)
+        (match parse_literal_12 input pos with
+         | ParseOk lit pos' -> ParseOk (T_Literal lit) pos'
+         | ParseFail msg fpos -> ParseFail msg fpos)
+      else
+        ParseFail "expected '<', '_:', '\"', or '<<(' for object" pos
+
+// Triple term `<<( ttSubject predicate ttObject )>>`. `pos` points at the
+// first '<'. ttSubject is IRI or blank node (parse_subject rejects
+// literal subjects: bad-syntax-02); predicate is an IRI (parse_iri
+// rejects literal predicates: bad-syntax-03); ttObject recurses.
+and parse_triple_term_12_f (input:string) (pos:nat) (fuel:nat)
+  : Tot (parse_result rdf_term) (decreases fuel) =
+  if fuel = 0 then ParseFail "triple-term nesting too deep" pos
+  else
+    let len = fs_byte_length input in
+    if pos + 3 > len
+       || FStar.Char.int_of_char (fs_byte_index input pos) <> 0x3C
+       || FStar.Char.int_of_char (fs_byte_index input (pos + 1)) <> 0x3C
+       || FStar.Char.int_of_char (fs_byte_index input (pos + 2)) <> 0x28 then
+      ParseFail "expected '<<('" pos
+    else
+      (match pws input (pos + 3) with
+       | ParseFail msg fpos -> ParseFail msg fpos
+       | ParseOk () p1 ->
+         (match parse_subject input p1 with
+          | ParseFail msg fpos -> ParseFail msg fpos
+          | ParseOk subj p2 ->
+            (match pws input p2 with
+             | ParseFail msg fpos -> ParseFail msg fpos
+             | ParseOk () p3 ->
+               (match parse_iri input p3 with
+                | ParseFail msg fpos -> ParseFail msg fpos
+                | ParseOk pred p4 ->
+                  (match pws input p4 with
+                   | ParseFail msg fpos -> ParseFail msg fpos
+                   | ParseOk () p5 ->
+                     (match parse_object_12_f input p5 (fuel - 1) with
+                      | ParseFail msg fpos -> ParseFail msg fpos
+                      | ParseOk obj p6 ->
+                        (match pws input p6 with
+                         | ParseFail msg fpos -> ParseFail msg fpos
+                         | ParseOk () p7 ->
+                           if p7 + 3 > len then ParseFail "expected ')>>'" p7
+                           else if FStar.Char.int_of_char (fs_byte_index input p7) = 0x29
+                                && FStar.Char.int_of_char (fs_byte_index input (p7 + 1)) = 0x3E
+                                && FStar.Char.int_of_char (fs_byte_index input (p7 + 2)) = 0x3E then
+                             ParseOk (T_TripleTerm subj pred obj) (p7 + 3)
+                           else ParseFail "expected ')>>'" p7)))))))
+
+// Full RDF 1.2 triple: subject (IRI/bnode) predicate (IRI) object (1.2).
+// The subject uses `parse_subject` and the predicate uses `parse_iri`, so
+// a `<<(` or legacy `<<` in either position is rejected (bad-syntax-01,
+// 04, 05, 06, 07, 08, 10; bad-reified-1, 3, 4). The trailing `{| |}`
+// annotation form is rejected because after the object we require '.'.
+let parse_triple_12 (input:string) (pos:nat) : parse_result triple =
+  match pws input pos with
+  | ParseFail msg fpos -> ParseFail msg fpos
+  | ParseOk () pos1 ->
+    (match parse_subject input pos1 with
+     | ParseFail msg fpos -> ParseFail msg fpos
+     | ParseOk subj pos2 ->
+       (match pws input pos2 with
+        | ParseFail msg fpos -> ParseFail msg fpos
+        | ParseOk () pos3 ->
+          (match parse_iri input pos3 with
+           | ParseFail msg fpos -> ParseFail msg fpos
+           | ParseOk pred pos4 ->
+             (match pws input pos4 with
+              | ParseFail msg fpos -> ParseFail msg fpos
+              | ParseOk () pos5 ->
+                let fuel = fs_byte_length input + 1 in
+                (match parse_object_12_f input pos5 fuel with
+                 | ParseFail msg fpos -> ParseFail msg fpos
+                 | ParseOk obj pos6 ->
+                   (match pws input pos6 with
+                    | ParseFail msg fpos -> ParseFail msg fpos
+                    | ParseOk () pos7 ->
+                      let len = fs_byte_length input in
+                      if pos7 >= len then ParseFail "expected '.'" pos7
+                      else if FStar.Char.int_of_char (fs_byte_index input pos7) = 0x2E then
+                        ParseOk ({ s = subj; p = pred; o = obj }) (pos7 + 1)
+                      else ParseFail "expected '.'" pos7))))))
+
+let rec parse_ntriples_strict_12_acc (input:string) (pos:nat) (acc:list triple) (fuel:nat)
+  : Tot (option (list triple)) (decreases fuel) =
+  if fuel = 0 then None
+  else
+    let len = fs_byte_length input in
+    if pos >= len then Some (List.Tot.rev acc)
+    else
+      let pos1 : nat = match pws input pos with
+                       | ParseOk () p -> p
+                       | _ -> pos in
+      if pos1 >= len then Some (List.Tot.rev acc)
+      else
+        let code = FStar.Char.int_of_char (fs_byte_index input pos1) in
+        if code = 0x23 then (* '#' comment *)
+          let pos2 = skip_comment input pos1 in
+          let pos3 = skip_eol input pos2 in
+          if pos3 = pos1 then None
+          else parse_ntriples_strict_12_acc input pos3 acc (fuel - 1)
+        else if code = 0x0A || code = 0x0D then
+          let pos2 = skip_eol input pos1 in
+          if pos2 = pos1 then None
+          else parse_ntriples_strict_12_acc input pos2 acc (fuel - 1)
+        else
+          match parse_triple_12 input pos1 with
+          | ParseOk t pos2 ->
+            let pos3 = match pws input pos2 with
+                       | ParseOk () p -> p
+                       | _ -> pos2 in
+            let pos4 = skip_comment input pos3 in
+            let pos5 = skip_eol input pos4 in
+            if pos5 > pos1 then
+              parse_ntriples_strict_12_acc input pos5 (t :: acc) (fuel - 1)
+            else if pos2 >= len then
+              parse_ntriples_strict_12_acc input pos2 (t :: acc) (fuel - 1)
+            else
+              None
+          | ParseFail _ _ -> None
+
+// RDF 1.2 strict N-Triples: None on any parse error (used by the rdf12
+// N-Triples W3C syntax suite; positive tests require Some, negative
+// tests require None).
+let parse_ntriples_strict_12 (input:string) : option (list triple) =
+  let len = fs_byte_length input in
+  parse_ntriples_strict_12_acc input 0 [] (len + 1)

@@ -95,7 +95,8 @@ let did_key_document (s : Prims.string) :
              {
                RDF_Term.lexical_form = (k.multikey);
                RDF_Term.datatype = sec_multibase_datatype;
-               RDF_Term.lang_tag = FStar_Pervasives_Native.None
+               RDF_Term.lang_tag = FStar_Pervasives_Native.None;
+               RDF_Term.direction = FStar_Pervasives_Native.None
              } in
            FStar_Pervasives_Native.Some
              [{

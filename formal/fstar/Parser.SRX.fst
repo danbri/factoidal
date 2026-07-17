@@ -115,7 +115,7 @@ let parse_literal_value (node: xml_node) : option rdf_term =
       let lit : literal = {
         lexical_form = lex;
         datatype = rdf_lang_string;
-        lang_tag = Some lang_val;
+        lang_tag = Some lang_val; direction = None 
       } in
       if literal_wf lit then Some (T_Literal lit)
       else None
@@ -125,7 +125,7 @@ let parse_literal_value (node: xml_node) : option rdf_term =
         let lit : literal = {
           lexical_form = lex;
           datatype = dt_val;
-          lang_tag = None;
+          lang_tag = None; direction = None 
         } in
         if literal_wf lit then Some (T_Literal lit)
         else None
@@ -135,7 +135,7 @@ let parse_literal_value (node: xml_node) : option rdf_term =
       let lit : literal = {
         lexical_form = lex;
         datatype = xsd_string;
-        lang_tag = None;
+        lang_tag = None; direction = None 
       } in
       if literal_wf lit then Some (T_Literal lit)
       else None

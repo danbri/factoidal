@@ -1,15 +1,3 @@
-* Warning 241 at RDF.Vocabulary.Axioms.fst(0,0-0,0):
-  - Unable to load RDF.Vocabulary.Axioms.fst.checked since checked file
-    RDF.Vocabulary.Axioms.fst.checked is stale (dependence hash mismatch, use
-    --debug CheckedFiles for more details); will recheck
-    RDF.Vocabulary.Axioms.fst (suppressing this warning for further modules)
-
 Extracted module OWL.Closure
-* Warning 247 at OWL.Closure.fst(0,0-0,0):
-  - Checked file OWL.Closure.fst.checked was not written.
-  - Reason:
-      checked file OWL.Closure.fsti.checked is stale (digest mismatch for
-      OWL.Closure.fsti)
-
 Verified module: OWL.Closure
 All verification conditions discharged successfully

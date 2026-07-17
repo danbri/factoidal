@@ -214,6 +214,8 @@ let term_to_node_ref (t : RDF_Term.rdf_term) :
   | RDF_Term.T_IRI i -> FStar_Pervasives_Native.Some i
   | RDF_Term.T_BNode b -> FStar_Pervasives_Native.Some (Prims.strcat "_:" b)
   | RDF_Term.T_Literal uu___ -> FStar_Pervasives_Native.None
+  | RDF_Term.T_TripleTerm (uu___, uu___1, uu___2) ->
+      FStar_Pervasives_Native.None
 let subject_to_node_ref (s : RDF_Term.subject) : node_ref=
   match s with
   | RDF_Term.S_IRI i -> i

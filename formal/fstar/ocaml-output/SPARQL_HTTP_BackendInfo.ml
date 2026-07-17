@@ -118,19 +118,18 @@ let render_backend_info (info : backend_info) : Prims.string=
     ",\"source\":\"";
     source_s;
     "\"}\n"]
-let rec sum_named_triples (ngs : RDF_Graph_Executable.named_graph Prims.list)
-  : Prims.nat=
+let rec sum_named_triples (ngs : RDF_Graph.named_graph Prims.list) :
+  Prims.nat=
   match ngs with
   | [] -> Prims.int_zero
   | ng::rest ->
-      (FStar_List_Tot_Base.length ng.RDF_Graph_Executable.ng_graph) +
+      (FStar_List_Tot_Base.length ng.RDF_Graph.ng_graph) +
         (sum_named_triples rest)
-let count_dataset_triples (ds : RDF_Graph_Executable.rdf_dataset) :
+let count_dataset_triples (ds : RDF_Graph.rdf_dataset) :
   (Prims.int * Prims.int * Prims.int * Prims.int)=
-  let dflt = FStar_List_Tot_Base.length ds.RDF_Graph_Executable.ds_default in
-  let named_count =
-    FStar_List_Tot_Base.length ds.RDF_Graph_Executable.ds_named in
-  let named_triples = sum_named_triples ds.RDF_Graph_Executable.ds_named in
+  let dflt = FStar_List_Tot_Base.length ds.RDF_Graph.ds_default in
+  let named_count = FStar_List_Tot_Base.length ds.RDF_Graph.ds_named in
+  let named_triples = sum_named_triples ds.RDF_Graph.ds_named in
   ((dflt + named_triples), dflt, named_count, named_triples)
 let backend_kind_of_flags (has_dataset : Prims.bool)
   (has_cottas : Prims.bool) : backend_kind=

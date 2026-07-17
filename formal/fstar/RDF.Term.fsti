@@ -76,52 +76,113 @@ let rdf_lang_string : wf_iri =
   assert_norm (is_iri "http://www.w3.org/1999/02/22-rdf-syntax-ns#langString");
   "http://www.w3.org/1999/02/22-rdf-syntax-ns#langString"
 
+/// `rdf:dirLangString` — RDF 1.2's datatype for a *directional*
+/// language-tagged string (RDF 1.2 Concepts §3.3, CR 2026-04-07): a
+/// literal carrying a BCP47 language tag AND a base text direction.
+/// N-Triples 1.2 lexical form `"..."@en--ltr`. Defined here alongside
+/// `rdf:langString` because `literal_wf`'s RDF 1.2 three-way rule below
+/// needs it. Adding this datatype breaks the RDF 1.1 invariant "language
+/// tag iff rdf:langString" — see `literal_wf`.
+let rdf_dir_lang_string : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/1999/02/22-rdf-syntax-ns#dirLangString");
+  "http://www.w3.org/1999/02/22-rdf-syntax-ns#dirLangString"
+
 (** ------------------------------------------------------------------ *)
-(** Literals — RDF 1.1 Concepts §3.3                                   *)
+(** Base direction — RDF 1.2 Concepts §3.3                             *)
 (** ------------------------------------------------------------------ *)
 
-/// A literal is a lexical form plus a datatype IRI, and — only when
-/// the datatype is `rdf:langString` — a language tag. This record
-/// carries all three fields unconditionally; `literal_wf` below is
-/// the well-formedness predicate RDF 1.1 actually imposes on the
-/// combination (langString iff a language tag is present).
+/// The base direction of a directional language-tagged string: either
+/// left-to-right or right-to-left (RDF 1.2 Concepts §3.3). An eqtype (a
+/// plain two-constructor enum), so `option text_direction` compares with
+/// `=` and `literal_eq`/`literal_value_eq` stay total.
+type text_direction =
+  | Dir_LTR
+  | Dir_RTL
+
+(** ------------------------------------------------------------------ *)
+(** Literals — RDF 1.1 Concepts §3.3 / RDF 1.2 Concepts §3.3           *)
+(** ------------------------------------------------------------------ *)
+
+/// A literal is a lexical form plus a datatype IRI, and — only when the
+/// datatype is `rdf:langString` or `rdf:dirLangString` — a language tag,
+/// and — only when the datatype is `rdf:dirLangString` — a base
+/// direction. This record carries all four fields unconditionally;
+/// `literal_wf` below is the well-formedness predicate imposed on the
+/// combination.
+///
+/// RDF 1.2 design (epic #305): `direction` is an *optional field* rather
+/// than a new literal kind or a fourth `rdf_term` constructor.  Rationale:
+/// (a) an optional field defaults to `None` for every RDF 1.1 literal, so
+/// `literal_eq`/`literal_value_eq`/hashing extend by exactly one clause
+/// and remain total; (b) a new literal *kind* would duplicate all literal
+/// machinery and force a second arm at every match site including
+/// wildcard-covered ones; (c) serializers emit the `--dir` suffix only
+/// when `direction = Some`, so every RDF 1.1 document round-trips
+/// byte-identically.
 noeq type literal = {
   lexical_form : string;
   datatype     : wf_iri;
   lang_tag     : option string;
+  direction    : option text_direction;
 }
 
-/// RDF 1.1's rule: a literal has a language tag if and only if its
-/// datatype is `rdf:langString`. Every literal this tree constructs
-/// must satisfy this before it is treated as a term.
+/// The well-formedness rule on a literal, extended for RDF 1.2's
+/// directional language strings. The RDF 1.1 two-way rule ("language
+/// tag iff rdf:langString") becomes a three-way rule:
+///   - no lang tag, no direction        <-> datatype is neither
+///                                          langString nor dirLangString
+///   - lang tag, no direction           <-> datatype is rdf:langString
+///   - lang tag AND direction           <-> datatype is rdf:dirLangString
+///   - direction without a lang tag      is always ill-formed
+/// Every RDF 1.1 literal (direction = None) still satisfies exactly the
+/// original rule, so the tightening rejects no pre-1.2 literal.
 let literal_wf (l:literal) : bool =
-  match l.lang_tag with
-  | None   -> l.datatype <> rdf_lang_string
-  | Some _ -> l.datatype = rdf_lang_string
+  match l.lang_tag, l.direction with
+  | None,   None   -> l.datatype <> rdf_lang_string && l.datatype <> rdf_dir_lang_string
+  | Some _, None   -> l.datatype = rdf_lang_string
+  | Some _, Some _ -> l.datatype = rdf_dir_lang_string
+  | None,   Some _ -> false
 
 /// A well-formed literal — the type `rdf_term`'s `T_Literal` case
 /// actually carries.
 type wf_literal = l:literal{literal_wf l}
 
 (** ------------------------------------------------------------------ *)
-(** RDF terms — RDF 1.1 Concepts §3 (IRI / literal / blank node)       *)
+(** RDF terms — RDF 1.1 Concepts §3 / RDF 1.2 Concepts §3              *)
 (** ------------------------------------------------------------------ *)
 
-/// An RDF term is exactly one of: an IRI, a blank node, or a literal —
-/// the three disjoint term kinds RDF 1.1 recognizes. `rdf_term` is
-/// what appears in object position of a triple; `subject` below is
-/// the strictly smaller set (no literal) that appears in subject
-/// position.
-noeq type rdf_term =
-  | T_IRI     : wf_iri -> rdf_term
-  | T_BNode   : bnode_id -> rdf_term
-  | T_Literal : wf_literal -> rdf_term
-
 /// A triple's subject (RDF 1.1 Concepts §3.1: "the subject ... is
-/// either an IRI or a blank node" — never a literal).
+/// either an IRI or a blank node" — never a literal). Declared ahead of
+/// `rdf_term` because RDF 1.2's triple-term constructor names it in the
+/// subject slot; `subject` itself is non-recursive.
 noeq type subject =
   | S_IRI : wf_iri -> subject
   | S_BNode : bnode_id -> subject
+
+/// An RDF term is one of: an IRI, a blank node, a literal (RDF 1.1
+/// Concepts §3), or — added in RDF 1.2 Concepts §3 (CR 2026-04-07) — a
+/// *triple term* `<<( s p o )>>`, a triple used as a term. `rdf_term` is
+/// what appears in object position of a triple.
+///
+/// The triple term carries a `subject` (IRI or blank node), a predicate
+/// `wf_iri`, and an object `rdf_term`. This mirrors the RDF triple shape
+/// and bakes in two RDF 1.2 constraints structurally: a triple term's
+/// subject is never a literal (it is a `subject`), and its predicate is
+/// always an IRI. Only the object slot is recursive, so termination
+/// proofs over `rdf_term` decrease on that sub-term.
+///
+/// NOTE — object-position-only is a SYNTAX constraint, not a term-model
+/// one. The abstract term model here permits a `T_TripleTerm` anywhere an
+/// `rdf_term` is accepted; that a triple term may appear only in object
+/// position of an asserted triple is enforced by the concrete-syntax
+/// parsers (an asserted triple's subject has type `subject`, which has no
+/// triple-term constructor, so the constraint holds automatically for the
+/// outer triple) — see `Parser.NTriples`.
+noeq type rdf_term =
+  | T_IRI        : wf_iri -> rdf_term
+  | T_BNode      : bnode_id -> rdf_term
+  | T_Literal    : wf_literal -> rdf_term
+  | T_TripleTerm : subject -> wf_iri -> rdf_term -> rdf_term
 
 (** ==================================================================== *)
 (** Appendix: mechanical definitions. Nothing below this line is a new  *)
@@ -389,14 +450,19 @@ let literal_eq (l1 l2 : literal) : bool =
    then xml_canon_eq l1.lexical_form l2.lexical_form
    else l1.lexical_form = l2.lexical_form) &&
   l1.datatype = l2.datatype &&
-  lang_tag_option_eq l1.lang_tag l2.lang_tag
+  lang_tag_option_eq l1.lang_tag l2.lang_tag &&
+  l1.direction = l2.direction
 
-/// Structural equality on RDF terms.
-let rdf_term_eq (t1 t2 : rdf_term) : bool =
+/// Structural equality on RDF terms. Recursive: a triple term compares
+/// structurally in each of its three positions, recursing into the
+/// object sub-term (which strictly decreases). `decreases t1`.
+let rec rdf_term_eq (t1 t2 : rdf_term) : Tot bool (decreases t1) =
   match t1, t2 with
   | T_IRI i1, T_IRI i2 -> i1 = i2
   | T_BNode b1, T_BNode b2 -> b1 = b2
   | T_Literal l1, T_Literal l2 -> literal_eq l1 l2
+  | T_TripleTerm s1 p1 o1, T_TripleTerm s2 p2 o2 ->
+    subject_eq s1 s2 && p1 = p2 && rdf_term_eq o1 o2
   | _, _ -> false
 
 /// RDF 1.1 *value* equality for literals (distinct from `literal_eq`'s
@@ -409,7 +475,8 @@ let rdf_term_eq (t1 t2 : rdf_term) : bool =
 let literal_value_eq (l1 l2 : literal) : bool =
   l1.lexical_form = l2.lexical_form &&
   lang_tag_option_eq l1.lang_tag l2.lang_tag &&
-  l1.datatype = l2.datatype
+  l1.datatype = l2.datatype &&
+  l1.direction = l2.direction
 
 /// `subject_eq` is reflexive.
 let lemma_subject_eq_refl (s : subject) : Lemma (subject_eq s s = true) =
@@ -420,9 +487,11 @@ let lemma_subject_eq_refl (s : subject) : Lemma (subject_eq s s = true) =
 /// `literal_eq` is reflexive.
 let lemma_literal_eq_refl (l : literal) : Lemma (literal_eq l l = true) = ()
 
-/// `rdf_term_eq` is reflexive.
-let lemma_rdf_term_eq_refl (t : rdf_term) : Lemma (rdf_term_eq t t = true) =
+/// `rdf_term_eq` is reflexive. Recursive over the triple term's object
+/// sub-term (`decreases t`).
+let rec lemma_rdf_term_eq_refl (t : rdf_term) : Lemma (ensures rdf_term_eq t t = true) (decreases t) =
   match t with
   | T_IRI _ -> ()
   | T_BNode _ -> ()
   | T_Literal l -> lemma_literal_eq_refl l
+  | T_TripleTerm s _ o -> lemma_subject_eq_refl s; lemma_rdf_term_eq_refl o

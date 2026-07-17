@@ -103,6 +103,8 @@ let term_node_id (o : RDF_Term.rdf_term) :
   | RDF_Term.T_BNode b ->
       FStar_Pervasives_Native.Some ((strcat "_:" b), true)
   | RDF_Term.T_Literal uu___ -> FStar_Pervasives_Native.None
+  | RDF_Term.T_TripleTerm (uu___, uu___1, uu___2) ->
+      FStar_Pervasives_Native.None
 let starts_with_us (s : Prims.string) : Prims.bool=
   (((Parser_FastString.fs_byte_length s) >= (Prims.of_int (2))) &&
      ((Parser_FastString.fs_byte_at s Prims.int_zero) = (Prims.of_int (0x5F))))
@@ -323,6 +325,8 @@ let rdf_to_object (opts : from_rdf_options) (o : RDF_Term.rdf_term) :
   | RDF_Term.T_IRI i -> FStar_Pervasives_Native.Some (OV_Ref i)
   | RDF_Term.T_BNode b ->
       FStar_Pervasives_Native.Some (OV_Ref (strcat "_:" b))
+  | RDF_Term.T_TripleTerm (uu___, uu___1, uu___2) ->
+      FStar_Pervasives_Native.None
   | RDF_Term.T_Literal l ->
       let lex = l.RDF_Term.lexical_form in
       let dt = l.RDF_Term.datatype in

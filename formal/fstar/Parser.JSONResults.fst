@@ -325,7 +325,7 @@ let mk_literal (lexical : string) (dt : string) (lang : option string) : option 
     let lit : literal = {
       lexical_form = lexical;
       datatype = dt;
-      lang_tag = lang
+      lang_tag = lang; direction = None
     } in
     if literal_wf lit then Some (T_Literal lit) else None
   else None

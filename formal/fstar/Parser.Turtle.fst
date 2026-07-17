@@ -1213,14 +1213,14 @@ let parse_turtle_literal (st: turtle_state) (input: string) (pos: nat) : parse_r
   | ParseOk lexical pos' ->
     let len = fs_byte_length input in
     if pos' >= len then
-      ParseOk ({ lexical_form = lexical; datatype = xsd_string; lang_tag = None }) pos'
+      ParseOk ({ lexical_form = lexical; datatype = xsd_string; lang_tag = None; direction = None }) pos'
     else
       let next = fs_byte_index input pos' in
       let next_code = int_of_char next in
       if next_code = 0x40 then  (* '@' — language tag *)
         begin match parse_lang_tag input pos' with
         | ParseOk lang pos'' ->
-          ParseOk ({ lexical_form = lexical; datatype = rdf_lang_string; lang_tag = Some lang }) pos''
+          ParseOk ({ lexical_form = lexical; datatype = rdf_lang_string; lang_tag = Some lang; direction = None }) pos''
         | ParseFail msg fpos -> ParseFail msg fpos
         end
       else if next_code = 0x5E then  (* '^' — might be '^^' datatype *)
@@ -1231,17 +1231,17 @@ let parse_turtle_literal (st: turtle_state) (input: string) (pos: nat) : parse_r
             begin match parse_turtle_iri st input (pos' + 2) with
             | ParseOk dt pos'' ->
               if is_iri dt then
-                ParseOk ({ lexical_form = lexical; datatype = dt; lang_tag = None }) pos''
+                ParseOk ({ lexical_form = lexical; datatype = dt; lang_tag = None; direction = None }) pos''
               else
                 ParseFail "invalid datatype IRI" pos'
             | ParseFail msg fpos -> ParseFail msg fpos
             end
           else
-            ParseOk ({ lexical_form = lexical; datatype = xsd_string; lang_tag = None }) pos'
+            ParseOk ({ lexical_form = lexical; datatype = xsd_string; lang_tag = None; direction = None }) pos'
         else
-          ParseOk ({ lexical_form = lexical; datatype = xsd_string; lang_tag = None }) pos'
+          ParseOk ({ lexical_form = lexical; datatype = xsd_string; lang_tag = None; direction = None }) pos'
       else
-        ParseOk ({ lexical_form = lexical; datatype = xsd_string; lang_tag = None }) pos'
+        ParseOk ({ lexical_form = lexical; datatype = xsd_string; lang_tag = None; direction = None }) pos'
   | ParseFail msg fpos -> ParseFail msg fpos
 
 (* ================================================================ *)
@@ -1274,14 +1274,14 @@ let parse_boolean_literal (input: string) (pos: nat) : parse_result literal =
     if pn_chars_follows input pos' then
       ParseFail "expected boolean literal" pos
     else
-      ParseOk ({ lexical_form = "true"; datatype = xsd_boolean; lang_tag = None }) pos'
+      ParseOk ({ lexical_form = "true"; datatype = xsd_boolean; lang_tag = None; direction = None }) pos'
   | ParseFail _ _ ->
     begin match pstring "false" input pos with
     | ParseOk _ pos' ->
       if pn_chars_follows input pos' then
         ParseFail "expected boolean literal" pos
       else
-        ParseOk ({ lexical_form = "false"; datatype = xsd_boolean; lang_tag = None }) pos'
+        ParseOk ({ lexical_form = "false"; datatype = xsd_boolean; lang_tag = None; direction = None }) pos'
     | ParseFail _ _ -> ParseFail "expected boolean literal" pos
     end
 
@@ -1423,7 +1423,7 @@ let rec parse_turtle_object (st: turtle_state) (input: string) (pos: nat) (fuel:
           (* Try numeric literal *)
           begin match parse_numeric_literal input pos with
           | ParseOk (lexical, dt) pos' ->
-            let lit : literal = { lexical_form = lexical; datatype = dt; lang_tag = None } in
+            let lit : literal = { lexical_form = lexical; datatype = dt; lang_tag = None; direction = None } in
             if literal_wf lit then
               ParseOk ({ or_term = T_Literal lit; or_triples = []; or_state = st }) pos'
             else

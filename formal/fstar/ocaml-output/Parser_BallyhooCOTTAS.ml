@@ -190,11 +190,11 @@ let __proj__Mkcottas_dataset_store__item__cds_handle
   | { cds_artifact_path; cds_summary; cds_handle;_} -> cds_handle
 type cottas_named_graph_store =
   {
-  cngs_name: RDF_Graph_Executable.iri ;
+  cngs_name: RDF_Term.iri ;
   cngs_ref: cottas_graph_ref ;
   cngs_dataset: cottas_dataset_store }
 let __proj__Mkcottas_named_graph_store__item__cngs_name
-  (projectee : cottas_named_graph_store) : RDF_Graph_Executable.iri=
+  (projectee : cottas_named_graph_store) : RDF_Term.iri=
   match projectee with | { cngs_name; cngs_ref; cngs_dataset;_} -> cngs_name
 let __proj__Mkcottas_named_graph_store__item__cngs_ref
   (projectee : cottas_named_graph_store) : cottas_graph_ref=
@@ -305,12 +305,14 @@ module Ballyhoo_cottas_runtime = struct
             RDF_Graph_Executable.lexical_form = lexical;
             datatype = RDF_Graph_Executable.xsd_string;
             lang_tag = FStar_Pervasives_Native.None;
+            direction = FStar_Pervasives_Native.None;
           }
         else if String.length suffix >= 1 && suffix.[0] = '@' then
           Some {
             RDF_Graph_Executable.lexical_form = lexical;
             datatype = RDF_Graph_Executable.rdf_lang_string;
             lang_tag = FStar_Pervasives_Native.Some (String.sub suffix 1 (String.length suffix - 1));
+            direction = FStar_Pervasives_Native.None;
           }
         else if String.length suffix >= 4 && String.sub suffix 0 2 = "^^" then
           (match parse_iri_token (String.sub suffix 2 (String.length suffix - 2)) with
@@ -319,6 +321,7 @@ module Ballyhoo_cottas_runtime = struct
                RDF_Graph_Executable.lexical_form = lexical;
                datatype = dt;
                lang_tag = FStar_Pervasives_Native.None;
+               direction = FStar_Pervasives_Native.None;
              }
            | None -> None)
         else
@@ -674,12 +677,55 @@ let cottas_graph_candidates_for_predicate (ds : cottas_dataset_store)
   FStar_List_Tot_Base.filter
     (fun ng -> cottas_predicate_present_in_graph ng pred)
     (cottas_named_graphs ds)
+let cottas_lookup_named_graph (uu___ : cottas_dataset_store)
+  (uu___1 : RDF_Term.iri) :
+  cottas_named_graph_store FStar_Pervasives_Native.option=
+  failwith
+    "Not yet implemented: Parser.BallyhooCOTTAS.cottas_lookup_named_graph"
+let cottas_encode_subject (uu___ : cottas_dataset_store)
+  (uu___1 : RDF_Term.subject) :
+  cottas_term_ref FStar_Pervasives_Native.option=
+  failwith "Not yet implemented: Parser.BallyhooCOTTAS.cottas_encode_subject"
+let cottas_encode_predicate (uu___ : cottas_dataset_store)
+  (uu___1 : RDF_Term.wf_iri) :
+  cottas_term_ref FStar_Pervasives_Native.option=
+  failwith
+    "Not yet implemented: Parser.BallyhooCOTTAS.cottas_encode_predicate"
+let cottas_encode_object (uu___ : cottas_dataset_store)
+  (uu___1 : RDF_Term.rdf_term) :
+  cottas_term_ref FStar_Pervasives_Native.option=
+  failwith "Not yet implemented: Parser.BallyhooCOTTAS.cottas_encode_object"
+let cottas_encode_graph_name (uu___ : cottas_dataset_store)
+  (uu___1 : RDF_Term.iri) : cottas_graph_ref FStar_Pervasives_Native.option=
+  failwith
+    "Not yet implemented: Parser.BallyhooCOTTAS.cottas_encode_graph_name"
+let cottas_decode_subject (uu___ : cottas_dataset_store)
+  (uu___1 : cottas_term_ref) : RDF_Term.subject=
+  failwith "Not yet implemented: Parser.BallyhooCOTTAS.cottas_decode_subject"
+let cottas_decode_predicate (uu___ : cottas_dataset_store)
+  (uu___1 : cottas_term_ref) : RDF_Term.wf_iri=
+  failwith
+    "Not yet implemented: Parser.BallyhooCOTTAS.cottas_decode_predicate"
+let cottas_decode_object (uu___ : cottas_dataset_store)
+  (uu___1 : cottas_term_ref) : RDF_Term.rdf_term=
+  failwith "Not yet implemented: Parser.BallyhooCOTTAS.cottas_decode_object"
+let cottas_decode_graph_name (uu___ : cottas_dataset_store)
+  (uu___1 : cottas_graph_ref) : RDF_Term.iri=
+  failwith
+    "Not yet implemented: Parser.BallyhooCOTTAS.cottas_decode_graph_name"
+let cottas_predicate_present_in_graph (uu___ : cottas_named_graph_store)
+  (uu___1 : RDF_Term.wf_iri) : Prims.bool=
+  failwith
+    "Not yet implemented: Parser.BallyhooCOTTAS.cottas_predicate_present_in_graph"
+let cottas_graph_candidates_for_predicate (uu___ : cottas_dataset_store)
+  (uu___1 : RDF_Term.wf_iri) : cottas_named_graph_store Prims.list=
+  failwith
+    "Not yet implemented: Parser.BallyhooCOTTAS.cottas_graph_candidates_for_predicate"
 let cottas_build_bound_qp (ds : cottas_dataset_store)
-  (s : RDF_Graph_Executable.subject FStar_Pervasives_Native.option)
-  (p : RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option)
-  (o : RDF_Graph_Executable.rdf_term FStar_Pervasives_Native.option)
-  (g : RDF_Graph_Executable.iri FStar_Pervasives_Native.option) :
-  cottas_bound_qp=
+  (s : RDF_Term.subject FStar_Pervasives_Native.option)
+  (p : RDF_Term.wf_iri FStar_Pervasives_Native.option)
+  (o : RDF_Term.rdf_term FStar_Pervasives_Native.option)
+  (g : RDF_Term.iri FStar_Pervasives_Native.option) : cottas_bound_qp=
   {
     cbqp_s =
       (match s with
@@ -702,16 +748,16 @@ let cottas_build_bound_qp (ds : cottas_dataset_store)
             | FStar_Pervasives_Native.Some r -> CGB_Named r))
   }
 let cottas_row_to_quad (ds : cottas_dataset_store) (row : cottas_qp_row) :
-  (RDF_Graph_Executable.triple * RDF_Graph_Executable.iri
-    FStar_Pervasives_Native.option) FStar_Pervasives_Native.option=
+  (RDF_Triple.triple * RDF_Term.iri FStar_Pervasives_Native.option)
+    FStar_Pervasives_Native.option=
   match ((row.cqpr_s), (row.cqpr_p), (row.cqpr_o)) with
   | (FStar_Pervasives_Native.Some sr, FStar_Pervasives_Native.Some pr,
      FStar_Pervasives_Native.Some orf) ->
       FStar_Pervasives_Native.Some
         ({
-           RDF_Graph_Executable.s = (cottas_decode_subject ds sr);
-           RDF_Graph_Executable.p = (cottas_decode_predicate ds pr);
-           RDF_Graph_Executable.o = (cottas_decode_object ds orf)
+           RDF_Triple.s = (cottas_decode_subject ds sr);
+           RDF_Triple.p = (cottas_decode_predicate ds pr);
+           RDF_Triple.o = (cottas_decode_object ds orf)
          },
           ((match row.cqpr_g with
             | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
@@ -720,8 +766,8 @@ let cottas_row_to_quad (ds : cottas_dataset_store) (row : cottas_qp_row) :
   | uu___ -> FStar_Pervasives_Native.None
 let rec cottas_rows_to_quads (ds : cottas_dataset_store)
   (rows : cottas_qp_row Prims.list) :
-  (RDF_Graph_Executable.triple * RDF_Graph_Executable.iri
-    FStar_Pervasives_Native.option) Prims.list=
+  (RDF_Triple.triple * RDF_Term.iri FStar_Pervasives_Native.option)
+    Prims.list=
   match rows with
   | [] -> []
   | row::rest ->

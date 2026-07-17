@@ -110,7 +110,9 @@ let local_to_iri (lex : Prims.string) :
   else FStar_Pervasives_Native.None
 let typed_literal_const (ty : Prims.string) (lex : Prims.string) :
   RIF_Core_Syntax.rif_term FStar_Pervasives_Native.option=
-  if (RDF_Term.is_iri ty) && (ty <> RDF_Term.rdf_lang_string)
+  if
+    ((RDF_Term.is_iri ty) && (ty <> RDF_Term.rdf_lang_string)) &&
+      (ty <> RDF_Term.rdf_dir_lang_string)
   then
     FStar_Pervasives_Native.Some
       (RIF_Core_Syntax.mk_const
@@ -118,7 +120,8 @@ let typed_literal_const (ty : Prims.string) (lex : Prims.string) :
             {
               RDF_Term.lexical_form = lex;
               RDF_Term.datatype = ty;
-              RDF_Term.lang_tag = FStar_Pervasives_Native.None
+              RDF_Term.lang_tag = FStar_Pervasives_Native.None;
+              RDF_Term.direction = FStar_Pervasives_Native.None
             }))
   else FStar_Pervasives_Native.None
 let is_plain_literal_type_marker (ty : Prims.string) : Prims.bool=
@@ -161,7 +164,8 @@ let plain_literal_const (lex : Prims.string) :
                    {
                      RDF_Term.lexical_form = text;
                      RDF_Term.datatype = RDF_Term.xsd_string;
-                     RDF_Term.lang_tag = FStar_Pervasives_Native.None
+                     RDF_Term.lang_tag = FStar_Pervasives_Native.None;
+                     RDF_Term.direction = FStar_Pervasives_Native.None
                    }))
          else
            FStar_Pervasives_Native.Some
@@ -170,7 +174,8 @@ let plain_literal_const (lex : Prims.string) :
                    {
                      RDF_Term.lexical_form = text;
                      RDF_Term.datatype = RDF_Term.rdf_lang_string;
-                     RDF_Term.lang_tag = (FStar_Pervasives_Native.Some lang)
+                     RDF_Term.lang_tag = (FStar_Pervasives_Native.Some lang);
+                     RDF_Term.direction = FStar_Pervasives_Native.None
                    })))
 let const_from_type (ty : Prims.string) (lex : Prims.string) :
   RIF_Core_Syntax.rif_term FStar_Pervasives_Native.option=
@@ -203,7 +208,8 @@ let parse_const (n : Parser_XML.xml_node) :
                    {
                      RDF_Term.lexical_form = lex;
                      RDF_Term.datatype = RDF_Term.xsd_string;
-                     RDF_Term.lang_tag = FStar_Pervasives_Native.None
+                     RDF_Term.lang_tag = FStar_Pervasives_Native.None;
+                     RDF_Term.direction = FStar_Pervasives_Native.None
                    })))
   | uu___ -> FStar_Pervasives_Native.None
 let parse_var (n : Parser_XML.xml_node) :

@@ -24,29 +24,63 @@ type iri = Prims.string
 type wf_iri = iri
 let rdf_lang_string : wf_iri=
   "http://www.w3.org/1999/02/22-rdf-syntax-ns#langString"
+let rdf_dir_lang_string : wf_iri=
+  "http://www.w3.org/1999/02/22-rdf-syntax-ns#dirLangString"
+type text_direction =
+  | Dir_LTR 
+  | Dir_RTL 
+let uu___is_Dir_LTR (projectee : text_direction) : Prims.bool=
+  match projectee with | Dir_LTR -> true | uu___ -> false
+let uu___is_Dir_RTL (projectee : text_direction) : Prims.bool=
+  match projectee with | Dir_RTL -> true | uu___ -> false
 type literal =
   {
   lexical_form: Prims.string ;
   datatype: wf_iri ;
-  lang_tag: Prims.string FStar_Pervasives_Native.option }
+  lang_tag: Prims.string FStar_Pervasives_Native.option ;
+  direction: text_direction FStar_Pervasives_Native.option }
 let __proj__Mkliteral__item__lexical_form (projectee : literal) :
   Prims.string=
   match projectee with
-  | { lexical_form; datatype; lang_tag;_} -> lexical_form
+  | { lexical_form; datatype; lang_tag; direction;_} -> lexical_form
 let __proj__Mkliteral__item__datatype (projectee : literal) : wf_iri=
-  match projectee with | { lexical_form; datatype; lang_tag;_} -> datatype
+  match projectee with
+  | { lexical_form; datatype; lang_tag; direction;_} -> datatype
 let __proj__Mkliteral__item__lang_tag (projectee : literal) :
   Prims.string FStar_Pervasives_Native.option=
-  match projectee with | { lexical_form; datatype; lang_tag;_} -> lang_tag
+  match projectee with
+  | { lexical_form; datatype; lang_tag; direction;_} -> lang_tag
+let __proj__Mkliteral__item__direction (projectee : literal) :
+  text_direction FStar_Pervasives_Native.option=
+  match projectee with
+  | { lexical_form; datatype; lang_tag; direction;_} -> direction
 let literal_wf (l : literal) : Prims.bool=
-  match l.lang_tag with
-  | FStar_Pervasives_Native.None -> l.datatype <> rdf_lang_string
-  | FStar_Pervasives_Native.Some uu___ -> l.datatype = rdf_lang_string
+  match ((l.lang_tag), (l.direction)) with
+  | (FStar_Pervasives_Native.None, FStar_Pervasives_Native.None) ->
+      (l.datatype <> rdf_lang_string) && (l.datatype <> rdf_dir_lang_string)
+  | (FStar_Pervasives_Native.Some uu___, FStar_Pervasives_Native.None) ->
+      l.datatype = rdf_lang_string
+  | (FStar_Pervasives_Native.Some uu___, FStar_Pervasives_Native.Some uu___1)
+      -> l.datatype = rdf_dir_lang_string
+  | (FStar_Pervasives_Native.None, FStar_Pervasives_Native.Some uu___) ->
+      false
 type wf_literal = literal
+type subject =
+  | S_IRI of wf_iri 
+  | S_BNode of bnode_id 
+let uu___is_S_IRI (projectee : subject) : Prims.bool=
+  match projectee with | S_IRI _0 -> true | uu___ -> false
+let __proj__S_IRI__item___0 (projectee : subject) : wf_iri=
+  match projectee with | S_IRI _0 -> _0
+let uu___is_S_BNode (projectee : subject) : Prims.bool=
+  match projectee with | S_BNode _0 -> true | uu___ -> false
+let __proj__S_BNode__item___0 (projectee : subject) : bnode_id=
+  match projectee with | S_BNode _0 -> _0
 type rdf_term =
   | T_IRI of wf_iri 
   | T_BNode of bnode_id 
   | T_Literal of wf_literal 
+  | T_TripleTerm of subject * wf_iri * rdf_term 
 let uu___is_T_IRI (projectee : rdf_term) : Prims.bool=
   match projectee with | T_IRI _0 -> true | uu___ -> false
 let __proj__T_IRI__item___0 (projectee : rdf_term) : wf_iri=
@@ -59,17 +93,14 @@ let uu___is_T_Literal (projectee : rdf_term) : Prims.bool=
   match projectee with | T_Literal _0 -> true | uu___ -> false
 let __proj__T_Literal__item___0 (projectee : rdf_term) : wf_literal=
   match projectee with | T_Literal _0 -> _0
-type subject =
-  | S_IRI of wf_iri 
-  | S_BNode of bnode_id 
-let uu___is_S_IRI (projectee : subject) : Prims.bool=
-  match projectee with | S_IRI _0 -> true | uu___ -> false
-let __proj__S_IRI__item___0 (projectee : subject) : wf_iri=
-  match projectee with | S_IRI _0 -> _0
-let uu___is_S_BNode (projectee : subject) : Prims.bool=
-  match projectee with | S_BNode _0 -> true | uu___ -> false
-let __proj__S_BNode__item___0 (projectee : subject) : bnode_id=
-  match projectee with | S_BNode _0 -> _0
+let uu___is_T_TripleTerm (projectee : rdf_term) : Prims.bool=
+  match projectee with | T_TripleTerm (_0, _1, _2) -> true | uu___ -> false
+let __proj__T_TripleTerm__item___0 (projectee : rdf_term) : subject=
+  match projectee with | T_TripleTerm (_0, _1, _2) -> _0
+let __proj__T_TripleTerm__item___1 (projectee : rdf_term) : wf_iri=
+  match projectee with | T_TripleTerm (_0, _1, _2) -> _1
+let __proj__T_TripleTerm__item___2 (projectee : rdf_term) : rdf_term=
+  match projectee with | T_TripleTerm (_0, _1, _2) -> _2
 let xsd_string : wf_iri= "http://www.w3.org/2001/XMLSchema#string"
 let xsd_integer : wf_iri= "http://www.w3.org/2001/XMLSchema#integer"
 let xsd_decimal : wf_iri= "http://www.w3.org/2001/XMLSchema#decimal"
@@ -261,17 +292,21 @@ let xmlc_canonicalize (s : Prims.string) : FStar_Char.char Prims.list=
 let xml_canon_eq (s1 : Prims.string) (s2 : Prims.string) : Prims.bool=
   (xmlc_canonicalize s1) = (xmlc_canonicalize s2)
 let literal_eq (l1 : literal) (l2 : literal) : Prims.bool=
-  ((if (l1.datatype = rdf_XMLLiteral) && (l2.datatype = rdf_XMLLiteral)
-    then xml_canon_eq l1.lexical_form l2.lexical_form
-    else l1.lexical_form = l2.lexical_form) && (l1.datatype = l2.datatype))
-    && (lang_tag_option_eq l1.lang_tag l2.lang_tag)
-let rdf_term_eq (t1 : rdf_term) (t2 : rdf_term) : Prims.bool=
+  (((if (l1.datatype = rdf_XMLLiteral) && (l2.datatype = rdf_XMLLiteral)
+     then xml_canon_eq l1.lexical_form l2.lexical_form
+     else l1.lexical_form = l2.lexical_form) && (l1.datatype = l2.datatype))
+     && (lang_tag_option_eq l1.lang_tag l2.lang_tag))
+    && (l1.direction = l2.direction)
+let rec rdf_term_eq (t1 : rdf_term) (t2 : rdf_term) : Prims.bool=
   match (t1, t2) with
   | (T_IRI i1, T_IRI i2) -> i1 = i2
   | (T_BNode b1, T_BNode b2) -> b1 = b2
   | (T_Literal l1, T_Literal l2) -> literal_eq l1 l2
+  | (T_TripleTerm (s1, p1, o1), T_TripleTerm (s2, p2, o2)) ->
+      ((subject_eq s1 s2) && (p1 = p2)) && (rdf_term_eq o1 o2)
   | (uu___, uu___1) -> false
 let literal_value_eq (l1 : literal) (l2 : literal) : Prims.bool=
-  ((l1.lexical_form = l2.lexical_form) &&
-     (lang_tag_option_eq l1.lang_tag l2.lang_tag))
-    && (l1.datatype = l2.datatype)
+  (((l1.lexical_form = l2.lexical_form) &&
+      (lang_tag_option_eq l1.lang_tag l2.lang_tag))
+     && (l1.datatype = l2.datatype))
+    && (l1.direction = l2.direction)

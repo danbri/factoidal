@@ -1,5 +1,5 @@
 open Prims
-type binding_row = (Prims.string * RDF_Graph_Executable.rdf_term) Prims.list
+type binding_row = (Prims.string * RDF_Term.rdf_term) Prims.list
 type response_format =
   | RF_Json 
   | RF_Xml 
@@ -633,36 +633,57 @@ let rec nt_escape_chars (cs : FStar_Char.char Prims.list) : Prims.string=
               else Prims.strcat (char_to_string c) (nt_escape_chars rest)
 let nt_escape (s : Prims.string) : Prims.string=
   nt_escape_chars (FStar_String.list_of_string s)
-let json_term (t : RDF_Graph_Executable.rdf_term) : Prims.string=
+let rec json_term (t : RDF_Term.rdf_term) : Prims.string=
   match t with
-  | RDF_Graph_Executable.T_IRI i ->
+  | RDF_Term.T_IRI i ->
       Prims.strcat "{\"type\":\"uri\",\"value\":\""
         (Prims.strcat (json_escape i) "\"}")
-  | RDF_Graph_Executable.T_BNode b ->
+  | RDF_Term.T_BNode b ->
       Prims.strcat "{\"type\":\"bnode\",\"value\":\""
         (Prims.strcat (json_escape b) "\"}")
-  | RDF_Graph_Executable.T_Literal l ->
-      (match l.RDF_Graph_Executable.lang_tag with
+  | RDF_Term.T_Literal l ->
+      (match l.RDF_Term.lang_tag with
        | FStar_Pervasives_Native.Some tag ->
+           let dir_member =
+             match l.RDF_Term.direction with
+             | FStar_Pervasives_Native.Some (RDF_Term.Dir_LTR) ->
+                 ",\"its:dir\":\"ltr\""
+             | FStar_Pervasives_Native.Some (RDF_Term.Dir_RTL) ->
+                 ",\"its:dir\":\"rtl\""
+             | FStar_Pervasives_Native.None -> "" in
            Prims.strcat "{\"type\":\"literal\",\"value\":\""
-             (Prims.strcat (json_escape l.RDF_Graph_Executable.lexical_form)
+             (Prims.strcat (json_escape l.RDF_Term.lexical_form)
                 (Prims.strcat "\",\"xml:lang\":\""
-                   (Prims.strcat (json_escape tag) "\"}")))
+                   (Prims.strcat (json_escape tag)
+                      (Prims.strcat "\"" (Prims.strcat dir_member "}")))))
        | FStar_Pervasives_Native.None ->
-           if
-             l.RDF_Graph_Executable.datatype =
-               RDF_Graph_Executable.xsd_string
+           if l.RDF_Term.datatype = RDF_Term.xsd_string
            then
              Prims.strcat "{\"type\":\"literal\",\"value\":\""
-               (Prims.strcat
-                  (json_escape l.RDF_Graph_Executable.lexical_form) "\"}")
+               (Prims.strcat (json_escape l.RDF_Term.lexical_form) "\"}")
            else
              Prims.strcat "{\"type\":\"literal\",\"value\":\""
-               (Prims.strcat
-                  (json_escape l.RDF_Graph_Executable.lexical_form)
+               (Prims.strcat (json_escape l.RDF_Term.lexical_form)
                   (Prims.strcat "\",\"datatype\":\""
-                     (Prims.strcat
-                        (json_escape l.RDF_Graph_Executable.datatype) "\"}"))))
+                     (Prims.strcat (json_escape l.RDF_Term.datatype) "\"}"))))
+  | RDF_Term.T_TripleTerm (s, p, o) ->
+      let subj =
+        match s with
+        | RDF_Term.S_IRI i ->
+            Prims.strcat "{\"type\":\"uri\",\"value\":\""
+              (Prims.strcat (json_escape i) "\"}")
+        | RDF_Term.S_BNode b ->
+            Prims.strcat "{\"type\":\"bnode\",\"value\":\""
+              (Prims.strcat (json_escape b) "\"}") in
+      let pred =
+        Prims.strcat "{\"type\":\"uri\",\"value\":\""
+          (Prims.strcat (json_escape p) "\"}") in
+      Prims.strcat "{\"type\":\"triple\",\"value\":{\"subject\":"
+        (Prims.strcat subj
+           (Prims.strcat ",\"predicate\":"
+              (Prims.strcat pred
+                 (Prims.strcat ",\"object\":"
+                    (Prims.strcat (json_term o) "}}")))))
 let rec json_var_list_body (vars : Prims.string Prims.list)
   (first : Prims.bool) : Prims.string=
   match vars with
@@ -725,42 +746,60 @@ let rec xml_head_vars_body (vars : Prims.string Prims.list) : Prims.string=
       Prims.strcat "<variable name=\""
         (Prims.strcat (xml_escape v)
            (Prims.strcat "\"/>" (xml_head_vars_body rest)))
-let xml_binding (name : Prims.string) (t : RDF_Graph_Executable.rdf_term) :
-  Prims.string=
+let rec xml_term (t : RDF_Term.rdf_term) : Prims.string=
+  match t with
+  | RDF_Term.T_IRI i ->
+      Prims.strcat "<uri>" (Prims.strcat (xml_escape i) "</uri>")
+  | RDF_Term.T_BNode b ->
+      Prims.strcat "<bnode>" (Prims.strcat (xml_escape b) "</bnode>")
+  | RDF_Term.T_Literal l ->
+      (match l.RDF_Term.lang_tag with
+       | FStar_Pervasives_Native.Some tag ->
+           let dir_attr =
+             match l.RDF_Term.direction with
+             | FStar_Pervasives_Native.Some (RDF_Term.Dir_LTR) ->
+                 " its:dir=\"ltr\""
+             | FStar_Pervasives_Native.Some (RDF_Term.Dir_RTL) ->
+                 " its:dir=\"rtl\""
+             | FStar_Pervasives_Native.None -> "" in
+           Prims.strcat "<literal xml:lang=\""
+             (Prims.strcat (xml_escape tag)
+                (Prims.strcat "\""
+                   (Prims.strcat dir_attr
+                      (Prims.strcat ">"
+                         (Prims.strcat (xml_escape l.RDF_Term.lexical_form)
+                            "</literal>")))))
+       | FStar_Pervasives_Native.None ->
+           if l.RDF_Term.datatype = RDF_Term.xsd_string
+           then
+             Prims.strcat "<literal>"
+               (Prims.strcat (xml_escape l.RDF_Term.lexical_form)
+                  "</literal>")
+           else
+             Prims.strcat "<literal datatype=\""
+               (Prims.strcat (xml_escape l.RDF_Term.datatype)
+                  (Prims.strcat "\">"
+                     (Prims.strcat (xml_escape l.RDF_Term.lexical_form)
+                        "</literal>"))))
+  | RDF_Term.T_TripleTerm (s, p, o) ->
+      let subj =
+        match s with
+        | RDF_Term.S_IRI i ->
+            Prims.strcat "<uri>" (Prims.strcat (xml_escape i) "</uri>")
+        | RDF_Term.S_BNode b ->
+            Prims.strcat "<bnode>" (Prims.strcat (xml_escape b) "</bnode>") in
+      Prims.strcat "<triple><subject>"
+        (Prims.strcat subj
+           (Prims.strcat "</subject>"
+              (Prims.strcat "<predicate><uri>"
+                 (Prims.strcat (xml_escape p)
+                    (Prims.strcat "</uri></predicate>"
+                       (Prims.strcat "<object>"
+                          (Prims.strcat (xml_term o) "</object></triple>")))))))
+let xml_binding (name : Prims.string) (t : RDF_Term.rdf_term) : Prims.string=
   let open_tag =
     Prims.strcat "<binding name=\"" (Prims.strcat (xml_escape name) "\">") in
-  let inner =
-    match t with
-    | RDF_Graph_Executable.T_IRI i ->
-        Prims.strcat "<uri>" (Prims.strcat (xml_escape i) "</uri>")
-    | RDF_Graph_Executable.T_BNode b ->
-        Prims.strcat "<bnode>" (Prims.strcat (xml_escape b) "</bnode>")
-    | RDF_Graph_Executable.T_Literal l ->
-        (match l.RDF_Graph_Executable.lang_tag with
-         | FStar_Pervasives_Native.Some tag ->
-             Prims.strcat "<literal xml:lang=\""
-               (Prims.strcat (xml_escape tag)
-                  (Prims.strcat "\">"
-                     (Prims.strcat
-                        (xml_escape l.RDF_Graph_Executable.lexical_form)
-                        "</literal>")))
-         | FStar_Pervasives_Native.None ->
-             if
-               l.RDF_Graph_Executable.datatype =
-                 RDF_Graph_Executable.xsd_string
-             then
-               Prims.strcat "<literal>"
-                 (Prims.strcat
-                    (xml_escape l.RDF_Graph_Executable.lexical_form)
-                    "</literal>")
-             else
-               Prims.strcat "<literal datatype=\""
-                 (Prims.strcat (xml_escape l.RDF_Graph_Executable.datatype)
-                    (Prims.strcat "\">"
-                       (Prims.strcat
-                          (xml_escape l.RDF_Graph_Executable.lexical_form)
-                          "</literal>")))) in
-  Prims.strcat open_tag (Prims.strcat inner "</binding>")
+  Prims.strcat open_tag (Prims.strcat (xml_term t) "</binding>")
 let rec xml_row_body (row : binding_row) : Prims.string=
   match row with
   | [] -> ""
@@ -794,17 +833,26 @@ let serialise_response_boolean_xml (b : Prims.bool) : Prims.string=
        (Prims.strcat "<head></head>"
           (Prims.strcat "<boolean>"
              (Prims.strcat value "</boolean></sparql>"))))
-let csv_cell
-  (t_opt : RDF_Graph_Executable.rdf_term FStar_Pervasives_Native.option) :
+let rec csv_plain_term (t : RDF_Term.rdf_term) : Prims.string=
+  match t with
+  | RDF_Term.T_IRI i -> i
+  | RDF_Term.T_BNode b -> Prims.strcat "_:" b
+  | RDF_Term.T_Literal l -> l.RDF_Term.lexical_form
+  | RDF_Term.T_TripleTerm (s, p, o) ->
+      let subj =
+        match s with
+        | RDF_Term.S_IRI i -> i
+        | RDF_Term.S_BNode b -> Prims.strcat "_:" b in
+      Prims.strcat "<<( "
+        (Prims.strcat subj
+           (Prims.strcat " "
+              (Prims.strcat p
+                 (Prims.strcat " " (Prims.strcat (csv_plain_term o) " )>>")))))
+let csv_cell (t_opt : RDF_Term.rdf_term FStar_Pervasives_Native.option) :
   Prims.string=
   match t_opt with
   | FStar_Pervasives_Native.None -> ""
-  | FStar_Pervasives_Native.Some (RDF_Graph_Executable.T_IRI i) ->
-      csv_escape i
-  | FStar_Pervasives_Native.Some (RDF_Graph_Executable.T_BNode b) ->
-      csv_escape (Prims.strcat "_:" b)
-  | FStar_Pervasives_Native.Some (RDF_Graph_Executable.T_Literal l) ->
-      csv_escape l.RDF_Graph_Executable.lexical_form
+  | FStar_Pervasives_Native.Some t -> csv_escape (csv_plain_term t)
 let rec csv_header_body (vars : Prims.string Prims.list) (first : Prims.bool)
   : Prims.string=
   match vars with
@@ -844,27 +892,40 @@ let serialise_response_csv (vars : Prims.string Prims.list)
   let body_pieces = FStar_List_Tot_Base.rev (csv_rows_body_acc vars rows []) in
   Prims.strcat (csv_header_body vars true)
     (Prims.strcat "\r\n" (FStar_String.concat "" body_pieces))
-let tsv_term (t : RDF_Graph_Executable.rdf_term) : Prims.string=
+let rec tsv_term (t : RDF_Term.rdf_term) : Prims.string=
   match t with
-  | RDF_Graph_Executable.T_IRI i -> Prims.strcat "<" (Prims.strcat i ">")
-  | RDF_Graph_Executable.T_BNode b -> Prims.strcat "_:" b
-  | RDF_Graph_Executable.T_Literal l ->
-      let escaped = nt_escape l.RDF_Graph_Executable.lexical_form in
-      (match l.RDF_Graph_Executable.lang_tag with
+  | RDF_Term.T_IRI i -> Prims.strcat "<" (Prims.strcat i ">")
+  | RDF_Term.T_BNode b -> Prims.strcat "_:" b
+  | RDF_Term.T_Literal l ->
+      let escaped = nt_escape l.RDF_Term.lexical_form in
+      (match l.RDF_Term.lang_tag with
        | FStar_Pervasives_Native.Some tag ->
-           Prims.strcat "\"" (Prims.strcat escaped (Prims.strcat "\"@" tag))
+           let ds =
+             match l.RDF_Term.direction with
+             | FStar_Pervasives_Native.Some (RDF_Term.Dir_LTR) -> "--ltr"
+             | FStar_Pervasives_Native.Some (RDF_Term.Dir_RTL) -> "--rtl"
+             | FStar_Pervasives_Native.None -> "" in
+           Prims.strcat "\""
+             (Prims.strcat escaped (Prims.strcat "\"@" (Prims.strcat tag ds)))
        | FStar_Pervasives_Native.None ->
-           if
-             l.RDF_Graph_Executable.datatype =
-               RDF_Graph_Executable.xsd_string
+           if l.RDF_Term.datatype = RDF_Term.xsd_string
            then Prims.strcat "\"" (Prims.strcat escaped "\"")
            else
              Prims.strcat "\""
                (Prims.strcat escaped
                   (Prims.strcat "\"^^<"
-                     (Prims.strcat l.RDF_Graph_Executable.datatype ">"))))
-let tsv_cell
-  (t_opt : RDF_Graph_Executable.rdf_term FStar_Pervasives_Native.option) :
+                     (Prims.strcat l.RDF_Term.datatype ">"))))
+  | RDF_Term.T_TripleTerm (s, p, o) ->
+      let subj =
+        match s with
+        | RDF_Term.S_IRI i -> Prims.strcat "<" (Prims.strcat i ">")
+        | RDF_Term.S_BNode b -> Prims.strcat "_:" b in
+      Prims.strcat "<<( "
+        (Prims.strcat subj
+           (Prims.strcat " <"
+              (Prims.strcat p
+                 (Prims.strcat "> " (Prims.strcat (tsv_term o) " )>>")))))
+let tsv_cell (t_opt : RDF_Term.rdf_term FStar_Pervasives_Native.option) :
   Prims.string=
   match t_opt with
   | FStar_Pervasives_Native.None -> ""
@@ -919,13 +980,14 @@ let content_type_for (f : response_format) : Prims.string=
   | RF_NTriples -> "application/n-triples"
   | RF_Text -> "text/plain"
 let lit_str (s : Prims.string) :
-  RDF_Graph_Executable.rdf_term FStar_Pervasives_Native.option=
+  RDF_Term.rdf_term FStar_Pervasives_Native.option=
   let l =
     {
-      RDF_Graph_Executable.lexical_form = s;
-      RDF_Graph_Executable.datatype = RDF_Graph_Executable.xsd_string;
-      RDF_Graph_Executable.lang_tag = FStar_Pervasives_Native.None
+      RDF_Term.lexical_form = s;
+      RDF_Term.datatype = RDF_Term.xsd_string;
+      RDF_Term.lang_tag = FStar_Pervasives_Native.None;
+      RDF_Term.direction = FStar_Pervasives_Native.None
     } in
-  if RDF_Graph_Executable.literal_wf l
-  then FStar_Pervasives_Native.Some (RDF_Graph_Executable.T_Literal l)
+  if RDF_Term.literal_wf l
+  then FStar_Pervasives_Native.Some (RDF_Term.T_Literal l)
   else FStar_Pervasives_Native.None

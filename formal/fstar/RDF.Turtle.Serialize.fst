@@ -110,17 +110,31 @@ let ts_abbreviate_iri (table : prefix_table) (iri : string) : Tot string =
 // pure compaction with no ambiguity risk.
 // ---------------------------------------------------------------
 
-let ts_term_to_turtle (table : prefix_table) (t : rdf_term) : Tot string =
+let rec ts_term_to_turtle (table : prefix_table) (t : rdf_term) : Tot string (decreases t) =
   match t with
   | T_IRI i -> ts_abbreviate_iri table i
   | T_BNode b -> "_:" ^ b
   | T_Literal l ->
     let esc = nq_escape_literal l.lexical_form in
     (match l.lang_tag with
-     | Some tag -> "\"" ^ esc ^ "\"@" ^ tag
+     | Some tag ->
+       // RDF 1.2 directional language string: append `--ltr`/`--rtl`.
+       // Empty for RDF 1.1 langString (direction = None).
+       let ds = (match l.direction with
+                 | Some Dir_LTR -> "--ltr"
+                 | Some Dir_RTL -> "--rtl"
+                 | None -> "") in
+       "\"" ^ esc ^ "\"@" ^ tag ^ ds
      | None ->
        if l.datatype = xsd_string then "\"" ^ esc ^ "\""
        else "\"" ^ esc ^ "\"^^" ^ ts_abbreviate_iri table l.datatype)
+  | T_TripleTerm s p o ->
+    // RDF 1.2 triple term `<<( s p o )>>` (Turtle 1.2 object position).
+    let subj_str = (match s with
+                    | S_IRI i   -> ts_abbreviate_iri table i
+                    | S_BNode b -> "_:" ^ b) in
+    let pred_str = (if p = rdf_type then "a" else ts_abbreviate_iri table p) in
+    "<<( " ^ subj_str ^ " " ^ pred_str ^ " " ^ ts_term_to_turtle table o ^ " )>>"
 
 let ts_subject_to_turtle (table : prefix_table) (s : subject) : Tot string =
   match s with
@@ -284,7 +298,11 @@ let rec collect_iris_acc (g : rdf_graph) (acc : list string)
        | T_Literal l ->
          (match l.lang_tag with
           | Some _ -> acc2
-          | None -> if l.datatype = xsd_string then acc2 else l.datatype :: acc2))
+          | None -> if l.datatype = xsd_string then acc2 else l.datatype :: acc2)
+       // RDF 1.2 triple term: conservatively skip collecting the IRIs
+       // nested inside it — correctness is preserved (those IRIs simply
+       // print un-abbreviated), which is acceptable for the pretty path.
+       | T_TripleTerm _ _ _ -> acc2)
     in
     collect_iris_acc rest acc3
 

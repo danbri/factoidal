@@ -62,6 +62,7 @@ let rif_term_to_subject (t : Syn.rif_term)
   | Syn.RIF_Const (T_IRI i)   -> Some (PS_IRI i)
   | Syn.RIF_Const (T_BNode b) -> Some (PS_BNode b)
   | Syn.RIF_Const (T_Literal _) -> None
+  | Syn.RIF_Const (T_TripleTerm _ _ _) -> None   // triple terms are object-only, never a subject
   | Syn.RIF_TermExternal _ _ ->
     // External(...) used as a TERM only ever appears nested inside a
     // rule HEAD atom's arguments or an Equal operand in this project's
@@ -81,6 +82,7 @@ let rif_term_to_pattern (t : Syn.rif_term)
   | Syn.RIF_Const (T_IRI i)   -> PT_IRI i
   | Syn.RIF_Const (T_BNode b) -> PT_BNode b
   | Syn.RIF_Const (T_Literal l) -> PT_Literal l
+  | Syn.RIF_Const (T_TripleTerm _ _ _) -> PT_Var "$$triple-term-unsupported$$"  // no triple-term pattern_term (#305 P6)
   | Syn.RIF_TermExternal _ _ ->
     // Same rationale as rif_term_to_subject above: an unevaluated
     // builtin call should never reach ordinary-atom BGP translation
@@ -115,7 +117,7 @@ let rif_rdfs_subclassof : wf_iri = rdfs_subClassOf
 // ------------------------------------------------------------------
 
 let rif_uniterm_true_marker : rdf_term =
-  T_Literal ({ lexical_form = "true"; datatype = xsd_boolean; lang_tag = None })
+  T_Literal ({ lexical_form = "true"; datatype = xsd_boolean; lang_tag = None; direction = None })
 
 let rif_uniterm_nullary_subject : wf_iri =
   assert_norm (is_iri "urn:rif-nullary:subject"); "urn:rif-nullary:subject"
@@ -147,6 +149,7 @@ let rif_term_to_uniterm_subject (t : Syn.rif_term) : option pattern_subject =
   | Syn.RIF_Const (T_IRI i)   -> Some (PS_IRI i)
   | Syn.RIF_Const (T_BNode b) -> Some (PS_BNode b)
   | Syn.RIF_Const (T_Literal l) -> Some (PS_BNode (literal_subject_bnode_label l))
+  | Syn.RIF_Const (T_TripleTerm _ _ _) -> None
   | Syn.RIF_TermExternal _ _  -> None
 
 // ------------------------------------------------------------------
@@ -208,7 +211,7 @@ let uniterm_anchor_var (idx : nat) : string =
 // bookkeeping (no vendored fixture exercises adversarial lexical
 // forms, and a collision only ever MERGES two facts' anchors —
 // detected immediately by the corpus's ground conclusions).
-let rif_term_anchor_fragment (t : rdf_term) : string =
+let rec rif_term_anchor_fragment (t : rdf_term) : Tot string (decreases t) =
   match t with
   | T_IRI i -> String.concat "" ["i:"; i]
   | T_BNode b -> String.concat "" ["b:"; b]
@@ -218,6 +221,12 @@ let rif_term_anchor_fragment (t : rdf_term) : string =
       (match l.lang_tag with Some tg -> tg | None -> ""); ":";
       l.lexical_form
     ]
+  // RIF Core never emits triple terms; a structural fragment keeps the
+  // anchor total and distinct from the i:/b:/l: families.
+  | T_TripleTerm s p o ->
+    let subj = (match s with S_IRI i -> String.concat "" ["i:"; i]
+                           | S_BNode b -> String.concat "" ["b:"; b]) in
+    String.concat "" ["t:"; subj; ":"; p; ":"; rif_term_anchor_fragment o]
 
 let rec anchor_fragments (ts : list rdf_term) : Tot (list string) (decreases ts) =
   match ts with
@@ -483,7 +492,12 @@ let triple_to_pattern (t : triple) : triple_pattern =
     tp_o = (match t.o with
             | T_IRI i -> PT_IRI i
             | T_BNode b -> PT_BNode b
-            | T_Literal l -> PT_Literal l) }
+            | T_Literal l -> PT_Literal l
+            // RIF Core facts never contain triple terms and the algebra's
+            // pattern_term has no triple-term form yet (#305 P6); this arm
+            // is unreachable in practice — a clearly-marked sentinel bnode
+            // keeps the conversion total.
+            | T_TripleTerm _ _ _ -> PT_BNode "rif_triple_term_unsupported") }
 
 let graph_to_bgp (g : rdf_graph) : bgp =
   List.Tot.map triple_to_pattern g

@@ -159,6 +159,8 @@ let term_key (o : RDF_Term.rdf_term) :
   | RDF_Term.T_IRI i -> FStar_Pervasives_Native.Some (Prims.strcat "I" i)
   | RDF_Term.T_BNode b -> FStar_Pervasives_Native.Some (Prims.strcat "B" b)
   | RDF_Term.T_Literal uu___ -> FStar_Pervasives_Native.None
+  | RDF_Term.T_TripleTerm (uu___, uu___1, uu___2) ->
+      FStar_Pervasives_Native.None
 let term_is_iri (o : RDF_Term.rdf_term) (i : Prims.string) : Prims.bool=
   match o with | RDF_Term.T_IRI x -> x = i | uu___ -> false
 let rec subjects_typed (g : RDF_Triple.triple Prims.list) (ty : Prims.string)
@@ -373,6 +375,7 @@ let typing_only_triple (t : RDF_Triple.triple) : Prims.bool=
     (match t.RDF_Triple.o with
      | RDF_Term.T_BNode uu___ -> true
      | RDF_Term.T_Literal uu___ -> false
+     | RDF_Term.T_TripleTerm (uu___, uu___1, uu___2) -> false
      | RDF_Term.T_IRI o ->
          (FStar_List_Tot_Base.mem o headerless_type_whitelist) ||
            (Prims.op_Negation (iri_reserved o)))
@@ -434,6 +437,8 @@ let triple_violations (g : RDF_Triple.triple Prims.list) (d : decl_index)
     else
       (match t.RDF_Triple.o with
        | RDF_Term.T_Literal uu___1 -> ["literal-as-type-object"]
+       | RDF_Term.T_TripleTerm (uu___1, uu___2, uu___3) ->
+           ["triple-term-as-type-object"]
        | RDF_Term.T_BNode b ->
            if class_evidence g d (Prims.strcat "B" b)
            then []
@@ -454,6 +459,8 @@ let triple_violations (g : RDF_Triple.triple Prims.list) (d : decl_index)
     else
       (match t.RDF_Triple.o with
        | RDF_Term.T_Literal uu___1 -> ["literal-as-onProperty"]
+       | RDF_Term.T_TripleTerm (uu___1, uu___2, uu___3) ->
+           ["triple-term-as-onProperty"]
        | RDF_Term.T_BNode b ->
            if FStar_List_Tot_Base.mem (Prims.strcat "B" b) d.d_inv
            then []

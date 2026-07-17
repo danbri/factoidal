@@ -71,7 +71,7 @@ let __proj__GTS_Mismatch__item__iri (projectee : ggp_target_status) :
 let uu___is_GTS_NonIri (projectee : ggp_target_status) : Prims.bool=
   match projectee with | GTS_NonIri -> true | uu___ -> false
 let check_ggp_graph_target (g : SPARQL11_Algebra.group_graph_pattern)
-  (usergraph : RDF_Graph_Executable.wf_iri) : ggp_target_status=
+  (usergraph : RDF_Term.wf_iri) : ggp_target_status=
   match g with
   | SPARQL11_Algebra.GP_Graph (pt, _inner) ->
       (match pt with
@@ -80,8 +80,7 @@ let check_ggp_graph_target (g : SPARQL11_Algebra.group_graph_pattern)
        | uu___ -> GTS_NonIri)
   | uu___ -> GTS_Ok
 let wrap_if_unwrapped (g : SPARQL11_Algebra.group_graph_pattern)
-  (usergraph : RDF_Graph_Executable.wf_iri) :
-  SPARQL11_Algebra.group_graph_pattern=
+  (usergraph : RDF_Term.wf_iri) : SPARQL11_Algebra.group_graph_pattern=
   match g with
   | SPARQL11_Algebra.GP_Graph (uu___, uu___1) -> g
   | uu___ ->
@@ -99,8 +98,8 @@ let uu___is_GCR_Reject (projectee : ggp_check_result) : Prims.bool=
 let __proj__GCR_Reject__item___0 (projectee : ggp_check_result) :
   Prims.string= match projectee with | GCR_Reject _0 -> _0
 let check_ggp (which : Prims.string)
-  (g : SPARQL11_Algebra.group_graph_pattern)
-  (usergraph : RDF_Graph_Executable.wf_iri) : ggp_check_result=
+  (g : SPARQL11_Algebra.group_graph_pattern) (usergraph : RDF_Term.wf_iri) :
+  ggp_check_result=
   match check_ggp_graph_target g usergraph with
   | GTS_Ok -> GCR_Rewrite (wrap_if_unwrapped g usergraph)
   | GTS_Mismatch iri ->
@@ -125,7 +124,7 @@ let uu___is_GRCR_Reject (projectee : gref_check_result) : Prims.bool=
 let __proj__GRCR_Reject__item___0 (projectee : gref_check_result) :
   Prims.string= match projectee with | GRCR_Reject _0 -> _0
 let check_gref (which : Prims.string) (gr : SPARQL11_Algebra.graph_ref)
-  (usergraph : RDF_Graph_Executable.wf_iri) : gref_check_result=
+  (usergraph : RDF_Term.wf_iri) : gref_check_result=
   match gr with
   | SPARQL11_Algebra.GR_Graph iri ->
       if iri = usergraph
@@ -178,14 +177,14 @@ let __proj__TOR_Reject__item___0 (projectee : tpl_opt_result) : Prims.string=
   match projectee with | TOR_Reject _0 -> _0
 let check_tpl_opt (label : Prims.string)
   (t : SPARQL11_Algebra.group_graph_pattern FStar_Pervasives_Native.option)
-  (usergraph : RDF_Graph_Executable.wf_iri) : tpl_opt_result=
+  (usergraph : RDF_Term.wf_iri) : tpl_opt_result=
   match t with
   | FStar_Pervasives_Native.None -> TOR_Rewrite FStar_Pervasives_Native.None
   | FStar_Pervasives_Native.Some g ->
       (match check_ggp label g usergraph with
        | GCR_Rewrite g' -> TOR_Rewrite (FStar_Pervasives_Native.Some g')
        | GCR_Reject msg -> TOR_Reject msg)
-let sandbox_op (usergraph : RDF_Graph_Executable.wf_iri)
+let sandbox_op (usergraph : RDF_Term.wf_iri)
   (op : SPARQL11_Algebra.update_op) : sandbox_result=
   match op with
   | SPARQL11_Algebra.U_InsertData g ->
@@ -264,7 +263,7 @@ let uu___is_USR_Error (projectee : update_sandbox_result) : Prims.bool=
   match projectee with | USR_Error _0 -> true | uu___ -> false
 let __proj__USR_Error__item___0 (projectee : update_sandbox_result) :
   Prims.string= match projectee with | USR_Error _0 -> _0
-let rec sandbox_ops_aux (usergraph : RDF_Graph_Executable.wf_iri)
+let rec sandbox_ops_aux (usergraph : RDF_Term.wf_iri)
   (acc : SPARQL11_Algebra.update_op Prims.list)
   (ops : SPARQL11_Algebra.update_op Prims.list) :
   (Prims.string, SPARQL11_Algebra.update_op Prims.list)
@@ -275,7 +274,7 @@ let rec sandbox_ops_aux (usergraph : RDF_Graph_Executable.wf_iri)
       (match sandbox_op usergraph op with
        | SB_Ok op' -> sandbox_ops_aux usergraph (op' :: acc) rest
        | SB_Reject msg -> FStar_Pervasives.Inl msg)
-let sandbox_update (usergraph : RDF_Graph_Executable.wf_iri)
+let sandbox_update (usergraph : RDF_Term.wf_iri)
   (u : SPARQL11_Algebra.sparql_update) : update_sandbox_result=
   match sandbox_ops_aux usergraph [] u.SPARQL11_Algebra.u_ops with
   | FStar_Pervasives.Inl msg -> USR_Error msg

@@ -152,7 +152,8 @@ let parse_fs_literal (prefixes : (Prims.string * Prims.string) Prims.list)
                     {
                       RDF_Term.lexical_form = lexical;
                       RDF_Term.datatype = dt;
-                      RDF_Term.lang_tag = FStar_Pervasives_Native.None
+                      RDF_Term.lang_tag = FStar_Pervasives_Native.None;
+                      RDF_Term.direction = FStar_Pervasives_Native.None
                     } in
                   (if RDF_Term.literal_wf lit
                    then FStar_Pervasives_Native.Some (lit, pos2)
@@ -172,6 +173,8 @@ let term_to_subject (t : RDF_Term.rdf_term) :
   | RDF_Term.T_IRI i -> FStar_Pervasives_Native.Some (RDF_Term.S_IRI i)
   | RDF_Term.T_BNode b -> FStar_Pervasives_Native.Some (RDF_Term.S_BNode b)
   | RDF_Term.T_Literal uu___ -> FStar_Pervasives_Native.None
+  | RDF_Term.T_TripleTerm (uu___, uu___1, uu___2) ->
+      FStar_Pervasives_Native.None
 let rec parse_prefixes_acc (input : Prims.string) (pos : Prims.nat)
   (acc : (Prims.string * Prims.string) Prims.list) (fuel : Prims.nat) :
   ((Prims.string * Prims.string) Prims.list * Prims.nat)

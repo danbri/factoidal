@@ -2107,20 +2107,24 @@ let make_plain_literal (lex : Prims.string) : RDF_Term.wf_literal=
   {
     RDF_Term.lexical_form = lex;
     RDF_Term.datatype = "http://www.w3.org/2001/XMLSchema#string";
-    RDF_Term.lang_tag = FStar_Pervasives_Native.None
+    RDF_Term.lang_tag = FStar_Pervasives_Native.None;
+    RDF_Term.direction = FStar_Pervasives_Native.None
   }
 let make_typed_literal (lex : Prims.string) (dt : Prims.string) :
   RDF_Term.wf_literal FStar_Pervasives_Native.option=
   if RDF_Term.is_iri dt
   then
-    (if dt = "http://www.w3.org/1999/02/22-rdf-syntax-ns#langString"
+    (if
+       (dt = "http://www.w3.org/1999/02/22-rdf-syntax-ns#langString") ||
+         (dt = "http://www.w3.org/1999/02/22-rdf-syntax-ns#dirLangString")
      then FStar_Pervasives_Native.None
      else
        FStar_Pervasives_Native.Some
          {
            RDF_Term.lexical_form = lex;
            RDF_Term.datatype = dt;
-           RDF_Term.lang_tag = FStar_Pervasives_Native.None
+           RDF_Term.lang_tag = FStar_Pervasives_Native.None;
+           RDF_Term.direction = FStar_Pervasives_Native.None
          })
   else FStar_Pervasives_Native.None
 let make_lang_literal (lex : Prims.string) (lang : Prims.string) :
@@ -2129,7 +2133,8 @@ let make_lang_literal (lex : Prims.string) (lang : Prims.string) :
     RDF_Term.lexical_form = lex;
     RDF_Term.datatype =
       "http://www.w3.org/1999/02/22-rdf-syntax-ns#langString";
-    RDF_Term.lang_tag = (FStar_Pervasives_Native.Some lang)
+    RDF_Term.lang_tag = (FStar_Pervasives_Native.Some lang);
+    RDF_Term.direction = FStar_Pervasives_Native.None
   }
 let rdf_type_iri_str : RDF_Term.wf_iri=
   "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"

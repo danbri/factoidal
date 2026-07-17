@@ -256,12 +256,12 @@ let local_to_iri (lex : string) : option Syn.rif_term =
   else None
 
 let typed_literal_const (ty : string) (lex : string) : option Syn.rif_term =
-  if is_iri ty && ty <> rdf_lang_string
+  if is_iri ty && ty <> rdf_lang_string && ty <> rdf_dir_lang_string
   then
     Some (Syn.mk_const (T_Literal ({
       lexical_form = lex;
       datatype = ty;
-      lang_tag = None;
+      lang_tag = None; direction = None 
     })))
   else None
 
@@ -315,12 +315,12 @@ let plain_literal_const (lex : string) : option Syn.rif_term =
       then Some (Syn.mk_const (T_Literal ({
              lexical_form = text;
              datatype = xsd_string;
-             lang_tag = None;
+             lang_tag = None; direction = None 
            })))
       else Some (Syn.mk_const (T_Literal ({
              lexical_form = text;
              datatype = rdf_lang_string;
-             lang_tag = Some lang;
+             lang_tag = Some lang; direction = None 
            })))
 
 let const_from_type (ty : string) (lex : string) : option Syn.rif_term =
@@ -354,7 +354,7 @@ let parse_const (n : xml_node) : option Syn.rif_term =
        Some (Syn.mk_const (T_Literal ({
          lexical_form = lex;
          datatype = xsd_string;
-         lang_tag = None;
+         lang_tag = None; direction = None 
        }))))
   | _ -> None
 
