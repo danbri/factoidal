@@ -249,10 +249,23 @@ let dataset_quads (ds : rdf_dataset) : list qquad =
 (* ------------------------------------------------------------------ *)
 (* Section 3. Blank-node enumeration. *)
 
+// RDF 1.2: blank nodes may appear inside a triple term `<<( s p o )>>`
+// (subject slot and, recursively, the object slot). Canonicalization
+// must see them so they are issued canonical identifiers, HFDQ-hashed,
+// and relabelled. For a non-triple-term term this reduces to the RDF
+// 1.1 behaviour (a bare bnode contributes itself; anything else,
+// nothing), so RDF 1.1 graphs are unaffected.
+let rec bnodes_in_term (t : rdf_term) : Tot (list bnode_id) (decreases t) =
+  match t with
+  | T_BNode b -> [b]
+  | T_TripleTerm s _ o ->
+    (match s with | S_BNode b -> [b] | _ -> []) @ bnodes_in_term o
+  | _ -> []
+
 let bnodes_in_quad (qq : qquad) : list bnode_id =
   let (g, t) = qq in
   let l1 = match t.s with | S_BNode b -> [b] | _ -> [] in
-  let l2 = match t.o with | T_BNode b -> [b] | _ -> [] in
+  let l2 = bnodes_in_term t.o in
   // N-Quads/TriG bnode graph names are encoded as "_:label" in the
   // iri-typed `ng_name` slot. Surface them so HFDQ visits them.
   let l3 = match g with
@@ -296,9 +309,16 @@ let rewrite_subject_for_hfdq (target : bnode_id) (s : subject) : subject =
   | S_BNode b -> if b = target then S_BNode "a" else S_BNode "z"
   | S_IRI _ -> s
 
-let rewrite_term_for_hfdq (target : bnode_id) (t : rdf_term) : rdf_term =
+let rec rewrite_term_for_hfdq (target : bnode_id) (t : rdf_term) : Tot rdf_term (decreases t) =
   match t with
   | T_BNode b -> if b = target then T_BNode "a" else T_BNode "z"
+  // RDF 1.2: rewrite blank nodes inside a triple term too, so a bnode's
+  // first-degree hash reflects its occurrences within triple terms.
+  | T_TripleTerm s p o ->
+    let s' = (match s with
+              | S_BNode b -> if b = target then S_BNode "a" else S_BNode "z"
+              | S_IRI _ -> s) in
+    T_TripleTerm s' p (rewrite_term_for_hfdq target o)
   | _ -> t
 
 let rewrite_triple_for_hfdq (target : bnode_id) (t : triple) : triple =
@@ -311,7 +331,7 @@ let rewrite_triple_for_hfdq (target : bnode_id) (t : triple) : triple =
 let quad_mentions_bnode (target : bnode_id) (q : qquad) : bool =
   let (g, t) = q in
   (match t.s with | S_BNode b -> b = target | _ -> false) ||
-  (match t.o with | T_BNode b -> b = target | _ -> false) ||
+  (List.Tot.mem target (bnodes_in_term t.o)) ||
   (match g with
    | Some gi -> is_bnode_graph_label gi
                 && bnode_of_graph_label gi = target
@@ -1249,12 +1269,15 @@ let relabel_subject (mapping : bn_lookup_tree) (s : subject) : subject =
      | Some lbl -> S_BNode lbl
      | None -> s)
 
-let relabel_term (mapping : bn_lookup_tree) (t : rdf_term) : rdf_term =
+let rec relabel_term (mapping : bn_lookup_tree) (t : rdf_term) : Tot rdf_term (decreases t) =
   match t with
   | T_BNode b ->
     (match bn_lookup_tree_find b mapping with
      | Some lbl -> T_BNode lbl
      | None -> t)
+  // RDF 1.2: apply the canonical relabelling inside triple terms too.
+  | T_TripleTerm s p o ->
+    T_TripleTerm (relabel_subject mapping s) p (relabel_term mapping o)
   | _ -> t
 
 let relabel_triple (mapping : bn_lookup_tree) (t : triple) : triple =

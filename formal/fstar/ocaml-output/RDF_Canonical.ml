@@ -179,14 +179,22 @@ let dataset_quads (ds : RDF_Graph.rdf_dataset) : qquad Prims.list=
     (flatten_named_rev_onto ds.RDF_Graph.ds_named
        (attach_graph_rev_onto FStar_Pervasives_Native.None
           ds.RDF_Graph.ds_default []))
+let rec bnodes_in_term (t : RDF_Term.rdf_term) :
+  RDF_Term.bnode_id Prims.list=
+  match t with
+  | RDF_Term.T_BNode b -> [b]
+  | RDF_Term.T_TripleTerm (s, uu___, o) ->
+      FStar_List_Tot_Base.op_At
+        (match s with | RDF_Term.S_BNode b -> [b] | uu___1 -> [])
+        (bnodes_in_term o)
+  | uu___ -> []
 let bnodes_in_quad (qq : qquad) : RDF_Term.bnode_id Prims.list=
   let uu___ = qq in
   match uu___ with
   | (g, t) ->
       let l1 =
         match t.RDF_Triple.s with | RDF_Term.S_BNode b -> [b] | uu___1 -> [] in
-      let l2 =
-        match t.RDF_Triple.o with | RDF_Term.T_BNode b -> [b] | uu___1 -> [] in
+      let l2 = bnodes_in_term t.RDF_Triple.o in
       let l3 =
         match g with
         | FStar_Pervasives_Native.Some gi ->
@@ -201,11 +209,18 @@ let rewrite_subject_for_hfdq (target : RDF_Term.bnode_id)
   | RDF_Term.S_BNode b ->
       if b = target then RDF_Term.S_BNode "a" else RDF_Term.S_BNode "z"
   | RDF_Term.S_IRI uu___ -> s
-let rewrite_term_for_hfdq (target : RDF_Term.bnode_id)
+let rec rewrite_term_for_hfdq (target : RDF_Term.bnode_id)
   (t : RDF_Term.rdf_term) : RDF_Term.rdf_term=
   match t with
   | RDF_Term.T_BNode b ->
       if b = target then RDF_Term.T_BNode "a" else RDF_Term.T_BNode "z"
+  | RDF_Term.T_TripleTerm (s, p, o) ->
+      let s' =
+        match s with
+        | RDF_Term.S_BNode b ->
+            if b = target then RDF_Term.S_BNode "a" else RDF_Term.S_BNode "z"
+        | RDF_Term.S_IRI uu___ -> s in
+      RDF_Term.T_TripleTerm (s', p, (rewrite_term_for_hfdq target o))
   | uu___ -> t
 let rewrite_triple_for_hfdq (target : RDF_Term.bnode_id)
   (t : RDF_Triple.triple) : RDF_Triple.triple=
@@ -222,9 +237,7 @@ let quad_mentions_bnode (target : RDF_Term.bnode_id) (q : qquad) :
       ((match t.RDF_Triple.s with
         | RDF_Term.S_BNode b -> b = target
         | uu___1 -> false) ||
-         (match t.RDF_Triple.o with
-          | RDF_Term.T_BNode b -> b = target
-          | uu___1 -> false))
+         (FStar_List_Tot_Base.mem target (bnodes_in_term t.RDF_Triple.o)))
         ||
         ((match g with
           | FStar_Pervasives_Native.Some gi ->
@@ -940,13 +953,16 @@ let relabel_subject (mapping : bn_lookup_tree) (s : RDF_Term.subject) :
       (match bn_lookup_tree_find b mapping with
        | FStar_Pervasives_Native.Some lbl -> RDF_Term.S_BNode lbl
        | FStar_Pervasives_Native.None -> s)
-let relabel_term (mapping : bn_lookup_tree) (t : RDF_Term.rdf_term) :
+let rec relabel_term (mapping : bn_lookup_tree) (t : RDF_Term.rdf_term) :
   RDF_Term.rdf_term=
   match t with
   | RDF_Term.T_BNode b ->
       (match bn_lookup_tree_find b mapping with
        | FStar_Pervasives_Native.Some lbl -> RDF_Term.T_BNode lbl
        | FStar_Pervasives_Native.None -> t)
+  | RDF_Term.T_TripleTerm (s, p, o) ->
+      RDF_Term.T_TripleTerm
+        ((relabel_subject mapping s), p, (relabel_term mapping o))
   | uu___ -> t
 let relabel_triple (mapping : bn_lookup_tree) (t : RDF_Triple.triple) :
   RDF_Triple.triple=
