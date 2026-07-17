@@ -101,7 +101,13 @@ structure, and hasSelf+disjointness.
 - **Wave D (PE via refutation + FS parser wiring)**: negate-and-refute
   for the corpus's conclusion forms; unskip the 11 FS-only tests.
 - **Wave E (budget/heuristics)**: profile budget-outs, ordering
-  improvements, measured fuel policy.
+  improvements, measured fuel policy. NOTE (2026-07-17): `dl-502`,
+  once filed here as a budget-out, was re-diagnosed as
+  encoding-not-loaded (multiply-defined `owl:oneOf` never materialised;
+  `Tableau.fst:303` first-`oneOf`-only + no `OWL.Closure` `oneOf`
+  rule) — it needs a loader/closure change (F1) + nominal
+  identify-branching (F2), not fuel tuning. See
+  `w3c-completeness-ledger.md` § "dl-502 nominal-DPLL wave".
 
 Each wave: fail-set diff (names, not counts), floors (SPARQL 631/0,
 RDF 1031/0, RIF 46/1/3, ShEx-neg 100/0), and the one pre-existing

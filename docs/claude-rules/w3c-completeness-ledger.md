@@ -234,12 +234,17 @@ Named residuals (the 3 scored fails):
   agree the premise is consistent; the catalog itself marks the test
   `Extracredit`, not `Approved`, with a WG comment that even the
   approved version was defective).
-- `WebOnt-description-logic-502` — **planned-family**(#299 Wave E,
-  complementOf/oneOf search + budget-outs; the corpus
-  `test:description` calls it "the classic 3 SAT problem," not a
-  nominals test, per the 2026-07-14 tcon-fail-classification doc's
-  caveat — the "nominals" label on this test is inherited from an
-  earlier, imprecise classification).
+- `WebOnt-description-logic-502` — **encoding-not-loaded** (root cause
+  re-diagnosed 2026-07-17, #299/#209 nominal-DPLL wave; see the
+  dedicated subsection below). ⚠️ NOT a search-budget problem: the
+  engine returns a definite `FAIL/unexpected-consistency` (finds a
+  model) with ZERO refuter cap-trips — the 3-SAT constraints never
+  reach the tableau, so there is nothing for a DPLL search to refute.
+  The prior "complementOf/oneOf search + budget-outs" framing was
+  wrong about the layer. The corpus `test:description` calls it "the
+  classic 3 SAT problem," not a nominals test (the "nominals" label is
+  inherited from an earlier, imprecise classification, per the
+  2026-07-14 tcon-fail-classification caveat).
 - `Minus Infinity is not in owl:real` — **planned-family**(#299,
   named scoped-out singleton, no dedicated wave yet).
 
@@ -309,6 +314,102 @@ Scores (`bin/linux-x86_64/owl_runner`, this worktree, 2026-07-17):
   `run_consistency_test`): 352 pass, 0 fail (out of 352), zero
   unexpected-inconsistency — gate held.
 - floor `rdf-turtle`: 313 pass, 0 fail (out of 313) — gate held.
+
+### dl-502 nominal-DPLL wave (2026-07-17, #299/#209) — analysis-only; root cause re-diagnosed
+
+🧭 **Decision for the next wave: dl-502 is blocked upstream of the
+refuter, not inside it.** This wave set out to extend the
+`Tableau.Refute` DPLL machinery with nominal identify-branching so the
+refuter could search the ~2^9 boolean assignments of `WebOnt-
+description-logic-502` ("the classic 3 SAT problem"). Investigation
+found that no amount of search extension can flip this test today,
+because the SAT instance is never loaded into the tableau. Landed as
+analysis-only (no engine change) per the zero-movement-scaffold ban —
+adding a nominal-branching tier that fires on zero currently-loadable
+tests, and adds wall-clock on the DPLL hot path, would be scaffold.
+
+**The fixture (worked on paper).** `TorF` is a class defined by TEN
+`owl:oneOf` enumerations: `{T,F}` (with `T owl:differentFrom F`) and
+`{plus_k, minus_k}` for k=1..9. Two `owl:oneOf` on one class force
+their enumerations to denote the SAME set, so `{plus_k,minus_k} =
+{T,F}`; with `T ≠ F` this is a 2-element set, hence `plus_k ≠ minus_k`
+and each of `plus_k/minus_k` is `T` or `F` — the truth value of
+boolean variable k (`plus_k = T` ⇔ var k true). Then `T` is asserted
+`rdf:type` of 45 anonymous `owl:oneOf {la,lb,lc}` classes — each a
+3-literal clause `T = la ∨ T = lb ∨ T = lc`, satisfied iff one literal
+equals `T`. The 9-var/45-clause 3-SAT instance is UNSAT, so the
+premise is inconsistent.
+
+**Measured current behaviour (`bin/linux-x86_64/owl_runner
+type-inconsistency.rdf --regime dl`, this worktree, 2026-07-17,
+freshly rebuilt from source):** dl-502 = `FAIL/unexpected-
+consistency`; tinc run completes in 46.26s with ZERO refuter cap-trip
+/ `owl_closure_timeout` messages. The refuter reaches quiescence and
+reports a model — it is NOT exhausting the ~5s / 20000-fuel budget.
+This is the decisive datum: **dl-502 is not budget-limited.**
+
+**Root cause (two layers, both verified by source inspection):**
+
+1. `Tableau.fst:303` — `parse_class_expr` reads a class's enumeration
+   via `find_first_object g s owl_oneOf`, i.e. only the FIRST
+   `owl:oneOf`. `TorF`'s other nine enumerations are dropped. And no
+   individual is asserted `rdf:type TorF`, so even the first
+   enumeration is inert.
+2. `OWL.Closure.fst` has NO `owl:oneOf` rule at all (grep: zero
+   matches). The RL closure never materialises the set-equality
+   between two enumerations of one class.
+
+Consequently the `{plus_k,minus_k} = {T,F}` variable constraints and
+the `plus_k ≠ minus_k` distinctness never reach the tableau. `T`'s 45
+clause-labels reference `plus_*/minus_*` individuals that carry no
+other constraint, so `T` is freely identifiable with any of them → a
+model always exists → correct-given-what-was-loaded "consistent"
+verdict → InconsistencyTest FAIL. The 3-SAT structure is invisible to
+any search that operates on the loaded state.
+
+**Design for the flip (future wave — three parts, in order):**
+
+- **F1 — multiple-`owl:oneOf` set-equality materialisation** (the
+  blocker; a loader/closure change, foundational). For a class C with
+  ≥2 `owl:oneOf` enumerations L1, L2: `CEXT(C) = set(L1) = set(L2)`,
+  so soundly inject, for each `m ∈ L2`, `m rdf:type oneOf(L1)` (and
+  symmetrically) — fully general, no cardinality needed. ⚠️
+  Soundness-subtle addendum: the `plus_k ≠ minus_k` distinctness that
+  makes each pair a genuine boolean is a CARDINALITY consequence
+  (`|{plus_k,minus_k}| = |{T,F}| = 2` because `T ≠ F`), NOT of the
+  membership injection. Without it the search admits the degenerate
+  `plus_k = minus_k = T` model in which every literal equals `T`, so
+  every clause is trivially satisfied and the instance looks
+  consistent — the refutation would be unsound-incomplete. F1 must
+  emit the distinctness (from a 2-element base whose two members are
+  provably distinct), which makes it a narrow, pattern-specific rule
+  of exactly the kind CLAUDE.md's "known sound-but-narrow rewrites"
+  section cautions about.
+- **F2 — nominal identify-branching** in `Tableau.Refute` (the O-rule
+  as a BRANCHING rule, not only the existing clash rule). Extend
+  `find_identify_nodes` / a new `find_nominal_branch` to offer, for a
+  node labelled `CE_OneOf members`, the identifications `i = m` for
+  each `m ∈ members`; `identify_branch` already implements the
+  AND-semantics (TClash iff every member's identification closes) and
+  the threaded-budget measure. Model-theoretic soundness: `i ∈
+  {m1..mn}` entails `i = mj` for some j in every model, so refuting
+  every j refutes the branch. This piece is sound and self-contained
+  but moves zero tests without F1, so it must NOT land alone.
+- **F3 — DPLL convergence** on the loaded 9-var/45-clause instance
+  within budget. Unit propagation (a `plus_k`/`minus_k` forced by a
+  decided sibling) and clash-first pruning already exist for the union
+  encoding (`find_union_nodes_scan`, section 8b) and would need the
+  nominal analogue. ⚠️ Wall-clock risk: this is the tinc hot path
+  (measured 46s for 128 tests); a nominal search that reaches the ~5s
+  per-test cap on dl-502 (and its sibling dl-504) alone adds ~+11%,
+  close to the +15% gate — F3 must be measured on the full manifest,
+  not just dl-502, before landing.
+
+**Gate evidence for this analysis-only landing (no engine change → all
+gates hold by construction; measured on the fresh worktree binary):**
+tinc 124 pass, 3 fail (out of 127), 1 skip — 46.26s; tcon 352 pass, 0
+fail (out of 352), ZERO unexpected-inconsistency — 389.3s; floors
+rdf-turtle 313/0, w3c_runner `--rdf12` 29/0.
 
 ### OWL 2 DL positive entailment (PE) — 135 pass, 69 fail, 2 skip (out of 204)
 
