@@ -2850,6 +2850,263 @@ let rec build_nsctx (attrs:list xml_attribute) : Tot (list (string & string)) (d
      | Some pfx -> (pfx, a.attr_value) :: build_nsctx rest
      | None -> build_nsctx rest)
 
+(* ================================================================ *)
+(* xsl:strip-space / xsl:preserve-space (XSLT 1.0 section 3.4):       *)
+(* whitespace-only text-node stripping from the SOURCE tree, applied  *)
+(* before any other processing (so key()/id()/position()/last() all  *)
+(* see the ALREADY-stripped tree -- see the call sites in the         *)
+(* "Entry point" section, which strip source_kids/root BEFORE handing *)
+(* them to build_style/build_style_from_units and dispatch).          *)
+(*                                                                    *)
+(* Scope landed: the "elements" NameTest list (bare "*", "pfx:*", and  *)
+(* exact "pfx:local"/"local" tokens, resolved against the stylesheet's *)
+(* own in-scope namespaces -- same nsctx used for cdata-section-       *)
+(* elements/resolve_qname_ns), xml:space="preserve"/"default" override *)
+(* (nearest ancestor-or-self wins, tracked top-down while walking the   *)
+(* source tree), and NameTest specificity (exact QName > pfx:* >        *)
+(* bare "*", XSLT 1.0 section 2.6.5) with last-in-document-order        *)
+(* breaking a same-specificity tie. A maximal run of adjacent            *)
+(* XText/XCDATA siblings (no comment/PI/element in between -- those      *)
+(* are non-text boundaries, so e.g. whitespace05's `<b> <!--c-->b</b>`   *)
+(* still lets the lone leading space strip independently of the "b"      *)
+(* that follows the comment) is treated as ONE whitespace-only-or-not     *)
+(* unit: whitespace13-shaped `<out> <![CDATA[test]]> </out>` (three        *)
+(* sibling nodes after CDATA parsing keeps XCDATA distinct from XText)      *)
+(* must keep ALL three verbatim because the concatenated run contains       *)
+(* "test", even though the leading/trailing pieces are individually          *)
+(* whitespace-only.                                                           *)
+(*                                                                             *)
+(* NOT landed (reported, not chased): full XSLT 1.0 2.6.5 import-             *)
+(* precedence-BEFORE-specificity resolution across xsl:include/xsl:import     *)
+(* boundaries. collect_ws_decls is handed the already precedence-ordered      *)
+(* (ascending) `all_children_desc` list build_style_from_units builds for     *)
+(* every other top-level decl, and resolve_ws_strip picks the HIGHEST-        *)
+(* specificity match with last-in-list breaking a tie -- correct for a        *)
+(* single stylesheet (100% of the Xalan whitespace/ fixtures, none of which   *)
+(* combine xsl:import/xsl:include with xsl:strip-space) and correct WITHIN    *)
+(* one import-precedence layer, but a lower-precedence exact-QName decl in    *)
+(* an imported file could out-rank a higher-precedence wildcard from the      *)
+(* importing stylesheet here, where real XSLT 1.0 would let precedence win    *)
+(* unconditionally. Same documented simplification the module already makes   *)
+(* for prefixed match/select patterns inside an included/imported file (see   *)
+(* the xsl:import/xsl:include banner above build_nsscope). Also not landed:    *)
+(* the built-in "the STYLESHEET's own whitespace is stripped like strip-      *)
+(* space=* applied to it, except inside xsl:text" rule (XSLT 1.0 3.4's last    *)
+(* paragraph) -- whitespace09/13/20 need it (their fixtures declare no         *)
+(* xsl:strip-space at all; the gap is in literal template whitespace, not      *)
+(* source-tree whitespace) but landing it means walking and rewriting EVERY    *)
+(* stylesheet's literal-result-element bodies before collect_templates/        *)
+(* collect_attribute_sets/collect_globals run, which touches how every         *)
+(* passing Xalan/xslt/xml-conformance fixture's literal output whitespace is    *)
+(* built -- too large a blast radius for this change; left as a follow-up.      *)
+
+// A single whitespace-only text run is all XML whitespace (space, tab, CR,
+// LF) -- reuses the existing is_all_ws (defined above, `all_ws_chars`).
+let text_or_cdata (n:xml_node) : option string =
+  match n with
+  | XText s -> Some s
+  | XCDATA s -> Some s
+  | _ -> None
+
+// Whether the maximal run of contiguous XText/XCDATA nodes starting at the
+// head of `nodes` is, taken together, ALL whitespace. A non-text node (an
+// element, comment, or PI) ends the run without contributing (comments and
+// PIs are ignored for whitespace-stripping purposes per XSLT 1.0 3.4, but
+// they are NOT part of the same text run -- they don't merge adjacent text
+// the way two XText/XCDATA siblings from a parsed CDATA boundary do).
+let rec run_is_all_ws (nodes:list xml_node) : Tot bool (decreases nodes) =
+  match nodes with
+  | [] -> true
+  | hd :: tl ->
+    (match text_or_cdata hd with
+     | Some s -> is_all_ws s && run_is_all_ws tl
+     | None -> true)
+
+// Effective xml:space at one element: its own attribute if present
+// ("preserve"/"default"), else the inherited value from an ancestor.
+// An unrecognised value defensively falls back to the inherited setting
+// (no whitespace fixture supplies one; XSLT 1.0 doesn't define behavior
+// for it either).
+let xml_space_here (attrs:list xml_attribute) (inherited:bool) : bool =
+  match find_attr "xml:space" attrs with
+  | Some "preserve" -> true
+  | Some "default" -> false
+  | Some _ -> inherited
+  | None -> inherited
+
+// One NameTest token from a strip-space/preserve-space "elements" list.
+// Specificity (XSLT 1.0 2.6.5): WNT_Qual (exact name) > WNT_NsStar
+// (namespace-qualified wildcard) > WNT_Star (bare "*") -- see
+// wnt_specificity below.
+noeq type ws_name_test =
+  | WNT_Star : ws_name_test
+  | WNT_NsStar : option string -> ws_name_test
+  | WNT_Qual : option string -> string -> ws_name_test
+
+noeq type ws_decl = { wsd_test : ws_name_test; wsd_strip : bool }
+
+// Parse one "elements" token against the stylesheet's namespace context
+// (the SAME nsctx cdata-section-elements/resolve_qname_ns use -- a
+// top-level xsl:strip-space/preserve-space's own in-scope namespaces).
+// "*" is the bare wildcard; "pfx:*" is a namespace-qualified wildcard;
+// anything else is an exact (possibly prefixed) name, unprefixed meaning
+// the null namespace (XSLT 1.0 NameTest resolution, same as an XPath
+// unprefixed name test -- no implicit default-namespace pickup for a
+// bare local name written directly in this attribute).
+let parse_ws_name_test (nsctx:list (string & string)) (tok:string) : ws_name_test =
+  if tok = "*" then WNT_Star
+  else
+    match split_on_char ':' tok with
+    | [pfx; "*"] -> WNT_NsStar (lookup_nsctx nsctx pfx)
+    | [pfx; local] -> WNT_Qual (lookup_nsctx nsctx pfx) local
+    | _ -> WNT_Qual None tok
+
+let rec ws_decls_of_tokens (strip:bool) (tests:list string) (nsctx:list (string & string))
+  : Tot (list ws_decl) (decreases tests) =
+  match tests with
+  | [] -> []
+  | t :: rest -> { wsd_test = parse_ws_name_test nsctx t; wsd_strip = strip } :: ws_decls_of_tokens strip rest nsctx
+
+// Top-level xsl:strip-space (wsd_strip = true) / xsl:preserve-space
+// (wsd_strip = false) declarations, one ws_decl PER TOKEN in their
+// "elements" list, in document order (mirrors collect_keys/
+// collect_attribute_sets: called over the SAME already precedence-
+// ordered `children`/`all_children_desc` list every other top-level
+// decl collector uses). A decl missing "elements" is dropped
+// (defensive; no whitespace fixture omits it).
+let rec collect_ws_decls (pfx:string) (nsctx:list (string & string)) (children:list xml_node)
+  : Tot (list ws_decl) (decreases children) =
+  match children with
+  | [] -> []
+  | hd :: tl ->
+    (match hd with
+     | XElement tag attrs _ ->
+       let instr = if is_xsl pfx tag then xsl_instr pfx tag else "" in
+       if instr = "strip-space" || instr = "preserve-space" then
+         (match attr_opt "elements" attrs with
+          | Some v -> List.Tot.append (ws_decls_of_tokens (instr = "strip-space") (parse_qname_list v) nsctx)
+                                       (collect_ws_decls pfx nsctx tl)
+          | None -> collect_ws_decls pfx nsctx tl)
+       else collect_ws_decls pfx nsctx tl
+     | _ -> collect_ws_decls pfx nsctx tl)
+
+// NameTest specificity (XSLT 1.0 2.6.5): exact QName highest, then a
+// namespace-qualified wildcard, then the bare wildcard lowest.
+let wnt_specificity (t:ws_name_test) : int =
+  match t with
+  | WNT_Star -> 0
+  | WNT_NsStar _ -> 1
+  | WNT_Qual _ _ -> 2
+
+let wnt_matches (elem_ns:option string) (elem_local:string) (t:ws_name_test) : bool =
+  match t with
+  | WNT_Star -> true
+  | WNT_NsStar ns -> Some? ns && ns = elem_ns
+  | WNT_Qual ns local -> ns = elem_ns && local = elem_local
+
+// Resolve whether an element (elem_ns, elem_local) has its whitespace-only
+// text children stripped: the HIGHEST-specificity matching decl wins;
+// a tie is broken by the LAST matching decl in `decls`' order (which is
+// document order within one stylesheet -- see the module banner above
+// for the cross-file-precedence caveat). No match at all => preserve
+// (XSLT 1.0's default whitespace handling).
+let rec resolve_ws_strip (decls:list ws_decl) (elem_ns:option string) (elem_local:string)
+                         (best:option (int & bool))
+  : Tot bool (decreases decls) =
+  match decls with
+  | [] -> (match best with Some (_, s) -> s | None -> false)
+  | d :: rest ->
+    if wnt_matches elem_ns elem_local d.wsd_test then
+      let sp = wnt_specificity d.wsd_test in
+      let best' = (match best with
+                   | None -> Some (sp, d.wsd_strip)
+                   | Some (bsp, _) -> if sp >= bsp then Some (sp, d.wsd_strip) else best) in
+      resolve_ws_strip rest elem_ns elem_local best'
+    else resolve_ws_strip rest elem_ns elem_local best
+
+// A SOURCE element's own (namespace-URI, local-name) identity, resolved
+// against the incrementally-accumulated source-document namespace context
+// (nearest declaration wins -- same idiom as resolve_ns_anc/elem_ns_uri in
+// XPath.Eval, but threaded top-down here since strip_ws_source_node is
+// already walking the tree top-down for xml:space). An unprefixed tag
+// picks up the in-scope DEFAULT namespace if declared (prefix "" in
+// nsctx), matching Namespaces-in-XML element-name resolution.
+let source_elem_identity (nsctx:list (string & string)) (tag:string) : (option string & string) =
+  (lookup_nsctx nsctx (name_prefix tag), local_name tag)
+
+// Recursively strip whitespace-only text (XText/XCDATA runs) from the
+// SOURCE tree per xsl:strip-space/xsl:preserve-space + xml:space. `nsctx`
+// is the source document's accumulated in-scope namespaces (prefix ->
+// URI) at THIS node's parent; `space_here` is the effective xml:space
+// inherited from an ancestor-or-self (true = preserve, overriding
+// `decls` entirely for this subtree).
+let rec strip_ws_source_node (decls:list ws_decl) (nsctx:list (string & string)) (space_here:bool) (n:xml_node)
+  : Tot xml_node (decreases n) =
+  match n with
+  | XElement tag attrs kids ->
+    let nsctx' = List.Tot.append (build_nsctx attrs) nsctx in
+    let space' = xml_space_here attrs space_here in
+    let (ns, local) = source_elem_identity nsctx' tag in
+    let strip_here = resolve_ws_strip decls ns local None in
+    XElement tag attrs (strip_ws_source_nodes decls nsctx' space' strip_here kids)
+  | other -> other
+
+and strip_ws_source_nodes (decls:list ws_decl) (nsctx:list (string & string)) (space_here:bool) (strip_here:bool)
+                          (nodes:list xml_node)
+  : Tot (list xml_node) (decreases nodes) =
+  match nodes with
+  | [] -> []
+  | hd :: tl ->
+    (match text_or_cdata hd with
+     | Some _ ->
+       if strip_here && not space_here && run_is_all_ws nodes
+       then strip_ws_source_nodes decls nsctx space_here strip_here tl
+       else hd :: strip_ws_source_nodes decls nsctx space_here strip_here tl
+     | None ->
+       (match hd with
+        | XElement _ _ _ -> strip_ws_source_node decls nsctx space_here hd
+        | other -> other)
+       :: strip_ws_source_nodes decls nsctx space_here strip_here tl)
+
+// Entry points for the "Entry point" section below: resolve strip-space/
+// preserve-space decls from the stylesheet's own top-level children (the
+// no-import/include case) or from an already-flattened, precedence-
+// ordered unit list (the combining-stylesheets case, XSLT 1.0 2.6), and
+// apply strip_ws_source_node to the source document's root element. A
+// stylesheet that declares neither directive returns `root` completely
+// unchanged (no tree walk at all) -- the byte-identical-when-no-strip-
+// space guarantee the protect suites rely on.
+let strip_source_whitespace_simple (stylesheet:xml_node) (root:xml_node) : xml_node =
+  match stylesheet with
+  | XElement tag attrs children ->
+    let pfx = xsl_prefix_of stylesheet in
+    if is_xsl pfx tag && (let ln = xsl_instr pfx tag in ln = "stylesheet" || ln = "transform") then
+      (match collect_ws_decls pfx (build_nsctx attrs) children with
+       | [] -> root
+       | decls -> strip_ws_source_node decls [] false root)
+    else root
+  | _ -> root
+
+let strip_source_whitespace_units (units:list (int & list xml_node)) (root_pfx:string)
+                                   (root_attrs:list xml_attribute) (root:xml_node)
+  : xml_node =
+  let all_children_desc = List.Tot.flatten (List.Tot.map snd (List.Tot.rev units)) in
+  (match collect_ws_decls root_pfx (build_nsctx root_attrs) all_children_desc with
+   | [] -> root
+   | decls -> strip_ws_source_node decls [] false root)
+
+// Splice a (whitespace-stripped) replacement root element back into a
+// document-node children list in place of the original root -- XML
+// well-formedness guarantees exactly one XElement among `kids` (the
+// prolog/epilog Comment/PI Misc nodes pass through untouched).
+let rec replace_doc_root (kids:list xml_node) (new_root:xml_node) : Tot (list xml_node) (decreases kids) =
+  match kids with
+  | [] -> []
+  | (XElement _ _ _) :: tl -> new_root :: tl
+  | hd :: tl -> hd :: replace_doc_root tl new_root
+
+(* ================================================================ *)
+
 // Top-level xsl:variable / xsl:param with a select= expression,
 // evaluated once against the source DOCUMENT node (XSLT 1.0 §11.4: the
 // context node for a global variable is the root node, not the document
@@ -3318,13 +3575,21 @@ let finalize_output (present:bool) (cfg:output_settings) (method:string) (nodes:
 // Legacy entry: `source` is the root element alone (the document node has
 // no prolog/epilog Misc). GRDDL and the js/npm bridge use this; behavior
 // is byte-for-byte what it was before the document-node model existed.
+// `strip_source_whitespace_simple` (XSLT 1.0 3.4) runs FIRST, before
+// build_style/dispatch, so key()/id()/position()/last() all see the
+// already-stripped tree; it is a no-op (returns `source` unchanged) for
+// any stylesheet that declares neither xsl:strip-space nor
+// xsl:preserve-space, which is every stylesheet in the pre-existing
+// protect suites (xslt slice-1, xml-conformance, and all but 12 of the
+// Xalan corpus's ~1690 stylesheets) -- so this stays byte-identical there.
 let transform (stylesheet:xml_node) (source:xml_node) : string =
-  let st = build_style stylesheet source [source] [] in
+  let source' = strip_source_whitespace_simple stylesheet source in
+  let st = build_style stylesheet source' [source'] [] in
   // Fuel: generous multiple of the combined tree sizes -- every
   // apply-templates / instantiate step consumes one unit.
-  let sz = xml_node_count stylesheet + xml_node_count source in
+  let sz = xml_node_count stylesheet + xml_node_count source' in
   let fuel = op_Multiply (sz + 1) 256 + 100000 in
-  let result = dispatch fuel st (D_Doc source [source]) 1 1 "" st.xs_globals [] in
+  let result = dispatch fuel st (D_Doc source' [source']) 1 1 "" st.xs_globals [] in
   let nodes = only_nodes result in
   finalize_output st.xs_output_present st.xs_output st.xs_method nodes
 
@@ -3334,15 +3599,19 @@ let transform (stylesheet:xml_node) (source:xml_node) : string =
 // document node then exposes those Misc nodes, so `//comment()` reaches a
 // prolog comment (select-1001) and the identity transform copies a leading
 // comment (copy-2601). With no Misc (source_kids = [root]) it reduces to
-// `transform` exactly.
+// `transform` exactly. Whitespace-stripped the same way `transform` is
+// (see its banner) via replace_doc_root splicing the stripped root back
+// into source_kids.
 let transform_doc (stylesheet:xml_node) (source_kids:list xml_node) : string =
   match doc_root_elem source_kids with
   | None -> ""
   | Some root ->
-    let st = build_style stylesheet root source_kids [] in
-    let sz = xml_node_count stylesheet + xml_nodes_count_sum source_kids in
+    let root' = strip_source_whitespace_simple stylesheet root in
+    let source_kids' = replace_doc_root source_kids root' in
+    let st = build_style stylesheet root' source_kids' [] in
+    let sz = xml_node_count stylesheet + xml_nodes_count_sum source_kids' in
     let fuel = op_Multiply (sz + 1) 256 + 100000 in
-    let result = dispatch fuel st (D_Doc root source_kids) 1 1 "" st.xs_globals [] in
+    let result = dispatch fuel st (D_Doc root' source_kids') 1 1 "" st.xs_globals [] in
     let nodes = only_nodes result in
     finalize_output st.xs_output_present st.xs_output st.xs_method nodes
 
@@ -3355,10 +3624,12 @@ let transform_doc_ids (stylesheet:xml_node) (source_kids:list xml_node) (source_
   match doc_root_elem source_kids with
   | None -> ""
   | Some root ->
-    let st = build_style stylesheet root source_kids source_id_attrs in
-    let sz = xml_node_count stylesheet + xml_nodes_count_sum source_kids in
+    let root' = strip_source_whitespace_simple stylesheet root in
+    let source_kids' = replace_doc_root source_kids root' in
+    let st = build_style stylesheet root' source_kids' source_id_attrs in
+    let sz = xml_node_count stylesheet + xml_nodes_count_sum source_kids' in
     let fuel = op_Multiply (sz + 1) 256 + 100000 in
-    let result = dispatch fuel st (D_Doc root source_kids) 1 1 "" st.xs_globals [] in
+    let result = dispatch fuel st (D_Doc root' source_kids') 1 1 "" st.xs_globals [] in
     let nodes = only_nodes result in
     finalize_output st.xs_output_present st.xs_output st.xs_method nodes
 
@@ -3385,9 +3656,11 @@ let transform_doc_ids_merged (t:sheet_tree) (source_kids:list xml_node) (source_
        let root_pfx = xsl_prefix_of root_style_node in
        let root_attrs = element_attrs root_style_node in
        let units = sheet_units t in
-       let st = build_style_from_units units root_pfx root_attrs root_style_node root source_kids source_id_attrs in
-       let sz = sheet_tree_xml_count t + xml_nodes_count_sum source_kids in
+       let root' = strip_source_whitespace_units units root_pfx root_attrs root in
+       let source_kids' = replace_doc_root source_kids root' in
+       let st = build_style_from_units units root_pfx root_attrs root_style_node root' source_kids' source_id_attrs in
+       let sz = sheet_tree_xml_count t + xml_nodes_count_sum source_kids' in
        let fuel = op_Multiply (sz + 1) 256 + 100000 in
-       let result = dispatch fuel st (D_Doc root source_kids) 1 1 "" st.xs_globals [] in
+       let result = dispatch fuel st (D_Doc root' source_kids') 1 1 "" st.xs_globals [] in
        let nodes = only_nodes result in
        finalize_output st.xs_output_present st.xs_output st.xs_method nodes)

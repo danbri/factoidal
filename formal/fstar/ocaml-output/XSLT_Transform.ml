@@ -3153,6 +3153,200 @@ let rec build_nsctx (attrs : Parser_XML.xml_attribute Prims.list) :
        | FStar_Pervasives_Native.Some pfx -> (pfx, (a.Parser_XML.attr_value))
            :: (build_nsctx rest)
        | FStar_Pervasives_Native.None -> build_nsctx rest)
+let text_or_cdata (n : Parser_XML.xml_node) :
+  Prims.string FStar_Pervasives_Native.option=
+  match n with
+  | Parser_XML.XText s -> FStar_Pervasives_Native.Some s
+  | Parser_XML.XCDATA s -> FStar_Pervasives_Native.Some s
+  | uu___ -> FStar_Pervasives_Native.None
+let rec run_is_all_ws (nodes : Parser_XML.xml_node Prims.list) : Prims.bool=
+  match nodes with
+  | [] -> true
+  | hd::tl ->
+      (match text_or_cdata hd with
+       | FStar_Pervasives_Native.Some s ->
+           (is_all_ws s) && (run_is_all_ws tl)
+       | FStar_Pervasives_Native.None -> true)
+let xml_space_here (attrs : Parser_XML.xml_attribute Prims.list)
+  (inherited : Prims.bool) : Prims.bool=
+  match Parser_XML.find_attr "xml:space" attrs with
+  | FStar_Pervasives_Native.Some "preserve" -> true
+  | FStar_Pervasives_Native.Some "default" -> false
+  | FStar_Pervasives_Native.Some uu___ -> inherited
+  | FStar_Pervasives_Native.None -> inherited
+type ws_name_test =
+  | WNT_Star 
+  | WNT_NsStar of Prims.string FStar_Pervasives_Native.option 
+  | WNT_Qual of Prims.string FStar_Pervasives_Native.option * Prims.string 
+let uu___is_WNT_Star (projectee : ws_name_test) : Prims.bool=
+  match projectee with | WNT_Star -> true | uu___ -> false
+let uu___is_WNT_NsStar (projectee : ws_name_test) : Prims.bool=
+  match projectee with | WNT_NsStar _0 -> true | uu___ -> false
+let __proj__WNT_NsStar__item___0 (projectee : ws_name_test) :
+  Prims.string FStar_Pervasives_Native.option=
+  match projectee with | WNT_NsStar _0 -> _0
+let uu___is_WNT_Qual (projectee : ws_name_test) : Prims.bool=
+  match projectee with | WNT_Qual (_0, _1) -> true | uu___ -> false
+let __proj__WNT_Qual__item___0 (projectee : ws_name_test) :
+  Prims.string FStar_Pervasives_Native.option=
+  match projectee with | WNT_Qual (_0, _1) -> _0
+let __proj__WNT_Qual__item___1 (projectee : ws_name_test) : Prims.string=
+  match projectee with | WNT_Qual (_0, _1) -> _1
+type ws_decl = {
+  wsd_test: ws_name_test ;
+  wsd_strip: Prims.bool }
+let __proj__Mkws_decl__item__wsd_test (projectee : ws_decl) : ws_name_test=
+  match projectee with | { wsd_test; wsd_strip;_} -> wsd_test
+let __proj__Mkws_decl__item__wsd_strip (projectee : ws_decl) : Prims.bool=
+  match projectee with | { wsd_test; wsd_strip;_} -> wsd_strip
+let parse_ws_name_test (nsctx : (Prims.string * Prims.string) Prims.list)
+  (tok : Prims.string) : ws_name_test=
+  if tok = "*"
+  then WNT_Star
+  else
+    (match split_on_char 58 tok with
+     | pfx::"*"::[] -> WNT_NsStar (XPath_Eval.lookup_nsctx nsctx pfx)
+     | pfx::local::[] ->
+         WNT_Qual ((XPath_Eval.lookup_nsctx nsctx pfx), local)
+     | uu___1 -> WNT_Qual (FStar_Pervasives_Native.None, tok))
+let rec ws_decls_of_tokens (strip : Prims.bool)
+  (tests : Prims.string Prims.list)
+  (nsctx : (Prims.string * Prims.string) Prims.list) : ws_decl Prims.list=
+  match tests with
+  | [] -> []
+  | t::rest -> { wsd_test = (parse_ws_name_test nsctx t); wsd_strip = strip }
+      :: (ws_decls_of_tokens strip rest nsctx)
+let rec collect_ws_decls (pfx : Prims.string)
+  (nsctx : (Prims.string * Prims.string) Prims.list)
+  (children : Parser_XML.xml_node Prims.list) : ws_decl Prims.list=
+  match children with
+  | [] -> []
+  | hd::tl ->
+      (match hd with
+       | Parser_XML.XElement (tag, attrs, uu___) ->
+           let instr = if is_xsl pfx tag then xsl_instr pfx tag else "" in
+           if (instr = "strip-space") || (instr = "preserve-space")
+           then
+             (match attr_opt "elements" attrs with
+              | FStar_Pervasives_Native.Some v ->
+                  FStar_List_Tot_Base.append
+                    (ws_decls_of_tokens (instr = "strip-space")
+                       (parse_qname_list v) nsctx)
+                    (collect_ws_decls pfx nsctx tl)
+              | FStar_Pervasives_Native.None -> collect_ws_decls pfx nsctx tl)
+           else collect_ws_decls pfx nsctx tl
+       | uu___ -> collect_ws_decls pfx nsctx tl)
+let wnt_specificity (t : ws_name_test) : Prims.int=
+  match t with
+  | WNT_Star -> Prims.int_zero
+  | WNT_NsStar uu___ -> Prims.int_one
+  | WNT_Qual (uu___, uu___1) -> (Prims.of_int (2))
+let wnt_matches (elem_ns : Prims.string FStar_Pervasives_Native.option)
+  (elem_local : Prims.string) (t : ws_name_test) : Prims.bool=
+  match t with
+  | WNT_Star -> true
+  | WNT_NsStar ns ->
+      (FStar_Pervasives_Native.uu___is_Some ns) && (ns = elem_ns)
+  | WNT_Qual (ns, local) -> (ns = elem_ns) && (local = elem_local)
+let rec resolve_ws_strip (decls : ws_decl Prims.list)
+  (elem_ns : Prims.string FStar_Pervasives_Native.option)
+  (elem_local : Prims.string)
+  (best : (Prims.int * Prims.bool) FStar_Pervasives_Native.option) :
+  Prims.bool=
+  match decls with
+  | [] ->
+      (match best with
+       | FStar_Pervasives_Native.Some (uu___, s) -> s
+       | FStar_Pervasives_Native.None -> false)
+  | d::rest ->
+      if wnt_matches elem_ns elem_local d.wsd_test
+      then
+        let sp = wnt_specificity d.wsd_test in
+        let best' =
+          match best with
+          | FStar_Pervasives_Native.None ->
+              FStar_Pervasives_Native.Some (sp, (d.wsd_strip))
+          | FStar_Pervasives_Native.Some (bsp, uu___) ->
+              if sp >= bsp
+              then FStar_Pervasives_Native.Some (sp, (d.wsd_strip))
+              else best in
+        resolve_ws_strip rest elem_ns elem_local best'
+      else resolve_ws_strip rest elem_ns elem_local best
+let source_elem_identity (nsctx : (Prims.string * Prims.string) Prims.list)
+  (tag : Prims.string) :
+  (Prims.string FStar_Pervasives_Native.option * Prims.string)=
+  ((XPath_Eval.lookup_nsctx nsctx (name_prefix tag)), (local_name tag))
+let rec strip_ws_source_node (decls : ws_decl Prims.list)
+  (nsctx : (Prims.string * Prims.string) Prims.list)
+  (space_here : Prims.bool) (n : Parser_XML.xml_node) : Parser_XML.xml_node=
+  match n with
+  | Parser_XML.XElement (tag, attrs, kids) ->
+      let nsctx' = FStar_List_Tot_Base.append (build_nsctx attrs) nsctx in
+      let space' = xml_space_here attrs space_here in
+      let uu___ = source_elem_identity nsctx' tag in
+      (match uu___ with
+       | (ns, local) ->
+           let strip_here =
+             resolve_ws_strip decls ns local FStar_Pervasives_Native.None in
+           Parser_XML.XElement
+             (tag, attrs,
+               (strip_ws_source_nodes decls nsctx' space' strip_here kids)))
+  | other -> other
+and strip_ws_source_nodes (decls : ws_decl Prims.list)
+  (nsctx : (Prims.string * Prims.string) Prims.list)
+  (space_here : Prims.bool) (strip_here : Prims.bool)
+  (nodes : Parser_XML.xml_node Prims.list) : Parser_XML.xml_node Prims.list=
+  match nodes with
+  | [] -> []
+  | hd::tl ->
+      (match text_or_cdata hd with
+       | FStar_Pervasives_Native.Some uu___ ->
+           if
+             (strip_here && (Prims.op_Negation space_here)) &&
+               (run_is_all_ws nodes)
+           then strip_ws_source_nodes decls nsctx space_here strip_here tl
+           else hd ::
+             (strip_ws_source_nodes decls nsctx space_here strip_here tl)
+       | FStar_Pervasives_Native.None ->
+           ((match hd with
+             | Parser_XML.XElement (uu___, uu___1, uu___2) ->
+                 strip_ws_source_node decls nsctx space_here hd
+             | other -> other))
+           :: (strip_ws_source_nodes decls nsctx space_here strip_here tl))
+let strip_source_whitespace_simple (stylesheet : Parser_XML.xml_node)
+  (root : Parser_XML.xml_node) : Parser_XML.xml_node=
+  match stylesheet with
+  | Parser_XML.XElement (tag, attrs, children) ->
+      let pfx = xsl_prefix_of stylesheet in
+      if
+        (is_xsl pfx tag) &&
+          (let ln = xsl_instr pfx tag in
+           (ln = "stylesheet") || (ln = "transform"))
+      then
+        (match collect_ws_decls pfx (build_nsctx attrs) children with
+         | [] -> root
+         | decls -> strip_ws_source_node decls [] false root)
+      else root
+  | uu___ -> root
+let strip_source_whitespace_units
+  (units : (Prims.int * Parser_XML.xml_node Prims.list) Prims.list)
+  (root_pfx : Prims.string)
+  (root_attrs : Parser_XML.xml_attribute Prims.list)
+  (root : Parser_XML.xml_node) : Parser_XML.xml_node=
+  let all_children_desc =
+    FStar_List_Tot_Base.flatten
+      (FStar_List_Tot_Base.map FStar_Pervasives_Native.snd
+         (FStar_List_Tot_Base.rev units)) in
+  match collect_ws_decls root_pfx (build_nsctx root_attrs) all_children_desc
+  with
+  | [] -> root
+  | decls -> strip_ws_source_node decls [] false root
+let rec replace_doc_root (kids : Parser_XML.xml_node Prims.list)
+  (new_root : Parser_XML.xml_node) : Parser_XML.xml_node Prims.list=
+  match kids with
+  | [] -> []
+  | (Parser_XML.XElement (uu___, uu___1, uu___2))::tl -> new_root :: tl
+  | hd::tl -> hd :: (replace_doc_root tl new_root)
 let rec collect_globals (fuel : Prims.nat) (st : xstyle)
   (children : Parser_XML.xml_node Prims.list) (source : Parser_XML.xml_node)
   (doc_kids : Parser_XML.xml_node Prims.list) :
@@ -3646,15 +3840,16 @@ let finalize_output (present : Prims.bool) (cfg : output_settings)
        FStar_String.concat "" [decl; doctype; body])
 let transform (stylesheet : Parser_XML.xml_node)
   (source : Parser_XML.xml_node) : Prims.string=
-  let st = build_style stylesheet source [source] [] in
+  let source' = strip_source_whitespace_simple stylesheet source in
+  let st = build_style stylesheet source' [source'] [] in
   let sz =
     (XPath_Eval.xml_node_count stylesheet) +
-      (XPath_Eval.xml_node_count source) in
+      (XPath_Eval.xml_node_count source') in
   let fuel =
     ((sz + Prims.int_one) * (Prims.of_int (256))) +
       (Prims.parse_int "100000") in
   let result =
-    dispatch fuel st (D_Doc (source, [source])) Prims.int_one Prims.int_one
+    dispatch fuel st (D_Doc (source', [source'])) Prims.int_one Prims.int_one
       "" st.xs_globals [] in
   let nodes = only_nodes result in
   finalize_output st.xs_output_present st.xs_output st.xs_method nodes
@@ -3663,15 +3858,17 @@ let transform_doc (stylesheet : Parser_XML.xml_node)
   match doc_root_elem source_kids with
   | FStar_Pervasives_Native.None -> ""
   | FStar_Pervasives_Native.Some root ->
-      let st = build_style stylesheet root source_kids [] in
+      let root' = strip_source_whitespace_simple stylesheet root in
+      let source_kids' = replace_doc_root source_kids root' in
+      let st = build_style stylesheet root' source_kids' [] in
       let sz =
         (XPath_Eval.xml_node_count stylesheet) +
-          (xml_nodes_count_sum source_kids) in
+          (xml_nodes_count_sum source_kids') in
       let fuel =
         ((sz + Prims.int_one) * (Prims.of_int (256))) +
           (Prims.parse_int "100000") in
       let result =
-        dispatch fuel st (D_Doc (root, source_kids)) Prims.int_one
+        dispatch fuel st (D_Doc (root', source_kids')) Prims.int_one
           Prims.int_one "" st.xs_globals [] in
       let nodes = only_nodes result in
       finalize_output st.xs_output_present st.xs_output st.xs_method nodes
@@ -3682,15 +3879,17 @@ let transform_doc_ids (stylesheet : Parser_XML.xml_node)
   match doc_root_elem source_kids with
   | FStar_Pervasives_Native.None -> ""
   | FStar_Pervasives_Native.Some root ->
-      let st = build_style stylesheet root source_kids source_id_attrs in
+      let root' = strip_source_whitespace_simple stylesheet root in
+      let source_kids' = replace_doc_root source_kids root' in
+      let st = build_style stylesheet root' source_kids' source_id_attrs in
       let sz =
         (XPath_Eval.xml_node_count stylesheet) +
-          (xml_nodes_count_sum source_kids) in
+          (xml_nodes_count_sum source_kids') in
       let fuel =
         ((sz + Prims.int_one) * (Prims.of_int (256))) +
           (Prims.parse_int "100000") in
       let result =
-        dispatch fuel st (D_Doc (root, source_kids)) Prims.int_one
+        dispatch fuel st (D_Doc (root', source_kids')) Prims.int_one
           Prims.int_one "" st.xs_globals [] in
       let nodes = only_nodes result in
       finalize_output st.xs_output_present st.xs_output st.xs_method nodes
@@ -3706,16 +3905,19 @@ let transform_doc_ids_merged (t : sheet_tree)
            let root_pfx = xsl_prefix_of root_style_node in
            let root_attrs = Parser_XML.element_attrs root_style_node in
            let units = sheet_units t in
+           let root' =
+             strip_source_whitespace_units units root_pfx root_attrs root in
+           let source_kids' = replace_doc_root source_kids root' in
            let st =
              build_style_from_units units root_pfx root_attrs root_style_node
-               root source_kids source_id_attrs in
+               root' source_kids' source_id_attrs in
            let sz =
-             (sheet_tree_xml_count t) + (xml_nodes_count_sum source_kids) in
+             (sheet_tree_xml_count t) + (xml_nodes_count_sum source_kids') in
            let fuel =
              ((sz + Prims.int_one) * (Prims.of_int (256))) +
                (Prims.parse_int "100000") in
            let result =
-             dispatch fuel st (D_Doc (root, source_kids)) Prims.int_one
+             dispatch fuel st (D_Doc (root', source_kids')) Prims.int_one
                Prims.int_one "" st.xs_globals [] in
            let nodes = only_nodes result in
            finalize_output st.xs_output_present st.xs_output st.xs_method
