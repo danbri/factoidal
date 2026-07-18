@@ -65,6 +65,11 @@ type token =
   | Tok_HATHAT 
   | Tok_TT_OPEN 
   | Tok_TT_CLOSE 
+  | Tok_TT_BARE_OPEN 
+  | Tok_TT_BARE_CLOSE 
+  | Tok_TILDE 
+  | Tok_ANNOT_OPEN 
+  | Tok_ANNOT_CLOSE 
   | Tok_TRIPLE_KW 
   | Tok_SUBJECT_KW 
   | Tok_PREDICATE_KW 
@@ -287,6 +292,16 @@ let uu___is_Tok_TT_OPEN (projectee : token) : Prims.bool=
   match projectee with | Tok_TT_OPEN -> true | uu___ -> false
 let uu___is_Tok_TT_CLOSE (projectee : token) : Prims.bool=
   match projectee with | Tok_TT_CLOSE -> true | uu___ -> false
+let uu___is_Tok_TT_BARE_OPEN (projectee : token) : Prims.bool=
+  match projectee with | Tok_TT_BARE_OPEN -> true | uu___ -> false
+let uu___is_Tok_TT_BARE_CLOSE (projectee : token) : Prims.bool=
+  match projectee with | Tok_TT_BARE_CLOSE -> true | uu___ -> false
+let uu___is_Tok_TILDE (projectee : token) : Prims.bool=
+  match projectee with | Tok_TILDE -> true | uu___ -> false
+let uu___is_Tok_ANNOT_OPEN (projectee : token) : Prims.bool=
+  match projectee with | Tok_ANNOT_OPEN -> true | uu___ -> false
+let uu___is_Tok_ANNOT_CLOSE (projectee : token) : Prims.bool=
+  match projectee with | Tok_ANNOT_CLOSE -> true | uu___ -> false
 let uu___is_Tok_TRIPLE_KW (projectee : token) : Prims.bool=
   match projectee with | Tok_TRIPLE_KW -> true | uu___ -> false
 let uu___is_Tok_SUBJECT_KW (projectee : token) : Prims.bool=
@@ -1762,47 +1777,71 @@ let next_token (sparql12 : Prims.bool) (input : Prims.string) (p : pos) :
         then (Tok_TT_OPEN, (p1 + (Prims.of_int (3))))
         else
           if
-            (Prims.op_Negation (at_end input (p1 + Prims.int_one))) &&
+            (sparql12 &&
+               (Prims.op_Negation (at_end input (p1 + Prims.int_one))))
+              &&
               ((char_code (peek_char input (p1 + Prims.int_one))) =
-                 (Prims.of_int (0x3D)))
-          then (Tok_LE, (p1 + (Prims.of_int (2))))
+                 (Prims.of_int (0x3C)))
+          then (Tok_TT_BARE_OPEN, (p1 + (Prims.of_int (2))))
           else
-            if at_end input (p1 + Prims.int_one)
-            then (Tok_LT, (p1 + Prims.int_one))
+            if
+              (Prims.op_Negation (at_end input (p1 + Prims.int_one))) &&
+                ((char_code (peek_char input (p1 + Prims.int_one))) =
+                   (Prims.of_int (0x3D)))
+            then (Tok_LE, (p1 + (Prims.of_int (2))))
             else
-              (let next_code =
-                 char_code (peek_char input (p1 + Prims.int_one)) in
-               if
-                 (((((((next_code >= (Prims.of_int (0x41))) &&
-                         (next_code <= (Prims.of_int (0x5A))))
-                        ||
-                        ((next_code >= (Prims.of_int (0x61))) &&
-                           (next_code <= (Prims.of_int (0x7A)))))
-                       || (next_code = (Prims.of_int (0x3E))))
-                      || (next_code = (Prims.of_int (0x5F))))
-                     || (next_code = (Prims.of_int (0x2F))))
-                    || (next_code = (Prims.of_int (0x23))))
-                   ||
-                   (((next_code = (Prims.of_int (0x3F))) ||
-                       (next_code = (Prims.of_int (0x24))))
-                      &&
-                      (has_gt_before_terminator input (p1 + Prims.int_one)))
-               then
-                 let uu___4 = scan_iri input (p1 + Prims.int_one) in
-                 match uu___4 with | (iri, p') -> ((Tok_IRI iri), p')
-               else (Tok_LT, (p1 + Prims.int_one))))
+              if at_end input (p1 + Prims.int_one)
+              then (Tok_LT, (p1 + Prims.int_one))
+              else
+                (let next_code =
+                   char_code (peek_char input (p1 + Prims.int_one)) in
+                 if
+                   (((((((next_code >= (Prims.of_int (0x41))) &&
+                           (next_code <= (Prims.of_int (0x5A))))
+                          ||
+                          ((next_code >= (Prims.of_int (0x61))) &&
+                             (next_code <= (Prims.of_int (0x7A)))))
+                         || (next_code = (Prims.of_int (0x3E))))
+                        || (next_code = (Prims.of_int (0x5F))))
+                       || (next_code = (Prims.of_int (0x2F))))
+                      || (next_code = (Prims.of_int (0x23))))
+                     ||
+                     (((next_code = (Prims.of_int (0x3F))) ||
+                         (next_code = (Prims.of_int (0x24))))
+                        &&
+                        (has_gt_before_terminator input (p1 + Prims.int_one)))
+                 then
+                   let uu___5 = scan_iri input (p1 + Prims.int_one) in
+                   match uu___5 with | (iri, p') -> ((Tok_IRI iri), p')
+                 else (Tok_LT, (p1 + Prims.int_one))))
      else
        if code = (Prims.of_int (0x3E))
        then
          (if
-            (Prims.op_Negation (at_end input (p1 + Prims.int_one))) &&
+            (sparql12 &&
+               (Prims.op_Negation (at_end input (p1 + Prims.int_one))))
+              &&
               ((char_code (peek_char input (p1 + Prims.int_one))) =
-                 (Prims.of_int (0x3D)))
-          then (Tok_GE, (p1 + (Prims.of_int (2))))
-          else (Tok_GT, (p1 + Prims.int_one)))
+                 (Prims.of_int (0x3E)))
+          then (Tok_TT_BARE_CLOSE, (p1 + (Prims.of_int (2))))
+          else
+            if
+              (Prims.op_Negation (at_end input (p1 + Prims.int_one))) &&
+                ((char_code (peek_char input (p1 + Prims.int_one))) =
+                   (Prims.of_int (0x3D)))
+            then (Tok_GE, (p1 + (Prims.of_int (2))))
+            else (Tok_GT, (p1 + Prims.int_one)))
        else
          if code = (Prims.of_int (0x7B))
-         then (Tok_LBRACE, (p1 + Prims.int_one))
+         then
+           (if
+              (sparql12 &&
+                 (Prims.op_Negation (at_end input (p1 + Prims.int_one))))
+                &&
+                ((char_code (peek_char input (p1 + Prims.int_one))) =
+                   (Prims.of_int (0x7C)))
+            then (Tok_ANNOT_OPEN, (p1 + (Prims.of_int (2))))
+            else (Tok_LBRACE, (p1 + Prims.int_one)))
          else
            if code = (Prims.of_int (0x7D))
            then (Tok_RBRACE, (p1 + Prims.int_one))
@@ -1849,15 +1888,28 @@ let next_token (sparql12 : Prims.bool) (input : Prims.string) (p : pos) :
                                if code = (Prims.of_int (0x7C))
                                then
                                  (if
-                                    (Prims.op_Negation
-                                       (at_end input (p1 + Prims.int_one)))
+                                    (sparql12 &&
+                                       (Prims.op_Negation
+                                          (at_end input (p1 + Prims.int_one))))
                                       &&
                                       ((char_code
                                           (peek_char input
                                              (p1 + Prims.int_one)))
-                                         = (Prims.of_int (0x7C)))
-                                  then (Tok_OR, (p1 + (Prims.of_int (2))))
-                                  else (Tok_PIPE, (p1 + Prims.int_one)))
+                                         = (Prims.of_int (0x7D)))
+                                  then
+                                    (Tok_ANNOT_CLOSE,
+                                      (p1 + (Prims.of_int (2))))
+                                  else
+                                    if
+                                      (Prims.op_Negation
+                                         (at_end input (p1 + Prims.int_one)))
+                                        &&
+                                        ((char_code
+                                            (peek_char input
+                                               (p1 + Prims.int_one)))
+                                           = (Prims.of_int (0x7C)))
+                                    then (Tok_OR, (p1 + (Prims.of_int (2))))
+                                    else (Tok_PIPE, (p1 + Prims.int_one)))
                                else
                                  if code = (Prims.of_int (0x5E))
                                  then
@@ -1997,24 +2049,33 @@ let next_token (sparql12 : Prims.bool) (input : Prims.string) (p : pos) :
                                                         scan_pname_or_keyword
                                                           sparql12 input p1)
                                                    else
-                                                     if is_digit c
+                                                     if
+                                                       sparql12 &&
+                                                         (code =
+                                                            (Prims.of_int (0x7E)))
                                                      then
-                                                       scan_number input p1
+                                                       (Tok_TILDE,
+                                                         (p1 + Prims.int_one))
                                                      else
-                                                       if
-                                                         ((is_alpha c) ||
-                                                            (code =
-                                                               (Prims.of_int (0x3A))))
-                                                           ||
-                                                           (code >=
-                                                              (Prims.of_int (0x80)))
+                                                       if is_digit c
                                                        then
-                                                         scan_pname_or_keyword
-                                                           sparql12 input p1
+                                                         scan_number input p1
                                                        else
-                                                         (Tok_EOF,
-                                                           (p1 +
-                                                              Prims.int_one)))
+                                                         if
+                                                           ((is_alpha c) ||
+                                                              (code =
+                                                                 (Prims.of_int (0x3A))))
+                                                             ||
+                                                             (code >=
+                                                                (Prims.of_int (0x80)))
+                                                         then
+                                                           scan_pname_or_keyword
+                                                             sparql12 input
+                                                             p1
+                                                         else
+                                                           (Tok_EOF,
+                                                             (p1 +
+                                                                Prims.int_one)))
 type 'a parse_result =
   | ParseOk of 'a * token Prims.list 
   | ParseErr of Prims.string 
@@ -2240,6 +2301,8 @@ let rdf_first_iri_str : RDF_Term.wf_iri=
   "http://www.w3.org/1999/02/22-rdf-syntax-ns#first"
 let rdf_rest_iri_str : RDF_Term.wf_iri=
   "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest"
+let rdf_reifies_iri_str : RDF_Term.wf_iri=
+  "http://www.w3.org/1999/02/22-rdf-syntax-ns#reifies"
 let is_local_labeled_bnode_id (b : Prims.string) : Prims.bool=
   let prefix = "_:bnode_" in
   let plen = FStar_String.strlen prefix in
@@ -2397,6 +2460,14 @@ let pattern_term_to_subject (pt : SPARQL11_Algebra.pattern_term) :
   | SPARQL11_Algebra.PT_Literal uu___ -> FStar_Pervasives_Native.None
   | SPARQL11_Algebra.PT_TripleTerm (s, p, o) ->
       FStar_Pervasives_Native.Some (SPARQL11_Algebra.PS_TripleTerm (s, p, o))
+let pattern_subject_to_term (ps : SPARQL11_Algebra.pattern_subject) :
+  SPARQL11_Algebra.pattern_term=
+  match ps with
+  | SPARQL11_Algebra.PS_Var v -> SPARQL11_Algebra.PT_Var v
+  | SPARQL11_Algebra.PS_IRI i -> SPARQL11_Algebra.PT_IRI i
+  | SPARQL11_Algebra.PS_BNode b -> SPARQL11_Algebra.PT_BNode b
+  | SPARQL11_Algebra.PS_TripleTerm (s, p, o) ->
+      SPARQL11_Algebra.PT_TripleTerm (s, p, o)
 let select_item_var (item : SPARQL11_Algebra.select_item) :
   SPARQL11_Algebra.var_name=
   match item with
@@ -3746,6 +3817,22 @@ and parse_ggp_body (pm : prefix_map) (fuel : Prims.nat)
                 (let acc' = ggp_join acc triples_ggp in
                  parse_ggp_body pm (fuel - Prims.int_one) acc' filters false
                    ts'))
+     | Tok_TT_BARE_OPEN ->
+         (match parse_triples_block pm (fuel - Prims.int_one)
+                  SPARQL11_Algebra.GP_Empty ts
+          with
+          | ParseErr m -> ParseErr m
+          | ParseOk (triples_ggp, ts') ->
+              if
+                cross_scope &&
+                  (local_string_overlaps (ggp_labeled_bnodes acc)
+                     (ggp_labeled_bnodes triples_ggp))
+              then
+                ParseErr "blank node label reused across nested group scope"
+              else
+                (let acc' = ggp_join acc triples_ggp in
+                 parse_ggp_body pm (fuel - Prims.int_one) acc' filters false
+                   ts'))
      | Tok_OPTIONAL ->
          (match parse_group_graph_pattern pm (fuel - Prims.int_one)
                   (parse_advance ts)
@@ -4196,7 +4283,142 @@ and parse_data_value (pm : prefix_map) (fuel : Prims.nat) (ts : token_stream)
                 ((FStar_Pervasives_Native.Some (RDF_Term.T_Literal lit)),
                   (parse_advance ts))
           | FStar_Pervasives_Native.None -> ParseErr "invalid boolean")
+     | Tok_TT_OPEN ->
+         (match parse_tt_data_triple pm (fuel - Prims.int_one)
+                  (parse_advance ts)
+          with
+          | ParseErr m -> ParseErr m
+          | ParseOk (tt, ts') ->
+              ParseOk ((FStar_Pervasives_Native.Some tt), ts'))
      | uu___1 -> ParseErr "expected data value or UNDEF")
+and parse_tt_data_triple (pm : prefix_map) (fuel : Prims.nat)
+  (ts : token_stream) : RDF_Term.rdf_term parse_result=
+  if fuel = Prims.int_zero
+  then ParseErr "recursion limit"
+  else
+    (match parse_tt_data_subject pm (fuel - Prims.int_one) ts with
+     | ParseErr m -> ParseErr m
+     | ParseOk (s, ts1) ->
+         (match parse_tt_data_predicate pm (fuel - Prims.int_one) ts1 with
+          | ParseErr m -> ParseErr m
+          | ParseOk (p, ts2) ->
+              (match parse_tt_data_component pm (fuel - Prims.int_one) ts2
+               with
+               | ParseErr m -> ParseErr m
+               | ParseOk (o, ts3) ->
+                   (match parse_expect Tok_TT_CLOSE ts3 with
+                    | ParseErr uu___1 ->
+                        ParseErr "expected ')>>' to close triple term"
+                    | ParseOk ((), ts4) ->
+                        ParseOk ((RDF_Term.T_TripleTerm (s, p, o)), ts4)))))
+and parse_tt_data_subject (pm : prefix_map) (fuel : Prims.nat)
+  (ts : token_stream) : RDF_Term.subject parse_result=
+  if fuel = Prims.int_zero
+  then ParseErr "recursion limit"
+  else
+    (match parse_peek ts with
+     | Tok_IRI i ->
+         if RDF_Term.is_iri i
+         then ParseOk ((RDF_Term.S_IRI i), (parse_advance ts))
+         else ParseErr "invalid IRI"
+     | Tok_PNAME pn ->
+         (match resolve_pname pn pm with
+          | FStar_Pervasives_Native.Some iri ->
+              if RDF_Term.is_iri iri
+              then ParseOk ((RDF_Term.S_IRI iri), (parse_advance ts))
+              else ParseErr "invalid IRI"
+          | FStar_Pervasives_Native.None -> ParseErr "unresolved prefix")
+     | uu___1 -> ParseErr "triple-term data subject must be an IRI")
+and parse_tt_data_predicate (pm : prefix_map) (fuel : Prims.nat)
+  (ts : token_stream) : RDF_Term.wf_iri parse_result=
+  if fuel = Prims.int_zero
+  then ParseErr "recursion limit"
+  else
+    (match parse_peek ts with
+     | Tok_IRI i ->
+         if RDF_Term.is_iri i
+         then ParseOk (i, (parse_advance ts))
+         else ParseErr "invalid IRI"
+     | Tok_PNAME pn ->
+         (match resolve_pname pn pm with
+          | FStar_Pervasives_Native.Some iri ->
+              if RDF_Term.is_iri iri
+              then ParseOk (iri, (parse_advance ts))
+              else ParseErr "invalid IRI"
+          | FStar_Pervasives_Native.None -> ParseErr "unresolved prefix")
+     | Tok_A -> ParseOk (rdf_type_iri_str, (parse_advance ts))
+     | uu___1 -> ParseErr "triple-term data predicate must be an IRI")
+and parse_tt_data_component (pm : prefix_map) (fuel : Prims.nat)
+  (ts : token_stream) : RDF_Term.rdf_term parse_result=
+  if fuel = Prims.int_zero
+  then ParseErr "recursion limit"
+  else
+    (match parse_peek ts with
+     | Tok_IRI i ->
+         if RDF_Term.is_iri i
+         then ParseOk ((RDF_Term.T_IRI i), (parse_advance ts))
+         else ParseErr "invalid IRI"
+     | Tok_PNAME pn ->
+         (match resolve_pname pn pm with
+          | FStar_Pervasives_Native.Some iri ->
+              if RDF_Term.is_iri iri
+              then ParseOk ((RDF_Term.T_IRI iri), (parse_advance ts))
+              else ParseErr "invalid IRI"
+          | FStar_Pervasives_Native.None -> ParseErr "unresolved prefix")
+     | Tok_BNODE b -> ParseOk ((RDF_Term.T_BNode b), (parse_advance ts))
+     | Tok_A ->
+         ParseOk ((RDF_Term.T_IRI rdf_type_iri_str), (parse_advance ts))
+     | Tok_STRING s ->
+         (match parse_rdf_literal_pt pm (fuel - Prims.int_one) s
+                  (parse_advance ts)
+          with
+          | ParseErr m -> ParseErr m
+          | ParseOk (SPARQL11_Algebra.PT_Literal lit, ts') ->
+              ParseOk ((RDF_Term.T_Literal lit), ts')
+          | ParseOk (uu___1, ts') -> ParseErr "expected literal")
+     | Tok_INTEGER n ->
+         (match make_typed_literal n
+                  "http://www.w3.org/2001/XMLSchema#integer"
+          with
+          | FStar_Pervasives_Native.Some lit ->
+              ParseOk ((RDF_Term.T_Literal lit), (parse_advance ts))
+          | FStar_Pervasives_Native.None -> ParseErr "invalid integer")
+     | Tok_DECIMAL d ->
+         (match make_typed_literal d
+                  "http://www.w3.org/2001/XMLSchema#decimal"
+          with
+          | FStar_Pervasives_Native.Some lit ->
+              ParseOk ((RDF_Term.T_Literal lit), (parse_advance ts))
+          | FStar_Pervasives_Native.None -> ParseErr "invalid decimal")
+     | Tok_DOUBLE d ->
+         (match make_typed_literal d
+                  "http://www.w3.org/2001/XMLSchema#double"
+          with
+          | FStar_Pervasives_Native.Some lit ->
+              ParseOk ((RDF_Term.T_Literal lit), (parse_advance ts))
+          | FStar_Pervasives_Native.None -> ParseErr "invalid double")
+     | Tok_TRUE ->
+         (match make_typed_literal "true"
+                  "http://www.w3.org/2001/XMLSchema#boolean"
+          with
+          | FStar_Pervasives_Native.Some lit ->
+              ParseOk ((RDF_Term.T_Literal lit), (parse_advance ts))
+          | FStar_Pervasives_Native.None -> ParseErr "invalid boolean")
+     | Tok_FALSE ->
+         (match make_typed_literal "false"
+                  "http://www.w3.org/2001/XMLSchema#boolean"
+          with
+          | FStar_Pervasives_Native.Some lit ->
+              ParseOk ((RDF_Term.T_Literal lit), (parse_advance ts))
+          | FStar_Pervasives_Native.None -> ParseErr "invalid boolean")
+     | Tok_TT_OPEN ->
+         (match parse_tt_data_triple pm (fuel - Prims.int_one)
+                  (parse_advance ts)
+          with
+          | ParseErr m -> ParseErr m
+          | ParseOk (tt, ts') -> ParseOk (tt, ts'))
+     | uu___1 ->
+         ParseErr "expected ground term inside triple-term data value")
 and parse_values_row (pm : prefix_map) (fuel : Prims.nat)
   (n_vars : Prims.nat) (ts : token_stream) :
   RDF_Term.rdf_term FStar_Pervasives_Native.option Prims.list parse_result=
@@ -4405,6 +4627,13 @@ and parse_subject_with_extras (pm : prefix_map) (fuel : Prims.nat)
                    ParseOk ((subj, extras, false), ts')
                | FStar_Pervasives_Native.None ->
                    ParseErr "invalid triple-term subject"))
+     | Tok_TT_BARE_OPEN ->
+         (match parse_reified_triple_pattern pm (fuel - Prims.int_one)
+                  (parse_advance ts)
+          with
+          | ParseErr m -> ParseErr m
+          | ParseOk ((reif, extras), ts') ->
+              ParseOk ((reif, extras, true), ts'))
      | uu___1 -> ParseErr "expected subject")
 and parse_subject (pm : prefix_map) (fuel : Prims.nat) (ts : token_stream) :
   SPARQL11_Algebra.pattern_subject parse_result=
@@ -4764,6 +4993,13 @@ and parse_object_with_extras (pm : prefix_map) (fuel : Prims.nat)
      | Tok_TT_OPEN ->
          parse_triple_term_pattern pm (fuel - Prims.int_one)
            (parse_advance ts)
+     | Tok_TT_BARE_OPEN ->
+         (match parse_reified_triple_pattern pm (fuel - Prims.int_one)
+                  (parse_advance ts)
+          with
+          | ParseErr m -> ParseErr m
+          | ParseOk ((reif, extras), ts') ->
+              ParseOk (((pattern_subject_to_term reif), extras), ts'))
      | uu___1 -> ParseErr "expected object")
 and parse_tt_pat_component (pm : prefix_map) (fuel : Prims.nat)
   (ts : token_stream) :
@@ -4823,6 +5059,163 @@ and parse_triple_term_pattern (pm : prefix_map) (fuel : Prims.nat)
                         ParseOk
                           (((SPARQL11_Algebra.PT_TripleTerm
                                (s_pt, p_pt, o_pt)), (ggp_join ex1 ex3)), ts4)))))
+and parse_reifier_id (pm : prefix_map) (fuel : Prims.nat) (ts : token_stream)
+  : SPARQL11_Algebra.pattern_subject parse_result=
+  if fuel = Prims.int_zero
+  then ParseErr "recursion limit"
+  else
+    (match parse_peek ts with
+     | Tok_VAR v -> ParseOk ((SPARQL11_Algebra.PS_Var v), (parse_advance ts))
+     | Tok_IRI i ->
+         if RDF_Term.is_iri i
+         then ParseOk ((SPARQL11_Algebra.PS_IRI i), (parse_advance ts))
+         else ParseErr "invalid reifier IRI"
+     | Tok_PNAME pn ->
+         (match resolve_pname pn pm with
+          | FStar_Pervasives_Native.Some iri ->
+              if RDF_Term.is_iri iri
+              then
+                ParseOk ((SPARQL11_Algebra.PS_IRI iri), (parse_advance ts))
+              else ParseErr "invalid reifier IRI"
+          | FStar_Pervasives_Native.None -> ParseErr "unresolved prefix")
+     | Tok_BNODE b ->
+         ParseOk ((SPARQL11_Algebra.PS_BNode b), (parse_advance ts))
+     | uu___1 ->
+         let bnode_id = fresh_bnode_id ts in
+         ParseOk ((SPARQL11_Algebra.PS_BNode bnode_id), ts))
+and parse_reified_triple_pattern (pm : prefix_map) (fuel : Prims.nat)
+  (ts : token_stream) :
+  (SPARQL11_Algebra.pattern_subject * SPARQL11_Algebra.group_graph_pattern)
+    parse_result=
+  if fuel = Prims.int_zero
+  then ParseErr "recursion limit"
+  else
+    (match parse_tt_pat_component pm (fuel - Prims.int_one) ts with
+     | ParseErr m -> ParseErr m
+     | ParseOk ((s_pt, ex_s), ts1) ->
+         (match parse_tt_pat_predicate pm (fuel - Prims.int_one) ts1 with
+          | ParseErr m -> ParseErr m
+          | ParseOk (p_pt, ts2) ->
+              (match parse_tt_pat_component pm (fuel - Prims.int_one) ts2
+               with
+               | ParseErr m -> ParseErr m
+               | ParseOk ((o_pt, ex_o), ts3) ->
+                   let ex_so = ggp_join ex_s ex_o in
+                   let tt = SPARQL11_Algebra.PT_TripleTerm (s_pt, p_pt, o_pt) in
+                   (match parse_peek ts3 with
+                    | Tok_TILDE ->
+                        let ts4 = parse_advance ts3 in
+                        (match parse_reifier_id pm (fuel - Prims.int_one) ts4
+                         with
+                         | ParseErr m -> ParseErr m
+                         | ParseOk (reif, ts5) ->
+                             (match parse_expect Tok_TT_BARE_CLOSE ts5 with
+                              | ParseErr uu___1 ->
+                                  ParseErr
+                                    "expected '>>' to close reified triple"
+                              | ParseOk ((), ts6) ->
+                                  let reifies_tp =
+                                    {
+                                      SPARQL11_Algebra.tp_s = reif;
+                                      SPARQL11_Algebra.tp_p =
+                                        (SPARQL11_Algebra.PT_IRI
+                                           rdf_reifies_iri_str);
+                                      SPARQL11_Algebra.tp_o = tt
+                                    } in
+                                  ParseOk
+                                    ((reif,
+                                       (ggp_join ex_so
+                                          (SPARQL11_Algebra.GP_BGP
+                                             [reifies_tp]))), ts6)))
+                    | uu___1 ->
+                        (match parse_expect Tok_TT_BARE_CLOSE ts3 with
+                         | ParseErr uu___2 ->
+                             ParseErr "expected '>>' to close reified triple"
+                         | ParseOk ((), ts4) ->
+                             let bnode_id = fresh_bnode_id ts3 in
+                             let reif = SPARQL11_Algebra.PS_BNode bnode_id in
+                             let reifies_tp =
+                               {
+                                 SPARQL11_Algebra.tp_s = reif;
+                                 SPARQL11_Algebra.tp_p =
+                                   (SPARQL11_Algebra.PT_IRI
+                                      rdf_reifies_iri_str);
+                                 SPARQL11_Algebra.tp_o = tt
+                               } in
+                             ParseOk
+                               ((reif,
+                                  (ggp_join ex_so
+                                     (SPARQL11_Algebra.GP_BGP [reifies_tp]))),
+                                 ts4))))))
+and parse_annotations (pm : prefix_map) (fuel : Prims.nat)
+  (base_s : SPARQL11_Algebra.pattern_subject)
+  (base_p : SPARQL11_Algebra.pattern_term)
+  (base_o : SPARQL11_Algebra.pattern_term)
+  (pending : SPARQL11_Algebra.pattern_subject FStar_Pervasives_Native.option)
+  (ts : token_stream) : SPARQL11_Algebra.group_graph_pattern parse_result=
+  if fuel = Prims.int_zero
+  then ParseOk (SPARQL11_Algebra.GP_Empty, ts)
+  else
+    (let tt =
+       SPARQL11_Algebra.PT_TripleTerm
+         ((pattern_subject_to_term base_s), base_p, base_o) in
+     match parse_peek ts with
+     | Tok_TILDE ->
+         let ts1 = parse_advance ts in
+         (match parse_reifier_id pm (fuel - Prims.int_one) ts1 with
+          | ParseErr m -> ParseErr m
+          | ParseOk (rsubj, ts2) ->
+              let reifies_tp =
+                {
+                  SPARQL11_Algebra.tp_s = rsubj;
+                  SPARQL11_Algebra.tp_p =
+                    (SPARQL11_Algebra.PT_IRI rdf_reifies_iri_str);
+                  SPARQL11_Algebra.tp_o = tt
+                } in
+              (match parse_annotations pm (fuel - Prims.int_one) base_s
+                       base_p base_o (FStar_Pervasives_Native.Some rsubj) ts2
+               with
+               | ParseErr m -> ParseErr m
+               | ParseOk (rest, ts3) ->
+                   ParseOk
+                     ((ggp_join (SPARQL11_Algebra.GP_BGP [reifies_tp]) rest),
+                       ts3)))
+     | Tok_ANNOT_OPEN ->
+         let ts1 = parse_advance ts in
+         let uu___1 =
+           match pending with
+           | FStar_Pervasives_Native.Some r -> (r, SPARQL11_Algebra.GP_Empty)
+           | FStar_Pervasives_Native.None ->
+               let bnode_id = fresh_bnode_id ts in
+               let r = SPARQL11_Algebra.PS_BNode bnode_id in
+               let reifies_tp =
+                 {
+                   SPARQL11_Algebra.tp_s = r;
+                   SPARQL11_Algebra.tp_p =
+                     (SPARQL11_Algebra.PT_IRI rdf_reifies_iri_str);
+                   SPARQL11_Algebra.tp_o = tt
+                 } in
+               (r, (SPARQL11_Algebra.GP_BGP [reifies_tp])) in
+         (match uu___1 with
+          | (rsubj, pre) ->
+              (match parse_pred_obj_list pm (fuel - Prims.int_one) rsubj
+                       SPARQL11_Algebra.GP_Empty ts1
+               with
+               | ParseErr m -> ParseErr m
+               | ParseOk (blk_ggp, ts2) ->
+                   (match parse_expect Tok_ANNOT_CLOSE ts2 with
+                    | ParseErr uu___2 ->
+                        ParseErr "expected '|}' to close annotation block"
+                    | ParseOk ((), ts3) ->
+                        (match parse_annotations pm (fuel - Prims.int_one)
+                                 base_s base_p base_o
+                                 FStar_Pervasives_Native.None ts3
+                         with
+                         | ParseErr m -> ParseErr m
+                         | ParseOk (rest, ts4) ->
+                             ParseOk
+                               ((ggp_join (ggp_join pre blk_ggp) rest), ts4)))))
+     | uu___1 -> ParseOk (SPARQL11_Algebra.GP_Empty, ts))
 and parse_collection (pm : prefix_map) (fuel : Prims.nat) (ts : token_stream)
   :
   (SPARQL11_Algebra.pattern_term * SPARQL11_Algebra.group_graph_pattern)
@@ -4953,11 +5346,17 @@ and parse_object_list_simple (pm : prefix_map) (fuel : Prims.nat)
                   SPARQL11_Algebra.tp_o = obj
                 } in
             let acc'1 = ggp_join acc' extras in
-            (match parse_peek ts' with
-             | Tok_COMMA ->
-                 parse_object_list_simple pm (fuel - Prims.int_one) subj pred
-                   acc'1 (parse_advance ts')
-             | uu___2 -> ParseOk (acc'1, ts'))))
+            (match parse_annotations pm (fuel - Prims.int_one) subj pred obj
+                     FStar_Pervasives_Native.None ts'
+             with
+             | ParseErr m -> ParseErr m
+             | ParseOk (ann_ggp, ts'') ->
+                 let acc'2 = ggp_join acc'1 ann_ggp in
+                 (match parse_peek ts'' with
+                  | Tok_COMMA ->
+                      parse_object_list_simple pm (fuel - Prims.int_one) subj
+                        pred acc'2 (parse_advance ts'')
+                  | uu___2 -> ParseOk (acc'2, ts'')))))
 and parse_fulltext_query_object (pm : prefix_map) (fuel : Prims.nat)
   (ts : token_stream) : RDF_Term.wf_literal parse_result=
   if fuel = Prims.int_zero
@@ -5165,6 +5564,9 @@ and parse_triples_block (pm : prefix_map) (fuel : Prims.nat)
                     | Tok_TT_OPEN ->
                         parse_triples_block pm (fuel - Prims.int_one) acc'
                           ts'''
+                    | Tok_TT_BARE_OPEN ->
+                        parse_triples_block pm (fuel - Prims.int_one) acc'
+                          ts'''
                     | uu___1 -> ParseOk (acc', ts'''))
                | Tok_VAR uu___1 -> ParseErr "expected dot between triples"
                | Tok_IRI uu___1 -> ParseErr "expected dot between triples"
@@ -5182,6 +5584,7 @@ and parse_triples_block (pm : prefix_map) (fuel : Prims.nat)
                | Tok_TRUE -> ParseErr "expected dot between triples"
                | Tok_FALSE -> ParseErr "expected dot between triples"
                | Tok_TT_OPEN -> ParseErr "expected dot between triples"
+               | Tok_TT_BARE_OPEN -> ParseErr "expected dot between triples"
                | uu___1 -> ParseOk (acc', ts''))))
 and parse_select_query (pm : prefix_map)
   (init_base : RDF_Term.wf_iri FStar_Pervasives_Native.option)

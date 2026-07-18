@@ -824,6 +824,16 @@ let load_triples df =
     then parse_ntriples_fstar content
     else if Filename.check_suffix df ".rdf"
     then parse_rdfxml_fstar content (Some base)
+    (* sparql12 mode (--sparql12): eval-triple-terms .ttl fixtures use RDF
+       1.2 Turtle's bare `<< s p o (~ r)? >>` reified-triple / `{| |}`
+       annotation sugar (e.g. data-1.ttl, data-2.ttl). The 1.1 Turtle
+       parser doesn't recognize that syntax, silently yielding an empty
+       graph and cascading every query-eval test in the suite to "expected
+       N rows, got 0". Dispatch to the 1.2 parser entry point instead —
+       pure mode selection between two already-verified F* parsers,
+       mirrors parse_sparql_query's !sparql12_mode dispatch above. *)
+    else if !sparql12_mode
+    then parse_turtle_12 content base
     else parse_turtle_fstar content (Some base)
 
 (* RIF-XML preprocessor: strip the <!DOCTYPE ... [...]> internal subset
@@ -1276,7 +1286,12 @@ let run_query_eval_test tc =
     let abs_rf = if Filename.is_relative rf then
       Filename.concat (Sys.getcwd ()) rf else rf in
     let base = "file://" ^ abs_rf in
-    let expected_triples = parse_turtle_fstar content (Some base) in
+    (* sparql12 mode: CONSTRUCT expected-result .ttl fixtures (e.g.
+       construct-1.ttl) use RDF 1.2 reifier/annotation sugar too — same
+       dispatch as load_triples above. *)
+    let expected_triples =
+      if !sparql12_mode then parse_turtle_12 content base
+      else parse_turtle_fstar content (Some base) in
     let rs_ns = "http://www.w3.org/2001/sw/DataAccess/tests/result-set#" in
     let rs_ResultSet   = rs_ns ^ "ResultSet" in
     let rs_resultVariable = rs_ns ^ "resultVariable" in
