@@ -1407,6 +1407,53 @@ let normalize_space (s:string) : string =
   let rev' = match rev with ' ' :: rest -> rest | _ -> rev in
   String.string_of_list (List.Tot.rev rev')
 
+(* translate(string, from, to) per XPath 1.0 §4.2 -- codepoint-based via
+   String.list_of_string/string_of_list (same posture as normalize_space
+   just above and ws_split_chars near id()), NOT byte indexing, so
+   multi-byte UTF-8 characters in `from`/`to` are matched and substituted
+   one codepoint at a time rather than one byte at a time. *)
+
+// Position of the FIRST occurrence of `c` in `from_cs` (0-based), or
+// None if `c` does not occur -- "first occurrence wins" per the spec
+// when a character is repeated in the `from` argument.
+let rec find_char_index (from_cs:list FStar.Char.char) (c:FStar.Char.char) (idx:nat)
+  : Tot (option nat) (decreases from_cs) =
+  match from_cs with
+  | [] -> None
+  | h :: t -> if h = c then Some idx else find_char_index t c (idx + 1)
+
+// The character at position `idx` (0-based) of `to_cs`, or None when
+// `idx` runs past the end -- that "falls off the end of `to`" case is
+// exactly how the spec drops a `from`-character with no replacement
+// (§4.2: "If there is no character in the third argument... then
+// characters ... are removed").
+let rec nth_char (to_cs:list FStar.Char.char) (idx:nat) : Tot (option FStar.Char.char) (decreases to_cs) =
+  match to_cs with
+  | [] -> None
+  | h :: t -> if idx = 0 then Some h else nth_char t (idx - 1)
+
+// One input character: kept unchanged if absent from `from_cs`,
+// substituted by the same-index character of `to_cs` if present there,
+// or dropped entirely if `from_cs` is longer than `to_cs` at that index.
+let translate_char (from_cs to_cs:list FStar.Char.char) (c:FStar.Char.char) : option FStar.Char.char =
+  match find_char_index from_cs c 0 with
+  | None -> Some c
+  | Some i -> nth_char to_cs i
+
+let rec translate_chars (from_cs to_cs:list FStar.Char.char) (cs:list FStar.Char.char)
+  : Tot (list FStar.Char.char) (decreases cs) =
+  match cs with
+  | [] -> []
+  | c :: rest ->
+    let tail = translate_chars from_cs to_cs rest in
+    (match translate_char from_cs to_cs c with
+     | Some c' -> c' :: tail
+     | None -> tail)
+
+let translate_str (s from_s to_s:string) : string =
+  String.string_of_list
+    (translate_chars (String.list_of_string from_s) (String.list_of_string to_s) (String.list_of_string s))
+
 let xn_le_int (a:xpath_number) (k:int) : bool =
   match xn_compare a (XN_Finite k 0) with Some c -> c <= 0 | None -> false
 
@@ -1555,7 +1602,7 @@ let is_supported_xpath_function (nm:string) : bool =
   nm = "current" || nm = "string" || nm = "concat" ||
   nm = "contains" || nm = "starts-with" ||
   nm = "substring-before" || nm = "substring-after" || nm = "substring" ||
-  nm = "string-length" || nm = "normalize-space" ||
+  nm = "string-length" || nm = "normalize-space" || nm = "translate" ||
   nm = "not" || nm = "true" || nm = "false" || nm = "boolean" ||
   nm = "number" || nm = "sum" || nm = "floor" || nm = "ceiling" || nm = "round" ||
   nm = "id" || nm = "document" || nm = "format-number"
@@ -1914,6 +1961,14 @@ and eval_funcall (fuel:nat) (env:xp_env) (name:string) (args:list xp_expr)
     else if name = "normalize-space" then
       let s = match args with [] -> item_string_value env.env_item | a :: _ -> to_string_val (eval_expr (fuel - 1) env a) in
       XV_Str (normalize_space s)
+    else if name = "translate" then
+      (match args with
+       | [a; b; c] ->
+         let s = to_string_val (eval_expr (fuel - 1) env a) in
+         let from_s = to_string_val (eval_expr (fuel - 1) env b) in
+         let to_s = to_string_val (eval_expr (fuel - 1) env c) in
+         XV_Str (translate_str s from_s to_s)
+       | _ -> XV_Str "")
     else if name = "not" then
       (match args with [a] -> XV_Bool (not (to_bool_val (eval_expr (fuel - 1) env a))) | _ -> XV_Bool true)
     else if name = "true" then XV_Bool true
