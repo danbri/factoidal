@@ -1,5 +1,2 @@
-    [RIF.Core.Tests.fst]
-    [SPARQL11.Store.fst]
-    [RIF.Core.Tests.fst] Extracted module RIF.Core.Tests
-    [SPARQL11.Store.fst]     potential errors, although the original non-split verification condition
-    [SPARQL11.Store.fst] Extracted module SPARQL11.Store
+    RIF.Core.Tests.fst (up to date, skipped -- source unchanged since last extract)
+    SPARQL11.Store.fst (up to date, skipped -- source unchanged since last extract)

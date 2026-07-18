@@ -53,6 +53,15 @@ type token =
      1.1 parsing is byte-identical. *)
   | Tok_TT_OPEN  (* <<(  triple-term open  *)
   | Tok_TT_CLOSE (* )>>  triple-term close *)
+  (* SPARQL 1.2 reified-triple / annotation delimiters (grammar wave,
+     epic #305). Also emitted only in 1.2 mode; the `<<(`/`)>>` checks
+     above still take priority over these bare forms wherever both could
+     start (e.g. `<<(` is checked before falling back to bare `<<`). *)
+  | Tok_TT_BARE_OPEN  (* <<   bare reified-triple open  *)
+  | Tok_TT_BARE_CLOSE (* >>   bare reified-triple close *)
+  | Tok_TILDE         (* ~    reifier marker            *)
+  | Tok_ANNOT_OPEN    (* {|   annotation block open     *)
+  | Tok_ANNOT_CLOSE   (* |}   annotation block close    *)
   (* SPARQL 1.2 triple-term builtin function keywords (1.2 mode only). *)
   | Tok_TRIPLE_KW | Tok_SUBJECT_KW | Tok_PREDICATE_KW | Tok_OBJECT_KW | Tok_ISTRIPLE_KW
   (* Literals and names *)
@@ -775,6 +784,13 @@ let next_token (sparql12 : bool) (input : string) (p : pos) : lex_result =
          && char_code (peek_char input (p + 1)) = 0x3C   // <
          && char_code (peek_char input (p + 2)) = 0x28   // (
       then (Tok_TT_OPEN, p + 3)
+      // SPARQL 1.2: bare `<<` opens a reified triple (no following `(`).
+      // Checked after `<<(` above so the paren'd triple-term form still
+      // wins when both could start. 1.1 mode never emits this.
+      else if sparql12
+              && not (at_end input (p + 1))
+              && char_code (peek_char input (p + 1)) = 0x3C   // <
+      then (Tok_TT_BARE_OPEN, p + 2)
       // Could be <= or <IRI> or < (less-than)
       else if not (at_end input (p + 1)) && char_code (peek_char input (p + 1)) = 0x3D
       then (Tok_LE, p + 2)
@@ -797,11 +813,26 @@ let next_token (sparql12 : bool) (input : string) (p : pos) : lex_result =
           (Tok_IRI iri, p')
         else (Tok_LT, p + 1)
     end
-    else if code = 0x3E (* > *) then
-      if not (at_end input (p + 1)) && char_code (peek_char input (p + 1)) = 0x3D
+    else if code = 0x3E (* > *) then begin
+      // SPARQL 1.2: bare `>>` closes a reified triple. Checked before
+      // `>=`/`>` so a doubled close (e.g. nested reifiers `... >>>>`)
+      // tokenizes as two bare closes, one per next_token call. 1.1 mode
+      // never emits this — falls through to the original GE/GT logic.
+      if sparql12
+         && not (at_end input (p + 1))
+         && char_code (peek_char input (p + 1)) = 0x3E
+      then (Tok_TT_BARE_CLOSE, p + 2)
+      else if not (at_end input (p + 1)) && char_code (peek_char input (p + 1)) = 0x3D
       then (Tok_GE, p + 2)
       else (Tok_GT, p + 1)
-    else if code = 0x7B then (Tok_LBRACE, p + 1)   (* { *)
+    end
+    else if code = 0x7B then begin                  (* { or {| (annotation open) *)
+      if sparql12
+         && not (at_end input (p + 1))
+         && char_code (peek_char input (p + 1)) = 0x7C
+      then (Tok_ANNOT_OPEN, p + 2)
+      else (Tok_LBRACE, p + 1)
+    end
     else if code = 0x7D then (Tok_RBRACE, p + 1)   (* } *)
     else if code = 0x28 then (Tok_LPAREN, p + 1)   (* ( *)
     else if code = 0x29 then begin                  (* ) or )>> (triple-term close) *)
@@ -819,8 +850,12 @@ let next_token (sparql12 : bool) (input : string) (p : pos) : lex_result =
     else if code = 0x2C then (Tok_COMMA, p + 1)     (* , *)
     else if code = 0x2A then (Tok_STAR, p + 1)      (* * *)
     else if code = 0x2F then (Tok_SLASH, p + 1)     (* / *)
-    else if code = 0x7C then begin                   (* | or || *)
-      if not (at_end input (p + 1)) && char_code (peek_char input (p + 1)) = 0x7C
+    else if code = 0x7C then begin                   (* | or || or |} (annotation close) *)
+      if sparql12
+         && not (at_end input (p + 1))
+         && char_code (peek_char input (p + 1)) = 0x7D
+      then (Tok_ANNOT_CLOSE, p + 2)
+      else if not (at_end input (p + 1)) && char_code (peek_char input (p + 1)) = 0x7C
       then (Tok_OR, p + 2)
       else (Tok_PIPE, p + 1)
     end
@@ -864,6 +899,7 @@ let next_token (sparql12 : bool) (input : string) (p : pos) : lex_result =
         (Tok_BNODE label, p')
       else scan_pname_or_keyword sparql12 input p
     end
+    else if sparql12 && code = 0x7E then (Tok_TILDE, p + 1)  (* ~ — reifier marker, 1.2 only *)
     else if is_digit c then scan_number input p
     else if is_alpha c || code = 0x3A || code >= 0x80 then
       scan_pname_or_keyword sparql12 input p
@@ -1106,6 +1142,14 @@ let rdf_rest_iri_str : wf_iri =
   assert_norm (is_iri "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest");
   "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest"
 
+// RDF 1.2 reifier vocabulary (epic #305, grammar wave). The bare reified
+// triple `<< s p o (~ reifier)? >>` and the `{| ... |}` annotation block
+// both expand to a reifier subject plus `reifier rdf:reifies <<( s p o )>>`
+// — mirrors Parser.Turtle.fst's rdf_reifies_iri (rdf12 wave 3).
+let rdf_reifies_iri_str : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/1999/02/22-rdf-syntax-ns#reifies");
+  "http://www.w3.org/1999/02/22-rdf-syntax-ns#reifies"
+
 #push-options "--z3rlimit 200 --fuel 2 --ifuel 2"
 
 (* ---- Helpers hoisted out of the mutually recursive parser block ----
@@ -1249,6 +1293,18 @@ let pattern_term_to_subject (pt : pattern_term) : Tot (option pattern_subject) =
   | PT_BNode b -> Some (PS_BNode b)
   | PT_Literal _ -> None
   | PT_TripleTerm s p o -> Some (PS_TripleTerm s p o)
+
+// Total converse of pattern_term_to_subject: a pattern_subject is always
+// a valid pattern_term (a subject position is a subset of a term
+// position). Used by the SPARQL 1.2 reifier/annotation grammar to reuse
+// a reifier (always var/IRI/bnode) as the object of `rdf:reifies`, and
+// to place a bare reified triple's reifier where a term is expected.
+let pattern_subject_to_term (ps : pattern_subject) : pattern_term =
+  match ps with
+  | PS_Var v -> PT_Var v
+  | PS_IRI i -> PT_IRI i
+  | PS_BNode b -> PT_BNode b
+  | PS_TripleTerm s p o -> PT_TripleTerm s p o
 
 let select_item_var (item : select_item) : var_name =
   match item with
@@ -2018,7 +2074,7 @@ and parse_ggp_body (pm : prefix_map) (fuel : nat) (acc : group_graph_pattern)
   // Try parsing triples if we see a term
   | Tok_VAR _ | Tok_IRI _ | Tok_PNAME _ | Tok_BNODE _ | Tok_LBRACKET
   | Tok_LPAREN | Tok_A | Tok_INTEGER _ | Tok_DECIMAL _ | Tok_DOUBLE _
-  | Tok_STRING _ | Tok_TRUE | Tok_FALSE | Tok_TT_OPEN ->
+  | Tok_STRING _ | Tok_TRUE | Tok_FALSE | Tok_TT_OPEN | Tok_TT_BARE_OPEN ->
     (match parse_triples_block pm (fuel-1) GP_Empty ts with
      | ParseErr m -> ParseErr m
      | ParseOk triples_ggp ts' ->
@@ -2300,7 +2356,104 @@ and parse_data_value (pm : prefix_map) (fuel : nat) (ts : token_stream)
     (match make_typed_literal "false" "http://www.w3.org/2001/XMLSchema#boolean" with
      | Some lit -> ParseOk (Some (T_Literal lit)) (parse_advance ts)
      | None -> ParseErr "invalid boolean")
+  | Tok_TT_OPEN ->
+    // SPARQL 1.2 TripleTermData: <<( s p o )>> as a VALUES data value.
+    // Ground only (VALUES rows never carry variables) — see
+    // parse_tt_data_triple below for the per-slot restrictions.
+    (match parse_tt_data_triple pm (fuel-1) (parse_advance ts) with
+     | ParseErr m -> ParseErr m
+     | ParseOk tt ts' -> ParseOk (Some tt) ts')
   | _ -> ParseErr "expected data value or UNDEF"
+
+// SPARQL 1.2: a ground triple-term data value `<<( s p o )>>` (the
+// opening `<<(` is already consumed) — SPARQL's TripleTermData
+// production. Every component must be ground: the subject is
+// restricted to an IRI (like parse_tt_expr_subject in expression
+// context — a literal or nested triple term in subject position is a
+// syntax error; negative suite: tripleterm-subject-01/02/04/05, which
+// exercise exactly this restriction via VALUES). The predicate is an
+// IRI (or `a`). The object may be an IRI, literal, or a nested
+// TripleTermData (basic-8.rq nests one as the object).
+and parse_tt_data_triple (pm : prefix_map) (fuel : nat) (ts : token_stream)
+  : Tot (parse_result rdf_term) (decreases fuel) =
+  if fuel = 0 then ParseErr "recursion limit"
+  else match parse_tt_data_subject pm (fuel-1) ts with
+  | ParseErr m -> ParseErr m
+  | ParseOk s ts1 ->
+    (match parse_tt_data_predicate pm (fuel-1) ts1 with
+     | ParseErr m -> ParseErr m
+     | ParseOk p ts2 ->
+       (match parse_tt_data_component pm (fuel-1) ts2 with
+        | ParseErr m -> ParseErr m
+        | ParseOk o ts3 ->
+          (match parse_expect Tok_TT_CLOSE ts3 with
+           | ParseErr _ -> ParseErr "expected ')>>' to close triple term"
+           | ParseOk () ts4 -> ParseOk (T_TripleTerm s p o) ts4)))
+
+and parse_tt_data_subject (pm : prefix_map) (fuel : nat) (ts : token_stream)
+  : Tot (parse_result subject) (decreases fuel) =
+  if fuel = 0 then ParseErr "recursion limit"
+  else match parse_peek ts with
+  | Tok_IRI i -> if is_iri i then ParseOk (S_IRI i) (parse_advance ts) else ParseErr "invalid IRI"
+  | Tok_PNAME pn ->
+    (match resolve_pname pn pm with
+     | Some iri -> if is_iri iri then ParseOk (S_IRI iri) (parse_advance ts) else ParseErr "invalid IRI"
+     | None -> ParseErr "unresolved prefix")
+  | _ -> ParseErr "triple-term data subject must be an IRI"
+
+and parse_tt_data_predicate (pm : prefix_map) (fuel : nat) (ts : token_stream)
+  : Tot (parse_result wf_iri) (decreases fuel) =
+  if fuel = 0 then ParseErr "recursion limit"
+  else match parse_peek ts with
+  | Tok_IRI i -> if is_iri i then ParseOk i (parse_advance ts) else ParseErr "invalid IRI"
+  | Tok_PNAME pn ->
+    (match resolve_pname pn pm with
+     | Some iri -> if is_iri iri then ParseOk iri (parse_advance ts) else ParseErr "invalid IRI"
+     | None -> ParseErr "unresolved prefix")
+  | Tok_A -> ParseOk rdf_type_iri_str (parse_advance ts)
+  | _ -> ParseErr "triple-term data predicate must be an IRI"
+
+and parse_tt_data_component (pm : prefix_map) (fuel : nat) (ts : token_stream)
+  : Tot (parse_result rdf_term) (decreases fuel) =
+  if fuel = 0 then ParseErr "recursion limit"
+  else match parse_peek ts with
+  | Tok_IRI i -> if is_iri i then ParseOk (T_IRI i) (parse_advance ts) else ParseErr "invalid IRI"
+  | Tok_PNAME pn ->
+    (match resolve_pname pn pm with
+     | Some iri -> if is_iri iri then ParseOk (T_IRI iri) (parse_advance ts) else ParseErr "invalid IRI"
+     | None -> ParseErr "unresolved prefix")
+  | Tok_BNODE b -> ParseOk (T_BNode b) (parse_advance ts)
+  | Tok_A -> ParseOk (T_IRI rdf_type_iri_str) (parse_advance ts)
+  | Tok_STRING s ->
+    (match parse_rdf_literal_pt pm (fuel-1) s (parse_advance ts) with
+     | ParseErr m -> ParseErr m
+     | ParseOk (PT_Literal lit) ts' -> ParseOk (T_Literal lit) ts'
+     | ParseOk _ ts' -> ParseErr "expected literal")
+  | Tok_INTEGER n ->
+    (match make_typed_literal n "http://www.w3.org/2001/XMLSchema#integer" with
+     | Some lit -> ParseOk (T_Literal lit) (parse_advance ts)
+     | None -> ParseErr "invalid integer")
+  | Tok_DECIMAL d ->
+    (match make_typed_literal d "http://www.w3.org/2001/XMLSchema#decimal" with
+     | Some lit -> ParseOk (T_Literal lit) (parse_advance ts)
+     | None -> ParseErr "invalid decimal")
+  | Tok_DOUBLE d ->
+    (match make_typed_literal d "http://www.w3.org/2001/XMLSchema#double" with
+     | Some lit -> ParseOk (T_Literal lit) (parse_advance ts)
+     | None -> ParseErr "invalid double")
+  | Tok_TRUE ->
+    (match make_typed_literal "true" "http://www.w3.org/2001/XMLSchema#boolean" with
+     | Some lit -> ParseOk (T_Literal lit) (parse_advance ts)
+     | None -> ParseErr "invalid boolean")
+  | Tok_FALSE ->
+    (match make_typed_literal "false" "http://www.w3.org/2001/XMLSchema#boolean" with
+     | Some lit -> ParseOk (T_Literal lit) (parse_advance ts)
+     | None -> ParseErr "invalid boolean")
+  | Tok_TT_OPEN ->
+    (match parse_tt_data_triple pm (fuel-1) (parse_advance ts) with
+     | ParseErr m -> ParseErr m
+     | ParseOk tt ts' -> ParseOk tt ts')
+  | _ -> ParseErr "expected ground term inside triple-term data value"
 
 // Parse a row of values: ( val1 val2 ... )
 and parse_values_row (pm : prefix_map) (fuel : nat) (n_vars : nat) (ts : token_stream)
@@ -2449,6 +2602,14 @@ and parse_subject_with_extras (pm : prefix_map) (fuel : nat) (ts : token_stream)
        (match pattern_term_to_subject pt with
         | Some subj -> ParseOk (subj, extras, false) ts'
         | None -> ParseErr "invalid triple-term subject"))
+  | Tok_TT_BARE_OPEN ->
+    // SPARQL 1.2 bare reified triple  << s p o (~ r)? >>  in subject
+    // position. Like `[ ... ]`, it can stand alone as a complete triples
+    // statement (pattern-08.rq: `<< ?s ?p ?o ~ ?t >> .`) — the outer
+    // predicate-object list is OPTIONAL.
+    (match parse_reified_triple_pattern pm (fuel-1) (parse_advance ts) with
+     | ParseErr m -> ParseErr m
+     | ParseOk (reif, extras) ts' -> ParseOk (reif, extras, true) ts')
   | _ -> ParseErr "expected subject"
 
 (* Legacy wrapper for parse_subject (returns just pattern_subject, no extras) *)
@@ -2688,6 +2849,14 @@ and parse_object_with_extras (pm : prefix_map) (fuel : nat) (ts : token_stream)
   | Tok_TT_OPEN ->
     // SPARQL 1.2 triple term  <<( s p o )>>  in object position.
     parse_triple_term_pattern pm (fuel-1) (parse_advance ts)
+  | Tok_TT_BARE_OPEN ->
+    // SPARQL 1.2 bare reified triple  << s p o (~ r)? >>  in object
+    // position. Reachable here also nests it inside a triple-term /
+    // reified-triple COMPONENT slot via parse_tt_pat_component, which
+    // delegates to this function when the token isn't '('.
+    (match parse_reified_triple_pattern pm (fuel-1) (parse_advance ts) with
+     | ParseErr m -> ParseErr m
+     | ParseOk (reif, extras) ts' -> ParseOk (pattern_subject_to_term reif, extras) ts')
   | _ -> ParseErr "expected object"
 
 // SPARQL 1.2: a subject / object component of a triple-term PATTERN. Like
@@ -2740,6 +2909,127 @@ and parse_triple_term_pattern (pm : prefix_map) (fuel : nat) (ts : token_stream)
            | ParseOk () ts4 ->
              ParseOk (PT_TripleTerm s_pt p_pt o_pt,
                       ggp_join ex1 ex3) ts4)))
+
+// SPARQL 1.2: an explicit or implicit reifier id following `~` (the `~`
+// itself is already consumed by the caller). `VarOrReifierId ::= Var |
+// iri | BlankNode`; anything else means no explicit id was given, which
+// mints a fresh blank node (rewritten to a non-distinguished variable
+// by rewrite_query_bnodes_pattern, same as an anonymous `[]`). Mirrors
+// Parser.Turtle.fst's parse_reifier (rdf12 wave 3), pattern-context
+// analogue.
+and parse_reifier_id (pm : prefix_map) (fuel : nat) (ts : token_stream)
+  : Tot (parse_result pattern_subject) (decreases fuel) =
+  if fuel = 0 then ParseErr "recursion limit"
+  else match parse_peek ts with
+  | Tok_VAR v -> ParseOk (PS_Var v) (parse_advance ts)
+  | Tok_IRI i -> if is_iri i then ParseOk (PS_IRI i) (parse_advance ts) else ParseErr "invalid reifier IRI"
+  | Tok_PNAME pn ->
+    (match resolve_pname pn pm with
+     | Some iri -> if is_iri iri then ParseOk (PS_IRI iri) (parse_advance ts) else ParseErr "invalid reifier IRI"
+     | None -> ParseErr "unresolved prefix")
+  | Tok_BNODE b -> ParseOk (PS_BNode b) (parse_advance ts)
+  | _ ->
+    let bnode_id = fresh_bnode_id ts in
+    ParseOk (PS_BNode bnode_id) ts
+
+// SPARQL 1.2: a bare reified triple `<< s p o (~ reifier)? >>` (the
+// opening `<<` is already consumed). Subject/object components and the
+// predicate reuse the exact same restricted parsers as the paren'd
+// triple-term form (parse_tt_pat_component / parse_tt_pat_predicate) —
+// collections are rejected inside either form, and the predicate is
+// var/IRI/`a` only, matching the negative suite's quoted-list-*/
+// bnode-predicate-* / quoted-path-* fixtures for both forms alike.
+// A ReifiedTriple denotes a *reifier* (fresh blank node, or the
+// `~`-named var/IRI/blank node) that takes the reified triple's place
+// in the enclosing subject/object position; it does NOT itself assert
+// `s p o` as a matched triple (RDF 1.2 reification is deliberately not
+// assertion — see eval-triple-terms/basic-2.rq). Mirrors
+// Parser.Turtle.fst's parse_reified_triple (rdf12 wave 3), SPARQL side.
+and parse_reified_triple_pattern (pm : prefix_map) (fuel : nat) (ts : token_stream)
+  : Tot (parse_result (pattern_subject & group_graph_pattern)) (decreases fuel) =
+  if fuel = 0 then ParseErr "recursion limit"
+  else match parse_tt_pat_component pm (fuel-1) ts with
+  | ParseErr m -> ParseErr m
+  | ParseOk (s_pt, ex_s) ts1 ->
+    (match parse_tt_pat_predicate pm (fuel-1) ts1 with
+     | ParseErr m -> ParseErr m
+     | ParseOk p_pt ts2 ->
+       (match parse_tt_pat_component pm (fuel-1) ts2 with
+        | ParseErr m -> ParseErr m
+        | ParseOk (o_pt, ex_o) ts3 ->
+          let ex_so = ggp_join ex_s ex_o in
+          let tt = PT_TripleTerm s_pt p_pt o_pt in
+          (match parse_peek ts3 with
+           | Tok_TILDE ->
+             let ts4 = parse_advance ts3 in
+             (match parse_reifier_id pm (fuel-1) ts4 with
+              | ParseErr m -> ParseErr m
+              | ParseOk reif ts5 ->
+                (match parse_expect Tok_TT_BARE_CLOSE ts5 with
+                 | ParseErr _ -> ParseErr "expected '>>' to close reified triple"
+                 | ParseOk () ts6 ->
+                   let reifies_tp = { tp_s = reif; tp_p = PT_IRI rdf_reifies_iri_str; tp_o = tt } in
+                   ParseOk (reif, ggp_join ex_so (GP_BGP [reifies_tp])) ts6))
+           | _ ->
+             (match parse_expect Tok_TT_BARE_CLOSE ts3 with
+              | ParseErr _ -> ParseErr "expected '>>' to close reified triple"
+              | ParseOk () ts4 ->
+                let bnode_id = fresh_bnode_id ts3 in
+                let reif = PS_BNode bnode_id in
+                let reifies_tp = { tp_s = reif; tp_p = PT_IRI rdf_reifies_iri_str; tp_o = tt } in
+                ParseOk (reif, ggp_join ex_so (GP_BGP [reifies_tp])) ts4))))
+
+// SPARQL 1.2: an annotation sequence following a simple-predicate
+// object: `(reifier | '{|' predicateObjectList '|}')*`, where
+// `reifier ::= '~' VarOrReifierId?`. `base_s/base_p/base_o` are the
+// triple pattern being annotated (already added to the caller's BGP).
+// A `~` always mints/records a reifier and emits its `reifies` triple
+// immediately, becoming the *pending* reifier for an immediately
+// following `{| ... |}` block; a block with no pending reifier mints
+// its own fresh blank node instead. Reachable only from
+// parse_object_list_simple (never parse_object_list_path), which is
+// exactly the "annotation only follows a VerbSimple predicate"
+// restriction the negative suite's annotated-*-path/oneOrMore/optional/
+// variable-path fixtures check for. Mirrors Parser.Turtle.fst's
+// parse_annotations (rdf12 wave 3), SPARQL side.
+and parse_annotations (pm : prefix_map) (fuel : nat)
+  (base_s : pattern_subject) (base_p : pattern_term) (base_o : pattern_term)
+  (pending : option pattern_subject) (ts : token_stream)
+  : Tot (parse_result group_graph_pattern) (decreases fuel) =
+  if fuel = 0 then ParseOk GP_Empty ts
+  else
+    let tt = PT_TripleTerm (pattern_subject_to_term base_s) base_p base_o in
+    match parse_peek ts with
+    | Tok_TILDE ->
+      let ts1 = parse_advance ts in
+      (match parse_reifier_id pm (fuel-1) ts1 with
+       | ParseErr m -> ParseErr m
+       | ParseOk rsubj ts2 ->
+         let reifies_tp = { tp_s = rsubj; tp_p = PT_IRI rdf_reifies_iri_str; tp_o = tt } in
+         (match parse_annotations pm (fuel-1) base_s base_p base_o (Some rsubj) ts2 with
+          | ParseErr m -> ParseErr m
+          | ParseOk rest ts3 -> ParseOk (ggp_join (GP_BGP [reifies_tp]) rest) ts3))
+    | Tok_ANNOT_OPEN ->
+      let ts1 = parse_advance ts in
+      let (rsubj, pre) =
+        match pending with
+        | Some r -> (r, GP_Empty)
+        | None ->
+          let bnode_id = fresh_bnode_id ts in
+          let r = PS_BNode bnode_id in
+          let reifies_tp = { tp_s = r; tp_p = PT_IRI rdf_reifies_iri_str; tp_o = tt } in
+          (r, GP_BGP [reifies_tp])
+      in
+      (match parse_pred_obj_list pm (fuel-1) rsubj GP_Empty ts1 with
+       | ParseErr m -> ParseErr m
+       | ParseOk blk_ggp ts2 ->
+         (match parse_expect Tok_ANNOT_CLOSE ts2 with
+          | ParseErr _ -> ParseErr "expected '|}' to close annotation block"
+          | ParseOk () ts3 ->
+            (match parse_annotations pm (fuel-1) base_s base_p base_o None ts3 with
+             | ParseErr m -> ParseErr m
+             | ParseOk rest ts4 -> ParseOk (ggp_join (ggp_join pre blk_ggp) rest) ts4)))
+    | _ -> ParseOk GP_Empty ts
 
 // Parse an RDF collection ( item1 item2 ... ) into rdf:first/rdf:rest chain
 and parse_collection (pm : prefix_map) (fuel : nat) (ts : token_stream)
@@ -2840,10 +3130,19 @@ and parse_object_list_simple (pm : prefix_map) (fuel : nat) (subj : pattern_subj
       | ParseOk (obj, extras) ts' ->
         let acc' = ggp_add_triple acc { tp_s = subj; tp_p = pred; tp_o = obj } in
         let acc' = ggp_join acc' extras in
-        begin match parse_peek ts' with
-        | Tok_COMMA -> parse_object_list_simple pm (fuel-1) subj pred acc' (parse_advance ts')
-        | _ -> ParseOk acc' ts'
-        end
+        // SPARQL 1.2: this object may be followed by an annotation
+        // sequence (`~ reifier` and/or `{| predicateObjectList |}`)
+        // reifying THIS triple {subj, pred, obj}. Only reachable from
+        // the simple-verb path (never parse_object_list_path), which is
+        // what restricts annotation to a non-path predicate.
+        (match parse_annotations pm (fuel-1) subj pred obj None ts' with
+         | ParseErr m -> ParseErr m
+         | ParseOk ann_ggp ts'' ->
+           let acc' = ggp_join acc' ann_ggp in
+           begin match parse_peek ts'' with
+           | Tok_COMMA -> parse_object_list_simple pm (fuel-1) subj pred acc' (parse_advance ts'')
+           | _ -> ParseOk acc' ts''
+           end)
 
 // text:query's object-argument grammar (design doc §1/§2.2, task brief's
 // "at minimum" floor): a bare string term (2-arity: `?s text:query
@@ -2968,12 +3267,12 @@ and parse_triples_block (pm : prefix_map) (fuel : nat) (acc : group_graph_patter
         (match parse_peek ts''' with
          | Tok_VAR _ | Tok_IRI _ | Tok_PNAME _ | Tok_BNODE _ | Tok_LBRACKET
          | Tok_LPAREN | Tok_A | Tok_INTEGER _ | Tok_DECIMAL _ | Tok_DOUBLE _
-         | Tok_STRING _ | Tok_TRUE | Tok_FALSE | Tok_TT_OPEN ->
+         | Tok_STRING _ | Tok_TRUE | Tok_FALSE | Tok_TT_OPEN | Tok_TT_BARE_OPEN ->
            parse_triples_block pm (fuel-1) acc' ts'''
          | _ -> ParseOk acc' ts''')
       | Tok_VAR _ | Tok_IRI _ | Tok_PNAME _ | Tok_BNODE _ | Tok_LBRACKET
       | Tok_LPAREN | Tok_A | Tok_INTEGER _ | Tok_DECIMAL _ | Tok_DOUBLE _
-      | Tok_STRING _ | Tok_TRUE | Tok_FALSE | Tok_TT_OPEN ->
+      | Tok_STRING _ | Tok_TRUE | Tok_FALSE | Tok_TT_OPEN | Tok_TT_BARE_OPEN ->
         ParseErr "expected dot between triples"
       | _ -> ParseOk acc' ts''
       end end
