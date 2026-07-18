@@ -275,11 +275,91 @@ let __proj__Mktemplate__item__tpl_body (projectee : template) :
   Parser_XML.xml_node Prims.list=
   match projectee with
   | { tpl_match; tpl_name; tpl_mode; tpl_prio; tpl_body;_} -> tpl_body
+type output_settings =
+  {
+  os_method_raw: Prims.string ;
+  os_omit_decl: Prims.bool ;
+  os_standalone: Prims.string ;
+  os_indent_raw: Prims.string ;
+  os_encoding: Prims.string ;
+  os_version: Prims.string ;
+  os_doctype_public: Prims.string ;
+  os_doctype_system: Prims.string ;
+  os_cdata:
+    (Prims.string FStar_Pervasives_Native.option * Prims.string) Prims.list }
+let __proj__Mkoutput_settings__item__os_method_raw
+  (projectee : output_settings) : Prims.string=
+  match projectee with
+  | { os_method_raw; os_omit_decl; os_standalone; os_indent_raw; os_encoding;
+      os_version; os_doctype_public; os_doctype_system; os_cdata;_} ->
+      os_method_raw
+let __proj__Mkoutput_settings__item__os_omit_decl
+  (projectee : output_settings) : Prims.bool=
+  match projectee with
+  | { os_method_raw; os_omit_decl; os_standalone; os_indent_raw; os_encoding;
+      os_version; os_doctype_public; os_doctype_system; os_cdata;_} ->
+      os_omit_decl
+let __proj__Mkoutput_settings__item__os_standalone
+  (projectee : output_settings) : Prims.string=
+  match projectee with
+  | { os_method_raw; os_omit_decl; os_standalone; os_indent_raw; os_encoding;
+      os_version; os_doctype_public; os_doctype_system; os_cdata;_} ->
+      os_standalone
+let __proj__Mkoutput_settings__item__os_indent_raw
+  (projectee : output_settings) : Prims.string=
+  match projectee with
+  | { os_method_raw; os_omit_decl; os_standalone; os_indent_raw; os_encoding;
+      os_version; os_doctype_public; os_doctype_system; os_cdata;_} ->
+      os_indent_raw
+let __proj__Mkoutput_settings__item__os_encoding
+  (projectee : output_settings) : Prims.string=
+  match projectee with
+  | { os_method_raw; os_omit_decl; os_standalone; os_indent_raw; os_encoding;
+      os_version; os_doctype_public; os_doctype_system; os_cdata;_} ->
+      os_encoding
+let __proj__Mkoutput_settings__item__os_version (projectee : output_settings)
+  : Prims.string=
+  match projectee with
+  | { os_method_raw; os_omit_decl; os_standalone; os_indent_raw; os_encoding;
+      os_version; os_doctype_public; os_doctype_system; os_cdata;_} ->
+      os_version
+let __proj__Mkoutput_settings__item__os_doctype_public
+  (projectee : output_settings) : Prims.string=
+  match projectee with
+  | { os_method_raw; os_omit_decl; os_standalone; os_indent_raw; os_encoding;
+      os_version; os_doctype_public; os_doctype_system; os_cdata;_} ->
+      os_doctype_public
+let __proj__Mkoutput_settings__item__os_doctype_system
+  (projectee : output_settings) : Prims.string=
+  match projectee with
+  | { os_method_raw; os_omit_decl; os_standalone; os_indent_raw; os_encoding;
+      os_version; os_doctype_public; os_doctype_system; os_cdata;_} ->
+      os_doctype_system
+let __proj__Mkoutput_settings__item__os_cdata (projectee : output_settings) :
+  (Prims.string FStar_Pervasives_Native.option * Prims.string) Prims.list=
+  match projectee with
+  | { os_method_raw; os_omit_decl; os_standalone; os_indent_raw; os_encoding;
+      os_version; os_doctype_public; os_doctype_system; os_cdata;_} ->
+      os_cdata
+let default_output_settings : output_settings=
+  {
+    os_method_raw = "";
+    os_omit_decl = false;
+    os_standalone = "";
+    os_indent_raw = "";
+    os_encoding = "UTF-8";
+    os_version = "1.0";
+    os_doctype_public = "";
+    os_doctype_system = "";
+    os_cdata = []
+  }
 type xstyle =
   {
   xs_pfx: Prims.string ;
   xs_templates: template Prims.list ;
   xs_method: Prims.string ;
+  xs_output_present: Prims.bool ;
+  xs_output: output_settings ;
   xs_globals: (Prims.string * XPath_Eval.xp_value) Prims.list ;
   xs_nsscope: Parser_XML.xml_attribute Prims.list ;
   xs_nsctx: (Prims.string * Prims.string) Prims.list ;
@@ -288,47 +368,67 @@ type xstyle =
   xs_decfmts: XPath_Eval.decimal_format_symbols Prims.list }
 let __proj__Mkxstyle__item__xs_pfx (projectee : xstyle) : Prims.string=
   match projectee with
-  | { xs_pfx; xs_templates; xs_method; xs_globals; xs_nsscope; xs_nsctx;
-      xs_id_attrs; xs_style_root; xs_decfmts;_} -> xs_pfx
+  | { xs_pfx; xs_templates; xs_method; xs_output_present; xs_output;
+      xs_globals; xs_nsscope; xs_nsctx; xs_id_attrs; xs_style_root;
+      xs_decfmts;_} -> xs_pfx
 let __proj__Mkxstyle__item__xs_templates (projectee : xstyle) :
   template Prims.list=
   match projectee with
-  | { xs_pfx; xs_templates; xs_method; xs_globals; xs_nsscope; xs_nsctx;
-      xs_id_attrs; xs_style_root; xs_decfmts;_} -> xs_templates
+  | { xs_pfx; xs_templates; xs_method; xs_output_present; xs_output;
+      xs_globals; xs_nsscope; xs_nsctx; xs_id_attrs; xs_style_root;
+      xs_decfmts;_} -> xs_templates
 let __proj__Mkxstyle__item__xs_method (projectee : xstyle) : Prims.string=
   match projectee with
-  | { xs_pfx; xs_templates; xs_method; xs_globals; xs_nsscope; xs_nsctx;
-      xs_id_attrs; xs_style_root; xs_decfmts;_} -> xs_method
+  | { xs_pfx; xs_templates; xs_method; xs_output_present; xs_output;
+      xs_globals; xs_nsscope; xs_nsctx; xs_id_attrs; xs_style_root;
+      xs_decfmts;_} -> xs_method
+let __proj__Mkxstyle__item__xs_output_present (projectee : xstyle) :
+  Prims.bool=
+  match projectee with
+  | { xs_pfx; xs_templates; xs_method; xs_output_present; xs_output;
+      xs_globals; xs_nsscope; xs_nsctx; xs_id_attrs; xs_style_root;
+      xs_decfmts;_} -> xs_output_present
+let __proj__Mkxstyle__item__xs_output (projectee : xstyle) : output_settings=
+  match projectee with
+  | { xs_pfx; xs_templates; xs_method; xs_output_present; xs_output;
+      xs_globals; xs_nsscope; xs_nsctx; xs_id_attrs; xs_style_root;
+      xs_decfmts;_} -> xs_output
 let __proj__Mkxstyle__item__xs_globals (projectee : xstyle) :
   (Prims.string * XPath_Eval.xp_value) Prims.list=
   match projectee with
-  | { xs_pfx; xs_templates; xs_method; xs_globals; xs_nsscope; xs_nsctx;
-      xs_id_attrs; xs_style_root; xs_decfmts;_} -> xs_globals
+  | { xs_pfx; xs_templates; xs_method; xs_output_present; xs_output;
+      xs_globals; xs_nsscope; xs_nsctx; xs_id_attrs; xs_style_root;
+      xs_decfmts;_} -> xs_globals
 let __proj__Mkxstyle__item__xs_nsscope (projectee : xstyle) :
   Parser_XML.xml_attribute Prims.list=
   match projectee with
-  | { xs_pfx; xs_templates; xs_method; xs_globals; xs_nsscope; xs_nsctx;
-      xs_id_attrs; xs_style_root; xs_decfmts;_} -> xs_nsscope
+  | { xs_pfx; xs_templates; xs_method; xs_output_present; xs_output;
+      xs_globals; xs_nsscope; xs_nsctx; xs_id_attrs; xs_style_root;
+      xs_decfmts;_} -> xs_nsscope
 let __proj__Mkxstyle__item__xs_nsctx (projectee : xstyle) :
   (Prims.string * Prims.string) Prims.list=
   match projectee with
-  | { xs_pfx; xs_templates; xs_method; xs_globals; xs_nsscope; xs_nsctx;
-      xs_id_attrs; xs_style_root; xs_decfmts;_} -> xs_nsctx
+  | { xs_pfx; xs_templates; xs_method; xs_output_present; xs_output;
+      xs_globals; xs_nsscope; xs_nsctx; xs_id_attrs; xs_style_root;
+      xs_decfmts;_} -> xs_nsctx
 let __proj__Mkxstyle__item__xs_id_attrs (projectee : xstyle) :
   (Prims.string * Prims.string) Prims.list=
   match projectee with
-  | { xs_pfx; xs_templates; xs_method; xs_globals; xs_nsscope; xs_nsctx;
-      xs_id_attrs; xs_style_root; xs_decfmts;_} -> xs_id_attrs
+  | { xs_pfx; xs_templates; xs_method; xs_output_present; xs_output;
+      xs_globals; xs_nsscope; xs_nsctx; xs_id_attrs; xs_style_root;
+      xs_decfmts;_} -> xs_id_attrs
 let __proj__Mkxstyle__item__xs_style_root (projectee : xstyle) :
   Parser_XML.xml_node=
   match projectee with
-  | { xs_pfx; xs_templates; xs_method; xs_globals; xs_nsscope; xs_nsctx;
-      xs_id_attrs; xs_style_root; xs_decfmts;_} -> xs_style_root
+  | { xs_pfx; xs_templates; xs_method; xs_output_present; xs_output;
+      xs_globals; xs_nsscope; xs_nsctx; xs_id_attrs; xs_style_root;
+      xs_decfmts;_} -> xs_style_root
 let __proj__Mkxstyle__item__xs_decfmts (projectee : xstyle) :
   XPath_Eval.decimal_format_symbols Prims.list=
   match projectee with
-  | { xs_pfx; xs_templates; xs_method; xs_globals; xs_nsscope; xs_nsctx;
-      xs_id_attrs; xs_style_root; xs_decfmts;_} -> xs_decfmts
+  | { xs_pfx; xs_templates; xs_method; xs_output_present; xs_output;
+      xs_globals; xs_nsscope; xs_nsctx; xs_id_attrs; xs_style_root;
+      xs_decfmts;_} -> xs_decfmts
 let xslt_ns : Prims.string= "http://www.w3.org/1999/XSL/Transform"
 let copy_of_item (it : XPath_Eval.xctx_item) : rnode=
   match it with
@@ -1542,7 +1642,107 @@ let rec emit_ns_decls (scope : (Prims.string * Prims.string) Prims.list)
             | (s_rest, scope'') ->
                 let here = if redundant then "" else serialize_attr a in
                 ((Prims.strcat here s_rest), scope'')))
-let rec serialize_node (scope : (Prims.string * Prims.string) Prims.list)
+type ser_settings =
+  {
+  ser_cdata:
+    (Prims.string FStar_Pervasives_Native.option * Prims.string) Prims.list ;
+  ser_indent: Prims.bool ;
+  ser_encoding: Prims.string }
+let __proj__Mkser_settings__item__ser_cdata (projectee : ser_settings) :
+  (Prims.string FStar_Pervasives_Native.option * Prims.string) Prims.list=
+  match projectee with
+  | { ser_cdata; ser_indent; ser_encoding;_} -> ser_cdata
+let __proj__Mkser_settings__item__ser_indent (projectee : ser_settings) :
+  Prims.bool=
+  match projectee with
+  | { ser_cdata; ser_indent; ser_encoding;_} -> ser_indent
+let __proj__Mkser_settings__item__ser_encoding (projectee : ser_settings) :
+  Prims.string=
+  match projectee with
+  | { ser_cdata; ser_indent; ser_encoding;_} -> ser_encoding
+let default_ser_settings : ser_settings=
+  { ser_cdata = []; ser_indent = false; ser_encoding = "UTF-8" }
+let is_text_node (n : Parser_XML.xml_node) : Prims.bool=
+  match n with
+  | Parser_XML.XText uu___ -> true
+  | Parser_XML.XCDATA uu___ -> true
+  | uu___ -> false
+let rec has_text_node (ns : Parser_XML.xml_node Prims.list) : Prims.bool=
+  match ns with
+  | [] -> false
+  | hd::tl -> if is_text_node hd then true else has_text_node tl
+let matches_cdata_name
+  (targets :
+    (Prims.string FStar_Pervasives_Native.option * Prims.string) Prims.list)
+  (ns_uri : Prims.string FStar_Pervasives_Native.option)
+  (local : Prims.string) : Prims.bool=
+  FStar_List_Tot_Base.existsb
+    (fun uu___ ->
+       match uu___ with
+       | (tu, tl) -> (tl = local) && (XPath_Eval.ns_uri_eq tu ns_uri))
+    targets
+let is_representable (encoding : Prims.string) (cp : Prims.int) : Prims.bool=
+  if (encoding = "US-ASCII") || (encoding = "ASCII")
+  then cp < (Prims.of_int (128))
+  else
+    if (encoding = "ISO-8859-1") || (encoding = "Latin1")
+    then cp < (Prims.of_int (256))
+    else true
+let charref (c : FStar_String.char) : Prims.string=
+  FStar_String.concat ""
+    ["&#"; Prims.string_of_int (FStar_Char.int_of_char c); ";"]
+let rec replace_cdata_end_chars (cs : FStar_String.char Prims.list) :
+  FStar_String.char Prims.list=
+  match cs with
+  | 93::93::62::rest ->
+      FStar_List_Tot_Base.append
+        [93; 93; 93; 93; 60; 33; 91; 67; 68; 65; 84; 65; 91; 62]
+        (replace_cdata_end_chars rest)
+  | c::rest -> c :: (replace_cdata_end_chars rest)
+  | [] -> []
+type crun =
+  | Run_Text of FStar_String.char Prims.list 
+  | Run_Escape of FStar_String.char 
+let uu___is_Run_Text (projectee : crun) : Prims.bool=
+  match projectee with | Run_Text _0 -> true | uu___ -> false
+let __proj__Run_Text__item___0 (projectee : crun) :
+  FStar_String.char Prims.list= match projectee with | Run_Text _0 -> _0
+let uu___is_Run_Escape (projectee : crun) : Prims.bool=
+  match projectee with | Run_Escape _0 -> true | uu___ -> false
+let __proj__Run_Escape__item___0 (projectee : crun) : FStar_String.char=
+  match projectee with | Run_Escape _0 -> _0
+let rec build_cdata_runs (encoding : Prims.string)
+  (cs : FStar_String.char Prims.list) (cur : FStar_String.char Prims.list) :
+  crun Prims.list=
+  match cs with
+  | [] ->
+      if Prims.uu___is_Nil cur
+      then []
+      else [Run_Text (FStar_List_Tot_Base.rev cur)]
+  | c::rest ->
+      if is_representable encoding (FStar_Char.int_of_char c)
+      then build_cdata_runs encoding rest (c :: cur)
+      else
+        (let before =
+           if Prims.uu___is_Nil cur
+           then []
+           else [Run_Text (FStar_List_Tot_Base.rev cur)] in
+         FStar_List_Tot_Base.append before ((Run_Escape c) ::
+           (build_cdata_runs encoding rest [])))
+let render_crun (r : crun) : Prims.string=
+  match r with
+  | Run_Text [] -> ""
+  | Run_Text cs ->
+      FStar_String.concat ""
+        ["<![CDATA["; str_of_chars (replace_cdata_end_chars cs); "]]>"]
+  | Run_Escape c -> charref c
+let cdata_wrap_text (encoding : Prims.string) (t : Prims.string) :
+  Prims.string=
+  FStar_String.concat ""
+    (FStar_List_Tot_Base.map render_crun
+       (build_cdata_runs encoding (chars_of t) []))
+let rec serialize_node (cfg : ser_settings)
+  (scope : (Prims.string * Prims.string) Prims.list)
   (n : Parser_XML.xml_node) : Prims.string=
   match n with
   | Parser_XML.XText t -> escape_text t
@@ -1557,20 +1757,51 @@ let rec serialize_node (scope : (Prims.string * Prims.string) Prims.list)
            (match uu___1 with
             | (ns_str, scope') ->
                 let a = Prims.strcat ns_str (serialize_attrs normal) in
-                let inner = serialize_nodes scope' children in
+                let is_cdata_elem =
+                  matches_cdata_name cfg.ser_cdata
+                    (lookup_ns scope' (XPath_Eval.prefix_of tag))
+                    (XPath_Eval.local_name_of tag) in
+                let parts =
+                  serialize_children cfg scope' is_cdata_elem children in
+                let do_indent =
+                  (cfg.ser_indent && (Prims.uu___is_Cons children)) &&
+                    (Prims.op_Negation (has_text_node children)) in
+                let inner =
+                  if Prims.uu___is_Nil parts
+                  then ""
+                  else
+                    if do_indent
+                    then
+                      Prims.strcat "\n"
+                        (Prims.strcat (FStar_String.concat "\n" parts) "\n")
+                    else FStar_String.concat "" parts in
                 if inner = ""
                 then FStar_String.concat "" ["<"; tag; a; "/>"]
                 else
                   FStar_String.concat ""
                     ["<"; tag; a; ">"; inner; "</"; tag; ">"]))
-and serialize_nodes (scope : (Prims.string * Prims.string) Prims.list)
-  (ns : Parser_XML.xml_node Prims.list) : Prims.string=
+and serialize_children (cfg : ser_settings)
+  (scope : (Prims.string * Prims.string) Prims.list)
+  (is_cdata_elem : Prims.bool) (ns : Parser_XML.xml_node Prims.list) :
+  Prims.string Prims.list=
   match ns with
-  | [] -> ""
+  | [] -> []
   | hd::tl ->
-      Prims.strcat (serialize_node scope hd) (serialize_nodes scope tl)
+      let s =
+        if is_cdata_elem
+        then
+          match hd with
+          | Parser_XML.XText t -> cdata_wrap_text cfg.ser_encoding t
+          | Parser_XML.XCDATA t -> cdata_wrap_text cfg.ser_encoding t
+          | uu___ -> serialize_node cfg scope hd
+        else serialize_node cfg scope hd in
+      s :: (serialize_children cfg scope is_cdata_elem tl)
+let serialize_nodes (cfg : ser_settings)
+  (scope : (Prims.string * Prims.string) Prims.list)
+  (ns : Parser_XML.xml_node Prims.list) : Prims.string=
+  FStar_String.concat "" (serialize_children cfg scope false ns)
 let serialize_result (n : Parser_XML.xml_node) : Prims.string=
-  serialize_node [] n
+  serialize_node default_ser_settings [] n
 let rec text_value_node (n : Parser_XML.xml_node) : Prims.string=
   match n with
   | Parser_XML.XText t -> t
@@ -2496,17 +2727,84 @@ let rec collect_decimal_formats (pfx : Prims.string)
              (collect_decimal_formats pfx tl)
            else collect_decimal_formats pfx tl
        | uu___ -> collect_decimal_formats pfx tl)
-let rec find_output_method (pfx : Prims.string)
-  (children : Parser_XML.xml_node Prims.list) : Prims.string=
+let resolve_qname_ns (nsctx : (Prims.string * Prims.string) Prims.list)
+  (qn : Prims.string) :
+  (Prims.string FStar_Pervasives_Native.option * Prims.string)=
+  ((XPath_Eval.lookup_nsctx nsctx (XPath_Eval.prefix_of qn)),
+    (XPath_Eval.local_name_of qn))
+let parse_qname_list (s : Prims.string) : Prims.string Prims.list=
+  FStar_List_Tot_Base.filter (fun p -> p <> "")
+    (FStar_List_Tot_Base.map trim_str (split_on_char 32 s))
+let merge_one_output (nsctx : (Prims.string * Prims.string) Prims.list)
+  (cfg : output_settings) (attrs : Parser_XML.xml_attribute Prims.list) :
+  output_settings=
+  {
+    os_method_raw =
+      (match attr_opt "method" attrs with
+       | FStar_Pervasives_Native.Some m -> m
+       | FStar_Pervasives_Native.None -> cfg.os_method_raw);
+    os_omit_decl =
+      (match attr_opt "omit-xml-declaration" attrs with
+       | FStar_Pervasives_Native.Some v -> v = "yes"
+       | FStar_Pervasives_Native.None -> cfg.os_omit_decl);
+    os_standalone =
+      (match attr_opt "standalone" attrs with
+       | FStar_Pervasives_Native.Some v -> v
+       | FStar_Pervasives_Native.None -> cfg.os_standalone);
+    os_indent_raw =
+      (match attr_opt "indent" attrs with
+       | FStar_Pervasives_Native.Some v -> v
+       | FStar_Pervasives_Native.None -> cfg.os_indent_raw);
+    os_encoding =
+      (match attr_opt "encoding" attrs with
+       | FStar_Pervasives_Native.Some v -> v
+       | FStar_Pervasives_Native.None -> cfg.os_encoding);
+    os_version =
+      (match attr_opt "version" attrs with
+       | FStar_Pervasives_Native.Some v -> v
+       | FStar_Pervasives_Native.None -> cfg.os_version);
+    os_doctype_public =
+      (match attr_opt "doctype-public" attrs with
+       | FStar_Pervasives_Native.Some v -> v
+       | FStar_Pervasives_Native.None -> cfg.os_doctype_public);
+    os_doctype_system =
+      (match attr_opt "doctype-system" attrs with
+       | FStar_Pervasives_Native.Some v -> v
+       | FStar_Pervasives_Native.None -> cfg.os_doctype_system);
+    os_cdata =
+      (FStar_List_Tot_Base.append cfg.os_cdata
+         (match attr_opt "cdata-section-elements" attrs with
+          | FStar_Pervasives_Native.Some v ->
+              FStar_List_Tot_Base.map (resolve_qname_ns nsctx)
+                (parse_qname_list v)
+          | FStar_Pervasives_Native.None -> []))
+  }
+let rec collect_output_settings (pfx : Prims.string)
+  (nsctx : (Prims.string * Prims.string) Prims.list)
+  (children : Parser_XML.xml_node Prims.list) (cfg : output_settings) :
+  output_settings=
   match children with
-  | [] -> "xml"
+  | [] -> cfg
   | hd::tl ->
       (match hd with
        | Parser_XML.XElement (tag, attrs, uu___) ->
            if (is_xsl pfx tag) && ((xsl_instr pfx tag) = "output")
-           then attr_or "method" "xml" attrs
-           else find_output_method pfx tl
-       | uu___ -> find_output_method pfx tl)
+           then
+             collect_output_settings pfx nsctx tl
+               (merge_one_output nsctx cfg attrs)
+           else collect_output_settings pfx nsctx tl cfg
+       | uu___ -> collect_output_settings pfx nsctx tl cfg)
+let rec any_output_decl (pfx : Prims.string)
+  (children : Parser_XML.xml_node Prims.list) : Prims.bool=
+  match children with
+  | [] -> false
+  | hd::tl ->
+      (match hd with
+       | Parser_XML.XElement (tag, uu___, uu___1) ->
+           if (is_xsl pfx tag) && ((xsl_instr pfx tag) = "output")
+           then true
+           else any_output_decl pfx tl
+       | uu___ -> any_output_decl pfx tl)
 let rec build_nsctx (attrs : Parser_XML.xml_attribute Prims.list) :
   (Prims.string * Prims.string) Prims.list=
   match attrs with
@@ -2574,10 +2872,15 @@ let build_style (stylesheet : Parser_XML.xml_node)
       then
         let nsctx = build_nsctx attrs in
         let decfmts = collect_decimal_formats pfx children in
+        let out_settings =
+          collect_output_settings pfx nsctx children default_output_settings in
         {
           xs_pfx = pfx;
           xs_templates = (collect_templates pfx children);
-          xs_method = (find_output_method pfx children);
+          xs_method =
+            ((if out_settings.os_method_raw = "text" then "text" else "xml"));
+          xs_output_present = (any_output_decl pfx children);
+          xs_output = out_settings;
           xs_globals =
             (collect_globals pfx nsctx decfmts children source doc_kids);
           xs_nsscope = (build_nsscope attrs);
@@ -2598,6 +2901,8 @@ let build_style (stylesheet : Parser_XML.xml_node)
                tpl_body = [stylesheet]
              }];
           xs_method = "xml";
+          xs_output_present = false;
+          xs_output = default_output_settings;
           xs_globals = [];
           xs_nsscope = [];
           xs_nsctx = (build_nsctx attrs);
@@ -2610,6 +2915,8 @@ let build_style (stylesheet : Parser_XML.xml_node)
         xs_pfx = "xsl";
         xs_templates = [];
         xs_method = "xml";
+        xs_output_present = false;
+        xs_output = default_output_settings;
         xs_globals = [];
         xs_nsscope = [];
         xs_nsctx = [];
@@ -2629,6 +2936,77 @@ let rec xml_nodes_count_sum (ns : Parser_XML.xml_node Prims.list) :
   match ns with
   | [] -> Prims.int_zero
   | hd::tl -> (XPath_Eval.xml_node_count hd) + (xml_nodes_count_sum tl)
+let make_decl (cfg : output_settings) : Prims.string=
+  let ver = if cfg.os_version = "" then "1.0" else cfg.os_version in
+  let enc = if cfg.os_encoding = "" then "UTF-8" else cfg.os_encoding in
+  let standalone_part =
+    if cfg.os_standalone = ""
+    then ""
+    else FStar_String.concat "" [" standalone=\""; cfg.os_standalone; "\""] in
+  FStar_String.concat ""
+    ["<?xml version=\"";
+    ver;
+    "\" encoding=\"";
+    enc;
+    "\"";
+    standalone_part;
+    "?>\n"]
+let rec root_tag_of (nodes : Parser_XML.xml_node Prims.list) :
+  Prims.string FStar_Pervasives_Native.option=
+  match nodes with
+  | [] -> FStar_Pervasives_Native.None
+  | (Parser_XML.XElement (t, uu___, uu___1))::uu___2 ->
+      FStar_Pervasives_Native.Some t
+  | uu___::rest -> root_tag_of rest
+let make_doctype (cfg : output_settings)
+  (nodes : Parser_XML.xml_node Prims.list) : Prims.string=
+  if (cfg.os_doctype_system = "") && (cfg.os_doctype_public = "")
+  then ""
+  else
+    (match root_tag_of nodes with
+     | FStar_Pervasives_Native.None -> ""
+     | FStar_Pervasives_Native.Some tag ->
+         if cfg.os_doctype_public <> ""
+         then
+           FStar_String.concat ""
+             ["<!DOCTYPE ";
+             tag;
+             " PUBLIC \"";
+             cfg.os_doctype_public;
+             "\" \"";
+             cfg.os_doctype_system;
+             "\">\n"]
+         else
+           FStar_String.concat ""
+             ["<!DOCTYPE ";
+             tag;
+             " SYSTEM \"";
+             cfg.os_doctype_system;
+             "\">\n"])
+let finalize_output (present : Prims.bool) (cfg : output_settings)
+  (method1 : Prims.string) (nodes : Parser_XML.xml_node Prims.list) :
+  Prims.string=
+  if method1 = "text"
+  then text_value_nodes nodes
+  else
+    if Prims.op_Negation present
+    then serialize_nodes default_ser_settings [] nodes
+    else
+      (let is_html = cfg.os_method_raw = "html" in
+       let indent_on =
+         if cfg.os_indent_raw = "yes"
+         then true
+         else if cfg.os_indent_raw = "no" then false else is_html in
+       let ser =
+         {
+           ser_cdata = (cfg.os_cdata);
+           ser_indent = indent_on;
+           ser_encoding = (cfg.os_encoding)
+         } in
+       let body = serialize_nodes ser [] nodes in
+       let decl = if cfg.os_omit_decl then "" else make_decl cfg in
+       let doctype = make_doctype cfg nodes in
+       FStar_String.concat "" [decl; doctype; body])
 let transform (stylesheet : Parser_XML.xml_node)
   (source : Parser_XML.xml_node) : Prims.string=
   let st = build_style stylesheet source [source] [] in
@@ -2642,9 +3020,7 @@ let transform (stylesheet : Parser_XML.xml_node)
     dispatch fuel st (D_Doc (source, [source])) Prims.int_one Prims.int_one
       "" st.xs_globals [] in
   let nodes = only_nodes result in
-  if st.xs_method = "text"
-  then text_value_nodes nodes
-  else serialize_nodes [] nodes
+  finalize_output st.xs_output_present st.xs_output st.xs_method nodes
 let transform_doc (stylesheet : Parser_XML.xml_node)
   (source_kids : Parser_XML.xml_node Prims.list) : Prims.string=
   match doc_root_elem source_kids with
@@ -2661,9 +3037,7 @@ let transform_doc (stylesheet : Parser_XML.xml_node)
         dispatch fuel st (D_Doc (root, source_kids)) Prims.int_one
           Prims.int_one "" st.xs_globals [] in
       let nodes = only_nodes result in
-      if st.xs_method = "text"
-      then text_value_nodes nodes
-      else serialize_nodes [] nodes
+      finalize_output st.xs_output_present st.xs_output st.xs_method nodes
 let transform_doc_ids (stylesheet : Parser_XML.xml_node)
   (source_kids : Parser_XML.xml_node Prims.list)
   (source_id_attrs : (Prims.string * Prims.string) Prims.list) :
@@ -2682,6 +3056,4 @@ let transform_doc_ids (stylesheet : Parser_XML.xml_node)
         dispatch fuel st (D_Doc (root, source_kids)) Prims.int_one
           Prims.int_one "" st.xs_globals [] in
       let nodes = only_nodes result in
-      if st.xs_method = "text"
-      then text_value_nodes nodes
-      else serialize_nodes [] nodes
+      finalize_output st.xs_output_present st.xs_output st.xs_method nodes

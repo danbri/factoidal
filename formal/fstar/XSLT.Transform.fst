@@ -418,10 +418,46 @@ type template = {
   tpl_body : list xml_node;
 }
 
+// xsl:output (XSLT 1.0 section 16), merged across every top-level
+// xsl:output element (there may be several -- 16: "attribute values...
+// are determined by ... the elements... merged"). Scalar attributes take
+// the value of the LAST xsl:output element that specifies them (falling
+// through to an earlier one, then the built-in default, when later
+// elements omit it); cdata-section-elements is the UNION of every
+// element's list, not last-wins (Xalan output-output46/87 both pin this).
+// `os_cdata` names are stored pre-resolved to (namespace-URI, local-name)
+// pairs (see resolve_qname_ns) because resolution needs the stylesheet's
+// nsctx, which is only in scope where collect_output_settings runs.
+noeq type output_settings = {
+  os_method_raw : string;        // "" = no xsl:output specified method
+  os_omit_decl : bool;           // omit-xml-declaration="yes"; default false
+  os_standalone : string;        // "" = unspecified; else "yes"/"no"
+  os_indent_raw : string;        // "" = unspecified; else "yes"/"no"
+  os_encoding : string;          // default "UTF-8"
+  os_version : string;           // default "1.0"
+  os_doctype_public : string;    // "" = none
+  os_doctype_system : string;    // "" = none
+  os_cdata : list (option string & string);
+}
+
+let default_output_settings : output_settings = {
+  os_method_raw = ""; os_omit_decl = false; os_standalone = ""; os_indent_raw = "";
+  os_encoding = "UTF-8"; os_version = "1.0"; os_doctype_public = ""; os_doctype_system = "";
+  os_cdata = [];
+}
+
 noeq type xstyle = {
   xs_pfx : string;
   xs_templates : list template;
   xs_method : string;
+  // Whether at least one top-level xsl:output element was present in the
+  // stylesheet. FALSE means the transform's final serialization step MUST
+  // reproduce the exact pre-xsl:output-support behaviour byte for byte
+  // (no XML declaration, no DOCTYPE, no indent, no CDATA wrapping) -- the
+  // hard compatibility requirement that protects the ~1109 Xalan-corpus
+  // passes and the xslt slice-1 suite that predate this feature.
+  xs_output_present : bool;
+  xs_output : output_settings;
   xs_globals : list (string & xp_value);
   // In-scope namespace declarations from the stylesheet element that
   // literal result elements copy onto the result tree (XSLT §7.5),
@@ -1528,7 +1564,91 @@ let rec emit_ns_decls (scope:list (string & string)) (decls:list xml_attribute)
        let here = if redundant then "" else serialize_attr a in
        (strcat here s_rest, scope''))
 
-let rec serialize_node (scope:list (string & string)) (n:xml_node) : Tot string (decreases n) =
+// ---- xsl:output serialization settings (XSLT 1.0 section 16) --------
+//
+// `ser_settings` carries only what serialize_node/serialize_nodes need to
+// DEVIATE from the pre-xsl:output default behaviour: which (namespace-URI,
+// local-name) pairs are cdata-section-elements, whether indent="yes" is in
+// effect, and the declared encoding (consulted ONLY to decide whether a
+// codepoint inside a cdata-section element's text must break out of the
+// CDATA section as a numeric character reference -- see cdata_wrap_text).
+// `default_ser_settings` reproduces the exact prior behaviour (no cdata
+// wrapping, no indent), so a caller that never had an xsl:output element
+// gets byte-identical output by construction, not by a separate code path.
+noeq type ser_settings = {
+  ser_cdata : list (option string & string);
+  ser_indent : bool;
+  ser_encoding : string;
+}
+
+let default_ser_settings : ser_settings = { ser_cdata = []; ser_indent = false; ser_encoding = "UTF-8" }
+
+let is_text_node (n:xml_node) : bool =
+  match n with XText _ | XCDATA _ -> true | _ -> false
+
+let rec has_text_node (ns:list xml_node) : Tot bool (decreases ns) =
+  match ns with
+  | [] -> false
+  | hd :: tl -> if is_text_node hd then true else has_text_node tl
+
+let matches_cdata_name (targets:list (option string & string)) (ns_uri:option string) (local:string) : bool =
+  List.Tot.existsb (fun (tu, tl) -> tl = local && ns_uri_eq tu ns_uri) targets
+
+// Is codepoint `cp` representable in the (xsl:output) declared `encoding`
+// without a numeric character reference? Only the two restrictive
+// encodings the Xalan cdata-section-elements fixtures actually exercise
+// are modelled; every other / unrecognised encoding name (crucially
+// "UTF-8", and no encoding at all) is treated as fully representable, so
+// this can only ever ADD a char-ref split, never remove one that a wider
+// encoding table would have avoided.
+let is_representable (encoding:string) (cp:int) : bool =
+  if encoding = "US-ASCII" || encoding = "ASCII" then cp < 128
+  else if encoding = "ISO-8859-1" || encoding = "Latin1" then cp < 256
+  else true
+
+let charref (c:char) : string =
+  String.concat "" ["&#"; string_of_int (FStar.Char.int_of_char c); ";"]
+
+// A CDATA section may not contain the literal 3-character sequence
+// "]]>" (it would terminate the section early), so any occurrence in the
+// wrapped text is split into "]]" (kept in this CDATA section) followed
+// by a fresh CDATA section reopened for the ">" and everything after --
+// the standard technique real serializers use (Xalan output-output41).
+let rec replace_cdata_end_chars (cs:list char) : Tot (list char) (decreases cs) =
+  match cs with
+  | ']' :: ']' :: '>' :: rest ->
+    List.Tot.append [']'; ']'; ']'; ']'; '<'; '!'; '['; 'C'; 'D'; 'A'; 'T'; 'A'; '['; '>'] (replace_cdata_end_chars rest)
+  | c :: rest -> c :: replace_cdata_end_chars rest
+  | [] -> []
+
+// One run of a cdata-section element's text content: either a maximal
+// substring of codepoints representable in the declared encoding (wrapped
+// whole in one CDATA section), or a single non-representable codepoint
+// escaped as a numeric character reference OUTSIDE any CDATA section
+// (character references are not recognised inside CDATA, so a
+// non-representable character must break out -- Xalan output-output28).
+noeq type crun = | Run_Text : list char -> crun | Run_Escape : char -> crun
+
+let rec build_cdata_runs (encoding:string) (cs:list char) (cur:list char) : Tot (list crun) (decreases cs) =
+  match cs with
+  | [] -> if Nil? cur then [] else [Run_Text (List.Tot.rev cur)]
+  | c :: rest ->
+    if is_representable encoding (FStar.Char.int_of_char c) then
+      build_cdata_runs encoding rest (c :: cur)
+    else
+      let before = if Nil? cur then [] else [Run_Text (List.Tot.rev cur)] in
+      List.Tot.append before (Run_Escape c :: build_cdata_runs encoding rest [])
+
+let render_crun (r:crun) : string =
+  match r with
+  | Run_Text [] -> ""
+  | Run_Text cs -> String.concat "" ["<![CDATA["; str_of_chars (replace_cdata_end_chars cs); "]]>"]
+  | Run_Escape c -> charref c
+
+let cdata_wrap_text (encoding:string) (t:string) : string =
+  String.concat "" (List.Tot.map render_crun (build_cdata_runs encoding (chars_of t) []))
+
+let rec serialize_node (cfg:ser_settings) (scope:list (string & string)) (n:xml_node) : Tot string (decreases n) =
   match n with
   | XText t -> escape_text t
   | XCDATA t -> escape_text t
@@ -1540,20 +1660,69 @@ let rec serialize_node (scope:list (string & string)) (n:xml_node) : Tot string 
     let (decls, normal) = List.Tot.partition is_ns_decl attrs in
     let (ns_str, scope') = emit_ns_decls scope decls in
     let a = strcat ns_str (serialize_attrs normal) in
+    // cdata-section-elements membership is by (namespace-URI, local-name)
+    // of the OUTPUT tree's own resolved identity (default namespace comes
+    // from the accumulated output `scope'`, exactly as a real element
+    // name would resolve) -- see the cdata-section-elements QName
+    // resolution comment on collect_output_settings below for why this
+    // differs from an XPath node test's unprefixed-name-means-null-
+    // namespace rule.
+    let is_cdata_elem = matches_cdata_name cfg.ser_cdata (lookup_ns scope' (prefix_of tag)) (local_name_of tag) in
+    let parts = serialize_children cfg scope' is_cdata_elem children in
+    // indent="yes": XSLT 1.0 does not mandate a specific indentation
+    // style, and the vendored Xalan fixtures' own indentation (checked
+    // fixture-by-fixture, see the xsl:output design note) is a bare
+    // newline before each child and before the closing tag -- NO
+    // per-depth leading spaces -- applied only when every child is a
+    // non-text node (an element with any text-node child, even
+    // whitespace-only, is left exactly as instantiated: indenting mixed
+    // content would alter its string-value).
+    let do_indent = cfg.ser_indent && Cons? children && not (has_text_node children) in
+    let inner =
+      if Nil? parts then ""
+      else if do_indent then strcat "\n" (strcat (String.concat "\n" parts) "\n")
+      else String.concat "" parts
+    in
     // XML output method: an element whose content serializes to nothing
     // (no children, or only empty text nodes produced by e.g. an empty
     // xsl:value-of) is written as an empty-element tag `<t/>`, matching
     // the W3C expected outputs (which self-close such elements).
-    let inner = serialize_nodes scope' children in
     if inner = "" then String.concat "" ["<"; tag; a; "/>"]
     else String.concat "" ["<"; tag; a; ">"; inner; "</"; tag; ">"]
 
-and serialize_nodes (scope:list (string & string)) (ns:list xml_node) : Tot string (decreases ns) =
+// Per-child serialized strings (not yet joined) so the caller can decide
+// whether to join with "\n" (indent) or "" (default, byte-identical to
+// the pre-xsl:output serializer). `is_cdata_elem` -- whether the
+// ENCLOSING element (not each child) is a cdata-section-elements target
+// -- routes each direct XText/XCDATA child through cdata_wrap_text
+// instead of ordinary escaping; other children (elements, comments, PIs)
+// always serialize normally, and non-text children of a cdata element are
+// untouched (XSLT 1.0 16.1: only text node CHILDREN are wrapped, not
+// descendant text -- Xalan output-output96/97).
+and serialize_children (cfg:ser_settings) (scope:list (string & string)) (is_cdata_elem:bool) (ns:list xml_node)
+  : Tot (list string) (decreases ns) =
   match ns with
-  | [] -> ""
-  | hd :: tl -> strcat (serialize_node scope hd) (serialize_nodes scope tl)
+  | [] -> []
+  | hd :: tl ->
+    let s =
+      if is_cdata_elem then
+        (match hd with
+         | XText t -> cdata_wrap_text cfg.ser_encoding t
+         | XCDATA t -> cdata_wrap_text cfg.ser_encoding t
+         | _ -> serialize_node cfg scope hd)
+      else serialize_node cfg scope hd
+    in
+    s :: serialize_children cfg scope is_cdata_elem tl
 
-let serialize_result (n:xml_node) : string = serialize_node [] n
+// Not itself recursive (serialize_children already walks the whole
+// list), so this stays OUTSIDE the mutual `and` group above -- inside it,
+// F*'s termination checker would need serialize_nodes's own decreases
+// argument to shrink before delegating, which a one-line forwarder never
+// does.
+let serialize_nodes (cfg:ser_settings) (scope:list (string & string)) (ns:list xml_node) : string =
+  String.concat "" (serialize_children cfg scope false ns)
+
+let serialize_result (n:xml_node) : string = serialize_node default_ser_settings [] n
 
 // method="text": concatenate the string-value of every result text
 // node (elements contribute their descendant text).
@@ -2221,15 +2390,67 @@ let rec collect_decimal_formats (pfx:string) (children:list xml_node) : Tot (lis
        else collect_decimal_formats pfx tl
      | _ -> collect_decimal_formats pfx tl)
 
-let rec find_output_method (pfx:string) (children:list xml_node) : Tot string (decreases children) =
+// Resolve a cdata-section-elements QName against the stylesheet's
+// namespace context. Unlike an XPath node test (name_test_matches_elem,
+// which per XPath 1.0 2.5.3 treats an unprefixed name as the NULL
+// namespace even when a default xmlns is in scope), a QName in this
+// XML-attribute-value list picks up the default namespace like an
+// ordinary element name would -- confirmed by Xalan output-output99 (no
+// default xmlns: unprefixed "out" does NOT match <baz:out>) vs.
+// output-output102 (default xmlns="http://baz.com" on the stylesheet: it
+// DOES match).
+let resolve_qname_ns (nsctx:list (string & string)) (qn:string) : (option string & string) =
+  (lookup_nsctx nsctx (prefix_of qn), local_name_of qn)
+
+// Whitespace-separated QName list (cdata-section-elements' grammar);
+// unlike exclude-result-prefixes there is no "#default" token.
+let parse_qname_list (s:string) : list string =
+  List.Tot.filter (fun p -> p <> "") (List.Tot.map trim_str (split_on_char ' ' s))
+
+// Fold one xsl:output element's attributes into the running merged
+// settings. Every scalar attribute is last-wins (an element that omits
+// an attribute leaves the running value from an earlier element alone);
+// cdata-section-elements is the one exception -- its value is the UNION
+// of every element's list (XSLT 1.0 16: "cdata-section-elements
+// attribute... is the union"), so it is APPENDED, never overwritten.
+let merge_one_output (nsctx:list (string & string)) (cfg:output_settings) (attrs:list xml_attribute) : output_settings =
+  { os_method_raw = (match attr_opt "method" attrs with Some m -> m | None -> cfg.os_method_raw);
+    os_omit_decl = (match attr_opt "omit-xml-declaration" attrs with Some v -> v = "yes" | None -> cfg.os_omit_decl);
+    os_standalone = (match attr_opt "standalone" attrs with Some v -> v | None -> cfg.os_standalone);
+    os_indent_raw = (match attr_opt "indent" attrs with Some v -> v | None -> cfg.os_indent_raw);
+    os_encoding = (match attr_opt "encoding" attrs with Some v -> v | None -> cfg.os_encoding);
+    os_version = (match attr_opt "version" attrs with Some v -> v | None -> cfg.os_version);
+    os_doctype_public = (match attr_opt "doctype-public" attrs with Some v -> v | None -> cfg.os_doctype_public);
+    os_doctype_system = (match attr_opt "doctype-system" attrs with Some v -> v | None -> cfg.os_doctype_system);
+    os_cdata =
+      List.Tot.append cfg.os_cdata
+        (match attr_opt "cdata-section-elements" attrs with
+         | Some v -> List.Tot.map (resolve_qname_ns nsctx) (parse_qname_list v)
+         | None -> []);
+  }
+
+let rec collect_output_settings (pfx:string) (nsctx:list (string & string)) (children:list xml_node) (cfg:output_settings)
+  : Tot output_settings (decreases children) =
   match children with
-  | [] -> "xml"
+  | [] -> cfg
   | hd :: tl ->
     (match hd with
      | XElement tag attrs _ ->
-       if is_xsl pfx tag && xsl_instr pfx tag = "output" then attr_or "method" "xml" attrs
-       else find_output_method pfx tl
-     | _ -> find_output_method pfx tl)
+       if is_xsl pfx tag && xsl_instr pfx tag = "output" then
+         collect_output_settings pfx nsctx tl (merge_one_output nsctx cfg attrs)
+       else collect_output_settings pfx nsctx tl cfg
+     | _ -> collect_output_settings pfx nsctx tl cfg)
+
+// Whether at least one top-level xsl:output element is present at all --
+// the gate that keeps a stylesheet with none byte-identical to the
+// pre-xsl:output-support engine (see xs_output_present).
+let rec any_output_decl (pfx:string) (children:list xml_node) : Tot bool (decreases children) =
+  match children with
+  | [] -> false
+  | hd :: tl ->
+    (match hd with
+     | XElement tag _ _ -> if is_xsl pfx tag && xsl_instr pfx tag = "output" then true else any_output_decl pfx tl
+     | _ -> any_output_decl pfx tl)
 
 // The stylesheet element's full namespace context (prefix -> URI),
 // UNfiltered by exclude-result-prefixes -- see the xs_nsctx field.
@@ -2323,9 +2544,12 @@ let build_style (stylesheet:xml_node) (source:xml_node) (doc_kids:list xml_node)
        (let ln = xsl_instr pfx tag in ln = "stylesheet" || ln = "transform") then
       let nsctx = build_nsctx attrs in
       let decfmts = collect_decimal_formats pfx children in
+      let out_settings = collect_output_settings pfx nsctx children default_output_settings in
       { xs_pfx = pfx;
         xs_templates = collect_templates pfx children;
-        xs_method = find_output_method pfx children;
+        xs_method = (if out_settings.os_method_raw = "text" then "text" else "xml");
+        xs_output_present = any_output_decl pfx children;
+        xs_output = out_settings;
         xs_globals = collect_globals pfx nsctx decfmts children source doc_kids;
         xs_nsscope = build_nsscope attrs;
         xs_nsctx = nsctx;
@@ -2337,10 +2561,13 @@ let build_style (stylesheet:xml_node) (source:xml_node) (doc_kids:list xml_node)
       // of a single template matching the document root. Its own
       // namespace declarations are on the element itself, so no
       // inherited scope is threaded. A simplified stylesheet has no
-      // top-level siblings, so it cannot carry xsl:decimal-format either.
+      // top-level siblings, so it cannot carry xsl:decimal-format or
+      // xsl:output either.
       { xs_pfx = pfx;
         xs_templates = [ { tpl_match = "/"; tpl_name = ""; tpl_mode = ""; tpl_prio = None; tpl_body = [stylesheet] } ];
         xs_method = "xml";
+        xs_output_present = false;
+        xs_output = default_output_settings;
         xs_globals = [];
         xs_nsscope = [];
         xs_nsctx = build_nsctx attrs;
@@ -2348,7 +2575,9 @@ let build_style (stylesheet:xml_node) (source:xml_node) (doc_kids:list xml_node)
         xs_style_root = stylesheet;
         xs_decfmts = [] }
   | _ ->
-    { xs_pfx = "xsl"; xs_templates = []; xs_method = "xml"; xs_globals = []; xs_nsscope = []; xs_nsctx = [];
+    { xs_pfx = "xsl"; xs_templates = []; xs_method = "xml";
+      xs_output_present = false; xs_output = default_output_settings;
+      xs_globals = []; xs_nsscope = []; xs_nsctx = [];
       xs_id_attrs = id_attrs; xs_style_root = stylesheet; xs_decfmts = [] }
 
 // The root element among a document node's children (the single element
@@ -2365,6 +2594,72 @@ let rec xml_nodes_count_sum (ns:list xml_node) : Tot nat (decreases ns) =
   | [] -> 0
   | hd :: tl -> xml_node_count hd + xml_nodes_count_sum tl
 
+// XML declaration line for an xsl:output-bearing stylesheet (only ever
+// emitted when xs_output_present -- see finalize_output). Attribute
+// defaults per XSLT 1.0 16.1/16.2: version "1.0", encoding "UTF-8",
+// standalone omitted unless the stylesheet specified one.
+let make_decl (cfg:output_settings) : string =
+  let ver = if cfg.os_version = "" then "1.0" else cfg.os_version in
+  let enc = if cfg.os_encoding = "" then "UTF-8" else cfg.os_encoding in
+  let standalone_part =
+    if cfg.os_standalone = "" then ""
+    else String.concat "" [" standalone=\""; cfg.os_standalone; "\""] in
+  String.concat "" ["<?xml version=\""; ver; "\" encoding=\""; enc; "\""; standalone_part; "?>\n"]
+
+// The result tree's root element tag (skipping any leading top-level
+// comment/PI), used as the DOCTYPE's root-name.
+let rec root_tag_of (nodes:list xml_node) : Tot (option string) (decreases nodes) =
+  match nodes with
+  | [] -> None
+  | XElement t _ _ :: _ -> Some t
+  | _ :: rest -> root_tag_of rest
+
+// doctype-public / doctype-system (XSLT 1.0 16.1): a DOCTYPE declaration
+// naming the result tree's actual root element, emitted right after the
+// XML declaration. doctype-public without doctype-system has no PUBLIC-
+// without-SYSTEM form in XML and is not exercised by any fixture, so it
+// is treated the same as doctype-system alone would be (SYSTEM form) --
+// only reachable if a stylesheet gives doctype-public with no system id.
+let make_doctype (cfg:output_settings) (nodes:list xml_node) : string =
+  if cfg.os_doctype_system = "" && cfg.os_doctype_public = "" then ""
+  else
+    match root_tag_of nodes with
+    | None -> ""
+    | Some tag ->
+      if cfg.os_doctype_public <> "" then
+        String.concat "" ["<!DOCTYPE "; tag; " PUBLIC \""; cfg.os_doctype_public; "\" \""; cfg.os_doctype_system; "\">\n"]
+      else
+        String.concat "" ["<!DOCTYPE "; tag; " SYSTEM \""; cfg.os_doctype_system; "\">\n"]
+
+// Final serialization step, shared by all three entry points below.
+// `present` (xs_output_present) is the hard compatibility gate: FALSE
+// reproduces the pre-xsl:output-support engine byte for byte (no
+// declaration, no DOCTYPE, no indent, no CDATA wrapping) via the exact
+// same serialize_nodes call with default_ser_settings, so a stylesheet
+// with no xsl:output element cannot be affected by anything in this
+// module however xsl:output's semantics evolve. `method` is xs_method
+// ("text"/"xml") -- text output ignores every xsl:output serialization
+// setting other than method itself (XSLT 1.0 16.3).
+let finalize_output (present:bool) (cfg:output_settings) (method:string) (nodes:list xml_node) : string =
+  if method = "text" then text_value_nodes nodes
+  else if not present then serialize_nodes default_ser_settings [] nodes
+  else
+    // method="html" has no dedicated serializer in this engine (result
+    // trees still serialize with the XML-style tag/escaping rules); the
+    // ONE observable difference honoured for it is XSLT 1.0's own
+    // default-indent rule ("yes" if the method is html; "no" otherwise),
+    // consulted only when the stylesheet didn't set indent explicitly.
+    let is_html = cfg.os_method_raw = "html" in
+    let indent_on =
+      if cfg.os_indent_raw = "yes" then true
+      else if cfg.os_indent_raw = "no" then false
+      else is_html in
+    let ser = { ser_cdata = cfg.os_cdata; ser_indent = indent_on; ser_encoding = cfg.os_encoding } in
+    let body = serialize_nodes ser [] nodes in
+    let decl = if cfg.os_omit_decl then "" else make_decl cfg in
+    let doctype = make_doctype cfg nodes in
+    String.concat "" [decl; doctype; body]
+
 (* ================================================================ *)
 (* Entry point.                                                       *)
 (* ================================================================ *)
@@ -2380,8 +2675,7 @@ let transform (stylesheet:xml_node) (source:xml_node) : string =
   let fuel = op_Multiply (sz + 1) 256 + 100000 in
   let result = dispatch fuel st (D_Doc source [source]) 1 1 "" st.xs_globals [] in
   let nodes = only_nodes result in
-  if st.xs_method = "text" then text_value_nodes nodes
-  else serialize_nodes [] nodes
+  finalize_output st.xs_output_present st.xs_output st.xs_method nodes
 
 // Document-node aware entry: `source_kids` is the full ordered child list
 // of the source document node (prolog Comment/PI Misc, root element,
@@ -2399,8 +2693,7 @@ let transform_doc (stylesheet:xml_node) (source_kids:list xml_node) : string =
     let fuel = op_Multiply (sz + 1) 256 + 100000 in
     let result = dispatch fuel st (D_Doc root source_kids) 1 1 "" st.xs_globals [] in
     let nodes = only_nodes result in
-    if st.xs_method = "text" then text_value_nodes nodes
-    else serialize_nodes [] nodes
+    finalize_output st.xs_output_present st.xs_output st.xs_method nodes
 
 // Document-node aware entry that ALSO threads the SOURCE document's DTD
 // internal-subset ATTLIST ID-type declarations (from
@@ -2416,5 +2709,4 @@ let transform_doc_ids (stylesheet:xml_node) (source_kids:list xml_node) (source_
     let fuel = op_Multiply (sz + 1) 256 + 100000 in
     let result = dispatch fuel st (D_Doc root source_kids) 1 1 "" st.xs_globals [] in
     let nodes = only_nodes result in
-    if st.xs_method = "text" then text_value_nodes nodes
-    else serialize_nodes [] nodes
+    finalize_output st.xs_output_present st.xs_output st.xs_method nodes
