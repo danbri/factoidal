@@ -2859,22 +2859,47 @@ let rec build_nsctx (attrs:list xml_attribute) : Tot (list (string & string)) (d
 // a `data` CHILD of `<data>` and returned the empty node-set, so
 // `for-each select="$var"` over such a global silently produced nothing
 // (namespace-1701).
-let rec collect_globals (pfx:string) (nsctx:list (string & string)) (decfmts:list decimal_format_symbols) (children:list xml_node) (source:xml_node) (doc_kids:list xml_node)
+// `st` is a not-yet-fully-populated xstyle (xs_globals still the
+// placeholder the caller is in the middle of computing -- see
+// build_style/build_style_from_units) whose OTHER fields (templates,
+// attribute-sets, decimal-formats, key table, ...) are already final, so
+// an RTF body containing xsl:apply-templates/xsl:call-template resolves
+// against the real stylesheet. A body that itself references another
+// global variable still sees it unbound (XV_Str "" from lookup_var),
+// exactly the pre-existing limitation of the select= branch below (which
+// also evaluates with vars=[], no cross-global visibility) -- collect_globals
+// has never supported forward/sibling references between globals, and this
+// change does not add or remove that.
+let rec collect_globals (fuel:nat) (st:xstyle) (children:list xml_node) (source:xml_node) (doc_kids:list xml_node)
   : Tot (list (string & xp_value)) (decreases children) =
+  if fuel = 0 then [] else
   match children with
   | [] -> []
   | hd :: tl ->
     (match hd with
-     | XElement tag attrs _ ->
-       if is_xsl pfx tag &&
-          (let ln = xsl_instr pfx tag in ln = "variable" || ln = "param") then
+     | XElement tag attrs body ->
+       if is_xsl st.xs_pfx tag &&
+          (let ln = xsl_instr st.xs_pfx tag in ln = "variable" || ln = "param") then
          (match attr_opt "select" attrs, attr_opt "name" attrs with
           | Some sel, Some nm ->
-            let v = eval_val_dn (D_Doc source doc_kids) 1 1 [] nsctx [] xnode_none decfmts [] sel in
-            (nm, v) :: collect_globals pfx nsctx decfmts tl source doc_kids
-          | _, _ -> collect_globals pfx nsctx decfmts tl source doc_kids)
-       else collect_globals pfx nsctx decfmts tl source doc_kids
-     | _ -> collect_globals pfx nsctx decfmts tl source doc_kids)
+            let v = eval_val_dn (D_Doc source doc_kids) 1 1 [] st.xs_nsctx st.xs_id_attrs xnode_none st.xs_decfmts [] sel in
+            (nm, v) :: collect_globals (fuel - 1) st tl source doc_kids
+          | None, Some nm ->
+            // Result-tree-fragment global (no select=): instantiate the
+            // body and bind its string-value, mirroring the LOCAL
+            // xsl:variable/param RTF handling above (instantiate_seq +
+            // text_value_nodes (only_nodes ...)). Global RTF variables
+            // have no separate node-sequence table (xstyle carries no
+            // global analogue of the local `rtf` accumulator), so
+            // xsl:copy-of on a global RTF variable is not covered by
+            // this fix -- only its string-value (boolean()/=/!=/string
+            // contexts, the fixtures this fixes) is.
+            let frag = instantiate_seq (fuel - 1) st (D_Doc source doc_kids) 1 1 [] [] "" 0 body in
+            let sval = text_value_nodes (only_nodes frag) in
+            (nm, XV_Str sval) :: collect_globals (fuel - 1) st tl source doc_kids
+          | _, _ -> collect_globals (fuel - 1) st tl source doc_kids)
+       else collect_globals (fuel - 1) st tl source doc_kids
+     | _ -> collect_globals (fuel - 1) st tl source doc_kids)
 
 // Parse a whitespace-separated prefix list (exclude-result-prefixes).
 // "#default" designates the default namespace (prefix "").
@@ -3125,19 +3150,27 @@ let build_style_from_units (units:list (int & list xml_node)) (root_pfx:string) 
     (match key_decls with
      | [] -> []
      | _ -> build_key_table nsctx id_attrs root_node decfmts key_decls (all_document_items (CI_Elem [] [] source))) in
-  { xs_pfx = root_pfx;
+  // st0 has every field final EXCEPT xs_globals (placeholder []) -- this
+  // xstyle is then handed to collect_globals so an RTF global variable's
+  // body can dispatch through the real templates/attrsets/key-table (see
+  // collect_globals' banner). xs_globals itself never feeds collect_globals
+  // (no cross-global visibility, unchanged from before this fix).
+  let st0 = {
+    xs_pfx = root_pfx;
     xs_templates = List.Tot.concatMap (fun (pc:(int & list xml_node)) -> collect_templates_prec root_pfx (fst pc) (snd pc)) units;
     xs_attrsets = collect_attribute_sets root_pfx all_children_desc;
     xs_method = (if out_settings.os_method_raw = "text" then "text" else "xml");
     xs_output_present = any_output_decl root_pfx all_children_desc;
     xs_output = out_settings;
-    xs_globals = collect_globals root_pfx nsctx decfmts all_children_desc source doc_kids;
+    xs_globals = [];
     xs_nsscope = build_nsscope root_attrs;
     xs_nsctx = nsctx;
     xs_id_attrs = id_attrs;
     xs_style_root = root_node;
     xs_decfmts = decfmts;
-    xs_key_table = key_table }
+    xs_key_table = key_table } in
+  let gfuel = op_Multiply 4 (xml_nodes_count all_children_desc + 1) + 1000 in
+  { st0 with xs_globals = collect_globals gfuel st0 all_children_desc source doc_kids }
 
 let build_style (stylesheet:xml_node) (source:xml_node) (doc_kids:list xml_node) (id_attrs:list (string & string)) : xstyle =
   match stylesheet with
@@ -3153,19 +3186,25 @@ let build_style (stylesheet:xml_node) (source:xml_node) (doc_kids:list xml_node)
         (match key_decls with
          | [] -> []
          | _ -> build_key_table nsctx id_attrs stylesheet decfmts key_decls (all_document_items (CI_Elem [] [] source))) in
-      { xs_pfx = pfx;
+      // st0/gfuel: see build_style_from_units' matching comment above --
+      // same two-phase (build everything but globals, then collect_globals
+      // against that near-final xstyle) construction.
+      let st0 = {
+        xs_pfx = pfx;
         xs_templates = collect_templates pfx children;
         xs_attrsets = collect_attribute_sets pfx children;
         xs_method = (if out_settings.os_method_raw = "text" then "text" else "xml");
         xs_output_present = any_output_decl pfx children;
         xs_output = out_settings;
-        xs_globals = collect_globals pfx nsctx decfmts children source doc_kids;
+        xs_globals = [];
         xs_nsscope = build_nsscope attrs;
         xs_nsctx = nsctx;
         xs_id_attrs = id_attrs;
         xs_style_root = stylesheet;
         xs_decfmts = decfmts;
-        xs_key_table = key_table }
+        xs_key_table = key_table } in
+      let gfuel = op_Multiply 4 (xml_nodes_count children + 1) + 1000 in
+      { st0 with xs_globals = collect_globals gfuel st0 children source doc_kids }
     else
       // Simplified stylesheet: the literal result element IS the body
       // of a single template matching the document root. Its own
