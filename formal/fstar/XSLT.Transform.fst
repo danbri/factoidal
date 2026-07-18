@@ -312,9 +312,41 @@ let rec split_rnodes (rs:list rnode) (as_acc:list xml_attribute) (ns_acc:list xm
   | R_Attr a :: rest -> split_rnodes rest (a :: as_acc) ns_acc
   | R_Node n :: rest -> split_rnodes rest as_acc (n :: ns_acc)
 
+// Insert/update `a` into `acc` by attr_name: if a name match exists its
+// VALUE is replaced but its POSITION is kept (the same "add first, then
+// let later/more-specific instructions override in place" merge that
+// XSLT uses everywhere two attribute sources can collide -- a literal
+// attribute value template vs. an xsl:attribute child, an attribute-set
+// vs. the element's own attributes, xsl:attribute vs. xsl:attribute).
+let rec attrs_upsert (acc:list xml_attribute) (a:xml_attribute) : Tot (list xml_attribute) (decreases acc) =
+  match acc with
+  | [] -> [a]
+  | hd :: tl -> if hd.attr_name = a.attr_name then a :: tl else hd :: attrs_upsert tl a
+
+// Fold `overrides` onto `base`, upserting each in turn: same-name
+// attributes in `overrides` win the VALUE but not the position (the
+// base list's first-occurrence ordering survives); brand-new names are
+// appended in the order `overrides` introduces them.
+let rec merge_attrs_override (base:list xml_attribute) (overrides:list xml_attribute)
+  : Tot (list xml_attribute) (decreases overrides) =
+  match overrides with
+  | [] -> base
+  | hd :: tl -> merge_attrs_override (attrs_upsert base hd) tl
+
+let only_attrs (rs:list rnode) : list xml_attribute =
+  let (attrs, _) = split_rnodes rs [] [] in attrs
+
+// build_element folds the body's R_Attr entries (from xsl:attribute
+// instructions in the element's content) onto extra_attrs (namespace
+// declarations, literal/AVT attributes, and -- once attribute-sets are
+// threaded in -- use-attribute-sets-derived attributes) via
+// merge_attrs_override rather than a plain list append: XSLT 1.0
+// §7.1.3/7.1.4 lets a later xsl:attribute REPLACE an attribute already
+// established by a literal attribute or an attribute-set, in place
+// (attribset06/10/11/12/18).
 let build_element (tag:string) (extra_attrs:list xml_attribute) (body:list rnode) : xml_node =
   let (attrs, nodes) = split_rnodes body [] [] in
-  XElement tag (extra_attrs @ attrs) nodes
+  XElement tag (merge_attrs_override extra_attrs attrs) nodes
 
 let rec rnodes_text (rs:list rnode) : Tot string (decreases rs) =
   match rs with
@@ -418,6 +450,47 @@ type template = {
   tpl_body : list xml_node;
 }
 
+// A named top-level xsl:attribute-set declaration (XSLT 1.0 §7.1.4),
+// COMBINED across every xsl:attribute-set element sharing the same
+// name (a stylesheet may declare a name more than once). ase_deps is
+// this combined declaration's own use-attribute-sets dependency names
+// (space-separated, in the order they're listed); ase_own is its own
+// xsl:attribute children, to be instantiated (AVT-expanded, etc.)
+// against the CURRENT context each time the set is used -- attribute
+// values are not fixed at parse time.
+//
+// Merge order for same-named decls (collect_attribute_sets below):
+// combined = LAST-declared decl's (deps, own) FIRST, then the next-to-
+// last, ... down to the FIRST-declared decl's (deps, own) LAST. This
+// reverse-declaration-order concatenation is what Xalan's own merge
+// produces for duplicate-name attribute-sets with non-conflicting
+// attribute names (attribset10/27/29/31/32/41 in the Apache-Xalan
+// xslt1 suite); it is implementation-defined for a stylesheet whose
+// duplicate-name attribute-sets have COLLIDING attribute names AND
+// their own nested use-attribute-sets (attribset42/43) -- the merged
+// VALUES still come out correct there (last-declared decl's value
+// wins per XSLT 1.0 §7.1.4's "recover ... using the attribute nearest
+// the end of the stylesheet"), but the exact attribute ORDER in that
+// double-nested-collision corner does not match Xalan's specific
+// internal algorithm. Left as a known gap; not chased further.
+noeq type attrset_entry = {
+  ase_name : string;
+  ase_deps : list string;
+  ase_own  : list xml_node;
+}
+
+let rec find_attrset_entry (entries:list attrset_entry) (nm:string) : Tot (option attrset_entry) (decreases entries) =
+  match entries with
+  | [] -> None
+  | e :: rest -> if e.ase_name = nm then Some e else find_attrset_entry rest nm
+
+// Whitespace-separated QName list (cdata-section-elements' grammar,
+// and use-attribute-sets'/xsl:attribute-set's own use-attribute-sets
+// grammar -- both are simple whitespace-separated name lists; unlike
+// exclude-result-prefixes there is no "#default" token in either).
+let parse_qname_list (s:string) : list string =
+  List.Tot.filter (fun p -> p <> "") (List.Tot.map trim_str (split_on_char ' ' s))
+
 // xsl:output (XSLT 1.0 section 16), merged across every top-level
 // xsl:output element (there may be several -- 16: "attribute values...
 // are determined by ... the elements... merged"). Scalar attributes take
@@ -449,6 +522,12 @@ let default_output_settings : output_settings = {
 noeq type xstyle = {
   xs_pfx : string;
   xs_templates : list template;
+  // Top-level xsl:attribute-set declarations, keyed by name, already
+  // merged across duplicate-name decls (see attrset_entry / merge order
+  // above collect_attribute_sets). Threaded to instantiate_one/
+  // instantiate_copy so use-attribute-sets (on a literal result
+  // element, xsl:element, or xsl:copy) can expand.
+  xs_attrsets : list attrset_entry;
   xs_method : string;
   // Whether at least one top-level xsl:output element was present in the
   // stylesheet. FALSE means the transform's final serialization step MUST
@@ -1932,6 +2011,18 @@ let rec rtf_find (rtf:list (string & list rnode)) (nm:string) : option (list rno
 // §11.6). For a plain apply-templates with no with-param they are
 // st.xs_globals / [] and the behavior is unchanged. The built-in rule
 // does NOT forward params (§5.8), so it re-seeds with globals only.
+// The attribute-set expansion added to instantiate_one's xsl:copy/
+// xsl:element/literal-result-element branches (expand_attrset_name(s),
+// merge_attrs_override) pushes this whole mutual-recursion group's
+// combined VC past the default z3rlimit on at least one unrelated
+// branch (observed: the plain xsl:if branch's `fuel - 1 : nat`
+// obligation) -- a resource-budget issue, not a real proof gap (the
+// SAME obligations discharge cleanly at rlimit_factor 4; bisected by
+// reverting the new call sites one at a time until the failure
+// disappeared, confirming it's query-budget pressure from the bigger
+// combined VC, not a broken proof). Genuinely more search budget for
+// a real proof, NOT --lax / --admit_smt_queries (iron rule #10).
+#push-options "--z3rlimit_factor 4"
 let rec dispatch (fuel:nat) (st:xstyle) (nd:dnode) (pos size:nat) (mode:string)
                  (svars:list (string & xp_value)) (srtf:list (string & list rnode))
   : Tot (list rnode) (decreases fuel) =
@@ -2136,7 +2227,10 @@ and instantiate_one (fuel:nat) (st:xstyle) (ctx:dnode) (pos size:nat)
               | None -> List.Tot.map mk (select_nodes ctx pos size vars st.xs_nsctx st.xs_id_attrs st.xs_style_root st.xs_decfmts sel))
            | None -> List.Tot.map mk (select_nodes ctx pos size vars st.xs_nsctx st.xs_id_attrs st.xs_style_root st.xs_decfmts sel))
         else if ln = "copy" then
-          instantiate_copy (fuel - 1) st ctx pos size vars rtf children
+          let use_attrs =
+            expand_attrset_names (fuel - 1) st ctx pos size vars rtf []
+              (parse_qname_list (attr_or "use-attribute-sets" "" attrs)) in
+          instantiate_copy (fuel - 1) st ctx pos size vars rtf use_attrs children
         else if ln = "element" then
           let nm = expand_avt (dnode_ci ctx) pos size vars st.xs_nsctx (attr_or "name" "" attrs) in
           let epfx = name_prefix nm in
@@ -2163,8 +2257,11 @@ and instantiate_one (fuel:nat) (st:xstyle) (ctx:dnode) (pos size:nat)
                  (match lookup_nsctx st.xs_nsctx epfx with
                   | Some u -> [ { attr_name = strcat "xmlns:" epfx; attr_value = u } ]
                   | None -> [])) in
+          let use_attrs =
+            expand_attrset_names (fuel - 1) st ctx pos size vars rtf []
+              (parse_qname_list (attr_or "use-attribute-sets" "" attrs)) in
           let body = instantiate_seq (fuel - 1) st ctx pos size vars rtf children in
-          [R_Node (build_element nm nsdecls body)]
+          [R_Node (build_element nm (List.Tot.append use_attrs nsdecls) body)]
         else if ln = "attribute" then
           let nm = expand_avt (dnode_ci ctx) pos size vars st.xs_nsctx (attr_or "name" "" attrs) in
           let body = instantiate_seq (fuel - 1) st ctx pos size vars rtf children in
@@ -2215,6 +2312,10 @@ and instantiate_one (fuel:nat) (st:xstyle) (ctx:dnode) (pos size:nat)
             (fun (a:xml_attribute) ->
                { attr_name = a.attr_name; attr_value = expand_avt (dnode_ci ctx) pos size vars st.xs_nsctx a.attr_value })
             kept in
+        let use_attrs =
+          expand_attrset_names (fuel - 1) st ctx pos size vars rtf []
+            (parse_qname_list (attr_or (strcat st.xs_pfx ":use-attribute-sets") "" attrs)) in
+        let literal_attrs = merge_attrs_override use_attrs out_attrs in
         let body = instantiate_seq (fuel - 1) st ctx pos size vars rtf children in
         // An unprefixed literal result element is in the stylesheet's
         // default namespace. If that namespace was named in
@@ -2235,7 +2336,7 @@ and instantiate_one (fuel:nat) (st:xstyle) (ctx:dnode) (pos size:nat)
                 | None -> []) in
         // Copy the in-scope stylesheet namespace nodes onto the result
         // element (deduped later by the serializer).
-        [R_Node (build_element tag (default_ns_fixup @ st.xs_nsscope @ out_attrs) body)]
+        [R_Node (build_element tag (default_ns_fixup @ st.xs_nsscope @ literal_attrs) body)]
 
 and instantiate_choose (fuel:nat) (st:xstyle) (ctx:dnode) (pos size:nat)
                        (vars:list (string & xp_value)) (rtf:list (string & list rnode)) (branches:list xml_node)
@@ -2260,7 +2361,8 @@ and instantiate_choose (fuel:nat) (st:xstyle) (ctx:dnode) (pos size:nat)
        | _ -> instantiate_choose (fuel - 1) st ctx pos size vars rtf tl)
 
 and instantiate_copy (fuel:nat) (st:xstyle) (ctx:dnode) (pos size:nat)
-                     (vars:list (string & xp_value)) (rtf:list (string & list rnode)) (children:list xml_node)
+                     (vars:list (string & xp_value)) (rtf:list (string & list rnode))
+                     (use_attrs:list xml_attribute) (children:list xml_node)
   : Tot (list rnode) (decreases fuel) =
   if fuel = 0 then []
   else
@@ -2279,8 +2381,12 @@ and instantiate_copy (fuel:nat) (st:xstyle) (ctx:dnode) (pos size:nat)
          // ordinary namespace node that xsl:copy must preserve
          // (namespace-4801). A source node in a normal transform never has
          // the XSLT namespace in scope, so this is a no-op for those.
+         // use_attrs (this xsl:copy's use-attribute-sets, already
+         // expanded) is a lower-precedence layer than the copy's own
+         // content -- an xsl:attribute child in `body` overrides it in
+         // place (build_element's merge_attrs_override).
          let nsnodes = inscope_ns [] [] (n :: anc) in
-         [R_Node (build_element t nsnodes body)]
+         [R_Node (build_element t (List.Tot.append nsnodes use_attrs) body)]
        | _ -> instantiate_seq (fuel - 1) st ctx pos size vars rtf children)
     | D_Item (CI_Text _ _ _ t) -> [R_Node (XText t)]
     | D_Item (CI_Comment _ _ _ t) -> [R_Node (XComment t)]
@@ -2289,6 +2395,49 @@ and instantiate_copy (fuel:nat) (st:xstyle) (ctx:dnode) (pos size:nat)
     // xsl:copy of a namespace node copies its namespace declaration.
     | D_Item (CI_Namespace _ _ _ pfx uri) ->
       [R_Attr ({ attr_name = (if pfx = "" then "xmlns" else strcat "xmlns:" pfx); attr_value = uri })]
+
+// Expand a single named xsl:attribute-set (already merged across
+// duplicate-name decls, see attrset_entry) into the concrete
+// xml_attribute list it contributes when used, in the CURRENT
+// instantiation context (its own xsl:attribute children are AVT-
+// expanded / value-computed against `ctx`/`vars`/`rtf` exactly like any
+// other xsl:attribute). Order (XSLT 1.0 §7.1.4): attribute-sets this
+// set itself uses (its own use-attribute-sets=, expanded left to right)
+// are added FIRST, then this set's own xsl:attribute children override
+// in place. `visited` guards a circular use-attribute-sets chain (a
+// static error per the spec): a name already being expanded on the
+// current path contributes nothing rather than looping -- fuel bounds
+// termination regardless (Tot), this just avoids burning it needlessly.
+and expand_attrset_name (fuel:nat) (st:xstyle) (ctx:dnode) (pos size:nat)
+                        (vars:list (string & xp_value)) (rtf:list (string & list rnode))
+                        (visited:list string) (name:string)
+  : Tot (list xml_attribute) (decreases fuel) =
+  if fuel = 0 then []
+  else if mem_str name visited then []
+  else
+    match find_attrset_entry st.xs_attrsets name with
+    | None -> []
+    | Some e ->
+      let deps_expanded = expand_attrset_names (fuel - 1) st ctx pos size vars rtf (name :: visited) e.ase_deps in
+      let own_attrs = only_attrs (instantiate_seq (fuel - 1) st ctx pos size vars rtf e.ase_own) in
+      merge_attrs_override deps_expanded own_attrs
+
+// Expand a use-attribute-sets name LIST (space-separated on the using
+// element), left to right: an EARLIER-named set's attributes are added
+// first, a LATER-named set's attributes override same-name ones in
+// place (still XSLT 1.0 §7.1.4's "in the order listed" merge).
+and expand_attrset_names (fuel:nat) (st:xstyle) (ctx:dnode) (pos size:nat)
+                         (vars:list (string & xp_value)) (rtf:list (string & list rnode))
+                         (visited:list string) (names:list string)
+  : Tot (list xml_attribute) (decreases fuel) =
+  if fuel = 0 then []
+  else
+    match names with
+    | [] -> []
+    | hd :: tl ->
+      let a = expand_attrset_name (fuel - 1) st ctx pos size vars rtf visited hd in
+      let b = expand_attrset_names (fuel - 1) st ctx pos size vars rtf visited tl in
+      merge_attrs_override a b
 
 and for_each_items (fuel:nat) (st:xstyle) (body:list xml_node)
                    (vars:list (string & xp_value)) (rtf:list (string & list rnode))
@@ -2301,6 +2450,7 @@ and for_each_items (fuel:nat) (st:xstyle) (body:list xml_node)
     | it :: rest ->
       let here = instantiate_seq (fuel - 1) st (D_Item it) pos size vars rtf body in
       here @ for_each_items (fuel - 1) st body vars rtf rest (pos + 1) size
+#pop-options
 
 (* ================================================================ *)
 (* Stylesheet compilation.                                            *)
@@ -2402,11 +2552,6 @@ let rec collect_decimal_formats (pfx:string) (children:list xml_node) : Tot (lis
 let resolve_qname_ns (nsctx:list (string & string)) (qn:string) : (option string & string) =
   (lookup_nsctx nsctx (prefix_of qn), local_name_of qn)
 
-// Whitespace-separated QName list (cdata-section-elements' grammar);
-// unlike exclude-result-prefixes there is no "#default" token.
-let parse_qname_list (s:string) : list string =
-  List.Tot.filter (fun p -> p <> "") (List.Tot.map trim_str (split_on_char ' ' s))
-
 // Fold one xsl:output element's attributes into the running merged
 // settings. Every scalar attribute is last-wins (an element that omits
 // an attribute leaves the running value from an earlier element alone);
@@ -2451,6 +2596,44 @@ let rec any_output_decl (pfx:string) (children:list xml_node) : Tot bool (decrea
     (match hd with
      | XElement tag _ _ -> if is_xsl pfx tag && xsl_instr pfx tag = "output" then true else any_output_decl pfx tl
      | _ -> any_output_decl pfx tl)
+
+(* ================================================================ *)
+(* xsl:attribute-set top-level declarations (XSLT 1.0 section 7.1.4). *)
+(* ================================================================ *)
+
+// Append `deps`/`own` onto the entry already recorded for `nm` (if
+// any), or start a fresh one. Used by collect_attribute_sets, which
+// walks decls in DOCUMENT order but recurses tail-first, so by the
+// time a decl is folded in here `entries` already holds every LATER
+// decl's contribution; appending (not prepending) `deps`/`own` after
+// the existing entry places this (earlier) decl's own material AFTER
+// every later-declared same-name decl's material -- i.e. the combined
+// list ends up in REVERSE declaration order overall (see attrset_entry
+// doc comment for why that matches Xalan's merge).
+let rec attrset_upsert_append (entries:list attrset_entry) (nm:string) (deps:list string) (own:list xml_node)
+  : Tot (list attrset_entry) (decreases entries) =
+  match entries with
+  | [] -> [{ ase_name = nm; ase_deps = deps; ase_own = own }]
+  | e :: rest ->
+    if e.ase_name = nm
+    then { e with ase_deps = List.Tot.append e.ase_deps deps; ase_own = List.Tot.append e.ase_own own } :: rest
+    else e :: attrset_upsert_append rest nm deps own
+
+let rec collect_attribute_sets (pfx:string) (children:list xml_node) : Tot (list attrset_entry) (decreases children) =
+  match children with
+  | [] -> []
+  | hd :: tl ->
+    let rest = collect_attribute_sets pfx tl in
+    (match hd with
+     | XElement tag attrs body ->
+       if is_xsl pfx tag && xsl_instr pfx tag = "attribute-set" then
+         let nm = attr_or "name" "" attrs in
+         if nm = "" then rest
+         else
+           let deps = parse_qname_list (attr_or "use-attribute-sets" "" attrs) in
+           attrset_upsert_append rest nm deps body
+       else rest
+     | _ -> rest)
 
 // The stylesheet element's full namespace context (prefix -> URI),
 // UNfiltered by exclude-result-prefixes -- see the xs_nsctx field.
@@ -2547,6 +2730,7 @@ let build_style (stylesheet:xml_node) (source:xml_node) (doc_kids:list xml_node)
       let out_settings = collect_output_settings pfx nsctx children default_output_settings in
       { xs_pfx = pfx;
         xs_templates = collect_templates pfx children;
+        xs_attrsets = collect_attribute_sets pfx children;
         xs_method = (if out_settings.os_method_raw = "text" then "text" else "xml");
         xs_output_present = any_output_decl pfx children;
         xs_output = out_settings;
@@ -2565,6 +2749,7 @@ let build_style (stylesheet:xml_node) (source:xml_node) (doc_kids:list xml_node)
       // xsl:output either.
       { xs_pfx = pfx;
         xs_templates = [ { tpl_match = "/"; tpl_name = ""; tpl_mode = ""; tpl_prio = None; tpl_body = [stylesheet] } ];
+        xs_attrsets = [];
         xs_method = "xml";
         xs_output_present = false;
         xs_output = default_output_settings;
@@ -2575,7 +2760,7 @@ let build_style (stylesheet:xml_node) (source:xml_node) (doc_kids:list xml_node)
         xs_style_root = stylesheet;
         xs_decfmts = [] }
   | _ ->
-    { xs_pfx = "xsl"; xs_templates = []; xs_method = "xml";
+    { xs_pfx = "xsl"; xs_templates = []; xs_attrsets = []; xs_method = "xml";
       xs_output_present = false; xs_output = default_output_settings;
       xs_globals = []; xs_nsscope = []; xs_nsctx = [];
       xs_id_attrs = id_attrs; xs_style_root = stylesheet; xs_decfmts = [] }

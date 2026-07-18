@@ -168,6 +168,23 @@ let rec split_rnodes (rs : rnode Prims.list)
       ((FStar_List_Tot_Base.rev as_acc), (FStar_List_Tot_Base.rev ns_acc))
   | (R_Attr a)::rest -> split_rnodes rest (a :: as_acc) ns_acc
   | (R_Node n)::rest -> split_rnodes rest as_acc (n :: ns_acc)
+let rec attrs_upsert (acc : Parser_XML.xml_attribute Prims.list)
+  (a : Parser_XML.xml_attribute) : Parser_XML.xml_attribute Prims.list=
+  match acc with
+  | [] -> [a]
+  | hd::tl ->
+      if hd.Parser_XML.attr_name = a.Parser_XML.attr_name
+      then a :: tl
+      else hd :: (attrs_upsert tl a)
+let rec merge_attrs_override (base : Parser_XML.xml_attribute Prims.list)
+  (overrides : Parser_XML.xml_attribute Prims.list) :
+  Parser_XML.xml_attribute Prims.list=
+  match overrides with
+  | [] -> base
+  | hd::tl -> merge_attrs_override (attrs_upsert base hd) tl
+let only_attrs (rs : rnode Prims.list) : Parser_XML.xml_attribute Prims.list=
+  let uu___ = split_rnodes rs [] [] in
+  match uu___ with | (attrs, uu___1) -> attrs
 let build_element (tag : Prims.string)
   (extra_attrs : Parser_XML.xml_attribute Prims.list)
   (body : rnode Prims.list) : Parser_XML.xml_node=
@@ -175,7 +192,7 @@ let build_element (tag : Prims.string)
   match uu___ with
   | (attrs, nodes) ->
       Parser_XML.XElement
-        (tag, (FStar_List_Tot_Base.op_At extra_attrs attrs), nodes)
+        (tag, (merge_attrs_override extra_attrs attrs), nodes)
 let rec rnodes_text (rs : rnode Prims.list) : Prims.string=
   match rs with
   | [] -> ""
@@ -275,6 +292,31 @@ let __proj__Mktemplate__item__tpl_body (projectee : template) :
   Parser_XML.xml_node Prims.list=
   match projectee with
   | { tpl_match; tpl_name; tpl_mode; tpl_prio; tpl_body;_} -> tpl_body
+type attrset_entry =
+  {
+  ase_name: Prims.string ;
+  ase_deps: Prims.string Prims.list ;
+  ase_own: Parser_XML.xml_node Prims.list }
+let __proj__Mkattrset_entry__item__ase_name (projectee : attrset_entry) :
+  Prims.string=
+  match projectee with | { ase_name; ase_deps; ase_own;_} -> ase_name
+let __proj__Mkattrset_entry__item__ase_deps (projectee : attrset_entry) :
+  Prims.string Prims.list=
+  match projectee with | { ase_name; ase_deps; ase_own;_} -> ase_deps
+let __proj__Mkattrset_entry__item__ase_own (projectee : attrset_entry) :
+  Parser_XML.xml_node Prims.list=
+  match projectee with | { ase_name; ase_deps; ase_own;_} -> ase_own
+let rec find_attrset_entry (entries : attrset_entry Prims.list)
+  (nm : Prims.string) : attrset_entry FStar_Pervasives_Native.option=
+  match entries with
+  | [] -> FStar_Pervasives_Native.None
+  | e::rest ->
+      if e.ase_name = nm
+      then FStar_Pervasives_Native.Some e
+      else find_attrset_entry rest nm
+let parse_qname_list (s : Prims.string) : Prims.string Prims.list=
+  FStar_List_Tot_Base.filter (fun p -> p <> "")
+    (FStar_List_Tot_Base.map trim_str (split_on_char 32 s))
 type output_settings =
   {
   os_method_raw: Prims.string ;
@@ -357,6 +399,7 @@ type xstyle =
   {
   xs_pfx: Prims.string ;
   xs_templates: template Prims.list ;
+  xs_attrsets: attrset_entry Prims.list ;
   xs_method: Prims.string ;
   xs_output_present: Prims.bool ;
   xs_output: output_settings ;
@@ -368,67 +411,73 @@ type xstyle =
   xs_decfmts: XPath_Eval.decimal_format_symbols Prims.list }
 let __proj__Mkxstyle__item__xs_pfx (projectee : xstyle) : Prims.string=
   match projectee with
-  | { xs_pfx; xs_templates; xs_method; xs_output_present; xs_output;
-      xs_globals; xs_nsscope; xs_nsctx; xs_id_attrs; xs_style_root;
-      xs_decfmts;_} -> xs_pfx
+  | { xs_pfx; xs_templates; xs_attrsets; xs_method; xs_output_present;
+      xs_output; xs_globals; xs_nsscope; xs_nsctx; xs_id_attrs;
+      xs_style_root; xs_decfmts;_} -> xs_pfx
 let __proj__Mkxstyle__item__xs_templates (projectee : xstyle) :
   template Prims.list=
   match projectee with
-  | { xs_pfx; xs_templates; xs_method; xs_output_present; xs_output;
-      xs_globals; xs_nsscope; xs_nsctx; xs_id_attrs; xs_style_root;
-      xs_decfmts;_} -> xs_templates
+  | { xs_pfx; xs_templates; xs_attrsets; xs_method; xs_output_present;
+      xs_output; xs_globals; xs_nsscope; xs_nsctx; xs_id_attrs;
+      xs_style_root; xs_decfmts;_} -> xs_templates
+let __proj__Mkxstyle__item__xs_attrsets (projectee : xstyle) :
+  attrset_entry Prims.list=
+  match projectee with
+  | { xs_pfx; xs_templates; xs_attrsets; xs_method; xs_output_present;
+      xs_output; xs_globals; xs_nsscope; xs_nsctx; xs_id_attrs;
+      xs_style_root; xs_decfmts;_} -> xs_attrsets
 let __proj__Mkxstyle__item__xs_method (projectee : xstyle) : Prims.string=
   match projectee with
-  | { xs_pfx; xs_templates; xs_method; xs_output_present; xs_output;
-      xs_globals; xs_nsscope; xs_nsctx; xs_id_attrs; xs_style_root;
-      xs_decfmts;_} -> xs_method
+  | { xs_pfx; xs_templates; xs_attrsets; xs_method; xs_output_present;
+      xs_output; xs_globals; xs_nsscope; xs_nsctx; xs_id_attrs;
+      xs_style_root; xs_decfmts;_} -> xs_method
 let __proj__Mkxstyle__item__xs_output_present (projectee : xstyle) :
   Prims.bool=
   match projectee with
-  | { xs_pfx; xs_templates; xs_method; xs_output_present; xs_output;
-      xs_globals; xs_nsscope; xs_nsctx; xs_id_attrs; xs_style_root;
-      xs_decfmts;_} -> xs_output_present
+  | { xs_pfx; xs_templates; xs_attrsets; xs_method; xs_output_present;
+      xs_output; xs_globals; xs_nsscope; xs_nsctx; xs_id_attrs;
+      xs_style_root; xs_decfmts;_} -> xs_output_present
 let __proj__Mkxstyle__item__xs_output (projectee : xstyle) : output_settings=
   match projectee with
-  | { xs_pfx; xs_templates; xs_method; xs_output_present; xs_output;
-      xs_globals; xs_nsscope; xs_nsctx; xs_id_attrs; xs_style_root;
-      xs_decfmts;_} -> xs_output
+  | { xs_pfx; xs_templates; xs_attrsets; xs_method; xs_output_present;
+      xs_output; xs_globals; xs_nsscope; xs_nsctx; xs_id_attrs;
+      xs_style_root; xs_decfmts;_} -> xs_output
 let __proj__Mkxstyle__item__xs_globals (projectee : xstyle) :
   (Prims.string * XPath_Eval.xp_value) Prims.list=
   match projectee with
-  | { xs_pfx; xs_templates; xs_method; xs_output_present; xs_output;
-      xs_globals; xs_nsscope; xs_nsctx; xs_id_attrs; xs_style_root;
-      xs_decfmts;_} -> xs_globals
+  | { xs_pfx; xs_templates; xs_attrsets; xs_method; xs_output_present;
+      xs_output; xs_globals; xs_nsscope; xs_nsctx; xs_id_attrs;
+      xs_style_root; xs_decfmts;_} -> xs_globals
 let __proj__Mkxstyle__item__xs_nsscope (projectee : xstyle) :
   Parser_XML.xml_attribute Prims.list=
   match projectee with
-  | { xs_pfx; xs_templates; xs_method; xs_output_present; xs_output;
-      xs_globals; xs_nsscope; xs_nsctx; xs_id_attrs; xs_style_root;
-      xs_decfmts;_} -> xs_nsscope
+  | { xs_pfx; xs_templates; xs_attrsets; xs_method; xs_output_present;
+      xs_output; xs_globals; xs_nsscope; xs_nsctx; xs_id_attrs;
+      xs_style_root; xs_decfmts;_} -> xs_nsscope
 let __proj__Mkxstyle__item__xs_nsctx (projectee : xstyle) :
   (Prims.string * Prims.string) Prims.list=
   match projectee with
-  | { xs_pfx; xs_templates; xs_method; xs_output_present; xs_output;
-      xs_globals; xs_nsscope; xs_nsctx; xs_id_attrs; xs_style_root;
-      xs_decfmts;_} -> xs_nsctx
+  | { xs_pfx; xs_templates; xs_attrsets; xs_method; xs_output_present;
+      xs_output; xs_globals; xs_nsscope; xs_nsctx; xs_id_attrs;
+      xs_style_root; xs_decfmts;_} -> xs_nsctx
 let __proj__Mkxstyle__item__xs_id_attrs (projectee : xstyle) :
   (Prims.string * Prims.string) Prims.list=
   match projectee with
-  | { xs_pfx; xs_templates; xs_method; xs_output_present; xs_output;
-      xs_globals; xs_nsscope; xs_nsctx; xs_id_attrs; xs_style_root;
-      xs_decfmts;_} -> xs_id_attrs
+  | { xs_pfx; xs_templates; xs_attrsets; xs_method; xs_output_present;
+      xs_output; xs_globals; xs_nsscope; xs_nsctx; xs_id_attrs;
+      xs_style_root; xs_decfmts;_} -> xs_id_attrs
 let __proj__Mkxstyle__item__xs_style_root (projectee : xstyle) :
   Parser_XML.xml_node=
   match projectee with
-  | { xs_pfx; xs_templates; xs_method; xs_output_present; xs_output;
-      xs_globals; xs_nsscope; xs_nsctx; xs_id_attrs; xs_style_root;
-      xs_decfmts;_} -> xs_style_root
+  | { xs_pfx; xs_templates; xs_attrsets; xs_method; xs_output_present;
+      xs_output; xs_globals; xs_nsscope; xs_nsctx; xs_id_attrs;
+      xs_style_root; xs_decfmts;_} -> xs_style_root
 let __proj__Mkxstyle__item__xs_decfmts (projectee : xstyle) :
   XPath_Eval.decimal_format_symbols Prims.list=
   match projectee with
-  | { xs_pfx; xs_templates; xs_method; xs_output_present; xs_output;
-      xs_globals; xs_nsscope; xs_nsctx; xs_id_attrs; xs_style_root;
-      xs_decfmts;_} -> xs_decfmts
+  | { xs_pfx; xs_templates; xs_attrsets; xs_method; xs_output_present;
+      xs_output; xs_globals; xs_nsscope; xs_nsctx; xs_id_attrs;
+      xs_style_root; xs_decfmts;_} -> xs_decfmts
 let xslt_ns : Prims.string= "http://www.w3.org/1999/XSL/Transform"
 let copy_of_item (it : XPath_Eval.xctx_item) : rnode=
   match it with
@@ -2314,8 +2363,13 @@ and instantiate_one (fuel : Prims.nat) (st : xstyle) (ctx : dnode)
                           else
                             if ln = "copy"
                             then
-                              instantiate_copy (fuel - Prims.int_one) st ctx
-                                pos size vars rtf children
+                              (let use_attrs =
+                                 expand_attrset_names (fuel - Prims.int_one)
+                                   st ctx pos size vars rtf []
+                                   (parse_qname_list
+                                      (attr_or "use-attribute-sets" "" attrs)) in
+                               instantiate_copy (fuel - Prims.int_one) st ctx
+                                 pos size vars rtf use_attrs children)
                             else
                               if ln = "element"
                               then
@@ -2375,10 +2429,20 @@ and instantiate_one (fuel : Prims.nat) (st : xstyle) (ctx : dnode)
                                                }]
                                           | FStar_Pervasives_Native.None ->
                                               []) in
+                                 let use_attrs =
+                                   expand_attrset_names
+                                     (fuel - Prims.int_one) st ctx pos size
+                                     vars rtf []
+                                     (parse_qname_list
+                                        (attr_or "use-attribute-sets" ""
+                                           attrs)) in
                                  let body =
                                    instantiate_seq (fuel - Prims.int_one) st
                                      ctx pos size vars rtf children in
-                                 [R_Node (build_element nm nsdecls body)])
+                                 [R_Node
+                                    (build_element nm
+                                       (FStar_List_Tot_Base.append use_attrs
+                                          nsdecls) body)])
                               else
                                 if ln = "attribute"
                                 then
@@ -2486,6 +2550,13 @@ and instantiate_one (fuel : Prims.nat) (st : xstyle) (ctx : dnode)
                        (expand_avt (dnode_ci ctx) pos size vars st.xs_nsctx
                           a.Parser_XML.attr_value)
                    }) kept in
+            let use_attrs =
+              expand_attrset_names (fuel - Prims.int_one) st ctx pos size
+                vars rtf []
+                (parse_qname_list
+                   (attr_or (Prims.strcat st.xs_pfx ":use-attribute-sets") ""
+                      attrs)) in
+            let literal_attrs = merge_attrs_override use_attrs out_attrs in
             let body =
               instantiate_seq (fuel - Prims.int_one) st ctx pos size vars rtf
                 children in
@@ -2515,7 +2586,7 @@ and instantiate_one (fuel : Prims.nat) (st : xstyle) (ctx : dnode)
             [R_Node
                (build_element tag
                   (FStar_List_Tot_Base.op_At default_ns_fixup
-                     (FStar_List_Tot_Base.op_At st.xs_nsscope out_attrs))
+                     (FStar_List_Tot_Base.op_At st.xs_nsscope literal_attrs))
                   body)]))
 and instantiate_choose (fuel : Prims.nat) (st : xstyle) (ctx : dnode)
   (pos : Prims.nat) (size : Prims.nat)
@@ -2563,6 +2634,7 @@ and instantiate_copy (fuel : Prims.nat) (st : xstyle) (ctx : dnode)
   (pos : Prims.nat) (size : Prims.nat)
   (vars : (Prims.string * XPath_Eval.xp_value) Prims.list)
   (rtf : (Prims.string * rnode Prims.list) Prims.list)
+  (use_attrs : Parser_XML.xml_attribute Prims.list)
   (children : Parser_XML.xml_node Prims.list) : rnode Prims.list=
   if fuel = Prims.int_zero
   then []
@@ -2578,7 +2650,9 @@ and instantiate_copy (fuel : Prims.nat) (st : xstyle) (ctx : dnode)
                 instantiate_seq (fuel - Prims.int_one) st ctx pos size vars
                   rtf children in
               let nsnodes = inscope_ns [] [] (n :: anc) in
-              [R_Node (build_element t nsnodes body)]
+              [R_Node
+                 (build_element t
+                    (FStar_List_Tot_Base.append nsnodes use_attrs) body)]
           | uu___2 ->
               instantiate_seq (fuel - Prims.int_one) st ctx pos size vars rtf
                 children)
@@ -2596,6 +2670,48 @@ and instantiate_copy (fuel : Prims.nat) (st : xstyle) (ctx : dnode)
                 (if pfx = "" then "xmlns" else Prims.strcat "xmlns:" pfx);
               Parser_XML.attr_value = uri
             }])
+and expand_attrset_name (fuel : Prims.nat) (st : xstyle) (ctx : dnode)
+  (pos : Prims.nat) (size : Prims.nat)
+  (vars : (Prims.string * XPath_Eval.xp_value) Prims.list)
+  (rtf : (Prims.string * rnode Prims.list) Prims.list)
+  (visited : Prims.string Prims.list) (name : Prims.string) :
+  Parser_XML.xml_attribute Prims.list=
+  if fuel = Prims.int_zero
+  then []
+  else
+    if mem_str name visited
+    then []
+    else
+      (match find_attrset_entry st.xs_attrsets name with
+       | FStar_Pervasives_Native.None -> []
+       | FStar_Pervasives_Native.Some e ->
+           let deps_expanded =
+             expand_attrset_names (fuel - Prims.int_one) st ctx pos size vars
+               rtf (name :: visited) e.ase_deps in
+           let own_attrs =
+             only_attrs
+               (instantiate_seq (fuel - Prims.int_one) st ctx pos size vars
+                  rtf e.ase_own) in
+           merge_attrs_override deps_expanded own_attrs)
+and expand_attrset_names (fuel : Prims.nat) (st : xstyle) (ctx : dnode)
+  (pos : Prims.nat) (size : Prims.nat)
+  (vars : (Prims.string * XPath_Eval.xp_value) Prims.list)
+  (rtf : (Prims.string * rnode Prims.list) Prims.list)
+  (visited : Prims.string Prims.list) (names : Prims.string Prims.list) :
+  Parser_XML.xml_attribute Prims.list=
+  if fuel = Prims.int_zero
+  then []
+  else
+    (match names with
+     | [] -> []
+     | hd::tl ->
+         let a =
+           expand_attrset_name (fuel - Prims.int_one) st ctx pos size vars
+             rtf visited hd in
+         let b =
+           expand_attrset_names (fuel - Prims.int_one) st ctx pos size vars
+             rtf visited tl in
+         merge_attrs_override a b)
 and for_each_items (fuel : Prims.nat) (st : xstyle)
   (body : Parser_XML.xml_node Prims.list)
   (vars : (Prims.string * XPath_Eval.xp_value) Prims.list)
@@ -2732,9 +2848,6 @@ let resolve_qname_ns (nsctx : (Prims.string * Prims.string) Prims.list)
   (Prims.string FStar_Pervasives_Native.option * Prims.string)=
   ((XPath_Eval.lookup_nsctx nsctx (XPath_Eval.prefix_of qn)),
     (XPath_Eval.local_name_of qn))
-let parse_qname_list (s : Prims.string) : Prims.string Prims.list=
-  FStar_List_Tot_Base.filter (fun p -> p <> "")
-    (FStar_List_Tot_Base.map trim_str (split_on_char 32 s))
 let merge_one_output (nsctx : (Prims.string * Prims.string) Prims.list)
   (cfg : output_settings) (attrs : Parser_XML.xml_attribute Prims.list) :
   output_settings=
@@ -2805,6 +2918,39 @@ let rec any_output_decl (pfx : Prims.string)
            then true
            else any_output_decl pfx tl
        | uu___ -> any_output_decl pfx tl)
+let rec attrset_upsert_append (entries : attrset_entry Prims.list)
+  (nm : Prims.string) (deps : Prims.string Prims.list)
+  (own : Parser_XML.xml_node Prims.list) : attrset_entry Prims.list=
+  match entries with
+  | [] -> [{ ase_name = nm; ase_deps = deps; ase_own = own }]
+  | e::rest ->
+      if e.ase_name = nm
+      then
+        {
+          ase_name = (e.ase_name);
+          ase_deps = (FStar_List_Tot_Base.append e.ase_deps deps);
+          ase_own = (FStar_List_Tot_Base.append e.ase_own own)
+        } :: rest
+      else e :: (attrset_upsert_append rest nm deps own)
+let rec collect_attribute_sets (pfx : Prims.string)
+  (children : Parser_XML.xml_node Prims.list) : attrset_entry Prims.list=
+  match children with
+  | [] -> []
+  | hd::tl ->
+      let rest = collect_attribute_sets pfx tl in
+      (match hd with
+       | Parser_XML.XElement (tag, attrs, body) ->
+           if (is_xsl pfx tag) && ((xsl_instr pfx tag) = "attribute-set")
+           then
+             let nm = attr_or "name" "" attrs in
+             (if nm = ""
+              then rest
+              else
+                (let deps =
+                   parse_qname_list (attr_or "use-attribute-sets" "" attrs) in
+                 attrset_upsert_append rest nm deps body))
+           else rest
+       | uu___ -> rest)
 let rec build_nsctx (attrs : Parser_XML.xml_attribute Prims.list) :
   (Prims.string * Prims.string) Prims.list=
   match attrs with
@@ -2877,6 +3023,7 @@ let build_style (stylesheet : Parser_XML.xml_node)
         {
           xs_pfx = pfx;
           xs_templates = (collect_templates pfx children);
+          xs_attrsets = (collect_attribute_sets pfx children);
           xs_method =
             ((if out_settings.os_method_raw = "text" then "text" else "xml"));
           xs_output_present = (any_output_decl pfx children);
@@ -2900,6 +3047,7 @@ let build_style (stylesheet : Parser_XML.xml_node)
                tpl_prio = FStar_Pervasives_Native.None;
                tpl_body = [stylesheet]
              }];
+          xs_attrsets = [];
           xs_method = "xml";
           xs_output_present = false;
           xs_output = default_output_settings;
@@ -2914,6 +3062,7 @@ let build_style (stylesheet : Parser_XML.xml_node)
       {
         xs_pfx = "xsl";
         xs_templates = [];
+        xs_attrsets = [];
         xs_method = "xml";
         xs_output_present = false;
         xs_output = default_output_settings;
