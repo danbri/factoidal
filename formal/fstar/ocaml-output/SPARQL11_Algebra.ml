@@ -3221,6 +3221,46 @@ let numeric_compare (a : eval_result) (b : eval_result) :
       (match uu___2 with
        | (nv1, nv2) -> FStar_Pervasives_Native.Some (int_compare nv1 nv2))
   | (uu___, uu___1) -> FStar_Pervasives_Native.None
+let literal_promote (l : RDF_Term.wf_literal) : eval_result=
+  if (lit_datatype l) = RDF_Term.xsd_integer
+  then
+    match parse_int_string (lit_lexical l) with
+    | FStar_Pervasives_Native.Some n -> ER_Num n
+    | FStar_Pervasives_Native.None -> ER_Term (RDF_Term.T_Literal l)
+  else
+    if (lit_datatype l) = RDF_Term.xsd_decimal
+    then ER_Dec (lit_lexical l)
+    else
+      if
+        ((lit_datatype l) = RDF_Term.xsd_double) ||
+          ((lit_datatype l) = xsd_float)
+      then ER_Dbl (lit_lexical l)
+      else
+        if (lit_datatype l) = RDF_Term.xsd_boolean
+        then ER_Bool (((lit_lexical l) = "true") || ((lit_lexical l) = "1"))
+        else ER_Term (RDF_Term.T_Literal l)
+let literal_value_eq_numeric (l1 : RDF_Term.wf_literal)
+  (l2 : RDF_Term.wf_literal) : Prims.bool=
+  if
+    (is_numeric_datatype (lit_datatype l1)) ||
+      (is_numeric_datatype (lit_datatype l2))
+  then
+    match numeric_compare (literal_promote l1) (literal_promote l2) with
+    | FStar_Pervasives_Native.Some cmp -> cmp = Prims.int_zero
+    | FStar_Pervasives_Native.None -> false
+  else RDF_Term.literal_eq l1 l2
+let rec triple_term_value_eq (t1 : RDF_Term.rdf_term)
+  (t2 : RDF_Term.rdf_term) : Prims.bool=
+  match (t1, t2) with
+  | (RDF_Term.T_IRI i1, RDF_Term.T_IRI i2) -> i1 = i2
+  | (RDF_Term.T_BNode b1, RDF_Term.T_BNode b2) -> b1 = b2
+  | (RDF_Term.T_Literal l1, RDF_Term.T_Literal l2) ->
+      literal_value_eq_numeric l1 l2
+  | (RDF_Term.T_TripleTerm (s1, p1, o1), RDF_Term.T_TripleTerm (s2, p2, o2))
+      ->
+      ((RDF_Term.subject_eq s1 s2) && (p1 = p2)) &&
+        (triple_term_value_eq o1 o2)
+  | (uu___, uu___1) -> false
 let value_compare (v1 : eval_result) (v2 : eval_result) (op : comp_op) :
   Prims.bool FStar_Pervasives_Native.option=
   match (v1, v2) with
@@ -3291,6 +3331,19 @@ let value_compare (v1 : eval_result) (v2 : eval_result) (op : comp_op) :
             | CmpNe -> FStar_Pervasives_Native.Some true
             | uu___1 -> FStar_Pervasives_Native.None))
       else FStar_Pervasives_Native.None
+  | (ER_Term (RDF_Term.T_TripleTerm (s1, p1, o1)), ER_Term
+     (RDF_Term.T_TripleTerm (s2, p2, o2))) ->
+      (match op with
+       | CmpEq ->
+           FStar_Pervasives_Native.Some
+             (triple_term_value_eq (RDF_Term.T_TripleTerm (s1, p1, o1))
+                (RDF_Term.T_TripleTerm (s2, p2, o2)))
+       | CmpNe ->
+           FStar_Pervasives_Native.Some
+             (Prims.op_Negation
+                (triple_term_value_eq (RDF_Term.T_TripleTerm (s1, p1, o1))
+                   (RDF_Term.T_TripleTerm (s2, p2, o2))))
+       | uu___ -> FStar_Pervasives_Native.None)
   | (ER_Error, uu___) -> FStar_Pervasives_Native.None
   | (uu___, ER_Error) -> FStar_Pervasives_Native.None
   | (uu___, uu___1) -> FStar_Pervasives_Native.None
@@ -7109,8 +7162,18 @@ let construct_subject (ps : pattern_subject)
   match ps with
   | PS_IRI i -> FStar_Pervasives_Native.Some (RDF_Term.S_IRI i)
   | PS_BNode b ->
-      FStar_Pervasives_Native.Some
-        (RDF_Term.S_BNode (fresh_bnode_for sol_ix b))
+      (match sm_lookup (Prims.strcat "_bnode_" b) mu with
+       | FStar_Pervasives_Native.Some (RDF_Term.T_IRI i) ->
+           FStar_Pervasives_Native.Some (RDF_Term.S_IRI i)
+       | FStar_Pervasives_Native.Some (RDF_Term.T_BNode b2) ->
+           FStar_Pervasives_Native.Some (RDF_Term.S_BNode b2)
+       | FStar_Pervasives_Native.Some (RDF_Term.T_Literal uu___) ->
+           FStar_Pervasives_Native.None
+       | FStar_Pervasives_Native.Some (RDF_Term.T_TripleTerm
+           (uu___, uu___1, uu___2)) -> FStar_Pervasives_Native.None
+       | FStar_Pervasives_Native.None ->
+           FStar_Pervasives_Native.Some
+             (RDF_Term.S_BNode (fresh_bnode_for sol_ix b)))
   | PS_TripleTerm (uu___, uu___1, uu___2) -> FStar_Pervasives_Native.None
   | PS_Var v ->
       (match sm_lookup v mu with
@@ -7142,8 +7205,11 @@ let rec construct_object (pt : pattern_term)
   match pt with
   | PT_IRI i -> FStar_Pervasives_Native.Some (RDF_Term.T_IRI i)
   | PT_BNode b ->
-      FStar_Pervasives_Native.Some
-        (RDF_Term.T_BNode (fresh_bnode_for sol_ix b))
+      (match sm_lookup (Prims.strcat "_bnode_" b) mu with
+       | FStar_Pervasives_Native.Some t -> FStar_Pervasives_Native.Some t
+       | FStar_Pervasives_Native.None ->
+           FStar_Pervasives_Native.Some
+             (RDF_Term.T_BNode (fresh_bnode_for sol_ix b)))
   | PT_Literal l -> FStar_Pervasives_Native.Some (RDF_Term.T_Literal l)
   | PT_Var v -> sm_lookup v mu
   | PT_TripleTerm (ps, pp, po) ->
@@ -7198,17 +7264,29 @@ let eval_construct_query (q : query) (g : RDF_Graph.rdf_graph)
   let uu___ = apply_query_dataset q.q_dataset g ds in
   match uu___ with
   | (g1, ds1) ->
-      let base = q.q_base in
-      (match q.q_form with
+      let q1 =
+        {
+          q_base = (q.q_base);
+          q_prefixes = (q.q_prefixes);
+          q_form = (q.q_form);
+          q_dataset = (q.q_dataset);
+          q_pattern = (rewrite_query_bnodes_pattern q.q_pattern);
+          q_group_by = (q.q_group_by);
+          q_having = (q.q_having);
+          q_modifier = (q.q_modifier);
+          q_values = (q.q_values)
+        } in
+      let base = q1.q_base in
+      (match q1.q_form with
        | QF_Construct template ->
-           let omega0 = eval_pattern base q.q_pattern g1 ds1 in
+           let omega0 = eval_pattern base q1.q_pattern g1 ds1 in
            let omega =
-             match q.q_values with
+             match q1.q_values with
              | FStar_Pervasives_Native.None -> omega0
              | FStar_Pervasives_Native.Some vals -> join omega0 vals in
            let limited =
-             slice_solutions (q.q_modifier).sm_offset (q.q_modifier).sm_limit
-               omega in
+             slice_solutions (q1.q_modifier).sm_offset
+               (q1.q_modifier).sm_limit omega in
            dedup_triples
              (instantiate_solutions template limited Prims.int_zero)
        | uu___1 -> [])

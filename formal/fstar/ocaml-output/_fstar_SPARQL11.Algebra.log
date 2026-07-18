@@ -53,7 +53,7 @@
   - The type of the second term is: Prims.int
   - If the proof fails, try annotating these with the same type.
 
-* Warning 361 at SPARQL11.Algebra.fst(7949,0-7950,40):
+* Warning 361 at SPARQL11.Algebra.fst(8037,0-8038,40):
   - Some #push-options have not been popped. Current depth is 1.
 
 Extracted module SPARQL11.Algebra
