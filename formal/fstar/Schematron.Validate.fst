@@ -231,7 +231,7 @@ let sch_eval (it:xctx_item) (vars:list (string & xp_value)) (expr:string) : opti
     let fuel = initial_eval_fuel e (xml_node_count (root_of_item it)) in
     // Schematron threads no XPath namespace context here (name tests
     // keep the legacy textual comparison — see XPath.Eval.matches_node_test).
-    let env = { env_item = it; env_pos = 1; env_size = 1; env_vars = vars; env_nsctx = []; env_doc_kids = []; env_id_attrs = []; env_style_root = xnode_none; env_decimal_formats = [] } in
+    let env = { env_item = it; env_pos = 1; env_size = 1; env_vars = vars; env_nsctx = []; env_doc_kids = []; env_id_attrs = []; env_style_root = xnode_none; env_decimal_formats = []; env_key_table = [] } in
     Some (eval_expr fuel env e)
 
 // Does node `it` match rule context pattern ctx? Delegated to the

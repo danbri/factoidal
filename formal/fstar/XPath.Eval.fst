@@ -1193,6 +1193,16 @@ noeq type xp_value =
   | XV_Num   : xpath_number -> xp_value
   | XV_Str   : string -> xp_value
 
+// One xsl:key entry (XSLT 1.0 §12.2): the key's expanded-name (namespace-
+// URI option, local-name — see resolve_key_qname), one string VALUE the
+// `use` expression produced at some matched node, and the matched node
+// ITSELF. XSLT.Transform.build_key_table produces the flat list (one
+// entry per (matched node, use-expr node-set member) pair — a `use` that
+// evaluates to a node-set contributes one entry per node in it, keyed by
+// THAT node's own string-value, not the whole set's); key() filters this
+// list by expanded-name and membership in the argument's wanted-value set.
+type key_entry = (option string & string) & string & xctx_item
+
 noeq type xp_env = {
   env_item : xctx_item;
   env_pos  : nat;
@@ -1228,6 +1238,13 @@ noeq type xp_env = {
   // are not XSLT at all (Schematron.Validate, the bare eval_xpath_from_*
   // entry points).
   env_decimal_formats : list decimal_format_symbols;
+  // xsl:key table (XSLT.Transform.build_key_table), for key(). [] means
+  // "no stylesheet xsl:key declarations in scope" (or a non-XSLT XPath
+  // context, e.g. Schematron.Validate) -- key() then always selects the
+  // empty node-set, same as function-available("key") = true but a
+  // never-populated table would suggest (a disclosed divergence shared
+  // with every other XSLT-only context field here).
+  env_key_table : list key_entry;
 }
 
 // Sentinel "no document" node for env_style_root: an empty tagless
@@ -1605,7 +1622,8 @@ let is_supported_xpath_function (nm:string) : bool =
   nm = "string-length" || nm = "normalize-space" || nm = "translate" ||
   nm = "not" || nm = "true" || nm = "false" || nm = "boolean" ||
   nm = "number" || nm = "sum" || nm = "floor" || nm = "ceiling" || nm = "round" ||
-  nm = "id" || nm = "document" || nm = "format-number"
+  nm = "id" || nm = "document" || nm = "format-number" ||
+  nm = "key" || nm = "generate-id"
 
 (* ---- id() support: DTD ID-typed attribute lookup ------------------- *)
 
@@ -1648,6 +1666,54 @@ let id_wanted_tokens (v:xp_value) : list string =
   match v with
   | XV_Nodes items -> List.Tot.collect (fun it -> ws_tokens (item_string_value it)) items
   | other -> ws_tokens (to_string_val other)
+
+(* ---- generate-id() support: a stable, path-derived identifier ------ *)
+
+// item_path is a document-order child-index chain (root = []) that is
+// unique per node WITHIN one evaluation frame (see the xctx_item banner)
+// -- exactly the "same node -> same id, distinct nodes -> distinct ids"
+// contract XSLT 1.0 §12.4 asks for. Render it as a string containing
+// none of '+' (idkey30/49 build accumulator strings like
+// `concat('+', generate-id(x), '+')` and assert the id itself never
+// contains '+', so the generated text must avoid it) by prefixing each
+// segment with an underscore and spelling a negative marker (attribute
+// -1, namespace -2 -- see the xctx_item banner) as "n<digits>" rather
+// than "-<digits>".
+let path_segment_str (n:int) : string =
+  if n < 0 then "n" ^ string_of_int (0 - n) else string_of_int n
+
+let rec path_to_id_string (p:list int) : Tot string (decreases p) =
+  match p with
+  | [] -> ""
+  | x :: rest -> "_" ^ path_segment_str x ^ path_to_id_string rest
+
+// Two DIFFERENT xctx_item values reached via different traversal frames
+// (e.g. a D_Doc-rooted absolute path vs. the same node reached as a
+// plain D_Item) can carry offset item_paths for what is structurally the
+// SAME source node (see match_id_pattern's "same_node" comment for the
+// exact mechanism) -- a corner this simple path-string scheme does not
+// paper over. Every idkey fixture this engine can otherwise run compares
+// generate-id() results produced from the SAME traversal frame (e.g.
+// context node vs. a relative select from it), where item_path is exact,
+// so the divergence is disclosed rather than hidden, not eliminated.
+let generate_id_of_item (it:xctx_item) : string =
+  "genid" ^ path_to_id_string (item_path it)
+
+(* ---- key() support: xsl:key expanded-name + node-set lookup -------- *)
+
+// A key's `name` (declared on xsl:key, or the first argument to key())
+// is a QName, expanded against the IN-SCOPE namespace context exactly
+// like XSLT.Transform.resolve_qname_ns resolves cdata-section-elements
+// (that helper cannot be called from here -- XSLT.Transform is the
+// HIGHER module, it opens XPath.Eval, not the reverse -- so the same
+// two-primitive resolution is repeated here). idkey53 declares
+// `xsl:key name="baz:mykey"` and looks it up as `key('bar:mykey', ...)`
+// where "baz" and "bar" are two prefixes bound to the SAME namespace URI
+// in the stylesheet -- textual name comparison would miss that, so both
+// xsl:key declaration and key() call resolve through this before being
+// compared/stored.
+let resolve_key_qname (nsctx:list (string & string)) (qn:string) : (option string & string) =
+  (lookup_nsctx nsctx (prefix_of qn), local_name_of qn)
 
 (* ================================================================ *)
 (* The evaluator — fuel-threaded, one call = one fuel unit, always.   *)
@@ -1819,7 +1885,7 @@ and filter_one_pred (fuel:nat) (vars:list (string & xp_value)) (nsctx:list (stri
     match items with
     | [] -> []
     | it :: rest ->
-      let e = { env_item = it; env_pos = pos; env_size = size; env_vars = vars; env_nsctx = nsctx; env_doc_kids = []; env_id_attrs = []; env_style_root = xnode_none; env_decimal_formats = [] } in
+      let e = { env_item = it; env_pos = pos; env_size = size; env_vars = vars; env_nsctx = nsctx; env_doc_kids = []; env_id_attrs = []; env_style_root = xnode_none; env_decimal_formats = []; env_key_table = [] } in
       let v = eval_expr (fuel - 1) e p in
       let keep =
         match v with
@@ -2016,6 +2082,46 @@ and eval_funcall (fuel:nat) (env:xp_env) (name:string) (args:list xp_expr)
       // the transform engine, not via this XPath predicate, so report
       // false for the XPath-visible element-availability probe.
       XV_Bool false
+    else if name = "key" then
+      // XSLT 1.0 key(name, value) (§12.2): every node registered in
+      // env_key_table under the expanded-name `name` whose USE-value
+      // equals a member of `value`'s wanted-value set (a node-set
+      // argument contributes each of its nodes' own string-values; any
+      // other value contributes its single string form -- same shape as
+      // id()'s argument handling above). Result is document-order,
+      // duplicate-free (doc_sort_dedup), like every other node-set this
+      // evaluator produces.
+      (match args with
+       | [a; b] ->
+         let kname = resolve_key_qname env.env_nsctx (to_string_val (eval_expr (fuel - 1) env a)) in
+         let wanted =
+           match eval_expr (fuel - 1) env b with
+           | XV_Nodes items -> List.Tot.map item_string_value items
+           | other -> [to_string_val other]
+         in
+         let hits =
+           List.Tot.filter
+             (fun (e:key_entry) -> let (kn, kv, _) = e in kn = kname && str_mem kv wanted)
+             env.env_key_table
+         in
+         XV_Nodes (doc_sort_dedup (List.Tot.map (fun (e:key_entry) -> let (_, _, it) = e in it) hits))
+       | _ -> XV_Nodes [])
+    else if name = "generate-id" then
+      // XSLT 1.0 generate-id(node-set?) (§12.4): a string uniquely and
+      // consistently identifying the FIRST node (document order) of the
+      // argument node-set, or the context node with no argument. An
+      // empty node-set argument yields "" (no fixture pins this exact
+      // choice, but it is the common real-implementation behavior and
+      // never crashes).
+      (match args with
+       | [] -> XV_Str (generate_id_of_item env.env_item)
+       | a :: _ ->
+         (match eval_expr (fuel - 1) env a with
+          | XV_Nodes ns ->
+            (match doc_sort_dedup ns with
+             | it :: _ -> XV_Str (generate_id_of_item it)
+             | [] -> XV_Str "")
+          | _ -> XV_Str ""))
     else XV_Str "" // unknown function name: Stage 1 scope, no crash
 
 
@@ -2059,7 +2165,7 @@ let eval_xpath_from_root (root_node:xml_node) (vars:list (string & xp_value)) (e
   | None -> None
   | Some e ->
     let fuel = initial_eval_fuel e (xml_node_count root_node) in
-    let env = { env_item = CI_Elem [] [] root_node; env_pos = 1; env_size = 1; env_vars = vars; env_nsctx = []; env_doc_kids = []; env_id_attrs = []; env_style_root = xnode_none; env_decimal_formats = [] } in
+    let env = { env_item = CI_Elem [] [] root_node; env_pos = 1; env_size = 1; env_vars = vars; env_nsctx = []; env_doc_kids = []; env_id_attrs = []; env_style_root = xnode_none; env_decimal_formats = []; env_key_table = [] } in
     Some (eval_expr fuel env e)
 
 // Evaluate with an arbitrary context node deeper in the document,
@@ -2074,5 +2180,5 @@ let eval_xpath_from_item (ancestors:list xml_node) (context_node:xml_node) (vars
     let doc_nodes = xml_node_count context_node + xml_nodes_count ancestors in
     let fuel = initial_eval_fuel e doc_nodes in
     let env = { env_item = CI_Elem (compute_ctx_path ancestors context_node) ancestors context_node;
-                env_pos = 1; env_size = 1; env_vars = vars; env_nsctx = []; env_doc_kids = []; env_id_attrs = []; env_style_root = xnode_none; env_decimal_formats = [] } in
+                env_pos = 1; env_size = 1; env_vars = vars; env_nsctx = []; env_doc_kids = []; env_id_attrs = []; env_style_root = xnode_none; env_decimal_formats = []; env_key_table = [] } in
     Some (eval_expr fuel env e)

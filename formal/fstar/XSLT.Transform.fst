@@ -88,8 +88,28 @@ open XPath.Eval
 // impincl fixture exercises a namespaced pattern inside an included/
 // imported file; only the ROOT stylesheet's xs_nsctx is consulted).
 //
+// xsl:key/key()/generate-id() (XSLT 1.0 §12.2/§12.4): top-level
+// xsl:key(name, match, use) declarations are collected (collect_keys)
+// and materialised into a flat key-value-node table (build_key_table) by
+// matching every node in the source document against each key's `match`
+// pattern (reusing the same any_alt_matches pattern engine templates
+// use) and evaluating its `use` expression at each match. key() and
+// generate-id() are XPath.Eval functions threaded the table (and, for
+// generate-id, the item's own document-order path) exactly like
+// format-number's decimal-format table. Known narrowness: a key's
+// `match` pattern is only tested against all_document_items (elements +
+// text/comment/PI descendants), never attribute nodes -- no idkey
+// fixture declares `match="@..."`, the same scope id() already accepts;
+// key() used as a TEMPLATE MATCH PATTERN itself (idkey03/35/44-48) is
+// not specially supported (falls through to ordinary pattern text
+// comparison, so those few fixtures do not match); and key-table
+// construction only walks the transform's OWN source document -- a key
+// looked up against a document() secondary document (idkey50) sees no
+// entries for it (document() itself only supports the empty-string
+// "stylesheet itself" case here, so this rarely matters in practice).
+//
 // Deliberately OUT of scope (a mismatch here is expected, not a bug):
-//   xsl:key/key(), document(), xsl:next-match,
+//   document() for non-empty URIs, xsl:next-match,
 //   xsl:sort lang collations, the
 //   `namespace::` axis and namespace-node counting (XPath.Eval models no
 //   namespace-node kind, so `namespace::node()` selects nothing -- the
@@ -592,6 +612,10 @@ noeq type xstyle = {
   // fixture in the numberformat suite (41/42, both consistent by
   // construction).
   xs_decfmts : list decimal_format_symbols;
+  // xsl:key table (name, one entry per (matched source node, use-expr
+  // node-set member)), for key(). [] means "no xsl:key declarations" --
+  // key() then always selects the empty node-set. See build_key_table.
+  xs_key_table : list key_entry;
 }
 
 let xslt_ns : string = "http://www.w3.org/1999/XSL/Transform"
@@ -678,25 +702,28 @@ let attr_or (name:string) (dflt:string) (attrs:list xml_attribute) : string =
 // `decfmts` (the stylesheet's xsl:decimal-format table) likewise threads
 // to XPath.Eval so format-number() sees named decimal-formats; [] means
 // format-number falls back to the built-in defaults for every name.
+// `key_table` (the stylesheet's xsl:key table, build_key_table) likewise
+// threads so key() resolves; [] means key() always selects nothing.
 let eval_val (ctx:xctx_item) (pos:nat) (size:nat) (vars:list (string & xp_value)) (nsctx:list (string & string))
-             (id_attrs:list (string & string)) (style_root:xml_node) (decfmts:list decimal_format_symbols) (expr_text:string)
+             (id_attrs:list (string & string)) (style_root:xml_node) (decfmts:list decimal_format_symbols)
+             (key_table:list key_entry) (expr_text:string)
   : xp_value =
   match parse_xpath expr_text with
   | None -> XV_Str ""
   | Some e ->
     let doc_nodes = xml_node_count (root_of_item ctx) in
     let fuel = initial_eval_fuel e doc_nodes in
-    let env = { env_item = ctx; env_pos = pos; env_size = size; env_vars = vars; env_nsctx = nsctx; env_doc_kids = []; env_id_attrs = id_attrs; env_style_root = style_root; env_decimal_formats = decfmts } in
+    let env = { env_item = ctx; env_pos = pos; env_size = size; env_vars = vars; env_nsctx = nsctx; env_doc_kids = []; env_id_attrs = id_attrs; env_style_root = style_root; env_decimal_formats = decfmts; env_key_table = key_table } in
     eval_expr fuel env e
 
 // AVT / sort-key / predicate call-outs never carry id()/document()/
-// decimal-format context in the vendored suite, so these keep their
+// decimal-format/key context in the vendored suite, so these keep their
 // arity and pass the neutral defaults.
 let eval_string (ctx:xctx_item) (pos size:nat) (vars) (nsctx:list (string & string)) (expr_text:string) : string =
-  to_string_val (eval_val ctx pos size vars nsctx [] xnode_none [] expr_text)
+  to_string_val (eval_val ctx pos size vars nsctx [] xnode_none [] [] expr_text)
 
 let eval_bool (ctx:xctx_item) (pos size:nat) (vars) (nsctx:list (string & string)) (expr_text:string) : bool =
-  to_bool_val (eval_val ctx pos size vars nsctx [] xnode_none [] expr_text)
+  to_bool_val (eval_val ctx pos size vars nsctx [] xnode_none [] [] expr_text)
 
 // Drop `processing-instruction()` alternatives from a union select
 // before handing it to XPath.Eval (which has no PI node test).
@@ -710,7 +737,7 @@ let drop_pi_alts (sel:string) : string =
   | _ -> String.concat "|" kept
 
 let eval_nodeset (ctx:xctx_item) (pos size:nat) (vars) (nsctx:list (string & string)) (sel:string) : list xctx_item =
-  match eval_val ctx pos size vars nsctx [] xnode_none [] (drop_pi_alts sel) with
+  match eval_val ctx pos size vars nsctx [] xnode_none [] [] (drop_pi_alts sel) with
   | XV_Nodes items -> items
   | _ -> []
 
@@ -733,10 +760,11 @@ let rec force_abs (e:xp_expr) : Tot xp_expr (decreases e) =
   | _ -> e
 
 let eval_val_dn (ctx:dnode) (pos size:nat) (vars:list (string & xp_value)) (nsctx:list (string & string))
-                (id_attrs:list (string & string)) (style_root:xml_node) (decfmts:list decimal_format_symbols) (expr_text:string)
+                (id_attrs:list (string & string)) (style_root:xml_node) (decfmts:list decimal_format_symbols)
+                (key_table:list key_entry) (expr_text:string)
   : xp_value =
   match ctx with
-  | D_Item it -> eval_val it pos size vars nsctx id_attrs style_root decfmts expr_text
+  | D_Item it -> eval_val it pos size vars nsctx id_attrs style_root decfmts key_table expr_text
   | D_Doc root doc_kids ->
     (match parse_xpath expr_text with
      | None -> XV_Str ""
@@ -748,20 +776,23 @@ let eval_val_dn (ctx:dnode) (pos size:nat) (vars:list (string & xp_value)) (nsct
        // path (force_abs made every top-level path absolute) resolves
        // against the true document node when prolog/epilog Misc are
        // present -- `//comment()` reaches a prolog comment (select-1001).
-       let env = { env_item = CI_Elem [] [] root; env_pos = pos; env_size = size; env_vars = vars; env_nsctx = nsctx; env_doc_kids = doc_kids; env_id_attrs = id_attrs; env_style_root = style_root; env_decimal_formats = decfmts } in
+       let env = { env_item = CI_Elem [] [] root; env_pos = pos; env_size = size; env_vars = vars; env_nsctx = nsctx; env_doc_kids = doc_kids; env_id_attrs = id_attrs; env_style_root = style_root; env_decimal_formats = decfmts; env_key_table = key_table } in
        eval_expr fuel env e2)
 
 let eval_string_dn (ctx:dnode) (pos size:nat) (vars) (nsctx:list (string & string))
-                   (id_attrs:list (string & string)) (style_root:xml_node) (decfmts:list decimal_format_symbols) (expr_text:string) : string =
-  to_string_val (eval_val_dn ctx pos size vars nsctx id_attrs style_root decfmts expr_text)
+                   (id_attrs:list (string & string)) (style_root:xml_node) (decfmts:list decimal_format_symbols)
+                   (key_table:list key_entry) (expr_text:string) : string =
+  to_string_val (eval_val_dn ctx pos size vars nsctx id_attrs style_root decfmts key_table expr_text)
 
 let eval_bool_dn (ctx:dnode) (pos size:nat) (vars) (nsctx:list (string & string))
-                 (id_attrs:list (string & string)) (style_root:xml_node) (decfmts:list decimal_format_symbols) (expr_text:string) : bool =
-  to_bool_val (eval_val_dn ctx pos size vars nsctx id_attrs style_root decfmts expr_text)
+                 (id_attrs:list (string & string)) (style_root:xml_node) (decfmts:list decimal_format_symbols)
+                 (key_table:list key_entry) (expr_text:string) : bool =
+  to_bool_val (eval_val_dn ctx pos size vars nsctx id_attrs style_root decfmts key_table expr_text)
 
 let eval_nodeset_dn (ctx:dnode) (pos size:nat) (vars) (nsctx:list (string & string))
-                    (id_attrs:list (string & string)) (style_root:xml_node) (decfmts:list decimal_format_symbols) (sel:string) : list xctx_item =
-  match eval_val_dn ctx pos size vars nsctx id_attrs style_root decfmts (drop_pi_alts sel) with
+                    (id_attrs:list (string & string)) (style_root:xml_node) (decfmts:list decimal_format_symbols)
+                    (key_table:list key_entry) (sel:string) : list xctx_item =
+  match eval_val_dn ctx pos size vars nsctx id_attrs style_root decfmts key_table (drop_pi_alts sel) with
   | XV_Nodes items -> items
   | _ -> []
 
@@ -1072,10 +1103,11 @@ let select_child_union (nsctx:list (string & string)) (nd:dnode) (alts:list stri
 // else (paths, predicates, axes, functions, ".") goes through the full
 // XPath.Eval engine.
 let select_nodes (ctx:dnode) (pos size:nat) (vars:list (string & xp_value)) (nsctx:list (string & string))
-                 (id_attrs:list (string & string)) (style_root:xml_node) (decfmts:list decimal_format_symbols) (sel:string)
+                 (id_attrs:list (string & string)) (style_root:xml_node) (decfmts:list decimal_format_symbols)
+                 (key_table:list key_entry) (sel:string)
   : list xctx_item =
   if is_simple_child_union sel then select_child_union nsctx ctx (split_on_char '|' sel)
-  else eval_nodeset_dn ctx pos size vars nsctx id_attrs style_root decfmts sel
+  else eval_nodeset_dn ctx pos size vars nsctx id_attrs style_root decfmts key_table sel
 
 // XSLT 1.0 5.5 proximity position: position()/last() inside a match-
 // pattern predicate ("name[position()=last()]", apply-templates/
@@ -1112,7 +1144,7 @@ let match_id_pattern (id_attrs:list (string & string)) (nsctx:list (string & str
   | Some e ->
     let root = root_of_item it in
     let fuel = initial_eval_fuel e (xml_node_count root) in
-    let env = { env_item = CI_Elem [] [] root; env_pos = 1; env_size = 1; env_vars = []; env_nsctx = nsctx; env_doc_kids = []; env_id_attrs = id_attrs; env_style_root = xnode_none; env_decimal_formats = [] } in
+    let env = { env_item = CI_Elem [] [] root; env_pos = 1; env_size = 1; env_vars = []; env_nsctx = nsctx; env_doc_kids = []; env_id_attrs = id_attrs; env_style_root = xnode_none; env_decimal_formats = []; env_key_table = [] } in
     // Membership by node identity: same element node AND same ancestor
     // chain. Not by item_path, because the candidate `it` may have been
     // selected under the document-node path framing (root element at [i])
@@ -2151,7 +2183,7 @@ and instantiate_seq (fuel:nat) (st:xstyle) (ctx:dnode) (pos size:nat)
            else
              (match attr_opt "select" attrs with
               | Some sel ->
-                let v = eval_val_dn ctx pos size vars st.xs_nsctx st.xs_id_attrs st.xs_style_root st.xs_decfmts sel in
+                let v = eval_val_dn ctx pos size vars st.xs_nsctx st.xs_id_attrs st.xs_style_root st.xs_decfmts st.xs_key_table sel in
                 instantiate_seq (fuel - 1) st ctx pos size ((nm, v) :: vars) rtf cur_mode cur_prec tl
               | None ->
                 // Result-tree-fragment: instantiate the body, bind its
@@ -2196,7 +2228,7 @@ and bind_with_params_scoped (fuel:nat) (st:xstyle) (ctx:dnode) (pos size:nat)
            let nm = attr_or "name" "" attrs in
            (match attr_opt "select" attrs with
             | Some sel ->
-              let v = eval_val_dn ctx pos size evars st.xs_nsctx st.xs_id_attrs st.xs_style_root st.xs_decfmts sel in
+              let v = eval_val_dn ctx pos size evars st.xs_nsctx st.xs_id_attrs st.xs_style_root st.xs_decfmts st.xs_key_table sel in
               bind_with_params_scoped (fuel - 1) st ctx pos size evars ertf cur_mode cur_prec ((nm, v) :: svars) srtf tl
             | None ->
               let frag = instantiate_seq (fuel - 1) st ctx pos size evars ertf cur_mode cur_prec pchildren in
@@ -2220,11 +2252,11 @@ and instantiate_one (fuel:nat) (st:xstyle) (ctx:dnode) (pos size:nat)
       if is_xsl st.xs_pfx tag then
         let ln = xsl_instr st.xs_pfx tag in
         if ln = "value-of" then
-          [R_Node (XText (eval_string_dn ctx pos size vars st.xs_nsctx st.xs_id_attrs st.xs_style_root st.xs_decfmts (attr_or "select" "." attrs)))]
+          [R_Node (XText (eval_string_dn ctx pos size vars st.xs_nsctx st.xs_id_attrs st.xs_style_root st.xs_decfmts st.xs_key_table (attr_or "select" "." attrs)))]
         else if ln = "text" then
           [R_Node (XText (raw_text children))]
         else if ln = "if" then
-          (if eval_bool_dn ctx pos size vars st.xs_nsctx st.xs_id_attrs st.xs_style_root st.xs_decfmts (attr_or "test" "false()" attrs)
+          (if eval_bool_dn ctx pos size vars st.xs_nsctx st.xs_id_attrs st.xs_style_root st.xs_decfmts st.xs_key_table (attr_or "test" "false()" attrs)
            then instantiate_seq (fuel - 1) st ctx pos size vars rtf cur_mode cur_prec children
            else [])
         else if ln = "choose" then
@@ -2236,7 +2268,7 @@ and instantiate_one (fuel:nat) (st:xstyle) (ctx:dnode) (pos size:nat)
           // an xsl:sort). doc_sort_dedup fixes reverse-axis proximity
           // order (preceding::, ancestor::) and de-duplicates descendant
           // (//) selects before iteration.
-          let items0 = doc_sort_dedup (select_nodes ctx pos size vars st.xs_nsctx st.xs_id_attrs st.xs_style_root st.xs_decfmts sel) in
+          let items0 = doc_sort_dedup (select_nodes ctx pos size vars st.xs_nsctx st.xs_id_attrs st.xs_style_root st.xs_decfmts st.xs_key_table sel) in
           let items = sort_maybe (dnode_ci ctx) pos size st.xs_pfx vars st.xs_nsctx children items0 in
           for_each_items (fuel - 1) st children vars rtf cur_mode cur_prec items 1 (List.Tot.length items)
         else if ln = "apply-templates" then
@@ -2252,7 +2284,7 @@ and instantiate_one (fuel:nat) (st:xstyle) (ctx:dnode) (pos size:nat)
             bind_with_params_scoped (fuel - 1) st ctx pos size vars rtf cur_mode cur_prec st.xs_globals [] children in
           (match attr_opt "select" attrs with
            | Some sel ->
-             let items0 = doc_sort_dedup (select_nodes ctx pos size vars st.xs_nsctx st.xs_id_attrs st.xs_style_root st.xs_decfmts sel) in
+             let items0 = doc_sort_dedup (select_nodes ctx pos size vars st.xs_nsctx st.xs_id_attrs st.xs_style_root st.xs_decfmts st.xs_key_table sel) in
              let items = sort_maybe (dnode_ci ctx) pos size st.xs_pfx vars st.xs_nsctx children items0 in
              let dns = List.Tot.map (fun it -> D_Item it) items in
              apply_list (fuel - 1) st dns 1 (List.Tot.length items) amode pvars prtf
@@ -2309,8 +2341,8 @@ and instantiate_one (fuel:nat) (st:xstyle) (ctx:dnode) (pos size:nat)
            | Some nm ->
              (match rtf_find rtf nm with
               | Some frag -> if no_ns then List.Tot.map rnode_strip_ns frag else frag
-              | None -> List.Tot.map mk (select_nodes ctx pos size vars st.xs_nsctx st.xs_id_attrs st.xs_style_root st.xs_decfmts sel))
-           | None -> List.Tot.map mk (select_nodes ctx pos size vars st.xs_nsctx st.xs_id_attrs st.xs_style_root st.xs_decfmts sel))
+              | None -> List.Tot.map mk (select_nodes ctx pos size vars st.xs_nsctx st.xs_id_attrs st.xs_style_root st.xs_decfmts st.xs_key_table sel))
+           | None -> List.Tot.map mk (select_nodes ctx pos size vars st.xs_nsctx st.xs_id_attrs st.xs_style_root st.xs_decfmts st.xs_key_table sel))
         else if ln = "copy" then
           let use_attrs =
             expand_attrset_names (fuel - 1) st ctx pos size vars rtf cur_mode cur_prec []
@@ -2365,7 +2397,7 @@ and instantiate_one (fuel:nat) (st:xstyle) (ctx:dnode) (pos size:nat)
           let text =
             (match attr_opt "value" attrs with
              | Some vexpr ->
-               let n = to_number_val (eval_val_dn ctx pos size vars st.xs_nsctx st.xs_id_attrs st.xs_style_root st.xs_decfmts vexpr) in
+               let n = to_number_val (eval_val_dn ctx pos size vars st.xs_nsctx st.xs_id_attrs st.xs_style_root st.xs_decfmts st.xs_key_table vexpr) in
                (match value_bypass n with
                 | Some s -> s
                 | None ->
@@ -2437,7 +2469,7 @@ and instantiate_choose (fuel:nat) (st:xstyle) (ctx:dnode) (pos size:nat)
          if is_xsl st.xs_pfx tag then
            let ln = xsl_instr st.xs_pfx tag in
            if ln = "when" then
-             (if eval_bool_dn ctx pos size vars st.xs_nsctx st.xs_id_attrs st.xs_style_root st.xs_decfmts (attr_or "test" "false()" attrs)
+             (if eval_bool_dn ctx pos size vars st.xs_nsctx st.xs_id_attrs st.xs_style_root st.xs_decfmts st.xs_key_table (attr_or "test" "false()" attrs)
               then instantiate_seq (fuel - 1) st ctx pos size vars rtf cur_mode cur_prec children
               else instantiate_choose (fuel - 1) st ctx pos size vars rtf cur_mode cur_prec tl)
            else if ln = "otherwise" then
@@ -2638,6 +2670,81 @@ let rec collect_decimal_formats (pfx:string) (children:list xml_node) : Tot (lis
        else collect_decimal_formats pfx tl
      | _ -> collect_decimal_formats pfx tl)
 
+(* ================================================================ *)
+(* xsl:key (XSLT 1.0 §12.2): top-level declarations + the flat table   *)
+(* build_style materialises from them by walking the source document. *)
+(* ================================================================ *)
+
+noeq type key_decl = { kd_name : string; kd_match : string; kd_use : string }
+
+// Top-level xsl:key name/match/use declarations, in document order. A
+// declaration missing any of the three required attributes is dropped
+// (defensive; no idkey fixture omits one).
+let rec collect_keys (pfx:string) (children:list xml_node) : Tot (list key_decl) (decreases children) =
+  match children with
+  | [] -> []
+  | hd :: tl ->
+    (match hd with
+     | XElement tag attrs _ ->
+       if is_xsl pfx tag && xsl_instr pfx tag = "key" then
+         (match attr_opt "name" attrs, attr_opt "match" attrs, attr_opt "use" attrs with
+          | Some nm, Some m, Some u -> { kd_name = nm; kd_match = m; kd_use = u } :: collect_keys pfx tl
+          | _, _, _ -> collect_keys pfx tl)
+       else collect_keys pfx tl
+     | _ -> collect_keys pfx tl)
+
+// One key_decl's contribution at one already-matched node: the `use`
+// expression is evaluated with that node as context (position/size 1 --
+// no idkey fixture's use expression reads position()/last()). A
+// node-set result contributes ONE entry per node in it, keyed by THAT
+// node's own string-value (not the whole set's, e.g. idkey59's
+// `use="x | y | z"` union); any other value contributes a single entry
+// keyed by its string form (e.g. idkey05's `use="'foo'"`, idkey08's
+// `use="number(q)"`).
+let key_entries_for_use (nsctx:list (string & string)) (id_attrs:list (string & string))
+                        (style_root:xml_node) (decfmts:list decimal_format_symbols)
+                        (kname:(option string & string)) (it:xctx_item) (use_expr:string)
+  : list key_entry =
+  match eval_val it 1 1 [] nsctx id_attrs style_root decfmts [] use_expr with
+  | XV_Nodes ns -> List.Tot.map (fun (n:xctx_item) -> (kname, item_string_value n, it)) ns
+  | other -> [(kname, to_string_val other, it)]
+
+// One key_decl's contribution over every candidate node (all_document_
+// items of the source document: the root element + every element/text/
+// comment/PI descendant -- the same scope id() already accepts; no
+// idkey fixture's `match` targets an attribute node).
+let rec key_entries_for_decl (nsctx:list (string & string)) (id_attrs:list (string & string))
+                             (style_root:xml_node) (decfmts:list decimal_format_symbols)
+                             (kname:(option string & string)) (match_alts:list string) (use_expr:string)
+                             (items:list xctx_item)
+  : Tot (list key_entry) (decreases items) =
+  match items with
+  | [] -> []
+  | it :: rest ->
+    let here =
+      if any_alt_matches [] nsctx id_attrs match_alts (D_Item it)
+      then key_entries_for_use nsctx id_attrs style_root decfmts kname it use_expr
+      else []
+    in
+    here @ key_entries_for_decl nsctx id_attrs style_root decfmts kname match_alts use_expr rest
+
+// The whole stylesheet's key table: every key_decl's contribution,
+// concatenated (a node registered under two different key names, or
+// twice under the same one via two use-values, keeps both entries --
+// idkey12/13 exercise multiple keys / multiple nodes per value).
+let rec build_key_table (nsctx:list (string & string)) (id_attrs:list (string & string))
+                        (style_root:xml_node) (decfmts:list decimal_format_symbols)
+                        (decls:list key_decl) (items:list xctx_item)
+  : Tot (list key_entry) (decreases decls) =
+  match decls with
+  | [] -> []
+  | kd :: rest ->
+    let kname = resolve_key_qname nsctx kd.kd_name in
+    let alts = split_on_char '|' kd.kd_match in
+    List.Tot.append
+      (key_entries_for_decl nsctx id_attrs style_root decfmts kname alts kd.kd_use items)
+      (build_key_table nsctx id_attrs style_root decfmts rest items)
+
 // Resolve a cdata-section-elements QName against the stylesheet's
 // namespace context. Unlike an XPath node test (name_test_matches_elem,
 // which per XPath 1.0 2.5.3 treats an unprefixed name as the NULL
@@ -2763,7 +2870,7 @@ let rec collect_globals (pfx:string) (nsctx:list (string & string)) (decfmts:lis
           (let ln = xsl_instr pfx tag in ln = "variable" || ln = "param") then
          (match attr_opt "select" attrs, attr_opt "name" attrs with
           | Some sel, Some nm ->
-            let v = eval_val_dn (D_Doc source doc_kids) 1 1 [] nsctx [] xnode_none decfmts sel in
+            let v = eval_val_dn (D_Doc source doc_kids) 1 1 [] nsctx [] xnode_none decfmts [] sel in
             (nm, v) :: collect_globals pfx nsctx decfmts tl source doc_kids
           | _, _ -> collect_globals pfx nsctx decfmts tl source doc_kids)
        else collect_globals pfx nsctx decfmts tl source doc_kids
@@ -3013,6 +3120,11 @@ let build_style_from_units (units:list (int & list xml_node)) (root_pfx:string) 
   let all_children_desc = List.Tot.flatten (List.Tot.map snd units_desc) in
   let decfmts = collect_decimal_formats root_pfx all_children_desc in
   let out_settings = collect_output_settings root_pfx nsctx all_children_desc default_output_settings in
+  let key_decls = collect_keys root_pfx all_children_desc in
+  let key_table =
+    (match key_decls with
+     | [] -> []
+     | _ -> build_key_table nsctx id_attrs root_node decfmts key_decls (all_document_items (CI_Elem [] [] source))) in
   { xs_pfx = root_pfx;
     xs_templates = List.Tot.concatMap (fun (pc:(int & list xml_node)) -> collect_templates_prec root_pfx (fst pc) (snd pc)) units;
     xs_attrsets = collect_attribute_sets root_pfx all_children_desc;
@@ -3024,7 +3136,8 @@ let build_style_from_units (units:list (int & list xml_node)) (root_pfx:string) 
     xs_nsctx = nsctx;
     xs_id_attrs = id_attrs;
     xs_style_root = root_node;
-    xs_decfmts = decfmts }
+    xs_decfmts = decfmts;
+    xs_key_table = key_table }
 
 let build_style (stylesheet:xml_node) (source:xml_node) (doc_kids:list xml_node) (id_attrs:list (string & string)) : xstyle =
   match stylesheet with
@@ -3035,6 +3148,11 @@ let build_style (stylesheet:xml_node) (source:xml_node) (doc_kids:list xml_node)
       let nsctx = build_nsctx attrs in
       let decfmts = collect_decimal_formats pfx children in
       let out_settings = collect_output_settings pfx nsctx children default_output_settings in
+      let key_decls = collect_keys pfx children in
+      let key_table =
+        (match key_decls with
+         | [] -> []
+         | _ -> build_key_table nsctx id_attrs stylesheet decfmts key_decls (all_document_items (CI_Elem [] [] source))) in
       { xs_pfx = pfx;
         xs_templates = collect_templates pfx children;
         xs_attrsets = collect_attribute_sets pfx children;
@@ -3046,7 +3164,8 @@ let build_style (stylesheet:xml_node) (source:xml_node) (doc_kids:list xml_node)
         xs_nsctx = nsctx;
         xs_id_attrs = id_attrs;
         xs_style_root = stylesheet;
-        xs_decfmts = decfmts }
+        xs_decfmts = decfmts;
+        xs_key_table = key_table }
     else
       // Simplified stylesheet: the literal result element IS the body
       // of a single template matching the document root. Its own
@@ -3065,12 +3184,13 @@ let build_style (stylesheet:xml_node) (source:xml_node) (doc_kids:list xml_node)
         xs_nsctx = build_nsctx attrs;
         xs_id_attrs = id_attrs;
         xs_style_root = stylesheet;
-        xs_decfmts = [] }
+        xs_decfmts = [];
+        xs_key_table = [] }
   | _ ->
     { xs_pfx = "xsl"; xs_templates = []; xs_attrsets = []; xs_method = "xml";
       xs_output_present = false; xs_output = default_output_settings;
       xs_globals = []; xs_nsscope = []; xs_nsctx = [];
-      xs_id_attrs = id_attrs; xs_style_root = stylesheet; xs_decfmts = [] }
+      xs_id_attrs = id_attrs; xs_style_root = stylesheet; xs_decfmts = []; xs_key_table = [] }
 
 // The root element among a document node's children (the single element
 // child; XML well-formedness guarantees exactly one). Used to recover the
