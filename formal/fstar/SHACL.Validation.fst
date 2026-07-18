@@ -2187,8 +2187,13 @@ let rec subst_var_expr (name : string) (t : rdf_term) (e : Alg.expr) : Tot Alg.e
   | Alg.E_Lang a -> Alg.E_Lang (subst_var_expr name t a)
   | Alg.E_Datatype a -> Alg.E_Datatype (subst_var_expr name t a)
   | Alg.E_IRI_fn a -> Alg.E_IRI_fn (subst_var_expr name t a)
+  | Alg.E_HasLang a -> Alg.E_HasLang (subst_var_expr name t a)
+  | Alg.E_HasLangDir a -> Alg.E_HasLangDir (subst_var_expr name t a)
+  | Alg.E_LangDir a -> Alg.E_LangDir (subst_var_expr name t a)
   | Alg.E_StrDt a b -> Alg.E_StrDt (subst_var_expr name t a) (subst_var_expr name t b)
   | Alg.E_StrLang a b -> Alg.E_StrLang (subst_var_expr name t a) (subst_var_expr name t b)
+  | Alg.E_StrLangDir a b c ->
+    Alg.E_StrLangDir (subst_var_expr name t a) (subst_var_expr name t b) (subst_var_expr name t c)
   | Alg.E_If a b c -> Alg.E_If (subst_var_expr name t a) (subst_var_expr name t b) (subst_var_expr name t c)
   | Alg.E_Coalesce es -> Alg.E_Coalesce (subst_var_exprs name t es)
   | Alg.E_In a es -> Alg.E_In (subst_var_expr name t a) (subst_var_exprs name t es)

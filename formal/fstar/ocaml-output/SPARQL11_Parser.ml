@@ -76,6 +76,10 @@ type token =
   | Tok_OBJECT_KW 
   | Tok_ISTRIPLE_KW 
   | Tok_VERSION_KW 
+  | Tok_HASLANG_KW 
+  | Tok_HASLANGDIR_KW 
+  | Tok_LANGDIR_KW 
+  | Tok_STRLANGDIR_KW 
   | Tok_IRI of Prims.string 
   | Tok_PNAME of Prims.string 
   | Tok_VAR of Prims.string 
@@ -316,6 +320,14 @@ let uu___is_Tok_ISTRIPLE_KW (projectee : token) : Prims.bool=
   match projectee with | Tok_ISTRIPLE_KW -> true | uu___ -> false
 let uu___is_Tok_VERSION_KW (projectee : token) : Prims.bool=
   match projectee with | Tok_VERSION_KW -> true | uu___ -> false
+let uu___is_Tok_HASLANG_KW (projectee : token) : Prims.bool=
+  match projectee with | Tok_HASLANG_KW -> true | uu___ -> false
+let uu___is_Tok_HASLANGDIR_KW (projectee : token) : Prims.bool=
+  match projectee with | Tok_HASLANGDIR_KW -> true | uu___ -> false
+let uu___is_Tok_LANGDIR_KW (projectee : token) : Prims.bool=
+  match projectee with | Tok_LANGDIR_KW -> true | uu___ -> false
+let uu___is_Tok_STRLANGDIR_KW (projectee : token) : Prims.bool=
+  match projectee with | Tok_STRLANGDIR_KW -> true | uu___ -> false
 let uu___is_Tok_IRI (projectee : token) : Prims.bool=
   match projectee with | Tok_IRI _0 -> true | uu___ -> false
 let __proj__Tok_IRI__item___0 (projectee : token) : Prims.string=
@@ -977,103 +989,130 @@ let keyword_of_upper (sparql12 : Prims.bool) (upper : Prims.string)
             if sparql12 && (streq upper "VERSION")
             then Tok_VERSION_KW
             else
-              if streq upper "SELECT"
-              then Tok_SELECT
+              if sparql12 && (streq upper "HASLANG")
+              then Tok_HASLANG_KW
               else
-                if streq upper "ASK"
-                then Tok_ASK
+                if sparql12 && (streq upper "HASLANGDIR")
+                then Tok_HASLANGDIR_KW
                 else
-                  if streq upper "CONSTRUCT"
-                  then Tok_CONSTRUCT
+                  if sparql12 && (streq upper "LANGDIR")
+                  then Tok_LANGDIR_KW
                   else
-                    if streq upper "DESCRIBE"
-                    then Tok_DESCRIBE
+                    if sparql12 && (streq upper "STRLANGDIR")
+                    then Tok_STRLANGDIR_KW
                     else
-                      if streq upper "WHERE"
-                      then Tok_WHERE
+                      if streq upper "SELECT"
+                      then Tok_SELECT
                       else
-                        if streq upper "PREFIX"
-                        then Tok_PREFIX
+                        if streq upper "ASK"
+                        then Tok_ASK
                         else
-                          if streq upper "BASE"
-                          then Tok_BASE
+                          if streq upper "CONSTRUCT"
+                          then Tok_CONSTRUCT
                           else
-                            if streq upper "OPTIONAL"
-                            then Tok_OPTIONAL
+                            if streq upper "DESCRIBE"
+                            then Tok_DESCRIBE
                             else
-                              if streq upper "UNION"
-                              then Tok_UNION
+                              if streq upper "WHERE"
+                              then Tok_WHERE
                               else
-                                if streq upper "MINUS"
-                                then Tok_MINUS_KW
+                                if streq upper "PREFIX"
+                                then Tok_PREFIX
                                 else
-                                  if streq upper "LATERAL"
-                                  then Tok_LATERAL
+                                  if streq upper "BASE"
+                                  then Tok_BASE
                                   else
-                                    if streq upper "FILTER"
-                                    then Tok_FILTER
+                                    if streq upper "OPTIONAL"
+                                    then Tok_OPTIONAL
                                     else
-                                      if streq upper "BIND"
-                                      then Tok_BIND
+                                      if streq upper "UNION"
+                                      then Tok_UNION
                                       else
-                                        if streq upper "VALUES"
-                                        then Tok_VALUES
+                                        if streq upper "MINUS"
+                                        then Tok_MINUS_KW
                                         else
-                                          if streq upper "GRAPH"
-                                          then Tok_GRAPH
+                                          if streq upper "LATERAL"
+                                          then Tok_LATERAL
                                           else
-                                            if streq upper "SERVICE"
-                                            then Tok_SERVICE
+                                            if streq upper "FILTER"
+                                            then Tok_FILTER
                                             else
-                                              if streq upper "SILENT"
-                                              then Tok_SILENT
+                                              if streq upper "BIND"
+                                              then Tok_BIND
                                               else
-                                                if streq upper "EXISTS"
-                                                then Tok_EXISTS
+                                                if streq upper "VALUES"
+                                                then Tok_VALUES
                                                 else
-                                                  if streq upper "NOT"
-                                                  then Tok_NOT
+                                                  if streq upper "GRAPH"
+                                                  then Tok_GRAPH
                                                   else
-                                                    if streq upper "AS"
-                                                    then Tok_AS
+                                                    if streq upper "SERVICE"
+                                                    then Tok_SERVICE
                                                     else
-                                                      if
-                                                        streq upper
-                                                          "DISTINCT"
-                                                      then Tok_DISTINCT
+                                                      if streq upper "SILENT"
+                                                      then Tok_SILENT
                                                       else
                                                         if
                                                           streq upper
-                                                            "REDUCED"
-                                                        then Tok_REDUCED
+                                                            "EXISTS"
+                                                        then Tok_EXISTS
                                                         else
                                                           if
-                                                            streq upper
-                                                              "ORDER"
-                                                          then Tok_ORDER
+                                                            streq upper "NOT"
+                                                          then Tok_NOT
                                                           else
                                                             if
                                                               streq upper
-                                                                "BY"
-                                                            then Tok_BY
+                                                                "AS"
+                                                            then Tok_AS
                                                             else
                                                               if
                                                                 streq upper
-                                                                  "ASC"
-                                                              then Tok_ASC
+                                                                  "DISTINCT"
+                                                              then
+                                                                Tok_DISTINCT
                                                               else
                                                                 if
                                                                   streq upper
-                                                                    "DESC"
-                                                                then Tok_DESC
+                                                                    "REDUCED"
+                                                                then
+                                                                  Tok_REDUCED
                                                                 else
                                                                   if
                                                                     streq
                                                                     upper
-                                                                    "GROUP"
+                                                                    "ORDER"
                                                                   then
-                                                                    Tok_GROUP
+                                                                    Tok_ORDER
                                                                   else
+                                                                    if
+                                                                    streq
+                                                                    upper
+                                                                    "BY"
+                                                                    then
+                                                                    Tok_BY
+                                                                    else
+                                                                    if
+                                                                    streq
+                                                                    upper
+                                                                    "ASC"
+                                                                    then
+                                                                    Tok_ASC
+                                                                    else
+                                                                    if
+                                                                    streq
+                                                                    upper
+                                                                    "DESC"
+                                                                    then
+                                                                    Tok_DESC
+                                                                    else
+                                                                    if
+                                                                    streq
+                                                                    upper
+                                                                    "GROUP"
+                                                                    then
+                                                                    Tok_GROUP
+                                                                    else
                                                                     if
                                                                     streq
                                                                     upper
@@ -2938,6 +2977,18 @@ and parse_primary_expr (pm : prefix_map) (fuel : Prims.nat)
          parse_b1 pm (fuel - Prims.int_one)
            (fun uu___1 -> SPARQL11_Algebra.E_Datatype uu___1)
            (parse_advance ts)
+     | Tok_HASLANG_KW ->
+         parse_b1 pm (fuel - Prims.int_one)
+           (fun uu___1 -> SPARQL11_Algebra.E_HasLang uu___1)
+           (parse_advance ts)
+     | Tok_HASLANGDIR_KW ->
+         parse_b1 pm (fuel - Prims.int_one)
+           (fun uu___1 -> SPARQL11_Algebra.E_HasLangDir uu___1)
+           (parse_advance ts)
+     | Tok_LANGDIR_KW ->
+         parse_b1 pm (fuel - Prims.int_one)
+           (fun uu___1 -> SPARQL11_Algebra.E_LangDir uu___1)
+           (parse_advance ts)
      | Tok_IRI_KW ->
          parse_b1 pm (fuel - Prims.int_one)
            (fun uu___1 -> SPARQL11_Algebra.E_IRI_fn uu___1)
@@ -3086,6 +3137,11 @@ and parse_primary_expr (pm : prefix_map) (fuel : Prims.nat)
      | Tok_STRLANG ->
          parse_b2 pm (fuel - Prims.int_one)
            (fun uu___1 uu___2 -> SPARQL11_Algebra.E_StrLang (uu___1, uu___2))
+           (parse_advance ts)
+     | Tok_STRLANGDIR_KW ->
+         parse_b3 pm (fuel - Prims.int_one)
+           (fun uu___1 uu___2 uu___3 ->
+              SPARQL11_Algebra.E_StrLangDir (uu___1, uu___2, uu___3))
            (parse_advance ts)
      | Tok_BOUND -> parse_bound pm (fuel - Prims.int_one) (parse_advance ts)
      | Tok_IF -> parse_if_expr pm (fuel - Prims.int_one) (parse_advance ts)
@@ -8177,6 +8233,9 @@ let rec sse_expr (e : SPARQL11_Algebra.expr) : Prims.string=
   | SPARQL11_Algebra.E_Lang e1 -> sse_wrap "lang" (sse_expr e1)
   | SPARQL11_Algebra.E_Datatype e1 -> sse_wrap "datatype" (sse_expr e1)
   | SPARQL11_Algebra.E_IRI_fn e1 -> sse_wrap "iri" (sse_expr e1)
+  | SPARQL11_Algebra.E_HasLang e1 -> sse_wrap "haslang" (sse_expr e1)
+  | SPARQL11_Algebra.E_HasLangDir e1 -> sse_wrap "haslangdir" (sse_expr e1)
+  | SPARQL11_Algebra.E_LangDir e1 -> sse_wrap "langdir" (sse_expr e1)
   | SPARQL11_Algebra.E_Bound v -> sse_wrap "bound" (Prims.strcat "?" v)
   | SPARQL11_Algebra.E_If (c, t, f) ->
       sse_wrap "if"
@@ -8269,6 +8328,11 @@ let rec sse_expr (e : SPARQL11_Algebra.expr) : Prims.string=
   | SPARQL11_Algebra.E_StrLang (e1, e2) ->
       sse_wrap "strlang"
         (Prims.strcat (sse_expr e1) (Prims.strcat " " (sse_expr e2)))
+  | SPARQL11_Algebra.E_StrLangDir (e1, e2, e3) ->
+      sse_wrap "strlangdir"
+        (Prims.strcat (sse_expr e1)
+           (Prims.strcat " "
+              (Prims.strcat (sse_expr e2) (Prims.strcat " " (sse_expr e3)))))
   | SPARQL11_Algebra.E_Exists ggp -> sse_wrap "exists" (sse_ggp ggp)
   | SPARQL11_Algebra.E_NotExists ggp -> sse_wrap "notexists" (sse_ggp ggp)
   | SPARQL11_Algebra.E_Aggregate (agg, distinct, e1) ->

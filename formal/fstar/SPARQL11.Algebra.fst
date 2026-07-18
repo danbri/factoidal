@@ -55,6 +55,10 @@ module RxP = Regex.XSDPattern
 let lit_lexical (l : wf_literal) : string = l.lexical_form
 let lit_datatype (l : wf_literal) : wf_iri = l.datatype
 let lit_lang (l : wf_literal) : option string = l.lang_tag
+(* SPARQL 1.2 base direction accessor (RDF 1.2 Concepts §3.3) — reads
+   the same `direction` field text_direction (RDF.Term.fsti) that the
+   directional-lang-tag literal parsing (Tok_LANGDIR) already sets. *)
+let lit_direction (l : wf_literal) : option text_direction = l.direction
 
 (* IRI string extraction — wf_iri is a refined string, so identity *)
 let iri_to_string (i : wf_iri) : string = i
@@ -485,9 +489,19 @@ noeq type expr =
   | E_Datatype      : expr -> expr
   | E_IRI_fn        : expr -> expr       (* IRI() / URI() constructor *)
 
+  (* SPARQL 1.2 base-direction accessors (RDF 1.2 Concepts §3.3, epic
+     #305). Modeled directly on E_Lang/E_Datatype above: hasLANG/
+     hasLANGDIR are boolean presence tests, LANGDIR reads the direction
+     the way E_Lang reads the language tag (empty string when absent,
+     error on a non-literal/non-numeric argument). *)
+  | E_HasLang       : expr -> expr       (* hasLANG(term) *)
+  | E_HasLangDir    : expr -> expr       (* hasLANGDIR(term) *)
+  | E_LangDir       : expr -> expr       (* LANGDIR(term) *)
+
   (* Term constructors (§17.4.4) *)
   | E_StrDt         : expr -> expr -> expr   (* STRDT(lexical, datatype) *)
   | E_StrLang       : expr -> expr -> expr   (* STRLANG(lexical, langtag) *)
+  | E_StrLangDir    : expr -> expr -> expr -> expr  (* STRLANGDIR(lexical, langtag, dir) *)
 
   (* BOUND test (§17.4.1.1) *)
   | E_Bound         : var_name -> expr
@@ -921,6 +935,18 @@ let er_string_info (v : eval_result) : option (string & option string & string) 
   | ER_Bool b -> Some ((if b then "true" else "false"), None, xsd_boolean)
   | _ -> None
 
+// Base-direction accessor mirroring er_string_info's per-value read, but
+// kept as its own tiny helper rather than folded into er_string_info's
+// tuple: er_string_info also feeds SUBSTR/UCASE/LCASE/STRBEFORE/STRAFTER/
+// REPLACE (below), none of which SPARQL 1.2 specifies as direction-
+// preserving, so widening that shared tuple would ripple direction
+// handling into functions this task (lang-basedir CONCAT fix) doesn't
+// touch. Used only by eval_concat_with_base.
+let er_direction (v : eval_result) : option text_direction =
+  match v with
+  | ER_Term (T_Literal l) -> l.direction
+  | _ -> None
+
 // Helper: wrap string result preserving language tag and datatype
 let er_string_preserve (s : string) (lang : option string) (dt : string) : eval_result =
   if is_iri dt then
@@ -1078,6 +1104,51 @@ let fn_datatype (v : eval_result) : eval_result =
   | ER_Dec _ -> ER_Term (T_IRI xsd_decimal)
   | ER_Dbl _ -> ER_Term (T_IRI xsd_double)
   | ER_Bool _ -> ER_Term (T_IRI xsd_boolean)
+  | _ -> ER_Error
+
+(* SPARQL 1.2 base-direction accessors (RDF 1.2 Concepts §3.3, epic
+   #305, lang-basedir W3C family). hasLANG/hasLANGDIR are presence
+   tests over ANY value (never an error — a non-literal argument, e.g.
+   an IRI, just means "no", per the lang-basedir/haslang(dir) fixtures
+   where SELECT'ing hasLANG(<iri>) binds `false` rather than leaving
+   the variable unbound). LANGDIR mirrors fn_lang exactly: empty
+   string when the literal (or promoted number/boolean) carries no
+   direction, ER_Error — hence unbound — for anything else (an IRI,
+   blank node, or triple term). *)
+let fn_haslang (v : eval_result) : eval_result =
+  match v with
+  | ER_Error -> ER_Error
+  | ER_Term (T_Literal l) -> ER_Bool (Some? (lit_lang l))
+  | _ -> ER_Bool false
+
+let fn_haslangdir (v : eval_result) : eval_result =
+  match v with
+  | ER_Error -> ER_Error
+  | ER_Term (T_Literal l) -> ER_Bool (Some? (lit_direction l))
+  | _ -> ER_Bool false
+
+let text_direction_to_string (d : text_direction) : string =
+  match d with
+  | Dir_LTR -> "ltr"
+  | Dir_RTL -> "rtl"
+
+// The inverse of text_direction_to_string. Deliberately strict/lowercase
+// only (no case-folding) — STRLANGDIR("abc","en","LTR") must be an error
+// per the lang-basedir/strlangdir fixture (only the lowercase "ltr"/"rtl"
+// rows are bound in the expected results).
+let parse_text_direction (s : string) : option text_direction =
+  if s = "ltr" then Some Dir_LTR
+  else if s = "rtl" then Some Dir_RTL
+  else None
+
+let fn_langdir (v : eval_result) : eval_result =
+  match v with
+  | ER_Term (T_Literal l) ->
+    (match lit_direction l with
+     | Some d -> ER_Term (T_Literal (mk_plain_literal (text_direction_to_string d)))
+     | None   -> ER_Term (T_Literal (mk_plain_literal "")))
+  | ER_Num _ | ER_Dec _ | ER_Dbl _ | ER_Bool _ ->
+    ER_Term (T_Literal (mk_plain_literal ""))
   | _ -> ER_Error
 
 (* String helper functions *)
@@ -1890,6 +1961,13 @@ let fn_strdt (lex : string) (dt : wf_iri) : rdf_term =
 
 let fn_strlang (lex : string) (lang : string) : rdf_term =
   T_Literal ({ lexical_form = lex; datatype = rdf_lang_string; lang_tag = Some lang; direction = None })
+
+// STRLANGDIR(lexical, langtag, dir) — RDF 1.2 Concepts §3.3 constructor
+// for a directional language-tagged literal, modeled on fn_strlang
+// immediately above with the extra `direction` field populated instead
+// of left at None.
+let fn_strlangdir (lex : string) (lang : string) (dir : text_direction) : rdf_term =
+  T_Literal ({ lexical_form = lex; datatype = rdf_dir_lang_string; lang_tag = Some lang; direction = Some dir })
 
 (* sameTerm — stricter than = *)
 let same_term (t1 t2 : rdf_term) : bool = rdf_term_eq t1 t2
@@ -3223,7 +3301,9 @@ let rec expr_vars (e : expr) : Tot (list var_name) (decreases e) =
   | E_Not e1 -> expr_vars e1
   | E_IsIRI e1 | E_IsBlank e1 | E_IsLiteral e1 | E_IsNumeric e1 -> expr_vars e1
   | E_Str e1 | E_Lang e1 | E_Datatype e1 | E_IRI_fn e1 -> expr_vars e1
+  | E_HasLang e1 | E_HasLangDir e1 | E_LangDir e1 -> expr_vars e1
   | E_StrDt e1 e2 | E_StrLang e1 e2 -> expr_vars e1 @ expr_vars e2
+  | E_StrLangDir e1 e2 e3 -> expr_vars e1 @ expr_vars e2 @ expr_vars e3
   // BOUND(?v) only tests presence, never the decoded VALUE of ?v -- but
   // we count ?v live anyway, conservative-safe per the banner above.
   | E_Bound v -> [v]
@@ -3610,12 +3690,19 @@ let rec substitute_existentials
   | E_Lang e1 -> E_Lang (substitute_existentials base e1 mu g ds)
   | E_Datatype e1 -> E_Datatype (substitute_existentials base e1 mu g ds)
   | E_IRI_fn e1 -> E_IRI_fn (substitute_existentials base e1 mu g ds)
+  | E_HasLang e1 -> E_HasLang (substitute_existentials base e1 mu g ds)
+  | E_HasLangDir e1 -> E_HasLangDir (substitute_existentials base e1 mu g ds)
+  | E_LangDir e1 -> E_LangDir (substitute_existentials base e1 mu g ds)
   | E_StrDt e1 e2 ->
     E_StrDt (substitute_existentials base e1 mu g ds)
             (substitute_existentials base e2 mu g ds)
   | E_StrLang e1 e2 ->
     E_StrLang (substitute_existentials base e1 mu g ds)
               (substitute_existentials base e2 mu g ds)
+  | E_StrLangDir e1 e2 e3 ->
+    E_StrLangDir (substitute_existentials base e1 mu g ds)
+                 (substitute_existentials base e2 mu g ds)
+                 (substitute_existentials base e3 mu g ds)
   | E_If c t f ->
     E_If (substitute_existentials base c mu g ds)
          (substitute_existentials base t mu g ds)
@@ -4442,6 +4529,9 @@ let rec eval_expr_with_base (base : option wf_iri) (e : expr) (mu : solution_map
   | E_Str e1 -> fn_str (eval_expr_with_base base e1 mu)
   | E_Lang e1 -> fn_lang (eval_expr_with_base base e1 mu)
   | E_Datatype e1 -> fn_datatype (eval_expr_with_base base e1 mu)
+  | E_HasLang e1 -> fn_haslang (eval_expr_with_base base e1 mu)
+  | E_HasLangDir e1 -> fn_haslangdir (eval_expr_with_base base e1 mu)
+  | E_LangDir e1 -> fn_langdir (eval_expr_with_base base e1 mu)
   | E_IRI_fn e1 ->
     (match eval_expr_with_base base e1 mu with
      | ER_Term (T_IRI i) -> ER_Term (T_IRI i)
@@ -4469,6 +4559,23 @@ let rec eval_expr_with_base (base : option wf_iri) (e : expr) (mu : solution_map
        then ER_Term (fn_strlang (lit_lexical l) lang)
        else ER_Error
      | _, _ -> ER_Error)
+  | E_StrLangDir e1 e2 e3 ->
+    // STRLANGDIR(lexical, langtag, dir) — same simple-literal restriction
+    // as STRLANG above, plus: langtag must be non-empty and dir must be
+    // exactly "ltr"/"rtl" (lang-basedir/strlangdir fixture: an empty
+    // langtag or a non-lowercase/unrecognized dir string is an error,
+    // i.e. the bound variable is left unbound).
+    let v1 = eval_expr_with_base base e1 mu in
+    (match v1, er_to_string (eval_expr_with_base base e2 mu),
+             er_to_string (eval_expr_with_base base e3 mu) with
+     | ER_Term (T_Literal l), Some lang, Some dirstr ->
+       if (lit_datatype l = xsd_string || lit_datatype l = "") && l.lang_tag = None
+          && String.length lang > 0
+       then (match parse_text_direction dirstr with
+             | Some d -> ER_Term (fn_strlangdir (lit_lexical l) lang d)
+             | None -> ER_Error)
+       else ER_Error
+     | _, _, _ -> ER_Error)
 
   (* BOUND *)
   | E_Bound v -> ER_Bool (Some? (sm_lookup v mu))
@@ -4835,14 +4942,19 @@ and eval_in_with_base (base : option wf_iri) (v : eval_result) (es : list expr) 
 (* CONCAT: concatenate string results *)
 and eval_concat_with_base (base : option wf_iri) (es : list expr) (mu : solution_mapping)
   : Tot eval_result (decreases es) =
-  // CONCAT preserves lang tag if all args share the same tag; otherwise xsd:string
+  // CONCAT preserves lang tag (and, RDF 1.2 lang-basedir family, base
+  // direction) if all args share the same tag/direction; otherwise xsd:string.
   match es with
   | [] -> er_string ""
   | [e] ->
-    // Single element: preserve its string info (lang tag, datatype)
+    // Single element: preserve its string info (lang tag, datatype, direction)
     let v = eval_expr_with_base base e mu in
     (match er_string_info v with
-     | Some (s, lang, dt) -> er_string_preserve s lang dt
+     | Some (s, lang, dt) ->
+       (match lang, er_direction v with
+        | Some l1, Some d ->
+          ER_Term (T_Literal { lexical_form = s; datatype = rdf_dir_lang_string; lang_tag = Some l1; direction = Some d })
+        | _, _ -> er_string_preserve s lang dt)
      | None -> ER_Error)
   | e :: rest ->
     let v = eval_expr_with_base base e mu in
@@ -4855,7 +4967,21 @@ and eval_concat_with_base (base : option wf_iri) (es : list expr) (mu : solution
           (match lang, l.lang_tag with
            | Some l1, Some l2 ->
              if string_lower l1 = string_lower l2 then
-               ER_Term (T_Literal { lexical_form = combined; datatype = rdf_lang_string; lang_tag = Some l1; direction = None })
+               // Lang tags match; RDF 1.2 dirLangString preservation
+               // additionally requires the base directions to match
+               // (both Some the SAME direction, or both None). A
+               // direction mismatch — including one side having a
+               // direction and the other not — drops to plain
+               // xsd:string rather than falling back to rdf:langString,
+               // per the lang-basedir/concat fixture (r2/r3/r4).
+               (match er_direction v, l.direction with
+                | Some d1, Some d2 ->
+                  if d1 = d2
+                  then ER_Term (T_Literal { lexical_form = combined; datatype = rdf_dir_lang_string; lang_tag = Some l1; direction = Some d1 })
+                  else er_string combined
+                | None, None ->
+                  ER_Term (T_Literal { lexical_form = combined; datatype = rdf_lang_string; lang_tag = Some l1; direction = None })
+                | _, _ -> er_string combined)
              else er_string combined
            | None, None ->
              // Both plain: preserve xsd:string datatype
@@ -5326,12 +5452,17 @@ let rec expr_has_ungrouped_var (is_grp : var_name -> bool) (e : expr)
   | E_Lang e1 -> expr_has_ungrouped_var is_grp e1
   | E_Datatype e1 -> expr_has_ungrouped_var is_grp e1
   | E_IRI_fn e1 -> expr_has_ungrouped_var is_grp e1
+  | E_HasLang e1 -> expr_has_ungrouped_var is_grp e1
+  | E_HasLangDir e1 -> expr_has_ungrouped_var is_grp e1
+  | E_LangDir e1 -> expr_has_ungrouped_var is_grp e1
   | E_IsIRI e1 -> expr_has_ungrouped_var is_grp e1
   | E_IsBlank e1 -> expr_has_ungrouped_var is_grp e1
   | E_IsLiteral e1 -> expr_has_ungrouped_var is_grp e1
   | E_IsNumeric e1 -> expr_has_ungrouped_var is_grp e1
   | E_StrDt e1 e2 -> expr_has_ungrouped_var is_grp e1 || expr_has_ungrouped_var is_grp e2
   | E_StrLang e1 e2 -> expr_has_ungrouped_var is_grp e1 || expr_has_ungrouped_var is_grp e2
+  | E_StrLangDir e1 e2 e3 ->
+    expr_has_ungrouped_var is_grp e1 || expr_has_ungrouped_var is_grp e2 || expr_has_ungrouped_var is_grp e3
   | _ -> false
 
 (* Check if a SELECT item contains an aggregate expression *)

@@ -2176,12 +2176,22 @@ let rec subst_var_expr (name : Prims.string) (t : RDF_Term.rdf_term)
       SPARQL11_Algebra.E_Datatype (subst_var_expr name t a)
   | SPARQL11_Algebra.E_IRI_fn a ->
       SPARQL11_Algebra.E_IRI_fn (subst_var_expr name t a)
+  | SPARQL11_Algebra.E_HasLang a ->
+      SPARQL11_Algebra.E_HasLang (subst_var_expr name t a)
+  | SPARQL11_Algebra.E_HasLangDir a ->
+      SPARQL11_Algebra.E_HasLangDir (subst_var_expr name t a)
+  | SPARQL11_Algebra.E_LangDir a ->
+      SPARQL11_Algebra.E_LangDir (subst_var_expr name t a)
   | SPARQL11_Algebra.E_StrDt (a, b) ->
       SPARQL11_Algebra.E_StrDt
         ((subst_var_expr name t a), (subst_var_expr name t b))
   | SPARQL11_Algebra.E_StrLang (a, b) ->
       SPARQL11_Algebra.E_StrLang
         ((subst_var_expr name t a), (subst_var_expr name t b))
+  | SPARQL11_Algebra.E_StrLangDir (a, b, c) ->
+      SPARQL11_Algebra.E_StrLangDir
+        ((subst_var_expr name t a), (subst_var_expr name t b),
+          (subst_var_expr name t c))
   | SPARQL11_Algebra.E_If (a, b, c) ->
       SPARQL11_Algebra.E_If
         ((subst_var_expr name t a), (subst_var_expr name t b),

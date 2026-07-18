@@ -330,6 +330,28 @@ let mk_literal (lexical : string) (dt : string) (lang : option string) : option 
     if literal_wf lit then Some (T_Literal lit) else None
   else None
 
+// SPARQL 1.2 base-direction result field ("its:dir": "ltr" | "rtl" —
+// SPARQL 1.2 Query Results JSON Format, lang-basedir W3C family
+// fixtures langdir-literal.srj / strlangdir.srj / concat.srj). Strict/
+// lowercase only, mirroring SPARQL11.Algebra.parse_text_direction: an
+// unrecognized value is simply "no direction" rather than a hard parse
+// error, so a malformed "its:dir" degrades to the RDF 1.1 rdf:langString
+// reading instead of failing the whole result-file parse.
+let json_parse_text_direction (s : string) : option text_direction =
+  if s = "ltr" then Some Dir_LTR
+  else if s = "rtl" then Some Dir_RTL
+  else None
+
+// Directional variant of mk_literal above: builds an rdf:dirLangString
+// literal when both a language tag and a valid base direction are given.
+let mk_dir_literal (lexical : string) (lang : string) (dir : text_direction) : option rdf_term =
+  let lit : literal = {
+    lexical_form = lexical;
+    datatype = rdf_dir_lang_string;
+    lang_tag = Some lang; direction = Some dir
+  } in
+  if literal_wf lit then Some (T_Literal lit) else None
+
 // ================================================================
 // SRJ (SPARQL Results JSON) extraction
 // ================================================================
@@ -359,13 +381,18 @@ let rec parse_binding_value_fuel (fuel: nat) (obj: json_value) : option rdf_term
     else if typ = "literal" || typ = "typed-literal" then
       let lang = json_get_string "xml:lang" obj in
       let dt = json_get_string "datatype" obj in
-      (match lang, dt with
-       | Some lang_val, _ ->
+      let its_dir = json_get_string "its:dir" obj in
+      (match lang, its_dir with
+       | Some lang_val, Some dir_str ->
+         (match json_parse_text_direction dir_str with
+          | Some dir_val -> mk_dir_literal val_str lang_val dir_val
+          | None -> mk_literal val_str rdf_lang_string (Some lang_val))
+       | Some lang_val, None ->
          mk_literal val_str rdf_lang_string (Some lang_val)
-       | None, Some dt_val ->
-         mk_literal val_str dt_val None
-       | None, None ->
-         mk_literal val_str xsd_string None)
+       | None, _ ->
+         (match dt with
+          | Some dt_val -> mk_literal val_str dt_val None
+          | None -> mk_literal val_str xsd_string None))
     else if typ = "triple" then
       (match json_get_field "value" obj with
        | None -> None

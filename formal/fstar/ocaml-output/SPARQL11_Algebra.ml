@@ -5,6 +5,9 @@ let lit_datatype (l : RDF_Term.wf_literal) : RDF_Term.wf_iri=
   l.RDF_Term.datatype
 let lit_lang (l : RDF_Term.wf_literal) :
   Prims.string FStar_Pervasives_Native.option= l.RDF_Term.lang_tag
+let lit_direction (l : RDF_Term.wf_literal) :
+  RDF_Term.text_direction FStar_Pervasives_Native.option=
+  l.RDF_Term.direction
 let iri_to_string (i : RDF_Term.wf_iri) : Prims.string= i
 let string_to_iri (s : Prims.string) :
   RDF_Term.wf_iri FStar_Pervasives_Native.option=
@@ -505,8 +508,12 @@ type expr =
   | E_Lang of expr 
   | E_Datatype of expr 
   | E_IRI_fn of expr 
+  | E_HasLang of expr 
+  | E_HasLangDir of expr 
+  | E_LangDir of expr 
   | E_StrDt of expr * expr 
   | E_StrLang of expr * expr 
+  | E_StrLangDir of expr * expr * expr 
   | E_Bound of var_name 
   | E_If of expr * expr * expr 
   | E_Coalesce of expr Prims.list 
@@ -721,6 +728,18 @@ let uu___is_E_IRI_fn (projectee : expr) : Prims.bool=
   match projectee with | E_IRI_fn _0 -> true | uu___ -> false
 let __proj__E_IRI_fn__item___0 (projectee : expr) : expr=
   match projectee with | E_IRI_fn _0 -> _0
+let uu___is_E_HasLang (projectee : expr) : Prims.bool=
+  match projectee with | E_HasLang _0 -> true | uu___ -> false
+let __proj__E_HasLang__item___0 (projectee : expr) : expr=
+  match projectee with | E_HasLang _0 -> _0
+let uu___is_E_HasLangDir (projectee : expr) : Prims.bool=
+  match projectee with | E_HasLangDir _0 -> true | uu___ -> false
+let __proj__E_HasLangDir__item___0 (projectee : expr) : expr=
+  match projectee with | E_HasLangDir _0 -> _0
+let uu___is_E_LangDir (projectee : expr) : Prims.bool=
+  match projectee with | E_LangDir _0 -> true | uu___ -> false
+let __proj__E_LangDir__item___0 (projectee : expr) : expr=
+  match projectee with | E_LangDir _0 -> _0
 let uu___is_E_StrDt (projectee : expr) : Prims.bool=
   match projectee with | E_StrDt (_0, _1) -> true | uu___ -> false
 let __proj__E_StrDt__item___0 (projectee : expr) : expr=
@@ -733,6 +752,14 @@ let __proj__E_StrLang__item___0 (projectee : expr) : expr=
   match projectee with | E_StrLang (_0, _1) -> _0
 let __proj__E_StrLang__item___1 (projectee : expr) : expr=
   match projectee with | E_StrLang (_0, _1) -> _1
+let uu___is_E_StrLangDir (projectee : expr) : Prims.bool=
+  match projectee with | E_StrLangDir (_0, _1, _2) -> true | uu___ -> false
+let __proj__E_StrLangDir__item___0 (projectee : expr) : expr=
+  match projectee with | E_StrLangDir (_0, _1, _2) -> _0
+let __proj__E_StrLangDir__item___1 (projectee : expr) : expr=
+  match projectee with | E_StrLangDir (_0, _1, _2) -> _1
+let __proj__E_StrLangDir__item___2 (projectee : expr) : expr=
+  match projectee with | E_StrLangDir (_0, _1, _2) -> _2
 let uu___is_E_Bound (projectee : expr) : Prims.bool=
   match projectee with | E_Bound _0 -> true | uu___ -> false
 let __proj__E_Bound__item___0 (projectee : expr) : var_name=
@@ -1647,6 +1674,11 @@ let er_string_info (v : eval_result) :
         ((if b then "true" else "false"), FStar_Pervasives_Native.None,
           RDF_Term.xsd_boolean)
   | uu___ -> FStar_Pervasives_Native.None
+let er_direction (v : eval_result) :
+  RDF_Term.text_direction FStar_Pervasives_Native.option=
+  match v with
+  | ER_Term (RDF_Term.T_Literal l) -> l.RDF_Term.direction
+  | uu___ -> FStar_Pervasives_Native.None
 let er_string_preserve (s : Prims.string)
   (lang : Prims.string FStar_Pervasives_Native.option) (dt : Prims.string) :
   eval_result=
@@ -1843,6 +1875,43 @@ let fn_datatype (v : eval_result) : eval_result=
   | ER_Dec uu___ -> ER_Term (RDF_Term.T_IRI RDF_Term.xsd_decimal)
   | ER_Dbl uu___ -> ER_Term (RDF_Term.T_IRI RDF_Term.xsd_double)
   | ER_Bool uu___ -> ER_Term (RDF_Term.T_IRI RDF_Term.xsd_boolean)
+  | uu___ -> ER_Error
+let fn_haslang (v : eval_result) : eval_result=
+  match v with
+  | ER_Error -> ER_Error
+  | ER_Term (RDF_Term.T_Literal l) ->
+      ER_Bool (FStar_Pervasives_Native.uu___is_Some (lit_lang l))
+  | uu___ -> ER_Bool false
+let fn_haslangdir (v : eval_result) : eval_result=
+  match v with
+  | ER_Error -> ER_Error
+  | ER_Term (RDF_Term.T_Literal l) ->
+      ER_Bool (FStar_Pervasives_Native.uu___is_Some (lit_direction l))
+  | uu___ -> ER_Bool false
+let text_direction_to_string (d : RDF_Term.text_direction) : Prims.string=
+  match d with | RDF_Term.Dir_LTR -> "ltr" | RDF_Term.Dir_RTL -> "rtl"
+let parse_text_direction (s : Prims.string) :
+  RDF_Term.text_direction FStar_Pervasives_Native.option=
+  if s = "ltr"
+  then FStar_Pervasives_Native.Some RDF_Term.Dir_LTR
+  else
+    if s = "rtl"
+    then FStar_Pervasives_Native.Some RDF_Term.Dir_RTL
+    else FStar_Pervasives_Native.None
+let fn_langdir (v : eval_result) : eval_result=
+  match v with
+  | ER_Term (RDF_Term.T_Literal l) ->
+      (match lit_direction l with
+       | FStar_Pervasives_Native.Some d ->
+           ER_Term
+             (RDF_Term.T_Literal
+                (mk_plain_literal (text_direction_to_string d)))
+       | FStar_Pervasives_Native.None ->
+           ER_Term (RDF_Term.T_Literal (mk_plain_literal "")))
+  | ER_Num uu___ -> ER_Term (RDF_Term.T_Literal (mk_plain_literal ""))
+  | ER_Dec uu___ -> ER_Term (RDF_Term.T_Literal (mk_plain_literal ""))
+  | ER_Dbl uu___ -> ER_Term (RDF_Term.T_Literal (mk_plain_literal ""))
+  | ER_Bool uu___ -> ER_Term (RDF_Term.T_Literal (mk_plain_literal ""))
   | uu___ -> ER_Error
 let rec find_substring_pos_aux :
   'a .
@@ -2763,6 +2832,15 @@ let fn_strlang (lex : Prims.string) (lang : Prims.string) :
       RDF_Term.datatype = RDF_Term.rdf_lang_string;
       RDF_Term.lang_tag = (FStar_Pervasives_Native.Some lang);
       RDF_Term.direction = FStar_Pervasives_Native.None
+    }
+let fn_strlangdir (lex : Prims.string) (lang : Prims.string)
+  (dir : RDF_Term.text_direction) : RDF_Term.rdf_term=
+  RDF_Term.T_Literal
+    {
+      RDF_Term.lexical_form = lex;
+      RDF_Term.datatype = RDF_Term.rdf_dir_lang_string;
+      RDF_Term.lang_tag = (FStar_Pervasives_Native.Some lang);
+      RDF_Term.direction = (FStar_Pervasives_Native.Some dir)
     }
 let same_term (t1 : RDF_Term.rdf_term) (t2 : RDF_Term.rdf_term) : Prims.bool=
   RDF_Term.rdf_term_eq t1 t2
@@ -4112,10 +4190,16 @@ let rec expr_vars (e : expr) : var_name Prims.list=
   | E_Lang e1 -> expr_vars e1
   | E_Datatype e1 -> expr_vars e1
   | E_IRI_fn e1 -> expr_vars e1
+  | E_HasLang e1 -> expr_vars e1
+  | E_HasLangDir e1 -> expr_vars e1
+  | E_LangDir e1 -> expr_vars e1
   | E_StrDt (e1, e2) ->
       FStar_List_Tot_Base.op_At (expr_vars e1) (expr_vars e2)
   | E_StrLang (e1, e2) ->
       FStar_List_Tot_Base.op_At (expr_vars e1) (expr_vars e2)
+  | E_StrLangDir (e1, e2, e3) ->
+      FStar_List_Tot_Base.op_At (expr_vars e1)
+        (FStar_List_Tot_Base.op_At (expr_vars e2) (expr_vars e3))
   | E_Bound v -> [v]
   | E_If (c, t, f) ->
       FStar_List_Tot_Base.op_At (expr_vars c)
@@ -4606,6 +4690,9 @@ let rec substitute_existentials
   | E_Lang e1 -> E_Lang (substitute_existentials base e1 mu g ds)
   | E_Datatype e1 -> E_Datatype (substitute_existentials base e1 mu g ds)
   | E_IRI_fn e1 -> E_IRI_fn (substitute_existentials base e1 mu g ds)
+  | E_HasLang e1 -> E_HasLang (substitute_existentials base e1 mu g ds)
+  | E_HasLangDir e1 -> E_HasLangDir (substitute_existentials base e1 mu g ds)
+  | E_LangDir e1 -> E_LangDir (substitute_existentials base e1 mu g ds)
   | E_StrDt (e1, e2) ->
       E_StrDt
         ((substitute_existentials base e1 mu g ds),
@@ -4614,6 +4701,11 @@ let rec substitute_existentials
       E_StrLang
         ((substitute_existentials base e1 mu g ds),
           (substitute_existentials base e2 mu g ds))
+  | E_StrLangDir (e1, e2, e3) ->
+      E_StrLangDir
+        ((substitute_existentials base e1 mu g ds),
+          (substitute_existentials base e2 mu g ds),
+          (substitute_existentials base e3 mu g ds))
   | E_If (c, t, f) ->
       E_If
         ((substitute_existentials base c mu g ds),
@@ -5500,6 +5592,9 @@ let rec eval_expr_with_base
   | E_Str e1 -> fn_str (eval_expr_with_base base e1 mu)
   | E_Lang e1 -> fn_lang (eval_expr_with_base base e1 mu)
   | E_Datatype e1 -> fn_datatype (eval_expr_with_base base e1 mu)
+  | E_HasLang e1 -> fn_haslang (eval_expr_with_base base e1 mu)
+  | E_HasLangDir e1 -> fn_haslangdir (eval_expr_with_base base e1 mu)
+  | E_LangDir e1 -> fn_langdir (eval_expr_with_base base e1 mu)
   | E_IRI_fn e1 ->
       (match eval_expr_with_base base e1 mu with
        | ER_Term (RDF_Term.T_IRI i) -> ER_Term (RDF_Term.T_IRI i)
@@ -5533,6 +5628,25 @@ let rec eval_expr_with_base
            then ER_Term (fn_strlang (lit_lexical l) lang)
            else ER_Error
        | (uu___, uu___1) -> ER_Error)
+  | E_StrLangDir (e1, e2, e3) ->
+      let v1 = eval_expr_with_base base e1 mu in
+      (match (v1, (er_to_string (eval_expr_with_base base e2 mu)),
+               (er_to_string (eval_expr_with_base base e3 mu)))
+       with
+       | (ER_Term (RDF_Term.T_Literal l), FStar_Pervasives_Native.Some lang,
+          FStar_Pervasives_Native.Some dirstr) ->
+           if
+             ((((lit_datatype l) = RDF_Term.xsd_string) ||
+                 ((lit_datatype l) = ""))
+                && (l.RDF_Term.lang_tag = FStar_Pervasives_Native.None))
+               && ((FStar_String.strlen lang) > Prims.int_zero)
+           then
+             (match parse_text_direction dirstr with
+              | FStar_Pervasives_Native.Some d ->
+                  ER_Term (fn_strlangdir (lit_lexical l) lang d)
+              | FStar_Pervasives_Native.None -> ER_Error)
+           else ER_Error
+       | (uu___, uu___1, uu___2) -> ER_Error)
   | E_Bound v ->
       ER_Bool (FStar_Pervasives_Native.uu___is_Some (sm_lookup v mu))
   | E_If (cond, then_e, else_e) ->
@@ -6049,7 +6163,18 @@ and eval_concat_with_base
       let v = eval_expr_with_base base e mu in
       (match er_string_info v with
        | FStar_Pervasives_Native.Some (s, lang, dt) ->
-           er_string_preserve s lang dt
+           (match (lang, (er_direction v)) with
+            | (FStar_Pervasives_Native.Some l1, FStar_Pervasives_Native.Some
+               d) ->
+                ER_Term
+                  (RDF_Term.T_Literal
+                     {
+                       RDF_Term.lexical_form = s;
+                       RDF_Term.datatype = RDF_Term.rdf_dir_lang_string;
+                       RDF_Term.lang_tag = (FStar_Pervasives_Native.Some l1);
+                       RDF_Term.direction = (FStar_Pervasives_Native.Some d)
+                     })
+            | (uu___, uu___1) -> er_string_preserve s lang dt)
        | FStar_Pervasives_Native.None -> ER_Error)
   | e::rest ->
       let v = eval_expr_with_base base e mu in
@@ -6063,16 +6188,37 @@ and eval_concat_with_base
                     FStar_Pervasives_Native.Some l2) ->
                      if (string_lower l1) = (string_lower l2)
                      then
-                       ER_Term
-                         (RDF_Term.T_Literal
-                            {
-                              RDF_Term.lexical_form = combined;
-                              RDF_Term.datatype = RDF_Term.rdf_lang_string;
-                              RDF_Term.lang_tag =
-                                (FStar_Pervasives_Native.Some l1);
-                              RDF_Term.direction =
-                                FStar_Pervasives_Native.None
-                            })
+                       (match ((er_direction v), (l.RDF_Term.direction)) with
+                        | (FStar_Pervasives_Native.Some d1,
+                           FStar_Pervasives_Native.Some d2) ->
+                            if d1 = d2
+                            then
+                              ER_Term
+                                (RDF_Term.T_Literal
+                                   {
+                                     RDF_Term.lexical_form = combined;
+                                     RDF_Term.datatype =
+                                       RDF_Term.rdf_dir_lang_string;
+                                     RDF_Term.lang_tag =
+                                       (FStar_Pervasives_Native.Some l1);
+                                     RDF_Term.direction =
+                                       (FStar_Pervasives_Native.Some d1)
+                                   })
+                            else er_string combined
+                        | (FStar_Pervasives_Native.None,
+                           FStar_Pervasives_Native.None) ->
+                            ER_Term
+                              (RDF_Term.T_Literal
+                                 {
+                                   RDF_Term.lexical_form = combined;
+                                   RDF_Term.datatype =
+                                     RDF_Term.rdf_lang_string;
+                                   RDF_Term.lang_tag =
+                                     (FStar_Pervasives_Native.Some l1);
+                                   RDF_Term.direction =
+                                     FStar_Pervasives_Native.None
+                                 })
+                        | (uu___, uu___1) -> er_string combined)
                      else er_string combined
                  | (FStar_Pervasives_Native.None,
                     FStar_Pervasives_Native.None) ->
@@ -6529,6 +6675,9 @@ let rec expr_has_ungrouped_var (is_grp : var_name -> Prims.bool) (e : expr) :
   | E_Lang e1 -> expr_has_ungrouped_var is_grp e1
   | E_Datatype e1 -> expr_has_ungrouped_var is_grp e1
   | E_IRI_fn e1 -> expr_has_ungrouped_var is_grp e1
+  | E_HasLang e1 -> expr_has_ungrouped_var is_grp e1
+  | E_HasLangDir e1 -> expr_has_ungrouped_var is_grp e1
+  | E_LangDir e1 -> expr_has_ungrouped_var is_grp e1
   | E_IsIRI e1 -> expr_has_ungrouped_var is_grp e1
   | E_IsBlank e1 -> expr_has_ungrouped_var is_grp e1
   | E_IsLiteral e1 -> expr_has_ungrouped_var is_grp e1
@@ -6539,6 +6688,10 @@ let rec expr_has_ungrouped_var (is_grp : var_name -> Prims.bool) (e : expr) :
   | E_StrLang (e1, e2) ->
       (expr_has_ungrouped_var is_grp e1) ||
         (expr_has_ungrouped_var is_grp e2)
+  | E_StrLangDir (e1, e2, e3) ->
+      ((expr_has_ungrouped_var is_grp e1) ||
+         (expr_has_ungrouped_var is_grp e2))
+        || (expr_has_ungrouped_var is_grp e3)
   | uu___ -> false
 let select_item_has_aggregate (item : select_item) : Prims.bool=
   match item with
