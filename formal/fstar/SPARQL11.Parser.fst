@@ -68,6 +68,16 @@ type token =
      1.1 mode still tokenizes the bare word "VERSION" as Tok_PNAME, so
      1.1 parsing stays byte-identical). *)
   | Tok_VERSION_KW
+  (* SPARQL 1.2 base-direction builtin function keywords (1.2 mode
+     only — lang-basedir W3C family, epic #305). `Tok_LANGDIR_KW` names
+     the LANGDIR(term) *function* keyword; it is distinct from the
+     pre-existing `Tok_LANGDIR` (below) which is the lexer's token for
+     an `@lang--ltr`/`@lang--rtl` literal suffix — same surface word,
+     different grammar positions, so both tokens coexist. As with the
+     triple-term keywords above, gating on 1.2 mode keeps 1.1 parsing
+     byte-identical (these four words fall through to Tok_PNAME in 1.1
+     mode, exactly as before this feature existed). *)
+  | Tok_HASLANG_KW | Tok_HASLANGDIR_KW | Tok_LANGDIR_KW | Tok_STRLANGDIR_KW
   (* Literals and names *)
   | Tok_IRI      : string -> token
   | Tok_PNAME    : string -> token   (* prefixed name, pre-expansion *)
@@ -595,6 +605,12 @@ let keyword_of_upper (sparql12 : bool) (upper : string) (original : string) : to
   // SPARQL 1.2 VERSION prologue declaration — 1.2 mode only; in 1.1
   // mode "VERSION" falls through to Tok_PNAME as it always has.
   else if sparql12 && streq upper "VERSION" then Tok_VERSION_KW
+  // SPARQL 1.2 base-direction builtins (lang-basedir family) — 1.2 mode
+  // only, same rationale as the triple-term keywords above.
+  else if sparql12 && streq upper "HASLANG" then Tok_HASLANG_KW
+  else if sparql12 && streq upper "HASLANGDIR" then Tok_HASLANGDIR_KW
+  else if sparql12 && streq upper "LANGDIR" then Tok_LANGDIR_KW
+  else if sparql12 && streq upper "STRLANGDIR" then Tok_STRLANGDIR_KW
   else if streq upper "SELECT" then Tok_SELECT
   else if streq upper "ASK" then Tok_ASK
   else if streq upper "CONSTRUCT" then Tok_CONSTRUCT
@@ -1675,6 +1691,10 @@ and parse_primary_expr (pm : prefix_map) (fuel : nat) (ts : token_stream)
   | Tok_STR -> parse_b1 pm (fuel-1) E_Str (parse_advance ts)
   | Tok_LANG -> parse_b1 pm (fuel-1) E_Lang (parse_advance ts)
   | Tok_DATATYPE -> parse_b1 pm (fuel-1) E_Datatype (parse_advance ts)
+  (* SPARQL 1.2 base-direction builtins (1.2 lexer mode only) *)
+  | Tok_HASLANG_KW -> parse_b1 pm (fuel-1) E_HasLang (parse_advance ts)
+  | Tok_HASLANGDIR_KW -> parse_b1 pm (fuel-1) E_HasLangDir (parse_advance ts)
+  | Tok_LANGDIR_KW -> parse_b1 pm (fuel-1) E_LangDir (parse_advance ts)
   | Tok_IRI_KW -> parse_b1 pm (fuel-1) E_IRI_fn (parse_advance ts)
   | Tok_URI -> parse_b1 pm (fuel-1) E_IRI_fn (parse_advance ts)
   | Tok_ABS -> parse_b1 pm (fuel-1) E_Abs (parse_advance ts)
@@ -1723,6 +1743,9 @@ and parse_primary_expr (pm : prefix_map) (fuel : nat) (ts : token_stream)
   | Tok_STRAFTER -> parse_b2 pm (fuel-1) E_StrAfter (parse_advance ts)
   | Tok_STRDT -> parse_b2 pm (fuel-1) E_StrDt (parse_advance ts)
   | Tok_STRLANG -> parse_b2 pm (fuel-1) E_StrLang (parse_advance ts)
+  (* STRLANGDIR(lexical, langtag, dir) — 3-arg, comma-separated like
+     TRIPLE(s,p,o) above; reuses parse_b3 (1.2 lexer mode only). *)
+  | Tok_STRLANGDIR_KW -> parse_b3 pm (fuel-1) E_StrLangDir (parse_advance ts)
   (* Special built-ins *)
   | Tok_BOUND -> parse_bound pm (fuel-1) (parse_advance ts)
   | Tok_IF -> parse_if_expr pm (fuel-1) (parse_advance ts)
@@ -5053,6 +5076,9 @@ let rec sse_expr (e : expr) : Tot string (decreases e) =
   | E_Lang e1 -> sse_wrap "lang" (sse_expr e1)
   | E_Datatype e1 -> sse_wrap "datatype" (sse_expr e1)
   | E_IRI_fn e1 -> sse_wrap "iri" (sse_expr e1)
+  | E_HasLang e1 -> sse_wrap "haslang" (sse_expr e1)
+  | E_HasLangDir e1 -> sse_wrap "haslangdir" (sse_expr e1)
+  | E_LangDir e1 -> sse_wrap "langdir" (sse_expr e1)
   | E_Bound v -> sse_wrap "bound" ("?" ^ v)
   | E_If c t f -> sse_wrap "if" (sse_expr c ^ " " ^ sse_expr t ^ " " ^ sse_expr f)
   | E_Coalesce args -> sse_wrap "coalesce" (sse_expr_list args)
@@ -5095,6 +5121,7 @@ let rec sse_expr (e : expr) : Tot string (decreases e) =
   | E_SameTerm e1 e2 -> sse_wrap "sameTerm" (sse_expr e1 ^ " " ^ sse_expr e2)
   | E_StrDt e1 e2 -> sse_wrap "strdt" (sse_expr e1 ^ " " ^ sse_expr e2)
   | E_StrLang e1 e2 -> sse_wrap "strlang" (sse_expr e1 ^ " " ^ sse_expr e2)
+  | E_StrLangDir e1 e2 e3 -> sse_wrap "strlangdir" (sse_expr e1 ^ " " ^ sse_expr e2 ^ " " ^ sse_expr e3)
   | E_Exists ggp -> sse_wrap "exists" (sse_ggp ggp)
   | E_NotExists ggp -> sse_wrap "notexists" (sse_ggp ggp)
   | E_Aggregate agg distinct e1 -> sse_wrap "agg" (sse_expr e1)

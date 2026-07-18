@@ -489,6 +489,27 @@ let mk_literal (lexical : Prims.string) (dt : Prims.string)
      then FStar_Pervasives_Native.Some (RDF_Term.T_Literal lit)
      else FStar_Pervasives_Native.None)
   else FStar_Pervasives_Native.None
+let json_parse_text_direction (s : Prims.string) :
+  RDF_Term.text_direction FStar_Pervasives_Native.option=
+  if s = "ltr"
+  then FStar_Pervasives_Native.Some RDF_Term.Dir_LTR
+  else
+    if s = "rtl"
+    then FStar_Pervasives_Native.Some RDF_Term.Dir_RTL
+    else FStar_Pervasives_Native.None
+let mk_dir_literal (lexical : Prims.string) (lang : Prims.string)
+  (dir : RDF_Term.text_direction) :
+  RDF_Term.rdf_term FStar_Pervasives_Native.option=
+  let lit =
+    {
+      RDF_Term.lexical_form = lexical;
+      RDF_Term.datatype = RDF_Term.rdf_dir_lang_string;
+      RDF_Term.lang_tag = (FStar_Pervasives_Native.Some lang);
+      RDF_Term.direction = (FStar_Pervasives_Native.Some dir)
+    } in
+  if RDF_Term.literal_wf lit
+  then FStar_Pervasives_Native.Some (RDF_Term.T_Literal lit)
+  else FStar_Pervasives_Native.None
 let rec parse_binding_value_fuel (fuel : Prims.nat) (obj : json_value) :
   RDF_Term.rdf_term FStar_Pervasives_Native.option=
   if fuel = Prims.int_zero
@@ -514,17 +535,28 @@ let rec parse_binding_value_fuel (fuel : Prims.nat) (obj : json_value) :
              then
                (let lang = json_get_string "xml:lang" obj in
                 let dt = json_get_string "datatype" obj in
-                match (lang, dt) with
-                | (FStar_Pervasives_Native.Some lang_val, uu___3) ->
+                let its_dir = json_get_string "its:dir" obj in
+                match (lang, its_dir) with
+                | (FStar_Pervasives_Native.Some lang_val,
+                   FStar_Pervasives_Native.Some dir_str) ->
+                    (match json_parse_text_direction dir_str with
+                     | FStar_Pervasives_Native.Some dir_val ->
+                         mk_dir_literal val_str lang_val dir_val
+                     | FStar_Pervasives_Native.None ->
+                         mk_literal val_str RDF_Term.rdf_lang_string
+                           (FStar_Pervasives_Native.Some lang_val))
+                | (FStar_Pervasives_Native.Some lang_val,
+                   FStar_Pervasives_Native.None) ->
                     mk_literal val_str RDF_Term.rdf_lang_string
                       (FStar_Pervasives_Native.Some lang_val)
-                | (FStar_Pervasives_Native.None, FStar_Pervasives_Native.Some
-                   dt_val) ->
-                    mk_literal val_str dt_val FStar_Pervasives_Native.None
-                | (FStar_Pervasives_Native.None,
-                   FStar_Pervasives_Native.None) ->
-                    mk_literal val_str RDF_Term.xsd_string
-                      FStar_Pervasives_Native.None)
+                | (FStar_Pervasives_Native.None, uu___3) ->
+                    (match dt with
+                     | FStar_Pervasives_Native.Some dt_val ->
+                         mk_literal val_str dt_val
+                           FStar_Pervasives_Native.None
+                     | FStar_Pervasives_Native.None ->
+                         mk_literal val_str RDF_Term.xsd_string
+                           FStar_Pervasives_Native.None))
              else
                if typ = "triple"
                then

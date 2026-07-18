@@ -1,28 +1,2 @@
 findlib: [WARNING] Interface digestif.cmi occurs in several directories: /root/.opam/fstar/lib/digestif/c, /root/.opam/fstar/lib/digestif
 ocamlfind: [WARNING] Package `threads': Linking problems may arise because of the missing -thread or -vmthread switch
-/usr/bin/ld: /usr/lib/ocaml/libasmrun.a(unix.n.o): in function `caml_dlopen':
-(.text.caml_dlopen+0x13): warning: Using 'dlopen' in statically linked applications requires at runtime the shared libraries from the glibc version used for linking
-/usr/bin/ld: /usr/lib/ocaml/libunix.a(getgr.o): in function `unix_getgrgid':
-(.text.unix_getgrgid+0x22): warning: Using 'getgrgid' in statically linked applications requires at runtime the shared libraries from the glibc version used for linking
-/usr/bin/ld: /usr/lib/ocaml/libunix.a(getgr.o): in function `unix_getgrnam':
-(.text.unix_getgrnam+0x28): warning: Using 'getgrnam' in statically linked applications requires at runtime the shared libraries from the glibc version used for linking
-/usr/bin/ld: /usr/lib/ocaml/libunix.a(initgroups.o): in function `unix_initgroups':
-(.text.unix_initgroups+0x23): warning: Using 'initgroups' in statically linked applications requires at runtime the shared libraries from the glibc version used for linking
-/usr/bin/ld: /usr/lib/ocaml/libunix.a(getaddrinfo.o): in function `unix_getaddrinfo':
-(.text.unix_getaddrinfo+0x249): warning: Using 'getaddrinfo' in statically linked applications requires at runtime the shared libraries from the glibc version used for linking
-/usr/bin/ld: /usr/lib/ocaml/libunix.a(gethost.o): in function `unix_gethostbyaddr':
-(.text.unix_gethostbyaddr+0x69): warning: Using 'gethostbyaddr_r' in statically linked applications requires at runtime the shared libraries from the glibc version used for linking
-/usr/bin/ld: /usr/lib/ocaml/libunix.a(gethost.o): in function `unix_gethostbyname':
-(.text.unix_gethostbyname+0x71): warning: Using 'gethostbyname_r' in statically linked applications requires at runtime the shared libraries from the glibc version used for linking
-/usr/bin/ld: /usr/lib/ocaml/libunix.a(getproto.o): in function `unix_getprotobynumber':
-(.text.unix_getprotobynumber+0xc): warning: Using 'getprotobynumber' in statically linked applications requires at runtime the shared libraries from the glibc version used for linking
-/usr/bin/ld: /usr/lib/ocaml/libunix.a(getproto.o): in function `unix_getprotobyname':
-(.text.unix_getprotobyname+0x15): warning: Using 'getprotobyname' in statically linked applications requires at runtime the shared libraries from the glibc version used for linking
-/usr/bin/ld: /usr/lib/ocaml/libunix.a(getpw.o): in function `unix_getpwnam':
-(.text.unix_getpwnam+0x28): warning: Using 'getpwnam' in statically linked applications requires at runtime the shared libraries from the glibc version used for linking
-/usr/bin/ld: /usr/lib/ocaml/libunix.a(getpw.o): in function `unix_getpwuid':
-(.text.unix_getpwuid+0x22): warning: Using 'getpwuid' in statically linked applications requires at runtime the shared libraries from the glibc version used for linking
-/usr/bin/ld: /usr/lib/ocaml/libunix.a(getserv.o): in function `unix_getservbyname':
-(.text.unix_getservbyname+0x2c): warning: Using 'getservbyname' in statically linked applications requires at runtime the shared libraries from the glibc version used for linking
-/usr/bin/ld: /usr/lib/ocaml/libunix.a(getserv.o): in function `unix_getservbyport':
-(.text.unix_getservbyport+0x2d): warning: Using 'getservbyport' in statically linked applications requires at runtime the shared libraries from the glibc version used for linking
