@@ -3556,6 +3556,32 @@ let owl_thing_axioms (g : rdf_graph) : rdf_graph =
   predicate_domain_triples @ predicate_range_triples @
   individual_triples @ self_axioms
 
+// OWL 2 RDF-Based Semantics: the built-in annotation properties are
+// axiomatically typed owl:AnnotationProperty (rdfbased-sem-prop-*-type).
+let owl_ann_prop_class : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2002/07/owl#AnnotationProperty");
+  "http://www.w3.org/2002/07/owl#AnnotationProperty"
+let ap_rdfs_comment : wf_iri = assert_norm (is_iri "http://www.w3.org/2000/01/rdf-schema#comment"); "http://www.w3.org/2000/01/rdf-schema#comment"
+let ap_rdfs_label : wf_iri = assert_norm (is_iri "http://www.w3.org/2000/01/rdf-schema#label"); "http://www.w3.org/2000/01/rdf-schema#label"
+let ap_rdfs_seeAlso : wf_iri = assert_norm (is_iri "http://www.w3.org/2000/01/rdf-schema#seeAlso"); "http://www.w3.org/2000/01/rdf-schema#seeAlso"
+let ap_rdfs_isDefinedBy : wf_iri = assert_norm (is_iri "http://www.w3.org/2000/01/rdf-schema#isDefinedBy"); "http://www.w3.org/2000/01/rdf-schema#isDefinedBy"
+let ap_owl_versionInfo : wf_iri = assert_norm (is_iri "http://www.w3.org/2002/07/owl#versionInfo"); "http://www.w3.org/2002/07/owl#versionInfo"
+let ap_owl_deprecated : wf_iri = assert_norm (is_iri "http://www.w3.org/2002/07/owl#deprecated"); "http://www.w3.org/2002/07/owl#deprecated"
+let ap_owl_priorVersion : wf_iri = assert_norm (is_iri "http://www.w3.org/2002/07/owl#priorVersion"); "http://www.w3.org/2002/07/owl#priorVersion"
+let ap_owl_backwardCompatibleWith : wf_iri = assert_norm (is_iri "http://www.w3.org/2002/07/owl#backwardCompatibleWith"); "http://www.w3.org/2002/07/owl#backwardCompatibleWith"
+let ap_owl_incompatibleWith : wf_iri = assert_norm (is_iri "http://www.w3.org/2002/07/owl#incompatibleWith"); "http://www.w3.org/2002/07/owl#incompatibleWith"
+
+let owl_annotation_property_axioms : rdf_graph =
+  [ ({ s = S_IRI ap_rdfs_comment; p = rdf_type; o = T_IRI owl_ann_prop_class } <: triple);
+    ({ s = S_IRI ap_rdfs_label; p = rdf_type; o = T_IRI owl_ann_prop_class } <: triple);
+    ({ s = S_IRI ap_rdfs_seeAlso; p = rdf_type; o = T_IRI owl_ann_prop_class } <: triple);
+    ({ s = S_IRI ap_rdfs_isDefinedBy; p = rdf_type; o = T_IRI owl_ann_prop_class } <: triple);
+    ({ s = S_IRI ap_owl_versionInfo; p = rdf_type; o = T_IRI owl_ann_prop_class } <: triple);
+    ({ s = S_IRI ap_owl_deprecated; p = rdf_type; o = T_IRI owl_ann_prop_class } <: triple);
+    ({ s = S_IRI ap_owl_priorVersion; p = rdf_type; o = T_IRI owl_ann_prop_class } <: triple);
+    ({ s = S_IRI ap_owl_backwardCompatibleWith; p = rdf_type; o = T_IRI owl_ann_prop_class } <: triple);
+    ({ s = S_IRI ap_owl_incompatibleWith; p = rdf_type; o = T_IRI owl_ann_prop_class } <: triple) ]
+
 // Full OWL-RL closure with reflexivity axioms AND Group E universal
 // axioms: first compute the RDFS closure with reflexivity, harvest the
 // Thing/Nothing axioms against the resulting graph, then iterate
@@ -3574,7 +3600,8 @@ let owl_rl_closure_with_reflexivity_mode (g : rdf_graph) (fuel : nat) (mode : st
   let rdfs_closed = rdfs_closure_with_reflexivity g fuel in
   let thing_axioms = owl_thing_axioms rdfs_closed in
   let with_thing = add_triples_if_new rdfs_closed thing_axioms in
-  owl_rl_closure_mode with_thing fuel mode
+  let with_ap = add_triples_if_new with_thing owl_annotation_property_axioms in
+  owl_rl_closure_mode with_ap fuel mode
 
 let owl_rl_closure_with_reflexivity (g : rdf_graph) (fuel : nat) : Tot rdf_graph =
   owl_rl_closure_with_reflexivity_mode g fuel owl_semantics_direct
