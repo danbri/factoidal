@@ -304,6 +304,19 @@ noeq type xctx_item =
   | CI_Text    : path:list int -> ancestors:list xml_node -> parent:xml_node -> text:string -> xctx_item
   | CI_Comment : path:list int -> ancestors:list xml_node -> parent:xml_node -> text:string -> xctx_item
   | CI_PI      : path:list int -> ancestors:list xml_node -> parent:xml_node -> target:string -> data:string -> xctx_item
+  // A namespace node (XPath 1.0 §5.4). Parser.XML has no namespace-node
+  // KIND, so these are synthesised on demand by `namespace_axis` from an
+  // element's in-scope declarations. `element`/`ancestors` are the parent
+  // element and ITS proper ancestors (so parent::/ancestor:: from a
+  // namespace node reach the element and above). `prefix` is the bound
+  // prefix ("" for the default namespace), `uri` the namespace URI. The
+  // node's string-value is `uri`, its name() is `prefix`. Its `path` is
+  // element_path @ [-2; rank]: the -2 marker sorts namespace nodes after
+  // their element and before its attributes (-1) and children, matching
+  // XPath document order, while `rank` fixes OUR implementation-defined
+  // sibling ordering (see inscope_ns_ordered) so doc_sort_dedup -- which
+  // xsl:for-each applies to the selected set -- preserves it.
+  | CI_Namespace : path:list int -> ancestors:list xml_node -> element:xml_node -> prefix:string -> uri:string -> xctx_item
 
 let item_path (it:xctx_item) : list int =
   match it with
@@ -312,6 +325,7 @@ let item_path (it:xctx_item) : list int =
   | CI_Text p _ _ _ -> p
   | CI_Comment p _ _ _ -> p
   | CI_PI p _ _ _ _ -> p
+  | CI_Namespace p _ _ _ _ -> p
 
 // Drop the last element of a path (the parent-of operation on a
 // child path); [] for the root's empty/singleton path.
@@ -416,12 +430,17 @@ let item_ancestors (it:xctx_item) : list xml_node =
   | CI_Text _ anc _ _ -> anc
   | CI_Comment _ anc _ _ -> anc
   | CI_PI _ anc _ _ _ -> anc
+  | CI_Namespace _ anc _ _ _ -> anc
 
 // parent axis: the owner element for an attribute; the immediate
 // ancestor for anything else (empty if already at the document root).
 let parent_axis (it:xctx_item) : list xctx_item =
   match it with
   | CI_Attr p anc owner _ -> [CI_Elem (attr_owner_path p) anc owner]
+  // A namespace node's parent is its element (XPath 1.0 §5.4); the
+  // element sits at attr_owner_path (namespace path ends in [-2; rank],
+  // structurally like an attribute's [-1; j]).
+  | CI_Namespace p anc elem _ _ -> [CI_Elem (attr_owner_path p) anc elem]
   | CI_Elem p anc _ | CI_Text p anc _ _ | CI_Comment p anc _ _ | CI_PI p anc _ _ _ ->
     (match anc with [] -> [] | q :: rest -> [CI_Elem (path_drop_last p) rest q])
 
@@ -432,6 +451,9 @@ let ancestor_axis (it:xctx_item) : list xctx_item =
   | CI_Attr p anc owner _ ->
     let opath = attr_owner_path p in
     CI_Elem opath anc owner :: ancestor_items opath anc
+  | CI_Namespace p anc elem _ _ ->
+    let opath = attr_owner_path p in
+    CI_Elem opath anc elem :: ancestor_items opath anc
   | CI_Elem p anc _ | CI_Text p anc _ _ | CI_Comment p anc _ _ | CI_PI p anc _ _ _ ->
     ancestor_items p anc
 
@@ -461,6 +483,7 @@ let siblings_of (it:xctx_item) : list xctx_item =
      | [] -> []                       // the root has no parent, hence no siblings
      | parent :: grand -> child_items (path_drop_last p) grand parent)
   | CI_Attr _ _ _ _ -> []
+  | CI_Namespace _ _ _ _ _ -> []   // namespace nodes have no siblings (§2.2)
 
 // following-sibling (forward axis, document order).
 let following_sibling_axis (it:xctx_item) : list xctx_item =
@@ -567,6 +590,134 @@ let resolve_ns_uri (pfx:string) (own_attrs:list xml_attribute) (anc:list xml_nod
 let elem_ns_uri (tag:string) (own_attrs:list xml_attribute) (anc:list xml_node) : option string =
   resolve_ns_uri (prefix_of tag) own_attrs anc
 
+(* ================================================================ *)
+(* namespace:: axis (XPath 1.0 §2.2 / §5.4)                          *)
+(*                                                                   *)
+(* An element's namespace nodes are ONE per in-scope binding: its    *)
+(* own xmlns/xmlns:* declarations, plus those inherited from its     *)
+(* ancestors with the nearest declaration winning, plus the always-  *)
+(* present `xml` prefix (Namespaces in XML §3). An explicit unbind    *)
+(* (xmlns="" / xmlns:p="") removes a binding rather than adding one.  *)
+(*                                                                   *)
+(* XPath 1.0 §5.4 leaves the RELATIVE order of an element's          *)
+(* namespace nodes IMPLEMENTATION-DEFINED (as it does for the        *)
+(* attribute axis). We fix a deterministic, documented order so      *)
+(* results are reproducible across runs and platforms:               *)
+(*                                                                   *)
+(*   OUR ORDER: the default-namespace node (prefix "", from xmlns=)  *)
+(*   first when present, then every prefixed binding -- the `xml`     *)
+(*   binding included -- in ascending lexicographic (Unicode         *)
+(*   codepoint) order by prefix.                                     *)
+(*                                                                   *)
+(* This is a conformant choice, not a compatibility failure: a       *)
+(* fixture that pins a DIFFERENT namespace-node order (e.g. a        *)
+(* hash-table traversal order emitted by another processor) pins one *)
+(* implementation's private ordering, which §5.4 does not require any *)
+(* other implementation to reproduce.                                *)
+(* ================================================================ *)
+
+// (prefix, uri) declared by one attribute, if it is a namespace
+// declaration. prefix "" for the default xmlns; uri "" = an unbind.
+let ns_decl_of_attr (a:xml_attribute) : option (string & string) =
+  let n = String.length a.attr_name in
+  if a.attr_name = "xmlns" then Some ("", a.attr_value)
+  else if n >= 6 && string_starts_with a.attr_name "xmlns:" then
+    Some (String.sub a.attr_name 6 (n - 6), a.attr_value)
+  else None
+
+let rec mem_str_e (x:string) (xs:list string) : Tot bool (decreases xs) =
+  match xs with
+  | [] -> false
+  | h :: t -> if h = x then true else mem_str_e x t
+
+// Fold one element's attributes into the in-scope binding set. `seen`
+// records prefixes already resolved by a NEARER element (they win, so
+// a farther declaration of the same prefix is ignored). An unbind
+// (uri = "") marks the prefix seen without adding a binding.
+let rec add_elem_ns (seen:list string) (acc:list (string & string)) (attrs:list xml_attribute)
+  : Tot (list string & list (string & string)) (decreases attrs) =
+  match attrs with
+  | [] -> (seen, acc)
+  | a :: rest ->
+    (match ns_decl_of_attr a with
+     | Some (pfx, uri) ->
+       if mem_str_e pfx seen then add_elem_ns seen acc rest
+       else if uri = "" then add_elem_ns (pfx :: seen) acc rest       // unbind
+       else add_elem_ns (pfx :: seen) (acc @ [(pfx, uri)]) rest
+     | None -> add_elem_ns seen acc rest)
+
+// Walk element-then-ancestors (nearest-first); nearest declaration of
+// each prefix wins.
+let rec collect_ns (seen:list string) (acc:list (string & string)) (nodes:list xml_node)
+  : Tot (list (string & string)) (decreases nodes) =
+  match nodes with
+  | [] -> acc
+  | n :: rest ->
+    let (seen', acc') = add_elem_ns seen acc (element_attrs n) in
+    collect_ns seen' acc' rest
+
+// Lexicographic (Unicode codepoint) compare of two prefixes.
+let rec cp_list_cmp (a b:list FStar.Char.char) : Tot int (decreases a) =
+  match a, b with
+  | [], [] -> 0
+  | [], _ -> -1
+  | _, [] -> 1
+  | x :: xs, y :: ys ->
+    let cx = FStar.Char.int_of_char x in
+    let cy = FStar.Char.int_of_char y in
+    if cx < cy then -1 else if cx > cy then 1 else cp_list_cmp xs ys
+
+let prefix_cmp (a b:string) : int =
+  cp_list_cmp (String.list_of_string a) (String.list_of_string b)
+
+// Our documented sibling order: default namespace ("") first, then all
+// prefixed bindings ascending lexicographic by prefix.
+let ns_binding_leq (a b:(string & string)) : bool =
+  let pa = fst a in let pb = fst b in
+  if pa = "" then true
+  else if pb = "" then false
+  else prefix_cmp pa pb <= 0
+
+let rec ns_insert (x:(string & string)) (l:list (string & string))
+  : Tot (list (string & string)) (decreases l) =
+  match l with
+  | [] -> [x]
+  | y :: ys -> if ns_binding_leq x y then x :: l else y :: ns_insert x ys
+
+let rec ns_sort (l:list (string & string)) : Tot (list (string & string)) (decreases l) =
+  match l with
+  | [] -> []
+  | x :: xs -> ns_insert x (ns_sort xs)
+
+// In-scope namespace bindings of an element, in OUR documented order.
+// The `xml` prefix is appended (as a binding among the prefixed set)
+// unless the element chain already bound it.
+let inscope_ns_ordered (elem:xml_node) (anc:list xml_node) : list (string & string) =
+  let raw = collect_ns [] [] (elem :: anc) in
+  let with_xml =
+    if mem_str_e "xml" (List.Tot.map fst raw) then raw
+    else raw @ [("xml", xpath_xml_ns_uri)]
+  in
+  ns_sort with_xml
+
+// Materialise the ordered bindings as CI_Namespace items. Rank `k`
+// becomes the last path component (elem_path @ [-2; k]) so document-
+// order sorting (doc_sort_dedup, applied by xsl:for-each) preserves
+// OUR order rather than re-sorting the nodes arbitrarily.
+let rec ns_items (p:list int) (anc:list xml_node) (elem:xml_node)
+                 (bs:list (string & string)) (k:nat)
+  : Tot (list xctx_item) (decreases bs) =
+  match bs with
+  | [] -> []
+  | (pfx, uri) :: rest ->
+    CI_Namespace (p @ [(-2); k]) anc elem pfx uri :: ns_items p anc elem rest (k + 1)
+
+// namespace:: axis: only element nodes have namespace nodes.
+let namespace_axis (it:xctx_item) : list xctx_item =
+  match it with
+  | CI_Elem p anc n -> ns_items p anc n (inscope_ns_ordered n anc) 0
+  | _ -> []
+
 let rec lookup_nsctx (nsctx:list (string & string)) (pfx:string)
   : Tot (option string) (decreases nsctx) =
   match nsctx with
@@ -632,10 +783,17 @@ let matches_node_test (nsctx:list (string & string)) (test:xp_nodetest) (it:xctx
   | NT_PI _, _ -> false
   | NT_Any, CI_Elem _ _ _ -> true
   | NT_Any, CI_Attr _ _ _ _ -> true
+  // `namespace::*` -- namespace is the axis's principal node type, so a
+  // bare wildcard matches every namespace node.
+  | NT_Any, CI_Namespace _ _ _ _ _ -> true
   | NT_Any, _ -> false
   | NT_Name nm, CI_Elem _ anc n ->
     (match element_tag n with Some t -> name_test_matches_elem nsctx nm (element_attrs n) anc t | None -> false)
   | NT_Name nm, CI_Attr _ anc owner a -> attr_name_test nsctx nm anc owner a
+  // `namespace::pfx` matches the namespace node whose name (its bound
+  // prefix) equals the test's local part (a namespace-node test is
+  // never itself namespaced, XPath 1.0 §2.3).
+  | NT_Name nm, CI_Namespace _ _ _ pfx _ -> nm = pfx
   | NT_Name _, _ -> false
   | NT_Prefix pfx, CI_Elem _ anc n ->
     (match element_tag n with Some t -> prefix_test_matches_elem nsctx pfx (element_attrs n) anc t | None -> false)
@@ -661,6 +819,7 @@ let root_of_item (it:xctx_item) : xml_node =
     | CI_Text _ _ parent _ -> parent
     | CI_Comment _ _ parent _ -> parent
     | CI_PI _ _ parent _ _ -> parent
+    | CI_Namespace _ _ elem _ _ -> elem
   in
   list_last_or self_node (item_ancestors it)
 
@@ -729,6 +888,7 @@ let apply_axis (ax:xp_axis) (it:xctx_item) : list xctx_item =
   | Ax_PrecedingSibling -> preceding_sibling_axis it
   | Ax_Following -> following_axis it
   | Ax_Preceding -> preceding_axis it
+  | Ax_Namespace -> namespace_axis it
 
 
 (* ================================================================ *)
@@ -795,6 +955,7 @@ let item_string_value (it:xctx_item) : string =
   | CI_Text _ _ _ t -> t
   | CI_Comment _ _ _ t -> t
   | CI_PI _ _ _ _ d -> d
+  | CI_Namespace _ _ _ _ uri -> uri   // §5.4: string-value = the URI
 
 // String-value of a node-SET: the string-value of the node "first in
 // document order" (§1.1). Simplification, disclosed in the program
@@ -980,6 +1141,7 @@ let item_qname (it:xctx_item) : string =
   | CI_Elem _ _ n -> (match element_tag n with Some t -> t | None -> "")
   | CI_Attr _ _ _ a -> a.attr_name
   | CI_PI _ _ _ tg _ -> tg   // name()/local-name() of a PI is its target
+  | CI_Namespace _ _ _ pfx _ -> pfx   // name()/local-name() = the bound prefix
   | _ -> ""
 
 // namespace-uri() of a node (XPath 1.0 §4.1): the namespace URI of the

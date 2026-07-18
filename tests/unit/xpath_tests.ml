@@ -83,6 +83,19 @@ let fixture_c = doc_of "<nums><n v=\"3\"/><n v=\"7\"/><n v=\"10\"/></nums>"
    PI string-value / name() tests. *)
 let fixture_d = doc_of "<doc><?pi-target pi data?><a>x</a><?other more?></doc>"
 
+(* FIXTURE_NS: real xmlns declarations for the namespace:: axis. root
+   declares a default namespace plus two prefixes; child inherits them.
+   In-scope on either element: "" (default), a, b, and the always-bound
+   xml prefix. Our documented namespace-node order (XPath.Eval.
+   inscope_ns_ordered) is: default first, then prefixes ascending
+   lexicographic (xml included) -> ["", a, b, xml]. *)
+let fixture_ns = doc_of
+  "<root xmlns=\"http://default.example/\" \
+         xmlns:b=\"http://b.example/\" \
+         xmlns:a=\"http://a.example/\">\
+     <child/>\
+   </root>"
+
 let () =
   (* --- §2.2 child axis (default) --- *)
   check ~name:"§2.2 child axis count" "3" (str fixture_a "count(/root/child)");
@@ -268,10 +281,47 @@ let () =
   check ~name:"§3.4 relational node-set coercion (>=)" "2"
     (str fixture_c "count(/nums/n[@v >= 7])");
 
-  (* --- namespace axis remains deferred (clean parse failure), and an
-     unknown function still parses (no crash) --- *)
-  check_bool ~name:"namespace axis is deferred: clean parse failure" true
+  (* --- §2.2 namespace:: axis (one node per in-scope binding) ---
+     fixture_ns declares a DEFAULT namespace, so its <root>/<child> are
+     in that namespace and an unprefixed name test (/root) correctly does
+     NOT match them (XPath 1.0 §2.3: unprefixed = null namespace). These
+     cases therefore select the element with the namespace-agnostic
+     wildcard `*`. *)
+  (* The namespace axis now parses (previously deferred). *)
+  check_bool ~name:"§2.2 namespace:: axis parses (no longer deferred)" false
     (parse_fails "namespace::*");
+  (* In-scope on root: "" (default), a, b, xml -> 4 namespace nodes. *)
+  check ~name:"§2.2 namespace axis: count of in-scope namespace nodes" "4"
+    (str fixture_ns "count(/*/namespace::node())");
+  (* The xml prefix is always bound (Namespaces in XML §3). *)
+  check ~name:"§2.2 namespace axis: xml prefix is always in scope"
+    "http://www.w3.org/XML/1998/namespace"
+    (str fixture_ns "string(/*/namespace::xml)");
+  (* A prefixed namespace-node name test selects that binding; its
+     string-value (§5.4) is the namespace URI. *)
+  check ~name:"§5.4 namespace node string-value is its URI" "http://a.example/"
+    (str fixture_ns "string(/*/namespace::a)");
+  (* name()/local-name() of a namespace node is its bound prefix. *)
+  check ~name:"§5.4 namespace node name() is its prefix" "b"
+    (str fixture_ns "name(/*/namespace::b)");
+  (* Our documented order: the default-namespace node sorts first and has
+     an empty name. *)
+  check ~name:"our order: default namespace node sorts first (empty name)" ""
+    (str fixture_ns "name(/*/namespace::node()[1])");
+  (* Then prefixes ascending lexicographic, xml included: "", a, b, xml. *)
+  check ~name:"our order: first prefixed node after default is 'a'" "a"
+    (str fixture_ns "name(/*/namespace::node()[2])");
+  check ~name:"our order: xml sorts last here (after a, b)" "xml"
+    (str fixture_ns "name(/*/namespace::node()[4])");
+  (* A child inherits its ancestors' in-scope namespaces. *)
+  check ~name:"§2.2 namespace axis: child inherits ancestor namespaces" "4"
+    (str fixture_ns "count(/*/*/namespace::node())");
+  (* namespace::* matches every namespace node (namespace is the axis's
+     principal node type); node()/@* wildcards are a different type. *)
+  check ~name:"§2.2 namespace::* wildcard matches all namespace nodes" "4"
+    (str fixture_ns "count(/*/namespace::*)");
+
+  (* --- an unknown function still parses (no crash) --- *)
   check_bool ~name:"'id(\"x\")' (unknown function) does not crash the parser" false
     (parse_fails "id(\"x\")");
 

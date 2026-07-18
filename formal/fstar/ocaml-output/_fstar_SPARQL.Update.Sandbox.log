@@ -1,17 +1,18 @@
-* Warning 241 at RDF.Graph.fsti(0,0-0,0):
-  - Unable to load RDF.Graph.fsti.checked since checked file
-    RDF.Graph.fsti.checked is stale (digest mismatch for RDF.Graph.fsti); will
-    recheck RDF.Graph.fsti (suppressing this warning for further modules)
+* Warning 241 at RDF.IRI.fsti(0,0-0,0):
+  - Unable to load RDF.IRI.fsti.checked since checked file RDF.IRI.fsti.checked
+    is stale (dependence hash mismatch, use --debug CheckedFiles for more
+    details); will recheck RDF.IRI.fsti (suppressing this warning for further
+    modules)
 
-* Warning 361 at SPARQL11.Algebra.fst(7627,0-7628,40):
+* Warning 361 at SPARQL11.Algebra.fst(7818,0-7819,40):
   - Some #push-options have not been popped. Current depth is 1.
 
 Extracted module SPARQL.Update.Sandbox
 * Warning 247 at SPARQL.Update.Sandbox.fst(0,0-0,0):
   - Checked file SPARQL.Update.Sandbox.fst.checked was not written.
   - Reason:
-      checked file RDF.Graph.Executable.fst.checked is stale (digest mismatch
-      for RDF.Graph.Executable.fst)
+      checked file SPARQL11.Algebra.fst.checked is stale (digest mismatch for
+      SPARQL11.Algebra.fst)
 
 Verified module: SPARQL.Update.Sandbox
 All verification conditions discharged successfully

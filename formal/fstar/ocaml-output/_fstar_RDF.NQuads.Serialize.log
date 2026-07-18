@@ -1,14 +1,3 @@
-* Warning 241 at RDF.Graph.fsti(0,0-0,0):
-  - Unable to load RDF.Graph.fsti.checked since checked file
-    RDF.Graph.fsti.checked is stale (digest mismatch for RDF.Graph.fsti); will
-    recheck RDF.Graph.fsti (suppressing this warning for further modules)
-
 Extracted module RDF.NQuads.Serialize
-* Warning 247 at RDF.NQuads.Serialize.fst(0,0-0,0):
-  - Checked file RDF.NQuads.Serialize.fst.checked was not written.
-  - Reason:
-      checked file Parser.NTriples.fst.checked is stale (digest mismatch for
-      Parser.NTriples.fst)
-
 Verified module: RDF.NQuads.Serialize
 All verification conditions discharged successfully

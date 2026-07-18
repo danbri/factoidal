@@ -49,10 +49,15 @@ type xp_axis =
   | Ax_Attribute
   | Ax_Ancestor | Ax_AncestorOrSelf
   // Forward and reverse sibling / document-order axes (XPath 1.0 §2.2),
-  // previously deferred to "Stage 1.5". `namespace` remains deferred:
-  // Parser.XML does not model namespace nodes as a distinct node kind.
+  // previously deferred to "Stage 1.5".
   | Ax_Following | Ax_Preceding
   | Ax_FollowingSibling | Ax_PrecedingSibling
+  // namespace axis (XPath 1.0 §2.2): one namespace node per in-scope
+  // binding of the context element. Parser.XML has no namespace-node
+  // KIND, so XPath.Eval synthesises namespace nodes (CI_Namespace) from
+  // the element's in-scope declarations at eval time -- see the
+  // namespace_axis / inscope_ns_ordered banner in XPath.Eval.fst.
+  | Ax_Namespace
 
 // NT_Name carries the full tag/attribute-name string as stored by
 // Parser.XML's xml_node (which does not split QNames — "rdf:Description"
@@ -278,7 +283,8 @@ let axis_of_name (name:string) : option xp_axis =
   else if name = "preceding" then Some Ax_Preceding
   else if name = "following-sibling" then Some Ax_FollowingSibling
   else if name = "preceding-sibling" then Some Ax_PrecedingSibling
-  else None // namespace: deferred (Parser.XML has no namespace-node kind)
+  else if name = "namespace" then Some Ax_Namespace
+  else None
 
 let is_nodetype_keyword (name:string) : bool =
   name = "text" || name = "comment" || name = "node" || name = "processing-instruction"

@@ -1,14 +1,29 @@
-    OWL.QueryEval.fst (up to date, skipped -- source unchanged since last extract)
-    SHACL.Validation.fst (up to date, skipped -- source unchanged since last extract)
-    RIF.Core.Builtins.fst (up to date, skipped -- source unchanged since last extract)
-    XForms.Bind.fst (up to date, skipped -- source unchanged since last extract)
-    ShEx.Validation.fst (up to date, skipped -- source unchanged since last extract)
-    JSONLD.Compact.fst (up to date, skipped -- source unchanged since last extract)
-    VC.Credential.fst (up to date, skipped -- source unchanged since last extract)
-    Parser.BallyhooHDT.fst (up to date, skipped -- source unchanged since last extract)
-    CSVW.Conversion.fst (up to date, skipped -- source unchanged since last extract)
-    RML.VirtualSource.fst (up to date, skipped -- source unchanged since last extract)
-    SPARQL.Explain.fst (up to date, skipped -- source unchanged since last extract)
-    RDF.CottasStore.fst (up to date, skipped -- source unchanged since last extract)
-    RDF.Store.Capabilities.Delta.fst (up to date, skipped -- source unchanged since last extract)
-    SPARQL.Service.Wrap.fst (up to date, skipped -- source unchanged since last extract)
+    [OWL.QueryEval.fst]
+    [RIF.Core.Builtins.fst]
+    [XForms.Bind.fst]
+    [SHACL.Validation.fst]
+    [OWL.QueryEval.fst] Extracted module OWL.QueryEval
+    [JSONLD.Compact.fst]
+    [XForms.Bind.fst] Extracted module XForms.Bind
+    [ShEx.Validation.fst]
+    [RIF.Core.Builtins.fst] Extracted module RIF.Core.Builtins
+    [VC.Credential.fst]
+    [VC.Credential.fst] Extracted module VC.Credential
+    [CSVW.Conversion.fst]
+    [JSONLD.Compact.fst] Extracted module JSONLD.Compact
+    [Parser.BallyhooHDT.fst]
+    [Parser.BallyhooHDT.fst] Extracted module Parser.BallyhooHDT
+    [RDF.CottasStore.fst]
+    [RDF.CottasStore.fst] Extracted module RDF.CottasStore
+    [RDF.Store.Capabilities.Delta.fst]
+    [CSVW.Conversion.fst] Extracted module CSVW.Conversion
+    [RML.VirtualSource.fst]
+    [RDF.Store.Capabilities.Delta.fst] Extracted module RDF.Store.Capabilities.Delta
+    [SPARQL.Explain.fst]
+    [RML.VirtualSource.fst] Extracted module RML.VirtualSource
+    [SPARQL.Service.Wrap.fst]
+    [SHACL.Validation.fst] Extracted module SHACL.Validation
+    [SPARQL.Explain.fst] Extracted module SPARQL.Explain
+    [ShEx.Validation.fst]     potential errors, although the original non-split verification condition
+    [ShEx.Validation.fst] Extracted module ShEx.Validation
+    [SPARQL.Service.Wrap.fst] Extracted module SPARQL.Service.Wrap

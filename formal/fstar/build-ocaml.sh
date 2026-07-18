@@ -989,6 +989,18 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
     "$BINDIR/vc_runner"
     "$BINDIR/did_runner"
     "$BINDIR/cottas_ondisk_smoketest"
+    # Consumer runners that are built in the block below but were missing
+    # from this change-detection list: a change to their bin/<name>/*.ml
+    # source would stale-skip the whole native rebuild (the sources ARE in
+    # NATIVE_SOURCES, but with no matching target the mtime check never
+    # fires). Adding them keeps consumer-runner edits from silently landing
+    # a stale binary. See workflow-gotchas-debugging hazard on this.
+    "$BINDIR/xslt_runner"
+    "$BINDIR/schematron_runner"
+    "$BINDIR/jsonschema_runner"
+    "$BINDIR/mathml_runner"
+    "$BINDIR/shex_runner"
+    "$BINDIR/rif_runner"
   )
   NATIVE_SOURCES=(
     $COMMON_MODULES

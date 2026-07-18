@@ -253,6 +253,7 @@ let item_self_label (it:xctx_item) : string =
   | CI_Text _ _ _ _ -> "text()"
   | CI_Comment _ _ _ _ -> "comment()"
   | CI_PI _ _ _ tg _ -> strcat "processing-instruction()::" tg
+  | CI_Namespace _ _ _ pfx _ -> strcat "namespace::" pfx
 
 let item_path (it:xctx_item) : string =
   let anc = List.Tot.rev (ancestor_tags_of it) in  // ancestor_tags_of: nearest-first; rev => root-first

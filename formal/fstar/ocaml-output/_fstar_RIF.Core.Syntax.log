@@ -1,14 +1,3 @@
-* Warning 241 at RDF.Graph.fsti(0,0-0,0):
-  - Unable to load RDF.Graph.fsti.checked since checked file
-    RDF.Graph.fsti.checked is stale (digest mismatch for RDF.Graph.fsti); will
-    recheck RDF.Graph.fsti (suppressing this warning for further modules)
-
 Extracted module RIF.Core.Syntax
-* Warning 247 at RIF.Core.Syntax.fst(0,0-0,0):
-  - Checked file RIF.Core.Syntax.fst.checked was not written.
-  - Reason:
-      checked file RDF.Graph.Executable.fst.checked is stale (digest mismatch
-      for RDF.Graph.Executable.fst)
-
 Verified module: RIF.Core.Syntax
 All verification conditions discharged successfully

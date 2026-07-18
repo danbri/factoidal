@@ -316,6 +316,10 @@ let item_to_rnode (it:xctx_item) : rnode =
   | CI_Comment _ _ _ t -> R_Node (XComment t)
   | CI_PI _ _ _ tg d -> R_Node (XPI tg d)
   | CI_Attr _ _ _ a -> R_Attr a
+  // A namespace node copied directly (e.g. copy-of of a namespace::
+  // selection) serialises as its namespace declaration.
+  | CI_Namespace _ _ _ pfx uri ->
+    R_Attr ({ attr_name = (if pfx = "" then "xmlns" else strcat "xmlns:" pfx); attr_value = uri })
 
 (* ================================================================ *)
 (* Driver node: any real tree node (an xctx_item, which carries its    *)
@@ -1357,6 +1361,9 @@ and builtin_rule (fuel:nat) (st:xstyle) (nd:dnode) (mode:string) : Tot (list rno
     | D_Item (CI_Attr _ _ _ a) -> [R_Node (XText a.attr_value)]
     | D_Item (CI_Comment _ _ _ _) -> []
     | D_Item (CI_PI _ _ _ _ _) -> []
+    // XSLT 1.0 built-in template rules match only text and attribute
+    // nodes; namespace nodes produce nothing.
+    | D_Item (CI_Namespace _ _ _ _ _) -> []
 
 // Apply templates (in the active mode) to a list of driver nodes,
 // threading 1-based position and the common size.
@@ -1661,6 +1668,9 @@ and instantiate_copy (fuel:nat) (st:xstyle) (ctx:dnode) (pos size:nat)
     | D_Item (CI_Comment _ _ _ t) -> [R_Node (XComment t)]
     | D_Item (CI_PI _ _ _ tg d) -> [R_Node (XPI tg d)]
     | D_Item (CI_Attr _ _ _ a) -> [R_Attr a]
+    // xsl:copy of a namespace node copies its namespace declaration.
+    | D_Item (CI_Namespace _ _ _ pfx uri) ->
+      [R_Attr ({ attr_name = (if pfx = "" then "xmlns" else strcat "xmlns:" pfx); attr_value = uri })]
 
 and for_each_items (fuel:nat) (st:xstyle) (body:list xml_node)
                    (vars:list (string & xp_value)) (rtf:list (string & list rnode))

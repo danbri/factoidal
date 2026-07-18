@@ -1,8 +1,8 @@
-* Warning 241 at RDF.Graph.Executable.fst(0,0-0,0):
-  - Unable to load RDF.Graph.Executable.fst.checked since checked file
-    RDF.Graph.Executable.fst.checked is stale (digest mismatch for
-    RDF.Graph.Executable.fst); will recheck RDF.Graph.Executable.fst
-    (suppressing this warning for further modules)
+* Warning 241 at RDF.IRI.fsti(0,0-0,0):
+  - Unable to load RDF.IRI.fsti.checked since checked file RDF.IRI.fsti.checked
+    is stale (dependence hash mismatch, use --debug CheckedFiles for more
+    details); will recheck RDF.IRI.fsti (suppressing this warning for further
+    modules)
 
 * Warning 328 at Parser.Turtle.fst(2057,4-2057,21):
   - Global binding
