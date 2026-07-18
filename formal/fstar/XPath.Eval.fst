@@ -882,6 +882,49 @@ let resolve_ns_uri (pfx:string) (own_attrs:list xml_attribute) (anc:list xml_nod
 let elem_ns_uri (tag:string) (own_attrs:list xml_attribute) (anc:list xml_node) : option string =
   resolve_ns_uri (prefix_of tag) own_attrs anc
 
+(* ---- lang() support: xml:lang inheritance (XPath 1.0 §4.3) -------- *)
+
+// Nearest-first walk of an ancestor chain looking for the first element
+// bearing an xml:lang attribute. Mirrors resolve_ns_anc's "own attrs,
+// then ancestors, nearest wins" shape, keyed on the literal attribute
+// name (the project's existing xml:lang/xml:base convention -- see
+// Parser.RDFXML.fst's `find_attr "xml:lang" attrs` -- rather than a
+// namespace-URI-resolved lookup).
+let rec xml_lang_anc (anc:list xml_node) : Tot (option string) (decreases anc) =
+  match anc with
+  | [] -> None
+  | e :: rest ->
+    (match find_attr "xml:lang" (element_attrs e) with
+     | Some v -> Some v
+     | None -> xml_lang_anc rest)
+
+// The in-scope xml:lang for an xctx_item: its own element's xml:lang (or
+// the owning/containing element's, for attribute/text/comment/PI/
+// namespace items -- same per-constructor dispatch as ancestor_axis/
+// parent_axis), falling back to the nearest ancestor that declares one.
+// None = no xml:lang in scope anywhere on the ancestor-or-self path, so
+// lang() is false for any argument.
+let item_xml_lang (it:xctx_item) : option string =
+  match it with
+  | CI_Elem _ anc n ->
+    (match find_attr "xml:lang" (element_attrs n) with Some v -> Some v | None -> xml_lang_anc anc)
+  | CI_Attr _ anc owner _ ->
+    (match find_attr "xml:lang" (element_attrs owner) with Some v -> Some v | None -> xml_lang_anc anc)
+  | CI_Text _ anc parent _ | CI_Comment _ anc parent _ | CI_PI _ anc parent _ _ ->
+    (match find_attr "xml:lang" (element_attrs parent) with Some v -> Some v | None -> xml_lang_anc anc)
+  | CI_Namespace _ anc elem _ _ ->
+    (match find_attr "xml:lang" (element_attrs elem) with Some v -> Some v | None -> xml_lang_anc anc)
+
+// XPath 1.0 §4.3 lang(string): true iff `node_lang` equals `arg`
+// case-insensitively, or has `arg` as a case-insensitive sublanguage
+// prefix delimited by '-' (node "en-US" matches arg "en" but arg
+// "en-GB" does not match node "en-US" -- prefix matching runs only
+// node-extends-arg, never the reverse).
+let lang_matches (node_lang:string) (arg:string) : bool =
+  let nl = FStar.String.lowercase node_lang in
+  let al = FStar.String.lowercase arg in
+  nl = al || string_starts_with nl (al ^ "-")
+
 (* ================================================================ *)
 (* namespace:: axis (XPath 1.0 §2.2 / §5.4)                          *)
 (*                                                                   *)
@@ -1620,7 +1663,7 @@ let is_supported_xpath_function (nm:string) : bool =
   nm = "contains" || nm = "starts-with" ||
   nm = "substring-before" || nm = "substring-after" || nm = "substring" ||
   nm = "string-length" || nm = "normalize-space" || nm = "translate" ||
-  nm = "not" || nm = "true" || nm = "false" || nm = "boolean" ||
+  nm = "not" || nm = "true" || nm = "false" || nm = "boolean" || nm = "lang" ||
   nm = "number" || nm = "sum" || nm = "floor" || nm = "ceiling" || nm = "round" ||
   nm = "id" || nm = "document" || nm = "format-number" ||
   nm = "key" || nm = "generate-id"
@@ -2041,6 +2084,18 @@ and eval_funcall (fuel:nat) (env:xp_env) (name:string) (args:list xp_expr)
     else if name = "false" then XV_Bool false
     else if name = "boolean" then
       (match args with [a] -> XV_Bool (to_bool_val (eval_expr (fuel - 1) env a)) | _ -> XV_Bool false)
+    else if name = "lang" then
+      // XPath 1.0 lang(string) (§4.3): true iff the context node's
+      // xml:lang (inherited ancestor-or-self, nearest wins -- item_xml_lang)
+      // equals the argument or has it as a case-insensitive sublanguage
+      // prefix (lang_matches). No argument / no in-scope xml:lang: false.
+      (match args with
+       | [a] ->
+         let arg = to_string_val (eval_expr (fuel - 1) env a) in
+         (match item_xml_lang env.env_item with
+          | Some nl -> XV_Bool (lang_matches nl arg)
+          | None -> XV_Bool false)
+       | _ -> XV_Bool false)
     else if name = "number" then
       (match args with
        | [] -> XV_Num (to_number_val (XV_Str (item_string_value env.env_item)))

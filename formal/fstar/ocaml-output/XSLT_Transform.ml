@@ -3153,35 +3153,51 @@ let rec build_nsctx (attrs : Parser_XML.xml_attribute Prims.list) :
        | FStar_Pervasives_Native.Some pfx -> (pfx, (a.Parser_XML.attr_value))
            :: (build_nsctx rest)
        | FStar_Pervasives_Native.None -> build_nsctx rest)
-let rec collect_globals (pfx : Prims.string)
-  (nsctx : (Prims.string * Prims.string) Prims.list)
-  (decfmts : XPath_Eval.decimal_format_symbols Prims.list)
+let rec collect_globals (fuel : Prims.nat) (st : xstyle)
   (children : Parser_XML.xml_node Prims.list) (source : Parser_XML.xml_node)
   (doc_kids : Parser_XML.xml_node Prims.list) :
   (Prims.string * XPath_Eval.xp_value) Prims.list=
-  match children with
-  | [] -> []
-  | hd::tl ->
-      (match hd with
-       | Parser_XML.XElement (tag, attrs, uu___) ->
-           if
-             (is_xsl pfx tag) &&
-               (let ln = xsl_instr pfx tag in
-                (ln = "variable") || (ln = "param"))
-           then
-             (match ((attr_opt "select" attrs), (attr_opt "name" attrs)) with
-              | (FStar_Pervasives_Native.Some sel,
-                 FStar_Pervasives_Native.Some nm) ->
-                  let v =
-                    eval_val_dn (D_Doc (source, doc_kids)) Prims.int_one
-                      Prims.int_one [] nsctx [] XPath_Eval.xnode_none decfmts
-                      [] sel in
-                  (nm, v) ::
-                    (collect_globals pfx nsctx decfmts tl source doc_kids)
-              | (uu___1, uu___2) ->
-                  collect_globals pfx nsctx decfmts tl source doc_kids)
-           else collect_globals pfx nsctx decfmts tl source doc_kids
-       | uu___ -> collect_globals pfx nsctx decfmts tl source doc_kids)
+  if fuel = Prims.int_zero
+  then []
+  else
+    (match children with
+     | [] -> []
+     | hd::tl ->
+         (match hd with
+          | Parser_XML.XElement (tag, attrs, body) ->
+              if
+                (is_xsl st.xs_pfx tag) &&
+                  (let ln = xsl_instr st.xs_pfx tag in
+                   (ln = "variable") || (ln = "param"))
+              then
+                (match ((attr_opt "select" attrs), (attr_opt "name" attrs))
+                 with
+                 | (FStar_Pervasives_Native.Some sel,
+                    FStar_Pervasives_Native.Some nm) ->
+                     let v =
+                       eval_val_dn (D_Doc (source, doc_kids)) Prims.int_one
+                         Prims.int_one [] st.xs_nsctx st.xs_id_attrs
+                         XPath_Eval.xnode_none st.xs_decfmts [] sel in
+                     (nm, v) ::
+                       (collect_globals (fuel - Prims.int_one) st tl source
+                          doc_kids)
+                 | (FStar_Pervasives_Native.None,
+                    FStar_Pervasives_Native.Some nm) ->
+                     let frag =
+                       instantiate_seq (fuel - Prims.int_one) st
+                         (D_Doc (source, doc_kids)) Prims.int_one
+                         Prims.int_one [] [] "" Prims.int_zero body in
+                     let sval = text_value_nodes (only_nodes frag) in
+                     (nm, (XPath_Eval.XV_Str sval)) ::
+                       (collect_globals (fuel - Prims.int_one) st tl source
+                          doc_kids)
+                 | (uu___1, uu___2) ->
+                     collect_globals (fuel - Prims.int_one) st tl source
+                       doc_kids)
+              else
+                collect_globals (fuel - Prims.int_one) st tl source doc_kids
+          | uu___1 ->
+              collect_globals (fuel - Prims.int_one) st tl source doc_kids))
 let parse_prefix_list (s : Prims.string) : Prims.string Prims.list=
   FStar_List_Tot_Base.map (fun p -> if p = "#default" then "" else p)
     (FStar_List_Tot_Base.filter (fun p -> p <> "")
@@ -3404,27 +3420,47 @@ let build_style_from_units
         build_key_table nsctx id_attrs root_node decfmts key_decls
           (XPath_Eval.all_document_items
              (XPath_Eval.CI_Elem ([], [], source))) in
+  let st0 =
+    {
+      xs_pfx = root_pfx;
+      xs_templates =
+        (FStar_List_Tot_Base.concatMap
+           (fun pc ->
+              collect_templates_prec root_pfx
+                (FStar_Pervasives_Native.fst pc)
+                (FStar_Pervasives_Native.snd pc)) units);
+      xs_attrsets = (collect_attribute_sets root_pfx all_children_desc);
+      xs_method =
+        (if out_settings.os_method_raw = "text" then "text" else "xml");
+      xs_output_present = (any_output_decl root_pfx all_children_desc);
+      xs_output = out_settings;
+      xs_globals = [];
+      xs_nsscope = (build_nsscope root_attrs);
+      xs_nsctx = nsctx;
+      xs_id_attrs = id_attrs;
+      xs_style_root = root_node;
+      xs_decfmts = decfmts;
+      xs_key_table = key_table
+    } in
+  let gfuel =
+    ((Prims.of_int (4)) *
+       ((XPath_Eval.xml_nodes_count all_children_desc) + Prims.int_one))
+      + (Prims.of_int (1000)) in
   {
-    xs_pfx = root_pfx;
-    xs_templates =
-      (FStar_List_Tot_Base.concatMap
-         (fun pc ->
-            collect_templates_prec root_pfx (FStar_Pervasives_Native.fst pc)
-              (FStar_Pervasives_Native.snd pc)) units);
-    xs_attrsets = (collect_attribute_sets root_pfx all_children_desc);
-    xs_method =
-      (if out_settings.os_method_raw = "text" then "text" else "xml");
-    xs_output_present = (any_output_decl root_pfx all_children_desc);
-    xs_output = out_settings;
+    xs_pfx = (st0.xs_pfx);
+    xs_templates = (st0.xs_templates);
+    xs_attrsets = (st0.xs_attrsets);
+    xs_method = (st0.xs_method);
+    xs_output_present = (st0.xs_output_present);
+    xs_output = (st0.xs_output);
     xs_globals =
-      (collect_globals root_pfx nsctx decfmts all_children_desc source
-         doc_kids);
-    xs_nsscope = (build_nsscope root_attrs);
-    xs_nsctx = nsctx;
-    xs_id_attrs = id_attrs;
-    xs_style_root = root_node;
-    xs_decfmts = decfmts;
-    xs_key_table = key_table
+      (collect_globals gfuel st0 all_children_desc source doc_kids);
+    xs_nsscope = (st0.xs_nsscope);
+    xs_nsctx = (st0.xs_nsctx);
+    xs_id_attrs = (st0.xs_id_attrs);
+    xs_style_root = (st0.xs_style_root);
+    xs_decfmts = (st0.xs_decfmts);
+    xs_key_table = (st0.xs_key_table)
   }
 let build_style (stylesheet : Parser_XML.xml_node)
   (source : Parser_XML.xml_node) (doc_kids : Parser_XML.xml_node Prims.list)
@@ -3449,22 +3485,41 @@ let build_style (stylesheet : Parser_XML.xml_node)
               build_key_table nsctx id_attrs stylesheet decfmts key_decls
                 (XPath_Eval.all_document_items
                    (XPath_Eval.CI_Elem ([], [], source))) in
+        let st0 =
+          {
+            xs_pfx = pfx;
+            xs_templates = (collect_templates pfx children);
+            xs_attrsets = (collect_attribute_sets pfx children);
+            xs_method =
+              (if out_settings.os_method_raw = "text" then "text" else "xml");
+            xs_output_present = (any_output_decl pfx children);
+            xs_output = out_settings;
+            xs_globals = [];
+            xs_nsscope = (build_nsscope attrs);
+            xs_nsctx = nsctx;
+            xs_id_attrs = id_attrs;
+            xs_style_root = stylesheet;
+            xs_decfmts = decfmts;
+            xs_key_table = key_table
+          } in
+        let gfuel =
+          ((Prims.of_int (4)) *
+             ((XPath_Eval.xml_nodes_count children) + Prims.int_one))
+            + (Prims.of_int (1000)) in
         {
-          xs_pfx = pfx;
-          xs_templates = (collect_templates pfx children);
-          xs_attrsets = (collect_attribute_sets pfx children);
-          xs_method =
-            ((if out_settings.os_method_raw = "text" then "text" else "xml"));
-          xs_output_present = (any_output_decl pfx children);
-          xs_output = out_settings;
-          xs_globals =
-            (collect_globals pfx nsctx decfmts children source doc_kids);
-          xs_nsscope = (build_nsscope attrs);
-          xs_nsctx = nsctx;
-          xs_id_attrs = id_attrs;
-          xs_style_root = stylesheet;
-          xs_decfmts = decfmts;
-          xs_key_table = key_table
+          xs_pfx = (st0.xs_pfx);
+          xs_templates = (st0.xs_templates);
+          xs_attrsets = (st0.xs_attrsets);
+          xs_method = (st0.xs_method);
+          xs_output_present = (st0.xs_output_present);
+          xs_output = (st0.xs_output);
+          xs_globals = (collect_globals gfuel st0 children source doc_kids);
+          xs_nsscope = (st0.xs_nsscope);
+          xs_nsctx = (st0.xs_nsctx);
+          xs_id_attrs = (st0.xs_id_attrs);
+          xs_style_root = (st0.xs_style_root);
+          xs_decfmts = (st0.xs_decfmts);
+          xs_key_table = (st0.xs_key_table)
         }
       else
         {
