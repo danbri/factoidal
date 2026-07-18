@@ -2323,6 +2323,50 @@ let numeric_compare (a b : eval_result) : option int =
     Some (int_compare nv1 nv2)
   | _, _ -> None
 
+// Promote a literal to the numeric eval_result kind it denotes, exactly
+// like E_Var's variable-lookup promotion above — needed so a triple
+// term's literal OBJECT component compares by VALUE, not lexical form
+// (RDF 1.2 op:triple term equality, SPARQL 1.2 eval-triple-terms/op-2
+// "value-equality": `<<(:a :b 123)>> = <<(:a :b 123.0)>>` must hold).
+let literal_promote (l : wf_literal) : eval_result =
+  if lit_datatype l = xsd_integer then
+    (match parse_int_string (lit_lexical l) with
+     | Some n -> ER_Num n
+     | None -> ER_Term (T_Literal l))
+  else if lit_datatype l = xsd_decimal then ER_Dec (lit_lexical l)
+  else if lit_datatype l = xsd_double || lit_datatype l = xsd_float then ER_Dbl (lit_lexical l)
+  else if lit_datatype l = xsd_boolean then ER_Bool (lit_lexical l = "true" || lit_lexical l = "1")
+  else ER_Term (T_Literal l)
+
+// Numeric-aware literal value equality: promote both sides and compare
+// numerically when either is a numeric-typed literal; otherwise fall
+// back to structural literal equality (same datatype, lexical form,
+// language tag, direction).
+let literal_value_eq_numeric (l1 l2 : wf_literal) : bool =
+  if is_numeric_datatype (lit_datatype l1) || is_numeric_datatype (lit_datatype l2)
+  then (match numeric_compare (literal_promote l1) (literal_promote l2) with
+        | Some cmp -> cmp = 0
+        | None -> false)
+  else literal_eq l1 l2
+
+// RDF 1.2 triple-term value equality for the `=` operator (op:triple
+// mapping): subject and predicate compare structurally (they can never
+// be numeric literals), the object recurses — through nested triple
+// terms — using `literal_value_eq_numeric` at the literal leaves. This
+// is intentionally NOT the same relation as `rdf_term_eq`/`sameTerm`:
+// `<<(:a :b 123)>> = <<(:a :b 123.0)>>` holds under `=` (value
+// equality) but not under `sameTerm` (term identity) — see
+// eval-triple-terms/op-2 which asserts both `!sameTerm` and `=` hold
+// for that pair.
+let rec triple_term_value_eq (t1 t2 : rdf_term) : Tot bool (decreases t1) =
+  match t1, t2 with
+  | T_IRI i1, T_IRI i2 -> i1 = i2
+  | T_BNode b1, T_BNode b2 -> b1 = b2
+  | T_Literal l1, T_Literal l2 -> literal_value_eq_numeric l1 l2
+  | T_TripleTerm s1 p1 o1, T_TripleTerm s2 p2 o2 ->
+    subject_eq s1 s2 && p1 = p2 && triple_term_value_eq o1 o2
+  | _, _ -> false
+
 // Typed value comparison using numeric_compare for cross-type numeric comparison
 let value_compare (v1 v2 : eval_result) (op : comp_op) : option bool =
   match v1, v2 with
@@ -2348,6 +2392,16 @@ let value_compare (v1 v2 : eval_result) (op : comp_op) : option bool =
             | CmpNe -> Some true
             | _ -> None)
     else None
+  | ER_Term (T_TripleTerm s1 p1 o1), ER_Term (T_TripleTerm s2 p2 o2) ->
+    // RDF 1.2 op:triple mapping: only equality/inequality are defined
+    // over triple terms (they have no total order), via
+    // `triple_term_value_eq` — component-wise, with the object
+    // recursing through nested triple terms and comparing numeric
+    // literals by value (see eval-triple-terms/op-2).
+    (match op with
+     | CmpEq -> Some (triple_term_value_eq (T_TripleTerm s1 p1 o1) (T_TripleTerm s2 p2 o2))
+     | CmpNe -> Some (not (triple_term_value_eq (T_TripleTerm s1 p1 o1) (T_TripleTerm s2 p2 o2)))
+     | _ -> None)
   | ER_Error, _ -> None
   | _, ER_Error -> None
   | _, _ -> None
@@ -6007,7 +6061,25 @@ let construct_subject (ps : pattern_subject) (mu : solution_mapping) (sol_ix : n
   : option subject =
   match ps with
   | PS_IRI i -> Some (S_IRI i)
-  | PS_BNode b -> Some (S_BNode (fresh_bnode_for sol_ix b))
+  | PS_BNode b ->
+    // RDF 1.2: `b` may be the SAME label `rewrite_query_bnodes_pattern`
+    // rewrote to `_bnode_<b>` when it appeared in the WHERE clause (e.g.
+    // the implicit reifier a bare `<<s p o>>`/`{|...|}` mints, or a
+    // `CONSTRUCT WHERE { P }` shorthand's template — literally `P` again
+    // — re-using it). When that variable was actually bound during
+    // matching, the template must echo the SAME node (eval-triple-terms
+    // construct-2/-5: the reifier the WHERE side matched IS the reifier
+    // the template names), not mint an unrelated fresh one. A plain
+    // user-written template blank node with no WHERE-side counterpart
+    // (e.g. construct-4's `{|:source :ABC|}`, only ever in the template)
+    // finds no binding here and keeps the original fresh-per-solution
+    // behaviour (SPARQL 1.1 §16.2).
+    (match sm_lookup (strcat "_bnode_" b) mu with
+     | Some (T_IRI i) -> Some (S_IRI i)
+     | Some (T_BNode b2) -> Some (S_BNode b2)
+     | Some (T_Literal _) -> None
+     | Some (T_TripleTerm _ _ _) -> None
+     | None -> Some (S_BNode (fresh_bnode_for sol_ix b)))
   // A triple term can never be a triple's subject — drop the template triple.
   | PS_TripleTerm _ _ _ -> None
   | PS_Var v ->
@@ -6031,12 +6103,19 @@ let construct_predicate (pt : pattern_term) (mu : solution_mapping) : option wf_
 
 // RDF 1.2: a triple-term object in a CONSTRUCT template is instantiated
 // into a concrete `T_TripleTerm` when every sub-position grounds; template
-// bnodes inside it are freshened per solution just like ordinary ones.
+// bnodes inside it are freshened per solution just like ordinary ones —
+// UNLESS the same label was bound by the WHERE clause (see
+// `construct_subject`'s comment: `_bnode_<b>`, the same key
+// `rewrite_query_bnodes_pattern` binds it under), in which case the
+// matched term is echoed back rather than minting an unrelated fresh one.
 let rec construct_object (pt : pattern_term) (mu : solution_mapping) (sol_ix : nat)
   : Tot (option rdf_term) (decreases pt) =
   match pt with
   | PT_IRI i -> Some (T_IRI i)
-  | PT_BNode b -> Some (T_BNode (fresh_bnode_for sol_ix b))
+  | PT_BNode b ->
+    (match sm_lookup (strcat "_bnode_" b) mu with
+     | Some t -> Some t
+     | None -> Some (T_BNode (fresh_bnode_for sol_ix b)))
   | PT_Literal l -> Some (T_Literal l)
   | PT_Var v -> sm_lookup v mu
   | PT_TripleTerm ps pp po ->
@@ -6098,6 +6177,15 @@ let dedup_triples (ts : list triple) : list triple =
 
 let eval_construct_query (q : query) (g : rdf_graph) (ds : rdf_dataset) : list triple =
   let (g, ds) = apply_query_dataset q.q_dataset g ds in
+  // Same WHERE-clause blank-node-to-variable rewrite `eval_select_query`
+  // applies (§18.2.2.9): without it a bnode in a CONSTRUCT's WHERE —
+  // including the implicit reifier `<<s p o>>`/`{|...|}`/`CONSTRUCT
+  // WHERE` sugar mints — is matched by literal bnode-label equality
+  // (SPARQL11.Algebra.fst's `PS_BNode` pattern-subject matcher), which
+  // can never succeed against real graph data. `construct_subject`/
+  // `construct_object` above look the resulting `_bnode_<label>`
+  // binding back up when instantiating the template.
+  let q = { q with q_pattern = rewrite_query_bnodes_pattern q.q_pattern } in
   let base = q.q_base in
   match q.q_form with
   | QF_Construct template ->
