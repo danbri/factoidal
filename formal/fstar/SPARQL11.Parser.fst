@@ -64,12 +64,27 @@ type token =
   | Tok_ANNOT_CLOSE   (* |}   annotation block close    *)
   (* SPARQL 1.2 triple-term builtin function keywords (1.2 mode only). *)
   | Tok_TRIPLE_KW | Tok_SUBJECT_KW | Tok_PREDICATE_KW | Tok_OBJECT_KW | Tok_ISTRIPLE_KW
+  (* SPARQL 1.2 VERSION prologue declaration keyword (1.2 mode only —
+     1.1 mode still tokenizes the bare word "VERSION" as Tok_PNAME, so
+     1.1 parsing stays byte-identical). *)
+  | Tok_VERSION_KW
   (* Literals and names *)
   | Tok_IRI      : string -> token
   | Tok_PNAME    : string -> token   (* prefixed name, pre-expansion *)
   | Tok_VAR      : string -> token
   | Tok_STRING   : string -> token
   | Tok_LANGTAG  : string -> token
+  (* SPARQL 1.2 directional language-tagged literal suffix `@lang--ltr`/
+     `@lang--rtl` (RDF 1.2 Concepts §3.3, epic #305). Emitted only in
+     1.2 mode and only when the raw `@...` tag contains a `--`
+     direction separator; a plain `@lang` (no `--`) still tokenizes as
+     Tok_LANGTAG in both modes, so 1.1 parsing and the common 1.2 case
+     both stay byte-identical to the pre-existing path. Carries the
+     already-split, already-validated language tag and direction — an
+     invalid direction token (anything but lowercase `ltr`/`rtl`) or a
+     malformed language subtag is rejected at the lexer as Tok_INVALID,
+     never reaches the parser as Tok_LANGDIR. *)
+  | Tok_LANGDIR  : string -> text_direction -> token
   | Tok_INTEGER  : string -> token
   | Tok_DECIMAL  : string -> token
   | Tok_DOUBLE   : string -> token
@@ -312,6 +327,25 @@ let process_iri_escapes (s : string) : Tot string =
   let cs = String.list_of_string s in
   String.string_of_list (process_iri_escapes_rec cs [])
 
+(* SPARQL 1.2 codepoint escapes (\uXXXX / \UXXXXXXXX) — decoded as a
+   raw-text preprocessing pass over the WHOLE query string, BEFORE
+   tokenization (`tokenize_12`), per the SPARQL 1.2 grammar's codepoint-
+   escapes note: the escape may stand for any character anywhere in the
+   query, including keywords, whitespace between tokens, and the quote
+   delimiters of a string literal itself (codepoint-esc-01/-07/-08 —
+   the escape can even spell out `ASK {}` or materialize the opening
+   `"` of a STRING token from raw text that had no literal quote char
+   at all). That means the decode can't be scoped to a single token's
+   lexeme — it has to run once, globally, before `next_token` sees
+   anything. The transformation itself is identical to
+   `process_iri_escapes` (same left-to-right, non-overlapping \u/\U
+   scan; unmatched backslashes pass through so the normal ECHAR/
+   PN_LOCAL_ESC/IRI-escape processing downstream sees them unchanged),
+   so this is a naming alias, not new logic, to keep the call site at
+   `tokenize_12` self-documenting. *)
+let process_codepoint_escapes (s : string) : Tot string =
+  process_iri_escapes s
+
 (* Pure F* implementation: walk the codepoint list, expand \X escapes,
    reject \uD800-\uDFFF and \U????D[8-9A-F]?? (surrogate halves). The
    semantics match the OCaml stub minus its `failwith` — instead of
@@ -326,8 +360,21 @@ let process_iri_escapes (s : string) : Tot string =
 
    The 2-element pattern (escape kind char + payload) keeps the
    termination metric clear: one input char consumed unconditionally
-   plus the hex-digit run for `u`/`U`. *)
+   plus the hex-digit run for `u`/`U`.
+
+   `strict` (SPARQL 1.2 mode only — see codepoint-esc-bad-03) rejects
+   an unrecognized escape follower (e.g. `\A`, `\q`) instead of the
+   permissive "preserve the char, drop the backslash" fallback SPARQL
+   1.1 mode keeps unconditionally, so 1.1 parsing stays byte-identical.
+   This mode-strictness matters specifically because SPARQL 1.2's
+   codepoint escapes (`\uXXXX`/`\UXXXXXXXX`) are decoded as a raw-text
+   preprocessing pass *before* this function ever runs (`tokenize_12`);
+   a codepoint escape can synthesize a bare backslash that then forms
+   an invalid ECHAR with the next literal character (codepoint-esc-
+   bad-03: `"\\u0041"` decodes to the two characters `\A`, which must
+   be rejected as an invalid backslash escape). *)
 let decode_string_escape
+  (strict : bool)
   (cs : list FStar.Char.char)
   : Tot (option (list FStar.Char.char & (rest:list FStar.Char.char{
       FStar.List.Tot.length rest < FStar.List.Tot.length cs})))
@@ -357,6 +404,7 @@ let decode_string_escape
           else Some (String.list_of_string (utf8_of_codepoint cp), after)
         | None -> None
       end
+      else if strict then None
       else
         (* Unknown escape: preserve backslash + char as-is. The caller
            inserted the backslash already (we only see what's after); on
@@ -366,22 +414,22 @@ let decode_string_escape
 
 (* Walk the input. On `\`, consume the escape; otherwise pass through. *)
 let rec process_string_escapes_rec
-  (cs : list FStar.Char.char) (acc : list FStar.Char.char)
+  (strict : bool) (cs : list FStar.Char.char) (acc : list FStar.Char.char)
   : Tot (option (list FStar.Char.char)) (decreases (FStar.List.Tot.length cs))
   = match cs with
     | [] -> Some (FStar.List.Tot.rev acc)
     | c :: rest ->
       if char_code c = 0x5C (* \ *) then
-        match decode_string_escape rest with
+        match decode_string_escape strict rest with
         | None -> None
         | Some (decoded, after) ->
-          process_string_escapes_rec after (FStar.List.Tot.rev_acc decoded acc)
+          process_string_escapes_rec strict after (FStar.List.Tot.rev_acc decoded acc)
       else
-        process_string_escapes_rec rest (c :: acc)
+        process_string_escapes_rec strict rest (c :: acc)
 
-let process_string_escapes_opt (s : string) : Tot (option string) =
+let process_string_escapes_opt (strict : bool) (s : string) : Tot (option string) =
   let cs = String.list_of_string s in
-  match process_string_escapes_rec cs [] with
+  match process_string_escapes_rec strict cs [] with
   | Some chars -> Some (String.string_of_list chars)
   | None -> None
 
@@ -488,8 +536,10 @@ let rec scan_long_string_end (input : string) (p : pos) (q_code : nat)
    Returns (None, pos) if escape processing fails (e.g. surrogate
    codepoint via \\uD800-\\uDFFF); otherwise (Some content, pos).
    #64 sub-step 2 (2026-05-11): switched from `string -> string` to the
-   pure-F* `process_string_escapes_opt : string -> option string`. *)
-let scan_string (input : string) (p : pos) : (option string & pos) =
+   pure-F* `process_string_escapes_opt : string -> option string`.
+   `sparql12` selects strict ECHAR-follower rejection (codepoint-esc-
+   bad-03) — see `decode_string_escape`'s banner. *)
+let scan_string (sparql12 : bool) (input : string) (p : pos) : (option string & pos) =
   let q = peek_char input p in
   let q_code = char_code q in
   (* Check for long string (triple-quoted) *)
@@ -500,12 +550,12 @@ let scan_string (input : string) (p : pos) : (option string & pos) =
     let p_start = p + 3 in
     let end_p = scan_long_string_end input p_start q_code in
     let raw = substring input p_start (safe_sub end_p p_start) in
-    (process_string_escapes_opt raw, end_p + 3) (* skip closing """ or ''' *)
+    (process_string_escapes_opt sparql12 raw, end_p + 3) (* skip closing """ or ''' *)
   else
     let p_start = p + 1 in
     let end_p = scan_short_string_end input p_start q_code in
     let raw = substring input p_start (safe_sub end_p p_start) in
-    (process_string_escapes_opt raw, end_p + 1) (* skip closing " or ' *)
+    (process_string_escapes_opt sparql12 raw, end_p + 1) (* skip closing " or ' *)
 
 (* --- scan_pname_or_keyword: prefixed name or SPARQL keyword --- *)
 
@@ -542,6 +592,9 @@ let keyword_of_upper (sparql12 : bool) (upper : string) (original : string) : to
   else if sparql12 && streq upper "PREDICATE" then Tok_PREDICATE_KW
   else if sparql12 && streq upper "OBJECT" then Tok_OBJECT_KW
   else if sparql12 && streq upper "ISTRIPLE" then Tok_ISTRIPLE_KW
+  // SPARQL 1.2 VERSION prologue declaration — 1.2 mode only; in 1.1
+  // mode "VERSION" falls through to Tok_PNAME as it always has.
+  else if sparql12 && streq upper "VERSION" then Tok_VERSION_KW
   else if streq upper "SELECT" then Tok_SELECT
   else if streq upper "ASK" then Tok_ASK
   else if streq upper "CONSTRUCT" then Tok_CONSTRUCT
@@ -660,6 +713,20 @@ let keyword_of_upper (sparql12 : bool) (upper : string) (original : string) : to
   else if streq upper "ALL" then Tok_ALL
   else Tok_PNAME original
 
+(* Look ahead from a lexer position (skipping whitespace/comments) to
+   check whether a long (triple-quoted) string literal starts there.
+   Used only to reject `VERSION """1.2"""` / `VERSION '''1.2'''` — the
+   VERSION prologue declaration's argument must be a plain
+   STRING_LITERAL1/2, never a STRING_LITERAL_LONG1/2 (version-bad-01,
+   version-bad-02). *)
+let starts_with_long_string (input : string) (p : pos) : bool =
+  let p' = skip_ws input p in
+  not (at_end input p') &&
+  (let qc = char_code (peek_char input p') in
+   (qc = 0x22 || qc = 0x27) &&
+   not (at_end input (p' + 1)) && char_code (peek_char input (p' + 1)) = qc &&
+   not (at_end input (p' + 2)) && char_code (peek_char input (p' + 2)) = qc)
+
 (* Scan a prefixed name (prefix:local) or a keyword.
    Position p is at the first character of the name. *)
 let scan_pname_or_keyword (sparql12 : bool) (input : string) (p : pos) : lex_result =
@@ -672,7 +739,13 @@ let scan_pname_or_keyword (sparql12 : bool) (input : string) (p : pos) : lex_res
   else
     (* Keyword or bare name *)
     let word = substring input p (safe_sub p1 p) in
-    (keyword_of_upper sparql12 (string_upper word) word, p1)
+    let tok = keyword_of_upper sparql12 (string_upper word) word in
+    match tok with
+    | Tok_VERSION_KW ->
+      if starts_with_long_string input p1
+      then (Tok_INVALID "VERSION requires a plain string literal, not a triple-quoted long string", p1)
+      else (tok, p1)
+    | _ -> (tok, p1)
 
 (* --- scan_number: integer, decimal, or double literal --- *)
 
@@ -758,6 +831,40 @@ let rec scan_langtag_chars_end (input : string) (p : pos)
 let scan_langtag (input : string) (p : pos) : (string & pos) =
   let p' = scan_langtag_chars_end input p in
   (substring input p (safe_sub p' p), p')
+
+(* --- RDF 1.2 / SPARQL 1.2 directional language tags: `@lang--ltr` /
+   `@lang--rtl` (RDF 1.2 Concepts §3.3, epic #305). SPARQL 1.2 mode
+   only — `scan_langtag` above is unchanged and still the only lexer
+   path in 1.1 mode, so 1.1 parsing stays byte-identical.
+
+   These two helpers mirror `Parser.NTriples.fst`'s
+   `split_on_double_hyphen` / `valid_lang_subtags` (same RDF 1.2 rule:
+   split at the FIRST `--`, then each hyphen-separated subtag on the
+   left must be 1..8 chars — a well-formed BCP47 tag never contains an
+   empty subtag, so the only `--` present is the direction separator).
+   Duplicated here rather than imported: this module's lexer works over
+   `FStar.Char.char`/`pos`-indexed strings directly (no parser-
+   combinator `parse_result`), and importing Parser.NTriples's
+   `parse_result` would shadow this file's own two-field `parse_result`
+   type used pervasively below. *)
+let rec sparql_lang_valid_subtags (cs : list FStar.Char.char) (cur : nat)
+  : Tot bool (decreases cs) =
+  match cs with
+  | [] -> cur >= 1 && cur <= 8
+  | c :: rest ->
+    if char_code c = 0x2D (* - *)
+    then (cur >= 1 && cur <= 8) && sparql_lang_valid_subtags rest 0
+    else sparql_lang_valid_subtags rest (cur + 1)
+
+let rec sparql_split_lang_dir (cs : list FStar.Char.char) (acc : list FStar.Char.char)
+  : Tot (list FStar.Char.char & option (list FStar.Char.char)) (decreases cs) =
+  match cs with
+  | c1 :: c2 :: rest ->
+    if char_code c1 = 0x2D && char_code c2 = 0x2D
+    then (List.Tot.rev acc, Some rest)
+    else sparql_split_lang_dir (c2 :: rest) (c1 :: acc)
+  | [c] -> (List.Tot.rev (c :: acc), None)
+  | [] -> (List.Tot.rev acc, None)
 
 let rec has_gt_before_terminator (input : string) (p : pos)
   : Tot bool (decreases (String.length input - p)) =
@@ -881,14 +988,30 @@ let next_token (sparql12 : bool) (input : string) (p : pos) : lex_result =
       else (Tok_VAR name, p')
     end
     else if code = 0x22 || code = 0x27 then begin    (* " or ' — string literal *)
-      let (s_opt, p') = scan_string input p in
+      let (s_opt, p') = scan_string sparql12 input p in
       (match s_opt with
        | Some s -> (Tok_STRING s, p')
        | None -> (Tok_INVALID "invalid string escape (surrogate or malformed)", p'))
     end
     else if code = 0x40 then begin                   (* @ — language tag *)
       let (tag, p') = scan_langtag input (p + 1) in
-      (Tok_LANGTAG tag, p')
+      // SPARQL 1.2: `@lang--ltr` / `@lang--rtl` directional language
+      // tags (RDF 1.2 Concepts §3.3). Only split/validated in 1.2
+      // mode and only when the raw tag actually contains `--`; a
+      // plain `@lang` stays Tok_LANGTAG in both modes.
+      if sparql12 then
+        match sparql_split_lang_dir (FStar.String.list_of_string tag) [] with
+        | (lt_chars, Some dchars) ->
+          if not (sparql_lang_valid_subtags lt_chars 0) then
+            (Tok_INVALID "invalid language tag before base direction", p')
+          else if dchars = ['l'; 't'; 'r'] then
+            (Tok_LANGDIR (FStar.String.string_of_list lt_chars) Dir_LTR, p')
+          else if dchars = ['r'; 't'; 'l'] then
+            (Tok_LANGDIR (FStar.String.string_of_list lt_chars) Dir_RTL, p')
+          else
+            (Tok_INVALID "invalid base direction (expected ltr or rtl)", p')
+        | (_, None) -> (Tok_LANGTAG tag, p')
+      else (Tok_LANGTAG tag, p')
     end
     else if code = 0x2B then (Tok_PLUS, p + 1)      (* + *)
     else if code = 0x2D then (Tok_MINUS_OP, p + 1)  (* - *)
@@ -959,9 +1082,16 @@ let tokenize (input : string) : list token =
   tokenize_loop false input 0 [] (String.length input + 1)
 
 // SPARQL 1.2 tokenizer — additionally emits Tok_TT_OPEN / Tok_TT_CLOSE
-// and the triple-term builtin keywords.
+// and the triple-term builtin keywords. Also decodes SPARQL 1.2
+// codepoint escapes (\uXXXX / \UXXXXXXXX) as a preprocessing pass over
+// the raw query text before tokenizing — see `process_codepoint_escapes`.
+// Decoding strictly shortens or preserves the byte length (never
+// lengthens it: a 6-or-10-character escape always decodes to 1..4 UTF-8
+// bytes), so `String.length input + 1` remains a valid fuel bound for
+// tokenizing the decoded text.
 let tokenize_12 (input : string) : list token =
-  tokenize_loop true input 0 [] (String.length input + 1)
+  let decoded = process_codepoint_escapes input in
+  tokenize_loop true decoded 0 [] (String.length input + 1)
 
 (** ====================================================================== **)
 (** Part 5: Parser Combinators                                              **)
@@ -1100,6 +1230,17 @@ let make_lang_literal (lex : string) (lang : string) : wf_literal =
   { lexical_form = lex;
     datatype = "http://www.w3.org/1999/02/22-rdf-syntax-ns#langString";
     lang_tag = Some lang; direction = None }
+
+(* RDF 1.2 directional language-tagged literal: `"x"@lang--ltr` /
+   `"x"@lang--rtl` (epic #305). The lexer (`next_token`'s `@` branch)
+   only ever emits `Tok_LANGDIR lang dir` with an already-validated
+   `lang`/`dir` pair — an invalid direction or malformed language tag
+   is rejected earlier as `Tok_INVALID` and never reaches here — so
+   this constructor is total, unlike a hypothetical "parse and
+   validate" version would need to be. *)
+let make_dir_lang_literal (lex : string) (lang : string) (dir : text_direction) : wf_literal =
+  { lexical_form = lex; datatype = rdf_dir_lang_string;
+    lang_tag = Some lang; direction = Some dir }
 
 (* rdf:type IRI constant *)
 let rdf_type_iri_str : wf_iri =
@@ -2028,6 +2169,7 @@ and parse_rdf_literal_expr (pm : prefix_map) (fuel : nat) (s : string) (ts : tok
         | None -> ParseErr ("unresolved datatype prefix: " ^ pn))
      | _ -> ParseErr "expected IRI after ^^")
   | Tok_LANGTAG lang -> ParseOk (E_Literal (make_lang_literal s lang)) (parse_advance ts)
+  | Tok_LANGDIR lang dir -> ParseOk (E_Literal (make_dir_lang_literal s lang dir)) (parse_advance ts)
   | _ -> ParseOk (E_Literal (make_plain_literal s)) ts
 
 (* ---- Group Graph Pattern parsing ---- *)
@@ -2335,6 +2477,8 @@ and parse_data_value (pm : prefix_map) (fuel : nat) (ts : token_stream)
         | _ -> ParseErr "expected IRI after ^^")
      | Tok_LANGTAG lang ->
        ParseOk (Some (T_Literal (make_lang_literal s lang))) (parse_advance ts')
+     | Tok_LANGDIR lang dir ->
+       ParseOk (Some (T_Literal (make_dir_lang_literal s lang dir))) (parse_advance ts')
      | _ -> ParseOk (Some (T_Literal (make_plain_literal s))) ts')
   | Tok_INTEGER n ->
     (match make_typed_literal n "http://www.w3.org/2001/XMLSchema#integer" with
@@ -3094,6 +3238,7 @@ and parse_rdf_literal_pt (pm : prefix_map) (fuel : nat) (s : string) (ts : token
         | None -> ParseErr "unresolved prefix")
      | _ -> ParseErr "expected IRI after ^^")
   | Tok_LANGTAG lang -> ParseOk (PT_Literal (make_lang_literal s lang)) (parse_advance ts)
+  | Tok_LANGDIR lang dir -> ParseOk (PT_Literal (make_dir_lang_literal s lang dir)) (parse_advance ts)
   | _ -> ParseOk (PT_Literal (make_plain_literal s)) ts
 
 // Helper: join two group_graph_patterns
@@ -3329,6 +3474,17 @@ and parse_prologue (pm : prefix_map) (base : option wf_iri) (fuel : nat) (ts : t
            parse_prologue pm (Some iri) (fuel-1) (parse_advance ts')
          else ParseErr "invalid BASE IRI"
        | _ -> ParseErr "expected IRI after BASE")
+    | Tok_VERSION_KW ->
+      // SPARQL 1.2 VERSION declaration (epic #305 grammar wave). The
+      // argument's value isn't threaded further: every fixture in
+      // third_party/testing/w3c/sparql/sparql12/version/ only needs the
+      // declaration accepted (or, for the *-bad-* fixtures, rejected)
+      // syntactically — none exercises version-dependent parsing
+      // behavior. May repeat and interleave with PREFIX/BASE (version-06).
+      let ts' = parse_advance ts in
+      (match parse_peek ts' with
+       | Tok_STRING _ -> parse_prologue pm base (fuel-1) (parse_advance ts')
+       | _ -> ParseErr "expected string literal after VERSION")
     | _ -> ParseOk (pm, base) ts
   end
 
