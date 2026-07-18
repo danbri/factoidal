@@ -263,7 +263,8 @@ let sch_eval (it : XPath_Eval.xctx_item)
           XPath_Eval.env_doc_kids = [];
           XPath_Eval.env_id_attrs = [];
           XPath_Eval.env_style_root = XPath_Eval.xnode_none;
-          XPath_Eval.env_decimal_formats = []
+          XPath_Eval.env_decimal_formats = [];
+          XPath_Eval.env_key_table = []
         } in
       FStar_Pervasives_Native.Some (XPath_Eval.eval_expr fuel env e)
 let context_matches (ctx : Prims.string)

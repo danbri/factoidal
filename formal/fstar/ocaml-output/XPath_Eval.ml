@@ -1384,6 +1384,9 @@ let uu___is_XV_Str (projectee : xp_value) : Prims.bool=
   match projectee with | XV_Str _0 -> true | uu___ -> false
 let __proj__XV_Str__item___0 (projectee : xp_value) : Prims.string=
   match projectee with | XV_Str _0 -> _0
+type key_entry =
+  ((Prims.string FStar_Pervasives_Native.option * Prims.string) *
+    Prims.string * xctx_item)
 type xp_env =
   {
   env_item: xctx_item ;
@@ -1394,50 +1397,65 @@ type xp_env =
   env_doc_kids: Parser_XML.xml_node Prims.list ;
   env_id_attrs: (Prims.string * Prims.string) Prims.list ;
   env_style_root: Parser_XML.xml_node ;
-  env_decimal_formats: decimal_format_symbols Prims.list }
+  env_decimal_formats: decimal_format_symbols Prims.list ;
+  env_key_table: key_entry Prims.list }
 let __proj__Mkxp_env__item__env_item (projectee : xp_env) : xctx_item=
   match projectee with
   | { env_item; env_pos; env_size; env_vars; env_nsctx; env_doc_kids;
-      env_id_attrs; env_style_root; env_decimal_formats;_} -> env_item
+      env_id_attrs; env_style_root; env_decimal_formats; env_key_table;_} ->
+      env_item
 let __proj__Mkxp_env__item__env_pos (projectee : xp_env) : Prims.nat=
   match projectee with
   | { env_item; env_pos; env_size; env_vars; env_nsctx; env_doc_kids;
-      env_id_attrs; env_style_root; env_decimal_formats;_} -> env_pos
+      env_id_attrs; env_style_root; env_decimal_formats; env_key_table;_} ->
+      env_pos
 let __proj__Mkxp_env__item__env_size (projectee : xp_env) : Prims.nat=
   match projectee with
   | { env_item; env_pos; env_size; env_vars; env_nsctx; env_doc_kids;
-      env_id_attrs; env_style_root; env_decimal_formats;_} -> env_size
+      env_id_attrs; env_style_root; env_decimal_formats; env_key_table;_} ->
+      env_size
 let __proj__Mkxp_env__item__env_vars (projectee : xp_env) :
   (Prims.string * xp_value) Prims.list=
   match projectee with
   | { env_item; env_pos; env_size; env_vars; env_nsctx; env_doc_kids;
-      env_id_attrs; env_style_root; env_decimal_formats;_} -> env_vars
+      env_id_attrs; env_style_root; env_decimal_formats; env_key_table;_} ->
+      env_vars
 let __proj__Mkxp_env__item__env_nsctx (projectee : xp_env) :
   (Prims.string * Prims.string) Prims.list=
   match projectee with
   | { env_item; env_pos; env_size; env_vars; env_nsctx; env_doc_kids;
-      env_id_attrs; env_style_root; env_decimal_formats;_} -> env_nsctx
+      env_id_attrs; env_style_root; env_decimal_formats; env_key_table;_} ->
+      env_nsctx
 let __proj__Mkxp_env__item__env_doc_kids (projectee : xp_env) :
   Parser_XML.xml_node Prims.list=
   match projectee with
   | { env_item; env_pos; env_size; env_vars; env_nsctx; env_doc_kids;
-      env_id_attrs; env_style_root; env_decimal_formats;_} -> env_doc_kids
+      env_id_attrs; env_style_root; env_decimal_formats; env_key_table;_} ->
+      env_doc_kids
 let __proj__Mkxp_env__item__env_id_attrs (projectee : xp_env) :
   (Prims.string * Prims.string) Prims.list=
   match projectee with
   | { env_item; env_pos; env_size; env_vars; env_nsctx; env_doc_kids;
-      env_id_attrs; env_style_root; env_decimal_formats;_} -> env_id_attrs
+      env_id_attrs; env_style_root; env_decimal_formats; env_key_table;_} ->
+      env_id_attrs
 let __proj__Mkxp_env__item__env_style_root (projectee : xp_env) :
   Parser_XML.xml_node=
   match projectee with
   | { env_item; env_pos; env_size; env_vars; env_nsctx; env_doc_kids;
-      env_id_attrs; env_style_root; env_decimal_formats;_} -> env_style_root
+      env_id_attrs; env_style_root; env_decimal_formats; env_key_table;_} ->
+      env_style_root
 let __proj__Mkxp_env__item__env_decimal_formats (projectee : xp_env) :
   decimal_format_symbols Prims.list=
   match projectee with
   | { env_item; env_pos; env_size; env_vars; env_nsctx; env_doc_kids;
-      env_id_attrs; env_style_root; env_decimal_formats;_} ->
+      env_id_attrs; env_style_root; env_decimal_formats; env_key_table;_} ->
       env_decimal_formats
+let __proj__Mkxp_env__item__env_key_table (projectee : xp_env) :
+  key_entry Prims.list=
+  match projectee with
+  | { env_item; env_pos; env_size; env_vars; env_nsctx; env_doc_kids;
+      env_id_attrs; env_style_root; env_decimal_formats; env_key_table;_} ->
+      env_key_table
 let xnode_none : Parser_XML.xml_node= Parser_XML.XElement ("", [], [])
 let is_xnode_none (n : Parser_XML.xml_node) : Prims.bool=
   match n with
@@ -1777,34 +1795,36 @@ let initial_eval_fuel (e : Parser_XPath.xp_expr) (doc_nodes : Prims.nat) :
      ((doc_nodes + Prims.int_one) * (Prims.of_int (24))))
     + (Prims.of_int (4096))
 let is_supported_xpath_function (nm : Prims.string) : Prims.bool=
-  ((((((((((((((((((((((((((((nm = "position") || (nm = "last")) ||
-                              (nm = "count"))
-                             || (nm = "name"))
-                            || (nm = "local-name"))
-                           || (nm = "namespace-uri"))
-                          || (nm = "current"))
-                         || (nm = "string"))
-                        || (nm = "concat"))
-                       || (nm = "contains"))
-                      || (nm = "starts-with"))
-                     || (nm = "substring-before"))
-                    || (nm = "substring-after"))
-                   || (nm = "substring"))
-                  || (nm = "string-length"))
-                 || (nm = "normalize-space"))
-                || (nm = "translate"))
-               || (nm = "not"))
-              || (nm = "true"))
-             || (nm = "false"))
-            || (nm = "boolean"))
-           || (nm = "number"))
-          || (nm = "sum"))
-         || (nm = "floor"))
-        || (nm = "ceiling"))
-       || (nm = "round"))
-      || (nm = "id"))
-     || (nm = "document"))
-    || (nm = "format-number")
+  ((((((((((((((((((((((((((((((nm = "position") || (nm = "last")) ||
+                                (nm = "count"))
+                               || (nm = "name"))
+                              || (nm = "local-name"))
+                             || (nm = "namespace-uri"))
+                            || (nm = "current"))
+                           || (nm = "string"))
+                          || (nm = "concat"))
+                         || (nm = "contains"))
+                        || (nm = "starts-with"))
+                       || (nm = "substring-before"))
+                      || (nm = "substring-after"))
+                     || (nm = "substring"))
+                    || (nm = "string-length"))
+                   || (nm = "normalize-space"))
+                  || (nm = "translate"))
+                 || (nm = "not"))
+                || (nm = "true"))
+               || (nm = "false"))
+              || (nm = "boolean"))
+             || (nm = "number"))
+            || (nm = "sum"))
+           || (nm = "floor"))
+          || (nm = "ceiling"))
+         || (nm = "round"))
+        || (nm = "id"))
+       || (nm = "document"))
+      || (nm = "format-number"))
+     || (nm = "key"))
+    || (nm = "generate-id")
 let rec ws_split_chars (cs : FStar_Char.char Prims.list)
   (cur : FStar_Char.char Prims.list) (acc : Prims.string Prims.list) :
   Prims.string Prims.list=
@@ -1853,6 +1873,22 @@ let id_wanted_tokens (v : xp_value) : Prims.string Prims.list=
       FStar_List_Tot_Base.collect
         (fun it -> ws_tokens (item_string_value it)) items
   | other -> ws_tokens (to_string_val other)
+let path_segment_str (n : Prims.int) : Prims.string=
+  if n < Prims.int_zero
+  then Prims.strcat "n" (Prims.string_of_int (Prims.int_zero - n))
+  else Prims.string_of_int n
+let rec path_to_id_string (p : Prims.int Prims.list) : Prims.string=
+  match p with
+  | [] -> ""
+  | x::rest ->
+      Prims.strcat "_"
+        (Prims.strcat (path_segment_str x) (path_to_id_string rest))
+let generate_id_of_item (it : xctx_item) : Prims.string=
+  Prims.strcat "genid" (path_to_id_string (item_path it))
+let resolve_key_qname (nsctx : (Prims.string * Prims.string) Prims.list)
+  (qn : Prims.string) :
+  (Prims.string FStar_Pervasives_Native.option * Prims.string)=
+  ((lookup_nsctx nsctx (prefix_of qn)), (local_name_of qn))
 let rec eval_expr (fuel : Prims.nat) (env : xp_env)
   (e : Parser_XPath.xp_expr) : xp_value=
   if fuel = Prims.int_zero
@@ -2063,7 +2099,8 @@ and filter_one_pred (fuel : Prims.nat)
              env_doc_kids = [];
              env_id_attrs = [];
              env_style_root = xnode_none;
-             env_decimal_formats = []
+             env_decimal_formats = [];
+             env_key_table = []
            } in
          let v = eval_expr (fuel - Prims.int_one) e p in
          let keep =
@@ -2530,7 +2567,122 @@ and eval_funcall (fuel : Prims.nat) (env : xp_env) (name : Prims.string)
                                                                   "element-available"
                                                               then
                                                                 XV_Bool false
-                                                              else XV_Str ""
+                                                              else
+                                                                if
+                                                                  name =
+                                                                    "key"
+                                                                then
+                                                                  (match args
+                                                                   with
+                                                                   | 
+                                                                   a::b::[]
+                                                                    ->
+                                                                    let kname
+                                                                    =
+                                                                    resolve_key_qname
+                                                                    env.env_nsctx
+                                                                    (to_string_val
+                                                                    (eval_expr
+                                                                    (fuel -
+                                                                    Prims.int_one)
+                                                                    env a)) in
+                                                                    let wanted
+                                                                    =
+                                                                    match 
+                                                                    eval_expr
+                                                                    (fuel -
+                                                                    Prims.int_one)
+                                                                    env b
+                                                                    with
+                                                                    | 
+                                                                    XV_Nodes
+                                                                    items ->
+                                                                    FStar_List_Tot_Base.map
+                                                                    item_string_value
+                                                                    items
+                                                                    | 
+                                                                    other ->
+                                                                    [
+                                                                    to_string_val
+                                                                    other] in
+                                                                    let hits
+                                                                    =
+                                                                    FStar_List_Tot_Base.filter
+                                                                    (fun e ->
+                                                                    let uu___31
+                                                                    = e in
+                                                                    match uu___31
+                                                                    with
+                                                                    | 
+                                                                    (kn, kv,
+                                                                    uu___32)
+                                                                    ->
+                                                                    (kn =
+                                                                    kname) &&
+                                                                    (str_mem
+                                                                    kv wanted))
+                                                                    env.env_key_table in
+                                                                    XV_Nodes
+                                                                    (doc_sort_dedup
+                                                                    (FStar_List_Tot_Base.map
+                                                                    (fun e ->
+                                                                    let uu___31
+                                                                    = e in
+                                                                    match uu___31
+                                                                    with
+                                                                    | 
+                                                                    (uu___32,
+                                                                    uu___33,
+                                                                    it) -> it)
+                                                                    hits))
+                                                                   | 
+                                                                   uu___31 ->
+                                                                    XV_Nodes
+                                                                    [])
+                                                                else
+                                                                  if
+                                                                    name =
+                                                                    "generate-id"
+                                                                  then
+                                                                    (
+                                                                    match args
+                                                                    with
+                                                                    | 
+                                                                    [] ->
+                                                                    XV_Str
+                                                                    (generate_id_of_item
+                                                                    env.env_item)
+                                                                    | 
+                                                                    a::uu___32
+                                                                    ->
+                                                                    (match 
+                                                                    eval_expr
+                                                                    (fuel -
+                                                                    Prims.int_one)
+                                                                    env a
+                                                                    with
+                                                                    | 
+                                                                    XV_Nodes
+                                                                    ns ->
+                                                                    (match 
+                                                                    doc_sort_dedup
+                                                                    ns
+                                                                    with
+                                                                    | 
+                                                                    it::uu___33
+                                                                    ->
+                                                                    XV_Str
+                                                                    (generate_id_of_item
+                                                                    it)
+                                                                    | 
+                                                                    [] ->
+                                                                    XV_Str "")
+                                                                    | 
+                                                                    uu___33
+                                                                    ->
+                                                                    XV_Str ""))
+                                                                  else
+                                                                    XV_Str ""
 let rec find_child_index (nodes : Parser_XML.xml_node Prims.list)
   (target : Parser_XML.xml_node) (i : Prims.nat) : Prims.nat=
   match nodes with
@@ -2573,7 +2725,8 @@ let eval_xpath_from_root (root_node : Parser_XML.xml_node)
           env_doc_kids = [];
           env_id_attrs = [];
           env_style_root = xnode_none;
-          env_decimal_formats = []
+          env_decimal_formats = [];
+          env_key_table = []
         } in
       FStar_Pervasives_Native.Some (eval_expr fuel env e)
 let eval_xpath_from_item (ancestors : Parser_XML.xml_node Prims.list)
@@ -2599,6 +2752,7 @@ let eval_xpath_from_item (ancestors : Parser_XML.xml_node Prims.list)
           env_doc_kids = [];
           env_id_attrs = [];
           env_style_root = xnode_none;
-          env_decimal_formats = []
+          env_decimal_formats = [];
+          env_key_table = []
         } in
       FStar_Pervasives_Native.Some (eval_expr fuel env e)
