@@ -273,25 +273,36 @@ type template =
   tpl_name: Prims.string ;
   tpl_mode: Prims.string ;
   tpl_prio: Prims.int FStar_Pervasives_Native.option ;
-  tpl_body: Parser_XML.xml_node Prims.list }
+  tpl_body: Parser_XML.xml_node Prims.list ;
+  tpl_import_prec: Prims.int }
 let __proj__Mktemplate__item__tpl_match (projectee : template) :
   Prims.string=
   match projectee with
-  | { tpl_match; tpl_name; tpl_mode; tpl_prio; tpl_body;_} -> tpl_match
+  | { tpl_match; tpl_name; tpl_mode; tpl_prio; tpl_body; tpl_import_prec;_}
+      -> tpl_match
 let __proj__Mktemplate__item__tpl_name (projectee : template) : Prims.string=
   match projectee with
-  | { tpl_match; tpl_name; tpl_mode; tpl_prio; tpl_body;_} -> tpl_name
+  | { tpl_match; tpl_name; tpl_mode; tpl_prio; tpl_body; tpl_import_prec;_}
+      -> tpl_name
 let __proj__Mktemplate__item__tpl_mode (projectee : template) : Prims.string=
   match projectee with
-  | { tpl_match; tpl_name; tpl_mode; tpl_prio; tpl_body;_} -> tpl_mode
+  | { tpl_match; tpl_name; tpl_mode; tpl_prio; tpl_body; tpl_import_prec;_}
+      -> tpl_mode
 let __proj__Mktemplate__item__tpl_prio (projectee : template) :
   Prims.int FStar_Pervasives_Native.option=
   match projectee with
-  | { tpl_match; tpl_name; tpl_mode; tpl_prio; tpl_body;_} -> tpl_prio
+  | { tpl_match; tpl_name; tpl_mode; tpl_prio; tpl_body; tpl_import_prec;_}
+      -> tpl_prio
 let __proj__Mktemplate__item__tpl_body (projectee : template) :
   Parser_XML.xml_node Prims.list=
   match projectee with
-  | { tpl_match; tpl_name; tpl_mode; tpl_prio; tpl_body;_} -> tpl_body
+  | { tpl_match; tpl_name; tpl_mode; tpl_prio; tpl_body; tpl_import_prec;_}
+      -> tpl_body
+let __proj__Mktemplate__item__tpl_import_prec (projectee : template) :
+  Prims.int=
+  match projectee with
+  | { tpl_match; tpl_name; tpl_mode; tpl_prio; tpl_body; tpl_import_prec;_}
+      -> tpl_import_prec
 type attrset_entry =
   {
   ase_name: Prims.string ;
@@ -1616,11 +1627,40 @@ let rec pick_template
           match best with
           | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.Some t
           | FStar_Pervasives_Native.Some b ->
+              (if t.tpl_import_prec > b.tpl_import_prec
+               then FStar_Pervasives_Native.Some t
+               else
+                 if t.tpl_import_prec < b.tpl_import_prec
+                 then best
+                 else
+                   if (template_priority t) >= (template_priority b)
+                   then FStar_Pervasives_Native.Some t
+                   else best)
+        else best in
+      pick_template vars nsctx id_attrs mode rest nd best'
+let rec pick_template_below
+  (vars : (Prims.string * XPath_Eval.xp_value) Prims.list)
+  (nsctx : (Prims.string * Prims.string) Prims.list)
+  (id_attrs : (Prims.string * Prims.string) Prims.list) (mode : Prims.string)
+  (below : Prims.int) (tpls : template Prims.list) (nd : dnode)
+  (best : template FStar_Pervasives_Native.option) :
+  template FStar_Pervasives_Native.option=
+  match tpls with
+  | [] -> best
+  | t::rest ->
+      let best' =
+        if
+          ((t.tpl_mode = mode) && (t.tpl_import_prec < below)) &&
+            (template_matches vars nsctx id_attrs t nd)
+        then
+          match best with
+          | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.Some t
+          | FStar_Pervasives_Native.Some b ->
               (if (template_priority t) >= (template_priority b)
                then FStar_Pervasives_Native.Some t
                else best)
         else best in
-      pick_template vars nsctx id_attrs mode rest nd best'
+      pick_template_below vars nsctx id_attrs mode below rest nd best'
 let rec find_named_template (tpls : template Prims.list) (nm : Prims.string)
   : template FStar_Pervasives_Native.option=
   match tpls with
@@ -2074,7 +2114,7 @@ let rec dispatch (fuel : Prims.nat) (st : xstyle) (nd : dnode)
      with
      | FStar_Pervasives_Native.Some tpl ->
          instantiate_seq (fuel - Prims.int_one) st nd pos size svars srtf
-           tpl.tpl_body
+           mode tpl.tpl_import_prec tpl.tpl_body
      | FStar_Pervasives_Native.None ->
          builtin_rule (fuel - Prims.int_one) st nd mode)
 and builtin_rule (fuel : Prims.nat) (st : xstyle) (nd : dnode)
@@ -2119,6 +2159,7 @@ and instantiate_seq (fuel : Prims.nat) (st : xstyle) (ctx : dnode)
   (pos : Prims.nat) (size : Prims.nat)
   (vars : (Prims.string * XPath_Eval.xp_value) Prims.list)
   (rtf : (Prims.string * rnode Prims.list) Prims.list)
+  (cur_mode : Prims.string) (cur_prec : Prims.int)
   (nodes : Parser_XML.xml_node Prims.list) : rnode Prims.list=
   if fuel = Prims.int_zero
   then []
@@ -2141,7 +2182,7 @@ and instantiate_seq (fuel : Prims.nat) (st : xstyle) (ctx : dnode)
                 (if already
                  then
                    instantiate_seq (fuel - Prims.int_one) st ctx pos size
-                     vars rtf tl
+                     vars rtf cur_mode cur_prec tl
                  else
                    (match attr_opt "select" attrs with
                     | FStar_Pervasives_Native.Some sel ->
@@ -2149,33 +2190,34 @@ and instantiate_seq (fuel : Prims.nat) (st : xstyle) (ctx : dnode)
                           eval_val_dn ctx pos size vars st.xs_nsctx
                             st.xs_id_attrs st.xs_style_root st.xs_decfmts sel in
                         instantiate_seq (fuel - Prims.int_one) st ctx pos
-                          size ((nm, v) :: vars) rtf tl
+                          size ((nm, v) :: vars) rtf cur_mode cur_prec tl
                     | FStar_Pervasives_Native.None ->
                         let frag =
                           instantiate_seq (fuel - Prims.int_one) st ctx pos
-                            size vars rtf children in
+                            size vars rtf cur_mode cur_prec children in
                         let sval = text_value_nodes (only_nodes frag) in
                         instantiate_seq (fuel - Prims.int_one) st ctx pos
                           size ((nm, (XPath_Eval.XV_Str sval)) :: vars)
-                          ((nm, frag) :: rtf) tl))
+                          ((nm, frag) :: rtf) cur_mode cur_prec tl))
               else
                 (let here =
                    instantiate_one (fuel - Prims.int_one) st ctx pos size
-                     vars rtf hd in
+                     vars rtf cur_mode cur_prec hd in
                  FStar_List_Tot_Base.op_At here
                    (instantiate_seq (fuel - Prims.int_one) st ctx pos size
-                      vars rtf tl))
+                      vars rtf cur_mode cur_prec tl))
           | uu___1 ->
               let here =
                 instantiate_one (fuel - Prims.int_one) st ctx pos size vars
-                  rtf hd in
+                  rtf cur_mode cur_prec hd in
               FStar_List_Tot_Base.op_At here
                 (instantiate_seq (fuel - Prims.int_one) st ctx pos size vars
-                   rtf tl)))
+                   rtf cur_mode cur_prec tl)))
 and bind_with_params_scoped (fuel : Prims.nat) (st : xstyle) (ctx : dnode)
   (pos : Prims.nat) (size : Prims.nat)
   (evars : (Prims.string * XPath_Eval.xp_value) Prims.list)
   (ertf : (Prims.string * rnode Prims.list) Prims.list)
+  (cur_mode : Prims.string) (cur_prec : Prims.int)
   (svars : (Prims.string * XPath_Eval.xp_value) Prims.list)
   (srtf : (Prims.string * rnode Prims.list) Prims.list)
   (children : Parser_XML.xml_node Prims.list) :
@@ -2200,25 +2242,28 @@ and bind_with_params_scoped (fuel : Prims.nat) (st : xstyle) (ctx : dnode)
                        eval_val_dn ctx pos size evars st.xs_nsctx
                          st.xs_id_attrs st.xs_style_root st.xs_decfmts sel in
                      bind_with_params_scoped (fuel - Prims.int_one) st ctx
-                       pos size evars ertf ((nm, v) :: svars) srtf tl
+                       pos size evars ertf cur_mode cur_prec ((nm, v) ::
+                       svars) srtf tl
                  | FStar_Pervasives_Native.None ->
                      let frag =
                        instantiate_seq (fuel - Prims.int_one) st ctx pos size
-                         evars ertf pchildren in
+                         evars ertf cur_mode cur_prec pchildren in
                      let sval = text_value_nodes (only_nodes frag) in
                      bind_with_params_scoped (fuel - Prims.int_one) st ctx
-                       pos size evars ertf ((nm, (XPath_Eval.XV_Str sval)) ::
-                       svars) ((nm, frag) :: srtf) tl)
+                       pos size evars ertf cur_mode cur_prec
+                       ((nm, (XPath_Eval.XV_Str sval)) :: svars) ((nm, frag)
+                       :: srtf) tl)
               else
                 bind_with_params_scoped (fuel - Prims.int_one) st ctx pos
-                  size evars ertf svars srtf tl
+                  size evars ertf cur_mode cur_prec svars srtf tl
           | uu___1 ->
               bind_with_params_scoped (fuel - Prims.int_one) st ctx pos size
-                evars ertf svars srtf tl))
+                evars ertf cur_mode cur_prec svars srtf tl))
 and instantiate_one (fuel : Prims.nat) (st : xstyle) (ctx : dnode)
   (pos : Prims.nat) (size : Prims.nat)
   (vars : (Prims.string * XPath_Eval.xp_value) Prims.list)
   (rtf : (Prims.string * rnode Prims.list) Prims.list)
+  (cur_mode : Prims.string) (cur_prec : Prims.int)
   (node : Parser_XML.xml_node) : rnode Prims.list=
   if fuel = Prims.int_zero
   then []
@@ -2252,13 +2297,13 @@ and instantiate_one (fuel : Prims.nat) (st : xstyle) (ctx : dnode)
                        (attr_or "test" "false()" attrs)
                    then
                      instantiate_seq (fuel - Prims.int_one) st ctx pos size
-                       vars rtf children
+                       vars rtf cur_mode cur_prec children
                    else [])
                 else
                   if ln = "choose"
                   then
                     instantiate_choose (fuel - Prims.int_one) st ctx pos size
-                      vars rtf children
+                      vars rtf cur_mode cur_prec children
                   else
                     if ln = "for-each"
                     then
@@ -2272,7 +2317,7 @@ and instantiate_one (fuel : Prims.nat) (st : xstyle) (ctx : dnode)
                          sort_maybe (dnode_ci ctx) pos size st.xs_pfx vars
                            st.xs_nsctx children items0 in
                        for_each_items (fuel - Prims.int_one) st children vars
-                         rtf items Prims.int_one
+                         rtf cur_mode cur_prec items Prims.int_one
                          (FStar_List_Tot_Base.length items))
                     else
                       if ln = "apply-templates"
@@ -2280,7 +2325,8 @@ and instantiate_one (fuel : Prims.nat) (st : xstyle) (ctx : dnode)
                         (let amode = attr_or "mode" "" attrs in
                          let uu___6 =
                            bind_with_params_scoped (fuel - Prims.int_one) st
-                             ctx pos size vars rtf st.xs_globals [] children in
+                             ctx pos size vars rtf cur_mode cur_prec
+                             st.xs_globals [] children in
                          match uu___6 with
                          | (pvars, prtf) ->
                              (match attr_opt "select" attrs with
@@ -2317,219 +2363,252 @@ and instantiate_one (fuel : Prims.nat) (st : xstyle) (ctx : dnode)
                                     (FStar_List_Tot_Base.length items) amode
                                     pvars prtf))
                       else
-                        if ln = "call-template"
+                        if ln = "apply-imports"
                         then
-                          (let nm = attr_or "name" "" attrs in
-                           match find_named_template st.xs_templates nm with
+                          (match pick_template_below st.xs_globals
+                                   st.xs_nsctx st.xs_id_attrs cur_mode
+                                   cur_prec st.xs_templates ctx
+                                   FStar_Pervasives_Native.None
+                           with
                            | FStar_Pervasives_Native.Some tpl ->
-                               let uu___7 =
-                                 bind_with_params_scoped
-                                   (fuel - Prims.int_one) st ctx pos size
-                                   vars rtf st.xs_globals [] children in
-                               (match uu___7 with
-                                | (cvars, crtf) ->
-                                    instantiate_seq (fuel - Prims.int_one) st
-                                      ctx pos size cvars crtf tpl.tpl_body)
-                           | FStar_Pervasives_Native.None -> [])
+                               instantiate_seq (fuel - Prims.int_one) st ctx
+                                 pos size st.xs_globals [] cur_mode
+                                 tpl.tpl_import_prec tpl.tpl_body
+                           | FStar_Pervasives_Native.None ->
+                               builtin_rule (fuel - Prims.int_one) st ctx
+                                 cur_mode)
                         else
-                          if ln = "copy-of"
+                          if ln = "call-template"
                           then
-                            (let sel = attr_or "select" "." attrs in
-                             let no_ns =
-                               (attr_or "copy-namespaces" "yes" attrs) = "no" in
-                             let mk =
-                               if no_ns
-                               then copy_of_item_no_ns
-                               else copy_of_item in
-                             match rtf_var_name sel with
-                             | FStar_Pervasives_Native.Some nm ->
-                                 (match rtf_find rtf nm with
-                                  | FStar_Pervasives_Native.Some frag ->
-                                      if no_ns
-                                      then
-                                        FStar_List_Tot_Base.map
-                                          rnode_strip_ns frag
-                                      else frag
-                                  | FStar_Pervasives_Native.None ->
-                                      FStar_List_Tot_Base.map mk
-                                        (select_nodes ctx pos size vars
-                                           st.xs_nsctx st.xs_id_attrs
-                                           st.xs_style_root st.xs_decfmts sel))
-                             | FStar_Pervasives_Native.None ->
-                                 FStar_List_Tot_Base.map mk
-                                   (select_nodes ctx pos size vars
-                                      st.xs_nsctx st.xs_id_attrs
-                                      st.xs_style_root st.xs_decfmts sel))
+                            (let nm = attr_or "name" "" attrs in
+                             match find_named_template st.xs_templates nm
+                             with
+                             | FStar_Pervasives_Native.Some tpl ->
+                                 let uu___8 =
+                                   bind_with_params_scoped
+                                     (fuel - Prims.int_one) st ctx pos size
+                                     vars rtf cur_mode cur_prec st.xs_globals
+                                     [] children in
+                                 (match uu___8 with
+                                  | (cvars, crtf) ->
+                                      instantiate_seq (fuel - Prims.int_one)
+                                        st ctx pos size cvars crtf cur_mode
+                                        tpl.tpl_import_prec tpl.tpl_body)
+                             | FStar_Pervasives_Native.None -> [])
                           else
-                            if ln = "copy"
+                            if ln = "copy-of"
                             then
-                              (let use_attrs =
-                                 expand_attrset_names (fuel - Prims.int_one)
-                                   st ctx pos size vars rtf []
-                                   (parse_qname_list
-                                      (attr_or "use-attribute-sets" "" attrs)) in
-                               instantiate_copy (fuel - Prims.int_one) st ctx
-                                 pos size vars rtf use_attrs children)
+                              (let sel = attr_or "select" "." attrs in
+                               let no_ns =
+                                 (attr_or "copy-namespaces" "yes" attrs) =
+                                   "no" in
+                               let mk =
+                                 if no_ns
+                                 then copy_of_item_no_ns
+                                 else copy_of_item in
+                               match rtf_var_name sel with
+                               | FStar_Pervasives_Native.Some nm ->
+                                   (match rtf_find rtf nm with
+                                    | FStar_Pervasives_Native.Some frag ->
+                                        if no_ns
+                                        then
+                                          FStar_List_Tot_Base.map
+                                            rnode_strip_ns frag
+                                        else frag
+                                    | FStar_Pervasives_Native.None ->
+                                        FStar_List_Tot_Base.map mk
+                                          (select_nodes ctx pos size vars
+                                             st.xs_nsctx st.xs_id_attrs
+                                             st.xs_style_root st.xs_decfmts
+                                             sel))
+                               | FStar_Pervasives_Native.None ->
+                                   FStar_List_Tot_Base.map mk
+                                     (select_nodes ctx pos size vars
+                                        st.xs_nsctx st.xs_id_attrs
+                                        st.xs_style_root st.xs_decfmts sel))
                             else
-                              if ln = "element"
+                              if ln = "copy"
                               then
-                                (let nm =
-                                   expand_avt (dnode_ci ctx) pos size vars
-                                     st.xs_nsctx (attr_or "name" "" attrs) in
-                                 let epfx = name_prefix nm in
-                                 let nsdecls =
-                                   match attr_opt "namespace" attrs with
-                                   | FStar_Pervasives_Native.Some nsraw ->
-                                       let u =
-                                         expand_avt (dnode_ci ctx) pos size
-                                           vars st.xs_nsctx nsraw in
-                                       if epfx = ""
-                                       then
-                                         [{
-                                            Parser_XML.attr_name = "xmlns";
-                                            Parser_XML.attr_value = u
-                                          }]
-                                       else
-                                         if u = ""
-                                         then []
-                                         else
-                                           [{
-                                              Parser_XML.attr_name =
-                                                (Prims.strcat "xmlns:" epfx);
-                                              Parser_XML.attr_value = u
-                                            }]
-                                   | FStar_Pervasives_Native.None ->
-                                       if epfx = ""
-                                       then
-                                         (match XPath_Eval.lookup_nsctx
-                                                  st.xs_nsctx ""
-                                          with
-                                          | FStar_Pervasives_Native.Some u ->
-                                              [{
-                                                 Parser_XML.attr_name =
-                                                   "xmlns";
-                                                 Parser_XML.attr_value = u
-                                               }]
-                                          | FStar_Pervasives_Native.None ->
-                                              [{
-                                                 Parser_XML.attr_name =
-                                                   "xmlns";
-                                                 Parser_XML.attr_value = ""
-                                               }])
-                                       else
-                                         (match XPath_Eval.lookup_nsctx
-                                                  st.xs_nsctx epfx
-                                          with
-                                          | FStar_Pervasives_Native.Some u ->
-                                              [{
-                                                 Parser_XML.attr_name =
-                                                   (Prims.strcat "xmlns:"
-                                                      epfx);
-                                                 Parser_XML.attr_value = u
-                                               }]
-                                          | FStar_Pervasives_Native.None ->
-                                              []) in
-                                 let use_attrs =
+                                (let use_attrs =
                                    expand_attrset_names
                                      (fuel - Prims.int_one) st ctx pos size
-                                     vars rtf []
+                                     vars rtf cur_mode cur_prec []
                                      (parse_qname_list
                                         (attr_or "use-attribute-sets" ""
                                            attrs)) in
-                                 let body =
-                                   instantiate_seq (fuel - Prims.int_one) st
-                                     ctx pos size vars rtf children in
-                                 [R_Node
-                                    (build_element nm
-                                       (FStar_List_Tot_Base.append use_attrs
-                                          nsdecls) body)])
+                                 instantiate_copy (fuel - Prims.int_one) st
+                                   ctx pos size vars rtf cur_mode cur_prec
+                                   use_attrs children)
                               else
-                                if ln = "attribute"
+                                if ln = "element"
                                 then
                                   (let nm =
                                      expand_avt (dnode_ci ctx) pos size vars
                                        st.xs_nsctx (attr_or "name" "" attrs) in
+                                   let epfx = name_prefix nm in
+                                   let nsdecls =
+                                     match attr_opt "namespace" attrs with
+                                     | FStar_Pervasives_Native.Some nsraw ->
+                                         let u =
+                                           expand_avt (dnode_ci ctx) pos size
+                                             vars st.xs_nsctx nsraw in
+                                         if epfx = ""
+                                         then
+                                           [{
+                                              Parser_XML.attr_name = "xmlns";
+                                              Parser_XML.attr_value = u
+                                            }]
+                                         else
+                                           if u = ""
+                                           then []
+                                           else
+                                             [{
+                                                Parser_XML.attr_name =
+                                                  (Prims.strcat "xmlns:" epfx);
+                                                Parser_XML.attr_value = u
+                                              }]
+                                     | FStar_Pervasives_Native.None ->
+                                         if epfx = ""
+                                         then
+                                           (match XPath_Eval.lookup_nsctx
+                                                    st.xs_nsctx ""
+                                            with
+                                            | FStar_Pervasives_Native.Some u
+                                                ->
+                                                [{
+                                                   Parser_XML.attr_name =
+                                                     "xmlns";
+                                                   Parser_XML.attr_value = u
+                                                 }]
+                                            | FStar_Pervasives_Native.None ->
+                                                [{
+                                                   Parser_XML.attr_name =
+                                                     "xmlns";
+                                                   Parser_XML.attr_value = ""
+                                                 }])
+                                         else
+                                           (match XPath_Eval.lookup_nsctx
+                                                    st.xs_nsctx epfx
+                                            with
+                                            | FStar_Pervasives_Native.Some u
+                                                ->
+                                                [{
+                                                   Parser_XML.attr_name =
+                                                     (Prims.strcat "xmlns:"
+                                                        epfx);
+                                                   Parser_XML.attr_value = u
+                                                 }]
+                                            | FStar_Pervasives_Native.None ->
+                                                []) in
+                                   let use_attrs =
+                                     expand_attrset_names
+                                       (fuel - Prims.int_one) st ctx pos size
+                                       vars rtf cur_mode cur_prec []
+                                       (parse_qname_list
+                                          (attr_or "use-attribute-sets" ""
+                                             attrs)) in
                                    let body =
                                      instantiate_seq (fuel - Prims.int_one)
-                                       st ctx pos size vars rtf children in
-                                   [R_Attr
-                                      {
-                                        Parser_XML.attr_name = nm;
-                                        Parser_XML.attr_value =
-                                          (rnodes_text body)
-                                      }])
+                                       st ctx pos size vars rtf cur_mode
+                                       cur_prec children in
+                                   [R_Node
+                                      (build_element nm
+                                         (FStar_List_Tot_Base.append
+                                            use_attrs nsdecls) body)])
                                 else
-                                  if ln = "comment"
+                                  if ln = "attribute"
                                   then
-                                    (let body =
+                                    (let nm =
+                                       expand_avt (dnode_ci ctx) pos size
+                                         vars st.xs_nsctx
+                                         (attr_or "name" "" attrs) in
+                                     let body =
                                        instantiate_seq (fuel - Prims.int_one)
-                                         st ctx pos size vars rtf children in
-                                     [R_Node
-                                        (Parser_XML.XComment
-                                           (rnodes_text body))])
+                                         st ctx pos size vars rtf cur_mode
+                                         cur_prec children in
+                                     [R_Attr
+                                        {
+                                          Parser_XML.attr_name = nm;
+                                          Parser_XML.attr_value =
+                                            (rnodes_text body)
+                                        }])
                                   else
-                                    if ln = "number"
+                                    if ln = "comment"
                                     then
-                                      (let dctx = dnode_ci ctx in
-                                       let level =
-                                         expand_avt dctx pos size vars
-                                           st.xs_nsctx
-                                           (attr_or "level" "single" attrs) in
-                                       let count_pat =
-                                         attr_or "count" "" attrs in
-                                       let from_pat = attr_or "from" "" attrs in
-                                       let fmt =
-                                         expand_avt dctx pos size vars
-                                           st.xs_nsctx
-                                           (attr_or "format" "1" attrs) in
-                                       let gsep =
-                                         expand_avt dctx pos size vars
-                                           st.xs_nsctx
-                                           (attr_or "grouping-separator" ""
-                                              attrs) in
-                                       let gsize_s =
-                                         expand_avt dctx pos size vars
-                                           st.xs_nsctx
-                                           (attr_or "grouping-size" "" attrs) in
-                                       let text =
-                                         match attr_opt "value" attrs with
-                                         | FStar_Pervasives_Native.Some vexpr
-                                             ->
-                                             let n =
-                                               XPath_Eval.to_number_val
-                                                 (eval_val_dn ctx pos size
-                                                    vars st.xs_nsctx
-                                                    st.xs_id_attrs
-                                                    st.xs_style_root
-                                                    st.xs_decfmts vexpr) in
-                                             (match value_bypass n with
-                                              | FStar_Pervasives_Native.Some
-                                                  s -> s
-                                              | FStar_Pervasives_Native.None
-                                                  ->
-                                                  (match XPath_Eval.xn_finite_int
-                                                           (XPath_Eval.xn_round
-                                                              n)
-                                                   with
-                                                   | FStar_Pervasives_Native.Some
-                                                       v ->
-                                                       render_number_list 
-                                                         [v] fmt gsep gsize_s
-                                                   | FStar_Pervasives_Native.None
-                                                       -> ""))
-                                         | FStar_Pervasives_Native.None ->
-                                             (match ctx with
-                                              | D_Item it ->
-                                                  render_number_list
-                                                    (level_numbers vars
-                                                       st.xs_nsctx
-                                                       st.xs_id_attrs level
-                                                       count_pat from_pat it)
-                                                    fmt gsep gsize_s
-                                              | D_Doc (uu___13, uu___14) ->
-                                                  "") in
-                                       [R_Node (Parser_XML.XText text)])
-                                    else [])
+                                      (let body =
+                                         instantiate_seq
+                                           (fuel - Prims.int_one) st ctx pos
+                                           size vars rtf cur_mode cur_prec
+                                           children in
+                                       [R_Node
+                                          (Parser_XML.XComment
+                                             (rnodes_text body))])
+                                    else
+                                      if ln = "number"
+                                      then
+                                        (let dctx = dnode_ci ctx in
+                                         let level =
+                                           expand_avt dctx pos size vars
+                                             st.xs_nsctx
+                                             (attr_or "level" "single" attrs) in
+                                         let count_pat =
+                                           attr_or "count" "" attrs in
+                                         let from_pat =
+                                           attr_or "from" "" attrs in
+                                         let fmt =
+                                           expand_avt dctx pos size vars
+                                             st.xs_nsctx
+                                             (attr_or "format" "1" attrs) in
+                                         let gsep =
+                                           expand_avt dctx pos size vars
+                                             st.xs_nsctx
+                                             (attr_or "grouping-separator" ""
+                                                attrs) in
+                                         let gsize_s =
+                                           expand_avt dctx pos size vars
+                                             st.xs_nsctx
+                                             (attr_or "grouping-size" ""
+                                                attrs) in
+                                         let text =
+                                           match attr_opt "value" attrs with
+                                           | FStar_Pervasives_Native.Some
+                                               vexpr ->
+                                               let n =
+                                                 XPath_Eval.to_number_val
+                                                   (eval_val_dn ctx pos size
+                                                      vars st.xs_nsctx
+                                                      st.xs_id_attrs
+                                                      st.xs_style_root
+                                                      st.xs_decfmts vexpr) in
+                                               (match value_bypass n with
+                                                | FStar_Pervasives_Native.Some
+                                                    s -> s
+                                                | FStar_Pervasives_Native.None
+                                                    ->
+                                                    (match XPath_Eval.xn_finite_int
+                                                             (XPath_Eval.xn_round
+                                                                n)
+                                                     with
+                                                     | FStar_Pervasives_Native.Some
+                                                         v ->
+                                                         render_number_list
+                                                           [v] fmt gsep
+                                                           gsize_s
+                                                     | FStar_Pervasives_Native.None
+                                                         -> ""))
+                                           | FStar_Pervasives_Native.None ->
+                                               (match ctx with
+                                                | D_Item it ->
+                                                    render_number_list
+                                                      (level_numbers vars
+                                                         st.xs_nsctx
+                                                         st.xs_id_attrs level
+                                                         count_pat from_pat
+                                                         it) fmt gsep gsize_s
+                                                | D_Doc (uu___14, uu___15) ->
+                                                    "") in
+                                         [R_Node (Parser_XML.XText text)])
+                                      else [])
          else
            (let kept =
               FStar_List_Tot_Base.filter
@@ -2552,14 +2631,14 @@ and instantiate_one (fuel : Prims.nat) (st : xstyle) (ctx : dnode)
                    }) kept in
             let use_attrs =
               expand_attrset_names (fuel - Prims.int_one) st ctx pos size
-                vars rtf []
+                vars rtf cur_mode cur_prec []
                 (parse_qname_list
                    (attr_or (Prims.strcat st.xs_pfx ":use-attribute-sets") ""
                       attrs)) in
             let literal_attrs = merge_attrs_override use_attrs out_attrs in
             let body =
               instantiate_seq (fuel - Prims.int_one) st ctx pos size vars rtf
-                children in
+                cur_mode cur_prec children in
             let default_ns_fixup =
               if contains_char 58 tag
               then []
@@ -2592,6 +2671,7 @@ and instantiate_choose (fuel : Prims.nat) (st : xstyle) (ctx : dnode)
   (pos : Prims.nat) (size : Prims.nat)
   (vars : (Prims.string * XPath_Eval.xp_value) Prims.list)
   (rtf : (Prims.string * rnode Prims.list) Prims.list)
+  (cur_mode : Prims.string) (cur_prec : Prims.int)
   (branches : Parser_XML.xml_node Prims.list) : rnode Prims.list=
   if fuel = Prims.int_zero
   then []
@@ -2612,28 +2692,29 @@ and instantiate_choose (fuel : Prims.nat) (st : xstyle) (ctx : dnode)
                         (attr_or "test" "false()" attrs)
                     then
                       instantiate_seq (fuel - Prims.int_one) st ctx pos size
-                        vars rtf children
+                        vars rtf cur_mode cur_prec children
                     else
                       instantiate_choose (fuel - Prims.int_one) st ctx pos
-                        size vars rtf tl)
+                        size vars rtf cur_mode cur_prec tl)
                  else
                    if ln = "otherwise"
                    then
                      instantiate_seq (fuel - Prims.int_one) st ctx pos size
-                       vars rtf children
+                       vars rtf cur_mode cur_prec children
                    else
                      instantiate_choose (fuel - Prims.int_one) st ctx pos
-                       size vars rtf tl)
+                       size vars rtf cur_mode cur_prec tl)
               else
                 instantiate_choose (fuel - Prims.int_one) st ctx pos size
-                  vars rtf tl
+                  vars rtf cur_mode cur_prec tl
           | uu___1 ->
               instantiate_choose (fuel - Prims.int_one) st ctx pos size vars
-                rtf tl))
+                rtf cur_mode cur_prec tl))
 and instantiate_copy (fuel : Prims.nat) (st : xstyle) (ctx : dnode)
   (pos : Prims.nat) (size : Prims.nat)
   (vars : (Prims.string * XPath_Eval.xp_value) Prims.list)
   (rtf : (Prims.string * rnode Prims.list) Prims.list)
+  (cur_mode : Prims.string) (cur_prec : Prims.int)
   (use_attrs : Parser_XML.xml_attribute Prims.list)
   (children : Parser_XML.xml_node Prims.list) : rnode Prims.list=
   if fuel = Prims.int_zero
@@ -2642,20 +2723,20 @@ and instantiate_copy (fuel : Prims.nat) (st : xstyle) (ctx : dnode)
     (match ctx with
      | D_Doc (uu___1, uu___2) ->
          instantiate_seq (fuel - Prims.int_one) st ctx pos size vars rtf
-           children
+           cur_mode cur_prec children
      | D_Item (XPath_Eval.CI_Elem (uu___1, anc, n)) ->
          (match n with
           | Parser_XML.XElement (t, uu___2, uu___3) ->
               let body =
                 instantiate_seq (fuel - Prims.int_one) st ctx pos size vars
-                  rtf children in
+                  rtf cur_mode cur_prec children in
               let nsnodes = inscope_ns [] [] (n :: anc) in
               [R_Node
                  (build_element t
                     (FStar_List_Tot_Base.append nsnodes use_attrs) body)]
           | uu___2 ->
               instantiate_seq (fuel - Prims.int_one) st ctx pos size vars rtf
-                children)
+                cur_mode cur_prec children)
      | D_Item (XPath_Eval.CI_Text (uu___1, uu___2, uu___3, t)) ->
          [R_Node (Parser_XML.XText t)]
      | D_Item (XPath_Eval.CI_Comment (uu___1, uu___2, uu___3, t)) ->
@@ -2674,6 +2755,7 @@ and expand_attrset_name (fuel : Prims.nat) (st : xstyle) (ctx : dnode)
   (pos : Prims.nat) (size : Prims.nat)
   (vars : (Prims.string * XPath_Eval.xp_value) Prims.list)
   (rtf : (Prims.string * rnode Prims.list) Prims.list)
+  (cur_mode : Prims.string) (cur_prec : Prims.int)
   (visited : Prims.string Prims.list) (name : Prims.string) :
   Parser_XML.xml_attribute Prims.list=
   if fuel = Prims.int_zero
@@ -2687,16 +2769,17 @@ and expand_attrset_name (fuel : Prims.nat) (st : xstyle) (ctx : dnode)
        | FStar_Pervasives_Native.Some e ->
            let deps_expanded =
              expand_attrset_names (fuel - Prims.int_one) st ctx pos size vars
-               rtf (name :: visited) e.ase_deps in
+               rtf cur_mode cur_prec (name :: visited) e.ase_deps in
            let own_attrs =
              only_attrs
                (instantiate_seq (fuel - Prims.int_one) st ctx pos size vars
-                  rtf e.ase_own) in
+                  rtf cur_mode cur_prec e.ase_own) in
            merge_attrs_override deps_expanded own_attrs)
 and expand_attrset_names (fuel : Prims.nat) (st : xstyle) (ctx : dnode)
   (pos : Prims.nat) (size : Prims.nat)
   (vars : (Prims.string * XPath_Eval.xp_value) Prims.list)
   (rtf : (Prims.string * rnode Prims.list) Prims.list)
+  (cur_mode : Prims.string) (cur_prec : Prims.int)
   (visited : Prims.string Prims.list) (names : Prims.string Prims.list) :
   Parser_XML.xml_attribute Prims.list=
   if fuel = Prims.int_zero
@@ -2707,15 +2790,16 @@ and expand_attrset_names (fuel : Prims.nat) (st : xstyle) (ctx : dnode)
      | hd::tl ->
          let a =
            expand_attrset_name (fuel - Prims.int_one) st ctx pos size vars
-             rtf visited hd in
+             rtf cur_mode cur_prec visited hd in
          let b =
            expand_attrset_names (fuel - Prims.int_one) st ctx pos size vars
-             rtf visited tl in
+             rtf cur_mode cur_prec visited tl in
          merge_attrs_override a b)
 and for_each_items (fuel : Prims.nat) (st : xstyle)
   (body : Parser_XML.xml_node Prims.list)
   (vars : (Prims.string * XPath_Eval.xp_value) Prims.list)
   (rtf : (Prims.string * rnode Prims.list) Prims.list)
+  (cur_mode : Prims.string) (cur_prec : Prims.int)
   (items : XPath_Eval.xctx_item Prims.list) (pos : Prims.nat)
   (size : Prims.nat) : rnode Prims.list=
   if fuel = Prims.int_zero
@@ -2726,10 +2810,10 @@ and for_each_items (fuel : Prims.nat) (st : xstyle)
      | it::rest ->
          let here =
            instantiate_seq (fuel - Prims.int_one) st (D_Item it) pos size
-             vars rtf body in
+             vars rtf cur_mode cur_prec body in
          FStar_List_Tot_Base.op_At here
-           (for_each_items (fuel - Prims.int_one) st body vars rtf rest
-              (pos + Prims.int_one) size))
+           (for_each_items (fuel - Prims.int_one) st body vars rtf cur_mode
+              cur_prec rest (pos + Prims.int_one) size))
 let rec digits_to_int (cs : FStar_String.char Prims.list) (acc : Prims.int) :
   Prims.int FStar_Pervasives_Native.option=
   match cs with
@@ -2754,7 +2838,7 @@ let parse_priority (s : Prims.string) :
        | FStar_Pervasives_Native.Some n ->
            FStar_Pervasives_Native.Some (n * (Prims.of_int (10)))
        | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None)
-let rec collect_templates (pfx : Prims.string)
+let rec collect_templates_prec (pfx : Prims.string) (prec : Prims.int)
   (children : Parser_XML.xml_node Prims.list) : template Prims.list=
   match children with
   | [] -> []
@@ -2766,7 +2850,7 @@ let rec collect_templates (pfx : Prims.string)
              let m = attr_or "match" "" attrs in
              let nm = attr_or "name" "" attrs in
              (if (m = "") && (nm = "")
-              then collect_templates pfx tl
+              then collect_templates_prec pfx prec tl
               else
                 (let t =
                    {
@@ -2778,11 +2862,15 @@ let rec collect_templates (pfx : Prims.string)
                         | FStar_Pervasives_Native.Some p -> parse_priority p
                         | FStar_Pervasives_Native.None ->
                             FStar_Pervasives_Native.None);
-                     tpl_body = body
+                     tpl_body = body;
+                     tpl_import_prec = prec
                    } in
-                 t :: (collect_templates pfx tl)))
-           else collect_templates pfx tl
-       | uu___ -> collect_templates pfx tl)
+                 t :: (collect_templates_prec pfx prec tl)))
+           else collect_templates_prec pfx prec tl
+       | uu___ -> collect_templates_prec pfx prec tl)
+let collect_templates (pfx : Prims.string)
+  (children : Parser_XML.xml_node Prims.list) : template Prims.list=
+  collect_templates_prec pfx Prims.int_zero children
 let first_char_or (dflt : FStar_String.char) (s : Prims.string) :
   FStar_String.char= match chars_of s with | c::uu___ -> c | [] -> dflt
 let char_attr (attrs : Parser_XML.xml_attribute Prims.list)
@@ -3005,6 +3093,225 @@ let build_nsscope (attrs : Parser_XML.xml_attribute Prims.list) :
           | FStar_Pervasives_Native.Some pfx ->
               (a.Parser_XML.attr_value <> xslt_ns) &&
                 (Prims.op_Negation (mem_str pfx excluded))) attrs)
+let rec collect_href_directives (pfx : Prims.string)
+  (children : Parser_XML.xml_node Prims.list) :
+  (Prims.bool * Prims.string) Prims.list=
+  match children with
+  | [] -> []
+  | hd::tl ->
+      (match hd with
+       | Parser_XML.XElement (tag, attrs, uu___) ->
+           if (is_xsl pfx tag) && ((xsl_instr pfx tag) = "import")
+           then
+             (match attr_opt "href" attrs with
+              | FStar_Pervasives_Native.Some h -> (true, h) ::
+                  (collect_href_directives pfx tl)
+              | FStar_Pervasives_Native.None ->
+                  collect_href_directives pfx tl)
+           else
+             if (is_xsl pfx tag) && ((xsl_instr pfx tag) = "include")
+             then
+               (match attr_opt "href" attrs with
+                | FStar_Pervasives_Native.Some h -> (false, h) ::
+                    (collect_href_directives pfx tl)
+                | FStar_Pervasives_Native.None ->
+                    collect_href_directives pfx tl)
+             else collect_href_directives pfx tl
+       | uu___ -> collect_href_directives pfx tl)
+let stylesheet_href_directives (root : Parser_XML.xml_node) :
+  (Prims.bool * Prims.string) Prims.list=
+  match root with
+  | Parser_XML.XElement (tag, attrs, children) ->
+      let pfx = xsl_prefix_of root in
+      if
+        (is_xsl pfx tag) &&
+          (let ln = xsl_instr pfx tag in
+           (ln = "stylesheet") || (ln = "transform"))
+      then collect_href_directives pfx children
+      else []
+  | uu___ -> []
+type sheet_tree =
+  | Sheet_Node of Parser_XML.xml_node * sheet_tree Prims.list * sheet_tree
+  Prims.list 
+let uu___is_Sheet_Node (projectee : sheet_tree) : Prims.bool= true
+let __proj__Sheet_Node__item__root (projectee : sheet_tree) :
+  Parser_XML.xml_node=
+  match projectee with | Sheet_Node (root, includes, imports) -> root
+let __proj__Sheet_Node__item__includes (projectee : sheet_tree) :
+  sheet_tree Prims.list=
+  match projectee with | Sheet_Node (root, includes, imports) -> includes
+let __proj__Sheet_Node__item__imports (projectee : sheet_tree) :
+  sheet_tree Prims.list=
+  match projectee with | Sheet_Node (root, includes, imports) -> imports
+let rec sheet_tree_xml_count (t : sheet_tree) : Prims.nat=
+  match t with
+  | Sheet_Node (root, incs, imps) ->
+      ((XPath_Eval.xml_node_count root) + (sheet_tree_list_xml_count incs)) +
+        (sheet_tree_list_xml_count imps)
+and sheet_tree_list_xml_count (ts : sheet_tree Prims.list) : Prims.nat=
+  match ts with
+  | [] -> Prims.int_zero
+  | hd::tl -> (sheet_tree_xml_count hd) + (sheet_tree_list_xml_count tl)
+let rec process_node (fuel : Prims.nat) (counter : Prims.int)
+  (t : sheet_tree) :
+  (Prims.int * (Prims.int * Parser_XML.xml_node Prims.list) Prims.list)=
+  if fuel = Prims.int_zero
+  then (counter, [])
+  else
+    (match t with
+     | Sheet_Node (root, includes, imports) ->
+         let pfx = xsl_prefix_of root in
+         (match root with
+          | Parser_XML.XElement (tag, attrs, children) ->
+              if
+                (is_xsl pfx tag) &&
+                  (let ln = xsl_instr pfx tag in
+                   (ln = "stylesheet") || (ln = "transform"))
+              then
+                let uu___1 =
+                  process_children (fuel - Prims.int_one) counter pfx
+                    children includes imports in
+                (match uu___1 with
+                 | (counter1, ordinary, import_units) ->
+                     let my_prec = counter1 + Prims.int_one in
+                     (my_prec,
+                       (FStar_List_Tot_Base.append import_units
+                          [(my_prec, ordinary)])))
+              else (counter, [])
+          | uu___1 -> (counter, [])))
+and process_children (fuel : Prims.nat) (counter : Prims.int)
+  (pfx : Prims.string) (children : Parser_XML.xml_node Prims.list)
+  (includes : sheet_tree Prims.list) (imports : sheet_tree Prims.list) :
+  (Prims.int * Parser_XML.xml_node Prims.list * (Prims.int *
+    Parser_XML.xml_node Prims.list) Prims.list)=
+  if fuel = Prims.int_zero
+  then (counter, [], [])
+  else
+    (match children with
+     | [] -> (counter, [], [])
+     | hd::tl ->
+         (match hd with
+          | Parser_XML.XElement (tag, attrs, uu___1) ->
+              if (is_xsl pfx tag) && ((xsl_instr pfx tag) = "include")
+              then
+                (match includes with
+                 | [] ->
+                     process_children (fuel - Prims.int_one) counter pfx tl
+                       [] imports
+                 | inc::more_incs ->
+                     let uu___2 =
+                       expand_include (fuel - Prims.int_one) counter inc in
+                     (match uu___2 with
+                      | (counter1, sub_ordinary, sub_units) ->
+                          let uu___3 =
+                            process_children (fuel - Prims.int_one) counter1
+                              pfx tl more_incs imports in
+                          (match uu___3 with
+                           | (counter2, rest_ordinary, rest_units) ->
+                               (counter2,
+                                 (FStar_List_Tot_Base.append sub_ordinary
+                                    rest_ordinary),
+                                 (FStar_List_Tot_Base.append sub_units
+                                    rest_units)))))
+              else
+                if (is_xsl pfx tag) && ((xsl_instr pfx tag) = "import")
+                then
+                  (match imports with
+                   | [] ->
+                       process_children (fuel - Prims.int_one) counter pfx tl
+                         includes []
+                   | imp::more_imps ->
+                       let uu___3 =
+                         process_node (fuel - Prims.int_one) counter imp in
+                       (match uu___3 with
+                        | (counter1, imp_units) ->
+                            let uu___4 =
+                              process_children (fuel - Prims.int_one)
+                                counter1 pfx tl includes more_imps in
+                            (match uu___4 with
+                             | (counter2, rest_ordinary, rest_units) ->
+                                 (counter2, rest_ordinary,
+                                   (FStar_List_Tot_Base.append imp_units
+                                      rest_units)))))
+                else
+                  (let uu___4 =
+                     process_children (fuel - Prims.int_one) counter pfx tl
+                       includes imports in
+                   match uu___4 with
+                   | (counter1, rest_ordinary, rest_units) ->
+                       (counter1, (hd :: rest_ordinary), rest_units))
+          | uu___1 ->
+              let uu___2 =
+                process_children (fuel - Prims.int_one) counter pfx tl
+                  includes imports in
+              (match uu___2 with
+               | (counter1, rest_ordinary, rest_units) ->
+                   (counter1, (hd :: rest_ordinary), rest_units))))
+and expand_include (fuel : Prims.nat) (counter : Prims.int) (t : sheet_tree)
+  :
+  (Prims.int * Parser_XML.xml_node Prims.list * (Prims.int *
+    Parser_XML.xml_node Prims.list) Prims.list)=
+  if fuel = Prims.int_zero
+  then (counter, [], [])
+  else
+    (match t with
+     | Sheet_Node (root, includes, imports) ->
+         let pfx = xsl_prefix_of root in
+         (match root with
+          | Parser_XML.XElement (tag, attrs, children) ->
+              if
+                (is_xsl pfx tag) &&
+                  (let ln = xsl_instr pfx tag in
+                   (ln = "stylesheet") || (ln = "transform"))
+              then
+                process_children (fuel - Prims.int_one) counter pfx children
+                  includes imports
+              else (counter, [], [])
+          | uu___1 -> (counter, [], [])))
+let sheet_units (t : sheet_tree) :
+  (Prims.int * Parser_XML.xml_node Prims.list) Prims.list=
+  let fuel =
+    ((Prims.of_int (4)) * ((sheet_tree_xml_count t) + Prims.int_one)) +
+      (Prims.of_int (1000)) in
+  let uu___ = process_node fuel Prims.int_zero t in
+  match uu___ with | (uu___1, units) -> units
+let build_style_from_units
+  (units : (Prims.int * Parser_XML.xml_node Prims.list) Prims.list)
+  (root_pfx : Prims.string)
+  (root_attrs : Parser_XML.xml_attribute Prims.list)
+  (root_node : Parser_XML.xml_node) (source : Parser_XML.xml_node)
+  (doc_kids : Parser_XML.xml_node Prims.list)
+  (id_attrs : (Prims.string * Prims.string) Prims.list) : xstyle=
+  let nsctx = build_nsctx root_attrs in
+  let units_desc = FStar_List_Tot_Base.rev units in
+  let all_children_desc =
+    FStar_List_Tot_Base.flatten
+      (FStar_List_Tot_Base.map FStar_Pervasives_Native.snd units_desc) in
+  let decfmts = collect_decimal_formats root_pfx all_children_desc in
+  let out_settings =
+    collect_output_settings root_pfx nsctx all_children_desc
+      default_output_settings in
+  {
+    xs_pfx = root_pfx;
+    xs_templates =
+      (FStar_List_Tot_Base.concatMap
+         (fun pc ->
+            collect_templates_prec root_pfx (FStar_Pervasives_Native.fst pc)
+              (FStar_Pervasives_Native.snd pc)) units);
+    xs_attrsets = (collect_attribute_sets root_pfx all_children_desc);
+    xs_method =
+      (if out_settings.os_method_raw = "text" then "text" else "xml");
+    xs_output_present = (any_output_decl root_pfx all_children_desc);
+    xs_output = out_settings;
+    xs_globals =
+      (collect_globals root_pfx nsctx decfmts all_children_desc source
+         doc_kids);
+    xs_nsscope = (build_nsscope root_attrs);
+    xs_nsctx = nsctx;
+    xs_id_attrs = id_attrs;
+    xs_style_root = root_node;
+    xs_decfmts = decfmts
+  }
 let build_style (stylesheet : Parser_XML.xml_node)
   (source : Parser_XML.xml_node) (doc_kids : Parser_XML.xml_node Prims.list)
   (id_attrs : (Prims.string * Prims.string) Prims.list) : xstyle=
@@ -3045,7 +3352,8 @@ let build_style (stylesheet : Parser_XML.xml_node)
                tpl_name = "";
                tpl_mode = "";
                tpl_prio = FStar_Pervasives_Native.None;
-               tpl_body = [stylesheet]
+               tpl_body = [stylesheet];
+               tpl_import_prec = Prims.int_zero
              }];
           xs_attrsets = [];
           xs_method = "xml";
@@ -3206,3 +3514,29 @@ let transform_doc_ids (stylesheet : Parser_XML.xml_node)
           Prims.int_one "" st.xs_globals [] in
       let nodes = only_nodes result in
       finalize_output st.xs_output_present st.xs_output st.xs_method nodes
+let transform_doc_ids_merged (t : sheet_tree)
+  (source_kids : Parser_XML.xml_node Prims.list)
+  (source_id_attrs : (Prims.string * Prims.string) Prims.list) :
+  Prims.string=
+  match doc_root_elem source_kids with
+  | FStar_Pervasives_Native.None -> ""
+  | FStar_Pervasives_Native.Some root ->
+      (match t with
+       | Sheet_Node (root_style_node, uu___, uu___1) ->
+           let root_pfx = xsl_prefix_of root_style_node in
+           let root_attrs = Parser_XML.element_attrs root_style_node in
+           let units = sheet_units t in
+           let st =
+             build_style_from_units units root_pfx root_attrs root_style_node
+               root source_kids source_id_attrs in
+           let sz =
+             (sheet_tree_xml_count t) + (xml_nodes_count_sum source_kids) in
+           let fuel =
+             ((sz + Prims.int_one) * (Prims.of_int (256))) +
+               (Prims.parse_int "100000") in
+           let result =
+             dispatch fuel st (D_Doc (root, source_kids)) Prims.int_one
+               Prims.int_one "" st.xs_globals [] in
+           let nodes = only_nodes result in
+           finalize_output st.xs_output_present st.xs_output st.xs_method
+             nodes)

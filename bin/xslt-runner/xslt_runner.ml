@@ -56,6 +56,85 @@ let read_file path =
   with Sys_error _ -> None
 
 (* ------------------------------------------------------------------ *)
+(* xsl:import / xsl:include href-graph resolution (XSLT 1.0 section 2.6).
+
+   !! PURE I/O + PATH PLUMBING -- NO COMBINING SEMANTICS HERE !! Every
+   precedence/splicing DECISION is made by XSLT_Transform (sheet_tree,
+   process_node, build_style_from_units): this code only (a) discovers
+   which hrefs to follow, via the F*-exposed pure query
+   stylesheet_href_directives, (b) resolves each href to a filesystem
+   path relative to the CONTAINING file's own directory (XSLT 1.0
+   section 2.6.1: "a relative URI is resolved relative to the base URI
+   of the xsl:include element" -- impincl04/impincl08 exercise an
+   included file whose own xsl:include is relative to ITS directory,
+   not the root stylesheet's), (c) reads + parses that file, and
+   (d) recurses. Per CLAUDE.md rule #11 / anti-pattern #15.
+
+   Cycle detection is a bounded-visited-set I/O concern (not something
+   that needs to live in F*'s Tot recursion, which is already fuel-
+   bounded on the ALREADY-RESOLVED sheet_tree): a href whose canonical
+   path is already on the current resolution path, or one nested past
+   max_import_depth, resolves to an EMPTY placeholder node rather than
+   recursing further. XSLT_Transform.process_node treats a non-
+   <xsl:stylesheet> root (this placeholder) as contributing zero
+   content -- never a crash, never an infinite loop. *)
+
+let max_import_depth = 64
+
+(* impincl27: href="file:fragments/imp27b.xsl" -- a URI with the "file:"
+   scheme part (no "//"). Strip it before treating the rest as a
+   filesystem path. *)
+let strip_file_scheme href =
+  let pfx = "file:" in
+  let n = String.length pfx in
+  if String.length href >= n && String.sub href 0 n = pfx
+  then String.sub href n (String.length href - n)
+  else href
+
+let resolve_href base_dir href =
+  let path = strip_file_scheme href in
+  if Filename.is_relative path then Filename.concat base_dir path else path
+
+let canonicalize path = try Unix.realpath path with _ -> path
+
+let empty_sheet_placeholder : Parser_XML.xml_node = Parser_XML.XElement ("", [], [])
+
+(* Resolve one stylesheet's own xsl:import/xsl:include graph, recursively,
+   into an XSLT_Transform.sheet_tree. `base_dir` is THIS file's own
+   directory (for resolving ITS hrefs); `visited` is the canonical-path
+   set of every file already on the current resolution path (cycle
+   guard); `depth` is the nesting depth (hard bound guard). *)
+let rec resolve_sheet_tree (base_dir : string) (visited : string list) (depth : int)
+    (node : Parser_XML.xml_node) : XSLT_Transform.sheet_tree =
+  if depth > max_import_depth then XSLT_Transform.Sheet_Node (empty_sheet_placeholder, [], [])
+  else
+    let directives = XSLT_Transform.stylesheet_href_directives node in
+    let resolve_one (is_import, href) =
+      let raw_path = resolve_href base_dir href in
+      let canon = canonicalize raw_path in
+      if List.mem canon visited then (is_import, XSLT_Transform.Sheet_Node (empty_sheet_placeholder, [], []))
+      else
+        match read_file raw_path with
+        | None -> (is_import, XSLT_Transform.Sheet_Node (empty_sheet_placeholder, [], []))
+        | Some s ->
+          (match Parser_XML.parse_xml_document s with
+           | FStar_Pervasives_Native.None -> (is_import, XSLT_Transform.Sheet_Node (empty_sheet_placeholder, [], []))
+           | FStar_Pervasives_Native.Some child_root ->
+             let child_base = Filename.dirname raw_path in
+             (is_import, resolve_sheet_tree child_base (canon :: visited) (depth + 1) child_root))
+    in
+    let resolved = List.map resolve_one directives in
+    let includes = List.filter_map (fun (is_import, t) -> if is_import then None else Some t) resolved in
+    let imports = List.filter_map (fun (is_import, t) -> if is_import then Some t else None) resolved in
+    XSLT_Transform.Sheet_Node (node, includes, imports)
+
+(* Entry point for a top-level stylesheet file: seeds `visited` with the
+   root file's own canonical path (guards a stylesheet that somehow
+   includes/imports itself). *)
+let resolve_sheet_tree_from_file (sty_path : string) (root : Parser_XML.xml_node) : XSLT_Transform.sheet_tree =
+  resolve_sheet_tree (Filename.dirname sty_path) [ canonicalize sty_path ] 0 root
+
+(* ------------------------------------------------------------------ *)
 (* Thin wrappers over the F*-extracted JSON accessors. *)
 
 let opt_of_fs = function
@@ -205,7 +284,18 @@ let run_one base_dir overrides_dir e : outcome =
        (match Parser_XML.parse_xml_document_children_with_ids src_s with
         | FStar_Pervasives_Native.None -> Skip "source did not parse (Parser_XML)"
         | FStar_Pervasives_Native.Some (src_kids, src_ids) ->
-          let actual = XSLT_Transform.transform_doc_ids sty src_kids src_ids in
+          (* xsl:import/xsl:include (XSLT 1.0 section 2.6): only follow the
+             href graph (extra file reads) when the stylesheet actually
+             uses either directive -- every other stylesheet keeps calling
+             transform_doc_ids exactly as before (zero regression risk to
+             the pre-existing Xalan/xslt/xml-conformance scores). *)
+          let actual =
+            match XSLT_Transform.stylesheet_href_directives sty with
+            | [] -> XSLT_Transform.transform_doc_ids sty src_kids src_ids
+            | _ ->
+              let tree = resolve_sheet_tree_from_file sty_path sty in
+              XSLT_Transform.transform_doc_ids_merged tree src_kids src_ids
+          in
           if normalize_exact actual = normalize_exact exp_s then Pass_exact
           else if normalize_loose actual = normalize_loose exp_s then Pass_loose
           else
@@ -293,14 +383,19 @@ let () =
      (match List.find_opt (fun e -> e.name = name) entries with
       | None -> Printf.eprintf "no such test: %s\n" name; exit 2
       | Some e ->
-        let sty = read_file (Filename.concat base_dir e.stylesheet) in
+        let sty_path = Filename.concat base_dir e.stylesheet in
+        let sty = read_file sty_path in
         let src = read_file (Filename.concat base_dir e.source) in
         let exp = read_file (Filename.concat base_dir e.expected) in
         (match sty, src, exp with
          | Some sty_s, Some src_s, Some exp_s ->
            (match Parser_XML.parse_xml_document sty_s, Parser_XML.parse_xml_document_children_with_ids src_s with
             | FStar_Pervasives_Native.Some s, FStar_Pervasives_Native.Some (d, dids) ->
-              let a = XSLT_Transform.transform_doc_ids s d dids in
+              let a =
+                match XSLT_Transform.stylesheet_href_directives s with
+                | [] -> XSLT_Transform.transform_doc_ids s d dids
+                | _ -> XSLT_Transform.transform_doc_ids_merged (resolve_sheet_tree_from_file sty_path s) d dids
+              in
               Printf.printf "=== GOT (normalize_exact) ===\n%s\n=== WANT (normalize_exact) ===\n%s\n"
                 (normalize_exact a) (normalize_exact exp_s);
               Printf.printf "=== equal-exact:%b equal-loose:%b ===\n"
