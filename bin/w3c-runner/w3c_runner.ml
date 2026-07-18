@@ -1395,9 +1395,13 @@ let run_query_eval_test tc =
     let term_key_sub = function
       | RDF_Graph_Executable.S_IRI i -> i
       | RDF_Graph_Executable.S_BNode _ -> "BN" in
-    let term_key_obj = function
+    let rec term_key_obj = function
       | RDF_Graph_Executable.T_IRI i -> "I:" ^ i
       | RDF_Graph_Executable.T_BNode _ -> "B:BN"
+      (* Diagnostic-only (-v dump); RDF 1.2 triple-term object. Not used
+         by the actual pass/fail decision (graphs_equal_strict below). *)
+      | RDF_Graph_Executable.T_TripleTerm (s, p, o) ->
+        "TT:(" ^ term_key_sub s ^ " " ^ p ^ " " ^ term_key_obj o ^ ")"
       | RDF_Graph_Executable.T_Literal l ->
         let dt = l.RDF_Graph_Executable.datatype in
         let lg = (match l.RDF_Graph_Executable.lang_tag with
