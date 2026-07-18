@@ -5,6 +5,11 @@ let chars_of (s : Prims.string) : FStar_String.char Prims.list=
   FStar_String.list_of_string s
 let str_of_chars (cs : FStar_String.char Prims.list) : Prims.string=
   FStar_String.string_of_list cs
+let ascii_lower_char (c : FStar_String.char) : FStar_String.char=
+  let n = FStar_Char.int_of_char c in
+  if (n >= (Prims.of_int (0x41))) && (n <= (Prims.of_int (0x5A)))
+  then FStar_Char.char_of_int (n + (Prims.of_int (0x20)))
+  else c
 let is_space_char (c : FStar_String.char) : Prims.bool=
   let code = FStar_Char.int_of_char c in
   (((code = (Prims.of_int (0x20))) || (code = (Prims.of_int (0x09)))) ||
@@ -976,6 +981,442 @@ let template_matches (vars : (Prims.string * XPath_Eval.xp_value) Prims.list)
   then false
   else
     any_alt_matches vars nsctx id_attrs (split_on_char 124 tpl.tpl_match) nd
+let rec parse_nat_chars (cs : FStar_String.char Prims.list) (acc : Prims.nat)
+  : Prims.nat FStar_Pervasives_Native.option=
+  match cs with
+  | [] -> FStar_Pervasives_Native.Some acc
+  | c::rest ->
+      let d = (FStar_Char.int_of_char c) - (Prims.of_int (0x30)) in
+      if (d >= Prims.int_zero) && (d <= (Prims.of_int (9)))
+      then parse_nat_chars rest ((acc * (Prims.of_int (10))) + d)
+      else FStar_Pervasives_Native.None
+let default_count_pattern (it : XPath_Eval.xctx_item) : Prims.string=
+  match it with
+  | XPath_Eval.CI_Elem (uu___, uu___1, n) ->
+      (match Parser_XML.element_tag n with
+       | FStar_Pervasives_Native.Some t -> t
+       | FStar_Pervasives_Native.None -> "*")
+  | XPath_Eval.CI_Text (uu___, uu___1, uu___2, uu___3) -> "text()"
+  | XPath_Eval.CI_Comment (uu___, uu___1, uu___2, uu___3) -> "comment()"
+  | XPath_Eval.CI_PI (uu___, uu___1, uu___2, uu___3, uu___4) ->
+      "processing-instruction()"
+  | XPath_Eval.CI_Attr (uu___, uu___1, uu___2, a) ->
+      Prims.strcat "@" a.Parser_XML.attr_name
+  | XPath_Eval.CI_Namespace (uu___, uu___1, uu___2, uu___3, uu___4) -> "*"
+let count_matches (vars : (Prims.string * XPath_Eval.xp_value) Prims.list)
+  (nsctx : (Prims.string * Prims.string) Prims.list)
+  (id_attrs : (Prims.string * Prims.string) Prims.list) (pat : Prims.string)
+  (node : XPath_Eval.xctx_item) : Prims.bool=
+  any_alt_matches vars nsctx id_attrs (split_on_char 124 pat) (D_Item node)
+let count_with_preceding
+  (vars : (Prims.string * XPath_Eval.xp_value) Prims.list)
+  (nsctx : (Prims.string * Prims.string) Prims.list)
+  (id_attrs : (Prims.string * Prims.string) Prims.list)
+  (count_pat : Prims.string) (node : XPath_Eval.xctx_item) : Prims.nat=
+  Prims.int_one +
+    (FStar_List_Tot_Base.length
+       (FStar_List_Tot_Base.filter
+          (count_matches vars nsctx id_attrs count_pat)
+          (XPath_Eval.preceding_sibling_axis node)))
+let rec find_level_single
+  (vars : (Prims.string * XPath_Eval.xp_value) Prims.list)
+  (nsctx : (Prims.string * Prims.string) Prims.list)
+  (id_attrs : (Prims.string * Prims.string) Prims.list)
+  (count_pat : Prims.string) (from_pat : Prims.string)
+  (chain : XPath_Eval.xctx_item Prims.list) :
+  XPath_Eval.xctx_item FStar_Pervasives_Native.option=
+  match chain with
+  | [] -> FStar_Pervasives_Native.None
+  | node::rest ->
+      if count_matches vars nsctx id_attrs count_pat node
+      then FStar_Pervasives_Native.Some node
+      else
+        if
+          (from_pat <> "") &&
+            (count_matches vars nsctx id_attrs from_pat node)
+        then FStar_Pervasives_Native.None
+        else find_level_single vars nsctx id_attrs count_pat from_pat rest
+let level_single_numbers
+  (vars : (Prims.string * XPath_Eval.xp_value) Prims.list)
+  (nsctx : (Prims.string * Prims.string) Prims.list)
+  (id_attrs : (Prims.string * Prims.string) Prims.list)
+  (count_pat : Prims.string) (from_pat : Prims.string)
+  (self : XPath_Eval.xctx_item) : Prims.nat Prims.list=
+  let chain = self :: (XPath_Eval.ancestor_axis self) in
+  match find_level_single vars nsctx id_attrs count_pat from_pat chain with
+  | FStar_Pervasives_Native.None -> []
+  | FStar_Pervasives_Native.Some c ->
+      [count_with_preceding vars nsctx id_attrs count_pat c]
+let rec multiple_numbers
+  (vars : (Prims.string * XPath_Eval.xp_value) Prims.list)
+  (nsctx : (Prims.string * Prims.string) Prims.list)
+  (id_attrs : (Prims.string * Prims.string) Prims.list)
+  (count_pat : Prims.string) (from_pat : Prims.string)
+  (chain : XPath_Eval.xctx_item Prims.list) : Prims.nat Prims.list=
+  match chain with
+  | [] -> []
+  | node::rest ->
+      if
+        (from_pat <> "") && (count_matches vars nsctx id_attrs from_pat node)
+      then []
+      else
+        (let tail =
+           multiple_numbers vars nsctx id_attrs count_pat from_pat rest in
+         if count_matches vars nsctx id_attrs count_pat node
+         then
+           FStar_List_Tot_Base.op_At tail
+             [count_with_preceding vars nsctx id_attrs count_pat node]
+         else tail)
+let level_multiple_numbers
+  (vars : (Prims.string * XPath_Eval.xp_value) Prims.list)
+  (nsctx : (Prims.string * Prims.string) Prims.list)
+  (id_attrs : (Prims.string * Prims.string) Prims.list)
+  (count_pat : Prims.string) (from_pat : Prims.string)
+  (self : XPath_Eval.xctx_item) : Prims.nat Prims.list=
+  multiple_numbers vars nsctx id_attrs count_pat from_pat (self ::
+    (XPath_Eval.ancestor_axis self))
+let rec find_from_boundary
+  (vars : (Prims.string * XPath_Eval.xp_value) Prims.list)
+  (nsctx : (Prims.string * Prims.string) Prims.list)
+  (id_attrs : (Prims.string * Prims.string) Prims.list)
+  (from_pat : Prims.string) (chain : XPath_Eval.xctx_item Prims.list) :
+  Prims.int Prims.list FStar_Pervasives_Native.option=
+  match chain with
+  | [] -> FStar_Pervasives_Native.None
+  | node::rest ->
+      if count_matches vars nsctx id_attrs from_pat node
+      then FStar_Pervasives_Native.Some (XPath_Eval.item_path node)
+      else find_from_boundary vars nsctx id_attrs from_pat rest
+let level_any_numbers
+  (vars : (Prims.string * XPath_Eval.xp_value) Prims.list)
+  (nsctx : (Prims.string * Prims.string) Prims.list)
+  (id_attrs : (Prims.string * Prims.string) Prims.list)
+  (count_pat : Prims.string) (from_pat : Prims.string)
+  (self : XPath_Eval.xctx_item) : Prims.nat Prims.list=
+  let boundary =
+    if from_pat = ""
+    then FStar_Pervasives_Native.None
+    else
+      find_from_boundary vars nsctx id_attrs from_pat (self ::
+        (XPath_Eval.ancestor_axis self)) in
+  let eligible =
+    FStar_List_Tot_Base.filter
+      (fun x ->
+         (count_matches vars nsctx id_attrs count_pat x) &&
+           (match boundary with
+            | FStar_Pervasives_Native.None -> true
+            | FStar_Pervasives_Native.Some fp ->
+                XPath_Eval.path_is_prefix fp (XPath_Eval.item_path x)))
+      (XPath_Eval.preceding_axis self) in
+  [Prims.int_one + (FStar_List_Tot_Base.length eligible)]
+let level_numbers (vars : (Prims.string * XPath_Eval.xp_value) Prims.list)
+  (nsctx : (Prims.string * Prims.string) Prims.list)
+  (id_attrs : (Prims.string * Prims.string) Prims.list)
+  (level : Prims.string) (count_raw : Prims.string) (from_pat : Prims.string)
+  (self : XPath_Eval.xctx_item) : Prims.nat Prims.list=
+  let count_pat =
+    if count_raw = "" then default_count_pattern self else count_raw in
+  if level = "multiple"
+  then level_multiple_numbers vars nsctx id_attrs count_pat from_pat self
+  else
+    if level = "any"
+    then level_any_numbers vars nsctx id_attrs count_pat from_pat self
+    else level_single_numbers vars nsctx id_attrs count_pat from_pat self
+let alpha_digit_char (upper : Prims.bool) (d : Prims.nat) :
+  FStar_String.char=
+  let base = if upper then (Prims.of_int (0x41)) else (Prims.of_int (0x61)) in
+  FStar_Char.char_of_int
+    (base + (if d < (Prims.of_int (26)) then d else (Prims.of_int (25))))
+let rec alpha_digits (upper : Prims.bool) (n : Prims.nat) (fuel : Prims.nat)
+  : FStar_String.char Prims.list=
+  if fuel = Prims.int_zero
+  then []
+  else
+    if n = Prims.int_zero
+    then []
+    else
+      (let n0 = n - Prims.int_one in
+       let d = (mod) n0 (Prims.of_int (26)) in
+       let rest = n0 / (Prims.of_int (26)) in
+       FStar_List_Tot_Base.op_At
+         (alpha_digits upper rest (fuel - Prims.int_one))
+         [alpha_digit_char upper d])
+let render_alpha (upper : Prims.bool) (n : Prims.nat) : Prims.string=
+  if n = Prims.int_zero
+  then "0"
+  else str_of_chars (alpha_digits upper n (n + Prims.int_one))
+let roman_table : (Prims.nat * Prims.string) Prims.list=
+  [((Prims.of_int (1000)), "M");
+  ((Prims.of_int (900)), "CM");
+  ((Prims.of_int (500)), "D");
+  ((Prims.of_int (400)), "CD");
+  ((Prims.of_int (100)), "C");
+  ((Prims.of_int (90)), "XC");
+  ((Prims.of_int (50)), "L");
+  ((Prims.of_int (40)), "XL");
+  ((Prims.of_int (10)), "X");
+  ((Prims.of_int (9)), "IX");
+  ((Prims.of_int (5)), "V");
+  ((Prims.of_int (4)), "IV");
+  (Prims.int_one, "I")]
+let rec roman_pick (n : Prims.nat)
+  (table : (Prims.nat * Prims.string) Prims.list) :
+  (Prims.nat * Prims.string) FStar_Pervasives_Native.option=
+  match table with
+  | [] -> FStar_Pervasives_Native.None
+  | (v, s)::rest ->
+      if (v > Prims.int_zero) && (v <= n)
+      then FStar_Pervasives_Native.Some (v, s)
+      else roman_pick n rest
+let rec roman_digits_fuel (n : Prims.nat) (fuel : Prims.nat) : Prims.string=
+  if fuel = Prims.int_zero
+  then ""
+  else
+    if n = Prims.int_zero
+    then ""
+    else
+      (match roman_pick n roman_table with
+       | FStar_Pervasives_Native.None -> ""
+       | FStar_Pervasives_Native.Some (v, s) ->
+           Prims.strcat s
+             (roman_digits_fuel (if n >= v then n - v else Prims.int_zero)
+                (fuel - Prims.int_one)))
+let roman_digits (n : Prims.nat) : Prims.string=
+  roman_digits_fuel n (n + Prims.int_one)
+let rec nat_to_digits (n : Prims.nat) (fuel : Prims.nat) :
+  FStar_String.char Prims.list=
+  if fuel = Prims.int_zero
+  then []
+  else
+    if n = Prims.int_zero
+    then []
+    else
+      (let d = (mod) n (Prims.of_int (10)) in
+       let rest = n / (Prims.of_int (10)) in
+       FStar_List_Tot_Base.op_At (nat_to_digits rest (fuel - Prims.int_one))
+         [FStar_Char.char_of_int ((Prims.of_int (0x30)) + d)])
+let digits_of_nat (n : Prims.nat) : FStar_String.char Prims.list=
+  if n = Prims.int_zero then [48] else nat_to_digits n (n + Prims.int_one)
+let rec replicate_char (c : FStar_String.char) (k : Prims.nat) :
+  FStar_String.char Prims.list=
+  if k = Prims.int_zero
+  then []
+  else c :: (replicate_char c (k - Prims.int_one))
+let pad_left_zeros (cs : FStar_String.char Prims.list) (want : Prims.nat) :
+  FStar_String.char Prims.list=
+  let len = FStar_List_Tot_Base.length cs in
+  if want <= len
+  then cs
+  else FStar_List_Tot_Base.op_At (replicate_char 48 (want - len)) cs
+let rec group_rev (rev_ds : FStar_String.char Prims.list)
+  (sep_rev : FStar_String.char Prims.list) (gsize : Prims.nat)
+  (i : Prims.nat) : FStar_String.char Prims.list=
+  match rev_ds with
+  | [] -> []
+  | c::rest ->
+      let tail = group_rev rest sep_rev gsize (i + Prims.int_one) in
+      if
+        ((gsize > Prims.int_zero) &&
+           (((mod) (i + Prims.int_one) gsize) = Prims.int_zero))
+          && (Prims.uu___is_Cons rest)
+      then c :: (FStar_List_Tot_Base.op_At sep_rev tail)
+      else c :: tail
+let apply_grouping (digits : FStar_String.char Prims.list)
+  (gsep : Prims.string) (gsize : Prims.nat) : FStar_String.char Prims.list=
+  if (gsep = "") || (gsize = Prims.int_zero)
+  then digits
+  else
+    FStar_List_Tot_Base.rev
+      (group_rev (FStar_List_Tot_Base.rev digits)
+         (FStar_List_Tot_Base.rev (chars_of gsep)) gsize Prims.int_zero)
+type numfmt_style =
+  | NF_Decimal of Prims.nat 
+  | NF_UpperAlpha 
+  | NF_LowerAlpha 
+  | NF_UpperRoman 
+  | NF_LowerRoman 
+let uu___is_NF_Decimal (projectee : numfmt_style) : Prims.bool=
+  match projectee with | NF_Decimal _0 -> true | uu___ -> false
+let __proj__NF_Decimal__item___0 (projectee : numfmt_style) : Prims.nat=
+  match projectee with | NF_Decimal _0 -> _0
+let uu___is_NF_UpperAlpha (projectee : numfmt_style) : Prims.bool=
+  match projectee with | NF_UpperAlpha -> true | uu___ -> false
+let uu___is_NF_LowerAlpha (projectee : numfmt_style) : Prims.bool=
+  match projectee with | NF_LowerAlpha -> true | uu___ -> false
+let uu___is_NF_UpperRoman (projectee : numfmt_style) : Prims.bool=
+  match projectee with | NF_UpperRoman -> true | uu___ -> false
+let uu___is_NF_LowerRoman (projectee : numfmt_style) : Prims.bool=
+  match projectee with | NF_LowerRoman -> true | uu___ -> false
+let render_num_styled (n : Prims.nat) (style : numfmt_style)
+  (gsep : Prims.string) (gsize : Prims.nat) : Prims.string=
+  match style with
+  | NF_Decimal minw ->
+      str_of_chars
+        (apply_grouping (pad_left_zeros (digits_of_nat n) minw) gsep gsize)
+  | NF_UpperAlpha -> render_alpha true n
+  | NF_LowerAlpha -> render_alpha false n
+  | NF_UpperRoman -> roman_digits n
+  | NF_LowerRoman ->
+      str_of_chars
+        (FStar_List_Tot_Base.map ascii_lower_char (chars_of (roman_digits n)))
+let is_alnum_fmt_char (c : FStar_String.char) : Prims.bool=
+  let code = FStar_Char.int_of_char c in
+  ((((code >= (Prims.of_int (0x30))) && (code <= (Prims.of_int (0x39)))) ||
+      ((code >= (Prims.of_int (0x41))) && (code <= (Prims.of_int (0x5A)))))
+     || ((code >= (Prims.of_int (0x61))) && (code <= (Prims.of_int (0x7A)))))
+    || (code >= (Prims.of_int (0x80)))
+let rec run_alnum (cs : FStar_String.char Prims.list)
+  (acc : FStar_String.char Prims.list) :
+  (FStar_String.char Prims.list * FStar_String.char Prims.list)=
+  match cs with
+  | c::rest ->
+      if is_alnum_fmt_char c
+      then run_alnum rest (c :: acc)
+      else ((FStar_List_Tot_Base.rev acc), cs)
+  | [] -> ((FStar_List_Tot_Base.rev acc), [])
+let rec run_sep (cs : FStar_String.char Prims.list)
+  (acc : FStar_String.char Prims.list) :
+  (FStar_String.char Prims.list * FStar_String.char Prims.list)=
+  match cs with
+  | c::rest ->
+      if Prims.op_Negation (is_alnum_fmt_char c)
+      then run_sep rest (c :: acc)
+      else ((FStar_List_Tot_Base.rev acc), cs)
+  | [] -> ((FStar_List_Tot_Base.rev acc), [])
+type frun =
+  | FR_Alnum of FStar_String.char Prims.list 
+  | FR_Sep of FStar_String.char Prims.list 
+let uu___is_FR_Alnum (projectee : frun) : Prims.bool=
+  match projectee with | FR_Alnum _0 -> true | uu___ -> false
+let __proj__FR_Alnum__item___0 (projectee : frun) :
+  FStar_String.char Prims.list= match projectee with | FR_Alnum _0 -> _0
+let uu___is_FR_Sep (projectee : frun) : Prims.bool=
+  match projectee with | FR_Sep _0 -> true | uu___ -> false
+let __proj__FR_Sep__item___0 (projectee : frun) :
+  FStar_String.char Prims.list= match projectee with | FR_Sep _0 -> _0
+let rec tokenize_runs (cs : FStar_String.char Prims.list) (fuel : Prims.nat)
+  : frun Prims.list=
+  if fuel = Prims.int_zero
+  then []
+  else
+    (match cs with
+     | [] -> []
+     | c::uu___1 ->
+         if is_alnum_fmt_char c
+         then
+           let uu___2 = run_alnum cs [] in
+           (match uu___2 with
+            | (run, rest) -> (FR_Alnum run) ::
+                (tokenize_runs rest (fuel - Prims.int_one)))
+         else
+           (let uu___3 = run_sep cs [] in
+            match uu___3 with
+            | (run, rest) -> (FR_Sep run) ::
+                (tokenize_runs rest (fuel - Prims.int_one))))
+let classify_token (t : FStar_String.char Prims.list) : numfmt_style=
+  match t with
+  | [] -> NF_Decimal Prims.int_one
+  | c::uu___ ->
+      if c = 65
+      then NF_UpperAlpha
+      else
+        if c = 97
+        then NF_LowerAlpha
+        else
+          if c = 73
+          then NF_UpperRoman
+          else
+            if c = 105
+            then NF_LowerRoman
+            else NF_Decimal (FStar_List_Tot_Base.length t)
+let rec split_tokens (rest : frun Prims.list) :
+  (numfmt_style Prims.list * Prims.string Prims.list * Prims.string)=
+  match rest with
+  | [] -> ([], [], "")
+  | (FR_Alnum t)::[] -> ([classify_token t], [], "")
+  | (FR_Alnum t)::(FR_Sep s)::[] ->
+      ([classify_token t], [], (str_of_chars s))
+  | (FR_Alnum t)::(FR_Sep s)::more ->
+      let uu___ = split_tokens more in
+      (match uu___ with
+       | (toks, seps, suf) ->
+           (((classify_token t) :: toks), ((str_of_chars s) :: seps), suf))
+  | (FR_Alnum t)::more ->
+      let uu___ = split_tokens more in
+      (match uu___ with
+       | (toks, seps, suf) -> (((classify_token t) :: toks), seps, suf))
+  | (FR_Sep uu___)::more -> split_tokens more
+let parsed_format (fmt : Prims.string) :
+  (Prims.string * numfmt_style Prims.list * Prims.string Prims.list *
+    Prims.string)=
+  let cs = chars_of fmt in
+  match tokenize_runs cs ((FStar_List_Tot_Base.length cs) + Prims.int_one)
+  with
+  | [] -> ("", [NF_Decimal Prims.int_one], [], "")
+  | (FR_Sep s)::rest ->
+      let uu___ = split_tokens rest in
+      (match uu___ with
+       | (toks, seps, suf) ->
+           (match toks with
+            | [] -> ((str_of_chars s), [NF_Decimal Prims.int_one], [], "")
+            | uu___1 -> ((str_of_chars s), toks, seps, suf)))
+  | runs ->
+      let uu___ = split_tokens runs in
+      (match uu___ with | (toks, seps, suf) -> ("", toks, seps, suf))
+let rec pick_style (toks : numfmt_style Prims.list) (i : Prims.nat) :
+  numfmt_style=
+  match toks with
+  | [] -> NF_Decimal Prims.int_one
+  | t::[] -> t
+  | t::rest ->
+      if i = Prims.int_zero then t else pick_style rest (i - Prims.int_one)
+let rec pick_sep (seps : Prims.string Prims.list) (i : Prims.nat) :
+  Prims.string=
+  match seps with
+  | [] -> "."
+  | s::[] -> s
+  | s::rest ->
+      if i = Prims.int_zero then s else pick_sep rest (i - Prims.int_one)
+let rec render_numbered (ns : Prims.nat Prims.list)
+  (toks : numfmt_style Prims.list) (seps : Prims.string Prims.list)
+  (suffix : Prims.string) (gsep : Prims.string) (gsize : Prims.nat)
+  (i : Prims.nat) : Prims.string=
+  match ns with
+  | [] -> ""
+  | n::[] ->
+      Prims.strcat (render_num_styled n (pick_style toks i) gsep gsize)
+        suffix
+  | n::rest ->
+      Prims.strcat
+        (Prims.strcat (render_num_styled n (pick_style toks i) gsep gsize)
+           (pick_sep seps i))
+        (render_numbered rest toks seps suffix gsep gsize (i + Prims.int_one))
+let render_number_list (numbers : Prims.nat Prims.list) (fmt : Prims.string)
+  (gsep : Prims.string) (gsize_s : Prims.string) : Prims.string=
+  let uu___ = parsed_format fmt in
+  match uu___ with
+  | (lead, toks, seps, suffix) ->
+      (match numbers with
+       | [] -> ""
+       | uu___1 ->
+           let gsize =
+             match parse_nat_chars (chars_of (trim_str gsize_s))
+                     Prims.int_zero
+             with
+             | FStar_Pervasives_Native.Some n -> n
+             | FStar_Pervasives_Native.None -> Prims.int_zero in
+           Prims.strcat lead
+             (render_numbered numbers toks seps suffix gsep gsize
+                Prims.int_zero))
+let value_bypass (n : XPath_Eval.xpath_number) :
+  Prims.string FStar_Pervasives_Native.option=
+  match XPath_Eval.xn_round n with
+  | XPath_Eval.XN_Finite (v, uu___) when uu___ = Prims.int_zero ->
+      if v < Prims.int_one
+      then FStar_Pervasives_Native.Some (Prims.string_of_int v)
+      else FStar_Pervasives_Native.None
+  | XPath_Eval.XN_Finite (uu___, uu___1) -> FStar_Pervasives_Native.None
+  | other -> FStar_Pervasives_Native.Some (XPath_Eval.xn_to_string other)
 let alt_priority (alt : Prims.string) : Prims.int=
   let a = trim_str alt in
   if
@@ -1142,11 +1583,6 @@ and text_value_nodes (ns : Parser_XML.xml_node Prims.list) : Prims.string=
   match ns with
   | [] -> ""
   | hd::tl -> Prims.strcat (text_value_node hd) (text_value_nodes tl)
-let ascii_lower_char (c : FStar_String.char) : FStar_String.char=
-  let n = FStar_Char.int_of_char c in
-  if (n >= (Prims.of_int (0x41))) && (n <= (Prims.of_int (0x5A)))
-  then FStar_Char.char_of_int (n + (Prims.of_int (0x20)))
-  else c
 let is_ascii_lower (c : FStar_String.char) : Prims.bool=
   let n = FStar_Char.int_of_char c in
   (n >= (Prims.of_int (0x61))) && (n <= (Prims.of_int (0x7A)))
@@ -1736,7 +2172,69 @@ and instantiate_one (fuel : Prims.nat) (st : xstyle) (ctx : dnode)
                                      [R_Node
                                         (Parser_XML.XComment
                                            (rnodes_text body))])
-                                  else [])
+                                  else
+                                    if ln = "number"
+                                    then
+                                      (let dctx = dnode_ci ctx in
+                                       let level =
+                                         expand_avt dctx pos size vars
+                                           st.xs_nsctx
+                                           (attr_or "level" "single" attrs) in
+                                       let count_pat =
+                                         attr_or "count" "" attrs in
+                                       let from_pat = attr_or "from" "" attrs in
+                                       let fmt =
+                                         expand_avt dctx pos size vars
+                                           st.xs_nsctx
+                                           (attr_or "format" "1" attrs) in
+                                       let gsep =
+                                         expand_avt dctx pos size vars
+                                           st.xs_nsctx
+                                           (attr_or "grouping-separator" ""
+                                              attrs) in
+                                       let gsize_s =
+                                         expand_avt dctx pos size vars
+                                           st.xs_nsctx
+                                           (attr_or "grouping-size" "" attrs) in
+                                       let text =
+                                         match attr_opt "value" attrs with
+                                         | FStar_Pervasives_Native.Some vexpr
+                                             ->
+                                             let n =
+                                               XPath_Eval.to_number_val
+                                                 (eval_val_dn ctx pos size
+                                                    vars st.xs_nsctx
+                                                    st.xs_id_attrs
+                                                    st.xs_style_root
+                                                    st.xs_decfmts vexpr) in
+                                             (match value_bypass n with
+                                              | FStar_Pervasives_Native.Some
+                                                  s -> s
+                                              | FStar_Pervasives_Native.None
+                                                  ->
+                                                  (match XPath_Eval.xn_finite_int
+                                                           (XPath_Eval.xn_round
+                                                              n)
+                                                   with
+                                                   | FStar_Pervasives_Native.Some
+                                                       v ->
+                                                       render_number_list 
+                                                         [v] fmt gsep gsize_s
+                                                   | FStar_Pervasives_Native.None
+                                                       -> ""))
+                                         | FStar_Pervasives_Native.None ->
+                                             (match ctx with
+                                              | D_Item it ->
+                                                  render_number_list
+                                                    (level_numbers vars
+                                                       st.xs_nsctx
+                                                       st.xs_id_attrs level
+                                                       count_pat from_pat it)
+                                                    fmt gsep gsize_s
+                                              | D_Doc (uu___13, uu___14) ->
+                                                  "") in
+                                       [R_Node (Parser_XML.XText text)])
+                                    else [])
          else
            (let kept =
               FStar_List_Tot_Base.filter

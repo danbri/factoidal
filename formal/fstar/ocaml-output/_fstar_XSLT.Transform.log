@@ -1,12 +1,14 @@
-* Warning 241 at Parser.FastString.fst(0,0-0,0):
-  - Unable to load Parser.FastString.fst.checked since checked file
-    Parser.FastString.fst.checked does not exist; will recheck
-    Parser.FastString.fst (suppressing this warning for further modules)
+* Warning 241 at XPath.Eval.fst(0,0-0,0):
+  - Unable to load XPath.Eval.fst.checked since checked file
+    XPath.Eval.fst.checked is stale (digest mismatch for XPath.Eval.fst); will
+    recheck XPath.Eval.fst (suppressing this warning for further modules)
 
 Extracted module XSLT.Transform
 * Warning 247 at XSLT.Transform.fst(0,0-0,0):
   - Checked file XSLT.Transform.fst.checked was not written.
-  - Reason: checked file Parser.XML.fst.checked does not exist
+  - Reason:
+      checked file XPath.Eval.fst.checked is stale (digest mismatch for
+      XPath.Eval.fst)
 
 Verified module: XSLT.Transform
 All verification conditions discharged successfully
