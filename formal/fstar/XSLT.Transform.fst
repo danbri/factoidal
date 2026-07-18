@@ -75,9 +75,22 @@ open XPath.Eval
 // Serialization: an element whose content is empty (e.g. an empty
 // xsl:value-of) is written as an empty-element tag `<t/>`.
 //
+// xsl:import/xsl:include (XSLT 1.0 section 2.6) and xsl:apply-imports
+// (section 5.6) ARE supported -- see the "Combining stylesheets" section
+// below build_nsscope (sheet_tree, process_node/process_children/
+// expand_include, build_style_from_units) and pick_template/
+// pick_template_below's import-precedence-aware conflict resolution.
+// The runner (bin/xslt-runner/xslt_runner.ml) resolves+reads the
+// referenced files from disk and hands back a sheet_tree; this module
+// owns 100% of the precedence/splicing semantics. xsl:next-match
+// (XSLT 2.0) remains out of scope, as does per-file namespace context
+// for a nested include/import target's OWN match/select patterns (no
+// impincl fixture exercises a namespaced pattern inside an included/
+// imported file; only the ROOT stylesheet's xs_nsctx is consulted).
+//
 // Deliberately OUT of scope (a mismatch here is expected, not a bug):
-//   xsl:key/key(), document(), xsl:import/include,
-//   xsl:apply-imports/next-match, xsl:sort lang collations, the
+//   xsl:key/key(), document(), xsl:next-match,
+//   xsl:sort lang collations, the
 //   `namespace::` axis and namespace-node counting (XPath.Eval models no
 //   namespace-node kind, so `namespace::node()` selects nothing -- the
 //   only namespace machinery still missing after the namespace-node
@@ -448,6 +461,17 @@ type template = {
   tpl_mode : string;    // mode= ; "" is the default (unnamed) mode
   tpl_prio : option int;  // priority= override, x10-scaled to match the defaults below
   tpl_body : list xml_node;
+  // Import precedence (XSLT 1.0 section 2.6.2): HIGHER wins outright in
+  // template conflict resolution, regardless of tpl_prio. Every template
+  // from a stylesheet with no xsl:import/xsl:include gets the SAME
+  // constant (0) here, which makes the precedence comparison in
+  // pick_template a no-op and falls through to the original priority-only
+  // comparison -- byte-identical behavior for every stylesheet that
+  // doesn't use combining (protects the pre-existing Xalan/xslt/xml-conformance
+  // scores). Assigned by collect_templates_prec / the sheet_tree merge
+  // (build_style_from_units) via a postorder numbering of the import
+  // tree: see the "Combining stylesheets" section below build_nsscope.
+  tpl_import_prec : int;
 }
 
 // A named top-level xsl:attribute-set declaration (XSLT 1.0 §7.1.4),
@@ -1552,9 +1576,19 @@ let template_priority (tpl:template) : int =
   | Some p -> p
   | None -> max_alt_priority (split_on_char '|' tpl.tpl_match) (-100)
 
-// Highest-priority template that both matches `nd` AND is declared in
-// the active `mode` (default mode = ""); ties resolved to the LAST in
-// document order (XSLT 1.0 conflict resolution, minus the error).
+// Highest-import-precedence, then highest-priority template that both
+// matches `nd` AND is declared in the active `mode` (default mode = "");
+// import precedence (tpl_import_prec, HIGHER wins) is checked BEFORE
+// priority (XSLT 1.0 section 5.5: "if there are several matching
+// template rules ... the rule with highest import precedence is used
+// ... if there are several matching template rules with the same,
+// highest, import precedence, ... the rule with highest default or
+// specified priority is used"); ties within the SAME precedence resolve
+// to the LAST in document order, same as before this field existed.
+// Every template in a stylesheet with no xsl:import/xsl:include shares
+// the SAME constant tpl_import_prec, so both new comparisons are no-ops
+// there and this reduces byte-for-byte to the original priority-only
+// logic (protects the pre-existing scores).
 let rec pick_template (vars) (nsctx:list (string & string)) (id_attrs:list (string & string)) (mode:string) (tpls:list template) (nd:dnode) (best:option template)
   : Tot (option template) (decreases tpls) =
   match tpls with
@@ -1564,10 +1598,33 @@ let rec pick_template (vars) (nsctx:list (string & string)) (id_attrs:list (stri
       if t.tpl_mode = mode && template_matches vars nsctx id_attrs t nd then
         (match best with
          | None -> Some t
-         | Some b -> if template_priority t >= template_priority b then Some t else best)
+         | Some b ->
+           if t.tpl_import_prec > b.tpl_import_prec then Some t
+           else if t.tpl_import_prec < b.tpl_import_prec then best
+           else if template_priority t >= template_priority b then Some t
+           else best)
       else best
     in
     pick_template vars nsctx id_attrs mode rest nd best'
+
+// xsl:apply-imports (XSLT 1.0 section 5.6): apply only template rules
+// imported into the stylesheet containing the CURRENTLY EXECUTING
+// template rule, i.e. those with import precedence STRICTLY LESS than
+// `below` (the current template's own tpl_import_prec). Same mode +
+// priority tie-break as pick_template, restricted to that subset.
+let rec pick_template_below (vars) (nsctx:list (string & string)) (id_attrs:list (string & string)) (mode:string) (below:int) (tpls:list template) (nd:dnode) (best:option template)
+  : Tot (option template) (decreases tpls) =
+  match tpls with
+  | [] -> best
+  | t :: rest ->
+    let best' =
+      if t.tpl_mode = mode && t.tpl_import_prec < below && template_matches vars nsctx id_attrs t nd then
+        (match best with
+         | None -> Some t
+         | Some b -> if template_priority t >= template_priority b then Some t else best)
+      else best
+    in
+    pick_template_below vars nsctx id_attrs mode below rest nd best'
 
 // Look up a named template (xsl:call-template target); first match wins.
 let rec find_named_template (tpls:list template) (nm:string) : Tot (option template) (decreases tpls) =
@@ -2029,7 +2086,7 @@ let rec dispatch (fuel:nat) (st:xstyle) (nd:dnode) (pos size:nat) (mode:string)
   if fuel = 0 then []
   else
     match pick_template st.xs_globals st.xs_nsctx st.xs_id_attrs mode st.xs_templates nd None with
-    | Some tpl -> instantiate_seq (fuel - 1) st nd pos size svars srtf tpl.tpl_body
+    | Some tpl -> instantiate_seq (fuel - 1) st nd pos size svars srtf mode tpl.tpl_import_prec tpl.tpl_body
     | None -> builtin_rule (fuel - 1) st nd mode
 
 and builtin_rule (fuel:nat) (st:xstyle) (nd:dnode) (mode:string) : Tot (list rnode) (decreases fuel) =
@@ -2065,9 +2122,16 @@ and apply_list (fuel:nat) (st:xstyle) (nodes:list dnode) (pos size:nat) (mode:st
 
 // Instantiate a template body (sequence of instruction nodes),
 // threading local variable bindings (xp-value + result-tree-fragment)
-// across siblings.
+// across siblings. `cur_mode`/`cur_prec` are the AMBIENT template-rule
+// context (the mode + tpl_import_prec of whichever template rule is
+// currently being applied, as picked by dispatch/pick_template_below) --
+// threaded (not recomputed) so a nested xsl:apply-imports anywhere in
+// this body sees the CORRECT "current template rule" per XSLT 1.0
+// section 5.6, including through xsl:if/xsl:choose/xsl:for-each/
+// xsl:copy nesting within the same template instantiation.
 and instantiate_seq (fuel:nat) (st:xstyle) (ctx:dnode) (pos size:nat)
-                    (vars:list (string & xp_value)) (rtf:list (string & list rnode)) (nodes:list xml_node)
+                    (vars:list (string & xp_value)) (rtf:list (string & list rnode))
+                    (cur_mode:string) (cur_prec:int) (nodes:list xml_node)
   : Tot (list rnode) (decreases fuel) =
   if fuel = 0 then []
   else
@@ -2083,24 +2147,24 @@ and instantiate_seq (fuel:nat) (st:xstyle) (ctx:dnode) (pos size:nat)
            // xsl:with-param on the calling xsl:call-template) if present,
            // and only falls back to its own default otherwise.
            let already = (xsl_instr st.xs_pfx tag = "param") && Some? (lookup_var vars nm) in
-           if already then instantiate_seq (fuel - 1) st ctx pos size vars rtf tl
+           if already then instantiate_seq (fuel - 1) st ctx pos size vars rtf cur_mode cur_prec tl
            else
              (match attr_opt "select" attrs with
               | Some sel ->
                 let v = eval_val_dn ctx pos size vars st.xs_nsctx st.xs_id_attrs st.xs_style_root st.xs_decfmts sel in
-                instantiate_seq (fuel - 1) st ctx pos size ((nm, v) :: vars) rtf tl
+                instantiate_seq (fuel - 1) st ctx pos size ((nm, v) :: vars) rtf cur_mode cur_prec tl
               | None ->
                 // Result-tree-fragment: instantiate the body, bind its
                 // string-value for XPath and its nodes for copy-of.
-                let frag = instantiate_seq (fuel - 1) st ctx pos size vars rtf children in
+                let frag = instantiate_seq (fuel - 1) st ctx pos size vars rtf cur_mode cur_prec children in
                 let sval = text_value_nodes (only_nodes frag) in
-                instantiate_seq (fuel - 1) st ctx pos size ((nm, XV_Str sval) :: vars) ((nm, frag) :: rtf) tl)
+                instantiate_seq (fuel - 1) st ctx pos size ((nm, XV_Str sval) :: vars) ((nm, frag) :: rtf) cur_mode cur_prec tl)
          else
-           let here = instantiate_one (fuel - 1) st ctx pos size vars rtf hd in
-           here @ instantiate_seq (fuel - 1) st ctx pos size vars rtf tl
+           let here = instantiate_one (fuel - 1) st ctx pos size vars rtf cur_mode cur_prec hd in
+           here @ instantiate_seq (fuel - 1) st ctx pos size vars rtf cur_mode cur_prec tl
        | _ ->
-         let here = instantiate_one (fuel - 1) st ctx pos size vars rtf hd in
-         here @ instantiate_seq (fuel - 1) st ctx pos size vars rtf tl)
+         let here = instantiate_one (fuel - 1) st ctx pos size vars rtf cur_mode cur_prec hd in
+         here @ instantiate_seq (fuel - 1) st ctx pos size vars rtf cur_mode cur_prec tl)
 
 // Bind xsl:with-param children (select= or body RTF) for xsl:call-template
 // and xsl:apply-templates. `evars`/`ertf` are the CALLER's in-scope
@@ -2112,9 +2176,12 @@ and instantiate_seq (fuel:nat) (st:xstyle) (ctx:dnode) (pos size:nat)
 // calling template resolve correctly (hcard2rdf.xsl forwards select="$field"
 // both to <xsl:call-template name="testclass"> and to a recursive
 // <xsl:apply-templates ... mode="extract-field">) without leaking the
-// caller's locals into the callee.
+// caller's locals into the callee. `cur_mode`/`cur_prec` are the CALLER's
+// ambient template-rule context, used only if a with-param's body itself
+// contains an xsl:apply-imports (unusual, but kept consistent).
 and bind_with_params_scoped (fuel:nat) (st:xstyle) (ctx:dnode) (pos size:nat)
                             (evars:list (string & xp_value)) (ertf:list (string & list rnode))
+                            (cur_mode:string) (cur_prec:int)
                             (svars:list (string & xp_value)) (srtf:list (string & list rnode))
                             (children:list xml_node)
   : Tot (list (string & xp_value) & list (string & list rnode)) (decreases fuel) =
@@ -2130,16 +2197,17 @@ and bind_with_params_scoped (fuel:nat) (st:xstyle) (ctx:dnode) (pos size:nat)
            (match attr_opt "select" attrs with
             | Some sel ->
               let v = eval_val_dn ctx pos size evars st.xs_nsctx st.xs_id_attrs st.xs_style_root st.xs_decfmts sel in
-              bind_with_params_scoped (fuel - 1) st ctx pos size evars ertf ((nm, v) :: svars) srtf tl
+              bind_with_params_scoped (fuel - 1) st ctx pos size evars ertf cur_mode cur_prec ((nm, v) :: svars) srtf tl
             | None ->
-              let frag = instantiate_seq (fuel - 1) st ctx pos size evars ertf pchildren in
+              let frag = instantiate_seq (fuel - 1) st ctx pos size evars ertf cur_mode cur_prec pchildren in
               let sval = text_value_nodes (only_nodes frag) in
-              bind_with_params_scoped (fuel - 1) st ctx pos size evars ertf ((nm, XV_Str sval) :: svars) ((nm, frag) :: srtf) tl)
-         else bind_with_params_scoped (fuel - 1) st ctx pos size evars ertf svars srtf tl
-       | _ -> bind_with_params_scoped (fuel - 1) st ctx pos size evars ertf svars srtf tl)
+              bind_with_params_scoped (fuel - 1) st ctx pos size evars ertf cur_mode cur_prec ((nm, XV_Str sval) :: svars) ((nm, frag) :: srtf) tl)
+         else bind_with_params_scoped (fuel - 1) st ctx pos size evars ertf cur_mode cur_prec svars srtf tl
+       | _ -> bind_with_params_scoped (fuel - 1) st ctx pos size evars ertf cur_mode cur_prec svars srtf tl)
 
 and instantiate_one (fuel:nat) (st:xstyle) (ctx:dnode) (pos size:nat)
-                    (vars:list (string & xp_value)) (rtf:list (string & list rnode)) (node:xml_node)
+                    (vars:list (string & xp_value)) (rtf:list (string & list rnode))
+                    (cur_mode:string) (cur_prec:int) (node:xml_node)
   : Tot (list rnode) (decreases fuel) =
   if fuel = 0 then []
   else
@@ -2157,10 +2225,10 @@ and instantiate_one (fuel:nat) (st:xstyle) (ctx:dnode) (pos size:nat)
           [R_Node (XText (raw_text children))]
         else if ln = "if" then
           (if eval_bool_dn ctx pos size vars st.xs_nsctx st.xs_id_attrs st.xs_style_root st.xs_decfmts (attr_or "test" "false()" attrs)
-           then instantiate_seq (fuel - 1) st ctx pos size vars rtf children
+           then instantiate_seq (fuel - 1) st ctx pos size vars rtf cur_mode cur_prec children
            else [])
         else if ln = "choose" then
-          instantiate_choose (fuel - 1) st ctx pos size vars rtf children
+          instantiate_choose (fuel - 1) st ctx pos size vars rtf cur_mode cur_prec children
         else if ln = "for-each" then
           let sel = attr_or "select" "." attrs in
           // XSLT 1.0 §5.4: the current node list is the selected node-set
@@ -2170,7 +2238,7 @@ and instantiate_one (fuel:nat) (st:xstyle) (ctx:dnode) (pos size:nat)
           // (//) selects before iteration.
           let items0 = doc_sort_dedup (select_nodes ctx pos size vars st.xs_nsctx st.xs_id_attrs st.xs_style_root st.xs_decfmts sel) in
           let items = sort_maybe (dnode_ci ctx) pos size st.xs_pfx vars st.xs_nsctx children items0 in
-          for_each_items (fuel - 1) st children vars rtf items 1 (List.Tot.length items)
+          for_each_items (fuel - 1) st children vars rtf cur_mode cur_prec items 1 (List.Tot.length items)
         else if ln = "apply-templates" then
           let amode = attr_or "mode" "" attrs in
           // xsl:with-param children seed the params of whichever templates
@@ -2181,7 +2249,7 @@ and instantiate_one (fuel:nat) (st:xstyle) (ctx:dnode) (pos size:nat)
           // select="$field" resolves the caller's local $field. The bound
           // pairs are prepended onto st.xs_globals to form the callee seed.
           let (pvars, prtf) =
-            bind_with_params_scoped (fuel - 1) st ctx pos size vars rtf st.xs_globals [] children in
+            bind_with_params_scoped (fuel - 1) st ctx pos size vars rtf cur_mode cur_prec st.xs_globals [] children in
           (match attr_opt "select" attrs with
            | Some sel ->
              let items0 = doc_sort_dedup (select_nodes ctx pos size vars st.xs_nsctx st.xs_id_attrs st.xs_style_root st.xs_decfmts sel) in
@@ -2197,6 +2265,20 @@ and instantiate_one (fuel:nat) (st:xstyle) (ctx:dnode) (pos size:nat)
              let items = sort_maybe (dnode_ci ctx) pos size st.xs_pfx vars st.xs_nsctx children items0 in
              let dns = List.Tot.map (fun it -> D_Item it) items in
              apply_list (fuel - 1) st dns 1 (List.Tot.length items) amode pvars prtf)
+        else if ln = "apply-imports" then
+          // XSLT 1.0 section 5.6: apply only template rules imported into
+          // the stylesheet containing the CURRENT template rule (strictly
+          // lower tpl_import_prec than cur_prec), same node + same mode,
+          // seeded with globals only (NOT the caller's vars/rtf --
+          // impincl28/29 confirm a with-param bound on the enclosing
+          // apply-templates does NOT reach the apply-imports target; it
+          // falls back to that target's own xsl:param default). The
+          // instantiated body's OWN cur_prec becomes the found template's
+          // tpl_import_prec, so a NESTED apply-imports inside it "takes
+          // its own view of the import tree" (impincl26).
+          (match pick_template_below st.xs_globals st.xs_nsctx st.xs_id_attrs cur_mode cur_prec st.xs_templates ctx None with
+           | Some tpl -> instantiate_seq (fuel - 1) st ctx pos size st.xs_globals [] cur_mode tpl.tpl_import_prec tpl.tpl_body
+           | None -> builtin_rule (fuel - 1) st ctx cur_mode)
         else if ln = "call-template" then
           let nm = attr_or "name" "" attrs in
           (match find_named_template st.xs_templates nm with
@@ -2211,8 +2293,11 @@ and instantiate_one (fuel:nat) (st:xstyle) (ctx:dnode) (pos size:nat)
              // resolves the caller's local $field (hcard2rdf.xsl calls
              // <xsl:call-template name="testclass"> with val="$field");
              // the bound pairs seed onto st.xs_globals for the callee.
-             let (cvars, crtf) = bind_with_params_scoped (fuel - 1) st ctx pos size vars rtf st.xs_globals [] children in
-             instantiate_seq (fuel - 1) st ctx pos size cvars crtf tpl.tpl_body
+             // The callee's OWN tpl_import_prec becomes cur_prec for its
+             // body (an xsl:apply-imports after xsl:call-template is a
+             // spec grey area; this is the more sensible reading).
+             let (cvars, crtf) = bind_with_params_scoped (fuel - 1) st ctx pos size vars rtf cur_mode cur_prec st.xs_globals [] children in
+             instantiate_seq (fuel - 1) st ctx pos size cvars crtf cur_mode tpl.tpl_import_prec tpl.tpl_body
            | None -> [])
         else if ln = "copy-of" then
           let sel = attr_or "select" "." attrs in
@@ -2228,9 +2313,9 @@ and instantiate_one (fuel:nat) (st:xstyle) (ctx:dnode) (pos size:nat)
            | None -> List.Tot.map mk (select_nodes ctx pos size vars st.xs_nsctx st.xs_id_attrs st.xs_style_root st.xs_decfmts sel))
         else if ln = "copy" then
           let use_attrs =
-            expand_attrset_names (fuel - 1) st ctx pos size vars rtf []
+            expand_attrset_names (fuel - 1) st ctx pos size vars rtf cur_mode cur_prec []
               (parse_qname_list (attr_or "use-attribute-sets" "" attrs)) in
-          instantiate_copy (fuel - 1) st ctx pos size vars rtf use_attrs children
+          instantiate_copy (fuel - 1) st ctx pos size vars rtf cur_mode cur_prec use_attrs children
         else if ln = "element" then
           let nm = expand_avt (dnode_ci ctx) pos size vars st.xs_nsctx (attr_or "name" "" attrs) in
           let epfx = name_prefix nm in
@@ -2258,16 +2343,16 @@ and instantiate_one (fuel:nat) (st:xstyle) (ctx:dnode) (pos size:nat)
                   | Some u -> [ { attr_name = strcat "xmlns:" epfx; attr_value = u } ]
                   | None -> [])) in
           let use_attrs =
-            expand_attrset_names (fuel - 1) st ctx pos size vars rtf []
+            expand_attrset_names (fuel - 1) st ctx pos size vars rtf cur_mode cur_prec []
               (parse_qname_list (attr_or "use-attribute-sets" "" attrs)) in
-          let body = instantiate_seq (fuel - 1) st ctx pos size vars rtf children in
+          let body = instantiate_seq (fuel - 1) st ctx pos size vars rtf cur_mode cur_prec children in
           [R_Node (build_element nm (List.Tot.append use_attrs nsdecls) body)]
         else if ln = "attribute" then
           let nm = expand_avt (dnode_ci ctx) pos size vars st.xs_nsctx (attr_or "name" "" attrs) in
-          let body = instantiate_seq (fuel - 1) st ctx pos size vars rtf children in
+          let body = instantiate_seq (fuel - 1) st ctx pos size vars rtf cur_mode cur_prec children in
           [R_Attr ({ attr_name = nm; attr_value = rnodes_text body })]
         else if ln = "comment" then
-          let body = instantiate_seq (fuel - 1) st ctx pos size vars rtf children in
+          let body = instantiate_seq (fuel - 1) st ctx pos size vars rtf cur_mode cur_prec children in
           [R_Node (XComment (rnodes_text body))]
         else if ln = "number" then
           let dctx = dnode_ci ctx in
@@ -2313,10 +2398,10 @@ and instantiate_one (fuel:nat) (st:xstyle) (ctx:dnode) (pos size:nat)
                { attr_name = a.attr_name; attr_value = expand_avt (dnode_ci ctx) pos size vars st.xs_nsctx a.attr_value })
             kept in
         let use_attrs =
-          expand_attrset_names (fuel - 1) st ctx pos size vars rtf []
+          expand_attrset_names (fuel - 1) st ctx pos size vars rtf cur_mode cur_prec []
             (parse_qname_list (attr_or (strcat st.xs_pfx ":use-attribute-sets") "" attrs)) in
         let literal_attrs = merge_attrs_override use_attrs out_attrs in
-        let body = instantiate_seq (fuel - 1) st ctx pos size vars rtf children in
+        let body = instantiate_seq (fuel - 1) st ctx pos size vars rtf cur_mode cur_prec children in
         // An unprefixed literal result element is in the stylesheet's
         // default namespace. If that namespace was named in
         // exclude-result-prefixes (#default) it is absent from xs_nsscope,
@@ -2339,7 +2424,8 @@ and instantiate_one (fuel:nat) (st:xstyle) (ctx:dnode) (pos size:nat)
         [R_Node (build_element tag (default_ns_fixup @ st.xs_nsscope @ literal_attrs) body)]
 
 and instantiate_choose (fuel:nat) (st:xstyle) (ctx:dnode) (pos size:nat)
-                       (vars:list (string & xp_value)) (rtf:list (string & list rnode)) (branches:list xml_node)
+                       (vars:list (string & xp_value)) (rtf:list (string & list rnode))
+                       (cur_mode:string) (cur_prec:int) (branches:list xml_node)
   : Tot (list rnode) (decreases fuel) =
   if fuel = 0 then []
   else
@@ -2352,26 +2438,27 @@ and instantiate_choose (fuel:nat) (st:xstyle) (ctx:dnode) (pos size:nat)
            let ln = xsl_instr st.xs_pfx tag in
            if ln = "when" then
              (if eval_bool_dn ctx pos size vars st.xs_nsctx st.xs_id_attrs st.xs_style_root st.xs_decfmts (attr_or "test" "false()" attrs)
-              then instantiate_seq (fuel - 1) st ctx pos size vars rtf children
-              else instantiate_choose (fuel - 1) st ctx pos size vars rtf tl)
+              then instantiate_seq (fuel - 1) st ctx pos size vars rtf cur_mode cur_prec children
+              else instantiate_choose (fuel - 1) st ctx pos size vars rtf cur_mode cur_prec tl)
            else if ln = "otherwise" then
-             instantiate_seq (fuel - 1) st ctx pos size vars rtf children
-           else instantiate_choose (fuel - 1) st ctx pos size vars rtf tl
-         else instantiate_choose (fuel - 1) st ctx pos size vars rtf tl
-       | _ -> instantiate_choose (fuel - 1) st ctx pos size vars rtf tl)
+             instantiate_seq (fuel - 1) st ctx pos size vars rtf cur_mode cur_prec children
+           else instantiate_choose (fuel - 1) st ctx pos size vars rtf cur_mode cur_prec tl
+         else instantiate_choose (fuel - 1) st ctx pos size vars rtf cur_mode cur_prec tl
+       | _ -> instantiate_choose (fuel - 1) st ctx pos size vars rtf cur_mode cur_prec tl)
 
 and instantiate_copy (fuel:nat) (st:xstyle) (ctx:dnode) (pos size:nat)
                      (vars:list (string & xp_value)) (rtf:list (string & list rnode))
+                     (cur_mode:string) (cur_prec:int)
                      (use_attrs:list xml_attribute) (children:list xml_node)
   : Tot (list rnode) (decreases fuel) =
   if fuel = 0 then []
   else
     match ctx with
-    | D_Doc _ _ -> instantiate_seq (fuel - 1) st ctx pos size vars rtf children
+    | D_Doc _ _ -> instantiate_seq (fuel - 1) st ctx pos size vars rtf cur_mode cur_prec children
     | D_Item (CI_Elem _ anc n) ->
       (match n with
        | XElement t _ _ ->
-         let body = instantiate_seq (fuel - 1) st ctx pos size vars rtf children in
+         let body = instantiate_seq (fuel - 1) st ctx pos size vars rtf cur_mode cur_prec children in
          // xsl:copy copies the element's namespace nodes (its in-scope
          // declarations), but not its attributes or content; the
          // serializer dedups against output ancestors. All in-scope
@@ -2387,7 +2474,7 @@ and instantiate_copy (fuel:nat) (st:xstyle) (ctx:dnode) (pos size:nat)
          // place (build_element's merge_attrs_override).
          let nsnodes = inscope_ns [] [] (n :: anc) in
          [R_Node (build_element t (List.Tot.append nsnodes use_attrs) body)]
-       | _ -> instantiate_seq (fuel - 1) st ctx pos size vars rtf children)
+       | _ -> instantiate_seq (fuel - 1) st ctx pos size vars rtf cur_mode cur_prec children)
     | D_Item (CI_Text _ _ _ t) -> [R_Node (XText t)]
     | D_Item (CI_Comment _ _ _ t) -> [R_Node (XComment t)]
     | D_Item (CI_PI _ _ _ tg d) -> [R_Node (XPI tg d)]
@@ -2410,6 +2497,7 @@ and instantiate_copy (fuel:nat) (st:xstyle) (ctx:dnode) (pos size:nat)
 // termination regardless (Tot), this just avoids burning it needlessly.
 and expand_attrset_name (fuel:nat) (st:xstyle) (ctx:dnode) (pos size:nat)
                         (vars:list (string & xp_value)) (rtf:list (string & list rnode))
+                        (cur_mode:string) (cur_prec:int)
                         (visited:list string) (name:string)
   : Tot (list xml_attribute) (decreases fuel) =
   if fuel = 0 then []
@@ -2418,8 +2506,8 @@ and expand_attrset_name (fuel:nat) (st:xstyle) (ctx:dnode) (pos size:nat)
     match find_attrset_entry st.xs_attrsets name with
     | None -> []
     | Some e ->
-      let deps_expanded = expand_attrset_names (fuel - 1) st ctx pos size vars rtf (name :: visited) e.ase_deps in
-      let own_attrs = only_attrs (instantiate_seq (fuel - 1) st ctx pos size vars rtf e.ase_own) in
+      let deps_expanded = expand_attrset_names (fuel - 1) st ctx pos size vars rtf cur_mode cur_prec (name :: visited) e.ase_deps in
+      let own_attrs = only_attrs (instantiate_seq (fuel - 1) st ctx pos size vars rtf cur_mode cur_prec e.ase_own) in
       merge_attrs_override deps_expanded own_attrs
 
 // Expand a use-attribute-sets name LIST (space-separated on the using
@@ -2428,6 +2516,7 @@ and expand_attrset_name (fuel:nat) (st:xstyle) (ctx:dnode) (pos size:nat)
 // place (still XSLT 1.0 §7.1.4's "in the order listed" merge).
 and expand_attrset_names (fuel:nat) (st:xstyle) (ctx:dnode) (pos size:nat)
                          (vars:list (string & xp_value)) (rtf:list (string & list rnode))
+                         (cur_mode:string) (cur_prec:int)
                          (visited:list string) (names:list string)
   : Tot (list xml_attribute) (decreases fuel) =
   if fuel = 0 then []
@@ -2435,12 +2524,13 @@ and expand_attrset_names (fuel:nat) (st:xstyle) (ctx:dnode) (pos size:nat)
     match names with
     | [] -> []
     | hd :: tl ->
-      let a = expand_attrset_name (fuel - 1) st ctx pos size vars rtf visited hd in
-      let b = expand_attrset_names (fuel - 1) st ctx pos size vars rtf visited tl in
+      let a = expand_attrset_name (fuel - 1) st ctx pos size vars rtf cur_mode cur_prec visited hd in
+      let b = expand_attrset_names (fuel - 1) st ctx pos size vars rtf cur_mode cur_prec visited tl in
       merge_attrs_override a b
 
 and for_each_items (fuel:nat) (st:xstyle) (body:list xml_node)
                    (vars:list (string & xp_value)) (rtf:list (string & list rnode))
+                   (cur_mode:string) (cur_prec:int)
                    (items:list xctx_item) (pos size:nat)
   : Tot (list rnode) (decreases fuel) =
   if fuel = 0 then []
@@ -2448,8 +2538,8 @@ and for_each_items (fuel:nat) (st:xstyle) (body:list xml_node)
     match items with
     | [] -> []
     | it :: rest ->
-      let here = instantiate_seq (fuel - 1) st (D_Item it) pos size vars rtf body in
-      here @ for_each_items (fuel - 1) st body vars rtf rest (pos + 1) size
+      let here = instantiate_seq (fuel - 1) st (D_Item it) pos size vars rtf cur_mode cur_prec body in
+      here @ for_each_items (fuel - 1) st body vars rtf cur_mode cur_prec rest (pos + 1) size
 #pop-options
 
 (* ================================================================ *)
@@ -2472,7 +2562,12 @@ let parse_priority (s:string) : option int =
   | '-' :: rest -> (match digits_to_int rest 0 with Some n -> Some (op_Multiply (0 - n) 10) | None -> None)
   | cs -> (match digits_to_int cs 0 with Some n -> Some (op_Multiply n 10) | None -> None)
 
-let rec collect_templates (pfx:string) (children:list xml_node) : Tot (list template) (decreases children) =
+// Precedence-tagged template collection: `prec` is stamped onto every
+// xsl:template found here as tpl_import_prec. Used both for a plain
+// single-file stylesheet (collect_templates below, prec = 0 always) and
+// per-compilation-unit by build_style_from_units (prec = that unit's
+// postorder-numbered import precedence).
+let rec collect_templates_prec (pfx:string) (prec:int) (children:list xml_node) : Tot (list template) (decreases children) =
   match children with
   | [] -> []
   | hd :: tl ->
@@ -2481,16 +2576,19 @@ let rec collect_templates (pfx:string) (children:list xml_node) : Tot (list temp
        if is_xsl pfx tag && xsl_instr pfx tag = "template" then
          let m = attr_or "match" "" attrs in
          let nm = attr_or "name" "" attrs in
-         if m = "" && nm = "" then collect_templates pfx tl
+         if m = "" && nm = "" then collect_templates_prec pfx prec tl
          else
            let t = { tpl_match = m; tpl_name = nm;
                      tpl_mode = attr_or "mode" "" attrs;
                      tpl_prio = (match attr_opt "priority" attrs with
                                  | Some p -> parse_priority p | None -> None);
-                     tpl_body = body } in
-           t :: collect_templates pfx tl
-       else collect_templates pfx tl
-     | _ -> collect_templates pfx tl)
+                     tpl_body = body; tpl_import_prec = prec } in
+           t :: collect_templates_prec pfx prec tl
+       else collect_templates_prec pfx prec tl
+     | _ -> collect_templates_prec pfx prec tl)
+
+let collect_templates (pfx:string) (children:list xml_node) : list template =
+  collect_templates_prec pfx 0 children
 
 // xsl:decimal-format symbol attributes: single-char symbols take the
 // first codepoint of the attribute value (a picture-string meta
@@ -2719,6 +2817,215 @@ let build_nsscope (attrs:list xml_attribute) : list xml_attribute =
          | Some pfx -> a.attr_value <> xslt_ns && not (mem_str pfx excluded))
       attrs)
 
+(* ================================================================ *)
+(* Combining stylesheets: xsl:import / xsl:include (XSLT 1.0 section  *)
+(* 2.6). File I/O and href-to-path resolution are NOT here (rule #11: *)
+(* that lives in bin/xslt-runner/xslt_runner.ml, pure I/O plumbing).  *)
+(* This module owns every combining/precedence DECISION:              *)
+(*   - stylesheet_href_directives: pure query the runner uses to      *)
+(*     discover which files to read next (bool=true is xsl:import,    *)
+(*     false is xsl:include; order = document order).                 *)
+(*   - sheet_tree: the runner hands back one of these once it has     *)
+(*     read+parsed every transitively-referenced file (cycle detection*)
+(*     is the runner's bounded-visited-set I/O concern; a skipped/     *)
+(*     cyclic reference is represented as an empty placeholder node,   *)
+(*     which this module's process_node treats as contributing zero    *)
+(*     content -- never a crash).                                     *)
+(*   - process_node/process_children/expand_include: xsl:include       *)
+(*     SPLICES a target's top-level elements in place, at the SAME     *)
+(*     import precedence as the includer (XSLT 1.0 2.6.1); xsl:import  *)
+(*     gets its own STRICTLY LOWER precedence, assigned by a postorder *)
+(*     counter (each import's whole subtree numbered before moving to  *)
+(*     the next sibling import, so a LATER xsl:import gets a HIGHER    *)
+(*     precedence than an EARLIER one, both still below the importing  *)
+(*     stylesheet -- matches the worked examples in the impincl Xalan  *)
+(*     fixtures: impincl05 "(low) DBECA (high)", impincl07's reversed   *)
+(*     import order, impincl22 "(high) h, f, g (low)", impincl23        *)
+(*     "(high) i23sub, h (low)"). Fuel-bound (same idiom as dispatch)   *)
+(*     rather than relying on sheet_tree's own structural subterm order,*)
+(*     since the include/import cross-branch recursion does not fit a  *)
+(*     single structural decreases measure.                            *)
+(*   - build_style_from_units: folds the flattened (precedence,        *)
+(*     children) list into one xstyle via the SAME collect_* helpers    *)
+(*     build_style itself uses, so a stylesheet with zero import/include*)
+(*     directives (units = [(0, its own children)]) produces the        *)
+(*     IDENTICAL xstyle build_style would -- protects the pre-existing  *)
+(*     Xalan/xslt/xml-conformance scores, since the runner only takes   *)
+(*     this path when stylesheet_href_directives is non-empty.          *)
+(*   - Namespace context (xs_nsctx/xs_nsscope), xs_id_attrs and          *)
+(*     xs_style_root come from the ROOT stylesheet ONLY, never merged:  *)
+(*     impincl09 documents "No namespaces should be copied over" from   *)
+(*     an xsl:include target's own xmlns declarations.                  *)
+(* ================================================================ *)
+
+// (is_import, href) pairs for a stylesheet's top-level xsl:import /
+// xsl:include children, in document order. Pure query -- no I/O, no
+// combining decision; the runner uses this to know which hrefs to
+// resolve+read next (recursively, for each fetched file in turn).
+let rec collect_href_directives (pfx:string) (children:list xml_node) : Tot (list (bool & string)) (decreases children) =
+  match children with
+  | [] -> []
+  | hd :: tl ->
+    (match hd with
+     | XElement tag attrs _ ->
+       if is_xsl pfx tag && xsl_instr pfx tag = "import" then
+         (match attr_opt "href" attrs with
+          | Some h -> (true, h) :: collect_href_directives pfx tl
+          | None -> collect_href_directives pfx tl)
+       else if is_xsl pfx tag && xsl_instr pfx tag = "include" then
+         (match attr_opt "href" attrs with
+          | Some h -> (false, h) :: collect_href_directives pfx tl
+          | None -> collect_href_directives pfx tl)
+       else collect_href_directives pfx tl
+     | _ -> collect_href_directives pfx tl)
+
+let stylesheet_href_directives (root:xml_node) : list (bool & string) =
+  match root with
+  | XElement tag attrs children ->
+    let pfx = xsl_prefix_of root in
+    if is_xsl pfx tag && (let ln = xsl_instr pfx tag in ln = "stylesheet" || ln = "transform")
+    then collect_href_directives pfx children
+    else []
+  | _ -> []
+
+// One resolved stylesheet file plus its OWN resolved xsl:include /
+// xsl:import targets (already read+parsed by the runner, recursively,
+// relative to THAT file's own base directory -- impincl04/impincl08
+// exercise an included file whose OWN xsl:include is relative to ITS
+// directory, not the root stylesheet's). `includes`/`imports` are in
+// document order, 1:1 with collect_href_directives' output for `root`.
+noeq type sheet_tree =
+  | Sheet_Node : root:xml_node -> includes:list sheet_tree -> imports:list sheet_tree -> sheet_tree
+
+let rec sheet_tree_xml_count (t:sheet_tree) : Tot nat (decreases t) =
+  match t with
+  | Sheet_Node root incs imps -> xml_node_count root + sheet_tree_list_xml_count incs + sheet_tree_list_xml_count imps
+and sheet_tree_list_xml_count (ts:list sheet_tree) : Tot nat (decreases ts) =
+  match ts with
+  | [] -> 0
+  | hd :: tl -> sheet_tree_xml_count hd + sheet_tree_list_xml_count tl
+
+// Flatten a sheet_tree into (precedence, top-level-children) units, one
+// per compilation unit (a file, with its OWN xsl:include targets already
+// spliced into its children -- see expand_include), in ASCENDING
+// precedence order (lowest/most-imported first, the tree's own root
+// last). Fuel-bound: `counter` is threaded functionally (not mutated),
+// starts at 0, and every xsl:import bumps it by processing that import's
+// ENTIRE subtree (postorder) before moving to the next sibling import or
+// assigning the current node its own (highest-so-far) precedence.
+let rec process_node (fuel:nat) (counter:int) (t:sheet_tree)
+  : Tot (int & list (int & list xml_node)) (decreases fuel) =
+  if fuel = 0 then (counter, [])
+  else
+    match t with
+    | Sheet_Node root includes imports ->
+      let pfx = xsl_prefix_of root in
+      (match root with
+       | XElement tag attrs children ->
+         if is_xsl pfx tag && (let ln = xsl_instr pfx tag in ln = "stylesheet" || ln = "transform")
+         then
+           let (counter1, ordinary, import_units) =
+             process_children (fuel - 1) counter pfx children includes imports in
+           let my_prec = counter1 + 1 in
+           (my_prec, List.Tot.append import_units [(my_prec, ordinary)])
+         else (counter, [])  // not a <xsl:stylesheet>: contributes nothing (defensive; no impincl fixture hits this)
+       | _ -> (counter, []))
+
+// Walk one stylesheet's top-level children: splice xsl:include targets
+// in place (their own ordinary content joins THIS unit; their own
+// nested xsl:import targets join the returned import_units, positioned
+// exactly where the xsl:include appeared -- impincl23's "i23incl imports
+// i23sub" case), and pull out xsl:import targets (each numbered via
+// process_node, in document order, BEFORE any later sibling import).
+and process_children (fuel:nat) (counter:int) (pfx:string) (children:list xml_node)
+                     (includes:list sheet_tree) (imports:list sheet_tree)
+  : Tot (int & list xml_node & list (int & list xml_node)) (decreases fuel) =
+  if fuel = 0 then (counter, [], [])
+  else
+    match children with
+    | [] -> (counter, [], [])
+    | hd :: tl ->
+      (match hd with
+       | XElement tag attrs _ ->
+         if is_xsl pfx tag && xsl_instr pfx tag = "include" then
+           (match includes with
+            | [] -> process_children (fuel - 1) counter pfx tl [] imports
+            | inc :: more_incs ->
+              let (counter1, sub_ordinary, sub_units) = expand_include (fuel - 1) counter inc in
+              let (counter2, rest_ordinary, rest_units) = process_children (fuel - 1) counter1 pfx tl more_incs imports in
+              (counter2, List.Tot.append sub_ordinary rest_ordinary, List.Tot.append sub_units rest_units))
+         else if is_xsl pfx tag && xsl_instr pfx tag = "import" then
+           (match imports with
+            | [] -> process_children (fuel - 1) counter pfx tl includes []
+            | imp :: more_imps ->
+              let (counter1, imp_units) = process_node (fuel - 1) counter imp in
+              let (counter2, rest_ordinary, rest_units) = process_children (fuel - 1) counter1 pfx tl includes more_imps in
+              (counter2, rest_ordinary, List.Tot.append imp_units rest_units))
+         else
+           let (counter1, rest_ordinary, rest_units) = process_children (fuel - 1) counter pfx tl includes imports in
+           (counter1, hd :: rest_ordinary, rest_units)
+       | _ ->
+         let (counter1, rest_ordinary, rest_units) = process_children (fuel - 1) counter pfx tl includes imports in
+         (counter1, hd :: rest_ordinary, rest_units))
+
+// An xsl:include target's own top-level children (SAME precedence as
+// the includer -- no new unit is created for it), with its OWN nested
+// xsl:include/xsl:import handled recursively exactly like a top-level
+// stylesheet's children would be.
+and expand_include (fuel:nat) (counter:int) (t:sheet_tree)
+  : Tot (int & list xml_node & list (int & list xml_node)) (decreases fuel) =
+  if fuel = 0 then (counter, [], [])
+  else
+    match t with
+    | Sheet_Node root includes imports ->
+      let pfx = xsl_prefix_of root in
+      (match root with
+       | XElement tag attrs children ->
+         if is_xsl pfx tag && (let ln = xsl_instr pfx tag in ln = "stylesheet" || ln = "transform")
+         then process_children (fuel - 1) counter pfx children includes imports
+         else (counter, [], [])
+       | _ -> (counter, [], []))
+
+// Public entry for the runner: flatten the whole tree into ascending-
+// precedence (precedence, children) units. Fuel generously sized off
+// the tree's total node count (same idiom as dispatch's own fuel sizing).
+let sheet_units (t:sheet_tree) : list (int & list xml_node) =
+  let fuel = op_Multiply 4 (sheet_tree_xml_count t + 1) + 1000 in
+  let (_, units) = process_node fuel 0 t in
+  units
+
+// Merge a flattened unit list into one xstyle, using the SAME collect_*
+// helpers build_style uses (so a no-import/include stylesheet, units =
+// [(0, children)], produces byte-identical output to build_style).
+// Globals are merged HIGHEST-precedence-first (units_desc) so a same-
+// named global at higher import precedence shadows a lower one
+// (lookup_var / collect_globals is first-match-wins) -- XSLT 1.0 section
+// 11.4's rule for global variables. Attribute-sets/decimal-formats/
+// output settings merge over the same list; no impincl fixture exercises
+// a cross-file name clash for those, so the concatenation order used for
+// them is a reasonable default rather than a precedence-exact merge.
+let build_style_from_units (units:list (int & list xml_node)) (root_pfx:string) (root_attrs:list xml_attribute)
+                            (root_node:xml_node) (source:xml_node) (doc_kids:list xml_node)
+                            (id_attrs:list (string & string))
+  : xstyle =
+  let nsctx = build_nsctx root_attrs in
+  let units_desc = List.Tot.rev units in
+  let all_children_desc = List.Tot.flatten (List.Tot.map snd units_desc) in
+  let decfmts = collect_decimal_formats root_pfx all_children_desc in
+  let out_settings = collect_output_settings root_pfx nsctx all_children_desc default_output_settings in
+  { xs_pfx = root_pfx;
+    xs_templates = List.Tot.concatMap (fun (pc:(int & list xml_node)) -> collect_templates_prec root_pfx (fst pc) (snd pc)) units;
+    xs_attrsets = collect_attribute_sets root_pfx all_children_desc;
+    xs_method = (if out_settings.os_method_raw = "text" then "text" else "xml");
+    xs_output_present = any_output_decl root_pfx all_children_desc;
+    xs_output = out_settings;
+    xs_globals = collect_globals root_pfx nsctx decfmts all_children_desc source doc_kids;
+    xs_nsscope = build_nsscope root_attrs;
+    xs_nsctx = nsctx;
+    xs_id_attrs = id_attrs;
+    xs_style_root = root_node;
+    xs_decfmts = decfmts }
+
 let build_style (stylesheet:xml_node) (source:xml_node) (doc_kids:list xml_node) (id_attrs:list (string & string)) : xstyle =
   match stylesheet with
   | XElement tag attrs children ->
@@ -2748,7 +3055,7 @@ let build_style (stylesheet:xml_node) (source:xml_node) (doc_kids:list xml_node)
       // top-level siblings, so it cannot carry xsl:decimal-format or
       // xsl:output either.
       { xs_pfx = pfx;
-        xs_templates = [ { tpl_match = "/"; tpl_name = ""; tpl_mode = ""; tpl_prio = None; tpl_body = [stylesheet] } ];
+        xs_templates = [ { tpl_match = "/"; tpl_name = ""; tpl_mode = ""; tpl_prio = None; tpl_body = [stylesheet]; tpl_import_prec = 0 } ];
         xs_attrsets = [];
         xs_method = "xml";
         xs_output_present = false;
@@ -2895,3 +3202,33 @@ let transform_doc_ids (stylesheet:xml_node) (source_kids:list xml_node) (source_
     let result = dispatch fuel st (D_Doc root source_kids) 1 1 "" st.xs_globals [] in
     let nodes = only_nodes result in
     finalize_output st.xs_output_present st.xs_output st.xs_method nodes
+
+// Combining-stylesheets entry point (XSLT 1.0 section 2.6): `t` is a
+// sheet_tree the runner built by following the ROOT stylesheet's
+// xsl:import/xsl:include hrefs (via stylesheet_href_directives),
+// recursively reading+parsing every referenced file relative to ITS OWN
+// base directory, and reporting a cycle/skip as an empty placeholder
+// node (see the sheet_tree doc comment). Everything from here on --
+// splicing, import-precedence numbering, template conflict resolution,
+// xsl:apply-imports -- is this module's own logic (process_node /
+// build_style_from_units / pick_template / pick_template_below), not the
+// runner's. Reduces to transform_doc_ids's own xstyle byte-for-byte when
+// `t` has no includes/imports (units = [(0, root's own children)]), so
+// the runner only needs to route here when stylesheet_href_directives
+// on the root stylesheet is non-empty -- every other stylesheet keeps
+// using transform_doc_ids unchanged (zero regression risk).
+let transform_doc_ids_merged (t:sheet_tree) (source_kids:list xml_node) (source_id_attrs:list (string & string)) : string =
+  match doc_root_elem source_kids with
+  | None -> ""
+  | Some root ->
+    (match t with
+     | Sheet_Node root_style_node _ _ ->
+       let root_pfx = xsl_prefix_of root_style_node in
+       let root_attrs = element_attrs root_style_node in
+       let units = sheet_units t in
+       let st = build_style_from_units units root_pfx root_attrs root_style_node root source_kids source_id_attrs in
+       let sz = sheet_tree_xml_count t + xml_nodes_count_sum source_kids in
+       let fuel = op_Multiply (sz + 1) 256 + 100000 in
+       let result = dispatch fuel st (D_Doc root source_kids) 1 1 "" st.xs_globals [] in
+       let nodes = only_nodes result in
+       finalize_output st.xs_output_present st.xs_output st.xs_method nodes)
