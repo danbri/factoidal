@@ -30,9 +30,15 @@ open XPath.Eval
 //   xsl:if (test), xsl:choose/when/otherwise, xsl:element,
 //   xsl:attribute, xsl:text, xsl:comment, xsl:copy, xsl:copy-of
 //   (node-set select AND $rtf-variable), literal result elements with
-//   attribute value templates ({expr}), and the built-in template
+//   attribute value templates ({expr}), the built-in template
 //   rules (root/element -> apply-templates in the current mode,
-//   text/attribute -> copy string value, comment/PI -> no output).
+//   text/attribute -> copy string value, comment/PI -> no output),
+//   and xsl:number (level=single/multiple/any + count/from patterns
+//   reusing the match-pattern engine, value=, and format tokens
+//   1/01/a/A/i/I with prefix/separator/suffix + grouping-separator/
+//   grouping-size; letter-value="traditional", xml:lang-specific
+//   numbering, and count/from patterns using key() are NOT honoured --
+//   see the xsl:number section banner further down).
 // Output methods: "xml" (default) and "text".
 //
 // Namespace nodes (XSLT 1.0 §7.5): literal result elements copy the
@@ -70,9 +76,8 @@ open XPath.Eval
 // xsl:value-of) is written as an empty-element tag `<t/>`.
 //
 // Deliberately OUT of scope (a mismatch here is expected, not a bug):
-//   xsl:number, xsl:key/key(), id() (needs DTD ATTLIST ID typing),
-//   document(), xsl:import/include, xsl:apply-imports/next-match,
-//   format-number, xsl:sort case-order / lang collations, the
+//   xsl:key/key(), document(), xsl:import/include,
+//   xsl:apply-imports/next-match, xsl:sort lang collations, the
 //   `namespace::` axis and namespace-node counting (XPath.Eval models no
 //   namespace-node kind, so `namespace::node()` selects nothing -- the
 //   only namespace machinery still missing after the namespace-node
@@ -118,6 +123,14 @@ let soc (c:char) : string = String.string_of_list [c]
 
 let chars_of (s:string) : list char = String.list_of_string s
 let str_of_chars (cs:list char) : string = String.string_of_list cs
+
+// ASCII case folding (used by both the xsl:sort case-order collation
+// and xsl:number's lower-case roman-numeral rendering below). Non-ASCII
+// characters are left unchanged, which is conservative for the sort
+// collation — they never participate in a case-only tie.
+let ascii_lower_char (c:char) : char =
+  let n = FStar.Char.int_of_char c in
+  if n >= 0x41 && n <= 0x5A then FStar.Char.char_of_int (n + 0x20) else c
 
 let is_space_char (c:char) : bool =
   let code = FStar.Char.int_of_char c in
@@ -1004,6 +1017,399 @@ let template_matches (vars:list (string & xp_value)) (nsctx:list (string & strin
   if tpl.tpl_match = "" then false
   else any_alt_matches vars nsctx id_attrs (split_on_char '|' tpl.tpl_match) nd
 
+(* ================================================================ *)
+(* xsl:number (XSLT 1.0 §7.7 / §7.7.1).                                *)
+(*                                                                     *)
+(* Counting (level=single/multiple/any + count/from patterns) is built  *)
+(* directly on the ancestor / preceding-sibling / preceding axis        *)
+(* helpers XPath.Eval already exports (ancestor_axis, preceding_sibling_*)
+(* axis, preceding_axis, item_path, path_is_prefix) and on THIS file's   *)
+(* own match-pattern engine (any_alt_matches / alt_matches_core), so a   *)
+(* count/from pattern gets id()-anchoring, predicates with proximity     *)
+(* position(), and namespace-aware name tests for free -- the same       *)
+(* pattern language as xsl:template match=.                              *)
+(*                                                                       *)
+(* `from`'s boundary is always resolved against the CURRENT node's OWN   *)
+(* ancestor-or-self chain (never against preceding cousin subtrees):      *)
+(* level=single/multiple stop their upward walk the instant they reach   *)
+(* an ancestor-or-self matching `from`; level=any finds the NEAREST       *)
+(* ancestor-or-self matching `from` and then restricts its preceding-     *)
+(* node count to that ancestor's subtree. Verified against Apache-Xalan   *)
+(* numbering67 (level=any from="b|d", nested resets) -- if `from` never   *)
+(* matches ANY ancestor-or-self of the current node, the boundary has NO  *)
+(* effect at all (unrestricted count from the start of the document),     *)
+(* not an empty result; only once an ancestor DOES match does counting    *)
+(* restrict to descendants of that ancestor. This is intentionally        *)
+(* different from scanning arbitrary preceding subtrees for a boundary    *)
+(* (which would also match a `from`-tagged COUSIN element and give the    *)
+(* wrong reset point -- traced by hand against numbering67's `a/b/c/d`     *)
+(* nesting before writing this).                                          *)
+(* ================================================================ *)
+
+// Small unsigned-integer parser for the grouping-size AVT (a plain
+// digit string; anything else -- absent, non-numeric -- means "no
+// grouping", 0).
+let rec parse_nat_chars (cs:list char) (acc:nat) : Tot (option nat) (decreases cs) =
+  match cs with
+  | [] -> Some acc
+  | c :: rest ->
+    let d = FStar.Char.int_of_char c - 0x30 in
+    if d >= 0 && d <= 9 then parse_nat_chars rest (op_Multiply acc 10 + d) else None
+
+// The default `count` pattern (XSLT 1.0 §7.7: "any node with the same
+// node type as the current node and, if the current node has an
+// expanded-name, with the same expanded-name") expressed as a pattern
+// string this file's own match-pattern engine already understands.
+let default_count_pattern (it:xctx_item) : string =
+  match it with
+  | CI_Elem _ _ n -> (match element_tag n with Some t -> t | None -> "*")
+  | CI_Text _ _ _ _ -> "text()"
+  | CI_Comment _ _ _ _ -> "comment()"
+  | CI_PI _ _ _ _ _ -> "processing-instruction()"
+  | CI_Attr _ _ _ a -> strcat "@" a.attr_name
+  | CI_Namespace _ _ _ _ _ -> "*"
+
+// Does `node` match the (possibly "|"-unioned) count/from pattern?
+// Reuses the template match-pattern engine directly (any_alt_matches),
+// wrapping the candidate as a D_Item so id()-anchored patterns and
+// predicates (evaluated at the candidate's own proximity position, via
+// match_proximity inside alt_matches) behave exactly as they do for
+// xsl:template match=.
+let count_matches (vars:list (string & xp_value)) (nsctx:list (string & string)) (id_attrs:list (string & string))
+                  (pat:string) (node:xctx_item) : bool =
+  any_alt_matches vars nsctx id_attrs (split_on_char '|' pat) (D_Item node)
+
+// 1 + the number of NODE's preceding-siblings matching the count
+// pattern (XSLT 1.0 §7.7, the common inner step of level=single AND
+// level=multiple).
+let count_with_preceding (vars:list (string & xp_value)) (nsctx:list (string & string)) (id_attrs:list (string & string))
+                         (count_pat:string) (node:xctx_item) : nat =
+  1 + List.Tot.length (List.Tot.filter (count_matches vars nsctx id_attrs count_pat) (preceding_sibling_axis node))
+
+// level=single: walk the ancestor-or-self chain (self first) for the
+// FIRST node matching `count`; a `from`-match reached before any count
+// match is a hard stop (no eligible ancestor -> empty result).
+let rec find_level_single (vars:list (string & xp_value)) (nsctx:list (string & string)) (id_attrs:list (string & string))
+                          (count_pat:string) (from_pat:string) (chain:list xctx_item)
+  : Tot (option xctx_item) (decreases chain) =
+  match chain with
+  | [] -> None
+  | node :: rest ->
+    if count_matches vars nsctx id_attrs count_pat node then Some node
+    else if from_pat <> "" && count_matches vars nsctx id_attrs from_pat node then None
+    else find_level_single vars nsctx id_attrs count_pat from_pat rest
+
+let level_single_numbers (vars:list (string & xp_value)) (nsctx:list (string & string)) (id_attrs:list (string & string))
+                         (count_pat:string) (from_pat:string) (self:xctx_item) : list nat =
+  let chain = self :: ancestor_axis self in
+  match find_level_single vars nsctx id_attrs count_pat from_pat chain with
+  | None -> []
+  | Some c -> [count_with_preceding vars nsctx id_attrs count_pat c]
+
+// level=multiple: walk the WHOLE ancestor-or-self chain to the root,
+// collecting a (1+preceding) count at every node that matches `count`,
+// outermost-first (so "chapter.section.subsection" reads left to
+// right); a `from`-match is a hard stop for the walk (that node and
+// everything above it, root-ward, is excluded).
+let rec multiple_numbers (vars:list (string & xp_value)) (nsctx:list (string & string)) (id_attrs:list (string & string))
+                         (count_pat:string) (from_pat:string) (chain:list xctx_item)
+  : Tot (list nat) (decreases chain) =
+  match chain with
+  | [] -> []
+  | node :: rest ->
+    if from_pat <> "" && count_matches vars nsctx id_attrs from_pat node then []
+    else
+      let tail = multiple_numbers vars nsctx id_attrs count_pat from_pat rest in
+      if count_matches vars nsctx id_attrs count_pat node
+      then tail @ [count_with_preceding vars nsctx id_attrs count_pat node]
+      else tail
+
+let level_multiple_numbers (vars:list (string & xp_value)) (nsctx:list (string & string)) (id_attrs:list (string & string))
+                           (count_pat:string) (from_pat:string) (self:xctx_item) : list nat =
+  multiple_numbers vars nsctx id_attrs count_pat from_pat (self :: ancestor_axis self)
+
+// level=any: the nearest ancestor-or-self matching `from` (if any)
+// becomes the subtree boundary; count = 1 + every preceding:: node (in
+// document order, so cousin subtrees included, ancestors excluded --
+// same as any other reverse axis) that matches `count` AND sits inside
+// that boundary's subtree (path_is_prefix). No `from` match anywhere in
+// the ancestor-or-self chain means no restriction at all (see the
+// section banner for why this is NOT the same as an empty result).
+let rec find_from_boundary (vars:list (string & xp_value)) (nsctx:list (string & string)) (id_attrs:list (string & string))
+                           (from_pat:string) (chain:list xctx_item)
+  : Tot (option (list int)) (decreases chain) =
+  match chain with
+  | [] -> None
+  | node :: rest ->
+    if count_matches vars nsctx id_attrs from_pat node then Some (item_path node)
+    else find_from_boundary vars nsctx id_attrs from_pat rest
+
+let level_any_numbers (vars:list (string & xp_value)) (nsctx:list (string & string)) (id_attrs:list (string & string))
+                      (count_pat:string) (from_pat:string) (self:xctx_item) : list nat =
+  let boundary =
+    if from_pat = "" then None
+    else find_from_boundary vars nsctx id_attrs from_pat (self :: ancestor_axis self)
+  in
+  let eligible =
+    List.Tot.filter
+      (fun (x:xctx_item) ->
+         count_matches vars nsctx id_attrs count_pat x &&
+         (match boundary with
+          | None -> true
+          | Some fp -> path_is_prefix fp (item_path x)))
+      (preceding_axis self)
+  in
+  [1 + List.Tot.length eligible]
+
+// Dispatch on level= (default "single"); a non-element/text/comment/pi
+// context (e.g. the document node itself, or an attribute) has no
+// ancestor-or-self chain worth walking, so xsl:number is a no-op there.
+let level_numbers (vars:list (string & xp_value)) (nsctx:list (string & string)) (id_attrs:list (string & string))
+                  (level:string) (count_raw:string) (from_pat:string) (self:xctx_item) : list nat =
+  let count_pat = if count_raw = "" then default_count_pattern self else count_raw in
+  if level = "multiple" then level_multiple_numbers vars nsctx id_attrs count_pat from_pat self
+  else if level = "any" then level_any_numbers vars nsctx id_attrs count_pat from_pat self
+  else level_single_numbers vars nsctx id_attrs count_pat from_pat self
+
+(* ---- Number-to-string formatting (XSLT 1.0 §7.7.1) ---------------- *)
+
+// Bijective base-26 letter numbering: 1 -> "a", 26 -> "z", 27 -> "aa",
+// 28 -> "ab" (NOT the "aa","bb","cc" repeated-letter scheme -- this is
+// the same convention as spreadsheet column names). `fuel` bounds the
+// division loop (n+1 steps always suffice: each step divides by 26).
+let alpha_digit_char (upper:bool) (d:nat) : char =
+  let base = if upper then 0x41 else 0x61 in
+  FStar.Char.char_of_int (base + (if d < 26 then d else 25))
+
+let rec alpha_digits (upper:bool) (n:nat) (fuel:nat) : Tot (list char) (decreases fuel) =
+  if fuel = 0 then []
+  else if n = 0 then []
+  else
+    let n0 = n - 1 in
+    let d = n0 % 26 in
+    let rest = n0 / 26 in
+    alpha_digits upper rest (fuel - 1) @ [alpha_digit_char upper d]
+
+let render_alpha (upper:bool) (n:nat) : string =
+  if n = 0 then "0" else str_of_chars (alpha_digits upper n (n + 1))
+
+// Roman numerals (standard subtractive notation); `fuel` bounds the
+// table-driven subtraction loop (n+1 steps always suffice: the
+// smallest table entry is 1, so no step can fail to reduce n).
+let roman_table : list (nat & string) =
+  [ (1000, "M"); (900, "CM"); (500, "D"); (400, "CD");
+    (100, "C"); (90, "XC"); (50, "L"); (40, "XL");
+    (10, "X"); (9, "IX"); (5, "V"); (4, "IV"); (1, "I") ]
+
+let rec roman_pick (n:nat) (table:list (nat & string)) : Tot (option (nat & string)) (decreases table) =
+  match table with
+  | [] -> None
+  | (v, s) :: rest -> if v > 0 && v <= n then Some (v, s) else roman_pick n rest
+
+let rec roman_digits_fuel (n:nat) (fuel:nat) : Tot string (decreases fuel) =
+  if fuel = 0 then ""
+  else if n = 0 then ""
+  else
+    match roman_pick n roman_table with
+    | None -> ""
+    | Some (v, s) -> strcat s (roman_digits_fuel (if n >= v then n - v else 0) (fuel - 1))
+
+let roman_digits (n:nat) : string = roman_digits_fuel n (n + 1)
+
+// Plain decimal digits of a nat, most-significant first ("0" for zero).
+let rec nat_to_digits (n:nat) (fuel:nat) : Tot (list char) (decreases fuel) =
+  if fuel = 0 then []
+  else if n = 0 then []
+  else
+    let d = n % 10 in
+    let rest = n / 10 in
+    nat_to_digits rest (fuel - 1) @ [FStar.Char.char_of_int (0x30 + d)]
+
+let digits_of_nat (n:nat) : list char =
+  if n = 0 then ['0'] else nat_to_digits n (n + 1)
+
+let rec replicate_char (c:char) (k:nat) : Tot (list char) (decreases k) =
+  if k = 0 then [] else c :: replicate_char c (k - 1)
+
+// Zero-pad a digit list on the left to at least `want` digits (the
+// format token "01" / "001" minimum-width behaviour).
+let pad_left_zeros (cs:list char) (want:nat) : list char =
+  let len = List.Tot.length cs in
+  if want <= len then cs else replicate_char '0' (want - len) @ cs
+
+// Insert `sep_rev` (grouping-separator, already reversed) into a
+// REVERSED digit list every `gsize` digits from the right, never
+// trailing past the most-significant digit. `i` is the 0-based index
+// from the right of the digit about to be emitted.
+let rec group_rev (rev_ds:list char) (sep_rev:list char) (gsize:nat) (i:nat)
+  : Tot (list char) (decreases rev_ds) =
+  match rev_ds with
+  | [] -> []
+  | c :: rest ->
+    let tail = group_rev rest sep_rev gsize (i + 1) in
+    if gsize > 0 && (i + 1) % gsize = 0 && Cons? rest
+    then c :: (sep_rev @ tail)
+    else c :: tail
+
+let apply_grouping (digits:list char) (gsep:string) (gsize:nat) : list char =
+  if gsep = "" || gsize = 0 then digits
+  else List.Tot.rev (group_rev (List.Tot.rev digits) (List.Tot.rev (chars_of gsep)) gsize 0)
+
+noeq type numfmt_style =
+  | NF_Decimal : nat -> numfmt_style   // minimum digit width (format "1" -> 1, "001" -> 3)
+  | NF_UpperAlpha | NF_LowerAlpha | NF_UpperRoman | NF_LowerRoman
+
+let render_num_styled (n:nat) (style:numfmt_style) (gsep:string) (gsize:nat) : string =
+  match style with
+  | NF_Decimal minw -> str_of_chars (apply_grouping (pad_left_zeros (digits_of_nat n) minw) gsep gsize)
+  | NF_UpperAlpha -> render_alpha true n
+  | NF_LowerAlpha -> render_alpha false n
+  | NF_UpperRoman -> roman_digits n
+  | NF_LowerRoman -> str_of_chars (List.Tot.map ascii_lower_char (chars_of (roman_digits n)))
+
+// ---- format-string tokenizing (XSLT 1.0 §7.7.1) --------------------
+//
+// A format string is a run of alternating alphanumeric "format token"
+// spans and non-alphanumeric "separator" spans: a leading separator
+// span (if any) is the PREFIX, a trailing one is the SUFFIX, and the
+// separators BETWEEN two tokens are what gets inserted between the
+// numbers they format. If the numbers list is longer than the token
+// list, the LAST token (and the LAST inter-token separator, or "." if
+// there was only ever one token) is reused for every extra number; the
+// suffix is always appended exactly once, after the last number
+// (verified against Apache-Xalan numbering08: format="01-001. " on a
+// single-level (chapter-only) title renders "01. ", not "01-001. " --
+// the unused second token/separator are simply never reached, but the
+// suffix ". " still lands after whichever number was last rendered).
+
+let is_alnum_fmt_char (c:char) : bool =
+  let code = FStar.Char.int_of_char c in
+  (code >= 0x30 && code <= 0x39) || (code >= 0x41 && code <= 0x5A)
+    || (code >= 0x61 && code <= 0x7A) || code >= 0x80
+
+let rec run_alnum (cs:list char) (acc:list char) : Tot (list char & list char) (decreases cs) =
+  match cs with
+  | c :: rest -> if is_alnum_fmt_char c then run_alnum rest (c :: acc) else (List.Tot.rev acc, cs)
+  | [] -> (List.Tot.rev acc, [])
+
+let rec run_sep (cs:list char) (acc:list char) : Tot (list char & list char) (decreases cs) =
+  match cs with
+  | c :: rest -> if not (is_alnum_fmt_char c) then run_sep rest (c :: acc) else (List.Tot.rev acc, cs)
+  | [] -> (List.Tot.rev acc, [])
+
+noeq type frun = | FR_Alnum : list char -> frun | FR_Sep : list char -> frun
+
+// `fuel` (not structural recursion on `cs`) sidesteps proving that
+// run_alnum/run_sep's returned remainder is a strict sub-list of `cs`
+// -- the same idiom expand_avt_chars uses just above for exactly this
+// class of function (a helper call, not a direct list-cons pattern,
+// stands between this function and its own decreasing argument).
+let rec tokenize_runs (cs:list char) (fuel:nat) : Tot (list frun) (decreases fuel) =
+  if fuel = 0 then []
+  else
+    match cs with
+    | [] -> []
+    | c :: _ ->
+      if is_alnum_fmt_char c then
+        let (run, rest) = run_alnum cs [] in
+        FR_Alnum run :: tokenize_runs rest (fuel - 1)
+      else
+        let (run, rest) = run_sep cs [] in
+        FR_Sep run :: tokenize_runs rest (fuel - 1)
+
+let classify_token (t:list char) : numfmt_style =
+  match t with
+  | [] -> NF_Decimal 1
+  | c :: _ ->
+    if c = 'A' then NF_UpperAlpha
+    else if c = 'a' then NF_LowerAlpha
+    else if c = 'I' then NF_UpperRoman
+    else if c = 'i' then NF_LowerRoman
+    else NF_Decimal (List.Tot.length t)
+
+// From the run sequence AFTER any leading separator: the token styles,
+// the separators BETWEEN consecutive tokens (length = tokens - 1), and
+// the trailing suffix (separator after the last token, if any).
+let rec split_tokens (rest:list frun) : Tot (list numfmt_style & list string & string) (decreases rest) =
+  match rest with
+  | [] -> ([], [], "")
+  | [FR_Alnum t] -> ([classify_token t], [], "")
+  | FR_Alnum t :: FR_Sep s :: [] -> ([classify_token t], [], str_of_chars s)
+  | FR_Alnum t :: FR_Sep s :: more ->
+    let (toks, seps, suf) = split_tokens more in
+    (classify_token t :: toks, str_of_chars s :: seps, suf)
+  | FR_Alnum t :: more ->
+    let (toks, seps, suf) = split_tokens more in
+    (classify_token t :: toks, seps, suf)
+  | FR_Sep _ :: more -> split_tokens more   // stray extra separator (alternation invariant violation)
+
+let parsed_format (fmt:string) : (string & list numfmt_style & list string & string) =
+  let cs = chars_of fmt in
+  match tokenize_runs cs (List.Tot.length cs + 1) with
+  | [] -> ("", [NF_Decimal 1], [], "")
+  | FR_Sep s :: rest ->
+    let (toks, seps, suf) = split_tokens rest in
+    (match toks with
+     | [] -> (str_of_chars s, [NF_Decimal 1], [], "")
+     | _ -> (str_of_chars s, toks, seps, suf))
+  | runs ->
+    let (toks, seps, suf) = split_tokens runs in
+    ("", toks, seps, suf)
+
+// Style/separator for the i-th (0-based) number: clamp to the LAST
+// token/separator once `i` runs past the format's own token count
+// (XSLT 1.0 §7.7.1). A single-token format has no inter-token
+// separator to reuse, so the default "." applies (§7.7.1).
+let rec pick_style (toks:list numfmt_style) (i:nat) : Tot numfmt_style (decreases toks) =
+  match toks with
+  | [] -> NF_Decimal 1
+  | [t] -> t
+  | t :: rest -> if i = 0 then t else pick_style rest (i - 1)
+
+let rec pick_sep (seps:list string) (i:nat) : Tot string (decreases seps) =
+  match seps with
+  | [] -> "."
+  | [s] -> s
+  | s :: rest -> if i = 0 then s else pick_sep rest (i - 1)
+
+let rec render_numbered (ns:list nat) (toks:list numfmt_style) (seps:list string)
+                        (suffix:string) (gsep:string) (gsize:nat) (i:nat)
+  : Tot string (decreases ns) =
+  match ns with
+  | [] -> ""
+  | [n] -> strcat (render_num_styled n (pick_style toks i) gsep gsize) suffix
+  | n :: rest ->
+    strcat (strcat (render_num_styled n (pick_style toks i) gsep gsize) (pick_sep seps i))
+      (render_numbered rest toks seps suffix gsep gsize (i + 1))
+
+// The full xsl:number rendering pipeline: tokenize `fmt`, then render
+// every number in `numbers` (document order, outermost level first)
+// against the token/separator/suffix sequence, prefixed by the
+// format's own leading separator (if any). An empty `numbers` list
+// (no ancestor-or-self matched `count` -- XSLT 1.0 §7.7: "the result
+// is an empty string") renders nothing at all, INCLUDING the prefix.
+let render_number_list (numbers:list nat) (fmt:string) (gsep:string) (gsize_s:string) : string =
+  let (lead, toks, seps, suffix) = parsed_format fmt in
+  match numbers with
+  | [] -> ""
+  | _ ->
+    let gsize = (match parse_nat_chars (chars_of (trim_str gsize_s)) 0 with Some n -> n | None -> 0) in
+    strcat lead (render_numbered numbers toks seps suffix gsep gsize 0)
+
+// XSLT 1.0 7.7: a `value=` number that rounds to less than 1, or to
+// NaN/an infinity, bypasses format/prefix/suffix entirely and renders
+// as the bare arabic string (verified against Apache-Xalan numbering17
+// -- value=0 renders "0", not "(0) ", under format="(I) "; and
+// numbering79 -- value="wiseguy" (a non-numeric node-set) renders
+// "NaN", not "(NaN) "). XSLT 1.0 does not define this corner (1.1
+// later made formatting zero/negative an error); this matches what the
+// vendored conformance fixtures actually expect.
+let value_bypass (n:xpath_number) : option string =
+  match xn_round n with
+  | XN_Finite v 0 -> if v < 1 then Some (string_of_int v) else None
+  | XN_Finite _ _ -> None
+  | other -> Some (xn_to_string other)
+
 // Default priority of a single alternative (x10 to keep integers).
 let alt_priority (alt:string) : int =
   let a = trim_str alt in
@@ -1170,13 +1576,6 @@ and text_value_nodes (ns:list xml_node) : Tot string (decreases ns) =
 (* selected node-set by those keys. Sort keys are evaluated with each  *)
 (* candidate as the context node (self-fuelled via eval_string).       *)
 (* ================================================================ *)
-
-// ASCII case folding for the case-order collation below (non-ASCII
-// characters are left unchanged, which is conservative — they never
-// participate in a case-only tie).
-let ascii_lower_char (c:char) : char =
-  let n = FStar.Char.int_of_char c in
-  if n >= 0x41 && n <= 0x5A then FStar.Char.char_of_int (n + 0x20) else c
 
 let is_ascii_lower (c:char) : bool =
   let n = FStar.Char.int_of_char c in n >= 0x61 && n <= 0x7A
@@ -1604,6 +2003,30 @@ and instantiate_one (fuel:nat) (st:xstyle) (ctx:dnode) (pos size:nat)
         else if ln = "comment" then
           let body = instantiate_seq (fuel - 1) st ctx pos size vars rtf children in
           [R_Node (XComment (rnodes_text body))]
+        else if ln = "number" then
+          let dctx = dnode_ci ctx in
+          let level = expand_avt dctx pos size vars st.xs_nsctx (attr_or "level" "single" attrs) in
+          let count_pat = attr_or "count" "" attrs in
+          let from_pat = attr_or "from" "" attrs in
+          let fmt = expand_avt dctx pos size vars st.xs_nsctx (attr_or "format" "1" attrs) in
+          let gsep = expand_avt dctx pos size vars st.xs_nsctx (attr_or "grouping-separator" "" attrs) in
+          let gsize_s = expand_avt dctx pos size vars st.xs_nsctx (attr_or "grouping-size" "" attrs) in
+          let text =
+            (match attr_opt "value" attrs with
+             | Some vexpr ->
+               let n = to_number_val (eval_val_dn ctx pos size vars st.xs_nsctx st.xs_id_attrs st.xs_style_root st.xs_decfmts vexpr) in
+               (match value_bypass n with
+                | Some s -> s
+                | None ->
+                  (match xn_finite_int (xn_round n) with
+                   | Some v -> render_number_list [v] fmt gsep gsize_s
+                   | None -> ""))
+             | None ->
+               (match ctx with
+                | D_Item it -> render_number_list (level_numbers vars st.xs_nsctx st.xs_id_attrs level count_pat from_pat it) fmt gsep gsize_s
+                | D_Doc _ _ -> ""))
+          in
+          [R_Node (XText text)]
         else
           []  // unsupported xsl instruction: emit nothing
       else
