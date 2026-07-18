@@ -75,11 +75,13 @@ type token =
   | Tok_PREDICATE_KW 
   | Tok_OBJECT_KW 
   | Tok_ISTRIPLE_KW 
+  | Tok_VERSION_KW 
   | Tok_IRI of Prims.string 
   | Tok_PNAME of Prims.string 
   | Tok_VAR of Prims.string 
   | Tok_STRING of Prims.string 
   | Tok_LANGTAG of Prims.string 
+  | Tok_LANGDIR of Prims.string * RDF_Term.text_direction 
   | Tok_INTEGER of Prims.string 
   | Tok_DECIMAL of Prims.string 
   | Tok_DOUBLE of Prims.string 
@@ -312,6 +314,8 @@ let uu___is_Tok_OBJECT_KW (projectee : token) : Prims.bool=
   match projectee with | Tok_OBJECT_KW -> true | uu___ -> false
 let uu___is_Tok_ISTRIPLE_KW (projectee : token) : Prims.bool=
   match projectee with | Tok_ISTRIPLE_KW -> true | uu___ -> false
+let uu___is_Tok_VERSION_KW (projectee : token) : Prims.bool=
+  match projectee with | Tok_VERSION_KW -> true | uu___ -> false
 let uu___is_Tok_IRI (projectee : token) : Prims.bool=
   match projectee with | Tok_IRI _0 -> true | uu___ -> false
 let __proj__Tok_IRI__item___0 (projectee : token) : Prims.string=
@@ -332,6 +336,12 @@ let uu___is_Tok_LANGTAG (projectee : token) : Prims.bool=
   match projectee with | Tok_LANGTAG _0 -> true | uu___ -> false
 let __proj__Tok_LANGTAG__item___0 (projectee : token) : Prims.string=
   match projectee with | Tok_LANGTAG _0 -> _0
+let uu___is_Tok_LANGDIR (projectee : token) : Prims.bool=
+  match projectee with | Tok_LANGDIR (_0, _1) -> true | uu___ -> false
+let __proj__Tok_LANGDIR__item___0 (projectee : token) : Prims.string=
+  match projectee with | Tok_LANGDIR (_0, _1) -> _0
+let __proj__Tok_LANGDIR__item___1 (projectee : token) :
+  RDF_Term.text_direction= match projectee with | Tok_LANGDIR (_0, _1) -> _1
 let uu___is_Tok_INTEGER (projectee : token) : Prims.bool=
   match projectee with | Tok_INTEGER _0 -> true | uu___ -> false
 let __proj__Tok_INTEGER__item___0 (projectee : token) : Prims.string=
@@ -695,7 +705,10 @@ let rec process_iri_escapes_rec (cs : FStar_Char.char Prims.list)
 let process_iri_escapes (s : Prims.string) : Prims.string=
   let cs = FStar_String.list_of_string s in
   FStar_String.string_of_list (process_iri_escapes_rec cs [])
-let decode_string_escape (cs : FStar_Char.char Prims.list) :
+let process_codepoint_escapes (s : Prims.string) : Prims.string=
+  process_iri_escapes s
+let decode_string_escape (strict : Prims.bool)
+  (cs : FStar_Char.char Prims.list) :
   (FStar_Char.char Prims.list * FStar_Char.char Prims.list)
     FStar_Pervasives_Native.option=
   match cs with
@@ -770,25 +783,28 @@ let decode_string_escape (cs : FStar_Char.char Prims.list) :
                                        (utf8_of_codepoint cp)), after)
                            | FStar_Pervasives_Native.None ->
                                FStar_Pervasives_Native.None)
-                        else FStar_Pervasives_Native.Some ([c], rest)
-let rec process_string_escapes_rec (cs : FStar_Char.char Prims.list)
-  (acc : FStar_Char.char Prims.list) :
+                        else
+                          if strict
+                          then FStar_Pervasives_Native.None
+                          else FStar_Pervasives_Native.Some ([c], rest)
+let rec process_string_escapes_rec (strict : Prims.bool)
+  (cs : FStar_Char.char Prims.list) (acc : FStar_Char.char Prims.list) :
   FStar_Char.char Prims.list FStar_Pervasives_Native.option=
   match cs with
   | [] -> FStar_Pervasives_Native.Some (FStar_List_Tot_Base.rev acc)
   | c::rest ->
       if (char_code c) = (Prims.of_int (0x5C))
       then
-        (match decode_string_escape rest with
+        (match decode_string_escape strict rest with
          | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
          | FStar_Pervasives_Native.Some (decoded, after) ->
-             process_string_escapes_rec after
+             process_string_escapes_rec strict after
                (FStar_List_Tot_Base.rev_acc decoded acc))
-      else process_string_escapes_rec rest (c :: acc)
-let process_string_escapes_opt (s : Prims.string) :
+      else process_string_escapes_rec strict rest (c :: acc)
+let process_string_escapes_opt (strict : Prims.bool) (s : Prims.string) :
   Prims.string FStar_Pervasives_Native.option=
   let cs = FStar_String.list_of_string s in
-  match process_string_escapes_rec cs [] with
+  match process_string_escapes_rec strict cs [] with
   | FStar_Pervasives_Native.Some chars ->
       FStar_Pervasives_Native.Some (FStar_String.string_of_list chars)
   | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
@@ -895,7 +911,7 @@ let rec scan_long_string_end (input : Prims.string) (p : pos)
           then p + Prims.int_one
           else scan_long_string_end input (p + (Prims.of_int (2))) q_code)
        else scan_long_string_end input (p + Prims.int_one) q_code)
-let scan_string (input : Prims.string) (p : pos) :
+let scan_string (sparql12 : Prims.bool) (input : Prims.string) (p : pos) :
   (Prims.string FStar_Pervasives_Native.option * pos)=
   let q = peek_char input p in
   let q_code = char_code q in
@@ -909,12 +925,12 @@ let scan_string (input : Prims.string) (p : pos) :
     let p_start = p + (Prims.of_int (3)) in
     let end_p = scan_long_string_end input p_start q_code in
     let raw = substring input p_start (safe_sub end_p p_start) in
-    ((process_string_escapes_opt raw), (end_p + (Prims.of_int (3))))
+    ((process_string_escapes_opt sparql12 raw), (end_p + (Prims.of_int (3))))
   else
     (let p_start = p + Prims.int_one in
      let end_p = scan_short_string_end input p_start q_code in
      let raw = substring input p_start (safe_sub end_p p_start) in
-     ((process_string_escapes_opt raw), (end_p + Prims.int_one)))
+     ((process_string_escapes_opt sparql12 raw), (end_p + Prims.int_one)))
 let rec scan_pn_chars_end (input : Prims.string) (p : pos) : pos=
   if at_end input p
   then p
@@ -958,103 +974,113 @@ let keyword_of_upper (sparql12 : Prims.bool) (upper : Prims.string)
           if sparql12 && (streq upper "ISTRIPLE")
           then Tok_ISTRIPLE_KW
           else
-            if streq upper "SELECT"
-            then Tok_SELECT
+            if sparql12 && (streq upper "VERSION")
+            then Tok_VERSION_KW
             else
-              if streq upper "ASK"
-              then Tok_ASK
+              if streq upper "SELECT"
+              then Tok_SELECT
               else
-                if streq upper "CONSTRUCT"
-                then Tok_CONSTRUCT
+                if streq upper "ASK"
+                then Tok_ASK
                 else
-                  if streq upper "DESCRIBE"
-                  then Tok_DESCRIBE
+                  if streq upper "CONSTRUCT"
+                  then Tok_CONSTRUCT
                   else
-                    if streq upper "WHERE"
-                    then Tok_WHERE
+                    if streq upper "DESCRIBE"
+                    then Tok_DESCRIBE
                     else
-                      if streq upper "PREFIX"
-                      then Tok_PREFIX
+                      if streq upper "WHERE"
+                      then Tok_WHERE
                       else
-                        if streq upper "BASE"
-                        then Tok_BASE
+                        if streq upper "PREFIX"
+                        then Tok_PREFIX
                         else
-                          if streq upper "OPTIONAL"
-                          then Tok_OPTIONAL
+                          if streq upper "BASE"
+                          then Tok_BASE
                           else
-                            if streq upper "UNION"
-                            then Tok_UNION
+                            if streq upper "OPTIONAL"
+                            then Tok_OPTIONAL
                             else
-                              if streq upper "MINUS"
-                              then Tok_MINUS_KW
+                              if streq upper "UNION"
+                              then Tok_UNION
                               else
-                                if streq upper "LATERAL"
-                                then Tok_LATERAL
+                                if streq upper "MINUS"
+                                then Tok_MINUS_KW
                                 else
-                                  if streq upper "FILTER"
-                                  then Tok_FILTER
+                                  if streq upper "LATERAL"
+                                  then Tok_LATERAL
                                   else
-                                    if streq upper "BIND"
-                                    then Tok_BIND
+                                    if streq upper "FILTER"
+                                    then Tok_FILTER
                                     else
-                                      if streq upper "VALUES"
-                                      then Tok_VALUES
+                                      if streq upper "BIND"
+                                      then Tok_BIND
                                       else
-                                        if streq upper "GRAPH"
-                                        then Tok_GRAPH
+                                        if streq upper "VALUES"
+                                        then Tok_VALUES
                                         else
-                                          if streq upper "SERVICE"
-                                          then Tok_SERVICE
+                                          if streq upper "GRAPH"
+                                          then Tok_GRAPH
                                           else
-                                            if streq upper "SILENT"
-                                            then Tok_SILENT
+                                            if streq upper "SERVICE"
+                                            then Tok_SERVICE
                                             else
-                                              if streq upper "EXISTS"
-                                              then Tok_EXISTS
+                                              if streq upper "SILENT"
+                                              then Tok_SILENT
                                               else
-                                                if streq upper "NOT"
-                                                then Tok_NOT
+                                                if streq upper "EXISTS"
+                                                then Tok_EXISTS
                                                 else
-                                                  if streq upper "AS"
-                                                  then Tok_AS
+                                                  if streq upper "NOT"
+                                                  then Tok_NOT
                                                   else
-                                                    if streq upper "DISTINCT"
-                                                    then Tok_DISTINCT
+                                                    if streq upper "AS"
+                                                    then Tok_AS
                                                     else
                                                       if
-                                                        streq upper "REDUCED"
-                                                      then Tok_REDUCED
+                                                        streq upper
+                                                          "DISTINCT"
+                                                      then Tok_DISTINCT
                                                       else
                                                         if
-                                                          streq upper "ORDER"
-                                                        then Tok_ORDER
+                                                          streq upper
+                                                            "REDUCED"
+                                                        then Tok_REDUCED
                                                         else
-                                                          if streq upper "BY"
-                                                          then Tok_BY
+                                                          if
+                                                            streq upper
+                                                              "ORDER"
+                                                          then Tok_ORDER
                                                           else
                                                             if
                                                               streq upper
-                                                                "ASC"
-                                                            then Tok_ASC
+                                                                "BY"
+                                                            then Tok_BY
                                                             else
                                                               if
                                                                 streq upper
-                                                                  "DESC"
-                                                              then Tok_DESC
+                                                                  "ASC"
+                                                              then Tok_ASC
                                                               else
                                                                 if
                                                                   streq upper
-                                                                    "GROUP"
-                                                                then
-                                                                  Tok_GROUP
+                                                                    "DESC"
+                                                                then Tok_DESC
                                                                 else
                                                                   if
                                                                     streq
                                                                     upper
-                                                                    "HAVING"
+                                                                    "GROUP"
                                                                   then
-                                                                    Tok_HAVING
+                                                                    Tok_GROUP
                                                                   else
+                                                                    if
+                                                                    streq
+                                                                    upper
+                                                                    "HAVING"
+                                                                    then
+                                                                    Tok_HAVING
+                                                                    else
                                                                     if
                                                                     streq
                                                                     upper
@@ -1658,6 +1684,15 @@ let keyword_of_upper (sparql12 : Prims.bool) (upper : Prims.string)
                                                                     else
                                                                     Tok_PNAME
                                                                     original
+let starts_with_long_string (input : Prims.string) (p : pos) : Prims.bool=
+  let p' = skip_ws input p in
+  (Prims.op_Negation (at_end input p')) &&
+    (let qc = char_code (peek_char input p') in
+     (((((qc = (Prims.of_int (0x22))) || (qc = (Prims.of_int (0x27)))) &&
+          (Prims.op_Negation (at_end input (p' + Prims.int_one))))
+         && ((char_code (peek_char input (p' + Prims.int_one))) = qc))
+        && (Prims.op_Negation (at_end input (p' + (Prims.of_int (2))))))
+       && ((char_code (peek_char input (p' + (Prims.of_int (2))))) = qc))
 let scan_pname_or_keyword (sparql12 : Prims.bool) (input : Prims.string)
   (p : pos) : lex_result=
   let p1 = scan_pn_chars_end input p in
@@ -1670,7 +1705,16 @@ let scan_pname_or_keyword (sparql12 : Prims.bool) (input : Prims.string)
     ((Tok_PNAME (substring input p (safe_sub p21 p))), p21)
   else
     (let word = substring input p (safe_sub p1 p) in
-     ((keyword_of_upper sparql12 (string_upper word) word), p1))
+     let tok = keyword_of_upper sparql12 (string_upper word) word in
+     match tok with
+     | Tok_VERSION_KW ->
+         if starts_with_long_string input p1
+         then
+           ((Tok_INVALID
+               "VERSION requires a plain string literal, not a triple-quoted long string"),
+             p1)
+         else (tok, p1)
+     | uu___1 -> (tok, p1))
 let rec scan_digits_end (input : Prims.string) (p : pos) : pos=
   if at_end input p
   then p
@@ -1740,6 +1784,31 @@ let rec scan_langtag_chars_end (input : Prims.string) (p : pos) : pos=
 let scan_langtag (input : Prims.string) (p : pos) : (Prims.string * pos)=
   let p' = scan_langtag_chars_end input p in
   ((substring input p (safe_sub p' p)), p')
+let rec sparql_lang_valid_subtags (cs : FStar_Char.char Prims.list)
+  (cur : Prims.nat) : Prims.bool=
+  match cs with
+  | [] -> (cur >= Prims.int_one) && (cur <= (Prims.of_int (8)))
+  | c::rest ->
+      if (char_code c) = (Prims.of_int (0x2D))
+      then
+        ((cur >= Prims.int_one) && (cur <= (Prims.of_int (8)))) &&
+          (sparql_lang_valid_subtags rest Prims.int_zero)
+      else sparql_lang_valid_subtags rest (cur + Prims.int_one)
+let rec sparql_split_lang_dir (cs : FStar_Char.char Prims.list)
+  (acc : FStar_Char.char Prims.list) :
+  (FStar_Char.char Prims.list * FStar_Char.char Prims.list
+    FStar_Pervasives_Native.option)=
+  match cs with
+  | c1::c2::rest ->
+      if
+        ((char_code c1) = (Prims.of_int (0x2D))) &&
+          ((char_code c2) = (Prims.of_int (0x2D)))
+      then
+        ((FStar_List_Tot_Base.rev acc), (FStar_Pervasives_Native.Some rest))
+      else sparql_split_lang_dir (c2 :: rest) (c1 :: acc)
+  | c::[] ->
+      ((FStar_List_Tot_Base.rev (c :: acc)), FStar_Pervasives_Native.None)
+  | [] -> ((FStar_List_Tot_Base.rev acc), FStar_Pervasives_Native.None)
 let rec has_gt_before_terminator (input : Prims.string) (p : pos) :
   Prims.bool=
   if at_end input p
@@ -1983,7 +2052,7 @@ let next_token (sparql12 : Prims.bool) (input : Prims.string) (p : pos) :
                                                (code = (Prims.of_int (0x27)))
                                            then
                                              (let uu___20 =
-                                                scan_string input p1 in
+                                                scan_string sparql12 input p1 in
                                               match uu___20 with
                                               | (s_opt, p') ->
                                                   (match s_opt with
@@ -2003,7 +2072,59 @@ let next_token (sparql12 : Prims.bool) (input : Prims.string) (p : pos) :
                                                     (p1 + Prims.int_one) in
                                                 match uu___21 with
                                                 | (tag, p') ->
-                                                    ((Tok_LANGTAG tag), p'))
+                                                    if sparql12
+                                                    then
+                                                      (match sparql_split_lang_dir
+                                                               (FStar_String.list_of_string
+                                                                  tag) []
+                                                       with
+                                                       | (lt_chars,
+                                                          FStar_Pervasives_Native.Some
+                                                          dchars) ->
+                                                           if
+                                                             Prims.op_Negation
+                                                               (sparql_lang_valid_subtags
+                                                                  lt_chars
+                                                                  Prims.int_zero)
+                                                           then
+                                                             ((Tok_INVALID
+                                                                 "invalid language tag before base direction"),
+                                                               p')
+                                                           else
+                                                             if
+                                                               dchars =
+                                                                 [108;
+                                                                 116;
+                                                                 114]
+                                                             then
+                                                               ((Tok_LANGDIR
+                                                                   ((FStar_String.string_of_list
+                                                                    lt_chars),
+                                                                    RDF_Term.Dir_LTR)),
+                                                                 p')
+                                                             else
+                                                               if
+                                                                 dchars =
+                                                                   [114;
+                                                                   116;
+                                                                   108]
+                                                               then
+                                                                 ((Tok_LANGDIR
+                                                                    ((FStar_String.string_of_list
+                                                                    lt_chars),
+                                                                    RDF_Term.Dir_RTL)),
+                                                                   p')
+                                                               else
+                                                                 ((Tok_INVALID
+                                                                    "invalid base direction (expected ltr or rtl)"),
+                                                                   p')
+                                                       | (uu___22,
+                                                          FStar_Pervasives_Native.None)
+                                                           ->
+                                                           ((Tok_LANGTAG tag),
+                                                             p'))
+                                                    else
+                                                      ((Tok_LANGTAG tag), p'))
                                              else
                                                if
                                                  code = (Prims.of_int (0x2B))
@@ -2149,7 +2270,8 @@ let tokenize (input : Prims.string) : token Prims.list=
   tokenize_loop false input Prims.int_zero []
     ((FStar_String.strlen input) + Prims.int_one)
 let tokenize_12 (input : Prims.string) : token Prims.list=
-  tokenize_loop true input Prims.int_zero []
+  let decoded = process_codepoint_escapes input in
+  tokenize_loop true decoded Prims.int_zero []
     ((FStar_String.strlen input) + Prims.int_one)
 let parse_ok (v : 'a) (ts : token_stream) : 'a parse_result= ParseOk (v, ts)
 let parse_err (msg : Prims.string) : 'a parse_result= ParseErr msg
@@ -2282,6 +2404,14 @@ let make_lang_literal (lex : Prims.string) (lang : Prims.string) :
       "http://www.w3.org/1999/02/22-rdf-syntax-ns#langString";
     RDF_Term.lang_tag = (FStar_Pervasives_Native.Some lang);
     RDF_Term.direction = FStar_Pervasives_Native.None
+  }
+let make_dir_lang_literal (lex : Prims.string) (lang : Prims.string)
+  (dir : RDF_Term.text_direction) : RDF_Term.wf_literal=
+  {
+    RDF_Term.lexical_form = lex;
+    RDF_Term.datatype = RDF_Term.rdf_dir_lang_string;
+    RDF_Term.lang_tag = (FStar_Pervasives_Native.Some lang);
+    RDF_Term.direction = (FStar_Pervasives_Native.Some dir)
   }
 let rdf_type_iri_str : RDF_Term.wf_iri=
   "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
@@ -3549,6 +3679,10 @@ and parse_rdf_literal_expr (pm : prefix_map) (fuel : Prims.nat)
          ParseOk
            ((SPARQL11_Algebra.E_Literal (make_lang_literal s lang)),
              (parse_advance ts))
+     | Tok_LANGDIR (lang, dir) ->
+         ParseOk
+           ((SPARQL11_Algebra.E_Literal (make_dir_lang_literal s lang dir)),
+             (parse_advance ts))
      | uu___1 ->
          ParseOk ((SPARQL11_Algebra.E_Literal (make_plain_literal s)), ts))
 and parse_group_graph_pattern (pm : prefix_map) (fuel : Prims.nat)
@@ -4233,6 +4367,11 @@ and parse_data_value (pm : prefix_map) (fuel : Prims.nat) (ts : token_stream)
               ParseOk
                 ((FStar_Pervasives_Native.Some
                     (RDF_Term.T_Literal (make_lang_literal s lang))),
+                  (parse_advance ts'))
+          | Tok_LANGDIR (lang, dir) ->
+              ParseOk
+                ((FStar_Pervasives_Native.Some
+                    (RDF_Term.T_Literal (make_dir_lang_literal s lang dir))),
                   (parse_advance ts'))
           | uu___1 ->
               ParseOk
@@ -5306,6 +5445,10 @@ and parse_rdf_literal_pt (pm : prefix_map) (fuel : Prims.nat)
          ParseOk
            ((SPARQL11_Algebra.PT_Literal (make_lang_literal s lang)),
              (parse_advance ts))
+     | Tok_LANGDIR (lang, dir) ->
+         ParseOk
+           ((SPARQL11_Algebra.PT_Literal (make_dir_lang_literal s lang dir)),
+             (parse_advance ts))
      | uu___1 ->
          ParseOk ((SPARQL11_Algebra.PT_Literal (make_plain_literal s)), ts))
 and parse_object_list_simple (pm : prefix_map) (fuel : Prims.nat)
@@ -5653,6 +5796,13 @@ and parse_prologue (pm : prefix_map)
                   (fuel - Prims.int_one) (parse_advance ts')
               else ParseErr "invalid BASE IRI"
           | uu___1 -> ParseErr "expected IRI after BASE")
+     | Tok_VERSION_KW ->
+         let ts' = parse_advance ts in
+         (match parse_peek ts' with
+          | Tok_STRING uu___1 ->
+              parse_prologue pm base (fuel - Prims.int_one)
+                (parse_advance ts')
+          | uu___1 -> ParseErr "expected string literal after VERSION")
      | uu___1 -> ParseOk ((pm, base), ts))
 and parse_select_body (pm : prefix_map) (fuel : Prims.nat)
   (base : RDF_Term.wf_iri FStar_Pervasives_Native.option) (ts : token_stream)
