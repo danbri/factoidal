@@ -430,6 +430,16 @@ noeq type xstyle = {
   // The stylesheet document's root element, so document("") resolves to
   // the stylesheet itself as a source document.
   xs_style_root : xml_node;
+  // Top-level xsl:decimal-format declarations (named + at most one
+  // default/unnamed), for format-number()'s 3rd argument. Duplicate
+  // names (including the unnamed default declared twice) resolve to
+  // the LAST one parsed -- XSLT 1.0 requires them to agree on every
+  // attribute anyway (a static-error case this engine does not detect),
+  // so which one wins is only observable when a fixture violates that
+  // rule, and last-wins matches every duplicate-declaration Xalan
+  // fixture in the numberformat suite (41/42, both consistent by
+  // construction).
+  xs_decfmts : list decimal_format_symbols;
 }
 
 let xslt_ns : string = "http://www.w3.org/1999/XSL/Transform"
@@ -513,25 +523,28 @@ let attr_or (name:string) (dflt:string) (attrs:list xml_attribute) : string =
 // `style_root` (the stylesheet document root, for document("")) are
 // transform constants threaded to XPath.Eval so id() and document("")
 // resolve. Both default to []/xnode_none on paths that never use them.
+// `decfmts` (the stylesheet's xsl:decimal-format table) likewise threads
+// to XPath.Eval so format-number() sees named decimal-formats; [] means
+// format-number falls back to the built-in defaults for every name.
 let eval_val (ctx:xctx_item) (pos:nat) (size:nat) (vars:list (string & xp_value)) (nsctx:list (string & string))
-             (id_attrs:list (string & string)) (style_root:xml_node) (expr_text:string)
+             (id_attrs:list (string & string)) (style_root:xml_node) (decfmts:list decimal_format_symbols) (expr_text:string)
   : xp_value =
   match parse_xpath expr_text with
   | None -> XV_Str ""
   | Some e ->
     let doc_nodes = xml_node_count (root_of_item ctx) in
     let fuel = initial_eval_fuel e doc_nodes in
-    let env = { env_item = ctx; env_pos = pos; env_size = size; env_vars = vars; env_nsctx = nsctx; env_doc_kids = []; env_id_attrs = id_attrs; env_style_root = style_root } in
+    let env = { env_item = ctx; env_pos = pos; env_size = size; env_vars = vars; env_nsctx = nsctx; env_doc_kids = []; env_id_attrs = id_attrs; env_style_root = style_root; env_decimal_formats = decfmts } in
     eval_expr fuel env e
 
-// AVT / sort-key / predicate call-outs never carry id()/document("")
-// context in the vendored suite, so these keep their arity and pass the
-// neutral defaults.
+// AVT / sort-key / predicate call-outs never carry id()/document()/
+// decimal-format context in the vendored suite, so these keep their
+// arity and pass the neutral defaults.
 let eval_string (ctx:xctx_item) (pos size:nat) (vars) (nsctx:list (string & string)) (expr_text:string) : string =
-  to_string_val (eval_val ctx pos size vars nsctx [] xnode_none expr_text)
+  to_string_val (eval_val ctx pos size vars nsctx [] xnode_none [] expr_text)
 
 let eval_bool (ctx:xctx_item) (pos size:nat) (vars) (nsctx:list (string & string)) (expr_text:string) : bool =
-  to_bool_val (eval_val ctx pos size vars nsctx [] xnode_none expr_text)
+  to_bool_val (eval_val ctx pos size vars nsctx [] xnode_none [] expr_text)
 
 // Drop `processing-instruction()` alternatives from a union select
 // before handing it to XPath.Eval (which has no PI node test).
@@ -545,7 +558,7 @@ let drop_pi_alts (sel:string) : string =
   | _ -> String.concat "|" kept
 
 let eval_nodeset (ctx:xctx_item) (pos size:nat) (vars) (nsctx:list (string & string)) (sel:string) : list xctx_item =
-  match eval_val ctx pos size vars nsctx [] xnode_none (drop_pi_alts sel) with
+  match eval_val ctx pos size vars nsctx [] xnode_none [] (drop_pi_alts sel) with
   | XV_Nodes items -> items
   | _ -> []
 
@@ -568,10 +581,10 @@ let rec force_abs (e:xp_expr) : Tot xp_expr (decreases e) =
   | _ -> e
 
 let eval_val_dn (ctx:dnode) (pos size:nat) (vars:list (string & xp_value)) (nsctx:list (string & string))
-                (id_attrs:list (string & string)) (style_root:xml_node) (expr_text:string)
+                (id_attrs:list (string & string)) (style_root:xml_node) (decfmts:list decimal_format_symbols) (expr_text:string)
   : xp_value =
   match ctx with
-  | D_Item it -> eval_val it pos size vars nsctx id_attrs style_root expr_text
+  | D_Item it -> eval_val it pos size vars nsctx id_attrs style_root decfmts expr_text
   | D_Doc root doc_kids ->
     (match parse_xpath expr_text with
      | None -> XV_Str ""
@@ -583,20 +596,20 @@ let eval_val_dn (ctx:dnode) (pos size:nat) (vars:list (string & xp_value)) (nsct
        // path (force_abs made every top-level path absolute) resolves
        // against the true document node when prolog/epilog Misc are
        // present -- `//comment()` reaches a prolog comment (select-1001).
-       let env = { env_item = CI_Elem [] [] root; env_pos = pos; env_size = size; env_vars = vars; env_nsctx = nsctx; env_doc_kids = doc_kids; env_id_attrs = id_attrs; env_style_root = style_root } in
+       let env = { env_item = CI_Elem [] [] root; env_pos = pos; env_size = size; env_vars = vars; env_nsctx = nsctx; env_doc_kids = doc_kids; env_id_attrs = id_attrs; env_style_root = style_root; env_decimal_formats = decfmts } in
        eval_expr fuel env e2)
 
 let eval_string_dn (ctx:dnode) (pos size:nat) (vars) (nsctx:list (string & string))
-                   (id_attrs:list (string & string)) (style_root:xml_node) (expr_text:string) : string =
-  to_string_val (eval_val_dn ctx pos size vars nsctx id_attrs style_root expr_text)
+                   (id_attrs:list (string & string)) (style_root:xml_node) (decfmts:list decimal_format_symbols) (expr_text:string) : string =
+  to_string_val (eval_val_dn ctx pos size vars nsctx id_attrs style_root decfmts expr_text)
 
 let eval_bool_dn (ctx:dnode) (pos size:nat) (vars) (nsctx:list (string & string))
-                 (id_attrs:list (string & string)) (style_root:xml_node) (expr_text:string) : bool =
-  to_bool_val (eval_val_dn ctx pos size vars nsctx id_attrs style_root expr_text)
+                 (id_attrs:list (string & string)) (style_root:xml_node) (decfmts:list decimal_format_symbols) (expr_text:string) : bool =
+  to_bool_val (eval_val_dn ctx pos size vars nsctx id_attrs style_root decfmts expr_text)
 
 let eval_nodeset_dn (ctx:dnode) (pos size:nat) (vars) (nsctx:list (string & string))
-                    (id_attrs:list (string & string)) (style_root:xml_node) (sel:string) : list xctx_item =
-  match eval_val_dn ctx pos size vars nsctx id_attrs style_root (drop_pi_alts sel) with
+                    (id_attrs:list (string & string)) (style_root:xml_node) (decfmts:list decimal_format_symbols) (sel:string) : list xctx_item =
+  match eval_val_dn ctx pos size vars nsctx id_attrs style_root decfmts (drop_pi_alts sel) with
   | XV_Nodes items -> items
   | _ -> []
 
@@ -907,10 +920,10 @@ let select_child_union (nsctx:list (string & string)) (nd:dnode) (alts:list stri
 // else (paths, predicates, axes, functions, ".") goes through the full
 // XPath.Eval engine.
 let select_nodes (ctx:dnode) (pos size:nat) (vars:list (string & xp_value)) (nsctx:list (string & string))
-                 (id_attrs:list (string & string)) (style_root:xml_node) (sel:string)
+                 (id_attrs:list (string & string)) (style_root:xml_node) (decfmts:list decimal_format_symbols) (sel:string)
   : list xctx_item =
   if is_simple_child_union sel then select_child_union nsctx ctx (split_on_char '|' sel)
-  else eval_nodeset_dn ctx pos size vars nsctx id_attrs style_root sel
+  else eval_nodeset_dn ctx pos size vars nsctx id_attrs style_root decfmts sel
 
 // XSLT 1.0 5.5 proximity position: position()/last() inside a match-
 // pattern predicate ("name[position()=last()]", apply-templates/
@@ -947,7 +960,7 @@ let match_id_pattern (id_attrs:list (string & string)) (nsctx:list (string & str
   | Some e ->
     let root = root_of_item it in
     let fuel = initial_eval_fuel e (xml_node_count root) in
-    let env = { env_item = CI_Elem [] [] root; env_pos = 1; env_size = 1; env_vars = []; env_nsctx = nsctx; env_doc_kids = []; env_id_attrs = id_attrs; env_style_root = xnode_none } in
+    let env = { env_item = CI_Elem [] [] root; env_pos = 1; env_size = 1; env_vars = []; env_nsctx = nsctx; env_doc_kids = []; env_id_attrs = id_attrs; env_style_root = xnode_none; env_decimal_formats = [] } in
     // Membership by node identity: same element node AND same ancestor
     // chain. Not by item_path, because the candidate `it` may have been
     // selected under the document-node path framing (root element at [i])
@@ -1415,7 +1428,7 @@ and instantiate_seq (fuel:nat) (st:xstyle) (ctx:dnode) (pos size:nat)
            else
              (match attr_opt "select" attrs with
               | Some sel ->
-                let v = eval_val_dn ctx pos size vars st.xs_nsctx st.xs_id_attrs st.xs_style_root sel in
+                let v = eval_val_dn ctx pos size vars st.xs_nsctx st.xs_id_attrs st.xs_style_root st.xs_decfmts sel in
                 instantiate_seq (fuel - 1) st ctx pos size ((nm, v) :: vars) rtf tl
               | None ->
                 // Result-tree-fragment: instantiate the body, bind its
@@ -1457,7 +1470,7 @@ and bind_with_params_scoped (fuel:nat) (st:xstyle) (ctx:dnode) (pos size:nat)
            let nm = attr_or "name" "" attrs in
            (match attr_opt "select" attrs with
             | Some sel ->
-              let v = eval_val_dn ctx pos size evars st.xs_nsctx st.xs_id_attrs st.xs_style_root sel in
+              let v = eval_val_dn ctx pos size evars st.xs_nsctx st.xs_id_attrs st.xs_style_root st.xs_decfmts sel in
               bind_with_params_scoped (fuel - 1) st ctx pos size evars ertf ((nm, v) :: svars) srtf tl
             | None ->
               let frag = instantiate_seq (fuel - 1) st ctx pos size evars ertf pchildren in
@@ -1480,11 +1493,11 @@ and instantiate_one (fuel:nat) (st:xstyle) (ctx:dnode) (pos size:nat)
       if is_xsl st.xs_pfx tag then
         let ln = xsl_instr st.xs_pfx tag in
         if ln = "value-of" then
-          [R_Node (XText (eval_string_dn ctx pos size vars st.xs_nsctx st.xs_id_attrs st.xs_style_root (attr_or "select" "." attrs)))]
+          [R_Node (XText (eval_string_dn ctx pos size vars st.xs_nsctx st.xs_id_attrs st.xs_style_root st.xs_decfmts (attr_or "select" "." attrs)))]
         else if ln = "text" then
           [R_Node (XText (raw_text children))]
         else if ln = "if" then
-          (if eval_bool_dn ctx pos size vars st.xs_nsctx st.xs_id_attrs st.xs_style_root (attr_or "test" "false()" attrs)
+          (if eval_bool_dn ctx pos size vars st.xs_nsctx st.xs_id_attrs st.xs_style_root st.xs_decfmts (attr_or "test" "false()" attrs)
            then instantiate_seq (fuel - 1) st ctx pos size vars rtf children
            else [])
         else if ln = "choose" then
@@ -1496,7 +1509,7 @@ and instantiate_one (fuel:nat) (st:xstyle) (ctx:dnode) (pos size:nat)
           // an xsl:sort). doc_sort_dedup fixes reverse-axis proximity
           // order (preceding::, ancestor::) and de-duplicates descendant
           // (//) selects before iteration.
-          let items0 = doc_sort_dedup (select_nodes ctx pos size vars st.xs_nsctx st.xs_id_attrs st.xs_style_root sel) in
+          let items0 = doc_sort_dedup (select_nodes ctx pos size vars st.xs_nsctx st.xs_id_attrs st.xs_style_root st.xs_decfmts sel) in
           let items = sort_maybe (dnode_ci ctx) pos size st.xs_pfx vars st.xs_nsctx children items0 in
           for_each_items (fuel - 1) st children vars rtf items 1 (List.Tot.length items)
         else if ln = "apply-templates" then
@@ -1512,7 +1525,7 @@ and instantiate_one (fuel:nat) (st:xstyle) (ctx:dnode) (pos size:nat)
             bind_with_params_scoped (fuel - 1) st ctx pos size vars rtf st.xs_globals [] children in
           (match attr_opt "select" attrs with
            | Some sel ->
-             let items0 = doc_sort_dedup (select_nodes ctx pos size vars st.xs_nsctx st.xs_id_attrs st.xs_style_root sel) in
+             let items0 = doc_sort_dedup (select_nodes ctx pos size vars st.xs_nsctx st.xs_id_attrs st.xs_style_root st.xs_decfmts sel) in
              let items = sort_maybe (dnode_ci ctx) pos size st.xs_pfx vars st.xs_nsctx children items0 in
              let dns = List.Tot.map (fun it -> D_Item it) items in
              apply_list (fuel - 1) st dns 1 (List.Tot.length items) amode pvars prtf
@@ -1552,8 +1565,8 @@ and instantiate_one (fuel:nat) (st:xstyle) (ctx:dnode) (pos size:nat)
            | Some nm ->
              (match rtf_find rtf nm with
               | Some frag -> if no_ns then List.Tot.map rnode_strip_ns frag else frag
-              | None -> List.Tot.map mk (select_nodes ctx pos size vars st.xs_nsctx st.xs_id_attrs st.xs_style_root sel))
-           | None -> List.Tot.map mk (select_nodes ctx pos size vars st.xs_nsctx st.xs_id_attrs st.xs_style_root sel))
+              | None -> List.Tot.map mk (select_nodes ctx pos size vars st.xs_nsctx st.xs_id_attrs st.xs_style_root st.xs_decfmts sel))
+           | None -> List.Tot.map mk (select_nodes ctx pos size vars st.xs_nsctx st.xs_id_attrs st.xs_style_root st.xs_decfmts sel))
         else if ln = "copy" then
           instantiate_copy (fuel - 1) st ctx pos size vars rtf children
         else if ln = "element" then
@@ -1645,7 +1658,7 @@ and instantiate_choose (fuel:nat) (st:xstyle) (ctx:dnode) (pos size:nat)
          if is_xsl st.xs_pfx tag then
            let ln = xsl_instr st.xs_pfx tag in
            if ln = "when" then
-             (if eval_bool_dn ctx pos size vars st.xs_nsctx st.xs_id_attrs st.xs_style_root (attr_or "test" "false()" attrs)
+             (if eval_bool_dn ctx pos size vars st.xs_nsctx st.xs_id_attrs st.xs_style_root st.xs_decfmts (attr_or "test" "false()" attrs)
               then instantiate_seq (fuel - 1) st ctx pos size vars rtf children
               else instantiate_choose (fuel - 1) st ctx pos size vars rtf tl)
            else if ln = "otherwise" then
@@ -1737,6 +1750,54 @@ let rec collect_templates (pfx:string) (children:list xml_node) : Tot (list temp
        else collect_templates pfx tl
      | _ -> collect_templates pfx tl)
 
+// xsl:decimal-format symbol attributes: single-char symbols take the
+// first codepoint of the attribute value (a picture-string meta
+// character is a single character in every fixture this engine sees;
+// XSLT does not define behavior for a multi-char symbol attribute).
+// infinity/NaN are the only symbols that are full strings, not chars.
+let first_char_or (dflt:char) (s:string) : char =
+  match chars_of s with
+  | c :: _ -> c
+  | [] -> dflt
+
+let char_attr (attrs:list xml_attribute) (name:string) (dflt:char) : char =
+  match attr_opt name attrs with
+  | Some s -> first_char_or dflt s
+  | None -> dflt
+
+let string_attr (attrs:list xml_attribute) (name:string) (dflt:string) : string =
+  match attr_opt name attrs with
+  | Some s -> s
+  | None -> dflt
+
+// An unset attribute falls back to the BUILT-IN default (never to
+// another xsl:decimal-format's setting) -- each declaration is
+// independent (XSLT 1.0 §12.3).
+let decimal_format_of_attrs (attrs:list xml_attribute) : decimal_format_symbols =
+  { dfs_name         = attr_or "name" "" attrs;
+    dfs_decimal_sep  = char_attr attrs "decimal-separator" default_decimal_format_symbols.dfs_decimal_sep;
+    dfs_grouping_sep = char_attr attrs "grouping-separator" default_decimal_format_symbols.dfs_grouping_sep;
+    dfs_infinity     = string_attr attrs "infinity" default_decimal_format_symbols.dfs_infinity;
+    dfs_minus_sign   = char_attr attrs "minus-sign" default_decimal_format_symbols.dfs_minus_sign;
+    dfs_nan          = string_attr attrs "NaN" default_decimal_format_symbols.dfs_nan;
+    dfs_percent      = char_attr attrs "percent" default_decimal_format_symbols.dfs_percent;
+    dfs_per_mille    = char_attr attrs "per-mille" default_decimal_format_symbols.dfs_per_mille;
+    dfs_zero_digit   = char_attr attrs "zero-digit" default_decimal_format_symbols.dfs_zero_digit;
+    dfs_digit        = char_attr attrs "digit" default_decimal_format_symbols.dfs_digit;
+    dfs_pattern_sep  = char_attr attrs "pattern-separator" default_decimal_format_symbols.dfs_pattern_sep;
+  }
+
+let rec collect_decimal_formats (pfx:string) (children:list xml_node) : Tot (list decimal_format_symbols) (decreases children) =
+  match children with
+  | [] -> []
+  | hd :: tl ->
+    (match hd with
+     | XElement tag attrs _ ->
+       if is_xsl pfx tag && xsl_instr pfx tag = "decimal-format" then
+         decimal_format_of_attrs attrs :: collect_decimal_formats pfx tl
+       else collect_decimal_formats pfx tl
+     | _ -> collect_decimal_formats pfx tl)
+
 let rec find_output_method (pfx:string) (children:list xml_node) : Tot string (decreases children) =
   match children with
   | [] -> "xml"
@@ -1766,7 +1827,7 @@ let rec build_nsctx (attrs:list xml_attribute) : Tot (list (string & string)) (d
 // a `data` CHILD of `<data>` and returned the empty node-set, so
 // `for-each select="$var"` over such a global silently produced nothing
 // (namespace-1701).
-let rec collect_globals (pfx:string) (nsctx:list (string & string)) (children:list xml_node) (source:xml_node) (doc_kids:list xml_node)
+let rec collect_globals (pfx:string) (nsctx:list (string & string)) (decfmts:list decimal_format_symbols) (children:list xml_node) (source:xml_node) (doc_kids:list xml_node)
   : Tot (list (string & xp_value)) (decreases children) =
   match children with
   | [] -> []
@@ -1777,11 +1838,11 @@ let rec collect_globals (pfx:string) (nsctx:list (string & string)) (children:li
           (let ln = xsl_instr pfx tag in ln = "variable" || ln = "param") then
          (match attr_opt "select" attrs, attr_opt "name" attrs with
           | Some sel, Some nm ->
-            let v = eval_val_dn (D_Doc source doc_kids) 1 1 [] nsctx [] xnode_none sel in
-            (nm, v) :: collect_globals pfx nsctx tl source doc_kids
-          | _, _ -> collect_globals pfx nsctx tl source doc_kids)
-       else collect_globals pfx nsctx tl source doc_kids
-     | _ -> collect_globals pfx nsctx tl source doc_kids)
+            let v = eval_val_dn (D_Doc source doc_kids) 1 1 [] nsctx [] xnode_none decfmts sel in
+            (nm, v) :: collect_globals pfx nsctx decfmts tl source doc_kids
+          | _, _ -> collect_globals pfx nsctx decfmts tl source doc_kids)
+       else collect_globals pfx nsctx decfmts tl source doc_kids
+     | _ -> collect_globals pfx nsctx decfmts tl source doc_kids)
 
 // Parse a whitespace-separated prefix list (exclude-result-prefixes).
 // "#default" designates the default namespace (prefix "").
@@ -1838,19 +1899,22 @@ let build_style (stylesheet:xml_node) (source:xml_node) (doc_kids:list xml_node)
     if is_xsl pfx tag &&
        (let ln = xsl_instr pfx tag in ln = "stylesheet" || ln = "transform") then
       let nsctx = build_nsctx attrs in
+      let decfmts = collect_decimal_formats pfx children in
       { xs_pfx = pfx;
         xs_templates = collect_templates pfx children;
         xs_method = find_output_method pfx children;
-        xs_globals = collect_globals pfx nsctx children source doc_kids;
+        xs_globals = collect_globals pfx nsctx decfmts children source doc_kids;
         xs_nsscope = build_nsscope attrs;
         xs_nsctx = nsctx;
         xs_id_attrs = id_attrs;
-        xs_style_root = stylesheet }
+        xs_style_root = stylesheet;
+        xs_decfmts = decfmts }
     else
       // Simplified stylesheet: the literal result element IS the body
       // of a single template matching the document root. Its own
       // namespace declarations are on the element itself, so no
-      // inherited scope is threaded.
+      // inherited scope is threaded. A simplified stylesheet has no
+      // top-level siblings, so it cannot carry xsl:decimal-format either.
       { xs_pfx = pfx;
         xs_templates = [ { tpl_match = "/"; tpl_name = ""; tpl_mode = ""; tpl_prio = None; tpl_body = [stylesheet] } ];
         xs_method = "xml";
@@ -1858,10 +1922,11 @@ let build_style (stylesheet:xml_node) (source:xml_node) (doc_kids:list xml_node)
         xs_nsscope = [];
         xs_nsctx = build_nsctx attrs;
         xs_id_attrs = id_attrs;
-        xs_style_root = stylesheet }
+        xs_style_root = stylesheet;
+        xs_decfmts = [] }
   | _ ->
     { xs_pfx = "xsl"; xs_templates = []; xs_method = "xml"; xs_globals = []; xs_nsscope = []; xs_nsctx = [];
-      xs_id_attrs = id_attrs; xs_style_root = stylesheet }
+      xs_id_attrs = id_attrs; xs_style_root = stylesheet; xs_decfmts = [] }
 
 // The root element among a document node's children (the single element
 // child; XML well-formedness guarantees exactly one). Used to recover the

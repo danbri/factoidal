@@ -305,6 +305,422 @@ let xn_ceiling (n : xpath_number) : xpath_number=
               else Prims.int_zero - ((Prims.int_zero - v) / p) in
             XN_Finite (q, Prims.int_zero)))
   | uu___ -> n
+type decimal_format_symbols =
+  {
+  dfs_name: Prims.string ;
+  dfs_decimal_sep: FStar_Char.char ;
+  dfs_grouping_sep: FStar_Char.char ;
+  dfs_infinity: Prims.string ;
+  dfs_minus_sign: FStar_Char.char ;
+  dfs_nan: Prims.string ;
+  dfs_percent: FStar_Char.char ;
+  dfs_per_mille: FStar_Char.char ;
+  dfs_zero_digit: FStar_Char.char ;
+  dfs_digit: FStar_Char.char ;
+  dfs_pattern_sep: FStar_Char.char }
+let __proj__Mkdecimal_format_symbols__item__dfs_name
+  (projectee : decimal_format_symbols) : Prims.string=
+  match projectee with
+  | { dfs_name; dfs_decimal_sep; dfs_grouping_sep; dfs_infinity;
+      dfs_minus_sign; dfs_nan; dfs_percent; dfs_per_mille; dfs_zero_digit;
+      dfs_digit; dfs_pattern_sep;_} -> dfs_name
+let __proj__Mkdecimal_format_symbols__item__dfs_decimal_sep
+  (projectee : decimal_format_symbols) : FStar_Char.char=
+  match projectee with
+  | { dfs_name; dfs_decimal_sep; dfs_grouping_sep; dfs_infinity;
+      dfs_minus_sign; dfs_nan; dfs_percent; dfs_per_mille; dfs_zero_digit;
+      dfs_digit; dfs_pattern_sep;_} -> dfs_decimal_sep
+let __proj__Mkdecimal_format_symbols__item__dfs_grouping_sep
+  (projectee : decimal_format_symbols) : FStar_Char.char=
+  match projectee with
+  | { dfs_name; dfs_decimal_sep; dfs_grouping_sep; dfs_infinity;
+      dfs_minus_sign; dfs_nan; dfs_percent; dfs_per_mille; dfs_zero_digit;
+      dfs_digit; dfs_pattern_sep;_} -> dfs_grouping_sep
+let __proj__Mkdecimal_format_symbols__item__dfs_infinity
+  (projectee : decimal_format_symbols) : Prims.string=
+  match projectee with
+  | { dfs_name; dfs_decimal_sep; dfs_grouping_sep; dfs_infinity;
+      dfs_minus_sign; dfs_nan; dfs_percent; dfs_per_mille; dfs_zero_digit;
+      dfs_digit; dfs_pattern_sep;_} -> dfs_infinity
+let __proj__Mkdecimal_format_symbols__item__dfs_minus_sign
+  (projectee : decimal_format_symbols) : FStar_Char.char=
+  match projectee with
+  | { dfs_name; dfs_decimal_sep; dfs_grouping_sep; dfs_infinity;
+      dfs_minus_sign; dfs_nan; dfs_percent; dfs_per_mille; dfs_zero_digit;
+      dfs_digit; dfs_pattern_sep;_} -> dfs_minus_sign
+let __proj__Mkdecimal_format_symbols__item__dfs_nan
+  (projectee : decimal_format_symbols) : Prims.string=
+  match projectee with
+  | { dfs_name; dfs_decimal_sep; dfs_grouping_sep; dfs_infinity;
+      dfs_minus_sign; dfs_nan; dfs_percent; dfs_per_mille; dfs_zero_digit;
+      dfs_digit; dfs_pattern_sep;_} -> dfs_nan
+let __proj__Mkdecimal_format_symbols__item__dfs_percent
+  (projectee : decimal_format_symbols) : FStar_Char.char=
+  match projectee with
+  | { dfs_name; dfs_decimal_sep; dfs_grouping_sep; dfs_infinity;
+      dfs_minus_sign; dfs_nan; dfs_percent; dfs_per_mille; dfs_zero_digit;
+      dfs_digit; dfs_pattern_sep;_} -> dfs_percent
+let __proj__Mkdecimal_format_symbols__item__dfs_per_mille
+  (projectee : decimal_format_symbols) : FStar_Char.char=
+  match projectee with
+  | { dfs_name; dfs_decimal_sep; dfs_grouping_sep; dfs_infinity;
+      dfs_minus_sign; dfs_nan; dfs_percent; dfs_per_mille; dfs_zero_digit;
+      dfs_digit; dfs_pattern_sep;_} -> dfs_per_mille
+let __proj__Mkdecimal_format_symbols__item__dfs_zero_digit
+  (projectee : decimal_format_symbols) : FStar_Char.char=
+  match projectee with
+  | { dfs_name; dfs_decimal_sep; dfs_grouping_sep; dfs_infinity;
+      dfs_minus_sign; dfs_nan; dfs_percent; dfs_per_mille; dfs_zero_digit;
+      dfs_digit; dfs_pattern_sep;_} -> dfs_zero_digit
+let __proj__Mkdecimal_format_symbols__item__dfs_digit
+  (projectee : decimal_format_symbols) : FStar_Char.char=
+  match projectee with
+  | { dfs_name; dfs_decimal_sep; dfs_grouping_sep; dfs_infinity;
+      dfs_minus_sign; dfs_nan; dfs_percent; dfs_per_mille; dfs_zero_digit;
+      dfs_digit; dfs_pattern_sep;_} -> dfs_digit
+let __proj__Mkdecimal_format_symbols__item__dfs_pattern_sep
+  (projectee : decimal_format_symbols) : FStar_Char.char=
+  match projectee with
+  | { dfs_name; dfs_decimal_sep; dfs_grouping_sep; dfs_infinity;
+      dfs_minus_sign; dfs_nan; dfs_percent; dfs_per_mille; dfs_zero_digit;
+      dfs_digit; dfs_pattern_sep;_} -> dfs_pattern_sep
+let default_decimal_format_symbols : decimal_format_symbols=
+  {
+    dfs_name = "";
+    dfs_decimal_sep = 46;
+    dfs_grouping_sep = 44;
+    dfs_infinity = "Infinity";
+    dfs_minus_sign = 45;
+    dfs_nan = "NaN";
+    dfs_percent = 37;
+    dfs_per_mille = (FStar_Char.char_of_int (Prims.of_int (0x2030)));
+    dfs_zero_digit = 48;
+    dfs_digit = 35;
+    dfs_pattern_sep = 59
+  }
+let lookup_decimal_format (formats : decimal_format_symbols Prims.list)
+  (name : Prims.string) : decimal_format_symbols=
+  match FStar_List_Tot_Base.find (fun f -> f.dfs_name = name)
+          (FStar_List_Tot_Base.rev formats)
+  with
+  | FStar_Pervasives_Native.Some f -> f
+  | FStar_Pervasives_Native.None -> default_decimal_format_symbols
+let char_to_str (c : FStar_Char.char) : Prims.string=
+  FStar_String.string_of_list [c]
+let nat_abs (v : Prims.int) : Prims.nat=
+  if v >= Prims.int_zero then v else Prims.int_zero - v
+let rec pow10_nat (n : Prims.nat) : Prims.nat=
+  if n = Prims.int_zero
+  then Prims.int_one
+  else (Prims.of_int (10)) * (pow10_nat (n - Prims.int_one))
+let round_half_even_nat (num : Prims.nat) (den : Prims.nat) : Prims.nat=
+  let q = num / den in
+  let r = (mod) num den in
+  let twice_r = (Prims.of_int (2)) * r in
+  if twice_r < den
+  then q
+  else
+    if twice_r > den
+    then q + Prims.int_one
+    else
+      if ((mod) q (Prims.of_int (2))) = Prims.int_zero
+      then q
+      else q + Prims.int_one
+let round_to_scale (v : Prims.int) (s : Prims.nat) (target : Prims.nat) :
+  Prims.nat=
+  let av = nat_abs v in
+  if target >= s
+  then av * (pow10_nat (target - s))
+  else round_half_even_nat av (pow10_nat (s - target))
+let xn_mul_pow10 (n : xpath_number) (k : Prims.nat) : xpath_number=
+  match n with
+  | XN_Finite (v, s) ->
+      if s >= k
+      then XN_Finite (v, (s - k))
+      else XN_Finite ((v * (pow10_nat (k - s))), Prims.int_zero)
+  | other -> other
+let rec digits_rev_of_nat (n : Prims.nat) : Prims.nat Prims.list=
+  if n = Prims.int_zero
+  then []
+  else ((mod) n (Prims.of_int (10))) ::
+    (digits_rev_of_nat (n / (Prims.of_int (10))))
+let int_digits_of_nat (n : Prims.nat) : Prims.nat Prims.list=
+  FStar_List_Tot_Base.rev (digits_rev_of_nat n)
+let rec pad_left_zeros (l : Prims.nat Prims.list) (target : Prims.nat) :
+  Prims.nat Prims.list=
+  if (FStar_List_Tot_Base.length l) >= target
+  then l
+  else pad_left_zeros (Prims.int_zero :: l) (target - Prims.int_one)
+let rec frac_digits_fixed (n : Prims.nat) (width : Prims.nat) :
+  Prims.nat Prims.list=
+  if width = Prims.int_zero
+  then []
+  else
+    (let p = pow10_nat (width - Prims.int_one) in
+     ((mod) (n / p) (Prims.of_int (10))) ::
+       (frac_digits_fixed ((mod) n p) (width - Prims.int_one)))
+let rec trim_lsb_zeros (l : Prims.nat Prims.list) (min_len : Prims.nat)
+  (cur_len : Prims.nat) : Prims.nat Prims.list=
+  match l with
+  | [] -> []
+  | d::rest ->
+      if (d = Prims.int_zero) && (cur_len > min_len)
+      then trim_lsb_zeros rest min_len (cur_len - Prims.int_one)
+      else l
+let rec take_while_char (f : FStar_Char.char -> Prims.bool)
+  (l : FStar_Char.char Prims.list) : FStar_Char.char Prims.list=
+  match l with
+  | [] -> []
+  | c::rest -> if f c then c :: (take_while_char f rest) else []
+let rec drop_while_char (f : FStar_Char.char -> Prims.bool)
+  (l : FStar_Char.char Prims.list) : FStar_Char.char Prims.list=
+  match l with
+  | [] -> []
+  | c::rest -> if f c then drop_while_char f rest else l
+let rec split_at_char (cs : FStar_Char.char Prims.list)
+  (sep : FStar_Char.char) :
+  (FStar_Char.char Prims.list * FStar_Char.char Prims.list
+    FStar_Pervasives_Native.option)=
+  match cs with
+  | [] -> ([], FStar_Pervasives_Native.None)
+  | c::rest ->
+      if c = sep
+      then ([], (FStar_Pervasives_Native.Some rest))
+      else
+        (let uu___1 = split_at_char rest sep in
+         match uu___1 with | (before, after) -> ((c :: before), after))
+let rec count_char (l : FStar_Char.char Prims.list) (c : FStar_Char.char) :
+  Prims.nat=
+  match l with
+  | [] -> Prims.int_zero
+  | x::rest ->
+      (if x = c then Prims.int_one else Prims.int_zero) + (count_char rest c)
+let rec group_size_rev (rev_int_chars : FStar_Char.char Prims.list)
+  (dfs : decimal_format_symbols) (acc : Prims.nat) : Prims.nat=
+  match rev_int_chars with
+  | [] -> Prims.int_zero
+  | c::rest ->
+      if c = dfs.dfs_grouping_sep
+      then acc
+      else group_size_rev rest dfs (acc + Prims.int_one)
+type subpicture =
+  {
+  sp_prefix: FStar_Char.char Prims.list ;
+  sp_suffix: FStar_Char.char Prims.list ;
+  sp_int_min: Prims.nat ;
+  sp_group: Prims.nat ;
+  sp_frac_min: Prims.nat ;
+  sp_frac_max: Prims.nat ;
+  sp_has_percent: Prims.bool ;
+  sp_has_permille: Prims.bool }
+let __proj__Mksubpicture__item__sp_prefix (projectee : subpicture) :
+  FStar_Char.char Prims.list=
+  match projectee with
+  | { sp_prefix; sp_suffix; sp_int_min; sp_group; sp_frac_min; sp_frac_max;
+      sp_has_percent; sp_has_permille;_} -> sp_prefix
+let __proj__Mksubpicture__item__sp_suffix (projectee : subpicture) :
+  FStar_Char.char Prims.list=
+  match projectee with
+  | { sp_prefix; sp_suffix; sp_int_min; sp_group; sp_frac_min; sp_frac_max;
+      sp_has_percent; sp_has_permille;_} -> sp_suffix
+let __proj__Mksubpicture__item__sp_int_min (projectee : subpicture) :
+  Prims.nat=
+  match projectee with
+  | { sp_prefix; sp_suffix; sp_int_min; sp_group; sp_frac_min; sp_frac_max;
+      sp_has_percent; sp_has_permille;_} -> sp_int_min
+let __proj__Mksubpicture__item__sp_group (projectee : subpicture) :
+  Prims.nat=
+  match projectee with
+  | { sp_prefix; sp_suffix; sp_int_min; sp_group; sp_frac_min; sp_frac_max;
+      sp_has_percent; sp_has_permille;_} -> sp_group
+let __proj__Mksubpicture__item__sp_frac_min (projectee : subpicture) :
+  Prims.nat=
+  match projectee with
+  | { sp_prefix; sp_suffix; sp_int_min; sp_group; sp_frac_min; sp_frac_max;
+      sp_has_percent; sp_has_permille;_} -> sp_frac_min
+let __proj__Mksubpicture__item__sp_frac_max (projectee : subpicture) :
+  Prims.nat=
+  match projectee with
+  | { sp_prefix; sp_suffix; sp_int_min; sp_group; sp_frac_min; sp_frac_max;
+      sp_has_percent; sp_has_permille;_} -> sp_frac_max
+let __proj__Mksubpicture__item__sp_has_percent (projectee : subpicture) :
+  Prims.bool=
+  match projectee with
+  | { sp_prefix; sp_suffix; sp_int_min; sp_group; sp_frac_min; sp_frac_max;
+      sp_has_percent; sp_has_permille;_} -> sp_has_percent
+let __proj__Mksubpicture__item__sp_has_permille (projectee : subpicture) :
+  Prims.bool=
+  match projectee with
+  | { sp_prefix; sp_suffix; sp_int_min; sp_group; sp_frac_min; sp_frac_max;
+      sp_has_percent; sp_has_permille;_} -> sp_has_permille
+let is_numeric_pic_char (dfs : decimal_format_symbols) (c : FStar_Char.char)
+  : Prims.bool=
+  (((c = dfs.dfs_digit) || (c = dfs.dfs_zero_digit)) ||
+     (c = dfs.dfs_grouping_sep))
+    || (c = dfs.dfs_decimal_sep)
+let parse_subpicture (cs : FStar_Char.char Prims.list)
+  (dfs : decimal_format_symbols) : subpicture=
+  let is_num = is_numeric_pic_char dfs in
+  let prefix = take_while_char (fun c -> Prims.op_Negation (is_num c)) cs in
+  let rest1 = drop_while_char (fun c -> Prims.op_Negation (is_num c)) cs in
+  let rev_rest1 = FStar_List_Tot_Base.rev rest1 in
+  let rev_suffix =
+    take_while_char (fun c -> Prims.op_Negation (is_num c)) rev_rest1 in
+  let suffix = FStar_List_Tot_Base.rev rev_suffix in
+  let body =
+    FStar_List_Tot_Base.rev
+      (drop_while_char (fun c -> Prims.op_Negation (is_num c)) rev_rest1) in
+  let uu___ = split_at_char body dfs.dfs_decimal_sep in
+  match uu___ with
+  | (int_chars, frac_opt) ->
+      let frac_chars =
+        match frac_opt with
+        | FStar_Pervasives_Native.Some f -> f
+        | FStar_Pervasives_Native.None -> [] in
+      let int_min = count_char int_chars dfs.dfs_zero_digit in
+      let group =
+        group_size_rev (FStar_List_Tot_Base.rev int_chars) dfs Prims.int_zero in
+      let frac_min = count_char frac_chars dfs.dfs_zero_digit in
+      let frac_max = frac_min + (count_char frac_chars dfs.dfs_digit) in
+      let has_pct =
+        FStar_List_Tot_Base.existsb (fun c -> c = dfs.dfs_percent)
+          (FStar_List_Tot_Base.op_At prefix suffix) in
+      let has_pm =
+        FStar_List_Tot_Base.existsb (fun c -> c = dfs.dfs_per_mille)
+          (FStar_List_Tot_Base.op_At prefix suffix) in
+      {
+        sp_prefix = prefix;
+        sp_suffix = suffix;
+        sp_int_min = int_min;
+        sp_group = group;
+        sp_frac_min = frac_min;
+        sp_frac_max = frac_max;
+        sp_has_percent = has_pct;
+        sp_has_permille = has_pm
+      }
+let parse_picture (picture : Prims.string) (dfs : decimal_format_symbols) :
+  (subpicture * subpicture FStar_Pervasives_Native.option)=
+  let cs = FStar_String.list_of_string picture in
+  let uu___ = split_at_char cs dfs.dfs_pattern_sep in
+  match uu___ with
+  | (pos_chars, neg_opt) ->
+      let pos_sp = parse_subpicture pos_chars dfs in
+      (pos_sp,
+        ((match neg_opt with
+          | FStar_Pervasives_Native.Some nc ->
+              FStar_Pervasives_Native.Some (parse_subpicture nc dfs)
+          | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None)))
+let digit_char_of (dfs : decimal_format_symbols) (d : Prims.nat) :
+  FStar_Char.char=
+  let z = FStar_Char.int_of_char dfs.dfs_zero_digit in
+  let code = z + ((mod) d (Prims.of_int (10))) in
+  if code < (Prims.of_int (0xd7ff))
+  then FStar_Char.char_of_int code
+  else
+    if
+      (code >= (Prims.of_int (0xe000))) &&
+        (code <= (Prims.parse_int "0x10ffff"))
+    then FStar_Char.char_of_int code
+    else dfs.dfs_zero_digit
+let rec render_digits (dfs : decimal_format_symbols)
+  (ds : Prims.nat Prims.list) : FStar_Char.char Prims.list=
+  match ds with
+  | [] -> []
+  | d::rest -> (digit_char_of dfs d) :: (render_digits dfs rest)
+let rec add_groups_from_right (rev_chars : FStar_Char.char Prims.list)
+  (group : Prims.nat) (idx : Prims.nat) (sep : FStar_Char.char) :
+  FStar_Char.char Prims.list=
+  match rev_chars with
+  | [] -> []
+  | c::rest ->
+      let idx' = idx + Prims.int_one in
+      if
+        ((group > Prims.int_zero) && (((mod) idx' group) = Prims.int_zero))
+          && (Prims.uu___is_Cons rest)
+      then c :: sep :: (add_groups_from_right rest group idx' sep)
+      else c :: (add_groups_from_right rest group idx' sep)
+let render_int_part (dfs : decimal_format_symbols) (n : Prims.nat)
+  (min_digits : Prims.nat) (group : Prims.nat) : FStar_Char.char Prims.list=
+  let digs = pad_left_zeros (int_digits_of_nat n) min_digits in
+  let chars = render_digits dfs digs in
+  if group = Prims.int_zero
+  then chars
+  else
+    FStar_List_Tot_Base.rev
+      (add_groups_from_right (FStar_List_Tot_Base.rev chars) group
+         Prims.int_zero dfs.dfs_grouping_sep)
+let render_frac_part (dfs : decimal_format_symbols) (frac_val : Prims.nat)
+  (frac_max : Prims.nat) (frac_min : Prims.nat) : FStar_Char.char Prims.list=
+  if frac_max = Prims.int_zero
+  then []
+  else
+    (let digs = frac_digits_fixed frac_val frac_max in
+     let trimmed =
+       FStar_List_Tot_Base.rev
+         (trim_lsb_zeros (FStar_List_Tot_Base.rev digs) frac_min frac_max) in
+     render_digits dfs trimmed)
+let format_number_str (n : xpath_number) (picture : Prims.string)
+  (dfs : decimal_format_symbols) : Prims.string=
+  match n with
+  | XN_NaN -> dfs.dfs_nan
+  | XN_PosInf -> dfs.dfs_infinity
+  | XN_NegInf ->
+      Prims.strcat (char_to_str dfs.dfs_minus_sign) dfs.dfs_infinity
+  | XN_Finite (mantissa, scale) ->
+      let uu___ = parse_picture picture dfs in
+      (match uu___ with
+       | (pos_sp, neg_sp_opt) ->
+           let is_neg = mantissa < Prims.int_zero in
+           let scale_factor =
+             if pos_sp.sp_has_percent
+             then (Prims.of_int (2))
+             else
+               if pos_sp.sp_has_permille
+               then (Prims.of_int (3))
+               else Prims.int_zero in
+           (match xn_mul_pow10 (XN_Finite (mantissa, scale)) scale_factor
+            with
+            | XN_Finite (v2, s2) ->
+                let m = round_to_scale v2 s2 pos_sp.sp_frac_max in
+                let p = pow10_nat pos_sp.sp_frac_max in
+                let int_part = m / p in
+                let frac_part = (mod) m p in
+                let int_chars =
+                  render_int_part dfs int_part pos_sp.sp_int_min
+                    pos_sp.sp_group in
+                let frac_chars =
+                  render_frac_part dfs frac_part pos_sp.sp_frac_max
+                    pos_sp.sp_frac_min in
+                let show_frac =
+                  (pos_sp.sp_frac_max > Prims.int_zero) &&
+                    (Prims.uu___is_Cons frac_chars) in
+                let uu___1 =
+                  if Prims.op_Negation is_neg
+                  then ((pos_sp.sp_prefix), (pos_sp.sp_suffix))
+                  else
+                    (match neg_sp_opt with
+                     | FStar_Pervasives_Native.None ->
+                         (((dfs.dfs_minus_sign) :: (pos_sp.sp_prefix)),
+                           (pos_sp.sp_suffix))
+                     | FStar_Pervasives_Native.Some neg_sp ->
+                         if
+                           (Prims.uu___is_Nil neg_sp.sp_prefix) &&
+                             (Prims.uu___is_Nil neg_sp.sp_suffix)
+                         then
+                           (((dfs.dfs_minus_sign) :: (pos_sp.sp_prefix)),
+                             (pos_sp.sp_suffix))
+                         else ((neg_sp.sp_prefix), (neg_sp.sp_suffix))) in
+                (match uu___1 with
+                 | (final_prefix, final_suffix) ->
+                     let body =
+                       FStar_List_Tot_Base.op_At int_chars
+                         (if show_frac
+                          then (dfs.dfs_decimal_sep) :: frac_chars
+                          else []) in
+                     FStar_String.string_of_list
+                       (FStar_List_Tot_Base.op_At final_prefix
+                          (FStar_List_Tot_Base.op_At body final_suffix)))
+            | uu___1 -> dfs.dfs_nan))
 type xctx_item =
   | CI_Elem of Prims.int Prims.list * Parser_XML.xml_node Prims.list *
   Parser_XML.xml_node 
@@ -977,44 +1393,51 @@ type xp_env =
   env_nsctx: (Prims.string * Prims.string) Prims.list ;
   env_doc_kids: Parser_XML.xml_node Prims.list ;
   env_id_attrs: (Prims.string * Prims.string) Prims.list ;
-  env_style_root: Parser_XML.xml_node }
+  env_style_root: Parser_XML.xml_node ;
+  env_decimal_formats: decimal_format_symbols Prims.list }
 let __proj__Mkxp_env__item__env_item (projectee : xp_env) : xctx_item=
   match projectee with
   | { env_item; env_pos; env_size; env_vars; env_nsctx; env_doc_kids;
-      env_id_attrs; env_style_root;_} -> env_item
+      env_id_attrs; env_style_root; env_decimal_formats;_} -> env_item
 let __proj__Mkxp_env__item__env_pos (projectee : xp_env) : Prims.nat=
   match projectee with
   | { env_item; env_pos; env_size; env_vars; env_nsctx; env_doc_kids;
-      env_id_attrs; env_style_root;_} -> env_pos
+      env_id_attrs; env_style_root; env_decimal_formats;_} -> env_pos
 let __proj__Mkxp_env__item__env_size (projectee : xp_env) : Prims.nat=
   match projectee with
   | { env_item; env_pos; env_size; env_vars; env_nsctx; env_doc_kids;
-      env_id_attrs; env_style_root;_} -> env_size
+      env_id_attrs; env_style_root; env_decimal_formats;_} -> env_size
 let __proj__Mkxp_env__item__env_vars (projectee : xp_env) :
   (Prims.string * xp_value) Prims.list=
   match projectee with
   | { env_item; env_pos; env_size; env_vars; env_nsctx; env_doc_kids;
-      env_id_attrs; env_style_root;_} -> env_vars
+      env_id_attrs; env_style_root; env_decimal_formats;_} -> env_vars
 let __proj__Mkxp_env__item__env_nsctx (projectee : xp_env) :
   (Prims.string * Prims.string) Prims.list=
   match projectee with
   | { env_item; env_pos; env_size; env_vars; env_nsctx; env_doc_kids;
-      env_id_attrs; env_style_root;_} -> env_nsctx
+      env_id_attrs; env_style_root; env_decimal_formats;_} -> env_nsctx
 let __proj__Mkxp_env__item__env_doc_kids (projectee : xp_env) :
   Parser_XML.xml_node Prims.list=
   match projectee with
   | { env_item; env_pos; env_size; env_vars; env_nsctx; env_doc_kids;
-      env_id_attrs; env_style_root;_} -> env_doc_kids
+      env_id_attrs; env_style_root; env_decimal_formats;_} -> env_doc_kids
 let __proj__Mkxp_env__item__env_id_attrs (projectee : xp_env) :
   (Prims.string * Prims.string) Prims.list=
   match projectee with
   | { env_item; env_pos; env_size; env_vars; env_nsctx; env_doc_kids;
-      env_id_attrs; env_style_root;_} -> env_id_attrs
+      env_id_attrs; env_style_root; env_decimal_formats;_} -> env_id_attrs
 let __proj__Mkxp_env__item__env_style_root (projectee : xp_env) :
   Parser_XML.xml_node=
   match projectee with
   | { env_item; env_pos; env_size; env_vars; env_nsctx; env_doc_kids;
-      env_id_attrs; env_style_root;_} -> env_style_root
+      env_id_attrs; env_style_root; env_decimal_formats;_} -> env_style_root
+let __proj__Mkxp_env__item__env_decimal_formats (projectee : xp_env) :
+  decimal_format_symbols Prims.list=
+  match projectee with
+  | { env_item; env_pos; env_size; env_vars; env_nsctx; env_doc_kids;
+      env_id_attrs; env_style_root; env_decimal_formats;_} ->
+      env_decimal_formats
 let xnode_none : Parser_XML.xml_node= Parser_XML.XElement ("", [], [])
 let is_xnode_none (n : Parser_XML.xml_node) : Prims.bool=
   match n with
@@ -1316,32 +1739,33 @@ let initial_eval_fuel (e : Parser_XPath.xp_expr) (doc_nodes : Prims.nat) :
      ((doc_nodes + Prims.int_one) * (Prims.of_int (24))))
     + (Prims.of_int (4096))
 let is_supported_xpath_function (nm : Prims.string) : Prims.bool=
-  ((((((((((((((((((((((((((nm = "position") || (nm = "last")) ||
-                            (nm = "count"))
-                           || (nm = "name"))
-                          || (nm = "local-name"))
-                         || (nm = "namespace-uri"))
-                        || (nm = "current"))
-                       || (nm = "string"))
-                      || (nm = "concat"))
-                     || (nm = "contains"))
-                    || (nm = "starts-with"))
-                   || (nm = "substring-before"))
-                  || (nm = "substring-after"))
-                 || (nm = "substring"))
-                || (nm = "string-length"))
-               || (nm = "normalize-space"))
-              || (nm = "not"))
-             || (nm = "true"))
-            || (nm = "false"))
-           || (nm = "boolean"))
-          || (nm = "number"))
-         || (nm = "sum"))
-        || (nm = "floor"))
-       || (nm = "ceiling"))
-      || (nm = "round"))
-     || (nm = "id"))
-    || (nm = "document")
+  (((((((((((((((((((((((((((nm = "position") || (nm = "last")) ||
+                             (nm = "count"))
+                            || (nm = "name"))
+                           || (nm = "local-name"))
+                          || (nm = "namespace-uri"))
+                         || (nm = "current"))
+                        || (nm = "string"))
+                       || (nm = "concat"))
+                      || (nm = "contains"))
+                     || (nm = "starts-with"))
+                    || (nm = "substring-before"))
+                   || (nm = "substring-after"))
+                  || (nm = "substring"))
+                 || (nm = "string-length"))
+                || (nm = "normalize-space"))
+               || (nm = "not"))
+              || (nm = "true"))
+             || (nm = "false"))
+            || (nm = "boolean"))
+           || (nm = "number"))
+          || (nm = "sum"))
+         || (nm = "floor"))
+        || (nm = "ceiling"))
+       || (nm = "round"))
+      || (nm = "id"))
+     || (nm = "document"))
+    || (nm = "format-number")
 let rec ws_split_chars (cs : FStar_Char.char Prims.list)
   (cur : FStar_Char.char Prims.list) (acc : Prims.string Prims.list) :
   Prims.string Prims.list=
@@ -1599,7 +2023,8 @@ and filter_one_pred (fuel : Prims.nat)
              env_nsctx = nsctx;
              env_doc_kids = [];
              env_id_attrs = [];
-             env_style_root = xnode_none
+             env_style_root = xnode_none;
+             env_decimal_formats = []
            } in
          let v = eval_expr (fuel - Prims.int_one) e p in
          let keep =
@@ -1985,9 +2410,62 @@ and eval_funcall (fuel : Prims.nat) (env : xp_env) (name : Prims.string)
                                                         else
                                                           if
                                                             name =
-                                                              "element-available"
-                                                          then XV_Bool false
-                                                          else XV_Str ""
+                                                              "format-number"
+                                                          then
+                                                            (match args with
+                                                             | a::b::[] ->
+                                                                 let num =
+                                                                   to_number_val
+                                                                    (eval_expr
+                                                                    (fuel -
+                                                                    Prims.int_one)
+                                                                    env a) in
+                                                                 let pic =
+                                                                   to_string_val
+                                                                    (eval_expr
+                                                                    (fuel -
+                                                                    Prims.int_one)
+                                                                    env b) in
+                                                                 XV_Str
+                                                                   (format_number_str
+                                                                    num pic
+                                                                    (lookup_decimal_format
+                                                                    env.env_decimal_formats
+                                                                    ""))
+                                                             | a::b::c::[] ->
+                                                                 let num =
+                                                                   to_number_val
+                                                                    (eval_expr
+                                                                    (fuel -
+                                                                    Prims.int_one)
+                                                                    env a) in
+                                                                 let pic =
+                                                                   to_string_val
+                                                                    (eval_expr
+                                                                    (fuel -
+                                                                    Prims.int_one)
+                                                                    env b) in
+                                                                 let nm =
+                                                                   to_string_val
+                                                                    (eval_expr
+                                                                    (fuel -
+                                                                    Prims.int_one)
+                                                                    env c) in
+                                                                 XV_Str
+                                                                   (format_number_str
+                                                                    num pic
+                                                                    (lookup_decimal_format
+                                                                    env.env_decimal_formats
+                                                                    nm))
+                                                             | uu___28 ->
+                                                                 XV_Str "")
+                                                          else
+                                                            if
+                                                              name =
+                                                                "element-available"
+                                                            then
+                                                              XV_Bool false
+                                                            else XV_Str ""
 let rec find_child_index (nodes : Parser_XML.xml_node Prims.list)
   (target : Parser_XML.xml_node) (i : Prims.nat) : Prims.nat=
   match nodes with
@@ -2029,7 +2507,8 @@ let eval_xpath_from_root (root_node : Parser_XML.xml_node)
           env_nsctx = [];
           env_doc_kids = [];
           env_id_attrs = [];
-          env_style_root = xnode_none
+          env_style_root = xnode_none;
+          env_decimal_formats = []
         } in
       FStar_Pervasives_Native.Some (eval_expr fuel env e)
 let eval_xpath_from_item (ancestors : Parser_XML.xml_node Prims.list)
@@ -2054,6 +2533,7 @@ let eval_xpath_from_item (ancestors : Parser_XML.xml_node Prims.list)
           env_nsctx = [];
           env_doc_kids = [];
           env_id_attrs = [];
-          env_style_root = xnode_none
+          env_style_root = xnode_none;
+          env_decimal_formats = []
         } in
       FStar_Pervasives_Native.Some (eval_expr fuel env e)

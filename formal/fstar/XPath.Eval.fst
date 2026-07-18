@@ -276,6 +276,298 @@ let xn_ceiling (n:xpath_number) : xpath_number =
         XN_Finite q 0
   | _ -> n
 
+(* ================================================================ *)
+(* XSLT 1.0 format-number() / xsl:decimal-format (§12.3)              *)
+(*                                                                    *)
+(* Picture-string semantics are deferred by the XSLT spec to JDK's    *)
+(* java.text.DecimalFormat. All ten decimal-format symbols            *)
+(* (decimal-separator, grouping-separator, infinity, minus-sign, NaN, *)
+(* percent, per-mille, zero-digit, digit, pattern-separator) are      *)
+(* configurable per xsl:decimal-format, so picture PARSING itself     *)
+(* must read the current symbol set rather than hard-coding '#'/';'/  *)
+(* etc -- numberformat11-13/25/32/34 all rebind one of these symbols  *)
+(* and are only correct if parsing honours the override.              *)
+(*                                                                    *)
+(* Digit rendering does NOT assume ASCII '0'-'9': `zero-digit` names   *)
+(* the codepoint for digit 0, and digits 1-9 are the NEXT 9 codepoints *)
+(* (numberformat34's zero-digit="a" expects digit 4 to render as 'e',  *)
+(* the 5th codepoint after 'a') -- `digit_char_of` below implements    *)
+(* exactly that offset, never a byte-level '0'+d assumption (the same  *)
+(* codepoint-safety concern as the #307 `soc` fix in XSLT.Transform).  *)
+(*                                                                    *)
+(* Negative-subpicture affix rule (reverse-engineered from the        *)
+(* Apache-Xalan numberformat conformance gold files -- the JDK javadoc *)
+(* text describes something subtly different that the gold files do   *)
+(* not actually exhibit; see numberformat04/17/18/29/30/31 in          *)
+(* third_party/testing/xslt1-xalan): digit configuration (integer      *)
+(* min-digits, grouping size, fraction min/max, and the percent/per-   *)
+(* mille scale factor) ALWAYS comes from the POSITIVE sub-picture,     *)
+(* even when the negative sub-picture is the one selected. The         *)
+(* negative sub-picture's own literal prefix/suffix are used VERBATIM  *)
+(* when non-empty (numberformat17: minus-sign="_" override is ignored  *)
+(* because the negative sub-picture already spells out a literal "-"), *)
+(* but when a two-sub-picture pattern's negative half has NO literal   *)
+(* affix at all (numberformat04/31), the engine falls back to the      *)
+(* single-sub-picture rule: prepend minus-sign to the POSITIVE prefix.  *)
+(* With only one sub-picture, the negative prefix is UNCONDITIONALLY    *)
+(* minus-sign ++ positive-prefix (numberformat30's "--26,931.4": the    *)
+(* positive pattern's own literal "-" prefix plus the synthesized      *)
+(* minus-sign, not deduplicated).                                      *)
+(* ================================================================ *)
+
+noeq type decimal_format_symbols = {
+  dfs_name         : string;
+  dfs_decimal_sep  : char;
+  dfs_grouping_sep : char;
+  dfs_infinity     : string;
+  dfs_minus_sign   : char;
+  dfs_nan          : string;
+  dfs_percent      : char;
+  dfs_per_mille    : char;
+  dfs_zero_digit   : char;
+  dfs_digit        : char;
+  dfs_pattern_sep  : char;
+}
+
+// XSLT 1.0 §12.3 built-in defaults for the unnamed decimal-format.
+let default_decimal_format_symbols : decimal_format_symbols = {
+  dfs_name         = "";
+  dfs_decimal_sep  = '.';
+  dfs_grouping_sep = ',';
+  dfs_infinity     = "Infinity";
+  dfs_minus_sign   = '-';
+  dfs_nan          = "NaN";
+  dfs_percent      = '%';
+  dfs_per_mille    = FStar.Char.char_of_int 0x2030;
+  dfs_zero_digit   = '0';
+  dfs_digit        = '#';
+  dfs_pattern_sep  = ';';
+}
+
+// Last-declared-wins lookup by literal name text (plain string match --
+// this engine does not resolve xsl:decimal-format's `name` as a
+// namespace-qualified QName against in-scope prefixes; every Xalan
+// conformance fixture that uses a prefixed name (numberformat20/41)
+// passes the SAME literal text as both the declaration's name= and
+// format-number()'s 3rd argument, so plain string equality already
+// matches the fixture behavior without real QName resolution).
+let lookup_decimal_format (formats:list decimal_format_symbols) (name:string) : decimal_format_symbols =
+  match List.Tot.find (fun (f:decimal_format_symbols) -> f.dfs_name = name) (List.Tot.rev formats) with
+  | Some f -> f
+  | None -> default_decimal_format_symbols
+
+(* ---- small total helpers (all plain structural / nat recursion) --- *)
+
+let char_to_str (c:char) : string = String.string_of_list [c]
+
+let nat_abs (v:int) : nat = if v >= 0 then v else 0 - v
+
+let rec pow10_nat (n:nat) : Tot (r:nat{r > 0}) (decreases n) =
+  if n = 0 then 1 else op_Multiply 10 (pow10_nat (n - 1))
+
+// Round |v|/10^s to the nearest multiple of 10^-target, ties to even
+// (JDK DecimalFormat's default RoundingMode.HALF_EVEN), returning the
+// result as a plain nat scaled by 10^target (i.e. the digit string of
+// length `target` after the decimal point, plus the integer part, all
+// concatenated as one integer).
+let round_half_even_nat (num:nat) (den:nat{den > 0}) : nat =
+  let q = num / den in
+  let r = num % den in
+  let twice_r = op_Multiply 2 r in
+  if twice_r < den then q
+  else if twice_r > den then q + 1
+  else if q % 2 = 0 then q else q + 1
+
+let round_to_scale (v:int) (s:nat) (target:nat) : nat =
+  let av = nat_abs v in
+  if target >= s then op_Multiply av (pow10_nat (target - s))
+  else round_half_even_nat av (pow10_nat (s - target))
+
+// Multiply an xpath_number by 10^k exactly (percent = k2, per-mille = k3).
+let xn_mul_pow10 (n:xpath_number) (k:nat) : xpath_number =
+  match n with
+  | XN_Finite v s -> if s >= k then XN_Finite v (s - k) else XN_Finite (op_Multiply v (pow10_nat (k - s))) 0
+  | other -> other
+
+let rec digits_rev_of_nat (n:nat) : Tot (list nat) (decreases n) =
+  if n = 0 then [] else (n % 10) :: digits_rev_of_nat (n / 10)
+
+// Most-significant-digit-first decimal digits of `n` ([] for 0 -- an
+// int_min of 0 legitimately renders no integer digits at all, e.g. the
+// picture "#.##" formatting 0.5 as ".5").
+let int_digits_of_nat (n:nat) : list nat = List.Tot.rev (digits_rev_of_nat n)
+
+let rec pad_left_zeros (l:list nat) (target:nat) : Tot (list nat) (decreases target) =
+  if List.Tot.length l >= target then l else pad_left_zeros (0 :: l) (target - 1)
+
+// Exactly `width` digits of `n` (n < 10^width), most-significant first.
+let rec frac_digits_fixed (n:nat) (width:nat) : Tot (list nat) (decreases width) =
+  if width = 0 then []
+  else
+    let p = pow10_nat (width - 1) in
+    ((n / p) % 10) :: frac_digits_fixed (n % p) (width - 1)
+
+// `l` is LSB-first (rightmost/least-significant fraction digit first).
+// Drop leading (= trailing, in true reading order) zero-VALUE digits
+// down to `min_len`, never below it.
+let rec trim_lsb_zeros (l:list nat) (min_len:nat) (cur_len:nat) : Tot (list nat) (decreases l) =
+  match l with
+  | [] -> []
+  | d :: rest -> if d = 0 && cur_len > min_len then trim_lsb_zeros rest min_len (cur_len - 1) else l
+
+let rec take_while_char (f:char -> bool) (l:list char) : Tot (list char) (decreases l) =
+  match l with
+  | [] -> []
+  | c :: rest -> if f c then c :: take_while_char f rest else []
+
+let rec drop_while_char (f:char -> bool) (l:list char) : Tot (list char) (decreases l) =
+  match l with
+  | [] -> []
+  | c :: rest -> if f c then drop_while_char f rest else l
+
+let rec split_at_char (cs:list char) (sep:char) : Tot (list char & option (list char)) (decreases cs) =
+  match cs with
+  | [] -> ([], None)
+  | c :: rest ->
+    if c = sep then ([], Some rest)
+    else
+      let (before, after) = split_at_char rest sep in
+      (c :: before, after)
+
+let rec count_char (l:list char) (c:char) : Tot nat (decreases l) =
+  match l with
+  | [] -> 0
+  | x :: rest -> (if x = c then 1 else 0) + count_char rest c
+
+// Grouping size: the digit-count of the group NEAREST the decimal point
+// (i.e. the last group before it), applied UNIFORMLY across the whole
+// integer part. This is not JDK's "primary/secondary grouping size"
+// feature (which would use a different size for the outermost groups)
+// -- numberformat35's "###,##0,00.00" -> "9,87,65,43,21.00" groups
+// EVERY position by the nearest interval's size (2), confirming the
+// engine this corpus was generated against does not implement the
+// two-tier feature either.
+let rec group_size_rev (rev_int_chars:list char) (dfs:decimal_format_symbols) (acc:nat) : Tot nat (decreases rev_int_chars) =
+  match rev_int_chars with
+  | [] -> 0
+  | c :: rest -> if c = dfs.dfs_grouping_sep then acc else group_size_rev rest dfs (acc + 1)
+
+noeq type subpicture = {
+  sp_prefix        : list char;
+  sp_suffix        : list char;
+  sp_int_min       : nat;
+  sp_group         : nat;
+  sp_frac_min      : nat;
+  sp_frac_max      : nat;
+  sp_has_percent   : bool;
+  sp_has_permille  : bool;
+}
+
+let is_numeric_pic_char (dfs:decimal_format_symbols) (c:char) : bool =
+  c = dfs.dfs_digit || c = dfs.dfs_zero_digit || c = dfs.dfs_grouping_sep || c = dfs.dfs_decimal_sep
+
+let parse_subpicture (cs:list char) (dfs:decimal_format_symbols) : subpicture =
+  let is_num = is_numeric_pic_char dfs in
+  let prefix = take_while_char (fun c -> not (is_num c)) cs in
+  let rest1 = drop_while_char (fun c -> not (is_num c)) cs in
+  let rev_rest1 = List.Tot.rev rest1 in
+  let rev_suffix = take_while_char (fun c -> not (is_num c)) rev_rest1 in
+  let suffix = List.Tot.rev rev_suffix in
+  let body = List.Tot.rev (drop_while_char (fun c -> not (is_num c)) rev_rest1) in
+  let (int_chars, frac_opt) = split_at_char body dfs.dfs_decimal_sep in
+  let frac_chars = (match frac_opt with Some f -> f | None -> []) in
+  let int_min = count_char int_chars dfs.dfs_zero_digit in
+  let group = group_size_rev (List.Tot.rev int_chars) dfs 0 in
+  let frac_min = count_char frac_chars dfs.dfs_zero_digit in
+  let frac_max = frac_min + count_char frac_chars dfs.dfs_digit in
+  let has_pct = List.Tot.existsb (fun c -> c = dfs.dfs_percent) (prefix @ suffix) in
+  let has_pm = List.Tot.existsb (fun c -> c = dfs.dfs_per_mille) (prefix @ suffix) in
+  { sp_prefix = prefix; sp_suffix = suffix; sp_int_min = int_min; sp_group = group;
+    sp_frac_min = frac_min; sp_frac_max = frac_max; sp_has_percent = has_pct; sp_has_permille = has_pm }
+
+let parse_picture (picture:string) (dfs:decimal_format_symbols) : (subpicture & option subpicture) =
+  let cs = String.list_of_string picture in
+  let (pos_chars, neg_opt) = split_at_char cs dfs.dfs_pattern_sep in
+  let pos_sp = parse_subpicture pos_chars dfs in
+  (pos_sp, (match neg_opt with Some nc -> Some (parse_subpicture nc dfs) | None -> None))
+
+// digit VALUE d (0-9) rendered at the codepoint `zero-digit + d` (the
+// Unicode "digit zero of a decimal digit family" convention DecimalFormat
+// uses for zero-digit overrides) -- falls back to the zero-digit glyph
+// itself if the offset would land in the UTF-16 surrogate gap (never
+// happens for realistic zero-digit choices, but keeps char_of_int total).
+let digit_char_of (dfs:decimal_format_symbols) (d:nat) : char =
+  let z = FStar.Char.int_of_char dfs.dfs_zero_digit in
+  let code = z + (d % 10) in
+  if code < 0xd7ff then FStar.Char.char_of_int code
+  else if code >= 0xe000 && code <= 0x10ffff then FStar.Char.char_of_int code
+  else dfs.dfs_zero_digit
+
+let rec render_digits (dfs:decimal_format_symbols) (ds:list nat) : Tot (list char) (decreases ds) =
+  match ds with
+  | [] -> []
+  | d :: rest -> digit_char_of dfs d :: render_digits dfs rest
+
+// rev_chars is rightmost-digit-first; inserts `sep` every `group`
+// digits counting from the right, never before the leftmost digit.
+let rec add_groups_from_right (rev_chars:list char) (group:nat) (idx:nat) (sep:char)
+  : Tot (list char) (decreases rev_chars) =
+  match rev_chars with
+  | [] -> []
+  | c :: rest ->
+    let idx' = idx + 1 in
+    if group > 0 && idx' % group = 0 && Cons? rest
+    then c :: sep :: add_groups_from_right rest group idx' sep
+    else c :: add_groups_from_right rest group idx' sep
+
+let render_int_part (dfs:decimal_format_symbols) (n:nat) (min_digits:nat) (group:nat) : list char =
+  let digs = pad_left_zeros (int_digits_of_nat n) min_digits in
+  let chars = render_digits dfs digs in
+  if group = 0 then chars
+  else List.Tot.rev (add_groups_from_right (List.Tot.rev chars) group 0 dfs.dfs_grouping_sep)
+
+let render_frac_part (dfs:decimal_format_symbols) (frac_val:nat) (frac_max:nat) (frac_min:nat) : list char =
+  if frac_max = 0 then []
+  else
+    let digs = frac_digits_fixed frac_val frac_max in
+    let trimmed = List.Tot.rev (trim_lsb_zeros (List.Tot.rev digs) frac_min frac_max) in
+    render_digits dfs trimmed
+
+// The pure core: XSLT 1.0 §12.3 format-number, picture-string semantics
+// per xpath-functions "Syntax of a picture string" (as deferred to by
+// the XSLT spec). See the module-section banner above for the
+// negative-subpicture affix rule and the digit/grouping conventions.
+let format_number_str (n:xpath_number) (picture:string) (dfs:decimal_format_symbols) : string =
+  match n with
+  | XN_NaN -> dfs.dfs_nan
+  | XN_PosInf -> dfs.dfs_infinity
+  | XN_NegInf -> char_to_str dfs.dfs_minus_sign ^ dfs.dfs_infinity
+  | XN_Finite mantissa scale ->
+    let (pos_sp, neg_sp_opt) = parse_picture picture dfs in
+    let is_neg = mantissa < 0 in
+    let scale_factor : nat = if pos_sp.sp_has_percent then 2 else if pos_sp.sp_has_permille then 3 else 0 in
+    (match xn_mul_pow10 (XN_Finite mantissa scale) scale_factor with
+     | XN_Finite v2 s2 ->
+       let m = round_to_scale v2 s2 pos_sp.sp_frac_max in
+       let p = pow10_nat pos_sp.sp_frac_max in
+       let int_part = m / p in
+       let frac_part = m % p in
+       let int_chars = render_int_part dfs int_part pos_sp.sp_int_min pos_sp.sp_group in
+       let frac_chars = render_frac_part dfs frac_part pos_sp.sp_frac_max pos_sp.sp_frac_min in
+       let show_frac = pos_sp.sp_frac_max > 0 && Cons? frac_chars in
+       let (final_prefix, final_suffix) =
+         if not is_neg then (pos_sp.sp_prefix, pos_sp.sp_suffix)
+         else
+           (match neg_sp_opt with
+            | None -> (dfs.dfs_minus_sign :: pos_sp.sp_prefix, pos_sp.sp_suffix)
+            | Some neg_sp ->
+              if Nil? neg_sp.sp_prefix && Nil? neg_sp.sp_suffix
+              then (dfs.dfs_minus_sign :: pos_sp.sp_prefix, pos_sp.sp_suffix)
+              else (neg_sp.sp_prefix, neg_sp.sp_suffix))
+       in
+       let body = int_chars @ (if show_frac then dfs.dfs_decimal_sep :: frac_chars else []) in
+       String.string_of_list (final_prefix @ body @ final_suffix)
+     | _ -> dfs.dfs_nan) // unreachable: xn_mul_pow10 on XN_Finite always yields XN_Finite
 
 (* ================================================================ *)
 (* Node-set items                                                    *)
@@ -929,6 +1221,13 @@ noeq type xp_env = {
   // tagless empty element) means "no stylesheet document available", and
   // document("") then selects nothing.
   env_style_root : xml_node;
+  // xsl:decimal-format table (named + default), for format-number()'s
+  // optional 3rd argument. [] means "no stylesheet decimal-formats in
+  // scope" -- format-number then always uses default_decimal_format_symbols
+  // (lookup_decimal_format's own fallback), same as XPath contexts that
+  // are not XSLT at all (Schematron.Validate, the bare eval_xpath_from_*
+  // entry points).
+  env_decimal_formats : list decimal_format_symbols;
 }
 
 // Sentinel "no document" node for env_style_root: an empty tagless
@@ -1259,7 +1558,7 @@ let is_supported_xpath_function (nm:string) : bool =
   nm = "string-length" || nm = "normalize-space" ||
   nm = "not" || nm = "true" || nm = "false" || nm = "boolean" ||
   nm = "number" || nm = "sum" || nm = "floor" || nm = "ceiling" || nm = "round" ||
-  nm = "id" || nm = "document"
+  nm = "id" || nm = "document" || nm = "format-number"
 
 (* ---- id() support: DTD ID-typed attribute lookup ------------------- *)
 
@@ -1473,7 +1772,7 @@ and filter_one_pred (fuel:nat) (vars:list (string & xp_value)) (nsctx:list (stri
     match items with
     | [] -> []
     | it :: rest ->
-      let e = { env_item = it; env_pos = pos; env_size = size; env_vars = vars; env_nsctx = nsctx; env_doc_kids = []; env_id_attrs = []; env_style_root = xnode_none } in
+      let e = { env_item = it; env_pos = pos; env_size = size; env_vars = vars; env_nsctx = nsctx; env_doc_kids = []; env_id_attrs = []; env_style_root = xnode_none; env_decimal_formats = [] } in
       let v = eval_expr (fuel - 1) e p in
       let keep =
         match v with
@@ -1639,6 +1938,23 @@ and eval_funcall (fuel:nat) (env:xp_env) (name:string) (args:list xp_expr)
       (match args with
        | [a] -> XV_Bool (is_supported_xpath_function (to_string_val (eval_expr (fuel - 1) env a)))
        | _ -> XV_Bool false)
+    else if name = "format-number" then
+      // XSLT 1.0 format-number(number, picture-string, decimal-format-name?)
+      // (§12.3). The named-format lookup falls back to the built-in
+      // defaults when the 3rd argument names a format not in scope
+      // (env_decimal_formats, threaded from the stylesheet's
+      // xsl:decimal-format declarations by XSLT.Transform.build_style).
+      (match args with
+       | [a; b] ->
+         let num = to_number_val (eval_expr (fuel - 1) env a) in
+         let pic = to_string_val (eval_expr (fuel - 1) env b) in
+         XV_Str (format_number_str num pic (lookup_decimal_format env.env_decimal_formats ""))
+       | [a; b; c] ->
+         let num = to_number_val (eval_expr (fuel - 1) env a) in
+         let pic = to_string_val (eval_expr (fuel - 1) env b) in
+         let nm = to_string_val (eval_expr (fuel - 1) env c) in
+         XV_Str (format_number_str num pic (lookup_decimal_format env.env_decimal_formats nm))
+       | _ -> XV_Str "")
     else if name = "element-available" then
       // We construct result nodes structurally; no extension elements
       // are available. The XSLT built-in instruction set is handled by
@@ -1688,7 +2004,7 @@ let eval_xpath_from_root (root_node:xml_node) (vars:list (string & xp_value)) (e
   | None -> None
   | Some e ->
     let fuel = initial_eval_fuel e (xml_node_count root_node) in
-    let env = { env_item = CI_Elem [] [] root_node; env_pos = 1; env_size = 1; env_vars = vars; env_nsctx = []; env_doc_kids = []; env_id_attrs = []; env_style_root = xnode_none } in
+    let env = { env_item = CI_Elem [] [] root_node; env_pos = 1; env_size = 1; env_vars = vars; env_nsctx = []; env_doc_kids = []; env_id_attrs = []; env_style_root = xnode_none; env_decimal_formats = [] } in
     Some (eval_expr fuel env e)
 
 // Evaluate with an arbitrary context node deeper in the document,
@@ -1703,5 +2019,5 @@ let eval_xpath_from_item (ancestors:list xml_node) (context_node:xml_node) (vars
     let doc_nodes = xml_node_count context_node + xml_nodes_count ancestors in
     let fuel = initial_eval_fuel e doc_nodes in
     let env = { env_item = CI_Elem (compute_ctx_path ancestors context_node) ancestors context_node;
-                env_pos = 1; env_size = 1; env_vars = vars; env_nsctx = []; env_doc_kids = []; env_id_attrs = []; env_style_root = xnode_none } in
+                env_pos = 1; env_size = 1; env_vars = vars; env_nsctx = []; env_doc_kids = []; env_id_attrs = []; env_style_root = xnode_none; env_decimal_formats = [] } in
     Some (eval_expr fuel env e)
