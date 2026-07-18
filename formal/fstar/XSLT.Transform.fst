@@ -101,7 +101,20 @@ open XPath.Eval
 (* preconditions from String.sub).                                    *)
 (* ================================================================ *)
 
-let soc (c:char) : string = String.string_of_char c
+// `String.string_of_char` extracts to OCaml's byte-oriented `Char.chr`
+// (FStar_String.ml: `string_of_char c = BatString.of_char (Char.chr c)`),
+// defined only for 0..255 and raising `Invalid_argument("Char.chr")`
+// above that -- crashing on any codepoint > 255 reaching text/attribute
+// serialization (issue #307: Apache-Xalan output-output28/73,
+// sort-sort-alphabet-polish/russian hit this via escape_text_char /
+// escape_attr_char / expand_avt_chars). `chars_of` decodes real Unicode
+// codepoints via BatUTF8, so re-encoding a single decoded codepoint must
+// use `String.string_of_list [c]`, which extracts to
+// `BatUTF8.init 1 (fun _ -> BatUChar.chr c)` -- full 0..0x10FFFF range,
+// proper multi-byte UTF-8. For codepoints < 128 this is the identical
+// single ASCII byte (UTF-8 == ASCII there), so passing output is
+// unaffected. Same trap-class fix as RDF.Canonical / RDF.NQuads (#272).
+let soc (c:char) : string = String.string_of_list [c]
 
 let chars_of (s:string) : list char = String.list_of_string s
 let str_of_chars (cs:list char) : string = String.string_of_list cs

@@ -1,5 +1,6 @@
 open Prims
-let soc (c : FStar_String.char) : Prims.string= FStar_String.string_of_char c
+let soc (c : FStar_String.char) : Prims.string=
+  FStar_String.string_of_list [c]
 let chars_of (s : Prims.string) : FStar_String.char Prims.list=
   FStar_String.list_of_string s
 let str_of_chars (cs : FStar_String.char Prims.list) : Prims.string=
