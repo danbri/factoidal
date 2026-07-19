@@ -1800,6 +1800,38 @@ let rec escape_with (f:char -> string) (cs:list char) : Tot string (decreases cs
 let escape_text (s:string) : string = escape_with escape_text_char (chars_of s)
 let escape_attr (s:string) : string = escape_with escape_attr_char (chars_of s)
 
+// XML comments cannot legally contain "--" nor end in "-" (the latter
+// would collide with the closing "-->" delimiter). XSLT 1.0 7.4 leaves
+// the recovery action for xsl:comment content violating this
+// discretionary; Xalan's chosen recovery (its own test manifest labels
+// this comment-content-contains-delimiter="add-space", Xalan
+// output-output89/90) is to insert a single space between every
+// adjacent pair of hyphens, and -- if the (possibly space-inserted)
+// content still ends in "-" -- append one more trailing space before
+// the closing delimiter is written. Checked against the WHOLE Xalan
+// xslt1 gold corpus (2453 files, all categories) and the vendored W3C
+// xslt30-test suite: no other test's expected comment content contains
+// an unescaped "--" or a trailing "-", so this insertion is safe with
+// no regression risk to either floor.
+let rec insert_space_between_dashes (cs:list char) (prev_was_dash:bool) : Tot (list char) (decreases cs) =
+  match cs with
+  | [] -> []
+  | c :: rest ->
+    if c = '-' && prev_was_dash then
+      ' ' :: c :: insert_space_between_dashes rest true
+    else
+      c :: insert_space_between_dashes rest (c = '-')
+
+let rec chars_end_in_dash (cs:list char) : Tot bool (decreases cs) =
+  match cs with
+  | [] -> false
+  | [c] -> c = '-'
+  | _ :: rest -> chars_end_in_dash rest
+
+let escape_comment_content (t:string) : string =
+  let cs' = insert_space_between_dashes (chars_of t) false in
+  if chars_end_in_dash cs' then strcat (str_of_chars cs') " " else str_of_chars cs'
+
 // ---- method="html" serialization corners (XSLT 1.0 16.2) ------------
 //
 // Lower-case an ASCII string for case-insensitive HTML element/attribute
@@ -2052,7 +2084,7 @@ let rec serialize_node (cfg:ser_settings) (scope:list (string & string)) (n:xml_
   match n with
   | XText t -> if cfg.ser_html then escape_html_text t else escape_text t
   | XCDATA t -> if cfg.ser_html then escape_html_text t else escape_text t
-  | XComment t -> String.concat "" ["<!--"; t; "-->"]
+  | XComment t -> String.concat "" ["<!--"; escape_comment_content t; "-->"]
   // method="html" (XSLT 1.0 16.2): a processing instruction is written
   // "<?target data>" -- NO "?" before the closing ">" -- unlike the XML
   // rule's "<?target data?>" (Xalan output-output36/59).
@@ -3874,8 +3906,19 @@ let rec has_meta_content_type (kids:list xml_node) : Tot bool (decreases kids) =
   | [] -> false
   | hd :: tl -> if is_meta_content_type hd then true else has_meta_content_type tl
 
+// Xalan's HTML output method (conf-gold/output/output01,02,38,40,60,73)
+// always emits the auto-injected element name as uppercase "META" --
+// output60.out proves this is NOT "match the enclosing literal-result
+// element's case" (its <html>/<head>/<title> are lowercase in both the
+// .xsl source and the expected output, yet the injected element is
+// still <META ...>). The attribute NAMES/VALUES (http-equiv, content)
+// stay lowercase; only the element name is uppercased. The vendored
+// W3C xslt30-test suite (third_party/testing/xslt/) has zero
+// method="html" tests (checked 2026-07-19: 88 .xsl files, 16 with
+// xsl:output, none specifying method="html"), so this literal has no
+// competing convention to reconcile there.
 let make_meta_elem (encoding:string) : xml_node =
-  XElement "meta"
+  XElement "META"
     [ { attr_name = "http-equiv"; attr_value = "Content-Type" };
       { attr_name = "content"; attr_value = String.concat "" ["text/html; charset="; encoding] } ]
     []

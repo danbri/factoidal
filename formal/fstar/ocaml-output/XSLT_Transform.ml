@@ -1841,6 +1841,24 @@ let escape_text (s : Prims.string) : Prims.string=
   escape_with escape_text_char (chars_of s)
 let escape_attr (s : Prims.string) : Prims.string=
   escape_with escape_attr_char (chars_of s)
+let rec insert_space_between_dashes (cs : FStar_String.char Prims.list)
+  (prev_was_dash : Prims.bool) : FStar_String.char Prims.list=
+  match cs with
+  | [] -> []
+  | c::rest ->
+      if (c = 45) && prev_was_dash
+      then 32 :: c :: (insert_space_between_dashes rest true)
+      else c :: (insert_space_between_dashes rest (c = 45))
+let rec chars_end_in_dash (cs : FStar_String.char Prims.list) : Prims.bool=
+  match cs with
+  | [] -> false
+  | c::[] -> c = 45
+  | uu___::rest -> chars_end_in_dash rest
+let escape_comment_content (t : Prims.string) : Prims.string=
+  let cs' = insert_space_between_dashes (chars_of t) false in
+  if chars_end_in_dash cs'
+  then Prims.strcat (str_of_chars cs') " "
+  else str_of_chars cs'
 let ascii_lower_str (s : Prims.string) : Prims.string=
   str_of_chars (FStar_List_Tot_Base.map ascii_lower_char (chars_of s))
 let html_void_elems : Prims.string Prims.list=
@@ -2183,7 +2201,8 @@ let rec serialize_node (cfg : ser_settings)
       if cfg.ser_html then escape_html_text t else escape_text t
   | Parser_XML.XCDATA t ->
       if cfg.ser_html then escape_html_text t else escape_text t
-  | Parser_XML.XComment t -> FStar_String.concat "" ["<!--"; t; "-->"]
+  | Parser_XML.XComment t ->
+      FStar_String.concat "" ["<!--"; escape_comment_content t; "-->"]
   | Parser_XML.XPI (tg, d) ->
       if cfg.ser_html
       then FStar_String.concat "" ["<?"; tg; " "; d; ">"]
@@ -4266,7 +4285,7 @@ let rec has_meta_content_type (kids : Parser_XML.xml_node Prims.list) :
       if is_meta_content_type hd then true else has_meta_content_type tl
 let make_meta_elem (encoding : Prims.string) : Parser_XML.xml_node=
   Parser_XML.XElement
-    ("meta",
+    ("META",
       [{
          Parser_XML.attr_name = "http-equiv";
          Parser_XML.attr_value = "Content-Type"
