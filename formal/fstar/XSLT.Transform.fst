@@ -716,11 +716,19 @@ let eval_val (ctx:xctx_item) (pos:nat) (size:nat) (vars:list (string & xp_value)
     let env = { env_item = ctx; env_pos = pos; env_size = size; env_vars = vars; env_nsctx = nsctx; env_doc_kids = []; env_id_attrs = id_attrs; env_style_root = style_root; env_decimal_formats = decfmts; env_key_table = key_table } in
     eval_expr fuel env e
 
-// AVT / sort-key / predicate call-outs never carry id()/document()/
-// decimal-format/key context in the vendored suite, so these keep their
-// arity and pass the neutral defaults.
+// AVTs never carry id()/document()/decimal-format/key context in the
+// vendored suite, so this keeps its arity and passes the neutral
+// defaults. Sort-key evaluation (eval_sort_keys below) does NOT reuse
+// this -- idkey32/33's `xsl:sort select="key('MonthNum',month)"` needs
+// the real key table, so that path threads id_attrs/style_root/decfmts/
+// key_table explicitly instead.
 let eval_string (ctx:xctx_item) (pos size:nat) (vars) (nsctx:list (string & string)) (expr_text:string) : string =
   to_string_val (eval_val ctx pos size vars nsctx [] xnode_none [] [] expr_text)
+
+let eval_string_kv (ctx:xctx_item) (pos size:nat) (vars) (nsctx:list (string & string))
+                   (id_attrs:list (string & string)) (style_root:xml_node) (decfmts:list decimal_format_symbols)
+                   (key_table:list key_entry) (expr_text:string) : string =
+  to_string_val (eval_val ctx pos size vars nsctx id_attrs style_root decfmts key_table expr_text)
 
 // A bare numeric predicate result is XPath 1.0 §2.4's positional
 // shorthand (`[2]` means "proximity position 2", not "boolean(2)" =
@@ -2254,21 +2262,31 @@ let rec collect_sorts (ctx:xctx_item) (pos size:nat) (vars:list (string & xp_val
 // The sort key strings for one node, evaluated with the node's OWN
 // proximity position/size in the unsorted node list (so a sort by
 // position() or last() is correct). One string per sort spec.
+// id_attrs/style_root/decfmts/key_table are threaded so a sort key that
+// calls key()/id()/document("")/format-number() (idkey32/33's
+// `xsl:sort select="key('MonthNum',month)"`) resolves against the real
+// tables instead of the always-empty defaults eval_string uses.
 let rec eval_sort_keys (specs:list sortspec) (vars:list (string & xp_value)) (nsctx:list (string & string))
-                       (it:xctx_item) (pos size:nat)
+                       (id_attrs:list (string & string)) (style_root:xml_node) (decfmts:list decimal_format_symbols)
+                       (key_table:list key_entry) (it:xctx_item) (pos size:nat)
   : Tot (list string) (decreases specs) =
   match specs with
   | [] -> []
-  | s :: rest -> eval_string it pos size vars nsctx s.so_select :: eval_sort_keys rest vars nsctx it pos size
+  | s :: rest ->
+    eval_string_kv it pos size vars nsctx id_attrs style_root decfmts key_table s.so_select
+    :: eval_sort_keys rest vars nsctx id_attrs style_root decfmts key_table it pos size
 
 // Annotate each node with its precomputed sort keys, threading the
 // 1-based position through the ORIGINAL (document-order) list.
 let rec annotate_items (specs:list sortspec) (vars:list (string & xp_value)) (nsctx:list (string & string))
-                       (items:list xctx_item) (pos size:nat)
+                       (id_attrs:list (string & string)) (style_root:xml_node) (decfmts:list decimal_format_symbols)
+                       (key_table:list key_entry) (items:list xctx_item) (pos size:nat)
   : Tot (list (xctx_item & list string)) (decreases items) =
   match items with
   | [] -> []
-  | it :: tl -> (it, eval_sort_keys specs vars nsctx it pos size) :: annotate_items specs vars nsctx tl (pos + 1) size
+  | it :: tl ->
+    (it, eval_sort_keys specs vars nsctx id_attrs style_root decfmts key_table it pos size)
+    :: annotate_items specs vars nsctx id_attrs style_root decfmts key_table tl (pos + 1) size
 
 // Compare two nodes by their precomputed key lists, honoring each
 // spec's data-type and order. A NaN key (non-numeric text under
@@ -2310,13 +2328,15 @@ let rec sort_items (specs:list sortspec) (l:list (xctx_item & list string))
   | x :: xs -> sort_insert specs x (sort_items specs xs)
 
 let sort_maybe (ctx:xctx_item) (pos size:nat) (pfx:string)
-               (vars:list (string & xp_value)) (nsctx:list (string & string)) (body:list xml_node) (items:list xctx_item)
+               (vars:list (string & xp_value)) (nsctx:list (string & string))
+               (id_attrs:list (string & string)) (style_root:xml_node) (decfmts:list decimal_format_symbols)
+               (key_table:list key_entry) (body:list xml_node) (items:list xctx_item)
   : list xctx_item =
   match collect_sorts ctx pos size vars nsctx pfx body with
   | [] -> items
   | specs ->
     let n = List.Tot.length items in
-    List.Tot.map fst (sort_items specs (annotate_items specs vars nsctx items 1 n))
+    List.Tot.map fst (sort_items specs (annotate_items specs vars nsctx id_attrs style_root decfmts key_table items 1 n))
 
 (* ================================================================ *)
 (* Result-tree-fragment variables. A variable/param with element/text  *)
@@ -2521,7 +2541,7 @@ and instantiate_one (fuel:nat) (st:xstyle) (ctx:dnode) (pos size:nat)
           // order (preceding::, ancestor::) and de-duplicates descendant
           // (//) selects before iteration.
           let items0 = doc_sort_dedup (select_nodes ctx pos size vars st.xs_nsctx st.xs_id_attrs st.xs_style_root st.xs_decfmts st.xs_key_table sel) in
-          let items = sort_maybe (dnode_ci ctx) pos size st.xs_pfx vars st.xs_nsctx children items0 in
+          let items = sort_maybe (dnode_ci ctx) pos size st.xs_pfx vars st.xs_nsctx st.xs_id_attrs st.xs_style_root st.xs_decfmts st.xs_key_table children items0 in
           for_each_items (fuel - 1) st children vars rtf cur_mode cur_prec items 1 (List.Tot.length items)
         else if ln = "apply-templates" then
           let amode = attr_or "mode" "" attrs in
@@ -2537,7 +2557,7 @@ and instantiate_one (fuel:nat) (st:xstyle) (ctx:dnode) (pos size:nat)
           (match attr_opt "select" attrs with
            | Some sel ->
              let items0 = doc_sort_dedup (select_nodes ctx pos size vars st.xs_nsctx st.xs_id_attrs st.xs_style_root st.xs_decfmts st.xs_key_table sel) in
-             let items = sort_maybe (dnode_ci ctx) pos size st.xs_pfx vars st.xs_nsctx children items0 in
+             let items = sort_maybe (dnode_ci ctx) pos size st.xs_pfx vars st.xs_nsctx st.xs_id_attrs st.xs_style_root st.xs_decfmts st.xs_key_table children items0 in
              let dns = List.Tot.map (fun it -> D_Item it) items in
              apply_list (fuel - 1) st dns 1 (List.Tot.length items) amode pvars prtf
            | None ->
@@ -2546,7 +2566,7 @@ and instantiate_one (fuel:nat) (st:xstyle) (ctx:dnode) (pos size:nat)
              // select still honors xsl:sort).
              let kids0 = dnode_children ctx in
              let items0 = List.Tot.map dnode_ci kids0 in
-             let items = sort_maybe (dnode_ci ctx) pos size st.xs_pfx vars st.xs_nsctx children items0 in
+             let items = sort_maybe (dnode_ci ctx) pos size st.xs_pfx vars st.xs_nsctx st.xs_id_attrs st.xs_style_root st.xs_decfmts st.xs_key_table children items0 in
              let dns = List.Tot.map (fun it -> D_Item it) items in
              apply_list (fuel - 1) st dns 1 (List.Tot.length items) amode pvars prtf)
         else if ln = "apply-imports" then
