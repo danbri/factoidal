@@ -836,6 +836,38 @@ let load_triples df =
     then parse_turtle_12 content base
     else parse_turtle_fstar content (Some base)
 
+(* A qt:data fixture may be a multi-graph DATASET (.trig / .nq), not a flat
+   graph. load_triples routes every file through the single-graph
+   Turtle/N-Triples parsers, which ignore `GRAPH name { ... }` blocks and
+   silently drop the named graphs -- so a `GRAPH ?g { ... }` query then
+   matches nothing (e.g. the SPARQL 1.2 eval-triple-terms graphs-1/graphs-2
+   tests, whose manifest declares a single `qt:data data-4.trig` carrying
+   three named graphs). Parse those extensions through the already-verified
+   F* TriG / N-Quads DATASET parsers and return both halves; everything else
+   is the flat load_triples result with no named graphs. Pure parser
+   dispatch over verified entry points -- mode selection, no semantics here
+   (rule #11 / #15). *)
+let load_dataset df : (RDF_Triple.triple list * RDF_Graph.named_graph list) =
+  match read_file df with
+  | None -> ([], [])
+  | Some content ->
+    let abs_df = if Filename.is_relative df then Filename.concat (Sys.getcwd ()) df else df in
+    let base = "file://" ^ abs_df in
+    if Filename.check_suffix df ".trig" then
+      let ds =
+        if !sparql12_mode
+        then Parser_TriG.parse_trig_with_base_lenient_12 content base
+        else Parser_TriG.parse_trig_with_base_lenient content base in
+      (ds.RDF_Graph.ds_default, ds.RDF_Graph.ds_named)
+    else if Filename.check_suffix df ".nq" then
+      let ds =
+        if !sparql12_mode
+        then Parser_NQuads.parse_nquads_12 content
+        else Parser_NQuads.parse_nquads content in
+      (ds.RDF_Graph.ds_default, ds.RDF_Graph.ds_named)
+    else
+      (load_triples df, [])
+
 (* RIF-XML preprocessor: strip the <!DOCTYPE ... [...]> internal subset
    and inline the three standard RIF entity references. The vendored
    third_party/testing/rif/tc/ documents all declare:
@@ -1031,10 +1063,13 @@ let run_query_eval_test tc =
     SPARQL11_Algebra.service_endpoint_register endpoint_iri triples
   ) tc.service_data;
 
-  (* Load default graph data *)
-  let graph = List.fold_left (fun acc df ->
-    acc @ load_triples df
-  ) [] tc.data_files in
+  (* Load default graph data. A qt:data file may be a multi-graph .trig/.nq
+     dataset; capture its named graphs too (see load_dataset) so that
+     GRAPH ?g { ... } patterns over a .trig qt:data file are not silently
+     empty. dataset_named preserves the file's own named graphs. *)
+  let graph, dataset_named = List.fold_left (fun (accd, accn) df ->
+    let d, n = load_dataset df in (accd @ d, accn @ n)
+  ) ([], []) tc.data_files in
 
   (* Apply entailment regime closure if needed (for SPARQL entailment tests).
      RDFS closure + reflexivity axioms live in F* (RDF.Graph.Executable.fst,
@@ -1121,6 +1156,13 @@ let run_query_eval_test tc =
       | _ -> triples in
     RDF_Graph_Executable.({ ng_name = iri; ng_graph = triples })
   ) tc.named_data_files in
+
+  (* Named graphs come from two sources: qt:graphData entries (above) and
+     any named graphs embedded in a .trig/.nq qt:data dataset file
+     (dataset_named). A qt:graphData mapping wins on name collision by being
+     appended after, so its explicit IRI binding takes precedence in the
+     GRAPH lookup. *)
+  let named_graphs = dataset_named @ named_graphs in
 
   (* Construct dataset *)
   let dataset = RDF_Graph_Executable.({ ds_default = graph; ds_named = named_graphs }) in
