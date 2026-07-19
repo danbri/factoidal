@@ -4308,8 +4308,6 @@ Parser_TurtleScanner.cmx: \
 RDF.CottasStore.fst.checked: \
 	RDF.CottasStore.fst \
 	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.List.Tot.fst.checked \
-	RDF.CottasStore.LazyDict.fst.checked \
-	RDF.CottasStore.LazyDictRegistry.fst.checked \
 	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Pervasives.Native.fst.checked \
 	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.String.fsti.checked \
 	/root/.opam/fstar/lib/fstar/ulib.checked/Prims.fst.checked \
@@ -4341,8 +4339,6 @@ RDF_CottasStore.krml: \
 
 RDF_CottasStore.cmx: \
 	RDF_CottasStore.ml \
-	RDF_CottasStore_LazyDict.cmx \
-	RDF_CottasStore_LazyDictRegistry.cmx \
 	RDF_Store_Columnar_SubjectOffsetIndex.cmx \
 	SPARQL_Plan_AccessPath.cmx \
 	RDF_Store_Columnar_OffsetIndex.cmx \
@@ -5889,8 +5885,6 @@ ALL_FS_FILES= \
 	SPARQL_FullText.fs \
 	SPARQL11_Algebra.fs \
 	RDF_Store_Capabilities.fs \
-	RDF_CottasStore_LazyDict.fs \
-	RDF_CottasStore_LazyDictRegistry.fs \
 	RDF_CottasStore_OnDiskIndex.fs \
 	RDF_Store_Columnar_SubjectOffsetIndex.fs \
 	RDF_CottasStore_PresenceBitmap.fs \
@@ -5947,6 +5941,8 @@ ALL_FS_FILES= \
 	JSONLD_Expand.fs \
 	Parser_JSONLD.fs \
 	JSONLD_Compact.fs \
+	RDF_CottasStore_LazyDict.fs \
+	RDF_CottasStore_LazyDictRegistry.fs \
 	Parser_IRI.fs \
 	Parser_RDFXML.fs \
 	Parser_NQuads.fs \
@@ -6068,8 +6064,6 @@ ALL_ML_FILES= \
 	SPARQL_FullText.ml \
 	SPARQL11_Algebra.ml \
 	RDF_Store_Capabilities.ml \
-	RDF_CottasStore_LazyDict.ml \
-	RDF_CottasStore_LazyDictRegistry.ml \
 	RDF_CottasStore_OnDiskIndex.ml \
 	RDF_Store_Columnar_SubjectOffsetIndex.ml \
 	RDF_CottasStore_PresenceBitmap.ml \
@@ -6126,6 +6120,8 @@ ALL_ML_FILES= \
 	JSONLD_Expand.ml \
 	Parser_JSONLD.ml \
 	JSONLD_Compact.ml \
+	RDF_CottasStore_LazyDict.ml \
+	RDF_CottasStore_LazyDictRegistry.ml \
 	Parser_IRI.ml \
 	Parser_RDFXML.ml \
 	Parser_NQuads.ml \
@@ -6312,8 +6308,6 @@ ALL_KRML_FILES= \
 	HDT_Container.krml \
 	RDF_Store_Columnar_DeltaLog.krml \
 	RDF_Store_Capabilities.krml \
-	RDF_CottasStore_LazyDict.krml \
-	RDF_CottasStore_LazyDictRegistry.krml \
 	RDF_CottasStore_OnDiskIndex.krml \
 	RDF_Store_Columnar_SubjectOffsetIndex.krml \
 	RDF_CottasStore_PresenceBitmap.krml \
@@ -6368,6 +6362,8 @@ ALL_KRML_FILES= \
 	JSONLD_Expand.krml \
 	Parser_JSONLD.krml \
 	JSONLD_Compact.krml \
+	RDF_CottasStore_LazyDict.krml \
+	RDF_CottasStore_LazyDictRegistry.krml \
 	Parser_IRI.krml \
 	Parser_RDFXML.krml \
 	Parser_NQuads.krml \
