@@ -991,3 +991,230 @@ let lit_str (s : Prims.string) :
   if RDF_Term.literal_wf l
   then FStar_Pervasives_Native.Some (RDF_Term.T_Literal l)
   else FStar_Pervasives_Native.None
+type proto_request =
+  {
+  pr_method: Prims.string ;
+  pr_path: Prims.string ;
+  pr_qs: Prims.string ;
+  pr_headers: (Prims.string * Prims.string) Prims.list ;
+  pr_body: Prims.string }
+let __proj__Mkproto_request__item__pr_method (projectee : proto_request) :
+  Prims.string=
+  match projectee with
+  | { pr_method; pr_path; pr_qs; pr_headers; pr_body;_} -> pr_method
+let __proj__Mkproto_request__item__pr_path (projectee : proto_request) :
+  Prims.string=
+  match projectee with
+  | { pr_method; pr_path; pr_qs; pr_headers; pr_body;_} -> pr_path
+let __proj__Mkproto_request__item__pr_qs (projectee : proto_request) :
+  Prims.string=
+  match projectee with
+  | { pr_method; pr_path; pr_qs; pr_headers; pr_body;_} -> pr_qs
+let __proj__Mkproto_request__item__pr_headers (projectee : proto_request) :
+  (Prims.string * Prims.string) Prims.list=
+  match projectee with
+  | { pr_method; pr_path; pr_qs; pr_headers; pr_body;_} -> pr_headers
+let __proj__Mkproto_request__item__pr_body (projectee : proto_request) :
+  Prims.string=
+  match projectee with
+  | { pr_method; pr_path; pr_qs; pr_headers; pr_body;_} -> pr_body
+type proto_status_class =
+  | S_2or3 
+  | S_4xx 
+  | S_5xx 
+  | S_Unknown 
+let uu___is_S_2or3 (projectee : proto_status_class) : Prims.bool=
+  match projectee with | S_2or3 -> true | uu___ -> false
+let uu___is_S_4xx (projectee : proto_status_class) : Prims.bool=
+  match projectee with | S_4xx -> true | uu___ -> false
+let uu___is_S_5xx (projectee : proto_status_class) : Prims.bool=
+  match projectee with | S_5xx -> true | uu___ -> false
+let uu___is_S_Unknown (projectee : proto_status_class) : Prims.bool=
+  match projectee with | S_Unknown -> true | uu___ -> false
+let rec proto_indent_budget (cs : FStar_Char.char Prims.list)
+  (budget : Prims.nat) : Prims.nat=
+  if budget = Prims.int_zero
+  then Prims.int_zero
+  else
+    (match cs with
+     | [] -> Prims.int_zero
+     | c::rest ->
+         let code = char_code c in
+         if code = (Prims.of_int (0x20))
+         then
+           Prims.int_one +
+             (proto_indent_budget rest (budget - Prims.int_one))
+         else
+           if code = (Prims.of_int (0x09))
+           then Prims.int_one
+           else Prims.int_zero)
+let rec proto_drop_n_chars (n : Prims.nat) (cs : FStar_Char.char Prims.list)
+  : FStar_Char.char Prims.list=
+  if n = Prims.int_zero
+  then cs
+  else
+    (match cs with
+     | [] -> []
+     | uu___1::rest -> proto_drop_n_chars (n - Prims.int_one) rest)
+let proto_strip_indent (s : Prims.string) : Prims.string=
+  let cs = FStar_String.list_of_string s in
+  let drop = proto_indent_budget cs (Prims.of_int (4)) in
+  FStar_String.string_of_list (proto_drop_n_chars drop cs)
+let proto_is_blank_line (s : Prims.string) : Prims.bool=
+  (FStar_String.strlen (trim_ws s)) = Prims.int_zero
+let proto_is_indented_line (s : Prims.string) : Prims.bool=
+  match FStar_String.list_of_string s with
+  | [] -> false
+  | c::uu___ ->
+      let code = char_code c in
+      (code = (Prims.of_int (0x20))) || (code = (Prims.of_int (0x09)))
+let rec proto_find_req_header (lines : Prims.string Prims.list) :
+  Prims.string Prims.list FStar_Pervasives_Native.option=
+  match lines with
+  | [] -> FStar_Pervasives_Native.None
+  | line::rest ->
+      if (trim_ws line) = "#### Request"
+      then FStar_Pervasives_Native.Some rest
+      else proto_find_req_header rest
+let rec proto_skip_blank_lines (lines : Prims.string Prims.list) :
+  Prims.string Prims.list=
+  match lines with
+  | [] -> []
+  | line::rest ->
+      if proto_is_blank_line line then proto_skip_blank_lines rest else lines
+let rec proto_take_indented (lines : Prims.string Prims.list) :
+  (Prims.string Prims.list * Prims.string Prims.list)=
+  match lines with
+  | [] -> ([], [])
+  | line::rest ->
+      if (proto_is_indented_line line) || (proto_is_blank_line line)
+      then
+        let uu___ = proto_take_indented rest in
+        (match uu___ with
+         | (taken, remaining) -> ((line :: taken), remaining))
+      else ([], lines)
+let rec proto_rtrim_blanks (lines : Prims.string Prims.list) :
+  Prims.string Prims.list=
+  match lines with
+  | [] -> []
+  | x::rest ->
+      (match proto_rtrim_blanks rest with
+       | [] -> if proto_is_blank_line x then [] else [x]
+       | rest' -> x :: rest')
+let rec proto_ltrim_blanks (lines : Prims.string Prims.list) :
+  Prims.string Prims.list=
+  match lines with | ""::rest -> proto_ltrim_blanks rest | xs -> xs
+let rec proto_read_headers (lines : Prims.string Prims.list) :
+  ((Prims.string * Prims.string) Prims.list * Prims.string Prims.list)=
+  match lines with
+  | [] -> ([], [])
+  | ""::rest -> ([], rest)
+  | line::rest ->
+      (match split_once_on line
+               (FStar_Char.char_of_int (Prims.of_int (0x3A)))
+       with
+       | (uu___, FStar_Pervasives_Native.None) -> ([], (line :: rest))
+       | (before, FStar_Pervasives_Native.Some after) ->
+           let k = ascii_lower_string (trim_ws before) in
+           let v = trim_ws after in
+           let uu___ = proto_read_headers rest in
+           (match uu___ with
+            | (hdrs, body_lines) -> (((k, v) :: hdrs), body_lines)))
+let extract_request (comment : Prims.string) :
+  proto_request FStar_Pervasives_Native.option=
+  let lines =
+    split_all_on comment (FStar_Char.char_of_int (Prims.of_int (0x0A))) in
+  match proto_find_req_header lines with
+  | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+  | FStar_Pervasives_Native.Some after_hdr ->
+      let after_skip = proto_skip_blank_lines after_hdr in
+      let uu___ = proto_take_indented after_skip in
+      (match uu___ with
+       | (block_lines, uu___1) ->
+           let block_lines1 = proto_rtrim_blanks block_lines in
+           let stripped =
+             FStar_List_Tot_Base.map
+               (fun l ->
+                  if proto_is_blank_line l then "" else proto_strip_indent l)
+               block_lines1 in
+           (match proto_ltrim_blanks stripped with
+            | [] -> FStar_Pervasives_Native.None
+            | req_line::rest ->
+                let tokens =
+                  split_all_on (trim_ws req_line)
+                    (FStar_Char.char_of_int (Prims.of_int (0x20))) in
+                (match tokens with
+                 | mthd::target::uu___2 ->
+                     let uu___3 =
+                       match split_once_on target
+                               (FStar_Char.char_of_int (Prims.of_int (0x3F)))
+                       with
+                       | (p, FStar_Pervasives_Native.None) -> (p, "")
+                       | (p, FStar_Pervasives_Native.Some q) -> (p, q) in
+                     (match uu___3 with
+                      | (path, qs) ->
+                          let uu___4 = proto_read_headers rest in
+                          (match uu___4 with
+                           | (headers, body_lines) ->
+                               let body =
+                                 trim_ws
+                                   (FStar_String.concat "\n" body_lines) in
+                               FStar_Pervasives_Native.Some
+                                 {
+                                   pr_method = mthd;
+                                   pr_path = path;
+                                   pr_qs = qs;
+                                   pr_headers = headers;
+                                   pr_body = body
+                                 }))
+                 | uu___2 -> FStar_Pervasives_Native.None)))
+let rec proto_find_resp_lines (lines : Prims.string Prims.list) :
+  Prims.string Prims.list=
+  match lines with
+  | [] -> []
+  | line::rest ->
+      if (trim_ws line) = "#### Response"
+      then rest
+      else proto_find_resp_lines rest
+let rec proto_contains_from (needle : FStar_Char.char Prims.list)
+  (haystack : FStar_Char.char Prims.list) : Prims.bool=
+  if list_chars_starts_with needle haystack
+  then true
+  else
+    (match haystack with
+     | [] -> false
+     | uu___1::rest -> proto_contains_from needle rest)
+let proto_str_contains (haystack : Prims.string) (needle : Prims.string) :
+  Prims.bool=
+  proto_contains_from (FStar_String.list_of_string needle)
+    (FStar_String.list_of_string haystack)
+let extract_status_class (comment : Prims.string) : proto_status_class=
+  let lines =
+    split_all_on comment (FStar_Char.char_of_int (Prims.of_int (0x0A))) in
+  let body = proto_find_resp_lines lines in
+  let body_text = FStar_String.concat "\n" body in
+  if
+    (proto_str_contains body_text "4xx") ||
+      (proto_str_contains body_text "4XX")
+  then S_4xx
+  else
+    if
+      (proto_str_contains body_text "5xx") ||
+        (proto_str_contains body_text "5XX")
+    then S_5xx
+    else
+      if
+        (((proto_str_contains body_text "2xx") ||
+            (proto_str_contains body_text "3xx"))
+           || (proto_str_contains body_text "2XX"))
+          || (proto_str_contains body_text "3XX")
+      then S_2or3
+      else S_Unknown
+let rec proto_assoc_ci (key_lo : Prims.string)
+  (hdrs : (Prims.string * Prims.string) Prims.list) : Prims.string=
+  match hdrs with
+  | [] -> ""
+  | (k, v)::rest -> if k = key_lo then v else proto_assoc_ci key_lo rest
+let proto_header (hdrs : (Prims.string * Prims.string) Prims.list)
+  (key : Prims.string) : Prims.string=
+  proto_assoc_ci (ascii_lower_string key) hdrs

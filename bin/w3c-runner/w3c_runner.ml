@@ -1643,132 +1643,37 @@ type _proto_request = {
    the headers ends the headers; the rest (until a non-indented line or
    the end) is the body, with indentation stripped and a trailing
    newline. *)
+(* Migrated to verified F* (SPARQL.Protocol.extract_request; rule #4/#11).
+   The HTTP-request-block parser now lives in F*; this shim only remaps the
+   extracted record onto the consumer's own _proto_request copy so existing
+   call sites (req.pr_method, ...) stay unchanged. *)
 let _proto_extract_request comment : _proto_request option =
-  let lines = String.split_on_char '\n' comment in
-  let strip_indent s =
-    (* Drop up to 4 leading spaces or one tab. *)
-    let n = String.length s in
-    let rec count_ws i taken =
-      if taken >= 4 || i >= n then i
-      else match s.[i] with
-        | ' '  -> count_ws (i + 1) (taken + 1)
-        | '\t' -> i + 1   (* one tab consumes the indent *)
-        | _    -> i in
-    let drop = count_ws 0 0 in
-    String.sub s drop (n - drop) in
-  let is_blank s =
-    String.length (String.trim s) = 0 in
-  let is_indented s =
-    String.length s > 0 && (s.[0] = ' ' || s.[0] = '\t') in
-  (* Find the first "#### Request" line. *)
-  let rec find_req_header = function
-    | [] -> None
-    | line :: rest ->
-      let t = String.trim line in
-      if t = "#### Request" then Some rest
-      else find_req_header rest in
-  (* Skip blank lines. *)
-  let rec skip_blanks = function
-    | [] -> []
-    | line :: rest when is_blank line -> skip_blanks rest
-    | ls -> ls in
-  (* Read indented lines until a non-indented or EOF. *)
-  let rec take_indented acc = function
-    | [] -> (List.rev acc, [])
-    | line :: rest when is_indented line || is_blank line ->
-      take_indented (line :: acc) rest
-    | ls -> (List.rev acc, ls) in
-  match find_req_header lines with
+  match SPARQL_Protocol.extract_request comment with
   | None -> None
-  | Some after_hdr ->
-    let after_skip = skip_blanks after_hdr in
-    let (block_lines, _) = take_indented [] after_skip in
-    (* Drop trailing blank lines from the block. *)
-    let rec rtrim_blanks = function
-      | [] -> []
-      | xs ->
-        match List.rev xs with
-        | last :: _ when is_blank last -> rtrim_blanks (List.rev (List.tl (List.rev xs)))
-        | _ -> xs in
-    let block_lines = rtrim_blanks block_lines in
-    (* Strip indentation off non-blank lines. *)
-    let stripped = List.map (fun l ->
-      if is_blank l then "" else strip_indent l) block_lines in
-    (* Drop leading blank lines after stripping. *)
-    let rec ltrim_blanks = function
-      | "" :: rest -> ltrim_blanks rest
-      | xs -> xs in
-    match ltrim_blanks stripped with
-    | [] -> None
-    | req_line :: rest ->
-      (* Split request-line into tokens. Possible shapes:
-           "POST /sparql/ HTTP/1.1"           (3 tokens)
-           "GET /sparql?query=ASK..."         (2 tokens — ?query embedded)
-         Either way the first token is the method. *)
-      let tokens = String.split_on_char ' ' (String.trim req_line) in
-      (match tokens with
-       | mthd :: target :: _ ->
-         (* Split target into path + qs at the first '?'. *)
-         let (path, qs) =
-           match String.index_opt target '?' with
-           | Some i ->
-             (String.sub target 0 i,
-              String.sub target (i + 1) (String.length target - i - 1))
-           | None -> (target, "") in
-         (* Headers: indented Key: Value lines until a blank line. *)
-         let rec read_hdrs hdrs = function
-           | [] -> (List.rev hdrs, [])
-           | "" :: rest -> (List.rev hdrs, rest)
-           | line :: rest ->
-             (match String.index_opt line ':' with
-              | Some i ->
-                let k = String.lowercase_ascii (String.trim (String.sub line 0 i)) in
-                let v = String.trim
-                          (String.sub line (i + 1) (String.length line - i - 1)) in
-                read_hdrs ((k, v) :: hdrs) rest
-              | None -> (List.rev hdrs, line :: rest)) in
-         let (headers, body_lines) = read_hdrs [] rest in
-         let body = String.concat "\n" body_lines in
-         (* Trim trailing whitespace-only newlines off body. *)
-         let body = String.trim body in
-         Some { pr_method = mthd; pr_path = path; pr_qs = qs;
-                pr_headers = headers; pr_body = body }
-       | _ -> None)
+  | Some r ->
+    Some { pr_method  = r.SPARQL_Protocol.pr_method;
+           pr_path    = r.SPARQL_Protocol.pr_path;
+           pr_qs      = r.SPARQL_Protocol.pr_qs;
+           pr_headers = r.SPARQL_Protocol.pr_headers;
+           pr_body    = r.SPARQL_Protocol.pr_body }
 
 (* Read the first "#### Response" block and classify the expected
    status. We only need 2/3xx vs 4xx vs 5xx for Phase 1. *)
 type _proto_status_class = S_2or3 | S_4xx | S_5xx | S_Unknown
 
+(* Migrated to verified F* (SPARQL.Protocol.extract_status_class; rule
+   #4/#11). Remap the extracted enum onto this consumer's own copy so
+   existing call sites (expected = S_2or3, ...) stay unchanged. *)
 let _proto_extract_status_class comment : _proto_status_class =
-  let lines = String.split_on_char '\n' comment in
-  let rec find_resp = function
-    | [] -> []
-    | line :: rest ->
-      if String.trim line = "#### Response" then rest
-      else find_resp rest in
-  let body = find_resp lines in
-  let body_text = String.concat "\n" body in
-  let contains needle =
-    let nl = String.length needle in
-    let bl = String.length body_text in
-    let rec scan i =
-      if i + nl > bl then false
-      else if String.sub body_text i nl = needle then true
-      else scan (i + 1) in
-    scan 0 in
-  (* "2xx or 3xx response" appears in every happy-path test. "4xx" appears
-     in every bad_* test. Order matters: 4xx comes before 2xx/3xx in the
-     sense that a "4xx" test never also has "2xx". *)
-  if contains "4xx" || contains "4XX" then S_4xx
-  else if contains "5xx" || contains "5XX" then S_5xx
-  else if contains "2xx" || contains "3xx" || contains "2XX" || contains "3XX"
-  then S_2or3
-  else S_Unknown
+  match SPARQL_Protocol.extract_status_class comment with
+  | SPARQL_Protocol.S_2or3 -> S_2or3
+  | SPARQL_Protocol.S_4xx -> S_4xx
+  | SPARQL_Protocol.S_5xx -> S_5xx
+  | SPARQL_Protocol.S_Unknown -> S_Unknown
 
 (* Case-insensitive header lookup. Returns "" if absent. *)
-let _proto_header hdrs key =
-  let k = String.lowercase_ascii key in
-  try List.assoc k hdrs with Not_found -> ""
+(* Migrated to verified F* (SPARQL.Protocol.proto_header; rule #4/#11). *)
+let _proto_header hdrs key = SPARQL_Protocol.proto_header hdrs key
 
 (* Phase 1 dispatcher. Replaces Phase 0's name-list shortcut with a
    real call into SPARQL_Protocol.decode_request. The runner stays in
