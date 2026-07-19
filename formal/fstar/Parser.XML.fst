@@ -1575,20 +1575,41 @@ let rec collect_epilog_misc (input:string) (pos:nat) (fuel:nat) (acc:list xml_no
 (* Document-level entry point                                        *)
 (* ================================================================ *)
 
+// Skip a leading UTF-8 byte-order-mark (the 3-byte sequence EF BB BF)
+// at byte offset 0 ONLY. XML 1.0 SS4.3.3 / Appendix F: a UTF-8 entity
+// "may but need not" begin with this BOM, and it is not part of the
+// document's markup or character data -- a conforming processor
+// consumes it before parsing begins. This is checked strictly at
+// position 0; the same 3 bytes appearing anywhere else in the input
+// are ordinary (non-BOM) character data and are left untouched, so a
+// document with no leading BOM parses exactly as before (returns 0,
+// identical to the prior hardcoded start position).
+let skip_utf8_bom (input:string) : nat =
+  if fs_byte_length input >= 3 &&
+     fs_byte_at input 0 = 0xEF &&
+     fs_byte_at input 1 = 0xBB &&
+     fs_byte_at input 2 = 0xBF
+  then 3
+  else 0
+
 let parse_xml_document (input:string) : option xml_node =
   let len = fs_byte_length input in
   let fuel = len + 1 in
   // The XML declaration, if present, must be the very first thing in
   // the document -- no leading whitespace is skipped before trying it
   // (XML 1.0 §2.8: "S cannot occur before the prolog" / the decl
-  // can't be preceded by anything -- o-p22fail1, not-wf-sa-147). If
-  // there is no declaration at pos 0, that's simply the common
-  // no-decl case; skip_misc below still tolerates leading whitespace
-  // and comments before the root element exactly as before.
+  // can't be preceded by anything -- o-p22fail1, not-wf-sa-147). A
+  // leading UTF-8 BOM is consumed first (it is not part of the
+  // prolog's grammar at all), then the declaration is tried
+  // immediately after it. If there is no declaration there, that's
+  // simply the common no-decl case; skip_misc below still tolerates
+  // leading whitespace and comments before the root element exactly
+  // as before.
+  let bom_pos = skip_utf8_bom input in
   let pos1 =
-    match parse_xml_declaration input 0 with
+    match parse_xml_declaration input bom_pos with
     | ParseOk _attrs pos' -> pos'
-    | ParseFail _ _ -> 0
+    | ParseFail _ _ -> bom_pos
   in
   begin match skip_misc input pos1 fuel with
   | ParseOk () pos2 ->
@@ -1631,10 +1652,15 @@ let parse_xml_document (input:string) : option xml_node =
 let parse_xml_document_children (input:string) : option (list xml_node) =
   let len = fs_byte_length input in
   let fuel = len + 1 in
+  // See skip_utf8_bom above parse_xml_document: consume a leading
+  // UTF-8 BOM (byte offset 0 only) before trying the XML declaration,
+  // so this entry point accepts/rejects identically to
+  // parse_xml_document on BOM-prefixed input.
+  let bom_pos = skip_utf8_bom input in
   let pos1 =
-    match parse_xml_declaration input 0 with
+    match parse_xml_declaration input bom_pos with
     | ParseOk _attrs pos' -> pos'
-    | ParseFail _ _ -> 0
+    | ParseFail _ _ -> bom_pos
   in
   begin match collect_misc input pos1 fuel [] with
   | ParseOk pre1 pos2 ->
@@ -1669,10 +1695,15 @@ let parse_xml_document_children (input:string) : option (list xml_node) =
 let parse_xml_document_children_with_ids (input:string) : option (list xml_node & list (string & string)) =
   let len = fs_byte_length input in
   let fuel = len + 1 in
+  // See skip_utf8_bom above parse_xml_document: consume a leading
+  // UTF-8 BOM (byte offset 0 only) before trying the XML declaration,
+  // so this entry point accepts/rejects identically to
+  // parse_xml_document on BOM-prefixed input.
+  let bom_pos = skip_utf8_bom input in
   let pos1 =
-    match parse_xml_declaration input 0 with
+    match parse_xml_declaration input bom_pos with
     | ParseOk _attrs pos' -> pos'
-    | ParseFail _ _ -> 0
+    | ParseFail _ _ -> bom_pos
   in
   begin match collect_misc input pos1 fuel [] with
   | ParseOk pre1 pos2 ->
