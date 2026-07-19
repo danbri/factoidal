@@ -3114,63 +3114,16 @@ let cottas_ondisk_build_bound_qp_opt
     Some { cbqp_s = sb; cbqp_p = pb; cbqp_o = ob; cbqp_g = gb }
   | _ -> None
 
-// Convert an on-disk term-id row to a parsed (triple & option iri).
-let cottas_ondisk_row_to_quad (ds : cottas_ondisk_store) (row : cottas_qp_row)
-  : option (triple & option iri) =
-  match row.cqpr_s, row.cqpr_p, row.cqpr_o with
-  | Some sr, Some pr, Some orf ->
-    Some
-      ({
-        s = cottas_ondisk_decode_subject ds sr;
-        p = cottas_ondisk_decode_predicate ds pr;
-        o = cottas_ondisk_decode_object ds orf;
-      },
-       (match row.cqpr_g with
-        | None -> None
-        | Some gr -> Some (cottas_ondisk_decode_graph_name ds gr)))
-  | _ -> None
-
-// Tail-recursive accumulator companion. The original
-// `cottas_ondisk_rows_to_quads` was non-tail-rec (recurses BEFORE consing
-// the result). On a 3.14M-row result this overflowed the macOS main-thread
-// stack the same way Tav5's `json_rows_body` did (commit 4ff2321).
-// Pattern mirrors `json_rows_body_acc` / `xml_rows_body_acc` /
-// `csv_rows_body_acc` in `SPARQL.Protocol.fst`.
-let rec cottas_ondisk_rows_to_quads_acc
-    (ds : cottas_ondisk_store)
-    (rows : list cottas_qp_row)
-    (acc : list (triple & option iri))
-  : Tot (list (triple & option iri)) (decreases rows) =
-  match rows with
-  | [] -> acc
-  | row :: rest ->
-    (match cottas_ondisk_row_to_quad ds row with
-     | None      -> cottas_ondisk_rows_to_quads_acc ds rest acc
-     | Some quad -> cottas_ondisk_rows_to_quads_acc ds rest (quad :: acc))
-
-let cottas_ondisk_rows_to_quads (ds : cottas_ondisk_store) (rows : list cottas_qp_row)
-  : Tot (list (triple & option iri)) =
-  List.Tot.rev (cottas_ondisk_rows_to_quads_acc ds rows [])
-
-// Fused tail-rec walk: rows -> triples (drops the graph-name component).
-// Avoids the non-tail-rec `List.Tot.map fst (cottas_ondisk_rows_to_quads
-// ...)` pattern on 3M-row results, which would re-walk the list and blow
-// the stack again. Sin7 fix (2026-04-26).
-let rec cottas_ondisk_rows_to_triples_acc
-    (ds : cottas_ondisk_store)
-    (rows : list cottas_qp_row)
-    (acc : list triple)
-  : Tot (list triple) (decreases rows) =
-  match rows with
-  | [] -> acc
-  | row :: rest ->
-    (match cottas_ondisk_row_to_quad ds row with
-     | None              -> cottas_ondisk_rows_to_triples_acc ds rest acc
-     | Some (t, _gname)  -> cottas_ondisk_rows_to_triples_acc ds rest (t :: acc))
-
-let cottas_ondisk_rows_to_triples (ds : cottas_ondisk_store) (rows : list cottas_qp_row)
-  : Tot (list triple) =
-  List.Tot.rev (cottas_ondisk_rows_to_triples_acc ds rows [])
+// The id-based row->quad / rows->quads / rows->triples decode chain
+// (cottas_ondisk_row_to_quad + the two tail-rec accumulator pairs) was
+// REMOVED 2026-07-19. The production COTTAS search path is entirely
+// token-based (cottas_ondisk_row_tok_to_quad + the *_tok search/estimate/
+// count entry points wired through RDF.Store.Capabilities.Cottas); an
+// exhaustive audit (across every .fst, extracted .ml, bin/, tests/, and
+// experimental_ocaml_glue/*.sh) found these id-based functions had ZERO
+// live callers. This retires the id-based half of the #254 Bet7 / #118
+// COTTAS dead code (boundary-audit "Step A" — pure subtraction, no effect
+// change, no perf path touched). The token-based sibling follows.
 
 // ----------------------------------------------------------------------
 // Tok-shaped siblings (2026-07-06, selective-column SEARCH follow-up):

@@ -4093,64 +4093,6 @@ let cottas_ondisk_build_bound_qp_opt (ds : cottas_ondisk_store)
           Parser_BallyhooCOTTAS.cbqp_g = gb
         }
   | uu___ -> FStar_Pervasives_Native.None
-let cottas_ondisk_row_to_quad (ds : cottas_ondisk_store)
-  (row : Parser_BallyhooCOTTAS.cottas_qp_row) :
-  (RDF_Triple.triple * RDF_Term.iri FStar_Pervasives_Native.option)
-    FStar_Pervasives_Native.option=
-  match ((row.Parser_BallyhooCOTTAS.cqpr_s),
-          (row.Parser_BallyhooCOTTAS.cqpr_p),
-          (row.Parser_BallyhooCOTTAS.cqpr_o))
-  with
-  | (FStar_Pervasives_Native.Some sr, FStar_Pervasives_Native.Some pr,
-     FStar_Pervasives_Native.Some orf) ->
-      FStar_Pervasives_Native.Some
-        ({
-           RDF_Triple.s = (cottas_ondisk_decode_subject ds sr);
-           RDF_Triple.p = (cottas_ondisk_decode_predicate ds pr);
-           RDF_Triple.o = (cottas_ondisk_decode_object ds orf)
-         },
-          ((match row.Parser_BallyhooCOTTAS.cqpr_g with
-            | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
-            | FStar_Pervasives_Native.Some gr ->
-                FStar_Pervasives_Native.Some
-                  (cottas_ondisk_decode_graph_name ds gr))))
-  | uu___ -> FStar_Pervasives_Native.None
-let rec cottas_ondisk_rows_to_quads_acc (ds : cottas_ondisk_store)
-  (rows : Parser_BallyhooCOTTAS.cottas_qp_row Prims.list)
-  (acc :
-    (RDF_Triple.triple * RDF_Term.iri FStar_Pervasives_Native.option)
-      Prims.list)
-  :
-  (RDF_Triple.triple * RDF_Term.iri FStar_Pervasives_Native.option)
-    Prims.list=
-  match rows with
-  | [] -> acc
-  | row::rest ->
-      (match cottas_ondisk_row_to_quad ds row with
-       | FStar_Pervasives_Native.None ->
-           cottas_ondisk_rows_to_quads_acc ds rest acc
-       | FStar_Pervasives_Native.Some quad ->
-           cottas_ondisk_rows_to_quads_acc ds rest (quad :: acc))
-let cottas_ondisk_rows_to_quads (ds : cottas_ondisk_store)
-  (rows : Parser_BallyhooCOTTAS.cottas_qp_row Prims.list) :
-  (RDF_Triple.triple * RDF_Term.iri FStar_Pervasives_Native.option)
-    Prims.list=
-  FStar_List_Tot_Base.rev (cottas_ondisk_rows_to_quads_acc ds rows [])
-let rec cottas_ondisk_rows_to_triples_acc (ds : cottas_ondisk_store)
-  (rows : Parser_BallyhooCOTTAS.cottas_qp_row Prims.list)
-  (acc : RDF_Triple.triple Prims.list) : RDF_Triple.triple Prims.list=
-  match rows with
-  | [] -> acc
-  | row::rest ->
-      (match cottas_ondisk_row_to_quad ds row with
-       | FStar_Pervasives_Native.None ->
-           cottas_ondisk_rows_to_triples_acc ds rest acc
-       | FStar_Pervasives_Native.Some (t, _gname) ->
-           cottas_ondisk_rows_to_triples_acc ds rest (t :: acc))
-let cottas_ondisk_rows_to_triples (ds : cottas_ondisk_store)
-  (rows : Parser_BallyhooCOTTAS.cottas_qp_row Prims.list) :
-  RDF_Triple.triple Prims.list=
-  FStar_List_Tot_Base.rev (cottas_ondisk_rows_to_triples_acc ds rows [])
 let cottas_ondisk_row_tok_to_quad (row : cottas_qp_row_tok) :
   (RDF_Triple.triple * RDF_Term.iri FStar_Pervasives_Native.option)=
   ({
