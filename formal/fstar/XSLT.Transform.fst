@@ -1690,8 +1690,109 @@ let rec escape_with (f:char -> string) (cs:list char) : Tot string (decreases cs
 let escape_text (s:string) : string = escape_with escape_text_char (chars_of s)
 let escape_attr (s:string) : string = escape_with escape_attr_char (chars_of s)
 
+// ---- method="html" serialization corners (XSLT 1.0 16.2) ------------
+//
+// Lower-case an ASCII string for case-insensitive HTML element/attribute
+// name comparisons (element/attribute NAMES in the result tree are
+// compared case-insensitively against the fixed HTML4 tables below, but
+// printed with their ORIGINAL casing -- Xalan output-output34 keeps
+// "<bAse>" spelled exactly as the stylesheet wrote it).
+let ascii_lower_str (s:string) : string = str_of_chars (List.Tot.map ascii_lower_char (chars_of s))
+
+// HTML4 "EMPTY" content-model elements (Xalan HTMLdtd.m_emptyElements):
+// never given a close tag, self-close slash is dropped too (bare
+// "<tag ...>"), any (well-formed-source) child content is not printed.
+let html_void_elems : list string =
+  ["area"; "base"; "basefont"; "br"; "col"; "frame"; "hr"; "img";
+   "input"; "isindex"; "link"; "meta"; "param"]
+
+let is_html_void_elem (local:string) : bool = mem_str (ascii_lower_str local) html_void_elems
+
+// HTML4 boolean attributes (Xalan HTMLdtd.m_booleans): when the
+// attribute's value equals its own name case-insensitively, only the
+// bare name is written (no ="value") -- Xalan output-output35.
+let html_boolean_attrs : list string =
+  ["checked"; "compact"; "declare"; "defer"; "disabled"; "ismap";
+   "multiple"; "noresize"; "noshade"; "nowrap"; "readonly"; "selected"]
+
+let is_html_boolean_attr (name:string) : bool = mem_str (ascii_lower_str name) html_boolean_attrs
+
+// HTML4 Latin-1 (ISO 8859-1) named character references, section 24.2 of
+// the HTML4 spec -- the only entity block any output-category fixture
+// exercises (output-output04: nbsp/copy/Egrave). Symbols/Greek/math
+// entities (HTML4 24.3/24.4) are NOT modelled; a codepoint outside this
+// table serializes as the literal character (UTF-8), same as XML method.
+let html_latin1_entities : list (int & string) = [
+  (0xA0,"nbsp"); (0xA1,"iexcl"); (0xA2,"cent"); (0xA3,"pound"); (0xA4,"curren");
+  (0xA5,"yen"); (0xA6,"brvbar"); (0xA7,"sect"); (0xA8,"uml"); (0xA9,"copy");
+  (0xAA,"ordf"); (0xAB,"laquo"); (0xAC,"not"); (0xAD,"shy"); (0xAE,"reg");
+  (0xAF,"macr"); (0xB0,"deg"); (0xB1,"plusmn"); (0xB2,"sup2"); (0xB3,"sup3");
+  (0xB4,"acute"); (0xB5,"micro"); (0xB6,"para"); (0xB7,"middot"); (0xB8,"cedil");
+  (0xB9,"sup1"); (0xBA,"ordm"); (0xBB,"raquo"); (0xBC,"frac14"); (0xBD,"frac12");
+  (0xBE,"frac34"); (0xBF,"iquest"); (0xC0,"Agrave"); (0xC1,"Aacute"); (0xC2,"Acirc");
+  (0xC3,"Atilde"); (0xC4,"Auml"); (0xC5,"Aring"); (0xC6,"AElig"); (0xC7,"Ccedil");
+  (0xC8,"Egrave"); (0xC9,"Eacute"); (0xCA,"Ecirc"); (0xCB,"Euml"); (0xCC,"Igrave");
+  (0xCD,"Iacute"); (0xCE,"Icirc"); (0xCF,"Iuml"); (0xD0,"ETH"); (0xD1,"Ntilde");
+  (0xD2,"Ograve"); (0xD3,"Oacute"); (0xD4,"Ocirc"); (0xD5,"Otilde"); (0xD6,"Ouml");
+  (0xD7,"times"); (0xD8,"Oslash"); (0xD9,"Ugrave"); (0xDA,"Uacute"); (0xDB,"Ucirc");
+  (0xDC,"Uuml"); (0xDD,"Yacute"); (0xDE,"THORN"); (0xDF,"szlig"); (0xE0,"agrave");
+  (0xE1,"aacute"); (0xE2,"acirc"); (0xE3,"atilde"); (0xE4,"auml"); (0xE5,"aring");
+  (0xE6,"aelig"); (0xE7,"ccedil"); (0xE8,"egrave"); (0xE9,"eacute"); (0xEA,"ecirc");
+  (0xEB,"euml"); (0xEC,"igrave"); (0xED,"iacute"); (0xEE,"icirc"); (0xEF,"iuml");
+  (0xF0,"eth"); (0xF1,"ntilde"); (0xF2,"ograve"); (0xF3,"oacute"); (0xF4,"ocirc");
+  (0xF5,"otilde"); (0xF6,"ouml"); (0xF7,"divide"); (0xF8,"oslash"); (0xF9,"ugrave");
+  (0xFA,"uacute"); (0xFB,"ucirc"); (0xFC,"uuml"); (0xFD,"yacute"); (0xFE,"thorn");
+  (0xFF,"yuml")
+]
+
+let html_named_entity (cp:int) : option string =
+  match List.Tot.find (fun (p:(int & string)) -> fst p = cp) html_latin1_entities with
+  | Some (_, nm) -> Some nm
+  | None -> None
+
+let html_char_ref (c:char) : string =
+  match html_named_entity (FStar.Char.int_of_char c) with
+  | Some nm -> String.concat "" ["&"; nm; ";"]
+  | None -> soc c
+
+// HTML text escaping: '&' and '<' only (a bare '>' is left alone -- HTML4
+// tolerates it and Xalan does not escape it; output-output74/75 pin '<'
+// and '>' being left RAW in an HTML attribute value, see
+// escape_html_attr_char below, but text content still needs '<' escaped
+// so a literal "<" cannot be misread as starting a tag).
+let escape_html_text_char (c:char) : string =
+  if c = '&' then "&amp;"
+  else if c = '<' then "&lt;"
+  else html_char_ref c
+
+// HTML attribute escaping: '&' and the quote delimiter only -- '<' and
+// '>' are written raw (Xalan output-output49/74: "<abcd>" stays literal
+// inside a double-quoted attribute value).
+let escape_html_attr_char (c:char) : string =
+  if c = '&' then "&amp;"
+  else if c = '"' then "&quot;"
+  else html_char_ref c
+
+let escape_html_text (s:string) : string = escape_with escape_html_text_char (chars_of s)
+let escape_html_attr (s:string) : string = escape_with escape_html_attr_char (chars_of s)
+
 let serialize_attr (a:xml_attribute) : string =
   String.concat "" [" "; a.attr_name; "=\""; escape_attr a.attr_value; "\""]
+
+// HTML attribute serialization: a boolean attribute (XSLT 1.0 16.2 /
+// HTML4) whose value equals its own name case-insensitively is written
+// bare (no ="value"); everything else uses escape_html_attr in place of
+// the XML-rules escape_attr.
+let serialize_attr_html (a:xml_attribute) : string =
+  if is_html_boolean_attr a.attr_name && ascii_lower_str a.attr_value = ascii_lower_str a.attr_name then
+    String.concat "" [" "; a.attr_name]
+  else
+    String.concat "" [" "; a.attr_name; "=\""; escape_html_attr a.attr_value; "\""]
+
+let rec serialize_attrs_html (attrs:list xml_attribute) : Tot string (decreases attrs) =
+  match attrs with
+  | [] -> ""
+  | a :: rest -> strcat (serialize_attr_html a) (serialize_attrs_html rest)
 
 let rec serialize_attrs (attrs:list xml_attribute) : Tot string (decreases attrs) =
   match attrs with
@@ -1747,9 +1848,15 @@ noeq type ser_settings = {
   ser_cdata : list (option string & string);
   ser_indent : bool;
   ser_encoding : string;
+  // method="html" (XSLT 1.0 16.2): void-element/boolean-attribute/
+  // script-style-raw/HTML-entity serialization. FALSE (the default)
+  // reproduces the exact prior XML-rules serializer byte for byte, so a
+  // method="xml"/"text" caller is completely unaffected by anything
+  // below that reads this flag.
+  ser_html : bool;
 }
 
-let default_ser_settings : ser_settings = { ser_cdata = []; ser_indent = false; ser_encoding = "UTF-8" }
+let default_ser_settings : ser_settings = { ser_cdata = []; ser_indent = false; ser_encoding = "UTF-8"; ser_html = false }
 
 let is_text_node (n:xml_node) : bool =
   match n with XText _ | XCDATA _ -> true | _ -> false
@@ -1779,13 +1886,19 @@ let charref (c:char) : string =
 
 // A CDATA section may not contain the literal 3-character sequence
 // "]]>" (it would terminate the section early), so any occurrence in the
-// wrapped text is split into "]]" (kept in this CDATA section) followed
-// by a fresh CDATA section reopened for the ">" and everything after --
-// the standard technique real serializers use (Xalan output-output41).
+// wrapped text is split into "]]" (kept in this CDATA section, closed by
+// a SYNTHETIC "]]>" of its own) followed by a fresh CDATA section
+// reopened for the ">" and everything after -- the standard technique
+// real serializers use: "]]>" becomes "]]]]><![CDATA[>" (Xalan
+// output-output30/41; render_crun's outer "<![CDATA[" ... "]]>" wrap
+// then makes the full text "<![CDATA[]]]]><![CDATA[>]]>", matching both
+// fixtures byte for byte). A prior version of this list omitted the
+// synthetic closer's '>' (14 chars, not 15), which dropped the original
+// ">" character from the output entirely -- caught by output-output41.
 let rec replace_cdata_end_chars (cs:list char) : Tot (list char) (decreases cs) =
   match cs with
   | ']' :: ']' :: '>' :: rest ->
-    List.Tot.append [']'; ']'; ']'; ']'; '<'; '!'; '['; 'C'; 'D'; 'A'; 'T'; 'A'; '['; '>'] (replace_cdata_end_chars rest)
+    List.Tot.append [']'; ']'; ']'; ']'; '>'; '<'; '!'; '['; 'C'; 'D'; 'A'; 'T'; 'A'; '['; '>'] (replace_cdata_end_chars rest)
   | c :: rest -> c :: replace_cdata_end_chars rest
   | [] -> []
 
@@ -1816,27 +1929,57 @@ let render_crun (r:crun) : string =
 let cdata_wrap_text (encoding:string) (t:string) : string =
   String.concat "" (List.Tot.map render_crun (build_cdata_runs encoding (chars_of t) []))
 
+// How a direct text-node CHILD of the current element is rendered.
+// TM_Raw (method="html" SCRIPT/STYLE, XSLT 1.0 16.2: content is neither
+// escaped nor cdata-wrapped -- Xalan output-output01/02) takes priority
+// over TM_Cdata (cdata-section-elements) if a stylesheet's
+// cdata-section-elements list names "script"/"style" itself (an
+// unexercised corner; Raw is the more specific, more correct choice).
+// TM_Html vs TM_Xml is escape_html_text vs escape_text.
+type text_mode = | TM_Xml | TM_Html | TM_Cdata | TM_Raw
+
 let rec serialize_node (cfg:ser_settings) (scope:list (string & string)) (n:xml_node) : Tot string (decreases n) =
   match n with
-  | XText t -> escape_text t
-  | XCDATA t -> escape_text t
+  | XText t -> if cfg.ser_html then escape_html_text t else escape_text t
+  | XCDATA t -> if cfg.ser_html then escape_html_text t else escape_text t
   | XComment t -> String.concat "" ["<!--"; t; "-->"]
-  | XPI tg d -> String.concat "" ["<?"; tg; " "; d; "?>"]
+  // method="html" (XSLT 1.0 16.2): a processing instruction is written
+  // "<?target data>" -- NO "?" before the closing ">" -- unlike the XML
+  // rule's "<?target data?>" (Xalan output-output36/59).
+  | XPI tg d -> if cfg.ser_html then String.concat "" ["<?"; tg; " "; d; ">"]
+                else String.concat "" ["<?"; tg; " "; d; "?>"]
   | XElement tag attrs children ->
     // Namespace declarations serialize first (deduped against ancestors);
     // then the ordinary attributes.
     let (decls, normal) = List.Tot.partition is_ns_decl attrs in
     let (ns_str, scope') = emit_ns_decls scope decls in
-    let a = strcat ns_str (serialize_attrs normal) in
-    // cdata-section-elements membership is by (namespace-URI, local-name)
-    // of the OUTPUT tree's own resolved identity (default namespace comes
-    // from the accumulated output `scope'`, exactly as a real element
-    // name would resolve) -- see the cdata-section-elements QName
-    // resolution comment on collect_output_settings below for why this
-    // differs from an XPath node test's unprefixed-name-means-null-
-    // namespace rule.
-    let is_cdata_elem = matches_cdata_name cfg.ser_cdata (lookup_ns scope' (prefix_of tag)) (local_name_of tag) in
-    let parts = serialize_children cfg scope' is_cdata_elem children in
+    // cdata-section-elements membership, and the method="html" void/
+    // boolean-attribute/script-style/entity treatment, are both keyed by
+    // the OUTPUT tree's own resolved (namespace-URI, local-name) identity
+    // (default namespace comes from the accumulated output `scope'`,
+    // exactly as a real element name would resolve) -- see the
+    // cdata-section-elements QName resolution comment on
+    // collect_output_settings below for why this differs from an XPath
+    // node test's unprefixed-name-means-null-namespace rule. The html
+    // treatment additionally requires NULL namespace specifically: an
+    // element in a namespace (even the literal string
+    // "http://www.w3.org/TR/REC-html40") is NOT an "HTML element" by
+    // XSLT 1.0 16.2, and falls back to plain XML-rules serialization --
+    // Xalan output-output63 (an <HTML xmlns="..."> subtree reverts to
+    // ordinary self-closing tags, no boolean-attribute collapsing).
+    let elem_ns = lookup_ns scope' (prefix_of tag) in
+    let is_html_here = cfg.ser_html && None? elem_ns in
+    let loc = local_name_of tag in
+    let loc_lc = ascii_lower_str loc in
+    let a = strcat ns_str (if is_html_here then serialize_attrs_html normal else serialize_attrs normal) in
+    let is_cdata_elem = matches_cdata_name cfg.ser_cdata elem_ns loc in
+    let tmode =
+      if is_html_here && (loc_lc = "script" || loc_lc = "style") then TM_Raw
+      else if is_cdata_elem then TM_Cdata
+      else if is_html_here then TM_Html
+      else TM_Xml
+    in
+    let parts = serialize_children cfg scope' tmode children in
     // indent="yes": XSLT 1.0 does not mandate a specific indentation
     // style, and the vendored Xalan fixtures' own indentation (checked
     // fixture-by-fixture, see the xsl:output design note) is a bare
@@ -1851,36 +1994,43 @@ let rec serialize_node (cfg:ser_settings) (scope:list (string & string)) (n:xml_
       else if do_indent then strcat "\n" (strcat (String.concat "\n" parts) "\n")
       else String.concat "" parts
     in
-    // XML output method: an element whose content serializes to nothing
-    // (no children, or only empty text nodes produced by e.g. an empty
-    // xsl:value-of) is written as an empty-element tag `<t/>`, matching
-    // the W3C expected outputs (which self-close such elements).
-    if inner = "" then String.concat "" ["<"; tag; a; "/>"]
+    // HTML4 "EMPTY" elements (area/base/br/hr/img/input/... -- see
+    // html_void_elems) are NEVER given a close tag and never a self-close
+    // slash, regardless of content (Xalan output-output33/34): "<br>",
+    // not "<br/>" or "<br></br>". Otherwise: method="html" writes an
+    // empty non-void element as an open/close PAIR ("<P></P>", not
+    // "<P/>" -- Xalan output-output03 BODY, output-output35 Option),
+    // where XML method keeps the existing self-close ("<t/>").
+    if is_html_here && is_html_void_elem loc then String.concat "" ["<"; tag; a; ">"]
+    else if inner = "" then
+      (if is_html_here then String.concat "" ["<"; tag; a; "></"; tag; ">"]
+       else String.concat "" ["<"; tag; a; "/>"])
     else String.concat "" ["<"; tag; a; ">"; inner; "</"; tag; ">"]
 
 // Per-child serialized strings (not yet joined) so the caller can decide
 // whether to join with "\n" (indent) or "" (default, byte-identical to
-// the pre-xsl:output serializer). `is_cdata_elem` -- whether the
-// ENCLOSING element (not each child) is a cdata-section-elements target
-// -- routes each direct XText/XCDATA child through cdata_wrap_text
-// instead of ordinary escaping; other children (elements, comments, PIs)
-// always serialize normally, and non-text children of a cdata element are
+// the pre-xsl:output serializer). `tmode` -- the ENCLOSING element's text
+// mode (see text_mode above) -- routes each direct XText/XCDATA child;
+// other children (elements, comments, PIs) always recurse into
+// serialize_node, and non-text children of a cdata/raw element are
 // untouched (XSLT 1.0 16.1: only text node CHILDREN are wrapped, not
 // descendant text -- Xalan output-output96/97).
-and serialize_children (cfg:ser_settings) (scope:list (string & string)) (is_cdata_elem:bool) (ns:list xml_node)
+and serialize_children (cfg:ser_settings) (scope:list (string & string)) (tmode:text_mode) (ns:list xml_node)
   : Tot (list string) (decreases ns) =
   match ns with
   | [] -> []
   | hd :: tl ->
     let s =
-      if is_cdata_elem then
-        (match hd with
-         | XText t -> cdata_wrap_text cfg.ser_encoding t
-         | XCDATA t -> cdata_wrap_text cfg.ser_encoding t
-         | _ -> serialize_node cfg scope hd)
-      else serialize_node cfg scope hd
+      (match hd with
+       | XText t | XCDATA t ->
+         (match tmode with
+          | TM_Raw -> t
+          | TM_Cdata -> cdata_wrap_text cfg.ser_encoding t
+          | TM_Html -> escape_html_text t
+          | TM_Xml -> escape_text t)
+       | _ -> serialize_node cfg scope hd)
     in
-    s :: serialize_children cfg scope is_cdata_elem tl
+    s :: serialize_children cfg scope tmode tl
 
 // Not itself recursive (serialize_children already walks the whole
 // list), so this stays OUTSIDE the mutual `and` group above -- inside it,
@@ -1888,7 +2038,7 @@ and serialize_children (cfg:ser_settings) (scope:list (string & string)) (is_cda
 // argument to shrink before delegating, which a one-line forwarder never
 // does.
 let serialize_nodes (cfg:ser_settings) (scope:list (string & string)) (ns:list xml_node) : string =
-  String.concat "" (serialize_children cfg scope false ns)
+  String.concat "" (serialize_children cfg scope (if cfg.ser_html then TM_Html else TM_Xml) ns)
 
 let serialize_result (n:xml_node) : string = serialize_node default_ser_settings [] n
 
@@ -3522,50 +3672,150 @@ let rec root_tag_of (nodes:list xml_node) : Tot (option string) (decreases nodes
   | XElement t _ _ :: _ -> Some t
   | _ :: rest -> root_tag_of rest
 
-// doctype-public / doctype-system (XSLT 1.0 16.1): a DOCTYPE declaration
-// naming the result tree's actual root element, emitted right after the
-// XML declaration. doctype-public without doctype-system has no PUBLIC-
-// without-SYSTEM form in XML and is not exercised by any fixture, so it
-// is treated the same as doctype-system alone would be (SYSTEM form) --
-// only reachable if a stylesheet gives doctype-public with no system id.
-let make_doctype (cfg:output_settings) (nodes:list xml_node) : string =
-  if cfg.os_doctype_system = "" && cfg.os_doctype_public = "" then ""
+// XSLT 1.0 16.1's method-default rule: "if there is no xsl:output element,
+// or the xsl:output element that is present has no method attribute...
+// if the first node of the result tree ... is an element node whose
+// expanded-name is html ... then ... html; otherwise ... xml." This is
+// checked ONLY when method_raw is unset (Xalan output-output27/71: a
+// stylesheet with NO xsl:output at all still gets html-method's default
+// indent="yes"). `prefix_of tag = ""` approximates "no namespace" --
+// cheap and correct for every fixture (none gives the actual html root
+// element its OWN xmlns and expects the default-method check to still
+// fire; output-output63's xmlns is on a stylesheet with an EXPLICIT
+// method="html", not relying on this default-detection path).
+let implicit_html_root (nodes:list xml_node) : bool =
+  match root_tag_of nodes with
+  | Some tag -> prefix_of tag = "" && ascii_lower_str (local_name_of tag) = "html"
+  | None -> false
+
+// doctype-public / doctype-system (XSLT 1.0 16.1/16.2). For method="xml"
+// (and "text", though text ignores this entirely), doctype-public alone
+// (no doctype-system) has no PUBLIC-without-SYSTEM form in XML and is
+// simply not emitted (Xalan output-output14: doctype-public alone on an
+// xml-method stylesheet produces NO DOCTYPE line at all). For
+// method="html", Xalan's ToHTMLStream instead accepts doctype-public
+// alone and writes a PUBLIC-only DOCTYPE line, and -- unlike xml method,
+// which names the result tree's actual root element -- ALWAYS uses the
+// literal root name "HTML" regardless of the real root element's
+// spelling or case (Xalan output-output40/48/60: a <root>/<html
+// lang="en">-rooted document still gets "<!DOCTYPE HTML ...>").
+let make_doctype (is_html:bool) (cfg:output_settings) (nodes:list xml_node) : string =
+  if is_html then
+    (if cfg.os_doctype_system = "" && cfg.os_doctype_public = "" then ""
+     else
+       let tag = "HTML" in
+       if cfg.os_doctype_public <> "" && cfg.os_doctype_system <> "" then
+         String.concat "" ["<!DOCTYPE "; tag; " PUBLIC \""; cfg.os_doctype_public; "\" \""; cfg.os_doctype_system; "\">\n"]
+       else if cfg.os_doctype_public <> "" then
+         String.concat "" ["<!DOCTYPE "; tag; " PUBLIC \""; cfg.os_doctype_public; "\">\n"]
+       else
+         String.concat "" ["<!DOCTYPE "; tag; " SYSTEM \""; cfg.os_doctype_system; "\">\n"])
   else
-    match root_tag_of nodes with
-    | None -> ""
-    | Some tag ->
-      if cfg.os_doctype_public <> "" then
-        String.concat "" ["<!DOCTYPE "; tag; " PUBLIC \""; cfg.os_doctype_public; "\" \""; cfg.os_doctype_system; "\">\n"]
-      else
-        String.concat "" ["<!DOCTYPE "; tag; " SYSTEM \""; cfg.os_doctype_system; "\">\n"]
+    (if cfg.os_doctype_system = "" then ""
+     else
+       match root_tag_of nodes with
+       | None -> ""
+       | Some tag ->
+         if cfg.os_doctype_public <> "" then
+           String.concat "" ["<!DOCTYPE "; tag; " PUBLIC \""; cfg.os_doctype_public; "\" \""; cfg.os_doctype_system; "\">\n"]
+         else
+           String.concat "" ["<!DOCTYPE "; tag; " SYSTEM \""; cfg.os_doctype_system; "\">\n"])
+
+// method="html" (XSLT 1.0 16.2): "if there is a HEAD element..., add a
+// META element right after the start-tag of the HEAD element" naming the
+// output encoding's charset, UNLESS a META http-equiv="Content-Type"
+// child is already present. `is_meta_content_type`/`has_meta_content_type`
+// implement the "already present" check; `inject_meta_in_elem`/
+// `inject_meta_in_list` are a depth-first search+splice over the WHOLE
+// result tree (mirrors the serialize_node/serialize_children mutual-
+// recursion shape so F*'s termination checker accepts descending into
+// `children`, a strict sub-term of the list head, the same way
+// xml_node_count/serialize_node already do) that stops at the FIRST head
+// element found in document order (Xalan output-output01 et al. only
+// ever have one HEAD).
+let is_meta_content_type (n:xml_node) : bool =
+  match n with
+  | XElement tag attrs _ ->
+    ascii_lower_str (local_name_of tag) = "meta" &&
+    (match attr_opt "http-equiv" attrs with
+     | Some v -> ascii_lower_str v = "content-type"
+     | None -> false)
+  | _ -> false
+
+let rec has_meta_content_type (kids:list xml_node) : Tot bool (decreases kids) =
+  match kids with
+  | [] -> false
+  | hd :: tl -> if is_meta_content_type hd then true else has_meta_content_type tl
+
+let make_meta_elem (encoding:string) : xml_node =
+  XElement "meta"
+    [ { attr_name = "http-equiv"; attr_value = "Content-Type" };
+      { attr_name = "content"; attr_value = String.concat "" ["text/html; charset="; encoding] } ]
+    []
+
+let rec inject_meta_in_elem (encoding:string) (n:xml_node) : Tot (xml_node & bool) (decreases n) =
+  match n with
+  | XElement tag attrs children ->
+    if ascii_lower_str (local_name_of tag) = "head" then
+      let children' =
+        if has_meta_content_type children then children
+        else (make_meta_elem encoding) :: children in
+      (XElement tag attrs children', true)
+    else
+      let (children', found) = inject_meta_in_list encoding children in
+      (XElement tag attrs children', found)
+  | _ -> (n, false)
+and inject_meta_in_list (encoding:string) (kids:list xml_node) : Tot (list xml_node & bool) (decreases kids) =
+  match kids with
+  | [] -> ([], false)
+  | hd :: tl ->
+    let (hd', found) = inject_meta_in_elem encoding hd in
+    if found then (hd' :: tl, true)
+    else
+      let (tl', found2) = inject_meta_in_list encoding tl in
+      (hd' :: tl', found2)
+
+let html_inject_meta (encoding:string) (nodes:list xml_node) : list xml_node =
+  fst (inject_meta_in_list encoding nodes)
 
 // Final serialization step, shared by all three entry points below.
 // `present` (xs_output_present) is the hard compatibility gate: FALSE
 // reproduces the pre-xsl:output-support engine byte for byte (no
-// declaration, no DOCTYPE, no indent, no CDATA wrapping) via the exact
-// same serialize_nodes call with default_ser_settings, so a stylesheet
-// with no xsl:output element cannot be affected by anything in this
-// module however xsl:output's semantics evolve. `method` is xs_method
-// ("text"/"xml") -- text output ignores every xsl:output serialization
-// setting other than method itself (XSLT 1.0 16.3).
+// declaration, no DOCTYPE, no indent, no CDATA wrapping, no method="html"
+// treatment at all -- see implicit_html_root's doc comment on why the
+// no-xsl:output-element default-method-detection corner, output27/71,
+// is deliberately NOT reproduced here) via the exact same serialize_nodes
+// call with default_ser_settings, so a stylesheet with no xsl:output
+// element cannot be affected by anything in this module however
+// xsl:output's semantics evolve. `method` is xs_method ("text"/"xml") --
+// text output ignores every xsl:output serialization setting other than
+// method itself (XSLT 1.0 16.3).
 let finalize_output (present:bool) (cfg:output_settings) (method:string) (nodes:list xml_node) : string =
   if method = "text" then text_value_nodes nodes
   else if not present then serialize_nodes default_ser_settings [] nodes
   else
-    // method="html" has no dedicated serializer in this engine (result
-    // trees still serialize with the XML-style tag/escaping rules); the
-    // ONE observable difference honoured for it is XSLT 1.0's own
-    // default-indent rule ("yes" if the method is html; "no" otherwise),
-    // consulted only when the stylesheet didn't set indent explicitly.
-    let is_html = cfg.os_method_raw = "html" in
+    // method="html": void-element/boolean-attribute/script-style-raw/
+    // HTML-entity serialization (see ser_html), a META charset injection,
+    // and a DOCTYPE naming the literal root "HTML" -- all gated on
+    // `is_html`, which is TRUE for an explicit method="html" AND for the
+    // XSLT 1.0 16.1 default-method-detection corner (an xsl:output
+    // element IS present -- this whole branch is behind `present` -- but
+    // omits method, and the result tree's root is literally named
+    // "html"/"HTML"). The one OTHER observable difference honoured for
+    // html method is XSLT 1.0's own default-indent rule ("yes" if the
+    // method is html; "no" otherwise), consulted only when the
+    // stylesheet didn't set indent explicitly.
+    let is_html = cfg.os_method_raw = "html" || (cfg.os_method_raw = "" && implicit_html_root nodes) in
     let indent_on =
       if cfg.os_indent_raw = "yes" then true
       else if cfg.os_indent_raw = "no" then false
       else is_html in
-    let ser = { ser_cdata = cfg.os_cdata; ser_indent = indent_on; ser_encoding = cfg.os_encoding } in
-    let body = serialize_nodes ser [] nodes in
+    let ser = { ser_cdata = cfg.os_cdata; ser_indent = indent_on; ser_encoding = cfg.os_encoding; ser_html = is_html } in
+    let charset = if cfg.os_encoding = "" then "UTF-8" else cfg.os_encoding in
+    let nodes' = if is_html then html_inject_meta charset nodes else nodes in
+    let body = serialize_nodes ser [] nodes' in
     let decl = if cfg.os_omit_decl then "" else make_decl cfg in
-    let doctype = make_doctype cfg nodes in
+    let doctype = make_doctype is_html cfg nodes in
     String.concat "" [decl; doctype; body]
 
 (* ================================================================ *)
