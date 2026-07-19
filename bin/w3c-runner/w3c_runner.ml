@@ -2307,11 +2307,16 @@ let run_test tc =
          if not (update_is_implemented_only update) then
            Skip "non-silent LOAD not yet implemented (no HTTP fetch)"
          else begin
-           (* Build input dataset *)
-           let input_default = List.fold_left (fun acc df ->
-             acc @ load_triples df
-           ) [] tc.data_files in
-           let input_named = List.map (fun (iri, path) ->
+           (* Build input dataset. ut:data may be a multi-graph .trig/.nq
+              dataset (SPARQL 1.2 update-1/2 use data-6.trig with named
+              graphs); route it through load_dataset so its named graphs
+              reach ds_named instead of being dropped by the flat loader
+              (same fix as run_query_eval_test / the eval-GRAPH cluster;
+              rule #11/#15: parser dispatch, no semantics). *)
+           let input_default, input_ds_named = List.fold_left (fun (accd, accn) df ->
+             let d, n = load_dataset df in (accd @ d, accn @ n)
+           ) ([], []) tc.data_files in
+           let input_named = input_ds_named @ List.map (fun (iri, path) ->
              RDF_Graph_Executable.({ ng_name = iri; ng_graph = load_triples path })
            ) tc.named_data_files in
            let input_ds = RDF_Graph_Executable.({
@@ -2321,11 +2326,14 @@ let run_test tc =
            (* Apply the update via F* evaluator *)
            let result_ds = apply_update input_ds update in
 
-           (* Build expected dataset from the mf:result blank node *)
-           let expected_default = List.fold_left (fun acc df ->
-             acc @ load_triples df
-           ) [] tc.update_result_default_files in
-           let expected_named = List.map (fun (iri, path) ->
+           (* Build expected dataset from the mf:result blank node. The
+              expected ut:data is likewise a .trig/.nq dataset
+              (update-result-N.trig) — load it as a dataset so its named
+              graphs are compared, not silently dropped. *)
+           let expected_default, expected_ds_named = List.fold_left (fun (accd, accn) df ->
+             let d, n = load_dataset df in (accd @ d, accn @ n)
+           ) ([], []) tc.update_result_default_files in
+           let expected_named = expected_ds_named @ List.map (fun (iri, path) ->
              RDF_Graph_Executable.({ ng_name = iri; ng_graph = load_triples path })
            ) tc.update_result_named_files in
 
