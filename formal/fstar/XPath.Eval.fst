@@ -1791,14 +1791,14 @@ let rec eval_expr (fuel:nat) (env:xp_env) (e:xp_expr) : Tot xp_value (decreases 
        | _, _ -> XV_Nodes [])
     | XE_FunCall name args -> eval_funcall (fuel - 1) env name args
     | XE_Path absolute steps ->
-      if absolute then XV_Nodes (eval_absolute_steps (fuel - 1) env.env_vars env.env_nsctx (root_of_item env.env_item) env.env_doc_kids steps)
-      else XV_Nodes (eval_steps (fuel - 1) env.env_vars env.env_nsctx [env.env_item] steps)
+      if absolute then XV_Nodes (eval_absolute_steps (fuel - 1) env (root_of_item env.env_item) env.env_doc_kids steps)
+      else XV_Nodes (eval_steps (fuel - 1) env [env.env_item] steps)
     | XE_FilterPath primary preds steps ->
       let pv = eval_expr (fuel - 1) env primary in
       (match pv with
        | XV_Nodes items0 ->
-         let items1 = filter_items_by_preds (fuel - 1) env.env_vars env.env_nsctx items0 preds in
-         XV_Nodes (eval_steps (fuel - 1) env.env_vars env.env_nsctx items1 steps)
+         let items1 = filter_items_by_preds (fuel - 1) env items0 preds in
+         XV_Nodes (eval_steps (fuel - 1) env items1 steps)
        | other -> if Nil? preds && Nil? steps then other else XV_Nodes [])
 
 // Absolute-path bootstrap (see the program plan's "bare '/'" note):
@@ -1809,8 +1809,10 @@ let rec eval_expr (fuel:nat) (env:xp_env) (e:xp_expr) : Tot xp_value (decreases 
 // practically-useful reading of `/tagName`, at the cost of `name(/)`
 // returning the root's own tag rather than strict XPath 1.0's empty
 // document-node name (disclosed divergence).
-and eval_absolute_steps (fuel:nat) (vars:list (string & xp_value)) (nsctx:list (string & string)) (root_node:xml_node) (doc_kids:list xml_node) (steps:list xp_step)
+and eval_absolute_steps (fuel:nat) (env:xp_env) (root_node:xml_node) (doc_kids:list xml_node) (steps:list xp_step)
   : Tot (list xctx_item) (decreases fuel) =
+  let vars = env.env_vars in
+  let nsctx = env.env_nsctx in
   if fuel = 0 then []
   // Doc-frame branch: when the document node has children BEYOND the root
   // element (prolog/epilog Comment/PI Misc were retained by
@@ -1829,7 +1831,7 @@ and eval_absolute_steps (fuel:nat) (vars:list (string & xp_value)) (nsctx:list (
     (let doc_node = doc_node_of doc_kids in
      match steps with
      | [] -> [doc_node]
-     | _ -> eval_steps (fuel - 1) vars nsctx [doc_node] steps)
+     | _ -> eval_steps (fuel - 1) env [doc_node] steps)
   else
     let root_item = CI_Elem [] [] root_node in
     match steps with
@@ -1844,8 +1846,8 @@ and eval_absolute_steps (fuel:nat) (vars:list (string & xp_value)) (nsctx:list (
         | Ax_Attribute -> filter_by_node_test nsctx s.step_test (apply_axis Ax_Attribute root_item)
         | _ -> []
       in
-      let kept = filter_items_by_preds (fuel - 1) vars nsctx expansion s.step_preds in
-      let normal = eval_steps (fuel - 1) vars nsctx kept rest in
+      let kept = filter_items_by_preds (fuel - 1) env expansion s.step_preds in
+      let normal = eval_steps (fuel - 1) env kept rest in
       // The `//` abbreviation parses to an unpredicated `descendant-or-
       // self::node()` step immediately followed by the real `child::`
       // test step (see Parser.XPath's `dstep`). Real XPath treats `//X`
@@ -1867,24 +1869,24 @@ and eval_absolute_steps (fuel:nat) (vars:list (string & xp_value)) (nsctx:list (
            if nxt.step_axis = Ax_Child then
              let root_as_child =
                if matches_node_test nsctx nxt.step_test root_item then [root_item] else [] in
-             let root_as_child' = filter_items_by_preds (fuel - 1) vars nsctx root_as_child nxt.step_preds in
-             let extra = eval_steps (fuel - 1) vars nsctx root_as_child' rest2 in
+             let root_as_child' = filter_items_by_preds (fuel - 1) env root_as_child nxt.step_preds in
+             let extra = eval_steps (fuel - 1) env root_as_child' rest2 in
              extra @ normal
            else normal
          | [] -> normal)
       else normal
 
-and eval_steps (fuel:nat) (vars:list (string & xp_value)) (nsctx:list (string & string)) (items:list xctx_item) (steps:list xp_step)
+and eval_steps (fuel:nat) (env:xp_env) (items:list xctx_item) (steps:list xp_step)
   : Tot (list xctx_item) (decreases fuel) =
   if fuel = 0 then items
   else
     match steps with
     | [] -> items
     | s :: rest ->
-      let expanded = expand_step_over_items (fuel - 1) vars nsctx s items in
-      eval_steps (fuel - 1) vars nsctx expanded rest
+      let expanded = expand_step_over_items (fuel - 1) env s items in
+      eval_steps (fuel - 1) env expanded rest
 
-and expand_step_over_items (fuel:nat) (vars:list (string & xp_value)) (nsctx:list (string & string)) (s:xp_step) (items:list xctx_item)
+and expand_step_over_items (fuel:nat) (env:xp_env) (s:xp_step) (items:list xctx_item)
   : Tot (list xctx_item) (decreases fuel) =
   if fuel = 0 then []
   else
@@ -1892,16 +1894,16 @@ and expand_step_over_items (fuel:nat) (vars:list (string & xp_value)) (nsctx:lis
     | [] -> []
     | it :: rest ->
       let raw = apply_axis s.step_axis it in
-      let tested = filter_by_node_test nsctx s.step_test raw in
-      let kept = filter_items_by_preds (fuel - 1) vars nsctx tested s.step_preds in
-      kept @ expand_step_over_items (fuel - 1) vars nsctx s rest
+      let tested = filter_by_node_test env.env_nsctx s.step_test raw in
+      let kept = filter_items_by_preds (fuel - 1) env tested s.step_preds in
+      kept @ expand_step_over_items (fuel - 1) env s rest
 
 // Predicates apply in sequence; each predicate's position()/last()
 // are recomputed against the SURVIVING list from the previous
 // predicate (spec-correct chained-predicate renumbering — e.g.
 // `foo[@bar][2]` means "2nd of the @bar-holding foo's", not "2nd foo
 // overall, if it also has @bar").
-and filter_items_by_preds (fuel:nat) (vars:list (string & xp_value)) (nsctx:list (string & string)) (items:list xctx_item) (preds:list xp_expr)
+and filter_items_by_preds (fuel:nat) (env:xp_env) (items:list xctx_item) (preds:list xp_expr)
   : Tot (list xctx_item) (decreases fuel) =
   if fuel = 0 then items
   else
@@ -1909,8 +1911,8 @@ and filter_items_by_preds (fuel:nat) (vars:list (string & xp_value)) (nsctx:list
     | [] -> items
     | p :: rest ->
       let size = List.Tot.length items in
-      let kept = filter_one_pred (fuel - 1) vars nsctx p items size 1 in
-      filter_items_by_preds (fuel - 1) vars nsctx kept rest
+      let kept = filter_one_pred (fuel - 1) env p items size 1 in
+      filter_items_by_preds (fuel - 1) env kept rest
 
 // Numeric predicate shorthand (§2.4): `[N]` keeps the node whose
 // proximity position equals N; any other value is boolean()-converted
@@ -1921,21 +1923,33 @@ and filter_items_by_preds (fuel:nat) (vars:list (string & xp_value)) (nsctx:list
 // numeric expression like `[1+1]`, which XPath 1.0 also treats as the
 // SAME positional shorthand since §2.4 keys off the predicate
 // EXPRESSION's result type being number, not off its AST shape).
-and filter_one_pred (fuel:nat) (vars:list (string & xp_value)) (nsctx:list (string & string)) (p:xp_expr) (items:list xctx_item) (size:nat) (pos:nat)
+//
+// The per-item predicate environment REUSES the outer `env`'s
+// id_attrs/style_root/decimal_formats/key_table/doc_kids (only
+// env_item/env_pos/env_size vary per candidate) so that id(), key(),
+// document(""), and format-number() called FROM a predicate (e.g. the
+// Muenchian-grouping idiom
+// `town[generate-id() = generate-id(key('places',@state)[1])]`) see
+// the SAME key table / DTD ID map / stylesheet root / decimal-format
+// table the enclosing select expression has -- rather than the empty
+// defaults this used to hard-code, which silently made key()/id()/
+// document()/format-number() always-empty inside ANY predicate
+// (idkey01 and the Muenchian-grouping cluster).
+and filter_one_pred (fuel:nat) (env:xp_env) (p:xp_expr) (items:list xctx_item) (size:nat) (pos:nat)
   : Tot (list xctx_item) (decreases fuel) =
   if fuel = 0 then [] // fuel exhaustion: fail closed (empty), never silently include
   else
     match items with
     | [] -> []
     | it :: rest ->
-      let e = { env_item = it; env_pos = pos; env_size = size; env_vars = vars; env_nsctx = nsctx; env_doc_kids = []; env_id_attrs = []; env_style_root = xnode_none; env_decimal_formats = []; env_key_table = [] } in
+      let e = { env with env_item = it; env_pos = pos; env_size = size } in
       let v = eval_expr (fuel - 1) e p in
       let keep =
         match v with
         | XV_Num n -> (match xn_finite_int (xn_round n) with Some k -> k = pos | None -> false)
         | _ -> to_bool_val v
       in
-      let tail = filter_one_pred (fuel - 1) vars nsctx p rest size (pos + 1) in
+      let tail = filter_one_pred (fuel - 1) env p rest size (pos + 1) in
       if keep then it :: tail else tail
 
 and eval_concat_args (fuel:nat) (env:xp_env) (args:list xp_expr) : Tot string (decreases fuel) =

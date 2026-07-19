@@ -762,15 +762,41 @@ let eval_nodeset (ctx:xctx_item) (pos size:nat) (vars) (nsctx:list (string & str
 // element itself and return the empty set. From the document node,
 // `doc/num` is equivalent to the absolute `/doc/num` (the document
 // node's only child IS the root element, which this engine matches as
-// the first step of an absolute path). `force_abs` flips the top-level
-// (and each union arm's) relative location path to absolute so those
-// selects resolve; predicates and inner filter-paths keep their own
-// (relative) context and are left untouched.
+// the first step of an absolute path). `force_abs` flips every relative
+// location path REACHABLE WITHOUT crossing a context boundary to
+// absolute -- so this recurses into union arms, boolean/comparison/
+// arithmetic operands, a unary negation's operand, and EVERY function-
+// call argument (a FunCall's arguments are evaluated in the SAME
+// context as the call itself, e.g. `id(main/b)`, `count(main/b)`,
+// `key('k', main/@x)` -- the `main/b` argument needs the identical
+// doc-node-relative treatment the top-level select would get, or it
+// silently resolves to the empty node-set: `main` never matches as a
+// child of the root element itself, only as a child of the document
+// node). A FilterPath's `primary` is likewise forced (it is the
+// top-level context too), but its predicates and trailing continuation
+// steps are context boundaries -- once `primary` has selected nodes,
+// later predicates/steps are relative to THOSE nodes, not to the
+// document root -- so they stay untouched, as do the predicates nested
+// inside an xp_step (step_preds): those are evaluated per-candidate at
+// that step, never at the top-level document-node context.
 let rec force_abs (e:xp_expr) : Tot xp_expr (decreases e) =
   match e with
   | XE_Path false steps -> XE_Path true steps
+  | XE_Path true steps -> XE_Path true steps
+  | XE_FilterPath primary preds steps -> XE_FilterPath (force_abs primary) preds steps
   | XE_Union a b -> XE_Union (force_abs a) (force_abs b)
+  | XE_Or a b -> XE_Or (force_abs a) (force_abs b)
+  | XE_And a b -> XE_And (force_abs a) (force_abs b)
+  | XE_Compare op a b -> XE_Compare op (force_abs a) (force_abs b)
+  | XE_Arith op a b -> XE_Arith op (force_abs a) (force_abs b)
+  | XE_Neg a -> XE_Neg (force_abs a)
+  | XE_FunCall name args -> XE_FunCall name (force_abs_list args)
   | _ -> e
+
+and force_abs_list (es:list xp_expr) : Tot (list xp_expr) (decreases es) =
+  match es with
+  | [] -> []
+  | h :: t -> force_abs h :: force_abs_list t
 
 let eval_val_dn (ctx:dnode) (pos size:nat) (vars:list (string & xp_value)) (nsctx:list (string & string))
                 (id_attrs:list (string & string)) (style_root:xml_node) (decfmts:list decimal_format_symbols)
