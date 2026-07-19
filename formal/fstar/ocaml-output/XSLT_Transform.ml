@@ -777,6 +777,75 @@ let expand_avt (ctx : XPath_Eval.xctx_item) (pos : Prims.nat)
     expand_avt_chars ctx pos size vars nsctx cs
       ((FStar_List_Tot_Base.length cs) + Prims.int_one)
   else s
+let rec expand_avt_chars_dn (dn : dnode) (pos : Prims.nat) (size : Prims.nat)
+  (vars : (Prims.string * XPath_Eval.xp_value) Prims.list)
+  (nsctx : (Prims.string * Prims.string) Prims.list)
+  (id_attrs : (Prims.string * Prims.string) Prims.list)
+  (style_root : Parser_XML.xml_node)
+  (decfmts : XPath_Eval.decimal_format_symbols Prims.list)
+  (key_table : XPath_Eval.key_entry Prims.list)
+  (cs : FStar_String.char Prims.list) (fuel : Prims.nat) : Prims.string=
+  if fuel = Prims.int_zero
+  then ""
+  else
+    (match cs with
+     | [] -> ""
+     | 123::123::rest ->
+         Prims.strcat "{"
+           (expand_avt_chars_dn dn pos size vars nsctx id_attrs style_root
+              decfmts key_table rest (fuel - Prims.int_one))
+     | 125::125::rest ->
+         Prims.strcat "}"
+           (expand_avt_chars_dn dn pos size vars nsctx id_attrs style_root
+              decfmts key_table rest (fuel - Prims.int_one))
+     | 123::rest ->
+         let uu___1 = read_until_brace rest [] in
+         (match uu___1 with
+          | (expr_cs, after) ->
+              let v =
+                eval_string_dn dn pos size vars nsctx id_attrs style_root
+                  decfmts key_table (str_of_chars expr_cs) in
+              Prims.strcat v
+                (expand_avt_chars_dn dn pos size vars nsctx id_attrs
+                   style_root decfmts key_table after (fuel - Prims.int_one)))
+     | c::rest ->
+         Prims.strcat (soc c)
+           (expand_avt_chars_dn dn pos size vars nsctx id_attrs style_root
+              decfmts key_table rest (fuel - Prims.int_one)))
+let expand_avt_dn (dn : dnode) (pos : Prims.nat) (size : Prims.nat)
+  (vars : (Prims.string * XPath_Eval.xp_value) Prims.list)
+  (nsctx : (Prims.string * Prims.string) Prims.list)
+  (id_attrs : (Prims.string * Prims.string) Prims.list)
+  (style_root : Parser_XML.xml_node)
+  (decfmts : XPath_Eval.decimal_format_symbols Prims.list)
+  (key_table : XPath_Eval.key_entry Prims.list) (s : Prims.string) :
+  Prims.string=
+  let cs = chars_of s in
+  if contains_char 123 s
+  then
+    expand_avt_chars_dn dn pos size vars nsctx id_attrs style_root decfmts
+      key_table cs ((FStar_List_Tot_Base.length cs) + Prims.int_one)
+  else s
+let rec lookup_pfx_for_uri (scope : (Prims.string * Prims.string) Prims.list)
+  (uri : Prims.string) : Prims.string FStar_Pervasives_Native.option=
+  match scope with
+  | [] -> FStar_Pervasives_Native.None
+  | (p, u)::rest ->
+      if (p <> "") && (u = uri)
+      then FStar_Pervasives_Native.Some p
+      else lookup_pfx_for_uri rest uri
+let rec gen_ns_prefix_at (scope : (Prims.string * Prims.string) Prims.list)
+  (n : Prims.nat) (fuel : Prims.nat) : Prims.string=
+  let candidate = Prims.strcat "ns" (Prims.string_of_int n) in
+  if fuel = Prims.int_zero
+  then candidate
+  else
+    (match XPath_Eval.lookup_nsctx scope candidate with
+     | FStar_Pervasives_Native.None -> candidate
+     | FStar_Pervasives_Native.Some uu___1 ->
+         gen_ns_prefix_at scope (n + Prims.int_one) (fuel - Prims.int_one))
+let gen_ns_prefix (scope : (Prims.string * Prims.string) Prims.list) :
+  Prims.string= gen_ns_prefix_at scope Prims.int_zero (Prims.of_int (64))
 let step_ok (stp : Prims.string) (tag : Prims.string) : Prims.bool=
   let s = trim_str stp in (s = "*") || (s = tag)
 let rec match_chain (rsteps : Prims.string Prims.list)
@@ -2876,15 +2945,20 @@ and instantiate_one (fuel : Prims.nat) (st : xstyle) (ctx : dnode)
                                 if ln = "element"
                                 then
                                   (let nm =
-                                     expand_avt (dnode_ci ctx) pos size vars
-                                       st.xs_nsctx (attr_or "name" "" attrs) in
+                                     expand_avt_dn ctx pos size vars
+                                       st.xs_nsctx st.xs_id_attrs
+                                       st.xs_style_root st.xs_decfmts
+                                       st.xs_key_table
+                                       (attr_or "name" "" attrs) in
                                    let epfx = name_prefix nm in
                                    let nsdecls =
                                      match attr_opt "namespace" attrs with
                                      | FStar_Pervasives_Native.Some nsraw ->
                                          let u =
-                                           expand_avt (dnode_ci ctx) pos size
-                                             vars st.xs_nsctx nsraw in
+                                           expand_avt_dn ctx pos size vars
+                                             st.xs_nsctx st.xs_id_attrs
+                                             st.xs_style_root st.xs_decfmts
+                                             st.xs_key_table nsraw in
                                          if epfx = ""
                                          then
                                            [{
@@ -2951,20 +3025,75 @@ and instantiate_one (fuel : Prims.nat) (st : xstyle) (ctx : dnode)
                                 else
                                   if ln = "attribute"
                                   then
-                                    (let nm =
-                                       expand_avt (dnode_ci ctx) pos size
-                                         vars st.xs_nsctx
+                                    (let raw_nm =
+                                       expand_avt_dn ctx pos size vars
+                                         st.xs_nsctx st.xs_id_attrs
+                                         st.xs_style_root st.xs_decfmts
+                                         st.xs_key_table
                                          (attr_or "name" "" attrs) in
                                      let body =
                                        instantiate_seq (fuel - Prims.int_one)
                                          st ctx pos size vars rtf cur_mode
                                          cur_prec children in
-                                     [R_Attr
-                                        {
-                                          Parser_XML.attr_name = nm;
-                                          Parser_XML.attr_value =
-                                            (rnodes_text body)
-                                        }])
+                                     match attr_opt "namespace" attrs with
+                                     | FStar_Pervasives_Native.None ->
+                                         [R_Attr
+                                            {
+                                              Parser_XML.attr_name = raw_nm;
+                                              Parser_XML.attr_value =
+                                                (rnodes_text body)
+                                            }]
+                                     | FStar_Pervasives_Native.Some nsraw ->
+                                         let u =
+                                           expand_avt_dn ctx pos size vars
+                                             st.xs_nsctx st.xs_id_attrs
+                                             st.xs_style_root st.xs_decfmts
+                                             st.xs_key_table nsraw in
+                                         let loc =
+                                           XPath_Eval.local_name_of raw_nm in
+                                         if u = ""
+                                         then
+                                           [R_Attr
+                                              {
+                                                Parser_XML.attr_name = loc;
+                                                Parser_XML.attr_value =
+                                                  (rnodes_text body)
+                                              }]
+                                         else
+                                           (match lookup_pfx_for_uri
+                                                    st.xs_nsctx u
+                                            with
+                                            | FStar_Pervasives_Native.Some
+                                                pfx ->
+                                                [R_Attr
+                                                   {
+                                                     Parser_XML.attr_name =
+                                                       (Prims.strcat pfx
+                                                          (Prims.strcat ":"
+                                                             loc));
+                                                     Parser_XML.attr_value =
+                                                       (rnodes_text body)
+                                                   }]
+                                            | FStar_Pervasives_Native.None ->
+                                                let gpfx =
+                                                  gen_ns_prefix st.xs_nsctx in
+                                                [R_Attr
+                                                   {
+                                                     Parser_XML.attr_name =
+                                                       (Prims.strcat "xmlns:"
+                                                          gpfx);
+                                                     Parser_XML.attr_value =
+                                                       u
+                                                   };
+                                                R_Attr
+                                                  {
+                                                    Parser_XML.attr_name =
+                                                      (Prims.strcat gpfx
+                                                         (Prims.strcat ":"
+                                                            loc));
+                                                    Parser_XML.attr_value =
+                                                      (rnodes_text body)
+                                                  }]))
                                   else
                                     if ln = "comment"
                                     then
@@ -3064,8 +3193,9 @@ and instantiate_one (fuel : Prims.nat) (st : xstyle) (ctx : dnode)
                    {
                      Parser_XML.attr_name = (a.Parser_XML.attr_name);
                      Parser_XML.attr_value =
-                       (expand_avt (dnode_ci ctx) pos size vars st.xs_nsctx
-                          a.Parser_XML.attr_value)
+                       (expand_avt_dn ctx pos size vars st.xs_nsctx
+                          st.xs_id_attrs st.xs_style_root st.xs_decfmts
+                          st.xs_key_table a.Parser_XML.attr_value)
                    }) kept in
             let use_attrs =
               expand_attrset_names (fuel - Prims.int_one) st ctx pos size
