@@ -20,14 +20,21 @@
 #    distinct-term dictionaries + revmaps + parallel raw-token lists
 #    across every row group, populate the F* handle.
 #
-# 2. PERFORMANCE: replace the extracted F* `cottas_ondisk_search`,
-#    `cottas_ondisk_estimate`, and `cottas_ondisk_decode_*` with
-#    Hashtbl-backed equivalents. The F* definitions in
-#    RDF.CottasStore.fst remain the verification spec (they're total
-#    and obviously correct, just O(N²) on 900k-entry assoc-lists).
-#    The OCaml glue swaps to (string,nat) Hashtbl + (nat,term) Hashtbl
-#    keyed by the artifact path. This is the same pattern as the eager
-#    Parser.BallyhooCOTTAS path.
+# 2. PERFORMANCE: replace the extracted F* `cottas_ondisk_predicate_present`
+#    and `cottas_ondisk_named_graphs` with Hashtbl-backed equivalents (the
+#    live Bet7 lazy-populate path, Step B — 106s->0.023s open-time win).
+#    The F* definitions in RDF.CottasStore.fst remain the verification
+#    spec. The OCaml glue swaps to (string,nat) Hashtbl + (nat,term)
+#    Hashtbl keyed by the artifact path.
+#
+#    2026-07-19 (boundary-audit Step A continuation, #254/#118): the
+#    encode_subject/predicate/object/graph_name and decode_subject/
+#    predicate/object/graph_name shim entries that used to live in the
+#    table below were REMOVED along with the F* functions they targeted
+#    (RDF.CottasStore.fst) — an exhaustive audit found those id-based
+#    primitives had zero live callers. Only the `predicate_present` shim
+#    entry and the `named_graphs` replacement below it remain; both are
+#    LIVE (Bet7 Step B) and out of scope for this deletion.
 #
 # Rule #15: this file is I/O glue + memory layout + perf-shim only.
 # No RDF/SPARQL semantic logic. All decisions about which rows match
@@ -724,111 +731,15 @@ def apply_qualified(content, name, old_tmpl, new_tmpl):
 # (name, old_tmpl, new_tmpl) — each old/new pair identical except for
 # the body line(s), with "@Q@" standing in for whichever qualifier
 # module F* chose this run.
+#
+# 2026-07-19: the encode_subject/predicate/object/graph_name and
+# decode_subject/predicate/object/graph_name entries that used to
+# populate this table were REMOVED along with the F* functions they
+# targeted (RDF.CottasStore.fst, boundary-audit Step A continuation,
+# #254/#118) — zero live callers, confirmed by exhaustive grep. Only
+# `predicate_present` remains: it is LIVE (Bet7 Step B, perf-sensitive,
+# out of scope for this deletion).
 shim_entries = [
-  ("encode_subject",
-   """let cottas_ondisk_encode_subject (ds : cottas_ondisk_store)
-  (s : @Q@.subject) :
-  Parser_BallyhooCOTTAS.cottas_term_ref FStar_Pervasives_Native.option=
-  revmap_lookup (ds.cods_handle).coh_subj_revmap (subject_to_revmap_key s)
-""",
-   """let cottas_ondisk_encode_subject (ds : cottas_ondisk_store)
-  (s : @Q@.subject) :
-  Parser_BallyhooCOTTAS.cottas_term_ref FStar_Pervasives_Native.option=
-  Cottas_ondisk_runtime.encode_subject_fast ds.cods_handle s
-"""),
-  ("encode_predicate",
-   """let cottas_ondisk_encode_predicate (ds : cottas_ondisk_store)
-  (p : @Q@.wf_iri) :
-  Parser_BallyhooCOTTAS.cottas_term_ref FStar_Pervasives_Native.option=
-  revmap_lookup (ds.cods_handle).coh_pred_revmap (iri_to_revmap_key p)
-""",
-   """let cottas_ondisk_encode_predicate (ds : cottas_ondisk_store)
-  (p : @Q@.wf_iri) :
-  Parser_BallyhooCOTTAS.cottas_term_ref FStar_Pervasives_Native.option=
-  Cottas_ondisk_runtime.encode_predicate_fast ds.cods_handle p
-"""),
-  ("encode_object",
-   """let cottas_ondisk_encode_object (ds : cottas_ondisk_store)
-  (o : @Q@.rdf_term) :
-  Parser_BallyhooCOTTAS.cottas_term_ref FStar_Pervasives_Native.option=
-  revmap_lookup (ds.cods_handle).coh_obj_revmap (object_to_revmap_key o)
-""",
-   """let cottas_ondisk_encode_object (ds : cottas_ondisk_store)
-  (o : @Q@.rdf_term) :
-  Parser_BallyhooCOTTAS.cottas_term_ref FStar_Pervasives_Native.option=
-  Cottas_ondisk_runtime.encode_object_fast ds.cods_handle o
-"""),
-  ("encode_graph_name",
-   """let cottas_ondisk_encode_graph_name (ds : cottas_ondisk_store)
-  (g : @Q@.iri) :
-  Parser_BallyhooCOTTAS.cottas_graph_ref FStar_Pervasives_Native.option=
-  revmap_lookup (ds.cods_handle).coh_graph_revmap (iri_to_revmap_key g)
-""",
-   """let cottas_ondisk_encode_graph_name (ds : cottas_ondisk_store)
-  (g : @Q@.iri) :
-  Parser_BallyhooCOTTAS.cottas_graph_ref FStar_Pervasives_Native.option=
-  Cottas_ondisk_runtime.encode_graph_fast ds.cods_handle g
-"""),
-  # decode_* (slow list_nth -> Hashtbl)
-  ("decode_subject",
-   """let cottas_ondisk_decode_subject (ds : cottas_ondisk_store)
-  (id : Parser_BallyhooCOTTAS.cottas_term_ref) :
-  @Q@.subject=
-  match list_nth (ds.cods_handle).coh_subjects id with
-  | FStar_Pervasives_Native.Some s -> s
-  | FStar_Pervasives_Native.None ->
-      @Q@.S_BNode "cottas_decode_oor"
-""",
-   """let cottas_ondisk_decode_subject (ds : cottas_ondisk_store)
-  (id : Parser_BallyhooCOTTAS.cottas_term_ref) :
-  @Q@.subject=
-  Cottas_ondisk_runtime.decode_subject_fast ds.cods_handle id
-"""),
-  ("decode_object",
-   """let cottas_ondisk_decode_object (ds : cottas_ondisk_store)
-  (id : Parser_BallyhooCOTTAS.cottas_term_ref) :
-  @Q@.rdf_term=
-  match list_nth (ds.cods_handle).coh_objects id with
-  | FStar_Pervasives_Native.Some o -> o
-  | FStar_Pervasives_Native.None ->
-      @Q@.T_BNode "cottas_decode_oor"
-""",
-   """let cottas_ondisk_decode_object (ds : cottas_ondisk_store)
-  (id : Parser_BallyhooCOTTAS.cottas_term_ref) :
-  @Q@.rdf_term=
-  Cottas_ondisk_runtime.decode_object_fast ds.cods_handle id
-"""),
-  # decode_predicate (correctness bug: was missing from the original
-  # dict; F* version's `coh_predicates` list is empty post-Bet7
-  # lazy-open, so every decode missed and fell back to the F* sentinel
-  # "urn:factoidal:cottas-decode-predicate-unknown-id" — or, before
-  # the F* fix, the silent rdf:type fallback that masked the bug.
-  # This shim routes through Cottas_ondisk_runtime.decode_predicate_fast
-  # which consults the populated `tables.ft_id_to_predicate` Hashtbl.)
-  ("decode_predicate",
-   """let cottas_ondisk_decode_predicate (ds : cottas_ondisk_store)
-  (id : Parser_BallyhooCOTTAS.cottas_term_ref) : @Q@.wf_iri=
-  match list_nth (ds.cods_handle).coh_predicates id with
-  | FStar_Pervasives_Native.Some p -> p
-  | FStar_Pervasives_Native.None ->
-      let fallback = "urn:factoidal:cottas-decode-predicate-unknown-id" in
-      fallback
-""",
-   """let cottas_ondisk_decode_predicate (ds : cottas_ondisk_store)
-  (id : Parser_BallyhooCOTTAS.cottas_term_ref) : @Q@.wf_iri=
-  Cottas_ondisk_runtime.decode_predicate_fast ds.cods_handle id
-"""),
-  ("decode_graph_name",
-   """let cottas_ondisk_decode_graph_name (ds : cottas_ondisk_store)
-  (id : Parser_BallyhooCOTTAS.cottas_graph_ref) : @Q@.iri=
-  match list_nth (ds.cods_handle).coh_graphs id with
-  | FStar_Pervasives_Native.Some g -> g
-  | FStar_Pervasives_Native.None -> ""
-""",
-   """let cottas_ondisk_decode_graph_name (ds : cottas_ondisk_store)
-  (id : Parser_BallyhooCOTTAS.cottas_graph_ref) : @Q@.iri=
-  Cottas_ondisk_runtime.decode_graph_fast ds.cods_handle id
-"""),
   # predicate_present (slow assoc-list lookup -> Hashtbl)
   ("predicate_present",
    """let cottas_ondisk_predicate_present (ds : cottas_ondisk_store)

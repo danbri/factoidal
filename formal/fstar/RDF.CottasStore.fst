@@ -171,84 +171,22 @@ let cottas_ondisk_summary (ds : cottas_ondisk_store)
   : Tot (option cottas_artifact_summary) =
   ds.cods_handle.coh_summary
 
-// Encode subject/predicate/object/graph: revmap lookup. Returns None
-// when the term is absent from the corpus dictionary, signalling a
-// definitively-empty triple-pattern result.
-let cottas_ondisk_encode_subject
-  (ds : cottas_ondisk_store) (s : subject)
-  : Tot (option cottas_term_ref) =
-  revmap_lookup ds.cods_handle.coh_subj_revmap (subject_to_revmap_key s)
-
-let cottas_ondisk_encode_predicate
-  (ds : cottas_ondisk_store) (p : wf_iri)
-  : Tot (option cottas_term_ref) =
-  revmap_lookup ds.cods_handle.coh_pred_revmap (iri_to_revmap_key p)
-
-let cottas_ondisk_encode_object
-  (ds : cottas_ondisk_store) (o : rdf_term)
-  : Tot (option cottas_term_ref) =
-  revmap_lookup ds.cods_handle.coh_obj_revmap (object_to_revmap_key o)
-
-let cottas_ondisk_encode_graph_name
-  (ds : cottas_ondisk_store) (g : iri)
-  : Tot (option cottas_graph_ref) =
-  revmap_lookup ds.cods_handle.coh_graph_revmap (iri_to_revmap_key g)
-
-// Decode: list-indexing into the parsed-term inventory. The cottas_term_ref
-// is `nat`, so it's already non-negative; we still need a fallback when
-// (improbably) it's out of range. Falls back to a sentinel value:
-//   - subject/object: the empty-IRI bnode "_:cottas_decode_oor"
-//   - predicate: rdf:type as a stable wf_iri
-//   - graph: the empty IRI ""  (NOT a wf_iri; iri = string)
-// Out-of-range only happens on corrupt or mismatched COTTAS files; the
-// sentinel keeps the function total without raising. This matches the
-// rule #15 boundary: the I/O layer catches "this file is broken" via
-// failwith at open time; once the handle is accepted, the F*-side decode
-// is total.
-let cottas_ondisk_decode_subject
-  (ds : cottas_ondisk_store) (id : cottas_term_ref)
-  : Tot subject =
-  match list_nth ds.cods_handle.coh_subjects id with
-  | Some s -> s
-  | None -> S_BNode "cottas_decode_oor"
-
-let cottas_ondisk_decode_predicate
-  (ds : cottas_ondisk_store) (id : cottas_term_ref)
-  : Tot wf_iri =
-  match list_nth ds.cods_handle.coh_predicates id with
-  | Some p -> p
-  | None ->
-    // Out-of-range / unpopulated-list fallback. We deliberately do
-    // NOT default to rdf:type here — that hid a real correctness bug
-    // for weeks (Bet7's lazy-open leaves `coh_predicates = []`, so
-    // every decode missed and silently returned rdf:type, which
-    // looked indistinguishable from "the data really had rdf:type
-    // here"). The visible-sentinel fallback below ensures the next
-    // identical bug crashes loudly into the result set instead.
-    //
-    // The actual runtime predicate lookup is provided by the
-    // OCaml-glue patch `cottas_ondisk_runtime.sh`, which substitutes
-    // a `Cottas_ondisk_runtime.decode_predicate_fast` body that
-    // consults the populated `tables.ft_id_to_predicate` Hashtbl.
-    // This sentinel only fires if that override hasn't run, e.g. on
-    // a corpus extracted with no glue patch applied.
-    let fallback : iri = "urn:factoidal:cottas-decode-predicate-unknown-id" in
-    assert_norm (is_iri fallback);
-    fallback
-
-let cottas_ondisk_decode_object
-  (ds : cottas_ondisk_store) (id : cottas_term_ref)
-  : Tot rdf_term =
-  match list_nth ds.cods_handle.coh_objects id with
-  | Some o -> o
-  | None -> T_BNode "cottas_decode_oor"
-
-let cottas_ondisk_decode_graph_name
-  (ds : cottas_ondisk_store) (id : cottas_graph_ref)
-  : Tot iri =
-  match list_nth ds.cods_handle.coh_graphs id with
-  | Some g -> g
-  | None -> ""
+// cottas_ondisk_encode_{subject,predicate,object,graph_name} and
+// cottas_ondisk_decode_{subject,predicate,object,graph_name} (id-based
+// revmap-lookup / list-indexing primitives) were REMOVED 2026-07-19
+// (boundary-audit "Step A" continuation, #254/#118). An exhaustive
+// audit (every .fst, extracted .ml, bin/, tests/unit/*.ml, and
+// experimental_ocaml_glue/*.sh) found zero live callers: the only
+// callers were each other's `_ml` fallback siblings (also removed,
+// see below), `cottas_ondisk_build_bound_qp_opt` (removed in the same
+// commit — see its own site-note further down), and the dead
+// in-memory `GB_COTTAS` path's `cottas_build_bound_qp`
+// (Parser.BallyhooCOTTAS.fst — no live `GB_COTTAS` constructor exists,
+// confirmed by grepping for a construction site across the whole
+// tree; only pattern-matches and the type declaration remain). The
+// live token-based path (`token_to_subject`/`_predicate`/`_object`/
+// `_graph_name`, wired through `cottas_ondisk_row_tok_to_quad`) does
+// not use these.
 
 // Predicate-presence: look up the predicate in the reverse map. If the
 // predicate isn't a dictionary entry it can't appear in any row.
@@ -276,82 +214,12 @@ let cottas_ondisk_named_graphs (ds : cottas_ondisk_store)
   : Tot (list (iri & cottas_graph_ref)) =
   named_graphs_aux ds.cods_handle.coh_graphs 0
 
-// ----------------------------------------------------------------------
-// ML-effected encode/decode variants — opt-in path through the
-// `RDF.CottasStore.LazyDictRegistry` typed boundary. Same semantic
-// contract as the Tot variants above but uses Hashtbl-backed
-// LazyDict O(1) lookups instead of list-assoc O(n). Consumers that
-// can tolerate the ML effect (e.g. external CLI/HTTP entry points
-// in bin/) call these for the fast path through the F*-typed
-// boundary; consumers that need Tot purity (e.g. the SPARQL
-// evaluator's BGP-walk inner loops) stick with the original
-// revmap_lookup-based variants above. #254 / #118 plans phase out
-// the sed-rewrite cottas_ondisk_runtime.sh patch by migrating
-// consumers to these.
-//
-// Returns None when register_for_path hasn't yet been called for
-// the handle's path (e.g. handle opened before the registry was
-// wired). Caller can fall back to the Tot variants in that case.
-
-let cottas_ondisk_encode_subject_ml
-  (ds : cottas_ondisk_store) (s : subject)
-  : ML (option cottas_term_ref) =
-  match RDF.CottasStore.LazyDictRegistry.get_subjects_lazy
-          ds.cods_handle.coh_path with
-  | Some d -> RDF.CottasStore.LazyDict.encode_by_key d
-                (subject_to_revmap_key s)
-  | None   -> cottas_ondisk_encode_subject ds s
-
-let cottas_ondisk_encode_predicate_ml
-  (ds : cottas_ondisk_store) (p : wf_iri)
-  : ML (option cottas_term_ref) =
-  match RDF.CottasStore.LazyDictRegistry.get_predicates_lazy
-          ds.cods_handle.coh_path with
-  | Some d -> RDF.CottasStore.LazyDict.encode_by_key d
-                (iri_to_revmap_key p)
-  | None   -> cottas_ondisk_encode_predicate ds p
-
-let cottas_ondisk_encode_object_ml
-  (ds : cottas_ondisk_store) (o : rdf_term)
-  : ML (option cottas_term_ref) =
-  match RDF.CottasStore.LazyDictRegistry.get_objects_lazy
-          ds.cods_handle.coh_path with
-  | Some d -> RDF.CottasStore.LazyDict.encode_by_key d
-                (object_to_revmap_key o)
-  | None   -> cottas_ondisk_encode_object ds o
-
-let cottas_ondisk_decode_subject_ml
-  (ds : cottas_ondisk_store) (id : cottas_term_ref)
-  : ML subject =
-  match RDF.CottasStore.LazyDictRegistry.get_subjects_lazy
-          ds.cods_handle.coh_path with
-  | Some d ->
-    (match RDF.CottasStore.LazyDict.decode_by_id d id with
-     | Some s -> s
-     | None   -> cottas_ondisk_decode_subject ds id)
-  | None   -> cottas_ondisk_decode_subject ds id
-
-let cottas_ondisk_decode_predicate_ml
-  (ds : cottas_ondisk_store) (id : cottas_term_ref)
-  : ML wf_iri =
-  match RDF.CottasStore.LazyDictRegistry.get_predicates_lazy
-          ds.cods_handle.coh_path with
-  | Some d ->
-    (match RDF.CottasStore.LazyDict.decode_by_id d id with
-     | Some p -> p
-     | None   -> cottas_ondisk_decode_predicate ds id)
-  | None   -> cottas_ondisk_decode_predicate ds id
-
-let cottas_ondisk_decode_object_ml
-  (ds : cottas_ondisk_store) (id : cottas_term_ref)
-  : ML rdf_term =
-  match RDF.CottasStore.LazyDictRegistry.get_objects_lazy
-          ds.cods_handle.coh_path with
-  | Some d ->
-    (match RDF.CottasStore.LazyDict.decode_by_id d id with
-     | Some o -> o
-     | None   -> cottas_ondisk_decode_object ds id)
-  | None   -> cottas_ondisk_decode_object ds id
+// The `_ml` encode/decode variants (opt-in LazyDictRegistry-backed
+// fast path, opposite the revmap_lookup-based Tot primitives just
+// removed above) were REMOVED in the same 2026-07-19 commit — same
+// zero-live-caller audit; their only callers were each other's Tot
+// fallback (also gone) and the by-then-dead
+// `cottas_ondisk_build_bound_qp_opt`.
 
 // ----------------------------------------------------------------------
 // Phase B: search + estimate, lazy walk over parquet row groups.
@@ -1880,76 +1748,14 @@ let cottas_ondisk_has_decode_failure (h : cottas_ondisk_handle) : bool =
 
 // ---- Public search / estimate --------------------------------------
 
-// Phase 2.5e (issue #118): use the global-cache walks. Page cache state
-// is now held in OCaml (`pcache_global_ref`); F* owns the search
-// algorithm and the LRU semantics, OCaml provides the cross-call
-// storage cell. Removes the rule-#11 violation where the OCaml runtime
-// patch substituted this body with a dispatch to
-// `Cottas_ondisk_runtime.search_fast`. Token→id resolution flows
-// through `ondisk_lookup_*_id_global` (Phase 2.7-mini) which honours
-// Bet7's lazy populate.
-//
-// 2026-07-06 follow-up (selective-column SEARCH, see
-// `cottas_qp_row_tok`'s banner comment): OUTPUT construction — the
-// walks return `cottas_qp_row_tok` (raw strings) via the tok-shaped
-// walk family instead of `cottas_qp_row` (ids via `build_qp_row`), so a
-// MATCHED row's subject/predicate/object never needs the corpus-wide
-// `ondisk_lookup_*_id_global` round-trip at all.
-//
-// This function's own BOUND-side resolution (`bound_s`/`bound_p`/
-// `bound_o`/`bound_g` below, via `id_to_raw_token_via_global`/Bet7) is
-// kept AS-IS for callers that still hold an id-based `cottas_bound_qp`
-// (built by `cottas_ondisk_build_bound_qp_opt`) — no live caller remains
-// after this same-day follow-up (see `cottas_ondisk_search_tok` right
-// below), but the id-based path is left in place rather than deleted,
-// same precedent as `filter_zipped_rows`/`build_qp_row` above ("legacy,
-// no in-tree callers, kept for compat"). New/updated call sites should
-// use `cottas_ondisk_search_tok`, which takes a `cottas_bound_qp_tok`
-// (raw token strings, built by direct term serialization — no id, no
-// corpus-wide dictionary, no `experimental_ocaml_glue` involvement) and
-// skips this function's `id_to_raw_token_via_global` calls entirely.
-// See `bound_subject_to_token`'s banner comment above for why that
-// round-trip existed and what it cost; and
-// docs/designissues/2026-07-06-competitive-benchmark-results.md §8 for
-// the profiling that identified this as the surviving residual after
-// the OUTPUT-side fix.
-let cottas_ondisk_search
-  (ds : cottas_ondisk_store) (bound : cottas_bound_qp)
-  : Tot (list cottas_qp_row_tok) =
-  let h = ds.cods_handle in
-  let bound_s = id_to_raw_token_via_global ondisk_id_to_subj_token_global  h.coh_path bound.cbqp_s in
-  let bound_p = id_to_raw_token_via_global ondisk_id_to_pred_token_global  h.coh_path bound.cbqp_p in
-  let bound_o = id_to_raw_token_via_global ondisk_id_to_obj_token_global   h.coh_path bound.cbqp_o in
-  // issue #267: cbqp_g is now a 3-way cottas_graph_bound (Unbound /
-  // Default / Named), not a plain option; graph_bound_to_raw_token
-  // resolves CGB_Default to the literal "DEFAULT" sentinel token
-  // instead of leaving the graph column unconstrained.
-  let bound_g = graph_bound_to_raw_token h.coh_path bound.cbqp_g in
-  match probe_parquet_row_group_count h.coh_path with
-  | None -> []
-  | Some rg_count ->
-    // Issue #98/Mim3 follow-up (2026-07-05): build the row-group-offset
-    // table ONCE per query and thread it through the planner + walks.
-    let table = probe_parquet_row_group_offset_table h.coh_path in
-    // Phase D: column-prune planner. If any column-bound is present,
-    // compute the candidate-rgs via per-rg dict probes; else full walk.
-    let any_bound_present =
-      Some? bound_s || Some? bound_p || Some? bound_o || Some? bound_g in
-    if any_bound_present then
-      let (candidates0, _dc) = plan_candidate_rgs h table
-        bound_s bound_p bound_o bound_g rg_count in
-      // Phase 2.6: AND-compose with compound (p,o) bitmap when both bound.
-      let candidates = filter_candidates_by_compound_po
-        h.coh_path candidates0 bound_p bound_o in
-      let acc_rev = walk_candidate_rgs_search_tok_global h.coh_path table
-        bound_s bound_p bound_o bound_g
-        candidates [] in
-      list_rev acc_rev
-    else
-      let acc_rev = walk_row_groups_search_tok_global h.coh_path table
-        bound_s bound_p bound_o bound_g
-        0 rg_count rg_count [] in
-      list_rev acc_rev
+// `cottas_ondisk_search` (id-based: took a `cottas_bound_qp` built via
+// `cottas_ondisk_build_bound_qp_opt`, resolved ids to tokens itself via
+// `id_to_raw_token_via_global`/Bet7) was REMOVED 2026-07-19 (same
+// boundary-audit Step A continuation as the encode/decode primitives
+// above). Zero live callers: production search goes entirely through
+// `cottas_ondisk_search_tok` right below, which takes an
+// already-token-shaped `cottas_bound_qp_tok` and skips the id round
+// trip this function existed to perform.
 
 // ----------------------------------------------------------------------
 // BOUND-side selectivity (2026-07-06 follow-up to the SEARCH-selectivity
@@ -2678,103 +2484,12 @@ let cottas_ondisk_search_limited_tok
         0 rg_count rg_count [] 0 limit in
       list_rev acc_rev
 
-let cottas_ondisk_estimate
-  (ds : cottas_ondisk_store) (bound : cottas_bound_qp)
-  : Tot nat =
-  let h = ds.cods_handle in
-  let bound_s = id_to_raw_token_via_global ondisk_id_to_subj_token_global  h.coh_path bound.cbqp_s in
-  let bound_p = id_to_raw_token_via_global ondisk_id_to_pred_token_global  h.coh_path bound.cbqp_p in
-  let bound_o = id_to_raw_token_via_global ondisk_id_to_obj_token_global   h.coh_path bound.cbqp_o in
-  // issue #267: cbqp_g is now a 3-way cottas_graph_bound (Unbound /
-  // Default / Named), not a plain option; graph_bound_to_raw_token
-  // resolves CGB_Default to the literal "DEFAULT" sentinel token
-  // instead of leaving the graph column unconstrained.
-  let bound_g = graph_bound_to_raw_token h.coh_path bound.cbqp_g in
-  let any_bound_present =
-    Some? bound_s || Some? bound_p || Some? bound_o || Some? bound_g in
-  // issue #267 interaction: post-fix, every GB_CottasOnDisk backend
-  // (default-graph OR named-graph) resolves cbqp_g to CGB_Default or
-  // CGB_Named, so `bound_g` above is `Some _` for EVERY on-disk query,
-  // never plain `None` — `any_bound_present` is therefore always true
-  // for a real GB_CottasOnDisk call, and the whole-store `num_rows`
-  // shortcut just below is reachable only via the dead in-memory
-  // GB_COTTAS path's CGB_Unbound (see cottas_build_bound_qp in
-  // Parser.BallyhooCOTTAS.fst — no live constructor builds that path
-  // today). Concretely: `backend_estimate` on the default-graph backend
-  // now always takes the bounds-present branch below, which is correct
-  // — the pre-#267 shortcut would have returned the WHOLE STORE's
-  // row count for a default-graph-only estimate, over-counting by
-  // every named graph's rows.
-  if not any_bound_present then
-    // Aleph6 (issue #100, demo prep): unbound COUNT(*) fast path.
-    // The total row count is encoded in the parquet metadata's
-    // FileMetaData.num_rows field; reading it doesn't require decoding
-    // any data pages. For parliament's 3.1M-row corpus this is
-    // microseconds vs minutes for the per-row-group walk.
-    //
-    // Bounds-present queries still walk row groups: the bound determines
-    // which rows match, and the parquet metadata's per-rg row counts
-    // don't tell us that.
-    (match probe_parquet_num_rows h.coh_path with
-     | Some n -> n
-     | None ->
-       // Fallback: shouldn't reach here for well-formed parquet files.
-       // If the metadata read fails, do a row-group walk to be safe.
-       (match probe_parquet_row_group_count h.coh_path with
-        | None -> 0
-        | Some rg_count ->
-          // Phase 2.5e: global-cache walk; F* owns algorithm, OCaml
-          // provides cross-call cache cell.
-          let table = probe_parquet_row_group_offset_table h.coh_path in
-          walk_row_groups_estimate_global h table
-            bound_s bound_p bound_o bound_g
-            0 rg_count rg_count 0))
-  else
-    // Mem5 (issue #100, demo prep): presence-bitmap fast path for the
-    // BGP join-order optimiser. Compute candidate row-groups from the
-    // per-rg dictionary pages (cheap — `plan_candidate_rgs` reads only
-    // dict pages, never decodes data pages). Then approximate the
-    // estimate as `length(candidates) * avg_rows_per_rg`, where
-    // avg_rows_per_rg is read from the parquet footer (no I/O cost).
-    //
-    // This is an APPROXIMATION — the true count requires data-page
-    // decode and the slow filter walk that this used to do. The
-    // optimiser only needs ordinal cardinality (off-by-2x is fine,
-    // off-by-100x wastes plan budget but doesn't change results), so
-    // the approximation is acceptable. Empty candidates correctly
-    // returns 0 (early-out for definitively-empty patterns). For the
-    // exact count, callers should issue an actual COUNT(*) query.
-    //
-    // Replaces the previous walk_candidate_rgs_estimate path which
-    // decoded all 4 columns of every candidate rg and counted matching
-    // rows — minutes for a 3.1M-row corpus, microseconds with this.
-    match probe_parquet_row_group_count h.coh_path with
-    | None -> 0
-    | Some rg_count ->
-      // Issue #98/Mim3 follow-up: per-query row-group-offset table.
-      let table = probe_parquet_row_group_offset_table h.coh_path in
-      let (candidates0, _dc) = plan_candidate_rgs h table
-        bound_s bound_p bound_o bound_g rg_count in
-      // Phase 2.6: compound (p,o) prune for the estimator too.
-      let candidates = filter_candidates_by_compound_po
-        h.coh_path candidates0 bound_p bound_o in
-      let n_candidates : nat = List.Tot.length candidates in
-      if n_candidates = 0 then 0
-      else if rg_count = 0 then 0
-      else
-        (match probe_parquet_num_rows h.coh_path with
-         | None -> n_candidates  // fallback: at least 1 row per candidate rg
-         | Some total_rows ->
-           // avg_rows_per_rg = total_rows / rg_count (truncating).
-           // estimate = n_candidates * avg_rows_per_rg.
-           let avg : nat = total_rows / rg_count in
-           // Clamp for the F* subtyping checker: `nat * nat = int` in
-           // Prims, so an explicit non-negative check is needed to
-           // give the function its declared `Tot nat` return type.
-           let prod : int = n_candidates `op_Multiply` avg in
-           if prod < 0 then 0 else prod)
+// `cottas_ondisk_estimate` (id-based sibling of `cottas_ondisk_search`,
+// same `cottas_bound_qp` id-resolution shape) was REMOVED 2026-07-19,
+// same audit/rationale as `cottas_ondisk_search` above — zero live
+// callers, superseded by `cottas_ondisk_estimate_tok` below.
 
-// Tok-shaped sibling of `cottas_ondisk_estimate` — see
+// Tok-shaped sibling of the (removed) id-based `cottas_ondisk_estimate` — see
 // `cottas_ondisk_search_tok`'s banner comment; same Bet7-bypass. Body
 // logic (Aleph6 unbound fast path, Mem5 presence-bitmap approximation)
 // is otherwise identical, just consuming the already-token bound.
@@ -2950,71 +2665,12 @@ let cottas_ondisk_count_exact_via_subject_offset_index
             else None))
   | _, _, _ -> None
 
-// EXACT count — for result-producing callers (the streaming COUNT
-// fast paths in SPARQL11.Store). Contract difference from
-// cottas_ondisk_estimate: never approximates. Unbound: parquet
-// num_rows metadata (exact, free). Graph-only bound: single-column
-// walk over the g column (page-cache-amortised across graphs).
-// General bounds: the full zipped row-group walk.
-let cottas_ondisk_count_exact
-  (ds : cottas_ondisk_store) (bound : cottas_bound_qp)
-  : Tot nat =
-  let h = ds.cods_handle in
-  let bound_s = id_to_raw_token_via_global ondisk_id_to_subj_token_global  h.coh_path bound.cbqp_s in
-  let bound_p = id_to_raw_token_via_global ondisk_id_to_pred_token_global  h.coh_path bound.cbqp_p in
-  let bound_o = id_to_raw_token_via_global ondisk_id_to_obj_token_global   h.coh_path bound.cbqp_o in
-  // issue #267: cbqp_g is now a 3-way cottas_graph_bound (Unbound /
-  // Default / Named), not a plain option; graph_bound_to_raw_token
-  // resolves CGB_Default to the literal "DEFAULT" sentinel token
-  // instead of leaving the graph column unconstrained.
-  let bound_g = graph_bound_to_raw_token h.coh_path bound.cbqp_g in
-  // issue #267 / COUNT(*) fast-path reasoning: `bound_g` is the query
-  // RESULT-relevant graph constraint, and post-fix it is `Some
-  // "DEFAULT"` for the default-graph backend and `Some "<iri>"` for a
-  // named-graph backend — plain `None` only arises from the dead
-  // in-memory GB_COTTAS/CGB_Unbound path (see graph_bound_to_raw_token
-  // above). So the whole-store `num_rows` shortcut immediately below
-  // (all four bounds `None`) is NOT reachable for a real
-  // GB_CottasOnDisk query anymore: `SELECT (COUNT(*) AS ?n) WHERE
-  // { ?s ?p ?o }` against the default graph now has `bound_g = Some
-  // "DEFAULT"`, so it falls into the `else` branch, and since s/p/o
-  // are all unbound there it takes the graph-only
-  // `walk_row_groups_count_graph_global` path — a single-column
-  // (graph column only) walk that counts ONLY rows whose token equals
-  // the bound (`"DEFAULT"` or a specific named-graph IRI). This is
-  // still cheap (one column decode per row group, no s/p/o decode) and
-  // now correct: pre-#267 the unbound branch counted the WHOLE STORE
-  // (every named graph's rows included) whenever COUNT(*) ran with no
-  // other bound, which is exactly the union-default bug issue #267
-  // reports for GROUP BY ?g / whole-graph counts.
-  if None? bound_s && None? bound_p && None? bound_o && None? bound_g then
-    (match probe_parquet_num_rows h.coh_path with
-     | Some n -> n
-     | None ->
-       (match probe_parquet_row_group_count h.coh_path with
-        | None -> 0
-        | Some rg_count ->
-          let table = probe_parquet_row_group_offset_table h.coh_path in
-          walk_row_groups_estimate_global h table
-            bound_s bound_p bound_o bound_g 0 rg_count rg_count 0))
-  else
-    (match probe_parquet_row_group_count h.coh_path with
-     | None -> 0
-     | Some rg_count ->
-       // Issue #98/Mim3 follow-up: per-query row-group-offset table.
-       let table = probe_parquet_row_group_offset_table h.coh_path in
-       if None? bound_s && None? bound_p && None? bound_o then
-         walk_row_groups_count_graph_global h table bound_g 0 rg_count rg_count 0
-       else
-         // Roadmap item 4 (2026-07-06): selective-column walk. Decodes
-         // only the columns whose bound is `Some` (plus the graph
-         // column, always needed for the row count and the graph
-         // filter) instead of unconditionally decoding all four —
-         // see `walk_row_groups_count_exact_global`'s banner comment.
-         walk_row_groups_count_exact_global h table
-           bound_s bound_p bound_o bound_g 0 rg_count rg_count 0)
+// `cottas_ondisk_count_exact` (id-based sibling, same `cottas_bound_qp`
+// id-resolution shape as `cottas_ondisk_search`/`_estimate`) was
+// REMOVED 2026-07-19, same audit/rationale — zero live callers,
+// superseded by `cottas_ondisk_count_exact_tok` below.
 
-// Tok-shaped sibling of `cottas_ondisk_count_exact` — see
+// Tok-shaped sibling of the (removed) id-based `cottas_ondisk_count_exact` — see
 // `cottas_ondisk_search_tok`'s banner comment; same Bet7-bypass, same
 // unbound/graph-only/selective-column branch structure.
 let cottas_ondisk_count_exact_tok
@@ -3068,62 +2724,30 @@ let cottas_ondisk_count_exact_tok
              walk_row_groups_count_exact_global h table
                bound_s bound_p bound_o bound_g 0 rg_count rg_count 0)
 
-// ----------------------------------------------------------------------
-// Bound-pattern + row-to-quad helpers (moved from Parser.BallyhooCOTTAS).
-// These compose the encode/decode primitives and are pure F*.
-// ----------------------------------------------------------------------
-
-// Build a bound query-pattern from a triple-pattern + a graph SCOPE
-// (issue #267 — `scope` replaces the former plain `option iri`, which
-// let the default-graph backend pass `None` through to `cbqp_g` and
-// be read downstream as "no graph constraint" instead of "constrain to
-// DEFAULT-sentinel rows"). Returns None when any bound term (including
-// a COS_NamedGraph IRI absent from this corpus's graph dictionary) is
-// absent from the dictionary, meaning a definitively empty result.
-//
-// 2026-07-06 follow-up: kept for compat (no live caller — see
-// `cottas_ondisk_build_bound_qp_tok`, defined next to
-// `cottas_bound_qp_tok` above, right after `cottas_ondisk_search`).
-// That tok-shaped builder does the SAME job without ever calling
-// `cottas_ondisk_encode_subject`/`_predicate`/`_object` (each an
-// id-in, corpus-wide-dictionary/Bet7 round trip) — it serializes the
-// typed term directly to its token form instead.
-let cottas_ondisk_build_bound_qp_opt
-  (ds : cottas_ondisk_store)
-  (s : option subject) (p : option wf_iri) (o : option rdf_term)
-  (scope : cottas_ondisk_graph_scope)
-  : option cottas_bound_qp =
-  let s' = match s with | None -> Some None | Some sv -> (match cottas_ondisk_encode_subject ds sv with | None -> None | Some r -> Some (Some r)) in
-  let p' = match p with | None -> Some None | Some pv -> (match cottas_ondisk_encode_predicate ds pv with | None -> None | Some r -> Some (Some r)) in
-  let o' = match o with | None -> Some None | Some ov -> (match cottas_ondisk_encode_object ds ov with | None -> None | Some r -> Some (Some r)) in
-  // COS_DefaultOnly always resolves — the DEFAULT sentinel needs no
-  // dictionary lookup (graph_bound_to_raw_token maps CGB_Default
-  // straight to the literal token "DEFAULT"). COS_NamedGraph resolves
-  // via the graph-name dictionary exactly as the old `Some iri` branch
-  // did; an unknown graph IRI still makes the whole bound — and
-  // therefore the query — definitively empty.
-  let g' : option cottas_graph_bound =
-    match scope with
-    | COS_DefaultOnly -> Some CGB_Default
-    | COS_NamedGraph gv ->
-      (match cottas_ondisk_encode_graph_name ds gv with
-       | None -> None
-       | Some r -> Some (CGB_Named r)) in
-  match s', p', o', g' with
-  | Some sb, Some pb, Some ob, Some gb ->
-    Some { cbqp_s = sb; cbqp_p = pb; cbqp_o = ob; cbqp_g = gb }
-  | _ -> None
-
-// The id-based row->quad / rows->quads / rows->triples decode chain
+// Bound-pattern + row-to-quad helpers (moved from Parser.BallyhooCOTTAS)
+// — id-based row->quad / rows->quads / rows->triples decode chain
 // (cottas_ondisk_row_to_quad + the two tail-rec accumulator pairs) was
-// REMOVED 2026-07-19. The production COTTAS search path is entirely
-// token-based (cottas_ondisk_row_tok_to_quad + the *_tok search/estimate/
-// count entry points wired through RDF.Store.Capabilities.Cottas); an
-// exhaustive audit (across every .fst, extracted .ml, bin/, tests/, and
-// experimental_ocaml_glue/*.sh) found these id-based functions had ZERO
-// live callers. This retires the id-based half of the #254 Bet7 / #118
-// COTTAS dead code (boundary-audit "Step A" — pure subtraction, no effect
-// change, no perf path touched). The token-based sibling follows.
+// REMOVED 2026-07-19. `cottas_ondisk_build_bound_qp_opt` (the id-based
+// bound-pattern builder that composed the encode/decode primitives
+// removed above it in this same file) was REMOVED in the 2026-07-19
+// Step A continuation: an exhaustive audit (every .fst, extracted
+// .ml, bin/, tests/unit/*.ml, experimental_ocaml_glue/*.sh) found zero
+// live callers. Its own header comment claimed
+// `Parser.BallyhooCOTTAS.fst:165` called it as "the fixed, live
+// path" — that line is a COMMENT reference only (inside the dead
+// in-memory `cottas_build_bound_qp`'s own banner), not an actual
+// function call; grepping `Parser.BallyhooCOTTAS.fst` for the
+// identifier confirms no call site. `cottas_ondisk_build_bound_qp_tok`
+// (defined earlier in this file, next to `cottas_bound_qp_tok`) is the
+// live replacement and was already the sole active builder before this
+// deletion.
+//
+// The production COTTAS search path is entirely token-based
+// (cottas_ondisk_row_tok_to_quad + the *_tok search/estimate/count
+// entry points wired through RDF.Store.Capabilities.Cottas). This
+// retires the id-based half of the #254 Bet7 / #118 COTTAS dead code
+// (boundary-audit "Step A" — pure subtraction, no effect change, no
+// perf path touched). The token-based sibling follows.
 
 // ----------------------------------------------------------------------
 // Tok-shaped siblings (2026-07-06, selective-column SEARCH follow-up):

@@ -29,10 +29,24 @@
 #      `coh_subj_raw_revmap`, `coh_obj_raw_revmap` are also empty.
 #
 #   3. Wraps the `*_fast` lookup functions that depend on
-#      subject/object tables (`encode_subject_fast`, `decode_subject_fast`,
-#      `encode_object_fast`, `decode_object_fast`, `search_fast`,
-#      `estimate_fast`) so they call into `Cottas_ondisk_lazy`'s
+#      subject/object tables so they call into `Cottas_ondisk_lazy`'s
 #      "ensure populated" hook before doing the actual lookup.
+#
+#      2026-07-19 (boundary-audit Step A continuation, #254/#118): the
+#      `encode_subject_fast`/`decode_subject_fast`/`encode_object_fast`/
+#      `decode_object_fast` wiring blocks were REMOVED — the F* functions
+#      that used to route to them (`cottas_ondisk_encode_subject`,
+#      `cottas_ondisk_decode_subject`, `cottas_ondisk_encode_object`,
+#      `cottas_ondisk_decode_object`) were deleted from
+#      RDF.CottasStore.fst in the same commit (zero live callers), and
+#      their `cottas_ondisk_runtime.sh` shim-table entries went with
+#      them. The predicate/graph half of this patch (`predicate_present_
+#      fast`, `ensure_predicates_loaded`, `ensure_graphs_loaded`) is
+#      UNTOUCHED — that is the live Bet7 Step B path, out of scope here.
+#      (`search_fast`/`estimate_fast` were already retired by an earlier
+#      commit — see `cottas_ondisk_runtime.sh`'s issue #118/#110 notes —
+#      so their wiring blocks below were already inert no-ops before
+#      this change; left as-is, also out of scope.)
 #
 # Rule #15 conformance: this is unverified glue + memory layout.
 # No RDF/SPARQL semantic decisions: tokens, matching, output shapes
@@ -300,54 +314,16 @@ content = content.replace(load_handle_anchor,
 # ---- Step 4: Patch the *_fast lookup functions that need subjects or
 # objects to call the populator first. We add a single
 # `ensure_*_loaded h tables;` line at the top of each function body.
-
-# encode_subject_fast: needs subjects
-old_encsub = '''  let encode_subject_fast (h : cottas_ondisk_handle) (s : RDF_Graph_Executable.subject)
-    : Prims.nat FStar_Pervasives_Native.option =
-    let tables = tables_for h in
-    let key = match s with'''
-new_encsub = '''  let encode_subject_fast (h : cottas_ondisk_handle) (s : RDF_Graph_Executable.subject)
-    : Prims.nat FStar_Pervasives_Native.option =
-    let tables = tables_for h in
-    ensure_subjects_loaded h tables;
-    let key = match s with'''
-content = content.replace(old_encsub, new_encsub, 1)
-
-# decode_subject_fast: needs subjects
-old_decsub = '''  let decode_subject_fast (h : cottas_ondisk_handle) (id : Prims.nat)
-    : RDF_Graph_Executable.subject =
-    let tables = tables_for h in
-    match Hashtbl.find_opt tables.ft_id_to_subject (Z.to_int id) with'''
-new_decsub = '''  let decode_subject_fast (h : cottas_ondisk_handle) (id : Prims.nat)
-    : RDF_Graph_Executable.subject =
-    let tables = tables_for h in
-    ensure_subjects_loaded h tables;
-    match Hashtbl.find_opt tables.ft_id_to_subject (Z.to_int id) with'''
-content = content.replace(old_decsub, new_decsub, 1)
-
-# encode_object_fast: needs objects (for non-literal cases that hit
-# ft_obj_tok_to_id; the literal path goes via revmap_lookup which is
-# slow but separate).
-old_encobj = '''  let encode_object_fast (h : cottas_ondisk_handle) (o : RDF_Graph_Executable.rdf_term)
-    : Prims.nat FStar_Pervasives_Native.option =
-    let tables = tables_for h in'''
-new_encobj = '''  let encode_object_fast (h : cottas_ondisk_handle) (o : RDF_Graph_Executable.rdf_term)
-    : Prims.nat FStar_Pervasives_Native.option =
-    let tables = tables_for h in
-    ensure_objects_loaded h tables;'''
-content = content.replace(old_encobj, new_encobj, 1)
-
-# decode_object_fast: needs objects
-old_decobj = '''  let decode_object_fast (h : cottas_ondisk_handle) (id : Prims.nat)
-    : RDF_Graph_Executable.rdf_term =
-    let tables = tables_for h in
-    match Hashtbl.find_opt tables.ft_id_to_object (Z.to_int id) with'''
-new_decobj = '''  let decode_object_fast (h : cottas_ondisk_handle) (id : Prims.nat)
-    : RDF_Graph_Executable.rdf_term =
-    let tables = tables_for h in
-    ensure_objects_loaded h tables;
-    match Hashtbl.find_opt tables.ft_id_to_object (Z.to_int id) with'''
-content = content.replace(old_decobj, new_decobj, 1)
+#
+# 2026-07-19: the encode_subject_fast/decode_subject_fast/
+# encode_object_fast/decode_object_fast wiring blocks that used to sit
+# here were REMOVED (boundary-audit Step A continuation, #254/#118) —
+# the F* functions they served (cottas_ondisk_encode_subject/
+# decode_subject/encode_object/decode_object) were deleted from
+# RDF.CottasStore.fst in the same commit, zero live callers. The
+# predicate/graph wiring below (encode_predicate_fast/decode_predicate_
+# fast/predicate_present_fast/encode_graph_fast/decode_graph_fast) is
+# unchanged and out of scope for this deletion.
 
 # encode_predicate_fast: needs predicates
 old_encpred = '''  let encode_predicate_fast (h : cottas_ondisk_handle) (p : RDF_Graph_Executable.wf_iri)
