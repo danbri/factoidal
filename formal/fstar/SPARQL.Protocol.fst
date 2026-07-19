@@ -1280,3 +1280,243 @@ let protocol_self_tests () : unit =
       ()
     end
   else ()
+
+
+// ========================================================================
+// Part 14: Test-manifest request/response extraction (rule #4/#11)
+//
+// Migrated from bin/w3c-runner/w3c_runner.ml's hand-written OCaml
+// `_proto_extract_request` / `_proto_extract_status_class` /
+// `_proto_header` (rule #4: "parsers belong in F-star"; rule #11: the
+// OCaml boundary is assume-val realisations only). This is pure
+// markdown/HTTP text scraping over an rdfs:comment cell in a SPARQL
+// Protocol W3C manifest, reusing this module's existing split/trim
+// helpers so the behaviour matches `decode_request`'s parsing
+// conventions. Reusable by a future bin/factoidal-http request-line
+// parser too, not just the test harness.
+// ========================================================================
+
+#push-options "--z3rlimit 50 --fuel 2 --ifuel 2"
+
+// A decoded test-manifest HTTP request block:
+//
+//     #### Request
+//
+//         POST /sparql/ HTTP/1.1
+//         Host: www.example
+//         Content-Type: application/x-www-form-urlencoded
+//
+//         query=ASK%20%7B%7D
+//
+// pr_path/pr_qs are the request target split at the first '?'; headers
+// are lowercased-key "Key: Value" lines; pr_body is the remaining
+// indentation-stripped, blank-trimmed text.
+type proto_request = {
+  pr_method  : string;
+  pr_path    : string;       // path only, no query string
+  pr_qs      : string;       // query string, no leading '?'
+  pr_headers : list (string & string);  // lowercased keys
+  pr_body    : string;
+}
+
+// Expected status class, read out of the manifest's "#### Response"
+// block. Order matters: a block can legitimately mention "2xx" prose
+// alongside a "4xx" example, so 4xx/5xx are checked before 2xx/3xx.
+type proto_status_class =
+  | S_2or3
+  | S_4xx
+  | S_5xx
+  | S_Unknown
+
+// Drop up to 4 leading spaces or one leading tab. Mirrors
+// `_proto_extract_request`'s `strip_indent`: a tab always stops the
+// scan immediately (even before 4 spaces are used up); a non-blank,
+// non-tab character stops the scan without being consumed.
+let rec proto_indent_budget
+    (cs : list FStar.Char.char)
+    (budget : nat)
+  : Tot nat (decreases budget) =
+  if budget = 0 then 0
+  else match cs with
+       | [] -> 0
+       | c :: rest ->
+         let code = char_code c in
+         if code = 0x20 (* space *) then
+           1 + proto_indent_budget rest (budget - 1)
+         else if code = 0x09 (* tab *) then 1
+         else 0
+
+let rec proto_drop_n_chars
+    (n : nat)
+    (cs : list FStar.Char.char)
+  : Tot (list FStar.Char.char) (decreases n) =
+  if n = 0 then cs
+  else match cs with
+       | [] -> []
+       | _ :: rest -> proto_drop_n_chars (n - 1) rest
+
+let proto_strip_indent (s : string) : string =
+  let cs = String.list_of_string s in
+  let drop = proto_indent_budget cs 4 in
+  String.string_of_list (proto_drop_n_chars drop cs)
+
+let proto_is_blank_line (s : string) : bool =
+  String.length (trim_ws s) = 0
+
+let proto_is_indented_line (s : string) : bool =
+  match String.list_of_string s with
+  | [] -> false
+  | c :: _ -> let code = char_code c in code = 0x20 || code = 0x09
+
+// Find the first "#### Request" heading line; return the lines after it.
+let rec proto_find_req_header (lines : list string)
+  : Tot (option (list string)) (decreases (List.Tot.length lines)) =
+  match lines with
+  | [] -> None
+  | line :: rest ->
+    if trim_ws line = "#### Request" then Some rest
+    else proto_find_req_header rest
+
+let rec proto_skip_blank_lines (lines : list string)
+  : Tot (list string) (decreases (List.Tot.length lines)) =
+  match lines with
+  | [] -> []
+  | line :: rest ->
+    if proto_is_blank_line line then proto_skip_blank_lines rest else lines
+
+// Read lines while indented-or-blank; return (taken, remainder).
+let rec proto_take_indented (lines : list string)
+  : Tot (list string & list string) (decreases (List.Tot.length lines)) =
+  match lines with
+  | [] -> ([], [])
+  | line :: rest ->
+    if proto_is_indented_line line || proto_is_blank_line line then
+      let (taken, remaining) = proto_take_indented rest in
+      (line :: taken, remaining)
+    else ([], lines)
+
+// Drop only a *trailing* run of blank lines (blanks in the interior
+// are kept). Structural recursion on the tail avoids needing a
+// List.Tot.rev-length lemma.
+let rec proto_rtrim_blanks (lines : list string)
+  : Tot (list string) (decreases (List.Tot.length lines)) =
+  match lines with
+  | [] -> []
+  | x :: rest ->
+    (match proto_rtrim_blanks rest with
+     | [] -> if proto_is_blank_line x then [] else [x]
+     | rest' -> x :: rest')
+
+// Drop leading already-stripped-to-empty lines.
+let rec proto_ltrim_blanks (lines : list string)
+  : Tot (list string) (decreases (List.Tot.length lines)) =
+  match lines with
+  | "" :: rest -> proto_ltrim_blanks rest
+  | xs -> xs
+
+// Read "Key: Value" lines (first ':' splits key/value; key lowercased
+// and trimmed, value trimmed) until a blank line or a line with no
+// ':'. Returns (headers, remaining body lines).
+let rec proto_read_headers (lines : list string)
+  : Tot (list (string & string) & list string)
+        (decreases (List.Tot.length lines)) =
+  match lines with
+  | [] -> ([], [])
+  | "" :: rest -> ([], rest)
+  | line :: rest ->
+    (match split_once_on line (FStar.Char.char_of_int 0x3A (* : *)) with
+     | (_, None) -> ([], line :: rest)
+     | (before, Some after) ->
+       let k = ascii_lower_string (trim_ws before) in
+       let v = trim_ws after in
+       let (hdrs, body_lines) = proto_read_headers rest in
+       ((k, v) :: hdrs, body_lines))
+
+// Extract the first "#### Request" block's request-line, headers, and
+// body. Mirrors `_proto_extract_request` in bin/w3c-runner/w3c_runner.ml.
+let extract_request (comment : string) : option proto_request =
+  let lines = split_all_on comment (FStar.Char.char_of_int 0x0A (* \n *)) in
+  match proto_find_req_header lines with
+  | None -> None
+  | Some after_hdr ->
+    let after_skip = proto_skip_blank_lines after_hdr in
+    let (block_lines, _) = proto_take_indented after_skip in
+    let block_lines = proto_rtrim_blanks block_lines in
+    let stripped =
+      List.Tot.map
+        (fun l -> if proto_is_blank_line l then "" else proto_strip_indent l)
+        block_lines in
+    (match proto_ltrim_blanks stripped with
+     | [] -> None
+     | req_line :: rest ->
+       // Request-line shapes: "POST /sparql/ HTTP/1.1" (3 tokens) or
+       // "GET /sparql?query=ASK..." (2 tokens); first token is always
+       // the method.
+       let tokens =
+         split_all_on (trim_ws req_line) (FStar.Char.char_of_int 0x20) in
+       (match tokens with
+        | mthd :: target :: _ ->
+          let (path, qs) =
+            match split_once_on target (FStar.Char.char_of_int 0x3F (* ? *)) with
+            | (p, None)   -> (p, "")
+            | (p, Some q) -> (p, q) in
+          let (headers, body_lines) = proto_read_headers rest in
+          let body = trim_ws (String.concat "\n" body_lines) in
+          Some ({ pr_method = mthd; pr_path = path; pr_qs = qs;
+                  pr_headers = headers; pr_body = body })
+        | _ -> None))
+
+// Find the lines after the first "#### Response" heading.
+let rec proto_find_resp_lines (lines : list string)
+  : Tot (list string) (decreases (List.Tot.length lines)) =
+  match lines with
+  | [] -> []
+  | line :: rest ->
+    if trim_ws line = "#### Response" then rest
+    else proto_find_resp_lines rest
+
+// Does `haystack` contain `needle` as a contiguous substring anywhere?
+let rec proto_contains_from
+    (needle : list FStar.Char.char)
+    (haystack : list FStar.Char.char)
+  : Tot bool (decreases (List.Tot.length haystack)) =
+  if list_chars_starts_with needle haystack then true
+  else match haystack with
+       | [] -> false
+       | _ :: rest -> proto_contains_from needle rest
+
+let proto_str_contains (haystack : string) (needle : string) : bool =
+  proto_contains_from (String.list_of_string needle)
+                      (String.list_of_string haystack)
+
+// Classify the expected response status out of the first "#### Response"
+// block. Mirrors `_proto_extract_status_class`: 4xx is checked before
+// 5xx before 2xx/3xx, since a block may mention several loosely.
+let extract_status_class (comment : string) : proto_status_class =
+  let lines = split_all_on comment (FStar.Char.char_of_int 0x0A (* \n *)) in
+  let body = proto_find_resp_lines lines in
+  let body_text = String.concat "\n" body in
+  if proto_str_contains body_text "4xx" || proto_str_contains body_text "4XX"
+  then S_4xx
+  else if proto_str_contains body_text "5xx" || proto_str_contains body_text "5XX"
+  then S_5xx
+  else if proto_str_contains body_text "2xx" || proto_str_contains body_text "3xx"
+       || proto_str_contains body_text "2XX" || proto_str_contains body_text "3XX"
+  then S_2or3
+  else S_Unknown
+
+// Case-insensitive header lookup (headers already carry lowercased
+// keys from `extract_request`; the query key is lowercased here too).
+// Returns "" if absent — mirrors `_proto_header`.
+let rec proto_assoc_ci
+    (key_lo : string)
+    (hdrs : list (string & string))
+  : Tot string (decreases (List.Tot.length hdrs)) =
+  match hdrs with
+  | [] -> ""
+  | (k, v) :: rest -> if k = key_lo then v else proto_assoc_ci key_lo rest
+
+let proto_header (hdrs : list (string & string)) (key : string) : string =
+  proto_assoc_ci (ascii_lower_string key) hdrs
+
+#pop-options
