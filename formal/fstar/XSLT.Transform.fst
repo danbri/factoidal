@@ -890,6 +890,76 @@ let expand_avt (ctx:xctx_item) (pos size:nat) (vars) (nsctx:list (string & strin
   if contains_char '{' s then expand_avt_chars ctx pos size vars nsctx cs (List.Tot.length cs + 1)
   else s
 
+// Document-node-aware AVT expansion. `expand_avt` above evaluates every
+// {expr} through `eval_string`, which calls `eval_val` directly against
+// whatever xctx_item it is given -- exact for a real element/text/attr
+// context, but WRONG when the driver node is the document node (D_Doc):
+// `dnode_ci` presents a D_Doc as `CI_Elem [] [] root` (its root element)
+// so that "." and absolute paths behave, but a bare RELATIVE multi-step
+// path like `docs/a` then resolves as a child of the ROOT ELEMENT itself
+// instead of a child of the document node -- exactly the mismatch
+// `eval_val_dn`'s `force_abs` exists to correct for xsl:value-of/select/
+// test/etc (see the comment above `force_abs`). Every xsl:attribute/@name,
+// xsl:element/@name, xsl:element/@namespace, and literal-result-element
+// attribute AVT was going through the non-force_abs path, so
+// `xsl:attribute name="{docs/a}"` from a match="/" template silently
+// evaluated to "" (Apache-Xalan attribset16). This mirrors expand_avt's
+// char-walking exactly, but evaluates each {expr} through `eval_string_dn`
+// (which does apply force_abs for a D_Doc context) instead of `eval_string`.
+let rec expand_avt_chars_dn (dn:dnode) (pos size:nat) (vars:list (string & xp_value)) (nsctx:list (string & string))
+                            (id_attrs:list (string & string)) (style_root:xml_node) (decfmts:list decimal_format_symbols)
+                            (key_table:list key_entry) (cs:list char) (fuel:nat)
+  : Tot string (decreases fuel) =
+  if fuel = 0 then ""
+  else
+    match cs with
+    | [] -> ""
+    | '{' :: '{' :: rest -> strcat "{" (expand_avt_chars_dn dn pos size vars nsctx id_attrs style_root decfmts key_table rest (fuel - 1))
+    | '}' :: '}' :: rest -> strcat "}" (expand_avt_chars_dn dn pos size vars nsctx id_attrs style_root decfmts key_table rest (fuel - 1))
+    | '{' :: rest ->
+      let (expr_cs, after) = read_until_brace rest [] in
+      let v = eval_string_dn dn pos size vars nsctx id_attrs style_root decfmts key_table (str_of_chars expr_cs) in
+      strcat v (expand_avt_chars_dn dn pos size vars nsctx id_attrs style_root decfmts key_table after (fuel - 1))
+    | c :: rest ->
+      strcat (soc c) (expand_avt_chars_dn dn pos size vars nsctx id_attrs style_root decfmts key_table rest (fuel - 1))
+
+let expand_avt_dn (dn:dnode) (pos size:nat) (vars:list (string & xp_value)) (nsctx:list (string & string))
+                  (id_attrs:list (string & string)) (style_root:xml_node) (decfmts:list decimal_format_symbols)
+                  (key_table:list key_entry) (s:string) : string =
+  let cs = chars_of s in
+  if contains_char '{' s then expand_avt_chars_dn dn pos size vars nsctx id_attrs style_root decfmts key_table cs (List.Tot.length cs + 1)
+  else s
+
+// Reverse lookup: the first prefix in the stylesheet's in-scope namespace
+// context (`xs_nsctx`) bound to the given URI, skipping the default ("")
+// prefix -- an attribute with no prefix has NO namespace in XML, so
+// reusing a default-namespace binding for a namespaced xsl:attribute
+// would silently drop the namespace again (XSLT 1.0 section 7.1.3: the
+// created attribute's prefix must come from an actual namespace node,
+// and only a non-default one qualifies an attribute).
+let rec lookup_pfx_for_uri (scope:list (string & string)) (uri:string) : Tot (option string) (decreases scope) =
+  match scope with
+  | [] -> None
+  | (p, u) :: rest -> if p <> "" && u = uri then Some p else lookup_pfx_for_uri rest uri
+
+// Synthesize a fresh "nsK" prefix (K = 0, 1, 2, ...) not already bound in
+// the stylesheet's in-scope namespace context -- XSLT 1.0 section 7.1.3's
+// "the processor may use any convenient prefix" case for xsl:attribute/
+// @namespace when no in-scope namespace node already names the URI
+// (Apache-Xalan attribset16's synthetic `ns0`). Bounded by a fixed fuel
+// (any real stylesheet's namespace table is tiny); past the fuel bound
+// this degrades to reusing the last-tried candidate rather than looping.
+let rec gen_ns_prefix_at (scope:list (string & string)) (n:nat) (fuel:nat) : Tot string (decreases fuel) =
+  let candidate = strcat "ns" (string_of_int n) in
+  if fuel = 0 then candidate
+  else
+    match lookup_nsctx scope candidate with
+    | None -> candidate
+    | Some _ -> gen_ns_prefix_at scope (n + 1) (fuel - 1)
+
+let gen_ns_prefix (scope:list (string & string)) : string =
+  gen_ns_prefix_at scope 0 64
+
 (* ================================================================ *)
 (* Pattern matching (slice 1, hard-coded forms).                       *)
 (*                                                                     *)
@@ -2653,7 +2723,7 @@ and instantiate_one (fuel:nat) (st:xstyle) (ctx:dnode) (pos size:nat)
               (parse_qname_list (attr_or "use-attribute-sets" "" attrs)) in
           instantiate_copy (fuel - 1) st ctx pos size vars rtf cur_mode cur_prec use_attrs children
         else if ln = "element" then
-          let nm = expand_avt (dnode_ci ctx) pos size vars st.xs_nsctx (attr_or "name" "" attrs) in
+          let nm = expand_avt_dn ctx pos size vars st.xs_nsctx st.xs_id_attrs st.xs_style_root st.xs_decfmts st.xs_key_table (attr_or "name" "" attrs) in
           let epfx = name_prefix nm in
           // xsl:element namespace (XSLT 1.0 §7.1.2, namespace-4501). With
           // an explicit namespace= AVT the element goes into that URI; with
@@ -2665,7 +2735,7 @@ and instantiate_one (fuel:nat) (st:xstyle) (ctx:dnode) (pos size:nat)
           let nsdecls : list xml_attribute =
             (match attr_opt "namespace" attrs with
              | Some nsraw ->
-               let u = expand_avt (dnode_ci ctx) pos size vars st.xs_nsctx nsraw in
+               let u = expand_avt_dn ctx pos size vars st.xs_nsctx st.xs_id_attrs st.xs_style_root st.xs_decfmts st.xs_key_table nsraw in
                if epfx = "" then [ { attr_name = "xmlns"; attr_value = u } ]
                else if u = "" then []
                else [ { attr_name = strcat "xmlns:" epfx; attr_value = u } ]
@@ -2684,9 +2754,36 @@ and instantiate_one (fuel:nat) (st:xstyle) (ctx:dnode) (pos size:nat)
           let body = instantiate_seq (fuel - 1) st ctx pos size vars rtf cur_mode cur_prec children in
           [R_Node (build_element nm (List.Tot.append use_attrs nsdecls) body)]
         else if ln = "attribute" then
-          let nm = expand_avt (dnode_ci ctx) pos size vars st.xs_nsctx (attr_or "name" "" attrs) in
+          let raw_nm = expand_avt_dn ctx pos size vars st.xs_nsctx st.xs_id_attrs st.xs_style_root st.xs_decfmts st.xs_key_table (attr_or "name" "" attrs) in
           let body = instantiate_seq (fuel - 1) st ctx pos size vars rtf cur_mode cur_prec children in
-          [R_Attr ({ attr_name = nm; attr_value = rnodes_text body })]
+          // xsl:attribute/@namespace (XSLT 1.0 section 7.1.3). No
+          // `namespace` attribute: the QName from `name` is used as-is
+          // (the pre-existing, unaffected common path). With `namespace`,
+          // its AVT-expanded value is the attribute's namespace URI (any
+          // prefix on `name` is per-spec IGNORED except for the local
+          // part -- "the processor may use any convenient prefix"): empty
+          // means no namespace (bare local name, e.g. Apache-Xalan
+          // attribset16's href=""-derived attribute); otherwise reuse a
+          // prefix already bound to that URI in the stylesheet's in-scope
+          // namespaces if one exists (attribset13/14/16's `ped:` reuse),
+          // else synthesize a fresh nsK prefix and emit its xmlns:nsK
+          // declaration alongside the qualified attribute (attribset16's
+          // synthetic `ns0`).
+          (match attr_opt "namespace" attrs with
+           | None -> [R_Attr ({ attr_name = raw_nm; attr_value = rnodes_text body })]
+           | Some nsraw ->
+             let u = expand_avt_dn ctx pos size vars st.xs_nsctx st.xs_id_attrs st.xs_style_root st.xs_decfmts st.xs_key_table nsraw in
+             let loc = local_name_of raw_nm in
+             if u = "" then
+               [R_Attr ({ attr_name = loc; attr_value = rnodes_text body })]
+             else
+               (match lookup_pfx_for_uri st.xs_nsctx u with
+                | Some pfx ->
+                  [R_Attr ({ attr_name = strcat pfx (strcat ":" loc); attr_value = rnodes_text body })]
+                | None ->
+                  let gpfx = gen_ns_prefix st.xs_nsctx in
+                  [ R_Attr ({ attr_name = strcat "xmlns:" gpfx; attr_value = u });
+                    R_Attr ({ attr_name = strcat gpfx (strcat ":" loc); attr_value = rnodes_text body }) ]))
         else if ln = "comment" then
           let body = instantiate_seq (fuel - 1) st ctx pos size vars rtf cur_mode cur_prec children in
           [R_Node (XComment (rnodes_text body))]
@@ -2731,7 +2828,7 @@ and instantiate_one (fuel:nat) (st:xstyle) (ctx:dnode) (pos size:nat)
         let out_attrs =
           List.Tot.map
             (fun (a:xml_attribute) ->
-               { attr_name = a.attr_name; attr_value = expand_avt (dnode_ci ctx) pos size vars st.xs_nsctx a.attr_value })
+               { attr_name = a.attr_name; attr_value = expand_avt_dn ctx pos size vars st.xs_nsctx st.xs_id_attrs st.xs_style_root st.xs_decfmts st.xs_key_table a.attr_value })
             kept in
         let use_attrs =
           expand_attrset_names (fuel - 1) st ctx pos size vars rtf cur_mode cur_prec []
