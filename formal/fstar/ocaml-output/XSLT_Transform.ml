@@ -593,12 +593,27 @@ let eval_string (ctx : XPath_Eval.xctx_item) (pos : Prims.nat)
   XPath_Eval.to_string_val
     (eval_val ctx pos size vars nsctx [] XPath_Eval.xnode_none [] []
        expr_text)
+let eval_string_kv (ctx : XPath_Eval.xctx_item) (pos : Prims.nat)
+  (size : Prims.nat) (vars : (Prims.string * XPath_Eval.xp_value) Prims.list)
+  (nsctx : (Prims.string * Prims.string) Prims.list)
+  (id_attrs : (Prims.string * Prims.string) Prims.list)
+  (style_root : Parser_XML.xml_node)
+  (decfmts : XPath_Eval.decimal_format_symbols Prims.list)
+  (key_table : XPath_Eval.key_entry Prims.list) (expr_text : Prims.string) :
+  Prims.string=
+  XPath_Eval.to_string_val
+    (eval_val ctx pos size vars nsctx id_attrs style_root decfmts key_table
+       expr_text)
 let eval_bool (ctx : XPath_Eval.xctx_item) (pos : Prims.nat)
   (size : Prims.nat) (vars : (Prims.string * XPath_Eval.xp_value) Prims.list)
   (nsctx : (Prims.string * Prims.string) Prims.list)
-  (expr_text : Prims.string) : Prims.bool=
-  match eval_val ctx pos size vars nsctx [] XPath_Eval.xnode_none [] []
-          expr_text
+  (id_attrs : (Prims.string * Prims.string) Prims.list)
+  (style_root : Parser_XML.xml_node)
+  (decfmts : XPath_Eval.decimal_format_symbols Prims.list)
+  (key_table : XPath_Eval.key_entry Prims.list) (expr_text : Prims.string) :
+  Prims.bool=
+  match eval_val ctx pos size vars nsctx id_attrs style_root decfmts
+          key_table expr_text
   with
   | XPath_Eval.XV_Num n ->
       (match XPath_Eval.xn_finite_int (XPath_Eval.xn_round n) with
@@ -627,9 +642,26 @@ let eval_nodeset (ctx : XPath_Eval.xctx_item) (pos : Prims.nat)
 let rec force_abs (e : Parser_XPath.xp_expr) : Parser_XPath.xp_expr=
   match e with
   | Parser_XPath.XE_Path (false, steps) -> Parser_XPath.XE_Path (true, steps)
+  | Parser_XPath.XE_Path (true, steps) -> Parser_XPath.XE_Path (true, steps)
+  | Parser_XPath.XE_FilterPath (primary, preds, steps) ->
+      Parser_XPath.XE_FilterPath ((force_abs primary), preds, steps)
   | Parser_XPath.XE_Union (a, b) ->
       Parser_XPath.XE_Union ((force_abs a), (force_abs b))
+  | Parser_XPath.XE_Or (a, b) ->
+      Parser_XPath.XE_Or ((force_abs a), (force_abs b))
+  | Parser_XPath.XE_And (a, b) ->
+      Parser_XPath.XE_And ((force_abs a), (force_abs b))
+  | Parser_XPath.XE_Compare (op, a, b) ->
+      Parser_XPath.XE_Compare (op, (force_abs a), (force_abs b))
+  | Parser_XPath.XE_Arith (op, a, b) ->
+      Parser_XPath.XE_Arith (op, (force_abs a), (force_abs b))
+  | Parser_XPath.XE_Neg a -> Parser_XPath.XE_Neg (force_abs a)
+  | Parser_XPath.XE_FunCall (name, args) ->
+      Parser_XPath.XE_FunCall (name, (force_abs_list args))
   | uu___ -> e
+and force_abs_list (es : Parser_XPath.xp_expr Prims.list) :
+  Parser_XPath.xp_expr Prims.list=
+  match es with | [] -> [] | h::t -> (force_abs h) :: (force_abs_list t)
 let eval_val_dn (ctx : dnode) (pos : Prims.nat) (size : Prims.nat)
   (vars : (Prims.string * XPath_Eval.xp_value) Prims.list)
   (nsctx : (Prims.string * Prims.string) Prims.list)
@@ -1088,8 +1120,13 @@ let match_proximity (nsctx : (Prims.string * Prims.string) Prims.list)
               Prims.int_zero) matching in
      (((FStar_List_Tot_Base.length before) + Prims.int_one),
        (FStar_List_Tot_Base.length matching)))
-let match_id_pattern (id_attrs : (Prims.string * Prims.string) Prims.list)
-  (nsctx : (Prims.string * Prims.string) Prims.list) (pat : Prims.string)
+let match_expr_pattern
+  (vars : (Prims.string * XPath_Eval.xp_value) Prims.list)
+  (nsctx : (Prims.string * Prims.string) Prims.list)
+  (id_attrs : (Prims.string * Prims.string) Prims.list)
+  (style_root : Parser_XML.xml_node)
+  (decfmts : XPath_Eval.decimal_format_symbols Prims.list)
+  (key_table : XPath_Eval.key_entry Prims.list) (pat : Prims.string)
   (it : XPath_Eval.xctx_item) : Prims.bool=
   match Parser_XPath.parse_xpath pat with
   | FStar_Pervasives_Native.None -> false
@@ -1102,13 +1139,13 @@ let match_id_pattern (id_attrs : (Prims.string * Prims.string) Prims.list)
           XPath_Eval.env_item = (XPath_Eval.CI_Elem ([], [], root));
           XPath_Eval.env_pos = Prims.int_one;
           XPath_Eval.env_size = Prims.int_one;
-          XPath_Eval.env_vars = [];
+          XPath_Eval.env_vars = vars;
           XPath_Eval.env_nsctx = nsctx;
           XPath_Eval.env_doc_kids = [];
           XPath_Eval.env_id_attrs = id_attrs;
-          XPath_Eval.env_style_root = XPath_Eval.xnode_none;
-          XPath_Eval.env_decimal_formats = [];
-          XPath_Eval.env_key_table = []
+          XPath_Eval.env_style_root = style_root;
+          XPath_Eval.env_decimal_formats = decfmts;
+          XPath_Eval.env_key_table = key_table
         } in
       let same_node s =
         match (s, it) with
@@ -1120,14 +1157,21 @@ let match_id_pattern (id_attrs : (Prims.string * Prims.string) Prims.list)
        | XPath_Eval.XV_Nodes items ->
            FStar_List_Tot_Base.existsb same_node items
        | uu___ -> false)
+let is_idkey_pattern (alt : Prims.string) : Prims.bool=
+  let a = trim_str alt in (starts_with "id(" a) || (starts_with "key(" a)
 let alt_matches (vars : (Prims.string * XPath_Eval.xp_value) Prims.list)
   (nsctx : (Prims.string * Prims.string) Prims.list)
-  (id_attrs : (Prims.string * Prims.string) Prims.list) (alt : Prims.string)
+  (id_attrs : (Prims.string * Prims.string) Prims.list)
+  (style_root : Parser_XML.xml_node)
+  (decfmts : XPath_Eval.decimal_format_symbols Prims.list)
+  (key_table : XPath_Eval.key_entry Prims.list) (alt : Prims.string)
   (nd : dnode) : Prims.bool=
-  if starts_with "id(" (trim_str alt)
+  if is_idkey_pattern alt
   then
     match nd with
-    | D_Item it -> match_id_pattern id_attrs nsctx (trim_str alt) it
+    | D_Item it ->
+        match_expr_pattern vars nsctx id_attrs style_root decfmts key_table
+          (trim_str alt) it
     | uu___ -> false
   else
     (let uu___1 = split_predicate alt in
@@ -1142,30 +1186,41 @@ let alt_matches (vars : (Prims.string * XPath_Eval.xp_value) Prims.list)
                 (match nd with
                  | D_Doc (uu___3, uu___4) ->
                      eval_bool (dnode_ci nd) Prims.int_one Prims.int_one vars
-                       nsctx pred
+                       nsctx id_attrs style_root decfmts key_table pred
                  | D_Item it ->
                      let uu___3 = match_proximity nsctx namepart it in
                      (match uu___3 with
-                      | (p, s) -> eval_bool it p s vars nsctx pred))))
+                      | (p, s) ->
+                          eval_bool it p s vars nsctx id_attrs style_root
+                            decfmts key_table pred))))
 let rec any_alt_matches
   (vars : (Prims.string * XPath_Eval.xp_value) Prims.list)
   (nsctx : (Prims.string * Prims.string) Prims.list)
   (id_attrs : (Prims.string * Prims.string) Prims.list)
+  (style_root : Parser_XML.xml_node)
+  (decfmts : XPath_Eval.decimal_format_symbols Prims.list)
+  (key_table : XPath_Eval.key_entry Prims.list)
   (alts : Prims.string Prims.list) (nd : dnode) : Prims.bool=
   match alts with
   | [] -> false
   | a::rest ->
-      if alt_matches vars nsctx id_attrs a nd
+      if alt_matches vars nsctx id_attrs style_root decfmts key_table a nd
       then true
-      else any_alt_matches vars nsctx id_attrs rest nd
+      else
+        any_alt_matches vars nsctx id_attrs style_root decfmts key_table rest
+          nd
 let template_matches (vars : (Prims.string * XPath_Eval.xp_value) Prims.list)
   (nsctx : (Prims.string * Prims.string) Prims.list)
-  (id_attrs : (Prims.string * Prims.string) Prims.list) (tpl : template)
-  (nd : dnode) : Prims.bool=
+  (id_attrs : (Prims.string * Prims.string) Prims.list)
+  (style_root : Parser_XML.xml_node)
+  (decfmts : XPath_Eval.decimal_format_symbols Prims.list)
+  (key_table : XPath_Eval.key_entry Prims.list) (tpl : template) (nd : dnode)
+  : Prims.bool=
   if tpl.tpl_match = ""
   then false
   else
-    any_alt_matches vars nsctx id_attrs (split_on_char 124 tpl.tpl_match) nd
+    any_alt_matches vars nsctx id_attrs style_root decfmts key_table
+      (split_on_char 124 tpl.tpl_match) nd
 let rec parse_nat_chars (cs : FStar_String.char Prims.list) (acc : Prims.nat)
   : Prims.nat FStar_Pervasives_Native.option=
   match cs with
@@ -1190,76 +1245,108 @@ let default_count_pattern (it : XPath_Eval.xctx_item) : Prims.string=
   | XPath_Eval.CI_Namespace (uu___, uu___1, uu___2, uu___3, uu___4) -> "*"
 let count_matches (vars : (Prims.string * XPath_Eval.xp_value) Prims.list)
   (nsctx : (Prims.string * Prims.string) Prims.list)
-  (id_attrs : (Prims.string * Prims.string) Prims.list) (pat : Prims.string)
+  (id_attrs : (Prims.string * Prims.string) Prims.list)
+  (style_root : Parser_XML.xml_node)
+  (decfmts : XPath_Eval.decimal_format_symbols Prims.list)
+  (key_table : XPath_Eval.key_entry Prims.list) (pat : Prims.string)
   (node : XPath_Eval.xctx_item) : Prims.bool=
-  any_alt_matches vars nsctx id_attrs (split_on_char 124 pat) (D_Item node)
+  any_alt_matches vars nsctx id_attrs style_root decfmts key_table
+    (split_on_char 124 pat) (D_Item node)
 let count_with_preceding
   (vars : (Prims.string * XPath_Eval.xp_value) Prims.list)
   (nsctx : (Prims.string * Prims.string) Prims.list)
   (id_attrs : (Prims.string * Prims.string) Prims.list)
-  (count_pat : Prims.string) (node : XPath_Eval.xctx_item) : Prims.nat=
+  (style_root : Parser_XML.xml_node)
+  (decfmts : XPath_Eval.decimal_format_symbols Prims.list)
+  (key_table : XPath_Eval.key_entry Prims.list) (count_pat : Prims.string)
+  (node : XPath_Eval.xctx_item) : Prims.nat=
   Prims.int_one +
     (FStar_List_Tot_Base.length
        (FStar_List_Tot_Base.filter
-          (count_matches vars nsctx id_attrs count_pat)
-          (XPath_Eval.preceding_sibling_axis node)))
+          (count_matches vars nsctx id_attrs style_root decfmts key_table
+             count_pat) (XPath_Eval.preceding_sibling_axis node)))
 let rec find_level_single
   (vars : (Prims.string * XPath_Eval.xp_value) Prims.list)
   (nsctx : (Prims.string * Prims.string) Prims.list)
   (id_attrs : (Prims.string * Prims.string) Prims.list)
-  (count_pat : Prims.string) (from_pat : Prims.string)
-  (chain : XPath_Eval.xctx_item Prims.list) :
+  (style_root : Parser_XML.xml_node)
+  (decfmts : XPath_Eval.decimal_format_symbols Prims.list)
+  (key_table : XPath_Eval.key_entry Prims.list) (count_pat : Prims.string)
+  (from_pat : Prims.string) (chain : XPath_Eval.xctx_item Prims.list) :
   XPath_Eval.xctx_item FStar_Pervasives_Native.option=
   match chain with
   | [] -> FStar_Pervasives_Native.None
   | node::rest ->
-      if count_matches vars nsctx id_attrs count_pat node
+      if
+        count_matches vars nsctx id_attrs style_root decfmts key_table
+          count_pat node
       then FStar_Pervasives_Native.Some node
       else
         if
           (from_pat <> "") &&
-            (count_matches vars nsctx id_attrs from_pat node)
+            (count_matches vars nsctx id_attrs style_root decfmts key_table
+               from_pat node)
         then FStar_Pervasives_Native.None
-        else find_level_single vars nsctx id_attrs count_pat from_pat rest
+        else
+          find_level_single vars nsctx id_attrs style_root decfmts key_table
+            count_pat from_pat rest
 let level_single_numbers
   (vars : (Prims.string * XPath_Eval.xp_value) Prims.list)
   (nsctx : (Prims.string * Prims.string) Prims.list)
   (id_attrs : (Prims.string * Prims.string) Prims.list)
-  (count_pat : Prims.string) (from_pat : Prims.string)
-  (self : XPath_Eval.xctx_item) : Prims.nat Prims.list=
+  (style_root : Parser_XML.xml_node)
+  (decfmts : XPath_Eval.decimal_format_symbols Prims.list)
+  (key_table : XPath_Eval.key_entry Prims.list) (count_pat : Prims.string)
+  (from_pat : Prims.string) (self : XPath_Eval.xctx_item) :
+  Prims.nat Prims.list=
   let chain = self :: (XPath_Eval.ancestor_axis self) in
-  match find_level_single vars nsctx id_attrs count_pat from_pat chain with
+  match find_level_single vars nsctx id_attrs style_root decfmts key_table
+          count_pat from_pat chain
+  with
   | FStar_Pervasives_Native.None -> []
   | FStar_Pervasives_Native.Some c ->
-      [count_with_preceding vars nsctx id_attrs count_pat c]
+      [count_with_preceding vars nsctx id_attrs style_root decfmts key_table
+         count_pat c]
 let rec multiple_numbers
   (vars : (Prims.string * XPath_Eval.xp_value) Prims.list)
   (nsctx : (Prims.string * Prims.string) Prims.list)
   (id_attrs : (Prims.string * Prims.string) Prims.list)
-  (count_pat : Prims.string) (from_pat : Prims.string)
-  (chain : XPath_Eval.xctx_item Prims.list) : Prims.nat Prims.list=
+  (style_root : Parser_XML.xml_node)
+  (decfmts : XPath_Eval.decimal_format_symbols Prims.list)
+  (key_table : XPath_Eval.key_entry Prims.list) (count_pat : Prims.string)
+  (from_pat : Prims.string) (chain : XPath_Eval.xctx_item Prims.list) :
+  Prims.nat Prims.list=
   match chain with
   | [] -> []
   | node::rest ->
       if
-        (from_pat <> "") && (count_matches vars nsctx id_attrs from_pat node)
+        (from_pat <> "") &&
+          (count_matches vars nsctx id_attrs style_root decfmts key_table
+             from_pat node)
       then []
       else
         (let tail =
-           multiple_numbers vars nsctx id_attrs count_pat from_pat rest in
-         if count_matches vars nsctx id_attrs count_pat node
+           multiple_numbers vars nsctx id_attrs style_root decfmts key_table
+             count_pat from_pat rest in
+         if
+           count_matches vars nsctx id_attrs style_root decfmts key_table
+             count_pat node
          then
            FStar_List_Tot_Base.op_At tail
-             [count_with_preceding vars nsctx id_attrs count_pat node]
+             [count_with_preceding vars nsctx id_attrs style_root decfmts
+                key_table count_pat node]
          else tail)
 let level_multiple_numbers
   (vars : (Prims.string * XPath_Eval.xp_value) Prims.list)
   (nsctx : (Prims.string * Prims.string) Prims.list)
   (id_attrs : (Prims.string * Prims.string) Prims.list)
-  (count_pat : Prims.string) (from_pat : Prims.string)
-  (self : XPath_Eval.xctx_item) : Prims.nat Prims.list=
-  multiple_numbers vars nsctx id_attrs count_pat from_pat (self ::
-    (XPath_Eval.ancestor_axis self))
+  (style_root : Parser_XML.xml_node)
+  (decfmts : XPath_Eval.decimal_format_symbols Prims.list)
+  (key_table : XPath_Eval.key_entry Prims.list) (count_pat : Prims.string)
+  (from_pat : Prims.string) (self : XPath_Eval.xctx_item) :
+  Prims.nat Prims.list=
+  multiple_numbers vars nsctx id_attrs style_root decfmts key_table count_pat
+    from_pat (self :: (XPath_Eval.ancestor_axis self))
 let rec merge_desc_items (xs : XPath_Eval.xctx_item Prims.list)
   (ys : XPath_Eval.xctx_item Prims.list) : XPath_Eval.xctx_item Prims.list=
   match (xs, ys) with
@@ -1276,44 +1363,65 @@ let rec scan_any_from_reset
   (vars : (Prims.string * XPath_Eval.xp_value) Prims.list)
   (nsctx : (Prims.string * Prims.string) Prims.list)
   (id_attrs : (Prims.string * Prims.string) Prims.list)
-  (count_pat : Prims.string) (from_pat : Prims.string)
-  (nodes : XPath_Eval.xctx_item Prims.list) : Prims.nat=
+  (style_root : Parser_XML.xml_node)
+  (decfmts : XPath_Eval.decimal_format_symbols Prims.list)
+  (key_table : XPath_Eval.key_entry Prims.list) (count_pat : Prims.string)
+  (from_pat : Prims.string) (nodes : XPath_Eval.xctx_item Prims.list) :
+  Prims.nat=
   match nodes with
   | [] -> Prims.int_zero
   | n::rest ->
-      if (from_pat <> "") && (count_matches vars nsctx id_attrs from_pat n)
+      if
+        (from_pat <> "") &&
+          (count_matches vars nsctx id_attrs style_root decfmts key_table
+             from_pat n)
       then Prims.int_zero
       else
         (let here =
-           if count_matches vars nsctx id_attrs count_pat n
+           if
+             count_matches vars nsctx id_attrs style_root decfmts key_table
+               count_pat n
            then Prims.int_one
            else Prims.int_zero in
          here +
-           (scan_any_from_reset vars nsctx id_attrs count_pat from_pat rest))
+           (scan_any_from_reset vars nsctx id_attrs style_root decfmts
+              key_table count_pat from_pat rest))
 let level_any_numbers
   (vars : (Prims.string * XPath_Eval.xp_value) Prims.list)
   (nsctx : (Prims.string * Prims.string) Prims.list)
   (id_attrs : (Prims.string * Prims.string) Prims.list)
-  (count_pat : Prims.string) (from_pat : Prims.string)
-  (self : XPath_Eval.xctx_item) : Prims.nat Prims.list=
+  (style_root : Parser_XML.xml_node)
+  (decfmts : XPath_Eval.decimal_format_symbols Prims.list)
+  (key_table : XPath_Eval.key_entry Prims.list) (count_pat : Prims.string)
+  (from_pat : Prims.string) (self : XPath_Eval.xctx_item) :
+  Prims.nat Prims.list=
   let neighborhood =
     merge_desc_items (XPath_Eval.ancestor_axis self)
       (XPath_Eval.preceding_axis self) in
-  [scan_any_from_reset vars nsctx id_attrs count_pat from_pat (self ::
-     neighborhood)]
+  [scan_any_from_reset vars nsctx id_attrs style_root decfmts key_table
+     count_pat from_pat (self :: neighborhood)]
 let level_numbers (vars : (Prims.string * XPath_Eval.xp_value) Prims.list)
   (nsctx : (Prims.string * Prims.string) Prims.list)
   (id_attrs : (Prims.string * Prims.string) Prims.list)
-  (level : Prims.string) (count_raw : Prims.string) (from_pat : Prims.string)
+  (style_root : Parser_XML.xml_node)
+  (decfmts : XPath_Eval.decimal_format_symbols Prims.list)
+  (key_table : XPath_Eval.key_entry Prims.list) (level : Prims.string)
+  (count_raw : Prims.string) (from_pat : Prims.string)
   (self : XPath_Eval.xctx_item) : Prims.nat Prims.list=
   let count_pat =
     if count_raw = "" then default_count_pattern self else count_raw in
   if level = "multiple"
-  then level_multiple_numbers vars nsctx id_attrs count_pat from_pat self
+  then
+    level_multiple_numbers vars nsctx id_attrs style_root decfmts key_table
+      count_pat from_pat self
   else
     if level = "any"
-    then level_any_numbers vars nsctx id_attrs count_pat from_pat self
-    else level_single_numbers vars nsctx id_attrs count_pat from_pat self
+    then
+      level_any_numbers vars nsctx id_attrs style_root decfmts key_table
+        count_pat from_pat self
+    else
+      level_single_numbers vars nsctx id_attrs style_root decfmts key_table
+        count_pat from_pat self
 let alpha_digit_char (upper : Prims.bool) (d : Prims.nat) :
   FStar_String.char=
   let base = if upper then (Prims.of_int (0x41)) else (Prims.of_int (0x61)) in
@@ -1646,7 +1754,10 @@ let template_priority (tpl : template) : Prims.int=
 let rec pick_template
   (vars : (Prims.string * XPath_Eval.xp_value) Prims.list)
   (nsctx : (Prims.string * Prims.string) Prims.list)
-  (id_attrs : (Prims.string * Prims.string) Prims.list) (mode : Prims.string)
+  (id_attrs : (Prims.string * Prims.string) Prims.list)
+  (style_root : Parser_XML.xml_node)
+  (decfmts : XPath_Eval.decimal_format_symbols Prims.list)
+  (key_table : XPath_Eval.key_entry Prims.list) (mode : Prims.string)
   (tpls : template Prims.list) (nd : dnode)
   (best : template FStar_Pervasives_Native.option) :
   template FStar_Pervasives_Native.option=
@@ -1654,7 +1765,10 @@ let rec pick_template
   | [] -> best
   | t::rest ->
       let best' =
-        if (t.tpl_mode = mode) && (template_matches vars nsctx id_attrs t nd)
+        if
+          (t.tpl_mode = mode) &&
+            (template_matches vars nsctx id_attrs style_root decfmts
+               key_table t nd)
         then
           match best with
           | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.Some t
@@ -1669,11 +1783,15 @@ let rec pick_template
                    then FStar_Pervasives_Native.Some t
                    else best)
         else best in
-      pick_template vars nsctx id_attrs mode rest nd best'
+      pick_template vars nsctx id_attrs style_root decfmts key_table mode
+        rest nd best'
 let rec pick_template_below
   (vars : (Prims.string * XPath_Eval.xp_value) Prims.list)
   (nsctx : (Prims.string * Prims.string) Prims.list)
-  (id_attrs : (Prims.string * Prims.string) Prims.list) (mode : Prims.string)
+  (id_attrs : (Prims.string * Prims.string) Prims.list)
+  (style_root : Parser_XML.xml_node)
+  (decfmts : XPath_Eval.decimal_format_symbols Prims.list)
+  (key_table : XPath_Eval.key_entry Prims.list) (mode : Prims.string)
   (below : Prims.int) (tpls : template Prims.list) (nd : dnode)
   (best : template FStar_Pervasives_Native.option) :
   template FStar_Pervasives_Native.option=
@@ -1683,7 +1801,8 @@ let rec pick_template_below
       let best' =
         if
           ((t.tpl_mode = mode) && (t.tpl_import_prec < below)) &&
-            (template_matches vars nsctx id_attrs t nd)
+            (template_matches vars nsctx id_attrs style_root decfmts
+               key_table t nd)
         then
           match best with
           | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.Some t
@@ -1692,7 +1811,8 @@ let rec pick_template_below
                then FStar_Pervasives_Native.Some t
                else best)
         else best in
-      pick_template_below vars nsctx id_attrs mode below rest nd best'
+      pick_template_below vars nsctx id_attrs style_root decfmts key_table
+        mode below rest nd best'
 let rec find_named_template (tpls : template Prims.list) (nm : Prims.string)
   : template FStar_Pervasives_Native.option=
   match tpls with
@@ -2274,22 +2394,38 @@ let rec collect_sorts (ctx : XPath_Eval.xctx_item) (pos : Prims.nat)
 let rec eval_sort_keys (specs : sortspec Prims.list)
   (vars : (Prims.string * XPath_Eval.xp_value) Prims.list)
   (nsctx : (Prims.string * Prims.string) Prims.list)
-  (it : XPath_Eval.xctx_item) (pos : Prims.nat) (size : Prims.nat) :
-  Prims.string Prims.list=
+  (id_attrs : (Prims.string * Prims.string) Prims.list)
+  (style_root : Parser_XML.xml_node)
+  (decfmts : XPath_Eval.decimal_format_symbols Prims.list)
+  (key_table : XPath_Eval.key_entry Prims.list) (it : XPath_Eval.xctx_item)
+  (pos : Prims.nat) (size : Prims.nat) : Prims.string Prims.list=
   match specs with
   | [] -> []
-  | s::rest -> (eval_string it pos size vars nsctx s.so_select) ::
-      (eval_sort_keys rest vars nsctx it pos size)
+  | s::rest ->
+      (eval_string_kv it pos size vars nsctx id_attrs style_root decfmts
+         key_table s.so_select)
+      ::
+      (eval_sort_keys rest vars nsctx id_attrs style_root decfmts key_table
+         it pos size)
 let rec annotate_items (specs : sortspec Prims.list)
   (vars : (Prims.string * XPath_Eval.xp_value) Prims.list)
   (nsctx : (Prims.string * Prims.string) Prims.list)
+  (id_attrs : (Prims.string * Prims.string) Prims.list)
+  (style_root : Parser_XML.xml_node)
+  (decfmts : XPath_Eval.decimal_format_symbols Prims.list)
+  (key_table : XPath_Eval.key_entry Prims.list)
   (items : XPath_Eval.xctx_item Prims.list) (pos : Prims.nat)
   (size : Prims.nat) :
   (XPath_Eval.xctx_item * Prims.string Prims.list) Prims.list=
   match items with
   | [] -> []
-  | it::tl -> (it, (eval_sort_keys specs vars nsctx it pos size)) ::
-      (annotate_items specs vars nsctx tl (pos + Prims.int_one) size)
+  | it::tl ->
+      (it,
+        (eval_sort_keys specs vars nsctx id_attrs style_root decfmts
+           key_table it pos size))
+      ::
+      (annotate_items specs vars nsctx id_attrs style_root decfmts key_table
+         tl (pos + Prims.int_one) size)
 let rec cmp_sort_keys (specs : sortspec Prims.list)
   (ka : Prims.string Prims.list) (kb : Prims.string Prims.list) : Prims.int=
   match (specs, ka, kb) with
@@ -2339,6 +2475,10 @@ let sort_maybe (ctx : XPath_Eval.xctx_item) (pos : Prims.nat)
   (size : Prims.nat) (pfx : Prims.string)
   (vars : (Prims.string * XPath_Eval.xp_value) Prims.list)
   (nsctx : (Prims.string * Prims.string) Prims.list)
+  (id_attrs : (Prims.string * Prims.string) Prims.list)
+  (style_root : Parser_XML.xml_node)
+  (decfmts : XPath_Eval.decimal_format_symbols Prims.list)
+  (key_table : XPath_Eval.key_entry Prims.list)
   (body : Parser_XML.xml_node Prims.list)
   (items : XPath_Eval.xctx_item Prims.list) :
   XPath_Eval.xctx_item Prims.list=
@@ -2348,7 +2488,8 @@ let sort_maybe (ctx : XPath_Eval.xctx_item) (pos : Prims.nat)
       let n = FStar_List_Tot_Base.length items in
       FStar_List_Tot_Base.map FStar_Pervasives_Native.fst
         (sort_items specs
-           (annotate_items specs vars nsctx items Prims.int_one n))
+           (annotate_items specs vars nsctx id_attrs style_root decfmts
+              key_table items Prims.int_one n))
 let rtf_var_name (sel : Prims.string) :
   Prims.string FStar_Pervasives_Native.option=
   let s = trim_str sel in
@@ -2370,7 +2511,8 @@ let rec dispatch (fuel : Prims.nat) (st : xstyle) (nd : dnode)
   if fuel = Prims.int_zero
   then []
   else
-    (match pick_template st.xs_globals st.xs_nsctx st.xs_id_attrs mode
+    (match pick_template st.xs_globals st.xs_nsctx st.xs_id_attrs
+             st.xs_style_root st.xs_decfmts st.xs_key_table mode
              st.xs_templates nd FStar_Pervasives_Native.None
      with
      | FStar_Pervasives_Native.Some tpl ->
@@ -2578,7 +2720,8 @@ and instantiate_one (fuel : Prims.nat) (st : xstyle) (ctx : dnode)
                               st.xs_key_table sel) in
                        let items =
                          sort_maybe (dnode_ci ctx) pos size st.xs_pfx vars
-                           st.xs_nsctx children items0 in
+                           st.xs_nsctx st.xs_id_attrs st.xs_style_root
+                           st.xs_decfmts st.xs_key_table children items0 in
                        for_each_items (fuel - Prims.int_one) st children vars
                          rtf cur_mode cur_prec items Prims.int_one
                          (FStar_List_Tot_Base.length items))
@@ -2602,7 +2745,9 @@ and instantiate_one (fuel : Prims.nat) (st : xstyle) (ctx : dnode)
                                          st.xs_key_table sel) in
                                   let items =
                                     sort_maybe (dnode_ci ctx) pos size
-                                      st.xs_pfx vars st.xs_nsctx children
+                                      st.xs_pfx vars st.xs_nsctx
+                                      st.xs_id_attrs st.xs_style_root
+                                      st.xs_decfmts st.xs_key_table children
                                       items0 in
                                   let dns =
                                     FStar_List_Tot_Base.map
@@ -2617,7 +2762,9 @@ and instantiate_one (fuel : Prims.nat) (st : xstyle) (ctx : dnode)
                                     FStar_List_Tot_Base.map dnode_ci kids0 in
                                   let items =
                                     sort_maybe (dnode_ci ctx) pos size
-                                      st.xs_pfx vars st.xs_nsctx children
+                                      st.xs_pfx vars st.xs_nsctx
+                                      st.xs_id_attrs st.xs_style_root
+                                      st.xs_decfmts st.xs_key_table children
                                       items0 in
                                   let dns =
                                     FStar_List_Tot_Base.map
@@ -2630,8 +2777,10 @@ and instantiate_one (fuel : Prims.nat) (st : xstyle) (ctx : dnode)
                         if ln = "apply-imports"
                         then
                           (match pick_template_below st.xs_globals
-                                   st.xs_nsctx st.xs_id_attrs cur_mode
-                                   cur_prec st.xs_templates ctx
+                                   st.xs_nsctx st.xs_id_attrs
+                                   st.xs_style_root st.xs_decfmts
+                                   st.xs_key_table cur_mode cur_prec
+                                   st.xs_templates ctx
                                    FStar_Pervasives_Native.None
                            with
                            | FStar_Pervasives_Native.Some tpl ->
@@ -2868,9 +3017,13 @@ and instantiate_one (fuel : Prims.nat) (st : xstyle) (ctx : dnode)
                                                     render_number_list
                                                       (level_numbers vars
                                                          st.xs_nsctx
-                                                         st.xs_id_attrs level
-                                                         count_pat from_pat
-                                                         it) fmt gsep gsize_s
+                                                         st.xs_id_attrs
+                                                         st.xs_style_root
+                                                         st.xs_decfmts
+                                                         st.xs_key_table
+                                                         level count_pat
+                                                         from_pat it) fmt
+                                                      gsep gsize_s
                                                 | D_Doc (uu___14, uu___15) ->
                                                     "") in
                                          [R_Node (Parser_XML.XText text)])
@@ -3254,7 +3407,9 @@ let rec key_entries_for_decl
   | [] -> []
   | it::rest ->
       let here =
-        if any_alt_matches [] nsctx id_attrs match_alts (D_Item it)
+        if
+          any_alt_matches [] nsctx id_attrs style_root decfmts [] match_alts
+            (D_Item it)
         then
           key_entries_for_use nsctx id_attrs style_root decfmts kname it
             use_expr

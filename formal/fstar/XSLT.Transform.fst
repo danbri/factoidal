@@ -716,11 +716,19 @@ let eval_val (ctx:xctx_item) (pos:nat) (size:nat) (vars:list (string & xp_value)
     let env = { env_item = ctx; env_pos = pos; env_size = size; env_vars = vars; env_nsctx = nsctx; env_doc_kids = []; env_id_attrs = id_attrs; env_style_root = style_root; env_decimal_formats = decfmts; env_key_table = key_table } in
     eval_expr fuel env e
 
-// AVT / sort-key / predicate call-outs never carry id()/document()/
-// decimal-format/key context in the vendored suite, so these keep their
-// arity and pass the neutral defaults.
+// AVTs never carry id()/document()/decimal-format/key context in the
+// vendored suite, so this keeps its arity and passes the neutral
+// defaults. Sort-key evaluation (eval_sort_keys below) does NOT reuse
+// this -- idkey32/33's `xsl:sort select="key('MonthNum',month)"` needs
+// the real key table, so that path threads id_attrs/style_root/decfmts/
+// key_table explicitly instead.
 let eval_string (ctx:xctx_item) (pos size:nat) (vars) (nsctx:list (string & string)) (expr_text:string) : string =
   to_string_val (eval_val ctx pos size vars nsctx [] xnode_none [] [] expr_text)
+
+let eval_string_kv (ctx:xctx_item) (pos size:nat) (vars) (nsctx:list (string & string))
+                   (id_attrs:list (string & string)) (style_root:xml_node) (decfmts:list decimal_format_symbols)
+                   (key_table:list key_entry) (expr_text:string) : string =
+  to_string_val (eval_val ctx pos size vars nsctx id_attrs style_root decfmts key_table expr_text)
 
 // A bare numeric predicate result is XPath 1.0 §2.4's positional
 // shorthand (`[2]` means "proximity position 2", not "boolean(2)" =
@@ -733,8 +741,19 @@ let eval_string (ctx:xctx_item) (pos size:nat) (vars) (nsctx:list (string & stri
 // falling through to to_bool_val's boolean(number) = "n <> 0", so
 // EVERY e (not just the 2nd) satisfied it. Traced against Apache-Xalan
 // numbering78 (`count="b|c|d|e[2]"`).
-let eval_bool (ctx:xctx_item) (pos size:nat) (vars) (nsctx:list (string & string)) (expr_text:string) : bool =
-  match eval_val ctx pos size vars nsctx [] xnode_none [] [] expr_text with
+//
+// id_attrs/style_root/decfmts/key_table are threaded (not the neutral
+// defaults eval_string above still uses) so key()/id()/document("")/
+// format-number() called from a match-pattern PREDICATE (e.g.
+// `key('Info','id15')//Level3[Name[starts-with(@First,'J')]]`'s
+// trailing `[...]`) see the same key table / DTD ID map / stylesheet
+// root / decimal-format table the enclosing template's match resolved
+// against, instead of always-empty (idkey44-48's key()-in-match-pattern
+// cluster).
+let eval_bool (ctx:xctx_item) (pos size:nat) (vars) (nsctx:list (string & string))
+              (id_attrs:list (string & string)) (style_root:xml_node) (decfmts:list decimal_format_symbols)
+              (key_table:list key_entry) (expr_text:string) : bool =
+  match eval_val ctx pos size vars nsctx id_attrs style_root decfmts key_table expr_text with
   | XV_Num n -> (match xn_finite_int (xn_round n) with Some k -> k = pos | None -> false)
   | v -> to_bool_val v
 
@@ -762,15 +781,41 @@ let eval_nodeset (ctx:xctx_item) (pos size:nat) (vars) (nsctx:list (string & str
 // element itself and return the empty set. From the document node,
 // `doc/num` is equivalent to the absolute `/doc/num` (the document
 // node's only child IS the root element, which this engine matches as
-// the first step of an absolute path). `force_abs` flips the top-level
-// (and each union arm's) relative location path to absolute so those
-// selects resolve; predicates and inner filter-paths keep their own
-// (relative) context and are left untouched.
+// the first step of an absolute path). `force_abs` flips every relative
+// location path REACHABLE WITHOUT crossing a context boundary to
+// absolute -- so this recurses into union arms, boolean/comparison/
+// arithmetic operands, a unary negation's operand, and EVERY function-
+// call argument (a FunCall's arguments are evaluated in the SAME
+// context as the call itself, e.g. `id(main/b)`, `count(main/b)`,
+// `key('k', main/@x)` -- the `main/b` argument needs the identical
+// doc-node-relative treatment the top-level select would get, or it
+// silently resolves to the empty node-set: `main` never matches as a
+// child of the root element itself, only as a child of the document
+// node). A FilterPath's `primary` is likewise forced (it is the
+// top-level context too), but its predicates and trailing continuation
+// steps are context boundaries -- once `primary` has selected nodes,
+// later predicates/steps are relative to THOSE nodes, not to the
+// document root -- so they stay untouched, as do the predicates nested
+// inside an xp_step (step_preds): those are evaluated per-candidate at
+// that step, never at the top-level document-node context.
 let rec force_abs (e:xp_expr) : Tot xp_expr (decreases e) =
   match e with
   | XE_Path false steps -> XE_Path true steps
+  | XE_Path true steps -> XE_Path true steps
+  | XE_FilterPath primary preds steps -> XE_FilterPath (force_abs primary) preds steps
   | XE_Union a b -> XE_Union (force_abs a) (force_abs b)
+  | XE_Or a b -> XE_Or (force_abs a) (force_abs b)
+  | XE_And a b -> XE_And (force_abs a) (force_abs b)
+  | XE_Compare op a b -> XE_Compare op (force_abs a) (force_abs b)
+  | XE_Arith op a b -> XE_Arith op (force_abs a) (force_abs b)
+  | XE_Neg a -> XE_Neg (force_abs a)
+  | XE_FunCall name args -> XE_FunCall name (force_abs_list args)
   | _ -> e
+
+and force_abs_list (es:list xp_expr) : Tot (list xp_expr) (decreases es) =
+  match es with
+  | [] -> []
+  | h :: t -> force_abs h :: force_abs_list t
 
 let eval_val_dn (ctx:dnode) (pos size:nat) (vars:list (string & xp_value)) (nsctx:list (string & string))
                 (id_attrs:list (string & string)) (style_root:xml_node) (decfmts:list decimal_format_symbols)
@@ -1146,18 +1191,28 @@ let match_proximity (nsctx:list (string & string)) (namepart:string) (it:xctx_it
 // evaluated with the node's PROXIMITY position/size (see
 // match_proximity), not the caller's apply-templates/for-each
 // position -- those are unrelated per XSLT 5.5.
-// An id()-anchored match pattern (`id('x')`, `id('x')/a/b`, `id('x')//b`)
-// matches a node N iff N is a member of the node-set the pattern selects
-// when evaluated as an expression from the context document (XSLT 1.0
-// §5.2). id() is absolute, so the starting context is immaterial -- we
-// evaluate from the document root. Membership is by document-order path.
-let match_id_pattern (id_attrs:list (string & string)) (nsctx:list (string & string)) (pat:string) (it:xctx_item) : bool =
+// An id()/key()-anchored match pattern (`id('x')`, `id('x')/a/b`,
+// `id('x')//b`, `key('k','v')`, `key('k','v')//b[pred]` -- XSLT 1.0
+// §5.2's IdKeyPattern production) matches a node N iff N is a member of
+// the node-set the pattern selects when evaluated as an expression from
+// the context document. id()/key() are absolute, so the starting
+// context is immaterial -- we evaluate from the document root, with the
+// SAME vars/id_attrs/style_root/decfmts/key_table the enclosing
+// transform has (previously hardcoded to []/xnode_none/[]/[], which
+// silently zeroed out any `key()` call here, any `$var` in a trailing
+// predicate, and any `document("")`/`format-number()` -- idkey43's
+// `id('id2')/*[name()=$major]/text()` and idkey44-48's
+// `key('Info','id15')//Level3[...]` clusters). Membership is by
+// document-order path.
+let match_expr_pattern (vars:list (string & xp_value)) (nsctx:list (string & string))
+                       (id_attrs:list (string & string)) (style_root:xml_node) (decfmts:list decimal_format_symbols)
+                       (key_table:list key_entry) (pat:string) (it:xctx_item) : bool =
   match parse_xpath pat with
   | None -> false
   | Some e ->
     let root = root_of_item it in
     let fuel = initial_eval_fuel e (xml_node_count root) in
-    let env = { env_item = CI_Elem [] [] root; env_pos = 1; env_size = 1; env_vars = []; env_nsctx = nsctx; env_doc_kids = []; env_id_attrs = id_attrs; env_style_root = xnode_none; env_decimal_formats = []; env_key_table = [] } in
+    let env = { env_item = CI_Elem [] [] root; env_pos = 1; env_size = 1; env_vars = vars; env_nsctx = nsctx; env_doc_kids = []; env_id_attrs = id_attrs; env_style_root = style_root; env_decimal_formats = decfmts; env_key_table = key_table } in
     // Membership by node identity: same element node AND same ancestor
     // chain. Not by item_path, because the candidate `it` may have been
     // selected under the document-node path framing (root element at [i])
@@ -1175,9 +1230,19 @@ let match_id_pattern (id_attrs:list (string & string)) (nsctx:list (string & str
      | XV_Nodes items -> List.Tot.existsb same_node items
      | _ -> false)
 
-let alt_matches (vars:list (string & xp_value)) (nsctx:list (string & string)) (id_attrs:list (string & string)) (alt:string) (nd:dnode) : bool =
-  if starts_with "id(" (trim_str alt) then
-    (match nd with D_Item it -> match_id_pattern id_attrs nsctx (trim_str alt) it | _ -> false)
+// An IdKeyPattern anchor is `id(Literal)` or `key(Literal,Literal)`
+// (XSLT 1.0 §5.2 grammar production 3); trailing steps/predicates ride
+// along inside `pat` and are handled by match_expr_pattern's own
+// eval_expr call, so this dispatch only has to recognise the anchor.
+let is_idkey_pattern (alt:string) : bool =
+  let a = trim_str alt in
+  starts_with "id(" a || starts_with "key(" a
+
+let alt_matches (vars:list (string & xp_value)) (nsctx:list (string & string))
+                (id_attrs:list (string & string)) (style_root:xml_node) (decfmts:list decimal_format_symbols)
+                (key_table:list key_entry) (alt:string) (nd:dnode) : bool =
+  if is_idkey_pattern alt then
+    (match nd with D_Item it -> match_expr_pattern vars nsctx id_attrs style_root decfmts key_table (trim_str alt) it | _ -> false)
   else
   let (namepart, predopt) = split_predicate alt in
   match predopt with
@@ -1186,20 +1251,26 @@ let alt_matches (vars:list (string & xp_value)) (nsctx:list (string & string)) (
     if not (alt_matches_core nsctx namepart nd) then false
     else
       match nd with
-      | D_Doc _ _ -> eval_bool (dnode_ci nd) 1 1 vars nsctx pred
+      | D_Doc _ _ -> eval_bool (dnode_ci nd) 1 1 vars nsctx id_attrs style_root decfmts key_table pred
       | D_Item it ->
         let (p, s) = match_proximity nsctx namepart it in
-        eval_bool it p s vars nsctx pred
+        eval_bool it p s vars nsctx id_attrs style_root decfmts key_table pred
 
-let rec any_alt_matches (vars:list (string & xp_value)) (nsctx:list (string & string)) (id_attrs:list (string & string)) (alts:list string) (nd:dnode)
+let rec any_alt_matches (vars:list (string & xp_value)) (nsctx:list (string & string))
+                        (id_attrs:list (string & string)) (style_root:xml_node) (decfmts:list decimal_format_symbols)
+                        (key_table:list key_entry) (alts:list string) (nd:dnode)
   : Tot bool (decreases alts) =
   match alts with
   | [] -> false
-  | a :: rest -> if alt_matches vars nsctx id_attrs a nd then true else any_alt_matches vars nsctx id_attrs rest nd
+  | a :: rest ->
+    if alt_matches vars nsctx id_attrs style_root decfmts key_table a nd then true
+    else any_alt_matches vars nsctx id_attrs style_root decfmts key_table rest nd
 
-let template_matches (vars:list (string & xp_value)) (nsctx:list (string & string)) (id_attrs:list (string & string)) (tpl:template) (nd:dnode) : bool =
+let template_matches (vars:list (string & xp_value)) (nsctx:list (string & string))
+                     (id_attrs:list (string & string)) (style_root:xml_node) (decfmts:list decimal_format_symbols)
+                     (key_table:list key_entry) (tpl:template) (nd:dnode) : bool =
   if tpl.tpl_match = "" then false
-  else any_alt_matches vars nsctx id_attrs (split_on_char '|' tpl.tpl_match) nd
+  else any_alt_matches vars nsctx id_attrs style_root decfmts key_table (split_on_char '|' tpl.tpl_match) nd
 
 (* ================================================================ *)
 (* xsl:number (XSLT 1.0 §7.7 / §7.7.1).                                *)
@@ -1264,58 +1335,64 @@ let default_count_pattern (it:xctx_item) : string =
 // predicates (evaluated at the candidate's own proximity position, via
 // match_proximity inside alt_matches) behave exactly as they do for
 // xsl:template match=.
-let count_matches (vars:list (string & xp_value)) (nsctx:list (string & string)) (id_attrs:list (string & string))
-                  (pat:string) (node:xctx_item) : bool =
-  any_alt_matches vars nsctx id_attrs (split_on_char '|' pat) (D_Item node)
+let count_matches (vars:list (string & xp_value)) (nsctx:list (string & string))
+                  (id_attrs:list (string & string)) (style_root:xml_node) (decfmts:list decimal_format_symbols)
+                  (key_table:list key_entry) (pat:string) (node:xctx_item) : bool =
+  any_alt_matches vars nsctx id_attrs style_root decfmts key_table (split_on_char '|' pat) (D_Item node)
 
 // 1 + the number of NODE's preceding-siblings matching the count
 // pattern (XSLT 1.0 §7.7, the common inner step of level=single AND
 // level=multiple).
-let count_with_preceding (vars:list (string & xp_value)) (nsctx:list (string & string)) (id_attrs:list (string & string))
-                         (count_pat:string) (node:xctx_item) : nat =
-  1 + List.Tot.length (List.Tot.filter (count_matches vars nsctx id_attrs count_pat) (preceding_sibling_axis node))
+let count_with_preceding (vars:list (string & xp_value)) (nsctx:list (string & string))
+                         (id_attrs:list (string & string)) (style_root:xml_node) (decfmts:list decimal_format_symbols)
+                         (key_table:list key_entry) (count_pat:string) (node:xctx_item) : nat =
+  1 + List.Tot.length (List.Tot.filter (count_matches vars nsctx id_attrs style_root decfmts key_table count_pat) (preceding_sibling_axis node))
 
 // level=single: walk the ancestor-or-self chain (self first) for the
 // FIRST node matching `count`; a `from`-match reached before any count
 // match is a hard stop (no eligible ancestor -> empty result).
-let rec find_level_single (vars:list (string & xp_value)) (nsctx:list (string & string)) (id_attrs:list (string & string))
-                          (count_pat:string) (from_pat:string) (chain:list xctx_item)
+let rec find_level_single (vars:list (string & xp_value)) (nsctx:list (string & string))
+                          (id_attrs:list (string & string)) (style_root:xml_node) (decfmts:list decimal_format_symbols)
+                          (key_table:list key_entry) (count_pat:string) (from_pat:string) (chain:list xctx_item)
   : Tot (option xctx_item) (decreases chain) =
   match chain with
   | [] -> None
   | node :: rest ->
-    if count_matches vars nsctx id_attrs count_pat node then Some node
-    else if from_pat <> "" && count_matches vars nsctx id_attrs from_pat node then None
-    else find_level_single vars nsctx id_attrs count_pat from_pat rest
+    if count_matches vars nsctx id_attrs style_root decfmts key_table count_pat node then Some node
+    else if from_pat <> "" && count_matches vars nsctx id_attrs style_root decfmts key_table from_pat node then None
+    else find_level_single vars nsctx id_attrs style_root decfmts key_table count_pat from_pat rest
 
-let level_single_numbers (vars:list (string & xp_value)) (nsctx:list (string & string)) (id_attrs:list (string & string))
-                         (count_pat:string) (from_pat:string) (self:xctx_item) : list nat =
+let level_single_numbers (vars:list (string & xp_value)) (nsctx:list (string & string))
+                         (id_attrs:list (string & string)) (style_root:xml_node) (decfmts:list decimal_format_symbols)
+                         (key_table:list key_entry) (count_pat:string) (from_pat:string) (self:xctx_item) : list nat =
   let chain = self :: ancestor_axis self in
-  match find_level_single vars nsctx id_attrs count_pat from_pat chain with
+  match find_level_single vars nsctx id_attrs style_root decfmts key_table count_pat from_pat chain with
   | None -> []
-  | Some c -> [count_with_preceding vars nsctx id_attrs count_pat c]
+  | Some c -> [count_with_preceding vars nsctx id_attrs style_root decfmts key_table count_pat c]
 
 // level=multiple: walk the WHOLE ancestor-or-self chain to the root,
 // collecting a (1+preceding) count at every node that matches `count`,
 // outermost-first (so "chapter.section.subsection" reads left to
 // right); a `from`-match is a hard stop for the walk (that node and
 // everything above it, root-ward, is excluded).
-let rec multiple_numbers (vars:list (string & xp_value)) (nsctx:list (string & string)) (id_attrs:list (string & string))
-                         (count_pat:string) (from_pat:string) (chain:list xctx_item)
+let rec multiple_numbers (vars:list (string & xp_value)) (nsctx:list (string & string))
+                         (id_attrs:list (string & string)) (style_root:xml_node) (decfmts:list decimal_format_symbols)
+                         (key_table:list key_entry) (count_pat:string) (from_pat:string) (chain:list xctx_item)
   : Tot (list nat) (decreases chain) =
   match chain with
   | [] -> []
   | node :: rest ->
-    if from_pat <> "" && count_matches vars nsctx id_attrs from_pat node then []
+    if from_pat <> "" && count_matches vars nsctx id_attrs style_root decfmts key_table from_pat node then []
     else
-      let tail = multiple_numbers vars nsctx id_attrs count_pat from_pat rest in
-      if count_matches vars nsctx id_attrs count_pat node
-      then tail @ [count_with_preceding vars nsctx id_attrs count_pat node]
+      let tail = multiple_numbers vars nsctx id_attrs style_root decfmts key_table count_pat from_pat rest in
+      if count_matches vars nsctx id_attrs style_root decfmts key_table count_pat node
+      then tail @ [count_with_preceding vars nsctx id_attrs style_root decfmts key_table count_pat node]
       else tail
 
-let level_multiple_numbers (vars:list (string & xp_value)) (nsctx:list (string & string)) (id_attrs:list (string & string))
-                           (count_pat:string) (from_pat:string) (self:xctx_item) : list nat =
-  multiple_numbers vars nsctx id_attrs count_pat from_pat (self :: ancestor_axis self)
+let level_multiple_numbers (vars:list (string & xp_value)) (nsctx:list (string & string))
+                           (id_attrs:list (string & string)) (style_root:xml_node) (decfmts:list decimal_format_symbols)
+                           (key_table:list key_entry) (count_pat:string) (from_pat:string) (self:xctx_item) : list nat =
+  multiple_numbers vars nsctx id_attrs style_root decfmts key_table count_pat from_pat (self :: ancestor_axis self)
 
 // ancestor_axis and preceding_axis (XPath.Eval) are each already
 // individually nearest-first (reverse document order), but they don't
@@ -1342,31 +1419,34 @@ let rec merge_desc_items (xs ys:list xctx_item)
 // further back (`rest`) contribute nothing, so the scan stops dead
 // instead of recursing. Absent a `from` match at `n`, `n`'s own
 // `count`-match (if any) adds 1 and the scan continues backward.
-let rec scan_any_from_reset (vars:list (string & xp_value)) (nsctx:list (string & string)) (id_attrs:list (string & string))
-                            (count_pat:string) (from_pat:string) (nodes:list xctx_item)
+let rec scan_any_from_reset (vars:list (string & xp_value)) (nsctx:list (string & string))
+                            (id_attrs:list (string & string)) (style_root:xml_node) (decfmts:list decimal_format_symbols)
+                            (key_table:list key_entry) (count_pat:string) (from_pat:string) (nodes:list xctx_item)
   : Tot nat (decreases nodes) =
   match nodes with
   | [] -> 0
   | n :: rest ->
-    if from_pat <> "" && count_matches vars nsctx id_attrs from_pat n then 0
+    if from_pat <> "" && count_matches vars nsctx id_attrs style_root decfmts key_table from_pat n then 0
     else
-      let here = if count_matches vars nsctx id_attrs count_pat n then 1 else 0 in
-      here + scan_any_from_reset vars nsctx id_attrs count_pat from_pat rest
+      let here = if count_matches vars nsctx id_attrs style_root decfmts key_table count_pat n then 1 else 0 in
+      here + scan_any_from_reset vars nsctx id_attrs style_root decfmts key_table count_pat from_pat rest
 
-let level_any_numbers (vars:list (string & xp_value)) (nsctx:list (string & string)) (id_attrs:list (string & string))
-                      (count_pat:string) (from_pat:string) (self:xctx_item) : list nat =
+let level_any_numbers (vars:list (string & xp_value)) (nsctx:list (string & string))
+                      (id_attrs:list (string & string)) (style_root:xml_node) (decfmts:list decimal_format_symbols)
+                      (key_table:list key_entry) (count_pat:string) (from_pat:string) (self:xctx_item) : list nat =
   let neighborhood = merge_desc_items (ancestor_axis self) (preceding_axis self) in
-  [scan_any_from_reset vars nsctx id_attrs count_pat from_pat (self :: neighborhood)]
+  [scan_any_from_reset vars nsctx id_attrs style_root decfmts key_table count_pat from_pat (self :: neighborhood)]
 
 // Dispatch on level= (default "single"); a non-element/text/comment/pi
 // context (e.g. the document node itself, or an attribute) has no
 // ancestor-or-self chain worth walking, so xsl:number is a no-op there.
-let level_numbers (vars:list (string & xp_value)) (nsctx:list (string & string)) (id_attrs:list (string & string))
-                  (level:string) (count_raw:string) (from_pat:string) (self:xctx_item) : list nat =
+let level_numbers (vars:list (string & xp_value)) (nsctx:list (string & string))
+                  (id_attrs:list (string & string)) (style_root:xml_node) (decfmts:list decimal_format_symbols)
+                  (key_table:list key_entry) (level:string) (count_raw:string) (from_pat:string) (self:xctx_item) : list nat =
   let count_pat = if count_raw = "" then default_count_pattern self else count_raw in
-  if level = "multiple" then level_multiple_numbers vars nsctx id_attrs count_pat from_pat self
-  else if level = "any" then level_any_numbers vars nsctx id_attrs count_pat from_pat self
-  else level_single_numbers vars nsctx id_attrs count_pat from_pat self
+  if level = "multiple" then level_multiple_numbers vars nsctx id_attrs style_root decfmts key_table count_pat from_pat self
+  else if level = "any" then level_any_numbers vars nsctx id_attrs style_root decfmts key_table count_pat from_pat self
+  else level_single_numbers vars nsctx id_attrs style_root decfmts key_table count_pat from_pat self
 
 (* ---- Number-to-string formatting (XSLT 1.0 §7.7.1) ---------------- *)
 
@@ -1647,13 +1727,15 @@ let template_priority (tpl:template) : int =
 // the SAME constant tpl_import_prec, so both new comparisons are no-ops
 // there and this reduces byte-for-byte to the original priority-only
 // logic (protects the pre-existing scores).
-let rec pick_template (vars) (nsctx:list (string & string)) (id_attrs:list (string & string)) (mode:string) (tpls:list template) (nd:dnode) (best:option template)
+let rec pick_template (vars) (nsctx:list (string & string))
+                      (id_attrs:list (string & string)) (style_root:xml_node) (decfmts:list decimal_format_symbols)
+                      (key_table:list key_entry) (mode:string) (tpls:list template) (nd:dnode) (best:option template)
   : Tot (option template) (decreases tpls) =
   match tpls with
   | [] -> best
   | t :: rest ->
     let best' =
-      if t.tpl_mode = mode && template_matches vars nsctx id_attrs t nd then
+      if t.tpl_mode = mode && template_matches vars nsctx id_attrs style_root decfmts key_table t nd then
         (match best with
          | None -> Some t
          | Some b ->
@@ -1663,26 +1745,28 @@ let rec pick_template (vars) (nsctx:list (string & string)) (id_attrs:list (stri
            else best)
       else best
     in
-    pick_template vars nsctx id_attrs mode rest nd best'
+    pick_template vars nsctx id_attrs style_root decfmts key_table mode rest nd best'
 
 // xsl:apply-imports (XSLT 1.0 section 5.6): apply only template rules
 // imported into the stylesheet containing the CURRENTLY EXECUTING
 // template rule, i.e. those with import precedence STRICTLY LESS than
 // `below` (the current template's own tpl_import_prec). Same mode +
 // priority tie-break as pick_template, restricted to that subset.
-let rec pick_template_below (vars) (nsctx:list (string & string)) (id_attrs:list (string & string)) (mode:string) (below:int) (tpls:list template) (nd:dnode) (best:option template)
+let rec pick_template_below (vars) (nsctx:list (string & string))
+                            (id_attrs:list (string & string)) (style_root:xml_node) (decfmts:list decimal_format_symbols)
+                            (key_table:list key_entry) (mode:string) (below:int) (tpls:list template) (nd:dnode) (best:option template)
   : Tot (option template) (decreases tpls) =
   match tpls with
   | [] -> best
   | t :: rest ->
     let best' =
-      if t.tpl_mode = mode && t.tpl_import_prec < below && template_matches vars nsctx id_attrs t nd then
+      if t.tpl_mode = mode && t.tpl_import_prec < below && template_matches vars nsctx id_attrs style_root decfmts key_table t nd then
         (match best with
          | None -> Some t
          | Some b -> if template_priority t >= template_priority b then Some t else best)
       else best
     in
-    pick_template_below vars nsctx id_attrs mode below rest nd best'
+    pick_template_below vars nsctx id_attrs style_root decfmts key_table mode below rest nd best'
 
 // Look up a named template (xsl:call-template target); first match wins.
 let rec find_named_template (tpls:list template) (nm:string) : Tot (option template) (decreases tpls) =
@@ -2178,21 +2262,31 @@ let rec collect_sorts (ctx:xctx_item) (pos size:nat) (vars:list (string & xp_val
 // The sort key strings for one node, evaluated with the node's OWN
 // proximity position/size in the unsorted node list (so a sort by
 // position() or last() is correct). One string per sort spec.
+// id_attrs/style_root/decfmts/key_table are threaded so a sort key that
+// calls key()/id()/document("")/format-number() (idkey32/33's
+// `xsl:sort select="key('MonthNum',month)"`) resolves against the real
+// tables instead of the always-empty defaults eval_string uses.
 let rec eval_sort_keys (specs:list sortspec) (vars:list (string & xp_value)) (nsctx:list (string & string))
-                       (it:xctx_item) (pos size:nat)
+                       (id_attrs:list (string & string)) (style_root:xml_node) (decfmts:list decimal_format_symbols)
+                       (key_table:list key_entry) (it:xctx_item) (pos size:nat)
   : Tot (list string) (decreases specs) =
   match specs with
   | [] -> []
-  | s :: rest -> eval_string it pos size vars nsctx s.so_select :: eval_sort_keys rest vars nsctx it pos size
+  | s :: rest ->
+    eval_string_kv it pos size vars nsctx id_attrs style_root decfmts key_table s.so_select
+    :: eval_sort_keys rest vars nsctx id_attrs style_root decfmts key_table it pos size
 
 // Annotate each node with its precomputed sort keys, threading the
 // 1-based position through the ORIGINAL (document-order) list.
 let rec annotate_items (specs:list sortspec) (vars:list (string & xp_value)) (nsctx:list (string & string))
-                       (items:list xctx_item) (pos size:nat)
+                       (id_attrs:list (string & string)) (style_root:xml_node) (decfmts:list decimal_format_symbols)
+                       (key_table:list key_entry) (items:list xctx_item) (pos size:nat)
   : Tot (list (xctx_item & list string)) (decreases items) =
   match items with
   | [] -> []
-  | it :: tl -> (it, eval_sort_keys specs vars nsctx it pos size) :: annotate_items specs vars nsctx tl (pos + 1) size
+  | it :: tl ->
+    (it, eval_sort_keys specs vars nsctx id_attrs style_root decfmts key_table it pos size)
+    :: annotate_items specs vars nsctx id_attrs style_root decfmts key_table tl (pos + 1) size
 
 // Compare two nodes by their precomputed key lists, honoring each
 // spec's data-type and order. A NaN key (non-numeric text under
@@ -2234,13 +2328,15 @@ let rec sort_items (specs:list sortspec) (l:list (xctx_item & list string))
   | x :: xs -> sort_insert specs x (sort_items specs xs)
 
 let sort_maybe (ctx:xctx_item) (pos size:nat) (pfx:string)
-               (vars:list (string & xp_value)) (nsctx:list (string & string)) (body:list xml_node) (items:list xctx_item)
+               (vars:list (string & xp_value)) (nsctx:list (string & string))
+               (id_attrs:list (string & string)) (style_root:xml_node) (decfmts:list decimal_format_symbols)
+               (key_table:list key_entry) (body:list xml_node) (items:list xctx_item)
   : list xctx_item =
   match collect_sorts ctx pos size vars nsctx pfx body with
   | [] -> items
   | specs ->
     let n = List.Tot.length items in
-    List.Tot.map fst (sort_items specs (annotate_items specs vars nsctx items 1 n))
+    List.Tot.map fst (sort_items specs (annotate_items specs vars nsctx id_attrs style_root decfmts key_table items 1 n))
 
 (* ================================================================ *)
 (* Result-tree-fragment variables. A variable/param with element/text  *)
@@ -2293,7 +2389,7 @@ let rec dispatch (fuel:nat) (st:xstyle) (nd:dnode) (pos size:nat) (mode:string)
   : Tot (list rnode) (decreases fuel) =
   if fuel = 0 then []
   else
-    match pick_template st.xs_globals st.xs_nsctx st.xs_id_attrs mode st.xs_templates nd None with
+    match pick_template st.xs_globals st.xs_nsctx st.xs_id_attrs st.xs_style_root st.xs_decfmts st.xs_key_table mode st.xs_templates nd None with
     | Some tpl -> instantiate_seq (fuel - 1) st nd pos size svars srtf mode tpl.tpl_import_prec tpl.tpl_body
     | None -> builtin_rule (fuel - 1) st nd mode
 
@@ -2445,7 +2541,7 @@ and instantiate_one (fuel:nat) (st:xstyle) (ctx:dnode) (pos size:nat)
           // order (preceding::, ancestor::) and de-duplicates descendant
           // (//) selects before iteration.
           let items0 = doc_sort_dedup (select_nodes ctx pos size vars st.xs_nsctx st.xs_id_attrs st.xs_style_root st.xs_decfmts st.xs_key_table sel) in
-          let items = sort_maybe (dnode_ci ctx) pos size st.xs_pfx vars st.xs_nsctx children items0 in
+          let items = sort_maybe (dnode_ci ctx) pos size st.xs_pfx vars st.xs_nsctx st.xs_id_attrs st.xs_style_root st.xs_decfmts st.xs_key_table children items0 in
           for_each_items (fuel - 1) st children vars rtf cur_mode cur_prec items 1 (List.Tot.length items)
         else if ln = "apply-templates" then
           let amode = attr_or "mode" "" attrs in
@@ -2461,7 +2557,7 @@ and instantiate_one (fuel:nat) (st:xstyle) (ctx:dnode) (pos size:nat)
           (match attr_opt "select" attrs with
            | Some sel ->
              let items0 = doc_sort_dedup (select_nodes ctx pos size vars st.xs_nsctx st.xs_id_attrs st.xs_style_root st.xs_decfmts st.xs_key_table sel) in
-             let items = sort_maybe (dnode_ci ctx) pos size st.xs_pfx vars st.xs_nsctx children items0 in
+             let items = sort_maybe (dnode_ci ctx) pos size st.xs_pfx vars st.xs_nsctx st.xs_id_attrs st.xs_style_root st.xs_decfmts st.xs_key_table children items0 in
              let dns = List.Tot.map (fun it -> D_Item it) items in
              apply_list (fuel - 1) st dns 1 (List.Tot.length items) amode pvars prtf
            | None ->
@@ -2470,7 +2566,7 @@ and instantiate_one (fuel:nat) (st:xstyle) (ctx:dnode) (pos size:nat)
              // select still honors xsl:sort).
              let kids0 = dnode_children ctx in
              let items0 = List.Tot.map dnode_ci kids0 in
-             let items = sort_maybe (dnode_ci ctx) pos size st.xs_pfx vars st.xs_nsctx children items0 in
+             let items = sort_maybe (dnode_ci ctx) pos size st.xs_pfx vars st.xs_nsctx st.xs_id_attrs st.xs_style_root st.xs_decfmts st.xs_key_table children items0 in
              let dns = List.Tot.map (fun it -> D_Item it) items in
              apply_list (fuel - 1) st dns 1 (List.Tot.length items) amode pvars prtf)
         else if ln = "apply-imports" then
@@ -2484,7 +2580,7 @@ and instantiate_one (fuel:nat) (st:xstyle) (ctx:dnode) (pos size:nat)
           // instantiated body's OWN cur_prec becomes the found template's
           // tpl_import_prec, so a NESTED apply-imports inside it "takes
           // its own view of the import tree" (impincl26).
-          (match pick_template_below st.xs_globals st.xs_nsctx st.xs_id_attrs cur_mode cur_prec st.xs_templates ctx None with
+          (match pick_template_below st.xs_globals st.xs_nsctx st.xs_id_attrs st.xs_style_root st.xs_decfmts st.xs_key_table cur_mode cur_prec st.xs_templates ctx None with
            | Some tpl -> instantiate_seq (fuel - 1) st ctx pos size st.xs_globals [] cur_mode tpl.tpl_import_prec tpl.tpl_body
            | None -> builtin_rule (fuel - 1) st ctx cur_mode)
         else if ln = "call-template" then
@@ -2582,7 +2678,7 @@ and instantiate_one (fuel:nat) (st:xstyle) (ctx:dnode) (pos size:nat)
                    | None -> ""))
              | None ->
                (match ctx with
-                | D_Item it -> render_number_list (level_numbers vars st.xs_nsctx st.xs_id_attrs level count_pat from_pat it) fmt gsep gsize_s
+                | D_Item it -> render_number_list (level_numbers vars st.xs_nsctx st.xs_id_attrs st.xs_style_root st.xs_decfmts st.xs_key_table level count_pat from_pat it) fmt gsep gsize_s
                 | D_Doc _ _ -> ""))
           in
           [R_Node (XText text)]
@@ -2898,7 +2994,12 @@ let rec key_entries_for_decl (nsctx:list (string & string)) (id_attrs:list (stri
   | [] -> []
   | it :: rest ->
     let here =
-      if any_alt_matches [] nsctx id_attrs match_alts (D_Item it)
+      // key_table is [] here -- a key's own `match`/`use` cannot see the
+      // (not-yet-built) key table, so a key() call inside another key's
+      // match/use pattern always selects nothing (self/mutually
+      // referential keys: a disclosed, narrow gap -- no idkey fixture
+      // needs one key's match/use to call key()).
+      if any_alt_matches [] nsctx id_attrs style_root decfmts [] match_alts (D_Item it)
       then key_entries_for_use nsctx id_attrs style_root decfmts kname it use_expr
       else []
     in

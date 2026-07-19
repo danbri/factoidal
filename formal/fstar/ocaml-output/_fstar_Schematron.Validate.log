@@ -1,3 +1,14 @@
+* Warning 241 at XPath.Eval.fst(0,0-0,0):
+  - Unable to load XPath.Eval.fst.checked since checked file
+    XPath.Eval.fst.checked is stale (digest mismatch for XPath.Eval.fst); will
+    recheck XPath.Eval.fst (suppressing this warning for further modules)
+
 Extracted module Schematron.Validate
+* Warning 247 at Schematron.Validate.fst(0,0-0,0):
+  - Checked file Schematron.Validate.fst.checked was not written.
+  - Reason:
+      checked file XPath.Eval.fst.checked is stale (digest mismatch for
+      XPath.Eval.fst)
+
 Verified module: Schematron.Validate
 All verification conditions discharged successfully

@@ -240,7 +240,12 @@ let context_matches (ctx:string) (vars:list (string & xp_value)) (it:xctx_item) 
   // Schematron threads no XPath namespace context (name tests keep the
   // legacy textual comparison -- see XPath.Eval.matches_node_test).
   if trim_str ctx = "" then false
-  else any_alt_matches vars [] [] (split_on_char '|' ctx) (D_Item it)
+  // any_alt_matches gained style_root/decfmts/key_table params (XSLT
+  // idkey wave) so key()/id()/format-number() resolve inside match
+  // predicates. Schematron rule contexts carry no stylesheet, so pass
+  // the empty defaults (xnode_none / [] / []) -- byte-identical
+  // behaviour to the pre-widening call, which hard-coded these empties.
+  else any_alt_matches vars [] [] xnode_none [] [] (split_on_char '|' ctx) (D_Item it)
 
 (* ================================================================ *)
 (* Firing-node path (for the report; not used in pass/fail compare). *)

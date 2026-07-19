@@ -1987,33 +1987,28 @@ let rec eval_expr (fuel : Prims.nat) (env : xp_env)
          if absolute
          then
            XV_Nodes
-             (eval_absolute_steps (fuel - Prims.int_one) env.env_vars
-                env.env_nsctx (root_of_item env.env_item) env.env_doc_kids
-                steps)
+             (eval_absolute_steps (fuel - Prims.int_one) env
+                (root_of_item env.env_item) env.env_doc_kids steps)
          else
            XV_Nodes
-             (eval_steps (fuel - Prims.int_one) env.env_vars env.env_nsctx
-                [env.env_item] steps)
+             (eval_steps (fuel - Prims.int_one) env [env.env_item] steps)
      | Parser_XPath.XE_FilterPath (primary, preds, steps) ->
          let pv = eval_expr (fuel - Prims.int_one) env primary in
          (match pv with
           | XV_Nodes items0 ->
               let items1 =
-                filter_items_by_preds (fuel - Prims.int_one) env.env_vars
-                  env.env_nsctx items0 preds in
-              XV_Nodes
-                (eval_steps (fuel - Prims.int_one) env.env_vars env.env_nsctx
-                   items1 steps)
+                filter_items_by_preds (fuel - Prims.int_one) env items0 preds in
+              XV_Nodes (eval_steps (fuel - Prims.int_one) env items1 steps)
           | other ->
               if (Prims.uu___is_Nil preds) && (Prims.uu___is_Nil steps)
               then other
               else XV_Nodes []))
-and eval_absolute_steps (fuel : Prims.nat)
-  (vars : (Prims.string * xp_value) Prims.list)
-  (nsctx : (Prims.string * Prims.string) Prims.list)
+and eval_absolute_steps (fuel : Prims.nat) (env : xp_env)
   (root_node : Parser_XML.xml_node)
   (doc_kids : Parser_XML.xml_node Prims.list)
   (steps : Parser_XPath.xp_step Prims.list) : xctx_item Prims.list=
+  let vars = env.env_vars in
+  let nsctx = env.env_nsctx in
   if fuel = Prims.int_zero
   then []
   else
@@ -2026,8 +2021,7 @@ and eval_absolute_steps (fuel : Prims.nat)
       (let doc_node = doc_node_of doc_kids in
        match steps with
        | [] -> [doc_node]
-       | uu___1 ->
-           eval_steps (fuel - Prims.int_one) vars nsctx [doc_node] steps)
+       | uu___1 -> eval_steps (fuel - Prims.int_one) env [doc_node] steps)
     else
       (let root_item = CI_Elem ([], [], root_node) in
        match steps with
@@ -2052,10 +2046,9 @@ and eval_absolute_steps (fuel : Prims.nat)
                    (apply_axis Parser_XPath.Ax_Attribute root_item)
              | uu___2 -> [] in
            let kept =
-             filter_items_by_preds (fuel - Prims.int_one) vars nsctx
-               expansion s.Parser_XPath.step_preds in
-           let normal =
-             eval_steps (fuel - Prims.int_one) vars nsctx kept rest in
+             filter_items_by_preds (fuel - Prims.int_one) env expansion
+               s.Parser_XPath.step_preds in
+           let normal = eval_steps (fuel - Prims.int_one) env kept rest in
            if
              ((s.Parser_XPath.step_axis = Parser_XPath.Ax_DescendantOrSelf)
                 && (s.Parser_XPath.step_test = Parser_XPath.NT_Node))
@@ -2072,18 +2065,16 @@ and eval_absolute_steps (fuel : Prims.nat)
                       then [root_item]
                       else [] in
                     let root_as_child' =
-                      filter_items_by_preds (fuel - Prims.int_one) vars nsctx
+                      filter_items_by_preds (fuel - Prims.int_one) env
                         root_as_child nxt.Parser_XPath.step_preds in
                     let extra =
-                      eval_steps (fuel - Prims.int_one) vars nsctx
-                        root_as_child' rest2 in
+                      eval_steps (fuel - Prims.int_one) env root_as_child'
+                        rest2 in
                     FStar_List_Tot_Base.op_At extra normal
                   else normal
               | [] -> normal)
            else normal)
-and eval_steps (fuel : Prims.nat)
-  (vars : (Prims.string * xp_value) Prims.list)
-  (nsctx : (Prims.string * Prims.string) Prims.list)
+and eval_steps (fuel : Prims.nat) (env : xp_env)
   (items : xctx_item Prims.list) (steps : Parser_XPath.xp_step Prims.list) :
   xctx_item Prims.list=
   if fuel = Prims.int_zero
@@ -2093,11 +2084,9 @@ and eval_steps (fuel : Prims.nat)
      | [] -> items
      | s::rest ->
          let expanded =
-           expand_step_over_items (fuel - Prims.int_one) vars nsctx s items in
-         eval_steps (fuel - Prims.int_one) vars nsctx expanded rest)
-and expand_step_over_items (fuel : Prims.nat)
-  (vars : (Prims.string * xp_value) Prims.list)
-  (nsctx : (Prims.string * Prims.string) Prims.list)
+           expand_step_over_items (fuel - Prims.int_one) env s items in
+         eval_steps (fuel - Prims.int_one) env expanded rest)
+and expand_step_over_items (fuel : Prims.nat) (env : xp_env)
   (s : Parser_XPath.xp_step) (items : xctx_item Prims.list) :
   xctx_item Prims.list=
   if fuel = Prims.int_zero
@@ -2107,15 +2096,14 @@ and expand_step_over_items (fuel : Prims.nat)
      | [] -> []
      | it::rest ->
          let raw = apply_axis s.Parser_XPath.step_axis it in
-         let tested = filter_by_node_test nsctx s.Parser_XPath.step_test raw in
+         let tested =
+           filter_by_node_test env.env_nsctx s.Parser_XPath.step_test raw in
          let kept =
-           filter_items_by_preds (fuel - Prims.int_one) vars nsctx tested
+           filter_items_by_preds (fuel - Prims.int_one) env tested
              s.Parser_XPath.step_preds in
          FStar_List_Tot_Base.op_At kept
-           (expand_step_over_items (fuel - Prims.int_one) vars nsctx s rest))
-and filter_items_by_preds (fuel : Prims.nat)
-  (vars : (Prims.string * xp_value) Prims.list)
-  (nsctx : (Prims.string * Prims.string) Prims.list)
+           (expand_step_over_items (fuel - Prims.int_one) env s rest))
+and filter_items_by_preds (fuel : Prims.nat) (env : xp_env)
   (items : xctx_item Prims.list) (preds : Parser_XPath.xp_expr Prims.list) :
   xctx_item Prims.list=
   if fuel = Prims.int_zero
@@ -2126,12 +2114,10 @@ and filter_items_by_preds (fuel : Prims.nat)
      | p::rest ->
          let size = FStar_List_Tot_Base.length items in
          let kept =
-           filter_one_pred (fuel - Prims.int_one) vars nsctx p items size
+           filter_one_pred (fuel - Prims.int_one) env p items size
              Prims.int_one in
-         filter_items_by_preds (fuel - Prims.int_one) vars nsctx kept rest)
-and filter_one_pred (fuel : Prims.nat)
-  (vars : (Prims.string * xp_value) Prims.list)
-  (nsctx : (Prims.string * Prims.string) Prims.list)
+         filter_items_by_preds (fuel - Prims.int_one) env kept rest)
+and filter_one_pred (fuel : Prims.nat) (env : xp_env)
   (p : Parser_XPath.xp_expr) (items : xctx_item Prims.list)
   (size : Prims.nat) (pos : Prims.nat) : xctx_item Prims.list=
   if fuel = Prims.int_zero
@@ -2145,13 +2131,13 @@ and filter_one_pred (fuel : Prims.nat)
              env_item = it;
              env_pos = pos;
              env_size = size;
-             env_vars = vars;
-             env_nsctx = nsctx;
-             env_doc_kids = [];
-             env_id_attrs = [];
-             env_style_root = xnode_none;
-             env_decimal_formats = [];
-             env_key_table = []
+             env_vars = (env.env_vars);
+             env_nsctx = (env.env_nsctx);
+             env_doc_kids = (env.env_doc_kids);
+             env_id_attrs = (env.env_id_attrs);
+             env_style_root = (env.env_style_root);
+             env_decimal_formats = (env.env_decimal_formats);
+             env_key_table = (env.env_key_table)
            } in
          let v = eval_expr (fuel - Prims.int_one) e p in
          let keep =
@@ -2162,7 +2148,7 @@ and filter_one_pred (fuel : Prims.nat)
                 | FStar_Pervasives_Native.None -> false)
            | uu___1 -> to_bool_val v in
          let tail =
-           filter_one_pred (fuel - Prims.int_one) vars nsctx p rest size
+           filter_one_pred (fuel - Prims.int_one) env p rest size
              (pos + Prims.int_one) in
          if keep then it :: tail else tail)
 and eval_concat_args (fuel : Prims.nat) (env : xp_env)

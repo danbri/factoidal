@@ -273,7 +273,7 @@ let context_matches (ctx : Prims.string)
   if (XSLT_Transform.trim_str ctx) = ""
   then false
   else
-    XSLT_Transform.any_alt_matches vars [] []
+    XSLT_Transform.any_alt_matches vars [] [] XPath_Eval.xnode_none [] []
       (XSLT_Transform.split_on_char 124 ctx) (XSLT_Transform.D_Item it)
 let item_self_label (it : XPath_Eval.xctx_item) : Prims.string=
   match it with
