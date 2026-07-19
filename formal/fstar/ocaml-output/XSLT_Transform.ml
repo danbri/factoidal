@@ -597,9 +597,14 @@ let eval_bool (ctx : XPath_Eval.xctx_item) (pos : Prims.nat)
   (size : Prims.nat) (vars : (Prims.string * XPath_Eval.xp_value) Prims.list)
   (nsctx : (Prims.string * Prims.string) Prims.list)
   (expr_text : Prims.string) : Prims.bool=
-  XPath_Eval.to_bool_val
-    (eval_val ctx pos size vars nsctx [] XPath_Eval.xnode_none [] []
-       expr_text)
+  match eval_val ctx pos size vars nsctx [] XPath_Eval.xnode_none [] []
+          expr_text
+  with
+  | XPath_Eval.XV_Num n ->
+      (match XPath_Eval.xn_finite_int (XPath_Eval.xn_round n) with
+       | FStar_Pervasives_Native.Some k -> k = pos
+       | FStar_Pervasives_Native.None -> false)
+  | v -> XPath_Eval.to_bool_val v
 let is_pi_alt (s : Prims.string) : Prims.bool=
   (trim_str s) = "processing-instruction()"
 let drop_pi_alts (sel : Prims.string) : Prims.string=
@@ -1255,40 +1260,47 @@ let level_multiple_numbers
   (self : XPath_Eval.xctx_item) : Prims.nat Prims.list=
   multiple_numbers vars nsctx id_attrs count_pat from_pat (self ::
     (XPath_Eval.ancestor_axis self))
-let rec find_from_boundary
+let rec merge_desc_items (xs : XPath_Eval.xctx_item Prims.list)
+  (ys : XPath_Eval.xctx_item Prims.list) : XPath_Eval.xctx_item Prims.list=
+  match (xs, ys) with
+  | ([], uu___) -> ys
+  | (uu___, []) -> xs
+  | (x::xs', y::ys') ->
+      if
+        (XPath_Eval.path_compare (XPath_Eval.item_path x)
+           (XPath_Eval.item_path y))
+          >= Prims.int_zero
+      then x :: (merge_desc_items xs' ys)
+      else y :: (merge_desc_items xs ys')
+let rec scan_any_from_reset
   (vars : (Prims.string * XPath_Eval.xp_value) Prims.list)
   (nsctx : (Prims.string * Prims.string) Prims.list)
   (id_attrs : (Prims.string * Prims.string) Prims.list)
-  (from_pat : Prims.string) (chain : XPath_Eval.xctx_item Prims.list) :
-  Prims.int Prims.list FStar_Pervasives_Native.option=
-  match chain with
-  | [] -> FStar_Pervasives_Native.None
-  | node::rest ->
-      if count_matches vars nsctx id_attrs from_pat node
-      then FStar_Pervasives_Native.Some (XPath_Eval.item_path node)
-      else find_from_boundary vars nsctx id_attrs from_pat rest
+  (count_pat : Prims.string) (from_pat : Prims.string)
+  (nodes : XPath_Eval.xctx_item Prims.list) : Prims.nat=
+  match nodes with
+  | [] -> Prims.int_zero
+  | n::rest ->
+      if (from_pat <> "") && (count_matches vars nsctx id_attrs from_pat n)
+      then Prims.int_zero
+      else
+        (let here =
+           if count_matches vars nsctx id_attrs count_pat n
+           then Prims.int_one
+           else Prims.int_zero in
+         here +
+           (scan_any_from_reset vars nsctx id_attrs count_pat from_pat rest))
 let level_any_numbers
   (vars : (Prims.string * XPath_Eval.xp_value) Prims.list)
   (nsctx : (Prims.string * Prims.string) Prims.list)
   (id_attrs : (Prims.string * Prims.string) Prims.list)
   (count_pat : Prims.string) (from_pat : Prims.string)
   (self : XPath_Eval.xctx_item) : Prims.nat Prims.list=
-  let boundary =
-    if from_pat = ""
-    then FStar_Pervasives_Native.None
-    else
-      find_from_boundary vars nsctx id_attrs from_pat (self ::
-        (XPath_Eval.ancestor_axis self)) in
-  let eligible =
-    FStar_List_Tot_Base.filter
-      (fun x ->
-         (count_matches vars nsctx id_attrs count_pat x) &&
-           (match boundary with
-            | FStar_Pervasives_Native.None -> true
-            | FStar_Pervasives_Native.Some fp ->
-                XPath_Eval.path_is_prefix fp (XPath_Eval.item_path x)))
+  let neighborhood =
+    merge_desc_items (XPath_Eval.ancestor_axis self)
       (XPath_Eval.preceding_axis self) in
-  [Prims.int_one + (FStar_List_Tot_Base.length eligible)]
+  [scan_any_from_reset vars nsctx id_attrs count_pat from_pat (self ::
+     neighborhood)]
 let level_numbers (vars : (Prims.string * XPath_Eval.xp_value) Prims.list)
   (nsctx : (Prims.string * Prims.string) Prims.list)
   (id_attrs : (Prims.string * Prims.string) Prims.list)

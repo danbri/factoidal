@@ -722,8 +722,21 @@ let eval_val (ctx:xctx_item) (pos:nat) (size:nat) (vars:list (string & xp_value)
 let eval_string (ctx:xctx_item) (pos size:nat) (vars) (nsctx:list (string & string)) (expr_text:string) : string =
   to_string_val (eval_val ctx pos size vars nsctx [] xnode_none [] [] expr_text)
 
+// A bare numeric predicate result is XPath 1.0 §2.4's positional
+// shorthand (`[2]` means "proximity position 2", not "boolean(2)" =
+// true) -- mirrors XPath.Eval's own filter_one_pred, which every
+// ordinary location-step predicate (e.g. `select="item[2]"`) already
+// goes through. eval_bool is the match-pattern-predicate path
+// (alt_matches, called with the candidate's PROXIMITY pos/size from
+// match_proximity), which had been missing this special case: a
+// pattern predicate like `e[2]` in an xsl:number count pattern was
+// falling through to to_bool_val's boolean(number) = "n <> 0", so
+// EVERY e (not just the 2nd) satisfied it. Traced against Apache-Xalan
+// numbering78 (`count="b|c|d|e[2]"`).
 let eval_bool (ctx:xctx_item) (pos size:nat) (vars) (nsctx:list (string & string)) (expr_text:string) : bool =
-  to_bool_val (eval_val ctx pos size vars nsctx [] xnode_none [] [] expr_text)
+  match eval_val ctx pos size vars nsctx [] xnode_none [] [] expr_text with
+  | XV_Num n -> (match xn_finite_int (xn_round n) with Some k -> k = pos | None -> false)
+  | v -> to_bool_val v
 
 // Drop `processing-instruction()` alternatives from a union select
 // before handing it to XPath.Eval (which has no PI node test).
@@ -1200,21 +1213,26 @@ let template_matches (vars:list (string & xp_value)) (nsctx:list (string & strin
 (* position(), and namespace-aware name tests for free -- the same       *)
 (* pattern language as xsl:template match=.                              *)
 (*                                                                       *)
-(* `from`'s boundary is always resolved against the CURRENT node's OWN   *)
-(* ancestor-or-self chain (never against preceding cousin subtrees):      *)
-(* level=single/multiple stop their upward walk the instant they reach   *)
-(* an ancestor-or-self matching `from`; level=any finds the NEAREST       *)
-(* ancestor-or-self matching `from` and then restricts its preceding-     *)
-(* node count to that ancestor's subtree. Verified against Apache-Xalan   *)
-(* numbering67 (level=any from="b|d", nested resets) -- if `from` never   *)
-(* matches ANY ancestor-or-self of the current node, the boundary has NO  *)
-(* effect at all (unrestricted count from the start of the document),     *)
-(* not an empty result; only once an ancestor DOES match does counting    *)
-(* restrict to descendants of that ancestor. This is intentionally        *)
-(* different from scanning arbitrary preceding subtrees for a boundary    *)
-(* (which would also match a `from`-tagged COUSIN element and give the    *)
-(* wrong reset point -- traced by hand against numbering67's `a/b/c/d`     *)
-(* nesting before writing this).                                          *)
+(* `from`'s boundary differs by level. level=single/multiple stop their  *)
+(* upward ancestor-or-self walk the instant they reach a node matching   *)
+(* `from` (that node, and anything above it root-ward, is excluded).     *)
+(*                                                                       *)
+(* level=any is NOT ancestor-subtree-scoped -- it is a single flat        *)
+(* counter over the WHOLE document in document order, and any `from`      *)
+(* match RESETS that counter to zero the instant it is encountered,       *)
+(* wherever it sits (cousin subtree or ancestor, doesn't matter). Traced  *)
+(* by hand against Apache-Xalan numbering18 (level=any from="chapter",     *)
+(* default count "note": three untouched notes, three notes inside a      *)
+(* chapter -- reset to 1..3 -- three more untouched notes RESUMING at 4    *)
+(* (not 7: the chapter's own notes never contributed to the untouched     *)
+(* run's count), three more chapter notes reset to 1..3 again, three      *)
+(* more untouched notes resuming at 4 again) and numbering67 (level=any    *)
+(* from="b|d", count defaults to "title", 15+ levels of a/b/c/d/e          *)
+(* nesting with resets firing at every b/d regardless of depth). Both      *)
+(* match exactly once the counter is computed by walking self's reverse-   *)
+(* document-order neighbourhood (self, then every ancestor/preceding       *)
+(* node in decreasing document position) and stopping dead the moment a    *)
+(* `from` match is hit.                                                    *)
 (* ================================================================ *)
 
 // Small unsigned-integer parser for the grouping-size AVT (a plain
@@ -1299,38 +1317,46 @@ let level_multiple_numbers (vars:list (string & xp_value)) (nsctx:list (string &
                            (count_pat:string) (from_pat:string) (self:xctx_item) : list nat =
   multiple_numbers vars nsctx id_attrs count_pat from_pat (self :: ancestor_axis self)
 
-// level=any: the nearest ancestor-or-self matching `from` (if any)
-// becomes the subtree boundary; count = 1 + every preceding:: node (in
-// document order, so cousin subtrees included, ancestors excluded --
-// same as any other reverse axis) that matches `count` AND sits inside
-// that boundary's subtree (path_is_prefix). No `from` match anywhere in
-// the ancestor-or-self chain means no restriction at all (see the
-// section banner for why this is NOT the same as an empty result).
-let rec find_from_boundary (vars:list (string & xp_value)) (nsctx:list (string & string)) (id_attrs:list (string & string))
-                           (from_pat:string) (chain:list xctx_item)
-  : Tot (option (list int)) (decreases chain) =
-  match chain with
-  | [] -> None
-  | node :: rest ->
-    if count_matches vars nsctx id_attrs from_pat node then Some (item_path node)
-    else find_from_boundary vars nsctx id_attrs from_pat rest
+// ancestor_axis and preceding_axis (XPath.Eval) are each already
+// individually nearest-first (reverse document order), but they don't
+// interleave with each other in that order automatically -- an
+// ancestor's own preceding siblings (reached via preceding_axis, since
+// preceding:: excludes only the context node's OWN ancestors, not a
+// cousin ancestor's siblings) can sit, in true document order, between
+// two nodes that came from different one of the two lists. A standard
+// descending merge on path_compare recombines them into one genuine
+// reverse-document-order sequence.
+let rec merge_desc_items (xs ys:list xctx_item)
+  : Tot (list xctx_item) (decreases (List.Tot.length xs + List.Tot.length ys)) =
+  match xs, ys with
+  | [], _ -> ys
+  | _, [] -> xs
+  | x :: xs', y :: ys' ->
+    if path_compare (item_path x) (item_path y) >= 0
+    then x :: merge_desc_items xs' ys
+    else y :: merge_desc_items xs ys'
+
+// `nodes` is in reverse document order (nearest to the numbered node
+// first, self included as the head when called from level_any_numbers
+// below). A `from` match at `n` is the reset point: `n` and everything
+// further back (`rest`) contribute nothing, so the scan stops dead
+// instead of recursing. Absent a `from` match at `n`, `n`'s own
+// `count`-match (if any) adds 1 and the scan continues backward.
+let rec scan_any_from_reset (vars:list (string & xp_value)) (nsctx:list (string & string)) (id_attrs:list (string & string))
+                            (count_pat:string) (from_pat:string) (nodes:list xctx_item)
+  : Tot nat (decreases nodes) =
+  match nodes with
+  | [] -> 0
+  | n :: rest ->
+    if from_pat <> "" && count_matches vars nsctx id_attrs from_pat n then 0
+    else
+      let here = if count_matches vars nsctx id_attrs count_pat n then 1 else 0 in
+      here + scan_any_from_reset vars nsctx id_attrs count_pat from_pat rest
 
 let level_any_numbers (vars:list (string & xp_value)) (nsctx:list (string & string)) (id_attrs:list (string & string))
                       (count_pat:string) (from_pat:string) (self:xctx_item) : list nat =
-  let boundary =
-    if from_pat = "" then None
-    else find_from_boundary vars nsctx id_attrs from_pat (self :: ancestor_axis self)
-  in
-  let eligible =
-    List.Tot.filter
-      (fun (x:xctx_item) ->
-         count_matches vars nsctx id_attrs count_pat x &&
-         (match boundary with
-          | None -> true
-          | Some fp -> path_is_prefix fp (item_path x)))
-      (preceding_axis self)
-  in
-  [1 + List.Tot.length eligible]
+  let neighborhood = merge_desc_items (ancestor_axis self) (preceding_axis self) in
+  [scan_any_from_reset vars nsctx id_attrs count_pat from_pat (self :: neighborhood)]
 
 // Dispatch on level= (default "single"); a non-element/text/comment/pi
 // context (e.g. the document node itself, or an attribute) has no
