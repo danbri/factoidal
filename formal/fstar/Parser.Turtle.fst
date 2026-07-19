@@ -2635,31 +2635,54 @@ let parse_turtle_with_base_strict (input: string) (base: string) : option (list 
 (* terms + directional literals + legacy-form rejection.             *)
 (* ================================================================ *)
 
+// RDF 1.2 reifier dedup (eval-triple-terms pattern-01/02/08, SPARQL 1.2
+// reifier-enumeration bug): the `~ reifier` / `{| |}` annotation grammar
+// (parse_reifier / parse_annotations above) emits a `reifier rdf:reifies
+// <<( s p o )>>` triple at EVERY syntactic occurrence it's used at — by
+// design, since each occurrence is parsed independently with no
+// document-wide memory of what it already asserted. When the SAME named
+// reifier annotates the SAME base triple from two different statements
+// (e.g. data-2.ttl's pattern-3 section: `:a1 :b <<:s :p1 :o ~ :reifier>>
+// .` then `<<:s :p1 :o ~ :reifier>> :b :a2 .`), that is legal Turtle
+// re-asserting an identical `rdf:reifies` triple twice — and per RDF 1.1
+// Concepts §3 a graph is a SET of triples, so the duplicate must
+// collapse to one. Left un-deduped, the duplicate physically doubles in
+// `store_search` results, and since a BGP triple pattern re-querying a
+// reifier's own properties (`?R ?q ?z`) also self-matches the reifier's
+// `rdf:reifies` triple (by design — see basic-7/pattern-01's expected
+// results), the duplicate multiplies out across every join step downstream,
+// not just once. `graph_dedup_sort` (RDF.Graph.fsti) is the existing
+// O(N log N) set-reconciliation helper the RDFS/OWL-RL closure passes
+// already use for the same "emit freely, reconcile once" pattern.
+// Scoped to the four rdf12-mode entry points only — Mode_11 callers
+// (`parse_turtle`/`parse_turtle_with_base`/*_strict) are untouched, so
+// plain (non-reifier) RDF 1.1 Turtle parsing keeps its prior list
+// semantics and duplicate-triple corner cases exactly as before.
 let parse_turtle_12 (input: string) : list triple =
   let len = fs_byte_length input in
   let fuel = (len + 1) `op_Multiply` 2 in
   let r = parse_turtle_doc empty_turtle_state_12 input 0 [] false fuel in
-  r.tdr_triples
+  graph_dedup_sort r.tdr_triples
 
 let parse_turtle_with_base_12 (input: string) (base: string) : list triple =
   let len = fs_byte_length input in
   let fuel = (len + 1) `op_Multiply` 2 in
   let st = { empty_turtle_state_12 with base_iri = base } in
   let r = parse_turtle_doc st input 0 [] false fuel in
-  r.tdr_triples
+  graph_dedup_sort r.tdr_triples
 
 let parse_turtle_strict_12 (input: string) : option (list triple) =
   let len = fs_byte_length input in
   let fuel = (len + 1) `op_Multiply` 2 in
   let r = parse_turtle_doc empty_turtle_state_12 input 0 [] false fuel in
-  if r.tdr_has_error then None else Some r.tdr_triples
+  if r.tdr_has_error then None else Some (graph_dedup_sort r.tdr_triples)
 
 let parse_turtle_with_base_strict_12 (input: string) (base: string) : option (list triple) =
   let len = fs_byte_length input in
   let fuel = (len + 1) `op_Multiply` 2 in
   let st = { empty_turtle_state_12 with base_iri = base } in
   let r = parse_turtle_doc st input 0 [] false fuel in
-  if r.tdr_has_error then None else Some r.tdr_triples
+  if r.tdr_has_error then None else Some (graph_dedup_sort r.tdr_triples)
 
 // Mode-parametrised dispatchers.
 let parse_turtle_with_base_mode (mode: rdf_syntax_mode) (input: string) (base: string) : list triple =

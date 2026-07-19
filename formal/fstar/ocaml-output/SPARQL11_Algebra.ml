@@ -7162,18 +7162,8 @@ let construct_subject (ps : pattern_subject)
   match ps with
   | PS_IRI i -> FStar_Pervasives_Native.Some (RDF_Term.S_IRI i)
   | PS_BNode b ->
-      (match sm_lookup (Prims.strcat "_bnode_" b) mu with
-       | FStar_Pervasives_Native.Some (RDF_Term.T_IRI i) ->
-           FStar_Pervasives_Native.Some (RDF_Term.S_IRI i)
-       | FStar_Pervasives_Native.Some (RDF_Term.T_BNode b2) ->
-           FStar_Pervasives_Native.Some (RDF_Term.S_BNode b2)
-       | FStar_Pervasives_Native.Some (RDF_Term.T_Literal uu___) ->
-           FStar_Pervasives_Native.None
-       | FStar_Pervasives_Native.Some (RDF_Term.T_TripleTerm
-           (uu___, uu___1, uu___2)) -> FStar_Pervasives_Native.None
-       | FStar_Pervasives_Native.None ->
-           FStar_Pervasives_Native.Some
-             (RDF_Term.S_BNode (fresh_bnode_for sol_ix b)))
+      FStar_Pervasives_Native.Some
+        (RDF_Term.S_BNode (fresh_bnode_for sol_ix b))
   | PS_TripleTerm (uu___, uu___1, uu___2) -> FStar_Pervasives_Native.None
   | PS_Var v ->
       (match sm_lookup v mu with
@@ -7205,11 +7195,8 @@ let rec construct_object (pt : pattern_term)
   match pt with
   | PT_IRI i -> FStar_Pervasives_Native.Some (RDF_Term.T_IRI i)
   | PT_BNode b ->
-      (match sm_lookup (Prims.strcat "_bnode_" b) mu with
-       | FStar_Pervasives_Native.Some t -> FStar_Pervasives_Native.Some t
-       | FStar_Pervasives_Native.None ->
-           FStar_Pervasives_Native.Some
-             (RDF_Term.T_BNode (fresh_bnode_for sol_ix b)))
+      FStar_Pervasives_Native.Some
+        (RDF_Term.T_BNode (fresh_bnode_for sol_ix b))
   | PT_Literal l -> FStar_Pervasives_Native.Some (RDF_Term.T_Literal l)
   | PT_Var v -> sm_lookup v mu
   | PT_TripleTerm (ps, pp, po) ->

@@ -6062,24 +6062,28 @@ let construct_subject (ps : pattern_subject) (mu : solution_mapping) (sol_ix : n
   match ps with
   | PS_IRI i -> Some (S_IRI i)
   | PS_BNode b ->
-    // RDF 1.2: `b` may be the SAME label `rewrite_query_bnodes_pattern`
-    // rewrote to `_bnode_<b>` when it appeared in the WHERE clause (e.g.
-    // the implicit reifier a bare `<<s p o>>`/`{|...|}` mints, or a
-    // `CONSTRUCT WHERE { P }` shorthand's template — literally `P` again
-    // — re-using it). When that variable was actually bound during
-    // matching, the template must echo the SAME node (eval-triple-terms
-    // construct-2/-5: the reifier the WHERE side matched IS the reifier
-    // the template names), not mint an unrelated fresh one. A plain
-    // user-written template blank node with no WHERE-side counterpart
-    // (e.g. construct-4's `{|:source :ABC|}`, only ever in the template)
-    // finds no binding here and keeps the original fresh-per-solution
-    // behaviour (SPARQL 1.1 §16.2).
-    (match sm_lookup (strcat "_bnode_" b) mu with
-     | Some (T_IRI i) -> Some (S_IRI i)
-     | Some (T_BNode b2) -> Some (S_BNode b2)
-     | Some (T_Literal _) -> None
-     | Some (T_TripleTerm _ _ _) -> None
-     | None -> Some (S_BNode (fresh_bnode_for sol_ix b)))
+    // SPARQL 1.1 §16.2: template blank nodes get a fresh label per
+    // solution, keyed only by (sol_ix, template_label) — NOT echoed
+    // from whatever `rewrite_query_bnodes_pattern` bound the same
+    // label to on the WHERE side. An earlier version of this function
+    // echoed the WHERE-side `_bnode_<b>` binding (reasoning: "the
+    // reifier the WHERE side matched IS the reifier the template
+    // names"), which happened to leave construct-1/2/3/4 unaffected
+    // (each has only one WHERE solution, so fresh-vs-echo is
+    // indistinguishable) but broke construct-5: `:a :b ?c {|?q ?z|}`
+    // against a single annotated reifier produces TWO WHERE solutions
+    // (a property-position triple pattern re-querying a reifier's own
+    // properties also self-matches the reifier's own `rdf:reifies`
+    // triple — see basic-7/pattern-01), both echoing the SAME data
+    // reifier and so collapsing to one output reifier instead of the
+    // expected two (one bare `rdf:reifies` fact, one with the
+    // annotation property). `fresh_bnode_for`'s (sol_ix, label) key
+    // already gives the one guarantee that actually matters — the SAME
+    // output node for the SAME template label within ONE solution
+    // (e.g. a reifies-triple and a property-triple sharing one
+    // reifier variable) — without reaching into the WHERE-side
+    // bindings at all.
+    Some (S_BNode (fresh_bnode_for sol_ix b))
   // A triple term can never be a triple's subject — drop the template triple.
   | PS_TripleTerm _ _ _ -> None
   | PS_Var v ->
@@ -6104,18 +6108,14 @@ let construct_predicate (pt : pattern_term) (mu : solution_mapping) : option wf_
 // RDF 1.2: a triple-term object in a CONSTRUCT template is instantiated
 // into a concrete `T_TripleTerm` when every sub-position grounds; template
 // bnodes inside it are freshened per solution just like ordinary ones —
-// UNLESS the same label was bound by the WHERE clause (see
-// `construct_subject`'s comment: `_bnode_<b>`, the same key
-// `rewrite_query_bnodes_pattern` binds it under), in which case the
-// matched term is echoed back rather than minting an unrelated fresh one.
+// always fresh, keyed by (sol_ix, template_label); see
+// `construct_subject`'s comment for why this function no longer echoes
+// a WHERE-side `_bnode_<b>` binding.
 let rec construct_object (pt : pattern_term) (mu : solution_mapping) (sol_ix : nat)
   : Tot (option rdf_term) (decreases pt) =
   match pt with
   | PT_IRI i -> Some (T_IRI i)
-  | PT_BNode b ->
-    (match sm_lookup (strcat "_bnode_" b) mu with
-     | Some t -> Some t
-     | None -> Some (T_BNode (fresh_bnode_for sol_ix b)))
+  | PT_BNode b -> Some (T_BNode (fresh_bnode_for sol_ix b))
   | PT_Literal l -> Some (T_Literal l)
   | PT_Var v -> sm_lookup v mu
   | PT_TripleTerm ps pp po ->
@@ -6182,9 +6182,10 @@ let eval_construct_query (q : query) (g : rdf_graph) (ds : rdf_dataset) : list t
   // including the implicit reifier `<<s p o>>`/`{|...|}`/`CONSTRUCT
   // WHERE` sugar mints — is matched by literal bnode-label equality
   // (SPARQL11.Algebra.fst's `PS_BNode` pattern-subject matcher), which
-  // can never succeed against real graph data. `construct_subject`/
-  // `construct_object` above look the resulting `_bnode_<label>`
-  // binding back up when instantiating the template.
+  // can never succeed against real graph data. This rewrite affects
+  // WHERE evaluation only; `construct_subject`/`construct_object`
+  // always mint a fresh per-solution bnode for the (unrewritten)
+  // template side — see their comments.
   let q = { q with q_pattern = rewrite_query_bnodes_pattern q.q_pattern } in
   let base = q.q_base in
   match q.q_form with
