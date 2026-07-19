@@ -226,10 +226,15 @@ let xn_to_string (n : xpath_number) : Prims.string=
            Prims.strcat (if neg && (ip <> Prims.int_zero) then "-" else "")
              (Prims.string_of_int ip)
          else
-           (let rec pad n1 target =
-              if (FStar_String.strlen n1) >= target
+           (let rec zeros_str k =
+              if k = Prims.int_zero
+              then ""
+              else Prims.strcat "0" (zeros_str (k - Prims.int_one)) in
+            let pad n1 target =
+              let len = FStar_String.strlen n1 in
+              if len >= target
               then n1
-              else pad (Prims.strcat "0" n1) (target - Prims.int_one) in
+              else Prims.strcat (zeros_str (target - len)) n1 in
             let frac_str = pad (Prims.string_of_int fp) s in
             let rev_chars =
               FStar_List_Tot_Base.rev (FStar_String.list_of_string frac_str) in
@@ -446,11 +451,16 @@ let rec digits_rev_of_nat (n : Prims.nat) : Prims.nat Prims.list=
     (digits_rev_of_nat (n / (Prims.of_int (10))))
 let int_digits_of_nat (n : Prims.nat) : Prims.nat Prims.list=
   FStar_List_Tot_Base.rev (digits_rev_of_nat n)
-let rec pad_left_zeros (l : Prims.nat Prims.list) (target : Prims.nat) :
+let rec zeros_nat (k : Prims.nat) : Prims.nat Prims.list=
+  if k = Prims.int_zero
+  then []
+  else Prims.int_zero :: (zeros_nat (k - Prims.int_one))
+let pad_left_zeros (l : Prims.nat Prims.list) (target : Prims.nat) :
   Prims.nat Prims.list=
-  if (FStar_List_Tot_Base.length l) >= target
+  let len = FStar_List_Tot_Base.length l in
+  if len >= target
   then l
-  else pad_left_zeros (Prims.int_zero :: l) (target - Prims.int_one)
+  else FStar_List_Tot_Base.op_At (zeros_nat (target - len)) l
 let rec frac_digits_fixed (n : Prims.nat) (width : Prims.nat) :
   Prims.nat Prims.list=
   if width = Prims.int_zero

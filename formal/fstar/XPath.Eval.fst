@@ -209,8 +209,25 @@ let xn_to_string (n:xpath_number) : string =
       let fp = if p = 0 then 0 else av - op_Multiply ip p in
       if fp = 0 then (if neg && ip <> 0 then "-" else "") ^ string_of_int ip
       else
-        let rec pad (n:string) (target:nat) : Tot string (decreases target) =
-          if String.length n >= target then n else pad ("0" ^ n) (target - 1)
+        // Zero-pad the fraction digit string to exactly `target` chars.
+        // The recursion measure is the DEFICIT `k` (computed once, up
+        // front), never `target` itself -- an earlier version recursed
+        // on `pad (n:string) (target:nat) : Tot string (decreases target)`
+        // with `if String.length n >= target then n else pad ("0" ^ n)
+        // (target - 1)`, which both grows `n` AND shrinks `target` by 1
+        // per call, so the two converge and the loop stops after
+        // ceil((target - len n)/2) prepends instead of the full deficit
+        // -- silently dropping a leading zero whenever the picture needs
+        // 2+ digits of padding (string135/string133: shrinking XPath
+        // number literals collapse to duplicate digit strings once the
+        // fractional scale grows past the mantissa's own digit count by
+        // 2 or more).
+        let rec zeros_str (k:nat) : Tot string (decreases k) =
+          if k = 0 then "" else "0" ^ zeros_str (k - 1)
+        in
+        let pad (n:string) (target:nat) : string =
+          let len = String.length n in
+          if len >= target then n else zeros_str (target - len) ^ n
         in
         let frac_str = pad (string_of_int fp) s in
         // strip trailing zeros, keep at least one digit
@@ -397,8 +414,24 @@ let rec digits_rev_of_nat (n:nat) : Tot (list nat) (decreases n) =
 // picture "#.##" formatting 0.5 as ".5").
 let int_digits_of_nat (n:nat) : list nat = List.Tot.rev (digits_rev_of_nat n)
 
-let rec pad_left_zeros (l:list nat) (target:nat) : Tot (list nat) (decreases target) =
-  if List.Tot.length l >= target then l else pad_left_zeros (0 :: l) (target - 1)
+// Same fix as xn_to_string's `pad` above, same bug class: the deficit
+// `k` is computed once from `target` and `List.Tot.length l`, and the
+// recursion decreases on `k` alone -- never on `target` itself, which
+// an earlier version conflated with the stopping-length check
+// (`pad_left_zeros (0 :: l) (target - 1)` shrinks `target` in lockstep
+// with `l` growing, so it halts at ceil(deficit/2) prepended zeros
+// instead of the full deficit). That under-padding is exactly
+// numberformat09's "00.931|486" vs "000.931|486": a format-number
+// picture whose minimum-integer-digit count (`sp_int_min`, counting
+// zero-digit positions across the whole int_chars run, including any
+// embedded grouping-separator literal) exceeds the rendered value's
+// own digit count by 2 or more comes up one leading zero short.
+let rec zeros_nat (k:nat) : Tot (list nat) (decreases k) =
+  if k = 0 then [] else 0 :: zeros_nat (k - 1)
+
+let pad_left_zeros (l:list nat) (target:nat) : list nat =
+  let len = List.Tot.length l in
+  if len >= target then l else zeros_nat (target - len) @ l
 
 // Exactly `width` digits of `n` (n < 10^width), most-significant first.
 let rec frac_digits_fixed (n:nat) (width:nat) : Tot (list nat) (decreases width) =
