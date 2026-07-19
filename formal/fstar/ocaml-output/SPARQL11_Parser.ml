@@ -7606,9 +7606,9 @@ let rec parse_quad_block (pm : prefix_map) (fuel : Prims.nat)
      | Tok_RBRACE -> ParseOk (acc, ts)
      | Tok_GRAPH ->
          let ts1 = parse_advance ts in
-         (match parse_iri_ref pm ts1 with
+         (match parse_graph_name pm (fuel - Prims.int_one) ts1 with
           | ParseErr m -> ParseErr m
-          | ParseOk (g_iri, ts2) ->
+          | ParseOk (gn, ts2) ->
               (match parse_expect Tok_LBRACE ts2 with
                | ParseErr m -> ParseErr m
                | ParseOk ((), ts3) ->
@@ -7617,8 +7617,7 @@ let rec parse_quad_block (pm : prefix_map) (fuel : Prims.nat)
                         let acc' =
                           ggp_join acc
                             (SPARQL11_Algebra.GP_Graph
-                               ((SPARQL11_Algebra.PT_IRI g_iri),
-                                 SPARQL11_Algebra.GP_Empty)) in
+                               (gn, SPARQL11_Algebra.GP_Empty)) in
                         let ts4 = parse_advance ts3 in
                         let ts41 =
                           match parse_peek ts4 with
@@ -7636,9 +7635,7 @@ let rec parse_quad_block (pm : prefix_map) (fuel : Prims.nat)
                               | ParseOk ((), ts5) ->
                                   let acc' =
                                     ggp_join acc
-                                      (SPARQL11_Algebra.GP_Graph
-                                         ((SPARQL11_Algebra.PT_IRI g_iri),
-                                           inner)) in
+                                      (SPARQL11_Algebra.GP_Graph (gn, inner)) in
                                   let ts51 =
                                     match parse_peek ts5 with
                                     | Tok_DOT -> parse_advance ts5

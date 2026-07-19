@@ -4543,16 +4543,27 @@ let rec parse_quad_block (pm : prefix_map) (fuel : nat) (acc : group_graph_patte
   | Tok_RBRACE -> ParseOk acc ts
   | Tok_GRAPH ->
     let ts1 = parse_advance ts in
-    (match parse_iri_ref pm ts1 with
+    // QuadsNotTriples ::= 'GRAPH' VarOrIri '{' TriplesTemplate? '}' — the
+    // graph name is VarOrIri, not IRI-only: INSERT/DELETE *templates*
+    // (non-DATA) legitimately write `GRAPH ?g { ... }` to copy matched
+    // triples into a matched-graph target (SPARQL 1.2 eval-triple-terms
+    // update-2.ru: `DELETE { GRAPH ?g { ?s ?p ?o } } INSERT { ... } WHERE
+    // { GRAPH ?g {...} }`). QuadData (INSERT DATA/DELETE DATA) reuses this
+    // same Quads production and rejects any variable — including a
+    // variable graph name — via the post-parse `gp_has_var` check below,
+    // not via a separate grammar rule, so widening this to VarOrIri does
+    // not weaken the ground-data restriction. Mirrors `parse_graph_name`
+    // (the WHERE-clause GRAPH production, SPARQL11.Parser.fst ~2435).
+    (match parse_graph_name pm (fuel-1) ts1 with
      | ParseErr m -> ParseErr m
-     | ParseOk g_iri ts2 ->
+     | ParseOk gn ts2 ->
        match parse_expect Tok_LBRACE ts2 with
        | ParseErr m -> ParseErr m
        | ParseOk () ts3 ->
          // Empty graph block?
          match parse_peek ts3 with
          | Tok_RBRACE ->
-           let acc' = ggp_join acc (GP_Graph (PT_IRI g_iri) GP_Empty) in
+           let acc' = ggp_join acc (GP_Graph gn GP_Empty) in
            let ts4 = parse_advance ts3 in
            // Optional '.' separator
            let ts4 = match parse_peek ts4 with Tok_DOT -> parse_advance ts4 | _ -> ts4 in
@@ -4564,7 +4575,7 @@ let rec parse_quad_block (pm : prefix_map) (fuel : nat) (acc : group_graph_patte
              match parse_expect Tok_RBRACE ts4 with
              | ParseErr m -> ParseErr m
              | ParseOk () ts5 ->
-               let acc' = ggp_join acc (GP_Graph (PT_IRI g_iri) inner) in
+               let acc' = ggp_join acc (GP_Graph gn inner) in
                // Optional '.' separator
                let ts5 = match parse_peek ts5 with Tok_DOT -> parse_advance ts5 | _ -> ts5 in
                parse_quad_block pm (fuel-1) acc' ts5)
