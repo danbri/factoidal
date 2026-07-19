@@ -1709,6 +1709,157 @@ let escape_text (s : Prims.string) : Prims.string=
   escape_with escape_text_char (chars_of s)
 let escape_attr (s : Prims.string) : Prims.string=
   escape_with escape_attr_char (chars_of s)
+let ascii_lower_str (s : Prims.string) : Prims.string=
+  str_of_chars (FStar_List_Tot_Base.map ascii_lower_char (chars_of s))
+let html_void_elems : Prims.string Prims.list=
+  ["area";
+  "base";
+  "basefont";
+  "br";
+  "col";
+  "frame";
+  "hr";
+  "img";
+  "input";
+  "isindex";
+  "link";
+  "meta";
+  "param"]
+let is_html_void_elem (local : Prims.string) : Prims.bool=
+  mem_str (ascii_lower_str local) html_void_elems
+let html_boolean_attrs : Prims.string Prims.list=
+  ["checked";
+  "compact";
+  "declare";
+  "defer";
+  "disabled";
+  "ismap";
+  "multiple";
+  "noresize";
+  "noshade";
+  "nowrap";
+  "readonly";
+  "selected"]
+let is_html_boolean_attr (name : Prims.string) : Prims.bool=
+  mem_str (ascii_lower_str name) html_boolean_attrs
+let html_latin1_entities : (Prims.int * Prims.string) Prims.list=
+  [((Prims.of_int (0xA0)), "nbsp");
+  ((Prims.of_int (0xA1)), "iexcl");
+  ((Prims.of_int (0xA2)), "cent");
+  ((Prims.of_int (0xA3)), "pound");
+  ((Prims.of_int (0xA4)), "curren");
+  ((Prims.of_int (0xA5)), "yen");
+  ((Prims.of_int (0xA6)), "brvbar");
+  ((Prims.of_int (0xA7)), "sect");
+  ((Prims.of_int (0xA8)), "uml");
+  ((Prims.of_int (0xA9)), "copy");
+  ((Prims.of_int (0xAA)), "ordf");
+  ((Prims.of_int (0xAB)), "laquo");
+  ((Prims.of_int (0xAC)), "not");
+  ((Prims.of_int (0xAD)), "shy");
+  ((Prims.of_int (0xAE)), "reg");
+  ((Prims.of_int (0xAF)), "macr");
+  ((Prims.of_int (0xB0)), "deg");
+  ((Prims.of_int (0xB1)), "plusmn");
+  ((Prims.of_int (0xB2)), "sup2");
+  ((Prims.of_int (0xB3)), "sup3");
+  ((Prims.of_int (0xB4)), "acute");
+  ((Prims.of_int (0xB5)), "micro");
+  ((Prims.of_int (0xB6)), "para");
+  ((Prims.of_int (0xB7)), "middot");
+  ((Prims.of_int (0xB8)), "cedil");
+  ((Prims.of_int (0xB9)), "sup1");
+  ((Prims.of_int (0xBA)), "ordm");
+  ((Prims.of_int (0xBB)), "raquo");
+  ((Prims.of_int (0xBC)), "frac14");
+  ((Prims.of_int (0xBD)), "frac12");
+  ((Prims.of_int (0xBE)), "frac34");
+  ((Prims.of_int (0xBF)), "iquest");
+  ((Prims.of_int (0xC0)), "Agrave");
+  ((Prims.of_int (0xC1)), "Aacute");
+  ((Prims.of_int (0xC2)), "Acirc");
+  ((Prims.of_int (0xC3)), "Atilde");
+  ((Prims.of_int (0xC4)), "Auml");
+  ((Prims.of_int (0xC5)), "Aring");
+  ((Prims.of_int (0xC6)), "AElig");
+  ((Prims.of_int (0xC7)), "Ccedil");
+  ((Prims.of_int (0xC8)), "Egrave");
+  ((Prims.of_int (0xC9)), "Eacute");
+  ((Prims.of_int (0xCA)), "Ecirc");
+  ((Prims.of_int (0xCB)), "Euml");
+  ((Prims.of_int (0xCC)), "Igrave");
+  ((Prims.of_int (0xCD)), "Iacute");
+  ((Prims.of_int (0xCE)), "Icirc");
+  ((Prims.of_int (0xCF)), "Iuml");
+  ((Prims.of_int (0xD0)), "ETH");
+  ((Prims.of_int (0xD1)), "Ntilde");
+  ((Prims.of_int (0xD2)), "Ograve");
+  ((Prims.of_int (0xD3)), "Oacute");
+  ((Prims.of_int (0xD4)), "Ocirc");
+  ((Prims.of_int (0xD5)), "Otilde");
+  ((Prims.of_int (0xD6)), "Ouml");
+  ((Prims.of_int (0xD7)), "times");
+  ((Prims.of_int (0xD8)), "Oslash");
+  ((Prims.of_int (0xD9)), "Ugrave");
+  ((Prims.of_int (0xDA)), "Uacute");
+  ((Prims.of_int (0xDB)), "Ucirc");
+  ((Prims.of_int (0xDC)), "Uuml");
+  ((Prims.of_int (0xDD)), "Yacute");
+  ((Prims.of_int (0xDE)), "THORN");
+  ((Prims.of_int (0xDF)), "szlig");
+  ((Prims.of_int (0xE0)), "agrave");
+  ((Prims.of_int (0xE1)), "aacute");
+  ((Prims.of_int (0xE2)), "acirc");
+  ((Prims.of_int (0xE3)), "atilde");
+  ((Prims.of_int (0xE4)), "auml");
+  ((Prims.of_int (0xE5)), "aring");
+  ((Prims.of_int (0xE6)), "aelig");
+  ((Prims.of_int (0xE7)), "ccedil");
+  ((Prims.of_int (0xE8)), "egrave");
+  ((Prims.of_int (0xE9)), "eacute");
+  ((Prims.of_int (0xEA)), "ecirc");
+  ((Prims.of_int (0xEB)), "euml");
+  ((Prims.of_int (0xEC)), "igrave");
+  ((Prims.of_int (0xED)), "iacute");
+  ((Prims.of_int (0xEE)), "icirc");
+  ((Prims.of_int (0xEF)), "iuml");
+  ((Prims.of_int (0xF0)), "eth");
+  ((Prims.of_int (0xF1)), "ntilde");
+  ((Prims.of_int (0xF2)), "ograve");
+  ((Prims.of_int (0xF3)), "oacute");
+  ((Prims.of_int (0xF4)), "ocirc");
+  ((Prims.of_int (0xF5)), "otilde");
+  ((Prims.of_int (0xF6)), "ouml");
+  ((Prims.of_int (0xF7)), "divide");
+  ((Prims.of_int (0xF8)), "oslash");
+  ((Prims.of_int (0xF9)), "ugrave");
+  ((Prims.of_int (0xFA)), "uacute");
+  ((Prims.of_int (0xFB)), "ucirc");
+  ((Prims.of_int (0xFC)), "uuml");
+  ((Prims.of_int (0xFD)), "yacute");
+  ((Prims.of_int (0xFE)), "thorn");
+  ((Prims.of_int (0xFF)), "yuml")]
+let html_named_entity (cp : Prims.int) :
+  Prims.string FStar_Pervasives_Native.option=
+  match FStar_List_Tot_Base.find
+          (fun p -> (FStar_Pervasives_Native.fst p) = cp)
+          html_latin1_entities
+  with
+  | FStar_Pervasives_Native.Some (uu___, nm) ->
+      FStar_Pervasives_Native.Some nm
+  | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+let html_char_ref (c : FStar_String.char) : Prims.string=
+  match html_named_entity (FStar_Char.int_of_char c) with
+  | FStar_Pervasives_Native.Some nm -> FStar_String.concat "" ["&"; nm; ";"]
+  | FStar_Pervasives_Native.None -> soc c
+let escape_html_text_char (c : FStar_String.char) : Prims.string=
+  if c = 38 then "&amp;" else if c = 60 then "&lt;" else html_char_ref c
+let escape_html_attr_char (c : FStar_String.char) : Prims.string=
+  if c = 38 then "&amp;" else if c = 34 then "&quot;" else html_char_ref c
+let escape_html_text (s : Prims.string) : Prims.string=
+  escape_with escape_html_text_char (chars_of s)
+let escape_html_attr (s : Prims.string) : Prims.string=
+  escape_with escape_html_attr_char (chars_of s)
 let serialize_attr (a : Parser_XML.xml_attribute) : Prims.string=
   FStar_String.concat ""
     [" ";
@@ -1716,6 +1867,25 @@ let serialize_attr (a : Parser_XML.xml_attribute) : Prims.string=
     "=\"";
     escape_attr a.Parser_XML.attr_value;
     "\""]
+let serialize_attr_html (a : Parser_XML.xml_attribute) : Prims.string=
+  if
+    (is_html_boolean_attr a.Parser_XML.attr_name) &&
+      ((ascii_lower_str a.Parser_XML.attr_value) =
+         (ascii_lower_str a.Parser_XML.attr_name))
+  then FStar_String.concat "" [" "; a.Parser_XML.attr_name]
+  else
+    FStar_String.concat ""
+      [" ";
+      a.Parser_XML.attr_name;
+      "=\"";
+      escape_html_attr a.Parser_XML.attr_value;
+      "\""]
+let rec serialize_attrs_html (attrs : Parser_XML.xml_attribute Prims.list) :
+  Prims.string=
+  match attrs with
+  | [] -> ""
+  | a::rest ->
+      Prims.strcat (serialize_attr_html a) (serialize_attrs_html rest)
 let rec serialize_attrs (attrs : Parser_XML.xml_attribute Prims.list) :
   Prims.string=
   match attrs with
@@ -1756,21 +1926,31 @@ type ser_settings =
   ser_cdata:
     (Prims.string FStar_Pervasives_Native.option * Prims.string) Prims.list ;
   ser_indent: Prims.bool ;
-  ser_encoding: Prims.string }
+  ser_encoding: Prims.string ;
+  ser_html: Prims.bool }
 let __proj__Mkser_settings__item__ser_cdata (projectee : ser_settings) :
   (Prims.string FStar_Pervasives_Native.option * Prims.string) Prims.list=
   match projectee with
-  | { ser_cdata; ser_indent; ser_encoding;_} -> ser_cdata
+  | { ser_cdata; ser_indent; ser_encoding; ser_html;_} -> ser_cdata
 let __proj__Mkser_settings__item__ser_indent (projectee : ser_settings) :
   Prims.bool=
   match projectee with
-  | { ser_cdata; ser_indent; ser_encoding;_} -> ser_indent
+  | { ser_cdata; ser_indent; ser_encoding; ser_html;_} -> ser_indent
 let __proj__Mkser_settings__item__ser_encoding (projectee : ser_settings) :
   Prims.string=
   match projectee with
-  | { ser_cdata; ser_indent; ser_encoding;_} -> ser_encoding
+  | { ser_cdata; ser_indent; ser_encoding; ser_html;_} -> ser_encoding
+let __proj__Mkser_settings__item__ser_html (projectee : ser_settings) :
+  Prims.bool=
+  match projectee with
+  | { ser_cdata; ser_indent; ser_encoding; ser_html;_} -> ser_html
 let default_ser_settings : ser_settings=
-  { ser_cdata = []; ser_indent = false; ser_encoding = "UTF-8" }
+  {
+    ser_cdata = [];
+    ser_indent = false;
+    ser_encoding = "UTF-8";
+    ser_html = false
+  }
 let is_text_node (n : Parser_XML.xml_node) : Prims.bool=
   match n with
   | Parser_XML.XText uu___ -> true
@@ -1805,7 +1985,7 @@ let rec replace_cdata_end_chars (cs : FStar_String.char Prims.list) :
   match cs with
   | 93::93::62::rest ->
       FStar_List_Tot_Base.append
-        [93; 93; 93; 93; 60; 33; 91; 67; 68; 65; 84; 65; 91; 62]
+        [93; 93; 93; 93; 62; 60; 33; 91; 67; 68; 65; 84; 65; 91; 62]
         (replace_cdata_end_chars rest)
   | c::rest -> c :: (replace_cdata_end_chars rest)
   | [] -> []
@@ -1850,14 +2030,32 @@ let cdata_wrap_text (encoding : Prims.string) (t : Prims.string) :
   FStar_String.concat ""
     (FStar_List_Tot_Base.map render_crun
        (build_cdata_runs encoding (chars_of t) []))
+type text_mode =
+  | TM_Xml 
+  | TM_Html 
+  | TM_Cdata 
+  | TM_Raw 
+let uu___is_TM_Xml (projectee : text_mode) : Prims.bool=
+  match projectee with | TM_Xml -> true | uu___ -> false
+let uu___is_TM_Html (projectee : text_mode) : Prims.bool=
+  match projectee with | TM_Html -> true | uu___ -> false
+let uu___is_TM_Cdata (projectee : text_mode) : Prims.bool=
+  match projectee with | TM_Cdata -> true | uu___ -> false
+let uu___is_TM_Raw (projectee : text_mode) : Prims.bool=
+  match projectee with | TM_Raw -> true | uu___ -> false
 let rec serialize_node (cfg : ser_settings)
   (scope : (Prims.string * Prims.string) Prims.list)
   (n : Parser_XML.xml_node) : Prims.string=
   match n with
-  | Parser_XML.XText t -> escape_text t
-  | Parser_XML.XCDATA t -> escape_text t
+  | Parser_XML.XText t ->
+      if cfg.ser_html then escape_html_text t else escape_text t
+  | Parser_XML.XCDATA t ->
+      if cfg.ser_html then escape_html_text t else escape_text t
   | Parser_XML.XComment t -> FStar_String.concat "" ["<!--"; t; "-->"]
-  | Parser_XML.XPI (tg, d) -> FStar_String.concat "" ["<?"; tg; " "; d; "?>"]
+  | Parser_XML.XPI (tg, d) ->
+      if cfg.ser_html
+      then FStar_String.concat "" ["<?"; tg; " "; d; ">"]
+      else FStar_String.concat "" ["<?"; tg; " "; d; "?>"]
   | Parser_XML.XElement (tag, attrs, children) ->
       let uu___ = FStar_List_Tot_Base.partition is_ns_decl attrs in
       (match uu___ with
@@ -1865,13 +2063,29 @@ let rec serialize_node (cfg : ser_settings)
            let uu___1 = emit_ns_decls scope decls in
            (match uu___1 with
             | (ns_str, scope') ->
-                let a = Prims.strcat ns_str (serialize_attrs normal) in
+                let elem_ns = lookup_ns scope' (XPath_Eval.prefix_of tag) in
+                let is_html_here =
+                  cfg.ser_html &&
+                    (FStar_Pervasives_Native.uu___is_None elem_ns) in
+                let loc = XPath_Eval.local_name_of tag in
+                let loc_lc = ascii_lower_str loc in
+                let a =
+                  Prims.strcat ns_str
+                    (if is_html_here
+                     then serialize_attrs_html normal
+                     else serialize_attrs normal) in
                 let is_cdata_elem =
-                  matches_cdata_name cfg.ser_cdata
-                    (lookup_ns scope' (XPath_Eval.prefix_of tag))
-                    (XPath_Eval.local_name_of tag) in
-                let parts =
-                  serialize_children cfg scope' is_cdata_elem children in
+                  matches_cdata_name cfg.ser_cdata elem_ns loc in
+                let tmode =
+                  if
+                    is_html_here &&
+                      ((loc_lc = "script") || (loc_lc = "style"))
+                  then TM_Raw
+                  else
+                    if is_cdata_elem
+                    then TM_Cdata
+                    else if is_html_here then TM_Html else TM_Xml in
+                let parts = serialize_children cfg scope' tmode children in
                 let do_indent =
                   (cfg.ser_indent && (Prims.uu___is_Cons children)) &&
                     (Prims.op_Negation (has_text_node children)) in
@@ -1884,31 +2098,46 @@ let rec serialize_node (cfg : ser_settings)
                       Prims.strcat "\n"
                         (Prims.strcat (FStar_String.concat "\n" parts) "\n")
                     else FStar_String.concat "" parts in
-                if inner = ""
-                then FStar_String.concat "" ["<"; tag; a; "/>"]
+                if is_html_here && (is_html_void_elem loc)
+                then FStar_String.concat "" ["<"; tag; a; ">"]
                 else
-                  FStar_String.concat ""
-                    ["<"; tag; a; ">"; inner; "</"; tag; ">"]))
+                  if inner = ""
+                  then
+                    (if is_html_here
+                     then
+                       FStar_String.concat "" ["<"; tag; a; "></"; tag; ">"]
+                     else FStar_String.concat "" ["<"; tag; a; "/>"])
+                  else
+                    FStar_String.concat ""
+                      ["<"; tag; a; ">"; inner; "</"; tag; ">"]))
 and serialize_children (cfg : ser_settings)
-  (scope : (Prims.string * Prims.string) Prims.list)
-  (is_cdata_elem : Prims.bool) (ns : Parser_XML.xml_node Prims.list) :
-  Prims.string Prims.list=
+  (scope : (Prims.string * Prims.string) Prims.list) (tmode : text_mode)
+  (ns : Parser_XML.xml_node Prims.list) : Prims.string Prims.list=
   match ns with
   | [] -> []
   | hd::tl ->
       let s =
-        if is_cdata_elem
-        then
-          match hd with
-          | Parser_XML.XText t -> cdata_wrap_text cfg.ser_encoding t
-          | Parser_XML.XCDATA t -> cdata_wrap_text cfg.ser_encoding t
-          | uu___ -> serialize_node cfg scope hd
-        else serialize_node cfg scope hd in
-      s :: (serialize_children cfg scope is_cdata_elem tl)
+        match hd with
+        | Parser_XML.XText t ->
+            (match tmode with
+             | TM_Raw -> t
+             | TM_Cdata -> cdata_wrap_text cfg.ser_encoding t
+             | TM_Html -> escape_html_text t
+             | TM_Xml -> escape_text t)
+        | Parser_XML.XCDATA t ->
+            (match tmode with
+             | TM_Raw -> t
+             | TM_Cdata -> cdata_wrap_text cfg.ser_encoding t
+             | TM_Html -> escape_html_text t
+             | TM_Xml -> escape_text t)
+        | uu___ -> serialize_node cfg scope hd in
+      s :: (serialize_children cfg scope tmode tl)
 let serialize_nodes (cfg : ser_settings)
   (scope : (Prims.string * Prims.string) Prims.list)
   (ns : Parser_XML.xml_node Prims.list) : Prims.string=
-  FStar_String.concat "" (serialize_children cfg scope false ns)
+  FStar_String.concat ""
+    (serialize_children cfg scope (if cfg.ser_html then TM_Html else TM_Xml)
+       ns)
 let serialize_result (n : Parser_XML.xml_node) : Prims.string=
   serialize_node default_ser_settings [] n
 let rec text_value_node (n : Parser_XML.xml_node) : Prims.string=
@@ -3789,31 +4018,131 @@ let rec root_tag_of (nodes : Parser_XML.xml_node Prims.list) :
   | (Parser_XML.XElement (t, uu___, uu___1))::uu___2 ->
       FStar_Pervasives_Native.Some t
   | uu___::rest -> root_tag_of rest
-let make_doctype (cfg : output_settings)
+let implicit_html_root (nodes : Parser_XML.xml_node Prims.list) : Prims.bool=
+  match root_tag_of nodes with
+  | FStar_Pervasives_Native.Some tag ->
+      ((XPath_Eval.prefix_of tag) = "") &&
+        ((ascii_lower_str (XPath_Eval.local_name_of tag)) = "html")
+  | FStar_Pervasives_Native.None -> false
+let make_doctype (is_html : Prims.bool) (cfg : output_settings)
   (nodes : Parser_XML.xml_node Prims.list) : Prims.string=
-  if (cfg.os_doctype_system = "") && (cfg.os_doctype_public = "")
-  then ""
+  if is_html
+  then
+    (if (cfg.os_doctype_system = "") && (cfg.os_doctype_public = "")
+     then ""
+     else
+       (let tag = "HTML" in
+        if (cfg.os_doctype_public <> "") && (cfg.os_doctype_system <> "")
+        then
+          FStar_String.concat ""
+            ["<!DOCTYPE ";
+            tag;
+            " PUBLIC \"";
+            cfg.os_doctype_public;
+            "\" \"";
+            cfg.os_doctype_system;
+            "\">\n"]
+        else
+          if cfg.os_doctype_public <> ""
+          then
+            FStar_String.concat ""
+              ["<!DOCTYPE ";
+              tag;
+              " PUBLIC \"";
+              cfg.os_doctype_public;
+              "\">\n"]
+          else
+            FStar_String.concat ""
+              ["<!DOCTYPE ";
+              tag;
+              " SYSTEM \"";
+              cfg.os_doctype_system;
+              "\">\n"]))
   else
-    (match root_tag_of nodes with
-     | FStar_Pervasives_Native.None -> ""
-     | FStar_Pervasives_Native.Some tag ->
-         if cfg.os_doctype_public <> ""
-         then
-           FStar_String.concat ""
-             ["<!DOCTYPE ";
-             tag;
-             " PUBLIC \"";
-             cfg.os_doctype_public;
-             "\" \"";
-             cfg.os_doctype_system;
-             "\">\n"]
-         else
-           FStar_String.concat ""
-             ["<!DOCTYPE ";
-             tag;
-             " SYSTEM \"";
-             cfg.os_doctype_system;
-             "\">\n"])
+    if cfg.os_doctype_system = ""
+    then ""
+    else
+      (match root_tag_of nodes with
+       | FStar_Pervasives_Native.None -> ""
+       | FStar_Pervasives_Native.Some tag ->
+           if cfg.os_doctype_public <> ""
+           then
+             FStar_String.concat ""
+               ["<!DOCTYPE ";
+               tag;
+               " PUBLIC \"";
+               cfg.os_doctype_public;
+               "\" \"";
+               cfg.os_doctype_system;
+               "\">\n"]
+           else
+             FStar_String.concat ""
+               ["<!DOCTYPE ";
+               tag;
+               " SYSTEM \"";
+               cfg.os_doctype_system;
+               "\">\n"])
+let is_meta_content_type (n : Parser_XML.xml_node) : Prims.bool=
+  match n with
+  | Parser_XML.XElement (tag, attrs, uu___) ->
+      ((ascii_lower_str (XPath_Eval.local_name_of tag)) = "meta") &&
+        ((match attr_opt "http-equiv" attrs with
+          | FStar_Pervasives_Native.Some v ->
+              (ascii_lower_str v) = "content-type"
+          | FStar_Pervasives_Native.None -> false))
+  | uu___ -> false
+let rec has_meta_content_type (kids : Parser_XML.xml_node Prims.list) :
+  Prims.bool=
+  match kids with
+  | [] -> false
+  | hd::tl ->
+      if is_meta_content_type hd then true else has_meta_content_type tl
+let make_meta_elem (encoding : Prims.string) : Parser_XML.xml_node=
+  Parser_XML.XElement
+    ("meta",
+      [{
+         Parser_XML.attr_name = "http-equiv";
+         Parser_XML.attr_value = "Content-Type"
+       };
+      {
+        Parser_XML.attr_name = "content";
+        Parser_XML.attr_value =
+          (FStar_String.concat "" ["text/html; charset="; encoding])
+      }], [])
+let rec inject_meta_in_elem (encoding : Prims.string)
+  (n : Parser_XML.xml_node) : (Parser_XML.xml_node * Prims.bool)=
+  match n with
+  | Parser_XML.XElement (tag, attrs, children) ->
+      if (ascii_lower_str (XPath_Eval.local_name_of tag)) = "head"
+      then
+        let children' =
+          if has_meta_content_type children
+          then children
+          else (make_meta_elem encoding) :: children in
+        ((Parser_XML.XElement (tag, attrs, children')), true)
+      else
+        (let uu___1 = inject_meta_in_list encoding children in
+         match uu___1 with
+         | (children', found) ->
+             ((Parser_XML.XElement (tag, attrs, children')), found))
+  | uu___ -> (n, false)
+and inject_meta_in_list (encoding : Prims.string)
+  (kids : Parser_XML.xml_node Prims.list) :
+  (Parser_XML.xml_node Prims.list * Prims.bool)=
+  match kids with
+  | [] -> ([], false)
+  | hd::tl ->
+      let uu___ = inject_meta_in_elem encoding hd in
+      (match uu___ with
+       | (hd', found) ->
+           if found
+           then ((hd' :: tl), true)
+           else
+             (let uu___2 = inject_meta_in_list encoding tl in
+              match uu___2 with | (tl', found2) -> ((hd' :: tl'), found2)))
+let html_inject_meta (encoding : Prims.string)
+  (nodes : Parser_XML.xml_node Prims.list) : Parser_XML.xml_node Prims.list=
+  FStar_Pervasives_Native.fst (inject_meta_in_list encoding nodes)
 let finalize_output (present : Prims.bool) (cfg : output_settings)
   (method1 : Prims.string) (nodes : Parser_XML.xml_node Prims.list) :
   Prims.string=
@@ -3823,7 +4152,9 @@ let finalize_output (present : Prims.bool) (cfg : output_settings)
     if Prims.op_Negation present
     then serialize_nodes default_ser_settings [] nodes
     else
-      (let is_html = cfg.os_method_raw = "html" in
+      (let is_html =
+         (cfg.os_method_raw = "html") ||
+           ((cfg.os_method_raw = "") && (implicit_html_root nodes)) in
        let indent_on =
          if cfg.os_indent_raw = "yes"
          then true
@@ -3832,11 +4163,15 @@ let finalize_output (present : Prims.bool) (cfg : output_settings)
          {
            ser_cdata = (cfg.os_cdata);
            ser_indent = indent_on;
-           ser_encoding = (cfg.os_encoding)
+           ser_encoding = (cfg.os_encoding);
+           ser_html = is_html
          } in
-       let body = serialize_nodes ser [] nodes in
+       let charset =
+         if cfg.os_encoding = "" then "UTF-8" else cfg.os_encoding in
+       let nodes' = if is_html then html_inject_meta charset nodes else nodes in
+       let body = serialize_nodes ser [] nodes' in
        let decl = if cfg.os_omit_decl then "" else make_decl cfg in
-       let doctype = make_doctype cfg nodes in
+       let doctype = make_doctype is_html cfg nodes in
        FStar_String.concat "" [decl; doctype; body])
 let transform (stylesheet : Parser_XML.xml_node)
   (source : Parser_XML.xml_node) : Prims.string=
