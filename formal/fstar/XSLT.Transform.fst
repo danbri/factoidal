@@ -3874,8 +3874,19 @@ let rec has_meta_content_type (kids:list xml_node) : Tot bool (decreases kids) =
   | [] -> false
   | hd :: tl -> if is_meta_content_type hd then true else has_meta_content_type tl
 
+// Xalan's HTML output method (conf-gold/output/output01,02,38,40,60,73)
+// always emits the auto-injected element name as uppercase "META" --
+// output60.out proves this is NOT "match the enclosing literal-result
+// element's case" (its <html>/<head>/<title> are lowercase in both the
+// .xsl source and the expected output, yet the injected element is
+// still <META ...>). The attribute NAMES/VALUES (http-equiv, content)
+// stay lowercase; only the element name is uppercased. The vendored
+// W3C xslt30-test suite (third_party/testing/xslt/) has zero
+// method="html" tests (checked 2026-07-19: 88 .xsl files, 16 with
+// xsl:output, none specifying method="html"), so this literal has no
+// competing convention to reconcile there.
 let make_meta_elem (encoding:string) : xml_node =
-  XElement "meta"
+  XElement "META"
     [ { attr_name = "http-equiv"; attr_value = "Content-Type" };
       { attr_name = "content"; attr_value = String.concat "" ["text/html; charset="; encoding] } ]
     []
