@@ -722,8 +722,21 @@ let eval_val (ctx:xctx_item) (pos:nat) (size:nat) (vars:list (string & xp_value)
 let eval_string (ctx:xctx_item) (pos size:nat) (vars) (nsctx:list (string & string)) (expr_text:string) : string =
   to_string_val (eval_val ctx pos size vars nsctx [] xnode_none [] [] expr_text)
 
+// A bare numeric predicate result is XPath 1.0 §2.4's positional
+// shorthand (`[2]` means "proximity position 2", not "boolean(2)" =
+// true) -- mirrors XPath.Eval's own filter_one_pred, which every
+// ordinary location-step predicate (e.g. `select="item[2]"`) already
+// goes through. eval_bool is the match-pattern-predicate path
+// (alt_matches, called with the candidate's PROXIMITY pos/size from
+// match_proximity), which had been missing this special case: a
+// pattern predicate like `e[2]` in an xsl:number count pattern was
+// falling through to to_bool_val's boolean(number) = "n <> 0", so
+// EVERY e (not just the 2nd) satisfied it. Traced against Apache-Xalan
+// numbering78 (`count="b|c|d|e[2]"`).
 let eval_bool (ctx:xctx_item) (pos size:nat) (vars) (nsctx:list (string & string)) (expr_text:string) : bool =
-  to_bool_val (eval_val ctx pos size vars nsctx [] xnode_none [] [] expr_text)
+  match eval_val ctx pos size vars nsctx [] xnode_none [] [] expr_text with
+  | XV_Num n -> (match xn_finite_int (xn_round n) with Some k -> k = pos | None -> false)
+  | v -> to_bool_val v
 
 // Drop `processing-instruction()` alternatives from a union select
 // before handing it to XPath.Eval (which has no PI node test).
