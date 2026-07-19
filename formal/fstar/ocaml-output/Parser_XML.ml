@@ -1870,14 +1870,28 @@ let rec collect_epilog_misc (input : Prims.string) (pos : Prims.nat)
                      ((FStar_List_Tot_Base.rev acc), pos1)))
      | Parser_Combinators.ParseFail (msg, fpos) ->
          Parser_Combinators.ParseFail (msg, fpos))
+let skip_utf8_bom (input : Prims.string) : Prims.nat=
+  if
+    ((((Parser_FastString.fs_byte_length input) >= (Prims.of_int (3))) &&
+        ((Parser_FastString.fs_byte_at input Prims.int_zero) =
+           (Prims.of_int (0xEF))))
+       &&
+       ((Parser_FastString.fs_byte_at input Prims.int_one) =
+          (Prims.of_int (0xBB))))
+      &&
+      ((Parser_FastString.fs_byte_at input (Prims.of_int (2))) =
+         (Prims.of_int (0xBF)))
+  then (Prims.of_int (3))
+  else Prims.int_zero
 let parse_xml_document (input : Prims.string) :
   xml_node FStar_Pervasives_Native.option=
   let len = Parser_FastString.fs_byte_length input in
   let fuel = len + Prims.int_one in
+  let bom_pos = skip_utf8_bom input in
   let pos1 =
-    match parse_xml_declaration input Prims.int_zero with
+    match parse_xml_declaration input bom_pos with
     | Parser_Combinators.ParseOk (_attrs, pos') -> pos'
-    | Parser_Combinators.ParseFail (uu___, uu___1) -> Prims.int_zero in
+    | Parser_Combinators.ParseFail (uu___, uu___1) -> bom_pos in
   match skip_misc input pos1 fuel with
   | Parser_Combinators.ParseOk ((), pos2) ->
       let uu___ =
@@ -1907,10 +1921,11 @@ let parse_xml_document_children (input : Prims.string) :
   xml_node Prims.list FStar_Pervasives_Native.option=
   let len = Parser_FastString.fs_byte_length input in
   let fuel = len + Prims.int_one in
+  let bom_pos = skip_utf8_bom input in
   let pos1 =
-    match parse_xml_declaration input Prims.int_zero with
+    match parse_xml_declaration input bom_pos with
     | Parser_Combinators.ParseOk (_attrs, pos') -> pos'
-    | Parser_Combinators.ParseFail (uu___, uu___1) -> Prims.int_zero in
+    | Parser_Combinators.ParseFail (uu___, uu___1) -> bom_pos in
   match collect_misc input pos1 fuel [] with
   | Parser_Combinators.ParseOk (pre1, pos2) ->
       let uu___ =
@@ -1945,10 +1960,11 @@ let parse_xml_document_children_with_ids (input : Prims.string) :
     FStar_Pervasives_Native.option=
   let len = Parser_FastString.fs_byte_length input in
   let fuel = len + Prims.int_one in
+  let bom_pos = skip_utf8_bom input in
   let pos1 =
-    match parse_xml_declaration input Prims.int_zero with
+    match parse_xml_declaration input bom_pos with
     | Parser_Combinators.ParseOk (_attrs, pos') -> pos'
-    | Parser_Combinators.ParseFail (uu___, uu___1) -> Prims.int_zero in
+    | Parser_Combinators.ParseFail (uu___, uu___1) -> bom_pos in
   match collect_misc input pos1 fuel [] with
   | Parser_Combinators.ParseOk (pre1, pos2) ->
       let uu___ =

@@ -418,8 +418,19 @@ let byte_at s i = if i < String.length s then Some (Char.code s.[i]) else None
 
 let detect_bom_or_utf16 content : string option =
   let b i = match byte_at content i with Some x -> x | None -> -1 in
-  if b 0 = 0xEF && b 1 = 0xBB && b 2 = 0xBF then Some "UTF-8 byte-order-mark (parser doesn't skip a BOM prefix)"
-  else if b 0 = 0xFE && b 1 = 0xFF then Some "UTF-16BE (BOM detected)"
+  (* 2026-07-19 BOM fix: Parser.XML.fst's three document-entry points
+     (parse_xml_document / _children / _children_with_ids) now consume
+     a leading UTF-8 BOM (EF BB BF at byte offset 0 only) via
+     skip_utf8_bom before trying the XML declaration, per XML 1.0
+     SS4.3.3 / Appendix F. There is no longer a parser gap here, so
+     this case is NOT pre-filtered into a skip -- it falls through to
+     the real classification below (same rationale as the 2026-07-17
+     encoding-name fix a few lines down: let the real dogfooded parser
+     decide instead of pre-emptively skipping). A document whose
+     declared encoding is separately undecoded (e.g. BOM + "iso-8859-1")
+     still correctly lands on the "declared encoding ... not decoded"
+     skip further below -- that is a genuine, different gap. *)
+  if b 0 = 0xFE && b 1 = 0xFF then Some "UTF-16BE (BOM detected)"
   else if b 0 = 0xFF && b 1 = 0xFE then Some "UTF-16LE (BOM detected)"
   else if b 0 = 0x00 && b 1 = 0x3C && b 2 = 0x00 && b 3 = 0x3F then Some "UTF-16BE (no BOM, null-padded '<?' detected)"
   else if b 0 = 0x3C && b 1 = 0x00 && b 2 = 0x3F && b 3 = 0x00 then Some "UTF-16LE (no BOM, null-padded '<?' detected)"
