@@ -530,7 +530,13 @@ factoidal validate --shapes as the user tool (the goal's largest gap
 is now a scored, burning-down number).
 
 Landed 2026-07-04 evening wave: RDFC-1.0 to 82 pass, 3 fail, 1 stub
-(of 86 - all remaining out of scope; within scope DONE); OWL RL PE
+(of 86 - all remaining out of scope; within scope DONE) [**SUPERSEDED
+2026-07-05**: the "out of scope" disposition was PREMATURE/WRONG — the 3
+poison "evil" fails (test044c/045c/046c) and the poison-clique NegEval stub
+(test074c) were all SOLVED the next day by the HNDQ work-budget approach
+(docs/designissues/2026-07-05-rdfc10-poison-budget.md). RDFC-1.0 is now
+**86 pass, 0 fail, 0 stub (of 86) — fully complete, nothing out of scope**];
+OWL RL PE
 25 of 30 (suite runs in 0.6s); JSON-LD toRdf 287 of 467; RDFS closure
 33.2s to 1.39s on 27k triples (O(N^2) join order fixed); RFC 3986
 IRI resolution as the first reusable-foundations module; JSON-LD
