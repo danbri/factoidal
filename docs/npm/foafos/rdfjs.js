@@ -226,6 +226,15 @@ function termFromSrj(t) {
       }
       return dataFactory.literal(t.value);
     }
+    case 'triple': {
+      // RDF 1.2 triple term in SPARQL Results JSON:
+      // {"type":"triple","value":{"subject":T,"predicate":T,"object":T}}
+      // (SPARQL_Protocol.json_term) -> an RDF/JS Quad term. Recursive:
+      // the object may itself be a triple term.
+      const v = t.value || {};
+      return dataFactory.quad(
+        termFromSrj(v.subject), termFromSrj(v.predicate), termFromSrj(v.object));
+    }
     default:
       throw new TypeError(`termFromSrj: unknown term type '${t.type}'`);
   }
