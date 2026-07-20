@@ -178,7 +178,33 @@ jobs:
               break
             fi
 
-            git commit -m "ci: refresh dashboard"
+            # Commit ONLY when a real test number changed. Every regeneration
+            # rewrites latest.{json,csv} + index.html with a fresh wall-clock
+            # timestamp (and per-test millisecond timings), so the diff above
+            # is ALWAYS non-empty — this workflow used to commit a
+            # timestamp-only "ci: refresh dashboard" on every push, which is
+            # the worthless-timeseries churn scrubbed 2026-07-20.
+            #
+            # latest.csv is the per-suite score table:
+            #   timestamp,commit,branch,category,suite,pass,fail,skip,unsupported
+            # Drop the two volatile leading columns (timestamp, commit), sort,
+            # and compare to the origin tip we just reset onto (HEAD). Identical
+            # fingerprint => no pass/fail/skip count changed => skip the commit.
+            #
+            # TRADE-OFF (see this file's header): the public dashboard's
+            # "Last refresh" timestamp will now bump only when a score actually
+            # changes, not on every push. That is the more honest signal — the
+            # timestamp reflects real test-data changes instead of commit time.
+            score_fp() { cut -d',' -f3- | LC_ALL=C sort; }
+            NEW_FP=$(score_fp < docs/test-results/latest.csv 2>/dev/null || true)
+            OLD_FP=$(git show HEAD:docs/test-results/latest.csv 2>/dev/null | score_fp || true)
+            if [ -n "$NEW_FP" ] && [ "$NEW_FP" = "$OLD_FP" ]; then
+              echo "Only timestamp/timings changed — no test score drift. Skipping commit (avoids timeseries churn)."
+              PUSH_RC=0
+              break
+            fi
+
+            git commit -m "ci: refresh dashboard — score drift"
 
             if git push origin "HEAD:${GITHUB_REF_NAME}"; then
               PUSH_RC=0
