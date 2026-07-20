@@ -1,0 +1,119 @@
+name: Conformance Re-run (scheduled)
+
+# WHY THIS EXISTS
+# ---------------
+# The heavy w3c-tests pipeline runs `w3c_runner --all` (SPARQL/RDF) on
+# push, and dashboard-refresh.yml regenerates the dashboard from the
+# COMMITTED *_results.log files WITHOUT re-running the ~20 other
+# conformance suites (owl, shacl, shex, csvw, rml, rif, vc, did, mathml,
+# jsonschema, schematron, qudt, grddl, eecc, xml, xslt, the jsonld
+# family). Those suites' scores are therefore only as fresh as the last
+# time someone MANUALLY ran `./w3c-tests.sh` and committed the logs.
+#
+# The 2026-07-19 silent-gap audit demonstrated this rots: committed
+# owl_type_inconsistency + csvw logs predated their own source files by
+# a day. A regression in any un-re-run suite would be invisible until a
+# human happened to re-run it.
+#
+# This workflow closes that gap: on a daily schedule (and on demand), it
+# re-runs EVERY conformance suite off the committed bin/linux-x86_64
+# binaries (no F* toolchain needed) via generate-report.sh --run, and
+# commits the refreshed logs + dashboard JSON back. Drift then shows up
+# as a visible diff in the scheduled commit, instead of silent rot.
+#
+# Part of epic #235 (per-suite path-trigger CI). Complements, does not
+# replace, w3c-tests.yml (push-time, affected-suites) and
+# dashboard-refresh.yml (push-time, scrape-only).
+
+on:
+  schedule:
+    # Daily at 06:00 UTC. A regression is caught within ~24h regardless
+    # of whether any PR touched the suite's trigger paths.
+    - cron: '0 6 * * *'
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+concurrency:
+  group: conformance-rerun
+  cancel-in-progress: false
+
+jobs:
+  rerun:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: claude/main
+          fetch-depth: 0
+
+      - name: Restore test fixtures / submodules
+        run: |
+          set -eu
+          # Worktrees / fresh checkouts inherit zero test submodules;
+          # absent fixtures produce lying 0/0 scores. ensure-test-env.sh
+          # is the canonical restore (hazard #15).
+          if [ -x tools/ensure-test-env.sh ]; then
+            tools/ensure-test-env.sh || echo "::warning::ensure-test-env.sh returned nonzero; some suites may render 0/0"
+          else
+            echo "::warning::tools/ensure-test-env.sh missing"
+          fi
+
+      - name: Re-run all conformance suites (committed binaries, no toolchain)
+        run: |
+          set -eu
+          chmod +x bin/linux-x86_64/* 2>/dev/null || true
+          cd formal/fstar
+          # --run actually RE-EXECUTES every runner (owl incl. all 7 DL
+          # catalogs, shacl, shex, csvw, rml, rif, vc, did, mathml,
+          # jsonschema, schematron, qudt, grddl, eecc, xml, xslt, jsonld
+          # family) then regenerates docs/test-results. This is the whole
+          # point vs dashboard-refresh.yml's scrape-only default. One
+          # suite failing to run must not abort the rest.
+          ./generate-report.sh --run || echo "::warning::generate-report.sh --run returned nonzero; committing whatever refreshed"
+
+      - name: Gate against lying 0/0 rows
+        run: |
+          set -eu
+          python3 - <<'EOF'
+          import json, sys, os
+          p = 'docs/test-results/latest.json'
+          if not os.path.exists(p):
+              print('::warning::no latest.json produced'); sys.exit(0)
+          d = json.load(open(p))
+          suites = d.get('suites', d) if isinstance(d, dict) else d
+          bad = []
+          def walk(o):
+              if isinstance(o, dict):
+                  p_, f_ = o.get('pass'), o.get('fail')
+                  if isinstance(p_, int) and isinstance(f_, int) and p_ == 0 and f_ == 0 and o.get('total', 0):
+                      bad.append(o.get('name', '?'))
+                  for v in o.values(): walk(v)
+              elif isinstance(o, list):
+                  for v in o: walk(v)
+          walk(suites)
+          if bad:
+              print('::warning::0/0 rows with nonzero universe (fixtures may be missing): ' + ', '.join(map(str, bad)))
+          EOF
+
+      - name: Commit refreshed logs + dashboard if changed
+        run: |
+          set -eu
+          git config user.name  "factoidal-ci[bot]"
+          git config user.email "factoidal-ci@users.noreply.github.com"
+          git add -A formal/fstar/ocaml-output/*_results.log docs/test-results/ 2>/dev/null || true
+          if git diff --cached --quiet; then
+            echo "No conformance drift — committed scores are current. Nothing to commit."
+            exit 0
+          fi
+          echo "=== Conformance drift detected — refreshing committed scores ==="
+          git --no-pager diff --cached --stat
+          git commit -m "ci: scheduled conformance re-run — refresh suite scores (#235)"
+          # Concurrent-safe push: reconcile with any push that landed
+          # while the suites ran.
+          for i in 1 2 3 4; do
+            git pull --no-rebase --no-edit origin claude/main && \
+            git push origin HEAD:claude/main && break || { echo "push retry $i"; sleep $((i*4)); }
+          done

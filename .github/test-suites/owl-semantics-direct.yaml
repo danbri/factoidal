@@ -1,0 +1,46 @@
+name: OWL 2 DL Semantics-Direct Catalog
+spec: https://www.w3.org/TR/owl2-direct-semantics/
+runner: bin/linux-x86_64/owl_runner
+runner_args:
+  - third_party/testing/owl/semantics-direct.rdf
+  - --regime
+  - dl
+log_path: formal/fstar/ocaml-output/owl_semantics_direct_results.log
+result_path: docs/test-results/by-suite/owl-semantics-direct.json
+domain: OWL
+foundational: false
+
+# The semantics-direct.rdf catalog is definitionally a Direct (OWL 2 DL
+# Description Logic) Semantics catalog, so it is scored under the DL
+# regime unconditionally (RL closure -> Tableau.tableau_materialise ->
+# RL closure) — Tableau is the right semantics for this catalog per
+# generate-report.sh's per-catalog regime table. This is the largest
+# single catalog log (9000s budget in generate-report.sh --run) and is
+# deliberately kept off the fast dashboard hot path for that reason.
+
+triggers:
+  paths:
+    # Closure rules + Horn dispatch.
+    - formal/fstar/RDF.Graph.Executable.fst
+    # Shared OWL/RDF vocabulary IRIs.
+    - formal/fstar/OWL.Vocabulary.fst
+    # RL/RDF closure rule table.
+    - formal/fstar/OWL.Closure.fst
+    # DL tableau materialisation + refutation (regime=dl).
+    - formal/fstar/Tableau.fst
+    - formal/fstar/Tableau.Refute.fst
+    - formal/fstar/Tableau.CountingOracle.fst
+    # Catalog parser (RDF/XML) + the OWL Functional-Syntax premise path.
+    - formal/fstar/Parser.RDFXML.fst
+    - formal/fstar/Parser.XML.fst
+    - formal/fstar/Parser.OWLFunctional.fst
+    # The runner.
+    - bin/owl-runner/**
+
+  excludes: []
+
+# What's left, in plain language (source: docs/claude-rules/w3c-completeness-ledger.md,
+# OWL 2 row, 2026-07-10; see also owl-profile-rl.yaml's `remaining` for
+# the family-wide caveats).
+remaining:
+  - "residual semantics-direct fails are enumerated per-ID in the results log; this is the heaviest catalog and the most likely to be affected by per-test SIGALRM cap-trips on the largest premises"

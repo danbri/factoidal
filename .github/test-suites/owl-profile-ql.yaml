@@ -1,0 +1,38 @@
+name: OWL 2 Profile QL Conformance
+spec: https://www.w3.org/TR/owl2-profiles/#OWL_2_QL
+runner: bin/linux-x86_64/owl_runner
+runner_args:
+  - third_party/testing/owl/profile-QL.rdf
+  - --regime
+  - rl
+log_path: formal/fstar/ocaml-output/owl_profile_ql_results.log
+result_path: docs/test-results/by-suite/owl-profile-ql.json
+domain: OWL
+foundational: false
+
+# OWL 2 QL profile conformance via the standalone owl_runner, scored
+# under the RL regime (the QL profile's entailments are already RL-
+# closure-shape, so the Tableau/DL path is not needed here — see
+# generate-report.sh's per-catalog regime table).
+
+triggers:
+  paths:
+    # Closure rules + Horn dispatch.
+    - formal/fstar/RDF.Graph.Executable.fst
+    # Shared OWL/RDF vocabulary IRIs.
+    - formal/fstar/OWL.Vocabulary.fst
+    # RL/RDF closure rule table.
+    - formal/fstar/OWL.Closure.fst
+    # Catalog parser (RDF/XML).
+    - formal/fstar/Parser.RDFXML.fst
+    - formal/fstar/Parser.XML.fst
+    # The runner.
+    - bin/owl-runner/**
+
+  excludes: []
+
+# What's left, in plain language (source: docs/claude-rules/w3c-completeness-ledger.md,
+# OWL 2 row, 2026-07-10; see also owl-profile-rl.yaml's `remaining` for
+# the family-wide caveats).
+remaining:
+  - "residual QL fails are enumerated per-ID in the results log; see the OWL 2 DL completeness ledger's profile-QL row for the current breakdown"

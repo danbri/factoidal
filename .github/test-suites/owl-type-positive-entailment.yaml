@@ -1,0 +1,49 @@
+name: OWL 2 DL Type PositiveEntailment (type-positive-entailment)
+spec: https://www.w3.org/TR/owl2-test/
+runner: bin/linux-x86_64/owl_runner
+runner_args:
+  - third_party/testing/owl/type-positive-entailment.rdf
+  - --regime
+  - dl
+log_path: formal/fstar/ocaml-output/owl_type_positive_entailment_results.log
+result_path: docs/test-results/by-suite/owl-type-positive-entailment.json
+domain: OWL
+foundational: false
+
+# OWL 2 DL PositiveEntailmentTest catalog, scored under the DL regime
+# (RL closure -> Tableau.tableau_materialise -> RL closure) — the
+# generate-report.sh --run loop's own "regime, before -> after" table
+# recorded RL 92 pass / 112 fail -> DL 102 pass / 102 fail (+10 sound)
+# for this catalog. A per-test SIGALRM cap keeps a single blown-up
+# closure from hanging the whole catalog; a Tableau cap-trip falls back
+# to the already-computed RL closure so DL can never score below RL on
+# any test.
+
+triggers:
+  paths:
+    # Closure rules + Horn dispatch.
+    - formal/fstar/RDF.Graph.Executable.fst
+    # Shared OWL/RDF vocabulary IRIs.
+    - formal/fstar/OWL.Vocabulary.fst
+    # RL/RDF closure rule table (OWL.Closure.fsti backs
+    # RDF.Graph.Executable's owl_rl_closure_step).
+    - formal/fstar/OWL.Closure.fst
+    # DL tableau materialisation + refutation (regime=dl).
+    - formal/fstar/Tableau.fst
+    - formal/fstar/Tableau.Refute.fst
+    - formal/fstar/Tableau.CountingOracle.fst
+    # Catalog parser (RDF/XML) + the OWL Functional-Syntax premise path.
+    - formal/fstar/Parser.RDFXML.fst
+    - formal/fstar/Parser.XML.fst
+    - formal/fstar/Parser.OWLFunctional.fst
+    # The runner.
+    - bin/owl-runner/**
+
+  excludes: []
+
+# What's left, in plain language (source: docs/claude-rules/w3c-completeness-ledger.md,
+# OWL 2 row, 2026-07-10; see also owl-profile-rl.yaml's `remaining` for
+# the family-wide caveats).
+remaining:
+  - "functional-syntax-only premises outside Parser_OWLFunctional's narrow subset are skipped, not scored"
+  - "the PE-via-refutation fallback (Tableau_Refute.negate_conclusion) only handles conclusion forms it can faithfully negate; every other miss stays a closure-miss FAIL"

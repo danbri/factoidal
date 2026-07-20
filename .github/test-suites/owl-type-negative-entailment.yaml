@@ -1,0 +1,45 @@
+name: OWL 2 DL Type NegativeEntailment (type-negative-entailment)
+spec: https://www.w3.org/TR/owl2-test/
+runner: bin/linux-x86_64/owl_runner
+runner_args:
+  - third_party/testing/owl/type-negative-entailment.rdf
+  - --regime
+  - dl
+log_path: formal/fstar/ocaml-output/owl_type_negative_entailment_results.log
+result_path: docs/test-results/by-suite/owl-type-negative-entailment.json
+domain: OWL
+foundational: false
+
+# OWL 2 DL NegativeEntailmentTest + companion ConsistencyTest catalog,
+# scored under the DL regime. The generate-report.sh --run loop's own
+# table records RL == DL for this catalog (22 pass / 1 fail
+# NegativeEntailment, 23 pass Consistency) — DL agrees with RL here
+# because Tableau is positive-sound (it only emits entailed triples),
+# so it cannot manufacture a false negative-entailment pass.
+
+triggers:
+  paths:
+    # Closure rules + Horn dispatch.
+    - formal/fstar/RDF.Graph.Executable.fst
+    # Shared OWL/RDF vocabulary IRIs.
+    - formal/fstar/OWL.Vocabulary.fst
+    # RL/RDF closure rule table.
+    - formal/fstar/OWL.Closure.fst
+    # DL tableau materialisation + refutation (regime=dl).
+    - formal/fstar/Tableau.fst
+    - formal/fstar/Tableau.Refute.fst
+    - formal/fstar/Tableau.CountingOracle.fst
+    # Catalog parser (RDF/XML) + the OWL Functional-Syntax premise path.
+    - formal/fstar/Parser.RDFXML.fst
+    - formal/fstar/Parser.XML.fst
+    - formal/fstar/Parser.OWLFunctional.fst
+    # The runner.
+    - bin/owl-runner/**
+
+  excludes: []
+
+# What's left, in plain language (source: docs/claude-rules/w3c-completeness-ledger.md,
+# OWL 2 row, 2026-07-10; see also owl-profile-rl.yaml's `remaining` for
+# the family-wide caveats).
+remaining:
+  - "the one residual NegativeEntailment fail is enumerated per-ID in the results log — see the type-negative-entailment.rdf row in the OWL 2 DL completeness ledger for its disposition"

@@ -1,0 +1,47 @@
+name: OWL 2 DL Type Consistency (type-consistency)
+spec: https://www.w3.org/TR/owl2-test/
+runner: bin/linux-x86_64/owl_runner
+runner_args:
+  - third_party/testing/owl/type-consistency.rdf
+  - --regime
+  - dl
+log_path: formal/fstar/ocaml-output/owl_type_consistency_results.log
+result_path: docs/test-results/by-suite/owl-type-consistency.json
+domain: OWL
+foundational: false
+
+# OWL 2 DL ConsistencyTest catalog, scored under the DL regime (RL
+# closure -> Tableau.tableau_materialise -> RL closure). generate-
+# report.sh's own per-catalog comment notes Tableau adds no unsound
+# inconsistency on this catalog. This is the heaviest of the seven
+# catalogs (7200s budget in generate-report.sh --run) — some WebOnt
+# description-logic premises produce closures large enough that the
+# per-test SIGALRM cap (and the separate, smaller refuter cap) matter
+# for keeping the whole catalog from hanging.
+
+triggers:
+  paths:
+    # Closure rules + Horn dispatch.
+    - formal/fstar/RDF.Graph.Executable.fst
+    # Shared OWL/RDF vocabulary IRIs.
+    - formal/fstar/OWL.Vocabulary.fst
+    # RL/RDF closure rule table.
+    - formal/fstar/OWL.Closure.fst
+    # DL tableau materialisation + refutation (regime=dl).
+    - formal/fstar/Tableau.fst
+    - formal/fstar/Tableau.Refute.fst
+    - formal/fstar/Tableau.CountingOracle.fst
+    # Catalog parser (RDF/XML) + the OWL Functional-Syntax premise path.
+    - formal/fstar/Parser.RDFXML.fst
+    - formal/fstar/Parser.XML.fst
+    - formal/fstar/Parser.OWLFunctional.fst
+    # The runner.
+    - bin/owl-runner/**
+
+  excludes: []
+
+# What's left, in plain language (source: docs/claude-rules/w3c-completeness-ledger.md,
+# OWL 2 row, 2026-07-10; see also owl-profile-rl.yaml's `remaining` for
+# the family-wide caveats).
+remaining:
+  - "a small number of the heaviest WebOnt description-logic premises can trip the per-test wall-clock cap during closure/refutation, which is scored as the honest fallback verdict rather than a hang — a performance gap, not a soundness gap"
