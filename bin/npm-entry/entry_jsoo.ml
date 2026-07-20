@@ -367,6 +367,16 @@ let scope_dataset_bnodes ds =
 let dataset_of_nquads (nq : string) : rdf_dataset =
   Parser_NQuads.parse_nquads nq
 
+(* Mode-aware dataset handle: a SPARQL 1.2 query's input N-Quads may
+   carry <<( )>> triple terms (the JS side serialises a Quad term that
+   way), which the Mode_11 parse_nquads would silently drop -- so the
+   query would see a triple-term-free dataset and match nothing. Parse
+   the handle in the matching mode. *)
+let dataset_of_nquads_mode (sparql12 : bool) (nq : string) : rdf_dataset =
+  Parser_NQuads.parse_nquads_mode
+    (if sparql12 then Parser_NTriples.Mode_12 else Parser_NTriples.Mode_11)
+    nq
+
 let parse_text_to_dataset (text : string) (format_tag : string)
     (base_iri : string) : (rdf_dataset, string) result =
   let base = if base_iri = "" then None else Some base_iri in
@@ -556,7 +566,7 @@ let construct_triples_to_ntriples (triples : triple list) : string =
 let query_dataset_mode (sparql12 : bool) (nq : string) (sparql : string)
     : string =
   guarded (fun () ->
-    let ds = dataset_of_nquads nq in
+    let ds = dataset_of_nquads_mode sparql12 nq in
     let parsed =
       if sparql12 then
         SPARQL11_Parser.parse_sparql_12_with_base
@@ -605,7 +615,7 @@ let query_dataset_12 (nq : string) (sparql : string) : string =
 let ask_dataset_mode (sparql12 : bool) (nq : string) (sparql : string)
     : string =
   guarded (fun () ->
-    let ds = dataset_of_nquads nq in
+    let ds = dataset_of_nquads_mode sparql12 nq in
     let parsed =
       if sparql12 then
         SPARQL11_Parser.parse_sparql_12_with_base
@@ -638,7 +648,7 @@ let ask_dataset_12 (nq : string) (sparql : string) : string =
 let update_dataset_mode (sparql12 : bool) (nq : string) (update_text : string)
     : string =
   guarded (fun () ->
-    let ds = dataset_of_nquads nq in
+    let ds = dataset_of_nquads_mode sparql12 nq in
     let parsed =
       if sparql12 then
         SPARQL11_Parser.parse_sparql_update_12_with_base
