@@ -186,6 +186,16 @@ export function pretty(value) {
         }
         return text;
       }
+      if (t.termType === 'Quad') {
+        // RDF 1.2 triple term -> <<( s p o )>> (mirrors hub.njk's
+        // prettyTermNode so the pinned-cell table matches the browser).
+        const part = (x) =>
+          !x ? '' :
+          x.termType === 'Quad' ? '<<(…)>>' :
+          x.termType === 'Literal' ? '"' + x.value + '"' :
+          x.termType === 'BlankNode' ? '_:' + x.value : x.value;
+        return '<<( ' + part(t.subject) + ' ' + part(t.predicate) + ' ' + part(t.object) + ' )>>';
+      }
       return t.value; // NamedNode
     }
     return t;
