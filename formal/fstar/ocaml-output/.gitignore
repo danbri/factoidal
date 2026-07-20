@@ -16,3 +16,7 @@ factoidal
 
 # js_of_ocaml output
 *.bc.js
+
+# Build transcripts (regenerated every build; not rule-#9 artifacts).
+# Result logs (*_results.log, scraped by generate-report.sh) stay TRACKED.
+_*.log

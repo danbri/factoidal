@@ -1,2 +1,0 @@
-findlib: [WARNING] Interface digestif.cmi occurs in several directories: /root/.opam/fstar/lib/digestif/c, /root/.opam/fstar/lib/digestif
-ocamlfind: [WARNING] Package `threads': Linking problems may arise because of the missing -thread or -vmthread switch

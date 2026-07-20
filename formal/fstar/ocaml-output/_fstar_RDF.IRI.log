@@ -1,9 +1,0 @@
-Extracted module RDF.IRI
-* Warning 247 at RDF.IRI.fst(0,0-0,0):
-  - Checked file RDF.IRI.fst.checked was not written.
-  - Reason:
-      checked file RDF.IRI.fsti.checked is stale (dependence hash mismatch, use
-      --debug CheckedFiles for more details)
-
-Verified module: RDF.IRI
-All verification conditions discharged successfully
