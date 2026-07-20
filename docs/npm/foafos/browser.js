@@ -94,6 +94,20 @@ function extForFormat(fmt) {
   return DATA_FORMAT_EXT[key];
 }
 
+// RDF 1.2 opt-in via a "*12" format name (turtle12/ttl12/nt12/nquads12/
+// trig12/...): strip the "12" suffix to the base ext and flag rdf12 so
+// the caller adds the CLI's --rdf12 flag (Mode_12 loaders: triple terms
+// <<( )>>, ~ reifiers, {| |} annotations, directional literals). A plain
+// format name stays RDF 1.1.
+function extAnd12(fmt) {
+  const key = String(fmt || 'turtle').toLowerCase();
+  const m = /^(.+)12$/.exec(key);
+  if (m && (m[1] in DATA_FORMAT_EXT)) {
+    return { ext: DATA_FORMAT_EXT[m[1]], rdf12: true };
+  }
+  return { ext: extForFormat(key), rdf12: false };
+}
+
 // ---------------------------------------------------------------------
 // #240 byte-encoding convention: under js_of_ocaml use-js-string=true
 // (jsoo 6.x default) OCaml strings ARE the host JS strings, using a
@@ -275,6 +289,11 @@ export async function query(dataString, queryString, options) {
   const dataFormat = opts.dataFormat || 'turtle';
   const entail     = opts.entail     || 'none';
   const output     = opts.output     || 'json';
+  // SPARQL 1.2 opt-in: {sparql12:true} or {version:'1.2'} parses the
+  // query with the tokenize_12 parser (--sparql12) and loads the data in
+  // Mode_12 (--rdf12), so triple-term patterns / TRIPLE / isTRIPLE /
+  // lang-dir builtins work. Default stays SPARQL 1.1, byte-identical.
+  const sparql12   = opts.sparql12 === true || String(opts.version || '') === '1.2';
 
   if (!ENTAIL_VALUES.has(entail)) {
     throw new TypeError(
@@ -287,7 +306,7 @@ export async function query(dataString, queryString, options) {
     );
   }
 
-  const ext      = extForFormat(dataFormat);
+  const { ext, rdf12 } = extAnd12(dataFormat);
   const dataPath = '/static/data.' + ext;
 
   const argv = [
@@ -295,6 +314,11 @@ export async function query(dataString, queryString, options) {
     '-e', encodeTextAsBundleBytes(queryString),
     '-o', output === 'json' ? 'json' : output,
   ];
+  // A 1.2 query's data (triple terms) must load in Mode_12; --sparql12
+  // switches the query parser. Adding --rdf12 to 1.1 data is harmless
+  // (the Mode_12 loader is a superset).
+  if (rdf12 || sparql12) argv.push('--rdf12');
+  if (sparql12) argv.push('--sparql12');
   if (entail !== 'none') argv.push('--entail', entail);
 
   const { stdout, stderr, exitCode, engineMs } = await runFactoidalCli(
@@ -352,11 +376,12 @@ export async function query(dataString, queryString, options) {
 async function dumpNQuads(mode, text, options) {
   const opts     = options || {};
   const format   = opts.format || 'jsonld';
-  const ext      = extForFormat(format);
+  const { ext, rdf12 } = extAnd12(format);
   const baseIRI  = opts.baseIRI || '';
   const dataPath = '/static/data.' + ext;
 
   const argv = [mode, '-d', dataPath];
+  if (rdf12) argv.push('--rdf12');
   if (baseIRI) argv.push('-b', encodeTextAsBundleBytes(baseIRI));
 
   const { stdout, stderr, exitCode } = await runFactoidalCli(
